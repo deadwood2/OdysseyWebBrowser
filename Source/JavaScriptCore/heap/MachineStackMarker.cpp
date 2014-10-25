@@ -31,6 +31,13 @@
 #include <stdlib.h>
 #include <wtf/StdLibExtras.h>
 
+#if OS(MORPHOS)
+#include <proto/exec.h>
+#include <proto/dos.h>
+#include <clib/debug_protos.h>
+#define D(x)
+#endif
+
 #if OS(DARWIN)
 
 #include <mach/mach_init.h>
@@ -86,6 +93,8 @@ static void pthreadSignalHandlerSuspendResume(int)
     sigsuspend(&signalSet);
 }
 #endif
+#elif OS(MORPHOS)
+typedef void * PlatformThread;
 #endif
 
 class ActiveMachineThreadsManager;
@@ -207,12 +216,14 @@ static inline PlatformThread getCurrentPlatformThread()
     return GetCurrentThread();
 #elif USE(PTHREADS)
     return pthread_self();
+#elif OS(MORPHOS)
+	return (PlatformThread) FindTask(NULL);
 #endif
 }
 
 static inline bool equalThread(const PlatformThread& first, const PlatformThread& second)
 {
-#if OS(DARWIN) || OS(WINDOWS)
+#if OS(DARWIN) || OS(WINDOWS) || OS(MORPHOS)
     return first == second;
 #elif USE(PTHREADS)
     return !!pthread_equal(first, second);
@@ -297,6 +308,10 @@ static inline bool suspendThread(const PlatformThread& platformThread)
 #elif USE(PTHREADS)
     pthread_kill(platformThread, SigThreadSuspendResume);
     return true;
+#elif OS(MORPHOS)
+    Disable();
+    return true;
+    // FIXME THIS WILL NOT WORK!!!!!!!
 #else
 #error Need a way to suspend threads on this platform
 #endif
@@ -310,6 +325,8 @@ static inline void resumeThread(const PlatformThread& platformThread)
     ResumeThread(platformThread);
 #elif USE(PTHREADS)
     pthread_kill(platformThread, SigThreadSuspendResume);
+#elif OS(MORPHOS)
+    Enable();
 #else
 #error Need a way to resume threads on this platform
 #endif
@@ -339,6 +356,54 @@ typedef arm_thread_state64_t PlatformThreadRegisters;
 typedef CONTEXT PlatformThreadRegisters;
 #elif USE(PTHREADS)
 typedef pthread_attr_t PlatformThreadRegisters;
+#elif OS(MORPHOS)
+typedef double                  float64_t;
+struct __QVector
+{
+        u_int32_t       A;
+        u_int32_t       B;
+        u_int32_t       C;
+        u_int32_t       D;
+} __attribute__((aligned(16)));
+
+typedef struct __QVector                vector128_t;
+
+struct PPCRegFrame
+{
+        u_int32_t               StackGap[4];            /* StackFrame Gap..so a function working
+                                                         * with the PPCRegFrame as the GPR1 doesn`t                                                                                            * overwrite any contents with a LR store at 4(1)
+                                                         */
+
+        u_int32_t               Version;                /* Version of the structure */
+        u_int32_t               Type;                   /* Type of the regframe */
+        u_int32_t               Flags;                  /* The filled up registers */
+        u_int32_t               State;                  /* State of the Thread(only used for Get) */
+
+        u_int32_t               SRR0;
+        u_int32_t               SRR1;
+        u_int32_t               LR;
+        u_int32_t               CTR;
+
+        u_int32_t               CR;
+        u_int32_t               XER;
+
+        u_int32_t               GPR[32];
+
+        float64_t               FPR[32];
+        float64_t               FPSCR;
+
+        u_int32_t               VSAVE;
+        u_int32_t               AlignPad0;
+        u_int32_t               AlignPad1;
+        u_int32_t               AlignPad2;
+        vector128_t             VSCR;
+        vector128_t             VMX[32];
+        /* no size
+         */
+};
+
+typedef struct PPCRegFrame PlatformThreadRegisters;
+
 #else
 #error Need a thread register struct for this platform
 #endif
@@ -393,6 +458,9 @@ static size_t getPlatformThreadRegisters(const PlatformThread& platformThread, P
     // FIXME: this function is non-portable; other POSIX systems may have different np alternatives
     pthread_getattr_np(platformThread, &regs);
 #endif
+#elif OS(MORPHOS)
+	PlatformThreadRegisters *registers = (PlatformThreadRegisters *) ((struct Task *)platformThread)->tc_ETask->PPCRegFrame;
+	regs = *registers;
     return 0;
 #else
 #error Need a way to get thread registers on this platform
@@ -462,6 +530,8 @@ static inline void* otherThreadStackPointer(const PlatformThreadRegisters& regs)
     (void)rc; // FIXME: Deal with error code somehow? Seems fatal.
     ASSERT(stackBase);
     return static_cast<char*>(stackBase) + stackSize;
+#elif OS(MORPHOS)
+	return (void *) regs.GPR[1];
 #else
 #error Need a way to get the stack pointer for another thread on this platform
 #endif
