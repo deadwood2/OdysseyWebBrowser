@@ -88,5 +88,7 @@ tags
 .cproject
 .settings
 
+cross-build
+
 # Ignore YouCompleteMe symlinks
 .ycm_extra_conf.py
