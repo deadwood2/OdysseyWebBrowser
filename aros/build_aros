@@ -1,0 +1,21 @@
+#!/bin/bash
+
+AROS_DEVELOPMENT=/ssd/deadwood/repo-gitorious-aros/abi-v0-on-trunk-pc-i386-4.8.3/bin/pc-i386/AROS/Development
+
+cmake \
+    -DCMAKE_CROSSCOMPILING=ON \
+    -DCMAKE_TOOLCHAIN_FILE=../aros/aros.cmake \
+    -DPORT=MUI \
+    -DCMAKE_SYSTEM_PROCESSOR=i386 \
+    -DENABLE_JIT:BOOL=OFF \
+    -DENABLE_LLINT:BOOL=OFF \
+    -DENABLE_VIDEO:BOOL=OFF \
+    -DENABLE_VIDEO_TRACK:BOOL=OFF \
+    -DENABLE_SPELLCHECK:BOOL=OFF \
+    -DCAIRO_LIBRARIES=$AROS_DEVELOPMENT/lib/libcairo.a \
+    -DCAIRO_INCLUDE_DIRS=$AROS_DEVELOPMENT/include/cairo/ \
+    -DFONTCONFIG_LIBRARIES=$AROS_DEVELOPMENT/lib/libfontconfig.a \
+    -DFONTCONFIG_INCLUDE_DIR=$AROS_DEVELOPMENT/include/fontconfig/ \
+    -DFREETYPE_LIBRARY=$AROS_DEVELOPMENT/lib/libfreetype2.a \
+    -DFREETYPE_INCLUDE_DIRS=$AROS_DEVELOPMENT/include/freetype/ \
+   ..
