@@ -424,6 +424,11 @@
 #define WTF_OS_UNIX 1
 #endif
 
+#if defined(__AROS__)
+#define WTF_OS_MORPHOS 1
+#define WTF_OS_AROS 1
+#endif
+
 /* Operating environments */
 
 /* FIXME: these are all mixes of OS, operating environment and policy choices. */
@@ -741,7 +746,7 @@
 
 #if !defined(ENABLE_DFG_JIT) && ENABLE(JIT)
 /* Enable the DFG JIT on X86 and X86_64. */
-#if (CPU(X86) || CPU(X86_64)) && (OS(DARWIN) || OS(LINUX) || OS(FREEBSD) || OS(WINDOWS) || OS(HURD))
+#if (CPU(X86) || CPU(X86_64)) && (OS(DARWIN) || OS(LINUX) || OS(FREEBSD) || OS(WINDOWS) || OS(HURD) || OS(AROS))
 #define ENABLE_DFG_JIT 1
 #endif
 /* Enable the DFG JIT on ARMv7.  Only tested on iOS and Qt/GTK+ Linux. */
@@ -972,7 +977,7 @@
 #define WTF_USE_IMLANG_FONT_LINK2 1
 #endif
 
-#if !defined(ENABLE_COMPARE_AND_SWAP) && (OS(WINDOWS) || (COMPILER(GCC) && (CPU(X86) || CPU(X86_64) || CPU(ARM_THUMB2) || CPU(ARM64))))
+#if !defined(ENABLE_COMPARE_AND_SWAP) && !OS(AROS) && (OS(WINDOWS) || (COMPILER(GCC) && (CPU(X86) || CPU(X86_64) || CPU(ARM_THUMB2) || CPU(ARM64))))
 #define ENABLE_COMPARE_AND_SWAP 1
 #endif
 
