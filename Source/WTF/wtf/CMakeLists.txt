@@ -219,7 +219,6 @@ set(WTF_INCLUDE_DIRECTORIES
 )
 
 set(WTF_LIBRARIES
-    ${CMAKE_DL_LIBS}
 )
 
 # FIXME: Port bmalloc to Windows. https://bugs.webkit.org/show_bug.cgi?id=143310
@@ -245,13 +244,10 @@ if (WIN32)
         ThreadingWin.cpp
     )
 else ()
-    list(APPEND WTF_HEADERS
-        ThreadIdentifierDataPthreads.h
-    )
     list(APPEND WTF_SOURCES
-        OSAllocatorPosix.cpp
-        ThreadIdentifierDataPthreads.cpp
-        ThreadingPthreads.cpp
+        OSAllocatorAROS.cpp
+        ThreadSpecificMorphOS.cpp
+        ThreadingMorphOS.cpp
     )
 endif ()
 

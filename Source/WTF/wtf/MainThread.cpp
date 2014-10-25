@@ -39,14 +39,18 @@
 
 namespace WTF {
 
+static long long g_functionid = 0;
+
 struct FunctionWithContext {
     MainThreadFunction* function;
     void* context;
+	long long id;
 
     FunctionWithContext(MainThreadFunction* function = nullptr, void* context = nullptr)
         : function(function)
         , context(context)
-    {
+		, id(++g_functionid)
+    { 
     }
     bool operator == (const FunctionWithContext& o)
     {
@@ -65,7 +69,7 @@ public:
 typedef Deque<FunctionWithContext> FunctionQueue;
 
 static bool callbacksPaused; // This global variable is only accessed from main thread.
-#if !OS(DARWIN) || PLATFORM(EFL) || PLATFORM(GTK)
+#if (!OS(DARWIN) && !OS(MORPHOS)) || PLATFORM(EFL) || PLATFORM(GTK)
 static ThreadIdentifier mainThreadIdentifier;
 #endif
 
@@ -92,7 +96,9 @@ void initializeMainThread()
         return;
     initializedMainThread = true;
 
+#if !OS(MORPHOS)
     mainThreadIdentifier = currentThread();
+#endif
 
     mainThreadFunctionQueueMutex();
     initializeMainThreadPlatform();
@@ -188,6 +194,46 @@ void callOnMainThread(MainThreadFunction* function, void* context)
         scheduleDispatchFunctionsOnMainThread();
 }
 
+long long callOnMainThreadFab(MainThreadFunction* function, void* context)
+{
+    ASSERT(function);
+	long long id;
+    bool needToSchedule = false;
+    {
+        MutexLocker locker(mainThreadFunctionQueueMutex());
+        needToSchedule = functionQueue().size() == 0;
+		FunctionWithContext invocation(function, context);
+		id = invocation.id;
+		functionQueue().append(invocation);
+    }
+    if (needToSchedule)
+        scheduleDispatchFunctionsOnMainThread();
+
+	return id;
+}
+
+void removeFromMainThreadFab(long long id)
+{
+    bool needToSchedule = false;
+    {
+        MutexLocker locker(mainThreadFunctionQueueMutex());
+
+		Deque<FunctionWithContext>::const_iterator end = functionQueue().end();
+		for (Deque<FunctionWithContext>::const_iterator it = functionQueue().begin(); it != end; ++it)
+		{
+			if(it->id == id)
+			{
+				functionQueue().remove(it);
+				break;
+			}
+		}
+
+        needToSchedule = functionQueue().size() == 0;
+    }
+    if (needToSchedule)
+        scheduleDispatchFunctionsOnMainThread();
+}
+
 void cancelCallOnMainThread(MainThreadFunction* function, void* context)
 {
     ASSERT(function);
@@ -230,7 +276,7 @@ void setMainThreadCallbacksPaused(bool paused)
         scheduleDispatchFunctionsOnMainThread();
 }
 
-#if !OS(DARWIN) || PLATFORM(EFL) || PLATFORM(GTK)
+#if (!OS(DARWIN) && !OS(MORPHOS)) || PLATFORM(EFL) || PLATFORM(GTK)
 bool isMainThread()
 {
     return currentThread() == mainThreadIdentifier;

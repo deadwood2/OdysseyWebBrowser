@@ -35,6 +35,11 @@
 
 #include <thread.h>
 
+#elif OS(MORPHOS)
+
+#include <exec/exec.h>
+#include <proto/exec.h>
+
 #elif OS(UNIX)
 
 #include <pthread.h>
@@ -90,6 +95,33 @@ void StackBounds::initialize()
 #endif
 }
 
+#elif OS(MORPHOS)
+
+void StackBounds::initialize()
+{
+    void *ppcspupper = NULL, *ppcsplower = NULL;
+
+#if !defined(__AROS__)
+    NewGetTaskAttrs(FindTask(NULL),
+                    &ppcspupper,
+                    sizeof(ppcspupper),
+                    TASKINFOTYPE_SPUPPER,
+                    TAG_DONE);
+
+    NewGetTaskAttrs(FindTask(NULL),
+		    &ppcsplower,
+		    sizeof(ppcsplower),
+		    TASKINFOTYPE_SPLOWER,
+		    TAG_DONE);
+#else
+    ppcspupper = FindTask(NULL)->tc_SPUpper;
+    ppcsplower = FindTask(NULL)->tc_SPLower;
+#endif
+
+    m_origin = ppcspupper;
+    m_bound =  ppcsplower;/*estimateStackBound(m_origin);*/
+}
+
 #elif OS(UNIX)
 
 void StackBounds::initialize()
@@ -135,7 +167,7 @@ void StackBounds::initialize()
     //         | guardPage         | reserved memory for the stack
     //         |-------------------|    |
     //         | uncommittedMemory |    v
-    //    Low  |-------------------|  ----- <--- stackOrigin.AllocationBase
+    //    Low  |-------------------|  ----- Source/WTF/<--- Source/WTF/stackOrigin.AllocationBase
     //
     // See http://msdn.microsoft.com/en-us/library/ms686774%28VS.85%29.aspx for more information.
 

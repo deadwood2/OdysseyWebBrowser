@@ -35,6 +35,11 @@
 
 #if OS(WINDOWS)
 #include <windows.h>
+#elif OS(AROS)
+#include <aros/debug.h>
+#include <proto/exec.h>
+#undef Allocate
+#undef Deallocate
 #else
 #include <pthread.h>
 #endif
@@ -49,7 +54,8 @@ namespace WTF {
 void* fastZeroedMalloc(size_t n) 
 {
     void* result = fastMalloc(n);
-    memset(result, 0, n);
+    if(result)
+        memset(result, 0, n);
     return result;
 }
 
@@ -76,9 +82,30 @@ TryMallocReturnValue tryFastZeroedMalloc(size_t n)
 
 #if OS(WINDOWS)
 #include <malloc.h>
+#elif OS(MORPHOS)
+#include <clib/debug_protos.h>
+extern int morphos_crash(size_t);
 #endif
 
 namespace WTF {
+
+static size_t g_limit = 0;
+static size_t g_memory_allocated = 0;
+MemoryNotification* g_memoryNotification = 0;
+
+void setMemoryNotificationCallback(MemoryNotification* memoryNotification)
+{
+    if (g_memoryNotification == NULL)
+	g_memoryNotification = memoryNotification;
+}
+
+void setMemoryLimit(int limit)
+{
+    if (limit < 0)
+	g_limit = 0;
+    else
+	g_limit = limit;
+}
 
 size_t fastMallocGoodSize(size_t bytes)
 {
@@ -117,33 +144,58 @@ void fastAlignedFree(void* p)
 
 #endif // OS(WINDOWS)
 
+//#if OS(MORPHOS)
+//    g_memory_allocated += n + Internal::ValidationBufferSize;
+//    //kprintf("+ g_memory_allocated %d (+%d)\n", g_memory_allocated, n);
+//
+//    if (g_limit != 0 && (g_memory_allocated > g_limit)) {
+//	if (g_memoryNotification)
+//	    g_memoryNotification->call();
+//   }
+//#endif
+
 TryMallocReturnValue tryFastMalloc(size_t n) 
 {
-    return malloc(n);
+    return malloc(n ? n : 2);
 }
 
-void* fastMalloc(size_t n) 
+void* fastMalloc(size_t n)
 {
-    void* result = malloc(n);
+retry:
+    void* result = malloc(n ? n : 2);
     if (!result)
-        CRASH();
+    {
+        kprintf("fastMalloc: Failed to allocate %lu bytes. Happy crash sponsored by WebKit will follow.\n", n ? n : 2); 
+        if(morphos_crash(n ? n : 2)) 
+            goto retry;
+    }
 
     return result;
 }
 
 TryMallocReturnValue tryFastCalloc(size_t n_elements, size_t element_size)
 {
-    return calloc(n_elements, element_size);
+    return calloc(n_elements ? n_elements : 1, element_size ? element_size : 2);
 }
 
 void* fastCalloc(size_t n_elements, size_t element_size)
 {
-    void* result = calloc(n_elements, element_size);
-    if (!result)
-        CRASH();
+retry:
+    void* result = calloc(n_elements ? n_elements : 1, element_size ? element_size : 2);
+    if (!result) 
+    {
+        kprintf("fastCalloc: Failed to allocate %lu x %lu bytes. Happy crash sponsored by WebKit will follow.\n", n_elements ? n_elements : 1, element_size ? element_size : 2);
+        if(morphos_crash((n_elements ? n_elements : 1)*(element_size ? element_size : 2))) 
+            goto retry;
+    }
 
     return result;
 }
+
+//#if OS(MORPHOS)
+//    g_memory_allocated -= (fastMallocSize(p) + Internal::ValidationBufferSize);
+//    //kprintf("- g_memory_allocated %d (-%d)\n", g_memory_allocated, fastMallocSize(p));
+//#endif    
 
 void fastFree(void* p)
 {
@@ -152,9 +204,14 @@ void fastFree(void* p)
 
 void* fastRealloc(void* p, size_t n)
 {
-    void* result = realloc(p, n);
+retry:
+    void* result = realloc(p, n ? n : 2);
     if (!result)
-        CRASH();
+    {
+        kprintf("fastRealloc: Failed to allocate %lu bytes. Happy crash sponsored by WebKit will follow.\n", n ? n : 2);
+        if(morphos_crash(n ? n : 2))
+            goto retry;
+    }
     return result;
 }
 

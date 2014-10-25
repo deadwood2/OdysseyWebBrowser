@@ -93,6 +93,23 @@ inline bool isinf(double x) { return !finite(x) && !isnand(x); }
 
 #endif
 
+#if OS(AROS)
+
+#undef isinf
+#undef isnan
+#undef isfinite
+#undef signbit
+
+namespace std {
+
+inline bool isinf(double num) { return __isinf(num); }
+inline bool isnan(double num) { return __isnan(num); }
+inline bool isfinite(double x) { return __isfinite(x); }
+inline bool signbit(double num) { return __signbit(num); }
+
+} // namespace std
+#endif
+
 #if COMPILER(MSVC)
 
 // Work around a bug in Win, where atan2(+-infinity, +-infinity) yields NaN instead of specific values.

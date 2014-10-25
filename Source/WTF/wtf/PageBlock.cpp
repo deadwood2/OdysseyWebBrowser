@@ -58,6 +58,13 @@ inline size_t systemPageSize()
     return size;
 }
 
+#elif OS(MORPHOS)
+
+inline size_t systemPageSize()
+{
+	return 4096;
+}
+
 #endif
 
 size_t pageSize()

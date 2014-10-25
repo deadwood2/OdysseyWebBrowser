@@ -60,6 +60,11 @@
 #include <glib.h>
 #endif
 
+#if OS(MORPHOS)
+extern long get_DST_offset(void);
+extern long get_GMT_offset(void);
+#endif
+
 namespace WTF {
 
 #if OS(WINDOWS)
@@ -244,8 +249,13 @@ double currentTime()
 double currentTime()
 {
     struct timeval now;
-    gettimeofday(&now, 0);
-    return now.tv_sec + now.tv_usec / 1000000.0;
+
+	gettimeofday(&now, 0);
+#if OS(MORPHOS)
+	return now.tv_sec + now.tv_usec / 1000000.0 + (double) (get_GMT_offset()) + (double) (get_DST_offset());
+#else
+	return now.tv_sec + now.tv_usec / 1000000.0;
+#endif
 }
 
 #endif

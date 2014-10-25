@@ -34,12 +34,18 @@
 #include <windows.h>
 #endif
 
+#if OS(MORPHOS)
+#include <proto/exec.h>
+#endif
+
 namespace WTF {
 
 inline int getCurrentProcessID()
 {
 #if OS(WINDOWS)
     return GetCurrentProcessId();
+#elif OS(MORPHOS)
+    return (int) FindTask(NULL);
 #else
     return getpid();
 #endif

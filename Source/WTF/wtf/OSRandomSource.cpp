@@ -39,10 +39,17 @@
 #include <wincrypt.h> // windows.h must be included before wincrypt.h.
 #endif
 
+#if OS(MORPHOS)
+#include <stdio.h>
+#endif  
+
 namespace WTF {
 
 void cryptographicallyRandomValuesFromOS(unsigned char* buffer, size_t length)
 {
+#if defined(__AROS__)
+    return;
+#endif
 #if OS(UNIX)
     int fd = open("/dev/urandom", O_RDONLY, 0);
     if (fd < 0)
@@ -59,6 +66,15 @@ void cryptographicallyRandomValuesFromOS(unsigned char* buffer, size_t length)
     if (!CryptGenRandom(hCryptProv, length, buffer))
         CRASH();
     CryptReleaseContext(hCryptProv, 0);
+#elif OS(AROS)
+    return;
+#elif OS(MORPHOS)
+    FILE *fd = fopen("RANDOM:", "r");
+    if(fd)
+      {
+	fread(buffer, length, 1, fd);
+	fclose(fd);
+      }      
 #else
     #error "This configuration doesn't have a strong source of randomness."
     // WARNING: When adding new sources of OS randomness, the randomness must
