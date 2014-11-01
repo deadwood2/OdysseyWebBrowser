@@ -115,6 +115,7 @@ void LocaleICU::initializeLocaleData()
 
     Vector<String, DecimalSymbolsSize> symbols;
     symbols.append(decimalSymbol(UNUM_ZERO_DIGIT_SYMBOL));
+#if !OS(AROS)
     symbols.append(decimalSymbol(UNUM_ONE_DIGIT_SYMBOL));
     symbols.append(decimalSymbol(UNUM_TWO_DIGIT_SYMBOL));
     symbols.append(decimalSymbol(UNUM_THREE_DIGIT_SYMBOL));
@@ -124,6 +125,7 @@ void LocaleICU::initializeLocaleData()
     symbols.append(decimalSymbol(UNUM_SEVEN_DIGIT_SYMBOL));
     symbols.append(decimalSymbol(UNUM_EIGHT_DIGIT_SYMBOL));
     symbols.append(decimalSymbol(UNUM_NINE_DIGIT_SYMBOL));
+#endif
     symbols.append(decimalSymbol(UNUM_DECIMAL_SEPARATOR_SYMBOL));
     symbols.append(decimalSymbol(UNUM_GROUPING_SEPARATOR_SYMBOL));
     ASSERT(symbols.size() == DecimalSymbolsSize);

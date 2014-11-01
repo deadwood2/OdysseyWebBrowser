@@ -2022,15 +2022,21 @@ inline SearchBuffer::SearchBuffer(const String& target, FindOptions options)
     UCollator* collator = usearch_getCollator(searcher);
 
     UCollationStrength strength;
+#if !OS(AROS)
     USearchAttributeValue comparator;
+#endif
     if (m_options & CaseInsensitive) {
         // Without loss of generality, have 'e' match {'e', 'E', 'é', 'É'} and 'é' match {'é', 'É'}.
         strength = UCOL_SECONDARY;
+#if !OS(AROS)
         comparator = USEARCH_PATTERN_BASE_WEIGHT_IS_WILDCARD;
+#endif
     } else {
         // Without loss of generality, have 'e' match {'e'} and 'é' match {'é'}.
         strength = UCOL_TERTIARY;
+#if !OS(AROS)
         comparator = USEARCH_STANDARD_ELEMENT_COMPARISON;
+#endif
     }
     if (ucol_getStrength(collator) != strength) {
         ucol_setStrength(collator, strength);
@@ -2038,7 +2044,9 @@ inline SearchBuffer::SearchBuffer(const String& target, FindOptions options)
     }
 
     UErrorCode status = U_ZERO_ERROR;
+#if !OS(AROS)
     usearch_setAttribute(searcher, USEARCH_ELEMENT_COMPARISON, comparator, &status);
+#endif
     ASSERT(status == U_ZERO_ERROR);
 
     usearch_setPattern(searcher, m_targetCharacters, targetLength, &status);
