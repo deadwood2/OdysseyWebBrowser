@@ -3069,7 +3069,7 @@ bool EventHandler::isKeyEventAllowedInFullScreen(const PlatformKeyboardEvent& ke
 }
 #endif
 
-bool EventHandler::keyEvent(const PlatformKeyboardEvent& initialKeyEvent)
+bool EventHandler::keyEvent(const PlatformKeyboardEvent& initialKeyEvent, bool* eventFlowAltered)
 {
     RefPtr<FrameView> protector(m_frame.view());
 
@@ -3609,7 +3609,7 @@ bool EventHandler::handleTextInputEvent(const String& text, Event* underlyingEve
         target = eventTargetElementForDocument(m_frame.document());
     if (!target)
         return false;
-    
+
     if (FrameView* view = m_frame.view())
         view->disableLayerFlushThrottlingTemporarilyForInteraction();
 
