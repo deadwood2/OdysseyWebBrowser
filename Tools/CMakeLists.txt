@@ -25,6 +25,8 @@ elseif ("${PORT}" STREQUAL "GTK")
     if (ENABLE_MINIBROWSER)
         add_subdirectory(MiniBrowser/gtk)
     endif ()
+elseif ("${PORT}" STREQUAL "MUI")
+    add_subdirectory(OdysseyWebBrowser)
 endif ()
 
 if (WIN32)
