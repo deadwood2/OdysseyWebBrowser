@@ -1,0 +1,1993 @@
+;
+;
+;
+; Pulldown Menu
+;
+;
+MSG_MENU_PROJECT (//)
+Project
+;
+MSG_MENU_NEW_WINDOW (//)
+New Window...
+;
+MSG_MENU_NEW_TAB (//)
+New Tab
+;
+MSG_MENU_OPEN_LOCAL_FILE (//)
+Open File...
+;
+MSG_MENU_OPEN_URL (//)
+Open URL
+;
+MSG_MENU_OPEN_SESSION (//)
+Load Session...
+;
+MSG_MENU_SAVE_SESSION (//)
+Save Session...
+;
+MSG_MENU_SAVE_AS_SOURCE (//)
+Save as HTML...
+;
+MSG_MENU_SAVE_AS_PDF (//)
+Save as PDF...
+;
+MSG_MENU_PRINT (//)
+Print...
+;
+MSG_MENU_ABOUT (//)
+About...
+;
+MSG_MENU_CLOSE_TAB (//)
+Close Tab
+;
+MSG_MENU_CLOSE_WINDOW (//)
+Close Window
+;
+MSG_MENU_QUIT (//)
+Quit
+;
+MSG_MENU_EDIT (//)
+Edit
+;
+MSG_MENU_CUT (//)
+Cut
+;
+MSG_MENU_COPY (//)
+Copy
+;
+MSG_MENU_COPY_LOCAL (//)
+Copy with System Codepage
+;
+MSG_MENU_PASTE (//)
+Paste
+;
+MSG_MENU_PASTE_TO_URL (//)
+Paste to URL
+;
+MSG_MENU_SELECT_ALL (//)
+Select All
+;
+MSG_MENU_FIND (//)
+Find
+;
+MSG_MENU_VIEW (//)
+View
+;
+MSG_MENU_BACK (//)
+Back
+;
+MSG_MENU_FORWARD (//)
+Forward
+;
+MSG_MENU_HOME (//)
+Home
+;
+MSG_MENU_STOP (//)
+Stop
+;
+MSG_MENU_RELOAD (//)
+Reload
+;
+MSG_MENU_ZOOM_IN (//)
+Zoom In
+;
+MSG_MENU_ZOOM_OUT (//)
+Zoom Out
+;
+MSG_MENU_ZOOM_RESET (//)
+Zoom Reset
+;
+MSG_MENU_FULLSCREEN (//)
+Fullscreen
+;
+MSG_MENU_SOURCE (//)
+Show Source Code...
+;
+MSG_MENU_PANELS (//)
+Sidepanels
+;
+MSG_MENU_NAVIGATION (//)
+Navigation
+;
+MSG_MENU_QUICKLINKS (//)
+Quicklinks
+;
+MSG_MENU_LOCATION (//)
+Location
+;
+MSG_MENU_STATUS (//)
+Status
+;
+MSG_MENU_BOOKMARK_PANEL (//)
+Bookmarks
+;
+MSG_MENU_HISTORY_PANEL (//)
+History
+;
+MSG_MENU_NO_PANEL (//)
+Off
+;
+MSG_MENU_HISTORY (//)
+History
+;
+MSG_MENU_HISTORY_CLOSEDVIEWS (//)
+Recently Closed Browsers
+;
+MSG_MENU_BOOKMARKS (//)
+Bookmarks
+;
+MSG_MENU_ADD_BOOKMARK (//)
+Add Bookmark
+;
+MSG_MENU_MANAGE_BOOKMARKS (//)
+Manage Bookmarks...
+;
+MSG_MENU_WINDOWS (//)
+Windows
+;
+MSG_MENU_DOWNLOADS (//)
+Downloads...
+;
+MSG_MENU_NETWORK (//)
+Network Activity...
+;
+MSG_MENU_PASSWORDS (//)
+Passwords...
+;
+MSG_MENU_COOKIES (//)
+Cookies...
+MSG_MENU_BLOCK (//)
+Content Blocking...
+;
+MSG_MENU_MESSAGES (//)
+Messages...
+MSG_MENU_SEARCH_ENGINES (//)
+Search Engines...
+;
+MSG_MENU_SCRIPT (//)
+Scripts...
+;
+MSG_MENU_URLPREFS (//)
+URL Settings...
+;
+MSG_MENU_SETTINGS (//)
+Settings
+;
+MSG_MENU_PRIVATE_BROWSING (//)
+Private Browsing
+;
+MSG_MENU_ENABLE (//)
+Enable
+;
+MSG_MENU_DISABLE (//)
+Disable
+;
+MSG_MENU_DEFAULT (//)
+Default Setting
+;
+MSG_MENU_ENABLE_JAVASCRIPT (//)
+JavaScript Support
+;
+MSG_MENU_ENABLE_IMAGES (//)
+Image Loading
+;
+MSG_MENU_ENABLE_ANIMATIONS (//)
+Play Animations
+;
+MSG_MENU_ENABLE_PLUGINS (//)
+Plugins
+;
+MSG_MENU_SPOOF_AS (//)
+Spoof as
+;
+MSG_MENU_PREFERENCES (//)
+Preferences...
+;
+MSG_MENU_MUI (//)
+MUI...
+;
+;
+; App
+;
+;
+MSG_REQUESTER_NORMAL_TITLE (//)
+OWB
+;
+MSG_REQUESTER_ERROR_TITLE (//)
+OWB Error
+;
+MSG_REQUESTER_YES_NO (//)
+*_Yes|_No
+;
+MSG_REQUESTER_NO_YES (//)
+_Yes|*_No
+;
+MSG_REQUESTER_OK (//)
+*_Ok
+MSG_REQUESTER_YES_NO_NEVER (//)
+*_Yes|_No|N_ever
+;
+MSG_REQUESTER_BOOKMARK_IMPORT_ERROR (//)
+Unknown bookmark format.\nOnly IBrowse 2.4 and OWB MorphOS formats are supported.
+;
+MSG_OWBAPP_DEFAULT_WINDOW_NAME (//)
+Odyssey Web Browser Window
+;
+MSG_OWBAPP_DEFAULT_PAGE_NAME (//)
+Odyssey Web Browser Page
+;
+MSG_OWBAPP_SAVE_CREDENTIALS (//)
+Do you want to save credentials for this page?\nUsername: %s
+;
+MSG_OWBAPP_MIMETYPE_REQUEST_ACTION (//)
+Specify the action to perform for file:\n'\033b%s\033n' (MIME Type: \033b%s\033n)
+;
+MSG_OWBAPP_MIMETYPE_ACTIONS (//)
+*_Display in Window|Open with _External Program|Download _File|_Cancel
+;
+MSG_OWBAPP_MIMETYPE_ACTIONS_FALLBACK (//)
+*_Display in Window|Download _File|_Cancel
+;
+MSG_OWBAPP_OPEN_SESSION (//)
+Load Session File...
+;
+MSG_OWBAPP_SAVE_SESSION (//)
+Save Session File As...
+;
+MSG_OWBAPP_RESTORE_SESSION_CHOICES (//)
+*_Restore Session|_Start New Session
+;
+MSG_OWBAPP_RESTORE_SESSION (//)
+A previous session has been found.
+;
+;
+;
+; AddressBarGroup
+;
+;
+MSG_ADDRESSBARGROUP_URL (//)
+URL:
+;
+;
+; BCContextMenuMorphOS
+;
+;
+MSG_CONTEXTMENU_TITLE (//)
+Menu
+;
+;
+; BCLocalizedStrings (these ones need to be encoded in UTF8)
+;
+;
+MSG_LOCALIZED_SUBMIT (//)
+Submit
+;
+MSG_LOCALIZED_RESET (//)
+Reset
+;
+MSG_LOCALIZED_SEARCHABLE_INDEX (//)
+Searchable Index
+;
+MSG_LOCALIZED_CHOOSE_FILE (//)
+Select File...
+;
+MSG_LOCALIZED_NO_FILE (//)
+(None)
+;
+MSG_LOCALIZED_DETAILS (//)
+Details
+;
+MSG_LOCALIZED_OPEN_IN_NEW_WINDOW (//)
+Open Link in New Window...
+;
+MSG_LOCALIZED_OPEN_IN_NEW_TAB (//)
+Open Link in New Tab
+;
+MSG_LOCALIZED_OPEN_IN_NEW_BACKGROUND_TAB (//)
+Open Link in New Background Tab
+;
+MSG_LOCALIZED_DOWNLOAD_LINK (//)
+Download Linked File...
+;
+MSG_LOCALIZED_COPY_LINK_LOCATION (//)
+Copy Link Location
+;
+MSG_LOCALIZED_OPEN_IMAGE_IN_NEW_WINDOW (//)
+Open Image in New Window...
+;
+MSG_LOCALIZED_OPEN_IMAGE_IN_NEW_TAB (//)
+Open Image in New Tab
+;
+MSG_LOCALIZED_SAVE_IMAGE_AS (//)
+Save Image As...
+;
+MSG_LOCALIZED_COPY_IMAGE (//)
+Copy Image...
+;
+MSG_LOCALIZED_COPY_IMAGE_URL (//)
+Copy Image Location...
+;
+MSG_LOCALIZED_BLOCK_IMAGES (//)
+Block Images from %s
+;
+MSG_LOCALIZED_OPEN_FRAME_IN_NEW_WINDOW (//)
+Open Frame in New Window...
+;
+MSG_LOCALIZED_OPEN_FRAME_IN_NEW_TAB (//)
+Open Frame in New Tab
+;
+MSG_LOCALIZED_COPY (//)
+Copy
+;
+MSG_LOCALIZED_DELETE (//)
+Delete
+;
+MSG_LOCALIZED_SELECT_ALL (//)
+Select All
+;
+MSG_LOCALIZED_INSERT_UNICODE (//)
+Insert Unicode Control Character
+;
+MSG_LOCALIZED_INPUT_METHODS (//)
+Input Methods
+;
+MSG_LOCALIZED_BACK (//)
+Back
+;
+MSG_LOCALIZED_FORWARD (//)
+Forward
+;
+MSG_LOCALIZED_STOP (//)
+Stop
+;
+MSG_LOCALIZED_RELOAD (//)
+Reload
+;
+MSG_LOCALIZED_CUT (//)
+Cut
+;
+MSG_LOCALIZED_PASTE (//)
+Paste
+;
+MSG_LOCALIZED_NO_GUESSES (//)
+No Guesses Found
+;
+MSG_LOCALIZED_IGNORE_SPELLING (//)
+Ignore Spelling
+;
+MSG_LOCALIZED_LEARN_SPELLING (//)
+Learn Spelling
+;
+MSG_LOCALIZED_SEARCH (//)
+Search the Web
+;
+MSG_LOCALIZED_LOOKUP_IN_DICTIONARY (//)
+Look Up in Dictionary
+;
+MSG_LOCALIZED_OPEN_LINK (//)
+Open Link
+;
+MSG_LOCALIZED_IGNORE_GRAMMAR (//)
+Ignore Grammar
+;
+MSG_LOCALIZED_SPELLING_AND_GRAMMAR (//)
+Spelling and Grammar
+;
+MSG_LOCALIZED_SHOW_SPELLING_AND_GRAMMAR (//)
+Show Spelling and Grammar
+;
+MSG_LOCALIZED_HIDE_SPELLING_AND_GRAMMAR (//)
+Hide Spelling and Grammar
+;
+MSG_LOCALIZED_CHECK_DOCUMENT (//)
+Check Document Now
+;
+MSG_LOCALIZED_CHECK_SPELLING_WHILE_TYPING (//)
+Check Spelling While Typing
+;
+MSG_LOCALIZED_CHECK_GRAMMAR_WITH_SPELLING (//)
+Check Grammar With Spelling
+;
+MSG_LOCALIZED_DICTIONARIES (//)
+Choose Language
+;
+MSG_LOCALIZED_FONT (//)
+Font
+;
+MSG_LOCALIZED_BOLD (//)
+Bold
+;
+MSG_LOCALIZED_ITALIC (//)
+Italic
+;
+MSG_LOCALIZED_UNDERLINE (//)
+Underline
+;
+MSG_LOCALIZED_OUTLINE (//)
+Outline
+;
+MSG_LOCALIZED_INSPECT_ELEMENT (//)
+Inspect Element
+;
+MSG_LOCALIZED_NO_RECENT_SEARCHES (//)
+No recent searches
+;
+MSG_LOCALIZED_RECENT_SEARCHES (//)
+Recent searches
+;
+MSG_LOCALIZED_CLEAR_RECENT_SEARCHES (//)
+Clear recent searches
+;
+MSG_LOCALIZED_TERM (//)
+term
+;
+MSG_LOCALIZED_DEFINITION (//)
+definition
+;
+MSG_LOCALIZED_UNKNOWN (//)
+Unknown
+;
+MSG_LOCALIZED_LEFT_TO_RIGHT (//)
+Left to Right
+;
+MSG_LOCALIZED_DEFAULT_DIRECTION (//)
+Default Writing Direction
+;
+MSG_LOCALIZED_RIGHT_TO_LEFT (//)
+Right to Left
+;
+MSG_LOCALIZED_WRITING_DIRECTION (//)
+Writing Direction
+;
+MSG_LOCALIZED_TEXT_DIRECTION (//)
+Text Direction
+;
+MSG_LOCALIZED_PLAY (//)
+Play
+;
+MSG_LOCALIZED_PAUSE (//)
+Pause
+;
+MSG_LOCALIZED_MUTE (//)
+Mute
+;
+MSG_LOCALIZED_UNMUTE (//)
+Unmute
+;
+MSG_LOCALIZED_SWITCH_TO_FULLSCREEN (//)
+Switch to Fullscreen
+;
+MSG_LOCALIZED_DOWNLOADMEDIA (//)
+Download Media...
+;
+MSG_LOCALIZED_COPYMEDIAURL (//)
+Copy Media Location
+;
+MSG_LOCALIZED_OPEN_MEDIA_IN_NEW_WINDOW (//)
+Open Media in New Window...
+;
+MSG_LOCALIZED_MEDIACONTROLS (//)
+Controls
+;
+MSG_LOCALIZED_MEDIALOOP (//)
+Loop
+;
+;
+; BookmarkGroup
+;
+;
+MSG_BOOKMARKGROUP_ADD_GROUP (//)
+Add Group
+;
+MSG_BOOKMARKGROUP_ADD_LINK (//)
+Add Link
+;
+MSG_BOOKMARKGROUP_ADD_SEPARATOR (//)
+Add Separator
+;
+MSG_BOOKMARKGROUP_REMOVE (//)
+Remove
+;
+MSG_BOOKMARKGROUP_TITLE (//)
+Title:
+;
+MSG_BOOKMARKGROUP_ADDRESS (//)
+Address:
+;
+MSG_BOOKMARKGROUP_SHOW_IN_MENU (//)
+Show in menu
+;
+MSG_BOOKMARKGROUP_QUICKLINK (//)
+Quick link
+;
+MSG_BOOKMARKGROUP_UNTITLED (//)
+(No Title)
+;
+;
+; BookmarkListTree
+;
+;
+MSG_BOOKMARKLISTTREE_SEPARATOR (//)
+---------- Separator ----------
+;
+MSG_BOOKMARKLISTTREE_NO_TITLE (//)
+(No Title)
+;
+MSG_BOOKMARKLISTTREE_TITLE (//)
+Title
+;
+MSG_BOOKMARKLISTTREE_ADDRESS (//)
+Address
+;
+MSG_BOOKMARKLISTTREE_FOLD_GROUP (//)
+Fold Group
+;
+MSG_BOOKMARKLISTTREE_UNFOLD_GROUP (//)
+Unfold Group
+;
+MSG_BOOKMARKLISTTREE_FOLD_GROUP_BOLD (//)
+\033bFold Group
+;
+MSG_BOOKMARKLISTTREE_UNFOLD_GROUP_BOLD (//)
+\033bUnfold Group
+;
+MSG_BOOKMARKLISTTREE_SEPARATOR_LABEL (//)
+Separator
+;
+MSG_BOOKMARKLISTTREE_OPEN (//)
+\033bOpen
+;
+MSG_BOOKMARKLISTTREE_OPEN_NEW_TAB (//)
+Open Link in New Tab
+;
+MSG_BOOKMARKLISTTREE_OPEN_NEW_WINDOW (//)
+Open Link in New Window...
+;
+MSG_BOOKMARKLISTTREE_BOOKMARK (//)
+Bookmarks
+;
+MSG_BOOKMARKLISTTREE_FOLD_ALL_GROUPS (//)
+Fold All Groups
+;
+MSG_BOOKMARKLISTTREE_UNFOLD_ALL_GROUPS (//)
+Unfold All Groups
+;
+;
+; BookmarkWindow
+;
+;
+MSG_BOOKMARKWINDOW_BOOKMARKS (//)
+Bookmarks
+;
+;
+; ChooseTitleGroup
+;
+;
+MSG_CHOOSETITLEGROUP_TITLE (//)
+Title:
+;
+MSG_CHOOSETITLEGROUP_MENU (//)
+Add to _menu
+;
+MSG_CHOOSETITLEGROUP_NO_TITLE (//)
+(No Title)
+;
+MSG_CHOOSETITLEGROUP_ADD (//)
+_Add
+;
+MSG_CHOOSETITLEGROUP_CANCEL (//)
+_Cancel
+;
+;
+; ConsoleList
+;
+;
+MSG_CONSOLELIST_TIME (//)
+Time
+;
+MSG_CONSOLELIST_MESSAGE (//)
+Message
+;
+MSG_CONSOLELIST_COPY (//)
+Copy
+;
+;
+; ConsoleWindow
+;
+;
+MSG_CONSOLEWINDOW_MESSAGES (//)
+Messages
+;
+MSG_CONSOLEWINDOW_CLEAR (//)
+_Clear
+;
+;
+; ContextMenuGroup
+;
+;
+MSG_CONTEXTMENUGROUP_LINK (//)
+Link
+;
+MSG_CONTEXTMENUGROUP_PAGE (//)
+Page
+;
+MSG_CONTEXTMENUGROUP_IMAGE (//)
+Image
+;
+MSG_CONTEXTMENUGROUP_INTERNAL (//)
+Internal
+;
+MSG_CONTEXTMENUGROUP_ADD (//)
+Add
+;
+MSG_CONTEXTMENUGROUP_REMOVE (//)
+Remove
+;
+MSG_CONTEXTMENUGROUP_CATEGORY (//)
+Category:
+;
+MSG_CONTEXTMENUGROUP_LABEL (//)
+Label:
+;
+MSG_CONTEXTMENUGROUP_ACTION (//)
+Action:
+;
+MSG_CONTEXTMENUGROUP_DEFAULT_LABEL (//)
+Menu Label
+;
+;
+;
+; ContextMenuList
+;
+;
+MSG_CONTEXTMENULIST_LINK (//)
+Link
+;
+MSG_CONTEXTMENULIST_PAGE (//)
+Page
+;
+MSG_CONTEXTMENULIST_IMAGE (//)
+Image
+;
+MSG_CONTEXTMENULIST_INTERNAL (//)
+Internal
+;
+MSG_CONTEXTMENULIST_CATEGORY (//)
+Category
+;
+MSG_CONTEXTMENULIST_LABEL (//)
+Label
+;
+MSG_CONTEXTMENULIST_ACTION (//)
+Action
+;
+MSG_CONTEXTMENULIST_TYPE (//)
+Type
+;
+;
+;
+; CookieManagerGroup
+;
+;
+MSG_COOKIEMANAGERGROUP_REMOVE (//)
+_Remove
+;
+MSG_COOKIEMANAGERGROUP_REMOVE_ALL (//)
+Remove _All
+;
+MSG_COOKIEMANAGERGROUP_DOMAIN (//)
+Domain:
+;
+MSG_COOKIEMANAGERGROUP_NAME (//)
+Name:
+;
+MSG_COOKIEMANAGERGROUP_VALUE (//)
+Value:
+;
+MSG_COOKIEMANAGERGROUP_PATH (//)
+Path:
+;
+MSG_COOKIEMANAGERGROUP_TYPE (//)
+Type:
+;
+MSG_COOKIEMANAGERGROUP_EXPIRATION (//)
+Expiration:
+;
+;
+;
+; CookieManagerList
+;
+;
+MSG_COOKIEMANAGERLIST_DOMAIN (//)
+Domain
+;
+MSG_COOKIEMANAGERLIST_NAME (//)
+Name
+;
+MSG_COOKIEMANAGERLIST_VALUE (//)
+Value
+;
+MSG_COOKIEMANAGERLIST_COOKIES (//)
+Cookies
+;
+MSG_COOKIEMANAGERLIST_FOLD_DOMAIN (//)
+Fold Domain
+;
+MSG_COOKIEMANAGERLIST_UNFOLD_DOMAIN (//)
+Unfold Domain
+;
+MSG_COOKIEMANAGERLIST_FOLD_ALL_DOMAINS (//)
+Fold All Domains
+;
+MSG_COOKIEMANAGERLIST_UNFOLD_ALL_DOMAINS (//)
+Unfold All Domains
+;
+;
+; CookieManagerWindow
+;
+;
+MSG_COOKIEMANAGERWINDOW_COOKIES (//)
+Cookies
+;
+;
+; DefaultPolicyDelegate
+;
+;
+MSG_DEFAULTPOLICYDELEGATE_MESSAGE (//)
+The page you're trying to open already includes POST data.\nIf you proceed, POST data will be sent again.\nDo you want to continue?
+;
+;
+; DownloadDelegate
+;
+;
+MSG_DOWNLOADDELEGATE_OVERWRITE_OR_RESUME (//)
+File '%s' already exists.\nDo you want to replace it?\n\n\033bNew Size:\033n %llu bytes\n\033bOld Size:\033n %ld bytes\n\033bOld Date:\033n %s %s
+;
+MSG_DOWNLOADDELEGATE_OVERWRITE_OR_RESUME_ACTIONS (//)
+*_Overwrite|_Resume|_Cancel
+;
+;
+; DownloadGroup
+;
+;
+MSG_DOWNLOADGROUP_IN_PROGRESS (//)
+In Progress
+;
+MSG_DOWNLOADGROUP_FINISHED (//)
+Finished
+;
+MSG_DOWNLOADGROUP_FAILED (//)
+Failed
+;
+MSG_DOWNLOADGROUP_ABORT (//)
+_Abort
+;
+MSG_DOWNLOADGROUP_ABORT_ALL (//)
+A_bort All
+;
+MSG_DOWNLOADGROUP_REMOVE (//)
+_Remove
+;
+MSG_DOWNLOADGROUP_REMOVE_ALL (//)
+Remove _All
+;
+MSG_DOWNLOADGROUP_RETRY (//)
+Re_try
+;
+MSG_DOWNLOADGROUP_CANCELLED_BY_USER (//)
+Cancelled by user
+;
+MSG_DOWNLOADGROUP_INTERRUPTED (//)
+Interrupted
+;
+;
+; DownloadList
+;
+;
+MSG_DOWNLOADLIST_NAME (//)
+Name
+;
+MSG_DOWNLOADLIST_SIZE (//)
+Size
+;
+MSG_DOWNLOADLIST_PROGRESS (//)
+Progress
+;
+MSG_DOWNLOADLIST_DETAIL (//)
+Detail
+;
+MSG_DOWNLOADLIST_SPEED (//)
+Speed
+;
+MSG_DOWNLOADLIST_ETA (//)
+ETA
+;
+MSG_DOWNLOADLIST_PATH (//)
+Path
+;
+MSG_DOWNLOADLIST_URL (//)
+URL
+;
+MSG_DOWNLOADLIST_DOWNLOADPAGE (//)
+Download Page
+;
+MSG_DOWNLOADLIST_STATUS (//)
+Status
+;
+MSG_DOWNLOADLIST_OPEN_FILE (//)
+\033bOpen File
+;
+MSG_DOWNLOADLIST_OPEN_DIRECTORY (//)
+Open Directory
+;
+MSG_DOWNLOADLIST_OPEN_DOWNLOADPAGE (//)
+Open Download Page
+;
+MSG_DOWNLOADLIST_SIZE_UNKNOWN (//)
+Unknown
+;
+;
+; DownloadWindow
+;
+;
+MSG_DOWNLOADWINDOW_DOWNLOADS (//)
+Downloads
+;
+;
+; FindText
+;
+;
+MSG_FINDTEXT_PREV (//)
+Previous
+;
+MSG_FINDTEXT_NEXT (//)
+Next
+;
+MSG_FINDTEXT_CASE_SENSITIVE (//)
+Case sensitive
+;
+MSG_FINDTEXT_MARK_ALL_MATCHES (//)
+Mark all matches
+;
+MSG_FINDTEXT_TEXT_NOT_FOUND (//)
+Not found
+;
+;
+; HistoryButton
+;
+;
+MSG_HISTORYBUTTON_MENU_TITLE (//)
+History
+;
+MSG_HISTORYBUTTON_NO_TITLE (//)
+(No Title)
+;
+;
+; HistoryList
+;
+;
+MSG_HISTORYLIST_NO_URL (//)
+(No URL)
+;
+MSG_HISTORYLIST_NO_TITLE (//)
+(No Title)
+;
+MSG_HISTORYLIST_HISTORY (//)
+History
+;
+MSG_HISTORYLIST_OPEN_URL (//)
+\033bOpen
+;
+MSG_HISTORYLIST_OPEN_NEW_TAB (//)
+Open in New Tab
+;
+MSG_HISTORYLIST_OPEN_NEW_WINDOW (//)
+Open in New Window...
+;
+;
+; HistoryListTree
+;
+;
+MSG_HISTORYLISTTREE_NO_TITLE (//)
+(No Title)
+;
+MSG_HISTORYLISTTREE_NO_URL (//)
+(No URL)
+;
+MSG_HISTORYLISTTREE_TITLE (//)
+Title
+;
+MSG_HISTORYLISTTREE_ADDRESS (//)
+Address
+;
+MSG_HISTORYLISTTREE_HISTORY (//)
+History
+;
+MSG_HISTORYLISTTREE_OPEN_URL (//)
+\033bOpen
+;
+MSG_HISTORYLISTTREE_OPEN_NEW_TAB (//)
+Open in New Tab
+;
+MSG_HISTORYLISTTREE_OPEN_NEW_WINDOW (//)
+Open in New Window...
+;
+;
+; HistoryPanelGroup
+;
+;
+MSG_HISTORYPANELGROUP_HISTORY (//)
+History
+;
+;
+; LinkList
+;
+;
+MSG_LINKLIST_NO_NAME (//)
+(No name)
+;
+MSG_LINKLIST_QUICK_LINK (//)
+Quick Link
+;
+;
+; LoginWindow
+;
+;
+MSG_LOGINWINDOW_MESSAGE (//)
+Enter username and password to access %s on %s.
+;
+MSG_LOGINWINDOW_TITLE (//)
+Authentication Request
+;
+MSG_LOGINWINDOW_USERNAME (//)
+Username:
+;
+MSG_LOGINWINDOW_PASSWORD (//)
+Password:
+;
+MSG_LOGINWINDOW_SAVE_CREDENTIALS (//)
+_Save credentials
+;
+MSG_LOGINWINDOW_LOGIN (//)
+_Login
+;
+MSG_LOGINWINDOW_CANCEL (//)
+_Cancel
+;
+;
+; MimetypeGroup
+;
+;
+MSG_MIMETYPEGROUP_EXTERNAL_VIEWER (//)
+External Viewer
+;
+MSG_MIMETYPEGROUP_INTERNAL_VIEWER (//)
+Internal Viewer
+;
+MSG_MIMETYPEGROUP_SAVE_TO_DISK (//)
+Save to Disk
+;
+MSG_MIMETYPEGROUP_ASK (//)
+Ask
+;
+MSG_MIMETYPEGROUP_STREAM (//)
+Stream
+;
+MSG_MIMETYPEGROUP_PIPE (//)
+Pipe
+;
+MSG_MIMETYPEGROUP_IGNORE (//)
+Ignore
+;
+MSG_MIMETYPEGROUP_PLUGIN (//)
+Plugin
+;
+MSG_MIMETYPEGROUP_ADD (//)
+Add
+;
+MSG_MIMETYPEGROUP_REMOVE (//)
+Remove
+;
+MSG_MIMETYPEGROUP_MIMETYPE (//)
+MIME Type:
+;
+MSG_MIMETYPEGROUP_EXTENSION (//)
+Extension:
+;
+MSG_MIMETYPEGROUP_ACTION (//)
+Action:
+;
+MSG_MIMETYPEGROUP_VIEWER (//)
+Viewer:
+;
+;
+; MimetypeList
+;
+;
+MSG_MIMETYPELIST_EXTERNAL_VIEWER (//)
+External viewer
+;
+MSG_MIMETYPELIST_INTERNAL_VIEWER (//)
+Internal viewer
+;
+MSG_MIMETYPELIST_SAVE_TO_DISK (//)
+Save to disk
+;
+MSG_MIMETYPELIST_ASK (//)
+Ask
+;
+MSG_MIMETYPELIST_STREAM (//)
+Stream
+;
+MSG_MIMETYPELIST_PIPE (//)
+Pipe
+;
+MSG_MIMETYPELIST_IGNORE (//)
+Ignore
+;
+MSG_MIMETYPELIST_PLUGIN (//)
+Plugin
+;
+MSG_MIMETYPELIST_MIMETYPE (//)
+MIME Type
+;
+MSG_MIMETYPELIST_EXTENSION (//)
+Extension
+;
+MSG_MIMETYPELIST_ACTION (//)
+Action
+;
+MSG_MIMETYPELIST_VIEWER (//)
+Viewer
+;
+;
+; NavigationGroup
+;
+;
+MSG_NAVIGATIONGROUP_BACK (//)
+Back
+;
+MSG_NAVIGATIONGROUP_FORWARD (//)
+Forward
+;
+MSG_NAVIGATIONGROUP_RELOAD (//)
+Reload
+;
+MSG_NAVIGATIONGROUP_STOP (//)
+Stop
+;
+MSG_NAVIGATIONGROUP_HOME (//)
+Home
+;
+MSG_NAVIGATIONGROUP_INSPECT (//)
+Inspect
+;
+;
+; NetworkWindow
+;
+;
+MSG_NETWORKWINDOW_TITLE (//)
+Network Activity
+;
+MSG_NETWORKWINDOW_URL (//)
+URL
+;
+MSG_NETWORKWINDOW_STATE (//)
+State
+;
+MSG_NETWORKWINDOW_ABORT (//)
+A_bort
+;
+MSG_NETWORKWINDOW_ABORT_ALL (//)
+_Abort All
+;
+MSG_NETWORKWINDOW_STATUS_RECEIVING_DATA (//)
+%s of %s read
+;
+MSG_NETWORKWINDOW_STATUS_SENDING_DATA (//)
+%s of %s sent
+;
+MSG_NETWORKWINDOW_STATUS_WAITING_FOR_DATA (//)
+Waiting for data
+;
+MSG_NETWORKWINDOW_STATUS_CONNECTING (//)
+Connecting
+;
+;
+; OWBWindow
+;
+;
+MSG_OWBWINDOW_PENDING_DOWNLOADS (//)
+Some files are currently being downloaded.\nDo you really want to quit?
+;
+MSG_OWBWINDOW_QUIT_CONFIRMATION (//)
+Do you really want to quit?
+;
+MSG_OWBWINDOW_CLOSE_ALL_PAGES_CONFIRMATION (//)
+Do you want to close all tabs?
+;
+MSG_OWBWINDOW_OPEN_FILE (//)
+Open File...
+;
+MSG_OWBWINDOW_SAVE_AS (//)
+Save As...
+;
+MSG_OWBWINDOW_READ_PROGRESS (//)
+%s of %s read
+;
+MSG_OWBWINDOW_STATE_READY (//)
+Ready
+;
+MSG_OWBWINDOW_STATE_RECEIVING_DATA (//)
+Receiving data...
+;
+MSG_OWBWINDOW_STATE_SENDING_REQUEST (//)
+Sending request...
+;
+MSG_OWBWINDOW_STATE_ERROR (//)
+Error
+;
+MSG_OWBWINDOW_CHOOSE_TITLE (//)
+Choose a title
+;
+MSG_OWBWINDOW_JAVASCRIPT_PROMPT (//)
+JavaScript Prompt
+;
+MSG_OWBWINDOW_JAVASCRIPT_OK (//)
+_Ok
+;
+MSG_OWBWINDOW_JAVASCRIPT_CANCEL (//)
+_Cancel
+;
+MSG_OWBWINDOW_RUNNING_USERSCRIPTS (//)
+\033bRunning userscripts:\033n\n\n
+;
+;
+; PasswordManagerGroup
+;
+;
+MSG_PASSWORDMANAGERGROUP_REMOVE (//)
+_Remove
+;
+MSG_PASSWORDMANAGERGROUP_REMOVE_ALL (//)
+Remove _All
+;
+;
+; PasswordManagerList
+;
+;
+MSG_PASSWORDMANAGERLIST_HOST (//)
+Host
+;
+MSG_PASSWORDMANAGERLIST_REALM (//)
+Realm
+;
+MSG_PASSWORDMANAGERLIST_USERNAME (//)
+Username
+;
+MSG_PASSWORDMANAGERLIST_PASSWORD (//)
+Password
+;
+MSG_PASSWORDMANAGERLIST_FORM (//)
+Form
+;
+MSG_PASSWORDMANAGERLIST_FILTER (//)
+Filter
+;
+MSG_PASSWORDMANAGERLIST_FILTER_REMEMBER (//)
+Remember
+;
+MSG_PASSWORDMANAGERLIST_FILTER_IGNORE (//)
+Ignore
+;
+;
+; PasswordManagerWindow
+;
+;
+MSG_PASSWORDMANAGERWINDOW_TITLE (//)
+Passwords
+;
+MSG_BLOCKMANAGERWINDOW_TITLE (//)
+Content Blocking
+;
+MSG_BLOCKMANAGERLIST_DENY (//)
+Deny
+;
+MSG_BLOCKMANAGERLIST_ALLOW (//)
+Allow
+;
+MSG_BLOCKMANAGERLIST_TYPE (//)
+Filter Type
+;
+MSG_BLOCKMANAGERLIST_RULE (//)
+Rule
+;
+MSG_BLOCKMANAGERGROUP_REMOVE (//)
+_Remove
+;
+MSG_BLOCKMANAGERGROUP_ADD (//)
+_Add
+;
+MSG_BLOCKMANAGERGROUP_TYPE (//)
+Filter Type:
+;
+MSG_BLOCKMANAGERGROUP_RULE (//)
+Rule:
+;
+MSG_BLOCKMANAGERGROUP_DENY (//)
+Deny
+;
+MSG_BLOCKMANAGERGROUP_ALLOW (//)
+Allow
+;
+;
+; SearchManagerWindow
+;
+;
+MSG_SEARCHMANAGERWINDOW_TITLE (//)
+Search Engines
+;
+;
+; SearchManagerGroup
+;
+;
+MSG_SEARCHMANAGERGROUP_ADD (//)
+_Add
+;
+MSG_SEARCHMANAGERGROUP_REMOVE (//)
+_Remove
+;
+MSG_SEARCHMANAGERGROUP_TITLE (//)
+Title:
+;
+MSG_SEARCHMANAGERGROUP_LINK (//)
+Link:
+;
+MSG_SEARCHMANAGERGROUP_SHORTCUT (//)
+Shortcut:
+;
+;
+; SearchManagerList
+;
+;
+MSG_SEARCHMANAGERLIST_TITLE (//)
+Title
+;
+MSG_SEARCHMANAGERLIST_LINK (//)
+Link
+;
+MSG_SEARCHMANAGERLIST_SHORTCUT (//)
+Shortcut
+;
+;
+; ScriptManagerWindow
+;
+;
+MSG_SCRIPTMANAGERWINDOW_TITLE (//)
+Scripts
+;
+;
+; ScriptManagerGroup
+;
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_SELECT (//)
+Select User Script...
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_ADD (//)
+_Add
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_REMOVE (//)
+_Remove
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_ENABLE (//)
+_Enable
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_PATH (//)
+Path:
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_NAME (//)
+Name:
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_DESCRIPTION (//)
+Description:
+;
+MSG_SCRIPTMANAGERGROUP_WHITELIST (//)
+Allowed Sites
+;
+MSG_SCRIPTMANAGERGROUP_BLACKLIST (//)
+Forbidden Sites
+;
+MSG_SCRIPTMANAGERGROUP_WHITELIST_ADD (//)
+Add
+;
+MSG_SCRIPTMANAGERGROUP_WHITELIST_REMOVE (//)
+Remove
+;
+MSG_SCRIPTMANAGERGROUP_BLACKLIST_ADD (//)
+Add
+;
+MSG_SCRIPTMANAGERGROUP_BLACKLIST_REMOVE (//)
+Remove
+;
+;
+; URLPrefsWindow
+;
+;
+MSG_URLPREFSWINDOW_TITLE (//)
+URL Preferences
+;
+;
+; URLPrefsGroup
+;
+;
+MSG_URLPREFSGROUP_ADD (//)
+_Add
+;
+MSG_URLPREFSGROUP_REMOVE (//)
+_Remove
+;
+MSG_URLPREFSGROUP_JAVASCRIPT (//)
+_JavaScript support
+;
+MSG_URLPREFSGROUP_LOAD_IMAGES (//)
+Load _images automatically
+;
+MSG_URLPREFSGROUP_PLUGINS (//)
+_Plugins
+;
+MSG_URLPREFSGROUP_SPOOF (//)
+_Spoof As:
+;
+MSG_URLPREFSGROUP_COOKIE_POLICY (//)
+_Cookie Policy:
+;
+MSG_URLPREFSGROUP_COOKIE_FILTER (//)
+Cookie Name _Filter:
+;
+;
+; PrinterWindow
+;
+;
+MSG_PRINTERWINDOW_TITLE (//)
+Print...
+;
+MSG_PRINTERWINDOW_PRINT_MODE (//)
+_Mode:
+;
+MSG_PRINTERWINDOW_PSLEVEL (//)
+P_S Level:
+;
+MSG_PRINTERWINDOW_PREFERENCES (//)
+P_rinter Preferences
+;
+MSG_PRINTERWINDOW_OUTPUT (//)
+_Output:
+;
+MSG_PRINTERWINDOW_FIRST_PAGE (//)
+_First Page:
+;
+MSG_PRINTERWINDOW_LAST_PAGE (//)
+_Last Page:
+;
+MSG_PRINTERWINDOW_SCALE (//)
+Sca_le:
+;
+MSG_PRINTERWINDOW_PRINT (//)
+_Print
+;
+MSG_PRINTERWINDOW_CANCEL (//)
+_Cancel
+;
+MSG_PRINTERWINDOW_STATUS (//)
+Printing page %d/%d...
+;
+MSG_PRINTERWINDOW_ERROR (//)
+Failed to initialize output device.
+;
+;
+; PrefsWindow
+;
+;
+MSG_PREFSWINDOW_TITLE (//)
+Settings
+;
+MSG_PREFSWINDOW_CATEGORY_GENERAL (//)
+General
+;
+MSG_PREFSWINDOW_CATEGORY_INTERFACE (//)
+Interface
+;
+MSG_PREFSWINDOW_CATEGORY_CONTEXTUAL_MENUS (//)
+Contextual Menus
+;
+MSG_PREFSWINDOW_CATEGORY_MIMETYPES (//)
+MIME Types
+;
+MSG_PREFSWINDOW_CATEGORY_CONTENT (//)
+Content
+;
+MSG_PREFSWINDOW_CATEGORY_FONTS (//)
+Fonts
+;
+MSG_PREFSWINDOW_CATEGORY_DOWNLOADS (//)
+Downloads
+;
+MSG_PREFSWINDOW_CATEGORY_NETWORK (//)
+Network
+;
+MSG_PREFSWINDOW_CATEGORY_PRIVACY (//)
+Privacy
+;
+MSG_PREFSWINDOW_CATEGORY_SECURITY (//)
+Security
+;
+MSG_PREFSWINDOW_CATEGORY_MEDIA (//)
+Media
+;
+MSG_PREFSWINDOW_CATEGORY_MISCELLANEOUS (//)
+Miscellaneous
+;
+MSG_PREFSWINDOW_CACHE_DOCUMENT_VIEWER (//)
+Document Viewer
+;
+MSG_PREFSWINDOW_CACHE_DOCUMENT_BROWSER (//)
+Document Browser
+;
+MSG_PREFSWINDOW_CACHE_PRIMARY_BROWSER (//)
+Primary Web Browser
+;
+MSG_PREFSWINDOW_SMOOTH_NORMAL (//)
+Normal
+;
+MSG_PREFSWINDOW_SMOOTH_ALTERNATIVE (//)
+Alternative
+;
+MSG_PREFSWINDOW_NEWPAGE_NEWTAB (//)
+New Tab
+;
+MSG_PREFSWINDOW_NEWPAGE_NEWWINDOW (//)
+New Window
+;
+MSG_PREFSWINDOW_NEWPAGE_LAST (//)
+At End
+;
+MSG_PREFSWINDOW_NEWPAGE_AFTERACTIVE (//)
+After Current
+;
+MSG_PREFSWINDOW_QUICKLINK_BUTTON (//)
+Button
+;
+MSG_PREFSWINDOW_QUICKLINK_LINK (//)
+Link
+;
+MSG_PREFSWINDOW_QUICKLINK_DYNAMIC (//)
+Dynamic Grid
+;
+MSG_PREFSWINDOW_QUICKLINK_FIXED (//)
+Fixed Grid
+;
+MSG_PREFSWINDOW_QUICKLINK_BESTFIT (//)
+Dynamic Best-Fit
+;
+MSG_PREFSWINDOW_NAVIGATION_ICON (//)
+Icon
+;
+MSG_PREFSWINDOW_NAVIGATION_TEXT (//)
+Text
+;
+MSG_PREFSWINDOW_NAVIGATION_ICON_AND_TEXT (//)
+Icon and Text
+;
+MSG_PREFSWINDOW_COOKIE_ACCEPT (//)
+Accept
+;
+MSG_PREFSWINDOW_COOKIE_REJECT (//)
+Reject
+;
+MSG_PREFSWINDOW_COOKIE_ASK (//)
+Ask
+;
+MSG_PREFSWINDOW_COMPLETION_NONE (//)
+None
+;
+MSG_PREFSWINDOW_COMPLETION_STRING (//)
+String
+;
+MSG_PREFSWINDOW_COMPLETION_POPUP (//)
+Popup
+;
+MSG_PREFSWINDOW_COMPLETION_STRING_AND_POPUP (//)
+String and Popup
+;
+MSG_PREFSWINDOW_CLOSE_REQUESTER_ALWAYS (//)
+Always
+;
+MSG_PREFSWINDOW_CLOSE_REQUESTER_NEVER (//)
+Never
+;
+MSG_PREFSWINDOW_CLOSE_REQUESTER_IF_MORE_THAN_ONE (//)
+With Multiple Tabs
+;
+MSG_PREFSWINDOW_ERROR_REQUESTER (//)
+Requester Dialog
+;
+MSG_PREFSWINDOW_ERROR_HTML (//)
+HTML Display
+;
+MSG_PREFSWINDOW_ANIMATE_NEVER (//)
+Never
+;
+MSG_PREFSWINDOW_ANIMATE_ALWAYS (//)
+Always
+;
+MSG_PREFSWINDOW_ANIMATE_ACTIVE_WINDOW (//)
+Active Window Only
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR_NEW_TAB (//)
+New Tab
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR_NEW_BACKGROUND_TAB (//)
+New Background Tab
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR_NEW_WINDOW (//)
+New Window
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_OFF (//)
+Disabled
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_ASK (//)
+Ask
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_ON (//)
+Automatically
+;
+; General
+;
+MSG_PREFSWINDOW_GENERAL_HOME_PAGE (//)
+_Home Page:
+;
+MSG_PREFSWINDOW_GENERAL_START_PAGE (//)
+S_tart Page:
+;
+MSG_PREFSWINDOW_GENERAL_NEW_PAGE (//)
+_New Page:
+;
+MSG_PREFSWINDOW_GENERAL_OUTPUT_WINDOW (//)
+_Output Window:
+;
+; Interface
+;
+MSG_PREFSWINDOW_INTERFACE_GENERAL (//)
+General
+;
+MSG_PREFSWINDOW_INTERFACE_NEW_PAGE_POLICY (//)
+_New Page Policy:
+;
+MSG_PREFSWINDOW_INTERFACE_NEW_PAGE_POSITION (//)
+Tab Opening Position:
+;
+MSG_PREFSWINDOW_INTERFACE_POPUP_POLICY (//)
+_Popup Policy:
+;
+MSG_PREFSWINDOW_INTERFACE_NAVIGATION_BUTTON_TYPE (//)
+Navigation _Button Type:
+;
+MSG_PREFSWINDOW_INTERFACE_COMPLETION_MODE (//)
+URL Completion Mode:
+;
+MSG_PREFSWINDOW_INTERFACE_CLOSE_REQUESTER (//)
+Con_firm Closing:
+;
+MSG_PREFSWINDOW_INTERFACE_ERROR_REPORTING (//)
+Error _Reporting:
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR (//)
+Middle Button Be_haviour:
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_BUTTON_FRAME (//)
+Sho_w buttons frames
+;
+MSG_PREFSWINDOW_INTERFACE_CONTEXTUAL_POINTERS (//)
+Use contextual _mouse pointers
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_SEARCH_BAR (//)
+Show s_earch bar
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_VALIDATION_BUTTONS (//)
+Show _validation buttons
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_SEPARATORS (//)
+Show _group separators
+;
+MSG_PREFSWINDOW_INTERFACE_FAVICONS (//)
+Website Icons
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_TABS (//)
+T_abs
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_BOOKMARKS (//)
+B_ookmarks
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_HISTORY (//)
+H_istory
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_BOOKMARK_PANEL (//)
+Boo_kmarks panel
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_HISTORY_PANEL (//)
+History pane_l
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_QUICKLINKS (//)
+Quick links
+;
+MSG_PREFSWINDOW_INTERFACE_TAB_TRANSFERANIM (//)
+Show _tab transfer animation
+;
+MSG_PREFSWINDOW_INTERFACE_QUICK_LINKS (//)
+Quick Links
+;
+MSG_PREFSWINDOW_INTERFACE_QUICK_LINK_LOOK (//)
+Look:
+;
+MSG_PREFSWINDOW_INTERFACE_QUICK_LINK_LAYOUT (//)
+La_yout:
+;
+MSG_PREFSWINDOW_INTERFACE_MAXIMUM_ROWS (//)
+Ma_ximum Rows:
+;
+; Content
+;
+MSG_PREFSWINDOW_CONTENT_CACHE_MODEL (//)
+Cache _Model:
+;
+MSG_PREFSWINDOW_CONTENT_PAGE_CACHE (//)
+Page cac_he
+;
+MSG_PREFSWINDOW_CONTENT_JAVASCRIPT (//)
+_JavaScript support
+;
+MSG_PREFSWINDOW_CONTENT_ALLOW_NEW_WINDOW (//)
+Allow JavaScript to open new _windows
+;
+MSG_PREFSWINDOW_CONTENT_PLAY_ANIMATIONS (//)
+Play _animations
+;
+MSG_PREFSWINDOW_CONTENT_LOAD_IMAGES (//)
+Load _images automatically
+;
+MSG_PREFSWINDOW_CONTENT_PRINT_BACKGROUNDS (//)
+_Print backgrounds
+;
+MSG_PREFSWINDOW_CONTENT_BLOCKING (//)
+Content _blocking (AdBlock)
+;
+MSG_PREFSWINDOW_CONTENT_PLUGINS (//)
+Allow plu_gins
+;
+MSG_PREFSWINDOW_CONTENT_INSPECTOR (//)
+WebInspector
+;
+; Fonts
+;
+MSG_PREFSWINDOW_FONTS_DEFAULT_SIZE (//)
+Default Font Size:
+;
+MSG_PREFSWINDOW_FONTS_DEFAULT_MONOSPACED_SIZE (//)
+Default Monospaced Font Size:
+;
+MSG_PREFSWINDOW_FONTS_MINIMUM_SIZE (//)
+Minimum Font Size:
+;
+MSG_PREFSWINDOW_FONTS_MINIMUM_LOGICAL_SIZE (//)
+Minimum Logical Font Size:
+;
+MSG_PREFSWINDOW_FONTS_SMOOTHING_METHOD (//)
+Antialiasing Method:
+;
+MSG_PREFSWINDOW_FONTS_ENCODING (//)
+Text Encoding:
+;
+MSG_PREFSWINDOW_FONTS_STANDARD_FAMILY (//)
+Standard Font Family:
+;
+MSG_PREFSWINDOW_FONTS_MONOSPACED_FAMILY (//)
+Monospaced Font Family:
+;
+MSG_PREFSWINDOW_FONTS_SERIF_FAMILY (//)
+Serif Font Family:
+;
+MSG_PREFSWINDOW_FONTS_SANS_SERIF_FAMILY (//)
+Sans Serif Font Family:
+;
+MSG_PREFSWINDOW_FONTS_CURSIVE_FAMILY (//)
+Cursive Font Family:
+;
+MSG_PREFSWINDOW_FONTS_FANTASY_FAMILY (//)
+Fantasy Font Family:
+;
+; Downloads
+;
+MSG_PREFSWINDOW_DOWNLOADS_PATH (//)
+_Download Path:
+;
+MSG_PREFSWINDOW_DOWNLOADS_AUTOCLOSE (//)
+Close "Downloads" _window when finished
+;
+MSG_PREFSWINDOW_DOWNLOADS_SAVEDOWNLOADS (//)
+_Remember downloaded files
+;
+MSG_PREFSWINDOW_DOWNLOADS_START_AUTOMATICALLY (//)
+Start downloads _automatically
+;
+; Network
+;
+MSG_PREFSWINDOW_NETWORK_SPOOF (//)
+S_poof As:
+;
+MSG_PREFSWINDOW_NETWORK_EXPERIMENTAL_COOKIES (//)
+E_xperimental cookie system (restart required)
+;
+MSG_PREFSWINDOW_NETWORK_THREAD (//)
+Network _thread (restart required)
+;
+MSG_PREFSWINDOW_NETWORK_ACTIVE_CONNECTIONS (//)
+_Active Connections:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY (//)
+Proxy
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_PASSWORD (//)
+Password:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_USERNAME (//)
+Username:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_PORT (//)
+Port:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_HOST (//)
+Host:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_TYPE (//)
+Type:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_USE (//)
+Use proxy
+;
+; Privacy
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_SESSION (//)
+Save s_ession
+;
+MSG_PREFSWINDOW_PRIVACY_DELETE_SESSION_AT_EXIT (//)
+_Delete session at exit
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_REQUESTER (//)
+_Ask for session restoration at startup
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_MODE (//)
+Session _Restoration:
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_COOKIES (//)
+Save c_ookies to database
+;
+MSG_PREFSWINDOW_PRIVACY_COOKIES_POLICY (//)
+Coo_kie Policy:
+;
+MSG_PREFSWINDOW_PRIVACY_ENABLE_LOCAL_STORAGE (//)
+Enable local stora_ge
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_FORM_CREDENTIALS (//)
+Save _form credentials
+;
+MSG_PREFSWINDOW_PRIVACY_ENABLE_FORM_AUTOFILL (//)
+Enable form autof_ill
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_HISTORY (//)
+Save _history
+;
+MSG_PREFSWINDOW_PRIVACY_HISTORY_ENTRIES (//)
+History Entries:
+;
+MSG_PREFSWINDOW_PRIVACY_HISTORY_AGE (//)
+History Age in Days:
+;
+; Security
+;
+MSG_PREFSWINDOW_SECURITY_IGNORE_SSL_ERRORS (//)
+_Ignore SSL errors
+;
+MSG_PREFSWINDOW_SECURITY_CERTIFICATE_PATH (//)
+Certificate _Path:
+;
+; Media
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_NONE (//)
+Process All Frames
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_NONREF (//)
+Skip All But Reference Frames
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_NONKEY (//)
+Skip All But Key Frames
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_ALL (//)
+Skip All Frames
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_MODE (//)
+_Loopfilter Mode (H264):
+;
+MSG_PREFSWINDOW_MEDIA_ENABLE_PARTIAL_CONTENT (//)
+_Fast seeking
+;
+MSG_PREFSWINDOW_MEDIA_USE_WEBM (//)
+_WebM (VP8) support
+;
+MSG_PREFSWINDOW_MEDIA_USE_FLV (//)
+FL_V (H.263/H.264) support
+;
+MSG_PREFSWINDOW_MEDIA_USE_OGG (//)
+_Ogg (Theora/Vorbis) support
+;
+; Prefs validation
+;
+MSG_PREFSWINDOW_SAVE (//)
+_Save
+;
+MSG_PREFSWINDOW_USE (//)
+_Use
+;
+MSG_PREFSWINDOW_CANCEL (//)
+_Cancel
+;
+;
+; QuickLinkButtonGroup
+;
+;
+MSG_QUICKLINKBUTTONGROUP_NO_NAME (//)
+(No name)
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN (//)
+\033bOpen
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN_NEW_TAB (//)
+Open in New Tab
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN_NEW_WINDOW (//)
+Open in New Window...
+;
+MSG_QUICKLINKBUTTONGROUP_REMOVE (//)
+Remove
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN_ALL (//)
+Open All Bookmarks
+;
+;
+; SplashWindow
+;
+;
+MSG_SPLASHWINDOW_INITIALIZING (//)
+Initializing Fonts...
+;
+MSG_TITLELABEL_BROWSER (//)
+Browser
+;
+MSG_SPLASHWINDOW_LOADING (//)
+Loading...
+;
+MSG_TITLELABEL_NEW_TAB (//)
+New Tab
+;
+MSG_TITLELABEL_RELOAD (//)
+Reload
+;
+MSG_TITLELABEL_RELOAD_ALL_TABS (//)
+Reload All Tabs
+;
+MSG_TITLELABEL_CLOSE (//)
+Close
+;
+MSG_TITLELABEL_CLOSE_ALL_OTHER_TABS (//)
+Close All Other Tabs
+;
+;
+; ToolButton_AddBookmark
+;
+;
+MSG_TOOLBUTTON_ADDBOOKMARK_ADD (//)
+Add
+;
+MSG_TOOLBUTTON_ADDBOOKMARK_NO_TITLE (//)
+(No Title)
+;
+;
+; ToolButton_NewTab
+;
+;
+MSG_TOOLBUTTON_NEWTAB_LABEL (//)
+New Tab
+;
+;
+; Utils
+;
+;
+MSG_CAPACITY_BYTE (//)
+B
+;
+MSG_CAPACITY_KILOBYTE (//)
+kB
+;
+MSG_CAPACITY_MEGABYTE (//)
+MB
+;
+MSG_CAPACITY_GIGABYTE (//)
+GB
+;
+MSG_CAPACITY_TERABYTE (//)
+TB
+;
+MSG_PROGRESS_DAY (//)
+%lu day
+;
+MSG_PROGRESS_DAYS (//)
+%lu days
+;
+MSG_PROGRESS_HOUR (//)
+%lu hour
+;
+MSG_PROGRESS_HOURS (//)
+%lu hours
+;
+MSG_PROGRESS_MINUTE (//)
+%lu minute
+;
+MSG_PROGRESS_MINUTES (//)
+%lu minutes
+;
+MSG_PROGRESS_SECOND (//)
+%lu second
+;
+MSG_PROGRESS_SECONDS (//)
+%lu seconds
+;
+MSG_WEBVIEW_UPLOAD_FILES (//)
+Upload Files...
+;
+MSG_WEBVIEW_UPLOAD_FILE (//)
+Upload File...
+;
+MSG_WEBVIEW_ERROR_MSG_HTML (//)
+Error %d: %s.
+;
+MSG_WEBVIEW_ERROR_MSG (//)
+Unable to open '%s'.\nError %d: %s.\n
+;
+MSG_WEBVIEW_PROVISIONAL_TITLE (//)
+(Untitled)
+;
+MSG_WEBVIEW_INTERRUPT_SCRIPT (//)
+Do you want to interrupt processing of the current script?
+;
+MSG_WEBVIEW_JSACTION_TITLE (//)
+Javascript Alert
+;
