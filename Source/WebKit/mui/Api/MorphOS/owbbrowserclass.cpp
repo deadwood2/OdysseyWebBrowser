@@ -503,9 +503,9 @@ DEFNEW
 				{
 					Object *browser = widget->browser;
 					String mimeType = frame->loader().documentLoader()->responseMIMEType();
-					KURL baseKURL(ParsedURLString, (char *) getv(browser, MA_OWBBrowser_URL));
-		            KURL failingKURL(ParsedURLString, "");
-		            ResourceRequest request(baseKURL);
+					URL baseURL(ParsedURLString, (char *) getv(browser, MA_OWBBrowser_URL));
+		            URL failingURL(ParsedURLString, "");
+		            ResourceRequest request(baseURL);
 					
 					Frame* sourceFrame = core(((WebView *) data->source_view)->mainFrame());
 					RefPtr<ResourceBuffer> buffer = sourceFrame->loader().documentLoader() ? sourceFrame->loader().documentLoader()->mainResourceData() : 0;
@@ -518,7 +518,7 @@ DEFNEW
 
 					if(dataSource)
 					{
-						SubstituteData substituteData(dataSource, mimeType, frame->loader().documentLoader()->overrideEncoding(), failingKURL);
+						SubstituteData substituteData(dataSource, mimeType, frame->loader().documentLoader()->overrideEncoding(), failingURL);
 
 						FrameLoadRequest frameLoadRequest(frame, request, substituteData);
 						frameLoadRequest.setLockHistory(true);
@@ -3086,8 +3086,8 @@ DEFTMETHOD(OWBBrowser_UpdateNavigation)
 {
 	GETDATA;
 
-	set(obj, MA_OWBBrowser_BackAvailable, core(data->view->webView)->canGoBackOrForward(-1));
-	set(obj, MA_OWBBrowser_ForwardAvailable, core(data->view->webView)->canGoBackOrForward(1));
+	set(obj, MA_OWBBrowser_BackAvailable, core(data->view->webView)->backForward().canGoBackOrForward(-1));
+	set(obj, MA_OWBBrowser_ForwardAvailable, core(data->view->webView)->backForward().canGoBackOrForward(1));
 	set(obj, MA_OWBBrowser_StopAvailable, data->view->webView->isLoading());
 	set(obj, MA_OWBBrowser_ReloadAvailable, TRUE);
 
@@ -3471,7 +3471,7 @@ DEFMMETHOD(DragBegin)
 		IntPoint position(data->last_position);
 		DragData dragData((DataObjectMorphOS *) dataObject, position, position, (DragOperation) data->dragoperation);
 		D(kprintf("dragEntered\n"));
-		/*DragOperation operation = */core(data->view->webView)->dragController().dragEntered(&dragData);
+		/*DragOperation operation = */core(data->view->webView)->dragController().dragEntered(dragData);
 	}
 
 	return 0;
@@ -3494,7 +3494,7 @@ DEFMMETHOD(DragReport)
 		data->last_drag_position = position;
 		DragData dragData((DataObjectMorphOS *) dataObject, position, position, (DragOperation) data->dragoperation);
 		//D(kprintf("dragUpdated\n"));
-		/*DragOperation operation = */core(data->view->webView)->dragController().dragUpdated(&dragData);
+		/*DragOperation operation = */core(data->view->webView)->dragController().dragUpdated(dragData);
 	}
 
 	return MUIV_DragReport_Continue;
@@ -3555,7 +3555,7 @@ DEFMMETHOD(DragDrop)
 		data->last_drag_position = position;
 		DragData dragData((DataObjectMorphOS *) dataObject, position, position, (DragOperation) data->dragoperation);
 		D(kprintf("performDrag\n"));
-		core(data->view->webView)->dragController().performDrag(&dragData);
+		core(data->view->webView)->dragController().performDrag(dragData);
 		//D(kprintf("dragEnded\n"));
 		//core(data->view->webView)->dragController()->dragEnded();
 		//dataObject = 0;

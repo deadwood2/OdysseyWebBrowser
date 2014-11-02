@@ -130,16 +130,6 @@ public:
     virtual const char* title();
 
     /**
-        @method lastVisitedTimeInterval
-        @abstract The last time the page represented by this item was visited. The interval
-        is since the reference date as determined by NSDate.  This value is normally set by
-        the WebKit.
-        @result The last time this item was visited.
-
-     */
-    virtual double lastVisitedTimeInterval();
-
-    /**
       @method setAlternateTitle:
         @param alternateTitle The new display title for this item.
         @abstract A title that may be used by the client to display this item.
@@ -156,17 +146,6 @@ public:
     virtual const char* alternateTitle();
 
     /**
-        @method returns a counter of visits
-     */
-    virtual int visitCount();
-
-    /**
-     * @method setVisitCount sets visit count
-     * @param[in]: count figure
-     */
-    virtual void setVisitCount(int count);
-
-    /**
      *  hasURLString return whether there is a name or not
      * @param[in]: 
      * @param[out]: boolean
@@ -174,17 +153,6 @@ public:
      * @endcode
      */
     virtual bool hasURLString();
-
-    /**
-     *  mergeAutoCompleteHints add visit count
-     * @param[in]: item to increment
-     */
-    virtual void mergeAutoCompleteHints(WebHistoryItem* otherItem);
-
-    /**
-       @method sets last visit time
-     */
-    virtual void setLastVisitedTimeInterval(double time);
 
     /**
      *  setTitle description
@@ -251,16 +219,6 @@ public:
      * setLastVisitWasFailure
      */
     virtual void setLastVisitWasFailure(bool wasFailure);
-
-    /**
-     * lastVisitWasHTTPNonGet
-     */
-    virtual bool lastVisitWasHTTPNonGet() const;
-
-    /**
-     * setLastVisitWasHTTPNonGet
-     */
-    virtual void setLastVisitWasHTTPNonGet(bool wasHttpNonGet);
 
     WebHistoryItemPrivate *getPrivateItem() { return d; }
 

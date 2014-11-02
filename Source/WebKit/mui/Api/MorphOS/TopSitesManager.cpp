@@ -25,7 +25,7 @@
 #include <wtf/CurrentTime.h>
 #include "BitmapImage.h"
 #include "FileIOLinux.h"
-#include "KURL.h"
+#include "URL.h"
 #include "SharedBuffer.h"
 #include "SQLiteDatabase.h"
 #include "SQLiteStatement.h"
@@ -213,7 +213,7 @@ int TopSitesManager::entries()
 	return 0;
 }
 
-String TopSitesManager::title(KURL &url)
+String TopSitesManager::title(URL &url)
 {
 	String title;
 
@@ -231,7 +231,7 @@ String TopSitesManager::title(KURL &url)
 	return title;
 }
 
-PassRefPtr<Image> TopSitesManager::screenshot(KURL &url)
+PassRefPtr<Image> TopSitesManager::screenshot(URL &url)
 {
 	RefPtr<Image> image;
 	
@@ -258,7 +258,7 @@ PassRefPtr<Image> TopSitesManager::screenshot(KURL &url)
 	return image.release();
 }
 
-double TopSitesManager::lastAccessed(KURL &url)
+double TopSitesManager::lastAccessed(URL &url)
 {
 	double lastAccessed = 0;
 	
@@ -277,7 +277,7 @@ double TopSitesManager::lastAccessed(KURL &url)
 	return lastAccessed;
 }
 
-int TopSitesManager::visitCount(KURL &url)
+int TopSitesManager::visitCount(URL &url)
 {
 	int visitCount = 0;
 	
@@ -296,7 +296,7 @@ int TopSitesManager::visitCount(KURL &url)
 	return visitCount;
 }
 
-bool TopSitesManager::contains(KURL &url)
+bool TopSitesManager::contains(URL &url)
 {
 	bool found = false;
 	
@@ -315,7 +315,7 @@ bool TopSitesManager::contains(KURL &url)
 	return found;	
 }
 
-bool TopSitesManager::hasScreenshot(KURL &url)
+bool TopSitesManager::hasScreenshot(URL &url)
 {
 	bool hasScreenshot = false;
 	SQLiteStatement select(m_topSitesDB, "SELECT screenshot FROM topsites WHERE url=?1;");
@@ -327,15 +327,13 @@ bool TopSitesManager::hasScreenshot(KURL &url)
 	
     if (select.step() == SQLResultRow) 
     {
-		int size;
-		select.getColumnBlob(0, size);
-		hasScreenshot = size > 0;
+		hasScreenshot = select.isColumnNull(0);
     }
     
     return hasScreenshot;
 }
 
-bool TopSitesManager::shouldAppear(KURL &url)
+bool TopSitesManager::shouldAppear(URL &url)
 {
 	bool result = false;
 	int minVisitCount = 0;
@@ -379,7 +377,7 @@ int TopSitesManager::requiredVisitCount()
 	return (entries() < maxEntries()) ? 1 : minVisitCount;
 }
 
-void TopSitesManager::update(WebView *webView, KURL &url, String &title)
+void TopSitesManager::update(WebView *webView, URL &url, String &title)
 {
 	if(m_disableTopSites)
 		return;
@@ -397,7 +395,7 @@ void TopSitesManager::update(WebView *webView, KURL &url, String &title)
 				if(query.startsWith("remove="))
 				{
 					String argument = query.substring(String("remove=").length());
-					KURL urlToRemove = KURL(ParsedURLString, argument);
+					URL urlToRemove = URL(ParsedURLString, argument);
 					remove(urlToRemove);
 				}
 				else if(query.startsWith("maxEntries="))
@@ -432,7 +430,7 @@ void TopSitesManager::update(WebView *webView, KURL &url, String &title)
 	}
 }
 
-bool TopSitesManager::shouldAdd(KURL &url)
+bool TopSitesManager::shouldAdd(URL &url)
 {	
 	if(url.string().startsWith("topsites:"))
 		return false;
@@ -475,7 +473,7 @@ void TopSitesManager::pruneOlderEntries()
 	deleteStmt.executeCommand();		
 }
 
-bool TopSitesManager::addOrUpdate(WebView *webView, KURL &url, String &title)
+bool TopSitesManager::addOrUpdate(WebView *webView, URL &url, String &title)
 {	
 	double timestamp = currentTime();
 	int visitCount = 1;
@@ -562,7 +560,7 @@ bool TopSitesManager::addOrUpdate(WebView *webView, KURL &url, String &title)
 	return true;
 }
 
-void TopSitesManager::remove(KURL &url)
+void TopSitesManager::remove(URL &url)
 {
 	SQLiteStatement deleteStmt(m_topSitesDB, "DELETE FROM topsites WHERE url=?1;");
 

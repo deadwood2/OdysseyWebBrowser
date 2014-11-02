@@ -30,7 +30,6 @@
 #include "GraphicsContext.h"
 
 #include "Api/WebView.h"
-#include "KURL.h"
 #include "WebDownload.h"
 #include <wtf/CurrentTime.h>
 

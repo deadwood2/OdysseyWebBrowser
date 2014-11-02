@@ -361,7 +361,7 @@ bool WebEditorClient::isSelectTrailingWhitespaceEnabled(void)
 }
 
 
-bool WebEditorClient::shouldApplyStyle(StylePropertySet* style, Range* toElementsInDOMRange)
+bool WebEditorClient::shouldApplyStyle(StyleProperties* style, Range* toElementsInDOMRange)
 {
   /*
     SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
@@ -381,7 +381,7 @@ bool WebEditorClient::shouldMoveRangeAfterDelete(Range* /*range*/, Range* /*rang
     notImplemented(); return true; 
 }
 
-bool WebEditorClient::shouldChangeTypingStyle(StylePropertySet* currentStyle, StylePropertySet* toProposedStyle)
+bool WebEditorClient::shouldChangeTypingStyle(StyleProperties* currentStyle, StyleProperties* toProposedStyle)
 {
   /*
     SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
@@ -696,16 +696,16 @@ void WebEditorClient::checkSpellingOfString(const UChar* text, int length, int* 
 
 	while(i < length)
 	{
-		if(!wordReached && !WTF::Unicode::isAlphanumeric(*tmp))
+		if(!wordReached && !u_isalnum(*tmp))
 		{
 			start++;
 		}
-		else if(WTF::Unicode::isAlphanumeric(*tmp))
+		else if(u_isalnum(*tmp))
 		{
 			wordReached = true;
 			len++;
 		}
-		else if(wordReached && !WTF::Unicode::isAlphanumeric(*tmp))
+		else if(wordReached && !u_isalnum(*tmp))
 		{
 			break;
 		}
@@ -872,16 +872,16 @@ void WebEditorClient::getGuessesForWord(const String& word, const String& contex
 
 	while(i < word.length())
 	{
-		if(!wordReached && !WTF::Unicode::isAlphanumeric(*tmp))
+		if(!wordReached && !u_isalnum(*tmp))
 		{
 			start++;
 		}
-		else if(WTF::Unicode::isAlphanumeric(*tmp))
+		else if(u_isalnum(*tmp))
 		{
 			wordReached = true;
 			len++;
 		}
-		else if(wordReached && !WTF::Unicode::isAlphanumeric(*tmp))
+		else if(wordReached && !u_isalnum(*tmp))
 		{
 			break;
 		}

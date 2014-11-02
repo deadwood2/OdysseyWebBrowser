@@ -32,7 +32,7 @@
 #include "IntRect.h"
 #include <wtf/Vector.h>
 #include "FrameView.h"
-#include "Frame.h"
+#include "MainFrame.h"
 #include "BALBase.h"
 #include "cairo.h"
 #include "WebNotificationDelegate.h"

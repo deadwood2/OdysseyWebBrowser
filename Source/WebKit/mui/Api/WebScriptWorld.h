@@ -45,7 +45,7 @@ public:
     
     static WebScriptWorld* findOrCreateWorld(WebCore::DOMWrapperWorld*);
 
-    WebCore::DOMWrapperWorld* world() const { return m_world; }
+    WebCore::DOMWrapperWorld& world() const { return *m_world; }
 
     void unregisterWorld();
 

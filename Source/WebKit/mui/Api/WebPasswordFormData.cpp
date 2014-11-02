@@ -38,7 +38,7 @@
 #include "HTMLFormElement.h"
 #include "HTMLInputElement.h"
 #include "HTMLNames.h"
-#include "KURL.h"
+#include "URL.h"
 
 #include "DOMUtilitiesPrivate.h"
 #include "WebPasswordFormUtils.h"
@@ -46,9 +46,9 @@
 namespace WebCore {
 
 // Helped method to clear url of unneeded parts.
-KURL stripURL(const KURL& url)
+URL stripURL(const URL& url)
 {
-    KURL strippedURL = url;
+    URL strippedURL = url;
     strippedURL.setUser(String());
     strippedURL.setPass(String());
     strippedURL.setQuery(String());
@@ -108,8 +108,8 @@ bool locateSpecificPasswords(PasswordFormFields* fields,
 }
 
 // Helper to gather up the final form data and create a PasswordForm.
-void assemblePasswordFormResult(const KURL& fullOrigin,
-                                const KURL& fullAction,
+void assemblePasswordFormResult(const URL& fullOrigin,
+                                const URL& fullAction,
                                 HTMLFormControlElement* submit,
                                 HTMLInputElement* userName,
                                 HTMLInputElement* oldPassword,
@@ -128,7 +128,7 @@ void assemblePasswordFormResult(const KURL& fullOrigin,
     // Naming is confusing here because we have both the HTML form origin URL
     // the page where the form was seen), and the "origin" components of the url
     // (scheme, host, and port).
-    KURL signonRealmURL = stripURL(fullOrigin);
+    URL signonRealmURL = stripURL(fullOrigin);
     signonRealmURL.setPath("");
     result->signonRealm = signonRealmURL;
 
@@ -159,13 +159,13 @@ WebPasswordFormData::WebPasswordFormData(HTMLFormElement *form)
     findPasswordFormFields(form, &fields);
 
     // Get the document URL
-    KURL fullOrigin(ParsedURLString, form->document().documentURI());
+    URL fullOrigin(ParsedURLString, form->document().documentURI());
 
     // Calculate the canonical action URL
     String action = form->action();
     if (action.isNull())
         action = ""; // missing 'action' attribute implies current URL
-    KURL fullAction = form->document().completeURL(action);
+    URL fullAction = form->document().completeURL(action);
     if (!fullAction.isValid())
         return;
 

@@ -50,7 +50,6 @@
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
 #include <ContextMenu.h>
-#include <Console.h> 
 #include <FileChooser.h>
 #include <FloatRect.h>
 #include <Frame.h>
@@ -635,7 +634,6 @@ void WebChromeClient::scrollbarsModeDidChange() const
     notImplemented();
 }
 
-#if USE(ACCELERATED_COMPOSITING)
 void WebChromeClient::scheduleCompositingLayerFlush()
 {
 }
@@ -647,7 +645,6 @@ void WebChromeClient::attachRootGraphicsLayer(WebCore::Frame* frame, WebCore::Gr
 void WebChromeClient::setNeedsOneShotDrawingSynchronization()
 {
 }
-#endif
 
 #if ENABLE(VIDEO)
 

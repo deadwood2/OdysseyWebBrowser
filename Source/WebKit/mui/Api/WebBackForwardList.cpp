@@ -35,7 +35,7 @@
 #include "WebFrame.h"
 #include "WebPreferences.h"
 
-#include <BackForwardListImpl.h>
+#include <BackForwardList.h>
 #include <HistoryItem.h>
 #include <Page.h>
 #include <PageGroup.h>
@@ -43,9 +43,9 @@
 using std::min;
 using namespace WebCore;
 
-static HashMap<BackForwardListImpl*, WebBackForwardList*>& backForwardListWrappers()
+static HashMap<BackForwardList*, WebBackForwardList*>& backForwardListWrappers()
 {
-    static HashMap<BackForwardListImpl*, WebBackForwardList*> staticBackForwardListWrappers;
+    static HashMap<BackForwardList*, WebBackForwardList*> staticBackForwardListWrappers;
     return staticBackForwardListWrappers;
 }
 

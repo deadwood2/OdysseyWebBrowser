@@ -133,7 +133,7 @@ void DefaultPolicyDelegate::decidePolicyForNavigationAction(WebView* webView,
 	        listener->use();
 		else
 		{
-			char *url = (char *) request->URL();
+			char *url = (char *) request->_URL();
 			if(url)
 			{
 		        // A file URL shouldn't fall through to here, but if it did,

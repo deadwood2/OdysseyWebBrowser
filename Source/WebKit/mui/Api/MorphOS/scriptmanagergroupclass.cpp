@@ -761,7 +761,7 @@ DEFSMETHOD(ScriptManagerGroup_InjectScripts)
 
 							pageGroup->addUserScriptToWorld(mainThreadNormalWorld(), // XXX: Is it right?
 															String::fromUTF8(fileContent),
-															KURL(KURL(), String(url)), // XXX: will be empty most of the time...
+															URL(URL(), String(url)), // XXX: will be empty most of the time...
 															scripts_list[i]->whitelist,
 															scripts_list[i]->blacklist,
 															InjectAtDocumentEnd,
@@ -789,7 +789,7 @@ DEFSMETHOD(ScriptManagerGroup_ScriptsForURL)
 	{
 		if(scripts_list[i]->enabled)
 		{
-			if(UserContentURLPattern::matchesPatterns(KURL(ParsedURLString, String(msg->url)), scripts_list[i]->whitelist, scripts_list[i]->blacklist))
+			if(UserContentURLPattern::matchesPatterns(URL(ParsedURLString, String(msg->url)), scripts_list[i]->whitelist, scripts_list[i]->blacklist))
 			{
 				matchingscripts->append(scripts_list[i]);
 			}

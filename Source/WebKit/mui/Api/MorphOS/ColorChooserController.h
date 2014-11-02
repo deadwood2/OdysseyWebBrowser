@@ -44,8 +44,8 @@ public:
     virtual void openUI();
 
     // ColorChooser functions:
-    virtual void setSelectedColor(const WebCore::Color&) OVERRIDE;
-    virtual void endChooser() OVERRIDE;
+    virtual void setSelectedColor(const WebCore::Color&);
+    virtual void endChooser();
 
     // WebColorChooserClient functions:
 	virtual void didChooseColor(const WebCore::Color&);

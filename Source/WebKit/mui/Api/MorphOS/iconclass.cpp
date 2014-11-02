@@ -31,7 +31,6 @@
 #include "WebIconDatabase.h"
 #include "BitmapImage.h"
 #include <wtf/text/CString.h>
-#include "KURL.h"
 
 #include <cairo.h>
 #include <string.h>

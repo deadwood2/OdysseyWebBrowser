@@ -28,7 +28,6 @@
 #define ParsedCookie_h
 
 #include "Cookie.h"
-#include <wtf/FastAllocBase.h>
 
 namespace WTF {
 class String;

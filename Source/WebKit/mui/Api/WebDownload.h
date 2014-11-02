@@ -44,7 +44,7 @@
 #include "WebKitTypes.h"
 
 namespace WebCore {
-    class KURL;
+    class URL;
     class ResourceHandle;
     class ResourceRequest;
     class ResourceResponse;
@@ -78,7 +78,7 @@ public:
      * @param[in]: url
      * @param[in]: WebDownloadDelegate
      */
-    static WebDownload* createInstance(const WebCore::KURL&, TransferSharedPtr<WebDownloadDelegate>);
+    static WebDownload* createInstance(const WebCore::URL&, TransferSharedPtr<WebDownloadDelegate>);
 
     /**
      * create new instance of WebDownload
@@ -86,7 +86,7 @@ public:
 	 * @param[in]: originURL
      * @param[in]: WebDownloadDelegate
      */
-	static WebDownload* createInstance(const WebCore::KURL&, const WTF::String&, TransferSharedPtr<WebDownloadDelegate>);
+	static WebDownload* createInstance(const WebCore::URL&, const WTF::String&, TransferSharedPtr<WebDownloadDelegate>);
 
     /**
      * create new instance of WebDownload
@@ -120,7 +120,7 @@ private:
      * @param[in]: url
      * @param[in]: WebDownloadDelegate
      */
-    void init(const WebCore::KURL&, TransferSharedPtr<WebDownloadDelegate>);
+    void init(const WebCore::URL&, TransferSharedPtr<WebDownloadDelegate>);
 
     /**
      * initialise WebDownload
@@ -128,7 +128,7 @@ private:
 	 * @param[in]: orginURL
      * @param[in]: WebDownloadDelegate
      */
-	void init(const WebCore::KURL&, const WTF::String&, TransferSharedPtr<WebDownloadDelegate>);
+	void init(const WebCore::URL&, const WTF::String&, TransferSharedPtr<WebDownloadDelegate>);
 public:
 
     /**

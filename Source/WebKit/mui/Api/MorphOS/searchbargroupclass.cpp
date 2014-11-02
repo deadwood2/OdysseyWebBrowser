@@ -30,7 +30,7 @@
 #include "config.h"
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
-#include "KURL.h"
+#include "URL.h"
 
 #include <string.h>
 

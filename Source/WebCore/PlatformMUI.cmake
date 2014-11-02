@@ -10,8 +10,6 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
 )
 
 list(APPEND WebCore_SOURCES
-    editing/SmartReplaceICU.cpp
-
     loader/AdBlock.cpp
 
     platform/bal/ObserverServiceBookmarklet.cpp
@@ -62,6 +60,7 @@ list(APPEND WebCore_SOURCES
     platform/mui/DragImageMorphOS.cpp
     platform/mui/EventHandlerMorphOS.cpp
     platform/mui/EventLoopMorphOS.cpp
+    platform/mui/GraphicsLayerMUI.cpp
     platform/mui/IconMorphOS.cpp
     platform/mui/ImageMorphOS.cpp
     platform/mui/IntPointMorphOS.cpp
@@ -110,7 +109,6 @@ list(APPEND WebCore_SOURCES
     platform/posix/SharedBufferPOSIX.cpp
 
     platform/text/LocaleICU.cpp
-    platform/text/TextBreakIteratorICU.cpp
     platform/text/TextCodecICU.cpp
     platform/text/TextEncodingDetectorICU.cpp
 )

@@ -68,7 +68,7 @@
 #include "ResourceError.h"
 #include "ResourceResponse.h"
 #include "ResourceLoader.h"
-#include "KURL.h"
+#include "URL.h"
 #include "FileIOLinux.h"
 #include "HTMLCollection.h"
 #include "HTMLInputElement.h"
@@ -690,7 +690,7 @@ AROS_UFH3
 
 						    if(downloadDelegate)
 						    {
-								KURL u(ParsedURLString, url);
+								URL u(ParsedURLString, url);
 								WebDownload* download = WebDownload::createInstance(u, downloadDelegate);
 								
 								if(download)
@@ -757,7 +757,7 @@ AROS_UFH3
 
 /**************************************************/
 
-String GetFilePart(KURL url)
+String GetFilePart(URL url)
 {
 	String path = url.string().substring(url.pathAfterLastSlash());
 	size_t questionPos = path.find('?');
@@ -2086,7 +2086,7 @@ DEFTMETHOD(OWBApp_WebKitEvents)
 DEFSMETHOD(OWBApp_Download)
 {
 	GETDATA;
-	KURL url(ParsedURLString, msg->url);
+	URL url(ParsedURLString, msg->url);
 	WebDownload * webDownload = (WebDownload *) msg->webdownload;
 	WebDownloadPrivate *priv = NULL;
 	struct downloadnode *dl = NULL;
@@ -2531,7 +2531,7 @@ DEFSMETHOD(OWBApp_SetFormState)
 	GETDATA;
 	String *host = (String *) msg->host;
 	Document *doc = (Document *) msg->doc;
-	String strippedURL = stripURL(KURL(ParsedURLString, *host)).string();
+	String strippedURL = stripURL(URL(ParsedURLString, *host)).string();
 
 	D(kprintf("SetFormState for URL <%s>\nStripped <%s>\n", host->latin1().data(), strippedURL.latin1().data()));
 
@@ -2886,7 +2886,7 @@ DEFSMETHOD(OWBApp_RequestPolicyForMimeType)
 	WebView* webView = (WebView*) msg->webview;
 	WebFramePolicyListener* listener = (WebFramePolicyListener*) msg->listener;
 
-	KURL url = response->url();
+	URL url = response->url();
 	String urlstring = url.string();
 	String mimetype = response->mimeType();
 	String generatedpath = String::format("T:OWB_TempFile_%ld", time(NULL));

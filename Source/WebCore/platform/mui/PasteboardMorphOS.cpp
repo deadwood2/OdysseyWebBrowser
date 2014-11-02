@@ -42,7 +42,7 @@
 #include "HTMLNames.h"
 #include "HTMLParserIdioms.h"
 #include "Image.h"
-#include "KURL.h"
+#include "URL.h"
 #include "PasteboardHelper.h"
 #include "RenderImage.h"
 #include "markup.h"
@@ -265,9 +265,9 @@ bool Pasteboard::writeString(const String& type, const String& data)
     return false;
 }
 
-void Pasteboard::writeSelection(Range* selectedRange, bool canSmartCopyOrDelete, Frame* frame, ShouldSerializeSelectedTextForClipboard shouldSerializeSelectedTextForClipboard)
+void Pasteboard::writeSelection(Range& selectedRange, bool , Frame& frame, ShouldSerializeSelectedTextForClipboard shouldSerializeSelectedTextForClipboard)
 {
-	String text = shouldSerializeSelectedTextForClipboard == IncludeImageAltTextForClipboard ? frame->editor().selectedTextForClipboard() : frame->editor().selectedText();
+	String text = shouldSerializeSelectedTextForClipboard == IncludeImageAltTextForClipboard ? frame.editor().selectedTextForClipboard() : frame.editor().selectedText();
 
 	D(kprintf("Pasteboard::writeSelection %s %d\n", text.utf8().data(), m_morphosClipboard));
 
@@ -285,7 +285,7 @@ void Pasteboard::writeSelection(Range* selectedRange, bool canSmartCopyOrDelete,
     m_dataObject->setMarkup(createMarkup(selectedRange, 0, AnnotateForInterchange, false, ResolveNonLocalURLs));
 }
 
-void Pasteboard::writePlainText(const String& text, SmartReplaceOption smartReplaceOption)
+void Pasteboard::writePlainText(const String& text, SmartReplaceOption)
 {
 	D(kprintf("Pasteboard::writePlainText %s %d\n", text.utf8().data(), m_morphosClipboard));
 
@@ -302,26 +302,26 @@ void Pasteboard::writePlainText(const String& text, SmartReplaceOption smartRepl
     m_dataObject->setText(text);
 }
 
-void Pasteboard::writeURL(const KURL& url, const String& label, Frame* frame)
+void Pasteboard::write(const PasteboardURL& pasteboardURL)
 {
-	D(kprintf("Pasteboard::writeURL %s %d\n", url.string().utf8().data(), m_morphosClipboard));
+	D(kprintf("Pasteboard::writeURL %s %d\n", pasteboardURL.url.string().utf8().data(), m_morphosClipboard));
 
     ASSERT(!url.isEmpty());
 
 	if(m_morphosClipboard == 0)
 	{
 	    /* Copy to system clipboard first (clipboard monitor will reset rich content as a result) */
-	    WTF::CString utf8 = url.string().utf8();
+	    WTF::CString utf8 = pasteboardURL.url.string().utf8();
 	    const char *data = utf8.data();
 	    writeUTF8(data, strlen(data));
 	}
 
 	/* Then store to internal clipboard */
     m_dataObject->clearAll();
-    m_dataObject->setURL(url, label);
+    m_dataObject->setURL(pasteboardURL.url, pasteboardURL.title);
 }
 
-static KURL getURLForImageNode(Node* node)
+static URL getURLForImageNode(Node* node)
 {
     // FIXME: Later this code should be shared with Chromium somehow. Chances are all platforms want it.
     AtomicString urlString;
@@ -335,19 +335,19 @@ static KURL getURLForImageNode(Node* node)
         Element* element = toElement(node);
         urlString = element->imageSourceURL();
     }
-    return urlString.isEmpty() ? KURL() : node->document().completeURL(stripLeadingAndTrailingHTMLSpaces(urlString));
+    return urlString.isEmpty() ? URL() : node->document().completeURL(stripLeadingAndTrailingHTMLSpaces(urlString));
 }
 
-void Pasteboard::writeImage(Node* node, const KURL&, const String& title)
+void Pasteboard::writeImage(Element& element, const URL&, const String& title)
 {
     ASSERT(node);
 
 	D(kprintf("Pasteboard::writeImage\n"));
 
-    if (!(node->renderer() && node->renderer()->isImage()))
+    if (!(element.renderer() && element.renderer()->isImage()))
         return;
 
-    RenderImage* renderer = toRenderImage(node->renderer());
+    RenderImage* renderer = toRenderImage(element.renderer());
     CachedImage* cachedImage = renderer->cachedImage();
     if (!cachedImage || cachedImage->errorOccurred())
         return;
@@ -383,11 +383,11 @@ void Pasteboard::writeImage(Node* node, const KURL&, const String& title)
 
     m_dataObject->clearAll();
 
-    KURL url = getURLForImageNode(node);
+    URL url = getURLForImageNode(&element);
 	D(kprintf("Pasteboard::writeImage url %s %d\n", url.string().utf8().data(), m_morphosClipboard));
     if (!url.isEmpty()) {
         m_dataObject->setURL(url, title);
-        m_dataObject->setMarkup(createMarkup(toElement(node), IncludeNode, 0, ResolveAllURLs));
+        m_dataObject->setMarkup(createMarkup(element, IncludeNode, 0, ResolveAllURLs));
     }
 
 	m_dataObject->setImage(image->nativeImageForCurrentFrame().get());
@@ -462,19 +462,21 @@ bool Pasteboard::canSmartReplace()
 	return false;
 }
 
+static String getPlainText(Frame* frame);
+
 static void setWithClipboardContents(Pasteboard *pasteboard, int clipboard)
 {
-	String text = pasteboard->plainText(0);
+	String text = getPlainText(0);
 	if(clipboard == 0)
 	   pasteboard->dataObject()->setText(text);
 }
 
-void Pasteboard::setDragImage(DragImageRef, const IntPoint& hotSpot)
+void Pasteboard::setDragImage(DragImageRef, const IntPoint& )
 {
 	D(kprintf("Pasteboard::setDragImage()\n"));
 }
 
-PassRefPtr<DocumentFragment> Pasteboard::documentFragment(Frame* frame, PassRefPtr<Range> context,
+PassRefPtr<DocumentFragment> Pasteboard::documentFragment(Frame& frame, Range& context,
                                                           bool allowPlainText, bool& chosePlainText)
 {
 #warning "XXX: what to do here, exactly?"
@@ -486,7 +488,7 @@ PassRefPtr<DocumentFragment> Pasteboard::documentFragment(Frame* frame, PassRefP
 	chosePlainText = false;
 
     if (m_dataObject->hasMarkup()) {
-        RefPtr<DocumentFragment> fragment = createFragmentFromMarkup(frame->document(), m_dataObject->markup(), emptyString(), DisallowScriptingAndPluginContent);
+        RefPtr<DocumentFragment> fragment = createFragmentFromMarkup(*frame.document(), m_dataObject->markup(), emptyString(), DisallowScriptingAndPluginContent);
         if (fragment)
             return fragment.release();
     }
@@ -496,7 +498,7 @@ PassRefPtr<DocumentFragment> Pasteboard::documentFragment(Frame* frame, PassRefP
 
     if (m_dataObject->hasText()) {
         chosePlainText = true;
-        RefPtr<DocumentFragment> fragment = createFragmentFromText(context.get(), m_dataObject->text());
+        RefPtr<DocumentFragment> fragment = createFragmentFromText(context, m_dataObject->text());
         if (fragment)
             return fragment.release();
     }
@@ -537,7 +539,7 @@ static void copycollection(String &str, CollectionItem* ci, uint32 codeSet)
 	}
 }
 
-String Pasteboard::plainText(Frame* frame)
+static String getPlainText(Frame* )
 {
 	D(kprintf("Pasteboard::plainText()\n"));
 
@@ -585,6 +587,12 @@ String Pasteboard::plainText(Frame* frame)
 /*
 	return m_dataObject->text();
 */
+}
+
+void Pasteboard::read(PasteboardPlainText& text)
+{
+    m_dataObject->setText(getPlainText(0));
+    text.text = m_dataObject->text();
 }
 
 bool Pasteboard::hasData()

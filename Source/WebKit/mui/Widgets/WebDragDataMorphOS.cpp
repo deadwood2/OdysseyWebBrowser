@@ -30,7 +30,7 @@
 #include "config.h"
 #include "DragData.h"
 #include "DataObjectMorphOS.h"
-#include "KURL.h"
+#include "URL.h"
 #include "SharedBuffer.h"
 #include "WebDragData.h"
 #include "WebDragData_p.h"
@@ -45,16 +45,16 @@ WebDragDataPrivate* WebDragData::platformDragData()
 #warning "useless stuff"
 #if 0
     RefPtr<DataObject> obj = DataObject::create();
-    obj->url = KURL(ParsedURLString, m_url.c_str());
+    obj->url = URL(ParsedURLString, m_url.c_str());
     obj->urlTitle = m_urlTitle.c_str();
-    obj->downloadURL = KURL(ParsedURLString, m_downloadURL.c_str());
+    obj->downloadURL = URL(ParsedURLString, m_downloadURL.c_str());
     obj->fileExtension = m_fileExtension.c_str();
     for(size_t i = 0; i < m_filenames.size(); ++i) {
         obj->filenames.append(m_filenames[i]);
     }
     obj->plainText = m_plainText.c_str();
     obj->textHtml = m_textHtml.c_str();
-    obj->htmlBaseUrl = KURL(ParsedURLString, m_htmlBaseUrl.c_str());
+    obj->htmlBaseUrl = URL(ParsedURLString, m_htmlBaseUrl.c_str());
     obj->fileContentFilename = m_fileContentFilename.c_str();
     obj->fileContent = SharedBuffer::create(m_fileContent.c_str(), m_fileContent.length()); 
 

@@ -91,7 +91,7 @@ DragImageRef createDragImageIconForCachedImageFilename(const String&)
     return 0;
 }
 
-DragImageRef createDragImageForLink(KURL& url, const String& inLabel, FontRenderingMode fontRenderingMode, Frame* frame)
+DragImageRef createDragImageForLink(URL& url, const String& inLabel, FontRenderingMode fontRenderingMode, Frame* frame)
 {
     D(kprintf("createDragImageForLink %s %s\n", url.string().latin1().data(), inLabel.latin1().data()));
 

@@ -39,7 +39,7 @@
 #include <ContextMenu.h>
 #include <Editor.h>
 #include <Event.h>
-#include <Frame.h>
+#include <MainFrame.h>
 #include <FrameLoader.h>
 #include <FrameLoadRequest.h>
 #include <Page.h>
@@ -82,7 +82,7 @@ void WebContextMenuClient::contextMenuItemSelected(ContextMenuItem* item, const 
 #endif
 }
 
-void WebContextMenuClient::downloadURL(const KURL& url)
+void WebContextMenuClient::downloadURL(const URL& url)
 {
     SharedPtr<WebDownloadDelegate> downloadDelegate = m_webView->downloadDelegate();
 
@@ -119,7 +119,7 @@ void WebContextMenuClient::searchWithGoogle(const Frame* frame)
 
     if (Page* page = frame->page()) {
       UserGestureIndicator indicator(DefinitelyProcessingUserGesture);
-      page->mainFrame().loader().urlSelected(KURL(ParsedURLString, url), String(), 0, false, false, MaybeSendReferrer);
+      page->mainFrame().loader().urlSelected(URL(ParsedURLString, url), String(), 0, false, false, MaybeSendReferrer);
     };
 }
 

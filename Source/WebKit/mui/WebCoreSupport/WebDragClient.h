@@ -52,13 +52,13 @@ class WebDragClient : public WebCore::DragClient {
 public:
     WebDragClient(WebView*);
     virtual ~WebDragClient();
-    virtual WebCore::DragDestinationAction actionMaskForDrag(WebCore::DragData*);
-    virtual void willPerformDragDestinationAction(WebCore::DragDestinationAction, WebCore::DragData*);
+    virtual WebCore::DragDestinationAction actionMaskForDrag(WebCore::DragData&);
+    virtual void willPerformDragDestinationAction(WebCore::DragDestinationAction, WebCore::DragData&);
     virtual void dragControllerDestroyed();
     virtual WebCore::DragSourceAction dragSourceActionMaskForPoint(const WebCore::IntPoint&);
-    virtual void willPerformDragSourceAction(WebCore::DragSourceAction, const WebCore::IntPoint&, WebCore::Clipboard*);
-    virtual void startDrag(WebCore::DragImageRef, const WebCore::IntPoint&, const WebCore::IntPoint&, WebCore::Clipboard*, WebCore::Frame*, bool);
-    virtual WebCore::DragImageRef createDragImageForLink(WebCore::KURL&, const WTF::String&, WebCore::Frame*);
+    virtual void willPerformDragSourceAction(WebCore::DragSourceAction, const WebCore::IntPoint&, WebCore::Clipboard&);
+    virtual void startDrag(WebCore::DragImageRef, const WebCore::IntPoint&, const WebCore::IntPoint&, WebCore::Clipboard&, WebCore::Frame&, bool);
+    virtual WebCore::DragImageRef createDragImageForLink(WebCore::URL&, const WTF::String&, WebCore::Frame*);
 private:
     WebView* m_webView;
 };

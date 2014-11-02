@@ -30,7 +30,7 @@
 #include "config.h"
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
-#include "KURL.h"
+#include "URL.h"
 #include "IconDatabase.h"
 
 #include <proto/intuition.h>
@@ -2184,8 +2184,8 @@ static ULONG contains_entry(struct IClass *cl, Object *obj, struct MUIS_Listtree
 				{
 					if(node->address)
 					{
-						KURL kurl = KURL(ParsedURLString, url);
-						KURL kbookmark = KURL(ParsedURLString, node->address);
+						URL kurl = URL(ParsedURLString, url);
+						URL kbookmark = URL(ParsedURLString, node->address);
 
 						if(kurl == kbookmark)
 						{

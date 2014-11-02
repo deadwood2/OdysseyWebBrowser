@@ -764,7 +764,7 @@ static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* data)
                         LOG_ERROR("Cannot determine URL - cookie rejected");
                         return totalSize;
                     }
-                    d->m_response.setURL(KURL(ParsedURLString, hdr));
+                    d->m_response.setURL(URL(ParsedURLString, hdr));
                 }
                 LOG(Network, "Received cookie value : %s !!\n", d->m_response.httpHeaderField("Set-Cookie").utf8().data());
                 job->setCookies();
@@ -1308,10 +1308,10 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
         d->m_response.setMimeType(MIMETypeRegistry::getMIMETypeForPath(url));
     }
 #if OS(MORPHOS)
-	else if (kurl.protocolIs("ftp"))
+	else if (url.protocolIs("ftp"))
 	{
 	    // FIXME: isn't it possible to handle that properly? ATM, we need a / to know it's a directory...
-	    if((kurl.path().isEmpty() || kurl.string().endsWith("/"))) 
+	    if((url.path().isEmpty() || url.string().endsWith("/")))
 	    {
 		d->m_response.setMimeType("application/x-ftp-directory");
 	    }
@@ -1490,7 +1490,7 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
         d->m_customHeaders = headers;
     }
 
-    if (!kurl.protocolIs("ftp"))
+    if (!url.protocolIs("ftp"))
 		applyAuthenticationToRequest(job, job->firstRequest());
 
     // Set proxy options if we have them.
@@ -1505,7 +1505,7 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
 #endif
 #if OS(MORPHOS)
     // And finally send cookies
-    job->checkAndSendCookies(kurl);
+    job->checkAndSendCookies(url);
 #endif
 }
 

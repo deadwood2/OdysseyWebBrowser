@@ -162,7 +162,7 @@ public:
     /**
      * get URL
      */
-    virtual const char* URL();
+    virtual const char* _URL();
 
     /**
      * get host
