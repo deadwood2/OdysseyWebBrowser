@@ -31,7 +31,7 @@
 #include "GraphicsContext.h"
 
 #include "Api/WebView.h"
-#include "KURL.h"
+#include "URL.h"
 #include "FileIOLinux.h"
 #include "WebDownload.h"
 #include "WebDownloadPrivate.h"
@@ -778,7 +778,7 @@ DEFSMETHOD(Download_Retry)
 
 			    if(downloadDelegate)
 			    {
-					KURL url(ParsedURLString, dl->url);
+					URL url(ParsedURLString, dl->url);
 					WebDownload* download = WebDownload::createInstance(url, downloadDelegate);
 			        download->start();
 			    }

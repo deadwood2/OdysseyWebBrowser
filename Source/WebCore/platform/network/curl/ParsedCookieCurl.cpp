@@ -29,7 +29,7 @@
 
 #include "CookieManager.h"
 #include <wtf/CurrentTime.h>
-#include "KURL.h"
+#include "URL.h"
 #include "Logging.h"
 #include <curl/curl.h>
 #include <wtf/text/CString.h>

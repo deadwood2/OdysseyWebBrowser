@@ -80,7 +80,6 @@
 #include <PluginDatabase.h>
 #include <PluginPackage.h>
 #include <PluginView.h>
-#include <RenderPart.h>
 #include <ResourceHandle.h>
 #include <ResourceHandleInternal.h>
 #include <ResourceLoader.h> 
@@ -322,7 +321,7 @@ void WebFrameLoaderClient::dispatchDidCancelClientRedirect()
         frameLoadDelegate->didCancelClientRedirectForFrame(m_webFrame);
 }
 
-void WebFrameLoaderClient::dispatchWillPerformClientRedirect(const KURL& url, double delay, double fireDate)
+void WebFrameLoaderClient::dispatchWillPerformClientRedirect(const URL& url, double delay, double fireDate)
 {
     SharedPtr<WebFrameLoadDelegate> frameLoadDelegate = m_webFrame->webView()->webFrameLoadDelegate();
     if (frameLoadDelegate)
@@ -630,7 +629,7 @@ void WebFrameLoaderClient::didDisplayInsecureContent()
     }
 }
 
-void WebFrameLoaderClient::didRunInsecureContent(SecurityOrigin* origin, const KURL& insecureURL)
+void WebFrameLoaderClient::didRunInsecureContent(SecurityOrigin* origin, const URL& insecureURL)
 {
     SharedPtr<WebFrameLoadDelegate> webFrameLoadDelegate = m_webFrame->webView()->webFrameLoadDelegate();
     if (webFrameLoadDelegate) {
@@ -639,7 +638,7 @@ void WebFrameLoaderClient::didRunInsecureContent(SecurityOrigin* origin, const K
     }
 }
 
-void WebFrameLoaderClient::didDetectXSS(const KURL&, bool)
+void WebFrameLoaderClient::didDetectXSS(const URL&, bool)
 {
     // FIXME: propagate call into the private delegate
 }
@@ -653,7 +652,7 @@ PassRefPtr<DocumentLoader> WebFrameLoaderClient::createDocumentLoader(const Reso
     return loader.release();
 }
 
-void WebFrameLoaderClient::setTitle(const WebCore::StringWithDirection& title, const KURL& url)
+void WebFrameLoaderClient::setTitle(const WebCore::StringWithDirection& title, const URL& url)
 {
     WebView* webView = m_webFrame->webView();
     SharedPtr<WebHistoryDelegate> historyDelegate = webView->historyDelegate();
@@ -706,7 +705,7 @@ void WebFrameLoaderClient::savePlatformDataToCachedFrame(CachedFrame* cachedFram
 
     ASSERT(coreFrame->loader().documentLoader() == cachedFrame->documentLoader());
 
-    cachedFrame->setCachedFramePlatformData(adoptPtr(new WebCachedFramePlatformData(getWebDataSource(coreFrame->loader().documentLoader()))));
+    cachedFrame->setCachedFramePlatformData(std::unique_ptr<CachedFramePlatformData>(new WebCachedFramePlatformData(getWebDataSource(coreFrame->loader().documentLoader()))));
 }
 
 void WebFrameLoaderClient::transitionToCommittedFromCachedFrame(CachedFrame*)
@@ -739,7 +738,7 @@ bool WebFrameLoaderClient::canCachePage() const
     return true;
 }
 
-PassRefPtr<Frame> WebFrameLoaderClient::createFrame(const KURL& url, const String& name, HTMLFrameOwnerElement* ownerElement, const String& referrer, bool /*allowsScrolling*/, int /*marginWidth*/, int /*marginHeight*/)
+PassRefPtr<Frame> WebFrameLoaderClient::createFrame(const URL& url, const String& name, HTMLFrameOwnerElement* ownerElement, const String& referrer, bool /*allowsScrolling*/, int /*marginWidth*/, int /*marginHeight*/)
 {
     RefPtr<Frame> result = createFrame(url, name, ownerElement, referrer);
     if (!result)
@@ -748,7 +747,7 @@ PassRefPtr<Frame> WebFrameLoaderClient::createFrame(const KURL& url, const Strin
     return result.release();
 }
 
-PassRefPtr<Frame> WebFrameLoaderClient::createFrame(const KURL& url, const String& name, HTMLFrameOwnerElement* ownerElement, const String& referrer)
+PassRefPtr<Frame> WebFrameLoaderClient::createFrame(const URL& url, const String& name, HTMLFrameOwnerElement* ownerElement, const String& referrer)
 {
     if (url.string().isEmpty())
         return 0;
@@ -783,7 +782,7 @@ PassRefPtr<Frame> WebFrameLoaderClient::createFrame(const KURL& url, const Strin
     return childFrame.release();
 }
 
-PassRefPtr<Widget> WebFrameLoaderClient::createPlugin(const IntSize& pluginSize, HTMLPlugInElement* element, const KURL& url, const Vector<String>& paramNames, const Vector<String>& paramValues, const String& mimeType, bool loadManually)
+PassRefPtr<Widget> WebFrameLoaderClient::createPlugin(const IntSize& pluginSize, HTMLPlugInElement* element, const URL& url, const Vector<String>& paramNames, const Vector<String>& paramValues, const String& mimeType, bool loadManually)
 {
     Frame* frame = core(m_webFrame);
     PassRefPtr<PluginView> pluginView = PluginView::create(frame, pluginSize, element, url, paramNames, paramValues, mimeType, loadManually);
@@ -839,7 +838,7 @@ void WebFrameLoaderClient::cancelPolicyCheck()
     m_policyFunction = 0;
 }
 
-void WebFrameLoaderClient::dispatchWillSubmitForm(FramePolicyFunction function, PassRefPtr<FormState> formState)
+void WebFrameLoaderClient::dispatchWillSubmitForm(PassRefPtr<FormState> formState, FramePolicyFunction function)
 {
     Frame* coreFrame = core(m_webFrame);
     ASSERT(coreFrame);
@@ -852,7 +851,7 @@ void WebFrameLoaderClient::dispatchWillSubmitForm(FramePolicyFunction function, 
 
     // XXX: save credentials here as well instead of doing it in the defaultpolicydelegate, since it's a bit clumsy
 
-    (coreFrame->loader().policyChecker()->*function)(PolicyUse);
+    function(PolicyUse);
 }
 
 void WebFrameLoaderClient::dispatchWillSendSubmitEvent(PassRefPtr<WebCore::FormState> formState)
@@ -945,9 +944,9 @@ void WebFrameLoaderClient::prepareForDataSourceReplacement()
     notImplemented();
 }
 
-String WebFrameLoaderClient::userAgent(const KURL& url)
+String WebFrameLoaderClient::userAgent(const URL& url)
 {
-    return m_webFrame->webView()->userAgentForKURL(url.string().utf8().data()).c_str();
+    return m_webFrame->webView()->userAgentForURL(url.string().utf8().data()).c_str();
 }
 
 void WebFrameLoaderClient::transitionToCommittedFromCachedPage(CachedPage*)
@@ -1032,10 +1031,10 @@ void WebFrameLoaderClient::receivedPolicyDecision(PolicyAction action)
     Frame* coreFrame = core(m_webFrame);
     ASSERT(coreFrame);
 
-    (coreFrame->loader().policyChecker()->*function)(action);
+    function(action);
 }
 
-void WebFrameLoaderClient::dispatchDecidePolicyForResponse(FramePolicyFunction function, const WebCore::ResourceResponse& response, const ResourceRequest& request)
+void WebFrameLoaderClient::dispatchDecidePolicyForResponse(const WebCore::ResourceResponse& response, const ResourceRequest& request, FramePolicyFunction function)
 {
     SharedPtr<WebPolicyDelegate> policyDelegate = m_webFrame->webView()->policyDelegate();
     if (!policyDelegate)
@@ -1049,7 +1048,7 @@ void WebFrameLoaderClient::dispatchDecidePolicyForResponse(FramePolicyFunction f
     }
 }
 
-void WebFrameLoaderClient::dispatchDecidePolicyForNewWindowAction(FramePolicyFunction function, const NavigationAction& action, const ResourceRequest& request, PassRefPtr<FormState> formState, const String& frameName)
+void WebFrameLoaderClient::dispatchDecidePolicyForNewWindowAction(const NavigationAction& action, const ResourceRequest& request, PassRefPtr<FormState> formState, const String& frameName, FramePolicyFunction function)
 {
     Frame* coreFrame = core(m_webFrame);
     ASSERT(coreFrame);
@@ -1063,12 +1062,12 @@ void WebFrameLoaderClient::dispatchDecidePolicyForNewWindowAction(FramePolicyFun
 
     //policyDelegate->decidePolicyForNewWindowAction(d->webView, actionInformation, urlRequest, frameName, setUpPolicyListener(function));
 
-    (coreFrame->loader().policyChecker()->*function)(PolicyUse);
+    function(PolicyUse);
     delete urlRequest;
     delete actionInformation;
 }
 
-void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(FramePolicyFunction function, const NavigationAction& action, const ResourceRequest& request, PassRefPtr<FormState> formState)
+void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const NavigationAction& action, const ResourceRequest& request, PassRefPtr<FormState> formState, FramePolicyFunction function)
 {
     SharedPtr<WebPolicyDelegate> policyDelegate = m_webFrame->webView()->policyDelegate();
     if (!policyDelegate) {
@@ -1138,9 +1137,9 @@ void WebFrameLoaderClient::startDownload(const ResourceRequest&, const String& /
     notImplemented();
 }
 
-PassRefPtr<Widget> WebFrameLoaderClient::createJavaAppletWidget(const IntSize& pluginSize, HTMLAppletElement* element, const KURL& /*baseURL*/, const Vector<String>& paramNames, const Vector<String>& paramValues)
+PassRefPtr<Widget> WebFrameLoaderClient::createJavaAppletWidget(const IntSize& pluginSize, HTMLAppletElement* element, const URL& /*baseURL*/, const Vector<String>& paramNames, const Vector<String>& paramValues)
 {
-    RefPtr<PluginView> pluginView = PluginView::create(core(m_webFrame), pluginSize, element, KURL(), paramNames, paramValues, "application/x-java-applet", false);
+    RefPtr<PluginView> pluginView = PluginView::create(core(m_webFrame), pluginSize, element, URL(), paramNames, paramValues, "application/x-java-applet", false);
 
     // Check if the plugin can be loaded successfully
     if (pluginView->plugin() && pluginView->plugin()->load())
@@ -1149,7 +1148,7 @@ PassRefPtr<Widget> WebFrameLoaderClient::createJavaAppletWidget(const IntSize& p
     return pluginView;
 }
 
-ObjectContentType WebFrameLoaderClient::objectContentType(const KURL& url, const String& mimeType, bool shouldPreferPlugInsForImages)
+ObjectContentType WebFrameLoaderClient::objectContentType(const URL& url, const String& mimeType, bool shouldPreferPlugInsForImages)
 {
     return WebCore::FrameLoader::defaultObjectContentType(url, mimeType, shouldPreferPlugInsForImages);
 }               
@@ -1161,7 +1160,7 @@ String WebFrameLoaderClient::overrideMediaType() const
     return String();
 }
 
-void WebFrameLoaderClient::dispatchDidClearWindowObjectInWorld(DOMWrapperWorld* world)
+void WebFrameLoaderClient::dispatchDidClearWindowObjectInWorld(DOMWrapperWorld& world)
 {
     Frame* coreFrame = core(m_webFrame);
     ASSERT(coreFrame);

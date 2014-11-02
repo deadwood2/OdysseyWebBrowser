@@ -32,11 +32,11 @@
 #define WebPasswordFormData_h
 
 #include "HTMLFormElement.h"
-#include "KURL.h"
+#include "URL.h"
 
 namespace WebCore {
 
-KURL stripURL(const KURL& url);
+URL stripURL(const URL& url);
 
 struct WebPasswordFormData {
     // If the provided form is suitable for password completion, isValid() will
@@ -56,7 +56,7 @@ struct WebPasswordFormData {
     // PasswordManager.
     //
     // When parsing an HTML form, this must always be set.
-	KURL action;
+	URL action;
 
     // The "Realm" for the sign-on (scheme, host, port for SCHEME_HTML, and
     // contains the HTTP realm for dialog-based forms).
@@ -68,7 +68,7 @@ struct WebPasswordFormData {
     // data used by the PasswordManager to decide (in longest matching prefix
     // fashion) whether or not a given PasswordForm result from the database is a
     // good fit for a particular form on a page, so it must not be empty.
-	KURL origin;
+	URL origin;
 
     // The name of the submit button used. Optional; only used in scoring
     // of PasswordForm results from the database to make matches as tight as

@@ -38,7 +38,6 @@
 #include <HitTestResult.h>
 #include <FrameLoader.h>
 #include <Image.h>
-#include <KURL.h>
 
 using namespace WebCore;
 

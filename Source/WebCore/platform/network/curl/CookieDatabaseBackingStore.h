@@ -69,7 +69,7 @@ private:
 
     void addToChangeQueue(const ParsedCookie* changedCookie, UpdateParameter actionParam);
 
-    typedef pair<const ParsedCookie, UpdateParameter> CookieAction;
+    typedef std::pair<const ParsedCookie, UpdateParameter> CookieAction;
     Vector<CookieAction> m_changedCookies;
 
     String m_tableName;

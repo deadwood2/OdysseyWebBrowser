@@ -66,7 +66,7 @@
 #include <FrameLoadRequest.h>
 #include <FrameTree.h>
 #include <FrameView.h>
-#include <Frame.h>
+#include <MainFrame.h>
 #include <GraphicsContext.h>
 #include <HistoryItem.h>
 #include <HTMLAppletElement.h>
@@ -91,7 +91,6 @@
 #include <ResourceRequest.h>
 #include <RenderView.h>
 #include <RenderTreeAsText.h>
-#include <ScriptValue.h>
 #include <SecurityOrigin.h>
 #include <Settings.h>
 #include <TextIterator.h>
@@ -341,9 +340,9 @@ void WebFrame::loadURL(const char* url)
     if (isAbsolute(url)) {
         string u = "file://";
         u += url;
-        coreFrame->loader().load(FrameLoadRequest(coreFrame, ResourceRequest(KURL(KURL(), String::fromUTF8(u.c_str())))));
+        coreFrame->loader().load(FrameLoadRequest(coreFrame, ResourceRequest(URL(URL(), String::fromUTF8(u.c_str())))));
     } else
-        coreFrame->loader().load(FrameLoadRequest(coreFrame, ResourceRequest(KURL(KURL(), String::fromUTF8(url)))));
+        coreFrame->loader().load(FrameLoadRequest(coreFrame, ResourceRequest(URL(URL(), String::fromUTF8(url)))));
 }
 
 JSGlobalContextRef WebFrame::contextForScriptWorld(WebScriptWorld* world)
@@ -370,11 +369,11 @@ void WebFrame::loadHTMLString(const char* string, const char* baseURL, const cha
     String utf8Encoding("utf-8");
     String mimeType("text/html");
 
-    KURL baseKURL(ParsedURLString, baseURL);
-    KURL failingKURL;
+    URL _baseURL(ParsedURLString, baseURL);
+    URL failingURL;
 
-    ResourceRequest request(baseKURL);
-    SubstituteData substituteData(data.release(), mimeType, utf8Encoding, failingKURL);
+    ResourceRequest request(_baseURL);
+    SubstituteData substituteData(data.release(), mimeType, utf8Encoding, failingURL);
 
     if (Frame* coreFrame = core(this))
         coreFrame->loader().load(FrameLoadRequest(coreFrame, request, substituteData));
@@ -659,7 +658,7 @@ PassRefPtr<Frame> WebFrame::createSubframeWithOwnerElement(WebView* webView, Pag
 void WebFrame::initWithWebView(WebView* webView, Page* page) 
 { 
     d->webView = webView;
-    d->frame = &page->mainFrame(); 
+    d->frame = &page->mainFrame();
 }
 
 Frame* WebFrame::impl()
@@ -710,7 +709,7 @@ bool WebFrame::allowsFollowingLink(const char* url) const
     if (!frame)
         return false;
 
-	return frame->document()->securityOrigin()->canDisplay(KURL(KURL(), url));
+	return frame->document()->securityOrigin()->canDisplay(URL(URL(), url));
 }
 
 /*HRESULT WebFrame::elementWithName(BSTR name, IDOMElement* form, IDOMElement** element)
@@ -1200,7 +1199,7 @@ BalRectangle WebFrame::frameBounds()
     if (!view)
         return IntRect();
 
-    FloatRect bounds = view->visibleContentRect(ScrollableArea::IncludeScrollbars);
+    FloatRect bounds = view->visibleContentRectIncludingScrollbars();
     return IntRect(0, 0, (int)bounds.width(), (int)bounds.height());
 }
 
@@ -1382,7 +1381,7 @@ bool WebFrame::stringByEvaluatingJavaScriptInScriptWorld(WebScriptWorld* world, 
         anyWorldGlobalObject = static_cast<JSDOMWindowShell*>(globalObjectObj)->window();
 
     // Get the frame from the global object we've settled on.
-    Frame* frame = anyWorldGlobalObject->impl()->frame();
+    Frame* frame = anyWorldGlobalObject->impl().frame();
     ASSERT(frame->document());
     JSC::JSValue result = frame->script().executeScriptInWorld(world->world(), string, true).jsValue();
 

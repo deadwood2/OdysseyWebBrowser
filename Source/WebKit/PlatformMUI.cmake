@@ -9,6 +9,7 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/mui"
     "${WEBCORE_DIR}/platform/bal"
     "${WEBCORE_DIR}/platform/graphics/cairo"
+    "${WEBCORE_DIR}/platform/graphics/opentype"
     "${WEBCORE_DIR}/platform/linux"
     "${WEBCORE_DIR}/Modules/notifications"
     "${WEBCORE_DIR}/Modules/geolocation"

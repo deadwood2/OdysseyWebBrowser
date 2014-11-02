@@ -34,7 +34,7 @@
 
 using namespace WebCore;
 
-WebResource::WebResource(PassRefPtr<WebCore::SharedBuffer> data, const WebCore::KURL& url, const WTF::String& mimeType, const WTF::String& textEncodingName, const WTF::String& frameName)
+WebResource::WebResource(PassRefPtr<WebCore::SharedBuffer> data, const WebCore::URL& url, const WTF::String& mimeType, const WTF::String& textEncodingName, const WTF::String& frameName)
     : m_data(data)
     , m_url(url)
     , m_mimeType(mimeType)
@@ -57,7 +57,7 @@ void WebResource::initWithData( PassRefPtr<WebCore::SharedBuffer> data, String u
 {
     kprintf("WebResource::initWithData\n");
     m_data = data;
-    m_url = KURL(ParsedURLString, String(url));
+    m_url = URL(ParsedURLString, String(url));
     m_mimeType = String(mimeType);
     m_textEncodingName = String(textEncodingName);
     m_frameName = String(frameName);
@@ -69,7 +69,7 @@ PassRefPtr<WebCore::SharedBuffer> WebResource::data()
     return m_data;
 }
    
-String WebResource::URL()
+String WebResource::_URL()
 {
     return m_url.string();
 }

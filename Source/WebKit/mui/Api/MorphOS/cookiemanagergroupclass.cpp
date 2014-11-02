@@ -32,7 +32,7 @@
 #include "CookieManager.h"
 #include "CookieMap.h"
 #include "ParsedCookie.h"
-#include "KURL.h"
+#include "URL.h"
 
 #include <proto/intuition.h>
 #include <proto/utility.h>
@@ -426,7 +426,7 @@ DEFTMETHOD(CookieManagerGroup_Remove)
 				domain = domain.substring(1);
 			cookieURL.append(domain);
 			cookieURL.append(entry->path);
-			KURL url(ParsedURLString, cookieURL);
+			URL url(ParsedURLString, cookieURL);
 			cookieManager().removeCookieWithName(url, entry->name);
 			DoMethod(data->lt_cookies, MUIM_Listtree_Remove, NULL, MUIV_Listtree_Remove_TreeNode_Active, 0);
 		}

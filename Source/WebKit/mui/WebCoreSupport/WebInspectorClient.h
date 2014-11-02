@@ -30,7 +30,6 @@
 #define InspectorClientBal_h
 
 #include "InspectorClient.h"
-#include "InspectorFrontendChannel.h"
 #include "InspectorFrontendClientLocal.h"
 
 #include <wtf/HashMap.h>
@@ -93,7 +92,7 @@ private:
 
 class WebInspectorFrontendClient : public WebCore::InspectorFrontendClientLocal {
 public:
-    WebInspectorFrontendClient(WebView* inspectedWebView, WebView* frontendWebView, WebInspector* webInspector, WebCore::Page* inspectorPage, WebInspectorClient* inspectorClient, WTF::PassOwnPtr<Settings>);
+    WebInspectorFrontendClient(WebView* inspectedWebView, WebView* frontendWebView, WebCore::Page* inspectorPage, WebInspectorClient* inspectorClient, WTF::PassOwnPtr<Settings>);
     virtual ~WebInspectorFrontendClient();
 
     virtual void frontendLoaded();
@@ -108,7 +107,7 @@ public:
     
     virtual void setAttachedWindowHeight(unsigned height);
     virtual void setAttachedWindowWidth(unsigned); 
-    virtual void setToolbarHeight(unsigned) OVERRIDE; 
+    virtual void setToolbarHeight(unsigned); 
 
     virtual void inspectedURLChanged(const WTF::String& newURL);
 
@@ -119,7 +118,6 @@ public:
 private:
     WebView* m_frontendWebView;
     WebView* m_inspectedWebView;
-    WebInspector *m_webInspector;
     WebInspectorClient* m_inspectorClient;
 
     bool m_shouldAttachWhenShown;

@@ -28,7 +28,6 @@
 
 #include "config.h"
 #include <Document.h>
-#include <KURL.h>
 #include "WebDesktopNotificationsDelegate.h"
 #include "WebSecurityOrigin.h"
 #include "WebView.h"

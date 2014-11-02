@@ -89,7 +89,7 @@ namespace WebCore {
     class IntPoint;
     class IntRect;
     class KeyboardEvent;
-    class KURL;
+    class URL;
     class Node;
     class Page;
     class ResourceRequest;

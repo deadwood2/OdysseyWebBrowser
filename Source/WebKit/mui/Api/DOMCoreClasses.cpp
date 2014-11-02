@@ -47,7 +47,7 @@
 #include <HTMLSelectElement.h>
 #include <HTMLTextAreaElement.h>
 #include <NodeList.h>
-#include <RenderObject.h>
+#include <RenderElement.h>
 
 
 using namespace WebCore;
@@ -650,7 +650,7 @@ WebFontDescription* DOMElement::font()
     if (!renderer)
         return 0;
 
-    FontDescription fontDescription = renderer->style()->font().fontDescription();
+    FontDescription fontDescription = renderer->style().font().fontDescription();
     AtomicString family = fontDescription.firstFamily();
     
     WebFontDescription *webFontDescription = new WebFontDescription();

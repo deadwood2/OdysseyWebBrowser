@@ -200,7 +200,7 @@ long long callOnMainThreadFab(MainThreadFunction* function, void* context)
 	long long id;
     bool needToSchedule = false;
     {
-        MutexLocker locker(mainThreadFunctionQueueMutex());
+        std::lock_guard<std::mutex> lock(mainThreadFunctionQueueMutex());
         needToSchedule = functionQueue().size() == 0;
 		FunctionWithContext invocation(function, context);
 		id = invocation.id;
@@ -216,7 +216,7 @@ void removeFromMainThreadFab(long long id)
 {
     bool needToSchedule = false;
     {
-        MutexLocker locker(mainThreadFunctionQueueMutex());
+        std::lock_guard<std::mutex> lock(mainThreadFunctionQueueMutex());
 
 		Deque<FunctionWithContext>::const_iterator end = functionQueue().end();
 		for (Deque<FunctionWithContext>::const_iterator it = functionQueue().begin(); it != end; ++it)

@@ -33,7 +33,7 @@ class WebView;
 
 namespace WebCore {
 
-class KURL;
+class URL;
 class Image;
 class SharedBuffer;
 
@@ -48,7 +48,7 @@ public:
     virtual ~TopSitesManager();
     
 	void generateTemplate(WebView *webView, WTF::String originurl);
-	void update(WebView *webView, KURL &url, WTF::String &title);
+	void update(WebView *webView, URL &url, WTF::String &title);
 	void setDisplayMode(displaymode_t mode);
 	void setFilterMode(filtermode_t mode);
 	void setMaxEntries(int maxEntries);
@@ -57,21 +57,21 @@ public:
 protected:	
 	int maxEntries() { return m_maxEntries; }	
 	int entries();
-	bool contains(KURL &url);
-	bool hasScreenshot(KURL &url);
-	bool shouldAppear(KURL &url);
+	bool contains(URL &url);
+	bool hasScreenshot(URL &url);
+	bool shouldAppear(URL &url);
 	int requiredVisitCount();
 
 	// Attributes
-	WTF::String title(KURL &url);
-	WTF::PassRefPtr<Image> screenshot(KURL &url);
-	int visitCount(KURL &url);
-	double lastAccessed(KURL &url);
+	WTF::String title(URL &url);
+	WTF::PassRefPtr<Image> screenshot(URL &url);
+	int visitCount(URL &url);
+	double lastAccessed(URL &url);
 	
 	// Modifications
-	bool shouldAdd(KURL &url);
-	bool addOrUpdate(WebView *webView, KURL &url, WTF::String &title);
-	void remove(KURL &url);
+	bool shouldAdd(URL &url);
+	bool addOrUpdate(WebView *webView, URL &url, WTF::String &title);
+	void remove(URL &url);
 	void pruneOlderEntries();
 
 	int	m_maxEntries;

@@ -1505,7 +1505,7 @@ DEFSMETHOD(OWBWindow_LoadURL)
 	{
 		Object *urlString = (Object *) getv(data->addressbargroup, MUIA_Popstring_String);
 		String url = String((const char *) msg->url).stripWhiteSpace();
-		KURL kurl(ParsedURLString, url);
+		URL kurl(ParsedURLString, url);
 		size_t spacepos = url.find(' ');
 
 		// Handle possible shortcuts
@@ -1754,7 +1754,7 @@ DEFTMETHOD(OWBWindow_SaveAsSource)
 		if(dataSource && !dataSource->isLoading())
 		{
 			char buffer[100];
-			KURL url(ParsedURLString, (char *)getv(data->active_browser, MA_OWBBrowser_URL));
+			URL url(ParsedURLString, (char *)getv(data->active_browser, MA_OWBBrowser_URL));
 			char *name = strdup(decodeURLEscapeSequences(url.lastPathComponent()).latin1().data());
 
 			if(name)
@@ -1811,7 +1811,7 @@ DEFTMETHOD(OWBWindow_SaveAsPDF)
 {
 	GETDATA;
 	char buffer[100];
-	KURL url(ParsedURLString, (char *)getv(data->active_browser, MA_OWBBrowser_URL));
+	URL url(ParsedURLString, (char *)getv(data->active_browser, MA_OWBBrowser_URL));
 	char *name = strdup(decodeURLEscapeSequences(url.lastPathComponent()).latin1().data());
 
 	if(name)
@@ -2231,7 +2231,7 @@ DEFTMETHOD(OWBWindow_InspectPage)
 	{
 		if (Page* page = widget->webView->page())
 		{
-			page->inspectorController()->show();
+			page->inspectorController().show();
 		}
 	}
 
@@ -2831,8 +2831,11 @@ DEFSMETHOD(Search)
 			else
 			{
 				//widget->webView->page()->markAllMatchesForText(searchString, (msg->flags & MV_FindText_CaseSensitive) ? TextCaseSensitive : TextCaseInsensitive, msg->flags & MV_FindText_ShowAllMatches, 512);
+			    FindOptions opts = WrapAround;
+			    if (!(msg->flags & MV_FindText_CaseSensitive)) opts |= CaseInsensitive;
+			    if (msg->flags & MV_FindText_Previous) opts |= Backwards;
 
-				res = widget->webView->page()->findString(searchString, (msg->flags & MV_FindText_CaseSensitive) ? TextCaseSensitive : TextCaseInsensitive, !(msg->flags & MV_FindText_Previous) ? FindDirectionForward : FindDirectionBackward, true);
+				res = widget->webView->page()->findString(searchString, opts);
 			}
 
 			free(converted);

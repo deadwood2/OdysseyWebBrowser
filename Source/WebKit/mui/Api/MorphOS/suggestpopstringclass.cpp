@@ -523,7 +523,7 @@ DEFTMETHOD(SuggestPopString_Initiate)
 			DoMethod(data->lv_entries, MUIM_List_Clear);
 
 			NetworkingContext* context = 0;
-			ResourceRequest request(KURL(KURL(), "http://google.com/complete/search?output=toolbar&ie=UTF-8&oe=UTF-8&q=" + encoded));
+			ResourceRequest request(URL(URL(), "http://google.com/complete/search?output=toolbar&ie=UTF-8&oe=UTF-8&q=" + encoded));
 
 			if(data->resource_handle)
 			{

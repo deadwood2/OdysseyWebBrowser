@@ -98,7 +98,7 @@ String DragData::asURL(Frame*, FilenameConversionPolicy filenamePolicy, String* 
     if (!m_platformDragData->hasURL())
         return String();
     if (filenamePolicy != ConvertFilenames) {
-        KURL url(KURL(), m_platformDragData->url());
+        URL url(URL(), m_platformDragData->url());
         if (url.isLocalFile())
             return String();
     }
@@ -110,12 +110,12 @@ String DragData::asURL(Frame*, FilenameConversionPolicy filenamePolicy, String* 
 }
 
 
-PassRefPtr<DocumentFragment> DragData::asFragment(Frame* frame, PassRefPtr<Range>, bool, bool&) const
+PassRefPtr<DocumentFragment> DragData::asFragment(Frame* frame, Range&, bool, bool&) const
 {
     if (!m_platformDragData->hasMarkup())
         return 0;
 
-    return createFragmentFromMarkup(frame->document(), m_platformDragData->markup(), "");
+    return createFragmentFromMarkup(*frame->document(), m_platformDragData->markup(), "");
 }
 
 }

@@ -44,7 +44,7 @@ String DataObjectMorphOS::text() const
 String DataObjectMorphOS::markup() const
 {
     if (m_range)
-        return createMarkup(m_range.get(), 0, AnnotateForInterchange, false, ResolveNonLocalURLs);
+        return createMarkup(*m_range, 0, AnnotateForInterchange, false, ResolveNonLocalURLs);
     return m_markup;
 }
 
@@ -87,7 +87,7 @@ void DataObjectMorphOS::setURIList(const String& uriListString)
         if (line[0] == '#')
             continue;
 
-        KURL url = KURL(KURL(), line);
+        URL url = URL(URL(), line);
         if (url.isValid()) {
             if (!setURL) {
                 m_url = url;
@@ -99,7 +99,7 @@ void DataObjectMorphOS::setURIList(const String& uriListString)
     }
 }
 
-void DataObjectMorphOS::setURL(const KURL& url, const String& label)
+void DataObjectMorphOS::setURL(const URL& url, const String& label)
 {
     m_url = url;
     m_uriList = url;
@@ -146,7 +146,7 @@ void DataObjectMorphOS::clearAllExceptFilenames()
     m_text = "";
     m_markup = "";
     m_uriList = "";
-    m_url = KURL();
+    m_url = URL();
     m_image = 0;
     m_range = 0;
 }

@@ -75,6 +75,7 @@
 #include "WebMutableURLRequest.h"
 #include "WebNotificationDelegate.h"
 #include "WebPreferences.h"
+#include "WebProgressTrackerClient.h"
 #include "WebResourceLoadDelegate.h"
 #include "WebScriptWorld.h"
 #include "WebViewPrivate.h"
@@ -140,12 +141,12 @@
 #include <ResourceHandleClient.h>
 #include <SchemeRegistry.h>
 #include <ScriptController.h> 
-#include <ScriptValue.h> 
 #include <ScrollbarTheme.h>
 #include <SecurityOrigin.h>
 #include <SecurityPolicy.h>
 #include <Settings.h>
 #include <SimpleFontData.h>
+#include <SubframeLoader.h>
 #include <TypingCommand.h>
 #include <WindowsKeyboardCodes.h>
 
@@ -413,6 +414,7 @@ WebView::WebView()
     pageClients.inspectorClient = m_inspectorClient;
 #endif
     pageClients.loaderClientForMainFrame = new WebFrameLoaderClient;
+    pageClients.progressTrackerClient = new WebProgressTrackerClient;
     m_page = new Page(pageClients);
 #if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
     provideNotification(m_page, new WebDesktopNotificationsDelegate(this));
@@ -1112,7 +1114,7 @@ bool WebView::developerExtrasEnabled() const
     //    return false;
 }
 
-const string& WebView::userAgentForKURL(const string& url)
+const string& WebView::userAgentForURL(const string& url)
 {
     if (m_userAgentOverridden)
 	{
@@ -1134,7 +1136,7 @@ bool WebView::canShowMIMEType(const char* mimeType)
 {
     String type = String(mimeType).lower();
     Frame* coreFrame = core(m_mainFrame);
-    bool allowPlugins = coreFrame && coreFrame->loader().subframeLoader()->allowPlugins(NotAboutToInstantiatePlugin);
+    bool allowPlugins = coreFrame && coreFrame->loader().subframeLoader().allowPlugins(NotAboutToInstantiatePlugin);
     
 	bool canShow = type.isEmpty()
 	|| MIMETypeRegistry::isSupportedImageMIMEType(type)
@@ -1428,7 +1430,7 @@ WebFrame* WebView::focusedFrame()
 }
 WebBackForwardList* WebView::backForwardList()
 {
-    WebBackForwardListPrivate *p = new WebBackForwardListPrivate(static_cast<WebCore::BackForwardListImpl*>(m_page->backForwardList()));
+    WebBackForwardListPrivate *p = new WebBackForwardListPrivate(static_cast<WebCore::BackForwardList*>(m_page->backForward().client()));
     return WebBackForwardList::createInstance(p);
 }
 
@@ -1439,21 +1441,21 @@ void WebView::setMaintainsBackForwardList(bool flag)
 
 bool WebView::goBack()
 {
-    bool hasGoneBack= m_page->goBack();
+    bool hasGoneBack= m_page->backForward().goBack();
     d->repaintAfterNavigationIfNeeded();
     return hasGoneBack;
 }
 
 bool WebView::goForward()
 {
-    bool hasGoneForward = m_page->goForward();
+    bool hasGoneForward = m_page->backForward().goForward();
     d->repaintAfterNavigationIfNeeded();
     return hasGoneForward;
 }
 
 void WebView::goBackOrForward(int steps)
 {
-    m_page->goBackOrForward(steps);
+    m_page->backForward().goBackOrForward(steps);
 }
 
 bool WebView::goToBackForwardItem(WebHistoryItem* item)
@@ -1602,11 +1604,6 @@ const string& WebView::customUserAgent()
     return m_userAgentCustom;
 }
 
-const string& WebView::userAgentForURL(const string& url)
-{
-    return userAgentForKURL(url);
-}
-
 bool WebView::supportsTextEncoding()
 {
     return true;
@@ -1749,9 +1746,13 @@ bool WebView::searchFor(const char* str, bool forward, bool caseFlag, bool wrapF
 {
     if (!m_page)
         return false;
+    FindOptions opts;
+    if (wrapFlag) opts |= WrapAround;
+    if (!caseFlag) opts |= CaseInsensitive;
+    if (!forward)opts |= Backwards;
 
 	String searchString = String::fromUTF8(str);
-	return m_page->findString(searchString, caseFlag ? TextCaseSensitive : TextCaseInsensitive, forward ? FindDirectionForward : FindDirectionBackward, wrapFlag);
+	return m_page->findString(searchString, opts);
 }
 
 bool WebView::active()
@@ -1802,7 +1803,7 @@ bool WebView::addUserScriptToGroup(const char* groupName, WebScriptWorld* world,
     
     pageGroup->addUserScriptToWorld(world->world(),
                                     String(source),
-                                    KURL(KURL(), String(url)),
+                                    URL(URL(), String(url)),
                                     toStringVector(whitelistCount, whitelist),
                                     toStringVector(blacklistCount, blacklist),
                                     injectionTime == WebUserScriptInjectAtDocumentStart ? InjectAtDocumentStart : InjectAtDocumentEnd,
@@ -1823,7 +1824,7 @@ bool WebView::addUserStyleSheetToGroup(const char* groupName, WebScriptWorld* wo
  
     pageGroup->addUserStyleSheetToWorld(world->world(),
                                        String(source),
-                                       KURL(KURL(), String(url)),
+                                       URL(URL(), String(url)),
                                        toStringVector(whitelistCount, whitelist),
 				       toStringVector(blacklistCount, blacklist),
 				       InjectInAllFrames);
@@ -1841,7 +1842,7 @@ bool WebView::removeUserScriptFromGroup(const char* groupName, WebScriptWorld* w
     if (!pageGroup)
         return false;
 
-    pageGroup->removeUserScriptFromWorld(world->world(), KURL(KURL(), url));
+    pageGroup->removeUserScriptFromWorld(world->world(), URL(URL(), url));
     return true;
 }
 
@@ -1856,7 +1857,7 @@ bool WebView::removeUserStyleSheetFromWorld(const char* groupName, WebScriptWorl
     if (!pageGroup)
         return false;
 
-    pageGroup->removeUserStyleSheetFromWorld(world->world(), KURL(KURL(), url));
+    pageGroup->removeUserStyleSheetFromWorld(world->world(), URL(URL(), url));
     return true;
 }
 
@@ -2138,7 +2139,7 @@ WebDragOperation WebView::dragEnter(WebDragData* webDragData, int identity,
 
     m_dropEffect = DropEffectDefault;
     m_dragTargetDispatch = true;
-    DragOperation effect = m_page->dragController().dragEntered(&dragData).operation;
+    DragOperation effect = m_page->dragController().dragEntered(dragData).operation;
     // Mask the operation against the drag source's allowed operations.
     if ((effect & dragData.draggingSourceOperationMask()) != effect)
         effect = DragOperationNone;
@@ -2165,7 +2166,7 @@ WebDragOperation WebView::dragOver(const BalPoint& clientPoint, const BalPoint& 
 
     m_dropEffect = DropEffectDefault;
     m_dragTargetDispatch = true;
-    DragOperation effect = m_page->dragController().dragUpdated(&dragData).operation;
+    DragOperation effect = m_page->dragController().dragUpdated(dragData).operation;
     // Mask the operation against the drag source's allowed operations.
     if ((effect & dragData.draggingSourceOperationMask()) != effect)
         effect = DragOperationNone;
@@ -2190,7 +2191,7 @@ void WebView::dragTargetDragLeave()
         static_cast<DragOperation>(m_operationsAllowed));
 
     m_dragTargetDispatch = true;
-    m_page->dragController().dragExited(&dragData);
+    m_page->dragController().dragExited(dragData);
     m_dragTargetDispatch = false;
 
     m_currentDragData = 0;
@@ -2223,7 +2224,7 @@ void WebView::dragTargetDrop(const BalPoint& clientPoint,
         static_cast<DragOperation>(m_operationsAllowed));
 
     m_dragTargetDispatch = true;
-    m_page->dragController().performDrag(&dragData);
+    m_page->dragController().performDrag(dragData);
     m_dragTargetDispatch = false;
 
     m_currentDragData = 0;
@@ -2288,7 +2289,7 @@ const char* WebView::mainFrameURL()
     if (!request)
         return 0;
 
-    return request->URL();
+    return request->_URL();
 }
 
 DOMDocument* WebView::mainFrameDocument()
@@ -2479,7 +2480,7 @@ void WebView::paste()
 
 void WebView::copyURL(const char* url)
 {
-    m_page->focusController().focusedOrMainFrame().editor().copyURL(KURL(ParsedURLString, url), "");
+    m_page->focusController().focusedOrMainFrame().editor().copyURL(URL(ParsedURLString, url), "");
 }
 
 
@@ -2679,9 +2680,9 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     enabled = preferences->userStyleSheetEnabled();
     if (enabled) {
         str = preferences->userStyleSheetLocation();
-        settings->setUserStyleSheetLocation(KURL(ParsedURLString, str));
+        settings->setUserStyleSheetLocation(URL(ParsedURLString, str));
     } else {
-        settings->setUserStyleSheetLocation(KURL());
+        settings->setUserStyleSheetLocation(URL());
     }
 
     enabled = preferences->shouldPrintBackgrounds();
@@ -2957,10 +2958,10 @@ void WebView::loadBackForwardListFromOtherView(WebView* otherView)
     // It turns out the right combination of behavior is done with the back/forward load
     // type.  (See behavior matrix at the top of WebFramePrivate.)  So we copy all the items
     // in the back forward list, and go to the current one.
-	BackForwardListImpl* backForwardList = static_cast<WebCore::BackForwardListImpl*>(m_page->backForwardList());
+	BackForwardList* backForwardList = static_cast<WebCore::BackForwardList*>(m_page->backForward().client());
     ASSERT(!backForwardList->currentItem()); // destination list should be empty
 
-	BackForwardList* otherBackForwardList = static_cast<WebCore::BackForwardListImpl*>(otherView->m_page->backForwardList());
+	BackForwardClient* otherBackForwardList = static_cast<WebCore::BackForwardList*>(otherView->m_page->backForward().client());
     if (!otherBackForwardList->currentItem())
         return ; // empty back forward list, bail
     
@@ -3220,7 +3221,7 @@ void WebView::addVisitedLinks(const char** visitedURLs, unsigned visitedURLCount
     PageGroup& group = core(this)->group();
 
     for (unsigned i = 0; i < visitedURLCount; ++i)
-        group.addVisitedLink(KURL(KURL(), visitedURLs[i]));
+        group.addVisitedLink(URL(URL(), visitedURLs[i]));
 }
 
 void WebView::stopLoading(bool stop)

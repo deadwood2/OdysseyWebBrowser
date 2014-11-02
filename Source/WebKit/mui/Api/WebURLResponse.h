@@ -117,7 +117,7 @@ public:
      *  URL returns URL
      * @param[out]:  encoding name
      */
-    virtual const char* URL();
+    virtual const char* _URL();
 
 
     /**

@@ -125,7 +125,7 @@ static bool shouldIgnoreScheme(const String& protocol)
     return protocol == "file" || protocol == "local";
 }
 
-void CookieManager::setCookies(const KURL& url, const String& value, CookieFilter filter)
+void CookieManager::setCookies(const URL& url, const String& value, CookieFilter filter)
 {
     CookieLog("CookieManager - Setting cookies\n");
     CookieParser parser(url);
@@ -137,7 +137,7 @@ void CookieManager::setCookies(const KURL& url, const String& value, CookieFilte
     }
 }
 
-void CookieManager::setCookies(const KURL& url, const Vector<String>& cookies, CookieFilter filter)
+void CookieManager::setCookies(const URL& url, const Vector<String>& cookies, CookieFilter filter)
 {
     CookieLog("CookieManager - Setting cookies\n");
     CookieParser parser(url);
@@ -148,7 +148,7 @@ void CookieManager::setCookies(const KURL& url, const Vector<String>& cookies, C
     }
 }
 
-String CookieManager::getCookie(const KURL& url, CookieFilter filter) const
+String CookieManager::getCookie(const URL& url, CookieFilter filter) const
 {
     Vector<ParsedCookie*> rawCookies;
     rawCookies.reserveInitialCapacity(s_maxCookieCountPerHost);
@@ -213,7 +213,7 @@ String CookieManager::generateHtmlFragmentForCookies()
     return result;
 }
 
-void CookieManager::getRawCookies(Vector<ParsedCookie*> &stackOfCookies, const KURL& requestURL, CookieFilter filter) const
+void CookieManager::getRawCookies(Vector<ParsedCookie*> &stackOfCookies, const URL& requestURL, CookieFilter filter) const
 {
     CookieLog("CookieManager - getRawCookies - processing url with domain - %s & protocol: %s & path: %s\n", requestURL.host().utf8().data(), requestURL.protocol().utf8().data(), requestURL.path().utf8().data());
 
@@ -581,7 +581,7 @@ CookieMap* CookieManager::findOrCreateCookieMap(CookieMap* protocolMap, const Pa
     return curMap;
 }
 
-void CookieManager::removeCookieWithName(const KURL& url, const String& cookieName)
+void CookieManager::removeCookieWithName(const URL& url, const String& cookieName)
 {
     // We get all cookies from all domains that domain matches the request domain
     // and delete any cookies with the specified name that path matches the request path
@@ -608,7 +608,7 @@ void CookieManager::removeCookiesFromDomain(const String &protocol, const String
 	if(mdomain.startsWith(".", false))
 		mdomain = mdomain.substring(1);
 	url.append(mdomain);
-	KURL kurl(ParsedURLString, url);
+	URL kurl(ParsedURLString, url);
     Vector<ParsedCookie*> results;
 	getRawCookies(results, kurl, WithHttpOnlyCookies);
 	// Delete the cookies that  match the request domain

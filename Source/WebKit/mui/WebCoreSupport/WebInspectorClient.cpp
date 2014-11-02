@@ -37,13 +37,13 @@
 #include "InspectorController.h"
 #include "Page.h"
 #include <wtf/text/WTFString.h>
-#include "ScriptValue.h"
 #include "WebFrameLoadDelegate.h"
 #include "JSActionDelegate.h"
 #include "WebPreferences.h"
 #include "WebUtils.h"
 #include "WebView.h"
 #include "WebFrame.h"
+#include <inspector/InspectorAgentBase.h>
 
 #include <stdlib.h>
 #include <string>
@@ -112,9 +112,9 @@ WebCore::InspectorFrontendChannel* WebInspectorClient::openInspectorFrontend(Ins
 		m_frontendPage = core(widget->webView);
 		if(m_frontendPage)
 		{
-			OwnPtr<WebInspectorFrontendClient> frontendClient = adoptPtr(new WebInspectorFrontendClient( m_webView, widget->webView, NULL, m_frontendPage, this, adoptPtr(new WebCore::InspectorFrontendClientLocal::Settings()) ));
+		    auto frontendClient = std::make_unique<WebInspectorFrontendClient>(m_webView, widget->webView, m_frontendPage, this, adoptPtr(new WebCore::InspectorFrontendClientLocal::Settings()) );
 			m_frontendClient = frontendClient.get();
-			m_frontendPage->inspectorController()->setInspectorFrontendClient(frontendClient.release());
+			m_frontendPage->inspectorController().setInspectorFrontendClient(std::move(frontendClient));
 			return this;
 		}
     }
@@ -190,11 +190,10 @@ void WebInspectorClient::saveSettings()
 }
 
 
-WebInspectorFrontendClient::WebInspectorFrontendClient(WebView* inspectedWebView, WebView* frontendWebView, WebInspector* webInspector, Page* inspectorPage, WebInspectorClient* inspectorClient, PassOwnPtr<Settings> settings)
-    : InspectorFrontendClientLocal(core(inspectedWebView)->inspectorController(), inspectorPage, settings)
+WebInspectorFrontendClient::WebInspectorFrontendClient(WebView* inspectedWebView, WebView* frontendWebView, Page* inspectorPage, WebInspectorClient* inspectorClient, PassOwnPtr<Settings> settings)
+    : InspectorFrontendClientLocal(&core(inspectedWebView)->inspectorController(), inspectorPage, settings)
     , m_frontendWebView(frontendWebView)
     , m_inspectedWebView(inspectedWebView)
-    , m_webInspector(webInspector)
     , m_inspectorClient(inspectorClient)
     , m_attached(false)
     , m_destroyingInspectorView(false)
@@ -294,7 +293,7 @@ void WebInspectorFrontendClient::destroyInspectorView(bool notifyInspectorContro
 		D(kprintf("disconnectFrontend\n"));
 		if(m_inspectedWebView)
 		{
-			core(m_inspectedWebView)->inspectorController()->disconnectFrontend();
+			core(m_inspectedWebView)->inspectorController().disconnectFrontend(Inspector::InspectorDisconnectReason::InspectorDestroyed);
 		}
 		if(m_inspectorClient)
 		{

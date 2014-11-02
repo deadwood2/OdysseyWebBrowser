@@ -125,7 +125,7 @@ bool ResourceHandle::start()
 #if OS(MORPHOS)
     if ((!d->m_user.isEmpty() || !d->m_pass.isEmpty()) && !shouldUseCredentialStorage()) {
         // Credentials for ftp can only be passed in URL, the didReceiveAuthenticationChallenge delegate call won't be made.
-        KURL urlWithCredentials(d->m_firstRequest.url());
+        URL urlWithCredentials(d->m_firstRequest.url());
         urlWithCredentials.setUser(d->m_user);
         urlWithCredentials.setPass(d->m_pass);
         d->m_firstRequest.setURL(urlWithCredentials);
@@ -191,7 +191,7 @@ void ResourceHandle::platformSetDefersLoading(bool defers)
 #if OS(MORPHOS)
 void ResourceHandle::setCookies()
 {
-    KURL url = getInternal()->m_firstRequest.url();
+    URL url = getInternal()->m_firstRequest.url();
     if ((cookieManager().cookiePolicy() == CookieStorageAcceptPolicyOnlyFromMainDocumentDomain)
       && (getInternal()->m_firstRequest.firstPartyForCookies() != url)
       && cookieManager().getCookie(url, WithHttpOnlyCookies).isEmpty())
@@ -200,14 +200,14 @@ void ResourceHandle::setCookies()
     checkAndSendCookies(url);
 }
 
-void ResourceHandle::checkAndSendCookies(KURL& url)
+void ResourceHandle::checkAndSendCookies(URL& url)
 {
     // Cookies are a part of the http protocol only
     if (!String(d->m_url).startsWith("http"))
 	return;
 
     if (url.isEmpty())
-        url = KURL(ParsedURLString, d->m_url);
+        url = URL(ParsedURLString, d->m_url);
 
     // Prepare a cookie header if there are cookies related to this url.
     String cookiePairs = cookieManager().getCookie(url, WithHttpOnlyCookies);

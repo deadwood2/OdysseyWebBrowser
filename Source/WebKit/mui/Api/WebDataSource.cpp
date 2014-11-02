@@ -42,7 +42,7 @@
 #include <Document.h>
 #include <Frame.h>
 #include <FrameLoader.h>
-#include <KURL.h>
+#include <URL.h>
 #include <ResourceBuffer.h>
 
 using namespace WebCore;
@@ -156,7 +156,7 @@ String WebDataSource::pageTitle()
 
 String WebDataSource::unreachableURL()
 {
-    KURL unreachableURL = m_loader->unreachableURL();
+    URL unreachableURL = m_loader->unreachableURL();
     return unreachableURL.string();
 }
 

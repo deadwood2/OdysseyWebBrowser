@@ -317,7 +317,7 @@ void WebDownload::init(ResourceHandle* handle, const ResourceRequest* request, c
 	m_priv->originURL = ((WebFrameNetworkingContext *)handle->getInternal()->m_context.get())->url();
 }
 
-void WebDownload::init(const KURL& url, TransferSharedPtr<WebDownloadDelegate> delegate)
+void WebDownload::init(const URL& url, TransferSharedPtr<WebDownloadDelegate> delegate)
 {
     m_delegate = delegate;
 
@@ -334,7 +334,7 @@ void WebDownload::init(const KURL& url, TransferSharedPtr<WebDownloadDelegate> d
     m_priv->requestUri = String(url.string());
 }
 
-void WebDownload::init(const KURL& url, const String& originURL, TransferSharedPtr<WebDownloadDelegate> delegate)
+void WebDownload::init(const URL& url, const String& originURL, TransferSharedPtr<WebDownloadDelegate> delegate)
 {
     m_delegate = delegate;
 
@@ -400,14 +400,14 @@ WebDownload* WebDownload::createInstance(ResourceHandle* handle, const ResourceR
     return instance;
 }
 
-WebDownload* WebDownload::createInstance(const KURL& url, TransferSharedPtr<WebDownloadDelegate> delegate)
+WebDownload* WebDownload::createInstance(const URL& url, TransferSharedPtr<WebDownloadDelegate> delegate)
 {
     WebDownload* instance = new WebDownload();
     instance->init(url, delegate);
     return instance;
 }
 
-WebDownload* WebDownload::createInstance(const KURL& url, const String& originURL, TransferSharedPtr<WebDownloadDelegate> delegate)
+WebDownload* WebDownload::createInstance(const URL& url, const String& originURL, TransferSharedPtr<WebDownloadDelegate> delegate)
 {
     WebDownload* instance = new WebDownload();
 	instance->init(url, originURL, delegate);

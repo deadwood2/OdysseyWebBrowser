@@ -81,29 +81,6 @@ bool WebHistoryItem::hasURLString()
     return d->m_historyItem->urlString().isEmpty() ? false : true;
 }
 
-int WebHistoryItem::visitCount()
-{
-    return d->m_historyItem->visitCount();
-}
-
-void WebHistoryItem::setVisitCount(int count)
-{
-    d->m_historyItem->setVisitCount(count);
-}
-
-void WebHistoryItem::mergeAutoCompleteHints(WebHistoryItem* otherItem)
-{
-    if (!otherItem)
-        return;
-
-    d->m_historyItem->mergeAutoCompleteHints(otherItem->getPrivateItem()->m_historyItem.get());
-}
-
-void WebHistoryItem::setLastVisitedTimeInterval(double time)
-{
-    d->m_historyItem->setLastVisitedTime(time);
-}
-
 void WebHistoryItem::setTitle(const char* title)
 {
     d->m_historyItem->setTitle(title);
@@ -160,14 +137,14 @@ std::vector<WebHistoryItem*> WebHistoryItem::children()
 void WebHistoryItem::initWithURLString(const char* urlString, const char* title, double lastVisited)
 {
     historyItemWrappers().remove(d->m_historyItem.get());
-    d->m_historyItem = HistoryItem::create(urlString, title, lastVisited);
+    d->m_historyItem = HistoryItem::create(urlString, title);
     historyItemWrappers().set(d->m_historyItem.get(), this);
 }
 
 void WebHistoryItem::initWithURLString(const String & urlString, const String & title, double lastVisited)
 {
     historyItemWrappers().remove(d->m_historyItem.get());
-    d->m_historyItem = HistoryItem::create(urlString, title, lastVisited);
+    d->m_historyItem = HistoryItem::create(urlString, title);
     historyItemWrappers().set(d->m_historyItem.get(), this);
 }
 
@@ -184,11 +161,6 @@ const char* WebHistoryItem::URLString()
 const char* WebHistoryItem::title()
 {
 	return strdup(d->m_historyItem->title().utf8().data());
-}
-
-double WebHistoryItem::lastVisitedTimeInterval()
-{
-    return d->m_historyItem->lastVisitedTime();
 }
 
 void WebHistoryItem::setAlternateTitle(const char* title)
@@ -209,15 +181,5 @@ bool WebHistoryItem::lastVisitWasFailure()
 void WebHistoryItem::setLastVisitWasFailure(bool wasFailure)
 {
     d->m_historyItem->setLastVisitWasFailure(wasFailure);
-}
-
-bool WebHistoryItem::lastVisitWasHTTPNonGet() const
-{
-    return d->m_historyItem->lastVisitWasHTTPNonGet();
-}
-
-void WebHistoryItem::setLastVisitWasHTTPNonGet(bool wasHttpNonGet)
-{
-    d->m_historyItem->setLastVisitWasHTTPNonGet(wasHttpNonGet);
 }
 

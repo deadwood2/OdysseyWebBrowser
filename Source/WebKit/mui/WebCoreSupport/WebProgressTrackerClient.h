@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Pleyo.  All rights reserved.
+ * Copyright (C) 2014 Krzysztof Smiechowicz.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,18 +26,20 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef WebBackForwardListPrivate_H
-#define WebBackForwardListPrivate_H
+#ifndef WebProgressTrackerClient_h
+#define WebProgressTrackerClient_h
 
-#include <wtf/RefPtr.h>
-#include <BackForwardList.h>
+#include "ProgressTrackerClient.h"
 
-class WebBackForwardListPrivate {
+class WebProgressTrackerClient : public WebCore::ProgressTrackerClient {
 public:
-	WebBackForwardListPrivate(PassRefPtr<WebCore::BackForwardList> backForwardList) : m_backForwardList(backForwardList) {}
+    explicit WebProgressTrackerClient() {};
 
-	RefPtr<WebCore::BackForwardList> m_backForwardList;
+private:
+
+    virtual void progressStarted(WebCore::Frame&) override {};
+    virtual void progressEstimateChanged(WebCore::Frame&) override{};
+    virtual void progressFinished(WebCore::Frame&) override {};
 };
 
-#endif
-
+#endif // WebProgressTrackerClient_h

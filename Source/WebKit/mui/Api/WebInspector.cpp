@@ -69,7 +69,7 @@ void WebInspector::show()
 {
     if (m_webView)
         if (Page* page = m_webView->page())
-            page->inspectorController()->show();
+            page->inspectorController().show();
 }
 
 void WebInspector::showConsole()
@@ -82,7 +82,7 @@ void WebInspector::close()
 {
     if (m_webView)
         if (Page* page = m_webView->page())
-            page->inspectorController()->close();
+            page->inspectorController().close();
 }
 
 void WebInspector::attach()
@@ -144,7 +144,7 @@ bool WebInspector::isJavaScriptProfilingEnabled()
     if (!page)
         return false;
 
-    return page->inspectorController()->profilerEnabled();
+    return page->inspectorController().profilerEnabled();
 }
 
 void WebInspector::setJavaScriptProfilingEnabled(bool enabled)
@@ -156,7 +156,7 @@ void WebInspector::setJavaScriptProfilingEnabled(bool enabled)
     if (!page)
         return ;
 
-    page->inspectorController()->setProfilerEnabled(enabled); 
+    page->inspectorController().setProfilerEnabled(enabled); 
 }
 
 void WebInspector::evaluateInFrontend(long callId, const char* script)
@@ -169,7 +169,7 @@ void WebInspector::evaluateInFrontend(long callId, const char* script)
         return;
 
     String inspectorScript(script, strlen(script));
-    page->inspectorController()->evaluateForTestInFrontend(callId, inspectorScript);
+    page->inspectorController().evaluateForTestInFrontend(callId, inspectorScript);
     return;
 }
 

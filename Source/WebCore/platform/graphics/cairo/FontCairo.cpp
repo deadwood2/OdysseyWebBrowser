@@ -114,10 +114,10 @@ bool Font::canExpandAroundIdeographsInComplexText()
     return false;
 }
 
-void Font::drawComplexText(GraphicsContext* context, const TextRun& run, const FloatPoint& point, int from, int to) const
+float Font::drawComplexText(GraphicsContext* context, const TextRun& run, const FloatPoint& point, int from, int to) const
 {
 #warning "bullshit"
-    drawSimpleText(context, run, point, from,  to);
+    return drawSimpleText(context, run, point, from,  to);
 }
 
 void Font::drawEmphasisMarksForComplexText(GraphicsContext* /* context */, const TextRun& /* run */, const AtomicString& /* mark */, const FloatPoint& /* point */, int /* fm */, int /* to */) const

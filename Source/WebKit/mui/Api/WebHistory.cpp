@@ -37,7 +37,6 @@
 #include "SQLiteStatement.h"
 #include <wtf/CurrentTime.h>
 #include "wtf/Vector.h"
-#include "KURL.h"
 #include "PageGroup.h"
 #include "HistoryItem.h"
 #include "IconDatabase.h"

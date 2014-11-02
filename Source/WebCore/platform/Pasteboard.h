@@ -190,7 +190,7 @@ public:
     void setDragImage(DragImageRef, const IntPoint& hotSpot);
 #endif
 
-#if PLATFORM(WIN)
+#if PLATFORM(WIN) || PLATFORM(MUI)
     PassRefPtr<DocumentFragment> documentFragment(Frame&, Range&, bool allowPlainText, bool& chosePlainText); // FIXME: Layering violation.
     void writeImage(Element&, const URL&, const String& title); // FIXME: Layering violation.
     void writeSelection(Range&, bool canSmartCopyOrDelete, Frame&, ShouldSerializeSelectedTextForDataTransfer = DefaultSelectedTextType); // FIXME: Layering violation.
@@ -205,6 +205,7 @@ public:
     static PassOwnPtr<Pasteboard> create(PassRefPtr<DataObjectMorphOS>, int = 0);
     static PassOwnPtr<Pasteboard> create(int);
     PassRefPtr<DataObjectMorphOS> dataObject() const;
+    static PassOwnPtr<Pasteboard> createForGlobalSelection();
 #endif
 
 #if PLATFORM(IOS)
@@ -271,7 +272,7 @@ extern const char* const WebArchivePboardType;
 extern const char* const WebURLNamePboardType;
 #endif
 
-#if !PLATFORM(GTK)
+#if !(PLATFORM(GTK) || PLATFORM(MUI))
 
 inline Pasteboard::~Pasteboard()
 {

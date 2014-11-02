@@ -40,11 +40,10 @@
 #include "ObserverServiceData.h"
 
 #include <wtf/HashMap.h>
-#include <wtf/OwnArrayPtr.h>
 #include <map>
 
 #if USE(CURL)
-#include "KURL.h"
+#include "URL.h"
 #include "ResourceHandleManager.h"
 #include <CookieManager.h>
 #endif

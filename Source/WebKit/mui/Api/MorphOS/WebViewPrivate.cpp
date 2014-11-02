@@ -65,7 +65,6 @@
 #include "PlatformKeyboardEvent.h"
 #include "PlatformMouseEvent.h"
 #include "PlatformWheelEvent.h"
-#include "ScriptGCEvent.h"
 #include "Scrollbar.h"
 #include "Settings.h"
 #include "SharedTimer.h"
@@ -268,7 +267,7 @@ void MorphOSWebFrameDelegate::didStartProvisionalLoad(WebFrame* webFrame)
 	if (widget && widget->browser)
 	{
 		char *url = (char*) webFrame->url();
-		KURL u(ParsedURLString, url);
+		URL u(ParsedURLString, url);
 
 		DoMethod(app, MM_URLPrefsGroup_ApplySettingsForURL, url, widget->webView);
 
@@ -312,7 +311,7 @@ void MorphOSWebFrameDelegate::didCommitLoad(WebFrame* webFrame)
 	if (widget && widget->browser)
 	{
 		char *url = (char*) webFrame->url();
-		KURL u(ParsedURLString, url);
+		URL u(ParsedURLString, url);
 
 		DoMethod(widget->browser, MM_OWBBrowser_DidCommitLoad, webFrame);
 
@@ -352,7 +351,7 @@ void MorphOSWebFrameDelegate::didFinishLoad(WebFrame* webFrame)
 	if (widget && widget->browser)
 	{
 		char *url = (char *) mainFrame->url();
-        KURL u(ParsedURLString, url);
+        URL u(ParsedURLString, url);
 		Frame* coreFrame = core(mainFrame);
 		String title = coreFrame->loader().documentLoader()->title().string();
 
@@ -642,7 +641,7 @@ MorphOSResourceLoadDelegate::~MorphOSResourceLoadDelegate()
 
 void MorphOSResourceLoadDelegate::identifierForInitialRequest(WebView* webView, WebMutableURLRequest* request, WebDataSource* dataSource, unsigned long identifier)
 {
-	const char *url = request->URL();
+	const char *url = request->_URL();
 	kprintf("MorphOSResourceLoadDelegate::identifierForInitialRequest [%d - %s ]\n", identifier, url);
 	free((char *)url);
 }
@@ -1165,7 +1164,7 @@ bool WebViewPrivate::onKeyDown(BalEventKey event)
 			case RAWKEY_F8:
 			{
 				// Testing key
-				//m_webView->page()->settings()->setUserStyleSheetLocation(KURL(ParsedURLString, "file:///resource/rss.css"));
+				//m_webView->page()->settings()->setUserStyleSheetLocation(URL(ParsedURLString, "file:///resource/rss.css"));
 				m_webView->screenshot("ram:owb_screenshot.png");
 
 				break;
@@ -1201,10 +1200,7 @@ bool WebViewPrivate::onKeyDown(BalEventKey event)
 
 				kprintf("Statistics about JavaScript:\n");
 
-				HeapInfo heapInfo;
-				ScriptGCEvent::getHeapSize(heapInfo);
-
-				kprintf("\theap: used %d - total %d\n", heapInfo.usedJSHeapSize, heapInfo.totalJSHeapSize);
+				kprintf("\theap: used %d - total %d\n", JSDOMWindow::commonVM()->heap.size(), JSDOMWindow::commonVM()->heap.capacity());
 
 				kprintf("Running Garbage collector now.\n");
 				
@@ -1346,7 +1342,7 @@ bool WebViewPrivate::onMouseButtonUp(BalEventButton event)
 
 		if (!result.innerNonSharedNode()) return handled;
 
-		KURL urlToLoad = result.absoluteLinkURL();
+		URL urlToLoad = result.absoluteLinkURL();
 
 		if(!urlToLoad.string().isEmpty())
 		{

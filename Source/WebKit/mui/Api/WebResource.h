@@ -38,8 +38,7 @@
  * - $Date: 2013/03/06 00:13:17 $
  */
 #include "BALBase.h"
-#include <KURL.h>
-#include <KURL.h>
+#include <URL.h>
 #include <wtf/text/WTFString.h>
 #include <ResourceResponse.h>
 #include <SharedBuffer.h>
@@ -57,7 +56,7 @@ protected:
     /**
      * WebResource constructor
      */
-    WebResource(PassRefPtr<WebCore::SharedBuffer> data, const WebCore::KURL& url, const WTF::String& mimeType, const WTF::String& textEncodingName, const WTF::String& frameName);
+    WebResource(PassRefPtr<WebCore::SharedBuffer> data, const WebCore::URL& url, const WTF::String& mimeType, const WTF::String& textEncodingName, const WTF::String& frameName);
 
 public:
 
@@ -87,7 +86,7 @@ public:
      *  URL 
      * @result The URL of the resource
      */
-    virtual WTF::String URL();
+    virtual WTF::String _URL();
 
     /**
      *  MIMEType 
@@ -109,7 +108,7 @@ public:
 
 private:
     RefPtr<WebCore::SharedBuffer> m_data;
-    WebCore::KURL m_url;
+    WebCore::URL m_url;
     WTF::String m_mimeType;
     WTF::String m_textEncodingName;
     WTF::String m_frameName;

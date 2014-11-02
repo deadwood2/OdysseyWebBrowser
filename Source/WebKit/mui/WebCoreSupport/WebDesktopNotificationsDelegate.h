@@ -28,7 +28,6 @@
 
 #if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
 
-#include "KURL.h"
 #include "Notification.h"
 #include "NotificationClient.h"
 
@@ -36,7 +35,6 @@ class WebView;
 
 namespace WebCore {
     class Document;
-    class KURL;
     class SecurityOrigin;
 }
 

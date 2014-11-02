@@ -29,7 +29,7 @@
 #include "CachedResource.h"
 #include <wtf/text/CString.h>
 #include "TextEncoding.h"
-#include "RegularExpression.h"
+#include <yarr/RegularExpression.h>
 #include <wtf/HashMap.h>
 #include <wtf/Vector.h>
 
@@ -46,14 +46,14 @@ namespace WebCore {
 
 class AdPattern {
 public:
-	AdPattern() : m_string(""), m_re(RegularExpression("", TextCaseInsensitive)), m_types(0) { }
-	AdPattern(String str, const RegularExpression& re, int types)
+	AdPattern() : m_string(""), m_re(JSC::Yarr::RegularExpression("", TextCaseInsensitive)), m_types(0) { }
+	AdPattern(String str, const JSC::Yarr::RegularExpression& re, int types)
 		: m_string(str), m_re(re), m_types(types) { }
     bool matches(const String& target, int type) {
 		return ((1<<type) & m_types) && m_re.match(target) >= 0;
     }
 	String m_string;
-    RegularExpression m_re;
+    JSC::Yarr::RegularExpression m_re;
 private:
     unsigned int m_types;
 };
@@ -132,20 +132,20 @@ AdPattern* PatternMatcher::addPattern(const String& pat)
     }
     if (pattern.startsWith("/") && pattern.endsWith("/")) {
         pattern = pattern.substring(1, pattern.length()-2);
-		ret = new AdPattern(pat, RegularExpression(pattern, TextCaseInsensitive), types);
+		ret = new AdPattern(pat, JSC::Yarr::RegularExpression(pattern, TextCaseInsensitive), types);
 		m_patterns.append(ret);
 		return ret;
     }
     int pos = 0;
-	RegularExpression nonchar("\\W", TextCaseInsensitive);
+	JSC::Yarr::RegularExpression nonchar("\\W", TextCaseInsensitive);
 	while ((pos = nonchar.match(pattern, pos)) >= 0) {
         pattern.insert("\\", pos);
         pos += 2;
     }
 
-	replace(pattern, RegularExpression("\\\\\\*", TextCaseInsensitive), ".*");
-	replace(pattern, RegularExpression("^\\\\\\|", TextCaseInsensitive), "^");
-	replace(pattern, RegularExpression("\\\\\\|$", TextCaseInsensitive), "$");
+	replace(pattern, JSC::Yarr::RegularExpression("\\\\\\*", TextCaseInsensitive), ".*");
+	replace(pattern, JSC::Yarr::RegularExpression("^\\\\\\|", TextCaseInsensitive), "^");
+	replace(pattern, JSC::Yarr::RegularExpression("\\\\\\|$", TextCaseInsensitive), "$");
 
 	/*
     String text = pat.left(delim).lower();
@@ -159,7 +159,7 @@ AdPattern* PatternMatcher::addPattern(const String& pat)
         }
     }
 	*/
-	ret = new AdPattern(pat, RegularExpression(pattern, TextCaseInsensitive), types);
+	ret = new AdPattern(pat, JSC::Yarr::RegularExpression(pattern, TextCaseInsensitive), types);
 	m_patterns.append(ret);
 	return ret;
 }
@@ -215,19 +215,19 @@ bool PatternMatcher::updatePattern(const String& pat, AdPattern* newpattern)
     }
     if (pattern.startsWith("/") && pattern.endsWith("/")) {
         pattern = pattern.substring(1, pattern.length()-2);
-		*newpattern = AdPattern(pat, RegularExpression(pattern, TextCaseInsensitive), types);
+		*newpattern = AdPattern(pat, JSC::Yarr::RegularExpression(pattern, TextCaseInsensitive), types);
 		return true;
     }
     int pos = 0;
-	RegularExpression nonchar("\\W", TextCaseInsensitive);
+	JSC::Yarr::RegularExpression nonchar("\\W", TextCaseInsensitive);
 	while ((pos = nonchar.match(pattern, pos)) >= 0) {
         pattern.insert("\\", pos);
         pos += 2;
     }
 
-	replace(pattern, RegularExpression("\\\\\\*", TextCaseInsensitive), ".*");
-	replace(pattern, RegularExpression("^\\\\\\|", TextCaseInsensitive), "^");
-	replace(pattern, RegularExpression("\\\\\\|$", TextCaseInsensitive), "$");
+	replace(pattern, JSC::Yarr::RegularExpression("\\\\\\*", TextCaseInsensitive), ".*");
+	replace(pattern, JSC::Yarr::RegularExpression("^\\\\\\|", TextCaseInsensitive), "^");
+	replace(pattern, JSC::Yarr::RegularExpression("\\\\\\|$", TextCaseInsensitive), "$");
 
 	/*
     String text = pat.left(delim).lower();
@@ -241,7 +241,7 @@ bool PatternMatcher::updatePattern(const String& pat, AdPattern* newpattern)
         }
     }
 	*/
-	*newpattern = AdPattern(pat, RegularExpression(pattern, TextCaseInsensitive), types);
+	*newpattern = AdPattern(pat, JSC::Yarr::RegularExpression(pattern, TextCaseInsensitive), types);
 	return true;
 }
 
@@ -440,7 +440,7 @@ void removeCacheEntry(void *ptr, int type)
 	}
 }
 
-void blockResource(const KURL& url, int type, int mode)
+void blockResource(const URL& url, int type, int mode)
 {
 	String target = url.string();
 	String typeOpt = "";
@@ -508,7 +508,7 @@ void blockResource(const KURL& url, int type, int mode)
     flushCache();
 }
 
-bool shouldBlock(const KURL& url, int type)
+bool shouldBlock(const URL& url, int type)
 {
     if (url.protocolIs("data")) { return false; }
     if (!ad_block_enabled) { return false; }

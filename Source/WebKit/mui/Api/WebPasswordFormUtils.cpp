@@ -46,7 +46,6 @@
 #include "HTMLFormElement.h"
 #include "HTMLInputElement.h"
 #include "HTMLNames.h"
-#include "KURL.h"
 
 #include "DOMUtilitiesPrivate.h"
 

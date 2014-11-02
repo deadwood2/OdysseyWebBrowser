@@ -365,7 +365,7 @@ static String keyIdentifierForAmigaKeyCode(struct IntuiMessage *im)
 					else if(c == 0xA4) // Euro
 						return "U+20AC";
 					else
-						return String::format("U+%04X", WTF::Unicode::toUpper((UChar) c));
+						return String::format("U+%04X", u_toupper((UChar) c));
 				}	 
 			}
         }
