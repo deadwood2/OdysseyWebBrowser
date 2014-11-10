@@ -451,6 +451,8 @@
 #endif
 #elif OS(WINDOWS)
 #define WTF_PLATFORM_WIN 1
+#elif OS(AROS)
+#define WTF_PLATFORM_MUI 1
 #endif
 
 /* PLATFORM(COCOA) */
@@ -495,6 +497,13 @@
 
 #if PLATFORM(GTK) && !defined(GTK_API_VERSION_2)
 #define GDK_VERSION_MIN_REQUIRED GDK_VERSION_3_6
+#endif
+
+#if PLATFORM(MUI)
+#define WTF_USE_CAIRO 1
+#define WTF_USE_FREETYPE 1
+#define WTF_USE_CURL 1
+#define WTF_USE_CURL_OPENSSL 1
 #endif
 
 /* On Windows, use QueryPerformanceCounter by default */
@@ -599,7 +608,7 @@
 #endif
 
 #if !defined(HAVE_VASPRINTF)
-#if !COMPILER(MSVC) && !COMPILER(MINGW)
+#if !COMPILER(MSVC) && !COMPILER(MINGW) && !(COMPILER(GCC) && OS(AROS))
 #define HAVE_VASPRINTF 1
 #endif
 #endif

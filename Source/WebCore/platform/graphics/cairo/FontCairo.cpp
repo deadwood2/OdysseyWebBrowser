@@ -33,6 +33,7 @@
 
 #if USE(CAIRO)
 
+#include "Logging.h"
 #include "AffineTransform.h"
 #include "CairoUtilities.h"
 #include "Font.h"
@@ -44,6 +45,10 @@
 #include "PlatformContextCairo.h"
 #include "PlatformPathCairo.h"
 #include "ShadowBlur.h"
+
+#if OS(MORPHOS)
+#include <clib/debug_protos.h>
+#endif
 
 namespace WebCore {
 
@@ -96,6 +101,49 @@ static void drawGlyphsShadow(GraphicsContext* graphicsContext, const FloatPoint&
         shadow.endShadowLayer(graphicsContext);
     }
 }
+
+#if OS(MORPHOS)
+
+bool Font::canReturnFallbackFontsForComplexText()
+{
+    return false;
+}
+
+bool Font::canExpandAroundIdeographsInComplexText()
+{
+    return false;
+}
+
+void Font::drawComplexText(GraphicsContext* context, const TextRun& run, const FloatPoint& point, int from, int to) const
+{
+#warning "bullshit"
+    drawSimpleText(context, run, point, from,  to);
+}
+
+void Font::drawEmphasisMarksForComplexText(GraphicsContext* /* context */, const TextRun& /* run */, const AtomicString& /* mark */, const FloatPoint& /* point */, int /* fm */, int /* to */) const
+{
+#warning "not implemented"
+//    kprintf("Font::drawEmphasisMarksForComplexText not implemented\n");
+}
+
+float Font::floatWidthForComplexText(const TextRun& run, HashSet<const SimpleFontData*>* fallbackFonts, GlyphOverflow* glyphOverflow) const
+{
+#warning "bullshit"
+    return floatWidthForSimpleText(run, fallbackFonts, glyphOverflow);
+}
+
+int Font::offsetForPositionForComplexText(const TextRun& run, float x, bool includePartialGlyphs) const
+{
+#warning "bullshit"
+    return offsetForPositionForSimpleText(run, x, includePartialGlyphs);
+}
+
+FloatRect Font::selectionRectForComplexText(const TextRun& run, const FloatPoint& point, int h, int from, int to) const
+{
+#warning "bullshit"
+    return selectionRectForSimpleText(run, point, h, from, to);
+}
+#endif
 
 void FontCascade::drawGlyphs(GraphicsContext* context, const Font* font, const GlyphBuffer& glyphBuffer,
     int from, int numGlyphs, const FloatPoint& point) const

@@ -43,6 +43,8 @@
 #include <string.h>
 #include <wtf/text/CString.h>
 
+#include <clib/debug_protos.h>
+
 namespace WebCore {
 
 PluginPackage::~PluginPackage()
@@ -123,6 +125,7 @@ PluginPackage::PluginPackage(const String& path, const time_t& lastModified)
     m_parentDirectory = m_path.left(m_path.length() - m_fileName.length() - 1);
 }
 
+#if !PLATFORM(MUI)
 void PluginPackage::unload()
 {
     if (!m_isLoaded)
@@ -137,6 +140,7 @@ void PluginPackage::unload()
 
     unloadWithoutShutdown();
 }
+#endif
 
 void PluginPackage::unloadWithoutShutdown()
 {
@@ -152,7 +156,11 @@ void PluginPackage::unloadWithoutShutdown()
     // original window proc. If we free the plugin library from here, we will jump back
     // to code we just freed when we return, so delay calling FreeLibrary at least until
     // the next message loop
-    freeLibrarySoon();
+#if !OS(MORPHOS)
+	freeLibrarySoon();
+#else
+	freeLibraryTimerFired(NULL);
+#endif
 
     m_isLoaded = false;
 }
@@ -275,6 +283,7 @@ static bool NPN_Invoke(NPP npp, NPObject* o, NPIdentifier methodName, const NPVa
 
 void PluginPackage::initializeBrowserFuncs()
 {
+#if ENABLE(NETSCAPE_PLUGIN_API)
     memset(&m_browserFuncs, 0, sizeof(m_browserFuncs));
     m_browserFuncs.size = sizeof(m_browserFuncs);
     m_browserFuncs.version = NPVersion();
@@ -327,11 +336,11 @@ void PluginPackage::initializeBrowserFuncs()
     m_browserFuncs.construct = _NPN_Construct;
     m_browserFuncs.getvalueforurl = NPN_GetValueForURL;
     m_browserFuncs.setvalueforurl = NPN_SetValueForURL;
-    m_browserFuncs.getauthenticationinfo = NPN_GetAuthenticationInfo;
+    m_browserFuncs.getauthenticationinfo = NPN_GetAuthenticationInfo;   
 
     m_browserFuncs.popupcontextmenu = NPN_PopUpContextMenu;
-}
 #endif // ENABLE(NETSCAPE_PLUGIN_API)
+}
 
 int PluginPackage::compareFileVersion(const PlatformModuleVersion& compareVersion) const
 {

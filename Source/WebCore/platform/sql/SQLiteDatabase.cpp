@@ -36,6 +36,8 @@
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
 
+#include <unistd.h>
+
 namespace WebCore {
 
 static const char notOpenErrorMessage[] = "database is not open";
@@ -131,7 +133,11 @@ void SQLiteDatabase::interrupt()
         if (!m_db)
             return;
         sqlite3_interrupt(m_db);
+#if PLATFORM(MUI)
+        usleep(10);
+#else
         std::this_thread::yield();
+#endif
     }
 
     m_lockingMutex.unlock();
