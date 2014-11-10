@@ -29,6 +29,7 @@
 #ifndef ResourceLoader_h
 #define ResourceLoader_h
 
+#include "ResourceHandle.h"
 #include "ResourceHandleClient.h"
 #include "ResourceLoaderOptions.h"
 #include "ResourceLoaderTypes.h"
@@ -146,6 +147,13 @@ public:
     void unschedule(WTF::SchedulePair&);
 #endif
 
+#if PLATFORM(MUI)
+    void setHandle(PassRefPtr<ResourceHandle> handle)
+    {
+        m_handle = 0;
+        m_handle = handle;
+    }
+#endif
 protected:
     ResourceLoader(Frame*, ResourceLoaderOptions);
 

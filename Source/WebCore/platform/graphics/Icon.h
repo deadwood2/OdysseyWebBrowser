@@ -36,6 +36,11 @@ OBJC_CLASS NSImage;
 typedef struct HICON__* HICON;
 #elif PLATFORM(GTK)
 typedef struct _GdkPixbuf GdkPixbuf;
+#elif PLATFORM(MUI)
+#include "BALBase.h"
+namespace WebCore {
+class Image;
+}
 #endif
 
 namespace WebCore {
@@ -73,6 +78,9 @@ private:
 #elif PLATFORM(GTK)
     Icon();
     GdkPixbuf* m_icon;
+#elif PLATFORM(MUI)
+    Icon();
+    RefPtr<Image> m_icon;
 #elif PLATFORM(EFL)
     Icon();
 #endif

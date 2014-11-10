@@ -582,7 +582,6 @@ void FrameLoader::didExplicitOpen()
     m_frame.navigationScheduler().cancel();
 }
 
-
 void FrameLoader::cancelAndClear()
 {
     m_frame.navigationScheduler().cancel();
@@ -3064,6 +3063,7 @@ bool FrameLoader::shouldInterruptLoadForXFrameOptions(const String& content, con
     XFrameOptionsDisposition disposition = parseXFrameOptionsHeader(content);
 
     switch (disposition) {
+#if !PLATFORM(MUI)
     case XFrameOptionsSameOrigin: {
         RefPtr<SecurityOrigin> origin = SecurityOrigin::create(url);
         if (!origin->isSameSchemeHostPort(topFrame.document()->securityOrigin()))
@@ -3074,13 +3074,16 @@ bool FrameLoader::shouldInterruptLoadForXFrameOptions(const String& content, con
         }
         return false;
     }
+#endif 
     case XFrameOptionsDeny:
         return true;
     case XFrameOptionsAllowAll:
         return false;
+#if !PLATFORM(MUI)
     case XFrameOptionsConflict:
         m_frame.document()->addConsoleMessage(MessageSource::JS, MessageLevel::Error, "Multiple 'X-Frame-Options' headers with conflicting values ('" + content + "') encountered when loading '" + url.stringCenterEllipsizedToLength() + "'. Falling back to 'DENY'.", requestIdentifier);
         return true;
+#endif
     case XFrameOptionsInvalid:
         m_frame.document()->addConsoleMessage(MessageSource::JS, MessageLevel::Error, "Invalid 'X-Frame-Options' header encountered when loading '" + url.stringCenterEllipsizedToLength() + "': '" + content + "' is not a recognized directive. The header will be ignored.", requestIdentifier);
         return false;

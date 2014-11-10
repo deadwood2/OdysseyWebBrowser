@@ -50,6 +50,10 @@ OBJC_CLASS NSString;
 typedef struct HWND__* HWND;
 #endif
 
+#if PLATFORM(MUI)
+#include "DragData.h"
+#endif
+
 // FIXME: This class uses the DOM and makes calls to Editor.
 // It should be divested of its knowledge of the frame and editor.
 
@@ -197,6 +201,12 @@ public:
     static std::unique_ptr<Pasteboard> createForGlobalSelection();
 #endif
 
+#if PLATFORM(MUI)
+    static PassOwnPtr<Pasteboard> create(PassRefPtr<DataObjectMorphOS>, int = 0);
+    static PassOwnPtr<Pasteboard> create(int);
+    PassRefPtr<DataObjectMorphOS> dataObject() const;
+#endif
+
 #if PLATFORM(IOS)
     static NSArray* supportedPasteboardTypes();
     static String resourceMIMEType(const NSString *mimeType);
@@ -228,6 +238,11 @@ private:
 #if PLATFORM(GTK)
     RefPtr<DataObjectGtk> m_dataObject;
     GtkClipboard* m_gtkClipboard;
+#endif
+
+#if PLATFORM(MUI)
+    RefPtr<DataObjectMorphOS> m_dataObject;
+    int m_morphosClipboard;
 #endif
 
 #if PLATFORM(IOS)
