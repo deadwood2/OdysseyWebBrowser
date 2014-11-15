@@ -62,32 +62,32 @@ void DateTimeChooserController::endChooser()
 void DateTimeChooserController::didChooseValue(const String& value)
 {
     ASSERT(m_client);
-	m_client->didChooseValue(value);
+    m_client->didChooseValue(value);
 }
 
 void DateTimeChooserController::didEndChooser()
 {
     ASSERT(m_client);
-	m_chooser.clear();
+    m_chooser.clear();
     m_client->didEndChooser();
 }
 
 const DateTimeChooserParameters & DateTimeChooserController::parameters()
 {
-	return m_parameters;
+    return m_parameters;
 }
 
 void DateTimeChooserController::openDateTimeChooser()
 {
     ASSERT(!m_chooser);
-	m_chooser = adoptRef(new DateTimeChooser);
+    m_chooser = adoptRef(new DateTimeChooser);
+    
+    BalWidget *widget = m_chromeClient->webView()->viewWindow();
 
-	BalWidget *widget = m_chromeClient->webView()->viewWindow();
-
-	if(widget)
-	{
-		//m_parameters
-		DoMethod((Object *) widget->browser, MM_OWBBrowser_DateTimeChooser_ShowPopup, this);
-	}
+    if(widget)
+    {
+	//m_parameters
+	DoMethod((Object *) widget->browser, MM_OWBBrowser_DateTimeChooser_ShowPopup, this);
+    }
 }
 

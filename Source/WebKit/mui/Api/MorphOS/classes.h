@@ -301,6 +301,7 @@ enum {
 	MM_OWBApp_ProcessResourceClientAction,
 
 	MM_OWBApp_EraseFavicons,
+	MM_OWBApp_ResetVM,
 
 	/* OWBWindow */
 	MA_OWBWindow_ActiveBrowser,

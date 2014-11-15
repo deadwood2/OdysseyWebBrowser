@@ -39,27 +39,27 @@ class WebChromeClient;
 
 class DateTimeChooserController : public WebCore::DateTimeChooser {
 public:
-	DateTimeChooserController(WebChromeClient*, WebCore::DateTimeChooserClient*, const WebCore::DateTimeChooserParameters&);
-	virtual ~DateTimeChooserController();
+    DateTimeChooserController(WebChromeClient*, WebCore::DateTimeChooserClient*, const WebCore::DateTimeChooserParameters&);
+    virtual ~DateTimeChooserController();
 
     virtual void openUI();
-
+    
     // DateTimeChooser functions:
     virtual void endChooser();
-	const WebCore::DateTimeChooserParameters& parameters();    
+    const WebCore::DateTimeChooserParameters& parameters();    
 
     // WebDateTimeChooserClient functions:
-	virtual void didChooseValue(const WTF::String&);
+    virtual void didChooseValue(const WTF::String&);
     virtual void didEndChooser();
 
 
 protected:
     void openDateTimeChooser();
-	RefPtr<DateTimeChooser> m_chooser;
+    RefPtr<DateTimeChooser> m_chooser;
 
 private:
 
-	WebChromeClient* m_chromeClient;
+    WebChromeClient* m_chromeClient;
     WebCore::DateTimeChooserClient* m_client;
     WebCore::DateTimeChooserParameters m_parameters;
 };

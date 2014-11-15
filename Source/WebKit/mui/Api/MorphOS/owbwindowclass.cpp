@@ -2070,9 +2070,20 @@ DEFSMETHOD(OWBWindow_RemoveBrowser)
 		DoMethod(obj, MM_OWBWindow_AddClosedView, msg->browser);
 	}
 
-	if (count <= 1)
+	char* resetvm = getenv("OWB_RESETVM");
+	/*
+	if(!resetvm)
 	{
-		DoMethod(obj, MM_OWBWindow_Close);
+	    if(count <= 1)
+	    {
+		DoMethod(obj, MM_OWBWindow_AddBrowser, "", FALSE, NULL, TRUE, FALSE, TRUE);
+	    }
+	}
+	*/
+
+	if (!resetvm && count <= 1)
+	{
+	    DoMethod(obj, MM_OWBWindow_Close);
 	}
 	else
 	{

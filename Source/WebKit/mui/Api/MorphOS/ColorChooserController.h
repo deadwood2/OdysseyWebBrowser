@@ -48,9 +48,9 @@ public:
     virtual void endChooser();
 
     // WebColorChooserClient functions:
-	virtual void didChooseColor(const WebCore::Color&);
+    virtual void didChooseColor(const WebCore::Color&);
     virtual void didEndChooser();
-	virtual WebCore::IntRect elementRectRelativeToRootView() const;
+    virtual WebCore::IntRect elementRectRelativeToRootView() const;
 
 protected:
     void openColorChooser();

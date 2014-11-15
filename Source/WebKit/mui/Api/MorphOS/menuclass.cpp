@@ -49,8 +49,6 @@ DEFNEW
 
 DEFDISP
 {
-	GETDATA;
-
 	char *title = (char *)getv(obj, MUIA_Menu_Title);
 
 	free((void *) getv(obj, MUIA_UserData));

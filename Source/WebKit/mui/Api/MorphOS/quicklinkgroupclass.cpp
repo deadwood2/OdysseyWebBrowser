@@ -226,8 +226,8 @@ static ULONG LayoutFonc( struct Hook *hook, Object *obj, struct MUI_LayoutMsg *l
 
 			APTR cstate = (APTR)lm->lm_Children->mlh_Head;
 			Object *child;
-			ULONG xpos,ypos,cols=0,col_count,row_count=0,count=0,max_row=0;
-			ULONG array_x,array_y,temp_w;
+			LONG xpos,ypos,cols=0,col_count,row_count=0,count=0,max_row=0;
+			LONG array_x,array_y,temp_w;
 			struct treedata *node; 	
 			
 			get(obj, MA_QuickLinkGroup_Data, &data);
@@ -247,7 +247,7 @@ static ULONG LayoutFonc( struct Hook *hook, Object *obj, struct MUI_LayoutMsg *l
 			{
 				if (data->mode & MV_QuickLinkGroup_Mode_Col)
 				{
-					ULONG last_col=(lm->lm_Layout.Width) / (data->button_w + data->hspace);  
+					LONG last_col=(lm->lm_Layout.Width) / (data->button_w + data->hspace);  
 					cols=data->count/data->row;  // Want n cols per line   	
 					if (data->count%data->row>0) cols++;   
 					D(kprintf("Layout can display %ld and want %ld\n",last_col,cols);)
@@ -256,15 +256,15 @@ static ULONG LayoutFonc( struct Hook *hook, Object *obj, struct MUI_LayoutMsg *l
 					{
 						// enouth space
 						array_x= (lm->lm_Layout.Width) / cols;
-						if ((array_x*cols)+(data->hspace*(cols-1)>lm->lm_Layout.Width)) array_x--;   
-						if ((array_x*cols)+(data->hspace*(cols-1)>lm->lm_Layout.Width)) array_x--;
+						if ((array_x*cols)+(data->hspace*(cols-1)>(LONG) lm->lm_Layout.Width)) array_x--;   
+						if ((array_x*cols)+(data->hspace*(cols-1)>(LONG) lm->lm_Layout.Width)) array_x--;
 						D(kprintf("Col Mode 1: cols=%ld array_x=%ld\n",cols,array_x);)
 					}
 					else
 					{
 						array_x= (lm->lm_Layout.Width) / last_col; 	 
-						if ((array_x*last_col)+(data->hspace*(last_col-1)>lm->lm_Layout.Width)) array_x--;
-						if ((array_x*last_col)+(data->hspace*(last_col-1)>lm->lm_Layout.Width)) array_x--;    
+						if ((array_x*last_col)+(data->hspace*(last_col-1)>(LONG)lm->lm_Layout.Width)) array_x--;
+						if ((array_x*last_col)+(data->hspace*(last_col-1)>(LONG)lm->lm_Layout.Width)) array_x--;    
 						D(kprintf("Col Mode 2: last_col=%ld array_x=%ld\n",last_col,array_x);)
 					}
 					/*if (lm->lm_Layout.Width/cols > array_x)

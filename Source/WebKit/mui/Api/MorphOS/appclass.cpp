@@ -132,8 +132,8 @@ extern char * _ProgramName;
 
 namespace WebCore
 {
-	extern bool ad_block_enabled;
-	extern void freeLeakedMediaObjects();
+    extern bool ad_block_enabled;
+    extern void freeLeakedMediaObjects();
 }
 
 Object *app;
@@ -468,6 +468,7 @@ enum
 	REXX_GETSELECTED,
 	REXX_FULLSCREEN,
 	REXX_GETTITLE,
+	REXX_STATUS
 };
 
 #if !defined(__AROS__)
@@ -504,6 +505,7 @@ REXXHOOK(RexxHookQ, REXX_GETURL);
 REXXHOOK(RexxHookR, REXX_GETSELECTED);
 REXXHOOK(RexxHookS, REXX_FULLSCREEN);
 REXXHOOK(RexxHookT, REXX_GETTITLE);
+REXXHOOK(RexxHookU, REXX_STATUS);
 
 static const struct MUI_Command rexxcommands[] =
 {
@@ -517,7 +519,7 @@ static const struct MUI_Command rexxcommands[] =
 	{ "ACTIVATEWINDOW", NULL    , 0, (struct Hook *)&RexxHookH, { 0 } },
 	{ "SCREENTOFRONT" , NULL    , 0, (struct Hook *)&RexxHookI, { 0 } },
 	{ "SCREENTOBACK"  , NULL    , 0, (struct Hook *)&RexxHookJ, { 0 } },
-	{ "OPEN"          , "NAME/K,NEWPAGE/S,BACKGROUND/S,SOURCE/S", 4, (struct Hook *)&RexxHookK, { 0 } },
+	{ "OPEN"          , "NAME/K,NEWPAGE/S,BACKGROUND/S,SOURCE/S,FULLSCREEN/S", 5, (struct Hook *)&RexxHookK, { 0 } },
 	{ "RELOAD"        , NULL    , 0, (struct Hook *)&RexxHookL, { 0 } },
 	{ "BACK"          , NULL    , 0, (struct Hook *)&RexxHookM, { 0 } },
 	{ "FORWARD"       , NULL    , 0, (struct Hook *)&RexxHookN, { 0 } },
@@ -525,8 +527,9 @@ static const struct MUI_Command rexxcommands[] =
 	{ "ADDBOOKMARK"   , "TITLE/A,URL/A,ALIAS/K,MENU/S,QUICKLINK/S", 5, (struct Hook *)&RexxHookP, { 0 } },
 	{ "GETURL"        , NULL    , 0, (struct Hook *)&RexxHookQ, { 0 } },
 	{ "SELECTEDTEXT"  , NULL    , 0, (struct Hook *)&RexxHookR, { 0 } },
-	{ "FULLSCREEN"    , NULL    , 0, (struct Hook *)&RexxHookS, { 0 } },
+	{ "FULLSCREEN"    , "MODE/K", 1, (struct Hook *)&RexxHookS, { 0 } },
 	{ "GETTITLE"      , NULL    , 0, (struct Hook *)&RexxHookT, { 0 } },
+	{ "STATUS"        , NULL	, 0, (struct Hook *)&RexxHookU, { 0 } },
 	{ NULL            , NULL    , 0, NULL, { 0 } }
 };
 
@@ -632,6 +635,7 @@ AROS_UFH3
 					ULONG newpage = (ULONG) params[1];
 					ULONG background = (ULONG) params[2];
 					ULONG source = (ULONG) params[3];
+					ULONG fullscreen = (ULONG) params[4];
 
 					if(source)
 					{
@@ -657,6 +661,11 @@ AROS_UFH3
 						else
 						{
 							DoMethod(window, MM_OWBWindow_LoadURL, file, NULL);
+						}
+
+						if(fullscreen)
+						{
+							DoMethod(window, MM_OWBWindow_FullScreen, MV_OWBWindow_FullScreen_On);
 						}
 					}
 				}
@@ -743,7 +752,17 @@ AROS_UFH3
 
 			case REXX_FULLSCREEN:
 				{
-					DoMethod(window, MM_OWBWindow_FullScreen, MV_OWBWindow_FullScreen_Toggle);
+					String arg   = String((CONST_STRPTR)*params);
+					ULONG mode;
+					if(arg == "ON")
+						mode = MV_OWBWindow_FullScreen_On;
+					else if(arg == "OFF")
+						mode = MV_OWBWindow_FullScreen_Off;
+					else
+						mode = MV_OWBWindow_FullScreen_Toggle;
+
+					DoMethod(window, MM_OWBWindow_FullScreen, mode);
+
 					break;
 				}
 		}
@@ -3493,6 +3512,32 @@ DEFMMETHOD(DragDrop)
 	return 0;
 }
 
+DEFTMETHOD(OWBApp_ResetVM)
+{
+    Object *window = (Object *) getv(obj, MA_OWBApp_ActiveWindow);
+    APTR n, m;
+
+    kprintf("OWBApp_ResetVM\n");
+    kprintf("Closing tabs\n");
+
+    ITERATELISTSAFE(n, m, &view_list)
+    {
+	struct viewnode *vn = (struct viewnode *) n;
+	DoMethod(app, MM_OWBApp_RemoveBrowser, vn->browser);
+    }
+
+    kprintf("Resetting VM\n");
+    //JSDOMWindowBase::commonVM()->cleanup();
+    //WebCore::resetVM();
+
+    kprintf("Adding empty tab\n");
+    DoMethod(window, MM_OWBWindow_MenuAction, MNA_NEW_PAGE);      
+
+    kprintf("Alive?\n");
+
+    return 0;
+}
+
 BEGINMTABLE
 DECNEW
 DECDISP
@@ -3551,6 +3596,7 @@ DECSMETHOD(URLPrefsGroup_UserAgentForURL)
 DECSMETHOD(URLPrefsGroup_MatchesURL)
 DECSMETHOD(URLPrefsGroup_CookiePolicyForURLAndName)
 DECMMETHOD(DragDrop)
+DECTMETHOD(OWBApp_ResetVM)
 ENDMTABLE
 
 DECSUBCLASS_NC(MUIC_Application, owbappclass)

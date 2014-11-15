@@ -679,7 +679,7 @@ void TopSitesManager::generateTemplate(WebView *webView, String originurl)
 
 				String screenshotURL =  "data:image/png;base64," + base64Data;
 				String removeURL = "data:image/png;base64," + closeBase64Data;
-				double timestamp = select.getColumnDouble(3);
+				//double timestamp = select.getColumnDouble(3);
 				int visits = select.getColumnInt(4);
 
 				countEntries++;

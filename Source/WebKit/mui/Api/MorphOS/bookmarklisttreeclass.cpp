@@ -816,8 +816,6 @@ DEFSMETHOD(Search)
 	pattern = (STRPTR) malloc( strlen( msg->string ) + 5 );
 	if ( pattern != NULL )
 	{
-		ULONG retryIfFailed = FALSE;
-
 		/*
 		 * When searching for next one, fetch selected one first.
 		 */
@@ -825,7 +823,6 @@ DEFSMETHOD(Search)
 		if ( (msg->flags & MV_FindText_Previous) == 0)
 		{
 			tn = (struct MUIS_Listtree_TreeNode *)DoMethod(obj, MUIM_Listtree_GetEntry, MUIV_Listtree_GetEntry_ListNode_Active, MUIV_Listtree_GetEntry_Position_Active, 0);
-			retryIfFailed = TRUE;
 		}
 
 		sprintf( pattern, "#?%s#?", msg->string );
