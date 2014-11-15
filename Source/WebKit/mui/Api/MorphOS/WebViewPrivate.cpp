@@ -1207,18 +1207,17 @@ bool WebViewPrivate::onKeyDown(BalEventKey event)
 #if !defined(__AROS__)
 				kprintf("\tmemory allocated by allocator: %d\n", WTF::memory_consumption);
 #endif
-				kprintf("\theap: used %d - total %d\n", JSDOMWindow::commonVM()->heap.size(), JSDOMWindow::commonVM()->heap.capacity());
+				kprintf("\theap: used %d - total %d\n", JSDOMWindow::commonVM().heap.size(), JSDOMWindow::commonVM().heap.capacity());
 
 				kprintf("\nPruning caches and running Garbage collector.\n");
 				
 				int savedPageCacheCapacity = pageCache()->capacity();
 				pageCache()->setCapacity(0);
 				pageCache()->setCapacity(savedPageCacheCapacity);
-				fontCache()->purgeInactiveFontData();
+				fontCache().purgeInactiveFontData();
 				memoryCache()->pruneToPercentage(0);
 				cssValuePool().drain();
 				clearWidthCaches();
-				Page::jettisonStyleResolversInAllDocuments();
 
                                 gcController().discardAllCompiledCode();
                                 gcController().garbageCollectNow();
@@ -1631,7 +1630,7 @@ void WebViewPrivate::closeWindowSoon()
     m_closeWindowTimer.startOneShot(0);
 }
 
-void WebViewPrivate::closeWindowTimerFired(WebCore::Timer<WebViewPrivate>*)
+void WebViewPrivate::closeWindowTimerFired(WebCore::Timer*)
 {
     closeWindow();
 }

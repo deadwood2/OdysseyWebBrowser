@@ -32,6 +32,7 @@
 #include <yarr/RegularExpression.h>
 #include <wtf/HashMap.h>
 #include <wtf/Vector.h>
+#include <wtf/text/StringView.h>
 
 #include <stdio.h>
 #include <clib/debug_protos.h>
@@ -94,11 +95,9 @@ AdPattern* PatternMatcher::addPattern(const String& pat)
     Vector<String> opts;
     optpart.split(",", opts);
     int types = -1;
-    bool matchCase = false;
     for (unsigned i = 0; i < opts.size(); i++) {
         const String &opt = opts[i];
         if (opts[i] == "match-case") {
-            matchCase = true;
             continue;
         }
         bool invert = false;
@@ -177,11 +176,9 @@ bool PatternMatcher::updatePattern(const String& pat, AdPattern* newpattern)
     Vector<String> opts;
     optpart.split(",", opts);
     int types = -1;
-    bool matchCase = false;
     for (unsigned i = 0; i < opts.size(); i++) {
         const String &opt = opts[i];
         if (opts[i] == "match-case") {
-            matchCase = true;
             continue;
         }
         bool invert = false;
@@ -273,7 +270,8 @@ unsigned ab_hash(const String& str)
 {
     unsigned result = 0;
     unsigned size = str.length();
-    const UChar *p = str.characters();
+    auto upconvertedCharacters = StringView(str).upconvertedCharacters();
+    const UChar *p = upconvertedCharacters;
     for (unsigned i = 0; i < size; i++) {
         result = 31 * result + (unsigned)p[i];
     }

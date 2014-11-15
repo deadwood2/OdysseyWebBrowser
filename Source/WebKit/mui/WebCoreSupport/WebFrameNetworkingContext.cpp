@@ -48,7 +48,7 @@ WebCore::ResourceError WebFrameNetworkingContext::blockedError(const WebCore::Re
 static String& privateBrowsingStorageSessionIdentifierBase() 
 {
     ASSERT(isMainThread()); 
-    DEFINE_STATIC_LOCAL(String, base, ());
+    DEPRECATED_DEFINE_STATIC_LOCAL(String, base, ());
     return base; 
 }
 

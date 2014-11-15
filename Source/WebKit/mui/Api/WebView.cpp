@@ -99,7 +99,6 @@
 #include <DatabaseManager.h>
 #endif
 #include <DragController.h>
-#include <DragSession.h>
 #include <DragData.h>
 #include <Editor.h>
 #include <EventHandler.h>
@@ -499,7 +498,7 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
     unsigned cacheTotalCapacity = 0;
     unsigned cacheMinDeadCapacity = 0;
     unsigned cacheMaxDeadCapacity = 0;
-    double deadDecodedDataDeletionInterval = 0;
+    auto deadDecodedDataDeletionInterval = std::chrono::seconds { 0 };
 
     unsigned pageCacheCapacity = 0;
 
@@ -597,7 +596,7 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
         // can prove that the overall system gain would justify the regression.
         cacheMaxDeadCapacity = max(24u, cacheMaxDeadCapacity);
 
-        deadDecodedDataDeletionInterval = 60;
+        deadDecodedDataDeletionInterval = std::chrono::seconds { 60 };
 
         break;
     }
@@ -1461,7 +1460,7 @@ void WebView::goBackOrForward(int steps)
 bool WebView::goToBackForwardItem(WebHistoryItem* item)
 {
     WebHistoryItemPrivate *priv = item->getPrivateItem(); 
-    m_page->goToItem(priv->m_historyItem.get(), FrameLoadTypeIndexedBackForward);
+    m_page->goToItem(priv->m_historyItem.get(), FrameLoadType::IndexedBackForward);
     return true;
 }
 
@@ -2047,7 +2046,7 @@ BalRectangle WebView::selectionRect()
     WebCore::Frame* frame = &(m_page->focusController().focusedOrMainFrame());
 
     if (frame) {
-	IntRect ir = enclosingIntRect(frame->selection().bounds());
+	IntRect ir = enclosingIntRect(frame->selection().selectionBounds());
         ir = frame->view()->convertToContainingWindow(ir);
         ir.move(-frame->view()->scrollOffset().width(), -frame->view()->scrollOffset().height());
         return ir;
@@ -2139,7 +2138,7 @@ WebDragOperation WebView::dragEnter(WebDragData* webDragData, int identity,
 
     m_dropEffect = DropEffectDefault;
     m_dragTargetDispatch = true;
-    DragOperation effect = m_page->dragController().dragEntered(dragData).operation;
+    DragOperation effect = m_page->dragController().dragEntered(dragData);
     // Mask the operation against the drag source's allowed operations.
     if ((effect & dragData.draggingSourceOperationMask()) != effect)
         effect = DragOperationNone;
@@ -2166,7 +2165,7 @@ WebDragOperation WebView::dragOver(const BalPoint& clientPoint, const BalPoint& 
 
     m_dropEffect = DropEffectDefault;
     m_dragTargetDispatch = true;
-    DragOperation effect = m_page->dragController().dragUpdated(dragData).operation;
+    DragOperation effect = m_page->dragController().dragUpdated(dragData);
     // Mask the operation against the drag source's allowed operations.
     if ((effect & dragData.draggingSourceOperationMask()) != effect)
         effect = DragOperationNone;
@@ -2224,7 +2223,7 @@ void WebView::dragTargetDrop(const BalPoint& clientPoint,
         static_cast<DragOperation>(m_operationsAllowed));
 
     m_dragTargetDispatch = true;
-    m_page->dragController().performDrag(dragData);
+    m_page->dragController().performDragOperation(dragData);
     m_dragTargetDispatch = false;
 
     m_currentDragData = 0;
@@ -2637,13 +2636,13 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
 		settings->setScriptEnabled(enabled);
 	}
 
-	applyDefault = widget == NULL || getv(widget->browser, MA_OWBBrowser_PrivateBrowsing) == FALSE;
-	
-	if(applyDefault)
-	{
-	    enabled = preferences->privateBrowsingEnabled();
-	    settings->setPrivateBrowsingEnabled(!!enabled);
-	}
+//	applyDefault = widget == NULL || getv(widget->browser, MA_OWBBrowser_PrivateBrowsing) == FALSE;
+//
+//	if(applyDefault)
+//	{
+//	    enabled = preferences->privateBrowsingEnabled();
+//	    settings->setPrivateBrowsingEnabled(!!enabled);
+//	}
 
 	applyDefault = widget == NULL || (DoMethod(app, MM_URLPrefsGroup_MatchesURL, getv(widget->browser, MA_OWBBrowser_URL)) == 0 && getv(widget->browser, MA_OWBBrowser_LoadImagesAutomatically) == IMAGES_DEFAULT);
 
@@ -2816,22 +2815,6 @@ void updateSharedSettingsFromPreferencesIfNeeded(WebPreferences* preferences)
         return ;
 }
 
-void WebView::setInViewSourceMode(bool flag)
-{
-    if (!m_mainFrame)
-        return ;
-
-    return m_mainFrame->setInViewSourceMode(flag);
-}
-    
-bool WebView::inViewSourceMode()
-{
-    if (!m_mainFrame)
-        return false;
-
-    return m_mainFrame->inViewSourceMode();
-}
-
 BalWidget* WebView::viewWindow()
 {
     return m_viewWindow;
@@ -2962,7 +2945,7 @@ void WebView::loadBackForwardListFromOtherView(WebView* otherView)
     ASSERT(!backForwardList->currentItem()); // destination list should be empty
 
 	BackForwardClient* otherBackForwardList = static_cast<WebCore::BackForwardList*>(otherView->m_page->backForward().client());
-    if (!otherBackForwardList->currentItem())
+    if (!otherView->m_page->backForward().currentItem())
         return ; // empty back forward list, bail
     
     HistoryItem* newItemToGoTo = 0;
@@ -2982,7 +2965,7 @@ void WebView::loadBackForwardListFromOtherView(WebView* otherView)
     }
     
     ASSERT(newItemToGoTo);
-    m_page->goToItem(newItemToGoTo, FrameLoadTypeIndexedBackForward);
+    m_page->goToItem(newItemToGoTo, FrameLoadType::IndexedBackForward);
 }
 
 void WebView::clearUndoRedoOperations()
@@ -3042,22 +3025,6 @@ void WebView::windowAncestryDidChange()
     view->paint(&gc, rect);
     gc.restore();
 }*/
-
-void WebView::setCustomHTMLTokenizerTimeDelay(double timeDelay)
-{
-    if (!m_page)
-        return;
-
-    m_page->setCustomHTMLTokenizerTimeDelay(timeDelay);
-}
-
-void WebView::setCustomHTMLTokenizerChunkSize(int chunkSize)
-{
-    if (!m_page)
-        return;
-
-    m_page->setCustomHTMLTokenizerChunkSize(chunkSize);
-}
 
 /*WebCore::Image* WebView::backingStore()
 {
@@ -3302,7 +3269,8 @@ const char* WebView::encodeHostName(const char* source)
 	if (src.find("%") != notFound)
         src = decodeURLEscapeSequences(src);
 
-    const UChar* sourceBuffer = src.characters();
+    auto upconvertedCharacters = StringView(src).upconvertedCharacters();
+    const UChar* sourceBuffer = upconvertedCharacters;
 
     bool error = false;
     int32_t numCharactersConverted = WTF::Unicode::IDNToASCII(sourceBuffer, length, destinationBuffer, HOST_NAME_BUFFER_LENGTH, &error);
@@ -3327,7 +3295,8 @@ const char* WebView::decodeHostName(const char* source)
     String src = String::fromUTF8(source);
 
 
-    const UChar* sourceBuffer = src.characters();
+    auto upconvertedCharacters = StringView(src).upconvertedCharacters();
+    const UChar* sourceBuffer = upconvertedCharacters;
     int length = src.length();
 
     bool error = false;

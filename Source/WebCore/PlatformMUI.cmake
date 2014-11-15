@@ -10,12 +10,11 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
 )
 
 list(APPEND WebCore_SOURCES
+
     loader/AdBlock.cpp
 
     platform/bal/ObserverServiceBookmarklet.cpp
     platform/bal/ObserverServiceData.cpp
-
-    platform/cairo/WidgetBackingStoreCairo.cpp
 
     platform/Cursor.cpp
 
@@ -35,8 +34,6 @@ list(APPEND WebCore_SOURCES
     platform/graphics/cairo/PlatformContextCairo.cpp
     platform/graphics/cairo/PlatformPathCairo.cpp
     platform/graphics/cairo/RefPtrCairo.cpp
-    platform/graphics/cairo/TileCairo.cpp
-    platform/graphics/cairo/TiledBackingStoreBackendCairo.cpp
     platform/graphics/cairo/TransformationMatrixCairo.cpp
 
     platform/graphics/freetype/FontCacheFreeType.cpp
@@ -45,9 +42,27 @@ list(APPEND WebCore_SOURCES
     platform/graphics/freetype/GlyphPageTreeNodeFreeType.cpp
     platform/graphics/freetype/SimpleFontDataFreeType.cpp
 
+    platform/graphics/ImageSource.cpp
     platform/graphics/WOFFFileFormat.cpp
 
+    platform/image-decoders/ImageDecoder.cpp
+
+    platform/image-decoders/bmp/BMPImageDecoder.cpp
+    platform/image-decoders/bmp/BMPImageReader.cpp
+
     platform/image-decoders/cairo/ImageDecoderCairo.cpp
+
+    platform/image-decoders/gif/GIFImageDecoder.cpp
+    platform/image-decoders/gif/GIFImageReader.cpp
+
+    platform/image-decoders/ico/ICOImageDecoder.cpp
+
+    platform/image-decoders/jpeg/JPEGImageDecoder.cpp
+
+    platform/image-decoders/png/PNGImageDecoder.cpp
+
+    platform/image-decoders/webp/WEBPImageDecoder.cpp
+
 
     platform/linux/FileIOLinux.cpp
 
@@ -58,6 +73,7 @@ list(APPEND WebCore_SOURCES
     platform/mui/DragControllerMorphOS.cpp
     platform/mui/DragDataMorphOS.cpp
     platform/mui/DragImageMorphOS.cpp
+    platform/mui/EditorMUI.cpp
     platform/mui/EventHandlerMorphOS.cpp
     platform/mui/EventLoopMorphOS.cpp
     platform/mui/GraphicsLayerMUI.cpp
@@ -120,6 +136,7 @@ if (ENABLE_NETSCAPE_PLUGIN_API)
         plugins/PluginPackage.cpp 
         plugins/PluginStream.cpp
         plugins/PluginView.cpp
+        plugins/npapi.cpp
 
         plugins/MorphOS/PluginDataMorphOS.cpp
         plugins/MorphOS/PluginPackageMorphOS.cpp

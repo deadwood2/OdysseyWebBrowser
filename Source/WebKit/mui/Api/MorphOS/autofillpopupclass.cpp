@@ -31,6 +31,7 @@
 
 #include <Calltips_mcc.h>
 #include <clib/debug_protos.h>
+#include "IntRect.h"
 
 #include "gui.h"
 

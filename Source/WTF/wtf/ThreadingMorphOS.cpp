@@ -118,19 +118,19 @@ static ThreadIdentifier mainThreadIdentifier; // The thread that was the first t
 
 static Mutex& threadMapMutex()
 {
-	DEFINE_STATIC_LOCAL(Mutex, mutex, ());
+	DEPRECATED_DEFINE_STATIC_LOCAL(Mutex, mutex, ());
 	return mutex;
 }
 
 static Mutex& syncPortMapMutex()
 {
-	DEFINE_STATIC_LOCAL(Mutex, mutex, ());
+	DEPRECATED_DEFINE_STATIC_LOCAL(Mutex, mutex, ());
 	return mutex;
 }
 
 static Mutex& threadReplyStateMapMutex()
 {
-	DEFINE_STATIC_LOCAL(Mutex, mutex, ());
+	DEPRECATED_DEFINE_STATIC_LOCAL(Mutex, mutex, ());
 	return mutex;
 }
 
@@ -200,19 +200,19 @@ void unlockAtomicallyInitializedStaticMutex()
 
 static ThreadMap& threadMap()
 {
-	DEFINE_STATIC_LOCAL(ThreadMap, map, ());
+	DEPRECATED_DEFINE_STATIC_LOCAL(ThreadMap, map, ());
 	return map;
 }
 
 static SyncPortMap& syncPortMap()
 {
-	DEFINE_STATIC_LOCAL(SyncPortMap, map, ());
+	DEPRECATED_DEFINE_STATIC_LOCAL(SyncPortMap, map, ());
 	return map;
 }
 
 static ThreadReplyStateMap& threadReplyStateMap()
 {
-	DEFINE_STATIC_LOCAL(ThreadReplyStateMap, map, ());
+	DEPRECATED_DEFINE_STATIC_LOCAL(ThreadReplyStateMap, map, ());
 	return map;
 }
 
@@ -427,6 +427,16 @@ void trampoline(void)
     FreeVec(udata);
 }
 #endif
+
+void changeThreadPriority(ThreadIdentifier threadID, int delta)
+{
+    (void)threadID;
+    (void)delta;
+}
+
+void setCurrentThreadQOSUtility()
+{
+}
 
 ThreadIdentifier createThreadInternal(ThreadFunction entryPoint, void* data, const char* threadName)
 {

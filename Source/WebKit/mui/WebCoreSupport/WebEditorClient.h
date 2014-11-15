@@ -32,6 +32,7 @@
 #include <EditorClient.h>
 #include <TextCheckerClient.h> 
 #include <wtf/OwnPtr.h>
+#include <wtf/text/StringView.h>
 
 class WebView;
 class WebNotification;
@@ -122,6 +123,10 @@ public:
     virtual void setInputMethodState(bool);
     virtual void requestCheckingOfString(WTF::PassRefPtr<WebCore::TextCheckingRequest>) { } 
     virtual WebCore::TextCheckerClient* textChecker() { return this; } 
+
+    virtual void checkSpellingOfString(StringView, int* misspellingLocation, int* misspellingLength) { };
+    virtual void checkGrammarOfString(StringView, Vector<WebCore::GrammarDetail>&, int* badGrammarLocation, int* badGrammarLength) { };
+    void overflowScrollPositionChanged() { };
 
 private:
     WebView* m_webView;

@@ -961,16 +961,6 @@ public:
     //virtual void removeCustomDropTarget();
 
     /**
-     *  setInViewSourceMode 
-     */
-    virtual void setInViewSourceMode(bool flag);
-
-    /**
-     *  inViewSourceMode 
-     */
-    virtual bool inViewSourceMode();
-
-    /**
      *  get view window 
      */
     virtual BalWidget* viewWindow();
@@ -1108,16 +1098,6 @@ public:
      *  windowAncestryDidChange 
      */
     virtual void windowAncestryDidChange();
-
-    /**
-     * setCustomHTMLTokenizerTimeDelay
-     */
-    virtual void setCustomHTMLTokenizerTimeDelay(double timeDelay);
-
-    /**
-     * setCustomHTMLTokenizerChunkSize
-     */
-    virtual void setCustomHTMLTokenizerChunkSize(int chunkSize);
 
     /**
      * setTransparent

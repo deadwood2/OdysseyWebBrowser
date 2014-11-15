@@ -30,13 +30,12 @@
 #include "SharedWorkerStrategy.h"
 #endif
 #include "StorageStrategy.h"
-#include "VisitedLinkStrategy.h"
 
 class PlatformStrategiesMorphOS : public WebCore::PlatformStrategies, private WebCore::CookiesStrategy, private WebCore::DatabaseStrategy, private WebCore::LoaderStrategy, private WebCore::PluginStrategy
 #if ENABLE(SHARED_WORKERS)
 , private WebCore::SharedWorkerStrategy
 #endif
-, private WebCore::StorageStrategy, private WebCore::VisitedLinkStrategy {
+, private WebCore::StorageStrategy {
 public:
     static void initialize();
 
@@ -53,7 +52,6 @@ private:
     virtual WebCore::SharedWorkerStrategy* createSharedWorkerStrategy();
 #endif
     virtual WebCore::StorageStrategy* createStorageStrategy();
-    virtual WebCore::VisitedLinkStrategy* createVisitedLinkStrategy();
 
     // WebCore::CookiesStrategy
     virtual String cookiesForDOM(const WebCore::NetworkStorageSession&, const WebCore::URL& firstParty, const WebCore::URL&);
@@ -69,10 +67,6 @@ private:
     // WebCore::PluginStrategy
     virtual void refreshPlugins();
     virtual void getPluginInfo(const WebCore::Page*, Vector<WebCore::PluginInfo>&);
-
-    // WebCore::VisitedLinkStrategy
-    virtual bool isLinkVisited(WebCore::Page*, WebCore::LinkHash, const WebCore::URL& baseURL, const WTF::AtomicString& attributeURL);
-    virtual void addVisitedLink(WebCore::Page*, WebCore::LinkHash);
 };
 
 #endif // PlatformStrategiesEfl_h

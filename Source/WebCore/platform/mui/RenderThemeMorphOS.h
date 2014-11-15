@@ -40,17 +40,17 @@ public:
     virtual double caretBlinkInterval() const;
 
     virtual void systemFont(CSSValueID cssValueId, FontDescription&) const;
-    virtual bool paintCheckbox(RenderObject*, const PaintInfo&, const IntRect&);
+    virtual bool paintCheckbox(const RenderObject&, const PaintInfo&, const IntRect&);
     virtual void setCheckboxSize(RenderStyle*) const;
-    virtual bool paintRadio(RenderObject*, const PaintInfo&, const IntRect&);
+    virtual bool paintRadio(const RenderObject&, const PaintInfo&, const IntRect&);
     virtual void setRadioSize(RenderStyle*) const;
-    virtual bool paintButton(RenderObject*, const PaintInfo&, const IntRect&);
+    virtual bool paintButton(const RenderObject&, const PaintInfo&, const IntRect&);
     void calculateButtonSize(RenderStyle*) const;
     virtual void adjustMenuListStyle(StyleResolver*, RenderStyle*, Element*) const;
-    virtual bool paintMenuListButton(RenderObject*, const PaintInfo&, const IntRect&);
+    virtual bool paintMenuListButton(const RenderObject&, const PaintInfo&, const IntRect&);
     virtual void adjustSliderThumbSize(RenderStyle*, Element*) const;
-    virtual bool paintSliderTrack(RenderObject*, const PaintInfo&, const IntRect&);
-    virtual bool paintSliderThumb(RenderObject*, const PaintInfo&, const IntRect&);
+    virtual bool paintSliderTrack(const RenderObject&, const PaintInfo&, const IntRect&);
+    virtual bool paintSliderThumb(const RenderObject&, const PaintInfo&, const IntRect&);
 
 #if ENABLE(DATALIST_ELEMENT)
     virtual IntSize sliderTickSize() const;
@@ -62,7 +62,7 @@ public:
 
 #if ENABLE(PROGRESS_ELEMENT)
     virtual void adjustProgressBarStyle(StyleResolver*, RenderStyle*, Element*) const;
-    virtual bool paintProgressBar(RenderObject*, const PaintInfo&, const IntRect&);
+    virtual bool paintProgressBar(const RenderObject&, const PaintInfo&, const IntRect&);
     virtual double animationRepeatIntervalForProgressBar(RenderProgress*) const;
     virtual double animationDurationForProgressBar(RenderProgress*) const;
 #endif
@@ -76,30 +76,30 @@ public:
 
     virtual void adjustButtonStyle(StyleResolver*, RenderStyle*, Element*) const;
     virtual void adjustTextFieldStyle(StyleResolver*, RenderStyle*, Element*) const;
-    virtual bool paintTextField(RenderObject*, const PaintInfo&, const IntRect&);
+    virtual bool paintTextField(const RenderObject&, const PaintInfo&, const IntRect&);
 
     virtual void adjustTextAreaStyle(StyleResolver*, RenderStyle*, Element*) const;
-    virtual bool paintTextArea(RenderObject*, const PaintInfo&, const IntRect&);
+    virtual bool paintTextArea(const RenderObject&, const PaintInfo&, const IntRect&);
 
     virtual void adjustSearchFieldStyle(StyleResolver*, RenderStyle*, Element*) const;
     virtual void adjustSearchFieldCancelButtonStyle(StyleResolver*, RenderStyle*, Element*) const;
-    virtual bool paintSearchField(RenderObject*, const PaintInfo&, const IntRect&);
-    virtual bool paintSearchFieldCancelButton(RenderObject*, const PaintInfo&, const IntRect&);
+    virtual bool paintSearchField(const RenderObject&, const PaintInfo&, const IntRect&);
+    virtual bool paintSearchFieldCancelButton(const RenderObject&, const PaintInfo&, const IntRect&);
 
     virtual void adjustMenuListButtonStyle(StyleResolver*, RenderStyle*, Element*) const;
     virtual void adjustCheckboxStyle(StyleResolver*, RenderStyle*, Element*) const;
     virtual void adjustRadioStyle(StyleResolver*, RenderStyle*, Element*) const;
-    virtual bool paintMenuList(RenderObject*, const PaintInfo&, const IntRect&);
+    virtual bool paintMenuList(const RenderObject&, const PaintInfo&, const IntRect&);
 
     virtual void adjustMediaControlStyle(StyleResolver*, RenderStyle*, Element*) const;
     virtual void adjustSliderTrackStyle(StyleResolver*, RenderStyle*, Element*) const;
-    virtual bool paintMediaFullscreenButton(RenderObject*, const PaintInfo&, const IntRect&);
-    virtual bool paintMediaSliderTrack(RenderObject*, const PaintInfo&, const IntRect&);
-    virtual bool paintMediaVolumeSliderTrack(RenderObject*, const PaintInfo&, const IntRect&);
-    virtual bool paintMediaSliderThumb(RenderObject*, const PaintInfo&, const IntRect&);
-    virtual bool paintMediaVolumeSliderThumb(RenderObject*, const PaintInfo&, const IntRect&);
-    virtual bool paintMediaPlayButton(RenderObject*, const PaintInfo&, const IntRect&);
-    virtual bool paintMediaMuteButton(RenderObject*, const PaintInfo&, const IntRect&);
+    virtual bool paintMediaFullscreenButton(const RenderObject&, const PaintInfo&, const IntRect&);
+    virtual bool paintMediaSliderTrack(const RenderObject&, const PaintInfo&, const IntRect&);
+    virtual bool paintMediaVolumeSliderTrack(const RenderObject&, const PaintInfo&, const IntRect&);
+    virtual bool paintMediaSliderThumb(const RenderObject&, const PaintInfo&, const IntRect&);
+    virtual bool paintMediaVolumeSliderThumb(const RenderObject&, const PaintInfo&, const IntRect&);
+    virtual bool paintMediaPlayButton(const RenderObject&, const PaintInfo&, const IntRect&);
+    virtual bool paintMediaMuteButton(const RenderObject&, const PaintInfo&, const IntRect&);
 
     // The platform selection color.
     virtual Color platformActiveSelectionBackgroundColor() const;
@@ -130,10 +130,10 @@ private:
     RenderThemeBal();
     void setButtonStyle(RenderStyle*) const;
 
-    void paintMenuListButtonGradientAndArrow(GraphicsContext*, RenderObject*, IntRect buttonRect, const Path& clipPath);
-    bool paintTextFieldOrTextAreaOrSearchField(RenderObject*, const PaintInfo&, const IntRect&);
-    bool paintSliderTrackRect(RenderObject*, const PaintInfo&, const IntRect&);
-    bool paintSliderTrackRect(RenderObject*, const PaintInfo&, const IntRect&, RGBA32 strokeColorStart,
+    void paintMenuListButtonGradientAndArrow(GraphicsContext*, const RenderObject&, IntRect buttonRect, const Path& clipPath);
+    bool paintTextFieldOrTextAreaOrSearchField(const RenderObject&, const PaintInfo&, const IntRect&);
+    bool paintSliderTrackRect(const RenderObject&, const PaintInfo&, const IntRect&);
+    bool paintSliderTrackRect(const RenderObject&, const PaintInfo&, const IntRect&, RGBA32 strokeColorStart,
                 RGBA32 strokeColorEnd, RGBA32 fillColorStart, RGBA32 fillColorEnd);
 
 };

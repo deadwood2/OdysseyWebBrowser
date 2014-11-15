@@ -107,7 +107,7 @@ void PopupMenuMorphOS::calculatePositionAndSize(const IntRect& r, FrameView* v)
             itemFont.update(m_popupClient->fontSelector());
         }
 
-        popupWidth = std::max(popupWidth, (int) itemFont.width(TextRun(text.characters(), text.length())));
+        popupWidth = std::max(popupWidth, (int) itemFont.width(TextRun(text)));
     }
 
     rScreenCoords.setHeight(naturalHeight);

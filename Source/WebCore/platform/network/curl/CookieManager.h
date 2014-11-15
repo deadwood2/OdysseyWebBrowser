@@ -118,7 +118,7 @@ private:
     CookieMap* findOrCreateCookieMap(CookieMap* protocolMap, const ParsedCookie& candidateCookie);
 
     void initiateCookieLimitCleanUp();
-    void cookieLimitCleanUp(Timer<CookieManager>*);
+    void cookieLimitCleanUp(Timer*);
 
     HashMap<String, CookieMap*> m_managerMap;
 
@@ -139,7 +139,7 @@ private:
     CookieStorageAcceptPolicy m_policy;
 
     CookieDatabaseBackingStore* m_cookieBackingStore;
-    Timer<CookieManager> m_limitTimer;
+    Timer m_limitTimer;
 };
 
 // Get the global instance.

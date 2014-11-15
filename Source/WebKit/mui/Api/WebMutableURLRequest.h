@@ -271,11 +271,6 @@ protected:
     const WebCore::FormData* formData() const;
 
     /**
-     * add HTTP header fields
-     */
-    void addHTTPHeaderFields(const WebCore::HTTPHeaderMap& headerFields);
-    
-    /**
      * get resource request
      */
     const WebCore::HTTPHeaderMap& httpHeaderFields() const;

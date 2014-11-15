@@ -35,6 +35,7 @@
 #include "HostWindow.h"
 #include "ScrollView.h"
 #include "Widget.h"
+#include "FrameView.h"
 #include "FloatRect.h"
 #include <proto/intuition.h>
 #include <proto/graphics.h>
@@ -146,6 +147,11 @@ FloatRect screenAvailableRect(Widget* widget)
 
 void screenColorProfile(ColorProfile&)
 {
+}
+
+bool screenHasInvertedColors()
+{
+    return false;
 }
 
 } // namespace WebCore

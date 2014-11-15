@@ -173,10 +173,6 @@ public:
 
     void initWithFrameView(WebCore::FrameView *frameView)
     {
-		/*
-        m_webView->setCustomHTMLTokenizerTimeDelay(1.0);       // seconds, default: 0.500
-        m_webView->setCustomHTMLTokenizerChunkSize(16 * 1024); // bytes, default: 4096
-		*/
     }
 
     bool shouldCoalesce(WebCore::IntRect rect)
@@ -266,7 +262,7 @@ public:
     
  private:
     void updateView(BalWidget *widget, WebCore::IntRect rect, bool sync);
-    void closeWindowTimerFired(WebCore::Timer<WebViewPrivate>*);
+    void closeWindowTimerFired(WebCore::Timer*);
     void closeWindow();
     
     WebCore::IntRect m_rect;
@@ -277,7 +273,7 @@ public:
     WebCore::IntPoint m_backingStoreSize;
     WebCore::IntRect m_backingStoreDirtyRegion;
 
-    WebCore::Timer<WebViewPrivate> m_closeWindowTimer;
+    WebCore::Timer m_closeWindowTimer;
 
 };
 

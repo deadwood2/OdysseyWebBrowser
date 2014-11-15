@@ -36,13 +36,12 @@
 #include "ContextMenuController.h"
 #include <wtf/text/CString.h>
 #include <wtf/CurrentTime.h>
-#include "ResourceBuffer.h"
+#include "SharedBuffer.h"
 #include "DocumentLoader.h"
 #include "EventHandler.h"
 #include "DocumentLoader.h"
 #include "DOMImplementation.h"
 #include "DragController.h"
-#include "DragSession.h"
 #include "DragData.h"
 #include "Editor.h"
 #include "FileIOLinux.h"
@@ -491,8 +490,6 @@ DEFNEW
 
 		if(data->source_view)
 		{
-	        data->view->webView->setInViewSourceMode(true);
-
 	        Frame* frame = core(data->view->webView->mainFrame());
 
 			if (frame)
@@ -508,8 +505,7 @@ DEFNEW
 		            ResourceRequest request(baseURL);
 					
 					Frame* sourceFrame = core(((WebView *) data->source_view)->mainFrame());
-					RefPtr<ResourceBuffer> buffer = sourceFrame->loader().documentLoader() ? sourceFrame->loader().documentLoader()->mainResourceData() : 0;
-					RefPtr<SharedBuffer> dataSource = buffer ? buffer->sharedBuffer() : 0;
+					RefPtr<SharedBuffer> dataSource = sourceFrame->loader().documentLoader() ? sourceFrame->loader().documentLoader()->mainResourceData() : 0;
 
 		            if (!mimeType)
 					{
@@ -521,7 +517,6 @@ DEFNEW
 						SubstituteData substituteData(dataSource, mimeType, frame->loader().documentLoader()->overrideEncoding(), failingURL);
 
 						FrameLoadRequest frameLoadRequest(frame, request, substituteData);
-						frameLoadRequest.setLockHistory(true);
 						frame->loader().load(frameLoadRequest);
 
 						set(obj, MA_OWBBrowser_URL, (char *) getv(browser, MA_OWBBrowser_URL));
@@ -832,7 +827,7 @@ static void doset(APTR obj, struct Data *data, struct TagItem *tags)
 			data->settings.privatebrowsing = (ULONG) tag->ti_Data;
 
 			// Set private browsing flag for current page
-			data->view->webView->page()->settings().setPrivateBrowsingEnabled(enable);
+			//data->view->webView->page()->settings().setPrivateBrowsingEnabled(enable);
 
 			// Update client counter
 			set(app, MA_OWBApp_PrivateBrowsingClients, enable ? ++clientcount : --clientcount);
@@ -3554,7 +3549,7 @@ DEFMMETHOD(DragDrop)
 		data->last_drag_position = position;
 		DragData dragData((DataObjectMorphOS *) dataObject, position, position, (DragOperation) data->dragoperation);
 		D(kprintf("performDrag\n"));
-		core(data->view->webView)->dragController().performDrag(dragData);
+		core(data->view->webView)->dragController().performDragOperation(dragData);
 		//D(kprintf("dragEnded\n"));
 		//core(data->view->webView)->dragController()->dragEnded();
 		//dataObject = 0;
@@ -4225,7 +4220,7 @@ public:
 	APTR m_instance;
 	APTR m_timeoutfunc;
 
-	Timer<PluginTimer> m_pluginTimer;
+	Timer m_pluginTimer;
 	void start(unsigned long ms)
 	{
 		if(!m_pluginTimer.isActive())
@@ -4238,7 +4233,7 @@ public:
 			m_pluginTimer.stop();
 	}
 
-	void pluginFired(Timer<PluginTimer>*)
+	void pluginFired(Timer*)
 	{
 #if !defined(__AROS__)
 		CALLFUNC2(m_timeoutfunc, m_instance, this);

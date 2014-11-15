@@ -138,10 +138,10 @@ int Font::offsetForPositionForComplexText(const TextRun& run, float x, bool incl
     return offsetForPositionForSimpleText(run, x, includePartialGlyphs);
 }
 
-FloatRect Font::selectionRectForComplexText(const TextRun& run, const FloatPoint& point, int h, int from, int to) const
+void Font::adjustSelectionRectForComplexText(const TextRun& run, LayoutRect& selectionRect, int from, int to) const
 {
 #warning "bullshit"
-    return selectionRectForSimpleText(run, point, h, from, to);
+    return adjustSelectionRectForSimpleText(run, selectionRect, from, to);
 }
 #endif
 

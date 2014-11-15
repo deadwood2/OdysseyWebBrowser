@@ -52,16 +52,16 @@ static HashMap<BackForwardList*, WebBackForwardList*>& backForwardListWrappers()
 WebBackForwardList::WebBackForwardList(WebBackForwardListPrivate *priv)
     : d(priv)
 {
-    ASSERT(!backForwardListWrappers().contains(d->m_backForwardList.get()));
-    backForwardListWrappers().set(d->m_backForwardList.get(), this);
+    ASSERT(!backForwardListWrappers().contains(d->m_backForwardList));
+    backForwardListWrappers().set(d->m_backForwardList, this);
 }
 
 WebBackForwardList::~WebBackForwardList()
 {
     ASSERT(d->m_backForwardList->closed());
 
-    ASSERT(backForwardListWrappers().contains(d->m_backForwardList.get()));
-    backForwardListWrappers().remove(d->m_backForwardList.get());
+    ASSERT(backForwardListWrappers().contains(d->m_backForwardList));
+    backForwardListWrappers().remove(d->m_backForwardList);
     delete d;
 }
 
@@ -69,7 +69,7 @@ WebBackForwardList* WebBackForwardList::createInstance(WebBackForwardListPrivate
 {
     WebBackForwardList* instance;
 
-    instance = backForwardListWrappers().get(priv->m_backForwardList.get());
+    instance = backForwardListWrappers().get(priv->m_backForwardList);
 
     if (!instance)
         instance = new WebBackForwardList(priv);

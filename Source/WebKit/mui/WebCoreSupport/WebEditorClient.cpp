@@ -49,7 +49,6 @@
 #include <VisibleSelection.h> 
 
 #if OS(MORPHOS)
-#include <wtf/unicode/Unicode.h>
 #include "TextBoundaries.h"
 #include "gui.h"
 #include "utils.h"
@@ -861,8 +860,9 @@ void WebEditorClient::getGuessesForWord(const String& word, const String& contex
 	D(kprintf("getGuessesForWord(%s)\n", word.utf8().data()));
 
 	String isolatedWord;
-	UChar *text = (UChar *) word.characters();
-	UChar *tmp = text;
+	auto upconvertedCharacters = StringView(word).upconvertedCharacters();
+	const UChar *text = upconvertedCharacters;
+	const UChar *tmp = text;
 	STRPTR cword;
 	bool wordReached = false;
 	int start = 0, len = 0;

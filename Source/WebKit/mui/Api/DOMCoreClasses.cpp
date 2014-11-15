@@ -428,7 +428,7 @@ DOMElement* DOMDocument::getElementById(const char* elementId)
     if (!m_document)
         return 0;
 
-    return DOMElement::createInstance(m_document->getElementById(elementId));
+    return DOMElement::createInstance(m_document->getElementById(String(elementId)));
 }
 
 // DOMDocument - DOMViewCSS --------------------------------------------------
@@ -815,15 +815,15 @@ DOMElement* DOMElement::createInstance(WebCore::Element* e)
 
     DOMElement* domElement = 0;
 
-    if (isHTMLFormElement(e))
+    if (is<HTMLFormElement>(e))
         domElement = new DOMHTMLFormElement(e);
     else if (e->hasTagName(selectTag))
         domElement =  new DOMHTMLSelectElement(e);
-    else if (isHTMLOptionElement(e))
+    else if (is<HTMLOptionElement>(e))
         domElement = new DOMHTMLOptionElement(e);
-    else if (isHTMLInputElement(e))
+    else if (is<HTMLInputElement>(e))
         domElement = new DOMHTMLInputElement(e);
-    else if (isHTMLTextAreaElement(e))
+    else if (is<HTMLTextAreaElement>(e))
         domElement = new DOMHTMLTextAreaElement(e);
     else if (e->isHTMLElement())
         domElement = DOMHTMLElement::createInstance(e);

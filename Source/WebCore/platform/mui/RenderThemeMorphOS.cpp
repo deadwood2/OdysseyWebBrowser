@@ -139,31 +139,29 @@ float RenderThemeBal::defaultFontSize = 16;
 // sizes (e.g. 15px). So we just use Arial for now.
 const String& RenderThemeBal::defaultGUIFont()
 {
-    DEFINE_STATIC_LOCAL(String, fontFace, (ASCIILiteral("Arial")));
+    DEPRECATED_DEFINE_STATIC_LOCAL(String, fontFace, (ASCIILiteral("Arial")));
     return fontFace;
 }
 
-static PassRefPtr<Gradient> createLinearGradient(RGBA32 top, RGBA32 bottom, const IntPoint& a, const IntPoint& b)
+static PassRef<Gradient> createLinearGradient(RGBA32 top, RGBA32 bottom, const IntPoint& a, const IntPoint& b)
 {
-    RefPtr<Gradient> gradient = Gradient::create(a, b);
-    gradient->addColorStop(0.0, Color(top));
-    gradient->addColorStop(1.0, Color(bottom));
-    return gradient.release();
+    PassRef<Gradient> gradient = Gradient::create(a, b);
+    gradient.get().addColorStop(0.0, Color(top));
+    gradient.get().addColorStop(1.0, Color(bottom));
+    return gradient;
 }
 
-static Path roundedRectForBorder(RenderObject* object, const IntRect& rect)
+static Path roundedRectForBorder(const RenderObject& object, const IntRect& rect)
 {
-    RenderStyle& style = object->style();
+#warning FIXME
+    RenderStyle& style = object.style();
     LengthSize topLeftRadius = style.borderTopLeftRadius();
     LengthSize topRightRadius = style.borderTopRightRadius();
     LengthSize bottomLeftRadius = style.borderBottomLeftRadius();
     LengthSize bottomRightRadius = style.borderBottomRightRadius();
 
     Path roundedRect;
-    roundedRect.addRoundedRect(rect, IntSize(topLeftRadius.width().value(), topLeftRadius.height().value()),
-                                     IntSize(topRightRadius.width().value(), topRightRadius.height().value()),
-                                     IntSize(bottomLeftRadius.width().value(), bottomLeftRadius.height().value()),
-                                     IntSize(bottomRightRadius.width().value(), bottomRightRadius.height().value()));
+    roundedRect.addRoundedRect(rect, IntSize(bottomRightRadius.width().value(), bottomRightRadius.height().value()));
     return roundedRect;
 }
 
@@ -173,7 +171,7 @@ static RenderSlider* determineRenderSlider(RenderObject* object)
     // The RenderSlider is an ancestor of the slider thumb.
     while (object && !object->isSlider())
         object = object->parent();
-    return toRenderSlider(object);
+    return downcast<RenderSlider>(object);
 }
 
 static float determineFullScreenMultiplier(Element* element)
@@ -279,7 +277,7 @@ void RenderThemeBal::adjustTextAreaStyle(StyleResolver*, RenderStyle* style, Ele
     setButtonStyle(style);
 }
 
-bool RenderThemeBal::paintTextArea(RenderObject* object, const PaintInfo& info, const IntRect& rect)
+bool RenderThemeBal::paintTextArea(const RenderObject& object, const PaintInfo& info, const IntRect& rect)
 {
     return paintTextFieldOrTextAreaOrSearchField(object, info, rect);
 }
@@ -289,7 +287,7 @@ void RenderThemeBal::adjustTextFieldStyle(StyleResolver*, RenderStyle* style, El
     setButtonStyle(style);
 }
 
-bool RenderThemeBal::paintTextFieldOrTextAreaOrSearchField(RenderObject* object, const PaintInfo& info, const IntRect& rect)
+bool RenderThemeBal::paintTextFieldOrTextAreaOrSearchField(const RenderObject& object, const PaintInfo& info, const IntRect& rect)
 {
     ASSERT(info.context);
     GraphicsContext* context = info.context;
@@ -307,7 +305,7 @@ bool RenderThemeBal::paintTextFieldOrTextAreaOrSearchField(RenderObject* object,
         context->setStrokeGradient(createLinearGradient(regularTopOutline, regularBottomOutline, rect.maxXMinYCorner(), rect.maxXMaxYCorner()));
 
     Path textFieldRoundedRectangle = roundedRectForBorder(object, rect);
-    if (object->style().appearance() == SearchFieldPart) {
+    if (object.style().appearance() == SearchFieldPart) {
         // We force the fill color to White so as to match the background color of the search cancel button graphic.
         context->setFillColor(Color::white, ColorSpaceDeviceRGB);
         context->fillPath(textFieldRoundedRectangle);
@@ -318,7 +316,7 @@ bool RenderThemeBal::paintTextFieldOrTextAreaOrSearchField(RenderObject* object,
     return false;
 }
 
-bool RenderThemeBal::paintTextField(RenderObject* object, const PaintInfo& info, const IntRect& rect)
+bool RenderThemeBal::paintTextField(const RenderObject& object, const PaintInfo& info, const IntRect& rect)
 {
     return paintTextFieldOrTextAreaOrSearchField(object, info, rect);
 }
@@ -343,18 +341,18 @@ void RenderThemeBal::adjustSearchFieldCancelButtonStyle(StyleResolver*, RenderSt
     style->setHeight(length);
 }
 
-bool RenderThemeBal::paintSearchField(RenderObject* object, const PaintInfo& info, const IntRect& rect)
+bool RenderThemeBal::paintSearchField(const RenderObject& object, const PaintInfo& info, const IntRect& rect)
 {
     return paintTextFieldOrTextAreaOrSearchField(object, info, rect);
 }
 
-bool RenderThemeBal::paintSearchFieldCancelButton(RenderObject* object, const PaintInfo& paintInfo, const IntRect& rect)
+bool RenderThemeBal::paintSearchFieldCancelButton(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
     ASSERT(object->parent());
-    if (!object->parent() || !object->parent()->isBox())
+    if (!object.parent() || !object.parent()->isBox())
         return false;
 
-    RenderBox* parentRenderBox = toRenderBox(object->parent());
+    RenderBox* parentRenderBox = downcast<RenderBox>(object.parent());
 
     IntRect parentBox = parentRenderBox->absoluteContentBox();
     IntRect bounds = rect;
@@ -369,7 +367,7 @@ bool RenderThemeBal::paintSearchFieldCancelButton(RenderObject* object, const Pa
 
 	static Image* cancelImage = Image::loadPlatformResource("SearchCancel").leakRef();
 	static Image* cancelPressedImage = Image::loadPlatformResource("SearchCancelPressed").leakRef();
-    paintInfo.context->drawImage(isPressed(object) ? cancelPressedImage : cancelImage, object->style().colorSpace(), bounds);
+    paintInfo.context->drawImage(isPressed(object) ? cancelPressedImage : cancelImage, object.style().colorSpace(), bounds);
     return false;
 }
 
@@ -410,7 +408,7 @@ void RenderThemeBal::calculateButtonSize(RenderStyle* style) const
         style->setHeight(length);
 }
 
-bool RenderThemeBal::paintCheckbox(RenderObject* object, const PaintInfo& info, const IntRect& rect)
+bool RenderThemeBal::paintCheckbox(const RenderObject& object, const PaintInfo& info, const IntRect& rect)
 {
     return paintButton(object, info, rect);
 }
@@ -420,7 +418,7 @@ void RenderThemeBal::setCheckboxSize(RenderStyle* style) const
     calculateButtonSize(style);
 }
 
-bool RenderThemeBal::paintRadio(RenderObject* object, const PaintInfo& info, const IntRect& rect)
+bool RenderThemeBal::paintRadio(const RenderObject& object, const PaintInfo& info, const IntRect& rect)
 {
     return paintButton(object, info, rect);
 }
@@ -443,7 +441,7 @@ void RenderThemeBal::setRadioSize(RenderStyle* style) const
 }
 
 // If this function returns false, WebCore assumes the button is fully decorated
-bool RenderThemeBal::paintButton(RenderObject* object, const PaintInfo& info, const IntRect& rect)
+bool RenderThemeBal::paintButton(const RenderObject& object, const PaintInfo& info, const IntRect& rect)
 {
     ASSERT(info.context);
     info.context->save();
@@ -466,7 +464,7 @@ bool RenderThemeBal::paintButton(RenderObject* object, const PaintInfo& info, co
         info.context->setStrokeGradient(createLinearGradient(regularTopOutline, regularBottomOutline, rect.maxXMinYCorner(), rect.maxXMaxYCorner()));
     }
 
-    ControlPart part = object->style().appearance();
+    ControlPart part = object.style().appearance();
     switch (part) {
     case CheckboxPart: {
         FloatSize smallCorner(smallRadius, smallRadius);
@@ -696,45 +694,46 @@ const int styledPopupPaddingLeft = 8;
 const int styledPopupPaddingTop = 1;
 const int styledPopupPaddingBottom = 2;
 
-bool RenderThemeBal::paintMenuList(RenderObject* o, const PaintInfo& paintInfo, const IntRect& r)
+bool RenderThemeBal::paintMenuList(const RenderObject& o, const PaintInfo& paintInfo, const IntRect& r)
 {
-    IntRect bounds = IntRect(r.x() + o->style().borderLeftWidth(),
-                             r.y() + o->style().borderTopWidth(),
-                             r.width() - o->style().borderLeftWidth() - o->style().borderRightWidth(),
-                             r.height() - o->style().borderTopWidth() - o->style().borderBottomWidth());
+    IntRect bounds = IntRect(r.x() + o.style().borderLeftWidth(),
+                             r.y() + o.style().borderTopWidth(),
+                             r.width() - o.style().borderLeftWidth() - o.style().borderRightWidth(),
+                             r.height() - o.style().borderTopWidth() - o.style().borderBottomWidth());
     // Draw the gradients to give the styled popup menu a button appearance
 	//paintMenuListButtonGradients(o, paintInfo, bounds);
 	EBorderStyle v = INSET;
-    o->style().setBorderTopStyle(v);
-	o->style().setBorderLeftStyle(v);
-	o->style().setBorderBottomStyle(v);
-	o->style().setBorderRightStyle(v);
+    o.style().setBorderTopStyle(v);
+	o.style().setBorderLeftStyle(v);
+	o.style().setBorderBottomStyle(v);
+	o.style().setBorderRightStyle(v);
     int borderWidth = 1;
-	o->style().setBorderTopWidth(borderWidth);
-	o->style().setBorderLeftWidth(borderWidth);
-	o->style().setBorderBottomWidth(borderWidth);
-	o->style().setBorderRightWidth(borderWidth);
+	o.style().setBorderTopWidth(borderWidth);
+	o.style().setBorderLeftWidth(borderWidth);
+	o.style().setBorderBottomWidth(borderWidth);
+	o.style().setBorderRightWidth(borderWidth);
 
-	toRenderBox(o)->paintFillLayerExtended(paintInfo,
-	o->style().visitedDependentColor(CSSPropertyBackgroundColor), o->style().backgroundLayers(), IntRect(r.x(), r.y(), toRenderBox(o)->width(), toRenderBox(o)->height()), BackgroundBleedNone, 0, IntSize(), o->style().backgroundComposite());
-	toRenderBox(o)->paintBorder(paintInfo,
+#warning FIXME
+/*	toRenderBox(o).paintFillLayerExtended(paintInfo,
+	o.style().visitedDependentColor(CSSPropertyBackgroundColor), o.style().backgroundLayers(), IntRect(r.x(), r.y(), toRenderBox(o).width(), toRenderBox(o).height()), BackgroundBleedNone, 0, IntSize(), o.style().backgroundComposite());
+	toRenderBox(o).paintBorder(paintInfo,
 	LayoutRect(r.x(), r.y(), r.width(), r.height()),
-	&o->style(), BackgroundBleedNone, true, true);
+	o.style(), BackgroundBleedNone, true, true);*/
 
     // Since we actually know the size of the control here, we restrict the font scale to make sure the arrows will fit vertically in the bounds
-	float fontScale = std::min(o->style().fontSize() / baseFontSize, bounds.height() / (baseArrowHeight * 2 + baseSpaceBetweenArrows));
+	float fontScale = std::min(o.style().fontSize() / baseFontSize, bounds.height() / (baseArrowHeight * 2 + baseSpaceBetweenArrows));
     float centerY = bounds.y() + bounds.height() / 2.0f;
     float arrowHeight = baseArrowHeight * fontScale;
     float arrowWidth = baseArrowWidth * fontScale;
-    float leftEdge = bounds.maxX() - arrowPaddingRight * o->style().effectiveZoom() - arrowWidth;
+    float leftEdge = bounds.maxX() - arrowPaddingRight * o.style().effectiveZoom() - arrowWidth;
     float spaceBetweenArrows = baseSpaceBetweenArrows * fontScale;
 
-    if (bounds.width() < arrowWidth + arrowPaddingLeft * o->style().effectiveZoom())
+    if (bounds.width() < arrowWidth + arrowPaddingLeft * o.style().effectiveZoom())
         return false;
 
     GraphicsContextStateSaver stateSaver(*paintInfo.context);
 
-    paintInfo.context->setFillColor(o->style().visitedDependentColor(CSSPropertyColor), o->style().colorSpace());
+    paintInfo.context->setFillColor(o.style().visitedDependentColor(CSSPropertyColor), o.style().colorSpace());
     paintInfo.context->setStrokeStyle(NoStroke);
 
     FloatPoint arrow1[3];
@@ -758,7 +757,7 @@ bool RenderThemeBal::paintMenuList(RenderObject* o, const PaintInfo& paintInfo, 
 
     // FIXME: Should the separator thickness and space be scaled up by fontScale?
     int separatorSpace = 2; // Deliberately ignores zoom since it looks nicer if it stays thin.
-    int leftEdgeOfSeparator = static_cast<int>(leftEdge - arrowPaddingLeft * o->style().effectiveZoom()); // FIXME: Round?
+    int leftEdgeOfSeparator = static_cast<int>(leftEdge - arrowPaddingLeft * o.style().effectiveZoom()); // FIXME: Round?
 
     // Draw the separator to the left of the arrows
     paintInfo.context->setStrokeThickness(1.0f); // Deliberately ignores zoom since it looks nicer if it stays thin.
@@ -774,45 +773,46 @@ bool RenderThemeBal::paintMenuList(RenderObject* o, const PaintInfo& paintInfo, 
     return false;
 }
 
-bool RenderThemeBal::paintMenuListButton(RenderObject* o, const PaintInfo& paintInfo, const IntRect& r)
+bool RenderThemeBal::paintMenuListButton(const RenderObject& o, const PaintInfo& paintInfo, const IntRect& r)
 {
-    IntRect bounds = IntRect(r.x() + o->style().borderLeftWidth(),
-                             r.y() + o->style().borderTopWidth(),
-                             r.width() - o->style().borderLeftWidth() - o->style().borderRightWidth(),
-                             r.height() - o->style().borderTopWidth() - o->style().borderBottomWidth());
+    IntRect bounds = IntRect(r.x() + o.style().borderLeftWidth(),
+                             r.y() + o.style().borderTopWidth(),
+                             r.width() - o.style().borderLeftWidth() - o.style().borderRightWidth(),
+                             r.height() - o.style().borderTopWidth() - o.style().borderBottomWidth());
     // Draw the gradients to give the styled popup menu a button appearance
     //paintMenuListButtonGradients(o, paintInfo, bounds);
     EBorderStyle v = INSET;
-    o->style().setBorderTopStyle(v);
-    o->style().setBorderLeftStyle(v);
-    o->style().setBorderBottomStyle(v);
-    o->style().setBorderRightStyle(v);
+    o.style().setBorderTopStyle(v);
+    o.style().setBorderLeftStyle(v);
+    o.style().setBorderBottomStyle(v);
+    o.style().setBorderRightStyle(v);
     int borderWidth = 1;
-    o->style().setBorderTopWidth(borderWidth);
-    o->style().setBorderLeftWidth(borderWidth);
-    o->style().setBorderBottomWidth(borderWidth);
-    o->style().setBorderRightWidth(borderWidth);
+    o.style().setBorderTopWidth(borderWidth);
+    o.style().setBorderLeftWidth(borderWidth);
+    o.style().setBorderBottomWidth(borderWidth);
+    o.style().setBorderRightWidth(borderWidth);
 
-    toRenderBox(o)->paintFillLayerExtended(paintInfo,
-    o->style().visitedDependentColor(CSSPropertyBackgroundColor), o->style().backgroundLayers(), IntRect(r.x(), r.y(), toRenderBox(o)->width(), toRenderBox(o)->height()), BackgroundBleedNone, 0, IntSize(), o->style().backgroundComposite());
-    toRenderBox(o)->paintBorder(paintInfo,
+#warning FIXME
+/*    toRenderBox(o).paintFillLayerExtended(paintInfo,
+    o.style().visitedDependentColor(CSSPropertyBackgroundColor), o.style().backgroundLayers(), IntRect(r.x(), r.y(), toRenderBox(o).width(), toRenderBox(o).height()), BackgroundBleedNone, 0, IntSize(), o.style().backgroundComposite());
+    toRenderBox(&o)->paintBorder(paintInfo,
 				LayoutRect(r.x(), r.y(), r.width(), r.height()),
-				&o->style(), BackgroundBleedNone, true, true);
+				o.style(), BackgroundBleedNone, true, true);*/
 
     // Since we actually know the size of the control here, we restrict the font scale to make sure the arrows will fit vertically in the bounds
-    float fontScale = std::min(o->style().fontSize() / baseFontSize, bounds.height() / (baseArrowHeight * 2 + baseSpaceBetweenArrows));
+    float fontScale = std::min(o.style().fontSize() / baseFontSize, bounds.height() / (baseArrowHeight * 2 + baseSpaceBetweenArrows));
     float centerY = bounds.y() + bounds.height() / 2.0f;
     float arrowHeight = baseArrowHeight * fontScale;
     float arrowWidth = baseArrowWidth * fontScale;
-    float leftEdge = bounds.maxX() - arrowPaddingRight * o->style().effectiveZoom() - arrowWidth;
+    float leftEdge = bounds.maxX() - arrowPaddingRight * o.style().effectiveZoom() - arrowWidth;
     float spaceBetweenArrows = baseSpaceBetweenArrows * fontScale;
 
-    if (bounds.width() < arrowWidth + arrowPaddingLeft * o->style().effectiveZoom())
+    if (bounds.width() < arrowWidth + arrowPaddingLeft * o.style().effectiveZoom())
       return false;
 
     GraphicsContextStateSaver stateSaver(*paintInfo.context);
 
-    paintInfo.context->setFillColor(o->style().visitedDependentColor(CSSPropertyColor), o->style().colorSpace());
+    paintInfo.context->setFillColor(o.style().visitedDependentColor(CSSPropertyColor), o.style().colorSpace());
     paintInfo.context->setStrokeStyle(NoStroke);
 
     FloatPoint arrow1[3];
@@ -836,7 +836,7 @@ bool RenderThemeBal::paintMenuListButton(RenderObject* o, const PaintInfo& paint
 
     // FIXME: Should the separator thickness and space be scaled up by fontScale?
     int separatorSpace = 2; // Deliberately ignores zoom since it looks nicer if it stays thin.
-    int leftEdgeOfSeparator = static_cast<int>(leftEdge - arrowPaddingLeft * o->style().effectiveZoom()); // FIXME: Round?
+    int leftEdgeOfSeparator = static_cast<int>(leftEdge - arrowPaddingLeft * o.style().effectiveZoom()); // FIXME: Round?
 
     // Draw the separator to the left of the arrows
     paintInfo.context->setStrokeThickness(1.0f); // Deliberately ignores zoom since it looks nicer if it stays thin.
@@ -876,11 +876,11 @@ void RenderThemeBal::adjustSliderThumbSize(RenderStyle* style, Element* element)
     }
 }
 
-bool RenderThemeBal::paintSliderTrack(RenderObject* object, const PaintInfo& info, const IntRect& rect)
+bool RenderThemeBal::paintSliderTrack(const RenderObject& object, const PaintInfo& info, const IntRect& rect)
 {
     const static int SliderTrackHeight = 5;
     IntRect rect2;
-    if (object->style().appearance() == SliderHorizontalPart) {
+    if (object.style().appearance() == SliderHorizontalPart) {
         rect2.setHeight(SliderTrackHeight);
         rect2.setWidth(rect.width());
         rect2.setX(rect.x());
@@ -894,13 +894,13 @@ bool RenderThemeBal::paintSliderTrack(RenderObject* object, const PaintInfo& inf
     return paintSliderTrackRect(object, info, rect2);
 }
 
-bool RenderThemeBal::paintSliderTrackRect(RenderObject* object, const PaintInfo& info, const IntRect& rect)
+bool RenderThemeBal::paintSliderTrackRect(const RenderObject& object, const PaintInfo& info, const IntRect& rect)
 {
     return paintSliderTrackRect(object, info, rect, rangeSliderRegularTopOutline, rangeSliderRegularBottomOutline,
                 rangeSliderRegularTop, rangeSliderRegularBottom);
 }
 
-bool RenderThemeBal::paintSliderTrackRect(RenderObject* object, const PaintInfo& info, const IntRect& rect,
+bool RenderThemeBal::paintSliderTrackRect(const RenderObject& object, const PaintInfo& info, const IntRect& rect,
         RGBA32 strokeColorStart, RGBA32 strokeColorEnd, RGBA32 fillColorStart, RGBA32 fillColorEnd)
 {
     FloatSize smallCorner(smallRadius, smallRadius);
@@ -924,7 +924,7 @@ bool RenderThemeBal::paintSliderTrackRect(RenderObject* object, const PaintInfo&
     return false;
 }
 
-bool RenderThemeBal::paintSliderThumb(RenderObject* object, const PaintInfo& info, const IntRect& rect)
+bool RenderThemeBal::paintSliderThumb(const RenderObject& object, const PaintInfo& info, const IntRect& rect)
 {
     FloatSize largeCorner(largeRadius, largeRadius);
 
@@ -1108,7 +1108,7 @@ static bool paintMediaButton(GraphicsContext* context, const IntRect& rect, Imag
     return false;
 }
 
-bool RenderThemeBal::paintMediaPlayButton(RenderObject* object, const PaintInfo& paintInfo, const IntRect& rect)
+bool RenderThemeBal::paintMediaPlayButton(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
 #if ENABLE(VIDEO)
     HTMLMediaElement* mediaElement = toParentMediaElement(object);
@@ -1137,7 +1137,7 @@ bool RenderThemeBal::paintMediaPlayButton(RenderObject* object, const PaintInfo&
 #endif
 }
 
-bool RenderThemeBal::paintMediaMuteButton(RenderObject* object, const PaintInfo& paintInfo, const IntRect& rect)
+bool RenderThemeBal::paintMediaMuteButton(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
 #if ENABLE(VIDEO)
     HTMLMediaElement* mediaElement = toParentMediaElement(object);
@@ -1166,7 +1166,7 @@ bool RenderThemeBal::paintMediaMuteButton(RenderObject* object, const PaintInfo&
 #endif
 }
 
-bool RenderThemeBal::paintMediaFullscreenButton(RenderObject* object, const PaintInfo& paintInfo, const IntRect& rect)
+bool RenderThemeBal::paintMediaFullscreenButton(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
 #if ENABLE(VIDEO)
     HTMLMediaElement* mediaElement = toParentMediaElement(object);
@@ -1315,7 +1315,7 @@ static Image* getMediaSliderThumb()
     return mediaSliderThumb;
 }
 
-bool RenderThemeBal::paintMediaSliderTrack(RenderObject* object, const PaintInfo& paintInfo, const IntRect& rect)
+bool RenderThemeBal::paintMediaSliderTrack(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
 #if ENABLE(VIDEO)
     HTMLMediaElement* mediaElement = toParentMediaElement(object);
@@ -1381,13 +1381,13 @@ bool RenderThemeBal::paintMediaSliderTrack(RenderObject* object, const PaintInfo
 #endif
 }
 
-bool RenderThemeBal::paintMediaSliderThumb(RenderObject* object, const PaintInfo& paintInfo, const IntRect& rect)
+bool RenderThemeBal::paintMediaSliderThumb(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
 	static Image* mediaSliderThumb = Image::loadPlatformResource("MediaTheme/SliderThumb").leakRef();
 	return paintMediaButton(paintInfo.context, rect, mediaSliderThumb);
 }
 
-bool RenderThemeBal::paintMediaVolumeSliderTrack(RenderObject* object, const PaintInfo& paintInfo, const IntRect& rect)
+bool RenderThemeBal::paintMediaVolumeSliderTrack(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
 #if ENABLE(VIDEO)
     float pad = rect.width() * 0.45;
@@ -1407,7 +1407,7 @@ bool RenderThemeBal::paintMediaVolumeSliderTrack(RenderObject* object, const Pai
 #endif
 }
 
-bool RenderThemeBal::paintMediaVolumeSliderThumb(RenderObject* object, const PaintInfo& paintInfo, const IntRect& rect)
+bool RenderThemeBal::paintMediaVolumeSliderThumb(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
 #if ENABLE(VIDEO)
 	static Image* mediaVolumeThumb = Image::loadPlatformResource("MediaTheme/VolumeSliderThumb").leakRef();
@@ -1507,7 +1507,7 @@ double RenderThemeBal::animationDurationForProgressBar(RenderProgress* renderPro
     return renderProgress->isDeterminate() ? 0.0 : 2.0;
 }
 
-bool RenderThemeBal::paintProgressBar(RenderObject* object, const PaintInfo& info, const IntRect& rect)
+bool RenderThemeBal::paintProgressBar(const RenderObject& object, const PaintInfo& info, const IntRect& rect)
 {
 #if 1// ENABLE(PROGRESS_ELEMENT)
 	return true;

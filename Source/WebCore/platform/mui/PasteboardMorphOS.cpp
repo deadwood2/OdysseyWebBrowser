@@ -29,9 +29,7 @@
 
 #include "config.h"
 #include "Logging.h"
-#include "Clipboard.h"
 #include "Pasteboard.h"
-
 #include "CachedImage.h"
 #include "DataObjectMorphOS.h"
 #include "DocumentFragment.h"
@@ -224,7 +222,7 @@ static ClipboardDataType dataObjectTypeFromHTMLClipboardType(const String& rawTy
     return ClipboardDataTypeUnknown;
 }
 
-bool Pasteboard::writeString(const String& type, const String& data)
+void Pasteboard::writeString(const String& type, const String& data)
 {
 	D(kprintf("Pasteboard::writeString %s %s\n", type.utf8().data(), data.utf8().data()));
 
@@ -240,11 +238,11 @@ bool Pasteboard::writeString(const String& type, const String& data)
 			free(text);
 		}
         m_dataObject->setURIList(data);
-        return true;
+        return;
 	}
     case ClipboardDataTypeMarkup:
         m_dataObject->setMarkup(data);
-        return true;
+        return;
     case ClipboardDataTypeText:
 	{
 		if(m_morphosClipboard == 0)
@@ -255,19 +253,19 @@ bool Pasteboard::writeString(const String& type, const String& data)
 			free(text);
 		}
         m_dataObject->setText(data);
-        return true;
+        return;
 	}
     case ClipboardDataTypeImage:
     case ClipboardDataTypeUnknown:
         break;
     }
 
-    return false;
+    return;
 }
 
-void Pasteboard::writeSelection(Range& selectedRange, bool , Frame& frame, ShouldSerializeSelectedTextForClipboard shouldSerializeSelectedTextForClipboard)
+void Pasteboard::writeSelection(Range& selectedRange, bool , Frame& frame, ShouldSerializeSelectedTextForDataTransfer shouldSerializeSelectedTextForDataTransfer)
 {
-	String text = shouldSerializeSelectedTextForClipboard == IncludeImageAltTextForClipboard ? frame.editor().selectedTextForClipboard() : frame.editor().selectedText();
+	String text = shouldSerializeSelectedTextForDataTransfer == IncludeImageAltTextForDataTransfer ? frame.editor().selectedTextForDataTransfer() : frame.editor().selectedText();
 
 	D(kprintf("Pasteboard::writeSelection %s %d\n", text.utf8().data(), m_morphosClipboard));
 
@@ -325,14 +323,14 @@ static URL getURLForImageNode(Node* node)
 {
     // FIXME: Later this code should be shared with Chromium somehow. Chances are all platforms want it.
     AtomicString urlString;
-    if (isHTMLImageElement(node) || isHTMLInputElement(node))
-        urlString = toElement(node)->getAttribute(HTMLNames::srcAttr);
+    if (is<HTMLImageElement>(node) || is<HTMLInputElement>(node))
+        urlString = downcast<Element>(node)->getAttribute(HTMLNames::srcAttr);
 #if ENABLE(SVG)
     else if (node->hasTagName(SVGNames::imageTag))
-        urlString = toElement(node)->getAttribute(XLinkNames::hrefAttr);
+        urlString = downcast<Element>(node)->getAttribute(XLinkNames::hrefAttr);
 #endif
     else if (node->hasTagName(HTMLNames::embedTag) || node->hasTagName(HTMLNames::objectTag)) {
-        Element* element = toElement(node);
+        Element* element = downcast<Element>(node);
         urlString = element->imageSourceURL();
     }
     return urlString.isEmpty() ? URL() : node->document().completeURL(stripLeadingAndTrailingHTMLSpaces(urlString));
@@ -347,7 +345,7 @@ void Pasteboard::writeImage(Element& element, const URL&, const String& title)
     if (!(element.renderer() && element.renderer()->isImage()))
         return;
 
-    RenderImage* renderer = toRenderImage(element.renderer());
+    RenderImage* renderer = downcast<RenderImage>(element.renderer());
     CachedImage* cachedImage = renderer->cachedImage();
     if (!cachedImage || cachedImage->errorOccurred())
         return;

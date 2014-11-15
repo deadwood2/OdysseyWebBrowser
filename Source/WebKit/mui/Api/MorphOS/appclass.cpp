@@ -1084,7 +1084,7 @@ void FreeWebKitLeakedObjects()
 #endif
 
 	/* Seriously, sigh */
-	JSDOMWindow::commonVM()->heap.blockAllocator().quitFreeingThread();
+	JSDOMWindow::commonVM().heap.blockAllocator().quitFreeingThread();
 
 	/* Yup, built as an indestructible singleton, sigh. ;) */
 	cookieManager().destroy();

@@ -70,10 +70,10 @@ void findPasswordFormFields(HTMLFormElement* form, PasswordFormFields* fields)
         if (formElement->isActivatedSubmit())
             fields->submit = formElement;
 
-        if (!formElement->hasLocalName(HTMLNames::inputTag))
+        if (!formElement->hasTagName(HTMLNames::inputTag))
             continue;
 
-        HTMLInputElement* inputElement = toHTMLInputElement(formElement);
+        HTMLInputElement* inputElement = downcast<HTMLInputElement>(formElement);
         if (inputElement->isDisabledFormControl())
             continue;
 
@@ -92,10 +92,10 @@ void findPasswordFormFields(HTMLFormElement* form, PasswordFormFields* fields)
             if (!formElements[i]->isFormControlElement())
                 continue;
             HTMLFormControlElement* formElement = static_cast<HTMLFormControlElement*>(formElements[i]);
-            if (!formElement->hasLocalName(HTMLNames::inputTag))
+            if (!formElement->hasTagName(HTMLNames::inputTag))
                 continue;
 
-            HTMLInputElement* inputElement = toHTMLInputElement(formElement);
+            HTMLInputElement* inputElement = downcast<HTMLInputElement>(formElement);
             if (inputElement->isDisabledFormControl())
                 continue;
 

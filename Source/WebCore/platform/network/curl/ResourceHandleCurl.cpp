@@ -196,7 +196,7 @@ void ResourceHandle::setCookies()
       && (getInternal()->m_firstRequest.firstPartyForCookies() != url)
       && cookieManager().getCookie(url, WithHttpOnlyCookies).isEmpty())
         return;
-    cookieManager().setCookies(url, getInternal()->m_response.httpHeaderField("Set-Cookie"));
+    cookieManager().setCookies(url, getInternal()->m_response.httpHeaderField(String("Set-Cookie")));
     checkAndSendCookies(url);
 }
 

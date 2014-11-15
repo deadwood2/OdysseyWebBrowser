@@ -43,7 +43,7 @@
 #include <Frame.h>
 #include <FrameLoader.h>
 #include <URL.h>
-#include <ResourceBuffer.h>
+#include <SharedBuffer.h>
 
 using namespace WebCore;
 
@@ -99,8 +99,7 @@ PassRefPtr<SharedBuffer> WebDataSource::data()
     if (!m_loader)
         return 0;
 
-    RefPtr<ResourceBuffer> buffer = m_loader->mainResourceData();
-    return buffer ? buffer->sharedBuffer() : 0;
+    return m_loader->mainResourceData();
 }
 
 // WebDocumentRepresentation* WebDataSource::representation()
@@ -182,9 +181,9 @@ WebResource* WebDataSource::subresourceForURL(String url)
     if (!cachedResource)
         return 0;
 
-    ResourceBuffer* buffer = cachedResource->resourceBuffer();
+    SharedBuffer* buffer = cachedResource->resourceBuffer();
 
-    return WebResource::createInstance(buffer ? buffer->sharedBuffer() : 0, cachedResource->response());
+    return WebResource::createInstance(buffer, cachedResource->response());
 }
 
 void WebDataSource::addSubresource(WebResource* /*subresource*/)

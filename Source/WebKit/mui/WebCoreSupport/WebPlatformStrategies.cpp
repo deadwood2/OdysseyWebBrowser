@@ -38,7 +38,7 @@ using namespace WebCore;
 
 void PlatformStrategiesMorphOS::initialize()
 {
-    DEFINE_STATIC_LOCAL(PlatformStrategiesMorphOS, platformStrategies, ());
+    DEPRECATED_DEFINE_STATIC_LOCAL(PlatformStrategiesMorphOS, platformStrategies, ());
     setPlatformStrategies(&platformStrategies);
 }
 
@@ -78,11 +78,6 @@ SharedWorkerStrategy* PlatformStrategiesMorphOS::createSharedWorkerStrategy()
     return this;
 }
 #endif
-
-VisitedLinkStrategy* PlatformStrategiesMorphOS::createVisitedLinkStrategy()
-{
-    return this;
-}
 
 StorageStrategy* PlatformStrategiesMorphOS::createStorageStrategy()
 {
@@ -159,15 +154,3 @@ void PlatformStrategiesMorphOS::getPluginInfo(const Page*, Vector<PluginInfo>& o
     UNUSED_PARAM(outPlugins);
 #endif
 }
-
-// VisitedLinkStrategy
-bool PlatformStrategiesMorphOS::isLinkVisited(Page* page, LinkHash hash, const URL&, const AtomicString&)
-{
-    return page->group().isLinkVisited(hash);
-}
-
-void PlatformStrategiesMorphOS::addVisitedLink(Page* page, LinkHash hash)
-{
-    page->group().addVisitedLinkHash(hash);
-}
-

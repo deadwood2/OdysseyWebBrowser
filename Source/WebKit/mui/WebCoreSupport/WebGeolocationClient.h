@@ -70,10 +70,10 @@ public:
 
 private:
     void asyncUpdateController();
-    void controllerTimerFired(Timer<WebGeolocationClient>*);
+    void controllerTimerFired(Timer*);
 
     void asyncUpdatePermission();
-    void permissionTimerFired(Timer<WebGeolocationClient>*);
+    void permissionTimerFired(Timer*);
 
     void clearError();
 
@@ -81,8 +81,8 @@ private:
     RefPtr<GeolocationPosition> m_lastPosition;
     bool m_hasError;
     String m_errorMessage;
-    Timer<WebGeolocationClient> m_controllerTimer;
-    Timer<WebGeolocationClient> m_permissionTimer;
+    Timer m_controllerTimer;
+    Timer m_permissionTimer;
     bool m_isActive;
 
     enum PermissionState {

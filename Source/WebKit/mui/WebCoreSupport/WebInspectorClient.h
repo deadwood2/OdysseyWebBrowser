@@ -92,7 +92,7 @@ private:
 
 class WebInspectorFrontendClient : public WebCore::InspectorFrontendClientLocal {
 public:
-    WebInspectorFrontendClient(WebView* inspectedWebView, WebView* frontendWebView, WebCore::Page* inspectorPage, WebInspectorClient* inspectorClient, WTF::PassOwnPtr<Settings>);
+    WebInspectorFrontendClient(WebView* inspectedWebView, WebView* frontendWebView, WebCore::Page* inspectorPage, WebInspectorClient* inspectorClient, std::unique_ptr<Settings>);
     virtual ~WebInspectorFrontendClient();
 
     virtual void frontendLoaded();

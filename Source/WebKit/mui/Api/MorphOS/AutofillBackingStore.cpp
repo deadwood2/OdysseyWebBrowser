@@ -33,7 +33,7 @@ namespace WebCore {
 
 AutofillBackingStore& autofillBackingStore()
 {
-    DEFINE_STATIC_LOCAL(AutofillBackingStore, backingStore, ());
+    DEPRECATED_DEFINE_STATIC_LOCAL(AutofillBackingStore, backingStore, ());
     if (!backingStore.m_database.isOpen())
 		backingStore.open("PROGDIR:Conf/AutoFill.db");
     return backingStore;
