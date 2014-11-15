@@ -256,8 +256,8 @@ DEFTMETHOD(PrinterWindow_UpdateParameters)
 		FloatRect printRect = FloatRect(0, 0, pageWidth, pageHeight);
 
 		// Margins
-	    float headerHeight = 0;
-	    float footerHeight = 0;
+		float headerHeight = 0;
+		float footerHeight = 0;
 
 		float scale = 1.0;
 		float userscale = 1.0;
@@ -381,8 +381,8 @@ DEFTMETHOD(PrinterWindow_Start)
 			FloatRect printRect = FloatRect(0, 0, pageWidth, pageHeight);
 
 			// Margins
-		    float headerHeight = 0;
-		    float footerHeight = 0;
+			float headerHeight = 0;
+			float footerHeight = 0;
 
 			float scale = 1.0;
 			float userscale = 1.0;

@@ -74,14 +74,14 @@ public:
     // instead. Returns the scale to be applied.
     // On Linux, we don't have the problem with NativeTheme, hence we let WebKit
     // do the scaling and ignore the return value.
-	virtual float spoolPage(GraphicsContext& ctx, int pageNumber, float scale = 1.0)
+    virtual float spoolPage(GraphicsContext& ctx, int pageNumber, float scale = 1.0)
     {
         IntRect pageRect = m_pageRects[pageNumber];
-		//kprintf("spoolPage %d pageRect [%d %d %d %d] m_printedPageWidth %f scale %f\n", pageNumber, pageRect.x(), pageRect.y(), pageRect.width(), pageRect.height(), m_printedPageWidth, scale);
+	//kprintf("spoolPage %d pageRect [%d %d %d %d] m_printedPageWidth %f scale %f\n", pageNumber, pageRect.x(), pageRect.y(), pageRect.width(), pageRect.height(), m_printedPageWidth, scale);
 
         ctx.save();
 #if OS(MORPHOS) && !OS(DARWIN)
-		ctx.scale(WebCore::FloatSize(scale, scale));
+	ctx.scale(WebCore::FloatSize(scale, scale));
 #endif
         ctx.translate(static_cast<float>(-pageRect.x()),
                       static_cast<float>(-pageRect.y()));
@@ -93,7 +93,7 @@ public:
 
     void spoolAllPagesWithBoundaries(GraphicsContext& graphicsContext, const FloatSize& pageSizeInPixels)
     {
-        if (!m_frame->document() || !m_frame->view())
+        if (!m_frame->document() || !m_frame->view() || !m_frame->document()->renderView())
             return;
 
         m_frame->document()->updateLayout();

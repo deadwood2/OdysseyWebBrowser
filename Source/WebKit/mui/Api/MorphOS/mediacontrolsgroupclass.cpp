@@ -251,8 +251,7 @@ DEFTMETHOD(MediaControlsGroup_Seek)
 
 		if(element)
 		{
-			ExceptionCode e;
-			element->setCurrentTime((float) getv(data->sl_seek, MUIA_Slider_Level), e);
+			element->setCurrentTime((float) getv(data->sl_seek, MUIA_Slider_Level));
 		}
 #endif
 	}

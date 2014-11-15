@@ -1490,7 +1490,7 @@ DEFSMETHOD(Bookmarkgroup_SaveHtml)
 			save_list(html, data->lt_bookmark, MUIV_Listtree_GetEntry_ListNode_Root, msg->type);
 			FPuts(html,"</UL>\n");
 			FPuts(html,"<HR>\n");
-			FPuts(html,"<P align=center><font size=-1>This hotlist has been created using OWB "VERSION".</font></P></BODY>\n");
+			FPuts(html,"<P align=center><font size=-1>This hotlist has been created using OWB 1.23.</font></P></BODY>\n");
 			FPuts(html,"</HTML>\n");
 			Close(html);
 		}

@@ -1047,6 +1047,12 @@ extern jmp_buf bailout_env;
 int morphos_crash(size_t size)
 {
         char msg[1024];
+
+#if !defined(__AROS__)
+	kprintf("[OWB: task %p] morphos_crash(%ld) invoked\nDumping StackFrame..\n.", FindTask(NULL), size);
+	DumpTaskState(FindTask(NULL));
+#endif
+
 	if(size == 0)
 	{
 	    snprintf(msg, sizeof(msg), "Assertion failed.\n\nYou can either:\n - Crash: a hit will follow to dump stackframe and allocated heap memory will be freed\n - Retry: good luck with that.\n - Quit: the application should quit properly and give all memory back.");

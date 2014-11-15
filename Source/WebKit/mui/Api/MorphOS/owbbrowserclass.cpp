@@ -228,10 +228,10 @@ static APTR dataObject; // Move that
 struct Data
 {
 	/* area coords */
-	ULONG width;
-	ULONG height;
-	ULONG left;
-	ULONG top;
+	int width;
+	int height;
+	int left;
+	int top;
 
 	/* draw mode */
 	int draw_mode;
@@ -2077,8 +2077,7 @@ DEFMMETHOD(HandleEvent)
 
 						if(delta != 0.f)
 						{
-							ExceptionCode e;
-							data->video_element->setCurrentTime(data->video_element->currentTime() + delta, e);
+							data->video_element->setCurrentTime(data->video_element->currentTime() + delta);
 						}
 					}
 					break;
@@ -3123,8 +3122,8 @@ DEFSMETHOD(OWBBrowser_Print)
 		FloatRect printRect = FloatRect(0, 0, pageWidth, pageHeight);
 
 		// Margins
-	    float headerHeight = 0;
-	    float footerHeight = 0;
+		float headerHeight = 0;
+		float footerHeight = 0;
 
 		float scale = 1.0;
 		float userscale = 1.0;

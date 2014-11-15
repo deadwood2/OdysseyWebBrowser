@@ -70,9 +70,11 @@ DownloadDelegateMorphOS::~DownloadDelegateMorphOS()
 	D(kprintf("DownloadDelegateMorphOS::~DownloadDelegateMorphOS\n"));
 }
 
-void DownloadDelegateMorphOS::decideDestinationWithSuggestedFilename(WebDownload *download, const char* fileName)
+void DownloadDelegateMorphOS::decideDestinationWithSuggestedFilename(WebDownload *download, const char* suggestedFilename)
 {
-	D(kprintf("DownloadDelegateMorphOS::decideDestinationWithSuggestedFilename(%s)\n", fileName));
+    D(kprintf("DownloadDelegateMorphOS::decideDestinationWithSuggestedFilename(%s)\n", fileName));
+
+    char* fileName = utf8_to_local(suggestedFilename);
 
     if(fileName)
     {
@@ -176,6 +178,7 @@ void DownloadDelegateMorphOS::decideDestinationWithSuggestedFilename(WebDownload
 				}
 			}
 		}
+		free(fileName);
     }
 }
 

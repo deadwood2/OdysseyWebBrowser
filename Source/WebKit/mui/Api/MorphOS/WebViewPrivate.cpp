@@ -33,6 +33,7 @@
 #include "Chrome.h"
 #include <wtf/text/CString.h>
 #include <wtf/CurrentTime.h>
+#include "CSSValuePool.h"
 #include "Document.h"
 #include "DownloadDelegateMorphOS.h"
 #include "Editor.h"
@@ -102,10 +103,12 @@
 
 #undef PageGroup
 
-namespace WebCore
+#if !defined(__AROS__)
+namespace WTF
 {
-    void resetVM();
+    extern int memory_consumption;
 }
+#endif
 
 using namespace WebCore;
 
@@ -1198,19 +1201,47 @@ bool WebViewPrivate::onKeyDown(BalEventKey event)
 				kprintf("\tscripts: count=%d - size=%d - liveSize=%d - decodedSize=%d\n", stats.scripts.count, stats.scripts.size, stats.scripts.liveSize, stats.scripts.decodedSize);
 				kprintf("\tfonts: count=%d - size=%d - liveSize=%d - decodedSize=%d\n", stats.fonts.count, stats.fonts.size, stats.fonts.liveSize, stats.fonts.decodedSize);
 
-				kprintf("Statistics about JavaScript:\n");
+				kprintf("\nStatistics about JavaScript Heap:\n");
 
+
+#if !defined(__AROS__)
+				kprintf("\tmemory allocated by allocator: %d\n", WTF::memory_consumption);
+#endif
 				kprintf("\theap: used %d - total %d\n", JSDOMWindow::commonVM()->heap.size(), JSDOMWindow::commonVM()->heap.capacity());
 
-				kprintf("Running Garbage collector now.\n");
+				kprintf("\nPruning caches and running Garbage collector.\n");
 				
 				int savedPageCacheCapacity = pageCache()->capacity();
 				pageCache()->setCapacity(0);
 				pageCache()->setCapacity(savedPageCacheCapacity);
 				fontCache()->purgeInactiveFontData();
-				memoryCache()->pruneToPercentage(0.01f);
-				gcController().garbageCollectNow();
-				WTF::releaseFastMallocFreeMemory(); // Does nothing with SYSTEM_MALLOC
+				memoryCache()->pruneToPercentage(0);
+				cssValuePool().drain();
+				clearWidthCaches();
+				Page::jettisonStyleResolversInAllDocuments();
+
+                                gcController().discardAllCompiledCode();
+                                gcController().garbageCollectNow();
+				WTF::releaseFastMallocFreeMemory(); // Does nothing with SYSTEM_MALLOC       
+
+				//WebPreferences* sharedPreferences = WebPreferences::sharedStandardPreferences();                  
+                                
+				//sharedPreferences->setJavaScriptEnabled(false); 
+				//sharedPreferences->postPreferencesChangesNotification(); 
+
+				if(getenv("OWB_RESETVM"))
+				{
+				    DoMethod(app, MUIM_Application_PushMethod, app, 1, MM_OWBApp_ResetVM);
+				}
+				/*
+				WebPreferences* sharedPreferences = WebPreferences::sharedStandardPreferences();
+				sharedPreferences->setJavaScriptEnabled(false);
+				sharedPreferences->postPreferencesChangesNotification();
+				//JSDOMWindow::commonVM()->heap.blockAllocator().cleanup();
+				sharedPreferences->setJavaScriptEnabled(true);
+				sharedPreferences->postPreferencesChangesNotification();
+				*/
+				kprintf("Done\n\n\n");
 
 				break;
 			}
