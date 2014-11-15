@@ -210,29 +210,21 @@ static void calculateWebTimingInformations(ResourceHandleInternal* d)
     curl_easy_getinfo(d->m_handle, CURLINFO_STARTTRANSFER_TIME, &startTransfertTime);
     curl_easy_getinfo(d->m_handle, CURLINFO_PRETRANSFER_TIME, &preTransferTime);
 
-    d->m_response.resourceLoadTiming()->dnsStart = 0;
-    d->m_response.resourceLoadTiming()->dnsEnd = static_cast<int>(dnslookupTime * 1000);
+    d->m_response.resourceLoadTiming().domainLookupStart = 0;
+    d->m_response.resourceLoadTiming().domainLookupEnd = static_cast<int>(dnslookupTime * 1000);
 
-    d->m_response.resourceLoadTiming()->connectStart = static_cast<int>(dnslookupTime * 1000);
-    d->m_response.resourceLoadTiming()->connectEnd = static_cast<int>(connectTime * 1000);
+    d->m_response.resourceLoadTiming().connectStart = static_cast<int>(dnslookupTime * 1000);
+    d->m_response.resourceLoadTiming().connectEnd = static_cast<int>(connectTime * 1000);
 
-    d->m_response.resourceLoadTiming()->sendStart = static_cast<int>(connectTime *1000);
-    d->m_response.resourceLoadTiming()->sendEnd =static_cast<int>(preTransferTime * 1000);
+    d->m_response.resourceLoadTiming().requestStart = static_cast<int>(connectTime *1000);
 
     if (appConnectTime) {
-        d->m_response.resourceLoadTiming()->sslStart = static_cast<int>(connectTime * 1000);
-        d->m_response.resourceLoadTiming()->sslEnd = static_cast<int>(appConnectTime *1000);
+        d->m_response.resourceLoadTiming().secureConnectionStart = static_cast<int>(connectTime * 1000);
     }
 }
 
 static int sockoptfunction(void* data, curl_socket_t /*curlfd*/, curlsocktype /*purpose*/)
 {
-    ResourceHandle* job = static_cast<ResourceHandle*>(data);
-    ResourceHandleInternal* d = job->getInternal();
-
-    if (d->m_response.resourceLoadTiming())
-        d->m_response.resourceLoadTiming()->requestTime = monotonicallyIncreasingTime();
-
     return 0;
 }
 #endif
@@ -637,11 +629,6 @@ static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* data)
                 d->m_multipartHandle = std::make_unique<MultipartHandle>(job, boundary);
         }
 
-#if ENABLE(WEB_TIMING)
-        if (d->m_response.resourceLoadTiming() && d->m_response.resourceLoadTiming()->requestTime)
-            d->m_response.resourceLoadTiming()->receiveHeadersEnd = milisecondsSinceRequest(d->m_response.resourceLoadTiming()->requestTime);
-#endif
-
         // HTTP redirection
         if (isHttpRedirect(httpCode)) {
             String location = d->m_response.httpHeaderField(HTTPHeaderName::Location);
@@ -677,7 +664,7 @@ static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* data)
                 return totalSize;
             }
         } else if (isHttpAuthentication(httpCode)) {
-			if(!d->m_response.httpHeaderField("WWW-Authenticate").isEmpty())
+			if(!d->m_response.httpHeaderField(String("WWW-Authenticate")).isEmpty())
 			{
 				ProtectionSpace protectionSpace;
 				if (getProtectionSpace(d->m_handle, d->m_response, protectionSpace)) {
@@ -1099,18 +1086,17 @@ void ResourceHandleManager::setupPOST(ResourceHandle* job, struct curl_slist** h
         return;
 
     bool hasBlob = false;
-#if ENABLE(BLOB)
+
     RefPtr<FormData> formData = job->firstRequest().httpBody();
     for (size_t i = 0; i  < numElements; i++)
 	{
 	    const FormDataElement& element = formData->elements()[i];
-	    if(element.m_type == FormDataElement::encodedBlob)
+	    if(element.m_type == FormDataElement::Type::EncodedBlob)
 		{
 		    hasBlob = true;
 		    break;
 		}
 	}
-#endif
 
 #if OS(MORPHOS)
     if (!d->m_shouldIncludeExpectHeader)
@@ -1118,7 +1104,7 @@ void ResourceHandleManager::setupPOST(ResourceHandle* job, struct curl_slist** h
 #endif
 
     // Do not stream for simple POST data
-    if (!hasBlob && numElements == 1 && formData->elements()[0].m_type != FormDataElement::encodedFile) { // MORPHOS disable this path for gdrive
+    if (!hasBlob && numElements == 1 && formData->elements()[0].m_type != FormDataElement::Type::EncodedFile) { // MORPHOS disable this path for gdrive
         job->firstRequest().httpBody()->flatten(d->m_postBytes);
         if (d->m_postBytes.size()) {
             curl_easy_setopt(d->m_handle, CURLOPT_POSTFIELDSIZE, d->m_postBytes.size());
@@ -1377,8 +1363,8 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
 
     if (disableMobileCompression)
     {
-	job->firstRequest().setHTTPHeaderField("Cache-Control", "no-cache");
-	job->firstRequest().setHTTPHeaderField("Pragma", "no-cache");
+	job->firstRequest().setHTTPHeaderField(String("Cache-Control"), "no-cache");
+	job->firstRequest().setHTTPHeaderField(String("Pragma"), "no-cache");
     }
 #endif
 
@@ -1501,7 +1487,6 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
 #if ENABLE(WEB_TIMING)
     curl_easy_setopt(d->m_handle, CURLOPT_SOCKOPTFUNCTION, sockoptfunction);
     curl_easy_setopt(d->m_handle, CURLOPT_SOCKOPTDATA, job);
-    d->m_response.setResourceLoadTiming(ResourceLoadTiming::create());
 #endif
 #if OS(MORPHOS)
     // And finally send cookies

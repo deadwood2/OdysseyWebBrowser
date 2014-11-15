@@ -388,25 +388,25 @@ void WebChromeClient::registerProtocolHandler(const String& scheme, const String
 }
 #endif
 
-void WebChromeClient::invalidateRootView(const IntRect& windowRect, bool immediate)
+void WebChromeClient::invalidateRootView(const IntRect& windowRect)
 {
     ASSERT(core(m_webView->topLevelFrame()));
     //kprintf("WebChromeClient::invalidateRootView([%d, %d, %d, %d], immediate %d)\n", windowRect.x(), windowRect.y(), windowRect.width(), windowRect.height(), immediate);
-    m_webView->repaint(windowRect, false /*contentChanged*/, immediate, false /*repaintContentOnly*/);
+    m_webView->repaint(windowRect, false /*contentChanged*/, true /*immediate*/, false /*repaintContentOnly*/);
 }
 
-void WebChromeClient::invalidateContentsAndRootView(const IntRect& windowRect, bool immediate)
+void WebChromeClient::invalidateContentsAndRootView(const IntRect& windowRect)
 {
     ASSERT(core(m_webView->topLevelFrame()));
     //kprintf("WebChromeClient::invalidateContentsAndRootView([%d, %d, %d, %d], immediate %d)\n", windowRect.x(), windowRect.y(), windowRect.width(), windowRect.height(), immediate);
-    m_webView->repaint(windowRect, true /*contentChanged*/, immediate /*immediate*/, false /*repaintContentOnly*/);
+    m_webView->repaint(windowRect, true /*contentChanged*/, true /*immediate*/, false /*repaintContentOnly*/);
 }
 
-void WebChromeClient::invalidateContentsForSlowScroll(const IntRect& windowRect, bool immediate)
+void WebChromeClient::invalidateContentsForSlowScroll(const IntRect& windowRect)
 {
     ASSERT(core(m_webView->topLevelFrame()));
     //kprintf("WebChromeClient::invalidateContentsForSlowScroll([%d, %d, %d, %d], immediate %d)\n", windowRect.x(), windowRect.y(), windowRect.width(), windowRect.height(), immediate);
-    m_webView->repaint(windowRect, true /*contentChanged*/, immediate, true /*repaintContentOnly*/);
+    m_webView->repaint(windowRect, true /*contentChanged*/, true /*immediate*/, true /*repaintContentOnly*/);
 }
 
 void WebChromeClient::scroll(const IntSize& delta, const IntRect& scrollViewRect, const IntRect& clipRect)
@@ -509,11 +509,11 @@ void WebChromeClient::populateVisitedLinks()
 }
 
 #if ENABLE(INPUT_TYPE_COLOR)
-PassOwnPtr<ColorChooser> WebChromeClient::createColorChooser(ColorChooserClient* chooserClient, const Color&)
+std::unique_ptr<ColorChooser> WebChromeClient::createColorChooser(ColorChooserClient* chooserClient, const Color&)
 {
-    OwnPtr<ColorChooserController> controller = adoptPtr(new ColorChooserController(this, chooserClient));
+    std::unique_ptr<ColorChooserController> controller = std::unique_ptr<ColorChooserController>(new ColorChooserController(this, chooserClient));
     controller->openUI();
-    return controller.release();
+    return std::move(controller);
 }
 #endif
 

@@ -472,21 +472,6 @@ public:
     // WebFrame (matching WebCoreFrameBridge)
 
     /**
-     *  inViewSourceMode
-     * @param[in]:
-     * @param[out]:
-     * @code
-     * @endcode
-     */
-    bool inViewSourceMode();
-
-    /**
-     *  setInViewSourceMode
-     * Whether or not the WebView is in source-view mode for HTML.
-     */
-    void setInViewSourceMode(bool flag);
-
-    /**
      *  elementWithName
      * Not Implemented
      */

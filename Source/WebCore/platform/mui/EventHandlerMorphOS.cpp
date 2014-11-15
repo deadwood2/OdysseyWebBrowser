@@ -27,9 +27,8 @@
  */
 
 #include "config.h"
+#include "DataTransfer.h"
 #include "EventHandler.h"
-
-#include "Clipboard.h"
 #include "EventNames.h"
 #include "FloatPoint.h"
 #include "FocusController.h"
@@ -69,7 +68,7 @@ bool EventHandler::passWidgetMouseDownEventToWidget(const MouseEventWithHitTestR
     if (!target || !target->isWidget())
         return false;
 
-    return passMouseDownEventToWidget(toRenderWidget(target)->widget());
+    return passMouseDownEventToWidget(downcast<RenderWidget>(target)->widget());
 }
 
 bool EventHandler::passWidgetMouseDownEventToWidget(RenderWidget* renderWidget)
@@ -90,18 +89,18 @@ bool EventHandler::eventActivatedView(const PlatformMouseEvent&) const
     return false;
 }
 
-bool EventHandler::passWheelEventToWidget(const PlatformWheelEvent& event, Widget* widget)
+bool EventHandler::passWheelEventToWidget(const PlatformWheelEvent& event, Widget& widget)
 {
     ASSERT(widget);
-    if (!widget->isFrameView())
+    if (!widget.isFrameView())
         return false;
 
-    return toFrameView(widget)->frame().eventHandler().handleWheelEvent(event);
+    return downcast<FrameView>(widget).frame().eventHandler().handleWheelEvent(event);
 }
 
-PassRefPtr<Clipboard> EventHandler::createDraggingClipboard() const
+PassRefPtr<DataTransfer> EventHandler::createDraggingDataTransfer() const
 {
-    return Clipboard::createForDragAndDrop();
+    return DataTransfer::createForDragAndDrop();
 }
 
 bool EventHandler::passMousePressEventToSubframe(MouseEventWithHitTestResults& mev, Frame* subframe)

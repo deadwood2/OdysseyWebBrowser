@@ -117,11 +117,6 @@ public:
      */
     virtual void setJavaScriptProfilingEnabled(bool);
 
-    /**
-     * evaluateInFrontend
-     */
-    virtual void evaluateInFrontend(long callId, const char* script);
-
     /*
      * setTimelineProfilingEnabled
      */

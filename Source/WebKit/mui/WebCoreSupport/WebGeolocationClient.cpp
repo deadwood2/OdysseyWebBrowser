@@ -109,7 +109,7 @@ void WebGeolocationClient::asyncUpdatePermission()
         m_permissionTimer.startOneShot(0);
 }
 
-void WebGeolocationClient::permissionTimerFired(WebCore::Timer<WebGeolocationClient>* timer)
+void WebGeolocationClient::permissionTimerFired(WebCore::Timer* timer)
 {
     ASSERT_UNUSED(timer, timer == &m_permissionTimer);
     ASSERT(m_permissionState != PermissionStateUnset);
@@ -169,7 +169,7 @@ void WebGeolocationClient::asyncUpdateController()
         m_controllerTimer.startOneShot(0);
 }
 
-void WebGeolocationClient::controllerTimerFired(Timer<WebGeolocationClient>* timer)
+void WebGeolocationClient::controllerTimerFired(Timer* timer)
 {
     ASSERT_UNUSED(timer, timer == &m_controllerTimer);
     ASSERT(m_controller);

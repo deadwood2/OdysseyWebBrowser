@@ -25,7 +25,7 @@
 
 namespace WebCore {
 
-std::unique_ptr<GraphicsLayer> GraphicsLayer::create(GraphicsLayerFactory* factory, GraphicsLayerClient* client)
+std::unique_ptr<GraphicsLayer> GraphicsLayer::create(GraphicsLayerFactory* factory, GraphicsLayerClient& client)
 {
     return factory->createGraphicsLayer(client);
 }

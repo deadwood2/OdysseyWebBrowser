@@ -631,7 +631,7 @@ void CookieManager::initiateCookieLimitCleanUp()
     }
 }
 
-void CookieManager::cookieLimitCleanUp(Timer<CookieManager>* timer)
+void CookieManager::cookieLimitCleanUp(Timer* timer)
 {
     ASSERT_UNUSED(timer, timer == &m_limitTimer);
 

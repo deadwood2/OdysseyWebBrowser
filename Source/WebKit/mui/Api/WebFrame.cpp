@@ -599,7 +599,7 @@ bool WebFrame::firstLayoutDone()
     if (!coreFrame)
         return false;
 
-    return coreFrame->loader().stateMachine()->firstLayoutDone();
+    return coreFrame->loader().stateMachine().firstLayoutDone();
 }
 
 WebFrameLoadType WebFrame::loadType()
@@ -673,24 +673,6 @@ void WebFrame::invalidate()
 
     if (Document* document = coreFrame->document())
         document->recalcStyle(WebCore::Style::Force);
-}
-
-bool WebFrame::inViewSourceMode()
-{
-    Frame* coreFrame = core(this);
-    if (!coreFrame)
-        return false;
-
-    return coreFrame->inViewSourceMode() ? true : false;
-}
-
-void WebFrame::setInViewSourceMode(bool flag)
-{
-    Frame* coreFrame = core(this);
-    if (!coreFrame)
-        return ;
-
-    coreFrame->setInViewSourceMode(!!flag);
 }
 
 bool WebFrame::isDisplayingStandaloneImage()
@@ -1272,8 +1254,8 @@ static HTMLInputElement* inputElementFromDOMElement(DOMElement* element)
 
         //FIXME : fix this conversion
         Element* ele = static_cast<WebCore::Element*>(element->coreElement());
-        if (ele && isHTMLInputElement(ele))
-            return toHTMLInputElement(ele);
+        if (ele && is<HTMLInputElement>(ele))
+            return downcast<HTMLInputElement>(ele);
     return 0;
 }
 

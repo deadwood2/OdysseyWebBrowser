@@ -34,7 +34,6 @@
 #include "KeyboardCodes.h"
 #include "BALBase.h"
 #include "TextEncoding.h"
-#include <wtf/unicode/Unicode.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
 

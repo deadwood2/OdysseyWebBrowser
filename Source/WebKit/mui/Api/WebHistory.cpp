@@ -29,6 +29,7 @@
 #include "config.h"
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
+#include <wtf/text/StringView.h>
 #include "WebHistory.h"
 
 #include "WebHistoryItem.h"
@@ -436,7 +437,7 @@ void WebHistory::addVisitedLinksToPageGroup(PageGroup& group)
 		char *wurl = (char *) m_historyList[i]->URLString();
 		WTF::String itemURL = wurl;
 		free(wurl);
-		group.addVisitedLink(itemURL.characters(), itemURL.length());
+		group.addVisitedLink(StringView(itemURL).upconvertedCharacters(), itemURL.length());
 	}
 }
 

@@ -112,9 +112,10 @@ WebCore::InspectorFrontendChannel* WebInspectorClient::openInspectorFrontend(Ins
 		m_frontendPage = core(widget->webView);
 		if(m_frontendPage)
 		{
-		    auto frontendClient = std::make_unique<WebInspectorFrontendClient>(m_webView, widget->webView, m_frontendPage, this, adoptPtr(new WebCore::InspectorFrontendClientLocal::Settings()) );
-			m_frontendClient = frontendClient.get();
-			m_frontendPage->inspectorController().setInspectorFrontendClient(std::move(frontendClient));
+		    WebInspectorFrontendClient * frontendClient = new WebInspectorFrontendClient(m_webView, widget->webView, m_frontendPage, this,
+		            std::make_unique<WebCore::InspectorFrontendClientLocal::Settings>() );
+			m_frontendClient = frontendClient;
+			m_frontendPage->inspectorController().setInspectorFrontendClient(frontendClient);
 			return this;
 		}
     }
@@ -190,8 +191,8 @@ void WebInspectorClient::saveSettings()
 }
 
 
-WebInspectorFrontendClient::WebInspectorFrontendClient(WebView* inspectedWebView, WebView* frontendWebView, Page* inspectorPage, WebInspectorClient* inspectorClient, PassOwnPtr<Settings> settings)
-    : InspectorFrontendClientLocal(&core(inspectedWebView)->inspectorController(), inspectorPage, settings)
+WebInspectorFrontendClient::WebInspectorFrontendClient(WebView* inspectedWebView, WebView* frontendWebView, Page* inspectorPage, WebInspectorClient* inspectorClient, std::unique_ptr<Settings> settings)
+    : InspectorFrontendClientLocal(&core(inspectedWebView)->inspectorController(), inspectorPage, std::move(settings))
     , m_frontendWebView(frontendWebView)
     , m_inspectedWebView(inspectedWebView)
     , m_inspectorClient(inspectorClient)
@@ -213,7 +214,7 @@ void WebInspectorFrontendClient::frontendLoaded()
     //if (m_attached)
     //    restoreAttachedWindowHeight();
 
-    setAttachedWindow(m_attached ? DOCKED_TO_BOTTOM : UNDOCKED); 
+    setAttachedWindow(m_attached ? InspectorFrontendClient::DockSide::Bottom : InspectorFrontendClient::DockSide::Undocked);
 }
 
 String WebInspectorFrontendClient::localizedStringsURL()

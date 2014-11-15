@@ -28,14 +28,17 @@
 
 
 #include "config.h"
-#include "Clipboard.h"
+#include "DataTransfer.h"
 #include "DragController.h"
+#include "DataObjectMorphOS.h"
+#include "DocumentFragment.h"
 #include "Pasteboard.h"
 
 #include "DragData.h"
 #include "Frame.h"
 #include "FrameView.h"
 #include "Page.h"
+#include "markup.h"
 
 #include <wtf/text/CString.h>
 
@@ -61,7 +64,7 @@ bool DragController::isCopyKeyDown(DragData&)
 
 DragOperation DragController::dragOperation(DragData& dragData)
 {
-     return dragData.containsURL(0) && !m_didInitiateDrag ? DragOperationCopy : DragOperationNone;
+     return dragData.containsURL(DragData::DoNotConvertFilenames) && !m_didInitiateDrag ? DragOperationCopy : DragOperationNone;
 }
 
 const IntSize& DragController::maxDragImageSize()
@@ -74,10 +77,9 @@ void DragController::cleanupAfterSystemDrag()
 {
 }
 
-void DragController::declareAndWriteDragImage(Clipboard& clipboard, Element& element, const URL& url, const String& label)
+void DragController::declareAndWriteDragImage(DataTransfer& dataTransfer, Element& element, const URL& url, const String& label)
 {
     //clipboard->pasteboard().dataObject()->setURL(url, label);
-    clipboard.pasteboard().writeImage(element, url, label);
+    dataTransfer.pasteboard().writeImage(element, url, label);
 }
-
 }

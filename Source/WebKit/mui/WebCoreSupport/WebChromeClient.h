@@ -41,6 +41,7 @@ namespace WebCore {
     class Geolocation;
 	class NotificationClient;
     class GraphicsLayer;
+    class Frame;
 }
 
 class WebChromeClient : public WebCore::ChromeClient {
@@ -84,7 +85,7 @@ public:
 
     virtual void setResizable(bool);
 
-    virtual void addMessageToConsole(WebCore::MessageSource source, WebCore::MessageLevel level, const WTF::String& message, unsigned lineNumber, unsigned columnNumber, const WTF::String& sourceID);
+    virtual void addMessageToConsole(MessageSource source, MessageLevel level, const WTF::String& message, unsigned lineNumber, unsigned columnNumber, const WTF::String& sourceID);
 
     virtual bool canRunBeforeUnloadConfirmPanel();
     virtual bool runBeforeUnloadConfirmPanel(const WTF::String& message, WebCore::Frame* frame);
@@ -105,9 +106,9 @@ public:
     virtual void registerProtocolHandler(const String&, const String&, const String&, const String&);
 #endif
 
-    virtual void invalidateRootView(const WebCore::IntRect&, bool);
-    virtual void invalidateContentsAndRootView(const WebCore::IntRect&, bool);
-    virtual void invalidateContentsForSlowScroll(const WebCore::IntRect&, bool);
+    virtual void invalidateRootView(const WebCore::IntRect&);
+    virtual void invalidateContentsAndRootView(const WebCore::IntRect&);
+    virtual void invalidateContentsForSlowScroll(const WebCore::IntRect&);
     virtual void scroll(const WebCore::IntSize& scrollDelta, const WebCore::IntRect& rectToScroll, const WebCore::IntRect& clipRect);
     
     virtual WebCore::IntPoint screenToRootView(const WebCore::IntPoint& p) const ;
@@ -139,11 +140,11 @@ public:
     virtual void populateVisitedLinks();
 
 #if ENABLE(INPUT_TYPE_COLOR)
-    virtual PassOwnPtr<WebCore::ColorChooser> createColorChooser(WebCore::ColorChooserClient*, const WebCore::Color&);
+    virtual std::unique_ptr<WebCore::ColorChooser> createColorChooser(WebCore::ColorChooserClient*, const WebCore::Color&);
 #endif
 
 #if ENABLE(INPUT_TYPE_DATE)
-    virtual PassRefPtr<WebCore::DateTimeChooser> openDateTimeChooser(WebCore::DateTimeChooserClient*, const WebCore::DateTimeChooserParameters&); 
+    virtual PassRefPtr<WebCore::DateTimeChooser> openDateTimeChooser(WebCore::DateTimeChooserClient*, const WebCore::DateTimeChooserParameters&);
 #endif 
 
     virtual void runOpenPanel(WebCore::Frame*, PassRefPtr<WebCore::FileChooser>);
@@ -200,6 +201,7 @@ public:
 
      virtual void AXStartFrameLoad(); 
      virtual void AXFinishFrameLoad(); 
+     virtual void attachViewOverlayGraphicsLayer(WebCore::Frame*, WebCore::GraphicsLayer*) { };
 
 private:
     WebView* m_webView;

@@ -120,10 +120,6 @@ if (ENABLE_SPELLCHECK)
     find_package(Enchant REQUIRED)
 endif ()
 
-if (NOT ENABLE_SVG)
-    set(ENABLE_SVG_FONTS 0)
-endif ()
-
 # Optimize binary size for release builds by removing dead sections on unix/gcc
 if (CMAKE_COMPILER_IS_GNUCC AND UNIX AND NOT APPLE)
     set(CMAKE_C_FLAGS_RELEASE "-ffunction-sections -fdata-sections ${CMAKE_C_FLAGS_RELEASE}")
