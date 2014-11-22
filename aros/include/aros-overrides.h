@@ -83,6 +83,7 @@ do                                                      \
 
 #define NM_WHEEL_UP                                 0x7a
 #define NM_WHEEL_DOWN                               0x7b
+#undef XMLCALL
 #define XMLCALL
 
 typedef IPTR * ULONGPTR;

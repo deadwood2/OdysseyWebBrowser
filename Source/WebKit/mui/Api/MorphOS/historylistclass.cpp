@@ -375,7 +375,7 @@ DEFMMETHOD(List_Display)
 		if(getv(app, MA_OWBApp_ShowFavIcons) & MV_OWBApp_ShowFavIcons_History)
 		{
 			static char sicon[128];
-			snprintf(sicon, sizeof(sicon), "\033O[%08lx]", (ULONG) item->faviconimg);
+			snprintf(sicon, sizeof(sicon), "\033O[%08lx]", (unsigned long) item->faviconimg);
 			snprintf(slabel, sizeof(slabel), " %s%s %s", stitle, LF, surl);
 
 			msg->array[0] = (char *) sicon;

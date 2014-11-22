@@ -782,7 +782,6 @@ DEFSMETHOD(ScriptManagerGroup_InjectScripts)
 
 DEFSMETHOD(ScriptManagerGroup_ScriptsForURL)
 {
-	GETDATA;
 	Vector<ScriptEntry *> *matchingscripts = new Vector<ScriptEntry *>;
 
 	for(size_t i = 0; i < scripts_list.size(); i++)

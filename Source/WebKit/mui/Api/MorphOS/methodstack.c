@@ -32,7 +32,7 @@
 
 STATIC struct SignalSemaphore semaphore;
 STATIC struct Task *mstask;
-STATIC struct MinList methodlist = { (APTR)&methodlist.mlh_Tail, NULL, (APTR)&methodlist.mlh_Head };
+STATIC struct MinList methodlist = { (APTR)&methodlist.mlh_Tail, NULL, { (APTR)&methodlist.mlh_Head } };
 STATIC int is_quitting = FALSE;
 STATIC int is_safe_to_quit = TRUE;
 
@@ -204,7 +204,7 @@ void methodstack_push(APTR obj, ULONG cnt, ...)
 		else
 		{
 			ObtainSemaphore(&semaphore);
-			AddTail(&methodlist, pm);
+			AddTail((struct List *)&methodlist, (struct Node *)pm);
 			ReleaseSemaphore(&semaphore);
 		}
 	}
@@ -261,7 +261,7 @@ ULONG methodstack_push_sync(APTR obj, ULONG cnt, ...)
 		pm->msg.mn_ReplyPort = replyport;
 
 		ObtainSemaphore(&semaphore);
-		AddTail(&methodlist, pm);
+		AddTail((struct List *)&methodlist, (struct Node *)pm);
 		ReleaseSemaphore(&semaphore);
 
 		Signal(mstask, SIGBREAKF_CTRL_F);

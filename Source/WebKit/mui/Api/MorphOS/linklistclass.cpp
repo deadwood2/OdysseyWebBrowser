@@ -249,7 +249,7 @@ DEFMMETHOD(DragQuery)
 DEFMMETHOD(DragReport)
 {
 	GETDATA;   
-	struct MUI_List_TestPos_Result r={ 0, 0, 0, 0 };
+	struct MUI_List_TestPos_Result r={ 0, 0, 0, 0, 0 };
 
 	if( (data->bookmark_list) && msg->obj==data->bookmark_list)
 	{

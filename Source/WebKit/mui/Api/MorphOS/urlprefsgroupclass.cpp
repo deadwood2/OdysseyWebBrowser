@@ -429,13 +429,13 @@ DEFTMETHOD(URLPrefsGroup_Save)
 		{
 			urlFile->write(String::format("%s\1%lu\1%lu\1%lu\1%lu\1%lu\1%s\1%lu\n",
 						   un->urlpattern,
-						   un->settings.javascript,
-						   un->settings.images,
-						   un->settings.plugins,
-						   un->settings.useragent,
-						   un->settings.cookiepolicy,
+						   (unsigned long)un->settings.javascript,
+						   (unsigned long)un->settings.images,
+						   (unsigned long)un->settings.plugins,
+						   (unsigned long)un->settings.useragent,
+						   (unsigned long)un->settings.cookiepolicy,
 						   un->settings.cookiefilter,
-						   un->settings.localstorage));
+						   (unsigned long)un->settings.localstorage));
 		}
 
 		i++;

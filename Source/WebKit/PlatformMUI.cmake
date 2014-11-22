@@ -134,6 +134,7 @@ list(APPEND WebKit_SOURCES
     mui/Api/WebDownload.cpp
     mui/Api/WebError.cpp
     mui/Api/WebFramePolicyListener.cpp
+    mui/Api/WebGeolocationPosition.cpp
     mui/Api/WebIconDatabase.cpp
     mui/Api/WebHistory.cpp
     mui/Api/WebHistoryItem.cpp

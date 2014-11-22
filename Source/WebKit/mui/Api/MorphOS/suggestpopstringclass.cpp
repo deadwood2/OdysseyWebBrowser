@@ -74,8 +74,10 @@ struct Data
 	struct MUI_EventHandlerNode ehnode;
 };
 
+#if !OS(AROS)
 static void XMLCALL startElement(void *userData, const char *name, const char **atts);
 static void XMLCALL endElement(void *userData, const char *name);
+#endif
 
 class SuggestClient : public ResourceHandleClient
 {
@@ -84,7 +86,7 @@ public:
 	SuggestClient(Object *obj)
 	 : m_obj(obj)
 	{
-#if 0 // __AROS__
+#if !OS(AROS)
 		m_parser = XML_ParserCreate(NULL);	  
 		if(m_parser)
 		{
@@ -98,7 +100,7 @@ public:
 
 	~SuggestClient()
 	{
-#if 0 // __AROS__
+#if !OS(AROS)
 		if(m_parser)
 		{
 			XML_ParserFree(m_parser);
@@ -112,7 +114,7 @@ public:
 
 	virtual void didReceiveData(ResourceHandle*, const char* data, int length, int lengthReceived)
 	{
-#if 0 // __AROS__
+#if !OS(AROS)
 		if(m_parser)
 		{
 			XML_Parse(m_parser, data, length, 0);
@@ -122,7 +124,7 @@ public:
 
 	virtual void didFinishLoading(ResourceHandle*, double)
 	{
-#if 0 // __AROS__
+#if !OS(AROS)
 		if(m_parser)
 		{
 			XML_Parse(m_parser, NULL, 0, 1);
@@ -132,7 +134,7 @@ public:
 
 	virtual void didFail(ResourceHandle*, const ResourceError& error)
 	{
-#if 0 // __AROS__
+#if !OS(AROS)
 		if(m_parser)
 		{
 			XML_Parse(m_parser, NULL, 0, 1);
@@ -157,6 +159,7 @@ private:
 	SuggestEntry *m_currentEntry;
 };
 
+#if !OS(AROS)
 static void XMLCALL startElement(void *userData, const char *name, const char **atts)
 {
 	SuggestClient *suggest_client = (SuggestClient *) userData;
@@ -191,6 +194,7 @@ static void XMLCALL endElement(void *userData, const char *name)
 		}
 	}
 }
+#endif
 
 MUI_HOOK(suggest_popclose, APTR list, APTR str)
 {

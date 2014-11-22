@@ -3,6 +3,7 @@
 #include <utility/tagitem.h>
 #include <proto/intuition.h>
 #include <proto/exec.h>
+#include <clib/alib_protos.h>
 
 #include <aros/debug.h>
 

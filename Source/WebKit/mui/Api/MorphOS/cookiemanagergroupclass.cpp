@@ -185,7 +185,6 @@ DEFTMETHOD(CookieManagerGroup_Load)
 		ParsedCookie* cookie = cookies[i];
 
 		struct MUIS_Listtree_TreeNode* group = NULL;
-		struct MUIS_Listtree_TreeNode *newentry = NULL;
         struct cookie_entry node;
 		char *domain = strdup(cookie->domain().utf8().data());
 
@@ -244,7 +243,7 @@ DEFTMETHOD(CookieManagerGroup_Load)
 		}
 		*/
 
-		newentry = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_cookies, MUIM_Listtree_Insert,
+		DoMethod(data->lt_cookies, MUIM_Listtree_Insert,
 			node.name,
 			&node,
 			group,

@@ -132,8 +132,6 @@ DEFMMETHOD(List_Display)
 
 DEFMMETHOD(List_Compare)
 {
-	GETDATA;
-
 	struct mimetypenode *m1 = (struct mimetypenode *) msg->entry1;
 	struct mimetypenode *m2 = (struct mimetypenode *) msg->entry2;
 

@@ -1092,6 +1092,7 @@ bool WebViewPrivate::onKeyDown(BalEventKey event)
 					step = total;
 					break;
 				case ScrollByPixel:
+				case ScrollByPrecisePixel:
 					step = 1;
 					break;
 			}

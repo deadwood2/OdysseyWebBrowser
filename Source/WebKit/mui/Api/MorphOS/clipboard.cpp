@@ -59,7 +59,7 @@ bool copyTextToClipboard(char *text, bool utf8)
 
 		if(converted)
 		{
-			if (ih = AllocIFF())
+			if ((ih = AllocIFF()))
 			{
 				if (ClipboardHandle *ch = OpenClipboard(PRIMARY_CLIP))
 				{
@@ -436,7 +436,7 @@ static long putbody( struct IFFHandle  *iff,
 
     /* Write out a BODY chunk header */
 
-	if ( error = PushChunk( iff, NULL, ID_BODY, IFFSIZE_UNKNOWN ) )
+	if ( (error = PushChunk( iff, NULL, ID_BODY, IFFSIZE_UNKNOWN ) ) )
 	{
 		free( planarData );
 		return ( error );
@@ -503,9 +503,6 @@ static LONG	saveilbm( struct IFFHandle	*iff,
                ULONG	transparentColor,
                char	*filename )
 {
-    struct Chunk *chunk;
-    ULONG chunkID;
-    UBYTE *bodybuf;
 	LONG error = 0L;
 
     if ( OpenIFF( iff,
@@ -577,9 +574,9 @@ bool copyImageToClipboard(ChkImage *img)
 	bool result = false;
 	char *fname = "";
 
-	if(MyHandle = AllocIFF())
+	if((MyHandle = AllocIFF()))
     {
-		if(MyHandle->iff_Stream = (ULONG) OpenClipboard(0))
+		if((MyHandle->iff_Stream = (ULONG) OpenClipboard(0)))
         {
 			InitIFFasClip(MyHandle);
 			result = WriteIFF(MyHandle, img, fname) != FALSE;

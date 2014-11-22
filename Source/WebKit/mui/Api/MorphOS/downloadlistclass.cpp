@@ -318,7 +318,7 @@ DEFMMETHOD(List_Display)
 				format_size(progresstext, sizeof(progresstext), dl->done);
 				if(dl->size)
 				{
-					snprintf(buf2, sizeof(buf2), "%s (%ld%%)", progresstext, (ULONG)((float)dl->done / (float)dl->size * 100.f));
+					snprintf(buf2, sizeof(buf2), "%s (%ld%%)", progresstext, (unsigned long)((float)dl->done / (float)dl->size * 100.f));
 				}
 				else
 				{

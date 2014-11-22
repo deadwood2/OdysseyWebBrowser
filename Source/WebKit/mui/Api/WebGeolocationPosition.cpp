@@ -26,31 +26,35 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef WebGeolocationPosition_h
-#define WebGeolocationPosition_h
+#include "config.h"
+#include "WebGeolocationPosition.h"
 
-#include "WebKit.h"
+#include <GeolocationPosition.h>
 
-namespace WebCore {
-    class GeolocationPosition;
-};
+using namespace WebCore;
 
-class WebGeolocationPosition {
-public:
-    static WebGeolocationPosition* createInstance();
-private:
-    WebGeolocationPosition();
-    ~WebGeolocationPosition();
+WebGeolocationPosition* WebGeolocationPosition::createInstance()
+{
+    return new WebGeolocationPosition();
+}
 
-public:
-    virtual void initWithTimestamp(double timestamp, double latitude, double longitude, double accuracy);
+WebGeolocationPosition::WebGeolocationPosition()
+{
+}
 
-    WebCore::GeolocationPosition* impl() const { return m_position; }
+WebGeolocationPosition::~WebGeolocationPosition()
+{
+}
 
-private:
-    WebCore::GeolocationPosition* m_position;
-};
+void WebGeolocationPosition::initWithTimestamp(double timestamp, double latitude, double longitude, double accuracy)
+{
+    m_position = GeolocationPosition::create(timestamp, latitude, longitude, accuracy).get();
+}
 
-WebCore::GeolocationPosition* core(WebGeolocationPosition*);
+GeolocationPosition* core(WebGeolocationPosition* position)
+{
+    if (!position)
+        return 0;
 
-#endif // WebGeolocationPosition_h
+    return position->impl();
+}

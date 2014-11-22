@@ -159,7 +159,7 @@ static void doset(Object *obj, struct Data *data, struct TagItem *tags)
 
 DEFNEW
 {
-	struct Data tmp = {NULL,NULL,NULL,NULL,0,NULL,""}, *data;
+	struct Data tmp = {NULL,NULL,NULL,NULL,0,NULL,"",NULL}, *data;
 	struct TagItem *tags,*tag;
 	STRPTR title;
 

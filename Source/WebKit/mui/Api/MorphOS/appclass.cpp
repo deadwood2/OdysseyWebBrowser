@@ -901,12 +901,12 @@ void WriteConfigFile(const char* url, AppSettings *settings)
 		return;
     }
 
-	configFile->write(String::format("panelweight=%lu\n", settings->panelweight));
-	configFile->write(String::format("showbookmarkpanel=%lu\n", settings->showbookmarkpanel));
-	configFile->write(String::format("showhistorypanel=%lu\n", settings->showhistorypanel));
-	configFile->write(String::format("addbookmarkstomenu=%lu\n", settings->addbookmarkstomenu));
-	configFile->write(String::format("continuousspellchecking=%lu\n", settings->continuousspellchecking));
-	//configFile->write(String::format("privatebrowsing=%lu\n", settings->privatebrowsing));
+	configFile->write(String::format("panelweight=%lu\n", (unsigned long)settings->panelweight));
+	configFile->write(String::format("showbookmarkpanel=%lu\n", (unsigned long)settings->showbookmarkpanel));
+	configFile->write(String::format("showhistorypanel=%lu\n", (unsigned long)settings->showhistorypanel));
+	configFile->write(String::format("addbookmarkstomenu=%lu\n", (unsigned long)settings->addbookmarkstomenu));
+	configFile->write(String::format("continuousspellchecking=%lu\n", (unsigned long)settings->continuousspellchecking));
+	//configFile->write(String::format("privatebrowsing=%lu\n", (unsigned long)settings->privatebrowsing));
 	
 	configFile->close();
     delete configFile;
@@ -2908,7 +2908,7 @@ DEFSMETHOD(OWBApp_RequestPolicyForMimeType)
 	URL url = response->url();
 	String urlstring = url.string();
 	String mimetype = response->mimeType();
-	String generatedpath = String::format("T:OWB_TempFile_%ld", time(NULL));
+	String generatedpath = String::format("T:OWB_TempFile_%ld", (unsigned long)time(NULL));
 	String path;
 
 	APTR n;
@@ -3162,6 +3162,11 @@ DEFSMETHOD(OWBApp_RequestPolicyForMimeType)
 				listener->ignore();
 				break;
 			}
+
+			case MIMETYPE_ACTION_PLUGIN:
+			{
+			    listener->ignore();
+			}
 		}
 		
 		return TRUE;
@@ -3229,7 +3234,7 @@ DEFSMETHOD(OWBApp_RestoreSession)
             { ASLFR_TitleText, (STACKIPTR) GSI(MSG_OWBAPP_OPEN_SESSION) },
             { ASLFR_InitialPattern, (STACKIPTR) "#?" },
             { ASLFR_InitialDrawer, (STACKIPTR) SESSION_DIRECTORY },
-            {TAG_DONE}
+            {TAG_DONE, TAG_DONE}
 	    };
 
 		char *file = asl_run(SESSION_DIRECTORY, (struct TagItem *) &tags, FALSE);
@@ -3369,7 +3374,7 @@ DEFSMETHOD(OWBApp_SaveSession)
                 { ASLFR_InitialPattern, (STACKIPTR) "#?" },
                 { ASLFR_InitialDrawer, (STACKIPTR) SESSION_DIRECTORY },
                 { ASLFR_DoSaveMode, (STACKIPTR) TRUE },
-                { TAG_DONE }
+                { TAG_DONE, TAG_DONE }
 			};
 
 			char *file = asl_run(SESSION_DIRECTORY, (struct TagItem *) &tags, FALSE);
@@ -3408,7 +3413,7 @@ DEFSMETHOD(OWBApp_SaveSession)
 					if(!getv(vn->browser, MA_OWBBrowser_PrivateBrowsing))
 					{
 					    // core(vn->webView->mainFrame())->view()->visibleContentRect().y()
-					  output.append(String::format("%lu %s %d %d\n", i, (char *) getv(vn->browser, MA_OWBBrowser_URL), vn->webView->scrollOffset().x, vn->webView->scrollOffset().y));
+					  output.append(String::format("%lu %s %d %d\n", (unsigned long)i, (char *) getv(vn->browser, MA_OWBBrowser_URL), vn->webView->scrollOffset().x, vn->webView->scrollOffset().y));
 					}
 				}
 			}

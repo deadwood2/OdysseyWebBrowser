@@ -1390,8 +1390,8 @@ DEFMMETHOD(Show)
 
 	D(kprintf("[OWBBrowser] Show: %p size: %dx%d at (%d,%d) for widget %p\n", obj, _mwidth(obj), _mheight(obj), _mleft(obj), _mtop(obj), data->view));
 
-	ULONG oldwidth = data->width;
-	ULONG oldheight = data->height;
+	LONG oldwidth = data->width;
+	LONG oldheight = data->height;
 
 	data->width  = _mwidth(obj);
 	data->height = _mheight(obj);
@@ -3120,14 +3120,13 @@ DEFSMETHOD(OWBBrowser_Print)
 		float headerHeight = 0;
 		float footerHeight = 0;
 
-		float scale = 1.0;
 		float userscale = 1.0;
 
 		OWBPrintContext printContext(frame);
 
 		printContext.begin(pageWidth, pageHeight);
 
-		scale = printContext.computeAutomaticScaleFactor(FloatSize(pageWidth, pageHeight));
+		printContext.computeAutomaticScaleFactor(FloatSize(pageWidth, pageHeight));
 
 		if(getenv("OWB_PDF_SCALEFACTOR"))
 		{
@@ -3496,8 +3495,6 @@ DEFMMETHOD(DragReport)
 
 DEFMMETHOD(DragFinish)
 {
-	GETDATA;
-
 	D(kprintf("DragFinish (%d %d) dropfollows %d\n", data->last_drag_position.x(), data->last_drag_position.y(), msg->dropfollows));
 
 	if(dataObject)
