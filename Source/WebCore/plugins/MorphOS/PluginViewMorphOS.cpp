@@ -168,8 +168,6 @@ void PluginView::handleMouseEvent(MouseEvent* event)
 
 	npEvent.type = 1;
 
-	IntPoint p = static_cast<FrameView*>(parent())->contentsToWindow(IntPoint(event->pageX(), event->pageY()));
-
 	JSC::JSLock::DropAllLocks dropAllLocks(JSDOMWindowBase::commonVM());
 	if (!m_plugin->pluginFuncs()->event  || !m_plugin->pluginFuncs()->event(m_instance, (NPEvent) &npEvent))
         event->setDefaultHandled();

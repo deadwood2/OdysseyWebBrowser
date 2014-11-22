@@ -339,7 +339,7 @@ static String keyIdentifierForAmigaKeyCode(struct IntuiMessage *im)
 		default:
 			{
 				struct InputEvent ie;
-				char c = '?';
+				TEXT c = '?';
 
 				ie.ie_NextEvent = NULL;
 				ie.ie_Class = IECLASS_RAWKEY;

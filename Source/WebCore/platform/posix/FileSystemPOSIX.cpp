@@ -438,8 +438,8 @@ Vector<String> listDirectory(const String& path, const String& filter)
     DIR* dir = opendir(filename);
     if (!dir)
         return entries;
-    int err;
-	/*
+    /*int err;
+
     regex_t preg;
 	char *str_regex = strdup(filter.utf8().data());
     err = regcomp (&preg, str_regex, REG_NOSUB | REG_EXTENDED | REG_NEWLINE);
@@ -448,7 +448,7 @@ Vector<String> listDirectory(const String& path, const String& filter)
     }
 	*/
     struct dirent* file;
-    int match;
+    /* int match;*/
     while ((file = readdir(dir))) {
 		/*
         match = regexec (&preg, file->d_name, 0, NULL, 0);
@@ -498,7 +498,7 @@ String openTemporaryFile(const String& prefix, PlatformFileHandle &handle)
 
 	gettimeofday(&tv, NULL);
 
-	snprintf(tempPath, sizeof(tempPath), "T:%s_%lu", prefix.utf8().data(), tv.tv_sec + 1000000*tv.tv_usec);
+	snprintf(tempPath, sizeof(tempPath), "T:%s_%lu", prefix.utf8().data(), (unsigned long)(tv.tv_sec + 1000000*tv.tv_usec));
 
 	int fileDescriptor = open(tempPath, O_CREAT | O_RDWR);
 

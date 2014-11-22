@@ -80,31 +80,6 @@ void Editor::pasteWithPasteboard(Pasteboard* pasteboard, bool allowPlainText, Ma
         pasteAsFragment(fragment, canSmartReplaceWithPasteboard(*pasteboard), chosePlainText, mailBlockquoteHandling);
 }
 
-static const AtomicString& elementURL(Element& element)
-{
-    if (is<HTMLImageElement>(element) || is<HTMLInputElement>(element))
-        return element.fastGetAttribute(HTMLNames::srcAttr);
-    if (is<SVGImageElement>(element))
-        return element.fastGetAttribute(XLinkNames::hrefAttr);
-    if (is<HTMLEmbedElement>(element) || is<HTMLObjectElement>(element))
-        return element.imageSourceURL();
-    return nullAtom;
-}
-
-static bool getImageForElement(Element& element, RefPtr<Image>& image)
-{
-    auto* renderer = element.renderer();
-    if (!is<RenderImage>(renderer))
-        return false;
-
-    CachedImage* cachedImage = downcast<RenderImage>(*renderer).cachedImage();
-    if (!cachedImage || cachedImage->errorOccurred())
-        return false;
-
-    image = cachedImage->imageForRenderer(renderer);
-    return image;
-}
-
 PassRefPtr<DocumentFragment> Editor::webContentFromPasteboard(Pasteboard& pasteboard, Range& context, bool allowPlainText, bool& chosePlainText)
 {
     return createFragmentFromPasteboardData(pasteboard, m_frame, context, allowPlainText, chosePlainText);
