@@ -299,18 +299,7 @@ DEFNEW
 {
 	ULONG frame      = GetTagData(MA_ToolButton_Frame, MV_ToolButton_Frame_Button, msg->ops_AttrList);
 	ULONG background = GetTagData(MA_ToolButton_Background, MV_ToolButton_Background_Button, msg->ops_AttrList);
-	ULONG muiframe, muibackground;
-
-	switch(frame)
-	{
-		case MV_ToolButton_Frame_None:
-			muiframe = MUIV_Frame_None;
-			break;
-		default:
-		case MV_ToolButton_Frame_Button:
-			muiframe = MUIV_Frame_Button;
-			break;
-	}
+	ULONG muibackground;
 
 	switch(background)
 	{

@@ -2,7 +2,7 @@ include(CMakeParseArguments)
 # Sets extra compile flags for a target, depending on the compiler being used.
 # Currently, only GCC is supported.
 macro(WEBKIT_SET_EXTRA_COMPILER_FLAGS _target)
-    set(options ENABLE_WERROR IGNORECXX_WARNINGS NO_UNUSED_PARAMETER)
+    set(options ENABLE_WERROR IGNORECXX_WARNINGS MUI_DISABLE_WARNINGS)
     CMAKE_PARSE_ARGUMENTS("OPTION" "${options}" "" "" ${ARGN})
     if (CMAKE_COMPILER_IS_GNUCXX OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
         get_target_property(OLD_COMPILE_FLAGS ${_target} COMPILE_FLAGS)
@@ -23,8 +23,8 @@ macro(WEBKIT_SET_EXTRA_COMPILER_FLAGS _target)
         endif ()
 
         # Disable unused-parameter warning
-        if (OPTION_NO_UNUSED_PARAMETER)
-            set(OLD_COMPILE_FLAGS "${OLD_COMPILE_FLAGS} -Wno-unused-parameter")
+        if (OPTION_MUI_DISABLE_WARNINGS)
+            set(OLD_COMPILE_FLAGS "${OLD_COMPILE_FLAGS} -Wno-unused-parameter -Wno-write-strings -Werror")
         endif ()
 
         # Enable errors on warning

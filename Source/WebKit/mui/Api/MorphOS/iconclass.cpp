@@ -205,8 +205,6 @@ DEFDISP
 
 DEFGET
 {
-	GETDATA;
-
 	return DOSUPER;
 }
 

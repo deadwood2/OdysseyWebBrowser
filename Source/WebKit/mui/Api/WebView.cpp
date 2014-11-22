@@ -1383,8 +1383,7 @@ void WebView::geolocationDidChangePosition(WebGeolocationPosition* position)
 {
     if (!m_page)
         return;
-#warning FIXME
-//    GeolocationController::from(m_page)->positionChanged(core(position));
+    GeolocationController::from(m_page)->positionChanged(core(position));
 }
 
 void WebView::geolocationDidFailWithError(WebError* error)

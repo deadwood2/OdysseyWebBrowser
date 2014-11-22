@@ -256,15 +256,15 @@ static ULONG LayoutFonc( struct Hook *hook, Object *obj, struct MUI_LayoutMsg *l
 					{
 						// enouth space
 						array_x= (lm->lm_Layout.Width) / cols;
-						if ((array_x*cols)+(data->hspace*(cols-1)>(LONG) lm->lm_Layout.Width)) array_x--;   
-						if ((array_x*cols)+(data->hspace*(cols-1)>(LONG) lm->lm_Layout.Width)) array_x--;
+						if ((array_x*cols)+(data->hspace*(cols-1)>(ULONG) lm->lm_Layout.Width)) array_x--;
+						if ((array_x*cols)+(data->hspace*(cols-1)>(ULONG) lm->lm_Layout.Width)) array_x--;
 						D(kprintf("Col Mode 1: cols=%ld array_x=%ld\n",cols,array_x);)
 					}
 					else
 					{
 						array_x= (lm->lm_Layout.Width) / last_col; 	 
-						if ((array_x*last_col)+(data->hspace*(last_col-1)>(LONG)lm->lm_Layout.Width)) array_x--;
-						if ((array_x*last_col)+(data->hspace*(last_col-1)>(LONG)lm->lm_Layout.Width)) array_x--;    
+						if ((array_x*last_col)+(data->hspace*(last_col-1)>(ULONG)lm->lm_Layout.Width)) array_x--;
+						if ((array_x*last_col)+(data->hspace*(last_col-1)>(ULONG)lm->lm_Layout.Width)) array_x--;
 						D(kprintf("Col Mode 2: last_col=%ld array_x=%ld\n",last_col,array_x);)
 					}
 					/*if (lm->lm_Layout.Width/cols > array_x)
@@ -279,11 +279,11 @@ static ULONG LayoutFonc( struct Hook *hook, Object *obj, struct MUI_LayoutMsg *l
 				else
 				{
 					cols= (lm->lm_Layout.Width) / (data->button_w + data->hspace); // get max button per line
-					if (cols>data->count) cols=data->count;
+					if (cols>(LONG)data->count) cols=data->count;
 					array_x= (lm->lm_Layout.Width) / cols;
 					array_y= data->button_h;
-					if ((array_x*cols)+(data->hspace*(cols-1)>lm->lm_Layout.Width)) array_x--;
-					if ((array_x*cols)+(data->hspace*(cols-1)>lm->lm_Layout.Width)) array_x--;
+					if ((array_x*cols)+(data->hspace*(cols-1)>(ULONG)lm->lm_Layout.Width)) array_x--;
+					if ((array_x*cols)+(data->hspace*(cols-1)>(ULONG)lm->lm_Layout.Width)) array_x--;
 				}
 			}
 			//D(kprintf("Layout cols=%ld array_x=%ld array_y=%ld\n", cols, array_x, array_y));
@@ -293,18 +293,18 @@ static ULONG LayoutFonc( struct Hook *hook, Object *obj, struct MUI_LayoutMsg *l
 
 			if (data->mode & MV_QuickLinkGroup_Mode_Prop)
 			{
-				for(count=1;(count<=data->count);count++)
+				for(count=1;(count<=(LONG)data->count);count++)
 				{
 					cstate = (APTR)lm->lm_Children->mlh_Head;  
 					while ( (child =(Object *)NextObject(&cstate)) )
 					{
 						node=NULL;
 						get(child, MUIA_UserData, &node);
-						if ((node) && node->ql_order==count )
+						if ((node) && (LONG)node->ql_order==count )
 						{
 							// This one now
 							temp_w=_minwidth(child)+10;
-							if (temp_w>data->button_w) temp_w=data->button_w;
+							if (temp_w>(LONG)data->button_w) temp_w=data->button_w;
 
 							if (data->mode & MV_QuickLinkGroup_Mode_Vert)
 							{
@@ -386,7 +386,7 @@ static ULONG LayoutFonc( struct Hook *hook, Object *obj, struct MUI_LayoutMsg *l
 							}
 						}
 						//D(kprintf("Layout: x=%ld y=%ld x+=%ld y+=%ld\n", xpos, ypos, xpos+array_x, ypos+array_y ));
-						if (array_x<data->button_w)
+						if (array_x<(LONG)data->button_w)
 						{
 							D(kprintf("################# BUG ##############\n");)
 							D(kprintf("Array X < minbut delta is %ld (space avail %ld)\n",data->button_w-array_x,data->hspace);)
@@ -402,7 +402,7 @@ static ULONG LayoutFonc( struct Hook *hook, Object *obj, struct MUI_LayoutMsg *l
 			}
 			if (data->mode & MV_QuickLinkGroup_Mode_Vert)
 			{
-				if (data->count>cols) lm->lm_Layout.Height=(array_y+data->vspace)*data->count;
+				if ((LONG)data->count>cols) lm->lm_Layout.Height=(array_y+data->vspace)*data->count;
 			}
 			else
 			{
@@ -413,10 +413,10 @@ static ULONG LayoutFonc( struct Hook *hook, Object *obj, struct MUI_LayoutMsg *l
 			D(kprintf("Relayout: max_row=%ld truerow=%ld initial=%ld\n", max_row, data->truerow, data->row));
 			if (data->re_layout_count<2)
 			{
-				if (max_row>data->truerow && data->truerow<data->row )
+				if (max_row>(LONG)data->truerow && data->truerow<data->row )
 				{
 					D(kprintf("Relayout: Need more max_row=%ld truerow=%ld initial=%ld ", max_row, data->truerow, data->row));
-					if (max_row>data->row)
+					if (max_row>(LONG)data->row)
 					{
 						data->truerow=data->row;
 						//if (max_row>1 && data->row==1) data->truerow++;
@@ -447,7 +447,7 @@ static ULONG LayoutFonc( struct Hook *hook, Object *obj, struct MUI_LayoutMsg *l
 
 					return(TRUE);
 				}
-				if (max_row<data->truerow && data->truerow>1)
+				if (max_row<(LONG)data->truerow && data->truerow>1)
 				{
 					D(kprintf("Relayout: Need less max_row=%ld truerow=%ld initial=%ld ", max_row, data->truerow, data->row));
 					if (max_row==2 && data->row==1) data->truerow=2;
@@ -523,7 +523,6 @@ DEFNEW
 
 DEFDISP
 {
-	GETDATA;
 	D(kprintf("QuickLinkGroup: disposing\n"));
 	return DOSUPER;
 }

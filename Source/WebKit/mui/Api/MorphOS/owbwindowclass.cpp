@@ -200,21 +200,12 @@ static void copyWebViewSelectionToClipboard(WebView* webView, bool html, bool lo
 	char *converted_data = local ? utf8_to_local(data) : strdup(data);
 	size_t converted_len = local ? strlen(converted_data) : len;
 
-    bool copied = false;
-
 	if(converted_data && converted_len)
 	{
-		copied = copyTextToClipboard(converted_data, local ? false : true);
+		copyTextToClipboard(converted_data, local ? false : true);
 
 		free(converted_data);
 	}
-
-	/*
-    if (copied)
-        frame->selection()->setSelection(Selection(frame->selection()->end(), SEL_DEFAULT_AFFINITY), false, false, true);
-	else
-		DisplayBeep(NULL);
-	*/
 }
 
 static  void setup_browser_notifications(Object *obj, struct Data *data, Object *browser)
@@ -342,31 +333,12 @@ DEFNEW
 	//APTR n, m;
 	char id = 'W'; // Sigh, let's stay compatible with previous release, now the mistake is made :)
 	Object *initialbrowser = (Object *) GetTagData(MA_OWBWindow_InitialBrowser, NULL, msg->ops_AttrList);
-	WindowFeatures *features = (WindowFeatures *) GetTagData(MA_OWBWindow_Features, NULL, msg->ops_AttrList);
 	struct windownode *node = (struct windownode *) malloc(sizeof(struct windownode));
 
-	ULONG shownavigation = TRUE, showquicklinks = TRUE, showlocation = TRUE, showstatus = TRUE, showsearch = getv(app, MA_OWBApp_ShowSearchBar);
 	ULONG showseparators = getv(app, MA_OWBApp_ShowSeparators);
-
-	/* XXX: we're not ready to do this so soon apparently, find the culprit */
-	if(features)
-	{
-		shownavigation = features->toolBarVisible;
-		showquicklinks = features->toolBarVisible;
-		showlocation   = features->locationBarVisible;
-		showsearch     = features->locationBarVisible;
-		showstatus     = features->statusBarVisible;	
-	}
 
 	if(!node)
 		return 0;
-
-	/*
-	ITERATELISTSAFE(n, m, &window_list)
-	{
-		id++;
-	}
-	*/
 
 	obj = (Object *) DoSuperNew(cl, obj,
 		MUIA_Window_ScreenTitle, "Odyssey Web Browser " VERSION " (" DATE ")",
@@ -1719,7 +1691,7 @@ DEFTMETHOD(OWBWindow_OpenLocalFile)
 	{
         { ASLFR_TitleText, (STACKIPTR) GSI(MSG_OWBWINDOW_OPEN_FILE) },
         { ASLFR_InitialPattern, (STACKIPTR) "#?" },
-        { TAG_DONE }
+        { TAG_DONE, TAG_DONE }
 	};
 
 	char *file = asl_run((char *)getv(app, MA_OWBApp_CurrentDirectory), (struct TagItem *) &tags, TRUE);
@@ -1781,7 +1753,7 @@ DEFTMETHOD(OWBWindow_SaveAsSource)
                     { ASLFR_InitialPattern, (STACKIPTR) "#?" },
                     { ASLFR_InitialFile, (STACKIPTR) buffer },
                     { ASLFR_DoSaveMode, (STACKIPTR) TRUE },
-                    { TAG_DONE }
+                    { TAG_DONE, TAG_DONE }
                 };
 
 				char *file = asl_run((char *)getv(app, MA_OWBApp_CurrentDirectory), (struct TagItem *) &tags, TRUE);
@@ -1831,7 +1803,7 @@ DEFTMETHOD(OWBWindow_SaveAsPDF)
             { ASLFR_InitialPattern, (STACKIPTR)"#?.pdf" },
             { ASLFR_InitialFile, (STACKIPTR)buffer },
             { ASLFR_DoSaveMode, (STACKIPTR)TRUE },
-            { TAG_DONE }
+            { TAG_DONE, TAG_DONE }
         };
 
 		char *file = asl_run((char *)getv(app, MA_OWBApp_CurrentDirectory), (struct TagItem *) &tags, TRUE);
@@ -3046,8 +3018,6 @@ static void completion_thread_start(void* p)
 	Object * obj = arg->obj;
 	GETDATA;
 
-	double start = currentTime();
-
 	String prefixes[] = { String(""), String("http://"), String("http://www."), String("https://"), String("https://www.") };
 
 	WebHistory* history = WebHistory::sharedHistory();
@@ -3119,13 +3089,9 @@ static void completion_thread_start(void* p)
 		}
 	}
 
-	start = currentTime();
-
 	if(matching_list.size())
 	{
 		std::sort(matching_list.begin(), matching_list.end());
-
-		start = currentTime();
 
 		/* Popup Mode */
 		if(data->completion_mode_popup)

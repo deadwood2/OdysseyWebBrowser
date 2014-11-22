@@ -42,7 +42,6 @@ using namespace WebCore;
 
 WebDragDataPrivate* WebDragData::platformDragData()
 {
-#warning "useless stuff"
 #if 0
     RefPtr<DataObject> obj = DataObject::create();
     obj->url = URL(ParsedURLString, m_url.c_str());
@@ -64,5 +63,7 @@ WebDragDataPrivate* WebDragData::platformDragData()
     m_webDataPrivate->m_dragDataRef = obj.get();
     obj->ref();
     return m_webDataPrivate;
+#else
+    return NULL;
 #endif
 }

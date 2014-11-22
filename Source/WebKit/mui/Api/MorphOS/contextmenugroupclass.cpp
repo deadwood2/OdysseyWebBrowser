@@ -360,9 +360,9 @@ DEFMMETHOD(Import)
 
 	NEWLIST(&contextmenu_list);
 
-	if(id=(muiNotifyData(obj)->mnd_ObjectID))
+	if((id=(muiNotifyData(obj)->mnd_ObjectID)))
 	{
-		if (val = (char *)DoMethod(msg->dataspace, MUIM_Dataspace_Find, id))
+		if ((val = (char *)DoMethod(msg->dataspace, MUIM_Dataspace_Find, id)))
 		{
 			ULONG i;
 			String input = val;
@@ -398,7 +398,7 @@ DEFMMETHOD(Export)
 {
 	ULONG id;
 
-	if(id=(muiNotifyData(obj)->mnd_ObjectID))
+	if((id=(muiNotifyData(obj)->mnd_ObjectID)))
 	{
 		APTR n;
 		String output = "";

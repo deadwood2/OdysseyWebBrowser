@@ -638,7 +638,7 @@ DEFMMETHOD(Cleanup)
 DEFSMETHOD(Bookmarkgroup_Update)
 {
 	GETDATA;
-	struct MUIS_Listtree_TreeNode *active = NULL, *parent = NULL;
+	struct MUIS_Listtree_TreeNode *active = NULL;
 	struct treedata *current;
 	D(kprintf("Bookmarkgroup_Update %ld\n", msg->from));
 	if (msg->from & MV_BookmarkGroup_Update_Tree)
@@ -687,7 +687,7 @@ DEFSMETHOD(Bookmarkgroup_Update)
 			else
 			{
 				// Link is active
-				parent = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_bookmark, MUIM_Listtree_GetEntry, active, MUIV_Listtree_GetEntry_Position_Parent, 0);
+				DoMethod(data->lt_bookmark, MUIM_Listtree_GetEntry, active, MUIV_Listtree_GetEntry_Position_Parent, 0);
 				set(data->bt_remove,    MUIA_Disabled, FALSE);
 				set(data->st_title,     MUIA_Disabled, FALSE);
 				set(data->st_address,   MUIA_Disabled, FALSE);
@@ -1418,7 +1418,7 @@ static void save_list(BPTR html, Object *lt, struct MUIS_Listtree_TreeNode *list
 
 					if ( (node->alias) && (node->flags & NODEFLAG_QUICKLINK) && type==MV_Bookmark_SaveHtml_OWB )
 					{
-						snprintf(link, sizeof(link), " OWBQUICKLINK=\"%s\" OWBQLORDER=\"%ld\" OWBQLSHOWALIAS=\"%ld\"%s", alias, node->ql_order, node->showalias, flags );
+						snprintf(link, sizeof(link), " OWBQUICKLINK=\"%s\" OWBQLORDER=\"%ld\" OWBQLSHOWALIAS=\"%ld\"%s", alias, (unsigned long)node->ql_order, (unsigned long)node->showalias, flags );
 						flags=link;
 					}
 
@@ -1440,7 +1440,7 @@ static void save_list(BPTR html, Object *lt, struct MUIS_Listtree_TreeNode *list
 					{
 						if ( (node->alias) && (node->flags & NODEFLAG_QUICKLINK) && type==MV_Bookmark_SaveHtml_OWB )
 						{
-							snprintf(link, sizeof(link), " OWBQUICKLINK=\"%s\" OWBQLORDER=\"%ld\" OWBQLSHOWALIAS=\"%ld\"", alias, node->ql_order, node->showalias );
+							snprintf(link, sizeof(link), " OWBQUICKLINK=\"%s\" OWBQLORDER=\"%ld\" OWBQLSHOWALIAS=\"%ld\"", alias, (unsigned long)node->ql_order, (unsigned long)node->showalias );
 							quicklink=link;
 						}
 						else if (node->alias)

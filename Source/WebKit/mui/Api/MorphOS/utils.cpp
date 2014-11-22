@@ -200,15 +200,15 @@ void format_time_compact(STRPTR buffer, ULONG size, ULONG seconds)
 	}
 
 	if (buffer[0]) strcat(buffer, ", ");
-	snprintf(fmt, sizeof(fmt), "%.2lu", h);
+	snprintf(fmt, sizeof(fmt), "%.2lu", (unsigned long)h);
 	strcat(buffer, fmt);
 
 	strcat(buffer, ":");
-	snprintf(fmt, sizeof(fmt), "%.2lu", m);
+	snprintf(fmt, sizeof(fmt), "%.2lu", (unsigned long)m);
 	strcat(buffer, fmt);
 
 	strcat(buffer, ":");
-	snprintf(fmt, sizeof(fmt), "%.2lu", s);
+	snprintf(fmt, sizeof(fmt), "%.2lu", (unsigned long)s);
 	strcat(buffer, fmt);
 }
 
@@ -853,10 +853,12 @@ char *rexx_result(void)
 
 int send_external_notification(struct external_notification *notification)
 {
+#if !OS(AROS)
 	struct MsgPort *replyport, *port;
+#endif
 	ULONG result = 20; /* no port then tell user */
 
-#if !defined(__AROS__) // __AROS__
+#if !OS(AROS)
 	if( ( replyport = CreateMsgPort() ) )
 	{
 		struct MagicBeaconNotificationMessage mbnm;
@@ -1059,7 +1061,7 @@ int morphos_crash(size_t size)
 	}
 	else
 	{
-	    snprintf(msg, sizeof(msg), "Failed to allocate %u bytes.\n\nUnfortunately, WebKit doesn't check allocations and crashes in such situation.\n\nYou can either:\n - Crash: a hit will follow to dump stackframe and allocated heap memory will be freed\n - Retry the allocation: free some memory elsewhere first and then press retry.\n - Quit: the application should quit properly and give all memory back.", size);
+	    snprintf(msg, sizeof(msg), "Failed to allocate %u bytes.\n\nUnfortunately, WebKit doesn't check allocations and crashes in such situation.\n\nYou can either:\n - Crash: a hit will follow to dump stackframe and allocated heap memory will be freed\n - Retry the allocation: free some memory elsewhere first and then press retry.\n - Quit: the application should quit properly and give all memory back.", (unsigned int)size);
 	}
 
 	ULONG ret = MUI_RequestA(app, NULL, 0, "OWB Fatal Error", "*_Retry|_Quit|_Crash", msg, NULL);

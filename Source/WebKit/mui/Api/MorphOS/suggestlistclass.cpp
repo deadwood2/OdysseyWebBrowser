@@ -199,7 +199,7 @@ DEFMMETHOD(List_Display)
 	if(item)
 	{
 		static char label[256];
-		static char occurrences[32];
+//		static char occurrences[32];
 		char *suggestion = utf8_to_local(item->suggestion().utf8().data());
 
 		if(suggestion)

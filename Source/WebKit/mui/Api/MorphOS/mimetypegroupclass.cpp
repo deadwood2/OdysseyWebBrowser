@@ -354,6 +354,7 @@ DEFTMETHOD(MimeTypeGroup_Refresh)
 					break;
 				case MIMETYPE_ACTION_STREAM:
 				case MIMETYPE_ACTION_PIPE:
+				case MIMETYPE_ACTION_PLUGIN:
 					cy_idx = 0; // Not supported yet
 					break;
 			}
@@ -567,9 +568,9 @@ DEFMMETHOD(Import)
 	}
 
 	/* Fill user types */
-	if(id=(muiNotifyData(obj)->mnd_ObjectID))
+	if((id=(muiNotifyData(obj)->mnd_ObjectID)))
 	{
-		if (val = (char *)DoMethod(msg->dataspace, MUIM_Dataspace_Find, id))
+		if ((val = (char *)DoMethod(msg->dataspace, MUIM_Dataspace_Find, id)))
 		{
 			ULONG i;
 			String input = val;
@@ -606,7 +607,7 @@ DEFMMETHOD(Export)
 {
 	ULONG id;
 
-	if(id=(muiNotifyData(obj)->mnd_ObjectID))
+	if((id=(muiNotifyData(obj)->mnd_ObjectID)))
 	{
 		APTR n;
 		String output = "";

@@ -524,8 +524,6 @@ DEFNEW
 {
 	Object *prefs_save, *prefs_use, *prefs_cancel, *lv_prefs, *gp_prefs;
 
-	Object *lv_fastlinks;
-
 	Object *str_homepage, *str_startpage, *str_newtabpage, *str_clidevice;
 	Object *str_dldir, *ch_downloadautoclose, *ch_savedownloads, *ch_downloadstartautomatically;
 
@@ -534,9 +532,9 @@ DEFNEW
 	Object *str_sansseriffamily, *str_seriffamily, *str_standardfamily, *str_cursivefamily, *str_fantasyfamily, *str_fixedfamily;
 	Object *lv_sansseriffamily, *lv_seriffamily, *lv_standardfamily, *lv_cursivefamily, *lv_fantasyfamily, *lv_fixedfamily;
 
-	Object *ch_enablejavascript, *ch_allowjavascriptnewwindow, *ch_enableanimation, *ch_enableanimationloop, *ch_enablepagecache, *cy_cachemodel, *ch_enableimages, *ch_shouldprintbackground, *ch_contentblocking, *ch_enableinspector, *ch_enableplugins/*, *cy_animationpolicy*/;
+	Object *ch_enablejavascript, *ch_allowjavascriptnewwindow, *ch_enableanimation, /* *ch_enableanimationloop,*/ *ch_enablepagecache, *cy_cachemodel, *ch_enableimages, *ch_shouldprintbackground, *ch_contentblocking, *ch_enableinspector, *ch_enableplugins/*, *cy_animationpolicy*/;
 
-	Object *ch_showbuttonframe, *ch_enablepointers, *ch_showtabtransferanim, *ch_showsearch, *cy_newpagepolicy, *cy_popuppolicy, *cy_newpageposition, *cy_toolbuttontype, *cy_completiontype, *ch_newpagebutton, *cy_closerequester, *cy_errorreporting, *cy_middlebuttonpolicy, *ch_showvalidationbuttons, *ch_showseparators;
+	Object *ch_showbuttonframe, *ch_enablepointers, *ch_showtabtransferanim, *ch_showsearch, *cy_newpagepolicy, *cy_popuppolicy, *cy_newpageposition, *cy_toolbuttontype, *cy_completiontype, *cy_closerequester, *cy_errorreporting, *cy_middlebuttonpolicy, *ch_showvalidationbuttons, *ch_showseparators;
 	Object *ch_favicon_tab, *ch_favicon_bookmark, *ch_favicon_history, *ch_favicon_historypanel, *ch_favicon_quicklink;
 	Object *cy_quicklinklook, *sl_quicklinkrows, *cy_quicklinklayout;
 

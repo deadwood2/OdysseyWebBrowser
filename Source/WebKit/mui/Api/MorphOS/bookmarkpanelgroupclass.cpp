@@ -258,7 +258,7 @@ DEFMMETHOD(Cleanup)
 DEFSMETHOD(Bookmarkgroup_LoadHtml)
 {
 	GETDATA;
-	struct MUIS_Listtree_TreeNode *newentry = NULL, *group = NULL;
+	struct MUIS_Listtree_TreeNode *group = NULL;
 	struct treedata newnode;
 	char   line[8192];
 	STRPTR ptr[8]={NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL};
@@ -368,7 +368,7 @@ DEFSMETHOD(Bookmarkgroup_LoadHtml)
 				else newnode.flags |= NODEFLAG_INMENU;
 
 				// Add entry
-				newentry= (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_bookmark, MUIM_Listtree_Insert,
+				DoMethod(data->lt_bookmark, MUIM_Listtree_Insert,
 					newnode.title,
 					&newnode,
 					group ? group : MUIV_Listtree_Insert_ListNode_Root,
@@ -448,7 +448,7 @@ DEFSMETHOD(Bookmarkgroup_LoadHtml)
 DEFSMETHOD(Bookmarkgroup_AddLink)
 {
 	GETDATA;
-	struct MUIS_Listtree_TreeNode *active = NULL, *entry = NULL, *parent = NULL;
+	struct MUIS_Listtree_TreeNode *active = NULL, *parent = NULL;
 	struct treedata newnode,*node;
 
 	newnode.flags    = NODEFLAG_LINK;
@@ -478,7 +478,7 @@ DEFSMETHOD(Bookmarkgroup_AddLink)
 		if (node->flags & NODEFLAG_GROUP)
 		{
 			// Add link in current group
-			entry = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_bookmark, MUIM_Listtree_Insert,
+			DoMethod(data->lt_bookmark, MUIM_Listtree_Insert,
 				msg->title,
 				&newnode,
 				active,
@@ -492,7 +492,7 @@ DEFSMETHOD(Bookmarkgroup_AddLink)
 			parent = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_bookmark, MUIM_Listtree_GetEntry, active, MUIV_Listtree_GetEntry_Position_Parent, 0);
 			if (parent)
 			{
-				entry = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_bookmark, MUIM_Listtree_Insert,
+				DoMethod(data->lt_bookmark, MUIM_Listtree_Insert,
 					msg->title,
 					&newnode,
 					parent,
@@ -502,7 +502,7 @@ DEFSMETHOD(Bookmarkgroup_AddLink)
 			}
 			else
 			{
-				entry = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_bookmark, MUIM_Listtree_Insert,
+				DoMethod(data->lt_bookmark, MUIM_Listtree_Insert,
 					msg->title,
 					&newnode,
 					MUIV_Listtree_Insert_ListNode_Root,
@@ -515,7 +515,7 @@ DEFSMETHOD(Bookmarkgroup_AddLink)
 	else
 	{
 		// Add link at root
-		entry = (struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_bookmark, MUIM_Listtree_Insert,
+		DoMethod(data->lt_bookmark, MUIM_Listtree_Insert,
 			msg->title,
 			&newnode,
 			MUIV_Listtree_Insert_ListNode_Root,
@@ -524,7 +524,6 @@ DEFSMETHOD(Bookmarkgroup_AddLink)
 		);
 	}
 
-	D(kprintf( "entry is %08lx.\n",(ULONG)entry));
 	set(data->lt_bookmark, MUIA_Listtree_Quiet, FALSE);
 
 	return (0);

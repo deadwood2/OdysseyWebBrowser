@@ -96,7 +96,7 @@ STATIC VOID doset(APTR obj, struct Data *data, struct TagItem *tags)
 
 DEFNEW
 {
-	Object *str, *bt_prev, *bt_next;
+	Object *str;
 	Object *pop, *bt_pop, *lv_entries;
 
 	obj = (Object *) DoSuperNew(cl, obj,

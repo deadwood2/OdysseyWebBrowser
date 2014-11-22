@@ -69,7 +69,7 @@ MUI_HOOK(cookiemanagerlisttree_constructfunc, APTR pool, APTR t)
 	struct cookie_entry * entry;
 	struct cookie_entry * tempentry = (struct cookie_entry *) t;
 
-	if (entry = (struct cookie_entry *) malloc(sizeof(struct cookie_entry)))
+	if ((entry = (struct cookie_entry *) malloc(sizeof(struct cookie_entry))))
 	{
 		entry->flags = tempentry->flags;
 		entry->name = tempentry->name;

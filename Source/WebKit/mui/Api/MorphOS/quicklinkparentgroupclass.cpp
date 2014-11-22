@@ -63,7 +63,7 @@ static ULONG LayoutFonc( struct Hook *hook, Object *obj, struct MUI_LayoutMsg *l
 	{
 		case MUILM_MINMAX:
 		{
-			ULONG min_w=0,min_h=0,mode=0,buts=0,max_w=0,max_h=0;
+			ULONG min_w=0,min_h=0,mode=0,max_w=0,max_h=0;
 			Object *cstate = (Object *)lm->lm_Children->mlh_Head;
 			Object *child;
 			if ( (child=(Object *)NextObject(&cstate)) )
@@ -142,8 +142,8 @@ static ULONG LayoutFonc( struct Hook *hook, Object *obj, struct MUI_LayoutMsg *l
 				{
 					w=_maxwidth(child);
 					h=_maxheight(child);
-					if (w>lm->lm_Layout.Width) w=lm->lm_Layout.Width;
-					if (h>lm->lm_Layout.Height) h=lm->lm_Layout.Height;
+					if (w>(ULONG)lm->lm_Layout.Width) w=lm->lm_Layout.Width;
+					if (h>(ULONG)lm->lm_Layout.Height) h=lm->lm_Layout.Height;
 					D(kprintf("QL Parent Group: w=%ld h=%ld\n",w,h));
 					if (!MUI_Layout(child,0,0,w,h,0))
 					{

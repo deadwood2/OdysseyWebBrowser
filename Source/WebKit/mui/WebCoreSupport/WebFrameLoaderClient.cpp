@@ -691,7 +691,7 @@ void WebFrameLoaderClient::setTitle(const WebCore::StringWithDirection& title, c
 
 #if OS(MORPHOS)
     // Not sure calling twice visitedURL is particularly smart, but else, title isn't set in our history
-#warning "find something better, really, calling visitedURL is not optimal at all"
+//#warning "find something better, really, calling visitedURL is not optimal at all"
     DocumentLoader* loader = core(m_webFrame)->loader().documentLoader();
     history->visitedURL(strdup(loader->urlForHistory().string().utf8().data()), strdup(loader->title().string().utf8().data()), strdup(loader->originalRequestCopy().httpMethod().utf8().data()), loader->urlForHistoryReflectsFailure());
 #endif
@@ -840,9 +840,6 @@ void WebFrameLoaderClient::cancelPolicyCheck()
 
 void WebFrameLoaderClient::dispatchWillSubmitForm(PassRefPtr<FormState> formState, FramePolicyFunction function)
 {
-    Frame* coreFrame = core(m_webFrame);
-    ASSERT(coreFrame);
-
     Object * browser = m_webFrame->webView()->viewWindow()->browser;
     if(!getv(browser, MA_OWBBrowser_PrivateBrowsing))
     {
@@ -1028,9 +1025,6 @@ void WebFrameLoaderClient::receivedPolicyDecision(PolicyAction action)
     m_policyListener = 0;
     m_policyFunction = 0;
 
-    Frame* coreFrame = core(m_webFrame);
-    ASSERT(coreFrame);
-
     function(action);
 }
 
@@ -1050,9 +1044,6 @@ void WebFrameLoaderClient::dispatchDecidePolicyForResponse(const WebCore::Resour
 
 void WebFrameLoaderClient::dispatchDecidePolicyForNewWindowAction(const NavigationAction& action, const ResourceRequest& request, PassRefPtr<FormState> formState, const String& frameName, FramePolicyFunction function)
 {
-    Frame* coreFrame = core(m_webFrame);
-    ASSERT(coreFrame);
-
     SharedPtr<WebPolicyDelegate> policyDelegate = m_webFrame->webView()->policyDelegate();
     if (!policyDelegate)
         policyDelegate = DefaultPolicyDelegate::sharedInstance();

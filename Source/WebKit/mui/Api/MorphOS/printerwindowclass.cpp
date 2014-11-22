@@ -259,7 +259,6 @@ DEFTMETHOD(PrinterWindow_UpdateParameters)
 		float headerHeight = 0;
 		float footerHeight = 0;
 
-		float scale = 1.0;
 		float userscale = 1.0;
 		int	pageCount = 1;
 
@@ -267,7 +266,7 @@ DEFTMETHOD(PrinterWindow_UpdateParameters)
 
 		printContext.begin(pageWidth, pageHeight);
 
-		scale = printContext.computeAutomaticScaleFactor(FloatSize(pageWidth, pageHeight));
+		printContext.computeAutomaticScaleFactor(FloatSize(pageWidth, pageHeight));
 		userscale = (float) 1.0 * getv(data->sl_scale, MUIA_Slider_Level) / 100.0;
 
 		printContext.computePageRects(printRect, headerHeight, footerHeight, userscale, pageHeight);
@@ -384,14 +383,13 @@ DEFTMETHOD(PrinterWindow_Start)
 			float headerHeight = 0;
 			float footerHeight = 0;
 
-			float scale = 1.0;
 			float userscale = 1.0;
 
 			OWBPrintContext printContext(data->frame);
 
 			printContext.begin(pageWidth, pageHeight);
 
-			scale = printContext.computeAutomaticScaleFactor(FloatSize(pageWidth, pageHeight));					   
+			printContext.computeAutomaticScaleFactor(FloatSize(pageWidth, pageHeight));
 			userscale = pj->scale;
 
 			printContext.computePageRects(printRect, headerHeight, footerHeight, userscale, pageHeight);

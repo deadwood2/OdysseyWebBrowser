@@ -552,6 +552,10 @@ static String undoNameForEditAction(EditAction editAction)
         case EditActionFormatBlock: return "Formatting";
         case EditActionIndent: return "Indent";
         case EditActionOutdent: return "Outdent";
+        case EditActionBold: return "Bold";
+        case EditActionItalics: return "Italics";
+        case EditActionDictation: return "Dictation";
+        case EditActionDelete: return "Delete";
     }
     return String();
 }
