@@ -1290,7 +1290,6 @@ static bool hasSource(const HTMLMediaElement* mediaElement)
     return mediaElement->networkState() != HTMLMediaElement::NETWORK_EMPTY
         && mediaElement->networkState() != HTMLMediaElement::NETWORK_NO_SOURCE;
 }
-#endif
 
 typedef WTF::HashMap<const char*, Image*> MediaControlImageMap;
 static MediaControlImageMap* gMediaControlImageMap = 0;
@@ -1308,12 +1307,15 @@ static Image* platformResource(const char* name)
     ASSERT_NOT_REACHED();
     return 0;
 }
+#endif
 
+#if ENABLE(VIDEO)
 static Image* getMediaSliderThumb()
 {
 	static Image* mediaSliderThumb = platformResource("Mediatheme/SliderThumb");
     return mediaSliderThumb;
 }
+#endif
 
 bool RenderThemeBal::paintMediaSliderTrack(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {

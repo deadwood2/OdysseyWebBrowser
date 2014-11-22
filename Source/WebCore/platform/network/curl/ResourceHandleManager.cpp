@@ -191,11 +191,6 @@ static Mutex* sharedResourceMutex(curl_lock_data data) {
 }
 
 #if ENABLE(WEB_TIMING)
-static int milisecondsSinceRequest(double requestTime)
-{
-    return static_cast<int>((monotonicallyIncreasingTime() - requestTime) * 1000.0);
-}
-
 static void calculateWebTimingInformations(ResourceHandleInternal* d)
 {
     double startTransfertTime = 0;

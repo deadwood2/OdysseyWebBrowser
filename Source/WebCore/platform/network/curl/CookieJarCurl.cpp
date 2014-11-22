@@ -93,8 +93,6 @@ static void addMatchingCurlCookie(const char* cookie, const String& domain, cons
     String cookieDomain;
     readCurlCookieToken(cookie, cookieDomain);
 
-    bool subDomain = false;
-
     // HttpOnly cookie entries begin with "#HttpOnly_".
     if (cookieDomain.startsWith("#HttpOnly_")) {
         if (httponly)
