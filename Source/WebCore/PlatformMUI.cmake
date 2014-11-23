@@ -2,6 +2,7 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/cairo"
     "${WEBCORE_DIR}/platform/graphics/cairo"
     "${WEBCORE_DIR}/platform/graphics/freetype"
+    "${WEBCORE_DIR}/platform/graphics/texmap"
     "${WEBCORE_DIR}/platform/network/curl"
     "${WEBCORE_DIR}/platform/mui"
     "${WEBCORE_DIR}/platform/bal"
@@ -42,6 +43,8 @@ list(APPEND WebCore_SOURCES
     platform/graphics/freetype/GlyphPageTreeNodeFreeType.cpp
     platform/graphics/freetype/SimpleFontDataFreeType.cpp
 
+    platform/graphics/texmap/GraphicsLayerTextureMapper.cpp
+
     platform/graphics/ImageSource.cpp
     platform/graphics/WOFFFileFormat.cpp
 
@@ -76,7 +79,6 @@ list(APPEND WebCore_SOURCES
     platform/mui/EditorMUI.cpp
     platform/mui/EventHandlerMorphOS.cpp
     platform/mui/EventLoopMorphOS.cpp
-    platform/mui/GraphicsLayerMUI.cpp
     platform/mui/IconMorphOS.cpp
     platform/mui/ImageMorphOS.cpp
     platform/mui/IntPointMorphOS.cpp
