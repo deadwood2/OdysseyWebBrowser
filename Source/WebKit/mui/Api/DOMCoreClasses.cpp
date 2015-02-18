@@ -39,7 +39,6 @@
 #include <Document.h>
 #include <Element.h>
 #include <Font.h>
-#include <SimpleFontData.h>
 #include <HTMLFormElement.h>
 #include <HTMLInputElement.h>
 #include <HTMLNames.h>
@@ -650,7 +649,7 @@ WebFontDescription* DOMElement::font()
     if (!renderer)
         return 0;
 
-    FontDescription fontDescription = renderer->style().font().fontDescription();
+    FontDescription fontDescription = renderer->style().fontCascade().fontDescription();
     AtomicString family = fontDescription.firstFamily();
     
     WebFontDescription *webFontDescription = new WebFontDescription();

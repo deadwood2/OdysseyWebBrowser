@@ -29,7 +29,6 @@
 #ifndef WebDatabaseManager_h
 #define WebDatabaseManager_h
 
-#if ENABLE(SQL_DATABASE)
 
 /**
  *  @file  WebDatabaseManager.h
@@ -201,5 +200,4 @@ private:
      *  WebKit set WebDatabases path if necessary
      */
 void WebKitInitializeWebDatabasesIfNecessary();
-#endif
 #endif

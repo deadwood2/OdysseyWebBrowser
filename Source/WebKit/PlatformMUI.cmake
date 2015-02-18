@@ -175,6 +175,7 @@ list(APPEND WebKit_SOURCES
     mui/WebCoreSupport/WebFrameNetworkingContext.cpp
     mui/WebCoreSupport/WebInspectorClient.cpp
     mui/WebCoreSupport/WebPlatformStrategies.cpp
+    mui/WebCoreSupport/WebVisitedLinkStore.cpp
 
     mui/Widgets/WebDragDataMorphOS.cpp
 

@@ -188,7 +188,7 @@ void ResourceHandle::platformSetDefersLoading(bool defers)
     }
 }
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 void ResourceHandle::setCookies()
 {
     URL url = getInternal()->m_firstRequest.url();
@@ -263,12 +263,6 @@ void ResourceHandle::resume(String path)
     ResourceHandleManager::sharedInstance()->add(this);
 }
 #endif
-
-bool ResourceHandle::loadsBlocked()
-{
-    notImplemented();
-    return false;
-}
 
 bool ResourceHandle::shouldUseCredentialStorage()
 {

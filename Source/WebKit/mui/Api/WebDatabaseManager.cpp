@@ -27,7 +27,6 @@
  */
 
 #include "config.h"
-#if ENABLE(SQL_DATABASE)
 #include "WebDatabaseManager.h"
 
 #include "WebSecurityOrigin.h"
@@ -192,7 +191,7 @@ void WebDatabaseManager::setQuota(const char* origin, unsigned long long quota)
     if (this != s_sharedWebDatabaseManager)
         return;
 
-    DatabaseManager::manager().setQuota(SecurityOrigin::createFromString(origin).get(), quota);
+    DatabaseManager::manager().setQuota(SecurityOrigin::createFromString(origin).ptr(), quota);
 }
 
 void WebDatabaseManager::deleteDatabase(const char* databaseName, WebSecurityOrigin* origin)
@@ -267,4 +266,3 @@ void WebKitInitializeWebDatabasesIfNecessary()
 
     initialized = true;
 }
-#endif

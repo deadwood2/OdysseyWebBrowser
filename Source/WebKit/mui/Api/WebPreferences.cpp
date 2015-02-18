@@ -146,11 +146,7 @@ void WebPreferences::initializeDefaultSettings()
     m_privatePrefs[WebKitPluginsEnabledPreferenceKey] = "1";//TRUE
     m_privatePrefs[WebKitCSSRegionsEnabledPreferenceKey] = "1";//TRUE
 
-#if ENABLE(SQL_DATABASE)
     m_privatePrefs[WebKitDatabasesEnabledPreferenceKey] = "1";
-#else
-    m_privatePrefs[WebKitDatabasesEnabledPreferenceKey] = "0";
-#endif
 #if ENABLE(DOM_STORAGE)
     m_privatePrefs[WebKitLocalStorageEnabledPreferenceKey] = "1";
 #else

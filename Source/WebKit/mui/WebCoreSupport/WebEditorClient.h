@@ -127,6 +127,7 @@ public:
     virtual void checkSpellingOfString(StringView, int* misspellingLocation, int* misspellingLength) { };
     virtual void checkGrammarOfString(StringView, Vector<WebCore::GrammarDetail>&, int* badGrammarLocation, int* badGrammarLength) { };
     void overflowScrollPositionChanged() { };
+    virtual void discardedComposition(WebCore::Frame *) override;
 
 private:
     WebView* m_webView;

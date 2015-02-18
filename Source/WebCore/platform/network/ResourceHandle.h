@@ -190,6 +190,18 @@ public:
     double m_requestTime;
 #endif
 
+#if PLATFORM(MUI)
+    bool canResume();
+    void checkAndSendCookies(URL& url);
+    bool isResuming();
+    String path();
+    void resume(String path);
+    void setCanResume(bool value);
+    void setCookies();
+    void setStartOffset(unsigned long long offset);
+    unsigned long long startOffset();
+#endif
+
     bool hasAuthenticationChallenge() const;
     void clearAuthentication();
     WEBCORE_EXPORT virtual void cancel();

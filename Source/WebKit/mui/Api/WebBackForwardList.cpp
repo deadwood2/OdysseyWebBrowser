@@ -104,7 +104,7 @@ void WebBackForwardList::clear()
 
 void WebBackForwardList::addItem(WebHistoryItem* item)
 {
-    d->m_backForwardList->addItem(item->getPrivateItem()->m_historyItem.get());
+    d->m_backForwardList->addItem(*item->getPrivateItem()->m_historyItem);
 }
 
 void WebBackForwardList::goBack()
@@ -162,7 +162,7 @@ int WebBackForwardList::backListWithLimit(int limit, WebHistoryItem** list)
 
     if (list)
         for (unsigned i = 0; i < historyItemVector.size(); i++) {
-            WebHistoryItemPrivate *priv = new WebHistoryItemPrivate(historyItemVector[i].get());
+            WebHistoryItemPrivate *priv = new WebHistoryItemPrivate(historyItemVector[i].ptr());
             list[i] = WebHistoryItem::createInstance(priv);
         }
 
@@ -176,7 +176,7 @@ int WebBackForwardList::forwardListWithLimit(int limit, WebHistoryItem** list)
 
     if (list)
         for (unsigned i = 0; i < historyItemVector.size(); i++) {
-            WebHistoryItemPrivate *priv = new WebHistoryItemPrivate(historyItemVector[i].get());
+            WebHistoryItemPrivate *priv = new WebHistoryItemPrivate(historyItemVector[i].ptr());
             list[i] = WebHistoryItem::createInstance(priv);
         }
 

@@ -4230,7 +4230,7 @@ public:
 			m_pluginTimer.stop();
 	}
 
-	void pluginFired(Timer*)
+	void pluginFired()
 	{
 #if !defined(__AROS__)
 		CALLFUNC2(m_timeoutfunc, m_instance, this);
@@ -4241,7 +4241,7 @@ public:
 		: m_obj(obj),
 		  m_instance(instance),
 		  m_timeoutfunc(timeoutfunc),
-		  m_pluginTimer(this, &PluginTimer::pluginFired)
+		  m_pluginTimer(*this, &PluginTimer::pluginFired)
 	{
 	}
 };

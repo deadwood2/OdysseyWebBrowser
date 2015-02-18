@@ -89,7 +89,7 @@ CookieManager::CookieManager()
 	, m_cookieJarFileName("PROGDIR:conf/cookies.db")
     , m_policy(CookieStorageAcceptPolicyAlways)
     , m_cookieBackingStore(CookieDatabaseBackingStore::create())
-    , m_limitTimer(this, &CookieManager::cookieLimitCleanUp)
+    , m_limitTimer(*this, &CookieManager::cookieLimitCleanUp)
 {
 }
 
@@ -631,10 +631,8 @@ void CookieManager::initiateCookieLimitCleanUp()
     }
 }
 
-void CookieManager::cookieLimitCleanUp(Timer* timer)
+void CookieManager::cookieLimitCleanUp()
 {
-    ASSERT_UNUSED(timer, timer == &m_limitTimer);
-
     CookieLimitLog("CookieManager - Starting cookie clean up\n");
 
     size_t numberOfCookiesOverLimit = (m_count > s_globalMaxCookieCount) ? m_count - s_globalMaxCookieCount : 0;

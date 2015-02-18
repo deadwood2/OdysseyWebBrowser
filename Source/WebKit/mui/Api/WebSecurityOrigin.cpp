@@ -32,9 +32,7 @@
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
 #include <SecurityOrigin.h>
-#if ENABLE(SQL_DATABASE)
 #include <DatabaseManager.h>
-#endif
 
 using namespace WebCore;
 
@@ -70,26 +68,15 @@ unsigned short WebSecurityOrigin::port()
 
 unsigned long long WebSecurityOrigin::usage()
 {
-#if ENABLE(SQL_DATABASE)
     return DatabaseManager::manager().usageForOrigin(m_securityOrigin);
-#else
-    return 0;
-#endif
-    
 }
 
 unsigned long long WebSecurityOrigin::quota()
 {
-#if ENABLE(SQL_DATABASE)
     return DatabaseManager::manager().quotaForOrigin(m_securityOrigin);
-#else
-    return 0;
-#endif
 }
 
 void WebSecurityOrigin::setQuota(unsigned long long quota) 
 {
-#if ENABLE(SQL_DATABASE)
     DatabaseManager::manager().setQuota(m_securityOrigin, quota);
-#endif
 }

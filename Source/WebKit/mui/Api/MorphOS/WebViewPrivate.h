@@ -262,7 +262,7 @@ public:
     
  private:
     void updateView(BalWidget *widget, WebCore::IntRect rect, bool sync);
-    void closeWindowTimerFired(WebCore::Timer*);
+    void closeWindowTimerFired();
     void closeWindow();
     
     WebCore::IntRect m_rect;

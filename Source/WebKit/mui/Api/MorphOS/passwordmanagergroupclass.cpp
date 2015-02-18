@@ -49,10 +49,8 @@
 
 using namespace WebCore;
 
-#if ENABLE(SQL_DATABASE)
 #define PASSWORDDB "PROGDIR:Conf/Passwords.db"
 static SQLiteDatabase m_passwordDB;
-#endif
 
 static HashMap<String, ExtCredential*> credentialMap;
 

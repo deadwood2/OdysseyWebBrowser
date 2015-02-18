@@ -143,9 +143,9 @@ const String& RenderThemeBal::defaultGUIFont()
     return fontFace;
 }
 
-static PassRef<Gradient> createLinearGradient(RGBA32 top, RGBA32 bottom, const IntPoint& a, const IntPoint& b)
+static Ref<Gradient> createLinearGradient(RGBA32 top, RGBA32 bottom, const IntPoint& a, const IntPoint& b)
 {
-    PassRef<Gradient> gradient = Gradient::create(a, b);
+    Ref<Gradient> gradient = Gradient::create(a, b);
     gradient.get().addColorStop(0.0, Color(top));
     gradient.get().addColorStop(1.0, Color(bottom));
     return gradient;
@@ -254,9 +254,8 @@ void RenderThemeBal::systemFont(CSSValueID propId, FontDescription& fontDescript
     fontDescription.setOneFamily(defaultGUIFont());
     fontDescription.setSpecifiedSize(fontSize);
     fontDescription.setIsAbsoluteSize(true);
-    fontDescription.setGenericFamily(FontDescription::NoFamily);
     fontDescription.setWeight(FontWeightNormal);
-    fontDescription.setItalic(false);
+    fontDescription.setItalic(FontItalicOff);
 }
 
 void RenderThemeBal::setButtonStyle(RenderStyle* style) const
@@ -1493,6 +1492,18 @@ Color RenderThemeBal::platformInactiveTextSearchHighlightColor() const
     return Color(255, 255, 0); // Yellow.
 }
 
+void RenderThemeBal::updateCachedSystemFontDescription(CSSValueID, FontDescription& fontDescription) const
+{
+    // It was called by RenderEmbeddedObject::paintReplaced to render alternative string.
+    // To avoid cairo_error while rendering, fontDescription should be passed.
+    fontDescription.setOneFamily("Sans");
+    fontDescription.setSpecifiedSize(defaultFontSize);
+    fontDescription.setIsAbsoluteSize(true);
+    fontDescription.setWeight(FontWeightNormal);
+    fontDescription.setItalic(FontItalicOff);
+}
+
+
 #if ENABLE(PROGRESS_ELEMENT)
 void RenderThemeBal::adjustProgressBarStyle(StyleResolver*, RenderStyle* style, Element*) const
 {
@@ -1561,32 +1572,5 @@ bool RenderThemeBal::paintProgressBar(const RenderObject& object, const PaintInf
 #endif
 }
 #endif
-
-WTF::String RenderThemeBal::fileListNameForWidth(const Vector<String>& filenames, const Font& font, int width) const
-{
-	if (width <= 0)
-		return WTF::String();
-
-	WTF::String string = fileButtonNoFileSelectedLabel();
-
-	if (filenames.size() == 1)
-	{
-		char* systemFilename = utf8_to_local(filenames[0].utf8().data());
-		if(systemFilename)
-	    {
-			char* systemBasename = strdup(FilePart(systemFilename));
-			if(systemBasename)
-			{
-				string = systemBasename;
-				free(systemBasename);
-			}
-			free(systemFilename);
-	    }
-	}
-	else if (filenames.size() > 1)
-		return StringTruncator::rightTruncate(multipleFileUploadText(filenames.size()), width, font);
-
-	return StringTruncator::centerTruncate(string, width, font);
-}
 
 } // namespace WebCore

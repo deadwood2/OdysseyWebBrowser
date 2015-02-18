@@ -21,21 +21,13 @@
 #define PlatformStrategiesEfl_h
 
 #include "CookiesStrategy.h"
-#include "DatabaseStrategy.h"
 #include "LoaderStrategy.h"
 #include "PasteboardStrategy.h"
 #include "PlatformStrategies.h"
 #include "PluginStrategy.h"
-#if ENABLE(SHARED_WORKERS)
-#include "SharedWorkerStrategy.h"
-#endif
-#include "StorageStrategy.h"
 
-class PlatformStrategiesMorphOS : public WebCore::PlatformStrategies, private WebCore::CookiesStrategy, private WebCore::DatabaseStrategy, private WebCore::LoaderStrategy, private WebCore::PluginStrategy
-#if ENABLE(SHARED_WORKERS)
-, private WebCore::SharedWorkerStrategy
-#endif
-, private WebCore::StorageStrategy {
+class PlatformStrategiesMorphOS : public WebCore::PlatformStrategies, private WebCore::CookiesStrategy, private WebCore::LoaderStrategy, private WebCore::PluginStrategy
+{
 public:
     static void initialize();
 
@@ -44,14 +36,9 @@ private:
 
     // WebCore::PlatformStrategies
     virtual WebCore::CookiesStrategy* createCookiesStrategy();
-    virtual WebCore::DatabaseStrategy* createDatabaseStrategy();
     virtual WebCore::LoaderStrategy* createLoaderStrategy();
     virtual WebCore::PasteboardStrategy* createPasteboardStrategy();
     virtual WebCore::PluginStrategy* createPluginStrategy();
-#if ENABLE(SHARED_WORKERS)
-    virtual WebCore::SharedWorkerStrategy* createSharedWorkerStrategy();
-#endif
-    virtual WebCore::StorageStrategy* createStorageStrategy();
 
     // WebCore::CookiesStrategy
     virtual String cookiesForDOM(const WebCore::NetworkStorageSession&, const WebCore::URL& firstParty, const WebCore::URL&);

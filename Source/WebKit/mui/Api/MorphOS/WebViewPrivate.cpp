@@ -49,9 +49,7 @@
 #include "GraphicsContext.h"
 #include "HitTestRequest.h"
 #include "HitTestResult.h"
-#if ENABLE(INSPECTOR)
 #include "InspectorController.h"
-#endif
 #include "IntRect.h"
 #include <wtf/MainThread.h>
 #include "MemoryCache.h"
@@ -695,7 +693,7 @@ void MorphOSResourceLoadDelegate::plugInFailedWithError(WebView *webView, WebErr
 WebViewPrivate::WebViewPrivate(WebView *webView)
     : m_webView(webView)
     , isInitialized(false)
-	, m_closeWindowTimer(this, &WebViewPrivate::closeWindowTimerFired)
+	, m_closeWindowTimer(*this, &WebViewPrivate::closeWindowTimerFired)
 {
 	webView->setWebNotificationDelegate(MorphOSWebNotificationDelegate::createInstance());
 	webView->setJSActionDelegate(MorphOSJSActionDelegate::createInstance());
@@ -763,16 +761,7 @@ BalRectangle WebViewPrivate::onExpose(BalEventExpose event)
 			ctx.restore();
 
 			if(renderBenchmark)	{ paint = currentTime() - start; start = currentTime(); kprintf("Painting inspector [%d %d %d %d]\n", rect.x(), rect.y(), rect.width(), rect.height()); } //
-/*
-#if ENABLE(INSPECTOR)
-			ctx.save();
-			ctx.clip(rect);
-			frame->page()->inspectorController()->drawHighlight(ctx);
-			ctx.restore();
-#endif
 
-			if(renderBenchmark)	{ inspector = currentTime() - start; start = currentTime(); kprintf("Blitting [%d %d %d %d]\n", rect.x(), rect.y(), rect.width(), rect.height()); } //
-*/
 			updateView(widget, rect, false);
 
 			if(renderBenchmark)	{ blit = currentTime() - start; } //
@@ -1194,7 +1183,7 @@ bool WebViewPrivate::onKeyDown(BalEventKey event)
 
 			case RAWKEY_F12:
 			{
-				MemoryCache::Statistics stats = memoryCache()->getStatistics();
+				MemoryCache::Statistics stats = MemoryCache::singleton().getStatistics();
 
 				kprintf("Statistics about cache:\n");
 				kprintf("\timages: count=%d - size=%d - liveSize=%d - decodedSize=%d\n", stats.images.count, stats.images.size, stats.images.liveSize, stats.images.decodedSize);
@@ -1212,11 +1201,11 @@ bool WebViewPrivate::onKeyDown(BalEventKey event)
 
 				kprintf("\nPruning caches and running Garbage collector.\n");
 				
-				int savedPageCacheCapacity = pageCache()->capacity();
-				pageCache()->setCapacity(0);
-				pageCache()->setCapacity(savedPageCacheCapacity);
+				int savedPageCacheCapacity = PageCache::singleton().maxSize();
+				PageCache::singleton().setMaxSize(0);
+				PageCache::singleton().setMaxSize(savedPageCacheCapacity);
 				fontCache().purgeInactiveFontData();
-				memoryCache()->pruneToPercentage(0);
+				MemoryCache::singleton().prune();
 				cssValuePool().drain();
 				clearWidthCaches();
 
@@ -1631,7 +1620,7 @@ void WebViewPrivate::closeWindowSoon()
     m_closeWindowTimer.startOneShot(0);
 }
 
-void WebViewPrivate::closeWindowTimerFired(WebCore::Timer*)
+void WebViewPrivate::closeWindowTimerFired()
 {
     closeWindow();
 }

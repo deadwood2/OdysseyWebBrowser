@@ -126,7 +126,7 @@ std::vector<WebHistoryItem*> WebHistoryItem::children()
     size_t childCount = coreChildren.size();
 
     for (unsigned i = 0; i < childCount; ++i) {
-        WebHistoryItemPrivate *priv = new WebHistoryItemPrivate(coreChildren[i]);
+        WebHistoryItemPrivate *priv = new WebHistoryItemPrivate((WebCore::HistoryItem *)coreChildren[i].ptr());
         WebHistoryItem* item = WebHistoryItem::createInstance(priv);
         child.push_back(item);
     }
