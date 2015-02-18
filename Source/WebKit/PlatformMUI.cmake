@@ -4,6 +4,7 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     mui/Api/MorphOS
     mui/WebCoreSupport
     mui/Widgets
+    Storage
     "${WEBKIT_DIR}/../../aros/include/"
     "${WEBCORE_DIR}/fileapi"
     "${WEBCORE_DIR}/platform/mui"
@@ -165,6 +166,15 @@ list(APPEND WebKit_SOURCES
     mui/WebCoreSupport/WebPlatformStrategies.cpp
 
     mui/Widgets/WebDragDataMorphOS.cpp
+
+    Storage/StorageAreaImpl.cpp
+    Storage/StorageAreaSync.cpp
+    Storage/StorageNamespaceImpl.cpp
+    Storage/StorageSyncManager.cpp
+    Storage/StorageThread.cpp
+    Storage/StorageTracker.cpp
+    Storage/WebDatabaseProvider.cpp
+    Storage/WebStorageNamespaceProvider.cpp
 )
 
 set(WebKit_LIBRARY_TYPE STATIC)
