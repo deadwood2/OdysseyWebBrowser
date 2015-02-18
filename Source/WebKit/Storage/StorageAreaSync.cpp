@@ -23,16 +23,18 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "config.h"
+
 #include "StorageAreaSync.h"
 
 #include "StorageAreaImpl.h"
 #include "StorageSyncManager.h"
 #include "StorageTracker.h"
-#include <WebCore/FileSystem.h>
-#include <WebCore/SQLiteDatabaseTracker.h>
-#include <WebCore/SQLiteStatement.h>
-#include <WebCore/SQLiteTransaction.h>
-#include <WebCore/SuddenTermination.h>
+#include "FileSystem.h"
+#include "SQLiteDatabaseTracker.h"
+#include "SQLiteStatement.h"
+#include "SQLiteTransaction.h"
+#include "SuddenTermination.h"
 #include <wtf/MainThread.h>
 
 namespace WebCore {
