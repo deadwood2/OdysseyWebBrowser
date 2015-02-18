@@ -108,7 +108,9 @@ bool RenderRubyText::canBreakBefore(const LazyLineBreakIterator& iterator) const
     // http://www.w3.org/TR/2012/NOTE-jlreq-20120403/#characters_not_starting_a_line
     switch (lineBreak) {
     case U_LB_NONSTARTER:
+#if !OS(AROS)
     case U_LB_CLOSE_PARENTHESIS:
+#endif
     case U_LB_CLOSE_PUNCTUATION:
     case U_LB_EXCLAMATION:
     case U_LB_BREAK_SYMBOLS:

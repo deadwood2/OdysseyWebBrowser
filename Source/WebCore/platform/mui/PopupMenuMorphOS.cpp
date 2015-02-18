@@ -38,7 +38,6 @@
 #include "ObserverServiceData.h"
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
-#include "SimpleFontData.h"
 
 namespace WebCore {
 
@@ -99,11 +98,11 @@ void PopupMenuMorphOS::calculatePositionAndSize(const IntRect& r, FrameView* v)
         if (text.isEmpty())
             continue;
 
-        Font itemFont = client()->menuStyle().font();
+        FontCascade itemFont = client()->menuStyle().font();
         if (client()->itemIsLabel(i)) {
             FontDescription d = itemFont.fontDescription();
             d.setWeight(d.bolderWeight());
-            itemFont = Font(d, itemFont.letterSpacing(), itemFont.wordSpacing());
+            itemFont = FontCascade(d, itemFont.letterSpacing(), itemFont.wordSpacing());
             itemFont.update(m_popupClient->fontSelector());
         }
 

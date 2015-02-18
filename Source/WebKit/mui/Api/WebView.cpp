@@ -43,6 +43,7 @@
 #include "WebDesktopNotificationsDelegate.h"
 #endif
 #include "WebDatabaseManager.h"
+#include "WebDatabaseProvider.h"
 #if ENABLE(DEVICE_ORIENTATION)
 #include "WebDeviceOrientationClient.h"
 #include "WebDeviceMotionClient.h"
@@ -68,17 +69,17 @@
 #include "WebIconDatabase.h"
 #endif
 #include "WebKitVersion.h"
-#if ENABLE(INSPECTOR)
 #include "WebInspector.h"
 #include "WebInspectorClient.h"
-#endif
 #include "WebMutableURLRequest.h"
 #include "WebNotificationDelegate.h"
 #include "WebPreferences.h"
 #include "WebProgressTrackerClient.h"
 #include "WebResourceLoadDelegate.h"
 #include "WebScriptWorld.h"
+#include "WebStorageNamespaceProvider.h"
 #include "WebViewPrivate.h"
+#include "WebVisitedLinkStore.h"
 #include "WebWidgetEngineDelegate.h"
 #include "WebWindow.h"
 
@@ -94,10 +95,8 @@
 #include <ContextMenuController.h>
 #include <CrossOriginPreflightResultCache.h>
 #include <Cursor.h>
-#if ENABLE(SQL_DATABASE)
 #include <Database.h>
 #include <DatabaseManager.h>
-#endif
 #include <DragController.h>
 #include <DragData.h>
 #include <Editor.h>
@@ -125,6 +124,7 @@
 #include <ObserverData.h>
 #include <ObserverServiceData.h>
 #include <Page.h>
+#include <PageConfiguration.h>
 #include <PageCache.h>
 #include <PageGroup.h>
 #include <PlatformKeyboardEvent.h>
@@ -144,7 +144,6 @@
 #include <SecurityOrigin.h>
 #include <SecurityPolicy.h>
 #include <Settings.h>
-#include <SimpleFontData.h>
 #include <SubframeLoader.h>
 #include <TypingCommand.h>
 #include <WindowsKeyboardCodes.h>
@@ -366,9 +365,7 @@ WebView::WebView()
     , m_topLevelParent(0)
     , d(new WebViewPrivate(this))
     , m_webViewObserver(new WebViewObserver(this))
-#if ENABLE(INSPECTOR)
     , m_webInspector(0)
-#endif
     , m_toolbarsVisible(true)
     , m_statusbarVisible(true)
     , m_menubarVisible(true)
@@ -400,21 +397,21 @@ WebView::WebView()
     sharedPreferences->willAddToWebView();
     m_preferences = sharedPreferences;
 
-#if ENABLE(INSPECTOR)
     m_inspectorClient = new WebInspectorClient(this);
-#endif
 
-    Page::PageClients pageClients;
-    pageClients.chromeClient = new WebChromeClient(this);
-    pageClients.contextMenuClient = new WebContextMenuClient(this);
-    pageClients.editorClient = new WebEditorClient(this);
-    pageClients.dragClient = new WebDragClient(this);
-#if ENABLE(INSPECTOR)
-    pageClients.inspectorClient = m_inspectorClient;
-#endif
-    pageClients.loaderClientForMainFrame = new WebFrameLoaderClient;
-    pageClients.progressTrackerClient = new WebProgressTrackerClient;
-    m_page = new Page(pageClients);
+    PageConfiguration configuration;
+    configuration.chromeClient = new WebChromeClient(this);
+    configuration.contextMenuClient = new WebContextMenuClient(this);
+    configuration.editorClient = new WebEditorClient(this);
+    configuration.dragClient = new WebDragClient(this);
+    configuration.inspectorClient = m_inspectorClient;
+    configuration.loaderClientForMainFrame = new WebFrameLoaderClient;
+    configuration.databaseProvider = &WebDatabaseProvider::singleton();
+    configuration.storageNamespaceProvider = WebStorageNamespaceProvider::create(m_preferences->localStorageDatabasePath());
+    configuration.progressTrackerClient = new WebProgressTrackerClient;
+    configuration.visitedLinkStore = &WebVisitedLinkStore::singleton();
+
+    m_page = new Page(configuration);
 #if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
     provideNotification(m_page, new WebDesktopNotificationsDelegate(this));
 #endif
@@ -604,9 +601,9 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
         ASSERT_NOT_REACHED();
     };
 
-	memoryCache()->setCapacities(cacheMinDeadCapacity, cacheMaxDeadCapacity, cacheTotalCapacity);
-	memoryCache()->setDeadDecodedDataDeletionInterval(deadDecodedDataDeletionInterval);
-    pageCache()->setCapacity(pageCacheCapacity);
+    WebCore::MemoryCache::singleton().setCapacities(cacheMinDeadCapacity, cacheMaxDeadCapacity, cacheTotalCapacity);
+    WebCore::MemoryCache::singleton().setDeadDecodedDataDeletionInterval(deadDecodedDataDeletionInterval);
+    WebCore::PageCache::singleton().setMaxSize(pageCacheCapacity);
 
     s_didSetCacheModel = true;
     s_cacheModel = cacheModel;
@@ -636,9 +633,9 @@ void WebView::close()
     if (m_preferences && m_preferences->usesPageCache())
         m_page->settings().setUsesPageCache(false);
     
-	if (!WebCore::memoryCache()->disabled()) {
-		WebCore::memoryCache()->setDisabled(true);
-		WebCore::memoryCache()->setDisabled(false);
+    if (!WebCore::MemoryCache::singleton().disabled()) {
+        WebCore::MemoryCache::singleton().setDisabled(true);
+        WebCore::MemoryCache::singleton().setDisabled(false);
 
 #if ENABLE(STORAGE)
         // Empty the application cache.
@@ -646,15 +643,13 @@ void WebView::close()
 #endif
 
         // Empty the Cross-Origin Preflight cache
-        WebCore::CrossOriginPreflightResultCache::shared().empty();
+        WebCore::CrossOriginPreflightResultCache::singleton().empty();
     }
 
     if (m_page)
         m_page->mainFrame().loader().detachFromParent(); 
 
-#if ENABLE(INSPECTOR)
     m_inspectorClient = 0;
-#endif
 
     delete m_page;
     m_page = 0;
@@ -1194,11 +1189,9 @@ void WebView::initWithFrame(BalRectangle& frame, const char* frameName, const ch
     {
         //WebCore::initializeLoggingChannelsIfNecessary();
         //WebPlatformStrategies::initialize();   
-#if ENABLE(SQL_DATABASE)
 		WebKitInitializeWebDatabasesIfNecessary();
 #if ENABLE(OFFLINE_WEB_APPLICATIONS)
 		WebKitSetApplicationCachePathIfNecessary();
-#endif
 #endif
 		Settings::setDefaultMinDOMTimerInterval(0.004);
 
@@ -1210,7 +1203,7 @@ void WebView::initWithFrame(BalRectangle& frame, const char* frameName, const ch
     m_preferences->postPreferencesChangesNotification();
 
     setSmartInsertDeleteEnabled(true);
-    PageGroup::setShouldTrackVisitedLinks(true);
+    WebVisitedLinkStore::setShouldTrackVisitedLinks(true);
 
     m_page->focusController().setFocusedFrame(&(m_page->mainFrame()));
     m_page->focusController().setActive(true); 
@@ -1459,7 +1452,7 @@ void WebView::goBackOrForward(int steps)
 bool WebView::goToBackForwardItem(WebHistoryItem* item)
 {
     WebHistoryItemPrivate *priv = item->getPrivateItem(); 
-    m_page->goToItem(priv->m_historyItem.get(), FrameLoadType::IndexedBackForward);
+    m_page->goToItem(*priv->m_historyItem, FrameLoadType::IndexedBackForward);
     return true;
 }
 
@@ -1770,138 +1763,6 @@ bool WebView::active()
     return (activeWindow && m_topLevelParent == findTopLevelParent(activeWindow));*/
     return true;
 #endif
-}
-
-static Vector<String> toStringVector(unsigned size, const char **list)
-{
-    if (list == 0)
-        return Vector<String>();
-
-    if (!size)
-        return Vector<String>();
-
-    Vector<String> patternsVector;
-    patternsVector.reserveInitialCapacity(size);
-    for (unsigned i = 0; i < size; ++i)
-      patternsVector.append(String(list[i]));
-
-    return patternsVector;
-}
-
-bool WebView::addUserScriptToGroup(const char* groupName, WebScriptWorld* world, const char* source, const char* url, unsigned whitelistCount, const char** whitelist, unsigned blacklistCount, const char** blacklist, WebUserScriptInjectionTime injectionTime)
-{
-    String group(groupName);
-    if (group.isEmpty())
-        return false;
-
-    PageGroup* pageGroup = PageGroup::pageGroup(group);
-    ASSERT(pageGroup);
-    if (!pageGroup)
-        return false;
-    
-    pageGroup->addUserScriptToWorld(world->world(),
-                                    String(source),
-                                    URL(URL(), String(url)),
-                                    toStringVector(whitelistCount, whitelist),
-                                    toStringVector(blacklistCount, blacklist),
-                                    injectionTime == WebUserScriptInjectAtDocumentStart ? InjectAtDocumentStart : InjectAtDocumentEnd,
-				    InjectInAllFrames);
-    return true;
-}
-
-bool WebView::addUserStyleSheetToGroup(const char* groupName, WebScriptWorld* world, const char* source, const char* url, unsigned whitelistCount, const char** whitelist, unsigned blacklistCount, const char** blacklist)
-{
-    String group(groupName);
-    if (group.isEmpty())
-        return false;
-
-    PageGroup* pageGroup = PageGroup::pageGroup(group);
-    ASSERT(pageGroup);
-    if (!pageGroup)
-        return false;
- 
-    pageGroup->addUserStyleSheetToWorld(world->world(),
-                                       String(source),
-                                       URL(URL(), String(url)),
-                                       toStringVector(whitelistCount, whitelist),
-				       toStringVector(blacklistCount, blacklist),
-				       InjectInAllFrames);
-    return true;
-}
-
-bool WebView::removeUserScriptFromGroup(const char* groupName, WebScriptWorld* world, const char* url)
-{
-    String group(groupName);
-    if (group.isEmpty())
-        return false;
-
-    PageGroup* pageGroup = PageGroup::pageGroup(group);
-    ASSERT(pageGroup);
-    if (!pageGroup)
-        return false;
-
-    pageGroup->removeUserScriptFromWorld(world->world(), URL(URL(), url));
-    return true;
-}
-
-bool WebView::removeUserStyleSheetFromWorld(const char* groupName, WebScriptWorld* world, const char* url)
-{
-    String group(groupName);
-    if (group.isEmpty())
-        return false;
-
-    PageGroup* pageGroup = PageGroup::pageGroup(group);
-    ASSERT(pageGroup);
-    if (!pageGroup)
-        return false;
-
-    pageGroup->removeUserStyleSheetFromWorld(world->world(), URL(URL(), url));
-    return true;
-}
-
-bool WebView::removeUserScriptsFromGroup(const char* groupName, WebScriptWorld* world)
-{
-    String group(groupName);
-    if (group.isEmpty())
-        return false;
-
-    PageGroup* pageGroup = PageGroup::pageGroup(group);
-    ASSERT(pageGroup);
-    if (!pageGroup)
-        return false;
-
-    pageGroup->removeUserScriptsFromWorld(world->world());
-    return true;
-}
-
-bool WebView::removeUserStyleSheetsFromGroup(const char* groupName, WebScriptWorld* world)
-{
-    String group(groupName);
-    if (group.isEmpty())
-        return false;
-
-    PageGroup* pageGroup = PageGroup::pageGroup(group);
-    ASSERT(pageGroup);
-    if (!pageGroup)
-        return false;
-
-    pageGroup->removeUserStyleSheetsFromWorld(world->world());
-    return true;
-}
-
-bool WebView::removeAllUserContentFromGroup(const char* groupName)
-{
-    String group(groupName);
-    if (group.isEmpty())
-        return false;
-
-    PageGroup* pageGroup = PageGroup::pageGroup(group);
-    ASSERT(pageGroup);
-    if (!pageGroup)
-        return false;
-
-    pageGroup->removeAllUserContent();
-    return true;
 }
 
 void WebView::setFocus()
@@ -2720,19 +2581,11 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     enabled = preferences->authorAndUserStylesEnabled();
     settings->setAuthorAndUserStylesEnabled(enabled);
 
-    enabled = preferences->inApplicationChromeMode();
-    settings->setApplicationChromeMode(!!enabled);
-
-    enabled = preferences->inApplicationChromeMode();
-    settings->setApplicationChromeMode(enabled);
-
     enabled = preferences->offlineWebApplicationCacheEnabled();
     settings->setOfflineWebApplicationCacheEnabled(enabled);
 
-#if ENABLE(SQL_DATABASE)
     enabled = preferences->databasesEnabled();
     DatabaseManager::manager().setIsAvailable(enabled);
-#endif
 
     enabled = preferences->experimentalNotificationsEnabled();
     settings->setExperimentalNotificationsEnabled(enabled);
@@ -2957,14 +2810,14 @@ void WebView::loadBackForwardListFromOtherView(WebView* otherView)
             // until we leave that page.
             otherView->m_page->mainFrame().loader().history().saveDocumentAndScrollState();
         }
-        RefPtr<HistoryItem> newItem = otherBackForwardList->itemAtIndex(i)->copy();
+        Ref<HistoryItem> newItem = otherBackForwardList->itemAtIndex(i)->copy();
         if (!i) 
-            newItemToGoTo = newItem.get();
-        backForwardList->addItem(newItem.release());
+            newItemToGoTo = newItem.ptr();
+        backForwardList->addItem(WTF::move(newItem));
     }
     
     ASSERT(newItemToGoTo);
-    m_page->goToItem(newItemToGoTo, FrameLoadType::IndexedBackForward);
+    m_page->goToItem(*newItemToGoTo, FrameLoadType::IndexedBackForward);
 }
 
 void WebView::clearUndoRedoOperations()
@@ -3134,12 +2987,9 @@ void WebView::allowLocalLoadsForAll()
 }
 
 WebInspector* WebView::inspector() {
-#if ENABLE(INSPECTOR)
 	if (!m_webInspector)
 		m_webInspector = WebInspector::createInstance(this, m_inspectorClient);
     return m_webInspector;
-#endif
-    return 0;
 }
 
 
@@ -3159,12 +3009,12 @@ bool WebView::invalidateBackingStore(const WebCore::IntRect* rect)
 
 void WebView::addOriginAccessWhitelistEntry(const char* sourceOrigin, const char* destinationProtocol, const char* destinationHost, bool allowDestinationSubDomains) const
 {
-    SecurityPolicy::addOriginAccessWhitelistEntry(*SecurityOrigin::createFromString(sourceOrigin), destinationProtocol, destinationHost, allowDestinationSubDomains);
+    SecurityPolicy::addOriginAccessWhitelistEntry(SecurityOrigin::createFromString(sourceOrigin), destinationProtocol, destinationHost, allowDestinationSubDomains);
 }
 
 void WebView::removeOriginAccessWhitelistEntry(const char* sourceOrigin, const char* destinationProtocol, const char* destinationHost, bool allowDestinationSubdomains) const
 {
-    SecurityPolicy::removeOriginAccessWhitelistEntry(*SecurityOrigin::createFromString(sourceOrigin), destinationProtocol, destinationHost, allowDestinationSubdomains);
+    SecurityPolicy::removeOriginAccessWhitelistEntry(SecurityOrigin::createFromString(sourceOrigin), destinationProtocol, destinationHost, allowDestinationSubdomains);
 }
 
 void WebView::resetOriginAccessWhitelists() const
@@ -3184,10 +3034,14 @@ TransferSharedPtr<WebHistoryDelegate> WebView::historyDelegate() const
 
 void WebView::addVisitedLinks(const char** visitedURLs, unsigned visitedURLCount)
 {
-    PageGroup& group = core(this)->group();
+    auto& visitedLinkStore = WebVisitedLinkStore::singleton();
 
     for (unsigned i = 0; i < visitedURLCount; ++i)
-        group.addVisitedLink(URL(URL(), visitedURLs[i]));
+    {
+        const char * url = visitedURLs[i];
+        unsigned length = strlen(url);
+        visitedLinkStore.addVisitedLink(String(url, length));
+    }
 }
 
 void WebView::stopLoading(bool stop)

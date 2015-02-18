@@ -125,9 +125,7 @@ public:
 
     virtual void print(WebCore::Frame*);
 
-#if ENABLE(SQL_DATABASE)
     virtual void exceededDatabaseQuota(WebCore::Frame*, const WTF::String&, WebCore::DatabaseDetails);
-#endif
 
     virtual void reachedMaxAppCacheSize(int64_t spaceNeeded);
     virtual void reachedApplicationCacheOriginQuota(WebCore::SecurityOrigin*, int64_t totalSpaceNeeded);
@@ -137,8 +135,6 @@ public:
 	virtual void showContextMenu() { }
 #endif
 	*/
-    virtual void populateVisitedLinks();
-
 #if ENABLE(INPUT_TYPE_COLOR)
     virtual std::unique_ptr<WebCore::ColorChooser> createColorChooser(WebCore::ColorChooserClient*, const WebCore::Color&);
 #endif

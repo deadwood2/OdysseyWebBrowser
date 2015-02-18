@@ -102,43 +102,43 @@ static void drawGlyphsShadow(GraphicsContext* graphicsContext, const FloatPoint&
     }
 }
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 
-bool Font::canReturnFallbackFontsForComplexText()
+bool FontCascade::canReturnFallbackFontsForComplexText()
 {
     return false;
 }
 
-bool Font::canExpandAroundIdeographsInComplexText()
+bool FontCascade::canExpandAroundIdeographsInComplexText()
 {
     return false;
 }
 
-float Font::drawComplexText(GraphicsContext* context, const TextRun& run, const FloatPoint& point, int from, int to) const
+float FontCascade::drawComplexText(GraphicsContext* context, const TextRun& run, const FloatPoint& point, int from, int to) const
 {
 #warning "bullshit"
     return drawSimpleText(context, run, point, from,  to);
 }
 
-void Font::drawEmphasisMarksForComplexText(GraphicsContext* /* context */, const TextRun& /* run */, const AtomicString& /* mark */, const FloatPoint& /* point */, int /* fm */, int /* to */) const
+void FontCascade::drawEmphasisMarksForComplexText(GraphicsContext* /* context */, const TextRun& /* run */, const AtomicString& /* mark */, const FloatPoint& /* point */, int /* fm */, int /* to */) const
 {
 #warning "not implemented"
 //    kprintf("Font::drawEmphasisMarksForComplexText not implemented\n");
 }
 
-float Font::floatWidthForComplexText(const TextRun& run, HashSet<const SimpleFontData*>* fallbackFonts, GlyphOverflow* glyphOverflow) const
+float FontCascade::floatWidthForComplexText(const TextRun& run, HashSet<const Font*>* fallbackFonts, GlyphOverflow* glyphOverflow) const
 {
 #warning "bullshit"
     return floatWidthForSimpleText(run, fallbackFonts, glyphOverflow);
 }
 
-int Font::offsetForPositionForComplexText(const TextRun& run, float x, bool includePartialGlyphs) const
+int FontCascade::offsetForPositionForComplexText(const TextRun& run, float x, bool includePartialGlyphs) const
 {
 #warning "bullshit"
     return offsetForPositionForSimpleText(run, x, includePartialGlyphs);
 }
 
-void Font::adjustSelectionRectForComplexText(const TextRun& run, LayoutRect& selectionRect, int from, int to) const
+void FontCascade::adjustSelectionRectForComplexText(const TextRun& run, LayoutRect& selectionRect, int from, int to) const
 {
 #warning "bullshit"
     return adjustSelectionRectForSimpleText(run, selectionRect, from, to);

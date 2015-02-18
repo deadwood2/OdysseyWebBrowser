@@ -34,6 +34,7 @@
 
 #include "WebHistoryItem.h"
 #include "WebPreferences.h"
+#include "WebVisitedLinkStore.h"
 #include "SQLiteDatabase.h"
 #include "SQLiteStatement.h"
 #include <wtf/CurrentTime.h>
@@ -52,10 +53,8 @@
 using namespace WebCore;
 using namespace std;
 
-#if ENABLE(SQL_DATABASE)
 #define HISTORYDB "PROGDIR:Conf/History.db"
 static SQLiteDatabase m_historyDB;
-#endif
 
 static std::vector<WebHistoryItem *> m_historyList;
 
@@ -64,7 +63,6 @@ std::vector<WebHistoryItem *> *WebHistory::historyList()
 	return &m_historyList;
 }
 
-#if ENABLE(SQL_DATABASE)
 bool WebHistory::loadHistoryFromDatabase(int sortCriterium, bool desc, std::vector<WebHistoryItem *> *destList)
 {
 	unsigned int maxItems =  historyItemLimit();
@@ -231,25 +229,20 @@ bool WebHistory::insertHistoryItemIntoDatabase(String& url, String& title, doubl
 
 	return true;
 }
-#endif
 
 WebHistory::WebHistory()
 : m_preferences(0)
 {
     m_preferences = WebPreferences::sharedStandardPreferences();
 
-	PageGroup::setShouldTrackVisitedLinks(true);
+	WebVisitedLinkStore::setShouldTrackVisitedLinks(true);
 
-#if ENABLE(SQL_DATABASE)
 	loadHistoryFromDatabase(HISTORY_SORT_BY_ACCESSTIME, false);
-#endif
 }
 
 WebHistory::~WebHistory()
 {
-#if ENABLE(SQL_DATABASE)
 	m_historyDB.close();
-#endif
 
 /*
 	for(unsigned int i = 0; i < m_historyList.size(); i++)
@@ -283,8 +276,8 @@ void WebHistory::setOptionalSharedHistory(WebHistory* history)
     if (sharedHistory() == history)
         return;
     *sharedHistory() = *history;
-    PageGroup::setShouldTrackVisitedLinks(sharedHistory());
-    PageGroup::removeAllVisitedLinks();
+    WebVisitedLinkStore::setShouldTrackVisitedLinks(sharedHistory());
+    WebVisitedLinkStore::removeAllVisitedLinks();
 }
 
 WebError* WebHistory::loadFromURL(const char* url)
@@ -310,7 +303,7 @@ void WebHistory::removeItems(vector<WebHistoryItem*> items)
 
 void WebHistory::removeAllItems()
 {
-    PageGroup::removeAllVisitedLinks();
+    WebVisitedLinkStore::removeAllVisitedLinks();
 }
 
 WebHistoryItem* WebHistory::itemForURL(const char* url)
@@ -335,14 +328,20 @@ WebHistoryItem* WebHistory::itemForURL(const char* url)
     return 0;
 }
 
+void WebHistory::addVisitedLinksToVisitedLinkStore(WebVisitedLinkStore& visitedLinkStore)
+{
+    for (auto * url : m_historyList)
+        visitedLinkStore.addVisitedLink(url->URLString());
+}
+
 void WebHistory::setVisitedLinkTrackingEnabled(bool visitedLinkTrackingEnabled)
 {
-    PageGroup::setShouldTrackVisitedLinks(visitedLinkTrackingEnabled);
+    WebVisitedLinkStore::setShouldTrackVisitedLinks(visitedLinkTrackingEnabled);
 }
 
 void WebHistory::removeAllVisitedLinks()
 {
-    PageGroup::removeAllVisitedLinks();
+    WebVisitedLinkStore::removeAllVisitedLinks();
 }
 
 void WebHistory::setHistoryItemLimit(int limit)
@@ -408,7 +407,6 @@ void WebHistory::visitedURL(const char* url, const char* title, const char* http
 		DoMethod(app, MM_History_Insert, item);
 #endif
 
-#if ENABLE(SQL_DATABASE)
 		if(getv(app, MA_OWBApp_SaveHistory))
 		{
 			char *wurl   = (char *) item->URLString();
@@ -421,24 +419,12 @@ void WebHistory::visitedURL(const char* url, const char* title, const char* http
 			free(wurl);
 			free(wtitle);
 		}
-#endif
 
 	}
 
 	free((char *)url);
 	free((char *)title);
 	free((char *)httpMethod);
-}
-
-void WebHistory::addVisitedLinksToPageGroup(PageGroup& group)
-{
-	for(unsigned int i = 0; i < m_historyList.size(); i++)
-	{
-		char *wurl = (char *) m_historyList[i]->URLString();
-		WTF::String itemURL = wurl;
-		free(wurl);
-		group.addVisitedLink(StringView(itemURL).upconvertedCharacters(), itemURL.length());
-	}
 }
 
 WebHistoryItem* WebHistory::itemForURLString(const char* urlString) const

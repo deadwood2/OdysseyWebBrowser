@@ -157,6 +157,11 @@ public:
     explicit Pasteboard(const DragDataMap&);
 #endif
 
+#if PLATFORM(MUI)
+    explicit Pasteboard(PassRefPtr<DataObjectMorphOS> dataObject, int clipboard);
+    explicit Pasteboard(int clipboard);
+#endif
+
     WEBCORE_EXPORT static std::unique_ptr<Pasteboard> createForCopyAndPaste();
     static std::unique_ptr<Pasteboard> createPrivate(); // Temporary pasteboard. Can put data on this and then write to another pasteboard with writePasteboard.
 
@@ -202,10 +207,10 @@ public:
 #endif
 
 #if PLATFORM(MUI)
-    static PassOwnPtr<Pasteboard> create(PassRefPtr<DataObjectMorphOS>, int = 0);
-    static PassOwnPtr<Pasteboard> create(int);
+    static std::unique_ptr<Pasteboard> create(PassRefPtr<DataObjectMorphOS>, int = 0);
+    static std::unique_ptr<Pasteboard> create(int);
     PassRefPtr<DataObjectMorphOS> dataObject() const;
-    static PassOwnPtr<Pasteboard> createForGlobalSelection();
+    static std::unique_ptr<Pasteboard> createForGlobalSelection();
 #endif
 
 #if PLATFORM(IOS)

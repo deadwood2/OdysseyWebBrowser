@@ -51,11 +51,6 @@ CookiesStrategy* PlatformStrategiesMorphOS::createCookiesStrategy()
     return this;
 }
 
-DatabaseStrategy* PlatformStrategiesMorphOS::createDatabaseStrategy()
-{
-    return this;
-}
-
 LoaderStrategy* PlatformStrategiesMorphOS::createLoaderStrategy()
 {
     return this;
@@ -68,18 +63,6 @@ PasteboardStrategy* PlatformStrategiesMorphOS::createPasteboardStrategy()
 }
 
 PluginStrategy* PlatformStrategiesMorphOS::createPluginStrategy()
-{
-    return this;
-}
-
-#if ENABLE(SHARED_WORKERS)
-SharedWorkerStrategy* PlatformStrategiesMorphOS::createSharedWorkerStrategy()
-{
-    return this;
-}
-#endif
-
-StorageStrategy* PlatformStrategiesMorphOS::createStorageStrategy()
 {
     return this;
 }

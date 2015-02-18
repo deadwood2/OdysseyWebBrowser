@@ -118,7 +118,7 @@ private:
     CookieMap* findOrCreateCookieMap(CookieMap* protocolMap, const ParsedCookie& candidateCookie);
 
     void initiateCookieLimitCleanUp();
-    void cookieLimitCleanUp(Timer*);
+    void cookieLimitCleanUp();
 
     HashMap<String, CookieMap*> m_managerMap;
 

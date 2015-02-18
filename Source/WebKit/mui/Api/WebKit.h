@@ -71,9 +71,7 @@
 #include "WebView.h"
 #include "WebWorkersPrivate.h"
 
-#if ENABLE(SQL_DATABASE)
 #include "WebDatabaseManager.h"
-#endif
 
 #if ENABLE(ICONDATABASE)
 #include "WebIconDatabase.h"

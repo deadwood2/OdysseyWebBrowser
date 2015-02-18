@@ -288,6 +288,11 @@ void WebEditorClient::respondToChangedSelection(Frame*)
         editing->webViewDidChangeSelection();
 }
 
+void WebEditorClient::discardedComposition(Frame*)
+{
+    notImplemented();
+}
+
 void WebEditorClient::didEndEditing()
 {
     SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();

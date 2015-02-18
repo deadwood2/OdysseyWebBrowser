@@ -40,6 +40,7 @@ namespace WebCore {
 class WebPreferences;
 class WebHistoryItem;
 class WebError;
+class WebVisitedLinkStore;
 
 enum
 {
@@ -173,6 +174,9 @@ public:
      */
     void visitedURL(const char* url, const char* title, const char* httpMethod, bool wasFailure);
 
+    void addVisitedLinksToVisitedLinkStore(WebVisitedLinkStore&);
+
+
     /**
      * @brief get the WebHistoryItem for a URL
      * @param url the URL
@@ -188,13 +192,6 @@ public:
 
 protected:
     friend class WebChromeClient;
-
-    /**
-     * addVisitedLinksToPageGroup
-     * @brief adds a PageGroup to history
-     * @internal
-     */
-    void addVisitedLinksToPageGroup(WebCore::PageGroup&);
 
 #if OS(MORPHOS)
 public:
@@ -215,11 +212,9 @@ private:
 
 #if OS(MORPHOS)
 
-#if ENABLE(SQL_DATABASE)
 public:
 	bool loadHistoryFromDatabase(int sortCriterium, bool desc = false, std::vector<WebHistoryItem *> *destList = NULL);
 	bool insertHistoryItemIntoDatabase(WTF::String& url, WTF::String& title, double lastAccessed);
-#endif
 
 #endif
 };

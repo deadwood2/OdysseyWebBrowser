@@ -461,7 +461,6 @@ void WebChromeClient::print(Frame* frame)
 
 void WebChromeClient::exceededDatabaseQuota(Frame* frame, const String& databaseIdentifier, DatabaseDetails)
 {
-#if ENABLE(SQL_DATABASE)
     WebSecurityOrigin *origin = WebSecurityOrigin::createInstance(frame->document()->securityOrigin());
     SharedPtr<JSActionDelegate> jsActionDelegate = m_webView->jsActionDelegate();
     if (jsActionDelegate)
@@ -471,7 +470,6 @@ void WebChromeClient::exceededDatabaseQuota(Frame* frame, const String& database
         origin->setQuota(defaultQuota);
     }
     delete origin;
-#endif
 }
 
 #if ENABLE(DASHBOARD_SUPPORT)
@@ -492,20 +490,6 @@ void WebChromeClient::reachedMaxAppCacheSize(int64_t spaceNeeded)
 void WebChromeClient::reachedApplicationCacheOriginQuota(SecurityOrigin*, int64_t)
 {
 	notImplemented();
-}
-
-void WebChromeClient::populateVisitedLinks()
-{
-    SharedPtr<WebHistoryDelegate> historyDelegate = m_webView->historyDelegate();
-    if (historyDelegate) {
-        historyDelegate->populateVisitedLinksForWebView(m_webView);
-        return;
-    }
-
-    WebHistory* history = WebHistory::sharedHistory();
-    if (!history)
-        return;
-    history->addVisitedLinksToPageGroup(m_webView->page()->group());
 }
 
 #if ENABLE(INPUT_TYPE_COLOR)

@@ -37,6 +37,7 @@
 #include <HTMLCollection.h>
 #include <HTMLDocument.h>
 #include <HTMLElement.h>
+#include <HTMLBodyElement.h>
 #include <HTMLFormElement.h>
 #include <HTMLInputElement.h>
 #include <HTMLNames.h>

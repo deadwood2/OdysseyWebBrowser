@@ -130,43 +130,43 @@ enum ClipboardDataType {
     ClipboardDataTypeUnknown
 };
 
-PassOwnPtr<Pasteboard> Pasteboard::create(int clipboard)
+std::unique_ptr<Pasteboard> Pasteboard::create(int clipboard)
 {
 	D(kprintf("Pasteboard::create(clipboard=%d)\n", clipboard));
-	return adoptPtr(new Pasteboard(clipboard));
+	return std::make_unique<Pasteboard>(clipboard);
 }
 
-PassOwnPtr<Pasteboard> Pasteboard::create(PassRefPtr<DataObjectMorphOS> dataObject, int clipboard)
+std::unique_ptr<Pasteboard> Pasteboard::create(PassRefPtr<DataObjectMorphOS> dataObject, int clipboard)
 {
 	D(kprintf("Pasteboard::create(dataobject %p clipboard %d)\n", dataObject.get(), clipboard));
-    return adoptPtr(new Pasteboard(dataObject, clipboard));
+    return std::make_unique<Pasteboard>(dataObject, clipboard);
 }
 
-PassOwnPtr<Pasteboard> Pasteboard::createForCopyAndPaste()
+std::unique_ptr<Pasteboard> Pasteboard::createForCopyAndPaste()
 {
 	D(kprintf("Pasteboard::createForCopyAndPaste\n"));
 	return create(0);
 }
 
-PassOwnPtr<Pasteboard> Pasteboard::createForGlobalSelection()
+std::unique_ptr<Pasteboard> Pasteboard::createForGlobalSelection()
 {
 	D(kprintf("Pasteboard::createForGlobalSelection\n"));
 	return create(0);
 }
 
-PassOwnPtr<Pasteboard> Pasteboard::createPrivate()
+std::unique_ptr<Pasteboard> Pasteboard::createPrivate()
 {
 	D(kprintf("Pasteboard::createPrivate\n"));
 	return create(DataObjectMorphOS::create());
 }
 
-PassOwnPtr<Pasteboard> Pasteboard::createForDragAndDrop()
+std::unique_ptr<Pasteboard> Pasteboard::createForDragAndDrop()
 {
 	D(kprintf("Pasteboard::createForDragAndDrop\n"));
 	return create(DataObjectMorphOS::create(), 1);
 }
 
-PassOwnPtr<Pasteboard> Pasteboard::createForDragAndDrop(const DragData& dragData)
+std::unique_ptr<Pasteboard> Pasteboard::createForDragAndDrop(const DragData& dragData)
 {
 	D(kprintf("Pasteboard::createForDragAndDrop(dragData)\n"));
 	return create(dragData.platformData(), 1);

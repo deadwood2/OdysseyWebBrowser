@@ -32,8 +32,9 @@
 #include <wtf/Vector.h>
 #include "FileIOLinux.h"
 #include "Page.h"
-#include "PageGroup.h"
+#include "UserContentController.h"
 #include "UserContentURLPattern.h"
+#include "UserScript.h"
 #include "WebScriptWorld.h"
 #include "WebView.h"
 #include "JSDOMWindow.h"
@@ -51,8 +52,6 @@
 #include "gui.h"
 #include "asl.h"
 #include "ScriptEntry.h"
-
-#undef PageGroup
 
 #define D(x)
 
@@ -736,9 +735,9 @@ DEFSMETHOD(ScriptManagerGroup_InjectScripts)
 
 	if(!webView) return 0;
 
-	PageGroup * pageGroup = webView->page()->groupPtr();
+	Page * page = webView->page();
 
-	if(pageGroup)
+	if(page)
 	{
 		BalWidget *widget = webView->viewWindow();
 
@@ -759,13 +758,14 @@ DEFSMETHOD(ScriptManagerGroup_InjectScripts)
 							Object *browser = widget->browser;
 							char *url = (char *) getv(browser, MA_OWB_URL);
 
-							pageGroup->addUserScriptToWorld(mainThreadNormalWorld(), // XXX: Is it right?
+							auto userScript = std::make_unique<UserScript>(
 															String::fromUTF8(fileContent),
 															URL(URL(), String(url)), // XXX: will be empty most of the time...
 															scripts_list[i]->whitelist,
 															scripts_list[i]->blacklist,
 															InjectAtDocumentEnd,
 															InjectInAllFrames);
+                            page->userContentController()->addUserScript(mainThreadNormalWorld(), std::move(userScript));
 
 							delete [] fileContent;
 						}
