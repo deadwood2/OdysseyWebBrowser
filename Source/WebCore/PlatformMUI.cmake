@@ -131,27 +131,6 @@ list(APPEND WebCore_SOURCES
     platform/text/TextEncodingDetectorICU.cpp
 )
 
-if (ENABLE_NETSCAPE_PLUGIN_API)
-    list(APPEND WebCore_SOURCES
-        plugins/PluginDatabase.cpp
-        plugins/PluginDebug.cpp
-        plugins/PluginPackage.cpp 
-        plugins/PluginStream.cpp
-        plugins/PluginView.cpp
-        plugins/npapi.cpp
-
-        plugins/MorphOS/PluginDataMorphOS.cpp
-        plugins/MorphOS/PluginPackageMorphOS.cpp
-        plugins/MorphOS/PluginViewMorphOS.cpp
-    )
-else ()
-    list(APPEND WebCore_SOURCES
-        plugins/PluginPackage.cpp
-        plugins/PluginPackageNone.cpp
-        plugins/PluginViewNone.cpp
-    )
-endif ()
-
 list(APPEND WebCore_LIBRARIES
     ${CAIRO_LIBRARIES}
     ${FONTCONFIG_LIBRARIES}

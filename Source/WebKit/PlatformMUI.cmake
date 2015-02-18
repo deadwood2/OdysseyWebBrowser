@@ -4,6 +4,7 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     mui/Api/MorphOS
     mui/WebCoreSupport
     mui/Widgets
+    mui/Plugins
     Storage
     "${WEBKIT_DIR}/../../aros/include/"
     "${WEBCORE_DIR}/fileapi"
@@ -153,6 +154,16 @@ list(APPEND WebKit_SOURCES
     mui/Api/WebUtils.cpp
     mui/Api/WebView.cpp
     mui/Api/WebURLResponse.cpp
+
+    mui/Plugins/npapi.cpp
+    mui/Plugins/PluginDatabase.cpp
+    mui/Plugins/PluginDatabaseMUI.cpp
+    mui/Plugins/PluginDataMorphOS.cpp
+    mui/Plugins/PluginPackage.cpp
+    mui/Plugins/PluginPackageMorphOS.cpp
+    mui/Plugins/PluginStream.cpp
+    mui/Plugins/PluginView.cpp
+    mui/Plugins/PluginViewMorphOS.cpp
 
     mui/WebCoreSupport/WebChromeClient.cpp
     mui/WebCoreSupport/WebContextMenuClient.cpp

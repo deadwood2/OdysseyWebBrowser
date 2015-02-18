@@ -113,6 +113,37 @@ bool PluginPackage::fetchInfo()
 #endif
 }
 
+unsigned PluginPackage::hash() const
+{
+    const unsigned hashCodes[] = {
+        m_name.impl()->hash(),
+        m_description.impl()->hash(),
+        (unsigned)m_mimeToExtensions.size()
+    };
+
+    return StringHasher::hashMemory<sizeof(hashCodes)>(hashCodes);
+}
+
+bool PluginPackage::equal(const PluginPackage& a, const PluginPackage& b)
+{
+    if (a.m_name != b.m_name)
+        return false;
+
+    if (a.m_description != b.m_description)
+        return false;
+
+    if (a.m_mimeToExtensions.size() != b.m_mimeToExtensions.size())
+        return false;
+
+    MIMEToExtensionsMap::const_iterator::Keys end = a.m_mimeToExtensions.end().keys();
+    for (MIMEToExtensionsMap::const_iterator::Keys it = a.m_mimeToExtensions.begin().keys(); it != end; ++it) {
+        if (!b.m_mimeToExtensions.contains(*it))
+            return false;
+    }
+
+    return true;
+}
+
 bool PluginPackage::load()
 {
 #if !OS(AROS)
