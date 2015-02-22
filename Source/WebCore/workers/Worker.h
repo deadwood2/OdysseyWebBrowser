@@ -40,6 +40,10 @@
 
 namespace WebCore {
 
+#if !ENABLE(WORKERS)
+#define WorkerEventTargetInterfaceType NodeEventTargetInterfaceType
+#endif
+
     class ScriptExecutionContext;
     class WorkerGlobalScopeProxy;
     class WorkerScriptLoader;
