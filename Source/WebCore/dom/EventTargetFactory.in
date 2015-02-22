@@ -36,7 +36,7 @@ TextTrackList conditional=VIDEO_TRACK
 VideoTrackList conditional=VIDEO_TRACK
 WebKitNamedFlow
 WebSocket conditional=WEB_SOCKETS
-Worker
+Worker conditional=WORKERS
 XMLHttpRequest
 XMLHttpRequestUpload
 
