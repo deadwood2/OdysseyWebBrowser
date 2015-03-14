@@ -294,7 +294,7 @@ void WebInspectorFrontendClient::destroyInspectorView(bool notifyInspectorContro
 		D(kprintf("disconnectFrontend\n"));
 		if(m_inspectedWebView)
 		{
-			core(m_inspectedWebView)->inspectorController().disconnectFrontend(Inspector::InspectorDisconnectReason::InspectorDestroyed);
+			core(m_inspectedWebView)->inspectorController().disconnectFrontend(Inspector::DisconnectReason::InspectorDestroyed);
 		}
 		if(m_inspectorClient)
 		{

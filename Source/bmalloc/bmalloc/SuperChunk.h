@@ -36,7 +36,6 @@ class SuperChunk {
 public:
     static SuperChunk* create();
 
-    SmallChunk* smallChunk();
     MediumChunk* mediumChunk();
     LargeChunk* largeChunk();
 
@@ -52,15 +51,8 @@ inline SuperChunk* SuperChunk::create()
 
 inline SuperChunk::SuperChunk()
 {
-    new (smallChunk()) SmallChunk;
     new (mediumChunk()) MediumChunk;
     new (largeChunk()) LargeChunk;
-}
-
-inline SmallChunk* SuperChunk::smallChunk()
-{
-    return reinterpret_cast<SmallChunk*>(
-        reinterpret_cast<char*>(this) + smallChunkOffset);
 }
 
 inline MediumChunk* SuperChunk::mediumChunk()
