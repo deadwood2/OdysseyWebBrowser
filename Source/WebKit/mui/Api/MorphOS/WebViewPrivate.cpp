@@ -33,19 +33,16 @@
 #include "Chrome.h"
 #include <wtf/text/CString.h>
 #include <wtf/CurrentTime.h>
-#include "CSSValuePool.h"
 #include "Document.h"
 #include "DownloadDelegateMorphOS.h"
 #include "Editor.h"
 #include "EventHandler.h"
 #include "FileIOLinux.h"
 #include "FocusController.h"
-#include "FontCache.h"
 #include "Frame.h"
 #include "FrameLoader.h"
 #include "FrameLoadRequest.h"
 #include "FrameView.h"
-#include "GCController.h"
 #include "GraphicsContext.h"
 #include "HitTestRequest.h"
 #include "HitTestResult.h"
@@ -53,11 +50,11 @@
 #include "IntRect.h"
 #include <wtf/MainThread.h>
 #include "MemoryCache.h"
+#include "MemoryPressureHandler.h"
 #include "MouseEvent.h"
 #include "MouseEventWithHitTestResults.h"
 #include "Node.h"
 #include "Page.h"
-#include "PageCache.h"
 #include "PageGroup.h"
 #include "PopupMenu.h"
 #include "ProgressTracker.h"
@@ -78,7 +75,6 @@
 #include "WindowFeatures.h"
 
 #include "JSDOMWindow.h"
-#include <runtime/VM.h>
 
 #include "owb-config.h"
 #include "cairo.h"
@@ -1194,42 +1190,20 @@ bool WebViewPrivate::onKeyDown(BalEventKey event)
 				kprintf("\nStatistics about JavaScript Heap:\n");
 
 
-#if !defined(__AROS__)
+#if !OS(AROS)
 				kprintf("\tmemory allocated by allocator: %d\n", WTF::memory_consumption);
 #endif
 				kprintf("\theap: used %d - total %d\n", JSDOMWindow::commonVM().heap.size(), JSDOMWindow::commonVM().heap.capacity());
 
 				kprintf("\nPruning caches and running Garbage collector.\n");
 				
-				int savedPageCacheCapacity = PageCache::singleton().maxSize();
-				PageCache::singleton().setMaxSize(0);
-				PageCache::singleton().setMaxSize(savedPageCacheCapacity);
-				fontCache().purgeInactiveFontData();
-				MemoryCache::singleton().prune();
-				cssValuePool().drain();
-				clearWidthCaches();
-
-                                gcController().discardAllCompiledCode();
-                                gcController().garbageCollectNow();
-				WTF::releaseFastMallocFreeMemory(); // Does nothing with SYSTEM_MALLOC       
-
-				//WebPreferences* sharedPreferences = WebPreferences::sharedStandardPreferences();                  
-                                
-				//sharedPreferences->setJavaScriptEnabled(false); 
-				//sharedPreferences->postPreferencesChangesNotification(); 
+				MemoryPressureHandler::singleton().releaseMemory(true);
 
 				if(getenv("OWB_RESETVM"))
 				{
 				    DoMethod(app, MUIM_Application_PushMethod, app, 1, MM_OWBApp_ResetVM);
 				}
-				/*
-				WebPreferences* sharedPreferences = WebPreferences::sharedStandardPreferences();
-				sharedPreferences->setJavaScriptEnabled(false);
-				sharedPreferences->postPreferencesChangesNotification();
-				//JSDOMWindow::commonVM()->heap.blockAllocator().cleanup();
-				sharedPreferences->setJavaScriptEnabled(true);
-				sharedPreferences->postPreferencesChangesNotification();
-				*/
+
 				kprintf("Done\n\n\n");
 
 				break;
