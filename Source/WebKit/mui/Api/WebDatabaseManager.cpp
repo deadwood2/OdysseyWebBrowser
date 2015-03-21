@@ -106,7 +106,7 @@ WebDatabaseManager* WebDatabaseManager::sharedWebDatabaseManager()
 {
     if (!s_sharedWebDatabaseManager) {
         s_sharedWebDatabaseManager = WebDatabaseManager::createInstance();
-	DatabaseManager::manager().setClient(s_sharedWebDatabaseManager->webDatabaseTracker());
+	DatabaseManager::singleton().setClient(s_sharedWebDatabaseManager->webDatabaseTracker());
     }
 
     return s_sharedWebDatabaseManager;
@@ -119,7 +119,7 @@ vector<WebSecurityOrigin*> WebDatabaseManager::origins()
         return ori;
 
     Vector<RefPtr<SecurityOrigin> > origins;
-    DatabaseManager::manager().origins(origins);
+    DatabaseManager::singleton().origins(origins);
     for(size_t i = 0; i < origins.size(); i++)
         ori.push_back(WebSecurityOrigin::createInstance(origins[i].get()));
 
@@ -137,7 +137,7 @@ vector<const char*> WebDatabaseManager::databasesWithOrigin(WebSecurityOrigin* o
         return databaseN;
 
     Vector<String> databaseNames;
-    DatabaseManager::manager().databaseNamesForOrigin(webSecurityOrigin->securityOrigin(), databaseNames);
+    DatabaseManager::singleton().databaseNamesForOrigin(webSecurityOrigin->securityOrigin(), databaseNames);
 
     delete webSecurityOrigin;
 
@@ -156,7 +156,7 @@ WebDatabaseDetails* WebDatabaseManager::detailsForDatabase(const char* databaseN
     if (!webSecurityOrigin)
         return 0;
 
-    DatabaseDetails d = DatabaseManager::manager().detailsForNameAndOrigin(databaseName, webSecurityOrigin->securityOrigin());
+    DatabaseDetails d = DatabaseManager::singleton().detailsForNameAndOrigin(databaseName, webSecurityOrigin->securityOrigin());
     WebDatabaseDetails *details = WebDatabaseDetails::createInstance(strdup(d.name().utf8().data()), strdup(d.displayName().utf8().data()), d.expectedUsage(), d.currentUsage());
 
     delete webSecurityOrigin;
@@ -166,7 +166,7 @@ WebDatabaseDetails* WebDatabaseManager::detailsForDatabase(const char* databaseN
 
 void WebDatabaseManager::deleteAllDatabases()
 {
-    DatabaseManager::manager().deleteAllDatabases();
+    DatabaseManager::singleton().deleteAllDatabases();
 }
 
 void WebDatabaseManager::deleteOrigin(WebSecurityOrigin* origin)
@@ -178,7 +178,7 @@ void WebDatabaseManager::deleteOrigin(WebSecurityOrigin* origin)
     if (!webSecurityOrigin)
         return;
 
-    DatabaseManager::manager().deleteOrigin(webSecurityOrigin->securityOrigin());
+    DatabaseManager::singleton().deleteOrigin(webSecurityOrigin->securityOrigin());
 
     delete webSecurityOrigin;
 }
@@ -191,7 +191,7 @@ void WebDatabaseManager::setQuota(const char* origin, unsigned long long quota)
     if (this != s_sharedWebDatabaseManager)
         return;
 
-    DatabaseManager::manager().setQuota(SecurityOrigin::createFromString(origin).ptr(), quota);
+    DatabaseManager::singleton().setQuota(SecurityOrigin::createFromString(origin).ptr(), quota);
 }
 
 void WebDatabaseManager::deleteDatabase(const char* databaseName, WebSecurityOrigin* origin)
@@ -203,7 +203,7 @@ void WebDatabaseManager::deleteDatabase(const char* databaseName, WebSecurityOri
     if (!webSecurityOrigin)
         return;
 
-    DatabaseManager::manager().deleteDatabase(webSecurityOrigin->securityOrigin(), databaseName);
+    DatabaseManager::singleton().deleteDatabase(webSecurityOrigin->securityOrigin(), databaseName);
 
     delete webSecurityOrigin;
 }
@@ -262,7 +262,7 @@ void WebKitInitializeWebDatabasesIfNecessary()
         return;
 
     WTF::String databasesDirectory = WebCore::pathByAppendingComponent(WebCore::homeDirectoryPath(), "Databases");
-    WebCore::DatabaseManager::manager().initialize(databasesDirectory);
+    WebCore::DatabaseManager::singleton().initialize(databasesDirectory);
 
     initialized = true;
 }

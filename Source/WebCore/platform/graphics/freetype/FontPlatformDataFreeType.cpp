@@ -34,6 +34,7 @@
 #include FT_TRUETYPE_TABLES_H
 #include <wtf/MathExtras.h>
 #include <wtf/text/WTFString.h>
+#include <mutex>
 
 #if !PLATFORM(EFL) && !PLATFORM(MUI)
 #include <gdk/gdk.h>

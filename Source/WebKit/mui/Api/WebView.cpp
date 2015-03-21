@@ -2585,7 +2585,7 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     settings->setOfflineWebApplicationCacheEnabled(enabled);
 
     enabled = preferences->databasesEnabled();
-    DatabaseManager::manager().setIsAvailable(enabled);
+    DatabaseManager::singleton().setIsAvailable(enabled);
 
     enabled = preferences->experimentalNotificationsEnabled();
     settings->setExperimentalNotificationsEnabled(enabled);

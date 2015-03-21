@@ -68,15 +68,15 @@ unsigned short WebSecurityOrigin::port()
 
 unsigned long long WebSecurityOrigin::usage()
 {
-    return DatabaseManager::manager().usageForOrigin(m_securityOrigin);
+    return DatabaseManager::singleton().usageForOrigin(m_securityOrigin);
 }
 
 unsigned long long WebSecurityOrigin::quota()
 {
-    return DatabaseManager::manager().quotaForOrigin(m_securityOrigin);
+    return DatabaseManager::singleton().quotaForOrigin(m_securityOrigin);
 }
 
 void WebSecurityOrigin::setQuota(unsigned long long quota) 
 {
-    DatabaseManager::manager().setQuota(m_securityOrigin, quota);
+    DatabaseManager::singleton().setQuota(m_securityOrigin, quota);
 }
