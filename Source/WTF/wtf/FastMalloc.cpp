@@ -76,6 +76,26 @@ TryMallocReturnValue tryFastZeroedMalloc(size_t n)
     return result;
 }
 
+#if PLATFORM(MUI)
+MemoryNotification* g_memoryNotification = 0;
+
+void setMemoryNotificationCallback(MemoryNotification* memoryNotification)
+{
+    if (g_memoryNotification == NULL)
+        g_memoryNotification = memoryNotification;
+}
+
+static size_t g_limit = 0;
+
+void setMemoryLimit(int limit)
+{
+    if (limit < 0)
+        g_limit = 0;
+    else
+        g_limit = limit;
+}
+#endif
+
 } // namespace WTF
 
 #if defined(USE_SYSTEM_MALLOC) && USE_SYSTEM_MALLOC
@@ -89,23 +109,7 @@ extern int morphos_crash(size_t);
 
 namespace WTF {
 
-static size_t g_limit = 0;
 static size_t g_memory_allocated = 0;
-MemoryNotification* g_memoryNotification = 0;
-
-void setMemoryNotificationCallback(MemoryNotification* memoryNotification)
-{
-    if (g_memoryNotification == NULL)
-	g_memoryNotification = memoryNotification;
-}
-
-void setMemoryLimit(int limit)
-{
-    if (limit < 0)
-	g_limit = 0;
-    else
-	g_limit = limit;
-}
 
 size_t fastMallocGoodSize(size_t bytes)
 {
