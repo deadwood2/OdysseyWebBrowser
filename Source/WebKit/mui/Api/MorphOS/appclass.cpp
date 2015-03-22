@@ -2378,6 +2378,16 @@ void prefs_update(Object *obj, struct Data *data)
 	sharedPreferences->setLocalStorageEnabled((bool) getv(data->prefswin, MA_OWBApp_EnableLocalStorage));
 
 	sharedPreferences->postPreferencesChangesNotification();
+
+    /* JavaScript JIT */
+    if (FindToolType(data->diskobject->do_ToolTypes, "NO_JSC_JIT"))
+    {
+
+        JSC::Options::useJIT() = false;
+        JSC::Options::useDFGJIT() = false;
+        JSC::Options::useFTLJIT() = false;
+        JSC::Options::useRegExpJIT() = false;
+    }
 }
 
 DEFSMETHOD(OWBApp_PrefsLoad)
