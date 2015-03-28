@@ -56,6 +56,7 @@ public:
 #endif
     virtual void cancelRequestsForPermission(WebCore::ScriptExecutionContext*);
     virtual WebCore::NotificationClient::Permission checkPermission(WebCore::ScriptExecutionContext*);
+    virtual bool hasPendingPermissionRequests(WebCore::ScriptExecutionContext*) const;
 
 private:
     WebView* m_webView;
