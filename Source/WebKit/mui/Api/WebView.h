@@ -1781,7 +1781,6 @@ protected:
     WebViewObserver* m_webViewObserver;
     WebInspector* m_webInspector;
     bool m_isStopped;
-    MemoryEvent* m_memoryEvent;
 
     bool m_toolbarsVisible;
     bool m_statusbarVisible;

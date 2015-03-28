@@ -195,19 +195,6 @@ WebView* kit(Page* page)
     return (WebView *) static_cast<WebChromeClient&>(page->chrome().client()).webView();   
 }
 
-extern int morphos_crash(size_t);
-
-class MemoryEvent : public WTF::MemoryNotification {
-public:
-    MemoryEvent() { }
-
-    virtual void call()
-    {
-    	kprintf("dispatchNotEnoughMemory\n");
-		morphos_crash(0);
-    }
-};
-
 class WebViewObserver : public ObserverData {
 public:
     WebViewObserver(WebView* webview) : m_webView(webview) {};
@@ -429,9 +416,6 @@ WebView::WebView()
     webFrame->initWithWebView(this, m_page); 
     m_mainFrame = webFrame;
     static_cast<WebFrameLoaderClient&>(m_page->mainFrame().loader().client()).setWebFrame(webFrame); 
-
-    m_memoryEvent = new MemoryEvent;
-    WTF::setMemoryNotificationCallback(m_memoryEvent);
 }
 
 WebView::~WebView()
@@ -459,8 +443,6 @@ WebView::~WebView()
         delete d;
     if (m_webViewObserver)
         delete m_webViewObserver;
-    if (m_memoryEvent)
-        delete m_memoryEvent;
     m_children.clear();
 }
 
@@ -2640,8 +2622,8 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     enabled = preferences->shouldInvertColors();
     setShouldInvertColors(enabled);
 
-    int limit = preferences->memoryLimit();  
-    WTF::setMemoryLimit(limit);
+    /* int limit = preferences->memoryLimit();
+    WTF::setMemoryLimit(limit); */
 
     enabled = preferences->allowScriptsToCloseWindows();
     settings->setAllowScriptsToCloseWindows(enabled);

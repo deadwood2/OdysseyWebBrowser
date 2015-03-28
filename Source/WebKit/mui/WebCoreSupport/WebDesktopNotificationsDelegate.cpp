@@ -114,4 +114,9 @@ NotificationClient::Permission WebDesktopNotificationsDelegate::checkPermission(
 	return NotificationClient::PermissionAllowed;
 }
 
+bool WebDesktopNotificationsDelegate::hasPendingPermissionRequests(WebCore::ScriptExecutionContext*) const
+{
+    D(kprintf("hasPendingPermissionRequests\n"));
+    return false;
+}
 #endif  // ENABLE(NOTIFICATIONS)

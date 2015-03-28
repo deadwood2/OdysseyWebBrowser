@@ -36,10 +36,6 @@
 #if OS(WINDOWS)
 #include <windows.h>
 #elif OS(AROS)
-#include <aros/debug.h>
-#include <proto/exec.h>
-#undef Allocate
-#undef Deallocate
 #else
 #include <pthread.h>
 #endif
@@ -75,26 +71,6 @@ TryMallocReturnValue tryFastZeroedMalloc(size_t n)
     memset(result, 0, n);
     return result;
 }
-
-#if PLATFORM(MUI)
-MemoryNotification* g_memoryNotification = 0;
-
-void setMemoryNotificationCallback(MemoryNotification* memoryNotification)
-{
-    if (g_memoryNotification == NULL)
-        g_memoryNotification = memoryNotification;
-}
-
-static size_t g_limit = 0;
-
-void setMemoryLimit(int limit)
-{
-    if (limit < 0)
-        g_limit = 0;
-    else
-        g_limit = limit;
-}
-#endif
 
 } // namespace WTF
 
