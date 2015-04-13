@@ -80,12 +80,9 @@ TryMallocReturnValue tryFastZeroedMalloc(size_t n)
 #include <malloc.h>
 #elif OS(MORPHOS)
 #include <clib/debug_protos.h>
-extern int morphos_crash(size_t);
 #endif
 
 namespace WTF {
-
-static size_t g_memory_allocated = 0;
 
 size_t fastMallocGoodSize(size_t bytes)
 {
@@ -124,16 +121,6 @@ void fastAlignedFree(void* p)
 
 #endif // OS(WINDOWS)
 
-//#if OS(MORPHOS)
-//    g_memory_allocated += n + Internal::ValidationBufferSize;
-//    //kprintf("+ g_memory_allocated %d (+%d)\n", g_memory_allocated, n);
-//
-//    if (g_limit != 0 && (g_memory_allocated > g_limit)) {
-//	if (g_memoryNotification)
-//	    g_memoryNotification->call();
-//   }
-//#endif
-
 TryMallocReturnValue tryFastMalloc(size_t n) 
 {
     return malloc(n ? n : 2);
@@ -145,9 +132,11 @@ retry:
     void* result = malloc(n ? n : 2);
     if (!result)
     {
-        kprintf("fastMalloc: Failed to allocate %lu bytes. Happy crash sponsored by WebKit will follow.\n", n ? n : 2); 
+        kprintf("fastMalloc: Failed to allocate %lu bytes. Happy crash sponsored by WebKit will follow.\n", n ? n : 2);
+#if !OS(AROS)
         if(morphos_crash(n ? n : 2)) 
             goto retry;
+#endif
     }
 
     return result;
@@ -165,17 +154,14 @@ retry:
     if (!result) 
     {
         kprintf("fastCalloc: Failed to allocate %lu x %lu bytes. Happy crash sponsored by WebKit will follow.\n", n_elements ? n_elements : 1, element_size ? element_size : 2);
+#if !OS(AROS)
         if(morphos_crash((n_elements ? n_elements : 1)*(element_size ? element_size : 2))) 
             goto retry;
+#endif
     }
 
     return result;
 }
-
-//#if OS(MORPHOS)
-//    g_memory_allocated -= (fastMallocSize(p) + Internal::ValidationBufferSize);
-//    //kprintf("- g_memory_allocated %d (-%d)\n", g_memory_allocated, fastMallocSize(p));
-//#endif    
 
 void fastFree(void* p)
 {
@@ -189,8 +175,10 @@ retry:
     if (!result)
     {
         kprintf("fastRealloc: Failed to allocate %lu bytes. Happy crash sponsored by WebKit will follow.\n", n ? n : 2);
+#if !OS(AROS)
         if(morphos_crash(n ? n : 2))
             goto retry;
+#endif
     }
     return result;
 }
