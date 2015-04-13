@@ -30,7 +30,16 @@
 #include <string.h>
 #include <aros/debug.h>
 
+#define EXECALLOCATOR   1
+#define OWNALLOCATOR    0
+
+#if EXECALLOCATOR
+#include <bmalloc/execallocator.h>
+#endif
+
 namespace WTF {
+
+#if OWNALLOCATOR
 
 #undef PAGESIZE
 #define PAGESIZE                (4096)
@@ -246,6 +255,7 @@ int PageAllocator::getAllocatedPagesCount()
 }
 
 static PageAllocator allocator;
+#endif
 
 /*************************************************************************************************/
 /* Debug code */
@@ -281,14 +291,18 @@ static void reservedAdd(size_t bytes, OSAllocator::Usage u)
 
 /*************************************************************************************************/
 
+#if OWNALLOCATOR
 static inline int getPageCount(size_t bytes)
 {
     /* Round up size to next page size */
     return (int)((bytes + PAGESIZE - 1) / PAGESIZE);
 }
+#endif
 
 void* OSAllocator::reserveUncommitted(size_t bytes, Usage u, bool, bool, bool)
 {
+    (void)u;
+#if OWNALLOCATOR
     int pagecount = getPageCount(bytes);
     void * ptr = allocator.getPages(pagecount);
 
@@ -297,10 +311,16 @@ void* OSAllocator::reserveUncommitted(size_t bytes, Usage u, bool, bool, bool)
     D(reservedAdd(bytes, u););
 
     return ptr;
+#endif
+#if EXECALLOCATOR
+    return bmalloc::allocator_getmem_page_aligned(bytes);
+#endif
 }
 
 void* OSAllocator::reserveAndCommit(size_t bytes, Usage u, bool, bool, bool)
 {
+    (void)u;
+#if OWNALLOCATOR
     int pagecount = getPageCount(bytes);
     void * ptr = allocator.getPages(pagecount);
 
@@ -312,6 +332,10 @@ void* OSAllocator::reserveAndCommit(size_t bytes, Usage u, bool, bool, bool)
     D(reservedAdd(bytes, u););
 
     return ptr;
+#endif
+#if EXECALLOCATOR
+    return bmalloc::allocator_getmem_page_aligned(bytes);
+#endif
 }
 
 void OSAllocator::commit(void* address, size_t bytes, bool, bool)
@@ -321,6 +345,8 @@ void OSAllocator::commit(void* address, size_t bytes, bool, bool)
 
 void OSAllocator::decommit(void* address, size_t bytes)
 {
+    (void)address;
+    (void)bytes;
     D
     (
     int pagecount = getPageCount(bytes);
@@ -330,10 +356,15 @@ void OSAllocator::decommit(void* address, size_t bytes)
 
 void OSAllocator::releaseDecommitted(void* address, size_t bytes)
 {
+#if OWNALLOCATOR
     int pagecount = getPageCount(bytes);
     D(bug("DEALLOC 0x%x -> pagecount %d \n", address, pagecount));
 
     allocator.freePages(address, pagecount);
+#endif
+#if EXECALLOCATOR
+    bmalloc::allocator_freemem(address, bytes);
+#endif
 }
 
 } // namespace WTF
