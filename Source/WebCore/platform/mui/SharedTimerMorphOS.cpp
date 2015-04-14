@@ -373,4 +373,8 @@ void stopSharedTimer()
 	TimerStop(timer_handle);
 }
 
+void invalidateSharedTimer()
+{
+}
+
 }

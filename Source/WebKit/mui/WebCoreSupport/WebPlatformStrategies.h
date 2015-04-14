@@ -54,6 +54,7 @@ private:
     // WebCore::PluginStrategy
     virtual void refreshPlugins();
     virtual void getPluginInfo(const WebCore::Page*, Vector<WebCore::PluginInfo>&);
+    virtual void getWebVisiblePluginInfo(const WebCore::Page*, Vector<WebCore::PluginInfo>&);
 };
 
 #endif // PlatformStrategiesEfl_h

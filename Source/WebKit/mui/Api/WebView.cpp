@@ -1120,8 +1120,8 @@ bool WebView::canShowMIMEType(const char* mimeType)
 	|| MIMETypeRegistry::isSupportedMediaMIMEType(type);
     
     if (!canShow && m_page) {
-	canShow = (m_page->pluginData().supportsMimeType(type, PluginData::AllPlugins) && allowPlugins)
-	|| m_page->pluginData().supportsMimeType(type, PluginData::OnlyApplicationPlugins);
+	canShow = (m_page->pluginData().supportsWebVisibleMimeType(type, PluginData::AllPlugins) && allowPlugins)
+	|| m_page->pluginData().supportsWebVisibleMimeType(type, PluginData::OnlyApplicationPlugins);
     }     
     
     //kprintf("WebView::canShowMIMEType(%s): %s\n", type.utf8().data(), canShow ? "yes" : "no");
@@ -1175,8 +1175,6 @@ void WebView::initWithFrame(BalRectangle& frame, const char* frameName, const ch
 #if ENABLE(OFFLINE_WEB_APPLICATIONS)
 		WebKitSetApplicationCachePathIfNecessary();
 #endif
-		Settings::setDefaultMinDOMTimerInterval(0.004);
-
 		didOneTimeInitialization = true;
     }
 
@@ -1189,7 +1187,8 @@ void WebView::initWithFrame(BalRectangle& frame, const char* frameName, const ch
 
     m_page->focusController().setFocusedFrame(&(m_page->mainFrame()));
     m_page->focusController().setActive(true); 
-    m_page->focusController().setFocused(true); 
+    m_page->focusController().setFocused(true);
+    m_page->settings().setMinimumDOMTimerInterval(0.004);
 
     Frame* mainFrame = &(m_page->mainFrame());
     Frame* focusedFrame = &(m_page->focusController().focusedOrMainFrame());
