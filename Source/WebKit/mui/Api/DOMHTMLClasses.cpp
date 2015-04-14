@@ -786,7 +786,7 @@ void DOMHTMLInputElement::setAutofilled(bool filled)
 {
     ASSERT(m_element && m_element->hasTagName(inputTag));
     HTMLInputElement* inputElement = static_cast<HTMLInputElement*>(m_element);
-    inputElement->setAutofilled(!!filled);
+    inputElement->setAutoFilled(!!filled);
 }
 
 bool DOMHTMLInputElement::isAutofilled()
@@ -794,7 +794,7 @@ bool DOMHTMLInputElement::isAutofilled()
 	ASSERT(m_element);
     ASSERT(m_element->hasTagName(inputTag));
     HTMLInputElement* inputElement = static_cast<HTMLInputElement*>(m_element);
-    return inputElement->isAutofilled();
+    return inputElement->isAutoFilled();
 }
 
 // DOMHTMLInputElement -- FormPromptAdditions ------------------------------------

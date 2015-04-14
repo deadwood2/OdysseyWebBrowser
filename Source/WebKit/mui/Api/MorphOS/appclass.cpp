@@ -1083,9 +1083,6 @@ void FreeWebKitLeakedObjects()
 	WebCore::freeLeakedMediaObjects();
 #endif
 
-	/* Seriously, sigh */
-	JSDOMWindow::commonVM().heap.blockAllocator().quitFreeingThread();
-
 	/* Yup, built as an indestructible singleton, sigh. ;) */
 	cookieManager().destroy();
 
@@ -2594,19 +2591,19 @@ DEFSMETHOD(OWBApp_SetFormState)
 					if(webFormPasswordData.userNameElementElement)
 					{
 						webFormPasswordData.userNameElementElement->setValue(credential->user());
-						webFormPasswordData.userNameElementElement->setAutofilled();
+						webFormPasswordData.userNameElementElement->setAutoFilled();
 					}
 
 					if(webFormPasswordData.passwordElementElement)
 					{
 						webFormPasswordData.passwordElementElement->setValue(credential->password());
-						webFormPasswordData.passwordElementElement->setAutofilled();
+						webFormPasswordData.passwordElementElement->setAutoFilled();
 					}
 
 					if(webFormPasswordData.oldPasswordElementElement)
 					{
 						webFormPasswordData.oldPasswordElementElement->setValue(credential->password());
-						webFormPasswordData.oldPasswordElementElement->setAutofilled();
+						webFormPasswordData.oldPasswordElementElement->setAutoFilled();
 					}
 				}
 			}

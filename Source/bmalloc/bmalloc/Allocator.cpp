@@ -60,7 +60,7 @@ void* Allocator::tryAllocate(size_t size)
         return allocate(size);
 
     std::lock_guard<StaticMutex> lock(PerProcess<Heap>::mutex());
-    return PerProcess<Heap>::get()->tryAllocateXLarge(lock, superChunkSize, roundUpToMultipleOf<xLargeAlignment>(size));
+    return PerProcess<Heap>::get()->tryAllocateXLarge(lock, xLargeAlignment, roundUpToMultipleOf<xLargeAlignment>(size));
 }
 
 void* Allocator::allocate(size_t alignment, size_t size)

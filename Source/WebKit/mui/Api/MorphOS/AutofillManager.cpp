@@ -33,7 +33,7 @@ namespace WebCore {
 static bool isAutofillable(HTMLInputElement* element)
 {
     return element && element->isTextField() && !element->isPasswordField()
-        && !element->isAutofilled() && element->shouldAutocomplete();
+        && !element->isAutoFilled() && element->shouldAutocomplete();
 }
 
 PassRefPtr<AutofillManager> AutofillManager::create(void *browser)
@@ -60,7 +60,7 @@ void AutofillManager::autofillTextField(const String& value)
         return;
 
     m_element->setValue(value);
-    m_element->setAutofilled();
+    m_element->setAutoFilled();
 }
 
 void AutofillManager::saveTextFields(HTMLFormElement* form)

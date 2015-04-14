@@ -137,3 +137,8 @@ void PlatformStrategiesMorphOS::getPluginInfo(const Page*, Vector<PluginInfo>& o
     UNUSED_PARAM(outPlugins);
 #endif
 }
+
+void PlatformStrategiesMorphOS::getWebVisiblePluginInfo(const Page* page, Vector<PluginInfo>& outPlugins)
+{
+    getPluginInfo(page, outPlugins);
+}
