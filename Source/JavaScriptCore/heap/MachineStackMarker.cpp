@@ -403,6 +403,7 @@ void MachineThreads::gatherFromCurrentThread(ConservativeRoots& conservativeRoot
     conservativeRoots.add(stackTop, stackOrigin, jitStubRoutines, codeBlocks);
 }
 
+#if !OS(AROS)
 inline bool MachineThreads::Thread::suspend()
 {
 #if OS(DARWIN)
@@ -718,14 +719,17 @@ static void growBuffer(size_t size, void** buffer, size_t* capacity)
     *capacity = WTF::roundUpToMultipleOf(WTF::pageSize(), size * 2);
     *buffer = fastMalloc(*capacity);
 }
+#endif
 
 void MachineThreads::gatherConservativeRoots(ConservativeRoots& conservativeRoots, JITStubRoutineSet& jitStubRoutines, CodeBlockSet& codeBlocks, void* stackOrigin, void* stackTop, RegisterState& calleeSavedRegisters)
 {
     gatherFromCurrentThread(conservativeRoots, jitStubRoutines, codeBlocks, stackOrigin, stackTop, calleeSavedRegisters);
 
+#if !OS(AROS)
     size_t size;
     size_t capacity = 0;
     void* buffer = nullptr;
+
     MutexLocker lock(m_registeredThreadsMutex);
     while (!tryCopyOtherThreadStacks(lock, buffer, capacity, &size))
         growBuffer(size, &buffer, &capacity);
@@ -735,6 +739,7 @@ void MachineThreads::gatherConservativeRoots(ConservativeRoots& conservativeRoot
 
     conservativeRoots.add(buffer, static_cast<char*>(buffer) + size, jitStubRoutines, codeBlocks);
     fastFree(buffer);
+#endif
 }
 
 } // namespace JSC
