@@ -13,9 +13,9 @@
 
 /* Constants */
 
-#define VERSION  "1.24"
-#define DATE     "13.02.2014"
-#define REVISION "WebKit r161078"
+#define VERSION  "1.25"
+#define DATE     "18.04.2015"
+#define REVISION "WebKit r181764"
 
 #define THREAD_NAME              "OWB Thread"
 #define APPLICATION_DESCRIPTION	 "WebKit-based browser."
