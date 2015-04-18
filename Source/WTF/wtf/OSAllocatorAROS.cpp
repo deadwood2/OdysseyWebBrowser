@@ -299,6 +299,28 @@ static inline int getPageCount(size_t bytes)
 }
 #endif
 
+#if EXECALLOCATOR
+#define likely(x)   __builtin_expect(!!(x), 1)
+
+extern "C"
+{
+void aros_bailout_jump();
+int  aros_is_memory_bailout();
+}
+
+static void* allocateWithCheck(size_t bytes)
+{
+    void * ptr = bmalloc::allocator_getmem_page_aligned(bytes);
+    if (likely(ptr))
+        return ptr;
+
+    if (aros_is_memory_bailout())
+        aros_bailout_jump();
+
+    return nullptr;
+}
+#endif
+
 void* OSAllocator::reserveUncommitted(size_t bytes, Usage u, bool, bool, bool)
 {
     (void)u;
@@ -313,7 +335,7 @@ void* OSAllocator::reserveUncommitted(size_t bytes, Usage u, bool, bool, bool)
     return ptr;
 #endif
 #if EXECALLOCATOR
-    return bmalloc::allocator_getmem_page_aligned(bytes);
+    return allocateWithCheck(bytes);
 #endif
 }
 
@@ -334,7 +356,7 @@ void* OSAllocator::reserveAndCommit(size_t bytes, Usage u, bool, bool, bool)
     return ptr;
 #endif
 #if EXECALLOCATOR
-    return bmalloc::allocator_getmem_page_aligned(bytes);
+    return allocateWithCheck(bytes);
 #endif
 }
 
