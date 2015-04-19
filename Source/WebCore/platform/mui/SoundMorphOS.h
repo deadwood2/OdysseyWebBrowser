@@ -1,5 +1,4 @@
 /*
- * Copyright (C) 2008 Joerg Strohmayer.
  * Copyright (C) 2008 Pleyo.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,18 +26,13 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-
-#include "Sound.h"
-#include <proto/intuition.h>
+#ifndef Sound_h
+#define Sound_h
 
 namespace WebCore {
 
-void systemBeep()
-{
-    DisplayBeep(NULL);
-}
+    void systemBeep();
 
-}
+} // namespace WebCore
 
-// vim: ts=4 sw=4 et
+#endif // Sound_h
