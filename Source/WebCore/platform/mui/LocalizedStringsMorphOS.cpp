@@ -772,6 +772,11 @@ String textTrackNoLabelText()
 {
   return String::fromUTF8("No Label");
 }
+
+String audioTrackNoLabelText()
+{
+  return String::fromUTF8("No Label");
+}
 #endif
 
 String snapshottedPlugInLabelTitle()

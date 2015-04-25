@@ -68,6 +68,7 @@ list(APPEND WebCore_SOURCES
 
     platform/linux/FileIOLinux.cpp
 
+    platform/mui/acinerella.c
     platform/mui/ContextMenuMorphOS.cpp
     platform/mui/ContextMenuItemMorphOS.cpp
     platform/mui/CursorMorphOS.cpp
@@ -84,6 +85,7 @@ list(APPEND WebCore_SOURCES
     platform/mui/IntRectMorphOS.cpp
     platform/mui/LanguageMorphOS.cpp
     platform/mui/LocalizedStringsMorphOS.cpp
+    platform/mui/MediaPlayerPrivateMorphOS.cpp
     platform/mui/MIMETypeRegistryMorphOS.cpp
     platform/mui/PasteboardMorphOS.cpp
     platform/mui/PlatformKeyboardEventMorphOS.cpp

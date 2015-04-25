@@ -26,7 +26,6 @@
 #include "libavformat/url.h"
 #include "libavcodec/avcodec.h"
 #include "libavutil/samplefmt.h"
-#include "libavcodec/audioconvert.h"
 #include "libavutil/avutil.h"
 #include "libavutil/opt.h"
 #include "libswscale/swscale.h"
@@ -36,7 +35,7 @@
 #include <clib/debug_protos.h>
 
 
-#include "../../../../WebKit/OrigynWebBrowser/Api/MorphOS/gui.h"
+#include "gui.h"
 #include "acinerella.h"
 
 #define D(x)
@@ -159,6 +158,7 @@ void init_info(lp_ac_file_info info)
 // Function called by FFMpeg when opening an ac stream.
 static int file_open(URLContext *h, const char *filename, int flags)
 {
+    (void)flags;
 	char * ptr = filename ? strstr(filename, "owb://") : NULL;
 
 	if(ptr)
@@ -166,7 +166,9 @@ static int file_open(URLContext *h, const char *filename, int flags)
 		lp_ac_data instance = NULL;
 		ptr += sizeof("owb://") - 1;
 
-		instance = (lp_ac_data) strtol(ptr, 0, 16);
+		/* Convert hex string to ULONG address */
+		instance = (lp_ac_data) strtoul(ptr, 0, 16);
+		D(kprintf("Received instance %p\n", instance));
 
 		if(instance)
 		{
@@ -198,6 +200,9 @@ static int file_read(URLContext *h, unsigned char *buf, int size)
 
 static int file_write(URLContext *h, const unsigned char *buf, int size)
 {
+    (void)h;
+    (void)buf;
+    (void)size;
 	return -1;
 }
 
@@ -228,6 +233,10 @@ static int file_close(URLContext *h)
 
 static void av_log_callback(void* ptr, int level, const char* fmt, va_list vl)
 {
+    (void)ptr;
+    (void)level;
+    (void)fmt;
+    (void)vl;
 	/*
 	char buffer[512];
 	vsnprintf(buffer, sizeof(buffer), fmt, vl);

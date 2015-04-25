@@ -102,9 +102,10 @@ namespace WebCore {
     public:
 
         static void registerMediaEngine(MediaEngineRegistrar);
-	~MediaPlayerPrivate();
+        MediaPlayerPrivate(MediaPlayer*);
+        ~MediaPlayerPrivate();
 
-        IntSize naturalSize() const;
+        FloatSize naturalSize() const;
         bool hasVideo() const;
         bool hasAudio() const;
 
@@ -124,7 +125,6 @@ namespace WebCore {
         float duration() const;
         float currentTime() const;
         void seek(float);
-        void setEndTime(float);
 
         void setRate(float);
         void setVolume(float);
@@ -135,11 +135,11 @@ namespace WebCore {
         MediaPlayer::NetworkState networkState() const;
         MediaPlayer::ReadyState readyState() const;
 
-        virtual PassRefPtr<TimeRanges> buffered() const;
+        virtual std::unique_ptr<PlatformTimeRanges> buffered() const;
         float maxTimeSeekable() const;
         unsigned bytesLoaded() const;
         bool totalBytesKnown() const;
-        unsigned totalBytes() const;
+        unsigned long long totalBytes() const;
 
         void setVisible(bool);
         void setSize(const IntSize&);
@@ -154,7 +154,7 @@ namespace WebCore {
 	void loadingFailed(MediaPlayer::NetworkState);
 
         void repaint();
-        void paint(GraphicsContext*, const IntRect&);
+        void paint(GraphicsContext*, const FloatRect&) override;
 
 	bool hasSingleSecurityOrigin() const;
 
@@ -185,7 +185,7 @@ namespace WebCore {
 	void didReceiveResponse(const ResourceResponse& response);
 	void didFinishLoading();
 	void didFailLoading(const ResourceError&);
-	void didReceiveData(const char* data, int length, int lengthReceived);
+	void didReceiveData(const char* data, unsigned length, int lengthReceived);
 	bool fetchData(unsigned long long startOffset);
 	void cancelFetch();
 	MediaPlayer* player() { return m_player; }
@@ -205,18 +205,13 @@ namespace WebCore {
 
     private:
 
-        MediaPlayerPrivate(MediaPlayer*);
-	static PassOwnPtr<MediaPlayerPrivateInterface> create(MediaPlayer* player);
-
         static void getSupportedTypes(HashSet<String>&);
 	static MediaPlayer::SupportsType supportsType(const MediaEngineSupportParameters&);
         static bool isAvailable() { return true; }
 
 	void updateStates(MediaPlayer::NetworkState, MediaPlayer::ReadyState);
         void cancelSeek();
-        void endPointTimerFired(Timer<MediaPlayerPrivate>*);
         float maxTimeLoaded() const;
-        void startEndPointTimerIfNeeded();
 
     private:
         MediaPlayer* m_player;

@@ -32,8 +32,6 @@
 
 #include "MediaPlayerPrivateMorphOS.h"
 
-#include "CString.h"
-#include "CurrentTime.h"
 #include "Document.h"
 #include "Frame.h"
 #include "FrameView.h"
@@ -58,8 +56,8 @@
 #include "ResourceRequest.h"
 #include "ResourceHandleClient.h"
 #include "ResourceResponse.h"
-#include "FileIO.h"
 
+#include <wtf/text/CString.h>
 #include <runtime/InitializeThreading.h>
 #include <wtf/CurrentTime.h>
 #include <wtf/MainThread.h>
@@ -81,8 +79,8 @@
 #include <proto/intuition.h>
 #include <proto/ahi.h>
 
-#include "../../../../WebKit/OrigynWebBrowser/Api/MorphOS/gui.h"
-#include "../../../../WebKit/OrigynWebBrowser/Api/MorphOS/utils.h"
+#include "gui.h"
+#include "utils.h"
 
 extern "C" {
 #define HAVE_BIGENDIAN 1
@@ -464,14 +462,14 @@ class FFMpegContext
 				}
 #endif
 
-				//D(kprintf("[MediaPlayer] MediaBuffer::append: Allocating buffer (%lld bytes)\n", size));
+				D(kprintf("[MediaPlayer] MediaBuffer::append: Allocating buffer (%lld bytes)\n", size));
 			}
 			else if (offset + len > size)
 			{
 				size = offset + len + PREBUFFER_SIZE;
 				data = (uint8_t *) realloc(data, size);
 
-				//D(kprintf("[MediaPlayer] MediaBuffer::append: Extending buffer (%lld bytes)\n", size));
+				D(kprintf("[MediaPlayer] MediaBuffer::append: Extending buffer (%lld bytes)\n", size));
 			}
 
 			if (data == NULL)
@@ -482,7 +480,7 @@ class FFMpegContext
 			memcpy(data + offset, src, len);
 			requestgot += len;
 
-			//D(kprintf("[MediaPlayer] MediaBuffer::append: Adding byterange [%lld, %lld] (ranges %d)\n", offset, offset + len - 1, ranges.length()));
+			D(kprintf("[MediaPlayer] MediaBuffer::append: Adding byterange [%lld, %lld] (ranges %d)\n", offset, offset + len - 1, ranges.length()));
 			ranges.add(offset, offset + len - 1); // Overlapping and Contiguous ranges will be merged
 
 			return true;
@@ -536,7 +534,7 @@ class FFMpegContext
 				res = ranges.bytesInRanges() >= ctx->totalsize;
 			}
 
-			//D(kprintf("isComplete() %lld %lld %d\n", ranges.bytesInRanges(), ctx->totalsize, res));
+			D(kprintf("isComplete() %lld %lld %d\n", ranges.bytesInRanges(), ctx->totalsize, res));
 
 			return res;
 		}
@@ -553,7 +551,7 @@ class FFMpegContext
 			{
 				long long currentbyte = (long long) ((ctx->totalsize - 1) * now / duration) ;
 				res = min(duration, duration * ranges.nearestEnd(currentbyte) / ctx->totalsize);
-				//D(kprintf("maxTimeLoaded(%f, %f) currentbyte: %lld %f\n", now, duration, currentbyte, res));
+				D(kprintf("maxTimeLoaded(%f, %f) currentbyte: %lld %f\n", now, duration, currentbyte, res));
 			}		 
 
 			return std::max((float) now, res);
@@ -1008,7 +1006,11 @@ struct image *imgCreate(int width, int height, int pixfmt)
 
 	if (img != NULL)
 	{
+#if OS(AROS)
+        posix_memalign(&(img->data.p), 16, width * height * imgBytesPerPixel(pixfmt));
+#else
 		img->data.p = AllocVecAligned(width * height * imgBytesPerPixel(pixfmt), 0, 16, 0);
+#endif
 		if (img->data.p != NULL)
 		{
 			img->width = width;
@@ -1030,7 +1032,11 @@ void imgFree(struct image *img)
 	if (img != NULL)
 	{
 		if (img->data.p != NULL)
+#if OS(AROS)
+            free(img->data.p);
+#else
 			FreeVec(img->data.p);
+#endif
 
 		FreeVec(img);
 	}
@@ -1365,6 +1371,38 @@ struct image *imgResize(struct image *image, int destwidth, int destheight, int 
 
 /* Audio support */
 
+#if OS(AROS)
+AROS_UFH3(APTR, SoundFunc,
+        AROS_UFHA(struct Hook *, hook, A0),
+        AROS_UFHA(struct AHIAudioCtrl *, actrl, A2),
+        AROS_UFHA(struct AHISoundMessage *, smsg, A1))
+{
+    AROS_USERFUNC_INIT
+    (void)hook;
+    (void)smsg;
+
+    _Stream *stream = (_Stream *) actrl->ahiac_UserData;
+
+    if((stream->dbflag = !stream->dbflag) == TRUE) // Flip and test
+        AHI_SetSound(0, 1, 0, 0, actrl, NULL);
+    else
+        AHI_SetSound(0, 0, 0, 0, actrl, NULL);
+
+    Signal(stream->audiotask, 1L<<stream->sigsound);
+
+    return NULL;
+
+    AROS_USERFUNC_EXIT
+}
+
+struct Hook SoundHook =
+{
+    { NULL, NULL },
+    (APTR) SoundFunc,
+    NULL,
+    NULL
+};
+#else
 static ULONG SoundFunc(void)
 {
 	//struct Hook *hook = (struct Hook *)REG_A0;
@@ -1394,6 +1432,7 @@ struct Hook SoundHook =
 	NULL,
 	NULL,
 };
+#endif
 
 bool MediaPlayerPrivate::audioOpen()
 {
@@ -1682,6 +1721,7 @@ void MediaPlayerPrivate::audioReset()
 }
 
 /* This custom definition is needed because of the "Fixed" type causing conflicts */
+#if !OS(AROS)
 #undef AHI_SetVol
 #define AHI_SetVol(__p0, __p1, __p2, __p3, __p4) \
 	LP5NR(66, AHI_SetVol, \
@@ -1691,6 +1731,7 @@ void MediaPlayerPrivate::audioReset()
 		struct AHIAudioCtrl *, __p3, a2, \
 		ULONG , __p4, d3, \
 		, AHI_BASE_NAME, 0, 0, 0, 0, 0, 0)
+#endif
 
 void MediaPlayerPrivate::audioSetVolume(float volume)
 {
@@ -1719,7 +1760,7 @@ class MediaTimer
 public:
 	void *m_ctx;
 	MediaFunc m_mediafunc;
-	Timer<MediaTimer> m_mediaTimer;
+	Timer m_mediaTimer;
 
 	void start(unsigned long ms)
 	{
@@ -1733,7 +1774,7 @@ public:
 			m_mediaTimer.stop();
 	}
 
-	void mediaFired(Timer<MediaTimer>*)
+	void mediaFired()
 	{
 		m_mediafunc(m_ctx);
 	}
@@ -1741,7 +1782,7 @@ public:
 	MediaTimer(void *ctx, MediaFunc func)
 		: m_ctx(ctx),
 		  m_mediafunc(func),
-		  m_mediaTimer(this, &MediaTimer::mediaFired)
+		  m_mediaTimer(*this, &MediaTimer::mediaFired)
 	{
 	}
 };
@@ -1758,56 +1799,48 @@ public:
 	 : m_mediaPlayer(player)
 	{}
 
-	virtual void didReceiveResponse(ResourceHandle*, const ResourceResponse& response)
+	virtual void didReceiveResponse(ResourceHandle*, const ResourceResponse& response) override
 	{
 		FFMpegContext *ctx = m_mediaPlayer->privatectx();
 
-		//D(kprintf("didReceiveResponse\n"));
+		D(kprintf("[StreamClient] didReceiveResponse\n"));
 		if(ctx->mediaplayer)
 		{
 			ctx->mediaplayer->didReceiveResponse(response);
 		}
 	}
 
-	virtual void didReceiveData(ResourceHandle*, const char* data, int length, int lengthReceived)
+	virtual void didReceiveData(ResourceHandle*, const char* data, unsigned length, int lengthReceived) override
 	{
 		FFMpegContext *ctx = m_mediaPlayer->privatectx();
 
-		//D(kprintf("didReceiveData(%d)\n", length));
+		D(kprintf("[StreamClient] didReceiveData(%d)\n", length));
 		if(ctx->mediaplayer)
 		{
 			ctx->mediaplayer->didReceiveData(data, length, lengthReceived);
 		}
 	}
 
-	virtual void didFinishLoading(ResourceHandle*, double)
+	virtual void didFinishLoading(ResourceHandle*, double) override
 	{
 		FFMpegContext *ctx = m_mediaPlayer->privatectx();
 
-		//D(kprintf("didFinishLoading\n"));
+		D(kprintf("[StreamClient] didFinishLoading\n"));
 		if(ctx->mediaplayer)
 		{
 			ctx->mediaplayer->didFinishLoading();
 		}
 	}
 	
-	virtual void didFail(ResourceHandle*, const ResourceError& error)
+	virtual void didFail(ResourceHandle*, const ResourceError& error) override
 	{
 		FFMpegContext *ctx = m_mediaPlayer->privatectx();
 
-		//D(kprintf("didFail\n"));
+		D(kprintf("[StreamClient] didFail\n"));
 		if(ctx->mediaplayer)
 		{
 			ctx->mediaplayer->didFailLoading(error);
 		}
-	}
-
-	virtual void wasBlocked(ResourceHandle*)
-	{
-	}
-	
-	virtual void cannotShowURL(ResourceHandle*)
-	{
 	}
 
 private:
@@ -1832,7 +1865,7 @@ static int CALL_CONVT read_callback(void *sender, char *dst, int size)
 	if(ctx->totalsize > 0 && ctx->media_buffer.readPos() >= ctx->totalsize)
 		return AVERROR_EOF;
 
-	//D(kprintf("read_callback(): size %d readpos %lld\n", size, ctx->media_buffer.readPos()));
+	D(kprintf("read_callback(): size %d readpos %lld\n", size, ctx->media_buffer.readPos()));
 
 	do
 	{
@@ -1857,7 +1890,7 @@ static int CALL_CONVT read_callback(void *sender, char *dst, int size)
 		{
 			if(shouldSendRequest && !requestSent)
 			{
-				//D(kprintf("read_callback(): send new request\n"));
+				D(kprintf("read_callback(): send new request\n"));
 				WTF::callOnMainThread(MediaPlayerPrivate::fetchRequest, ctx);
 				requestSent = true;
 			}
@@ -1873,7 +1906,7 @@ static int CALL_CONVT read_callback(void *sender, char *dst, int size)
 		uint8_t *src = ctx->media_buffer.source();
 		got = needMoreData ? 0 : size;
 
-		//D(kprintf("read_callback(): got %d bytes\n", got));
+		D(kprintf("read_callback(): got %d bytes\n", got));
 
 		if(src && got > 0)
 		{
@@ -1888,7 +1921,7 @@ static int CALL_CONVT read_callback(void *sender, char *dst, int size)
 	}
 	else
 	{
-		//D(kprintf("read_callback(): read was interrupted\n"));
+		D(kprintf("read_callback(): read was interrupted\n"));
 		got = -1;
 	}
 
@@ -1909,7 +1942,7 @@ static int64_t CALL_CONVT seek_callback(void *sender, int64_t pos, int whence)
 	int64_t res = -1;
 	FFMpegContext *ctx = (FFMpegContext *) sender;
 
-	//D(kprintf("seek_callback(): pos=%lld whence=%d\n", pos, whence));
+	D(kprintf("seek_callback(): pos=%lld whence=%d\n", pos, whence));
 
 	if(ctx && ctx->allow_seek)
 	{
@@ -1958,7 +1991,7 @@ static int64_t CALL_CONVT seek_callback(void *sender, int64_t pos, int whence)
 		}
 	}
 
-	//D(kprintf("seek_callback(): res = %lld\n", res));
+	D(kprintf("seek_callback(): res = %lld\n", res));
 
 	if(res < 0)
 	{
@@ -1979,6 +2012,7 @@ static int CALL_CONVT open_callback(void *sender)
 
 static int CALL_CONVT close_callback(void *sender)
 {
+    (void)sender;
 	return 0;
 }
 
@@ -1986,15 +2020,11 @@ static int CALL_CONVT close_callback(void *sender)
 
 /* MediaPlayer class */
 
-PassOwnPtr<MediaPlayerPrivateInterface> MediaPlayerPrivate::create(MediaPlayer* player) 
-{ 
-    return adoptPtr(new MediaPlayerPrivate(player));
-}
-
 void MediaPlayerPrivate::registerMediaEngine(MediaEngineRegistrar registrar)
 {
     if (isAvailable())
-      registrar(create, getSupportedTypes, supportsType, 0, 0, 0);
+        registrar([](MediaPlayer* player) { return std::make_unique<MediaPlayerPrivate>(player); },
+            getSupportedTypes, supportsType, 0, 0, 0, 0);
 }
 
 struct FFMpegContext* MediaPlayerPrivate::privatectx()
@@ -2065,7 +2095,7 @@ bool MediaPlayerPrivate::commandInQueue()
 	int size = 0;
 
     m_lock.lock();
-	//D(kprintf("[MediaPlayer Thread] Commands in queue %d\n", m_commandQueue.size()));
+	D(kprintf("[MediaPlayer Thread] Commands in queue %d\n", m_commandQueue.size()));
 	size = m_commandQueue.size();
 	m_lock.unlock();
 
@@ -2126,7 +2156,7 @@ void MediaPlayerPrivate::didReceiveResponse(const ResourceResponse& response)
 			long start = 0, end = 0, totalsize = 0;
 			String range;
 			
-			range = response.httpHeaderField("Content-Range");
+			range = response.httpHeaderField(String("Content-Range"));
 			stccpy(rangevalue, range.latin1().data(), sizeof(rangevalue));
 
 			D(kprintf("[MediaPlayer] DidReceiveResponse: range: <%s>\n", rangevalue));
@@ -2188,8 +2218,9 @@ void MediaPlayerPrivate::didFailLoading(const ResourceError& error)
 	updateStates(MediaPlayer::NetworkError, m_readyState);
 }
 
-void MediaPlayerPrivate::didReceiveData(const char* data, int length, int lengthReceived)
+void MediaPlayerPrivate::didReceiveData(const char* data, unsigned length, int lengthReceived)
 {
+    (void)lengthReceived;
 	m_ctx->buffer_mutex->lock();
 
 #if DUMPINFO
@@ -2295,7 +2326,7 @@ bool MediaPlayerPrivate::fetchData(unsigned long long startOffset)
 
 		if(startOffset > 0)
 		{
-			request.setHTTPHeaderField("Range", String::format("bytes=%llu-", startOffset));
+			request.setHTTPHeaderField(HTTPHeaderName::Range, String::format("bytes=%llu-", startOffset));
 		}
 
 		//request.setHTTPHeaderField("icy-metadata", "1"); // Radio mode
@@ -2351,7 +2382,7 @@ bool MediaPlayerPrivate::demux(bool &eof, bool &gotVideo, bool &videoFull, bool 
 	videoFull = false;
 	audioFull = false;
 
-	//D(kprintf("[MediaPlayer Thread] Demuxing\n"));
+	D(kprintf("[MediaPlayer Thread] Demuxing\n"));
 
 	m_ctx->video_mutex->lock();
 	if(m_ctx->video_queue_size > VIDEO_MAX_SIZE)
@@ -2381,7 +2412,7 @@ bool MediaPlayerPrivate::demux(bool &eof, bool &gotVideo, bool &videoFull, bool 
 			m_ctx->video_mutex->lock();
 			m_ctx->video_queue->append(ACPackage(pckt));
 			m_ctx->video_queue_size += pckt->size;
-			//D(kprintf("[MediaPlayer Thread] Appending video packet [%d/%d] (%d packets)\n", m_ctx->video_queue_size, VIDEO_MAX_SIZE, m_ctx->video_queue->size()));
+			D(kprintf("[MediaPlayer Thread] Appending video packet [%d/%d] (%d packets)\n", m_ctx->video_queue_size, VIDEO_MAX_SIZE, m_ctx->video_queue->size()));
 			m_ctx->video_condition->signal();
 			gotVideo = true;
 			demuxedFrame = true;
@@ -2392,7 +2423,7 @@ bool MediaPlayerPrivate::demux(bool &eof, bool &gotVideo, bool &videoFull, bool 
 			m_ctx->audio_mutex->lock();
 			m_ctx->audio_queue->append(ACPackage(pckt));
 			m_ctx->audio_queue_size += pckt->size;
-			//D(kprintf("[MediaPlayer Thread] Appending audio packet [%d/%d] (%d packets)\n", m_ctx->audio_queue_size, AUDIO_MAX_SIZE, m_ctx->audio_queue->size()));
+			D(kprintf("[MediaPlayer Thread] Appending audio packet [%d/%d] (%d packets)\n", m_ctx->audio_queue_size, AUDIO_MAX_SIZE, m_ctx->audio_queue->size()));
 			m_ctx->audio_condition->signal();
 			gotAudio = true;
 			demuxedFrame = true;
@@ -2469,11 +2500,11 @@ void MediaPlayerPrivate::videoDecoder()
 
 		if(gotPacket)
 		{
-			//D(kprintf("[Video Thread] Found packet in queue (%d packets)\n", m_ctx->video_queue->size()));
+			D(kprintf("[Video Thread] Found packet in queue (%d packets)\n", m_ctx->video_queue->size()));
 		}
 		else
 		{
-			//D(kprintf("[Video Thread] Wait for packet\n"));
+			D(kprintf("[Video Thread] Wait for packet\n"));
 
 			m_ctx->video_condition->wait(*m_ctx->video_mutex);
 
@@ -2484,7 +2515,7 @@ void MediaPlayerPrivate::videoDecoder()
 				m_ctx->video_queue_size -= pckt->size;
 			}
 
-			//D(kprintf("[Video Thread] Received new packet\n"));
+			D(kprintf("[Video Thread] Received new packet\n"));
 		}
 
 		m_ctx->video_mutex->unlock();
@@ -2502,7 +2533,7 @@ void MediaPlayerPrivate::videoDecoder()
             double decodeStart = WTF::currentTime();
 			bool decoded = false;
 			
-			//D(kprintf("[Video Thread] Decoding packet\n"));
+			D(kprintf("[Video Thread] Decoding packet\n"));
 			decoded = ac_decode_package(pckt, m_ctx->video);
 
 			if(decoded)
@@ -2520,7 +2551,7 @@ void MediaPlayerPrivate::videoDecoder()
 					{
 						double avdelta = m_ctx->video->timecode - m_ctx->audio_timecode;
 
-						//D(kprintf("[Video Thread] V-A Delta: %f\n", avdelta));
+						D(kprintf("[Video Thread] V-A Delta: %f\n", avdelta));
 
 						if(avdelta < 0.1 || avdelta > -0.1)
 						{
@@ -2536,7 +2567,7 @@ void MediaPlayerPrivate::videoDecoder()
 
 				m_ctx->video_last_timecode = m_ctx->video->timecode;
 
-				//D(kprintf("[Video Thread] [%f] Timecode: %f. Decoding took %f. Waiting for frame schedule %f\n", WTF::currentTime(), m_ctx->video->timecode, decodeTime, delay));
+				D(kprintf("[Video Thread] [%f] Timecode: %f. Decoding took %f. Waiting for frame schedule %f\n", WTF::currentTime(), m_ctx->video->timecode, decodeTime, delay));
 
 				// Painting must be done in main thread context
 				long long jobid = WTF::callOnMainThreadFab(playerPaint, m_ctx);
@@ -2615,11 +2646,11 @@ void MediaPlayerPrivate::audioDecoder()
 
 		if(gotPacket)
 		{
-			//D(kprintf("[Audio Thread] Found packet in queue (%d packets)\n", m_ctx->audio_queue->size()));
+			D(kprintf("[Audio Thread] Found packet in queue (%d packets)\n", m_ctx->audio_queue->size()));
 		}
 		else
 		{
-			//D(kprintf("[Audio Thread] Wait for packet\n"));
+			D(kprintf("[Audio Thread] Wait for packet\n"));
 
 			m_ctx->audio_condition->wait(*m_ctx->audio_mutex);
 
@@ -2630,7 +2661,7 @@ void MediaPlayerPrivate::audioDecoder()
 				m_ctx->audio_queue_size -= pckt->size;
 			}
 
-			//D(kprintf("[Audio Thread] Received new packet\n"));
+			D(kprintf("[Audio Thread] Received new packet\n"));
 		}
 
 		m_ctx->audio_mutex->unlock();
@@ -2679,7 +2710,7 @@ void MediaPlayerPrivate::audioDecoder()
 
 					if(needMoreData)
 					{
-						//D(kprintf("[Audio Thread] Need more data, don't wait\n"));
+						D(kprintf("[Audio Thread] Need more data, don't wait\n"));
 						delay = 0;
 					}
 
@@ -2687,7 +2718,7 @@ void MediaPlayerPrivate::audioDecoder()
 
 					if(stream->written_len >= stream->buffer_len)
 					{
-						//D(kprintf("[Audio Thread] Buffer full, skip and wait a bit\n")); // XXX: Don't remove packet from queue in that case (move above)?
+						D(kprintf("[Audio Thread] Buffer full, skip and wait a bit\n")); // XXX: Don't remove packet from queue in that case (move above)?
 						delay *= 4;
 					}
 					else
@@ -2696,7 +2727,7 @@ void MediaPlayerPrivate::audioDecoder()
 
 						if(stream->written_len + 2 * stream->sample_len >= stream->buffer_len)
 						{
-							//D(kprintf("[Audio Thread] Buffer almost full, increase delay\n"));
+							D(kprintf("[Audio Thread] Buffer almost full, increase delay\n"));
 							delay *= 2;
 						}
 
@@ -2716,7 +2747,7 @@ void MediaPlayerPrivate::audioDecoder()
 							data_to_put = m_ctx->audio->buffer_size;
 						}
 
-						//D(kprintf("[Audio Thread] [%f] Writing %ld to offset %ld\n", WTF::currentTime(), data_to_put, stream->buffer_put));
+						D(kprintf("[Audio Thread] [%f] Writing %ld to offset %ld\n", WTF::currentTime(), data_to_put, stream->buffer_put));
 
 						// XXX: Handle conversions
 						memcpy(stream->buffer + stream->buffer_put, m_ctx->audio->pBuffer, data_to_put);
@@ -2732,7 +2763,7 @@ void MediaPlayerPrivate::audioDecoder()
 							stream->written_len += data_to_put_leftover;
 						}
 							
-						//D(kprintf("[Audio Thread] buffer_put %ld buffer_get %ld written_len %d\n", stream->buffer_put, stream->buffer_get, stream->written_len));
+						D(kprintf("[Audio Thread] buffer_put %ld buffer_get %ld written_len %d\n", stream->buffer_put, stream->buffer_get, stream->written_len));
 					}
 
 					ReleaseSemaphore(&stream->sembuffer);
@@ -2740,7 +2771,7 @@ void MediaPlayerPrivate::audioDecoder()
 
 				m_ctx->audio_output_mutex->unlock();
 
-				//D(kprintf("[Audio Thread] [%f] Stream TimeCode %f Real TimeCode %f. Waiting for frame schedule %f\n", WTF::currentTime(), m_ctx->audio->timecode, m_ctx->audio_timecode, delay));
+				D(kprintf("[Audio Thread] [%f] Stream TimeCode %f Real TimeCode %f. Waiting for frame schedule %f\n", WTF::currentTime(), m_ctx->audio->timecode, m_ctx->audio_timecode, delay));
 
 				if(delay > 0)
 				{
@@ -2819,7 +2850,7 @@ void MediaPlayerPrivate::audioOutput()
 					continue;
 				}
 
-				//D(kprintf("[Audio Output Thread] [%f] Reading %ld at offset %ld\n", WTF::currentTime(), stream->sample_len, stream->buffer_get));
+				D(kprintf("[Audio Output Thread] [%f] Reading %ld at offset %ld\n", WTF::currentTime(), stream->sample_len, stream->buffer_get));
 				memcpy(dst, stream->buffer + stream->buffer_get, stream->sample_len);
 
 				stream->written_len -= stream->sample_len;
@@ -2827,7 +2858,7 @@ void MediaPlayerPrivate::audioOutput()
 				stream->buffer_get  += stream->sample_len;
 				stream->buffer_get  %= stream->buffer_len;
 
-				//D(kprintf("[Audio Output Thread] [%f] buffer_put %ld buffer_get %ld written_len %d\n", WTF::currentTime(), stream->buffer_put, stream->buffer_get, stream->written_len));
+				D(kprintf("[Audio Output Thread] [%f] buffer_put %ld buffer_get %ld written_len %d\n", WTF::currentTime(), stream->buffer_put, stream->buffer_get, stream->written_len));
 
 				ReleaseSemaphore(&stream->sembuffer);
 			}
@@ -3109,11 +3140,11 @@ void MediaPlayerPrivate::playerLoop()
 						bool decodedVideo, decodedAudio, videoFull, audioFull;
 
 						demux(readall, decodedVideo, videoFull, decodedAudio, audioFull);
-						//D(kprintf("[MediaPlayer Thread] [V: %d A: %d EOF: %d VideoFull: %d AudioFull: %d]\n", decodedVideo, decodedAudio, eof, videoFull, audioFull));
+						D(kprintf("[MediaPlayer Thread] [V: %d A: %d EOF: %d VideoFull: %d AudioFull: %d]\n", decodedVideo, decodedAudio, eof, videoFull, audioFull));
 
 						if(videoFull || audioFull)
 						{
-							//D(kprintf("[MediaPlayer Thread] No more space in decoding queue, waiting\n"));
+							D(kprintf("[MediaPlayer Thread] No more space in decoding queue, waiting\n"));
 							usleep(DEMUXER_WAIT_TIME);
 						}
 					}
@@ -3240,9 +3271,13 @@ void MediaPlayerPrivate::playerPaint(void *c)
 		{
 			// Accelerated mode (overlay)
 
+#if 0 // FIXME
 			// Only render as overlay for the matching overlay element. Relying on this cast may break in further webkit, beware.
-			MediaPlayerClient *client = ctx->mediaplayer->player()->mediaPlayerClient();
+			MediaPlayerClient& client = ctx->mediaplayer->player()->client();
 			if(client && client == (HTMLMediaElement *) getv(browser, MA_OWBBrowser_VideoElement))
+#else
+			if (0)
+#endif
 			{
 				BENCHMARK_INIT;
 				BENCHMARK_RESET;
@@ -3443,7 +3478,7 @@ void MediaPlayerPrivate::pause()
 
 float MediaPlayerPrivate::duration() const
 {
-	//D(kprintf("[MediaPlayer] Duration %f\n", (float) m_ctx->duration));
+	D(kprintf("[MediaPlayer] Duration %f\n", (float) m_ctx->duration));
 	return (float) m_ctx->duration;
 }
 
@@ -3451,7 +3486,7 @@ float MediaPlayerPrivate::currentTime() const
 {
 	float ret = 0.0;
 
-	//D(kprintf("[MediaPlayer] timecodes [A: %f V: %f]\n", m_ctx->audio ? m_ctx->audio->timecode : 0.0, m_ctx->video ? m_ctx->video->timecode : 0.0 ));
+	D(kprintf("[MediaPlayer] timecodes [A: %f V: %f]\n", m_ctx->audio ? m_ctx->audio->timecode : 0.0, m_ctx->video ? m_ctx->video->timecode : 0.0 ));
 
 	if(m_isEndReached)
 	{
@@ -3466,7 +3501,7 @@ float MediaPlayerPrivate::currentTime() const
 		ret = min((float) m_ctx->video->timecode, duration() > 0 ? duration() : numeric_limits<float>::infinity());
 	}
 
-	//D(kprintf("[MediaPlayer] currentTime %f / %f\n", ret, duration()));
+	D(kprintf("[MediaPlayer] currentTime %f / %f\n", ret, duration()));
 
 	return ret;
 }
@@ -3492,28 +3527,14 @@ void MediaPlayerPrivate::seek(float time)
 	}
 }
 
-void MediaPlayerPrivate::setEndTime(float time)
-{
-}
-
-void MediaPlayerPrivate::startEndPointTimerIfNeeded()
-{
-    notImplemented();
-}
-
 void MediaPlayerPrivate::cancelSeek()
-{
-    notImplemented();
-}
-
-void MediaPlayerPrivate::endPointTimerFired(Timer<MediaPlayerPrivate>*)
 {
     notImplemented();
 }
 
 bool MediaPlayerPrivate::paused() const
 {
-	//D(kprintf("[MediaPlayer] Is Paused ? %d\n", !m_startedPlaying));
+	D(kprintf("[MediaPlayer] Is Paused ? %d\n", !m_startedPlaying));
 	return m_startedPlaying == false;
 }
 
@@ -3523,19 +3544,19 @@ bool MediaPlayerPrivate::seeking() const
 }
 
 // Returns the size of the video
-IntSize MediaPlayerPrivate::naturalSize() const
+FloatSize MediaPlayerPrivate::naturalSize() const
 {
     if (!hasVideo())
-        return IntSize();
+        return FloatSize();
 
 	int width = m_ctx->width, height = m_ctx->height;
 	/*
 	width  *= m_ctx->aspect;
 	height /= m_ctx->aspect;
 	*/
-	//D(kprintf("[MediaPlayer] Natural size (%dx%d)\n", width, height));
+	D(kprintf("[MediaPlayer] Natural size (%dx%d)\n", width, height));
 
-	return IntSize(width, height);
+	return FloatSize(width, height);
 }
 
 bool MediaPlayerPrivate::hasVideo() const
@@ -3564,6 +3585,7 @@ void MediaPlayerPrivate::volumeChanged()
 
 void MediaPlayerPrivate::setRate(float rate)
 {
+    (void)rate;
 	D(kprintf("[MediaPlayer] Set rate to %f\n", rate));
 }
 
@@ -3585,16 +3607,16 @@ MediaPlayer::ReadyState MediaPlayerPrivate::readyState() const
     return m_readyState;
 }
 
-PassRefPtr<TimeRanges> MediaPlayerPrivate::buffered() const
+std::unique_ptr<PlatformTimeRanges> MediaPlayerPrivate::buffered() const
 {
 	// XXX: We could really use timeranges more precisely here
 
-	//D(kprintf("[MediaPlayer] buffered\n"));
-    RefPtr<TimeRanges> timeRanges = TimeRanges::create();
+	D(kprintf("[MediaPlayer] buffered\n"));
+    auto timeRanges = make_unique<PlatformTimeRanges>();
     float loaded = maxTimeLoaded();
     if (!m_errorOccured && !m_isStreaming && loaded > 0)
-        timeRanges->add(0, loaded);
-    return timeRanges.release();
+        timeRanges->add(MediaTime::zeroTime(), MediaTime::createWithDouble(loaded));
+    return timeRanges;
 }
 
 float MediaPlayerPrivate::maxTimeSeekable() const
@@ -3604,7 +3626,7 @@ float MediaPlayerPrivate::maxTimeSeekable() const
         return 0.0;
 	}
 
-	//D(kprintf("[MediaPlayer] maxTimeSeekable\n"));
+	D(kprintf("[MediaPlayer] maxTimeSeekable\n"));
 
 	if(m_isStreaming)
 	{
@@ -3638,7 +3660,7 @@ float MediaPlayerPrivate::maxTimeLoaded() const
 		res = duration();
 	}
 
-	//D(kprintf("[MediaPlayer] maxTimeLoaded %f\n", res));
+	D(kprintf("[MediaPlayer] maxTimeLoaded %f\n", res));
 
 	return res;
 }
@@ -3654,20 +3676,20 @@ unsigned MediaPlayerPrivate::bytesLoaded() const
 
 	res = (long) m_ctx->media_buffer.ranges.bytesInRanges();
 
-	//D(kprintf("[MediaPlayer] bytesLoaded %ld / %lld\n", res, m_ctx->totalsize));
+	D(kprintf("[MediaPlayer] bytesLoaded %ld / %lld\n", res, m_ctx->totalsize));
 	return res;
 }
 
 bool MediaPlayerPrivate::totalBytesKnown() const
 {
-	//D(kprintf("[MediaPlayer] totalBytesKnown %d", totalBytes() > 0));
+	D(kprintf("[MediaPlayer] totalBytesKnown %d", totalBytes() > 0));
     return totalBytes() > 0;
 }
 
-unsigned MediaPlayerPrivate::totalBytes() const
+unsigned long long MediaPlayerPrivate::totalBytes() const
 {
-	//D(kprintf("[MediaPlayer] totalBytes %ld\n", (long) m_ctx->totalsize));
-	return (long) m_ctx->totalsize;
+	D(kprintf("[MediaPlayer] totalBytes %ld\n", (long) m_ctx->totalsize));
+	return (unsigned long long)  m_ctx->totalsize;
 }
 
 void MediaPlayerPrivate::cancelLoad()
@@ -3807,7 +3829,7 @@ void MediaPlayerPrivate::repaint()
 	}
 }
 
-void MediaPlayerPrivate::paint(GraphicsContext* context, const IntRect& rect)
+void MediaPlayerPrivate::paint(GraphicsContext* context, const FloatRect& rect)
 {
     if (context->paintingDisabled())
         return;
@@ -3884,7 +3906,7 @@ void MediaPlayerPrivate::paint(GraphicsContext* context, const IntRect& rect)
 		displayWidth *= doublePixelAspectRatioNumerator / doublePixelAspectRatioDenominator;
 		displayHeight *= doublePixelAspectRatioDenominator / doublePixelAspectRatioNumerator;
 
-		//D(kprintf("[MediaPlayer] Rect (%dx%d) Video (%fx%f)\n", rect.width(), rect.height(), displayWidth, displayHeight));
+		D(kprintf("[MediaPlayer] Rect (%dx%d) Video (%fx%f)\n", rect.width(), rect.height(), displayWidth, displayHeight));
 
 		double a = rect.width () / displayWidth;
 		double b = rect.height () / displayHeight;
@@ -3901,13 +3923,13 @@ void MediaPlayerPrivate::paint(GraphicsContext* context, const IntRect& rect)
 
 		if(scaledImage)
 		{
-			//D(kprintf("[MediaPlayer] Using scaled image\n"));
+			D(kprintf("[MediaPlayer] Using scaled image\n"));
 			targetImage = scaledImage;
 			stride = (int) displayWidth * 4;
 		}
 		else
 		{
-			//D(kprintf("[MediaPlayer] Using original image (stride %d)\n", frame->linesize[0]));
+			D(kprintf("[MediaPlayer] Using original image (stride %d)\n", frame->linesize[0]));
 			targetImage = &srcImage;
 			stride = frame->linesize[0];
 		}
@@ -3968,7 +3990,7 @@ void MediaPlayerPrivate::paint(GraphicsContext* context, const IntRect& rect)
 		BENCHMARK_EXPRESSION(kprintf("[MediaPlayer] Idle Cairo blit %f ms\n", diffBenchmark*1000));
 	}
 
-	//D(kprintf("[MediaPlayer] Paint %f ms\n", (WTF::currentTime() - start)*1000));
+	D(kprintf("[MediaPlayer] Paint %f ms\n", (WTF::currentTime() - startBenchmark)*1000));
 }
 
 void MediaPlayerPrivate::getSupportedTypes(HashSet<String>& types)
