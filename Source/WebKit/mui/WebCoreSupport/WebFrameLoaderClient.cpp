@@ -443,7 +443,7 @@ void WebFrameLoaderClient::setMainDocumentError(DocumentLoader*, const ResourceE
     m_hasSentResponseToPlugin = false;
 }
 
-void WebFrameLoaderClient::postProgressStartedNotification()
+void WebFrameLoaderClient::progressStarted(WebCore::Frame&)
 {
 #ifdef BENCH_LOAD_TIME
     gettimeofday(&m_timerStart, NULL);
@@ -456,14 +456,14 @@ void WebFrameLoaderClient::postProgressStartedNotification()
         webNotificationDelegate->startLoadNotification(m_webFrame);
 }
 
-void WebFrameLoaderClient::postProgressEstimateChangedNotification()
+void WebFrameLoaderClient::progressEstimateChanged(WebCore::Frame&)
 {
     SharedPtr<WebNotificationDelegate> webNotificationDelegate = m_webFrame->webView()->webNotificationDelegate();
     if (webNotificationDelegate)
         webNotificationDelegate->progressNotification(m_webFrame);
 }
 
-void WebFrameLoaderClient::postProgressFinishedNotification()
+void WebFrameLoaderClient::progressFinished(WebCore::Frame&)
 {
     SharedPtr<WebNotificationDelegate> webNotificationDelegate = m_webFrame->webView()->webNotificationDelegate();
     if (webNotificationDelegate)

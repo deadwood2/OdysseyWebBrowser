@@ -74,7 +74,6 @@
 #include "WebMutableURLRequest.h"
 #include "WebNotificationDelegate.h"
 #include "WebPreferences.h"
-#include "WebProgressTrackerClient.h"
 #include "WebResourceLoadDelegate.h"
 #include "WebScriptWorld.h"
 #include "WebStorageNamespaceProvider.h"
@@ -395,7 +394,7 @@ WebView::WebView()
     configuration.loaderClientForMainFrame = new WebFrameLoaderClient;
     configuration.databaseProvider = &WebDatabaseProvider::singleton();
     configuration.storageNamespaceProvider = WebStorageNamespaceProvider::create(m_preferences->localStorageDatabasePath());
-    configuration.progressTrackerClient = new WebProgressTrackerClient;
+    configuration.progressTrackerClient = static_cast<WebFrameLoaderClient *>(configuration.loaderClientForMainFrame);
     configuration.visitedLinkStore = &WebVisitedLinkStore::singleton();
 
     m_page = new Page(configuration);
