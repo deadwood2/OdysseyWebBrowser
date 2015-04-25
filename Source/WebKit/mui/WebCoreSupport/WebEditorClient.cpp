@@ -561,6 +561,7 @@ static String undoNameForEditAction(EditAction editAction)
         case EditActionItalics: return "Italics";
         case EditActionDictation: return "Dictation";
         case EditActionDelete: return "Delete";
+        case EditActionInsert: return "Insert";
     }
     return String();
 }
@@ -976,4 +977,8 @@ void WebEditorClient::willSetInputMethodState()
 void WebEditorClient::setInputMethodState(bool enabled)
 {
     m_webView->setInputMethodState(enabled);
+}
+
+void WebEditorClient::didChangeSelectionAndUpdateLayout()
+{
 }

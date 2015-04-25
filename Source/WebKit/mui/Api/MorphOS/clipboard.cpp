@@ -28,7 +28,6 @@
 
 #include "config.h"
 #include "Pasteboard.h"
-#include <wtf/PassOwnPtr.h>
 
 #include "clipboard.h"
 #include "utils.h"

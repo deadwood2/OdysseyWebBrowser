@@ -149,7 +149,7 @@ bool WebHistory::loadHistoryFromDatabase(int sortCriterium, bool desc, std::vect
 		return false;
     }
 
-	while(select.step() == SQLResultRow)
+	while(select.step() == SQLITE_ROW)
 	{
         // There is a row to fetch
 		WebHistoryItem *item = WebHistoryItem::createInstance();

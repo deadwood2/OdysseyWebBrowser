@@ -31,7 +31,6 @@
 #endif
 
 #include "config.h"
-#include <wtf/OwnPtr.h>
 #include "ResourceResponse.h"
 #include "WebDownload.h"
 #include "WebDownloadPrivate.h"

@@ -1360,7 +1360,7 @@ bool WebViewPrivate::onMouseButtonUp(BalEventButton event)
 						break;
 				}
 
-				if (Page* newPage = oldPage->chrome().createWindow(frame,  FrameLoadRequest(frame->document()->securityOrigin(), ResourceRequest(urlToLoad, frame->loader().outgoingReferrer())), features, NavigationAction()))
+				if (Page* newPage = oldPage->chrome().createWindow(frame,  FrameLoadRequest(frame, ResourceRequest(urlToLoad, frame->loader().outgoingReferrer())), features, NavigationAction()))
 		            newPage->chrome().show();
 		    }
 

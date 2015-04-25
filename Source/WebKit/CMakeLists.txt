@@ -14,6 +14,9 @@ set(WebKit_INCLUDE_DIRECTORIES
     "${WTF_DIR}"
 )
 
+set(WebKit_INCLUDE_DIRECTORIES
+)
+
 set(WebKit_LIBRARIES
     JavaScriptCore
     WTF

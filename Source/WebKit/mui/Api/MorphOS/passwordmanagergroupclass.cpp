@@ -128,7 +128,7 @@ DEFTMETHOD(PasswordManagerGroup_Load)
 	set(data->lv_credentials, MUIA_List_Quiet, TRUE);
 	data->loading = TRUE;
 
-	while(select.step() == SQLResultRow)
+	while(select.step() == SQLITE_ROW)
 	{
 		String host = select.getColumnText(0);
 		String realm = select.getColumnText(1);

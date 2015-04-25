@@ -71,7 +71,7 @@ void ColorChooserController::didChooseColor(const Color& color)
 void ColorChooserController::didEndChooser()
 {
     ASSERT(m_client);
-	m_chooser.clear();
+	m_chooser.reset();
     m_client->didEndChooser();
 }
 
@@ -84,7 +84,7 @@ IntRect ColorChooserController::elementRectRelativeToRootView() const
 void ColorChooserController::openColorChooser()
 {
     ASSERT(!m_chooser);
-	m_chooser = adoptPtr(new ColorChooser);
+	m_chooser = std::make_unique<ColorChooser>();
 
 	BalWidget *widget = m_chromeClient->webView()->viewWindow();
 

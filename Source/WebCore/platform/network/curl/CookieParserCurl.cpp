@@ -79,7 +79,7 @@ Vector<ParsedCookie*> CookieParser::parse(const String& cookies)
 {
     unsigned cookieStart, cookieEnd = 0;
     double curTime = currentTime();
-    Vector<ParsedCookie*, 4> parsedCookies;
+    Vector<ParsedCookie*> parsedCookies;
 
     unsigned cookiesLength = cookies.length();
     if (!cookiesLength) // Code below doesn't handle this case
