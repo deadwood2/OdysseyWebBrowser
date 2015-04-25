@@ -97,7 +97,7 @@
 #if ENABLE(VIDEO)
 extern "C"
 {
-	#include "../../../../BAL/Media/WebCore/MorphOS/acinerella.h"
+	#include "acinerella.h"
 	extern struct Library *CGXVideoBase;
 }
 #endif
@@ -114,7 +114,7 @@ extern "C"
 #include <devices/rawkeycodes.h>
 #include <devices/inputevent.h>
 #include <proto/cybergraphics.h>
-#if ENABLE_VIDEO
+#if ENABLE(VIDEO) && !OS(AROS)
 #include <proto/cgxvideo.h>
 #endif
 #include <proto/dos.h>
@@ -1461,7 +1461,7 @@ DEFMMETHOD(Show)
 			data->view->webView->onResize(re);
 	    }
 
-#if ENABLE(VIDEO)
+#if ENABLE(VIDEO) && !OS(AROS)
 		// Video: recompute vlayer offset whenever window size changes
 		if (data->video_element)
 		{
@@ -1469,7 +1469,7 @@ DEFMMETHOD(Show)
 
 			if(window && data->video_handle)
 			{
-				IntSize size = data->video_element->player()->naturalSize();
+				FloatSize size = data->video_element->player()->naturalSize();
 				//kprintf("naturalsize %dx%d\n", size.width(), size.height());
 
 				if ( ( (float) size.width() / (float) size.height()) < ( (float) _mwidth(obj) / (float) _mheight(obj)) )
@@ -3614,7 +3614,7 @@ DEFMMETHOD(DeleteShortHelp)
 
 #if ENABLE(VIDEO)
 
-static inline void AndRectRect(struct Rectangle *rect, const struct Rectangle *limit)
+static inline void _AndRectRect(struct Rectangle *rect, const struct Rectangle *limit)
 {
 	rect->MinX = max(rect->MinX, limit->MinX);
 	rect->MinY = max(rect->MinY, limit->MinY);
@@ -3642,7 +3642,7 @@ DEFMMETHOD(Backfill)
 	k.MaxX = right - data->video_x_offset;
 	k.MaxY = bottom - data->video_y_offset;
 
-	AndRectRect(&k, &bounds);
+	_AndRectRect(&k, &bounds);
 
 	if (data->video_x_offset || data->video_y_offset)
 	{
@@ -3675,8 +3675,8 @@ DEFMMETHOD(Backfill)
 			b2.MaxY = bottom;
 		}
 
-		AndRectRect(&b1, &bounds);
-		AndRectRect(&b2, &bounds);
+		_AndRectRect(&b1, &bounds);
+		_AndRectRect(&b2, &bounds);
 	}
 
 	/* draw rects, if visible */
@@ -3748,13 +3748,14 @@ DEFSMETHOD(OWBBrowser_VideoEnterFullPage)
 
 	if(element)
 	{
+#if !OS(AROS)
 		if(CGXVideoBase)
 		{
 			struct Window *window = (struct Window *) getv(_win(obj), MUIA_Window);
 
 			if(window)
 			{
-				IntSize size = element->player()->naturalSize();
+				FloatSize size = element->player()->naturalSize();
 				//kprintf("naturalsize %dx%d\n", size.width(), size.height());
 
 				ULONG vlayer_width  = size.width() & -8;
@@ -3853,6 +3854,7 @@ DEFSMETHOD(OWBBrowser_VideoEnterFullPage)
 				}
 			}	 
 		}
+#endif
 	}
 	else
 	{
@@ -3876,6 +3878,7 @@ DEFSMETHOD(OWBBrowser_VideoEnterFullPage)
 		data->video_element    = NULL;
 		data->video_fullscreen = FALSE;
 
+#if !OS(AROS)
 		// Destroy vlayer
 		if (CGXVideoBase)
 		{
@@ -3886,6 +3889,7 @@ DEFSMETHOD(OWBBrowser_VideoEnterFullPage)
 				data->video_handle = NULL;
 			}
 		}
+#endif
 
 		// Redraw the page
 		data->view->webView->addToDirtyRegion(IntRect(0, 0, data->width, data->height));
@@ -3900,6 +3904,7 @@ DEFSMETHOD(OWBBrowser_VideoEnterFullPage)
 
 DEFSMETHOD(OWBBrowser_VideoBlit)
 {
+#if !OS(AROS)
 	GETDATA;
 
 	//kprintf("blitoverlay %d %d %d\n", msg->width, msg->height, msg->linesize);
@@ -4006,6 +4011,7 @@ DEFSMETHOD(OWBBrowser_VideoBlit)
 		UnlockVLayer(data->video_handle);
         SwapVLayerBuffer(data->video_handle);
 	}
+#endif
 
 	return 0;
 }

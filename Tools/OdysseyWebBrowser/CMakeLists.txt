@@ -30,11 +30,16 @@ set(OdysseyWebBrowser_LIBRARIES
     -licudata
     -lsqlite3
     -lxslt
-    -lbz2
-    -lz
     -ldebug
     -lopenurl
     -lrexxsyslib
+    -lavcodec
+    -lz
+    -lavformat
+    -lbz2
+    -lavutil
+    -lswresample
+    -lswscale
 )
 
 include_directories(${OdysseyWebBrowser_INCLUDE_DIRECTORIES})

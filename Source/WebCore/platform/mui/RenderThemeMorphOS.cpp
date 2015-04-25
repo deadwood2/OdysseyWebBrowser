@@ -178,7 +178,7 @@ static float determineFullScreenMultiplier(Element* element)
 {
     float fullScreenMultiplier = 1.0;
 #if 0 //ENABLE(FULLSCREEN_API) && ENABLE(VIDEO)
-    if (element && element->document()->webkitIsFullScreen() && element->document()->webkitCurrentFullScreenElement() == toParentMediaElement(element)) {
+    if (element && element->document()->webkitIsFullScreen() && element->document()->webkitCurrentFullScreenElement() == parentMediaElement(element)) {
         if (element->document()->page()->deviceScaleFactor() < scaleFactorThreshold)
             fullScreenMultiplier = fullScreenEnlargementFactor;
 
@@ -1014,7 +1014,7 @@ void RenderThemeBal::adjustMediaControlStyle(StyleResolver*, RenderStyle* style,
 {
 #if ENABLE(VIDEO)
 	float fullScreenMultiplier = determineFullScreenMultiplier(element);
-    HTMLMediaElement* mediaElement = toParentMediaElement(element);
+    HTMLMediaElement* mediaElement = parentMediaElement(element);
     if (!mediaElement)
         return;
 
@@ -1110,7 +1110,7 @@ static bool paintMediaButton(GraphicsContext* context, const IntRect& rect, Imag
 bool RenderThemeBal::paintMediaPlayButton(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
 #if ENABLE(VIDEO)
-    HTMLMediaElement* mediaElement = toParentMediaElement(object);
+    HTMLMediaElement* mediaElement = parentMediaElement(object);
 
     if (!mediaElement)
         return false;
@@ -1139,7 +1139,7 @@ bool RenderThemeBal::paintMediaPlayButton(const RenderObject& object, const Pain
 bool RenderThemeBal::paintMediaMuteButton(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
 #if ENABLE(VIDEO)
-    HTMLMediaElement* mediaElement = toParentMediaElement(object);
+    HTMLMediaElement* mediaElement = parentMediaElement(object);
 
     if (!mediaElement)
         return false;
@@ -1168,16 +1168,13 @@ bool RenderThemeBal::paintMediaMuteButton(const RenderObject& object, const Pain
 bool RenderThemeBal::paintMediaFullscreenButton(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
 #if ENABLE(VIDEO)
-    HTMLMediaElement* mediaElement = toParentMediaElement(object);
+    HTMLMediaElement* mediaElement = parentMediaElement(object);
     if (!mediaElement)
         return false;
 
 	static Image* mediaEnterFullscreen = Image::loadPlatformResource("MediaTheme/FullScreen").leakRef();
-	static Image* mediaExitFullscreen = Image::loadPlatformResource("MediaTheme/FullScreen").leakRef();
 	static Image* mediaEnterFullscreenHovered = Image::loadPlatformResource("MediaTheme/FullScreenHovered").leakRef();
-	static Image* mediaExitFullscreenHovered = Image::loadPlatformResource("MediaTheme/FullScreenHovered").leakRef();
 	static Image* mediaEnterFullscreenPressed = Image::loadPlatformResource("MediaTheme/FullScreenPressed").leakRef();
-	static Image* mediaExitFullscreenPressed = Image::loadPlatformResource("MediaTheme/FullScreenPressed").leakRef();
 
 	Image* buttonImage;
 	if (isPressed(object))
@@ -1187,6 +1184,8 @@ bool RenderThemeBal::paintMediaFullscreenButton(const RenderObject& object, cons
 	else
 		buttonImage = mediaEnterFullscreen;
 #if 0//ENABLE(FULLSCREEN_API)
+    static Image* mediaExitFullscreen = Image::loadPlatformResource("MediaTheme/FullScreen").leakRef();
+
     if (mediaElement->document()->webkitIsFullScreen() && mediaElement->document()->webkitCurrentFullScreenElement() == mediaElement)
         buttonImage = mediaExitFullscreen;
 #endif
@@ -1203,7 +1202,7 @@ bool RenderThemeBal::paintMediaFullscreenButton(const RenderObject& object, cons
 bool RenderThemeBal::paintMediaSliderTrack(RenderObject* object, const PaintInfo& paintInfo, const IntRect& rect)
 {
 #if ENABLE(VIDEO)
-    HTMLMediaElement* mediaElement = toParentMediaElement(object);
+    HTMLMediaElement* mediaElement = parentMediaElement(object);
     if (!mediaElement)
         return false;
 
@@ -1284,12 +1283,6 @@ bool RenderThemeBal::paintMediaSliderThumb(RenderObject* object, const PaintInfo
 }
 */
 #if ENABLE(VIDEO)
-static bool hasSource(const HTMLMediaElement* mediaElement)
-{
-    return mediaElement->networkState() != HTMLMediaElement::NETWORK_EMPTY
-        && mediaElement->networkState() != HTMLMediaElement::NETWORK_NO_SOURCE;
-}
-
 typedef WTF::HashMap<const char*, Image*> MediaControlImageMap;
 static MediaControlImageMap* gMediaControlImageMap = 0;
 
@@ -1319,11 +1312,11 @@ static Image* getMediaSliderThumb()
 bool RenderThemeBal::paintMediaSliderTrack(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
 #if ENABLE(VIDEO)
-    HTMLMediaElement* mediaElement = toParentMediaElement(object);
+    HTMLMediaElement* mediaElement = parentMediaElement(object);
     if (!mediaElement)
         return false;
 
-    RenderStyle* style = object->style();
+    RenderStyle& style = object.style();
     GraphicsContext* context = paintInfo.context;
 
     // Draw the border of the time bar.
@@ -1332,16 +1325,16 @@ bool RenderThemeBal::paintMediaSliderTrack(const RenderObject& object, const Pai
     context->save();
     context->setShouldAntialias(true);
     context->setStrokeStyle(SolidStroke);
-    context->setStrokeColor(style->visitedDependentColor(CSSPropertyBorderLeftColor), ColorSpaceDeviceRGB);
-    context->setStrokeThickness(style->borderLeftWidth());
-    context->setFillColor(style->visitedDependentColor(CSSPropertyBackgroundColor), ColorSpaceDeviceRGB);
+    context->setStrokeColor(style.visitedDependentColor(CSSPropertyBorderLeftColor), ColorSpaceDeviceRGB);
+    context->setStrokeThickness(style.borderLeftWidth());
+    context->setFillColor(style.visitedDependentColor(CSSPropertyBackgroundColor), ColorSpaceDeviceRGB);
     context->drawRect(rect);
     context->restore();
 
     // Draw the buffered ranges.
     // FIXME: Draw multiple ranges if there are multiple buffered ranges.
     IntRect bufferedRect = rect;
-    bufferedRect.inflate(-style->borderLeftWidth());
+    bufferedRect.inflate(-style.borderLeftWidth());
 
     double bufferedWidth = 0.0;
     if (mediaElement->percentLoaded() > 0.0) {
@@ -1361,14 +1354,13 @@ bool RenderThemeBal::paintMediaSliderTrack(const RenderObject& object, const Pai
         IntPoint sliderTopRight = sliderTopLeft;
         sliderTopRight.move(0, bufferedRect.height());
 
-        RefPtr<Gradient> gradient = Gradient::create(sliderTopLeft, sliderTopRight);
-        Color startColor = object->style().visitedDependentColor(CSSPropertyColor);
-        gradient->addColorStop(0.0, startColor);
-        gradient->addColorStop(1.0, Color(startColor.red() / 2, startColor.green() / 2, startColor.blue() / 2, startColor.alpha()));
+        Color startColor = object.style().visitedDependentColor(CSSPropertyColor);
 
         context->save();
         context->setStrokeStyle(NoStroke);
-        context->setFillGradient(gradient);
+        context->setFillGradient(createLinearGradient(startColor.dark().rgb(),
+                Color(startColor.red() / 2, startColor.green() / 2, startColor.blue() / 2, startColor.alpha()).dark().rgb(),
+                sliderTopLeft, sliderTopRight));
         context->fillRect(bufferedRect);
         context->restore();
     }
