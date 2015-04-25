@@ -86,7 +86,7 @@ public:
 
     void didStart();
     virtual void didReceiveResponse(ResourceHandle*, const WebCore::ResourceResponse&);
-    virtual void didReceiveData(ResourceHandle*, const char*, int, int);
+    virtual void didReceiveData(ResourceHandle*, const char*, unsigned, int);
     virtual void didFinishLoading(ResourceHandle*, double);
     virtual void didFail(ResourceHandle*, const ResourceError&);
     virtual void wasBlocked(ResourceHandle*);
@@ -222,7 +222,7 @@ void DownloadClient::didReceiveResponse(ResourceHandle*, const WebCore::Resource
 	}
 }
 
-void DownloadClient::didReceiveData(ResourceHandle*, const char* data, int length, int lengthReceived)
+void DownloadClient::didReceiveData(ResourceHandle*, const char* data, unsigned length, int lengthReceived)
 {
     if (!m_download->downloadDelegate())
         return;

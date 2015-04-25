@@ -112,7 +112,7 @@ public:
 	{
 	}
 
-	virtual void didReceiveData(ResourceHandle*, const char* data, int length, int lengthReceived)
+	virtual void didReceiveData(ResourceHandle*, const char* data, unsigned length, int lengthReceived)
 	{
 #if !OS(AROS)
 		if(m_parser)
