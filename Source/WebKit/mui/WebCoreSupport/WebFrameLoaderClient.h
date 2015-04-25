@@ -30,6 +30,7 @@
 #define WebFrameLoaderClient_h
 
 #include <FrameLoaderClient.h>
+#include <ProgressTrackerClient.h>
 #include <wtf/Vector.h>
 
 #ifdef BENCH_LOAD_TIME
@@ -51,7 +52,7 @@ class WebFrame;
 class WebFramePolicyListener;
 class WebHistory;
 
-class WebFrameLoaderClient : public WebCore::FrameLoaderClient {
+class WebFrameLoaderClient : public WebCore::FrameLoaderClient, public WebCore::ProgressTrackerClient {
 public:
     WebFrameLoaderClient(WebFrame* = 0);
     virtual ~WebFrameLoaderClient();
@@ -121,13 +122,13 @@ public:
     virtual void revertToProvisionalState(WebCore::DocumentLoader*);
     virtual void setMainDocumentError(WebCore::DocumentLoader*, const WebCore::ResourceError&);
 
-    virtual void postProgressStartedNotification();
-    virtual void postProgressEstimateChangedNotification();
-    virtual void postProgressFinishedNotification();
-
     virtual void setMainFrameDocumentReady(bool);
 
-	virtual void startDownload(const WebCore::ResourceRequest&, const String& suggestedName = String());
+    virtual void startDownload(const WebCore::ResourceRequest&, const String& suggestedName = String());
+
+    virtual void progressStarted(WebCore::Frame&);
+    virtual void progressEstimateChanged(WebCore::Frame&);
+    virtual void progressFinished(WebCore::Frame&);
 
     virtual void willChangeTitle(WebCore::DocumentLoader*);
     virtual void didChangeTitle(WebCore::DocumentLoader*);
