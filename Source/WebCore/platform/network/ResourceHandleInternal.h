@@ -165,7 +165,6 @@ namespace WebCore {
         CURL* m_handle { nullptr };
         char* m_url { nullptr };
         struct curl_slist* m_customHeaders { nullptr };
-        bool m_shouldIncludeExpectHeader;
         ResourceResponse m_response;
         bool m_cancelled { false };
         unsigned short m_authFailureCount { 0 };
@@ -177,6 +176,7 @@ namespace WebCore {
         std::unique_ptr<MultipartHandle> m_multipartHandle;
         bool m_addedCacheValidationHeaders { false };
 
+        bool m_shouldIncludeExpectHeader;
         bool m_canResume;
         unsigned long long m_startOffset;
         String m_path;

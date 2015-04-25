@@ -192,6 +192,7 @@ public:
 
     virtual bool shouldRubberBandInDirection(WebCore::ScrollDirection) const { return true; } 
     virtual void numWheelEventHandlersChanged(unsigned) { }
+    virtual void wheelEventHandlersChanged(bool) { }
 
      WebView* webView() { return m_webView; }
 
@@ -203,6 +204,6 @@ private:
     WebView* m_webView;
     RefPtr<WebCore::Element> m_fullScreenElement;
 #if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
-    OwnPtr<WebDesktopNotificationsDelegate> m_notificationsDelegate;
+    std::unique_ptr<WebDesktopNotificationsDelegate> m_notificationsDelegate;
 #endif
 };

@@ -108,7 +108,7 @@ TopSitesManager::TopSitesManager()
 			if(select.prepare())
 				return;
 
-			if(select.step() == SQLResultRow)
+			if(select.step() == SQLITE_ROW)
 			{
 				m_displayMode = (displaymode_t) select.getColumnInt(0);
 				m_maxEntries  = select.getColumnInt(1);
@@ -205,7 +205,7 @@ int TopSitesManager::entries()
 	if(select.prepare())
 		return 0;
 		
-	if(select.step() == SQLResultRow)
+	if(select.step() == SQLITE_ROW)
 	{
 		return select.getColumnInt(0);
 	}
@@ -223,7 +223,7 @@ String TopSitesManager::title(URL &url)
 
 	select.bindText(1, url.string());
 		
-	if(select.step() == SQLResultRow)
+	if(select.step() == SQLITE_ROW)
 	{
 		title = select.getColumnText(0);
 	}	
@@ -242,7 +242,7 @@ PassRefPtr<Image> TopSitesManager::screenshot(URL &url)
 	
 	select.bindText(1, url.string());
 	
-    if (select.step() == SQLResultRow) 
+    if (select.step() == SQLITE_ROW)
     {
         Vector<char> data;
         RefPtr<SharedBuffer> imageData;
@@ -269,7 +269,7 @@ double TopSitesManager::lastAccessed(URL &url)
 
 	select.bindText(1, url.string());
 		
-	if(select.step() == SQLResultRow)
+	if(select.step() == SQLITE_ROW)
 	{
 		lastAccessed = select.getColumnDouble(0);
 	}	
@@ -288,7 +288,7 @@ int TopSitesManager::visitCount(URL &url)
 
 	select.bindText(1, url.string());
 		
-	if(select.step() == SQLResultRow)
+	if(select.step() == SQLITE_ROW)
 	{
 		visitCount = select.getColumnInt(0);
 	}	
@@ -307,7 +307,7 @@ bool TopSitesManager::contains(URL &url)
 
 	select.bindText(1, url.string());
 		
-	if(select.step() == SQLResultRow)
+	if(select.step() == SQLITE_ROW)
 	{
 		found = select.getColumnInt(0) > 0;
 	}	
@@ -325,7 +325,7 @@ bool TopSitesManager::hasScreenshot(URL &url)
 
 	select.bindText(1, url.string());
 	
-    if (select.step() == SQLResultRow) 
+    if (select.step() == SQLITE_ROW)
     {
 		hasScreenshot = select.isColumnNull(0);
     }
@@ -345,7 +345,7 @@ bool TopSitesManager::shouldAppear(URL &url)
 
 	select.bindInt(1, maxEntries());
 		
-	if(select.step() == SQLResultRow)
+	if(select.step() == SQLITE_ROW)
 	{
 		minVisitCount = select.getColumnInt(0);
 	}	
@@ -366,7 +366,7 @@ int TopSitesManager::requiredVisitCount()
 
 	select.bindInt(1, maxEntries());
 		
-	if(select.step() == SQLResultRow)
+	if(select.step() == SQLITE_ROW)
 	{
 		minVisitCount = select.getColumnInt(0);
 	}	
@@ -489,7 +489,7 @@ bool TopSitesManager::addOrUpdate(WebView *webView, URL &url, String &title)
 
 	select.bindText(1, url.string());
 		
-	if(select.step() == SQLResultRow)
+	if(select.step() == SQLITE_ROW)
 	{
 		found = true;
 		visitCount = select.getColumnInt(0) + 1;
@@ -622,7 +622,7 @@ void TopSitesManager::generateTemplate(WebView *webView, String originurl)
 		if(select.prepare())
 			return;
 			
-		while(select.step() == SQLResultRow && countEntries < maxEntries())
+		while(select.step() == SQLITE_ROW && countEntries < maxEntries())
 		{
 			bool showEntry = false;
 			String url = select.getColumnText(0);

@@ -64,7 +64,6 @@
 #include "CookieManager.h"
 #include "ResourceHandleManager.h"
 #include "ResourceHandle.h"
-#include "ResourceHandleInternal.h"
 #include "ResourceError.h"
 #include "ResourceResponse.h"
 #include "ResourceLoader.h"

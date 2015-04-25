@@ -761,8 +761,8 @@ DEFSMETHOD(ScriptManagerGroup_InjectScripts)
 							auto userScript = std::make_unique<UserScript>(
 															String::fromUTF8(fileContent),
 															URL(URL(), String(url)), // XXX: will be empty most of the time...
-															scripts_list[i]->whitelist,
-															scripts_list[i]->blacklist,
+															Vector<String>(scripts_list[i]->whitelist),
+															Vector<String>(scripts_list[i]->blacklist),
 															InjectAtDocumentEnd,
 															InjectInAllFrames);
                             page->userContentController()->addUserScript(mainThreadNormalWorld(), std::move(userScript));

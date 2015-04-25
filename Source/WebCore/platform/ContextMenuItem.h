@@ -260,9 +260,13 @@ namespace WebCore {
         ContextMenuItem(ContextMenuAction, const String&, bool enabled, bool checked, Vector<ContextMenuItem>& submenuItems);
         WEBCORE_EXPORT ContextMenuItem();
 
+#if PLATFORM(MUI)
+        bool isNull() const { return m_platformDescription.action == ContextMenuItemTagNoAction; }
+#else
         bool isNull() const { return !m_platformDescription; }
+#endif
 
-#if PLATFORM(GTK)
+#if PLATFORM(GTK) || PLATFORM(MUI)
         WEBCORE_EXPORT PlatformMenuItemDescription releasePlatformDescription();
 #endif
 

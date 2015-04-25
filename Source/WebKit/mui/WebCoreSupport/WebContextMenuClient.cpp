@@ -142,3 +142,8 @@ bool WebContextMenuClient::isSpeaking()
 {
     return false;
 }
+
+WebCore::ContextMenuItem WebContextMenuClient::shareMenuItem(const WebCore::HitTestResult&)
+{
+    return WebCore::ContextMenuItem();
+}

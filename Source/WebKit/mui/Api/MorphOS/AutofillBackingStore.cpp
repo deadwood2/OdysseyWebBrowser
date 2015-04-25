@@ -80,19 +80,19 @@ bool AutofillBackingStore::open(const String& dbPath)
 
     // Prepare the statements.
     m_addStatement = new SQLiteStatement(m_database, "INSERT INTO autofill (name, value) VALUES (?, ?)");
-    HANDLE_SQL_EXEC_FAILURE(m_addStatement->prepare() != SQLResultOk,
+    HANDLE_SQL_EXEC_FAILURE(m_addStatement->prepare() != SQLITE_OK,
         false, "Failed to prepare add statement");
 
     m_updateStatement = new SQLiteStatement(m_database, "UPDATE autofill SET count = (SELECT count + 1 from autofill WHERE name = ? AND value = ?) WHERE name = ? AND value = ?");
-    HANDLE_SQL_EXEC_FAILURE(m_updateStatement->prepare() != SQLResultOk,
+    HANDLE_SQL_EXEC_FAILURE(m_updateStatement->prepare() != SQLITE_OK,
         false, "Failed to prepare update statement");
 
     m_containsStatement = new SQLiteStatement(m_database, "SELECT COUNT(*) FROM autofill WHERE name = ? AND value = ?");
-    HANDLE_SQL_EXEC_FAILURE(m_containsStatement->prepare() != SQLResultOk,
+    HANDLE_SQL_EXEC_FAILURE(m_containsStatement->prepare() != SQLITE_OK,
         false, "Failed to prepare contains statement");
 
     m_getStatement = new SQLiteStatement(m_database, "SELECT value FROM autofill WHERE name = ? and value like ? ORDER BY count DESC");
-    HANDLE_SQL_EXEC_FAILURE(m_getStatement->prepare() != SQLResultOk,
+    HANDLE_SQL_EXEC_FAILURE(m_getStatement->prepare() != SQLITE_OK,
         false, "Failed to prepare get statement");
 
     return true;
@@ -117,7 +117,7 @@ bool AutofillBackingStore::add(const String& name, const String& value)
 
     int result = m_addStatement->step();
     m_addStatement->reset();
-    HANDLE_SQL_EXEC_FAILURE(result != SQLResultDone, false,
+    HANDLE_SQL_EXEC_FAILURE(result != SQLITE_DONE, false,
         "Failed to add autofill item into table autofill - %i", result);
 
     return true;
@@ -135,7 +135,7 @@ bool AutofillBackingStore::update(const String& name, const String& value)
 
     int result = m_updateStatement->step();
     m_updateStatement->reset();
-    HANDLE_SQL_EXEC_FAILURE(result != SQLResultDone, false,
+    HANDLE_SQL_EXEC_FAILURE(result != SQLITE_DONE, false,
         "Failed to update autofill item in table autofill - %i", result);
 
     return true;
@@ -152,7 +152,7 @@ bool AutofillBackingStore::contains(const String& name, const String& value) con
     int result = m_containsStatement->step();
     int numberOfRows = m_containsStatement->getColumnInt(0);
     m_containsStatement->reset();
-    HANDLE_SQL_EXEC_FAILURE(result != SQLResultRow, false,
+    HANDLE_SQL_EXEC_FAILURE(result != SQLITE_ROW, false,
         "Failed to execute select autofill item from table autofill in contains - %i", result);
 
     return numberOfRows;
@@ -172,10 +172,10 @@ Vector<String> AutofillBackingStore::get(const String& name, const String& value
     m_getStatement->bindText(2, value);
 
     int result;
-    while ((result = m_getStatement->step()) == SQLResultRow)
+    while ((result = m_getStatement->step()) == SQLITE_ROW)
         candidates.append(m_getStatement->getColumnText(0));
     m_getStatement->reset();
-    HANDLE_SQL_EXEC_FAILURE(result != SQLResultDone, candidates,
+    HANDLE_SQL_EXEC_FAILURE(result != SQLITE_DONE, candidates,
         "Failed to execute select autofill item from table autofill in get - %i", result);
 
     return candidates;

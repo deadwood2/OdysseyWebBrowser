@@ -125,11 +125,11 @@ void PluginStream::stop()
 
 static uint32_t lastModifiedDate(const ResourceResponse& response)
 {
-    double lastModified = response.lastModified();
-    if (!std::isfinite(lastModified))
+    auto lastModified = response.lastModified();
+    if (!lastModified)
         return 0;
 
-    return lastModified * 1000;
+    return std::chrono::duration_cast<std::chrono::milliseconds>(lastModified.value().time_since_epoch()).count();
 }
 
 void PluginStream::startStream()

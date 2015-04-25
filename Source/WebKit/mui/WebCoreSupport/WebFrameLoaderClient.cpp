@@ -540,11 +540,11 @@ void WebFrameLoaderClient::updateGlobalHistory()
         String url(loader->urlForHistory().string());
         String title(loader->title().string());
         String redirectSource(loader->clientRedirectSourceForHistory());
-        OwnPtr<WebURLResponse> urlResponse(adoptPtr(WebURLResponse::createInstance(loader->response())));
-        OwnPtr<WebMutableURLRequest> urlRequest(adoptPtr(WebMutableURLRequest::createInstance(loader->originalRequestCopy())));
-        OwnPtr<WebNavigationData> navigationData(adoptPtr(WebNavigationData::createInstance(url.utf8().data(), title.utf8().data(), urlRequest.get(), urlResponse.get(), loader->substituteData().isValid(), redirectSource.utf8().data())));
+        WebURLResponse * urlResponse = WebURLResponse::createInstance(loader->response());
+        WebMutableURLRequest * urlRequest = WebMutableURLRequest::createInstance(loader->originalRequestCopy());
+        WebNavigationData * navigationData = WebNavigationData::createInstance(url.utf8().data(), title.utf8().data(), urlRequest, urlResponse, loader->substituteData().isValid(), redirectSource.utf8().data());
 
-        historyDelegate->didNavigateWithNavigationData(webView, navigationData.get(), m_webFrame);
+        historyDelegate->didNavigateWithNavigationData(webView, navigationData, m_webFrame);
         return;
     }
 

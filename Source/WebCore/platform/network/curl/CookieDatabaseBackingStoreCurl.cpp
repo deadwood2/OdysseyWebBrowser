@@ -237,7 +237,7 @@ void CookieDatabaseBackingStore::getCookiesFromDatabase(Vector<ParsedCookie*>& s
 		return;
     }
 
-    while (selectStatement.step() == SQLResultRow) {
+    while (selectStatement.step() == SQLITE_ROW) {
         // There is a row to fetch
 
         String name = selectStatement.getColumnText(0);
@@ -323,7 +323,7 @@ void CookieDatabaseBackingStore::sendChangesToDatabase()
 
         int rc = m_statement->step();
         m_statement->reset();
-        if (rc != SQLResultOk && rc != SQLResultDone) {
+        if (rc != SQLITE_OK && rc != SQLITE_DONE) {
             LOG_ERROR("Cannot make call to the database\n");
             LOG_ERROR("SQLite Error Message: %s\n", m_db.lastErrorMsg());
             ASSERT_NOT_REACHED();

@@ -83,7 +83,7 @@ using namespace WebCore;
 WebChromeClient::WebChromeClient(WebView* webView)
     : m_webView(webView)
 #if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
-    , m_notificationsDelegate(adoptPtr(new WebDesktopNotificationsDelegate(webView)))
+    , m_notificationsDelegate(std::make_unique<WebDesktopNotificationsDelegate>(webView))
 #endif
 {
 }

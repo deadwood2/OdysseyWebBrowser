@@ -15,6 +15,7 @@ set(WebKit_INCLUDE_DIRECTORIES
 )
 
 set(WebKit_SYSTEM_INCLUDE_DIRECTORIES "")
+set(WebKit_INCLUDE_DIRECTORIES)
 
 set(WebKit_LIBRARIES
     JavaScriptCore

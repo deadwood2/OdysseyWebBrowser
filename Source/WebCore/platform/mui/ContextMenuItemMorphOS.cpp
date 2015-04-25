@@ -70,7 +70,11 @@ ContextMenuItem::ContextMenuItem(BalMenuItem* item)
 ContextMenuItem::ContextMenuItem(ContextMenu*)
 {
 }
-    
+
+ContextMenuItem::ContextMenuItem()
+{
+}
+
 ContextMenuItem::ContextMenuItem(ContextMenuItemType type, ContextMenuAction action, const String& title, ContextMenu* subMenu)
 {
     m_platformDescription.type   = type;

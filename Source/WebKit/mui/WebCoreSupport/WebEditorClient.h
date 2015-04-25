@@ -31,7 +31,6 @@
 
 #include <EditorClient.h>
 #include <TextCheckerClient.h> 
-#include <wtf/OwnPtr.h>
 #include <wtf/text/StringView.h>
 
 class WebView;
@@ -128,6 +127,7 @@ public:
     virtual void checkGrammarOfString(StringView, Vector<WebCore::GrammarDetail>&, int* badGrammarLocation, int* badGrammarLength) { };
     void overflowScrollPositionChanged() { };
     virtual void discardedComposition(WebCore::Frame *) override;
+    virtual void didChangeSelectionAndUpdateLayout() override;
 
 private:
     WebView* m_webView;

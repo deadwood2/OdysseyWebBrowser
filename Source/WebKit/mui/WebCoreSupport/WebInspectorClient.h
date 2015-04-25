@@ -36,7 +36,6 @@
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
 #include "SharedPtr.h"
-#include <wtf/OwnPtr.h>
 #include <wtf/Forward.h>
 #include <wtf/text/StringHash.h>
 

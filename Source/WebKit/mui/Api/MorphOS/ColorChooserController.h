@@ -28,7 +28,6 @@
 
 #include "ColorChooserClient.h"
 #include "ColorChooser.h"
-#include "wtf/OwnPtr.h"
 
 namespace WebCore {
 class ColorChooserClient;
@@ -54,7 +53,7 @@ public:
 
 protected:
     void openColorChooser();
-	OwnPtr<ColorChooser> m_chooser;
+	std::unique_ptr<ColorChooser> m_chooser;
 
 private:
 
