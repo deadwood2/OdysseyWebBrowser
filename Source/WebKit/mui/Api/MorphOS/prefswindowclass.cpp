@@ -41,7 +41,6 @@
 #include "gui.h"
 
 #include <exec/resident.h>
-#include "WebKitVersion.h"
 
 #define LABEL(x) (STRPTR)MSG_PREFSWINDOW_##x
 
@@ -266,10 +265,6 @@ STATIC CONST CONST_STRPTR useragents_labels[] =
 	NULL
 };
 
-#define xstringify(s) stringify(s)
-#define stringify(s) #s
-
-#define WEBKITVER xstringify(WEBKIT_MAJOR_VERSION) "." xstringify(WEBKIT_MINOR_VERSION)
 #if OS(AROS)
 #define OSHEADER "i686; AROS"
 #elif OS(MORPHOS)

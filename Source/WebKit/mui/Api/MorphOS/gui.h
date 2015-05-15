@@ -6,19 +6,24 @@
 #include <utility/date.h>
 #include <clib/debug_protos.h>
 
+#include "WebKitVersion.h"
 #include "classes.h"
 #include "methodstack.h"
 #include "mui.h"
 #include "owb_cat.h"
 
+#define xstringify(s) stringify(s)
+#define stringify(s) #s
+
 /* Constants */
 
 #define VERSION  "1.25"
-#define DATE     "18.04.2015"
-#define REVISION "WebKit r181764"
+#define DATE     "15.05.2015"
+#define WEBKITVER xstringify(WEBKIT_MAJOR_VERSION) "." xstringify(WEBKIT_MINOR_VERSION)
+#define REVISION "WebKit " WEBKITVER " (r183664)"
 
 #define THREAD_NAME              "OWB Thread"
-#define APPLICATION_DESCRIPTION	 "WebKit-based browser."
+#define APPLICATION_DESCRIPTION  "WebKit-based browser."
 #define APPLICATION_BASE         "OWB"
 #define APPLICATION_ICON         "PROGDIR:OWB"
 #if !defined(__AROS__)
