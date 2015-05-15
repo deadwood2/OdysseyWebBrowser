@@ -1,0 +1,137 @@
+/*
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+ * THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+.toolbar {
+    display: flex;
+
+    white-space: nowrap;
+    overflow: hidden;
+
+    background-image: linear-gradient(to bottom, rgb(237, 237, 237), rgb(222, 222, 222));
+    box-shadow: inset rgba(255, 255, 255, 0.5) 0 1px 1px;
+
+    outline: none;
+
+    padding-top: 3px;
+    padding-bottom: 3px;
+    height: 36px;
+}
+
+body.window-inactive .toolbar {
+    background-image: none;
+    background-color: rgb(246, 246, 246);
+}
+
+body.mac-platform:not(.docked) .toolbar {
+    padding-top: 21px;
+    height: 54px;
+}
+
+.toolbar .control-section {
+    display: flex;
+
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+
+    padding-left: 6px;
+    padding-right: 2px;
+
+    min-width: -webkit-min-content;
+}
+
+.toolbar:matches(.icon-and-label-horizontal.small-size, .icon-only.small-size, .label-only) .control-section {
+    flex-direction: row;
+}
+
+.toolbar .item-section {
+    display: flex;
+    flex: 1;
+    min-width: -webkit-min-content;
+}
+
+.toolbar .item-section.left {
+    justify-content: flex-start;
+}
+
+.toolbar .item-section.center-left {
+    justify-content: flex-start;
+}
+
+.toolbar .item-section.center-right {
+    justify-content: center;
+}
+
+.toolbar .item-section.center {
+    justify-content: center;
+}
+
+.toolbar .item-section.right {
+    justify-content: flex-end;
+    padding-right: 4px;
+}
+
+.toolbar .item {
+    display: flex;
+    outline: none;
+}
+
+.toolbar .search-bar {
+    width: 100%;
+    min-width: 100px;
+}
+
+.toolbar .search-bar > input[type="search"] {
+    width: 100%;
+
+    font-size: 12px;
+
+    border-radius: 4px;
+    background-color: rgb(252, 252, 252) !important;
+
+    border: 1px solid transparent;
+    border-top-color: white;
+
+    box-shadow: rgba(0, 0, 0, 0.15) 0 1px 0;
+
+    background-clip: initial;
+
+    margin: 4px;
+}
+
+.toolbar .search-bar > input[type="search"]:focus {
+    outline: auto 5px -webkit-focus-ring-color;
+    outline-offset: -2px
+}
+
+.toolbar .search-bar > input[type="search"]::-webkit-textfield-decoration-container {
+    margin-left: 4px;
+}
+
+body.window-inactive .toolbar .search-bar > input[type="search"] {
+    border: 1px solid rgb(220, 220, 220);
+    background-color: rgb(246, 246, 246);
+    box-shadow: none;
+}
