@@ -6,6 +6,7 @@ set(OdysseyWebBrowser_INCLUDE_DIRECTORIES
     "${CAIRO_INCLUDE_DIRS}"
     "${WEBKIT_DIR}/mui/Api/MorphOS"
     "${TOOLS_DIR}/../aros/include"
+    "${DERIVED_SOURCES_WEBCORE_DIR}"
 )
 
 set(OdysseyWebBrowser_LIBRARIES
