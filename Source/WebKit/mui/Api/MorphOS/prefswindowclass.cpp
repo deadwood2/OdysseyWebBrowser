@@ -27,6 +27,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "config.h"
 #include "WebPreferences.h"
 
 #include <proto/exec.h>
@@ -269,13 +270,20 @@ STATIC CONST CONST_STRPTR useragents_labels[] =
 #define stringify(s) #s
 
 #define WEBKITVER xstringify(WEBKIT_MAJOR_VERSION) "." xstringify(WEBKIT_MINOR_VERSION)
-const char verfmt[] = "Mozilla/5.0 (i386; AROS %u.%u; Odyssey Web Browser; rv:" VERSION ") AppleWebKit/" WEBKITVER " (KHTML, like Gecko) OWB/" VERSION " Safari/" WEBKITVER;
+#if OS(AROS)
+#define OSHEADER "i686; AROS"
+#elif OS(MORPHOS)
+#define OSHEADER "Macintosh; PowerPC MorphOS %u.%u"
+#endif
+const char verfmt[] = "Mozilla/5.0 (" OSHEADER "; Odyssey Web Browser; rv:" VERSION ") AppleWebKit/" WEBKITVER " (KHTML, like Gecko) OWB/" VERSION " Safari/" WEBKITVER;
 STATIC char odysseyuseragent[sizeof(verfmt) + 2 * (10 - 2)];
 
 void init_useragent()
 {
+#if OS(AROS)
+    strcpy(odysseyuseragent, verfmt);
+#elif OS(MORPHOS)
 	ULONG version = 0, revision = 0;
-#if !defined(__AROS__)
 	struct Resident *res = FindResident("MorphOS");
 	if (res)
 	{
@@ -290,9 +298,9 @@ void init_useragent()
 			if (p) revision = strtoul(p + 1, NULL, 10);
 		}
 	}
-#endif
 
 	sprintf(odysseyuseragent, verfmt, version, revision);
+#endif
 }
 
 STATIC CONST STRPTR useragents_strings[] =
