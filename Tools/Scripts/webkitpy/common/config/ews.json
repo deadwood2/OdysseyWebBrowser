@@ -1,0 +1,38 @@
+{
+    "GTK WK2 EWS": {
+        "port": "gtk-wk2",
+        "watchers": [
+            "xan.lopez@gmail.com"
+        ]
+    },
+    "EFL WK2 EWS": {
+        "port": "efl-wk2",
+        "watchers": [
+            "gyuyoung.kim@webkit.org"
+        ]
+    },
+    "Win EWS": {
+        "port": "win",
+        "watchers": [
+            "bfulgham@apple.com"
+        ]
+    },
+    "iOS EWS": {
+        "port": "ios",
+        "architecture": "armv7"
+    },
+    "Mac EWS": {
+        "port": "mac",
+        "watchers": [
+            "rniwa@webkit.org"
+        ],
+        "runTests": true
+    },
+    "Mac WK2 EWS": {
+        "port": "mac-wk2",
+        "watchers": [
+            "rniwa@webkit.org"
+        ],
+        "runTests": true
+    }
+}
