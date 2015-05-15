@@ -248,7 +248,7 @@ STATIC CONST CONST_STRPTR useragents_labels[] =
 {
 	"Odyssey Web Browser",
 
-	"Firefox 25 (Windows)",
+	"Firefox 38 (Linux)",
 	"Firefox 3.6 (Windows)",
 
 	"Internet Explorer 10",
@@ -258,7 +258,7 @@ STATIC CONST CONST_STRPTR useragents_labels[] =
 	"Opera 12 (Windows)",
 
 	"Safari 6.0.2 (Mac)",
-	"Chrome 32 (Windows)",
+	"Chrome 42 (Linux)",
 
 	"IPhone",
 	"IPad",
@@ -307,7 +307,7 @@ STATIC CONST STRPTR useragents_strings[] =
 {
 	odysseyuseragent,
 
-	"Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:25.0) Gecko/20100101 Firefox/25.0",
+	"Mozilla/5.0 (X11; Ubuntu; Linux i686; rv:38.0) Gecko/20100101 Firefox/38.0",
 	"Mozilla/5.0 (Windows NT 6.1; rv:1.9.2) Gecko/20100101 Firefox/3.6",
 
 	"Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; WOW64; Trident/6.0)",
@@ -317,7 +317,7 @@ STATIC CONST STRPTR useragents_strings[] =
 	"Opera/9.80 (Windows NT 5.1; U; en) Presto/2.12.388 Version/12.14",
 
 	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_8_2) AppleWebKit/536.26.17 (KHTML, like Gecko) Version/6.0.2 Safari/536.26.17",
-	"Mozilla/5.0 (Windows NT 6.2; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/32.0.1667.0 Safari/537.36",
+	"Mozilla/5.0 (X11; Linux i686) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.152 Safari/537.36",
 
 	"Mozilla/5.0 (iPhone; CPU iPhone OS 6_0 like Mac OS X) AppleWebKit/536.26 (KHTML, like Gecko) Version/6.0 Mobile/10A5376e Safari/8536.25",
 	"Mozilla/5.0 (iPad; U; CPU OS 6_1 like Mac OS X; en-us) AppleWebKit/536.26 (KHTML, like Gecko) Version/6.0 Mobile/10B141 Safari/8536.25",
