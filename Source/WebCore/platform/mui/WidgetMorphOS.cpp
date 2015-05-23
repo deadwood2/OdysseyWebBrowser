@@ -81,7 +81,7 @@ void Widget::hide()
 {
 }
 
-void Widget::paint(GraphicsContext* context, const IntRect &r)
+void Widget::paint(GraphicsContext* , const IntRect &)
 {
 }
 
@@ -89,7 +89,7 @@ void Widget::setIsSelected(bool)
 {
 }
 
-void Widget::invalidateRect(const IntRect& rect)
+void Widget::invalidateRect(const IntRect&)
 {
 }
 

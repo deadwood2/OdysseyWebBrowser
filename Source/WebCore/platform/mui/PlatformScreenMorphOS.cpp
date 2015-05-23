@@ -52,16 +52,19 @@ namespace WebCore {
 
 int screenHorizontalDPI(Widget* widget) 
 {
+    UNUSED_PARAM(widget);
     return 0; 
 }
 
 int screenVerticalDPI(Widget* widget)
 {
+    UNUSED_PARAM(widget);
     return 0;
 }
 
 int screenDepth(Widget* widget)
 {
+    UNUSED_PARAM(widget);
     int depth = 32;
     #warning "screenDepth disabled"
 #if 0
@@ -84,6 +87,7 @@ int screenDepth(Widget* widget)
 
 int screenDepthPerComponent(Widget* widget)
 {
+    UNUSED_PARAM(widget);
     int depth = 8;
     #warning "screenDepthPerComponent disabled"
 #if 0

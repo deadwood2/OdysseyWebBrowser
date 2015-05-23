@@ -215,7 +215,7 @@ static int certVerifyCallback(int ok, X509_STORE_CTX* ctx)
     return ok;
 }
 
-static CURLcode sslctxfun(CURL* curl, void* sslctx, void* parm)
+static CURLcode sslctxfun(CURL*, void* sslctx, void* parm)
 {
     SSL_CTX_set_app_data(reinterpret_cast<SSL_CTX*>(sslctx), parm);
     SSL_CTX_set_verify(reinterpret_cast<SSL_CTX*>(sslctx), SSL_VERIFY_PEER, certVerifyCallback);

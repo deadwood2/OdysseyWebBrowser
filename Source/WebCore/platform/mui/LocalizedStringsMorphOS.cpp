@@ -410,7 +410,7 @@ String unknownFileSizeText()
 	return String::fromUTF8(GSI(MSG_LOCALIZED_UNKNOWN));
 }
 
-String imageTitle(const String& filename, const IntSize& size)
+String imageTitle(const String&, const IntSize&)
 {
     return String();
 }
@@ -440,7 +440,7 @@ String contextMenuItemTagTextDirectionMenu()
 	return String::fromUTF8(GSI(MSG_LOCALIZED_TEXT_DIRECTION));
 }
 
-String multipleFileUploadText(unsigned numberOfFiles)
+String multipleFileUploadText(unsigned)
 {
     return String();
 }

@@ -39,7 +39,7 @@ Vector<String> supportedKeySizes()
     return Vector<String>();
 }
 
-String signedPublicKeyAndChallengeString(unsigned keySizeIndex, const String &challengeString, const URL &url)
+String signedPublicKeyAndChallengeString(unsigned , const String &, const URL &)
 {
     return String();
 }

@@ -55,6 +55,7 @@ PopupMenuMorphOS::~PopupMenuMorphOS()
 void PopupMenuMorphOS::show(const IntRect& r, FrameView* v, int index)
 {
     ASSERT(client());
+    UNUSED_PARAM(index);
 
     RefPtr<PopupMenuMorphOS> protector(this);
 

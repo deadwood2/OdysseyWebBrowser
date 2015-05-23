@@ -91,8 +91,10 @@ DragImageRef createDragImageIconForCachedImageFilename(const String&)
     return 0;
 }
 
-DragImageRef createDragImageForLink(URL& url, const String& inLabel, FontRenderingMode fontRenderingMode, Frame* frame)
+DragImageRef createDragImageForLink(URL& url, const String& inLabel, FontRenderingMode , Frame* frame)
 {
+    UNUSED_PARAM(inLabel)
+
     D(kprintf("createDragImageForLink %s %s\n", url.string().latin1().data(), inLabel.latin1().data()));
 
     FrameView *frameView = frame->view();

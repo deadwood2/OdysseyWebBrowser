@@ -323,12 +323,12 @@ void deleteCookie(const NetworkStorageSession&, const URL&, const String&)
     // FIXME: Not yet implemented
 }
 
-void getHostnamesWithCookies(const NetworkStorageSession&, HashSet<String>& hostnames)
+void getHostnamesWithCookies(const NetworkStorageSession&, HashSet<String>&)
 {
     // FIXME: Not yet implemented
 }
 
-void deleteCookiesForHostname(const NetworkStorageSession&, const String& hostname)
+void deleteCookiesForHostname(const NetworkStorageSession&, const String&)
 {
     // FIXME: Not yet implemented
 }
