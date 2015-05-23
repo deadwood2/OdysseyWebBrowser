@@ -67,6 +67,8 @@ void cryptographicallyRandomValuesFromOS(unsigned char* buffer, size_t length)
         CRASH();
     CryptReleaseContext(hCryptProv, 0);
 #elif OS(AROS)
+    UNUSED_PARAM(buffer);
+    UNUSED_PARAM(length);
     return;
 #elif OS(MORPHOS)
     FILE *fd = fopen("RANDOM:", "r");

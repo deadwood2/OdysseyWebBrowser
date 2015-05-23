@@ -102,6 +102,7 @@ unsigned ContextMenu::itemCount() const
 
 Vector<ContextMenuItem> contextMenuItemVector(const PlatformMenuDescription menu)
 {
+    UNUSED_PARAM(menu);
     Vector<ContextMenuItem> list;
     return list;
 }

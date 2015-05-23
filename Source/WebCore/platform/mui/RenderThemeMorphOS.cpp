@@ -177,6 +177,8 @@ static RenderSlider* determineRenderSlider(RenderObject* object)
 static float determineFullScreenMultiplier(Element* element)
 {
     float fullScreenMultiplier = 1.0;
+    UNUSED_PARAM(element);
+
 #if 0 //ENABLE(FULLSCREEN_API) && ENABLE(VIDEO)
     if (element && element->document()->webkitIsFullScreen() && element->document()->webkitCurrentFullScreenElement() == parentMediaElement(element)) {
         if (element->document()->page()->deviceScaleFactor() < scaleFactorThreshold)
@@ -198,6 +200,7 @@ static float determineFullScreenMultiplier(Element* element)
 
 PassRefPtr<RenderTheme> RenderTheme::themeForPage(Page* page)
 {
+    UNUSED_PARAM(page);
     static RenderTheme* theme = RenderThemeBal::create().leakRef();
     return theme;
 }
@@ -902,6 +905,8 @@ bool RenderThemeBal::paintSliderTrackRect(const RenderObject& object, const Pain
 bool RenderThemeBal::paintSliderTrackRect(const RenderObject& object, const PaintInfo& info, const IntRect& rect,
         RGBA32 strokeColorStart, RGBA32 strokeColorEnd, RGBA32 fillColorStart, RGBA32 fillColorEnd)
 {
+    UNUSED_PARAM(object);
+
     FloatSize smallCorner(smallRadius, smallRadius);
 
     info.context->save();
@@ -1006,6 +1011,7 @@ bool RenderThemeBal::supportsDataListUI(const AtomicString& type) const
   // FIXME: We need to support other types.
   return type == InputTypeNames::range();
 #else
+  UNUSED_PARAM(type);
   return false;
 #endif
 }
@@ -1376,6 +1382,8 @@ bool RenderThemeBal::paintMediaSliderTrack(const RenderObject& object, const Pai
 
 bool RenderThemeBal::paintMediaSliderThumb(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
+    UNUSED_PARAM(object);
+
 	static Image* mediaSliderThumb = Image::loadPlatformResource("MediaTheme/SliderThumb").leakRef();
 	return paintMediaButton(paintInfo.context, rect, mediaSliderThumb);
 }
@@ -1404,6 +1412,7 @@ bool RenderThemeBal::paintMediaVolumeSliderThumb(const RenderObject& object, con
 {
 #if ENABLE(VIDEO)
 	static Image* mediaVolumeThumb = Image::loadPlatformResource("MediaTheme/VolumeSliderThumb").leakRef();
+    UNUSED_PARAM(object);
 
     return paintMediaButton(paintInfo.context, rect, mediaVolumeThumb);
 #else

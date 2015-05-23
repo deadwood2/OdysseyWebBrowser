@@ -511,6 +511,7 @@ ThreadIdentifier createThreadInternal(ThreadFunction entryPoint, void* data, con
 
 void initializeCurrentThreadInternal(const char* threadName)
 {
+    UNUSED_PARAM(threadName);
 	D(kprintf("setThreadNameInternal(%s)\n", threadName));
 }
 

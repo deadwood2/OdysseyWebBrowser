@@ -76,6 +76,7 @@ ScrollbarThemeBal::~ScrollbarThemeBal()
 
 int ScrollbarThemeBal::scrollbarThickness(ScrollbarControlSize controlSize)
 {
+    UNUSED_PARAM(controlSize);
     return 11;
 }
 
@@ -264,6 +265,7 @@ bool ScrollbarThemeBal::shouldSnapBackToDragOrigin(ScrollbarThemeClient* scrollb
 
 void ScrollbarThemeBal::paintTrackPiece(GraphicsContext* context, ScrollbarThemeClient* scrollbar, const IntRect& rect, ScrollbarPart partType)
 {
+    UNUSED_PARAM(partType);
     context->save();
     
     //RefPtr<WebCore::Image> bg = Image::loadPlatformResource("ScrollbarTheme/bg");
