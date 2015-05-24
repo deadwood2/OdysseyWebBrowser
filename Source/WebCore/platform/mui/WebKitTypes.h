@@ -49,7 +49,7 @@ typedef GdkEventScroll BalEventScroll;
 typedef GdkPoint BalPoint;
 typedef GdkRectangle BalRectangle;
 
-#elif OS(MORPHOS)
+#elif PLATFORM(MUI)
 
 #include <cairo.h>
 #include <intuition/classusr.h>

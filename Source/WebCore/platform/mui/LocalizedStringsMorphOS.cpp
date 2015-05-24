@@ -90,7 +90,6 @@ String contextMenuItemTagOpenLinkInNewWindow()
 	return String::fromUTF8(GSI(MSG_LOCALIZED_OPEN_IN_NEW_WINDOW));
 }
 
-#if OS(MORPHOS)
 String contextMenuItemTagOpenLinkInNewTab()
 {
   return String::fromUTF8(GSI(MSG_LOCALIZED_OPEN_IN_NEW_TAB));
@@ -100,8 +99,6 @@ String contextMenuItemTagOpenLinkInNewBackgroundTab()
 {
   return String::fromUTF8(GSI(MSG_LOCALIZED_OPEN_IN_NEW_BACKGROUND_TAB));
 }
-#endif    
-
 
 String contextMenuItemTagDownloadLinkToDisk()
 {
@@ -133,7 +130,6 @@ String contextMenuItemTagCopyImageUrlToClipboard()
         return String::fromUTF8(GSI(MSG_LOCALIZED_COPY_IMAGE_URL));
 }
 
-#if OS(MORPHOS)
 String contextMenuItemTagOpenImageInNewTab()
 {
   return String::fromUTF8(GSI(MSG_LOCALIZED_OPEN_IMAGE_IN_NEW_TAB));
@@ -143,21 +139,16 @@ String contextMenuItemTagBlockImage()
 {
   return String::fromUTF8(GSI(MSG_LOCALIZED_BLOCK_IMAGES));
 }
-#endif       
-
 
 String contextMenuItemTagOpenFrameInNewWindow()
 {
 	return String::fromUTF8(GSI(MSG_LOCALIZED_OPEN_FRAME_IN_NEW_WINDOW));
 }
 
-#if OS(MORPHOS)
 String contextMenuItemTagOpenFrameInNewTab()
 {
   return String::fromUTF8(GSI(MSG_LOCALIZED_OPEN_FRAME_IN_NEW_TAB));
 }
-#endif    
-
 
 String contextMenuItemTagCopy()
 {

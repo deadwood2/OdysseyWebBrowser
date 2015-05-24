@@ -326,7 +326,7 @@ DEFNEW
 								MUIA_Background, MUII_RegisterBack,
 								MUIA_Frame, MUIV_Frame_Register,
 								MUIA_Group_PageMode, TRUE,
-#if defined(__AROS__) // __AROS__ Needed as long as MUIV_Frame_Register is not implemented, see area.c/set_inner_sizes (right now random memory access)
+#if OS(AROS) // Needed as long as MUIV_Frame_Register is not implemented, see area.c/set_inner_sizes (right now random memory access)
                                 InnerSpacing(0, 0),
 #endif
 				Child, gr_titles = MUI_NewObject(MUIC_Title,

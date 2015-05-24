@@ -425,8 +425,11 @@
 #endif
 
 #if defined(__AROS__)
-#define WTF_OS_MORPHOS 1
 #define WTF_OS_AROS 1
+#endif
+
+#if defined(__MORPHOS__)
+#define WTF_OS_MORPHOS 1
 #endif
 
 /* Operating environments */

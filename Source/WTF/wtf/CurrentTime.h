@@ -35,7 +35,7 @@
 #include <chrono>
 #include <time.h>
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 extern long get_DST_offset(void);
 extern long get_GMT_offset(void);
 #endif

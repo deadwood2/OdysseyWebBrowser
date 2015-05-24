@@ -268,13 +268,11 @@ APTR MakeSlider(CONST_STRPTR label, LONG min, LONG max, LONG def);
 APTR MakePrefsPopString(CONST_STRPTR label, CONST_STRPTR def, ULONG id);
 APTR MakeCycleLocalized(CONST_STRPTR text, APTR cyclelabels, ULONG first, ULONG last);
 
-#if !defined(__AROS__)
+#if defined(__MORPHOS__)
 ULONG getv(APTR obj, ULONG attr);
-#else
-IPTR getv(APTR obj, ULONG attr);
 #endif
-
 #if defined(__AROS__)
+IPTR getv(APTR obj, ULONG attr);
 #include <aros-overrides.h>
 #endif
 

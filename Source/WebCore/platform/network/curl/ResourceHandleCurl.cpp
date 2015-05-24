@@ -47,7 +47,7 @@
 #include <wtf/RetainPtr.h>
 #endif
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 #include "gui.h"
 #include <clib/debug_protos.h>
 #define D(x)
@@ -122,7 +122,7 @@ bool ResourceHandle::start()
     if (d->m_context && !d->m_context->isValid())
         return false;
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     if ((!d->m_user.isEmpty() || !d->m_pass.isEmpty()) && !shouldUseCredentialStorage()) {
         // Credentials for ftp can only be passed in URL, the didReceiveAuthenticationChallenge delegate call won't be made.
         URL urlWithCredentials(d->m_firstRequest.url());
@@ -314,7 +314,7 @@ void ResourceHandle::didReceiveAuthenticationChallenge(const AuthenticationChall
         if (!challenge.previousFailureCount()) {
             Credential credential = CredentialStorage::get(challenge.protectionSpace());
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
             if(credential.isEmpty())
             {
                 credential = d->m_initialCredential;
@@ -355,7 +355,7 @@ void ResourceHandle::receivedCredential(const AuthenticationChallenge& challenge
         if (challenge.failureResponse().httpStatusCode() == 401) {
             URL urlToStore = challenge.failureResponse().url();
             CredentialStorage::set(credential, challenge.protectionSpace(), urlToStore);
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
             String host = challenge.protectionSpace().host();
             String realm = challenge.protectionSpace().realm();
             //kprintf("Storing credentials in db for host %s realm %s (%s %s)\n", host.utf8().data(), realm.utf8().data(), credential.user().utf8().data(), credential.password().utf8().data());

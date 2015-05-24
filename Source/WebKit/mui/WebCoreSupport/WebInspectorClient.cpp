@@ -53,7 +53,6 @@
 #include "WebApplicationManager.h"
 #endif
 
-#if OS(MORPHOS)
 #include "gui.h"
 #include "utils.h"
 #include <proto/intuition.h>
@@ -64,7 +63,6 @@
 #undef get
 #undef set
 #undef String
-#endif
 
 
 using namespace WebCore;

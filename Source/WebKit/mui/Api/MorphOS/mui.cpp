@@ -31,6 +31,7 @@
 #include <proto/intuition.h>
 #include <proto/muimaster.h>
 
+#include "config.h"
 #include "gui.h"
 
 APTR MakeCheck(CONST_STRPTR str, ULONG checked)
@@ -226,14 +227,15 @@ APTR MakePrefsPopString(CONST_STRPTR label, CONST_STRPTR def, ULONG id)
 	return (obj);
 }
 
-#if !defined(__AROS__)
+#if OS(MORPHOS)
 ULONG getv(APTR obj, ULONG attr)
 {
 	ULONG val;
 	GetAttr(attr, obj, &val);
 	return val;
 }
-#else
+#endif
+#if OS(AROS)
 IPTR getv(APTR obj, ULONG attr)
 {
     IPTR val;

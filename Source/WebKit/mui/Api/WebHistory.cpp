@@ -43,12 +43,10 @@
 #include "HistoryItem.h"
 #include "IconDatabase.h"
 
-#if OS(MORPHOS)
 #include "gui.h"
 #include <clib/debug_protos.h>
 #undef String
 #undef PageGroup
-#endif
 
 using namespace WebCore;
 using namespace std;
@@ -388,9 +386,7 @@ void WebHistory::visitedURL(const char* url, const char* title, const char* http
 		if(itemURL == url)
 		{
 			m_historyList.erase(it, it+1);
-#if OS(MORPHOS)
 			DoMethod(app, MM_History_Remove, item);
-#endif
 			delete item; // Careful with that one
 			break;
 		}
@@ -403,9 +399,7 @@ void WebHistory::visitedURL(const char* url, const char* title, const char* http
 		item->initWithURLString(String::fromUTF8(url), String::fromUTF8(title), lastAccessed);
 		m_historyList.push_back(item);
 
-#if OS(MORPHOS)
 		DoMethod(app, MM_History_Insert, item);
-#endif
 
 		if(getv(app, MA_OWBApp_SaveHistory))
 		{

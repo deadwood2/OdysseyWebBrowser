@@ -32,7 +32,7 @@
 #include "FileMetadata.h"
 #include <errno.h>
 #include <sys/stat.h>
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 #include <exec/exec.h>
 #include <proto/exec.h>
 #include <proto/wb.h>
@@ -290,7 +290,7 @@ String pathByAppendingComponent(const String& path, const String& component)
 #warning "Just use AddPart..."
     if (path.endsWith('/'))
         return path + component;
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     else if(path.endsWith(":"))
         return path + component;
 #endif
@@ -324,7 +324,7 @@ bool makeAllDirectories(const String& path)
     return true;
 }
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 static char *basename(char *path)
 {
 #warning "Just use FilePart/PathPart"
@@ -350,14 +350,14 @@ static char *basename(char *path)
 
 String pathGetFileName(const String& path)
 {
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
   return String(basename((char *) path.latin1().data()));
 #else
   return path.substring(path.reverseFind('/') + 1);
 #endif
 }
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 // XXX: totally wrong of course
 char *dirname (char *path)
 {
@@ -405,7 +405,7 @@ String directoryName(const String& path)
 	return ret;
 }
 
-#if !PLATFORM(EFL) && !OS(MORPHOS)
+#if !PLATFORM(EFL) && !PLATFORM(MUI)
   Vector<String> listDirectory(const String& path, const String& filter)
   {
     Vector<String> entries;

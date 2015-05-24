@@ -1816,14 +1816,12 @@ protected:
 
     std::vector<WebWindow *> m_children; 
 
-#if OS(MORPHOS)
     BalPoint m_scheduledScrollOffset;
 	WebInspectorFrontendClient* m_inspectorFrontendClient;
  public:
     BalPoint scheduledScrollOffset();
     void setScheduledScrollOffset(BalPoint offset);
 	void setInspectorFrontendClient(WebInspectorFrontendClient *client) { m_inspectorFrontendClient = client; }
-#endif
 };
 
 #endif

@@ -42,9 +42,10 @@
 #include <rexx/storage.h>
 #include <rexx/errors.h>
 #include <libraries/locale.h>
-#if !defined(__AROS__)
+#if OS(MORPHOS)
 #include <proto/charsets.h>
-#else
+#endif
+#if OS(AROS)
 #include <proto/codesets.h>
 #endif
 #include <proto/locale.h>
@@ -53,7 +54,7 @@
 #include <proto/asl.h>
 #include <proto/dos.h>
 #include <proto/rexxsyslib.h>
-#if !defined(__AROS__)
+#if OS(MORPHOS)
 #include <magicaction/magicbeacon.h>
 #include <proto/spellchecker.h>
 #endif
@@ -548,7 +549,7 @@ char *utf8_to_local(const char *in)
 		return strdup("");
 	}
 
-#if !defined(__AROS__)
+#if OS(MORPHOS)
 	if(CharsetsBase)
 	{
 		LONG dstmib = GetSystemCharset(NULL, 0);
@@ -570,7 +571,8 @@ char *utf8_to_local(const char *in)
 			}
 		}
 	}
-#else
+#endif
+#if OS(AROS)
 	{
         ULONG dataConvertedLength;
         STRPTR dataConverted = CodesetsUTF8ToStr(CSA_Source, (IPTR) in, CSA_DestLenPtr, (IPTR) &dataConvertedLength,
@@ -595,7 +597,7 @@ char *local_to_utf8(const char *in)
         return strdup("");
     }
 
-#if !defined(__AROS__)
+#if OS(MORPHOS)
 	if(CharsetsBase)
 	{
 		LONG srcmib = GetSystemCharset(NULL, 0);
@@ -617,7 +619,8 @@ char *local_to_utf8(const char *in)
 			}
 		}
 	}
-#else
+#endif
+#if OS(AROS)
 	{
 	    struct codeset *utfCodeset = CodesetsFindA("UTF-8", NULL);
 	    ULONG dataConvertedLength;
@@ -908,7 +911,7 @@ STRPTR get_dictionary_language()
 
 APTR open_dictionary(char *language)
 {
-#if !defined(__AROS__) // __AROS__
+#if OS(MORPHOS)
 	struct Locale *l;
 
 	if(!SpellCheckerBase) return NULL;
@@ -949,14 +952,15 @@ APTR open_dictionary(char *language)
 	}
 
 	return g_dictionary;
-#else
+#endif
+#if OS(AROS)
 	return NULL;
 #endif
 }
 
 void close_dictionary()
 {
-#if !defined(__AROS__) // __AROS__
+#if OS(MORPHOS)
 	if(SpellCheckerBase && g_dictionary)
 	{
 		CloseDictionary(g_dictionary);
@@ -1041,7 +1045,7 @@ bool canAllocateMemory(long long size)
 	return (long long) AvailMem(MEMF_LARGEST|MEMF_ANY) >= (size + 1024*1024);
 }
 
-#if !defined(__AROS__)
+#if OS(MORPHOS)
 extern void *libnix_mempool;
 #endif
 extern jmp_buf bailout_env;

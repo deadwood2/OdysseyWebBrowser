@@ -35,6 +35,7 @@
 #include <proto/intuition.h>
 #include <proto/utility.h>
 
+#include "config.h"
 #include "gui.h"
 
 struct Data
@@ -85,7 +86,7 @@ STATIC VOID doset(APTR obj, struct Data *data, struct TagItem *tags)
 			case MA_PopString_ActivateString:
 				if(tag->ti_Data)
 				{
-#if 0 // __AROS__ This cause a hang when opening bookmarks/history side panel
+#if !OS(AROS) // This cause a hang when opening bookmarks/history side panel
 					set((Object *) _win(obj), MUIA_Window_ActiveObject, data->str);
 #endif
 				}

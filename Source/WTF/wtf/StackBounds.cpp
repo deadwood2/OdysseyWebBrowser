@@ -35,7 +35,7 @@
 
 #include <thread.h>
 
-#elif OS(MORPHOS)
+#elif PLATFORM(MUI)
 
 #include <exec/exec.h>
 #include <proto/exec.h>
@@ -101,7 +101,6 @@ void StackBounds::initialize()
 {
     void *ppcspupper = NULL, *ppcsplower = NULL;
 
-#if !defined(__AROS__)
     NewGetTaskAttrs(FindTask(NULL),
                     &ppcspupper,
                     sizeof(ppcspupper),
@@ -113,14 +112,19 @@ void StackBounds::initialize()
 		    sizeof(ppcsplower),
 		    TASKINFOTYPE_SPLOWER,
 		    TAG_DONE);
-#else
-    ppcspupper = FindTask(NULL)->tc_SPUpper;
-    ppcsplower = FindTask(NULL)->tc_SPLower;
-#endif
 
     m_origin = ppcspupper;
     m_bound =  ppcsplower;/*estimateStackBound(m_origin);*/
 }
+
+#elif OS(AROS)
+
+void StackBounds::initialize()
+{
+    m_origin = FindTask(NULL)->tc_SPUpper;
+    m_bound =  FindTask(NULL)->tc_SPLower;
+}
+
 
 #elif OS(UNIX)
 

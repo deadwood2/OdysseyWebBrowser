@@ -222,18 +222,14 @@ public:
 
     WebHistoryItemPrivate *getPrivateItem() { return d; }
 
-#if OS(MORPHOS)
 	virtual void setFragment(char* fragment) { m_fragment = fragment; }
 	virtual char* fragment() { return (char *) m_fragment.c_str(); }
-#endif
 
 protected:
     WebHistoryItemPrivate *d;
     std::string m_alternateTitle;
 
-#if OS(MORPHOS)
 	std::string	m_fragment;
-#endif
 };
 
 #endif

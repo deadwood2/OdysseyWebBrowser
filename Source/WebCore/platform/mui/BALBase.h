@@ -33,7 +33,7 @@
 #include <wtf/Platform.h>
 #include "WebKitTypes.h"
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 #include "MorphOS/BALTypeMorphOS.h"
 #endif
 

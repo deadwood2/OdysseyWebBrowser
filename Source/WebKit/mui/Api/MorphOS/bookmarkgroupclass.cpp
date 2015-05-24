@@ -283,7 +283,7 @@ static void doset(Object *obj, struct Data *data, struct TagItem *tags)
 				else current->flags = current->flags & ~NODEFLAG_INMENU;
 				D(kprintf( "InMenu after is %08lx.\n",(ULONG)current->flags));
 				line=DoMethod(data->lt_bookmark, MUIM_Listtree_GetNr, active, 0L);
-#if 0 // __AROS__ this causes crash in MUIM_Redraw of list, font is not set
+#if !OS(AROS) // This causes crash in MUIM_Redraw of list, font is not set
 				DoMethod(data->lt_bookmark, MUIM_List_Redraw, line, NULL);
 #endif
 				DoMethod(app, MUIM_Application_PushMethod,
@@ -450,7 +450,7 @@ DEFNEW
 
 	DoMethod(obj, MM_Bookmarkgroup_Update, MV_BookmarkGroup_Update_All); // Init fiels correctly
 
-#if 1 // __AROS__
+#if OS(AROS)
 	set(data->bt_addgroup, MUIA_Disabled, TRUE);
 	set(data->bt_addlink, MUIA_Disabled, TRUE);
 	set(data->bt_separator, MUIA_Disabled, TRUE);

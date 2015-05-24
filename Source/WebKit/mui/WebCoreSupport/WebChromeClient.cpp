@@ -65,7 +65,6 @@
 #include <PopupMenuMorphOS.h>
 #include <SearchPopupMenuMorphOS.h>
 #include <WindowFeatures.h>
-#if OS(MORPHOS)
 #include "gui.h"
 #include "utils.h"
 #include <proto/intuition.h>
@@ -74,7 +73,6 @@
 #include "asl.h"
 #undef get
 #undef String
-#endif
 
 #include <cstdio>
 
@@ -135,11 +133,9 @@ bool WebChromeClient::canTakeFocus(FocusDirection direction)
 
 void WebChromeClient::takeFocus(FocusDirection direction)
 {
-#if OS(MORPHOS)
     BalWidget *widget = m_webView->viewWindow();
     if(widget) 
 		DoMethod(widget->browser, MM_OWBBrowser_ReturnFocus);
-#endif
 }
 
 void WebChromeClient::focusedElementChanged(Element*) 
@@ -152,8 +148,6 @@ void WebChromeClient::focusedFrameChanged(WebCore::Frame*)
 
 Page* WebChromeClient::createWindow(Frame*, const FrameLoadRequest& frameLoadRequest, const WindowFeatures& features, const WebCore::NavigationAction&)
 {
-#if OS(MORPHOS)
-    
 	if (features.dialog)
 	{
 		kprintf("%s: features.dialog not implemented on MorphOS.\n", __PRETTY_FUNCTION__);
@@ -194,7 +188,6 @@ Page* WebChromeClient::createWindow(Frame*, const FrameLoadRequest& frameLoadReq
 	}
 
     return 0;
-#endif
 }
 
 void WebChromeClient::show()
@@ -308,17 +301,14 @@ void WebChromeClient::runJavaScriptAlert(Frame* frame, const String& message)
 
 bool WebChromeClient::runJavaScriptConfirm(Frame *frame, const String& message)
 {
-#if OS(MORPHOS)
     SharedPtr<JSActionDelegate> jsActionDelegate = m_webView->jsActionDelegate();
     if (jsActionDelegate)
         return jsActionDelegate->jsConfirm(m_webView->mainFrame(), message.utf8().data());
-#endif
     return false;
 }
 
 bool WebChromeClient::runJavaScriptPrompt(Frame *frame, const String& message, const String& defaultValue, String& result)
 {
-#if OS(MORPHOS)
     char* value = 0;
     SharedPtr<JSActionDelegate> jsActionDelegate = m_webView->jsActionDelegate();
     if (jsActionDelegate)
@@ -330,14 +320,11 @@ bool WebChromeClient::runJavaScriptPrompt(Frame *frame, const String& message, c
 			return true;
 		}
     }
-#endif
     return false;
 }
 
 void WebChromeClient::setStatusbarText(const String& statusText)
 {
-#if OS(MORPHOS)
-
     BalWidget *widget = m_webView->viewWindow();
 
 	if(widget)
@@ -349,19 +336,16 @@ void WebChromeClient::setStatusbarText(const String& statusText)
 
 		free(converted_status);
 	}
-#endif
 }
 
 bool WebChromeClient::shouldInterruptJavaScript()
 {
-#if OS(MORPHOS)
 	BalWidget* widget = m_webView->viewWindow();
 
 	if(widget)
 	{
 		return MUI_RequestA(app, widget->window, 0, GSI(MSG_WEBVIEW_JSACTION_TITLE), GSI(MSG_REQUESTER_YES_NO), GSI(MSG_WEBVIEW_INTERRUPT_SCRIPT), NULL);
 	}
-#endif
     return false;
 }
 
@@ -519,7 +503,6 @@ PassRefPtr<DateTimeChooser> WebChromeClient::openDateTimeChooser(DateTimeChooser
 
 void WebChromeClient::runOpenPanel(Frame*, PassRefPtr<FileChooser> prpFileChooser)
 {
-#if OS(MORPHOS)
     RefPtr<FileChooser> chooser = prpFileChooser;
     bool multiFile = chooser->settings().allowsMultipleFiles;
 
@@ -563,7 +546,6 @@ void WebChromeClient::runOpenPanel(Frame*, PassRefPtr<FileChooser> prpFileChoose
 			FreeVecTaskPooled(file);
 		}
 	}
-#endif
 }
 
 void WebChromeClient::loadIconForFiles(const Vector<WTF::String>& filenames, WebCore::FileIconLoader* loader)   

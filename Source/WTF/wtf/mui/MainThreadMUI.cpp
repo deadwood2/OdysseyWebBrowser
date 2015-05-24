@@ -33,7 +33,7 @@
 
 #define D(x)
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 extern "C"
 {
 	void WakeTimer();

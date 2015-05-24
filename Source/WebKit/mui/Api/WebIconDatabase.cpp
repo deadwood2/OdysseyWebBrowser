@@ -42,7 +42,6 @@
 #include <wtf/MainThread.h>
 #include "ObserverServiceData.h"
 
-#if OS(MORPHOS)
 #include "gui.h"
 #undef set
 #undef get
@@ -50,7 +49,6 @@
 #undef PageGroup
 #include <clib/debug_protos.h>
 #define D(x)
-#endif
 
 using namespace WebCore;
 using namespace WTF;
@@ -69,9 +67,7 @@ public:
 	virtual void didImportIconDataForPageURL(const WTF::String& pageURL) { m_webIconDatabase->didImportIconDataForPageURL(strdup(pageURL.utf8().data())); }
 	virtual void didChangeIconForPageURL(const WTF::String& pageURL) { m_webIconDatabase->didChangeIconForPageURL(strdup(pageURL.utf8().data())); }
 	virtual void didFinishURLImport() { m_webIconDatabase->didFinishURLImport(); }
-#if OS(MORPHOS)
     virtual void didFinishURLIconImport() { m_webIconDatabase->didFinishURLIconImport(); }
-#endif
 
     Mutex m_notificationMutex;
 private:
@@ -144,7 +140,6 @@ WebIconDatabase *WebIconDatabase::sharedIconDatabase()
     return sharedWebIconDatabase();
 }
 
-#if OS(MORPHOS)
 WebCore::Image *WebIconDatabase::iconForURL(const char* url, IntSize size, bool /*cache*/)
 {
     IntSize intSize(size);
@@ -152,19 +147,6 @@ WebCore::Image *WebIconDatabase::iconForURL(const char* url, IntSize size, bool 
 	WebCore::Image* icon = iconDatabase().synchronousIconForPageURL(url, intSize);
     return icon;
 }
-#else
-virtual BalSurface* WebIconDatabase::iconForURL(const char* url, BalPoint size, bool /*cache*/);
-{
-    IntPoint p(size);
-    IntSize intSize(p.x(), p.y());
-
-    WebCore::Image* icon = iconDatabase().synchronousIconForPageURL(url, intSize);
-    if (!icon)
-        return 0;
-    cairo_surface_t * surf = icon->nativeImageForCurrentFrame();
-    return surf;
-}
-#endif
 
 void WebIconDatabase::retainIconForURL(const char* url)
 {
@@ -336,10 +318,8 @@ static void postDidRemoveAllIconsNotification(WebIconDatabase* iconDB)
 
 static void postDidAddIconNotification(String pageURL, WebIconDatabase* iconDB)
 {
-#if OS(MORPHOS)
 	SetAttrs(app, MA_OWBApp_DidReceiveFavIcon, pageURL.utf8().data(), TAG_DONE);
 	D(kprintf("postDidAddIconNotification(%s)\n", pageURL.utf8().data()));
-#endif
     WebCore::ObserverServiceData::createObserverService()->notifyObserver(WebIconDatabase::iconDatabaseDidAddIconNotification(), pageURL, iconDB);
 }
 
@@ -373,13 +353,11 @@ bool operator<(BalPoint p1, BalPoint p2)
     return point1 < point2;
 }
 
-#if OS(MORPHOS)
 void WebIconDatabase::didFinishURLIconImport()
 {
 	D(kprintf("WebIconDatabase::didFinishURLIconImport()\n"));
 	SetAttrs(app, MA_OWBApp_FavIconImportComplete, TRUE, TAG_DONE);
 	//allowDatabaseCleanup();
 }
-#endif
 
 #endif

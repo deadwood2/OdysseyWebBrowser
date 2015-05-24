@@ -117,11 +117,7 @@ public:
         @discussion Returns an icon URL for a web site URL from memory or disk. nil if none is found.
         @param URL
      */
-#if OS(MORPHOS)
-	virtual WebCore::Image *iconForURL(const char* url, WebCore::IntSize size, bool cache);
-#else
-    virtual BalSurface* iconForURL(const char* url, BalPoint size, bool cache);
-#endif
+    virtual WebCore::Image *iconForURL(const char* url, WebCore::IntSize size, bool cache);
     /**
      @method retainIconForURL:
         @abstract Increments the retain count of the icon.
@@ -196,14 +192,12 @@ public:
     virtual void didChangeIconForPageURL(const char*);
     virtual void didFinishURLImport();
 
-#if OS(MORPHOS)
     /**
 	 *  didFinishURLIconImport signals import completion
      * @param[in]:
      * @param[out]:
      */
 	virtual void didFinishURLIconImport();
-#endif
 
     /**
      *  iconDatabaseDidAddIconNotification notifies of Icon addition

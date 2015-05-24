@@ -46,11 +46,9 @@
 #include <ResourceRequest.h>
 #include <NotImplemented.h>
 
-#if OS(MORPHOS)
 #include "gui.h"
 #include <clib/debug_protos.h>
 #undef String
-#endif
 
 using namespace WebCore;
 
@@ -70,16 +68,12 @@ void WebContextMenuClient::contextMenuDestroyed()
 
 PlatformMenuDescription WebContextMenuClient::getCustomMenuFromDefaultItems(ContextMenu* menu)
 {
-#if OS(MORPHOS)
     return menu->releasePlatformDescription();
-#endif
 }
 
 void WebContextMenuClient::contextMenuItemSelected(ContextMenuItem* item, const ContextMenu* parentMenu)
 {
-#if OS(MORPHOS)
     DoMethod(app, MM_OWBApp_SelectUserMenu, (APTR) item, (APTR) &(m_webView->page()->contextMenuController()));
-#endif
 }
 
 void WebContextMenuClient::downloadURL(const URL& url)
