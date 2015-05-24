@@ -87,7 +87,6 @@
 #include <Settings.h>
 #include <APICast.h>
 
-#if OS(MORPHOS)
 #include "AutofillManager.h"
 #include "gui.h"
 #include "utils.h"
@@ -96,7 +95,6 @@
 #include <clib/debug_protos.h>
 #undef get
 #undef String
-#endif
 
 #include <cstdio>
 
@@ -410,7 +408,6 @@ void WebFrameLoaderClient::dispatchDidFinishLoad()
 
 Frame* WebFrameLoaderClient::dispatchCreatePage(const WebCore::NavigationAction&)
 {
-#if OS(MORPHOS)
     BalWidget *widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddPage, NULL, FALSE, FALSE, NULL, NULL, getv(m_webFrame->webView()->viewWindow()->browser, MA_OWBBrowser_PrivateBrowsing), FALSE);
 
     if(widget && widget->webView)
@@ -421,7 +418,6 @@ Frame* WebFrameLoaderClient::dispatchCreatePage(const WebCore::NavigationAction&
     }
 
     return 0;
-#endif
 }
 
 void WebFrameLoaderClient::dispatchShow()
@@ -662,18 +658,12 @@ void WebFrameLoaderClient::setTitle(const WebCore::StringWithDirection& title, c
     }
     bool privateBrowsingEnabled = false; 
 
-#if OS(MORPHOS)
     BalWidget* widget = m_webFrame->webView()->viewWindow();
     if(widget)
     {
 	// We don't use the global preference private setting
 	privateBrowsingEnabled = getv(widget->browser, MA_OWBBrowser_PrivateBrowsing) != FALSE;
     }
-#else
-	WebPreferences* preferences = m_webFrame->webView()->preferences(); // XXX: Wrong, should just use page settings().
-    if (preferences)
-        privateBrowsingEnabled = preferences->privateBrowsingEnabled();
-#endif
 
     if (privateBrowsingEnabled)
         return;
@@ -689,12 +679,10 @@ void WebFrameLoaderClient::setTitle(const WebCore::StringWithDirection& title, c
 
     item->setTitle(title.string().utf8().data());
 
-#if OS(MORPHOS)
     // Not sure calling twice visitedURL is particularly smart, but else, title isn't set in our history
 //#warning "find something better, really, calling visitedURL is not optimal at all"
     DocumentLoader* loader = core(m_webFrame)->loader().documentLoader();
     history->visitedURL(strdup(loader->urlForHistory().string().utf8().data()), strdup(loader->title().string().utf8().data()), strdup(loader->originalRequestCopy().httpMethod().utf8().data()), loader->urlForHistoryReflectsFailure());
-#endif
 }
 
 void WebFrameLoaderClient::savePlatformDataToCachedFrame(CachedFrame* cachedFrame)

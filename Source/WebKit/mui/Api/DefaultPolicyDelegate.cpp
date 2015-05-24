@@ -51,7 +51,6 @@
  #include <unistd.h> 
 #endif
 
-#if OS(MORPHOS)
 #include "gui.h"
 #include "utils.h"
 #include <proto/dos.h>
@@ -60,7 +59,6 @@
 #undef get
 #undef String
 #undef Read
-#endif
 
 using namespace WebCore;
 
@@ -167,32 +165,7 @@ bool DefaultPolicyDelegate::decidePolicyForMIMEType(
     /*[in]*/ WebFrame* frame,
     /*[in]*/ WebFramePolicyListener* listener)
 {
-#if OS(MORPHOS)
     return DoMethod(app, MM_OWBApp_RequestPolicyForMimeType, (APTR) &response, (APTR) request, (APTR) webView, (APTR) frame, (APTR) listener);
-#else
-    bool canShowMIMEType = webView->canShowMIMEType(response.mimeType().utf8().data());
-
-    const char* url = request->URL();
-
-	if(url)
-	{
-	    if (String(url).startsWith("file:")) {
-	        bool isDir = isDirectory(url);
-	        if (isDir)
-	            listener->ignore();
-	        else if(canShowMIMEType)
-	            listener->use();
-	        else
-	            listener->ignore();
-	    } else if (canShowMIMEType)
-	        listener->use();
-	    else
-	        listener->ignore();
-
-		free(url);
-	}
-    return true;
-#endif
 }
 
 void DefaultPolicyDelegate::unableToImplementPolicyWithError(

@@ -54,10 +54,8 @@
 #include <ResourceResponse.h>
 #include <FileIOLinux.h>
 
-#if OS(MORPHOS)
 #include "gui.h"
 #include <clib/debug_protos.h>
-#endif
 
 using namespace WebCore;
 

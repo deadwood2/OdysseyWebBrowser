@@ -34,7 +34,7 @@
 #include <windows.h>
 #endif
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 #include <proto/exec.h>
 #endif
 
@@ -44,7 +44,7 @@ inline int getCurrentProcessID()
 {
 #if OS(WINDOWS)
     return GetCurrentProcessId();
-#elif OS(MORPHOS)
+#elif PLATFORM(MUI)
     return (int) FindTask(NULL);
 #else
     return getpid();

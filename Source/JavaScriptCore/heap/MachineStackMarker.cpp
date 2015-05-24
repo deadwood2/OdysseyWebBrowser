@@ -31,7 +31,7 @@
 #include <stdlib.h>
 #include <wtf/StdLibExtras.h>
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <clib/debug_protos.h>
@@ -93,7 +93,7 @@ static void pthreadSignalHandlerSuspendResume(int)
     sigsuspend(&signalSet);
 }
 #endif
-#elif OS(MORPHOS)
+#elif PLATFORM(MUI)
 typedef void * PlatformThread;
 #endif
 
@@ -216,14 +216,14 @@ static inline PlatformThread getCurrentPlatformThread()
     return GetCurrentThread();
 #elif USE(PTHREADS)
     return pthread_self();
-#elif OS(MORPHOS)
+#elif PLATFORM(MUI)
 	return (PlatformThread) FindTask(NULL);
 #endif
 }
 
 static inline bool equalThread(const PlatformThread& first, const PlatformThread& second)
 {
-#if OS(DARWIN) || OS(WINDOWS) || OS(MORPHOS)
+#if OS(DARWIN) || OS(WINDOWS) || PLATFORM(MUI)
     return first == second;
 #elif USE(PTHREADS)
     return !!pthread_equal(first, second);

@@ -407,7 +407,7 @@ int	pendingChildrenForThread(APTR process)
 }
 
 /* Thread Management */
-#if defined(__AROS__)
+#if OS(AROS)
 
 struct trampudata
 {
@@ -467,7 +467,7 @@ ThreadIdentifier createThreadInternal(ThreadFunction entryPoint, void* data, con
 				startup_msg->tsm_Msg.mn_Node.ln_Type = NT_MESSAGE;
 				startup_msg->tsm_Msg.mn_ReplyPort    = threadHandle->td_MsgPort;
 				startup_msg->tsm_Msg.mn_Length       = sizeof (*startup_msg);
-#if defined(__AROS__)
+#if OS(AROS)
                 struct trampudata * udata = (struct trampudata *)AllocVec(sizeof(struct trampudata), MEMF_ANY);
                 udata->entry = entryPoint;
                 udata->data = data;

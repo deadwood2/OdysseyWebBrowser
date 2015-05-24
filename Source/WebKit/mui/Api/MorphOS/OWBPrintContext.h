@@ -80,9 +80,9 @@ public:
 	//kprintf("spoolPage %d pageRect [%d %d %d %d] m_printedPageWidth %f scale %f\n", pageNumber, pageRect.x(), pageRect.y(), pageRect.width(), pageRect.height(), m_printedPageWidth, scale);
 
         ctx.save();
-#if OS(MORPHOS) && !OS(DARWIN)
-	ctx.scale(WebCore::FloatSize(scale, scale));
-#endif
+
+        ctx.scale(WebCore::FloatSize(scale, scale));
+
         ctx.translate(static_cast<float>(-pageRect.x()),
                       static_cast<float>(-pageRect.y()));
         ctx.clip(pageRect);
@@ -126,12 +126,7 @@ public:
             graphicsContext.save();
 
             graphicsContext.translate(0, currentHeight);
-#if !OS(MORPHOS) || OS(DARWIN)
-            // Account for the disabling of scaling in spoolPage. In the context
-            // of spoolAllPagesWithBoundaries the scale HAS NOT been pre-applied.
-            float scale = getPageShrink(pageIndex);
-            graphicsContext.scale(WebCore::FloatSize(scale, scale));
-#endif
+
             spoolPage(graphicsContext, pageIndex);
             graphicsContext.restore();
 

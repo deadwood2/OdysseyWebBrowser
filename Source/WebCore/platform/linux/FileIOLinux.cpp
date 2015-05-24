@@ -35,7 +35,7 @@
 #include <unistd.h>
 #include <stdio.h>
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 #include <dos/dos.h>
 #include <proto/dos.h>
 #if !OS(AROS)
@@ -61,7 +61,7 @@ OWBFile::~OWBFile()
 	D(kprintf("[File] ~File() OK\n"));
 }
 
-#if !defined(__AROS__)
+#if !OS(AROS)
 int OWBFile::open(char openType)
 {
 	struct AsyncFile *fd = 0;

@@ -97,7 +97,7 @@
 
 #undef PageGroup
 
-#if !defined(__AROS__)
+#if OS(MORPHOS)
 namespace WTF
 {
     extern int memory_consumption;
@@ -1190,7 +1190,7 @@ bool WebViewPrivate::onKeyDown(BalEventKey event)
 				kprintf("\nStatistics about JavaScript Heap:\n");
 
 
-#if !OS(AROS)
+#if OS(MORPHOS)
 				kprintf("\tmemory allocated by allocator: %d\n", WTF::memory_consumption);
 #endif
 				kprintf("\theap: used %d - total %d\n", JSDOMWindow::commonVM().heap.size(), JSDOMWindow::commonVM().heap.capacity());

@@ -322,11 +322,7 @@ struct NewMenu MenuData[] =
 	{ NM_ITEM , MENU(SAVE_AS_SOURCE)  , 0, 0, 0, (APTR)MNA_SAVE_AS_SOURCE },
 	{ NM_ITEM , MENU(SAVE_AS_PDF)     , 0, 0, 0, (APTR)MNA_SAVE_AS_PDF },
   	{ NM_ITEM , NM_BARLABEL           , 0, 0, 0, NULL },
-#if 0 // __AROS__
 	{ NM_ITEM , MENU(PRINT)           , (STRPTR) "P", 0, 0, (APTR)MNA_PRINT },
-#else
-    { NM_ITEM , MENU(PRINT)           , (STRPTR) "P", DIS, 0, (APTR)MNA_PRINT },
-#endif
 	{ NM_ITEM , NM_BARLABEL           , 0, 0, 0, NULL },
 	{ NM_ITEM , MENU(ABOUT)           , 0, 0, 0, (APTR)MNA_ABOUT },
 	{ NM_ITEM , NM_BARLABEL           , 0, 0, 0, NULL },
@@ -348,11 +344,7 @@ struct NewMenu MenuData[] =
 	{ NM_ITEM , MENU(QUICKLINKS)      , 0, CHECKIT|MENUTOGGLE, 0, (APTR)MNA_QUICKLINKS },
 	{ NM_ITEM , MENU(LOCATION)        , 0, CHECKIT|MENUTOGGLE, 0, (APTR)MNA_LOCATION },
 	{ NM_ITEM , MENU(STATUS)          , 0, CHECKIT|MENUTOGGLE, 0, (APTR)MNA_STATUS },
-#if 0 // __AROS__
-    { NM_ITEM , MENU(FULLSCREEN)      , 0, CHECKIT|MENUTOGGLE, 0, (APTR)MNA_FULLSCREEN },
-#else
-	{ NM_ITEM , MENU(FULLSCREEN)      , 0, CHECKIT|MENUTOGGLE|DIS, 0, (APTR)MNA_FULLSCREEN },
-#endif
+	{ NM_ITEM , MENU(FULLSCREEN)      , 0, CHECKIT|MENUTOGGLE, 0, (APTR)MNA_FULLSCREEN },
 	{ NM_ITEM , NM_BARLABEL           , 0, 0, 0, NULL },
 	{ NM_ITEM , MENU(PANELS)          , 0, 0, 0, NULL },
 	{ NM_SUB  , MENU(NO_PANEL)        , 0, CHECKIT|MENUTOGGLE, 2 | 4, (APTR)MNA_NO_PANEL },
@@ -470,11 +462,12 @@ enum
 	REXX_STATUS
 };
 
-#if !defined(__AROS__)
+#if OS(MORPHOS)
 #define REXXHOOK(name, param)	static const struct Hook name = { { NULL, NULL }, (HOOKFUNC)&RexxEmul, NULL, (APTR)(param) }
 static LONG Rexx(void);
 static const struct EmulLibEntry RexxEmul = { TRAP_LIB, 0, (void (*)())&Rexx };
-#else
+#endif
+#if OS(AROS)
 AROS_UFP3
 (
     LONG, Rexx,
@@ -482,7 +475,7 @@ AROS_UFP3
     AROS_UFHA(Object *, obj, A2),
     AROS_UFHA(IPTR *, params, A1)
 );
-#define REXXHOOK(name, param)   static const struct Hook name = { { NULL, NULL }, NULL, NULL, (APTR)(param) }; //__AROS__
+#define REXXHOOK(name, param)   static const struct Hook name = { { NULL, NULL }, NULL, NULL, (APTR)(param) };
 #endif
 REXXHOOK(RexxHookA, REXX_PRINT);
 REXXHOOK(RexxHookB, REXX_ABOUT);
@@ -532,7 +525,7 @@ static const struct MUI_Command rexxcommands[] =
 	{ NULL            , NULL    , 0, NULL, { 0 } }
 };
 
-#if !defined(__AROS__)
+#if OS(MORPHOS)
 static LONG Rexx(void)
 {
 	struct Data *data;
@@ -541,7 +534,8 @@ static LONG Rexx(void)
 	IPTR *params = (IPTR *)REG_A1;
 
 	data = (struct Data *) INST_DATA(OCLASS(obj), obj);
-#else
+#endif
+#if OS(AROS)
 AROS_UFH3
 (
     LONG, Rexx,
@@ -768,7 +762,7 @@ AROS_UFH3
 	}
 
 	return 0;
-#if defined(__AROS__)
+#if OS(AROS)
 	AROS_USERFUNC_EXIT
 #endif
 }

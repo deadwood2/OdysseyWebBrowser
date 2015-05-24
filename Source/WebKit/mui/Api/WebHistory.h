@@ -193,10 +193,8 @@ public:
 protected:
     friend class WebChromeClient;
 
-#if OS(MORPHOS)
 public:
 	std::vector<WebHistoryItem *> *historyList();
-#endif
 
 private:
     enum NotificationType {
@@ -210,13 +208,9 @@ private:
 
     WebPreferences *m_preferences;
 
-#if OS(MORPHOS)
-
 public:
 	bool loadHistoryFromDatabase(int sortCriterium, bool desc = false, std::vector<WebHistoryItem *> *destList = NULL);
 	bool insertHistoryItemIntoDatabase(WTF::String& url, WTF::String& title, double lastAccessed);
-
-#endif
 };
 
 #endif

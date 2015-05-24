@@ -39,7 +39,7 @@
 #include <unistd.h>
 #elif OS(WINDOWS)
 #include <windows.h>
-#elif OS(MORPHOS)
+#elif PLATFORM(MUI)
 #include <proto/exec.h>
 #endif
 
@@ -87,7 +87,7 @@ static size_t computeRAMSize()
     if (!result)
         return ramSizeGuess;
     return status.ullTotalPhys;
-#elif OS(MORPHOS)
+#elif PLATFORM(MUI)
     static const char * ramSizeSetting = getenv("OWB_RAM_SIZE");
     if(ramSizeSetting)
     {

@@ -46,10 +46,6 @@
 #include "PlatformPathCairo.h"
 #include "ShadowBlur.h"
 
-#if OS(MORPHOS)
-#include <clib/debug_protos.h>
-#endif
-
 namespace WebCore {
 
 static void drawGlyphsToContext(cairo_t* context, const Font* font, GlyphBufferGlyph* glyphs, int numGlyphs)
@@ -123,7 +119,6 @@ float FontCascade::drawComplexText(GraphicsContext* context, const TextRun& run,
 void FontCascade::drawEmphasisMarksForComplexText(GraphicsContext* /* context */, const TextRun& /* run */, const AtomicString& /* mark */, const FloatPoint& /* point */, int /* fm */, int /* to */) const
 {
 #warning "not implemented"
-//    kprintf("Font::drawEmphasisMarksForComplexText not implemented\n");
 }
 
 float FontCascade::floatWidthForComplexText(const TextRun& run, HashSet<const Font*>* fallbackFonts, GlyphOverflow* glyphOverflow) const

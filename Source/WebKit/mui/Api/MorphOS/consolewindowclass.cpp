@@ -98,7 +98,7 @@ DEFSMETHOD(ConsoleWindow_Add)
 {
 	struct console_entry *e = (struct console_entry *) malloc(sizeof(*e));
 
-#if 0 // __AROS__
+#if !OS(AROS)
 	if(e)
 	{
 		struct timeval timeval;

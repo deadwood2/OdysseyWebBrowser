@@ -51,13 +51,13 @@
 #include <windows.h>
 #endif
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 #include <exec/nodes.h>
 #endif
 
 namespace WTF {
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 //struct ThreadSpecificNode;
 struct ThreadSpecificNode
 {
@@ -118,7 +118,7 @@ public:
     pthread_key_t m_key;
 #elif OS(WINDOWS)
     int m_index;
-#elif OS(MORPHOS)
+#elif PLATFORM(MUI)
 	ThreadSpecificKey m_key;
 #endif
 };
@@ -228,7 +228,7 @@ inline void ThreadSpecific<T>::set(T* ptr)
     TlsSetValue(tlsKeys()[m_index], data);
 }
 
-#elif OS(MORPHOS)
+#elif PLATFORM(MUI)
 
 void threadSpecificKeyCreate(ThreadSpecificKey*, void (*)(void *));
 void threadSpecificKeyDelete(ThreadSpecificKey);
@@ -285,7 +285,7 @@ inline void ThreadSpecific<T>::destroy(void* ptr)
     pthread_setspecific(data->owner->m_key, 0);
 #elif OS(WINDOWS)
     TlsSetValue(tlsKeys()[data->owner->m_index], 0);
-#elif OS(MORPHOS)
+#elif PLATFORM(MUI)
 	data->owner->m_key = 0;
 #else
 #error ThreadSpecific is not implemented for this platform.

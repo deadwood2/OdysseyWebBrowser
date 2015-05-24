@@ -379,10 +379,6 @@ PlatformKeyboardEvent::PlatformKeyboardEvent(BalEventKey* event)
     , m_isKeypad(event->Qualifier & IEQUALIFIER_NUMERICPAD)
     , m_balEventKey(event)
 {
-#if !defined(__AROS__)
-    UChar aSrc[2];
-#endif
-
 	m_type = PlatformEvent::KeyDown;
 
 	m_modifiers = 0;
@@ -402,7 +398,8 @@ PlatformKeyboardEvent::PlatformKeyboardEvent(BalEventKey* event)
 	if (event->Qualifier & (IEQUALIFIER_LCOMMAND | IEQUALIFIER_RCOMMAND))
 		m_modifiers |= MetaKey;
 
-#if !defined(__AROS__)
+#if OS(MORPHOS)
+	UChar aSrc[2];
 	if (IDCMP_RAWKEY == event->Class)
 	{
         if (event->Code & IECODE_UP_PREFIX)
@@ -520,7 +517,9 @@ PlatformKeyboardEvent::PlatformKeyboardEvent(BalEventKey* event)
     m_text = aText;
     m_unmodifiedText = aUnmodifiedText;
 	m_keyIdentifier  = aKeyIdentifier;
-#else
+#endif
+
+#if OS(AROS)
     char buffer[10];
     if (IDCMP_RAWKEY == event->Class) {
         int length;

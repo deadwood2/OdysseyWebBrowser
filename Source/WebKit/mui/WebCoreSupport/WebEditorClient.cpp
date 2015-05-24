@@ -48,17 +48,15 @@
 #include <UndoStep.h>
 #include <VisibleSelection.h> 
 
-#if OS(MORPHOS)
 #include "TextBoundaries.h"
 #include "gui.h"
 #include "utils.h"
-#if !defined(__AROS__)
+#if !OS(AROS)
 #include <proto/spellchecker.h>
 #endif
 #include <clib/debug_protos.h>
 
 #define D(x)
-#endif
 
 using namespace WebCore;
 using namespace HTMLNames;
@@ -644,7 +642,7 @@ void WebEditorClient::learnWord(const String& word)
         editing->learnWord(strdup(word.utf8().data()));
 	*/
 
-#if OS(MORPHOS) && !OS(AROS)
+#if OS(MORPHOS)
 	D(kprintf("learnWord(%s)\n", word.utf8().data()));
 
 	String wordToLearn = word.lower();
@@ -688,7 +686,6 @@ void WebEditorClient::checkSpellingOfString(const UChar* text, int length, int* 
         editing->checkSpellingOfString(m_webView, strdup(String(text, length).utf8().data()), length, misspellingLocation, misspellingLength);
 	*/
 
-#if OS(MORPHOS)
 	D(kprintf("checkSpellingOfString(%s)\n", String(text, length).utf8().data()));
 
 	int start = 0, len = 0, i = 0;
@@ -749,7 +746,7 @@ void WebEditorClient::checkSpellingOfString(const UChar* text, int length, int* 
 
 		if(dictionary)
 		{
-#if !defined(__AROS__) // __AROS__
+#if !OS(AROS)
 			D(kprintf("Checking <%s>\n", cword));
 
 			STRPTR *res = (STRPTR *) Suggest(dictionary, (STRPTR) cword, NULL);
@@ -764,7 +761,6 @@ void WebEditorClient::checkSpellingOfString(const UChar* text, int length, int* 
 
 		free(cword);
 	}
-#endif
 }
 
 void WebEditorClient::checkGrammarOfString(const UChar* text, int length, Vector<GrammarDetail>& details, int* badGrammarLocation, int* badGrammarLength)
@@ -813,11 +809,9 @@ void WebEditorClient::checkGrammarOfString(const UChar* text, int length, Vector
         details.append(detail);
     }*/
 
-#if OS(MORPHOS)
 	//kprintf("checkGrammarOfString(%s)\n", String(text, length).utf8().data());
 	*badGrammarLocation = -1;
 	*badGrammarLength = 0;
-#endif
 }
 
 String WebEditorClient::getAutoCorrectSuggestionForMisspelledWord(const String& inputWord)
@@ -866,7 +860,6 @@ bool WebEditorClient::spellingUIIsShowing()
 
 void WebEditorClient::getGuessesForWord(const String& word, const String& context, Vector<String>& guesses)
 {
-#if OS(MORPHOS)
 	D(kprintf("getGuessesForWord(%s)\n", word.utf8().data()));
 
 	String isolatedWord;
@@ -923,7 +916,7 @@ void WebEditorClient::getGuessesForWord(const String& word, const String& contex
 
 		if(dictionary)
 		{
-#if !defined(__AROS__) // __AROS__
+#if !OS(AROS)
 			D(kprintf("Checking <%s>\n", cword));
 
 			STRPTR *res = (STRPTR *) Suggest(dictionary, (STRPTR) cword, NULL);
@@ -948,7 +941,6 @@ void WebEditorClient::getGuessesForWord(const String& word, const String& contex
 
 		free(cword);
 	}
-#endif
 
     /*guesses.clear();
 

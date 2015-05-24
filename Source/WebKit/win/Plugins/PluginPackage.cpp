@@ -156,11 +156,7 @@ void PluginPackage::unloadWithoutShutdown()
     // original window proc. If we free the plugin library from here, we will jump back
     // to code we just freed when we return, so delay calling FreeLibrary at least until
     // the next message loop
-#if !OS(MORPHOS)
-	freeLibrarySoon();
-#else
-	freeLibraryTimerFired(NULL);
-#endif
+    freeLibrarySoon();
 
     m_isLoaded = false;
 }

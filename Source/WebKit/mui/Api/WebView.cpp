@@ -162,7 +162,6 @@
 #include "owb-config.h"
 #include "FileIOLinux.h"
 
-#if OS(MORPHOS)
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/intuition.h>
@@ -173,7 +172,6 @@
 #undef get
 #undef String
 #undef PageGroup
-#endif
 
 using namespace WebCore;
 using std::min;
@@ -366,10 +364,8 @@ WebView::WebView()
 {
     d->clearDirtyRegion();
 
-#if OS(MORPHOS)
 	globalUserAgent = getenv("OWB_USER_AGENT");
     setScheduledScrollOffset(IntPoint(0, 0));
-#endif
 
     initializeStaticObservers();
 
@@ -841,13 +837,11 @@ void WebView::closeWindowSoon()
 
 void WebView::closeWindow()
 {
-#if OS(MORPHOS)
     BalWidget *widget = m_viewWindow;
 	if(widget)
 	{
 		DoMethod(app, MUIM_Application_PushMethod, app, 2, MM_OWBApp_RemoveBrowser, widget->browser);
 	}
-#endif
 }
 
 bool WebView::canHandleRequest(const WebCore::ResourceRequest& request)
@@ -901,9 +895,7 @@ Page* WebView::page()
 static const unsigned CtrlKey = 1 << 0;
 static const unsigned AltKey = 1 << 1;
 static const unsigned ShiftKey = 1 << 2;
-#if OS(MORPHOS)
 static const unsigned AmigaKey = 1 << 4;
-#endif
 
 
 struct KeyDownEntry {
@@ -971,21 +963,17 @@ static const KeyDownEntry keyDownEntries[] = {
     { 'V',       CtrlKey,            "Paste"                                       },
     { 'X',       CtrlKey,            "Cut"                                         },
     { 'A',       CtrlKey,            "SelectAll"                                   },
-#if OS(MORPHOS)
     { 'C',       AmigaKey,           "Copy"                                        },
     { 'V',       AmigaKey,           "Paste"                                       },
     { 'X',       AmigaKey,           "Cut"                                         },
     { 'A',       AmigaKey,           "SelectAll"                                   },
-#endif
     { VK_INSERT, CtrlKey,            "Copy"                                        },
     { VK_DELETE, ShiftKey,           "Cut"                                         },
     { VK_INSERT, ShiftKey,           "Paste"                                       },
     { 'Z',       CtrlKey,            "Undo"                                        },
     { 'Z',       CtrlKey | ShiftKey, "Redo"                                        },
-#if OS(MORPHOS)
-	{ 'Z',       AmigaKey,           "Undo"                                        },
-	{ 'Z',       AmigaKey | ShiftKey,"Redo"                                        },
-#endif
+    { 'Z',       AmigaKey,           "Undo"                                        },
+    { 'Z',       AmigaKey | ShiftKey,"Redo"                                        },
     { 9999999,   0,                  ""                                            },
 };
 
@@ -1031,10 +1019,8 @@ const char* WebView::interpretKeyEvent(const KeyboardEvent* evt)
         modifiers |= AltKey;
     if (evt->ctrlKey())
         modifiers |= CtrlKey;
-#if OS(MORPHOS)
     if (evt->metaKey())
         modifiers |= AmigaKey;
-#endif
 
     if (evt->type() == eventNames().keydownEvent) {
         int mapKey = modifiers << 16 | evt->keyCode();
@@ -1081,9 +1067,7 @@ void WebView::setShouldInvertColors(bool shouldInvertColors)
 
 bool WebView::developerExtrasEnabled() const
 {
-#if OS(MORPHOS)
-	return getv(app, MA_OWBApp_EnableInspector);
-#endif
+    return getv(app, MA_OWBApp_EnableInspector);
 
     //if (m_preferences->developerExtrasDisabledByOverride())
     //    return false;
@@ -1200,7 +1184,6 @@ void WebView::initializeToolTipWindow()
 
 void WebView::setToolTip(const char* toolTip)
 {
-#if OS(MORPHOS)
     if (toolTip == m_toolTip)
         return;
 
@@ -1218,7 +1201,6 @@ void WebView::setToolTip(const char* toolTip)
 			free(converted);
 		}
 	}
-#endif
 }
 
 #if ENABLE(ICONDATABASE)
@@ -1728,7 +1710,6 @@ bool WebView::searchFor(const char* str, bool forward, bool caseFlag, bool wrapF
 
 bool WebView::active()
 {
-#if OS(MORPHOS)
     BalWidget *widget = m_viewWindow;
 	if(widget)
 	{
@@ -1738,11 +1719,6 @@ bool WebView::active()
 	{
 		return true;
 	}
-#else
-    /*HWND activeWindow = GetActiveWindow();
-    return (activeWindow && m_topLevelParent == findTopLevelParent(activeWindow));*/
-    return true;
-#endif
 }
 
 void WebView::setFocus()
@@ -1772,7 +1748,6 @@ void WebView::updateActiveState()
 
 void WebView::updateFocusedAndActiveState()
 {
-#if OS(MORPHOS)
     m_page->focusController().setActive(active());
 
     bool active = m_page->focusController().isActive();
@@ -1792,14 +1767,6 @@ void WebView::updateFocusedAndActiveState()
 	FocusController *focusController = &(m_page->focusController());
 	focusController->setFocused(false);
     }
-#else
-    updateActiveState();
-
-    bool active = m_page->focusController().isActive();
-    Frame* mainFrame = &(m_page->mainFrame());
-    Frame* focusedFrame = &(m_page->focusController().focusedOrMainFrame());
-    mainFrame->selection().setFocused(active && mainFrame == focusedFrame);
-#endif
 }
 
 String buffer(const char* url)
@@ -2546,11 +2513,7 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     if (m_zoomsTextOnly != !!enabled)
         setZoomMultiplier(m_zoomMultiplier, enabled);
 
-#if OS(MORPHOS)
     settings->setShowsURLsInToolTips(true);
-#else
-    settings->setShowsURLsInToolTips(false);
-#endif
     settings->setForceFTPDirectoryListings(false);
     settings->setDeveloperExtrasEnabled(developerExtrasEnabled());
     settings->setNeedsSiteSpecificQuirks(s_allowSiteSpecificHacks);
@@ -2683,7 +2646,6 @@ void WebView::scrollBy(BalPoint offset)
     }
 }
 
-#if OS(MORPHOS)
 BalPoint WebView::scheduledScrollOffset()
 {
 	return m_scheduledScrollOffset;
@@ -2693,7 +2655,6 @@ void WebView::setScheduledScrollOffset(BalPoint offset)
 {
 	m_scheduledScrollOffset = offset;
 }
-#endif
 
 void WebView::scrollWithDirection(::ScrollDirection direction)
 {
@@ -3033,51 +2994,43 @@ void WebView::stopLoading(bool stop)
 
 void WebView::enterFullscreenForNode(WebCore::Node* element)
 {
-#if OS(MORPHOS)
     BalWidget *widget = m_viewWindow;
 
 	if(widget)
 	{
 		DoMethod(widget->browser, MM_OWBBrowser_VideoEnterFullPage, element, TRUE);
 	}
-#endif
 }
 
 void WebView::exitFullscreen()
 {
-#if OS(MORPHOS)
     BalWidget *widget = m_viewWindow;
 
 	if(widget)
 	{
 		DoMethod(widget->browser, MM_OWBBrowser_VideoEnterFullPage, NULL, FALSE);
 	}
-#endif
 }
 
 #if ENABLE(FULLSCREEN_API)
 void WebView::enterFullScreenForElement(WebCore::Element* element)
 {
-#if OS(MORPHOS)
     BalWidget *widget = m_viewWindow;
 
     if(widget)
 	{
 	    DoMethod(widget->browser, MM_OWBBrowser_VideoEnterFullPage, element, TRUE);
 	}
-#endif
 }
 
 void WebView::exitFullScreenForElement(WebCore::Element* element)
 {
-#if OS(MORPHOS)
     BalWidget *widget = m_viewWindow;
 
     if(widget)
 	{
 	    DoMethod(widget->browser, MM_OWBBrowser_VideoEnterFullPage, NULL, FALSE);
 	}
-#endif
 }
 #endif
 

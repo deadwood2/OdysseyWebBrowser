@@ -423,7 +423,6 @@ const char* WebFrame::url() const
     if (!coreFrame)
         return strdup("");
 
-#if OS(MORPHOS)
     String url("");
     switch(coreFrame->loader().state())
       {
@@ -443,9 +442,6 @@ const char* WebFrame::url() const
       }
 
     return strdup(url.utf8().data());
-#else
-	return strdup(coreFrame->loader()->url().string().utf8().data());
-#endif    
 }
 
 void WebFrame::stopLoading()

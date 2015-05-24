@@ -75,7 +75,7 @@
 #include <wtf/text/CString.h>
 
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 #include <unistd.h>
 #if !OS(AROS)
 #include <sys/signal.h>
@@ -105,7 +105,7 @@ const int selectTimeoutMS = 5;
 double pollTimeSeconds = 0.001;
 int maxRunningJobs = 5;
 
-#if !OS(MORPHOS)
+#if !PLATFORM(MUI)
 static const bool ignoreSSLErrors = getenv("WEBKIT_IGNORE_SSL_ERRORS");
 #else
 static const bool curlDebug          = getenv("OWB_CURL_DEBUG");
@@ -128,7 +128,7 @@ static CString certificatePath()
             return path;
         }
     }
-#elif OS(MORPHOS)
+#elif PLATFORM(MUI)
     return (char *) getv(app, MA_OWBApp_CertificatePath);
 #endif
     char* envPath = getenv("CURL_CA_BUNDLE_PATH");
@@ -140,7 +140,7 @@ static CString certificatePath()
 
 static char* cookieJarPath()
 {
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     return NULL;
 #endif
     char* cookieJarPath = getenv("CURL_COOKIE_JAR_PATH");
@@ -284,14 +284,14 @@ ResourceHandleManager::ResourceHandleManager()
     curl_global_init(CURL_GLOBAL_ALL);
     m_curlMultiHandle = curl_multi_init();
     m_curlShareHandle = curl_share_init();
-#if !OS(MORPHOS)
+#if !PLATFORM(MUI)
     curl_share_setopt(m_curlShareHandle, CURLSHOPT_SHARE, CURL_LOCK_DATA_COOKIE);
 #endif
     curl_share_setopt(m_curlShareHandle, CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS);
     curl_share_setopt(m_curlShareHandle, CURLSHOPT_LOCKFUNC, curl_lock_callback);
     curl_share_setopt(m_curlShareHandle, CURLSHOPT_UNLOCKFUNC, curl_unlock_callback);
 
-#if !OS(MORPHOS)
+#if !PLATFORM(MUI)
     initCookieSession();
 #endif
 
@@ -316,7 +316,7 @@ ResourceHandleManager::~ResourceHandleManager()
 #endif
 }
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 int ResourceHandleManager::maxConnections()
 {
   return maxRunningJobs;
@@ -336,7 +336,7 @@ CURLSH* ResourceHandleManager::getCurlShareHandle() const
 void ResourceHandleManager::setCookieJarFileName(const char* cookieJarFileName)
 {
     m_cookieJarFileName = fastStrDup(cookieJarFileName);
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 	cookieManager().setCookieJar(fastStrDup(cookieJarFileName));
 #endif
 }
@@ -363,7 +363,7 @@ static void handleLocalReceiveResponse (CURL* handle, ResourceHandle* job, Resou
 	// TODO: See if there is a better approach for handling this.
 	CURLcode err;
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     // get content length
     double contentLength = 0;
     err = curl_easy_getinfo(handle, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &contentLength);
@@ -398,7 +398,7 @@ static size_t writeCallback(void* ptr, size_t size, size_t nmemb, void* data)
 
     size_t totalSize = size * nmemb;
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 	d->m_received += totalSize;
 	d->m_state = STATUS_RECEIVING_DATA;
 	methodstack_push_sync(app, 2, MM_Network_UpdateJob, (APTR) job);
@@ -419,7 +419,7 @@ static size_t writeCallback(void* ptr, size_t size, size_t nmemb, void* data)
             return 0;
     }
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     if (d->m_cancelled)
 	return totalSize;
 #endif
@@ -453,7 +453,7 @@ static bool isAppendableHeader(const String &key)
         "proxy-authenticate",
         "public",
         "server",
-#if !OS(MORPHOS) // Somehow, it breaks my cookie code
+#if !PLATFORM(MUI) // Somehow, it breaks my cookie code
         "set-cookie",
 #endif
         "te",
@@ -595,7 +595,7 @@ static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* data)
         if(contentLength == -1) contentLength = 0;
         d->m_response.setExpectedContentLength(static_cast<long long int>(contentLength));
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 	d->m_totalSize = static_cast<long long int>(contentLength);
 	d->m_state = STATUS_WAITING_DATA;
 	methodstack_push_sync(app, 2, MM_Network_UpdateJob, (APTR) job);
@@ -609,7 +609,7 @@ static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* data)
         d->m_response.setMimeType(extractMIMETypeFromMediaType(d->m_response.httpHeaderField(HTTPHeaderName::ContentType)).lower());
         d->m_response.setTextEncodingName(extractCharsetFromMediaType(d->m_response.httpHeaderField(HTTPHeaderName::ContentType)));
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 	// Well, not sure there's a bullet-proof header to know that, actually...
 	job->setCanResume(d->m_response.isHTTP() && httpCode == 206);
 #endif
@@ -629,13 +629,13 @@ static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* data)
 
                 ResourceRequest redirectedRequest = job->firstRequest();
                 redirectedRequest.setURL(newURL);
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
                 //We need to set the Http Method to Get when we have a redirection
 #warning "check consequences"
                 redirectedRequest.setHTTPMethod("GET");
 #endif
                 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 				// Should not set Referer after a redirect from a secure resource to non-secure one.
 				if (!redirectedRequest.url().protocolIs("https") && protocolIs(redirectedRequest.httpReferrer(), "https"))
 					redirectedRequest.clearHTTPReferrer();
@@ -646,7 +646,7 @@ static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* data)
 
                 d->m_firstRequest.setURL(newURL);
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
                 // Set the cookies corresponding to the host we're getting redirected to
 				fastFree(d->m_url); // OS4
 				d->m_url = fastStrDup(newURL.string().latin1().data()); // OS4
@@ -674,7 +674,7 @@ static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* data)
 			}
         } 
 
-#if OS(MORPHOS)        
+#if PLATFORM(MUI)
         // Handle "417: Expectation failed" for requests as it could be the result of the "Expect: 100-Continue" header in the request
         // In this case, we issue another request without the header. We could also set an HTTP/1.0 request. 
         if (httpCode == 417 && d->m_shouldIncludeExpectHeader) {
@@ -713,7 +713,7 @@ static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* data)
         }
         d->m_response.setResponseFired(true);
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 	if(d->m_disableEncoding || curlForbidEncoding)
 	{
 	    curl_easy_setopt(d->m_handle, CURLOPT_HTTP_CONTENT_DECODING, 0L);
@@ -731,7 +731,7 @@ static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* data)
             else
                 d->m_response.setHTTPHeaderField(key, value);
                 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
             // Handle cookie
             if (header.contains("Set-Cookie: ", false)) {
                 // We need to set the url if not already done
@@ -801,7 +801,7 @@ size_t readCallback(void* ptr, size_t size, size_t nmemb, void* data)
         return 0;
 
     size_t sent = d->m_formDataStream.read(ptr, size, nmemb);
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     d->m_bodyDataSent += sent;
 #endif
 
@@ -810,7 +810,7 @@ size_t readCallback(void* ptr, size_t size, size_t nmemb, void* data)
         job->cancel();
     else
     {
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 	d->m_state = STATUS_SENDING_DATA;
 	methodstack_push_sync(app, 2, MM_Network_UpdateJob, (APTR) job);
 	d->client()->didSendData(job, d->m_bodyDataSent, d->m_bodySize);
@@ -955,7 +955,7 @@ void ResourceHandleManager::removeFromCurl(ResourceHandle* job)
         return;
     m_runningJobs--;
     
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     methodstack_push_sync(app, 2, MM_Network_RemoveJob, (APTR) job);
     job->deref();
 #endif    
@@ -999,7 +999,7 @@ static void setupFormData(ResourceHandle* job, CURLoption sizeOption, struct cur
             expectedSizeOfCurlOffT = sizeof(int);
     }
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     if(sizeOption == CURLOPT_POSTFIELDSIZE_LARGE)
     {
 	if (sizeof(long long) != expectedSizeOfCurlOffT)
@@ -1039,7 +1039,7 @@ static void setupFormData(ResourceHandle* job, CURLoption sizeOption, struct cur
         else
             curl_easy_setopt(d->m_handle, sizeOption, (int)size);
             
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 	d->m_bodySize = size;
 	d->m_bodyDataSent = 0;
 #endif            
@@ -1090,7 +1090,7 @@ void ResourceHandleManager::setupPOST(ResourceHandle* job, struct curl_slist** h
 		}
 	}
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     if (!d->m_shouldIncludeExpectHeader)
         *headers = curl_slist_append(*headers, "Expect:");  
 #endif
@@ -1102,7 +1102,7 @@ void ResourceHandleManager::setupPOST(ResourceHandle* job, struct curl_slist** h
             curl_easy_setopt(d->m_handle, CURLOPT_POSTFIELDSIZE, d->m_postBytes.size());
             curl_easy_setopt(d->m_handle, CURLOPT_POSTFIELDS, d->m_postBytes.data());
         }
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 	d->m_bodySize = d->m_postBytes.size();
 #endif        
         return;
@@ -1199,7 +1199,7 @@ void ResourceHandleManager::startJob(ResourceHandle* job)
 
     m_runningJobs++;
     
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 	job->ref();
 	methodstack_push_sync(app, 2, MM_Network_AddJob, (APTR) job);
 #endif
@@ -1264,7 +1264,7 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
     static const int allowedProtocols = CURLPROTO_FILE | CURLPROTO_FTP | CURLPROTO_FTPS | CURLPROTO_HTTP | CURLPROTO_HTTPS;
     URL url = job->firstRequest().url();
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     char acceptedLanguages[256];
     get_accepted_languages((char *) acceptedLanguages, sizeof(acceptedLanguages) - 1);
 #endif
@@ -1285,7 +1285,7 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
         // Determine the MIME type based on the path.
         d->m_response.setMimeType(MIMETypeRegistry::getMIMETypeForPath(url));
     }
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 	else if (url.protocolIs("ftp"))
 	{
 	    // FIXME: isn't it possible to handle that properly? ATM, we need a / to know it's a directory...
@@ -1301,14 +1301,14 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
 	}
 #endif
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     if(d->m_handle && d->m_cancelled)
 	removeFromCurl(job);
 #endif
 
     d->m_handle = curl_easy_init();
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     d->m_cancelled = false;
 #endif
 
@@ -1318,7 +1318,7 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
         // header callback. So just assert here.
         ASSERT_UNUSED(error, error == CURLE_OK);
     }
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     if (curlDebug)
         curl_easy_setopt(d->m_handle, CURLOPT_VERBOSE, 1);
 #else
@@ -1347,7 +1347,7 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
     curl_easy_setopt(d->m_handle, CURLOPT_REDIR_PROTOCOLS, allowedProtocols);
     setSSLClientCertificate(job);
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     if (curlForbidReuse)
     {
 	curl_easy_setopt(d->m_handle, CURLOPT_FORBID_REUSE, 1);
@@ -1360,7 +1360,7 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
     }
 #endif
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     if(job->isResuming())
     {
 	char range[128];
@@ -1369,7 +1369,7 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
     }
 #endif    
     
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     if (getv(app, MA_OWBApp_IgnoreSSLErrors))
 #else
     if (ignoreSSLErrors)
@@ -1378,7 +1378,7 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
     else
         setSSLVerifyOptions(job);
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     if(curlForceSSLv3)
         curl_easy_setopt(d->m_handle, CURLOPT_SSLVERSION, CURL_SSLVERSION_SSLv3);
 #endif
@@ -1387,7 +1387,7 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
        curl_easy_setopt(d->m_handle, CURLOPT_CAINFO, m_certificatePath.data());
 
     // enable gzip and deflate through Accept-Encoding:
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     if(d->m_disableEncoding || curlForbidEncoding)
 	curl_easy_setopt(d->m_handle, CURLOPT_ENCODING, NULL);
     else
@@ -1401,7 +1401,7 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
     d->m_url = fastStrDup(urlString.latin1().data());
     curl_easy_setopt(d->m_handle, CURLOPT_URL, d->m_url);
 
-#if !OS(MORPHOS)
+#if !PLATFORM(MUI)
     if (m_cookieJarFileName)
         curl_easy_setopt(d->m_handle, CURLOPT_COOKIEJAR, m_cookieJarFileName);
 #endif
@@ -1441,7 +1441,7 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
             headers = curl_slist_append(headers, headerLatin1.data());
         }
         
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 	String headerString("Accept-Language");
 	headerString.append(": ");
 	headerString.append(acceptedLanguages);
@@ -1480,13 +1480,13 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
     curl_easy_setopt(d->m_handle, CURLOPT_SOCKOPTFUNCTION, sockoptfunction);
     curl_easy_setopt(d->m_handle, CURLOPT_SOCKOPTDATA, job);
 #endif
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     // And finally send cookies
     job->checkAndSendCookies(url);
 #endif
 }
 
-#if !OS(MORPHOS)
+#if !PLATFORM(MUI)
 void ResourceHandleManager::initCookieSession()
 {
     // Curl saves both persistent cookies, and session cookies to the cookie file.

@@ -290,7 +290,7 @@ static void setup_scrollbars_notifications(Object *browser, Object *vbar, Object
 
 }
 
-#if 0 // __AROS__
+#if OS(MORPHOS)
 /* Handle appwindow messages */
 static LONG AppMsgFunc(void)
 {
@@ -318,7 +318,8 @@ static LONG AppMsgFunc(void)
 
 static struct EmulLibEntry AppMsgHookGate = { TRAP_LIB, 0, (void (*)(void))AppMsgFunc };
 static struct Hook AppMsgHook = { {0, 0}, (HOOKFUNC)&AppMsgHookGate, NULL, NULL };
-#else
+#endif
+#if OS(AROS)
 static struct Hook AppMsgHook = { {0, 0}, NULL, NULL, NULL };
 #endif
 

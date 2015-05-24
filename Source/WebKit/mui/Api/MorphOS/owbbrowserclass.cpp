@@ -149,7 +149,7 @@ using namespace WebCore;
 
 /* Plugin helpers */
 
-#if !defined(__AROS__)
+#if OS(MORPHOS)
 #include <emul/emulinterface.h>
 #include <emul/emulregs.h>
 
@@ -302,10 +302,11 @@ struct Data
 	double video_lastclick;
 #endif
 
-#if !defined(__AROS__)
+#if OS(MORPHOS)
 	/* popup Menu */
 	Object *popmenu;
-#else
+#endif
+#if OS(AROS)
 	struct Hook itemActivatedHook;
 	struct Hook cancelledHook;
 	struct Hook hideHook;
@@ -420,7 +421,7 @@ DEFNEW
 		data->view->webView = webView;
 		data->view->browser = obj;
 
-#if !defined(__AROS__) // __AROS__ this causes crash later on
+#if !OS(AROS) // This causes crash later on
 		data->view->app     = _app(obj);
 #endif
 
@@ -599,13 +600,14 @@ DEFDISPOSE
 		DoMethod((Object *) getv(app, MA_OWBApp_PrinterWindow), MM_PrinterWindow_Close);
 	}
 
-#if !defined(__AROS__)
+#if OS(MORPHOS)
 	if (data->popmenu)
 	{
 		MUI_DisposeObject(data->popmenu);
 		data->popmenu = NULL;
 	}
-#else
+#endif
+#if OS(AROS)
 #endif
 
 	if (data->contextmenu)
@@ -1939,11 +1941,12 @@ DEFMMETHOD(HandleEvent)
 
 				if(ehn->instance && ehn->handlerfunc)
 				{
-#if !defined(__AROS__)
+#if OS(MORPHOS)
 					eaten = CALLFUNC2(ehn->handlerfunc,
 							  ehn->instance,
 							  (APTR) msg->imsg);
-#else
+#endif
+#if OS(AROS)
 					eaten = 1;
 #endif
 				}
@@ -2460,7 +2463,7 @@ DEFSMETHOD(OWBBrowser_WillCloseFrame)
 	return 0;
 }
 
-#if defined(__AROS__)
+#if OS(AROS)
 static void cancelled(struct Hook *hook, Object *popupwin, APTR *dummy)
 {
     set(popupwin, MUIA_Window_Open, FALSE);
@@ -2500,7 +2503,7 @@ static void itemActivated(struct Hook *hook, Object *list, PopupMenuMorphOS **th
 
 DEFSMETHOD(OWBBrowser_PopupMenu)
 {
-#if !defined(__AROS__)
+#if OS(MORPHOS)
     GETDATA;
 
     Object *menulistgroup;
@@ -2648,7 +2651,8 @@ DEFSMETHOD(OWBBrowser_PopupMenu)
 	MUI_DisposeObject(data->popmenu);
 	data->popmenu = NULL;
     }
-#else
+#endif
+#if OS(AROS)
     GETDATA;
 
     PopupMenuMorphOS *pop = static_cast<PopupMenuMorphOS *>(msg->popupinfo);
@@ -3230,7 +3234,7 @@ DEFMMETHOD(CreateDragImage)
 			di->touchx = di->width / 2;
 			di->touchy = di->height / 2;
 			di->flags  = MUIF_DRAGIMAGE_SOURCEALPHA;
-#if !defined(__AROS__)
+#if !OS(AROS)
 			di->mask   = NULL;
 #endif
 
@@ -3352,7 +3356,7 @@ DEFMMETHOD(CreateDragImage)
 				di->touchx = di->width / 2;
 				di->touchy = di->height / 2;
 				di->flags  = MUIF_DRAGIMAGE_SOURCEALPHA;
-#if !defined(__AROS__)
+#if !OS(AROS)
 				di->mask   = NULL;
 #endif
 
@@ -3499,7 +3503,7 @@ DEFMMETHOD(DragFinish)
 
 	if(dataObject)
 	{
-#if !defined(__AROS__) // __AROS__
+#if !OS(AROS)
 		// We leave the object without drop
 		if(!msg->dropfollows)
 		{
@@ -4238,7 +4242,7 @@ public:
 
 	void pluginFired()
 	{
-#if !defined(__AROS__)
+#if !OS(AROS)
 		CALLFUNC2(m_timeoutfunc, m_instance, this);
 #endif
 	}
