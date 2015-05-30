@@ -34,10 +34,10 @@ set(OdysseyWebBrowser_LIBRARIES
     -ldebug
     -lopenurl
     -lrexxsyslib
-    -lavcodec
-    -lz
     -lavformat
     -lbz2
+    -lavcodec
+    -lz
     -lavutil
     -lswresample
     -lswscale
