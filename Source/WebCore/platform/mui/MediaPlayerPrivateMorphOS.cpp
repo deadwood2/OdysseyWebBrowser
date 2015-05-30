@@ -4004,7 +4004,10 @@ void MediaPlayerPrivate::getSupportedTypes(HashSet<String>& types)
 	}
 
 	types.add(String("video/vnd.objectvideo"));
-	types.add(String("video/mp4"));
+	if(getv(app, MA_OWBApp_EnableMP4))
+	{
+		types.add(String("video/mp4"));
+	}
 	types.add(String("video/avi"));
 	if(getv(app, MA_OWBApp_EnableFLV))
 	{
@@ -4019,8 +4022,11 @@ void MediaPlayerPrivate::getSupportedTypes(HashSet<String>& types)
 #endif
 
 	types.add(String("audio/aac"));
-	types.add(String("audio/mp4"));
-	types.add(String("audio/x-m4a"));
+	if(getv(app, MA_OWBApp_EnableMP4))
+	{
+		types.add(String("audio/mp4"));
+		types.add(String("audio/x-m4a"));
+	}
 	if(getv(app, MA_OWBApp_EnableOgg))
 	{
 		types.add(String("audio/ogg"));
