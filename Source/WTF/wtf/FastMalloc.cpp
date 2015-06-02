@@ -78,6 +78,8 @@ TryMallocReturnValue tryFastZeroedMalloc(size_t n)
 
 #if OS(WINDOWS)
 #include <malloc.h>
+#elif OS(AROS)
+#include "mui/arosbailout.h"
 #elif OS(MORPHOS)
 #include <clib/debug_protos.h>
 #endif
@@ -109,8 +111,24 @@ void fastAlignedFree(void* p)
 
 void* fastAlignedMalloc(size_t alignment, size_t size) 
 {
+retry:
     void* p = nullptr;
-    posix_memalign(&p, alignment, size);
+    posix_memalign(&p, alignment, size ? size : 2);
+    if (unlikely(!p))
+    {
+#if OS(AROS)
+        if (aros_memory_allocation_error(size ? size : 2, alignment) == 1)
+            goto retry;
+
+        if (aros_is_memory_bailout())
+            aros_bailout_jump();
+#endif
+#if OS(MORPHOS)
+        kprintf("fastAlignedMalloc: Failed to allocate %lu bytes. Happy crash sponsored by WebKit will follow.\n", n ? n : 2);
+        if(morphos_crash(size ? size : 2))
+            goto retry;
+#endif
+    }
     return p;
 }
 
@@ -130,10 +148,17 @@ void* fastMalloc(size_t n)
 {
 retry:
     void* result = malloc(n ? n : 2);
-    if (!result)
+    if (unlikely(!result))
     {
+#if OS(AROS)
+        if (aros_memory_allocation_error(n ? n : 2, 4) == 1)
+            goto retry;
+
+        if (aros_is_memory_bailout())
+            aros_bailout_jump();
+#endif
+#if OS(MORPHOS)
         kprintf("fastMalloc: Failed to allocate %lu bytes. Happy crash sponsored by WebKit will follow.\n", n ? n : 2);
-#if !OS(AROS)
         if(morphos_crash(n ? n : 2)) 
             goto retry;
 #endif
@@ -151,10 +176,17 @@ void* fastCalloc(size_t n_elements, size_t element_size)
 {
 retry:
     void* result = calloc(n_elements ? n_elements : 1, element_size ? element_size : 2);
-    if (!result) 
+    if (unlikely(!result))
     {
+#if OS(AROS)
+        if (aros_memory_allocation_error((n_elements ? n_elements : 1)*(element_size ? element_size : 2), 4) == 1)
+            goto retry;
+
+        if (aros_is_memory_bailout())
+            aros_bailout_jump();
+#endif
+#if OS(MORPHOS)
         kprintf("fastCalloc: Failed to allocate %lu x %lu bytes. Happy crash sponsored by WebKit will follow.\n", n_elements ? n_elements : 1, element_size ? element_size : 2);
-#if !OS(AROS)
         if(morphos_crash((n_elements ? n_elements : 1)*(element_size ? element_size : 2))) 
             goto retry;
 #endif
@@ -172,10 +204,17 @@ void* fastRealloc(void* p, size_t n)
 {
 retry:
     void* result = realloc(p, n ? n : 2);
-    if (!result)
+    if (unlikely(!result))
     {
+#if OS(AROS)
+        if (aros_memory_allocation_error(n ? n : 2, 4) == 1)
+            goto retry;
+
+        if (aros_is_memory_bailout())
+            aros_bailout_jump();
+#endif
+#if OS(MORPHOS)
         kprintf("fastRealloc: Failed to allocate %lu bytes. Happy crash sponsored by WebKit will follow.\n", n ? n : 2);
-#if !OS(AROS)
         if(morphos_crash(n ? n : 2))
             goto retry;
 #endif

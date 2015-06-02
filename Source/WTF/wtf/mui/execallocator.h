@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Krzysztof Smiechowicz. All rights reserved.
+ * Copyright (C) 2015 Krzysztof Smiechowicz. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,60 +23,13 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
-#include "OSAllocator.h"
+#ifndef _EXEC_ALLOCATOR_
+#define _EXEC_ALLOCATOR_
 
-#include <exec/lists.h>
-#include <string.h>
-#include <aros/debug.h>
+#include <cstring>
 
-#if OS(AROS)
+void * allocator_getmem_page_aligned(size_t bytes);
+void * allocator_getmem_aligned(size_t bytes, size_t alignment);
+void   allocator_freemem(void * address, size_t bytes);
 
-#include "mui/execallocator.h"
-#include "mui/arosbailout.h"
-
-namespace WTF {
-
-static void* allocateWithCheck(size_t bytes)
-{
-    void * ptr = allocator_getmem_page_aligned(bytes);
-    if (likely(ptr))
-        return ptr;
-
-    if (aros_is_memory_bailout())
-        aros_bailout_jump();
-
-    return nullptr;
-}
-
-void* OSAllocator::reserveUncommitted(size_t bytes, Usage u, bool, bool, bool)
-{
-    (void)u;
-    return allocateWithCheck(bytes);
-}
-
-void* OSAllocator::reserveAndCommit(size_t bytes, Usage u, bool, bool, bool)
-{
-    (void)u;
-    return allocateWithCheck(bytes);
-}
-
-void OSAllocator::commit(void* address, size_t bytes, bool, bool)
-{
-    memset(address, 0, bytes);
-}
-
-void OSAllocator::decommit(void* address, size_t bytes)
-{
-    (void)address;
-    (void)bytes;
-}
-
-void OSAllocator::releaseDecommitted(void* address, size_t bytes)
-{
-    allocator_freemem(address, bytes);
-}
-
-} // namespace WTF
-
-#endif
+#endif /* _EXEC_ALLOCATOR_ */
