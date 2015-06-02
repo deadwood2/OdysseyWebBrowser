@@ -672,7 +672,7 @@
 /* Include feature macros */
 #include <wtf/FeatureDefines.h>
 
-#if OS(WINDOWS)
+#if OS(WINDOWS) || OS(AROS) || OS(MORPHOS)
 #define USE_SYSTEM_MALLOC 1
 #endif
 

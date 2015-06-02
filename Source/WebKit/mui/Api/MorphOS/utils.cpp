@@ -1047,17 +1047,14 @@ bool canAllocateMemory(long long size)
 
 #if OS(MORPHOS)
 extern void *libnix_mempool;
-#endif
 extern jmp_buf bailout_env;
 
 int morphos_crash(size_t size)
 {
         char msg[1024];
 
-#if !defined(__AROS__)
 	kprintf("[OWB: task %p] morphos_crash(%ld) invoked\nDumping StackFrame..\n.", FindTask(NULL), size);
 	DumpTaskState(FindTask(NULL));
-#endif
 
 	if(size == 0)
 	{
@@ -1073,13 +1070,11 @@ int morphos_crash(size_t size)
 	{
 	    case 0:
 	    {
-#if !defined(__AROS__)
 	        if(libnix_mempool)
 		    DeletePool(libnix_mempool);
 	
 	        *(int *)(uintptr_t)0xbbadbeef = 0;
 	        ((void(*)())0)(); /* More reliable, but doesn't say BBADBEEF */
-#endif
 
 	        Wait(0);
 		break;
@@ -1088,10 +1083,11 @@ int morphos_crash(size_t size)
 	    case 1:
 	        break;
 
-     	    case 2:
-  	        longjmp(bailout_env, -1);
+        case 2:
+            longjmp(bailout_env, -1);
 		break;
 	}
 	
 	return ret;
 }
+#endif
