@@ -1,3 +1,4 @@
+
 /*
  * Copyright (C) 2004, 2006, 2011, 2013 Apple Inc. All rights reserved.
  *
@@ -158,7 +159,7 @@ public:
     void setQuickLookHandle(std::unique_ptr<QuickLookHandle> handle) { m_quickLook = WTF::move(handle); }
 #endif
 
-#if PLATFORM(WIN) && USE(CURL)
+#if (PLATFORM(WIN) || PLATFORM(MUI)) && USE(CURL)
     static void setHostAllowsAnyHTTPSCertificate(const String&);
     static void setClientCertificateInfo(const String&, const String&, const String&);
 #endif

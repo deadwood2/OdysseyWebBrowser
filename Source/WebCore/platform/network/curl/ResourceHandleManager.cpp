@@ -7,6 +7,7 @@
  * Copyright (C) 2008 Nuanti Ltd.
  * Copyright (C) 2009 Appcelerator Inc.
  * Copyright (C) 2009 Brent Fulgham <bfulgham@webkit.org>
+ * Copyright (C) 2009-2013 Fabien Coeurjoly <fabien.coeurjoly@wanadoo.fr>
  * Copyright (C) 2013 Peter Gal <galpeter@inf.u-szeged.hu>, University of Szeged
  * Copyright (C) 2013 Alex Christensen <achristensen@webkit.org>
  * Copyright (C) 2013 University of Szeged
@@ -39,6 +40,7 @@
 
 #if USE(CURL)
 
+#include "CookieManager.h"
 #include "CredentialStorage.h"
 #include "CurlCacheManager.h"
 #include "DataURL.h"
@@ -49,8 +51,8 @@
 #include "ResourceError.h"
 #include "ResourceHandle.h"
 #include "ResourceHandleInternal.h"
+#include "ResourceLoader.h"
 #include "SSLHandle.h"
-
 #if OS(WINDOWS)
 #include "WebCoreBundleWin.h"
 #include <shlobj.h>
@@ -73,13 +75,46 @@
 #include <wtf/text/CString.h>
 
 
+#if OS(MORPHOS)
+#include <unistd.h>
+#if !OS(AROS)
+#include <sys/signal.h>
+#endif
+#include <clib/debug_protos.h>
+#include <exec/memory.h>
+#include <exec/semaphores.h>
+#include <dos/dostags.h>
+#if !OS(AROS)
+#include <emul/emulinterface.h>
+#else
+#include <proto/bsdsocket.h>
+#endif
+#include <proto/exec.h>
+#include <proto/dos.h>
+#include "gui.h"
+#include "utils.h"
+#undef String
+#undef get
+#undef set
+#define D(x)
+#endif
+
 namespace WebCore {
 
 const int selectTimeoutMS = 5;
-const double pollTimeSeconds = 0.05;
-const int maxRunningJobs = 5;
+double pollTimeSeconds = 0.001;
+int maxRunningJobs = 5;
 
+#if !OS(MORPHOS)
 static const bool ignoreSSLErrors = getenv("WEBKIT_IGNORE_SSL_ERRORS");
+#else
+static const bool curlDebug          = getenv("OWB_CURL_DEBUG");
+static char *strPollTimeMilliSeconds = getenv("OWB_POLLTIME");
+static const bool curlForbidReuse    = getenv("OWB_CURL_FORBID_REUSE");
+static const bool curlForbidEncoding = getenv("OWB_CURL_FORBID_ENCODING");
+static const bool disableMobileCompression = getenv("OWB_DISABLE_MOBILE_COMPRESSION");
+static const bool curlForceSSLv3 = getenv("OWB_CURL_FORCE_SSLv3");
+#endif
 
 static CString certificatePath()
 {
@@ -93,6 +128,8 @@ static CString certificatePath()
             return path;
         }
     }
+#elif OS(MORPHOS)
+    return (char *) getv(app, MA_OWBApp_CertificatePath);
 #endif
     char* envPath = getenv("CURL_CA_BUNDLE_PATH");
     if (envPath)
@@ -101,6 +138,7 @@ static CString certificatePath()
     return CString();
 }
 
+#if OS(MORPHOS)
 static char* cookieJarPath()
 {
     char* cookieJarPath = getenv("CURL_COOKIE_JAR_PATH");
@@ -132,6 +170,7 @@ static char* cookieJarPath()
     return fastStrDup("cookies.dat");
 #endif
 }
+#endif
 
 static Mutex* sharedResourceMutex(curl_lock_data data) {
     DEPRECATED_DEFINE_STATIC_LOCAL(Mutex, cookieMutex, ());
@@ -235,22 +274,42 @@ inline static bool isHttpNotModified(int statusCode)
 
 ResourceHandleManager::ResourceHandleManager()
     : m_downloadTimer(*this, &ResourceHandleManager::downloadTimerCallback)
+#if OS(MORPHOS)
+	, m_cookieJarFileName(0)
+#else
     , m_cookieJarFileName(cookieJarPath())
+#endif
     , m_certificatePath (certificatePath())
     , m_runningJobs(0)
 #ifndef NDEBUG
     , m_logFile(nullptr)
 #endif
 {
+    if(strPollTimeMilliSeconds)
+    {
+	long value = strtol(strPollTimeMilliSeconds, NULL, 10);
+	if(value <= 1000)
+	    pollTimeSeconds = (double)value/1000.f;
+	else
+	    pollTimeSeconds = 0.001;
+    }
+
+    if(getenv("OWB_ENABLE_DISK_CACHE"))
+       CurlCacheManager::getInstance().setCacheDirectory("PROGDIR:conf/cache");
+
     curl_global_init(CURL_GLOBAL_ALL);
     m_curlMultiHandle = curl_multi_init();
     m_curlShareHandle = curl_share_init();
+#if !OS(MORPHOS)
     curl_share_setopt(m_curlShareHandle, CURLSHOPT_SHARE, CURL_LOCK_DATA_COOKIE);
+#endif
     curl_share_setopt(m_curlShareHandle, CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS);
     curl_share_setopt(m_curlShareHandle, CURLSHOPT_LOCKFUNC, curl_lock_callback);
     curl_share_setopt(m_curlShareHandle, CURLSHOPT_UNLOCKFUNC, curl_unlock_callback);
 
+#if !OS(MORPHOS)
     initCookieSession();
+#endif
 
 #ifndef NDEBUG
     char* logFile = getenv("CURL_LOG_FILE");
@@ -273,6 +332,18 @@ ResourceHandleManager::~ResourceHandleManager()
 #endif
 }
 
+#if OS(MORPHOS)
+int ResourceHandleManager::maxConnections()
+{
+  return maxRunningJobs;
+}
+
+void ResourceHandleManager::setMaxConnections(int count)
+{
+  maxRunningJobs = count;
+}
+#endif
+
 CURLSH* ResourceHandleManager::getCurlShareHandle() const
 {
     return m_curlShareHandle;
@@ -281,6 +352,9 @@ CURLSH* ResourceHandleManager::getCurlShareHandle() const
 void ResourceHandleManager::setCookieJarFileName(const char* cookieJarFileName)
 {
     m_cookieJarFileName = fastStrDup(cookieJarFileName);
+#if OS(MORPHOS)
+	cookieManager().setCookieJar(fastStrDup(cookieJarFileName));
+#endif
 }
 
 const char* ResourceHandleManager::getCookieJarFileName() const
@@ -302,18 +376,32 @@ static void handleLocalReceiveResponse (CURL* handle, ResourceHandle* job, Resou
     // the code to set the URL and fire didReceiveResponse is never run,
     // which means the ResourceLoader's response does not contain the URL.
     // Run the code here for local files to resolve the issue.
-    // TODO: See if there is a better approach for handling this.
-     const char* hdr;
-     CURLcode err = curl_easy_getinfo(handle, CURLINFO_EFFECTIVE_URL, &hdr);
-     ASSERT_UNUSED(err, CURLE_OK == err);
-     d->m_response.setURL(URL(ParsedURLString, hdr));
-     if (d->client())
-         d->client()->didReceiveResponse(job, d->m_response);
-     d->m_response.setResponseFired(true);
+	// TODO: See if there is a better approach for handling this.
+	CURLcode err;
+
+#if OS(MORPHOS)
+    // get content length
+    double contentLength = 0;
+    err = curl_easy_getinfo(handle, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &contentLength);
+    d->m_response.setExpectedContentLength(static_cast<long long int>(contentLength));
+#endif
+
+	const char* hdr;
+	err = curl_easy_getinfo(handle, CURLINFO_EFFECTIVE_URL, &hdr);
+	ASSERT_UNUSED(err, CURLE_OK == err);
+	d->m_response.setURL(URL(ParsedURLString, hdr));
+	if (d->client())
+		d->client()->didReceiveResponse(job, d->m_response);
+	d->m_response.setResponseFired(true);
 }
 
 
 // called with data after all headers have been processed via headerCallback
+static size_t writeCallback_void(void* ptr, size_t size, size_t nmemb, void* data)
+{
+    return 0;
+}
+
 static size_t writeCallback(void* ptr, size_t size, size_t nmemb, void* data)
 {
     ResourceHandle* job = static_cast<ResourceHandle*>(data);
@@ -325,6 +413,12 @@ static size_t writeCallback(void* ptr, size_t size, size_t nmemb, void* data)
     ASSERT(!d->m_defersLoading);
 
     size_t totalSize = size * nmemb;
+
+#if OS(MORPHOS)
+	d->m_received += totalSize;
+	d->m_state = STATUS_RECEIVING_DATA;
+	methodstack_push_sync(app, 2, MM_Network_UpdateJob, (APTR) job);
+#endif
 
     // this shouldn't be necessary but apparently is. CURL writes the data
     // of html page even if it is a redirect that was handled internally
@@ -340,6 +434,11 @@ static size_t writeCallback(void* ptr, size_t size, size_t nmemb, void* data)
         if (d->m_cancelled)
             return 0;
     }
+
+#if OS(MORPHOS)
+    if (d->m_cancelled)
+	return totalSize;
+#endif
 
     if (d->m_multipartHandle)
         d->m_multipartHandle->contentReceived(static_cast<const char*>(ptr), totalSize);
@@ -370,7 +469,9 @@ static bool isAppendableHeader(const String &key)
         "proxy-authenticate",
         "public",
         "server",
+#if !OS(MORPHOS) // Somehow, it breaks my cookie code
         "set-cookie",
+#endif
         "te",
         "trailer",
         "transfer-encoding",
@@ -465,10 +566,16 @@ static bool getProtectionSpace(CURL* h, const ResourceResponse& response, Protec
  * update the ResourceResponse and then send it away.
  *
  */
+static size_t headerCallback_void(char* ptr, size_t size, size_t nmemb, void* data)
+{
+    return 0;
+}
+
 static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* data)
 {
     ResourceHandle* job = static_cast<ResourceHandle*>(data);
     ResourceHandleInternal* d = job->getInternal();
+
     if (d->m_cancelled)
         return 0;
 
@@ -501,7 +608,14 @@ static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* data)
 
         double contentLength = 0;
         curl_easy_getinfo(h, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &contentLength);
+        if(contentLength == -1) contentLength = 0;
         d->m_response.setExpectedContentLength(static_cast<long long int>(contentLength));
+
+#if OS(MORPHOS)
+	d->m_totalSize = static_cast<long long int>(contentLength);
+	d->m_state = STATUS_WAITING_DATA;
+	methodstack_push_sync(app, 2, MM_Network_UpdateJob, (APTR) job);
+#endif
 
         const char* hdr;
         curl_easy_getinfo(h, CURLINFO_EFFECTIVE_URL, &hdr);
@@ -510,6 +624,11 @@ static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* data)
         d->m_response.setHTTPStatusCode(httpCode);
         d->m_response.setMimeType(extractMIMETypeFromMediaType(d->m_response.httpHeaderField(HTTPHeaderName::ContentType)).lower());
         d->m_response.setTextEncodingName(extractCharsetFromMediaType(d->m_response.httpHeaderField(HTTPHeaderName::ContentType)));
+
+#if OS(MORPHOS)
+	// Well, not sure there's a bullet-proof header to know that, actually...
+	job->setCanResume(d->m_response.isHTTP() && httpCode == 206);
+#endif
 
         if (d->m_response.isMultipart()) {
             String boundary;
@@ -531,24 +650,74 @@ static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* data)
 
                 ResourceRequest redirectedRequest = job->firstRequest();
                 redirectedRequest.setURL(newURL);
+#if OS(MORPHOS)
+                //We need to set the Http Method to Get when we have a redirection
+#warning "check consequences"
+                redirectedRequest.setHTTPMethod("GET");
+#endif
+                
+#if OS(MORPHOS)
+				// Should not set Referer after a redirect from a secure resource to non-secure one.
+				if (!redirectedRequest.url().protocolIs("https") && protocolIs(redirectedRequest.httpReferrer(), "https"))
+					redirectedRequest.clearHTTPReferrer();
+#endif
+
                 if (client)
                     client->willSendRequest(job, redirectedRequest, d->m_response);
 
                 d->m_firstRequest.setURL(newURL);
 
+#if OS(MORPHOS)
+                // Set the cookies corresponding to the host we're getting redirected to
+				fastFree(d->m_url); // OS4
+				d->m_url = fastStrDup(newURL.string().latin1().data()); // OS4
+				job->checkAndSendCookies(newURL);
+#endif
+
                 return totalSize;
             }
         } else if (isHttpAuthentication(httpCode)) {
-            ProtectionSpace protectionSpace;
-            if (getProtectionSpace(d->m_handle, d->m_response, protectionSpace)) {
-                Credential credential;
-                AuthenticationChallenge challenge(protectionSpace, credential, d->m_authFailureCount, d->m_response, ResourceError());
-                challenge.setAuthenticationClient(job);
-                job->didReceiveAuthenticationChallenge(challenge);
-                d->m_authFailureCount++;
-                return totalSize;
-            }
+			if(!d->m_response.httpHeaderField("WWW-Authenticate").isEmpty())
+			{
+				ProtectionSpace protectionSpace;
+				if (getProtectionSpace(d->m_handle, d->m_response, protectionSpace)) {
+					Credential credential;
+					AuthenticationChallenge challenge(protectionSpace, credential, d->m_authFailureCount, d->m_response, ResourceError());
+					challenge.setAuthenticationClient(job);
+					job->didReceiveAuthenticationChallenge(challenge);
+					d->m_authFailureCount++;
+					return totalSize;
+				}
+			}
+			else
+			{
+				return totalSize;
+			}
+        } 
+
+#if OS(MORPHOS)        
+        // Handle "417: Expectation failed" for requests as it could be the result of the "Expect: 100-Continue" header in the request
+        // In this case, we issue another request without the header. We could also set an HTTP/1.0 request. 
+        if (httpCode == 417 && d->m_shouldIncludeExpectHeader) {
+            ASSERT(job->firstRequest().httpMethod() == "POST");
+            // We cancel the currrent job so that it is properly cleaned-up.
+            d->m_cancelled = true;
+
+	    RefPtr<ResourceHandle> newHandle = ResourceHandle::create(d->m_context.get(), job->firstRequest(), client, d->m_defersLoading, job->shouldContentSniff());
+	    newHandle->getInternal()->m_shouldIncludeExpectHeader = false;
+	    newHandle->getInternal()->m_disableEncoding = d->m_disableEncoding;
+	    
+	    job->setClient(0); // Clear the client to avoid it being cleared by WebCore.
+	    
+	    if(client)
+	    {
+		RefPtr<ResourceLoader> resourceLoader(reinterpret_cast<ResourceLoader*>(client));
+		resourceLoader->setHandle(newHandle);
+	    }
+
+            return totalSize;
         }
+#endif
 
         if (client) {
             if (isHttpNotModified(httpCode)) {
@@ -565,6 +734,13 @@ static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* data)
         }
         d->m_response.setResponseFired(true);
 
+#if OS(MORPHOS)
+	if(d->m_disableEncoding || curlForbidEncoding)
+	{
+	    curl_easy_setopt(d->m_handle, CURLOPT_HTTP_CONTENT_DECODING, 0L);
+	}
+#endif        
+
     } else {
         int splitPos = header.find(":");
         if (splitPos != -1) {
@@ -575,7 +751,27 @@ static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* data)
                 d->m_response.addHTTPHeaderField(key, value);
             else
                 d->m_response.setHTTPHeaderField(key, value);
-        } else if (header.startsWith("HTTP", false)) {
+                
+#if OS(MORPHOS)
+            // Handle cookie
+            if (header.contains("Set-Cookie: ", false)) {
+                // We need to set the url if not already done
+                if (d->m_response.url().isEmpty()) {
+                    CURLcode err;
+                    const char* hdr;
+                    err = curl_easy_getinfo(d->m_handle, CURLINFO_EFFECTIVE_URL, &hdr);
+                    if (err != CURLE_OK) {
+                        LOG_ERROR("Cannot determine URL - cookie rejected");
+                        return totalSize;
+                    }
+                    d->m_response.setURL(KURL(ParsedURLString, hdr));
+                }
+                LOG(Network, "Received cookie value : %s !!\n", d->m_response.httpHeaderField("Set-Cookie").utf8().data());
+                job->setCookies();
+            }
+#endif                
+        }
+	else if (header.startsWith("HTTP", false)) {
             // This is the first line of the response.
             // Extract the http status text from this.
             //
@@ -593,11 +789,15 @@ static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* data)
                 String status = header.substring(statusCodePos + httpCodeString.length());
                 d->m_response.setHTTPStatusText(status.stripWhiteSpace());
             }
-
-        }
+	}
     }
 
     return totalSize;
+}
+
+int seekCallback(void* instream, curl_off_t offset, int origin)
+{
+    return CURL_SEEKFUNC_OK;
 }
 
 /* This is called to obtain HTTP POST or PUT data.
@@ -622,10 +822,21 @@ size_t readCallback(void* ptr, size_t size, size_t nmemb, void* data)
         return 0;
 
     size_t sent = d->m_formDataStream.read(ptr, size, nmemb);
+#if OS(MORPHOS)
+    d->m_bodyDataSent += sent;
+#endif
 
     // Something went wrong so cancel the job.
     if (!sent)
         job->cancel();
+    else
+    {
+#if OS(MORPHOS)
+	d->m_state = STATUS_SENDING_DATA;
+	methodstack_push_sync(app, 2, MM_Network_UpdateJob, (APTR) job);
+	d->client()->didSendData(job, d->m_bodyDataSent, d->m_bodySize);
+#endif
+    }
 
     return sent;
 }
@@ -654,7 +865,7 @@ void ResourceHandleManager::downloadTimerCallback()
         // and bail out, stopping the file download. So make sure we
         // have valid file descriptors before calling select.
         if (maxfd >= 0)
-            rc = ::select(maxfd + 1, &fdread, &fdwrite, &fdexcep, &timeout);
+            rc = select(maxfd + 1, &fdread, &fdwrite, &fdexcep, &timeout);
     } while (rc == -1 && errno == EINTR);
 
     if (-1 == rc) {
@@ -764,7 +975,15 @@ void ResourceHandleManager::removeFromCurl(ResourceHandle* job)
     if (!d->m_handle)
         return;
     m_runningJobs--;
+    
+#if OS(MORPHOS)
+    methodstack_push_sync(app, 2, MM_Network_RemoveJob, (APTR) job);
+    job->deref();
+#endif    
+    
     curl_multi_remove_handle(m_curlMultiHandle, d->m_handle);
+    curl_easy_setopt(d->m_handle, CURLOPT_HEADERFUNCTION, headerCallback_void);
+    curl_easy_setopt(d->m_handle, CURLOPT_WRITEFUNCTION, writeCallback_void);
     curl_easy_cleanup(d->m_handle);
     d->m_handle = 0;
     job->deref();
@@ -773,7 +992,7 @@ void ResourceHandleManager::removeFromCurl(ResourceHandle* job)
 static inline size_t getFormElementsCount(ResourceHandle* job)
 {
     RefPtr<FormData> formData = job->firstRequest().httpBody();
-
+  
     if (!formData)
         return 0;
 
@@ -800,6 +1019,14 @@ static void setupFormData(ResourceHandle* job, CURLoption sizeOption, struct cur
         else
             expectedSizeOfCurlOffT = sizeof(int);
     }
+
+#if OS(MORPHOS)
+    if(sizeOption == CURLOPT_POSTFIELDSIZE_LARGE)
+    {
+	if (sizeof(long long) != expectedSizeOfCurlOffT)
+	    sizeOption = CURLOPT_POSTFIELDSIZE;
+    }  
+#endif
 
     static const long long maxCurlOffT = (1LL << (expectedSizeOfCurlOffT * 8 - 1)) - 1;
     // Obtain the total size of the form data
@@ -832,10 +1059,17 @@ static void setupFormData(ResourceHandle* job, CURLoption sizeOption, struct cur
             curl_easy_setopt(d->m_handle, sizeOption, (long long)size);
         else
             curl_easy_setopt(d->m_handle, sizeOption, (int)size);
+            
+#if OS(MORPHOS)
+	d->m_bodySize = size;
+	d->m_bodyDataSent = 0;
+#endif            
     }
 
     curl_easy_setopt(d->m_handle, CURLOPT_READFUNCTION, readCallback);
     curl_easy_setopt(d->m_handle, CURLOPT_READDATA, job);
+    curl_easy_setopt(d->m_handle, CURLOPT_SEEKFUNCTION, seekCallback);
+    curl_easy_setopt(d->m_handle, CURLOPT_SEEKDATA, job);
 }
 
 void ResourceHandleManager::setupPUT(ResourceHandle* job, struct curl_slist** headers)
@@ -864,13 +1098,35 @@ void ResourceHandleManager::setupPOST(ResourceHandle* job, struct curl_slist** h
     if (!numElements)
         return;
 
+    bool hasBlob = false;
+#if ENABLE(BLOB)
+    RefPtr<FormData> formData = job->firstRequest().httpBody();
+    for (size_t i = 0; i  < numElements; i++)
+	{
+	    const FormDataElement& element = formData->elements()[i];
+	    if(element.m_type == FormDataElement::encodedBlob)
+		{
+		    hasBlob = true;
+		    break;
+		}
+	}
+#endif
+
+#if OS(MORPHOS)
+    if (!d->m_shouldIncludeExpectHeader)
+        *headers = curl_slist_append(*headers, "Expect:");  
+#endif
+
     // Do not stream for simple POST data
-    if (numElements == 1) {
+    if (!hasBlob && numElements == 1 && formData->elements()[0].m_type != FormDataElement::encodedFile) { // MORPHOS disable this path for gdrive
         job->firstRequest().httpBody()->flatten(d->m_postBytes);
         if (d->m_postBytes.size()) {
             curl_easy_setopt(d->m_handle, CURLOPT_POSTFIELDSIZE, d->m_postBytes.size());
             curl_easy_setopt(d->m_handle, CURLOPT_POSTFIELDS, d->m_postBytes.data());
         }
+#if OS(MORPHOS)
+	d->m_bodySize = d->m_postBytes.size();
+#endif        
         return;
     }
 
@@ -964,6 +1220,12 @@ void ResourceHandleManager::startJob(ResourceHandle* job)
     initializeHandle(job);
 
     m_runningJobs++;
+    
+#if OS(MORPHOS)
+	job->ref();
+	methodstack_push_sync(app, 2, MM_Network_AddJob, (APTR) job);
+#endif
+
     CURLMcode ret = curl_multi_add_handle(m_curlMultiHandle, job->getInternal()->m_handle);
     // don't call perform, because events must be async
     // timeout will occur and do curl_multi_perform
@@ -991,7 +1253,8 @@ void ResourceHandleManager::applyAuthenticationToRequest(ResourceHandle* handle,
             // before sending a request. This makes it possible to implement logout by sending an
             // XMLHttpRequest with known incorrect credentials, and aborting it immediately (so that
             // an authentication dialog doesn't pop up).
-            CredentialStorage::set(Credential(d->m_user, d->m_pass, CredentialPersistenceNone), request.url());
+            CredentialStorage::set(Credential(d->m_user, d->m_pass, CredentialPersistenceForSession), request.url()); // needed to make http://user:pass@host work
+	    d->m_initialCredential = Credential(d->m_user, d->m_pass, CredentialPersistenceNone); // needed?
         }
     }
 
@@ -1006,6 +1269,12 @@ void ResourceHandleManager::applyAuthenticationToRequest(ResourceHandle* handle,
 
     // It seems we need to set CURLOPT_USERPWD even if username and password is empty.
     // Otherwise cURL will not automatically continue with a new request after a 401 response.
+#warning "ugly, but needed for ftp redirections, because ':' will make ftp fail -> handle this in redirection instead"
+    if(user.isEmpty() && password.isEmpty())
+    {
+		user = "anonymous";
+		password = "curl";
+    }
 
     // curl CURLOPT_USERPWD expects username:password
     String userpass = user + ":" + password;
@@ -1016,6 +1285,11 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
 {
     static const int allowedProtocols = CURLPROTO_FILE | CURLPROTO_FTP | CURLPROTO_FTPS | CURLPROTO_HTTP | CURLPROTO_HTTPS;
     URL url = job->firstRequest().url();
+
+#if OS(MORPHOS)
+    char acceptedLanguages[256];
+    get_accepted_languages((char *) acceptedLanguages, sizeof(acceptedLanguages) - 1);
+#endif
 
     // Remove any fragment part, otherwise curl will send it as part of the request.
     url.removeFragmentIdentifier();
@@ -1033,8 +1307,32 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
         // Determine the MIME type based on the path.
         d->m_response.setMimeType(MIMETypeRegistry::getMIMETypeForPath(url));
     }
+#if OS(MORPHOS)
+	else if (kurl.protocolIs("ftp"))
+	{
+	    // FIXME: isn't it possible to handle that properly? ATM, we need a / to know it's a directory...
+	    if((kurl.path().isEmpty() || kurl.string().endsWith("/"))) 
+	    {
+		d->m_response.setMimeType("application/x-ftp-directory");
+	    }
+	    else
+	    {
+		// Determine the MIME type based on the path.
+		d->m_response.setMimeType(MIMETypeRegistry::getMIMETypeForPath(url));
+	    }
+	}
+#endif
+
+#if OS(MORPHOS)
+    if(d->m_handle && d->m_cancelled)
+	removeFromCurl(job);
+#endif
 
     d->m_handle = curl_easy_init();
+
+#if OS(MORPHOS)
+    d->m_cancelled = false;
+#endif
 
     if (d->m_defersLoading) {
         CURLcode error = curl_easy_pause(d->m_handle, CURLPAUSE_ALL);
@@ -1042,11 +1340,16 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
         // header callback. So just assert here.
         ASSERT_UNUSED(error, error == CURLE_OK);
     }
+#if OS(MORPHOS)
+    if (curlDebug)
+        curl_easy_setopt(d->m_handle, CURLOPT_VERBOSE, 1);
+#else
 #ifndef NDEBUG
     if (getenv("DEBUG_CURL"))
         curl_easy_setopt(d->m_handle, CURLOPT_VERBOSE, 1);
     if (m_logFile)
         curl_easy_setopt(d->m_handle, CURLOPT_STDERR, m_logFile);
+#endif
 #endif
     curl_easy_setopt(d->m_handle, CURLOPT_SSL_VERIFYPEER, 1L);
     curl_easy_setopt(d->m_handle, CURLOPT_SSL_VERIFYHOST, 2L);
@@ -1058,7 +1361,7 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
     curl_easy_setopt(d->m_handle, CURLOPT_WRITEHEADER, job);
     curl_easy_setopt(d->m_handle, CURLOPT_AUTOREFERER, 1);
     curl_easy_setopt(d->m_handle, CURLOPT_FOLLOWLOCATION, 1);
-    curl_easy_setopt(d->m_handle, CURLOPT_MAXREDIRS, 10);
+    curl_easy_setopt(d->m_handle, CURLOPT_MAXREDIRS, 200);
     curl_easy_setopt(d->m_handle, CURLOPT_HTTPAUTH, CURLAUTH_ANY);
     curl_easy_setopt(d->m_handle, CURLOPT_SHARE, m_curlShareHandle);
     curl_easy_setopt(d->m_handle, CURLOPT_DNS_CACHE_TIMEOUT, 60 * 5); // 5 minutes
@@ -1066,16 +1369,52 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
     curl_easy_setopt(d->m_handle, CURLOPT_REDIR_PROTOCOLS, allowedProtocols);
     setSSLClientCertificate(job);
 
+#if OS(MORPHOS)
+    if (curlForbidReuse)
+    {
+	curl_easy_setopt(d->m_handle, CURLOPT_FORBID_REUSE, 1);
+    }
+
+    if (disableMobileCompression)
+    {
+	job->firstRequest().setHTTPHeaderField("Cache-Control", "no-cache");
+	job->firstRequest().setHTTPHeaderField("Pragma", "no-cache");
+    }
+#endif
+
+#if OS(MORPHOS)
+    if(job->isResuming())
+    {
+	char range[128];
+	snprintf(range, sizeof(range), "%llu-", job->startOffset());
+	curl_easy_setopt(d->m_handle, CURLOPT_RANGE, range);
+    }
+#endif    
+    
+#if OS(MORPHOS)
+    if (getv(app, MA_OWBApp_IgnoreSSLErrors))
+#else
     if (ignoreSSLErrors)
+#endif
         curl_easy_setopt(d->m_handle, CURLOPT_SSL_VERIFYPEER, false);
     else
         setSSLVerifyOptions(job);
+
+#if OS(MORPHOS)
+    if(curlForceSSLv3)
+        curl_easy_setopt(d->m_handle, CURLOPT_SSLVERSION, CURL_SSLVERSION_SSLv3);
+#endif
 
     if (!m_certificatePath.isNull())
        curl_easy_setopt(d->m_handle, CURLOPT_CAINFO, m_certificatePath.data());
 
     // enable gzip and deflate through Accept-Encoding:
-    curl_easy_setopt(d->m_handle, CURLOPT_ENCODING, "");
+#if OS(MORPHOS)
+    if(d->m_disableEncoding || curlForbidEncoding)
+	curl_easy_setopt(d->m_handle, CURLOPT_ENCODING, NULL);
+    else
+#endif	
+	curl_easy_setopt(d->m_handle, CURLOPT_ENCODING, "");
 
     // url must remain valid through the request
     ASSERT(!d->m_url);
@@ -1084,8 +1423,10 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
     d->m_url = fastStrDup(urlString.latin1().data());
     curl_easy_setopt(d->m_handle, CURLOPT_URL, d->m_url);
 
+#if !OS(MORPHOS)
     if (m_cookieJarFileName)
         curl_easy_setopt(d->m_handle, CURLOPT_COOKIEJAR, m_cookieJarFileName);
+#endif
 
     struct curl_slist* headers = 0;
     if (job->firstRequest().httpHeaderFields().size() > 0) {
@@ -1121,6 +1462,13 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
             CString headerLatin1 = headerString.latin1();
             headers = curl_slist_append(headers, headerLatin1.data());
         }
+        
+#if OS(MORPHOS)
+	String headerString("Accept-Language");
+	headerString.append(": ");
+	headerString.append(acceptedLanguages);
+	headers = curl_slist_append(headers, headerString.latin1().data());
+#endif
     }
 
     String method = job->firstRequest().httpMethod();
@@ -1142,7 +1490,8 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
         d->m_customHeaders = headers;
     }
 
-    applyAuthenticationToRequest(job, job->firstRequest());
+    if (!kurl.protocolIs("ftp"))
+		applyAuthenticationToRequest(job, job->firstRequest());
 
     // Set proxy options if we have them.
     if (m_proxy.length()) {
@@ -1154,8 +1503,13 @@ void ResourceHandleManager::initializeHandle(ResourceHandle* job)
     curl_easy_setopt(d->m_handle, CURLOPT_SOCKOPTDATA, job);
     d->m_response.setResourceLoadTiming(ResourceLoadTiming::create());
 #endif
+#if OS(MORPHOS)
+    // And finally send cookies
+    job->checkAndSendCookies(kurl);
+#endif
 }
 
+#if !OS(MORPHOS)
 void ResourceHandleManager::initCookieSession()
 {
     // Curl saves both persistent cookies, and session cookies to the cookie file.
@@ -1177,6 +1531,7 @@ void ResourceHandleManager::initCookieSession()
 
     curl_easy_cleanup(curl);
 }
+#endif
 
 void ResourceHandleManager::cancel(ResourceHandle* job)
 {
