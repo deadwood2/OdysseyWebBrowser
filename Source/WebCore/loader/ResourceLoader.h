@@ -208,6 +208,9 @@ private:
     // FIXME: Windows should use willCacheResponse - <https://bugs.webkit.org/show_bug.cgi?id=57257>.
     virtual bool shouldCacheResponse(ResourceHandle*, CFCachedURLResponseRef) override;
 #endif
+#if USE(CURL_OPENSSL)
+    virtual void didReceiveSSLSecurityExtension(const ResourceRequest&, const char*);
+#endif
 
     ResourceRequest m_request;
     ResourceRequest m_originalRequest; // Before redirects.

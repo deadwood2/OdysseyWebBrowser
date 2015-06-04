@@ -634,6 +634,13 @@ void ResourceLoader::didReceiveAuthenticationChallenge(const AuthenticationChall
     didFail(blockedError());
 #endif
 }
+#if USE(CURL_OPENSSL)
+void ResourceLoader::didReceiveSSLSecurityExtension(const ResourceRequest& request, const char* securityExtension)
+{
+    RefPtr<ResourceLoader> protector(this);
+    frameLoader()->didReceiveSSLSecurityExtension(request, securityExtension);
+}
+#endif
 
 void ResourceLoader::didCancelAuthenticationChallenge(const AuthenticationChallenge& challenge)
 {
