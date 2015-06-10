@@ -208,21 +208,18 @@ static void handle_favicons(struct IClass *cl, Object *obj, struct MUIS_Listtree
 				{
 					handle_favicons(cl, obj, tn, create);
 				}
-				else
+				if(node->icon && muiRenderInfo(lt))
 				{
-					if(node->icon && muiRenderInfo(lt))
+					if(create)
 					{
-						if(create)
+						node->iconimg = (APTR) DoMethod((Object *) lt, MUIM_List_CreateImage, node->icon, 0);
+					}
+					else
+					{
+						if(node->iconimg)
 						{
-							node->iconimg = (APTR) DoMethod((Object *) lt, MUIM_List_CreateImage, node->icon, 0);
-						}
-						else
-						{
-							if(node->iconimg)
-							{
-								DoMethod((Object *) lt, MUIM_List_DeleteImage, node->iconimg);
-								node->iconimg = NULL;
-							}
+							DoMethod((Object *) lt, MUIM_List_DeleteImage, node->iconimg);
+							node->iconimg = NULL;
 						}
 					}
 				}
