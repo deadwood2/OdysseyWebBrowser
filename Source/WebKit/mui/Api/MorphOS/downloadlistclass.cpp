@@ -47,7 +47,7 @@
 using namespace WebCore;
 
 enum {
-	POPMENU_OPEN_FILE,
+	POPMENU_OPEN_FILE = 1,
 	POPMENU_OPEN_DIRECTORY,
 	POPMENU_OPEN_PAGE
 };

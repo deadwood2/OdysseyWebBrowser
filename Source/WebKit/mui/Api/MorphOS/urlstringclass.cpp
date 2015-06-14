@@ -41,7 +41,7 @@
 using namespace WebCore;
 
 enum {
-	POPMENU_PASTE_AND_GO,
+	POPMENU_PASTE_AND_GO = 1,
 };
 
 struct Data
