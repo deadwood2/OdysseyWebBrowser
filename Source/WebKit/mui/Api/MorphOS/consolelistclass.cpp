@@ -47,7 +47,7 @@
 using namespace WebCore;
 
 enum {
-	POPMENU_OPEN_COPY,
+	POPMENU_OPEN_COPY = 1,
 };
 
 struct Data

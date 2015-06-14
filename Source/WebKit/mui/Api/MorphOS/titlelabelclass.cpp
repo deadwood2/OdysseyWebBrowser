@@ -44,7 +44,7 @@
  *****************************************************************/
 
 enum {
-	POPMENU_NEW,
+	POPMENU_NEW = 1,
 	POPMENU_RELOAD,
 	POPMENU_RELOAD_ALL,
 	POPMENU_CLOSE,
