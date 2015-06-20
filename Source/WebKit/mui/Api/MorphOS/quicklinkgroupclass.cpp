@@ -255,7 +255,7 @@ static ULONG LayoutFonc( struct Hook *hook, Object *obj, struct MUI_LayoutMsg *l
 					if (last_col>cols)
 					{
 						// enouth space
-						array_x= (lm->lm_Layout.Width) / cols;
+						array_x= cols != 0 ? (lm->lm_Layout.Width) / cols : 0;
 						if ((array_x*cols)+(data->hspace*(cols-1)>(ULONG) lm->lm_Layout.Width)) array_x--;
 						if ((array_x*cols)+(data->hspace*(cols-1)>(ULONG) lm->lm_Layout.Width)) array_x--;
 						D(kprintf("Col Mode 1: cols=%ld array_x=%ld\n",cols,array_x);)
@@ -280,7 +280,7 @@ static ULONG LayoutFonc( struct Hook *hook, Object *obj, struct MUI_LayoutMsg *l
 				{
 					cols= (lm->lm_Layout.Width) / (data->button_w + data->hspace); // get max button per line
 					if (cols>(LONG)data->count) cols=data->count;
-					array_x= (lm->lm_Layout.Width) / cols;
+					array_x= cols != 0 ? (lm->lm_Layout.Width) / cols : 0;
 					array_y= data->button_h;
 					if ((array_x*cols)+(data->hspace*(cols-1)>(ULONG)lm->lm_Layout.Width)) array_x--;
 					if ((array_x*cols)+(data->hspace*(cols-1)>(ULONG)lm->lm_Layout.Width)) array_x--;
