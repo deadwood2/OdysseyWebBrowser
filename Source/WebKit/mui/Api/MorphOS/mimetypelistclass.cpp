@@ -116,7 +116,10 @@ DEFMMETHOD(List_Display)
 
 		if( (ULONG)msg->array[-1] % 2 )
 		{
+#if !OS(AROS)
+			/* This code overrides internal data structures and causes a crash on AROS */
 			msg->array[-9] = (STRPTR) 10;
+#endif
 		}
 	}
 	else
