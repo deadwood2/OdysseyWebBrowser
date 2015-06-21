@@ -261,7 +261,10 @@ MUI_HOOK(bookmarklisttree_displayfunc, APTR a, APTR t)
 
 		if( (ULONG)array[ -1 ] % 2 )
 		{
+#if !OS(AROS)
+			/* This code overrides internal data structures and causes a crash on AROS */
 			array[ -9 ] = (STRPTR) 10;
+#endif
 		}
 	}
 	else
