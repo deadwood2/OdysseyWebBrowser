@@ -138,11 +138,9 @@ static CString certificatePath()
     return CString();
 }
 
+#if !PLATFORM(MUI)
 static char* cookieJarPath()
 {
-#if PLATFORM(MUI)
-    return NULL;
-#endif
     char* cookieJarPath = getenv("CURL_COOKIE_JAR_PATH");
     if (cookieJarPath)
         return fastStrDup(cookieJarPath);
@@ -172,6 +170,7 @@ static char* cookieJarPath()
     return fastStrDup("cookies.dat");
 #endif
 }
+#endif
 
 static Mutex* sharedResourceMutex(curl_lock_data data) {
     DEPRECATED_DEFINE_STATIC_LOCAL(Mutex, cookieMutex, ());
@@ -262,7 +261,9 @@ inline static bool isHttpNotModified(int statusCode)
 
 ResourceHandleManager::ResourceHandleManager()
     : m_downloadTimer(*this, &ResourceHandleManager::downloadTimerCallback)
+#if !PLATFORM(MUI)
     , m_cookieJarFileName(cookieJarPath())
+#endif
     , m_certificatePath (certificatePath())
     , m_runningJobs(0)
 #ifndef NDEBUG
@@ -306,8 +307,10 @@ ResourceHandleManager::~ResourceHandleManager()
 {
     curl_multi_cleanup(m_curlMultiHandle);
     curl_share_cleanup(m_curlShareHandle);
+#if !PLATFORM(MUI)
     if (m_cookieJarFileName)
         fastFree(m_cookieJarFileName);
+#endif
     curl_global_cleanup();
 
 #ifndef NDEBUG
@@ -333,18 +336,17 @@ CURLSH* ResourceHandleManager::getCurlShareHandle() const
     return m_curlShareHandle;
 }
 
+#if !PLATFORM(MUI)
 void ResourceHandleManager::setCookieJarFileName(const char* cookieJarFileName)
 {
     m_cookieJarFileName = fastStrDup(cookieJarFileName);
-#if PLATFORM(MUI)
-	cookieManager().setCookieJar(fastStrDup(cookieJarFileName));
-#endif
 }
 
 const char* ResourceHandleManager::getCookieJarFileName() const
 {
     return m_cookieJarFileName;
 }
+#endif
 
 ResourceHandleManager* ResourceHandleManager::sharedInstance()
 {

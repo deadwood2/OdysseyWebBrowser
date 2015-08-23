@@ -68,8 +68,10 @@ public:
 
     CURLSH* getCurlShareHandle() const;
 
+#if !PLATFORM(MUI)
     void setCookieJarFileName(const char* cookieJarFileName);
     const char* getCookieJarFileName() const;
+#endif
 
     void dispatchSynchronousJob(ResourceHandle*);
 
@@ -103,7 +105,9 @@ private:
     Timer m_downloadTimer;
     CURLM* m_curlMultiHandle;
     CURLSH* m_curlShareHandle;
+#if !PLATFORM(MUI)
     char* m_cookieJarFileName;
+#endif
     char m_curlErrorBuffer[CURL_ERROR_SIZE];
     Vector<ResourceHandle*> m_resourceHandleList;
     const CString m_certificatePath;
