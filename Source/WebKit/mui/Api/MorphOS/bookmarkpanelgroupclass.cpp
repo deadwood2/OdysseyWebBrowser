@@ -562,6 +562,19 @@ DEFTMETHOD(Bookmarkgroup_Remove)
 	return (0);
 }
 
+DEFTMETHOD(Bookmarkgroup_Open)
+{
+	GETDATA;
+	struct MUIS_Listtree_TreeNode *active =
+			(struct MUIS_Listtree_TreeNode *) DoMethod(data->lt_bookmark, MUIM_Listtree_GetEntry, NULL, MUIV_Listtree_GetEntry_Position_Active, 0);
+	struct treedata *td = (struct treedata *)active->tn_User;
+	Object *window = (Object *) getv(_app(obj), MA_OWBApp_ActiveWindow);
+
+	DoMethod(window, MM_OWBWindow_LoadURL, td->address, NULL);
+	return (0);
+
+}
+
 DEFMMETHOD(DragQuery)
 {
 	LONG type = getv(msg->obj, MA_OWB_ObjectType);
@@ -605,6 +618,7 @@ DECMMETHOD(Cleanup)
 DECSMETHOD(Bookmarkgroup_LoadHtml)
 DECSMETHOD(Bookmarkgroup_AddLink)
 DECTMETHOD(Bookmarkgroup_Remove)
+DECTMETHOD(Bookmarkgroup_Open)
 DECMMETHOD(DragQuery)
 DECMMETHOD(DragDrop)
 ENDMTABLE
