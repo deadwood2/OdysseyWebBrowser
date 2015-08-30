@@ -39,6 +39,7 @@
 
 #include <curl/curl.h>
 #include "gui.h"
+#include "versioninfo.h"
 
 #include <exec/resident.h>
 

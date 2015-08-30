@@ -17,11 +17,6 @@
 
 /* Constants */
 
-#define VERSION  "1.25"
-#define DATE     "15.05.2015"
-#define WEBKITVER xstringify(WEBKIT_MAJOR_VERSION) "." xstringify(WEBKIT_MINOR_VERSION)
-#define REVISION "WebKit " WEBKITVER " (r183664)"
-
 #define THREAD_NAME              "OWB Thread"
 #define APPLICATION_DESCRIPTION  "WebKit-based browser."
 #define APPLICATION_BASE         "OWB"

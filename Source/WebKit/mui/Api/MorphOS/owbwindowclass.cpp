@@ -81,6 +81,7 @@
 #include "utils.h"
 #include "clipboard.h"
 #include "asl.h"
+#include "versioninfo.h"
 
 /******************************************************************
  * owbwindowclass

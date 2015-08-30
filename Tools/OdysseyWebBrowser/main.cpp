@@ -85,7 +85,6 @@ extern "C"
 }
 
 /* Globals */
-TEXT version[] __attribute__((section(".text"))) = "$VER: Odyssey Web Browser " VERSION " (" DATE ")";
 unsigned long __stack = 2*1024*1024;
 jmp_buf bailout_env;
 

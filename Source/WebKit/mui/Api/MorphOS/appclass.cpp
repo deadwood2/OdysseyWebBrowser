@@ -116,6 +116,7 @@
 #include "owbcommand.h"
 #include "asl.h"
 #include "ExtCredential.h"
+#include "versioninfo.h"
 
 #define D(x)
 #undef String
