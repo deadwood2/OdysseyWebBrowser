@@ -154,6 +154,7 @@ static const CONST_STRPTR classlist[] = {
 static CONST TEXT credits[] =
 	"\033b%p\033n\n"
 	"\tFabien Coeurjoly\n"
+	"\tKrzysztof Smiechowicz\n"
 	"\tSandLabs\n"
 	"\tWebKit\n\n"
 
@@ -933,7 +934,7 @@ DEFNEW
 	obj = (Object *) DoSuperNew(cl, obj,
 			MUIA_Application_Title      , "Odyssey Web Browser",
 			MUIA_Application_Version    , "$VER: Odyssey Web Browser " VERSION " (" DATE ")",
-			MUIA_Application_Copyright  , "© 2009-2013 Fabien Coeurjoly",
+			MUIA_Application_Copyright  , "©\n2009-2014 Fabien Coeurjoly\n2014-2015 Krzysztof Smiechowicz",
 			MUIA_Application_Author     , "Fabien Coeurjoly",
 			MUIA_Application_Description, APPLICATION_DESCRIPTION,
 			MUIA_Application_UsedClasses, classlist,
