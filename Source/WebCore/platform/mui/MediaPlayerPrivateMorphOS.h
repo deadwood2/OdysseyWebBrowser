@@ -31,66 +31,67 @@
 #include "ResourceResponse.h"
 #include "Timer.h"
 
+namespace WebCore
+{
 
-namespace WebCore {
+    enum
+    {   IPC_CMD_NONE=0, IPC_CMD_LOAD, IPC_CMD_PLAY, IPC_CMD_PAUSE, IPC_CMD_SEEK, IPC_CMD_STOP};
 
-	enum { IPC_CMD_NONE=0, IPC_CMD_LOAD, IPC_CMD_PLAY, IPC_CMD_PAUSE, IPC_CMD_SEEK, IPC_CMD_STOP };
+    class IPCCommand
+    {
+    public:
+        IPCCommand(int cmd, float seekTo = 0.0)
+        : m_command(cmd)
+        , m_seekTo(seekTo)
+        {}
 
-	class IPCCommand
-	{
-	public:
-		IPCCommand(int cmd, float seekTo = 0.0)
-		: m_command(cmd)
-		, m_seekTo(seekTo)
-		{}
+        IPCCommand()
+        : m_command(IPC_CMD_NONE)
+        , m_seekTo(0.0)
+        {}
 
-		IPCCommand()
-		: m_command(IPC_CMD_NONE)
-		, m_seekTo(0.0)
-		{}
+        int id()
+        {
+            return m_command;
+        }
 
-		int id()
-		{
-			return m_command;
-		}
+        float seekTo()
+        {
+            return m_seekTo;
+        }
 
-		float seekTo()
-		{
-			return m_seekTo;
-		}
+        const char* name()
+        {
+            const char *name;
+            switch(id())
+            {
+            case IPC_CMD_LOAD:
+                name = "IPC_CMD_LOAD";
+                break;
+            case IPC_CMD_PLAY:
+                name = "IPC_CMD_PLAY";
+                break;
+            case IPC_CMD_PAUSE:
+                name = "IPC_CMD_PAUSE";
+                break;
+            case IPC_CMD_SEEK:
+                name = "IPC_CMD_SEEK";
+                break;
+            case IPC_CMD_STOP:
+                name = "IPC_CMD_STOP";
+                break;
+            default:
+                name = "<unknown>";
+                break;
+            }
 
-		const char* name()
-		{
-			const char *name;
-			switch(id())
-			{
-				case IPC_CMD_LOAD:
-					name = "IPC_CMD_LOAD";
-					break;
-				case IPC_CMD_PLAY:
-					name = "IPC_CMD_PLAY";
-					break;
-					case IPC_CMD_PAUSE:
-					name = "IPC_CMD_PAUSE";
-					break;
-				case IPC_CMD_SEEK:
-					name = "IPC_CMD_SEEK";
-					break;
-				case IPC_CMD_STOP:
-					name = "IPC_CMD_STOP";
-					break;
-				default:
-					name = "<unknown>";
-					break;
-			}
+            return name;
+        }
 
-			return name;
-		}
-
-	private:
-		int m_command;
-		float m_seekTo;
-	};
+    private:
+        int m_command;
+        float m_seekTo;
+    };
 
     class GraphicsContext;
     class IntSize;
@@ -101,144 +102,124 @@ namespace WebCore {
     {
     public:
 
-        static void registerMediaEngine(MediaEngineRegistrar);
         MediaPlayerPrivate(MediaPlayer*);
         ~MediaPlayerPrivate();
+        static void registerMediaEngine(MediaEngineRegistrar);
 
-        FloatSize naturalSize() const;
-        bool hasVideo() const;
-        bool hasAudio() const;
+        void didReceiveResponse(const ResourceResponse& response);
+        void didFinishLoading();
+        void didFailLoading(const ResourceError&);
+        void didReceiveData(const char* data, unsigned length, int lengthReceived);
 
-        void load(const String &url);
+        void audioClose();
+        static void fetchRequest(void *);
+
+        FloatSize naturalSize() const override;
+        bool hasVideo() const override;
+        bool hasAudio() const override;
+
+        void load(const String &url) override;
 #if ENABLE(MEDIA_SOURCE)
-	void load(const String& url, PassRefPtr<MediaSource>);
+        void load(const String& url, PassRefPtr<MediaSource>) override;
 #endif
-        void cancelLoad();
+        void cancelLoad() override;
 
-		void prepareToPlay();
-        void play();
-        void pause();
+        void prepareToPlay() override;
+        void play() override;
+        void pause() override;
 
-        bool paused() const;
-        bool seeking() const;
+        bool paused() const override;
+        bool seeking() const override;
 
-        float duration() const;
-        float currentTime() const;
-        void seek(float);
+        float duration() const override;
+        float currentTime() const override;
+        void seek(float) override;
 
-        void setRate(float);
-        void setVolume(float);
-	void volumeChanged();
+        void setRate(float) override;
+        void setVolume(float) override;
 
-        int dataRate() const;
+        MediaPlayer::NetworkState networkState() const override;
+        MediaPlayer::ReadyState readyState() const override;
 
-        MediaPlayer::NetworkState networkState() const;
-        MediaPlayer::ReadyState readyState() const;
+        virtual std::unique_ptr<PlatformTimeRanges> buffered() const override;
+        float maxTimeSeekable() const override;
+        unsigned long long totalBytes() const override;
 
-        virtual std::unique_ptr<PlatformTimeRanges> buffered() const;
-        float maxTimeSeekable() const;
-        unsigned bytesLoaded() const;
+        void setVisible(bool) override;
+        void setSize(const IntSize&) override;
+        virtual bool didLoadingProgress() const override;
+
+        void paint(GraphicsContext*, const FloatRect&) override;
+        bool hasSingleSecurityOrigin() const override;
+        void setOutputPixelFormat(int pixfmt) override;
+        bool supportsFullscreen() const override;
+
+    private:
+
         bool totalBytesKnown() const;
-        unsigned long long totalBytes() const;
-
-        void setVisible(bool);
-        void setSize(const IntSize&);
-
-	virtual bool didLoadingProgress() const;
-
-        void loadStateChanged();
-        void sizeChanged();
-        void timeChanged();
         void didEnd();
-	void durationChanged();
-	void loadingFailed(MediaPlayer::NetworkState);
 
         void repaint();
-        void paint(GraphicsContext*, const FloatRect&) override;
 
-	bool hasSingleSecurityOrigin() const;
+        void videoDecoder();
+        void audioDecoder();
+        void audioOutput();
+        void playerLoop();
+        bool audioOpen();
+        void audioPause();
+        void audioResume();
+        void audioReset();
+        void audioSetVolume(float volume);
 
-	void setOutputPixelFormat(int pixfmt);
+        void sendCommand(IPCCommand cmd);
+        IPCCommand waitCommand();
+        bool commandInQueue();
+        bool demux(bool &eof, bool &gotVideo, bool &videoFull, bool &gotAudio, bool &audioFull);
 
-	bool supportsFullscreen() const;
+        MediaPlayer* player() {return m_player;}
+        bool isEndReached() {return m_isEndReached;}
 
-	bool supportsSave() const;
+        void updateStates(MediaPlayer::NetworkState, MediaPlayer::ReadyState);
+        float maxTimeLoaded() const;
+        void cancelFetch();
+        bool fetchData(unsigned long long startOffset);
 
-	/**/
-	FFMpegContext *privatectx();
-
-	void videoDecoder();
-	void audioDecoder();
-	void audioOutput();
-	void playerLoop();
-	bool audioOpen();
-	void audioClose();
-	void audioPause();
-	void audioResume();
-	void audioReset();
-	void audioSetVolume(float volume);
-
-	void sendCommand(IPCCommand cmd);
-	IPCCommand waitCommand();
-	bool commandInQueue();
-	bool demux(bool &eof, bool &gotVideo, bool &videoFull, bool &gotAudio, bool &audioFull);
-	void didReceiveResponse(const ResourceResponse& response);
-	void didFinishLoading();
-	void didFailLoading(const ResourceError&);
-	void didReceiveData(const char* data, unsigned length, int lengthReceived);
-	bool fetchData(unsigned long long startOffset);
-	void cancelFetch();
-	MediaPlayer* player() { return m_player; }
-	bool isEndReached() { return m_isEndReached; }
-
-	static void videoDecoderStart(void*);
-	static void audioDecoderStart(void*);
-	static void audioOutputStart(void*);
-	static void playerLoopStart(void*);
-	static void  playerAdvance(void *);
-	static void  playerPaint(void *);
-	static void  fetchRequest(void *);
-	static void callNetworkStateChanged(void *);
-	static void callReadyStateChanged(void *);
-	static void callTimeChanged(void *);
-	/**/
-
-    private:
+        static void videoDecoderStart(void*);
+        static void audioDecoderStart(void*);
+        static void audioOutputStart(void*);
+        static void playerLoopStart(void*);
+        static void playerAdvance(void *);
+        static void playerPaint(void *);
+        static void callNetworkStateChanged(void *);
+        static void callReadyStateChanged(void *);
+        static void callTimeChanged(void *);
 
         static void getSupportedTypes(HashSet<String>&);
-	static MediaPlayer::SupportsType supportsType(const MediaEngineSupportParameters&);
-        static bool isAvailable() { return true; }
+        static MediaPlayer::SupportsType supportsType(const MediaEngineSupportParameters&);
+        static bool isAvailable() {return true;}
 
-	void updateStates(MediaPlayer::NetworkState, MediaPlayer::ReadyState);
-        void cancelSeek();
-        float maxTimeLoaded() const;
 
-    private:
         MediaPlayer* m_player;
-        float m_rate;
-        float m_endTime;
         bool m_isEndReached;
-	bool m_errorOccured;
+        bool m_errorOccured;
 
         double m_volume;
         MediaPlayer::NetworkState m_networkState;
         MediaPlayer::ReadyState m_readyState;
         bool m_startedPlaying;
         mutable bool m_isStreaming;
-	bool m_isSeeking;
-        IntSize m_size;
+        bool m_isSeeking;
         bool m_visible;
-	FFMpegContext *m_ctx;
-	WTF::Vector<IPCCommand> m_commandQueue;
+        FFMpegContext *m_ctx;
+        WTF::Vector<IPCCommand> m_commandQueue;
 
-	/* Thread/Synchronisation Handling */
-	ThreadIdentifier m_thread;
-	bool m_threadRunning;
-	ThreadCondition m_condition;
+        /* Thread/Synchronisation Handling */
+        ThreadIdentifier m_thread;
+        bool m_threadRunning;
+        ThreadCondition m_condition;
 
-    public:
-	WTF::Vector<long long> m_pendingPaintQueue;
-	mutable Mutex m_lock;
+        WTF::Vector<long long> m_pendingPaintQueue;
+        mutable Mutex m_lock;
     };
 }
 

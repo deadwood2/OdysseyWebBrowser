@@ -43,7 +43,6 @@
 #include "MIMETypeRegistry.h"
 #include "MediaPlayer.h"
 #include "NetworkingContext.h"
-#include "NotImplemented.h"
 #include "PlatformContextCairo.h"
 #include "ScrollView.h"
 #include "TimeRanges.h"
@@ -1751,44 +1750,6 @@ void MediaPlayerPrivate::audioSetVolume(float volume)
 
 /***********************************************************************************/
 
-/* Video main timer */
-
-typedef void (*MediaFunc)(void *);
-
-class MediaTimer
-{
-public:
-	void *m_ctx;
-	MediaFunc m_mediafunc;
-	Timer m_mediaTimer;
-
-	void start(unsigned long ms)
-	{
-		if(!m_mediaTimer.isActive())
-			m_mediaTimer.startOneShot((double)(1.0*ms)/1000.0);
-	}
-
-	void stop()
-	{
-		if(m_mediaTimer.isActive())
-			m_mediaTimer.stop();
-	}
-
-	void mediaFired()
-	{
-		m_mediafunc(m_ctx);
-	}
-
-	MediaTimer(void *ctx, MediaFunc func)
-		: m_ctx(ctx),
-		  m_mediafunc(func),
-		  m_mediaTimer(*this, &MediaTimer::mediaFired)
-	{
-	}
-};
-
-/***********************************************************************************/
-
 /* Stream Client */
 
 class StreamClient : public ResourceHandleClient
@@ -1801,46 +1762,26 @@ public:
 
 	virtual void didReceiveResponse(ResourceHandle*, const ResourceResponse& response) override
 	{
-		FFMpegContext *ctx = m_mediaPlayer->privatectx();
-
 		D(kprintf("[StreamClient] didReceiveResponse\n"));
-		if(ctx->mediaplayer)
-		{
-			ctx->mediaplayer->didReceiveResponse(response);
-		}
+		m_mediaPlayer->didReceiveResponse(response);
 	}
 
 	virtual void didReceiveData(ResourceHandle*, const char* data, unsigned length, int lengthReceived) override
 	{
-		FFMpegContext *ctx = m_mediaPlayer->privatectx();
-
 		D(kprintf("[StreamClient] didReceiveData(%d)\n", length));
-		if(ctx->mediaplayer)
-		{
-			ctx->mediaplayer->didReceiveData(data, length, lengthReceived);
-		}
+		m_mediaPlayer->didReceiveData(data, length, lengthReceived);
 	}
 
 	virtual void didFinishLoading(ResourceHandle*, double) override
 	{
-		FFMpegContext *ctx = m_mediaPlayer->privatectx();
-
 		D(kprintf("[StreamClient] didFinishLoading\n"));
-		if(ctx->mediaplayer)
-		{
-			ctx->mediaplayer->didFinishLoading();
-		}
+		m_mediaPlayer->didFinishLoading();
 	}
 	
 	virtual void didFail(ResourceHandle*, const ResourceError& error) override
 	{
-		FFMpegContext *ctx = m_mediaPlayer->privatectx();
-
 		D(kprintf("[StreamClient] didFail\n"));
-		if(ctx->mediaplayer)
-		{
-			ctx->mediaplayer->didFailLoading(error);
-		}
+		m_mediaPlayer->didFailLoading(error);
 	}
 
 private:
@@ -2025,11 +1966,6 @@ void MediaPlayerPrivate::registerMediaEngine(MediaEngineRegistrar registrar)
     if (isAvailable())
         registrar([](MediaPlayer* player) { return std::make_unique<MediaPlayerPrivate>(player); },
             getSupportedTypes, supportsType, 0, 0, 0, 0);
-}
-
-struct FFMpegContext* MediaPlayerPrivate::privatectx()
-{
-	return m_ctx;
 }
 
 void MediaPlayerPrivate::sendCommand(IPCCommand cmd)
@@ -3061,7 +2997,7 @@ void MediaPlayerPrivate::playerLoop()
 						updateStates(m_networkState, MediaPlayer::HaveFutureData);
 					}
 
-					D(kprintf("[MediaPlayer Thread] Seek, calling timeChanged\n"));
+					D(kprintf("[MediaPlayer Thread] Seek, calling callTimeChanged\n"));
 					WTF::callOnMainThread(MediaPlayerPrivate::callTimeChanged, m_player);
 					
 					m_isSeeking = false;
@@ -3320,8 +3256,6 @@ void MediaPlayerPrivate::playerAdvance(void *c)
 
 MediaPlayerPrivate::MediaPlayerPrivate(MediaPlayer* player)
     : m_player(player)
-    , m_rate(1.0f)
-    , m_endTime(numeric_limits<float>::infinity())
 	, m_isEndReached(false)
 	, m_errorOccured(false)
     , m_volume(0.5f)
@@ -3330,7 +3264,6 @@ MediaPlayerPrivate::MediaPlayerPrivate(MediaPlayer* player)
 	, m_startedPlaying(false)
     , m_isStreaming(false)
 	, m_isSeeking(false)
-    , m_size(IntSize())
     , m_visible(true)
 	, m_ctx(0)
 	, m_threadRunning(false)
@@ -3527,11 +3460,6 @@ void MediaPlayerPrivate::seek(float time)
 	}
 }
 
-void MediaPlayerPrivate::cancelSeek()
-{
-    notImplemented();
-}
-
 bool MediaPlayerPrivate::paused() const
 {
 	D(kprintf("[MediaPlayer] Is Paused ? %d\n", !m_startedPlaying));
@@ -3579,20 +3507,10 @@ void MediaPlayerPrivate::setVolume(float volume)
 	}
 }
 
-void MediaPlayerPrivate::volumeChanged()
-{
-}
-
 void MediaPlayerPrivate::setRate(float rate)
 {
     (void)rate;
 	D(kprintf("[MediaPlayer] Set rate to %f\n", rate));
-}
-
-int MediaPlayerPrivate::dataRate() const
-{
-	D(kprintf("[MediaPlayer] dataRate %d\n", 1));
-	return 1;
 }
 
 MediaPlayer::NetworkState MediaPlayerPrivate::networkState() const
@@ -3665,21 +3583,6 @@ float MediaPlayerPrivate::maxTimeLoaded() const
 	return res;
 }
 
-unsigned MediaPlayerPrivate::bytesLoaded() const
-{
-	long res;
-
-    if (m_errorOccured)
-	{
-		return 0;
-	}
-
-	res = (long) m_ctx->media_buffer.ranges.bytesInRanges();
-
-	D(kprintf("[MediaPlayer] bytesLoaded %ld / %lld\n", res, m_ctx->totalsize));
-	return res;
-}
-
 bool MediaPlayerPrivate::totalBytesKnown() const
 {
 	D(kprintf("[MediaPlayer] totalBytesKnown %d", totalBytes() > 0));
@@ -3735,37 +3638,13 @@ void MediaPlayerPrivate::updateStates(MediaPlayer::NetworkState networkState, Me
 		{
 			m_networkState = networkState;
 			WTF::callOnMainThread(MediaPlayerPrivate::callNetworkStateChanged, m_player);
-			//m_player->networkStateChanged();
 		}
 
 		if(readyState != m_readyState)
 		{
 			m_readyState = readyState;
 			WTF::callOnMainThread(MediaPlayerPrivate::callReadyStateChanged, m_player);
-			//m_player->readyStateChanged();
 		}
-	}
-}
-
-void MediaPlayerPrivate::loadStateChanged()
-{
-	D(kprintf("[MediaPlayer] loadStateChanged()\n"));
-    notImplemented();
-}
-
-void MediaPlayerPrivate::sizeChanged()
-{
-	if(m_player)
-	{
-		m_player->sizeChanged();
-	}
-}
-
-void MediaPlayerPrivate::timeChanged()
-{
-	if(m_player)
-	{
-		m_player->timeChanged();
 	}
 }
 
@@ -3776,38 +3655,12 @@ void MediaPlayerPrivate::didEnd()
 
 	updateStates(m_networkState, MediaPlayer::HaveEnoughData);
 
-	//durationChanged();
-
 	WTF::callOnMainThread(MediaPlayerPrivate::callTimeChanged, m_player);
-	//timeChanged();
-}
-
-void MediaPlayerPrivate::durationChanged()
-{
-	if(m_player)
-	{
-		m_player->durationChanged();
-	}
-}
-
-void MediaPlayerPrivate::loadingFailed(MediaPlayer::NetworkState error)
-{
-	if(m_player)
-	{
-		if (m_networkState != error) {
-			m_networkState = error;
-	        m_player->networkStateChanged();
-	    }
-	    if (m_readyState != MediaPlayer::HaveNothing) {
-	        m_readyState = MediaPlayer::HaveNothing;
-	        m_player->readyStateChanged();
-	    }
-	}
 }
 
 void MediaPlayerPrivate::setSize(const IntSize& size)
 {
-    m_size = size;
+    (void)size;
 }
 
 void MediaPlayerPrivate::setVisible(bool visible)
@@ -3818,7 +3671,6 @@ void MediaPlayerPrivate::setVisible(bool visible)
 bool MediaPlayerPrivate::didLoadingProgress() const
 {
     return true;
-    //return bytesLoaded() != m_lastBytesLoaded;
 }
 
 void MediaPlayerPrivate::repaint()
@@ -4067,11 +3919,6 @@ bool MediaPlayerPrivate::hasSingleSecurityOrigin() const
 }
 
 bool MediaPlayerPrivate::supportsFullscreen() const
-{
-    return true;
-}
-
-bool MediaPlayerPrivate::supportsSave() const
 {
     return true;
 }
