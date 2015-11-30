@@ -2491,7 +2491,7 @@ void MediaPlayerPrivate::videoDecoder()
 
 						D(kprintf("[Video Thread] V-A Delta: %f\n", avdelta));
 
-						if(avdelta < 0.1 || avdelta > -0.1)
+						if(avdelta < 0.1 && avdelta > -0.1)
 						{
 							delay += avdelta;
 						}
@@ -2637,7 +2637,8 @@ void MediaPlayerPrivate::audioDecoder()
 					_Stream *stream = m_ctx->audio_stream;
 
 					// Actual timecode considering the buffered audio data in output buffer
-					m_ctx->audio_timecode -= stream->written_len/(stream->sample_rate*(stream->sample_bits/8)*stream->sample_channels);
+					m_ctx->audio_timecode -= ((double)(stream->written_len))/(stream->sample_rate*(stream->sample_bits/8)*stream->sample_channels);
+					if (m_ctx->audio_timecode < 0.0) m_ctx->audio_timecode = 0.0; //Can happen due to precision
 
 					// Delay to next frame, which should be related to decoded buffersize. XXX: handle speed factor there */
 					delay -= decodeTime;
