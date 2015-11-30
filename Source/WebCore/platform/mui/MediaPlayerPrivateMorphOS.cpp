@@ -2488,6 +2488,9 @@ void MediaPlayerPrivate::videoDecoder()
 					if(m_ctx->audio)
 					{
 						double avdelta = m_ctx->video->timecode - m_ctx->audio_timecode;
+#if OS(AROS)
+						avdelta += 0.2;
+#endif
 
 						D(kprintf("[Video Thread] V-A Delta: %f\n", avdelta));
 
