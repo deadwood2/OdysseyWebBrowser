@@ -85,14 +85,12 @@ typedef NSInteger AVPlayerViewControllerOptimizedFullscreenStopReason;
 
 @interface AVPlayerViewController (Details)
 - (instancetype)initWithVideoLayer:(CALayer <AVVideoLayer> *)videoLayer;
-- (void)enterFullScreenWithCompletionHandler:(void (^)(BOOL success, NSError *))completionHandler;
+- (void)enterFullScreenAnimated:(BOOL)animated completionHandler:(void (^)(BOOL success, NSError *))completionHandler;
 - (void)exitFullScreenAnimated:(BOOL)animated completionHandler:(void (^)(BOOL success, NSError *))completionHandler;
-- (void)exitFullScreenWithCompletionHandler:(void (^)(BOOL success, NSError *))completionHandler;
 
+- (BOOL)isOptimizedFullscreenPossible;
 - (void)startOptimizedFullscreen;
-- (void)startOptimizedFullscreenWithStartCompletionHandler:(void (^)(BOOL success, NSError*))startCompletionHandler stopCompletionHandler:(void (^)(AVPlayerViewControllerOptimizedFullscreenStopReason))stopCompletionHandler;
 - (void)stopOptimizedFullscreen;
-- (void)cancelOptimizedFullscreen;
 - (void)setAllowsOptimizedFullscreen:(BOOL)allowsOptimizedFullscreen;
 
 @property (nonatomic, strong) AVPlayerController *playerController;

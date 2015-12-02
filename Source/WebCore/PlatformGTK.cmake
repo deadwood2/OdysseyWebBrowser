@@ -17,6 +17,7 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/graphics/opengl"
     "${WEBCORE_DIR}/platform/graphics/opentype"
     "${WEBCORE_DIR}/platform/graphics/wayland"
+    "${WEBCORE_DIR}/platform/graphics/x11"
     "${WEBCORE_DIR}/platform/linux"
     "${WEBCORE_DIR}/platform/mediastream/openwebrtc"
     "${WEBCORE_DIR}/platform/mock/mediasource"
@@ -63,6 +64,7 @@ list(APPEND WebCore_SOURCES
     platform/geoclue/GeolocationProviderGeoclue1.cpp
     platform/geoclue/GeolocationProviderGeoclue2.cpp
 
+    platform/graphics/GLContext.cpp
     platform/graphics/GraphicsContext3DPrivate.cpp
     platform/graphics/ImageSource.cpp
     platform/graphics/WOFFFileFormat.cpp
@@ -87,10 +89,14 @@ list(APPEND WebCore_SOURCES
     platform/graphics/cairo/RefPtrCairo.cpp
     platform/graphics/cairo/TransformationMatrixCairo.cpp
 
+    platform/graphics/egl/GLContextEGL.cpp
+
     platform/graphics/freetype/FontCacheFreeType.cpp
     platform/graphics/freetype/FontCustomPlatformDataFreeType.cpp
     platform/graphics/freetype/GlyphPageTreeNodeFreeType.cpp
     platform/graphics/freetype/SimpleFontDataFreeType.cpp
+
+    platform/graphics/glx/GLContextGLX.cpp
 
     platform/graphics/gstreamer/AudioTrackPrivateGStreamer.cpp
     platform/graphics/gstreamer/GRefPtrGStreamer.cpp
@@ -118,6 +124,9 @@ list(APPEND WebCore_SOURCES
     platform/graphics/opengl/TemporaryOpenGLSetting.cpp
 
     platform/graphics/opentype/OpenTypeVerticalData.cpp
+
+    platform/graphics/x11/PlatformDisplayX11.cpp
+    platform/graphics/x11/XUniqueResource.cpp
 
     platform/gtk/ErrorsGtk.cpp
     platform/gtk/EventLoopGtk.cpp
@@ -191,13 +200,9 @@ list(APPEND WebCorePlatformGTK_SOURCES
     page/gtk/DragControllerGtk.cpp
     page/gtk/EventHandlerGtk.cpp
 
-    platform/graphics/GLContext.cpp
-
-    platform/graphics/egl/GLContextEGL.cpp
+    platform/graphics/PlatformDisplay.cpp
 
     platform/graphics/freetype/FontPlatformDataFreeType.cpp
-
-    platform/graphics/glx/GLContextGLX.cpp
 
     platform/graphics/gtk/ColorGtk.cpp
     platform/graphics/gtk/GdkCairoUtilities.cpp
@@ -229,7 +234,7 @@ list(APPEND WebCorePlatformGTK_SOURCES
     rendering/RenderThemeGtk.cpp
 )
 
-if (WTF_USE_GEOCLUE2)
+if (USE_GEOCLUE2)
     list(APPEND WebCore_SOURCES
         ${DERIVED_SOURCES_WEBCORE_DIR}/Geoclue2Interface.c
     )
@@ -282,7 +287,7 @@ list(APPEND WebCore_LIBRARIES
     ${ZLIB_LIBRARIES}
 )
 
-list(APPEND WebCore_INCLUDE_DIRECTORIES
+list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
     ${ATK_INCLUDE_DIRS}
     ${CAIRO_INCLUDE_DIRS}
     ${ENCHANT_INCLUDE_DIRS}
@@ -304,6 +309,9 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
 if (ENABLE_VIDEO OR ENABLE_WEB_AUDIO)
     list(APPEND WebCore_INCLUDE_DIRECTORIES
         ${WEBCORE_DIR}/platform/graphics/gstreamer
+    )
+
+    list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
         ${GSTREAMER_INCLUDE_DIRS}
         ${GSTREAMER_BASE_INCLUDE_DIRS}
         ${GSTREAMER_APP_INCLUDE_DIRS}
@@ -322,7 +330,7 @@ if (ENABLE_VIDEO OR ENABLE_WEB_AUDIO)
 endif ()
 
 if (ENABLE_VIDEO)
-    list(APPEND WebCore_INCLUDE_DIRECTORIES
+    list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
         ${GSTREAMER_TAG_INCLUDE_DIRS}
         ${GSTREAMER_VIDEO_INCLUDE_DIRS}
     )
@@ -331,8 +339,8 @@ if (ENABLE_VIDEO)
         ${GSTREAMER_VIDEO_LIBRARIES}
     )
 
-    if (WTF_USE_GSTREAMER_MPEGTS)
-        list(APPEND WebCore_INCLUDE_DIRECTORIES
+    if (USE_GSTREAMER_MPEGTS)
+        list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
             ${GSTREAMER_MPEGTS_INCLUDE_DIRS}
         )
 
@@ -341,8 +349,8 @@ if (ENABLE_VIDEO)
         )
     endif ()
 
-    if (WTF_USE_GSTREAMER_GL)
-        list(APPEND WebCore_INCLUDE_DIRECTORIES
+    if (USE_GSTREAMER_GL)
+        list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
             ${GSTREAMER_GL_INCLUDE_DIRS}
         )
 
@@ -353,7 +361,7 @@ if (ENABLE_VIDEO)
 endif ()
 
 if (ENABLE_WEB_AUDIO)
-    list(APPEND WebCore_INCLUDE_DIRECTORIES
+    list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
         ${WEBCORE_DIR}/platform/audio/gstreamer
         ${GSTREAMER_AUDIO_INCLUDE_DIRS}
         ${GSTREAMER_FFT_INCLUDE_DIRS}
@@ -364,7 +372,7 @@ if (ENABLE_WEB_AUDIO)
 endif ()
 
 if (ENABLE_MEDIA_STREAM)
-    list(APPEND WebCore_INCLUDE_DIRECTORIES
+    list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
         ${OPENWEBRTC_INCLUDE_DIRS}
     )
     list(APPEND WebCore_LIBRARIES
@@ -372,18 +380,16 @@ if (ENABLE_MEDIA_STREAM)
     )
 endif ()
 
-if (WTF_USE_TEXTURE_MAPPER)
+if (USE_TEXTURE_MAPPER)
     list(APPEND WebCore_INCLUDE_DIRECTORIES
         "${WEBCORE_DIR}/platform/graphics/texmap"
     )
     list(APPEND WebCore_SOURCES
         platform/graphics/texmap/BitmapTexture.cpp
         platform/graphics/texmap/BitmapTextureGL.cpp
-        platform/graphics/texmap/BitmapTextureImageBuffer.cpp
         platform/graphics/texmap/BitmapTexturePool.cpp
         platform/graphics/texmap/GraphicsLayerTextureMapper.cpp
         platform/graphics/texmap/TextureMapperGL.cpp
-        platform/graphics/texmap/TextureMapperImageBuffer.cpp
         platform/graphics/texmap/TextureMapperShaderProgram.cpp
     )
 endif ()
@@ -413,20 +419,15 @@ if (ENABLE_THREADED_COMPOSITOR)
     )
 endif ()
 
-if (WTF_USE_EGL)
-    list(APPEND WebCore_LIBRARIES
-        ${EGL_LIBRARY}
-    )
-endif ()
 
-if (WTF_USE_OPENGL_ES_2)
+if (USE_OPENGL_ES_2)
     list(APPEND WebCore_SOURCES
         platform/graphics/opengl/Extensions3DOpenGLES.cpp
         platform/graphics/opengl/GraphicsContext3DOpenGLES.cpp
     )
 endif ()
 
-if (WTF_USE_OPENGL)
+if (USE_OPENGL)
     list(APPEND WebCore_SOURCES
         platform/graphics/OpenGLShims.cpp
 
@@ -446,13 +447,13 @@ if (ENABLE_PLUGIN_PROCESS_GTK2)
         APPEND
         PROPERTY COMPILE_DEFINITIONS GTK_API_VERSION_2=1
     )
-    set_property(
-        TARGET WebCorePlatformGTK2
-        APPEND
-        PROPERTY INCLUDE_DIRECTORIES
-            ${WebCore_INCLUDE_DIRECTORIES}
-            ${GTK2_INCLUDE_DIRS}
-            ${GDK2_INCLUDE_DIRS}
+    target_include_directories(WebCorePlatformGTK2 PRIVATE
+        ${WebCore_INCLUDE_DIRECTORIES}
+        ${GTK2_INCLUDE_DIRS}
+        ${GDK2_INCLUDE_DIRS}
+    )
+    target_include_directories(WebCorePlatformGTK2 SYSTEM PRIVATE
+        ${WebCore_SYSTEM_INCLUDE_DIRECTORIES}
     )
     target_link_libraries(WebCorePlatformGTK2
          ${WebCore_LIBRARIES}
@@ -472,14 +473,14 @@ add_custom_command(
 
 if (ENABLE_WAYLAND_TARGET)
     list(APPEND WebCorePlatformGTK_SOURCES
-        platform/graphics/wayland/WaylandDisplay.cpp
+        platform/graphics/wayland/PlatformDisplayWayland.cpp
         platform/graphics/wayland/WaylandEventSource.cpp
         platform/graphics/wayland/WaylandSurface.cpp
 
         ${DERIVED_SOURCES_WEBCORE_DIR}/WebKitGtkWaylandClientProtocol.c
     )
 
-    list(APPEND WebCore_INCLUDE_DIRECTORIES
+    list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
         ${WAYLAND_INCLUDE_DIRS}
     )
     list(APPEND WebCore_LIBRARIES
@@ -490,13 +491,13 @@ endif ()
 add_library(WebCorePlatformGTK ${WebCore_LIBRARY_TYPE} ${WebCorePlatformGTK_SOURCES})
 add_dependencies(WebCorePlatformGTK WebCore)
 WEBKIT_SET_EXTRA_COMPILER_FLAGS(WebCorePlatformGTK)
-set_property(
-    TARGET WebCorePlatformGTK
-    APPEND
-    PROPERTY INCLUDE_DIRECTORIES
-        ${WebCore_INCLUDE_DIRECTORIES}
-        ${GTK_INCLUDE_DIRS}
-        ${GDK_INCLUDE_DIRS}
+target_include_directories(WebCorePlatformGTK PRIVATE
+    ${WebCore_INCLUDE_DIRECTORIES}
+)
+target_include_directories(WebCorePlatformGTK SYSTEM PRIVATE
+    ${WebCore_SYSTEM_INCLUDE_DIRECTORIES}
+    ${GTK_INCLUDE_DIRS}
+    ${GDK_INCLUDE_DIRS}
 )
 target_link_libraries(WebCorePlatformGTK
     ${WebCore_LIBRARIES}
@@ -509,6 +510,10 @@ include_directories(
     "${WEBCORE_DIR}/bindings/gobject/"
     "${DERIVED_SOURCES_DIR}"
     "${DERIVED_SOURCES_GOBJECT_DOM_BINDINGS_DIR}"
+)
+
+include_directories(SYSTEM
+    ${WebCore_SYSTEM_INCLUDE_DIRECTORIES}
 )
 
 list(APPEND GObjectDOMBindings_SOURCES
@@ -914,7 +919,7 @@ if (ENABLE_SUBTLE_CRYPTO)
         crypto/keys/CryptoKeySerializationRaw.cpp
     )
 
-    list(APPEND WebCore_INCLUDE_DIRECTORIES
+    list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
         ${GNUTLS_INCLUDE_DIRS}
     )
     list(APPEND WebCore_LIBRARIES

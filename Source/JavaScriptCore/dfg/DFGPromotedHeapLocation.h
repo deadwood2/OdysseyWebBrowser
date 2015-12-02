@@ -37,6 +37,7 @@ enum PromotedLocationKind {
     InvalidPromotedLocationKind,
     
     StructurePLoc,
+    ActivationSymbolTablePLoc,
     NamedPropertyPLoc,
     ArgumentPLoc,
     ArgumentCountPLoc,
@@ -44,6 +45,8 @@ enum PromotedLocationKind {
 
     FunctionExecutablePLoc,
     FunctionActivationPLoc,
+    ActivationScopePLoc,
+    ClosureVarPLoc,
 };
 
 class PromotedLocationDescriptor {

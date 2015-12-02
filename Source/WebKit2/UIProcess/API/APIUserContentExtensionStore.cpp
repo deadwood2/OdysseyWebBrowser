@@ -52,6 +52,11 @@ UserContentExtensionStore& UserContentExtensionStore::defaultStore()
     return *defaultStore;
 }
 
+Ref<UserContentExtensionStore> UserContentExtensionStore::storeWithPath(const WTF::String& storePath)
+{
+    return adoptRef(*new UserContentExtensionStore(storePath));
+}
+
 UserContentExtensionStore::UserContentExtensionStore()
     : UserContentExtensionStore(defaultStorePath())
 {
@@ -74,12 +79,22 @@ static String constructedPath(const String& base, const String& identifier)
     return WebCore::pathByAppendingComponent(base, "ContentExtension-" + WebCore::encodeForFileName(identifier));
 }
 
+const size_t ContentExtensionFileHeaderSize = sizeof(uint32_t) + 4 * sizeof(uint64_t);
 struct ContentExtensionMetaData {
-    uint32_t version;
-    uint64_t actionsOffset;
-    uint64_t actionsSize;
-    uint64_t bytecodeOffset;
-    uint64_t bytecodeSize;
+    uint32_t version { UserContentExtensionStore::CurrentContentExtensionFileVersion };
+    uint64_t actionsSize { 0 };
+    uint64_t filtersWithoutDomainsBytecodeSize { 0 };
+    uint64_t filtersWithDomainBytecodeSize { 0 };
+    uint64_t domainFiltersBytecodeSize { 0 };
+    
+    size_t fileSize() const
+    {
+        return ContentExtensionFileHeaderSize
+            + actionsSize
+            + filtersWithoutDomainsBytecodeSize
+            + filtersWithDomainBytecodeSize
+            + domainFiltersBytecodeSize;
+    }
 };
 
 static Data encodeContentExtensionMetaData(const ContentExtensionMetaData& metaData)
@@ -88,8 +103,11 @@ static Data encodeContentExtensionMetaData(const ContentExtensionMetaData& metaD
 
     encoder << metaData.version;
     encoder << metaData.actionsSize;
-    encoder << metaData.bytecodeSize;
+    encoder << metaData.filtersWithoutDomainsBytecodeSize;
+    encoder << metaData.filtersWithDomainBytecodeSize;
+    encoder << metaData.domainFiltersBytecodeSize;
 
+    ASSERT(encoder.bufferSize() == ContentExtensionFileHeaderSize);
     return Data(encoder.buffer(), encoder.bufferSize());
 }
 
@@ -107,10 +125,12 @@ static bool decodeContentExtensionMetaData(ContentExtensionMetaData& metaData, c
             return false;
         if (!decoder.decode(metaData.actionsSize))
             return false;
-        if (!decoder.decode(metaData.bytecodeSize))
+        if (!decoder.decode(metaData.filtersWithoutDomainsBytecodeSize))
             return false;
-        metaData.actionsOffset = decoder.currentOffset();
-        metaData.bytecodeOffset = metaData.actionsOffset + metaData.actionsSize;
+        if (!decoder.decode(metaData.filtersWithDomainBytecodeSize))
+            return false;
+        if (!decoder.decode(metaData.domainFiltersBytecodeSize))
+            return false;
         success = true;
         return false;
     });
@@ -119,19 +139,7 @@ static bool decodeContentExtensionMetaData(ContentExtensionMetaData& metaData, c
 
 static bool openAndMapContentExtension(const String& path, ContentExtensionMetaData& metaData, Data& fileData)
 {
-    auto fd = WebCore::openFile(path, WebCore::OpenForRead);
-    if (fd == WebCore::invalidPlatformFileHandle)
-        return false;
-
-    long long fileSize = 0;
-    if (!WebCore::getFileSize(fd, fileSize)) {
-        WebCore::closeFile(fd);
-        return false;
-    }
-
-    fileData = mapFile(fd, 0, static_cast<size_t>(fileSize));
-    WebCore::closeFile(fd);
-
+    fileData = mapFile(WebCore::fileSystemRepresentation(path).data());
     if (fileData.isNull())
         return false;
 
@@ -141,7 +149,7 @@ static bool openAndMapContentExtension(const String& path, ContentExtensionMetaD
     return true;
 }
 
-static bool writeDataToFile(Data& fileData, WebCore::PlatformFileHandle fd)
+static bool writeDataToFile(const Data& fileData, WebCore::PlatformFileHandle fd)
 {
     bool success = true;
     fileData.apply([fd, &success](const uint8_t* data, size_t size) {
@@ -155,73 +163,107 @@ static bool writeDataToFile(Data& fileData, WebCore::PlatformFileHandle fd)
     return success;
 }
 
-static std::error_code compiledToFile(const String& json, const String& finalFilePath, ContentExtensionMetaData& metaData, Data& mappedData)
+static std::error_code compiledToFile(String&& json, const String& finalFilePath, ContentExtensionMetaData& metaData, Data& mappedData)
 {
     using namespace WebCore::ContentExtensions;
 
     class CompilationClient final : public ContentExtensionCompilationClient {
     public:
-        CompilationClient(Data& bytecodeData, Data& actionsData)
-            : m_bytecodeData(bytecodeData)
-            , m_actionsData(actionsData)
+        CompilationClient(WebCore::PlatformFileHandle fileHandle, ContentExtensionMetaData& metaData)
+            : m_fileHandle(fileHandle)
+            , m_metaData(metaData)
         {
+            ASSERT(!metaData.actionsSize);
+            ASSERT(!metaData.filtersWithoutDomainsBytecodeSize);
+            ASSERT(!metaData.filtersWithDomainBytecodeSize);
+            ASSERT(!metaData.domainFiltersBytecodeSize);
         }
-
-        virtual void writeBytecode(Vector<DFABytecode>&& bytecode) override
+        
+        virtual void writeFiltersWithoutDomainsBytecode(Vector<DFABytecode>&& bytecode) override
         {
-            m_bytecodeData = Data(bytecode.data(), bytecode.size());
+            ASSERT(!m_filtersWithDomainBytecodeWritten);
+            ASSERT(!m_domainFiltersBytecodeWritten);
+            m_filtersWithoutDomainsBytecodeWritten += bytecode.size();
+            writeToFile(Data(bytecode.data(), bytecode.size()));
+        }
+        
+        virtual void writeFiltersWithDomainsBytecode(Vector<DFABytecode>&& bytecode) override
+        {
+            ASSERT(!m_domainFiltersBytecodeWritten);
+            m_filtersWithDomainBytecodeWritten += bytecode.size();
+            writeToFile(Data(bytecode.data(), bytecode.size()));
+        }
+        
+        virtual void writeDomainFiltersBytecode(Vector<DFABytecode>&& bytecode) override
+        {
+            m_domainFiltersBytecodeWritten += bytecode.size();
+            writeToFile(Data(bytecode.data(), bytecode.size()));
         }
 
         virtual void writeActions(Vector<SerializedActionByte>&& actions) override
         {
-            m_actionsData = Data(actions.data(), actions.size());
+            ASSERT(!m_filtersWithoutDomainsBytecodeWritten);
+            ASSERT(!m_filtersWithDomainBytecodeWritten);
+            ASSERT(!m_domainFiltersBytecodeWritten);
+            ASSERT(!m_actionsWritten);
+            m_actionsWritten += actions.size();
+            writeToFile(Data(actions.data(), actions.size()));
         }
+        
+        virtual void finalize() override
+        {
+            m_metaData.actionsSize = m_actionsWritten;
+            m_metaData.filtersWithoutDomainsBytecodeSize = m_filtersWithoutDomainsBytecodeWritten;
+            m_metaData.filtersWithDomainBytecodeSize = m_filtersWithDomainBytecodeWritten;
+            m_metaData.domainFiltersBytecodeSize = m_domainFiltersBytecodeWritten;
+            
+            Data header = encodeContentExtensionMetaData(m_metaData);
+            if (!m_fileError && WebCore::seekFile(m_fileHandle, 0ll, WebCore::FileSeekOrigin::SeekFromBeginning) == -1) {
+                WebCore::closeFile(m_fileHandle);
+                m_fileError = true;
+            }
+            writeToFile(header);
+        }
+        
+        bool hadErrorWhileWritingToFile() { return m_fileError; }
 
     private:
-        Data& m_bytecodeData;
-        Data& m_actionsData;
+        void writeToFile(const Data& data)
+        {
+            if (!m_fileError && !writeDataToFile(data, m_fileHandle)) {
+                WebCore::closeFile(m_fileHandle);
+                m_fileError = true;
+            }
+        }
+        
+        WebCore::PlatformFileHandle m_fileHandle;
+        ContentExtensionMetaData& m_metaData;
+        size_t m_filtersWithoutDomainsBytecodeWritten { 0 };
+        size_t m_filtersWithDomainBytecodeWritten { 0 };
+        size_t m_domainFiltersBytecodeWritten { 0 };
+        size_t m_actionsWritten { 0 };
+        bool m_fileError { false };
     };
-
-    Data bytecode;
-    Data actions;
-    CompilationClient compilationClient(bytecode, actions);
-
-    // FIXME: This copies the data. Instead, we should be passing an interface
-    // to the compiler that can write directly to a file.
-
-    auto compilerError = compileRuleList(compilationClient, json);
-    if (compilerError)
-        return compilerError;
-
-    auto actionsAndBytecode = concatenate(actions, bytecode);
-
-    metaData.version = 1;
-    metaData.actionsSize = actions.size();
-    metaData.bytecodeSize = bytecode.size();
-
-    auto encodedMetaData = encodeContentExtensionMetaData(metaData);
-
-    metaData.actionsOffset = encodedMetaData.size();
-    metaData.bytecodeOffset = encodedMetaData.size() + metaData.actionsSize;
-
-    auto data = concatenate(encodedMetaData, actionsAndBytecode);
-    auto dataSize = data.size();
-
-    ASSERT(metaData.actionsOffset + metaData.actionsSize + metaData.bytecodeSize == dataSize);
 
     auto temporaryFileHandle = WebCore::invalidPlatformFileHandle;
     String temporaryFilePath = WebCore::openTemporaryFile("ContentExtension", temporaryFileHandle);
     if (temporaryFileHandle == WebCore::invalidPlatformFileHandle)
         return UserContentExtensionStore::Error::CompileFailed;
-
-    if (!writeDataToFile(data, temporaryFileHandle)) {
-        WebCore::closeFile(temporaryFileHandle);
+    
+    char invalidHeader[ContentExtensionFileHeaderSize];
+    memset(invalidHeader, 0xFF, sizeof(invalidHeader));
+    // This header will be rewritten in CompilationClient::finalize.
+    if (WebCore::writeToFile(temporaryFileHandle, invalidHeader, sizeof(invalidHeader)) == -1)
         return UserContentExtensionStore::Error::CompileFailed;
-    }
 
-    mappedData = mapFile(temporaryFileHandle, 0, dataSize);
-    WebCore::closeFile(temporaryFileHandle);
-
+    CompilationClient compilationClient(temporaryFileHandle, metaData);
+    
+    if (auto compilerError = compileRuleList(compilationClient, WTF::move(json)))
+        return compilerError;
+    if (compilationClient.hadErrorWhileWritingToFile())
+        return UserContentExtensionStore::Error::CompileFailed;
+    
+    mappedData = adoptAndMapFile(temporaryFileHandle, 0, metaData.fileSize());
     if (mappedData.isNull())
         return UserContentExtensionStore::Error::CompileFailed;
 
@@ -237,10 +279,20 @@ static RefPtr<API::UserContentExtension> createExtension(const String& identifie
     auto compiledContentExtensionData = WebKit::WebCompiledContentExtensionData(
         WTF::move(sharedMemory),
         fileData,
-        metaData.actionsOffset,
+        ContentExtensionFileHeaderSize,
         metaData.actionsSize,
-        metaData.bytecodeOffset,
-        metaData.bytecodeSize
+        ContentExtensionFileHeaderSize
+            + metaData.actionsSize,
+        metaData.filtersWithoutDomainsBytecodeSize,
+        ContentExtensionFileHeaderSize
+            + metaData.actionsSize
+            + metaData.filtersWithoutDomainsBytecodeSize,
+        metaData.filtersWithDomainBytecodeSize,
+        ContentExtensionFileHeaderSize
+            + metaData.actionsSize
+            + metaData.filtersWithoutDomainsBytecodeSize
+            + metaData.filtersWithDomainBytecodeSize,
+        metaData.domainFiltersBytecodeSize
     );
     auto compiledContentExtension = WebKit::WebCompiledContentExtension::create(WTF::move(compiledContentExtensionData));
     return API::UserContentExtension::create(identifier, WTF::move(compiledContentExtension));
@@ -264,6 +316,13 @@ void UserContentExtensionStore::lookupContentExtension(const WTF::String& identi
             return;
         }
         
+        if (metaData.version != UserContentExtensionStore::CurrentContentExtensionFileVersion) {
+            RunLoop::main().dispatch([self, completionHandler] {
+                completionHandler(nullptr, Error::VersionMismatch);
+            });
+            return;
+        }
+        
         RunLoop::main().dispatch([self, identifierCapture, fileData, metaData, completionHandler] {
             RefPtr<API::UserContentExtension> userContentExtension = createExtension(identifierCapture.string(), metaData, fileData);
             completionHandler(userContentExtension, { });
@@ -271,19 +330,19 @@ void UserContentExtensionStore::lookupContentExtension(const WTF::String& identi
     });
 }
 
-void UserContentExtensionStore::compileContentExtension(const WTF::String& identifier, const WTF::String& json, std::function<void(RefPtr<API::UserContentExtension>, std::error_code)> completionHandler)
+void UserContentExtensionStore::compileContentExtension(const WTF::String& identifier, WTF::String&& json, std::function<void(RefPtr<API::UserContentExtension>, std::error_code)> completionHandler)
 {
     RefPtr<UserContentExtensionStore> self(this);
     StringCapture identifierCapture(identifier);
-    StringCapture jsonCapture(json);
+    StringCapture jsonCapture(WTF::move(json));
     StringCapture pathCapture(m_storePath);
 
-    m_compileQueue->dispatch([self, identifierCapture, jsonCapture, pathCapture, completionHandler] {
+    m_compileQueue->dispatch([self, identifierCapture, jsonCapture, pathCapture, completionHandler] () mutable {
         auto path = constructedPath(pathCapture.string(), identifierCapture.string());
 
         ContentExtensionMetaData metaData;
         Data fileData;
-        auto error = compiledToFile(jsonCapture.string(), path, metaData, fileData);
+        auto error = compiledToFile(jsonCapture.releaseString(), path, metaData, fileData);
         if (error) {
             RunLoop::main().dispatch([self, error, completionHandler] {
                 completionHandler(nullptr, error);
@@ -339,6 +398,8 @@ const std::error_category& userContentExtensionStoreErrorCategory()
             switch (static_cast<UserContentExtensionStore::Error>(errorCode)) {
             case UserContentExtensionStore::Error::LookupFailed:
                 return "Unspecified error during lookup.";
+            case UserContentExtensionStore::Error::VersionMismatch:
+                return "Version of file does not match version of interpreter.";
             case UserContentExtensionStore::Error::CompileFailed:
                 return "Unspecified error during compile.";
             case UserContentExtensionStore::Error::RemoveFailed:

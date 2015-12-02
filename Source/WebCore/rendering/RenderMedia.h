@@ -41,6 +41,9 @@ public:
 
     HTMLMediaElement& mediaElement() const { return downcast<HTMLMediaElement>(nodeForNonAnonymous()); }
 
+protected:
+    virtual void layout() override;
+
 private:
     void element() const = delete;
 
@@ -53,7 +56,7 @@ private:
 
     virtual bool requiresForcedStyleRecalcPropagation() const override final { return true; }
 
-    virtual bool shadowControlsNeedCustomLayoutMetrics() const { return true; }
+    virtual bool shadowControlsNeedCustomLayoutMetrics() const override { return true; }
 };
 
 } // namespace WebCore

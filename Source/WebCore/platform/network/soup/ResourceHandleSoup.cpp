@@ -517,6 +517,7 @@ static void doRedirect(ResourceHandle* handle)
         // If the network layer carries over authentication headers from the original request
         // in a cross-origin redirect, we want to clear those headers here. 
         newRequest.clearHTTPAuthorization();
+        newRequest.clearHTTPOrigin();
 
         // TODO: We are losing any username and password specified in the redirect URL, as this is the 
         // same behavior as the CFNet port. We should investigate if this is really what we want.
@@ -1024,6 +1025,21 @@ bool ResourceHandle::start()
         sendPendingRequest();
 
     return true;
+}
+
+RefPtr<ResourceHandle> ResourceHandle::releaseForDownload(ResourceHandleClient* downloadClient)
+{
+    // We don't adopt the ref, as it will be released by cleanupSoupRequestOperation, which should always run.
+    RefPtr<ResourceHandle> newHandle = new ResourceHandle(d->m_context.get(), firstRequest(), nullptr, d->m_defersLoading, d->m_shouldContentSniff);
+    std::swap(d, newHandle->d);
+
+    g_signal_handlers_disconnect_matched(newHandle->d->m_soupMessage.get(), G_SIGNAL_MATCH_DATA, 0, 0, nullptr, nullptr, this);
+    g_object_set_data(G_OBJECT(newHandle->d->m_soupMessage.get()), "handle", newHandle.get());
+
+    newHandle->d->m_client = downloadClient;
+    continueAfterDidReceiveResponse(newHandle.get());
+
+    return newHandle;
 }
 
 void ResourceHandle::sendPendingRequest()

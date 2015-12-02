@@ -73,6 +73,8 @@ public:
     JS_EXPORT_PRIVATE void push(ExecState*, JSValue);
     JS_EXPORT_PRIVATE JSValue pop(ExecState*);
 
+    JSArray* fastSlice(ExecState&, unsigned startIndex, unsigned count);
+
     enum ShiftCountMode {
         // This form of shift hints that we're doing queueing. With this assumption in hand,
         // we convert to ArrayStorage, which has queue optimizations.
@@ -200,7 +202,7 @@ inline JSArray* JSArray::create(VM& vm, Structure* structure, unsigned initialLe
             || hasContiguous(structure->indexingType()));
         unsigned vectorLength;
         butterfly = createContiguousArrayButterfly(vm, 0, initialLength, vectorLength);
-        ASSERT(initialLength < MIN_SPARSE_ARRAY_INDEX);
+        ASSERT(initialLength < MIN_ARRAY_STORAGE_CONSTRUCTION_LENGTH);
         if (hasDouble(structure->indexingType())) {
             for (unsigned i = 0; i < vectorLength; ++i)
                 butterfly->contiguousDouble()[i] = PNaN;

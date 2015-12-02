@@ -50,6 +50,7 @@ class Frame;
 class FrameView;
 class GraphicsLayer;
 class GraphicsLayerFactory;
+class MachSendRight;
 }
 
 namespace WebKit {
@@ -90,8 +91,10 @@ public:
     virtual WebCore::FloatRect exposedRect() const = 0;
     virtual void acceleratedAnimationDidStart(uint64_t /*layerID*/, const String& /*key*/, double /*startTime*/) { }
     virtual void acceleratedAnimationDidEnd(uint64_t /*layerID*/, const String& /*key*/) { }
+    virtual void addFence(const WebCore::MachSendRight&) { }
 #endif
 #if PLATFORM(IOS)
+    virtual WebCore::FloatRect exposedContentRect() const = 0;
     virtual void setExposedContentRect(const WebCore::FloatRect&) = 0;
 #endif
     virtual void mainFrameScrollabilityChanged(bool) { }
@@ -124,6 +127,15 @@ public:
 
     virtual void attachViewOverlayGraphicsLayer(WebCore::Frame*, WebCore::GraphicsLayer*) { }
 
+    virtual void setShouldScaleViewToFitDocument(bool) { }
+
+#if PLATFORM(COCOA)
+    // Used by TiledCoreAnimationDrawingArea.
+    virtual void updateGeometry(const WebCore::IntSize& viewSize, const WebCore::IntSize& layerPosition, bool flushSynchronously) { }
+
+    virtual void replyWithFenceAfterNextFlush(uint64_t callbackID) { ASSERT_NOT_REACHED(); }
+#endif
+
 protected:
     DrawingArea(DrawingAreaType, WebPage&);
 
@@ -146,7 +158,6 @@ private:
 
 #if PLATFORM(COCOA)
     // Used by TiledCoreAnimationDrawingArea.
-    virtual void updateGeometry(const WebCore::IntSize& viewSize, const WebCore::IntSize& layerPosition) { }
     virtual void setDeviceScaleFactor(float) { }
     virtual void setColorSpace(const ColorSpaceData&) { }
 

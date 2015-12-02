@@ -39,15 +39,14 @@
 #include "ScrollingTreeFrameScrollingNodeIOS.h"
 #include "ScrollingTreeStickyNode.h"
 #include "ScrollingTreeIOS.h"
-#include <wtf/Functional.h>
 #include <wtf/MainThread.h>
 #include <wtf/PassRefPtr.h>
 
 namespace WebCore {
 
-PassRefPtr<ScrollingCoordinator> ScrollingCoordinator::create(Page* page)
+Ref<ScrollingCoordinator> ScrollingCoordinator::create(Page* page)
 {
-    return adoptRef(new ScrollingCoordinatorIOS(page));
+    return adoptRef(*new ScrollingCoordinatorIOS(page));
 }
 
 ScrollingCoordinatorIOS::ScrollingCoordinatorIOS(Page* page)

@@ -57,7 +57,7 @@ public:
     void showConsole();
     void showResources();
 
-    void showMainResourceForFrame(String frameIdentifier);
+    void showMainResourceForFrame(const String& frameIdentifier);
 
     void startPageProfiling();
     void stopPageProfiling();
@@ -67,6 +67,7 @@ public:
     void detached() { setDockSide(DockSide::Undocked); }
 
     void setDockSide(DockSide);
+    void setDockingUnavailable(bool);
 
     void didSave(const String& url);
     void didAppend(const String& url);

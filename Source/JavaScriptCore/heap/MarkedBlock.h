@@ -147,7 +147,6 @@ namespace JSC {
         // and was successfully cleared and false otherwise.
         bool clearNewlyAllocated();
         void clearMarks();
-        void clearRememberedSet();
         template <HeapOperation collectionType>
         void clearMarksWithCollectionType();
 
@@ -164,6 +163,7 @@ namespace JSC {
         bool testAndSetMarked(const void*);
         bool isLive(const JSCell*);
         bool isLiveCell(const void*);
+        bool isMarkedOrNewlyAllocated(const JSCell*);
         void setMarked(const void*);
         void clearMarked(const void*);
 
@@ -176,6 +176,7 @@ namespace JSC {
         void setNewlyAllocated(const void*);
         void clearNewlyAllocated(const void*);
 
+        bool isAllocated() const;
         bool needsSweeping();
         void didRetireBlock(const FreeList&);
         void willRemoveBlock();
@@ -207,10 +208,8 @@ namespace JSC {
         size_t m_endAtom; // This is a fuzzy end. Always test for < m_endAtom.
 #if ENABLE(PARALLEL_GC)
         WTF::Bitmap<atomsPerBlock, WTF::BitmapAtomic, uint8_t> m_marks;
-        WTF::Bitmap<atomsPerBlock, WTF::BitmapAtomic, uint8_t> m_rememberedSet;
 #else
         WTF::Bitmap<atomsPerBlock, WTF::BitmapNotAtomic, uint8_t> m_marks;
-        WTF::Bitmap<atomsPerBlock, WTF::BitmapNotAtomic, uint8_t> m_rememberedSet;
 #endif
         std::unique_ptr<WTF::Bitmap<atomsPerBlock>> m_newlyAllocated;
 
@@ -345,26 +344,6 @@ namespace JSC {
         return (reinterpret_cast<Bits>(p) - reinterpret_cast<Bits>(this)) / atomSize;
     }
 
-    inline void MarkedBlock::setRemembered(const void* p)
-    {
-        m_rememberedSet.set(atomNumber(p));
-    }
-
-    inline void MarkedBlock::clearRemembered(const void* p)
-    {
-        m_rememberedSet.clear(atomNumber(p));
-    }
-
-    inline void MarkedBlock::atomicClearRemembered(const void* p)
-    {
-        m_rememberedSet.concurrentTestAndClear(atomNumber(p));
-    }
-
-    inline bool MarkedBlock::isRemembered(const void* p)
-    {
-        return m_rememberedSet.get(atomNumber(p));
-    }
-
     inline bool MarkedBlock::isMarked(const void* p)
     {
         return m_marks.get(atomNumber(p));
@@ -410,6 +389,12 @@ namespace JSC {
         return false;
     }
 
+    inline bool MarkedBlock::isMarkedOrNewlyAllocated(const JSCell* cell)
+    {
+        ASSERT(m_state == Retired || m_state == Marked);
+        return m_marks.get(atomNumber(cell)) || (m_newlyAllocated && isNewlyAllocated(cell));
+    }
+
     inline bool MarkedBlock::isLive(const JSCell* cell)
     {
         switch (m_state) {
@@ -418,7 +403,7 @@ namespace JSC {
 
         case Retired:
         case Marked:
-            return m_marks.get(atomNumber(cell)) || (m_newlyAllocated && isNewlyAllocated(cell));
+            return isMarkedOrNewlyAllocated(cell);
 
         case New:
         case FreeListed:
@@ -484,6 +469,11 @@ namespace JSC {
     inline bool MarkedBlock::needsSweeping()
     {
         return m_state == Marked;
+    }
+
+    inline bool MarkedBlock::isAllocated() const
+    {
+        return m_state == Allocated;
     }
 
 } // namespace JSC

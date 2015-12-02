@@ -73,7 +73,7 @@ public:
     uint64_t frameID() const { return m_frameID; }
     WebPageProxy* page() const { return m_page; }
 
-    void disconnect();
+    void webProcessWillShutDown();
 
     bool isMainFrame() const;
 
@@ -85,11 +85,11 @@ public:
     void loadURL(const String&);
     void stopLoading() const;
 
-    const String& url() const { return m_frameLoadState.m_url; }
-    const String& provisionalURL() const { return m_frameLoadState.m_provisionalURL; }
+    const String& url() const { return m_frameLoadState.url(); }
+    const String& provisionalURL() const { return m_frameLoadState.provisionalURL(); }
 
     void setUnreachableURL(const String&);
-    const String& unreachableURL() const { return m_frameLoadState.m_unreachableURL; }
+    const String& unreachableURL() const { return m_frameLoadState.unreachableURL(); }
 
     const String& mimeType() const { return m_MIMEType; }
 

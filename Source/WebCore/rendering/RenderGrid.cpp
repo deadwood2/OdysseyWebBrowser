@@ -301,9 +301,11 @@ void RenderGrid::computeIntrinsicLogicalWidths(LayoutUnit& minLogicalWidth, Layo
 
         minLogicalWidth += minTrackBreadth;
         maxLogicalWidth += maxTrackBreadth;
-
-        // FIXME: This should add in the scrollbarWidth (e.g. see RenderFlexibleBox).
     }
+
+    LayoutUnit scrollbarWidth = intrinsicScrollbarLogicalWidth();
+    minLogicalWidth += scrollbarWidth;
+    maxLogicalWidth += scrollbarWidth;
 
     if (!wasPopulated)
         const_cast<RenderGrid*>(this)->clearGrid();
@@ -1238,6 +1240,26 @@ void RenderGrid::populateGridPositions(const GridSizingData& sizingData)
         m_rowPositions[i + 1] = m_rowPositions[i] + sizingData.rowTracks[i].baseSize();
 }
 
+static inline LayoutUnit computeOverflowAlignmentOffset(OverflowAlignment overflow, LayoutUnit trackBreadth, LayoutUnit childBreadth)
+{
+    LayoutUnit offset = trackBreadth - childBreadth;
+    switch (overflow) {
+    case OverflowAlignmentSafe:
+        // If overflow is 'safe', we have to make sure we don't overflow the 'start'
+        // edge (potentially cause some data loss as the overflow is unreachable).
+        return std::max<LayoutUnit>(0, offset);
+    case OverflowAlignmentTrue:
+    case OverflowAlignmentDefault:
+        // If we overflow our alignment container and overflow is 'true' (default), we
+        // ignore the overflow and just return the value regardless (which may cause data
+        // loss as we overflow the 'start' edge).
+        return offset;
+    }
+
+    ASSERT_NOT_REACHED();
+    return 0;
+}
+
 bool RenderGrid::allowedToStretchLogicalHeightForChild(const RenderBox& child) const
 {
     return child.style().logicalHeight().isAuto() && !child.style().marginBeforeUsing(&style()).isAuto() && !child.style().marginAfterUsing(&style()).isAuto();
@@ -1385,8 +1407,7 @@ LayoutUnit RenderGrid::rowPositionForChild(const RenderBox& child) const
     LayoutUnit startOfRow = m_rowPositions[coordinate.rows.resolvedInitialPosition.toInt()];
     LayoutUnit endOfRow = m_rowPositions[coordinate.rows.resolvedFinalPosition.next().toInt()];
     LayoutUnit startPosition = startOfRow + marginBeforeForChild(child);
-    // FIXME: This should account for the grid item's <overflow-position>.
-    LayoutUnit offsetFromStartPosition = endOfRow - startOfRow - child.logicalHeight() - child.marginLogicalHeight();
+    LayoutUnit offsetFromStartPosition = computeOverflowAlignmentOffset(RenderStyle::resolveAlignmentOverflow(style(), child.style()), endOfRow - startOfRow, child.logicalHeight() + child.marginLogicalHeight());
 
     switch (columnAxisPositionForChild(child)) {
     case GridAxisStart:
@@ -1408,8 +1429,7 @@ LayoutUnit RenderGrid::columnPositionForChild(const RenderBox& child) const
     LayoutUnit startOfColumn = m_columnPositions[coordinate.columns.resolvedInitialPosition.toInt()];
     LayoutUnit endOfColumn = m_columnPositions[coordinate.columns.resolvedFinalPosition.next().toInt()];
     LayoutUnit startPosition = startOfColumn + marginStartForChild(child);
-    // FIXME: This should account for the grid item's <overflow-position>.
-    LayoutUnit offsetFromStartPosition = endOfColumn - startOfColumn - child.logicalWidth() - child.marginLogicalWidth();
+    LayoutUnit offsetFromStartPosition = computeOverflowAlignmentOffset(RenderStyle::resolveJustificationOverflow(style(), child.style()), endOfColumn - startOfColumn, child.logicalWidth() + child.marginLogicalWidth());
 
     switch (rowAxisPositionForChild(child)) {
     case GridAxisStart:

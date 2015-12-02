@@ -31,6 +31,7 @@
 #include "ClonedArguments.h"
 #include "DirectArguments.h"
 #include "JSCInlines.h"
+#include "JSLexicalEnvironment.h"
 
 namespace JSC { namespace FTL {
 
@@ -106,7 +107,65 @@ extern "C" JSCell* JIT_OPERATION operationMaterializeObjectInOSR(
         }
         RELEASE_ASSERT(executable && activation);
 
-        JSFunction* result = JSFunction::create(vm, executable, activation);
+        JSFunction* result = JSFunction::createWithInvalidatedReallocationWatchpoint(vm, executable, activation);
+
+        return result;
+    }
+
+    case PhantomCreateActivation: {
+        // Figure out where the scope is
+        JSScope* scope = nullptr;
+        SymbolTable* table = nullptr;
+        for (unsigned i = materialization->properties().size(); i--;) {
+            const ExitPropertyValue& property = materialization->properties()[i];
+            if (property.location() == PromotedLocationDescriptor(ActivationScopePLoc))
+                scope = jsCast<JSScope*>(JSValue::decode(values[i]));
+            else if (property.location() == PromotedLocationDescriptor(ActivationSymbolTablePLoc))
+                table = jsCast<SymbolTable*>(JSValue::decode(values[i]));
+        }
+        RELEASE_ASSERT(scope);
+        RELEASE_ASSERT(table);
+
+        CodeBlock* codeBlock = baselineCodeBlockForOriginAndBaselineCodeBlock(
+            materialization->origin(), exec->codeBlock());
+        Structure* structure = codeBlock->globalObject()->activationStructure();
+
+        JSLexicalEnvironment* result = JSLexicalEnvironment::create(vm, structure, scope, table);
+
+        RELEASE_ASSERT(materialization->properties().size() - 2 == table->scopeSize());
+        // Figure out what to populate the activation with
+        for (unsigned i = materialization->properties().size(); i--;) {
+            const ExitPropertyValue& property = materialization->properties()[i];
+            if (property.location().kind() != ClosureVarPLoc)
+                continue;
+
+            result->variableAt(ScopeOffset(property.location().info())).set(exec->vm(), result, JSValue::decode(values[i]));
+        }
+
+        if (validationEnabled()) {
+            // Validate to make sure every slot in the scope has one value.
+            ConcurrentJITLocker locker(table->m_lock);
+            for (auto iter = table->begin(locker), end = table->end(locker); iter != end; ++iter) {
+                bool found = false;
+                for (unsigned i = materialization->properties().size(); i--;) {
+                    const ExitPropertyValue& property = materialization->properties()[i];
+                    if (property.location().kind() != ClosureVarPLoc)
+                        continue;
+                    if (ScopeOffset(property.location().info()) == iter->value.scopeOffset()) {
+                        found = true;
+                        break;
+                    }
+                }
+                ASSERT_UNUSED(found, found);
+            }
+            unsigned numberOfClosureVarPloc = 0;
+            for (unsigned i = materialization->properties().size(); i--;) {
+                const ExitPropertyValue& property = materialization->properties()[i];
+                if (property.location().kind() == ClosureVarPLoc)
+                    numberOfClosureVarPloc++;
+            }
+            ASSERT(numberOfClosureVarPloc == table->scopeSize());
+        }
 
         return result;
     }
@@ -174,7 +233,18 @@ extern "C" JSCell* JIT_OPERATION operationMaterializeObjectInOSR(
                 unsigned index = property.location().info();
                 if (index >= capacity)
                     continue;
-                result->setIndexQuickly(vm, index, JSValue::decode(values[i]));
+                
+                // We don't want to use setIndexQuickly(), since that's only for the passed-in
+                // arguments but sometimes the number of named arguments is greater. For
+                // example:
+                //
+                // function foo(a, b, c) { ... }
+                // foo();
+                //
+                // setIndexQuickly() would fail for indices 0, 1, 2 - but we need to recover
+                // those here.
+                result->argument(DirectArgumentsOffset(index)).set(
+                    vm, result, JSValue::decode(values[i]));
             }
             return result;
         }

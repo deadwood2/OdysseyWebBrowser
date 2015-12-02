@@ -154,6 +154,7 @@ namespace WebCore {
 
         virtual void dispatchDidHandleOnloadEvents() = 0;
         virtual void dispatchDidReceiveServerRedirectForProvisionalLoad() = 0;
+        virtual void dispatchDidChangeProvisionalURL() { }
         virtual void dispatchDidCancelClientRedirect() = 0;
         virtual void dispatchWillPerformClientRedirect(const URL&, double interval, double fireDate) = 0;
         virtual void dispatchDidNavigateWithinPage() { }
@@ -197,6 +198,9 @@ namespace WebCore {
 
         virtual void willChangeTitle(DocumentLoader*) = 0;
         virtual void didChangeTitle(DocumentLoader*) = 0;
+
+        virtual void willReplaceMultipartContent() = 0;
+        virtual void didReplaceMultipartContent() = 0;
 
         virtual void committedLoad(DocumentLoader*, const char*, int) = 0;
         virtual void finishedLoading(DocumentLoader*) = 0;

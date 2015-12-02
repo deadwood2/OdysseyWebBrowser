@@ -33,6 +33,7 @@
 #include "CSSBorderImageSliceValue.h"
 #include "CSSCalculationValue.h"
 #include "CSSCanvasValue.h"
+#include "CSSContentDistributionValue.h"
 #include "CSSCrossfadeValue.h"
 #include "CSSCursorImageValue.h"
 #include "CSSFilterImageValue.h"
@@ -124,24 +125,24 @@ void CSSValue::addSubresourceStyleURLs(ListHashSet<URL>& urls, const StyleSheetC
         downcast<CSSReflectValue>(*this).addSubresourceStyleURLs(urls, styleSheet);
 }
 
-bool CSSValue::hasFailedOrCanceledSubresources() const
+bool CSSValue::traverseSubresources(const std::function<bool (const CachedResource&)>& handler) const
 {
     // This should get called for internal instances only.
     ASSERT(!isCSSOMSafe());
 
     if (is<CSSValueList>(*this))
-        return downcast<CSSValueList>(*this).hasFailedOrCanceledSubresources();
+        return downcast<CSSValueList>(*this).traverseSubresources(handler);
     if (is<CSSFontFaceSrcValue>(*this))
-        return downcast<CSSFontFaceSrcValue>(*this).hasFailedOrCanceledSubresources();
+        return downcast<CSSFontFaceSrcValue>(*this).traverseSubresources(handler);
     if (is<CSSImageValue>(*this))
-        return downcast<CSSImageValue>(*this).hasFailedOrCanceledSubresources();
+        return downcast<CSSImageValue>(*this).traverseSubresources(handler);
     if (is<CSSCrossfadeValue>(*this))
-        return downcast<CSSCrossfadeValue>(*this).hasFailedOrCanceledSubresources();
+        return downcast<CSSCrossfadeValue>(*this).traverseSubresources(handler);
     if (is<CSSFilterImageValue>(*this))
-        return downcast<CSSFilterImageValue>(*this).hasFailedOrCanceledSubresources();
+        return downcast<CSSFilterImageValue>(*this).traverseSubresources(handler);
 #if ENABLE(CSS_IMAGE_SET)
     if (is<CSSImageSetValue>(*this))
-        return downcast<CSSImageSetValue>(*this).hasFailedOrCanceledSubresources();
+        return downcast<CSSImageSetValue>(*this).traverseSubresources(handler);
 #endif
     return false;
 }
@@ -231,6 +232,8 @@ bool CSSValue::equals(const CSSValue& other) const
         case AnimationTriggerScrollClass:
             return compareCSSValues<CSSAnimationTriggerScrollValue>(*this, other);
 #endif
+        case CSSContentDistributionClass:
+            return compareCSSValues<CSSContentDistributionValue>(*this, other);
         default:
             ASSERT_NOT_REACHED();
             return false;
@@ -323,6 +326,8 @@ String CSSValue::cssText() const
 #endif
     case WebKitCSSResourceClass:
         return downcast<WebKitCSSResourceValue>(*this).customCSSText();
+    case CSSContentDistributionClass:
+        return downcast<CSSContentDistributionValue>(*this).customCSSText();
     }
     ASSERT_NOT_REACHED();
     return String();
@@ -442,6 +447,9 @@ void CSSValue::destroy()
 #endif
     case WebKitCSSResourceClass:
         delete downcast<WebKitCSSResourceValue>(this);
+        return;
+    case CSSContentDistributionClass:
+        delete downcast<CSSContentDistributionValue>(this);
         return;
     }
     ASSERT_NOT_REACHED();

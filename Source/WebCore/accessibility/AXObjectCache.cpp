@@ -397,6 +397,11 @@ AccessibilityObject* AXObjectCache::getOrCreate(Node* node)
     if (!inCanvasSubtree && !isHidden && !insideMeterElement)
         return nullptr;
 
+    // Fallback content is only focusable as long as the canvas is displayed and visible.
+    // Update the style before Element::isFocusable() gets called.
+    if (inCanvasSubtree)
+        node->document().updateStyleIfNeeded();
+
     RefPtr<AccessibilityObject> newObj = createFromNode(node);
 
     // Will crash later if we have two objects for the same node.
@@ -911,6 +916,9 @@ void AXObjectCache::showIntent(const AXTextStateChangeIntent &intent)
         case AXTextEditTypePaste:
             dataLog("Paste");
             break;
+        case AXTextEditTypeAttributesChange:
+            dataLog("AttributesChange");
+            break;
         }
         break;
     case AXTextStateChangeTypeSelectionMove:
@@ -976,15 +984,18 @@ void AXObjectCache::showIntent(const AXTextStateChangeIntent &intent)
         }
         break;
     }
-    if (intent.isSynchronizing)
-        dataLog("-Sync");
     dataLog("\n");
 }
 #endif
 
-void AXObjectCache::setTextSelectionIntent(AXTextStateChangeIntent intent)
+void AXObjectCache::setTextSelectionIntent(const AXTextStateChangeIntent& intent)
 {
     m_textSelectionIntent = intent;
+}
+    
+void AXObjectCache::setIsSynchronizingSelection(bool isSynchronizing)
+{
+    m_isSynchronizingSelection = isSynchronizing;
 }
 
 static bool isPasswordFieldOrContainedByPasswordField(AccessibilityObject* object)
@@ -1007,7 +1018,7 @@ void AXObjectCache::postTextStateChangeNotification(Node* node, const AXTextStat
         object = object->observableObject();
     }
 
-    postTextStateChangePlatformNotification(object, (intent.type == AXTextStateChangeTypeUnknown) ? m_textSelectionIntent : intent, selection);
+    postTextStateChangePlatformNotification(object, (intent.type == AXTextStateChangeTypeUnknown || m_isSynchronizingSelection) ? m_textSelectionIntent : intent, selection);
 #else
     postNotification(node->renderer(), AXObjectCache::AXSelectedTextChanged, TargetObservableParent);
     UNUSED_PARAM(intent);
@@ -1015,6 +1026,7 @@ void AXObjectCache::postTextStateChangeNotification(Node* node, const AXTextStat
 #endif
 
     setTextSelectionIntent(AXTextStateChangeIntent());
+    setIsSynchronizingSelection(false);
 }
 
 void AXObjectCache::postTextStateChangeNotification(Node* node, AXTextEditType type, const String& text, const VisiblePosition& position)
@@ -1288,20 +1300,30 @@ bool isNodeAriaVisible(Node* node)
 {
     if (!node)
         return false;
-    
-    // To determine if a node is ARIA visible, we need to check the parent hierarchy to see if anyone specifies
-    // aria-hidden explicitly.
+
+    // ARIA Node visibility is controlled by aria-hidden
+    //  1) if aria-hidden=true, the whole subtree is hidden
+    //  2) if aria-hidden=false, and the object is rendered, there's no effect
+    //  3) if aria-hidden=false, and the object is NOT rendered, then it must have
+    //     aria-hidden=false on each parent until it gets to a rendered object
+    //  3b) a text node inherits a parents aria-hidden value
+    bool requiresAriaHiddenFalse = !node->renderer();
+    bool ariaHiddenFalsePresent = false;
     for (Node* testNode = node; testNode; testNode = testNode->parentNode()) {
         if (is<Element>(*testNode)) {
             const AtomicString& ariaHiddenValue = downcast<Element>(*testNode).fastGetAttribute(aria_hiddenAttr);
-            if (equalIgnoringCase(ariaHiddenValue, "false"))
-                return true;
             if (equalIgnoringCase(ariaHiddenValue, "true"))
                 return false;
+            
+            bool ariaHiddenFalse = equalIgnoringCase(ariaHiddenValue, "false");
+            if (!testNode->renderer() && !ariaHiddenFalse)
+                return false;
+            if (!ariaHiddenFalsePresent && ariaHiddenFalse)
+                ariaHiddenFalsePresent = true;
         }
     }
     
-    return false;
+    return !requiresAriaHiddenFalse || ariaHiddenFalsePresent;
 }
 
 AccessibilityObject* AXObjectCache::rootWebArea()
@@ -1337,6 +1359,8 @@ AXTextChange AXObjectCache::textChangeForEditType(AXTextEditType type)
     case AXTextEditTypeTyping:
     case AXTextEditTypePaste:
         return AXTextInserted;
+    case AXTextEditTypeAttributesChange:
+        return AXTextAttributesChanged;
     case AXTextEditTypeUnknown:
         break;
     }

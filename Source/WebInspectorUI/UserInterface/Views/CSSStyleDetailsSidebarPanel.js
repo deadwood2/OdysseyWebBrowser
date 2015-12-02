@@ -39,7 +39,7 @@ WebInspector.CSSStyleDetailsSidebarPanel = class CSSStyleDetailsSidebarPanel ext
 
         if (WebInspector.cssStyleManager.canForcePseudoClasses()) {
             this._forcedPseudoClassContainer = document.createElement("div");
-            this._forcedPseudoClassContainer.className = WebInspector.CSSStyleDetailsSidebarPanel.PseudoClassesElementStyleClassName;
+            this._forcedPseudoClassContainer.className = "pseudo-classes";
 
             var groupElement = null;
 
@@ -60,7 +60,7 @@ WebInspector.CSSStyleDetailsSidebarPanel = class CSSStyleDetailsSidebarPanel ext
 
                 if (!groupElement || groupElement.children.length === 2) {
                     groupElement = document.createElement("div");
-                    groupElement.className = WebInspector.CSSStyleDetailsSidebarPanel.PseudoClassesGroupElementStyleClassName;
+                    groupElement.className = "group";
                     this._forcedPseudoClassContainer.appendChild(groupElement);
                 }
 
@@ -70,7 +70,7 @@ WebInspector.CSSStyleDetailsSidebarPanel = class CSSStyleDetailsSidebarPanel ext
             this.contentElement.appendChild(this._forcedPseudoClassContainer);
         }
 
-        this._computedStyleDetailsPanel = new WebInspector.ComputedStyleDetailsPanel;
+        this._computedStyleDetailsPanel = new WebInspector.ComputedStyleDetailsPanel(this);
         this._rulesStyleDetailsPanel = new WebInspector.RulesStyleDetailsPanel;
         this._metricsStyleDetailsPanel = new WebInspector.MetricsStyleDetailsPanel;
 
@@ -137,6 +137,14 @@ WebInspector.CSSStyleDetailsSidebarPanel = class CSSStyleDetailsSidebarPanel ext
             this._selectedPanel.widthDidChange();
     }
 
+    computedStyleDetailsPanelShowProperty(property)
+    {
+        this._rulesStyleDetailsPanel.scrollToSectionAndHighlightProperty(property);
+        this._switchPanels(this._rulesStyleDetailsPanel);
+
+        this._navigationBar.selectedNavigationItem = this._lastSelectedSectionSetting.value;
+    }
+
     // Protected
 
     addEventListeners()
@@ -180,6 +188,11 @@ WebInspector.CSSStyleDetailsSidebarPanel = class CSSStyleDetailsSidebarPanel ext
             break;
         }
 
+        this._switchPanels(selectedPanel);
+    }
+
+    _switchPanels(selectedPanel)
+    {
         console.assert(selectedPanel);
 
         if (this._selectedPanel) {
@@ -201,7 +214,7 @@ WebInspector.CSSStyleDetailsSidebarPanel = class CSSStyleDetailsSidebarPanel ext
             this._selectedPanel.shown();
         }
 
-        this._lastSelectedSectionSetting.value = selectedNavigationItem.identifier;
+        this._lastSelectedSectionSetting.value = selectedPanel.navigationItem.identifier;
     }
 
     _forcedPseudoClassCheckboxChanged(pseudoClass, event)
@@ -226,6 +239,4 @@ WebInspector.CSSStyleDetailsSidebarPanel = class CSSStyleDetailsSidebarPanel ext
     }
 };
 
-WebInspector.CSSStyleDetailsSidebarPanel.PseudoClassesElementStyleClassName = "pseudo-classes";
-WebInspector.CSSStyleDetailsSidebarPanel.PseudoClassesGroupElementStyleClassName = "group";
 WebInspector.CSSStyleDetailsSidebarPanel.NoForcedPseudoClassesScrollOffset = 38; // Default height of the forced pseudo classes container. Updated in widthDidChange.

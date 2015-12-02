@@ -381,6 +381,8 @@ public:
     RefPtr<Range> caretRangeFromPoint(int x, int y);
     RefPtr<Range> caretRangeFromPoint(const LayoutPoint& clientPoint);
 
+    Element* scrollingElement();
+
     String readyState() const;
 
     String defaultCharset() const;
@@ -428,6 +430,9 @@ public:
     void visibilityStateChanged();
     String visibilityState() const;
     bool hidden() const;
+
+    void setTimerThrottlingEnabled(bool);
+    bool isTimerThrottlingEnabled() const { return m_isTimerThrottlingEnabled; }
 
 #if ENABLE(CSP_NEXT)
     DOMSecurityPolicy& securityPolicy();
@@ -946,6 +951,9 @@ public:
 
     virtual void postTask(Task) override final; // Executes the task on context's thread asynchronously.
 
+#if ENABLE(REQUEST_ANIMATION_FRAME)
+    ScriptedAnimationController* scriptedAnimationController() { return m_scriptedAnimationController.get(); }
+#endif
     void suspendScriptedAnimationControllerCallbacks();
     void resumeScriptedAnimationControllerCallbacks();
     void scriptedAnimationControllerSetThrottled(bool);
@@ -1683,6 +1691,7 @@ private:
     bool m_hasPreparedForDestruction;
 
     bool m_hasStyleWithViewportUnits;
+    bool m_isTimerThrottlingEnabled { false };
 
     HashSet<MediaProducer*> m_audioProducers;
     MediaProducer::MediaStateFlags m_mediaState { MediaProducer::IsNotPlaying };

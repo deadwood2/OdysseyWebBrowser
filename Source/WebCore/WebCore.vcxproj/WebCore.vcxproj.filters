@@ -1113,9 +1113,6 @@
     <ClCompile Include="..\platform\Length.cpp">
       <Filter>platform</Filter>
     </ClCompile>
-    <ClCompile Include="..\platform\LengthBox.cpp">
-      <Filter>platform</Filter>
-    </ClCompile>
     <ClCompile Include="..\platform\LinkHash.cpp">
       <Filter>platform</Filter>
     </ClCompile>
@@ -1369,9 +1366,6 @@
       <Filter>platform\graphics</Filter>
     </ClCompile>
     <ClCompile Include="..\platform\graphics\IntSize.cpp">
-      <Filter>platform\graphics</Filter>
-    </ClCompile>
-    <ClCompile Include="..\platform\graphics\LayoutBoxExtent.cpp">
       <Filter>platform\graphics</Filter>
     </ClCompile>
     <ClCompile Include="..\platform\graphics\LayoutRect.cpp">
@@ -4425,7 +4419,7 @@
     <ClCompile Include="..\bindings\js\JSReadableStreamReaderCustom.cpp">
       <Filter>bindings\js</Filter>
     </ClCompile>
-    <ClCompile Include="..\bindings\js\ReadableStreamJSSource.cpp">
+    <ClCompile Include="..\bindings\js\ReadableJSStream.cpp">
       <Filter>bindings\js</Filter>
     </ClCompile>
     <ClCompile Include="..\bindings\js\JSRequestAnimationFrameCallbackCustom.cpp">
@@ -6715,9 +6709,6 @@
     <ClCompile Include="..\platform\graphics\texmap\TextureMapperGL.cpp">
       <Filter>platform\graphics\texmap</Filter>
     </ClCompile>
-    <ClCompile Include="..\platform\graphics\texmap\TextureMapperImageBuffer.cpp">
-      <Filter>platform\graphics\texmap</Filter>
-    </ClCompile>
     <ClCompile Include="..\platform\graphics\texmap\TextureMapperLayer.cpp">
       <Filter>platform\graphics\texmap</Filter>
     </ClCompile>
@@ -6892,9 +6883,6 @@
     <ClCompile Include="..\platform\network\soup\NetworkStorageSessionSoup.cpp">
       <Filter>platform\network\soup</Filter>
     </ClCompile>
-    <ClCompile Include="..\platform\network\soup\ProxyResolverSoup.cpp">
-      <Filter>platform\network\soup</Filter>
-    </ClCompile>
     <ClCompile Include="..\platform\network\soup\ProxyServerSoup.cpp">
       <Filter>platform\network\soup</Filter>
     </ClCompile>
@@ -7042,7 +7030,7 @@
     <ClCompile Include="..\Modules\gamepad\GamepadEvent.cpp">
       <Filter>Modules\gamepad</Filter>
     </ClCompile>
-    <ClCompile Include="..\html\HTMLMediaSession.cpp">
+    <ClCompile Include="..\html\MediaElementSession.cpp">
       <Filter>html</Filter>
     </ClCompile>
     <ClCompile Include="$(ConfigurationBuildDir)\obj$(PlatformArchitecture)\$(ProjectName)\DerivedSources\HTTPHeaderNames.cpp">
@@ -7063,7 +7051,7 @@
     <ClCompile Include="..\rendering\line\LineInfo.cpp">
       <Filter>rendering\line</Filter>
     </ClCompile>
-    <ClCompile Include="..\platform\audio\MediaSession.cpp">
+    <ClCompile Include="..\platform\audio\PlatformMediaSession.cpp">
       <Filter>platform\audio</Filter>
     </ClCompile>
     <ClCompile Include="..\platform\audio\MediaSessionManager.cpp">
@@ -7267,9 +7255,6 @@
     <ClCompile Include="..\platform\graphics\texmap\BitmapTextureGL.cpp">
       <Filter>platform\graphics\texmap</Filter>
     </ClCompile>
-    <ClCompile Include="..\platform\graphics\texmap\BitmapTextureImageBuffer.cpp">
-      <Filter>platform\graphics\texmap</Filter>
-    </ClCompile>
     <ClCompile Include="..\platform\graphics\texmap\BitmapTexturePool.cpp">
       <Filter>platform\graphics\texmap</Filter>
     </ClCompile>
@@ -7278,6 +7263,9 @@
     </ClCompile>
     <ClCompile Include="..\platform\network\CacheValidation.cpp">
       <Filter>platform\network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\platform\graphics\PlatformDisplay.cpp">
+      <Filter>platform\graphics</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -8500,9 +8488,6 @@
       <Filter>platform\graphics</Filter>
     </ClInclude>
     <ClInclude Include="..\platform\graphics\IntSizeHash.h">
-      <Filter>platform\graphics</Filter>
-    </ClInclude>
-    <ClInclude Include="..\platform\graphics\LayoutBoxExtent.h">
       <Filter>platform\graphics</Filter>
     </ClInclude>
     <ClInclude Include="..\platform\graphics\LayoutPoint.h">
@@ -14513,7 +14498,7 @@
     <ClInclude Include="..\platform\audio\MediaSessionManager.h">
       <Filter>platform\audio</Filter>
     </ClInclude>
-    <ClInclude Include="..\platform\audio\MediaSession.h">
+    <ClInclude Include="..\platform\audio\PlatformMediaSession.h">
       <Filter>platform\audio</Filter>
     </ClInclude>
     <ClInclude Include="..\Modules\gamepad\NavigatorGamepad.h">
@@ -15277,6 +15262,12 @@
     </ClInclude>
     <ClInclude Include="..\platform\network\CacheValidation.h">
       <Filter>platform\network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\platform\graphics\PlatformDisplay.h">
+      <Filter>platform\graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="..\platform\graphics\win\PlatformDisplayWin.h">
+      <Filter>platform\graphics\win</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

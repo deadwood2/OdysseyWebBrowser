@@ -55,8 +55,6 @@
 #import "ViewGestureController.h"
 #import "ViewSnapshotStore.h"
 #import "WKAPICast.h"
-#import "WKActionMenuController.h"
-#import "WKActionMenuItemTypes.h"
 #import "WKFullScreenWindowController.h"
 #import "WKImmediateActionController.h"
 #import "WKLayoutMode.h"
@@ -65,6 +63,7 @@
 #import "WKStringCF.h"
 #import "WKTextInputWindowController.h"
 #import "WKViewInternal.h"
+#import "WKViewLayoutStrategy.h"
 #import "WKViewPrivate.h"
 #import "WKWebView.h"
 #import "WebBackForwardList.h"
@@ -95,7 +94,6 @@
 #import <WebCore/LookupSPI.h>
 #import <WebCore/NSImmediateActionGestureRecognizerSPI.h>
 #import <WebCore/NSMenuSPI.h>
-#import <WebCore/NSViewSPI.h>
 #import <WebCore/PlatformEventFactoryMac.h>
 #import <WebCore/PlatformScreen.h>
 #import <WebCore/Region.h>
@@ -240,7 +238,6 @@ struct WKViewInterpretKeyEventsParameters {
 
     NSRect _windowBottomCornerIntersectionRect;
     
-    unsigned _frameSizeUpdatesDisabledCount;
     BOOL _shouldDeferViewInWindowChanges;
     NSWindow *_targetWindowForMovePreparation;
 
@@ -268,7 +265,9 @@ struct WKViewInterpretKeyEventsParameters {
     BOOL _ignoresNonWheelEvents;
     BOOL _ignoresAllEvents;
     BOOL _allowsBackForwardNavigationGestures;
-    BOOL _automaticallyComputesFixedLayoutSizeFromViewScale;
+
+    RetainPtr<WKViewLayoutStrategy> _layoutStrategy;
+    CGSize _minimumViewSize;
 
     RetainPtr<CALayer> _rootLayer;
 
@@ -278,9 +277,10 @@ struct WKViewInterpretKeyEventsParameters {
 
     CGFloat _overrideDeviceScaleFactor;
 
+    BOOL _didRegisterForLookupPopoverCloseNotifications;
+
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
     BOOL _automaticallyAdjustsContentInsets;
-    RetainPtr<WKActionMenuController> _actionMenuController;
     RetainPtr<WKImmediateActionController> _immediateActionController;
     RetainPtr<NSImmediateActionGestureRecognizer> _immediateActionGestureRecognizer;
 #endif
@@ -383,9 +383,9 @@ struct WKViewInterpretKeyEventsParameters {
 - (void)dealloc
 {
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
-    [_data->_actionMenuController willDestroyView:self];
     [_data->_immediateActionController willDestroyView:self];
 #endif
+    [_data->_layoutStrategy willDestroyView:self];
 
     _data->_page->close();
 
@@ -514,11 +514,15 @@ struct WKViewInterpretKeyEventsParameters {
 - (void)viewWillStartLiveResize
 {
     _data->_page->viewWillStartLiveResize();
+
+    [_data->_layoutStrategy willStartLiveResize];
 }
 
 - (void)viewDidEndLiveResize
 {
     _data->_page->viewWillEndLiveResize();
+
+    [_data->_layoutStrategy didEndLiveResize];
 }
 
 - (BOOL)isFlipped
@@ -554,20 +558,7 @@ struct WKViewInterpretKeyEventsParameters {
 {
     [super setFrameSize:size];
 
-    if (![self frameSizeUpdatesDisabled]) {
-        if (_data->_clipsToVisibleRect)
-            [self _updateViewExposedRect];
-        [self _setDrawingAreaSize:size];
-        if (_data->_automaticallyComputesFixedLayoutSizeFromViewScale)
-            [self _updateAutomaticallyComputedFixedLayoutSize];
-    }
-}
-
-- (void)_updateAutomaticallyComputedFixedLayoutSize
-{
-    ASSERT(_data->_automaticallyComputesFixedLayoutSizeFromViewScale);
-    CGFloat inverseScale = 1 / _data->_page->viewScaleFactor();
-    [self _setFixedLayoutSize:CGSizeMake(self.frame.size.width * inverseScale, self.frame.size.height * inverseScale)];
+    [_data->_layoutStrategy didChangeFrameSize];
 }
 
 - (void)_updateWindowAndViewFrames
@@ -1266,10 +1257,6 @@ static NSToolbarItem *toolbarItem(id <NSValidatedUserInterfaceItem> item)
             }]; \
             return; \
         } \
-        if ([NSMenu respondsToSelector:@selector(menuTypeForEvent:)] && [NSMenu menuTypeForEvent:theEvent] == NSMenuTypeActionMenu) { \
-            [super Selector:theEvent]; \
-            return; \
-        } \
         NativeWebMouseEvent webEvent(theEvent, _data->_pressureEvent, self); \
         _data->_page->handleMouseEvent(webEvent); \
     }
@@ -1300,10 +1287,6 @@ static NSToolbarItem *toolbarItem(id <NSValidatedUserInterfaceItem> item)
             return; \
         if ([[self inputContext] handleEvent:theEvent]) { \
             LOG(TextInput, "%s was handled by text input context", String(#Selector).substring(0, String(#Selector).find("Internal")).ascii().data()); \
-            return; \
-        } \
-        if ([NSMenu respondsToSelector:@selector(menuTypeForEvent:)] && [NSMenu menuTypeForEvent:theEvent] == NSMenuTypeActionMenu) { \
-            [super Selector:theEvent]; \
             return; \
         } \
         NativeWebMouseEvent webEvent(theEvent, _data->_pressureEvent, self); \
@@ -1351,6 +1334,9 @@ NATIVE_MOUSE_EVENT_HANDLER_INTERNAL(mouseDraggedInternal)
 {
     if (_data->_ignoresAllEvents)
         return;
+
+    if (event.phase == NSEventPhaseBegan)
+        [self _dismissContentRelativeChildWindowsWithAnimation:NO];
 
     if (_data->_allowsBackForwardNavigationGestures) {
         [self _ensureGestureController];
@@ -1400,9 +1386,6 @@ NATIVE_MOUSE_EVENT_HANDLER_INTERNAL(mouseDraggedInternal)
     [self _setMouseDownEvent:event];
     _data->_ignoringMouseDraggedEvents = NO;
 
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
-    [_data->_actionMenuController wkView:self willHandleMouseDown:event];
-#endif
     [self mouseDownInternal:event];
 }
 
@@ -2894,6 +2877,17 @@ static void* keyValueObservingContext = &keyValueObservingContext;
     _data->_page->viewStateDidChange(ViewState::IsVisible);
 }
 
+- (void)_prepareForDictionaryLookup
+{
+    if (_data->_didRegisterForLookupPopoverCloseNotifications)
+        return;
+
+    _data->_didRegisterForLookupPopoverCloseNotifications = YES;
+
+    if (canLoadLUNotificationPopoverWillClose())
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_dictionaryLookupPopoverWillClose:) name:getLUNotificationPopoverWillClose() object:nil];
+}
+
 - (void)_dictionaryLookupPopoverWillClose:(NSNotification *)notification
 {
     [self _clearTextIndicatorWithAnimation:TextIndicatorDismissalAnimation::None];
@@ -3824,6 +3818,8 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
 
     _data->_needsViewFrameInWindowCoordinates = _data->_page->preferences().pluginsEnabled();
 
+    _data->_layoutStrategy = [WKViewLayoutStrategy layoutStrategyWithPage:*_data->_page view:self mode:kWKLayoutModeViewSize];
+
     [self _registerDraggedTypes];
 
     self.wantsLayer = YES;
@@ -3836,20 +3832,9 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
     NSNotificationCenter* workspaceNotificationCenter = [[NSWorkspace sharedWorkspace] notificationCenter];
     [workspaceNotificationCenter addObserver:self selector:@selector(_activeSpaceDidChange:) name:NSWorkspaceActiveSpaceDidChangeNotification object:nil];
 
-    if (canLoadLUNotificationPopoverWillClose())
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_dictionaryLookupPopoverWillClose:) name:getLUNotificationPopoverWillClose() object:nil];
-
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
-    if ([self respondsToSelector:@selector(_setActionMenu:)]) {
-        RetainPtr<NSMenu> menu = adoptNS([[NSMenu alloc] init]);
-        self._actionMenu = menu.get();
-        _data->_actionMenuController = adoptNS([[WKActionMenuController alloc] initWithPage:*_data->_page view:self]);
-        self._actionMenu.delegate = _data->_actionMenuController.get();
-        self._actionMenu.autoenablesItems = NO;
-    }
-
     if (Class gestureClass = NSClassFromString(@"NSImmediateActionGestureRecognizer")) {
-        _data->_immediateActionGestureRecognizer = adoptNS([(NSImmediateActionGestureRecognizer *)[gestureClass alloc] initWithTarget:nil action:NULL]);
+        _data->_immediateActionGestureRecognizer = adoptNS([(NSImmediateActionGestureRecognizer *)[gestureClass alloc] init]);
         _data->_immediateActionController = adoptNS([[WKImmediateActionController alloc] initWithPage:*_data->_page view:self recognizer:_data->_immediateActionGestureRecognizer.get()]);
         [_data->_immediateActionGestureRecognizer setDelegate:_data->_immediateActionController.get()];
         [_data->_immediateActionGestureRecognizer setDelaysPrimaryMouseButtonEvents:NO];
@@ -3962,63 +3947,12 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
 
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
 
-- (void)prepareForMenu:(NSMenu *)menu withEvent:(NSEvent *)event
+- (void)_didPerformImmediateActionHitTest:(const WebHitTestResult::Data&)hitTestResult contentPreventsDefault:(BOOL)contentPreventsDefault userData:(API::Object*)userData
 {
-    if (_data->_ignoresNonWheelEvents) {
-        [menu cancelTracking];
-        return;
-    }
-
-    [_data->_actionMenuController prepareForMenu:menu withEvent:event];
-}
-
-- (void)willOpenMenu:(NSMenu *)menu withEvent:(NSEvent *)event
-{
-    if (_data->_ignoresNonWheelEvents) {
-        [menu cancelTracking];
-        return;
-    }
-
-    [_data->_actionMenuController willOpenMenu:menu withEvent:event];
-}
-
-- (void)didCloseMenu:(NSMenu *)menu withEvent:(NSEvent *)event
-{
-    if (_data->_ignoresNonWheelEvents) {
-        [menu cancelTracking];
-        return;
-    }
-
-    [_data->_actionMenuController didCloseMenu:menu withEvent:event];
-}
-
-- (void)_didPerformActionMenuHitTest:(const WebHitTestResult::Data&)hitTestResult forImmediateAction:(BOOL)forImmediateAction contentPreventsDefault:(BOOL)contentPreventsDefault userData:(API::Object*)userData
-{
-    if (forImmediateAction)
-        [_data->_immediateActionController didPerformActionMenuHitTest:hitTestResult contentPreventsDefault:contentPreventsDefault userData:userData];
-    else
-        [_data->_actionMenuController didPerformActionMenuHitTest:hitTestResult userData:userData];
+    [_data->_immediateActionController didPerformImmediateActionHitTest:hitTestResult contentPreventsDefault:contentPreventsDefault userData:userData];
 }
 
 #endif // __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
-
-- (void)_setAutomaticallyComputesFixedLayoutSizeFromViewScale:(BOOL)automaticallyComputesFixedLayoutSizeFromViewScale
-{
-    if (_data->_automaticallyComputesFixedLayoutSizeFromViewScale == automaticallyComputesFixedLayoutSizeFromViewScale)
-        return;
-
-    _data->_automaticallyComputesFixedLayoutSizeFromViewScale = automaticallyComputesFixedLayoutSizeFromViewScale;
-
-    if (!_data->_automaticallyComputesFixedLayoutSizeFromViewScale)
-        return;
-
-    [self _updateAutomaticallyComputedFixedLayoutSize];
-}
-
-- (BOOL)_automaticallyComputesFixedLayoutSizeFromViewScale
-{
-    return _data->_automaticallyComputesFixedLayoutSizeFromViewScale;
-}
 
 @end
 
@@ -4114,24 +4048,17 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
 
 - (void)disableFrameSizeUpdates
 {
-    _data->_frameSizeUpdatesDisabledCount++;
+    [_data->_layoutStrategy disableFrameSizeUpdates];
 }
 
 - (void)enableFrameSizeUpdates
 {
-    if (!_data->_frameSizeUpdatesDisabledCount)
-        return;
-    
-    if (!(--_data->_frameSizeUpdatesDisabledCount)) {
-        if (_data->_clipsToVisibleRect)
-            [self _updateViewExposedRect];
-        [self _setDrawingAreaSize:[self frame].size];
-    }
+    [_data->_layoutStrategy enableFrameSizeUpdates];
 }
 
 - (BOOL)frameSizeUpdatesDisabled
 {
-    return _data->_frameSizeUpdatesDisabledCount > 0;
+    return [_data->_layoutStrategy frameSizeUpdatesDisabled];
 }
 
 + (void)hideWordDefinitionWindow
@@ -4139,40 +4066,6 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
     if (!getLULookupDefinitionModuleClass())
         return;
     [getLULookupDefinitionModuleClass() hideDefinition];
-}
-
-- (CGFloat)minimumLayoutWidth
-{
-    static BOOL loggedDeprecationWarning = NO;
-
-    if (!loggedDeprecationWarning) {
-        NSLog(@"Please use minimumSizeForAutoLayout instead of minimumLayoutWidth.");
-        loggedDeprecationWarning = YES;
-    }
-
-    return self.minimumSizeForAutoLayout.width;
-}
-
-- (void)setMinimumLayoutWidth:(CGFloat)minimumLayoutWidth
-{
-    static BOOL loggedDeprecationWarning = NO;
-
-    if (!loggedDeprecationWarning) {
-        NSLog(@"Please use setMinimumSizeForAutoLayout: instead of setMinimumLayoutWidth:.");
-        loggedDeprecationWarning = YES;
-    }
-
-    [self setMinimumWidthForAutoLayout:minimumLayoutWidth];
-}
-
-- (CGFloat)minimumWidthForAutoLayout
-{
-    return self.minimumSizeForAutoLayout.width;
-}
-
-- (void)setMinimumWidthForAutoLayout:(CGFloat)minimumLayoutWidth
-{
-    self.minimumSizeForAutoLayout = NSMakeSize(minimumLayoutWidth, self.minimumSizeForAutoLayout.height);
 }
 
 - (NSSize)minimumSizeForAutoLayout
@@ -4402,23 +4295,16 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
 
 - (WKLayoutMode)_layoutMode
 {
-    if (_data->_page->useFixedLayout()) {
-#if PLATFORM(MAC)
-        if (_data->_automaticallyComputesFixedLayoutSizeFromViewScale)
-            return kWKLayoutModeDynamicSizeComputedFromViewScale;
-#endif
-        return kWKLayoutModeFixedSize;
-    }
-    return kWKLayoutModeViewSize;
+    return [_data->_layoutStrategy layoutMode];
 }
 
 - (void)_setLayoutMode:(WKLayoutMode)layoutMode
 {
-    _data->_page->setUseFixedLayout(layoutMode == kWKLayoutModeFixedSize || layoutMode == kWKLayoutModeDynamicSizeComputedFromViewScale);
+    if (layoutMode == [_data->_layoutStrategy layoutMode])
+        return;
 
-#if PLATFORM(MAC)
-    self._automaticallyComputesFixedLayoutSizeFromViewScale = (layoutMode == kWKLayoutModeDynamicSizeComputedFromViewScale);
-#endif
+    [_data->_layoutStrategy willChangeLayoutStrategy];
+    _data->_layoutStrategy = [WKViewLayoutStrategy layoutStrategyWithPage:*_data->_page view:self mode:layoutMode];
 }
 
 - (CGSize)_fixedLayoutSize
@@ -4442,7 +4328,18 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
         [NSException raise:NSInvalidArgumentException format:@"View scale should be a positive number"];
 
     _data->_page->scaleView(viewScale);
-    [self _updateAutomaticallyComputedFixedLayoutSize];
+    [_data->_layoutStrategy didChangeViewScale];
+}
+
+- (void)_setMinimumViewSize:(CGSize)minimumViewSize
+{
+    _data->_minimumViewSize = minimumViewSize;
+    [_data->_layoutStrategy didChangeMinimumViewSize];
+}
+
+- (CGSize)_minimumViewSize
+{
+    return _data->_minimumViewSize;
 }
 
 - (void)_dispatchSetTopContentInset
@@ -4481,6 +4378,47 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
 - (CGFloat)_totalHeightOfBanners
 {
     return _data->_totalHeightOfBanners;
+}
+
+- (void)_setOverlayScrollbarStyle:(_WKOverlayScrollbarStyle)scrollbarStyle
+{
+    WTF::Optional<WebCore::ScrollbarOverlayStyle> coreScrollbarStyle;
+
+    switch (scrollbarStyle) {
+    case _WKOverlayScrollbarStyleDark:
+        coreScrollbarStyle = ScrollbarOverlayStyleDark;
+        break;
+    case _WKOverlayScrollbarStyleLight:
+        coreScrollbarStyle = ScrollbarOverlayStyleLight;
+        break;
+    case _WKOverlayScrollbarStyleDefault:
+        coreScrollbarStyle = ScrollbarOverlayStyleDefault;
+        break;
+    case _WKOverlayScrollbarStyleAutomatic:
+    default:
+        break;
+    }
+
+    _data->_page->setOverlayScrollbarStyle(coreScrollbarStyle);
+}
+
+- (_WKOverlayScrollbarStyle)_overlayScrollbarStyle
+{
+    WTF::Optional<WebCore::ScrollbarOverlayStyle> coreScrollbarStyle = _data->_page->overlayScrollbarStyle();
+
+    if (!coreScrollbarStyle)
+        return _WKOverlayScrollbarStyleAutomatic;
+
+    switch (coreScrollbarStyle.value()) {
+    case ScrollbarOverlayStyleDark:
+        return _WKOverlayScrollbarStyleDark;
+    case ScrollbarOverlayStyleLight:
+        return _WKOverlayScrollbarStyleLight;
+    case ScrollbarOverlayStyleDefault:
+        return _WKOverlayScrollbarStyleDefault;
+    default:
+        return _WKOverlayScrollbarStyleAutomatic;
+    }
 }
 
 - (NSColor *)_pageExtendedBackgroundColor
@@ -4644,17 +4582,6 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
     _data->_gestureController->setDidMoveSwipeSnapshotCallback(callback);
 }
 
-
-- (NSArray *)_actionMenuItemsForHitTestResult:(WKHitTestResultRef)hitTestResult withType:(_WKActionMenuType)type defaultActionMenuItems:(NSArray *)defaultMenuItems
-{
-    return defaultMenuItems;
-}
-
-- (NSArray *)_actionMenuItemsForHitTestResult:(WKHitTestResultRef)hitTestResult withType:(_WKActionMenuType)type defaultActionMenuItems:(NSArray *)defaultMenuItems userData:(WKTypeRef)userData
-{
-    return [self _actionMenuItemsForHitTestResult:hitTestResult withType:type defaultActionMenuItems:defaultMenuItems];
-}
-
 - (id)_immediateActionAnimationControllerForHitTestResult:(WKHitTestResultRef)hitTestResult withType:(_WKImmediateActionType)type userData:(WKTypeRef)userData
 {
     return nil;
@@ -4674,7 +4601,6 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
 
 - (void)_didChangeContentSize:(NSSize)newSize
 {
-
 }
 
 - (void)_dismissContentRelativeChildWindows
@@ -4688,9 +4614,11 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
         if (Class lookupDefinitionModuleClass = getLULookupDefinitionModuleClass())
             [lookupDefinitionModuleClass hideDefinition];
 
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
         DDActionsManager *actionsManager = [getDDActionsManagerClass() sharedManager];
         if ([actionsManager respondsToSelector:@selector(requestBubbleClosureUnanchorOnFailure:)])
             [actionsManager requestBubbleClosureUnanchorOnFailure:YES];
+#endif
     }
 
     [self _clearTextIndicatorWithAnimation:TextIndicatorDismissalAnimation::FadeOut];

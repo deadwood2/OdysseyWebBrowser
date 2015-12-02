@@ -46,10 +46,10 @@ namespace WebKit {
 
 class StorageManager::StorageArea : public ThreadSafeRefCounted<StorageManager::StorageArea> {
 public:
-    static Ref<StorageArea> create(LocalStorageNamespace*, RefPtr<SecurityOrigin>&&, unsigned quotaInBytes);
+    static Ref<StorageArea> create(LocalStorageNamespace*, Ref<SecurityOrigin>&&, unsigned quotaInBytes);
     ~StorageArea();
 
-    SecurityOrigin* securityOrigin() const { return m_securityOrigin.get(); }
+    SecurityOrigin& securityOrigin() { return m_securityOrigin.get(); }
 
     void addListener(IPC::Connection&, uint64_t storageMapID);
     void removeListener(IPC::Connection&, uint64_t storageMapID);
@@ -63,8 +63,10 @@ public:
     const HashMap<String, String>& items();
     void clear();
 
+    bool isSessionStorage() const { return !m_localStorageNamespace; }
+
 private:
-    explicit StorageArea(LocalStorageNamespace*, RefPtr<SecurityOrigin>&&, unsigned quotaInBytes);
+    explicit StorageArea(LocalStorageNamespace*, Ref<SecurityOrigin>&&, unsigned quotaInBytes);
 
     void openDatabaseAndImportItemsIfNeeded();
 
@@ -75,7 +77,7 @@ private:
     RefPtr<LocalStorageDatabase> m_localStorageDatabase;
     bool m_didImportItemsFromDatabase;
 
-    RefPtr<SecurityOrigin> m_securityOrigin;
+    Ref<SecurityOrigin> m_securityOrigin;
     unsigned m_quotaInBytes;
 
     RefPtr<StorageMap> m_storageMap;
@@ -89,7 +91,7 @@ public:
 
     StorageManager* storageManager() const { return m_storageManager; }
 
-    Ref<StorageArea> getOrCreateStorageArea(RefPtr<SecurityOrigin>&&);
+    Ref<StorageArea> getOrCreateStorageArea(Ref<SecurityOrigin>&&);
     void didDestroyStorageArea(StorageArea*);
 
     void clearStorageAreasMatchingOrigin(const SecurityOrigin&);
@@ -117,9 +119,9 @@ public:
     {
     }
 
-    Ref<StorageArea> getOrCreateStorageArea(RefPtr<SecurityOrigin>&& securityOrigin)
+    Ref<StorageArea> getOrCreateStorageArea(Ref<SecurityOrigin>&& securityOrigin)
     {
-        auto& slot = m_storageAreaMap.add(securityOrigin, nullptr).iterator->value;
+        auto& slot = m_storageAreaMap.add(securityOrigin.ptr(), nullptr).iterator->value;
         if (slot)
             return *slot;
 
@@ -129,10 +131,22 @@ public:
         return storageArea;
     }
 
+    Vector<Ref<SecurityOrigin>> origins() const
+    {
+        Vector<Ref<SecurityOrigin>> origins;
+
+        for (const auto& storageArea : m_storageAreaMap.values()) {
+            if (!storageArea->items().isEmpty())
+                origins.append(storageArea->securityOrigin());
+        }
+
+        return origins;
+    }
+
     void clearStorageAreasMatchingOrigin(const SecurityOrigin& securityOrigin)
     {
         for (auto& storageArea : m_storageAreaMap.values()) {
-            if (storageArea->securityOrigin()->equal(&securityOrigin))
+            if (storageArea->securityOrigin().equal(&securityOrigin))
                 storageArea->clear();
         }
     }
@@ -153,12 +167,12 @@ private:
     HashMap<RefPtr<SecurityOrigin>, RefPtr<StorageArea>> m_storageAreaMap;
 };
 
-Ref<StorageManager::StorageArea> StorageManager::StorageArea::create(LocalStorageNamespace* localStorageNamespace, RefPtr<SecurityOrigin>&& securityOrigin, unsigned quotaInBytes)
+Ref<StorageManager::StorageArea> StorageManager::StorageArea::create(LocalStorageNamespace* localStorageNamespace, Ref<SecurityOrigin>&& securityOrigin, unsigned quotaInBytes)
 {
     return adoptRef(*new StorageArea(localStorageNamespace, WTF::move(securityOrigin), quotaInBytes));
 }
 
-StorageManager::StorageArea::StorageArea(LocalStorageNamespace* localStorageNamespace, RefPtr<SecurityOrigin>&& securityOrigin, unsigned quotaInBytes)
+StorageManager::StorageArea::StorageArea(LocalStorageNamespace* localStorageNamespace, Ref<SecurityOrigin>&& securityOrigin, unsigned quotaInBytes)
     : m_localStorageNamespace(localStorageNamespace)
     , m_didImportItemsFromDatabase(false)
     , m_securityOrigin(WTF::move(securityOrigin))
@@ -279,7 +293,7 @@ void StorageManager::StorageArea::openDatabaseAndImportItemsIfNeeded()
 
     // We open the database here even if we've already imported our items to ensure that the database is open if we need to write to it.
     if (!m_localStorageDatabase)
-        m_localStorageDatabase = LocalStorageDatabase::create(m_localStorageNamespace->storageManager()->m_queue, m_localStorageNamespace->storageManager()->m_localStorageDatabaseTracker, m_securityOrigin.get());
+        m_localStorageDatabase = LocalStorageDatabase::create(m_localStorageNamespace->storageManager()->m_queue, m_localStorageNamespace->storageManager()->m_localStorageDatabaseTracker, m_securityOrigin.copyRef());
 
     if (m_didImportItemsFromDatabase)
         return;
@@ -316,9 +330,9 @@ StorageManager::LocalStorageNamespace::~LocalStorageNamespace()
     ASSERT(m_storageAreaMap.isEmpty());
 }
 
-Ref<StorageManager::StorageArea> StorageManager::LocalStorageNamespace::getOrCreateStorageArea(RefPtr<SecurityOrigin>&& securityOrigin)
+Ref<StorageManager::StorageArea> StorageManager::LocalStorageNamespace::getOrCreateStorageArea(Ref<SecurityOrigin>&& securityOrigin)
 {
-    auto& slot = m_storageAreaMap.add(securityOrigin, nullptr).iterator->value;
+    auto& slot = m_storageAreaMap.add(securityOrigin.ptr(), nullptr).iterator->value;
     if (slot)
         return *slot;
 
@@ -330,9 +344,9 @@ Ref<StorageManager::StorageArea> StorageManager::LocalStorageNamespace::getOrCre
 
 void StorageManager::LocalStorageNamespace::didDestroyStorageArea(StorageArea* storageArea)
 {
-    ASSERT(m_storageAreaMap.contains(storageArea->securityOrigin()));
+    ASSERT(m_storageAreaMap.contains(&storageArea->securityOrigin()));
 
-    m_storageAreaMap.remove(storageArea->securityOrigin());
+    m_storageAreaMap.remove(&storageArea->securityOrigin());
     if (!m_storageAreaMap.isEmpty())
         return;
 
@@ -364,9 +378,35 @@ public:
     IPC::Connection* allowedConnection() const { return m_allowedConnection.get(); }
     void setAllowedConnection(IPC::Connection*);
 
-    Ref<StorageArea> getOrCreateStorageArea(RefPtr<SecurityOrigin>&&);
+    Ref<StorageArea> getOrCreateStorageArea(Ref<SecurityOrigin>&&);
 
     void cloneTo(SessionStorageNamespace& newSessionStorageNamespace);
+
+    Vector<Ref<SecurityOrigin>> origins() const
+    {
+        Vector<Ref<SecurityOrigin>> origins;
+
+        for (const auto& storageArea : m_storageAreaMap.values()) {
+            if (!storageArea->items().isEmpty())
+                origins.append(storageArea->securityOrigin());
+        }
+
+        return origins;
+    }
+
+    void clearStorageAreasMatchingOrigin(const SecurityOrigin& securityOrigin)
+    {
+        for (auto& storageArea : m_storageAreaMap.values()) {
+            if (storageArea->securityOrigin().equal(&securityOrigin))
+                storageArea->clear();
+        }
+    }
+
+    void clearAllStorageAreas()
+    {
+        for (auto& storageArea : m_storageAreaMap.values())
+            storageArea->clear();
+    }
 
 private:
     explicit SessionStorageNamespace(unsigned quotaInBytes);
@@ -398,9 +438,9 @@ void StorageManager::SessionStorageNamespace::setAllowedConnection(IPC::Connecti
     m_allowedConnection = allowedConnection;
 }
 
-Ref<StorageManager::StorageArea> StorageManager::SessionStorageNamespace::getOrCreateStorageArea(RefPtr<SecurityOrigin>&& securityOrigin)
+Ref<StorageManager::StorageArea> StorageManager::SessionStorageNamespace::getOrCreateStorageArea(Ref<SecurityOrigin>&& securityOrigin)
 {
-    auto& slot = m_storageAreaMap.add(securityOrigin, nullptr).iterator->value;
+    auto& slot = m_storageAreaMap.add(securityOrigin.ptr(), nullptr).iterator->value;
     if (!slot)
         slot = StorageArea::create(0, WTF::move(securityOrigin), m_quotaInBytes);
 
@@ -514,12 +554,17 @@ void StorageManager::processDidCloseConnection(WebProcessProxy&, IPC::Connection
     });
 }
 
-void StorageManager::getOrigins(std::function<void (Vector<RefPtr<WebCore::SecurityOrigin>>)> completionHandler)
+void StorageManager::getSessionStorageOrigins(std::function<void (HashSet<RefPtr<WebCore::SecurityOrigin>>&&)> completionHandler)
 {
     RefPtr<StorageManager> storageManager(this);
 
     m_queue->dispatch([storageManager, completionHandler] {
-        auto origins = storageManager->m_localStorageDatabaseTracker->origins();
+        HashSet<RefPtr<SecurityOrigin>> origins;
+
+        for (const auto& sessionStorageNamespace : storageManager->m_sessionStorageNamespaces.values()) {
+            for (auto& origin : sessionStorageNamespace->origins())
+                origins.add(WTF::move(origin));
+        }
 
         RunLoop::main().dispatch([origins, completionHandler]() mutable {
             completionHandler(WTF::move(origins));
@@ -527,7 +572,59 @@ void StorageManager::getOrigins(std::function<void (Vector<RefPtr<WebCore::Secur
     });
 }
 
-void StorageManager::getStorageDetailsByOrigin(std::function<void (Vector<LocalStorageDetails>)> completionHandler)
+void StorageManager::deleteSessionStorageOrigins(std::function<void ()> completionHandler)
+{
+    RefPtr<StorageManager> storageManager(this);
+
+    m_queue->dispatch([storageManager, completionHandler] {
+        for (auto& sessionStorageNamespace : storageManager->m_sessionStorageNamespaces.values())
+            sessionStorageNamespace->clearAllStorageAreas();
+
+        RunLoop::main().dispatch(completionHandler);
+    });
+}
+
+void StorageManager::deleteSessionStorageEntriesForOrigins(const Vector<RefPtr<WebCore::SecurityOrigin>>& origins, std::function<void ()> completionHandler)
+{
+    Vector<RefPtr<WebCore::SecurityOrigin>> copiedOrigins;
+    copiedOrigins.reserveInitialCapacity(origins.size());
+
+    for (auto& origin : origins)
+        copiedOrigins.uncheckedAppend(origin->isolatedCopy());
+
+    RefPtr<StorageManager> storageManager(this);
+    m_queue->dispatch([storageManager, copiedOrigins, completionHandler] {
+        for (auto& origin : copiedOrigins) {
+            for (auto& sessionStorageNamespace : storageManager->m_sessionStorageNamespaces.values())
+                sessionStorageNamespace->clearStorageAreasMatchingOrigin(*origin);
+        }
+
+        RunLoop::main().dispatch(completionHandler);
+    });
+}
+
+void StorageManager::getLocalStorageOrigins(std::function<void (HashSet<RefPtr<WebCore::SecurityOrigin>>&&)> completionHandler)
+{
+    RefPtr<StorageManager> storageManager(this);
+
+    m_queue->dispatch([storageManager, completionHandler] {
+        HashSet<RefPtr<SecurityOrigin>> origins;
+
+        for (auto& origin : storageManager->m_localStorageDatabaseTracker->origins())
+            origins.add(WTF::move(origin));
+
+        for (auto& transientLocalStorageNamespace : storageManager->m_transientLocalStorageNamespaces.values()) {
+            for (auto& origin : transientLocalStorageNamespace->origins())
+                origins.add(WTF::move(origin));
+        }
+
+        RunLoop::main().dispatch([origins, completionHandler]() mutable {
+            completionHandler(WTF::move(origins));
+        });
+    });
+}
+
+void StorageManager::getLocalStorageDetailsByOrigin(std::function<void (Vector<LocalStorageDetails>)> completionHandler)
 {
     RefPtr<StorageManager> storageManager(this);
 
@@ -540,7 +637,7 @@ void StorageManager::getStorageDetailsByOrigin(std::function<void (Vector<LocalS
     });
 }
 
-void StorageManager::deleteEntriesForOrigin(const SecurityOrigin& securityOrigin)
+void StorageManager::deleteLocalStorageEntriesForOrigin(const SecurityOrigin& securityOrigin)
 {
     RefPtr<StorageManager> storageManager(this);
 
@@ -556,7 +653,7 @@ void StorageManager::deleteEntriesForOrigin(const SecurityOrigin& securityOrigin
     });
 }
 
-void StorageManager::deleteAllEntries()
+void StorageManager::deleteAllLocalStorageEntries()
 {
     RefPtr<StorageManager> storageManager(this);
 
@@ -590,7 +687,7 @@ void StorageManager::deleteLocalStorageOriginsModifiedSince(std::chrono::system_
     });
 }
 
-void StorageManager::deleteEntriesForOrigins(const Vector<RefPtr<WebCore::SecurityOrigin>>& origins, std::function<void ()> completionHandler)
+void StorageManager::deleteLocalStorageEntriesForOrigins(const Vector<RefPtr<WebCore::SecurityOrigin>>& origins, std::function<void ()> completionHandler)
 {
     Vector<RefPtr<WebCore::SecurityOrigin>> copiedOrigins;
     copiedOrigins.reserveInitialCapacity(origins.size());
@@ -642,6 +739,23 @@ void StorageManager::createTransientLocalStorageMap(IPC::Connection& connection,
 {
     // FIXME: This should be a message check.
     ASSERT(m_storageAreasByConnection.isValidKey({ &connection, storageMapID }));
+
+    Ref<SecurityOrigin> origin = securityOriginData.securityOrigin();
+
+    // See if we already have session storage for this connection/origin combo.
+    // If so, update the map with the new ID, otherwise keep on trucking.
+    for (auto it = m_storageAreasByConnection.begin(), end = m_storageAreasByConnection.end(); it != end; ++it) {
+        if (it->key.first != &connection)
+            continue;
+        Ref<StorageArea> area = *it->value;
+        if (!area->isSessionStorage())
+            continue;
+        if (!origin->isSameSchemeHostPort(&area->securityOrigin()))
+            continue;
+        m_storageAreasByConnection.remove(it);
+        m_storageAreasByConnection.add({ &connection, storageMapID }, WTF::move(area));
+        return;
+    }
 
     auto& slot = m_storageAreasByConnection.add({ &connection, storageMapID }, nullptr).iterator->value;
 
@@ -697,6 +811,10 @@ void StorageManager::destroyStorageMap(IPC::Connection& connection, uint64_t sto
         // The connection has been removed because the last page was closed.
         return;
     }
+
+    // Don't remove session storage maps. The web process may reconnect and expect the data to still be around.
+    if (it->value->isSessionStorage())
+        return;
 
     it->value->removeListener(connection, storageMapID);
     m_storageAreasByConnection.remove(connectionAndStorageMapIDPair);

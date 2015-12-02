@@ -33,14 +33,13 @@
 #include "ScriptExecutionContext.h"
 #include "SecurityOrigin.h"
 #include "SourceInfo.h"
-#include <wtf/Functional.h>
 #include <wtf/MainThread.h>
 
 namespace WebCore {
 
-PassRefPtr<MediaStreamTrackSourcesRequest> MediaStreamTrackSourcesRequest::create(ScriptExecutionContext* context, PassRefPtr<MediaStreamTrackSourcesCallback> callback)
+Ref<MediaStreamTrackSourcesRequest> MediaStreamTrackSourcesRequest::create(ScriptExecutionContext* context, PassRefPtr<MediaStreamTrackSourcesCallback> callback)
 {
-    return adoptRef(new MediaStreamTrackSourcesRequest(context, callback));
+    return adoptRef(*new MediaStreamTrackSourcesRequest(context, callback));
 }
 
 MediaStreamTrackSourcesRequest::MediaStreamTrackSourcesRequest(ScriptExecutionContext* context, PassRefPtr<MediaStreamTrackSourcesCallback> callback)

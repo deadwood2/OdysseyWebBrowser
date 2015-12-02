@@ -40,6 +40,7 @@
 #include <WebCore/ResourceResponse.h>
 #include <WebCore/SharedBuffer.h>
 #include <wtf/NeverDestroyed.h>
+#include <wtf/RunLoop.h>
 #include <wtf/text/StringBuilder.h>
 
 #if PLATFORM(COCOA)
@@ -108,7 +109,11 @@ static Key makeCacheKey(const WebCore::ResourceRequest& request)
 #endif
     if (partition.isEmpty())
         partition = ASCIILiteral("No partition");
-    return { request.httpMethod(), partition, request.url().string()  };
+
+    // FIXME: This implements minimal Range header disk cache support. We don't parse
+    // ranges so only the same exact range request will be served from the cache.
+    String range = request.httpHeaderField(WebCore::HTTPHeaderName::Range);
+    return { request.httpMethod(), partition, range, request.url().string()  };
 }
 
 static String headerValueForVary(const WebCore::ResourceRequest& request, const String& headerName)
@@ -236,6 +241,7 @@ static bool isStatusCodeCacheableByDefault(int statusCode)
     case 200: // OK
     case 203: // Non-Authoritative Information
     case 204: // No Content
+    case 206: // Partial Content
     case 300: // Multiple Choices
     case 301: // Moved Permanently
     case 404: // Not Found
@@ -387,7 +393,14 @@ void Cache::store(const WebCore::ResourceRequest& originalRequest, const WebCore
     ASSERT(isEnabled());
     ASSERT(responseData);
 
-    LOG(NetworkCache, "(NetworkProcess) storing %s, partition %s", originalRequest.url().string().latin1().data(), originalRequest.cachePartition().latin1().data());
+#if !LOG_DISABLED
+#if ENABLE(CACHE_PARTITIONING)
+    CString partition = originalRequest.cachePartition().latin1();
+#else
+    CString partition = "No partition";
+#endif
+    LOG(NetworkCache, "(NetworkProcess) storing %s, partition %s", originalRequest.url().string().latin1().data(), partition.data());
+#endif // !LOG_DISABLED
 
     StoreDecision storeDecision = makeStoreDecision(originalRequest, response);
     if (storeDecision != StoreDecision::Yes) {
@@ -406,11 +419,10 @@ void Cache::store(const WebCore::ResourceRequest& originalRequest, const WebCore
     m_storage->store(record, [completionHandler](const Data& bodyData) {
         MappedBody mappedBody;
 #if ENABLE(SHAREABLE_RESOURCE)
-        if (bodyData.isMap()) {
-            RefPtr<SharedMemory> sharedMemory = SharedMemory::create(const_cast<uint8_t*>(bodyData.data()), bodyData.size(), SharedMemory::Protection::ReadOnly);
-            mappedBody.shareableResource = sharedMemory ? ShareableResource::create(WTF::move(sharedMemory), 0, bodyData.size()) : nullptr;
-            if (mappedBody.shareableResource)
-                mappedBody.shareableResource->createHandle(mappedBody.shareableResourceHandle);
+        if (RefPtr<SharedMemory> sharedMemory = bodyData.tryCreateSharedMemory()) {
+            mappedBody.shareableResource = ShareableResource::create(WTF::move(sharedMemory), 0, bodyData.size());
+            ASSERT(mappedBody.shareableResource);
+            mappedBody.shareableResource->createHandle(mappedBody.shareableResourceHandle);
         }
 #endif
         completionHandler(mappedBody);
@@ -482,11 +494,15 @@ void Cache::dumpContentsToFile()
     };
     Totals totals;
     auto flags = Storage::TraverseFlag::ComputeWorth | Storage::TraverseFlag::ShareCount;
-    m_storage->traverse(flags, [fd, totals](const Storage::Record* record, const Storage::RecordInfo& info) mutable {
+    size_t capacity = m_storage->capacity();
+    m_storage->traverse(flags, [fd, totals, capacity](const Storage::Record* record, const Storage::RecordInfo& info) mutable {
         if (!record) {
             StringBuilder epilogue;
             epilogue.appendLiteral("{}\n],\n");
             epilogue.appendLiteral("\"totals\": {\n");
+            epilogue.appendLiteral("\"capacity\": ");
+            epilogue.appendNumber(capacity);
+            epilogue.appendLiteral(",\n");
             epilogue.appendLiteral("\"count\": ");
             epilogue.appendNumber(totals.count);
             epilogue.appendLiteral(",\n");
@@ -517,20 +533,33 @@ void Cache::dumpContentsToFile()
     });
 }
 
-void Cache::clear()
+void Cache::deleteDumpFile()
+{
+    auto queue = WorkQueue::create("com.apple.WebKit.Cache.delete");
+    StringCapture dumpFilePathCapture(dumpFilePath());
+    queue->dispatch([dumpFilePathCapture] {
+        WebCore::deleteFile(dumpFilePathCapture.string());
+    });
+}
+
+void Cache::clear(std::chrono::system_clock::time_point modifiedSince, std::function<void ()>&& completionHandler)
 {
     LOG(NetworkCache, "(NetworkProcess) clearing cache");
-    if (m_storage) {
-        m_storage->clear();
+    deleteDumpFile();
 
-        auto queue = WorkQueue::create("com.apple.WebKit.Cache.delete");
-        StringCapture dumpFilePathCapture(dumpFilePath());
-        queue->dispatch([dumpFilePathCapture] {
-            WebCore::deleteFile(dumpFilePathCapture.string());
-        });
-    }
     if (m_statistics)
         m_statistics->clear();
+
+    if (!m_storage) {
+        RunLoop::main().dispatch(completionHandler);
+        return;
+    }
+    m_storage->clear(modifiedSince, WTF::move(completionHandler));
+}
+
+void Cache::clear()
+{
+    clear(std::chrono::system_clock::time_point::min(), nullptr);
 }
 
 String Cache::recordsPath() const

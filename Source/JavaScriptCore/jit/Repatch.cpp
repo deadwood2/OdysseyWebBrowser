@@ -49,6 +49,7 @@
 #include "StructureRareDataInlines.h"
 #include "StructureStubClearingWatchpoint.h"
 #include "ThunkGenerators.h"
+#include <wtf/CommaPrinter.h>
 #include <wtf/ListDump.h>
 #include <wtf/StringPrintStream.h>
 
@@ -1168,16 +1169,15 @@ static Structure* emitPutTransitionStubAndGetOldStructure(ExecState* exec, VM* v
     MacroAssembler::Call callFlushWriteBarrierBuffer;
     MacroAssembler::Jump ownerIsRememberedOrInEden = stubJit.jumpIfIsRememberedOrInEden(baseGPR);
     {
-        WriteBarrierBuffer* writeBarrierBuffer = &stubJit.vm()->heap.writeBarrierBuffer();
-        stubJit.move(MacroAssembler::TrustedImmPtr(writeBarrierBuffer), scratchGPR1);
-        stubJit.load32(MacroAssembler::Address(scratchGPR1, WriteBarrierBuffer::currentIndexOffset()), scratchGPR2);
+        WriteBarrierBuffer& writeBarrierBuffer = stubJit.vm()->heap.writeBarrierBuffer();
+        stubJit.load32(writeBarrierBuffer.currentIndexAddress(), scratchGPR2);
         MacroAssembler::Jump needToFlush =
-            stubJit.branch32(MacroAssembler::AboveOrEqual, scratchGPR2, MacroAssembler::Address(scratchGPR1, WriteBarrierBuffer::capacityOffset()));
+            stubJit.branch32(MacroAssembler::AboveOrEqual, scratchGPR2, MacroAssembler::TrustedImm32(writeBarrierBuffer.capacity()));
 
         stubJit.add32(MacroAssembler::TrustedImm32(1), scratchGPR2);
-        stubJit.store32(scratchGPR2, MacroAssembler::Address(scratchGPR1, WriteBarrierBuffer::currentIndexOffset()));
+        stubJit.store32(scratchGPR2, writeBarrierBuffer.currentIndexAddress());
 
-        stubJit.loadPtr(MacroAssembler::Address(scratchGPR1, WriteBarrierBuffer::bufferOffset()), scratchGPR1);
+        stubJit.move(MacroAssembler::TrustedImmPtr(writeBarrierBuffer.buffer()), scratchGPR1);
         // We use an offset of -sizeof(void*) because we already added 1 to scratchGPR2.
         stubJit.storePtr(baseGPR, MacroAssembler::BaseIndex(scratchGPR1, scratchGPR2, MacroAssembler::ScalePtr, static_cast<int32_t>(-sizeof(void*))));
 
@@ -1828,15 +1828,35 @@ void linkPolymorphicCall(
     if (callerCodeBlock->jitType() != JITCode::topTierJIT())
         fastCounts = std::make_unique<uint32_t[]>(callCases.size());
     
-    for (size_t i = callCases.size(); i--;) {
+    for (size_t i = 0; i < callCases.size(); ++i) {
         if (fastCounts)
             fastCounts[i] = 0;
         
         CallVariant variant = callCases[i].variant();
+        int64_t newCaseValue;
         if (isClosureCall)
-            caseValues[i] = bitwise_cast<intptr_t>(variant.executable());
+            newCaseValue = bitwise_cast<intptr_t>(variant.executable());
         else
-            caseValues[i] = bitwise_cast<intptr_t>(variant.function());
+            newCaseValue = bitwise_cast<intptr_t>(variant.function());
+        
+        if (!ASSERT_DISABLED) {
+            for (size_t j = 0; j < i; ++j) {
+                if (caseValues[j] != newCaseValue)
+                    continue;
+
+                dataLog("ERROR: Attempt to add duplicate case value.\n");
+                dataLog("Existing case values: ");
+                CommaPrinter comma;
+                for (size_t k = 0; k < i; ++k)
+                    dataLog(comma, caseValues[k]);
+                dataLog("\n");
+                dataLog("Attempting to add: ", newCaseValue, "\n");
+                dataLog("Variant list: ", listDump(callCases), "\n");
+                RELEASE_ASSERT_NOT_REACHED();
+            }
+        }
+        
+        caseValues[i] = newCaseValue;
     }
     
     GPRReg fastCountsBaseGPR =

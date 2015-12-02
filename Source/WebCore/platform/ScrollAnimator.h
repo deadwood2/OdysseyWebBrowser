@@ -118,10 +118,12 @@ public:
     virtual void notifyContentAreaScrolled(const FloatSize& delta) { UNUSED_PARAM(delta); }
 
     virtual bool isRubberBandInProgress() const { return false; }
+    virtual bool isScrollSnapInProgress() const { return false; }
 
     void setWheelEventTestTrigger(RefPtr<WheelEventTestTrigger>&& testTrigger) { m_wheelEventTestTrigger = testTrigger; }
 #if (ENABLE(CSS_SCROLL_SNAP) || ENABLE(RUBBER_BANDING)) && PLATFORM(MAC)
-    WheelEventTestTrigger* testTrigger() const override { return m_wheelEventTestTrigger.get(); }
+    void deferTestsForReason(WheelEventTestTrigger::ScrollableAreaIdentifier, WheelEventTestTrigger::DeferTestTriggerReason) const override;
+    void removeTestDeferralForReason(WheelEventTestTrigger::ScrollableAreaIdentifier, WheelEventTestTrigger::DeferTestTriggerReason) const override;
 #endif
     
 #if ENABLE(CSS_SCROLL_SNAP) && PLATFORM(MAC)
@@ -129,10 +131,13 @@ public:
     void updateScrollAnimatorsAndTimers();
     LayoutUnit scrollOffsetOnAxis(ScrollEventAxis) const override;
     void immediateScrollOnAxis(ScrollEventAxis, float delta) override;
+    bool activeScrollSnapIndexDidChange() const;
+    unsigned activeScrollSnapIndexForAxis(ScrollEventAxis) const;
 #endif
 
 protected:
     virtual void notifyPositionChanged(const FloatSize& delta);
+    void updateActiveScrollSnapIndexForOffset();
 
     ScrollableArea& m_scrollableArea;
     RefPtr<WheelEventTestTrigger> m_wheelEventTestTrigger;

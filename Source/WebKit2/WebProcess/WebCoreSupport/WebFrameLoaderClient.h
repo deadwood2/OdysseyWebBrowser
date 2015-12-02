@@ -80,6 +80,7 @@ private:
     
     virtual void dispatchDidHandleOnloadEvents() override;
     virtual void dispatchDidReceiveServerRedirectForProvisionalLoad() override;
+    virtual void dispatchDidChangeProvisionalURL() override;
     virtual void dispatchDidCancelClientRedirect() override;
     virtual void dispatchWillPerformClientRedirect(const WebCore::URL&, double interval, double fireDate) override;
     virtual void dispatchDidChangeLocationWithinPage() override;
@@ -122,7 +123,10 @@ private:
     
     virtual void willChangeTitle(WebCore::DocumentLoader*) override;
     virtual void didChangeTitle(WebCore::DocumentLoader*) override;
-    
+
+    virtual void willReplaceMultipartContent() override;
+    virtual void didReplaceMultipartContent() override;
+
     virtual void committedLoad(WebCore::DocumentLoader*, const char*, int) override;
     virtual void finishedLoading(WebCore::DocumentLoader*) override;
     

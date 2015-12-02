@@ -50,6 +50,10 @@ WebInspector.ConsoleMessageView = class ConsoleMessageView extends WebInspector.
             this._element.classList.add("console-log-level");
             this._element.setAttribute("data-labelprefix", WebInspector.UIString("Log: "));
             break;
+        case WebInspector.ConsoleMessage.MessageLevel.Info:
+            this._element.classList.add("console-info-level");
+            this._element.setAttribute("data-labelprefix", WebInspector.UIString("Info: "));
+            break;
         case WebInspector.ConsoleMessage.MessageLevel.Debug:
             this._element.classList.add("console-debug-level");
             this._element.setAttribute("data-labelprefix", WebInspector.UIString("Debug: "));
@@ -187,7 +191,7 @@ WebInspector.ConsoleMessageView = class ConsoleMessageView extends WebInspector.
 
         var hasStackTrace = this._shouldShowStackTrace();
         if (hasStackTrace) {
-            this._message.stackTrace.forEach(function(frame) {
+            this._message.stackTrace.callFrames.forEach(function(frame) {
                 clipboardString += "\n\t" + (frame.functionName || WebInspector.UIString("(anonymous function)"));
                 if (frame.url)
                     clipboardString += " (" + WebInspector.displayNameForURL(frame.url) + ", line " + frame.lineNumber + ")";
@@ -282,14 +286,27 @@ WebInspector.ConsoleMessageView = class ConsoleMessageView extends WebInspector.
         if (this._message.source === WebInspector.ConsoleMessage.MessageSource.Network || this._message.request)
             return;
 
-        var firstNonNativeCallFrame = this._firstNonNativeCallFrame();
+        var firstNonNativeCallFrame = this._message.stackTrace.firstNonNativeCallFrame;
+
+        var callFrame;
         if (firstNonNativeCallFrame) {
-            var urlElement = this._linkifyCallFrame(firstNonNativeCallFrame);
-            this._element.appendChild(urlElement);
+            // JavaScript errors and console.* methods.
+            callFrame = firstNonNativeCallFrame;
         } else if (this._message.url && !this._shouldHideURL(this._message.url)) {
-            var urlElement = this._linkifyLocation(this._message.url, this._message.line, this._message.column);
-            this._element.appendChild(urlElement);
+            // CSS warnings have no stack traces.
+            callFrame = WebInspector.CallFrame.fromPayload({
+                url: this._message.url,
+                lineNumber: this._message.line,
+                columnNumber: this._message.column
+            });
         }
+
+        if (!callFrame)
+            return;
+
+        var locationElement = new WebInspector.CallFrameView(callFrame);
+        locationElement.classList.add("console-message-location");
+        this._element.appendChild(locationElement);
     }
 
     _appendExtraParameters()
@@ -329,11 +346,12 @@ WebInspector.ConsoleMessageView = class ConsoleMessageView extends WebInspector.
         this._stackTraceElement.classList.add("console-message-stack-trace-container");
         this._stackTraceElement.classList.add("console-message-text");
 
-        for (var callFrame of this._message.stackTrace) {
+        for (var callFrame of this._message.stackTrace.callFrames) {
             var callFrameElement = this._stackTraceElement.appendChild(document.createElement("li"));
             callFrameElement.classList.add("console-message-stack-trace-call-frame");
             callFrameElement.textContent = callFrame.functionName || WebInspector.UIString("(anonymous function)");
-            if (callFrame.url && !this._shouldHideURL(callFrame.url))
+            var url = (callFrame.sourceCodeLocation && callFrame.sourceCodeLocation.sourceCode && callFrame.sourceCodeLocation.sourceCode.url) || "";
+            if (url && !this._shouldHideURL(url))
                 callFrameElement.appendChild(this._linkifyCallFrame(callFrame));
         }
     }
@@ -563,10 +581,7 @@ WebInspector.ConsoleMessageView = class ConsoleMessageView extends WebInspector.
                     toAppend = wrapper;
                 }
 
-                var span = document.createElement("span");
-                span.className = "type-string";
-                span.appendChild(toAppend);
-                a.appendChild(span);
+                a.appendChild(toAppend);
             }
             return a;
         }
@@ -577,7 +592,7 @@ WebInspector.ConsoleMessageView = class ConsoleMessageView extends WebInspector.
 
     _shouldShowStackTrace()
     {
-        if (!this._message.stackTrace || !this._message.stackTrace.length)
+        if (!this._message.stackTrace.callFrames.length)
             return false;
 
         return this._message.source === WebInspector.ConsoleMessage.MessageSource.Network
@@ -590,21 +605,6 @@ WebInspector.ConsoleMessageView = class ConsoleMessageView extends WebInspector.
         return url === "undefined" || url === "[native code]";
     }
 
-    _firstNonNativeCallFrame()
-    {
-        if (!this._message.stackTrace)
-            return null;
-
-        for (var i = 0; i < this._message.stackTrace.length; i++) {
-            var frame = this._message.stackTrace[i];
-            if (!frame.url || frame.url === "[native code]")
-                continue;
-            return frame;
-        }
-
-        return null;
-    }
-
     _linkifyLocation(url, lineNumber, columnNumber)
     {
         // ConsoleMessage stack trace line numbers are one-based.
@@ -615,7 +615,18 @@ WebInspector.ConsoleMessageView = class ConsoleMessageView extends WebInspector.
 
     _linkifyCallFrame(callFrame)
     {
-        return this._linkifyLocation(callFrame.url, callFrame.lineNumber, callFrame.columnNumber);
+        var url = "";
+        var lineNumber = 0;
+        var columnNumber = 0;
+
+        var sourceCodeLocation = callFrame._sourceCodeLocation;
+        if (sourceCodeLocation) {
+            lineNumber = sourceCodeLocation.lineNumber;
+            columnNumber = sourceCodeLocation.columnNumber;
+            url = sourceCodeLocation.sourceCode && sourceCodeLocation.sourceCode.url || "";
+        }
+
+        return this._linkifyLocation(url, lineNumber, columnNumber);
     }
 
     _userProvidedColumnNames(columnNamesArgument)
@@ -743,6 +754,8 @@ WebInspector.ConsoleMessageView = class ConsoleMessageView extends WebInspector.
         switch (this._message.level) {
         case WebInspector.ConsoleMessage.MessageLevel.Log:
             return "Log";
+        case WebInspector.ConsoleMessage.MessageLevel.Info:
+            return "Info";
         case WebInspector.ConsoleMessage.MessageLevel.Warning:
             return "Warning";
         case WebInspector.ConsoleMessage.MessageLevel.Debug:

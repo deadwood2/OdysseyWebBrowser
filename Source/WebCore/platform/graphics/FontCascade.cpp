@@ -582,7 +582,7 @@ bool FontCascade::shouldUseSmoothing()
     return shouldUseFontSmoothing;
 }
 
-static bool antialiasedFontDilationIsEnabled = true;
+static bool antialiasedFontDilationIsEnabled = false;
 
 void FontCascade::setAntialiasedFontDilationEnabled(bool enabled)
 {
@@ -1476,7 +1476,7 @@ void FontCascade::adjustSelectionRectForSimpleText(const TextRun& run, LayoutRec
         selectionRect.move(totalWidth - afterWidth, 0);
     } else
         selectionRect.move(beforeWidth, 0);
-    selectionRect.setWidth(afterWidth - beforeWidth);
+    selectionRect.setWidth(LayoutUnit::fromFloatCeil(afterWidth - beforeWidth));
 }
 
 int FontCascade::offsetForPositionForSimpleText(const TextRun& run, float x, bool includePartialGlyphs) const

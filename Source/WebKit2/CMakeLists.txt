@@ -147,6 +147,8 @@ set(WebKit2_INCLUDE_DIRECTORIES
     "${CMAKE_SOURCE_DIR}/Source"
 )
 
+set(WebKit2_SYSTEM_INCLUDE_DIRECTORIES "")
+
 if (ENABLE_GRAPHICS_CONTEXT_3D)
     list(APPEND WebKit2_INCLUDE_DIRECTORIES
         "${THIRDPARTY_DIR}/ANGLE"
@@ -154,11 +156,10 @@ if (ENABLE_GRAPHICS_CONTEXT_3D)
     )
 endif ()
 
-set(NetworkProcess_SOURCES
+set(NetworkProcess_COMMON_SOURCES
     NetworkProcess/NetworkConnectionToWebProcess.cpp
     NetworkProcess/NetworkProcess.cpp
     NetworkProcess/NetworkProcessPlatformStrategies.cpp
-    NetworkProcess/NetworkResourceLoadScheduler.cpp
     NetworkProcess/NetworkResourceLoader.cpp
 
     NetworkProcess/FileAPI/NetworkBlobRegistry.cpp
@@ -166,6 +167,7 @@ set(NetworkProcess_SOURCES
     NetworkProcess/cache/NetworkCache.cpp
     NetworkProcess/cache/NetworkCacheBlobStorage.cpp
     NetworkProcess/cache/NetworkCacheCoders.cpp
+    NetworkProcess/cache/NetworkCacheData.cpp
     NetworkProcess/cache/NetworkCacheDecoder.cpp
     NetworkProcess/cache/NetworkCacheEncoder.cpp
     NetworkProcess/cache/NetworkCacheEntry.cpp
@@ -626,7 +628,7 @@ set(WebKit2_SOURCES
     WebProcess/WebPage/VisitedLinkTableController.cpp
     WebProcess/WebPage/WebUndoStep.cpp
 
-    ${NetworkProcess_SOURCES}
+    ${NetworkProcess_COMMON_SOURCES}
 )
 
 set(WebKit2_MESSAGES_IN_FILES
@@ -642,6 +644,7 @@ set(WebKit2_MESSAGES_IN_FILES
     PluginProcess/PluginProcess.messages.in
     PluginProcess/WebProcessConnection.messages.in
 
+    Shared/ChildProcess.messages.in
     Shared/WebConnection.messages.in
 
     Shared/Authentication/AuthenticationManager.messages.in
@@ -776,6 +779,7 @@ WEBKIT_INCLUDE_CONFIG_FILES_IF_EXISTS()
 GENERATE_WEBKIT2_MESSAGE_SOURCES(WebKit2_DERIVED_SOURCES "${WebKit2_MESSAGES_IN_FILES}")
 
 include_directories(${WebKit2_INCLUDE_DIRECTORIES})
+include_directories(SYSTEM ${WebKit2_SYSTEM_INCLUDE_DIRECTORIES})
 add_library(WebKit2 ${WebKit2_LIBRARY_TYPE} ${WebKit2_SOURCES} ${WebKit2_DERIVED_SOURCES})
 
 add_dependencies(WebKit2 WebCore ${WEBKIT2_EXTRA_DEPENDENCIES})

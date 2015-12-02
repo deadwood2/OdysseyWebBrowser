@@ -169,9 +169,9 @@ bool isBackForwardLoadType(FrameLoadType type)
 // non-member lets us exclude it from the header file, thus keeping FrameLoader.h's
 // API simpler.
 //
-static bool isDocumentSandboxed(Frame* frame, SandboxFlags mask)
+static bool isDocumentSandboxed(Frame& frame, SandboxFlags mask)
 {
-    return frame->document() && frame->document()->isSandboxed(mask);
+    return frame.document() && frame.document()->isSandboxed(mask);
 }
 
 class FrameLoader::FrameProgressTracker {
@@ -220,7 +220,6 @@ FrameLoader::FrameLoader(Frame& frame, FrameLoaderClient& client)
     , m_mixedContentChecker(frame)
     , m_state(FrameStateProvisional)
     , m_loadType(FrameLoadType::Standard)
-    , m_delegateIsHandlingProvisionalLoadError(false)
     , m_quickRedirectComing(false)
     , m_sentRedirectNotification(false)
     , m_inStopAllLoaders(false)
@@ -318,14 +317,14 @@ void FrameLoader::changeLocation(const FrameLoadRequest& request)
     urlSelected(request, nullptr);
 }
 
-void FrameLoader::urlSelected(const URL& url, const String& passedTarget, PassRefPtr<Event> triggeringEvent, LockHistory lockHistory, LockBackForwardList lockBackForwardList, ShouldSendReferrer shouldSendReferrer)
+void FrameLoader::urlSelected(const URL& url, const String& passedTarget, Event* triggeringEvent, LockHistory lockHistory, LockBackForwardList lockBackForwardList, ShouldSendReferrer shouldSendReferrer)
 {
     NewFrameOpenerPolicy newFrameOpenerPolicy = shouldSendReferrer == NeverSendReferrer ? NewFrameOpenerPolicy::Suppress : NewFrameOpenerPolicy::Allow;
 
     urlSelected(FrameLoadRequest(m_frame.document()->securityOrigin(), ResourceRequest(url), passedTarget, lockHistory, lockBackForwardList, shouldSendReferrer, AllowNavigationToInvalidURL::Yes, newFrameOpenerPolicy, DoNotReplaceDocumentIfJavaScriptURL), triggeringEvent);
 }
 
-void FrameLoader::urlSelected(const FrameLoadRequest& passedRequest, PassRefPtr<Event> triggeringEvent)
+void FrameLoader::urlSelected(const FrameLoadRequest& passedRequest, Event* triggeringEvent)
 {
     Ref<Frame> protect(m_frame);
     FrameLoadRequest frameRequest(passedRequest);
@@ -356,7 +355,7 @@ void FrameLoader::submitForm(PassRefPtr<FormSubmission> submission)
     if (submission->action().isEmpty())
         return;
 
-    if (isDocumentSandboxed(&m_frame, SandboxForms)) {
+    if (isDocumentSandboxed(m_frame, SandboxForms)) {
         // FIXME: This message should be moved off the console once a solution to https://bugs.webkit.org/show_bug.cgi?id=103274 exists.
         m_frame.document()->addConsoleMessage(MessageSource::Security, MessageLevel::Error, "Blocked form submission to '" + submission->action().stringCenterEllipsizedToLength() + "' because the form's frame is sandboxed and the 'allow-forms' permission is not set.");
         return;
@@ -916,7 +915,8 @@ void FrameLoader::loadURLIntoChildFrame(const URL& url, const String& referer, F
         }
     }
 
-    childFrame->loader().loadURL(url, referer, "_self", LockHistory::No, FrameLoadType::RedirectWithLockedBackForwardList, 0, 0, AllowNavigationToInvalidURL::Yes, NewFrameOpenerPolicy::Suppress);
+    FrameLoadRequest frameLoadRequest(m_frame.document()->securityOrigin(), ResourceRequest(url), "_self", LockHistory::No, LockBackForwardList::Yes, ShouldSendReferrer::MaybeSendReferrer, AllowNavigationToInvalidURL::Yes, NewFrameOpenerPolicy::Suppress, ReplaceDocumentIfJavaScriptURL);
+    childFrame->loader().loadURL(frameLoadRequest, referer, FrameLoadType::RedirectWithLockedBackForwardList, 0, 0);
 }
 
 #if ENABLE(WEB_ARCHIVE) || ENABLE(MHTML)
@@ -926,8 +926,9 @@ void FrameLoader::loadArchive(PassRefPtr<Archive> archive)
     ASSERT(mainResource);
     if (!mainResource)
         return;
-        
-    SubstituteData substituteData(mainResource->data(), mainResource->mimeType(), mainResource->textEncoding(), URL());
+
+    ResourceResponse response(URL(), mainResource->mimeType(), mainResource->data()->size(), mainResource->textEncoding());
+    SubstituteData substituteData(mainResource->data(), URL(), response, SubstituteData::SessionHistoryVisibility::Hidden);
     
     ResourceRequest request(mainResource->url());
 #if PLATFORM(MAC)
@@ -1140,7 +1141,7 @@ void FrameLoader::setupForReplace()
     detachChildren();
 }
 
-void FrameLoader::loadFrameRequest(const FrameLoadRequest& request, PassRefPtr<Event> event, PassRefPtr<FormState> formState)
+void FrameLoader::loadFrameRequest(const FrameLoadRequest& request, Event* event, PassRefPtr<FormState> formState)
 {    
     // Protect frame from getting blown away inside dispatchBeforeLoadEvent in loadWithDocumentLoader.
     Ref<Frame> protect(m_frame);
@@ -1170,9 +1171,9 @@ void FrameLoader::loadFrameRequest(const FrameLoadRequest& request, PassRefPtr<E
         loadType = FrameLoadType::Standard;
 
     if (request.resourceRequest().httpMethod() == "POST")
-        loadPostRequest(request.resourceRequest(), referrer, request.frameName(), request.lockHistory(), loadType, event, formState.get(), request.allowNavigationToInvalidURL(), request.newFrameOpenerPolicy());
+        loadPostRequest(request, referrer, loadType, event, formState.get());
     else
-        loadURL(request.resourceRequest().url(), referrer, request.frameName(), request.lockHistory(), loadType, event, formState.get(), request.allowNavigationToInvalidURL(), request.newFrameOpenerPolicy());
+        loadURL(request, referrer, loadType, event, formState.get());
 
     // FIXME: It's possible this targetFrame will not be the same frame that was targeted by the actual
     // load if frame names have changed.
@@ -1186,17 +1187,21 @@ void FrameLoader::loadFrameRequest(const FrameLoadRequest& request, PassRefPtr<E
     }
 }
 
-void FrameLoader::loadURL(const URL& newURL, const String& referrer, const String& frameName, LockHistory lockHistory, FrameLoadType newLoadType,
-    PassRefPtr<Event> event, PassRefPtr<FormState> prpFormState, AllowNavigationToInvalidURL allowNavigationToInvalidURL, NewFrameOpenerPolicy openerPolicy)
+void FrameLoader::loadURL(const FrameLoadRequest& frameLoadRequest, const String& referrer, FrameLoadType newLoadType, Event* event, PassRefPtr<FormState> prpFormState)
 {
     if (m_inStopAllLoaders)
         return;
 
     Ref<Frame> protect(m_frame);
 
+    String frameName = frameLoadRequest.frameName();
+    AllowNavigationToInvalidURL allowNavigationToInvalidURL = frameLoadRequest.allowNavigationToInvalidURL();
+    NewFrameOpenerPolicy openerPolicy = frameLoadRequest.newFrameOpenerPolicy();
+    LockHistory lockHistory = frameLoadRequest.lockHistory();
     RefPtr<FormState> formState = prpFormState;
     bool isFormSubmission = formState;
-    
+
+    const URL& newURL = frameLoadRequest.resourceRequest().url();
     ResourceRequest request(newURL);
     if (!referrer.isEmpty()) {
         request.setHTTPReferrer(referrer);
@@ -1216,7 +1221,9 @@ void FrameLoader::loadURL(const URL& newURL, const String& referrer, const Strin
     // The search for a target frame is done earlier in the case of form submission.
     Frame* targetFrame = isFormSubmission ? 0 : findFrameForNavigation(frameName);
     if (targetFrame && targetFrame != &m_frame) {
-        targetFrame->loader().loadURL(newURL, referrer, "_self", lockHistory, newLoadType, event, formState.release(), allowNavigationToInvalidURL, openerPolicy);
+        FrameLoadRequest newFrameLoadRequest(frameLoadRequest);
+        newFrameLoadRequest.setFrameName("_self");
+        targetFrame->loader().loadURL(newFrameLoadRequest, referrer, newLoadType, event, formState.release());
         return;
     }
 
@@ -1273,7 +1280,9 @@ SubstituteData FrameLoader::defaultSubstituteDataForURL(const URL& url)
     String srcdoc = m_frame.ownerElement()->fastGetAttribute(srcdocAttr);
     ASSERT(!srcdoc.isNull());
     CString encodedSrcdoc = srcdoc.utf8();
-    return SubstituteData(SharedBuffer::create(encodedSrcdoc.data(), encodedSrcdoc.length()), "text/html", "UTF-8", URL());
+
+    ResourceResponse response(URL(), ASCIILiteral("text/html"), encodedSrcdoc.length(), ASCIILiteral("UTF-8"));
+    return SubstituteData(SharedBuffer::create(encodedSrcdoc.data(), encodedSrcdoc.length()), URL(), response, SubstituteData::SessionHistoryVisibility::Hidden);
 }
 
 void FrameLoader::load(const FrameLoadRequest& passedRequest)
@@ -1306,6 +1315,9 @@ void FrameLoader::load(const FrameLoadRequest& passedRequest)
         request.setSubstituteData(defaultSubstituteDataForURL(request.resourceRequest().url()));
 
     RefPtr<DocumentLoader> loader = m_client.createDocumentLoader(request.resourceRequest(), request.substituteData());
+    if (m_frame.isMainFrame())
+        loader->setShouldOpenExternalURLsPolicy(request.shouldOpenExternalURLsPolicy());
+
     load(loader.get());
 }
 
@@ -1510,13 +1522,10 @@ bool FrameLoader::shouldReloadToHandleUnreachableURL(DocumentLoader* docLoader)
     // case handles well-formed URLs that can't be loaded, and the latter
     // case handles malformed URLs and unknown schemes. Loading alternate content
     // at other times behaves like a standard load.
-    DocumentLoader* compareDocumentLoader = 0;
     if (policyChecker().delegateIsDecidingNavigationPolicy() || policyChecker().delegateIsHandlingUnimplementablePolicy())
-        compareDocumentLoader = m_policyDocumentLoader.get();
-    else if (m_delegateIsHandlingProvisionalLoadError)
-        compareDocumentLoader = m_provisionalDocumentLoader.get();
+        return m_policyDocumentLoader && unreachableURL == m_policyDocumentLoader->request().url();
 
-    return compareDocumentLoader && unreachableURL == compareDocumentLoader->request().url();
+    return unreachableURL == m_provisionalLoadErrorBeingHandledURL;
 }
 
 void FrameLoader::reloadWithOverrideEncoding(const String& encoding)
@@ -2072,10 +2081,12 @@ void FrameLoader::open(CachedFrameBase& cachedFrame)
     ASSERT(view);
     view->setWasScrolledByUser(false);
 
-    // Use the current ScrollView's frame rect.
-    if (m_frame.view())
-        view->setFrameRect(m_frame.view()->frameRect());
+    Optional<IntRect> previousViewFrameRect = m_frame.view() ?  m_frame.view()->frameRect() : Optional<IntRect>(Nullopt);
     m_frame.setView(view);
+
+    // Use the previous ScrollView's frame rect.
+    if (previousViewFrameRect)
+        view->setFrameRect(previousViewFrameRect.value());
     
     m_frame.setDocument(document);
     document->domWindow()->resumeFromPageCache();
@@ -2170,7 +2181,7 @@ void FrameLoader::checkLoadCompleteForThisFrame()
 
     switch (m_state) {
         case FrameStateProvisional: {
-            if (m_delegateIsHandlingProvisionalLoadError)
+            if (!m_provisionalLoadErrorBeingHandledURL.isEmpty())
                 return;
 
             RefPtr<DocumentLoader> pdl = m_provisionalDocumentLoader;
@@ -2192,9 +2203,9 @@ void FrameLoader::checkLoadCompleteForThisFrame()
             // Only reset if we aren't already going to a new provisional item.
             bool shouldReset = !history().provisionalItem();
             if (!pdl->isLoadingInAPISense() || pdl->isStopping()) {
-                m_delegateIsHandlingProvisionalLoadError = true;
+                m_provisionalLoadErrorBeingHandledURL = m_provisionalDocumentLoader->url();
                 m_client.dispatchDidFailProvisionalLoad(error);
-                m_delegateIsHandlingProvisionalLoadError = false;
+                m_provisionalLoadErrorBeingHandledURL = { };
 
                 ASSERT(!pdl->isLoading());
 
@@ -2607,14 +2618,16 @@ void FrameLoader::addHTTPOriginIfNeeded(ResourceRequest& request, const String& 
     request.setHTTPOrigin(origin);
 }
 
-void FrameLoader::loadPostRequest(const ResourceRequest& inRequest, const String& referrer, const String& frameName, LockHistory lockHistory, FrameLoadType loadType, PassRefPtr<Event> event, PassRefPtr<FormState> prpFormState, AllowNavigationToInvalidURL allowNavigationToInvalidURL, NewFrameOpenerPolicy openerPolicy)
+void FrameLoader::loadPostRequest(const FrameLoadRequest& request, const String& referrer, FrameLoadType loadType, Event* event, PassRefPtr<FormState> prpFormState)
 {
     RefPtr<FormState> formState = prpFormState;
 
-    // Previously when this method was reached, the original FrameLoadRequest had been deconstructed to build a 
-    // bunch of parameters that would come in here and then be built back up to a ResourceRequest.  In case
-    // any caller depends on the immutability of the original ResourceRequest, I'm rebuilding a ResourceRequest
-    // from scratch as it did all along.
+    String frameName = request.frameName();
+    LockHistory lockHistory = request.lockHistory();
+    AllowNavigationToInvalidURL allowNavigationToInvalidURL = request.allowNavigationToInvalidURL();
+    NewFrameOpenerPolicy openerPolicy = request.newFrameOpenerPolicy();
+
+    const ResourceRequest& inRequest = request.resourceRequest();
     const URL& url = inRequest.url();
     RefPtr<FormData> formData = inRequest.httpBody();
     const String& contentType = inRequest.httpContentType();
@@ -3417,47 +3430,47 @@ bool FrameLoaderClient::hasHTMLView() const
     return true;
 }
 
-PassRefPtr<Frame> createWindow(Frame* openerFrame, Frame* lookupFrame, const FrameLoadRequest& request, const WindowFeatures& features, bool& created)
+RefPtr<Frame> createWindow(Frame& openerFrame, Frame& lookupFrame, const FrameLoadRequest& request, const WindowFeatures& features, bool& created)
 {
     ASSERT(!features.dialog || request.frameName().isEmpty());
 
     created = false;
 
     if (!request.frameName().isEmpty() && request.frameName() != "_blank") {
-        if (RefPtr<Frame> frame = lookupFrame->loader().findFrameForNavigation(request.frameName(), openerFrame->document())) {
+        if (RefPtr<Frame> frame = lookupFrame.loader().findFrameForNavigation(request.frameName(), openerFrame.document())) {
             if (request.frameName() != "_self") {
                 if (Page* page = frame->page())
                     page->chrome().focus();
             }
-            return frame.release();
+            return WTF::move(frame);
         }
     }
 
     // Sandboxed frames cannot open new auxiliary browsing contexts.
     if (isDocumentSandboxed(openerFrame, SandboxPopups)) {
         // FIXME: This message should be moved off the console once a solution to https://bugs.webkit.org/show_bug.cgi?id=103274 exists.
-        openerFrame->document()->addConsoleMessage(MessageSource::Security, MessageLevel::Error, "Blocked opening '" + request.resourceRequest().url().stringCenterEllipsizedToLength() + "' in a new window because the request was made in a sandboxed frame whose 'allow-popups' permission is not set.");
+        openerFrame.document()->addConsoleMessage(MessageSource::Security, MessageLevel::Error, "Blocked opening '" + request.resourceRequest().url().stringCenterEllipsizedToLength() + "' in a new window because the request was made in a sandboxed frame whose 'allow-popups' permission is not set.");
         return nullptr;
     }
 
     // FIXME: Setting the referrer should be the caller's responsibility.
     FrameLoadRequest requestWithReferrer = request;
-    String referrer = SecurityPolicy::generateReferrerHeader(openerFrame->document()->referrerPolicy(), request.resourceRequest().url(), openerFrame->loader().outgoingReferrer());
+    String referrer = SecurityPolicy::generateReferrerHeader(openerFrame.document()->referrerPolicy(), request.resourceRequest().url(), openerFrame.loader().outgoingReferrer());
     if (!referrer.isEmpty())
         requestWithReferrer.resourceRequest().setHTTPReferrer(referrer);
-    FrameLoader::addHTTPOriginIfNeeded(requestWithReferrer.resourceRequest(), openerFrame->loader().outgoingOrigin());
+    FrameLoader::addHTTPOriginIfNeeded(requestWithReferrer.resourceRequest(), openerFrame.loader().outgoingOrigin());
 
-    Page* oldPage = openerFrame->page();
+    Page* oldPage = openerFrame.page();
     if (!oldPage)
         return nullptr;
 
-    Page* page = oldPage->chrome().createWindow(openerFrame, requestWithReferrer, features, NavigationAction(requestWithReferrer.resourceRequest()));
+    Page* page = oldPage->chrome().createWindow(&openerFrame, requestWithReferrer, features, NavigationAction(requestWithReferrer.resourceRequest()));
     if (!page)
         return nullptr;
 
     RefPtr<Frame> frame = &page->mainFrame();
 
-    frame->loader().forceSandboxFlags(openerFrame->document()->sandboxFlags());
+    frame->loader().forceSandboxFlags(openerFrame.document()->sandboxFlags());
 
     if (request.frameName() != "_blank")
         frame->tree().setName(request.frameName());
@@ -3520,7 +3533,7 @@ PassRefPtr<Frame> createWindow(Frame* openerFrame, Frame* lookupFrame, const Fra
     page->chrome().show();
 
     created = true;
-    return frame.release();
+    return WTF::move(frame);
 }
 
 } // namespace WebCore

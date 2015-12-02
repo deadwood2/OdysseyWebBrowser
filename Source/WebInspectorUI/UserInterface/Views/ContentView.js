@@ -57,6 +57,11 @@ WebInspector.ContentView = function(representedObject, extraArguments)
                 return new WebInspector.RenderingFrameTimelineView(representedObject, extraArguments);
         }
 
+        if (representedObject instanceof WebInspector.Breakpoint) {
+            if (representedObject.sourceCodeLocation)
+                return new WebInspector.ContentView(representedObject.sourceCodeLocation.displaySourceCode, extraArguments);
+        }
+
         if (representedObject instanceof WebInspector.DOMStorageObject)
             return new WebInspector.DOMStorageContentView(representedObject, extraArguments);
 
@@ -80,6 +85,28 @@ WebInspector.ContentView = function(representedObject, extraArguments)
 
         if (representedObject instanceof WebInspector.DOMTree)
             return new WebInspector.FrameDOMTreeContentView(representedObject, extraArguments);
+
+        if (representedObject instanceof WebInspector.DOMSearchMatchObject) {
+            var resultView = new WebInspector.FrameDOMTreeContentView(WebInspector.frameResourceManager.mainFrame.domTree, extraArguments);
+            resultView.restoreFromCookie({nodeToSelect: representedObject.domNode});
+            return resultView;
+        }
+
+        if (representedObject instanceof WebInspector.SourceCodeSearchMatchObject) {
+            var resultView;
+            if (representedObject.sourceCode instanceof WebInspector.Resource)
+                resultView = new WebInspector.ResourceClusterContentView(representedObject.sourceCode, extraArguments);
+            else if (representedObject.sourceCode instanceof WebInspector.Script)
+                resultView = new WebInspector.ScriptContentView(representedObject.sourceCode, extraArguments);
+            else
+                console.error("Unknown SourceCode", representedObject.sourceCode);
+
+            var textRangeToSelect = representedObject.sourceCodeTextRange.formattedTextRange;
+            var startPosition = textRangeToSelect.startPosition();
+            resultView.restoreFromCookie({lineNumber: startPosition.lineNumber, columnNumber: startPosition.columnNumber});
+
+            return resultView;
+        }
 
         if (representedObject instanceof WebInspector.LogObject)
             return new WebInspector.LogContentView(representedObject, extraArguments);
@@ -105,7 +132,7 @@ WebInspector.ContentView = function(representedObject, extraArguments)
     this._representedObject = representedObject;
 
     this._element = document.createElement("div");
-    this._element.classList.add(WebInspector.ContentView.StyleClassName);
+    this._element.classList.add("content-view");
 
     this._parentContainer = null;
 };
@@ -125,6 +152,8 @@ WebInspector.ContentView.isViewable = function(representedObject)
         return true;
     if (representedObject instanceof WebInspector.Timeline)
         return true;
+    if (representedObject instanceof WebInspector.Breakpoint)
+        return representedObject.sourceCodeLocation;
     if (representedObject instanceof WebInspector.DOMStorageObject)
         return true;
     if (representedObject instanceof WebInspector.CookieStorageObject)
@@ -141,6 +170,10 @@ WebInspector.ContentView.isViewable = function(representedObject)
         return true;
     if (representedObject instanceof WebInspector.DOMTree)
         return true;
+    if (representedObject instanceof WebInspector.DOMSearchMatchObject)
+        return true;
+    if (representedObject instanceof WebInspector.SourceCodeSearchMatchObject)
+        return true;
     if (representedObject instanceof WebInspector.LogObject)
         return true;
     if (representedObject instanceof WebInspector.ContentFlow)
@@ -149,8 +182,6 @@ WebInspector.ContentView.isViewable = function(representedObject)
         return true;
     return false;
 };
-
-WebInspector.ContentView.StyleClassName = "content-view";
 
 WebInspector.ContentView.Event = {
     SelectionPathComponentsDidChange: "content-view-selection-path-components-did-change",

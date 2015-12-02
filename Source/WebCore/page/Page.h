@@ -260,6 +260,11 @@ public:
     WEBCORE_EXPORT void setPageScaleFactor(float scale, const IntPoint& origin, bool inStableState = true);
     float pageScaleFactor() const { return m_pageScaleFactor; }
 
+    // The view scale factor is multiplied into the page scale factor by all
+    // callers of setPageScaleFactor.
+    WEBCORE_EXPORT void setViewScaleFactor(float);
+    float viewScaleFactor() const { return m_viewScaleFactor; }
+
     WEBCORE_EXPORT void setZoomedOutPageScaleFactor(float);
     float zoomedOutPageScaleFactor() const { return m_zoomedOutPageScaleFactor; }
 
@@ -440,10 +445,10 @@ public:
     WEBCORE_EXPORT void setShouldPlayToPlaybackTarget(uint64_t, bool);
 #endif
 
-    WEBCORE_EXPORT RefPtr<WheelEventTestTrigger> testTrigger() const;
+    RefPtr<WheelEventTestTrigger> testTrigger() const { return m_testTrigger; }
     WEBCORE_EXPORT WheelEventTestTrigger& ensureTestTrigger();
-    WEBCORE_EXPORT void clearTrigger();
-    WEBCORE_EXPORT bool expectsWheelEventTriggers() const;
+    void clearTrigger() { m_testTrigger = nullptr; }
+    bool expectsWheelEventTriggers() const { return !!m_testTrigger; }
 
 private:
     WEBCORE_EXPORT void initGroup();
@@ -520,6 +525,7 @@ private:
     float m_pageScaleFactor;
     float m_zoomedOutPageScaleFactor;
     float m_deviceScaleFactor;
+    float m_viewScaleFactor { 1 };
 
     float m_topContentInset;
     

@@ -31,6 +31,9 @@ WebInspector.NewTabContentView = function(identifier)
 
     var allowedNewTabs = [
         {image: "Images/Elements.svg", title: WebInspector.UIString("Elements"), type: WebInspector.ElementsTabContentView.Type},
+        {image: "Images/Resources.svg", title: WebInspector.UIString("Resources"), type: WebInspector.ResourcesTabContentView.Type},
+        {image: "Images/Timeline.svg", title: WebInspector.UIString("Timelines"), type: WebInspector.TimelineTabContentView.Type},
+        {image: "Images/Debugger.svg", title: WebInspector.UIString("Debugger"), type: WebInspector.DebuggerTabContentView.Type},
         {image: "Images/Storage.svg", title: WebInspector.UIString("Storage"), type: WebInspector.StorageTabContentView.Type},
         {image: "Images/Console.svg", title: WebInspector.UIString("Console"), type: WebInspector.ConsoleTabContentView.Type}
     ];
@@ -40,12 +43,9 @@ WebInspector.NewTabContentView = function(identifier)
             continue;
 
         var tabItemElement = document.createElement("div");
-        tabItemElement.classList.add("tab-item");
-
-        if (WebInspector.isNewTabWithTypeAllowed(info.type))
-            tabItemElement.addEventListener("click", this._createNewTab.bind(this, info.type));
-        else
-            tabItemElement.classList.add("disabled");
+        tabItemElement.classList.add(WebInspector.NewTabContentView.TabItemStyleClassName);
+        tabItemElement.addEventListener("click", this._createNewTab.bind(this, info.type));
+        tabItemElement[WebInspector.NewTabContentView.TypeSymbol] = info.type;
 
         var boxElement = tabItemElement.appendChild(document.createElement("div"));
         boxElement.classList.add("box");
@@ -71,12 +71,42 @@ WebInspector.NewTabContentView.prototype = {
         return WebInspector.NewTabContentView.Type;
     },
 
+    shown()
+    {
+        WebInspector.tabBrowser.tabBar.addEventListener(WebInspector.TabBar.Event.TabBarItemAdded, this._updateTabItems, this);
+        WebInspector.tabBrowser.tabBar.addEventListener(WebInspector.TabBar.Event.TabBarItemRemoved, this._updateTabItems, this);
+
+        this._updateTabItems();
+    },
+
+    hidden()
+    {
+        WebInspector.tabBrowser.tabBar.removeEventListener(null, null, this);
+    },
+
     // Private
 
-    _createNewTab: function(tabType, event)
+    _createNewTab(tabType, event)
     {
+        if (!WebInspector.isNewTabWithTypeAllowed(tabType))
+            return;
+
         WebInspector.createNewTab(tabType, this);
+    },
+
+    _updateTabItems()
+    {
+        var tabItemElements = Array.from(this.element.querySelectorAll("." + WebInspector.NewTabContentView.TabItemStyleClassName));
+        for (var tabItemElement of tabItemElements) {
+            var type = tabItemElement[WebInspector.NewTabContentView.TypeSymbol];
+            var allowed = WebInspector.isNewTabWithTypeAllowed(type);
+            tabItemElement.classList.toggle(WebInspector.NewTabContentView.DisabledStyleClassName, !allowed);
+        }
     }
 };
 
 WebInspector.NewTabContentView.Type = "new-tab";
+WebInspector.NewTabContentView.TypeSymbol = Symbol("type");
+
+WebInspector.NewTabContentView.TabItemStyleClassName = "tab-item";
+WebInspector.NewTabContentView.DisabledStyleClassName = "disabled";

@@ -57,10 +57,12 @@ Performance::Performance(Frame* frame)
 #if ENABLE(RESOURCE_TIMING)
     , m_resourceTimingBufferSize(defaultResourceTimingBufferSize)
 #endif // ENABLE(RESOURCE_TIMING)
+    , m_referenceTime(frame->document()->loader()->timing().referenceMonotonicTime())
 #if ENABLE(USER_TIMING)
     , m_userTiming(0)
 #endif // ENABLE(USER_TIMING)
 {
+    ASSERT(m_referenceTime);
 }
 
 Performance::~Performance()
@@ -228,10 +230,7 @@ void Performance::webkitClearMeasures(const String& measureName)
 
 double Performance::now() const
 {
-    if (!frame())
-        return 0;
-
-    return 1000.0 * m_frame->document()->loader()->timing().monotonicTimeToZeroBasedDocumentTime(monotonicallyIncreasingTime());
+    return 1000.0 * (WTF::monotonicallyIncreasingTime() - m_referenceTime);
 }
 
 } // namespace WebCore

@@ -39,15 +39,15 @@ class MediaStreamAudioSource;
 
 class MediaStreamAudioDestinationNode : public AudioBasicInspectorNode {
 public:
-    static PassRefPtr<MediaStreamAudioDestinationNode> create(AudioContext*, size_t numberOfChannels);
+    static Ref<MediaStreamAudioDestinationNode> create(AudioContext*, size_t numberOfChannels);
 
     virtual ~MediaStreamAudioDestinationNode();
 
     MediaStream* stream() { return m_stream.get(); }
 
     // AudioNode.
-    virtual void process(size_t framesToProcess);
-    virtual void reset();
+    virtual void process(size_t framesToProcess) override;
+    virtual void reset() override;
     
     RealtimeMediaSource* mediaStreamSource();
 

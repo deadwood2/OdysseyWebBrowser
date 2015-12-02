@@ -59,7 +59,7 @@ WebInspector.LogContentView = function(representedObject)
     this._searchBar.addEventListener(WebInspector.SearchBar.Event.TextChanged, this._searchTextDidChange, this);
 
     var scopeBarItems = [
-        new WebInspector.ScopeBarItem(WebInspector.LogContentView.Scopes.All, WebInspector.UIString("All")),
+        new WebInspector.ScopeBarItem(WebInspector.LogContentView.Scopes.All, WebInspector.UIString("All"), true),
         new WebInspector.ScopeBarItem(WebInspector.LogContentView.Scopes.Errors, WebInspector.UIString("Errors")),
         new WebInspector.ScopeBarItem(WebInspector.LogContentView.Scopes.Warnings, WebInspector.UIString("Warnings")),
         new WebInspector.ScopeBarItem(WebInspector.LogContentView.Scopes.Logs, WebInspector.UIString("Logs"))
@@ -303,7 +303,7 @@ WebInspector.LogContentView.prototype = {
     _sessionStarted: function(event)
     {
         if (this._clearLogOnReloadSetting.value)  {
-            this._clearLog();
+            this._clearLogIgnoringClearMessages();
             this._reappendProvisionalMessages();
             return;
         }
@@ -631,6 +631,14 @@ WebInspector.LogContentView.prototype = {
         this._ignoreDidClearMessages = false;
     },
 
+    // FIXME: <https://webkit.org/b/145466> Web Inspector: Activity Viewer does not update on "Clear Log on reload"
+    _clearLogIgnoringClearMessages: function()
+    {
+        this._ignoreDidClearMessages = true;
+        this._logViewController.clear();
+        this._ignoreDidClearMessages = false;
+    },
+
     _showConsoleTab: function()
     {
         WebInspector.showConsoleTab();
@@ -643,9 +651,7 @@ WebInspector.LogContentView.prototype = {
 
     _clearLog: function()
     {
-        this._ignoreDidClearMessages = true;
         this._logViewController.clear();
-        this._ignoreDidClearMessages = false;
     },
 
     _scopeBarSelectionDidChange: function(event)
@@ -671,6 +677,7 @@ WebInspector.LogContentView.prototype = {
                     visible = showsErrors;
                     break;
                 case WebInspector.ConsoleMessage.MessageLevel.Log:
+                case WebInspector.ConsoleMessage.MessageLevel.Info:
                 case WebInspector.ConsoleMessage.MessageLevel.Debug:
                     visible = showsLogs;
                     break;

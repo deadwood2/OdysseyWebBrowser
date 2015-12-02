@@ -253,6 +253,8 @@ public:
     void didStartPageTransition();
     void didCompletePageTransition();
     void didCommitLoad(WebFrame*);
+    void willReplaceMultipartContent(const WebFrame&);
+    void didReplaceMultipartContent(const WebFrame&);
     void didFinishLoad(WebFrame*);
     void show();
     String userAgent(const WebCore::URL&) const;
@@ -359,8 +361,11 @@ public:
     void scalePageInViewCoordinates(double scale, WebCore::IntPoint centerInViewCoordinates);
     double pageScaleFactor() const;
     double totalScaleFactor() const;
-    double viewScaleFactor() const { return m_viewScaleFactor; }
+    double viewScaleFactor() const;
     void scaleView(double scale);
+#if PLATFORM(COCOA)
+    void scaleViewAndUpdateGeometryFenced(double scale, WebCore::IntSize viewSize, uint64_t callbackID);
+#endif
 
     void setUseFixedLayout(bool);
     bool useFixedLayout() const { return m_useFixedLayout; }
@@ -854,6 +859,9 @@ public:
     WebCore::ScrollPinningBehavior scrollPinningBehavior() { return m_scrollPinningBehavior; }
     void setScrollPinningBehavior(uint32_t /* WebCore::ScrollPinningBehavior */ pinning);
 
+    WTF::Optional<WebCore::ScrollbarOverlayStyle> scrollbarOverlayStyle() { return m_scrollbarOverlayStyle; }
+    void setScrollbarOverlayStyle(WTF::Optional<uint32_t /* WebCore::ScrollbarOverlayStyle */> scrollbarStyle);
+
     PassRefPtr<WebCore::DocumentLoader> createDocumentLoader(WebCore::Frame&, const WebCore::ResourceRequest&, const WebCore::SubstituteData&);
 
     void getBytecodeProfile(uint64_t callbackID);
@@ -929,13 +937,13 @@ private:
 
     // Actions
     void tryClose();
-    void loadRequest(uint64_t navigationID, const WebCore::ResourceRequest&, const SandboxExtension::Handle&, const UserData&);
+    void loadRequest(uint64_t navigationID, const WebCore::ResourceRequest&, const SandboxExtension::Handle&, uint64_t shouldOpenExternalURLsPolicy, const UserData&);
     void loadData(const IPC::DataReference&, const String& MIMEType, const String& encodingName, const String& baseURL, const UserData&);
     void loadHTMLString(uint64_t navigationID, const String& htmlString, const String& baseURL, const UserData&);
-    void loadAlternateHTMLString(const String& htmlString, const String& baseURL, const String& unreachableURL, const UserData&);
+    void loadAlternateHTMLString(const String& htmlString, const String& baseURL, const String& unreachableURL, const String& provisionalLoadErrorURL, const UserData&);
     void loadPlainTextString(const String&, const UserData&);
     void loadWebArchiveData(const IPC::DataReference&, const UserData&);
-    void navigateToURLWithSimulatedClick(const String& url, WebCore::IntPoint documentPoint, WebCore::IntPoint screenPoint);
+    void navigateToPDFLinkWithSimulatedClick(const String& url, WebCore::IntPoint documentPoint, WebCore::IntPoint screenPoint);
     void reload(uint64_t navigationID, bool reloadFromOrigin, const SandboxExtension::Handle&);
     void goForward(uint64_t navigationID, uint64_t);
     void goBack(uint64_t navigationID, uint64_t);
@@ -1096,10 +1104,8 @@ private:
     void reportUsedFeatures();
 
 #if PLATFORM(MAC)
-    void performActionMenuHitTestAtLocation(WebCore::FloatPoint, bool forImmediateAction);
+    void performImmediateActionHitTestAtLocation(WebCore::FloatPoint);
     PassRefPtr<WebCore::Range> lookupTextAtLocation(WebCore::FloatPoint, NSDictionary **options);
-    void selectLastActionMenuRange();
-    void focusAndSelectLastActionMenuHitTestResult();
     void immediateActionDidUpdate();
     void immediateActionDidCancel();
     void immediateActionDidComplete();
@@ -1119,6 +1125,8 @@ private:
 #endif
 
     void clearWheelEventTestTrigger();
+
+    void setShouldScaleViewToFitDocument(bool);
 
     uint64_t m_pageID;
 
@@ -1331,6 +1339,7 @@ private:
     HashMap<std::pair<WebCore::IntSize, double>, WebCore::IntPoint> m_dynamicSizeUpdateHistory;
     RefPtr<WebCore::Node> m_pendingSyntheticClickNode;
     WebCore::FloatPoint m_pendingSyntheticClickLocation;
+    WebCore::FloatRect m_previousExposedContentRect;
 #endif
 
     WebInspectorClient* m_inspectorClient;
@@ -1342,6 +1351,7 @@ private:
     unsigned m_maximumRenderingSuppressionToken;
     
     WebCore::ScrollPinningBehavior m_scrollPinningBehavior;
+    WTF::Optional<WebCore::ScrollbarOverlayStyle> m_scrollbarOverlayStyle;
 
     bool m_useAsyncScrolling;
 
@@ -1353,16 +1363,8 @@ private:
 
     uint64_t m_pendingNavigationID;
 
-    double m_viewScaleFactor { 1 };
-
 #if ENABLE(WEBGL)
     WebCore::WebGLLoadPolicy m_systemWebGLPolicy;
-#endif
-
-#if PLATFORM(MAC)
-    RefPtr<WebCore::Range> m_lastActionMenuRangeForSelection;
-    WebCore::HitTestResult m_lastActionMenuHitTestResult;
-    RefPtr<WebPageOverlay> m_lastActionMenuHitPageOverlay;
 #endif
 
     bool m_mainFrameProgressCompleted;

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015 Yusuke Suzuki <utatane.tea@gmail.com>.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,6 +24,80 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+function reduce(callback /*, initialValue */)
+{
+    "use strict";
+    if (this === null)
+        throw new @TypeError("Array.prototype.reduce requires that |this| not be null");
+
+    if (this === undefined)
+        throw new @TypeError("Array.prototype.reduce requires that |this| not be undefined");
+
+    var array = @Object(this);
+    var length = @ToLength(array.length);
+
+    if (typeof callback !== "function")
+        throw new @TypeError("Array.prototype.reduce callback must be a function");
+
+    if (length === 0 && arguments.length < 2)
+        throw new @TypeError("reduce of empty array with no initial value");
+
+    var accumulator, k = 0;
+    if (arguments.length > 1)
+        accumulator = arguments[1];
+    else {
+        while (k < length && !(k in array))
+            k += 1;
+        if (k >= length)
+            throw new @TypeError("reduce of empty array with no initial value");
+        accumulator = array[k++];
+    }
+
+    while (k < length) {
+        if (k in array)
+            accumulator = callback.@call(undefined, accumulator, array[k], k, array);
+        k += 1;
+    }
+    return accumulator;
+}
+
+function reduceRight(callback /*, initialValue */)
+{
+    "use strict";
+    if (this === null)
+        throw new @TypeError("Array.prototype.reduceRight requires that |this| not be null");
+
+    if (this === undefined)
+        throw new @TypeError("Array.prototype.reduceRight requires that |this| not be undefined");
+
+    var array = @Object(this);
+    var length = @ToLength(array.length);
+
+    if (typeof callback !== "function")
+        throw new @TypeError("Array.prototype.reduceRight callback must be a function");
+
+    if (length === 0 && arguments.length < 2)
+        throw new @TypeError("reduceRight of empty array with no initial value");
+
+    var accumulator, k = length - 1;
+    if (arguments.length > 1)
+        accumulator = arguments[1];
+    else {
+        while (k >= 0 && !(k in array))
+            k -= 1;
+        if (k < 0)
+            throw new @TypeError("reduceRight of empty array with no initial value");
+        accumulator = array[k--];
+    }
+
+    while (k >= 0) {
+        if (k in array)
+            accumulator = callback.@call(undefined, accumulator, array[k], k, array);
+        k -= 1;
+    }
+    return accumulator;
+}
+
 function every(callback /*, thisArg */) {
     "use strict";
     if (this === null)
@@ -32,8 +107,8 @@ function every(callback /*, thisArg */) {
         throw new @TypeError("Array.prototype.every requires that |this| not be undefined");
     
     var array = @Object(this);
-    var length = array.length >>> 0;
-    
+    var length = @ToLength(array.length);
+
     if (typeof callback !== "function")
         throw new @TypeError("Array.prototype.every callback must be a function");
     
@@ -58,8 +133,8 @@ function forEach(callback /*, thisArg */) {
         throw new @TypeError("Array.prototype.forEach requires that |this| not be undefined");
     
     var array = @Object(this);
-    var length = array.length >>> 0;
-    
+    var length = @ToLength(array.length);
+
     if (typeof callback !== "function")
         throw new @TypeError("Array.prototype.forEach callback must be a function");
     
@@ -80,8 +155,8 @@ function filter(callback /*, thisArg */) {
         throw new @TypeError("Array.prototype.filter requires that |this| not be undefined");
     
     var array = @Object(this);
-    var length = array.length >>> 0;
-    
+    var length = @ToLength(array.length);
+
     if (typeof callback !== "function")
         throw new @TypeError("Array.prototype.filter callback must be a function");
     
@@ -109,8 +184,8 @@ function map(callback /*, thisArg */) {
         throw new @TypeError("Array.prototype.map requires that |this| not be undefined");
     
     var array = @Object(this);
-    var length = array.length >>> 0;
-    
+    var length = @ToLength(array.length);
+
     if (typeof callback !== "function")
         throw new @TypeError("Array.prototype.map callback must be a function");
     
@@ -136,8 +211,8 @@ function some(callback /*, thisArg */) {
         throw new @TypeError("Array.prototype.some requires that |this| not be undefined");
     
     var array = @Object(this);
-    var length = array.length >>> 0;
-    
+    var length = @ToLength(array.length);
+
     if (typeof callback !== "function")
         throw new @TypeError("Array.prototype.some callback must be a function");
     
@@ -160,7 +235,7 @@ function fill(value /* [, start [, end]] */)
     if (this === undefined)
         throw new @TypeError("Array.prototype.fill requires that |this| not be undefined");
     var O = @Object(this);
-    var len = O.length >>> 0;
+    var len = @ToLength(O.length);
     var relativeStart = 0;
     if (arguments.length > 1 && arguments[1] !== undefined)
         relativeStart = arguments[1] | 0;
@@ -201,15 +276,13 @@ function find(callback /*, thisArg */) {
         throw new @TypeError("Array.prototype.find requires that |this| not be undefined");
     
     var array = @Object(this);
-    var length = array.length >>> 0;
-    
+    var length = @ToLength(array.length);
+
     if (typeof callback !== "function")
         throw new @TypeError("Array.prototype.find callback must be a function");
     
     var thisArg = arguments.length > 1 ? arguments[1] : undefined;
     for (var i = 0; i < length; i++) {
-        if (!(i in array))
-            continue;
         var kValue = array[i];
         if (callback.@call(thisArg, kValue, i, array))
             return kValue;
@@ -226,15 +299,13 @@ function findIndex(callback /*, thisArg */) {
         throw new @TypeError("Array.prototype.findIndex requires that |this| not be undefined");
     
     var array = @Object(this);
-    var length = array.length >>> 0;
-    
+    var length = @ToLength(array.length);
+
     if (typeof callback !== "function")
         throw new @TypeError("Array.prototype.findIndex callback must be a function");
     
     var thisArg = arguments.length > 1 ? arguments[1] : undefined;
     for (var i = 0; i < length; i++) {
-        if (!(i in array))
-            continue;
         if (callback.@call(thisArg, array[i], i, array))
             return i;
     }
@@ -250,7 +321,7 @@ function includes(searchElement /*, fromIndex*/) {
         throw new @TypeError("Array.prototype.includes requires that |this| not be undefined");
 
     var array = @Object(this);
-    var length = array.length >>> 0;
+    var length = @ToLength(array.length);
 
     if (length === 0)
         return false;
@@ -289,8 +360,8 @@ function sort(comparator)
 
     function stringComparator(a, b)
     {
-        var aString = @String(a);
-        var bString = @String(b);
+        var aString = a.string;
+        var bString = b.string;
 
         var aLength = aString.length;
         var bLength = bString.length;
@@ -303,19 +374,10 @@ function sort(comparator)
             if (aCharCode == bCharCode)
                 continue;
 
-            if (aCharCode < bCharCode)
-                return -1;
-
-            return 1;
+            return aCharCode - bCharCode;
         }
 
-        if (aLength == bLength)
-            return 0;
-
-        if (aLength < bLength)
-            return -1;
-
-        return 1;
+        return aLength - bLength;
     }
 
     // Move undefineds and holes to the end of a sparse array. Result is [values..., undefineds..., holes...].
@@ -398,7 +460,7 @@ function sort(comparator)
 
         for (var dstIndex = left; dstIndex < rightEnd; ++dstIndex) {
             if (right < rightEnd) {
-                if (left >= leftEnd || comparator(src[left], src[right]) > 0) {
+                if (left >= leftEnd || comparator(src[right], src[left]) < 0) {
                     dst[dstIndex] = src[right++];
                     continue;
                 }
@@ -443,6 +505,27 @@ function sort(comparator)
         mergeSort(array, valueCount, comparator);
     }
 
+    function stringSort(array)
+    {
+        var length = array.length >>> 0;
+
+        // For compatibility with Firefox and Chrome, do nothing observable
+        // to the target array if it has 0 or 1 sortable properties.
+        if (length < 2)
+            return;
+
+        var valueCount = compact(array, length);
+
+        var strings = new @Array(valueCount);
+        for (var i = 0; i < valueCount; ++i)
+            strings[i] = { string: @toString(array[i]), value: array[i] };
+
+        mergeSort(strings, valueCount, stringComparator);
+
+        for (var i = 0; i < valueCount; ++i)
+            array[i] = strings[i].value;
+    }
+
     if (this === null)
         throw new @TypeError("Array.prototype.sort requires that |this| not be null");
 
@@ -452,10 +535,69 @@ function sort(comparator)
     if (typeof this == "string")
         throw new @TypeError("Attempted to assign to readonly property.");
 
-    if (typeof comparator !== "function")
-        comparator = stringComparator;
-
     var array = @Object(this);
-    comparatorSort(array, comparator);
+
+    if (typeof comparator == "function")
+        comparatorSort(array, comparator);
+    else
+        stringSort(array);
+
     return array;
+}
+
+function copyWithin(target, start /*, end */)
+{
+    "use strict";
+
+    function maxWithPositives(a, b)
+    {
+        return (a < b) ? b : a;
+    }
+
+    function minWithMaybeNegativeZeroAndPositive(maybeNegativeZero, positive)
+    {
+        return (maybeNegativeZero < positive) ? maybeNegativeZero : positive;
+    }
+
+    if (this === null || this === undefined)
+        throw new @TypeError("Array.copyWithin requires that |this| not be null or undefined");
+    var thisObject = @Object(this);
+
+    var length = @ToLength(thisObject.length);
+
+    var relativeTarget = @ToInteger(target);
+    var to = (relativeTarget < 0) ? maxWithPositives(length + relativeTarget, 0) : minWithMaybeNegativeZeroAndPositive(relativeTarget, length);
+
+    var relativeStart = @ToInteger(start);
+    var from = (relativeStart < 0) ? maxWithPositives(length + relativeStart, 0) : minWithMaybeNegativeZeroAndPositive(relativeStart, length);
+
+    var relativeEnd;
+    if (arguments.length >= 3) {
+        var end = arguments[2];
+        if (end === undefined)
+            relativeEnd = length;
+        else
+            relativeEnd = @ToInteger(end);
+    } else
+        relativeEnd = length;
+
+    var finalValue = (relativeEnd < 0) ? maxWithPositives(length + relativeEnd, 0) : minWithMaybeNegativeZeroAndPositive(relativeEnd, length);
+
+    var count = minWithMaybeNegativeZeroAndPositive(finalValue - from, length - to);
+
+    var direction = 1;
+    if (from < to && to < from + count) {
+        direction = -1;
+        from = from + count - 1;
+        to = to + count - 1;
+    }
+
+    for (var i = 0; i < count; ++i, from += direction, to += direction) {
+        if (from in thisObject)
+            thisObject[to] = thisObject[from];
+        else
+            delete thisObject[to];
+    }
+
+    return thisObject;
 }

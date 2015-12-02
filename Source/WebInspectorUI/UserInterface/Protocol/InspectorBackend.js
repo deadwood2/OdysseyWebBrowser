@@ -385,7 +385,7 @@ InspectorBackend.Command.create = function(backend, commandName, callSignature, 
     }
 
     callable._instance = instance;
-    callable.__proto__ = InspectorBackend.Command.prototype;
+    Object.setPrototypeOf(callable, InspectorBackend.Command.prototype);
 
     return callable;
 };
@@ -433,7 +433,7 @@ InspectorBackend.Command.prototype = {
         var promiseArguments = Array.from(arguments);
         return new Promise(function(resolve, reject) {
             function convertToPromiseCallback(error, payload) {
-                return error ? reject(error) : resolve(payload);
+                return error ? reject(new Error(error)) : resolve(payload);
             }
 
             // FIXME: this should be indicated by invoking the command differently, rather

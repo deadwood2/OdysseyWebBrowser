@@ -338,7 +338,6 @@ WebPage::WebPage(uint64_t pageID, const WebPageCreationParameters& parameters)
     , m_processSuppressionEnabled(true)
     , m_userActivity("Process suppression disabled for page.")
     , m_pendingNavigationID(0)
-    , m_viewScaleFactor(parameters.viewScaleFactor)
 #if ENABLE(WEBGL)
     , m_systemWebGLPolicy(WebGLAllowCreation)
 #endif
@@ -382,6 +381,7 @@ WebPage::WebPage(uint64_t pageID, const WebPageCreationParameters& parameters)
 
     m_drawingArea = DrawingArea::create(*this, parameters);
     m_drawingArea->setPaintingEnabled(false);
+    m_drawingArea->setShouldScaleViewToFitDocument(parameters.shouldScaleViewToFitDocument);
 
 #if ENABLE(ASYNC_SCROLLING)
     m_useAsyncScrolling = parameters.store.getBoolValueForKey(WebPreferencesKey::threadedScrollingEnabledKey());
@@ -451,6 +451,11 @@ WebPage::WebPage(uint64_t pageID, const WebPageCreationParameters& parameters)
     setAutoSizingShouldExpandToViewHeight(parameters.autoSizingShouldExpandToViewHeight);
     
     setScrollPinningBehavior(parameters.scrollPinningBehavior);
+    if (parameters.scrollbarOverlayStyle)
+        m_scrollbarOverlayStyle = static_cast<ScrollbarOverlayStyle>(parameters.scrollbarOverlayStyle.value());
+    else
+        m_scrollbarOverlayStyle = WTF::Optional<ScrollbarOverlayStyle>();
+
     setBackgroundExtendsBeyondPage(parameters.backgroundExtendsBeyondPage);
 
     setTopContentInset(parameters.topContentInset);
@@ -506,8 +511,8 @@ WebPage::WebPage(uint64_t pageID, const WebPageCreationParameters& parameters)
 #endif
     m_page->settings().setAppleMailPaginationQuirkEnabled(parameters.appleMailPaginationQuirkEnabled);
 
-    if (m_viewScaleFactor != 1)
-        scalePage(1, IntPoint());
+    if (parameters.viewScaleFactor != 1)
+        scaleView(parameters.viewScaleFactor);
 }
 
 void WebPage::reinitializeWebPage(const WebPageCreationParameters& parameters)
@@ -1009,7 +1014,7 @@ void WebPage::loadURLInFrame(const String& url, uint64_t frameID)
     frame->coreFrame()->loader().load(FrameLoadRequest(frame->coreFrame(), ResourceRequest(URL(URL(), url))));
 }
 
-void WebPage::loadRequest(uint64_t navigationID, const ResourceRequest& request, const SandboxExtension::Handle& sandboxExtensionHandle, const UserData& userData)
+void WebPage::loadRequest(uint64_t navigationID, const ResourceRequest& request, const SandboxExtension::Handle& sandboxExtensionHandle, uint64_t shouldOpenExternalURLsPolicy, const UserData& userData)
 {
     SendStopResponsivenessTimer stopper(this);
 
@@ -1022,7 +1027,11 @@ void WebPage::loadRequest(uint64_t navigationID, const ResourceRequest& request,
     m_loaderClient.willLoadURLRequest(this, request, WebProcess::singleton().transformHandlesToObjects(userData.object()).get());
 
     // Initate the load in WebCore.
-    corePage()->userInputBridge().loadRequest(FrameLoadRequest(m_mainFrame->coreFrame(), request));
+    FrameLoadRequest frameLoadRequest(m_mainFrame->coreFrame(), request);
+    ShouldOpenExternalURLsPolicy externalURLsPolicy = static_cast<ShouldOpenExternalURLsPolicy>(shouldOpenExternalURLsPolicy);
+    frameLoadRequest.setShouldOpenExternalURLsPolicy(externalURLsPolicy);
+
+    corePage()->userInputBridge().loadRequest(frameLoadRequest);
 
     ASSERT(!m_pendingNavigationID);
 }
@@ -1034,7 +1043,8 @@ void WebPage::loadDataImpl(uint64_t navigationID, PassRefPtr<SharedBuffer> share
     m_pendingNavigationID = navigationID;
 
     ResourceRequest request(baseURL);
-    SubstituteData substituteData(sharedBuffer, MIMEType, encodingName, unreachableURL);
+    ResourceResponse response(URL(), MIMEType, sharedBuffer->size(), encodingName);
+    SubstituteData substituteData(sharedBuffer, unreachableURL, response, SubstituteData::SessionHistoryVisibility::Hidden);
 
     // Let the InjectedBundle know we are about to start the load, passing the user data from the UIProcess
     // to all the client to set up any needed state.
@@ -1068,11 +1078,14 @@ void WebPage::loadHTMLString(uint64_t navigationID, const String& htmlString, co
     loadString(navigationID, htmlString, ASCIILiteral("text/html"), baseURL, URL(), userData);
 }
 
-void WebPage::loadAlternateHTMLString(const String& htmlString, const String& baseURLString, const String& unreachableURLString, const UserData& userData)
+void WebPage::loadAlternateHTMLString(const String& htmlString, const String& baseURLString, const String& unreachableURLString, const String& provisionalLoadErrorURLString, const UserData& userData)
 {
     URL baseURL = baseURLString.isEmpty() ? blankURL() : URL(URL(), baseURLString);
     URL unreachableURL = unreachableURLString.isEmpty() ? URL() : URL(URL(), unreachableURLString);
+    URL provisionalLoadErrorURL = provisionalLoadErrorURLString.isEmpty() ? URL() : URL(URL(), provisionalLoadErrorURLString);
+    m_mainFrame->coreFrame()->loader().setProvisionalLoadErrorBeingHandledURL(provisionalLoadErrorURL);
     loadString(0, htmlString, ASCIILiteral("text/html"), baseURL, unreachableURL, userData);
+    m_mainFrame->coreFrame()->loader().setProvisionalLoadErrorBeingHandledURL({ });
 }
 
 void WebPage::loadPlainTextString(const String& string, const UserData& userData)
@@ -1086,7 +1099,7 @@ void WebPage::loadWebArchiveData(const IPC::DataReference& webArchiveData, const
     loadDataImpl(0, sharedBuffer, ASCIILiteral("application/x-webarchive"), ASCIILiteral("utf-16"), blankURL(), URL(), userData);
 }
 
-void WebPage::navigateToURLWithSimulatedClick(const String& url, IntPoint documentPoint, IntPoint screenPoint)
+void WebPage::navigateToPDFLinkWithSimulatedClick(const String& url, IntPoint documentPoint, IntPoint screenPoint)
 {
     Frame* mainFrame = m_mainFrame->coreFrame();
     Document* mainFrameDocument = mainFrame->document();
@@ -1095,7 +1108,7 @@ void WebPage::navigateToURLWithSimulatedClick(const String& url, IntPoint docume
 
     const int singleClick = 1;
     RefPtr<MouseEvent> mouseEvent = MouseEvent::create(eventNames().clickEvent, true, true, currentTime(), nullptr, singleClick, screenPoint.x(), screenPoint.y(), documentPoint.x(), documentPoint.y(), false, false, false, false, 0, nullptr, 0, nullptr);
-    mainFrame->loader().urlSelected(mainFrameDocument->completeURL(url), emptyString(), mouseEvent.release(), LockHistory::No, LockBackForwardList::No, ShouldSendReferrer::MaybeSendReferrer);
+    mainFrame->loader().urlSelected(mainFrameDocument->completeURL(url), emptyString(), mouseEvent.get(), LockHistory::No, LockBackForwardList::No, ShouldSendReferrer::MaybeSendReferrer);
 }
 
 void WebPage::stopLoadingFrame(uint64_t frameID)
@@ -1371,7 +1384,7 @@ void WebPage::windowScreenDidChange(uint32_t displayID)
 
 void WebPage::scalePage(double scale, const IntPoint& origin)
 {
-    double totalScale = scale * m_viewScaleFactor;
+    double totalScale = scale * viewScaleFactor();
     bool willChangeScaleFactor = totalScale != totalScaleFactor();
 
 #if PLATFORM(IOS)
@@ -1404,7 +1417,7 @@ void WebPage::scalePage(double scale, const IntPoint& origin)
 
 void WebPage::scalePageInViewCoordinates(double scale, IntPoint centerInViewCoordinates)
 {
-    double totalScale = scale * m_viewScaleFactor;
+    double totalScale = scale * viewScaleFactor();
     if (totalScale == totalScaleFactor())
         return;
 
@@ -1425,24 +1438,40 @@ double WebPage::totalScaleFactor() const
 
 double WebPage::pageScaleFactor() const
 {
-    return totalScaleFactor() / m_viewScaleFactor;
+    return totalScaleFactor() / viewScaleFactor();
+}
+
+double WebPage::viewScaleFactor() const
+{
+    return m_page->viewScaleFactor();
 }
 
 void WebPage::scaleView(double scale)
 {
-    float pageScale = pageScaleFactor();
+    if (viewScaleFactor() == scale)
+        return;
 
-    double scaleRatio = scale / m_viewScaleFactor;
+    float pageScale = pageScaleFactor();
 
     IntPoint scrollPositionAtNewScale;
     if (FrameView* mainFrameView = m_page->mainFrame().view()) {
+        double scaleRatio = scale / viewScaleFactor();
         scrollPositionAtNewScale = mainFrameView->scrollPosition();
         scrollPositionAtNewScale.scale(scaleRatio, scaleRatio);
     }
 
-    m_viewScaleFactor = scale;
+    m_page->setViewScaleFactor(scale);
     scalePage(pageScale, scrollPositionAtNewScale);
 }
+
+#if PLATFORM(COCOA)
+void WebPage::scaleViewAndUpdateGeometryFenced(double scale, IntSize viewSize, uint64_t callbackID)
+{
+    scaleView(scale);
+    m_drawingArea->updateGeometry(viewSize, IntSize(), false);
+    m_drawingArea->replyWithFenceAfterNextFlush(callbackID);
+}
+#endif
 
 void WebPage::setDeviceScaleFactor(float scaleFactor)
 {
@@ -2744,8 +2773,8 @@ void WebPage::updatePreferences(const WebPreferencesStore& store)
     settings.setWebGLEnabled(store.getBoolValueForKey(WebPreferencesKey::webGLEnabledKey()));
     settings.setForceSoftwareWebGLRendering(store.getBoolValueForKey(WebPreferencesKey::forceSoftwareWebGLRenderingKey()));
     settings.setAccelerated2dCanvasEnabled(store.getBoolValueForKey(WebPreferencesKey::accelerated2dCanvasEnabledKey()));
-    settings.setMediaPlaybackRequiresUserGesture(store.getBoolValueForKey(WebPreferencesKey::mediaPlaybackRequiresUserGestureKey()));
-    settings.setMediaPlaybackAllowsInline(store.getBoolValueForKey(WebPreferencesKey::mediaPlaybackAllowsInlineKey()));
+    settings.setRequiresUserGestureForMediaPlayback(store.getBoolValueForKey(WebPreferencesKey::requiresUserGestureForMediaPlaybackKey()));
+    settings.setAllowsInlineMediaPlayback(store.getBoolValueForKey(WebPreferencesKey::allowsInlineMediaPlaybackKey()));
     settings.setAllowsAlternateFullscreen(store.getBoolValueForKey(WebPreferencesKey::allowsAlternateFullscreenKey()));
     settings.setMockScrollbarsEnabled(store.getBoolValueForKey(WebPreferencesKey::mockScrollbarsEnabledKey()));
     settings.setHyperlinkAuditingEnabled(store.getBoolValueForKey(WebPreferencesKey::hyperlinkAuditingEnabledKey()));
@@ -2756,6 +2785,8 @@ void WebPage::updatePreferences(const WebPreferencesStore& store)
     settings.setForceUpdateScrollbarsOnMainThreadForPerformanceTesting(store.getBoolValueForKey(WebPreferencesKey::forceUpdateScrollbarsOnMainThreadForPerformanceTestingKey()));
     settings.setInteractiveFormValidationEnabled(store.getBoolValueForKey(WebPreferencesKey::interactiveFormValidationEnabledKey()));
     settings.setSpatialNavigationEnabled(store.getBoolValueForKey(WebPreferencesKey::spatialNavigationEnabledKey()));
+
+    settings.setMetaRefreshEnabled(store.getBoolValueForKey(WebPreferencesKey::metaRefreshEnabledKey()));
 
     DatabaseManager::singleton().setIsAvailable(store.getBoolValueForKey(WebPreferencesKey::databasesEnabledKey()));
 
@@ -2792,7 +2823,7 @@ void WebPage::updatePreferences(const WebPreferencesStore& store)
 #endif
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
-    settings.setMediaPlaybackAllowsAirPlay(store.getBoolValueForKey(WebPreferencesKey::mediaPlaybackAllowsAirPlayKey()));
+    settings.setAllowsAirPlayForMediaPlayback(store.getBoolValueForKey(WebPreferencesKey::allowsAirPlayForMediaPlaybackKey()));
 #endif
 
     settings.setSuppressesIncrementalRendering(store.getBoolValueForKey(WebPreferencesKey::suppressesIncrementalRenderingKey()));
@@ -3288,7 +3319,11 @@ void WebPage::didCancelForOpenPanel()
 #if ENABLE(SANDBOX_EXTENSIONS)
 void WebPage::extendSandboxForFileFromOpenPanel(const SandboxExtension::Handle& handle)
 {
-    SandboxExtension::create(handle)->consumePermanently();
+    bool result = SandboxExtension::consumePermanently(handle);
+    if (!result) {
+        // We have reports of cases where this fails for some unknown reason, <rdar://problem/10156710>.
+        WTFLogAlways("WebPage::extendSandboxForFileFromOpenPanel(): Could not consume a sandbox extension");
+    }
 }
 #endif
 
@@ -4399,15 +4434,11 @@ void WebPage::didChangeSelection()
 {
     Frame& frame = m_page->focusController().focusedOrMainFrame();
     FrameView* view = frame.view();
-    bool needsLayout = view && view->needsLayout();
 
     // If there is a layout pending, we should avoid populating EditorState that require layout to be done or it will
     // trigger a synchronous layout every time the selection changes. sendPostLayoutEditorStateIfNeeded() will be called
     // to send the full editor state after layout is done if we send a partial editor state here.
-    auto editorState = this->editorState(needsLayout ? IncludePostLayoutDataHint::No : IncludePostLayoutDataHint::Yes);
-#if PLATFORM(COCOA)
-    ASSERT_WITH_MESSAGE(needsLayout == (view && view->needsLayout()), "Calling editorState() should not cause a synchronous layout.");
-#endif
+    auto editorState = this->editorState(view && view->needsLayout() ? IncludePostLayoutDataHint::No : IncludePostLayoutDataHint::Yes);
     m_isEditorStateMissingPostLayoutData = editorState.isMissingPostLayoutData;
 
 #if PLATFORM(MAC) && USE(ASYNC_NSTEXTINPUTCLIENT)
@@ -4540,6 +4571,28 @@ void WebPage::didCancelCheckingText(uint64_t requestID)
     request->didCancel();
 }
 
+void WebPage::willReplaceMultipartContent(const WebFrame& frame)
+{
+#if PLATFORM(IOS)
+    if (!frame.isMainFrame())
+        return;
+
+    m_previousExposedContentRect = m_drawingArea->exposedContentRect();
+#endif
+}
+
+void WebPage::didReplaceMultipartContent(const WebFrame& frame)
+{
+#if PLATFORM(IOS)
+    if (!frame.isMainFrame())
+        return;
+
+    // Restore the previous exposed content rect so that it remains fixed when replacing content
+    // from multipart/x-mixed-replace streams.
+    m_drawingArea->setExposedContentRect(m_previousExposedContentRect);
+#endif
+}
+
 void WebPage::didCommitLoad(WebFrame* frame)
 {
     if (!frame->isMainFrame())
@@ -4600,14 +4653,14 @@ void WebPage::didFinishLoad(WebFrame* frame)
 }
 
 #if ENABLE(PRIMARY_SNAPSHOTTED_PLUGIN_HEURISTIC)
-static int primarySnapshottedPlugInSearchLimit = 3000;
-static float primarySnapshottedPlugInSearchBucketSize = 1.1;
-static int primarySnapshottedPlugInMinimumWidth = 400;
-static int primarySnapshottedPlugInMinimumHeight = 300;
-static unsigned maxPrimarySnapshottedPlugInDetectionAttempts = 2;
-static int deferredPrimarySnapshottedPlugInDetectionDelay = 3;
-static float overlappingImageBoundsScale = 1.1;
-static float minimumOverlappingImageToPluginDimensionScale = .9;
+static const int primarySnapshottedPlugInSearchLimit = 3000;
+static const float primarySnapshottedPlugInSearchBucketSize = 1.1;
+static const int primarySnapshottedPlugInMinimumWidth = 400;
+static const int primarySnapshottedPlugInMinimumHeight = 300;
+static const unsigned maxPrimarySnapshottedPlugInDetectionAttempts = 2;
+static const int deferredPrimarySnapshottedPlugInDetectionDelay = 3;
+static const float overlappingImageBoundsScale = 1.1;
+static const float minimumOverlappingImageToPluginDimensionScale = .9;
 
 #if ENABLE(PRIMARY_SNAPSHOTTED_PLUGIN_HEURISTIC)
 void WebPage::determinePrimarySnapshottedPlugInTimerFired()
@@ -4822,6 +4875,15 @@ void WebPage::setScrollPinningBehavior(uint32_t pinning)
     m_page->mainFrame().view()->setScrollPinningBehavior(m_scrollPinningBehavior);
 }
 
+void WebPage::setScrollbarOverlayStyle(WTF::Optional<uint32_t> scrollbarStyle)
+{
+    if (scrollbarStyle)
+        m_scrollbarOverlayStyle = static_cast<ScrollbarOverlayStyle>(scrollbarStyle.value());
+    else
+        m_scrollbarOverlayStyle = WTF::Optional<ScrollbarOverlayStyle>();
+    m_page->mainFrame().view()->recalculateScrollbarOverlayStyle();
+}
+
 PassRefPtr<DocumentLoader> WebPage::createDocumentLoader(Frame& frame, const ResourceRequest& request, const SubstituteData& substituteData)
 {
     RefPtr<WebDocumentLoader> documentLoader = WebDocumentLoader::create(request, substituteData);
@@ -4836,9 +4898,11 @@ PassRefPtr<DocumentLoader> WebPage::createDocumentLoader(Frame& frame, const Res
 
 void WebPage::getBytecodeProfile(uint64_t callbackID)
 {
-    ASSERT(JSDOMWindow::commonVM().m_perBytecodeProfiler);
-    if (!JSDOMWindow::commonVM().m_perBytecodeProfiler)
+    if (!JSDOMWindow::commonVM().m_perBytecodeProfiler) {
         send(Messages::WebPageProxy::StringCallback(String(), callbackID));
+        return;
+    }
+
     String result = JSDOMWindow::commonVM().m_perBytecodeProfiler->toJSON();
     ASSERT(result.length());
     send(Messages::WebPageProxy::StringCallback(result, callbackID));
@@ -4909,6 +4973,14 @@ void WebPage::clearWheelEventTestTrigger()
         return;
 
     m_page->clearTrigger();
+}
+
+void WebPage::setShouldScaleViewToFitDocument(bool shouldScaleViewToFitDocument)
+{
+    if (!m_drawingArea)
+        return;
+
+    m_drawingArea->setShouldScaleViewToFitDocument(shouldScaleViewToFitDocument);
 }
 
 } // namespace WebKit

@@ -32,7 +32,6 @@
 #include "ChildProcess.h"
 #include "DownloadManager.h"
 #include "MessageReceiverMap.h"
-#include "NetworkResourceLoadScheduler.h"
 #include <WebCore/DiagnosticLoggingClient.h>
 #include <WebCore/SessionID.h>
 #include <memory>
@@ -75,14 +74,13 @@ public:
 
     void removeNetworkConnectionToWebProcess(NetworkConnectionToWebProcess*);
 
-    NetworkResourceLoadScheduler& networkResourceLoadScheduler() { return m_networkResourceLoadScheduler; }
-
     AuthenticationManager& authenticationManager();
     DownloadManager& downloadManager();
     bool canHandleHTTPSServerTrustEvaluation() const { return m_canHandleHTTPSServerTrustEvaluation; }
 
-    void processWillSuspend();
-    void cancelProcessWillSuspend();
+    void processWillSuspendImminently(bool& handled);
+    void prepareToSuspend();
+    void cancelPrepareToSuspend();
     void processDidResume();
 
     // Diagnostic messages logging.
@@ -125,6 +123,7 @@ private:
 
     // Message Handlers
     void didReceiveNetworkProcessMessage(IPC::Connection&, IPC::MessageDecoder&);
+    void didReceiveSyncNetworkProcessMessage(IPC::Connection&, IPC::MessageDecoder&, std::unique_ptr<IPC::MessageEncoder>&);
     void initializeNetworkProcess(const NetworkProcessCreationParameters&);
     void createNetworkConnectionToWebProcess();
     void ensurePrivateBrowsingSession(WebCore::SessionID);
@@ -156,8 +155,6 @@ private:
 
     // Connections to WebProcesses.
     Vector<RefPtr<NetworkConnectionToWebProcess>> m_webProcessConnections;
-
-    NetworkResourceLoadScheduler m_networkResourceLoadScheduler;
 
     String m_diskCacheDirectory;
     bool m_hasSetCacheModel;

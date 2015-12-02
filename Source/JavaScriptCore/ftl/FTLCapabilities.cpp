@@ -63,6 +63,7 @@ inline CapabilityLevel canCompile(Node* node)
     case BitLShift:
     case BitURShift:
     case CheckStructure:
+    case DoubleAsInt32:
     case ArrayifyToStructure:
     case PutStructure:
     case GetButterfly:
@@ -89,6 +90,7 @@ inline CapabilityLevel canCompile(Node* node)
     case ArithSin:
     case ArithCos:
     case ArithPow:
+    case ArithRound:
     case ArithSqrt:
     case ArithLog:
     case ArithFRound:
@@ -122,7 +124,6 @@ inline CapabilityLevel canCompile(Node* node)
     case GetTypedArrayByteOffset:
     case NotifyWrite:
     case StoreBarrier:
-    case StoreBarrierWithNullCheck:
     case Call:
     case Construct:
     case CallVarargs:
@@ -181,14 +182,17 @@ inline CapabilityLevel canCompile(Node* node)
     case BottomValue:
     case PhantomNewObject:
     case PhantomNewFunction:
+    case PhantomCreateActivation:
     case PutHint:
     case CheckStructureImmediate:
     case MaterializeNewObject:
+    case MaterializeCreateActivation:
     case PhantomDirectArguments:
     case PhantomClonedArguments:
     case GetMyArgumentByVal:
     case ForwardVarargs:
     case Switch:
+    case TypeOf:
         // These are OK.
         break;
     case Identity:

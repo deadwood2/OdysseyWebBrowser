@@ -64,7 +64,7 @@ public:
         return symbol;
     }
 
-    static Symbol* create(VM& vm, AtomicStringImpl* uid)
+    static Symbol* create(VM& vm, SymbolImpl& uid)
     {
         Symbol* symbol = new (NotNull, allocateCell<Symbol>(vm.heap)) Symbol(vm, uid);
         symbol->finishCreation(vm);
@@ -75,7 +75,6 @@ public:
     String descriptiveString() const;
 
     JSValue toPrimitive(ExecState*, PreferredPrimitiveType) const;
-    JS_EXPORT_PRIVATE bool toBoolean() const;
     bool getPrimitiveNumber(ExecState*, double& number, JSValue&) const;
     JSObject* toObject(ExecState*, JSGlobalObject*) const;
     double toNumber(ExecState*) const;
@@ -85,7 +84,7 @@ protected:
 
     Symbol(VM&);
     Symbol(VM&, const String&);
-    Symbol(VM&, AtomicStringImpl* uid);
+    Symbol(VM&, SymbolImpl& uid);
 
     void finishCreation(VM& vm)
     {

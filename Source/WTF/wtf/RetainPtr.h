@@ -21,6 +21,8 @@
 #ifndef RetainPtr_h
 #define RetainPtr_h
 
+#include <wtf/Platform.h>
+
 #if USE(CF) || defined(__OBJC__)
 
 #include <wtf/HashTraits.h>
@@ -71,7 +73,7 @@ public:
     RetainPtr(HashTableDeletedValueType) : m_ptr(hashTableDeletedValue()) { }
     bool isHashTableDeletedValue() const { return m_ptr == hashTableDeletedValue(); }
     
-    ~RetainPtr() { if (StorageType ptr = m_ptr) CFRelease(ptr); }
+    ~RetainPtr();
     
     template<typename U> RetainPtr(const RetainPtr<U>&);
 
@@ -135,6 +137,12 @@ private:
     StorageType m_ptr;
 };
 
+template<typename T> inline RetainPtr<T>::~RetainPtr()
+{
+    if (StorageType ptr = std::exchange(m_ptr, nullptr))
+        CFRelease(ptr);
+}
+
 // Helper function for creating a RetainPtr using template argument deduction.
 template<typename T> inline RetainPtr<T> retainPtr(T) WARN_UNUSED_RETURN;
 
@@ -147,10 +155,8 @@ template<typename T> template<typename U> inline RetainPtr<T>::RetainPtr(const R
 
 template<typename T> inline void RetainPtr<T>::clear()
 {
-    if (StorageType ptr = m_ptr) {
-        m_ptr = nullptr;
+    if (StorageType ptr = std::exchange(m_ptr, nullptr))
         CFRelease(ptr);
-    }
 }
 
 template<typename T> inline typename RetainPtr<T>::PtrType RetainPtr<T>::leakRef()

@@ -26,6 +26,7 @@
 #include "LayoutState.h"
 #include "Region.h"
 #include "RenderBlockFlow.h"
+#include "RenderWidget.h"
 #include "SelectionSubtreeRoot.h"
 #include <memory>
 #include <wtf/HashSet.h>
@@ -101,9 +102,6 @@ public:
     int maximalOutlineSize() const { return m_maximalOutlineSize; }
 
     LayoutRect viewRect() const;
-
-    bool hasFlippedBlockDescendants() const { return m_hasFlippedBlockDescendants; }
-    void setHasFlippedBlockDescendants(bool b) { m_hasFlippedBlockDescendants = b; }
 
     // layoutDelta is used transiently during layout to store how far an object has moved from its
     // last layout location, in order to repaint correctly.
@@ -244,6 +242,9 @@ public:
     void scheduleLazyRepaint(RenderBox&);
     void unscheduleLazyRepaint(RenderBox&);
 
+    void protectRenderWidgetUntilLayoutIsDone(RenderWidget& widget) { m_protectedRenderWidgets.append(&widget); }
+    void releaseProtectedRenderWidgets() { m_protectedRenderWidgets.clear(); }
+
 protected:
     virtual void mapLocalToContainer(const RenderLayerModelObject* repaintContainer, TransformState&, MapCoordinatesFlags, bool* wasFixed) const override;
     virtual const RenderObject* pushMappingToContainer(const RenderLayerModelObject* ancestorToStopAt, RenderGeometryMap&) const override;
@@ -359,9 +360,9 @@ private:
 
     bool m_selectionWasCaret;
     bool m_hasSoftwareFilters;
-    bool m_hasFlippedBlockDescendants;
 
     HashSet<RenderElement*> m_renderersWithPausedImageAnimation;
+    Vector<RefPtr<RenderWidget>> m_protectedRenderWidgets;
 
 #if ENABLE(SERVICE_CONTROLS)
     SelectionRectGatherer m_selectionRectGatherer;
