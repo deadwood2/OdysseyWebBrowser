@@ -39,7 +39,6 @@
 #import <sys/param.h>
 
 #if PLATFORM(IOS)
-#import <WebCore/WAKViewPrivate.h>
 #import <WebKitLegacy/DOM.h>
 #import <WebKitLegacy/WebFrame.h>
 #import <WebKitLegacy/WebFrameView.h>
@@ -93,7 +92,7 @@ static BOOL canUseFastRenderer(const UniChar *buffer, unsigned length)
             CGContextScaleCTM(cgContext, 1, -1);
 
         FontCascade webCoreFont(FontPlatformData(reinterpret_cast<CTFontRef>(font), [font pointSize]), fontSmoothingIsAllowed ? AutoSmoothing : Antialiased);
-        TextRun run(buffer.data(), length);
+        TextRun run(StringView(buffer.data(), length));
         run.disableRoundingHacks();
 
         CGFloat red;
@@ -139,7 +138,7 @@ static BOOL canUseFastRenderer(const UniChar *buffer, unsigned length)
 
     if (canUseFastRenderer(buffer.data(), length)) {
         FontCascade webCoreFont(FontPlatformData(reinterpret_cast<CTFontRef>(font), [font pointSize]));
-        TextRun run(buffer.data(), length);
+        TextRun run(StringView(buffer.data(), length));
         run.disableRoundingHacks();
         return webCoreFont.width(run);
     }

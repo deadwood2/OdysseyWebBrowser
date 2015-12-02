@@ -152,7 +152,7 @@ void RemoteLayerTreeDrawingArea::setRootCompositingLayer(GraphicsLayer* rootLaye
     scheduleCompositingLayerFlush();
 }
 
-void RemoteLayerTreeDrawingArea::updateGeometry(const IntSize& viewSize, const IntSize& layerPosition)
+void RemoteLayerTreeDrawingArea::updateGeometry(const IntSize& viewSize, const IntSize& layerPosition, bool flushSynchronously)
 {
     m_viewSize = viewSize;
     m_webPage.setSize(viewSize);
@@ -235,6 +235,15 @@ void RemoteLayerTreeDrawingArea::setExposedRect(const FloatRect& exposedRect)
 }
 
 #if PLATFORM(IOS)
+WebCore::FloatRect RemoteLayerTreeDrawingArea::exposedContentRect() const
+{
+    FrameView* frameView = m_webPage.mainFrameView();
+    if (!frameView)
+        return FloatRect();
+
+    return frameView->exposedContentRect();
+}
+
 void RemoteLayerTreeDrawingArea::setExposedContentRect(const FloatRect& exposedContentRect)
 {
     FrameView* frameView = m_webPage.mainFrameView();

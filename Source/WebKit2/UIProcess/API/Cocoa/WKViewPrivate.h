@@ -23,11 +23,11 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#import <WebKit/WKActionMenuTypes.h>
 #import <WebKit/WKBase.h>
 #import <WebKit/WKImmediateActionTypes.h>
 #import <WebKit/WKLayoutMode.h>
 #import <WebKit/WKView.h>
+#import <WebKit/_WKOverlayScrollbarStyle.h>
 
 @interface WKView (Private)
 
@@ -77,8 +77,6 @@
 
 + (void)hideWordDefinitionWindow;
 
-@property (readwrite) CGFloat minimumLayoutWidth;
-@property (readwrite) CGFloat minimumWidthForAutoLayout;
 @property (readwrite) NSSize minimumSizeForAutoLayout;
 @property (readwrite) BOOL shouldClipToVisibleRect;
 @property (readwrite) BOOL shouldExpandToViewHeightForAutoLayout;
@@ -91,8 +89,13 @@
 @property (nonatomic, setter=_setTopContentInset:) CGFloat _topContentInset;
 @property (nonatomic, setter=_setTotalHeightOfBanners:) CGFloat _totalHeightOfBanners;
 
+@property (nonatomic, setter=_setOverlayScrollbarStyle:) _WKOverlayScrollbarStyle _overlayScrollbarStyle;
+
 @property (nonatomic, setter=_setLayoutMode:) WKLayoutMode _layoutMode;
+// For use with _layoutMode = kWKLayoutModeFixedSize:
 @property (nonatomic, setter=_setFixedLayoutSize:) CGSize _fixedLayoutSize;
+// For use with _layoutMode = kWKLayoutModeDynamicSizeWithMinimumViewSize:
+@property (nonatomic, setter=_setMinimumViewSize:) CGSize _minimumViewSize;
 
 @property (nonatomic, setter=_setViewScale:) CGFloat _viewScale;
 
@@ -136,9 +139,6 @@
 - (BOOL)_tryToSwipeWithEvent:(NSEvent *)event ignoringPinnedState:(BOOL)ignoringPinnedState;
 // The rect returned is always that of the snapshot, and only if it is the view being manipulated by the swipe. This only works for layer-backed windows.
 - (void)_setDidMoveSwipeSnapshotCallback:(void(^)(CGRect swipeSnapshotRectInWindowCoordinates))callback;
-
-- (NSArray *)_actionMenuItemsForHitTestResult:(WKHitTestResultRef)hitTestResult withType:(_WKActionMenuType)type defaultActionMenuItems:(NSArray *)defaultMenuItems;
-- (NSArray *)_actionMenuItemsForHitTestResult:(WKHitTestResultRef)hitTestResult withType:(_WKActionMenuType)type defaultActionMenuItems:(NSArray *)defaultMenuItems userData:(WKTypeRef)userData;
 
 // Clients that want to maintain default behavior can return nil. To disable the immediate action entirely, return NSNull. And to
 // do something custom, return an object that conforms to the NSImmediateActionAnimationController protocol.

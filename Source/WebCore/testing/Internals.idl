@@ -59,6 +59,8 @@ enum ResourceLoadPriority {
     boolean isPreloaded(DOMString url);
     boolean isLoadingFromMemoryCache(DOMString url);
     DOMString xhrResponseSource(XMLHttpRequest xhr);
+    boolean isSharingStyleSheetContents(Element linkA, Element linkB);
+    boolean isStyleSheetLoadingSubresources(Element link);
     void clearMemoryCache();
     void pruneMemoryCacheToSize(long size);
     long memoryCacheSize();
@@ -122,6 +124,8 @@ enum ResourceLoadPriority {
 
     [RaisesException] void setScrollViewPosition(long x, long y);
 
+    [RaisesException] void setViewBaseBackgroundColor(DOMString colorValue);
+
     [RaisesException] void setPagination(DOMString mode, long gap, optional long pageLength);
 
     [RaisesException] DOMString configurationForViewport(unrestricted float devicePixelRatio,
@@ -155,6 +159,9 @@ enum ResourceLoadPriority {
 
     sequence<DOMString> userPreferredLanguages();
     void setUserPreferredLanguages(sequence<DOMString> languages);
+
+    sequence<DOMString> userPreferredAudioCharacteristics();
+    void setUserPreferredAudioCharacteristic(DOMString characteristic);
 
     [RaisesException] unsigned long wheelEventHandlerCount();
     [RaisesException] unsigned long touchEventHandlerCount();
@@ -277,8 +284,14 @@ enum ResourceLoadPriority {
     // Query if a timer is currently throttled, to debug timer throttling.
     [RaisesException] boolean isTimerThrottled(long timerHandle);
 
+    boolean isRequestAnimationFrameThrottled();
+    boolean areTimersThrottled();
+
     [RaisesException] void startTrackingStyleRecalcs();
     [RaisesException] unsigned long styleRecalcCount();
+
+    [RaisesException] void startTrackingCompositingUpdates();
+    [RaisesException] unsigned long compositingUpdateCount();
 
     // |node| should be Document, HTMLIFrameElement, or unspecified.
     // If |node| is an HTMLIFrameElement, it assumes node.contentDocument is
@@ -352,6 +365,11 @@ enum ResourceLoadPriority {
     
     File createFile(DOMString url);
     void queueMicroTask(long testNumber);
+    boolean testPreloaderSettingViewport();
 
     [Conditional=CONTENT_FILTERING] readonly attribute MockContentFilterSettings mockContentFilterSettings;
+
+#if defined(ENABLE_CSS_SCROLL_SNAP) && ENABLE_CSS_SCROLL_SNAP
+    [RaisesException] DOMString scrollSnapOffsets(Element element);
+#endif
 };

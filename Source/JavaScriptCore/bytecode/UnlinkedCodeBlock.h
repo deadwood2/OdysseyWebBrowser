@@ -30,6 +30,7 @@
 #include "CodeSpecializationKind.h"
 #include "CodeType.h"
 #include "ExpressionRangeInfo.h"
+#include "HandlerInfo.h"
 #include "Identifier.h"
 #include "JSCell.h"
 #include "JSString.h"
@@ -246,13 +247,6 @@ struct UnlinkedSimpleJumpTable {
     }
 };
 
-struct UnlinkedHandlerInfo {
-    uint32_t start;
-    uint32_t end;
-    uint32_t target;
-    uint32_t scopeDepth;
-};
-
 struct UnlinkedInstruction {
     UnlinkedInstruction() { u.operand = 0; }
     UnlinkedInstruction(OpcodeID opcode) { u.opcode = opcode; }
@@ -427,7 +421,7 @@ public:
 
     // Exception handling support
     size_t numberOfExceptionHandlers() const { return m_rareData ? m_rareData->m_exceptionHandlers.size() : 0; }
-    void addExceptionHandler(const UnlinkedHandlerInfo& hanler) { createRareDataIfNecessary(); return m_rareData->m_exceptionHandlers.append(hanler); }
+    void addExceptionHandler(const UnlinkedHandlerInfo& handler) { createRareDataIfNecessary(); return m_rareData->m_exceptionHandlers.append(handler); }
     UnlinkedHandlerInfo& exceptionHandler(int index) { ASSERT(m_rareData); return m_rareData->m_exceptionHandlers[index]; }
 
     SymbolTable* symbolTable() const { return m_symbolTable.get(); }
@@ -654,21 +648,14 @@ public:
 
     static void destroy(JSCell*);
 
-    void addFunctionDeclaration(VM& vm, const Identifier& name, UnlinkedFunctionExecutable* functionExecutable)
-    {
-        m_functionDeclarations.append(std::make_pair(name, WriteBarrier<UnlinkedFunctionExecutable>(vm, this, functionExecutable)));
-    }
-
     void addVariableDeclaration(const Identifier& name, bool isConstant)
     {
         m_varDeclarations.append(std::make_pair(name, isConstant));
     }
 
     typedef Vector<std::pair<Identifier, bool>> VariableDeclations;
-    typedef Vector<std::pair<Identifier, WriteBarrier<UnlinkedFunctionExecutable>> > FunctionDeclations;
 
     const VariableDeclations& variableDeclarations() const { return m_varDeclarations; }
-    const FunctionDeclations& functionDeclarations() const { return m_functionDeclarations; }
 
     static void visitChildren(JSCell*, SlotVisitor&);
 
@@ -679,7 +666,6 @@ private:
     }
 
     VariableDeclations m_varDeclarations;
-    FunctionDeclations m_functionDeclarations;
 
 public:
     static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue proto)

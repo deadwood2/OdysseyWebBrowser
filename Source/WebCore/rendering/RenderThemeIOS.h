@@ -37,7 +37,7 @@ class GraphicsContext;
     
 class RenderThemeIOS final : public RenderTheme {
 public:
-    static PassRefPtr<RenderTheme> create();
+    static Ref<RenderTheme> create();
 
     virtual int popupInternalPaddingRight(RenderStyle&) const override;
 
@@ -111,8 +111,6 @@ protected:
     virtual String mediaControlsScript() override;
 #endif
 
-    virtual Color systemColor(CSSValueID) const override;
-
 private:
     RenderThemeIOS();
     virtual ~RenderThemeIOS() { }
@@ -120,10 +118,12 @@ private:
     const Color& shadowColor() const;
     FloatRect addRoundedBorderClip(const RenderObject& box, GraphicsContext*, const IntRect&);
 
+    virtual Color systemColor(CSSValueID) const override;
+
     String m_mediaControlsScript;
     String m_mediaControlsStyleSheet;
 
-    mutable HashMap<int, RGBA32> m_systemColorCache;
+    mutable HashMap<int, Color> m_systemColorCache;
 };
 
 }

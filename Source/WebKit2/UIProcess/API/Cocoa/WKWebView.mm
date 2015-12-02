@@ -47,6 +47,7 @@
 #import "WKBrowsingContextHandleInternal.h"
 #import "WKErrorInternal.h"
 #import "WKHistoryDelegatePrivate.h"
+#import "WKLayoutMode.h"
 #import "WKNSData.h"
 #import "WKNSURLExtras.h"
 #import "WKNavigationDelegate.h"
@@ -78,6 +79,7 @@
 #import <JavaScriptCore/JSContext.h>
 #import <JavaScriptCore/JSValue.h>
 #import <WebCore/IOSurface.h>
+#import <WebCore/WebCoreSystemInterface.h>
 #import <wtf/HashMap.h>
 #import <wtf/MathExtras.h>
 #import <wtf/NeverDestroyed.h>
@@ -99,6 +101,7 @@
 #import "WebVideoFullscreenManagerProxy.h"
 #import <UIKit/UIApplication.h>
 #import <WebCore/CoreGraphicsSPI.h>
+#import <WebCore/FrameLoaderTypes.h>
 #import <WebCore/InspectorOverlay.h>
 #import <WebCore/QuartzCoreSPI.h>
 
@@ -138,6 +141,7 @@ enum class DynamicViewportUpdateMode {
 #import <WebCore/ColorMac.h>
 #endif
 
+NSString * const _WKShouldOpenExternalURLsKey = @"_WKShouldOpenExternalURLsKey";
 
 static HashMap<WebKit::WebPageProxy*, WKWebView *>& pageToViewMap()
 {
@@ -168,6 +172,7 @@ WKWebView* fromWebPageProxy(WebKit::WebPageProxy& page)
     CGSize _maximumUnobscuredSizeOverride;
     CGRect _inputViewBounds;
     CGFloat _viewportMetaTagWidth;
+    BOOL _allowsLinkPreview;
 
     UIEdgeInsets _obscuredInsets;
     BOOL _haveSetObscuredInsets;
@@ -242,7 +247,7 @@ static int32_t deviceOrientation()
     if (!_page || !_page->videoFullscreenManager())
         return false;
     
-    return _page->videoFullscreenManager()->hasMode(WebCore::HTMLMediaElement::VideoFullscreenModeOptimized);
+    return _page->videoFullscreenManager()->hasMode(WebCore::HTMLMediaElementEnums::VideoFullscreenModeOptimized);
 }
 
 - (BOOL)_mayAutomaticallyShowVideoOptimized
@@ -254,6 +259,16 @@ static int32_t deviceOrientation()
         return false;
 
     return _page->videoFullscreenManager()->mayAutomaticallyShowVideoOptimized();
+#endif
+}
+
+static bool shouldAllowAlternateFullscreen()
+{
+#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000
+    static bool shouldAllowAlternateFullscreen = iosExecutableWasLinkedOnOrAfterVersion(wkIOSSystemVersion_9_0);
+    return shouldAllowAlternateFullscreen;
+#else
+    return false;
 #endif
 }
 
@@ -305,10 +320,12 @@ static int32_t deviceOrientation()
     webPageConfiguration.preferenceValues.set(WebKit::WebPreferencesKey::suppressesIncrementalRenderingKey(), WebKit::WebPreferencesStore::Value(!![_configuration suppressesIncrementalRendering]));
 
 #if PLATFORM(IOS)
-    webPageConfiguration.preferenceValues.set(WebKit::WebPreferencesKey::mediaPlaybackAllowsInlineKey(), WebKit::WebPreferencesStore::Value(!![_configuration allowsInlineMediaPlayback]));
-    webPageConfiguration.preferenceValues.set(WebKit::WebPreferencesKey::allowsAlternateFullscreenKey(), WebKit::WebPreferencesStore::Value(!![_configuration _allowsAlternateFullscreen]));
-    webPageConfiguration.preferenceValues.set(WebKit::WebPreferencesKey::mediaPlaybackRequiresUserGestureKey(), WebKit::WebPreferencesStore::Value(!![_configuration mediaPlaybackRequiresUserAction]));
-    webPageConfiguration.preferenceValues.set(WebKit::WebPreferencesKey::mediaPlaybackAllowsAirPlayKey(), WebKit::WebPreferencesStore::Value(!![_configuration mediaPlaybackAllowsAirPlay]));
+    webPageConfiguration.preferenceValues.set(WebKit::WebPreferencesKey::allowsInlineMediaPlaybackKey(), WebKit::WebPreferencesStore::Value(!![_configuration allowsInlineMediaPlayback]));
+    webPageConfiguration.preferenceValues.set(WebKit::WebPreferencesKey::allowsAlternateFullscreenKey(), WebKit::WebPreferencesStore::Value(!![_configuration _allowsAlternateFullscreen] && shouldAllowAlternateFullscreen()));
+    webPageConfiguration.preferenceValues.set(WebKit::WebPreferencesKey::requiresUserGestureForMediaPlaybackKey(), WebKit::WebPreferencesStore::Value(!![_configuration requiresUserActionForMediaPlayback]));
+#endif
+#if ENABLE(WIRELESS_PLAYBACK_TARGET)
+    webPageConfiguration.preferenceValues.set(WebKit::WebPreferencesKey::allowsAirPlayForMediaPlaybackKey(), WebKit::WebPreferencesStore::Value(!![_configuration allowsAirPlayForMediaPlayback]));
 #endif
 
 #if PLATFORM(IOS)
@@ -330,6 +347,7 @@ static int32_t deviceOrientation()
     [self _updateScrollViewBackground];
 
     _viewportMetaTagWidth = -1;
+    _allowsLinkPreview = YES;
 
     [self _frameOrBoundsChanged];
 
@@ -429,11 +447,7 @@ static int32_t deviceOrientation()
 
 - (WKNavigation *)loadRequest:(NSURLRequest *)request
 {
-    auto navigation = _page->loadRequest(request);
-    if (!navigation)
-        return nil;
-
-    return [wrapper(*navigation.release().leakRef()) autorelease];
+    return [self _loadRequest:request withOptions:nil];
 }
 
 - (WKNavigation *)loadFileURL:(NSURL *)URL allowingReadAccessToURL:(NSURL *)readAccessURL
@@ -795,6 +809,14 @@ static WebCore::Color scrollViewBackgroundColor(WKWebView *webView)
 
     auto uiBackgroundColor = adoptNS([[UIColor alloc] initWithCGColor:cachedCGColor(color, WebCore::ColorSpaceDeviceRGB)]);
     [_scrollView setBackgroundColor:uiBackgroundColor.get()];
+
+    // Update the indicator style based on the lightness/darkness of the background color.
+    double hue, saturation, lightness;
+    color.getHSL(hue, saturation, lightness);
+    if (lightness <= .5 && color.alpha() > 0)
+        [_scrollView setIndicatorStyle:UIScrollViewIndicatorStyleWhite];
+    else
+        [_scrollView setIndicatorStyle:UIScrollViewIndicatorStyleDefault];
 }
 
 - (CGPoint)_adjustedContentOffset:(CGPoint)point
@@ -1391,7 +1413,11 @@ static WebCore::FloatPoint constrainContentOffset(WebCore::FloatPoint contentOff
     if (WebKit::RemoteScrollingCoordinatorProxy* coordinator = _page->scrollingCoordinatorProxy()) {
         // FIXME: Here, I'm finding the maximum horizontal/vertical scroll offsets. There's probably a better way to do this.
         CGSize maxScrollOffsets = CGSizeMake(scrollView.contentSize.width - scrollView.bounds.size.width, scrollView.contentSize.height - scrollView.bounds.size.height);
-        coordinator->adjustTargetContentOffsetForSnapping(maxScrollOffsets, velocity, targetContentOffset);
+        
+        CGRect fullViewRect = self.bounds;
+        CGRect unobscuredRect = UIEdgeInsetsInsetRect(fullViewRect, [self _computedContentInset]);
+        
+        coordinator->adjustTargetContentOffsetForSnapping(maxScrollOffsets, velocity, unobscuredRect.origin.y, targetContentOffset);
     }
 #endif
 }
@@ -1511,6 +1537,26 @@ static WebCore::FloatPoint constrainContentOffset(WebCore::FloatPoint contentOff
     if (isStableState && [_scrollView respondsToSelector:@selector(_isInterruptingDeceleration)])
         isStableState = ![_scrollView performSelector:@selector(_isInterruptingDeceleration)];
 
+#if ENABLE(CSS_SCROLL_SNAP) && ENABLE(ASYNC_SCROLLING)
+    if (isStableState) {
+        WebKit::RemoteScrollingCoordinatorProxy* coordinator = _page->scrollingCoordinatorProxy();
+        if (coordinator && coordinator->hasActiveSnapPoint()) {
+            CGRect fullViewRect = self.bounds;
+            CGRect unobscuredRect = UIEdgeInsetsInsetRect(fullViewRect, [self _computedContentInset]);
+            
+            CGPoint currentPoint = [_scrollView contentOffset];
+            CGPoint activePoint = coordinator->nearestActiveContentInsetAdjustedSnapPoint(unobscuredRect.origin.y, currentPoint);
+
+            if (!CGPointEqualToPoint(activePoint, currentPoint)) {
+                RetainPtr<WKScrollView> strongScrollView = _scrollView;
+                dispatch_async(dispatch_get_main_queue(), [strongScrollView, activePoint] {
+                    [strongScrollView setContentOffset:activePoint animated:NO];
+                });
+            }
+        }
+    }
+#endif
+    
     [_contentView didUpdateVisibleRect:visibleRectInContentCoordinates
         unobscuredRect:unobscuredRectInContentCoordinates
         unobscuredRectInScrollViewCoordinates:unobscuredRect
@@ -1725,6 +1771,18 @@ static WebCore::FloatPoint constrainContentOffset(WebCore::FloatPoint contentOff
 @end
 
 @implementation WKWebView (WKPrivate)
+
+- (WKNavigation *)_loadRequest:(NSURLRequest *)request withOptions:(NSDictionary *)loadOptions
+{
+    bool shouldOpenExternalURLs = [loadOptions[_WKShouldOpenExternalURLsKey] boolValue];
+    WebCore::ShouldOpenExternalURLsPolicy shouldOpenExternalURLsPolicy = shouldOpenExternalURLs ? WebCore::ShouldOpenExternalURLsPolicy::ShouldAllow : WebCore::ShouldOpenExternalURLsPolicy::ShouldNotAllow;
+
+    auto navigation = _page->loadRequest(request, shouldOpenExternalURLsPolicy);
+    if (!navigation)
+        return nil;
+
+    return [wrapper(*navigation.release().leakRef()) autorelease];
+}
 
 - (BOOL)_isEditable
 {
@@ -2282,22 +2340,50 @@ static inline WebKit::FindOptions toFindOptions(_WKFindOptions wkFindOptions)
 
 - (_WKLayoutMode)_layoutMode
 {
-    if (_page->useFixedLayout()) {
 #if PLATFORM(MAC)
-        if ([_wkView _automaticallyComputesFixedLayoutSizeFromViewScale])
-            return _WKLayoutModeDynamicSizeComputedFromViewScale;
-#endif
+    switch ([_wkView _layoutMode]) {
+    case kWKLayoutModeFixedSize:
         return _WKLayoutModeFixedSize;
+    case kWKLayoutModeDynamicSizeComputedFromViewScale:
+        return _WKLayoutModeDynamicSizeComputedFromViewScale;
+    case kWKLayoutModeDynamicSizeWithMinimumViewSize:
+        return _WKLayoutModeDynamicSizeWithMinimumViewSize;
+    case kWKLayoutModeDynamicSizeComputedFromMinimumDocumentSize:
+        return _WKLayoutModeDynamicSizeComputedFromMinimumDocumentSize;
+    case kWKLayoutModeViewSize:
+    default:
+        return _WKLayoutModeViewSize;
     }
-    return _WKLayoutModeViewSize;
+#else
+    return _page->useFixedLayout() ? _WKLayoutModeFixedSize : _WKLayoutModeViewSize;
+#endif
 }
 
 - (void)_setLayoutMode:(_WKLayoutMode)layoutMode
 {
-    _page->setUseFixedLayout(layoutMode == _WKLayoutModeFixedSize || layoutMode == _WKLayoutModeDynamicSizeComputedFromViewScale);
-
 #if PLATFORM(MAC)
-    [_wkView _setAutomaticallyComputesFixedLayoutSizeFromViewScale:(layoutMode == _WKLayoutModeDynamicSizeComputedFromViewScale)];
+    WKLayoutMode wkViewLayoutMode;
+    switch (layoutMode) {
+    case _WKLayoutModeFixedSize:
+        wkViewLayoutMode = kWKLayoutModeFixedSize;
+        break;
+    case _WKLayoutModeDynamicSizeComputedFromViewScale:
+        wkViewLayoutMode = kWKLayoutModeDynamicSizeComputedFromViewScale;
+        break;
+    case _WKLayoutModeDynamicSizeWithMinimumViewSize:
+        wkViewLayoutMode = kWKLayoutModeDynamicSizeWithMinimumViewSize;
+        break;
+    case _WKLayoutModeDynamicSizeComputedFromMinimumDocumentSize:
+        wkViewLayoutMode = kWKLayoutModeDynamicSizeComputedFromMinimumDocumentSize;
+        break;
+    case _WKLayoutModeViewSize:
+    default:
+        wkViewLayoutMode = kWKLayoutModeViewSize;
+        break;
+    }
+    [_wkView _setLayoutMode:wkViewLayoutMode];
+#else
+    _page->setUseFixedLayout(layoutMode == _WKLayoutModeFixedSize || layoutMode == _WKLayoutModeDynamicSizeComputedFromViewScale);
 #endif
 }
 
@@ -2318,14 +2404,29 @@ static inline WebKit::FindOptions toFindOptions(_WKFindOptions wkFindOptions)
 
 - (void)_setViewScale:(CGFloat)viewScale
 {
+#if PLATFORM(MAC)
+    [_wkView _setViewScale:viewScale];
+#else
     if (viewScale <= 0 || isnan(viewScale) || isinf(viewScale))
         [NSException raise:NSInvalidArgumentException format:@"View scale should be a positive number"];
 
     _page->scaleView(viewScale);
+#endif
+}
 
+- (void)_setMinimumViewSize:(CGSize)minimumViewSize
+{
 #if PLATFORM(MAC)
-    if ([_wkView _automaticallyComputesFixedLayoutSizeFromViewScale])
-        [_wkView _updateAutomaticallyComputedFixedLayoutSize];
+    [_wkView _setMinimumViewSize:minimumViewSize];
+#endif
+}
+
+- (CGSize)_minimumViewSize
+{
+#if PLATFORM(MAC)
+    return [_wkView _minimumViewSize];
+#else
+    return CGSizeZero;
 #endif
 }
 
@@ -2629,6 +2730,20 @@ static inline WebKit::FindOptions toFindOptions(_WKFindOptions wkFindOptions)
     CGFloat imageHeight = imageScale * snapshotRectInContentCoordinates.size.height;
     CGSize imageSize = CGSizeMake(imageWidth, imageHeight);
 
+#if USE(IOSURFACE)
+    // If we are parented and thus won't incur a significant penalty from paging in tiles, snapshot the view hierarchy directly.
+    if (self.window) {
+        auto surface = WebCore::IOSurface::create(WebCore::expandedIntSize(WebCore::FloatSize(imageSize)), WebCore::ColorSpaceDeviceRGB);
+        CGFloat imageScaleInViewCoordinates = imageWidth / rectInViewCoordinates.size.width;
+        CATransform3D transform = CATransform3DMakeScale(imageScaleInViewCoordinates, imageScaleInViewCoordinates, 1);
+        transform = CATransform3DTranslate(transform, -rectInViewCoordinates.origin.x, -rectInViewCoordinates.origin.y, 0);
+        CARenderServerRenderLayerWithTransform(MACH_PORT_NULL, self.layer.context.contextId, reinterpret_cast<uint64_t>(self.layer), surface->surface(), 0, 0, &transform);
+        completionHandler(surface->createImage().get());
+
+        return;
+    }
+#endif
+    
     if (_customContentView) {
         UIGraphicsBeginImageContextWithOptions(imageSize, YES, 1);
 
@@ -2636,20 +2751,10 @@ static inline WebKit::FindOptions toFindOptions(_WKFindOptions wkFindOptions)
         [customContentView.backgroundColor set];
         UIRectFill(CGRectMake(0, 0, imageWidth, imageHeight));
 
-        CGRect destinationRect = customContentView.bounds;
-        destinationRect.origin.x = -snapshotRectInContentCoordinates.origin.x * imageScale;
-        destinationRect.origin.y = -snapshotRectInContentCoordinates.origin.y * imageScale;
-        destinationRect.size.width *= imageScale;
-        destinationRect.size.height *= imageScale;
-
-        if ([_customContentView window])
-            [customContentView drawViewHierarchyInRect:destinationRect afterScreenUpdates:NO];
-        else {
-            CGContextRef context = UIGraphicsGetCurrentContext();
-            CGContextTranslateCTM(context, destinationRect.origin.x, destinationRect.origin.y);
-            CGContextScaleCTM(context, imageScale, imageScale);
-            [customContentView.layer renderInContext:context];
-        }
+        CGContextRef context = UIGraphicsGetCurrentContext();
+        CGContextTranslateCTM(context, -snapshotRectInContentCoordinates.origin.x * imageScale, -snapshotRectInContentCoordinates.origin.y * imageScale);
+        CGContextScaleCTM(context, imageScale, imageScale);
+        [customContentView.layer renderInContext:context];
 
         completionHandler([UIGraphicsGetImageFromCurrentImageContext() CGImage]);
 
@@ -2657,25 +2762,6 @@ static inline WebKit::FindOptions toFindOptions(_WKFindOptions wkFindOptions)
         return;
     }
 
-#if USE(IOSURFACE)
-    // If we are parented and thus won't incur a significant penalty from paging in tiles, snapshot the view hierarchy directly.
-    if (self.window) {
-        float deviceScaleFactor = _page->deviceScaleFactor();
-
-        CGRect imageRectInPoints;
-        imageRectInPoints.size.width = imageWidth / deviceScaleFactor;
-        imageRectInPoints.size.height = imageRectInPoints.size.width / rectInViewCoordinates.size.width * rectInViewCoordinates.size.height;
-        imageRectInPoints.origin.x = rectInViewCoordinates.origin.x / deviceScaleFactor;
-        imageRectInPoints.origin.y = rectInViewCoordinates.origin.y / deviceScaleFactor;
-
-        auto surface = WebCore::IOSurface::create(WebCore::expandedIntSize(WebCore::FloatSize(imageSize)), WebCore::ColorSpaceDeviceRGB);
-        CATransform3D transform = CATransform3DMakeScale(deviceScaleFactor, deviceScaleFactor, 1);
-        CARenderServerRenderLayerWithTransform(MACH_PORT_NULL, self.layer.context.contextId, reinterpret_cast<uint64_t>(self.layer), surface->surface(), 0, 0, &transform);
-        completionHandler(surface->createImage().get());
-
-        return;
-    }
-#endif
 
     void(^copiedCompletionHandler)(CGImageRef) = [completionHandler copy];
     _page->takeSnapshot(WebCore::enclosingIntRect(snapshotRectInContentCoordinates), WebCore::expandedIntSize(WebCore::FloatSize(imageSize)), WebKit::SnapshotOptionsExcludeDeviceScaleFactor, [=](const WebKit::ShareableBitmap::Handle& imageHandle, WebKit::CallbackBase::Error) {
@@ -2747,6 +2833,25 @@ static inline WebKit::FindOptions toFindOptions(_WKFindOptions wkFindOptions)
     UIViewPrintFormatter *viewPrintFormatter = self.viewPrintFormatter;
     ASSERT([viewPrintFormatter isKindOfClass:[_WKWebViewPrintFormatter class]]);
     return (_WKWebViewPrintFormatter *)viewPrintFormatter;
+}
+
+- (BOOL)_allowsLinkPreview
+{
+    return _allowsLinkPreview;
+}
+
+- (void)_setAllowsLinkPreview:(BOOL)allowsLinkPreview
+{
+    if (_allowsLinkPreview == allowsLinkPreview)
+        return;
+
+    _allowsLinkPreview = allowsLinkPreview;
+#if HAVE(LINK_PREVIEW)
+    if (_allowsLinkPreview)
+        [_contentView _registerPreviewInWindow:[_contentView window]];
+    else
+        [_contentView _unregisterPreviewInWindow:[_contentView window]];
+#endif
 }
 
 #else

@@ -17,6 +17,7 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/graphics/surfaces/glx"
     "${WEBCORE_DIR}/platform/graphics/texmap"
     "${WEBCORE_DIR}/platform/graphics/texmap/coordinated"
+    "${WEBCORE_DIR}/platform/graphics/x11"
     "${WEBCORE_DIR}/platform/linux"
     "${WEBCORE_DIR}/platform/mediastream/openwebrtc"
     "${WEBCORE_DIR}/platform/mock/mediasource"
@@ -107,6 +108,7 @@ list(APPEND WebCore_SOURCES
     platform/geoclue/GeolocationProviderGeoclue2.cpp
 
     platform/graphics/ImageSource.cpp
+    platform/graphics/PlatformDisplay.cpp
     platform/graphics/WOFFFileFormat.cpp
 
     platform/graphics/cairo/BackingStoreBackendCairoImpl.cpp
@@ -180,7 +182,6 @@ list(APPEND WebCore_SOURCES
 
     platform/graphics/texmap/BitmapTexture.cpp
     platform/graphics/texmap/BitmapTextureGL.cpp
-    platform/graphics/texmap/BitmapTextureImageBuffer.cpp
     platform/graphics/texmap/BitmapTexturePool.cpp
     platform/graphics/texmap/GraphicsLayerTextureMapper.cpp
     platform/graphics/texmap/TextureMapperGL.cpp
@@ -194,6 +195,9 @@ list(APPEND WebCore_SOURCES
     platform/graphics/texmap/coordinated/CoordinatedTile.cpp
     platform/graphics/texmap/coordinated/TiledBackingStore.cpp
     platform/graphics/texmap/coordinated/UpdateAtlas.cpp
+
+    platform/graphics/x11/PlatformDisplayX11.cpp
+    platform/graphics/x11/XUniqueResource.cpp
 
     platform/image-decoders/ImageDecoder.cpp
 
@@ -228,7 +232,6 @@ list(APPEND WebCore_SOURCES
     platform/network/soup/CredentialStorageSoup.cpp
     platform/network/soup/DNSSoup.cpp
     platform/network/soup/NetworkStorageSessionSoup.cpp
-    platform/network/soup/ProxyResolverSoup.cpp
     platform/network/soup/ProxyServerSoup.cpp
     platform/network/soup/ResourceErrorSoup.cpp
     platform/network/soup/ResourceHandleSoup.cpp
@@ -251,7 +254,7 @@ list(APPEND WebCore_SOURCES
     platform/text/enchant/TextCheckerEnchant.cpp
 )
 
-if (WTF_USE_GEOCLUE2)
+if (USE_GEOCLUE2)
     list(APPEND WebCore_SOURCES
         ${DERIVED_SOURCES_WEBCORE_DIR}/Geoclue2Interface.c
     )
@@ -310,7 +313,7 @@ list(APPEND WebCore_LIBRARIES
     ${ZLIB_LIBRARIES}
 )
 
-list(APPEND WebCore_INCLUDE_DIRECTORIES
+list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
     ${CAIRO_INCLUDE_DIRS}
     ${ECORE_INCLUDE_DIRS}
     ${ECORE_EVAS_INCLUDE_DIRS}
@@ -336,7 +339,7 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
 )
 
 if (ENABLE_MEDIA_STREAM)
-    list(APPEND WebCore_INCLUDE_DIRECTORIES
+    list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
         ${OPENWEBRTC_INCLUDE_DIRS}
     )
     list(APPEND WebCore_LIBRARIES
@@ -347,7 +350,9 @@ endif ()
 if (ENABLE_VIDEO OR ENABLE_WEB_AUDIO)
     list(APPEND WebCore_INCLUDE_DIRECTORIES
         "${WEBCORE_DIR}/platform/graphics/gstreamer"
+    )
 
+    list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
         ${GSTREAMER_INCLUDE_DIRS}
         ${GSTREAMER_BASE_INCLUDE_DIRS}
         ${GSTREAMER_APP_INCLUDE_DIRS}
@@ -366,7 +371,7 @@ if (ENABLE_VIDEO OR ENABLE_WEB_AUDIO)
 endif ()
 
 if (ENABLE_VIDEO)
-    list(APPEND WebCore_INCLUDE_DIRECTORIES
+    list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
         ${GSTREAMER_TAG_INCLUDE_DIRS}
         ${GSTREAMER_VIDEO_INCLUDE_DIRS}
     )
@@ -376,7 +381,7 @@ if (ENABLE_VIDEO)
     )
 
     if (USE_GSTREAMER_MPEGTS)
-        list(APPEND WebCore_INCLUDE_DIRECTORIES
+        list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
             ${GSTREAMER_MPEGTS_INCLUDE_DIRS}
         )
 
@@ -386,14 +391,13 @@ if (ENABLE_VIDEO)
     endif ()
 endif ()
 
-if (WTF_USE_EGL)
-    list(APPEND WebCore_INCLUDE_DIRECTORIES
-        ${EGL_INCLUDE_DIR}
+if (USE_EGL)
+    list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
         "${WEBCORE_DIR}/platform/graphics/surfaces/egl"
     )
 endif ()
 
-if (WTF_USE_EGL)
+if (USE_EGL)
     list(APPEND WebCore_SOURCES
         platform/graphics/surfaces/egl/EGLConfigSelector.cpp
         platform/graphics/surfaces/egl/EGLContext.cpp
@@ -408,7 +412,7 @@ else ()
     )
 endif ()
 
-if (WTF_USE_OPENGL_ES_2)
+if (USE_OPENGL_ES_2)
     list(APPEND WebCore_SOURCES
         platform/graphics/opengl/Extensions3DOpenGLES.cpp
         platform/graphics/opengl/GraphicsContext3DOpenGLES.cpp
@@ -422,11 +426,7 @@ else ()
     )
 endif ()
 
-if (WTF_USE_EGL)
-    list(APPEND WebCore_LIBRARIES
-        ${EGL_LIBRARY}
-    )
-elseif (X11_Xcomposite_FOUND AND X11_Xrender_FOUND)
+if (NOT USE_EGL AND X11_Xcomposite_FOUND AND X11_Xrender_FOUND)
     list(APPEND WebCore_LIBRARIES
         ${X11_Xcomposite_LIB}
         ${X11_Xrender_LIB}
@@ -436,7 +436,9 @@ endif ()
 if (ENABLE_WEB_AUDIO)
     list(APPEND WebCore_INCLUDE_DIRECTORIES
         "${WEBCORE_DIR}/platform/audio/gstreamer"
+    )
 
+    list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
         ${GSTREAMER_AUDIO_INCLUDE_DIRS}
         ${GSTREAMER_FFT_INCLUDE_DIRS}
     )
@@ -450,7 +452,7 @@ if (ENABLE_WEB_AUDIO)
 endif ()
 
 if (ENABLE_SPELLCHECK)
-    list(APPEND WebCore_INCLUDE_DIRECTORIES
+    list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
         ${ENCHANT_INCLUDE_DIRS}
     )
     list(APPEND WebCore_LIBRARIES
@@ -461,6 +463,8 @@ endif ()
 if (ENABLE_ACCESSIBILITY)
     list(APPEND WebCore_INCLUDE_DIRECTORIES
         "${WEBCORE_DIR}/accessibility/atk"
+    )
+    list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
         ${ATK_INCLUDE_DIRS}
     )
     list(APPEND WebCore_LIBRARIES
@@ -469,7 +473,7 @@ if (ENABLE_ACCESSIBILITY)
 endif ()
 
 if (ENABLE_SPEECH_SYNTHESIS)
-    list(APPEND WebCore_INCLUDE_DIRECTORIES
+    list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
         ${ESPEAK_INCLUDE_DIRS}
     )
     list(APPEND WebCore_LIBRARIES
@@ -519,7 +523,7 @@ if (ENABLE_SUBTLE_CRYPTO)
         crypto/keys/CryptoKeySerializationRaw.cpp
     )
 
-    list(APPEND WebCore_INCLUDE_DIRECTORIES
+    list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
         ${GNUTLS_INCLUDE_DIRS}
     )
     list(APPEND WebCore_LIBRARIES

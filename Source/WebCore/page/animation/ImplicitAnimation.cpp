@@ -78,7 +78,7 @@ bool ImplicitAnimation::animate(CompositeAnimation*, RenderElement*, const Rende
     if (!animatedStyle)
         animatedStyle = RenderStyle::clone(targetStyle);
 
-    bool needsAnim = CSSPropertyAnimation::blendProperties(this, m_animatingProperty, animatedStyle.get(), m_fromStyle.get(), m_toStyle.get(), progress(1, 0, 0));
+    bool needsAnim = CSSPropertyAnimation::blendProperties(this, m_animatingProperty, animatedStyle.get(), m_fromStyle.get(), m_toStyle.get(), progress());
     // FIXME: we also need to detect cases where we have to software animate for other reasons,
     // such as a child using inheriting the transform. https://bugs.webkit.org/show_bug.cgi?id=23902
     if (!needsAnim) {
@@ -100,7 +100,7 @@ void ImplicitAnimation::getAnimatedStyle(RefPtr<RenderStyle>& animatedStyle)
     if (!animatedStyle)
         animatedStyle = RenderStyle::clone(m_toStyle.get());
 
-    CSSPropertyAnimation::blendProperties(this, m_animatingProperty, animatedStyle.get(), m_fromStyle.get(), m_toStyle.get(), progress(1, 0, 0));
+    CSSPropertyAnimation::blendProperties(this, m_animatingProperty, animatedStyle.get(), m_fromStyle.get(), m_toStyle.get(), progress());
 }
 
 bool ImplicitAnimation::computeExtentOfTransformAnimation(LayoutRect& bounds) const
@@ -219,6 +219,9 @@ void ImplicitAnimation::reset(RenderStyle* to)
     // set the transform animation list
     validateTransformFunctionList();
     checkForMatchingFilterFunctionLists();
+#if ENABLE(FILTERS_LEVEL_2)
+    checkForMatchingBackdropFilterFunctionLists();
+#endif
 }
 
 void ImplicitAnimation::setOverridden(bool b)
@@ -252,7 +255,7 @@ void ImplicitAnimation::blendPropertyValueInStyle(CSSPropertyID prop, RenderStyl
     if (!m_toStyle)
         return;
         
-    CSSPropertyAnimation::blendProperties(this, prop, currentStyle, m_fromStyle.get(), m_toStyle.get(), progress(1, 0, 0));
+    CSSPropertyAnimation::blendProperties(this, prop, currentStyle, m_fromStyle.get(), m_toStyle.get(), progress());
 }
 
 void ImplicitAnimation::validateTransformFunctionList()
@@ -271,7 +274,7 @@ void ImplicitAnimation::validateTransformFunctionList()
     if (val->operations().isEmpty())
         return;
         
-    // An emtpy transform list matches anything.
+    // An empty transform list matches anything.
     if (val != toVal && !toVal->operations().isEmpty() && !val->operationsMatch(*toVal))
         return;
 
@@ -279,29 +282,41 @@ void ImplicitAnimation::validateTransformFunctionList()
     m_transformFunctionListValid = true;
 }
 
+static bool filterOperationsMatch(const FilterOperations* fromOperations, const FilterOperations& toOperations)
+{
+    if (fromOperations->operations().isEmpty())
+        fromOperations = &toOperations;
+
+    if (fromOperations->operations().isEmpty())
+        return false;
+
+    if (fromOperations != &toOperations && !toOperations.operations().isEmpty() && !fromOperations->operationsMatch(toOperations))
+        return false;
+
+    return true;
+}
+
 void ImplicitAnimation::checkForMatchingFilterFunctionLists()
 {
     m_filterFunctionListsMatch = false;
-    
+
     if (!m_fromStyle || !m_toStyle)
         return;
-        
-    const FilterOperations* val = &m_fromStyle->filter();
-    const FilterOperations* toVal = &m_toStyle->filter();
 
-    if (val->operations().isEmpty())
-        val = toVal;
-
-    if (val->operations().isEmpty())
-        return;
-        
-    // An emtpy filter list matches anything.
-    if (val != toVal && !toVal->operations().isEmpty() && !val->operationsMatch(*toVal))
-        return;
-
-    // Filter lists match.
-    m_filterFunctionListsMatch = true;
+    m_filterFunctionListsMatch = filterOperationsMatch(&m_fromStyle->filter(), m_toStyle->filter());
 }
+
+#if ENABLE(FILTERS_LEVEL_2)
+void ImplicitAnimation::checkForMatchingBackdropFilterFunctionLists()
+{
+    m_backdropFilterFunctionListsMatch = false;
+
+    if (!m_fromStyle || !m_toStyle)
+        return;
+
+    m_backdropFilterFunctionListsMatch = filterOperationsMatch(&m_fromStyle->backdropFilter(), m_toStyle->backdropFilter());
+}
+#endif
 
 double ImplicitAnimation::timeToNextService()
 {

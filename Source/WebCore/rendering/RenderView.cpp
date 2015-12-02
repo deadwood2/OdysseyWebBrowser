@@ -111,7 +111,6 @@ RenderView::RenderView(Document& document, Ref<RenderStyle>&& style)
     , m_renderCounterCount(0)
     , m_selectionWasCaret(false)
     , m_hasSoftwareFilters(false)
-    , m_hasFlippedBlockDescendants(false)
 #if ENABLE(SERVICE_CONTROLS)
     , m_selectionRectGatherer(*this)
 #endif
@@ -334,9 +333,9 @@ void RenderView::layout()
 
         for (auto& box : childrenOfType<RenderBox>(*this)) {
             if (box.hasRelativeLogicalHeight()
-                || box.style().logicalHeight().isPercent()
-                || box.style().logicalMinHeight().isPercent()
-                || box.style().logicalMaxHeight().isPercent()
+                || box.style().logicalHeight().isPercentOrCalculated()
+                || box.style().logicalMinHeight().isPercentOrCalculated()
+                || box.style().logicalMaxHeight().isPercentOrCalculated()
                 || box.isSVGRoot()
                 )
                 box.setChildNeedsLayout(MarkOnlyThis);

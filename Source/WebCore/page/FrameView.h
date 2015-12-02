@@ -4,7 +4,7 @@
              (C) 1998, 1999 Torben Weis (weis@kde.org)
              (C) 1999 Lars Knoll (knoll@kde.org)
              (C) 1999 Antti Koivisto (koivisto@kde.org)
-   Copyright (C) 2004-2009, 2014 Apple Inc. All rights reserved.
+   Copyright (C) 2004-2009, 2014-2015 Apple Inc. All rights reserved.
 
    This library is free software; you can redistribute it and/or
    modify it under the terms of the GNU Library General Public
@@ -104,6 +104,7 @@ public:
     virtual bool avoidScrollbarCreation() const override;
 
     virtual void setContentsSize(const IntSize&) override;
+    virtual void updateContentsSize() override;
 
     void layout(bool allowSubtree = true);
     WEBCORE_EXPORT bool didFirstLayout() const;
@@ -147,6 +148,7 @@ public:
     WEBCORE_EXPORT void serviceScriptedAnimations(double monotonicAnimationStartTime);
 #endif
 
+    void willRecalcStyle();
     void updateCompositingLayersAfterStyleChange();
     void updateCompositingLayersAfterLayout();
     bool flushCompositingStateForThisFrame(Frame* rootFrameForFlush);
@@ -169,8 +171,6 @@ public:
     ScrollableArea* scrollableAreaForScrollLayerID(uint64_t) const;
 
     bool hasCompositedContent() const;
-    bool hasCompositedContentIncludingDescendants() const;
-    bool hasCompositingAncestor() const;
     WEBCORE_EXPORT void enterCompositingMode();
     WEBCORE_EXPORT bool isEnclosedInCompositingLayer() const;
 
@@ -188,7 +188,7 @@ public:
     void resetScrollbarsAndClearContentsSize();
     void prepareForDetach();
     void detachCustomScrollbars();
-    void recalculateScrollbarOverlayStyle();
+    WEBCORE_EXPORT void recalculateScrollbarOverlayStyle();
 
     void clear();
 
@@ -273,10 +273,16 @@ public:
     void removeViewportConstrainedObject(RenderElement*);
     const ViewportConstrainedObjectSet* viewportConstrainedObjects() const { return m_viewportConstrainedObjects.get(); }
     bool hasViewportConstrainedObjects() const { return m_viewportConstrainedObjects && m_viewportConstrainedObjects->size() > 0; }
+    
+    float frameScaleFactor() const;
 
     // Functions for querying the current scrolled position, negating the effects of overhang
     // and adjusting for page scale.
-    LayoutSize scrollOffsetForFixedPosition() const;
+    LayoutSize scrollOffsetForFixedPosition() const
+    {
+        return scrollOffsetForFixedPosition(visibleContentRect(), totalContentsSize(), scrollPosition(), scrollOrigin(), frameScaleFactor(), fixedElementsLayoutRelativeToFrame(), scrollBehaviorForFixedElements(), headerHeight(), footerHeight());
+    }
+    
     // Static function can be called from another thread.
     static LayoutSize scrollOffsetForFixedPosition(const LayoutRect& visibleContentRect, const LayoutSize& totalContentsSize, const LayoutPoint& scrollPosition, const LayoutPoint& scrollOrigin, float frameScaleFactor, bool fixedElementsLayoutRelativeToFrame, ScrollBehaviorForFixedElements, int headerHeight, int footerHeight);
 
@@ -338,6 +344,10 @@ public:
 
     void willPaintContents(GraphicsContext*, const IntRect& dirtyRect, PaintingState&);
     void didPaintContents(GraphicsContext*, const IntRect& dirtyRect, PaintingState&);
+
+#if PLATFORM(IOS)
+    WEBCORE_EXPORT void didReplaceMultipartContent();
+#endif
 
     WEBCORE_EXPORT void setPaintBehavior(PaintBehavior);
     WEBCORE_EXPORT PaintBehavior paintBehavior() const;
@@ -510,11 +520,17 @@ public:
 
     ScrollBehaviorForFixedElements scrollBehaviorForFixedElements() const;
 
+    bool hasFlippedBlockRenderers() const { return m_hasFlippedBlockRenderers; }
+    void setHasFlippedBlockRenderers(bool b) { m_hasFlippedBlockRenderers = b; }
+
     void updateWidgetPositions();
     void didAddWidgetToRenderTree(Widget&);
     void willRemoveWidgetFromRenderTree(Widget&);
 
     const HashSet<Widget*>& widgetsInRenderTree() const { return m_widgetsInRenderTree; }
+
+    typedef Vector<Ref<FrameView>, 16> FrameViewList;
+    FrameViewList renderedChildFrameViews() const;
 
     void addTrackedRepaintRect(const FloatRect&);
 
@@ -526,7 +542,8 @@ public:
     FloatRect exposedRect() const { return m_exposedRect; }
 
 #if ENABLE(CSS_SCROLL_SNAP)
-    virtual void updateSnapOffsets() override;
+    void updateSnapOffsets() override;
+    bool isScrollSnapInProgress() const override;
 #endif
 
     virtual float adjustScrollStepForFixedContent(float step, ScrollbarOrientation, ScrollGranularity) override;
@@ -585,13 +602,16 @@ private:
     void forceLayoutParentViewIfNeeded();
     void performPostLayoutTasks();
     void autoSizeIfEnabled();
-    void updateThrottledDOMTimersState();
+
+    void applyRecursivelyWithVisibleRect(const std::function<void (FrameView& frameView, const IntRect& visibleRect)>&);
+    void updateThrottledDOMTimersState(const IntRect& visibleRect);
+    void resumeVisibleImageAnimations(const IntRect& visibleRect);
+    void updateScriptedAnimationsAndTimersThrottlingState(const IntRect& visibleRect);
 
     void updateLayerFlushThrottling();
     WEBCORE_EXPORT void adjustTiledBackingCoverage();
 
     virtual void repaintContentRectangle(const IntRect&) override;
-    virtual void updateContentsSize() override;
     virtual void addedOrRemovedScrollbar() override;
 
     virtual void delegatesScrollingDidChange() override;
@@ -647,6 +667,7 @@ private:
     bool isFrameFlatteningValidForThisFrame() const;
 
     bool qualifiesAsVisuallyNonEmpty() const;
+    bool isViewForDocumentInFrame() const;
 
     AXObjectCache* axObjectCache() const;
     void notifyWidgetsInAllFrames(WidgetNotification);
@@ -785,7 +806,8 @@ private:
 #endif
 
     bool m_visualUpdatesAllowedByClient;
-    
+    bool m_hasFlippedBlockRenderers;
+
     ScrollPinningBehavior m_scrollPinningBehavior;
 
     IntRect* m_cachedWindowClipRect { nullptr };

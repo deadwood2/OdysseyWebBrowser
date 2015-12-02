@@ -33,7 +33,6 @@
 #include "MediaPlayerPrivate.h"
 #include "Timer.h"
 #include <functional>
-#include <wtf/Functional.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/WeakPtr.h>
 
@@ -242,7 +241,6 @@ protected:
     virtual MediaTime platformDuration() const = 0;
 
     virtual void beginLoadingMetadata() = 0;
-    virtual void tracksChanged() = 0;
     virtual void sizeChanged() = 0;
 
     virtual void createContextVideoRenderer() = 0;

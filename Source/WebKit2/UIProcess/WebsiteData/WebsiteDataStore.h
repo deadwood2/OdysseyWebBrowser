@@ -28,6 +28,7 @@
 
 #include "WebProcessLifetimeObserver.h"
 #include "WebsiteDataTypes.h"
+#include <WebCore/SecurityOriginHash.h>
 #include <WebCore/SessionID.h>
 #include <functional>
 #include <wtf/HashSet.h>
@@ -36,10 +37,15 @@
 #include <wtf/WorkQueue.h>
 #include <wtf/text/WTFString.h>
 
+namespace WebCore {
+class SecurityOrigin;
+}
+
 namespace WebKit {
 
 class StorageManager;
 class WebPageProxy;
+class WebProcessPool;
 struct WebsiteDataRecord;
 
 class WebsiteDataStore : public RefCounted<WebsiteDataStore>, public WebProcessLifetimeObserver {
@@ -50,6 +56,7 @@ public:
 
         String webSQLDatabaseDirectory;
         String localStorageDirectory;
+        String mediaKeysStorageDirectory;
     };
     static RefPtr<WebsiteDataStore> createNonPersistent();
     static RefPtr<WebsiteDataStore> create(Configuration);
@@ -57,8 +64,7 @@ public:
 
     uint64_t identifier() const { return m_identifier; }
 
-    // FIXME: Change this to isPersistent() and update callers.
-    bool isNonPersistent() const { return m_sessionID.isEphemeral(); }
+    bool isPersistent() const { return !m_sessionID.isEphemeral(); }
     WebCore::SessionID sessionID() const { return m_sessionID; }
 
     static void cloneSessionData(WebPageProxy& sourcePage, WebPageProxy& newPage);
@@ -84,6 +90,12 @@ private:
     void platformInitialize();
     void platformDestroy();
 
+    HashSet<RefPtr<WebProcessPool>> processPools() const;
+
+    static Vector<RefPtr<WebCore::SecurityOrigin>> mediaKeyOrigins(const String& mediaKeysStorageDirectory);
+    static void removeMediaKeys(const String& mediaKeysStorageDirectory, std::chrono::system_clock::time_point modifiedSince);
+    static void removeMediaKeys(const String& mediaKeysStorageDirectory, const HashSet<RefPtr<WebCore::SecurityOrigin>>&);
+
     const uint64_t m_identifier;
     const WebCore::SessionID m_sessionID;
 
@@ -91,6 +103,7 @@ private:
     const String m_applicationCacheDirectory;
 
     const String m_webSQLDatabaseDirectory;
+    const String m_mediaKeysStorageDirectory;
     const RefPtr<StorageManager> m_storageManager;
 
     Ref<WorkQueue> m_queue;

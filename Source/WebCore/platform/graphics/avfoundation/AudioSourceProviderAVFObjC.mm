@@ -67,7 +67,7 @@ SOFT_LINK_POINTER(AVFoundation, AVMediaCharacteristicAudible, NSString *)
 
 namespace WebCore {
 
-static double kRingBufferDuration = 1;
+static const double kRingBufferDuration = 1;
 
 RefPtr<AudioSourceProviderAVFObjC> AudioSourceProviderAVFObjC::create(AVPlayerItem *item)
 {
@@ -172,7 +172,7 @@ void AudioSourceProviderAVFObjC::destroyMix()
 {
     if (m_avPlayerItem)
         [m_avPlayerItem setAudioMix:nil];
-    [m_avAudioMix setInputParameters:nil];
+    [m_avAudioMix setInputParameters:@[ ]];
     m_avAudioMix.clear();
     m_tap.clear();
 }

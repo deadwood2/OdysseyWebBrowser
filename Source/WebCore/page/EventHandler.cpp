@@ -391,7 +391,7 @@ EventHandler::EventHandler(Frame& frame)
 #endif
     , m_svgPan(false)
     , m_resizeLayer(0)
-    , m_eventHandlerWillResetCapturingMouseEventsElement(nullptr)
+    , m_eventHandlerWillResetCapturingMouseEventsElement(false)
     , m_clickCount(0)
 #if ENABLE(IOS_GESTURE_EVENTS)
     , m_gestureInitialDiameter(GestureUnknown)
@@ -3078,8 +3078,12 @@ bool EventHandler::keyEvent(const PlatformKeyboardEvent& initialKeyEvent)
         return false;
 #endif
 
-    if (initialKeyEvent.windowsVirtualKeyCode() == VK_CAPITAL)
-        capsLockStateMayHaveChanged();
+    if (initialKeyEvent.windowsVirtualKeyCode() == VK_CAPITAL) {
+        if (auto* element = m_frame.document()->focusedElement()) {
+            if (is<HTMLInputElement>(*element))
+                downcast<HTMLInputElement>(*element).capsLockStateMayHaveChanged();
+        }
+    }
 
 #if ENABLE(PAN_SCROLLING)
     if (m_frame.mainFrame().eventHandler().panScrollInProgress()) {
@@ -3748,15 +3752,6 @@ void EventHandler::defaultTabEventHandler(KeyboardEvent* event)
 
     if (page->focusController().advanceFocus(focusDirection, event))
         event->setDefaultHandled();
-}
-
-void EventHandler::capsLockStateMayHaveChanged()
-{
-    Document* document = m_frame.document();
-    if (auto* element = document->focusedElement()) {
-        if (is<HTMLInputElement>(*element))
-            downcast<HTMLInputElement>(*element).capsLockStateMayHaveChanged();
-    }
 }
 
 void EventHandler::sendScrollEvent()

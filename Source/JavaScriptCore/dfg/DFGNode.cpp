@@ -116,17 +116,44 @@ void Node::convertToIdentityOn(Node* child)
     }
     switch (output) {
     case NodeResultDouble:
-        RELEASE_ASSERT(input == NodeResultInt52 || input == NodeResultJS);
         setOpAndDefaultFlags(DoubleRep);
-        return;
+        switch (input) {
+        case NodeResultInt52:
+            child1().setUseKind(Int52RepUse);
+            return;
+        case NodeResultJS:
+            child1().setUseKind(NumberUse);
+            return;
+        default:
+            RELEASE_ASSERT_NOT_REACHED();
+            return;
+        }
     case NodeResultInt52:
-        RELEASE_ASSERT(input == NodeResultDouble || input == NodeResultJS);
         setOpAndDefaultFlags(Int52Rep);
-        return;
+        switch (input) {
+        case NodeResultDouble:
+            child1().setUseKind(DoubleRepMachineIntUse);
+            return;
+        case NodeResultJS:
+            child1().setUseKind(MachineIntUse);
+            return;
+        default:
+            RELEASE_ASSERT_NOT_REACHED();
+            return;
+        }
     case NodeResultJS:
-        RELEASE_ASSERT(input == NodeResultDouble || input == NodeResultInt52);
         setOpAndDefaultFlags(ValueRep);
-        return;
+        switch (input) {
+        case NodeResultDouble:
+            child1().setUseKind(DoubleRepUse);
+            return;
+        case NodeResultInt52:
+            child1().setUseKind(Int52RepUse);
+            return;
+        default:
+            RELEASE_ASSERT_NOT_REACHED();
+            return;
+        }
     default:
         RELEASE_ASSERT_NOT_REACHED();
         return;
@@ -156,6 +183,14 @@ void Node::convertToPutByOffsetHint()
     convertToPutHint(
         PromotedLocationDescriptor(NamedPropertyPLoc, storageAccessData().identifierNumber),
         child2().node(), child3().node());
+}
+
+void Node::convertToPutClosureVarHint()
+{
+    ASSERT(m_op == PutClosureVar);
+    convertToPutHint(
+        PromotedLocationDescriptor(ClosureVarPLoc, scopeOffset().offset()),
+        child1().node(), child2().node());
 }
 
 PromotedLocationDescriptor Node::promotedLocationDescriptor()

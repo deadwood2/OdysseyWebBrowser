@@ -46,11 +46,21 @@
     return WebKit::wrapper(API::UserContentExtensionStore::defaultStore());
 }
 
++ (instancetype)storeWithURL:(NSURL *)url
+{
+    Ref<API::UserContentExtensionStore> store = API::UserContentExtensionStore::storeWithPath(url.absoluteURL.fileSystemRepresentation);
+    return WebKit::wrapper(store.leakRef());
+}
+
 - (void)compileContentExtensionForIdentifier:(NSString *)identifier encodedContentExtension:(NSString *)encodedContentExtension completionHandler:(void (^)(_WKUserContentFilter *, NSError *))completionHandler
 {
     auto handler = adoptNS([completionHandler copy]);
 
-    _userContentExtensionStore->compileContentExtension(identifier, encodedContentExtension, [handler](RefPtr<API::UserContentExtension> contentExtension, std::error_code error) {
+    String json(encodedContentExtension);
+    [encodedContentExtension release];
+    encodedContentExtension = nil;
+
+    _userContentExtensionStore->compileContentExtension(identifier, WTF::move(json), [handler](RefPtr<API::UserContentExtension> contentExtension, std::error_code error) {
         if (error) {
             auto rawHandler = (void (^)(_WKUserContentFilter *, NSError *))handler.get();
             

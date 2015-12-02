@@ -155,7 +155,7 @@ void RemoteLayerTreeDrawingAreaProxy::didUpdateGeometry()
 
     // If the WKView was resized while we were waiting for a DidUpdateGeometry reply from the web process,
     // we need to resend the new size here.
-    if (m_lastSentSize != m_size || m_lastSentLayerPosition != m_layerPosition)
+    if (m_lastSentSize != m_size)
         sendUpdateGeometry();
 }
 
@@ -174,8 +174,7 @@ FloatRect RemoteLayerTreeDrawingAreaProxy::scaledExposedRect() const
 void RemoteLayerTreeDrawingAreaProxy::sendUpdateGeometry()
 {
     m_lastSentSize = m_size;
-    m_lastSentLayerPosition = m_layerPosition;
-    m_webPageProxy.process().send(Messages::DrawingArea::UpdateGeometry(m_size, m_layerPosition), m_webPageProxy.pageID());
+    m_webPageProxy.process().send(Messages::DrawingArea::UpdateGeometry(m_size, IntSize(), false), m_webPageProxy.pageID());
     m_isWaitingForDidUpdateGeometry = true;
 }
 
@@ -270,7 +269,7 @@ FloatPoint RemoteLayerTreeDrawingAreaProxy::indicatorLocation() const
 #else
         FloatPoint tiledMapLocation = exposedRect().location();
         tiledMapLocation += FloatSize(indicatorInset, indicatorInset);
-        float scale = 1 / m_webPageProxy.pageScaleFactor();;
+        float scale = 1 / m_webPageProxy.pageScaleFactor();
         tiledMapLocation.scale(scale, scale);
 #endif
         return tiledMapLocation;
@@ -394,11 +393,16 @@ void RemoteLayerTreeDrawingAreaProxy::didRefreshDisplay(double)
 
 void RemoteLayerTreeDrawingAreaProxy::waitForDidUpdateViewState()
 {
+    static std::chrono::milliseconds viewStateUpdateTimeout = [] {
+        if (id value = [[NSUserDefaults standardUserDefaults] objectForKey:@"WebKitOverrideViewStateUpdateTimeout"])
+            return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::duration<double>([value doubleValue]));
+
 #if PLATFORM(IOS)
-    auto viewStateUpdateTimeout = std::chrono::milliseconds(500);
+        return std::chrono::milliseconds(500);
 #else
-    auto viewStateUpdateTimeout = std::chrono::milliseconds(250);
+        return std::chrono::milliseconds(250);
 #endif
+    }();
     m_webPageProxy.process().connection()->waitForAndDispatchImmediately<Messages::RemoteLayerTreeDrawingAreaProxy::CommitLayerTree>(m_webPageProxy.pageID(), viewStateUpdateTimeout, InterruptWaitingIfSyncMessageArrives);
 }
 

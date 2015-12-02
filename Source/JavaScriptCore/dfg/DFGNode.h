@@ -190,7 +190,7 @@ struct CallVarargsData {
 };
 
 struct LoadVarargsData {
-    VirtualRegister start; // Local for the first element.
+    VirtualRegister start; // Local for the first element. This is the first actual argument, not this.
     VirtualRegister count; // Local for the count.
     VirtualRegister machineStart;
     VirtualRegister machineCount;
@@ -414,6 +414,13 @@ struct Node {
         setOpAndDefaultFlags(CheckStructure);
         m_opInfo = bitwise_cast<uintptr_t>(set); 
     }
+
+    void convertToCheckStructureImmediate(Node* structure)
+    {
+        ASSERT(op() == CheckStructure);
+        m_op = CheckStructureImmediate;
+        children.setChild1(Edge(structure, CellUse));
+    }
     
     void replaceWith(Node* other)
     {
@@ -562,6 +569,7 @@ struct Node {
     
     void convertToPutByOffsetHint();
     void convertToPutStructureHint(Node* structure);
+    void convertToPutClosureVarHint();
     
     void convertToPhantomNewObject()
     {
@@ -578,6 +586,17 @@ struct Node {
     {
         ASSERT(m_op == NewFunction);
         m_op = PhantomNewFunction;
+        m_flags |= NodeMustGenerate;
+        m_opInfo = 0;
+        m_opInfo2 = 0;
+        children = AdjacencyList();
+    }
+
+    void convertToPhantomCreateActivation()
+    {
+        ASSERT(m_op == CreateActivation || m_op == MaterializeCreateActivation);
+        m_op = PhantomCreateActivation;
+        m_flags &= ~NodeHasVarArgs;
         m_flags |= NodeMustGenerate;
         m_opInfo = 0;
         m_opInfo2 = 0;
@@ -811,13 +830,7 @@ struct Node {
 
     bool isStoreBarrier()
     {
-        switch (op()) {
-        case StoreBarrier:
-        case StoreBarrierWithNullCheck:
-            return true;
-        default:
-            return false;
-        }
+        return op() == StoreBarrier;
     }
 
     bool hasIdentifier()
@@ -853,7 +866,7 @@ struct Node {
     NodeFlags arithNodeFlags()
     {
         NodeFlags result = m_flags & NodeArithFlagsMask;
-        if (op() == ArithMul || op() == ArithDiv || op() == ArithMod || op() == ArithNegate || op() == ArithPow || op() == DoubleAsInt32)
+        if (op() == ArithMul || op() == ArithDiv || op() == ArithMod || op() == ArithNegate || op() == ArithPow || op() == ArithRound || op() == DoubleAsInt32)
             return result;
         return result & ~NodeBytecodeNeedsNegZero;
     }
@@ -1223,6 +1236,7 @@ struct Node {
     bool hasHeapPrediction()
     {
         switch (op()) {
+        case ArithRound:
         case GetDirectPname:
         case GetById:
         case GetByIdFlush:
@@ -1268,6 +1282,8 @@ struct Node {
         case NativeConstruct:
         case NativeCall:
         case NewFunction:
+        case CreateActivation:
+        case MaterializeCreateActivation:
             return true;
         default:
             return false;
@@ -1277,7 +1293,13 @@ struct Node {
     FrozenValue* cellOperand()
     {
         ASSERT(hasCellOperand());
-        return reinterpret_cast<FrozenValue*>(m_opInfo);
+        switch (op()) {
+        case MaterializeCreateActivation:
+            return reinterpret_cast<FrozenValue*>(m_opInfo2);
+        default:
+            return reinterpret_cast<FrozenValue*>(m_opInfo);
+        }
+        RELEASE_ASSERT_NOT_REACHED();
     }
     
     template<typename T>
@@ -1299,6 +1321,7 @@ struct Node {
     
     WatchpointSet* watchpointSet()
     {
+        ASSERT(hasWatchpointSet());
         return reinterpret_cast<WatchpointSet*>(m_opInfo);
     }
     
@@ -1309,6 +1332,7 @@ struct Node {
     
     void* storagePointer()
     {
+        ASSERT(hasStoragePointer());
         return reinterpret_cast<void*>(m_opInfo);
     }
 
@@ -1334,6 +1358,7 @@ struct Node {
     {
         switch (op()) {
         case CheckStructure:
+        case CheckStructureImmediate:
             return true;
         default:
             return false;
@@ -1389,6 +1414,7 @@ struct Node {
     
     MultiGetByOffsetData& multiGetByOffsetData()
     {
+        ASSERT(hasMultiGetByOffsetData());
         return *reinterpret_cast<MultiGetByOffsetData*>(m_opInfo);
     }
     
@@ -1399,12 +1425,20 @@ struct Node {
     
     MultiPutByOffsetData& multiPutByOffsetData()
     {
+        ASSERT(hasMultiPutByOffsetData());
         return *reinterpret_cast<MultiPutByOffsetData*>(m_opInfo);
     }
     
     bool hasObjectMaterializationData()
     {
-        return op() == MaterializeNewObject;
+        switch (op()) {
+        case MaterializeNewObject:
+        case MaterializeCreateActivation:
+            return true;
+
+        default:
+            return false;
+        }
     }
     
     ObjectMaterializationData& objectMaterializationData()
@@ -1434,6 +1468,27 @@ struct Node {
         }
     }
     
+    bool isActivationAllocation()
+    {
+        switch (op()) {
+        case CreateActivation:
+        case MaterializeCreateActivation:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    bool isPhantomActivationAllocation()
+    {
+        switch (op()) {
+        case PhantomCreateActivation:
+            return true;
+        default:
+            return false;
+        }
+    }
+
     bool isPhantomAllocation()
     {
         switch (op()) {
@@ -1441,6 +1496,7 @@ struct Node {
         case PhantomDirectArguments:
         case PhantomClonedArguments:
         case PhantomNewFunction:
+        case PhantomCreateActivation:
             return true;
         default:
             return false;
@@ -1513,6 +1569,23 @@ struct Node {
     void setArithMode(Arith::Mode mode)
     {
         m_opInfo = mode;
+    }
+
+    bool hasArithRoundingMode()
+    {
+        return op() == ArithRound;
+    }
+
+    Arith::RoundingMode arithRoundingMode()
+    {
+        ASSERT(hasArithRoundingMode());
+        return static_cast<Arith::RoundingMode>(m_opInfo);
+    }
+
+    void setArithRoundingMode(Arith::RoundingMode mode)
+    {
+        ASSERT(hasArithRoundingMode());
+        m_opInfo = static_cast<uintptr_t>(mode);
     }
     
     bool hasVirtualRegister()
@@ -1926,13 +1999,25 @@ struct Node {
         return canSpeculateInt52(sourceFor(pass));
     }
 
+    bool hasTypeLocation()
+    {
+        return op() == ProfileType;
+    }
+
     TypeLocation* typeLocation()
     {
+        ASSERT(hasTypeLocation());
         return reinterpret_cast<TypeLocation*>(m_opInfo);
+    }
+
+    bool hasBasicBlockLocation()
+    {
+        return op() == ProfileControlFlow;
     }
 
     BasicBlockLocation* basicBlockLocation()
     {
+        ASSERT(hasBasicBlockLocation());
         return reinterpret_cast<BasicBlockLocation*>(m_opInfo);
     }
     

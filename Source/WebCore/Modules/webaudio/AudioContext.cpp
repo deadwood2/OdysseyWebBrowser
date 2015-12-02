@@ -129,7 +129,7 @@ RefPtr<AudioContext> AudioContext::create(Document& document, ExceptionCode& ec)
 // Constructor for rendering to the audio hardware.
 AudioContext::AudioContext(Document& document)
     : ActiveDOMObject(&document)
-    , m_mediaSession(MediaSession::create(*this))
+    , m_mediaSession(PlatformMediaSession::create(*this))
     , m_eventQueue(std::make_unique<GenericEventQueue>(*this))
     , m_graphOwnerThread(UndefinedThreadIdentifier)
 {
@@ -145,7 +145,7 @@ AudioContext::AudioContext(Document& document)
 AudioContext::AudioContext(Document& document, unsigned numberOfChannels, size_t numberOfFrames, float sampleRate)
     : ActiveDOMObject(&document)
     , m_isOfflineContext(true)
-    , m_mediaSession(MediaSession::create(*this))
+    , m_mediaSession(PlatformMediaSession::create(*this))
     , m_eventQueue(std::make_unique<GenericEventQueue>(*this))
     , m_graphOwnerThread(UndefinedThreadIdentifier)
 {
@@ -171,7 +171,7 @@ void AudioContext::constructCommon()
     m_listener = AudioListener::create();
 
 #if PLATFORM(IOS)
-    if (!document()->settings() || document()->settings()->mediaPlaybackRequiresUserGesture())
+    if (!document()->settings() || document()->settings()->requiresUserGestureForMediaPlayback())
         addBehaviorRestriction(RequireUserGestureForAudioStartRestriction);
     else
         m_restrictions = NoRestrictions;
@@ -1101,23 +1101,23 @@ void AudioContext::decrementActiveSourceCount()
     --m_activeSourceCount;
 }
 
-void AudioContext::suspendContext(std::function<void()> successCallback, std::function<void()> failureCallback, ExceptionCode& ec)
+void AudioContext::suspendContext(std::function<void()> successCallback, FailureCallback failureCallback)
 {
     ASSERT(successCallback);
     ASSERT(failureCallback);
 
     if (isOfflineContext()) {
-        ec = INVALID_STATE_ERR;
+        failureCallback(INVALID_STATE_ERR);
         return;
     }
 
     if (m_state == State::Suspended) {
-        scriptExecutionContext()->postTask(successCallback);
+        successCallback();
         return;
     }
 
     if (m_state == State::Closed || m_state == State::Interrupted || !m_destinationNode) {
-        scriptExecutionContext()->postTask(failureCallback);
+        failureCallback(0);
         return;
     }
 
@@ -1134,23 +1134,23 @@ void AudioContext::suspendContext(std::function<void()> successCallback, std::fu
     });
 }
 
-void AudioContext::resumeContext(std::function<void()> successCallback, std::function<void()> failureCallback, ExceptionCode& ec)
+void AudioContext::resumeContext(std::function<void()> successCallback, FailureCallback failureCallback)
 {
     ASSERT(successCallback);
     ASSERT(failureCallback);
 
     if (isOfflineContext()) {
-        ec = INVALID_STATE_ERR;
+        failureCallback(INVALID_STATE_ERR);
         return;
     }
 
     if (m_state == State::Running) {
-        scriptExecutionContext()->postTask(successCallback);
+        successCallback();
         return;
     }
 
     if (m_state == State::Closed || !m_destinationNode) {
-        scriptExecutionContext()->postTask(failureCallback);
+        failureCallback(0);
         return;
     }
 
@@ -1167,17 +1167,18 @@ void AudioContext::resumeContext(std::function<void()> successCallback, std::fun
     });
 }
 
-void AudioContext::closeContext(std::function<void()> successCallback, std::function<void()>, ExceptionCode& ec)
+void AudioContext::closeContext(std::function<void()> successCallback, FailureCallback failureCallback)
 {
     ASSERT(successCallback);
+    ASSERT(failureCallback);
 
     if (isOfflineContext()) {
-        ec = INVALID_STATE_ERR;
+        failureCallback(INVALID_STATE_ERR);
         return;
     }
 
     if (m_state == State::Closed || !m_destinationNode) {
-        scriptExecutionContext()->postTask(successCallback);
+        successCallback();
         return;
     }
 
@@ -1199,7 +1200,7 @@ void AudioContext::suspendPlayback()
         return;
 
     if (m_state == State::Suspended) {
-        if (m_mediaSession->state() == MediaSession::Interrupted)
+        if (m_mediaSession->state() == PlatformMediaSession::Interrupted)
             setState(State::Interrupted);
         return;
     }
@@ -1208,7 +1209,7 @@ void AudioContext::suspendPlayback()
 
     RefPtr<AudioContext> strongThis(this);
     m_destinationNode->suspend([strongThis] {
-        bool interrupted = strongThis->m_mediaSession->state() == MediaSession::Interrupted;
+        bool interrupted = strongThis->m_mediaSession->state() == PlatformMediaSession::Interrupted;
         strongThis->setState(interrupted ? State::Interrupted : State::Suspended);
     });
 }

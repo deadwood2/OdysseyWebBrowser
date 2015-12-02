@@ -47,6 +47,8 @@ static void* keyValueObservingContext = &keyValueObservingContext;
     WKWebView *_webView;
     BOOL _zoomTextOnly;
     BOOL _isPrivateBrowsingWindow;
+
+    BOOL _useShrinkToFit;
 }
 
 - (void)awakeFromNib
@@ -233,6 +235,13 @@ static CGFloat viewScaleForMenuItemTag(NSInteger tag)
 - (BOOL)canResetZoom
 {
     return _zoomTextOnly ? (_webView._textZoomFactor != 1) : (_webView._pageZoomFactor != 1);
+}
+
+- (IBAction)toggleShrinkToFit:(id)sender
+{
+    _useShrinkToFit = !_useShrinkToFit;
+    toggleUseShrinkToFitButton.image = _useShrinkToFit ? [NSImage imageNamed:@"NSExitFullScreenTemplate"] : [NSImage imageNamed:@"NSEnterFullScreenTemplate"];
+    [_webView _setLayoutMode:_useShrinkToFit ? _WKLayoutModeDynamicSizeComputedFromMinimumDocumentSize : _WKLayoutModeViewSize];
 }
 
 - (IBAction)dumpSourceToConsole:(id)sender

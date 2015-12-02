@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2003, 2009, 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2003, 2009, 2012, 2015 Apple Inc. All rights reserved.
  *
  * Portions are Copyright (C) 1998 Netscape Communications Corporation.
  *
@@ -702,7 +702,7 @@ private:
 
     // Non-auto z-index always implies stacking context here, because StyleResolver::adjustRenderStyle already adjusts z-index
     // based on positioning and other criteria.
-    bool isStackingContext(const RenderStyle* style) const { return !style->hasAutoZIndex() || isRootLayer(); }
+    bool isStackingContext(const RenderStyle* style) const { return !style->hasAutoZIndex() || isRootLayer() || m_forcedStackingContext; }
 
     bool isDirtyStackingContainer() const { return m_zOrderListsDirty && isStackingContainer(); }
 
@@ -877,6 +877,9 @@ private:
     virtual bool isRubberBandInProgress() const override;
     virtual bool updatesScrollLayerPositionOnMainThread() const override { return true; }
     virtual bool forceUpdateScrollbarsOnMainThreadForPerformanceTesting() const override;
+#if ENABLE(CSS_SCROLL_SNAP)
+    bool isScrollSnapInProgress() const override;
+#endif
 
 #if PLATFORM(IOS)
     void registerAsTouchEventListenerForScrolling();
@@ -917,8 +920,7 @@ private:
 
     void updateOrRemoveFilterClients();
     void updateOrRemoveFilterEffectRenderer();
-
-    void updateOrRemoveMaskImageClients(const RenderStyle* oldStyle);
+    void updateOrRemoveMaskImageClients();
 
 #if ENABLE(CSS_COMPOSITING)
     void updateAncestorChainHasBlendingDescendants();
@@ -989,6 +991,9 @@ private:
 private:
     // The bitfields are up here so they will fall into the padding from ScrollableArea on 64-bit.
 
+    const bool m_isRootLayer : 1;
+    const bool m_forcedStackingContext : 1;
+
     // Keeps track of whether the layer is currently resizing, so events can cause resizing to start and stop.
     bool m_inResizeMode : 1;
 
@@ -1016,8 +1021,6 @@ private:
     // descendants in stacking order. This is one of the requirements of being
     // able to safely become a stacking context.
     bool m_descendantsAreContiguousInStackingOrder : 1;
-
-    const bool m_isRootLayer : 1;
 
     bool m_usedTransparency : 1; // Tracks whether we need to close a transparent layer, i.e., whether
                                  // we ended up painting this layer or any descendants (and therefore need to

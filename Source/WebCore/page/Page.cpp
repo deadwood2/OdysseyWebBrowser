@@ -391,7 +391,7 @@ struct ViewModeInfo {
     Page::ViewMode type;
 };
 static const int viewModeMapSize = 5;
-static ViewModeInfo viewModeMap[viewModeMapSize] = {
+static const ViewModeInfo viewModeMap[viewModeMapSize] = {
     {"windowed", Page::ViewModeWindowed},
     {"floating", Page::ViewModeFloating},
     {"fullscreen", Page::ViewModeFullscreen},
@@ -832,6 +832,16 @@ void Page::setPageScaleFactor(float scale, const IntPoint& origin, bool inStable
 #endif
 }
 
+void Page::setViewScaleFactor(float scale)
+{
+    if (m_viewScaleFactor == scale)
+        return;
+
+    m_viewScaleFactor = scale;
+    PageCache::singleton().markPagesForDeviceOrPageScaleChanged(*this);
+    PageCache::singleton().markPagesForFullStyleRecalc(*this);
+}
+
 void Page::setDeviceScaleFactor(float scaleFactor)
 {
     ASSERT(scaleFactor > 0);
@@ -845,7 +855,7 @@ void Page::setDeviceScaleFactor(float scaleFactor)
     setNeedsRecalcStyleInAllFrames();
 
     mainFrame().deviceOrPageScaleFactorChanged();
-    PageCache::singleton().markPagesForDeviceScaleChanged(*this);
+    PageCache::singleton().markPagesForDeviceOrPageScaleChanged(*this);
 
     PageCache::singleton().markPagesForFullStyleRecalc(*this);
     GraphicsContext::updateDocumentMarkerResources();
@@ -1406,8 +1416,8 @@ Color Page::pageExtendedBackgroundColor() const
 }
 
 // These are magical constants that might be tweaked over time.
-static double gMinimumPaintedAreaRatio = 0.1;
-static double gMaximumUnpaintedAreaRatio = 0.04;
+static const double gMinimumPaintedAreaRatio = 0.1;
+static const double gMaximumUnpaintedAreaRatio = 0.04;
 
 bool Page::isCountingRelevantRepaintedObjects() const
 {
@@ -1725,27 +1735,12 @@ void Page::setShouldPlayToPlaybackTarget(uint64_t clientId, bool shouldPlay)
 }
 #endif
 
-RefPtr<WheelEventTestTrigger> Page::testTrigger() const
-{
-    return m_testTrigger;
-}
-
 WheelEventTestTrigger& Page::ensureTestTrigger()
 {
     if (!m_testTrigger)
         m_testTrigger = adoptRef(new WheelEventTestTrigger());
 
     return *m_testTrigger;
-}
-
-void Page::clearTrigger()
-{
-    m_testTrigger = nullptr;
-}
-
-bool Page::expectsWheelEventTriggers() const
-{
-    return !!m_testTrigger;
 }
 
 } // namespace WebCore

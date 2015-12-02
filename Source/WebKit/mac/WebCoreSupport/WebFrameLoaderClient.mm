@@ -136,7 +136,6 @@
 #import <WebCore/HTMLPlugInImageElement.h>
 #import <WebCore/WAKClipView.h>
 #import <WebCore/WAKScrollView.h>
-#import <WebCore/WAKViewPrivate.h>
 #import <WebCore/WAKWindow.h>
 #import <WebCore/WebCoreThreadMessage.h>
 #import "WebKitVersionChecks.h"
@@ -361,9 +360,6 @@ void WebFrameLoaderClient::dispatchWillSendRequest(DocumentLoader* loader, unsig
 
     NSURLRequest *currentURLRequest = request.nsURLRequest(UpdateHTTPBody);
     NSURLRequest *newURLRequest = currentURLRequest;
-    ResourceLoadPriority priority = request.priority();
-    bool isHiddenFromInspector = request.hiddenFromInspector();
-    auto requester = request.requester();
 #if PLATFORM(IOS)
     if (implementations->webThreadWillSendRequestFunc) {
         newURLRequest = (NSURLRequest *)CallResourceLoadDelegateInWebThread(implementations->webThreadWillSendRequestFunc, webView, @selector(webThreadWebView:resource:willSendRequest:redirectResponse:fromDataSource:), [webView _objectForIdentifier:identifier], currentURLRequest, redirectResponse.nsURLResponse(), dataSource(loader));
@@ -373,10 +369,7 @@ void WebFrameLoaderClient::dispatchWillSendRequest(DocumentLoader* loader, unsig
         newURLRequest = (NSURLRequest *)CallResourceLoadDelegate(implementations->willSendRequestFunc, webView, @selector(webView:resource:willSendRequest:redirectResponse:fromDataSource:), [webView _objectForIdentifier:identifier], currentURLRequest, redirectResponse.nsURLResponse(), dataSource(loader));
 
     if (newURLRequest != currentURLRequest)
-        request = newURLRequest;
-    request.setHiddenFromInspector(isHiddenFromInspector);
-    request.setPriority(priority);
-    request.setRequester(requester);
+        request.updateFromDelegatePreservingOldProperties(ResourceRequest(newURLRequest));
 }
 
 bool WebFrameLoaderClient::shouldUseCredentialStorage(DocumentLoader* loader, unsigned long identifier)
@@ -1002,6 +995,14 @@ void WebFrameLoaderClient::didChangeTitle(DocumentLoader* loader)
 #if !PLATFORM(IOS)
     // FIXME: Should do this only in main frame case, right?
     [getWebView(m_webFrame.get()) _didChangeValueForKey:_WebMainFrameTitleKey];
+#endif
+}
+
+void WebFrameLoaderClient::didReplaceMultipartContent()
+{
+#if PLATFORM(IOS)
+    if (FrameView *view = core(m_webFrame.get())->view())
+        view->didReplaceMultipartContent();
 #endif
 }
 

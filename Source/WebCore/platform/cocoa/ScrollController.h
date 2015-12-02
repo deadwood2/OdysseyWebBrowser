@@ -31,6 +31,7 @@
 #include "FloatPoint.h"
 #include "FloatSize.h"
 #include "ScrollTypes.h"
+#include "WheelEventTestTrigger.h"
 #include <wtf/Noncopyable.h>
 #include <wtf/RunLoop.h>
 
@@ -76,7 +77,8 @@ public:
     // the page to scroll to the nearest boundary point.
     virtual void adjustScrollPositionToBoundsIfNecessary() = 0;
 
-    virtual WheelEventTestTrigger* testTrigger() const { return nullptr; }
+    virtual void deferTestsForReason(WheelEventTestTrigger::ScrollableAreaIdentifier, WheelEventTestTrigger::DeferTestTriggerReason) const { /* Do nothing */ }
+    virtual void removeTestDeferralForReason(WheelEventTestTrigger::ScrollableAreaIdentifier, WheelEventTestTrigger::DeferTestTriggerReason) const { /* Do nothing */ }
 
 #if ENABLE(CSS_SCROLL_SNAP) && PLATFORM(MAC)
     virtual LayoutUnit scrollOffsetOnAxis(ScrollEventAxis) const = 0;
@@ -95,6 +97,11 @@ public:
     {
         return 1.0f;
     }
+
+    virtual unsigned activeScrollOffsetIndex(ScrollEventAxis) const
+    {
+        return 0;
+    }
 #endif
 };
 
@@ -107,11 +114,18 @@ public:
     bool handleWheelEvent(const PlatformWheelEvent&);
 
     bool isRubberBandInProgress() const;
+    bool isScrollSnapInProgress() const;
 
 #if ENABLE(CSS_SCROLL_SNAP) && PLATFORM(MAC)
     bool processWheelEventForScrollSnap(const PlatformWheelEvent&);
     void updateScrollAnimatorsAndTimers(const ScrollableArea&);
     void updateScrollSnapPoints(ScrollEventAxis, const Vector<LayoutUnit>&);
+    unsigned activeScrollSnapIndexForAxis(ScrollEventAxis) const;
+    void setActiveScrollSnapIndexForAxis(ScrollEventAxis, unsigned);
+    void setActiveScrollSnapIndicesForOffset(int x, int y);
+    bool activeScrollSnapIndexDidChange() const { return m_activeScrollSnapIndexDidChange; }
+    void setScrollSnapIndexDidChange(bool state) { m_activeScrollSnapIndexDidChange = state; }
+    bool hasActiveScrollSnapTimerForAxis(ScrollEventAxis) const;
 #endif
 
 private:
@@ -131,6 +145,7 @@ private:
     LayoutUnit scrollOffsetOnAxis(ScrollEventAxis) const;
     void processWheelEventForScrollSnapOnAxis(ScrollEventAxis, const PlatformWheelEvent&);
     bool shouldOverrideWheelEvent(ScrollEventAxis, const PlatformWheelEvent&) const;
+    void setNearestScrollSnapIndexForAxisAndOffset(ScrollEventAxis, int);
 
     void beginScrollSnapAnimation(ScrollEventAxis, ScrollSnapState);
     void scrollSnapAnimationUpdate(ScrollEventAxis);
@@ -166,12 +181,13 @@ private:
     RunLoop::Timer<ScrollController> m_verticalScrollSnapTimer;
 #endif
 
-    bool m_inScrollGesture;
-    bool m_momentumScrollInProgress;
-    bool m_ignoreMomentumScrolls;
-    bool m_snapRubberbandTimerIsActive;
+    bool m_inScrollGesture { false };
+    bool m_momentumScrollInProgress { false };
+    bool m_ignoreMomentumScrolls { false };
+    bool m_snapRubberbandTimerIsActive { false };
+    bool m_activeScrollSnapIndexDidChange { false };
 };
-
+    
 } // namespace WebCore
 
 #endif // ENABLE(RUBBER_BANDING)

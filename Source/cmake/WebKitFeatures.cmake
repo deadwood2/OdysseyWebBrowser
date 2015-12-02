@@ -60,6 +60,7 @@ macro(WEBKIT_OPTION_BEGIN)
     WEBKIT_OPTION_DEFINE(ENABLE_CURSOR_VISIBILITY "Toggle cursor visibility support" PRIVATE OFF)
     WEBKIT_OPTION_DEFINE(ENABLE_CUSTOM_SCHEME_HANDLER "Toggle Custom Scheme Handler support" PRIVATE OFF)
     WEBKIT_OPTION_DEFINE(ENABLE_DASHBOARD_SUPPORT "Toggle dashboard support" PRIVATE OFF)
+    WEBKIT_OPTION_DEFINE(ENABLE_DATABASE_PROCESS "Toggle database process support in WebKit2" PRIVATE OFF)
     WEBKIT_OPTION_DEFINE(ENABLE_DATACUE_VALUE "Toggle datacue value support" PRIVATE OFF)
     WEBKIT_OPTION_DEFINE(ENABLE_DATALIST_ELEMENT "Toggle HTML5 datalist support" PRIVATE OFF)
     WEBKIT_OPTION_DEFINE(ENABLE_DATA_TRANSFER_ITEMS "Toggle HTML5 data transfer items support" PRIVATE OFF)
@@ -71,6 +72,7 @@ macro(WEBKIT_OPTION_BEGIN)
     WEBKIT_OPTION_DEFINE(ENABLE_DRAG_SUPPORT "Toggle Drag Support" PRIVATE OFF)
     WEBKIT_OPTION_DEFINE(ENABLE_ENCRYPTED_MEDIA "Toggle EME support" PRIVATE OFF)
     WEBKIT_OPTION_DEFINE(ENABLE_ENCRYPTED_MEDIA_V2 "Support EME v2" PRIVATE OFF)
+    WEBKIT_OPTION_DEFINE(ENABLE_ES6_ARROWFUNCTION_SYNTAX "Toggle ES6 arrow function syntax support" PRIVATE ON)
     WEBKIT_OPTION_DEFINE(ENABLE_ES6_CLASS_SYNTAX "Toggle ES6 class syntax support" PRIVATE ON)
     WEBKIT_OPTION_DEFINE(ENABLE_ES6_TEMPLATE_LITERAL_SYNTAX "Toggle ES6 template literal syntax support" PRIVATE ON)
     WEBKIT_OPTION_DEFINE(ENABLE_FILTERS_LEVEL_2 "Toggle Filters Module Level 2" PRIVATE OFF)
@@ -305,14 +307,6 @@ macro(CREATE_CONFIGURATION_HEADER)
 
     foreach (_variable_name ${_WEBKIT_CONFIG_FILE_VARIABLES})
         _ADD_CONFIGURATION_LINE_TO_HEADER_STRING(_file_contents ${_variable_name} ${_variable_name})
-
-        # WebKit looks for WTF_USE_FOO when calling the USE(FOO) macro. Automatically exposing
-        # this definition when USE_FOO is exposed, prevents us from having to expose both (or
-        # forgetting to do so).
-        string(FIND ${_variable_name} "USE_" _use_string_location)
-        if (${_use_string_location} EQUAL 0)
-            _ADD_CONFIGURATION_LINE_TO_HEADER_STRING(_file_contents ${_variable_name} "WTF_${_variable_name}")
-        endif ()
     endforeach ()
     set(_file_contents "${_file_contents}\n#endif /* CMAKECONFIG_H */\n")
 

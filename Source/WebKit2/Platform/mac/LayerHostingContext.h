@@ -62,9 +62,13 @@ public:
     void setColorSpace(CGColorSpaceRef);
     CGColorSpaceRef colorSpace() const;
 
-#if PLATFORM(IOS) || __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
+    // Fences only work on iOS and OS 10.10+.
     void setFencePort(mach_port_t);
-#endif
+
+    // createFencePort does not install the fence port on the LayerHostingContext's
+    // CAContext; call setFencePort() with the newly created port if synchronization
+    // with this context is desired.
+    WebCore::MachSendRight createFencePort();
 
 private:
     LayerHostingMode m_layerHostingMode;

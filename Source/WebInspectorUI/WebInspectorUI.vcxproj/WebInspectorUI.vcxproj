@@ -59,27 +59,27 @@
     <ConfigurationType>Makefile</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v120_xp</PlatformToolset>
+    <PlatformToolset>v120</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugSuffix|Win32'" Label="Configuration">
     <ConfigurationType>Makefile</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v120_xp</PlatformToolset>
+    <PlatformToolset>v120</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>Makefile</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v120_xp</PlatformToolset>
+    <PlatformToolset>v120</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Production|Win32'" Label="Configuration">
     <ConfigurationType>Makefile</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v120_xp</PlatformToolset>
+    <PlatformToolset>v120</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_WinCairo|Win32'" Label="Configuration">
     <ConfigurationType>Makefile</ConfigurationType>
@@ -297,7 +297,6 @@
     <None Include="..\UserInterface\CanvasProfileObject.js" />
     <None Include="..\UserInterface\CanvasProfileType.js" />
     <None Include="..\UserInterface\CanvasProfileView.js" />
-    <None Include="..\UserInterface\ChartDetailsSectionLegendRow.js" />
     <None Include="..\UserInterface\ChartDetailsSectionRow.js" />
     <None Include="..\UserInterface\ChartDetailsSectionRow.css" />
     <None Include="..\UserInterface\ClusterContentView.css" />
@@ -738,7 +737,6 @@
     <None Include="..\UserInterface\RadioButtonNavigationItem.css" />
     <None Include="..\UserInterface\RadioButtonNavigationItem.js" />
     <None Include="..\UserInterface\RemoteObject.js" />
-    <None Include="..\UserInterface\RenderingFrameDetailsSidebarPanel.js" />
     <None Include="..\UserInterface\RenderingFrameTimeDataGridNode.js" />
     <None Include="..\UserInterface\RenderingFrameTimelineOverview.js" />
     <None Include="..\UserInterface\RenderingFrameTimelineOverviewGraph.css" />

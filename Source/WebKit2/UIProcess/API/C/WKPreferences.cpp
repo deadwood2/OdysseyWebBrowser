@@ -730,22 +730,22 @@ bool WKPreferencesGetHixie76WebSocketProtocolEnabled(WKPreferencesRef)
 
 void WKPreferencesSetMediaPlaybackRequiresUserGesture(WKPreferencesRef preferencesRef, bool flag)
 {
-    toImpl(preferencesRef)->setMediaPlaybackRequiresUserGesture(flag);
+    toImpl(preferencesRef)->setRequiresUserGestureForMediaPlayback(flag);
 }
 
 bool WKPreferencesGetMediaPlaybackRequiresUserGesture(WKPreferencesRef preferencesRef)
 {
-    return toImpl(preferencesRef)->mediaPlaybackRequiresUserGesture();
+    return toImpl(preferencesRef)->requiresUserGestureForMediaPlayback();
 }
 
 void WKPreferencesSetMediaPlaybackAllowsInline(WKPreferencesRef preferencesRef, bool flag)
 {
-    toImpl(preferencesRef)->setMediaPlaybackAllowsInline(flag);
+    toImpl(preferencesRef)->setAllowsInlineMediaPlayback(flag);
 }
 
 bool WKPreferencesGetMediaPlaybackAllowsInline(WKPreferencesRef preferencesRef)
 {
-    return toImpl(preferencesRef)->mediaPlaybackAllowsInline();
+    return toImpl(preferencesRef)->allowsInlineMediaPlayback();
 }
 
 void WKPreferencesSetAllowsAlternateFullscreen(WKPreferencesRef preferencesRef, bool flag)
@@ -1355,4 +1355,24 @@ void WKPreferencesSetIgnoreViewportScalingConstraints(WKPreferencesRef preferenc
 bool WKPreferencesGetIgnoreViewportScalingConstraints(WKPreferencesRef preferencesRef)
 {
     return toImpl(preferencesRef)->ignoreViewportScalingConstraints();
+}
+
+void WKPreferencesSetMetaRefreshEnabled(WKPreferencesRef preferencesRef, bool enabled)
+{
+    toImpl(preferencesRef)->setMetaRefreshEnabled(enabled);
+}
+
+bool WKPreferencesGetMetaRefreshEnabled(WKPreferencesRef preferencesRef)
+{
+    return toImpl(preferencesRef)->metaRefreshEnabled();
+}
+
+void WKPreferencesSetAllowsAirPlayForMediaPlayback(WKPreferencesRef preferencesRef, bool enabled)
+{
+    toImpl(preferencesRef)->setAllowsAirPlayForMediaPlayback(enabled);
+}
+
+bool WKPreferencesGetAllowsAirPlayForMediaPlayback(WKPreferencesRef preferencesRef)
+{
+    return toImpl(preferencesRef)->allowsAirPlayForMediaPlayback();
 }

@@ -91,6 +91,8 @@ public:
     bool isPreloaded(const String& url);
     bool isLoadingFromMemoryCache(const String& url);
     String xhrResponseSource(XMLHttpRequest*);
+    bool isSharingStyleSheetContents(Element* linkA, Element* linkB);
+    bool isStyleSheetLoadingSubresources(Element* link);
     void setOverrideCachePolicy(const String&);
     void setOverrideResourceLoadPriority(const String&);
 
@@ -113,6 +115,8 @@ public:
 
     // DOMTimers throttling testing.
     bool isTimerThrottled(int timeoutId, ExceptionCode&);
+    bool isRequestAnimationFrameThrottled() const;
+    bool areTimersThrottled() const;
 
     // Spatial Navigation testing.
     unsigned lastSpatialNavigationCandidateCount(ExceptionCode&) const;
@@ -157,6 +161,8 @@ public:
     void invalidateFontCache();
 
     void setScrollViewPosition(long x, long y, ExceptionCode&);
+    void setViewBaseBackgroundColor(const String& colorValue, ExceptionCode&);
+
     void setPagination(const String& mode, int gap, ExceptionCode& ec) { setPagination(mode, gap, 0, ec); }
     void setPagination(const String& mode, int gap, int pageLength, ExceptionCode&);
     String configurationForViewport(float devicePixelRatio, int deviceWidth, int deviceHeight, int availableWidth, int availableHeight, ExceptionCode&);
@@ -184,6 +190,9 @@ public:
 
     Vector<String> userPreferredLanguages() const;
     void setUserPreferredLanguages(const Vector<String>&);
+
+    Vector<String> userPreferredAudioCharacteristics() const;
+    void setUserPreferredAudioCharacteristic(const String&);
 
     unsigned wheelEventHandlerCount(ExceptionCode&);
     unsigned touchEventHandlerCount(ExceptionCode&);
@@ -303,6 +312,9 @@ public:
     void startTrackingStyleRecalcs(ExceptionCode&);
     unsigned long styleRecalcCount(ExceptionCode&);
 
+    void startTrackingCompositingUpdates(ExceptionCode&);
+    unsigned long compositingUpdateCount(ExceptionCode&);
+
     void updateLayoutIgnorePendingStylesheetsAndRunPostLayoutTasks(ExceptionCode&);
     void updateLayoutIgnorePendingStylesheetsAndRunPostLayoutTasks(Node*, ExceptionCode&);
 
@@ -390,9 +402,14 @@ public:
 
     RefPtr<File> createFile(const String&);
     void queueMicroTask(int);
+    bool testPreloaderSettingViewport();
 
 #if ENABLE(CONTENT_FILTERING)
     MockContentFilterSettings& mockContentFilterSettings();
+#endif
+
+#if ENABLE(CSS_SCROLL_SNAP)
+    String scrollSnapOffsets(Element*, ExceptionCode&);
 #endif
 
 private:

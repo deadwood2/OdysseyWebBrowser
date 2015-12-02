@@ -130,6 +130,12 @@ public:
             
             DFG_ASSERT(m_graph, preHeader->terminal(), preHeader->terminal()->op() == Jump);
             
+            // We should validate the pre-header. If we placed forExit origins on nodes only if
+            // at the top of that node it is legal to exit, then we would simply check if Jump
+            // had a forExit. We should disable hoisting to pre-headers that don't validate.
+            // Or, we could only allow hoisting of things that definitely don't exit.
+            // FIXME: https://bugs.webkit.org/show_bug.cgi?id=145204
+            
             data.preHeader = preHeader;
         }
         
@@ -213,6 +219,47 @@ private:
             return false;
         }
         
+        // FIXME: At this point if the hoisting of the full node fails but the node has type checks,
+        // we could still hoist just the checks.
+        // https://bugs.webkit.org/show_bug.cgi?id=144525
+        
+        // FIXME: If a node has a type check - even something like a CheckStructure - then we should
+        // only hoist the node if we know that it will execute on every loop iteration or if we know
+        // that the type check will always succeed at the loop pre-header through some other means
+        // (like looking at prediction propagation results). Otherwise, we might make a mistake like
+        // this:
+        //
+        // var o = ...; // sometimes null and sometimes an object with structure S1.
+        // for (...) {
+        //     if (o)
+        //         ... = o.f; // CheckStructure and GetByOffset, which we will currently hoist.
+        // }
+        //
+        // When we encounter such code, we'll hoist the CheckStructure and GetByOffset and then we
+        // will have a recompile. We'll then end up thinking that the get_by_id needs to be
+        // polymorphic, which is false.
+        //
+        // We can counter this by either having a control flow equivalence check, or by consulting
+        // prediction propagation to see if the check would always succeed. Prediction propagation
+        // would not be enough for things like:
+        //
+        // var p = ...; // some boolean predicate
+        // var o = {};
+        // if (p)
+        //     o.f = 42;
+        // for (...) {
+        //     if (p)
+        //         ... = o.f;
+        // }
+        //
+        // Prediction propagation can't tell us anything about the structure, and the CheckStructure
+        // will appear to be hoistable because the loop doesn't clobber structures. The cell check
+        // in the CheckStructure will be hoistable though, since prediction propagation can tell us
+        // that o is always SpecFinalObject. In cases like this, control flow equivalence is the
+        // only effective guard.
+        //
+        // https://bugs.webkit.org/show_bug.cgi?id=144527
+        
         if (readsOverlap(m_graph, node, data.writes)) {
             if (verbose) {
                 dataLog(
@@ -241,6 +288,8 @@ private:
         node->owner = data.preHeader;
         NodeOrigin originalOrigin = node->origin;
         node->origin.forExit = data.preHeader->terminal()->origin.forExit;
+        if (!node->origin.semantic.isSet())
+            node->origin.semantic = node->origin.forExit;
         
         // Modify the states at the end of the preHeader of the loop we hoisted to,
         // and all pre-headers inside the loop.

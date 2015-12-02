@@ -113,6 +113,7 @@ NSString *WebConsoleMessageOtherMessageSource = @"OtherMessageSource";
 
 NSString *WebConsoleMessageDebugMessageLevel = @"DebugMessageLevel";
 NSString *WebConsoleMessageLogMessageLevel = @"LogMessageLevel";
+NSString *WebConsoleMessageInfoMessageLevel = @"InfoMessageLevel";
 NSString *WebConsoleMessageWarningMessageLevel = @"WarningMessageLevel";
 NSString *WebConsoleMessageErrorMessageLevel = @"ErrorMessageLevel";
 
@@ -400,6 +401,8 @@ inline static NSString *stringForMessageLevel(MessageLevel level)
         return WebConsoleMessageDebugMessageLevel;
     case MessageLevel::Log:
         return WebConsoleMessageLogMessageLevel;
+    case MessageLevel::Info:
+        return WebConsoleMessageInfoMessageLevel;
     case MessageLevel::Warning:
         return WebConsoleMessageWarningMessageLevel;
     case MessageLevel::Error:
@@ -933,9 +936,9 @@ bool WebChromeClient::supportsVideoFullscreen()
     return true;
 }
 
-void WebChromeClient::enterVideoFullscreenForVideoElement(HTMLVideoElement& videoElement, HTMLMediaElement::VideoFullscreenMode mode)
+void WebChromeClient::enterVideoFullscreenForVideoElement(HTMLVideoElement& videoElement, HTMLMediaElementEnums::VideoFullscreenMode mode)
 {
-    ASSERT(mode != HTMLMediaElement::VideoFullscreenModeNone);
+    ASSERT(mode != HTMLMediaElementEnums::VideoFullscreenModeNone);
     BEGIN_BLOCK_OBJC_EXCEPTIONS;
     [m_webView _enterVideoFullscreenForVideoElement:&videoElement mode:mode];
     END_BLOCK_OBJC_EXCEPTIONS;

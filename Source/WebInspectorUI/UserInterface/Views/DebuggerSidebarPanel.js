@@ -31,7 +31,7 @@ WebInspector.DebuggerSidebarPanel = class DebuggerSidebarPanel extends WebInspec
 
         this.contentBrowser = contentBrowser;
 
-        WebInspector.Frame.addEventListener(WebInspector.Frame.Event.MainResourceDidChange, this._mainResourceChanged, this);
+        WebInspector.Frame.addEventListener(WebInspector.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
         WebInspector.Frame.addEventListener(WebInspector.Frame.Event.ResourceWasAdded, this._resourceAdded, this);
 
         WebInspector.debuggerManager.addEventListener(WebInspector.DebuggerManager.Event.BreakpointsEnabledDidChange, this._breakpointsEnabledDidChange, this);
@@ -166,9 +166,25 @@ WebInspector.DebuggerSidebarPanel = class DebuggerSidebarPanel extends WebInspec
         WebInspector.IssueMessage.addEventListener(WebInspector.IssueMessage.Event.DisplayLocationDidChange, this._handleDebuggerObjectDisplayLocationDidChange, this);
         WebInspector.issueManager.addEventListener(WebInspector.IssueManager.Event.IssueWasAdded, this._handleIssueAdded, this);
         WebInspector.issueManager.addEventListener(WebInspector.IssueManager.Event.Cleared, this._handleIssuesCleared, this);
+
+        if (WebInspector.frameResourceManager.mainFrame)
+            this._addResourcesRecursivelyForFrame(WebInspector.frameResourceManager.mainFrame);
+
+        for (var script of WebInspector.debuggerManager.knownNonResourceScripts)
+            this._addScript(script);
     }
 
     // Public
+
+    closed()
+    {
+        super.closed();
+
+        WebInspector.Frame.removeEventListener(null, null, this);
+        WebInspector.debuggerManager.removeEventListener(null, null, this);
+        WebInspector.Breakpoint.removeEventListener(null, null, this);
+        WebInspector.IssueMessage.removeEventListener(null, null, this);
+    }
 
     get hasSelectedElement()
     {
@@ -211,11 +227,15 @@ WebInspector.DebuggerSidebarPanel = class DebuggerSidebarPanel extends WebInspec
 
         var representedObject = selectedTreeElement.representedObject;
 
-        if (representedObject === WebInspector.debuggerManager.allExceptionsBreakpoint)
+        if (representedObject === WebInspector.debuggerManager.allExceptionsBreakpoint) {
             cookie[WebInspector.DebuggerSidebarPanel.SelectedAllExceptionsCookieKey] = true;
+            return;
+        }
 
-        if (representedObject === WebInspector.debuggerManager.allUncaughtExceptionsBreakpoint)
+        if (representedObject === WebInspector.debuggerManager.allUncaughtExceptionsBreakpoint) {
             cookie[WebInspector.DebuggerSidebarPanel.SelectedAllUncaughtExceptionsCookieKey] = true;
+            return;
+        }
 
         super.saveStateToCookie(cookie);
     }
@@ -302,6 +322,13 @@ WebInspector.DebuggerSidebarPanel = class DebuggerSidebarPanel extends WebInspec
             this._addBreakpoint(breakpoints[i], sourceCode);
     }
 
+    _addIssuesForSourceCode(sourceCode)
+    {
+        var issues = WebInspector.issueManager.issuesForSourceCode(sourceCode);
+        for (var issue of issues)
+            this._addIssue(issue);
+    }
+
     _addTreeElementForSourceCodeToContentTreeOutline(sourceCode)
     {
         var treeElement = this._breakpointsContentTreeOutline.getCachedTreeElement(sourceCode);
@@ -329,28 +356,55 @@ WebInspector.DebuggerSidebarPanel = class DebuggerSidebarPanel extends WebInspec
         return treeElement;
     }
 
+    _addResourcesRecursivelyForFrame(frame)
+    {
+        this._addResource(frame.mainResource);
+
+        for (var resource of frame.resources)
+            this._addResource(resource);
+
+        for (var childFrame of frame.childFrames)
+            this._addResourcesRecursivelyForFrame(childFrame);
+    }
+
     _resourceAdded(event)
     {
-        var resource = event.data.resource;
+        this._addResource(event.data.resource);
+    }
 
+    _addResource(resource)
+    {
         if (![WebInspector.Resource.Type.Document, WebInspector.Resource.Type.Script].includes(resource.type))
             return;
 
         this._addTreeElementForSourceCodeToContentTreeOutline(resource);
         this._addBreakpointsForSourceCode(resource);
+        this._addIssuesForSourceCode(resource);
     }
 
-    _mainResourceChanged(event)
+    _mainResourceDidChange(event)
     {
+        if (event.target.isMainFrame()) {
+            // Aggressively prune resources now so the old resources are removed before
+            // the new main resource is added below. This avoids a visual flash when the
+            // prune normally happens on a later event loop cycle.
+            this.pruneStaleResourceTreeElements();
+            this.contentBrowser.contentViewContainer.closeAllContentViews();
+        }
+
         var resource = event.target.mainResource;
         this._addTreeElementForSourceCodeToContentTreeOutline(resource);
         this._addBreakpointsForSourceCode(resource);
+        this._addIssuesForSourceCode(resource);
     }
 
     _scriptAdded(event)
     {
-        var script = event.data.script;
+        this._addScript(event.data.script);
+    }
 
+    _addScript(script)
+    {
         // FIXME: Allow for scripts generated by eval statements to appear, but filter out JSC internals
         // and other WebInspector internals lacking __WebInspector in the url attribute.
         if (!script.url)
@@ -367,6 +421,7 @@ WebInspector.DebuggerSidebarPanel = class DebuggerSidebarPanel extends WebInspec
 
         this._addTreeElementForSourceCodeToContentTreeOutline(script);
         this._addBreakpointsForSourceCode(script);
+        this._addIssuesForSourceCode(script);
     }
 
     _scriptsCleared(event)

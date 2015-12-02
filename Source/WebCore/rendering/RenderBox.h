@@ -23,6 +23,7 @@
 #ifndef RenderBox_h
 #define RenderBox_h
 
+#include "FrameView.h"
 #include "RenderBoxModelObject.h"
 #include "RenderOverflow.h"
 #include "ScrollTypes.h"
@@ -261,8 +262,8 @@ public:
     void setMarginLeft(LayoutUnit margin) { m_marginBox.setLeft(margin); }
     void setMarginRight(LayoutUnit margin) { m_marginBox.setRight(margin); }
 
-    LayoutUnit marginLogicalLeft() const { return m_marginBox.logicalLeft(style().writingMode()); }
-    LayoutUnit marginLogicalRight() const { return m_marginBox.logicalRight(style().writingMode()); }
+    LayoutUnit marginLogicalLeft() const { return m_marginBox.start(style().writingMode()); }
+    LayoutUnit marginLogicalRight() const { return m_marginBox.end(style().writingMode()); }
     
     virtual LayoutUnit marginBefore(const RenderStyle* overrideStyle = nullptr) const override final { return m_marginBox.before((overrideStyle ? overrideStyle : &style())->writingMode()); }
     virtual LayoutUnit marginAfter(const RenderStyle* overrideStyle = nullptr) const override final { return m_marginBox.after((overrideStyle ? overrideStyle : &style())->writingMode()); }
@@ -276,17 +277,17 @@ public:
         const RenderStyle* styleToUse = overrideStyle ? overrideStyle : &style();
         return m_marginBox.end(styleToUse->writingMode(), styleToUse->direction());
     }
-    void setMarginBefore(LayoutUnit value, const RenderStyle* overrideStyle = nullptr) { m_marginBox.setBefore((overrideStyle ? overrideStyle : &style())->writingMode(), value); }
-    void setMarginAfter(LayoutUnit value, const RenderStyle* overrideStyle = nullptr) { m_marginBox.setAfter((overrideStyle ? overrideStyle : &style())->writingMode(), value); }
+    void setMarginBefore(LayoutUnit value, const RenderStyle* overrideStyle = nullptr) { m_marginBox.setBefore(value, (overrideStyle ? overrideStyle : &style())->writingMode()); }
+    void setMarginAfter(LayoutUnit value, const RenderStyle* overrideStyle = nullptr) { m_marginBox.setAfter(value, (overrideStyle ? overrideStyle : &style())->writingMode()); }
     void setMarginStart(LayoutUnit value, const RenderStyle* overrideStyle = nullptr)
     {
         const RenderStyle* styleToUse = overrideStyle ? overrideStyle : &style();
-        m_marginBox.setStart(styleToUse->writingMode(), styleToUse->direction(), value);
+        m_marginBox.setStart(value, styleToUse->writingMode(), styleToUse->direction());
     }
     void setMarginEnd(LayoutUnit value, const RenderStyle* overrideStyle = nullptr)
     {
         const RenderStyle* styleToUse = overrideStyle ? overrideStyle : &style();
-        m_marginBox.setEnd(styleToUse->writingMode(), styleToUse->direction(), value);
+        m_marginBox.setEnd(value, styleToUse->writingMode(), styleToUse->direction());
     }
 
     // The following five functions are used to implement collapsing margins.
@@ -458,11 +459,11 @@ public:
 
     virtual int verticalScrollbarWidth() const;
     int horizontalScrollbarHeight() const;
-    int instrinsicScrollbarLogicalWidth() const;
+    int intrinsicScrollbarLogicalWidth() const;
     int scrollbarLogicalHeight() const { return style().isHorizontalWritingMode() ? horizontalScrollbarHeight() : verticalScrollbarWidth(); }
     virtual bool scroll(ScrollDirection, ScrollGranularity, float multiplier = 1, Element** stopElement = nullptr, RenderBox* startBox = nullptr, const IntPoint& wheelEventAbsolutePoint = IntPoint());
     virtual bool logicalScroll(ScrollLogicalDirection, ScrollGranularity, float multiplier = 1, Element** stopElement = nullptr);
-    bool canBeScrolledAndHasScrollableArea() const;
+    WEBCORE_EXPORT bool canBeScrolledAndHasScrollableArea() const;
     virtual bool canBeProgramaticallyScrolled() const;
     virtual void autoscroll(const IntPoint&);
     bool canAutoscroll() const;
@@ -513,11 +514,9 @@ public:
         return true;
     }
 
-    LayoutRect maskClipRect();
+    LayoutRect maskClipRect(const LayoutPoint& paintOffset);
 
     virtual VisiblePosition positionForPoint(const LayoutPoint&, const RenderRegion*) override;
-
-    RenderBlockFlow* outermostBlockContainingFloatingObject();
 
     void removeFloatingOrPositionedChildFromBlockLists();
     
@@ -553,6 +552,14 @@ public:
     // In layout related methods you almost always want the logical location (e.g. x() and y()).
     LayoutPoint topLeftLocation() const;
     LayoutSize topLeftLocationOffset() const;
+    void applyTopLeftLocationOffset(LayoutPoint& point) const
+    {
+        // This is inlined for speed, since it is used by updateLayerPosition() during scrolling.
+        if (!document().view()->hasFlippedBlockRenderers())
+            point.move(m_frameRect.x(), m_frameRect.y());
+        else
+            applyTopLeftLocationOffsetWithFlipping(point);
+    }
 
     LayoutRect logicalVisualOverflowRectForPropagation(RenderStyle*) const;
     LayoutRect visualOverflowRectForPropagation(RenderStyle*) const;
@@ -629,9 +636,9 @@ protected:
     bool createsNewFormattingContext() const;
 
     // Returns false if it could not cheaply compute the extent (e.g. fixed background), in which case the returned rect may be incorrect.
-    bool getBackgroundPaintedExtent(LayoutRect&) const;
+    bool getBackgroundPaintedExtent(const LayoutPoint& paintOffset, LayoutRect&) const;
     virtual bool foregroundIsKnownToBeOpaqueInRect(const LayoutRect& localRect, unsigned maxDepthToTest) const;
-    virtual bool computeBackgroundIsKnownToBeObscured() override;
+    virtual bool computeBackgroundIsKnownToBeObscured(const LayoutPoint& paintOffset) override;
 
     void paintBackground(const PaintInfo&, const LayoutRect&, BackgroundBleedAvoidance = BackgroundBleedNone);
     
@@ -709,6 +716,8 @@ private:
     virtual void computePreferredLogicalWidths() { setPreferredLogicalWidthsDirty(false); }
 
     virtual LayoutRect frameRectForStickyPositioning() const override final { return frameRect(); }
+    
+    void applyTopLeftLocationOffsetWithFlipping(LayoutPoint&) const;
 
 private:
     // The width/height of the contents + borders + padding.  The x/y location is relative to our container (which is not always our parent).

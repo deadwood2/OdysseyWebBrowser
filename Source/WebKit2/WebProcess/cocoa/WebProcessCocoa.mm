@@ -149,6 +149,10 @@ void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters&& par
 #endif
 #endif
 
+#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100
+    setSharedHTTPCookieStorage(parameters.uiProcessCookieStorageIdentifier);
+#endif
+
     // FIXME: Most of what this function does for cache size gets immediately overridden by setCacheModel().
     // - memory cache size passed from UI process is always ignored;
     // - disk cache size passed from UI process is effectively a minimum size.
@@ -262,7 +266,7 @@ static NSURL *origin(WebPage& page)
         return nil;
 
     URL mainFrameURL(URL(), mainFrame->url());
-    RefPtr<SecurityOrigin> mainFrameOrigin = SecurityOrigin::create(mainFrameURL);
+    Ref<SecurityOrigin> mainFrameOrigin = SecurityOrigin::create(mainFrameURL);
     String mainFrameOriginString;
     if (!mainFrameOrigin->isUnique())
         mainFrameOriginString = mainFrameOrigin->toRawString();

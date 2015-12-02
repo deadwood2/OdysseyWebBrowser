@@ -125,13 +125,13 @@ messages -> WebPage LegacyReceiver {
     TryRestoreScrollPosition()
 
     LoadURLInFrame(String url, uint64_t frameID)
-    LoadRequest(uint64_t navigationID, WebCore::ResourceRequest request, WebKit::SandboxExtension::Handle sandboxExtensionHandle, WebKit::UserData userData)
+    LoadRequest(uint64_t navigationID, WebCore::ResourceRequest request, WebKit::SandboxExtension::Handle sandboxExtensionHandle, uint64_t shouldOpenExternalURLsPolicy, WebKit::UserData userData)
     LoadData(IPC::DataReference data, String MIMEType, String encoding, String baseURL, WebKit::UserData userData)
     LoadHTMLString(uint64_t navigationID, String htmlString, String baseURL, WebKit::UserData userData)
-    LoadAlternateHTMLString(String htmlString, String baseURL, String unreachableURL, WebKit::UserData userData)
+    LoadAlternateHTMLString(String htmlString, String baseURL, String unreachableURL, String provisionalLoadErrorURL, WebKit::UserData userData)
     LoadPlainTextString(String string, WebKit::UserData userData)
     LoadWebArchiveData(IPC::DataReference webArchiveData, WebKit::UserData userData)
-    NavigateToURLWithSimulatedClick(String url, WebCore::IntPoint documentPoint, WebCore::IntPoint screenPoint)
+    NavigateToPDFLinkWithSimulatedClick(String url, WebCore::IntPoint documentPoint, WebCore::IntPoint screenPoint)
 
     Reload(uint64_t navigationID, bool reloadFromOrigin, WebKit::SandboxExtension::Handle sandboxExtensionHandle)
     StopLoading()
@@ -199,6 +199,9 @@ messages -> WebPage LegacyReceiver {
     ScalePage(double scale, WebCore::IntPoint origin)
     ScalePageInViewCoordinates(double scale, WebCore::IntPoint centerInViewCoordinates)
     ScaleView(double scale)
+#if PLATFORM(COCOA)
+    ScaleViewAndUpdateGeometryFenced(double scale, WebCore::IntSize viewSize, uint64_t callbackID)
+#endif
 
     SetUseFixedLayout(bool fixed)
     SetFixedLayoutSize(WebCore::IntSize size)
@@ -401,14 +404,13 @@ messages -> WebPage LegacyReceiver {
 #endif
 
     SetScrollPinningBehavior(uint32_t pinning)
+    SetScrollbarOverlayStyle(Optional<uint32_t> scrollbarStyle)
 
     GetBytecodeProfile(uint64_t callbackID)
     
     TakeSnapshot(WebCore::IntRect snapshotRect, WebCore::IntSize bitmapSize, uint32_t options, uint64_t callbackID)
 #if PLATFORM(MAC)
-    PerformActionMenuHitTestAtLocation(WebCore::FloatPoint location, bool forImmediateAction)
-    SelectLastActionMenuRange()
-    FocusAndSelectLastActionMenuHitTestResult()
+    PerformImmediateActionHitTestAtLocation(WebCore::FloatPoint location)
     ImmediateActionDidUpdate()
     ImmediateActionDidCancel()
     ImmediateActionDidComplete()
@@ -426,4 +428,5 @@ messages -> WebPage LegacyReceiver {
 #endif
 
     ClearWheelEventTestTrigger()
+    SetShouldScaleViewToFitDocument(bool shouldScaleViewToFitDocument)
 }

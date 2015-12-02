@@ -206,7 +206,8 @@ void InjectedBundle::overrideBoolPreferenceForTestRunner(WebPageGroupProxy* page
     macro(WebKitShouldRespectImageOrientation, ShouldRespectImageOrientation, shouldRespectImageOrientation) \
     macro(WebKitEnableCaretBrowsing, CaretBrowsingEnabled, caretBrowsingEnabled) \
     macro(WebKitDisplayImagesKey, LoadsImagesAutomatically, loadsImagesAutomatically) \
-    macro(WebKitMediaStreamEnabled, MediaStreamEnabled, mediaStreamEnabled)
+    macro(WebKitMediaStreamEnabled, MediaStreamEnabled, mediaStreamEnabled) \
+    macro(WebKitMetaRefreshEnabled, MetaRefreshEnabled, metaRefreshEnabled)
 
 #define OVERRIDE_PREFERENCE_AND_SET_IN_EXISTING_PAGES(TestRunnerName, SettingsName, WebPreferencesName) \
     if (preference == #TestRunnerName) { \
@@ -371,15 +372,15 @@ uint64_t InjectedBundle::appCacheUsageForOrigin(const String& originString)
 
 void InjectedBundle::setApplicationCacheOriginQuota(const String& originString, uint64_t bytes)
 {
-    RefPtr<SecurityOrigin> origin = SecurityOrigin::createFromString(originString);
-    ApplicationCacheStorage::singleton().storeUpdatedQuotaForOrigin(origin.get(), bytes);
+    Ref<SecurityOrigin> origin = SecurityOrigin::createFromString(originString);
+    ApplicationCacheStorage::singleton().storeUpdatedQuotaForOrigin(origin.ptr(), bytes);
 }
 
 void InjectedBundle::resetApplicationCacheOriginQuota(const String& originString)
 {
-    RefPtr<SecurityOrigin> origin = SecurityOrigin::createFromString(originString);
+    Ref<SecurityOrigin> origin = SecurityOrigin::createFromString(originString);
     auto& cacheStorage = ApplicationCacheStorage::singleton();
-    cacheStorage.storeUpdatedQuotaForOrigin(origin.get(), cacheStorage.defaultOriginQuota());
+    cacheStorage.storeUpdatedQuotaForOrigin(origin.ptr(), cacheStorage.defaultOriginQuota());
 }
 
 PassRefPtr<API::Array> InjectedBundle::originsWithApplicationCache()
@@ -603,11 +604,6 @@ void InjectedBundle::setTabKeyCyclesThroughElements(WebPage* page, bool enabled)
     page->corePage()->setTabKeyCyclesThroughElements(enabled);
 }
 
-void InjectedBundle::setSerialLoadingEnabled(bool enabled)
-{
-    resourceLoadScheduler()->setSerialLoadingEnabled(enabled);
-}
-
 void InjectedBundle::setCSSAnimationTriggersEnabled(bool enabled)
 {
 #if ENABLE(CSS_ANIMATIONS_LEVEL_2)
@@ -633,11 +629,6 @@ void InjectedBundle::setCSSCompositingEnabled(bool enabled)
 #else
     UNUSED_PARAM(enabled);
 #endif
-}
-
-void InjectedBundle::dispatchPendingLoadRequests()
-{
-    // FIXME: This should be removed along with the bundle API.
 }
 
 } // namespace WebKit

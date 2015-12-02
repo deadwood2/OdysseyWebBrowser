@@ -1429,6 +1429,14 @@ RefPtr<Range> Document::caretRangeFromPoint(const LayoutPoint& clientPoint)
     return Range::create(*this, rangeCompliantPosition, rangeCompliantPosition);
 }
 
+Element* Document::scrollingElement()
+{
+    // FIXME: When we fix https://bugs.webkit.org/show_bug.cgi?id=106133, this should be replaced with the full implementation
+    // of Document.scrollingElement() as specified at http://dev.w3.org/csswg/cssom-view/#dom-document-scrollingelement.
+
+    return body();
+}
+
 /*
  * Performs three operations:
  *  1. Convert control characters to spaces
@@ -1748,6 +1756,8 @@ void Document::recalcStyle(Style::Change change)
 
     m_styleSheetCollection.flushPendingUpdates();
 
+    frameView.willRecalcStyle();
+
     InspectorInstrumentationCookie cookie = InspectorInstrumentation::willRecalculateStyle(*this);
 
     // FIXME: We never reset this flags.
@@ -1937,7 +1947,7 @@ bool Document::updateLayoutIfDimensionsOutOfDate(Element& element, DimensionsChe
 
     bool isVertical = renderer && !renderer->isHorizontalWritingMode();
     bool checkingLogicalWidth = ((dimensionsCheck & WidthDimensionsCheck) && !isVertical) || ((dimensionsCheck & HeightDimensionsCheck) && isVertical);
-    bool checkingLogicalHeight = ((dimensionsCheck & HeightDimensionsCheck) && !isVertical) || ((dimensionsCheck & WidthDimensionsCheck) && !isVertical);
+    bool checkingLogicalHeight = ((dimensionsCheck & HeightDimensionsCheck) && !isVertical) || ((dimensionsCheck & WidthDimensionsCheck) && isVertical);
     bool hasSpecifiedLogicalHeight = renderer && renderer->style().logicalMinHeight() == Length(0, Fixed) && renderer->style().logicalHeight().isFixed() && renderer->style().logicalMaxHeight().isAuto();
     
     if (!requireFullLayout) {
@@ -2241,6 +2251,15 @@ void Document::prepareForDestruction()
 
     if (m_mediaQueryMatcher)
         m_mediaQueryMatcher->documentDestroyed();
+
+#if ENABLE(WIRELESS_PLAYBACK_TARGET)
+    if (!m_clientToIDMap.isEmpty() && page()) {
+        Vector<WebCore::MediaPlaybackTargetClient*> clients;
+        copyKeysToVector(m_clientToIDMap, clients);
+        for (auto client : clients)
+            removePlaybackTargetPickerClient(*client);
+    }
+#endif
 
     disconnectFromFrame();
 
@@ -2731,8 +2750,24 @@ double Document::minimumTimerInterval() const
     return page->settings().minimumDOMTimerInterval();
 }
 
+void Document::setTimerThrottlingEnabled(bool shouldThrottle)
+{
+    if (m_isTimerThrottlingEnabled == shouldThrottle)
+        return;
+
+    double previousInterval = timerAlignmentInterval();
+
+    m_isTimerThrottlingEnabled = shouldThrottle;
+
+    if (previousInterval != timerAlignmentInterval())
+        didChangeTimerAlignmentInterval();
+}
+
 double Document::timerAlignmentInterval() const
 {
+    if (m_isTimerThrottlingEnabled)
+        return DOMTimer::hiddenPageAlignmentInterval();
+
     Page* page = this->page();
     if (!page)
         return ScriptExecutionContext::timerAlignmentInterval();
@@ -3002,6 +3037,9 @@ void Document::processHttpEquiv(const String& equiv, const String& content)
         break;
 
     case HTTPHeaderName::Refresh: {
+        if (page() && !page()->settings().metaRefreshEnabled())
+            break;
+
         double delay;
         String urlString;
         if (frame && parseHTTPRefresh(content, true, delay, urlString)) {
@@ -6468,7 +6506,7 @@ void Document::ensurePlugInsInjectedScript(DOMWrapperWorld& world)
     if (!jsString)
         jsString = String(plugInsJavaScript, sizeof(plugInsJavaScript));
 
-    m_frame->mainFrame().script().evaluateInWorld(ScriptSourceCode(jsString), world);
+    frame()->script().evaluateInWorld(ScriptSourceCode(jsString), world);
 
     m_hasInjectedPlugInsScript = true;
 }
@@ -6530,7 +6568,9 @@ void Document::addPlaybackTargetPickerClient(MediaPlaybackTargetClient& client)
     if (!page)
         return;
 
-    ASSERT(!m_clientToIDMap.contains(&client));
+    // FIXME: change this back to an ASSERT once https://webkit.org/b/144970 is fixed.
+    if (m_clientToIDMap.contains(&client))
+        return;
 
     uint64_t contextId = nextPlaybackTargetClientContextId();
     m_clientToIDMap.add(&client, contextId);

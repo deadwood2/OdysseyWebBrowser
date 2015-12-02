@@ -695,16 +695,6 @@ void RenderLayerBacking::updateGeometry()
     bool preserves3D = style.transformStyle3D() == TransformStyle3DPreserve3D && !renderer().hasReflection();
     m_graphicsLayer->setPreserves3D(preserves3D);
     m_graphicsLayer->setBackfaceVisibility(style.backfaceVisibility() == BackfaceVisibilityVisible);
-
-    RenderLayer* compAncestor = m_owningLayer.ancestorCompositingLayer();
-    
-    // We compute everything relative to the enclosing compositing layer.
-    LayoutRect ancestorCompositingBounds;
-    if (compAncestor) {
-        ASSERT(compAncestor->backing());
-        ancestorCompositingBounds = compAncestor->backing()->compositedBounds();
-    }
-
     /*
     * GraphicsLayer: device pixel positioned, enclosing rect.
     * RenderLayer: subpixel positioned.
@@ -730,6 +720,13 @@ void RenderLayerBacking::updateGeometry()
     * devicePixelFractionFromRenderer: rendererOffsetFromGraphicsLayer's fractional part (6.9px -> 0.4px in case of 2x display)
     */
     float deviceScaleFactor = this->deviceScaleFactor();
+    RenderLayer* compAncestor = m_owningLayer.ancestorCompositingLayer();
+    // We compute everything relative to the enclosing compositing layer.
+    LayoutRect ancestorCompositingBounds;
+    if (compAncestor) {
+        ASSERT(compAncestor->backing());
+        ancestorCompositingBounds = compAncestor->backing()->compositedBounds();
+    }
     LayoutRect localCompositingBounds = compositedBounds();
     LayoutRect relativeCompositingBounds(localCompositingBounds);
 
@@ -789,7 +786,8 @@ void RenderLayerBacking::updateGeometry()
         RenderLayer::ClipRectsContext clipRectsContext(compAncestor, TemporaryClipRects, IgnoreOverlayScrollbarSize, shouldRespectOverflowClip);
         LayoutRect parentClipRect = m_owningLayer.backgroundClipRect(clipRectsContext).rect(); // FIXME: Incorrect for CSS regions.
         ASSERT(!parentClipRect.isInfinite());
-        m_ancestorClippingLayer->setPosition(FloatPoint(parentClipRect.location() - graphicsLayerParentLocation));
+        FloatPoint enclosingClippingLayerPosition = floorPointToDevicePixels(LayoutPoint(parentClipRect.location() - graphicsLayerParentLocation), deviceScaleFactor);
+        m_ancestorClippingLayer->setPosition(enclosingClippingLayerPosition);
         m_ancestorClippingLayer->setSize(parentClipRect.size());
 
         // backgroundRect is relative to compAncestor, so subtract deltaX/deltaY to get back to local coords.
@@ -800,16 +798,17 @@ void RenderLayerBacking::updateGeometry()
     }
 
     LayoutSize contentsSize = enclosingRelativeCompositingBounds.size();
-    
     if (m_contentsContainmentLayer) {
         m_contentsContainmentLayer->setPreserves3D(preserves3D);
-        m_contentsContainmentLayer->setPosition(FloatPoint(enclosingRelativeCompositingBounds.location() - graphicsLayerParentLocation));
+        FloatPoint enclosingGraphicsParentLocation = floorPointToDevicePixels(graphicsLayerParentLocation, deviceScaleFactor);
+        m_contentsContainmentLayer->setPosition(FloatPoint(enclosingRelativeCompositingBounds.location() - enclosingGraphicsParentLocation));
         // Use the same size as m_graphicsLayer so transforms behave correctly.
         m_contentsContainmentLayer->setSize(contentsSize);
         graphicsLayerParentLocation = enclosingRelativeCompositingBounds.location();
     }
 
-    m_graphicsLayer->setPosition(FloatPoint(enclosingRelativeCompositingBounds.location() - graphicsLayerParentLocation));
+    FloatPoint enclosingGraphicsParentLocation = floorPointToDevicePixels(graphicsLayerParentLocation, deviceScaleFactor);
+    m_graphicsLayer->setPosition(FloatPoint(enclosingRelativeCompositingBounds.location() - enclosingGraphicsParentLocation));
     m_graphicsLayer->setSize(contentsSize);
     if (devicePixelOffsetFromRenderer != m_graphicsLayer->offsetFromRenderer()) {
         m_graphicsLayer->setOffsetFromRenderer(devicePixelOffsetFromRenderer);
@@ -1571,6 +1570,11 @@ void RenderLayerBacking::detachFromScrollingCoordinator(LayerScrollCoordinationR
     }
 }
 
+void RenderLayerBacking::setIsScrollCoordinatedWithViewportConstrainedRole(bool viewportCoordinated)
+{
+    m_graphicsLayer->setAllowsBackingStoreDetachment(!viewportCoordinated);
+}
+
 GraphicsLayerPaintingPhase RenderLayerBacking::paintingPhaseForPrimaryLayer() const
 {
     unsigned phase = 0;
@@ -1705,7 +1709,8 @@ void RenderLayerBacking::updateDirectlyCompositedBackgroundImage(bool isSimpleCo
     FloatSize tileSize;
 
     RefPtr<Image> image = style.backgroundLayers()->image()->cachedImage()->image();
-    downcast<RenderBox>(renderer()).getGeometryForBackgroundImage(&renderer(), destRect, phase, tileSize);
+    // FIXME: absolute paint location is required here.
+    downcast<RenderBox>(renderer()).getGeometryForBackgroundImage(&renderer(), LayoutPoint(), destRect, phase, tileSize);
     m_graphicsLayer->setContentsTileSize(tileSize);
     m_graphicsLayer->setContentsTilePhase(phase);
     m_graphicsLayer->setContentsRect(destRect);
@@ -2388,8 +2393,11 @@ bool RenderLayerBacking::isTrackingRepaints() const
     return static_cast<GraphicsLayerClient&>(compositor()).isTrackingRepaints();
 }
 
-bool RenderLayerBacking::shouldSkipLayerInDump(const GraphicsLayer* layer, LayerTreeAsTextBehavior) const
+bool RenderLayerBacking::shouldSkipLayerInDump(const GraphicsLayer* layer, LayerTreeAsTextBehavior behavior) const
 {
+    if (behavior & LayerTreeAsTextDebug)
+        return false;
+
     // Skip the root tile cache's flattening layer.
     return m_isMainFrameRenderViewLayer && layer && layer == m_childContainmentLayer.get();
 }
@@ -2447,12 +2455,20 @@ bool RenderLayerBacking::startAnimation(double timeOffset, const Animation* anim
     bool hasTransform = renderer().isBox() && keyframes.containsProperty(CSSPropertyTransform);
     bool hasFilter = keyframes.containsProperty(CSSPropertyWebkitFilter);
 
-    if (!hasOpacity && !hasTransform && !hasFilter)
+    bool hasBackdropFilter = false;
+#if ENABLE(FILTERS_LEVEL_2)
+    hasBackdropFilter = keyframes.containsProperty(CSSPropertyWebkitBackdropFilter);
+#endif
+
+    if (!hasOpacity && !hasTransform && !hasFilter && !hasBackdropFilter)
         return false;
-    
+
     KeyframeValueList transformVector(AnimatedPropertyTransform);
     KeyframeValueList opacityVector(AnimatedPropertyOpacity);
     KeyframeValueList filterVector(AnimatedPropertyWebkitFilter);
+#if ENABLE(FILTERS_LEVEL_2)
+    KeyframeValueList backdropFilterVector(AnimatedPropertyWebkitBackdropFilter);
+#endif
 
     size_t numKeyframes = keyframes.size();
     for (size_t i = 0; i < numKeyframes; ++i) {
@@ -2474,6 +2490,11 @@ bool RenderLayerBacking::startAnimation(double timeOffset, const Animation* anim
 
         if ((hasFilter && isFirstOrLastKeyframe) || currentKeyframe.containsProperty(CSSPropertyWebkitFilter))
             filterVector.insert(std::make_unique<FilterAnimationValue>(key, keyframeStyle->filter(), tf));
+
+#if ENABLE(FILTERS_LEVEL_2)
+        if ((hasBackdropFilter && isFirstOrLastKeyframe) || currentKeyframe.containsProperty(CSSPropertyWebkitBackdropFilter))
+            backdropFilterVector.insert(std::make_unique<FilterAnimationValue>(key, keyframeStyle->backdropFilter(), tf));
+#endif
     }
 
     if (renderer().frame().page() && !renderer().frame().page()->settings().acceleratedCompositedAnimationsEnabled())
@@ -2489,6 +2510,11 @@ bool RenderLayerBacking::startAnimation(double timeOffset, const Animation* anim
 
     if (hasFilter && m_graphicsLayer->addAnimation(filterVector, IntSize(), anim, keyframes.animationName(), timeOffset))
         didAnimate = true;
+
+#if ENABLE(FILTERS_LEVEL_2)
+    if (hasBackdropFilter && m_graphicsLayer->addAnimation(backdropFilterVector, IntSize(), anim, keyframes.animationName(), timeOffset))
+        didAnimate = true;
+#endif
 
     return didAnimate;
 }
@@ -2551,6 +2577,22 @@ bool RenderLayerBacking::startTransition(double timeOffset, CSSPropertyID proper
             }
         }
     }
+
+#if ENABLE(FILTERS_LEVEL_2)
+    if (property == CSSPropertyWebkitBackdropFilter && m_owningLayer.hasBackdropFilter()) {
+        const Animation* backdropFilterAnim = toStyle->transitionForProperty(CSSPropertyWebkitBackdropFilter);
+        if (backdropFilterAnim && !backdropFilterAnim->isEmptyOrZeroDuration()) {
+            KeyframeValueList backdropFilterVector(AnimatedPropertyWebkitBackdropFilter);
+            backdropFilterVector.insert(std::make_unique<FilterAnimationValue>(0, fromStyle->backdropFilter()));
+            backdropFilterVector.insert(std::make_unique<FilterAnimationValue>(1, toStyle->backdropFilter()));
+            if (m_graphicsLayer->addAnimation(backdropFilterVector, FloatSize(), backdropFilterAnim, GraphicsLayer::animationNameForTransition(AnimatedPropertyWebkitBackdropFilter), timeOffset)) {
+                // To ensure that the correct backdrop filter is visible when the animation ends, also set the final backdrop filter.
+                updateBackdropFilters(*toStyle);
+                didAnimate = true;
+            }
+        }
+    }
+#endif
 
     return didAnimate;
 }
@@ -2639,6 +2681,11 @@ CSSPropertyID RenderLayerBacking::graphicsLayerToCSSProperty(AnimatedPropertyID 
     case AnimatedPropertyWebkitFilter:
         cssProperty = CSSPropertyWebkitFilter;
         break;
+#if ENABLE(FILTERS_LEVEL_2)
+    case AnimatedPropertyWebkitBackdropFilter:
+        cssProperty = CSSPropertyWebkitBackdropFilter;
+        break;
+#endif
     case AnimatedPropertyInvalid:
         ASSERT_NOT_REACHED();
     }
@@ -2656,6 +2703,10 @@ AnimatedPropertyID RenderLayerBacking::cssToGraphicsLayerProperty(CSSPropertyID 
         return AnimatedPropertyBackgroundColor;
     case CSSPropertyWebkitFilter:
         return AnimatedPropertyWebkitFilter;
+#if ENABLE(FILTERS_LEVEL_2)
+    case CSSPropertyWebkitBackdropFilter:
+        return AnimatedPropertyWebkitBackdropFilter;
+#endif
     default:
         // It's fine if we see other css properties here; they are just not accelerated.
         break;

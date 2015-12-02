@@ -83,6 +83,7 @@ bool doesGC(Graph& graph, Node* node)
     case ArithMax:
     case ArithPow:
     case ArithSqrt:
+    case ArithRound:
     case ArithFRound:
     case ArithSin:
     case ArithCos:
@@ -158,9 +159,9 @@ bool doesGC(Graph& graph, Node* node)
     case CheckTierUpInLoop:
     case CheckTierUpAtReturn:
     case CheckTierUpAndOSREnter:
+    case CheckTierUpWithNestedTriggerAndOSREnter:
     case LoopHint:
     case StoreBarrier:
-    case StoreBarrierWithNullCheck:
     case InvalidationPoint:
     case NotifyWrite:
     case CheckInBounds:
@@ -198,6 +199,7 @@ bool doesGC(Graph& graph, Node* node)
     case BottomValue:
     case PhantomNewObject:
     case PhantomNewFunction:
+    case PhantomCreateActivation:
     case PhantomDirectArguments:
     case PhantomClonedArguments:
     case GetMyArgumentByVal:
@@ -236,6 +238,7 @@ bool doesGC(Graph& graph, Node* node)
     case GetEnumeratorGenericPname:
     case ToIndexString:
     case MaterializeNewObject:
+    case MaterializeCreateActivation:
         return true;
         
     case MultiPutByOffset:

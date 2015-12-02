@@ -321,8 +321,9 @@ void HTMLLinkElement::setCSSStyleSheet(const String& href, const URL& baseURL, c
     Ref<HTMLLinkElement> protect(*this);
 
     CSSParserContext parserContext(document(), baseURL, charset);
+    auto cachePolicy = document().frame()->loader().subresourceCachePolicy();
 
-    if (RefPtr<StyleSheetContents> restoredSheet = const_cast<CachedCSSStyleSheet*>(cachedStyleSheet)->restoreParsedStyleSheet(parserContext)) {
+    if (RefPtr<StyleSheetContents> restoredSheet = const_cast<CachedCSSStyleSheet*>(cachedStyleSheet)->restoreParsedStyleSheet(parserContext, cachePolicy)) {
         ASSERT(restoredSheet->isCacheable());
         ASSERT(!restoredSheet->isLoading());
 
@@ -440,7 +441,7 @@ void HTMLLinkElement::handleClick(Event& event)
     Frame* frame = document().frame();
     if (!frame)
         return;
-    frame->loader().urlSelected(url, target(), PassRefPtr<Event>(&event), LockHistory::No, LockBackForwardList::No, MaybeSendReferrer);
+    frame->loader().urlSelected(url, target(), &event, LockHistory::No, LockBackForwardList::No, MaybeSendReferrer);
 }
 
 URL HTMLLinkElement::href() const

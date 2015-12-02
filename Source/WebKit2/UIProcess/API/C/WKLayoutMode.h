@@ -35,7 +35,9 @@ extern "C" {
 enum {
     kWKLayoutModeViewSize,
     kWKLayoutModeFixedSize,
-    kWKLayoutModeDynamicSizeComputedFromViewScale
+    kWKLayoutModeDynamicSizeComputedFromViewScale,
+    kWKLayoutModeDynamicSizeWithMinimumViewSize,
+    kWKLayoutModeDynamicSizeComputedFromMinimumDocumentSize
 };
 typedef uint32_t WKLayoutMode;
 

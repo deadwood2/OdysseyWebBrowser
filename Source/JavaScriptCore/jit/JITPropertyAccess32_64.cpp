@@ -57,6 +57,28 @@ void JIT::emit_op_put_by_index(Instruction* currentInstruction)
     callOperation(operationPutByIndex, regT1, regT0, property, regT3, regT2);
 }
 
+void JIT::emit_op_put_getter_by_id(Instruction* currentInstruction)
+{
+    int base = currentInstruction[1].u.operand;
+    int property = currentInstruction[2].u.operand;
+    int getter = currentInstruction[3].u.operand;
+
+    emitLoadPayload(base, regT1);
+    emitLoadPayload(getter, regT3);
+    callOperation(operationPutGetterById, regT1, &m_codeBlock->identifier(property), regT3);
+}
+
+void JIT::emit_op_put_setter_by_id(Instruction* currentInstruction)
+{
+    int base = currentInstruction[1].u.operand;
+    int property = currentInstruction[2].u.operand;
+    int setter = currentInstruction[3].u.operand;
+
+    emitLoadPayload(base, regT1);
+    emitLoadPayload(setter, regT3);
+    callOperation(operationPutSetterById, regT1, &m_codeBlock->identifier(property), regT3);
+}
+
 void JIT::emit_op_put_getter_setter(Instruction* currentInstruction)
 {
     int base = currentInstruction[1].u.operand;
@@ -513,9 +535,6 @@ void JIT::emit_op_put_by_id(Instruction* currentInstruction)
     emitLoad2(base, regT1, regT0, value, regT3, regT2);
     
     emitJumpSlowCaseIfNotJSCell(base, regT1);
-    
-    emitLoad(base, regT1, regT0);
-    emitLoad(value, regT3, regT2);
 
     JITPutByIdGenerator gen(
         m_codeBlock, CodeOrigin(m_bytecodeOffset), RegisterSet::specialRegisters(),
@@ -537,7 +556,10 @@ void JIT::emitSlow_op_put_by_id(Instruction* currentInstruction, Vector<SlowCase
     linkSlowCase(iter);
     
     Label coldPathBegin(this);
-    
+
+    // JITPutByIdGenerator only preserve the value and the base's payload, we have to reload the tag.
+    emitLoadTag(base, regT1);
+
     JITPutByIdGenerator& gen = m_putByIds[m_putByIdIndex++];
     
     Call call = callOperation(

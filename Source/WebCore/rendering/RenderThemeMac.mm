@@ -201,13 +201,13 @@ enum {
 
 PassRefPtr<RenderTheme> RenderTheme::themeForPage(Page*)
 {
-    static RenderTheme* rt = RenderThemeMac::create().leakRef();
-    return rt;
+    static RenderTheme& rt = RenderThemeMac::create().leakRef();
+    return &rt;
 }
 
-PassRefPtr<RenderTheme> RenderThemeMac::create()
+Ref<RenderTheme> RenderThemeMac::create()
 {
-    return adoptRef(new RenderThemeMac);
+    return adoptRef(*new RenderThemeMac);
 }
 
 RenderThemeMac::RenderThemeMac()
@@ -325,7 +325,7 @@ static FontWeight toFontWeight(NSInteger appKitFontWeight)
     else if (appKitFontWeight < 1)
         appKitFontWeight = 1;
 
-    static FontWeight fontWeights[] = {
+    static const FontWeight fontWeights[] = {
         FontWeight100,
         FontWeight100,
         FontWeight200,
@@ -347,15 +347,21 @@ static FontWeight toFontWeight(NSInteger appKitFontWeight)
 void RenderThemeMac::updateCachedSystemFontDescription(CSSValueID cssValueId, FontDescription& fontDescription) const
 {
     NSFont* font;
+    // System-font-ness can't be encapsulated by simply a font name. Instead, we must use a token
+    // which FontCache will look for.
+    // Make sure we keep this list of possible tokens in sync with FontCascade::primaryFontIsSystemFont()
+    AtomicString fontName;
     switch (cssValueId) {
         case CSSValueSmallCaption:
             font = [NSFont systemFontOfSize:[NSFont smallSystemFontSize]];
             break;
         case CSSValueMenu:
             font = [NSFont menuFontOfSize:[NSFont systemFontSize]];
+            fontName = AtomicString("-apple-menu", AtomicString::ConstructFromLiteral);
             break;
         case CSSValueStatusBar:
             font = [NSFont labelFontOfSize:[NSFont labelFontSize]];
+            fontName = AtomicString("-apple-status-bar", AtomicString::ConstructFromLiteral);
             break;
         case CSSValueWebkitMiniControl:
             font = [NSFont systemFontOfSize:[NSFont systemFontSizeForControlSize:NSMiniControlSize]];
@@ -373,9 +379,12 @@ void RenderThemeMac::updateCachedSystemFontDescription(CSSValueID cssValueId, Fo
     if (!font)
         return;
 
+    if (fontName.isNull())
+        fontName = AtomicString("-apple-system", AtomicString::ConstructFromLiteral);
+
     NSFontManager *fontManager = [NSFontManager sharedFontManager];
     fontDescription.setIsAbsoluteSize(true);
-    fontDescription.setOneFamily([font webCoreFamilyName]);
+    fontDescription.setOneFamily(fontName);
     fontDescription.setSpecifiedSize([font pointSize]);
     fontDescription.setWeight(toFontWeight([fontManager weightOfFont:font]));
     fontDescription.setIsItalic([fontManager traitsOfFont:font] & NSItalicFontMask);
@@ -455,23 +464,21 @@ void RenderThemeMac::platformColorsDidChange()
     RenderTheme::platformColorsDidChange();
 }
 
-Color RenderThemeMac::systemColor(CSSValueID cssValueId) const
+Color RenderThemeMac::systemColor(CSSValueID cssValueID) const
 {
-    {
-        auto it = m_systemColorCache.find(cssValueId);
-        if (it != m_systemColorCache.end())
-            return it->value;
-    }
+    auto addResult = m_systemColorCache.add(cssValueID, Color());
+    if (!addResult.isNewEntry)
+        return addResult.iterator->value;
 
     Color color;
-    switch (cssValueId) {
+    switch (cssValueID) {
     case CSSValueActiveborder:
         color = convertNSColorToColor([NSColor keyboardFocusIndicatorColor]);
         break;
     case CSSValueActivebuttontext:
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
         // There is no corresponding NSColor for this so we use a hard coded value.
-        color = 0xC0FFFFFF;
+        color = Color::white;
 #else
         color = convertNSColorToColor([NSColor controlTextColor]);
 #endif
@@ -602,12 +609,11 @@ Color RenderThemeMac::systemColor(CSSValueID cssValueId) const
     }
 
     if (!color.isValid())
-        color = RenderTheme::systemColor(cssValueId);
+        color = RenderTheme::systemColor(cssValueID);
 
-    if (color.isValid())
-        m_systemColorCache.set(cssValueId, color.rgb());
+    addResult.iterator->value = color;
 
-    return color;
+    return addResult.iterator->value;
 }
 
 bool RenderThemeMac::usesTestModeFocusRingColor() const
@@ -824,7 +830,7 @@ void RenderThemeMac::setFontFromControlSize(StyleResolver&, RenderStyle& style, 
     fontDescription.setIsAbsoluteSize(true);
 
     NSFont* font = [NSFont systemFontOfSize:[NSFont systemFontSizeForControlSize:controlSize]];
-    fontDescription.setOneFamily([font webCoreFamilyName]);
+    fontDescription.setOneFamily(AtomicString("-apple-system", AtomicString::ConstructFromLiteral));
     fontDescription.setComputedSize([font pointSize] * style.effectiveZoom());
     fontDescription.setSpecifiedSize([font pointSize] * style.effectiveZoom());
 
@@ -1168,8 +1174,8 @@ const int styledPopupPaddingBottom = 2;
 
 static void TopGradientInterpolate(void*, const CGFloat* inData, CGFloat* outData)
 {
-    static float dark[4] = { 1.0f, 1.0f, 1.0f, 0.4f };
-    static float light[4] = { 1.0f, 1.0f, 1.0f, 0.15f };
+    static const float dark[4] = { 1.0f, 1.0f, 1.0f, 0.4f };
+    static const float light[4] = { 1.0f, 1.0f, 1.0f, 0.15f };
     float a = inData[0];
     int i = 0;
     for (i = 0; i < 4; i++)
@@ -1178,8 +1184,8 @@ static void TopGradientInterpolate(void*, const CGFloat* inData, CGFloat* outDat
 
 static void BottomGradientInterpolate(void*, const CGFloat* inData, CGFloat* outData)
 {
-    static float dark[4] = { 1.0f, 1.0f, 1.0f, 0.0f };
-    static float light[4] = { 1.0f, 1.0f, 1.0f, 0.3f };
+    static const float dark[4] = { 1.0f, 1.0f, 1.0f, 0.0f };
+    static const float light[4] = { 1.0f, 1.0f, 1.0f, 0.3f };
     float a = inData[0];
     int i = 0;
     for (i = 0; i < 4; i++)
@@ -1188,8 +1194,8 @@ static void BottomGradientInterpolate(void*, const CGFloat* inData, CGFloat* out
 
 static void MainGradientInterpolate(void*, const CGFloat* inData, CGFloat* outData)
 {
-    static float dark[4] = { 0.0f, 0.0f, 0.0f, 0.15f };
-    static float light[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    static const float dark[4] = { 0.0f, 0.0f, 0.0f, 0.15f };
+    static const float light[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
     float a = inData[0];
     int i = 0;
     for (i = 0; i < 4; i++)
@@ -1198,8 +1204,8 @@ static void MainGradientInterpolate(void*, const CGFloat* inData, CGFloat* outDa
 
 static void TrackGradientInterpolate(void*, const CGFloat* inData, CGFloat* outData)
 {
-    static float dark[4] = { 0.0f, 0.0f, 0.0f, 0.678f };
-    static float light[4] = { 0.0f, 0.0f, 0.0f, 0.13f };
+    static const float dark[4] = { 0.0f, 0.0f, 0.0f, 0.678f };
+    static const float light[4] = { 0.0f, 0.0f, 0.0f, 0.13f };
     float a = inData[0];
     int i = 0;
     for (i = 0; i < 4; i++)
@@ -1545,11 +1551,13 @@ bool RenderThemeMac::paintSliderThumb(const RenderObject& o, const PaintInfo& pa
     else
         m_isSliderThumbHorizontalPressed = pressed;
 
+    NSView *view = documentViewFor(o);
+
     if (pressed != oldPressed) {
         if (pressed)
-            [sliderThumbCell startTrackingAt:NSPoint() inView:nil];
+            [sliderThumbCell startTrackingAt:NSPoint() inView:view];
         else
-            [sliderThumbCell stopTracking:NSPoint() at:NSPoint() inView:nil mouseIsUp:YES];
+            [sliderThumbCell stopTracking:NSPoint() at:NSPoint() inView:view mouseIsUp:YES];
     }
 
     FloatRect bounds = r;
@@ -1569,7 +1577,7 @@ bool RenderThemeMac::paintSliderThumb(const RenderObject& o, const PaintInfo& pa
         paintInfo.context->translate(-unzoomedRect.x(), -unzoomedRect.y());
     }
 
-    [sliderThumbCell drawInteriorWithFrame:unzoomedRect inView:documentViewFor(o)];
+    [sliderThumbCell drawInteriorWithFrame:unzoomedRect inView:view];
     [sliderThumbCell setControlView:nil];
 
     return false;

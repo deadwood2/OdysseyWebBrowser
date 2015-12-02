@@ -33,7 +33,27 @@ WebInspector.ResourceSidebarPanel = class ResourceSidebarPanel extends WebInspec
 
         this.filterBar.placeholder = WebInspector.UIString("Filter Resource List");
 
-        this._waitingForInitialMainFrame = true;
+        this._navigationBar = new WebInspector.NavigationBar;
+        this.element.appendChild(this._navigationBar.element);
+
+        var scopeItemPrefix = "resource-sidebar-";
+        var scopeBarItems = [];
+
+        scopeBarItems.push(new WebInspector.ScopeBarItem(scopeItemPrefix + "type-all", WebInspector.UIString("All Resources"), true));
+
+        for (var key in WebInspector.Resource.Type) {
+            var value = WebInspector.Resource.Type[key];
+            var scopeBarItem = new WebInspector.ScopeBarItem(scopeItemPrefix + value, WebInspector.Resource.displayNameForType(value, true));
+            scopeBarItem.__resourceType = value;
+            scopeBarItems.push(scopeBarItem);
+        }
+
+        this._scopeBar = new WebInspector.ScopeBar("resource-sidebar-scope-bar", scopeBarItems, scopeBarItems[0], true);
+        this._scopeBar.addEventListener(WebInspector.ScopeBar.Event.SelectionChanged, this._scopeBarSelectionDidChange, this);
+
+        this._navigationBar.addNavigationItem(this._scopeBar);
+
+        WebInspector.Frame.addEventListener(WebInspector.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
 
         WebInspector.frameResourceManager.addEventListener(WebInspector.FrameResourceManager.Event.MainFrameDidChange, this._mainFrameDidChange, this);
 
@@ -47,9 +67,22 @@ WebInspector.ResourceSidebarPanel = class ResourceSidebarPanel extends WebInspec
 
         if (WebInspector.debuggableType === WebInspector.DebuggableType.JavaScript)
             this.contentTreeOutline.element.classList.add(WebInspector.NavigationSidebarPanel.HideDisclosureButtonsStyleClassName);
+
+        if (WebInspector.frameResourceManager.mainFrame)
+            this._mainFrameMainResourceDidChange(WebInspector.frameResourceManager.mainFrame);
     }
 
     // Public
+
+    closed()
+    {
+        super.closed();
+
+        WebInspector.Frame.removeEventListener(null, null, this);
+        WebInspector.frameResourceManager.removeEventListener(null, null, this);
+        WebInspector.debuggerManager.removeEventListener(null, null, this);
+        WebInspector.notifications.removeEventListener(null, null, this);
+    }
 
     showDefaultContentView()
     {
@@ -110,8 +143,10 @@ WebInspector.ResourceSidebarPanel = class ResourceSidebarPanel extends WebInspec
             return treeElement;
 
         // Only special case Script objects.
-        if (!(representedObject instanceof WebInspector.Script))
+        if (!(representedObject instanceof WebInspector.Script)) {
+            console.error("Didn't find a TreeElement for representedObject", representedObject);
             return null;
+        }
 
         // If the Script has a URL we should have found it earlier.
         if (representedObject.url) {
@@ -137,23 +172,81 @@ WebInspector.ResourceSidebarPanel = class ResourceSidebarPanel extends WebInspec
         return scriptTreeElement;
     }
 
+    // Protected
+
+    hasCustomFilters()
+    {
+        console.assert(this._scopeBar.selectedItems.length === 1);
+        var selectedScopeBarItem = this._scopeBar.selectedItems[0];
+        return selectedScopeBarItem && !selectedScopeBarItem.exclusive;
+    }
+
+    matchTreeElementAgainstCustomFilters(treeElement, flags)
+    {
+        console.assert(this._scopeBar.selectedItems.length === 1);
+        var selectedScopeBarItem = this._scopeBar.selectedItems[0];
+
+        // Show everything if there is no selection or "All Resources" is selected (the exclusive item).
+        if (!selectedScopeBarItem || selectedScopeBarItem.exclusive)
+            return true;
+
+        // Folders are hidden on the first pass, but visible childen under the folder will force the folder visible again.
+        if (treeElement instanceof WebInspector.FolderTreeElement)
+            return false;
+
+        function match()
+        {
+            if (treeElement instanceof WebInspector.FrameTreeElement)
+                return selectedScopeBarItem.__resourceType === WebInspector.Resource.Type.Document;
+
+            if (treeElement instanceof WebInspector.ScriptTreeElement)
+                return selectedScopeBarItem.__resourceType === WebInspector.Resource.Type.Script;
+
+            console.assert(treeElement instanceof WebInspector.ResourceTreeElement, "Unknown treeElement", treeElement);
+            if (!(treeElement instanceof WebInspector.ResourceTreeElement))
+                return false;
+
+            return treeElement.resource.type === selectedScopeBarItem.__resourceType;
+        }
+
+        var matched = match();
+        if (matched)
+            flags.expandTreeElement = true;
+        return matched;
+    }
+
     // Private
+
+    _mainResourceDidChange(event)
+    {
+        if (!event.target.isMainFrame())
+            return;
+
+        this._mainFrameMainResourceDidChange(event.target);
+    }
 
     _mainFrameDidChange(event)
     {
+        this._mainFrameMainResourceDidChange(WebInspector.frameResourceManager.mainFrame);
+    }
+
+    _mainFrameMainResourceDidChange(mainFrame)
+    {
+        this.contentBrowser.contentViewContainer.closeAllContentViews();
+
         if (this._mainFrameTreeElement) {
-            this._mainFrameTreeElement.frame.removeEventListener(WebInspector.Frame.Event.MainResourceDidChange, this._mainFrameMainResourceDidChange, this);
             this.contentTreeOutline.removeChild(this._mainFrameTreeElement);
             this._mainFrameTreeElement = null;
         }
 
-        var newFrame = WebInspector.frameResourceManager.mainFrame;
-        if (newFrame) {
-            newFrame.addEventListener(WebInspector.Frame.Event.MainResourceDidChange, this._mainFrameMainResourceDidChange, this);
-            this._mainFrameTreeElement = new WebInspector.FrameTreeElement(newFrame);
-            this.contentTreeOutline.insertChild(this._mainFrameTreeElement, 0);
+        if (!mainFrame)
+            return;
 
-            // Select a tree element by default. Allow onselect if we aren't showing a content view.
+        this._mainFrameTreeElement = new WebInspector.FrameTreeElement(mainFrame);
+        this.contentTreeOutline.insertChild(this._mainFrameTreeElement, 0);
+
+        function delayedWork()
+        {
             if (!this.contentTreeOutline.selectedTreeElement) {
                 var currentContentView = this.contentBrowser.currentContentView;
                 var treeElement = currentContentView ? this.treeElementForRepresentedObject(currentContentView.representedObject) : null;
@@ -163,45 +256,9 @@ WebInspector.ResourceSidebarPanel = class ResourceSidebarPanel extends WebInspec
             }
         }
 
-        // The navigation path needs update when the main frame changes, since all resources are under the main frame.
-        this.contentBrowser.updateHierarchicalPathForCurrentContentView();
-
-        // We only care about the first time the main frame changes.
-        if (!this._waitingForInitialMainFrame)
-            return;
-
-        // Only if there is a main frame.
-        if (!newFrame)
-            return;
-
-        this._waitingForInitialMainFrame = false;
-    }
-
-    _mainFrameMainResourceDidChange(event)
-    {
-        var wasShowingResourceSidebar = this.selected;
-        var currentContentView = this.contentBrowser.currentContentView;
-        var wasShowingResourceContentView = currentContentView instanceof WebInspector.ResourceContentView
-            || currentContentView instanceof WebInspector.ResourceClusterContentView
-            || currentContentView instanceof WebInspector.FrameContentView
-            || currentContentView instanceof WebInspector.ScriptContentView;
-
-        this.contentBrowser.contentViewContainer.closeAllContentViews();
-
-        function delayedWork()
-        {
-            // Show the main frame since there is no content view showing or we were showing a resource before.
-            // Cookie restoration will attempt to re-select the resource we were showing.
-            if (!this.contentBrowser.currentContentView || wasShowingResourceContentView) {
-                // NOTE: This selection, during provisional loading, won't be saved, so it is
-                // safe to do and not-clobber cookie restoration.
-                this.showDefaultContentViewForTreeElement(this._mainFrameTreeElement);
-            }
-        }
-
-        // Delay this work because other listeners of this event might not have fired yet. So selecting the main frame
-        // before those listeners do their work might cause the content of the old page to show instead of the new page.
-        setTimeout(delayedWork.bind(this), 0);
+        // Cookie restoration will attempt to re-select the resource we were showing.
+        // Give it time to do that before selecting the main frame resource.
+        setTimeout(delayedWork.bind(this));
     }
 
     _scriptWasAdded(event)
@@ -304,5 +361,10 @@ WebInspector.ResourceSidebarPanel = class ResourceSidebarPanel extends WebInspec
     {
         if (WebInspector.debuggableType === WebInspector.DebuggableType.JavaScript)
             this.contentTreeOutline.element.classList.remove(WebInspector.NavigationSidebarPanel.HideDisclosureButtonsStyleClassName);
+    }
+
+    _scopeBarSelectionDidChange(event)
+    {
+        this.updateFilter();
     }
 };
