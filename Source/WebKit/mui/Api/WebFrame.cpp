@@ -373,7 +373,8 @@ void WebFrame::loadHTMLString(const char* string, const char* baseURL, const cha
     URL failingURL;
 
     ResourceRequest request(_baseURL);
-    SubstituteData substituteData(data.release(), mimeType, utf8Encoding, failingURL);
+    ResourceResponse response(URL(), mimeType, data.get()->size(), utf8Encoding);
+    SubstituteData substituteData(data.release(), failingURL, response, SubstituteData::SessionHistoryVisibility::Hidden);
 
     if (Frame* coreFrame = core(this))
         coreFrame->loader().load(FrameLoadRequest(coreFrame, request, substituteData));

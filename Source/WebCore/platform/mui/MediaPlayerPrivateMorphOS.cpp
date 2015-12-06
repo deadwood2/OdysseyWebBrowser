@@ -1720,7 +1720,7 @@ void MediaPlayerPrivate::audioReset()
 }
 
 /* This custom definition is needed because of the "Fixed" type causing conflicts */
-#if !OS(AROS)
+#if OS(MORPHOS)
 #undef AHI_SetVol
 #define AHI_SetVol(__p0, __p1, __p2, __p3, __p4) \
 	LP5NR(66, AHI_SetVol, \
@@ -1731,7 +1731,9 @@ void MediaPlayerPrivate::audioReset()
 		ULONG , __p4, d3, \
 		, AHI_BASE_NAME, 0, 0, 0, 0, 0, 0)
 #endif
-
+#if OS(AROS)
+#define Fixed LONG
+#endif
 void MediaPlayerPrivate::audioSetVolume(float volume)
 {
 	m_ctx->audio_output_mutex->lock();

@@ -48,7 +48,7 @@ WebGeolocationPosition::~WebGeolocationPosition()
 
 void WebGeolocationPosition::initWithTimestamp(double timestamp, double latitude, double longitude, double accuracy)
 {
-    m_position = GeolocationPosition::create(timestamp, latitude, longitude, accuracy).get();
+    m_position = GeolocationPosition::create(timestamp, latitude, longitude, accuracy);
 }
 
 GeolocationPosition* core(WebGeolocationPosition* position)

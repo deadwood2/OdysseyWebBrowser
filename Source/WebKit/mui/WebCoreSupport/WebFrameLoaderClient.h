@@ -133,6 +133,9 @@ public:
     virtual void willChangeTitle(WebCore::DocumentLoader*);
     virtual void didChangeTitle(WebCore::DocumentLoader*);
 
+    virtual void willReplaceMultipartContent() override { };
+    virtual void didReplaceMultipartContent() override { };
+
     virtual void committedLoad(WebCore::DocumentLoader*, const char*, int);
     virtual void finishedLoading(WebCore::DocumentLoader*);
 

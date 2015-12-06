@@ -209,6 +209,7 @@ public:
         return new Thread(getCurrentPlatformThread(), wtfThreadData().stack().origin());
     }
 
+#if !OS(AROS)
     struct Registers {
         inline void* stackPointer() const;
         
@@ -283,17 +284,19 @@ typedef struct PPCRegFrame PlatformRegisters;
 #else
 #error Need a thread register struct for this platform
 #endif
-        
         PlatformRegisters regs;
     };
-    
+#endif
+
     inline bool operator==(const PlatformThread& other) const;
     inline bool operator!=(const PlatformThread& other) const { return !(*this == other); }
 
     inline bool suspend();
     inline void resume();
+#if !OS(AROS)
     size_t getRegisters(Registers&);
     void freeRegisters(Registers&);
+#endif
     std::pair<void*, size_t> captureStack(void* stackTop);
 
     Thread* next;
@@ -719,7 +722,7 @@ static void growBuffer(size_t size, void** buffer, size_t* capacity)
     *capacity = WTF::roundUpToMultipleOf(WTF::pageSize(), size * 2);
     *buffer = fastMalloc(*capacity);
 }
-#endif
+#endif // !OS(AROS)
 
 void MachineThreads::gatherConservativeRoots(ConservativeRoots& conservativeRoots, JITStubRoutineSet& jitStubRoutines, CodeBlockSet& codeBlocks, void* stackOrigin, void* stackTop, RegisterState& calleeSavedRegisters)
 {

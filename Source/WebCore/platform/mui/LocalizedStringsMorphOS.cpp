@@ -396,6 +396,11 @@ String AXSearchFieldCancelButtonText()
     return String();
 }
 
+String AXAutoFillButtonText()
+{
+    return String::fromUTF8("autofill");
+}
+
 String unknownFileSizeText()
 {
 	return String::fromUTF8(GSI(MSG_LOCALIZED_UNKNOWN));

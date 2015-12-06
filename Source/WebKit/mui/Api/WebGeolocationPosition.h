@@ -45,10 +45,10 @@ private:
 public:
     virtual void initWithTimestamp(double timestamp, double latitude, double longitude, double accuracy);
 
-    WebCore::GeolocationPosition* impl() const { return m_position; }
+    WebCore::GeolocationPosition* impl() const { return m_position.get(); }
 
 private:
-    WebCore::GeolocationPosition* m_position;
+    RefPtr<WebCore::GeolocationPosition> m_position;
 };
 
 WebCore::GeolocationPosition* core(WebGeolocationPosition*);

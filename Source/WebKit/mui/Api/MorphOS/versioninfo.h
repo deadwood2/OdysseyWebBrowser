@@ -3,7 +3,7 @@
 
 #define VERSION  "1.25"
 #define WEBKITVER xstringify(WEBKIT_MAJOR_VERSION) "." xstringify(WEBKIT_MINOR_VERSION)
-#define REVISION "WebKit " WEBKITVER " (r183664)"
+#define REVISION "WebKit " WEBKITVER " (r185045)"
 
 #include "builddate.h"
 

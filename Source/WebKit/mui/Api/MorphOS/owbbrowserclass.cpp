@@ -515,7 +515,8 @@ DEFNEW
 
 					if(dataSource)
 					{
-						SubstituteData substituteData(dataSource, mimeType, frame->loader().documentLoader()->overrideEncoding(), failingURL);
+						ResourceResponse response(URL(), mimeType, dataSource->size(), frame->loader().documentLoader()->overrideEncoding());
+						SubstituteData substituteData(dataSource, failingURL, response, SubstituteData::SessionHistoryVisibility::Hidden);
 
 						FrameLoadRequest frameLoadRequest(frame, request, substituteData);
 						frame->loader().load(frameLoadRequest);

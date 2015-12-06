@@ -503,12 +503,12 @@
 #endif
 
 #if PLATFORM(MUI)
-#define WTF_USE_CAIRO 1
-#define WTF_USE_FREETYPE 1
-#define WTF_USE_CURL 1
-#define WTF_USE_CURL_OPENSSL 1
-#define WTF_USE_TEXTURE_MAPPER 1
-#define WTF_USE_TEXTURE_MAPPER_GL 0
+#define USE_CAIRO 1
+#define USE_FREETYPE 1
+#define USE_CURL 1
+#define USE_CURL_OPENSSL 1
+#define USE_TEXTURE_MAPPER 1
+#define USE_TEXTURE_MAPPER_GL 0
 #endif
 
 /* On Windows, use QueryPerformanceCounter by default */

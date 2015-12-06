@@ -2591,12 +2591,6 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     
     settings->setSpatialNavigationEnabled(preferences->spatialNavigationEnabled());
 
-    enabled = preferences->mediaPlaybackRequiresUserGesture();
-    settings->setMediaPlaybackRequiresUserGesture(enabled);
-
-    enabled = preferences->mediaPlaybackAllowsInline();
-    settings->setMediaPlaybackAllowsInline(enabled);
-
 #if ENABLE(FULLSCREEN_API)
 	settings->setFullScreenEnabled(false);
 #endif

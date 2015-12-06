@@ -31,7 +31,7 @@
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
 
-#if !PLATFORM(WIN)
+#if !PLATFORM(WIN) && !PLATFORM(MUI)
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -124,7 +124,7 @@ bool excludeFromBackup(const String&)
 
 MappedFileData::~MappedFileData()
 {
-#if !PLATFORM(WIN)
+#if !PLATFORM(WIN) && !PLATFORM(MUI)
     if (!m_fileData)
         return;
     munmap(m_fileData, m_fileSize);
@@ -133,7 +133,7 @@ MappedFileData::~MappedFileData()
 
 MappedFileData::MappedFileData(const String& filePath, bool& success)
 {
-#if PLATFORM(WIN)
+#if PLATFORM(WIN) || PLATFORM(MUI)
     // FIXME: Implement mapping
     success = false;
 #else
