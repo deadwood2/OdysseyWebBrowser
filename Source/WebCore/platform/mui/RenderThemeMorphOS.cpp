@@ -151,7 +151,7 @@ static Ref<Gradient> createLinearGradient(RGBA32 top, RGBA32 bottom, const IntPo
     return gradient;
 }
 
-static Path roundedRectForBorder(const RenderObject& object, const IntRect& rect)
+static Path roundedRectForBorder(const RenderObject& object, const FloatRect& rect)
 {
 #warning FIXME
     RenderStyle& style = object.style();
@@ -201,13 +201,13 @@ static float determineFullScreenMultiplier(Element* element)
 PassRefPtr<RenderTheme> RenderTheme::themeForPage(Page* page)
 {
     UNUSED_PARAM(page);
-    static RenderTheme* theme = RenderThemeBal::create().leakRef();
-    return theme;
+    static RenderTheme& theme = RenderThemeBal::create().leakRef();
+    return &theme;
 }
 
-PassRefPtr<RenderTheme> RenderThemeBal::create()
+Ref<RenderTheme> RenderThemeBal::create()
 {
-    return adoptRef(new RenderThemeBal());
+    return adoptRef(*new RenderThemeBal());
 }
 
 RenderThemeBal::RenderThemeBal()
@@ -242,49 +242,30 @@ double RenderThemeBal::caretBlinkInterval() const
 	return 1.0;
 }
 
-void RenderThemeBal::systemFont(CSSValueID propId, FontDescription& fontDescription) const
+void RenderThemeBal::setButtonStyle(RenderStyle& style) const
 {
-    float fontSize = defaultFontSize;
-
-    if (propId == CSSValueWebkitMiniControl || propId ==  CSSValueWebkitSmallControl || propId == CSSValueWebkitControl) {
-        // Why 2 points smaller? Because that's what Gecko does. Note that we
-        // are assuming a 96dpi screen, which is the default value we use on Windows.
-        static const float pointsPerInch = 72.0f;
-        static const float pixelsPerInch = 96.0f;
-        fontSize -= (2.0f / pointsPerInch) * pixelsPerInch;
-    }
-
-    fontDescription.setOneFamily(defaultGUIFont());
-    fontDescription.setSpecifiedSize(fontSize);
-    fontDescription.setIsAbsoluteSize(true);
-    fontDescription.setWeight(FontWeightNormal);
-    fontDescription.setItalic(FontItalicOff);
+    Length vertPadding(int(style.fontSize() / paddingDivisor), Fixed);
+    style.setPaddingTop(vertPadding);
+    style.setPaddingBottom(vertPadding);
 }
 
-void RenderThemeBal::setButtonStyle(RenderStyle* style) const
-{
-    Length vertPadding(int(style->fontSize() / paddingDivisor), Fixed);
-    style->setPaddingTop(vertPadding);
-    style->setPaddingBottom(vertPadding);
-}
-
-void RenderThemeBal::adjustButtonStyle(StyleResolver*, RenderStyle* style, Element*) const
+void RenderThemeBal::adjustButtonStyle(StyleResolver&, RenderStyle& style, Element*) const
 {
     setButtonStyle(style);
-	//style->setCursor(CURSOR_WEBKIT_GRAB);
+    //style.setCursor(CURSOR_WEBKIT_GRAB);
 }
 
-void RenderThemeBal::adjustTextAreaStyle(StyleResolver*, RenderStyle* style, Element*) const
+void RenderThemeBal::adjustTextAreaStyle(StyleResolver&, RenderStyle& style, Element*) const
 {
     setButtonStyle(style);
 }
 
-bool RenderThemeBal::paintTextArea(const RenderObject& object, const PaintInfo& info, const IntRect& rect)
+bool RenderThemeBal::paintTextArea(const RenderObject& object, const PaintInfo& info, const FloatRect& rect)
 {
-    return paintTextFieldOrTextAreaOrSearchField(object, info, rect);
+    return paintTextFieldOrTextAreaOrSearchField(object, info, IntRect(rect));
 }
 
-void RenderThemeBal::adjustTextFieldStyle(StyleResolver*, RenderStyle* style, Element*) const
+void RenderThemeBal::adjustTextFieldStyle(StyleResolver&, RenderStyle& style, Element*) const
 {
     setButtonStyle(style);
 }
@@ -318,17 +299,17 @@ bool RenderThemeBal::paintTextFieldOrTextAreaOrSearchField(const RenderObject& o
     return false;
 }
 
-bool RenderThemeBal::paintTextField(const RenderObject& object, const PaintInfo& info, const IntRect& rect)
+bool RenderThemeBal::paintTextField(const RenderObject& object, const PaintInfo& info, const FloatRect& rect)
 {
-    return paintTextFieldOrTextAreaOrSearchField(object, info, rect);
+    return paintTextFieldOrTextAreaOrSearchField(object, info, IntRect(rect));
 }
 
-void RenderThemeBal::adjustSearchFieldStyle(StyleResolver*, RenderStyle* style, Element*) const
+void RenderThemeBal::adjustSearchFieldStyle(StyleResolver&, RenderStyle& style, Element*) const
 {
     setButtonStyle(style);
 }
 
-void RenderThemeBal::adjustSearchFieldCancelButtonStyle(StyleResolver*, RenderStyle* style, Element*) const
+void RenderThemeBal::adjustSearchFieldCancelButtonStyle(StyleResolver&, RenderStyle& style, Element*) const
 {
     static const float defaultControlFontPixelSize = 13;
     static const float defaultCancelButtonSize = 9;
@@ -336,11 +317,11 @@ void RenderThemeBal::adjustSearchFieldCancelButtonStyle(StyleResolver*, RenderSt
     static const float maxCancelButtonSize = 21;
 
     // Scale the button size based on the font size
-    float fontScale = style->fontSize() / defaultControlFontPixelSize;
+    float fontScale = style.fontSize() / defaultControlFontPixelSize;
     int cancelButtonSize = lroundf(std::min(std::max(minCancelButtonSize, defaultCancelButtonSize * fontScale), maxCancelButtonSize));
     Length length(cancelButtonSize, Fixed);
-    style->setWidth(length);
-    style->setHeight(length);
+    style.setWidth(length);
+    style.setHeight(length);
 }
 
 bool RenderThemeBal::paintSearchField(const RenderObject& object, const PaintInfo& info, const IntRect& rect)
@@ -373,41 +354,41 @@ bool RenderThemeBal::paintSearchFieldCancelButton(const RenderObject& object, co
     return false;
 }
 
-void RenderThemeBal::adjustMenuListButtonStyle(StyleResolver*, RenderStyle* style, Element*) const
+void RenderThemeBal::adjustMenuListButtonStyle(StyleResolver&, RenderStyle& style, Element*) const
 {
     // These seem to be reasonable padding values from observation.
     const int paddingLeft = 8;
     const int paddingRight = 4;
 
-    const int minHeight = style->fontSize() * 2;
+    const int minHeight = style.fontSize() * 2;
 
-    style->resetPadding();
-    style->setHeight(Length(Auto));
+    style.resetPadding();
+    style.setHeight(Length(Auto));
 
-    style->setPaddingRight(Length(minHeight + paddingRight, Fixed));
-    style->setPaddingLeft(Length(paddingLeft, Fixed));
-	//style->setCursor(CURSOR_WEBKIT_GRAB);
+    style.setPaddingRight(Length(minHeight + paddingRight, Fixed));
+    style.setPaddingLeft(Length(paddingLeft, Fixed));
+    //style.setCursor(CURSOR_WEBKIT_GRAB);
 }
 
-void RenderThemeBal::calculateButtonSize(RenderStyle* style) const
+void RenderThemeBal::calculateButtonSize(RenderStyle& style) const
 {
-    int size = style->fontSize();
+    int size = style.fontSize();
     Length length(size, Fixed);
-    if (style->appearance() == CheckboxPart || style->appearance() == RadioPart) {
-        style->setWidth(length);
-        style->setHeight(length);
+    if (style.appearance() == CheckboxPart || style.appearance() == RadioPart) {
+        style.setWidth(length);
+        style.setHeight(length);
         return;
     }
 
     // If the width and height are both specified, then we have nothing to do.
-    if (!style->width().isIntrinsicOrAuto() && !style->height().isAuto())
+    if (!style.width().isIntrinsicOrAuto() && !style.height().isAuto())
         return;
 
-    if (style->width().isIntrinsicOrAuto())
-        style->setWidth(length);
+    if (style.width().isIntrinsicOrAuto())
+        style.setWidth(length);
 
-    if (style->height().isAuto())
-        style->setHeight(length);
+    if (style.height().isAuto())
+        style.setHeight(length);
 }
 
 bool RenderThemeBal::paintCheckbox(const RenderObject& object, const PaintInfo& info, const IntRect& rect)
@@ -415,7 +396,7 @@ bool RenderThemeBal::paintCheckbox(const RenderObject& object, const PaintInfo& 
     return paintButton(object, info, rect);
 }
 
-void RenderThemeBal::setCheckboxSize(RenderStyle* style) const
+void RenderThemeBal::setCheckboxSize(RenderStyle& style) const
 {
     calculateButtonSize(style);
 }
@@ -425,21 +406,21 @@ bool RenderThemeBal::paintRadio(const RenderObject& object, const PaintInfo& inf
     return paintButton(object, info, rect);
 }
 
-void RenderThemeBal::setRadioSize(RenderStyle* style) const
+void RenderThemeBal::setRadioSize(RenderStyle& style) const
 {
-	//calculateButtonSize(style);
+    //calculateButtonSize(style);
 
-    if (!style->width().isIntrinsicOrAuto() && !style->height().isAuto())
+    if (!style.width().isIntrinsicOrAuto() && !style.height().isAuto())
         return;
 
     // FIXME:  A hard-coded size of 13 is used.  This is wrong but necessary for now.  It matches Firefox.
     // At different DPI settings on Windows, querying the theme gives you a larger size that accounts for
     // the higher DPI.  Until our entire engine honors a DPI setting other than 96, we can't rely on the theme's
     // metrics.
-    if (style->width().isIntrinsicOrAuto())
-        style->setWidth(Length(13, Fixed));
-    if (style->height().isAuto())
-        style->setHeight(Length(13, Fixed));
+    if (style.width().isIntrinsicOrAuto())
+        style.setWidth(Length(13, Fixed));
+    if (style.height().isAuto())
+        style.setHeight(Length(13, Fixed));
 }
 
 // If this function returns false, WebCore assumes the button is fully decorated
@@ -540,29 +521,29 @@ bool RenderThemeBal::paintButton(const RenderObject& object, const PaintInfo& in
     return false;
 }
 
-void RenderThemeBal::adjustMenuListStyle(StyleResolver* css, RenderStyle* style, Element* element) const
+void RenderThemeBal::adjustMenuListStyle(StyleResolver& css, RenderStyle& style, Element* element) const
 {
     adjustMenuListButtonStyle(css, style, element);
 }
 
-void RenderThemeBal::adjustCheckboxStyle(StyleResolver*, RenderStyle* style, Element*) const
+void RenderThemeBal::adjustCheckboxStyle(StyleResolver&, RenderStyle& style, Element*) const
 {
     setCheckboxSize(style);
-    style->setBoxShadow(nullptr);
+    style.setBoxShadow(nullptr);
     Length margin(marginSize, Fixed);
-    style->setMarginBottom(margin);
-    style->setMarginRight(margin);
-	//style->setCursor(CURSOR_WEBKIT_GRAB);
+    style.setMarginBottom(margin);
+    style.setMarginRight(margin);
+    //style.setCursor(CURSOR_WEBKIT_GRAB);
 }
 
-void RenderThemeBal::adjustRadioStyle(StyleResolver*, RenderStyle* style, Element*) const
+void RenderThemeBal::adjustRadioStyle(StyleResolver&, RenderStyle& style, Element*) const
 {
     setRadioSize(style);
-    style->setBoxShadow(nullptr);
+    style.setBoxShadow(nullptr);
     Length margin(marginSize, Fixed);
-    style->setMarginBottom(margin);
-    style->setMarginRight(margin);
-	//style->setCursor(CURSOR_WEBKIT_GRAB);
+    style.setMarginBottom(margin);
+    style.setMarginRight(margin);
+    //style.setCursor(CURSOR_WEBKIT_GRAB);
 }
 
 #if 0
@@ -619,7 +600,7 @@ static void paintMenuListBackground(GraphicsContext* context, const Path& menuLi
     context->restore();
 }
 
-bool RenderThemeBal::paintMenuList(RenderObject* object, const PaintInfo& info, const IntRect& rect)
+bool RenderThemeBal::paintMenuList(RenderObject* object, const PaintInfo& info, const FloatRect& rect)
 {
     // Note, this method is not called if the menu list explicitly specifies either a border or background color.
     // Instead, RenderThemeBal::paintMenuListButton is called. Therefore, when this method is called, we don't
@@ -696,7 +677,7 @@ const int styledPopupPaddingLeft = 8;
 const int styledPopupPaddingTop = 1;
 const int styledPopupPaddingBottom = 2;
 
-bool RenderThemeBal::paintMenuList(const RenderObject& o, const PaintInfo& paintInfo, const IntRect& r)
+bool RenderThemeBal::paintMenuList(const RenderObject& o, const PaintInfo& paintInfo, const FloatRect& r)
 {
     IntRect bounds = IntRect(r.x() + o.style().borderLeftWidth(),
                              r.y() + o.style().borderTopWidth(),
@@ -775,90 +756,16 @@ bool RenderThemeBal::paintMenuList(const RenderObject& o, const PaintInfo& paint
     return false;
 }
 
-bool RenderThemeBal::paintMenuListButton(const RenderObject& o, const PaintInfo& paintInfo, const IntRect& r)
+bool RenderThemeBal::paintMenuListButtonDecorations(const RenderObject& object, const PaintInfo& info, const FloatRect& rect)
 {
-    IntRect bounds = IntRect(r.x() + o.style().borderLeftWidth(),
-                             r.y() + o.style().borderTopWidth(),
-                             r.width() - o.style().borderLeftWidth() - o.style().borderRightWidth(),
-                             r.height() - o.style().borderTopWidth() - o.style().borderBottomWidth());
-    // Draw the gradients to give the styled popup menu a button appearance
-    //paintMenuListButtonGradients(o, paintInfo, bounds);
-    EBorderStyle v = INSET;
-    o.style().setBorderTopStyle(v);
-    o.style().setBorderLeftStyle(v);
-    o.style().setBorderBottomStyle(v);
-    o.style().setBorderRightStyle(v);
-    int borderWidth = 1;
-    o.style().setBorderTopWidth(borderWidth);
-    o.style().setBorderLeftWidth(borderWidth);
-    o.style().setBorderBottomWidth(borderWidth);
-    o.style().setBorderRightWidth(borderWidth);
-
-#warning FIXME
-/*    toRenderBox(o).paintFillLayerExtended(paintInfo,
-    o.style().visitedDependentColor(CSSPropertyBackgroundColor), o.style().backgroundLayers(), IntRect(r.x(), r.y(), toRenderBox(o).width(), toRenderBox(o).height()), BackgroundBleedNone, 0, IntSize(), o.style().backgroundComposite());
-    toRenderBox(&o)->paintBorder(paintInfo,
-				LayoutRect(r.x(), r.y(), r.width(), r.height()),
-				o.style(), BackgroundBleedNone, true, true);*/
-
-    // Since we actually know the size of the control here, we restrict the font scale to make sure the arrows will fit vertically in the bounds
-    float fontScale = std::min(o.style().fontSize() / baseFontSize, bounds.height() / (baseArrowHeight * 2 + baseSpaceBetweenArrows));
-    float centerY = bounds.y() + bounds.height() / 2.0f;
-    float arrowHeight = baseArrowHeight * fontScale;
-    float arrowWidth = baseArrowWidth * fontScale;
-    float leftEdge = bounds.maxX() - arrowPaddingRight * o.style().effectiveZoom() - arrowWidth;
-    float spaceBetweenArrows = baseSpaceBetweenArrows * fontScale;
-
-    if (bounds.width() < arrowWidth + arrowPaddingLeft * o.style().effectiveZoom())
-      return false;
-
-    GraphicsContextStateSaver stateSaver(*paintInfo.context);
-
-    paintInfo.context->setFillColor(o.style().visitedDependentColor(CSSPropertyColor), o.style().colorSpace());
-    paintInfo.context->setStrokeStyle(NoStroke);
-
-    FloatPoint arrow1[3];
-    arrow1[0] = FloatPoint(leftEdge, centerY - spaceBetweenArrows / 2.0f);
-    arrow1[1] = FloatPoint(leftEdge + arrowWidth, centerY - spaceBetweenArrows / 2.0f);
-    arrow1[2] = FloatPoint(leftEdge + arrowWidth / 2.0f, centerY - spaceBetweenArrows / 2.0f - arrowHeight);
-
-    // Draw the top arrow
-    paintInfo.context->drawConvexPolygon(3, arrow1, true);
-
-    FloatPoint arrow2[3];
-    arrow2[0] = FloatPoint(leftEdge, centerY + spaceBetweenArrows / 2.0f);
-    arrow2[1] = FloatPoint(leftEdge + arrowWidth, centerY + spaceBetweenArrows / 2.0f);
-    arrow2[2] = FloatPoint(leftEdge + arrowWidth / 2.0f, centerY + spaceBetweenArrows / 2.0f + arrowHeight);
-
-    // Draw the bottom arrow
-    paintInfo.context->drawConvexPolygon(3, arrow2, true);
-
-    Color leftSeparatorColor(0, 0, 0, 40);
-    Color rightSeparatorColor(255, 255, 255, 40);
-
-    // FIXME: Should the separator thickness and space be scaled up by fontScale?
-    int separatorSpace = 2; // Deliberately ignores zoom since it looks nicer if it stays thin.
-    int leftEdgeOfSeparator = static_cast<int>(leftEdge - arrowPaddingLeft * o.style().effectiveZoom()); // FIXME: Round?
-
-    // Draw the separator to the left of the arrows
-    paintInfo.context->setStrokeThickness(1.0f); // Deliberately ignores zoom since it looks nicer if it stays thin.
-    paintInfo.context->setStrokeStyle(SolidStroke);
-    paintInfo.context->setStrokeColor(leftSeparatorColor, ColorSpaceDeviceRGB);
-    paintInfo.context->drawLine(IntPoint(leftEdgeOfSeparator, bounds.y()),
-                                IntPoint(leftEdgeOfSeparator, bounds.maxY()));
-
-    paintInfo.context->setStrokeColor(rightSeparatorColor, ColorSpaceDeviceRGB);
-    paintInfo.context->drawLine(IntPoint(leftEdgeOfSeparator + separatorSpace, bounds.y()),
-                                IntPoint(leftEdgeOfSeparator + separatorSpace, bounds.maxY()));
-
-    return false;
+    return paintMenuList(object, info, rect);
 }
 #endif
 
-void RenderThemeBal::adjustSliderThumbSize(RenderStyle* style, Element* element) const
+void RenderThemeBal::adjustSliderThumbSize(RenderStyle& style, Element* element) const
 {
     float fullScreenMultiplier = 1;
-    ControlPart part = style->appearance();
+    ControlPart part = style.appearance();
 
     if (part == MediaSliderThumbPart || part == MediaVolumeSliderThumbPart) {
         RenderSlider* slider = determineRenderSlider(element->renderer());
@@ -867,14 +774,14 @@ void RenderThemeBal::adjustSliderThumbSize(RenderStyle* style, Element* element)
     }
 
     if (part == SliderThumbHorizontalPart || part == SliderThumbVerticalPart) {
-        style->setWidth(Length((part == SliderThumbVerticalPart ? sliderThumbHeight : sliderThumbWidth) * fullScreenMultiplier, Fixed));
-        style->setHeight(Length((part == SliderThumbVerticalPart ? sliderThumbWidth : sliderThumbHeight) * fullScreenMultiplier, Fixed));
-	} else if (part == MediaVolumeSliderThumbPart) {
-		style->setWidth(Length(mediaVolumeSliderThumbWidth * fullScreenMultiplier, Fixed));
-		style->setHeight(Length(mediaVolumeSliderThumbHeight * fullScreenMultiplier, Fixed));
-	} else if (part == MediaSliderThumbPart) {
-        style->setWidth(Length(mediaSliderThumbWidth * fullScreenMultiplier, Fixed));
-        style->setHeight(Length(mediaSliderThumbHeight * fullScreenMultiplier, Fixed));
+        style.setWidth(Length((part == SliderThumbVerticalPart ? sliderThumbHeight : sliderThumbWidth) * fullScreenMultiplier, Fixed));
+        style.setHeight(Length((part == SliderThumbVerticalPart ? sliderThumbWidth : sliderThumbHeight) * fullScreenMultiplier, Fixed));
+    } else if (part == MediaVolumeSliderThumbPart) {
+        style.setWidth(Length(mediaVolumeSliderThumbWidth * fullScreenMultiplier, Fixed));
+        style.setHeight(Length(mediaVolumeSliderThumbHeight * fullScreenMultiplier, Fixed));
+    } else if (part == MediaSliderThumbPart) {
+        style.setWidth(Length(mediaSliderThumbWidth * fullScreenMultiplier, Fixed));
+        style.setHeight(Length(mediaSliderThumbHeight * fullScreenMultiplier, Fixed));
     }
 }
 
@@ -1016,7 +923,7 @@ bool RenderThemeBal::supportsDataListUI(const AtomicString& type) const
 #endif
 }
 
-void RenderThemeBal::adjustMediaControlStyle(StyleResolver*, RenderStyle* style, Element* element) const
+void RenderThemeBal::adjustMediaControlStyle(StyleResolver&, RenderStyle& style, Element* element) const
 {
 #if ENABLE(VIDEO)
 	float fullScreenMultiplier = determineFullScreenMultiplier(element);
@@ -1032,27 +939,27 @@ void RenderThemeBal::adjustMediaControlStyle(StyleResolver*, RenderStyle* style,
     Length padding(mediaControlsHeight / 8 * fullScreenMultiplier, Fixed);
     float fontSize = mediaControlsHeight / 2 * fullScreenMultiplier;
 
-    switch (style->appearance()) {
+    switch (style.appearance()) {
     case MediaPlayButtonPart:
     case MediaEnterFullscreenButtonPart:
     case MediaExitFullscreenButtonPart:
     case MediaMuteButtonPart:
-        style->setWidth(controlsHeight);
-        style->setHeight(controlsHeight);
-		style->setBottom(zero);
+        style.setWidth(controlsHeight);
+        style.setHeight(controlsHeight);
+        style.setBottom(zero);
         break;
     case MediaCurrentTimePart:
     case MediaTimeRemainingPart:
-        style->setWidth(timeWidth);
-		style->setHeight(controlsHeight);
-        style->setPaddingRight(padding);
-        style->setFontSize(static_cast<int>(fontSize));
-		style->setBottom(zero);
+        style.setWidth(timeWidth);
+        style.setHeight(controlsHeight);
+        style.setPaddingRight(padding);
+        style.setFontSize(static_cast<int>(fontSize));
+        style.setBottom(zero);
         break;
     case MediaVolumeSliderContainerPart:
-        style->setWidth(controlsHeight);
-        style->setHeight(volumeHeight);
-		style->setBottom(controlsHeight);
+        style.setWidth(controlsHeight);
+        style.setHeight(volumeHeight);
+        style.setBottom(controlsHeight);
         break;
     default:
         break;
@@ -1063,17 +970,17 @@ void RenderThemeBal::adjustMediaControlStyle(StyleResolver*, RenderStyle* style,
         // and fullscreen buttons to the right. This is needed when webkit does
         // not render the timeline container because it has a webkit-box-flex
         // of 1 and normally allows those buttons to be on the right.
-        switch (style->appearance()) {
+        switch (style.appearance()) {
         case MediaEnterFullscreenButtonPart:
         case MediaExitFullscreenButtonPart:
-            style->setPosition(AbsolutePosition);
-            style->setBottom(zero);
-            style->setRight(controlsHeight);
+            style.setPosition(AbsolutePosition);
+            style.setBottom(zero);
+            style.setRight(controlsHeight);
             break;
         case MediaMuteButtonPart:
-            style->setPosition(AbsolutePosition);
-            style->setBottom(zero);
-            style->setRight(zero);
+            style.setPosition(AbsolutePosition);
+            style.setBottom(zero);
+            style.setRight(zero);
             break;
         default:
             break;
@@ -1085,21 +992,21 @@ void RenderThemeBal::adjustMediaControlStyle(StyleResolver*, RenderStyle* style,
 #endif
 }
 
-void RenderThemeBal::adjustSliderTrackStyle(StyleResolver*, RenderStyle* style, Element* element) const
+void RenderThemeBal::adjustSliderTrackStyle(StyleResolver&, RenderStyle& style, Element* element) const
 {
     float fullScreenMultiplier = determineFullScreenMultiplier(element);
 
     // We use multiples of mediaControlsHeight to make all objects scale evenly
     Length controlsHeight(mediaControlsHeight * fullScreenMultiplier, Fixed);
-	Length mediaSliderHeight(19, Fixed);
+    Length mediaSliderHeight(19, Fixed);
     Length volumeHeight(mediaControlsHeight * 4 * fullScreenMultiplier, Fixed);
-    switch (style->appearance()) {
+    switch (style.appearance()) {
     case MediaSliderPart:
-        style->setHeight(mediaSliderHeight);
+        style.setHeight(mediaSliderHeight);
         break;
     case MediaVolumeSliderPart:
-        style->setWidth(controlsHeight);
-        style->setHeight(volumeHeight);
+        style.setWidth(controlsHeight);
+        style.setHeight(volumeHeight);
         break;
     case MediaFullScreenVolumeSliderPart:
     default:
@@ -1459,25 +1366,25 @@ Color RenderThemeBal::platformInactiveSelectionForegroundColor() const
     return c;
 }
 
-Color RenderThemeBal::activeListBoxSelectionBackgroundColor() const
+Color RenderThemeBal::platformActiveListBoxSelectionBackgroundColor() const
 {
     Color c(0xFF618ECE);
     return c;
 }
 
-Color RenderThemeBal::inactiveListBoxSelectionBackgroundColor() const
+Color RenderThemeBal::platformInactiveListBoxSelectionBackgroundColor() const
 {
     Color c(0xFFCFCFCF);
     return c;
 }
 
-Color RenderThemeBal::activeListBoxSelectionForegroundColor() const
+Color RenderThemeBal::platformActiveListBoxSelectionForegroundColor() const
 {
     Color c(0xFF000000);
     return c;
 }
 
-Color RenderThemeBal::inactiveListBoxSelectionForegroundColor() const
+Color RenderThemeBal::platformInactiveListBoxSelectionForegroundColor() const
 {
     Color c(0xFF3F3F3F);
     return c;
