@@ -153,7 +153,6 @@ static Ref<Gradient> createLinearGradient(RGBA32 top, RGBA32 bottom, const IntPo
 
 static Path roundedRectForBorder(const RenderObject& object, const FloatRect& rect)
 {
-#warning FIXME
     RenderStyle& style = object.style();
     LengthSize topLeftRadius = style.borderTopLeftRadius();
     LengthSize topRightRadius = style.borderTopRightRadius();
@@ -439,9 +438,6 @@ bool RenderThemeBal::paintButton(const RenderObject& object, const PaintInfo& in
     } else if (isPressed(object)) {
         info.context->setFillGradient(createLinearGradient(depressedTop, depressedBottom, rect.maxXMinYCorner(), rect.maxXMaxYCorner()));
         info.context->setStrokeGradient(createLinearGradient(depressedTopOutline, depressedBottomOutline, rect.maxXMinYCorner(), rect.maxXMaxYCorner()));
-    } else if (isHovered(object)) {
-        info.context->setFillGradient(createLinearGradient(hoverTop, hoverBottom, rect.maxXMinYCorner(), rect.maxXMaxYCorner()));
-        info.context->setStrokeGradient(createLinearGradient(hoverTopOutline, hoverBottomOutline, rect.maxXMinYCorner(), rect.maxXMaxYCorner()));
     } else {
         info.context->setFillGradient(createLinearGradient(regularTop, regularBottom, rect.maxXMinYCorner(), rect.maxXMaxYCorner()));
         info.context->setStrokeGradient(createLinearGradient(regularTopOutline, regularBottomOutline, rect.maxXMinYCorner(), rect.maxXMaxYCorner()));
@@ -472,28 +468,18 @@ bool RenderThemeBal::paintButton(const RenderObject& object, const PaintInfo& in
         break;
     }
 	case RadioPart: {
-#if 0
-        info.context->drawEllipse(rect);
-        if (isChecked(object)) {
-            IntRect rect2 = rect;
-            rect2.inflate(-rect.width() * radioButtonCheckStateScaler);
-            info.context->setFillColor(check, ColorSpaceDeviceRGB);
-            info.context->setStrokeColor(check, ColorSpaceDeviceRGB);
-            info.context->drawEllipse(rect2);
-		}
-#else
-		info.context->setFillColor(Color::white, ColorSpaceDeviceRGB);
-		info.context->setStrokeColor(check, ColorSpaceDeviceRGB);
-		info.context->drawEllipse(rect);
+        Path path;
+        path.addEllipse(rect);
+        info.context->fillPath(path);
+        info.context->strokePath(path);
 
         if (isChecked(object)) {
             IntRect rect2 = rect;
-			rect2.inflate(-3);
-			info.context->setFillColor(check, ColorSpaceDeviceRGB);
+            rect2.inflate(-3);
+            info.context->setFillColor(check, ColorSpaceDeviceRGB);
             info.context->setStrokeColor(check, ColorSpaceDeviceRGB);
             info.context->drawEllipse(rect2);
         }
-#endif
         break;
 	}
     case ButtonPart:
@@ -546,8 +532,17 @@ void RenderThemeBal::adjustRadioStyle(StyleResolver&, RenderStyle& style, Elemen
     //style.setCursor(CURSOR_WEBKIT_GRAB);
 }
 
+static void paintMenuListBackground(GraphicsContext* context, const Path& menuListPath, const Color& backgroundColor)
+{
+    ASSERT(context);
+    context->save();
+    context->setFillColor(backgroundColor, ColorSpaceDeviceRGB);
+    context->fillPath(menuListPath);
+    context->restore();
+}
+
 #if 0
-void RenderThemeBal::paintMenuListButtonGradientAndArrow(GraphicsContext* context, RenderObject* object, IntRect buttonRect, const Path& clipPath)
+void RenderThemeBal::paintMenuListButtonGradientAndArrow(GraphicsContext* context, const RenderObject& object, IntRect buttonRect, const Path& clipPath)
 {
     ASSERT(context);
     context->save();
@@ -555,8 +550,6 @@ void RenderThemeBal::paintMenuListButtonGradientAndArrow(GraphicsContext* contex
         context->setFillGradient(createLinearGradient(disabledTop, disabledBottom, buttonRect.maxXMinYCorner(), buttonRect.maxXMaxYCorner()));
     else if (isPressed(object))
         context->setFillGradient(createLinearGradient(depressedTop, depressedBottom, buttonRect.maxXMinYCorner(), buttonRect.maxXMaxYCorner()));
-    else if (isHovered(object))
-        context->setFillGradient(createLinearGradient(hoverTop, hoverBottom, buttonRect.maxXMinYCorner(), buttonRect.maxXMaxYCorner()));
     else
         context->setFillGradient(createLinearGradient(regularTop, regularBottom, buttonRect.maxXMinYCorner(), buttonRect.maxXMaxYCorner()));
 
@@ -584,23 +577,14 @@ void RenderThemeBal::paintMenuListButtonGradientAndArrow(GraphicsContext* contex
     context->restore();
 }
 
-static IntRect computeMenuListArrowButtonRect(const IntRect& rect)
+static IntRect computeMenuListArrowButtonRect(const FloatRect& rect)
 {
     // FIXME: The menu list arrow button should have a minimum and maximum width (to ensure usability) or
     // scale with respect to the font size used in the menu list control or some combination of both.
     return IntRect(IntPoint(rect.maxX() - rect.height(), rect.y()), IntSize(rect.height(), rect.height()));
 }
 
-static void paintMenuListBackground(GraphicsContext* context, const Path& menuListPath, const Color& backgroundColor)
-{
-    ASSERT(context);
-    context->save();
-    context->setFillColor(backgroundColor, ColorSpaceDeviceRGB);
-    context->fillPath(menuListPath);
-    context->restore();
-}
-
-bool RenderThemeBal::paintMenuList(RenderObject* object, const PaintInfo& info, const FloatRect& rect)
+bool RenderThemeBal::paintMenuList(const RenderObject& object, const PaintInfo& info, const FloatRect& rect)
 {
     // Note, this method is not called if the menu list explicitly specifies either a border or background color.
     // Instead, RenderThemeBal::paintMenuListButton is called. Therefore, when this method is called, we don't
@@ -625,18 +609,16 @@ bool RenderThemeBal::paintMenuList(RenderObject* object, const PaintInfo& info, 
     if (!isEnabled(object))
         context->setStrokeColor(disabledOutline, ColorSpaceDeviceRGB);
     else if (isPressed(object))
-        context->setStrokeGradient(createLinearGradient(depressedTopOutline, depressedBottomOutline, rect.maxXMinYCorner(), rect.maxXMaxYCorner()));
-    else if (isHovered(object))
-        context->setStrokeGradient(createLinearGradient(hoverTopOutline, hoverBottomOutline, rect.maxXMinYCorner(), rect.maxXMaxYCorner()));
+        context->setStrokeGradient(createLinearGradient(depressedTopOutline, depressedBottomOutline, IntPoint(rect.maxXMinYCorner()), IntPoint(rect.maxXMaxYCorner())));
     else
-        context->setStrokeGradient(createLinearGradient(regularTopOutline, regularBottomOutline, rect.maxXMinYCorner(), rect.maxXMaxYCorner()));
+        context->setStrokeGradient(createLinearGradient(regularTopOutline, regularBottomOutline, IntPoint(rect.maxXMinYCorner()), IntPoint(rect.maxXMaxYCorner())));
 
     context->strokePath(menuListRoundedRectangle);
     context->restore();
     return false;
 }
 
-bool RenderThemeBal::paintMenuListButton(RenderObject* object, const PaintInfo& info, const IntRect& rect)
+bool RenderThemeBal::paintMenuListButtonDecorations(const RenderObject& object, const PaintInfo& info, const FloatRect& rect)
 {
     // Note, this method is only called if the menu list explicitly specifies either a border or background color.
     // Otherwise, RenderThemeBal::paintMenuList is called. We need to fit the arrow button with the border box
@@ -648,16 +630,16 @@ bool RenderThemeBal::paintMenuListButton(RenderObject* object, const PaintInfo& 
     Path menuListRoundedRectangle = roundedRectForBorder(object, rect);
 
     // 1. Paint the background of the entire control.
-    Color fillColor = object->style().visitedDependentColor(CSSPropertyBackgroundColor);
+    Color fillColor = object.style().visitedDependentColor(CSSPropertyBackgroundColor);
     if (!fillColor.isValid())
         fillColor = Color::white;
     paintMenuListBackground(info.context, menuListRoundedRectangle, fillColor);
 
     // 2. Paint the background of the button and its arrow.
-    IntRect bounds = IntRect(rect.x() + object->style().borderLeftWidth(),
-                         rect.y() + object->style().borderTopWidth(),
-                         rect.width() - object->style().borderLeftWidth() - object->style().borderRightWidth(),
-                         rect.height() - object->style().borderTopWidth() - object->style().borderBottomWidth());
+    IntRect bounds = IntRect(rect.x() + object.style().borderLeftWidth(),
+                         rect.y() + object.style().borderTopWidth(),
+                         rect.width() - object.style().borderLeftWidth() - object.style().borderRightWidth(),
+                         rect.height() - object.style().borderTopWidth() - object.style().borderBottomWidth());
 
     IntRect arrowButtonRectangle = computeMenuListArrowButtonRect(bounds); // Fit the arrow button within the border box of the menu-list.
     paintMenuListButtonGradientAndArrow(info.context, object, arrowButtonRectangle, menuListRoundedRectangle);
@@ -684,7 +666,9 @@ bool RenderThemeBal::paintMenuList(const RenderObject& o, const PaintInfo& paint
                              r.width() - o.style().borderLeftWidth() - o.style().borderRightWidth(),
                              r.height() - o.style().borderTopWidth() - o.style().borderBottomWidth());
     // Draw the gradients to give the styled popup menu a button appearance
-	//paintMenuListButtonGradients(o, paintInfo, bounds);
+    Path menuListRoundedRectangle = roundedRectForBorder(o, r);
+    paintMenuListBackground(paintInfo.context, menuListRoundedRectangle, Color::white);
+
 	EBorderStyle v = INSET;
     o.style().setBorderTopStyle(v);
 	o.style().setBorderLeftStyle(v);
@@ -695,13 +679,6 @@ bool RenderThemeBal::paintMenuList(const RenderObject& o, const PaintInfo& paint
 	o.style().setBorderLeftWidth(borderWidth);
 	o.style().setBorderBottomWidth(borderWidth);
 	o.style().setBorderRightWidth(borderWidth);
-
-#warning FIXME
-/*	toRenderBox(o).paintFillLayerExtended(paintInfo,
-	o.style().visitedDependentColor(CSSPropertyBackgroundColor), o.style().backgroundLayers(), IntRect(r.x(), r.y(), toRenderBox(o).width(), toRenderBox(o).height()), BackgroundBleedNone, 0, IntSize(), o.style().backgroundComposite());
-	toRenderBox(o).paintBorder(paintInfo,
-	LayoutRect(r.x(), r.y(), r.width(), r.height()),
-	o.style(), BackgroundBleedNone, true, true);*/
 
     // Since we actually know the size of the control here, we restrict the font scale to make sure the arrows will fit vertically in the bounds
 	float fontScale = std::min(o.style().fontSize() / baseFontSize, bounds.height() / (baseArrowHeight * 2 + baseSpaceBetweenArrows));
@@ -752,6 +729,18 @@ bool RenderThemeBal::paintMenuList(const RenderObject& o, const PaintInfo& paint
     paintInfo.context->setStrokeColor(rightSeparatorColor, ColorSpaceDeviceRGB);
     paintInfo.context->drawLine(IntPoint(leftEdgeOfSeparator + separatorSpace, bounds.y()),
                                 IntPoint(leftEdgeOfSeparator + separatorSpace, bounds.maxY()));
+
+    // Stroke an outline around the entire control.
+    paintInfo.context->setStrokeStyle(SolidStroke);
+    paintInfo.context->setStrokeThickness(lineWidth);
+    if (!isEnabled(o))
+        paintInfo.context->setStrokeColor(disabledOutline, ColorSpaceDeviceRGB);
+    else if (isPressed(o))
+        paintInfo.context->setStrokeGradient(createLinearGradient(depressedTopOutline, depressedBottomOutline, IntPoint(r.maxXMinYCorner()), IntPoint(r.maxXMaxYCorner())));
+    else
+        paintInfo.context->setStrokeGradient(createLinearGradient(regularTopOutline, regularBottomOutline, IntPoint(r.maxXMinYCorner()), IntPoint(r.maxXMaxYCorner())));
+
+    paintInfo.context->strokePath(menuListRoundedRectangle);
 
     return false;
 }
