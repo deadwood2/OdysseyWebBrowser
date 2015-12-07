@@ -307,7 +307,7 @@ namespace WebCore {
         WEBCORE_EXPORT void strokeRect(const FloatRect&, float lineWidth);
 
         WEBCORE_EXPORT void drawImage(Image*, ColorSpace, const FloatPoint& destination, const ImagePaintingOptions& = ImagePaintingOptions());
-        void drawImage(Image*, ColorSpace, const FloatRect& destination, const ImagePaintingOptions& = ImagePaintingOptions());
+        WEBCORE_EXPORT void drawImage(Image*, ColorSpace, const FloatRect& destination, const ImagePaintingOptions& = ImagePaintingOptions());
         void drawImage(Image*, ColorSpace, const FloatRect& destination, const FloatRect& source, const ImagePaintingOptions& = ImagePaintingOptions());
 
         void drawTiledImage(Image*, ColorSpace, const FloatRect& destination, const FloatPoint& source, const FloatSize& tileSize,
@@ -559,7 +559,7 @@ namespace WebCore {
         GraphicsContextPlatformPrivate* m_data;
 
         GraphicsContextState m_state;
-        Vector<GraphicsContextState> m_stack;
+        Vector<GraphicsContextState, 1> m_stack;
         bool m_updatingControlTints;
         unsigned m_transparencyCount;
     };

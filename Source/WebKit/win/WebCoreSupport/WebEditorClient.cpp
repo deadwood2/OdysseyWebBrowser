@@ -299,8 +299,11 @@ bool WebEditorClient::shouldInsertNode(Node* node, Range* insertingRange, Editor
         return true;
 
     BOOL shouldInsert = FALSE;
-    if (FAILED(editingDelegate->shouldInsertNode(m_webView, insertDOMNode.get(), insertingDOMRange.get(), static_cast<WebViewInsertAction>(givenAction), &shouldInsert)))
-        return true;
+    COMPtr<IWebEditingDelegate2> editingDelegate2(Query, editingDelegate);
+    if (editingDelegate2) {
+        if (FAILED(editingDelegate2->shouldInsertNode(m_webView, insertDOMNode.get(), insertingDOMRange.get(), static_cast<WebViewInsertAction>(givenAction), &shouldInsert)))
+            return true;
+    }
 
     return shouldInsert;
 }
@@ -339,14 +342,28 @@ bool WebEditorClient::shouldChangeSelectedRange(WebCore::Range* currentRange, We
     return shouldChange;
 }
 
-bool WebEditorClient::shouldApplyStyle(StyleProperties* /*style*/, Range* /*toElementsInDOMRange*/)
-{ notImplemented(); return true; }
+bool WebEditorClient::shouldApplyStyle(StyleProperties*, Range*)
+{
+    notImplemented();
+    return true;
+}
 
-bool WebEditorClient::shouldMoveRangeAfterDelete(Range* /*range*/, Range* /*rangeToBeReplaced*/)
-{ notImplemented(); return true; }
+void WebEditorClient::didApplyStyle()
+{
+    notImplemented();
+}
 
-bool WebEditorClient::shouldChangeTypingStyle(StyleProperties* /*currentStyle*/, StyleProperties* /*toProposedStyle*/)
-{ notImplemented(); return false; }
+bool WebEditorClient::shouldMoveRangeAfterDelete(Range*, Range*)
+{
+    notImplemented();
+    return true;
+}
+
+bool WebEditorClient::shouldChangeTypingStyle(StyleProperties*, StyleProperties*)
+{
+    notImplemented();
+    return false;
+}
 
 void WebEditorClient::webViewDidChangeTypingStyle(WebNotification* /*notification*/)
 {

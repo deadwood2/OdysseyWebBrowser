@@ -12,14 +12,16 @@ _log = logging.getLogger(__name__)
 
 
 class OSXFirefoxDriver(OSXBrowserDriver):
-    bundleIdentifier = 'org.mozilla.firefox'
+    process_name = 'firefox'
+    browser_name = 'firefox'
 
-    def launchUrl(self, url, browserBuildPath):
-        self.launchProcess(buildDir=browserBuildPath, appName='Firefox.app', url=url, args=[url])
+    def launch_url(self, url, browser_build_path):
+        self._launch_process(build_dir=browser_build_path, app_name='Firefox.app', url=url, args=[url, '--args', '-width', str(int(self._screen_size().width)), '-height', str(int(self._screen_size().height))])
 
 
 class OSXFirefoxNightlyDriver(OSXBrowserDriver):
-    bundleIdentifier = 'org.mozilla.nightly'
+    process_name = 'firefox'
+    browser_name = 'firefox-nightly'
 
-    def launchUrl(self, url, browserBuildPath):
-        self.launchProcess(buildDir=browserBuildPath, appName='FirefoxNightly.app', url=url, args=[url])
+    def launch_url(self, url, browser_build_path):
+        self._launch_process(build_dir=browser_build_path, app_name='FirefoxNightly.app', url=url, args=[url, '--args', '-width', str(int(self._screen_size().width)), '-height', str(int(self._screen_size().height))])

@@ -35,7 +35,6 @@
 #include "UserData.h"
 #include "WKAPICast.h"
 #include "WKBundleAPICast.h"
-#include "WebApplicationCacheManager.h"
 #include "WebConnectionToUIProcess.h"
 #include "WebCookieManager.h"
 #include "WebCoreArgumentCoders.h"
@@ -50,6 +49,7 @@
 #include "WebProcessCreationParameters.h"
 #include "WebProcessPoolMessages.h"
 #include <JavaScriptCore/APICast.h>
+#include <JavaScriptCore/Exception.h>
 #include <JavaScriptCore/JSLock.h>
 #include <WebCore/ApplicationCache.h>
 #include <WebCore/ApplicationCacheStorage.h>
@@ -207,7 +207,7 @@ void InjectedBundle::overrideBoolPreferenceForTestRunner(WebPageGroupProxy* page
     macro(WebKitEnableCaretBrowsing, CaretBrowsingEnabled, caretBrowsingEnabled) \
     macro(WebKitDisplayImagesKey, LoadsImagesAutomatically, loadsImagesAutomatically) \
     macro(WebKitMediaStreamEnabled, MediaStreamEnabled, mediaStreamEnabled) \
-    macro(WebKitMetaRefreshEnabled, MetaRefreshEnabled, metaRefreshEnabled)
+    macro(WebKitHTTPEquivEnabled, HttpEquivEnabled, httpEquivEnabled)
 
 #define OVERRIDE_PREFERENCE_AND_SET_IN_EXISTING_PAGES(TestRunnerName, SettingsName, WebPreferencesName) \
     if (preference == #TestRunnerName) { \
@@ -352,7 +352,7 @@ void InjectedBundle::setDatabaseQuota(uint64_t quota)
 
 void InjectedBundle::clearApplicationCache()
 {
-    WebProcess::singleton().supplement<WebApplicationCacheManager>()->deleteAllEntries();
+    ApplicationCacheStorage::singleton().deleteAllEntries();
 }
 
 void InjectedBundle::clearApplicationCacheForOrigin(const String& originString)
@@ -362,7 +362,7 @@ void InjectedBundle::clearApplicationCacheForOrigin(const String& originString)
 
 void InjectedBundle::setAppCacheMaximumSize(uint64_t size)
 {
-    WebProcess::singleton().supplement<WebApplicationCacheManager>()->setAppCacheMaximumSize(size);
+    ApplicationCacheStorage::singleton().setMaximumSize(size);
 }
 
 uint64_t InjectedBundle::appCacheUsageForOrigin(const String& originString)
@@ -496,12 +496,12 @@ void InjectedBundle::removeAllUserContent(WebPageGroupProxy* pageGroup)
 
 void InjectedBundle::garbageCollectJavaScriptObjects()
 {
-    gcController().garbageCollectNow();
+    GCController::singleton().garbageCollectNow();
 }
 
 void InjectedBundle::garbageCollectJavaScriptObjectsOnAlternateThreadForDebugging(bool waitUntilDone)
 {
-    gcController().garbageCollectOnAlternateThreadForDebugging(waitUntilDone);
+    GCController::singleton().garbageCollectOnAlternateThreadForDebugging(waitUntilDone);
 }
 
 size_t InjectedBundle::javaScriptObjectsCount()

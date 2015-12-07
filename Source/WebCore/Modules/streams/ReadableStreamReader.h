@@ -41,6 +41,8 @@
 
 namespace WebCore {
 
+typedef int ExceptionCode;
+
 // ReadableStreamReader implements access to ReadableStream from JavaScript.
 // It basically allows access to the ReadableStream iff the ReadableStreamReader instance is the active reader
 // of the ReadableStream.
@@ -51,7 +53,10 @@ public:
     ReadableStreamReader(ReadableStream& stream)
         : m_stream(stream) { }
 
-    void closed(ReadableStream::ClosedSuccessCallback, ReadableStream::ClosedFailureCallback);
+    void cancel(JSC::JSValue, ReadableStream::CancelPromise&&);
+    void closed(ReadableStream::ClosedPromise&&);
+    void read(ReadableStream::ReadPromise&&);
+    void releaseLock(ExceptionCode&);
 
     void ref() { m_stream.ref(); }
     void deref() { m_stream.deref(); }

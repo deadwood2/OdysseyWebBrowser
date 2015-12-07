@@ -149,11 +149,17 @@ void WebVideoFullscreenInterfaceContext::setExternalPlayback(bool enabled, Exter
         m_manager->setExternalPlayback(m_contextId, enabled, type, localizedDeviceName);
 }
 
+void WebVideoFullscreenInterfaceContext::setWirelessVideoPlaybackDisabled(bool disabled)
+{
+    if (m_manager)
+        m_manager->setWirelessVideoPlaybackDisabled(m_contextId, disabled);
+}
+
 #pragma mark - WebVideoFullscreenManager
 
-PassRefPtr<WebVideoFullscreenManager> WebVideoFullscreenManager::create(PassRefPtr<WebPage> page)
+Ref<WebVideoFullscreenManager> WebVideoFullscreenManager::create(PassRefPtr<WebPage> page)
 {
-    return adoptRef(new WebVideoFullscreenManager(page));
+    return adoptRef(*new WebVideoFullscreenManager(page));
 }
 
 WebVideoFullscreenManager::WebVideoFullscreenManager(PassRefPtr<WebPage> page)
@@ -232,17 +238,21 @@ void WebVideoFullscreenManager::enterVideoFullscreenForVideoElement(HTMLVideoEle
     RefPtr<WebVideoFullscreenInterfaceContext> interface;
     std::tie(model, interface) = ensureModelAndInterface(contextId);
 
+    FloatRect clientRect = clientRectForElement(&videoElement);
+    FloatRect videoLayerFrame = FloatRect(0, 0, clientRect.width(), clientRect.height());
+    
     interface->setTargetIsFullscreen(true);
     interface->setFullscreenMode(mode);
     model->setVideoElement(&videoElement);
+    model->setVideoLayerFrame(videoLayerFrame);
 
     if (interface->isAnimating())
         return;
     interface->setIsAnimating(true);
 
-    bool allowOptimizedFullscreen = videoElement.mediaSession().allowsAlternateFullscreen(videoElement);
+    bool allowsPictureInPicture = videoElement.mediaSession().allowsPictureInPicture(videoElement);
     
-    m_page->send(Messages::WebVideoFullscreenManagerProxy::SetupFullscreenWithID(contextId, interface->layerHostingContext()->contextID(), clientRectForElement(&videoElement), m_page->deviceScaleFactor(), interface->fullscreenMode(), allowOptimizedFullscreen), m_page->pageID());
+    m_page->send(Messages::WebVideoFullscreenManagerProxy::SetupFullscreenWithID(contextId, interface->layerHostingContext()->contextID(), clientRectForElement(&videoElement), m_page->deviceScaleFactor(), interface->fullscreenMode(), allowsPictureInPicture), m_page->pageID());
 }
 
 void WebVideoFullscreenManager::exitVideoFullscreenForVideoElement(WebCore::HTMLVideoElement& videoElement)
@@ -325,6 +335,11 @@ void WebVideoFullscreenManager::setLegibleMediaSelectionOptions(uint64_t context
 void WebVideoFullscreenManager::setExternalPlayback(uint64_t contextId, bool enabled, WebVideoFullscreenInterface::ExternalPlaybackTargetType targetType, String localizedDeviceName)
 {
     m_page->send(Messages::WebVideoFullscreenManagerProxy::SetExternalPlaybackProperties(contextId, enabled, static_cast<uint32_t>(targetType), localizedDeviceName), m_page->pageID());
+}
+
+void WebVideoFullscreenManager::setWirelessVideoPlaybackDisabled(uint64_t contextId, bool disabled)
+{
+    m_page->send(Messages::WebVideoFullscreenManagerProxy::SetWirelessVideoPlaybackDisabled(contextId, disabled));
 }
 
 #pragma mark Messages from WebVideoFullscreenManagerProxy:
@@ -428,7 +443,10 @@ void WebVideoFullscreenManager::didSetupFullscreen(uint64_t contextId)
 
     [CATransaction commit];
 
-    m_page->send(Messages::WebVideoFullscreenManagerProxy::EnterFullscreen(contextId), m_page->pageID());
+    RefPtr<WebVideoFullscreenManager> strongThis(this);
+    dispatch_async(dispatch_get_main_queue(), [strongThis, this, contextId] {
+        m_page->send(Messages::WebVideoFullscreenManagerProxy::EnterFullscreen(contextId), m_page->pageID());
+    });
 }
     
 void WebVideoFullscreenManager::didEnterFullscreen(uint64_t contextId)
@@ -449,7 +467,7 @@ void WebVideoFullscreenManager::didEnterFullscreen(uint64_t contextId)
 
     // exit fullscreen now if it was previously requested during an animation.
     RefPtr<WebVideoFullscreenManager> strongThis(this);
-    WebThreadRun([strongThis, videoElement] {
+    dispatch_async(dispatch_get_main_queue(), [strongThis, videoElement] {
         strongThis->exitVideoFullscreenForVideoElement(*videoElement);
     });
 }
@@ -482,25 +500,22 @@ void WebVideoFullscreenManager::didCleanupFullscreen(uint64_t contextId)
     interface->setIsAnimating(false);
     interface->setIsFullscreen(false);
     HTMLMediaElementEnums::VideoFullscreenMode mode = interface->fullscreenMode();
+    bool targetIsFullscreen = interface->targetIsFullscreen();
 
     model->setVideoFullscreenLayer(nil);
     RefPtr<HTMLVideoElement> videoElement = model->videoElement();
 
-    if (!interface->targetIsFullscreen()) {
-        model->setVideoElement(nullptr);
-        model->setWebVideoFullscreenInterface(nullptr);
-        interface->invalidate();
-        m_videoElements.remove(videoElement.get());
-        m_contextMap.remove(contextId);
-        return;
-    }
+    model->setVideoElement(nullptr);
+    model->setWebVideoFullscreenInterface(nullptr);
+    interface->invalidate();
+    m_videoElements.remove(videoElement.get());
+    m_contextMap.remove(contextId);
 
-    if (!videoElement)
+    if (!videoElement || !targetIsFullscreen)
         return;
 
-    // exit fullscreen now if it was previously requested during an animation.
     RefPtr<WebVideoFullscreenManager> strongThis(this);
-    WebThreadRun([strongThis, videoElement, mode] {
+    dispatch_async(dispatch_get_main_queue(), [strongThis, videoElement, mode] {
         strongThis->enterVideoFullscreenForVideoElement(*videoElement, mode);
     });
 }

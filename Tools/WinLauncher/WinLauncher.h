@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Apple Inc.  All rights reserved.
+ * Copyright (C) 2014-2015 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,7 +30,7 @@
 
 typedef _com_ptr_t<_com_IIID<IWebFrame, &__uuidof(IWebFrame)>> IWebFramePtr;
 typedef _com_ptr_t<_com_IIID<IWebView, &__uuidof(IWebView)>> IWebViewPtr;
-typedef _com_ptr_t<_com_IIID<IWebViewPrivate, &__uuidof(IWebViewPrivate)>> IWebViewPrivatePtr;
+typedef _com_ptr_t<_com_IIID<IWebViewPrivate2, &__uuidof(IWebViewPrivate2)>> IWebViewPrivatePtr;
 typedef _com_ptr_t<_com_IIID<IWebFrameLoadDelegate, &__uuidof(IWebFrameLoadDelegate)>> IWebFrameLoadDelegatePtr;
 typedef _com_ptr_t<_com_IIID<IWebHistory, &__uuidof(IWebHistory)>> IWebHistoryPtr;
 typedef _com_ptr_t<_com_IIID<IWebHistoryItem, &__uuidof(IWebHistoryItem)>> IWebHistoryItemPtr;
@@ -42,6 +42,7 @@ typedef _com_ptr_t<_com_IIID<IWebInspector, &__uuidof(IWebInspector)>> IWebInspe
 typedef _com_ptr_t<_com_IIID<IWebCoreStatistics, &__uuidof(IWebCoreStatistics)>> IWebCoreStatisticsPtr;
 typedef _com_ptr_t<_com_IIID<IWebCache, &__uuidof(IWebCache)>> IWebCachePtr;
 typedef _com_ptr_t<_com_IIID<IWebResourceLoadDelegate, &__uuidof(IWebResourceLoadDelegate)>> IWebResourceLoadDelegatePtr;
+typedef _com_ptr_t<_com_IIID<IWebDownloadDelegate, &__uuidof(IWebDownloadDelegate)>> IWebDownloadDelegatePtr;
 
 class WinLauncher {
 public:
@@ -65,6 +66,7 @@ public:
     HRESULT setUIDelegate(IWebUIDelegate*);
     HRESULT setAccessibilityDelegate(IAccessibilityDelegate*);
     HRESULT setResourceLoadDelegate(IWebResourceLoadDelegate*);
+    HRESULT setDownloadDelegate(IWebDownloadDelegatePtr);
 
     IWebPreferencesPtr standardPreferences() { return m_standardPreferences;  }
     IWebPreferencesPrivatePtr privatePreferences() { return m_prefsPrivate; }
@@ -88,7 +90,14 @@ public:
     void zoomIn();
     void zoomOut();
 
+    float deviceScaleFactor() { return m_deviceScaleFactor; }
+    void updateDeviceScaleFactor();
+
+    HGDIOBJ urlBarFont() { return m_hURLBarFont; }
+
 private:
+    void generateFontForScaleFactor(float);
+
     std::vector<IWebHistoryItemPtr> m_historyItems;
 
     std::unique_ptr<PageLoadTestClient> m_pageLoadTestClient;
@@ -105,12 +114,15 @@ private:
     IWebUIDelegatePtr m_uiDelegate;
     IAccessibilityDelegatePtr m_accessibilityDelegate;
     IWebResourceLoadDelegatePtr m_resourceLoadDelegate;
+    IWebDownloadDelegatePtr m_downloadDelegate;
 
     IWebCoreStatisticsPtr m_statistics;
     IWebCachePtr m_webCache;
 
-    HWND m_hMainWnd;
-    HWND m_hURLBarWnd;
+    HWND m_hMainWnd { nullptr };
+    HWND m_hURLBarWnd { nullptr };
+    HGDIOBJ m_hURLBarFont { nullptr };
 
+    float m_deviceScaleFactor { 1.0f };
     bool m_useLayeredWebView;
 };

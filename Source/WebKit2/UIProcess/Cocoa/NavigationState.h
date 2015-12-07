@@ -48,6 +48,7 @@ class Navigation;
 
 namespace WebKit {
 
+struct SecurityOriginData;
 struct WebNavigationDataStore;
 
 class NavigationState final : private PageLoadState::Observer {
@@ -72,6 +73,8 @@ public:
     void navigationGestureDidEnd(bool willNavigate, WebBackForwardListItem&);
     void willRecordNavigationSnapshot(WebBackForwardListItem&);
 
+    void didFirstPaint();
+
 private:
     class NavigationClient final : public API::NavigationClient {
     public:
@@ -82,7 +85,7 @@ private:
         virtual void didStartProvisionalNavigation(WebPageProxy&, API::Navigation*, API::Object*) override;
         virtual void didReceiveServerRedirectForProvisionalNavigation(WebPageProxy&, API::Navigation*, API::Object*) override;
         virtual void didFailProvisionalNavigationWithError(WebPageProxy&, WebFrameProxy&, API::Navigation*, const WebCore::ResourceError&, API::Object*) override;
-        virtual void didFailProvisionalLoadInSubframeWithError(WebPageProxy&, WebFrameProxy&, API::Navigation*, const WebCore::ResourceError&, API::Object*) override;
+        virtual void didFailProvisionalLoadInSubframeWithError(WebPageProxy&, WebFrameProxy&, const SecurityOriginData&, API::Navigation*, const WebCore::ResourceError&, API::Object*) override;
         virtual void didCommitNavigation(WebPageProxy&, API::Navigation*, API::Object*) override;
         virtual void didFinishDocumentLoad(WebPageProxy&, API::Navigation*, API::Object*) override;
         virtual void didFinishNavigation(WebPageProxy&, API::Navigation*, API::Object*) override;
@@ -94,7 +97,7 @@ private:
         virtual bool canAuthenticateAgainstProtectionSpace(WebPageProxy&, WebProtectionSpace*) override;
         virtual void didReceiveAuthenticationChallenge(WebPageProxy&, AuthenticationChallengeProxy*) override;
         virtual void processDidCrash(WebPageProxy&) override;
-        virtual PassRefPtr<API::Data> webCryptoMasterKey(WebPageProxy&) override;
+        virtual RefPtr<API::Data> webCryptoMasterKey(WebPageProxy&) override;
 
 #if USE(QUICK_LOOK)
         virtual void didStartLoadForQuickLookDocumentInMainFrame(const WTF::String& fileName, const WTF::String& uti) override;
@@ -138,6 +141,8 @@ private:
     virtual void didChangeCanGoForward() override;
     virtual void willChangeNetworkRequestsInProgress() override;
     virtual void didChangeNetworkRequestsInProgress() override;
+    virtual void willChangeCertificateInfo() override;
+    virtual void didChangeCertificateInfo() override;
 
     WKWebView *m_webView;
     WeakObjCPtr<id <WKNavigationDelegate> > m_navigationDelegate;
@@ -158,6 +163,7 @@ private:
 
         bool webViewRenderingProgressDidChange : 1;
         bool webViewDidReceiveAuthenticationChallengeCompletionHandler : 1;
+        bool webViewWebContentProcessDidTerminate : 1;
         bool webViewCanAuthenticateAgainstProtectionSpace : 1;
         bool webViewDidReceiveAuthenticationChallenge : 1;
         bool webViewWebProcessDidCrash : 1;

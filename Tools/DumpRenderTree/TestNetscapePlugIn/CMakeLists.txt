@@ -33,10 +33,15 @@ set(WebKitTestNetscapePlugin_INCLUDE_DIRECTORIES
     ${WEBKIT_TESTNETSCAPEPLUGIN_DIR}
     ${WEBKIT_TESTNETSCAPEPLUGIN_DIR}/unix/ForwardingHeaders
     ${WEBCORE_DIR}
+    ${WTF_DIR}
+)
+
+set(WebKitTestNetscapePlugin_SYSTEM_INCLUDE_DIRECTORIES
     ${X11_INCLUDE_DIR}
 )
 
 include_directories(${WebKitTestNetscapePlugin_INCLUDE_DIRECTORIES})
+include_directories(SYSTEM ${WebKitTestNetscapePlugin_SYSTEM_INCLUDE_DIRECTORIES})
 
 set(WebKitTestNetscapePlugin_LIBRARIES
     ${X11_LIBRARIES}
@@ -49,3 +54,7 @@ endif ()
 add_library(TestNetscapePlugin SHARED ${WebKitTestNetscapePlugin_SOURCES})
 target_link_libraries(TestNetscapePlugin ${WebKitTestNetscapePlugin_LIBRARIES})
 set_target_properties(TestNetscapePlugin PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/plugins)
+WEBKIT_SET_EXTRA_COMPILER_FLAGS(TestNetscapePlugin)
+
+# Suppress unused parameter warnings for sources in WebKit2.
+ADD_TARGET_PROPERTIES(TestNetscapePlugin COMPILE_FLAGS "-Wno-unused-parameter")

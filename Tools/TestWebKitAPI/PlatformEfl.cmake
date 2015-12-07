@@ -11,6 +11,9 @@ include_directories(
     ${WEBKIT2_DIR}/UIProcess/API/C/soup
     ${WEBKIT2_DIR}/UIProcess/API/C/efl
     ${WEBKIT2_DIR}/UIProcess/API/efl
+)
+
+include_directories(SYSTEM
     ${ECORE_EVAS_INCLUDE_DIRS}
     ${GLIB_INCLUDE_DIRS}
     ${LIBSOUP_INCLUDE_DIRS}
@@ -65,8 +68,8 @@ set(test_webkit2_api_BINARIES
     AboutBlankLoad
     CloseThenTerminate
     CookieManager
-    DidAssociateFormControls
     DOMWindowExtensionNoCache
+    DidAssociateFormControls
     DocumentStartUserScriptAlertCrash
     EvaluateJavaScript
     FailedLoad
@@ -92,13 +95,16 @@ set(test_webkit2_api_BINARIES
     ResponsivenessTimerDoesntFireEarly
     ShouldGoToBackForwardListItem
     TerminateTwice
+    TextFieldDidBeginAndEndEditing
     WKPreferences
     WKString
     WKStringJSString
     WKURL
     WillSendSubmitEvent
+
     CoordinatedGraphics/WKViewRestoreZoomAndScrollBackForward
     CoordinatedGraphics/WKViewUserViewportToContents
+
     efl/WKViewClientWebProcessCallbacks
     efl/WKViewScrollTo
 )

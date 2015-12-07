@@ -39,6 +39,7 @@
 #include "ClientRectList.h"
 #include "ContentDistributor.h"
 #include "Cursor.h"
+#include "DOMPath.h"
 #include "DOMStringList.h"
 #include "DOMWindow.h"
 #include "Document.h"
@@ -79,7 +80,6 @@
 #include "MainFrame.h"
 #include "MallocStatistics.h"
 #include "MediaPlayer.h"
-#include "MediaSessionManager.h"
 #include "MemoryCache.h"
 #include "MemoryInfo.h"
 #include "MicroTask.h"
@@ -88,6 +88,8 @@
 #include "Page.h"
 #include "PageCache.h"
 #include "PageOverlay.h"
+#include "PathUtilities.h"
+#include "PlatformMediaSessionManager.h"
 #include "PrintContext.h"
 #include "PseudoElement.h"
 #include "Range.h"
@@ -186,6 +188,11 @@
 
 #if ENABLE(WEB_AUDIO)
 #include "AudioContext.h"
+#endif
+
+#if ENABLE(MEDIA_SESSION)
+#include "MediaSession.h"
+#include "MediaSessionManager.h"
 #endif
 
 using JSC::CodeBlock;
@@ -297,7 +304,9 @@ void Internals::resetToConsistentState(Page* page)
 
     page->setPageScaleFactor(1, IntPoint(0, 0));
     page->setPagination(Pagination());
-
+    
+    page->mainFrame().setTextZoomFactor(1.0f);
+    
     FrameView* mainFrameView = page->mainFrame().view();
     if (mainFrameView) {
         mainFrameView->setHeaderHeight(0);
@@ -322,7 +331,7 @@ void Internals::resetToConsistentState(Page* page)
     page->mainFrame().loader().clearTestingOverrides();
     ApplicationCacheStorage::singleton().setDefaultOriginQuota(ApplicationCacheStorage::noQuota());
 #if ENABLE(VIDEO)
-    MediaSessionManager::sharedManager().resetRestrictions();
+    PlatformMediaSessionManager::sharedManager().resetRestrictions();
 #endif
 #if HAVE(ACCESSIBILITY)
     AXObjectCache::setEnhancedUserInterfaceAccessibility(false);
@@ -717,6 +726,15 @@ Node* Internals::ensureShadowRoot(Element* host, ExceptionCode& ec)
     return host->createShadowRoot(ec).get();
 }
 
+Node* Internals::ensureUserAgentShadowRoot(Element* host, ExceptionCode& ec)
+{
+    if (!host) {
+        ec = INVALID_ACCESS_ERR;
+        return nullptr;
+    }
+    return &host->ensureUserAgentShadowRoot();
+}
+
 Node* Internals::createShadowRoot(Element* host, ExceptionCode& ec)
 {
     if (!host) {
@@ -926,8 +944,8 @@ String Internals::inspectorHighlightObject(ExceptionCode& ec)
         ec = INVALID_ACCESS_ERR;
         return String();
     }
-    auto object = document->page()->inspectorController().buildObjectForHighlightedNode();
-    return object ? object->toJSONString() : String();
+
+    return document->page()->inspectorController().buildObjectForHighlightedNodes()->toJSONString();
 }
 
 unsigned Internals::markerCountForNode(Node* node, const String& markerType, ExceptionCode& ec)
@@ -1303,7 +1321,11 @@ Vector<String> Internals::userPreferredAudioCharacteristics() const
     Document* document = contextDocument();
     if (!document || !document->page())
         return Vector<String>();
+#if ENABLE(VIDEO_TRACK)
     return document->page()->group().captionPreferences()->preferredAudioCharacteristics();
+#else
+    return Vector<String>();
+#endif
 }
 
 void Internals::setUserPreferredAudioCharacteristic(const String& characteristic)
@@ -1311,7 +1333,11 @@ void Internals::setUserPreferredAudioCharacteristic(const String& characteristic
     Document* document = contextDocument();
     if (!document || !document->page())
         return;
+#if ENABLE(VIDEO_TRACK)
     document->page()->group().captionPreferences()->setPreferredAudioCharacteristic(characteristic);
+#else
+    UNUSED_PARAM(characteristic);
+#endif
 }
 
 unsigned Internals::wheelEventHandlerCount(ExceptionCode& ec)
@@ -1715,7 +1741,7 @@ void Internals::closeDummyInspectorFrontend()
     m_frontendChannel = nullptr;
 
     m_frontendWindow->close(m_frontendWindow->scriptExecutionContext());
-    m_frontendWindow.clear();
+    m_frontendWindow = nullptr;
 }
 
 void Internals::setJavaScriptProfilingEnabled(bool enabled, ExceptionCode& ec)
@@ -1988,6 +2014,17 @@ void Internals::setPageZoomFactor(float zoomFactor, ExceptionCode& ec)
     frame->setPageZoomFactor(zoomFactor);
 }
 
+void Internals::setTextZoomFactor(float zoomFactor, ExceptionCode& ec)
+{
+    Document* document = contextDocument();
+    if (!document || !document->frame()) {
+        ec = INVALID_ACCESS_ERR;
+        return;
+    }
+    Frame* frame = document->frame();
+    frame->setTextZoomFactor(zoomFactor);
+}
+
 void Internals::setUseFixedLayout(bool useFixedLayout, ExceptionCode& ec)
 {
     Document* document = contextDocument();
@@ -2224,6 +2261,14 @@ void Internals::updateLayoutIgnorePendingStylesheetsAndRunPostLayoutTasks(Node* 
     document->updateLayoutIgnorePendingStylesheets(Document::RunPostLayoutTasks::Synchronously);
 }
 
+unsigned Internals::layoutCount() const
+{
+    Document* document = contextDocument();
+    if (!document || !document->view())
+        return 0;
+    return document->view()->layoutCount();
+}
+
 #if !PLATFORM(IOS)
 static const char* cursorTypeToString(Cursor::Type cursorType)
 {
@@ -2328,6 +2373,16 @@ PassRefPtr<SerializedScriptValue> Internals::deserializeBuffer(PassRefPtr<ArrayB
     Vector<uint8_t> bytes;
     bytes.append(static_cast<const uint8_t*>(buffer->data()), buffer->byteLength());
     return SerializedScriptValue::adopt(bytes);
+}
+
+bool Internals::isFromCurrentWorld(Deprecated::ScriptValue value) const
+{
+    ASSERT(!value.hasNoValue());
+    
+    JSC::ExecState* exec = contextDocument()->vm().topCallFrame;
+    if (!value.isObject() || &worldForDOMObject(value.jsValue().getObject()) == &currentWorld(exec))
+        return true;
+    return false;
 }
 
 void Internals::setUsesOverlayScrollbars(bool enabled)
@@ -2578,12 +2633,18 @@ Vector<String> Internals::bufferedSamplesForTrackID(SourceBuffer* buffer, const 
 
     return buffer->bufferedSamplesForTrackID(trackID);
 }
+    
+void Internals::setShouldGenerateTimestamps(SourceBuffer* buffer, bool flag)
+{
+    if (buffer)
+        buffer->setShouldGenerateTimestamps(flag);
+}
 #endif
 
 #if ENABLE(VIDEO)
 void Internals::beginMediaSessionInterruption()
 {
-    MediaSessionManager::sharedManager().beginInterruption(PlatformMediaSession::SystemInterruption);
+    PlatformMediaSessionManager::sharedManager().beginInterruption(PlatformMediaSession::SystemInterruption);
 }
 
 void Internals::endMediaSessionInterruption(const String& flagsString)
@@ -2593,17 +2654,17 @@ void Internals::endMediaSessionInterruption(const String& flagsString)
     if (equalIgnoringCase(flagsString, "MayResumePlaying"))
         flags = PlatformMediaSession::MayResumePlaying;
     
-    MediaSessionManager::sharedManager().endInterruption(flags);
+    PlatformMediaSessionManager::sharedManager().endInterruption(flags);
 }
 
 void Internals::applicationWillEnterForeground() const
 {
-    MediaSessionManager::sharedManager().applicationWillEnterForeground();
+    PlatformMediaSessionManager::sharedManager().applicationWillEnterForeground();
 }
 
 void Internals::applicationWillEnterBackground() const
 {
-    MediaSessionManager::sharedManager().applicationWillEnterBackground();
+    PlatformMediaSessionManager::sharedManager().applicationWillEnterBackground();
 }
 
 void Internals::setMediaSessionRestrictions(const String& mediaTypeString, const String& restrictionsString, ExceptionCode& ec)
@@ -2620,30 +2681,30 @@ void Internals::setMediaSessionRestrictions(const String& mediaTypeString, const
         return;
     }
 
-    MediaSessionManager::SessionRestrictions restrictions = MediaSessionManager::sharedManager().restrictions(mediaType);
-    MediaSessionManager::sharedManager().removeRestriction(mediaType, restrictions);
+    PlatformMediaSessionManager::SessionRestrictions restrictions = PlatformMediaSessionManager::sharedManager().restrictions(mediaType);
+    PlatformMediaSessionManager::sharedManager().removeRestriction(mediaType, restrictions);
 
-    restrictions = MediaSessionManager::NoRestrictions;
+    restrictions = PlatformMediaSessionManager::NoRestrictions;
 
     Vector<String> restrictionsArray;
     restrictionsString.split(',', false, restrictionsArray);
     for (auto& restrictionString : restrictionsArray) {
         if (equalIgnoringCase(restrictionString, "ConcurrentPlaybackNotPermitted"))
-            restrictions |= MediaSessionManager::ConcurrentPlaybackNotPermitted;
+            restrictions |= PlatformMediaSessionManager::ConcurrentPlaybackNotPermitted;
         if (equalIgnoringCase(restrictionString, "InlineVideoPlaybackRestricted"))
-            restrictions |= MediaSessionManager::InlineVideoPlaybackRestricted;
+            restrictions |= PlatformMediaSessionManager::InlineVideoPlaybackRestricted;
         if (equalIgnoringCase(restrictionString, "MetadataPreloadingNotPermitted"))
-            restrictions |= MediaSessionManager::MetadataPreloadingNotPermitted;
+            restrictions |= PlatformMediaSessionManager::MetadataPreloadingNotPermitted;
         if (equalIgnoringCase(restrictionString, "AutoPreloadingNotPermitted"))
-            restrictions |= MediaSessionManager::AutoPreloadingNotPermitted;
+            restrictions |= PlatformMediaSessionManager::AutoPreloadingNotPermitted;
         if (equalIgnoringCase(restrictionString, "BackgroundProcessPlaybackRestricted"))
-            restrictions |= MediaSessionManager::BackgroundProcessPlaybackRestricted;
+            restrictions |= PlatformMediaSessionManager::BackgroundProcessPlaybackRestricted;
         if (equalIgnoringCase(restrictionString, "BackgroundTabPlaybackRestricted"))
-            restrictions |= MediaSessionManager::BackgroundTabPlaybackRestricted;
+            restrictions |= PlatformMediaSessionManager::BackgroundTabPlaybackRestricted;
         if (equalIgnoringCase(restrictionString, "InterruptedPlaybackNotPermitted"))
-            restrictions |= MediaSessionManager::InterruptedPlaybackNotPermitted;
+            restrictions |= PlatformMediaSessionManager::InterruptedPlaybackNotPermitted;
     }
-    MediaSessionManager::sharedManager().addRestriction(mediaType, restrictions);
+    PlatformMediaSessionManager::sharedManager().addRestriction(mediaType, restrictions);
 }
 
 void Internals::setMediaElementRestrictions(HTMLMediaElement* element, const String& restrictionsString, ExceptionCode& ec)
@@ -2710,7 +2771,7 @@ void Internals::postRemoteControlCommand(const String& commandString, ExceptionC
         return;
     }
     
-    MediaSessionManager::sharedManager().didReceiveRemoteControlCommand(command);
+    PlatformMediaSessionManager::sharedManager().didReceiveRemoteControlCommand(command);
 }
 
 bool Internals::elementIsBlockingDisplaySleep(Element* element) const
@@ -2720,6 +2781,59 @@ bool Internals::elementIsBlockingDisplaySleep(Element* element) const
 }
 
 #endif // ENABLE(VIDEO)
+
+#if ENABLE(MEDIA_SESSION)
+static MediaSessionInterruptingCategory interruptingCategoryFromString(const String& interruptingCategoryString)
+{
+    if (interruptingCategoryString == "content")
+        return MediaSessionInterruptingCategory::Content;
+    if (interruptingCategoryString == "transient")
+        return MediaSessionInterruptingCategory::Transient;
+    if (interruptingCategoryString == "transient-solo")
+        return MediaSessionInterruptingCategory::TransientSolo;
+    ASSERT_NOT_REACHED();
+}
+
+void Internals::sendMediaSessionStartOfInterruptionNotification(const String& interruptingCategoryString)
+{
+    MediaSessionManager::singleton().didReceiveStartOfInterruptionNotification(interruptingCategoryFromString(interruptingCategoryString));
+}
+
+void Internals::sendMediaSessionEndOfInterruptionNotification(const String& interruptingCategoryString)
+{
+    MediaSessionManager::singleton().didReceiveEndOfInterruptionNotification(interruptingCategoryFromString(interruptingCategoryString));
+}
+
+String Internals::mediaSessionCurrentState(MediaSession* session) const
+{
+    switch (session->currentState()) {
+    case MediaSession::State::Active:
+        return "active";
+    case MediaSession::State::Interrupted:
+        return "interrupted";
+    case MediaSession::State::Idle:
+        return "idle";
+    }
+}
+
+double Internals::mediaElementPlayerVolume(HTMLMediaElement* element) const
+{
+    ASSERT_ARG(element, element);
+    return element->playerVolume();
+}
+
+void Internals::sendMediaControlEvent(const String& event)
+{
+    if (event == "play-pause")
+        MediaSessionManager::singleton().togglePlayback();
+    else if (event == "next-track")
+        MediaSessionManager::singleton().skipToNextTrack();
+    else if (event == "previous-track")
+        MediaSessionManager::singleton().skipToPreviousTrack();
+    else
+        ASSERT_NOT_REACHED();
+}
+#endif // ENABLE(MEDIA_SESSION)
 
 #if ENABLE(WEB_AUDIO)
 void Internals::setAudioContextRestrictions(AudioContext* context, const String &restrictionsString, ExceptionCode &ec)
@@ -2751,14 +2865,14 @@ void Internals::setAudioContextRestrictions(AudioContext* context, const String 
 void Internals::simulateSystemSleep() const
 {
 #if ENABLE(VIDEO)
-    MediaSessionManager::sharedManager().systemWillSleep();
+    PlatformMediaSessionManager::sharedManager().systemWillSleep();
 #endif
 }
 
 void Internals::simulateSystemWake() const
 {
 #if ENABLE(VIDEO)
-    MediaSessionManager::sharedManager().systemDidWake();
+    PlatformMediaSessionManager::sharedManager().systemDidWake();
 #endif
 }
 
@@ -2860,29 +2974,40 @@ String Internals::scrollSnapOffsets(Element* element, ExceptionCode& ec)
         return String();
 
     RenderBox& box = *element->renderBox();
-    if (!box.canBeScrolledAndHasScrollableArea()) {
-        ec = INVALID_ACCESS_ERR;
-        return String();
+    ScrollableArea* scrollableArea;
+    
+    if (box.isBody()) {
+        FrameView* frameView = box.frame().mainFrame().view();
+        if (!frameView || !frameView->isScrollable()) {
+            ec = INVALID_ACCESS_ERR;
+            return String();
+        }
+        scrollableArea = frameView;
+        
+    } else {
+        if (!box.canBeScrolledAndHasScrollableArea()) {
+            ec = INVALID_ACCESS_ERR;
+            return String();
+        }
+        scrollableArea = box.layer();
     }
 
-    if (!box.layer())
+    if (!scrollableArea)
         return String();
-    
-    ScrollableArea& scrollableArea = *box.layer();
     
     StringBuilder result;
 
-    if (scrollableArea.horizontalSnapOffsets()) {
+    if (scrollableArea->horizontalSnapOffsets()) {
         result.append("horizontal = ");
-        appendOffsets(result, *scrollableArea.horizontalSnapOffsets());
+        appendOffsets(result, *scrollableArea->horizontalSnapOffsets());
     }
 
-    if (scrollableArea.verticalSnapOffsets()) {
+    if (scrollableArea->verticalSnapOffsets()) {
         if (result.length())
             result.append(", ");
 
         result.append("vertical = ");
-        appendOffsets(result, *scrollableArea.verticalSnapOffsets());
+        appendOffsets(result, *scrollableArea->verticalSnapOffsets());
     }
 
     return result.toString();
@@ -2892,6 +3017,33 @@ String Internals::scrollSnapOffsets(Element* element, ExceptionCode& ec)
 bool Internals::testPreloaderSettingViewport()
 {
     return testPreloadScannerViewportSupport(contextDocument());
+}
+
+String Internals::pathStringWithShrinkWrappedRects(Vector<double> rectComponents, double radius, ExceptionCode& ec)
+{
+    if (rectComponents.size() % 4) {
+        ec = INVALID_ACCESS_ERR;
+        return String();
+    }
+
+    Vector<FloatRect> rects;
+    while (!rectComponents.isEmpty()) {
+        double height = rectComponents.takeLast();
+        double width = rectComponents.takeLast();
+        double y = rectComponents.takeLast();
+        double x = rectComponents.takeLast();
+
+        rects.append(FloatRect(x, y, width, height));
+    }
+
+    rects.reverse();
+
+    Path path = PathUtilities::pathWithShrinkWrappedRects(rects, radius);
+
+    String pathString;
+    buildStringFromPath(path, pathString);
+
+    return pathString;
 }
 
 }

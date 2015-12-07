@@ -85,8 +85,8 @@ public:
 };
 
 struct OpaqueJSClass : public ThreadSafeRefCounted<OpaqueJSClass> {
-    static PassRefPtr<OpaqueJSClass> create(const JSClassDefinition*);
-    static PassRefPtr<OpaqueJSClass> createNoAutomaticPrototype(const JSClassDefinition*);
+    static Ref<OpaqueJSClass> create(const JSClassDefinition*);
+    static Ref<OpaqueJSClass> createNoAutomaticPrototype(const JSClassDefinition*);
     JS_EXPORT_PRIVATE ~OpaqueJSClass();
     
     String className();

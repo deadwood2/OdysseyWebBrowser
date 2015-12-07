@@ -209,6 +209,8 @@ public:
     StructureID* addressOfLastSeenStructureID() { return &m_lastSeenStructureID; }
     ArrayModes* addressOfArrayModes() { return &m_observedArrayModes; }
     bool* addressOfMayStoreToHole() { return &m_mayStoreToHole; }
+
+    void setOutOfBounds() { m_outOfBounds = true; }
     bool* addressOfOutOfBounds() { return &m_outOfBounds; }
     
     void observeStructure(Structure* structure)
@@ -217,6 +219,7 @@ public:
     }
     
     void computeUpdatedPrediction(const ConcurrentJITLocker&, CodeBlock*);
+    void computeUpdatedPrediction(const ConcurrentJITLocker&, CodeBlock*, Structure* lastSeenStructure);
     
     ArrayModes observedArrayModes(const ConcurrentJITLocker&) const { return m_observedArrayModes; }
     bool mayInterceptIndexedAccesses(const ConcurrentJITLocker&) const { return m_mayInterceptIndexedAccesses; }
@@ -244,7 +247,7 @@ private:
     ArrayModes m_observedArrayModes;
 };
 
-typedef SegmentedVector<ArrayProfile, 4, 0> ArrayProfileVector;
+typedef SegmentedVector<ArrayProfile, 4> ArrayProfileVector;
 
 } // namespace JSC
 

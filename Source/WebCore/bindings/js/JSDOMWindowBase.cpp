@@ -149,7 +149,7 @@ bool JSDOMWindowBase::shouldInterruptScript(const JSGlobalObject* object)
     const JSDOMWindowBase* thisObject = static_cast<const JSDOMWindowBase*>(object);
     ASSERT(thisObject->impl().frame());
     Page* page = thisObject->impl().frame()->page();
-    return shouldInterruptScriptToPreventInfiniteRecursionWhenClosingPage(page) || page->chrome().shouldInterruptJavaScript();
+    return shouldInterruptScriptToPreventInfiniteRecursionWhenClosingPage(page);
 }
 
 bool JSDOMWindowBase::shouldInterruptScriptBeforeTimeout(const JSGlobalObject* object)
@@ -201,7 +201,7 @@ VM& JSDOMWindowBase::commonVM()
     static VM* vm = nullptr;
     if (!vm) {
         ScriptController::initializeThreading();
-        vm = VM::createLeaked(LargeHeap).leakRef();
+        vm = &VM::createLeaked(LargeHeap).leakRef();
 #if !PLATFORM(IOS)
         vm->setExclusiveThread(std::this_thread::get_id());
 #else
@@ -248,11 +248,15 @@ JSDOMWindow* toJSDOMWindow(JSValue value)
 {
     if (!value.isObject())
         return 0;
-    const ClassInfo* classInfo = asObject(value)->classInfo();
-    if (classInfo == JSDOMWindow::info())
-        return jsCast<JSDOMWindow*>(asObject(value));
-    if (classInfo == JSDOMWindowShell::info())
-        return jsCast<JSDOMWindowShell*>(asObject(value))->window();
+    while (!value.isNull()) {
+        JSObject* object = asObject(value);
+        const ClassInfo* classInfo = object->classInfo();
+        if (classInfo == JSDOMWindow::info())
+            return jsCast<JSDOMWindow*>(object);
+        if (classInfo == JSDOMWindowShell::info())
+            return jsCast<JSDOMWindowShell*>(object)->window();
+        value = object->prototype();
+    }
     return 0;
 }
 

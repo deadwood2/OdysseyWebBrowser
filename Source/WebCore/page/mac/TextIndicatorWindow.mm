@@ -29,6 +29,7 @@
 #if PLATFORM(MAC)
 
 #import "CoreGraphicsSPI.h"
+#import "GeometryUtilities.h"
 #import "GraphicsContext.h"
 #import "QuartzCoreSPI.h"
 #import "TextIndicator.h"
@@ -75,7 +76,7 @@ using namespace WebCore;
     BOOL _fadingOut;
 }
 
-- (instancetype)initWithFrame:(NSRect)frame textIndicator:(PassRefPtr<TextIndicator>)textIndicator margin:(NSSize)margin;
+- (instancetype)initWithFrame:(NSRect)frame textIndicator:(PassRefPtr<TextIndicator>)textIndicator margin:(NSSize)margin offset:(NSPoint)offset;
 
 - (void)present;
 - (void)hideWithCompletionHandler:(void(^)(void))completionHandler;
@@ -91,7 +92,39 @@ using namespace WebCore;
 
 @synthesize fadingOut = _fadingOut;
 
-- (instancetype)initWithFrame:(NSRect)frame textIndicator:(PassRefPtr<TextIndicator>)textIndicator margin:(NSSize)margin
+static FloatRect outsetIndicatorRectIncludingShadow(const FloatRect rect)
+{
+    FloatRect outsetRect = rect;
+    outsetRect.inflateX(dropShadowBlurRadius + horizontalBorder);
+    outsetRect.inflateY(dropShadowBlurRadius + verticalBorder);
+    return outsetRect;
+}
+
+static bool textIndicatorsForTextRectsOverlap(const Vector<FloatRect>& textRects)
+{
+    size_t count = textRects.size();
+    if (count <= 1)
+        return false;
+
+    Vector<FloatRect> indicatorRects;
+    indicatorRects.reserveInitialCapacity(count);
+
+    for (size_t i = 0; i < count; ++i) {
+        FloatRect indicatorRect = outsetIndicatorRectIncludingShadow(textRects[i]);
+
+        for (size_t j = indicatorRects.size(); j; ) {
+            --j;
+            if (indicatorRect.intersects(indicatorRects[j]))
+                return true;
+        }
+
+        indicatorRects.uncheckedAppend(indicatorRect);
+    }
+
+    return false;
+}
+
+- (instancetype)initWithFrame:(NSRect)frame textIndicator:(PassRefPtr<TextIndicator>)textIndicator margin:(NSSize)margin offset:(NSPoint)offset
 {
     if (!(self = [super initWithFrame:frame]))
         return nil;
@@ -102,12 +135,10 @@ using namespace WebCore;
     self.wantsLayer = YES;
     self.layer.anchorPoint = CGPointZero;
 
-    bool wantsCrossfade = _textIndicator->wantsContentCrossfade();
-
     FloatSize contentsImageLogicalSize = _textIndicator->contentImage()->size();
     contentsImageLogicalSize.scale(1 / _textIndicator->contentImageScaleFactor());
     RetainPtr<CGImageRef> contentsImage;
-    if (wantsCrossfade)
+    if (_textIndicator->wantsContentCrossfade())
         contentsImage = _textIndicator->contentImageWithHighlight()->getCGImageRef();
     else
         contentsImage = _textIndicator->contentImage()->getCGImageRef();
@@ -122,8 +153,17 @@ using namespace WebCore;
     RetainPtr<CGColorRef> gradientDarkColor = [NSColor colorWithDeviceRed:.929 green:.8 blue:0 alpha:1].CGColor;
     RetainPtr<CGColorRef> gradientLightColor = [NSColor colorWithDeviceRed:.949 green:.937 blue:0 alpha:1].CGColor;
 
-    for (const auto& textRect : _textIndicator->textRectsInBoundingRectCoordinates()) {
-        FloatRect bounceLayerRect = textRect;
+    Vector<FloatRect> textRectsInBoundingRectCoordinates = _textIndicator->textRectsInBoundingRectCoordinates();
+    if (textIndicatorsForTextRectsOverlap(textRectsInBoundingRectCoordinates)) {
+        textRectsInBoundingRectCoordinates[0] = unionRect(textRectsInBoundingRectCoordinates);
+        textRectsInBoundingRectCoordinates.shrink(1);
+    }
+
+    for (const auto& textRect : textRectsInBoundingRectCoordinates) {
+        FloatRect offsetTextRect = textRect;
+        offsetTextRect.move(offset.x, offset.y);
+
+        FloatRect bounceLayerRect = offsetTextRect;
         bounceLayerRect.move(_margin.width, _margin.height);
         bounceLayerRect.inflateX(horizontalBorder);
         bounceLayerRect.inflateY(verticalBorder);
@@ -137,7 +177,7 @@ using namespace WebCore;
         FloatRect yellowHighlightRect(FloatPoint(), bounceLayerRect.size());
         // FIXME (138888): Ideally we wouldn't remove the margin in this case, but we need to
         // ensure that the yellow highlight and contentImageWithHighlight overlap precisely.
-        if (wantsCrossfade) {
+        if (!_textIndicator->wantsMargin()) {
             yellowHighlightRect.inflateX(-horizontalBorder);
             yellowHighlightRect.inflateY(-verticalBorder);
         }
@@ -406,14 +446,16 @@ void TextIndicatorWindow::setTextIndicator(Ref<TextIndicator> textIndicator, CGR
     verticalMargin = CGCeiling(verticalMargin);
 
     CGRect contentRect = CGRectInset(textBoundingRectInScreenCoordinates, -horizontalMargin, -verticalMargin);
-    NSRect windowContentRect = [NSWindow contentRectForFrameRect:NSIntegralRect(NSRectFromCGRect(contentRect)) styleMask:NSBorderlessWindowMask];
-    m_textIndicatorWindow = adoptNS([[NSWindow alloc] initWithContentRect:windowContentRect styleMask:NSBorderlessWindowMask backing:NSBackingStoreBuffered defer:NO]);
+    NSRect windowContentRect = [NSWindow contentRectForFrameRect:NSRectFromCGRect(contentRect) styleMask:NSBorderlessWindowMask];
+    NSRect integralWindowContentRect = NSIntegralRect(windowContentRect);
+    NSPoint fractionalTextOffset = NSMakePoint(windowContentRect.origin.x - integralWindowContentRect.origin.x, windowContentRect.origin.y - integralWindowContentRect.origin.y);
+    m_textIndicatorWindow = adoptNS([[NSWindow alloc] initWithContentRect:integralWindowContentRect styleMask:NSBorderlessWindowMask backing:NSBackingStoreBuffered defer:NO]);
 
     [m_textIndicatorWindow setBackgroundColor:[NSColor clearColor]];
     [m_textIndicatorWindow setOpaque:NO];
     [m_textIndicatorWindow setIgnoresMouseEvents:YES];
 
-    m_textIndicatorView = adoptNS([[WebTextIndicatorView alloc] initWithFrame:NSMakeRect(0, 0, [m_textIndicatorWindow frame].size.width, [m_textIndicatorWindow frame].size.height) textIndicator:m_textIndicator margin:NSMakeSize(horizontalMargin, verticalMargin)]);
+    m_textIndicatorView = adoptNS([[WebTextIndicatorView alloc] initWithFrame:NSMakeRect(0, 0, [m_textIndicatorWindow frame].size.width, [m_textIndicatorWindow frame].size.height) textIndicator:m_textIndicator margin:NSMakeSize(horizontalMargin, verticalMargin) offset:fractionalTextOffset]);
     [m_textIndicatorWindow setContentView:m_textIndicatorView.get()];
 
     [[m_targetView window] addChildWindow:m_textIndicatorWindow.get() ordered:NSWindowAbove];

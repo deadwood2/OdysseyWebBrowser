@@ -471,7 +471,21 @@ private:
                 fixEdge<StringUse>(node->child2());
                 break;
             }
-            if (node->child1()->shouldSpeculateObject() && node->child2()->shouldSpeculateObject()) {
+            WatchpointSet* masqueradesAsUndefinedWatchpoint = m_graph.globalObjectFor(node->origin.semantic)->masqueradesAsUndefinedWatchpoint();
+            if (masqueradesAsUndefinedWatchpoint->isStillValid()) {
+                
+                if (node->child1()->shouldSpeculateObject()) {
+                    m_graph.watchpoints().addLazily(masqueradesAsUndefinedWatchpoint);
+                    fixEdge<ObjectUse>(node->child1());
+                    break;
+                }
+                if (node->child2()->shouldSpeculateObject()) {
+                    m_graph.watchpoints().addLazily(masqueradesAsUndefinedWatchpoint);
+                    fixEdge<ObjectUse>(node->child2());
+                    break;
+                }
+                
+            } else if (node->child1()->shouldSpeculateObject() && node->child2()->shouldSpeculateObject()) {
                 fixEdge<ObjectUse>(node->child1());
                 fixEdge<ObjectUse>(node->child2());
                 break;
@@ -1271,8 +1285,6 @@ private:
         case ConstructForwardVarargs:
         case LoadVarargs:
         case ProfileControlFlow:
-        case NativeCall:
-        case NativeConstruct:
         case NewObject:
         case NewArrayBuffer:
         case NewRegexp:
@@ -1482,8 +1494,12 @@ private:
                 m_indexInBlock, SpecString, ToString, node->origin, Edge(toPrimitive));
             
             fixupToPrimitive(toPrimitive);
-            fixupToStringOrCallStringConstructor(toString);
-            
+
+            // Don't fix up ToString. ToString and ToPrimitive are originated from the same bytecode and
+            // ToPrimitive may have an observable side effect. ToString should not be converted into Check
+            // with speculative type check because OSR exit reproduce an observable side effect done in
+            // ToPrimitive.
+
             right.setNode(toString);
         }
         
@@ -1723,6 +1739,7 @@ private:
                 m_profitabilityChanged |= variable->mergeIsProfitableToUnbox(true);
             break;
         case NumberUse:
+        case RealNumberUse:
         case DoubleRepUse:
         case DoubleRepRealUse:
             if (variable->doubleFormatState() == UsingDoubleFormat)
@@ -2102,6 +2119,13 @@ private:
                 edge.setUseKind(Int52RepUse);
             break;
             
+        case RealNumberUse:
+            if (edge->hasDoubleResult())
+                edge.setUseKind(DoubleRepRealUse);
+            else if (edge->hasInt52Result())
+                edge.setUseKind(Int52RepUse);
+            break;
+            
         default:
             break;
         }
@@ -2128,9 +2152,13 @@ private:
                     m_indexInBlock, SpecInt52AsDouble, DoubleRep, node->origin,
                     Edge(edge.node(), Int52RepUse));
             } else {
-                UseKind useKind = NotCellUse;
-                if (edge->shouldSpeculateNumber())
+                UseKind useKind;
+                if (edge->shouldSpeculateDoubleReal())
+                    useKind = RealNumberUse;
+                else if (edge->shouldSpeculateNumber())
                     useKind = NumberUse;
+                else
+                    useKind = NotCellUse;
 
                 result = m_insertionSet.insertNode(
                     m_indexInBlock, SpecBytecodeDouble, DoubleRep, node->origin,

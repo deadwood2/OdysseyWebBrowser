@@ -38,7 +38,6 @@
 #include "StatisticsData.h"
 #include "TextChecker.h"
 #include "WKContextPrivate.h"
-#include "WebApplicationCacheManagerProxy.h"
 #include "WebCertificateInfo.h"
 #include "WebContextSupplement.h"
 #include "WebCookieManagerProxy.h"
@@ -46,19 +45,16 @@
 #include "WebDatabaseManagerProxy.h"
 #include "WebGeolocationManagerProxy.h"
 #include "WebIconDatabase.h"
-#include "WebKeyValueStorageManager.h"
 #include "WebKit2Initialize.h"
 #include "WebMediaCacheManagerProxy.h"
 #include "WebMemorySampler.h"
 #include "WebNotificationManagerProxy.h"
 #include "WebPageGroup.h"
-#include "WebPluginSiteDataManager.h"
 #include "WebPreferences.h"
 #include "WebProcessCreationParameters.h"
 #include "WebProcessMessages.h"
 #include "WebProcessPoolMessages.h"
 #include "WebProcessProxy.h"
-#include "WebResourceCacheManagerProxy.h"
 #include "WebsiteDataStore.h"
 #include <WebCore/ApplicationCacheStorage.h>
 #include <WebCore/Language.h>
@@ -79,7 +75,6 @@
 #if ENABLE(DATABASE_PROCESS)
 #include "DatabaseProcessCreationParameters.h"
 #include "DatabaseProcessMessages.h"
-#include "WebOriginDataManagerProxy.h"
 #endif
 
 #if ENABLE(NETWORK_PROCESS)
@@ -138,18 +133,16 @@ static WebsiteDataStore::Configuration legacyWebsiteDataStoreConfiguration(API::
     configuration.webSQLDatabaseDirectory = processPoolConfiguration.webSQLDatabaseDirectory();
     configuration.applicationCacheDirectory = WebProcessPool::legacyPlatformDefaultApplicationCacheDirectory();
     configuration.mediaKeysStorageDirectory = WebProcessPool::legacyPlatformDefaultMediaKeysStorageDirectory();
+    configuration.networkCacheDirectory = WebProcessPool::legacyPlatformDefaultNetworkCacheDirectory();
 
     return configuration;
 }
 
 WebProcessPool::WebProcessPool(API::ProcessPoolConfiguration& configuration)
     : m_configuration(configuration.copy())
-    , m_processModel(m_configuration->processModel())
-    , m_webProcessCountLimit(!m_configuration->maximumProcessCount() ? UINT_MAX : m_configuration->maximumProcessCount())
     , m_haveInitialEmptyProcess(false)
     , m_processWithPageCache(0)
     , m_defaultPageGroup(WebPageGroup::createNonNull())
-    , m_injectedBundlePath(m_configuration->injectedBundlePath())
     , m_downloadClient(std::make_unique<API::DownloadClient>())
     , m_historyClient(std::make_unique<API::LegacyContextHistoryClient>())
     , m_visitedLinkProvider(VisitedLinkProvider::create())
@@ -157,22 +150,17 @@ WebProcessPool::WebProcessPool(API::ProcessPoolConfiguration& configuration)
     , m_plugInAutoStartProvider(this)
     , m_alwaysUsesComplexTextCodePath(false)
     , m_shouldUseFontSmoothing(true)
-    , m_cacheModel(m_configuration->cacheModel())
-    , m_diskCacheSizeOverride(m_configuration->diskCacheSizeOverride())
     , m_memorySamplerEnabled(false)
     , m_memorySamplerInterval(1400.0)
-    , m_websiteDataStore(m_configuration->shouldHaveLegacyDataStore() ? API::WebsiteDataStore::create(legacyWebsiteDataStoreConfiguration(m_configuration)) : nullptr)
+    , m_websiteDataStore(m_configuration->shouldHaveLegacyDataStore() ? API::WebsiteDataStore::create(legacyWebsiteDataStoreConfiguration(m_configuration)).ptr() : nullptr)
 #if USE(SOUP)
     , m_initialHTTPCookieAcceptPolicy(HTTPCookieAcceptPolicyOnlyFromMainDocumentDomain)
 #endif
-    , m_webSQLDatabaseDirectory(configuration.webSQLDatabaseDirectory())
-    , m_indexedDBDatabaseDirectory(configuration.indexedDBDatabaseDirectory())
-    , m_mediaKeysStorageDirectory(configuration.mediaKeysStorageDirectory())
     , m_shouldUseTestingNetworkSession(false)
     , m_processTerminationEnabled(true)
 #if ENABLE(NETWORK_PROCESS)
     , m_canHandleHTTPSServerTrustEvaluation(true)
-    , m_usesNetworkProcess(m_configuration->useNetworkProcess())
+    , m_didNetworkProcessCrash(false)
 #endif
 #if USE(SOUP)
     , m_ignoreTLSErrors(true)
@@ -192,26 +180,17 @@ WebProcessPool::WebProcessPool(API::ProcessPoolConfiguration& configuration)
 
     // NOTE: These sub-objects must be initialized after m_messageReceiverMap..
     m_iconDatabase = WebIconDatabase::create(this);
-#if ENABLE(NETSCAPE_PLUGIN_API)
-    m_pluginSiteDataManager = WebPluginSiteDataManager::create(this);
-#endif // ENABLE(NETSCAPE_PLUGIN_API)
 
-    addSupplement<WebApplicationCacheManagerProxy>();
     addSupplement<WebCookieManagerProxy>();
     addSupplement<WebGeolocationManagerProxy>();
-    addSupplement<WebKeyValueStorageManager>();
     addSupplement<WebMediaCacheManagerProxy>();
     addSupplement<WebNotificationManagerProxy>();
-    addSupplement<WebResourceCacheManagerProxy>();
     addSupplement<WebDatabaseManagerProxy>();
 #if USE(SOUP)
     addSupplement<WebSoupCustomProtocolRequestManager>();
 #endif
 #if ENABLE(BATTERY_STATUS)
     addSupplement<WebBatteryManagerProxy>();
-#endif
-#if ENABLE(DATABASE_PROCESS)
-    addSupplement<WebOriginDataManagerProxy>();
 #endif
 
     processPools().append(this);
@@ -258,11 +237,6 @@ WebProcessPool::~WebProcessPool()
     m_iconDatabase->clearProcessPool();
     WebIconDatabase* rawIconDatabase = m_iconDatabase.release().leakRef();
     rawIconDatabase->derefWhenAppropriate();
-
-#if ENABLE(NETSCAPE_PLUGIN_API)
-    m_pluginSiteDataManager->invalidate();
-    m_pluginSiteDataManager->clearProcessPool();
-#endif
 
     invalidateCallbackMap(m_dictionaryCallbacks, CallbackBase::Error::OwnerWasInvalidated);
 
@@ -321,7 +295,7 @@ void WebProcessPool::setProcessModel(ProcessModel processModel)
     if (processModel != ProcessModelSharedSecondaryProcess && !m_messagesToInjectedBundlePostedToEmptyContext.isEmpty())
         CRASH();
 
-    m_processModel = processModel;
+    m_configuration->setProcessModel(processModel);
 }
 
 void WebProcessPool::setMaximumNumberOfProcesses(unsigned maximumNumberOfProcesses)
@@ -330,24 +304,21 @@ void WebProcessPool::setMaximumNumberOfProcesses(unsigned maximumNumberOfProcess
     if (!m_processes.isEmpty())
         CRASH();
 
-    if (maximumNumberOfProcesses == 0)
-        m_webProcessCountLimit = UINT_MAX;
-    else
-        m_webProcessCountLimit = maximumNumberOfProcesses;
+    m_configuration->setMaximumProcessCount(maximumNumberOfProcesses);
 }
 
 IPC::Connection* WebProcessPool::networkingProcessConnection()
 {
-    switch (m_processModel) {
+    switch (processModel()) {
     case ProcessModelSharedSecondaryProcess:
 #if ENABLE(NETWORK_PROCESS)
-        if (m_usesNetworkProcess)
+        if (usesNetworkProcess())
             return m_networkProcess->connection();
 #endif
         return m_processes[0]->connection();
     case ProcessModelMultipleSecondaryProcesses:
 #if ENABLE(NETWORK_PROCESS)
-        ASSERT(m_usesNetworkProcess);
+        ASSERT(usesNetworkProcess());
         return m_networkProcess->connection();
 #else
         break;
@@ -366,7 +337,7 @@ void WebProcessPool::languageChanged()
 {
     sendToAllProcesses(Messages::WebProcess::UserPreferredLanguagesChanged(userPreferredLanguages()));
 #if USE(SOUP) && ENABLE(NETWORK_PROCESS)
-    if (m_usesNetworkProcess && m_networkProcess)
+    if (usesNetworkProcess() && m_networkProcess)
         m_networkProcess->send(Messages::NetworkProcess::UserPreferredLanguagesChanged(userPreferredLanguages()), 0);
 #endif
 }
@@ -384,7 +355,7 @@ void WebProcessPool::textCheckerStateChanged()
 void WebProcessPool::setUsesNetworkProcess(bool usesNetworkProcess)
 {
 #if ENABLE(NETWORK_PROCESS)
-    m_usesNetworkProcess = usesNetworkProcess;
+    m_configuration->setUseNetworkProcess(usesNetworkProcess);
 #else
     UNUSED_PARAM(usesNetworkProcess);
 #endif
@@ -393,7 +364,7 @@ void WebProcessPool::setUsesNetworkProcess(bool usesNetworkProcess)
 bool WebProcessPool::usesNetworkProcess() const
 {
 #if ENABLE(NETWORK_PROCESS)
-    return m_usesNetworkProcess;
+    return m_configuration->useNetworkProcess();
 #else
     return false;
 #endif
@@ -411,11 +382,11 @@ NetworkProcessProxy& WebProcessPool::ensureNetworkProcess()
 
     parameters.privateBrowsingEnabled = WebPreferences::anyPagesAreUsingPrivateBrowsing();
 
-    parameters.cacheModel = m_cacheModel;
-    parameters.diskCacheSizeOverride = m_diskCacheSizeOverride;
+    parameters.cacheModel = cacheModel();
+    parameters.diskCacheSizeOverride = m_configuration->diskCacheSizeOverride();
     parameters.canHandleHTTPSServerTrustEvaluation = m_canHandleHTTPSServerTrustEvaluation;
 
-    parameters.diskCacheDirectory = stringByResolvingSymlinksInPath(diskCacheDirectory());
+    parameters.diskCacheDirectory = m_configuration->diskCacheDirectory();
     if (!parameters.diskCacheDirectory.isEmpty())
         SandboxExtension::createHandleForReadWriteDirectory(parameters.diskCacheDirectory, parameters.diskCacheDirectoryExtensionHandle);
 
@@ -449,6 +420,12 @@ NetworkProcessProxy& WebProcessPool::ensureNetworkProcess()
     m_networkProcess->send(Messages::NetworkProcess::SetQOS(networkProcessLatencyQOS(), networkProcessThroughputQOS()), 0);
 #endif
 
+    if (m_didNetworkProcessCrash) {
+        m_didNetworkProcessCrash = false;
+        for (auto& process : m_processes)
+            process->reinstateNetworkProcessAssertionState(*m_networkProcess);
+    }
+
     return *m_networkProcess;
 }
 
@@ -456,6 +433,7 @@ void WebProcessPool::networkProcessCrashed(NetworkProcessProxy* networkProcessPr
 {
     ASSERT(m_networkProcess);
     ASSERT(networkProcessProxy == m_networkProcess.get());
+    m_didNetworkProcessCrash = true;
 
     WebContextSupplementMap::const_iterator it = m_supplements.begin();
     WebContextSupplementMap::const_iterator end = m_supplements.end();
@@ -487,13 +465,13 @@ void WebProcessPool::ensureDatabaseProcess()
 
     m_databaseProcess = DatabaseProcessProxy::create(this);
 
-    ASSERT(!m_indexedDBDatabaseDirectory.isEmpty());
+    ASSERT(!m_configuration->indexedDBDatabaseDirectory().isEmpty());
 
     // *********
     // IMPORTANT: Do not change the directory structure for indexed databases on disk without first consulting a reviewer from Apple (<rdar://problem/17454712>)
     // *********
     DatabaseProcessCreationParameters parameters;
-    parameters.indexedDatabaseDirectory = m_indexedDBDatabaseDirectory;
+    parameters.indexedDatabaseDirectory = m_configuration->indexedDBDatabaseDirectory();
 
     SandboxExtension::createHandleForReadWriteDirectory(parameters.indexedDatabaseDirectory, parameters.indexedDatabaseDirectoryExtensionHandle);
 
@@ -588,7 +566,7 @@ void WebProcessPool::processDidCachePage(WebProcessProxy* process)
 
 WebProcessProxy& WebProcessPool::ensureSharedWebProcess()
 {
-    ASSERT(m_processModel == ProcessModelSharedSecondaryProcess);
+    ASSERT(processModel() == ProcessModelSharedSecondaryProcess);
     if (m_processes.isEmpty())
         createNewWebProcess();
     return *m_processes[0];
@@ -597,7 +575,7 @@ WebProcessProxy& WebProcessPool::ensureSharedWebProcess()
 WebProcessProxy& WebProcessPool::createNewWebProcess()
 {
 #if ENABLE(NETWORK_PROCESS)
-    if (m_usesNetworkProcess)
+    if (usesNetworkProcess())
         ensureNetworkProcess();
 #endif
 
@@ -609,17 +587,13 @@ WebProcessProxy& WebProcessPool::createNewWebProcess()
     if (!parameters.injectedBundlePath.isEmpty())
         SandboxExtension::createHandle(parameters.injectedBundlePath, SandboxExtension::ReadOnly, parameters.injectedBundlePathExtensionHandle);
 
-    parameters.applicationCacheDirectory = applicationCacheDirectory();
+    parameters.applicationCacheDirectory = m_configuration->applicationCacheDirectory();
     if (!parameters.applicationCacheDirectory.isEmpty())
         SandboxExtension::createHandleForReadWriteDirectory(parameters.applicationCacheDirectory, parameters.applicationCacheDirectoryExtensionHandle);
 
-    parameters.webSQLDatabaseDirectory = m_webSQLDatabaseDirectory;
+    parameters.webSQLDatabaseDirectory = m_configuration->webSQLDatabaseDirectory();
     if (!parameters.webSQLDatabaseDirectory.isEmpty())
         SandboxExtension::createHandleForReadWriteDirectory(parameters.webSQLDatabaseDirectory, parameters.webSQLDatabaseDirectoryExtensionHandle);
-
-    parameters.diskCacheDirectory = diskCacheDirectory();
-    if (!parameters.diskCacheDirectory.isEmpty())
-        SandboxExtension::createHandleForReadWriteDirectory(parameters.diskCacheDirectory, parameters.diskCacheDirectoryExtensionHandle);
 
 #if ENABLE(SECCOMP_FILTERS)
     parameters.cookieStorageDirectory = this->cookieStorageDirectory();
@@ -639,13 +613,13 @@ WebProcessProxy& WebProcessPool::createNewWebProcess()
         SandboxExtension::createHandleForReadWriteDirectory(containerTemporaryDirectory, parameters.containerTemporaryDirectoryExtensionHandle);
 #endif
 
-    parameters.mediaKeyStorageDirectory = m_mediaKeysStorageDirectory;
+    parameters.mediaKeyStorageDirectory = m_configuration->mediaKeysStorageDirectory();
     if (!parameters.mediaKeyStorageDirectory.isEmpty())
         SandboxExtension::createHandleForReadWriteDirectory(parameters.mediaKeyStorageDirectory, parameters.mediaKeyStorageDirectoryExtensionHandle);
 
     parameters.shouldUseTestingNetworkSession = m_shouldUseTestingNetworkSession;
 
-    parameters.cacheModel = m_cacheModel;
+    parameters.cacheModel = cacheModel();
     parameters.languages = userPreferredLanguages();
 
     copyToVector(m_schemesToRegisterAsEmptyDocument, parameters.urlSchemesRegisteredAsEmptyDocument);
@@ -667,7 +641,7 @@ WebProcessProxy& WebProcessPool::createNewWebProcess()
     // iconDatabasePath is non-empty by default, but m_iconDatabase isn't enabled in UI process unless setDatabasePath is called explicitly.
     parameters.iconDatabaseEnabled = !iconDatabasePath().isEmpty();
 
-    parameters.terminationTimeout = (m_processModel == ProcessModelSharedSecondaryProcess) ? sharedSecondaryProcessShutdownTimeout : 0;
+    parameters.terminationTimeout = (processModel() == ProcessModelSharedSecondaryProcess) ? sharedSecondaryProcessShutdownTimeout : 0;
 
     parameters.textCheckerState = TextChecker::state();
 
@@ -681,7 +655,7 @@ WebProcessProxy& WebProcessPool::createNewWebProcess()
 #endif
 
 #if ENABLE(NETWORK_PROCESS)
-    parameters.usesNetworkProcess = m_usesNetworkProcess;
+    parameters.usesNetworkProcess = usesNetworkProcess();
 #endif
 
     parameters.plugInAutoStartOriginHashes = m_plugInAutoStartProvider.autoStartOriginHashesCopy();
@@ -727,7 +701,7 @@ WebProcessProxy& WebProcessPool::createNewWebProcess()
 
     m_processes.append(process.ptr());
 
-    if (m_processModel == ProcessModelSharedSecondaryProcess) {
+    if (processModel() == ProcessModelSharedSecondaryProcess) {
         for (size_t i = 0; i != m_messagesToInjectedBundlePostedToEmptyContext.size(); ++i) {
             auto& messageNameAndBody = m_messagesToInjectedBundlePostedToEmptyContext[i];
 
@@ -752,7 +726,7 @@ void WebProcessPool::warmInitialProcess()
         return;
     }
 
-    if (m_processes.size() >= m_webProcessCountLimit)
+    if (m_processes.size() >= maximumNumberOfProcesses())
         return;
 
     createNewWebProcess();
@@ -816,7 +790,7 @@ void WebProcessPool::disconnectProcess(WebProcessProxy* process)
 
     // FIXME (Multi-WebProcess): <rdar://problem/12239765> Some of the invalidation calls below are still necessary in multi-process mode, but they should only affect data structures pertaining to the process being disconnected.
     // Clearing everything causes assertion failures, so it's less trouble to skip that for now.
-    if (m_processModel != ProcessModelSharedSecondaryProcess) {
+    if (processModel() != ProcessModelSharedSecondaryProcess) {
         RefPtr<WebProcessProxy> protect(process);
         if (m_processWithPageCache == process)
             m_processWithPageCache = 0;
@@ -843,7 +817,7 @@ void WebProcessPool::disconnectProcess(WebProcessProxy* process)
 
 WebProcessProxy& WebProcessPool::createNewWebProcessRespectingProcessCountLimit()
 {
-    if (m_processes.size() < m_webProcessCountLimit)
+    if (m_processes.size() < maximumNumberOfProcesses())
         return createNewWebProcess();
 
     // Choose the process with fewest pages.
@@ -869,7 +843,7 @@ PassRefPtr<WebPageProxy> WebProcessPool::createWebPage(PageClient& pageClient, W
     }
 
     RefPtr<WebProcessProxy> process;
-    if (m_processModel == ProcessModelSharedSecondaryProcess) {
+    if (processModel() == ProcessModelSharedSecondaryProcess) {
         process = &ensureSharedWebProcess();
     } else {
         if (m_haveInitialEmptyProcess) {
@@ -924,7 +898,7 @@ DownloadProxy* WebProcessPool::resumeDownload(const API::Data* resumeData, const
 void WebProcessPool::postMessageToInjectedBundle(const String& messageName, API::Object* messageBody)
 {
     if (m_processes.isEmpty()) {
-        if (m_processModel == ProcessModelSharedSecondaryProcess)
+        if (processModel() == ProcessModelSharedSecondaryProcess)
             m_messagesToInjectedBundlePostedToEmptyContext.append(std::make_pair(messageName, messageBody));
         return;
     }
@@ -1007,7 +981,7 @@ void WebProcessPool::setCanHandleHTTPSServerTrustEvaluation(bool value)
 {
 #if ENABLE(NETWORK_PROCESS)
     m_canHandleHTTPSServerTrustEvaluation = value;
-    if (m_usesNetworkProcess && m_networkProcess) {
+    if (usesNetworkProcess() && m_networkProcess) {
         m_networkProcess->send(Messages::NetworkProcess::SetCanHandleHTTPSServerTrustEvaluation(value), 0);
         return;
     }
@@ -1078,12 +1052,12 @@ void WebProcessPool::registerURLSchemeAsCachePartitioned(const String& urlScheme
 
 void WebProcessPool::setCacheModel(CacheModel cacheModel)
 {
-    m_cacheModel = cacheModel;
-    sendToAllProcesses(Messages::WebProcess::SetCacheModel(m_cacheModel));
+    m_configuration->setCacheModel(cacheModel);
+    sendToAllProcesses(Messages::WebProcess::SetCacheModel(cacheModel));
 
 #if ENABLE(NETWORK_PROCESS)
-    if (m_usesNetworkProcess && m_networkProcess)
-        m_networkProcess->send(Messages::NetworkProcess::SetCacheModel(m_cacheModel), 0);
+    if (usesNetworkProcess() && m_networkProcess)
+        m_networkProcess->send(Messages::NetworkProcess::SetCacheModel(cacheModel), 0);
 #endif
 }
 
@@ -1168,14 +1142,6 @@ void WebProcessPool::stopMemorySampler()
     sendToAllProcesses(Messages::WebProcess::StopMemorySampler());
 }
 
-String WebProcessPool::applicationCacheDirectory() const
-{
-    if (!m_overrideApplicationCacheDirectory.isEmpty())
-        return m_overrideApplicationCacheDirectory;
-
-    return legacyPlatformDefaultApplicationCacheDirectory();
-}
-
 void WebProcessPool::setIconDatabasePath(const String& path)
 {
     m_overrideIconDatabasePath = path;
@@ -1191,14 +1157,6 @@ String WebProcessPool::iconDatabasePath() const
         return m_overrideIconDatabasePath;
 
     return platformDefaultIconDatabasePath();
-}
-
-String WebProcessPool::diskCacheDirectory() const
-{
-    if (!m_overrideDiskCacheDirectory.isEmpty())
-        return m_overrideDiskCacheDirectory;
-
-    return platformDefaultDiskCacheDirectory();
 }
 
 #if ENABLE(SECCOMP_FILTERS)
@@ -1231,7 +1189,7 @@ void WebProcessPool::useTestingNetworkSession()
 void WebProcessPool::allowSpecificHTTPSCertificateForHost(const WebCertificateInfo* certificate, const String& host)
 {
 #if ENABLE(NETWORK_PROCESS)
-    if (m_usesNetworkProcess && m_networkProcess) {
+    if (usesNetworkProcess() && m_networkProcess) {
         m_networkProcess->send(Messages::NetworkProcess::AllowSpecificHTTPSCertificateForHost(certificate->certificateInfo(), host), 0);
         return;
     }
@@ -1286,7 +1244,7 @@ void WebProcessPool::getStatistics(uint32_t statisticsMask, std::function<void (
 
 void WebProcessPool::requestWebContentStatistics(StatisticsRequest* request)
 {
-    if (m_processModel == ProcessModelSharedSecondaryProcess) {
+    if (processModel() == ProcessModelSharedSecondaryProcess) {
         if (m_processes.isEmpty())
             return;
         
@@ -1303,7 +1261,7 @@ void WebProcessPool::requestNetworkingStatistics(StatisticsRequest* request)
 {
     bool networkProcessUnavailable;
 #if ENABLE(NETWORK_PROCESS)
-    networkProcessUnavailable = !m_usesNetworkProcess || !m_networkProcess;
+    networkProcessUnavailable = !usesNetworkProcess() || !m_networkProcess;
 #else
     networkProcessUnavailable = true;
 #endif

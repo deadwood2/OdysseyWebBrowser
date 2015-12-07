@@ -698,12 +698,34 @@ InjectedScript.prototype = {
             }
         }
 
-        // Iterate prototype chain.
+        function arrayIndexPropertyNames(o, length)
+        {
+            var array = new Array(length);
+            for (var i = 0; i < length; ++i) {
+                if (i in o)
+                    array.push("" + i);
+            }
+            return array;
+        }
+
+        // FIXME: <https://webkit.org/b/143589> Web Inspector: Better handling for large collections in Object Trees
+        // For array types with a large length we attempt to skip getOwnPropertyNames and instead just sublist of indexes.
+        var isArrayTypeWithLargeLength = false;
+        try {
+            isArrayTypeWithLargeLength = injectedScript._subtype(object) === "array" && isFinite(object.length) && object.length > 100;
+        } catch(e) {}
+
         for (var o = object; this._isDefined(o); o = o.__proto__) {
             var isOwnProperty = o === object;
-            processProperties(o, Object.getOwnPropertyNames(o), isOwnProperty);
-            if (Object.getOwnPropertySymbols)
-                processProperties(o, Object.getOwnPropertySymbols(o), isOwnProperty);
+
+            if (isArrayTypeWithLargeLength && isOwnProperty)
+                processProperties(o, arrayIndexPropertyNames(o, 100), isOwnProperty);
+            else {
+                processProperties(o, Object.getOwnPropertyNames(o), isOwnProperty);
+                if (Object.getOwnPropertySymbols)
+                    processProperties(o, Object.getOwnPropertySymbols(o), isOwnProperty);
+            }
+
             if (collectionMode === InjectedScript.CollectionMode.OwnProperties)
                 break;
         }
@@ -774,6 +796,11 @@ InjectedScript.prototype = {
         }
     },
 
+    _classPreview: function(classConstructorValue)
+    {
+        return "class " + classConstructorValue.name;
+    },
+
     _nodePreview: function(node)
     {
         var isXMLDocument = node.ownerDocument && !!node.ownerDocument.xmlVersion;
@@ -828,9 +855,6 @@ InjectedScript.prototype = {
         var className = InjectedScriptHost.internalConstructorName(obj);
         if (subtype === "array")
             return className;
-
-        if (subtype === "class")
-            return obj.name;
 
         // NodeList in JSC is a function, check for array prior to this.
         if (typeof obj === "function")
@@ -984,8 +1008,10 @@ InjectedScript.RemoteObject = function(object, objectGroupName, forceValueType, 
         this.size = InjectedScriptHost.weakMapSize(object);
     else if (subtype === "weakset")
         this.size = InjectedScriptHost.weakSetSize(object);
-    else if (subtype === "class")
+    else if (subtype === "class") {
         this.classPrototype = injectedScript._wrapObject(object.prototype, objectGroupName);
+        this.className = object.name;
+    }
 
     if (generatePreview && this.type === "object")
         this.preview = this._generatePreview(object, undefined, columnNames);
@@ -1098,7 +1124,8 @@ InjectedScript.RemoteObject.prototype = {
                 continue;
 
             // If we have a filter, only show properties in the filter.
-            if (firstLevelKeys && firstLevelKeys.indexOf(name) === -1)
+            // FIXME: Currently these filters do nothing on the backend.
+            if (firstLevelKeys && !firstLevelKeys.includes(name))
                 continue;
 
             // Getter/setter.
@@ -1153,14 +1180,8 @@ InjectedScript.RemoteObject.prototype = {
                 property.subtype = subtype;
 
             // Second level.
-            if (secondLevelKeys === null || secondLevelKeys) {
-                var subPreview = this._generatePreview(value, secondLevelKeys || undefined, undefined);
-                property.valuePreview = subPreview;
-                if (!subPreview.lossless)
-                    preview.lossless = false;
-                if (subPreview.overflow)
-                    preview.overflow = true;
-            } else if (this._isPreviewableObject(value)) {
+            if ((secondLevelKeys === null || secondLevelKeys) || this._isPreviewableObject(value)) {
+                // FIXME: If we want secondLevelKeys filter to continue we would need some refactoring.
                 var subPreview = this._createObjectPreviewForValue(value);
                 property.valuePreview = subPreview;
                 if (!subPreview.lossless)
@@ -1170,7 +1191,13 @@ InjectedScript.RemoteObject.prototype = {
             } else {
                 var description = "";
                 if (type !== "function" || subtype === "class") {
-                    var fullDescription = subtype === "node" ? injectedScript._nodePreview(value) : injectedScript._describe(value);
+                    var fullDescription;
+                    if (subtype === "class")
+                        fullDescription = "class " + value.name;
+                    else if (subtype === "node")
+                        fullDescription = injectedScript._nodePreview(value);
+                    else
+                        fullDescription = injectedScript._describe(value);
                     description = this._abbreviateString(fullDescription, maxLength, subtype === "regexp");
                 }
                 property.value = description;

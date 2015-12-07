@@ -324,6 +324,21 @@ WebInspector.NativePrototypeFunctionParameters = {
         __proto__: null,
     },
 
+    WeakMap: {
+        delete: "key",
+        get: "key",
+        has: "key",
+        set: "key, value",
+        __proto__: null,
+    },
+
+    WeakSet: {
+        delete: "value",
+        has: "value",
+        add: "value",
+        __proto__: null,
+    },
+
     Promise: {
         catch: "rejectionHandler",
         then: "resolvedHandler, rejectionHandler",
@@ -2073,9 +2088,6 @@ WebInspector.NativePrototypeFunctionParameters = {
     },
 };
 
-WebInspector.NativePrototypeFunctionParameters.WeakMap = WebInspector.NativePrototypeFunctionParameters.Map;
-WebInspector.NativePrototypeFunctionParameters.WeakSet = WebInspector.NativePrototypeFunctionParameters.Set;
-
 (function() {
     var EventTarget = {
         addEventListener: "type, listener, [useCapture=false]",
@@ -2102,7 +2114,22 @@ WebInspector.NativePrototypeFunctionParameters.WeakSet = WebInspector.NativeProt
         querySelector: "selectors",
         querySelectorAll: "selectors",
     };
-
     Object.assign(WebInspector.NativePrototypeFunctionParameters.Element, ElementQueries);
     Object.assign(WebInspector.NativePrototypeFunctionParameters.Document, ElementQueries);
+
+    var ChildNode = {
+        after: "[node|string]...",
+        before: "[node|string]...",
+        replaceWith: "[node|string]...",
+    };
+    Object.assign(WebInspector.NativePrototypeFunctionParameters.Element, ChildNode)
+    Object.assign(WebInspector.NativePrototypeFunctionParameters.CharacterData, ChildNode);
+
+    var ParentNode = {
+        append: "[node|string]...",
+        prepend: "[node|string]...",
+    };
+    Object.assign(WebInspector.NativePrototypeFunctionParameters.Element, ParentNode);
+    Object.assign(WebInspector.NativePrototypeFunctionParameters.Document, ParentNode);
+    Object.assign(WebInspector.NativePrototypeFunctionParameters.DocumentFragment, ParentNode);
 })();

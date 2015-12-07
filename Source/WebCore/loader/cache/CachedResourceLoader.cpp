@@ -176,7 +176,7 @@ SessionID CachedResourceLoader::sessionID() const
 CachedResourceHandle<CachedImage> CachedResourceLoader::requestImage(CachedResourceRequest& request)
 {
     if (Frame* frame = this->frame()) {
-        if (frame->loader().pageDismissalEventBeingDispatched() != FrameLoader::NoDismissal) {
+        if (frame->loader().pageDismissalEventBeingDispatched() != FrameLoader::PageDismissalType::None) {
             URL requestURL = request.resourceRequest().url();
             if (requestURL.isValid() && canRequest(CachedResource::ImageResource, requestURL, request.options(), request.forPreload()))
                 PingLoader::loadImage(*frame, requestURL);
@@ -233,7 +233,7 @@ CachedResourceHandle<CachedCSSStyleSheet> CachedResourceLoader::requestUserCSSSt
     memoryCache.add(*userSheet);
     // FIXME: loadResource calls setOwningCachedResourceLoader() if the resource couldn't be added to cache. Does this function need to call it, too?
 
-    userSheet->load(*this, ResourceLoaderOptions(DoNotSendCallbacks, SniffContent, BufferData, AllowStoredCredentials, AskClientForAllCredentials, SkipSecurityCheck, UseDefaultOriginRestrictionsForType, DoNotIncludeCertificateInfo));
+    userSheet->load(*this, ResourceLoaderOptions(DoNotSendCallbacks, SniffContent, BufferData, AllowStoredCredentials, AskClientForAllCredentials, SkipSecurityCheck, UseDefaultOriginRestrictionsForType, DoNotIncludeCertificateInfo, ContentSecurityPolicyImposition::SkipPolicyCheck));
     
     return userSheet;
 }
@@ -366,14 +366,20 @@ bool CachedResourceLoader::canRequest(CachedResource::Type type, const URL& url,
         return 0;
     }
 
-    // FIXME: Convert this to check the isolated world's Content Security Policy once webkit.org/b/104520 is solved.
-    bool shouldBypassMainWorldContentSecurityPolicy = (frame() && frame()->script().shouldBypassMainWorldContentSecurityPolicy());
+    bool skipContentSecurityPolicyCheck = options.contentSecurityPolicyImposition() == ContentSecurityPolicyImposition::SkipPolicyCheck;
 
     // Some types of resources can be loaded only from the same origin.  Other
     // types of resources, like Images, Scripts, and CSS, can be loaded from
     // any URL.
     switch (type) {
     case CachedResource::MainResource:
+        if (HTMLFrameOwnerElement* ownerElement = frame() ? frame()->ownerElement() : nullptr) {
+            if (ownerElement->document().shouldEnforceContentDispositionAttachmentSandbox() && !ownerElement->document().securityOrigin()->canRequest(url)) {
+                printAccessDeniedMessage(url);
+                return false;
+            }
+        }
+        FALLTHROUGH;
     case CachedResource::ImageResource:
     case CachedResource::CSSStyleSheet:
     case CachedResource::Script:
@@ -408,30 +414,30 @@ bool CachedResourceLoader::canRequest(CachedResource::Type type, const URL& url,
     switch (type) {
 #if ENABLE(XSLT)
     case CachedResource::XSLStyleSheet:
-        if (!shouldBypassMainWorldContentSecurityPolicy && !m_document->contentSecurityPolicy()->allowScriptFromSource(url))
+        if (!m_document->contentSecurityPolicy()->allowScriptFromSource(url, skipContentSecurityPolicyCheck))
             return false;
         break;
 #endif
     case CachedResource::Script:
-        if (!shouldBypassMainWorldContentSecurityPolicy && !m_document->contentSecurityPolicy()->allowScriptFromSource(url))
+        if (!m_document->contentSecurityPolicy()->allowScriptFromSource(url, skipContentSecurityPolicyCheck))
             return false;
         if (frame() && !frame()->settings().isScriptEnabled())
             return false;
         break;
     case CachedResource::CSSStyleSheet:
-        if (!shouldBypassMainWorldContentSecurityPolicy && !m_document->contentSecurityPolicy()->allowStyleFromSource(url))
+        if (!m_document->contentSecurityPolicy()->allowStyleFromSource(url, skipContentSecurityPolicyCheck))
             return false;
         break;
     case CachedResource::SVGDocumentResource:
     case CachedResource::ImageResource:
-        if (!shouldBypassMainWorldContentSecurityPolicy && !m_document->contentSecurityPolicy()->allowImageFromSource(url))
+        if (!m_document->contentSecurityPolicy()->allowImageFromSource(url, skipContentSecurityPolicyCheck))
             return false;
         break;
 #if ENABLE(SVG_FONTS)
     case CachedResource::SVGFontResource:
 #endif
     case CachedResource::FontResource: {
-        if (!shouldBypassMainWorldContentSecurityPolicy && !m_document->contentSecurityPolicy()->allowFontFromSource(url))
+        if (!m_document->contentSecurityPolicy()->allowFontFromSource(url, skipContentSecurityPolicyCheck))
             return false;
         break;
     }
@@ -444,7 +450,7 @@ bool CachedResourceLoader::canRequest(CachedResource::Type type, const URL& url,
         break;
 #if ENABLE(VIDEO_TRACK)
     case CachedResource::TextTrackResource:
-        if (!shouldBypassMainWorldContentSecurityPolicy && !m_document->contentSecurityPolicy()->allowMediaFromSource(url))
+        if (!m_document->contentSecurityPolicy()->allowMediaFromSource(url, skipContentSecurityPolicyCheck))
             return false;
         break;
 #endif
@@ -509,7 +515,7 @@ CachedResourceHandle<CachedResource> CachedResourceLoader::requestResource(Cache
 
 #if ENABLE(CONTENT_EXTENSIONS)
     if (frame() && frame()->mainFrame().page() && frame()->mainFrame().page()->userContentController() && m_documentLoader)
-        frame()->mainFrame().page()->userContentController()->processContentExtensionRulesForLoad(request.mutableResourceRequest(), toResourceType(type), *m_documentLoader);
+        frame()->mainFrame().page()->userContentController()->processContentExtensionRulesForLoad(*frame()->mainFrame().page(), request.mutableResourceRequest(), toResourceType(type), *m_documentLoader);
 
     if (request.mutableResourceRequest().isNull())
         return nullptr;
@@ -884,14 +890,6 @@ void CachedResourceLoader::removeCachedResource(CachedResource& resource)
     m_documentResources.remove(resource.url());
 }
 
-void CachedResourceLoader::addCachedResource(CachedResource& resource)
-{
-    m_documentResources.set(resource.url(), &resource);
-
-    if (!MemoryCache::singleton().add(resource))
-        resource.setOwningCachedResourceLoader(this);
-}
-
 void CachedResourceLoader::loadDone(CachedResource* resource, bool shouldPerformPostLoadActions)
 {
     RefPtr<DocumentLoader> protectDocumentLoader(m_documentLoader);
@@ -1135,7 +1133,7 @@ void CachedResourceLoader::printPreloadStats()
 
 const ResourceLoaderOptions& CachedResourceLoader::defaultCachedResourceOptions()
 {
-    static ResourceLoaderOptions options(SendCallbacks, SniffContent, BufferData, AllowStoredCredentials, AskClientForAllCredentials, DoSecurityCheck, UseDefaultOriginRestrictionsForType, DoNotIncludeCertificateInfo);
+    static ResourceLoaderOptions options(SendCallbacks, SniffContent, BufferData, AllowStoredCredentials, AskClientForAllCredentials, DoSecurityCheck, UseDefaultOriginRestrictionsForType, DoNotIncludeCertificateInfo, ContentSecurityPolicyImposition::DoPolicyCheck);
     return options;
 }
 

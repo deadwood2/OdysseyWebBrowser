@@ -25,7 +25,6 @@
 #include "CodeBlock.h"
 #include "DebuggerCallFrame.h"
 #include "Error.h"
-
 #include "HeapIterationScope.h"
 #include "Interpreter.h"
 #include "JSCJSValueInlines.h"
@@ -88,8 +87,8 @@ inline void Recompiler::visit(JSCell* cell)
         return;
 
     ExecState* exec = function->scope()->globalObject()->JSGlobalObject::globalExec();
-    executable->clearCodeIfNotCompiling();
-    executable->clearUnlinkedCodeForRecompilationIfNotCompiling();
+    executable->clearCode();
+    executable->clearUnlinkedCodeForRecompilation();
     if (m_debugger == function->scope()->globalObject()->debugger())
         m_sourceProviders.add(executable->source().provider(), exec);
 }
@@ -118,7 +117,7 @@ public:
     {
         if (m_debugger.m_currentDebuggerCallFrame) {
             m_debugger.m_currentDebuggerCallFrame->invalidate();
-            m_debugger.m_currentDebuggerCallFrame = 0;
+            m_debugger.m_currentDebuggerCallFrame = nullptr;
         }
     }
 
@@ -487,7 +486,7 @@ bool Debugger::hasBreakpoint(SourceID sourceID, const TextPosition& position, Br
     // so make it looks like the debugger is already paused.
     TemporaryPausedState pausedState(*this);
 
-    JSValue exception;
+    NakedPtr<Exception> exception;
     DebuggerCallFrame* debuggerCallFrame = currentDebuggerCallFrame();
     JSValue result = debuggerCallFrame->evaluate(breakpoint->condition, exception);
 
@@ -695,13 +694,13 @@ void Debugger::pauseIfNeeded(CallFrame* callFrame)
     }
 }
 
-void Debugger::exception(CallFrame* callFrame, JSValue exception, bool hasHandler)
+void Debugger::exception(CallFrame* callFrame, JSValue exception, bool hasCatchHandler)
 {
     if (m_isPaused)
         return;
 
     PauseReasonDeclaration reason(*this, PausedForException);
-    if (m_pauseOnExceptionsState == PauseOnAllExceptions || (m_pauseOnExceptionsState == PauseOnUncaughtExceptions && !hasHandler)) {
+    if (m_pauseOnExceptionsState == PauseOnAllExceptions || (m_pauseOnExceptionsState == PauseOnUncaughtExceptions && !hasCatchHandler)) {
         m_pauseOnNextStatement = true;
         setSteppingMode(SteppingModeEnabled);
     }

@@ -26,6 +26,7 @@ set(JavaScriptCore_INCLUDE_DIRECTORIES
     "${JAVASCRIPTCORE_DIR}/replay"
     "${JAVASCRIPTCORE_DIR}/runtime"
     "${JAVASCRIPTCORE_DIR}/tools"
+    "${JAVASCRIPTCORE_DIR}/wasm"
     "${JAVASCRIPTCORE_DIR}/yarr"
     "${WTF_DIR}"
     "${DERIVED_SOURCES_DIR}"
@@ -56,7 +57,6 @@ set(JavaScriptCore_SOURCES
     API/OpaqueJSString.cpp
 
     assembler/ARMAssembler.cpp
-    assembler/ARMv7Assembler.cpp
     assembler/LinkBuffer.cpp
     assembler/MacroAssembler.cpp
     assembler/MacroAssemblerARM.cpp
@@ -111,6 +111,7 @@ set(JavaScriptCore_SOURCES
     bytecode/StructureStubClearingWatchpoint.cpp
     bytecode/StructureStubInfo.cpp
     bytecode/ToThisStatus.cpp
+    bytecode/TrackedReferences.cpp
     bytecode/UnlinkedCodeBlock.cpp
     bytecode/UnlinkedInstructionStream.cpp
     bytecode/ValueRecovery.cpp
@@ -127,9 +128,9 @@ set(JavaScriptCore_SOURCES
 
     dfg/DFGAbstractHeap.cpp
     dfg/DFGAbstractValue.cpp
-    dfg/DFGArithMode.cpp
     dfg/DFGArgumentsEliminationPhase.cpp
     dfg/DFGArgumentsUtilities.cpp
+    dfg/DFGArithMode.cpp
     dfg/DFGArrayMode.cpp
     dfg/DFGAtTailAbstractState.cpp
     dfg/DFGAvailability.cpp
@@ -154,13 +155,13 @@ set(JavaScriptCore_SOURCES
     dfg/DFGCompilationKey.cpp
     dfg/DFGCompilationMode.cpp
     dfg/DFGConstantFoldingPhase.cpp
+    dfg/DFGConstantHoistingPhase.cpp
     dfg/DFGCriticalEdgeBreakingPhase.cpp
     dfg/DFGDCEPhase.cpp
     dfg/DFGDesiredIdentifiers.cpp
     dfg/DFGDesiredTransitions.cpp
     dfg/DFGDesiredWatchpoints.cpp
     dfg/DFGDesiredWeakReferences.cpp
-    dfg/DFGDesiredWriteBarriers.cpp
     dfg/DFGDisassembler.cpp
     dfg/DFGDoesGC.cpp
     dfg/DFGDominators.cpp
@@ -178,8 +179,8 @@ set(JavaScriptCore_SOURCES
     dfg/DFGGraphSafepoint.cpp
     dfg/DFGHeapLocation.cpp
     dfg/DFGInPlaceAbstractState.cpp
-    dfg/DFGInsertOSRHintsForUpdate.cpp
     dfg/DFGIntegerCheckCombiningPhase.cpp
+    dfg/DFGIntegerRangeOptimizationPhase.cpp
     dfg/DFGInvalidationPointInjectionPhase.cpp
     dfg/DFGJITCode.cpp
     dfg/DFGJITCompiler.cpp
@@ -192,6 +193,7 @@ set(JavaScriptCore_SOURCES
     dfg/DFGLongLivedState.cpp
     dfg/DFGLoopPreHeaderCreationPhase.cpp
     dfg/DFGMayExit.cpp
+    dfg/DFGMinifiedGraph.cpp
     dfg/DFGMinifiedNode.cpp
     dfg/DFGMovHintRemovalPhase.cpp
     dfg/DFGNaiveDominators.cpp
@@ -207,6 +209,7 @@ set(JavaScriptCore_SOURCES
     dfg/DFGOSRExitCompiler32_64.cpp
     dfg/DFGOSRExitCompiler64.cpp
     dfg/DFGOSRExitCompilerCommon.cpp
+    dfg/DFGOSRExitFuzz.cpp
     dfg/DFGOSRExitJumpPlaceholder.cpp
     dfg/DFGOSRExitPreparation.cpp
     dfg/DFGObjectAllocationSinkingPhase.cpp
@@ -254,13 +257,15 @@ set(JavaScriptCore_SOURCES
     dfg/DFGWatchpointCollectionPhase.cpp
     dfg/DFGWorklist.cpp
 
-    disassembler/ARM64/A64DOpcode.cpp
-    disassembler/ARMv7/ARMv7DOpcode.cpp
     disassembler/ARM64Disassembler.cpp
     disassembler/ARMv7Disassembler.cpp
     disassembler/Disassembler.cpp
     disassembler/LLVMDisassembler.cpp
     disassembler/X86Disassembler.cpp
+
+    disassembler/ARM64/A64DOpcode.cpp
+
+    disassembler/ARMv7/ARMv7DOpcode.cpp
 
     heap/CodeBlockSet.cpp
     heap/ConservativeRoots.cpp
@@ -306,11 +311,11 @@ set(JavaScriptCore_SOURCES
     inspector/InspectorAgentRegistry.cpp
     inspector/InspectorBackendDispatcher.cpp
     inspector/InspectorValues.cpp
-    inspector/JSInjectedScriptHost.cpp
-    inspector/JSInjectedScriptHostPrototype.cpp
     inspector/JSGlobalObjectConsoleClient.cpp
     inspector/JSGlobalObjectInspectorController.cpp
     inspector/JSGlobalObjectScriptDebugServer.cpp
+    inspector/JSInjectedScriptHost.cpp
+    inspector/JSInjectedScriptHostPrototype.cpp
     inspector/JSJavaScriptCallFrame.cpp
     inspector/JSJavaScriptCallFramePrototype.cpp
     inspector/JavaScriptCallFrame.cpp
@@ -336,8 +341,8 @@ set(JavaScriptCore_SOURCES
     interpreter/StackVisitor.cpp
 
     jit/AccessorCallJITStubRoutine.cpp
-    jit/AssemblyHelpers.cpp
     jit/ArityCheckFailReturnThunks.cpp
+    jit/AssemblyHelpers.cpp
     jit/BinarySwitch.cpp
     jit/ExecutableAllocationFuzz.cpp
     jit/ExecutableAllocator.cpp
@@ -362,13 +367,13 @@ set(JavaScriptCore_SOURCES
     jit/JITStubs.cpp
     jit/JITThunks.cpp
     jit/JITToDFGDeferredCompilationCallback.cpp
-    jit/SetupVarargsFrame.cpp
     jit/PolymorphicCallStubRoutine.cpp
     jit/Reg.cpp
     jit/RegisterPreservationWrapperGenerator.cpp
     jit/RegisterSet.cpp
     jit/Repatch.cpp
     jit/ScratchRegisterAllocator.cpp
+    jit/SetupVarargsFrame.cpp
     jit/TempRegisterSet.cpp
     jit/ThunkGenerators.cpp
 
@@ -379,6 +384,7 @@ set(JavaScriptCore_SOURCES
     parser/SourceCode.cpp
     parser/SourceProvider.cpp
     parser/SourceProviderCache.cpp
+    parser/VariableEnvironment.cpp
 
     profiler/LegacyProfiler.cpp
     profiler/Profile.cpp
@@ -404,6 +410,10 @@ set(JavaScriptCore_SOURCES
     tools/JSDollarVM.cpp
     tools/JSDollarVMPrototype.cpp
 
+    wasm/JSWASMModule.cpp
+    wasm/WASMModuleParser.cpp
+    wasm/WASMReader.cpp
+
     yarr/RegularExpression.cpp
     yarr/YarrCanonicalizeUCS2.cpp
     yarr/YarrInterpreter.cpp
@@ -418,14 +428,12 @@ set(JavaScriptCore_RUNTIME_SOURCES
     runtime/ArrayBufferNeuteringWatchpoint.cpp
     runtime/ArrayBufferView.cpp
     runtime/ArrayConstructor.cpp
-    runtime/ArrayIteratorConstructor.cpp
     runtime/ArrayIteratorPrototype.cpp
     runtime/ArrayPrototype.cpp
     runtime/BasicBlockLocation.cpp
     runtime/BooleanConstructor.cpp
     runtime/BooleanObject.cpp
     runtime/BooleanPrototype.cpp
-    runtime/BundlePath.cpp
     runtime/CallData.cpp
     runtime/ClonedArguments.cpp
     runtime/CodeCache.cpp
@@ -454,6 +462,7 @@ set(JavaScriptCore_RUNTIME_SOURCES
     runtime/ErrorHandlingScope.cpp
     runtime/ErrorInstance.cpp
     runtime/ErrorPrototype.cpp
+    runtime/Exception.cpp
     runtime/ExceptionFuzz.cpp
     runtime/ExceptionHelpers.cpp
     runtime/Executable.cpp
@@ -469,9 +478,19 @@ set(JavaScriptCore_RUNTIME_SOURCES
     runtime/InitializeThreading.cpp
     runtime/IntendedStructureChain.cpp
     runtime/InternalFunction.cpp
+    runtime/IntlCollator.cpp
+    runtime/IntlCollatorConstructor.cpp
+    runtime/IntlCollatorPrototype.cpp
+    runtime/IntlDateTimeFormat.cpp
+    runtime/IntlDateTimeFormatConstructor.cpp
+    runtime/IntlDateTimeFormatPrototype.cpp
+    runtime/IntlNumberFormat.cpp
+    runtime/IntlNumberFormatConstructor.cpp
+    runtime/IntlNumberFormatPrototype.cpp
+    runtime/IntlObject.cpp
     runtime/IteratorOperations.cpp
+    runtime/IteratorPrototype.cpp
     runtime/JSAPIValueWrapper.cpp
-    runtime/JSLexicalEnvironment.cpp
     runtime/JSArray.cpp
     runtime/JSArrayBuffer.cpp
     runtime/JSArrayBufferConstructor.cpp
@@ -479,10 +498,8 @@ set(JavaScriptCore_RUNTIME_SOURCES
     runtime/JSArrayBufferView.cpp
     runtime/JSArrayIterator.cpp
     runtime/JSBoundFunction.cpp
-    runtime/JSGlobalObjectDebuggable.cpp
     runtime/JSCJSValue.cpp
     runtime/JSCallee.cpp
-    runtime/JSCatchScope.cpp
     runtime/JSCell.cpp
     runtime/JSConsole.cpp
     runtime/JSDataView.cpp
@@ -492,7 +509,10 @@ set(JavaScriptCore_RUNTIME_SOURCES
     runtime/JSFunction.cpp
     runtime/JSFunctionNameScope.cpp
     runtime/JSGlobalObject.cpp
+    runtime/JSGlobalObjectDebuggable.cpp
     runtime/JSGlobalObjectFunctions.cpp
+    runtime/JSJob.cpp
+    runtime/JSLexicalEnvironment.cpp
     runtime/JSLock.cpp
     runtime/JSMap.cpp
     runtime/JSMapIterator.cpp
@@ -503,11 +523,10 @@ set(JavaScriptCore_RUNTIME_SOURCES
     runtime/JSPromise.cpp
     runtime/JSPromiseConstructor.cpp
     runtime/JSPromiseDeferred.cpp
-    runtime/JSPromiseFunctions.cpp
-    runtime/JSPromiseReaction.cpp
     runtime/JSPromisePrototype.cpp
-    runtime/JSProxy.cpp
     runtime/JSPropertyNameEnumerator.cpp
+    runtime/JSPropertyNameIterator.cpp
+    runtime/JSProxy.cpp
     runtime/JSScope.cpp
     runtime/JSSegmentedVariableObject.cpp
     runtime/JSSet.cpp
@@ -527,7 +546,6 @@ set(JavaScriptCore_RUNTIME_SOURCES
     runtime/LiteralParser.cpp
     runtime/Lookup.cpp
     runtime/MapConstructor.cpp
-    runtime/MapIteratorConstructor.cpp
     runtime/MapIteratorPrototype.cpp
     runtime/MapPrototype.cpp
     runtime/MathCommon.cpp
@@ -548,6 +566,7 @@ set(JavaScriptCore_RUNTIME_SOURCES
     runtime/PropertySlot.cpp
     runtime/PropertyTable.cpp
     runtime/PrototypeMap.cpp
+    runtime/ReflectObject.cpp
     runtime/RegExp.cpp
     runtime/RegExpCache.cpp
     runtime/RegExpCachedResult.cpp
@@ -561,7 +580,6 @@ set(JavaScriptCore_RUNTIME_SOURCES
     runtime/ScopedArguments.cpp
     runtime/ScopedArgumentsTable.cpp
     runtime/SetConstructor.cpp
-    runtime/SetIteratorConstructor.cpp
     runtime/SetIteratorPrototype.cpp
     runtime/SetPrototype.cpp
     runtime/SimpleTypedArrayController.cpp
@@ -569,7 +587,6 @@ set(JavaScriptCore_RUNTIME_SOURCES
     runtime/SparseArrayValueMap.cpp
     runtime/StrictEvalActivation.cpp
     runtime/StringConstructor.cpp
-    runtime/StringIteratorConstructor.cpp
     runtime/StringIteratorPrototype.cpp
     runtime/StringObject.cpp
     runtime/StringPrototype.cpp
@@ -615,6 +632,12 @@ set(JavaScriptCore_LUT_FILES
     runtime/DateConstructor.cpp
     runtime/DatePrototype.cpp
     runtime/ErrorPrototype.cpp
+    runtime/IntlCollatorConstructor.cpp
+    runtime/IntlCollatorPrototype.cpp
+    runtime/IntlDateTimeFormatConstructor.cpp
+    runtime/IntlDateTimeFormatPrototype.cpp
+    runtime/IntlNumberFormatConstructor.cpp
+    runtime/IntlNumberFormatPrototype.cpp
     runtime/JSDataViewPrototype.cpp
     runtime/JSGlobalObject.cpp
     runtime/JSONObject.cpp
@@ -623,8 +646,8 @@ set(JavaScriptCore_LUT_FILES
     runtime/NumberConstructor.cpp
     runtime/NumberPrototype.cpp
     runtime/ObjectConstructor.cpp
+    runtime/ReflectObject.cpp
     runtime/RegExpConstructor.cpp
-    runtime/RegExpObject.cpp
     runtime/RegExpPrototype.cpp
     runtime/StringConstructor.cpp
     runtime/StringIteratorPrototype.cpp
@@ -657,6 +680,8 @@ if (USE_UDIS86)
         ${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/udis86_itab.h
     )
     list(APPEND JavaScriptCore_SOURCES
+        disassembler/UDis86Disassembler.cpp
+
         disassembler/udis86/udis86.c
         disassembler/udis86/udis86_decode.c
         disassembler/udis86/udis86_input.c
@@ -664,7 +689,6 @@ if (USE_UDIS86)
         disassembler/udis86/udis86_syn-att.c
         disassembler/udis86/udis86_syn-intel.c
         disassembler/udis86/udis86_syn.c
-        disassembler/UDis86Disassembler.cpp
     )
 endif ()
 
@@ -742,6 +766,7 @@ add_custom_command(
     DEPENDS LLIntOffsetsExtractor ${LLINT_ASM} ${OFFLINE_ASM} ${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/InitBytecodes.asm
     COMMAND ${RUBY_EXECUTABLE} ${JAVASCRIPTCORE_DIR}/offlineasm/asm.rb -I${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/ ${JAVASCRIPTCORE_DIR}/llint/LowLevelInterpreter.asm $<TARGET_FILE:LLIntOffsetsExtractor> ${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/${LLIntOutput}
     COMMAND ${CMAKE_COMMAND} -E touch_nocreate ${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/${LLIntOutput}
+    WORKING_DIRECTORY ${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}
     VERBATIM)
 
 # The explanation for not making LLIntAssembly.h part of the OBJECT_DEPENDS property of some of
@@ -798,43 +823,6 @@ if (ENABLE_FTL_JIT)
         COMMAND ${CMAKE_COMMAND} -E touch ${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/WebKitLLVMLibraryToken.h
         VERBATIM)
 
-    if (ENABLE_FTL_NATIVE_CALL_INLINING)
-        function(JOIN VALUES GLUE OUTPUT)
-            string(REPLACE ";" "${GLUE}" _TMP_STR "${VALUES}")
-            set(${OUTPUT} "${_TMP_STR}" PARENT_SCOPE)
-        endfunction()
-
-        JOIN("${JavaScriptCore_INCLUDE_DIRECTORIES}" " -I" JSC_INCLUDES)
-
-        set(LLVM_BITCODE_FILES)
-
-        foreach (_file ${JavaScriptCore_RUNTIME_SOURCES})
-            get_filename_component(_name ${_file} NAME_WE)
-            add_custom_command(
-                OUTPUT ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/runtime/${_name}.bc
-                COMMAND ${PYTHON_EXECUTABLE} ${JAVASCRIPTCORE_DIR}/create-llvm-ir-from-source-file.py ${_file} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY} ${CLANG_EXE} "${JSC_INCLUDES}"
-                WORKING_DIRECTORY "${JAVASCRIPTCORE_DIR}"
-                VERBATIM)
-
-            ADD_SOURCE_DEPENDENCIES(${CMAKE_CURRENT_SOURCE_DIR}/ftl/FTLState.cpp ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/runtime/${_name}.bc)
-            list(APPEND LLVM_BITCODE_FILES
-                ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/runtime/${_name}.bc
-            )
-        endforeach ()
-
-        get_filename_component(LLVM_BINS ${LLVM_CONFIG_EXE} PATH)
-
-        add_custom_command(
-            OUTPUT ${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/InlineRuntimeSymbolTable.h
-            MAIN_DEPENDENCY ${JAVASCRIPTCORE_DIR}/create-symbol-table-index.py
-            DEPENDS ${LLVM_BITCODE_FILES}
-            COMMAND ${PYTHON_EXECUTABLE} ${JAVASCRIPTCORE_DIR}/create-symbol-table-index.py ${CMAKE_RUNTIME_OUTPUT_DIRECTORY} ${JAVASCRIPTCORE_DIR} ${DERIVED_SOURCES_JAVASCRIPTCORE_DIR} ${LLVM_BINS}
-            WORKING_DIRECTORY "${JAVASCRIPTCORE_DIR}"
-            VERBATIM)
-
-        ADD_SOURCE_DEPENDENCIES(${CMAKE_CURRENT_SOURCE_DIR}/ftl/FTLState.cpp ${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/InlineRuntimeSymbolTable.h)
-    endif ()
-
     WEBKIT_WRAP_SOURCELIST(${llvmForJSC_SOURCES})
     add_library(llvmForJSC SHARED ${llvmForJSC_SOURCES} ${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/WebKitLLVMLibraryToken.h)
     target_link_libraries(llvmForJSC ${LLVM_STATIC_LIBRARIES} "pthread" "dl" -Wl,--version-script=${JAVASCRIPTCORE_DIR}/llvm/library/libllvmForJSC.version)
@@ -879,8 +867,8 @@ if (ENABLE_FTL_JIT)
         ftl/FTLLocation.cpp
         ftl/FTLLowerDFGToLLVM.cpp
         ftl/FTLOSREntry.cpp
-        ftl/FTLOSRExitCompiler.cpp
         ftl/FTLOSRExit.cpp
+        ftl/FTLOSRExitCompiler.cpp
         ftl/FTLOperations.cpp
         ftl/FTLOutput.cpp
         ftl/FTLRecoveryOpcode.cpp
@@ -925,9 +913,6 @@ set(JavaScriptCore_FORWARDING_HEADERS_DIRECTORIES
     debugger
     heap
     inspector
-    inspector/agents
-    inspector/augmentable
-    inspector/remote
     interpreter
     jit
     llint
@@ -937,6 +922,11 @@ set(JavaScriptCore_FORWARDING_HEADERS_DIRECTORIES
     yarr
 
     collector/handles
+
+    inspector/agents
+    inspector/augmentable
+    inspector/remote
+
     ${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}
 )
 
@@ -986,7 +976,6 @@ set(JavaScriptCore_FORWARDING_HEADERS_FILES
 
     assembler/LinkBuffer.h
     assembler/MacroAssembler.h
-    assembler/MacroAssemblerCodeRef.h
     assembler/MacroAssemblerCodeRef.h
 
     inspector/augmentable/AugmentableInspectorController.h

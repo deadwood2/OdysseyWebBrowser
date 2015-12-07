@@ -55,7 +55,7 @@ void CoordinatedBackingStoreTile::swapBuffers(TextureMapper* textureMapper)
         texture->reset(m_tileRect.size(), m_surface->supportsAlpha());
 
     m_surface->copyToTexture(texture, m_sourceRect, m_surfaceOffset);
-    m_surface.clear();
+    m_surface = nullptr;
 }
 
 void CoordinatedBackingStoreTile::setBackBuffer(const IntRect& tileRect, const IntRect& sourceRect, PassRefPtr<CoordinatedSurface> buffer, const IntPoint& offset)
@@ -91,7 +91,7 @@ void CoordinatedBackingStore::updateTile(uint32_t id, const IntRect& sourceRect,
     it->value.setBackBuffer(tileRect, sourceRect, backBuffer, offset);
 }
 
-PassRefPtr<BitmapTexture> CoordinatedBackingStore::texture() const
+RefPtr<BitmapTexture> CoordinatedBackingStore::texture() const
 {
     for (auto& tile : m_tiles.values()) {
         RefPtr<BitmapTexture> texture = tile.texture();
@@ -99,7 +99,7 @@ PassRefPtr<BitmapTexture> CoordinatedBackingStore::texture() const
             return texture;
     }
 
-    return PassRefPtr<BitmapTexture>();
+    return RefPtr<BitmapTexture>();
 }
 
 void CoordinatedBackingStore::setSize(const FloatSize& size)

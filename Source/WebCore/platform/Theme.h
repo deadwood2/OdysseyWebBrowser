@@ -29,6 +29,7 @@
 #include "Color.h"
 #include "ControlStates.h"
 #include "FontCascade.h"
+#include "GraphicsTypes.h"
 #include "IntRect.h"
 #include "LengthBox.h"
 #include "LengthSize.h"
@@ -99,14 +100,16 @@ public:
     virtual bool controlRequiresPreWhiteSpace(ControlPart) const { return false; }
 
     // Method for painting a control. The rect is in zoomed coordinates.
-    virtual void paint(ControlPart, ControlStates*, GraphicsContext*, const FloatRect& /*zoomedRect*/, float /*zoomFactor*/, ScrollView*) { }
+    virtual void paint(ControlPart, ControlStates*, GraphicsContext*, const FloatRect& /*zoomedRect*/, float /*zoomFactor*/, ScrollView*, float /*deviceScaleFactor*/, float /*pageScaleFactor*/) { }
 
     // Some controls may spill out of their containers (e.g., the check on an OS X checkbox).  When these controls repaint,
     // the theme needs to communicate this inflated rect to the engine so that it can invalidate the whole control.
     // The rect passed in is in zoomed coordinates, so the inflation should take that into account and make sure the inflation
     // amount is also scaled by the zoomFactor.
     virtual void inflateControlPaintRect(ControlPart, const ControlStates*, FloatRect& /*zoomedRect*/, float /*zoomFactor*/) const { }
-    
+
+    virtual void drawNamedImage(const String&, GraphicsContext*, const FloatRect&) const;
+
     // This method is called once, from RenderTheme::adjustDefaultStyleSheet(), to let each platform adjust
     // the default CSS rules in html.css.
     static String defaultStyleSheet();

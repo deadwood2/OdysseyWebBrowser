@@ -30,6 +30,8 @@
 
 #include "AVMediaCaptureSource.h"
 
+OBJC_CLASS AVCaptureVideoPreviewLayer;
+
 typedef const struct opaqueCMFormatDescription *CMFormatDescriptionRef;
 
 namespace WebCore {
@@ -40,7 +42,12 @@ public:
 
     virtual RefPtr<RealtimeMediaSourceCapabilities> capabilities() const override;
     virtual void captureOutputDidOutputSampleBufferFromConnection(AVCaptureOutput*, CMSampleBufferRef, AVCaptureConnection*) override;
+    
+    virtual int32_t width() const { return m_width; }
+    virtual int32_t height() const { return m_height; }
 
+    AVCaptureVideoPreviewLayer* previewLayer() { return m_videoPreviewLayer.get(); }
+    
 private:
     AVVideoCaptureSource(AVCaptureDevice*, const AtomicString&, PassRefPtr<MediaConstraints>);
     virtual ~AVVideoCaptureSource();
@@ -55,6 +62,7 @@ private:
 
     RetainPtr<AVCaptureConnection> m_videoConnection;
     RetainPtr<CMFormatDescriptionRef> m_videoFormatDescription;
+    RetainPtr<AVCaptureVideoPreviewLayer> m_videoPreviewLayer;
     Vector<Float64> m_videoFrameTimeStamps;
     Float64 m_frameRate;
     int32_t m_width;

@@ -28,6 +28,7 @@
 
 #include "objc_instance.h"
 #include "WebScriptObject.h"
+#include "WebScriptObjectProtocol.h"
 
 namespace JSC {
 namespace Bindings {
@@ -99,7 +100,7 @@ Method* ObjcClass::methodNamed(PropertyName propertyName, Instance*) const
 {
     String name(propertyName.publicName());
     if (name.isNull())
-        return 0;
+        return nullptr;
 
     if (Method* method = m_methodCache.get(name.impl()))
         return method;
@@ -150,7 +151,7 @@ Field* ObjcClass::fieldNamed(PropertyName propertyName, Instance* instance) cons
 {
     String name(propertyName.publicName());
     if (name.isNull())
-        return 0;
+        return nullptr;
 
     Field* field = m_fieldCache.get(name.impl());
     if (field)
@@ -162,7 +163,10 @@ Field* ObjcClass::fieldNamed(PropertyName propertyName, Instance* instance) cons
     RetainPtr<CFStringRef> fieldName = adoptCF(CFStringCreateWithCString(NULL, jsName.data(), kCFStringEncodingASCII));
     id targetObject = (static_cast<ObjcInstance*>(instance))->getObject();
 #if PLATFORM(IOS)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wundeclared-selector"
     id attributes = [targetObject respondsToSelector:@selector(attributeKeys)] ? [targetObject performSelector:@selector(attributeKeys)] : nil;
+#pragma clang diagnostic pop
 #else
     id attributes = [targetObject attributeKeys];
 #endif
@@ -239,6 +243,10 @@ JSValue ObjcClass::fallbackObject(ExecState* exec, Instance* instance, PropertyN
     
     if (![targetObject respondsToSelector:@selector(invokeUndefinedMethodFromWebScript:withArguments:)])
         return jsUndefined();
+
+    if (!propertyName.publicName())
+        return jsUndefined();
+
     return ObjcFallbackObjectImp::create(exec, exec->lexicalGlobalObject(), objcInstance, propertyName.publicName());
 }
 

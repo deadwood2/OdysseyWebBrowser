@@ -74,7 +74,6 @@ class DownloadProxy;
 class GeolocationPermissionRequestProxy;
 class NotificationPermissionRequest;
 class UserMediaPermissionRequestProxy;
-class WebApplicationCacheManagerProxy;
 class WebBackForwardList;
 class WebBackForwardListItem;
 class WebBatteryManagerProxy;
@@ -92,29 +91,25 @@ class WebGrammarDetail;
 class WebHitTestResult;
 class WebIconDatabase;
 class WebInspectorProxy;
-class WebKeyValueStorageManager;
 class WebMediaCacheManagerProxy;
+class WebMediaSessionMetadata;
 class WebNotification;
 class WebNotificationManagerProxy;
 class WebNotificationProvider;
 class WebOpenPanelParameters;
 class WebOpenPanelResultListenerProxy;
-class WebOriginDataManagerProxy;
 class WebPageGroup;
 class WebPageProxy;
-class WebPluginSiteDataManager;
 class WebPreferences;
 class WebProcessPool;
 class WebProtectionSpace;
 class WebRenderLayer;
 class WebRenderObject;
-class WebResourceCacheManagerProxy;
 class WebTextChecker;
 class WebUserContentControllerProxy;
 class WebVibrationProxy;
 class WebViewportAttributes;
 
-WK_ADD_API_MAPPING(WKApplicationCacheManagerRef, WebApplicationCacheManagerProxy)
 WK_ADD_API_MAPPING(WKAuthenticationChallengeRef, AuthenticationChallengeProxy)
 WK_ADD_API_MAPPING(WKAuthenticationDecisionListenerRef, AuthenticationDecisionListener)
 WK_ADD_API_MAPPING(WKBackForwardListItemRef, WebBackForwardListItem)
@@ -122,7 +117,6 @@ WK_ADD_API_MAPPING(WKBackForwardListRef, WebBackForwardList)
 WK_ADD_API_MAPPING(WKBatteryManagerRef, WebBatteryManagerProxy)
 WK_ADD_API_MAPPING(WKBatteryStatusRef, WebBatteryStatus)
 WK_ADD_API_MAPPING(WKBundleHitTestResultMediaType, BundleHitTestResultMediaType)
-WK_ADD_API_MAPPING(WKResourceCacheManagerRef, WebResourceCacheManagerProxy)
 WK_ADD_API_MAPPING(WKColorPickerResultListenerRef, WebColorPickerResultListenerProxy)
 WK_ADD_API_MAPPING(WKContextRef, WebProcessPool)
 WK_ADD_API_MAPPING(WKContextConfigurationRef, API::ProcessPoolConfiguration)
@@ -141,8 +135,8 @@ WK_ADD_API_MAPPING(WKGrammarDetailRef, WebGrammarDetail)
 WK_ADD_API_MAPPING(WKHitTestResultRef, WebHitTestResult)
 WK_ADD_API_MAPPING(WKIconDatabaseRef, WebIconDatabase)
 WK_ADD_API_MAPPING(WKInspectorRef, WebInspectorProxy)
-WK_ADD_API_MAPPING(WKKeyValueStorageManagerRef, WebKeyValueStorageManager)
 WK_ADD_API_MAPPING(WKMediaCacheManagerRef, WebMediaCacheManagerProxy)
+WK_ADD_API_MAPPING(WKMediaSessionMetadataRef, WebMediaSessionMetadata)
 WK_ADD_API_MAPPING(WKNavigationActionRef, API::NavigationAction)
 WK_ADD_API_MAPPING(WKNavigationDataRef, API::NavigationData)
 WK_ADD_API_MAPPING(WKNavigationRef, API::Navigation)
@@ -153,11 +147,9 @@ WK_ADD_API_MAPPING(WKNotificationProviderRef, WebNotificationProvider)
 WK_ADD_API_MAPPING(WKNotificationRef, WebNotification)
 WK_ADD_API_MAPPING(WKOpenPanelParametersRef, WebOpenPanelParameters)
 WK_ADD_API_MAPPING(WKOpenPanelResultListenerRef, WebOpenPanelResultListenerProxy)
-WK_ADD_API_MAPPING(WKOriginDataManagerRef, WebOriginDataManagerProxy)
 WK_ADD_API_MAPPING(WKPageGroupRef, WebPageGroup)
 WK_ADD_API_MAPPING(WKPageConfigurationRef, API::PageConfiguration)
 WK_ADD_API_MAPPING(WKPageRef, WebPageProxy)
-WK_ADD_API_MAPPING(WKPluginSiteDataManagerRef, WebPluginSiteDataManager)
 WK_ADD_API_MAPPING(WKPreferencesRef, WebPreferences)
 WK_ADD_API_MAPPING(WKProtectionSpaceRef, WebProtectionSpace)
 WK_ADD_API_MAPPING(WKRenderLayerRef, WebRenderLayer)
@@ -477,8 +469,10 @@ inline WKPluginLoadPolicy toWKPluginLoadPolicy(PluginModuleLoadPolicy pluginModu
         return kWKPluginLoadPolicyLoadNormally;
     case PluginModuleLoadUnsandboxed:
         return kWKPluginLoadPolicyLoadUnsandboxed;
-    case PluginModuleBlocked:
+    case PluginModuleBlockedForSecurity:
         return kWKPluginLoadPolicyBlocked;
+    case PluginModuleBlockedForCompatibility:
+        return kWKPluginLoadPolicyBlockedForCompatibility;
     }
     
     ASSERT_NOT_REACHED();
@@ -510,13 +504,15 @@ inline PluginModuleLoadPolicy toPluginModuleLoadPolicy(WKPluginLoadPolicy plugin
     case kWKPluginLoadPolicyLoadNormally:
         return PluginModuleLoadNormally;
     case kWKPluginLoadPolicyBlocked:
-        return PluginModuleBlocked;
+        return PluginModuleBlockedForSecurity;
+    case kWKPluginLoadPolicyBlockedForCompatibility:
+        return PluginModuleBlockedForCompatibility;
     case kWKPluginLoadPolicyLoadUnsandboxed:
         return PluginModuleLoadUnsandboxed;
     }
     
     ASSERT_NOT_REACHED();
-    return PluginModuleBlocked;
+    return PluginModuleBlockedForSecurity;
 }
 
 inline WebCore::PluginLoadClientPolicy toPluginLoadClientPolicy(WKPluginLoadClientPolicy pluginLoadClientPolicy)

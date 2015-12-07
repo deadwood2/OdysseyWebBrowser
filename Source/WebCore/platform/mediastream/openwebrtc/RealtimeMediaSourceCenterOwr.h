@@ -46,17 +46,19 @@ namespace WebCore {
 class MediaStreamPrivate;
 class RealtimeMediaSource;
 class MediaStreamSourcesQueryClient;
+class TrackSourceInfo;
 
 class RealtimeMediaSourceCenterOwr final : public RealtimeMediaSourceCenter {
 public:
     RealtimeMediaSourceCenterOwr();
     ~RealtimeMediaSourceCenterOwr();
 
-    virtual void validateRequestConstraints(PassRefPtr<MediaStreamCreationClient>, PassRefPtr<MediaConstraints> audioConstraints, PassRefPtr<MediaConstraints> videoConstraints);
-    virtual void createMediaStream(PassRefPtr<MediaStreamCreationClient>, PassRefPtr<MediaConstraints> audioConstraints, PassRefPtr<MediaConstraints> videoConstraints);
-    virtual bool getMediaStreamTrackSources(PassRefPtr<MediaStreamTrackSourcesRequestClient>) override;
+    void validateRequestConstraints(PassRefPtr<MediaStreamCreationClient>, PassRefPtr<MediaConstraints> audioConstraints, PassRefPtr<MediaConstraints> videoConstraints) override;
+    void createMediaStream(PassRefPtr<MediaStreamCreationClient>, PassRefPtr<MediaConstraints> audioConstraints, PassRefPtr<MediaConstraints> videoConstraints) override;
+    bool getMediaStreamTrackSources(PassRefPtr<MediaStreamTrackSourcesRequestClient>) override;
 
     void mediaSourcesAvailable(GList* sources);
+    RefPtr<TrackSourceInfo> sourceWithUID(const String&, RealtimeMediaSource::Type, MediaConstraints*) override;
 
 private:
     PassRefPtr<RealtimeMediaSource> firstSource(RealtimeMediaSource::Type);

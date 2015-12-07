@@ -32,6 +32,7 @@
 #include "DFGAbstractInterpreterInlines.h"
 #include "DFGInPlaceAbstractState.h"
 #include "DFGOSRAvailabilityAnalysisPhase.h"
+#include "DFGOSRExitFuzz.h"
 #include "DirectArguments.h"
 #include "FTLAbstractHeapRepository.h"
 #include "FTLAvailableRecovery.h"
@@ -55,15 +56,13 @@
 #include <unordered_set>
 #include <wtf/ProcessID.h>
 
-#if ENABLE(FTL_NATIVE_CALL_INLINING)
-#include "BundlePath.h"
-#endif
-
 namespace JSC { namespace FTL {
 
 using namespace DFG;
 
-static std::atomic<int> compileCounter;
+namespace {
+
+std::atomic<int> compileCounter;
 
 #if ASSERT_DISABLED
 NO_RETURN_DUE_TO_CRASH static void ftlUnreachable()
@@ -154,29 +153,6 @@ public:
         createPhiVariables();
 
         auto preOrder = m_graph.blocksInPreOrder();
-
-        int maxNumberOfArguments = -1;
-        for (BasicBlock* block : preOrder) {
-            for (unsigned nodeIndex = block->size(); nodeIndex--; ) {
-                Node* node = block->at(nodeIndex);
-                switch (node->op()) {
-                case NativeCall:
-                case NativeConstruct: {
-                    int numArgs = node->numChildren();
-                    if (numArgs > maxNumberOfArguments)
-                        maxNumberOfArguments = numArgs;
-                    break;
-                }
-                default:
-                    break;
-                }
-            }
-        }
-        
-        if (maxNumberOfArguments >= 0) {
-            m_execState = m_out.alloca(arrayType(m_out.int64, JSStack::CallFrameHeaderSize + maxNumberOfArguments));
-            m_execStorage = m_out.ptrToInt(m_execState, m_out.intPtr);        
-        }
 
         LValue capturedAlloca = m_out.alloca(arrayType(m_out.int64, m_graph.m_nextMachineLocal));
         
@@ -754,12 +730,6 @@ private:
         case ForwardVarargs:
             compileForwardVarargs();
             break;
-#if ENABLE(FTL_NATIVE_CALL_INLINING)
-        case NativeCall:
-        case NativeConstruct:
-            compileNativeCallOrConstruct();
-            break;
-#endif
         case Jump:
             compileJump();
             break;
@@ -958,12 +928,113 @@ private:
     void compileDoubleRep()
     {
         switch (m_node->child1().useKind()) {
+        case RealNumberUse: {
+            LValue value = lowJSValue(m_node->child1(), ManualOperandSpeculation);
+            
+            LValue doubleValue = unboxDouble(value);
+            
+            LBasicBlock intCase = FTL_NEW_BLOCK(m_out, ("DoubleRep RealNumberUse int case"));
+            LBasicBlock continuation = FTL_NEW_BLOCK(m_out, ("DoubleRep continuation"));
+            
+            ValueFromBlock fastResult = m_out.anchor(doubleValue);
+            m_out.branch(
+                m_out.doubleEqual(doubleValue, doubleValue),
+                usually(continuation), rarely(intCase));
+            
+            LBasicBlock lastNext = m_out.appendTo(intCase, continuation);
+            
+            FTL_TYPE_CHECK(
+                jsValueValue(value), m_node->child1(), SpecBytecodeRealNumber,
+                isNotInt32(value, provenType(m_node->child1()) & ~SpecFullDouble));
+            ValueFromBlock slowResult = m_out.anchor(m_out.intToDouble(unboxInt32(value)));
+            m_out.jump(continuation);
+            
+            m_out.appendTo(continuation, lastNext);
+            
+            setDouble(m_out.phi(m_out.doubleType, fastResult, slowResult));
+            return;
+        }
+            
         case NotCellUse:
         case NumberUse: {
             bool shouldConvertNonNumber = m_node->child1().useKind() == NotCellUse;
-
+            
             LValue value = lowJSValue(m_node->child1(), ManualOperandSpeculation);
-            setDouble(jsValueToDouble(m_node->child1(), value, shouldConvertNonNumber));
+
+            LBasicBlock intCase = FTL_NEW_BLOCK(m_out, ("jsValueToDouble unboxing int case"));
+            LBasicBlock doubleTesting = FTL_NEW_BLOCK(m_out, ("jsValueToDouble testing double case"));
+            LBasicBlock doubleCase = FTL_NEW_BLOCK(m_out, ("jsValueToDouble unboxing double case"));
+            LBasicBlock nonDoubleCase = FTL_NEW_BLOCK(m_out, ("jsValueToDouble testing undefined case"));
+            LBasicBlock continuation = FTL_NEW_BLOCK(m_out, ("jsValueToDouble unboxing continuation"));
+            
+            m_out.branch(
+                isNotInt32(value, provenType(m_node->child1())),
+                unsure(doubleTesting), unsure(intCase));
+            
+            LBasicBlock lastNext = m_out.appendTo(intCase, doubleTesting);
+            
+            ValueFromBlock intToDouble = m_out.anchor(
+                m_out.intToDouble(unboxInt32(value)));
+            m_out.jump(continuation);
+            
+            m_out.appendTo(doubleTesting, doubleCase);
+            LValue valueIsNumber = isNumber(value, provenType(m_node->child1()));
+            m_out.branch(valueIsNumber, usually(doubleCase), rarely(nonDoubleCase));
+
+            m_out.appendTo(doubleCase, nonDoubleCase);
+            ValueFromBlock unboxedDouble = m_out.anchor(unboxDouble(value));
+            m_out.jump(continuation);
+
+            if (shouldConvertNonNumber) {
+                LBasicBlock undefinedCase = FTL_NEW_BLOCK(m_out, ("jsValueToDouble converting undefined case"));
+                LBasicBlock testNullCase = FTL_NEW_BLOCK(m_out, ("jsValueToDouble testing null case"));
+                LBasicBlock nullCase = FTL_NEW_BLOCK(m_out, ("jsValueToDouble converting null case"));
+                LBasicBlock testBooleanTrueCase = FTL_NEW_BLOCK(m_out, ("jsValueToDouble testing boolean true case"));
+                LBasicBlock convertBooleanTrueCase = FTL_NEW_BLOCK(m_out, ("jsValueToDouble convert boolean true case"));
+                LBasicBlock convertBooleanFalseCase = FTL_NEW_BLOCK(m_out, ("jsValueToDouble convert boolean false case"));
+
+                m_out.appendTo(nonDoubleCase, undefinedCase);
+                LValue valueIsUndefined = m_out.equal(value, m_out.constInt64(ValueUndefined));
+                m_out.branch(valueIsUndefined, unsure(undefinedCase), unsure(testNullCase));
+
+                m_out.appendTo(undefinedCase, testNullCase);
+                ValueFromBlock convertedUndefined = m_out.anchor(m_out.constDouble(PNaN));
+                m_out.jump(continuation);
+
+                m_out.appendTo(testNullCase, nullCase);
+                LValue valueIsNull = m_out.equal(value, m_out.constInt64(ValueNull));
+                m_out.branch(valueIsNull, unsure(nullCase), unsure(testBooleanTrueCase));
+
+                m_out.appendTo(nullCase, testBooleanTrueCase);
+                ValueFromBlock convertedNull = m_out.anchor(m_out.constDouble(0));
+                m_out.jump(continuation);
+
+                m_out.appendTo(testBooleanTrueCase, convertBooleanTrueCase);
+                LValue valueIsBooleanTrue = m_out.equal(value, m_out.constInt64(ValueTrue));
+                m_out.branch(valueIsBooleanTrue, unsure(convertBooleanTrueCase), unsure(convertBooleanFalseCase));
+
+                m_out.appendTo(convertBooleanTrueCase, convertBooleanFalseCase);
+                ValueFromBlock convertedTrue = m_out.anchor(m_out.constDouble(1));
+                m_out.jump(continuation);
+
+                m_out.appendTo(convertBooleanFalseCase, continuation);
+
+                LValue valueIsNotBooleanFalse = m_out.notEqual(value, m_out.constInt64(ValueFalse));
+                FTL_TYPE_CHECK(jsValueValue(value), m_node->child1(), ~SpecCell, valueIsNotBooleanFalse);
+                ValueFromBlock convertedFalse = m_out.anchor(m_out.constDouble(0));
+                m_out.jump(continuation);
+
+                m_out.appendTo(continuation, lastNext);
+                setDouble(m_out.phi(m_out.doubleType, intToDouble, unboxedDouble, convertedUndefined, convertedNull, convertedTrue, convertedFalse));
+                return;
+            }
+            m_out.appendTo(nonDoubleCase, continuation);
+            FTL_TYPE_CHECK(jsValueValue(value), m_node->child1(), SpecBytecodeNumber, m_out.booleanTrue);
+            m_out.unreachable();
+
+            m_out.appendTo(continuation, lastNext);
+
+            setDouble(m_out.phi(m_out.doubleType, intToDouble, unboxedDouble));
             return;
         }
             
@@ -2069,8 +2140,8 @@ private:
             
             m_out.appendTo(notCellCase, continuation);
             ValueFromBlock notCellResult = m_out.anchor(vmCall(
-                m_out.operation(operationGetById),
-                m_callFrame, getUndef(m_out.intPtr), value,
+                m_out.operation(operationGetByIdGeneric),
+                m_callFrame, value,
                 m_out.constIntPtr(m_graph.identifiers()[m_node->identifierNumber()])));
             m_out.jump(continuation);
             
@@ -2952,11 +3023,12 @@ private:
         LValue scope = lowCell(m_node->child1());
         SymbolTable* table = m_node->castOperand<SymbolTable*>();
         Structure* structure = m_graph.globalObjectFor(m_node->origin.semantic)->activationStructure();
-        
+        JSValue initializationValue = m_node->initializationValueForActivation();
+        ASSERT(initializationValue.isUndefined() || initializationValue == jsTDZValue());
         if (table->singletonScope()->isStillValid()) {
             LValue callResult = vmCall(
                 m_out.operation(operationCreateActivationDirect), m_callFrame, weakPointer(structure),
-                scope, weakPointer(table));
+                scope, weakPointer(table), m_out.constInt64(JSValue::encode(initializationValue)));
             setJSValue(callResult);
             return;
         }
@@ -2976,7 +3048,7 @@ private:
         
         for (unsigned i = 0; i < table->scopeSize(); ++i) {
             m_out.store64(
-                m_out.constInt64(JSValue::encode(jsUndefined())),
+                m_out.constInt64(JSValue::encode(initializationValue)),
                 fastObject, m_heaps.JSEnvironmentRecord_variables[i]);
         }
         
@@ -2986,7 +3058,7 @@ private:
         m_out.appendTo(slowPath, continuation);
         LValue callResult = vmCall(
             m_out.operation(operationCreateActivationDirect), m_callFrame, weakPointer(structure),
-            scope, weakPointer(table));
+            scope, weakPointer(table), m_out.constInt64(JSValue::encode(initializationValue)));
         ValueFromBlock slowResult = m_out.anchor(callResult);
         m_out.jump(continuation);
         
@@ -4054,7 +4126,23 @@ private:
                 m_out.equal(lowStringIdent(m_node->child1()), lowStringIdent(m_node->child2())));
             return;
         }
+
+        if (m_node->isBinaryUseKind(ObjectUse, UntypedUse)) {
+            setBoolean(
+                m_out.equal(
+                    lowNonNullObject(m_node->child1()),
+                    lowJSValue(m_node->child2())));
+            return;
+        }
         
+        if (m_node->isBinaryUseKind(UntypedUse, ObjectUse)) {
+            setBoolean(
+                m_out.equal(
+                    lowNonNullObject(m_node->child2()),
+                    lowJSValue(m_node->child1())));
+            return;
+        }
+
         if (m_node->isBinaryUseKind(ObjectUse)) {
             setBoolean(
                 m_out.equal(
@@ -4150,53 +4238,6 @@ private:
     {
         setBoolean(m_out.bitNot(boolify(m_node->child1())));
     }
-#if ENABLE(FTL_NATIVE_CALL_INLINING)
-    void compileNativeCallOrConstruct() 
-    {
-        int numPassedArgs = m_node->numChildren() - 1;
-        int numArgs = numPassedArgs;
-
-        JSFunction* knownFunction = m_node->castOperand<JSFunction*>();
-        NativeFunction function = knownFunction->nativeFunction();
-
-        Dl_info info;
-        if (!dladdr((void*)function, &info))
-            ASSERT(false); // if we couldn't find the native function this doesn't bode well.
-
-        LValue callee = getFunctionBySymbol(info.dli_sname);
-
-        bool notInlinable;
-        if ((notInlinable = !callee))
-            callee = m_out.operation(function);
-
-        m_out.storePtr(m_callFrame, m_execStorage, m_heaps.CallFrame_callerFrame);
-        m_out.storePtr(constNull(m_out.intPtr), addressFor(m_execStorage, JSStack::CodeBlock));
-        m_out.storePtr(weakPointer(knownFunction), addressFor(m_execStorage, JSStack::Callee));
-
-        m_out.store64(m_out.constInt64(numArgs), addressFor(m_execStorage, JSStack::ArgumentCount));
-
-        for (int i = 0; i < numPassedArgs; ++i) {
-            m_out.storePtr(lowJSValue(m_graph.varArgChild(m_node, 1 + i)),
-                addressFor(m_execStorage, JSStack::ThisArgument, i * sizeof(Register)));
-        }
-
-        LValue calleeCallFrame = m_out.address(m_execState, m_heaps.CallFrame_callerFrame).value();
-        m_out.storePtr(m_out.ptrToInt(calleeCallFrame, m_out.intPtr), m_out.absolute(&vm().topCallFrame));
-
-        LType typeCalleeArg;
-        getParamTypes(getElementType(typeOf(callee)), &typeCalleeArg);
-
-        LValue argument = notInlinable 
-            ? m_out.ptrToInt(calleeCallFrame, typeCalleeArg) 
-            : m_out.bitCast(calleeCallFrame, typeCalleeArg);
-        LValue call = vmCall(callee, argument);
-
-        if (verboseCompilationEnabled())
-            dataLog("Native calling: ", info.dli_sname, "\n");
-
-        setJSValue(call);
-    }
-#endif
 
     void compileCallOrConstruct()
     {
@@ -5167,12 +5208,7 @@ private:
         for (unsigned i = 0; i < data.m_properties.size(); ++i)
             values.append(lowJSValue(m_graph.varArgChild(m_node, 1 + i)));
         
-        StructureSet set;
-        m_interpreter.phiChildren()->forAllTransitiveIncomingValues(
-            m_graph.varArgChild(m_node, 0).node(),
-            [&] (Node* incoming) {
-                set.add(incoming->castConstant<Structure*>());
-            });
+        const StructureSet& set = m_node->structureSet();
         
         Vector<LBasicBlock, 1> blocks(set.size());
         for (unsigned i = set.size(); i--;)
@@ -5271,10 +5307,11 @@ private:
 
         Vector<LValue, 8> values;
         for (unsigned i = 0; i < data.m_properties.size(); ++i)
-            values.append(lowJSValue(m_graph.varArgChild(m_node, 1 + i)));
+            values.append(lowJSValue(m_graph.varArgChild(m_node, 2 + i)));
 
-        LValue scope = lowCell(m_graph.varArgChild(m_node, 0));
+        LValue scope = lowCell(m_graph.varArgChild(m_node, 1));
         SymbolTable* table = m_node->castOperand<SymbolTable*>();
+        ASSERT(table == m_graph.varArgChild(m_node, 0)->castConstant<SymbolTable*>());
         Structure* structure = m_graph.globalObjectFor(m_node->origin.semantic)->activationStructure();
 
         LBasicBlock slowPath = FTL_NEW_BLOCK(m_out, ("MaterializeCreateActivation slow path"));
@@ -5293,9 +5330,14 @@ private:
         m_out.jump(continuation);
 
         m_out.appendTo(slowPath, continuation);
+        // We ensure allocation sinking explictly sets bottom values for all field members. 
+        // Therefore, it doesn't matter what JSValue we pass in as the initialization value
+        // because all fields will be overwritten.
+        // FIXME: It may be worth creating an operation that calls a constructor on JSLexicalEnvironment that 
+        // doesn't initialize every slot because we are guaranteed to do that here.
         LValue callResult = vmCall(
             m_out.operation(operationCreateActivationDirect), m_callFrame, weakPointer(structure),
-            scope, weakPointer(table));
+            scope, weakPointer(table), m_out.constInt64(JSValue::encode(jsUndefined())));
         ValueFromBlock slowResult =  m_out.anchor(callResult);
         m_out.jump(continuation);
 
@@ -5325,123 +5367,6 @@ private:
 
         setJSValue(activation);
     }
-
-#if ENABLE(FTL_NATIVE_CALL_INLINING)
-    LValue getFunctionBySymbol(const CString symbol)
-    {
-        if (!m_ftlState.symbolTable.contains(symbol)) 
-            return nullptr;
-        if (!getModuleByPathForSymbol(m_ftlState.symbolTable.get(symbol), symbol))
-            return nullptr;
-        return getNamedFunction(m_ftlState.module, symbol.data());
-    }
-
-    bool getModuleByPathForSymbol(const CString path, const CString symbol)
-    {
-        if (m_ftlState.nativeLoadedLibraries.contains(path)) {
-            LValue function = getNamedFunction(m_ftlState.module, symbol.data());
-            if (!isInlinableSize(function)) {
-                // We had no choice but to compile this function, but don't try to inline it ever again.
-                m_ftlState.symbolTable.remove(symbol);
-                return false;
-            }
-            return true;
-        }
-
-        LMemoryBuffer memBuf;
-        
-        ASSERT(isX86() || isARM64());
-
-#if PLATFORM(EFL)
-        const CString actualPath = toCString(bundlePath().data(), "/runtime/", path.data());
-#else
-        const CString actualPath = toCString(bundlePath().data(), 
-            isX86() ? "/Resources/Runtime/x86_64/" : "/Resources/Runtime/arm64/",
-            path.data());
-#endif
-
-        char* outMsg;
-        
-        if (createMemoryBufferWithContentsOfFile(actualPath.data(), &memBuf, &outMsg)) {
-            if (Options::verboseFTLFailure())
-                dataLog("Failed to load module at ", actualPath, "\n for symbol ", symbol, "\nERROR: ", outMsg, "\n");
-            disposeMessage(outMsg);
-            return false;
-        }
-
-        LModule module;
-
-        if (parseBitcodeInContext(m_ftlState.context, memBuf, &module, &outMsg)) {
-            if (Options::verboseFTLFailure())
-                dataLog("Failed to parse module at ", actualPath, "\n for symbol ", symbol, "\nERROR: ", outMsg, "\n");
-            disposeMemoryBuffer(memBuf);
-            disposeMessage(outMsg);
-            return false;
-        }
-
-        disposeMemoryBuffer(memBuf);
-
-        if (LValue function = getNamedFunction(m_ftlState.module, symbol.data())) {
-            if (!isInlinableSize(function)) {
-                m_ftlState.symbolTable.remove(symbol);
-                disposeModule(module);
-                return false;
-            }
-        }
-
-        Vector<CString> namedFunctions;
-        for (LValue function = getFirstFunction(module); function; function = getNextFunction(function)) {
-            CString functionName(getValueName(function));
-            namedFunctions.append(functionName);
-            
-            for (LBasicBlock basicBlock = getFirstBasicBlock(function); basicBlock; basicBlock = getNextBasicBlock(basicBlock)) {
-                for (LValue instruction = getFirstInstruction(basicBlock); instruction; instruction = getNextInstruction(instruction)) {
-                    setMetadata(instruction, m_tbaaKind, nullptr);
-                    setMetadata(instruction, m_tbaaStructKind, nullptr);
-                }
-            }
-        }
-
-        Vector<CString> namedGlobals;
-        for (LValue global = getFirstGlobal(module); global; global = getNextGlobal(global)) {
-            CString globalName(getValueName(global));
-            namedGlobals.append(globalName);
-        }
-
-        if (linkModules(m_ftlState.module, module, LLVMLinkerDestroySource, &outMsg)) {
-            if (Options::verboseFTLFailure())
-                dataLog("Failed to link module at ", actualPath, "\n for symbol ", symbol, "\nERROR: ", outMsg, "\n");
-            disposeMessage(outMsg);
-            return false;
-        }
-        
-        for (CString* symbol = namedFunctions.begin(); symbol != namedFunctions.end(); ++symbol) {
-            LValue function = getNamedFunction(m_ftlState.module, symbol->data());
-            LLVMLinkage linkage = getLinkage(function);
-            if (linkage != LLVMInternalLinkage && linkage != LLVMPrivateLinkage)
-                setVisibility(function, LLVMHiddenVisibility);
-            if (!isDeclaration(function)) {
-                setLinkage(function, LLVMPrivateLinkage);
-                setLinkage(function, LLVMAvailableExternallyLinkage);
-
-                if (ASSERT_DISABLED)
-                    removeFunctionAttr(function, LLVMStackProtectAttribute);
-            }
-        }
-
-        for (CString* symbol = namedGlobals.begin(); symbol != namedGlobals.end(); ++symbol) {
-            LValue global = getNamedGlobal(m_ftlState.module, symbol->data());
-            LLVMLinkage linkage = getLinkage(global);
-            if (linkage != LLVMInternalLinkage && linkage != LLVMPrivateLinkage)
-                setVisibility(global, LLVMHiddenVisibility);
-            if (!isDeclaration(global))
-                setLinkage(global, LLVMPrivateLinkage);
-        }
-
-        m_ftlState.nativeLoadedLibraries.add(path);
-        return true;
-    }
-#endif
 
     bool isInlinableSize(LValue function)
     {
@@ -5478,8 +5403,6 @@ private:
                 case PutById:
                 case Call:
                 case Construct:
-                case NativeCall:
-                case NativeConstruct:
                     return m_out.below(
                         m_callFrame,
                         m_out.loadPtr(
@@ -6200,7 +6123,7 @@ private:
             else {
                 LBasicBlock masqueradesCase = FTL_NEW_BLOCK(m_out, ("Boolify untyped masquerades case"));
                 
-                results.append(m_out.anchor(m_out.booleanFalse));
+                results.append(m_out.anchor(m_out.booleanTrue));
                 
                 m_out.branch(
                     m_out.testIsZero8(
@@ -7293,87 +7216,6 @@ private:
     {
         return m_out.sub(m_out.bitCast(doubleValue, m_out.int64), m_tagTypeNumber);
     }
-    LValue jsValueToDouble(Edge edge, LValue boxedValue, bool shouldConvertNonNumber)
-    {
-        LBasicBlock intCase = FTL_NEW_BLOCK(m_out, ("jsValueToDouble unboxing int case"));
-        LBasicBlock doubleTesting = FTL_NEW_BLOCK(m_out, ("jsValueToDouble testing double case"));
-        LBasicBlock doubleCase = FTL_NEW_BLOCK(m_out, ("jsValueToDouble unboxing double case"));
-        LBasicBlock nonDoubleCase = FTL_NEW_BLOCK(m_out, ("jsValueToDouble testing undefined case"));
-        LBasicBlock continuation = FTL_NEW_BLOCK(m_out, ("jsValueToDouble unboxing continuation"));
-            
-        LValue isNotInt32;
-        if (!m_interpreter.needsTypeCheck(edge, SpecInt32))
-            isNotInt32 = m_out.booleanFalse;
-        else if (!m_interpreter.needsTypeCheck(edge, ~SpecInt32))
-            isNotInt32 = m_out.booleanTrue;
-        else
-            isNotInt32 = this->isNotInt32(boxedValue);
-        m_out.branch(isNotInt32, unsure(doubleTesting), unsure(intCase));
-            
-        LBasicBlock lastNext = m_out.appendTo(intCase, doubleTesting);
-            
-        ValueFromBlock intToDouble = m_out.anchor(
-            m_out.intToDouble(unboxInt32(boxedValue)));
-        m_out.jump(continuation);
-            
-        m_out.appendTo(doubleTesting, doubleCase);
-        LValue valueIsNumber = isNumber(boxedValue);
-        m_out.branch(valueIsNumber, usually(doubleCase), rarely(nonDoubleCase));
-
-        m_out.appendTo(doubleCase, nonDoubleCase);
-        ValueFromBlock unboxedDouble = m_out.anchor(unboxDouble(boxedValue));
-        m_out.jump(continuation);
-
-        if (shouldConvertNonNumber) {
-            LBasicBlock undefinedCase = FTL_NEW_BLOCK(m_out, ("jsValueToDouble converting undefined case"));
-            LBasicBlock testNullCase = FTL_NEW_BLOCK(m_out, ("jsValueToDouble testing null case"));
-            LBasicBlock nullCase = FTL_NEW_BLOCK(m_out, ("jsValueToDouble converting null case"));
-            LBasicBlock testBooleanTrueCase = FTL_NEW_BLOCK(m_out, ("jsValueToDouble testing boolean true case"));
-            LBasicBlock convertBooleanTrueCase = FTL_NEW_BLOCK(m_out, ("jsValueToDouble convert boolean true case"));
-            LBasicBlock convertBooleanFalseCase = FTL_NEW_BLOCK(m_out, ("jsValueToDouble convert boolean false case"));
-
-            m_out.appendTo(nonDoubleCase, undefinedCase);
-            LValue valueIsUndefined = m_out.equal(boxedValue, m_out.constInt64(ValueUndefined));
-            m_out.branch(valueIsUndefined, unsure(undefinedCase), unsure(testNullCase));
-
-            m_out.appendTo(undefinedCase, testNullCase);
-            ValueFromBlock convertedUndefined = m_out.anchor(m_out.constDouble(PNaN));
-            m_out.jump(continuation);
-
-            m_out.appendTo(testNullCase, nullCase);
-            LValue valueIsNull = m_out.equal(boxedValue, m_out.constInt64(ValueNull));
-            m_out.branch(valueIsNull, unsure(nullCase), unsure(testBooleanTrueCase));
-
-            m_out.appendTo(nullCase, testBooleanTrueCase);
-            ValueFromBlock convertedNull = m_out.anchor(m_out.constDouble(0));
-            m_out.jump(continuation);
-
-            m_out.appendTo(testBooleanTrueCase, convertBooleanTrueCase);
-            LValue valueIsBooleanTrue = m_out.equal(boxedValue, m_out.constInt64(ValueTrue));
-            m_out.branch(valueIsBooleanTrue, unsure(convertBooleanTrueCase), unsure(convertBooleanFalseCase));
-
-            m_out.appendTo(convertBooleanTrueCase, convertBooleanFalseCase);
-            ValueFromBlock convertedTrue = m_out.anchor(m_out.constDouble(1));
-            m_out.jump(continuation);
-
-            m_out.appendTo(convertBooleanFalseCase, continuation);
-
-            LValue valueIsNotBooleanFalse = m_out.notEqual(boxedValue, m_out.constInt64(ValueFalse));
-            FTL_TYPE_CHECK(jsValueValue(boxedValue), edge, ~SpecCell, valueIsNotBooleanFalse);
-            ValueFromBlock convertedFalse = m_out.anchor(m_out.constDouble(0));
-            m_out.jump(continuation);
-
-            m_out.appendTo(continuation, lastNext);
-            return m_out.phi(m_out.doubleType, intToDouble, unboxedDouble, convertedUndefined, convertedNull, convertedTrue, convertedFalse);
-        }
-        m_out.appendTo(nonDoubleCase, continuation);
-        FTL_TYPE_CHECK(jsValueValue(boxedValue), edge, SpecBytecodeNumber, m_out.booleanTrue);
-        m_out.unreachable();
-
-        m_out.appendTo(continuation, lastNext);
-
-        return m_out.phi(m_out.doubleType, intToDouble, unboxedDouble);
-    }
     
     LValue jsValueToStrictInt52(Edge edge, LValue boxedValue)
     {
@@ -7590,8 +7432,11 @@ private:
         case NumberUse:
             speculateNumber(edge);
             break;
+        case RealNumberUse:
+            speculateRealNumber(edge);
+            break;
         case DoubleRepRealUse:
-            speculateDoubleReal(edge);
+            speculateDoubleRepReal(edge);
             break;
         case DoubleRepMachineIntUse:
             speculateDoubleRepMachineInt(edge);
@@ -7917,7 +7762,33 @@ private:
         FTL_TYPE_CHECK(jsValueValue(value), edge, SpecBytecodeNumber, isNotNumber(value));
     }
     
-    void speculateDoubleReal(Edge edge)
+    void speculateRealNumber(Edge edge)
+    {
+        // Do an early return here because lowDouble() can create a lot of control flow.
+        if (!m_interpreter.needsTypeCheck(edge))
+            return;
+        
+        LValue value = lowJSValue(edge, ManualOperandSpeculation);
+        LValue doubleValue = unboxDouble(value);
+        
+        LBasicBlock intCase = FTL_NEW_BLOCK(m_out, ("speculateRealNumber int case"));
+        LBasicBlock continuation = FTL_NEW_BLOCK(m_out, ("speculateRealNumber continuation"));
+        
+        m_out.branch(
+            m_out.doubleEqual(doubleValue, doubleValue),
+            usually(continuation), rarely(intCase));
+        
+        LBasicBlock lastNext = m_out.appendTo(intCase, continuation);
+        
+        typeCheck(
+            jsValueValue(value), m_node->child1(), SpecBytecodeRealNumber,
+            isNotInt32(value, provenType(m_node->child1()) & ~SpecFullDouble));
+        m_out.jump(continuation);
+
+        m_out.appendTo(continuation, lastNext);
+    }
+    
+    void speculateDoubleRepReal(Edge edge)
     {
         // Do an early return here because lowDouble() can create a lot of control flow.
         if (!m_interpreter.needsTypeCheck(edge))
@@ -8097,6 +7968,25 @@ private:
             dataLog("    OSR exit #", m_ftlState.jitCode->osrExit.size(), " with availability: ", availabilityMap(), "\n");
             if (!m_availableRecoveries.isEmpty())
                 dataLog("        Available recoveries: ", listDump(m_availableRecoveries), "\n");
+        }
+        
+        if (doOSRExitFuzzing()) {
+            LValue numberOfFuzzChecks = m_out.add(
+                m_out.load32(m_out.absolute(&g_numberOfOSRExitFuzzChecks)),
+                m_out.int32One);
+            
+            m_out.store32(numberOfFuzzChecks, m_out.absolute(&g_numberOfOSRExitFuzzChecks));
+            
+            if (unsigned atOrAfter = Options::fireOSRExitFuzzAtOrAfter()) {
+                failCondition = m_out.bitOr(
+                    failCondition,
+                    m_out.aboveOrEqual(numberOfFuzzChecks, m_out.constInt32(atOrAfter)));
+            }
+            if (unsigned at = Options::fireOSRExitFuzzAt()) {
+                failCondition = m_out.bitOr(
+                    failCondition,
+                    m_out.equal(numberOfFuzzChecks, m_out.constInt32(at)));
+            }
         }
 
         ASSERT(m_ftlState.jitCode->osrExit.size() == m_ftlState.finalizer->osrExit.size());
@@ -8569,8 +8459,6 @@ private:
     LBasicBlock m_handleExceptions;
     HashMap<BasicBlock*, LBasicBlock> m_blocks;
     
-    LValue m_execState;
-    LValue m_execStorage;
     LValue m_callFrame;
     LValue m_captured;
     LValue m_tagTypeNumber;
@@ -8610,6 +8498,8 @@ private:
     unsigned m_tbaaKind;
     unsigned m_tbaaStructKind;
 };
+
+} // anonymous namespace
 
 void lowerDFGToLLVM(State& state)
 {

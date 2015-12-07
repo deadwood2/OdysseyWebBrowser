@@ -64,6 +64,10 @@ const char* JITCode::typeName(JITType jitType)
     }
 }
 
+void JITCode::validateReferences(const TrackedReferences&)
+{
+}
+
 JSValue JITCode::execute(VM* vm, ProtoCallFrame* protoCallFrame)
 {
     void* entryAddress;
@@ -115,6 +119,9 @@ JITCodeWithCodeRef::JITCodeWithCodeRef(CodeRef ref, JITType jitType)
 
 JITCodeWithCodeRef::~JITCodeWithCodeRef()
 {
+    if ((Options::showDisassembly() || (isOptimizingJIT(jitType()) && Options::showDFGDisassembly()))
+        && m_ref.executableMemory())
+        dataLog("Destroying JIT code at ", pointerDump(m_ref.executableMemory()), "\n");
 }
 
 void* JITCodeWithCodeRef::executableAddressAtOffset(size_t offset)

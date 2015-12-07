@@ -28,6 +28,7 @@
 
 #include "APIProcessPoolConfiguration.h"
 #include "APIWebsiteDataRecord.h"
+#include "NetworkProcessMessages.h"
 #include "StorageManager.h"
 #include "WebProcessPool.h"
 #include "WebsiteData.h"
@@ -36,6 +37,10 @@
 #include <WebCore/OriginLock.h>
 #include <WebCore/SecurityOrigin.h>
 #include <wtf/RunLoop.h>
+
+#if ENABLE(NETSCAPE_PLUGIN_API)
+#include "PluginProcessManager.h"
+#endif
 
 namespace WebKit {
 
@@ -54,14 +59,14 @@ static uint64_t generateIdentifier()
     return ++identifier;
 }
 
-RefPtr<WebsiteDataStore> WebsiteDataStore::createNonPersistent()
+Ref<WebsiteDataStore> WebsiteDataStore::createNonPersistent()
 {
-    return adoptRef(new WebsiteDataStore(generateNonPersistentSessionID()));
+    return adoptRef(*new WebsiteDataStore(generateNonPersistentSessionID()));
 }
 
-RefPtr<WebsiteDataStore> WebsiteDataStore::create(Configuration configuration)
+Ref<WebsiteDataStore> WebsiteDataStore::create(Configuration configuration)
 {
-    return adoptRef(new WebsiteDataStore(WTF::move(configuration)));
+    return adoptRef(*new WebsiteDataStore(WTF::move(configuration)));
 }
 
 WebsiteDataStore::WebsiteDataStore(Configuration configuration)
@@ -88,6 +93,13 @@ WebsiteDataStore::WebsiteDataStore(WebCore::SessionID sessionID)
 WebsiteDataStore::~WebsiteDataStore()
 {
     platformDestroy();
+
+#if ENABLE(NETWORK_PROCESS)
+    if (m_sessionID.isEphemeral()) {
+        for (auto& processPool : WebProcessPool::allProcessPools())
+            processPool->sendToNetworkingProcess(Messages::NetworkProcess::DestroyPrivateBrowsingSession(m_sessionID));
+    }
+#endif
 }
 
 void WebsiteDataStore::cloneSessionData(WebPageProxy& sourcePage, WebPageProxy& newPage)
@@ -186,6 +198,20 @@ void WebsiteDataStore::fetchData(WebsiteDataTypes dataTypes, std::function<void 
 
                 record.addCookieHostName(hostName);
             }
+
+#if ENABLE(NETSCAPE_PLUGIN_API)
+            for (auto& hostName : websiteData.hostNamesWithPluginData) {
+                auto displayName = WebsiteDataRecord::displayNameForPluginDataHostName(hostName);
+                if (!displayName)
+                    continue;
+
+                auto& record = m_websiteDataRecords.add(displayName, WebsiteDataRecord { }).iterator->value;
+                if (!record.displayName)
+                    record.displayName = WTF::move(displayName);
+
+                record.addPluginDataHostName(hostName);
+            }
+#endif
 
             callIfNeeded();
         }
@@ -363,6 +389,59 @@ void WebsiteDataStore::fetchData(WebsiteDataTypes dataTypes, std::function<void 
         });
     }
 
+#if ENABLE(NETSCAPE_PLUGIN_API)
+    if (dataTypes & WebsiteDataTypePlugInData && isPersistent()) {
+        class State {
+        public:
+            static void fetchData(Ref<CallbackAggregator>&& callbackAggregator, Vector<PluginModuleInfo>&& plugins)
+            {
+                new State(WTF::move(callbackAggregator), WTF::move(plugins));
+            }
+
+        private:
+            State(Ref<CallbackAggregator>&& callbackAggregator, Vector<PluginModuleInfo>&& plugins)
+                : m_callbackAggregator(WTF::move(callbackAggregator))
+                , m_plugins(WTF::move(plugins))
+            {
+                m_callbackAggregator->addPendingCallback();
+
+                fetchWebsiteDataForNextPlugin();
+            }
+
+            ~State()
+            {
+                ASSERT(m_plugins.isEmpty());
+            }
+
+            void fetchWebsiteDataForNextPlugin()
+            {
+                if (m_plugins.isEmpty()) {
+                    WebsiteData websiteData;
+                    websiteData.hostNamesWithPluginData = WTF::move(m_hostNames);
+
+                    m_callbackAggregator->removePendingCallback(WTF::move(websiteData));
+
+                    delete this;
+                    return;
+                }
+
+                auto plugin = m_plugins.takeLast();
+                PluginProcessManager::singleton().fetchWebsiteData(plugin, [this](Vector<String> hostNames) {
+                    for (auto& hostName : hostNames)
+                        m_hostNames.add(WTF::move(hostName));
+                    fetchWebsiteDataForNextPlugin();
+                });
+            }
+
+            Ref<CallbackAggregator> m_callbackAggregator;
+            Vector<PluginModuleInfo> m_plugins;
+            HashSet<String> m_hostNames;
+        };
+
+        State::fetchData(*callbackAggregator, plugins());
+    }
+#endif
+
     callbackAggregator->callIfNeeded();
 }
 
@@ -378,6 +457,9 @@ static ProcessAccessType computeNetworkProcessAccessTypeForDataRemoval(WebsiteDa
     }
 
     if (dataTypes & WebsiteDataTypeDiskCache && !isNonPersistentStore)
+        processAccessType = std::max(processAccessType, ProcessAccessType::Launch);
+
+    if (dataTypes & WebsiteDataTypeHSTSCache)
         processAccessType = std::max(processAccessType, ProcessAccessType::Launch);
 
     return processAccessType;
@@ -549,6 +631,55 @@ void WebsiteDataStore::removeData(WebsiteDataTypes dataTypes, std::chrono::syste
             });
         });
     }
+
+#if ENABLE(NETSCAPE_PLUGIN_API)
+    if (dataTypes & WebsiteDataTypePlugInData && isPersistent()) {
+        class State {
+        public:
+            static void deleteData(Ref<CallbackAggregator>&& callbackAggregator, Vector<PluginModuleInfo>&& plugins, std::chrono::system_clock::time_point modifiedSince)
+            {
+                new State(WTF::move(callbackAggregator), WTF::move(plugins), modifiedSince);
+            }
+
+        private:
+            State(Ref<CallbackAggregator>&& callbackAggregator, Vector<PluginModuleInfo>&& plugins, std::chrono::system_clock::time_point modifiedSince)
+                : m_callbackAggregator(WTF::move(callbackAggregator))
+                , m_plugins(WTF::move(plugins))
+                , m_modifiedSince(modifiedSince)
+            {
+                m_callbackAggregator->addPendingCallback();
+
+                deleteWebsiteDataForNextPlugin();
+            }
+
+            ~State()
+            {
+                ASSERT(m_plugins.isEmpty());
+            }
+
+            void deleteWebsiteDataForNextPlugin()
+            {
+                if (m_plugins.isEmpty()) {
+                    m_callbackAggregator->removePendingCallback();
+
+                    delete this;
+                    return;
+                }
+
+                auto plugin = m_plugins.takeLast();
+                PluginProcessManager::singleton().deleteWebsiteData(plugin, m_modifiedSince, [this] {
+                    deleteWebsiteDataForNextPlugin();
+                });
+            }
+
+            Ref<CallbackAggregator> m_callbackAggregator;
+            Vector<PluginModuleInfo> m_plugins;
+            std::chrono::system_clock::time_point m_modifiedSince;
+        };
+
+        State::deleteData(*callbackAggregator, plugins(), modifiedSince);
+    }
+#endif
 
     // There's a chance that we don't have any pending callbacks. If so, we want to dispatch the completion handler right away.
     callbackAggregator->callIfNeeded();
@@ -742,6 +873,62 @@ void WebsiteDataStore::removeData(WebsiteDataTypes dataTypes, const Vector<Websi
         });
     }
 
+#if ENABLE(NETSCAPE_PLUGIN_API)
+    if (dataTypes & WebsiteDataTypePlugInData && isPersistent()) {
+        Vector<String> hostNames;
+        for (const auto& dataRecord : dataRecords) {
+            for (const auto& hostName : dataRecord.pluginDataHostNames)
+                hostNames.append(hostName);
+        }
+
+
+        class State {
+        public:
+            static void deleteData(Ref<CallbackAggregator>&& callbackAggregator, Vector<PluginModuleInfo>&& plugins, Vector<String>&& hostNames)
+            {
+                new State(WTF::move(callbackAggregator), WTF::move(plugins), WTF::move(hostNames));
+            }
+
+        private:
+            State(Ref<CallbackAggregator>&& callbackAggregator, Vector<PluginModuleInfo>&& plugins, Vector<String>&& hostNames)
+                : m_callbackAggregator(WTF::move(callbackAggregator))
+                , m_plugins(WTF::move(plugins))
+                , m_hostNames(WTF::move(hostNames))
+            {
+                m_callbackAggregator->addPendingCallback();
+
+                deleteWebsiteDataForNextPlugin();
+            }
+
+            ~State()
+            {
+                ASSERT(m_plugins.isEmpty());
+            }
+
+            void deleteWebsiteDataForNextPlugin()
+            {
+                if (m_plugins.isEmpty()) {
+                    m_callbackAggregator->removePendingCallback();
+
+                    delete this;
+                    return;
+                }
+
+                auto plugin = m_plugins.takeLast();
+                PluginProcessManager::singleton().deleteWebsiteDataForHostNames(plugin, m_hostNames, [this] {
+                    deleteWebsiteDataForNextPlugin();
+                });
+            }
+
+            Ref<CallbackAggregator> m_callbackAggregator;
+            Vector<PluginModuleInfo> m_plugins;
+            Vector<String> m_hostNames;
+        };
+
+        State::deleteData(*callbackAggregator, plugins(), WTF::move(hostNames));
+    }
+#endif
+
     // There's a chance that we don't have any pending callbacks. If so, we want to dispatch the completion handler right away.
     callbackAggregator->callIfNeeded();
 }
@@ -809,6 +996,25 @@ HashSet<RefPtr<WebProcessPool>> WebsiteDataStore::processPools() const
     return processPools;
 }
 
+#if ENABLE(NETSCAPE_PLUGIN_API)
+Vector<PluginModuleInfo> WebsiteDataStore::plugins() const
+{
+    Vector<PluginModuleInfo> plugins;
+
+    for (auto processPool : processPools()) {
+        for (auto& plugin : processPool->pluginInfoStore().plugins())
+            plugins.append(plugin);
+    }
+
+    return plugins;
+}
+#endif
+
+static String computeMediaKeyFile(const String& mediaKeyDirectory)
+{
+    return WebCore::pathByAppendingComponent(mediaKeyDirectory, "SecureStop.plist");
+}
+
 Vector<RefPtr<WebCore::SecurityOrigin>> WebsiteDataStore::mediaKeyOrigins(const String& mediaKeysStorageDirectory)
 {
     ASSERT(!mediaKeysStorageDirectory.isEmpty());
@@ -816,6 +1022,10 @@ Vector<RefPtr<WebCore::SecurityOrigin>> WebsiteDataStore::mediaKeyOrigins(const 
     Vector<RefPtr<WebCore::SecurityOrigin>> origins;
 
     for (const auto& originPath : WebCore::listDirectory(mediaKeysStorageDirectory, "*")) {
+        auto mediaKeyFile = computeMediaKeyFile(originPath);
+        if (!WebCore::fileExists(mediaKeyFile))
+            continue;
+
         auto mediaKeyIdentifier = WebCore::pathGetFileName(originPath);
 
         if (auto securityOrigin = WebCore::SecurityOrigin::maybeCreateFromDatabaseIdentifier(mediaKeyIdentifier))
@@ -823,11 +1033,6 @@ Vector<RefPtr<WebCore::SecurityOrigin>> WebsiteDataStore::mediaKeyOrigins(const 
     }
 
     return origins;
-}
-
-static String computeMediaKeyFile(const String& mediaKeyDirectory)
-{
-    return WebCore::pathByAppendingComponent(mediaKeyDirectory, "SecureStop.plist");
 }
 
 void WebsiteDataStore::removeMediaKeys(const String& mediaKeysStorageDirectory, std::chrono::system_clock::time_point modifiedSince)
@@ -855,7 +1060,7 @@ void WebsiteDataStore::removeMediaKeys(const String& mediaKeysStorageDirectory, 
 
     for (const auto& origin : origins) {
         auto mediaKeyDirectory = WebCore::pathByAppendingComponent(mediaKeysStorageDirectory, origin->databaseIdentifier());
-        auto mediaKeyFile = WebCore::pathByAppendingComponent(mediaKeyDirectory, "SecureStop.plist");
+        auto mediaKeyFile = computeMediaKeyFile(mediaKeyDirectory);
 
         WebCore::deleteFile(mediaKeyFile);
         WebCore::deleteEmptyDirectory(mediaKeyDirectory);

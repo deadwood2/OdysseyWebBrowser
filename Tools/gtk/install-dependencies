@@ -97,6 +97,7 @@ function installDependenciesWithApt {
         libxslt1-dev \
         libxt-dev \
         libxtst-dev \
+        libwayland-dev \
         ruby \
         xfonts-utils
 
@@ -122,6 +123,7 @@ function installDependenciesWithApt {
         icon-naming-utils \
         libcroco3-dev \
         libegl1-mesa-dev \
+        libepoxy-dev \
         libgcrypt11-dev \
         libgpg-error-dev \
         libjson-glib-dev \
@@ -229,7 +231,8 @@ function installDependenciesWithPacman {
         ninja \
         ruby \
         xorg-font-utils \
-        orc"
+        orc \
+        wayland"
 
     # These are dependencies necessary for running tests.
     # Note: apache-mod_bw is available in the AUR, but the main repos
@@ -254,6 +257,7 @@ function installDependenciesWithPacman {
         gobject-introspection \
         icon-naming-utils \
         libcroco \
+        libepoxy \
         libgcrypt \
         libgpg-error \
         p11-kit \
@@ -328,6 +332,8 @@ function installFedoraDependencies {
         libsoup-devel \
 	libv4l-devel \
         libwebp-devel \
+        libwayland-client-devel \
+        libwayland-server-devel \
         libxslt-devel \
         mesa-libGL-devel \
         ninja-build \
@@ -369,6 +375,7 @@ function installFedoraDependencies {
         itstool \
         libXfont-devel \
         libcroco-devel \
+        libepoxy-devel \
         libgcrypt-devel \
         libgpg-error-devel \
         libp11-devel \

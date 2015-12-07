@@ -61,9 +61,9 @@ WebKitNotificationProvider::~WebKitNotificationProvider()
 {
 }
 
-PassRefPtr<WebKitNotificationProvider> WebKitNotificationProvider::create(WebNotificationManagerProxy* notificationManager)
+Ref<WebKitNotificationProvider> WebKitNotificationProvider::create(WebNotificationManagerProxy* notificationManager)
 {
-    return adoptRef(new WebKitNotificationProvider(notificationManager));
+    return adoptRef(*new WebKitNotificationProvider(notificationManager));
 }
 
 WebKitNotificationProvider::WebKitNotificationProvider(WebNotificationManagerProxy* notificationManager)
@@ -72,8 +72,10 @@ WebKitNotificationProvider::WebKitNotificationProvider(WebNotificationManagerPro
     ASSERT(notificationManager);
 
     WKNotificationProviderV0 wkNotificationProvider = {
-        kWKNotificationProviderCurrentVersion,
-        this, // clientInfo,
+        {
+            0, // version
+            this, // clientInfo
+        },
         showCallback,
         cancelCallback,
         0, // didDestroyNotificationCallback,

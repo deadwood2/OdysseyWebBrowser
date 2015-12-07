@@ -190,11 +190,11 @@ void JSRopeString::clearFibers() const
         u[i].number = 0;
 }
 
-AtomicStringImpl* JSRopeString::resolveRopeToExistingAtomicString(ExecState* exec) const
+RefPtr<AtomicStringImpl> JSRopeString::resolveRopeToExistingAtomicString(ExecState* exec) const
 {
     if (m_length > maxLengthForOnStackResolve) {
         resolveRope(exec);
-        if (AtomicStringImpl* existingAtomicString = AtomicStringImpl::lookUp(m_value.impl())) {
+        if (RefPtr<AtomicStringImpl> existingAtomicString = AtomicStringImpl::lookUp(m_value.impl())) {
             m_value = *existingAtomicString;
             setIs8Bit(m_value.impl()->is8Bit());
             clearFibers();
@@ -206,7 +206,7 @@ AtomicStringImpl* JSRopeString::resolveRopeToExistingAtomicString(ExecState* exe
     if (is8Bit()) {
         LChar buffer[maxLengthForOnStackResolve];
         resolveRopeInternal8(buffer);
-        if (AtomicStringImpl* existingAtomicString = AtomicStringImpl::lookUp(buffer, m_length)) {
+        if (RefPtr<AtomicStringImpl> existingAtomicString = AtomicStringImpl::lookUp(buffer, m_length)) {
             m_value = *existingAtomicString;
             setIs8Bit(m_value.impl()->is8Bit());
             clearFibers();
@@ -215,7 +215,7 @@ AtomicStringImpl* JSRopeString::resolveRopeToExistingAtomicString(ExecState* exe
     } else {
         UChar buffer[maxLengthForOnStackResolve];
         resolveRopeInternal16(buffer);
-        if (AtomicStringImpl* existingAtomicString = AtomicStringImpl::lookUp(buffer, m_length)) {
+        if (RefPtr<AtomicStringImpl> existingAtomicString = AtomicStringImpl::lookUp(buffer, m_length)) {
             m_value = *existingAtomicString;
             setIs8Bit(m_value.impl()->is8Bit());
             clearFibers();
@@ -363,18 +363,6 @@ void JSRopeString::outOfMemory(ExecState* exec) const
     ASSERT(m_value.isNull());
     if (exec)
         throwOutOfMemoryError(exec);
-}
-
-JSString* JSRopeString::getIndexSlowCase(ExecState* exec, unsigned i)
-{
-    ASSERT(isRope());
-    resolveRope(exec);
-    // Return a safe no-value result, this should never be used, since the excetion will be thrown.
-    if (exec->exception())
-        return jsEmptyString(exec);
-    ASSERT(!isRope());
-    RELEASE_ASSERT(i < m_value.length());
-    return jsSingleCharacterString(exec, m_value[i]);
 }
 
 JSValue JSString::toPrimitive(ExecState*, PreferredPrimitiveType) const

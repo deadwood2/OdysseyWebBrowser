@@ -378,7 +378,7 @@ static RefPtr<IDBKey> idbKeyFromInspectorObject(InspectorObject* key)
     return idbKey.release();
 }
 
-static RefPtr<IDBKeyRange> idbKeyRangeFromKeyRange(InspectorObject* keyRange)
+static RefPtr<IDBKeyRange> idbKeyRangeFromKeyRange(const InspectorObject* keyRange)
 {
     RefPtr<InspectorObject> lower;
     if (!keyRange->getObject("lower", lower))
@@ -582,7 +582,7 @@ void InspectorIndexedDBAgent::didCreateFrontendAndBackend(Inspector::FrontendCha
 
 void InspectorIndexedDBAgent::willDestroyFrontendAndBackend(Inspector::DisconnectReason)
 {
-    m_backendDispatcher.clear();
+    m_backendDispatcher = nullptr;
 
     ErrorString unused;
     disable(unused);
@@ -655,7 +655,7 @@ void InspectorIndexedDBAgent::requestDatabase(ErrorString& errorString, const St
     databaseLoader->start(idbFactory, document->securityOrigin(), databaseName);
 }
 
-void InspectorIndexedDBAgent::requestData(ErrorString& errorString, const String& securityOrigin, const String& databaseName, const String& objectStoreName, const String& indexName, int skipCount, int pageSize, const RefPtr<InspectorObject>&& keyRange, Ref<RequestDataCallback>&& requestCallback)
+void InspectorIndexedDBAgent::requestData(ErrorString& errorString, const String& securityOrigin, const String& databaseName, const String& objectStoreName, const String& indexName, int skipCount, int pageSize, const InspectorObject* keyRange, Ref<RequestDataCallback>&& requestCallback)
 {
     Frame* frame = m_pageAgent->findFrameWithSecurityOrigin(securityOrigin);
     Document* document = assertDocument(errorString, frame);
@@ -668,7 +668,7 @@ void InspectorIndexedDBAgent::requestData(ErrorString& errorString, const String
 
     InjectedScript injectedScript = m_injectedScriptManager->injectedScriptFor(mainWorldExecState(frame));
 
-    RefPtr<IDBKeyRange> idbKeyRange = keyRange ? idbKeyRangeFromKeyRange(keyRange.get()) : nullptr;
+    RefPtr<IDBKeyRange> idbKeyRange = keyRange ? idbKeyRangeFromKeyRange(keyRange) : nullptr;
     if (keyRange && !idbKeyRange) {
         errorString = ASCIILiteral("Can not parse key range.");
         return;

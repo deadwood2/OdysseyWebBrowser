@@ -88,10 +88,8 @@ public:
     virtual bool runJavaScriptConfirm(WebCore::Frame*, const WTF::String&);
     virtual bool runJavaScriptPrompt(WebCore::Frame*, const WTF::String& message, const WTF::String& defaultValue, WTF::String& result);
     virtual void setStatusbarText(const WTF::String&);
-    virtual bool shouldInterruptJavaScript();
 
     virtual WebCore::KeyboardUIMode keyboardUIMode();
-    virtual WebCore::IntRect windowResizerRect() const;
 
     virtual void invalidateRootView(const WebCore::IntRect&);
     virtual void invalidateContentsAndRootView(const WebCore::IntRect&);
@@ -153,13 +151,17 @@ public:
     virtual bool selectItemWritingDirectionIsNatural();
     virtual bool selectItemAlignmentFollowsMenuWritingDirection();
     virtual bool hasOpenedPopup() const;
-    virtual PassRefPtr<WebCore::PopupMenu> createPopupMenu(WebCore::PopupMenuClient*) const;
-    virtual PassRefPtr<WebCore::SearchPopupMenu> createSearchPopupMenu(WebCore::PopupMenuClient*) const;
+    virtual RefPtr<WebCore::PopupMenu> createPopupMenu(WebCore::PopupMenuClient*) const;
+    virtual RefPtr<WebCore::SearchPopupMenu> createSearchPopupMenu(WebCore::PopupMenuClient*) const;
 
 #if ENABLE(FULLSCREEN_API)
     virtual bool supportsFullScreenForElement(const WebCore::Element*, bool withKeyboard);
     virtual void enterFullScreenForElement(WebCore::Element*);
     virtual void exitFullScreenForElement(WebCore::Element*);
+#endif
+
+#if ENABLE(TOUCH_EVENTS)
+    virtual void needTouchEvents(bool) override { }
 #endif
 
     virtual void wheelEventHandlersChanged(bool) override { }

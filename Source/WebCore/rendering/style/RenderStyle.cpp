@@ -563,6 +563,7 @@ bool RenderStyle::changeRequiresLayout(const RenderStyle& other, unsigned& chang
             || rareInheritedData->m_textIndentLine != other.rareInheritedData->m_textIndentLine
 #endif
             || rareInheritedData->m_effectiveZoom != other.rareInheritedData->m_effectiveZoom
+            || rareInheritedData->m_textZoom != other.rareInheritedData->m_textZoom
 #if ENABLE(IOS_TEXT_AUTOSIZING)
             || rareInheritedData->textSizeAdjust != other.rareInheritedData->textSizeAdjust
 #endif
@@ -575,7 +576,6 @@ bool RenderStyle::changeRequiresLayout(const RenderStyle& other, unsigned& chang
             || rareInheritedData->hyphenationLimitBefore != other.rareInheritedData->hyphenationLimitBefore
             || rareInheritedData->hyphenationLimitAfter != other.rareInheritedData->hyphenationLimitAfter
             || rareInheritedData->hyphenationString != other.rareInheritedData->hyphenationString
-            || rareInheritedData->locale != other.rareInheritedData->locale
             || rareInheritedData->m_rubyPosition != other.rareInheritedData->m_rubyPosition
             || rareInheritedData->textEmphasisMark != other.rareInheritedData->textEmphasisMark
             || rareInheritedData->textEmphasisPosition != other.rareInheritedData->textEmphasisPosition
@@ -895,28 +895,6 @@ bool RenderStyle::diffRequiresLayerRepaint(const RenderStyle& style, bool isComp
 
     return false;
 }
-    
-void RenderStyle::setMaskImage(const Vector<RefPtr<MaskImageOperation>>& ops)
-{
-    FillLayer* curLayer = &rareNonInheritedData.access()->m_mask;
-    while (curLayer) {
-        curLayer->setMaskImage(nullptr);
-        curLayer = curLayer->next();
-    }
-
-    curLayer = &rareNonInheritedData.access()->m_mask;
-    FillLayer* prevLayer = nullptr;
-    for (auto& maskImage : ops) {
-        if (!curLayer) {
-            prevLayer->setNext(std::make_unique<FillLayer>(MaskFillLayer));
-            curLayer = prevLayer->next();
-        }
-
-        curLayer->setMaskImage(maskImage);
-        prevLayer = curLayer;
-        curLayer = curLayer->next();
-    }
-}
 
 void RenderStyle::setClip(Length top, Length right, Length bottom, Length left)
 {
@@ -950,7 +928,7 @@ void RenderStyle::setQuotes(PassRefPtr<QuotesData> q)
 void RenderStyle::clearCursorList()
 {
     if (rareInheritedData->cursorData)
-        rareInheritedData.access()->cursorData = 0;
+        rareInheritedData.access()->cursorData = nullptr;
 }
 
 void RenderStyle::clearContent()

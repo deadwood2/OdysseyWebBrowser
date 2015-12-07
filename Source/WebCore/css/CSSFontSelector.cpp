@@ -84,7 +84,7 @@ bool CSSFontSelector::isEmpty() const
     return m_fonts.isEmpty();
 }
 
-void CSSFontSelector::addFontFaceRule(const StyleRuleFontFace* fontFaceRule)
+void CSSFontSelector::addFontFaceRule(const StyleRuleFontFace* fontFaceRule, bool isInitiatingElementInUserAgentShadowTree)
 {
     // Obtain the font-family property and the src property.  Both must be defined.
     const StyleProperties& style = fontFaceRule->properties();
@@ -212,7 +212,7 @@ void CSSFontSelector::addFontFaceRule(const StyleRuleFontFace* fontFaceRule)
             Settings* settings = m_document ? m_document->frame() ? &m_document->frame()->settings() : 0 : 0;
             bool allowDownloading = foundSVGFont || (settings && settings->downloadableBinaryFontsEnabled());
             if (allowDownloading && item.isSupportedFormat() && m_document) {
-                CachedFont* cachedFont = item.cachedFont(m_document, foundSVGFont);
+                CachedFont* cachedFont = item.cachedFont(m_document, foundSVGFont, isInitiatingElementInUserAgentShadowTree);
                 if (cachedFont) {
                     source = std::make_unique<CSSFontFaceSource>(item.resource(), cachedFont);
 #if ENABLE(SVG_FONTS)
@@ -593,10 +593,9 @@ bool CSSFontSelector::resolvesFamilyFor(const FontDescription& description) cons
             continue;
         if (m_fontFaces.contains(familyName))
             return true;
-        DEPRECATED_DEFINE_STATIC_LOCAL(String, webkitPrefix, ("-webkit-"));
-        if (familyName.startsWith(webkitPrefix))
+        static NeverDestroyed<String> webkitPrefix("-webkit-");
+        if (familyName.startsWith(webkitPrefix.get()))
             return true;
-            
     }
     return false;
 }

@@ -351,10 +351,10 @@ static const AtomicString& presentationModeFullscreen()
     return fullscreen;
 }
 
-static const AtomicString& presentationModeOptimized()
+static const AtomicString& presentationModePictureInPicture()
 {
-    static NeverDestroyed<AtomicString> optimized("optimized", AtomicString::ConstructFromLiteral);
-    return optimized;
+    static NeverDestroyed<AtomicString> pictureInPicture("picture-in-picture", AtomicString::ConstructFromLiteral);
+    return pictureInPicture;
 }
 
 static const AtomicString& presentationModeInline()
@@ -368,8 +368,8 @@ bool HTMLVideoElement::webkitSupportsPresentationMode(const String& mode) const
     if (mode == presentationModeFullscreen())
         return mediaSession().fullscreenPermitted(*this) && supportsFullscreen();
 
-    if (mode == presentationModeOptimized())
-        return wkIsOptimizedFullscreenSupported() && mediaSession().allowsAlternateFullscreen(*this) && supportsFullscreen();
+    if (mode == presentationModePictureInPicture())
+        return wkIsOptimizedFullscreenSupported() && mediaSession().allowsPictureInPicture(*this) && supportsFullscreen();
 
     if (mode == presentationModeInline())
         return !mediaSession().requiresFullscreenForVideoPlayback(*this);
@@ -391,8 +391,8 @@ void HTMLVideoElement::webkitSetPresentationMode(const String& mode)
 
     if (mode == presentationModeFullscreen())
         enterFullscreen(VideoFullscreenModeStandard);
-    else if (mode == presentationModeOptimized())
-        enterFullscreen(VideoFullscreenModeOptimized);
+    else if (mode == presentationModePictureInPicture())
+        enterFullscreen(VideoFullscreenModePictureInPicture);
 }
 
 String HTMLVideoElement::webkitPresentationMode() const
@@ -402,8 +402,8 @@ String HTMLVideoElement::webkitPresentationMode() const
     if (mode == VideoFullscreenModeStandard)
         return presentationModeFullscreen();
 
-    if (mode & VideoFullscreenModeOptimized)
-        return presentationModeOptimized();
+    if (mode & VideoFullscreenModePictureInPicture)
+        return presentationModePictureInPicture();
 
     if (mode == VideoFullscreenModeNone)
         return presentationModeInline();

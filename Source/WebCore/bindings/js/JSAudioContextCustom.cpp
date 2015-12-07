@@ -111,51 +111,6 @@ EncodedJSValue JSC_HOST_CALL constructJSAudioContext(ExecState* exec)
     return JSValue::encode(CREATE_DOM_WRAPPER(jsConstructor->globalObject(), AudioContext, audioContext.get()));
 }
 
-JSValue JSAudioContext::suspend(ExecState* exec)
-{
-    DeferredWrapper wrapper(exec, globalObject());
-    auto successCallback = [wrapper]() mutable {
-        wrapper.resolve(nullptr);
-    };
-    auto failureCallback = [wrapper](ExceptionCode value) mutable {
-        wrapper.reject(value);
-    };
-
-    impl().suspendContext(WTF::move(successCallback), WTF::move(failureCallback));
-
-    return wrapper.promise();
-}
-
-JSValue JSAudioContext::resume(ExecState* exec)
-{
-    DeferredWrapper wrapper(exec, globalObject());
-    auto successCallback = [wrapper]() mutable {
-        wrapper.resolve(nullptr);
-    };
-    auto failureCallback = [wrapper](ExceptionCode value) mutable {
-        wrapper.reject(value);
-    };
-
-    impl().resumeContext(WTF::move(successCallback), WTF::move(failureCallback));
-
-    return wrapper.promise();
-}
-
-JSValue JSAudioContext::close(ExecState* exec)
-{
-    DeferredWrapper wrapper(exec, globalObject());
-    auto successCallback = [wrapper]() mutable {
-        wrapper.resolve(nullptr);
-    };
-    auto failureCallback = [wrapper](ExceptionCode value) mutable {
-        wrapper.reject(value);
-    };
-
-    impl().closeContext(WTF::move(successCallback), WTF::move(failureCallback));
-
-    return wrapper.promise();
-}
-
 } // namespace WebCore
 
 #endif // ENABLE(WEB_AUDIO)

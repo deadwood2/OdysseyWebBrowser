@@ -65,6 +65,7 @@
 #include <runtime/Uint16Array.h>
 #endif
 #include <wtf/HashMap.h>
+#include <wtf/NeverDestroyed.h>
 #include <wtf/Threading.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringView.h>
@@ -870,9 +871,9 @@ void MediaPlayerPrivateAVFoundationCF::paint(GraphicsContext* context, const Flo
     m_videoFrameHasDrawn = true;
 }
 
-static HashSet<String> mimeTypeCache()
+static const HashSet<String>& mimeTypeCache()
 {
-    DEPRECATED_DEFINE_STATIC_LOCAL(HashSet<String>, cache, ());
+    static NeverDestroyed<HashSet<String>> cache;
     static bool typeListInitialized = false;
 
     if (typeListInitialized)
@@ -887,7 +888,7 @@ static HashSet<String> mimeTypeCache()
 
     CFIndex typeCount = CFArrayGetCount(supportedTypes.get());
     for (CFIndex i = 0; i < typeCount; i++)
-        cache.add(static_cast<CFStringRef>(CFArrayGetValueAtIndex(supportedTypes.get(), i)));
+        cache.get().add(static_cast<CFStringRef>(CFArrayGetValueAtIndex(supportedTypes.get(), i)));
 
     return cache;
 } 
@@ -906,14 +907,45 @@ static bool keySystemIsSupported(const String& keySystem)
 }
 #endif
 
+static const HashSet<String>& avfMIMETypes()
+{
+    static NeverDestroyed<HashSet<String>> cache = []() {
+        HashSet<String> types;
+        RetainPtr<CFArrayRef> avTypes = AVCFURLAssetCopyAudiovisualMIMETypes();
+
+        CFIndex typeCount = CFArrayGetCount(avTypes.get());
+        for (CFIndex i = 0; i < typeCount; ++i) {
+            String mimeType = (CFStringRef)(CFArrayGetValueAtIndex(avTypes.get(), i));
+            types.add(mimeType.lower());
+        }
+
+        return types;
+    }();
+
+    return cache;
+}
+
 MediaPlayer::SupportsType MediaPlayerPrivateAVFoundationCF::supportsType(const MediaEngineSupportParameters& parameters)
 {
-    // Only return "IsSupported" if there is no codecs parameter for now as there is no way to ask if it supports an
-    // extended MIME type until rdar://8721715 is fixed.
+    if (isUnsupportedMIMEType(parameters.type))
+        return MediaPlayer::IsNotSupported;
+
+    if (!staticMIMETypeList().contains(parameters.type) && !avfMIMETypes().contains(parameters.type))
+        return MediaPlayer::IsNotSupported;
+
+#if HAVE(AVCFURL_PLAYABLE_MIMETYPE)
+    // The spec says:
+    // "Implementors are encouraged to return "maybe" unless the type can be confidently established as being supported or not."
+    if (parameters.codecs.isEmpty())
+        return MediaPlayer::MayBeSupported;
+
+    String typeString = parameters.type + "; codecs=\"" + parameters.codecs + "\"";
+    return AVCFURLAssetIsPlayableExtendedMIMEType(typeString.createCFString().get()) ? MediaPlayer::IsSupported : MediaPlayer::MayBeSupported;
+#else
     if (mimeTypeCache().contains(parameters.type))
         return parameters.codecs.isEmpty() ? MediaPlayer::MayBeSupported : MediaPlayer::IsSupported;
-
     return MediaPlayer::IsNotSupported;
+#endif
 }
 
 bool MediaPlayerPrivateAVFoundationCF::supportsKeySystem(const String& keySystem, const String& mimeType)
@@ -1273,7 +1305,11 @@ String MediaPlayerPrivateAVFoundationCF::languageOfPrimaryAudioTrack() const
     AVCFMediaSelectionOptionRef currentlySelectedAudibleOption = AVCFPlayerItemGetSelectedMediaOptionInMediaSelectionGroup(avPlayerItem(m_avfWrapper), audibleGroup);
     if (currentlySelectedAudibleOption) {
         RetainPtr<CFLocaleRef> audibleOptionLocale = adoptCF(AVCFMediaSelectionOptionCopyLocale(currentlySelectedAudibleOption));
-        m_languageOfPrimaryAudioTrack = CFLocaleGetIdentifier(audibleOptionLocale.get());
+        if (audibleOptionLocale)
+            m_languageOfPrimaryAudioTrack = CFLocaleGetIdentifier(audibleOptionLocale.get());
+        else
+            m_languageOfPrimaryAudioTrack = emptyString();
+
         LOG(Media, "MediaPlayerPrivateAVFoundationCF::languageOfPrimaryAudioTrack(%p) - returning language of selected audible option: %s", this, m_languageOfPrimaryAudioTrack.utf8().data());
 
         return m_languageOfPrimaryAudioTrack;
@@ -1580,7 +1616,11 @@ void AVFWrapper::createPlayerItem()
     AVCFPlayerItemOutputSetSuppressPlayerRendering(m_legibleOutput.get(), TRUE);
 
     AVCFPlayerItemLegibleOutputCallbacks callbackInfo;
+#if HAVE(AVCFPLAYERITEM_CALLBACK_VERSION_2)
+    callbackInfo.version = kAVCFPlayerItemLegibleOutput_CallbacksVersion_2;
+#else
     callbackInfo.version = kAVCFPlayerItemLegibleOutput_CallbacksVersion_1;
+#endif
     ASSERT(callbackContext());
     callbackInfo.context = callbackContext();
     callbackInfo.legibleOutputCallback = AVFWrapper::legibleOutputCallback;
@@ -1953,13 +1993,13 @@ void AVFWrapper::destroyVideoLayer()
     ASSERT(dispatch_get_main_queue() == dispatch_get_current_queue());
     LOG(Media, "AVFWrapper::destroyVideoLayer(%p)", this);
     m_layerClient = nullptr;
-    m_caVideoLayer = 0;
-    m_videoLayerWrapper = 0;
+    m_caVideoLayer = nullptr;
+    m_videoLayerWrapper = nullptr;
     if (!m_avCFVideoLayer.get())
         return;
 
-    AVCFPlayerLayerSetPlayer((AVCFPlayerLayerRef)m_avCFVideoLayer.get(), 0);
-    m_avCFVideoLayer = 0;
+    AVCFPlayerLayerSetPlayer((AVCFPlayerLayerRef)m_avCFVideoLayer.get(), nullptr);
+    m_avCFVideoLayer = nullptr;
 }
 
 void AVFWrapper::setVideoLayerNeedsCommit()

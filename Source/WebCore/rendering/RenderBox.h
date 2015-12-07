@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
- * Copyright (C) 2003, 2006, 2007 Apple Inc. All rights reserved.
+ * Copyright (C) 2003, 2006, 2007, 2015 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -87,8 +87,8 @@ public:
     LayoutUnit logicalHeight() const { return style().isHorizontalWritingMode() ? height() : width(); }
 
     LayoutUnit constrainLogicalWidthInRegionByMinMax(LayoutUnit, LayoutUnit, RenderBlock*, RenderRegion* = nullptr) const;
-    LayoutUnit constrainLogicalHeightByMinMax(LayoutUnit) const;
-    LayoutUnit constrainContentBoxLogicalHeightByMinMax(LayoutUnit) const;
+    LayoutUnit constrainLogicalHeightByMinMax(LayoutUnit logicalHeight, LayoutUnit intrinsicContentHeight) const;
+    LayoutUnit constrainContentBoxLogicalHeightByMinMax(LayoutUnit logicalHeight, LayoutUnit intrinsicContentHeight) const;
 
     int pixelSnappedLogicalHeight() const { return style().isHorizontalWritingMode() ? pixelSnappedSize().height() : pixelSnappedSize().width(); }
     int pixelSnappedLogicalWidth() const { return style().isHorizontalWritingMode() ? pixelSnappedSize().width() : pixelSnappedSize().height(); }
@@ -167,7 +167,7 @@ public:
     // The content box in absolute coords. Ignores transforms.
     IntRect absoluteContentBox() const;
     // The content box converted to absolute coords (taking transforms into account).
-    FloatQuad absoluteContentQuad() const;
+    WEBCORE_EXPORT FloatQuad absoluteContentQuad() const;
 
     // This returns the content area of the box (excluding padding and border). The only difference with contentBoxRect is that computedCSSContentBoxRect
     // does include the intrinsic padding in the content box as this is what some callers expect (like getComputedStyle).
@@ -432,9 +432,9 @@ public:
     LayoutUnit shrinkLogicalWidthToAvoidFloats(LayoutUnit childMarginStart, LayoutUnit childMarginEnd, const RenderBlock* cb, RenderRegion*) const;
 
     LayoutUnit computeLogicalWidthInRegionUsing(SizeType, Length logicalWidth, LayoutUnit availableLogicalWidth, const RenderBlock* containingBlock, RenderRegion*) const;
-    LayoutUnit computeLogicalHeightUsing(const Length& height) const;
-    LayoutUnit computeContentLogicalHeight(const Length& height) const;
-    LayoutUnit computeContentAndScrollbarLogicalHeightUsing(const Length& height) const;
+    LayoutUnit computeLogicalHeightUsing(const Length& height, LayoutUnit intrinsicContentHeight) const;
+    LayoutUnit computeContentLogicalHeight(const Length& height, LayoutUnit intrinsicContentHeight) const;
+    LayoutUnit computeContentAndScrollbarLogicalHeightUsing(const Length& height, LayoutUnit intrinsicContentHeight) const;
     LayoutUnit computeReplacedLogicalWidthUsing(Length width) const;
     LayoutUnit computeReplacedLogicalWidthRespectingMinMaxWidth(LayoutUnit logicalWidth, ShouldComputePreferred  = ComputeActual) const;
     LayoutUnit computeReplacedLogicalHeightUsing(Length height) const;
@@ -477,8 +477,8 @@ public:
     bool scrollsOverflow() const { return scrollsOverflowX() || scrollsOverflowY(); }
     bool scrollsOverflowX() const { return hasOverflowClip() && (style().overflowX() == OSCROLL || hasHorizontalScrollbarWithAutoBehavior()); }
     bool scrollsOverflowY() const { return hasOverflowClip() && (style().overflowY() == OSCROLL || hasVerticalScrollbarWithAutoBehavior()); }
-    bool hasScrollableOverflowX() const { return scrollsOverflowX() && scrollWidth() != clientWidth(); }
-    bool hasScrollableOverflowY() const { return scrollsOverflowY() && scrollHeight() != clientHeight(); }
+    bool hasScrollableOverflowX() const { return scrollsOverflowX() && scrollWidth() != roundToInt(clientWidth()); }
+    bool hasScrollableOverflowY() const { return scrollsOverflowY() && scrollHeight() != roundToInt(clientHeight()); }
 
     bool usesCompositedScrolling() const;
     
@@ -625,6 +625,8 @@ public:
     bool canHaveOutsideRegionRange() const { return !isInFlowRenderFlowThread(); }
     virtual bool needsLayoutAfterRegionRangeChange() const { return false; }
 
+    const RenderBox* findEnclosingScrollableContainer() const;
+
 protected:
     RenderBox(Element&, Ref<RenderStyle>&&, unsigned baseTypeFlags);
     RenderBox(Document&, Ref<RenderStyle>&&, unsigned baseTypeFlags);
@@ -653,6 +655,7 @@ protected:
     void computePositionedLogicalWidth(LogicalExtentComputedValues&, RenderRegion* = nullptr) const;
 
     LayoutUnit computeIntrinsicLogicalWidthUsing(Length logicalWidthLength, LayoutUnit availableLogicalWidth, LayoutUnit borderAndPadding) const;
+    LayoutUnit computeIntrinsicLogicalContentHeightUsing(Length logicalHeightLength, LayoutUnit intrinsicContentHeight, LayoutUnit borderAndPadding) const;
     
     virtual bool shouldComputeSizeAsReplaced() const { return isReplaced() && !isInlineBlockOrInlineTable(); }
 
@@ -670,6 +673,7 @@ private:
 #endif
 
 #if ENABLE(CSS_GRID_LAYOUT)
+    void updateGridAlignmentAfterStyleChange(const RenderStyle*);
     bool isGridItem() const { return parent() && parent()->isRenderGrid(); }
 #endif
 

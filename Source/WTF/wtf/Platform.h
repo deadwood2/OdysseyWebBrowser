@@ -82,7 +82,7 @@
 
 /* CPU(MIPS) - MIPS 32-bit and 64-bit */
 #if (defined(mips) || defined(__mips__) || defined(MIPS) || defined(_MIPS_) || defined(__mips64))
-#if defined(_MIPS_SIM_ABI64) && (_MIPS_SIM == _MIPS_SIM_ABI64)
+#if defined(_ABI64) && (_MIPS_SIM == _ABI64)
 #define WTF_CPU_MIPS64 1
 #define WTF_MIPS_ARCH __mips64
 #else
@@ -488,8 +488,18 @@
 #define USE_WEBP 1
 #endif
 
+#if PLATFORM(EFL)
+#define GLIB_VERSION_MIN_REQUIRED GLIB_VERSION_2_38
+#elif PLATFORM(GTK)
+#define GLIB_VERSION_MIN_REQUIRED GLIB_VERSION_2_36
+#endif
+
 #if PLATFORM(GTK) && !defined(GTK_API_VERSION_2)
 #define GDK_VERSION_MIN_REQUIRED GDK_VERSION_3_6
+#endif
+
+#if USE(SOUP)
+#define SOUP_VERSION_MIN_REQUIRED SOUP_VERSION_2_42
 #endif
 
 /* On Windows, use QueryPerformanceCounter by default */
@@ -545,7 +555,7 @@
 #define USE_WEB_THREAD 1
 #define USE_QUICK_LOOK 1
 
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000
+#if defined(TARGET_OS_IOS) && TARGET_OS_IOS && __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000
 #define HAVE_APP_LINKS 1
 #endif
 
@@ -774,17 +784,6 @@
 #define ENABLE_FTL_JIT 0
 #endif
 
-#if !defined(ENABLE_FTL_NATIVE_CALL_INLINING)
-#define ENABLE_FTL_NATIVE_CALL_INLINING 0
-#endif
-
-/* Used to make GCC's optimization not throw away a symbol that we would need for native inlining */
-#if ENABLE(FTL_NATIVE_CALL_INLINING) && COMPILER(GCC) && !COMPILER(CLANG)
-#define ATTR_USED __attribute__ ((used))
-#else
-#define ATTR_USED
-#endif
-
 /* Generational collector for JSC */
 #if !defined(ENABLE_GGC)
 #if CPU(X86_64) || CPU(X86) || CPU(ARM64) || CPU(ARM)
@@ -949,7 +948,7 @@
 #endif
 
 #if USE(GLIB)
-#include <wtf/gobject/GTypedefs.h>
+#include <wtf/glib/GTypedefs.h>
 #endif
 
 #if PLATFORM(EFL)
@@ -1077,6 +1076,10 @@
 #define USE_INSERTION_UNDO_GROUPING 1
 #endif
 
+#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100) || (PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000)
+#define HAVE_TIMINGDATAOPTIONS 1
+#endif
+
 #if PLATFORM(IOS)
 #define USE_PLATFORM_TEXT_TRACK_MENU 1
 #endif
@@ -1135,6 +1138,11 @@
 
 #if PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000
 #define ENABLE_VIDEO_PRESENTATION_MODE 1
+#endif
+
+/* While 10.10 has support for fences, it is missing some API important for our integration of them. */
+#if PLATFORM(IOS) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
+#define HAVE_COREANIMATION_FENCES 1
 #endif
 
 #endif /* WTF_Platform_h */

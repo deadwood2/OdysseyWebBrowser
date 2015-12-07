@@ -37,14 +37,14 @@ RefPtr<WebsiteDataStore> WebsiteDataStore::defaultDataStore()
     return defaultDataStore;
 }
 
-RefPtr<WebsiteDataStore> WebsiteDataStore::createNonPersistentDataStore()
+Ref<WebsiteDataStore> WebsiteDataStore::createNonPersistentDataStore()
 {
-    return adoptRef(new WebsiteDataStore);
+    return adoptRef(*new WebsiteDataStore);
 }
 
-RefPtr<WebsiteDataStore> WebsiteDataStore::create(WebKit::WebsiteDataStore::Configuration configuration)
+Ref<WebsiteDataStore> WebsiteDataStore::create(WebKit::WebsiteDataStore::Configuration configuration)
 {
-    return adoptRef(new WebsiteDataStore(WTF::move(configuration)));
+    return adoptRef(*new WebsiteDataStore(WTF::move(configuration)));
 }
 
 WebsiteDataStore::WebsiteDataStore()
@@ -66,7 +66,7 @@ bool WebsiteDataStore::isPersistent()
     return m_websiteDataStore->isPersistent();
 }
 
-#if !PLATFORM(COCOA)
+#if !PLATFORM(COCOA) && !PLATFORM(GTK)
 WebKit::WebsiteDataStore::Configuration WebsiteDataStore::defaultDataStoreConfiguration()
 {
     // FIXME: Fill everything in.
@@ -80,6 +80,43 @@ String WebsiteDataStore::websiteDataDirectoryFileSystemRepresentation(const Stri
     // FIXME: Implement.
     return String();
 }
+
+String WebsiteDataStore::defaultLocalStorageDirectory()
+{
+    // FIXME: Implement.
+    return String();
+}
+
+String WebsiteDataStore::defaultWebSQLDatabaseDirectory()
+{
+    // FIXME: Implement.
+    return String();
+}
+
+String WebsiteDataStore::defaultNetworkCacheDirectory()
+{
+    // FIXME: Implement.
+    return String();
+}
+
+String WebsiteDataStore::defaultApplicationCacheDirectory()
+{
+    // FIXME: Implement.
+    return String();
+}
+
+String WebsiteDataStore::defaultMediaKeysStorageDirectory()
+{
+    // FIXME: Implement.
+    return String();
+}
+
+String WebsiteDataStore::defaultIndexedDBDatabaseDirectory()
+{
+    // FIXME: Implement.
+    return String();
+}
+
 #endif
 
 }

@@ -30,7 +30,7 @@
 #include "HTMLMediaElement.h"
 #include "Logging.h"
 #include "MediaPlayer.h"
-#include "MediaSessionManager.h"
+#include "PlatformMediaSessionManager.h"
 
 namespace WebCore {
 
@@ -65,12 +65,12 @@ PlatformMediaSession::PlatformMediaSession(PlatformMediaSessionClient& client)
     , m_notifyingClient(false)
 {
     ASSERT(m_client.mediaType() >= None && m_client.mediaType() <= WebAudio);
-    MediaSessionManager::sharedManager().addSession(*this);
+    PlatformMediaSessionManager::sharedManager().addSession(*this);
 }
 
 PlatformMediaSession::~PlatformMediaSession()
 {
-    MediaSessionManager::sharedManager().removeSession(*this);
+    PlatformMediaSessionManager::sharedManager().removeSession(*this);
 }
 
 void PlatformMediaSession::setState(State state)
@@ -79,18 +79,47 @@ void PlatformMediaSession::setState(State state)
     m_state = state;
 }
 
-void PlatformMediaSession::beginInterruption(InterruptionType type)
+void PlatformMediaSession::doInterruption()
 {
-    LOG(Media, "PlatformMediaSession::beginInterruption(%p), state = %s, interruption count = %i", this, stateName(m_state), m_interruptionCount);
-
-    if (++m_interruptionCount > 1 || (type == EnteringBackground && client().overrideBackgroundPlaybackRestriction()))
-        return;
-
     m_stateToRestore = state();
     m_notifyingClient = true;
     setState(Interrupted);
     client().suspendPlayback();
     m_notifyingClient = false;
+}
+
+bool PlatformMediaSession::shouldDoInterruption(InterruptionType type)
+{
+    return type != EnteringBackground || !client().overrideBackgroundPlaybackRestriction();
+}
+
+void PlatformMediaSession::beginInterruption(InterruptionType type)
+{
+    LOG(Media, "PlatformMediaSession::beginInterruption(%p), state = %s, interruption count = %i", this, stateName(m_state), m_interruptionCount);
+
+    if (++m_interruptionCount > 1 || !shouldDoInterruption(type))
+        return;
+
+    doInterruption();
+}
+
+void PlatformMediaSession::forceInterruption(InterruptionType type)
+{
+    LOG(Media, "PlatformMediaSession::forceInterruption(%p), state = %s, interruption count = %i", this, stateName(m_state), m_interruptionCount);
+
+    // beginInterruption() must have been called before calling this function.
+    if (!m_interruptionCount) {
+        ASSERT_NOT_REACHED();
+        return;
+    }
+
+    // The purpose of this function is to override the decision which was made by
+    // beginInterruption(). If it was decided to interrupt the media session there,
+    // then nothing should be done here.
+    if (shouldDoInterruption(type))
+        return;
+
+    doInterruption();
 }
 
 void PlatformMediaSession::endInterruption(EndInterruptionFlags flags)
@@ -118,7 +147,7 @@ bool PlatformMediaSession::clientWillBeginPlayback()
     if (m_notifyingClient)
         return true;
 
-    if (!MediaSessionManager::sharedManager().sessionWillBeginPlayback(*this)) {
+    if (!PlatformMediaSessionManager::sharedManager().sessionWillBeginPlayback(*this)) {
         if (state() == Interrupted)
             m_stateToRestore = Playing;
         return false;
@@ -142,7 +171,7 @@ bool PlatformMediaSession::clientWillPausePlayback()
     }
     
     setState(Paused);
-    MediaSessionManager::sharedManager().sessionWillEndPlayback(*this);
+    PlatformMediaSessionManager::sharedManager().sessionWillEndPlayback(*this);
     if (!m_clientDataBufferingTimer.isActive())
         m_clientDataBufferingTimer.startOneShot(kClientDataBufferingTimerThrottleDelay);
     return true;
@@ -201,11 +230,15 @@ void PlatformMediaSession::clientDataBufferingTimerFired()
 
     updateClientDataBuffering();
 
+#if PLATFORM(IOS)
+    PlatformMediaSessionManager::sharedManager().configureWireLessTargetMonitoring();
+#endif
+
     if (m_state != Playing || !m_client.elementIsHidden())
         return;
 
-    MediaSessionManager::SessionRestrictions restrictions = MediaSessionManager::sharedManager().restrictions(mediaType());
-    if ((restrictions & MediaSessionManager::BackgroundTabPlaybackRestricted) == MediaSessionManager::BackgroundTabPlaybackRestricted)
+    PlatformMediaSessionManager::SessionRestrictions restrictions = PlatformMediaSessionManager::sharedManager().restrictions(mediaType());
+    if ((restrictions & PlatformMediaSessionManager::BackgroundTabPlaybackRestricted) == PlatformMediaSessionManager::BackgroundTabPlaybackRestricted)
         pauseSession();
 }
 
@@ -214,7 +247,7 @@ void PlatformMediaSession::updateClientDataBuffering()
     if (m_clientDataBufferingTimer.isActive())
         m_clientDataBufferingTimer.stop();
 
-    m_client.setShouldBufferData(MediaSessionManager::sharedManager().sessionCanLoadMedia(*this));
+    m_client.setShouldBufferData(PlatformMediaSessionManager::sharedManager().sessionCanLoadMedia(*this));
 }
 
 bool PlatformMediaSession::isHidden() const

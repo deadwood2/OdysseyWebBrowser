@@ -409,7 +409,8 @@
 		145F6837179DC45F00D65598 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				LastUpgradeCheck = 0600;
+				LastSwiftUpdateCheck = 0700;
+				LastUpgradeCheck = 0700;
 			};
 			buildConfigurationList = 145F683A179DC45F00D65598 /* Build configuration list for PBXProject "bmalloc" */;
 			compatibilityVersion = "Xcode 3.2";

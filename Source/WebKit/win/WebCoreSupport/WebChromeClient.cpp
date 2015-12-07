@@ -334,6 +334,11 @@ void WebChromeClient::setResizable(bool resizable)
     }
 }
 
+static BOOL messageIsError(MessageLevel level)
+{
+    return level == MessageLevel::Error;
+}
+
 void WebChromeClient::addMessageToConsole(MessageSource source, MessageLevel level, const String& message, unsigned lineNumber, unsigned columnNumber, const String& url)
 {
     UNUSED_PARAM(columnNumber);
@@ -342,7 +347,7 @@ void WebChromeClient::addMessageToConsole(MessageSource source, MessageLevel lev
     if (SUCCEEDED(m_webView->uiDelegate(&uiDelegate))) {
         COMPtr<IWebUIDelegatePrivate> uiPrivate;
         if (SUCCEEDED(uiDelegate->QueryInterface(IID_IWebUIDelegatePrivate, (void**)&uiPrivate)))
-            uiPrivate->webViewAddMessageToConsole(m_webView, BString(message), lineNumber, BString(url), true);
+            uiPrivate->webViewAddMessageToConsole(m_webView, BString(message), lineNumber, BString(url), messageIsError(level));
     }
 }
 
@@ -431,20 +436,6 @@ void WebChromeClient::setStatusbarText(const String& statusText)
     }
 }
 
-bool WebChromeClient::shouldInterruptJavaScript()
-{
-    COMPtr<IWebUIDelegate> uiDelegate;
-    if (SUCCEEDED(m_webView->uiDelegate(&uiDelegate))) {
-        COMPtr<IWebUIDelegatePrivate> uiPrivate;
-        if (SUCCEEDED(uiDelegate->QueryInterface(IID_IWebUIDelegatePrivate, (void**)&uiPrivate))) {
-            BOOL result;
-            if (SUCCEEDED(uiPrivate->webViewShouldInterruptJavaScript(m_webView, &result)))
-                return !!result;
-        }
-    }
-    return false;
-}
-
 KeyboardUIMode WebChromeClient::keyboardUIMode()
 {
     BOOL enabled = FALSE;
@@ -453,11 +444,6 @@ KeyboardUIMode WebChromeClient::keyboardUIMode()
         preferences->tabsToLinks(&enabled);
 
     return enabled ? KeyboardAccessTabsToLinks : KeyboardAccessDefault;
-}
-
-IntRect WebChromeClient::windowResizerRect() const
-{
-    return IntRect();
 }
 
 void WebChromeClient::invalidateRootView(const IntRect& windowRect)
@@ -794,12 +780,12 @@ bool WebChromeClient::hasOpenedPopup() const
     return false;
 }
 
-PassRefPtr<PopupMenu> WebChromeClient::createPopupMenu(PopupMenuClient* client) const
+RefPtr<PopupMenu> WebChromeClient::createPopupMenu(PopupMenuClient* client) const
 {
     return adoptRef(new PopupMenuWin(client));
 }
 
-PassRefPtr<SearchPopupMenu> WebChromeClient::createSearchPopupMenu(PopupMenuClient* client) const
+RefPtr<SearchPopupMenu> WebChromeClient::createSearchPopupMenu(PopupMenuClient* client) const
 {
     return adoptRef(new SearchPopupMenuWin(client));
 }

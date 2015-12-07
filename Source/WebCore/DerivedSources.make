@@ -35,6 +35,7 @@ VPATH = \
     $(WebCore)/Modules/indexeddb \
     $(WebCore)/Modules/indieui \
     $(WebCore)/Modules/mediacontrols \
+    $(WebCore)/Modules/mediasession \
     $(WebCore)/Modules/mediasource \
     $(WebCore)/Modules/mediastream \
     $(WebCore)/Modules/notifications \
@@ -103,6 +104,9 @@ NON_SVG_BINDING_IDLS = \
     $(WebCore)/Modules/indexeddb/WorkerGlobalScopeIndexedDatabase.idl \
     $(WebCore)/Modules/indieui/UIRequestEvent.idl \
     $(WebCore)/Modules/mediacontrols/MediaControlsHost.idl \
+    $(WebCore)/Modules/mediasession/HTMLMediaElementMediaSession.idl \
+    $(WebCore)/Modules/mediasession/MediaRemoteControls.idl \
+    $(WebCore)/Modules/mediasession/MediaSession.idl \
 	$(WebCore)/Modules/mediasource/DOMURLMediaSource.idl \
 	$(WebCore)/Modules/mediasource/AudioTrackMediaSource.idl \
 	$(WebCore)/Modules/mediasource/MediaSource.idl \
@@ -116,8 +120,10 @@ NON_SVG_BINDING_IDLS = \
 	$(WebCore)/Modules/mediastream/AllVideoCapabilities.idl \
 	$(WebCore)/Modules/mediastream/AllAudioCapabilities.idl \
     $(WebCore)/Modules/mediastream/CapabilityRange.idl \
+	$(WebCore)/Modules/mediastream/DOMURLMediaStream.idl \
     $(WebCore)/Modules/mediastream/HTMLMediaElementMediaStream.idl \
     $(WebCore)/Modules/mediastream/MediaSourceStates.idl \
+    $(WebCore)/Modules/mediastream/MediaDeviceInfo.idl \
     $(WebCore)/Modules/mediastream/MediaDevices.idl \
 	$(WebCore)/Modules/mediastream/MediaStream.idl \
 	$(WebCore)/Modules/mediastream/MediaStreamCapabilities.idl \
@@ -312,6 +318,7 @@ NON_SVG_BINDING_IDLS = \
     $(WebCore)/dom/Range.idl \
     $(WebCore)/dom/RangeException.idl \
     $(WebCore)/dom/RequestAnimationFrameCallback.idl \
+    $(WebCore)/dom/SecurityPolicyViolationEvent.idl \
     $(WebCore)/dom/StringCallback.idl \
     $(WebCore)/dom/Text.idl \
     $(WebCore)/dom/TextEvent.idl \
@@ -947,7 +954,7 @@ XPathGrammar.cpp : xml/XPathGrammar.y $(PROJECT_FILE)
 
 # user agent style sheets
 
-USER_AGENT_STYLE_SHEETS = $(WebCore)/css/html.css $(WebCore)/css/quirks.css $(WebCore)/css/themeWin.css $(WebCore)/css/themeWinQuirks.css $(WebCore)/css/plugIns.css
+USER_AGENT_STYLE_SHEETS = $(WebCore)/css/html.css $(WebCore)/css/quirks.css $(WebCore)/css/plugIns.css
 USER_AGENT_STYLE_SHEETS := $(USER_AGENT_STYLE_SHEETS) $(WebCore)/css/svg.css
 
 ifeq ($(findstring ENABLE_MATHML,$(FEATURE_DEFINES)), ENABLE_MATHML)
@@ -968,6 +975,10 @@ endif
 
 ifeq ($(OS),MACOS)
 	USER_AGENT_STYLE_SHEETS := $(USER_AGENT_STYLE_SHEETS) $(WebCore)/Modules/plugins/QuickTimePluginReplacement.css
+endif
+
+ifeq ($(OS), Windows*)
+    USER_AGENT_STYLE_SHEETS := $(USER_AGENT_STYLE_SHEETS) $(WebCore)/css/themeWin.css $(WebCore)/css/themeWinQuirks.css
 endif
 
 UserAgentStyleSheets.h : css/make-css-file-arrays.pl bindings/scripts/preprocessor.pm $(USER_AGENT_STYLE_SHEETS) $(PLATFORM_FEATURE_DEFINES)

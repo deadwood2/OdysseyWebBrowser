@@ -158,7 +158,7 @@ String contextMenuItemTagShowMediaControls()
     return String::fromUTF8("Show Media Controls");
 }
 
-String contextMenuitemTagHideMediaControls()
+String contextMenuItemTagHideMediaControls()
 {
     return String::fromUTF8("Hide Media Controls");
 }
@@ -408,11 +408,6 @@ String AXSearchFieldCancelButtonText()
     return String::fromUTF8("cancel");
 }
 
-String AXAutoFillButtonText()
-{
-    return String::fromUTF8("autofill");
-}
-
 String AXButtonActionVerb()
 {
     return String::fromUTF8("press");
@@ -648,12 +643,6 @@ String insecurePluginVersionText()
     return String();
 }
 
-String inactivePluginText()
-{
-    notImplemented();
-    return String();
-}
-
 String unacceptableTLSCertificate()
 {
     return String::fromUTF8("Unacceptable TLS certificate");
@@ -665,11 +654,6 @@ String localizedString(const char* key)
 }
 
 #if ENABLE(VIDEO_TRACK)
-String textTrackClosedCaptionsText()
-{
-    return String::fromUTF8("Closed Captions");
-}
-
 String textTrackSubtitlesText()
 {
     return String::fromUTF8("Subtitles");

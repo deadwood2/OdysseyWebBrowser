@@ -41,33 +41,28 @@ namespace ContentExtensions {
 
 class WEBCORE_EXPORT DFABytecodeInterpreter {
 public:
-    DFABytecodeInterpreter(const DFABytecode* bytecode, unsigned bytecodeLength, Vector<bool>& pagesUsed)
+    DFABytecodeInterpreter(const DFABytecode* bytecode, unsigned bytecodeLength)
         : m_bytecode(bytecode)
         , m_bytecodeLength(bytecodeLength)
-        , m_pagesUsed(pagesUsed)
     {
-    }
-    ~DFABytecodeInterpreter()
-    {
-#if CONTENT_EXTENSIONS_MEMORY_REPORTING
-        size_t total = 0;
-        for (bool& b : m_pagesUsed)
-            total += b;
-        dataLogF("Pages used: %zu / %zu\n", total, m_pagesUsed.size());
-#endif
     }
     
     typedef HashSet<uint64_t, DefaultHash<uint64_t>::Hash, WTF::UnsignedWithZeroKeyHashTraits<uint64_t>> Actions;
     
     Actions interpret(const CString&, uint16_t flags);
-    Actions actionsForDefaultStylesheetFromDFARoot();
+    Actions interpretWithDomains(const CString&, uint16_t flags, const DFABytecodeInterpreter::Actions& domainActions);
+    Actions actionsMatchingEverything();
 
 private:
     void interpretAppendAction(unsigned& programCounter, Actions&, bool ifDomain);
     void interpretTestFlagsAndAppendAction(unsigned& programCounter, uint16_t flags, Actions&, bool ifDomain);
+
+    template<bool caseSensitive>
+    void interpetJumpTable(const char* url, uint32_t& urlIndex, uint32_t& programCounter, bool& urlIndexIsAfterEndOfString);
+
     const DFABytecode* m_bytecode;
     const unsigned m_bytecodeLength;
-    Vector<bool>& m_pagesUsed;
+    const DFABytecodeInterpreter::Actions* m_domainActions { nullptr };
 };
 
 } // namespace ContentExtensions

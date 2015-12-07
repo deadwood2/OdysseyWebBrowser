@@ -36,7 +36,7 @@
 #import <WebCore/GraphicsLayerCA.h>
 #import <WebCore/LengthFunctions.h>
 #import <WebCore/PlatformCAFilters.h>
-#import <WebCore/PlatformCALayerMac.h>
+#import <WebCore/PlatformCALayerCocoa.h>
 #import <WebCore/TiledBacking.h>
 #import <wtf/CurrentTime.h>
 #import <wtf/RetainPtr.h>
@@ -158,9 +158,9 @@ void PlatformCALayerRemote::recursiveBuildTransaction(RemoteLayerTreeContext& co
 
     if (m_properties.changedProperties != RemoteLayerTreeTransaction::NoChange) {
         if (m_properties.changedProperties & RemoteLayerTreeTransaction::ChildrenChanged) {
-            m_properties.children.clear();
-            for (const auto& layer : m_children)
-                m_properties.children.append(layer->layerID());
+            m_properties.children.resize(m_children.size());
+            for (size_t i = 0; i < m_children.size(); ++i)
+                m_properties.children[i] = m_children[i]->layerID();
         }
 
         if (isPlatformCALayerRemoteCustom()) {
@@ -651,7 +651,7 @@ void PlatformCALayerRemote::setBlendMode(BlendMode blendMode)
 
 bool PlatformCALayerRemote::filtersCanBeComposited(const FilterOperations& filters)
 {
-    return PlatformCALayerMac::filtersCanBeComposited(filters);
+    return PlatformCALayerCocoa::filtersCanBeComposited(filters);
 }
 
 void PlatformCALayerRemote::setName(const String& value)

@@ -100,7 +100,7 @@ static bool areAllLoadersPageCacheAcceptable(const ResourceLoaderMap& loaders)
     Vector<RefPtr<ResourceLoader>> loadersCopy;
     copyValuesToVector(loaders, loadersCopy);
     for (auto& loader : loadersCopy) {
-        if (!loader->frameLoader())
+        if (!loader->frameLoader() || !loader->frameLoader()->frame().page())
             return false;
 
         CachedResource* cachedResource = MemoryCache::singleton().resourceForRequest(loader->request(), loader->frameLoader()->frame().page()->sessionID());
@@ -328,14 +328,15 @@ void DocumentLoader::stopLoading()
     if (isLoadingMainResource()) {
         // Stop the main resource loader and let it send the cancelled message.
         cancelMainResourceLoad(frameLoader->cancelledError(m_request));
-    } else if (!m_subresourceLoaders.isEmpty())
-        // The main resource loader already finished loading. Set the cancelled error on the 
-        // document and let the subresourceLoaders send individual cancelled messages below.
+    } else if (!m_subresourceLoaders.isEmpty() || !m_plugInStreamLoaders.isEmpty()) {
+        // The main resource loader already finished loading. Set the cancelled error on the
+        // document and let the subresourceLoaders and pluginLoaders send individual cancelled messages below.
         setMainDocumentError(frameLoader->cancelledError(m_request));
-    else
+    } else {
         // If there are no resource loaders, we need to manufacture a cancelled message.
         // (A back/forward navigation has no resource loaders because its resources are cached.)
         mainReceivedError(frameLoader->cancelledError(m_request));
+    }
 
     // We always need to explicitly cancel the Document's parser when stopping the load.
     // Otherwise cancelling the parser while starting the next page load might result
@@ -549,8 +550,10 @@ void DocumentLoader::willSendRequest(ResourceRequest& newRequest, const Resource
         // We checked application cache for initial URL, now we need to check it for redirected one.
         ASSERT(!m_substituteData.isValid());
         m_applicationCacheHost->maybeLoadMainResourceForRedirect(newRequest, m_substituteData);
-        if (m_substituteData.isValid())
-            m_identifierForLoadWithoutResourceLoader = mainResourceLoader()->identifier();
+        if (m_substituteData.isValid()) {
+            RELEASE_ASSERT(m_mainResource);
+            m_identifierForLoadWithoutResourceLoader = m_mainResource->identifierForLoadWithoutResourceLoader();
+        }
     }
 
     // FIXME: Ideally we'd stop the I/O until we hear back from the navigation policy delegate
@@ -580,10 +583,15 @@ void DocumentLoader::continueAfterNavigationPolicy(const ResourceRequest&, bool 
         // However, from an API perspective, this isn't a cancellation. Therefore, sever our relationship with the network load,
         // but prevent the ResourceLoader from sending ResourceLoadNotifier callbacks.
         RefPtr<ResourceLoader> resourceLoader = mainResourceLoader();
-        ASSERT(resourceLoader->shouldSendResourceLoadCallbacks());
-        resourceLoader->setSendCallbackPolicy(DoNotSendCallbacks);
+        if (resourceLoader) {
+            ASSERT(resourceLoader->shouldSendResourceLoadCallbacks());
+            resourceLoader->setSendCallbackPolicy(DoNotSendCallbacks);
+        }
+
         clearMainResource();
-        resourceLoader->setSendCallbackPolicy(SendCallbacks);
+
+        if (resourceLoader)
+            resourceLoader->setSendCallbackPolicy(SendCallbacks);
         handleSubstituteDataLoadSoon();
     }
 }
@@ -644,6 +652,7 @@ void DocumentLoader::responseReceived(CachedResource* resource, const ResourceRe
     }
 
     ASSERT(!m_waitingForContentPolicy);
+    ASSERT(frameLoader());
     m_waitingForContentPolicy = true;
 
     // Always show content with valid substitute data.
@@ -835,8 +844,10 @@ void DocumentLoader::commitData(const char* bytes, size_t length)
 
     for (auto& pendingStyleSheet : m_pendingNamedContentExtensionStyleSheets)
         styleSheetCollection.maybeAddContentExtensionSheet(pendingStyleSheet.key, *pendingStyleSheet.value);
-    for (auto& pendingSelector : m_pendingContentExtensionDisplayNoneSelectors)
-        styleSheetCollection.addDisplayNoneSelector(pendingSelector.key, pendingSelector.value.first, pendingSelector.value.second);
+    for (auto& pendingSelectorEntry : m_pendingContentExtensionDisplayNoneSelectors) {
+        for (const auto& pendingSelector : pendingSelectorEntry.value)
+            styleSheetCollection.addDisplayNoneSelector(pendingSelectorEntry.key, pendingSelector.first, pendingSelector.second);
+    }
 
     m_pendingNamedContentExtensionStyleSheets.clear();
     m_pendingContentExtensionDisplayNoneSelectors.clear();
@@ -898,14 +909,19 @@ void DocumentLoader::checkLoadComplete()
     m_frame->document()->domWindow()->finishedLoading();
 }
 
-void DocumentLoader::setFrame(Frame* frame)
+void DocumentLoader::attachToFrame(Frame& frame)
 {
-    if (m_frame == frame)
+    if (m_frame == &frame)
         return;
-    ASSERT(frame && !m_frame);
-    m_frame = frame;
-    m_writer.setFrame(frame);
+
+    ASSERT(!m_frame);
+    m_frame = &frame;
+    m_writer.setFrame(&frame);
     attachToFrame();
+
+#ifndef NDEBUG
+    m_hasEverBeenAttached = true;
+#endif
 }
 
 void DocumentLoader::attachToFrame()
@@ -915,7 +931,12 @@ void DocumentLoader::attachToFrame()
 
 void DocumentLoader::detachFromFrame()
 {
-    ASSERT(m_frame);
+#ifndef NDEBUG
+    if (m_hasEverBeenAttached)
+        ASSERT_WITH_MESSAGE(m_frame, "detachFromFrame() is being called on a DocumentLoader twice without an attachToFrame() inbetween");
+    else
+        ASSERT_WITH_MESSAGE(m_frame, "detachFromFrame() is being called on a DocumentLoader that has never attached to any Frame");
+#endif
     RefPtr<Frame> protectFrame(m_frame);
     Ref<DocumentLoader> protectLoader(*this);
 
@@ -929,10 +950,17 @@ void DocumentLoader::detachFromFrame()
 #endif
 
     m_applicationCacheHost->setDOMApplicationCache(nullptr);
-    InspectorInstrumentation::loaderDetachedFromFrame(*m_frame, *this);
+
+    cancelPolicyCheckIfNeeded();
+
+    // Even though we ASSERT at the top of this method that we have an m_frame, we're seeing crashes where m_frame is null.
+    // This means either that a DocumentLoader is detaching twice, or is detaching before ever having attached.
+    // Until we figure out how that is happening, null check m_frame before dereferencing it here.
+    // <rdar://problem/21293082> and https://bugs.webkit.org/show_bug.cgi?id=146786
+    if (m_frame)
+        InspectorInstrumentation::loaderDetachedFromFrame(*m_frame, *this);
+
     m_frame = nullptr;
-    // The call to stopLoading() above should have canceled any pending content policy check.
-    ASSERT_WITH_MESSAGE(!m_waitingForContentPolicy, "The content policy callback needs a valid frame.");
 }
 
 void DocumentLoader::clearMainResourceLoader()
@@ -1324,20 +1352,20 @@ void DocumentLoader::removeSubresourceLoader(ResourceLoader* loader)
         frame->loader().checkLoadComplete();
 }
 
-void DocumentLoader::addPlugInStreamLoader(ResourceLoader* loader)
+void DocumentLoader::addPlugInStreamLoader(ResourceLoader& loader)
 {
-    ASSERT(loader->identifier());
-    ASSERT(!m_plugInStreamLoaders.contains(loader->identifier()));
+    ASSERT(loader.identifier());
+    ASSERT(!m_plugInStreamLoaders.contains(loader.identifier()));
 
-    m_plugInStreamLoaders.add(loader->identifier(), loader);
+    m_plugInStreamLoaders.add(loader.identifier(), &loader);
 }
 
-void DocumentLoader::removePlugInStreamLoader(ResourceLoader* loader)
+void DocumentLoader::removePlugInStreamLoader(ResourceLoader& loader)
 {
-    ASSERT(loader->identifier());
-    ASSERT(loader == m_plugInStreamLoaders.get(loader->identifier()));
+    ASSERT(loader.identifier());
+    ASSERT(&loader == m_plugInStreamLoaders.get(loader.identifier()));
 
-    m_plugInStreamLoaders.remove(loader->identifier());
+    m_plugInStreamLoaders.remove(loader.identifier());
     checkLoadComplete();
 }
 
@@ -1405,7 +1433,7 @@ void DocumentLoader::startLoadingMainResource()
     // If this is a reload the cache layer might have made the previous request conditional. DocumentLoader can't handle 304 responses itself.
     request.makeUnconditional();
 
-    static NeverDestroyed<ResourceLoaderOptions> mainResourceLoadOptions(SendCallbacks, SniffContent, BufferData, AllowStoredCredentials, AskClientForAllCredentials, SkipSecurityCheck, UseDefaultOriginRestrictionsForType, IncludeCertificateInfo);
+    static NeverDestroyed<ResourceLoaderOptions> mainResourceLoadOptions(SendCallbacks, SniffContent, BufferData, AllowStoredCredentials, AskClientForAllCredentials, SkipSecurityCheck, UseDefaultOriginRestrictionsForType, IncludeCertificateInfo, ContentSecurityPolicyImposition::DoPolicyCheck);
     CachedResourceRequest cachedResourceRequest(request, mainResourceLoadOptions);
     cachedResourceRequest.setInitiator(*this);
     m_mainResource = m_cachedResourceLoader->requestMainResource(cachedResourceRequest);
@@ -1441,17 +1469,24 @@ void DocumentLoader::startLoadingMainResource()
     setRequest(request);
 }
 
+void DocumentLoader::cancelPolicyCheckIfNeeded()
+{
+    RELEASE_ASSERT(frameLoader());
+
+    if (m_waitingForContentPolicy) {
+        frameLoader()->policyChecker().cancelCheck();
+        m_waitingForContentPolicy = false;
+    }
+}
+
 void DocumentLoader::cancelMainResourceLoad(const ResourceError& resourceError)
 {
     Ref<DocumentLoader> protect(*this);
     ResourceError error = resourceError.isNull() ? frameLoader()->cancelledError(m_request) : resourceError;
 
     m_dataLoadTimer.stop();
-    if (m_waitingForContentPolicy) {
-        frameLoader()->policyChecker().cancelCheck();
-        ASSERT(m_waitingForContentPolicy);
-        m_waitingForContentPolicy = false;
-    }
+
+    cancelPolicyCheckIfNeeded();
 
     if (mainResourceLoader())
         mainResourceLoader()->cancel(error);
@@ -1523,7 +1558,7 @@ void DocumentLoader::getIconLoadDecisionForIconURL(const String& urlString)
 void DocumentLoader::continueIconLoadWithDecision(IconLoadDecision decision)
 {
     ASSERT(m_iconLoadDecisionCallback);
-    m_iconLoadDecisionCallback = 0;
+    m_iconLoadDecisionCallback = nullptr;
     if (m_frame)
         m_frame->loader().icon().continueLoadWithDecision(decision);
 }
@@ -1549,9 +1584,15 @@ void DocumentLoader::handledOnloadEvents()
 
 void DocumentLoader::setTriggeringAction(const NavigationAction& action)
 {
-    m_triggeringAction = action;
-    if (!m_triggeringAction.isEmpty())
-        m_triggeringAction.setShouldOpenExternalURLsPolicy(m_shouldOpenExternalURLsPolicy);
+    m_triggeringAction = action.copyWithShouldOpenExternalURLsPolicy(m_frame ? shouldOpenExternalURLsPolicyToPropagate() : m_shouldOpenExternalURLsPolicy);
+}
+
+ShouldOpenExternalURLsPolicy DocumentLoader::shouldOpenExternalURLsPolicyToPropagate() const
+{
+    if (!m_frame || !m_frame->isMainFrame())
+        return ShouldOpenExternalURLsPolicy::ShouldNotAllow;
+
+    return m_shouldOpenExternalURLsPolicy;
 }
 
 #if ENABLE(CONTENT_EXTENSIONS)
@@ -1564,7 +1605,8 @@ void DocumentLoader::addPendingContentExtensionSheet(const String& identifier, S
 void DocumentLoader::addPendingContentExtensionDisplayNoneSelector(const String& identifier, const String& selector, uint32_t selectorID)
 {
     ASSERT(!m_gotFirstByte);
-    m_pendingContentExtensionDisplayNoneSelectors.set(identifier, std::make_pair(selector, selectorID));
+    auto addResult = m_pendingContentExtensionDisplayNoneSelectors.add(identifier, Vector<std::pair<String, uint32_t>>());
+    addResult.iterator->value.append(std::make_pair(selector, selectorID));
 }
 #endif
 

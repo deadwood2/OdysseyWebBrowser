@@ -328,9 +328,7 @@ protected:
         /* [in] */ BSTR url,
         /* [in] */ BOOL isError);
     
-    virtual HRESULT STDMETHODCALLTYPE webViewShouldInterruptJavaScript( 
-        /* [in] */ IWebView *sender,
-        /* [retval][out] */ BOOL *result) { return E_NOTIMPL; }
+    virtual HRESULT STDMETHODCALLTYPE webViewShouldInterruptJavaScript(IWebView*, BOOL*) { return E_NOTIMPL; }
     
     virtual HRESULT STDMETHODCALLTYPE webViewReceivedFocus( 
         /* [in] */ IWebView *sender) { return E_NOTIMPL; }

@@ -103,7 +103,7 @@ void InspectorTimelineAgent::didCreateFrontendAndBackend(Inspector::FrontendChan
 void InspectorTimelineAgent::willDestroyFrontendAndBackend(Inspector::DisconnectReason reason)
 {
     m_frontendDispatcher = nullptr;
-    m_backendDispatcher.clear();
+    m_backendDispatcher = nullptr;
 
     m_instrumentingAgents->setPersistentInspectorTimelineAgent(nullptr);
 
@@ -140,8 +140,6 @@ void InspectorTimelineAgent::internalStart(const int* maxCallStackDepth)
     else
         m_maxCallStackDepth = 5;
 
-    m_instrumentingAgents->inspectorEnvironment().executionStopwatch()->start();
-
     m_instrumentingAgents->setInspectorTimelineAgent(this);
 
     if (m_scriptDebugServer)
@@ -153,42 +151,47 @@ void InspectorTimelineAgent::internalStart(const int* maxCallStackDepth)
 
 #if PLATFORM(COCOA)
     m_frameStartObserver = RunLoopObserver::create(0, [this]() {
-        if (!m_enabled || m_didStartRecordingRunLoop)
+        if (!m_enabled || m_scriptDebugServer->isPaused())
             return;
 
-        pushCurrentRecord(InspectorObject::create(), TimelineRecordType::RenderingFrame, false, nullptr);
-        m_didStartRecordingRunLoop = true;
+        if (!m_runLoopNestingLevel)
+            pushCurrentRecord(InspectorObject::create(), TimelineRecordType::RenderingFrame, false, nullptr);
+        m_runLoopNestingLevel++;
     });
 
     m_frameStopObserver = RunLoopObserver::create(frameStopRunLoopOrder, [this]() {
-        if (!m_enabled || !m_didStartRecordingRunLoop)
+        if (!m_enabled || m_scriptDebugServer->isPaused())
             return;
 
+        ASSERT(m_runLoopNestingLevel > 0);
+        m_runLoopNestingLevel--;
+        if (m_runLoopNestingLevel)
+            return;
+
+        if (m_startedComposite)
+            didComposite();
+
         didCompleteCurrentRecord(TimelineRecordType::RenderingFrame);
-        m_didStartRecordingRunLoop = false;
     });
 
-    m_frameStartObserver->schedule(currentRunLoop(), kCFRunLoopAfterWaiting | kCFRunLoopBeforeTimers);
-    m_frameStopObserver->schedule(currentRunLoop(), kCFRunLoopBeforeWaiting | kCFRunLoopExit);
+    m_frameStartObserver->schedule(currentRunLoop(), kCFRunLoopEntry | kCFRunLoopAfterWaiting);
+    m_frameStopObserver->schedule(currentRunLoop(), kCFRunLoopExit | kCFRunLoopBeforeWaiting);
 
-    // Create a runloop record immediately in order to capture the rest of the current runloop.
+    // Create a runloop record and increment the runloop nesting level, to capture the current turn of the main runloop
+    // (which is the outer runloop if recording started while paused in the debugger).
     pushCurrentRecord(InspectorObject::create(), TimelineRecordType::RenderingFrame, false, nullptr);
-    m_didStartRecordingRunLoop = true;
+
+    m_runLoopNestingLevel = 1;
 #endif
 
     if (m_frontendDispatcher)
-        m_frontendDispatcher->recordingStarted();
+        m_frontendDispatcher->recordingStarted(timestamp());
 }
 
 void InspectorTimelineAgent::internalStop()
 {
     if (!m_enabled)
         return;
-
-    // The environment's stopwatch could be already stopped if the debugger has paused.
-    auto stopwatch = m_instrumentingAgents->inspectorEnvironment().executionStopwatch();
-    if (stopwatch->isActive())
-        stopwatch->stop();
 
     m_instrumentingAgents->setInspectorTimelineAgent(nullptr);
 
@@ -198,21 +201,20 @@ void InspectorTimelineAgent::internalStop()
 #if PLATFORM(COCOA)
     m_frameStartObserver = nullptr;
     m_frameStopObserver = nullptr;
-    if (m_didStartRecordingRunLoop) {
-        m_didStartRecordingRunLoop = false;
+    m_runLoopNestingLevel = 0;
 
-        // Complete all pending records to prevent discarding events that are currently in progress.
-        while (!m_recordStack.isEmpty())
-            didCompleteCurrentRecord(m_recordStack.last().type);
-    }
+    // Complete all pending records to prevent discarding events that are currently in progress.
+    while (!m_recordStack.isEmpty())
+        didCompleteCurrentRecord(m_recordStack.last().type);
 #endif
 
     clearRecordStack();
 
     m_enabled = false;
+    m_startedComposite = false;
 
     if (m_frontendDispatcher)
-        m_frontendDispatcher->recordingStopped();
+        m_frontendDispatcher->recordingStopped(timestamp());
 }
 
 double InspectorTimelineAgent::timestamp()
@@ -391,6 +393,20 @@ void InspectorTimelineAgent::willRecalculateStyle(Frame* frame)
 void InspectorTimelineAgent::didRecalculateStyle()
 {
     didCompleteCurrentRecord(TimelineRecordType::RecalculateStyles);
+}
+
+void InspectorTimelineAgent::willComposite(Frame& frame)
+{
+    ASSERT(!m_startedComposite);
+    pushCurrentRecord(InspectorObject::create(), TimelineRecordType::Composite, true, &frame);
+    m_startedComposite = true;
+}
+
+void InspectorTimelineAgent::didComposite()
+{
+    ASSERT(m_startedComposite);
+    didCompleteCurrentRecord(TimelineRecordType::Composite);
+    m_startedComposite = false;
 }
 
 void InspectorTimelineAgent::willPaint(Frame& frame)
@@ -601,6 +617,8 @@ static Inspector::Protocol::Timeline::EventType toProtocol(TimelineRecordType ty
         return Inspector::Protocol::Timeline::EventType::Layout;
     case TimelineRecordType::Paint:
         return Inspector::Protocol::Timeline::EventType::Paint;
+    case TimelineRecordType::Composite:
+        return Inspector::Protocol::Timeline::EventType::Composite;
     case TimelineRecordType::RenderingFrame:
         return Inspector::Protocol::Timeline::EventType::RenderingFrame;
     case TimelineRecordType::ScrollLayer:
@@ -673,6 +691,10 @@ void InspectorTimelineAgent::addRecordToTimeline(RefPtr<InspectorObject>&& recor
         sendEvent(WTF::move(recordObject));
     } else {
         const TimelineRecordEntry& parent = m_recordStack.last();
+        // Nested paint records are an implementation detail and add no information not already contained in the parent.
+        if (type == TimelineRecordType::Paint && parent.type == type)
+            return;
+
         parent.children->pushObject(WTF::move(record));
     }
 }
@@ -710,15 +732,8 @@ void InspectorTimelineAgent::didCompleteCurrentRecord(TimelineRecordType type)
 InspectorTimelineAgent::InspectorTimelineAgent(InstrumentingAgents* instrumentingAgents, InspectorPageAgent* pageAgent, InspectorType type, InspectorClient* client)
     : InspectorAgentBase(ASCIILiteral("Timeline"), instrumentingAgents)
     , m_pageAgent(pageAgent)
-    , m_scriptDebugServer(nullptr)
-    , m_id(1)
-    , m_callStackDepth(0)
-    , m_maxCallStackDepth(5)
     , m_inspectorType(type)
     , m_client(client)
-    , m_enabled(false)
-    , m_enabledFromFrontend(false)
-    , m_didStartRecordingRunLoop(false)
 {
 }
 

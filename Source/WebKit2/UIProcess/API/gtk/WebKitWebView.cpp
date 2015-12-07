@@ -35,6 +35,7 @@
 #include "WebKitContextMenuItemPrivate.h"
 #include "WebKitContextMenuPrivate.h"
 #include "WebKitDownloadPrivate.h"
+#include "WebKitEditorStatePrivate.h"
 #include "WebKitEnumTypes.h"
 #include "WebKitError.h"
 #include "WebKitFaviconDatabasePrivate.h"
@@ -67,7 +68,7 @@
 #include <WebCore/GtkUtilities.h>
 #include <WebCore/RefPtrCairo.h>
 #include <glib/gi18n-lib.h>
-#include <wtf/gobject/GRefPtr.h>
+#include <wtf/glib/GRefPtr.h>
 #include <wtf/text/CString.h>
 
 #if USE(LIBNOTIFY)
@@ -185,6 +186,7 @@ struct _WebKitWebViewPrivate {
     GRefPtr<WebKitUserContentManager> userContentManager;
     GRefPtr<WebKitWebContext> context;
     GRefPtr<WebKitWindowProperties> windowProperties;
+    GRefPtr<WebKitEditorState> editorState;
 
     GRefPtr<GMainLoop> modalLoop;
 
@@ -296,6 +298,8 @@ private:
     virtual void didChangeCanGoForward() override { }
     virtual void willChangeNetworkRequestsInProgress() override { }
     virtual void didChangeNetworkRequestsInProgress() override { }
+    virtual void willChangeCertificateInfo() override { }
+    virtual void didChangeCertificateInfo() override { }
 
     WebKitWebView* m_webView;
 };
@@ -2133,6 +2137,14 @@ bool webkitWebViewEmitRunColorChooser(WebKitWebView* webView, WebKitColorChooser
     return handled;
 }
 
+void webkitWebViewSelectionDidChange(WebKitWebView* webView)
+{
+    if (!webView->priv->editorState)
+        return;
+
+    webkitEditorStateChanged(webView->priv->editorState.get(), getPage(webView)->editorState());
+}
+
 /**
  * webkit_web_view_new:
  *
@@ -2933,6 +2945,27 @@ void webkit_web_view_execute_editing_command(WebKitWebView* webView, const char*
 }
 
 /**
+ * webkit_web_view_execute_editing_command_with_argument:
+ * @web_view: a #WebKitWebView
+ * @command: the command to execute
+ * @argument: the command argument
+ *
+ * Request to execute the given @command with @argument for @web_view. You can use
+ * webkit_web_view_can_execute_editing_command() to check whether
+ * it's possible to execute the command.
+ *
+ * Since: 2.10
+ */
+void webkit_web_view_execute_editing_command_with_argument(WebKitWebView* webView, const char* command, const char* argument)
+{
+    g_return_if_fail(WEBKIT_IS_WEB_VIEW(webView));
+    g_return_if_fail(command);
+    g_return_if_fail(argument);
+
+    getPage(webView)->executeEditCommand(String::fromUTF8(command), String::fromUTF8(argument));
+}
+
+/**
  * webkit_web_view_get_find_controller:
  * @web_view: the #WebKitWebView
  *
@@ -2984,7 +3017,7 @@ static void webkitWebViewRunJavaScriptCallback(API::SerializedScriptValue* wkSer
 
     WebKitWebView* webView = WEBKIT_WEB_VIEW(g_task_get_source_object(task));
     g_task_return_pointer(task, webkitJavascriptResultCreate(webView,
-        *static_cast<WebCore::SerializedScriptValue*>(wkSerializedScriptValue->internalRepresentation())),
+        *wkSerializedScriptValue->internalRepresentation()),
         reinterpret_cast<GDestroyNotify>(webkit_javascript_result_unref));
 }
 
@@ -3008,7 +3041,7 @@ void webkit_web_view_run_javascript(WebKitWebView* webView, const gchar* script,
     g_return_if_fail(script);
 
     GTask* task = g_task_new(webView, cancellable, callback, userData);
-    getPage(webView)->runJavaScriptInMainFrame(String::fromUTF8(script), [task](API::SerializedScriptValue* serializedScriptValue, WebKit::CallbackBase::Error) {
+    getPage(webView)->runJavaScriptInMainFrame(String::fromUTF8(script), [task](API::SerializedScriptValue* serializedScriptValue, bool, WebKit::CallbackBase::Error) {
         webkitWebViewRunJavaScriptCallback(serializedScriptValue, adoptGRef(task).get());
     });
 }
@@ -3099,7 +3132,7 @@ static void resourcesStreamReadCallback(GObject* object, GAsyncResult* result, g
     WebKitWebView* webView = WEBKIT_WEB_VIEW(g_task_get_source_object(task.get()));
     gpointer outputStreamData = g_memory_output_stream_get_data(G_MEMORY_OUTPUT_STREAM(object));
     getPage(webView)->runJavaScriptInMainFrame(String::fromUTF8(reinterpret_cast<const gchar*>(outputStreamData)),
-        [task](API::SerializedScriptValue* serializedScriptValue, WebKit::CallbackBase::Error) {
+        [task](API::SerializedScriptValue* serializedScriptValue, bool, WebKit::CallbackBase::Error) {
             webkitWebViewRunJavaScriptCallback(serializedScriptValue, task.get());
         });
 }
@@ -3646,4 +3679,24 @@ void webkit_web_view_set_editable(WebKitWebView* webView, gboolean editable)
     getPage(webView)->setEditable(editable);
 
     g_object_notify(G_OBJECT(webView), "editable");
+}
+
+/**
+ * webkit_web_view_get_editor_state:
+ * @web_view: a #WebKitWebView
+ *
+ * Gets the web editor state of @web_view.
+ *
+ * Returns: (transfer none): the #WebKitEditorState of the view
+ *
+ * Since: 2.10
+ */
+WebKitEditorState* webkit_web_view_get_editor_state(WebKitWebView *webView)
+{
+    g_return_val_if_fail(WEBKIT_IS_WEB_VIEW(webView), nullptr);
+
+    if (!webView->priv->editorState)
+        webView->priv->editorState = adoptGRef(webkitEditorStateCreate(getPage(webView)->editorState()));
+
+    return webView->priv->editorState.get();
 }

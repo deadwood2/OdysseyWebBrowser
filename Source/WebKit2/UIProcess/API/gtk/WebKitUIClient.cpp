@@ -33,7 +33,7 @@
 #include "WebKitWindowPropertiesPrivate.h"
 #include "WebPageProxy.h"
 #include <WebCore/GtkUtilities.h>
-#include <wtf/gobject/GRefPtr.h>
+#include <wtf/glib/GRefPtr.h>
 
 using namespace WebKit;
 
@@ -45,7 +45,7 @@ public:
     }
 
 private:
-    virtual PassRefPtr<WebPageProxy> createNewPage(WebPageProxy*, WebFrameProxy*, const WebCore::ResourceRequest& resourceRequest, const WebCore::WindowFeatures& windowFeatures, const NavigationActionData& navigationActionData) override
+    virtual PassRefPtr<WebPageProxy> createNewPage(WebPageProxy*, WebFrameProxy*, const SecurityOriginData&, const WebCore::ResourceRequest& resourceRequest, const WebCore::WindowFeatures& windowFeatures, const NavigationActionData& navigationActionData) override
     {
         GRefPtr<WebKitURIRequest> request = adoptGRef(webkitURIRequestCreateForResourceRequest(resourceRequest));
         WebKitNavigationAction navigationAction(request.get(), navigationActionData);
@@ -62,18 +62,18 @@ private:
         webkitWebViewClosePage(m_webView);
     }
 
-    virtual void runJavaScriptAlert(WebPageProxy*, const String& message, WebFrameProxy*, std::function<void ()> completionHandler) override
+    virtual void runJavaScriptAlert(WebPageProxy*, const String& message, WebFrameProxy*, const SecurityOriginData&, std::function<void ()> completionHandler) override
     {
         webkitWebViewRunJavaScriptAlert(m_webView, message.utf8());
         completionHandler();
     }
 
-    virtual void runJavaScriptConfirm(WebPageProxy*, const String& message, WebFrameProxy*, std::function<void (bool)> completionHandler) override
+    virtual void runJavaScriptConfirm(WebPageProxy*, const String& message, WebFrameProxy*, const SecurityOriginData&, std::function<void (bool)> completionHandler) override
     {
         completionHandler(webkitWebViewRunJavaScriptConfirm(m_webView, message.utf8()));
     }
 
-    virtual void runJavaScriptPrompt(WebPageProxy*, const String& message, const String& defaultValue, WebFrameProxy*, std::function<void (const String&)> completionHandler) override
+    virtual void runJavaScriptPrompt(WebPageProxy*, const String& message, const String& defaultValue, WebFrameProxy*, const SecurityOriginData&, std::function<void (const String&)> completionHandler) override
     {
         CString result = webkitWebViewRunJavaScriptPrompt(m_webView, message.utf8(), defaultValue.utf8());
         if (result.isNull()) {
@@ -144,6 +144,13 @@ private:
             gtk_window_get_size(GTK_WINDOW(window), &geometry.width, &geometry.height);
         }
         return WebCore::FloatRect(geometry);
+    }
+
+    virtual void exceededDatabaseQuota(WebPageProxy*, WebFrameProxy*, API::SecurityOrigin*, const String&, const String&, unsigned long long /*currentQuota*/, unsigned long long /*currentOriginUsage*/, unsigned long long /*currentDatabaseUsage*/, unsigned long long /*expectedUsage*/, std::function<void (unsigned long long)> completionHandler) override
+    {
+        static const unsigned long long defaultQuota = 5 * 1024 * 1204; // 5 MB
+        // FIXME: Provide API for this.
+        completionHandler(defaultQuota);
     }
 
     virtual bool runOpenPanel(WebPageProxy*, WebFrameProxy*, WebOpenPanelParameters* parameters, WebOpenPanelResultListenerProxy* listener) override

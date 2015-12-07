@@ -53,8 +53,6 @@ typedef enum {
 } WebStorageBlockingPolicy;
 
 typedef enum {
-    WebKitJavaScriptRuntimeFlagsSymbolDisabled = 1u << 0,
-    WebKitJavaScriptRuntimeFlagsPromiseDisabled = 1u << 1,
     WebKitJavaScriptRuntimeFlagsAllEnabled = 0
 } WebKitJavaScriptRuntimeFlags;
 
@@ -250,8 +248,14 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification;
 - (void)setMediaPlaybackAllowsInline:(BOOL)flag;
 - (BOOL)mediaPlaybackAllowsInline;
 
+- (void)setMediaControlsScaleWithPageZoom:(BOOL)flag;
+- (BOOL)mediaControlsScaleWithPageZoom;
+
 - (void)setAllowsAlternateFullscreen:(BOOL)flag;
 - (BOOL)allowsAlternateFullscreen;
+
+- (void)setAllowsPictureInPictureMediaPlayback:(BOOL)flag;
+- (BOOL)allowsPictureInPictureMediaPlayback;
 
 - (NSString *)pictographFontFamily;
 - (void)setPictographFontFamily:(NSString *)family;
@@ -441,6 +445,9 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification;
 
 - (void)setMetaRefreshEnabled:(BOOL)flag;
 - (BOOL)metaRefreshEnabled;
+
+- (void)setHTTPEquivEnabled:(BOOL)flag;
+- (BOOL)httpEquivEnabled;
 
 @property (nonatomic) BOOL javaScriptMarkupEnabled;
 

@@ -41,6 +41,7 @@
 #include "Page.h"
 #include "PageConfiguration.h"
 #include "PolygonShape.h"
+#include "PseudoElement.h"
 #include "RectangleShape.h"
 #include "RenderBoxModelObject.h"
 #include "RenderElement.h"
@@ -243,8 +244,17 @@ void InspectorOverlay::setPausedInDebuggerMessage(const String* message)
 
 void InspectorOverlay::hideHighlight()
 {
-    m_highlightNode.clear();
-    m_highlightQuad.reset();
+    m_highlightNode = nullptr;
+    m_highlightNodeList = nullptr;
+    m_highlightQuad = nullptr;
+    update();
+}
+
+void InspectorOverlay::highlightNodeList(PassRefPtr<NodeList> nodes, const HighlightConfig& highlightConfig)
+{
+    m_nodeHighlightConfig = highlightConfig;
+    m_highlightNodeList = nodes;
+    m_highlightNode = nullptr;
     update();
 }
 
@@ -252,6 +262,7 @@ void InspectorOverlay::highlightNode(Node* node, const HighlightConfig& highligh
 {
     m_nodeHighlightConfig = highlightConfig;
     m_highlightNode = node;
+    m_highlightNodeList = nullptr;
     update();
 }
 
@@ -289,7 +300,7 @@ void InspectorOverlay::setIndicating(bool indicating)
 
 bool InspectorOverlay::shouldShowOverlay() const
 {
-    return m_highlightNode || m_highlightQuad || m_indicating || m_showingPaintRects || !m_pausedInDebuggerMessage.isNull();
+    return m_highlightNode || m_highlightNodeList || m_highlightQuad || m_indicating || m_showingPaintRects || !m_pausedInDebuggerMessage.isNull();
 }
 
 void InspectorOverlay::update()
@@ -306,8 +317,6 @@ void InspectorOverlay::update()
     FrameView* overlayView = overlayPage()->mainFrame().view();
     IntSize viewportSize = view->unscaledVisibleContentSizeIncludingObscuredArea();
     IntSize frameViewFullSize = view->unscaledVisibleContentSizeIncludingObscuredArea(ScrollableArea::IncludeScrollbars);
-    overlayPage()->setPageScaleFactor(m_page.pageScaleFactor(), IntPoint());
-    frameViewFullSize.scale(m_page.pageScaleFactor());
     overlayView->resize(frameViewFullSize);
 
     // Clear canvas and paint things.
@@ -600,27 +609,25 @@ static void appendPathCommandAndPoints(PathApplyInfo& info, const String& comman
     }
 }
 
-// Used as a functor for Shape::apply, which has not been cleaned up to use modern C++.
-static void appendPathSegment(void* info, const PathElement* pathElement)
+static void appendPathSegment(PathApplyInfo& pathApplyInfo, const PathElement& pathElement)
 {
-    PathApplyInfo& pathApplyInfo = *static_cast<PathApplyInfo*>(info);
     FloatPoint point;
-    switch (pathElement->type) {
+    switch (pathElement.type) {
     // The points member will contain 1 value.
     case PathElementMoveToPoint:
-        appendPathCommandAndPoints(pathApplyInfo, ASCIILiteral("M"), pathElement->points, 1);
+        appendPathCommandAndPoints(pathApplyInfo, ASCIILiteral("M"), pathElement.points, 1);
         break;
     // The points member will contain 1 value.
     case PathElementAddLineToPoint:
-        appendPathCommandAndPoints(pathApplyInfo, ASCIILiteral("L"), pathElement->points, 1);
+        appendPathCommandAndPoints(pathApplyInfo, ASCIILiteral("L"), pathElement.points, 1);
         break;
     // The points member will contain 3 values.
     case PathElementAddCurveToPoint:
-        appendPathCommandAndPoints(pathApplyInfo, ASCIILiteral("C"), pathElement->points, 3);
+        appendPathCommandAndPoints(pathApplyInfo, ASCIILiteral("C"), pathElement.points, 3);
         break;
     // The points member will contain 2 values.
     case PathElementAddQuadCurveToPoint:
-        appendPathCommandAndPoints(pathApplyInfo, ASCIILiteral("Q"), pathElement->points, 2);
+        appendPathCommandAndPoints(pathApplyInfo, ASCIILiteral("Q"), pathElement.points, 2);
         break;
     // The points member will contain no values.
     case PathElementCloseSubpath:
@@ -655,7 +662,9 @@ static RefPtr<Inspector::Protocol::OverlayTypes::ShapeOutsideData> buildObjectFo
         info.renderer = renderer;
         info.shapeOutsideInfo = shapeOutsideInfo;
 
-        paths.shape.apply(&info, &appendPathSegment);
+        paths.shape.apply([&info](const PathElement& pathElement) {
+            appendPathSegment(info, pathElement);
+        });
 
         shapeObject->setShape(shapePath.copyRef());
 
@@ -663,9 +672,11 @@ static RefPtr<Inspector::Protocol::OverlayTypes::ShapeOutsideData> buildObjectFo
             auto marginShapePath = Inspector::Protocol::OverlayTypes::DisplayPath::create();
             info.pathArray = &marginShapePath.get();
 
-            paths.marginShape.apply(&info, &appendPathSegment);
+            paths.marginShape.apply([&info](const PathElement& pathElement) {
+                appendPathSegment(info, pathElement);
+            });
 
-            shapeObject->setMarginShape(shapePath.copyRef());
+            shapeObject->setMarginShape(marginShapePath.copyRef());
         }
     }
 
@@ -673,22 +684,29 @@ static RefPtr<Inspector::Protocol::OverlayTypes::ShapeOutsideData> buildObjectFo
 }
 #endif
 
-static RefPtr<Inspector::Protocol::OverlayTypes::ElementData> buildObjectForElementData(Node* node)
+static RefPtr<Inspector::Protocol::OverlayTypes::ElementData> buildObjectForElementData(Node* node, HighlightType type)
 {
     if (!is<Element>(node) || !node->document().frame())
         return nullptr;
 
-    Element& element = downcast<Element>(*node);
-    bool isXHTML = element.document().isXHTMLDocument();
+    Element* effectiveElement = downcast<Element>(node);
+    if (node->isPseudoElement()) {
+        Element* hostElement = downcast<PseudoElement>(*node).hostElement();
+        if (!hostElement)
+            return nullptr;
+        effectiveElement = hostElement;
+    }
 
+    Element& element = *effectiveElement;
+    bool isXHTML = element.document().isXHTMLDocument();
     auto elementData = Inspector::Protocol::OverlayTypes::ElementData::create()
         .setTagName(isXHTML ? element.nodeName() : element.nodeName().lower())
         .setIdValue(element.getIdAttribute())
         .release();
 
-    HashSet<AtomicString> usedClassNames;
+    StringBuilder classNames;
     if (element.hasClass() && is<StyledElement>(element)) {
-        StringBuilder classNames;
+        HashSet<AtomicString> usedClassNames;
         const SpaceSplitString& classNamesString = downcast<StyledElement>(element).classNames();
         size_t classNameCount = classNamesString.size();
         for (size_t i = 0; i < classNameCount; ++i) {
@@ -699,8 +717,15 @@ static RefPtr<Inspector::Protocol::OverlayTypes::ElementData> buildObjectForElem
             classNames.append('.');
             classNames.append(className);
         }
-        elementData->setClassName(classNames.toString());
     }
+    if (node->isPseudoElement()) {
+        if (node->pseudoId() == BEFORE)
+            classNames.appendLiteral("::before");
+        else if (node->pseudoId() == AFTER)
+            classNames.appendLiteral("::after");
+    }
+    if (!classNames.isEmpty())
+        elementData->setClassName(classNames.toString());
 
     RenderElement* renderer = element.renderer();
     if (!renderer)
@@ -716,7 +741,7 @@ static RefPtr<Inspector::Protocol::OverlayTypes::ElementData> buildObjectForElem
         .release();
     elementData->setSize(WTF::move(sizeObject));
 
-    if (renderer->isRenderNamedFlowFragmentContainer()) {
+    if (type != HighlightType::NodeList && renderer->isRenderNamedFlowFragmentContainer()) {
         RenderNamedFlowFragment& region = *downcast<RenderBlockFlow>(*renderer).renderNamedFlowFragment();
         if (region.isValid()) {
             RenderFlowThread* flowThread = region.flowThread();
@@ -757,12 +782,11 @@ static RefPtr<Inspector::Protocol::OverlayTypes::ElementData> buildObjectForElem
     return WTF::move(elementData);
 }
 
-RefPtr<Inspector::Protocol::OverlayTypes::NodeHighlightData> InspectorOverlay::buildObjectForHighlightedNode() const
+RefPtr<Inspector::Protocol::OverlayTypes::NodeHighlightData> InspectorOverlay::buildHighlightObjectForNode(Node* node, HighlightType type) const
 {
-    if (!m_highlightNode)
+    if (!node)
         return nullptr;
 
-    Node* node = m_highlightNode.get();
     RenderObject* renderer = node->renderer();
     if (!renderer)
         return nullptr;
@@ -780,17 +804,34 @@ RefPtr<Inspector::Protocol::OverlayTypes::NodeHighlightData> InspectorOverlay::b
         .release();
 
     if (m_nodeHighlightConfig.showInfo) {
-        if (RefPtr<Inspector::Protocol::OverlayTypes::ElementData> elementData = buildObjectForElementData(node))
+        if (RefPtr<Inspector::Protocol::OverlayTypes::ElementData> elementData = buildObjectForElementData(node, type))
             nodeHighlightObject->setElementData(WTF::move(elementData));
     }
 
     return WTF::move(nodeHighlightObject);
 }
 
+Ref<Inspector::Protocol::Array<Inspector::Protocol::OverlayTypes::NodeHighlightData>> InspectorOverlay::buildObjectForHighlightedNodes() const
+{
+    auto highlights = Inspector::Protocol::Array<Inspector::Protocol::OverlayTypes::NodeHighlightData>::create();
+
+    if (m_highlightNode) {
+        if (RefPtr<Inspector::Protocol::OverlayTypes::NodeHighlightData> nodeHighlightData = buildHighlightObjectForNode(m_highlightNode.get(), HighlightType::Node))
+            highlights->addItem(WTF::move(nodeHighlightData));
+    } else if (m_highlightNodeList) {
+        for (unsigned i = 0; i < m_highlightNodeList->length(); ++i) {
+            if (RefPtr<Inspector::Protocol::OverlayTypes::NodeHighlightData> nodeHighlightData = buildHighlightObjectForNode(m_highlightNodeList->item(i), HighlightType::NodeList))
+                highlights->addItem(WTF::move(nodeHighlightData));
+        }
+    }
+
+    return WTF::move(highlights);
+}
+
 void InspectorOverlay::drawNodeHighlight()
 {
-    if (RefPtr<Inspector::Protocol::OverlayTypes::NodeHighlightData> highlightObject = buildObjectForHighlightedNode())
-        evaluateInOverlay("drawNodeHighlight", WTF::move(highlightObject));
+    if (m_highlightNode || m_highlightNodeList)
+        evaluateInOverlay("drawNodeHighlight", buildObjectForHighlightedNodes());
 }
 
 void InspectorOverlay::drawQuadHighlight()

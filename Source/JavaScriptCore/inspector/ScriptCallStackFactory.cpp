@@ -34,6 +34,7 @@
 #include "ScriptCallStackFactory.h"
 
 #include "CallFrame.h"
+#include "Exception.h"
 #include "JSCJSValue.h"
 #include "JSCInlines.h"
 #include "ScriptArguments.h"
@@ -83,7 +84,7 @@ private:
     size_t m_remainingCapacityForFrameCapture;
 };
 
-PassRefPtr<ScriptCallStack> createScriptCallStack(JSC::ExecState* exec, size_t maxStackSize)
+Ref<ScriptCallStack> createScriptCallStack(JSC::ExecState* exec, size_t maxStackSize)
 {
     if (!exec)
         return ScriptCallStack::create();
@@ -97,7 +98,7 @@ PassRefPtr<ScriptCallStack> createScriptCallStack(JSC::ExecState* exec, size_t m
     return ScriptCallStack::create(frames);
 }
 
-PassRefPtr<ScriptCallStack> createScriptCallStackForConsole(JSC::ExecState* exec, size_t maxStackSize)
+Ref<ScriptCallStack> createScriptCallStackForConsole(JSC::ExecState* exec, size_t maxStackSize)
 {
     if (!exec)
         return ScriptCallStack::create();
@@ -128,10 +129,10 @@ static void extractSourceInformationFromException(JSC::ExecState* exec, JSObject
     exec->clearException();
 }
 
-PassRefPtr<ScriptCallStack> createScriptCallStackFromException(JSC::ExecState* exec, JSC::JSValue& exception, size_t maxStackSize)
+Ref<ScriptCallStack> createScriptCallStackFromException(JSC::ExecState* exec, JSC::Exception* exception, size_t maxStackSize)
 {
     Vector<ScriptCallFrame> frames;
-    RefCountedArray<StackFrame> stackTrace = exec->vm().exceptionStack();
+    RefCountedArray<StackFrame> stackTrace = exception->stack();
     for (size_t i = 0; i < stackTrace.size() && i < maxStackSize; i++) {
         unsigned line;
         unsigned column;
@@ -141,8 +142,8 @@ PassRefPtr<ScriptCallStack> createScriptCallStackFromException(JSC::ExecState* e
     }
 
     // Fallback to getting at least the line and sourceURL from the exception object if it has values and the exceptionStack doesn't.
-    JSObject* exceptionObject = exception.toObject(exec);
-    if (exception.isObject()) {
+    if (exception->value().isObject()) {
+        JSObject* exceptionObject = exception->value().toObject(exec);
         int lineNumber;
         int columnNumber;
         String exceptionSourceURL;
@@ -161,7 +162,7 @@ PassRefPtr<ScriptCallStack> createScriptCallStackFromException(JSC::ExecState* e
     return ScriptCallStack::create(frames);
 }
 
-PassRefPtr<ScriptArguments> createScriptArguments(JSC::ExecState* exec, unsigned skipArgumentCount)
+Ref<ScriptArguments> createScriptArguments(JSC::ExecState* exec, unsigned skipArgumentCount)
 {
     Vector<Deprecated::ScriptValue> arguments;
     size_t argumentCount = exec->argumentCount();

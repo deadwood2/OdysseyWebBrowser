@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2006 Eric Seidel <eric@webkit.org>
- * Copyright (C) 2008, 2009 Apple Inc. All rights reserved.
+ * Copyright (C) 2008, 2009, 2015 Apple Inc. All rights reserved.
  * Copyright (C) Research In Motion Limited 2011. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -48,8 +48,9 @@
 
 namespace WebCore {
 
-SVGImage::SVGImage(ImageObserver* observer)
-    : Image(observer)
+SVGImage::SVGImage(ImageObserver& observer, const URL& url)
+    : Image(&observer)
+    , m_url(url)
 {
 }
 
@@ -206,6 +207,8 @@ void SVGImage::drawPatternForContainer(GraphicsContext* context, const FloatSize
         buffer->convertToLuminanceMask();
 
     RefPtr<Image> image = buffer->copyImage(DontCopyBackingStore, Unscaled);
+    if (!image)
+        return;
     image->setSpaceSize(spaceSize());
 
     // Adjust the source rect and transform due to the image buffer's scaling.
@@ -350,16 +353,31 @@ bool SVGImage::dataChanged(bool allDataReceived)
         m_loaderClient = std::make_unique<SVGFrameLoaderClient>(m_dataProtocolLoader);
         pageConfiguration.loaderClientForMainFrame = m_loaderClient.get();
 
-        bool canHaveScrollbars = false; // SVG Images will always synthesize a viewBox, if it's not available, and thus never see scrollbars.
-        bool transparent = true; // SVG Images are transparent.
-
         // FIXME: If this SVG ends up loading itself, we might leak the world.
         // The Cache code does not know about CachedImages holding Frames and
         // won't know to break the cycle.
         // This will become an issue when SVGImage will be able to load other
         // SVGImage objects, but we're safe now, because SVGImage can only be
         // loaded by a top-level document.
-        m_page = Page::createPageFromBuffer(pageConfiguration, data(), "image/svg+xml", canHaveScrollbars, transparent);
+        m_page = std::make_unique<Page>(pageConfiguration);
+        m_page->settings().setMediaEnabled(false);
+        m_page->settings().setScriptEnabled(false);
+        m_page->settings().setPluginsEnabled(false);
+
+        Frame& frame = m_page->mainFrame();
+        frame.setView(FrameView::create(frame));
+        frame.init();
+        FrameLoader& loader = frame.loader();
+        loader.forceSandboxFlags(SandboxAll);
+
+        frame.view()->setCanHaveScrollbars(false); // SVG Images will always synthesize a viewBox, if it's not available, and thus never see scrollbars.
+        frame.view()->setTransparent(true); // SVG Images are transparent.
+
+        ASSERT(loader.activeDocumentLoader()); // DocumentLoader should have been created by frame->init().
+        loader.activeDocumentLoader()->writer().setMIMEType("image/svg+xml");
+        loader.activeDocumentLoader()->writer().begin(URL()); // create the empty document
+        loader.activeDocumentLoader()->writer().addData(data()->data(), data()->size());
+        loader.activeDocumentLoader()->writer().end();
 
         // Set the intrinsic size before a container size is available.
         m_intrinsicSize = containerSize();

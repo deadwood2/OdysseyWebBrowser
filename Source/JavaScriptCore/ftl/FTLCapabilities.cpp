@@ -131,8 +131,6 @@ inline CapabilityLevel canCompile(Node* node)
     case ConstructVarargs:
     case ConstructForwardVarargs:
     case LoadVarargs:
-    case NativeCall:
-    case NativeConstruct:
     case ValueToInt32:
     case Branch:
     case LogicalNot:
@@ -329,6 +327,10 @@ inline CapabilityLevel canCompile(Node* node)
             break;
         if (node->isBinaryUseKind(StringIdentUse))
             break;
+        if (node->isBinaryUseKind(ObjectUse, UntypedUse))
+            break;
+        if (node->isBinaryUseKind(UntypedUse, ObjectUse))
+            break;
         if (node->isBinaryUseKind(ObjectUse))
             break;
         if (node->isBinaryUseKind(BooleanUse))
@@ -400,6 +402,7 @@ CapabilityLevel canCompile(Graph& graph)
                 case KnownInt32Use:
                 case Int52RepUse:
                 case NumberUse:
+                case RealNumberUse:
                 case DoubleRepUse:
                 case DoubleRepRealUse:
                 case BooleanUse:

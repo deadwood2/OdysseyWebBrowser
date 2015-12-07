@@ -26,7 +26,6 @@
 #import "config.h"
 #import "MemoryPressureHandler.h"
 
-#import "DispatchSPI.h"
 #import "IOSurfacePool.h"
 #import "GCController.h"
 #import "JSDOMWindow.h"
@@ -34,7 +33,6 @@
 #import "LayerPool.h"
 #import "Logging.h"
 #import "WebCoreSystemInterface.h"
-#import <JavaScriptCore/IncrementalSweeper.h>
 #import <mach/mach.h>
 #import <mach/task_info.h>
 #import <malloc/malloc.h>
@@ -51,7 +49,7 @@ extern "C" void _sqlite3_purgeEligiblePagerCacheMemory(void);
 
 namespace WebCore {
 
-void MemoryPressureHandler::platformReleaseMemory(bool critical)
+void MemoryPressureHandler::platformReleaseMemory(Critical critical)
 {
     {
         ReliefLogger log("Purging SQLite caches");
@@ -71,7 +69,7 @@ void MemoryPressureHandler::platformReleaseMemory(bool critical)
 #endif
 
 #if PLATFORM(IOS) || __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
-    if (critical && !isUnderMemoryPressure()) {
+    if (critical == Critical::Yes && !isUnderMemoryPressure()) {
         // libcache listens to OS memory notifications, but for process suspension
         // or memory pressure simulation, we need to prod it manually:
         ReliefLogger log("Purging libcache caches");
@@ -79,24 +77,6 @@ void MemoryPressureHandler::platformReleaseMemory(bool critical)
     }
 #else
     UNUSED_PARAM(critical);
-#endif
-
-#if PLATFORM(IOS)
-    if (isUnderMemoryPressure()) {
-        gcController().garbageCollectSoon();
-    } else {
-        // If we're not under memory pressure, that means we're here due to impending process suspension.
-        // Do a full GC since this is our last chance to run any code.
-        ReliefLogger log("Collecting JavaScript garbage");
-        gcController().garbageCollectNow();
-    }
-
-    // Do a full sweep of collected objects.
-    {
-        ReliefLogger log("Full JavaScript garbage sweep");
-        JSC::JSLockHolder lock(JSDOMWindow::commonVM());
-        JSDOMWindow::commonVM().heap.sweeper()->fullSweep();
-    }
 #endif
 }
 
@@ -121,45 +101,38 @@ void MemoryPressureHandler::install()
         return;
 
     dispatch_async(dispatch_get_main_queue(), ^{
-#if PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 80000
-        _cache_event_source = dispatch_source_create(DISPATCH_SOURCE_TYPE_MEMORYSTATUS, 0, DISPATCH_MEMORYSTATUS_PRESSURE_NORMAL | DISPATCH_MEMORYSTATUS_PRESSURE_WARN | DISPATCH_MEMORYSTATUS_PRESSURE_CRITICAL, dispatch_get_main_queue());
+#if PLATFORM(IOS)
+        _cache_event_source = dispatch_source_create(DISPATCH_SOURCE_TYPE_MEMORYPRESSURE, 0, DISPATCH_MEMORYPRESSURE_NORMAL | DISPATCH_MEMORYPRESSURE_WARN | DISPATCH_MEMORYPRESSURE_CRITICAL, dispatch_get_main_queue());
 #elif PLATFORM(MAC)
-        _cache_event_source = wkCreateMemoryStatusPressureCriticalDispatchOnMainQueue();
-#else
-        _cache_event_source = wkCreateVMPressureDispatchOnMainQueue();
+        _cache_event_source = dispatch_source_create(DISPATCH_SOURCE_TYPE_MEMORYPRESSURE, 0, DISPATCH_MEMORYPRESSURE_CRITICAL, dispatch_get_main_queue());
 #endif
-        if (_cache_event_source) {
-            dispatch_set_context(_cache_event_source, this);
-            dispatch_source_set_event_handler(_cache_event_source, ^{
-                bool critical = true;
-#if PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 80000
-                unsigned long status = dispatch_source_get_data(_cache_event_source);
-                critical = status == DISPATCH_MEMORYPRESSURE_CRITICAL;
-                auto& memoryPressureHandler = MemoryPressureHandler::singleton();
-                bool wasCritical = memoryPressureHandler.isUnderMemoryPressure();
-                memoryPressureHandler.setUnderMemoryPressure(critical);
-                if (status == DISPATCH_MEMORYSTATUS_PRESSURE_NORMAL) {
-                    if (ReliefLogger::loggingEnabled())
-                        NSLog(@"System is no longer under (%s) memory pressure.", wasCritical ? "critical" : "non-critical");
-                    return;
-                }
 
+        dispatch_set_context(_cache_event_source, this);
+        dispatch_source_set_event_handler(_cache_event_source, ^{
+            bool critical = true;
+#if PLATFORM(IOS)
+            unsigned long status = dispatch_source_get_data(_cache_event_source);
+            critical = status == DISPATCH_MEMORYPRESSURE_CRITICAL;
+            auto& memoryPressureHandler = MemoryPressureHandler::singleton();
+            bool wasCritical = memoryPressureHandler.isUnderMemoryPressure();
+            memoryPressureHandler.setUnderMemoryPressure(critical);
+            if (status == DISPATCH_MEMORYPRESSURE_NORMAL) {
                 if (ReliefLogger::loggingEnabled())
-                    NSLog(@"Got memory pressure notification (%s)", critical ? "critical" : "non-critical");
+                    NSLog(@"System is no longer under (%s) memory pressure.", wasCritical ? "critical" : "non-critical");
+                return;
+            }
+
+            if (ReliefLogger::loggingEnabled())
+                NSLog(@"Got memory pressure notification (%s)", critical ? "critical" : "non-critical");
 #endif
-                MemoryPressureHandler::singleton().respondToMemoryPressure(critical);
-            });
-            dispatch_resume(_cache_event_source);
-        }
+            MemoryPressureHandler::singleton().respondToMemoryPressure(critical ? Critical::Yes : Critical::No);
+        });
+        dispatch_resume(_cache_event_source);
     });
 
     // Allow simulation of memory pressure with "notifyutil -p org.WebKit.lowMemory"
     notify_register_dispatch("org.WebKit.lowMemory", &_notifyToken, dispatch_get_main_queue(), ^(int) {
-        MemoryPressureHandler::singleton().respondToMemoryPressure(true);
-
-        // We only do a synchronous GC when *simulating* memory pressure.
-        // This gives us a more consistent picture of live objects at the end of testing.
-        gcController().garbageCollectNow();
+        MemoryPressureHandler::singleton().respondToMemoryPressure(Critical::Yes, Synchronous::Yes);
 
         WTF::releaseFastMallocFreeMemory();
 
@@ -213,14 +186,14 @@ void MemoryPressureHandler::holdOff(unsigned seconds)
     });
 }
 
-void MemoryPressureHandler::respondToMemoryPressure(bool critical)
+void MemoryPressureHandler::respondToMemoryPressure(Critical critical, Synchronous synchronous)
 {
 #if !PLATFORM(IOS)
     uninstall();
     double startTime = monotonicallyIncreasingTime();
 #endif
 
-    m_lowMemoryHandler(critical);
+    m_lowMemoryHandler(critical, synchronous);
 
 #if !PLATFORM(IOS)
     unsigned holdOffTime = (monotonicallyIncreasingTime() - startTime) * s_holdOffMultiplier;

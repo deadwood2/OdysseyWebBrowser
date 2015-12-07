@@ -1384,13 +1384,15 @@ WebInspector.SourceCodeTextEditor = class SourceCodeTextEditor extends WebInspec
             }
         }
 
+        var expression = appendWebInspectorSourceURL(candidate.expression);
+
         if (WebInspector.debuggerManager.activeCallFrame) {
-            DebuggerAgent.evaluateOnCallFrame.invoke({callFrameId: WebInspector.debuggerManager.activeCallFrame.id, expression: candidate.expression, objectGroup: "popover", doNotPauseOnExceptionsAndMuteConsole: true}, populate.bind(this));
+            DebuggerAgent.evaluateOnCallFrame.invoke({callFrameId: WebInspector.debuggerManager.activeCallFrame.id, expression, objectGroup: "popover", doNotPauseOnExceptionsAndMuteConsole: true}, populate.bind(this));
             return;
         }
 
         // No call frame available. Use the main page's context.
-        RuntimeAgent.evaluate.invoke({expression: candidate.expression, objectGroup: "popover", doNotPauseOnExceptionsAndMuteConsole: true}, populate.bind(this));
+        RuntimeAgent.evaluate.invoke({expression, objectGroup: "popover", doNotPauseOnExceptionsAndMuteConsole: true}, populate.bind(this));
     }
 
     _tokenTrackingControllerHighlightedJavaScriptTypeInformation(candidate)
@@ -1501,6 +1503,22 @@ WebInspector.SourceCodeTextEditor = class SourceCodeTextEditor extends WebInspec
         titleElement.className = "title";
         titleElement.textContent = data.description;
         content.appendChild(titleElement);
+
+        if (data.subtype === "node") {
+            data.pushNodeToFrontend(function(nodeId) {
+                if (!nodeId)
+                    return;
+
+                var domNode = WebInspector.domTreeManager.nodeForId(nodeId);
+                if (!domNode.ownerDocument)
+                    return;
+
+                var goToButton = titleElement.appendChild(WebInspector.createGoToArrowButton());
+                goToButton.addEventListener("click", function() {
+                    WebInspector.domTreeManager.inspectElement(nodeId);
+                });
+            });
+        }
 
         // FIXME: If this is a variable, it would be nice to put the variable name in the PropertyPath.
         var objectTree = new WebInspector.ObjectTreeView(data);

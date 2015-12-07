@@ -53,8 +53,8 @@
 #include <glib.h>
 #include <gtk/gtk.h>
 #include <wtf/NeverDestroyed.h>
-#include <wtf/gobject/GRefPtr.h>
-#include <wtf/gobject/GUniquePtr.h>
+#include <wtf/glib/GRefPtr.h>
+#include <wtf/glib/GUniquePtr.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
 
@@ -93,6 +93,8 @@ void RenderThemeGtk::updateCachedSystemFontDescription(CSSValueID, FontDescripti
     // This will be a font selection string like "Sans 10" so we cannot use it as the family name.
     GUniqueOutPtr<gchar> fontName;
     g_object_get(settings, "gtk-font-name", &fontName.outPtr(), nullptr);
+    if (!fontName || !fontName.get()[0])
+        return;
 
     PangoFontDescription* pangoDescription = pango_font_description_from_string(fontName.get());
     if (!pangoDescription)

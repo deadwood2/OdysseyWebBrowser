@@ -70,15 +70,11 @@ static void invalidateAfterGenericFamilyChange(Page* page)
 }
 
 #if USE(AVFOUNDATION)
-bool Settings::gAVFoundationEnabled = false;
+bool Settings::gAVFoundationEnabled = true;
 #endif
 
 #if PLATFORM(COCOA)
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED <= 101000
-bool Settings::gQTKitEnabled = true;
-#else
 bool Settings::gQTKitEnabled = false;
-#endif
 #endif
 
 bool Settings::gMockScrollbarsEnabled = false;
@@ -131,6 +127,7 @@ static const bool defaultAudioPlaybackRequiresUserGesture = true;
 static const bool defaultShouldRespectImageOrientation = true;
 static const bool defaultImageSubsamplingEnabled = true;
 static const bool defaultScrollingTreeIncludesFrames = true;
+static const bool defaultMediaControlsScaleWithPageZoom = true;
 #else
 static const bool defaultFixedPositionCreatesStackingContext = false;
 static const bool defaultFixedBackgroundsPaintRelativeToDocument = false;
@@ -141,9 +138,10 @@ static const bool defaultAudioPlaybackRequiresUserGesture = false;
 static const bool defaultShouldRespectImageOrientation = false;
 static const bool defaultImageSubsamplingEnabled = false;
 static const bool defaultScrollingTreeIncludesFrames = false;
+static const bool defaultMediaControlsScaleWithPageZoom = true;
 #endif
 
-static const bool defaultAllowsAlternateFullscreen = true;
+static const bool defaultAllowsPictureInPictureMediaPlayback = true;
 
 static const double defaultIncrementalRenderingSuppressionTimeoutInSeconds = 5;
 #if USE(UNIFIED_TEXT_CHECKING)
@@ -160,7 +158,7 @@ static const bool defaultSelectTrailingWhitespaceEnabled = false;
 static const auto layoutScheduleThreshold = std::chrono::milliseconds(250);
 
 Settings::Settings(Page* page)
-    : m_page(0)
+    : m_page(nullptr)
     , m_mediaTypeOverride("screen")
     , m_fontGenericFamilies(std::make_unique<FontGenericFamilies>())
     , m_storageBlockingPolicy(SecurityOrigin::AllowAllStorage)
@@ -201,6 +199,7 @@ Settings::Settings(Page* page)
 #endif
     , m_hiddenPageCSSAnimationSuspensionEnabled(false)
     , m_fontFallbackPrefersPictographs(false)
+    , m_forcePendingWebGLPolicy(false)
 {
     // A Frame may not have been created yet, so we initialize the AtomicString
     // hash before trying to use it.
@@ -422,6 +421,11 @@ void Settings::setImagesEnabled(bool areImagesEnabled)
 
     // See comment in setLoadsImagesAutomatically.
     m_setImageLoadingSettingsTimer.startOneShot(0);
+}
+
+void Settings::setForcePendingWebGLPolicy(bool forced)
+{
+    m_forcePendingWebGLPolicy = forced;
 }
 
 void Settings::setPluginsEnabled(bool arePluginsEnabled)

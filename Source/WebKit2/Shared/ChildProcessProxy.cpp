@@ -42,7 +42,7 @@ ChildProcessProxy::~ChildProcessProxy()
 
     if (m_processLauncher) {
         m_processLauncher->invalidate();
-        m_processLauncher = 0;
+        m_processLauncher = nullptr;
     }
 }
 
@@ -120,6 +120,11 @@ void ChildProcessProxy::removeMessageReceiver(IPC::StringReference messageReceiv
     m_messageReceiverMap.removeMessageReceiver(messageReceiverName, destinationID);
 }
 
+void ChildProcessProxy::removeMessageReceiver(IPC::StringReference messageReceiverName)
+{
+    m_messageReceiverMap.removeMessageReceiver(messageReceiverName);
+}
+
 bool ChildProcessProxy::dispatchMessage(IPC::Connection& connection, IPC::MessageDecoder& decoder)
 {
     return m_messageReceiverMap.dispatchMessage(connection, decoder);
@@ -134,7 +139,7 @@ void ChildProcessProxy::didFinishLaunching(ProcessLauncher*, IPC::Connection::Id
 {
     ASSERT(!m_connection);
 
-    m_connection = IPC::Connection::createServerConnection(connectionIdentifier, *this, RunLoop::main());
+    m_connection = IPC::Connection::createServerConnection(connectionIdentifier, *this);
 #if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED <= 101000
     m_connection->setShouldCloseConnectionOnMachExceptions();
 #endif

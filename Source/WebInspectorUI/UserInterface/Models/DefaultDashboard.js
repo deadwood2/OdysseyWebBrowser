@@ -31,6 +31,10 @@ WebInspector.DefaultDashboard = class DefaultDashboard extends WebInspector.Obje
 
         this._waitingForFirstMainResourceToStartTrackingSize = true;
 
+        // Necessary event required to track page load time and resource sizes.
+        WebInspector.Frame.addEventListener(WebInspector.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
+        WebInspector.timelineManager.addEventListener(WebInspector.TimelineManager.Event.CapturingStopped, this._capturingStopped, this);
+
         // Necessary events required to track load of resources.
         WebInspector.Frame.addEventListener(WebInspector.Frame.Event.ResourceWasAdded, this._resourceWasAdded, this);
         WebInspector.frameResourceManager.addEventListener(WebInspector.FrameResourceManager.Event.FrameWasAdded, this._frameWasAdded, this);
@@ -38,11 +42,12 @@ WebInspector.DefaultDashboard = class DefaultDashboard extends WebInspector.Obje
         // Necessary events required to track console messages.
         var logManager = WebInspector.logManager;
         logManager.addEventListener(WebInspector.LogManager.Event.Cleared, this._consoleWasCleared, this);
-        logManager.addEventListener(WebInspector.LogManager.Event.ActiveLogCleared, this._consoleWasCleared, this);
         logManager.addEventListener(WebInspector.LogManager.Event.MessageAdded, this._consoleMessageAdded, this);
         logManager.addEventListener(WebInspector.LogManager.Event.PreviousMessageRepeatCountUpdated, this._consoleMessageWasRepeated, this);
 
         this._resourcesCount = 0;
+        this._resourcesSize = 0;
+        this._time = 0;
         this._logs = 0;
         this._errors = 0;
         this._issues = 0;
@@ -58,6 +63,28 @@ WebInspector.DefaultDashboard = class DefaultDashboard extends WebInspector.Obje
     set resourcesCount(value)
     {
         this._resourcesCount = value;
+        this._dataDidChange();
+    }
+
+    get resourcesSize()
+    {
+        return this._resourcesSize;
+    }
+
+    set resourcesSize(value)
+    {
+        this._resourcesSize = value;
+        this._dataDidChange();
+    }
+
+    get time()
+    {
+        return this._time;
+    }
+
+    set time(value)
+    {
+        this._time = value;
         this._dataDidChange();
     }
 
@@ -101,6 +128,33 @@ WebInspector.DefaultDashboard = class DefaultDashboard extends WebInspector.Obje
         this.dispatchEventToListeners(WebInspector.DefaultDashboard.Event.DataDidChange);
     }
 
+    _mainResourceDidChange(event)
+    {
+        console.assert(event.target instanceof WebInspector.Frame);
+
+        if (!event.target.isMainFrame())
+            return;
+
+        this._time = 0;
+        this._resourcesCount = 1;
+        this._resourcesSize = WebInspector.frameResourceManager.mainFrame.mainResource.size || 0;
+
+        // We should only track resource sizes on fresh loads.
+        if (this._waitingForFirstMainResourceToStartTrackingSize) {
+            this._waitingForFirstMainResourceToStartTrackingSize = false;
+            WebInspector.Resource.addEventListener(WebInspector.Resource.Event.SizeDidChange, this._resourceSizeDidChange, this);
+        }
+
+        this._dataDidChange();
+        this._startUpdatingTime();
+    }
+
+    _capturingStopped(event)
+    {
+        // If recording stops, we should stop the timer if it hasn't stopped already.
+        this._stopUpdatingTime();
+    }
+
     _resourceWasAdded(event)
     {
         ++this.resourcesCount;
@@ -114,6 +168,59 @@ WebInspector.DefaultDashboard = class DefaultDashboard extends WebInspector.Obje
     _resourceSizeDidChange(event)
     {
         this.resourcesSize += event.target.size - event.data.previousSize;
+    }
+
+    _startUpdatingTime()
+    {
+        this._stopUpdatingTime();
+
+        this.time = 0;
+
+        this._timelineBaseTime = Date.now();
+        this._timeIntervalDelay = 50;
+        this._timeIntervalIdentifier = setInterval(this._updateTime.bind(this), this._timeIntervalDelay);
+    }
+
+    _stopUpdatingTime()
+    {
+        if (!this._timeIntervalIdentifier)
+            return;
+
+        clearInterval(this._timeIntervalIdentifier);
+        this._timeIntervalIdentifier = undefined;
+    }
+
+    _updateTime()
+    {
+        var duration = Date.now() - this._timelineBaseTime;
+
+        var timeIntervalDelay = this._timeIntervalDelay;
+        if (duration >= 1000) // 1 second
+            timeIntervalDelay = 100;
+        else if (duration >= 60000) // 60 seconds
+            timeIntervalDelay = 1000;
+        else if (duration >= 3600000) // 1 minute
+            timeIntervalDelay = 10000;
+
+        if (timeIntervalDelay !== this._timeIntervalDelay) {
+            this._timeIntervalDelay = timeIntervalDelay;
+
+            clearInterval(this._timeIntervalIdentifier);
+            this._timeIntervalIdentifier = setInterval(this._updateTime.bind(this), this._timeIntervalDelay);
+        }
+
+        var mainFrame = WebInspector.frameResourceManager.mainFrame;
+        var mainFrameStartTime = mainFrame.mainResource.firstTimestamp;
+        var mainFrameLoadEventTime = mainFrame.loadEventTimestamp;
+
+        if (isNaN(mainFrameStartTime) || isNaN(mainFrameLoadEventTime)) {
+            this.time = duration / 1000;
+            return;
+        }
+
+        this.time = mainFrameLoadEventTime - mainFrameStartTime;
+
+        this._stopUpdatingTime();
     }
 
     _consoleMessageAdded(event)

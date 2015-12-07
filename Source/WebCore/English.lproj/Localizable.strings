@@ -91,14 +91,8 @@
 /* WKErrorJavaScriptExceptionOccurred description */
 "A JavaScript exception occurred" = "A JavaScript exception occurred";
 
-/* action menu item */
-"Add to Photos (action menu item)" = "Add to Photos";
-
 /* Title for Add to Reading List action button */
 "Add to Reading List" = "Add to Reading List";
-
-/* action menu item */
-"Add to Reading List (action menu item)" = "Add to Reading List";
 
 /* Undo action name */
 "Align Left (Undo action name)" = "Align Left";
@@ -187,17 +181,8 @@
 /* Copy context menu item */
 "Copy" = "Copy";
 
-/* image action menu item */
-"Copy (image action menu item)" = "Copy";
-
-/* text action menu item */
-"Copy (text action menu item)" = "Copy";
-
-/* video action menu item */
-"Copy (video action menu item)" = "Copy";
-
 /* Title for Copy Link or Image action button */
-"Copy ActionSheet Link" = "Copy";
+"Copy (ActionSheet)" = "Copy";
 
 /* Copy Audio Address Location context menu item */
 "Copy Audio Address" = "Copy Audio Address";
@@ -313,6 +298,9 @@
 /* Title for action sheet for JavaScript link */
 "JavaScript Action Sheet Title" = "JavaScript";
 
+/* WKErrorJavaScriptResultTypeIsUnsupported description */
+"JavaScript execution returned a result of an unsupported type" = "JavaScript execution returned a result of an unsupported type";
+
 /* Undo action name */
 "Justify (Undo action name)" = "Justify";
 
@@ -382,11 +370,8 @@
 /* Menu item label for the track that represents disabling closed captions */
 "Off" = "Off";
 
-/* action menu item */
-"Open (action menu item)" = "Open";
-
 /* Title for Open Link action button */
-"Open ActionSheet Link" = "Open";
+"Open" = "Open";
 
 /* Open Audio in New Window context menu item */
 "Open Audio in New Window" = "Open Audio in New Window";
@@ -405,6 +390,12 @@
 
 /* Open Video in New Window context menu item */
 "Open Video in New Window" = "Open Video in New Window";
+
+/* Title for Open in Safari Link action button */
+"Open in Safari" = "Open in Safari";
+
+/* Title for Open in External Application Link action button */
+"Open in “%@”" = "Open in “%@”";
 
 /* context menu item for PDF */
 "Open with %@" = "Open with %@";
@@ -426,9 +417,6 @@
 
 /* Undo action name */
 "Paste (Undo action name)" = "Paste";
-
-/* action menu item */
-"Paste (action menu item)" = "Paste";
 
 /* Undo action name */
 "Paste Font (Undo action name)" = "Paste Font";
@@ -480,12 +468,6 @@
 
 /* Title for Save Image action button */
 "Save Image" = "Save Image";
-
-/* image action menu item */
-"Save to Downloads (image action menu item)" = "Save to Downloads";
-
-/* video action menu item */
-"Save to Downloads (video action menu item)" = "Save to Downloads";
 
 /* Search in Spotlight context menu item */
 "Search in Spotlight" = "Search in Spotlight";
@@ -591,9 +573,6 @@
 
 /* Menu section heading for subtitles */
 "Subtitles" = "Subtitles";
-
-/* action menu item */
-"Suggestions (action menu item)" = "Suggestions";
 
 /* Undo action name */
 "Superscript (Undo action name)" = "Superscript";
@@ -759,9 +738,6 @@
 
 /* accessibility description for a search field cancel button */
 "cancel" = "cancel";
-
-/* accessibility description for a password field AutoFill button */
-"autofill" = "autofill";
 
 /* Verb stating the action that will occur when an unchecked checkbox is clicked, as used by accessibility */
 "check" = "check";

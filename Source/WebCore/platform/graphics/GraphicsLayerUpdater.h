@@ -47,6 +47,7 @@ class GraphicsLayerUpdater
     : public DisplayRefreshMonitorClient
 #endif
 {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     GraphicsLayerUpdater(GraphicsLayerUpdaterClient&, PlatformDisplayID);
     virtual ~GraphicsLayerUpdater();
@@ -61,9 +62,8 @@ public:
 private:
 #if USE(REQUEST_ANIMATION_FRAME_DISPLAY_MONITOR)
     virtual void displayRefreshFired(double timestamp) override;
-#endif
-
     GraphicsLayerUpdaterClient& m_client;
+#endif
     bool m_scheduled { false };
 };
 

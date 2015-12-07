@@ -396,7 +396,7 @@ WebInspector.Breakpoint = class Breakpoint extends WebInspector.Object
         var checkboxLabel = document.createElement("label");
         checkboxLabel.className = "toggle";
         checkboxLabel.appendChild(checkboxElement);
-        checkboxLabel.appendChild(document.createTextNode(this._sourceCodeLocation.displayLocationString()));
+        checkboxLabel.append(this._sourceCodeLocation.displayLocationString());
 
         var table = document.createElement("table");
 
@@ -531,6 +531,19 @@ WebInspector.Breakpoint = class Breakpoint extends WebInspector.Object
         delete this._popoverOptionsCheckboxElement;
         delete this._actionsContainer;
         delete this._popover;
+    }
+
+    didDismissPopover(popover)
+    {
+        // Remove Evaluate and Probe actions that have no data.
+        var emptyActions = this._actions.filter(function(action) {
+            if (action.type !== WebInspector.BreakpointAction.Type.Evaluate && action.type !== WebInspector.BreakpointAction.Type.Probe)
+                return false;
+            return !(action.data && action.data.trim());
+        });
+
+        for (var action of emptyActions)
+            this.removeAction(action);
     }
 
     _showEditBreakpointPopover(boundingClientRect)

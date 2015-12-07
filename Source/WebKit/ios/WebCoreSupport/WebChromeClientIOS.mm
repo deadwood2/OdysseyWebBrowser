@@ -167,6 +167,7 @@ static inline NSDictionary* dictionaryForViewportArguments(const WebCore::Viewpo
               @"minimum-scale":@(arguments.minZoom),
               @"maximum-scale":@(arguments.maxZoom),
               @"user-scalable":@(arguments.userZoom),
+              @"shrink-to-fit":@(arguments.shrinkToFit),
               @"width":@(arguments.width),
               @"height":@(arguments.height) };
 }
@@ -248,12 +249,12 @@ bool WebChromeClientIOS::selectItemAlignmentFollowsMenuWritingDirection()
     return true;
 }
 
-PassRefPtr<WebCore::PopupMenu> WebChromeClientIOS::createPopupMenu(WebCore::PopupMenuClient* client) const
+RefPtr<WebCore::PopupMenu> WebChromeClientIOS::createPopupMenu(WebCore::PopupMenuClient* client) const
 {
     return adoptRef(new PopupMenuIOS(client));
 }
 
-PassRefPtr<WebCore::SearchPopupMenu> WebChromeClientIOS::createSearchPopupMenu(WebCore::PopupMenuClient* client) const
+RefPtr<WebCore::SearchPopupMenu> WebChromeClientIOS::createSearchPopupMenu(WebCore::PopupMenuClient* client) const
 {
     return adoptRef(new SearchPopupMenuIOS(client));
 }

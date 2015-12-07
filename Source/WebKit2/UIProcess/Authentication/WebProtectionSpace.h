@@ -28,15 +28,14 @@
 
 #include "APIObject.h"
 #include <WebCore/ProtectionSpace.h>
-#include <wtf/PassRefPtr.h>
 
 namespace WebKit {
 
 class WebProtectionSpace : public API::ObjectImpl<API::Object::Type::ProtectionSpace> {
 public:
-    static PassRefPtr<WebProtectionSpace> create(const WebCore::ProtectionSpace& protectionSpace)
+    static Ref<WebProtectionSpace> create(const WebCore::ProtectionSpace& protectionSpace)
     {
-        return adoptRef(new WebProtectionSpace(protectionSpace));
+        return adoptRef(*new WebProtectionSpace(protectionSpace));
     }
     
     const String& protocol() const;

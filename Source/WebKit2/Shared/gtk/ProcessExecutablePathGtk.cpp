@@ -31,7 +31,7 @@
 #include <glib.h>
 
 #if ENABLE(DEVELOPER_MODE)
-#include <wtf/gobject/GlibUtilities.h>
+#include <wtf/glib/GLibUtilities.h>
 #endif
 
 using namespace WebCore;
@@ -66,7 +66,7 @@ static String findWebKitProcess(const char* processName)
     }
 #endif
 
-    return pathByAppendingComponent(filenameToString(LIBEXECDIR), processName);
+    return pathByAppendingComponent(filenameToString(PKGLIBEXECDIR), processName);
 }
 
 String executablePathOfWebProcess()

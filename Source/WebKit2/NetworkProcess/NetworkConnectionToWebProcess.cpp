@@ -28,7 +28,6 @@
 
 #if ENABLE(NETWORK_PROCESS)
 
-#include "ConnectionStack.h"
 #include "NetworkBlobRegistry.h"
 #include "NetworkConnectionToWebProcessMessages.h"
 #include "NetworkProcess.h"
@@ -37,6 +36,7 @@
 #include "NetworkResourceLoaderMessages.h"
 #include "RemoteNetworkingContext.h"
 #include "SessionTracker.h"
+#include <WebCore/PingHandle.h>
 #include <WebCore/PlatformCookieJar.h>
 #include <WebCore/ResourceLoaderOptions.h>
 #include <WebCore/ResourceRequest.h>
@@ -47,14 +47,14 @@ using namespace WebCore;
 
 namespace WebKit {
 
-PassRefPtr<NetworkConnectionToWebProcess> NetworkConnectionToWebProcess::create(IPC::Connection::Identifier connectionIdentifier)
+Ref<NetworkConnectionToWebProcess> NetworkConnectionToWebProcess::create(IPC::Connection::Identifier connectionIdentifier)
 {
-    return adoptRef(new NetworkConnectionToWebProcess(connectionIdentifier));
+    return adoptRef(*new NetworkConnectionToWebProcess(connectionIdentifier));
 }
 
 NetworkConnectionToWebProcess::NetworkConnectionToWebProcess(IPC::Connection::Identifier connectionIdentifier)
 {
-    m_connection = IPC::Connection::createServerConnection(connectionIdentifier, *this, RunLoop::main());
+    m_connection = IPC::Connection::createServerConnection(connectionIdentifier, *this);
     m_connection->open();
 }
 
@@ -64,8 +64,9 @@ NetworkConnectionToWebProcess::~NetworkConnectionToWebProcess()
 
 void NetworkConnectionToWebProcess::didCleanupResourceLoader(NetworkResourceLoader& loader)
 {
-    RefPtr<NetworkResourceLoader> removedLoader = m_networkResourceLoaders.take(loader.identifier());
-    ASSERT(removedLoader == &loader);
+    ASSERT(m_networkResourceLoaders.get(loader.identifier()) == &loader);
+
+    m_networkResourceLoaders.remove(loader.identifier());
 }
     
 void NetworkConnectionToWebProcess::didReceiveMessage(IPC::Connection& connection, IPC::MessageDecoder& decoder)
@@ -127,6 +128,14 @@ void NetworkConnectionToWebProcess::performSynchronousLoad(const NetworkResource
     loader->start();
 }
 
+void NetworkConnectionToWebProcess::loadPing(const NetworkResourceLoadParameters& loadParameters)
+{
+    RefPtr<NetworkingContext> context = RemoteNetworkingContext::create(loadParameters.sessionID, loadParameters.shouldClearReferrerOnHTTPSToHTTPRedirect);
+
+    // PingHandle manages its own lifetime, deleting itself when its purpose has been fulfilled.
+    new PingHandle(context.get(), loadParameters.request, loadParameters.allowStoredCredentials == AllowStoredCredentials, PingHandle::UsesAsyncCallbacks::Yes);
+}
+
 void NetworkConnectionToWebProcess::removeLoadIdentifier(ResourceLoadIdentifier identifier)
 {
     RefPtr<NetworkResourceLoader> loader = m_networkResourceLoaders.get(identifier);
@@ -178,6 +187,11 @@ void NetworkConnectionToWebProcess::convertMainResourceLoadToDownload(uint64_t m
     }
 
     NetworkResourceLoader* loader = m_networkResourceLoaders.get(mainResourceLoadIdentifier);
+    if (!loader) {
+        // If we're trying to download a blob here loader can be null.
+        return;
+    }
+
     networkProcess.downloadManager().convertHandleToDownload(downloadID, loader->handle(), request, response);
 
     // Unblock the URL connection operation queue.

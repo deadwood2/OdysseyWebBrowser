@@ -39,15 +39,15 @@ set(test_wtf_LIBRARIES
 )
 
 set(test_webcore_LIBRARIES
-    gtest
     WTF
     WebCore
+    gtest
 )
 
 set(test_webkit2_api_LIBRARIES
+    JavaScriptCore
     TestWebKitAPIBase
     WTF
-    JavaScriptCore
     WebKit2
     gtest
 )
@@ -58,8 +58,8 @@ set(TestWebKitAPI_LIBRARIES
 )
 
 set(TestJavaScriptCore_LIBRARIES
-    gtest
     JavaScriptCore
+    gtest
 )
 
 set(TestWTF_SOURCES
@@ -79,6 +79,7 @@ set(TestWTF_SOURCES
     ${TESTWEBKITAPI_DIR}/Tests/WTF/MathExtras.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/MediaTime.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/MetaAllocator.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/NakedPtr.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/RedBlackTree.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/Ref.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/RefPtr.cpp
@@ -121,6 +122,7 @@ add_library(TestWebKitAPIInjectedBundle SHARED
     ${TESTWEBKITAPI_DIR}/Tests/WebKit2/ParentFrame_Bundle.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WebKit2/ResponsivenessTimerDoesntFireEarly_Bundle.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WebKit2/ShouldGoToBackForwardListItem_Bundle.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WebKit2/TextFieldDidBeginAndEndEditing_Bundle.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WebKit2/UserMessage_Bundle.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WebKit2/WillLoad_Bundle.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WebKit2/WillSendSubmitEvent_Bundle.cpp
@@ -129,9 +131,11 @@ add_library(TestWebKitAPIInjectedBundle SHARED
 target_link_libraries(TestWebKitAPIInjectedBundle ${TestWebKitAPI_LIBRARIES})
 add_dependencies(TestWebKitAPIInjectedBundle ${ForwardingHeadersForTestWebKitAPI_NAME})
 
+get_property(TestWebKitAPIInjectedBundle_PATH TARGET TestWebKitAPIInjectedBundle PROPERTY LOCATION)
+
 add_definitions(-DGTEST_LINKED_AS_SHARED_LIBRARY=1 -DGTEST_HAS_RTTI=0
     -DTEST_WEBKIT2_RESOURCES_DIR=\"${TESTWEBKITAPI_DIR}/Tests/WebKit2\"
-    -DTEST_INJECTED_BUNDLE_PATH=\"$<TARGET_FILE_DIR:TestWebKitAPIInjectedBundle>\"
+    -DTEST_INJECTED_BUNDLE_PATH=\"${TestWebKitAPIInjectedBundle_PATH}\"
 )
 
 # FIXME: This works around compatibility problems in the old version of the third-pary

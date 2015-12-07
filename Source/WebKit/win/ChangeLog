@@ -1,3 +1,610 @@
+2015-07-27  Alex Christensen  <achristensen@webkit.org>
+
+        Use Ninja on Windows.
+        https://bugs.webkit.org/show_bug.cgi?id=147228
+
+        Reviewed by Martin Robinson.
+
+        * WebView.h:
+        Add more #if USE(CA) to protect the CACFLayer code.
+
+2015-07-27  Alex Christensen  <achristensen@webkit.org>
+
+        Progress towards building AppleWin with CMake
+        https://bugs.webkit.org/show_bug.cgi?id=147325
+
+        Reviewed by Martin Robinson.
+
+        * WebError.cpp:
+        * WebKitDLL.cpp:
+        * WebPreferences.cpp:
+        * WebURLResponse.cpp:
+        Fix some include quirks.
+
+2015-07-27  Per Arne Vollan  <peavo@outlook.com>
+
+        [Curl] Crash in CurlDownload::didReceiveHeader when downloading file.
+        https://bugs.webkit.org/show_bug.cgi?id=146832
+
+        Reviewed by Darin Adler.
+
+        CurlDownload should be reference counted to make sure it still
+        lives when a function call is invoked on the main thread from
+        the download thread.
+
+        * WebDownload.h:
+        * WebDownloadCurl.cpp:
+        (WebDownload::init):
+        (WebDownload::start):
+        (WebDownload::cancel):
+        (WebDownload::deletesFileUponFailure):
+        (WebDownload::setDeletesFileUponFailure):
+        (WebDownload::setDestination):
+        (WebDownload::didReceiveResponse):
+
+2015-07-24  Brent Fulgham  <bfulgham@apple.com>
+
+        [Win] Connect UserScript and UserStyleSheet through WebView.
+        https://bugs.webkit.org/show_bug.cgi?id=147279
+        <rdar://problem/21990767>
+
+        Reviewed by Dean Jackson.
+
+        * Interfaces/IWebViewPrivate.idl: Add updated API for 'addUserScriptToGroup' and
+        'addUserStyleSheetToGroup'
+        * WebView.cpp:
+        (WebView::addUserScriptToGroup): Add implementation.
+        (toStringVector): Added helper function.
+        (WebView::addUserStyleSheetToGroup): Add implementation.
+        (WebView::removeUserScriptFromGroup): Ditto.
+        (WebView::removeUserStyleSheetFromGroup): Ditto.
+        (WebView::removeUserScriptsFromGroup): Ditto.
+        (WebView::removeUserStyleSheetsFromGroup): Ditto.
+        (WebView::removeAllUserContentFromGroup): Ditto.
+        * WebView.h:
+
+2015-07-24  Yusuke Suzuki  <utatane.tea@gmail.com>
+
+        Remove runtime flags for symbols
+        https://bugs.webkit.org/show_bug.cgi?id=147246
+
+        Reviewed by Alex Christensen.
+
+        * Interfaces/IWebPreferencesPrivate.idl:
+
+2015-07-23  Alex Christensen  <achristensen@webkit.org>
+
+        Unreviewed build fix after r187245.
+
+        * WebView.cpp:
+        WM_DPICHANGED is #defined, which causes problems if we try to use it as a variable name.
+
+2015-07-23  Alex Christensen  <achristensen@webkit.org>
+
+        Remove compile and runtime flags for promises.
+        https://bugs.webkit.org/show_bug.cgi?id=147244
+
+        Reviewed by Yusuke Suzuki.
+
+        * Interfaces/IWebPreferencesPrivate.idl:
+
+2015-07-23  Brent Fulgham  <bfulgham@apple.com>
+
+        [Win] Implement High DPI support features
+        https://bugs.webkit.org/show_bug.cgi?id=146335
+        <rdar://problem/21558269>
+
+        Reviewed by Alex Christensen.
+
+        * WebCoreSupport/WebFrameLoaderClient.cpp:
+        (WebFrameLoaderClient::transitionToCommittedForNewPage): Size
+        page for current device scale factor.
+        * WebFrame.cpp:
+        (WebFrame::paintDocumentRectToContext): Account for device scale factor.
+        (WebFrame::paintScrollViewRectToContextAtPoint): Ditto.
+        * WebView.cpp:
+        (WebView::repaint): Adjust paint rect for device scale factor.
+        (WebView::scrollBackingStore): Adjust coordinates for scale factor.
+        (WebView::sizeChanged): Ditto.
+        (WebView::updateBackingStore): Ditto.
+        (WebView::paint): Ditto.
+        (WebView::paintIntoBackingStore): Ditto.
+        (WebView::handleContextMenuEvent): Ditto.
+        (WebView::gestureNotify): Ditto.
+        (WebView::gesture): Ditto.
+        (WebView::initializeToolTipWindow): Adjust max tool tip width
+        for device scale factor.
+        (WebView::selectionRect): Adjust coordinates for scale factor.
+        (WebView::elementAtPoint): Ditto.
+        (WebView::scrollOffset): Ditto.
+        (WebView::scrollBy): Ditto.
+        (WebView::visibleContentRect): Ditto.
+        (WebView::paintContents): Ditto.
+        * WebView.h:
+
+2015-07-23  Sungmann Cho  <sungmann.cho@navercorp.com>
+
+        [Win] Fix typos in PluginViewWin.cpp: kWebPluginViewdowClassName -> kWebPluginViewClassName
+        https://bugs.webkit.org/show_bug.cgi?id=147214
+
+        Reviewed by Csaba Osztrogonác.
+
+        * Plugins/PluginViewWin.cpp:
+        (WebCore::registerPluginView):
+        (WebCore::PluginView::platformStart):
+
+2015-07-22  Alex Christensen  <achristensen@webkit.org>
+
+        Fix quirks in CMake build on Mac and Windows
+        https://bugs.webkit.org/show_bug.cgi?id=147174
+
+        Reviewed by Gyuyoung Kim.
+
+        * WebView.cpp:
+        Include winuser.h to get definitions of touch-related structures like tagGESTUREINFO.
+
+2015-07-21  Sungmann Cho  <sungmann.cho@navercorp.com>
+
+        [Win] Add needTouchEvents() stub to WebChromeClient.h for a successful build with ENABLE_TOUCH_EVENTS=ON
+        https://bugs.webkit.org/show_bug.cgi?id=147141
+
+        Reviewed by Darin Adler.
+
+        * WebCoreSupport/WebChromeClient.h:
+
+2015-07-21  Per Arne Vollan  <peavo@outlook.com>
+
+        WinLauncher does not start on WinXP.
+        https://bugs.webkit.org/show_bug.cgi?id=147147
+
+        Reviewed by Alex Christensen.
+
+        ANGLE requires Win7, accelerated compositing must be disabled on earlier Windows versions.
+
+        * WebCoreSupport/AcceleratedCompositingContext.cpp:
+        (AcceleratedCompositingContext::acceleratedCompositingAvailable):
+
+2015-07-19  David Kilzer  <ddkilzer@apple.com>
+
+        REGRESSION (r187002): Broke the Windows build: Reduce PassRefPtr in WebKit2 - 3
+        <https://bugs.webkit.org/show_bug.cgi?id=146995>
+
+        Attempt to fix the Windows build.
+
+        * WebCoreSupport/WebFrameLoaderClient.cpp:
+        (WebFrameLoaderClient::createDocumentLoader):
+        (WebFrameLoaderClient::createFrame):
+        (WebFrameLoaderClient::createPlugin):
+        * WebCoreSupport/WebFrameLoaderClient.h:
+        * WebDocumentLoader.cpp:
+        (WebDocumentLoader::create):
+        * WebDocumentLoader.h:
+
+2015-07-18  Gyuyoung Kim  <gyuyoung.kim@webkit.org>
+
+        Reduce PassRefPtr in WebKit2 - 3
+        https://bugs.webkit.org/show_bug.cgi?id=146995
+
+        Reviewed by Daniel Bates.
+
+        To remove PassRefPtr, this patch reduces use of PassRefPtr in WebKit2.
+        Because some uses depend on WebCore, WebCore, WK1 ports are modified as well.
+
+        * WebCoreSupport/WebFrameLoaderClient.cpp:
+        (WebFrameLoaderClient::createDocumentLoader):
+        * WebCoreSupport/WebFrameLoaderClient.h:
+
+2015-07-16  Brent Fulgham  <bfulgham@apple.com>
+
+        [Win] Gross workaround to fix build after r186858.
+
+        * WebView.cpp:
+        (WebView::unused5): Force export of WebCore symbol through
+        WebKit.dll.
+
+2015-07-15  Brent Fulgham  <bfulgham@apple.com>
+
+        [Win] Maintain consistent COM Interfaces
+        https://bugs.webkit.org/show_bug.cgi?id=146983
+        <rdar://problem/21822278>
+
+        Reviewed by Dean Jackson.
+
+        Keep WebKit's COM interface compatible with software
+        linked against earlier WebKit releases:
+        1. Update IDL to present the same interface as earlier
+           releases of WebKit.
+        2. Add new interface objects (i.g., IWebFrame2) extending
+           earlier interfaces when adding new methods.
+        3. Update our internal software to use the correct interface
+           objects.
+
+        * DefaultPolicyDelegate.cpp:
+        (DefaultPolicyDelegate::decidePolicyForNavigationAction):
+        * Interfaces/IWebEditingDelegate.idl:
+        * Interfaces/IWebFrame.idl:
+        * Interfaces/IWebPreferencesPrivate.idl:
+        * Interfaces/IWebSecurityOrigin.idl:
+        * Interfaces/IWebUIDelegatePrivate.idl:
+        * Interfaces/IWebViewPrivate.idl:
+        * Interfaces/WebKit.idl:
+        * WebCoreSupport/WebEditorClient.cpp:
+        (WebEditorClient::shouldInsertNode):
+        * WebFrame.cpp:
+        (WebFrame::updateBackground):
+        (WebFrame::isMainFrame):
+        * WebFrame.h:
+        * WebPreferences.cpp:
+        (WebPreferences::initializeDefaultSettings):
+        (WebPreferences::QueryInterface):
+        (WebPreferences::setMockScrollbarsEnabled):
+        (WebPreferences::screenFontSubstitutionEnabled):
+        (WebPreferences::setScreenFontSubstitutionEnabled):
+        (WebPreferences::hyperlinkAuditingEnabled):
+        (WebPreferences::unused4):
+        (WebPreferences::shouldPaintNativeControls):
+        (WebPreferences::setShouldPaintNativeControls):
+        (WebPreferences::setDeveloperExtrasEnabled):
+        (WebPreferences::authorAndUserStylesEnabled):
+        (WebPreferences::inApplicationChromeMode):
+        * WebPreferences.h:
+        * WebSecurityOrigin.cpp:
+        (WebSecurityOrigin::QueryInterface):
+        (WebSecurityOrigin::setQuota):
+        (WebSecurityOrigin::initWithURL):
+        * WebSecurityOrigin.h:
+        * WebView.cpp:
+        (WebView::QueryInterface):
+        (WebView::notifyPreferencesChanged):
+        (WebView::selectedRangeForTesting):
+        (WebView::setLoadResourcesSerially):
+        * WebView.h:
+
+2015-07-09  Per Arne Vollan  <peavo@outlook.com>
+
+        [Win] Add memory pressure handler.
+        https://bugs.webkit.org/show_bug.cgi?id=146685
+
+        Reviewed by Brent Fulgham.
+
+        * WebView.cpp:
+        (WebView::initWithFrame): Install memory pressure handler.
+
+2015-07-08  Daniel Bates  <dabates@apple.com>
+
+        Attempt to fix the Apple Windows build after <https://trac.webkit.org/changeset/186566>
+        (https://bugs.webkit.org/show_bug.cgi?id=146591)
+
+        Update implementation of PluginView::create() to return a Ref<PluginView> object
+        instead of a PassRefPtr<PluginView> object.
+
+        * Plugins/PluginView.cpp:
+        (WebCore::PluginView::create):
+
+2015-07-07  Brady Eidson  <beidson@apple.com>
+
+        HTTP Auth cached after disabling private browsing/reset.
+        <rdar://problem/8293055> and https://bugs.webkit.org/show_bug.cgi?id=146654
+
+        Reviewed by Tim Horton.
+
+        * WebDownloadCFNet.cpp:
+        (WebDownload::didReceiveAuthenticationChallenge):
+
+2015-07-04  Chris Dumez  <cdumez@apple.com>
+
+        Drop RefPtr::clear() method
+        https://bugs.webkit.org/show_bug.cgi?id=146556
+
+        Reviewed by Brady Eidson.
+
+        Drop RefPtr::clear() method in favor of "= nullptr;" pattern.
+
+2015-06-30  Simon Fraser  <simon.fraser@apple.com>
+
+        Fix Mac and Windows builds.
+
+        * WebCoreSupport/AcceleratedCompositingContext.cpp:
+        (AcceleratedCompositingContext::flushPendingLayerChanges):
+        * WebView.cpp:
+        (WebView::flushPendingGraphicsLayerChanges):
+
+2015-06-30  Brent Fulgham  <bfulgham@apple.com>
+
+        [Win] webViewAddMessageToConsole always gets 1 for isError
+        https://bugs.webkit.org/show_bug.cgi?id=146457
+        <rdar://problem/21606395>
+
+        Reviewed by Zalan Bujtas.
+
+        * WebCoreSupport/WebChromeClient.cpp:
+        (messageIsError): Added.
+        (WebChromeClient::addMessageToConsole): Only pass true for
+        isError if the message is an error message.
+
+2015-06-30  Per Arne Vollan  <peavo@outlook.com>
+
+        [WinCairo] Compile error, WebEditorClient::didApplyStyle() should not have any parameters.
+        https://bugs.webkit.org/show_bug.cgi?id=146450
+
+        Reviewed by Csaba Osztrogonác.
+
+        * WebCoreSupport/WebEditorClient.cpp:
+        (WebEditorClient::shouldApplyStyle):
+        (WebEditorClient::didApplyStyle):
+        * WebCoreSupport/WebEditorClient.h:
+
+2015-06-27  Ryosuke Niwa  <rniwa@webkit.org>
+
+        Font panel doesn't get updated when bolding text via cmd+b in Mail on OS X
+        https://bugs.webkit.org/show_bug.cgi?id=146379
+
+        Reviewed by Darin Adler.
+
+        * WebCoreSupport/WebEditorClient.cpp:
+        (WebEditorClient::didApplyStyle): Added.
+        * WebCoreSupport/WebEditorClient.h:
+
+2015-06-26  Per Arne Vollan  <peavo@outlook.com>
+
+        WinLauncher fails to download files.
+        https://bugs.webkit.org/show_bug.cgi?id=146242
+
+        Reviewed by Alex Christensen.
+
+        Don't start download when there is no download delegate.
+
+        * WebView.cpp:
+        (WebView::downloadURL):
+
+2015-06-26  Hyungwook Lee  <hyungwook.lee@navercorp.com>
+
+        [Win] Implement WebViewGroup to support WebView::addxxxToGroup().
+        https://bugs.webkit.org/show_bug.cgi?id=145908
+
+        Reviewed by Brent Fulgham.
+
+        Make WebViewGroup class sharing on Mac and Win port.
+
+        * WebCoreSupport/WebVisitedLinkStore.cpp:
+        (visitedLinkStores):
+        (WebVisitedLinkStore::create):
+        (WebVisitedLinkStore::WebVisitedLinkStore):
+        (WebVisitedLinkStore::~WebVisitedLinkStore):
+        (WebVisitedLinkStore::setShouldTrackVisitedLinks):
+        (WebVisitedLinkStore::removeAllVisitedLinks):
+        (WebVisitedLinkStore::singleton): Deleted.
+        * WebCoreSupport/WebVisitedLinkStore.h:
+        * WebView.cpp:
+        (toURL):
+        (localStorageDatabasePath):
+        (WebView::WebView):
+        (WebView::~WebView):
+        (WebView::shouldInitializeTrackPointHack):
+        (WebView::initWithFrame):
+        (WebView::setGroupName):
+        (WebView::addVisitedLinks):
+        * WebView.h:
+
+2015-06-25  Brent Fulgham  <bfulgham@apple.com>
+
+        [Win] Need implementation of layoutTestController.setBackingScaleFactor
+        https://bugs.webkit.org/show_bug.cgi?id=87919
+        <rdar://problem/11563242>
+
+        Reviewed by Dean Jackson.
+
+        Connect the test infrastructure for High DPI tests to Windows. This
+        involved adding a new accessor to the IWebViewPrivate interface, and
+        providing a rudimentary implemenation of DPI support on Windows.
+
+        * Interfaces/IWebViewPrivate.idl: Add new API to set/get scaling
+        factor.
+        * WebView.cpp:
+        (WebView::initWithFrame): Initialize the device scale factor.
+        (WebView::setHostWindow): Ditto.
+        (WebView::windowAncestryDidChange): Ditto.
+        (WebView::deviceScaleFactor): Added. Check current window for scaling
+        factor. If no windows exist, check main screen.
+        (WebView::setCustomBackingScaleFactor): Added.
+        (WebView::backingScaleFactor): Added.
+        * WebView.h:
+
+2015-06-24  Anders Carlsson  <andersca@apple.com>
+
+        Move PluginMainThreadScheduler to WebKit/win
+        https://bugs.webkit.org/show_bug.cgi?id=146289
+
+        Reviewed by Tim Horton.
+
+        * Plugins/PluginMainThreadScheduler.cpp: Renamed from Source/WebCore/plugins/PluginMainThreadScheduler.cpp.
+        (WebCore::PluginMainThreadScheduler::scheduler):
+        (WebCore::PluginMainThreadScheduler::PluginMainThreadScheduler):
+        (WebCore::PluginMainThreadScheduler::scheduleCall):
+        (WebCore::PluginMainThreadScheduler::registerPlugin):
+        (WebCore::PluginMainThreadScheduler::unregisterPlugin):
+        (WebCore::PluginMainThreadScheduler::dispatchCallsForPlugin):
+        (WebCore::PluginMainThreadScheduler::dispatchCalls):
+        (WebCore::PluginMainThreadScheduler::mainThreadCallback):
+        * Plugins/PluginMainThreadScheduler.h: Renamed from Source/WebCore/plugins/PluginMainThreadScheduler.h.
+        (WebCore::PluginMainThreadScheduler::Call::Call):
+        (WebCore::PluginMainThreadScheduler::Call::performCall):
+        * Plugins/PluginView.cpp:
+
+2015-06-23  Anders Carlsson  <andersca@apple.com>
+
+        Remove windowResizerRect code, nobody is using it anymore
+        https://bugs.webkit.org/show_bug.cgi?id=146265
+
+        Reviewed by Beth Dakin.
+
+        * WebCoreSupport/WebChromeClient.cpp:
+        (WebChromeClient::windowResizerRect): Deleted.
+        * WebCoreSupport/WebChromeClient.h:
+
+2015-06-23  Per Arne Vollan  <peavo@outlook.com>
+
+        [WinCairo] WebDownload::initWithRequest is not implemented.
+        https://bugs.webkit.org/show_bug.cgi?id=146203
+
+        Reviewed by Alex Christensen.
+
+        Implement method to start download from a IWebURLRequest object.
+
+        * WebDownloadCurl.cpp:
+        (WebDownload::initWithRequest): Implemented.
+
+2015-06-18  Anders Carlsson  <andersca@apple.com>
+
+        Remove shouldInterruptJavaScript
+        https://bugs.webkit.org/show_bug.cgi?id=146118
+
+        Reviewed by Antti Koivisto.
+
+        * Interfaces/IWebUIDelegatePrivate.idl:
+        * WebCoreSupport/WebChromeClient.cpp:
+        (WebChromeClient::shouldInterruptJavaScript): Deleted.
+        * WebCoreSupport/WebChromeClient.h:
+
+2015-06-17  Hyungwook Lee  <hyungwook.lee@navercorp.com>
+
+        [Win]Implement layoutTestController.dispatchPendingLoadRequests.
+        https://bugs.webkit.org/show_bug.cgi?id=26481
+
+        Reviewed by Darin Adler.
+
+        Implement WebView::dispatchPendingLoadRequests() private API for test runner.
+
+        * Interfaces/IWebViewPrivate.idl:
+        * WebView.cpp:
+        (WebView::scaleWebView):
+        (WebView::dispatchPendingLoadRequests):
+        * WebView.h:
+
+2015-06-17  Commit Queue  <commit-queue@webkit.org>
+
+        Unreviewed, rolling out r185636.
+        https://bugs.webkit.org/show_bug.cgi?id=146068
+
+        Caused many crashes on Windows (Requested by ap on #webkit).
+
+        Reverted changeset:
+
+        "[Win] Implement WebViewGroup to support
+        WebView::addxxxToGroup()."
+        https://bugs.webkit.org/show_bug.cgi?id=145908
+        http://trac.webkit.org/changeset/185636
+
+2015-06-16  Hyungwook Lee  <hyungwook.lee@navercorp.com>
+
+        [Win] Implement WebViewGroup to support WebView::addxxxToGroup().
+        https://bugs.webkit.org/show_bug.cgi?id=145908
+
+        Reviewed by Brent Fulgham.
+
+        Make WebViewGroup class sharing on Mac and Win port.
+
+        * WebCoreSupport/WebVisitedLinkStore.cpp:
+        (visitedLinkStores):
+        (WebVisitedLinkStore::create):
+        (WebVisitedLinkStore::WebVisitedLinkStore):
+        (WebVisitedLinkStore::~WebVisitedLinkStore):
+        (WebVisitedLinkStore::setShouldTrackVisitedLinks):
+        (WebVisitedLinkStore::removeAllVisitedLinks):
+        (WebVisitedLinkStore::singleton): Deleted.
+        * WebCoreSupport/WebVisitedLinkStore.h:
+        * WebView.cpp:
+        (WebView::~WebView):
+        (WebView::initWithFrame):
+        (WebView::setGroupName):
+        (WebView::addVisitedLinks):
+        * WebView.h:
+
+2015-06-13  Chris Dumez  <cdumez@apple.com>
+
+        [WK2] API::Navigation objects are leaked on history navigation to HistoryItems in PageCache
+        https://bugs.webkit.org/show_bug.cgi?id=145948
+
+        Reviewed by Darin Adler.
+
+        Add empty implementation for new
+        FrameLoaderClient::updatedCachedDocumentLoader().
+
+        * WebCoreSupport/WebFrameLoaderClient.h:
+
+2015-06-11  Mark Lam  <mark.lam@apple.com>
+
+        WebCore::reportException() needs to be able to accept a raw thrown value in addition to Exception objects.
+        https://bugs.webkit.org/show_bug.cgi?id=145872
+
+        Reviewed by Michael Saboff.
+
+        * WebView.cpp:
+        (WebView::reportException):
+        - Don't assume we have an Exception object.  Let WebCore::reportException() take
+          care of it.
+
+2015-06-09  Hyungwook Lee  <hyungwook.lee@navercorp.com>
+
+        Implement dumpProgressFinishedCallback() for Win layoutTestController.
+        https://bugs.webkit.org/show_bug.cgi?id=66773
+
+        Reviewed by Darin Adler.
+
+        * WebView.cpp:
+        (WebView::setFrameLoadDelegatePrivate):
+
+2015-06-08  Chris Dumez  <cdumez@apple.com>
+
+        Access GCController instance via GCController::singleton() instead of a free function
+        https://bugs.webkit.org/show_bug.cgi?id=145776
+
+        Reviewed by Darin Adler.
+
+        Access GCController instance via GCController::singleton() instead of a
+        free function as per coding style and for consistency with other
+        singleton classes in the codebase.
+
+        * WebCoreStatistics.cpp:
+        (WebCoreStatistics::garbageCollectJavaScriptObjects):
+        (WebCoreStatistics::garbageCollectJavaScriptObjectsOnAlternateThreadForDebugging):
+        (WebCoreStatistics::setJavaScriptGarbageCollectorTimerEnabled):
+        * WebJavaScriptCollector.cpp:
+        (WebJavaScriptCollector::collect):
+        (WebJavaScriptCollector::collectOnAlternateThread):
+
+2015-06-05  Mark Lam  <mark.lam@apple.com>
+
+        finally blocks should not set the exception stack trace when re-throwing the exception.
+        https://bugs.webkit.org/show_bug.cgi?id=145525
+
+        Reviewed by Geoffrey Garen.
+
+        * WebView.cpp:
+        (WebView::reportException):
+        - Changed to use the new Exception object.
+
+2015-06-02  Brady Eidson  <beidson@apple.com>
+
+        WebKit policy delegate should suggest if a navigation should be allowed to open URLs externally.
+        rdar://problem/21025301 and https://bugs.webkit.org/show_bug.cgi?id=145280
+
+        Reviewed by Alex Christensen.
+
+        * Plugins/PluginView.cpp:
+        (WebCore::PluginView::start):
+        (WebCore::PluginView::performRequest):
+        (WebCore::PluginView::getURLNotify):
+        (WebCore::PluginView::getURL):
+        (WebCore::PluginView::handlePost):
+        
+        * WebCoreSupport/WebContextMenuClient.cpp:
+        (WebContextMenuClient::searchWithGoogle):
+        
+        * WebFrame.cpp:
+        (WebFrame::loadRequest):
+        (WebFrame::loadData):
+
 2015-05-26  Jon Honeycutt  <jhoneycutt@apple.com>
 
         [iOS] When viewing an MJPEG stream as the main resource, only the first

@@ -33,21 +33,26 @@
     macro(ArrayIterator) \
     macro(BYTES_PER_ELEMENT) \
     macro(Boolean) \
+    macro(Collator) \
     macro(Date) \
+    macro(DateTimeFormat) \
     macro(Error) \
     macro(EvalError) \
     macro(Function) \
     macro(Infinity) \
+    macro(Intl) \
     macro(JSON) \
     macro(Map)\
     macro(MapIterator)\
     macro(Math) \
     macro(NaN) \
     macro(Number) \
+    macro(NumberFormat) \
     macro(Object) \
     macro(Promise) \
     macro(RangeError) \
     macro(ReferenceError) \
+    macro(Reflect) \
     macro(RegExp) \
     macro(Set)\
     macro(SetIterator)\
@@ -103,6 +108,7 @@
     macro(exec) \
     macro(executionCount) \
     macro(exitKind) \
+    macro(flags) \
     macro(focus) \
     macro(forEach) \
     macro(forward) \
@@ -118,6 +124,7 @@
     macro(id) \
     macro(ignoreCase) \
     macro(index) \
+    macro(indexedDB) \
     macro(inferredName) \
     macro(input) \
     macro(instructionCount) \
@@ -163,6 +170,7 @@
     macro(sourceCode) \
     macro(stack) \
     macro(subarray) \
+    macro(target) \
     macro(test) \
     macro(then) \
     macro(toExponential) \
@@ -176,6 +184,7 @@
     macro(valueOf) \
     macro(values) \
     macro(webkit) \
+    macro(webkitIndexedDB) \
     macro(window) \
     macro(writable)
 
@@ -248,7 +257,6 @@
 
 #define JSC_COMMON_PRIVATE_IDENTIFIERS_EACH_PROPERTY_NAME(macro) \
     JSC_COMMON_BYTECODE_INTRINSICS_EACH_NAME(macro) \
-    macro(symbolIterator) \
     macro(iteratedObject) \
     macro(arrayIteratorNextIndex) \
     macro(arrayIterationKind) \
@@ -258,8 +266,6 @@
     macro(charCodeAt) \
     macro(iteratedString) \
     macro(stringIteratorNextIndex) \
-    macro(resolve) \
-    macro(reject) \
     macro(promise) \
     macro(fulfillmentHandler) \
     macro(rejectionHandler) \
@@ -268,12 +274,11 @@
     macro(deferred) \
     macro(countdownHolder) \
     macro(Object) \
-    macro(objectKeys) \
-    macro(objectGetOwnPropertyDescriptor) \
-    macro(objectGetOwnPropertySymbols) \
+    macro(ownEnumerablePropertyKeys) \
     macro(Number) \
     macro(Array) \
     macro(String) \
+    macro(Promise) \
     macro(abs) \
     macro(floor) \
     macro(isFinite) \
@@ -283,7 +288,18 @@
     macro(undefined) \
     macro(BuiltinLog) \
     macro(homeObject) \
-    macro(getTemplateObject)
+    macro(getTemplateObject) \
+    macro(enqueueJob) \
+    macro(handler) \
+    macro(promiseState) \
+    macro(promisePending) \
+    macro(promiseFulfilled) \
+    macro(promiseRejected) \
+    macro(promiseFulfillReactions) \
+    macro(promiseRejectReactions) \
+    macro(promiseResult) \
+    macro(capabilities) \
+
 
 namespace JSC {
     

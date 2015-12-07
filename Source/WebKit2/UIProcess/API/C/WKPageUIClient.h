@@ -50,9 +50,9 @@ typedef uint32_t WKPluginUnavailabilityReason;
 
 typedef void (*WKPageUIClientCallback)(WKPageRef page, const void* clientInfo);
 typedef WKPageRef (*WKPageCreateNewPageCallback)(WKPageRef page, WKURLRequestRef urlRequest, WKDictionaryRef features, WKEventModifiers modifiers, WKEventMouseButton mouseButton, const void *clientInfo);
-typedef void (*WKPageRunJavaScriptAlertCallback)(WKPageRef page, WKStringRef alertText, WKFrameRef frame, const void *clientInfo);
-typedef bool (*WKPageRunJavaScriptConfirmCallback)(WKPageRef page, WKStringRef message, WKFrameRef frame, const void *clientInfo);
-typedef WKStringRef (*WKPageRunJavaScriptPromptCallback)(WKPageRef page, WKStringRef message, WKStringRef defaultValue, WKFrameRef frame, const void *clientInfo);
+typedef void (*WKPageRunJavaScriptAlertCallback)(WKPageRef page, WKStringRef alertText, WKFrameRef frame, WKSecurityOriginRef securityOrigin, const void *clientInfo);
+typedef bool (*WKPageRunJavaScriptConfirmCallback)(WKPageRef page, WKStringRef message, WKFrameRef frame, WKSecurityOriginRef securityOrigin, const void *clientInfo);
+typedef WKStringRef (*WKPageRunJavaScriptPromptCallback)(WKPageRef page, WKStringRef message, WKStringRef defaultValue, WKFrameRef frame, WKSecurityOriginRef securityOrigin, const void *clientInfo);
 typedef void (*WKPageTakeFocusCallback)(WKPageRef page, WKFocusDirection direction, const void *clientInfo);
 typedef void (*WKPageFocusCallback)(WKPageRef page, const void *clientInfo);
 typedef void (*WKPageUnfocusCallback)(WKPageRef page, const void *clientInfo);
@@ -80,7 +80,6 @@ typedef void (*WKPageDrawHeaderCallback)(WKPageRef page, WKFrameRef frame, WKRec
 typedef void (*WKPageDrawFooterCallback)(WKPageRef page, WKFrameRef frame, WKRect rect, const void* clientInfo);
 typedef void (*WKPagePrintFrameCallback)(WKPageRef page, WKFrameRef frame, const void* clientInfo);
 typedef void (*WKPageSaveDataToFileInDownloadsFolderCallback)(WKPageRef page, WKStringRef suggestedFilename, WKStringRef mimeType, WKURLRef originatingURL, WKDataRef data, const void* clientInfo);
-typedef bool (*WKPageShouldInterruptJavaScriptCallback)(WKPageRef page, const void *clientInfo);
 typedef void (*WKPageDecidePolicyForNotificationPermissionRequestCallback)(WKPageRef page, WKSecurityOriginRef origin, WKNotificationPermissionRequestRef permissionRequest, const void *clientInfo);
 typedef void (*WKPageShowColorPickerCallback)(WKPageRef page, WKStringRef initialColor, WKColorPickerResultListenerRef listener, const void* clientInfo);
 typedef void (*WKPageHideColorPickerCallback)(WKPageRef page, const void* clientInfo);
@@ -92,12 +91,16 @@ typedef void (*WKPageDidCancelTrackingPotentialLongMousePressCallback)(WKPageRef
 typedef void (*WKPageIsPlayingAudioDidChangeCallback)(WKPageRef page, const void* clientInfo);
 typedef void (*WKPageDecidePolicyForUserMediaPermissionRequestCallback)(WKPageRef page, WKFrameRef frame, WKSecurityOriginRef origin, WKUserMediaPermissionRequestRef permissionRequest, const void* clientInfo);
 typedef void (*WKPageDidClickAutoFillButtonCallback)(WKPageRef page, WKTypeRef userData, const void *clientInfo);
+typedef void (*WKPageMediaSessionMetadataDidChangeCallback)(WKPageRef page, WKMediaSessionMetadataRef metadata, const void* clientInfo);
 
 // Deprecated
 typedef WKPageRef (*WKPageCreateNewPageCallback_deprecatedForUseWithV0)(WKPageRef page, WKDictionaryRef features, WKEventModifiers modifiers, WKEventMouseButton mouseButton, const void *clientInfo);
 typedef void      (*WKPageMouseDidMoveOverElementCallback_deprecatedForUseWithV0)(WKPageRef page, WKEventModifiers modifiers, WKTypeRef userData, const void *clientInfo);
 typedef void (*WKPageMissingPluginButtonClickedCallback_deprecatedForUseWithV0)(WKPageRef page, WKStringRef mimeType, WKStringRef url, WKStringRef pluginsPageURL, const void* clientInfo);
 typedef void (*WKPageUnavailablePluginButtonClickedCallback_deprecatedForUseWithV1)(WKPageRef page, WKPluginUnavailabilityReason pluginUnavailabilityReason, WKStringRef mimeType, WKStringRef url, WKStringRef pluginsPageURL, const void* clientInfo);
+typedef void (*WKPageRunJavaScriptAlertCallback_deprecatedForUseWithV0)(WKPageRef page, WKStringRef alertText, WKFrameRef frame, const void *clientInfo);
+typedef bool (*WKPageRunJavaScriptConfirmCallback_deprecatedForUseWithV0)(WKPageRef page, WKStringRef message, WKFrameRef frame, const void *clientInfo);
+typedef WKStringRef (*WKPageRunJavaScriptPromptCallback_deprecatedForUseWithV0)(WKPageRef page, WKStringRef message, WKStringRef defaultValue, WKFrameRef frame, const void *clientInfo);
 
 typedef struct WKPageUIClientBase {
     int                                                                 version;
@@ -114,9 +117,9 @@ typedef struct WKPageUIClientV0 {
     WKPageTakeFocusCallback                                             takeFocus;
     WKPageFocusCallback                                                 focus;
     WKPageUnfocusCallback                                               unfocus;
-    WKPageRunJavaScriptAlertCallback                                    runJavaScriptAlert;
-    WKPageRunJavaScriptConfirmCallback                                  runJavaScriptConfirm;
-    WKPageRunJavaScriptPromptCallback                                   runJavaScriptPrompt;
+    WKPageRunJavaScriptAlertCallback_deprecatedForUseWithV0             runJavaScriptAlert;
+    WKPageRunJavaScriptConfirmCallback_deprecatedForUseWithV0           runJavaScriptConfirm;
+    WKPageRunJavaScriptPromptCallback_deprecatedForUseWithV0            runJavaScriptPrompt;
     WKPageSetStatusTextCallback                                         setStatusText;
     WKPageMouseDidMoveOverElementCallback_deprecatedForUseWithV0        mouseDidMoveOverElement_deprecatedForUseWithV0;
     WKPageMissingPluginButtonClickedCallback_deprecatedForUseWithV0     missingPluginButtonClicked_deprecatedForUseWithV0;
@@ -146,7 +149,7 @@ typedef struct WKPageUIClientV0 {
     WKPageUIClientCallback                                              runModal;
     void*                                                               unused1; // Used to be didCompleteRubberBandForMainFrame
     WKPageSaveDataToFileInDownloadsFolderCallback                       saveDataToFileInDownloadsFolder;
-    WKPageShouldInterruptJavaScriptCallback                             shouldInterruptJavaScript;    
+    void*                                                               shouldInterruptJavaScript_unavailable;
 } WKPageUIClientV0;
 
 typedef struct WKPageUIClientV1 {
@@ -159,9 +162,9 @@ typedef struct WKPageUIClientV1 {
     WKPageTakeFocusCallback                                             takeFocus;
     WKPageFocusCallback                                                 focus;
     WKPageUnfocusCallback                                               unfocus;
-    WKPageRunJavaScriptAlertCallback                                    runJavaScriptAlert;
-    WKPageRunJavaScriptConfirmCallback                                  runJavaScriptConfirm;
-    WKPageRunJavaScriptPromptCallback                                   runJavaScriptPrompt;
+    WKPageRunJavaScriptAlertCallback_deprecatedForUseWithV0             runJavaScriptAlert;
+    WKPageRunJavaScriptConfirmCallback_deprecatedForUseWithV0           runJavaScriptConfirm;
+    WKPageRunJavaScriptPromptCallback_deprecatedForUseWithV0            runJavaScriptPrompt;
     WKPageSetStatusTextCallback                                         setStatusText;
     WKPageMouseDidMoveOverElementCallback_deprecatedForUseWithV0        mouseDidMoveOverElement_deprecatedForUseWithV0;
     WKPageMissingPluginButtonClickedCallback_deprecatedForUseWithV0     missingPluginButtonClicked_deprecatedForUseWithV0;
@@ -191,7 +194,7 @@ typedef struct WKPageUIClientV1 {
     WKPageUIClientCallback                                              runModal;
     void*                                                               unused1; // Used to be didCompleteRubberBandForMainFrame
     WKPageSaveDataToFileInDownloadsFolderCallback                       saveDataToFileInDownloadsFolder;
-    WKPageShouldInterruptJavaScriptCallback                             shouldInterruptJavaScript;    
+    void*                                                               shouldInterruptJavaScript_unavailable;
 
     // Version 1.
     WKPageCreateNewPageCallback                                         createNewPage;
@@ -210,9 +213,9 @@ typedef struct WKPageUIClientV2 {
     WKPageTakeFocusCallback                                             takeFocus;
     WKPageFocusCallback                                                 focus;
     WKPageUnfocusCallback                                               unfocus;
-    WKPageRunJavaScriptAlertCallback                                    runJavaScriptAlert;
-    WKPageRunJavaScriptConfirmCallback                                  runJavaScriptConfirm;
-    WKPageRunJavaScriptPromptCallback                                   runJavaScriptPrompt;
+    WKPageRunJavaScriptAlertCallback_deprecatedForUseWithV0             runJavaScriptAlert;
+    WKPageRunJavaScriptConfirmCallback_deprecatedForUseWithV0           runJavaScriptConfirm;
+    WKPageRunJavaScriptPromptCallback_deprecatedForUseWithV0            runJavaScriptPrompt;
     WKPageSetStatusTextCallback                                         setStatusText;
     WKPageMouseDidMoveOverElementCallback_deprecatedForUseWithV0        mouseDidMoveOverElement_deprecatedForUseWithV0;
     WKPageMissingPluginButtonClickedCallback_deprecatedForUseWithV0     missingPluginButtonClicked_deprecatedForUseWithV0;
@@ -242,7 +245,7 @@ typedef struct WKPageUIClientV2 {
     WKPageUIClientCallback                                              runModal;
     void*                                                               unused1; // Used to be didCompleteRubberBandForMainFrame
     WKPageSaveDataToFileInDownloadsFolderCallback                       saveDataToFileInDownloadsFolder;
-    WKPageShouldInterruptJavaScriptCallback                             shouldInterruptJavaScript;    
+    void*                                                               shouldInterruptJavaScript_unavailable;
 
     // Version 1.
     WKPageCreateNewPageCallback                                         createNewPage;
@@ -266,9 +269,9 @@ typedef struct WKPageUIClientV3 {
     WKPageTakeFocusCallback                                             takeFocus;
     WKPageFocusCallback                                                 focus;
     WKPageUnfocusCallback                                               unfocus;
-    WKPageRunJavaScriptAlertCallback                                    runJavaScriptAlert;
-    WKPageRunJavaScriptConfirmCallback                                  runJavaScriptConfirm;
-    WKPageRunJavaScriptPromptCallback                                   runJavaScriptPrompt;
+    WKPageRunJavaScriptAlertCallback_deprecatedForUseWithV0             runJavaScriptAlert;
+    WKPageRunJavaScriptConfirmCallback_deprecatedForUseWithV0           runJavaScriptConfirm;
+    WKPageRunJavaScriptPromptCallback_deprecatedForUseWithV0            runJavaScriptPrompt;
     WKPageSetStatusTextCallback                                         setStatusText;
     WKPageMouseDidMoveOverElementCallback_deprecatedForUseWithV0        mouseDidMoveOverElement_deprecatedForUseWithV0;
     WKPageMissingPluginButtonClickedCallback_deprecatedForUseWithV0     missingPluginButtonClicked_deprecatedForUseWithV0;
@@ -298,7 +301,7 @@ typedef struct WKPageUIClientV3 {
     WKPageUIClientCallback                                              runModal;
     void*                                                               unused1; // Used to be didCompleteRubberBandForMainFrame
     WKPageSaveDataToFileInDownloadsFolderCallback                       saveDataToFileInDownloadsFolder;
-    WKPageShouldInterruptJavaScriptCallback                             shouldInterruptJavaScript;    
+    void*                                                               shouldInterruptJavaScript_unavailable;
 
     // Version 1.
     WKPageCreateNewPageCallback                                         createNewPage;
@@ -325,9 +328,9 @@ typedef struct WKPageUIClientV4 {
     WKPageTakeFocusCallback                                             takeFocus;
     WKPageFocusCallback                                                 focus;
     WKPageUnfocusCallback                                               unfocus;
-    WKPageRunJavaScriptAlertCallback                                    runJavaScriptAlert;
-    WKPageRunJavaScriptConfirmCallback                                  runJavaScriptConfirm;
-    WKPageRunJavaScriptPromptCallback                                   runJavaScriptPrompt;
+    WKPageRunJavaScriptAlertCallback_deprecatedForUseWithV0             runJavaScriptAlert;
+    WKPageRunJavaScriptConfirmCallback_deprecatedForUseWithV0           runJavaScriptConfirm;
+    WKPageRunJavaScriptPromptCallback_deprecatedForUseWithV0            runJavaScriptPrompt;
     WKPageSetStatusTextCallback                                         setStatusText;
     WKPageMouseDidMoveOverElementCallback_deprecatedForUseWithV0        mouseDidMoveOverElement_deprecatedForUseWithV0;
     WKPageMissingPluginButtonClickedCallback_deprecatedForUseWithV0     missingPluginButtonClicked_deprecatedForUseWithV0;
@@ -357,7 +360,7 @@ typedef struct WKPageUIClientV4 {
     WKPageUIClientCallback                                              runModal;
     void*                                                               unused1; // Used to be didCompleteRubberBandForMainFrame
     WKPageSaveDataToFileInDownloadsFolderCallback                       saveDataToFileInDownloadsFolder;
-    WKPageShouldInterruptJavaScriptCallback                             shouldInterruptJavaScript;
+    void*                                                               shouldInterruptJavaScript_unavailable;
 
     // Version 1.
     WKPageCreateNewPageCallback                                         createNewPage;
@@ -390,9 +393,9 @@ typedef struct WKPageUIClientV5 {
     WKPageTakeFocusCallback                                             takeFocus;
     WKPageFocusCallback                                                 focus;
     WKPageUnfocusCallback                                               unfocus;
-    WKPageRunJavaScriptAlertCallback                                    runJavaScriptAlert;
-    WKPageRunJavaScriptConfirmCallback                                  runJavaScriptConfirm;
-    WKPageRunJavaScriptPromptCallback                                   runJavaScriptPrompt;
+    WKPageRunJavaScriptAlertCallback_deprecatedForUseWithV0             runJavaScriptAlert_deprecatedForUseWithV0;
+    WKPageRunJavaScriptConfirmCallback_deprecatedForUseWithV0           runJavaScriptConfirm_deprecatedForUseWithV0;
+    WKPageRunJavaScriptPromptCallback_deprecatedForUseWithV0            runJavaScriptPrompt_deprecatedForUseWithV0;
     WKPageSetStatusTextCallback                                         setStatusText;
     WKPageMouseDidMoveOverElementCallback_deprecatedForUseWithV0        mouseDidMoveOverElement_deprecatedForUseWithV0;
     WKPageMissingPluginButtonClickedCallback_deprecatedForUseWithV0     missingPluginButtonClicked_deprecatedForUseWithV0;
@@ -422,7 +425,7 @@ typedef struct WKPageUIClientV5 {
     WKPageUIClientCallback                                              runModal;
     void*                                                               unused1; // Used to be didCompleteRubberBandForMainFrame
     WKPageSaveDataToFileInDownloadsFolderCallback                       saveDataToFileInDownloadsFolder;
-    WKPageShouldInterruptJavaScriptCallback                             shouldInterruptJavaScript;
+    void*                                                               shouldInterruptJavaScript_unavailable;
 
     // Version 1.
     WKPageCreateNewPageCallback                                         createNewPage;
@@ -447,6 +450,10 @@ typedef struct WKPageUIClientV5 {
     // Version 5.
     WKPageDecidePolicyForUserMediaPermissionRequestCallback             decidePolicyForUserMediaPermissionRequest;
     WKPageDidClickAutoFillButtonCallback                                didClickAutoFillButton;
+    WKPageRunJavaScriptAlertCallback                                    runJavaScriptAlert;
+    WKPageRunJavaScriptConfirmCallback                                  runJavaScriptConfirm;
+    WKPageRunJavaScriptPromptCallback                                   runJavaScriptPrompt;
+    WKPageMediaSessionMetadataDidChangeCallback                         mediaSessionMetadataDidChange;
 } WKPageUIClientV5;
 
 enum { kWKPageUIClientCurrentVersion WK_ENUM_DEPRECATED("Use an explicit version number instead") = 2 };
@@ -461,9 +468,9 @@ typedef struct WKPageUIClient {
     WKPageTakeFocusCallback                                             takeFocus;
     WKPageFocusCallback                                                 focus;
     WKPageUnfocusCallback                                               unfocus;
-    WKPageRunJavaScriptAlertCallback                                    runJavaScriptAlert;
-    WKPageRunJavaScriptConfirmCallback                                  runJavaScriptConfirm;
-    WKPageRunJavaScriptPromptCallback                                   runJavaScriptPrompt;
+    WKPageRunJavaScriptAlertCallback_deprecatedForUseWithV0             runJavaScriptAlert;
+    WKPageRunJavaScriptConfirmCallback_deprecatedForUseWithV0           runJavaScriptConfirm;
+    WKPageRunJavaScriptPromptCallback_deprecatedForUseWithV0            runJavaScriptPrompt;
     WKPageSetStatusTextCallback                                         setStatusText;
     WKPageMouseDidMoveOverElementCallback_deprecatedForUseWithV0        mouseDidMoveOverElement_deprecatedForUseWithV0;
     WKPageMissingPluginButtonClickedCallback_deprecatedForUseWithV0     missingPluginButtonClicked_deprecatedForUseWithV0;
@@ -493,7 +500,7 @@ typedef struct WKPageUIClient {
     WKPageUIClientCallback                                              runModal;
     void*                                                               unused1; // Used to be didCompleteRubberBandForMainFrame
     WKPageSaveDataToFileInDownloadsFolderCallback                       saveDataToFileInDownloadsFolder;
-    WKPageShouldInterruptJavaScriptCallback                             shouldInterruptJavaScript;    
+    void*                                                               shouldInterruptJavaScript_unavailable;
 
     // Version 1.
     WKPageCreateNewPageCallback                                         createNewPage;

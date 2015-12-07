@@ -718,6 +718,14 @@
             "dnomi"
          ]
       },
+      "Devin Rousso" : {
+         "emails" : [
+            "drousso@apple.com"
+         ],
+         "nicks" : [
+            "drousso"
+         ]
+      },
       "Dhi Aurrahman" : {
          "emails" : [
             "diorahman@rockybars.com"
@@ -734,6 +742,14 @@
          "expertise" : "The QtWebKit Port",
          "nicks" : [
             "diegohcg"
+         ]
+      },
+      "Diego Pino Garcia" : {
+         "emails" : [
+            "dpino@igalia.com"
+         ],
+         "nicks" : [
+            "dpino"
          ]
       },
       "Dinu Jacob" : {
@@ -1105,6 +1121,15 @@
             "hyowon"
          ]
       },
+      "Hyungwook Lee" : {
+         "emails" : [
+            "hyungwook.lee@navercorp.com"
+         ],
+         "expertise" : "Loader, Graphics, The EFLWebKit port, WebKit on Windows",
+         "nicks" : [
+            "hwlee"
+         ]
+      },
       "Ian Vollick" : {
          "emails" : [
             "vollick@chromium.org"
@@ -1416,6 +1441,16 @@
          "expertise" : "Forms, Notifications",
          "nicks" : [
             "jonlee"
+         ]
+      },
+      "Jonathan Davis" : {
+         "emails" : [
+            "jond@apple.com",
+            "web-evangelist@apple.com"
+         ],
+         "expertise" : "webkit.org, Developer Tools, Web Inspector",
+         "nicks" : [
+            "JonDavis"
          ]
       },
       "Jonathan Dong" : {
@@ -1886,6 +1921,14 @@
             "mpcomplete@chromium.org"
          ]
       },
+      "Matt Rajca" : {
+         "emails" : [
+            "mrajca@apple.com"
+         ],
+         "nicks" : [
+            "mrajca"
+         ]
+      },
       "Matthew Mirman" : {
          "emails" : [
             "mmirman@apple.com"
@@ -1959,6 +2002,7 @@
       },
       "Micha\u0142 Paku\u0142a vel Rutka" : {
          "emails" : [
+            "mpakulavelrutka@gmail.com",
             "m.pakula@samsung.com"
          ],
          "nicks" : [
@@ -2650,6 +2694,15 @@
             "mtibor"
          ]
       },
+      "Tobias Reiss" : {
+         "emails" : [
+            "tobi+webkit@basecode.de"
+         ],
+         "expertise" : "Web Inspector",
+         "nicks" : [
+            "basecode"
+         ]
+      },
       "Tom Hudson" : {
          "emails" : [
             "tomhudson@google.com",
@@ -2780,6 +2833,15 @@
          ],
          "nicks" : [
             "seumas"
+         ]
+      },
+      "Wenson Hsieh" : {
+         "emails" : [
+            "wenson_hsieh@apple.com",
+            "whsieh@berkeley.edu"
+         ],
+         "nicks" : [
+            "whsieh"
          ]
       },
       "William Siegrist" : {
@@ -3296,6 +3358,14 @@
          ],
          "nicks" : [
             "hmartin"
+         ]
+      },
+      "Matt Daiter" : {
+         "emails" : [
+            "mdaiter@apple.com"
+         ],
+         "nicks" : [
+            "mdaiter"
          ]
       },
       "Mihai Balan" : {
@@ -4095,8 +4165,7 @@
       "Gyuyoung Kim" : {
          "emails" : [
             "gyuyoung.kim@webkit.org",
-            "gyuyoung.kim@navercorp.com",
-            "gyuyoung.kim@samsung.com"
+            "gyuyoung.kim@navercorp.com"
          ],
          "expertise" : "The EFLWebKit Port, Navigator Content Utils, CMake build system",
          "nicks" : [

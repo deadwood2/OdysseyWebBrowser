@@ -34,6 +34,7 @@
 #include <atomic>
 #include <dispatch/dispatch.h>
 #include <wtf/HashMap.h>
+#include <wtf/WeakPtr.h>
 
 namespace WebCore {
 class PlatformCALayer;
@@ -56,12 +57,14 @@ public:
 
     uint64_t nextTransactionID() const { return m_currentTransactionID + 1; }
 
+    WeakPtr<RemoteLayerTreeDrawingArea> createWeakPtr() { return m_weakPtrFactory.createWeakPtr(); }
+    
 private:
     // DrawingArea
     virtual void setNeedsDisplay() override;
     virtual void setNeedsDisplayInRect(const WebCore::IntRect&) override;
     virtual void scroll(const WebCore::IntRect& scrollRect, const WebCore::IntSize& scrollDelta) override;
-    virtual void updateGeometry(const WebCore::IntSize& viewSize, const WebCore::IntSize& layerPosition, bool flushSynchronously) override;
+    virtual void updateGeometry(const WebCore::IntSize& viewSize, const WebCore::IntSize& layerPosition, bool flushSynchronously, const WebCore::MachSendRight& fencePort) override;
 
     virtual WebCore::GraphicsLayerFactory* graphicsLayerFactory() override;
     virtual void setRootCompositingLayer(WebCore::GraphicsLayer*) override;
@@ -122,7 +125,7 @@ private:
 
     class BackingStoreFlusher : public ThreadSafeRefCounted<BackingStoreFlusher> {
     public:
-        static PassRefPtr<BackingStoreFlusher> create(IPC::Connection*, std::unique_ptr<IPC::MessageEncoder>, Vector<RetainPtr<CGContextRef>>);
+        static Ref<BackingStoreFlusher> create(IPC::Connection*, std::unique_ptr<IPC::MessageEncoder>, Vector<RetainPtr<CGContextRef>>);
 
         void flush();
         bool hasFlushed() const { return m_hasFlushed; }
@@ -166,6 +169,8 @@ private:
 
     WebCore::GraphicsLayer* m_contentLayer;
     WebCore::GraphicsLayer* m_viewOverlayRootLayer;
+    
+    WeakPtrFactory<RemoteLayerTreeDrawingArea> m_weakPtrFactory;
 };
 
 } // namespace WebKit

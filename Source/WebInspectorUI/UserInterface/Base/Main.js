@@ -90,7 +90,7 @@ WebInspector.loaded = function()
         InspectorAgent.enable();
 
     // Perform one-time tasks.
-    WebInspector.CSSCompletions.requestCSSNameCompletions();
+    WebInspector.CSSCompletions.requestCSSCompletions();
     this._generateDisclosureTriangleImages();
 
     // Listen for the ProvisionalLoadStarted event before registering for events so our code gets called before any managers or sidebars.
@@ -146,7 +146,7 @@ WebInspector.loaded = function()
     this._showingSplitConsoleSetting = new WebInspector.Setting("showing-split-console", false);
     this._splitConsoleHeightSetting = new WebInspector.Setting("split-console-height", 150);
 
-    this._openTabsSetting = new WebInspector.Setting("open-tabs", ["elements", "resources", "timeline", "debugger", "storage", "console"]);
+    this._openTabsSetting = new WebInspector.Setting("open-tab-types", ["elements", "network", "resources", "timeline", "debugger", "storage", "console"]);
     this._selectedTabIndexSetting = new WebInspector.Setting("selected-tab-index", 0);
 
     this.showShadowDOMSetting = new WebInspector.Setting("show-shadow-dom", false);
@@ -383,6 +383,8 @@ WebInspector.isTabTypeAllowed = function(tabType)
     switch (tabType) {
     case WebInspector.ElementsTabContentView.Type:
         return !!window.DOMAgent;
+    case WebInspector.NetworkTabContentView.Type:
+        return !!window.NetworkAgent && !!window.PageAgent;
     case WebInspector.StorageTabContentView.Type:
         return !!window.DOMStorageAgent || !!window.DatabaseAgent || !!window.IndexedDBAgent;
     case WebInspector.TimelineTabContentView.Type:
@@ -401,6 +403,8 @@ WebInspector._tabContentViewForType = function(tabType)
         return new WebInspector.DebuggerTabContentView;
     case WebInspector.ElementsTabContentView.Type:
         return new WebInspector.ElementsTabContentView;
+    case WebInspector.NetworkTabContentView.Type:
+        return new WebInspector.NetworkTabContentView;
     case WebInspector.NewTabContentView.Type:
         return new WebInspector.NewTabContentView;
     case WebInspector.ResourcesTabContentView.Type:
@@ -439,7 +443,8 @@ WebInspector._updateNewTabButtonState = function(event)
 {
     var newTabAllowed = this.isNewTabWithTypeAllowed(WebInspector.ConsoleTabContentView.Type) || this.isNewTabWithTypeAllowed(WebInspector.ElementsTabContentView.Type)
         || this.isNewTabWithTypeAllowed(WebInspector.ResourcesTabContentView.Type) || this.isNewTabWithTypeAllowed(WebInspector.StorageTabContentView.Type)
-        || this.isNewTabWithTypeAllowed(WebInspector.TimelineTabContentView.Type) || this.isNewTabWithTypeAllowed(WebInspector.DebuggerTabContentView.Type);
+        || this.isNewTabWithTypeAllowed(WebInspector.TimelineTabContentView.Type) || this.isNewTabWithTypeAllowed(WebInspector.DebuggerTabContentView.Type)
+        || this.isNewTabWithTypeAllowed(WebInspector.NetworkTabContentView.Type);
     this.tabBar.newTabItem.disabled = !newTabAllowed;
 };
 
@@ -496,7 +501,7 @@ WebInspector.activateExtraDomains = function(domains)
 
     this.notifications.dispatchEventToListeners(WebInspector.Notification.ExtraDomainsActivated, {"domains": domains});
 
-    WebInspector.CSSCompletions.requestCSSNameCompletions();
+    WebInspector.CSSCompletions.requestCSSCompletions();
 
     this._updateReloadToolbarButton();
     this._updateDownloadToolbarButton();
@@ -655,6 +660,25 @@ WebInspector.close = function()
     InspectorFrontendHost.closeWindow();
 };
 
+WebInspector.saveDataToFile = function(saveData, forceSaveAs)
+{
+    console.assert(saveData);
+    if (!saveData)
+        return;
+
+    if (typeof saveData.customSaveHandler === "function") {
+        saveData.customSaveHandler(forceSaveAs);
+        return;
+    }
+
+    console.assert(saveData.url);
+    console.assert(typeof saveData.content === "string");
+    if (!saveData.url || typeof saveData.content !== "string")
+        return;
+
+    InspectorFrontendHost.save(saveData.url, saveData.content, false, forceSaveAs || saveData.forceSaveAs);
+};
+
 WebInspector.isConsoleFocused = function()
 {
     return this.quickConsole.prompt.focused;
@@ -786,6 +810,14 @@ WebInspector.showStorageTab = function()
     this.tabBrowser.showTabForContentView(tabContentView);
 };
 
+WebInspector.showNetworkTab = function()
+{
+    var tabContentView = this.tabBrowser.bestTabContentViewForClass(WebInspector.NetworkTabContentView);
+    if (!tabContentView)
+        tabContentView = new WebInspector.NetworkTabContentView;
+    this.tabBrowser.showTabForContentView(tabContentView);
+};
+
 WebInspector.showTimelineTab = function()
 {
     var tabContentView = this.tabBrowser.bestTabContentViewForClass(WebInspector.TimelineTabContentView);
@@ -899,33 +931,31 @@ WebInspector.tabContentViewForRepresentedObject = function(representedObject)
     return tabContentView;
 };
 
-WebInspector.showRepresentedObject = function(representedObject, cookie, forceShowTab)
+WebInspector.showRepresentedObject = function(representedObject, cookie)
 {
     var tabContentView = this.tabContentViewForRepresentedObject(representedObject);
     console.assert(tabContentView);
     if (!tabContentView)
         return;
 
-    if (window.event || forceShowTab)
-        this.tabBrowser.showTabForContentView(tabContentView);
-
+    this.tabBrowser.showTabForContentView(tabContentView);
     tabContentView.showRepresentedObject(representedObject, cookie);
 };
 
-WebInspector.showMainFrameDOMTree = function(nodeToSelect, forceShowTab)
+WebInspector.showMainFrameDOMTree = function(nodeToSelect)
 {
     console.assert(WebInspector.frameResourceManager.mainFrame);
     if (!WebInspector.frameResourceManager.mainFrame)
         return;
-    this.showRepresentedObject(WebInspector.frameResourceManager.mainFrame.domTree, {nodeToSelect}, forceShowTab);
+    this.showRepresentedObject(WebInspector.frameResourceManager.mainFrame.domTree, {nodeToSelect});
 };
 
-WebInspector.showContentFlowDOMTree = function(contentFlow, nodeToSelect, forceShowTab)
+WebInspector.showContentFlowDOMTree = function(contentFlow, nodeToSelect)
 {
-    this.showRepresentedObject(contentFlow, {nodeToSelect}, forceShowTab);
+    this.showRepresentedObject(contentFlow, {nodeToSelect});
 };
 
-WebInspector.showSourceCodeForFrame = function(frameIdentifier, forceShowTab)
+WebInspector.showSourceCodeForFrame = function(frameIdentifier)
 {
     var frame = WebInspector.frameResourceManager.frameForIdentifier(frameIdentifier);
     if (!frame) {
@@ -935,10 +965,10 @@ WebInspector.showSourceCodeForFrame = function(frameIdentifier, forceShowTab)
 
     this._frameIdentifierToShowSourceCodeWhenAvailable = undefined;
 
-    this.showRepresentedObject(frame, null, forceShowTab);
+    this.showRepresentedObject(frame);
 };
 
-WebInspector.showSourceCode = function(sourceCode, positionToReveal, textRangeToSelect, forceUnformatted, forceShowTab)
+WebInspector.showSourceCode = function(sourceCode, positionToReveal, textRangeToSelect, forceUnformatted)
 {
     console.assert(!positionToReveal || positionToReveal instanceof WebInspector.SourceCodePosition, positionToReveal);
     var representedObject = sourceCode;
@@ -949,33 +979,33 @@ WebInspector.showSourceCode = function(sourceCode, positionToReveal, textRangeTo
     }
 
     var cookie = positionToReveal ? {lineNumber: positionToReveal.lineNumber, columnNumber: positionToReveal.columnNumber} : {};
-    this.showRepresentedObject(representedObject, cookie, forceShowTab);
+    this.showRepresentedObject(representedObject, cookie);
 };
 
-WebInspector.showSourceCodeLocation = function(sourceCodeLocation, forceShowTab)
+WebInspector.showSourceCodeLocation = function(sourceCodeLocation)
 {
-    this.showSourceCode(sourceCodeLocation.displaySourceCode, sourceCodeLocation.displayPosition(), null, false, forceShowTab);
+    this.showSourceCode(sourceCodeLocation.displaySourceCode, sourceCodeLocation.displayPosition());
 };
 
-WebInspector.showOriginalUnformattedSourceCodeLocation = function(sourceCodeLocation, forceShowTab)
+WebInspector.showOriginalUnformattedSourceCodeLocation = function(sourceCodeLocation)
 {
     this.showSourceCode(sourceCodeLocation.sourceCode, sourceCodeLocation.position(), null, true);
 };
 
-WebInspector.showOriginalOrFormattedSourceCodeLocation = function(sourceCodeLocation, forceShowTab)
+WebInspector.showOriginalOrFormattedSourceCodeLocation = function(sourceCodeLocation)
 {
-    this.showSourceCode(sourceCodeLocation.sourceCode, sourceCodeLocation.formattedPosition(), null, false, forceShowTab);
+    this.showSourceCode(sourceCodeLocation.sourceCode, sourceCodeLocation.formattedPosition());
 };
 
-WebInspector.showOriginalOrFormattedSourceCodeTextRange = function(sourceCodeTextRange, forceShowTab)
+WebInspector.showOriginalOrFormattedSourceCodeTextRange = function(sourceCodeTextRange)
 {
     var textRangeToSelect = sourceCodeTextRange.formattedTextRange;
-    this.showSourceCode(sourceCodeTextRange.sourceCode, textRangeToSelect.startPosition(), textRangeToSelect, false, forceShowTab);
+    this.showSourceCode(sourceCodeTextRange.sourceCode, textRangeToSelect.startPosition(), textRangeToSelect);
 };
 
-WebInspector.showResourceRequest = function(resource, forceShowTab)
+WebInspector.showResourceRequest = function(resource)
 {
-    this.showRepresentedObject(resource, {[WebInspector.ResourceClusterContentView.ContentViewIdentifierCookieKey]: WebInspector.ResourceClusterContentView.RequestIdentifier}, forceShowTab);
+    this.showRepresentedObject(resource, {[WebInspector.ResourceClusterContentView.ContentViewIdentifierCookieKey]: WebInspector.ResourceClusterContentView.RequestIdentifier});
 };
 
 WebInspector.debuggerToggleBreakpoints = function(event)
@@ -1111,7 +1141,7 @@ WebInspector._frameWasAdded = function(event)
 
     function delayedWork()
     {
-        this.showSourceCodeForFrame(frame.id, true);
+        this.showSourceCodeForFrame(frame.id);
     }
 
     // Delay showing the frame since FrameWasAdded is called before MainFrameChanged.
@@ -1450,12 +1480,21 @@ WebInspector._moveWindowMouseDown = function(event)
         !event.target.classList.contains("item-section"))
         return;
 
-    // Ignore dragging on the top of the toolbar on Mac where the inspector content fills the entire window.
-    if (WebInspector.Platform.name === "mac" && WebInspector.Platform.version.release >= 10) {
-        const windowDragHandledTitleBarHeight = 22;
-        if (event.pageY < windowDragHandledTitleBarHeight) {
+    if (WebInspector.Platform.name === "mac") {
+        // New Mac releases can start a window drag.
+        if (WebInspector.Platform.version.release >= 11) {
+            InspectorFrontendHost.startWindowDrag();
             event.preventDefault();
             return;
+        }
+
+        // Ignore dragging on the top of the toolbar on Mac if the system handles it.
+        if (WebInspector.Platform.version.release === 10) {
+            const windowDragHandledTitleBarHeight = 22;
+            if (event.pageY < windowDragHandledTitleBarHeight) {
+                event.preventDefault();
+                return;
+            }
         }
     }
 
@@ -1499,7 +1538,7 @@ WebInspector._domNodeWasInspected = function(event)
     InspectorFrontendHost.bringToFront();
 
     this.showElementsTab();
-    this.showMainFrameDOMTree(event.data.node, true);
+    this.showMainFrameDOMTree(event.data.node);
 };
 
 WebInspector._inspectModeStateChanged = function(event)
@@ -1664,7 +1703,7 @@ WebInspector.elementDragStart = function(element, dividerDrag, elementDragEnd, e
     if (element) {
         // Install glass pane
         if (WebInspector._elementDraggingGlassPane)
-            WebInspector._elementDraggingGlassPane.parentElement.removeChild(WebInspector._elementDraggingGlassPane);
+            WebInspector._elementDraggingGlassPane.remove();
 
         var glassPane = document.createElement("div");
         glassPane.style.cssText = "position:absolute;top:0;bottom:0;left:0;right:0;opacity:0;z-index:1";
@@ -1695,7 +1734,7 @@ WebInspector.elementDragEnd = function(event)
     event.target.ownerDocument.body.style.removeProperty("cursor");
 
     if (WebInspector._elementDraggingGlassPane)
-        WebInspector._elementDraggingGlassPane.parentElement.removeChild(WebInspector._elementDraggingGlassPane);
+        WebInspector._elementDraggingGlassPane.remove();
 
     delete WebInspector._elementDraggingGlassPane;
     delete WebInspector._elementDraggingEventTarget;
@@ -1775,7 +1814,7 @@ WebInspector.linkifyLocation = function(url, lineNumber, columnNumber, className
         anchor.lineNumber = lineNumber;
         if (className)
             anchor.className = className;
-        anchor.appendChild(document.createTextNode(WebInspector.displayNameForURL(url) + ":" + lineNumber));
+        anchor.append(WebInspector.displayNameForURL(url) + ":" + lineNumber);
         return anchor;
     }
 
@@ -1844,7 +1883,7 @@ WebInspector.linkifyStringAsFragmentWithCustomLinkifier = function(string, linki
         linkString = linkString[0];
         var linkIndex = string.indexOf(linkString);
         var nonLink = string.substring(0, linkIndex);
-        container.appendChild(document.createTextNode(nonLink));
+        container.append(nonLink);
 
         var title = linkString;
         var realURL = (linkString.startsWith("www.") ? "http://" + linkString : linkString);
@@ -1858,7 +1897,7 @@ WebInspector.linkifyStringAsFragmentWithCustomLinkifier = function(string, linki
     }
 
     if (string)
-        container.appendChild(document.createTextNode(string));
+        container.append(string);
 
     return container;
 };
@@ -1988,8 +2027,7 @@ WebInspector.revertDomChanges = function(domChanges)
         var entry = domChanges[i];
         switch (entry.type) {
         case "added":
-            if (entry.node.parentElement)
-                entry.node.parentElement.removeChild(entry.node);
+            entry.node.remove();
             break;
         case "changed":
             entry.node.textContent = entry.oldText;

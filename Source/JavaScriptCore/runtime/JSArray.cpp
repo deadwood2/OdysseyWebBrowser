@@ -111,6 +111,7 @@ bool JSArray::defineOwnProperty(JSObject* object, ExecState* exec, PropertyName 
         }
 
         // Based on SameValue check in 8.12.9, this is always okay.
+        // FIXME: Nothing prevents this from being called on a RuntimeArray, and the length function will always return 0 in that case.
         if (newLen == array->length()) {
             if (descriptor.writablePresent())
                 array->setLengthWritable(exec, descriptor.writable());
@@ -160,6 +161,7 @@ bool JSArray::defineOwnProperty(JSObject* object, ExecState* exec, PropertyName 
     if (Optional<uint32_t> optionalIndex = parseIndex(propertyName)) {
         // b. Reject if index >= oldLen and oldLenDesc.[[Writable]] is false.
         uint32_t index = optionalIndex.value();
+        // FIXME: Nothing prevents this from being called on a RuntimeArray, and the length function will always return 0 in that case.
         if (index >= array->length() && !array->isLengthWritable())
             return reject(exec, throwException, "Attempting to define numeric property on array with non-writable length property.");
         // c. Let succeeded be the result of calling the default [[DefineOwnProperty]] internal method (8.12.9) on A passing P, Desc, and false as arguments.
@@ -376,7 +378,7 @@ bool JSArray::setLengthWithArrayStorage(ExecState* exec, unsigned newLength, boo
         unsigned usedVectorLength = min(length, storage->vectorLength());
         for (unsigned i = newLength; i < usedVectorLength; ++i) {
             WriteBarrier<Unknown>& valueSlot = storage->m_vector[i];
-            bool hadValue = valueSlot;
+            bool hadValue = !!valueSlot;
             valueSlot.clear();
             storage->m_numValuesInVector -= hadValue;
         }
@@ -703,6 +705,38 @@ JSArray* JSArray::fastSlice(ExecState& exec, unsigned startIndex, unsigned count
     default:
         return nullptr;
     }
+}
+
+EncodedJSValue JSArray::fastConcatWith(ExecState& exec, JSArray& otherArray)
+{
+    auto newArrayType = indexingType();
+
+    VM& vm = exec.vm();
+    ASSERT(newArrayType == fastConcatType(vm, *this, otherArray));
+
+    unsigned thisArraySize = m_butterfly->publicLength();
+    unsigned otherArraySize = otherArray.m_butterfly->publicLength();
+    ASSERT(thisArraySize + otherArraySize < MIN_SPARSE_ARRAY_INDEX);
+
+    Structure* resultStructure = exec.lexicalGlobalObject()->arrayStructureForIndexingTypeDuringAllocation(newArrayType);
+    JSArray* resultArray = JSArray::tryCreateUninitialized(vm, resultStructure, thisArraySize + otherArraySize);
+    if (!resultArray)
+        return JSValue::encode(throwOutOfMemoryError(&exec));
+
+    auto& resultButterfly = *resultArray->butterfly();
+    auto& otherButterfly = *otherArray.butterfly();
+    if (newArrayType == ArrayWithDouble) {
+        auto buffer = resultButterfly.contiguousDouble().data();
+        memcpy(buffer, m_butterfly->contiguousDouble().data(), sizeof(JSValue) * thisArraySize);
+        memcpy(buffer + thisArraySize, otherButterfly.contiguousDouble().data(), sizeof(JSValue) * otherArraySize);
+    } else {
+        auto buffer = resultButterfly.contiguous().data();
+        memcpy(buffer, m_butterfly->contiguous().data(), sizeof(JSValue) * thisArraySize);
+        memcpy(buffer + thisArraySize, otherButterfly.contiguous().data(), sizeof(JSValue) * otherArraySize);
+    }
+
+    resultButterfly.setPublicLength(thisArraySize + otherArraySize);
+    return JSValue::encode(resultArray);
 }
 
 bool JSArray::shiftCountWithArrayStorage(VM& vm, unsigned startIndex, unsigned count, ArrayStorage* storage)
@@ -1090,7 +1124,8 @@ void JSArray::fillArgList(ExecState* exec, MarkedArgumentBuffer& args)
             break;
         args.append(v.get());
     }
-    
+
+    // FIXME: What prevents this from being called with a RuntimeArray? The length function will always return 0 in that case.
     for (; i < length(); ++i)
         args.append(get(exec, i));
 }
@@ -1101,7 +1136,10 @@ void JSArray::copyToArguments(ExecState* exec, VirtualRegister firstElementDest,
     WriteBarrier<Unknown>* vector;
     unsigned vectorEnd;
     length += offset; // We like to think of the length as being our length, rather than the output length.
+
+    // FIXME: What prevents this from being called with a RuntimeArray? The length function will always return 0 in that case.
     ASSERT(length == this->length());
+
     switch (indexingType()) {
     case ArrayClass:
         return;

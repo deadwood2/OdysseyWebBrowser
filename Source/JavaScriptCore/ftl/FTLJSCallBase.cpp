@@ -69,19 +69,12 @@ void JSCallBase::emit(CCallHelpers& jit)
 
 void JSCallBase::link(VM& vm, LinkBuffer& linkBuffer)
 {
-    ThunkGenerator generator = linkThunkGeneratorFor(
-        CallLinkInfo::specializationKindFor(m_type), MustPreserveRegisters);
-    
     linkBuffer.link(
-        m_slowCall, FunctionPtr(vm.getCTIStub(generator).code().executableAddress()));
-    
-    m_callLinkInfo->isFTL = true;
-    m_callLinkInfo->callType = m_type;
-    m_callLinkInfo->codeOrigin = m_origin;
-    m_callLinkInfo->callReturnLocation = linkBuffer.locationOfNearCall(m_slowCall);
-    m_callLinkInfo->hotPathBegin = linkBuffer.locationOf(m_targetToCheck);
-    m_callLinkInfo->hotPathOther = linkBuffer.locationOfNearCall(m_fastCall);
-    m_callLinkInfo->calleeGPR = GPRInfo::regT0;
+        m_slowCall, FunctionPtr(vm.getCTIStub(linkCallThunkGenerator).code().executableAddress()));
+
+    m_callLinkInfo->setUpCallFromFTL(m_type, m_origin, linkBuffer.locationOfNearCall(m_slowCall),
+        linkBuffer.locationOf(m_targetToCheck), linkBuffer.locationOfNearCall(m_fastCall),
+        GPRInfo::regT0);
 }
 
 } } // namespace JSC::FTL

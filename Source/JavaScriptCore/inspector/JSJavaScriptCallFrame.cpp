@@ -75,7 +75,7 @@ JSJavaScriptCallFrame::~JSJavaScriptCallFrame()
 
 JSValue JSJavaScriptCallFrame::evaluate(ExecState* exec)
 {
-    JSValue exception;
+    NakedPtr<Exception> exception;
     JSValue result = impl().evaluate(exec->argument(0).toString(exec)->value(exec), exception);
     if (exception)
         exec->vm().throwException(exec, exception);

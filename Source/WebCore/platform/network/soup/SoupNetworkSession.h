@@ -28,7 +28,7 @@
 
 #include <wtf/Noncopyable.h>
 #include <wtf/Vector.h>
-#include <wtf/gobject/GRefPtr.h>
+#include <wtf/glib/GRefPtr.h>
 #include <wtf/text/WTFString.h>
 
 typedef struct _SoupCache SoupCache;
@@ -70,6 +70,8 @@ public:
     void setAcceptLanguages(const Vector<String>&);
 
 private:
+    friend class NeverDestroyed<SoupNetworkSession>;
+
     SoupNetworkSession(SoupCookieJar*);
     SoupNetworkSession(SoupSession*);
 

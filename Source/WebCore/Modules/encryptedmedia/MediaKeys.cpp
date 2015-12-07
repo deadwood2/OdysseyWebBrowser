@@ -66,7 +66,7 @@ RefPtr<MediaKeys> MediaKeys::create(const String& keySystem, ExceptionCode& ec)
 }
 
 MediaKeys::MediaKeys(const String& keySystem, std::unique_ptr<CDM> cdm)
-    : m_mediaElement(0)
+    : m_mediaElement(nullptr)
     , m_keySystem(keySystem)
     , m_cdm(WTF::move(cdm))
 {
@@ -77,9 +77,9 @@ MediaKeys::~MediaKeys()
 {
     // From <http://dvcs.w3.org/hg/html-media/raw-file/tip/encrypted-media/encrypted-media.html#dom-media-keys-constructor>:
     // When destroying a MediaKeys object, follow the steps in close().
-    for (size_t i = 0; i < m_sessions.size(); ++i) {
-        m_sessions[i]->close();
-        m_sessions[i]->setKeys(0);
+    for (auto& session : m_sessions) {
+        session->close();
+        session->setKeys(nullptr);
     }
 }
 

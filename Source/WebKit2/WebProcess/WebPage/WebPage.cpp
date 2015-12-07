@@ -28,6 +28,7 @@
 #include "config.h"
 #include "WebPage.h"
 
+#include "APIArray.h"
 #include "APIGeometry.h"
 #include "Arguments.h"
 #include "DataReference.h"
@@ -215,10 +216,16 @@
 #include "CoordinatedLayerTreeHostMessages.h"
 #endif
 
+#if ENABLE(VIDEO) && USE(GSTREAMER)
+#include <WebCore/MediaPlayerRequestInstallMissingPluginsCallback.h>
+#endif
+
 using namespace JSC;
 using namespace WebCore;
 
 namespace WebKit {
+
+static const double pageScrollHysteresisSeconds = 0.3;
 
 class SendStopResponsivenessTimer {
 public:
@@ -238,14 +245,14 @@ private:
 
 DEFINE_DEBUG_ONLY_GLOBAL(WTF::RefCountedLeakCounter, webPageCounter, ("WebPage"));
 
-PassRefPtr<WebPage> WebPage::create(uint64_t pageID, const WebPageCreationParameters& parameters)
+Ref<WebPage> WebPage::create(uint64_t pageID, const WebPageCreationParameters& parameters)
 {
-    RefPtr<WebPage> page = adoptRef(new WebPage(pageID, parameters));
+    Ref<WebPage> page = adoptRef(*new WebPage(pageID, parameters));
 
     if (page->pageGroup()->isVisibleToInjectedBundle() && WebProcess::singleton().injectedBundle())
-        WebProcess::singleton().injectedBundle()->didCreatePage(page.get());
+        WebProcess::singleton().injectedBundle()->didCreatePage(page.ptr());
 
-    return page.release();
+    return page;
 }
 
 WebPage::WebPage(uint64_t pageID, const WebPageCreationParameters& parameters)
@@ -294,6 +301,7 @@ WebPage::WebPage(uint64_t pageID, const WebPageCreationParameters& parameters)
 #if ENABLE(MEDIA_STREAM)
     , m_userMediaPermissionRequestManager(*this)
 #endif
+    , m_pageScrolledHysteresis([this](HysteresisState state) { if (state == HysteresisState::Stopped) pageStoppedScrolling(); }, pageScrollHysteresisSeconds)
     , m_canRunBeforeUnloadConfirmPanel(parameters.canRunBeforeUnloadConfirmPanel)
     , m_canRunModal(parameters.canRunModal)
     , m_isRunningModal(false)
@@ -313,7 +321,6 @@ WebPage::WebPage(uint64_t pageID, const WebPageCreationParameters& parameters)
 #endif
 #if PLATFORM(IOS)
     , m_selectionAnchor(Start)
-    , m_firstLayerTreeTransactionIDAfterDidCommitLoad(0)
     , m_hasReceivedVisibleContentRectsAfterDidCommitLoad(false)
     , m_scaleWasSetByUIProcess(false)
     , m_userHasChangedPageScaleFactor(false)
@@ -328,6 +335,7 @@ WebPage::WebPage(uint64_t pageID, const WebPageCreationParameters& parameters)
     , m_availableScreenSize(parameters.availableScreenSize)
     , m_deviceOrientation(0)
     , m_inDynamicSizeUpdate(false)
+    , m_volatilityTimer(*this, &WebPage::volatilityTimerFired)
 #endif
     , m_inspectorClient(0)
     , m_backgroundColor(Color::white)
@@ -513,6 +521,12 @@ WebPage::WebPage(uint64_t pageID, const WebPageCreationParameters& parameters)
 
     if (parameters.viewScaleFactor != 1)
         scaleView(parameters.viewScaleFactor);
+
+    m_page->setUserContentExtensionsEnabled(parameters.userContentExtensionsEnabled);
+
+#if PLATFORM(IOS)
+    m_page->settings().setContentDispositionAttachmentSandboxEnabled(true);
+#endif
 }
 
 void WebPage::reinitializeWebPage(const WebPageCreationParameters& parameters)
@@ -700,7 +714,8 @@ PassRefPtr<Plugin> WebPage::createPlugin(WebFrame* frame, HTMLPlugInElement* plu
     if (!sendSync(Messages::WebPageProxy::FindPlugin(parameters.mimeType, static_cast<uint32_t>(processType), parameters.url.string(), frameURLString, pageURLString, allowOnlyApplicationPlugins), Messages::WebPageProxy::FindPlugin::Reply(pluginProcessToken, newMIMEType, pluginLoadPolicy, unavailabilityDescription)))
         return nullptr;
 
-    bool isBlockedPlugin = static_cast<PluginModuleLoadPolicy>(pluginLoadPolicy) == PluginModuleBlocked;
+    PluginModuleLoadPolicy loadPolicy = static_cast<PluginModuleLoadPolicy>(pluginLoadPolicy);
+    bool isBlockedPlugin = (loadPolicy == PluginModuleBlockedForSecurity) || (loadPolicy == PluginModuleBlockedForCompatibility);
 
     if (isBlockedPlugin || !pluginProcessToken) {
 #if ENABLE(PDFKIT_PLUGIN)
@@ -926,23 +941,23 @@ void WebPage::close()
     }
 
 #if ENABLE(FULLSCREEN_API)
-    m_fullScreenManager = 0;
+    m_fullScreenManager = nullptr;
 #endif
 
     if (m_activePopupMenu) {
         m_activePopupMenu->disconnectFromPage();
-        m_activePopupMenu = 0;
+        m_activePopupMenu = nullptr;
     }
 
     if (m_activeOpenPanelResultListener) {
         m_activeOpenPanelResultListener->disconnectFromPage();
-        m_activeOpenPanelResultListener = 0;
+        m_activeOpenPanelResultListener = nullptr;
     }
 
 #if ENABLE(INPUT_TYPE_COLOR)
     if (m_activeColorChooser) {
         m_activeColorChooser->disconnectFromPage();
-        m_activeColorChooser = 0;
+        m_activeColorChooser = nullptr;
     }
 #endif
 
@@ -950,6 +965,13 @@ void WebPage::close()
     if (m_printOperation) {
         m_printOperation->disconnectFromPage();
         m_printOperation = nullptr;
+    }
+#endif
+
+#if ENABLE(VIDEO) && USE(GSTREAMER)
+    if (m_installMediaPluginsCallback) {
+        m_installMediaPluginsCallback->invalidate();
+        m_installMediaPluginsCallback = nullptr;
     }
 #endif
 
@@ -1011,7 +1033,7 @@ void WebPage::loadURLInFrame(const String& url, uint64_t frameID)
     if (!frame)
         return;
 
-    frame->coreFrame()->loader().load(FrameLoadRequest(frame->coreFrame(), ResourceRequest(URL(URL(), url))));
+    frame->coreFrame()->loader().load(FrameLoadRequest(frame->coreFrame(), ResourceRequest(URL(URL(), url)), ShouldOpenExternalURLsPolicy::ShouldNotAllow));
 }
 
 void WebPage::loadRequest(uint64_t navigationID, const ResourceRequest& request, const SandboxExtension::Handle& sandboxExtensionHandle, uint64_t shouldOpenExternalURLsPolicy, const UserData& userData)
@@ -1027,7 +1049,7 @@ void WebPage::loadRequest(uint64_t navigationID, const ResourceRequest& request,
     m_loaderClient.willLoadURLRequest(this, request, WebProcess::singleton().transformHandlesToObjects(userData.object()).get());
 
     // Initate the load in WebCore.
-    FrameLoadRequest frameLoadRequest(m_mainFrame->coreFrame(), request);
+    FrameLoadRequest frameLoadRequest(m_mainFrame->coreFrame(), request, ShouldOpenExternalURLsPolicy::ShouldNotAllow);
     ShouldOpenExternalURLsPolicy externalURLsPolicy = static_cast<ShouldOpenExternalURLsPolicy>(shouldOpenExternalURLsPolicy);
     frameLoadRequest.setShouldOpenExternalURLsPolicy(externalURLsPolicy);
 
@@ -1051,7 +1073,7 @@ void WebPage::loadDataImpl(uint64_t navigationID, PassRefPtr<SharedBuffer> share
     m_loaderClient.willLoadDataRequest(this, request, const_cast<SharedBuffer*>(substituteData.content()), substituteData.mimeType(), substituteData.textEncoding(), substituteData.failingURL(), WebProcess::singleton().transformHandlesToObjects(userData.object()).get());
 
     // Initate the load in WebCore.
-    m_mainFrame->coreFrame()->loader().load(FrameLoadRequest(m_mainFrame->coreFrame(), request, substituteData));
+    m_mainFrame->coreFrame()->loader().load(FrameLoadRequest(m_mainFrame->coreFrame(), request, ShouldOpenExternalURLsPolicy::ShouldNotAllow, substituteData));
 }
 
 void WebPage::loadString(uint64_t navigationID, const String& htmlString, const String& MIMEType, const URL& baseURL, const URL& unreachableURL, const UserData& userData)
@@ -1065,11 +1087,11 @@ void WebPage::loadString(uint64_t navigationID, const String& htmlString, const 
     }
 }
 
-void WebPage::loadData(const IPC::DataReference& data, const String& MIMEType, const String& encodingName, const String& baseURLString, const UserData& userData)
+void WebPage::loadData(uint64_t navigationID, const IPC::DataReference& data, const String& MIMEType, const String& encodingName, const String& baseURLString, const UserData& userData)
 {
     RefPtr<SharedBuffer> sharedBuffer = SharedBuffer::create(reinterpret_cast<const char*>(data.data()), data.size());
     URL baseURL = baseURLString.isEmpty() ? blankURL() : URL(URL(), baseURLString);
-    loadDataImpl(0, sharedBuffer, MIMEType, encodingName, baseURL, URL(), userData);
+    loadDataImpl(navigationID, sharedBuffer, MIMEType, encodingName, baseURL, URL(), userData);
 }
 
 void WebPage::loadHTMLString(uint64_t navigationID, const String& htmlString, const String& baseURLString, const UserData& userData)
@@ -1108,7 +1130,8 @@ void WebPage::navigateToPDFLinkWithSimulatedClick(const String& url, IntPoint do
 
     const int singleClick = 1;
     RefPtr<MouseEvent> mouseEvent = MouseEvent::create(eventNames().clickEvent, true, true, currentTime(), nullptr, singleClick, screenPoint.x(), screenPoint.y(), documentPoint.x(), documentPoint.y(), false, false, false, false, 0, nullptr, 0, nullptr);
-    mainFrame->loader().urlSelected(mainFrameDocument->completeURL(url), emptyString(), mouseEvent.get(), LockHistory::No, LockBackForwardList::No, ShouldSendReferrer::MaybeSendReferrer);
+
+    mainFrame->loader().urlSelected(mainFrameDocument->completeURL(url), emptyString(), mouseEvent.get(), LockHistory::No, LockBackForwardList::No, ShouldSendReferrer::MaybeSendReferrer, ShouldOpenExternalURLsPolicy::ShouldNotAllow);
 }
 
 void WebPage::stopLoadingFrame(uint64_t frameID)
@@ -1141,7 +1164,7 @@ void WebPage::reload(uint64_t navigationID, bool reloadFromOrigin, const Sandbox
 {
     SendStopResponsivenessTimer stopper(this);
 
-    ASSERT(!m_pendingNavigationID);
+    ASSERT(!m_mainFrame->coreFrame()->loader().frameHasLoaded() || !m_pendingNavigationID);
     m_pendingNavigationID = navigationID;
 
     m_sandboxExtensionTracker.beginLoad(m_mainFrame.get(), sandboxExtensionHandle);
@@ -1158,8 +1181,7 @@ void WebPage::goForward(uint64_t navigationID, uint64_t backForwardItemID)
         return;
 
     ASSERT(!m_pendingNavigationID);
-    if (!item->isInPageCache())
-        m_pendingNavigationID = navigationID;
+    m_pendingNavigationID = navigationID;
 
     m_page->goToItem(*item, FrameLoadType::Forward);
 }
@@ -1174,8 +1196,7 @@ void WebPage::goBack(uint64_t navigationID, uint64_t backForwardItemID)
         return;
 
     ASSERT(!m_pendingNavigationID);
-    if (!item->isInPageCache())
-        m_pendingNavigationID = navigationID;
+    m_pendingNavigationID = navigationID;
 
     m_page->goToItem(*item, FrameLoadType::Back);
 }
@@ -1190,8 +1211,7 @@ void WebPage::goToBackForwardItem(uint64_t navigationID, uint64_t backForwardIte
         return;
 
     ASSERT(!m_pendingNavigationID);
-    if (!item->isInPageCache())
-        m_pendingNavigationID = navigationID;
+    m_pendingNavigationID = navigationID;
 
     m_page->goToItem(*item, FrameLoadType::IndexedBackForward);
 }
@@ -1468,7 +1488,7 @@ void WebPage::scaleView(double scale)
 void WebPage::scaleViewAndUpdateGeometryFenced(double scale, IntSize viewSize, uint64_t callbackID)
 {
     scaleView(scale);
-    m_drawingArea->updateGeometry(viewSize, IntSize(), false);
+    m_drawingArea->updateGeometry(viewSize, IntSize(), false, MachSendRight());
     m_drawingArea->replyWithFenceAfterNextFlush(callbackID);
 }
 #endif
@@ -1537,6 +1557,8 @@ void WebPage::setUseFixedLayout(bool fixed)
     view->setUseFixedLayout(fixed);
     if (!fixed)
         setFixedLayoutSize(IntSize());
+
+    send(Messages::WebPageProxy::UseFixedLayoutDidChange(fixed));
 }
 
 void WebPage::setFixedLayoutSize(const IntSize& size)
@@ -1546,6 +1568,8 @@ void WebPage::setFixedLayoutSize(const IntSize& size)
         return;
 
     view->setFixedLayoutSize(size);
+
+    send(Messages::WebPageProxy::FixedLayoutSizeDidChange(size));
 }
 
 IntSize WebPage::fixedLayoutSize() const
@@ -1719,7 +1743,8 @@ PassRefPtr<WebImage> WebPage::snapshotAtSize(const IntRect& rect, const IntSize&
 
     auto graphicsContext = snapshot->bitmap()->createGraphicsContext();
 
-    Color backgroundColor = coreFrame->settings().backgroundShouldExtendBeyondPage() ? frameView->documentBackgroundColor() : frameView->baseBackgroundColor();
+    Color documentBackgroundColor = frameView->documentBackgroundColor();
+    Color backgroundColor = (coreFrame->settings().backgroundShouldExtendBeyondPage() && documentBackgroundColor.isValid()) ? documentBackgroundColor : frameView->baseBackgroundColor();
     graphicsContext->fillRect(IntRect(IntPoint(), bitmapSize), backgroundColor, ColorSpaceDeviceRGB);
 
     if (!(options & SnapshotOptionsExcludeDeviceScaleFactor)) {
@@ -1811,7 +1836,16 @@ void WebPage::pageDidScroll()
 #endif
     m_uiClient->pageDidScroll(this);
 
+    m_pageScrolledHysteresis.impulse();
+
     send(Messages::WebPageProxy::PageDidScroll());
+}
+
+void WebPage::pageStoppedScrolling()
+{
+    // Maintain the current history item's scroll position up-to-date.
+    if (Frame* frame = m_mainFrame->coreFrame())
+        frame->loader().history().saveScrollPositionAndViewStateToItem(frame->loader().history().currentItem());
 }
 
 #if USE(COORDINATED_GRAPHICS)
@@ -1857,6 +1891,24 @@ static const WebEvent* g_currentEvent = 0;
 const WebEvent* WebPage::currentEvent()
 {
     return g_currentEvent;
+}
+
+void WebPage::setLayerTreeStateIsFrozen(bool frozen)
+{
+    auto* drawingArea = this->drawingArea();
+    if (!drawingArea)
+        return;
+
+    drawingArea->setLayerTreeStateIsFrozen(frozen);
+}
+
+bool WebPage::markLayersVolatileImmediatelyIfPossible()
+{
+    auto* drawingArea = this->drawingArea();
+    if (!drawingArea)
+        return true;
+
+    return drawingArea->markLayersVolatileImmediatelyIfPossible();
 }
 
 class CurrentEvent {
@@ -2106,9 +2158,9 @@ void WebPage::validateCommand(const String& commandName, uint64_t callbackID)
     send(Messages::WebPageProxy::ValidateCommandCallback(commandName, isEnabled, state, callbackID));
 }
 
-void WebPage::executeEditCommand(const String& commandName)
+void WebPage::executeEditCommand(const String& commandName, const String& argument)
 {
-    executeEditingCommand(commandName, String());
+    executeEditingCommand(commandName, argument);
 }
 
 void WebPage::restoreSession(const Vector<BackForwardListItemState>& itemStates)
@@ -2299,20 +2351,6 @@ void WebPage::setInitialFocus(bool forward, bool isKeyboardEventValid, const Web
     send(Messages::WebPageProxy::VoidCallback(callbackID));
 }
 
-void WebPage::setWindowResizerSize(const IntSize& windowResizerSize)
-{
-    if (m_windowResizerSize == windowResizerSize)
-        return;
-
-    m_windowResizerSize = windowResizerSize;
-
-    for (Frame* coreFrame = m_mainFrame->coreFrame(); coreFrame; coreFrame = coreFrame->tree().traverseNext()) {
-        FrameView* view = coreFrame->view();
-        if (view)
-            view->windowResizerRectChanged();
-    }
-}
-
 void WebPage::setCanStartMediaTimerFired()
 {
     if (m_page)
@@ -2483,21 +2521,6 @@ IntRect WebPage::rootViewToAccessibilityScreen(const IntRect& rect)
 }
 #endif
 
-IntRect WebPage::windowResizerRect() const
-{
-    if (m_windowResizerSize.isEmpty())
-        return IntRect();
-
-    IntSize frameViewSize;
-    if (Frame* coreFrame = m_mainFrame->coreFrame()) {
-        if (FrameView* view = coreFrame->view())
-            frameViewSize = view->size();
-    }
-
-    return IntRect(frameViewSize.width() - m_windowResizerSize.width(), frameViewSize.height() - m_windowResizerSize.height(), 
-                   m_windowResizerSize.width(), m_windowResizerSize.height());
-}
-
 KeyboardUIMode WebPage::keyboardUIMode()
 {
     bool fullKeyboardAccessEnabled = WebProcess::singleton().fullKeyboardAccessEnabled();
@@ -2511,7 +2534,9 @@ void WebPage::runJavaScriptInMainFrame(const String& script, uint64_t callbackID
 
     RefPtr<SerializedScriptValue> serializedResultValue;
     JSLockHolder lock(JSDOMWindow::commonVM());
+    bool hadException = true;
     if (JSValue resultValue = m_mainFrame->coreFrame()->script().executeScript(script, true).jsValue()) {
+        hadException = false;
         serializedResultValue = SerializedScriptValue::create(m_mainFrame->jsContext(),
             toRef(m_mainFrame->coreFrame()->script().globalObject(mainThreadNormalWorld())->globalExec(), resultValue), nullptr);
     }
@@ -2519,7 +2544,7 @@ void WebPage::runJavaScriptInMainFrame(const String& script, uint64_t callbackID
     IPC::DataReference dataReference;
     if (serializedResultValue)
         dataReference = serializedResultValue->data();
-    send(Messages::WebPageProxy::ScriptValueCallback(dataReference, callbackID));
+    send(Messages::WebPageProxy::ScriptValueCallback(dataReference, hadException, callbackID));
 }
 
 void WebPage::getContentsAsString(uint64_t callbackID)
@@ -2775,7 +2800,8 @@ void WebPage::updatePreferences(const WebPreferencesStore& store)
     settings.setAccelerated2dCanvasEnabled(store.getBoolValueForKey(WebPreferencesKey::accelerated2dCanvasEnabledKey()));
     settings.setRequiresUserGestureForMediaPlayback(store.getBoolValueForKey(WebPreferencesKey::requiresUserGestureForMediaPlaybackKey()));
     settings.setAllowsInlineMediaPlayback(store.getBoolValueForKey(WebPreferencesKey::allowsInlineMediaPlaybackKey()));
-    settings.setAllowsAlternateFullscreen(store.getBoolValueForKey(WebPreferencesKey::allowsAlternateFullscreenKey()));
+    settings.setAllowsPictureInPictureMediaPlayback(store.getBoolValueForKey(WebPreferencesKey::allowsPictureInPictureMediaPlaybackKey()));
+    settings.setMediaControlsScaleWithPageZoom(store.getBoolValueForKey(WebPreferencesKey::mediaControlsScaleWithPageZoomKey()));
     settings.setMockScrollbarsEnabled(store.getBoolValueForKey(WebPreferencesKey::mockScrollbarsEnabledKey()));
     settings.setHyperlinkAuditingEnabled(store.getBoolValueForKey(WebPreferencesKey::hyperlinkAuditingEnabledKey()));
     settings.setRequestAnimationFrameEnabled(store.getBoolValueForKey(WebPreferencesKey::requestAnimationFrameEnabledKey()));
@@ -2786,7 +2812,7 @@ void WebPage::updatePreferences(const WebPreferencesStore& store)
     settings.setInteractiveFormValidationEnabled(store.getBoolValueForKey(WebPreferencesKey::interactiveFormValidationEnabledKey()));
     settings.setSpatialNavigationEnabled(store.getBoolValueForKey(WebPreferencesKey::spatialNavigationEnabledKey()));
 
-    settings.setMetaRefreshEnabled(store.getBoolValueForKey(WebPreferencesKey::metaRefreshEnabledKey()));
+    settings.setHttpEquivEnabled(store.getBoolValueForKey(WebPreferencesKey::httpEquivEnabledKey()));
 
     DatabaseManager::singleton().setIsAvailable(store.getBoolValueForKey(WebPreferencesKey::databasesEnabledKey()));
 
@@ -2939,6 +2965,7 @@ void WebPage::updatePreferences(const WebPreferencesStore& store)
 void WebPage::willCommitLayerTree(RemoteLayerTreeTransaction& layerTransaction)
 {
     layerTransaction.setContentsSize(corePage()->mainFrame().view()->contentsSize());
+    layerTransaction.setScrollOrigin(corePage()->mainFrame().view()->scrollOrigin());
     layerTransaction.setPageScaleFactor(corePage()->pageScaleFactor());
     layerTransaction.setRenderTreeSize(corePage()->renderTreeSize());
     layerTransaction.setPageExtendedBackgroundColor(corePage()->pageExtendedBackgroundColor());
@@ -2992,6 +3019,11 @@ WebVideoFullscreenManager* WebPage::videoFullscreenManager()
     if (!m_videoFullscreenManager)
         m_videoFullscreenManager = WebVideoFullscreenManager::create(this);
     return m_videoFullscreenManager.get();
+}
+
+void WebPage::setAllowsMediaDocumentInlinePlayback(bool allows)
+{
+    m_page->setAllowsMediaDocumentInlinePlayback(allows);
 }
 #endif
 
@@ -3272,7 +3304,7 @@ void WebPage::countStringMatches(const String& string, uint32_t options, uint32_
 void WebPage::didChangeSelectedIndexForActivePopupMenu(int32_t newIndex)
 {
     changeSelectedIndex(newIndex);
-    m_activePopupMenu = 0;
+    m_activePopupMenu = nullptr;
 }
 
 void WebPage::changeSelectedIndex(int32_t index)
@@ -3308,12 +3340,12 @@ void WebPage::didChooseFilesForOpenPanel(const Vector<String>& files)
         return;
 
     m_activeOpenPanelResultListener->didChooseFiles(files);
-    m_activeOpenPanelResultListener = 0;
+    m_activeOpenPanelResultListener = nullptr;
 }
 
 void WebPage::didCancelForOpenPanel()
 {
-    m_activeOpenPanelResultListener = 0;
+    m_activeOpenPanelResultListener = nullptr;
 }
 
 #if ENABLE(SANDBOX_EXTENSIONS)
@@ -3340,9 +3372,9 @@ void WebPage::didReceiveNotificationPermissionDecision(uint64_t notificationID, 
 }
 
 #if ENABLE(MEDIA_STREAM)
-void WebPage::didReceiveUserMediaPermissionDecision(uint64_t userMediaID, bool allowed)
+void WebPage::didReceiveUserMediaPermissionDecision(uint64_t userMediaID, bool allowed, const String& deviceUIDVideo, const String& deviceUIDAudio)
 {
-    m_userMediaPermissionRequestManager.didReceiveUserMediaPermissionDecision(userMediaID, allowed);
+    m_userMediaPermissionRequestManager.didReceiveUserMediaPermissionDecision(userMediaID, allowed, deviceUIDVideo, deviceUIDAudio);
 }
 #endif
 
@@ -3417,7 +3449,7 @@ void WebPage::didSelectItemFromActiveContextMenu(const WebContextMenuItemData& i
         return;
 
     m_contextMenu->itemSelected(item);
-    m_contextMenu = 0;
+    m_contextMenu = nullptr;
 }
 #endif
 
@@ -3498,7 +3530,7 @@ void WebPage::mainFrameDidLayout()
 #endif
 #if PLATFORM(IOS)
     if (FrameView* frameView = mainFrameView()) {
-        IntSize newContentSize = frameView->contentsSize();
+        IntSize newContentSize = frameView->contentsSizeRespectingOverflow();
         if (m_viewportConfiguration.contentsSize() != newContentSize) {
             m_viewportConfiguration.setContentsSize(newContentSize);
             viewportConfigurationChanged();
@@ -4028,6 +4060,13 @@ void WebPage::setMuted(bool muted)
     m_page->setMuted(muted);
 }
 
+#if ENABLE(MEDIA_SESSION)
+void WebPage::handleMediaEvent(uint32_t eventType)
+{
+    m_page->handleMediaEvent(static_cast<MediaEventType>(eventType));
+}
+#endif
+
 void WebPage::setMayStartMediaWhenInWindow(bool mayStartMedia)
 {
     if (mayStartMedia == m_mayStartMediaWhenInWindow)
@@ -4222,7 +4261,8 @@ bool WebPage::canPluginHandleResponse(const ResourceResponse& response)
     if (!sendSync(Messages::WebPageProxy::FindPlugin(response.mimeType(), PluginProcessTypeNormal, response.url().string(), response.url().string(), response.url().string(), allowOnlyApplicationPlugins), Messages::WebPageProxy::FindPlugin::Reply(pluginProcessToken, newMIMEType, pluginLoadPolicy, unavailabilityDescription)))
         return false;
 
-    return pluginLoadPolicy != PluginModuleBlocked && pluginProcessToken;
+    bool isBlockedPlugin = (pluginLoadPolicy == PluginModuleBlockedForSecurity) || (pluginLoadPolicy == PluginModuleBlockedForCompatibility);
+    return !isBlockedPlugin && pluginProcessToken;
 #else
     UNUSED_PARAM(response);
     return false;
@@ -4595,6 +4635,11 @@ void WebPage::didReplaceMultipartContent(const WebFrame& frame)
 
 void WebPage::didCommitLoad(WebFrame* frame)
 {
+#if PLATFORM(IOS)
+    frame->setFirstLayerTreeTransactionIDAfterDidCommitLoad(downcast<RemoteLayerTreeDrawingArea>(*m_drawingArea).nextTransactionID());
+    cancelPotentialTapInFrame(*frame);
+#endif
+
     if (!frame->isMainFrame())
         return;
 
@@ -4613,10 +4658,8 @@ void WebPage::didCommitLoad(WebFrame* frame)
 #if PLATFORM(IOS)
     m_hasReceivedVisibleContentRectsAfterDidCommitLoad = false;
     m_scaleWasSetByUIProcess = false;
-    m_firstLayerTreeTransactionIDAfterDidCommitLoad = downcast<RemoteLayerTreeDrawingArea>(*m_drawingArea).nextTransactionID();
     m_userHasChangedPageScaleFactor = false;
     m_estimatedLatency = std::chrono::milliseconds(1000 / 60);
-    cancelPotentialTap();
 
 #if ENABLE(IOS_TOUCH_EVENTS)
     WebProcess::singleton().eventDispatcher().clearQueuedTouchEventsForPage(*this);
@@ -4884,16 +4927,24 @@ void WebPage::setScrollbarOverlayStyle(WTF::Optional<uint32_t> scrollbarStyle)
     m_page->mainFrame().view()->recalculateScrollbarOverlayStyle();
 }
 
-PassRefPtr<DocumentLoader> WebPage::createDocumentLoader(Frame& frame, const ResourceRequest& request, const SubstituteData& substituteData)
+Ref<DocumentLoader> WebPage::createDocumentLoader(Frame& frame, const ResourceRequest& request, const SubstituteData& substituteData)
 {
-    RefPtr<WebDocumentLoader> documentLoader = WebDocumentLoader::create(request, substituteData);
+    Ref<WebDocumentLoader> documentLoader = WebDocumentLoader::create(request, substituteData);
 
     if (m_pendingNavigationID && frame.isMainFrame()) {
         documentLoader->setNavigationID(m_pendingNavigationID);
         m_pendingNavigationID = 0;
     }
 
-    return documentLoader.release();
+    return WTF::move(documentLoader);
+}
+
+void WebPage::updateCachedDocumentLoader(WebDocumentLoader& documentLoader, Frame& frame)
+{
+    if (m_pendingNavigationID && frame.isMainFrame()) {
+        documentLoader.setNavigationID(m_pendingNavigationID);
+        m_pendingNavigationID = 0;
+    }
 }
 
 void WebPage::getBytecodeProfile(uint64_t callbackID)
@@ -4982,5 +5033,20 @@ void WebPage::setShouldScaleViewToFitDocument(bool shouldScaleViewToFitDocument)
 
     m_drawingArea->setShouldScaleViewToFitDocument(shouldScaleViewToFitDocument);
 }
+
+void WebPage::setUserContentExtensionsEnabled(bool userContentExtensionsEnabled)
+{
+    if (!m_page)
+        return;
+
+    m_page->setUserContentExtensionsEnabled(userContentExtensionsEnabled);
+}
+
+#if ENABLE(VIDEO)
+void WebPage::mediaDocumentNaturalSizeChanged(const IntSize& newSize)
+{
+    send(Messages::WebPageProxy::MediaDocumentNaturalSizeChanged(newSize));
+}
+#endif
 
 } // namespace WebKit

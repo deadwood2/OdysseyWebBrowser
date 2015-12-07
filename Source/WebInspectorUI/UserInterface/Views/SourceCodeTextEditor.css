@@ -29,11 +29,11 @@
 }
 
 .source-code.text-editor > .CodeMirror .warning {
-    background-color: rgb(253, 249, 226);
+    background-color: hsl(51, 87%, 93%);
 }
 
 .source-code.text-editor > .CodeMirror .error {
-    background-color: rgb(255, 220, 208);
+    background-color: hsl(15, 100%, 90%);
 }
 
 .source-code.text-editor > .CodeMirror .issue-widget {
@@ -88,31 +88,31 @@
 }
 
 .source-code.text-editor > .CodeMirror .issue-widget.warning {
-    background-color: rgb(253, 249, 226);
+    background-color: hsl(51, 87%, 93%);
 }
 
 .source-code.text-editor > .CodeMirror .issue-widget.inline.warning {
-    background-color: rgb(254, 233, 177);
+    background-color: hsl(43, 97%, 84%);
 }
 
 .source-code.text-editor > .CodeMirror .issue-widget.inline.warning > .arrow {
-    border-right-color: rgb(254, 233, 177);
+    border-right-color: hsl(43, 97%, 84%);
 }
 
 .source-code.text-editor > .CodeMirror .issue-widget.error {
-    background-color: rgb(255, 220, 208);
+    background-color: hsl(15, 100%, 90%);
 }
 
 .source-code.text-editor > .CodeMirror .issue-widget.inline.error {
-    background-color: rgb(255, 173, 153);
+    background-color: hsl(11, 100%, 80%);
 }
 
 .source-code.text-editor > .CodeMirror .issue-widget.inline.error > .arrow {
-    border-right-color: rgb(255, 173, 153);
+    border-right-color: hsl(11, 100%, 80%);
 }
 
 .source-code.text-editor > .CodeMirror .issue-widget > .text {
-    font-family: -webkit-system-font, sans-serif;
+    font-family: -apple-system, sans-serif;
 }
 
 .source-code.text-editor > .CodeMirror .issue-widget.inline > .text {
@@ -142,19 +142,27 @@
 }
 
 .popover .debugger-popover-content > .title {
-    font-weight: bold;
-    padding-left: 10px;
+    font-family: -apple-system, sans-serif;
+    font-weight: 500;
+    padding: 2px 0 4px 10px;
 
     text-overflow: ellipsis;
     overflow: hidden;
     white-space: nowrap;
 }
 
+.popover .debugger-popover-content > .title > .go-to-arrow {
+    position: relative;
+    top: 2px;
+    left: 4px;
+    width: 12px;
+    height: 12px;
+}
+
 .popover .debugger-popover-content > .body {
-    border-top: 1px solid rgb(194, 194, 147);
+    border-top: 1px solid hsla(0, 0%, 0%, 0.3);
     overflow: auto;
-    margin-top: 5px;
-    padding-top: 5px;
+    padding-top: 2px;
 }
 
 .popover .debugger-popover-content.function > .body {
@@ -174,4 +182,10 @@
     content: -webkit-image-set(url(../Images/ColorIcon.png) 1x, url(../Images/ColorIcon@2x.png) 2x);
 
     -webkit-transform: translateY(1px);
+}
+
+@media (-webkit-min-device-pixel-ratio: 2) {
+    .popover .debugger-popover-content > .body {
+        border-width: 0.5px;
+    }
 }

@@ -42,6 +42,7 @@
 #include "LabelsNodeList.h"
 #include "MutationEvent.h"
 #include "NameNodeList.h"
+#include "NodeOrString.h"
 #include "NodeRareData.h"
 #include "NodeRenderStyle.h"
 #include "RadioNodeList.h"
@@ -333,6 +334,11 @@ void ContainerNode::insertBeforeCommon(Node& nextChild, Node& newChild)
 
 void ContainerNode::notifyChildInserted(Node& child, ChildChangeSource source)
 {
+    ChildListMutationScope(*this).childAdded(child);
+
+    NodeVector postInsertionNotificationTargets;
+    ChildNodeInsertionNotifier(*this).notify(child, postInsertionNotificationTargets);
+
     ChildChange change;
     change.type = child.isElementNode() ? ElementInserted : child.isTextNode() ? TextInserted : NonContentsChildChanged;
     change.previousSiblingElement = ElementTraversal::previousSibling(child);
@@ -340,10 +346,15 @@ void ContainerNode::notifyChildInserted(Node& child, ChildChangeSource source)
     change.source = source;
 
     childrenChanged(change);
+
+    for (auto& target : postInsertionNotificationTargets)
+        target->finishedInsertingSubtree();
 }
 
 void ContainerNode::notifyChildRemoved(Node& child, Node* previousSibling, Node* nextSibling, ChildChangeSource source)
 {
+    ChildNodeRemovalNotifier(*this).notify(child);
+
     ChildChange change;
     change.type = is<Element>(child) ? ElementRemoved : is<Text>(child) ? TextRemoved : NonContentsChildChanged;
     change.previousSiblingElement = (!previousSibling || is<Element>(*previousSibling)) ? downcast<Element>(previousSibling) : ElementTraversal::previousSibling(*previousSibling);
@@ -373,11 +384,7 @@ void ContainerNode::parserInsertBefore(PassRefPtr<Node> newChild, Node* nextChil
 
     newChild->updateAncestorConnectedSubframeCountForInsertion();
 
-    ChildListMutationScope(*this).childAdded(*newChild);
-
     notifyChildInserted(*newChild, ChildChangeSourceParser);
-
-    ChildNodeInsertionNotifier(*this).notify(*newChild);
 
     newChild->setNeedsStyleRecalc(ReconstructRenderTree);
 }
@@ -439,30 +446,28 @@ bool ContainerNode::replaceChild(PassRefPtr<Node> newChild, Node* oldChild, Exce
     InspectorInstrumentation::willInsertDOMNode(document(), *this);
 
     // Add the new child(ren)
-    for (auto it = targets.begin(), end = targets.end(); it != end; ++it) {
-        Node& child = it->get();
-
+    for (auto& child : targets) {
         // Due to arbitrary code running in response to a DOM mutation event it's
         // possible that "next" is no longer a child of "this".
         // It's also possible that "child" has been inserted elsewhere.
         // In either of those cases, we'll just stop.
         if (next && next->parentNode() != this)
             break;
-        if (child.parentNode())
+        if (child->parentNode())
             break;
 
-        treeScope().adoptIfNeeded(&child);
+        treeScope().adoptIfNeeded(child.ptr());
 
         // Add child before "next".
         {
             NoEventDispatchAssertion assertNoEventDispatch;
             if (next)
-                insertBeforeCommon(*next, child);
+                insertBeforeCommon(*next, child.get());
             else
-                appendChildToContainer(&child, *this);
+                appendChildToContainer(child.ptr(), *this);
         }
 
-        updateTreeAfterInsertion(child);
+        updateTreeAfterInsertion(child.get());
     }
 
     dispatchSubtreeModifiedEvent();
@@ -491,13 +496,12 @@ static void willRemoveChildren(ContainerNode& container)
     getChildNodes(container, children);
 
     ChildListMutationScope mutation(container);
-    for (auto it = children.begin(); it != children.end(); ++it) {
-        Node& child = it->get();
-        mutation.willRemoveChild(child);
-        child.notifyMutationObserversNodeWillDetach();
+    for (auto& child : children) {
+        mutation.willRemoveChild(child.get());
+        child->notifyMutationObserversNodeWillDetach();
 
         // fire removed from document mutation events.
-        dispatchChildRemovalEvents(child);
+        dispatchChildRemovalEvents(child.get());
     }
 
     container.document().nodeChildrenWillBeRemoved(container);
@@ -563,8 +567,6 @@ bool ContainerNode::removeChild(Node* oldChild, ExceptionCode& ec)
         removeBetween(prev, next, child);
 
         notifyChildRemoved(child, prev, next, ChildChangeSourceAPI);
-
-        ChildNodeRemovalNotifier(*this).notify(child);
     }
 
 
@@ -621,8 +623,6 @@ void ContainerNode::parserRemoveChild(Node& oldChild)
     removeBetween(prev, next, oldChild);
 
     notifyChildRemoved(oldChild, prev, next, ChildChangeSourceParser);
-
-    ChildNodeRemovalNotifier(*this).notify(oldChild);
 }
 
 // this differs from other remove functions because it forcibly removes all the children,
@@ -646,23 +646,18 @@ void ContainerNode::removeChildren()
     // and remove... e.g. stop loading frames, fire unload events.
     willRemoveChildren(*this);
 
-    NodeVector removedChildren;
     {
         WidgetHierarchyUpdatesSuspensionScope suspendWidgetHierarchyUpdates;
         {
             NoEventDispatchAssertion assertNoEventDispatch;
-            removedChildren.reserveInitialCapacity(countChildNodes());
             while (RefPtr<Node> n = m_firstChild) {
-                removedChildren.append(*m_firstChild);
                 removeBetween(0, m_firstChild->nextSibling(), *m_firstChild);
+                ChildNodeRemovalNotifier(*this).notify(*n);
             }
         }
 
         ChildChange change = { AllChildrenRemoved, nullptr, nullptr, ChildChangeSourceAPI };
         childrenChanged(change);
-        
-        for (auto& removedChild : removedChildren)
-            ChildNodeRemovalNotifier(*this).notify(removedChild);
     }
 
     if (document().svgExtensions()) {
@@ -707,24 +702,22 @@ bool ContainerNode::appendChild(PassRefPtr<Node> newChild, ExceptionCode& ec)
 
     // Now actually add the child(ren)
     ChildListMutationScope mutation(*this);
-    for (auto it = targets.begin(), end = targets.end(); it != end; ++it) {
-        Node& child = it->get();
-
+    for (auto& child : targets) {
         // If the child has a parent again, just stop what we're doing, because
         // that means someone is doing something with DOM mutation -- can't re-parent
         // a child that already has a parent.
-        if (child.parentNode())
+        if (child->parentNode())
             break;
 
-        treeScope().adoptIfNeeded(&child);
+        treeScope().adoptIfNeeded(child.ptr());
 
         // Append child to the end of the list
         {
             NoEventDispatchAssertion assertNoEventDispatch;
-            appendChildToContainer(&child, *this);
+            appendChildToContainer(child.ptr(), *this);
         }
 
-        updateTreeAfterInsertion(child);
+        updateTreeAfterInsertion(child.get());
     }
 
     dispatchSubtreeModifiedEvent();
@@ -752,11 +745,7 @@ void ContainerNode::parserAppendChild(PassRefPtr<Node> newChild)
 
     newChild->updateAncestorConnectedSubframeCountForInsertion();
 
-    ChildListMutationScope(*this).childAdded(*newChild);
-
     notifyChildInserted(*newChild, ChildChangeSourceParser);
-
-    ChildNodeInsertionNotifier(*this).notify(*newChild);
 
     newChild->setNeedsStyleRecalc(ReconstructRenderTree);
 }
@@ -848,11 +837,7 @@ void ContainerNode::updateTreeAfterInsertion(Node& child)
 {
     ASSERT(child.refCount());
 
-    ChildListMutationScope(*this).childAdded(child);
-
     notifyChildInserted(child, ChildChangeSourceAPI);
-
-    ChildNodeInsertionNotifier(*this).notify(child);
 
     child.setNeedsStyleRecalc(ReconstructRenderTree);
 
@@ -934,6 +919,24 @@ unsigned ContainerNode::childElementCount() const
 {
     auto children = childrenOfType<Element>(*this);
     return std::distance(children.begin(), children.end());
+}
+
+void ContainerNode::append(Vector<NodeOrString>&& nodeOrStringVector, ExceptionCode& ec)
+{
+    RefPtr<Node> node = convertNodesOrStringsIntoNode(*this, WTF::move(nodeOrStringVector), ec);
+    if (ec || !node)
+        return;
+
+    appendChild(node.release(), ec);
+}
+
+void ContainerNode::prepend(Vector<NodeOrString>&& nodeOrStringVector, ExceptionCode& ec)
+{
+    RefPtr<Node> node = convertNodesOrStringsIntoNode(*this, WTF::move(nodeOrStringVector), ec);
+    if (ec || !node)
+        return;
+
+    insertBefore(node.release(), firstChild(), ec);
 }
 
 Ref<HTMLCollection> ContainerNode::ensureCachedHTMLCollection(CollectionType type)

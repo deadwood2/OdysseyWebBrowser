@@ -54,6 +54,10 @@
 #include <wtf/SchedulePair.h>
 #endif
 
+#if ENABLE(MEDIA_SESSION)
+#include "MediaSessionEvents.h"
+#endif
+
 namespace JSC {
 class Debugger;
 }
@@ -113,7 +117,6 @@ class ViewStateChangeObserver;
 class VisitedLinkStore;
 
 typedef uint64_t LinkHash;
-class SharedBuffer;
 
 enum FindDirection { FindDirectionForward, FindDirectionBackward };
 
@@ -131,8 +134,6 @@ public:
     WEBCORE_EXPORT ~Page();
 
     WEBCORE_EXPORT uint64_t renderTreeSize() const;
-    
-    static std::unique_ptr<Page> createPageFromBuffer(PageConfiguration&, const SharedBuffer*, const String& mimeType, bool canHaveScrollbars, bool transparent);
 
     void setNeedsRecalcStyleInAllFrames();
 
@@ -151,6 +152,8 @@ public:
 
     MainFrame& mainFrame() { ASSERT(m_mainFrame); return *m_mainFrame; }
     const MainFrame& mainFrame() const { ASSERT(m_mainFrame); return *m_mainFrame; }
+
+    bool inPageCache() const;
 
     bool openedByDOM() const;
     void setOpenedByDOM();
@@ -421,6 +424,9 @@ public:
     UserContentController* userContentController() { return m_userContentController.get(); }
     WEBCORE_EXPORT void setUserContentController(UserContentController*);
 
+    bool userContentExtensionsEnabled() const { return m_userContentExtensionsEnabled; }
+    void setUserContentExtensionsEnabled(bool enabled) { m_userContentExtensionsEnabled = enabled; }
+
     VisitedLinkStore& visitedLinkStore();
     WEBCORE_EXPORT void setVisitedLinkStore(Ref<VisitedLinkStore>&&);
 
@@ -433,6 +439,10 @@ public:
     void updateIsPlayingMedia();
     bool isMuted() const { return m_muted; }
     WEBCORE_EXPORT void setMuted(bool);
+
+#if ENABLE(MEDIA_SESSION)
+    WEBCORE_EXPORT void handleMediaEvent(MediaEventType);
+#endif
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
     void addPlaybackTargetPickerClient(uint64_t);
@@ -449,6 +459,11 @@ public:
     WEBCORE_EXPORT WheelEventTestTrigger& ensureTestTrigger();
     void clearTrigger() { m_testTrigger = nullptr; }
     bool expectsWheelEventTriggers() const { return !!m_testTrigger; }
+
+#if ENABLE(VIDEO)
+    bool allowsMediaDocumentInlinePlayback() const { return m_allowsMediaDocumentInlinePlayback; }
+    WEBCORE_EXPORT void setAllowsMediaDocumentInlinePlayback(bool);
+#endif
 
 private:
     WEBCORE_EXPORT void initGroup();
@@ -607,6 +622,9 @@ private:
     bool m_isClosing;
 
     MediaProducer::MediaStateFlags m_mediaState { MediaProducer::IsNotPlaying };
+    
+    bool m_userContentExtensionsEnabled { true };
+    bool m_allowsMediaDocumentInlinePlayback { false };
 };
 
 inline PageGroup& Page::group()

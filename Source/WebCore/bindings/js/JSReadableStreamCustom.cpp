@@ -40,24 +40,12 @@
 #include "ReadableStream.h"
 #include "ReadableStreamReader.h"
 #include <runtime/Error.h>
+#include <runtime/Exception.h>
 #include <wtf/NeverDestroyed.h>
 
 using namespace JSC;
 
 namespace WebCore {
-
-JSValue JSReadableStream::cancel(ExecState* exec)
-{
-    JSValue error = createError(exec, ASCIILiteral("cancel is not implemented"));
-    return exec->vm().throwException(exec, error);
-}
-
-JSValue JSReadableStream::getReader(ExecState* exec)
-{
-    if (impl().isLocked())
-        return exec->vm().throwException(exec, createTypeError(exec, ASCIILiteral("ReadableStream is locked")));
-    return toJS(exec, globalObject(), impl().getReader());
-}
 
 JSValue JSReadableStream::pipeTo(ExecState* exec)
 {
@@ -69,18 +57,6 @@ JSValue JSReadableStream::pipeThrough(ExecState* exec)
 {
     JSValue error = createError(exec, ASCIILiteral("pipeThrough is not implemented"));
     return exec->vm().throwException(exec, error);
-}
-
-EncodedJSValue JSC_HOST_CALL constructJSReadableStream(ExecState* exec)
-{
-    if (exec->argumentCount() && !exec->argument(0).isObject())
-        return throwVMError(exec, createTypeError(exec, ASCIILiteral("ReadableStream constructor should get an object as argument.")));
-
-    DOMConstructorObject* jsConstructor = jsCast<DOMConstructorObject*>(exec->callee());
-    ASSERT(jsConstructor);
-
-    Ref<ReadableJSStream> readableStream = ReadableJSStream::create(*exec, *jsConstructor->scriptExecutionContext());
-    return JSValue::encode(toJS(exec, jsCast<JSDOMGlobalObject*>(exec->callee()->globalObject()), WTF::move(readableStream)));
 }
 
 } // namespace WebCore

@@ -36,7 +36,7 @@
 #include <glib/gi18n-lib.h>
 #include <gtk/gtk.h>
 #include <wtf/MathExtras.h>
-#include <wtf/gobject/GUniquePtr.h>
+#include <wtf/glib/GUniquePtr.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
 
@@ -456,11 +456,6 @@ String AXSearchFieldCancelButtonText()
     return String::fromUTF8(_("cancel"));
 }
 
-String AXAutoFillButtonText()
-{
-    return String::fromUTF8(_("autofill"));
-}
-
 String AXButtonActionVerb()
 {
     return String::fromUTF8(_("press"));
@@ -524,12 +519,6 @@ String blockedPluginByContentSecurityPolicyText()
 }
 
 String insecurePluginVersionText()
-{
-    notImplemented();
-    return String();
-}
-
-String inactivePluginText()
 {
     notImplemented();
     return String();
@@ -664,7 +653,7 @@ String localizedMediaTimeDescription(float time)
     if (!std::isfinite(time))
         return String::fromUTF8(_("indefinite time"));
 
-    int seconds = static_cast<int>(abs(time));
+    int seconds = abs(static_cast<int>(time));
     int days = seconds / (60 * 60 * 24);
     int hours = seconds / (60 * 60);
     int minutes = (seconds / 60) % 60;
@@ -791,11 +780,6 @@ String validationMessageBadInputForNumberText()
 }
 
 #if ENABLE(VIDEO_TRACK)
-String textTrackClosedCaptionsText()
-{
-    return String::fromUTF8(C_("Closed Captions", "Menu section heading for closed captions"));
-}
-
 String textTrackSubtitlesText()
 {
     return String::fromUTF8(C_("Menu section heading for subtitles", "Subtitles"));

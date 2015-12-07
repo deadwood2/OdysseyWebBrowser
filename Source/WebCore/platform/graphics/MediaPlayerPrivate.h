@@ -50,7 +50,7 @@ public:
     virtual void load(const String& url, MediaSourcePrivateClient*) = 0;
 #endif
 #if ENABLE(MEDIA_STREAM)
-    virtual void load(MediaStreamPrivate*) = 0;
+    virtual void load(MediaStreamPrivate&) = 0;
 #endif
     virtual void cancelLoad() = 0;
     
@@ -93,6 +93,8 @@ public:
     virtual float currentTime() const { return 0; }
     virtual double currentTimeDouble() const { return currentTime(); }
     virtual MediaTime currentMediaTime() const { return MediaTime::createWithDouble(currentTimeDouble()); }
+
+    virtual MediaTime getStartDate() const { return MediaTime::createWithDouble(std::numeric_limits<double>::quiet_NaN()); }
 
     virtual void seek(float) { }
     virtual void seekDouble(double time) { seek(time); }

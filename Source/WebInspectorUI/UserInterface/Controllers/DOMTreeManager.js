@@ -246,7 +246,38 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
         var node = this._idToDOMNode[nodeId];
         parent._removeChild(node);
         this._unbind(node);
-        this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.NodeRemoved, {node:node, parent});
+        this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.NodeRemoved, {node, parent});
+    }
+
+    _pseudoElementAdded(parentId, pseudoElement)
+    {
+        var parent = this._idToDOMNode[parentId];
+        if (!parent)
+            return;
+
+        var node = new WebInspector.DOMNode(this, parent.ownerDocument, false, pseudoElement);
+        node.parentNode = parent;
+        this._idToDOMNode[node.id] = node;
+        console.assert(!parent.pseudoElements().get(node.pseudoType()));
+        parent.pseudoElements().set(node.pseudoType(), node);
+        this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.NodeInserted, {node, parent});
+    }
+
+    _pseudoElementRemoved(parentId, pseudoElementId)
+    {
+        var pseudoElement = this._idToDOMNode[pseudoElementId];
+        if (!pseudoElement)
+            return;
+
+        var parent = pseudoElement.parentNode;
+        console.assert(parent);
+        console.assert(parent.id === parentId);
+        if (!parent)
+            return;
+
+        parent._removeChild(pseudoElement);
+        this._unbind(pseudoElement);
+        this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.NodeRemoved, {node: pseudoElement, parent});
     }
 
     _unbind(node)
@@ -254,8 +285,18 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
         this._removeContentNodeFromFlowIfNeeded(node);
 
         delete this._idToDOMNode[node.id];
+
         for (var i = 0; node.children && i < node.children.length; ++i)
             this._unbind(node.children[i]);
+
+        if (node.templateContent())
+            this._unbind(node.templateContent());
+
+        var pseudoElements = node.pseudoElements();
+        for (var pseudoElement of pseudoElements)
+            this._unbind(pseudoElement);
+
+        // FIXME: Handle shadow roots.
     }
 
     get restoreSelectedNodeIsAllowed()
@@ -266,8 +307,10 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
     inspectElement(nodeId)
     {
         var node = this._idToDOMNode[nodeId];
-        if (node)
-            this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.DOMNodeWasInspected, {node});
+        if (!node || !node.ownerDocument)
+            return;
+
+        this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.DOMNodeWasInspected, {node});
 
         this._inspectModeEnabled = false;
         this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.InspectModeStateChanged);
@@ -358,6 +401,14 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
             DOMAgent.hideHighlight();
     }
 
+    highlightSelector(selectorText, frameId, mode)
+    {
+        if (!DOMAgent.highlightSelector || typeof DOMAgent.highlightSelector !== "function")
+            return;
+
+        DOMAgent.highlightSelector(this._buildHighlightConfig(mode), selectorText, frameId);
+    }
+
     highlightRect(rect, usePageCoordinates)
     {
         DOMAgent.highlightRect.invoke({
@@ -433,7 +484,7 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
     _updateContentFlowFromPayload(contentFlow, flowPayload)
     {
         console.assert(contentFlow.contentNodes.length === flowPayload.content.length);
-        console.assert(contentFlow.contentNodes.every(function(node, i) { node.id === flowPayload.content[i]; }));
+        console.assert(contentFlow.contentNodes.every(function(node, i) { return node.id === flowPayload.content[i]; }));
 
         // FIXME: Collect the regions from the payload.
         contentFlow.overset = flowPayload.overset;
@@ -443,10 +494,8 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
     {
         function onNamedFlowCollectionAvailable(error, flows)
         {
-            if (error) {
-                console.error("Error while getting the named flows for document " + documentNodeIdentifier + ": " + error);
+            if (error)
                 return;
-            }
             this._contentNodesToFlowsMap.clear();
             var contentFlows = [];
             for (var i = 0; i < flows.length; ++i) {
@@ -595,7 +644,7 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
             // passing the DOMNode as the "this" reference.
             var evalParameters = {
                 objectId: remoteObject.objectId,
-                functionDeclaration: backendFunction.toString(),
+                functionDeclaration: appendWebInspectorSourceURL(backendFunction.toString()),
                 doNotPauseOnExceptionsAndMuteConsole: true,
                 returnByValue: false,
                 generatePreview: false

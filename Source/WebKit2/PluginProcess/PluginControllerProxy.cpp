@@ -97,9 +97,9 @@ void PluginControllerProxy::setInitializationReply(PassRefPtr<Messages::WebProce
     m_initializationReply = reply;
 }
 
-PassRefPtr<Messages::WebProcessConnection::CreatePlugin::DelayedReply> PluginControllerProxy::takeInitializationReply()
+RefPtr<Messages::WebProcessConnection::CreatePlugin::DelayedReply> PluginControllerProxy::takeInitializationReply()
 {
-    return m_initializationReply.release();
+    return m_initializationReply;
 }
 
 bool PluginControllerProxy::initialize(const PluginCreationParameters& creationParameters)
@@ -126,7 +126,7 @@ bool PluginControllerProxy::initialize(const PluginCreationParameters& creationP
         // used as an identifier so it's OK to just get a weak reference.
         Plugin* plugin = m_plugin.get();
         
-        m_plugin = 0;
+        m_plugin = nullptr;
 
         // This will delete the plug-in controller proxy object.
         m_connection->removePluginControllerProxy(this, plugin);
@@ -156,7 +156,7 @@ void PluginControllerProxy::destroy()
     Plugin* plugin = m_plugin.get();
 
     m_plugin->destroyPlugin();
-    m_plugin = 0;
+    m_plugin = nullptr;
 
     platformDestroy();
 
@@ -322,12 +322,6 @@ bool PluginControllerProxy::isAcceleratedCompositingEnabled()
 void PluginControllerProxy::pluginProcessCrashed()
 {
     // This should never be called from here.
-    ASSERT_NOT_REACHED();
-}
-
-void PluginControllerProxy::willSendEventToPlugin()
-{
-    // This is only used when running plugins in the web process.
     ASSERT_NOT_REACHED();
 }
 
@@ -520,17 +514,9 @@ void PluginControllerProxy::manualStreamDidFail(bool wasCancelled)
     
     m_plugin->manualStreamDidFail(wasCancelled);
 }
-    
-void PluginControllerProxy::handleMouseEvent(const WebMouseEvent& mouseEvent, PassRefPtr<Messages::PluginControllerProxy::HandleMouseEvent::DelayedReply> reply)
-{
-    // Always let the web process think that we've handled this mouse event, even before passing it along to the plug-in.
-    // This is a workaround for 
-    // <rdar://problem/9299901> UI process thinks the page is unresponsive when a plug-in is showing a context menu.
-    // The web process sends a synchronous HandleMouseEvent message and the plug-in process spawns a nested
-    // run loop when showing the context menu, so eventually the unresponsiveness timer kicks in in the UI process.
-    // FIXME: We should come up with a better way to do this.
-    reply->send(true);
 
+void PluginControllerProxy::handleMouseEvent(const WebMouseEvent& mouseEvent)
+{
     m_plugin->handleMouseEvent(mouseEvent);
 }
 

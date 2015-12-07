@@ -33,10 +33,11 @@ struct ParserFunctionInfo {
     const Identifier* name = 0;
     typename TreeBuilder::FormalParameterList parameters = 0;
     typename TreeBuilder::FunctionBody body = 0;
-    unsigned openBraceOffset = 0;
-    unsigned closeBraceOffset = 0;
-    int bodyStartLine = 0;
-    int bodyEndLine = 0;
+    unsigned parameterCount = 0;
+    unsigned startOffset = 0;
+    unsigned endOffset = 0;
+    int startLine = 0;
+    int endLine = 0;
     unsigned bodyStartColumn = 0;
 };
 

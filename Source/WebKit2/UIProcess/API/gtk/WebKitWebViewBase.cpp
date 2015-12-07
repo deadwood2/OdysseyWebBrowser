@@ -31,6 +31,8 @@
 
 #include "DrawingAreaProxyImpl.h"
 #include "InputMethodFilter.h"
+#include "KeyBindingTranslator.h"
+#include "NativeWebKeyboardEvent.h"
 #include "NativeWebMouseEvent.h"
 #include "NativeWebWheelEvent.h"
 #include "PageClientImpl.h"
@@ -59,9 +61,10 @@
 #include <WebCore/Region.h>
 #include <gdk/gdk.h>
 #include <gdk/gdkkeysyms.h>
+#include <glib/gi18n-lib.h>
 #include <memory>
 #include <wtf/HashMap.h>
-#include <wtf/gobject/GRefPtr.h>
+#include <wtf/glib/GRefPtr.h>
 #include <wtf/text/CString.h>
 
 #if ENABLE(FULLSCREEN_API)
@@ -151,11 +154,7 @@ struct _WebKitWebViewBasePrivate {
     ClickCounter clickCounter;
     CString tooltipText;
     IntRect tooltipArea;
-#if !GTK_CHECK_VERSION(3, 13, 4)
-    IntSize resizerSize;
-#endif
     GRefPtr<AtkObject> accessible;
-    bool needsResizeOnMap;
     GtkWidget* authenticationDialog;
     GtkWidget* inspectorView;
     AttachmentSide inspectorAttachmentSide;
@@ -163,12 +162,10 @@ struct _WebKitWebViewBasePrivate {
     GUniquePtr<GdkEvent> contextMenuEvent;
     WebContextMenuProxyGtk* activeContextMenuProxy;
     InputMethodFilter inputMethodFilter;
+    KeyBindingTranslator keyBindingTranslator;
     TouchEventsMap touchEvents;
 
     GtkWindow* toplevelOnScreenWindow;
-#if !GTK_CHECK_VERSION(3, 13, 4)
-    unsigned long toplevelResizeGripVisibilityID;
-#endif
     unsigned long toplevelFocusInEventID;
     unsigned long toplevelFocusOutEventID;
     unsigned long toplevelVisibilityEventID;
@@ -184,6 +181,9 @@ struct _WebKitWebViewBasePrivate {
 #if ENABLE(FULLSCREEN_API)
     bool fullScreenModeActive;
     WebFullScreenClientGtk fullScreenClient;
+    GRefPtr<GDBusProxy> screenSaverProxy;
+    GRefPtr<GCancellable> screenSaverInhibitCancellable;
+    unsigned screenSaverCookie;
 #endif
 
 #if USE(REDIRECTED_XCOMPOSITE_WINDOW)
@@ -200,38 +200,6 @@ struct _WebKitWebViewBasePrivate {
 };
 
 WEBKIT_DEFINE_TYPE(WebKitWebViewBase, webkit_web_view_base, GTK_TYPE_CONTAINER)
-
-#if !GTK_CHECK_VERSION(3, 13, 4)
-static void webkitWebViewBaseNotifyResizerSize(WebKitWebViewBase* webViewBase)
-{
-    WebKitWebViewBasePrivate* priv = webViewBase->priv;
-    if (!priv->toplevelOnScreenWindow)
-        return;
-
-    gboolean resizerVisible;
-    g_object_get(G_OBJECT(priv->toplevelOnScreenWindow), "resize-grip-visible", &resizerVisible, NULL);
-
-    IntSize resizerSize;
-    if (resizerVisible) {
-        GdkRectangle resizerRect;
-        gtk_window_get_resize_grip_area(priv->toplevelOnScreenWindow, &resizerRect);
-        GdkRectangle allocation;
-        gtk_widget_get_allocation(GTK_WIDGET(webViewBase), &allocation);
-        if (gdk_rectangle_intersect(&resizerRect, &allocation, 0))
-            resizerSize = IntSize(resizerRect.width, resizerRect.height);
-    }
-
-    if (resizerSize != priv->resizerSize) {
-        priv->resizerSize = resizerSize;
-        priv->pageProxy->setWindowResizerSize(resizerSize);
-    }
-}
-
-static void toplevelWindowResizeGripVisibilityChanged(GObject*, GParamSpec*, WebKitWebViewBase* webViewBase)
-{
-    webkitWebViewBaseNotifyResizerSize(webViewBase);
-}
-#endif
 
 static gboolean toplevelWindowFocusInEvent(GtkWidget*, GdkEventFocus*, WebKitWebViewBase* webViewBase)
 {
@@ -273,12 +241,6 @@ static void webkitWebViewBaseSetToplevelOnScreenWindow(WebKitWebViewBase* webVie
     if (priv->toplevelOnScreenWindow == window)
         return;
 
-#if !GTK_CHECK_VERSION(3, 13, 4)
-    if (priv->toplevelResizeGripVisibilityID) {
-        g_signal_handler_disconnect(priv->toplevelOnScreenWindow, priv->toplevelResizeGripVisibilityID);
-        priv->toplevelResizeGripVisibilityID = 0;
-    }
-#endif
     if (priv->toplevelFocusInEventID) {
         g_signal_handler_disconnect(priv->toplevelOnScreenWindow, priv->toplevelFocusInEventID);
         priv->toplevelFocusInEventID = 0;
@@ -297,13 +259,6 @@ static void webkitWebViewBaseSetToplevelOnScreenWindow(WebKitWebViewBase* webVie
     if (!priv->toplevelOnScreenWindow)
         return;
 
-#if !GTK_CHECK_VERSION(3, 13, 4)
-    webkitWebViewBaseNotifyResizerSize(webViewBase);
-
-    priv->toplevelResizeGripVisibilityID =
-        g_signal_connect(priv->toplevelOnScreenWindow, "notify::resize-grip-visible",
-                         G_CALLBACK(toplevelWindowResizeGripVisibilityChanged), webViewBase);
-#endif
     priv->toplevelFocusInEventID =
         g_signal_connect(priv->toplevelOnScreenWindow, "focus-in-event",
                          G_CALLBACK(toplevelWindowFocusInEvent), webViewBase);
@@ -508,7 +463,7 @@ static void webkitWebViewBaseConstructed(GObject* object)
     gtk_widget_set_can_focus(viewWidget, TRUE);
     gtk_drag_dest_set(viewWidget, static_cast<GtkDestDefaults>(0), nullptr, 0,
         static_cast<GdkDragAction>(GDK_ACTION_COPY | GDK_ACTION_MOVE | GDK_ACTION_LINK | GDK_ACTION_PRIVATE));
-    gtk_drag_dest_set_target_list(viewWidget, PasteboardHelper::defaultPasteboardHelper()->targetList());
+    gtk_drag_dest_set_target_list(viewWidget, PasteboardHelper::singleton().targetList());
 
     WebKitWebViewBasePrivate* priv = WEBKIT_WEB_VIEW_BASE(object)->priv;
     priv->pageClient = std::make_unique<PageClientImpl>(viewWidget);
@@ -595,8 +550,11 @@ static void webkitWebViewBaseChildAllocate(GtkWidget* child, gpointer userData)
     priv->children.set(child, IntRect());
 }
 
-static void resizeWebKitWebViewBaseFromAllocation(WebKitWebViewBase* webViewBase, GtkAllocation* allocation, bool sizeChanged)
+static void webkitWebViewBaseSizeAllocate(GtkWidget* widget, GtkAllocation* allocation)
 {
+    GTK_WIDGET_CLASS(webkit_web_view_base_parent_class)->size_allocate(widget, allocation);
+
+    WebKitWebViewBase* webViewBase = WEBKIT_WEB_VIEW_BASE(widget);
     gtk_container_foreach(GTK_CONTAINER(webViewBase), webkitWebViewBaseChildAllocate, webViewBase);
 
     IntRect viewRect(allocation->x, allocation->y, allocation->width, allocation->height);
@@ -638,36 +596,16 @@ static void resizeWebKitWebViewBaseFromAllocation(WebKitWebViewBase* webViewBase
     }
 
     DrawingAreaProxyImpl* drawingArea = static_cast<DrawingAreaProxyImpl*>(priv->pageProxy->drawingArea());
+    if (!drawingArea)
+        return;
+
 
 #if USE(REDIRECTED_XCOMPOSITE_WINDOW)
-    if (sizeChanged && priv->redirectedWindow && drawingArea && drawingArea->isInAcceleratedCompositingMode())
+    if (priv->redirectedWindow && drawingArea->isInAcceleratedCompositingMode())
         priv->redirectedWindow->resize(viewRect.size());
-#else
-    UNUSED_PARAM(sizeChanged);
 #endif
 
-    if (drawingArea)
-        drawingArea->setSize(viewRect.size(), IntSize(), IntSize());
-
-#if !GTK_CHECK_VERSION(3, 13, 4)
-    webkitWebViewBaseNotifyResizerSize(webViewBase);
-#endif
-}
-
-static void webkitWebViewBaseSizeAllocate(GtkWidget* widget, GtkAllocation* allocation)
-{
-    bool sizeChanged = gtk_widget_get_allocated_width(widget) != allocation->width
-                       || gtk_widget_get_allocated_height(widget) != allocation->height;
-
-    GTK_WIDGET_CLASS(webkit_web_view_base_parent_class)->size_allocate(widget, allocation);
-
-    WebKitWebViewBase* webViewBase = WEBKIT_WEB_VIEW_BASE(widget);
-    if (sizeChanged && !gtk_widget_get_mapped(widget)) {
-        webViewBase->priv->needsResizeOnMap = true;
-        return;
-    }
-
-    resizeWebKitWebViewBaseFromAllocation(webViewBase, allocation, sizeChanged);
+    drawingArea->setSize(viewRect.size(), IntSize(), IntSize());
 }
 
 static void webkitWebViewBaseMap(GtkWidget* widget)
@@ -680,14 +618,6 @@ static void webkitWebViewBaseMap(GtkWidget* widget)
         priv->isVisible = true;
         priv->pageProxy->viewStateDidChange(ViewState::IsVisible);
     }
-
-    if (!priv->needsResizeOnMap)
-        return;
-
-    GtkAllocation allocation;
-    gtk_widget_get_allocation(widget, &allocation);
-    resizeWebKitWebViewBaseFromAllocation(webViewBase, &allocation, true /* sizeChanged */);
-    priv->needsResizeOnMap = false;
 }
 
 static void webkitWebViewBaseUnmap(GtkWidget* widget)
@@ -749,7 +679,12 @@ static gboolean webkitWebViewBaseKeyPressEvent(GtkWidget* widget, GdkEventKey* e
         priv->shouldForwardNextKeyEvent = FALSE;
         return GTK_WIDGET_CLASS(webkit_web_view_base_parent_class)->key_press_event(widget, event);
     }
-    priv->inputMethodFilter.filterKeyEvent(event);
+
+    priv->inputMethodFilter.filterKeyEvent(event, [priv, event](const WebCore::CompositionResults& compositionResults, InputMethodFilter::EventFakedForComposition faked) {
+        priv->pageProxy->handleKeyboardEvent(NativeWebKeyboardEvent(reinterpret_cast<GdkEvent*>(event), compositionResults, faked,
+            !compositionResults.compositionUpdated() ? priv->keyBindingTranslator.commandsForKeyEvent(event) : Vector<String>()));
+    });
+
     return TRUE;
 }
 
@@ -762,7 +697,11 @@ static gboolean webkitWebViewBaseKeyReleaseEvent(GtkWidget* widget, GdkEventKey*
         priv->shouldForwardNextKeyEvent = FALSE;
         return GTK_WIDGET_CLASS(webkit_web_view_base_parent_class)->key_release_event(widget, event);
     }
-    priv->inputMethodFilter.filterKeyEvent(event);
+
+    priv->inputMethodFilter.filterKeyEvent(event, [priv, event](const WebCore::CompositionResults& compositionResults, InputMethodFilter::EventFakedForComposition faked) {
+        priv->pageProxy->handleKeyboardEvent(NativeWebKeyboardEvent(reinterpret_cast<GdkEvent*>(event), compositionResults, faked, { }));
+    });
+
     return TRUE;
 }
 
@@ -1104,8 +1043,13 @@ static void webkit_web_view_base_class_init(WebKitWebViewBaseClass* webkitWebVie
 
 WebKitWebViewBase* webkitWebViewBaseCreate(WebProcessPool* context, WebPreferences* preferences, WebPageGroup* pageGroup, WebUserContentControllerProxy* userContentController, WebPageProxy* relatedPage)
 {
-    WebKitWebViewBase* webkitWebViewBase = WEBKIT_WEB_VIEW_BASE(g_object_new(WEBKIT_TYPE_WEB_VIEW_BASE, NULL));
-    webkitWebViewBaseCreateWebPage(webkitWebViewBase, context, preferences, pageGroup, userContentController, relatedPage);
+    WebKitWebViewBase* webkitWebViewBase = WEBKIT_WEB_VIEW_BASE(g_object_new(WEBKIT_TYPE_WEB_VIEW_BASE, nullptr));
+    WebPageConfiguration webPageConfiguration;
+    webPageConfiguration.preferences = preferences;
+    webPageConfiguration.pageGroup = pageGroup;
+    webPageConfiguration.relatedPage = relatedPage;
+    webPageConfiguration.userContentController = userContentController;
+    webkitWebViewBaseCreateWebPage(webkitWebViewBase, context, WTF::move(webPageConfiguration));
     return webkitWebViewBase;
 }
 
@@ -1126,23 +1070,10 @@ static void deviceScaleFactorChanged(WebKitWebViewBase* webkitWebViewBase)
 }
 #endif // HAVE(GTK_SCALE_FACTOR)
 
-void webkitWebViewBaseCreateWebPage(WebKitWebViewBase* webkitWebViewBase, WebProcessPool* context, WebPreferences* preferences, WebPageGroup* pageGroup, WebUserContentControllerProxy* userContentController, WebPageProxy* relatedPage)
+void webkitWebViewBaseCreateWebPage(WebKitWebViewBase* webkitWebViewBase, WebProcessPool* context, WebPageConfiguration&& configuration)
 {
     WebKitWebViewBasePrivate* priv = webkitWebViewBase->priv;
-
-#if PLATFORM(WAYLAND)
-    // FIXME: Accelerated compositing under Wayland is not yet supported.
-    // https://bugs.webkit.org/show_bug.cgi?id=115803
-    if (PlatformDisplay::sharedDisplay().type() == PlatformDisplay::Type::Wayland)
-        preferences->setAcceleratedCompositingEnabled(false);
-#endif
-
-    WebPageConfiguration webPageConfiguration;
-    webPageConfiguration.preferences = preferences;
-    webPageConfiguration.pageGroup = pageGroup;
-    webPageConfiguration.relatedPage = relatedPage;
-    webPageConfiguration.userContentController = userContentController;
-    priv->pageProxy = context->createWebPage(*priv->pageClient, WTF::move(webPageConfiguration));
+    priv->pageProxy = context->createWebPage(*priv->pageClient, WTF::move(configuration));
     priv->pageProxy->initializeWebPage();
 
     priv->inputMethodFilter.setPage(priv->pageProxy.get());
@@ -1188,6 +1119,71 @@ void webkitWebViewBaseForwardNextKeyEvent(WebKitWebViewBase* webkitWebViewBase)
     webkitWebViewBase->priv->shouldForwardNextKeyEvent = TRUE;
 }
 
+#if ENABLE(FULLSCREEN_API)
+static void screenSaverInhibitedCallback(GDBusProxy* screenSaverProxy, GAsyncResult* result, WebKitWebViewBase* webViewBase)
+{
+    GRefPtr<GVariant> returnValue = adoptGRef(g_dbus_proxy_call_finish(screenSaverProxy, result, nullptr));
+    if (returnValue)
+        g_variant_get(returnValue.get(), "(u)", &webViewBase->priv->screenSaverCookie);
+    webViewBase->priv->screenSaverInhibitCancellable = nullptr;
+}
+
+static void webkitWebViewBaseSendInhibitMessageToScreenSaver(WebKitWebViewBase* webViewBase)
+{
+    WebKitWebViewBasePrivate* priv = webViewBase->priv;
+    ASSERT(priv->screenSaverProxy);
+    priv->screenSaverCookie = 0;
+    if (!priv->screenSaverInhibitCancellable)
+        priv->screenSaverInhibitCancellable = g_cancellable_new();
+    g_dbus_proxy_call(priv->screenSaverProxy.get(), "Inhibit", g_variant_new("(ss)", g_get_prgname(), _("Website running in fullscreen mode")),
+        G_DBUS_CALL_FLAGS_NONE, -1, priv->screenSaverInhibitCancellable.get(), reinterpret_cast<GAsyncReadyCallback>(screenSaverInhibitedCallback), webViewBase);
+}
+
+static void screenSaverProxyCreatedCallback(GObject*, GAsyncResult* result, WebKitWebViewBase* webViewBase)
+{
+    WebKitWebViewBasePrivate* priv = webViewBase->priv;
+    priv->screenSaverProxy = adoptGRef(g_dbus_proxy_new_for_bus_finish(result, nullptr));
+    if (!priv->screenSaverProxy)
+        return;
+
+    webkitWebViewBaseSendInhibitMessageToScreenSaver(webViewBase);
+}
+
+static void webkitWebViewBaseInhibitScreenSaver(WebKitWebViewBase* webViewBase)
+{
+    WebKitWebViewBasePrivate* priv = webViewBase->priv;
+    if (priv->screenSaverCookie) {
+        // Already inhibited.
+        return;
+    }
+
+    if (priv->screenSaverProxy) {
+        webkitWebViewBaseSendInhibitMessageToScreenSaver(webViewBase);
+        return;
+    }
+
+    priv->screenSaverInhibitCancellable = g_cancellable_new();
+    g_dbus_proxy_new_for_bus(G_BUS_TYPE_SESSION, static_cast<GDBusProxyFlags>(G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES | G_DBUS_PROXY_FLAGS_DO_NOT_CONNECT_SIGNALS),
+        nullptr, "org.freedesktop.ScreenSaver", "/ScreenSaver", "org.freedesktop.ScreenSaver", priv->screenSaverInhibitCancellable.get(),
+        reinterpret_cast<GAsyncReadyCallback>(screenSaverProxyCreatedCallback), webViewBase);
+}
+
+static void webkitWebViewBaseUninhibitScreenSaver(WebKitWebViewBase* webViewBase)
+{
+    WebKitWebViewBasePrivate* priv = webViewBase->priv;
+    if (!priv->screenSaverCookie) {
+        // Not inhibited or it's being inhibited.
+        g_cancellable_cancel(priv->screenSaverInhibitCancellable.get());
+        return;
+    }
+
+    // If we have a cookie we should have a proxy.
+    ASSERT(priv->screenSaverProxy);
+    g_dbus_proxy_call(priv->screenSaverProxy.get(), "UnInhibit", g_variant_new("(u)", priv->screenSaverCookie), G_DBUS_CALL_FLAGS_NONE, -1, nullptr, nullptr, nullptr);
+    priv->screenSaverCookie = 0;
+}
+#endif
+
 void webkitWebViewBaseEnterFullScreen(WebKitWebViewBase* webkitWebViewBase)
 {
 #if ENABLE(FULLSCREEN_API)
@@ -1206,6 +1202,7 @@ void webkitWebViewBaseEnterFullScreen(WebKitWebViewBase* webkitWebViewBase)
         gtk_window_fullscreen(GTK_WINDOW(topLevelWindow));
     fullScreenManagerProxy->didEnterFullScreen();
     priv->fullScreenModeActive = true;
+    webkitWebViewBaseInhibitScreenSaver(webkitWebViewBase);
 #endif
 }
 
@@ -1227,6 +1224,7 @@ void webkitWebViewBaseExitFullScreen(WebKitWebViewBase* webkitWebViewBase)
         gtk_window_unfullscreen(GTK_WINDOW(topLevelWindow));
     fullScreenManagerProxy->didExitFullScreen();
     priv->fullScreenModeActive = false;
+    webkitWebViewBaseUninhibitScreenSaver(webkitWebViewBase);
 #endif
 }
 
@@ -1323,7 +1321,9 @@ void webkitWebViewBaseSetInputMethodState(WebKitWebViewBase* webkitWebViewBase, 
 
 void webkitWebViewBaseUpdateTextInputState(WebKitWebViewBase* webkitWebViewBase)
 {
-    webkitWebViewBase->priv->inputMethodFilter.setCursorRect(webkitWebViewBase->priv->pageProxy->editorState().cursorRect);
+    const auto& editorState = webkitWebViewBase->priv->pageProxy->editorState();
+    if (!editorState.isMissingPostLayoutData)
+        webkitWebViewBase->priv->inputMethodFilter.setCursorRect(editorState.postLayoutData().caretRectAtStart);
 }
 
 void webkitWebViewBaseResetClickCounter(WebKitWebViewBase* webkitWebViewBase)
@@ -1355,6 +1355,29 @@ void webkitWebViewBaseExitAcceleratedCompositingMode(WebKitWebViewBase* webkitWe
     WebKitWebViewBasePrivate* priv = webkitWebViewBase->priv;
     if (priv->redirectedWindow)
         priv->redirectedWindow->resize(IntSize());
+#else
+    UNUSED_PARAM(webkitWebViewBase);
+#endif
+}
+
+void webkitWebViewBaseDidRelaunchWebProcess(WebKitWebViewBase* webkitWebViewBase)
+{
+#if PLATFORM(X11)
+    if (PlatformDisplay::sharedDisplay().type() != PlatformDisplay::Type::X11)
+        return;
+
+    WebKitWebViewBasePrivate* priv = webkitWebViewBase->priv;
+    DrawingAreaProxyImpl* drawingArea = static_cast<DrawingAreaProxyImpl*>(priv->pageProxy->drawingArea());
+    ASSERT(drawingArea);
+#if USE(REDIRECTED_XCOMPOSITE_WINDOW)
+    if (!priv->redirectedWindow)
+        return;
+    drawingArea->setNativeSurfaceHandleForCompositing(priv->redirectedWindow->windowID());
+#else
+    if (!gtk_widget_get_realized(GTK_WIDGET(webkitWebViewBase)))
+        return;
+    drawingArea->setNativeSurfaceHandleForCompositing(GDK_WINDOW_XID(gtk_widget_get_window(GTK_WIDGET(webkitWebViewBase))));
+#endif
 #else
     UNUSED_PARAM(webkitWebViewBase);
 #endif

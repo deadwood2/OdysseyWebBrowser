@@ -47,6 +47,7 @@
 #include "CSSInheritedValue.h"
 #include "CSSInitialValue.h"
 #include "CSSLineBoxContainValue.h"
+#include "CSSNamedImageValue.h"
 #include "CSSPrimitiveValue.h"
 #include "CSSReflectValue.h"
 #include "CSSShadowValue.h"
@@ -56,7 +57,6 @@
 #include "SVGColor.h"
 #include "SVGPaint.h"
 #include "WebKitCSSFilterValue.h"
-#include "WebKitCSSResourceValue.h"
 #include "WebKitCSSTransformValue.h"
 
 #if ENABLE(CSS_GRID_LAYOUT)
@@ -168,6 +168,8 @@ bool CSSValue::equals(const CSSValue& other) const
             return compareCSSValues<CSSBorderImageSliceValue>(*this, other);
         case CanvasClass:
             return compareCSSValues<CSSCanvasValue>(*this, other);
+        case NamedImageClass:
+            return compareCSSValues<CSSNamedImageValue>(*this, other);
         case CursorImageClass:
             return compareCSSValues<CSSCursorImageValue>(*this, other);
         case FilterImageClass:
@@ -260,6 +262,8 @@ String CSSValue::cssText() const
         return downcast<CSSBorderImageSliceValue>(*this).customCSSText();
     case CanvasClass:
         return downcast<CSSCanvasValue>(*this).customCSSText();
+    case NamedImageClass:
+        return downcast<CSSNamedImageValue>(*this).customCSSText();
     case CursorImageClass:
         return downcast<CSSCursorImageValue>(*this).customCSSText();
     case FilterImageClass:
@@ -324,8 +328,6 @@ String CSSValue::cssText() const
     case AnimationTriggerScrollClass:
         return downcast<CSSAnimationTriggerScrollValue>(*this).customCSSText();
 #endif
-    case WebKitCSSResourceClass:
-        return downcast<WebKitCSSResourceValue>(*this).customCSSText();
     case CSSContentDistributionClass:
         return downcast<CSSContentDistributionValue>(*this).customCSSText();
     }
@@ -351,6 +353,9 @@ void CSSValue::destroy()
         return;
     case CanvasClass:
         delete downcast<CSSCanvasValue>(this);
+        return;
+    case NamedImageClass:
+        delete downcast<CSSNamedImageValue>(this);
         return;
     case CursorImageClass:
         delete downcast<CSSCursorImageValue>(this);
@@ -445,9 +450,6 @@ void CSSValue::destroy()
         delete downcast<CSSAnimationTriggerScrollValue>(this);
         return;
 #endif
-    case WebKitCSSResourceClass:
-        delete downcast<WebKitCSSResourceValue>(this);
-        return;
     case CSSContentDistributionClass:
         delete downcast<CSSContentDistributionValue>(this);
         return;

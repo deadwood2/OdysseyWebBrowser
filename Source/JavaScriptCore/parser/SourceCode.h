@@ -117,11 +117,9 @@ namespace JSC {
     {
         return SourceCode(StringSourceProvider::create(source, url, startPosition), startPosition.m_line.oneBasedInt(), startPosition.m_column.oneBasedInt());
     }
-
+    
     inline SourceCode SourceCode::subExpression(unsigned openBrace, unsigned closeBrace, int firstLine, int startColumn)
     {
-        ASSERT(provider()->source()[openBrace] == '{');
-        ASSERT(provider()->source()[closeBrace] == '}');
         startColumn += 1; // Convert to base 1.
         return SourceCode(provider(), openBrace, closeBrace + 1, firstLine, startColumn);
     }

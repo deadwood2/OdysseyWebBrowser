@@ -56,6 +56,7 @@
 #include <runtime/ArrayBuffer.h>
 #include <runtime/ArrayBufferView.h>
 #include <wtf/HashSet.h>
+#include <wtf/RunLoop.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
@@ -243,7 +244,7 @@ void WebSocket::connect(const String& url, const Vector<String>& protocols, Exce
         Document& document = downcast<Document>(*scriptExecutionContext());
         shouldBypassMainWorldContentSecurityPolicy = document.frame()->script().shouldBypassMainWorldContentSecurityPolicy();
     }
-    if (!shouldBypassMainWorldContentSecurityPolicy && !scriptExecutionContext()->contentSecurityPolicy()->allowConnectToSource(m_url)) {
+    if (!scriptExecutionContext()->contentSecurityPolicy()->allowConnectToSource(m_url, shouldBypassMainWorldContentSecurityPolicy)) {
         m_state = CLOSED;
 
         // FIXME: Should this be throwing an exception?
@@ -260,20 +261,38 @@ void WebSocket::connect(const String& url, const Vector<String>& protocols, Exce
     //
     // Here, we throw SYNTAX_ERR if the given protocols do not meet the latter criteria. This behavior does not
     // comply with WebSocket API specification, but it seems to be the only reasonable way to handle this conflict.
-    for (size_t i = 0; i < protocols.size(); ++i) {
-        if (!isValidProtocolString(protocols[i])) {
-            scriptExecutionContext()->addConsoleMessage(MessageSource::JS, MessageLevel::Error, "Wrong protocol for WebSocket '" + encodeProtocolString(protocols[i]) + "'");
+    for (auto& protocol : protocols) {
+        if (!isValidProtocolString(protocol)) {
+            scriptExecutionContext()->addConsoleMessage(MessageSource::JS, MessageLevel::Error, "Wrong protocol for WebSocket '" + encodeProtocolString(protocol) + "'");
             m_state = CLOSED;
             ec = SYNTAX_ERR;
             return;
         }
     }
     HashSet<String> visited;
-    for (size_t i = 0; i < protocols.size(); ++i) {
-        if (!visited.add(protocols[i]).isNewEntry) {
-            scriptExecutionContext()->addConsoleMessage(MessageSource::JS, MessageLevel::Error, "WebSocket protocols contain duplicates: '" + encodeProtocolString(protocols[i]) + "'");
+    for (auto& protocol : protocols) {
+        if (!visited.add(protocol).isNewEntry) {
+            scriptExecutionContext()->addConsoleMessage(MessageSource::JS, MessageLevel::Error, "WebSocket protocols contain duplicates: '" + encodeProtocolString(protocol) + "'");
             m_state = CLOSED;
             ec = SYNTAX_ERR;
+            return;
+        }
+    }
+
+    if (is<Document>(*scriptExecutionContext())) {
+        Document& document = downcast<Document>(*scriptExecutionContext());
+        if (!document.frame()->loader().mixedContentChecker().canRunInsecureContent(document.securityOrigin(), m_url)) {
+            // Balanced by the call to ActiveDOMObject::unsetPendingActivity() in WebSocket::stop().
+            ActiveDOMObject::setPendingActivity(this);
+
+            // We must block this connection. Instead of throwing an exception, we indicate this
+            // using the error event. But since this code executes as part of the WebSocket's
+            // constructor, we have to wait until the constructor has completed before firing the
+            // event; otherwise, users can't connect to the event.
+            RunLoop::main().dispatch([this]() {
+                dispatchOrQueueErrorEvent();
+                stop();
+            });
             return;
         }
     }
@@ -511,7 +530,7 @@ void WebSocket::stop()
     bool pending = hasPendingActivity();
     if (m_channel)
         m_channel->disconnect();
-    m_channel = 0;
+    m_channel = nullptr;
     m_state = CLOSED;
     m_pendingEvents.clear();
     ActiveDOMObject::stop();
@@ -569,7 +588,7 @@ void WebSocket::didReceiveMessageError()
     LOG(Network, "WebSocket %p didReceiveErrorMessage()", this);
     m_state = CLOSED;
     ASSERT(scriptExecutionContext());
-    dispatchOrQueueEvent(Event::create(eventNames().errorEvent, false, false));
+    dispatchOrQueueErrorEvent();
 }
 
 void WebSocket::didUpdateBufferedAmount(unsigned long bufferedAmount)
@@ -618,6 +637,15 @@ size_t WebSocket::getFramingOverhead(size_t payloadSize)
     else if (payloadSize >= minimumPayloadSizeWithTwoByteExtendedPayloadLength)
         overhead += 2;
     return overhead;
+}
+
+void WebSocket::dispatchOrQueueErrorEvent()
+{
+    if (m_dispatchedErrorEvent)
+        return;
+
+    m_dispatchedErrorEvent = true;
+    dispatchOrQueueEvent(Event::create(eventNames().errorEvent, false, false));
 }
 
 void WebSocket::dispatchOrQueueEvent(Ref<Event>&& event)

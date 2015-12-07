@@ -109,7 +109,7 @@ void ScrollingCoordinatorCoordinatedGraphics::willDestroyScrollableArea(Scrollab
     if (!layer)
         return;
 
-    layer->setScrollableArea(0);
+    layer->setScrollableArea(nullptr);
 }
 
 bool ScrollingCoordinatorCoordinatedGraphics::requestScrollPositionUpdate(FrameView& frameView, const IntPoint& scrollPosition)
@@ -117,7 +117,6 @@ bool ScrollingCoordinatorCoordinatedGraphics::requestScrollPositionUpdate(FrameV
     if (!frameView.delegatesScrolling())
         return false;
 
-    frameView.setFixedVisibleContentRect(IntRect(scrollPosition, frameView.visibleContentRect().size()));
     frameView.hostWindow()->delegatedScrollRequested(scrollPosition);
     return true;
 }

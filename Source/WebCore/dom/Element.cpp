@@ -92,11 +92,6 @@ namespace WebCore {
 using namespace HTMLNames;
 using namespace XMLNames;
 
-static inline bool shouldIgnoreAttributeCase(const Element& element)
-{
-    return element.isHTMLElement() && element.document().isHTMLDocument();
-}
-
 static HashMap<Element*, Vector<RefPtr<Attr>>>& attrNodeListMap()
 {
     static NeverDestroyed<HashMap<Element*, Vector<RefPtr<Attr>>>> map;
@@ -1374,11 +1369,6 @@ URL Element::absoluteLinkURL() const
     return document().completeURL(stripLeadingAndTrailingHTMLSpaces(linkAttribute));
 }
 
-WeakPtr<Element> Element::createWeakPtr()
-{
-    return ensureElementRareData().weakPtrFactory().createWeakPtr();
-}
-
 // Returns true is the given attribute is an event handler.
 // We consider an event handler any attribute that begins with "on".
 // It is a simple solution that has the advantage of not requiring any
@@ -1637,7 +1627,11 @@ void Element::addShadowRoot(Ref<ShadowRoot>&& newShadowRoot)
     shadowRoot.setParentTreeScope(&treeScope());
     shadowRoot.distributor().didShadowBoundaryChange(this);
 
-    ChildNodeInsertionNotifier(*this).notify(shadowRoot);
+    NodeVector postInsertionNotificationTargets;
+    ChildNodeInsertionNotifier(*this).notify(shadowRoot, postInsertionNotificationTargets);
+
+    for (auto& target : postInsertionNotificationTargets)
+        target->finishedInsertingSubtree();
 
     resetNeedsNodeRenderingTraversalSlowPath();
 
@@ -2200,7 +2194,7 @@ void Element::updateFocusAppearance(bool /*restorePreviousSelection*/)
         VisibleSelection newSelection = VisibleSelection(firstPositionInOrBeforeNode(this), DOWNSTREAM);
         
         if (frame->selection().shouldChangeSelection(newSelection)) {
-            frame->selection().setSelection(newSelection);
+            frame->selection().setSelection(newSelection, FrameSelection::defaultSetSelectionOptions(), Element::defaultFocusTextStateChangeIntent());
             frame->selection().revealSelection();
         }
     } else if (renderer() && !renderer()->isWidget())
@@ -3208,7 +3202,7 @@ void Element::cloneAttributesFromElement(const Element& other)
 
     other.synchronizeAllAttributes();
     if (!other.m_elementData) {
-        m_elementData.clear();
+        m_elementData = nullptr;
         return;
     }
 

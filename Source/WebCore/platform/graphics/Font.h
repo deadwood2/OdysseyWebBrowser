@@ -267,6 +267,10 @@ private:
     Glyph m_zeroWidthSpaceGlyph;
 
     struct DerivedFontData {
+#if !COMPILER(MSVC)
+        WTF_MAKE_FAST_ALLOCATED;
+#endif
+    public:
         explicit DerivedFontData(bool custom)
             : forCustomFont(custom)
         {
@@ -321,6 +325,10 @@ private:
     unsigned m_shouldNotBeUsedForArabic : 1;
 #endif
 };
+
+#if PLATFORM(IOS)
+bool fontFamilyShouldNotBeUsedForArabic(CFStringRef);
+#endif
 
 ALWAYS_INLINE FloatRect Font::boundsForGlyph(Glyph glyph) const
 {

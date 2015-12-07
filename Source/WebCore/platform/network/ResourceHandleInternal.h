@@ -28,6 +28,7 @@
 
 #include "NetworkingContext.h"
 #include "ResourceHandle.h"
+#include "ResourceHandleClient.h"
 #include "ResourceRequest.h"
 #include "AuthenticationChallenge.h"
 #include "Timer.h"
@@ -51,8 +52,8 @@
 #if USE(SOUP)
 #include "GUniquePtrSoup.h"
 #include <libsoup/soup.h>
-#include <wtf/gobject/GMainLoopSource.h>
-#include <wtf/gobject/GRefPtr.h>
+#include <wtf/glib/GMainLoopSource.h>
+#include <wtf/glib/GRefPtr.h>
 #endif
 
 #if PLATFORM(COCOA)
@@ -70,8 +71,6 @@ typedef const struct __CFURLStorageSession* CFURLStorageSessionRef;
 
 namespace WebCore {
 
-    class ResourceHandleClient;
-
     class ResourceHandleInternal {
         WTF_MAKE_NONCOPYABLE(ResourceHandleInternal); WTF_MAKE_FAST_ALLOCATED;
     public:
@@ -83,6 +82,7 @@ namespace WebCore {
             , status(0)
             , m_defersLoading(defersLoading)
             , m_shouldContentSniff(shouldContentSniff)
+            , m_usesAsyncCallbacks(client && client->usesAsyncCallbacks())
 #if USE(CFNETWORK)
             , m_currentRequest(request)
 #endif
@@ -129,6 +129,7 @@ namespace WebCore {
 
         bool m_defersLoading;
         bool m_shouldContentSniff;
+        bool m_usesAsyncCallbacks;
 #if USE(CFNETWORK)
         RetainPtr<CFURLConnectionRef> m_connection;
         ResourceRequest m_currentRequest;

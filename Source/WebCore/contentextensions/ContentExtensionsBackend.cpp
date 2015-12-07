@@ -89,49 +89,30 @@ Vector<Action> ContentExtensionsBackend::actionsForResourceLoad(const ResourceLo
         RELEASE_ASSERT(contentExtension);
         const CompiledContentExtension& compiledExtension = contentExtension->compiledExtension();
         
-        // FIXME: These should use a different Vector<bool> to keep track of which memory pages are used when doing memory reporting. Or just remove the memory reporting completely.
-        DFABytecodeInterpreter withoutDomainsInterpreter(compiledExtension.filtersWithoutDomainsBytecode(), compiledExtension.filtersWithoutDomainsBytecodeLength(), contentExtension->m_pagesUsed);
-        DFABytecodeInterpreter::Actions triggeredActions = withoutDomainsInterpreter.interpret(urlCString, flags);
+        DFABytecodeInterpreter withoutDomainsInterpreter(compiledExtension.filtersWithoutDomainsBytecode(), compiledExtension.filtersWithoutDomainsBytecodeLength());
+        DFABytecodeInterpreter::Actions withoutDomainsActions = withoutDomainsInterpreter.interpret(urlCString, flags);
         
-        // Check to see if there are any actions triggered with if- or unless-domain and check the domain if there are.
-        DFABytecodeInterpreter withDomainsInterpreter(compiledExtension.filtersWithDomainsBytecode(), compiledExtension.filtersWithDomainsBytecodeLength(), contentExtension->m_pagesUsed);
-        
-        DFABytecodeInterpreter::Actions withDomainsPossibleActions = withDomainsInterpreter.interpret(urlCString, flags);
-        if (!withDomainsPossibleActions.isEmpty()) {
-            DFABytecodeInterpreter domainsInterpreter(compiledExtension.domainFiltersBytecode(), compiledExtension.domainFiltersBytecodeLength(), contentExtension->m_pagesUsed);
-            DFABytecodeInterpreter::Actions domainsActions = domainsInterpreter.interpret(resourceLoadInfo.mainDocumentURL.host().utf8(), flags);
-            
-            DFABytecodeInterpreter::Actions ifDomainActions;
-            DFABytecodeInterpreter::Actions unlessDomainActions;
-            for (uint64_t action : domainsActions) {
-                if (action & IfDomainFlag)
-                    ifDomainActions.add(action);
-                else
-                    unlessDomainActions.add(action);
-            }
-            
-            for (uint64_t action : withDomainsPossibleActions) {
-                if (ifDomainActions.contains(action)) {
-                    // If an if-domain trigger matches, add the action.
-                    ASSERT(action & IfDomainFlag);
-                    triggeredActions.add(action & ~IfDomainFlag);
-                } else if (!(action & IfDomainFlag) && !unlessDomainActions.contains(action)) {
-                    // If this action did not need an if-domain, it must have been an unless-domain rule.
-                    // Add the action unless it matched an unless-domain trigger.
-                    triggeredActions.add(action);
-                }
-            }
-        }
+        String domain = resourceLoadInfo.mainDocumentURL.host();
+        DFABytecodeInterpreter withDomainsInterpreter(compiledExtension.filtersWithDomainsBytecode(), compiledExtension.filtersWithDomainsBytecodeLength());
+        DFABytecodeInterpreter::Actions withDomainsActions = withDomainsInterpreter.interpretWithDomains(urlCString, flags, contentExtension->cachedDomainActions(domain));
         
         const SerializedActionByte* actions = compiledExtension.actions();
         const unsigned actionsLength = compiledExtension.actionsLength();
         
         bool sawIgnorePreviousRules = false;
-        if (!triggeredActions.isEmpty()) {
-            Vector<unsigned> actionLocations;
-            actionLocations.reserveInitialCapacity(triggeredActions.size());
-            for (auto actionLocation : triggeredActions)
-                actionLocations.append(static_cast<unsigned>(actionLocation));
+        const Vector<uint32_t>& universalWithDomains = contentExtension->universalActionsWithDomains(domain);
+        const Vector<uint32_t>& universalWithoutDomains = contentExtension->universalActionsWithoutDomains();
+        if (!withoutDomainsActions.isEmpty() || !withDomainsActions.isEmpty() || !universalWithDomains.isEmpty() || !universalWithoutDomains.isEmpty()) {
+            Vector<uint32_t> actionLocations;
+            actionLocations.reserveInitialCapacity(withoutDomainsActions.size() + withDomainsActions.size() + universalWithoutDomains.size() + universalWithDomains.size());
+            for (uint64_t actionLocation : withoutDomainsActions)
+                actionLocations.uncheckedAppend(static_cast<uint32_t>(actionLocation));
+            for (uint64_t actionLocation : withDomainsActions)
+                actionLocations.uncheckedAppend(static_cast<uint32_t>(actionLocation));
+            for (uint32_t actionLocation : universalWithoutDomains)
+                actionLocations.uncheckedAppend(actionLocation);
+            for (uint32_t actionLocation : universalWithDomains)
+                actionLocations.uncheckedAppend(actionLocation);
             std::sort(actionLocations.begin(), actionLocations.end());
 
             // Add actions in reverse order to properly deal with IgnorePreviousRules.
@@ -152,7 +133,7 @@ Vector<Action> ContentExtensionsBackend::actionsForResourceLoad(const ResourceLo
     }
 #if CONTENT_EXTENSIONS_PERFORMANCE_REPORTING
     double addedTimeEnd = monotonicallyIncreasingTime();
-    WTFLogAlways("Time added: %f microseconds %s", (addedTimeEnd - addedTimeStart) * 1.0e6, resourceLoadInfo.resourceURL.string().utf8().data());
+    dataLogF("Time added: %f microseconds %s \n", (addedTimeEnd - addedTimeStart) * 1.0e6, resourceLoadInfo.resourceURL.string().utf8().data());
 #endif
     return finalActions;
 }
@@ -168,17 +149,20 @@ void ContentExtensionsBackend::processContentExtensionRulesForLoad(ResourceReque
     Document* currentDocument = nullptr;
     URL mainDocumentURL;
 
-    if (initiatingDocumentLoader.frame()) {
-        currentDocument = initiatingDocumentLoader.frame()->document();
+    if (Frame* frame = initiatingDocumentLoader.frame()) {
+        currentDocument = frame->document();
 
-        if (Document* mainDocument = initiatingDocumentLoader.frame()->mainFrame().document())
+        if (initiatingDocumentLoader.isLoadingMainResource()
+            && frame->isMainFrame()
+            && resourceType == ResourceType::Document)
+            mainDocumentURL = request.url();
+        else if (Document* mainDocument = frame->mainFrame().document())
             mainDocumentURL = mainDocument->url();
     }
 
     ResourceLoadInfo resourceLoadInfo = { request.url(), mainDocumentURL, resourceType };
     Vector<ContentExtensions::Action> actions = actionsForResourceLoad(resourceLoadInfo);
 
-    StringBuilder css;
     bool willBlockLoad = false;
     for (const auto& action : actions) {
         switch (action.type()) {
@@ -210,8 +194,11 @@ void ContentExtensionsBackend::processContentExtensionRulesForLoad(ResourceReque
         }
     }
 
-    if (willBlockLoad)
+    if (willBlockLoad) {
+        if (currentDocument)
+            currentDocument->addConsoleMessage(MessageSource::ContentBlocker, MessageLevel::Info, makeString("Content blocker prevented frame displaying ", mainDocumentURL.string(), " from loading a resource from ", request.url().string()));
         request = ResourceRequest();
+    }
 }
 
 const String& ContentExtensionsBackend::displayNoneCSSRule()

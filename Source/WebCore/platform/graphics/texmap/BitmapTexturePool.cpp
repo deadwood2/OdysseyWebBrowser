@@ -30,8 +30,6 @@
 #if USE(TEXTURE_MAPPER_GL)
 #include "BitmapTextureGL.h"
 #include "GLContext.h"
-#else
-#include "BitmapTextureImageBuffer.h"
 #endif
 
 namespace WebCore {
@@ -106,6 +104,8 @@ PassRefPtr<BitmapTexture> BitmapTexturePool::createTexture()
 #if USE(TEXTURE_MAPPER_GL)
     BitmapTextureGL* texture = new BitmapTextureGL(m_context3D);
     return adoptRef(texture);
+#else
+    return nullptr;
 #endif
 }
 

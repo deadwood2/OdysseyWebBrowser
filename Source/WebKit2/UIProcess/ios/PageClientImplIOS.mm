@@ -154,10 +154,10 @@ void PageClientImpl::scrollView(const IntRect&, const IntSize&)
     ASSERT_NOT_REACHED();
 }
 
-void PageClientImpl::requestScroll(const FloatPoint& scrollPosition, bool isProgrammaticScroll)
+void PageClientImpl::requestScroll(const FloatPoint& scrollPosition, const IntPoint& scrollOrigin, bool isProgrammaticScroll)
 {
     UNUSED_PARAM(isProgrammaticScroll);
-    [m_webView _scrollToContentOffset:scrollPosition];
+    [m_webView _scrollToContentOffset:scrollPosition scrollOrigin:scrollOrigin];
 }
 
 IntSize PageClientImpl::viewSize()
@@ -185,10 +185,10 @@ bool PageClientImpl::isViewVisible()
     if (isViewInWindow() && !m_contentView.isBackground)
         return true;
     
-    if ([m_webView _isShowingVideoOptimized])
+    if ([m_webView _isShowingVideoPictureInPicture])
         return true;
     
-    if ([m_webView _mayAutomaticallyShowVideoOptimized])
+    if ([m_webView _mayAutomaticallyShowVideoPictureInPicture])
         return true;
     
     return false;
@@ -278,9 +278,9 @@ double PageClientImpl::minimumZoomScale() const
     return 1;
 }
 
-WebCore::FloatSize PageClientImpl::contentsSize() const
+WebCore::FloatRect PageClientImpl::documentRect() const
 {
-    return FloatSize([m_contentView bounds].size);
+    return [m_contentView bounds];
 }
 
 void PageClientImpl::setCursor(const Cursor&)
@@ -441,16 +441,16 @@ void PageClientImpl::doneWithTouchEvent(const NativeWebTouchEvent& nativeWebtouc
 }
 #endif
 
-PassRefPtr<WebPopupMenuProxy> PageClientImpl::createPopupMenuProxy(WebPageProxy*)
+RefPtr<WebPopupMenuProxy> PageClientImpl::createPopupMenuProxy(WebPageProxy*)
 {
     notImplemented();
-    return 0;
+    return nullptr;
 }
 
-PassRefPtr<WebContextMenuProxy> PageClientImpl::createContextMenuProxy(WebPageProxy*)
+RefPtr<WebContextMenuProxy> PageClientImpl::createContextMenuProxy(WebPageProxy*)
 {
     notImplemented();
-    return 0;
+    return nullptr;
 }
 
 void PageClientImpl::setTextIndicator(Ref<TextIndicator> textIndicator, TextIndicatorLifetime)
@@ -517,6 +517,11 @@ void PageClientImpl::didCommitLayerTree(const RemoteLayerTreeTransaction& layerT
 void PageClientImpl::dynamicViewportUpdateChangedTarget(double newScale, const WebCore::FloatPoint& newScrollPosition, uint64_t nextValidLayerTreeTransactionID)
 {
     [m_webView _dynamicViewportUpdateChangedTargetToScale:newScale position:newScrollPosition nextValidLayerTreeTransactionID:nextValidLayerTreeTransactionID];
+}
+
+void PageClientImpl::couldNotRestorePageState()
+{
+    [m_webView _couldNotRestorePageState];
 }
 
 void PageClientImpl::restorePageState(const WebCore::FloatRect& exposedRect, double scale)
@@ -685,6 +690,7 @@ Vector<String> PageClientImpl::mimeTypesWithCustomContentProviders()
 
 void PageClientImpl::navigationGestureDidBegin()
 {
+    [m_webView _navigationGestureDidBegin];
     NavigationState::fromWebPage(*m_webView->_page).navigationGestureDidBegin();
 }
 
@@ -696,6 +702,12 @@ void PageClientImpl::navigationGestureWillEnd(bool willNavigate, WebBackForwardL
 void PageClientImpl::navigationGestureDidEnd(bool willNavigate, WebBackForwardListItem& item)
 {
     NavigationState::fromWebPage(*m_webView->_page).navigationGestureDidEnd(willNavigate, item);
+    [m_webView _navigationGestureDidEnd];
+}
+
+void PageClientImpl::navigationGestureDidEnd()
+{
+    [m_webView _navigationGestureDidEnd];
 }
 
 void PageClientImpl::willRecordNavigationSnapshot(WebBackForwardListItem& item)
@@ -712,6 +724,11 @@ void PageClientImpl::didFinishLoadForMainFrame()
     [m_webView _didFinishLoadForMainFrame];
 }
 
+void PageClientImpl::didFailLoadForMainFrame()
+{
+    [m_webView _didFailLoadForMainFrame];
+}
+
 void PageClientImpl::didSameDocumentNavigationForMainFrame(SameDocumentNavigationType navigationType)
 {
     [m_webView _didSameDocumentNavigationForMainFrame:navigationType];
@@ -720,6 +737,28 @@ void PageClientImpl::didSameDocumentNavigationForMainFrame(SameDocumentNavigatio
 void PageClientImpl::didChangeBackgroundColor()
 {
     [m_webView _updateScrollViewBackground];
+}
+
+#if ENABLE(VIDEO)
+void PageClientImpl::mediaDocumentNaturalSizeChanged(const IntSize& newSize)
+{
+    [m_webView _mediaDocumentNaturalSizeChanged:newSize];
+}
+#endif
+
+
+void PageClientImpl::refView()
+{
+    [m_contentView retain];
+    [m_webView retain];
+    [m_wkView retain];
+}
+
+void PageClientImpl::derefView()
+{
+    [m_contentView release];
+    [m_webView release];
+    [m_wkView release];
 }
 
 } // namespace WebKit

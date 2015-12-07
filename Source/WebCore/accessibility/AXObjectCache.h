@@ -205,6 +205,8 @@ public:
     void postTextStateChangeNotification(Node*, AXTextEditType, const String&, const VisiblePosition&);
     void postTextReplacementNotification(Node*, AXTextEditType deletionType, const String& deletedText, AXTextEditType insertionType, const String& insertedText, const VisiblePosition&);
     void postTextStateChangeNotification(Node*, const AXTextStateChangeIntent&, const VisibleSelection&);
+    void postTextStateChangeNotification(const Position&, const AXTextStateChangeIntent&, const VisibleSelection&);
+    void postLiveRegionChangeNotification(AccessibilityObject*);
 
     enum AXLoadingEvent {
         AXLoadingStarted,
@@ -259,6 +261,10 @@ private:
 
     void notificationPostTimerFired();
 
+    void liveRegionChangedNotificationPostTimerFired();
+
+    void postTextStateChangeNotification(AccessibilityObject*, const AXTextStateChangeIntent&, const VisibleSelection&);
+
     bool enqueuePasswordValueChangeNotification(AccessibilityObject*);
     void passwordNotificationPostTimerFired();
 
@@ -284,6 +290,9 @@ private:
     Timer m_passwordNotificationPostTimer;
 
     ListHashSet<RefPtr<AccessibilityObject>> m_passwordNotificationsToPost;
+    
+    Timer m_liveRegionChangedPostTimer;
+    ListHashSet<RefPtr<AccessibilityObject>> m_liveRegionObjectsSet;
 
     AXTextStateChangeIntent m_textSelectionIntent;
     bool m_isSynchronizingSelection { false };

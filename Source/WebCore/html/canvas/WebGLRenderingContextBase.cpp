@@ -89,6 +89,7 @@
 #include <runtime/JSCInlines.h>
 #include <runtime/TypedArrayInlines.h>
 #include <runtime/Uint32Array.h>
+#include <wtf/CheckedArithmetic.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
@@ -347,6 +348,10 @@ private:
 
 std::unique_ptr<WebGLRenderingContextBase> WebGLRenderingContextBase::create(HTMLCanvasElement* canvas, WebGLContextAttributes* attrs, const String& type)
 {
+#if !ENABLE(WEBGL2)
+    UNUSED_PARAM(type);
+#endif
+
     Document& document = canvas->document();
     Frame* frame = document.frame();
     if (!frame)
@@ -362,8 +367,10 @@ std::unique_ptr<WebGLRenderingContextBase> WebGLRenderingContextBase::create(HTM
     bool isPendingPolicyResolution = false;
     Document& topDocument = document.topDocument();
     Page* page = topDocument.page();
-    if (page && !topDocument.url().isLocalFile()) {
-        WebGLLoadPolicy policy = page->mainFrame().loader().client().webGLPolicyForURL(topDocument.url());
+    bool forcingPendingPolicy = frame->settings().isForcePendingWebGLPolicy();
+
+    if (forcingPendingPolicy || (page && !topDocument.url().isLocalFile())) {
+        WebGLLoadPolicy policy = forcingPendingPolicy ? WebGLPendingCreation : page->mainFrame().loader().client().webGLPolicyForURL(topDocument.url());
 
         if (policy == WebGLBlockCreation) {
             LOG(WebGL, "The policy for this URL (%s) is to block WebGL.", topDocument.url().host().utf8().data());
@@ -396,10 +403,13 @@ std::unique_ptr<WebGLRenderingContextBase> WebGLRenderingContextBase::create(HTM
     if (isPendingPolicyResolution) {
         LOG(WebGL, "Create a WebGL context that looks real, but will require a policy resolution if used.");
         std::unique_ptr<WebGLRenderingContextBase> renderingContext = nullptr;
+#if ENABLE(WEBGL2)
         if (type == "experimental-webgl2")
             renderingContext = std::unique_ptr<WebGL2RenderingContext>(new WebGL2RenderingContext(canvas, attributes));
         else
+#endif
             renderingContext = std::unique_ptr<WebGLRenderingContext>(new WebGLRenderingContext(canvas, attributes));
+        renderingContext->suspendIfNeeded();
         return renderingContext;
     }
 
@@ -416,9 +426,11 @@ std::unique_ptr<WebGLRenderingContextBase> WebGLRenderingContextBase::create(HTM
         extensions->pushGroupMarkerEXT("WebGLRenderingContext");
 
     std::unique_ptr<WebGLRenderingContextBase> renderingContext = nullptr;
+#if ENABLE(WEBGL2)
     if (type == "experimental-webgl2")
         renderingContext = std::unique_ptr<WebGL2RenderingContext>(new WebGL2RenderingContext(canvas, context, attributes));
     else
+#endif
         renderingContext = std::unique_ptr<WebGLRenderingContext>(new WebGLRenderingContext(canvas, context, attributes));
     renderingContext->suspendIfNeeded();
 
@@ -483,10 +495,10 @@ void WebGLRenderingContextBase::initializeNewContext()
     m_unpackFlipY = false;
     m_unpackPremultiplyAlpha = false;
     m_unpackColorspaceConversion = GraphicsContext3D::BROWSER_DEFAULT_WEBGL;
-    m_boundArrayBuffer = 0;
-    m_currentProgram = 0;
-    m_framebufferBinding = 0;
-    m_renderbufferBinding = 0;
+    m_boundArrayBuffer = nullptr;
+    m_currentProgram = nullptr;
+    m_framebufferBinding = nullptr;
+    m_renderbufferBinding = nullptr;
     m_depthMask = true;
     m_stencilEnabled = false;
     m_stencilMask = 0xFFFFFFFF;
@@ -612,7 +624,7 @@ void WebGLRenderingContextBase::destroyGraphicsContext3D()
     if (m_context) {
         m_context->setContextLostCallback(nullptr);
         m_context->setErrorMessageCallback(nullptr);
-        m_context.clear();
+        m_context = nullptr;
     }
 }
 
@@ -779,11 +791,17 @@ void WebGLRenderingContextBase::reshape(int width, int height)
 
 int WebGLRenderingContextBase::drawingBufferWidth() const
 {
+    if (m_isPendingPolicyResolution && !m_hasRequestedPolicyResolution)
+        return 0;
+
     return m_context->getInternalFramebufferSize().width();
 }
 
 int WebGLRenderingContextBase::drawingBufferHeight() const
 {
+    if (m_isPendingPolicyResolution && !m_hasRequestedPolicyResolution)
+        return 0;
+
     return m_context->getInternalFramebufferSize().height();
 }
 
@@ -1462,7 +1480,7 @@ void WebGLRenderingContextBase::deleteBuffer(WebGLBuffer* buffer)
     if (!deleteObject(buffer))
         return;
     if (m_boundArrayBuffer == buffer)
-        m_boundArrayBuffer = 0;
+        m_boundArrayBuffer = nullptr;
 
     m_boundVertexArrayObject->unbindBuffer(buffer);
 }
@@ -1472,7 +1490,7 @@ void WebGLRenderingContextBase::deleteFramebuffer(WebGLFramebuffer* framebuffer)
     if (!deleteObject(framebuffer))
         return;
     if (framebuffer == m_framebufferBinding) {
-        m_framebufferBinding = 0;
+        m_framebufferBinding = nullptr;
         m_context->bindFramebuffer(GraphicsContext3D::FRAMEBUFFER, 0);
     }
 }
@@ -1489,7 +1507,7 @@ void WebGLRenderingContextBase::deleteRenderbuffer(WebGLRenderbuffer* renderbuff
     if (!deleteObject(renderbuffer))
         return;
     if (renderbuffer == m_renderbufferBinding)
-        m_renderbufferBinding = 0;
+        m_renderbufferBinding = nullptr;
     if (m_framebufferBinding)
         m_framebufferBinding->removeAttachmentFromBoundFramebuffer(renderbuffer);
 }
@@ -1690,7 +1708,6 @@ bool WebGLRenderingContextBase::validateVertexAttributes(unsigned elementCount, 
     if (elementCount <= 0)
         return true;
 
-
     // Look in each consumed vertex attrib (by the current program).
     bool sawNonInstancedAttrib = false;
     bool sawEnabledAttrib = false;
@@ -1775,6 +1792,10 @@ bool WebGLRenderingContextBase::validateDrawArrays(const char* functionName, GC3
             synthesizeGLError(GraphicsContext3D::INVALID_OPERATION, functionName, "attempt to access out of bounds arrays");
             return false;
         }
+        if (!validateSimulatedVertexAttrib0(checkedSum.unsafeGet() - 1)) {
+            synthesizeGLError(GraphicsContext3D::INVALID_OPERATION, functionName, "attempt to access outside the bounds of the simulated vertexAttrib0 array");
+            return false;
+        }
     } else {
         if (!validateVertexAttributes(0)) {
             synthesizeGLError(GraphicsContext3D::INVALID_OPERATION, functionName, "attribs not setup correctly");
@@ -1855,6 +1876,12 @@ bool WebGLRenderingContextBase::validateDrawElements(const char* functionName, G
                 return false;
             }
         }
+
+        if (!validateSimulatedVertexAttrib0(numElements)) {
+            synthesizeGLError(GraphicsContext3D::INVALID_OPERATION, functionName, "attempt to access outside the bounds of the simulated vertexAttrib0 array");
+            return false;
+        }
+
     } else {
         if (!validateVertexAttributes(0)) {
             synthesizeGLError(GraphicsContext3D::INVALID_OPERATION, functionName, "attribs not setup correctly");
@@ -2489,7 +2516,7 @@ WebGLGetInfo WebGLRenderingContextBase::getUniform(WebGLProgram* program, const 
             m_context->getUniformfv(objectOrZero(program), location, value);
         if (length == 1)
             return WebGLGetInfo(value[0]);
-        return WebGLGetInfo(Float32Array::create(value, length));
+        return WebGLGetInfo(Float32Array::create(value, length).release());
     }
     case GraphicsContext3D::INT: {
         GC3Dint value[4] = {0};
@@ -2499,7 +2526,7 @@ WebGLGetInfo WebGLRenderingContextBase::getUniform(WebGLProgram* program, const 
             m_context->getUniformiv(objectOrZero(program), location, value);
         if (length == 1)
             return WebGLGetInfo(value[0]);
-        return WebGLGetInfo(Int32Array::create(value, length));
+        return WebGLGetInfo(Int32Array::create(value, length).release());
     }
     case GraphicsContext3D::BOOL: {
         GC3Dint value[4] = {0};
@@ -2598,7 +2625,7 @@ WebGLGetInfo WebGLRenderingContextBase::getVertexAttrib(GC3Duint index, GC3Denum
     case GraphicsContext3D::VERTEX_ATTRIB_ARRAY_TYPE:
         return WebGLGetInfo(state.type);
     case GraphicsContext3D::CURRENT_VERTEX_ATTRIB:
-        return WebGLGetInfo(Float32Array::create(m_vertexAttribValue[index].value, 4));
+        return WebGLGetInfo(Float32Array::create(m_vertexAttribValue[index].value, 4).release());
     default:
         synthesizeGLError(GraphicsContext3D::INVALID_ENUM, "getVertexAttrib", "invalid parameter name");
         return WebGLGetInfo();
@@ -3977,7 +4004,7 @@ WebGLGetInfo WebGLRenderingContextBase::getWebGLFloatArrayParameter(GC3Denum pna
     default:
         notImplemented();
     }
-    return WebGLGetInfo(Float32Array::create(value, length));
+    return WebGLGetInfo(Float32Array::create(value, length).release());
 }
 
 WebGLGetInfo WebGLRenderingContextBase::getWebGLIntArrayParameter(GC3Denum pname)
@@ -3996,7 +4023,7 @@ WebGLGetInfo WebGLRenderingContextBase::getWebGLIntArrayParameter(GC3Denum pname
     default:
         notImplemented();
     }
-    return WebGLGetInfo(Int32Array::create(value, length));
+    return WebGLGetInfo(Int32Array::create(value, length).release());
 }
 
 void WebGLRenderingContextBase::checkTextureCompleteness(const char* functionName, bool prepareToDraw)
@@ -4651,34 +4678,69 @@ void WebGLRenderingContextBase::initVertexAttrib0()
     m_vertexAttrib0UsedBefore = false;
 }
 
+bool WebGLRenderingContextBase::validateSimulatedVertexAttrib0(GC3Dsizei numVertex)
+{
+    if (numVertex < 0)
+        return false;
+
+    if (!m_currentProgram)
+        return true;
+
+    bool usingVertexAttrib0 = m_currentProgram->isUsingVertexAttrib0();
+    if (!usingVertexAttrib0)
+        return true;
+
+    auto& state = m_boundVertexArrayObject->getVertexAttribState(0);
+    if (state.enabled)
+        return true;
+
+    Checked<GC3Dsizei, RecordOverflow> bufferSize(numVertex);
+    bufferSize += 1;
+    bufferSize *= Checked<GC3Dsizei>(4);
+    Checked<GC3Dsizeiptr, RecordOverflow> bufferDataSize(bufferSize);
+    bufferDataSize *= Checked<GC3Dsizeiptr>(sizeof(GC3Dfloat));
+    return !bufferDataSize.hasOverflowed();
+}
+
 bool WebGLRenderingContextBase::simulateVertexAttrib0(GC3Dsizei numVertex)
 {
-    const WebGLVertexArrayObjectBase::VertexAttribState& state = m_boundVertexArrayObject->getVertexAttribState(0);
-    const VertexAttribValue& attribValue = m_vertexAttribValue[0];
     if (!m_currentProgram)
         return false;
     bool usingVertexAttrib0 = m_currentProgram->isUsingVertexAttrib0();
     if (usingVertexAttrib0)
         m_vertexAttrib0UsedBefore = true;
+
+    auto& state = m_boundVertexArrayObject->getVertexAttribState(0);
     if (state.enabled && usingVertexAttrib0)
         return false;
     if (!usingVertexAttrib0 && !m_vertexAttrib0UsedBefore)
         return false;
     m_vertexAttrib0UsedBefore = true;
     m_context->bindBuffer(GraphicsContext3D::ARRAY_BUFFER, m_vertexAttrib0Buffer->object());
-    GC3Dsizeiptr bufferDataSize = (numVertex + 1) * 4 * sizeof(GC3Dfloat);
-    if (bufferDataSize > m_vertexAttrib0BufferSize) {
-        m_context->bufferData(GraphicsContext3D::ARRAY_BUFFER, bufferDataSize, 0, GraphicsContext3D::DYNAMIC_DRAW);
-        m_vertexAttrib0BufferSize = bufferDataSize;
+
+    Checked<GC3Dsizei> bufferSize(numVertex);
+    bufferSize += 1;
+    bufferSize *= Checked<GC3Dsizei>(4);
+
+    Checked<GC3Dsizeiptr> bufferDataSize(bufferSize);
+    bufferDataSize *= Checked<GC3Dsizeiptr>(sizeof(GC3Dfloat));
+
+    if (bufferDataSize.unsafeGet() > m_vertexAttrib0BufferSize) {
+        m_context->bufferData(GraphicsContext3D::ARRAY_BUFFER, bufferDataSize.unsafeGet(), 0, GraphicsContext3D::DYNAMIC_DRAW);
+        m_vertexAttrib0BufferSize = bufferDataSize.unsafeGet();
         m_forceAttrib0BufferRefill = true;
     }
+
+    auto& attribValue = m_vertexAttribValue[0];
+
     if (usingVertexAttrib0
         && (m_forceAttrib0BufferRefill
             || attribValue.value[0] != m_vertexAttrib0BufferValue[0]
             || attribValue.value[1] != m_vertexAttrib0BufferValue[1]
             || attribValue.value[2] != m_vertexAttrib0BufferValue[2]
             || attribValue.value[3] != m_vertexAttrib0BufferValue[3])) {
-        auto bufferData = std::make_unique<GC3Dfloat[]>((numVertex + 1) * 4);
+
+        auto bufferData = std::make_unique<GC3Dfloat[]>(bufferSize.unsafeGet());
         for (GC3Dsizei ii = 0; ii < numVertex + 1; ++ii) {
             bufferData[ii * 4] = attribValue.value[0];
             bufferData[ii * 4 + 1] = attribValue.value[1];
@@ -4690,7 +4752,7 @@ bool WebGLRenderingContextBase::simulateVertexAttrib0(GC3Dsizei numVertex)
         m_vertexAttrib0BufferValue[2] = attribValue.value[2];
         m_vertexAttrib0BufferValue[3] = attribValue.value[3];
         m_forceAttrib0BufferRefill = false;
-        m_context->bufferSubData(GraphicsContext3D::ARRAY_BUFFER, 0, bufferDataSize, bufferData.get());
+        m_context->bufferSubData(GraphicsContext3D::ARRAY_BUFFER, 0, bufferDataSize.unsafeGet(), bufferData.get());
     }
     m_context->vertexAttribPointer(0, 4, GraphicsContext3D::FLOAT, 0, 0, 0);
     return true;

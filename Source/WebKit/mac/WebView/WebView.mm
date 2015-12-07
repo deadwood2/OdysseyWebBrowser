@@ -79,7 +79,6 @@
 #import "WebKitLogging.h"
 #import "WebKitNSStringExtras.h"
 #import "WebKitStatisticsPrivate.h"
-#import "WebKitSystemBits.h"
 #import "WebKitVersionChecks.h"
 #import "WebLocalizableStrings.h"
 #import "WebNSDataExtras.h"
@@ -91,7 +90,6 @@
 #import "WebNodeHighlight.h"
 #import "WebNotificationClient.h"
 #import "WebPDFView.h"
-#import "WebPanelAuthenticationHandler.h"
 #import "WebPlatformStrategies.h"
 #import "WebPluginDatabase.h"
 #import "WebPolicyDelegate.h"
@@ -114,6 +112,7 @@
 #import <CoreFoundation/CFSet.h>
 #import <Foundation/NSURLConnection.h>
 #import <JavaScriptCore/APICast.h>
+#import <JavaScriptCore/Exception.h>
 #import <JavaScriptCore/JSValueRef.h>
 #import <WebCore/AlternativeTextUIController.h>
 #import <WebCore/AnimationController.h>
@@ -123,7 +122,6 @@
 #import <WebCore/CFNetworkSPI.h>
 #import <WebCore/Chrome.h>
 #import <WebCore/ColorMac.h>
-#import <WebCore/Cursor.h>
 #import <WebCore/DatabaseManager.h>
 #import <WebCore/Document.h>
 #import <WebCore/DocumentLoader.h>
@@ -245,7 +243,6 @@
 #import "WebStorageManagerPrivate.h"
 #import "WebUIKitSupport.h"
 #import "WebVisiblePosition.h"
-#import <WebCore/DispatchSPI.h>
 #import <WebCore/EventNames.h>
 #import <WebCore/FontCache.h>
 #import <WebCore/GraphicsLayer.h>
@@ -853,11 +850,11 @@ static bool shouldAllowDisplayAndRunningOfInsecureContent()
     return shouldAllowDisplayAndRunningOfInsecureContent;
 }
 
-static bool shouldAllowAlternateFullscreen()
+static bool shouldAllowPictureInPictureMediaPlayback()
 {
 #if PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000
-    static bool shouldAllowAlternateFullscreen = iosExecutableWasLinkedOnOrAfterVersion(wkIOSSystemVersion_9_0);
-    return shouldAllowAlternateFullscreen;
+    static bool shouldAllowPictureInPictureMediaPlayback = iosExecutableWasLinkedOnOrAfterVersion(wkIOSSystemVersion_9_0);
+    return shouldAllowPictureInPictureMediaPlayback;
 #else
     return false;
 #endif
@@ -1088,6 +1085,10 @@ static void WebKitInitializeGamepadProviderIfNecessary()
 
     _private->page->setDeviceScaleFactor([self _deviceScaleFactor]);
 #endif
+
+#if PLATFORM(IOS)
+    _private->page->settings().setContentDispositionAttachmentSandboxEnabled(true);
+#endif
 }
 
 - (id)_initWithFrame:(NSRect)f frameName:(NSString *)frameName groupName:(NSString *)groupName
@@ -1235,6 +1236,9 @@ static void WebKitInitializeGamepadProviderIfNecessary()
     // FIXME: this is a workaround for <rdar://problem/11820090> Quoted text changes in size when replying to certain email
     _private->page->settings().setMinimumFontSize([_private->preferences minimumFontSize]);
 
+    // This is a workaround for <rdar://problem/21309911>.
+    _private->page->settings().setHttpEquivEnabled([_private->preferences httpEquivEnabled]);
+
     _private->page->setGroupName(groupName);
 
 #if ENABLE(REMOTE_INSPECTOR)
@@ -1284,7 +1288,7 @@ static void WebKitInitializeGamepadProviderIfNecessary()
         [WebView _handleMemoryWarning];
     }, shouldAutoClearPressureOnMemoryRelease);
 
-    static dispatch_source_t memoryNotificationEventSource = dispatch_source_create(DISPATCH_SOURCE_TYPE_MEMORYSTATUS, 0, DISPATCH_MEMORYSTATUS_PRESSURE_WARN, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0));
+    static dispatch_source_t memoryNotificationEventSource = dispatch_source_create(DISPATCH_SOURCE_TYPE_MEMORYPRESSURE, 0, DISPATCH_MEMORYPRESSURE_WARN, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0));
     dispatch_source_set_event_handler(memoryNotificationEventSource, ^{
         // Set memory pressure flag and schedule releasing memory in web thread runloop exit.
         MemoryPressureHandler::singleton().setReceivedMemoryPressure(WebCore::MemoryPressureReasonVMPressure);
@@ -1294,15 +1298,15 @@ static void WebKitInitializeGamepadProviderIfNecessary()
 
     if (!shouldAutoClearPressureOnMemoryRelease) {
         // Listen to memory status notification to reset the memory pressure flag.
-        static dispatch_source_t memoryStatusEventSource = dispatch_source_create(DISPATCH_SOURCE_TYPE_MEMORYSTATUS,
+        static dispatch_source_t memoryStatusEventSource = dispatch_source_create(DISPATCH_SOURCE_TYPE_MEMORYPRESSURE,
                                                                                     0,
-                                                                                    DISPATCH_MEMORYSTATUS_PRESSURE_WARN | DISPATCH_MEMORYSTATUS_PRESSURE_NORMAL,
+                                                                                    DISPATCH_MEMORYPRESSURE_WARN | DISPATCH_MEMORYPRESSURE_NORMAL,
                                                                                     dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0));
         dispatch_source_set_event_handler(memoryStatusEventSource, ^{
             unsigned long currentStatus = dispatch_source_get_data(memoryStatusEventSource);
-            if (currentStatus == DISPATCH_MEMORYSTATUS_PRESSURE_NORMAL)
+            if (currentStatus == DISPATCH_MEMORYPRESSURE_NORMAL)
                 MemoryPressureHandler::singleton().clearMemoryPressure();
-            else if (currentStatus == DISPATCH_MEMORYSTATUS_PRESSURE_WARN)
+            else if (currentStatus == DISPATCH_MEMORYPRESSURE_WARN)
                 MemoryPressureHandler::singleton().setReceivedMemoryPressure(WebCore::MemoryPressureReasonVMStatus);
         });
 
@@ -1324,11 +1328,6 @@ static void WebKitInitializeGamepadProviderIfNecessary()
         // Clear the main thread's TCMalloc thread cache.
         [WebView releaseFastMallocMemoryOnCurrentThread];
     });
-}
-
-+ (void)_clearPrivateBrowsingSessionCookieStorage
-{
-    WebFrameNetworkingContext::clearPrivateBrowsingSessionCookieStorage();
 }
 
 - (void)_replaceCurrentHistoryItem:(WebHistoryItem *)item
@@ -1356,7 +1355,7 @@ static void WebKitInitializeGamepadProviderIfNecessary()
 {
     ASSERT(WebThreadIsCurrent());
     WebKit::MemoryMeasure measurer("Memory warning: Calling JavaScript GC.");
-    gcController().garbageCollectNow();
+    GCController::singleton().garbageCollectNow();
 }
 
 + (void)purgeInactiveFontData
@@ -1377,7 +1376,7 @@ static void WebKitInitializeGamepadProviderIfNecessary()
 {
     ASSERT(WebThreadIsCurrent());
     WebKit::MemoryMeasure measurer("Memory warning: Discarding JIT'ed code.");
-    gcController().discardAllCompiledCode();
+    GCController::singleton().discardAllCompiledCode();
 }
 
 + (BOOL)isCharacterSmartReplaceExempt:(unichar)character isPreviousCharacter:(BOOL)b
@@ -1563,6 +1562,14 @@ static NSMutableSet *knownPluginMIMETypes()
     if (!_private->page)
         return 0;
     return _private->page->renderTreeSize();
+}
+
+- (NSSize)_contentsSizeRespectingOverflow
+{
+    if (FrameView* view = [self _mainCoreFrame]->view())
+        return view->contentsSizeRespectingOverflow();
+    
+    return [[[[self mainFrame] frameView] documentView] bounds].size;
 }
 
 - (void)_dispatchTileDidDraw:(CALayer*)tile
@@ -1808,7 +1815,7 @@ static bool fastDocumentTeardownEnabled()
 #ifndef NDEBUG
     // Need this to make leak messages accurate.
     if (applicationIsTerminating) {
-        gcController().garbageCollectNow();
+        GCController::singleton().garbageCollectNow();
         [WebCache setDisabled:YES];
     }
 #endif
@@ -2298,7 +2305,8 @@ static bool needsSelfRetainWhileLoadingQuirk()
 
     settings.setRequiresUserGestureForMediaPlayback([preferences mediaPlaybackRequiresUserGesture]);
     settings.setAllowsInlineMediaPlayback([preferences mediaPlaybackAllowsInline]);
-    settings.setAllowsAlternateFullscreen([preferences allowsAlternateFullscreen] && shouldAllowAlternateFullscreen());
+    settings.setAllowsPictureInPictureMediaPlayback([preferences allowsPictureInPictureMediaPlayback] && shouldAllowPictureInPictureMediaPlayback());
+    settings.setMediaControlsScaleWithPageZoom([preferences mediaControlsScaleWithPageZoom]);
     settings.setSuppressesIncrementalRendering([preferences suppressesIncrementalRendering]);
     settings.setBackspaceKeyNavigationEnabled([preferences backspaceKeyNavigationEnabled]);
     settings.setWantsBalancedSetDefersLoadingBehavior([preferences wantsBalancedSetDefersLoadingBehavior]);
@@ -2331,7 +2339,7 @@ static bool needsSelfRetainWhileLoadingQuirk()
     }
 
     settings.setPlugInSnapshottingEnabled([preferences plugInSnapshottingEnabled]);
-    settings.setMetaRefreshEnabled([preferences metaRefreshEnabled]);
+    settings.setHttpEquivEnabled([preferences httpEquivEnabled]);
 
     settings.setFixedPositionCreatesStackingContext(true);
 #if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
@@ -3787,14 +3795,6 @@ static inline IMP getMethod(id o, SEL s)
     return [[[WebTextIterator alloc] initWithRange:kit(selectionInsideRect.toNormalizedRange().get())] autorelease];
 }
 
-#if ENABLE(DASHBOARD_SUPPORT)
-- (void)handleAuthenticationForResource:(id)identifier challenge:(NSURLAuthenticationChallenge *)challenge fromDataSource:(WebDataSource *)dataSource 
-{
-    NSWindow *window = [self hostWindow] ? [self hostWindow] : [self window]; 
-    [[WebPanelAuthenticationHandler sharedHandler] startAuthentication:challenge window:window]; 
-} 
-#endif
-
 #if !PLATFORM(IOS)
 - (void)_clearUndoRedoOperations
 {
@@ -3839,13 +3839,6 @@ static inline IMP getMethod(id o, SEL s)
 {
     return _private->page->areMemoryCacheClientCallsEnabled();
 }
-
-#if !PLATFORM(IOS)
-+ (NSCursor *)_pointingHandCursor
-{
-    return handCursor().platformCursor();
-}
-#endif
 
 - (BOOL)_postsAcceleratedCompositingNotifications
 {
@@ -7734,7 +7727,10 @@ static WebFrameView *containingFrameView(NSView *view)
         nsurlCacheDirectory = NSHomeDirectory();
 
     static uint64_t memSize = ramSize() / 1024 / 1024;
-    unsigned long long diskFreeSize = WebVolumeFreeSize(nsurlCacheDirectory) / 1024 / 1000;
+
+    NSDictionary *fileSystemAttributesDictionary = [[NSFileManager defaultManager] attributesOfFileSystemForPath:nsurlCacheDirectory error:nullptr];
+    unsigned long long diskFreeSize = [[fileSystemAttributesDictionary objectForKey:NSFileSystemFreeSize] unsignedLongLongValue] / 1024 / 1000;
+
     NSURLCache *nsurlCache = [NSURLCache sharedURLCache];
 
     unsigned cacheTotalCapacity = 0;
@@ -8289,6 +8285,19 @@ static WebFrameView *containingFrameView(NSView *view)
     if (result == nil)
         result = [self mainFrame];
     return result;
+}
+
+- (void)_clearCredentials
+{
+    Frame* frame = [self _mainCoreFrame];
+    if (!frame)
+        return;
+
+    NetworkingContext* networkingContext = frame->loader().networkingContext();
+    if (!networkingContext)
+        return;
+
+    networkingContext->storageSession().credentialStorage().clearCredentials();
 }
 
 - (BOOL)_needsOneShotDrawingSynchronization

@@ -35,6 +35,7 @@
 #include <heap/Weak.h>
 #include <heap/WeakInlines.h>
 #include <runtime/Error.h>
+#include <runtime/IteratorOperations.h>
 #include <runtime/JSArray.h>
 #include <runtime/JSArrayBuffer.h>
 #include <runtime/JSCJSValueInlines.h>
@@ -238,16 +239,12 @@ template<typename WrapperClass, typename DOMClass> inline JSC::JSValue createNew
     return createWrapper<WrapperClass>(globalObject, domObject);
 }
 
-inline JSC::JSValue argumentOrNull(JSC::ExecState* exec, unsigned index)
-{
-    return index >= exec->argumentCount() ? JSC::JSValue() : exec->argument(index);
-}
-
 void addImpureProperty(const AtomicString&);
 
 const JSC::HashTable& getHashTableForGlobalData(JSC::VM&, const JSC::HashTable& staticTable);
 
 WEBCORE_EXPORT void reportException(JSC::ExecState*, JSC::JSValue exception, CachedScript* = nullptr);
+WEBCORE_EXPORT void reportException(JSC::ExecState*, JSC::Exception*, CachedScript* = nullptr);
 void reportCurrentException(JSC::ExecState*);
 
 JSC::JSValue createDOMException(JSC::ExecState*, ExceptionCode);
@@ -318,6 +315,8 @@ inline uint32_t toUInt32(JSC::ExecState* exec, JSC::JSValue value, IntegerConver
 WEBCORE_EXPORT int64_t toInt64(JSC::ExecState*, JSC::JSValue, IntegerConversionConfiguration);
 WEBCORE_EXPORT uint64_t toUInt64(JSC::ExecState*, JSC::JSValue, IntegerConversionConfiguration);
 
+// Returns a Date instnace for the specified value, or NaN if the date is not a number.
+JSC::JSValue jsDateOrNaN(JSC::ExecState*, double);
 // Returns a Date instance for the specified value, or null if the value is NaN or infinity.
 JSC::JSValue jsDateOrNull(JSC::ExecState*, double);
 // NaN if the value can't be converted to a date.
@@ -396,6 +395,21 @@ template<typename T> inline JSC::JSValue toJS(JSC::ExecState* exec, JSDOMGlobalO
 inline JSC::JSValue toJS(JSC::ExecState* exec, JSDOMGlobalObject*, const String& value)
 {
     return jsStringOrNull(exec, value);
+}
+
+inline JSC::JSValue toJSIterator(JSC::ExecState& state, JSDOMGlobalObject&, JSC::JSValue value)
+{
+    return createIteratorResultObject(&state, value, false);
+}
+
+template<typename T> inline JSC::JSValue toJSIterator(JSC::ExecState& state, JSDOMGlobalObject& globalObject, const T& value)
+{
+    return createIteratorResultObject(&state, toJS(&state, &globalObject, value), false);
+}
+
+inline JSC::JSValue toJSIteratorEnd(JSC::ExecState& state)
+{
+    return createIteratorResultObject(&state, JSC::jsUndefined(), true);
 }
 
 template<typename T> struct JSValueTraits {
@@ -489,6 +503,14 @@ template<> struct NativeValueTraits<float> {
     static inline bool nativeValue(JSC::ExecState* exec, JSC::JSValue jsValue, float& indexedValue)
     {
         indexedValue = jsValue.toFloat(exec);
+        return !exec->hadException();
+    }
+};
+
+template<> struct NativeValueTraits<double> {
+    static inline bool nativeValue(JSC::ExecState* exec, JSC::JSValue jsValue, double& indexedValue)
+    {
+        indexedValue = jsValue.toNumber(exec);
         return !exec->hadException();
     }
 };

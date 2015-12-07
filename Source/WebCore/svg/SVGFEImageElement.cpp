@@ -77,7 +77,10 @@ void SVGFEImageElement::clearResourceReferences()
 
 void SVGFEImageElement::requestImageResource()
 {
-    CachedResourceRequest request(ResourceRequest(document().completeURL(href())));
+    ResourceLoaderOptions options = CachedResourceLoader::defaultCachedResourceOptions();
+    options.setContentSecurityPolicyImposition(isInUserAgentShadowTree() ? ContentSecurityPolicyImposition::SkipPolicyCheck : ContentSecurityPolicyImposition::DoPolicyCheck);
+
+    CachedResourceRequest request(ResourceRequest(document().completeURL(href())), options);
     request.setInitiator(this);
     m_cachedImage = document().cachedResourceLoader().requestImage(request);
 
@@ -143,10 +146,10 @@ void SVGFEImageElement::svgAttributeChanged(const QualifiedName& attrName)
 Node::InsertionNotificationRequest SVGFEImageElement::insertedInto(ContainerNode& rootParent)
 {
     SVGFilterPrimitiveStandardAttributes::insertedInto(rootParent);
-    return InsertionShouldCallDidNotifySubtreeInsertions;
+    return InsertionShouldCallFinishedInsertingSubtree;
 }
 
-void SVGFEImageElement::didNotifySubtreeInsertions(ContainerNode*)
+void SVGFEImageElement::finishedInsertingSubtree()
 {
     buildPendingResource();
 }

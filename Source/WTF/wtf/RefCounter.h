@@ -67,7 +67,7 @@ public:
         inline Token<T>& operator=(const Token<T>&);
         inline Token<T>& operator=(Token<T>&&);
 
-        bool operator!() const { return !m_ptr; }
+        explicit operator bool() const { return m_ptr; }
 
     private:
         friend class RefCounter;
@@ -85,7 +85,7 @@ public:
         return Token<T>(m_count);
     }
 
-    bool value() const
+    unsigned value() const
     {
         return m_count->m_value;
     }

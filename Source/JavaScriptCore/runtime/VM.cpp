@@ -42,6 +42,7 @@
 #include "DFGWorklist.h"
 #include "Disassembler.h"
 #include "ErrorInstance.h"
+#include "Exception.h"
 #include "FTLThunks.h"
 #include "FunctionConstructor.h"
 #include "GCActivityCallback.h"
@@ -63,7 +64,6 @@
 #include "JSNameScope.h"
 #include "JSNotAnObject.h"
 #include "JSPromiseDeferred.h"
-#include "JSPromiseReaction.h"
 #include "JSPropertyNameEnumerator.h"
 #include "JSTemplateRegistryKey.h"
 #include "JSWithScope.h"
@@ -235,10 +235,8 @@ VM::VM(VMType vmType, HeapType heapType)
     weakMapDataStructure.set(*this, WeakMapData::createStructure(*this, 0, jsNull()));
     inferredValueStructure.set(*this, InferredValue::createStructure(*this, 0, jsNull()));
     functionRareDataStructure.set(*this, FunctionRareData::createStructure(*this, 0, jsNull()));
-#if ENABLE(PROMISES)
+    exceptionStructure.set(*this, Exception::createStructure(*this, 0, jsNull()));
     promiseDeferredStructure.set(*this, JSPromiseDeferred::createStructure(*this, 0, jsNull()));
-    promiseReactionStructure.set(*this, JSPromiseReaction::createStructure(*this, 0, jsNull()));
-#endif
     iterationTerminator.set(*this, JSFinalObject::create(*this, JSFinalObject::createStructure(*this, 0, jsNull(), 1)));
     smallStrings.initializeCommonStrings(*this);
 
@@ -338,17 +336,17 @@ VM::~VM()
 #endif
 }
 
-PassRefPtr<VM> VM::createContextGroup(HeapType heapType)
+Ref<VM> VM::createContextGroup(HeapType heapType)
 {
-    return adoptRef(new VM(APIContextGroup, heapType));
+    return adoptRef(*new VM(APIContextGroup, heapType));
 }
 
-PassRefPtr<VM> VM::create(HeapType heapType)
+Ref<VM> VM::create(HeapType heapType)
 {
-    return adoptRef(new VM(Default, heapType));
+    return adoptRef(*new VM(Default, heapType));
 }
 
-PassRefPtr<VM> VM::createLeaked(HeapType heapType)
+Ref<VM> VM::createLeaked(HeapType heapType)
 {
     return create(heapType);
 }
@@ -502,7 +500,7 @@ struct StackPreservingRecompiler : public MarkedBlock::VoidFunctor {
         FunctionExecutable* executable = jsCast<FunctionExecutable*>(cell);
         if (currentlyExecutingFunctions.contains(executable))
             return;
-        executable->clearCodeIfNotCompiling();
+        executable->clearCode();
     }
     IterationStatus operator()(JSCell* cell)
     {
@@ -545,7 +543,7 @@ void VM::releaseExecutableMemory()
     heap.collectAllGarbage();
 }
 
-JSValue VM::throwException(ExecState* exec, JSValue error)
+void VM::throwException(ExecState* exec, Exception* exception)
 {
     if (Options::breakOnThrow()) {
         dataLog("In call frame ", RawPointer(exec), " for code block ", *exec->codeBlock(), "\n");
@@ -553,37 +551,22 @@ JSValue VM::throwException(ExecState* exec, JSValue error)
     }
     
     ASSERT(exec == topCallFrame || exec == exec->lexicalGlobalObject()->globalExec() || exec == exec->vmEntryGlobalObject()->globalExec());
-    
-    Vector<StackFrame> stackTrace;
-    interpreter->getStackTrace(stackTrace);
-    m_exceptionStack = RefCountedArray<StackFrame>(stackTrace);
-    m_exception = error;
-
-    return error;
+    setException(exception);
 }
-    
+
+JSValue VM::throwException(ExecState* exec, JSValue thrownValue)
+{
+    Exception* exception = jsDynamicCast<Exception*>(thrownValue);
+    if (!exception)
+        exception = Exception::create(*this, thrownValue);
+
+    throwException(exec, exception);
+    return JSValue(exception);
+}
+
 JSObject* VM::throwException(ExecState* exec, JSObject* error)
 {
     return asObject(throwException(exec, JSValue(error)));
-}
-void VM::getExceptionInfo(JSValue& exception, RefCountedArray<StackFrame>& exceptionStack)
-{
-    exception = m_exception;
-    exceptionStack = m_exceptionStack;
-}
-void VM::setExceptionInfo(JSValue& exception, RefCountedArray<StackFrame>& exceptionStack)
-{
-    m_exception = exception;
-    m_exceptionStack = exceptionStack;
-}
-
-void VM::clearException()
-{
-    m_exception = JSValue();
-}
-void VM:: clearExceptionStack()
-{
-    m_exceptionStack = RefCountedArray<StackFrame>();
 }
 
 void VM::setStackPointerAtVMEntry(void* sp)
@@ -837,6 +820,22 @@ void VM::dumpTypeProfilerData()
 
     typeProfilerLog()->processLogEntries(ASCIILiteral("VM Dump Types"));
     typeProfiler()->dumpTypeProfilerData(*this);
+}
+
+void VM::queueMicrotask(JSGlobalObject* globalObject, PassRefPtr<Microtask> task)
+{
+    m_microtaskQueue.append(std::make_unique<QueuedTask>(*this, globalObject, task));
+}
+
+void VM::drainMicrotasks()
+{
+    while (!m_microtaskQueue.isEmpty())
+        m_microtaskQueue.takeFirst()->run();
+}
+
+void QueuedTask::run()
+{
+    m_microtask->run(m_globalObject->globalExec());
 }
 
 void sanitizeStackForVM(VM* vm)

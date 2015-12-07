@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2015 Tobias Reiss <tobi+webkit@basecode.de>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +30,11 @@ WebInspector.LogManager = class LogManager extends WebInspector.Object
     {
         super();
 
+        this._clearMessagesRequested = false;
+        this._isNewPageOrReload = false;
+
+        this.clearLogOnNavigateSetting = new WebInspector.Setting("clear-log-on-navigate", true);
+
         WebInspector.Frame.addEventListener(WebInspector.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
     }
 
@@ -53,14 +59,30 @@ WebInspector.LogManager = class LogManager extends WebInspector.Object
 
         WebInspector.ConsoleCommandResultMessage.clearMaximumSavedResultIndex();
 
-        // We don't want to clear messages on reloads. We can't determine that easily right now.
-        // FIXME: <rdar://problem/13767079> Console.messagesCleared should include a reason
-        this._shouldClearMessages = true;
-        setTimeout(function() {
-            if (this._shouldClearMessages)
-                this.dispatchEventToListeners(WebInspector.LogManager.Event.ActiveLogCleared);
-            delete this._shouldClearMessages;
-        }.bind(this), 0);
+        if (this._clearMessagesRequested) {
+            // Frontend requested "clear console" and Backend successfully completed the request.
+            this._clearMessagesRequested = false;
+            this.dispatchEventToListeners(WebInspector.LogManager.Event.Cleared);
+        } else {
+            // Received an unrequested clear console event.
+            // This could be for a navigation or other reasons (like console.clear()).
+            // If this was a reload, we may not want to dispatch WebInspector.LogManager.Event.Cleared.
+            // To detect if this is a reload we wait a turn and check if there was a main resource change reload.
+            setTimeout(this._delayedMessagesCleared.bind(this), 0);
+        }
+    }
+
+    _delayedMessagesCleared()
+    {
+        if (this._isNewPageOrReload) {
+            this._isNewPageOrReload = false;
+
+            if (!this.clearLogOnNavigateSetting.value)
+                return;
+        }
+
+        // A console.clear() or command line clear() happened.
+        this.dispatchEventToListeners(WebInspector.LogManager.Event.Cleared);
     }
 
     messageRepeatCountUpdated(count)
@@ -72,6 +94,8 @@ WebInspector.LogManager = class LogManager extends WebInspector.Object
 
     requestClearMessages()
     {
+        this._clearMessagesRequested = true;
+
         ConsoleAgent.clearMessages();
     }
 
@@ -84,16 +108,12 @@ WebInspector.LogManager = class LogManager extends WebInspector.Object
         if (!event.target.isMainFrame())
             return;
 
-        var oldMainResource = event.data.oldMainResource;
-        var newMainResource = event.target.mainResource;
-        if (oldMainResource.url !== newMainResource.url)
-            this.dispatchEventToListeners(WebInspector.LogManager.Event.Cleared);
-        else
+        this._isNewPageOrReload = true;
+
+        if (event.data.oldMainResource.url === event.target.mainResource.url)
             this.dispatchEventToListeners(WebInspector.LogManager.Event.SessionStarted);
 
         WebInspector.ConsoleCommandResultMessage.clearMaximumSavedResultIndex();
-
-        delete this._shouldClearMessages;
     }
 };
 
@@ -101,6 +121,5 @@ WebInspector.LogManager.Event = {
     SessionStarted: "log-manager-session-was-started",
     Cleared: "log-manager-cleared",
     MessageAdded: "log-manager-message-added",
-    ActiveLogCleared: "log-manager-current-log-cleared",
     PreviousMessageRepeatCountUpdated: "log-manager-previous-message-repeat-count-updated"
 };

@@ -121,8 +121,9 @@
 #define WebKitHixie76WebSocketProtocolEnabledKey @"WebKitHixie76WebSocketProtocolEnabled"
 #define WebKitRequiresUserGestureForMediaPlaybackPreferenceKey @"WebKitMediaPlaybackRequiresUserGesture"
 #define WebKitAllowsInlineMediaPlaybackPreferenceKey @"WebKitMediaPlaybackAllowsInline"
-#define WebKitAllowsAlternateFullscreenPreferenceKey @"WebKitAllowsAlternateFullscreen"
+#define WebKitAllowsPictureInPictureMediaPlaybackPreferenceKey @"WebKitAllowsPictureInPictureMediaPlayback"
 #define WebKitAllowsAirPlayForMediaPlaybackPreferenceKey @"WebKitMediaPlaybackAllowsAirPlay"
+#define WebKitMediaControlsScaleWithPageZoomPreferenceKey @"WebKitMediaControlsScaleWithPageZoom"
 #define WebKitMockScrollbarsEnabledPreferenceKey @"WebKitMockScrollbarsEnabled"
 #define WebKitShouldDisplaySubtitlesPreferenceKey @"WebKitShouldDisplaySubtitles"
 #define WebKitShouldDisplayCaptionsPreferenceKey @"WebKitShouldDisplayCaptions"
@@ -172,7 +173,7 @@
 #define WebKitDebugFullPageZoomPreferenceKey @"WebKitDebugFullPageZoomPreferenceKey"
 #define WebKitMinimumZoomFontSizePreferenceKey @"WebKitMinimumZoomFontSizePreferenceKey"
 #define WebKitAntialiasedFontDilationEnabledKey @"AntialiasedFontDilationEnabled"
-#define WebKitMetaRefreshEnabledPreferenceKey @"WebKitMetaRefreshEnabled"
+#define WebKitHTTPEquivEnabledPreferenceKey @"WebKitHTTPEquivEnabled"
 
 #if TARGET_OS_IPHONE
 #define WebKitStandalonePreferenceKey @"WebKitStandalonePreferenceKey"

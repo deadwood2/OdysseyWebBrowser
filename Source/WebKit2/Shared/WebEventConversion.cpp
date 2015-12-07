@@ -204,7 +204,7 @@ public:
         m_windowsVirtualKeyCode = webEvent.windowsVirtualKeyCode();
         m_nativeVirtualKeyCode = webEvent.nativeVirtualKeyCode();
         m_macCharCode = webEvent.macCharCode();
-#if USE(APPKIT)
+#if USE(APPKIT) || PLATFORM(GTK)
         m_handledByInputMethod = webEvent.handledByInputMethod();
         m_commands = webEvent.commands();
 #endif
@@ -332,6 +332,7 @@ public:
         m_gestureRotation = webEvent.gestureRotation();
         m_canPreventNativeGestures = webEvent.canPreventNativeGestures();
         m_isGesture = webEvent.isGesture();
+        m_isPotentialTap = webEvent.isPotentialTap();
         m_position = webEvent.position();
         m_globalPosition = webEvent.position();
 #else

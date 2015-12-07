@@ -34,7 +34,6 @@
 #import "WebFrameNetworkingContext.h"
 #import "WebKitLogging.h"
 #import "WebKitNSStringExtras.h"
-#import "WebKitSystemBits.h"
 #import "WebKitSystemInterface.h"
 #import "WebKitVersionChecks.h"
 #import "WebNSDictionaryExtras.h"
@@ -444,7 +443,8 @@ public:
 #endif
         [NSNumber numberWithBool:YES],  WebKitPluginsEnabledPreferenceKey,
         [NSNumber numberWithBool:YES],  WebKitDatabasesEnabledPreferenceKey,
-        [NSNumber numberWithBool:YES],  WebKitMetaRefreshEnabledPreferenceKey,
+        [NSNumber numberWithBool:YES],  WebKitHTTPEquivEnabledPreferenceKey,
+
 #if PLATFORM(IOS)
         [NSNumber numberWithBool:NO],   WebKitStorageTrackerEnabledPreferenceKey,
 #endif
@@ -519,6 +519,7 @@ public:
 #if !PLATFORM(IOS)
         [NSNumber numberWithBool:NO],   WebKitRequiresUserGestureForMediaPlaybackPreferenceKey,
         [NSNumber numberWithBool:YES],  WebKitAllowsInlineMediaPlaybackPreferenceKey,
+        [NSNumber numberWithBool:YES],  WebKitMediaControlsScaleWithPageZoomPreferenceKey,
         [NSNumber numberWithBool:NO],   WebKitWebAudioEnabledPreferenceKey,
         [NSNumber numberWithBool:YES],  WebKitBackspaceKeyNavigationEnabledKey,
         [NSNumber numberWithBool:NO],   WebKitShouldDisplaySubtitlesPreferenceKey,
@@ -529,6 +530,7 @@ public:
 #else
         [NSNumber numberWithBool:YES],  WebKitRequiresUserGestureForMediaPlaybackPreferenceKey,
         [NSNumber numberWithBool:NO],   WebKitAllowsInlineMediaPlaybackPreferenceKey,
+        [NSNumber numberWithBool:NO],   WebKitMediaControlsScaleWithPageZoomPreferenceKey,
         [NSNumber numberWithUnsignedInt:AudioSession::None],  WebKitAudioSessionCategoryOverride,
 #if HAVE(AVKIT)
         [NSNumber numberWithBool:YES],  WebKitAVKitEnabled,
@@ -547,7 +549,7 @@ public:
 #if ENABLE(WIRELESS_TARGET_PLAYBACK)
         [NSNumber numberWithBool:YES],  WebKitAllowsAirPlayForMediaPlaybackPreferenceKey,
 #endif
-        [NSNumber numberWithBool:YES],  WebKitAllowsAlternateFullscreenPreferenceKey,
+        [NSNumber numberWithBool:YES],  WebKitAllowsPictureInPictureMediaPlaybackPreferenceKey,
         [NSNumber numberWithBool:YES],  WebKitRequestAnimationFrameEnabledPreferenceKey,
         [NSNumber numberWithBool:NO],   WebKitWantsBalancedSetDefersLoadingBehaviorKey,
         [NSNumber numberWithBool:NO],   WebKitDiagnosticLoggingEnabledKey,
@@ -2196,14 +2198,34 @@ static NSString *classIBCreatorID = nil;
     [self _setBoolValue:flag forKey:WebKitAllowsInlineMediaPlaybackPreferenceKey];
 }
 
+- (BOOL)mediaControlsScaleWithPageZoom
+{
+    return [self _boolValueForKey:WebKitMediaControlsScaleWithPageZoomPreferenceKey];
+}
+
+- (void)setMediaControlsScaleWithPageZoom:(BOOL)flag
+{
+    [self _setBoolValue:flag forKey:WebKitMediaControlsScaleWithPageZoomPreferenceKey];
+}
+
 - (BOOL)allowsAlternateFullscreen
 {
-    return [self _boolValueForKey:WebKitAllowsAlternateFullscreenPreferenceKey];
+    return [self allowsPictureInPictureMediaPlayback];
 }
 
 - (void)setAllowsAlternateFullscreen:(BOOL)flag
 {
-    [self _setBoolValue:flag forKey:WebKitAllowsAlternateFullscreenPreferenceKey];
+    [self setAllowsPictureInPictureMediaPlayback:flag];
+}
+
+- (BOOL)allowsPictureInPictureMediaPlayback
+{
+    return [self _boolValueForKey:WebKitAllowsPictureInPictureMediaPlaybackPreferenceKey];
+}
+
+- (void)setAllowsPictureInPictureMediaPlayback:(BOOL)flag
+{
+    [self _setBoolValue:flag forKey:WebKitAllowsPictureInPictureMediaPlaybackPreferenceKey];
 }
 
 - (BOOL)mockScrollbarsEnabled
@@ -2517,12 +2539,22 @@ static NSString *classIBCreatorID = nil;
 
 - (void)setMetaRefreshEnabled:(BOOL)enabled
 {
-    [self _setBoolValue:enabled forKey:WebKitMetaRefreshEnabledPreferenceKey];
+    [self setHTTPEquivEnabled:enabled];
 }
 
 - (BOOL)metaRefreshEnabled
 {
-    return [self _boolValueForKey:WebKitMetaRefreshEnabledPreferenceKey];
+    return [self httpEquivEnabled];
+}
+
+- (void)setHTTPEquivEnabled:(BOOL)enabled
+{
+    [self _setBoolValue:enabled forKey:WebKitHTTPEquivEnabledPreferenceKey];
+}
+
+- (BOOL)httpEquivEnabled
+{
+    return [self _boolValueForKey:WebKitHTTPEquivEnabledPreferenceKey];
 }
 
 - (BOOL)javaScriptMarkupEnabled
