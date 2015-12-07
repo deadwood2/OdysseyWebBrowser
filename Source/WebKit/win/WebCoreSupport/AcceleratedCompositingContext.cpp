@@ -38,6 +38,7 @@
 #include <WebCore/MainFrame.h>
 #include <WebCore/Page.h>
 #include <WebCore/Settings.h>
+#include <WebCore/SystemInfo.h>
 #include <WebCore/TemporaryOpenGLSetting.h>
 #include <WebCore/TextureMapperGL.h>
 #include <WebCore/TextureMapperLayer.h>
@@ -250,6 +251,10 @@ bool AcceleratedCompositingContext::acceleratedCompositingAvailable()
     const int width = 10;
     const int height = 10;
 
+    // ANGLE requires Win7 or later.
+    if (windowsVersion() < Windows7)
+        return false;
+
     // Create test window to render texture in.
     HWND testWindow = ::CreateWindowEx(WS_EX_NOACTIVATE, defWndProcWindowClassName(), L"AcceleratedCompositingTesterWindow", WS_POPUP | WS_VISIBLE | WS_DISABLED, -width, -height, width, height, 0, 0, 0, 0);
 
@@ -329,9 +334,10 @@ void AcceleratedCompositingContext::scheduleLayerFlush()
 
 bool AcceleratedCompositingContext::flushPendingLayerChanges()
 {
-    m_rootLayer->flushCompositingStateForThisLayerOnly();
-    m_nonCompositedContentLayer->flushCompositingStateForThisLayerOnly();
-    if (!core(&m_webView)->mainFrame().view()->flushCompositingStateIncludingSubframes())
+    FrameView* frameView = core(&m_webView)->mainFrame().view();
+    m_rootLayer->flushCompositingStateForThisLayerOnly(frameView->viewportIsStable());
+    m_nonCompositedContentLayer->flushCompositingStateForThisLayerOnly(frameView->viewportIsStable());
+    if (!frameView->flushCompositingStateIncludingSubframes())
         return false;
 
     downcast<GraphicsLayerTextureMapper>(*m_rootLayer).updateBackingStoreIncludingSubLayers();

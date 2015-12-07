@@ -28,7 +28,7 @@
 
 #if PLATFORM(IOS)
 
-#import "BKSProcessAssertionSPI.h"
+#import "AssertionServicesSPI.h"
 #import <UIKit/UIApplication.h>
 #import <wtf/HashSet.h>
 #import <wtf/Vector.h>
@@ -52,7 +52,6 @@ using WebKit::ProcessAssertionClient;
 @implementation WKProcessAssertionBackgroundTaskManager
 {
     unsigned _needsToRunInBackgroundCount;
-    BOOL _appIsBackground;
     UIBackgroundTaskIdentifier _backgroundTask;
     HashSet<ProcessAssertionClient*> _clients;
 }
@@ -69,22 +68,13 @@ using WebKit::ProcessAssertionClient;
     if (!self)
         return nil;
 
-    _appIsBackground = [UIApplication sharedApplication].applicationState == UIApplicationStateBackground;
     _backgroundTask = UIBackgroundTaskInvalid;
-
-    NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
-    [center addObserver:self selector:@selector(_applicationWillEnterForeground:) name:UIApplicationWillEnterForegroundNotification object:nil];
-    [center addObserver:self selector:@selector(_applicationDidEnterBackground:) name:UIApplicationDidEnterBackgroundNotification object:nil];
 
     return self;
 }
 
 - (void)dealloc
 {
-    NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
-    [center removeObserver:self name:UIApplicationWillEnterForegroundNotification object:nil];
-    [center removeObserver:self name:UIApplicationDidEnterBackgroundNotification object:nil];
-
     if (_backgroundTask != UIBackgroundTaskInvalid)
         [[UIApplication sharedApplication] endBackgroundTask:_backgroundTask];
 
@@ -103,9 +93,7 @@ using WebKit::ProcessAssertionClient;
 
 - (void)_updateBackgroundTask
 {
-    bool shouldHoldTask = _needsToRunInBackgroundCount && _appIsBackground;
-
-    if (shouldHoldTask && _backgroundTask == UIBackgroundTaskInvalid) {
+    if (_needsToRunInBackgroundCount && _backgroundTask == UIBackgroundTaskInvalid) {
         _backgroundTask = [[UIApplication sharedApplication] beginBackgroundTaskWithName:@"com.apple.WebKit.ProcessAssertion" expirationHandler:^{
             NSLog(@"Background task expired while holding WebKit ProcessAssertion.");
             Vector<ProcessAssertionClient*> clientsToNotify;
@@ -117,22 +105,10 @@ using WebKit::ProcessAssertionClient;
         }];
     }
 
-    if (!shouldHoldTask && _backgroundTask != UIBackgroundTaskInvalid) {
+    if (!_needsToRunInBackgroundCount && _backgroundTask != UIBackgroundTaskInvalid) {
         [[UIApplication sharedApplication] endBackgroundTask:_backgroundTask];
         _backgroundTask = UIBackgroundTaskInvalid;
     }
-}
-
-- (void)_applicationWillEnterForeground:(NSNotification *)notification
-{
-    _appIsBackground = NO;
-    [self _updateBackgroundTask];
-}
-
-- (void)_applicationDidEnterBackground:(NSNotification *)notification
-{
-    _appIsBackground = YES;
-    [self _updateBackgroundTask];
 }
 
 - (void)incrementNeedsToRunInBackgroundCount

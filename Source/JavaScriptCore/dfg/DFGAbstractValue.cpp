@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,6 +30,7 @@
 
 #include "DFGGraph.h"
 #include "JSCInlines.h"
+#include "TrackedReferences.h"
 
 namespace JSC { namespace DFG {
 
@@ -47,32 +48,10 @@ void AbstractValue::observeTransitions(const TransitionVector& vector)
     checkConsistency();
 }
 
-void AbstractValue::setOSREntryValue(Graph& graph, const FrozenValue& value)
-{
-    if (!!value && value.value().isCell()) {
-        Structure* structure = value.structure();
-        graph.registerStructure(structure);
-        m_structure = structure;
-        m_arrayModes = asArrayModes(structure->indexingType());
-    } else {
-        m_structure.clear();
-        m_arrayModes = 0;
-    }
-        
-    m_type = speculationFromValue(value.value());
-    m_value = value.value();
-        
-    checkConsistency();
-    assertIsRegistered(graph);
-}
-
 void AbstractValue::set(Graph& graph, const FrozenValue& value, StructureClobberState clobberState)
 {
     if (!!value && value.value().isCell()) {
         Structure* structure = value.structure();
-        // FIXME: This check may not be necessary since any frozen value should have its structure
-        // watched already.
-        // https://bugs.webkit.org/show_bug.cgi?id=136055
         if (graph.registerStructure(structure) == StructureRegisteredAndWatched) {
             m_structure = structure;
             if (clobberState == StructuresAreClobbered) {
@@ -174,6 +153,40 @@ void AbstractValue::fixTypeForRepresentation(Graph& graph, NodeFlags representat
 void AbstractValue::fixTypeForRepresentation(Graph& graph, Node* node)
 {
     fixTypeForRepresentation(graph, node->result(), node);
+}
+
+bool AbstractValue::mergeOSREntryValue(Graph& graph, JSValue value)
+{
+    AbstractValue oldMe = *this;
+    
+    if (isClear()) {
+        FrozenValue* frozenValue = graph.freeze(value);
+        if (frozenValue->pointsToHeap()) {
+            m_structure = frozenValue->structure();
+            m_arrayModes = asArrayModes(frozenValue->structure()->indexingType());
+        } else {
+            m_structure.clear();
+            m_arrayModes = 0;
+        }
+        
+        m_type = speculationFromValue(value);
+        m_value = value;
+    } else {
+        mergeSpeculation(m_type, speculationFromValue(value));
+        if (!!value && value.isCell()) {
+            Structure* structure = value.asCell()->structure();
+            graph.registerStructure(structure);
+            mergeArrayModes(m_arrayModes, asArrayModes(structure->indexingType()));
+            m_structure.merge(StructureSet(structure));
+        }
+        if (m_value != value)
+            m_value = JSValue();
+    }
+    
+    checkConsistency();
+    assertIsRegistered(graph);
+    
+    return oldMe != *this;
 }
 
 FiltrationResult AbstractValue::filter(Graph& graph, const StructureSet& other)
@@ -426,6 +439,12 @@ void AbstractValue::dumpInContext(PrintStream& out, DumpContext* context) const
     if (!!m_value)
         out.print(", ", inContext(m_value, context));
     out.print(")");
+}
+
+void AbstractValue::validateReferences(const TrackedReferences& trackedReferences)
+{
+    trackedReferences.check(m_value);
+    m_structure.validateReferences(trackedReferences);
 }
 
 } } // namespace JSC::DFG

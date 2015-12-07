@@ -50,6 +50,7 @@ class WebFrameProxy;
 class WebPageProxy;
 class WebProtectionSpace;
 struct NavigationActionData;
+struct SecurityOriginData;
 struct WebNavigationDataStore;
 }
 
@@ -68,7 +69,7 @@ public:
     virtual void didStartProvisionalNavigation(WebKit::WebPageProxy&, API::Navigation*, API::Object*) { }
     virtual void didReceiveServerRedirectForProvisionalNavigation(WebKit::WebPageProxy&, API::Navigation*, API::Object*) { }
     virtual void didFailProvisionalNavigationWithError(WebKit::WebPageProxy&, WebKit::WebFrameProxy&, API::Navigation*, const WebCore::ResourceError&, API::Object*) { }
-    virtual void didFailProvisionalLoadInSubframeWithError(WebKit::WebPageProxy&, WebKit::WebFrameProxy&, API::Navigation*, const WebCore::ResourceError&, API::Object*) { }
+    virtual void didFailProvisionalLoadInSubframeWithError(WebKit::WebPageProxy&, WebKit::WebFrameProxy&, const WebKit::SecurityOriginData&, API::Navigation*, const WebCore::ResourceError&, API::Object*) { }
     virtual void didCommitNavigation(WebKit::WebPageProxy&, API::Navigation*, API::Object*) { }
     virtual void didFinishDocumentLoad(WebKit::WebPageProxy&, API::Navigation*, API::Object*) { }
     virtual void didFinishNavigation(WebKit::WebPageProxy&, API::Navigation*, API::Object*) { }
@@ -83,7 +84,7 @@ public:
     // FIXME: This function should not be part of this client.
     virtual void processDidCrash(WebKit::WebPageProxy&) { }
 
-    virtual PassRefPtr<Data> webCryptoMasterKey(WebKit::WebPageProxy&) { return nullptr; }
+    virtual RefPtr<Data> webCryptoMasterKey(WebKit::WebPageProxy&) { return nullptr; }
 
 #if USE(QUICK_LOOK)
     virtual void didStartLoadForQuickLookDocumentInMainFrame(const WTF::String& fileName, const WTF::String& uti) { }

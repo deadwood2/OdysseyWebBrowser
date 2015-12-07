@@ -134,6 +134,11 @@ void GraphicsContext::restore()
     m_state = m_stack.last();
     m_stack.removeLast();
 
+    // Make sure we deallocate the state stack buffer when it goes empty.
+    // Canvas elements will immediately save() again, but that goes into inline capacity.
+    if (m_stack.isEmpty())
+        m_stack.clear();
+
     restorePlatformState();
 }
 
@@ -173,8 +178,8 @@ void GraphicsContext::setStrokeColor(const Color& color, ColorSpace colorSpace)
 {
     m_state.strokeColor = color;
     m_state.strokeColorSpace = colorSpace;
-    m_state.strokeGradient.clear();
-    m_state.strokePattern.clear();
+    m_state.strokeGradient = nullptr;
+    m_state.strokePattern = nullptr;
     setPlatformStrokeColor(color, colorSpace);
 }
 
@@ -240,8 +245,8 @@ void GraphicsContext::setFillColor(const Color& color, ColorSpace colorSpace)
 {
     m_state.fillColor = color;
     m_state.fillColorSpace = colorSpace;
-    m_state.fillGradient.clear();
-    m_state.fillPattern.clear();
+    m_state.fillGradient = nullptr;
+    m_state.fillPattern = nullptr;
     setPlatformFillColor(color, colorSpace);
 }
 
@@ -264,26 +269,26 @@ void GraphicsContext::setAntialiasedFontDilationEnabled(bool antialiasedFontDila
 
 void GraphicsContext::setStrokePattern(Ref<Pattern>&& pattern)
 {
-    m_state.strokeGradient.clear();
+    m_state.strokeGradient = nullptr;
     m_state.strokePattern = WTF::move(pattern);
 }
 
 void GraphicsContext::setFillPattern(Ref<Pattern>&& pattern)
 {
-    m_state.fillGradient.clear();
+    m_state.fillGradient = nullptr;
     m_state.fillPattern = WTF::move(pattern);
 }
 
 void GraphicsContext::setStrokeGradient(Ref<Gradient>&& gradient)
 {
     m_state.strokeGradient = WTF::move(gradient);
-    m_state.strokePattern.clear();
+    m_state.strokePattern = nullptr;
 }
 
 void GraphicsContext::setFillGradient(Ref<Gradient>&& gradient)
 {
     m_state.fillGradient = WTF::move(gradient);
-    m_state.fillPattern.clear();
+    m_state.fillPattern = nullptr;
 }
 
 void GraphicsContext::beginTransparencyLayer(float opacity)

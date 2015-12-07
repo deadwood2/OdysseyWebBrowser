@@ -281,7 +281,7 @@ WebInspector.ObjectTreePropertyTreeElement = class ObjectTreePropertyTreeElement
             }
         }
 
-        var match = resolvedValue.description.match(/^function.*?(\([^)]*?\))/);
+        var match = resolvedValue.functionDescription.match(/^function.*?(\([^)]*?\))/);
         return match ? match[1] : "()";
     }
 
@@ -371,6 +371,11 @@ WebInspector.ObjectTreePropertyTreeElement = class ObjectTreePropertyTreeElement
             // For now, just skip native binding getters in API mode, since we likely
             // already showed them in the Properties section.
             if (isAPI && propertyDescriptor.nativeGetter)
+                continue;
+
+            // COMPATIBILITY (iOS 8): Sometimes __proto__ is not a value, but a get/set property.
+            // In those cases it is actually not useful to show.
+            if (propertyDescriptor.name === "__proto__" && !propertyDescriptor.hasValue())
                 continue;
 
             if (isArray && isPropertyMode) {

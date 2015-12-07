@@ -235,6 +235,8 @@ public:
 
 #if USE(APPKIT)
     WebKeyboardEvent(Type, const String& text, const String& unmodifiedText, const String& keyIdentifier, int windowsVirtualKeyCode, int nativeVirtualKeyCode, int macCharCode, bool handledByInputMethod, const Vector<WebCore::KeypressCommand>&, bool isAutoRepeat, bool isKeypad, bool isSystemKey, Modifiers, double timestamp);
+#elif PLATFORM(GTK)
+    WebKeyboardEvent(Type, const String& text, const String& keyIdentifier, int windowsVirtualKeyCode, int nativeVirtualKeyCode, bool handledByInputMethod, Vector<String>&& commands, bool isKeypad, Modifiers, double timestamp);
 #else
     WebKeyboardEvent(Type, const String& text, const String& unmodifiedText, const String& keyIdentifier, int windowsVirtualKeyCode, int nativeVirtualKeyCode, int macCharCode, bool isAutoRepeat, bool isKeypad, bool isSystemKey, Modifiers, double timestamp);
 #endif
@@ -245,9 +247,13 @@ public:
     int32_t windowsVirtualKeyCode() const { return m_windowsVirtualKeyCode; }
     int32_t nativeVirtualKeyCode() const { return m_nativeVirtualKeyCode; }
     int32_t macCharCode() const { return m_macCharCode; }
-#if USE(APPKIT)
+#if USE(APPKIT) || PLATFORM(GTK)
     bool handledByInputMethod() const { return m_handledByInputMethod; }
+#endif
+#if USE(APPKIT)
     const Vector<WebCore::KeypressCommand>& commands() const { return m_commands; }
+#elif PLATFORM(GTK)
+    const Vector<String>& commands() const { return m_commands; }
 #endif
     bool isAutoRepeat() const { return m_isAutoRepeat; }
     bool isKeypad() const { return m_isKeypad; }
@@ -265,9 +271,13 @@ private:
     int32_t m_windowsVirtualKeyCode;
     int32_t m_nativeVirtualKeyCode;
     int32_t m_macCharCode;
-#if USE(APPKIT)
+#if USE(APPKIT) || PLATFORM(GTK)
     bool m_handledByInputMethod;
+#endif
+#if USE(APPKIT)
     Vector<WebCore::KeypressCommand> m_commands;
+#elif PLATFORM(GTK)
+    Vector<String> m_commands;
 #endif
     bool m_isAutoRepeat;
     bool m_isKeypad;
@@ -315,11 +325,12 @@ private:
 class WebTouchEvent : public WebEvent {
 public:
     WebTouchEvent() { }
-    WebTouchEvent(WebEvent::Type type, Modifiers modifiers, double timestamp, const Vector<WebPlatformTouchPoint>& touchPoints, WebCore::IntPoint position, bool isGesture, float gestureScale, float gestureRotation)
+    WebTouchEvent(WebEvent::Type type, Modifiers modifiers, double timestamp, const Vector<WebPlatformTouchPoint>& touchPoints, WebCore::IntPoint position, bool isPotentialTap, bool isGesture, float gestureScale, float gestureRotation)
         : WebEvent(type, modifiers, timestamp)
         , m_touchPoints(touchPoints)
         , m_position(position)
         , m_canPreventNativeGestures(true)
+        , m_isPotentialTap(isPotentialTap)
         , m_isGesture(isGesture)
         , m_gestureScale(gestureScale)
         , m_gestureRotation(gestureRotation)
@@ -330,6 +341,8 @@ public:
     const Vector<WebPlatformTouchPoint>& touchPoints() const { return m_touchPoints; }
 
     WebCore::IntPoint position() const { return m_position; }
+
+    bool isPotentialTap() const { return m_isPotentialTap; }
 
     bool isGesture() const { return m_isGesture; }
     float gestureScale() const { return m_gestureScale; }
@@ -348,6 +361,7 @@ private:
     
     WebCore::IntPoint m_position;
     bool m_canPreventNativeGestures;
+    bool m_isPotentialTap;
     bool m_isGesture;
     float m_gestureScale;
     float m_gestureRotation;

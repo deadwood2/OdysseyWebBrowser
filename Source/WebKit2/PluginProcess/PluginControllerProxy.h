@@ -76,7 +76,7 @@ public:
     bool isInitializing() const { return m_isInitializing; }
     
     void setInitializationReply(PassRefPtr<Messages::WebProcessConnection::CreatePlugin::DelayedReply>);
-    PassRefPtr<Messages::WebProcessConnection::CreatePlugin::DelayedReply> takeInitializationReply();
+    RefPtr<Messages::WebProcessConnection::CreatePlugin::DelayedReply> takeInitializationReply();
 
 private:
     void startPaintTimer();
@@ -95,7 +95,6 @@ private:
     virtual void setStatusbarText(const String&) override;
     virtual bool isAcceleratedCompositingEnabled() override;
     virtual void pluginProcessCrashed() override;
-    virtual void willSendEventToPlugin() override;
     virtual void didInitializePlugin() override;
     virtual void didFailToInitializePlugin() override;
 
@@ -135,7 +134,7 @@ private:
     void manualStreamDidReceiveData(const IPC::DataReference& data);
     void manualStreamDidFinishLoading();
     void manualStreamDidFail(bool wasCancelled);
-    void handleMouseEvent(const WebMouseEvent&, PassRefPtr<Messages::PluginControllerProxy::HandleMouseEvent::DelayedReply>);
+    void handleMouseEvent(const WebMouseEvent&);
     void handleWheelEvent(const WebWheelEvent&, bool& handled);
     void handleMouseEnterEvent(const WebMouseEvent&, bool& handled);
     void handleMouseLeaveEvent(const WebMouseEvent&, bool& handled);

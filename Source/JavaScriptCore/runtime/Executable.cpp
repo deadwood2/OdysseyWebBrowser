@@ -52,8 +52,8 @@ void ExecutableBase::destroy(JSCell* cell)
 void ExecutableBase::clearCode()
 {
 #if ENABLE(JIT)
-    m_jitCodeForCall.clear();
-    m_jitCodeForConstruct.clear();
+    m_jitCodeForCall = nullptr;
+    m_jitCodeForConstruct = nullptr;
     m_jitCodeForCallWithArityCheck = MacroAssemblerCodePtr();
     m_jitCodeForConstructWithArityCheck = MacroAssemblerCodePtr();
     m_jitCodeForCallWithArityCheckAndPreserveRegs = MacroAssemblerCodePtr();
@@ -199,7 +199,7 @@ void ScriptExecutable::installCode(CodeBlock* genericCodeBlock)
     Heap::heap(this)->writeBarrier(this);
 }
 
-PassRefPtr<CodeBlock> ScriptExecutable::newCodeBlockFor(
+RefPtr<CodeBlock> ScriptExecutable::newCodeBlockFor(
     CodeSpecializationKind kind, JSFunction* function, JSScope* scope, JSObject*& exception)
 {
     VM* vm = scope->vm();
@@ -244,7 +244,7 @@ PassRefPtr<CodeBlock> ScriptExecutable::newCodeBlockFor(
         exception = vm->throwException(
             globalObject->globalExec(),
             error.toErrorObject(globalObject, executable->m_source));
-        return 0;
+        return nullptr;
     }
 
     // Parsing reveals whether our function uses features that require a separate function name object in the scope chain.
@@ -347,7 +347,7 @@ JSObject* ScriptExecutable::prepareForExecutionImpl(
 
 const ClassInfo EvalExecutable::s_info = { "EvalExecutable", &ScriptExecutable::s_info, 0, CREATE_METHOD_TABLE(EvalExecutable) };
 
-EvalExecutable* EvalExecutable::create(ExecState* exec, const SourceCode& source, bool isInStrictContext, ThisTDZMode thisTDZMode)
+EvalExecutable* EvalExecutable::create(ExecState* exec, const SourceCode& source, bool isInStrictContext, ThisTDZMode thisTDZMode, const VariableEnvironment* variablesUnderTDZ)
 {
     JSGlobalObject* globalObject = exec->lexicalGlobalObject();
     if (!globalObject->evalEnabled()) {
@@ -358,7 +358,7 @@ EvalExecutable* EvalExecutable::create(ExecState* exec, const SourceCode& source
     EvalExecutable* executable = new (NotNull, allocateCell<EvalExecutable>(*exec->heap())) EvalExecutable(exec, source, isInStrictContext);
     executable->finishCreation(exec->vm());
 
-    UnlinkedEvalCodeBlock* unlinkedEvalCode = globalObject->createEvalCodeBlock(exec, executable, thisTDZMode);
+    UnlinkedEvalCodeBlock* unlinkedEvalCode = globalObject->createEvalCodeBlock(exec, executable, thisTDZMode, variablesUnderTDZ);
     if (!unlinkedEvalCode)
         return 0;
 
@@ -464,7 +464,7 @@ void EvalExecutable::unlinkCalls()
 
 void EvalExecutable::clearCode()
 {
-    m_evalCodeBlock.clear();
+    m_evalCodeBlock = nullptr;
     m_unlinkedEvalCodeBlock.clear();
     Base::clearCode();
 }
@@ -475,7 +475,7 @@ JSObject* ProgramExecutable::checkSyntax(ExecState* exec)
     VM* vm = &exec->vm();
     JSGlobalObject* lexicalGlobalObject = exec->lexicalGlobalObject();
     std::unique_ptr<ProgramNode> programNode = parse<ProgramNode>(
-        vm, m_source, 0, Identifier(), JSParserBuiltinMode::NotBuiltin, 
+        vm, m_source, Identifier(), JSParserBuiltinMode::NotBuiltin, 
         JSParserStrictMode::NotStrict, JSParserCodeType::Program, error);
     if (programNode)
         return 0;
@@ -509,8 +509,6 @@ JSObject* ProgramExecutable::initializeGlobalProperties(VM& vm, CallFrame* callF
 
     BatchedTransitionOptimizer optimizer(vm, globalObject);
 
-    const UnlinkedProgramCodeBlock::VariableDeclations& variableDeclarations = unlinkedCodeBlock->variableDeclarations();
-
     for (size_t i = 0, numberOfFunctions = unlinkedCodeBlock->numberOfFunctionDecls(); i < numberOfFunctions; ++i) {
         UnlinkedFunctionExecutable* unlinkedFunctionExecutable = unlinkedCodeBlock->functionDecl(i);
         ASSERT(!unlinkedFunctionExecutable->name().isEmpty());
@@ -522,11 +520,10 @@ JSObject* ProgramExecutable::initializeGlobalProperties(VM& vm, CallFrame* callF
         }
     }
 
-    for (size_t i = 0; i < variableDeclarations.size(); ++i) {
-        if (variableDeclarations[i].second & DeclarationStacks::IsConstant)
-            globalObject->addConst(callFrame, variableDeclarations[i].first);
-        else
-            globalObject->addVar(callFrame, variableDeclarations[i].first);
+    const VariableEnvironment& variableDeclarations = unlinkedCodeBlock->variableDeclarations();
+    for (auto& entry : variableDeclarations) {
+        ASSERT(entry.value.isVar());
+        globalObject->addVar(callFrame, Identifier::fromUid(&vm, entry.key.get()));
     }
     return 0;
 }
@@ -543,7 +540,7 @@ void ProgramExecutable::visitChildren(JSCell* cell, SlotVisitor& visitor)
 
 void ProgramExecutable::clearCode()
 {
-    m_programCodeBlock.clear();
+    m_programCodeBlock = nullptr;
     m_unlinkedProgramCodeBlock.clear();
     Base::clearCode();
 }
@@ -575,29 +572,15 @@ void FunctionExecutable::visitChildren(JSCell* cell, SlotVisitor& visitor)
     visitor.append(&thisObject->m_singletonFunction);
 }
 
-SymbolTable* FunctionExecutable::symbolTable(CodeSpecializationKind kind)
+void FunctionExecutable::clearUnlinkedCodeForRecompilation()
 {
-    return codeBlockFor(kind)->symbolTable();
-}
-
-void FunctionExecutable::clearCodeIfNotCompiling()
-{
-    if (isCompiling())
-        return;
-    clearCode();
-}
-
-void FunctionExecutable::clearUnlinkedCodeForRecompilationIfNotCompiling()
-{
-    if (isCompiling())
-        return;
     m_unlinkedExecutable->clearCodeForRecompilation();
 }
 
 void FunctionExecutable::clearCode()
 {
-    m_codeBlockForCall.clear();
-    m_codeBlockForConstruct.clear();
+    m_codeBlockForCall = nullptr;
+    m_codeBlockForConstruct = nullptr;
     Base::clearCode();
 }
 

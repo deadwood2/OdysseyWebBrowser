@@ -47,8 +47,8 @@
 #include "WebKitWebContextPrivate.h"
 #include "WebKitWebViewBasePrivate.h"
 #include "WebKitWebViewPrivate.h"
+#include "WebKitWebsiteDataManagerPrivate.h"
 #include "WebNotificationManagerProxy.h"
-#include "WebResourceCacheManagerProxy.h"
 #include <WebCore/FileSystem.h>
 #include <WebCore/IconDatabase.h>
 #include <WebCore/Language.h>
@@ -59,8 +59,8 @@
 #include <wtf/NeverDestroyed.h>
 #include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
-#include <wtf/gobject/GRefPtr.h>
-#include <wtf/gobject/GUniquePtr.h>
+#include <wtf/glib/GRefPtr.h>
+#include <wtf/glib/GUniquePtr.h>
 #include <wtf/text/CString.h>
 
 using namespace WebKit;
@@ -103,7 +103,7 @@ enum {
     PROP_0,
 
     PROP_LOCAL_STORAGE_DIRECTORY,
-    PROP_INDEXED_DB_DIRECTORY
+    PROP_WEBSITE_DATA_MANAGER
 };
 
 enum {
@@ -174,6 +174,8 @@ struct _WebKitWebContextPrivate {
 #if ENABLE(NOTIFICATIONS)
     RefPtr<WebKitNotificationProvider> notificationProvider;
 #endif
+    GRefPtr<WebKitWebsiteDataManager> websiteDataManager;
+
     CString faviconDatabaseDirectory;
     WebKitTLSErrorsPolicy tlsErrorsPolicy;
 
@@ -237,8 +239,8 @@ static void webkitWebContextGetProperty(GObject* object, guint propID, GValue* v
     case PROP_LOCAL_STORAGE_DIRECTORY:
         g_value_set_string(value, context->priv->localStorageDirectory.data());
         break;
-    case PROP_INDEXED_DB_DIRECTORY:
-        g_value_set_string(value, context->priv->indexedDBDirectory.data());
+    case PROP_WEBSITE_DATA_MANAGER:
+        g_value_set_object(value, webkit_web_context_get_website_data_manager(context));
         break;
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, propID, paramSpec);
@@ -253,12 +255,25 @@ static void webkitWebContextSetProperty(GObject* object, guint propID, const GVa
     case PROP_LOCAL_STORAGE_DIRECTORY:
         context->priv->localStorageDirectory = g_value_get_string(value);
         break;
-    case PROP_INDEXED_DB_DIRECTORY:
-        context->priv->indexedDBDirectory = g_value_get_string(value);
+    case PROP_WEBSITE_DATA_MANAGER: {
+        gpointer manager = g_value_get_object(value);
+        context->priv->websiteDataManager = manager ? WEBKIT_WEBSITE_DATA_MANAGER(manager) : nullptr;
         break;
+    }
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, propID, paramSpec);
     }
+}
+
+static inline WebsiteDataStore::Configuration websiteDataStoreConfigurationForWebProcessPoolConfiguration(const API::ProcessPoolConfiguration& processPoolconfigurarion)
+{
+    WebsiteDataStore::Configuration configuration;
+    configuration.applicationCacheDirectory = processPoolconfigurarion.applicationCacheDirectory();
+    configuration.networkCacheDirectory = processPoolconfigurarion.diskCacheDirectory();
+    configuration.webSQLDatabaseDirectory = processPoolconfigurarion.webSQLDatabaseDirectory();
+    configuration.localStorageDirectory = processPoolconfigurarion.localStorageDirectory();
+    configuration.mediaKeysStorageDirectory = processPoolconfigurarion.mediaKeysStorageDirectory();
+    return configuration;
 }
 
 static void webkitWebContextConstructed(GObject* object)
@@ -267,20 +282,28 @@ static void webkitWebContextConstructed(GObject* object)
 
     GUniquePtr<char> bundleFilename(g_build_filename(injectedBundleDirectory(), "libwebkit2gtkinjectedbundle.so", nullptr));
 
-    auto configuration = API::ProcessPoolConfiguration::createWithLegacyOptions();
-    configuration->setInjectedBundlePath(WebCore::filenameToString(bundleFilename.get()));
+    API::ProcessPoolConfiguration configuration;
+    configuration.setInjectedBundlePath(WebCore::filenameToString(bundleFilename.get()));
+    configuration.setProcessModel(ProcessModelSharedSecondaryProcess);
+    configuration.setUseNetworkProcess(false);
 
     WebKitWebContext* webContext = WEBKIT_WEB_CONTEXT(object);
     WebKitWebContextPrivate* priv = webContext->priv;
-    if (!priv->localStorageDirectory.isNull())
-        configuration->setLocalStorageDirectory(WebCore::filenameToString(priv->localStorageDirectory.data()));
-    if (!priv->indexedDBDirectory.isNull())
-        configuration->setIndexedDBDatabaseDirectory(WebCore::filenameToString(priv->indexedDBDirectory.data()));
+    if (priv->websiteDataManager) {
+        configuration.setLocalStorageDirectory(WebCore::filenameToString(webkit_website_data_manager_get_local_storage_directory(priv->websiteDataManager.get())));
+        configuration.setDiskCacheDirectory(WebCore::pathByAppendingComponent(WebCore::filenameToString(webkit_website_data_manager_get_disk_cache_directory(priv->websiteDataManager.get())), networkCacheSubdirectory));
+        configuration.setApplicationCacheDirectory(WebCore::filenameToString(webkit_website_data_manager_get_offline_application_cache_directory(priv->websiteDataManager.get())));
+        configuration.setIndexedDBDatabaseDirectory(WebCore::filenameToString(webkit_website_data_manager_get_indexeddb_directory(priv->websiteDataManager.get())));
+        configuration.setWebSQLDatabaseDirectory(WebCore::filenameToString(webkit_website_data_manager_get_websql_directory(priv->websiteDataManager.get())));
+    } else if (!priv->localStorageDirectory.isNull())
+        configuration.setLocalStorageDirectory(WebCore::filenameToString(priv->localStorageDirectory.data()));
 
-    priv->context = WebProcessPool::create(configuration.get());
+    priv->context = WebProcessPool::create(configuration);
+
+    if (!priv->websiteDataManager)
+        priv->websiteDataManager = webkitWebsiteDataManagerCreate(websiteDataStoreConfigurationForWebProcessPoolConfiguration(configuration));
 
     priv->requestManager = priv->context->supplement<WebSoupCustomProtocolRequestManager>();
-    priv->context->setCacheModel(CacheModelPrimaryWebBrowser);
 
     priv->tlsErrorsPolicy = WEBKIT_TLS_ERRORS_POLICY_FAIL;
     priv->context->setIgnoreTLSErrors(false);
@@ -316,7 +339,7 @@ static void webkit_web_context_class_init(WebKitWebContextClass* webContextClass
 {
     GObjectClass* gObjectClass = G_OBJECT_CLASS(webContextClass);
 
-    bindtextdomain(GETTEXT_PACKAGE, PACKAGE_LOCALE_DIR);
+    bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR);
     bind_textdomain_codeset(GETTEXT_PACKAGE, "UTF-8");
 
     gObjectClass->get_property = webkitWebContextGetProperty;
@@ -330,6 +353,8 @@ static void webkit_web_context_class_init(WebKitWebContextClass* webContextClass
      * The directory where local storage data will be saved.
      *
      * Since: 2.8
+     *
+     * Deprecated: 2.10. Use #WebKitWebsiteDataManager:local-storage-directory instead.
      */
     g_object_class_install_property(
         gObjectClass,
@@ -342,20 +367,20 @@ static void webkit_web_context_class_init(WebKitWebContextClass* webContextClass
             static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY)));
 
     /**
-     * WebKitWebContext:indexed-db-directory:
+     * WebKitWebContext:website-data-manager:
      *
-     * The directory where IndexedDB databases will be saved.
+     * The #WebKitWebsiteDataManager associated with this context.
      *
      * Since: 2.10
      */
     g_object_class_install_property(
         gObjectClass,
-        PROP_INDEXED_DB_DIRECTORY,
-        g_param_spec_string(
-            "indexed-db-directory",
-            _("IndexedDB Directory"),
-            _("The directory where IndexedDB databases will be saved"),
-            nullptr,
+        PROP_WEBSITE_DATA_MANAGER,
+        g_param_spec_object(
+            "website-data-manager",
+            _("Website Data Manager"),
+            _("The WebKitWebsiteDataManager associated with this context"),
+            WEBKIT_TYPE_WEBSITE_DATA_MANAGER,
             static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY)));
 
     /**
@@ -427,6 +452,40 @@ WebKitWebContext* webkit_web_context_get_default(void)
 WebKitWebContext* webkit_web_context_new(void)
 {
     return WEBKIT_WEB_CONTEXT(g_object_new(WEBKIT_TYPE_WEB_CONTEXT, nullptr));
+}
+
+/**
+ * webkit_web_context_new_with_website_data_manager:
+ * @manager: a #WebKitWebsiteDataManager
+ *
+ * Create a new #WebKitWebContext with a #WebKitWebsiteDataManager.
+ *
+ * Returns: (transfer full): a newly created #WebKitWebContext
+ *
+ * Since: 2.10
+ */
+WebKitWebContext* webkit_web_context_new_with_website_data_manager(WebKitWebsiteDataManager* manager)
+{
+    g_return_val_if_fail(WEBKIT_IS_WEBSITE_DATA_MANAGER(manager), nullptr);
+
+    return WEBKIT_WEB_CONTEXT(g_object_new(WEBKIT_TYPE_WEB_CONTEXT, "website-data-manager", manager, nullptr));
+}
+
+/**
+ * webkit_web_context_get_website_data_manager:
+ * @context: the #WebKitWebContext
+ *
+ * Get the #WebKitWebsiteDataManager of @context.
+ *
+ * Returns: (transfer none): a #WebKitWebsiteDataManager
+ *
+ * Since: 2.10
+ */
+WebKitWebsiteDataManager* webkit_web_context_get_website_data_manager(WebKitWebContext* context)
+{
+    g_return_val_if_fail(WEBKIT_IS_WEB_CONTEXT(context), nullptr);
+
+    return context->priv->websiteDataManager.get();
 }
 
 /**
@@ -516,7 +575,8 @@ void webkit_web_context_clear_cache(WebKitWebContext* context)
 {
     g_return_if_fail(WEBKIT_IS_WEB_CONTEXT(context));
 
-    context->priv->context->supplement<WebResourceCacheManagerProxy>()->clearCacheForAllOrigins(AllResourceCaches);
+    // FIXME: https://bugs.webkit.org/show_bug.cgi?id=146041
+    // context->priv->context->supplement<WebResourceCacheManagerProxy>()->clearCacheForAllOrigins(AllResourceCaches);
 }
 
 typedef HashMap<DownloadProxy*, GRefPtr<WebKitDownload> > DownloadsMap;
@@ -1024,13 +1084,19 @@ void webkit_web_context_set_web_extensions_initialization_user_data(WebKitWebCon
  * Set the directory where disk cache files will be stored
  * This method must be called before loading anything in this context, otherwise
  * it will not have any effect.
+ *
+ * Note that this method overrides the directory set in the #WebKitWebsiteDataManager,
+ * but it doesn't change the value returned by webkit_website_data_manager_get_disk_cache_directory()
+ * since the #WebKitWebsiteDataManager is immutable.
+ *
+ * Deprecated: 2.10. Use webkit_web_context_new_with_website_data_manager() instead.
  */
 void webkit_web_context_set_disk_cache_directory(WebKitWebContext* context, const char* directory)
 {
     g_return_if_fail(WEBKIT_IS_WEB_CONTEXT(context));
     g_return_if_fail(directory);
 
-    context->priv->context->setDiskCacheDirectory(WebCore::filenameToString(directory));
+    context->priv->context->configuration().setDiskCacheDirectory(WebCore::pathByAppendingComponent(WebCore::filenameToString(directory), networkCacheSubdirectory));
 }
 
 /**
@@ -1092,7 +1158,7 @@ void webkit_web_context_allow_tls_certificate_for_host(WebKitWebContext* context
  * the rest of the WebViews in the application will still function
  * normally.
  *
- * This method **must be called before any other functions**,
+ * This method **must be called before any web process has been created**,
  * as early as possible in your application. Calling it later will make
  * your application crash.
  *
@@ -1127,6 +1193,47 @@ WebKitProcessModel webkit_web_context_get_process_model(WebKitWebContext* contex
     g_return_val_if_fail(WEBKIT_IS_WEB_CONTEXT(context), WEBKIT_PROCESS_MODEL_SHARED_SECONDARY_PROCESS);
 
     return toWebKitProcessModel(context->priv->context->processModel());
+}
+
+/**
+ * webkit_web_context_set_web_process_count_limit:
+ * @context: the #WebKitWebContext
+ * @limit: the maximum number of web processes
+ *
+ * Sets the maximum number of web processes that can be created at the same time for the @context.
+ * The default value is 0 and means no limit.
+ *
+ * This method **must be called before any web process has been created**,
+ * as early as possible in your application. Calling it later will make
+ * your application crash.
+ *
+ * Since: 2.10
+ */
+void webkit_web_context_set_web_process_count_limit(WebKitWebContext* context, guint limit)
+{
+    g_return_if_fail(WEBKIT_IS_WEB_CONTEXT(context));
+
+    if (limit == context->priv->context->configuration().maximumProcessCount())
+        return;
+
+    context->priv->context->setMaximumNumberOfProcesses(limit);
+}
+
+/**
+ * webkit_web_context_get_web_process_count_limit:
+ * @context: the #WebKitWebContext
+ *
+ * Gets the maximum number of web processes that can be created at the same time for the @context.
+ *
+ * Returns: the maximum limit of web processes, or 0 if there isn't a limit.
+ *
+ * Since: 2.10
+ */
+guint webkit_web_context_get_web_process_count_limit(WebKitWebContext* context)
+{
+    g_return_val_if_fail(WEBKIT_IS_WEB_CONTEXT(context), 0);
+
+    return context->priv->context->configuration().maximumProcessCount();
 }
 
 WebKitDownload* webkitWebContextGetOrCreateDownload(DownloadProxy* downloadProxy)
@@ -1208,10 +1315,13 @@ void webkitWebContextDidFinishLoadingCustomProtocol(WebKitWebContext* context, u
 void webkitWebContextCreatePageForWebView(WebKitWebContext* context, WebKitWebView* webView, WebKitUserContentManager* userContentManager, WebKitWebView* relatedView)
 {
     WebKitWebViewBase* webViewBase = WEBKIT_WEB_VIEW_BASE(webView);
-    WebPageProxy* relatedPage = relatedView ? webkitWebViewBaseGetPage(WEBKIT_WEB_VIEW_BASE(relatedView)) : nullptr;
-    WebPreferences* preferences = webkitSettingsGetPreferences(webkit_web_view_get_settings(webView));
-    WebUserContentControllerProxy* userContentControllerProxy = userContentManager ? webkitUserContentManagerGetUserContentControllerProxy(userContentManager) : nullptr;
-    webkitWebViewBaseCreateWebPage(webViewBase, context->priv->context.get(), preferences, nullptr, userContentControllerProxy, relatedPage);
+    WebPageConfiguration webPageConfiguration;
+    webPageConfiguration.preferences = webkitSettingsGetPreferences(webkit_web_view_get_settings(webView));
+    webPageConfiguration.relatedPage = relatedView ? webkitWebViewBaseGetPage(WEBKIT_WEB_VIEW_BASE(relatedView)) : nullptr;
+    webPageConfiguration.userContentController = userContentManager ? webkitUserContentManagerGetUserContentControllerProxy(userContentManager) : nullptr;
+    webPageConfiguration.websiteDataStore = &webkitWebsiteDataManagerGetDataStore(context->priv->websiteDataManager.get());
+    webPageConfiguration.sessionID = webPageConfiguration.websiteDataStore->sessionID();
+    webkitWebViewBaseCreateWebPage(webViewBase, context->priv->context.get(), WTF::move(webPageConfiguration));
 
     WebPageProxy* page = webkitWebViewBaseGetPage(webViewBase);
     context->priv->webViews.set(page->pageID(), webView);

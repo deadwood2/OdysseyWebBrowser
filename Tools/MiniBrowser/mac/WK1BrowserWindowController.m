@@ -52,6 +52,9 @@
     [[WebPreferences standardPreferences] setDeveloperExtrasEnabled:YES];
     [[WebPreferences standardPreferences] setImageControlsEnabled:YES];
     [[WebPreferences standardPreferences] setServiceControlsEnabled:YES];
+    [[WebPreferences standardPreferences] setJavaScriptCanOpenWindowsAutomatically:YES];
+
+    [_webView _listenForLayoutMilestones:WebDidFirstLayout | WebDidFirstVisuallyNonEmptyLayout | WebDidHitRelevantRepaintedObjectsAreaThreshold];
 
     [self didChangeSettings];
 
@@ -242,6 +245,11 @@
 {
 }
 
+- (NSURL *)currentURL
+{
+    return _webView.mainFrame.dataSource.request.URL;
+}
+
 - (void)didChangeSettings
 {
     SettingsController *settings = [SettingsController shared];
@@ -250,6 +258,7 @@
     [[WebPreferences standardPreferences] setShowDebugBorders:settings.layerBordersVisible];
     [[WebPreferences standardPreferences] setSimpleLineLayoutDebugBordersEnabled:settings.simpleLineLayoutDebugBordersEnabled];
     [[WebPreferences standardPreferences] setShowRepaintCounter:settings.layerBordersVisible];
+    [[WebPreferences standardPreferences] setSuppressesIncrementalRendering:settings.incrementalRenderingSuppressed];
 
     BOOL useTransparentWindows = settings.useTransparentWindows;
     if (useTransparentWindows != !self.window.isOpaque) {
@@ -272,6 +281,18 @@
     }
 }
 
+- (void)webView:(WebView *)sender didLayout:(WebLayoutMilestones)milestones
+{
+    if (milestones & WebDidFirstLayout)
+        LOG(@"layout milestone: %@", @"first layout");
+
+    if (milestones & WebDidFirstVisuallyNonEmptyLayout)
+        LOG(@"layout milestone: %@", @"first non-empty layout");
+
+    if (milestones & WebDidHitRelevantRepaintedObjectsAreaThreshold)
+        LOG(@"layout milestone: %@", @"relevant repainted objects area threshold");
+}
+
 - (void)webView:(WebView *)webView decidePolicyForNavigationAction:(NSDictionary *)actionInformation request:(NSURLRequest *)request frame:(WebFrame *)frame decisionListener:(id<WebPolicyDecisionListener>)listener
 {
     [listener use];
@@ -282,6 +303,24 @@
 {
 }
 
+- (void)updateTitle:(NSString *)title
+{
+    if (!title) {
+        NSURL *url = _webView.mainFrame.dataSource.request.URL;
+        title = url.lastPathComponent;
+    }
+    
+    [self.window setTitle:[title stringByAppendingString:@" [WK1]"]];
+}
+
+- (WebView *)webView:(WebView *)sender createWebViewWithRequest:(NSURLRequest *)request
+{
+    WK1BrowserWindowController *newBrowserWindowController = [[WK1BrowserWindowController alloc] initWithWindowNibName:@"BrowserWindow"];
+    [newBrowserWindowController.window makeKeyAndOrderFront:self];
+
+    return newBrowserWindowController->_webView;
+}
+
 - (void)webView:(WebView *)sender didCommitLoadForFrame:(WebFrame *)frame
 {
     if (frame != [sender mainFrame])
@@ -289,6 +328,8 @@
 
     NSURL *committedURL = [[[frame dataSource] request] URL];
     [urlText setStringValue:[committedURL absoluteString]];
+
+    [self updateTitle:nil];
 }
 
 - (void)webView:(WebView *)sender didReceiveTitle:(NSString *)title forFrame:(WebFrame *)frame
@@ -296,7 +337,7 @@
     if (frame != [sender mainFrame])
         return;
 
-    [self.window setTitle:[title stringByAppendingString:@" [WK1]"]];
+    [self updateTitle:title];
 }
 
 - (void)webView:(WebView *)sender runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WebFrame *)frame

@@ -67,8 +67,8 @@ static inline void setStateScrollingNodeSnapOffsetsAsFloat(ScrollingStateScrolli
     // FIXME: Incorporate current page scale factor in snapping to device pixel. Perhaps we should just convert to float here and let UI process do the pixel snapping?
     Vector<float> snapOffsetsAsFloat;
     snapOffsetsAsFloat.reserveInitialCapacity(snapOffsets.size());
-    for (size_t i = 0; i < snapOffsets.size(); ++i)
-        snapOffsetsAsFloat.append(roundToDevicePixel(snapOffsets[i], deviceScaleFactor, false));
+    for (auto& offset : snapOffsets)
+        snapOffsetsAsFloat.append(roundToDevicePixel(offset, deviceScaleFactor, false));
 
     if (axis == ScrollEventAxis::Horizontal)
         node.setHorizontalSnapOffsets(snapOffsetsAsFloat);
@@ -146,6 +146,9 @@ void AsyncScrollingCoordinator::frameViewLayoutUpdated(FrameView& frameView)
 
     if (const Vector<LayoutUnit>* verticalSnapOffsets = frameView.verticalSnapOffsets())
         setStateScrollingNodeSnapOffsetsAsFloat(*node, ScrollEventAxis::Vertical, *verticalSnapOffsets, m_page->deviceScaleFactor());
+
+    node->setCurrentHorizontalSnapPointIndex(frameView.currentHorizontalSnapPointIndex());
+    node->setCurrentVerticalSnapPointIndex(frameView.currentVerticalSnapPointIndex());
 #endif
 
 #if PLATFORM(COCOA)
@@ -484,6 +487,8 @@ void AsyncScrollingCoordinator::updateOverflowScrollingNode(ScrollingNodeID node
 #if ENABLE(CSS_SCROLL_SNAP)
         setStateScrollingNodeSnapOffsetsAsFloat(*node, ScrollEventAxis::Horizontal, scrollingGeometry->horizontalSnapOffsets, m_page->deviceScaleFactor());
         setStateScrollingNodeSnapOffsetsAsFloat(*node, ScrollEventAxis::Vertical, scrollingGeometry->verticalSnapOffsets, m_page->deviceScaleFactor());
+        node->setCurrentHorizontalSnapPointIndex(scrollingGeometry->currentHorizontalSnapPointIndex);
+        node->setCurrentVerticalSnapPointIndex(scrollingGeometry->currentVerticalSnapPointIndex);
 #endif
     }
 }

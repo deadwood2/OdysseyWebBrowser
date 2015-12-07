@@ -31,6 +31,7 @@
 #include "BasicBlockLocation.h"
 #include "CopiedSpaceInlines.h"
 #include "Debugger.h"
+#include "Exception.h"
 #include "Heap.h"
 #include "JITInlines.h"
 #include "JSArray.h"
@@ -430,13 +431,6 @@ void JIT::emit_op_push_with_scope(Instruction* currentInstruction)
     callOperation(operationPushWithScope, dst, regT0);
 }
 
-void JIT::emit_op_pop_scope(Instruction* currentInstruction)
-{
-    int scope = currentInstruction[1].u.operand;
-
-    callOperation(operationPopScope, scope);
-}
-
 void JIT::compileOpStrictEq(Instruction* currentInstruction, CompileOpStrictEqType type)
 {
     int dst = currentInstruction[1].u.operand;
@@ -503,11 +497,6 @@ void JIT::emit_op_push_name_scope(Instruction* currentInstruction)
 {
     int dst = currentInstruction[1].u.operand;
     emitGetVirtualRegister(currentInstruction[2].u.operand, regT0);
-    if (currentInstruction[4].u.operand == JSNameScope::CatchScope) {
-        callOperation(operationPushCatchScope, dst, jsCast<SymbolTable*>(getConstantOperand(currentInstruction[3].u.operand)), regT0);
-        return;
-    }
-
     RELEASE_ASSERT(currentInstruction[4].u.operand == JSNameScope::FunctionNameScope);
     callOperation(operationPushFunctionNameScope, dst, jsCast<SymbolTable*>(getConstantOperand(currentInstruction[3].u.operand)), regT0);
 }
@@ -529,6 +518,23 @@ void JIT::emit_op_catch(Instruction* currentInstruction)
     load64(Address(regT3, VM::exceptionOffset()), regT0);
     store64(TrustedImm64(JSValue::encode(JSValue())), Address(regT3, VM::exceptionOffset()));
     emitPutVirtualRegister(currentInstruction[1].u.operand);
+
+    load64(Address(regT0, Exception::valueOffset()), regT0);
+    emitPutVirtualRegister(currentInstruction[2].u.operand);
+}
+
+void JIT::emit_op_create_lexical_environment(Instruction* currentInstruction)
+{
+    JITSlowPathCall slowPathCall(this, currentInstruction, slow_path_create_lexical_environment);
+    slowPathCall.call();
+}
+
+void JIT::emit_op_get_parent_scope(Instruction* currentInstruction)
+{
+    int currentScope = currentInstruction[2].u.operand;
+    emitGetVirtualRegister(currentScope, regT0);
+    loadPtr(Address(regT0, JSScope::offsetOfNext()), regT0);
+    emitStoreCell(currentInstruction[1].u.operand, regT0);
 }
 
 void JIT::emit_op_switch_imm(Instruction* currentInstruction)
@@ -667,17 +673,6 @@ void JIT::emit_op_enter(Instruction*)
     emitWriteBarrier(m_codeBlock->ownerExecutable());
 
     emitEnterOptimizationCheck();
-}
-
-void JIT::emit_op_create_lexical_environment(Instruction* currentInstruction)
-{
-    int dst = currentInstruction[1].u.operand;
-    int scope = currentInstruction[2].u.operand;
-
-    emitGetVirtualRegister(scope, regT0);
-    callOperation(operationCreateActivation, regT0);
-    emitStoreCell(dst, returnValueGPR);
-    emitStoreCell(scope, returnValueGPR);
 }
 
 void JIT::emit_op_get_scope(Instruction* currentInstruction)
@@ -1125,21 +1120,14 @@ void JIT::emitSlow_op_has_indexed_property(Instruction* currentInstruction, Vect
     
     linkSlowCaseIfNotJSCell(iter, base); // base cell check
     linkSlowCase(iter); // base array check
-    
-    Jump skipProfiling = jump();
-    
     linkSlowCase(iter); // vector length check
     linkSlowCase(iter); // empty value
-    
-    emitArrayProfileOutOfBoundsSpecialCase(profile);
-    
-    skipProfiling.link(this);
     
     Label slowPath = label();
     
     emitGetVirtualRegister(base, regT0);
     emitGetVirtualRegister(property, regT1);
-    Call call = callOperation(operationHasIndexedPropertyDefault, dst, regT0, regT1);
+    Call call = callOperation(operationHasIndexedPropertyDefault, dst, regT0, regT1, profile);
 
     m_byValCompilationInfo[m_byValInstructionIndex].slowPathTarget = slowPath;
     m_byValCompilationInfo[m_byValInstructionIndex].returnAddress = call;
@@ -1250,6 +1238,8 @@ void JIT::emit_op_profile_type(Instruction* currentInstruction)
     emitGetVirtualRegister(valueToProfile, regT0);
 
     JumpList jumpToEnd;
+
+    jumpToEnd.append(branchTest64(Zero, regT0));
 
     // Compile in a predictive type check, if possible, to see if we can skip writing to the log.
     // These typechecks are inlined to match those of the 64-bit JSValue type checks.

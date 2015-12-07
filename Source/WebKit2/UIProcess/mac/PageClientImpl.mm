@@ -181,7 +181,7 @@ void PageClientImpl::scrollView(const IntRect& scrollRect, const IntSize& scroll
     ASSERT_NOT_REACHED();
 }
 
-void PageClientImpl::requestScroll(const FloatPoint& scrollPosition, bool isProgrammaticScroll)
+void PageClientImpl::requestScroll(const FloatPoint& scrollPosition, const IntPoint& scrollOrigin, bool isProgrammaticScroll)
 {
     ASSERT_NOT_REACHED();
 }
@@ -408,9 +408,10 @@ void PageClientImpl::setDragImage(const IntPoint& clientPosition, PassRefPtr<Sha
     [dragNSImage setSize:size];
 
 #if WK_API_ENABLED
-    if (m_webView)
-        [m_wkView _dragImageForView:m_webView withImage:dragNSImage.get() at:clientPosition linkDrag:isLinkDrag];
-    else
+    if (m_webView) {
+        NSPoint webViewPosition = [m_wkView convertPoint:clientPosition toView:m_webView];
+        [m_wkView _dragImageForView:m_webView withImage:dragNSImage.get() at:webViewPosition linkDrag:isLinkDrag];
+    } else
 #endif
         [m_wkView _dragImageForView:m_wkView withImage:dragNSImage.get() at:clientPosition linkDrag:isLinkDrag];
 }
@@ -486,18 +487,18 @@ void PageClientImpl::doneWithKeyEvent(const NativeWebKeyboardEvent& event, bool 
     [m_wkView _doneWithKeyEvent:event.nativeEvent() eventWasHandled:eventWasHandled];
 }
 
-PassRefPtr<WebPopupMenuProxy> PageClientImpl::createPopupMenuProxy(WebPageProxy* page)
+RefPtr<WebPopupMenuProxy> PageClientImpl::createPopupMenuProxy(WebPageProxy* page)
 {
     return WebPopupMenuProxyMac::create(m_wkView, page);
 }
 
-PassRefPtr<WebContextMenuProxy> PageClientImpl::createContextMenuProxy(WebPageProxy* page)
+RefPtr<WebContextMenuProxy> PageClientImpl::createContextMenuProxy(WebPageProxy* page)
 {
     return WebContextMenuProxyMac::create(m_wkView, page);
 }
 
 #if ENABLE(INPUT_TYPE_COLOR)
-PassRefPtr<WebColorPicker> PageClientImpl::createColorPicker(WebPageProxy* page, const WebCore::Color& initialColor,  const WebCore::IntRect& rect)
+RefPtr<WebColorPicker> PageClientImpl::createColorPicker(WebPageProxy* page, const WebCore::Color& initialColor,  const WebCore::IntRect& rect)
 {
     return WebColorPickerMac::create(page, initialColor, rect, wkView());
 }
@@ -764,6 +765,10 @@ void PageClientImpl::navigationGestureDidEnd(bool willNavigate, WebBackForwardLi
 #endif
 }
 
+void PageClientImpl::navigationGestureDidEnd()
+{
+}
+
 void PageClientImpl::willRecordNavigationSnapshot(WebBackForwardListItem& item)
 {
 #if WK_API_ENABLED
@@ -782,6 +787,11 @@ void PageClientImpl::didFirstVisuallyNonEmptyLayoutForMainFrame()
 void PageClientImpl::didFinishLoadForMainFrame()
 {
     [m_wkView _didFinishLoadForMainFrame];
+}
+
+void PageClientImpl::didFailLoadForMainFrame()
+{
+    [m_wkView _didFailLoadForMainFrame];
 }
 
 void PageClientImpl::didSameDocumentNavigationForMainFrame(SameDocumentNavigationType type)
@@ -825,6 +835,25 @@ WebCore::WebMediaSessionManager& PageClientImpl::mediaSessionManager()
     return WebMediaSessionManagerMac::singleton();
 }
 #endif
+
+#if ENABLE(VIDEO)
+void PageClientImpl::mediaDocumentNaturalSizeChanged(const IntSize& newSize)
+{
+#if WK_API_ENABLED
+    [m_webView _mediaDocumentNaturalSizeChanged:newSize];
+#endif
+}
+#endif
+
+void PageClientImpl::refView()
+{
+    CFRetain(m_wkView);
+}
+
+void PageClientImpl::derefView()
+{
+    CFRelease(m_wkView);
+}
 
 } // namespace WebKit
 

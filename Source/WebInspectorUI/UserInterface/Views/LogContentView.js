@@ -54,15 +54,16 @@ WebInspector.LogContentView = function(representedObject)
     this._keyboardShortcutEsc = new WebInspector.KeyboardShortcut(null, WebInspector.KeyboardShortcut.Key.Escape);
 
     this._logViewController = new WebInspector.JavaScriptLogViewController(this.messagesElement, this.element, this.prompt, this, "console-prompt-history");
+    this._lastMessageView = null;
 
     this._searchBar = new WebInspector.SearchBar("log-search-bar", WebInspector.UIString("Filter Console Log"), this);
     this._searchBar.addEventListener(WebInspector.SearchBar.Event.TextChanged, this._searchTextDidChange, this);
 
     var scopeBarItems = [
         new WebInspector.ScopeBarItem(WebInspector.LogContentView.Scopes.All, WebInspector.UIString("All"), true),
-        new WebInspector.ScopeBarItem(WebInspector.LogContentView.Scopes.Errors, WebInspector.UIString("Errors")),
-        new WebInspector.ScopeBarItem(WebInspector.LogContentView.Scopes.Warnings, WebInspector.UIString("Warnings")),
-        new WebInspector.ScopeBarItem(WebInspector.LogContentView.Scopes.Logs, WebInspector.UIString("Logs"))
+        new WebInspector.ScopeBarItem(WebInspector.LogContentView.Scopes.Errors, WebInspector.UIString("Errors"), false, "errors"),
+        new WebInspector.ScopeBarItem(WebInspector.LogContentView.Scopes.Warnings, WebInspector.UIString("Warnings"), false, "warnings"),
+        new WebInspector.ScopeBarItem(WebInspector.LogContentView.Scopes.Logs, WebInspector.UIString("Logs"), false, "logs")
     ];
 
     this._scopeBar = new WebInspector.ScopeBar("log-scope-bar", scopeBarItems, scopeBarItems[0]);
@@ -71,19 +72,16 @@ WebInspector.LogContentView = function(representedObject)
     this._clearLogNavigationItem = new WebInspector.ButtonNavigationItem("clear-log", WebInspector.UIString("Clear log (%s or %s)").format(this._logViewController.messagesClearKeyboardShortcut.displayName, this._logViewController.messagesAlternateClearKeyboardShortcut.displayName), "Images/NavigationItemTrash.svg", 15, 15);
     this._clearLogNavigationItem.addEventListener(WebInspector.ButtonNavigationItem.Event.Clicked, this._clearLog, this);
 
-    this._clearLogOnReloadSetting = new WebInspector.Setting("clear-log-on-reload", true);
-
     var toolTip = WebInspector.UIString("Show console tab");
     this._showConsoleTabNavigationItem = new WebInspector.ButtonNavigationItem("show-tab", toolTip, "Images/SplitToggleUp.svg", 16, 16);
     this._showConsoleTabNavigationItem.addEventListener(WebInspector.ButtonNavigationItem.Event.Clicked, this._showConsoleTab, this);
 
     this.messagesElement.addEventListener("contextmenu", this._handleContextMenuEvent.bind(this), false);
 
-    WebInspector.logManager.addEventListener(WebInspector.LogManager.Event.Cleared, this._sessionsCleared, this);
     WebInspector.logManager.addEventListener(WebInspector.LogManager.Event.SessionStarted, this._sessionStarted, this);
     WebInspector.logManager.addEventListener(WebInspector.LogManager.Event.MessageAdded, this._messageAdded, this);
     WebInspector.logManager.addEventListener(WebInspector.LogManager.Event.PreviousMessageRepeatCountUpdated, this._previousMessageRepeatCountUpdated, this);
-    WebInspector.logManager.addEventListener(WebInspector.LogManager.Event.ActiveLogCleared, this._activeLogCleared, this);
+    WebInspector.logManager.addEventListener(WebInspector.LogManager.Event.Cleared, this._logCleared, this);
 
     WebInspector.Frame.addEventListener(WebInspector.Frame.Event.ProvisionalLoadStarted, this._provisionalLoadStarted, this);
 };
@@ -152,13 +150,6 @@ WebInspector.LogContentView.prototype = {
         return this.messagesElement.classList.contains(WebInspector.LogContentView.SearchInProgressStyleClassName);
     },
 
-    didClearMessages: function()
-    {
-        if (this._ignoreDidClearMessages)
-            return;
-        WebInspector.logManager.requestClearMessages();
-    },
-
     didAppendConsoleMessageView: function(messageView)
     {
         console.assert(messageView instanceof WebInspector.ConsoleMessageView || messageView instanceof WebInspector.ConsoleCommandView);
@@ -181,7 +172,8 @@ WebInspector.LogContentView.prototype = {
             ++this._nestingLevel;
             break;
         case WebInspector.ConsoleMessage.MessageType.EndGroup:
-            --this._nestingLevel;
+            if (this._nestingLevel > 0)
+                --this._nestingLevel;
             break;
         }
 
@@ -229,7 +221,32 @@ WebInspector.LogContentView.prototype = {
 
     focusSearchBar: function()
     {
+        if (!this.visible)
+            return;
+
         this._searchBar.focus();
+    },
+
+    save: function()
+    {
+        if (!this.visible)
+            return;
+
+        if (WebInspector.isShowingSplitConsole())
+            return;
+
+        WebInspector.saveDataToFile(this.saveData);
+    },
+
+    saveAs: function()
+    {
+        if (!this.visible)
+            return;
+
+        if (WebInspector.isShowingSplitConsole())
+            return;
+
+        WebInspector.saveDataToFile(this.saveData, true);
     },
 
     highlightPreviousSearchMatch: function()
@@ -293,17 +310,9 @@ WebInspector.LogContentView.prototype = {
         return data;
     },
 
-    _sessionsCleared: function(event)
-    {
-        this._ignoreDidClearMessages = true;
-        this._logViewController.clear();
-        this._ignoreDidClearMessages = false;
-    },
-
     _sessionStarted: function(event)
     {
-        if (this._clearLogOnReloadSetting.value)  {
-            this._clearLogIgnoringClearMessages();
+        if (WebInspector.logManager.clearLogOnNavigateSetting.value) {
             this._reappendProvisionalMessages();
             return;
         }
@@ -313,19 +322,56 @@ WebInspector.LogContentView.prototype = {
         this._clearProvisionalState();
     },
 
+    _scopeFromMessageLevel: function(level)
+    {
+        var messageLevel;
+
+        switch(level) {
+        case WebInspector.ConsoleMessage.MessageLevel.Warning:
+            messageLevel = WebInspector.LogContentView.Scopes.Warnings;
+            break;
+        case WebInspector.ConsoleMessage.MessageLevel.Error:
+            messageLevel = WebInspector.LogContentView.Scopes.Errors;
+            break;
+        case WebInspector.ConsoleMessage.MessageLevel.Log:
+        case WebInspector.ConsoleMessage.MessageLevel.Info:
+        case WebInspector.ConsoleMessage.MessageLevel.Debug:
+            messageLevel = WebInspector.LogContentView.Scopes.Logs;
+            break;
+        }
+
+        return messageLevel;
+    },
+
+    _pulseScopeBarItemBorder: function(level)
+    {
+        var messageLevel = this._scopeFromMessageLevel(level);
+
+        if (!messageLevel)
+            return;
+
+        var item = this._scopeBar.item(messageLevel);
+
+        if (item && !item.selected && !this._scopeBar.item(WebInspector.LogContentView.Scopes.All).selected)
+            item.element.classList.add("unread");
+    },
+
     _messageAdded: function(event)
     {
         if (this._startedProvisionalLoad)
             this._provisionalMessages.push(event.data.message);
 
-        var messageView = this._logViewController.appendConsoleMessage(event.data.message);
-        if (messageView.message.type !== WebInspector.ConsoleMessage.MessageType.EndGroup)
-            this._filterMessageElements([messageView.element]);
+        this._lastMessageView = this._logViewController.appendConsoleMessage(event.data.message);
+        if (this._lastMessageView.message.type !== WebInspector.ConsoleMessage.MessageType.EndGroup) {
+            this._pulseScopeBarItemBorder(this._lastMessageView.message.level);
+            this._filterMessageElements([this._lastMessageView.element]);
+        }
     },
 
     _previousMessageRepeatCountUpdated: function(event)
-    {
-        this._logViewController.updatePreviousMessageRepeatCount(event.data.count);
+    {        
+        if (this._logViewController.updatePreviousMessageRepeatCount(event.data.count) && this._lastMessageView)
+            this._pulseScopeBarItemBorder(this._lastMessageView.message.level);
     },
 
     _handleContextMenuEvent: function(event)
@@ -344,9 +390,9 @@ WebInspector.LogContentView.prototype = {
         contextMenu.appendItem(WebInspector.UIString("Clear Log"), this._clearLog.bind(this));
         contextMenu.appendSeparator();
 
-        var clearLogOnReloadUIString = this._clearLogOnReloadSetting.value ? WebInspector.UIString("Keep Log on Reload") : WebInspector.UIString("Clear Log on Reload");
+        var clearLogOnReloadUIString = WebInspector.logManager.clearLogOnNavigateSetting.value ? WebInspector.UIString("Keep Log on Navigation") : WebInspector.UIString("Clear Log on Navigation");
 
-        contextMenu.appendItem(clearLogOnReloadUIString, this._toggleClearLogOnReloadSetting.bind(this));
+        contextMenu.appendItem(clearLogOnReloadUIString, this._toggleClearLogOnNavigateSetting.bind(this));
 
         contextMenu.show();
     },
@@ -624,19 +670,9 @@ WebInspector.LogContentView.prototype = {
         });
     },
 
-    _activeLogCleared: function(event)
+    _logCleared: function(event)
     {
-        this._ignoreDidClearMessages = true;
         this._logViewController.clear();
-        this._ignoreDidClearMessages = false;
-    },
-
-    // FIXME: <https://webkit.org/b/145466> Web Inspector: Activity Viewer does not update on "Clear Log on reload"
-    _clearLogIgnoringClearMessages: function()
-    {
-        this._ignoreDidClearMessages = true;
-        this._logViewController.clear();
-        this._ignoreDidClearMessages = false;
     },
 
     _showConsoleTab: function()
@@ -644,44 +680,43 @@ WebInspector.LogContentView.prototype = {
         WebInspector.showConsoleTab();
     },
 
-    _toggleClearLogOnReloadSetting: function()
+    _toggleClearLogOnNavigateSetting: function()
     {
-        this._clearLogOnReloadSetting.value = !this._clearLogOnReloadSetting.value;
+        WebInspector.logManager.clearLogOnNavigateSetting.value = !WebInspector.logManager.clearLogOnNavigateSetting.value;
     },
 
     _clearLog: function()
     {
-        this._logViewController.clear();
+        for (var item of this._scopeBar.items)
+            item.element.classList.remove("unread");
+
+        WebInspector.logManager.requestClearMessages();
     },
 
     _scopeBarSelectionDidChange: function(event)
     {
+        var item = this._scopeBar.selectedItems[0];
+        
+        if (item.id === WebInspector.LogContentView.Scopes.All) {
+            for (var item of this._scopeBar.items)
+                item.element.classList.remove("unread");
+        } else
+            item.element.classList.remove("unread");
+
         this._filterMessageElements(this._allMessageElements());
     },
 
     _filterMessageElements: function(messageElements)
     {
         var showsAll = this._scopeBar.item(WebInspector.LogContentView.Scopes.All).selected;
-        var showsErrors = this._scopeBar.item(WebInspector.LogContentView.Scopes.Errors).selected;
-        var showsWarnings = this._scopeBar.item(WebInspector.LogContentView.Scopes.Warnings).selected;
-        var showsLogs = this._scopeBar.item(WebInspector.LogContentView.Scopes.Logs).selected;
 
         messageElements.forEach(function(messageElement) {
             var visible = showsAll || messageElement.__commandView instanceof WebInspector.ConsoleCommandView || messageElement.__message instanceof WebInspector.ConsoleCommandResultMessage;
             if (!visible) {
-                switch(messageElement.__message.level) {
-                case WebInspector.ConsoleMessage.MessageLevel.Warning:
-                    visible = showsWarnings;
-                    break;
-                case WebInspector.ConsoleMessage.MessageLevel.Error:
-                    visible = showsErrors;
-                    break;
-                case WebInspector.ConsoleMessage.MessageLevel.Log:
-                case WebInspector.ConsoleMessage.MessageLevel.Info:
-                case WebInspector.ConsoleMessage.MessageLevel.Debug:
-                    visible = showsLogs;
-                    break;
-                }
+                var messageLevel = this._scopeFromMessageLevel(messageElement.__message.level);
+
+                if (messageLevel)
+                    visible = this._scopeBar.item(messageLevel).selected;
             }
 
             var classList = messageElement.classList;
@@ -789,11 +824,12 @@ WebInspector.LogContentView.prototype = {
             return;
 
         var currentMessage = this._selectedMessages[0];
-        if (currentMessage.classList.contains("console-group-title"))
+        if (currentMessage.classList.contains("console-group-title")) {
             currentMessage.parentNode.classList.add("collapsed");
-        else {
-            // FIXME: Web Inspector: Right/Left arrow no longer works in console to expand/collapse ConsoleMessages
-            // FIXME: <https://webkit.org/b/141949> Web Inspector: Right/Left arrow no longer works in console to expand/collapse ObjectTrees
+            event.preventDefault();
+        } else if (currentMessage.__messageView && currentMessage.__messageView.expandable) {
+            currentMessage.__messageView.collapse();
+            event.preventDefault();
         }
     },
 
@@ -803,11 +839,12 @@ WebInspector.LogContentView.prototype = {
             return;
 
         var currentMessage = this._selectedMessages[0];
-        if (currentMessage.classList.contains("console-group-title"))
+        if (currentMessage.classList.contains("console-group-title")) {
             currentMessage.parentNode.classList.remove("collapsed");
-        else {
-            // FIXME: Web Inspector: Right/Left arrow no longer works in console to expand/collapse ConsoleMessages
-            // FIXME: <https://webkit.org/b/141949> Web Inspector: Right/Left arrow no longer works in console to expand/collapse ObjectTrees
+            event.preventDefault();
+        } else if (currentMessage.__messageView && currentMessage.__messageView.expandable) {
+            currentMessage.__messageView.expand();
+            event.preventDefault();
         }
     },
 
@@ -951,7 +988,7 @@ WebInspector.LogContentView.prototype = {
     _clearProvisionalState: function()
     {
         this._startedProvisionalLoad = false;
-        this._provisionalMessages = [];        
+        this._provisionalMessages = [];
     }
 };
 

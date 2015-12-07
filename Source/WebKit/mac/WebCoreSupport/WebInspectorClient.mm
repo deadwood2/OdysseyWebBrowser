@@ -40,7 +40,7 @@
 #import "WebPolicyDelegate.h"
 #import "WebQuotaManager.h"
 #import "WebSecurityOriginPrivate.h"
-#import "WebUIDelegate.h"
+#import "WebUIDelegatePrivate.h"
 #import "WebViewInternal.h"
 #import <algorithm>
 #import <bindings/ScriptValue.h>
@@ -58,6 +58,11 @@
 SOFT_LINK_STAGED_FRAMEWORK(WebInspectorUI, PrivateFrameworks, A)
 
 using namespace WebCore;
+
+static const CGFloat minimumWindowWidth = 500;
+static const CGFloat minimumWindowHeight = 400;
+static const CGFloat initialWindowWidth = 1000;
+static const CGFloat initialWindowHeight = 650;
 
 @interface WebInspectorWindowController : NSWindowController <NSWindowDelegate, WebPolicyDelegate, WebUIDelegate> {
 @private
@@ -131,7 +136,18 @@ void WebInspectorClient::bringFrontendToFront()
 void WebInspectorClient::didResizeMainFrame(Frame*)
 {
     if (m_frontendClient)
-        m_frontendClient->attachAvailabilityChanged(m_frontendClient->canAttachWindow() && !inspectorAttachDisabled());
+        m_frontendClient->attachAvailabilityChanged(canAttach());
+}
+
+void WebInspectorClient::windowFullScreenDidChange()
+{
+    if (m_frontendClient)
+        m_frontendClient->attachAvailabilityChanged(canAttach());
+}
+
+bool WebInspectorClient::canAttach()
+{
+    return m_frontendClient->canAttach() && !inspectorAttachDisabled();
 }
 
 void WebInspectorClient::highlight()
@@ -177,6 +193,14 @@ void WebInspectorFrontendClient::attachAvailabilityChanged(bool available)
     [m_windowController.get() setDockingUnavailable:!available];
 }
 
+bool WebInspectorFrontendClient::canAttach()
+{
+    if ([[m_windowController window] styleMask] & NSFullScreenWindowMask)
+        return false;
+
+    return canAttachWindow();
+}
+
 void WebInspectorFrontendClient::frontendLoaded()
 {
     [m_windowController.get() showWindow:nil];
@@ -194,6 +218,13 @@ void WebInspectorFrontendClient::frontendLoaded()
 
     bool attached = [m_windowController.get() attached];
     setAttachedWindow(attached ? DockSide::Bottom : DockSide::Undocked);
+}
+
+void WebInspectorFrontendClient::startWindowDrag()
+{
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100
+    [[m_windowController window] performWindowDragWithEvent:[NSApp currentEvent]];
+#endif
 }
 
 String WebInspectorFrontendClient::localizedStringsURL()
@@ -316,12 +347,18 @@ void WebInspectorFrontendClient::save(const String& suggestedURL, const String& 
     panel.nameFieldStringValue = platformURL.lastPathComponent;
     panel.directoryURL = [platformURL URLByDeletingLastPathComponent];
 
-    [panel beginSheetModalForWindow:[[m_windowController webView] window] completionHandler:^(NSInteger result) {
+    auto completionHandler = ^(NSInteger result) {
         if (result == NSFileHandlingPanelCancelButton)
             return;
         ASSERT(result == NSFileHandlingPanelOKButton);
         saveToURL(panel.URL);
-    }];
+    };
+
+    NSWindow *window = [[m_windowController webView] window];
+    if (window)
+        [panel beginSheetModalForWindow:window completionHandler:completionHandler];
+    else
+        completionHandler([panel runModal]);
 }
 
 void WebInspectorFrontendClient::append(const String& suggestedURL, const String& content)
@@ -448,9 +485,17 @@ void WebInspectorFrontendClient::append(const String& suggestedURL, const String
     NSUInteger styleMask = NSTitledWindowMask | NSClosableWindowMask | NSMiniaturizableWindowMask | NSResizableWindowMask | NSTexturedBackgroundWindowMask;
 #endif
 
-    window = [[NSWindow alloc] initWithContentRect:NSMakeRect(60.0, 200.0, 750.0, 650.0) styleMask:styleMask backing:NSBackingStoreBuffered defer:NO];
+    window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, initialWindowWidth, initialWindowHeight) styleMask:styleMask backing:NSBackingStoreBuffered defer:NO];
     [window setDelegate:self];
-    [window setMinSize:NSMakeSize(400.0, 400.0)];
+    [window setMinSize:NSMakeSize(minimumWindowWidth, minimumWindowHeight)];
+    [window setCollectionBehavior:([window collectionBehavior] | NSWindowCollectionBehaviorFullScreenPrimary)];
+
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100
+    CGFloat approximatelyHalfScreenSize = (window.screen.frame.size.width / 2) - 4;
+    CGFloat minimumFullScreenWidth = std::max<CGFloat>(636, approximatelyHalfScreenSize);
+    [window setMinFullScreenContentSize:NSMakeSize(minimumFullScreenWidth, minimumWindowHeight)];
+    [window setCollectionBehavior:([window collectionBehavior] | NSWindowCollectionBehaviorFullScreenAllowsTiling)];
+#endif
 
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
     window.titlebarAppearsTransparent = YES;
@@ -480,6 +525,16 @@ void WebInspectorFrontendClient::append(const String& suggestedURL, const String
     [self destroyInspectorView:true];
 
     return YES;
+}
+
+- (void)windowDidEnterFullScreen:(NSNotification *)notification
+{
+    _inspectorClient->windowFullScreenDidChange();
+}
+
+- (void)windowDidExitFullScreen:(NSNotification *)notification
+{
+    _inspectorClient->windowFullScreenDidChange();
 }
 
 - (void)close
@@ -526,7 +581,7 @@ void WebInspectorFrontendClient::append(const String& suggestedURL, const String
 
     _visible = YES;
 
-    _shouldAttach = _inspectorClient->inspectorStartsAttached() && _frontendClient->canAttachWindow() && !_inspectorClient->inspectorAttachDisabled();
+    _shouldAttach = _inspectorClient->inspectorStartsAttached() && _frontendClient->canAttach();
 
     if (_shouldAttach) {
         WebFrameView *frameView = [[_inspectedWebView.get() mainFrame] frameView];
@@ -655,7 +710,7 @@ void WebInspectorFrontendClient::append(const String& suggestedURL, const String
     panel.canChooseFiles = YES;
     panel.allowsMultipleSelection = allowMultipleFiles;
 
-    [panel beginSheetModalForWindow:_webView.window completionHandler:^(NSInteger result) {
+    auto completionHandler = ^(NSInteger result) {
         if (result == NSFileHandlingPanelCancelButton) {
             [resultListener cancel];
             return;
@@ -664,17 +719,44 @@ void WebInspectorFrontendClient::append(const String& suggestedURL, const String
 
         NSArray *URLs = panel.URLs;
         NSMutableArray *filenames = [NSMutableArray arrayWithCapacity:URLs.count];
-        for (NSURL *URL in URLs) {
+        for (NSURL *URL in URLs)
             [filenames addObject:URL.path];
-        }
+
         [resultListener chooseFilenames:filenames];
-    }];
+    };
+
+    if (_webView.window)
+        [panel beginSheetModalForWindow:_webView.window completionHandler:completionHandler];
+    else
+        completionHandler([panel runModal]);
 }
 
 - (void)webView:(WebView *)sender frame:(WebFrame *)frame exceededDatabaseQuotaForSecurityOrigin:(WebSecurityOrigin *)origin database:(NSString *)databaseIdentifier
 {
     id <WebQuotaManager> databaseQuotaManager = origin.databaseQuotaManager;
     databaseQuotaManager.quota = std::max<unsigned long long>(5 * 1024 * 1024, databaseQuotaManager.usage * 1.25);
+}
+
+- (NSArray *)webView:(WebView *)sender contextMenuItemsForElement:(NSDictionary *)element defaultMenuItems:(NSArray *)defaultMenuItems
+{
+    NSMutableArray *menuItems = [[NSMutableArray alloc] init];
+
+    for (NSMenuItem *item in defaultMenuItems) {
+        switch (item.tag) {
+        case WebMenuItemTagOpenLinkInNewWindow:
+        case WebMenuItemTagOpenImageInNewWindow:
+        case WebMenuItemTagOpenFrameInNewWindow:
+        case WebMenuItemTagOpenMediaInNewWindow:
+        case WebMenuItemTagDownloadLinkToDisk:
+        case WebMenuItemTagDownloadImageToDisk:
+            break;
+        default:
+            [menuItems addObject:item];
+            break;
+        }
+    }
+
+    return [menuItems autorelease];
 }
 
 // MARK: -

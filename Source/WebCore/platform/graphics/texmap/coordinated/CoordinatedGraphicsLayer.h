@@ -23,7 +23,6 @@
 
 #include "CoordinatedGraphicsState.h"
 #include "CoordinatedImageBacking.h"
-#include "CoordinatedTile.h"
 #include "FloatPoint3D.h"
 #include "GraphicsLayer.h"
 #include "GraphicsLayerTransform.h"
@@ -63,6 +62,8 @@ public:
     explicit CoordinatedGraphicsLayer(Type, GraphicsLayerClient&);
     virtual ~CoordinatedGraphicsLayer();
 
+    PlatformLayerID primaryLayerID() const override { return id(); }
+
     // Reimplementations from GraphicsLayer.h.
     virtual bool setChildren(const Vector<GraphicsLayer*>&) override;
     virtual void addChild(GraphicsLayer*) override;
@@ -98,8 +99,8 @@ public:
     virtual void setNeedsDisplayInRect(const FloatRect&, ShouldClipToLayer = ClipToLayer) override;
     virtual void setContentsNeedsDisplay() override;
     virtual void deviceOrPageScaleFactorChanged() override;
-    virtual void flushCompositingState(const FloatRect&) override;
-    virtual void flushCompositingStateForThisLayerOnly() override;
+    virtual void flushCompositingState(const FloatRect&, bool) override;
+    virtual void flushCompositingStateForThisLayerOnly(bool) override;
     virtual bool setFilters(const FilterOperations&) override;
     virtual bool addAnimation(const KeyframeValueList&, const FloatSize&, const Animation*, const String&, double) override;
     virtual void pauseAnimation(const String&, double) override;
@@ -120,20 +121,18 @@ public:
     bool isScrollable() const { return !!m_scrollableArea; }
     void commitScrollOffset(const IntSize&);
 
-    CoordinatedLayerID id() const;
+    CoordinatedLayerID id() const { return m_id; }
 
     void setFixedToViewport(bool isFixed);
 
     IntRect coverRect() const { return m_mainBackingStore ? m_mainBackingStore->mapToContents(m_mainBackingStore->coverRect()) : IntRect(); }
 
     // TiledBackingStoreClient
-    virtual void tiledBackingStorePaintBegin() override;
     virtual void tiledBackingStorePaint(GraphicsContext*, const IntRect&) override;
-    virtual void tiledBackingStorePaintEnd(const Vector<IntRect>& paintedArea) override;
+    virtual void didUpdateTileBuffers() override;
     virtual void tiledBackingStoreHasPendingTileCreation() override;
     virtual IntRect tiledBackingStoreContentsRect() override;
     virtual IntRect tiledBackingStoreVisibleRect() override;
-    virtual Color tiledBackingStoreBackgroundColor() const override;
     virtual void createTile(uint32_t tileID, float) override;
     virtual void updateTile(uint32_t tileID, const SurfaceUpdateInfo&, const IntRect&) override;
     virtual void removeTile(uint32_t tileID) override;

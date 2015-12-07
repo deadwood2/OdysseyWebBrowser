@@ -41,6 +41,7 @@
 #import "WebProcessProxy.h"
 #import <Cocoa/Cocoa.h>
 #import <WebCore/IOSurface.h>
+#import <WebCore/NSEventSPI.h>
 #import <WebCore/QuartzCoreSPI.h>
 #import <WebCore/WebActionDisablingCALayerDelegate.h>
 
@@ -407,7 +408,7 @@ void ViewGestureController::trackSwipeGesture(NSEvent *event, SwipeDirection dir
     RetainPtr<WKSwipeCancellationTracker> swipeCancellationTracker = adoptNS([[WKSwipeCancellationTracker alloc] init]);
     m_swipeCancellationTracker = swipeCancellationTracker;
 
-    [event trackSwipeEventWithOptions:0 dampenAmountThresholdMin:minProgress max:maxProgress usingHandler:^(CGFloat progress, NSEventPhase phase, BOOL isComplete, BOOL *stop) {
+    [event trackSwipeEventWithOptions:NSEventSwipeTrackingConsumeMouseEvents dampenAmountThresholdMin:minProgress max:maxProgress usingHandler:^(CGFloat progress, NSEventPhase phase, BOOL isComplete, BOOL *stop) {
         if ([swipeCancellationTracker isCancelled]) {
             *stop = YES;
             return;
@@ -555,7 +556,7 @@ void ViewGestureController::beginSwipeGesture(WebBackForwardListItem* targetItem
             m_currentSwipeLiveLayers.append(layer);
         }
     } else {
-        swipeArea = FloatRect(FloatPoint(), m_webPageProxy.viewSize());
+        swipeArea = [rootContentLayer convertRect:CGRectMake(0, 0, m_webPageProxy.viewSize().width(), m_webPageProxy.viewSize().height()) toLayer:nil];
         topContentInset = m_webPageProxy.topContentInset();
         m_currentSwipeLiveLayers.append(rootContentLayer);
     }
@@ -578,7 +579,7 @@ void ViewGestureController::beginSwipeGesture(WebBackForwardListItem* targetItem
 
     [m_swipeLayer setBackgroundColor:backgroundColor.get()];
     [m_swipeLayer setAnchorPoint:CGPointZero];
-    [m_swipeLayer setFrame:swipeArea];
+    [m_swipeLayer setFrame:[snapshotLayerParent convertRect:swipeArea fromLayer:nil]];
     [m_swipeLayer setName:@"Gesture Swipe Root Layer"];
     [m_swipeLayer setGeometryFlipped:geometryIsFlippedToRoot];
     [m_swipeLayer setDelegate:[WebActionDisablingCALayerDelegate shared]];
@@ -595,7 +596,6 @@ void ViewGestureController::beginSwipeGesture(WebBackForwardListItem* targetItem
 
     if (m_webPageProxy.preferences().viewGestureDebuggingEnabled())
         applyDebuggingPropertiesToSwipeViews();
-
 
     CALayer *layerAdjacentToSnapshot = determineLayerAdjacentToSnapshotForParent(direction, snapshotLayerParent);
     if (direction == SwipeDirection::Back)
@@ -636,22 +636,22 @@ void ViewGestureController::beginSwipeGesture(WebBackForwardListItem* targetItem
         m_swipeShadowLayer = adoptNS([[CAGradientLayer alloc] init]);
         [m_swipeShadowLayer setName:@"Gesture Swipe Shadow Layer"];
         [m_swipeShadowLayer setColors:@[
-            (id)CGColorCreateGenericGray(0, 1.),
-            (id)CGColorCreateGenericGray(0, 0.99),
-            (id)CGColorCreateGenericGray(0, 0.98),
-            (id)CGColorCreateGenericGray(0, 0.95),
-            (id)CGColorCreateGenericGray(0, 0.92),
-            (id)CGColorCreateGenericGray(0, 0.82),
-            (id)CGColorCreateGenericGray(0, 0.71),
-            (id)CGColorCreateGenericGray(0, 0.46),
-            (id)CGColorCreateGenericGray(0, 0.35),
-            (id)CGColorCreateGenericGray(0, 0.25),
-            (id)CGColorCreateGenericGray(0, 0.17),
-            (id)CGColorCreateGenericGray(0, 0.11),
-            (id)CGColorCreateGenericGray(0, 0.07),
-            (id)CGColorCreateGenericGray(0, 0.04),
-            (id)CGColorCreateGenericGray(0, 0.01),
-            (id)CGColorCreateGenericGray(0, 0.),
+            (id)adoptCF(CGColorCreateGenericGray(0, 1.)).get(),
+            (id)adoptCF(CGColorCreateGenericGray(0, 0.99)).get(),
+            (id)adoptCF(CGColorCreateGenericGray(0, 0.98)).get(),
+            (id)adoptCF(CGColorCreateGenericGray(0, 0.95)).get(),
+            (id)adoptCF(CGColorCreateGenericGray(0, 0.92)).get(),
+            (id)adoptCF(CGColorCreateGenericGray(0, 0.82)).get(),
+            (id)adoptCF(CGColorCreateGenericGray(0, 0.71)).get(),
+            (id)adoptCF(CGColorCreateGenericGray(0, 0.46)).get(),
+            (id)adoptCF(CGColorCreateGenericGray(0, 0.35)).get(),
+            (id)adoptCF(CGColorCreateGenericGray(0, 0.25)).get(),
+            (id)adoptCF(CGColorCreateGenericGray(0, 0.17)).get(),
+            (id)adoptCF(CGColorCreateGenericGray(0, 0.11)).get(),
+            (id)adoptCF(CGColorCreateGenericGray(0, 0.07)).get(),
+            (id)adoptCF(CGColorCreateGenericGray(0, 0.04)).get(),
+            (id)adoptCF(CGColorCreateGenericGray(0, 0.01)).get(),
+            (id)adoptCF(CGColorCreateGenericGray(0, 0.)).get(),
         ]];
         [m_swipeShadowLayer setLocations:@[
             @0,
@@ -814,7 +814,7 @@ void ViewGestureController::didFirstVisuallyNonEmptyLayoutForMainFrame()
     }
 }
 
-void ViewGestureController::didFinishLoadForMainFrame()
+void ViewGestureController::mainFrameLoadDidReachTerminalState()
 {
     if (m_activeGestureType != ViewGestureType::Swipe || m_swipeInProgress)
         return;

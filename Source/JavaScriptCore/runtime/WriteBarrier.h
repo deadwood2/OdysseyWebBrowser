@@ -113,8 +113,7 @@ public:
     
     T** slot() { return reinterpret_cast<T**>(&m_cell); }
     
-    typedef T* (WriteBarrierBase::*UnspecifiedBoolType);
-    operator UnspecifiedBoolType*() const { return m_cell ? reinterpret_cast<UnspecifiedBoolType*>(1) : 0; }
+    explicit operator bool() const { return m_cell; }
     
     bool operator!() const { return !m_cell; }
 
@@ -146,6 +145,7 @@ public:
     }
     void clear() { m_value = JSValue::encode(JSValue()); }
     void setUndefined() { m_value = JSValue::encode(jsUndefined()); }
+    void setStartingValue(JSValue value) { m_value = JSValue::encode(value); }
     bool isNumber() const { return get().isNumber(); }
     bool isObject() const { return get().isObject(); }
     bool isNull() const { return get().isNull(); }
@@ -165,8 +165,7 @@ public:
     int32_t* tagPointer() { return &bitwise_cast<EncodedValueDescriptor*>(&m_value)->asBits.tag; }
     int32_t* payloadPointer() { return &bitwise_cast<EncodedValueDescriptor*>(&m_value)->asBits.payload; }
     
-    typedef JSValue (WriteBarrierBase::*UnspecifiedBoolType);
-    operator UnspecifiedBoolType*() const { return get() ? reinterpret_cast<UnspecifiedBoolType*>(1) : 0; }
+    explicit operator bool() const { return !!get(); }
     bool operator!() const { return !get(); } 
     
 private:

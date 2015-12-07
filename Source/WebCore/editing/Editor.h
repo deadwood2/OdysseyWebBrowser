@@ -45,6 +45,7 @@
 #if PLATFORM(COCOA)
 OBJC_CLASS NSAttributedString;
 OBJC_CLASS NSDictionary;
+OBJC_CLASS NSMutableDictionary;
 #endif
 
 namespace WebCore {
@@ -96,6 +97,7 @@ enum class MailBlockquoteHandling {
 };
 
 class Editor {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit Editor(Frame&);
     ~Editor();
@@ -309,7 +311,8 @@ public:
     bool compositionUsesCustomUnderlines() const { return !m_customCompositionUnderlines.isEmpty(); }
     const Vector<CompositionUnderline>& customCompositionUnderlines() const { return m_customCompositionUnderlines; }
 
-    WEBCORE_EXPORT void setIgnoreCompositionSelectionChange(bool);
+    enum class RevealSelection { No, Yes };
+    WEBCORE_EXPORT void setIgnoreCompositionSelectionChange(bool, RevealSelection shouldRevealExistingSelection = RevealSelection::Yes);
     bool ignoreCompositionSelectionChange() const { return m_ignoreCompositionSelectionChange; }
 
     void setStartNewKillRingSequence(bool);
@@ -424,6 +427,7 @@ public:
 
 #if PLATFORM(COCOA)
     WEBCORE_EXPORT static RenderStyle* styleForSelectionStart(Frame* , Node *&nodeToRemove);
+    void getTextDecorationAttributesRespectingTypingStyle(RenderStyle&, NSMutableDictionary*) const;
     WEBCORE_EXPORT bool insertParagraphSeparatorInQuotedContent();
     WEBCORE_EXPORT const Font* fontForSelection(bool&) const;
     WEBCORE_EXPORT NSDictionary *fontAttributesForSelectionStart() const;

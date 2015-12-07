@@ -233,6 +233,9 @@
     <Link />
     <ClCompile />
     <Link />
+    <Link>
+      <OptimizeReferences>false</OptimizeReferences>
+    </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <Link />
@@ -287,6 +290,11 @@
       <EnableCOMDATFolding>false</EnableCOMDATFolding>
     </Link>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='DebugSuffix|x64'">
+    <Link>
+      <EnableCOMDATFolding>false</EnableCOMDATFolding>
+    </Link>
+  </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\..\Storage\StorageAreaImpl.cpp" />
     <ClCompile Include="..\..\Storage\StorageAreaSync.cpp" />
@@ -297,6 +305,7 @@
     <ClCompile Include="..\..\Storage\WebDatabaseProvider.cpp" />
     <ClCompile Include="..\..\Storage\WebStorageNamespaceProvider.cpp" />
     <ClCompile Include="..\..\cf\WebCoreSupport\WebInspectorClientCF.cpp" />
+    <ClCompile Include="..\..\WebCoreSupport\WebViewGroup.cpp" />
     <ClCompile Include="..\..\win\Plugins\npapi.cpp" />
     <ClCompile Include="..\..\win\Plugins\PluginDatabase.cpp" />
     <ClCompile Include="..\..\win\Plugins\PluginDebug.cpp" />
@@ -304,6 +313,7 @@
     <ClCompile Include="..\..\win\Plugins\PluginStream.cpp" />
     <ClCompile Include="..\..\win\Plugins\PluginView.cpp" />
     <ClCompile Include="..\..\win\Plugins\PluginDatabaseWin.cpp" />
+    <ClCompile Include="..\..\win\Plugins\PluginMainThreadScheduler.cpp" />
     <ClCompile Include="..\..\win\Plugins\PluginMessageThrottlerWin.cpp" />
     <ClCompile Include="..\..\win\Plugins\PluginPackageWin.cpp" />
     <ClCompile Include="..\..\win\Plugins\PluginViewWin.cpp" />
@@ -450,6 +460,7 @@
     <ClInclude Include="..\..\Storage\StorageTrackerClient.h" />
     <ClInclude Include="..\..\Storage\WebDatabaseProvider.h" />
     <ClInclude Include="..\..\Storage\WebStorageNamespaceProvider.h" />
+    <ClInclude Include="..\..\WebCoreSupport\WebViewGroup.h" />
     <ClInclude Include="..\..\win\Plugins\PluginDatabase.h" />
     <ClInclude Include="..\..\win\Plugins\PluginDebug.h" />
     <ClInclude Include="..\..\win\Plugins\PluginPackage.h" />
@@ -457,6 +468,7 @@
     <ClInclude Include="..\..\win\Plugins\PluginStrategy.h" />
     <ClInclude Include="..\..\win\Plugins\PluginStream.h" />
     <ClInclude Include="..\..\win\Plugins\PluginView.h" />
+    <ClInclude Include="..\..\win\Plugins\PluginMainThreadScheduler.h" />
     <ClInclude Include="..\..\win\Plugins\PluginMessageThrottlerWin.h" />
     <ClInclude Include="..\..\win\AccessibleBase.h" />
     <ClInclude Include="..\..\win\AccessibleDocument.h" />

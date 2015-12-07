@@ -70,6 +70,7 @@ messages -> WebPage LegacyReceiver {
     SelectPositionAtPoint(WebCore::IntPoint point, uint64_t callbackID)
     BeginSelectionInDirection(uint32_t direction, uint64_t callbackID)
     UpdateSelectionWithExtentPoint(WebCore::IntPoint point, uint64_t callbackID)
+    UpdateSelectionWithExtentPointAndBoundary(WebCore::IntPoint point, uint32_t granularity, uint64_t callbackID)
     RequestDictationContext(uint64_t callbackID)
     ReplaceDictatedText(String oldText, String newText)
     ReplaceSelectedText(String oldText, String newText)
@@ -88,11 +89,13 @@ messages -> WebPage LegacyReceiver {
     SetAssistedNodeValueAsNumber(double value)
     SetAssistedNodeSelectedIndex(uint32_t index, bool allowMultipleSelection)
     ApplicationWillResignActive()
+    ApplicationDidEnterBackground(bool isSuspendedUnderLock)
     ApplicationWillEnterForeground()
     ApplicationDidBecomeActive()
     ContentSizeCategoryDidChange(String contentSizeCategory)
     ExecuteEditCommandWithCallback(String name, uint64_t callbackID)
     GetLookupContextAtPoint(WebCore::IntPoint point, uint64_t callbackID)
+    SetAllowsMediaDocumentInlinePlayback(bool allows)
 #endif
 
 #if ENABLE(REMOTE_INSPECTOR)
@@ -126,7 +129,7 @@ messages -> WebPage LegacyReceiver {
 
     LoadURLInFrame(String url, uint64_t frameID)
     LoadRequest(uint64_t navigationID, WebCore::ResourceRequest request, WebKit::SandboxExtension::Handle sandboxExtensionHandle, uint64_t shouldOpenExternalURLsPolicy, WebKit::UserData userData)
-    LoadData(IPC::DataReference data, String MIMEType, String encoding, String baseURL, WebKit::UserData userData)
+    LoadData(uint64_t navigationID, IPC::DataReference data, String MIMEType, String encoding, String baseURL, WebKit::UserData userData)
     LoadHTMLString(uint64_t navigationID, String htmlString, String baseURL, WebKit::UserData userData)
     LoadAlternateHTMLString(String htmlString, String baseURL, String unreachableURL, String provisionalLoadErrorURL, WebKit::UserData userData)
     LoadPlainTextString(String string, WebKit::UserData userData)
@@ -185,7 +188,7 @@ messages -> WebPage LegacyReceiver {
 
     SetEditable(bool editable)
     ValidateCommand(String name, uint64_t callbackID)
-    ExecuteEditCommand(String name)
+    ExecuteEditCommand(String name, String argument)
 
     DidRemoveEditCommand(uint64_t commandID)
     ReapplyEditCommand(uint64_t commandID)
@@ -285,13 +288,11 @@ messages -> WebPage LegacyReceiver {
 
 #if ENABLE(MEDIA_STREAM)
     # MediaSteam
-    DidReceiveUserMediaPermissionDecision(uint64_t userMediaID, bool allowed)
+    DidReceiveUserMediaPermissionDecision(uint64_t userMediaID, bool allowed, String deviceUIDVideo, String deviceUIDAudio)
 #endif
 
     # Notification
     DidReceiveNotificationPermissionDecision(uint64_t notificationID, bool allowed)
-
-    SetWindowResizerSize(WebCore::IntSize intersectsView)
 
     # Printing.
     BeginPrinting(uint64_t frameID, struct WebKit::PrintInfo printInfo)
@@ -312,6 +313,10 @@ messages -> WebPage LegacyReceiver {
     SetMediaVolume(float volume)
     SetMuted(bool muted)
     SetMayStartMediaWhenInWindow(bool mayStartMedia)
+
+#if ENABLE(MEDIA_SESSION)
+    HandleMediaEvent(uint32_t eventType)
+#endif
 
     // FIXME: This a dummy message, to avoid breaking the build for platforms that don't require
     // any synchronous messages, and should be removed when <rdar://problem/8775115> is fixed.
@@ -429,4 +434,9 @@ messages -> WebPage LegacyReceiver {
 
     ClearWheelEventTestTrigger()
     SetShouldScaleViewToFitDocument(bool shouldScaleViewToFitDocument)
+    SetUserContentExtensionsEnabled(bool userContentExtensionsEnabled)
+
+#if ENABLE(VIDEO) && USE(GSTREAMER)
+    DidEndRequestInstallMissingMediaPlugins(uint32_t result)
+#endif
 }

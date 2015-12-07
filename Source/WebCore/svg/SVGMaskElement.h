@@ -30,17 +30,12 @@
 #include "SVGUnitTypes.h"
 
 namespace WebCore {
-    
-class RenderLayer;
 
 class SVGMaskElement final : public SVGElement,
                              public SVGTests,
                              public SVGExternalResourcesRequired {
 public:
     static Ref<SVGMaskElement> create(const QualifiedName&, Document&);
-
-    void addClientRenderLayer(RenderLayer*);
-    void removeClientRenderLayer(RenderLayer*);
 
 private:
     SVGMaskElement(const QualifiedName&, Document&);
@@ -53,8 +48,6 @@ private:
     virtual void svgAttributeChanged(const QualifiedName&) override;
     virtual void childrenChanged(const ChildChange&) override;
 
-    HashSet<RenderLayer*> m_clientLayers;
-
     virtual RenderPtr<RenderElement> createElementRenderer(Ref<RenderStyle>&&, const RenderTreePosition&) override;
 
     virtual bool selfHasRelativeLengths() const override { return true; }
@@ -66,7 +59,7 @@ private:
         DECLARE_ANIMATED_LENGTH(Y, y)
         DECLARE_ANIMATED_LENGTH(Width, width)
         DECLARE_ANIMATED_LENGTH(Height, height)
-        DECLARE_ANIMATED_BOOLEAN(ExternalResourcesRequired, externalResourcesRequired)
+        DECLARE_ANIMATED_BOOLEAN_OVERRIDE(ExternalResourcesRequired, externalResourcesRequired)
     END_DECLARE_ANIMATED_PROPERTIES
 
     // SVGTests

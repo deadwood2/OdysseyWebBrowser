@@ -34,16 +34,19 @@
 #if USE(APPLE_INTERNAL_SDK)
 
 #import <AVKit/AVPlayerController.h>
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wobjc-property-no-attribute"
+#import <AVKit/AVPlayerLayerView.h>
+#pragma clang diagnostic pop
 #import <AVKit/AVPlayerViewController_Private.h>
 #import <AVKit/AVPlayerViewController_WebKitOnly.h>
-#import <AVKit/AVVideoLayer.h>
 
 #else
 
 @interface AVPlayerController : UIResponder
 @end
 
-@interface AVPlayerController (Details)
+@interface AVPlayerController ()
 typedef NS_ENUM(NSInteger, AVPlayerControllerStatus) {
     AVPlayerControllerStatusUnknown = 0,
     AVPlayerControllerStatusReadyToPlay = 2,
@@ -58,41 +61,42 @@ typedef NS_ENUM(NSInteger, AVPlayerControllerExternalPlaybackType) {
 @property (NS_NONATOMIC_IOSONLY, readonly) AVPlayerControllerStatus status;
 @end
 
-@protocol AVVideoLayer
-typedef NS_ENUM(NSInteger, AVVideoLayerGravity) {
-    AVVideoLayerGravityInvalid = 0,
-    AVVideoLayerGravityResizeAspect = 1,
-    AVVideoLayerGravityResizeAspectFill = 2,
-    AVVideoLayerGravityResize = 3,
-};
-- (void)setPlayerController:(AVPlayerController *)playerController;
-@property (nonatomic) AVVideoLayerGravity videoLayerGravity;
-@property (nonatomic) CGRect videoRect;
-@property (nonatomic, readonly, getter=isReadyForDisplay) BOOL readyForDisplay;
+@class AVPlayerLayer;
+
+@interface AVPictureInPicturePlayerLayerView : UIView
+@property (nonatomic, readonly) AVPlayerLayer *playerLayer;
+@end
+
+@interface AVPlayerLayerView : UIView
+@property (nonatomic, readonly) AVPlayerLayer *playerLayer;
+@property (nonatomic, readonly) AVPictureInPicturePlayerLayerView *pictureInPicturePlayerLayerView;
+- (void)startRoutingVideoToPictureInPicturePlayerLayerView;
+- (void)stopRoutingVideoToPictureInPicturePlayerLayerView;
 @end
 
 @protocol AVPlayerViewControllerDelegate <NSObject>
 @optional
 typedef NS_ENUM(NSInteger, AVPlayerViewControllerExitFullScreenReason) {
-    AVPlayerViewControllerExitFullScreenReasonDoneButtonTapped = 0,
-    AVPlayerViewControllerExitFullScreenReasonRemoteControlStopEventReceived = 3,
+    AVPlayerViewControllerExitFullScreenReasonDoneButtonTapped,
+    AVPlayerViewControllerExitFullScreenReasonFullScreenButtonTapped,
+    AVPlayerViewControllerExitFullScreenReasonPinchGestureHandled,
+    AVPlayerViewControllerExitFullScreenReasonRemoteControlStopEventReceived,
+    AVPlayerViewControllerExitFullScreenReasonPictureInPictureStarted
 };
 - (BOOL)playerViewController:(AVPlayerViewController *)playerViewController shouldExitFullScreenWithReason:(AVPlayerViewControllerExitFullScreenReason)reason;
-- (void)playerViewController:(AVPlayerViewController *)playerViewController restoreUserInterfaceForOptimizedFullscreenStopWithCompletionHandler:(void (^)(BOOL restored))completionHandler;
+- (void)playerViewController:(AVPlayerViewController *)playerViewController restoreUserInterfaceForPictureInPictureStopWithCompletionHandler:(void (^)(BOOL restored))completionHandler;
 @end
 
-typedef NSInteger AVPlayerViewControllerOptimizedFullscreenStopReason;
-
-@interface AVPlayerViewController (Details)
-- (instancetype)initWithVideoLayer:(CALayer <AVVideoLayer> *)videoLayer;
+@interface AVPlayerViewController ()
+- (instancetype)initWithPlayerLayerView:(AVPlayerLayerView *)playerLayerView;
 - (void)enterFullScreenAnimated:(BOOL)animated completionHandler:(void (^)(BOOL success, NSError *))completionHandler;
 - (void)exitFullScreenAnimated:(BOOL)animated completionHandler:(void (^)(BOOL success, NSError *))completionHandler;
 
-- (BOOL)isOptimizedFullscreenPossible;
-- (void)startOptimizedFullscreen;
-- (void)stopOptimizedFullscreen;
-- (void)setAllowsOptimizedFullscreen:(BOOL)allowsOptimizedFullscreen;
+- (BOOL)isPictureInPicturePossible;
+- (void)startPictureInPicture;
+- (void)stopPictureInPicture;
 
+@property (nonatomic) BOOL allowsPictureInPicturePlayback;
 @property (nonatomic, strong) AVPlayerController *playerController;
 @property (nonatomic, weak) id <AVPlayerViewControllerDelegate> delegate;
 @end
@@ -108,7 +112,7 @@ typedef NSInteger AVPlayerViewControllerOptimizedFullscreenStopReason;
 @interface AVValueTiming : NSObject <NSCoding, NSCopying, NSMutableCopying>
 @end
 
-@interface AVValueTiming (Details)
+@interface AVValueTiming ()
 + (AVValueTiming *)valueTimingWithAnchorValue:(double)anchorValue anchorTimeStamp:(NSTimeInterval)timeStamp rate:(double)rate;
 @property (NS_NONATOMIC_IOSONLY, readonly) double currentValue;
 @end

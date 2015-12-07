@@ -483,7 +483,10 @@ RetainPtr<NSImage> WebContextMenuClient::imageForCurrentSharingServicePickerItem
     frameView->setPaintBehavior(oldPaintBehavior);
 
     RefPtr<Image> image = buffer->copyImage(DontCopyBackingStore);
-    return image->getNSImage();
+    if (!image)
+        return nil;
+
+    return [[image->getNSImage() retain] autorelease];
 }
 #endif
 

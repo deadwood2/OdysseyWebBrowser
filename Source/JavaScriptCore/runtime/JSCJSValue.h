@@ -23,9 +23,11 @@
 #ifndef JSCJSValue_h
 #define JSCJSValue_h
 
-#include <math.h>
+#include "JSExportMacros.h"
 #include "PureNaN.h"
-#include <stddef.h> // for size_t
+#include <functional>
+#include <math.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <wtf/Assertions.h>
 #include <wtf/Forward.h>
@@ -195,8 +197,7 @@ public:
     explicit JSValue(long long);
     explicit JSValue(unsigned long long);
 
-    typedef void* (JSValue::*UnspecifiedBoolType);
-    operator UnspecifiedBoolType*() const;
+    explicit operator bool() const;
     bool operator==(const JSValue& other) const;
     bool operator!=(const JSValue& other) const;
 
@@ -253,7 +254,6 @@ public:
     JSString* toString(ExecState*) const;
     Identifier toPropertyKey(ExecState*) const;
     WTF::String toWTFString(ExecState*) const;
-    WTF::String toWTFStringInline(ExecState*) const;
     JSObject* toObject(ExecState*) const;
     JSObject* toObject(ExecState*, JSGlobalObject*) const;
 
@@ -263,8 +263,8 @@ public:
     int32_t toInt32(ExecState*) const;
     uint32_t toUInt32(ExecState*) const;
 
-    // Floating point conversions (this is a convenience method for webcore;
-    // signle precision float is not a representation used in JS or JSC).
+    // Floating point conversions (this is a convenience function for WebCore;
+    // single precision float is not a representation used in JS or JSC).
     float toFloat(ExecState* exec) const { return static_cast<float>(toNumber(exec)); }
 
     // Object operations, with the toObject operation included.
@@ -487,6 +487,11 @@ inline JSValue jsNull()
 inline JSValue jsUndefined()
 {
     return JSValue(JSValue::JSUndefined);
+}
+
+inline JSValue jsTDZValue()
+{
+    return JSValue();
 }
 
 inline JSValue jsBoolean(bool b)

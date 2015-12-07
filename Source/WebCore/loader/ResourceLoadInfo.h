@@ -44,12 +44,14 @@ enum class ResourceType : uint16_t {
     PlugInStream = 0x0100,
     Popup = 0x0200,
 };
+const uint16_t ResourceTypeMask = 0x03FF;
 
 enum class LoadType : uint16_t {
     Invalid = 0x0000,
     FirstParty = 0x0400,
     ThirdParty = 0x0800,
 };
+const uint16_t LoadTypeMask = 0x0C00;
 
 typedef uint16_t ResourceFlags;
 
@@ -58,8 +60,8 @@ typedef uint16_t ResourceFlags;
 // The next bit is used to mark actions that are from a rule with an if-domain condition.
 // The next bit is used to mark actions that in the default stylesheet.
 // The values -1 and -2 are used for removed and empty values in HashTables.
+const uint64_t ActionFlagMask = 0x0000FFFF00000000;
 const uint64_t IfDomainFlag = 0x0001000000000000;
-const uint64_t DisplayNoneStyleSheetFlag = 0x0002000000000000;
 
 ResourceType toResourceType(CachedResource::Type);
 uint16_t readResourceType(const String&);

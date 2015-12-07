@@ -98,7 +98,7 @@ ClonedArguments* ClonedArguments::createWithInlineFrame(ExecState* myFrame, Exec
         break;
     } }
     
-    result->putDirect(vm, vm.propertyNames->length, jsNumber(length));
+    result->putDirect(vm, vm.propertyNames->length, jsNumber(length), DontEnum);
     
     return result;
 }
@@ -118,7 +118,7 @@ ClonedArguments* ClonedArguments::createByCopyingFrom(
     for (unsigned i = length; i--;)
         result->putDirectIndex(exec, i, argumentStart[i].jsValue());
     
-    result->putDirect(vm, vm.propertyNames->length, jsNumber(length));
+    result->putDirect(vm, vm.propertyNames->length, jsNumber(length), DontEnum);
     return result;
 }
 
@@ -216,6 +216,14 @@ void ClonedArguments::materializeSpecialsIfNecessary(ExecState* exec)
 {
     if (!specialsMaterialized())
         materializeSpecials(exec);
+}
+
+void ClonedArguments::visitChildren(JSCell* cell, SlotVisitor& visitor)
+{
+    ClonedArguments* thisObject = jsCast<ClonedArguments*>(cell);
+    ASSERT_GC_OBJECT_INHERITS(thisObject, info());
+    Base::visitChildren(thisObject, visitor);
+    visitor.append(&thisObject->m_callee);
 }
 
 } // namespace JSC

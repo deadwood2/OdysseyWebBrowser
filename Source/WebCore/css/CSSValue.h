@@ -79,6 +79,7 @@ public:
     bool isFontValue() const { return m_classType == FontClass; }
     bool isImageGeneratorValue() const { return m_classType >= CanvasClass && m_classType <= RadialGradientClass; }
     bool isGradientValue() const { return m_classType >= LinearGradientClass && m_classType <= RadialGradientClass; }
+    bool isNamedImageValue() const { return m_classType == NamedImageClass; }
 #if ENABLE(CSS_IMAGE_SET)
     bool isImageSetValue() const { return m_classType == ImageSetClass; }
 #endif
@@ -105,7 +106,6 @@ public:
     bool isSVGColor() const { return m_classType == SVGColorClass || m_classType == SVGPaintClass; }
     bool isSVGPaint() const { return m_classType == SVGPaintClass; }
     bool isUnicodeRangeValue() const { return m_classType == UnicodeRangeClass; }
-    bool isWebKitCSSResourceValue() const { return m_classType == WebKitCSSResourceClass; }
 
 #if ENABLE(CSS_ANIMATIONS_LEVEL_2)
     bool isAnimationTriggerScrollValue() const { return m_classType == AnimationTriggerScrollClass; }
@@ -139,6 +139,7 @@ protected:
 
         // Image generator classes.
         CanvasClass,
+        NamedImageClass,
         CrossfadeClass,
         FilterImageClass,
         LinearGradientClass,
@@ -169,7 +170,6 @@ protected:
 #endif
         SVGColorClass,
         SVGPaintClass,
-        WebKitCSSResourceClass,
 
 #if ENABLE(CSS_ANIMATIONS_LEVEL_2)
         AnimationTriggerScrollClass,
@@ -187,7 +187,6 @@ protected:
 #if ENABLE(CSS_GRID_LAYOUT)
         GridLineNamesClass,
 #endif
-
         // Do not append non-list class types here.
     };
 

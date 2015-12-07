@@ -32,6 +32,7 @@
 #import "DrawingAreaProxyMessages.h"
 #import "LayerHostingContext.h"
 #import "LayerTreeContext.h"
+#import "Logging.h"
 #import "ViewGestureControllerMessages.h"
 #import "WebFrame.h"
 #import "WebPage.h"
@@ -43,10 +44,12 @@
 #import <WebCore/FrameView.h>
 #import <WebCore/GraphicsContext.h>
 #import <WebCore/GraphicsLayerCA.h>
+#import <WebCore/InspectorController.h>
 #import <WebCore/MachSendRight.h>
 #import <WebCore/MainFrame.h>
 #import <WebCore/Page.h>
-#import <WebCore/PlatformCAAnimationMac.h>
+#import <WebCore/PlatformCAAnimationCocoa.h>
+#import <WebCore/QuartzCoreSPI.h>
 #import <WebCore/RenderLayerBacking.h>
 #import <WebCore/RenderLayerCompositor.h>
 #import <WebCore/RenderView.h>
@@ -278,11 +281,18 @@ void TiledCoreAnimationDrawingArea::scaleViewToFitDocumentIfNeeded()
     if (!m_shouldScaleViewToFitDocument)
         return;
 
+    LOG(Resize, "TiledCoreAnimationDrawingArea %p scaleViewToFitDocumentIfNeeded", this);
+    m_webPage.layoutIfNeeded();
+
     int viewWidth = m_webPage.size().width();
-    bool documentWidthChangedOrInvalidated = m_webPage.mainFrame()->view()->needsLayout() || (m_lastDocumentSizeForScaleToFit.width() != m_webPage.mainFrameView()->renderView()->unscaledDocumentRect().width());
+    int documentWidth = m_webPage.mainFrameView()->renderView()->unscaledDocumentRect().width();
+
+    bool documentWidthChanged = m_lastDocumentSizeForScaleToFit.width() != documentWidth;
     bool viewWidthChanged = m_lastViewSizeForScaleToFit.width() != viewWidth;
 
-    if (!documentWidthChangedOrInvalidated && !viewWidthChanged)
+    LOG(Resize, "  documentWidthChanged=%d, viewWidthChanged=%d", documentWidthChanged, viewWidthChanged);
+
+    if (!documentWidthChanged && !viewWidthChanged)
         return;
 
     // The view is now bigger than the document, so we'll re-evaluate whether we have to scale.
@@ -291,13 +301,30 @@ void TiledCoreAnimationDrawingArea::scaleViewToFitDocumentIfNeeded()
 
     // Our current understanding of the document width is still up to date, and we're in scaling mode.
     // Update the viewScale without doing an extra layout to re-determine the document width.
-    if (m_isScalingViewToFitDocument && !documentWidthChangedOrInvalidated) {
-        float viewScale = (float)viewWidth / (float)m_lastDocumentSizeForScaleToFit.width();
-        m_lastViewSizeForScaleToFit = m_webPage.size();
-        viewScale = std::max(viewScale, minimumViewScale);
-        m_webPage.scaleView(viewScale);
-        return;
+    if (m_isScalingViewToFitDocument) {
+        if (!documentWidthChanged) {
+            m_lastViewSizeForScaleToFit = m_webPage.size();
+            float viewScale = (float)viewWidth / (float)m_lastDocumentSizeForScaleToFit.width();
+            if (viewScale < minimumViewScale) {
+                viewScale = minimumViewScale;
+                documentWidth = std::ceil(viewWidth / viewScale);
+            }
+            IntSize fixedLayoutSize(documentWidth, std::ceil((m_webPage.size().height() - m_webPage.corePage()->topContentInset()) / viewScale));
+            m_webPage.setFixedLayoutSize(fixedLayoutSize);
+            m_webPage.scaleView(viewScale);
+
+            LOG(Resize, "  using fixed layout at %dx%d. document width %d unchanged, scaled to %.4f to fit view width %d", fixedLayoutSize.width(), fixedLayoutSize.height(), documentWidth, viewScale, viewWidth);
+            return;
+        }
+    
+        IntSize fixedLayoutSize = m_webPage.fixedLayoutSize();
+        if (documentWidth > fixedLayoutSize.width()) {
+            LOG(Resize, "  page laid out wider than fixed layout width. Not attempting to re-scale");
+            return;
+        }
     }
+
+    LOG(Resize, "  doing unconstrained layout");
 
     // Lay out at the view size.
     m_webPage.setUseFixedLayout(false);
@@ -307,9 +334,11 @@ void TiledCoreAnimationDrawingArea::scaleViewToFitDocumentIfNeeded()
     m_lastViewSizeForScaleToFit = m_webPage.size();
     m_lastDocumentSizeForScaleToFit = documentSize;
 
-    int documentWidth = documentSize.width();
+    documentWidth = documentSize.width();
 
     float viewScale = 1;
+
+    LOG(Resize, "  unscaled document size %dx%d. need to scale down: %d", documentSize.width(), documentSize.height(), documentWidth && documentWidth < maximumDocumentWidthForScaling && viewWidth < documentWidth);
 
     // Avoid scaling down documents that don't fit in a certain width, to allow
     // sites that want horizontal scrollbars to continue to have them.
@@ -318,8 +347,14 @@ void TiledCoreAnimationDrawingArea::scaleViewToFitDocumentIfNeeded()
         m_isScalingViewToFitDocument = true;
         m_webPage.setUseFixedLayout(true);
         viewScale = (float)viewWidth / (float)documentWidth;
-        viewScale = std::max(viewScale, minimumViewScale);
-        m_webPage.setFixedLayoutSize(IntSize(ceilf(m_webPage.size().width() / viewScale), m_webPage.size().height()));
+        if (viewScale < minimumViewScale) {
+            viewScale = minimumViewScale;
+            documentWidth = std::ceil(viewWidth / viewScale);
+        }
+        IntSize fixedLayoutSize(documentWidth, std::ceil((m_webPage.size().height() - m_webPage.corePage()->topContentInset()) / viewScale));
+        m_webPage.setFixedLayoutSize(fixedLayoutSize);
+
+        LOG(Resize, "  using fixed layout at %dx%d. document width %d, scaled to %.4f to fit view width %d", fixedLayoutSize.width(), fixedLayoutSize.height(), documentWidth, viewScale, viewWidth);
     }
 
     m_webPage.scaleView(viewScale);
@@ -382,7 +417,17 @@ bool TiledCoreAnimationDrawingArea::flushLayers()
 
         // Because our view-relative overlay root layer is not attached to the main GraphicsLayer tree, we need to flush it manually.
         if (m_viewOverlayRootLayer)
-            m_viewOverlayRootLayer->flushCompositingState(visibleRect);
+            m_viewOverlayRootLayer->flushCompositingState(visibleRect, m_webPage.mainFrameView()->viewportIsStable());
+
+#if (TARGET_OS_IPHONE && __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
+        RefPtr<WebPage> retainedPage = &m_webPage;
+        [CATransaction addCommitHandler:[retainedPage] {
+            if (Page* corePage = retainedPage->corePage()) {
+                if (Frame* coreFrame = retainedPage->mainFrame())
+                    corePage->inspectorController().didComposite(*coreFrame);
+            }
+        } forPhase:kCATransactionPhasePostCommit];
+#endif
 
         bool returnValue = m_webPage.mainFrameView()->flushCompositingStateIncludingSubframes();
 #if ENABLE(ASYNC_SCROLLING)
@@ -485,7 +530,7 @@ void TiledCoreAnimationDrawingArea::updateScrolledExposedRect()
     frameView->setExposedRect(m_scrolledExposedRect);
 }
 
-void TiledCoreAnimationDrawingArea::updateGeometry(const IntSize& viewSize, const IntSize& layerPosition, bool flushSynchronously)
+void TiledCoreAnimationDrawingArea::updateGeometry(const IntSize& viewSize, const IntSize& layerPosition, bool flushSynchronously, const WebCore::MachSendRight& fencePort)
 {
     m_inUpdateGeometry = true;
 
@@ -519,12 +564,19 @@ void TiledCoreAnimationDrawingArea::updateGeometry(const IntSize& viewSize, cons
 
     if (flushSynchronously) {
         [CATransaction flush];
+#if !HAVE(COREANIMATION_FENCES)
+        // We can't synchronize here if we're using fences or we'll blow the fence every time (and we don't need to).
         [CATransaction synchronize];
+#endif
     }
 
     m_webPage.send(Messages::DrawingAreaProxy::DidUpdateGeometry());
 
     m_inUpdateGeometry = false;
+
+#if HAVE(COREANIMATION_FENCES)
+    m_layerHostingContext->setFencePort(fencePort.sendRight());
+#endif
 }
 
 void TiledCoreAnimationDrawingArea::setDeviceScaleFactor(float deviceScaleFactor)
@@ -753,7 +805,7 @@ void TiledCoreAnimationDrawingArea::commitTransientZoom(double scale, FloatPoint
     transform.scale(scale);
 
     RetainPtr<CABasicAnimation> renderViewAnimationCA = transientZoomSnapAnimationForKeyPath("transform");
-    RefPtr<PlatformCAAnimation> renderViewAnimation = PlatformCAAnimationMac::create(renderViewAnimationCA.get());
+    RefPtr<PlatformCAAnimation> renderViewAnimation = PlatformCAAnimationCocoa::create(renderViewAnimationCA.get());
     renderViewAnimation->setToValue(transform);
 
     RetainPtr<CALayer> shadowCALayer;
@@ -777,7 +829,7 @@ void TiledCoreAnimationDrawingArea::commitTransientZoom(double scale, FloatPoint
 
     if (shadowCALayer) {
         FloatRect shadowBounds = shadowLayerBoundsForFrame(frameView, scale);
-        RetainPtr<CGPathRef> shadowPath = adoptCF(CGPathCreateWithRect(shadowBounds, NULL)).get();
+        RetainPtr<CGPathRef> shadowPath = adoptCF(CGPathCreateWithRect(shadowBounds, NULL));
 
         RetainPtr<CABasicAnimation> shadowBoundsAnimation = transientZoomSnapAnimationForKeyPath("bounds");
         [shadowBoundsAnimation setToValue:[NSValue valueWithRect:shadowBounds]];

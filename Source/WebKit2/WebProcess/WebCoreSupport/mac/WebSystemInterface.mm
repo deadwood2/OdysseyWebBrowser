@@ -75,7 +75,6 @@ void InitWebCoreSystemInterface(void)
         INIT(HTTPRequestEnablePipelining);
 #if !PLATFORM(IOS)
         INIT(MeasureMediaUIPart);
-        INIT(PopupMenu);
         INIT(QTIncludeOnlyModernMediaFileTypes);
         INIT(QTMovieDisableComponent);
         INIT(QTMovieGetType);
@@ -120,7 +119,6 @@ void InitWebCoreSystemInterface(void)
 #endif // !PLATFORM(IOS)
 
 #if !PLATFORM(IOS)
-        INIT(RecommendedScrollerStyle);
         INIT(ExecutableWasLinkedOnOrBeforeSnowLeopard);
         INIT(CopyDefaultSearchProviderDisplayName);
         INIT(Cursor);
@@ -156,18 +154,6 @@ void InitWebCoreSystemInterface(void)
         INIT(CopyCFURLResponseSuggestedFilename);
         INIT(SetCFURLResponseMIMEType);
 
-#if !PLATFORM(IOS)
-        INIT(CreateVMPressureDispatchOnMainQueue);
-#endif
-
-        INIT(DestroyRenderingResources);
-
-#if PLATFORM(MAC)
-        INIT(ExecutableWasLinkedOnOrBeforeLion);
-        INIT(CreateMemoryStatusPressureCriticalDispatchOnMainQueue);
-#endif
-
-        INIT(CGPathAddRoundedRect);
         INIT(CFURLRequestAllowAllPostCaching);
 
 #if PLATFORM(IOS)
@@ -191,7 +177,6 @@ void InitWebCoreSystemInterface(void)
         INIT(GetScreenScaleFactor);
         INIT(IsGB18030ComplianceRequired);
         INIT(IsOptimizedFullscreenSupported);
-        INIT(GetMediaUIImageData);
 #endif
 
 #if ENABLE(PUBLIC_SUFFIX_LIST)

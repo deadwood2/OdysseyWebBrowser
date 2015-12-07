@@ -3010,6 +3010,9 @@ template<> inline CSSPrimitiveValue::CSSPrimitiveValue(EWordBreak e)
     case BreakAllWordBreak:
         m_value.valueID = CSSValueBreakAll;
         break;
+    case KeepAllWordBreak:
+        m_value.valueID = CSSValueKeepAll;
+        break;
     case BreakWordBreak:
         m_value.valueID = CSSValueBreakWord;
         break;
@@ -3023,6 +3026,8 @@ template<> inline CSSPrimitiveValue::operator EWordBreak() const
     switch (m_value.valueID) {
     case CSSValueBreakAll:
         return BreakAllWordBreak;
+    case CSSValueKeepAll:
+        return KeepAllWordBreak;
     case CSSValueBreakWord:
         return BreakWordBreak;
     case CSSValueNormal:
@@ -5247,6 +5252,40 @@ template<> inline CSSPrimitiveValue::operator ContentDistributionType() const
     }
     ASSERT_NOT_REACHED();
     return ContentDistributionStretch;
+}
+
+template<> inline CSSPrimitiveValue::operator TextZoom() const
+{
+    ASSERT(isValueID());
+
+    switch (m_value.valueID) {
+    case CSSValueNormal:
+        return TextZoomNormal;
+    case CSSValueReset:
+        return TextZoomReset;
+    default:
+        break;
+    }
+
+    ASSERT_NOT_REACHED();
+    return TextZoomNormal;
+}
+
+template<> inline CSSPrimitiveValue::CSSPrimitiveValue(TextZoom textZoom)
+    : CSSValue(PrimitiveClass)
+{
+    m_primitiveUnitType = CSS_VALUE_ID;
+    switch (textZoom) {
+    case TextZoomNormal:
+        m_value.valueID = CSSValueNormal;
+        return;
+    case TextZoomReset:
+        m_value.valueID = CSSValueReset;
+        return;
+    }
+
+    ASSERT_NOT_REACHED();
+    m_value.valueID = CSSValueNormal;
 }
 
 #if ENABLE(CSS_SCROLL_SNAP)

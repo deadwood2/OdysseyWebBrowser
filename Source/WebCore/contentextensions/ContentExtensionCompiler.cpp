@@ -36,6 +36,7 @@
 #include "ContentExtensionRule.h"
 #include "ContentExtensionsDebugging.h"
 #include "DFABytecodeCompiler.h"
+#include "DFACombiner.h"
 #include "NFA.h"
 #include "NFAToDFA.h"
 #include "URLFilterParser.h"
@@ -68,56 +69,137 @@ static void serializeSelector(Vector<SerializedActionByte>& actions, const Strin
             actions.append(selector[i]);
     }
 }
-    
+
+struct PendingDisplayNoneActions {
+    Vector<String> selectors;
+    Vector<unsigned> clientLocations;
+};
+typedef HashMap<Trigger, PendingDisplayNoneActions, TriggerHash, TriggerHashTraits> PendingDisplayNoneActionsMap;
+
+static void resolvePendingDisplayNoneActions(Vector<SerializedActionByte>& actions, Vector<unsigned>& actionLocations, PendingDisplayNoneActionsMap& pendingDisplayNoneActionsMap)
+{
+    for (auto& slot : pendingDisplayNoneActionsMap) {
+        PendingDisplayNoneActions& pendingActions = slot.value;
+
+        StringBuilder combinedSelectors;
+        for (unsigned i = 0; i < pendingActions.selectors.size(); ++i) {
+            if (i)
+                combinedSelectors.append(',');
+            combinedSelectors.append(pendingActions.selectors[i]);
+        }
+
+        unsigned actionLocation = actions.size();
+        serializeSelector(actions, combinedSelectors.toString());
+        for (unsigned clientLocation : pendingActions.clientLocations)
+            actionLocations[clientLocation] = actionLocation;
+    }
+    pendingDisplayNoneActionsMap.clear();
+}
+
 static Vector<unsigned> serializeActions(const Vector<ContentExtensionRule>& ruleList, Vector<SerializedActionByte>& actions)
 {
     ASSERT(!actions.size());
-    
+
     Vector<unsigned> actionLocations;
-        
+
+    // Block and BlockCookies do not need to be distinguishable. The order in which they are executed it irrelevant
+    // since Block is a strict superset of BlockCookies.
+    // Similarily, Block is a superset of CSSDisplayNone, and BlockCookies is independent from CSSDisplayNone.
+    //
+    // The only distinguisher is "IgnorePreviousRules".
+    //
+    // The trigger's Flags do not need to be distinguishable either. The way we use them is filtering the actions
+    // based on the flag *after* matching.
+    //
+    // To reduce the number of unique actions, we keep track of the various action, indexed by their flag.
+    // We only need to create new ones when encountering a IgnorePreviousRules.
+    HashMap<uint32_t, uint32_t, DefaultHash<uint32_t>::Hash, WTF::UnsignedWithZeroKeyHashTraits<uint32_t>> blockActionsMap;
+    HashMap<uint32_t, uint32_t, DefaultHash<uint32_t>::Hash, WTF::UnsignedWithZeroKeyHashTraits<uint32_t>> blockCookiesActionsMap;
+    PendingDisplayNoneActionsMap cssDisplayNoneActionsMap;
+    HashMap<uint32_t, uint32_t, DefaultHash<uint32_t>::Hash, WTF::UnsignedWithZeroKeyHashTraits<uint32_t>> ignorePreviousRuleActionsMap;
+
     for (unsigned ruleIndex = 0; ruleIndex < ruleList.size(); ++ruleIndex) {
         const ContentExtensionRule& rule = ruleList[ruleIndex];
-        
-        // Consolidate css selectors with identical triggers.
-        if (rule.action().type() == ActionType::CSSDisplayNoneSelector) {
-            StringBuilder selector;
-            selector.append(rule.action().stringArgument());
+        ActionType actionType = rule.action().type();
+
+        RELEASE_ASSERT(actionType == ActionType::CSSDisplayNoneSelector
+            || actionType == ActionType::BlockLoad
+            || actionType == ActionType::BlockCookies
+            || actionType == ActionType::IgnorePreviousRules);
+
+        if (actionType == ActionType::IgnorePreviousRules) {
+            resolvePendingDisplayNoneActions(actions, actionLocations, cssDisplayNoneActionsMap);
+
+            blockActionsMap.clear();
+            blockCookiesActionsMap.clear();
+            cssDisplayNoneActionsMap.clear();
+        } else
+            ignorePreviousRuleActionsMap.clear();
+
+        // Anything with domain is just pushed.
+        // We could try to merge domains but that case is not common in practice.
+        if (!rule.trigger().domains.isEmpty()) {
             actionLocations.append(actions.size());
-            for (unsigned i = ruleIndex + 1; i < ruleList.size(); i++) {
-                if (rule.trigger() == ruleList[i].trigger() && ruleList[i].action().type() == ActionType::CSSDisplayNoneSelector) {
-                    actionLocations.append(actions.size());
-                    ruleIndex++;
-                    selector.append(',');
-                    selector.append(ruleList[i].action().stringArgument());
-                } else
-                    break;
-            }
-            serializeSelector(actions, selector.toString());
-            continue;
-        }
-        
-        // Identical sequential actions should not be rewritten unless there are domains in the trigger.
-        // If there are domains in the trigger, we need to distinguish the actions by index to tell if we need to apply it
-        // by comparing the output of the filters with domains and the domain filters.
-        if (ruleIndex && rule.action() == ruleList[ruleIndex - 1].action() && rule.trigger().domains.isEmpty()) {
-            actionLocations.append(actionLocations[ruleIndex - 1]);
+
+            if (actionType == ActionType::CSSDisplayNoneSelector)
+                serializeSelector(actions, rule.action().stringArgument());
+            else
+                actions.append(static_cast<SerializedActionByte>(actionType));
             continue;
         }
 
-        actionLocations.append(actions.size());
-        switch (rule.action().type()) {
-        case ActionType::CSSDisplayNoneSelector:
+        ResourceFlags flags = rule.trigger().flags;
+        unsigned actionLocation = std::numeric_limits<unsigned>::max();
+
+        switch (actionType) {
         case ActionType::CSSDisplayNoneStyleSheet:
         case ActionType::InvalidAction:
             RELEASE_ASSERT_NOT_REACHED();
 
-        case ActionType::BlockLoad:
-        case ActionType::BlockCookies:
-        case ActionType::IgnorePreviousRules:
-            actions.append(static_cast<SerializedActionByte>(rule.action().type()));
+        case ActionType::IgnorePreviousRules: {
+            const auto existingAction = ignorePreviousRuleActionsMap.find(flags);
+            if (existingAction == ignorePreviousRuleActionsMap.end()) {
+                actionLocation = actions.size();
+                actions.append(static_cast<SerializedActionByte>(rule.action().type()));
+                ignorePreviousRuleActionsMap.set(flags, actionLocation);
+            } else
+                actionLocation = existingAction->value;
             break;
         }
+        case ActionType::CSSDisplayNoneSelector: {
+            const auto addResult = cssDisplayNoneActionsMap.add(rule.trigger(), PendingDisplayNoneActions());
+            PendingDisplayNoneActions& pendingDisplayNoneActions = addResult.iterator->value;
+            pendingDisplayNoneActions.selectors.append(rule.action().stringArgument());
+            pendingDisplayNoneActions.clientLocations.append(actionLocations.size());
+
+            actionLocation = std::numeric_limits<unsigned>::max();
+            break;
+        }
+        case ActionType::BlockLoad: {
+            const auto existingAction = blockActionsMap.find(flags);
+            if (existingAction == blockActionsMap.end()) {
+                actionLocation = actions.size();
+                actions.append(static_cast<SerializedActionByte>(rule.action().type()));
+                blockActionsMap.set(flags, actionLocation);
+            } else
+                actionLocation = existingAction->value;
+            break;
+        }
+        case ActionType::BlockCookies: {
+            const auto existingAction = blockCookiesActionsMap.find(flags);
+            if (existingAction == blockCookiesActionsMap.end()) {
+                actionLocation = actions.size();
+                actions.append(static_cast<SerializedActionByte>(rule.action().type()));
+                blockCookiesActionsMap.set(flags, actionLocation);
+            } else
+                actionLocation = existingAction->value;
+            break;
+        }
+        }
+
+        actionLocations.append(actionLocation);
     }
+    resolvePendingDisplayNoneActions(actions, actionLocations, cssDisplayNoneActionsMap);
     return actionLocations;
 }
 
@@ -169,25 +251,20 @@ std::error_code compileRuleList(ContentExtensionCompilationClient& client, Strin
     URLFilterParser filtersWithoutDomainParser(filtersWithoutDomains);
     URLFilterParser filtersWithDomainParser(filtersWithDomains);
     
-    bool ignorePreviousRulesSeen = false;
     for (unsigned ruleIndex = 0; ruleIndex < parsedRuleList.size(); ++ruleIndex) {
         const ContentExtensionRule& contentExtensionRule = parsedRuleList[ruleIndex];
         const Trigger& trigger = contentExtensionRule.trigger();
-        const Action& action = contentExtensionRule.action();
         ASSERT(trigger.urlFilter.length());
 
         // High bits are used for flags. This should match how they are used in DFABytecodeCompiler::compileNode.
+        ASSERT(!trigger.flags || ActionFlagMask & (static_cast<uint64_t>(trigger.flags) << 32));
+        ASSERT(!(~ActionFlagMask & (static_cast<uint64_t>(trigger.flags) << 32)));
         uint64_t actionLocationAndFlags = (static_cast<uint64_t>(trigger.flags) << 32) | static_cast<uint64_t>(actionLocations[ruleIndex]);
         URLFilterParser::ParseStatus status = URLFilterParser::Ok;
         if (trigger.domains.isEmpty()) {
             ASSERT(trigger.domainCondition == Trigger::DomainCondition::None);
             status = filtersWithoutDomainParser.addPattern(trigger.urlFilter, trigger.urlFilterIsCaseSensitive, actionLocationAndFlags);
             if (status == URLFilterParser::MatchesEverything) {
-                if (!ignorePreviousRulesSeen
-                    && trigger.domainCondition == Trigger::DomainCondition::None
-                    && action.type() == ActionType::CSSDisplayNoneSelector
-                    && !trigger.flags)
-                    actionLocationAndFlags |= DisplayNoneStyleSheetFlag;
                 universalActionsWithoutDomains.add(actionLocationAndFlags);
                 status = URLFilterParser::Ok;
             }
@@ -216,9 +293,6 @@ std::error_code compileRuleList(ContentExtensionCompilationClient& client, Strin
                 domainFilters.addDomain(actionLocationAndFlags, domain);
         }
         ASSERT(status == URLFilterParser::Ok);
-        
-        if (action.type() == ActionType::IgnorePreviousRules)
-            ignorePreviousRulesSeen = true;
     }
     LOG_LARGE_STRUCTURES(parsedRuleList, parsedRuleList.capacity() * sizeof(ContentExtensionRule)); // Doesn't include strings.
     LOG_LARGE_STRUCTURES(actionLocations, actionLocations.capacity() * sizeof(unsigned));
@@ -235,28 +309,21 @@ std::error_code compileRuleList(ContentExtensionCompilationClient& client, Strin
     LOG_LARGE_STRUCTURES(domainFilters, domainFilters.memoryUsed());
 
 #if CONTENT_EXTENSIONS_PERFORMANCE_REPORTING
+    unsigned machinesWithoutDomainsCount = 0;
+    unsigned totalBytecodeSizeForMachinesWithoutDomains = 0;
+    unsigned machinesWithDomainsCount = 0;
+    unsigned totalBytecodeSizeForMachinesWithDomains = 0;
     double totalNFAToByteCodeBuildTimeStart = monotonicallyIncreasingTime();
 #endif
 
     // Smaller maxNFASizes risk high compiling and interpreting times from having too many DFAs,
     // larger maxNFASizes use too much memory when compiling.
-    const unsigned maxNFASize = 30000;
+    const unsigned maxNFASize = 75000;
     
     bool firstNFAWithoutDomainsSeen = false;
-    // FIXME: Combine small NFAs to reduce the number of NFAs.
-    filtersWithoutDomains.processNFAs(maxNFASize, [&](NFA&& nfa) {
-#if CONTENT_EXTENSIONS_STATE_MACHINE_DEBUGGING
-        dataLogF("filtersWithoutDomains NFA\n");
-        nfa.debugPrintDot();
-#endif
 
-        LOG_LARGE_STRUCTURES(nfa, nfa.memoryUsed());
-
-        DFA dfa = NFAToDFA::convert(nfa);
-        LOG_LARGE_STRUCTURES(dfa, dfa.memoryUsed());
-
-        dfa.minimize();
-
+    auto lowerFiltersWithoutDomainsDFAToBytecode = [&](DFA&& dfa)
+    {
 #if CONTENT_EXTENSIONS_STATE_MACHINE_DEBUGGING
         dataLogF("filtersWithoutDomains DFA\n");
         dfa.debugPrintDot();
@@ -272,19 +339,48 @@ std::error_code compileRuleList(ContentExtensionCompilationClient& client, Strin
         DFABytecodeCompiler compiler(dfa, bytecode);
         compiler.compile();
         LOG_LARGE_STRUCTURES(bytecode, bytecode.capacity() * sizeof(uint8_t));
+#if CONTENT_EXTENSIONS_PERFORMANCE_REPORTING
+        ++machinesWithoutDomainsCount;
+        totalBytecodeSizeForMachinesWithoutDomains += bytecode.size();
+#endif
         client.writeFiltersWithoutDomainsBytecode(WTF::move(bytecode));
 
         firstNFAWithoutDomainsSeen = true;
+    };
+
+    const unsigned smallDFASize = 100;
+    DFACombiner smallFiltersWithoutDomainsDFACombiner;
+    filtersWithoutDomains.processNFAs(maxNFASize, [&](NFA&& nfa) {
+#if CONTENT_EXTENSIONS_STATE_MACHINE_DEBUGGING
+        dataLogF("filtersWithoutDomains NFA\n");
+        nfa.debugPrintDot();
+#endif
+
+        LOG_LARGE_STRUCTURES(nfa, nfa.memoryUsed());
+        DFA dfa = NFAToDFA::convert(nfa);
+        LOG_LARGE_STRUCTURES(dfa, dfa.memoryUsed());
+
+        if (dfa.graphSize() < smallDFASize)
+            smallFiltersWithoutDomainsDFACombiner.addDFA(WTF::move(dfa));
+        else {
+            dfa.minimize();
+            lowerFiltersWithoutDomainsDFAToBytecode(WTF::move(dfa));
+        }
     });
+
+
+    smallFiltersWithoutDomainsDFACombiner.combineDFAs(smallDFASize, [&](DFA&& dfa) {
+        LOG_LARGE_STRUCTURES(dfa, dfa.memoryUsed());
+        lowerFiltersWithoutDomainsDFAToBytecode(WTF::move(dfa));
+    });
+
     ASSERT(filtersWithoutDomains.isEmpty());
 
     if (!firstNFAWithoutDomainsSeen) {
         // Our bytecode interpreter expects to have at least one DFA, so if we haven't seen any
         // create a dummy one and add any universal actions.
 
-        NFA dummyNFA;
-        DFA dummyDFA = NFAToDFA::convert(dummyNFA);
-
+        DFA dummyDFA = DFA::empty();
         addUniversalActionsToDFA(dummyDFA, universalActionsWithoutDomains);
 
         Vector<DFABytecode> bytecode;
@@ -297,6 +393,27 @@ std::error_code compileRuleList(ContentExtensionCompilationClient& client, Strin
     universalActionsWithoutDomains.clear();
     
     bool firstNFAWithDomainsSeen = false;
+    auto lowerFiltersWithDomainsDFAToBytecode = [&](DFA&& dfa)
+    {
+        if (!firstNFAWithDomainsSeen) {
+            // Put all the universal actions on the first DFA.
+            addUniversalActionsToDFA(dfa, universalActionsWithDomains);
+        }
+
+        Vector<DFABytecode> bytecode;
+        DFABytecodeCompiler compiler(dfa, bytecode);
+        compiler.compile();
+        LOG_LARGE_STRUCTURES(bytecode, bytecode.capacity() * sizeof(uint8_t));
+#if CONTENT_EXTENSIONS_PERFORMANCE_REPORTING
+        ++machinesWithDomainsCount;
+        totalBytecodeSizeForMachinesWithDomains += bytecode.size();
+#endif
+        client.writeFiltersWithDomainsBytecode(WTF::move(bytecode));
+
+        firstNFAWithDomainsSeen = true;
+    };
+
+    DFACombiner smallFiltersWithDomainsDFACombiner;
     filtersWithDomains.processNFAs(maxNFASize, [&](NFA&& nfa) {
 #if CONTENT_EXTENSIONS_STATE_MACHINE_DEBUGGING
         dataLogF("filtersWithDomains NFA\n");
@@ -309,35 +426,27 @@ std::error_code compileRuleList(ContentExtensionCompilationClient& client, Strin
         dfa.debugPrintDot();
 #endif
         LOG_LARGE_STRUCTURES(dfa, dfa.memoryUsed());
-        // Minimizing this DFA would not be effective because all actions with domains are unique.
-#if CONTENT_EXTENSIONS_STATE_MACHINE_DEBUGGING
-        dataLogF("filtersWithDomains POST MINIMIZING DFA\n");
-        dfa.debugPrintDot();
-#endif
+
         ASSERT_WITH_MESSAGE(!dfa.nodes[dfa.root].hasActions(), "Filters with domains that match everything are not allowed right now.");
-        
-        if (!firstNFAWithDomainsSeen) {
-            // Put all the universal actions on the first DFA.
-            addUniversalActionsToDFA(dfa, universalActionsWithDomains);
+
+        if (dfa.graphSize() < smallDFASize)
+            smallFiltersWithDomainsDFACombiner.addDFA(WTF::move(dfa));
+        else {
+            dfa.minimize();
+            lowerFiltersWithDomainsDFAToBytecode(WTF::move(dfa));
         }
-        
-        Vector<DFABytecode> bytecode;
-        DFABytecodeCompiler compiler(dfa, bytecode);
-        compiler.compile();
-        LOG_LARGE_STRUCTURES(bytecode, bytecode.capacity() * sizeof(uint8_t));
-        client.writeFiltersWithDomainsBytecode(WTF::move(bytecode));
-        
-        firstNFAWithDomainsSeen = true;
+    });
+    smallFiltersWithDomainsDFACombiner.combineDFAs(smallDFASize, [&](DFA&& dfa) {
+        LOG_LARGE_STRUCTURES(dfa, dfa.memoryUsed());
+        lowerFiltersWithDomainsDFAToBytecode(WTF::move(dfa));
     });
     ASSERT(filtersWithDomains.isEmpty());
     
     if (!firstNFAWithDomainsSeen) {
         // Our bytecode interpreter expects to have at least one DFA, so if we haven't seen any
         // create a dummy one and add any universal actions.
-        
-        NFA dummyNFA;
-        DFA dummyDFA = NFAToDFA::convert(dummyNFA);
-        
+
+        DFA dummyDFA = DFA::empty();
         addUniversalActionsToDFA(dummyDFA, universalActionsWithDomains);
         
         Vector<DFABytecode> bytecode;
@@ -364,7 +473,7 @@ std::error_code compileRuleList(ContentExtensionCompilationClient& client, Strin
         // Minimizing this DFA would not be effective because all actions are unique
         // and because of the tree-like structure of this DFA.
         ASSERT_WITH_MESSAGE(!dfa.nodes[dfa.root].hasActions(), "There should not be any domains that match everything.");
-        
+
         Vector<DFABytecode> bytecode;
         DFABytecodeCompiler compiler(dfa, bytecode);
         compiler.compile();
@@ -376,6 +485,9 @@ std::error_code compileRuleList(ContentExtensionCompilationClient& client, Strin
 #if CONTENT_EXTENSIONS_PERFORMANCE_REPORTING
     double totalNFAToByteCodeBuildTimeEnd = monotonicallyIncreasingTime();
     dataLogF("    Time spent building and compiling the DFAs: %f\n", (totalNFAToByteCodeBuildTimeEnd - totalNFAToByteCodeBuildTimeStart));
+
+    dataLogF("    Number of machines without domain filters: %d (total bytecode size = %d)\n", machinesWithoutDomainsCount, totalBytecodeSizeForMachinesWithoutDomains);
+    dataLogF("    Number of machines with domain filters: %d (total bytecode size = %d)\n", machinesWithDomainsCount, totalBytecodeSizeForMachinesWithDomains);
 #endif
 
     client.finalize();

@@ -31,12 +31,15 @@
 #include "FontCache.h"
 #include "FontCascade.h"
 #include "GCController.h"
+#include "HTMLMediaElement.h"
 #include "JSDOMWindow.h"
 #include "MemoryCache.h"
 #include "Page.h"
 #include "PageCache.h"
 #include "ScrollingThread.h"
+#include "StyledElement.h"
 #include "WorkerThread.h"
+#include <JavaScriptCore/IncrementalSweeper.h>
 #include <wtf/CurrentTime.h>
 #include <wtf/FastMalloc.h>
 #include <wtf/StdLibExtras.h>
@@ -54,7 +57,7 @@ MemoryPressureHandler& MemoryPressureHandler::singleton()
 MemoryPressureHandler::MemoryPressureHandler() 
     : m_installed(false)
     , m_lastRespondTime(0)
-    , m_lowMemoryHandler([this] (bool critical) { releaseMemory(critical); })
+    , m_lowMemoryHandler([this] (Critical critical, Synchronous synchronous) { releaseMemory(critical, synchronous); })
     , m_underMemoryPressure(false)
 #if PLATFORM(IOS)
     // FIXME: Can we share more of this with OpenSource?
@@ -98,9 +101,14 @@ void MemoryPressureHandler::releaseNoncriticalMemory()
         ReliefLogger log("Prune MemoryCache dead resources");
         MemoryCache::singleton().pruneDeadResourcesToSize(0);
     }
+
+    {
+        ReliefLogger log("Prune presentation attribute cache");
+        StyledElement::clearPresentationAttributeCache();
+    }
 }
 
-void MemoryPressureHandler::releaseCriticalMemory()
+void MemoryPressureHandler::releaseCriticalMemory(Synchronous synchronous)
 {
     {
         ReliefLogger log("Empty the PageCache");
@@ -127,19 +135,35 @@ void MemoryPressureHandler::releaseCriticalMemory()
 
     {
         ReliefLogger log("Discard all JIT-compiled code");
-        gcController().discardAllCompiledCode();
+        GCController::singleton().discardAllCompiledCode();
     }
 
     {
         ReliefLogger log("Invalidate font cache");
         FontCache::singleton().invalidate();
     }
+
+#if ENABLE(VIDEO)
+    {
+        ReliefLogger log("Dropping buffered data from paused media elements");
+        for (auto* mediaElement: HTMLMediaElement::allMediaElements()) {
+            if (mediaElement->paused())
+                mediaElement->purgeBufferedDataIfPossible();
+        }
+    }
+#endif
+
+    if (synchronous == Synchronous::Yes) {
+        ReliefLogger log("Collecting JavaScript garbage");
+        GCController::singleton().garbageCollectNow();
+    } else
+        GCController::singleton().garbageCollectNowIfNotDoneRecently();
 }
 
-void MemoryPressureHandler::releaseMemory(bool critical)
+void MemoryPressureHandler::releaseMemory(Critical critical, Synchronous synchronous)
 {
-    if (critical)
-        releaseCriticalMemory();
+    if (critical == Critical::Yes)
+        releaseCriticalMemory(synchronous);
 
     releaseNoncriticalMemory();
 
@@ -156,12 +180,12 @@ void MemoryPressureHandler::releaseMemory(bool critical)
     }
 }
 
-#if !PLATFORM(COCOA) && !OS(LINUX)
+#if !PLATFORM(COCOA) && !OS(LINUX) && !PLATFORM(WIN)
 void MemoryPressureHandler::install() { }
 void MemoryPressureHandler::uninstall() { }
 void MemoryPressureHandler::holdOff(unsigned) { }
-void MemoryPressureHandler::respondToMemoryPressure(bool) { }
-void MemoryPressureHandler::platformReleaseMemory(bool) { }
+void MemoryPressureHandler::respondToMemoryPressure(Critical, Synchronous) { }
+void MemoryPressureHandler::platformReleaseMemory(Critical) { }
 void MemoryPressureHandler::ReliefLogger::platformLog() { }
 size_t MemoryPressureHandler::ReliefLogger::platformMemoryUsage() { return 0; }
 #endif

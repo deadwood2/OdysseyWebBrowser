@@ -72,6 +72,9 @@ class TimeRanges;
 #if ENABLE(ENCRYPTED_MEDIA_V2)
 class MediaKeys;
 #endif
+#if ENABLE(MEDIA_SESSION)
+class MediaSession;
+#endif
 #if ENABLE(MEDIA_SOURCE)
 class MediaSource;
 class SourceBuffer;
@@ -114,6 +117,8 @@ public:
     virtual bool hasVideo() const override { return false; }
     virtual bool hasAudio() const override;
 
+    static HashSet<HTMLMediaElement*>& allMediaElements();
+
     void rewind(double timeDelta);
     WEBCORE_EXPORT virtual void returnToRealtime() override;
 
@@ -142,7 +147,9 @@ public:
     MediaPlayerEnums::MovieLoadType movieLoadType() const;
     
     bool inActiveDocument() const { return m_inActiveDocument; }
-    
+
+    const Document* hostingDocument() const override { return &document(); }
+
 // DOM API
 // error state
     PassRefPtr<MediaError> error() const;
@@ -175,6 +182,7 @@ public:
     WEBCORE_EXPORT virtual double currentTime() const override;
     virtual void setCurrentTime(double) override;
     virtual void setCurrentTime(double, ExceptionCode&);
+    virtual double getStartDate() const;
     WEBCORE_EXPORT virtual double duration() const override;
     WEBCORE_EXPORT virtual bool paused() const override;
     virtual double defaultPlaybackRate() const override;
@@ -203,6 +211,8 @@ public:
     void fastSeek(double);
     double minFastReverseRate() const;
     double maxFastForwardRate() const;
+
+    void purgeBufferedDataIfPossible();
 
 // captions
     bool webkitHasClosedCaptions() const;
@@ -334,8 +344,6 @@ public:
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
     void webkitShowPlaybackTargetPicker();
-    bool webkitCurrentPlaybackTargetIsWireless() const;
-
     virtual bool addEventListener(const AtomicString& eventType, PassRefPtr<EventListener>, bool useCapture) override;
     virtual bool removeEventListener(const AtomicString& eventType, EventListener*, bool useCapture) override;
 
@@ -345,6 +353,7 @@ public:
     virtual void setWirelessPlaybackTarget(Ref<MediaPlaybackTarget>&&) override;
     virtual void setShouldPlayToPlaybackTarget(bool) override;
 #endif
+    bool webkitCurrentPlaybackTargetIsWireless() const;
 
     // EventTarget function.
     // Both Node (via HTMLElement) and ActiveDOMObject define this method, which
@@ -365,7 +374,6 @@ public:
     void enterFullscreen(VideoFullscreenMode);
     virtual void enterFullscreen() override;
     WEBCORE_EXPORT void exitFullscreen();
-    void enterFullscreenOptimized();
 
     virtual bool hasClosedCaptions() const override;
     virtual bool closedCaptionsVisible() const override;
@@ -411,6 +419,18 @@ public:
     void mediaLoadingFailed(MediaPlayerEnums::NetworkState);
     void mediaLoadingFailedFatally(MediaPlayerEnums::NetworkState);
 
+#if ENABLE(MEDIA_SESSION)
+    WEBCORE_EXPORT double playerVolume() const;
+
+    const String& kind() const { return m_kind; }
+    void setKind(const String& kind) { m_kind = kind; }
+
+    MediaSession* session() const;
+    void setSession(MediaSession*);
+
+    void setShouldDuck(bool);
+#endif
+
 #if ENABLE(MEDIA_SOURCE)
     RefPtr<VideoPlaybackQuality> getVideoPlaybackQuality();
 #endif
@@ -431,6 +451,8 @@ public:
     virtual MediaProducer::MediaStateFlags mediaState() const override;
 
     void layoutSizeChanged();
+
+    void allowsMediaDocumentInlinePlaybackChanged();
 
 protected:
     HTMLMediaElement(const QualifiedName&, Document&, bool);
@@ -488,6 +510,8 @@ private:
     void suspend(ReasonForSuspension) override;
     void resume() override;
     void stop() override;
+    void stopWithoutDestroyingMediaPlayer();
+    virtual void contextDestroyed() override;
     
     virtual void mediaVolumeDidChange() override;
 
@@ -541,6 +565,10 @@ private:
     virtual bool dispatchEvent(PassRefPtr<Event>) override;
 #endif
 
+#if ENABLE(MEDIA_SESSION)
+    void setSessionInternal(MediaSession&);
+#endif
+
     virtual String mediaPlayerReferrer() const override;
     virtual String mediaPlayerUserAgent() const override;
 
@@ -582,6 +610,10 @@ private:
 
     virtual double mediaPlayerRequestedPlaybackRate() const override final;
     virtual VideoFullscreenMode mediaPlayerFullscreenMode() const override final { return fullscreenMode(); }
+
+#if USE(GSTREAMER)
+    virtual void requestInstallMissingPlugins(const String&, MediaPlayerRequestInstallMissingPluginsCallback&) override final;
+#endif
 
     void pendingActionTimerFired();
     void progressEventTimerFired();
@@ -715,7 +747,12 @@ private:
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
     virtual void documentWillSuspendForPageCache() override final;
     virtual void documentDidResumeFromPageCache() override final;
-    void updateMediaState();
+
+    enum class UpdateMediaState {
+        Asynchronously,
+        Synchronously,
+    };
+    void updateMediaState(UpdateMediaState updateState = UpdateMediaState::Synchronously);
 #endif
 
     Timer m_pendingActionTimer;
@@ -789,6 +826,12 @@ private:
     // calling the media engine recursively.
     int m_processingMediaPlayerCallback;
 
+#if ENABLE(MEDIA_SESSION)
+    String m_kind;
+    RefPtr<MediaSession> m_session;
+    bool m_shouldDuck { false };
+#endif
+
 #if ENABLE(MEDIA_SOURCE)
     RefPtr<MediaSource> m_mediaSource;
     unsigned long m_droppedVideoFrames;
@@ -822,6 +865,7 @@ private:
     bool m_autoplaying : 1;
     bool m_muted : 1;
     bool m_explicitlyMuted : 1;
+    bool m_initiallyMuted : 1;
     bool m_paused : 1;
     bool m_seeking : 1;
 
@@ -911,6 +955,7 @@ private:
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
     MediaProducer::MediaStateFlags m_mediaState { MediaProducer::IsNotPlaying };
     bool m_hasPlaybackTargetAvailabilityListeners { false };
+    bool m_failedToPlayToWirelessTarget { false };
 #endif
 };
 

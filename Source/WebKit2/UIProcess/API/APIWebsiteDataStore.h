@@ -36,20 +36,28 @@ namespace API {
 class WebsiteDataStore final : public ObjectImpl<Object::Type::WebsiteDataStore> {
 public:
     static RefPtr<WebsiteDataStore> defaultDataStore();
-    static RefPtr<WebsiteDataStore> createNonPersistentDataStore();
-    static RefPtr<WebsiteDataStore> create(WebKit::WebsiteDataStore::Configuration);
+    static Ref<WebsiteDataStore> createNonPersistentDataStore();
+    static Ref<WebsiteDataStore> create(WebKit::WebsiteDataStore::Configuration);
     virtual ~WebsiteDataStore();
 
     bool isPersistent();
 
     WebKit::WebsiteDataStore& websiteDataStore() { return *m_websiteDataStore; }
 
-    static String cacheDirectoryFileSystemRepresentation(const String& directoryName);
-    static String websiteDataDirectoryFileSystemRepresentation(const String& directoryName);
+    static String defaultApplicationCacheDirectory();
+    static String defaultNetworkCacheDirectory();
+
+    static String defaultIndexedDBDatabaseDirectory();
+    static String defaultLocalStorageDirectory();
+    static String defaultMediaKeysStorageDirectory();
+    static String defaultWebSQLDatabaseDirectory();
 
 private:
     WebsiteDataStore(WebKit::WebsiteDataStore::Configuration);
     WebsiteDataStore();
+
+    static String cacheDirectoryFileSystemRepresentation(const String& directoryName);
+    static String websiteDataDirectoryFileSystemRepresentation(const String& directoryName);
 
     static WebKit::WebsiteDataStore::Configuration defaultDataStoreConfiguration();
 

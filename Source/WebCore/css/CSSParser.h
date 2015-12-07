@@ -98,7 +98,7 @@ public:
         CSSParserValue& value() const { return m_value; }
         operator CSSParserValue&() { return m_value; }
 
-        CSSCalcValue* calculation() const { return m_calculation.get(); }
+        RefPtr<CSSCalcValue> calculation() const { return m_calculation; }
         void setCalculation(RefPtr<CSSCalcValue>&& calculation)
         {
             ASSERT(isCalculation(m_value));
@@ -157,8 +157,6 @@ public:
     Vector<SourceSize> parseSizesAttribute(StringView);
     SourceSize sourceSize(std::unique_ptr<MediaQueryExp>&&, CSSParserValue&);
 
-    // FIXME: Maybe these two methods could be combined into one.
-    bool parseMaskImage(CSSParserValueList&, RefPtr<CSSValue>&);
     bool parseFillImage(CSSParserValueList&, RefPtr<CSSValue>&);
 
     enum FillPositionFlag { InvalidFillPosition = 0, AmbiguousFillPosition = 1, XFillPosition = 2, YFillPosition = 4 };
@@ -169,8 +167,8 @@ public:
     void parse2ValuesFillPosition(CSSParserValueList&, RefPtr<CSSValue>&, RefPtr<CSSValue>&);
     bool isPotentialPositionValue(CSSParserValue&);
     void parseFillPosition(CSSParserValueList&, RefPtr<CSSValue>&, RefPtr<CSSValue>&);
-    void parse3ValuesFillPosition(CSSParserValueList&, RefPtr<CSSValue>&, RefPtr<CSSValue>&, PassRefPtr<CSSPrimitiveValue>, PassRefPtr<CSSPrimitiveValue>);
-    void parse4ValuesFillPosition(CSSParserValueList&, RefPtr<CSSValue>&, RefPtr<CSSValue>&, PassRefPtr<CSSPrimitiveValue>, PassRefPtr<CSSPrimitiveValue>);
+    void parse3ValuesFillPosition(CSSParserValueList&, RefPtr<CSSValue>&, RefPtr<CSSValue>&, RefPtr<CSSPrimitiveValue>&&, RefPtr<CSSPrimitiveValue>&&);
+    void parse4ValuesFillPosition(CSSParserValueList&, RefPtr<CSSValue>&, RefPtr<CSSValue>&, RefPtr<CSSPrimitiveValue>&&, RefPtr<CSSPrimitiveValue>&&);
 
     void parseFillRepeat(RefPtr<CSSValue>&, RefPtr<CSSValue>&);
     PassRefPtr<CSSValue> parseFillSize(CSSPropertyID, bool &allowComma);
@@ -290,6 +288,7 @@ public:
 
     // Image generators
     bool parseCanvas(CSSParserValueList&, RefPtr<CSSValue>&);
+    bool parseNamedImage(CSSParserValueList&, RefPtr<CSSValue>&);
 
     bool parseDeprecatedGradient(CSSParserValueList&, RefPtr<CSSValue>&);
     bool parseDeprecatedLinearGradient(CSSParserValueList&, RefPtr<CSSValue>&, CSSGradientRepeat repeating);
@@ -549,8 +548,7 @@ private:
     void setupParser(const char* prefix, unsigned prefixLength, StringView, const char* suffix, unsigned suffixLength);
     bool inShorthand() const { return m_inParseShorthand; }
 
-    bool validateWidth(ValueWithCalculation&);
-    bool validateHeight(ValueWithCalculation&);
+    bool isValidSize(ValueWithCalculation&);
 
     void deleteFontFaceOnlyValues();
 

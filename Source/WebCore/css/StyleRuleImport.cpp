@@ -70,8 +70,9 @@ void StyleRuleImport::setCSSStyleSheet(const String& href, const URL& baseURL, c
     if (!baseURL.isNull())
         context.baseURL = baseURL;
 
+    Document* document = m_parentStyleSheet ? m_parentStyleSheet->singleOwnerDocument() : nullptr;
     m_styleSheet = StyleSheetContents::create(this, href, context);
-    m_styleSheet->parseAuthorStyleSheet(cachedStyleSheet);
+    m_styleSheet->parseAuthorStyleSheet(cachedStyleSheet, document ? document->securityOrigin() : nullptr);
 
     m_loading = false;
 
@@ -111,6 +112,8 @@ void StyleRuleImport::requestStyleSheet()
         rootSheet = sheet;
     }
 
+    // FIXME: Skip Content Security Policy check when stylesheet is in a user agent shadow tree.
+    // See <https://bugs.webkit.org/show_bug.cgi?id=146663>.
     CachedResourceRequest request(ResourceRequest(absURL), m_parentStyleSheet->charset());
     request.setInitiator(cachedResourceRequestInitiators().css);
     if (m_cachedSheet)

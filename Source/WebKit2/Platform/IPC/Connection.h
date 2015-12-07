@@ -51,10 +51,6 @@
 #include "PlatformProcessIdentifier.h"
 #endif
 
-namespace WTF {
-class RunLoop;
-}
-
 namespace IPC {
 
 struct WaitForMessageState;
@@ -144,8 +140,8 @@ public:
     static Connection::SocketPair createPlatformConnection(unsigned options = SetCloexecOnClient | SetCloexecOnServer);
 #endif
 
-    static Ref<Connection> createServerConnection(Identifier, Client&, WTF::RunLoop& clientRunLoop);
-    static Ref<Connection> createClientConnection(Identifier, Client&, WTF::RunLoop& clientRunLoop);
+    static Ref<Connection> createServerConnection(Identifier, Client&);
+    static Ref<Connection> createClientConnection(Identifier, Client&);
     ~Connection();
 
     Client* client() const { return m_client; }
@@ -204,8 +200,12 @@ public:
     void setShouldBoostMainThreadOnSyncMessage(bool b) { m_shouldBoostMainThreadOnSyncMessage = b; }
 #endif
 
+    uint64_t installIncomingSyncMessageCallback(std::function<void ()>);
+    void uninstallIncomingSyncMessageCallback(uint64_t);
+    bool hasIncomingSyncMessage();
+
 private:
-    Connection(Identifier, bool isServer, Client&, WTF::RunLoop& clientRunLoop);
+    Connection(Identifier, bool isServer, Client&);
     void platformInitialize(Identifier);
     void platformInvalidate();
     
@@ -249,7 +249,6 @@ private:
 
     bool m_isConnected;
     Ref<WorkQueue> m_connectionQueue;
-    WTF::RunLoop& m_clientRunLoop;
 
     HashMap<StringReference, std::pair<RefPtr<WorkQueue>, RefPtr<WorkQueueMessageReceiver>>> m_workQueueMessageReceivers;
 
@@ -298,7 +297,6 @@ private:
 
     class SyncMessageState;
     friend class SyncMessageState;
-    RefPtr<SyncMessageState> m_syncMessageState;
 
     Mutex m_syncReplyStateMutex;
     bool m_shouldWaitForSyncReplies;
@@ -307,6 +305,11 @@ private:
     class SecondaryThreadPendingSyncReply;
     typedef HashMap<uint64_t, SecondaryThreadPendingSyncReply*> SecondaryThreadPendingSyncReplyMap;
     SecondaryThreadPendingSyncReplyMap m_secondaryThreadPendingSyncReplyMap;
+
+    std::mutex m_incomingSyncMessageCallbackMutex;
+    HashMap<uint64_t, std::function<void ()>> m_incomingSyncMessageCallbacks;
+    RefPtr<WorkQueue> m_incomingSyncMessageCallbackQueue;
+    uint64_t m_nextIncomingSyncMessageCallbackID { 0 };
 
 #if HAVE(QOS_CLASSES)
     pthread_t m_mainThread { 0 };

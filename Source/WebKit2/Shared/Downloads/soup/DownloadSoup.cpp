@@ -32,9 +32,9 @@
 #include <WebCore/NotImplemented.h>
 #include <WebCore/ResourceHandleInternal.h>
 #include <gio/gio.h>
-#include <wtf/gobject/GMainLoopSource.h>
-#include <wtf/gobject/GRefPtr.h>
-#include <wtf/gobject/GUniquePtr.h>
+#include <wtf/glib/GMainLoopSource.h>
+#include <wtf/glib/GRefPtr.h>
+#include <wtf/glib/GUniquePtr.h>
 #include <wtf/text/CString.h>
 
 #if PLATFORM(GTK)
@@ -255,22 +255,17 @@ void Download::cancel()
 void Download::platformInvalidate()
 {
     if (m_resourceHandle) {
-        m_resourceHandle->setClient(0);
+        m_resourceHandle->clearClient();
         m_resourceHandle->cancel();
-        m_resourceHandle = 0;
+        m_resourceHandle = nullptr;
     }
 
     m_downloadClient = nullptr;
 }
 
-void Download::didDecideDestination(const String& /*destination*/, bool /*allowOverwrite*/)
-{
-    notImplemented();
-}
-
 void Download::platformDidFinish()
 {
-    m_resourceHandle = 0;
+    m_resourceHandle = nullptr;
 }
 
 void Download::receivedCredential(const AuthenticationChallenge&, const Credential&)

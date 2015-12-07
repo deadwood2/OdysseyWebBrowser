@@ -134,30 +134,8 @@ static void showLetterpressedGlyphsWithAdvances(const FloatPoint& point, const F
 class RenderingStyleSaver {
 public:
 #if !PLATFORM(MAC) || __MAC_OS_X_VERSION_MIN_REQUIRED <= 101000
-
     RenderingStyleSaver(CTFontRef, CGContextRef) { }
-
-#elif !defined(CORETEXT_HAS_CTFontSetRenderingStyle) || CORETEXT_HAS_CTFontSetRenderingStyle != 1
-
-    // This is very slow, but it's just a holdover until everyone migrates to CTFontSetRenderingStyle()
-    // FIXME: Delete this implementation when everyone has migrated off
-    RenderingStyleSaver(CTFontRef font, CGContextRef context)
-        : m_context(context)
-    {
-        CGContextSaveGState(context);
-        CTFontSetRenderingParameters(font, context);
-    }
-
-    ~RenderingStyleSaver()
-    {
-        CGContextRestoreGState(m_context);
-    }
-
-private:
-    CGContextRef m_context;
-
 #else
-
     RenderingStyleSaver(CTFontRef font, CGContextRef context)
         : m_context(context)
     {
@@ -177,7 +155,6 @@ private:
     CGContextRef m_context;
     CGFontRenderingStyle m_originalStyle;
     CGSize m_originalDilation;
-
 #endif
 };
 
@@ -269,10 +246,19 @@ static CGSize dilationSizeForTextColor(const Color& color)
 }
 #endif
 
-static FloatPoint pointAdjustedForEmoji(const FontPlatformData& platformData, FloatPoint point)
+static inline bool isOnOrAfterIOS6()
 {
 #if PLATFORM(IOS)
-    if (!platformData.m_isEmoji)
+    return iosExecutableWasLinkedOnOrAfterVersion(wkIOSSystemVersion_6_0);
+#else
+    ASSERT_NOT_REACHED();
+    return false;
+#endif
+}
+
+static FloatPoint pointAdjustedForEmoji(const FontPlatformData& platformData, FloatPoint point)
+{
+    if (!platformData.isEmoji())
         return point;
 
     // Mimic the positioining of non-bitmap glyphs, which are not subpixel-positioned.
@@ -289,19 +275,16 @@ static FloatPoint pointAdjustedForEmoji(const FontPlatformData& platformData, Fl
     float y = point.y();
     if (fontSize <= 15) {
         // Undo Core Text's y adjustment.
-        static float yAdjustmentFactor = iosExecutableWasLinkedOnOrAfterVersion(wkIOSSystemVersion_6_0) ? .19 : .1;
+        static float yAdjustmentFactor = isOnOrAfterIOS6() ? .19 : .1;
         point.setY(floorf(y - yAdjustmentFactor * (fontSize + 2) + 2));
     } else {
         if (fontSize < 26)
             y -= .35f * fontSize - 10;
 
         // Undo Core Text's y adjustment.
-        static float yAdjustment = iosExecutableWasLinkedOnOrAfterVersion(wkIOSSystemVersion_6_0) ? 3.8 : 2;
+        static float yAdjustment = isOnOrAfterIOS6() ? 3.8 : 2;
         point.setY(floorf(y - yAdjustment));
     }
-#else
-    UNUSED_PARAM(platformData);
-#endif
     return point;
 }
 
@@ -439,11 +422,7 @@ void FontCascade::drawGlyphs(GraphicsContext* context, const Font* font, const G
         // If shadows are ignoring transforms, then we haven't applied the Y coordinate flip yet, so down is negative.
         float shadowTextY = point.y() + shadowOffset.height() * (context->shadowsIgnoreTransforms() ? -1 : 1);
         showGlyphsWithAdvances(FloatPoint(shadowTextX, shadowTextY), font, cgContext, glyphBuffer.glyphs(from), static_cast<const CGSize*>(glyphBuffer.advances(from)), numGlyphs);
-#if !PLATFORM(IOS)
-        if (syntheticBoldOffset)
-#else
-        if (syntheticBoldOffset && !platformData.m_isEmoji)
-#endif
+        if (syntheticBoldOffset && !platformData.isEmoji())
             showGlyphsWithAdvances(FloatPoint(shadowTextX + syntheticBoldOffset, shadowTextY), font, cgContext, glyphBuffer.glyphs(from), static_cast<const CGSize*>(glyphBuffer.advances(from)), numGlyphs);
         context->setFillColor(fillColor, fillColorSpace);
     }
@@ -452,11 +431,7 @@ void FontCascade::drawGlyphs(GraphicsContext* context, const Font* font, const G
         showLetterpressedGlyphsWithAdvances(point, font, cgContext, glyphBuffer.glyphs(from), static_cast<const CGSize*>(glyphBuffer.advances(from)), numGlyphs);
     else
         showGlyphsWithAdvances(point, font, cgContext, glyphBuffer.glyphs(from), static_cast<const CGSize*>(glyphBuffer.advances(from)), numGlyphs);
-#if !PLATFORM(IOS)
-    if (syntheticBoldOffset)
-#else
-    if (syntheticBoldOffset && !platformData.m_isEmoji)
-#endif
+    if (syntheticBoldOffset && !platformData.isEmoji())
         showGlyphsWithAdvances(FloatPoint(point.x() + syntheticBoldOffset, point.y()), font, cgContext, glyphBuffer.glyphs(from), static_cast<const CGSize*>(glyphBuffer.advances(from)), numGlyphs);
 
     if (hasSimpleShadow)

@@ -61,11 +61,13 @@ SOFT_LINK_CLASS(UIKit, UIApplication)
 SOFT_LINK_POINTER(UIKit, UIApplicationWillResignActiveNotification, NSString *)
 SOFT_LINK_POINTER(UIKit, UIApplicationWillEnterForegroundNotification, NSString *)
 SOFT_LINK_POINTER(UIKit, UIApplicationDidBecomeActiveNotification, NSString *)
+SOFT_LINK_POINTER(UIKit, UIApplicationDidEnterBackgroundNotification, NSString *)
 
 #define UIApplication getUIApplicationClass()
 #define UIApplicationWillResignActiveNotification getUIApplicationWillResignActiveNotification()
 #define UIApplicationWillEnterForegroundNotification getUIApplicationWillEnterForegroundNotification()
 #define UIApplicationDidBecomeActiveNotification getUIApplicationDidBecomeActiveNotification()
+#define UIApplicationDidEnterBackgroundNotification getUIApplicationDidEnterBackgroundNotification()
 
 SOFT_LINK_FRAMEWORK(MediaPlayer)
 SOFT_LINK_CLASS(MediaPlayer, MPAVRoutingController)
@@ -87,6 +89,7 @@ SOFT_LINK_POINTER(MediaPlayer, MPVolumeViewWirelessRoutesAvailableDidChangeNotif
 WEBCORE_EXPORT NSString* WebUIApplicationWillResignActiveNotification = @"WebUIApplicationWillResignActiveNotification";
 WEBCORE_EXPORT NSString* WebUIApplicationWillEnterForegroundNotification = @"WebUIApplicationWillEnterForegroundNotification";
 WEBCORE_EXPORT NSString* WebUIApplicationDidBecomeActiveNotification = @"WebUIApplicationDidBecomeActiveNotification";
+WEBCORE_EXPORT NSString* WebUIApplicationDidEnterBackgroundNotification = @"WebUIApplicationDidEnterBackgroundNotification";
 
 using namespace WebCore;
 
@@ -103,6 +106,7 @@ using namespace WebCore;
 - (void)interruption:(NSNotification *)notification;
 - (void)applicationWillEnterForeground:(NSNotification *)notification;
 - (void)applicationWillResignActive:(NSNotification *)notification;
+- (void)applicationDidEnterBackground:(NSNotification *)notification;
 - (BOOL)hasWirelessTargetsAvailable;
 - (void)startMonitoringAirPlayRoutes;
 - (void)stopMonitoringAirPlayRoutes;
@@ -110,14 +114,22 @@ using namespace WebCore;
 
 namespace WebCore {
 
-MediaSessionManager& MediaSessionManager::sharedManager()
+static MediaSessionManageriOS* platformMediaSessionManager = nullptr;
+
+PlatformMediaSessionManager& PlatformMediaSessionManager::sharedManager()
 {
-    DEPRECATED_DEFINE_STATIC_LOCAL(MediaSessionManageriOS, manager, ());
-    return manager;
+    if (!platformMediaSessionManager)
+        platformMediaSessionManager = new MediaSessionManageriOS;
+    return *platformMediaSessionManager;
+}
+
+PlatformMediaSessionManager* PlatformMediaSessionManager::sharedManagerIfExists()
+{
+    return platformMediaSessionManager;
 }
 
 MediaSessionManageriOS::MediaSessionManageriOS()
-    :MediaSessionManager()
+    : PlatformMediaSessionManager()
     , m_objcObserver(adoptNS([[WebMediaSessionHelper alloc] initWithCallback:this]))
 {
     resetRestrictions();
@@ -134,7 +146,7 @@ void MediaSessionManageriOS::resetRestrictions()
 
     LOG(Media, "MediaSessionManageriOS::resetRestrictions");
 
-    MediaSessionManager::resetRestrictions();
+    PlatformMediaSessionManager::resetRestrictions();
 
     static wkDeviceClass deviceClass = iosDeviceClass();
     if (deviceClass == wkDeviceClassiPhone || deviceClass == wkDeviceClassiPod)
@@ -188,7 +200,7 @@ void MediaSessionManageriOS::configureWireLessTargetMonitoring()
 
 bool MediaSessionManageriOS::sessionWillBeginPlayback(PlatformMediaSession& session)
 {
-    if (!MediaSessionManager::sessionWillBeginPlayback(session))
+    if (!PlatformMediaSessionManager::sessionWillBeginPlayback(session))
         return false;
 
     updateNowPlayingInfo();
@@ -197,7 +209,7 @@ bool MediaSessionManageriOS::sessionWillBeginPlayback(PlatformMediaSession& sess
     
 void MediaSessionManageriOS::sessionWillEndPlayback(PlatformMediaSession& session)
 {
-    MediaSessionManager::sessionWillEndPlayback(session);
+    PlatformMediaSessionManager::sessionWillEndPlayback(session);
     updateNowPlayingInfo();
 }
     
@@ -293,6 +305,8 @@ void MediaSessionManageriOS::externalOutputDeviceAvailableDidChange()
     [center addObserver:self selector:@selector(applicationDidBecomeActive:) name:WebUIApplicationDidBecomeActiveNotification object:nil];
     [center addObserver:self selector:@selector(applicationWillResignActive:) name:UIApplicationWillResignActiveNotification object:nil];
     [center addObserver:self selector:@selector(applicationWillResignActive:) name:WebUIApplicationWillResignActiveNotification object:nil];
+    [center addObserver:self selector:@selector(applicationDidEnterBackground:) name:UIApplicationDidEnterBackgroundNotification object:nil];
+    [center addObserver:self selector:@selector(applicationDidEnterBackground:) name:WebUIApplicationDidEnterBackgroundNotification object:nil];
 
     [self allocateVolumeView];
 
@@ -448,7 +462,7 @@ void MediaSessionManageriOS::externalOutputDeviceAvailableDidChange()
     WebThreadRun(^{
         if (!_callback)
             return;
-        
+
         _callback->applicationWillEnterBackground();
     });
 }
@@ -467,6 +481,23 @@ void MediaSessionManageriOS::externalOutputDeviceAvailableDidChange()
             return;
 
         _callback->externalOutputDeviceAvailableDidChange();
+    });
+}
+
+- (void)applicationDidEnterBackground:(NSNotification *)notification
+{
+    if (!_callback)
+        return;
+
+    LOG(Media, "-[WebMediaSessionHelper applicationDidEnterBackground]");
+
+    BOOL isSuspendedUnderLock = [[[notification userInfo] objectForKey:@"isSuspendedUnderLock"] boolValue];
+
+    WebThreadRun(^{
+        if (!_callback)
+            return;
+
+        _callback->applicationDidEnterBackground(isSuspendedUnderLock);
     });
 }
 @end

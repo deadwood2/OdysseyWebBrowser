@@ -67,7 +67,13 @@ static const int DefaultHeight = 150;
 // Firefox limits width/height to 32767 pixels, but slows down dramatically before it
 // reaches that limit. We limit by area instead, giving us larger maximum dimensions,
 // in exchange for a smaller maximum canvas size. The maximum canvas size is in device pixels.
-static const float MaxCanvasArea = 16384 * 16384;
+#if PLATFORM(IOS)
+static const unsigned MaxCanvasArea = 4096 * 4096;
+#elif PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 101100
+static const unsigned MaxCanvasArea = 8192 * 8192;
+#else
+static const unsigned MaxCanvasArea = 16384 * 16384;
+#endif
 
 HTMLCanvasElement::HTMLCanvasElement(const QualifiedName& tagName, Document& document)
     : HTMLElement(tagName, document)
@@ -250,7 +256,11 @@ bool HTMLCanvasElement::is2dType(const String& type)
 bool HTMLCanvasElement::is3dType(const String& type)
 {
     // Retain support for the legacy "webkit-3d" name.
-    return type == "webgl" || type == "experimental-webgl" || type == "webkit-3d" || type == "experimental-webgl2";
+    return type == "webgl" || type == "experimental-webgl"
+#if ENABLE(WEBGL2)
+        || type == "experimental-webgl2"
+#endif
+        || type == "webkit-3d";
 }
 #endif
 
@@ -274,9 +284,6 @@ void HTMLCanvasElement::didDraw(const FloatRect& rect)
 
 void HTMLCanvasElement::notifyObserversCanvasChanged(const FloatRect& rect)
 {
-    // Choke point for canvas drawing; notify DOMTimer of the event.
-    DOMTimer::scriptDidCauseElementRepaint(*this);
-
     for (auto it = m_observers.begin(), end = m_observers.end(); it != end; ++it)
         (*it)->canvasChanged(*this, rect);
 }
@@ -416,7 +423,7 @@ void HTMLCanvasElement::makePresentationCopy()
 
 void HTMLCanvasElement::clearPresentationCopy()
 {
-    m_presentedImage.clear();
+    m_presentedImage = nullptr;
 }
 
 void HTMLCanvasElement::setSurfaceSize(const IntSize& size)
@@ -637,7 +644,7 @@ void HTMLCanvasElement::clearImageBuffer() const
 
 void HTMLCanvasElement::clearCopiedImage()
 {
-    m_copiedImage.clear();
+    m_copiedImage = nullptr;
     m_didClearImageBuffer = false;
 }
 

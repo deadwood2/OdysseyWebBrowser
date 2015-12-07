@@ -36,6 +36,7 @@
 #import "RemoteLayerTreeDrawingAreaProxy.h"
 #import "RemoteLayerTreeDrawingAreaProxyMessages.h"
 #import "RemoteLayerTreeTransaction.h"
+#import "UIKitSPI.h"
 #import "UserData.h"
 #import "ViewUpdateDispatcherMessages.h"
 #import "WKBrowsingContextControllerInternal.h"
@@ -107,10 +108,10 @@ String WebPageProxy::stringSelectionForPasteboard()
     return String();
 }
 
-PassRefPtr<WebCore::SharedBuffer> WebPageProxy::dataSelectionForPasteboard(const String&)
+RefPtr<WebCore::SharedBuffer> WebPageProxy::dataSelectionForPasteboard(const String&)
 {
     notImplemented();
-    return 0;
+    return nullptr;
 }
 
 bool WebPageProxy::readSelectionFromPasteboard(const String&)
@@ -217,8 +218,7 @@ static inline float adjustedUnexposedMaxEdge(float documentEdge, float exposedRe
 WebCore::FloatRect WebPageProxy::computeCustomFixedPositionRect(const FloatRect& unobscuredContentRect, double displayedContentScale, UnobscuredRectConstraint constraint) const
 {
     FloatRect constrainedUnobscuredRect = unobscuredContentRect;
-    FloatSize contentsSize = m_pageClient.contentsSize();
-    FloatRect documentRect = FloatRect(FloatPoint(), contentsSize);
+    FloatRect documentRect = m_pageClient.documentRect();
 
     if (m_pageClient.isAssistingNode())
         return documentRect;
@@ -238,7 +238,7 @@ WebCore::FloatRect WebPageProxy::computeCustomFixedPositionRect(const FloatRect&
         constrainedUnobscuredRect.setHeight(adjustedUnexposedMaxEdge(documentRect.maxY(), constrainedUnobscuredRect.maxY(), factor) - constrainedUnobscuredRect.y());
     }
     
-    return FrameView::rectForViewportConstrainedObjects(enclosingLayoutRect(constrainedUnobscuredRect), LayoutSize(contentsSize), displayedContentScale, false, StickToViewportBounds);
+    return FrameView::rectForViewportConstrainedObjects(enclosingLayoutRect(constrainedUnobscuredRect), LayoutSize(documentRect.size()), displayedContentScale, false, StickToViewportBounds);
 }
 
 void WebPageProxy::overflowScrollViewWillStartPanGesture()
@@ -497,6 +497,18 @@ void WebPageProxy::updateSelectionWithExtentPoint(const WebCore::IntPoint point,
     
 }
 
+void WebPageProxy::updateSelectionWithExtentPointAndBoundary(const WebCore::IntPoint point, WebCore::TextGranularity granularity, std::function<void(uint64_t, CallbackBase::Error)> callbackFunction)
+{
+    if (!isValid()) {
+        callbackFunction(0, CallbackBase::Error::Unknown);
+        return;
+    }
+    
+    uint64_t callbackID = m_callbacks.put(WTF::move(callbackFunction), m_process->throttler().backgroundActivityToken());
+    m_process->send(Messages::WebPage::UpdateSelectionWithExtentPointAndBoundary(point, granularity, callbackID), m_pageID);
+    
+}
+
 void WebPageProxy::requestDictationContext(std::function<void (const String&, const String&, const String&, CallbackBase::Error)> callbackFunction)
 {
     if (!isValid()) {
@@ -591,6 +603,12 @@ void WebPageProxy::saveImageToLibrary(const SharedMemory::Handle& imageHandle, u
 void WebPageProxy::didUpdateBlockSelectionWithTouch(uint32_t touch, uint32_t flags, float growThreshold, float shrinkThreshold)
 {
     m_pageClient.didUpdateBlockSelectionWithTouch(touch, flags, growThreshold, shrinkThreshold);
+}
+
+void WebPageProxy::applicationDidEnterBackground()
+{
+    bool isSuspendedUnderLock = [UIApp isSuspendedUnderLock];
+    m_process->send(Messages::WebPage::ApplicationDidEnterBackground(isSuspendedUnderLock), m_pageID);
 }
 
 void WebPageProxy::applicationWillEnterForeground()
@@ -761,6 +779,11 @@ void WebPageProxy::dynamicViewportUpdateChangedTarget(double newScale, const Web
         m_dynamicViewportSizeUpdateWaitingForTarget = false;
         m_pageClient.dynamicViewportUpdateChangedTarget(newScale, newScrollPosition, m_dynamicViewportSizeUpdateLayerTreeTransactionID);
     }
+}
+
+void WebPageProxy::couldNotRestorePageState()
+{
+    m_pageClient.couldNotRestorePageState();
 }
 
 void WebPageProxy::restorePageState(const WebCore::FloatRect& exposedRect, double scale)

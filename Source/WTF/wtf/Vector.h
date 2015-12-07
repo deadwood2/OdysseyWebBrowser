@@ -638,12 +638,12 @@ public:
     }
 
     Vector(const Vector&);
-    template<size_t otherCapacity, typename otherOverflowBehaviour>
-    explicit Vector(const Vector<T, otherCapacity, otherOverflowBehaviour>&);
+    template<size_t otherCapacity, typename otherOverflowBehaviour, size_t otherMinimumCapacity>
+    explicit Vector(const Vector<T, otherCapacity, otherOverflowBehaviour, otherMinimumCapacity>&);
 
     Vector& operator=(const Vector&);
-    template<size_t otherCapacity, typename otherOverflowBehaviour>
-    Vector& operator=(const Vector<T, otherCapacity, otherOverflowBehaviour>&);
+    template<size_t otherCapacity, typename otherOverflowBehaviour, size_t otherMinimumCapacity>
+    Vector& operator=(const Vector<T, otherCapacity, otherOverflowBehaviour, otherMinimumCapacity>&);
 
     Vector(Vector&&);
     Vector& operator=(Vector&&);
@@ -723,9 +723,13 @@ public:
 
     void clear() { shrinkCapacity(0); }
 
-    template<typename U> void append(const U*, size_t);
+    void append(ValueType&& value) { append<ValueType>(std::forward<ValueType>(value)); }
     template<typename U> void append(U&&);
-    template<typename U> void uncheckedAppend(U&& val);
+
+    void uncheckedAppend(ValueType&& value) { uncheckedAppend<ValueType>(std::forward<ValueType>(value)); }
+    template<typename U> void uncheckedAppend(U&&);
+
+    template<typename U> void append(const U*, size_t);
     template<typename U, size_t otherCapacity> void appendVector(const Vector<U, otherCapacity>&);
     template<typename U> bool tryAppend(const U*, size_t);
 
@@ -815,8 +819,8 @@ Vector<T, inlineCapacity, OverflowHandler, minCapacity>::Vector(const Vector& ot
 }
 
 template<typename T, size_t inlineCapacity, typename OverflowHandler, size_t minCapacity>
-template<size_t otherCapacity, typename otherOverflowBehaviour>
-Vector<T, inlineCapacity, OverflowHandler, minCapacity>::Vector(const Vector<T, otherCapacity, otherOverflowBehaviour>& other)
+template<size_t otherCapacity, typename otherOverflowBehaviour, size_t otherMinimumCapacity>
+Vector<T, inlineCapacity, OverflowHandler, minCapacity>::Vector(const Vector<T, otherCapacity, otherOverflowBehaviour, otherMinimumCapacity>& other)
     : Base(other.capacity(), other.size())
 {
     asanSetInitialBufferSizeTo(other.size());
@@ -851,8 +855,8 @@ Vector<T, inlineCapacity, OverflowHandler, minCapacity>& Vector<T, inlineCapacit
 inline bool typelessPointersAreEqual(const void* a, const void* b) { return a == b; }
 
 template<typename T, size_t inlineCapacity, typename OverflowHandler, size_t minCapacity>
-template<size_t otherCapacity, typename otherOverflowBehaviour>
-Vector<T, inlineCapacity, OverflowHandler, minCapacity>& Vector<T, inlineCapacity, OverflowHandler, minCapacity>::operator=(const Vector<T, otherCapacity, otherOverflowBehaviour>& other)
+template<size_t otherCapacity, typename otherOverflowBehaviour, size_t otherMinimumCapacity>
+Vector<T, inlineCapacity, OverflowHandler, minCapacity>& Vector<T, inlineCapacity, OverflowHandler, minCapacity>::operator=(const Vector<T, otherCapacity, otherOverflowBehaviour, otherMinimumCapacity>& other)
 {
     // If the inline capacities match, we should call the more specific
     // template.  If the inline capacities don't match, the two objects

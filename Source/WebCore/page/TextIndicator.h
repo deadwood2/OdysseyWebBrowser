@@ -51,9 +51,8 @@ enum class TextIndicatorPresentationTransition {
     Bounce,
     BounceAndCrossfade,
 
-    // These animations need to be driven manually via TextIndicatorWindow::setAnimationProgress.
+    // This animation needs to be driven manually via TextIndicatorWindow::setAnimationProgress.
     FadeIn,
-    Crossfade
 };
 
 enum class TextIndicatorLifetime {
@@ -77,13 +76,14 @@ struct TextIndicatorData {
     RefPtr<Image> contentImageWithHighlight;
     RefPtr<Image> contentImage;
     TextIndicatorPresentationTransition presentationTransition;
+    bool wantsMargin;
 };
 
 class TextIndicator : public RefCounted<TextIndicator> {
 public:
     WEBCORE_EXPORT static Ref<TextIndicator> create(const TextIndicatorData&);
-    WEBCORE_EXPORT static RefPtr<TextIndicator> createWithSelectionInFrame(Frame&, TextIndicatorPresentationTransition);
-    WEBCORE_EXPORT static RefPtr<TextIndicator> createWithRange(const Range&, TextIndicatorPresentationTransition);
+    WEBCORE_EXPORT static RefPtr<TextIndicator> createWithSelectionInFrame(Frame&, TextIndicatorPresentationTransition, unsigned margin = 0);
+    WEBCORE_EXPORT static RefPtr<TextIndicator> createWithRange(const Range&, TextIndicatorPresentationTransition, unsigned margin = 0);
 
     WEBCORE_EXPORT ~TextIndicator();
 
@@ -103,6 +103,9 @@ public:
     bool wantsContentCrossfade() const;
     bool wantsFadeIn() const;
     bool wantsManualAnimation() const;
+
+    void setWantsMargin(bool wantsMargin) { m_data.wantsMargin = wantsMargin; }
+    bool wantsMargin() const { return m_data.wantsMargin; }
 
 private:
     TextIndicator(const TextIndicatorData&);

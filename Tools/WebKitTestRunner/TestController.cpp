@@ -213,9 +213,9 @@ WKPageRef TestController::createOtherPage(WKPageRef oldPage, WKURLRequestRef, WK
         0, // takeFocus
         focus,
         unfocus,
-        0, // runJavaScriptAlert
-        0, // runJavaScriptConfirm
-        0, // runJavaScriptPrompt
+        0, // runJavaScriptAlert_deprecatedForUseWithV0
+        0, // runJavaScriptAlert_deprecatedForUseWithV0
+        0, // runJavaScriptAlert_deprecatedForUseWithV0
         0, // setStatusText
         0, // mouseDidMoveOverElement_deprecatedForUseWithV0
         0, // missingPluginButtonClicked
@@ -260,6 +260,10 @@ WKPageRef TestController::createOtherPage(WKPageRef oldPage, WKURLRequestRef, WK
         0, // isPlayingAudioDidChange
         decidePolicyForUserMediaPermissionRequest,
         0, // didClickAutofillButton
+        0, // runJavaScriptAlert
+        0, // runJavaScriptConfirm
+        0, // runJavaScriptPrompt
+        0, // mediaSessionMetadataDidChange
     };
     WKPageSetPageUIClient(newPage, &otherPageUIClient.base);
     
@@ -358,6 +362,8 @@ void TestController::initialize(int argc, const char* argv[])
 
         const char separator = '/';
 
+        WKContextConfigurationSetApplicationCacheDirectory(configuration.get(), toWK(temporaryFolder + separator + "ApplicationCache").get());
+        WKContextConfigurationSetDiskCacheDirectory(configuration.get(), toWK(temporaryFolder + separator + "Cache").get());
         WKContextConfigurationSetIndexedDBDatabaseDirectory(configuration.get(), toWK(temporaryFolder + separator + "Databases" + separator + "IndexedDB").get());
         WKContextConfigurationSetLocalStorageDirectory(configuration.get(), toWK(temporaryFolder + separator + "LocalStorage").get());
         WKContextConfigurationSetWebSQLDatabaseDirectory(configuration.get(), toWK(temporaryFolder + separator + "Databases" + separator + "WebSQL").get());
@@ -375,11 +381,7 @@ void TestController::initialize(int argc, const char* argv[])
     if (const char* dumpRenderTreeTemp = libraryPathForTesting()) {
         String temporaryFolder = String::fromUTF8(dumpRenderTreeTemp);
 
-        const char separator = '/';
-
-        // FIXME: These should be migrated to WKContextConfigurationRef.
-        WKContextSetApplicationCacheDirectory(m_context.get(), toWK(temporaryFolder + separator + "ApplicationCache").get());
-        WKContextSetDiskCacheDirectory(m_context.get(), toWK(temporaryFolder + separator + "Cache").get());
+        // FIXME: This should be migrated to WKContextConfigurationRef.
         // Disable icon database to avoid fetching <http://127.0.0.1:8000/favicon.ico> and making tests flaky.
         // Invividual tests can enable it using testRunner.setIconDatabaseEnabled, although it's not currently supported in WebKitTestRunner.
         WKContextSetIconDatabasePath(m_context.get(), toWK(emptyString()).get());
@@ -460,9 +462,9 @@ void TestController::createWebViewWithOptions(WKDictionaryRef options)
         0, // takeFocus
         focus,
         unfocus,
-        0, // runJavaScriptAlert
-        0, // runJavaScriptConfirm
-        0, // runJavaScriptPrompt
+        0, // runJavaScriptAlert_deprecatedForUseWithV0
+        0, // runJavaScriptAlert_deprecatedForUseWithV0
+        0, // runJavaScriptAlert_deprecatedForUseWithV0
         0, // setStatusText
         0, // mouseDidMoveOverElement_deprecatedForUseWithV0
         0, // missingPluginButtonClicked
@@ -507,6 +509,10 @@ void TestController::createWebViewWithOptions(WKDictionaryRef options)
         0, // isPlayingAudioDidChange
         decidePolicyForUserMediaPermissionRequest,
         0, // didClickAutofillButton
+        0, // runJavaScriptAlert
+        0, // runJavaScriptConfirm
+        0, // runJavaScriptPrompt
+        0, // mediaSessionMetadataDidChange
     };
     WKPageSetPageUIClient(m_mainWebView->page(), &pageUIClient.base);
 

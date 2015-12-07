@@ -53,6 +53,7 @@ protected:
 
 public:
     static JSArray* create(VM&, Structure*, unsigned initialLength = 0);
+    static JSArray* createWithButterfly(VM&, Structure*, Butterfly*);
 
     // tryCreateUninitialized is used for fast construction of arrays whose size and
     // contents are known at time of creation. Clients of this interface must:
@@ -65,15 +66,31 @@ public:
     JS_EXPORT_PRIVATE static bool getOwnPropertySlot(JSObject*, ExecState*, PropertyName, PropertySlot&);
 
     DECLARE_EXPORT_INFO;
-        
+
+    // OK if we know this is a JSArray, but not if it could be an object of a derived class; for RuntimeArray this always returns 0.
     unsigned length() const { return getArrayLength(); }
-    // OK to use on new arrays, but not if it might be a RegExpMatchArray.
+
+    // OK to use on new arrays, but not if it might be a RegExpMatchArray or RuntimeArray.
     JS_EXPORT_PRIVATE bool setLength(ExecState*, unsigned, bool throwException = false);
 
     JS_EXPORT_PRIVATE void push(ExecState*, JSValue);
     JS_EXPORT_PRIVATE JSValue pop(ExecState*);
 
     JSArray* fastSlice(ExecState&, unsigned startIndex, unsigned count);
+
+    static IndexingType fastConcatType(VM& vm, JSArray& firstArray, JSArray& secondArray)
+    {
+        IndexingType type = firstArray.indexingType();
+        if (type != secondArray.indexingType())
+            return NonArray;
+        if (type != ArrayWithDouble && type != ArrayWithInt32 && type != ArrayWithContiguous)
+            return NonArray;
+        if (firstArray.structure(vm)->holesMustForwardToPrototype(vm)
+            || secondArray.structure(vm)->holesMustForwardToPrototype(vm))
+            return NonArray;
+        return type;
+    }
+    EncodedJSValue fastConcatWith(ExecState&, JSArray&);
 
     enum ShiftCountMode {
         // This form of shift hints that we're doing queueing. With this assumption in hand,
@@ -213,9 +230,8 @@ inline JSArray* JSArray::create(VM& vm, Structure* structure, unsigned initialLe
             || structure->indexingType() == ArrayWithArrayStorage);
         butterfly = createArrayButterfly(vm, 0, initialLength);
     }
-    JSArray* array = new (NotNull, allocateCell<JSArray>(vm.heap)) JSArray(vm, structure, butterfly);
-    array->finishCreation(vm);
-    return array;
+
+    return createWithButterfly(vm, structure, butterfly);
 }
 
 inline JSArray* JSArray::tryCreateUninitialized(VM& vm, Structure* structure, unsigned initialLength)
@@ -253,7 +269,12 @@ inline JSArray* JSArray::tryCreateUninitialized(VM& vm, Structure* structure, un
         storage->m_sparseMap.clear();
         storage->m_numValuesInVector = initialLength;
     }
-        
+
+    return createWithButterfly(vm, structure, butterfly);
+}
+
+inline JSArray* JSArray::createWithButterfly(VM& vm, Structure* structure, Butterfly* butterfly)
+{
     JSArray* array = new (NotNull, allocateCell<JSArray>(vm.heap)) JSArray(vm, structure, butterfly);
     array->finishCreation(vm);
     return array;

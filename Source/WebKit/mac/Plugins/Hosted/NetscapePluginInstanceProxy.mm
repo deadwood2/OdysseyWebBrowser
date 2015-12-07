@@ -580,7 +580,7 @@ NPError NetscapePluginInstanceProxy::loadURL(const char* url, const char* target
                 path = [fileURL path];
             else
                 path = (NSString *)bufString.get();
-            httpBody = [NSData dataWithContentsOfFile:[path _webkit_fixedCarbonPOSIXPath]];
+            httpBody = [NSData dataWithContentsOfFile:path];
             if (!httpBody)
                 return NPERR_FILE_NOT_FOUND;
         } else
@@ -1230,7 +1230,7 @@ bool NetscapePluginInstanceProxy::enumerate(uint32_t objectID, data_t& resultDat
     ExecState* exec = frame->script().globalObject(pluginWorld())->globalExec();
     JSLockHolder lock(exec);
  
-    PropertyNameArray propertyNames(exec);
+    PropertyNameArray propertyNames(exec, PropertyNameMode::Strings);
     object->methodTable()->getPropertyNames(object, exec, propertyNames, EnumerationMode());
 
     RetainPtr<NSMutableArray*> array = adoptNS([[NSMutableArray alloc] init]);

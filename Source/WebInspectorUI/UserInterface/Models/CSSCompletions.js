@@ -76,7 +76,7 @@ WebInspector.CSSCompletions = class CSSCompletions
 
     // Static
 
-    static requestCSSNameCompletions()
+    static requestCSSCompletions()
     {
         if (WebInspector.CSSCompletions.cssNameCompletions)
             return;
@@ -158,8 +158,21 @@ WebInspector.CSSCompletions = class CSSCompletions
             updateCodeMirrorCSSMode("text/x-scss");
         }
 
-        if (window.CSSAgent)
+        function fontFamilyNamesCallback(error, fontFamilyNames)
+        {
+            if (error)
+                return;
+
+            WebInspector.CSSKeywordCompletions.addPropertyCompletionValues("font-family", fontFamilyNames);
+            WebInspector.CSSKeywordCompletions.addPropertyCompletionValues("font", fontFamilyNames);
+        }
+
+        if (window.CSSAgent) {
             CSSAgent.getSupportedCSSProperties(propertyNamesCallback);
+
+            if (CSSAgent.getSupportedSystemFontFamilyNames)
+                CSSAgent.getSupportedSystemFontFamilyNames(fontFamilyNamesCallback);
+        }
     }
 
     // Public
@@ -274,6 +287,32 @@ WebInspector.CSSCompletions = class CSSCompletions
     shorthandsForLonghand(longhand)
     {
         return this._shorthands[longhand] || [];
+    }
+
+    isValidPropertyName(name)
+    {
+        return this._values.includes(name);
+    }
+
+    propertyRequiresWebkitPrefix(name)
+    {
+        return this._values.includes("-webkit-" + name) && !this._values.includes(name);
+    }
+
+    getClosestPropertyName(name)
+    {
+        var bestMatches = [{distance: Infinity, name: null}];
+
+        for (var property of this._values) {
+            var distance = name.levenshteinDistance(property);
+
+            if (distance < bestMatches[0].distance)
+                bestMatches = [{distance, name: property}];
+            else if (distance === bestMatches[0].distance)
+                bestMatches.push({distance, name: property});
+        }
+
+        return bestMatches.length < 3 ? bestMatches[0].name : false;
     }
 };
 

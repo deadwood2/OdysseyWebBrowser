@@ -244,13 +244,10 @@ void JITCompiler::link(LinkBuffer& linkBuffer)
     for (unsigned i = 0; i < m_jsCalls.size(); ++i) {
         JSCallRecord& record = m_jsCalls[i];
         CallLinkInfo& info = *record.m_info;
-        ThunkGenerator generator = linkThunkGeneratorFor(
-            info.specializationKind(),
-            RegisterPreservationNotRequired);
-        linkBuffer.link(record.m_slowCall, FunctionPtr(m_vm->getCTIStub(generator).code().executableAddress()));
-        info.callReturnLocation = linkBuffer.locationOfNearCall(record.m_slowCall);
-        info.hotPathBegin = linkBuffer.locationOf(record.m_targetToCheck);
-        info.hotPathOther = linkBuffer.locationOfNearCall(record.m_fastCall);
+        linkBuffer.link(record.m_slowCall, FunctionPtr(m_vm->getCTIStub(linkCallThunkGenerator).code().executableAddress()));
+        info.setCallLocations(linkBuffer.locationOfNearCall(record.m_slowCall),
+            linkBuffer.locationOf(record.m_targetToCheck),
+            linkBuffer.locationOfNearCall(record.m_fastCall));
     }
     
     MacroAssemblerCodeRef osrExitThunk = vm()->getCTIStub(osrExitGenerationThunkGenerator);
@@ -474,6 +471,54 @@ void* JITCompiler::addressOfDoubleConstant(Node* node)
     return addressInConstantPool;
 }
 #endif
+
+void JITCompiler::noticeOSREntry(BasicBlock& basicBlock, JITCompiler::Label blockHead, LinkBuffer& linkBuffer)
+{
+    // OSR entry is not allowed into blocks deemed unreachable by control flow analysis.
+    if (!basicBlock.intersectionOfCFAHasVisited)
+        return;
+        
+    OSREntryData* entry = m_jitCode->appendOSREntryData(basicBlock.bytecodeBegin, linkBuffer.offsetOf(blockHead));
+    
+    entry->m_expectedValues = basicBlock.intersectionOfPastValuesAtHead;
+        
+    // Fix the expected values: in our protocol, a dead variable will have an expected
+    // value of (None, []). But the old JIT may stash some values there. So we really
+    // need (Top, TOP).
+    for (size_t argument = 0; argument < basicBlock.variablesAtHead.numberOfArguments(); ++argument) {
+        Node* node = basicBlock.variablesAtHead.argument(argument);
+        if (!node || !node->shouldGenerate())
+            entry->m_expectedValues.argument(argument).makeHeapTop();
+    }
+    for (size_t local = 0; local < basicBlock.variablesAtHead.numberOfLocals(); ++local) {
+        Node* node = basicBlock.variablesAtHead.local(local);
+        if (!node || !node->shouldGenerate())
+            entry->m_expectedValues.local(local).makeHeapTop();
+        else {
+            VariableAccessData* variable = node->variableAccessData();
+            entry->m_machineStackUsed.set(variable->machineLocal().toLocal());
+                
+            switch (variable->flushFormat()) {
+            case FlushedDouble:
+                entry->m_localsForcedDouble.set(local);
+                break;
+            case FlushedInt52:
+                entry->m_localsForcedMachineInt.set(local);
+                break;
+            default:
+                break;
+            }
+            
+            if (variable->local() != variable->machineLocal()) {
+                entry->m_reshufflings.append(
+                    OSREntryReshuffling(
+                        variable->local().offset(), variable->machineLocal().offset()));
+            }
+        }
+    }
+        
+    entry->m_reshufflings.shrinkToFit();
+}
 
 } } // namespace JSC::DFG
 

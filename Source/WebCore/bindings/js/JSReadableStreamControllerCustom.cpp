@@ -33,38 +33,12 @@
 #if ENABLE(STREAMS_API)
 
 #include "JSDOMBinding.h"
-#include "NotImplemented.h"
 #include "ReadableJSStream.h"
 #include <runtime/Error.h>
 
 using namespace JSC;
 
 namespace WebCore {
-
-JSValue JSReadableStreamController::close(ExecState* exec)
-{
-    ReadableJSStream& stream = impl().stream();
-    // FIXME: Handle the case of draining.
-    if (!stream.isReadable())
-        return exec->vm().throwException(exec, createTypeError(exec, ASCIILiteral("Calling close on a stream which is not readable")));
-    stream.changeStateToClosed();
-    return jsUndefined();
-}
-
-JSValue JSReadableStreamController::enqueue(ExecState*)
-{
-    notImplemented();
-    return jsBoolean(false);
-}
-
-JSValue JSReadableStreamController::error(ExecState* exec)
-{
-    ReadableJSStream& stream = impl().stream();
-    if (!stream.isReadable())
-        return exec->vm().throwException(exec, createTypeError(exec, ASCIILiteral("Calling error on a stream which is not readable")));
-    stream.storeError(*exec);
-    return jsUndefined();
-}
 
 EncodedJSValue JSC_HOST_CALL constructJSReadableStreamController(ExecState* exec)
 {

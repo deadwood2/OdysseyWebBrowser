@@ -43,7 +43,6 @@
 namespace WebCore {
 
 class AXObjectCache;
-class DOMTimer;
 class Element;
 class FloatSize;
 class Frame;
@@ -106,6 +105,8 @@ public:
     virtual void setContentsSize(const IntSize&) override;
     virtual void updateContentsSize() override;
 
+    WEBCORE_EXPORT IntSize contentsSizeRespectingOverflow() const;
+
     void layout(bool allowSubtree = true);
     WEBCORE_EXPORT bool didFirstLayout() const;
     void layoutTimerFired();
@@ -130,6 +131,9 @@ public:
 
     WEBCORE_EXPORT bool renderedCharactersExceed(unsigned threshold);
 
+    WEBCORE_EXPORT void setViewportIsStable(bool stable) { m_viewportIsStable = stable; }
+    bool viewportIsStable() const { return m_viewportIsStable; }
+
 #if PLATFORM(IOS)
     bool useCustomFixedPositionLayoutRect() const { return m_useCustomFixedPositionLayoutRect; }
     IntRect customFixedPositionLayoutRect() const { return m_customFixedPositionLayoutRect; }
@@ -149,7 +153,7 @@ public:
 #endif
 
     void willRecalcStyle();
-    void updateCompositingLayersAfterStyleChange();
+    bool updateCompositingLayersAfterStyleChange();
     void updateCompositingLayersAfterLayout();
     bool flushCompositingStateForThisFrame(Frame* rootFrameForFlush);
 
@@ -228,8 +232,6 @@ public:
     
     virtual IntRect windowClipRect() const override;
     WEBCORE_EXPORT IntRect windowClipRectForFrameOwner(const HTMLFrameOwnerElement*, bool clipToLayerContents) const;
-
-    virtual IntRect windowResizerRect() const override;
 
     virtual float visibleContentScaleFactor() const override;
 
@@ -316,9 +318,6 @@ public:
 
     void postLayoutTimerFired();
 
-    void registerThrottledDOMTimer(DOMTimer*);
-    void unregisterThrottledDOMTimer(DOMTimer*);
-
     WEBCORE_EXPORT bool wasScrolledByUser() const;
     WEBCORE_EXPORT void setWasScrolledByUser(bool);
 
@@ -367,6 +366,10 @@ public:
     WEBCORE_EXPORT Color documentBackgroundColor() const;
 
     bool isInChildFrameWithFrameFlattening() const;
+
+    void startDisallowingLayout() { ++m_layoutDisallowed; }
+    void endDisallowingLayout() { ASSERT(m_layoutDisallowed > 0); --m_layoutDisallowed; }
+    bool layoutDisallowed() const { return m_layoutDisallowed; }
 
     static double currentPaintTimeStamp() { return sCurrentPaintTimeStamp; } // returns 0 if not painting
     
@@ -426,7 +429,7 @@ public:
     // to rubber-band, which the main frame might be allowed to do even if there is no content to scroll to. In that case,
     // callers use Scrollability::ScrollableOrRubberbandable.
     enum class Scrollability { Scrollable, ScrollableOrRubberbandable };
-    bool isScrollable(Scrollability definitionOfScrollable = Scrollability::Scrollable);
+    WEBCORE_EXPORT bool isScrollable(Scrollability definitionOfScrollable = Scrollability::Scrollable);
 
     virtual bool isScrollableOrRubberbandable() override;
     virtual bool hasScrollableOrRubberbandableAncestor() override;
@@ -550,6 +553,8 @@ public:
 
     void didChangeScrollOffset();
 
+    void show() override;
+
 protected:
     virtual bool scrollContentsFastPath(const IntSize& scrollDelta, const IntRect& rectToScroll, const IntRect& clipRect) override;
     virtual void scrollContentsSlowPath(const IntRect& updateRect) override;
@@ -604,7 +609,6 @@ private:
     void autoSizeIfEnabled();
 
     void applyRecursivelyWithVisibleRect(const std::function<void (FrameView& frameView, const IntRect& visibleRect)>&);
-    void updateThrottledDOMTimersState(const IntRect& visibleRect);
     void resumeVisibleImageAnimations(const IntRect& visibleRect);
     void updateScriptedAnimationsAndTimersThrottlingState(const IntRect& visibleRect);
 
@@ -738,6 +742,7 @@ private:
 
     unsigned m_deferSetNeedsLayoutCount;
     bool m_setNeedsLayoutWasDeferred;
+    int m_layoutDisallowed { 0 };
 
     RefPtr<Node> m_nodeToDraw;
     PaintBehavior m_paintBehavior;
@@ -747,6 +752,8 @@ private:
     unsigned m_visuallyNonEmptyPixelCount;
     bool m_isVisuallyNonEmpty;
     bool m_firstVisuallyNonEmptyLayoutCallbackPending;
+
+    bool m_viewportIsStable { true };
 
     RefPtr<ContainerNode> m_maintainScrollPositionAnchor;
 
@@ -762,11 +769,6 @@ private:
 
     bool m_useCustomSizeForResizeEvent;
     IntSize m_customSizeForResizeEvent;
-
-    double m_horizontalVelocity;
-    double m_verticalVelocity;
-    double m_scaleChangeRate;
-    double m_lastVelocityUpdateTime;
 #endif
 
     IntSize m_overrideViewportSize;
@@ -788,8 +790,6 @@ private:
 
     std::unique_ptr<ScrollableAreaSet> m_scrollableAreas;
     std::unique_ptr<ViewportConstrainedObjectSet> m_viewportConstrainedObjects;
-
-    HashSet<DOMTimer*> m_throttledTimers;
 
     int m_headerHeight;
     int m_footerHeight;

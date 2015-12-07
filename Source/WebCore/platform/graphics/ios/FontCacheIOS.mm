@@ -94,7 +94,7 @@ PassRefPtr<Font> FontCache::getSystemFontFallbackForCharacters(const FontDescrip
     bool syntheticOblique = (originalTraits & kCTFontTraitItalic) && !(actualTraits & kCTFontTraitItalic);
 
     FontPlatformData alternateFont(substituteFont.get(), platformData.size(), syntheticBold, syntheticOblique, platformData.m_orientation);
-    alternateFont.m_isEmoji = CTFontIsAppleColorEmoji(substituteFont.get());
+    alternateFont.setIsEmoji(CTFontIsAppleColorEmoji(substituteFont.get()));
 
     return fontForPlatformData(alternateFont);
 }
@@ -446,14 +446,27 @@ RefPtr<Font> FontCache::systemFallbackForCharacters(const FontDescription& descr
     }
 #else
     RetainPtr<CTFontDescriptorRef> fallbackFontDescriptor = adoptCF(CTFontCreatePhysicalFontDescriptorForCharactersWithLanguage(originalFontData->getCTFont(), characters, length, nullptr, nullptr));
-    if (RetainPtr<CFStringRef> foundFontName = adoptCF(static_cast<CFStringRef>(CTFontDescriptorCopyAttribute(fallbackFontDescriptor.get(), kCTFontNameAttribute))))
+    if (auto foundFontName = adoptCF(static_cast<CFStringRef>(CTFontDescriptorCopyAttribute(fallbackFontDescriptor.get(), kCTFontNameAttribute)))) {
+        if (c >= 0x0600 && c <= 0x06ff) { // Arabic
+            auto familyName = adoptCF(static_cast<CFStringRef>(CTFontDescriptorCopyAttribute(fallbackFontDescriptor.get(), kCTFontFamilyNameAttribute)));
+            if (fontFamilyShouldNotBeUsedForArabic(familyName.get()))
+                foundFontName = isFontWeightBold(description.weight()) ? CFSTR("GeezaPro-Bold") : CFSTR("GeezaPro");
+        }
         font = fontForFamily(description, foundFontName.get(), false);
+    }
 #endif
 
     if (font)
         return font.release();
 
     return lastResortFallbackFont(description);
+}
+
+Vector<String> FontCache::systemFontFamilies()
+{
+    // FIXME: <https://webkit.org/b/147033> Web Inspector: [iOS] Allow inspector to retrieve a list of system fonts
+    Vector<String> fontFamilies;
+    return fontFamilies;
 }
 
 RefPtr<Font> FontCache::similarFont(const FontDescription& description)
@@ -609,11 +622,8 @@ static CTFontRef createCTFontWithFamilyNameAndWeight(const String& familyName, C
         if (weight > 300) {
             // The comment below has been copied from CoreText/UIFoundation. However, in WebKit we synthesize the oblique,
             // so we should investigate the result <rdar://problem/14449340>:
-            // We don't do bold-italic for system fonts. If you ask for it, we'll assume that you're just kidding and that you really want bold. This is a feature.
             if (traits & kCTFontTraitBold)
                 fontType = kCTFontUIFontEmphasizedSystem;
-            else if (traits & kCTFontTraitItalic)
-                fontType = static_cast<CTFontUIFontType>(kCTFontUIFontSystemItalic);
         } else if (weight > 250)
             fontType = static_cast<CTFontUIFontType>(kCTFontUIFontSystemLight);
         else if (weight > 150)
@@ -621,6 +631,8 @@ static CTFontRef createCTFontWithFamilyNameAndWeight(const String& familyName, C
         else
             fontType = static_cast<CTFontUIFontType>(kCTFontUIFontSystemUltraLight);
         RetainPtr<CTFontDescriptorRef> fontDescriptor = adoptCF(CTFontDescriptorCreateForUIType(fontType, size, nullptr));
+        if (traits & kCTFontTraitItalic)
+            fontDescriptor = adoptCF(CTFontDescriptorCreateCopyWithSymbolicTraits(fontDescriptor.get(), kCTFontItalicTrait, kCTFontItalicTrait));
         return CTFontCreateWithFontDescriptor(fontDescriptor.get(), size, nullptr);
     }
 
@@ -698,7 +710,7 @@ std::unique_ptr<FontPlatformData> FontCache::createFontPlatformData(const FontDe
 
     auto result = std::make_unique<FontPlatformData>(ctFont.get(), size, syntheticBold, syntheticOblique, fontDescription.orientation(), fontDescription.widthVariant());
     if (isAppleColorEmoji)
-        result->m_isEmoji = true;
+        result->setIsEmoji(true);
     return result;
 }
 

@@ -27,8 +27,11 @@
 #include "SecurityOriginData.h"
 
 #include "APIArray.h"
-#include "WebCoreArgumentCoders.h"
 #include "APISecurityOrigin.h"
+#include "WebCoreArgumentCoders.h"
+#include "WebFrame.h"
+#include <WebCore/Document.h>
+#include <WebCore/Frame.h>
 #include <wtf/text/CString.h>
 
 using namespace WebCore;
@@ -46,9 +49,33 @@ SecurityOriginData SecurityOriginData::fromSecurityOrigin(const SecurityOrigin& 
     return securityOriginData;
 }
 
+SecurityOriginData SecurityOriginData::fromFrame(WebFrame* frame)
+{
+    if (!frame)
+        return SecurityOriginData();
+    
+    return SecurityOriginData::fromFrame(frame->coreFrame());
+}
+
+SecurityOriginData SecurityOriginData::fromFrame(Frame* frame)
+{
+    if (!frame)
+        return SecurityOriginData();
+    
+    Document* document = frame->document();
+    if (!document)
+        return SecurityOriginData();
+
+    SecurityOrigin* origin = document->securityOrigin();
+    if (!origin)
+        return SecurityOriginData();
+    
+    return SecurityOriginData::fromSecurityOrigin(*origin);
+}
+
 Ref<SecurityOrigin> SecurityOriginData::securityOrigin() const
 {
-    return SecurityOrigin::create(protocol, host, port);
+    return SecurityOrigin::create(protocol.isolatedCopy(), host.isolatedCopy(), port);
 }
 
 void SecurityOriginData::encode(IPC::ArgumentEncoder& encoder) const
@@ -79,26 +106,6 @@ SecurityOriginData SecurityOriginData::isolatedCopy() const
     result.port = port;
 
     return result;
-}
-
-void performAPICallbackWithSecurityOriginDataVector(const Vector<SecurityOriginData>& originDatas, ArrayCallback* callback)
-{
-    if (!callback) {
-        // FIXME: Log error or assert.
-        return;
-    }
-    
-    Vector<RefPtr<API::Object>> securityOrigins;
-    securityOrigins.reserveInitialCapacity(originDatas.size());
-
-    for (const auto& originData : originDatas) {
-        RefPtr<API::Object> origin = API::SecurityOrigin::create(originData.protocol, originData.host, originData.port);
-        if (!origin)
-            continue;
-        securityOrigins.uncheckedAppend(WTF::move(origin));
-    }
-
-    callback->performCallbackWithReturnValue(API::Array::create(WTF::move(securityOrigins)).ptr());
 }
 
 bool operator==(const SecurityOriginData& a, const SecurityOriginData& b)

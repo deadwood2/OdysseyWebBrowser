@@ -35,7 +35,6 @@
 #include "JSGlobalObject.h"
 #include "JSObject.h"
 #include "JSCInlines.h"
-#include "RuntimeFlags.h"
 #include "SourceProvider.h"
 #include "StackVisitor.h"
 #include <wtf/text/StringBuilder.h>
@@ -59,15 +58,6 @@ static const int32_t webkitFirstVersionWithConcurrentGlobalContexts = 0x2100500;
 
 using namespace JSC;
 
-static RuntimeFlags javaScriptRuntimeFlags(const JSGlobalObject* globalObject)
-{
-    RuntimeFlags runtimeFlags = JSGlobalObject::javaScriptRuntimeFlags(globalObject);
-    runtimeFlags.setPromiseDisabled(true);
-    return runtimeFlags;
-}
-
-const GlobalObjectMethodTable JSC::javaScriptCoreAPIGlobalObjectMethodTable = { &JSGlobalObject::allowsAccessFrom, &JSGlobalObject::supportsProfiling, &JSGlobalObject::supportsRichSourceInfo, &JSGlobalObject::shouldInterruptScript, &javaScriptRuntimeFlags, nullptr, &JSGlobalObject::shouldInterruptScriptBeforeTimeout };
-
 // From the API's perspective, a context group remains alive iff
 //     (a) it has been JSContextGroupRetained
 //     OR
@@ -76,7 +66,7 @@ const GlobalObjectMethodTable JSC::javaScriptCoreAPIGlobalObjectMethodTable = { 
 JSContextGroupRef JSContextGroupCreate()
 {
     initializeThreading();
-    return toRef(VM::createContextGroup().leakRef());
+    return toRef(&VM::createContextGroup().leakRef());
 }
 
 JSContextGroupRef JSContextGroupRetain(JSContextGroupRef group)
@@ -161,7 +151,7 @@ JSGlobalContextRef JSGlobalContextCreateInGroup(JSContextGroupRef group, JSClass
     JSLockHolder locker(vm.get());
 
     if (!globalObjectClass) {
-        JSGlobalObject* globalObject = JSGlobalObject::create(*vm, JSGlobalObject::createStructure(*vm, jsNull()), &javaScriptCoreAPIGlobalObjectMethodTable);
+        JSGlobalObject* globalObject = JSGlobalObject::create(*vm, JSGlobalObject::createStructure(*vm, jsNull()));
 #if ENABLE(REMOTE_INSPECTOR)
         if (JSRemoteInspectorGetInspectionEnabledByDefault())
             globalObject->setRemoteDebuggingEnabled(true);

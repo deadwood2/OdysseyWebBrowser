@@ -156,6 +156,7 @@ bool unlockFile(PlatformFileHandle handle)
 }
 #endif
 
+#if !PLATFORM(MAC)
 bool deleteEmptyDirectory(const String& path)
 {
     CString fsRep = fileSystemRepresentation(path);
@@ -166,6 +167,7 @@ bool deleteEmptyDirectory(const String& path)
     // rmdir(...) returns 0 on successful deletion of the path and non-zero in any other case (including invalid permissions or non-existent file)
     return !rmdir(fsRep.data());
 }
+#endif
 
 bool getFileSize(const String& path, long long& result)
 {
@@ -296,7 +298,6 @@ String directoryName(const String& path)
     return dirname(fsRep.mutableData());
 }
 
-#if !PLATFORM(EFL)
 Vector<String> listDirectory(const String& path, const String& filter)
 {
     Vector<String> entries;
@@ -320,7 +321,6 @@ Vector<String> listDirectory(const String& path, const String& filter)
     }
     return entries;
 }
-#endif
 
 #if !OS(DARWIN) || PLATFORM(EFL) || PLATFORM(GTK)
 String openTemporaryFile(const String& prefix, PlatformFileHandle& handle)

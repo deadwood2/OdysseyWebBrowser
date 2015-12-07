@@ -27,7 +27,6 @@
 #include "config.h"
 #include "WebPageProxy.h"
 
-#include "NativeWebKeyboardEvent.h"
 #include "NotImplemented.h"
 #include "PageClientImpl.h"
 #include "WebKitWebViewBasePrivate.h"
@@ -53,14 +52,6 @@ String WebPageProxy::standardUserAgent(const String& applicationNameForUserAgent
     return WebCore::standardUserAgent(applicationNameForUserAgent);
 }
 
-void WebPageProxy::getEditorCommandsForKeyEvent(const AtomicString& eventType, Vector<WTF::String>& commandsList)
-{
-    // When the keyboard event is started in the WebProcess side (e.g. from the Inspector)
-    // it will arrive without a GdkEvent associated, so the keyEventQueue will be empty.
-    if (!m_keyEventQueue.isEmpty())
-        m_pageClient.getEditorCommandsForKeyEvent(m_keyEventQueue.first(), eventType, commandsList);
-}
-
 void WebPageProxy::bindAccessibilityTree(const String& plugID)
 {
     m_accessibilityPlugID = plugID;
@@ -82,7 +73,7 @@ void WebPageProxy::editorStateChanged(const EditorState& editorState)
     
     if (editorState.shouldIgnoreCompositionSelectionChange)
         return;
-    m_pageClient.updateTextInputState();
+    m_pageClient.selectionDidChange();
 }
 
 #if PLUGIN_ARCHITECTURE(X11)

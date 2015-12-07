@@ -32,7 +32,7 @@
 #import "WebProcess.h"
 #import <AVFoundation/AVFoundation.h>
 #import <WebCore/GraphicsLayerCA.h>
-#import <WebCore/PlatformCALayerMac.h>
+#import <WebCore/PlatformCALayerCocoa.h>
 #import <WebCore/SoftLinking.h>
 #import <WebCore/WebCoreCALayerExtras.h>
 #import <wtf/RetainPtr.h>
@@ -48,7 +48,7 @@ static NSString * const platformCALayerPointer = @"WKPlatformCALayer";
 
 PassRefPtr<PlatformCALayerRemote> PlatformCALayerRemoteCustom::create(PlatformLayer *platformLayer, PlatformCALayerClient* owner, RemoteLayerTreeContext& context)
 {
-    RefPtr<PlatformCALayerRemote> layer = adoptRef(new PlatformCALayerRemoteCustom(PlatformCALayerMac::layerTypeForPlatformLayer(platformLayer), platformLayer, owner, context));
+    RefPtr<PlatformCALayerRemote> layer = adoptRef(new PlatformCALayerRemoteCustom(PlatformCALayerCocoa::layerTypeForPlatformLayer(platformLayer), platformLayer, owner, context));
     context.layerWasCreated(*layer, layer->layerType());
 
     return layer.release();
@@ -104,13 +104,20 @@ PassRefPtr<WebCore::PlatformCALayer> PlatformCALayerRemoteCustom::clone(Platform
     bool copyContents = true;
 
     if (layerType() == LayerTypeAVPlayerLayer) {
-        clonedLayer = adoptNS([allocAVPlayerLayerInstance() init]);
+        
+        if ([platformLayer() isKindOfClass:getAVPlayerLayerClass()]) {
+            clonedLayer = adoptNS([allocAVPlayerLayerInstance() init]);
 
-        AVPlayerLayer* destinationPlayerLayer = static_cast<AVPlayerLayer *>(clonedLayer.get());
-        AVPlayerLayer* sourcePlayerLayer = static_cast<AVPlayerLayer *>(platformLayer());
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [destinationPlayerLayer setPlayer:[sourcePlayerLayer player]];
-        });
+            AVPlayerLayer* destinationPlayerLayer = static_cast<AVPlayerLayer *>(clonedLayer.get());
+            AVPlayerLayer* sourcePlayerLayer = static_cast<AVPlayerLayer *>(platformLayer());
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [destinationPlayerLayer setPlayer:[sourcePlayerLayer player]];
+            });
+        } else {
+            // On iOS, the AVPlayerLayer is inside a WebVideoContainerLayer. This code needs to share logic with MediaPlayerPrivateAVFoundationObjC::createAVPlayerLayer().
+            clonedLayer = adoptNS([[CALayer alloc] init]);
+        }
+
         copyContents = false;
     } else if (layerType() == LayerTypeWebGLLayer) {
         clonedLayer = adoptNS([[CALayer alloc] init]);

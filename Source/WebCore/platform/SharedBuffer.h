@@ -36,6 +36,7 @@
 #include <wtf/text/WTFString.h>
 
 #if USE(CF)
+#include "VNodeTracker.h"
 #include <wtf/RetainPtr.h>
 #endif
 
@@ -102,7 +103,7 @@ public:
     void append(CFDataRef);
 #endif
 
-    WEBCORE_EXPORT PassRefPtr<SharedBuffer> copy() const;
+    WEBCORE_EXPORT Ref<SharedBuffer> copy() const;
     
     // Return the number of consecutive bytes after "position". "data"
     // points to the first byte.
@@ -167,6 +168,7 @@ private:
 #if USE(CF)
     explicit SharedBuffer(CFDataRef);
     RetainPtr<CFDataRef> m_cfData;
+    VNodeTracker::Token m_vnodeToken;
 #endif
 
 #if USE(SOUP)

@@ -2,7 +2,7 @@ include(GNUInstallDirs)
 
 set(PROJECT_VERSION_MAJOR 2)
 set(PROJECT_VERSION_MINOR 9)
-set(PROJECT_VERSION_MICRO 2)
+set(PROJECT_VERSION_MICRO 4)
 set(PROJECT_VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_MICRO})
 set(WEBKITGTK_API_VERSION 4.0)
 
@@ -15,8 +15,8 @@ endif ()
 
 # Libtool library version, not to be confused with API version.
 # See http://www.gnu.org/software/libtool/manual/html_node/Libtool-versioning.html
-CALCULATE_LIBRARY_VERSIONS_FROM_LIBTOOL_TRIPLE(WEBKIT2 45 0 8)
-CALCULATE_LIBRARY_VERSIONS_FROM_LIBTOOL_TRIPLE(JAVASCRIPTCORE 20 1 2)
+CALCULATE_LIBRARY_VERSIONS_FROM_LIBTOOL_TRIPLE(WEBKIT2 46 0 9)
+CALCULATE_LIBRARY_VERSIONS_FROM_LIBTOOL_TRIPLE(JAVASCRIPTCORE 20 3 2)
 
 # These are shared variables, but we special case their definition so that we can use the
 # CMAKE_INSTALL_* variables that are populated by the GNUInstallDirs macro.
@@ -69,7 +69,7 @@ WEBKIT_OPTION_DEFINE(ENABLE_INTROSPECTION "Whether to enable GObject introspecti
 WEBKIT_OPTION_DEFINE(ENABLE_OPENGL "Whether to use OpenGL." PUBLIC ON)
 WEBKIT_OPTION_DEFINE(ENABLE_PLUGIN_PROCESS_GTK2 "Whether to build WebKitPluginProcess2 to load GTK2 based plugins." PUBLIC ON)
 WEBKIT_OPTION_DEFINE(ENABLE_X11_TARGET "Whether to enable support for the X11 windowing target." PUBLIC ON)
-WEBKIT_OPTION_DEFINE(ENABLE_WAYLAND_TARGET "Whether to enable support for the Wayland windowing target." PUBLIC OFF)
+WEBKIT_OPTION_DEFINE(ENABLE_WAYLAND_TARGET "Whether to enable support for the Wayland windowing target." PUBLIC ON)
 WEBKIT_OPTION_DEFINE(USE_LIBNOTIFY "Whether to enable the default web notification implementation." PUBLIC ON)
 WEBKIT_OPTION_DEFINE(USE_LIBHYPHEN "Whether to enable the default automatic hyphenation implementation." PUBLIC ON)
 
@@ -79,9 +79,6 @@ WEBKIT_OPTION_DEFINE(USE_REDIRECTED_XCOMPOSITE_WINDOW "Whether to use a Redirect
 
 # FIXME: Can we use cairo-glesv2 to avoid this conflict?
 WEBKIT_OPTION_CONFLICT(ENABLE_ACCELERATED_2D_CANVAS ENABLE_GLES2)
-
-# FIXME: Should be possible to build with support for both X11 and Wayland.
-WEBKIT_OPTION_CONFLICT(ENABLE_WAYLAND_TARGET ENABLE_X11_TARGET)
 
 WEBKIT_OPTION_DEPEND(ENABLE_3D_TRANSFORMS ENABLE_OPENGL)
 WEBKIT_OPTION_DEPEND(ENABLE_ACCELERATED_2D_CANVAS ENABLE_OPENGL)
@@ -119,8 +116,8 @@ if (OPENGL_FOUND)
     if (EGL_FOUND)
         list(APPEND CAIROGL_COMPONENTS cairo-egl)
     endif ()
-    find_package(CairoGL 1.10.2 COMPONENTS ${CAIROGL_COMPONENTS})
 endif ()
+find_package(CairoGL 1.10.2 COMPONENTS ${CAIROGL_COMPONENTS})
 
 # Normally we do not set the value of options automatically. However, CairoGL is special. Currently
 # most major distros compile Cario with --enable-gl, but Debian and derivitives are a major
@@ -179,6 +176,7 @@ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_NAVIGATOR_HWCONCURRENCY PRIVATE ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_NETSCAPE_PLUGIN_API PRIVATE ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_NOTIFICATIONS PRIVATE ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_PICTURE_SIZES PRIVATE ON)
+WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_PUBLIC_SUFFIX_LIST PRIVATE ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_QUOTA PRIVATE OFF)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_RESOLUTION_MEDIA_QUERY PRIVATE OFF)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_REQUEST_ANIMATION_FRAME PRIVATE ON)
@@ -221,7 +219,7 @@ set(ENABLE_PLUGIN_PROCESS ${ENABLE_X11_TARGET})
 add_definitions(-DBUILDING_GTK__=1)
 add_definitions(-DGETTEXT_PACKAGE="WebKit2GTK-${WEBKITGTK_API_VERSION}")
 add_definitions(-DDATA_DIR="${CMAKE_INSTALL_DATADIR}")
-add_definitions(-DUSER_AGENT_GTK_MAJOR_VERSION=601)
+add_definitions(-DUSER_AGENT_GTK_MAJOR_VERSION=602)
 add_definitions(-DUSER_AGENT_GTK_MINOR_VERSION=1)
 add_definitions(-DWEBKITGTK_API_VERSION_STRING="${WEBKITGTK_API_VERSION}")
 
@@ -240,14 +238,14 @@ set(GTK_INCLUDE_DIRS ${GTK3_INCLUDE_DIRS})
 set(GDK_LIBRARIES ${GDK3_LIBRARIES})
 set(GDK_INCLUDE_DIRS ${GDK3_INCLUDE_DIRS})
 
+SET_AND_EXPOSE_TO_BUILD(HAVE_GTK_GESTURES ${GTK3_SUPPORTS_GESTURES})
 SET_AND_EXPOSE_TO_BUILD(HAVE_GTK_UNIX_PRINTING ${GTK_UNIX_PRINT_FOUND})
-SET_AND_EXPOSE_TO_BUILD(HAVE_GTK_GESTURES ${GTK_SUPPORTS_GESTURES})
 
 set(glib_components gio gobject gthread gmodule)
 if (ENABLE_GAMEPAD_DEPRECATED OR ENABLE_GEOLOCATION)
     list(APPEND glib_components gio-unix)
 endif ()
-find_package(GLIB 2.33.2 REQUIRED COMPONENTS ${glib_components})
+find_package(GLIB 2.36 REQUIRED COMPONENTS ${glib_components})
 
 if (ENABLE_CREDENTIAL_STORAGE)
     find_package(Libsecret)
@@ -298,6 +296,8 @@ if (ENABLE_MEDIA_STREAM)
     SET_AND_EXPOSE_TO_BUILD(USE_OPENWEBRTC TRUE)
 endif ()
 
+SET_AND_EXPOSE_TO_BUILD(USE_TEXTURE_MAPPER TRUE)
+
 if (ENABLE_OPENGL)
     # ENABLE_OPENGL is true if either USE_OPENGL or ENABLE_GLES2 is true.
     # But USE_OPENGL is the opposite of ENABLE_GLES2.
@@ -321,7 +321,6 @@ if (ENABLE_OPENGL)
 
     SET_AND_EXPOSE_TO_BUILD(ENABLE_GRAPHICS_CONTEXT_3D TRUE)
 
-    SET_AND_EXPOSE_TO_BUILD(USE_TEXTURE_MAPPER TRUE)
     SET_AND_EXPOSE_TO_BUILD(USE_TEXTURE_MAPPER_GL TRUE)
 
     SET_AND_EXPOSE_TO_BUILD(USE_EGL ${EGL_FOUND})
@@ -337,6 +336,13 @@ endif ()
 if (ENABLE_PLUGIN_PROCESS_GTK2)
     find_package(GTK2 2.24.10 REQUIRED)
     find_package(GDK2 2.24.10 REQUIRED)
+endif ()
+
+if (ENABLE_SECCOMP_FILTERS)
+    find_package(LibSeccomp)
+    if (NOT PC_LIBSECCOMP_FOUND)
+        message(FATAL_ERROR "libseccomp is required for ENABLE_SECCOMP_FILTERS")
+    endif ()
 endif ()
 
 if (ENABLE_SPELLCHECK)
@@ -355,17 +361,30 @@ endif ()
 
 if (ENABLE_VIDEO OR ENABLE_WEB_AUDIO)
     set(GSTREAMER_COMPONENTS app pbutils)
-    SET_AND_EXPOSE_TO_BUILD(USE_GSTREAMER TRUE)
+
     if (ENABLE_VIDEO)
         list(APPEND GSTREAMER_COMPONENTS video mpegts tag gl)
     endif ()
 
     if (ENABLE_WEB_AUDIO)
         list(APPEND GSTREAMER_COMPONENTS audio fft)
-        SET_AND_EXPOSE_TO_BUILD(USE_WEBAUDIO_GSTREAMER TRUE)
     endif ()
 
     find_package(GStreamer 1.0.3 REQUIRED COMPONENTS ${GSTREAMER_COMPONENTS})
+
+    if (ENABLE_WEB_AUDIO)
+        if (NOT PC_GSTREAMER_AUDIO_FOUND OR NOT PC_GSTREAMER_FFT_FOUND)
+            message(FATAL_ERROR "WebAudio requires the audio and fft GStreamer libraries. Please check your gst-plugins-base installation.")
+        else ()
+            SET_AND_EXPOSE_TO_BUILD(USE_WEBAUDIO_GSTREAMER TRUE)
+        endif ()
+    endif ()
+
+    if (ENABLE_VIDEO)
+        if (NOT PC_GSTREAMER_APP_FOUND OR NOT PC_GSTREAMER_PBUTILS_FOUND OR NOT PC_GSTREAMER_TAG_FOUND OR NOT PC_GSTREAMER_VIDEO_FOUND)
+            message(FATAL_ERROR "Video playback requires the following GStreamer libraries: app, pbutils, tag, video. Please check your gst-plugins-base installation.")
+        endif ()
+    endif ()
 
     if (USE_GSTREAMER_MPEGTS)
         if (NOT PC_GSTREAMER_MPEGTS_FOUND)
@@ -378,9 +397,15 @@ if (ENABLE_VIDEO OR ENABLE_WEB_AUDIO)
             message(FATAL_ERROR "GStreamerGL is needed for USE_GSTREAMER_GL.")
         endif ()
     endif ()
+
+    SET_AND_EXPOSE_TO_BUILD(USE_GSTREAMER TRUE)
 endif ()
 
 if (ENABLE_X11_TARGET)
+    if (NOT GTK3_SUPPORTS_X11)
+        message(FATAL_ERROR "Recompile GTK+ with X11 backend to use ENABLE_X11_TARGET")
+    endif ()
+
     find_package(X11 REQUIRED)
     if (NOT X11_Xcomposite_FOUND)
         message(FATAL_ERROR "libXcomposite is required for ENABLE_X11_TARGET")
@@ -394,6 +419,10 @@ if (ENABLE_X11_TARGET)
 endif ()
 
 if (ENABLE_WAYLAND_TARGET)
+    if (NOT GTK3_SUPPORTS_WAYLAND)
+        message(FATAL_ERROR "Recompile GTK+ with Wayland backend to use ENABLE_WAYLAND_TARGET")
+    endif ()
+
     find_package(Wayland REQUIRED)
 endif ()
 
@@ -409,6 +438,12 @@ if (USE_LIBHYPHEN)
     if (NOT HYPHEN_FOUND)
        message(FATAL_ERROR "libhyphen is needed for USE_LIBHYPHEN.")
     endif ()
+endif ()
+
+# Override the cached variables, gtk-doc and gobject-introspection do not really work when cross-building.
+if (CMAKE_CROSSCOMPILING)
+    set(ENABLE_GTKDOC OFF)
+    set(ENABLE_INTROSPECTION OFF)
 endif ()
 
 set(DERIVED_SOURCES_GOBJECT_DOM_BINDINGS_DIR ${DERIVED_SOURCES_DIR}/webkitdom)

@@ -90,6 +90,9 @@ void HistoryController::saveScrollPositionAndViewStateToItem(HistoryItem* item)
 
     // FIXME: It would be great to work out a way to put this code in WebCore instead of calling through to the client.
     m_frame.loader().client().saveViewStateToItem(item);
+
+    // Notify clients that the HistoryItem has changed.
+    item->notifyChanged();
 }
 
 void HistoryController::clearScrollPositionAndViewState()
@@ -313,10 +316,7 @@ void HistoryController::setDefersLoading(bool defer)
 
 void HistoryController::updateForBackForwardNavigation()
 {
-#if !LOG_DISABLED
-    if (m_frame.loader().documentLoader())
-        LOG(History, "WebCoreHistory: Updating History for back/forward navigation in frame %s", m_frame.loader().documentLoader()->title().string().utf8().data());
-#endif
+    LOG(History, "HistoryController %p updateForBackForwardNavigation: Updating History for back/forward navigation in frame %p (main frame %d) %s", this, &m_frame, m_frame.isMainFrame(), m_frame.loader().documentLoader() ? m_frame.loader().documentLoader()->url().string().utf8().data() : "");
 
     // Must grab the current scroll position before disturbing it
     if (!m_frameLoadComplete)
@@ -329,16 +329,16 @@ void HistoryController::updateForBackForwardNavigation()
 
 void HistoryController::updateForReload()
 {
-#if !LOG_DISABLED
-    if (m_frame.loader().documentLoader())
-        LOG(History, "WebCoreHistory: Updating History for reload in frame %s", m_frame.loader().documentLoader()->title().string().utf8().data());
-#endif
+    LOG(History, "HistoryController %p updateForBackForwardNavigation: Updating History for reload in frame %p (main frame %d) %s", this, &m_frame, m_frame.isMainFrame(), m_frame.loader().documentLoader() ? m_frame.loader().documentLoader()->url().string().utf8().data() : "");
 
     if (m_currentItem) {
         PageCache::singleton().remove(*m_currentItem);
     
         if (m_frame.loader().loadType() == FrameLoadType::Reload || m_frame.loader().loadType() == FrameLoadType::ReloadFromOrigin)
             saveScrollPositionAndViewStateToItem(m_currentItem.get());
+
+        // Rebuild the history item tree when reloading as trying to re-associate everything is too error-prone.
+        m_currentItem->clearChildren();
     }
 
     // When reloading the page, we may end up redirecting to a different URL
@@ -354,7 +354,7 @@ void HistoryController::updateForReload()
 
 void HistoryController::updateForStandardLoad(HistoryUpdateType updateType)
 {
-    LOG(History, "WebCoreHistory: Updating History for Standard Load in frame %s", m_frame.loader().documentLoader()->url().string().ascii().data());
+    LOG(History, "HistoryController %p updateForStandardLoad: Updating History for standard load in frame %p (main frame %d) %s", this, &m_frame, m_frame.isMainFrame(), m_frame.loader().documentLoader()->url().string().ascii().data());
 
     FrameLoader& frameLoader = m_frame.loader();
 
@@ -390,10 +390,7 @@ void HistoryController::updateForStandardLoad(HistoryUpdateType updateType)
 
 void HistoryController::updateForRedirectWithLockedBackForwardList()
 {
-#if !LOG_DISABLED
-    if (m_frame.loader().documentLoader())
-        LOG(History, "WebCoreHistory: Updating History for redirect load in frame %s", m_frame.loader().documentLoader()->title().string().utf8().data());
-#endif
+    LOG(History, "HistoryController %p updateForRedirectWithLockedBackForwardList: Updating History for redirect load in frame %p (main frame %d) %s", this, &m_frame, m_frame.isMainFrame(), m_frame.loader().documentLoader() ? m_frame.loader().documentLoader()->url().string().utf8().data() : "");
     
     bool needPrivacy = m_frame.page()->usesEphemeralSession();
     const URL& historyURL = m_frame.loader().documentLoader()->urlForHistory();
@@ -431,10 +428,7 @@ void HistoryController::updateForRedirectWithLockedBackForwardList()
 
 void HistoryController::updateForClientRedirect()
 {
-#if !LOG_DISABLED
-    if (m_frame.loader().documentLoader())
-        LOG(History, "WebCoreHistory: Updating History for client redirect in frame %s", m_frame.loader().documentLoader()->title().string().utf8().data());
-#endif
+    LOG(History, "HistoryController %p updateForClientRedirect: Updating History for client redirect in frame %p (main frame %d) %s", this, &m_frame, m_frame.isMainFrame(), m_frame.loader().documentLoader() ? m_frame.loader().documentLoader()->url().string().utf8().data() : "");
 
     // Clear out form data so we don't try to restore it into the incoming page.  Must happen after
     // webcore has closed the URL and saved away the form state.
@@ -455,10 +449,8 @@ void HistoryController::updateForClientRedirect()
 void HistoryController::updateForCommit()
 {
     FrameLoader& frameLoader = m_frame.loader();
-#if !LOG_DISABLED
-    if (frameLoader.documentLoader())
-        LOG(History, "WebCoreHistory: Updating History for commit in frame %s", frameLoader.documentLoader()->title().string().utf8().data());
-#endif
+    LOG(History, "HistoryController %p updateForCommit: Updating History for commit in frame %p (main frame %d) %s", this, &m_frame, m_frame.isMainFrame(), m_frame.loader().documentLoader() ? m_frame.loader().documentLoader()->url().string().utf8().data() : "");
+
     FrameLoadType type = frameLoader.loadType();
     if (isBackForwardLoadType(type)
         || isReplaceLoadTypeWithProvisionalItem(type)
@@ -467,8 +459,13 @@ void HistoryController::updateForCommit()
         // the provisional item for restoring state.
         // Note previousItem must be set before we close the URL, which will
         // happen when the data source is made non-provisional below
+
+        // FIXME: https://bugs.webkit.org/show_bug.cgi?id=146842
+        // We should always have a provisional item when committing, but we sometimes don't.
+        // Not having one leads to us not having a m_currentItem later, which is also a terrible known issue.
+        // We should get to the bottom of this.
         ASSERT(m_provisionalItem);
-        setCurrentItem(*m_provisionalItem);
+        setCurrentItem(m_provisionalItem.get());
         m_provisionalItem = nullptr;
 
         // Tell all other frames in the tree to commit their provisional items and
@@ -509,7 +506,7 @@ void HistoryController::recursiveUpdateForCommit()
             view->setWasScrolledByUser(false);
 
         // Now commit the provisional item
-        setCurrentItem(*m_provisionalItem);
+        setCurrentItem(m_provisionalItem.get());
         m_provisionalItem = nullptr;
 
         // Restore form state (works from currentItem)
@@ -558,7 +555,7 @@ void HistoryController::recursiveUpdateForSameDocumentNavigation()
         return;
 
     // Commit the provisional item.
-    setCurrentItem(*m_provisionalItem);
+    setCurrentItem(m_provisionalItem.get());
     m_provisionalItem = nullptr;
 
     // Iterate over the rest of the tree.
@@ -574,11 +571,11 @@ void HistoryController::updateForFrameLoadCompleted()
     m_frameLoadComplete = true;
 }
 
-void HistoryController::setCurrentItem(HistoryItem& item)
+void HistoryController::setCurrentItem(HistoryItem* item)
 {
     m_frameLoadComplete = false;
     m_previousItem = m_currentItem;
-    m_currentItem = &item;
+    m_currentItem = item;
 }
 
 void HistoryController::setCurrentItemTitle(const StringWithDirection& title)
@@ -661,7 +658,7 @@ Ref<HistoryItem> HistoryController::createItem()
     initializeItem(item);
     
     // Set the item for which we will save document state
-    setCurrentItem(item);
+    setCurrentItem(item.ptr());
     
     return item;
 }
@@ -801,7 +798,8 @@ void HistoryController::updateBackForwardListClippedAtTarget(bool doClip)
     FrameLoader& frameLoader = m_frame.mainFrame().loader();
 
     Ref<HistoryItem> topItem = frameLoader.history().createItemTree(m_frame, doClip);
-    LOG(BackForward, "WebCoreBackForward - Adding backforward item %p for frame %s", topItem.ptr(), m_frame.loader().documentLoader()->url().string().ascii().data());
+    LOG(History, "HistoryController %p updateBackForwardListClippedAtTarget: Adding backforward item %p in frame %p (main frame %d) %s", this, topItem.ptr(), &m_frame, m_frame.isMainFrame(), m_frame.loader().documentLoader()->url().string().utf8().data());
+
     page->backForward().addItem(WTF::move(topItem));
 }
 
@@ -847,6 +845,8 @@ void HistoryController::pushState(PassRefPtr<SerializedScriptValue> stateObject,
     m_currentItem->setStateObject(stateObject);
     m_currentItem->setURLString(urlString);
 
+    LOG(History, "HistoryController %p pushState: Adding top item %p, setting url of current item %p to %s", this, topItem.ptr(), m_currentItem.get(), urlString.ascii().data());
+
     page->backForward().addItem(WTF::move(topItem));
 
     if (m_frame.page()->usesEphemeralSession())
@@ -860,6 +860,8 @@ void HistoryController::replaceState(PassRefPtr<SerializedScriptValue> stateObje
 {
     if (!m_currentItem)
         return;
+
+    LOG(History, "HistoryController %p replaceState: Setting url of current item %p to %s", this, m_currentItem.get(), urlString.ascii().data());
 
     if (!urlString.isEmpty())
         m_currentItem->setURLString(urlString);

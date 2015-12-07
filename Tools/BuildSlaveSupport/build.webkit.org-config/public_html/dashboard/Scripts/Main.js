@@ -38,6 +38,7 @@ for (var i = 0; i < buildbots.length; ++i) {
                 branch: info.branch,
                 platform: info.platform.name,
                 heading: info.heading,
+                builder: info.builder,
                 combinedQueues: Object.keys(info.combinedQueues).map(function(combinedQueueID) { return buildbot.queues[combinedQueueID]; }),
             };
         } else
@@ -51,7 +52,12 @@ for (var i = 0; i < buildbots.length; ++i) {
             platform.builders = [];
 
         var categoryName;
-        if (queue.builder)
+        if ("combinedQueues" in queue)
+            if (queue.builder)
+                categoryName = "builderCombinedQueues";
+            else
+                categoryName = "otherCombinedQueues"
+        else if (queue.builder)
             categoryName = "builders";
         else if (queue.tester)
             categoryName = queue.testCategory;
@@ -61,8 +67,6 @@ for (var i = 0; i < buildbots.length; ++i) {
             categoryName = "leaks";
         else if (queue.staticAnalyzer)
             categoryName = "staticAnalyzer";
-        else if ("combinedQueues" in queue)
-            categoryName = "combinedQueues";
         else {
             console.assert("Unknown queue type.");
             continue;
@@ -136,6 +140,32 @@ function updateHiddenPlatforms()
         unhideButton.classList.add("hidden");
 }
 
+function applyAccessibilityColorSetting()
+{
+    var useAccessibleColors = settings.getObject("accessibilityColorsEnabled");
+    var toggleAccessibilityColorButton = document.getElementById("accessibilityButton");
+    if (useAccessibleColors) {
+        toggleAccessibilityColorButton.textContent = "disable accessibility colors";
+        document.body.classList.toggle("accessibility-colors");
+    } else
+        toggleAccessibilityColorButton.textContent = "enable accessibility colors";
+}
+
+function toggleAccessibilityColors()
+{
+    var isCurrentlyActivated = settings.getObject("accessibilityColorsEnabled");
+    if (isCurrentlyActivated === undefined)
+        isCurrentlyActivated = false;
+    
+    settings.setObject("accessibilityColorsEnabled", !isCurrentlyActivated);
+    document.body.classList.toggle("accessibility-colors");
+    var toggleAccessibilityColorButton = document.getElementById("accessibilityButton");
+    if (!isCurrentlyActivated)
+        toggleAccessibilityColorButton.textContent = "disable accessibility colors";
+    else
+        toggleAccessibilityColorButton.textContent = "enable accessibility colors";
+}
+
 function documentReady()
 {
     var table = document.createElement("table");
@@ -144,11 +174,12 @@ function documentReady()
     var row = document.createElement("tr");
     row.classList.add("headers");
 
-    var header = document.createElement("th");
+    var header = document.createElement("th"); 
     var unhideButton = document.createElement("div");
     unhideButton.addEventListener("click", function () { settings.clearHiddenPlatforms(); });
     unhideButton.textContent = "Show All Platforms";
     unhideButton.classList.add("cellButton", "unhide", "hidden");
+
     header.appendChild(unhideButton);
     row.appendChild(header);
 
@@ -206,6 +237,13 @@ function documentReady()
         cell.appendChild(view.element);
         row.appendChild(cell);
 
+        if ("builderCombinedQueues" in platformQueues) {
+            for (var i = 0; i < platformQueues.builderCombinedQueues.length; ++i) {
+                var view = new BuildbotCombinedQueueView(platformQueues.builderCombinedQueues[i]);
+                cell.appendChild(view.element);
+            }
+        }
+
         for (var testerKey in Buildbot.TestCategory) {
             var cell = document.createElement("td");
 
@@ -239,10 +277,9 @@ function documentReady()
             cell.appendChild(view.element);
         }
 
-        // Currently, all combined queues are in Other column.
-        if (platformQueues.combinedQueues) {
-            for (var i = 0; i < platformQueues.combinedQueues.length; ++i) {
-                var view = new BuildbotCombinedQueueView(platformQueues.combinedQueues[i]);
+        if ("otherCombinedQueues" in platformQueues) {
+            for (var i = 0; i < platformQueues.otherCombinedQueues.length; ++i) {
+                var view = new BuildbotCombinedQueueView(platformQueues.otherCombinedQueues[i]);
                 cell.appendChild(view.element);
             }
         }
@@ -260,6 +297,14 @@ function documentReady()
         settingsButton.classList.add("settings");
         document.body.appendChild(settingsButton);
 
+        var toggleAccessibilityColorButton = document.createElement("div");
+        toggleAccessibilityColorButton.addEventListener("click", function() { toggleAccessibilityColors(); });
+        toggleAccessibilityColorButton.setAttribute("class", "unhide hidden accessibilityButton");
+        toggleAccessibilityColorButton.setAttribute("id", "accessibilityButton");
+        toggleAccessibilityColorButton.textContent = "enable accessibility colors";
+        document.body.appendChild(toggleAccessibilityColorButton);
+        applyAccessibilityColorSetting();
+        
         updateHiddenPlatforms();
         settings.addSettingListener("hiddenPlatforms", updateHiddenPlatforms);
     }

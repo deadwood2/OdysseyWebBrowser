@@ -55,8 +55,9 @@ WebInspector.TreeOutline = class TreeOutline extends WebInspector.Object
 
     appendChild(child)
     {
+        console.assert(child);
         if (!child)
-            throw "child can't be undefined or null";
+            return;
 
         var lastChild = this.children[this.children.length - 1];
         if (lastChild) {
@@ -97,8 +98,9 @@ WebInspector.TreeOutline = class TreeOutline extends WebInspector.Object
 
     insertChild(child, index)
     {
+        console.assert(child);
         if (!child)
-            throw "child can't be undefined or null";
+            return;
 
         var previousChild = (index > 0 ? this.children[index - 1] : null);
         if (previousChild) {
@@ -146,8 +148,9 @@ WebInspector.TreeOutline = class TreeOutline extends WebInspector.Object
 
     removeChildAtIndex(childIndex, suppressOnDeselect, suppressSelectSibling)
     {
+        console.assert(childIndex >= 0 && childIndex < this.children.length);
         if (childIndex < 0 || childIndex >= this.children.length)
-            throw "childIndex out of range";
+            return;
 
         var child = this.children[childIndex];
         this.children.splice(childIndex, 1);
@@ -184,12 +187,14 @@ WebInspector.TreeOutline = class TreeOutline extends WebInspector.Object
 
     removeChild(child, suppressOnDeselect, suppressSelectSibling)
     {
+        console.assert(child);
         if (!child)
-            throw "child can't be undefined or null";
+            return;
 
         var childIndex = this.children.indexOf(child);
+        console.assert(childIndex !== -1);
         if (childIndex === -1)
-            throw "child not found in this node's children";
+            return;
 
         this.removeChildAtIndex(childIndex, suppressOnDeselect, suppressSelectSibling);
 
@@ -939,16 +944,16 @@ WebInspector.TreeElement = class TreeElement extends WebInspector.Object
             this.onreveal(this);
     }
 
-    revealed()
+    revealed(ignoreHidden)
     {
-        if (this.hidden)
+        if (!ignoreHidden && this.hidden)
             return false;
 
         var currentAncestor = this.parent;
         while (currentAncestor && !currentAncestor.root) {
             if (!currentAncestor.expanded)
                 return false;
-            if (currentAncestor.hidden)
+            if (!ignoreHidden && currentAncestor.hidden)
                 return false;
             currentAncestor = currentAncestor.parent;
         }
@@ -1032,58 +1037,59 @@ WebInspector.TreeElement = class TreeElement extends WebInspector.Object
 
     traverseNextTreeElement(skipUnrevealed, stayWithin, dontPopulate, info)
     {
-        if (!dontPopulate && this.hasChildren)
-            this.onpopulate.call(this); // FIXME: This shouldn't need to use call, but this is working around a JSC bug. https://webkit.org/b/74811
+        function shouldSkip(element) {
+            return skipUnrevealed && !element.revealed(true);
+        }
+
+        var depthChange = 0;
+        var element = this;
+
+        if (!dontPopulate)
+            element.onpopulate();
+
+        do {
+            if (element.hasChildren && element.children[0] && (!skipUnrevealed || element.expanded)) {
+                element = element.children[0];
+                depthChange += 1;
+            } else {
+                while (element && !element.nextSibling && element.parent && !element.parent.root && element.parent !== stayWithin) {
+                    element = element.parent;
+                    depthChange -= 1;
+                }
+
+                if (element)
+                    element = element.nextSibling;
+            }
+        } while (element && shouldSkip(element));
 
         if (info)
-            info.depthChange = 0;
+            info.depthChange = depthChange;
 
-        var element = skipUnrevealed ? (this.revealed() ? this.children[0] : null) : this.children[0];
-        if (element && (!skipUnrevealed || (skipUnrevealed && this.expanded))) {
-            if (info)
-                info.depthChange = 1;
-            return element;
-        }
-
-        if (this === stayWithin)
-            return null;
-
-        element = skipUnrevealed ? (this.revealed() ? this.nextSibling : null) : this.nextSibling;
-        if (element)
-            return element;
-
-        element = this;
-        while (element && !element.root && !(skipUnrevealed ? (element.revealed() ? element.nextSibling : null) : element.nextSibling) && element.parent !== stayWithin) {
-            if (info)
-                info.depthChange -= 1;
-            element = element.parent;
-        }
-
-        if (!element)
-            return null;
-
-        return (skipUnrevealed ? (element.revealed() ? element.nextSibling : null) : element.nextSibling);
+        return element;
     }
 
     traversePreviousTreeElement(skipUnrevealed, dontPopulate)
     {
-        var element = skipUnrevealed ? (this.revealed() ? this.previousSibling : null) : this.previousSibling;
-        if (!dontPopulate && element && element.hasChildren)
-            element.onpopulate();
-
-        while (element && (skipUnrevealed ? (element.revealed() && element.expanded ? element.children[element.children.length - 1] : null) : element.children[element.children.length - 1])) {
-            if (!dontPopulate && element.hasChildren)
-                element.onpopulate();
-            element = (skipUnrevealed ? (element.revealed() && element.expanded ? element.children[element.children.length - 1] : null) : element.children[element.children.length - 1]);
+        function shouldSkip(element) {
+            return skipUnrevealed && !element.revealed(true);
         }
 
-        if (element)
-            return element;
+        var element = this;
 
-        if (!this.parent || this.parent.root)
-            return null;
+        do {
+            if (element.previousSibling) {
+                element = element.previousSibling;
 
-        return this.parent;
+                while (element && element.hasChildren && element.expanded && !shouldSkip(element)) {
+                    if (!dontPopulate)
+                        element.onpopulate();
+                    element = element.children.lastValue;
+                }
+            } else
+                element = element.parent && element.parent.root ? null : element.parent;
+        } while (element && shouldSkip(element));
+
+        return element;
     }
 
     isEventWithinDisclosureTriangle(event)

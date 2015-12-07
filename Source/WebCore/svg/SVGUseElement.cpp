@@ -329,8 +329,11 @@ static void removeDisallowedElementsFromSubtree(SVGElement& subtree)
         }
         ++it;
     }
-    for (auto* element : disallowedElements)
+    for (auto* element : disallowedElements) {
+        for (auto& descendant : descendantsOfType<SVGElement>(*element))
+            descendant.setCorrespondingElement(nullptr);
         element->parentNode()->removeChild(element);
+    }
 }
 
 static void associateClonesWithOriginals(SVGElement& clone, SVGElement& original)
@@ -543,14 +546,14 @@ void SVGUseElement::updateExternalDocument()
     if (externalDocumentURL.isNull())
         m_externalDocument = nullptr;
     else {
-        CachedResourceRequest request { ResourceRequest { externalDocumentURL } };
+        ResourceLoaderOptions options = CachedResourceLoader::defaultCachedResourceOptions();
+        options.setContentSecurityPolicyImposition(isInUserAgentShadowTree() ? ContentSecurityPolicyImposition::SkipPolicyCheck : ContentSecurityPolicyImposition::DoPolicyCheck);
+
+        CachedResourceRequest request { ResourceRequest { externalDocumentURL }, options };
         request.setInitiator(this);
         m_externalDocument = document().cachedResourceLoader().requestSVGDocument(request);
-        if (m_externalDocument) {
-            // FIXME: Is it really OK for us to set this to false for a document that might be shared by another client?
-            m_externalDocument->setShouldCreateFrameForDocument(false); // No frame needed, we just want the elements.
+        if (m_externalDocument)
             m_externalDocument->addClient(this);
-        }
     }
 
     invalidateShadowTree();

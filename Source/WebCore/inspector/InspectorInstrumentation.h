@@ -75,9 +75,9 @@ class DOMWindow;
 class DOMWrapperWorld;
 class Database;
 class Document;
-class Element;
 class DocumentLoader;
 class DocumentStyleSheetCollection;
+class Element;
 class GraphicsContext;
 class HTTPHeaderMap;
 class InspectorCSSAgent;
@@ -85,7 +85,6 @@ class InspectorCSSOMWrappers;
 class InspectorInstrumentation;
 class InspectorTimelineAgent;
 class InstrumentingAgents;
-class URL;
 class Node;
 class PseudoElement;
 class RenderLayer;
@@ -100,6 +99,7 @@ class StorageArea;
 class StyleResolver;
 class StyleRule;
 class ThreadableLoaderClient;
+class URL;
 class WorkerGlobalScope;
 class WorkerGlobalScopeProxy;
 class XMLHttpRequest;
@@ -126,6 +126,8 @@ public:
     static void mediaQueryResultChanged(Document&);
     static void didPushShadowRoot(Element& host, ShadowRoot&);
     static void willPopShadowRoot(Element& host, ShadowRoot&);
+    static void pseudoElementCreated(Page*, PseudoElement&);
+    static void pseudoElementDestroyed(Page*, PseudoElement&);
     static void didCreateNamedFlow(Document*, WebKitNamedFlow&);
     static void willRemoveNamedFlow(Document*, WebKitNamedFlow&);
     static void didChangeRegionOverset(Document&, WebKitNamedFlow&);
@@ -164,6 +166,8 @@ public:
     static void didDispatchXHRLoadEvent(const InspectorInstrumentationCookie&);
     static void willScrollLayer(Frame&);
     static void didScrollLayer(Frame&);
+    static void willComposite(Frame&);
+    static void didComposite(Frame&);
     static void willPaint(RenderObject*);
     static void didPaint(RenderObject*, const LayoutRect&);
     static InspectorInstrumentationCookie willRecalculateStyle(Document&);
@@ -273,7 +277,6 @@ public:
 
     static void layerTreeDidChange(Page*);
     static void renderLayerDestroyed(Page*, const RenderLayer&);
-    static void pseudoElementDestroyed(Page*, PseudoElement&);
 
     static void frontendCreated() { s_frontendCounter += 1; }
     static void frontendDeleted() { s_frontendCounter -= 1; }
@@ -304,6 +307,8 @@ private:
     static void mediaQueryResultChangedImpl(InstrumentingAgents&);
     static void didPushShadowRootImpl(InstrumentingAgents&, Element& host, ShadowRoot&);
     static void willPopShadowRootImpl(InstrumentingAgents&, Element& host, ShadowRoot&);
+    static void pseudoElementCreatedImpl(InstrumentingAgents&, PseudoElement&);
+    static void pseudoElementDestroyedImpl(InstrumentingAgents&, PseudoElement&);
     static void didCreateNamedFlowImpl(InstrumentingAgents&, Document*, WebKitNamedFlow&);
     static void willRemoveNamedFlowImpl(InstrumentingAgents&, Document*, WebKitNamedFlow&);
     static void didChangeRegionOversetImpl(InstrumentingAgents&, Document&, WebKitNamedFlow&);
@@ -342,6 +347,8 @@ private:
     static void didDispatchXHRLoadEventImpl(const InspectorInstrumentationCookie&);
     static void willScrollLayerImpl(InstrumentingAgents&, Frame&);
     static void didScrollLayerImpl(InstrumentingAgents&);
+    static void willCompositeImpl(InstrumentingAgents&, Frame&);
+    static void didCompositeImpl(InstrumentingAgents&);
     static void willPaintImpl(InstrumentingAgents&, RenderObject*);
     static void didPaintImpl(InstrumentingAgents&, RenderObject*, const LayoutRect&);
     static InspectorInstrumentationCookie willRecalculateStyleImpl(InstrumentingAgents&, Document&);
@@ -445,7 +452,6 @@ private:
 
     static void layerTreeDidChangeImpl(InstrumentingAgents&);
     static void renderLayerDestroyedImpl(InstrumentingAgents&, const RenderLayer&);
-    static void pseudoElementDestroyedImpl(InstrumentingAgents&, PseudoElement&);
 
     static InstrumentingAgents* instrumentingAgentsForPage(Page&);
     static InstrumentingAgents* instrumentingAgentsForFrame(Frame&);
@@ -561,6 +567,20 @@ inline void InspectorInstrumentation::willPopShadowRoot(Element& host, ShadowRoo
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (InstrumentingAgents* instrumentingAgents = instrumentingAgentsForDocument(host.document()))
         willPopShadowRootImpl(*instrumentingAgents, host, root);
+}
+
+inline void InspectorInstrumentation::pseudoElementCreated(Page* page, PseudoElement& pseudoElement)
+{
+    FAST_RETURN_IF_NO_FRONTENDS(void());
+    if (InstrumentingAgents* instrumentingAgents = instrumentingAgentsForPage(page))
+        pseudoElementCreatedImpl(*instrumentingAgents, pseudoElement);
+}
+
+inline void InspectorInstrumentation::pseudoElementDestroyed(Page* page, PseudoElement& pseudoElement)
+{
+    FAST_RETURN_IF_NO_FRONTENDS(void());
+    if (InstrumentingAgents* instrumentingAgents = instrumentingAgentsForPage(page))
+        pseudoElementDestroyedImpl(*instrumentingAgents, pseudoElement);
 }
 
 inline void InspectorInstrumentation::didCreateNamedFlow(Document* document, WebKitNamedFlow& namedFlow)
@@ -812,6 +832,20 @@ inline void InspectorInstrumentation::didDispatchXHRLoadEvent(const InspectorIns
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (cookie.isValid())
         didDispatchXHRLoadEventImpl(cookie);
+}
+
+inline void InspectorInstrumentation::willComposite(Frame& frame)
+{
+    FAST_RETURN_IF_NO_FRONTENDS(void());
+    if (InstrumentingAgents* instrumentingAgents = instrumentingAgentsForFrame(&frame))
+        willCompositeImpl(*instrumentingAgents, frame);
+}
+
+inline void InspectorInstrumentation::didComposite(Frame& frame)
+{
+    FAST_RETURN_IF_NO_FRONTENDS(void());
+    if (InstrumentingAgents* instrumentingAgents = instrumentingAgentsForFrame(&frame))
+        didCompositeImpl(*instrumentingAgents);
 }
 
 inline void InspectorInstrumentation::willPaint(RenderObject* renderer)
@@ -1290,20 +1324,16 @@ inline void InspectorInstrumentation::didFireAnimationFrame(const InspectorInstr
 
 inline void InspectorInstrumentation::layerTreeDidChange(Page* page)
 {
+    FAST_RETURN_IF_NO_FRONTENDS(void());
     if (InstrumentingAgents* instrumentingAgents = instrumentingAgentsForPage(page))
         layerTreeDidChangeImpl(*instrumentingAgents);
 }
 
 inline void InspectorInstrumentation::renderLayerDestroyed(Page* page, const RenderLayer& renderLayer)
 {
+    FAST_RETURN_IF_NO_FRONTENDS(void());
     if (InstrumentingAgents* instrumentingAgents = instrumentingAgentsForPage(page))
         renderLayerDestroyedImpl(*instrumentingAgents, renderLayer);
-}
-
-inline void InspectorInstrumentation::pseudoElementDestroyed(Page* page, PseudoElement& pseudoElement)
-{
-    if (InstrumentingAgents* instrumentingAgents = instrumentingAgentsForPage(page))
-        pseudoElementDestroyedImpl(*instrumentingAgents, pseudoElement);
 }
 
 inline InstrumentingAgents* InspectorInstrumentation::instrumentingAgentsForContext(ScriptExecutionContext* context)

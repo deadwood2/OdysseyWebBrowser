@@ -1256,6 +1256,7 @@ bool AccessibilityRenderObject::computeAccessibilityIsIgnored() const
     case AudioRole:
     case DescriptionListTermRole:
     case DescriptionListDetailRole:
+    case DetailsRole:
     case DocumentArticleRole:
     case DocumentRegionRole:
     case ListItemRole:
@@ -1382,7 +1383,11 @@ bool AccessibilityRenderObject::computeAccessibilityIsIgnored() const
     if (node && node->hasTagName(dfnTag))
         return false;
     
-    // By default, objects should be ignored so that the AX hierarchy is not 
+    // Make sure that ruby containers are not ignored.
+    if (m_renderer->isRubyRun() || m_renderer->isRubyBlock() || m_renderer->isRubyInline())
+        return false;
+
+    // By default, objects should be ignored so that the AX hierarchy is not
     // filled with unnecessary items.
     return true;
 }
@@ -1493,29 +1498,38 @@ PlainTextRange AccessibilityRenderObject::selectedTextRange() const
     return documentBasedSelectedTextRange();
 }
 
-static void setTextSelectionIntent(const AccessibilityRenderObject& renderObject, AXTextStateChangeType type)
+static void setTextSelectionIntent(AXObjectCache* cache, AXTextStateChangeType type)
 {
-    AXObjectCache* cache = renderObject.axObjectCache();
     if (!cache)
         return;
-    AXTextStateChangeIntent intent(type, AXTextSelection { AXTextSelectionDirectionDiscontiguous, AXTextSelectionGranularityUnknown });
+    AXTextStateChangeIntent intent(type, AXTextSelection { AXTextSelectionDirectionDiscontiguous, AXTextSelectionGranularityUnknown, false });
     cache->setTextSelectionIntent(intent);
     cache->setIsSynchronizingSelection(true);
+}
+
+static void clearTextSelectionIntent(AXObjectCache* cache)
+{
+    if (!cache)
+        return;
+    cache->setTextSelectionIntent(AXTextStateChangeIntent());
+    cache->setIsSynchronizingSelection(false);
 }
 
 void AccessibilityRenderObject::setSelectedTextRange(const PlainTextRange& range)
 {
     if (isNativeTextControl()) {
-        setTextSelectionIntent(*this, range.length ? AXTextStateChangeTypeSelectionExtend : AXTextStateChangeTypeSelectionMove);
+        setTextSelectionIntent(axObjectCache(), range.length ? AXTextStateChangeTypeSelectionExtend : AXTextStateChangeTypeSelectionMove);
         HTMLTextFormControlElement& textControl = downcast<RenderTextControl>(*m_renderer).textFormControlElement();
         textControl.setSelectionRange(range.start, range.start + range.length);
+        clearTextSelectionIntent(axObjectCache());
         return;
     }
 
     Node* node = m_renderer->node();
     VisibleSelection newSelection(Position(node, range.start, Position::PositionIsOffsetInAnchor), Position(node, range.start + range.length, Position::PositionIsOffsetInAnchor), DOWNSTREAM);
-    setTextSelectionIntent(*this, range.length ? AXTextStateChangeTypeSelectionExtend : AXTextStateChangeTypeSelectionMove);
+    setTextSelectionIntent(axObjectCache(), range.length ? AXTextStateChangeTypeSelectionExtend : AXTextStateChangeTypeSelectionMove);
     m_renderer->frame().selection().setSelection(newSelection, FrameSelection::defaultSetSelectionOptions());
+    clearTextSelectionIntent(axObjectCache());
 }
 
 URL AccessibilityRenderObject::url() const
@@ -1669,15 +1683,22 @@ void AccessibilityRenderObject::setFocused(bool on)
     if (document->focusedElement() == node)
         document->setFocusedElement(nullptr);
 
-    setTextSelectionIntent(*this, AXTextStateChangeTypeSelectionMove);
+    // When a node is told to set focus, that can cause it to be deallocated, which means that doing
+    // anything else inside this object will crash. To fix this, we added a RefPtr to protect this object
+    // long enough for duration. We can also locally cache the axObjectCache.
+    RefPtr<AccessibilityObject> protect(this);
+    AXObjectCache* cache = axObjectCache();
+    
+    cache->setIsSynchronizingSelection(true);
     downcast<Element>(*node).focus();
+    cache->setIsSynchronizingSelection(false);
 }
 
 void AccessibilityRenderObject::setSelectedRows(AccessibilityChildrenVector& selectedRows)
 {
     // Setting selected only makes sense in trees and tables (and tree-tables).
     AccessibilityRole role = roleValue();
-    if (role != TreeRole && role != TreeGridRole && role != TableRole)
+    if (role != TreeRole && role != TreeGridRole && role != TableRole && role != GridRole)
         return;
     
     bool isMulti = isMultiSelectable();
@@ -1984,13 +2005,15 @@ void AccessibilityRenderObject::setSelectedVisiblePositionRange(const VisiblePos
 
     // make selection and tell the document to use it. if it's zero length, then move to that position
     if (range.start == range.end) {
-        setTextSelectionIntent(*this, AXTextStateChangeTypeSelectionMove);
+        setTextSelectionIntent(axObjectCache(), AXTextStateChangeTypeSelectionMove);
         m_renderer->frame().selection().moveTo(range.start, UserTriggered);
+        clearTextSelectionIntent(axObjectCache());
     }
     else {
-        setTextSelectionIntent(*this, AXTextStateChangeTypeSelectionExtend);
+        setTextSelectionIntent(axObjectCache(), AXTextStateChangeTypeSelectionExtend);
         VisibleSelection newSelection = VisibleSelection(range.start, range.end);
         m_renderer->frame().selection().setSelection(newSelection, FrameSelection::defaultSetSelectionOptions());
+        clearTextSelectionIntent(axObjectCache());
     }
 }
 
@@ -2474,7 +2497,9 @@ AccessibilityRole AccessibilityRenderObject::determineAccessibilityRole()
     if (!m_renderer)
         return UnknownRole;
 
-    if ((m_ariaRole = determineAriaRoleAttribute()) != UnknownRole)
+    // Sometimes we need to ignore the attribute role. Like if a tree is malformed,
+    // we want to ignore the treeitem's attribute role.
+    if ((m_ariaRole = determineAriaRoleAttribute()) != UnknownRole && !shouldIgnoreAttributeRole())
         return m_ariaRole;
     
     Node* node = m_renderer->node();
@@ -2575,9 +2600,18 @@ AccessibilityRole AccessibilityRenderObject::determineAccessibilityRole()
     if (node && node->hasTagName(dlTag))
         return DescriptionListRole;
 
-    if (node && (node->hasTagName(rpTag) || node->hasTagName(rtTag)))
-        return AnnotationRole;
-
+    // Check for Ruby elements
+    if (m_renderer->isRubyText())
+        return RubyTextRole;
+    if (m_renderer->isRubyBase())
+        return RubyBaseRole;
+    if (m_renderer->isRubyRun())
+        return RubyRunRole;
+    if (m_renderer->isRubyBlock())
+        return RubyBlockRole;
+    if (m_renderer->isRubyInline())
+        return RubyInlineRole;
+    
     // This return value is what will be used if AccessibilityTableCell determines
     // the cell should not be treated as a cell (e.g. because it is a layout table.
     // In ATK, there is a distinction between generic text block elements and other
@@ -2637,6 +2671,11 @@ AccessibilityRole AccessibilityRenderObject::determineAccessibilityRole()
 
     if (node && node->hasTagName(preTag))
         return PreRole;
+
+    if (is<HTMLDetailsElement>(node))
+        return DetailsRole;
+    if (is<HTMLSummaryElement>(node))
+        return SummaryRole;
 
 #if ENABLE(VIDEO)
     if (is<HTMLVideoElement>(node))
@@ -2712,6 +2751,7 @@ bool AccessibilityRenderObject::inheritsPresentationalRole() const
         }
         possibleParentTagNames = &listItemParents.get();
         break;
+    case GridCellRole:
     case CellRole:
         if (tableCellParents.get().isEmpty())
             tableCellParents.get().add(tableTag);
@@ -2769,6 +2809,9 @@ bool AccessibilityRenderObject::ariaRoleHasPresentationalChildren() const
 
 bool AccessibilityRenderObject::canSetExpandedAttribute() const
 {
+    if (roleValue() == DetailsRole)
+        return true;
+    
     // An object can be expanded if it aria-expanded is true or false.
     const AtomicString& ariaExpanded = getAttribute(aria_expandedAttr);
     return equalIgnoringCase(ariaExpanded, "true") || equalIgnoringCase(ariaExpanded, "false");
@@ -3204,7 +3247,7 @@ void AccessibilityRenderObject::selectedChildren(AccessibilityChildrenVector& re
     AccessibilityRole role = roleValue();
     if (role == ListBoxRole) // native list boxes would be AccessibilityListBoxes, so only check for aria list boxes
         ariaListboxSelectedChildren(result);
-    else if (role == TreeRole || role == TreeGridRole || role == TableRole)
+    else if (role == TreeRole || role == TreeGridRole || role == TableRole || role == GridRole)
         ariaSelectedRows(result);
 }
 

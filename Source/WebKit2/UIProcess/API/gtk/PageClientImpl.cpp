@@ -36,16 +36,21 @@
 #include "WebContextMenuProxyGtk.h"
 #include "WebEventFactory.h"
 #include "WebKitColorChooser.h"
-#include "WebKitWebView.h"
 #include "WebKitWebViewBasePrivate.h"
+#include "WebKitWebViewPrivate.h"
 #include "WebPageProxy.h"
 #include "WebPopupMenuProxyGtk.h"
 #include "WebProcessPool.h"
 #include <WebCore/Cursor.h>
 #include <WebCore/EventNames.h>
 #include <WebCore/GtkUtilities.h>
+#include <WebCore/PlatformDisplay.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
+
+#if PLATFORM(X11)
+#include <gdk/gdkx.h>
+#endif
 
 using namespace WebCore;
 
@@ -54,15 +59,6 @@ namespace WebKit {
 PageClientImpl::PageClientImpl(GtkWidget* viewWidget)
     : m_viewWidget(viewWidget)
 {
-}
-
-void PageClientImpl::getEditorCommandsForKeyEvent(const NativeWebKeyboardEvent& event, const AtomicString& eventType, Vector<WTF::String>& commandList)
-{
-    ASSERT(eventType == eventNames().keydownEvent || eventType == eventNames().keypressEvent);
-
-    KeyBindingTranslator::EventType type = eventType == eventNames().keydownEvent ?
-        KeyBindingTranslator::KeyDown : KeyBindingTranslator::KeyPress;
-    m_keyBindingTranslator.getEditorCommandsForKeyEvent(const_cast<GdkEventKey*>(&event.nativeEvent()->key), type, commandList);
 }
 
 // PageClient's pure virtual functions
@@ -86,18 +82,15 @@ void PageClientImpl::scrollView(const WebCore::IntRect& scrollRect, const WebCor
     setViewNeedsDisplay(scrollRect);
 }
 
-void PageClientImpl::requestScroll(const WebCore::FloatPoint&, bool)
+void PageClientImpl::requestScroll(const WebCore::FloatPoint&, const WebCore::IntPoint&, bool)
 {
     notImplemented();
 }
 
 WebCore::IntSize PageClientImpl::viewSize()
 {
-    if (!gtk_widget_get_realized(m_viewWidget))
-        return IntSize();
-    GtkAllocation allocation;
-    gtk_widget_get_allocation(m_viewWidget, &allocation);
-    return IntSize(allocation.width, allocation.height);
+    auto* drawingArea = static_cast<DrawingAreaProxyImpl*>(webkitWebViewBaseGetPage(WEBKIT_WEB_VIEW_BASE(m_viewWidget))->drawingArea());
+    return drawingArea ? drawingArea->size() : IntSize();
 }
 
 bool PageClientImpl::isViewWindowActive()
@@ -127,7 +120,7 @@ void PageClientImpl::PageClientImpl::processDidExit()
 
 void PageClientImpl::didRelaunchProcess()
 {
-    notImplemented();
+    webkitWebViewBaseDidRelaunchWebProcess(WEBKIT_WEB_VIEW_BASE(m_viewWidget));
 }
 
 void PageClientImpl::toolTipChanged(const String&, const String& newToolTip)
@@ -135,7 +128,7 @@ void PageClientImpl::toolTipChanged(const String&, const String& newToolTip)
     webkitWebViewBaseSetTooltipText(WEBKIT_WEB_VIEW_BASE(m_viewWidget), newToolTip.utf8().data());
 }
 
-void PageClientImpl::setCursor(const Cursor& cursor)
+void PageClientImpl::setCursor(const WebCore::Cursor& cursor)
 {
     if (!gtk_widget_get_realized(m_viewWidget))
         return;
@@ -218,17 +211,17 @@ void PageClientImpl::doneWithKeyEvent(const NativeWebKeyboardEvent& event, bool 
     gtk_main_do_event(event.nativeEvent());
 }
 
-PassRefPtr<WebPopupMenuProxy> PageClientImpl::createPopupMenuProxy(WebPageProxy* page)
+RefPtr<WebPopupMenuProxy> PageClientImpl::createPopupMenuProxy(WebPageProxy* page)
 {
     return WebPopupMenuProxyGtk::create(m_viewWidget, page);
 }
 
-PassRefPtr<WebContextMenuProxy> PageClientImpl::createContextMenuProxy(WebPageProxy* page)
+RefPtr<WebContextMenuProxy> PageClientImpl::createContextMenuProxy(WebPageProxy* page)
 {
     return WebContextMenuProxyGtk::create(m_viewWidget, page);
 }
 
-PassRefPtr<WebColorPicker> PageClientImpl::createColorPicker(WebPageProxy* page, const WebCore::Color& color, const WebCore::IntRect& rect)
+RefPtr<WebColorPicker> PageClientImpl::createColorPicker(WebPageProxy* page, const WebCore::Color& color, const WebCore::IntRect& rect)
 {
     if (WEBKIT_IS_WEB_VIEW(m_viewWidget))
         return WebKitColorChooser::create(*page, color, rect);
@@ -275,9 +268,11 @@ void PageClientImpl::preferencesDidChange()
     notImplemented();
 }
 
-void PageClientImpl::updateTextInputState()
+void PageClientImpl::selectionDidChange()
 {
     webkitWebViewBaseUpdateTextInputState(WEBKIT_WEB_VIEW_BASE(m_viewWidget));
+    if (WEBKIT_IS_WEB_VIEW(m_viewWidget))
+        webkitWebViewSelectionDidChange(WEBKIT_WEB_VIEW(m_viewWidget));
 }
 
 #if ENABLE(DRAG_SUPPORT)
@@ -419,6 +414,10 @@ void PageClientImpl::navigationGestureDidEnd(bool, WebBackForwardListItem&)
 {
 }
 
+void PageClientImpl::navigationGestureDidEnd()
+{
+}
+
 void PageClientImpl::willRecordNavigationSnapshot(WebBackForwardListItem&)
 {
 }
@@ -437,6 +436,29 @@ void PageClientImpl::didSameDocumentNavigationForMainFrame(SameDocumentNavigatio
 
 void PageClientImpl::didChangeBackgroundColor()
 {
+}
+
+void PageClientImpl::refView()
+{
+    g_object_ref(m_viewWidget);
+}
+
+void PageClientImpl::derefView()
+{
+    g_object_unref(m_viewWidget);
+}
+
+GUniquePtr<GstInstallPluginsContext> PageClientImpl::createGstInstallPluginsContext()
+{
+#if PLATFORM(X11)
+    if (PlatformDisplay::sharedDisplay().type() == PlatformDisplay::Type::X11) {
+        GUniquePtr<GstInstallPluginsContext> context(gst_install_plugins_context_new());
+        gst_install_plugins_context_set_xid(context.get(), GDK_WINDOW_XID(gtk_widget_get_window(m_viewWidget)));
+        return context;
+    }
+#endif
+
+    return nullptr;
 }
 
 } // namespace WebKit

@@ -39,10 +39,11 @@
 #include <WebKit/WKBundleFramePrivate.h>
 #include <WebKit/WKBundleHitTestResult.h>
 #include <WebKit/WKBundleNavigationAction.h>
+#include <WebKit/WKBundleNavigationActionPrivate.h>
 #include <WebKit/WKBundleNodeHandlePrivate.h>
 #include <WebKit/WKBundlePagePrivate.h>
 #include <WebKit/WKBundlePrivate.h>
-#include <WebKit/WKSecurityOrigin.h>
+#include <WebKit/WKSecurityOriginRef.h>
 #include <WebKit/WKURLRequest.h>
 #include <wtf/HashMap.h>
 #include <wtf/text/CString.h>
@@ -1003,6 +1004,17 @@ void InjectedBundlePage::willPerformClientRedirectForFrame(WKBundlePageRef, WKBu
 
 void InjectedBundlePage::didSameDocumentNavigationForFrame(WKBundleFrameRef frame, WKSameDocumentNavigationType type)
 {
+    auto& injectedBundle = InjectedBundle::singleton();
+    if (!injectedBundle.isTestRunning())
+        return;
+
+    if (!injectedBundle.testRunner()->shouldDumpFrameLoadCallbacks())
+        return;
+
+    if (type != kWKSameDocumentNavigationAnchorNavigation)
+        return;
+
+    dumpLoadEvent(frame, "didChangeLocationWithinPageForFrame");
 }
 
 void InjectedBundlePage::didFinishDocumentLoadForFrame(WKBundleFrameRef frame)
@@ -1262,6 +1274,18 @@ WKBundlePagePolicyAction InjectedBundlePage::decidePolicyForNavigationAction(WKB
     if (!injectedBundle.isTestRunning())
         return WKBundlePagePolicyActionUse;
 
+    if (injectedBundle.testRunner()->shouldDumpPolicyCallbacks()) {
+        StringBuilder stringBuilder;
+        stringBuilder.appendLiteral(" - decidePolicyForNavigationAction \n");
+        dumpRequestDescriptionSuitableForTestResult(request, stringBuilder);
+        stringBuilder.appendLiteral(" is main frame - ");
+        stringBuilder.append(WKBundleFrameIsMainFrame(frame) ? "yes" : "no");
+        stringBuilder.appendLiteral(" should open URLs externally - ");
+        stringBuilder.append(WKBundleNavigationActionGetShouldOpenExternalURLs(navigationAction) ? "yes" : "no");
+        stringBuilder.append('\n');
+        injectedBundle.outputText(stringBuilder.toString());
+    }
+
     if (!injectedBundle.testRunner()->isPolicyDelegateEnabled())
         return WKBundlePagePolicyActionUse;
 
@@ -1302,7 +1326,7 @@ WKBundlePagePolicyAction InjectedBundlePage::decidePolicyForNewWindowAction(WKBu
 
 WKBundlePagePolicyAction InjectedBundlePage::decidePolicyForResponse(WKBundlePageRef page, WKBundleFrameRef, WKURLResponseRef response, WKURLRequestRef, WKTypeRef*)
 {
-    if (WKURLResponseIsAttachment(response)) {
+    if (InjectedBundle::singleton().testRunner()->isPolicyDelegateEnabled() && WKURLResponseIsAttachment(response)) {
         StringBuilder stringBuilder;
         WKRetainPtr<WKStringRef> filename = adoptWK(WKURLResponseCopySuggestedFilename(response));
         stringBuilder.appendLiteral("Policy delegate: resource is an attachment, suggested file name \'");

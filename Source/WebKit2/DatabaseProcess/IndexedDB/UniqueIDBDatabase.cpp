@@ -41,6 +41,7 @@
 #include <WebCore/IDBGetResult.h>
 #include <WebCore/IDBKeyData.h>
 #include <WebCore/IDBKeyRangeData.h>
+#include <WebCore/SecurityOrigin.h>
 #include <wtf/MainThread.h>
 #include <wtf/text/WTFString.h>
 
@@ -146,7 +147,7 @@ void UniqueIDBDatabase::shutdownBackingStore(UniqueIDBDatabaseShutdownType type,
 {
     ASSERT(!RunLoop::isMain());
 
-    m_backingStore.clear();
+    m_backingStore = nullptr;
 
     if (type == UniqueIDBDatabaseShutdownType::DeleteShutdown) {
         String dbFilename = UniqueIDBDatabase::calculateAbsoluteDatabaseFilename(databaseDirectory);

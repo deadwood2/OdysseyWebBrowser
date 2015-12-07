@@ -37,13 +37,14 @@ namespace WebKit {
 
 class ScrollingTreeOverflowScrollingNodeIOS : public WebCore::ScrollingTreeOverflowScrollingNode {
 public:
-    static PassRefPtr<ScrollingTreeOverflowScrollingNodeIOS> create(WebCore::ScrollingTree&, WebCore::ScrollingNodeID);
+    static Ref<ScrollingTreeOverflowScrollingNodeIOS> create(WebCore::ScrollingTree&, WebCore::ScrollingNodeID);
     virtual ~ScrollingTreeOverflowScrollingNodeIOS();
 
     void overflowScrollWillStart();
     void overflowScrollDidEnd();
     void overflowScrollViewWillStartPanGesture();
     void scrollViewDidScroll(const WebCore::FloatPoint&, bool inUserInteration);
+    void currentSnapPointIndicesDidChange(unsigned horizontal, unsigned vertical);
 
     CALayer *scrollLayer() const { return m_scrollLayer.get(); }
 

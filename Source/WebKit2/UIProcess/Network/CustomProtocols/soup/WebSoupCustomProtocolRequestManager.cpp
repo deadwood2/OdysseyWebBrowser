@@ -40,9 +40,9 @@ const char* WebSoupCustomProtocolRequestManager::supplementName()
     return "WebSoupCustomProtocolRequestManager";
 }
 
-PassRefPtr<WebSoupCustomProtocolRequestManager> WebSoupCustomProtocolRequestManager::create(WebProcessPool* processPool)
+Ref<WebSoupCustomProtocolRequestManager> WebSoupCustomProtocolRequestManager::create(WebProcessPool* processPool)
 {
-    return adoptRef(new WebSoupCustomProtocolRequestManager(processPool));
+    return adoptRef(*new WebSoupCustomProtocolRequestManager(processPool));
 }
 
 WebSoupCustomProtocolRequestManager::WebSoupCustomProtocolRequestManager(WebProcessPool* processPool)
@@ -80,12 +80,15 @@ void WebSoupCustomProtocolRequestManager::derefWebContextSupplement()
 
 void WebSoupCustomProtocolRequestManager::registerSchemeForCustomProtocol(const String& scheme)
 {
+    ASSERT(!scheme.isNull());
+    if (m_registeredSchemes.contains(scheme))
+        return;
+
     if (!processPool())
         return;
 
     processPool()->registerSchemeForCustomProtocol(scheme);
 
-    ASSERT(!m_registeredSchemes.contains(scheme));
     m_registeredSchemes.append(scheme);
 }
 

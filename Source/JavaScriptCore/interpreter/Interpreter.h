@@ -98,20 +98,20 @@ namespace JSC {
         void expressionInfo(int& divot, int& startOffset, int& endOffset, unsigned& line, unsigned& column);
     };
 
-    class ClearExceptionScope {
+    class SuspendExceptionScope {
     public:
-        ClearExceptionScope(VM* vm): m_vm(vm)
+        SuspendExceptionScope(VM* vm)
+            : m_vm(vm)
         {
-            vm->getExceptionInfo(oldException, oldExceptionStack);
+            oldException = vm->exception();
             vm->clearException();
         }
-        ~ClearExceptionScope()
+        ~SuspendExceptionScope()
         {
-            m_vm->setExceptionInfo(oldException, oldExceptionStack);
+            m_vm->setException(oldException);
         }
     private:
-        JSC::JSValue oldException;
-        RefCountedArray<JSC::StackFrame> oldExceptionStack;
+        Exception* oldException;
         VM* m_vm;
     };
     
@@ -208,14 +208,14 @@ namespace JSC {
 
         JSValue execute(ProgramExecutable*, CallFrame*, JSObject* thisObj);
         JSValue executeCall(CallFrame*, JSObject* function, CallType, const CallData&, JSValue thisValue, const ArgList&);
-        JSObject* executeConstruct(CallFrame*, JSObject* function, ConstructType, const ConstructData&, const ArgList&);
+        JSObject* executeConstruct(CallFrame*, JSObject* function, ConstructType, const ConstructData&, const ArgList&, JSValue newTarget);
         JSValue execute(EvalExecutable*, CallFrame*, JSValue thisValue, JSScope*);
 
         void getArgumentsData(CallFrame*, JSFunction*&, ptrdiff_t& firstParameterIndex, Register*& argv, int& argc);
         
         SamplingTool* sampler() { return m_sampler.get(); }
 
-        NEVER_INLINE HandlerInfo* unwind(VMEntryFrame*&, CallFrame*&, JSValue&);
+        NEVER_INLINE HandlerInfo* unwind(VMEntryFrame*&, CallFrame*&, Exception*);
         NEVER_INLINE void debug(CallFrame*, DebugHookID);
         JSString* stackTraceAsString(ExecState*, Vector<StackFrame>);
 

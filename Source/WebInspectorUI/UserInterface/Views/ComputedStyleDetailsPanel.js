@@ -27,9 +27,7 @@ WebInspector.ComputedStyleDetailsPanel = class ComputedStyleDetailsPanel extends
 {
     constructor(delegate)
     {
-        super(WebInspector.ComputedStyleDetailsPanel.StyleClassName, "computed", WebInspector.UIString("Computed"));
-
-        this._delegate = delegate || null;
+        super(delegate, WebInspector.ComputedStyleDetailsPanel.StyleClassName, "computed", WebInspector.UIString("Computed"));
 
         this._computedStyleShowAllSetting = new WebInspector.Setting("computed-style-show-all", false);
 
@@ -153,13 +151,20 @@ WebInspector.ComputedStyleDetailsPanel = class ComputedStyleDetailsPanel extends
     {
         this._propertiesTextEditor.style = this.nodeStyles.computedStyle;
         this._refreshFlowDetails(this.nodeStyles.node);
+
+        super.refresh();
+    }
+
+    filterDidChange(filterBar)
+    {
+        this._propertiesTextEditor.removeNonMatchingProperties(filterBar.filters.text);
     }
 
     // Protected
 
     shown()
     {
-        WebInspector.StyleDetailsPanel.prototype.shown.call(this);
+        super.shown();
 
         this._propertiesTextEditor.updateLayout();
     }
@@ -219,7 +224,7 @@ WebInspector.ComputedStyleDetailsPanel = class ComputedStyleDetailsPanel extends
 
     _goToContentFlowArrowWasClicked()
     {
-        WebInspector.showContentFlowDOMTree(this._contentFlow, this.nodeStyles.node, true);
+        WebInspector.showContentFlowDOMTree(this._contentFlow, this.nodeStyles.node);
     }
 };
 

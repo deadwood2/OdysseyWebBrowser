@@ -32,18 +32,24 @@
 
 #if ENABLE(STREAMS_API)
 
-#include "NotImplemented.h"
+#include "ExceptionCode.h"
+#include "ReadableJSStream.h"
 #include "ReadableStreamReader.h"
-#include <runtime/JSCJSValue.h>
+#include "ScriptExecutionContext.h"
+#include <runtime/JSCJSValueInlines.h>
 #include <wtf/RefCountedLeakCounter.h>
 
 namespace WebCore {
 
 DEFINE_DEBUG_ONLY_GLOBAL(WTF::RefCountedLeakCounter, readableStreamCounter, ("ReadableStream"));
 
-ReadableStream::ReadableStream(ScriptExecutionContext& scriptExecutionContext, Ref<ReadableStreamSource>&& source)
+RefPtr<ReadableStream> ReadableStream::create(JSC::ExecState& state, JSC::JSValue value, const Dictionary& strategy)
+{
+    return RefPtr<ReadableStream>(ReadableJSStream::create(state, value, strategy));
+}
+
+ReadableStream::ReadableStream(ScriptExecutionContext& scriptExecutionContext)
     : ActiveDOMObject(&scriptExecutionContext)
-    , m_source(WTF::move(source))
 {
 #ifndef NDEBUG
     readableStreamCounter.increment();
@@ -60,42 +66,104 @@ ReadableStream::~ReadableStream()
 
 void ReadableStream::clearCallbacks()
 {
-    m_closedSuccessCallback = nullptr;
-    m_closedFailureCallback = nullptr;
+    m_closedPromise = Nullopt;
+    m_readRequests.clear();
 }
 
 void ReadableStream::changeStateToClosed()
 {
-    if (m_state != State::Readable)
+    ASSERT(!m_closeRequested);
+    ASSERT(m_state != State::Errored);
+
+    m_closeRequested = true;
+
+    if (m_state != State::Readable || hasValue())
         return;
+    close();
+}
+
+void ReadableStream::close()
+{
     m_state = State::Closed;
+    releaseReader();
+}
 
-    if (m_reader)
-        m_releasedReaders.append(WTF::move(m_reader));
+void ReadableStream::releaseReader()
+{
+    if (m_closedPromise)
+        m_closedPromise.value().resolve(nullptr);
 
-    if (m_closedSuccessCallback)
-        m_closedSuccessCallback();
+    for (auto& request : m_readRequests)
+        request.resolveEnd();
 
     clearCallbacks();
+    if (m_reader)
+        m_releasedReaders.append(WTF::move(m_reader));
 }
 
 void ReadableStream::changeStateToErrored()
 {
     if (m_state != State::Readable)
         return;
+
+    clearValues();
     m_state = State::Errored;
 
-    if (m_reader)
-        m_releasedReaders.append(WTF::move(m_reader));
+    JSC::JSValue error = this->error();
+    if (m_closedPromise)
+        m_closedPromise.value().reject(error);
 
-    if (m_closedFailureCallback)
-        m_closedFailureCallback(error());
+    for (auto& request : m_readRequests)
+        request.reject(error);
 
     clearCallbacks();
+    if (m_reader)
+        releaseReader();
 }
 
-ReadableStreamReader& ReadableStream::getReader()
+void ReadableStream::start()
 {
+    m_isStarted = true;
+    pull();
+}
+
+void ReadableStream::pull()
+{
+    if (!m_isStarted || m_state == State::Closed || m_state == State::Errored || m_closeRequested)
+        return;
+
+    if (m_readRequests.isEmpty() && hasEnoughValues())
+        return;
+
+    if (m_isPulling) {
+        m_shouldPullAgain = true;
+        return;
+    }
+
+    m_isPulling = true;
+    if (doPull()) {
+        RefPtr<ReadableStream> protectedStream(this);
+        scriptExecutionContext()->postTask([protectedStream](ScriptExecutionContext&) {
+            protectedStream->finishPulling();
+        });
+    }
+}
+
+void ReadableStream::finishPulling()
+{
+    m_isPulling = false;
+    if (m_shouldPullAgain) {
+        m_shouldPullAgain = false;
+        pull();
+    }
+}
+
+ReadableStreamReader* ReadableStream::getReader(ExceptionCode& ec)
+{
+    if (locked()) {
+        ec = TypeError;
+        return nullptr;
+    }
     ASSERT(!m_reader);
 
     std::unique_ptr<ReadableStreamReader> newReader = std::make_unique<ReadableStreamReader>(*this);
@@ -103,30 +171,104 @@ ReadableStreamReader& ReadableStream::getReader()
 
     if (m_state == State::Readable) {
         m_reader = WTF::move(newReader);
-        return reader;
+        return &reader;
     }
 
     m_releasedReaders.append(WTF::move(newReader));
-    return reader;
+    return &reader;
 }
 
-void ReadableStream::closed(ClosedSuccessCallback successCallback, ClosedFailureCallback failureCallback)
+void ReadableStream::cancel(JSC::JSValue reason, CancelPromise&& promise, ExceptionCode& ec)
+{
+    if (locked()) {
+        ec = TypeError;
+        return;
+    }
+    cancelNoCheck(reason, WTF::move(promise));
+}
+
+void ReadableStream::cancelNoCheck(JSC::JSValue reason, CancelPromise&& promise)
 {
     if (m_state == State::Closed) {
-        successCallback();
+        promise.resolve(nullptr);
         return;
     }
     if (m_state == State::Errored) {
-        failureCallback(error());
+        promise.reject(error());
         return;
     }
-    m_closedSuccessCallback = WTF::move(successCallback);
-    m_closedFailureCallback = WTF::move(failureCallback);
+    ASSERT(m_state == State::Readable);
+
+    clearValues();
+
+    m_cancelPromise = WTF::move(promise);
+
+    close();
+
+    if (doCancel(reason))
+        error() ? notifyCancelFailed() : notifyCancelSucceeded();
 }
 
-void ReadableStream::start()
+void ReadableStream::notifyCancelSucceeded()
 {
-    notImplemented();
+    ASSERT(m_state == State::Closed);
+    ASSERT(m_cancelPromise);
+
+    m_cancelPromise.value().resolve(nullptr);
+    m_cancelPromise = Nullopt;
+}
+
+void ReadableStream::notifyCancelFailed()
+{
+    ASSERT(m_state == State::Closed);
+    ASSERT(m_cancelPromise);
+
+    m_cancelPromise.value().reject(error());
+    m_cancelPromise = Nullopt;
+}
+
+void ReadableStream::closed(ClosedPromise&& promise)
+{
+    if (m_state == State::Closed) {
+        promise.resolve(nullptr);
+        return;
+    }
+    if (m_state == State::Errored) {
+        promise.reject(error());
+        return;
+    }
+    m_closedPromise = WTF::move(promise);
+}
+
+void ReadableStream::read(ReadPromise&& readPromise)
+{
+    if (m_state == State::Closed) {
+        readPromise.resolveEnd();
+        return;
+    }
+    if (m_state == State::Errored) {
+        readPromise.reject(error());
+        return;
+    }
+    if (hasValue()) {
+        readPromise.resolve(read());
+        if (!m_closeRequested)
+            pull();
+        else if (!hasValue())
+            close();
+        return;
+    }
+    m_readRequests.append(WTF::move(readPromise));
+    pull();
+}
+
+bool ReadableStream::resolveReadCallback(JSC::JSValue value)
+{
+    if (m_readRequests.isEmpty())
+        return false;
+
+    m_readRequests.takeFirst().resolve(value);
+    return true;
 }
 
 const char* ReadableStream::activeDOMObjectName() const

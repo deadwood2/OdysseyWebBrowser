@@ -285,10 +285,8 @@ enum AspectRatioType {
     AspectRatioAuto, AspectRatioFromIntrinsic, AspectRatioFromDimensions, AspectRatioSpecified
 };
 
-// Word Break Values. Matches WinIE, rather than CSS3
-
 enum EWordBreak {
-    NormalWordBreak, BreakAllWordBreak, BreakWordBreak
+    NormalWordBreak, BreakAllWordBreak, KeepAllWordBreak, BreakWordBreak
 };
 
 enum EOverflowWrap {
@@ -465,6 +463,10 @@ typedef unsigned TextDecorationSkip;
 enum TextUnderlinePosition {
     // FIXME: Implement support for 'under left' and 'under right' values.
     TextUnderlinePositionAuto = 0x1, TextUnderlinePositionAlphabetic = 0x2, TextUnderlinePositionUnder = 0x4
+};
+
+enum TextZoom {
+    TextZoomNormal, TextZoomReset
 };
 
 enum EPageBreak {

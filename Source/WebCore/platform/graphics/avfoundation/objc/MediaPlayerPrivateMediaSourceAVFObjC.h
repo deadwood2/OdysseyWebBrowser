@@ -96,7 +96,7 @@ private:
     virtual void load(const String& url) override;
     virtual void load(const String& url, MediaSourcePrivateClient*) override;
 #if ENABLE(MEDIA_STREAM)
-    virtual void load(MediaStreamPrivate*) { }
+    void load(MediaStreamPrivate&) override;
 #endif
     virtual void cancelLoad() override;
 
@@ -104,7 +104,7 @@ private:
     virtual PlatformMedia platformMedia() const override;
     virtual PlatformLayer* platformLayer() const override;
 
-    virtual bool supportsFullscreen() const { return true; }
+    virtual bool supportsFullscreen() const override { return true; }
 
     virtual void play() override;
     void playInternal();
@@ -173,8 +173,9 @@ private:
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
     virtual bool isCurrentPlaybackTargetWireless() const override;
-    virtual void setWirelessPlaybackTarget(Ref<MediaPlaybackTarget>&&);
+    virtual void setWirelessPlaybackTarget(Ref<MediaPlaybackTarget>&&) override;
     virtual void setShouldPlayToPlaybackTarget(bool) override;
+    bool wirelessVideoPlaybackDisabled() const override { return false; }
 #endif
 
     void ensureLayer();

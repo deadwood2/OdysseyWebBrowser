@@ -28,6 +28,7 @@
 #include "config.h"
 #include "WebProcessPool.h"
 
+#include "APIProcessPoolConfiguration.h"
 #include "Logging.h"
 #include "WebCookieManagerProxy.h"
 #include "WebInspectorServer.h"
@@ -37,7 +38,7 @@
 #include <WebCore/FileSystem.h>
 #include <WebCore/NotImplemented.h>
 #include <WebCore/SchemeRegistry.h>
-#include <wtf/gobject/GUniquePtr.h>
+#include <wtf/glib/GUniquePtr.h>
 #include <wtf/text/CString.h>
 
 #if ENABLE(NETWORK_PROCESS)
@@ -85,8 +86,7 @@ static void initInspectorServer()
 
 WTF::String WebProcessPool::legacyPlatformDefaultApplicationCacheDirectory()
 {
-    GUniquePtr<gchar> cacheDirectory(g_build_filename(g_get_user_cache_dir(), "webkitgtk", "applications", nullptr));
-    return WebCore::filenameToString(cacheDirectory.get());
+    return API::WebsiteDataStore::defaultApplicationCacheDirectory();
 }
 
 void WebProcessPool::platformInitializeWebProcess(WebProcessCreationParameters& parameters)
@@ -105,7 +105,10 @@ void WebProcessPool::platformInitializeWebProcess(WebProcessCreationParameters& 
         parameters.cookieAcceptPolicy = m_initialHTTPCookieAcceptPolicy;
 
         parameters.ignoreTLSErrors = m_ignoreTLSErrors;
+        parameters.diskCacheDirectory = m_configuration->diskCacheDirectory();
     }
+
+    parameters.memoryCacheDisabled = m_memoryCacheDisabled || cacheModel() == CacheModelDocumentViewer;
 }
 
 void WebProcessPool::platformInvalidateContext()
@@ -114,14 +117,12 @@ void WebProcessPool::platformInvalidateContext()
 
 String WebProcessPool::legacyPlatformDefaultWebSQLDatabaseDirectory()
 {
-    GUniquePtr<gchar> databaseDirectory(g_build_filename(g_get_user_data_dir(), "webkitgtk", "databases", nullptr));
-    return WebCore::filenameToString(databaseDirectory.get());
+    return API::WebsiteDataStore::defaultWebSQLDatabaseDirectory();
 }
 
 String WebProcessPool::legacyPlatformDefaultIndexedDBDatabaseDirectory()
 {
-    GUniquePtr<gchar> indexedDBDatabaseDirectory(g_build_filename(g_get_user_data_dir(), "webkitgtk", "databases", "indexeddb", nullptr));
-    return WebCore::filenameToString(indexedDBDatabaseDirectory.get());
+    return API::WebsiteDataStore::defaultIndexedDBDatabaseDirectory();
 }
 
 String WebProcessPool::platformDefaultIconDatabasePath() const
@@ -132,20 +133,17 @@ String WebProcessPool::platformDefaultIconDatabasePath() const
 
 String WebProcessPool::legacyPlatformDefaultLocalStorageDirectory()
 {
-    GUniquePtr<gchar> storageDirectory(g_build_filename(g_get_user_data_dir(), "webkitgtk", "localstorage", nullptr));
-    return WebCore::filenameToString(storageDirectory.get());
+    return API::WebsiteDataStore::defaultLocalStorageDirectory();
 }
 
 String WebProcessPool::legacyPlatformDefaultMediaKeysStorageDirectory()
 {
-    GUniquePtr<gchar> mediaKeysStorageDirectory(g_build_filename(g_get_user_data_dir(), "webkitgtk", "mediakeys", nullptr));
-    return WebCore::filenameToString(mediaKeysStorageDirectory.get());
+    return API::WebsiteDataStore::defaultMediaKeysStorageDirectory();
 }
 
-String WebProcessPool::platformDefaultDiskCacheDirectory() const
+String WebProcessPool::legacyPlatformDefaultNetworkCacheDirectory()
 {
-    GUniquePtr<char> diskCacheDirectory(g_build_filename(g_get_user_cache_dir(), g_get_prgname(), nullptr));
-    return WebCore::filenameToString(diskCacheDirectory.get());
+    return API::WebsiteDataStore::defaultNetworkCacheDirectory();
 }
 
 void WebProcessPool::setIgnoreTLSErrors(bool ignoreTLSErrors)

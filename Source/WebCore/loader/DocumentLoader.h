@@ -88,10 +88,9 @@ namespace WebCore {
         }
         WEBCORE_EXPORT virtual ~DocumentLoader();
 
-        WEBCORE_EXPORT void setFrame(Frame*);
+        void attachToFrame(Frame&);
         Frame* frame() const { return m_frame; }
 
-        WEBCORE_EXPORT virtual void attachToFrame();
         WEBCORE_EXPORT virtual void detachFromFrame();
 
         WEBCORE_EXPORT FrameLoader* frameLoader() const;
@@ -229,8 +228,8 @@ namespace WebCore {
 
         void addSubresourceLoader(ResourceLoader*);
         void removeSubresourceLoader(ResourceLoader*);
-        WEBCORE_EXPORT void addPlugInStreamLoader(ResourceLoader*);
-        WEBCORE_EXPORT void removePlugInStreamLoader(ResourceLoader*);
+        void addPlugInStreamLoader(ResourceLoader&);
+        void removePlugInStreamLoader(ResourceLoader&);
 
         void subresourceLoaderFinishedLoadingOnePart(ResourceLoader*);
 
@@ -276,10 +275,12 @@ namespace WebCore {
 #endif
 
         void setShouldOpenExternalURLsPolicy(ShouldOpenExternalURLsPolicy shouldOpenExternalURLsPolicy) { m_shouldOpenExternalURLsPolicy = shouldOpenExternalURLsPolicy; }
-        ShouldOpenExternalURLsPolicy shouldOpenExternalURLsPolicy() const { return m_shouldOpenExternalURLsPolicy; }
+        ShouldOpenExternalURLsPolicy shouldOpenExternalURLsPolicyToPropagate() const;
 
     protected:
         WEBCORE_EXPORT DocumentLoader(const ResourceRequest&, const SubstituteData&);
+
+        WEBCORE_EXPORT virtual void attachToFrame();
 
         bool m_deferMainResourceDataLoad;
 
@@ -334,6 +335,8 @@ namespace WebCore {
         void substituteResourceDeliveryTimerFired();
 
         void clearMainResource();
+
+        void cancelPolicyCheckIfNeeded();
 
 #if ENABLE(CONTENT_FILTERING)
         void becomeMainResourceClientIfFilterAllows();
@@ -444,9 +447,12 @@ namespace WebCore {
 
 #if ENABLE(CONTENT_EXTENSIONS)
         HashMap<String, RefPtr<StyleSheetContents>> m_pendingNamedContentExtensionStyleSheets;
-        HashMap<String, std::pair<String, uint32_t>> m_pendingContentExtensionDisplayNoneSelectors;
+        HashMap<String, Vector<std::pair<String, uint32_t>>> m_pendingContentExtensionDisplayNoneSelectors;
 #endif
 
+#ifndef NDEBUG
+        bool m_hasEverBeenAttached { false };
+#endif
     };
 
     inline void DocumentLoader::recordMemoryCacheLoadForFutureClientNotification(const ResourceRequest& request)

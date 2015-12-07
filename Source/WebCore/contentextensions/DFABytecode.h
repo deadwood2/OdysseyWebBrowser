@@ -41,48 +41,84 @@ enum class DFABytecodeInstruction : uint8_t {
 
     // CheckValue has two arguments:
     // The value to check (1 byte),
-    // The index to jump to if the values are equal (4 bytes).
-    CheckValueCaseInsensitive,
-    CheckValueCaseSensitive,
+    // The distance to jump if the values are equal (1-4 bytes, signed).
+    CheckValueCaseInsensitive = 0x0,
+    CheckValueCaseSensitive = 0x1,
+
+    // Jump table if the input value is within a certain range.
+    // The lower value (1 byte).
+    // The higher value (1 byte).
+    // The distance to jump if the value is in the range
+    // for every character in the range (1-4 bytes, signed).
+    JumpTableCaseInsensitive = 0x2,
+    JumpTableCaseSensitive = 0x3,
 
     // Jump to an offset if the input value is within a certain range.
     // The lower value (1 byte).
     // The higher value (1 byte).
-    // The index to jump to if the value is in the range (4 bytes).
-    CheckValueRangeCaseInsensitive,
-    CheckValueRangeCaseSensitive,
+    // The distance to jump if the value is in the range (1-4 bytes, signed).
+    CheckValueRangeCaseInsensitive = 0x4,
+    CheckValueRangeCaseSensitive = 0x5,
 
     // AppendAction has one argument:
     // The action to append (4 bytes).
-    AppendAction,
-    AppendActionDefaultStylesheet,
-    AppendActionWithIfDomain,
+    AppendAction = 0x6,
+    AppendActionWithIfDomain = 0x7,
     
     // TestFlagsAndAppendAction has two arguments:
     // The flags to check before appending (2 bytes).
     // The action to append (4 bytes).
-    TestFlagsAndAppendAction,
-    TestFlagsAndAppendActionWithIfDomain,
+    TestFlagsAndAppendAction = 0x8,
+    TestFlagsAndAppendActionWithIfDomain = 0x9,
 
     // Terminate has no arguments.
-    Terminate,
+    Terminate = 0xA,
 
     // Jump has one argument:
-    // The index to jump to unconditionally (4 bytes).
-    Jump,
+    // The distance to jump (1-4 bytes, signed).
+    Jump = 0xB,
 };
 
+// The last four bits contain the instruction type.
+const uint8_t DFABytecodeInstructionMask = 0x0F;
+const uint8_t DFABytecodeJumpSizeMask = 0xF0;
+
+// DFA bytecode starts with a 4 byte header which contains the size of this DFA.
+typedef uint32_t DFAHeader;
+
+// A DFABytecodeJumpSize is stored in the top four bits of the DFABytecodeInstructions that have a jump.
+enum DFABytecodeJumpSize {
+    Int8 = 0x10,
+    Int16 = 0x20,
+    Int24 = 0x30,
+    Int32 = 0x40,
+};
+const int32_t Int24Max = (1 << 23) - 1;
+const int32_t Int24Min = -(1 << 23);
+
+static inline DFABytecodeJumpSize smallestPossibleJumpSize(int32_t longestPossibleJump)
+{
+    if (longestPossibleJump <= std::numeric_limits<int8_t>::max() && longestPossibleJump >= std::numeric_limits<int8_t>::min())
+        return Int8;
+    if (longestPossibleJump <= std::numeric_limits<int16_t>::max() && longestPossibleJump >= std::numeric_limits<int16_t>::min())
+        return Int16;
+    if (longestPossibleJump <= Int24Max && longestPossibleJump >= Int24Min)
+        return Int24;
+    return Int32;
+}
+    
 static inline size_t instructionSizeWithArguments(DFABytecodeInstruction instruction)
 {
     switch (instruction) {
     case DFABytecodeInstruction::CheckValueCaseSensitive:
     case DFABytecodeInstruction::CheckValueCaseInsensitive:
-        return sizeof(DFABytecodeInstruction) + sizeof(uint8_t) + sizeof(uint32_t);
+    case DFABytecodeInstruction::JumpTableCaseInsensitive:
+    case DFABytecodeInstruction::JumpTableCaseSensitive:
     case DFABytecodeInstruction::CheckValueRangeCaseSensitive:
     case DFABytecodeInstruction::CheckValueRangeCaseInsensitive:
-        return sizeof(DFABytecodeInstruction) + sizeof(uint8_t) + sizeof(uint8_t) + sizeof(uint32_t);
+    case DFABytecodeInstruction::Jump:
+        RELEASE_ASSERT_NOT_REACHED(); // Variable instruction size.
     case DFABytecodeInstruction::AppendAction:
-    case DFABytecodeInstruction::AppendActionDefaultStylesheet:
     case DFABytecodeInstruction::AppendActionWithIfDomain:
         return sizeof(DFABytecodeInstruction) + sizeof(uint32_t);
     case DFABytecodeInstruction::TestFlagsAndAppendAction:
@@ -90,8 +126,6 @@ static inline size_t instructionSizeWithArguments(DFABytecodeInstruction instruc
         return sizeof(DFABytecodeInstruction) + sizeof(uint16_t) + sizeof(uint32_t);
     case DFABytecodeInstruction::Terminate:
         return sizeof(DFABytecodeInstruction);
-    case DFABytecodeInstruction::Jump:
-        return sizeof(DFABytecodeInstruction) + sizeof(uint32_t);
     }
 }
     

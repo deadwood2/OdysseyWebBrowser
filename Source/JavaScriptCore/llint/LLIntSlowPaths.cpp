@@ -32,6 +32,7 @@
 #include "CommonSlowPathsExceptions.h"
 #include "Error.h"
 #include "ErrorHandlingScope.h"
+#include "Exception.h"
 #include "ExceptionFuzz.h"
 #include "GetterSetter.h"
 #include "HostCallReturnValue.h"
@@ -468,14 +469,6 @@ LLINT_SLOW_PATH_DECL(stack_check)
 #endif
 
 #endif
-    // This stack check is done in the prologue for a function call, and the
-    // CallFrame is not completely set up yet. For example, if the frame needs
-    // a lexical environment object, the lexical environment object will only be
-    // set up after we start executing the function. If we need to throw a
-    // StackOverflowError here, then we need to tell the prologue to start the
-    // stack unwinding from the caller frame (which is fully set up) instead.
-    // To do that, we return the caller's CallFrame in the second return value.
-    //
     // If the stack check succeeds and we don't need to throw the error, then
     // we'll return 0 instead. The prologue will check for a non-zero value
     // when determining whether to set the callFrame or not.
@@ -489,24 +482,11 @@ LLINT_SLOW_PATH_DECL(stack_check)
         LLINT_RETURN_TWO(pc, 0);
 #endif
 
-    exec = exec->callerFrame(vm.topVMEntryFrame);
     vm.topCallFrame = exec;
     ErrorHandlingScope errorScope(vm);
     CommonSlowPaths::interpreterThrowInCaller(exec, createStackOverflowError(exec));
     pc = returnToThrowForThrownException(exec);
     LLINT_RETURN_TWO(pc, exec);
-}
-
-LLINT_SLOW_PATH_DECL(slow_path_create_lexical_environment)
-{
-    LLINT_BEGIN();
-#if LLINT_SLOW_PATH_TRACING
-    dataLogF("Creating an lexicalEnvironment, exec = %p!\n", exec);
-#endif
-    int scopeReg = pc[2].u.operand;
-    JSScope* scope = exec->uncheckedR(scopeReg).Register::scope();
-    JSLexicalEnvironment* lexicalEnvironment = JSLexicalEnvironment::create(vm, exec, scope, exec->codeBlock());
-    LLINT_RETURN(JSValue(lexicalEnvironment));
 }
 
 LLINT_SLOW_PATH_DECL(slow_path_new_object)
@@ -728,8 +708,8 @@ inline JSValue getByVal(ExecState* exec, JSValue baseValue, JSValue subscript)
         VM& vm = exec->vm();
         Structure& structure = *baseValue.asCell()->structure(vm);
         if (JSCell::canUseFastGetOwnProperty(structure)) {
-            if (AtomicStringImpl* existingAtomicString = asString(subscript)->toExistingAtomicString(exec)) {
-                if (JSValue result = baseValue.asCell()->fastGetOwnProperty(vm, structure, existingAtomicString))
+            if (RefPtr<AtomicStringImpl> existingAtomicString = asString(subscript)->toExistingAtomicString(exec)) {
+                if (JSValue result = baseValue.asCell()->fastGetOwnProperty(vm, structure, existingAtomicString.get()))
                     return result;
             }
         }
@@ -1124,7 +1104,7 @@ inline SlowPathReturnType setUpCall(ExecState* execCallee, Instruction* pc, Code
     else {
         FunctionExecutable* functionExecutable = static_cast<FunctionExecutable*>(executable);
 
-        if (!isCall(kind) && functionExecutable->isBuiltinFunction())
+        if (!isCall(kind) && functionExecutable->constructAbility() == ConstructAbility::CannotConstruct)
             LLINT_CALL_THROW(exec, createNotAConstructorError(exec, callee));
 
         JSObject* error = functionExecutable->prepareForExecution(execCallee, callee, scope, kind);
@@ -1298,15 +1278,6 @@ LLINT_SLOW_PATH_DECL(slow_path_push_with_scope)
     LLINT_END();
 }
 
-LLINT_SLOW_PATH_DECL(slow_path_pop_scope)
-{
-    LLINT_BEGIN();
-    int scopeReg = pc[1].u.operand;
-    JSScope* scope = exec->uncheckedR(scopeReg).Register::scope();
-    exec->uncheckedR(scopeReg) = scope->next();
-    LLINT_END();
-}
-
 LLINT_SLOW_PATH_DECL(slow_path_push_name_scope)
 {
     LLINT_BEGIN();
@@ -1375,8 +1346,7 @@ LLINT_SLOW_PATH_DECL(slow_path_profile_did_call)
 LLINT_SLOW_PATH_DECL(slow_path_handle_exception)
 {
     LLINT_BEGIN_NO_SET_PC();
-    ASSERT(vm.exception());
-    genericUnwind(&vm, exec, vm.exception());
+    genericUnwind(&vm, exec);
     LLINT_END_IMPL();
 }
 

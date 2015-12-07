@@ -44,10 +44,6 @@
 #import <wtf/Vector.h>
 #import <wtf/text/WTFString.h>
 
-#if USE(APPLE_INTERNAL_SDK)
-#import <WebKitAdditions/LinkPreviewDefines.h>
-#endif
-
 namespace WebCore {
 class Color;
 class FloatQuad;
@@ -93,6 +89,7 @@ struct WKAutoCorrectionData {
     UIWKAutocorrectionCompletionHandler autocorrectionHandler;
     UIWKAutocorrectionContextHandler autocorrectionContextHandler;
 };
+
 }
 
 @interface WKContentView () {
@@ -120,6 +117,9 @@ struct WKAutoCorrectionData {
     RetainPtr<WKFormInputSession> _formInputSession;
     RetainPtr<WKFileUploadPanel> _fileUploadPanel;
     RetainPtr<UIGestureRecognizer> _previewGestureRecognizer;
+#if HAVE(LINK_PREVIEW)
+    RetainPtr<UIPreviewItemController> _previewItemController;
+#endif
 
     std::unique_ptr<WebKit::SmartMagnificationController> _smartMagnificationController;
 
@@ -205,10 +205,10 @@ struct WKAutoCorrectionData {
 @end
 
 #if HAVE(LINK_PREVIEW)
-@interface WKContentView (WKInteractionPreview) <UIViewControllerPreviewingDelegate>
+@interface WKContentView (WKInteractionPreview) <UIPreviewItemDelegate>
 
-- (void)_registerPreviewInWindow:(UIWindow *)window;
-- (void)_unregisterPreviewInWindow:(UIWindow *)window;
+- (void)_registerPreview;
+- (void)_unregisterPreview;
 @end
 #endif
 

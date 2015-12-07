@@ -113,22 +113,17 @@ public:
         return equalIgnoringCase(m_family, other.m_family) && m_fontDescriptionKey == other.m_fontDescriptionKey;
     }
 
-    FontDescriptionFontDataCacheKey m_fontDescriptionKey;
+    FontDescriptionKey m_fontDescriptionKey;
     AtomicString m_family;
 
 private:
     static unsigned hashTableDeletedSize() { return 0xFFFFFFFFU; }
 };
 
-inline unsigned computeHash(const FontPlatformDataCacheKey& fontKey)
-{
-    return pairIntHash(CaseFoldingHash::hash(fontKey.m_family), fontKey.m_fontDescriptionKey.computeHash());
-}
-
 struct FontPlatformDataCacheKeyHash {
-    static unsigned hash(const FontPlatformDataCacheKey& font)
+    static unsigned hash(const FontPlatformDataCacheKey& fontKey)
     {
-        return computeHash(font);
+        return pairIntHash(CaseFoldingHash::hash(fontKey.m_family), fontKey.m_fontDescriptionKey.computeHash());
     }
          
     static bool equal(const FontPlatformDataCacheKey& a, const FontPlatformDataCacheKey& b)
@@ -139,9 +134,7 @@ struct FontPlatformDataCacheKeyHash {
     static const bool safeToCompareToEmptyOrDeleted = true;
 };
 
-struct FontPlatformDataCacheKeyTraits : WTF::SimpleClassHashTraits<FontPlatformDataCacheKey> { };
-
-typedef HashMap<FontPlatformDataCacheKey, std::unique_ptr<FontPlatformData>, FontPlatformDataCacheKeyHash, FontPlatformDataCacheKeyTraits> FontPlatformDataCache;
+typedef HashMap<FontPlatformDataCacheKey, std::unique_ptr<FontPlatformData>, FontPlatformDataCacheKeyHash, WTF::SimpleClassHashTraits<FontPlatformDataCacheKey>> FontPlatformDataCache;
 
 static FontPlatformDataCache& fontPlatformDataCache()
 {
@@ -320,7 +313,7 @@ PassRefPtr<OpenTypeVerticalData> FontCache::getVerticalData(const FontFileKey& k
 
     RefPtr<OpenTypeVerticalData> verticalData = OpenTypeVerticalData::create(platformData);
     if (!verticalData->isOpenType())
-        verticalData.clear();
+        verticalData = nullptr;
     fontVerticalDataCache.set(key, verticalData);
     return verticalData;
 }
@@ -342,7 +335,6 @@ struct FontDataCacheKeyHash {
 
 struct FontDataCacheKeyTraits : WTF::GenericHashTraits<FontPlatformData> {
     static const bool emptyValueIsZero = true;
-    static const bool needsDestruction = true;
     static const FontPlatformData& emptyValue()
     {
         static NeverDestroyed<FontPlatformData> key(0.f, false, false);

@@ -24,8 +24,8 @@
 #include <gtk/gtk.h>
 #include <webkit2/webkit2.h>
 #include <wtf/HashMap.h>
-#include <wtf/gobject/GRefPtr.h>
-#include <wtf/gobject/GUniquePtr.h>
+#include <wtf/glib/GRefPtr.h>
+#include <wtf/glib/GUniquePtr.h>
 #include <wtf/text/StringHash.h>
 
 static WebKitTestServer* kServer;
@@ -39,14 +39,84 @@ static void testWebContextDefault(Test* test, gconstpointer)
 
 static void testWebContextConfiguration(WebViewTest* test, gconstpointer)
 {
+    WebKitWebsiteDataManager* manager = webkit_web_context_get_website_data_manager(test->m_webContext.get());
+    g_assert(WEBKIT_IS_WEBSITE_DATA_MANAGER(manager));
+    test->assertObjectIsDeletedWhenTestFinishes(G_OBJECT(manager));
+
+    // Base directories are not used by TestMain.
+    g_assert(!webkit_website_data_manager_get_base_data_directory(manager));
+    g_assert(!webkit_website_data_manager_get_base_cache_directory(manager));
+
     GUniquePtr<char> localStorageDirectory(g_build_filename(Test::dataDirectory(), "local-storage", nullptr));
+    g_assert_cmpstr(localStorageDirectory.get(), ==, webkit_website_data_manager_get_local_storage_directory(manager));
     g_assert(g_file_test(localStorageDirectory.get(), G_FILE_TEST_IS_DIR));
 
     test->loadURI(kServer->getURIForPath("/empty").data());
     test->waitUntilLoadFinished();
     test->runJavaScriptAndWaitUntilFinished("window.indexedDB.open('TestDatabase');", nullptr);
     GUniquePtr<char> indexedDBDirectory(g_build_filename(Test::dataDirectory(), "indexeddb", nullptr));
+    g_assert_cmpstr(indexedDBDirectory.get(), ==, webkit_website_data_manager_get_indexeddb_directory(manager));
     g_assert(g_file_test(indexedDBDirectory.get(), G_FILE_TEST_IS_DIR));
+
+    test->loadURI(kServer->getURIForPath("/appcache").data());
+    test->waitUntilLoadFinished();
+    GUniquePtr<char> applicationCacheDirectory(g_build_filename(Test::dataDirectory(), "appcache", nullptr));
+    g_assert_cmpstr(applicationCacheDirectory.get(), ==, webkit_website_data_manager_get_offline_application_cache_directory(manager));
+    GUniquePtr<char> applicationCacheDatabase(g_build_filename(applicationCacheDirectory.get(), "ApplicationCache.db", nullptr));
+    unsigned triesCount = 4;
+    while (!g_file_test(applicationCacheDatabase.get(), G_FILE_TEST_IS_REGULAR) && --triesCount)
+        test->wait(0.25);
+    g_assert(triesCount);
+
+
+    GUniquePtr<char> webSQLDirectory(g_build_filename(Test::dataDirectory(), "websql", nullptr));
+    g_assert_cmpstr(webSQLDirectory.get(), ==, webkit_website_data_manager_get_websql_directory(manager));
+    test->runJavaScriptAndWaitUntilFinished("db = openDatabase(\"TestDatabase\", \"1.0\", \"TestDatabase\", 1);", nullptr);
+    g_assert(g_file_test(webSQLDirectory.get(), G_FILE_TEST_IS_DIR));
+
+    GUniquePtr<char> diskCacheDirectory(g_build_filename(Test::dataDirectory(), "disk-cache", nullptr));
+    g_assert_cmpstr(diskCacheDirectory.get(), ==, webkit_website_data_manager_get_disk_cache_directory(manager));
+    g_assert(g_file_test(diskCacheDirectory.get(), G_FILE_TEST_IS_DIR));
+
+    // The default context should have a different manager with different configuration.
+    WebKitWebsiteDataManager* defaultManager = webkit_web_context_get_website_data_manager(webkit_web_context_get_default());
+    g_assert(WEBKIT_IS_WEBSITE_DATA_MANAGER(defaultManager));
+    g_assert(manager != defaultManager);
+    g_assert_cmpstr(webkit_website_data_manager_get_local_storage_directory(manager), !=, webkit_website_data_manager_get_local_storage_directory(defaultManager));
+    g_assert_cmpstr(webkit_website_data_manager_get_indexeddb_directory(manager), !=, webkit_website_data_manager_get_indexeddb_directory(defaultManager));
+    g_assert_cmpstr(webkit_website_data_manager_get_disk_cache_directory(manager), !=, webkit_website_data_manager_get_disk_cache_directory(defaultManager));
+    g_assert_cmpstr(webkit_website_data_manager_get_offline_application_cache_directory(manager), !=, webkit_website_data_manager_get_offline_application_cache_directory(defaultManager));
+    g_assert_cmpstr(webkit_website_data_manager_get_websql_directory(manager), !=, webkit_website_data_manager_get_websql_directory(defaultManager));
+
+    // Using Test::dataDirectory() we get the default configuration but for a differrent prefix.
+    GRefPtr<WebKitWebsiteDataManager> baseDataManager = adoptGRef(webkit_website_data_manager_new("base-data-directory", Test::dataDirectory(), "base-cache-directory", Test::dataDirectory(), nullptr));
+    g_assert(WEBKIT_IS_WEBSITE_DATA_MANAGER(baseDataManager.get()));
+
+    localStorageDirectory.reset(g_build_filename(Test::dataDirectory(), "localstorage", nullptr));
+    g_assert_cmpstr(webkit_website_data_manager_get_local_storage_directory(baseDataManager.get()), ==, localStorageDirectory.get());
+
+    indexedDBDirectory.reset(g_build_filename(Test::dataDirectory(), "databases", "indexeddb", nullptr));
+    g_assert_cmpstr(webkit_website_data_manager_get_indexeddb_directory(baseDataManager.get()), ==, indexedDBDirectory.get());
+
+    applicationCacheDirectory.reset(g_build_filename(Test::dataDirectory(), "applications", nullptr));
+    g_assert_cmpstr(webkit_website_data_manager_get_offline_application_cache_directory(baseDataManager.get()), ==, applicationCacheDirectory.get());
+
+    webSQLDirectory.reset(g_build_filename(Test::dataDirectory(), "databases", nullptr));
+    g_assert_cmpstr(webkit_website_data_manager_get_websql_directory(baseDataManager.get()), ==, webSQLDirectory.get());
+
+    g_assert_cmpstr(webkit_website_data_manager_get_disk_cache_directory(baseDataManager.get()), ==, Test::dataDirectory());
+
+    // Any specific configuration provided takes precedence over base dirs.
+    indexedDBDirectory.reset(g_build_filename(Test::dataDirectory(), "mycustomindexeddb", nullptr));
+    applicationCacheDirectory.reset(g_build_filename(Test::dataDirectory(), "mycustomappcache", nullptr));
+    baseDataManager = adoptGRef(webkit_website_data_manager_new("base-data-directory", Test::dataDirectory(), "base-cache-directory", Test::dataDirectory(),
+        "indexeddb-directory", indexedDBDirectory.get(), "offline-application-cache-directory", applicationCacheDirectory.get(), nullptr));
+    g_assert_cmpstr(webkit_website_data_manager_get_indexeddb_directory(baseDataManager.get()), ==, indexedDBDirectory.get());
+    g_assert_cmpstr(webkit_website_data_manager_get_offline_application_cache_directory(baseDataManager.get()), ==, applicationCacheDirectory.get());
+    // The resutl should be the same as previous manager.
+    g_assert_cmpstr(webkit_website_data_manager_get_local_storage_directory(baseDataManager.get()), ==, localStorageDirectory.get());
+    g_assert_cmpstr(webkit_website_data_manager_get_websql_directory(baseDataManager.get()), ==, webSQLDirectory.get());
+    g_assert_cmpstr(webkit_website_data_manager_get_disk_cache_directory(baseDataManager.get()), ==, Test::dataDirectory());
 }
 
 class PluginsTest: public Test {
@@ -214,6 +284,16 @@ static void testWebContextURIScheme(URISchemeTest* test, gconstpointer)
     g_assert_cmpint(mainResourceDataSize, ==, strlen(echoHTML.get()));
     g_assert(!strncmp(mainResourceData, echoHTML.get(), mainResourceDataSize));
 
+    test->loadURI("echo:with#fragment");
+    test->waitUntilLoadFinished();
+    g_assert_cmpstr(webkit_uri_scheme_request_get_path(test->m_uriSchemeRequest.get()), ==, "with");
+    g_assert_cmpstr(webkit_uri_scheme_request_get_uri(test->m_uriSchemeRequest.get()), ==, "echo:with#fragment");
+    echoHTML.reset(g_strdup_printf(kEchoHTMLFormat, webkit_uri_scheme_request_get_path(test->m_uriSchemeRequest.get())));
+    mainResourceDataSize = 0;
+    mainResourceData = test->mainResourceData(mainResourceDataSize);
+    g_assert_cmpint(mainResourceDataSize, ==, strlen(echoHTML.get()));
+    g_assert(!strncmp(mainResourceData, echoHTML.get(), mainResourceDataSize));
+
     test->registerURISchemeHandler("nomime", kBarHTML, -1, 0);
     test->m_loadEvents.clear();
     test->loadURI("nomime:foo-bar");
@@ -339,6 +419,20 @@ static void serverCallback(SoupServer* server, SoupMessage* message, const char*
     } else if (g_str_equal(path, "/empty")) {
         const char* emptyHTML = "<html><body></body></html>";
         soup_message_body_append(message->response_body, SOUP_MEMORY_STATIC, emptyHTML, strlen(emptyHTML));
+        soup_message_body_complete(message->response_body);
+        soup_message_set_status(message, SOUP_STATUS_OK);
+    } else if (g_str_equal(path, "/appcache")) {
+        const char* appcacheHTML = "<html manifest=appcache.manifest><body></body></html>";
+        soup_message_body_append(message->response_body, SOUP_MEMORY_STATIC, appcacheHTML, strlen(appcacheHTML));
+        soup_message_body_complete(message->response_body);
+        soup_message_set_status(message, SOUP_STATUS_OK);
+    } else if (g_str_equal(path, "/appcache.manifest")) {
+        const char* appcacheManifest = "CACHE MANIFEST\nCACHE:\nappcache/foo.txt\n";
+        soup_message_body_append(message->response_body, SOUP_MEMORY_STATIC, appcacheManifest, strlen(appcacheManifest));
+        soup_message_body_complete(message->response_body);
+        soup_message_set_status(message, SOUP_STATUS_OK);
+    } else if (g_str_equal(path, "/appcache/foo.txt")) {
+        soup_message_body_append(message->response_body, SOUP_MEMORY_STATIC, "foo", 3);
         soup_message_body_complete(message->response_body);
         soup_message_set_status(message, SOUP_STATUS_OK);
     } else

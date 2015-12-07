@@ -693,7 +693,7 @@ macro branchIfException(label)
     loadp Callee + PayloadOffset[cfr], t3
     andp MarkedBlockMask, t3
     loadp MarkedBlock::m_weakSet + WeakSet::m_vm[t3], t3
-    bieq VM::m_exception + TagOffset[t3], EmptyValueTag, .noException
+    btiz VM::m_exception[t3], .noException
     jmp label
 .noException:
 end
@@ -718,12 +718,6 @@ _llint_op_enter:
 .opEnterDone:
     callSlowPath(_slow_path_enter)
     dispatch(1)
-
-
-_llint_op_create_lexical_environment:
-    traceExecution()
-    callSlowPath(_llint_slow_path_create_lexical_environment)
-    dispatch(3)
 
 
 _llint_op_get_scope:
@@ -793,8 +787,9 @@ _llint_op_new_object:
 
 _llint_op_check_tdz:
     traceExecution()
-    loadpFromInstruction(1, t0)
-    bineq TagOffset[cfr, t0, 8], EmptyValueTag, .opNotTDZ
+    loadisFromInstruction(1, t0)
+    loadConstantOrVariableTag(t0, t1)
+    bineq t1, EmptyValueTag, .opNotTDZ
     callSlowPath(_slow_path_throw_tdz_error)
 
 .opNotTDZ:
@@ -1374,17 +1369,6 @@ macro storePropertyAtVariableOffset(propertyOffsetAsInt, objectAndStorage, tag, 
 end
 
 
-_llint_op_init_global_const:
-    traceExecution()
-    writeBarrierOnGlobalObject(2)
-    loadi 8[PC], t1
-    loadi 4[PC], t0
-    loadConstantOrVariable(t1, t2, t3)
-    storei t2, TagOffset[t0]
-    storei t3, PayloadOffset[t0]
-    dispatch(5)
-
-
 # We only do monomorphic get_by_id caching for now, and we do not modify the
 # opcode. We do, however, allow for the cache to change anytime if fails, since
 # ping-ponging is free. At best we get lucky and the get_by_id will continue
@@ -1952,15 +1936,20 @@ _llint_op_catch:
     restoreStackPointerAfterCall()
 
     loadi VM::targetInterpreterPCForThrow[t3], PC
-    loadi VM::m_exception + PayloadOffset[t3], t0
-    loadi VM::m_exception + TagOffset[t3], t1
-    storei 0, VM::m_exception + PayloadOffset[t3]
-    storei EmptyValueTag, VM::m_exception + TagOffset[t3]
+    loadi VM::m_exception[t3], t0
+    storei 0, VM::m_exception[t3]
     loadi 4[PC], t2
     storei t0, PayloadOffset[cfr, t2, 8]
+    storei CellTag, TagOffset[cfr, t2, 8]
+
+    loadi Exception::m_value + TagOffset[t0], t1
+    loadi Exception::m_value + PayloadOffset[t0], t0
+    loadi 8[PC], t2
+    storei t0, PayloadOffset[cfr, t2, 8]
     storei t1, TagOffset[cfr, t2, 8]
+
     traceExecution()  # This needs to be here because we don't want to clobber t0, t1, t2, t3 above.
-    dispatch(2)
+    dispatch(3)
 
 _llint_op_end:
     traceExecution()
@@ -2038,7 +2027,7 @@ macro nativeCallTrampoline(executableOffsetToFunction)
     end
     
     functionEpilogue()
-    bineq VM::m_exception + TagOffset[t3], EmptyValueTag, .handleException
+    btinz VM::m_exception[t3], .handleException
     ret
 
 .handleException:
@@ -2192,7 +2181,6 @@ _llint_op_get_from_scope:
 .gGlobalVarWithVarInjectionChecks:
     bineq t0, GlobalVarWithVarInjectionChecks, .gClosureVarWithVarInjectionChecks
     varInjectionCheck(.gDynamic)
-    loadVariable(2, t2, t1, t0)
     getGlobalVar()
     dispatch(8)
 
@@ -2332,6 +2320,17 @@ _llint_op_put_to_arguments:
     dispatch(4)
 
 
+_llint_op_get_parent_scope:
+    traceExecution()
+    loadisFromInstruction(2, t0)
+    loadp PayloadOffset[cfr, t0, 8], t0
+    loadp JSScope::m_next[t0], t0
+    loadisFromInstruction(1, t1)
+    storei CellTag, TagOffset[cfr, t1, 8]
+    storei t0, PayloadOffset[cfr, t1, 8]
+    dispatch(3)
+
+
 _llint_op_profile_type:
     traceExecution()
     loadp CodeBlock[cfr], t1
@@ -2342,6 +2341,8 @@ _llint_op_profile_type:
     # t0 is holding the payload, t4 is holding the tag.
     loadisFromInstruction(1, t2)
     loadConstantOrVariable(t2, t4, t0)
+
+    bieq t4, EmptyValueTag, .opProfileTypeDone
 
     # t2 is holding the pointer to the current log entry.
     loadp TypeProfilerLog::m_currentLogEntryPtr[t1], t2

@@ -41,7 +41,18 @@ namespace WTR {
 
 bool AccessibilityController::addNotificationListener(JSValueRef functionCallback)
 {
-    return false;
+    if (!functionCallback)
+        return false;
+    
+    // Mac programmers should not be adding more than one global notification listener.
+    // Other platforms may be different.
+    if (m_globalNotificationHandler)
+        return false;
+    m_globalNotificationHandler = [[AccessibilityNotificationHandler alloc] init];
+    [m_globalNotificationHandler.get() setCallback:functionCallback];
+    [m_globalNotificationHandler.get() startObserving];
+    
+    return true;
 }
 
 bool AccessibilityController::removeNotificationListener()
@@ -68,7 +79,18 @@ void AccessibilityController::resetToConsistentState()
 
 static id findAccessibleObjectById(id obj, NSString *idAttribute)
 {
-    return 0;
+    id objIdAttribute = [obj accessibilityIdentifier];
+    if ([objIdAttribute isKindOfClass:[NSString class]] && [objIdAttribute isEqualToString:idAttribute])
+        return obj;
+    
+    NSUInteger childrenCount = [obj accessibilityElementCount];
+    for (NSUInteger i = 0; i < childrenCount; ++i) {
+        id result = findAccessibleObjectById([obj accessibilityElementAtIndex:i], idAttribute);
+        if (result)
+            return result;
+    }
+    
+    return nil;
 }
 
 PassRefPtr<AccessibilityUIElement> AccessibilityController::accessibleElementById(JSStringRef idAttribute)

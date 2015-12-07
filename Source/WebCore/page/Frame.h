@@ -223,7 +223,7 @@ namespace WebCore {
 
         WEBCORE_EXPORT String displayStringModifiedByEncoding(const String&) const;
 
-        WEBCORE_EXPORT VisiblePosition visiblePositionForPoint(const IntPoint& framePoint);
+        WEBCORE_EXPORT VisiblePosition visiblePositionForPoint(const IntPoint& framePoint) const;
         Document* documentAtPoint(const IntPoint& windowPoint);
         WEBCORE_EXPORT RefPtr<Range> rangeForPoint(const IntPoint& framePoint);
 
@@ -379,7 +379,7 @@ namespace WebCore {
 
     inline void Frame::detachFromPage()
     {
-        m_page = 0;
+        m_page = nullptr;
     }
 
     inline EventHandler& Frame::eventHandler() const

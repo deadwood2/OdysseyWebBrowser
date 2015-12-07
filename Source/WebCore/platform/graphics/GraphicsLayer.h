@@ -371,6 +371,9 @@ public:
     const FilterOperations& backdropFilters() const { return m_backdropFilters; }
     virtual bool setBackdropFilters(const FilterOperations& filters) { m_backdropFilters = filters; return true; }
 
+    virtual void setBackdropFiltersRect(const FloatRect& backdropFiltersRect) { m_backdropFiltersRect = backdropFiltersRect; }
+    FloatRect backdropFiltersRect() const { return m_backdropFiltersRect; }
+
 #if ENABLE(CSS_COMPOSITING)
     BlendMode blendMode() const { return m_blendMode; }
     virtual void setBlendMode(BlendMode blendMode) { m_blendMode = blendMode; }
@@ -491,9 +494,9 @@ public:
     float pageScaleFactor() const { return m_client.pageScaleFactor(); }
     float deviceScaleFactor() const { return m_client.deviceScaleFactor(); }
     
-    // Whether this layer (and descendants) can detach backing store when outside the coverage area.
-    virtual void setAllowsBackingStoreDetachment(bool) { }
-    virtual bool allowsBackingStoreDetachment() const { return true; }
+    // Whether this layer is viewport constrained, implying that it's moved around externally from GraphicsLayer (e.g. by the scrolling tree).
+    virtual void setIsViewportConstrained(bool) { }
+    virtual bool isViewportConstrained() const { return false; }
 
     virtual void deviceOrPageScaleFactorChanged() { }
     WEBCORE_EXPORT void noteDeviceOrPageScaleFactorChangedIncludingDescendants();
@@ -501,8 +504,8 @@ public:
     // Some compositing systems may do internal batching to synchronize compositing updates
     // with updates drawn into the window. These methods flush internal batched state on this layer
     // and descendant layers, and this layer only.
-    virtual void flushCompositingState(const FloatRect& /* clipRect */) { }
-    virtual void flushCompositingStateForThisLayerOnly() { }
+    virtual void flushCompositingState(const FloatRect& /* clipRect */, bool /* viewportIsStable */) { }
+    virtual void flushCompositingStateForThisLayerOnly(bool /* viewportIsStable */) { }
 
     // If the exposed rect of this layer changes, returns true if this or descendant layers need a flush,
     // for example to allocate new tiles.
@@ -627,6 +630,7 @@ protected:
     FloatRoundedRect m_masksToBoundsRect;
     FloatSize m_contentsTilePhase;
     FloatSize m_contentsTileSize;
+    FloatRect m_backdropFiltersRect;
 
     int m_repaintCount;
     CustomAppearance m_customAppearance;

@@ -39,6 +39,7 @@ namespace WebKit {
 // directory of the running process, and finally we try LIBEXECDIR (usually /usr/local/bin).
 static String findProcessPath(const char* processName)
 {
+#if ENABLE(DEVELOPER_MODE)
     String executablePath;
     static const char* execDirectory = getenv("WEBKIT_EXEC_PATH");
     if (execDirectory) {
@@ -62,9 +63,8 @@ static String findProcessPath(const char* processName)
             return executablePath;
     }
 #endif
-    executablePath = WebCore::pathByAppendingComponent(String(LIBEXECDIR), processName);
-    ASSERT(WebCore::fileExists(executablePath));
-    return executablePath;
+#endif
+    return WebCore::pathByAppendingComponent(String::fromUTF8(LIBEXECDIR), processName);
 }
 
 String executablePathOfWebProcess()
@@ -87,6 +87,15 @@ String executablePathOfNetworkProcess()
     static NeverDestroyed<const String> webKitNetworkProcessName(findProcessPath(NETWORKPROCESSNAME));
 
     return webKitNetworkProcessName;
+}
+#endif
+
+#if ENABLE(DATABASE_PROCESS)
+String executablePathOfDatabaseProcess()
+{
+    static NeverDestroyed<const String> webkitDatabaseProcessName(findProcessPath(DATABASEPROCESSNAME));
+
+    return webkitDatabaseProcessName;
 }
 #endif
 

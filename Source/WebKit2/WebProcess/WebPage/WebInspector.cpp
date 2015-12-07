@@ -49,13 +49,13 @@ using namespace WebCore;
 
 static const float minimumAttachedHeight = 250;
 static const float maximumAttachedHeightRatio = 0.75;
-static const float minimumAttachedWidth = 750;
+static const float minimumAttachedWidth = 500;
 
 namespace WebKit {
 
-PassRefPtr<WebInspector> WebInspector::create(WebPage* page)
+Ref<WebInspector> WebInspector::create(WebPage* page)
 {
-    return adoptRef(new WebInspector(page));
+    return adoptRef(*new WebInspector(page));
 }
 
 WebInspector::WebInspector(WebPage* page)
@@ -92,7 +92,7 @@ void WebInspector::createInspectorPage(bool underTest)
     return;
 #endif
 
-    m_frontendConnection = IPC::Connection::createServerConnection(connectionIdentifier, *this, RunLoop::main());
+    m_frontendConnection = IPC::Connection::createServerConnection(connectionIdentifier, *this);
     m_frontendConnection->open();
 
     WebProcess::singleton().parentProcessConnection()->send(Messages::WebInspectorProxy::CreateInspectorPage(connectionClientPort, canAttachWindow(), underTest), m_page->pageID());
@@ -138,7 +138,7 @@ void WebInspector::openInNewTab(const String& urlString)
         return;
 
     Frame& inspectedMainFrame = inspectedPage->mainFrame();
-    FrameLoadRequest request(inspectedMainFrame.document()->securityOrigin(), ResourceRequest(urlString), "_blank", LockHistory::No, LockBackForwardList::No, MaybeSendReferrer, AllowNavigationToInvalidURL::Yes, NewFrameOpenerPolicy::Allow, ReplaceDocumentIfJavaScriptURL);
+    FrameLoadRequest request(inspectedMainFrame.document()->securityOrigin(), ResourceRequest(urlString), "_blank", LockHistory::No, LockBackForwardList::No, MaybeSendReferrer, AllowNavigationToInvalidURL::Yes, NewFrameOpenerPolicy::Allow, ReplaceDocumentIfJavaScriptURL, ShouldOpenExternalURLsPolicy::ShouldNotAllow);
 
     Page* newPage = inspectedPage->chrome().createWindow(&inspectedMainFrame, request, WindowFeatures(), NavigationAction(request.resourceRequest(), NavigationType::LinkClicked));
     if (!newPage)

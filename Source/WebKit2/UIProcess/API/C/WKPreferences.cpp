@@ -748,14 +748,14 @@ bool WKPreferencesGetMediaPlaybackAllowsInline(WKPreferencesRef preferencesRef)
     return toImpl(preferencesRef)->allowsInlineMediaPlayback();
 }
 
-void WKPreferencesSetAllowsAlternateFullscreen(WKPreferencesRef preferencesRef, bool flag)
+void WKPreferencesSetMediaControlsScaleWithPageZoom(WKPreferencesRef preferencesRef, bool flag)
 {
-    toImpl(preferencesRef)->setAllowsAlternateFullscreen(flag);
+    toImpl(preferencesRef)->setMediaControlsScaleWithPageZoom(flag);
 }
 
-bool WKPreferencesGetAllowsAlternateFullscreen(WKPreferencesRef preferencesRef)
+bool WKPreferencesGetMediaControlsScaleWithPageZoom(WKPreferencesRef preferencesRef)
 {
-    return toImpl(preferencesRef)->allowsAlternateFullscreen();
+    return toImpl(preferencesRef)->mediaControlsScaleWithPageZoom();
 }
 
 void WKPreferencesSetShowsToolTipOverTruncatedText(WKPreferencesRef preferencesRef, bool flag)
@@ -1359,12 +1359,22 @@ bool WKPreferencesGetIgnoreViewportScalingConstraints(WKPreferencesRef preferenc
 
 void WKPreferencesSetMetaRefreshEnabled(WKPreferencesRef preferencesRef, bool enabled)
 {
-    toImpl(preferencesRef)->setMetaRefreshEnabled(enabled);
+    toImpl(preferencesRef)->setHTTPEquivEnabled(enabled);
 }
 
 bool WKPreferencesGetMetaRefreshEnabled(WKPreferencesRef preferencesRef)
 {
-    return toImpl(preferencesRef)->metaRefreshEnabled();
+    return toImpl(preferencesRef)->httpEquivEnabled();
+}
+
+void WKPreferencesSetHTTPEquivEnabled(WKPreferencesRef preferencesRef, bool enabled)
+{
+    toImpl(preferencesRef)->setHTTPEquivEnabled(enabled);
+}
+
+bool WKPreferencesGetHTTPEquivEnabled(WKPreferencesRef preferencesRef)
+{
+    return toImpl(preferencesRef)->httpEquivEnabled();
 }
 
 void WKPreferencesSetAllowsAirPlayForMediaPlayback(WKPreferencesRef preferencesRef, bool enabled)

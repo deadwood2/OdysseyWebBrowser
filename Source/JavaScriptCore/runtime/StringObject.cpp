@@ -93,7 +93,7 @@ bool StringObject::defineOwnProperty(JSObject* object, ExecState* exec, Property
         }
         if (descriptor.configurablePresent() && descriptor.configurable()) {
             if (throwException)
-                exec->vm().throwException(exec, createTypeError(exec, ASCIILiteral("Attempting to configurable attribute of unconfigurable property.")));
+                exec->vm().throwException(exec, createTypeError(exec, ASCIILiteral("Attempting to change configurable attribute of unconfigurable property.")));
             return false;
         }
         if (descriptor.enumerablePresent() && descriptor.enumerable()) {
@@ -146,9 +146,11 @@ bool StringObject::deletePropertyByIndex(JSCell* cell, ExecState* exec, unsigned
 void StringObject::getOwnPropertyNames(JSObject* object, ExecState* exec, PropertyNameArray& propertyNames, EnumerationMode mode)
 {
     StringObject* thisObject = jsCast<StringObject*>(object);
-    int size = thisObject->internalValue()->length();
-    for (int i = 0; i < size; ++i)
-        propertyNames.add(Identifier::from(exec, i));
+    if (propertyNames.includeStringProperties()) {
+        int size = thisObject->internalValue()->length();
+        for (int i = 0; i < size; ++i)
+            propertyNames.add(Identifier::from(exec, i));
+    }
     if (mode.includeDontEnumProperties())
         propertyNames.add(exec->propertyNames().length);
     return JSObject::getOwnPropertyNames(thisObject, exec, propertyNames, mode);

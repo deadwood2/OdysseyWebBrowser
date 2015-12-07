@@ -109,9 +109,9 @@ private:
     double m_lastUpdateTime;
 };
 
-PassRefPtr<ThreadedCompositor> ThreadedCompositor::create(Client* client)
+Ref<ThreadedCompositor> ThreadedCompositor::create(Client* client)
 {
-    return adoptRef(new ThreadedCompositor(client));
+    return adoptRef(*new ThreadedCompositor(client));
 }
 
 ThreadedCompositor::ThreadedCompositor(Client* client)
@@ -230,7 +230,7 @@ GLContext* ThreadedCompositor::glContext()
     if (!m_nativeSurfaceHandle)
         return 0;
 
-    m_context = GLContext::createContextForWindow(m_nativeSurfaceHandle, GLContext::sharingContext());
+    m_context = GLContext::createContextForWindow(reinterpret_cast<GLNativeWindowType>(m_nativeSurfaceHandle), GLContext::sharingContext());
     return m_context.get();
 }
 

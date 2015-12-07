@@ -29,9 +29,9 @@
     align-items: center;
 
     text-align: center;
-    text-shadow: rgba(255, 255, 255, 0.5) 0 1px 0;
-    color: rgb(60, 60, 60);
-    padding: 0 5px;
+    text-shadow: hsla(0, 0%, 100%, 0.5) 0 1px 0;
+    color: hsl(0, 0%, 23%);
+    padding: 0 12px 0 5px;
 }
 
 .dashboard.debugger > .message {
@@ -50,6 +50,7 @@
 .dashboard.debugger .navigation-bar .item.button {
     flex-direction: row;
     width: 16px;
+    height: 16px;
     cursor: pointer;
     padding: 0;
 }
@@ -62,7 +63,7 @@
     -webkit-animation-timing-function: ease-out;
     -webkit-animation-iteration-count: infinite;
     -webkit-animation-direction: alternate;
-    background-color: rgb(102, 155, 199) !important;
+    background-color: hsl(207, 46%, 59%) !important;
 }
 
 @-webkit-keyframes pulse-pause-button {
@@ -76,7 +77,7 @@
 
     margin: 0 10px;
 
-    background-image: linear-gradient(rgb(190, 190, 190), rgb(190, 190, 190));
+    background-image: linear-gradient(hsl(0, 0%, 74%), hsl(0, 0%, 74%));
     background-size: 100% 66%;
     background-repeat: no-repeat;
     background-position: center;
@@ -89,6 +90,7 @@
 }
 
 .dashboard.debugger > .location {
+    overflow: hidden;
     flex: initial;
 }
 
@@ -113,7 +115,7 @@
 }
 
 .dashboard.debugger > .location .function-name {
-    color: rgb(30, 30, 30);
+    color: hsl(0, 0%, 11%);
     padding-bottom: 1px;
 }
 
@@ -123,7 +125,7 @@
 
 .dashboard.debugger > .location .go-to-link {
     padding-bottom: 1px;
-    -webkit-text-decoration-color: #aaa;
+    -webkit-text-decoration-color: hsl(0, 0%, 66%);
     
     flex: initial;
     text-overflow: ellipsis;

@@ -398,7 +398,7 @@ public:
     }
 
     void installCode(CodeBlock*);
-    PassRefPtr<CodeBlock> newCodeBlockFor(CodeSpecializationKind, JSFunction*, JSScope*, JSObject*& exception);
+    RefPtr<CodeBlock> newCodeBlockFor(CodeSpecializationKind, JSFunction*, JSScope*, JSObject*& exception);
     PassRefPtr<CodeBlock> newReplacementCodeBlockFor(CodeSpecializationKind);
     
     JSObject* prepareForExecution(ExecState* exec, JSFunction* function, JSScope* scope, CodeSpecializationKind kind)
@@ -454,7 +454,7 @@ public:
         return m_evalCodeBlock.get();
     }
 
-    static EvalExecutable* create(ExecState*, const SourceCode&, bool isInStrictContext, ThisTDZMode);
+    static EvalExecutable* create(ExecState*, const SourceCode&, bool isInStrictContext, ThisTDZMode, const VariableEnvironment*);
 
     PassRefPtr<JITCode> generatedJITCode()
     {
@@ -630,15 +630,14 @@ public:
         
     FunctionMode functionMode() { return m_unlinkedExecutable->functionMode(); }
     bool isBuiltinFunction() const { return m_unlinkedExecutable->isBuiltinFunction(); }
+    ConstructAbility constructAbility() const { return m_unlinkedExecutable->constructAbility(); }
     bool isClassConstructorFunction() const { return m_unlinkedExecutable->isClassConstructorFunction(); }
     const Identifier& name() { return m_unlinkedExecutable->name(); }
     const Identifier& inferredName() { return m_unlinkedExecutable->inferredName(); }
     JSString* nameValue() const { return m_unlinkedExecutable->nameValue(); }
     size_t parameterCount() const { return m_unlinkedExecutable->parameterCount(); } // Excluding 'this'!
-    SymbolTable* symbolTable(CodeSpecializationKind);
 
-    void clearCodeIfNotCompiling();
-    void clearUnlinkedCodeForRecompilationIfNotCompiling();
+    void clearUnlinkedCodeForRecompilation();
     static void visitChildren(JSCell*, SlotVisitor&);
     static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue proto)
     {
@@ -668,17 +667,6 @@ private:
         unsigned lastLine, unsigned startColumn, unsigned endColumn);
     
     void finishCreation(VM&);
-
-    bool isCompiling()
-    {
-#if ENABLE(JIT)
-        if (!m_jitCodeForCall && m_codeBlockForCall)
-            return true;
-        if (!m_jitCodeForConstruct && m_codeBlockForConstruct)
-            return true;
-#endif
-        return false;
-    }
 
     friend class ScriptExecutable;
     

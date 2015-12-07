@@ -40,7 +40,7 @@
 #include <wtf/FastMalloc.h>
 #include <wtf/Forward.h>
 
-#if (ENABLE(RUBBER_BANDING) || ENABLE(CSS_SCROLL_SNAP)) && PLATFORM(MAC)
+#if ENABLE(RUBBER_BANDING) || ENABLE(CSS_SCROLL_SNAP)
 #include "ScrollController.h"
 #endif
 
@@ -52,7 +52,7 @@ class ScrollableArea;
 class Scrollbar;
 class WheelEventTestTrigger;
 
-#if (ENABLE(CSS_SCROLL_SNAP) || ENABLE(RUBBER_BANDING)) && PLATFORM(MAC)
+#if ENABLE(CSS_SCROLL_SNAP) || ENABLE(RUBBER_BANDING)
 class ScrollAnimator : private ScrollControllerClient {
 #else
 class ScrollAnimator {
@@ -110,6 +110,8 @@ public:
     virtual void didAddHorizontalScrollbar(Scrollbar*) { }
     virtual void willRemoveHorizontalScrollbar(Scrollbar*) { }
 
+    virtual void invalidateScrollbarPartLayers(Scrollbar*) { }
+
     virtual void verticalScrollbarLayerDidChange() { }
     virtual void horizontalScrollbarLayerDidChange() { }
 
@@ -126,13 +128,16 @@ public:
     void removeTestDeferralForReason(WheelEventTestTrigger::ScrollableAreaIdentifier, WheelEventTestTrigger::DeferTestTriggerReason) const override;
 #endif
     
-#if ENABLE(CSS_SCROLL_SNAP) && PLATFORM(MAC)
+#if ENABLE(CSS_SCROLL_SNAP)
+#if PLATFORM(MAC)
     bool processWheelEventForScrollSnap(const PlatformWheelEvent&);
-    void updateScrollAnimatorsAndTimers();
+#endif
+    void updateScrollSnapState();
     LayoutUnit scrollOffsetOnAxis(ScrollEventAxis) const override;
     void immediateScrollOnAxis(ScrollEventAxis, float delta) override;
     bool activeScrollSnapIndexDidChange() const;
     unsigned activeScrollSnapIndexForAxis(ScrollEventAxis) const;
+    LayoutSize scrollExtent() const override;
 #endif
 
 protected:
@@ -141,7 +146,7 @@ protected:
 
     ScrollableArea& m_scrollableArea;
     RefPtr<WheelEventTestTrigger> m_wheelEventTestTrigger;
-#if (ENABLE(CSS_SCROLL_SNAP) || ENABLE(RUBBER_BANDING)) && PLATFORM(MAC)
+#if ENABLE(CSS_SCROLL_SNAP) || ENABLE(RUBBER_BANDING)
     ScrollController m_scrollController;
 #endif
     float m_currentPosX; // We avoid using a FloatPoint in order to reduce

@@ -51,7 +51,7 @@ class WebView : public API::ObjectImpl<API::Object::Type::View>, public PageClie
 public:
     virtual ~WebView();
 
-    static PassRefPtr<WebView> create(WebProcessPool*, WebPageGroup*);
+    static Ref<WebView> create(WebProcessPool*, WebPageGroup*);
 
     void initialize();
 
@@ -128,7 +128,7 @@ protected:
 
     virtual bool canScrollView() override { return false; }
     virtual void scrollView(const WebCore::IntRect&, const WebCore::IntSize&) override;
-    virtual void requestScroll(const WebCore::FloatPoint&, bool) override;
+    virtual void requestScroll(const WebCore::FloatPoint&, const WebCore::IntPoint&, bool) override;
 
     virtual WebCore::IntSize viewSize() override;
 
@@ -175,10 +175,10 @@ protected:
     virtual void doneWithTouchEvent(const NativeWebTouchEvent&, bool wasEventHandled) override;
 #endif
 
-    virtual PassRefPtr<WebPopupMenuProxy> createPopupMenuProxy(WebPageProxy*) override;
-    virtual PassRefPtr<WebContextMenuProxy> createContextMenuProxy(WebPageProxy*) override;
+    virtual RefPtr<WebPopupMenuProxy> createPopupMenuProxy(WebPageProxy*) override;
+    virtual RefPtr<WebContextMenuProxy> createContextMenuProxy(WebPageProxy*) override;
 #if ENABLE(INPUT_TYPE_COLOR)
-    virtual PassRefPtr<WebColorPicker> createColorPicker(WebPageProxy*, const WebCore::Color& initialColor, const WebCore::IntRect&) override;
+    virtual RefPtr<WebColorPicker> createColorPicker(WebPageProxy*, const WebCore::Color& initialColor, const WebCore::IntRect&) override;
 #endif
 
     virtual void setTextIndicator(Ref<WebCore::TextIndicator>, WebCore::TextIndicatorLifetime = WebCore::TextIndicatorLifetime::Permanent) override;
@@ -203,9 +203,11 @@ protected:
     virtual void navigationGestureDidBegin() override { };
     virtual void navigationGestureWillEnd(bool, WebBackForwardListItem&) override { };
     virtual void navigationGestureDidEnd(bool, WebBackForwardListItem&) override { };
+    virtual void navigationGestureDidEnd() override { };
     virtual void willRecordNavigationSnapshot(WebBackForwardListItem&) override { };
 
     virtual void didChangeBackgroundColor() override { }
+    virtual void didFailLoadForMainFrame() override { }
 
     WebViewClient m_client;
     RefPtr<WebPageProxy> m_page;

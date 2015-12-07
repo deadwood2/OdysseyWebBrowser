@@ -154,11 +154,13 @@ using namespace WebCore;
 -(void)repaint;
 -(void)setDelayCallbacks:(BOOL)shouldDelay;
 -(void)loadStateChanged:(NSNotification *)notification;
+- (void)loadedRangesChanged:(NSNotification *)notification;
 -(void)rateChanged:(NSNotification *)notification;
 -(void)sizeChanged:(NSNotification *)notification;
 -(void)timeChanged:(NSNotification *)notification;
 -(void)didEnd:(NSNotification *)notification;
 -(void)layerHostChanged:(NSNotification *)notification;
+- (void)newImageAvailable:(NSNotification *)notification;
 @end
 
 @protocol WebKitVideoRenderingDetails
@@ -1191,7 +1193,6 @@ void MediaPlayerPrivateQTKit::paintCurrentFrameInContext(GraphicsContext* contex
         // Set up a QTVideoRenderer to use, but one that doesn't register for
         // update callbacks. That way, it won't bother us asking to repaint.
         createQTVideoRenderer(QTVideoRendererModeDefault);
-        qtVideoRenderer = m_qtVideoRenderer.get();
     }
     paint(context, r);
 }
@@ -1427,7 +1428,10 @@ void MediaPlayerPrivateQTKit::disableUnsupportedTracks()
         // Disable chapter tracks. These are most likely to lead to trouble, as
         // they will be composited under the video tracks, forcing QT to do extra
         // work.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wundeclared-selector"
         QTTrack *chapterTrack = [track performSelector:@selector(chapterlist)];
+#pragma clang diagnostic pop
         if (!chapterTrack)
             continue;
         

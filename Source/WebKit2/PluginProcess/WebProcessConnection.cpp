@@ -30,7 +30,6 @@
 
 #include "ActivityAssertion.h"
 #include "ArgumentCoders.h"
-#include "ConnectionStack.h"
 #include "NPObjectMessageReceiverMessages.h"
 #include "NPRemoteObjectMap.h"
 #include "PluginControllerProxy.h"
@@ -41,14 +40,17 @@
 #include "WebProcessConnectionMessages.h"
 #include <unistd.h>
 #include <wtf/RunLoop.h>
+#include <wtf/TemporaryChange.h>
 
 using namespace WebCore;
 
 namespace WebKit {
 
-PassRefPtr<WebProcessConnection> WebProcessConnection::create(IPC::Connection::Identifier connectionIdentifier)
+static IPC::Connection* currentConnection;
+
+RefPtr<WebProcessConnection> WebProcessConnection::create(IPC::Connection::Identifier connectionIdentifier)
 {
-    return adoptRef(new WebProcessConnection(connectionIdentifier));
+    return adoptRef(*new WebProcessConnection(connectionIdentifier));
 }
 
 WebProcessConnection::~WebProcessConnection()
@@ -60,7 +62,7 @@ WebProcessConnection::~WebProcessConnection()
     
 WebProcessConnection::WebProcessConnection(IPC::Connection::Identifier connectionIdentifier)
 {
-    m_connection = IPC::Connection::createServerConnection(connectionIdentifier, *this, RunLoop::main());
+    m_connection = IPC::Connection::createServerConnection(connectionIdentifier, *this);
     m_npRemoteObjectMap = NPRemoteObjectMap::create(m_connection.get());
 
     m_connection->setOnlySendMessagesAsDispatchWhenWaitingForSyncReplyWhenProcessingSuchAMessage(true);
@@ -111,16 +113,15 @@ void WebProcessConnection::removePluginControllerProxy(PluginControllerProxy* pl
 
 void WebProcessConnection::setGlobalException(const String& exceptionString)
 {
-    IPC::Connection* connection = ConnectionStack::singleton().current();
-    if (!connection)
+    if (!currentConnection)
         return;
 
-    connection->sendSync(Messages::PluginProcessConnection::SetException(exceptionString), Messages::PluginProcessConnection::SetException::Reply(), 0);
+    currentConnection->sendSync(Messages::PluginProcessConnection::SetException(exceptionString), Messages::PluginProcessConnection::SetException::Reply(), 0);
 }
 
 void WebProcessConnection::didReceiveMessage(IPC::Connection& connection, IPC::MessageDecoder& decoder)
 {
-    ConnectionStack::CurrentConnectionPusher currentConnection(ConnectionStack::singleton(), &connection);
+    TemporaryChange<IPC::Connection*> currentConnectionChange(currentConnection, &connection);
 
     if (decoder.messageReceiverName() == Messages::WebProcessConnection::messageReceiverName()) {
         didReceiveWebProcessConnectionMessage(connection, decoder);
@@ -142,7 +143,7 @@ void WebProcessConnection::didReceiveMessage(IPC::Connection& connection, IPC::M
 
 void WebProcessConnection::didReceiveSyncMessage(IPC::Connection& connection, IPC::MessageDecoder& decoder, std::unique_ptr<IPC::MessageEncoder>& replyEncoder)
 {
-    ConnectionStack::CurrentConnectionPusher currentConnection(ConnectionStack::singleton(), &connection);
+    TemporaryChange<IPC::Connection*> currentConnectionChange(currentConnection, &connection);
 
     uint64_t destinationID = decoder.destinationID();
 

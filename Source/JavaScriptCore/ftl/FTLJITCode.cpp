@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,6 +28,8 @@
 
 #if ENABLE(FTL_JIT)
 
+#include "FTLState.h"
+
 namespace JSC { namespace FTL {
 
 JITCode::JITCode()
@@ -37,6 +39,15 @@ JITCode::JITCode()
 
 JITCode::~JITCode()
 {
+    if (FTL::shouldShowDisassembly()) {
+        dataLog("Destroying FTL JIT code at ");
+        CommaPrinter comma;
+        for (auto& handle : m_handles)
+            dataLog(comma, pointerDump(handle.get()));
+        dataLog(comma, pointerDump(m_arityCheckEntrypoint.executableMemory()));
+        dataLog(comma, pointerDump(m_exitThunks.executableMemory()));
+        dataLog("\n");
+    }
 }
 
 void JITCode::initializeExitThunks(CodeRef exitThunks)
@@ -123,6 +134,14 @@ JITCode* JITCode::ftl()
 DFG::CommonData* JITCode::dfgCommon()
 {
     return &common;
+}
+
+void JITCode::validateReferences(const TrackedReferences& trackedReferences)
+{
+    common.validateReferences(trackedReferences);
+    
+    for (OSRExit& exit : osrExit)
+        exit.validateReferences(trackedReferences);
 }
 
 } } // namespace JSC::FTL

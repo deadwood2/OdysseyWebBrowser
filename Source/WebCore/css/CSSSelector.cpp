@@ -60,7 +60,9 @@ CSSSelector::CSSSelector(const QualifiedName& tagQName, bool tagIsForNamespaceRu
     , m_hasNameWithCase(false)
     , m_isForPage(false)
     , m_tagIsForNamespaceRule(tagIsForNamespaceRule)
+#if ENABLE(CSS_SELECTORS_LEVEL4)
     , m_descendantDoubleChildSyntax(false)
+#endif
     , m_caseInsensitiveAttributeValueMatching(false)
 {
     const AtomicString& tagLocalName = tagQName.localName();
@@ -82,7 +84,7 @@ void CSSSelector::createRareData()
     if (m_hasRareData)
         return;
     // Move the value to the rare data stucture.
-    m_data.m_rareData = RareData::create(adoptRef(m_data.m_value)).leakRef();
+    m_data.m_rareData = &RareData::create(adoptRef(m_data.m_value)).leakRef();
     m_hasRareData = true;
 }
 
@@ -699,8 +701,10 @@ String CSSSelector::selectorText(const String& rightSide) const
     if (const CSSSelector* tagHistory = cs->tagHistory()) {
         switch (cs->relation()) {
         case CSSSelector::Descendant:
+#if ENABLE(CSS_SELECTORS_LEVEL4)
             if (cs->m_descendantDoubleChildSyntax)
                 return tagHistory->selectorText(" >> " + str.toString() + rightSide);
+#endif
             return tagHistory->selectorText(" " + str.toString() + rightSide);
         case CSSSelector::Child:
             return tagHistory->selectorText(" > " + str.toString() + rightSide);

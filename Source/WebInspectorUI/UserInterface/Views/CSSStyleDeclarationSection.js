@@ -23,13 +23,17 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.CSSStyleDeclarationSection = function(style)
+WebInspector.CSSStyleDeclarationSection = function(delegate, style)
 {
     // FIXME: Convert this to a WebInspector.Object subclass, and call super().
     // WebInspector.Object.call(this);
 
+    this._delegate = delegate || null;
+
     console.assert(style);
     this._style = style || null;
+    this._selectorElements = [];
+    this._ruleDisabled = false;
 
     this._element = document.createElement("div");
     this._element.className = "style-declaration-section";
@@ -44,6 +48,11 @@ WebInspector.CSSStyleDeclarationSection = function(style)
     this._selectorElement = document.createElement("span");
     this._selectorElement.className = "selector";
     this._selectorElement.setAttribute("spellcheck", "false");
+    this._selectorElement.addEventListener("mouseover", this._handleMouseOver.bind(this));
+    this._selectorElement.addEventListener("mouseout", this._handleMouseOut.bind(this));
+    this._selectorElement.addEventListener("keydown", this._handleKeyDown.bind(this));
+    this._selectorElement.addEventListener("keyup", this._handleKeyUp.bind(this));
+    this._selectorElement.addEventListener("paste", this._handleSelectorPaste.bind(this));
     this._headerElement.appendChild(this._selectorElement);
 
     this._originElement = document.createElement("span");
@@ -85,12 +94,20 @@ WebInspector.CSSStyleDeclarationSection = function(style)
         break;
     }
 
+    // Matches all situations except for User Agent styles.
+    if (!(style.ownerRule && style.ownerRule.type === WebInspector.CSSRule.Type.UserAgent)) {
+        this._iconElement.classList.add("toggle-able");
+        this._iconElement.title = WebInspector.UIString("Comment All Properties");
+        this._iconElement.addEventListener("click", this._toggleRuleOnOff.bind(this));
+    }
+
     console.assert(iconClassName);
     this._element.classList.add(iconClassName);
 
     if (!style.editable)
         this._element.classList.add(WebInspector.CSSStyleDeclarationSection.LockedStyleClassName);
     else if (style.ownerRule) {
+        this._style.ownerRule.addEventListener(WebInspector.CSSRule.Event.SelectorChanged, this._markSelector.bind(this));
         this._commitSelectorKeyboardShortcut = new WebInspector.KeyboardShortcut(null, WebInspector.KeyboardShortcut.Key.Enter, this._commitSelector.bind(this), this._selectorElement);
         this._selectorElement.addEventListener("blur", this._commitSelector.bind(this));
     } else
@@ -104,10 +121,13 @@ WebInspector.CSSStyleDeclarationSection = function(style)
     }
 
     this.refresh();
+
+    this._headerElement.addEventListener("contextmenu", this._handleContextMenuEvent.bind(this));
 };
 
 WebInspector.CSSStyleDeclarationSection.LockedStyleClassName = "locked";
 WebInspector.CSSStyleDeclarationSection.SelectorLockedStyleClassName = "selector-locked";
+WebInspector.CSSStyleDeclarationSection.SelectorInvalidClassName = "invalid-selector";
 WebInspector.CSSStyleDeclarationSection.LastInGroupStyleClassName = "last-in-group";
 WebInspector.CSSStyleDeclarationSection.MatchedSelectorElementStyleClassName = "matched";
 
@@ -160,8 +180,9 @@ WebInspector.CSSStyleDeclarationSection.prototype = {
     {
         this._selectorElement.removeChildren();
         this._originElement.removeChildren();
+        this._selectorElements = [];
 
-        this._originElement.appendChild(document.createTextNode(" \u2014 "));
+        this._originElement.append(" \u2014 ");
 
         function appendSelector(selector, matched)
         {
@@ -192,6 +213,7 @@ WebInspector.CSSStyleDeclarationSection.prototype = {
             }
 
             this._selectorElement.appendChild(selectorElement);
+            this._selectorElements.push(selectorElement);
         }
 
         function appendSelectorTextKnownToMatch(selectorText)
@@ -213,7 +235,7 @@ WebInspector.CSSStyleDeclarationSection.prototype = {
                 for (var i = 0; i < selectors.length; ++i) {
                     appendSelector.call(this, selectors[i], alwaysMatch || matchedSelectorIndices.includes(i));
                     if (i < selectors.length - 1)
-                        this._selectorElement.appendChild(document.createTextNode(", "));
+                        this._selectorElement.append(", ");
                 }
             } else
                 appendSelectorTextKnownToMatch.call(this, this._style.ownerRule.selectorText);
@@ -243,19 +265,19 @@ WebInspector.CSSStyleDeclarationSection.prototype = {
 
                 console.assert(originString);
                 if (originString)
-                    this._originElement.appendChild(document.createTextNode(originString));
+                    this._originElement.append(originString);
             }
 
             break;
 
         case WebInspector.CSSStyleDeclaration.Type.Inline:
             appendSelectorTextKnownToMatch.call(this, WebInspector.displayNameForNode(this._style.node));
-            this._originElement.appendChild(document.createTextNode(WebInspector.UIString("Style Attribute")));
+            this._originElement.append(WebInspector.UIString("Style Attribute"));
             break;
 
         case WebInspector.CSSStyleDeclaration.Type.Attribute:
             appendSelectorTextKnownToMatch.call(this, WebInspector.displayNameForNode(this._style.node));
-            this._originElement.appendChild(document.createTextNode(WebInspector.UIString("HTML Attributes")));
+            this._originElement.append(WebInspector.UIString("HTML Attributes"));
             break;
         }
     },
@@ -270,12 +292,262 @@ WebInspector.CSSStyleDeclarationSection.prototype = {
         return false;
     },
 
+    findMatchingPropertiesAndSelectors: function(needle)
+    {
+        this._element.classList.remove(WebInspector.CSSStyleDetailsSidebarPanel.NoFilterMatchInSectionClassName, WebInspector.CSSStyleDetailsSidebarPanel.FilterMatchingSectionHasLabelClassName);
+
+        var hasMatchingSelector = false;
+
+        for (var selectorElement of this._selectorElements) {
+            selectorElement.classList.remove(WebInspector.CSSStyleDetailsSidebarPanel.FilterMatchSectionClassName);
+
+            if (needle && selectorElement.textContent.includes(needle)) {
+                selectorElement.classList.add(WebInspector.CSSStyleDetailsSidebarPanel.FilterMatchSectionClassName);
+                hasMatchingSelector = true;
+            }
+        }
+
+        if (!needle) {
+            this._propertiesTextEditor.resetFilteredProperties();
+            return false;
+        }
+
+        var hasMatchingProperty = this._propertiesTextEditor.findMatchingProperties(needle);
+
+        if (!hasMatchingProperty && !hasMatchingSelector) {
+            this._element.classList.add(WebInspector.CSSStyleDetailsSidebarPanel.NoFilterMatchInSectionClassName);
+            return false;
+        }
+
+        return true;
+    },
+
     updateLayout: function()
     {
         this._propertiesTextEditor.updateLayout();
     },
 
+    clearSelection: function()
+    {
+        this._propertiesTextEditor.clearSelection();
+    },
+
+    cssStyleDeclarationTextEditorFocused: function()
+    {
+        if (typeof this._delegate.cssStyleDeclarationSectionEditorFocused === "function")
+            this._delegate.cssStyleDeclarationSectionEditorFocused(this);
+    },
+
+    cssStyleDeclarationTextEditorSwitchRule: function(reverse)
+    {
+        if (!this._delegate)
+            return;
+
+        if (reverse && typeof this._delegate.cssStyleDeclarationSectionEditorPreviousRule === "function")
+            this._delegate.cssStyleDeclarationSectionEditorPreviousRule(this);
+        else if (!reverse && typeof this._delegate.cssStyleDeclarationSectionEditorNextRule === "function")
+            this._delegate.cssStyleDeclarationSectionEditorNextRule(this);
+    },
+
+    focusRuleSelector: function(reverse)
+    {
+        if (this.selectorLocked) {
+            this.focus();
+            return;
+        }
+
+        if (this.locked) {
+            this.cssStyleDeclarationTextEditorSwitchRule(reverse);
+            return;
+        }
+
+        var selection = window.getSelection();
+        selection.removeAllRanges();
+
+        this._element.scrollIntoViewIfNeeded();
+
+        var range = document.createRange();
+        range.selectNodeContents(this._selectorElement);
+        selection.addRange(range);
+    },
+
+    selectLastProperty: function()
+    {
+        this._propertiesTextEditor.selectLastProperty();
+    },
+
+    get selectorLocked()
+    {
+        return !this.locked && !this._style.ownerRule;
+    },
+
+    get locked()
+    {
+        return !this._style.editable;
+    },
+
     // Private
+
+    get _currentSelectorText()
+    {
+        if (!this._style.ownerRule)
+            return;
+
+        var selectorText = this._selectorElement.textContent;
+        if (!selectorText || !selectorText.length)
+            selectorText = this._style.ownerRule.selectorText;
+
+        return selectorText.trim();
+    },
+
+    _handleSelectorPaste: function(event)
+    {
+        if (this._style.type === WebInspector.CSSStyleDeclaration.Type.Inline || !this._style.ownerRule)
+            return;
+
+        if (!event || !event.clipboardData)
+            return;
+
+        var data = event.clipboardData.getData("text/plain");
+        if (!data)
+            return;
+
+        function parseTextForRule(text)
+        {
+            var containsBraces = /[\{\}]/;
+            if (!containsBraces.test(text))
+                return null;
+
+            var match = text.match(/([^{]+){(.*)}/);
+            if (!match)
+                return null;
+
+            // If the match "body" contains braces, parse that body as if it were a rule.
+            // This will usually happen if the user includes a media query in the copied text.
+            return containsBraces.test(match[2]) ? parseTextForRule(match[2]) : match;
+        }
+
+        var match = parseTextForRule(data);
+        if (!match)
+            return;
+
+        var selector = match[1].trim();
+        this._selectorElement.textContent = selector;
+        this._style.nodeStyles.changeRule(this._style.ownerRule, selector, match[2]);
+        event.preventDefault();
+    },
+
+    _handleContextMenuEvent: function(event)
+    {
+        if (window.getSelection().toString().length)
+            return;
+
+        var contextMenu = new WebInspector.ContextMenu(event);
+
+        contextMenu.appendItem(WebInspector.UIString("Copy Rule"), function() {
+            InspectorFrontendHost.copyText(this._generateCSSRuleString());
+        }.bind(this));
+
+        contextMenu.show();
+    },
+
+    _generateCSSRuleString: function()
+    {
+        var numMediaQueries = 0;
+        var styleText = "";
+
+        if (this._style.ownerRule) {
+            var mediaList = this._style.ownerRule.mediaList;
+            if (mediaList.length) {
+                numMediaQueries = mediaList.length;
+
+                for (var i = numMediaQueries - 1; i >= 0; --i)
+                    styleText += "    ".repeat(numMediaQueries - i - 1) + "@media " + mediaList[i].text + " {\n";
+            }
+
+            styleText += "    ".repeat(numMediaQueries) + this._style.ownerRule.selectorText;
+        } else
+            styleText += this._selectorElement.textContent;
+
+        styleText += " {\n";
+
+        for (var property of this._style.visibleProperties) {
+            styleText += "    ".repeat(numMediaQueries + 1) + property.text.trim();
+
+            if (!styleText.endsWith(";"))
+                styleText += ";";
+
+            styleText += "\n";
+        }
+
+        for (var i = numMediaQueries; i > 0; --i)
+            styleText += "    ".repeat(i) + "}\n";
+
+        styleText += "}";
+
+        return styleText;
+    },
+
+    _toggleRuleOnOff: function()
+    {
+        if (this._hasInvalidSelector)
+            return;
+
+        this._ruleDisabled = this._ruleDisabled ? !this._propertiesTextEditor.uncommentAllProperties() : this._propertiesTextEditor.commentAllProperties();
+        this._iconElement.title = this._ruleDisabled ? WebInspector.UIString("Uncomment All Properties") : WebInspector.UIString("Comment All Properties");
+        this._element.classList.toggle("rule-disabled", this._ruleDisabled);
+    },
+
+    _highlightNodesWithSelector: function()
+    {
+        if (!this._style.ownerRule) {
+            WebInspector.domTreeManager.highlightDOMNode(this._style.node.id);
+            return;
+        }
+
+        WebInspector.domTreeManager.highlightSelector(this._currentSelectorText, this._style.node.ownerDocument.frameIdentifier);
+    },
+
+    _hideDOMNodeHighlight: function()
+    {
+        WebInspector.domTreeManager.hideDOMNodeHighlight();
+    },
+
+    _handleMouseOver: function(event)
+    {
+        this._highlightNodesWithSelector();
+    },
+
+    _handleMouseOut: function(event)
+    {
+        this._hideDOMNodeHighlight();
+    },
+
+    _handleKeyDown: function(event)
+    {
+        if (event.keyCode !== 9) {
+            this._highlightNodesWithSelector();
+            return;
+        }
+
+        if (event.shiftKey && this._delegate && typeof this._delegate.cssStyleDeclarationSectionEditorPreviousRule === "function") {
+            event.preventDefault();
+            this._delegate.cssStyleDeclarationSectionEditorPreviousRule(this, true);
+            return;
+        }
+
+        if (!event.metaKey) {
+            event.preventDefault();
+            this.focus();
+            this._propertiesTextEditor.selectFirstProperty();
+            return;
+        }
+    },
+
+    _handleKeyUp: function(event)
+    {
+        this._highlightNodesWithSelector();
+    },
 
     _commitSelector: function(mutations)
     {
@@ -291,6 +563,28 @@ WebInspector.CSSStyleDeclarationSection.prototype = {
         }
 
         this._style.ownerRule.selectorText = newSelectorText;
+    },
+
+    _markSelector: function(event)
+    {
+        var valid = event && event.data && event.data.valid;
+        this._element.classList.toggle(WebInspector.CSSStyleDeclarationSection.SelectorInvalidClassName, !valid);
+        if (valid) {
+            this._iconElement.title = this._ruleDisabled ? WebInspector.UIString("Uncomment All Properties") : WebInspector.UIString("Comment All Properties");
+            this._selectorElement.title = null;
+            this.refresh();
+            return;
+        }
+
+        this._iconElement.title = WebInspector.UIString("The selector '%s' is invalid.").format(this._selectorElement.textContent.trim());
+        this._selectorElement.title = WebInspector.UIString("Using the previous selector '%s'.").format(this._style.ownerRule.selectorText);
+        for (var i = 0; i < this._selectorElement.children.length; ++i)
+            this._selectorElement.children[i].title = null;
+    },
+
+    get _hasInvalidSelector()
+    {
+        return this._element.classList.contains(WebInspector.CSSStyleDeclarationSection.SelectorInvalidClassName);
     }
 };
 

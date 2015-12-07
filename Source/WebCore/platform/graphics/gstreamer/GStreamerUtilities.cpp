@@ -28,7 +28,7 @@
 #include <gst/gst.h>
 #include <gst/video/video-info.h>
 #include <wtf/MathExtras.h>
-#include <wtf/gobject/GUniquePtr.h>
+#include <wtf/glib/GUniquePtr.h>
 
 #if ENABLE(VIDEO_TRACK) && USE(GSTREAMER_MPEGTS)
 #define GST_USE_UNSTABLE_API
@@ -105,9 +105,9 @@ char* getGstBufferDataPointer(GstBuffer* buffer)
 
 void mapGstBuffer(GstBuffer* buffer)
 {
-    GstMapInfo* mapInfo = g_slice_new(GstMapInfo);
+    GstMapInfo* mapInfo = static_cast<GstMapInfo*>(fastMalloc(sizeof(GstMapInfo)));
     if (!gst_buffer_map(buffer, mapInfo, GST_MAP_WRITE)) {
-        g_slice_free(GstMapInfo, mapInfo);
+        fastFree(mapInfo);
         gst_buffer_unref(buffer);
         return;
     }
@@ -125,7 +125,7 @@ void unmapGstBuffer(GstBuffer* buffer)
         return;
 
     gst_buffer_unmap(buffer, mapInfo);
-    g_slice_free(GstMapInfo, mapInfo);
+    fastFree(mapInfo);
 }
 
 bool initializeGStreamer()

@@ -42,7 +42,7 @@
 #include <gtk/gtk.h>
 #include <memory>
 #include <wtf/Vector.h>
-#include <wtf/gobject/GUniquePtr.h>
+#include <wtf/glib/GUniquePtr.h>
 
 #if HAVE(GTK_UNIX_PRINTING)
 #include "PrinterListGtk.h"
@@ -699,7 +699,7 @@ void WebPrintOperationGtk::printPagesDone()
 {
     m_printPagesIdleId = 0;
     endPrint();
-    m_cairoContext = 0;
+    m_cairoContext = nullptr;
 }
 
 void WebPrintOperationGtk::printDone(const WebCore::ResourceError& error)

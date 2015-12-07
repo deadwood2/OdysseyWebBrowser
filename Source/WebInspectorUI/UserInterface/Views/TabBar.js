@@ -31,13 +31,14 @@ WebInspector.TabBar = class TabBar extends WebInspector.Object
 
         this._element = element || document.createElement("div");
         this._element.classList.add("tab-bar");
-        this._element.tabIndex = 0;
+        this._element.setAttribute("role", "tablist");
 
         var topBorderElement = document.createElement("div");
         topBorderElement.classList.add("top-border");
         this._element.appendChild(topBorderElement);
 
         this._element.addEventListener("mousedown", this._handleMouseDown.bind(this));
+        this._element.addEventListener("click", this._handleClick.bind(this));
         this._element.addEventListener("mouseleave", this._handleMouseLeave.bind(this));
 
         this._tabBarItems = [];
@@ -57,17 +58,22 @@ WebInspector.TabBar = class TabBar extends WebInspector.Object
 
     set newTabItem(newTabItem)
     {
+        if (!this._handleNewTabClickListener)
+            this._handleNewTabClickListener = this._handleNewTabClick.bind(this);
+
         if (!this._handleNewTabMouseEnterListener)
             this._handleNewTabMouseEnterListener = this._handleNewTabMouseEnter.bind(this);
 
         if (this._newTabItem) {
             this._newTabItem.element.classList.remove("new-tab-button");
+            this._newTabItem.element.removeEventListener("click", this._handleNewTabClickListener);
             this._newTabItem.element.removeEventListener("mouseenter", this._handleNewTabMouseEnterListener);
             this.removeTabBarItem(this._newTabItem, true);
         }
 
         if (newTabItem) {
             newTabItem.element.classList.add("new-tab-button");
+            newTabItem.element.addEventListener("click", this._handleNewTabClickListener);
             newTabItem.element.addEventListener("mouseenter", this._handleNewTabMouseEnterListener);
             this.addTabBarItem(newTabItem, true);
         }
@@ -552,16 +558,12 @@ WebInspector.TabBar = class TabBar extends WebInspector.Object
         if (tabBarItem.disabled)
             return;
 
-        if (tabBarItem === this._newTabItem) {
-            this.dispatchEventToListeners(WebInspector.TabBar.Event.NewTabItemClicked);
+        if (tabBarItem === this._newTabItem)
             return;
-        }
 
         var closeButtonElement = event.target.enclosingNodeOrSelfWithClass(WebInspector.TabBarItem.CloseButtonStyleClassName);
-        if (closeButtonElement) {
-            this.removeTabBarItem(tabBarItem, false, true);
+        if (closeButtonElement)
             return;
-        }
 
         this.selectedTabBarItem = tabBarItem;
 
@@ -587,6 +589,24 @@ WebInspector.TabBar = class TabBar extends WebInspector.Object
 
         event.preventDefault();
         event.stopPropagation();
+    }
+
+    _handleClick(event)
+    {
+        var itemElement = event.target.enclosingNodeOrSelfWithClass(WebInspector.TabBarItem.StyleClassName);
+        if (!itemElement)
+            return;
+
+        var tabBarItem = itemElement[WebInspector.TabBarItem.ElementReferenceSymbol];
+        if (!tabBarItem)
+            return;
+
+        if (tabBarItem.disabled)
+            return;
+
+        var closeButtonElement = event.target.enclosingNodeOrSelfWithClass(WebInspector.TabBarItem.CloseButtonStyleClassName);
+        if (closeButtonElement)
+            this.removeTabBarItem(tabBarItem, false, true);
     }
 
     _handleMouseMoved(event)
@@ -669,7 +689,7 @@ WebInspector.TabBar = class TabBar extends WebInspector.Object
         this._element.classList.remove("dragging-tab");
 
         if (!this._tabAnimatedClosedSinceMouseEnter) {
-            this._element.classList.remove("static-layout")
+            this._element.classList.remove("static-layout");
             this._clearTabBarItemSizesAndPositions();
         } else {
             var left = 0;
@@ -709,6 +729,13 @@ WebInspector.TabBar = class TabBar extends WebInspector.Object
             return;
 
         this._finishExpandingTabsAfterClose();
+    }
+
+    _handleNewTabClick(event)
+    {
+        if (this._newTabItem.disabled)
+            return;
+        this.dispatchEventToListeners(WebInspector.TabBar.Event.NewTabItemClicked);
     }
 
     _handleNewTabMouseEnter(event)

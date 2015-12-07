@@ -126,8 +126,6 @@
 @end
 
 @interface NSWindow (WKNSWindowDetails)
-- (NSRect)_intersectBottomCornersWithRect:(NSRect)viewRect;
-- (void)_maskRoundedBottomCorners:(NSRect)clipRect;
 - (id)_newFirstResponderAfterResigning;
 @end
 
@@ -236,8 +234,6 @@ struct WKViewInterpretKeyEventsParameters {
 
     BOOL _inSecureInputState;
 
-    NSRect _windowBottomCornerIntersectionRect;
-    
     BOOL _shouldDeferViewInWindowChanges;
     NSWindow *_targetWindowForMovePreparation;
 
@@ -1199,25 +1195,6 @@ static NSToolbarItem *toolbarItem(id <NSValidatedUserInterfaceItem> item)
 - (void)capitalizeWord:(id)sender
 {
     _data->_page->capitalizeWord();
-}
-
-- (void)displayIfNeeded
-{
-    // FIXME: We should remove this code when <rdar://problem/9362085> is resolved. In the meantime,
-    // it is necessary to disable scren updates so we get a chance to redraw the corners before this 
-    // display is visible.
-    NSWindow *window = [self window];
-    BOOL shouldMaskWindow = window && !NSIsEmptyRect(_data->_windowBottomCornerIntersectionRect);
-    if (shouldMaskWindow)
-        NSDisableScreenUpdates();
-
-    [super displayIfNeeded];
-
-    if (shouldMaskWindow) {
-        [window _maskRoundedBottomCorners:_data->_windowBottomCornerIntersectionRect];
-        NSEnableScreenUpdates();
-        _data->_windowBottomCornerIntersectionRect = NSZeroRect;
-    }
 }
 
 // Events
@@ -2835,7 +2812,7 @@ static void* keyValueObservingContext = &keyValueObservingContext;
 
 - (void)drawRect:(NSRect)rect
 {
-    LOG(View, "drawRect: x:%g, y:%g, width:%g, height:%g", rect.origin.x, rect.origin.y, rect.size.width, rect.size.height);
+    LOG(Printing, "drawRect: x:%g, y:%g, width:%g, height:%g", rect.origin.x, rect.origin.y, rect.size.width, rect.size.height);
     _data->_page->endPrinting();
 }
 
@@ -3473,7 +3450,7 @@ static void* keyValueObservingContext = &keyValueObservingContext;
 {
     // The call below could release this WKView.
     RetainPtr<WKView> protector(self);
-    
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
     [view dragImage:image
@@ -3484,7 +3461,6 @@ static void* keyValueObservingContext = &keyValueObservingContext;
              source:self
           slideBack:YES];
 #pragma clang diagnostic pop
-    
 }
 
 static bool matchesExtensionOrEquivalent(NSString *filename, NSString *extension)
@@ -3544,7 +3520,7 @@ static bool matchesExtensionOrEquivalent(NSString *filename, NSString *extension
 
 - (void)pasteboardChangedOwner:(NSPasteboard *)pasteboard
 {
-    _data->_promisedImage = 0;
+    _data->_promisedImage = nullptr;
     _data->_promisedFilename = "";
     _data->_promisedURL = "";
 }
@@ -3555,7 +3531,7 @@ static bool matchesExtensionOrEquivalent(NSString *filename, NSString *extension
 
     if ([type isEqual:NSTIFFPboardType] && _data->_promisedImage) {
         [pasteboard setData:(NSData *)_data->_promisedImage->getTIFFRepresentation() forType:NSTIFFPboardType];
-        _data->_promisedImage = 0;
+        _data->_promisedImage = nullptr;
     }
 }
 
@@ -3727,18 +3703,6 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
 
     _data->_intrinsicContentSize = intrinsicContentSizeAcknowledgingFlexibleWidth;
     [self invalidateIntrinsicContentSize];
-}
-
-- (void)_cacheWindowBottomCornerRect
-{
-    // FIXME: We should remove this code when <rdar://problem/9362085> is resolved.
-    NSWindow *window = [self window];
-    if (!window)
-        return;
-
-    _data->_windowBottomCornerIntersectionRect = [window _intersectBottomCornersWithRect:[self convertRect:[self visibleRect] toView:nil]];
-    if (!NSIsEmptyRect(_data->_windowBottomCornerIntersectionRect))
-        [self setNeedsDisplayInRect:[self convertRect:_data->_windowBottomCornerIntersectionRect fromView:nil]];
 }
 
 - (NSInteger)spellCheckerDocumentTag
@@ -3933,6 +3897,12 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
         _data->_gestureController->didFinishLoadForMainFrame();
 }
 
+- (void)_didFailLoadForMainFrame
+{
+    if (_data->_gestureController)
+        _data->_gestureController->didFailLoadForMainFrame();
+}
+
 - (void)_didSameDocumentNavigationForMainFrame:(SameDocumentNavigationType)type
 {
     if (_data->_gestureController)
@@ -3953,6 +3923,13 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
 }
 
 #endif // __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
+
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100
+- (void)_startWindowDrag
+{
+    [[self window] performWindowDragWithEvent:_data->_mouseDownEvent];
+}
+#endif
 
 @end
 
@@ -4025,7 +4002,7 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
 
 - (NSPrintOperation *)printOperationWithPrintInfo:(NSPrintInfo *)printInfo forFrame:(WKFrameRef)frameRef
 {
-    LOG(View, "Creating an NSPrintOperation for frame '%s'", toImpl(frameRef)->url().utf8().data());
+    LOG(Printing, "Creating an NSPrintOperation for frame '%s'", toImpl(frameRef)->url().utf8().data());
 
     // FIXME: If the frame cannot be printed (e.g. if it contains an encrypted PDF that disallows
     // printing), this function should return nil.
@@ -4430,12 +4407,16 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
     return nsColor(color);
 }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmissing-noreturn"
 // This method forces a drawing area geometry update, even if frame size updates are disabled.
 // The updated is performed asynchronously; we don't wait for the geometry update before returning.
 // The area drawn need not match the current frame size - if it differs it will be anchored to the
 // frame according to the current contentAnchor.
 - (void)forceAsyncDrawingAreaSizeUpdate:(NSSize)size
 {
+    // This SPI is only used on 10.9 and below, and is incompatible with the fence-based drawing area size synchronization in 10.10+.
+#if __MAC_OS_X_VERSION_MIN_REQUIRED <= 1090
     if (_data->_clipsToVisibleRect)
         [self _updateViewExposedRect];
     [self _setDrawingAreaSize:size];
@@ -4445,10 +4426,15 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
     // the drawing area size such that the latest update is sent.
     if (DrawingAreaProxy* drawingArea = _data->_page->drawingArea())
         drawingArea->waitForPossibleGeometryUpdate(std::chrono::milliseconds::zero());
+#else
+    ASSERT_NOT_REACHED();
+#endif
 }
 
 - (void)waitForAsyncDrawingAreaSizeUpdate
 {
+    // This SPI is only used on 10.9 and below, and is incompatible with the fence-based drawing area size synchronization in 10.10+.
+#if __MAC_OS_X_VERSION_MIN_REQUIRED <= 1090
     if (DrawingAreaProxy* drawingArea = _data->_page->drawingArea()) {
         // If a geometry update is still pending then the action of receiving the
         // first geometry update may result in another update being scheduled -
@@ -4456,7 +4442,11 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
         drawingArea->waitForPossibleGeometryUpdate(DrawingAreaProxy::didUpdateBackingStoreStateTimeout() / 2);
         drawingArea->waitForPossibleGeometryUpdate(DrawingAreaProxy::didUpdateBackingStoreStateTimeout() / 2);
     }
+#else
+    ASSERT_NOT_REACHED();
+#endif
 }
+#pragma clang diagnostic pop
 
 - (BOOL)isUsingUISideCompositing
 {

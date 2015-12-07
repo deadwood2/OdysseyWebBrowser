@@ -37,7 +37,7 @@ class IDBDatabaseCallbacks;
 
 class IDBOpenDBRequest : public IDBRequest {
 public:
-    static PassRefPtr<IDBOpenDBRequest> create(ScriptExecutionContext*, PassRefPtr<IDBDatabaseCallbacks>, int64_t transactionId, uint64_t version, IndexedDB::VersionNullness);
+    static Ref<IDBOpenDBRequest> create(ScriptExecutionContext*, PassRefPtr<IDBDatabaseCallbacks>, int64_t transactionId, uint64_t version, IndexedDB::VersionNullness);
     virtual ~IDBOpenDBRequest();
 
     using IDBRequest::onSuccess;
@@ -47,7 +47,7 @@ public:
     virtual void onSuccess(PassRefPtr<IDBDatabaseBackend>, const IDBDatabaseMetadata&) override;
 
     // EventTarget
-    virtual EventTargetInterface eventTargetInterface() const;
+    virtual EventTargetInterface eventTargetInterface() const override;
     virtual bool dispatchEvent(PassRefPtr<Event>) override;
 
 protected:

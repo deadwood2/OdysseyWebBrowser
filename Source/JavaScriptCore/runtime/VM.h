@@ -40,6 +40,7 @@
 #include "JSLock.h"
 #include "LLIntData.h"
 #include "MacroAssemblerCodeRef.h"
+#include "Microtask.h"
 #include "NumericStrings.h"
 #include "PrivateName.h"
 #include "PrototypeMap.h"
@@ -55,10 +56,10 @@
 #include <wtf/Bag.h>
 #include <wtf/BumpPointerAllocator.h>
 #include <wtf/DateMath.h>
+#include <wtf/Deque.h>
 #include <wtf/Forward.h>
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
-#include <wtf/RefCountedArray.h>
 #include <wtf/SimpleStats.h>
 #include <wtf/StackBounds.h>
 #include <wtf/ThreadSafeRefCounted.h>
@@ -78,6 +79,7 @@ class CodeBlock;
 class CodeCache;
 class CommonIdentifiers;
 class ExecState;
+class Exception;
 class HandleStack;
 class TypeProfiler;
 class TypeProfilerLog;
@@ -153,6 +155,23 @@ struct LocalTimeOffsetCache {
     WTF::TimeType timeType;
 };
 
+class QueuedTask {
+    WTF_MAKE_NONCOPYABLE(QueuedTask);
+    WTF_MAKE_FAST_ALLOCATED;
+public:
+    void run();
+
+    QueuedTask(VM& vm, JSGlobalObject* globalObject, PassRefPtr<Microtask> microtask)
+        : m_globalObject(vm, globalObject)
+        , m_microtask(microtask)
+    {
+    }
+
+private:
+    Strong<JSGlobalObject> m_globalObject;
+    RefPtr<Microtask> m_microtask;
+};
+
 class ConservativeRoots;
 
 #if COMPILER(MSVC)
@@ -213,9 +232,9 @@ public:
     JS_EXPORT_PRIVATE static bool sharedInstanceExists();
     JS_EXPORT_PRIVATE static VM& sharedInstance();
 
-    JS_EXPORT_PRIVATE static PassRefPtr<VM> create(HeapType = SmallHeap);
-    JS_EXPORT_PRIVATE static PassRefPtr<VM> createLeaked(HeapType = SmallHeap);
-    static PassRefPtr<VM> createContextGroup(HeapType = SmallHeap);
+    JS_EXPORT_PRIVATE static Ref<VM> create(HeapType = SmallHeap);
+    JS_EXPORT_PRIVATE static Ref<VM> createLeaked(HeapType = SmallHeap);
+    static Ref<VM> createContextGroup(HeapType = SmallHeap);
     JS_EXPORT_PRIVATE ~VM();
 
 private:
@@ -274,10 +293,8 @@ public:
     Strong<Structure> weakMapDataStructure;
     Strong<Structure> inferredValueStructure;
     Strong<Structure> functionRareDataStructure;
-#if ENABLE(PROMISES)
+    Strong<Structure> exceptionStructure;
     Strong<Structure> promiseDeferredStructure;
-    Strong<Structure> promiseReactionStructure;
-#endif
     Strong<JSCell> iterationTerminator;
     Strong<JSCell> emptyPropertyNameEnumerator;
 
@@ -372,14 +389,22 @@ public:
         return OBJECT_OFFSETOF(VM, targetMachinePCForThrow);
     }
 
-    JS_EXPORT_PRIVATE void clearException();
-    JS_EXPORT_PRIVATE void clearExceptionStack();
-    void getExceptionInfo(JSValue& exception, RefCountedArray<StackFrame>& exceptionStack);
-    void setExceptionInfo(JSValue& exception, RefCountedArray<StackFrame>& exceptionStack);
-    JSValue exception() const { return m_exception; }
-    JSValue* addressOfException() { return &m_exception; }
-    const RefCountedArray<StackFrame>& exceptionStack() const { return m_exceptionStack; }
+    void clearException() { m_exception = nullptr; }
+    void clearLastException() { m_lastException = nullptr; }
 
+    void setException(Exception* exception)
+    {
+        m_exception = exception;
+        m_lastException = exception;
+    }
+
+    Exception* exception() const { return m_exception; }
+    JSCell** addressOfException() { return reinterpret_cast<JSCell**>(&m_exception); }
+
+    Exception* lastException() const { return m_lastException; }
+    JSCell** addressOfLastException() { return reinterpret_cast<JSCell**>(&m_lastException); }
+
+    JS_EXPORT_PRIVATE void throwException(ExecState*, Exception*);
     JS_EXPORT_PRIVATE JSValue throwException(ExecState*, JSValue);
     JS_EXPORT_PRIVATE JSObject* throwException(ExecState*, JSObject*);
 
@@ -528,6 +553,9 @@ public:
     bool enableControlFlowProfiler();
     bool disableControlFlowProfiler();
 
+    JS_EXPORT_PRIVATE void queueMicrotask(JSGlobalObject*, PassRefPtr<Microtask>);
+    JS_EXPORT_PRIVATE void drainMicrotasks();
+
 private:
     friend class LLIntOffsetsExtractor;
     friend class ClearExceptionScope;
@@ -569,12 +597,12 @@ private:
 #endif
 #endif
     void* m_lastStackTop;
-    JSValue m_exception;
+    Exception* m_exception { nullptr };
+    Exception* m_lastException { nullptr };
     bool m_inDefineOwnProperty;
     std::unique_ptr<CodeCache> m_codeCache;
     LegacyProfiler* m_enabledProfiler;
     std::unique_ptr<BuiltinExecutables> m_builtinExecutables;
-    RefCountedArray<StackFrame> m_exceptionStack;
     HashMap<String, RefPtr<WatchpointSet>> m_impurePropertyWatchpointSets;
     std::unique_ptr<TypeProfiler> m_typeProfiler;
     std::unique_ptr<TypeProfilerLog> m_typeProfilerLog;
@@ -582,6 +610,7 @@ private:
     FunctionHasExecutedCache m_functionHasExecutedCache;
     std::unique_ptr<ControlFlowProfiler> m_controlFlowProfiler;
     unsigned m_controlFlowProfilerEnabledCount;
+    Deque<std::unique_ptr<QueuedTask>> m_microtaskQueue;
 };
 
 #if ENABLE(GC_VALIDATION)

@@ -214,6 +214,12 @@ void CachedResource::load(CachedResourceLoader& cachedResourceLoader, const Reso
         return;
     }
 
+    // Prevent new loads if we are in the PageCache or being added to the PageCache.
+    if (cachedResourceLoader.frame()->page() && cachedResourceLoader.frame()->page()->inPageCache()) {
+        failBeforeStarting();
+        return;
+    }
+
     FrameLoader& frameLoader = cachedResourceLoader.frame()->loader();
     if (options.securityCheck() == DoSecurityCheck && (frameLoader.state() == FrameStateProvisional || !frameLoader.activeDocumentLoader() || frameLoader.activeDocumentLoader()->isStopping())) {
         failBeforeStarting();
@@ -311,7 +317,7 @@ void CachedResource::error(CachedResource::Status status)
 {
     setStatus(status);
     ASSERT(errorOccurred());
-    m_data.clear();
+    m_data = nullptr;
 
     setLoading(false);
     checkNotify();
@@ -399,6 +405,7 @@ void CachedResource::responseReceived(const ResourceResponse& response)
 void CachedResource::clearLoader()
 {
     ASSERT(m_loader);
+    m_identifierForLoadWithoutResourceLoader = m_loader->identifier();
     m_loader = nullptr;
     deleteIfPossible();
 }

@@ -67,7 +67,7 @@ void ChildProcess::initialize(const ChildProcessInitializationParameters& parame
     SandboxInitializationParameters sandboxParameters;
     initializeSandbox(parameters, sandboxParameters);
     
-    m_connection = IPC::Connection::createClientConnection(parameters.connectionIdentifier, *this, RunLoop::main());
+    m_connection = IPC::Connection::createClientConnection(parameters.connectionIdentifier, *this);
     m_connection->setDidCloseOnConnectionWorkQueueCallback(didCloseOnConnectionWorkQueue);
     initializeConnection(m_connection.get());
     m_connection->open();
@@ -106,6 +106,11 @@ void ChildProcess::addMessageReceiver(IPC::StringReference messageReceiverName, 
 void ChildProcess::removeMessageReceiver(IPC::StringReference messageReceiverName, uint64_t destinationID)
 {
     m_messageReceiverMap.removeMessageReceiver(messageReceiverName, destinationID);
+}
+
+void ChildProcess::removeMessageReceiver(IPC::StringReference messageReceiverName)
+{
+    m_messageReceiverMap.removeMessageReceiver(messageReceiverName);
 }
 
 void ChildProcess::disableTermination()

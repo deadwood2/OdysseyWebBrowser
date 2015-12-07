@@ -82,9 +82,9 @@ static const auto pluginSnapshotTimerDelay = std::chrono::milliseconds { 1100 };
 
 class PluginView::URLRequest : public RefCounted<URLRequest> {
 public:
-    static PassRefPtr<PluginView::URLRequest> create(uint64_t requestID, const FrameLoadRequest& request, bool allowPopups)
+    static Ref<PluginView::URLRequest> create(uint64_t requestID, const FrameLoadRequest& request, bool allowPopups)
     {
-        return adoptRef(new URLRequest(requestID, request, allowPopups));
+        return adoptRef(*new URLRequest(requestID, request, allowPopups));
     }
 
     uint64_t requestID() const { return m_requestID; }
@@ -107,9 +107,9 @@ private:
 
 class PluginView::Stream : public RefCounted<PluginView::Stream>, NetscapePlugInStreamLoaderClient {
 public:
-    static PassRefPtr<Stream> create(PluginView* pluginView, uint64_t streamID, const ResourceRequest& request)
+    static Ref<Stream> create(PluginView* pluginView, uint64_t streamID, const ResourceRequest& request)
     {
-        return adoptRef(new Stream(pluginView, streamID, request));
+        return adoptRef(*new Stream(pluginView, streamID, request));
     }
     ~Stream();
 
@@ -166,7 +166,7 @@ void PluginView::Stream::cancel()
 
     m_streamWasCancelled = true;
     m_loader->cancel(m_loader->cancelledError());
-    m_loader = 0;
+    m_loader = nullptr;
 }
 
 static String buildHTTPHeaders(const ResourceResponse& response, long long& expectedContentLength)
@@ -271,9 +271,9 @@ static inline WebPage* webPage(HTMLPlugInElement* pluginElement)
     return webFrame->page();
 }
 
-PassRefPtr<PluginView> PluginView::create(PassRefPtr<HTMLPlugInElement> pluginElement, PassRefPtr<Plugin> plugin, const Plugin::Parameters& parameters)
+Ref<PluginView> PluginView::create(PassRefPtr<HTMLPlugInElement> pluginElement, PassRefPtr<Plugin> plugin, const Plugin::Parameters& parameters)
 {
-    return adoptRef(new PluginView(pluginElement, plugin, parameters));
+    return adoptRef(*new PluginView(pluginElement, plugin, parameters));
 }
 
 PluginView::PluginView(PassRefPtr<HTMLPlugInElement> pluginElement, PassRefPtr<Plugin> plugin, const Plugin::Parameters& parameters)
@@ -287,14 +287,18 @@ PluginView::PluginView(PassRefPtr<HTMLPlugInElement> pluginElement, PassRefPtr<P
     , m_isWaitingUntilMediaCanStart(false)
     , m_isBeingDestroyed(false)
     , m_pluginProcessHasCrashed(false)
+#if ENABLE(PRIMARY_SNAPSHOTTED_PLUGIN_HEURISTIC)
     , m_didPlugInStartOffScreen(false)
+#endif
     , m_pendingURLRequestsTimer(RunLoop::main(), this, &PluginView::pendingURLRequestsTimerFired)
 #if ENABLE(NETSCAPE_PLUGIN_API)
     , m_npRuntimeObjectMap(this)
 #endif
     , m_manualStreamState(StreamStateInitial)
     , m_pluginSnapshotTimer(*this, &PluginView::pluginSnapshotTimerFired, pluginSnapshotTimerDelay)
+#if ENABLE(PRIMARY_SNAPSHOTTED_PLUGIN_HEURISTIC) || PLATFORM(COCOA)
     , m_countSnapshotRetries(0)
+#endif
     , m_didReceiveUserInteraction(false)
     , m_pageScaleFactor(1)
     , m_pluginIsPlayingAudio(false)
@@ -600,7 +604,7 @@ void PluginView::initializePlugin()
 
 void PluginView::didFailToInitializePlugin()
 {
-    m_plugin = 0;
+    m_plugin = nullptr;
 
 #if ENABLE(NETSCAPE_PLUGIN_API)
     String frameURLString = frame()->loader().documentLoader()->responseURL().string();
@@ -1176,7 +1180,7 @@ void PluginView::performFrameLoadURLRequest(URLRequest* request)
     Frame* targetFrame = frame->loader().findFrameForNavigation(request->target());
     if (!targetFrame) {
         // We did not find a target frame. Ask our frame to load the page. This may or may not create a popup window.
-        FrameLoadRequest frameRequest(frame, request->request());
+        FrameLoadRequest frameRequest(frame, request->request(), ShouldOpenExternalURLsPolicy::ShouldNotAllow);
         frameRequest.setFrameName(request->target());
         frameRequest.setShouldCheckNewWindowPolicy(true);
         frame->loader().load(frameRequest);
@@ -1188,7 +1192,7 @@ void PluginView::performFrameLoadURLRequest(URLRequest* request)
     }
 
     // Now ask the frame to load the request.
-    targetFrame->loader().load(FrameLoadRequest(targetFrame, request->request()));
+    targetFrame->loader().load(FrameLoadRequest(targetFrame, request->request(), ShouldOpenExternalURLsPolicy::ShouldNotAllow));
 
     auto* targetWebFrame = WebFrame::fromCoreFrame(*targetFrame);
     ASSERT(targetWebFrame);
@@ -1367,7 +1371,7 @@ String PluginView::userAgent()
 
 void PluginView::loadURL(uint64_t requestID, const String& method, const String& urlString, const String& target, const HTTPHeaderMap& headerFields, const Vector<uint8_t>& httpBody, bool allowPopups)
 {
-    FrameLoadRequest frameLoadRequest(m_pluginElement->document().securityOrigin(), LockHistory::No, LockBackForwardList::No, MaybeSendReferrer, AllowNavigationToInvalidURL::Yes, NewFrameOpenerPolicy::Allow);
+    FrameLoadRequest frameLoadRequest(m_pluginElement->document().securityOrigin(), LockHistory::No, LockBackForwardList::No, MaybeSendReferrer, AllowNavigationToInvalidURL::Yes, NewFrameOpenerPolicy::Allow, ShouldOpenExternalURLsPolicy::ShouldNotAllow);
     frameLoadRequest.resourceRequest().setHTTPMethod(method);
     frameLoadRequest.resourceRequest().setURL(m_pluginElement->document().completeURL(urlString));
     frameLoadRequest.resourceRequest().setHTTPHeaderFields(headerFields);
@@ -1515,14 +1519,6 @@ void PluginView::pluginProcessCrashed()
     Widget::invalidate();
 }
 
-void PluginView::willSendEventToPlugin()
-{
-    // If we're sending an event to a plug-in, we can't control how long the plug-in
-    // takes to process it (e.g. it may display a context menu), so we tell the UI process
-    // to stop the responsiveness timer in this case.
-    m_webPage->send(Messages::WebPageProxy::StopResponsivenessTimer());
-}
-
 #if PLATFORM(COCOA)
 void PluginView::pluginFocusOrWindowFocusChanged(bool pluginHasFocusAndWindowHasFocus)
 {
@@ -1576,9 +1572,9 @@ void PluginView::setCookiesForURL(const String& urlString, const String& cookieS
 
 bool PluginView::getAuthenticationInfo(const ProtectionSpace& protectionSpace, String& username, String& password)
 {
-    Credential credential = CredentialStorage::get(protectionSpace);
+    Credential credential = CredentialStorage::defaultCredentialStorage().get(protectionSpace);
     if (credential.isEmpty())
-        credential = CredentialStorage::getFromPersistentStorage(protectionSpace);
+        credential = CredentialStorage::defaultCredentialStorage().getFromPersistentStorage(protectionSpace);
 
     if (!credential.hasPassword())
         return false;
@@ -1830,7 +1826,7 @@ bool PluginView::shouldCreateTransientPaintingSnapshot() const
         return false;
 
     if (FrameView* frameView = frame()->view()) {
-        if (frameView->paintBehavior() & (PaintBehaviorSelectionOnly | PaintBehaviorForceBlackText)) {
+        if (frameView->paintBehavior() & (PaintBehaviorSelectionOnly | PaintBehaviorSelectionAndBackgroundsOnly | PaintBehaviorForceBlackText)) {
             // This paint behavior is used when drawing the find indicator and there's no need to
             // snapshot plug-ins, because they can never be painted as part of the find indicator.
             return false;

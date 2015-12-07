@@ -39,9 +39,7 @@ WebInspector.FormattedValue.createLinkifiedElementString = function(string)
 {
     var span = document.createElement("span");
     span.className = "formatted-string";
-    span.appendChild(document.createTextNode("\""));
-    span.appendChild(WebInspector.linkifyStringAsFragment(string.replace(/"/g, "\\\"")));
-    span.appendChild(document.createTextNode("\""));
+    span.append("\"", WebInspector.linkifyStringAsFragment(string.replace(/"/g, "\\\"")), "\"");
     return span;
 };
 
@@ -63,6 +61,67 @@ WebInspector.FormattedValue.createElementForNode = function(object)
             treeOutline.element.classList.add("single-node");
         span.appendChild(treeOutline.element);
     });
+
+    return span;
+};
+
+WebInspector.FormattedValue.createElementForNodePreview = function(preview)
+{
+    var value = preview.value;
+    var span = document.createElement("span");
+    span.className = "formatted-node-preview syntax-highlighted";
+
+    // Comment node preview.
+    if (value.startsWith("<!--")) {
+        var comment = span.appendChild(document.createElement("span"));
+        comment.className = "html-comment";
+        comment.textContent = value;
+        return span;
+    }
+
+    // Doctype node preview.
+    if (value.startsWith("<!DOCTYPE")) {
+        var doctype = span.appendChild(document.createElement("span"));
+        doctype.className = "html-doctype";
+        doctype.textContent = value;
+        return span;
+    }
+
+    // Element node previews have a very strict format, with at most a single attribute.
+    // We can style it up like a DOMNode without interactivity.
+    var matches = value.match(/^<(\S+?)(?: (\S+?)="(.*?)")?>$/);
+
+    // Remaining node types are often #text, #document, etc, with attribute nodes potentially being any string.
+    if (!matches) {
+        console.assert(!value.startsWith("<"), "Unexpected node preview format: " + value);
+        span.textContent = value;
+        return span;
+    }
+
+    var tag = document.createElement("span");
+    tag.className = "html-tag";
+    tag.append("<");
+
+    var tagName = tag.appendChild(document.createElement("span"));
+    tagName.className = "html-tag-name";
+    tagName.textContent = matches[1];
+
+    if (matches[2]) {
+        tag.append(" ");
+        var attribute = tag.appendChild(document.createElement("span"));
+        attribute.className = "html-attribute";
+        var attributeName = attribute.appendChild(document.createElement("span"));
+        attributeName.className = "html-attribute-name";
+        attributeName.textContent = matches[2];
+        attribute.append("=\"");
+        var attributeValue = attribute.appendChild(document.createElement("span"));
+        attributeValue.className = "html-attribute-value";
+        attributeValue.textContent = matches[3];
+        attribute.append("\"");
+    }
+
+    tag.append(">");
+    span.appendChild(tag);
 
     return span;
 };

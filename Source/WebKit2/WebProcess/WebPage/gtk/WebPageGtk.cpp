@@ -45,7 +45,7 @@
 #include <WebCore/PlatformKeyboardEvent.h>
 #include <WebCore/Settings.h>
 #include <WebCore/UserAgentGtk.h>
-#include <wtf/gobject/GUniquePtr.h>
+#include <wtf/glib/GUniquePtr.h>
 
 using namespace WebCore;
 
@@ -68,9 +68,40 @@ void WebPage::platformDetach()
 {
 }
 
-void WebPage::platformEditorState(Frame& frame, EditorState& result, IncludePostLayoutDataHint) const
+void WebPage::platformEditorState(Frame& frame, EditorState& result, IncludePostLayoutDataHint shouldIncludePostLayoutData) const
 {
-    result.cursorRect = frame.selection().absoluteCaretBounds();
+    if (shouldIncludePostLayoutData == IncludePostLayoutDataHint::No) {
+        result.isMissingPostLayoutData = true;
+        return;
+    }
+
+    auto& postLayoutData = result.postLayoutData();
+    postLayoutData.caretRectAtStart = frame.selection().absoluteCaretBounds();
+
+    const VisibleSelection& selection = frame.selection().selection();
+    if (selection.isNone())
+        return;
+
+    const Editor& editor = frame.editor();
+    if (selection.isRange()) {
+        if (editor.selectionHasStyle(CSSPropertyFontWeight, "bold") == TrueTriState)
+            postLayoutData.typingAttributes |= AttributeBold;
+        if (editor.selectionHasStyle(CSSPropertyFontStyle, "italic") == TrueTriState)
+            postLayoutData.typingAttributes |= AttributeItalics;
+        if (editor.selectionHasStyle(CSSPropertyWebkitTextDecorationsInEffect, "underline") == TrueTriState)
+            postLayoutData.typingAttributes |= AttributeUnderline;
+        if (editor.selectionHasStyle(CSSPropertyWebkitTextDecorationsInEffect, "line-through") == TrueTriState)
+            postLayoutData.typingAttributes |= AttributeStrikeThrough;
+    } else if (selection.isCaret()) {
+        if (editor.selectionStartHasStyle(CSSPropertyFontWeight, "bold"))
+            postLayoutData.typingAttributes |= AttributeBold;
+        if (editor.selectionStartHasStyle(CSSPropertyFontStyle, "italic"))
+            postLayoutData.typingAttributes |= AttributeItalics;
+        if (editor.selectionStartHasStyle(CSSPropertyWebkitTextDecorationsInEffect, "underline"))
+            postLayoutData.typingAttributes |= AttributeUnderline;
+        if (editor.selectionStartHasStyle(CSSPropertyWebkitTextDecorationsInEffect, "line-through"))
+            postLayoutData.typingAttributes |= AttributeStrikeThrough;
+    }
 }
 
 #if HAVE(ACCESSIBILITY)
@@ -86,11 +117,6 @@ void WebPage::updateAccessibilityTree()
 void WebPage::platformPreferencesDidChange(const WebPreferencesStore&)
 {
     notImplemented();
-}
-
-static inline void scroll(Page* page, ScrollDirection direction, ScrollGranularity granularity)
-{
-    page->focusController().focusedOrMainFrame().eventHandler().scrollRecursively(direction, granularity);
 }
 
 bool WebPage::performDefaultBehaviorForKeyEvent(const WebKeyboardEvent& keyboardEvent)
@@ -180,5 +206,14 @@ void WebPage::getCenterForZoomGesture(const IntPoint& centerInViewCoordinates, I
     result.scale(1 / scale, 1 / scale);
 }
 #endif
+
+void WebPage::setInputMethodState(bool enabled)
+{
+    if (m_inputMethodEnabled == enabled)
+        return;
+
+    m_inputMethodEnabled = enabled;
+    send(Messages::WebPageProxy::SetInputMethodState(enabled));
+}
 
 } // namespace WebKit

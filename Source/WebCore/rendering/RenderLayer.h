@@ -404,7 +404,7 @@ public:
     RenderLayer* enclosingAncestorForPosition(EPosition) const;
 
     // Returns the nearest enclosing layer that is scrollable.
-    RenderLayer* enclosingScrollableLayer() const;
+    RenderLayer* enclosingScrollableLayer(LayoutRect* = nullptr) const;
 
     // The layer relative to which clipping rects for this layer are computed.
     RenderLayer* clippingRootForPainting() const;
@@ -920,7 +920,6 @@ private:
 
     void updateOrRemoveFilterClients();
     void updateOrRemoveFilterEffectRenderer();
-    void updateOrRemoveMaskImageClients();
 
 #if ENABLE(CSS_COMPOSITING)
     void updateAncestorChainHasBlendingDescendants();
@@ -1062,7 +1061,6 @@ private:
 #endif
 
     bool m_hasFilterInfo : 1;
-    unsigned m_hasMaskImageInfo : 1;
 
 #if ENABLE(CSS_COMPOSITING)
     unsigned m_blendMode : 5;
@@ -1139,7 +1137,6 @@ private:
     std::unique_ptr<RenderLayerBacking> m_backing;
 
     class FilterInfo;
-    class MaskImageInfo;
 };
 
 inline void RenderLayer::clearZOrderLists()
@@ -1186,6 +1183,8 @@ private:
 #endif
 
 void makeMatrixRenderable(TransformationMatrix&, bool has3DRendering);
+
+bool compositedWithOwnBackingStore(const RenderLayer*);
 
 } // namespace WebCore
 

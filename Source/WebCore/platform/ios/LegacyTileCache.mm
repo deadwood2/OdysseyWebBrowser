@@ -28,7 +28,7 @@
 
 #if PLATFORM(IOS)
 
-#include "CoreGraphicsSPI.h"
+#include "FontAntialiasingStateSaver.h"
 #include "LegacyTileGrid.h"
 #include "LegacyTileGridTile.h"
 #include "LegacyTileLayer.h"
@@ -110,7 +110,15 @@ CALayer* LegacyTileCache::hostLayer() const
 
 FloatRect LegacyTileCache::visibleRectInLayer(CALayer *layer) const
 {
+    if (m_overrideVisibleRect)
+        return [layer convertRect:m_overrideVisibleRect.value() fromLayer:hostLayer()];
+
     return [layer convertRect:[m_window extendedVisibleRect] fromLayer:hostLayer()];
+}
+
+void LegacyTileCache::setOverrideVisibleRect(Optional<FloatRect> rect)
+{
+    m_overrideVisibleRect = rect;
 }
 
 bool LegacyTileCache::tilesOpaque() const
@@ -514,7 +522,7 @@ void LegacyTileCache::drawReplacementImage(LegacyTileLayer* layer, CGContextRef 
 void LegacyTileCache::drawWindowContent(LegacyTileLayer* layer, CGContextRef context, CGRect dirtyRect)
 {
     CGRect frame = [layer frame];
-    WKFontAntialiasingStateSaver fontAntialiasingState(context, [m_window useOrientationDependentFontAntialiasing] && [layer isOpaque]);
+    FontAntialiasingStateSaver fontAntialiasingState(context, [m_window useOrientationDependentFontAntialiasing] && [layer isOpaque]);
     fontAntialiasingState.setup([WAKWindow hasLandscapeOrientation]);
 
     CGSRegionObj drawRegion = (CGSRegionObj)[layer regionBeingDrawn];

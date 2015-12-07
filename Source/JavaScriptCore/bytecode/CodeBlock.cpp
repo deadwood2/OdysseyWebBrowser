@@ -528,7 +528,7 @@ void CodeBlock::printCallOp(PrintStream& out, ExecState* exec, int location, con
         }
 #if ENABLE(JIT)
         if (CallLinkInfo* info = map.get(CodeOrigin(location))) {
-            JSFunction* target = info->lastSeenCallee.get();
+            JSFunction* target = info->lastSeenCallee();
             if (target)
                 out.printf(" jit(%p, exec %p)", target, target->executable());
         }
@@ -655,8 +655,8 @@ void CodeBlock::dumpBytecode(PrintStream& out)
         unsigned i = 0;
         do {
             HandlerInfo& handler = m_rareData->m_exceptionHandlers[i];
-            out.printf("\t %d: { start: [%4d] end: [%4d] target: [%4d] depth: [%4d] }\n",
-                i + 1, handler.start, handler.end, handler.target, handler.scopeDepth);
+            out.printf("\t %d: { start: [%4d] end: [%4d] target: [%4d] depth: [%4d] } %s\n",
+                i + 1, handler.start, handler.end, handler.target, handler.scopeDepth, handler.typeName());
             ++i;
         } while (i < m_rareData->m_exceptionHandlers.size());
     }
@@ -761,13 +761,6 @@ void CodeBlock::dumpBytecode(
     switch (opcode) {
         case op_enter: {
             printLocationAndOp(out, exec, location, it, "enter");
-            break;
-        }
-        case op_create_lexical_environment: {
-            int r0 = (++it)->u.operand;
-            int r1 = (++it)->u.operand;
-            printLocationAndOp(out, exec, location, it, "create_lexical_environment");
-            out.printf("%s, %s", registerName(r0).data(), registerName(r1).data());
             break;
         }
         case op_get_scope: {
@@ -1057,23 +1050,6 @@ void CodeBlock::dumpBytecode(
         }
         case op_in: {
             printBinaryOp(out, exec, location, it, "in");
-            break;
-        }
-        case op_init_global_const_nop: {
-            printLocationAndOp(out, exec, location, it, "init_global_const_nop");
-            it++;
-            it++;
-            it++;
-            it++;
-            break;
-        }
-        case op_init_global_const: {
-            WriteBarrier<Unknown>* variablePointer = (++it)->u.variablePointer;
-            int r0 = (++it)->u.operand;
-            printLocationAndOp(out, exec, location, it, "init_global_const");
-            out.printf("g%d(%p), %s", m_globalObject->findVariableIndex(variablePointer).offset(), variablePointer, registerName(r0).data());
-            it++;
-            it++;
             break;
         }
         case op_get_by_id:
@@ -1468,9 +1444,11 @@ void CodeBlock::dumpBytecode(
             out.printf("%s, %s", registerName(dst).data(), registerName(newScope).data());
             break;
         }
-        case op_pop_scope: {
-            int r0 = (++it)->u.operand;
-            printLocationOpAndRegisterOperand(out, exec, location, it, "pop_scope", r0);
+        case op_get_parent_scope: {
+            int dst = (++it)->u.operand;
+            int parentScope = (++it)->u.operand;
+            printLocationAndOp(out, exec, location, it, "get_parent_scope");
+            out.printf("%s, %s", registerName(dst).data(), registerName(parentScope).data());
             break;
         }
         case op_push_name_scope: {
@@ -1479,12 +1457,24 @@ void CodeBlock::dumpBytecode(
             int k0 = (++it)->u.operand;
             JSNameScope::Type scopeType = (JSNameScope::Type)(++it)->u.operand;
             printLocationAndOp(out, exec, location, it, "push_name_scope");
-            out.printf("%s, %s, %s, %s", registerName(dst).data(), registerName(r1).data(), constantName(k0).data(), (scopeType == JSNameScope::FunctionNameScope) ? "functionScope" : ((scopeType == JSNameScope::CatchScope) ? "catchScope" : "unknownScopeType"));
+            out.printf("%s, %s, %s, %s", registerName(dst).data(), registerName(r1).data(), constantName(k0).data(), (scopeType == JSNameScope::FunctionNameScope) ? "functionScope" : "unknownScopeType");
+            break;
+        }
+        case op_create_lexical_environment: {
+            int dst = (++it)->u.operand;
+            int scope = (++it)->u.operand;
+            int symbolTable = (++it)->u.operand;
+            int initialValue = (++it)->u.operand;
+            printLocationAndOp(out, exec, location, it, "create_lexical_environment");
+            out.printf("%s, %s, %s, %s", 
+                registerName(dst).data(), registerName(scope).data(), registerName(symbolTable).data(), registerName(initialValue).data());
             break;
         }
         case op_catch: {
             int r0 = (++it)->u.operand;
-            printLocationOpAndRegisterOperand(out, exec, location, it, "catch", r0);
+            int r1 = (++it)->u.operand;
+            printLocationAndOp(out, exec, location, it, "catch");
+            out.printf("%s, %s", registerName(r0).data(), registerName(r1).data());
             break;
         }
         case op_throw: {
@@ -1704,9 +1694,6 @@ CodeBlock::CodeBlock(CopyParsedBlockTag, CodeBlock& other)
     ASSERT(m_heap->isDeferred());
     ASSERT(m_scopeRegister.isLocal());
 
-    if (SymbolTable* symbolTable = other.symbolTable())
-        m_symbolTable.set(*m_vm, m_ownerExecutable.get(), symbolTable);
-    
     setNumParameters(other.numParameters());
     optimizeAfterWarmUp();
     jitAfterWarmUp();
@@ -1761,21 +1748,6 @@ CodeBlock::CodeBlock(ScriptExecutable* ownerExecutable, UnlinkedCodeBlock* unlin
     ASSERT(m_heap->isDeferred());
     ASSERT(m_scopeRegister.isLocal());
 
-    bool didCloneSymbolTable = false;
-    
-    if (SymbolTable* symbolTable = unlinkedCodeBlock->symbolTable()) {
-        if (m_vm->typeProfiler()) {
-            ConcurrentJITLocker locker(symbolTable->m_lock);
-            symbolTable->prepareForTypeProfiling(locker);
-        }
-
-        if (codeType() == FunctionCode && symbolTable->scopeSize()) {
-            m_symbolTable.set(*m_vm, m_ownerExecutable.get(), symbolTable->cloneScopePart(*m_vm));
-            didCloneSymbolTable = true;
-        } else
-            m_symbolTable.set(*m_vm, m_ownerExecutable.get(), symbolTable);
-    }
-    
     ASSERT(m_source);
     setNumParameters(unlinkedCodeBlock->numParameters());
 
@@ -1790,6 +1762,24 @@ CodeBlock::CodeBlock(ScriptExecutable* ownerExecutable, UnlinkedCodeBlock* unlin
         LinkTimeConstant type = static_cast<LinkTimeConstant>(i);
         if (unsigned registerIndex = unlinkedCodeBlock->registerIndexForLinkTimeConstant(type))
             m_constantRegisters[registerIndex].set(*m_vm, ownerExecutable, m_globalObject->jsCellForLinkTimeConstant(type));
+    }
+
+    HashSet<int, WTF::IntHash<int>, WTF::UnsignedWithZeroKeyHashTraits<int>> clonedConstantSymbolTables;
+    {
+        HashSet<SymbolTable*> clonedSymbolTables;
+        for (unsigned i = 0; i < m_constantRegisters.size(); i++) {
+            if (m_constantRegisters[i].get().isEmpty())
+                continue;
+            if (SymbolTable* symbolTable = jsDynamicCast<SymbolTable*>(m_constantRegisters[i].get())) {
+                RELEASE_ASSERT(clonedSymbolTables.add(symbolTable).isNewEntry);
+                if (m_vm->typeProfiler()) {
+                    ConcurrentJITLocker locker(symbolTable->m_lock);
+                    symbolTable->prepareForTypeProfiling(locker);
+                }
+                m_constantRegisters[i].set(*m_vm, ownerExecutable, symbolTable->cloneScopePart(*m_vm));
+                clonedConstantSymbolTables.add(i + FirstConstantRegisterIndex);
+            }
+        }
     }
 
     m_functionDecls.resizeToFit(unlinkedCodeBlock->numberOfFunctionDecls());
@@ -1823,8 +1813,12 @@ CodeBlock::CodeBlock(ScriptExecutable* ownerExecutable, UnlinkedCodeBlock* unlin
             for (size_t i = 0; i < count; i++) {
                 const UnlinkedHandlerInfo& unlinkedHandler = unlinkedCodeBlock->exceptionHandler(i);
                 HandlerInfo& handler = m_rareData->m_exceptionHandlers[i];
+#if ENABLE(JIT)
                 handler.initialize(unlinkedHandler, nonLocalScopeDepth,
                     CodeLocationLabel(MacroAssemblerCodePtr::createFromExecutableAddress(LLInt::getCodePtr(op_catch))));
+#else
+                handler.initialize(unlinkedHandler, nonLocalScopeDepth);
+#endif
             }
         }
 
@@ -1869,6 +1863,7 @@ CodeBlock::CodeBlock(ScriptExecutable* ownerExecutable, UnlinkedCodeBlock* unlin
     UnlinkedInstructionStream::Reader instructionReader(unlinkedCodeBlock->instructions());
 
     Vector<Instruction, 0, UnsafeVectorOverflow> instructions(instructionCount);
+
     for (unsigned i = 0; !instructionReader.atEnd(); ) {
         const UnlinkedInstruction* pc = instructionReader.next();
 
@@ -1961,15 +1956,9 @@ CodeBlock::CodeBlock(ScriptExecutable* ownerExecutable, UnlinkedCodeBlock* unlin
         case op_get_array_length:
             CRASH();
 
-        case op_init_global_const_nop: {
-            ASSERT(codeType() == GlobalCode);
-            Identifier ident = identifier(pc[4].u.operand);
-            SymbolTableEntry entry = m_globalObject->symbolTable()->get(ident.impl());
-            if (entry.isNull())
-                break;
-
-            instructions[i + 0] = vm()->interpreter->getOpcode(op_init_global_const);
-            instructions[i + 1] = &m_globalObject->variableAt(entry.varOffset().scopeOffset());
+        case op_create_lexical_environment: {
+            int symbolTableIndex = pc[3].u.operand;
+            RELEASE_ASSERT(clonedConstantSymbolTables.contains(symbolTableIndex));
             break;
         }
 
@@ -1977,12 +1966,15 @@ CodeBlock::CodeBlock(ScriptExecutable* ownerExecutable, UnlinkedCodeBlock* unlin
             const Identifier& ident = identifier(pc[3].u.operand);
             ResolveType type = static_cast<ResolveType>(pc[4].u.operand);
             RELEASE_ASSERT(type != LocalClosureVar);
+            int localScopeDepth = pc[5].u.operand;
 
-            ResolveOp op = JSScope::abstractResolve(m_globalObject->globalExec(), needsActivation(), scope, ident, Get, type);
+            ResolveOp op = JSScope::abstractResolve(m_globalObject->globalExec(), localScopeDepth, scope, ident, Get, type);
             instructions[i + 4].u.operand = op.type;
             instructions[i + 5].u.operand = op.depth;
             if (op.lexicalEnvironment)
                 instructions[i + 6].u.symbolTable.set(*vm(), ownerExecutable, op.lexicalEnvironment->symbolTable());
+            else
+                instructions[i + 6].u.pointer = nullptr;
             break;
         }
 
@@ -1994,6 +1986,9 @@ CodeBlock::CodeBlock(ScriptExecutable* ownerExecutable, UnlinkedCodeBlock* unlin
 
             // get_from_scope dst, scope, id, ResolveModeAndType, Structure, Operand
 
+            int localScopeDepth = pc[5].u.operand;
+            instructions[i + 5].u.pointer = nullptr;
+
             ResolveModeAndType modeAndType = ResolveModeAndType(pc[4].u.operand);
             if (modeAndType.type() == LocalClosureVar) {
                 instructions[i + 4] = ResolveModeAndType(modeAndType.mode(), ClosureVar).operand();
@@ -2001,8 +1996,7 @@ CodeBlock::CodeBlock(ScriptExecutable* ownerExecutable, UnlinkedCodeBlock* unlin
             }
 
             const Identifier& ident = identifier(pc[3].u.operand);
-
-            ResolveOp op = JSScope::abstractResolve(m_globalObject->globalExec(), needsActivation(), scope, ident, Get, modeAndType.type());
+            ResolveOp op = JSScope::abstractResolve(m_globalObject->globalExec(), localScopeDepth, scope, ident, Get, modeAndType.type());
 
             instructions[i + 4].u.operand = ResolveModeAndType(modeAndType.mode(), op.type).operand();
             if (op.type == GlobalVar || op.type == GlobalVarWithVarInjectionChecks)
@@ -2019,11 +2013,13 @@ CodeBlock::CodeBlock(ScriptExecutable* ownerExecutable, UnlinkedCodeBlock* unlin
             if (modeAndType.type() == LocalClosureVar) {
                 // Only do watching if the property we're putting to is not anonymous.
                 if (static_cast<unsigned>(pc[2].u.operand) != UINT_MAX) {
-                    RELEASE_ASSERT(didCloneSymbolTable);
+                    int symbolTableIndex = pc[5].u.operand;
+                    RELEASE_ASSERT(clonedConstantSymbolTables.contains(symbolTableIndex));
+                    SymbolTable* symbolTable = jsCast<SymbolTable*>(getConstant(symbolTableIndex));
                     const Identifier& ident = identifier(pc[2].u.operand);
-                    ConcurrentJITLocker locker(m_symbolTable->m_lock);
-                    SymbolTable::Map::iterator iter = m_symbolTable->find(locker, ident.impl());
-                    ASSERT(iter != m_symbolTable->end(locker));
+                    ConcurrentJITLocker locker(symbolTable->m_lock);
+                    auto iter = symbolTable->find(locker, ident.impl());
+                    RELEASE_ASSERT(iter != symbolTable->end(locker));
                     iter->value.prepareToWatch();
                     instructions[i + 5].u.watchpointSet = iter->value.watchpointSet();
                 } else
@@ -2032,8 +2028,9 @@ CodeBlock::CodeBlock(ScriptExecutable* ownerExecutable, UnlinkedCodeBlock* unlin
             }
 
             const Identifier& ident = identifier(pc[2].u.operand);
-
-            ResolveOp op = JSScope::abstractResolve(m_globalObject->globalExec(), needsActivation(), scope, ident, Put, modeAndType.type());
+            int localScopeDepth = pc[5].u.operand;
+            instructions[i + 5].u.pointer = nullptr;
+            ResolveOp op = JSScope::abstractResolve(m_globalObject->globalExec(), localScopeDepth, scope, ident, Put, modeAndType.type());
 
             instructions[i + 4].u.operand = ResolveModeAndType(modeAndType.mode(), op.type).operand();
             if (op.type == GlobalVar || op.type == GlobalVarWithVarInjectionChecks)
@@ -2061,14 +2058,14 @@ CodeBlock::CodeBlock(ScriptExecutable* ownerExecutable, UnlinkedCodeBlock* unlin
             SymbolTable* symbolTable = nullptr;
 
             switch (flag) {
-            case ProfileTypeBytecodePutToScope:
-            case ProfileTypeBytecodeGetFromScope: {
+            case ProfileTypeBytecodeClosureVar: {
                 const Identifier& ident = identifier(pc[4].u.operand);
+                int localScopeDepth = pc[2].u.operand;
                 ResolveType type = static_cast<ResolveType>(pc[5].u.operand);
-                ResolveOp op = JSScope::abstractResolve(m_globalObject->globalExec(), needsActivation(), scope, ident, (flag == ProfileTypeBytecodeGetFromScope ? Get : Put), type);
+                // Even though type profiling may be profiling either a Get or a Put, we can always claim a Get because
+                // we're abstractly "read"ing from a JSScope.
+                ResolveOp op = JSScope::abstractResolve(m_globalObject->globalExec(), localScopeDepth, scope, ident, Get, type);
 
-                // FIXME: handle other values for op.type here, and also consider what to do when we can't statically determine the globalID
-                // https://bugs.webkit.org/show_bug.cgi?id=135184
                 if (op.type == ClosureVar)
                     symbolTable = op.lexicalEnvironment->symbolTable();
                 else if (op.type == GlobalVar)
@@ -2085,24 +2082,16 @@ CodeBlock::CodeBlock(ScriptExecutable* ownerExecutable, UnlinkedCodeBlock* unlin
 
                 break;
             }
-            case ProfileTypeBytecodePutToLocalScope:
-            case ProfileTypeBytecodeGetFromLocalScope: {
+            case ProfileTypeBytecodeLocallyResolved: {
+                int symbolTableIndex = pc[2].u.operand;
+                RELEASE_ASSERT(clonedConstantSymbolTables.contains(symbolTableIndex));
+                SymbolTable* symbolTable = jsCast<SymbolTable*>(getConstant(symbolTableIndex));
                 const Identifier& ident = identifier(pc[4].u.operand);
-                symbolTable = m_symbolTable.get();
                 ConcurrentJITLocker locker(symbolTable->m_lock);
                 // If our parent scope was created while profiling was disabled, it will not have prepared for profiling yet.
-                symbolTable->prepareForTypeProfiling(locker);
                 globalVariableID = symbolTable->uniqueIDForVariable(locker, ident.impl(), *vm());
                 globalTypeSet = symbolTable->globalTypeSetForVariable(locker, ident.impl(), *vm());
 
-                break;
-            }
-
-            case ProfileTypeBytecodeHasGlobalID: {
-                symbolTable = m_symbolTable.get();
-                ConcurrentJITLocker locker(symbolTable->m_lock);
-                globalVariableID = symbolTable->uniqueIDForOffset(locker, VarOffset(profileRegister), *vm());
-                globalTypeSet = symbolTable->globalTypeSetForOffset(locker, VarOffset(profileRegister), *vm());
                 break;
             }
             case ProfileTypeBytecodeDoesNotHaveGlobalID: 
@@ -2770,7 +2759,7 @@ void CodeBlock::resetStubDuringGCInternal(RepatchBuffer& repatchBuffer, Structur
 CallLinkInfo* CodeBlock::getCallLinkInfoForBytecodeIndex(unsigned index)
 {
     for (auto iter = m_callLinkInfos.begin(); !!iter; ++iter) {
-        if ((*iter)->codeOrigin == CodeOrigin(index))
+        if ((*iter)->codeOrigin() == CodeOrigin(index))
             return *iter;
     }
     return nullptr;
@@ -2781,7 +2770,6 @@ void CodeBlock::stronglyVisitStrongReferences(SlotVisitor& visitor)
 {
     visitor.append(&m_globalObject);
     visitor.append(&m_ownerExecutable);
-    visitor.append(&m_symbolTable);
     visitor.append(&m_unlinkedCode);
     if (m_rareData)
         m_rareData->m_evalCodeCache.visitAggregate(visitor);
@@ -2795,6 +2783,13 @@ void CodeBlock::stronglyVisitStrongReferences(SlotVisitor& visitor)
 
 #if ENABLE(DFG_JIT)
     if (JITCode::isOptimizingJIT(jitType())) {
+        // FIXME: This is an antipattern for two reasons. References introduced by the DFG
+        // that aren't in the original CodeBlock being compiled should be weakly referenced.
+        // Inline call frames aren't in the original CodeBlock, so they qualify as weak. Also,
+        // those weak references should already be tracked in the DFG as weak FrozenValues. So,
+        // there is probably no need for this. We already have assertions that this should be
+        // unnecessary.
+        // https://bugs.webkit.org/show_bug.cgi?id=146613
         DFG::CommonData* dfgCommon = m_jitCode->dfgCommon();
         if (dfgCommon->inlineCallFrames.get())
             dfgCommon->inlineCallFrames->visitAggregate(visitor);
@@ -2874,7 +2869,7 @@ bool CodeBlock::hasOptimizedReplacement()
 }
 #endif
 
-HandlerInfo* CodeBlock::handlerForBytecodeOffset(unsigned bytecodeOffset)
+HandlerInfo* CodeBlock::handlerForBytecodeOffset(unsigned bytecodeOffset, RequiredHandler requiredHandler)
 {
     RELEASE_ASSERT(bytecodeOffset < instructions().size());
 
@@ -2884,6 +2879,9 @@ HandlerInfo* CodeBlock::handlerForBytecodeOffset(unsigned bytecodeOffset)
     Vector<HandlerInfo>& exceptionHandlers = m_rareData->m_exceptionHandlers;
     for (size_t i = 0; i < exceptionHandlers.size(); ++i) {
         HandlerInfo& handler = exceptionHandlers[i];
+        if ((requiredHandler == RequiredHandler::CatchHandler) && !handler.isCatchHandler())
+            continue;
+
         // Handlers are ordered innermost first, so the first handler we encounter
         // that contains the source address is the correct handler to use.
         if (handler.start <= bytecodeOffset && handler.end > bytecodeOffset)
@@ -2953,27 +2951,6 @@ void CodeBlock::shrinkToFit(ShrinkMode shrinkMode)
             m_rareData->m_stringSwitchJumpTables.shrinkToFit();
         }
     } // else don't shrink these, because we would have already pointed pointers into these tables.
-}
-
-unsigned CodeBlock::addOrFindConstant(JSValue v)
-{
-    unsigned result;
-    if (findConstant(v, result))
-        return result;
-    return addConstant(v);
-}
-
-bool CodeBlock::findConstant(JSValue v, unsigned& index)
-{
-    unsigned numberOfConstants = numberOfConstantRegisters();
-    for (unsigned i = 0; i < numberOfConstants; ++i) {
-        if (getConstant(FirstConstantRegisterIndex + i) == v) {
-            index = i;
-            return true;
-        }
-    }
-    index = numberOfConstants;
-    return false;
 }
 
 #if ENABLE(JIT)
@@ -3832,13 +3809,19 @@ bool CodeBlock::usesOpcode(OpcodeID opcodeID)
 
 String CodeBlock::nameForRegister(VirtualRegister virtualRegister)
 {
-    ConcurrentJITLocker locker(symbolTable()->m_lock);
-    SymbolTable::Map::iterator end = symbolTable()->end(locker);
-    for (SymbolTable::Map::iterator ptr = symbolTable()->begin(locker); ptr != end; ++ptr) {
-        if (ptr->value.varOffset() == VarOffset(virtualRegister)) {
-            // FIXME: This won't work from the compilation thread.
-            // https://bugs.webkit.org/show_bug.cgi?id=115300
-            return ptr->key.get();
+    for (unsigned i = 0; i < m_constantRegisters.size(); i++) {
+        if (m_constantRegisters[i].get().isEmpty())
+            continue;
+        if (SymbolTable* symbolTable = jsDynamicCast<SymbolTable*>(m_constantRegisters[i].get())) {
+            ConcurrentJITLocker locker(symbolTable->m_lock);
+            auto end = symbolTable->end(locker);
+            for (auto ptr = symbolTable->begin(locker); ptr != end; ++ptr) {
+                if (ptr->value.varOffset() == VarOffset(virtualRegister)) {
+                    // FIXME: This won't work from the compilation thread.
+                    // https://bugs.webkit.org/show_bug.cgi?id=115300
+                    return ptr->key.get();
+                }
+            }
         }
     }
     if (virtualRegister == thisRegister())

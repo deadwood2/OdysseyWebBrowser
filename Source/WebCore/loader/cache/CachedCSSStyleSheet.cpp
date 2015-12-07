@@ -78,9 +78,9 @@ String CachedCSSStyleSheet::encoding() const
     return m_decoder->encoding().name();
 }
     
-const String CachedCSSStyleSheet::sheetText(bool* hasValidMIMEType) const
+const String CachedCSSStyleSheet::sheetText(MIMETypeCheck mimeTypeCheck, bool* hasValidMIMEType) const
 { 
-    if (!m_data || m_data->isEmpty() || !canUseSheet(hasValidMIMEType))
+    if (!m_data || m_data->isEmpty() || !canUseSheet(mimeTypeCheck, hasValidMIMEType))
         return String();
     
     if (!m_decodedSheetText.isNull())
@@ -113,10 +113,13 @@ void CachedCSSStyleSheet::checkNotify()
         c->setCSSStyleSheet(m_resourceRequest.url(), m_response.url(), m_decoder->encoding().name(), this);
 }
 
-bool CachedCSSStyleSheet::canUseSheet(bool* hasValidMIMEType) const
+bool CachedCSSStyleSheet::canUseSheet(MIMETypeCheck mimeTypeCheck, bool* hasValidMIMEType) const
 {
     if (errorOccurred())
         return false;
+
+    if (mimeTypeCheck == MIMETypeCheck::Lax)
+        return true;
 
     // This check exactly matches Firefox.  Note that we grab the Content-Type
     // header directly because we want to see what the value is BEFORE content
@@ -138,7 +141,7 @@ void CachedCSSStyleSheet::destroyDecodedData()
         return;
 
     m_parsedStyleSheetCache->removedFromMemoryCache();
-    m_parsedStyleSheetCache.clear();
+    m_parsedStyleSheetCache = nullptr;
 
     setDecodedSize(0);
 }
@@ -146,11 +149,11 @@ void CachedCSSStyleSheet::destroyDecodedData()
 PassRefPtr<StyleSheetContents> CachedCSSStyleSheet::restoreParsedStyleSheet(const CSSParserContext& context, CachePolicy cachePolicy)
 {
     if (!m_parsedStyleSheetCache)
-        return 0;
+        return nullptr;
     if (!m_parsedStyleSheetCache->subresourcesAllowReuse(cachePolicy)) {
         m_parsedStyleSheetCache->removedFromMemoryCache();
-        m_parsedStyleSheetCache.clear();
-        return 0;
+        m_parsedStyleSheetCache = nullptr;
+        return nullptr;
     }
 
     ASSERT(m_parsedStyleSheetCache->isCacheable());
@@ -158,7 +161,7 @@ PassRefPtr<StyleSheetContents> CachedCSSStyleSheet::restoreParsedStyleSheet(cons
 
     // Contexts must be identical so we know we would get the same exact result if we parsed again.
     if (m_parsedStyleSheetCache->parserContext() != context)
-        return 0;
+        return nullptr;
 
     didAccessDecodedData(monotonicallyIncreasingTime());
 

@@ -28,8 +28,6 @@
 
 #include "DatabaseProcessMessages.h"
 #include "DatabaseProcessProxyMessages.h"
-#include "WebOriginDataManagerProxy.h"
-#include "WebOriginDataManagerProxyMessages.h"
 #include "WebProcessPool.h"
 #include "WebsiteData.h"
 #include <WebCore/NotImplemented.h>
@@ -47,9 +45,9 @@ static uint64_t generateCallbackID()
     return ++callbackID;
 }
 
-PassRefPtr<DatabaseProcessProxy> DatabaseProcessProxy::create(WebProcessPool* processPool)
+Ref<DatabaseProcessProxy> DatabaseProcessProxy::create(WebProcessPool* processPool)
 {
-    return adoptRef(new DatabaseProcessProxy(processPool));
+    return adoptRef(*new DatabaseProcessProxy(processPool));
 }
 
 DatabaseProcessProxy::DatabaseProcessProxy(WebProcessPool* processPool)
@@ -81,11 +79,6 @@ void DatabaseProcessProxy::didReceiveMessage(IPC::Connection& connection, IPC::M
 {
     if (decoder.messageReceiverName() == Messages::DatabaseProcessProxy::messageReceiverName()) {
         didReceiveDatabaseProcessProxyMessage(connection, decoder);
-        return;
-    }
-
-    if (decoder.messageReceiverName() == Messages::WebOriginDataManagerProxy::messageReceiverName()) {
-        m_processPool->supplement<WebOriginDataManagerProxy>()->didReceiveMessage(connection, decoder);
         return;
     }
 }

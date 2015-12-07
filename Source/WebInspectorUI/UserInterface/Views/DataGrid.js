@@ -719,10 +719,13 @@ WebInspector.DataGrid.prototype = {
 
     insertChild: function(child, index)
     {
+        console.assert(child);
         if (!child)
-            throw("insertChild: Node can't be undefined or null.");
+            return;
+
+        console.assert(child.parent !== this);
         if (child.parent === this)
-            throw("insertChild: Node is already a child of this node.");
+            return;
 
         if (child.parent)
             child.parent.removeChild(child);
@@ -755,10 +758,13 @@ WebInspector.DataGrid.prototype = {
 
     removeChild: function(child)
     {
+        console.assert(child);
         if (!child)
-            throw("removeChild: Node can't be undefined or null.");
+            return;
+
+        console.assert(child.parent === this);
         if (child.parent !== this)
-            throw("removeChild: Node is not a child of this node.");
+            return;
 
         child.deselect();
         child._detach();
@@ -1572,7 +1578,7 @@ WebInspector.DataGridNode.prototype = {
 
         var div = cellElement.createChild("div");
         var content = this.createCellContent(columnIdentifier, cellElement);
-        div.appendChild(content instanceof Node ? content : document.createTextNode(content));
+        div.append(content);
 
         if (columnIdentifier === this.dataGrid.disclosureColumnIdentifier) {
             cellElement.classList.add("disclosure");
@@ -1719,7 +1725,7 @@ WebInspector.DataGridNode.prototype = {
             return;
 
         if (this.dataGrid.selectedNode)
-            this.dataGrid.selectedNode.deselect();
+            this.dataGrid.selectedNode.deselect(true);
 
         this._selected = true;
         this.dataGrid.selectedNode = this;
@@ -1869,8 +1875,10 @@ WebInspector.DataGridNode.prototype = {
         if (this._savedPosition)
             return;
 
+        console.assert(this.parent);
         if (!this.parent)
-            throw("savePosition: Node must have a parent.");
+            return;
+
         this._savedPosition = {
             parent: this.parent,
             index: this.parent.children.indexOf(this)

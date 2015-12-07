@@ -70,7 +70,7 @@ static bool operator!=(const PresentationAttributeCacheKey& a, const Presentatio
 
 static PresentationAttributeCache& presentationAttributeCache()
 {
-    DEPRECATED_DEFINE_STATIC_LOCAL(PresentationAttributeCache, cache, ());
+    static NeverDestroyed<PresentationAttributeCache> cache;
     return cache;
 }
 
@@ -114,8 +114,13 @@ private:
 
 static PresentationAttributeCacheCleaner& presentationAttributeCacheCleaner()
 {
-    DEPRECATED_DEFINE_STATIC_LOCAL(PresentationAttributeCacheCleaner, cleaner, ());
+    static NeverDestroyed<PresentationAttributeCacheCleaner> cleaner;
     return cleaner;
+}
+
+void StyledElement::clearPresentationAttributeCache()
+{
+    presentationAttributeCache().clear();
 }
 
 void StyledElement::synchronizeStyleAttributeInternal(StyledElement* styledElement)
@@ -180,7 +185,7 @@ inline void StyledElement::setInlineStyleFromString(const AtomicString& newStyle
     // We reconstruct the property set instead of mutating if there is no CSSOM wrapper.
     // This makes wrapperless property sets immutable and so cacheable.
     if (inlineStyle && !is<MutableStyleProperties>(*inlineStyle))
-        inlineStyle.clear();
+        inlineStyle = nullptr;
 
     if (!inlineStyle)
         inlineStyle = CSSParser::parseInlineStyleDeclaration(newStyleString, this);
@@ -197,8 +202,8 @@ void StyledElement::styleAttributeChanged(const AtomicString& newStyleString, At
     if (newStyleString.isNull()) {
         if (PropertySetCSSStyleDeclaration* cssomWrapper = inlineStyleCSSOMWrapper())
             cssomWrapper->clearParentElement();
-        ensureUniqueElementData().m_inlineStyle.clear();
-    } else if (reason == ModifiedByCloning || document().contentSecurityPolicy()->allowInlineStyle(document().url(), startLineNumber))
+        ensureUniqueElementData().m_inlineStyle = nullptr;
+    } else if (reason == ModifiedByCloning || document().contentSecurityPolicy()->allowInlineStyle(document().url(), startLineNumber, isInUserAgentShadowTree()))
         setInlineStyleFromString(newStyleString);
 
     elementData()->setStyleAttributeIsDirty(false);

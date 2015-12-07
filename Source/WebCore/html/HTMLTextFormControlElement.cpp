@@ -150,10 +150,7 @@ bool HTMLTextFormControlElement::placeholderShouldBeVisible() const
 {
     // This function is used by the style resolver to match the :placeholder-shown pseudo class.
     // Since it is used for styling, it must not use any value depending on the style.
-    return supportsPlaceholder()
-        && isEmptyValue()
-        && !isPlaceholderEmpty()
-        && (document().focusedElement() != this || (document().page()->theme().shouldShowPlaceholderWhenFocused()));
+    return supportsPlaceholder() && isEmptyValue() && !isPlaceholderEmpty();
 }
 
 void HTMLTextFormControlElement::updatePlaceholderVisibility()
@@ -185,15 +182,15 @@ void HTMLTextFormControlElement::setSelectionDirection(const String& direction)
     setSelectionRange(selectionStart(), selectionEnd(), direction);
 }
 
-void HTMLTextFormControlElement::select()
+void HTMLTextFormControlElement::select(const AXTextStateChangeIntent& intent)
 {
     // FIXME: We should abstract the selection behavior into an EditingBehavior function instead
     // of hardcoding the behavior using a macro define.
 #if PLATFORM(IOS)
     // We don't want to select all the text on iOS. Instead use the standard textfield behavior of going to the end of the line.
-    setSelectionRange(std::numeric_limits<int>::max(), std::numeric_limits<int>::max(), SelectionHasForwardDirection);
+    setSelectionRange(std::numeric_limits<int>::max(), std::numeric_limits<int>::max(), SelectionHasForwardDirection, intent);
 #else
-    setSelectionRange(0, std::numeric_limits<int>::max(), SelectionHasNoDirection);
+    setSelectionRange(0, std::numeric_limits<int>::max(), SelectionHasNoDirection, intent);
 #endif
 }
 
@@ -272,7 +269,7 @@ void HTMLTextFormControlElement::setRangeText(const String& replacement, unsigne
     setSelectionRange(newSelectionStart, newSelectionEnd, SelectionHasNoDirection);
 }
 
-void HTMLTextFormControlElement::setSelectionRange(int start, int end, const String& directionString)
+void HTMLTextFormControlElement::setSelectionRange(int start, int end, const String& directionString, const AXTextStateChangeIntent& intent)
 {
     TextFieldSelectionDirection direction = SelectionHasNoDirection;
     if (directionString == "forward")
@@ -280,10 +277,10 @@ void HTMLTextFormControlElement::setSelectionRange(int start, int end, const Str
     else if (directionString == "backward")
         direction = SelectionHasBackwardDirection;
 
-    return setSelectionRange(start, end, direction);
+    return setSelectionRange(start, end, direction, intent);
 }
 
-void HTMLTextFormControlElement::setSelectionRange(int start, int end, TextFieldSelectionDirection direction)
+void HTMLTextFormControlElement::setSelectionRange(int start, int end, TextFieldSelectionDirection direction, const AXTextStateChangeIntent& intent)
 {
     if (!isTextFormControl())
         return;
@@ -317,7 +314,7 @@ void HTMLTextFormControlElement::setSelectionRange(int start, int end, TextField
     }
 
     if (Frame* frame = document().frame())
-        frame->selection().moveWithoutValidationTo(startPosition, endPosition, direction != SelectionHasNoDirection, !hasFocus);
+        frame->selection().moveWithoutValidationTo(startPosition, endPosition, direction != SelectionHasNoDirection, !hasFocus, intent);
 }
 
 int HTMLTextFormControlElement::indexForVisiblePosition(const VisiblePosition& position) const
@@ -468,9 +465,9 @@ PassRefPtr<Range> HTMLTextFormControlElement::selection() const
     return Range::create(document(), startNode, start, endNode, end);
 }
 
-void HTMLTextFormControlElement::restoreCachedSelection()
+void HTMLTextFormControlElement::restoreCachedSelection(const AXTextStateChangeIntent& intent)
 {
-    setSelectionRange(m_cachedSelectionStart, m_cachedSelectionEnd, cachedSelectionDirection());
+    setSelectionRange(m_cachedSelectionStart, m_cachedSelectionEnd, cachedSelectionDirection(), intent);
 }
 
 void HTMLTextFormControlElement::selectionChanged(bool shouldFireSelectEvent)

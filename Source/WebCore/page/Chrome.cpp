@@ -213,23 +213,6 @@ bool Chrome::canRunModal() const
     return m_client.canRunModal();
 }
 
-static bool canRunModalIfDuringPageDismissal(Page& page, ChromeClient::DialogType dialog, const String& message)
-{
-    for (Frame* frame = &page.mainFrame(); frame; frame = frame->tree().traverseNext()) {
-        FrameLoader::PageDismissalType dismissal = frame->loader().pageDismissalEventBeingDispatched();
-        if (dismissal != FrameLoader::NoDismissal)
-            return page.chrome().client().shouldRunModalDialogDuringPageDismissal(dialog, message, dismissal);
-    }
-    return true;
-}
-
-bool Chrome::canRunModalNow() const
-{
-    // If loads are blocked, we can't run modal because the contents
-    // of the modal dialog will never show up!
-    return canRunModal() && canRunModalIfDuringPageDismissal(m_page, ChromeClient::HTMLDialog, String());
-}
-
 void Chrome::runModal() const
 {
     // Defer callbacks in all the other pages in this group, so we don't try to run JavaScript
@@ -309,9 +292,6 @@ void Chrome::closeWindowSoon()
 
 void Chrome::runJavaScriptAlert(Frame* frame, const String& message)
 {
-    if (!canRunModalIfDuringPageDismissal(m_page, ChromeClient::AlertDialog, message))
-        return;
-
     // Defer loads in case the client method runs a new event loop that would
     // otherwise cause the load to continue while we're in the middle of executing JavaScript.
     PageGroupLoadDeferrer deferrer(m_page, true);
@@ -327,9 +307,6 @@ void Chrome::runJavaScriptAlert(Frame* frame, const String& message)
 
 bool Chrome::runJavaScriptConfirm(Frame* frame, const String& message)
 {
-    if (!canRunModalIfDuringPageDismissal(m_page, ChromeClient::ConfirmDialog, message))
-        return false;
-
     // Defer loads in case the client method runs a new event loop that would
     // otherwise cause the load to continue while we're in the middle of executing JavaScript.
     PageGroupLoadDeferrer deferrer(m_page, true);
@@ -346,9 +323,6 @@ bool Chrome::runJavaScriptConfirm(Frame* frame, const String& message)
 
 bool Chrome::runJavaScriptPrompt(Frame* frame, const String& prompt, const String& defaultValue, String& result)
 {
-    if (!canRunModalIfDuringPageDismissal(m_page, ChromeClient::PromptDialog, prompt))
-        return false;
-
     // Defer loads in case the client method runs a new event loop that would
     // otherwise cause the load to continue while we're in the middle of executing JavaScript.
     PageGroupLoadDeferrer deferrer(m_page, true);
@@ -371,20 +345,6 @@ void Chrome::setStatusbarText(Frame* frame, const String& status)
 {
     ASSERT(frame);
     m_client.setStatusbarText(frame->displayStringModifiedByEncoding(status));
-}
-
-bool Chrome::shouldInterruptJavaScript()
-{
-    // Defer loads in case the client method runs a new event loop that would
-    // otherwise cause the load to continue while we're in the middle of executing JavaScript.
-    PageGroupLoadDeferrer deferrer(m_page, true);
-
-    return m_client.shouldInterruptJavaScript();
-}
-
-IntRect Chrome::windowResizerRect() const
-{
-    return m_client.windowResizerRect();
 }
 
 void Chrome::mouseDidMoveOverElement(const HitTestResult& result, unsigned modifierFlags)
@@ -588,13 +548,13 @@ bool Chrome::hasOpenedPopup() const
     return m_client.hasOpenedPopup();
 }
 
-PassRefPtr<PopupMenu> Chrome::createPopupMenu(PopupMenuClient* client) const
+RefPtr<PopupMenu> Chrome::createPopupMenu(PopupMenuClient* client) const
 {
     notifyPopupOpeningObservers();
     return m_client.createPopupMenu(client);
 }
 
-PassRefPtr<SearchPopupMenu> Chrome::createSearchPopupMenu(PopupMenuClient* client) const
+RefPtr<SearchPopupMenu> Chrome::createSearchPopupMenu(PopupMenuClient* client) const
 {
     notifyPopupOpeningObservers();
     return m_client.createSearchPopupMenu(client);
@@ -635,8 +595,8 @@ void Chrome::unregisterPopupOpeningObserver(PopupOpeningObserver* observer)
 void Chrome::notifyPopupOpeningObservers() const
 {
     const Vector<PopupOpeningObserver*> observers(m_popupOpeningObservers);
-    for (size_t i = 0; i < observers.size(); ++i)
-        observers[i]->willOpenPopup();
+    for (auto& observer : observers)
+        observer->willOpenPopup();
 }
 
 void Chrome::didBeginTrackingPotentialLongMousePress(const IntPoint& mouseDownPosition, const HitTestResult& hitTestResult)

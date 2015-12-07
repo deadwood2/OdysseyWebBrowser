@@ -38,7 +38,7 @@ class RemoteScrollingCoordinatorProxy;
 
 class RemoteScrollingTree : public WebCore::ScrollingTree {
 public:
-    static RefPtr<RemoteScrollingTree> create(RemoteScrollingCoordinatorProxy&);
+    static Ref<RemoteScrollingTree> create(RemoteScrollingCoordinatorProxy&);
     virtual ~RemoteScrollingTree();
 
     virtual bool isRemoteScrollingTree() const override { return true; }
@@ -48,6 +48,7 @@ public:
 
     virtual void scrollingTreeNodeDidScroll(WebCore::ScrollingNodeID, const WebCore::FloatPoint& scrollPosition, WebCore::SetOrSyncScrollingLayerPosition = WebCore::SyncScrollingLayerPosition) override;
     virtual void scrollingTreeNodeRequestsScroll(WebCore::ScrollingNodeID, const WebCore::FloatPoint& scrollPosition, bool representsProgrammaticScroll) override;
+    void currentSnapPointIndicesDidChange(WebCore::ScrollingNodeID, unsigned horizontal, unsigned vertical) override;
 
 private:
     explicit RemoteScrollingTree(RemoteScrollingCoordinatorProxy&);

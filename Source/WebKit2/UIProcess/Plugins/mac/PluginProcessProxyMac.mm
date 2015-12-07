@@ -77,6 +77,7 @@ bool PluginProcessProxy::pluginNeedsExecutableHeap(const PluginModuleInfo& plugi
     return false;
 }
 
+#if __MAC_OS_X_VERSION_MIN_REQUIRED <= 101000
 bool PluginProcessProxy::createPropertyListFile(const PluginModuleInfo& plugin)
 {
     NSBundle *webKit2Bundle = [NSBundle bundleWithIdentifier:@"com.apple.WebKit"];
@@ -126,6 +127,7 @@ bool PluginProcessProxy::createPropertyListFile(const PluginModuleInfo& plugin)
 
     return true;
 }
+#endif
 
 static bool shouldUseXPC(ProcessLauncher::LaunchOptions& launchOptions, const PluginProcessAttributes& pluginProcessAttributes)
 {
@@ -389,8 +391,15 @@ static bool isJavaUpdaterURL(const PluginProcessAttributes& pluginProcessAttribu
     if (![url isFileURL])
         return false;
 
-    NSString *javaUpdaterPath = [NSString pathWithComponents:[NSArray arrayWithObjects:(NSString *)pluginProcessAttributes.moduleInfo.path, @"Contents/Resources/Java Updater.app", nil]];
-    return [url.path isEqualToString:javaUpdaterPath];
+    NSArray *javaUpdaterAppNames = [NSArray arrayWithObjects:@"Java Updater.app", @"JavaUpdater.app", nil];
+
+    for (NSString *javaUpdaterAppName in javaUpdaterAppNames) {
+        NSString *javaUpdaterPath = [NSString pathWithComponents:[NSArray arrayWithObjects:(NSString *)pluginProcessAttributes.moduleInfo.path, @"Contents/Resources", javaUpdaterAppName, nil]];
+        if ([url.path isEqualToString:javaUpdaterPath])
+            return YES;
+    }
+
+    return NO;
 }
 
 static bool shouldLaunchApplicationAtURL(const PluginProcessAttributes& pluginProcessAttributes, const String& urlString)

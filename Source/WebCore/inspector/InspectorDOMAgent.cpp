@@ -75,6 +75,7 @@
 #include "NodeList.h"
 #include "Page.h"
 #include "Pasteboard.h"
+#include "PseudoElement.h"
 #include "RenderStyle.h"
 #include "RenderStyleConstants.h"
 #include "ScriptState.h"
@@ -103,7 +104,7 @@ using namespace HTMLNames;
 static const size_t maxTextSize = 10000;
 static const UChar ellipsisUChar[] = { 0x2026, 0 };
 
-static Color parseColor(const RefPtr<InspectorObject>&& colorObject)
+static Color parseColor(const InspectorObject* colorObject)
 {
     if (!colorObject)
         return Color::transparent;
@@ -127,23 +128,22 @@ static Color parseColor(const RefPtr<InspectorObject>&& colorObject)
     return Color(r, g, b, static_cast<int>(a * 255));
 }
 
-static Color parseConfigColor(const String& fieldName, InspectorObject* configObject)
+static Color parseConfigColor(const String& fieldName, const InspectorObject* configObject)
 {
     RefPtr<InspectorObject> colorObject;
     configObject->getObject(fieldName, colorObject);
-    return parseColor(WTF::move(colorObject));
+
+    return parseColor(colorObject.get());
 }
 
-static bool parseQuad(const RefPtr<InspectorArray>& quadArray, FloatQuad* quad)
+static bool parseQuad(const InspectorArray& quadArray, FloatQuad* quad)
 {
-    if (!quadArray)
-        return false;
     const size_t coordinatesInQuad = 8;
     double coordinates[coordinatesInQuad];
-    if (quadArray->length() != coordinatesInQuad)
+    if (quadArray.length() != coordinatesInQuad)
         return false;
     for (size_t i = 0; i < coordinatesInQuad; ++i) {
-        if (!quadArray->get(i)->asDouble(*(coordinates + i)))
+        if (!quadArray.get(i)->asDouble(*(coordinates + i)))
             return false;
     }
     quad->setP1(FloatPoint(coordinates[0], coordinates[1]));
@@ -239,7 +239,7 @@ void InspectorDOMAgent::didCreateFrontendAndBackend(Inspector::FrontendChannel* 
 void InspectorDOMAgent::willDestroyFrontendAndBackend(Inspector::DisconnectReason)
 {
     m_frontendDispatcher = nullptr;
-    m_backendDispatcher.clear();
+    m_backendDispatcher = nullptr;
 
     m_history.reset();
     m_domEditor.reset();
@@ -273,7 +273,7 @@ void InspectorDOMAgent::reset()
     discardBindings();
     if (m_revalidateStyleAttrTask)
         m_revalidateStyleAttrTask->reset();
-    m_document = 0;
+    m_document = nullptr;
 }
 
 void InspectorDOMAgent::setDOMListener(DOMListener* listener)
@@ -333,8 +333,13 @@ void InspectorDOMAgent::unbind(Node* node, NodeToIdMap* nodesMap)
     }
 
     if (is<Element>(*node)) {
-        if (ShadowRoot* root = downcast<Element>(*node).shadowRoot())
+        Element& element = downcast<Element>(*node);
+        if (ShadowRoot* root = element.shadowRoot())
             unbind(root, nodesMap);
+        if (PseudoElement* beforeElement = element.beforePseudoElement())
+            unbind(beforeElement, nodesMap);
+        if (PseudoElement* afterElement = element.afterPseudoElement())
+            unbind(afterElement, nodesMap);
     }
 
     nodesMap->remove(node);
@@ -393,7 +398,11 @@ Node* InspectorDOMAgent::assertEditableNode(ErrorString& errorString, int nodeId
     if (!node)
         return nullptr;
     if (node->isInShadowTree()) {
-        errorString = ASCIILiteral("Can not edit nodes from shadow trees");
+        errorString = ASCIILiteral("Cannot edit nodes from shadow trees");
+        return nullptr;
+    }
+    if (node->isPseudoElement()) {
+        errorString = ASCIILiteral("Cannot edit pseudo elements");
         return nullptr;
     }
     return node;
@@ -405,7 +414,11 @@ Element* InspectorDOMAgent::assertEditableElement(ErrorString& errorString, int 
     if (!element)
         return nullptr;
     if (element->isInShadowTree()) {
-        errorString = ASCIILiteral("Can not edit elements from shadow trees");
+        errorString = ASCIILiteral("Cannot edit elements from shadow trees");
+        return nullptr;
+    }
+    if (element->isPseudoElement()) {
+        errorString = ASCIILiteral("Cannot edit pseudo elements");
         return nullptr;
     }
     return element;
@@ -699,7 +712,7 @@ void InspectorDOMAgent::removeNode(ErrorString& errorString, int nodeId)
 
     ContainerNode* parentNode = node->parentNode();
     if (!parentNode) {
-        errorString = ASCIILiteral("Can not remove detached node");
+        errorString = ASCIILiteral("Cannot remove detached node");
         return;
     }
 
@@ -874,7 +887,7 @@ void InspectorDOMAgent::getAccessibilityPropertiesForNode(ErrorString& errorStri
     axProperties = buildObjectForAccessibilityProperties(node);
 }
 
-void InspectorDOMAgent::performSearch(ErrorString& errorString, const String& whitespaceTrimmedQuery, const RefPtr<InspectorArray>&& nodeIds, String* searchId, int* resultCount)
+void InspectorDOMAgent::performSearch(ErrorString& errorString, const String& whitespaceTrimmedQuery, const InspectorArray* nodeIds, String* searchId, int* resultCount)
 {
     // FIXME: Search works with node granularity - number of matches within node is not calculated.
     InspectorNodeFinder finder(whitespaceTrimmedQuery);
@@ -966,11 +979,14 @@ void InspectorDOMAgent::inspect(Node* inspectedNode)
 {
     ErrorString unused;
     RefPtr<Node> node = inspectedNode;
-    setSearchingForNode(unused, false, 0);
+    setSearchingForNode(unused, false, nullptr);
 
     if (node->nodeType() != Node::ELEMENT_NODE && node->nodeType() != Node::DOCUMENT_NODE)
         node = node->parentNode();
     m_nodeToFocus = node;
+
+    if (!m_nodeToFocus)
+        return;
 
     focusNode();
 }
@@ -983,7 +999,7 @@ void InspectorDOMAgent::focusNode()
     ASSERT(m_nodeToFocus);
 
     RefPtr<Node> node = m_nodeToFocus.get();
-    m_nodeToFocus = 0;
+    m_nodeToFocus = nullptr;
 
     Frame* frame = node->document().frame();
     if (!frame)
@@ -1009,7 +1025,7 @@ void InspectorDOMAgent::mouseDidMoveOverElement(const HitTestResult& result, uns
         m_overlay->highlightNode(node, *m_inspectModeHighlightConfig);
 }
 
-void InspectorDOMAgent::setSearchingForNode(ErrorString& errorString, bool enabled, InspectorObject* highlightInspectorObject)
+void InspectorDOMAgent::setSearchingForNode(ErrorString& errorString, bool enabled, const InspectorObject* highlightInspectorObject)
 {
     if (m_searchingForNode == enabled)
         return;
@@ -1024,7 +1040,7 @@ void InspectorDOMAgent::setSearchingForNode(ErrorString& errorString, bool enabl
     m_overlay->didSetSearchingForNode(m_searchingForNode);
 }
 
-std::unique_ptr<HighlightConfig> InspectorDOMAgent::highlightConfigFromInspectorObject(ErrorString& errorString, InspectorObject* highlightInspectorObject)
+std::unique_ptr<HighlightConfig> InspectorDOMAgent::highlightConfigFromInspectorObject(ErrorString& errorString, const InspectorObject* highlightInspectorObject)
 {
     if (!highlightInspectorObject) {
         errorString = ASCIILiteral("Internal error: highlight configuration parameter is missing");
@@ -1043,37 +1059,72 @@ std::unique_ptr<HighlightConfig> InspectorDOMAgent::highlightConfigFromInspector
     return highlightConfig;
 }
 
-void InspectorDOMAgent::setInspectModeEnabled(ErrorString& errorString, bool enabled, const RefPtr<InspectorObject>&& highlightConfig)
+void InspectorDOMAgent::setInspectModeEnabled(ErrorString& errorString, bool enabled, const InspectorObject* highlightConfig)
 {
-    setSearchingForNode(errorString, enabled, highlightConfig ? highlightConfig.get() : nullptr);
+    setSearchingForNode(errorString, enabled, highlightConfig ? highlightConfig : nullptr);
 }
 
-void InspectorDOMAgent::highlightRect(ErrorString&, int x, int y, int width, int height, const RefPtr<InspectorObject>&& color, const RefPtr<InspectorObject>&& outlineColor, const bool* usePageCoordinates)
+void InspectorDOMAgent::highlightRect(ErrorString&, int x, int y, int width, int height, const InspectorObject* color, const InspectorObject* outlineColor, const bool* usePageCoordinates)
 {
     auto quad = std::make_unique<FloatQuad>(FloatRect(x, y, width, height));
-    innerHighlightQuad(WTF::move(quad), color.copyRef(), outlineColor.copyRef(), usePageCoordinates);
+    innerHighlightQuad(WTF::move(quad), color, outlineColor, usePageCoordinates);
 }
 
-void InspectorDOMAgent::highlightQuad(ErrorString& errorString, const RefPtr<InspectorArray>&& quadArray, const RefPtr<InspectorObject>&& color, const RefPtr<InspectorObject>&& outlineColor, const bool* usePageCoordinates)
+void InspectorDOMAgent::highlightQuad(ErrorString& errorString, const InspectorArray& quadArray, const InspectorObject* color, const InspectorObject* outlineColor, const bool* usePageCoordinates)
 {
     auto quad = std::make_unique<FloatQuad>();
     if (!parseQuad(quadArray, quad.get())) {
         errorString = ASCIILiteral("Invalid Quad format");
         return;
     }
-    innerHighlightQuad(WTF::move(quad), color.copyRef(), outlineColor.copyRef(), usePageCoordinates);
+    innerHighlightQuad(WTF::move(quad), color, outlineColor, usePageCoordinates);
 }
 
-void InspectorDOMAgent::innerHighlightQuad(std::unique_ptr<FloatQuad> quad, const RefPtr<InspectorObject>&& color, const RefPtr<InspectorObject>&& outlineColor, const bool* usePageCoordinates)
+void InspectorDOMAgent::innerHighlightQuad(std::unique_ptr<FloatQuad> quad, const InspectorObject* color, const InspectorObject* outlineColor, const bool* usePageCoordinates)
 {
     auto highlightConfig = std::make_unique<HighlightConfig>();
-    highlightConfig->content = parseColor(color.copyRef());
-    highlightConfig->contentOutline = parseColor(outlineColor.copyRef());
+    highlightConfig->content = parseColor(color);
+    highlightConfig->contentOutline = parseColor(outlineColor);
     highlightConfig->usePageCoordinates = usePageCoordinates ? *usePageCoordinates : false;
     m_overlay->highlightQuad(WTF::move(quad), *highlightConfig);
 }
 
-void InspectorDOMAgent::highlightNode(ErrorString& errorString, const RefPtr<InspectorObject>&& highlightInspectorObject, const int* nodeId, const String* objectId)
+void InspectorDOMAgent::highlightSelector(ErrorString& errorString, const InspectorObject& highlightInspectorObject, const String& selectorString, const String* frameId)
+{
+    RefPtr<Document> document;
+
+    if (frameId) {
+        Frame* frame = m_pageAgent->frameForId(*frameId);
+        if (!frame) {
+            errorString = ASCIILiteral("No frame for given id found");
+            return;
+        }
+
+        document = frame->document();
+    } else
+        document = m_document;
+
+    if (!document) {
+        errorString = ASCIILiteral("Document could not be found");
+        return;
+    }
+
+    ExceptionCode ec = 0;
+    RefPtr<NodeList> nodes = document->querySelectorAll(selectorString, ec);
+    // FIXME: <https://webkit.org/b/146161> Web Inspector: DOM.highlightSelector should work for "a:visited"
+    if (ec) {
+        errorString = ASCIILiteral("DOM Error while querying");
+        return;
+    }
+
+    std::unique_ptr<HighlightConfig> highlightConfig = highlightConfigFromInspectorObject(errorString, &highlightInspectorObject);
+    if (!highlightConfig)
+        return;
+
+    m_overlay->highlightNodeList(nodes, *highlightConfig);
+}
+
+void InspectorDOMAgent::highlightNode(ErrorString& errorString, const InspectorObject& highlightInspectorObject, const int* nodeId, const String* objectId)
 {
     Node* node = 0;
     if (nodeId) {
@@ -1088,21 +1139,21 @@ void InspectorDOMAgent::highlightNode(ErrorString& errorString, const RefPtr<Ins
     if (!node)
         return;
 
-    std::unique_ptr<HighlightConfig> highlightConfig = highlightConfigFromInspectorObject(errorString, highlightInspectorObject.get());
+    std::unique_ptr<HighlightConfig> highlightConfig = highlightConfigFromInspectorObject(errorString, &highlightInspectorObject);
     if (!highlightConfig)
         return;
 
     m_overlay->highlightNode(node, *highlightConfig);
 }
 
-void InspectorDOMAgent::highlightFrame(ErrorString&, const String& frameId, const RefPtr<InspectorObject>&& color, const RefPtr<InspectorObject>&& outlineColor)
+void InspectorDOMAgent::highlightFrame(ErrorString&, const String& frameId, const InspectorObject* color, const InspectorObject* outlineColor)
 {
     Frame* frame = m_pageAgent->frameForId(frameId);
     if (frame && frame->ownerElement()) {
         auto highlightConfig = std::make_unique<HighlightConfig>();
         highlightConfig->showInfo = true; // Always show tooltips for frames.
-        highlightConfig->content = parseColor(color.copyRef());
-        highlightConfig->contentOutline = parseColor(outlineColor.copyRef());
+        highlightConfig->content = parseColor(color);
+        highlightConfig->contentOutline = parseColor(outlineColor);
         m_overlay->highlightNode(frame->ownerElement(), *highlightConfig);
     }
 }
@@ -1217,6 +1268,20 @@ static String documentBaseURLString(Document* document)
     return document->completeURL("").string();
 }
 
+static bool pseudoElementType(PseudoId pseudoId, Inspector::Protocol::DOM::PseudoType* type)
+{
+    switch (pseudoId) {
+    case BEFORE:
+        *type = Inspector::Protocol::DOM::PseudoType::Before;
+        return true;
+    case AFTER:
+        *type = Inspector::Protocol::DOM::PseudoType::After;
+        return true;
+    default:
+        return false;
+    }
+}
+
 Ref<Inspector::Protocol::DOM::Node> InspectorDOMAgent::buildObjectForNode(Node* node, int depth, NodeToIdMap* nodesMap)
 {
     int id = bind(node, nodesMap);
@@ -1290,8 +1355,18 @@ Ref<Inspector::Protocol::DOM::Node> InspectorDOMAgent::buildObjectForNode(Node* 
             value->setTemplateContent(buildObjectForNode(downcast<HTMLTemplateElement>(element).content(), 0, nodesMap));
 #endif
 
+        if (element.pseudoId()) {
+            Inspector::Protocol::DOM::PseudoType pseudoType;
+            if (pseudoElementType(element.pseudoId(), &pseudoType))
+                value->setPseudoType(pseudoType);
+        } else {
+            if (auto pseudoElements = buildArrayForPseudoElements(element, nodesMap))
+                value->setPseudoElements(WTF::move(pseudoElements));
+        }
+
     } else if (is<Document>(*node)) {
         Document& document = downcast<Document>(*node);
+        value->setFrameId(m_pageAgent->frameId(document.frame()));
         value->setDocumentURL(documentURLString(&document));
         value->setBaseURL(documentBaseURLString(&document));
         value->setXmlVersion(document.xmlVersion());
@@ -1354,6 +1429,21 @@ Ref<Inspector::Protocol::Array<Inspector::Protocol::DOM::Node>> InspectorDOMAgen
         child = innerNextSibling(child);
     }
     return WTF::move(children);
+}
+
+RefPtr<Inspector::Protocol::Array<Inspector::Protocol::DOM::Node>> InspectorDOMAgent::buildArrayForPseudoElements(const Element& element, NodeToIdMap* nodesMap)
+{
+    PseudoElement* beforeElement = element.beforePseudoElement();
+    PseudoElement* afterElement = element.afterPseudoElement();
+    if (!beforeElement && !afterElement)
+        return nullptr;
+
+    auto pseudoElements = Inspector::Protocol::Array<Inspector::Protocol::DOM::Node>::create();
+    if (beforeElement)
+        pseudoElements->addItem(buildObjectForNode(beforeElement, 0, nodesMap));
+    if (afterElement)
+        pseudoElements->addItem(buildObjectForNode(afterElement, 0, nodesMap));
+    return WTF::move(pseudoElements);
 }
 
 Ref<Inspector::Protocol::DOM::EventListener> InspectorDOMAgent::buildObjectForEventListener(const RegisteredEventListener& registeredEventListener, const AtomicString& eventType, Node* node, const String* objectGroupId)
@@ -1507,7 +1597,7 @@ RefPtr<Inspector::Protocol::DOM::AccessibilityProperties> InspectorDOMAgent::bui
             disabled = !axObject->isEnabled(); 
             exists = true;
             
-            supportsExpanded = axObject->supportsARIAExpanded();
+            supportsExpanded = axObject->supportsExpanded();
             if (supportsExpanded)
                 expanded = axObject->isExpanded();
 
@@ -1917,6 +2007,36 @@ void InspectorDOMAgent::frameDocumentUpdated(Frame* frame)
     // Only update the main frame document, nested frame document updates are not required
     // (will be handled by didCommitLoad()).
     setDocument(document);
+}
+
+void InspectorDOMAgent::pseudoElementCreated(PseudoElement& pseudoElement)
+{
+    Element* parent = pseudoElement.hostElement();
+    if (!parent)
+        return;
+
+    int parentId = m_documentNodeToIdMap.get(parent);
+    if (!parentId)
+        return;
+
+    pushChildNodesToFrontend(parentId, 1);
+    m_frontendDispatcher->pseudoElementAdded(parentId, buildObjectForNode(&pseudoElement, 0, &m_documentNodeToIdMap));
+}
+
+void InspectorDOMAgent::pseudoElementDestroyed(PseudoElement& pseudoElement)
+{
+    int pseudoElementId = m_documentNodeToIdMap.get(&pseudoElement);
+    if (!pseudoElementId)
+        return;
+
+    // If a PseudoElement is bound, its parent element must have been bound.
+    Element* parent = pseudoElement.hostElement();
+    ASSERT(parent);
+    int parentId = m_documentNodeToIdMap.get(parent);
+    ASSERT(parentId);
+
+    unbind(&pseudoElement, &m_documentNodeToIdMap);
+    m_frontendDispatcher->pseudoElementRemoved(parentId, pseudoElementId);
 }
 
 Node* InspectorDOMAgent::nodeForPath(const String& path)

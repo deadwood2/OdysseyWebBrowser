@@ -1,4 +1,44 @@
 =================
+WebKitGTK+  2.9.4
+=================
+
+What's new in WebKitGTK+ 2.9.4?
+
+  - Fix the window size reported when the web view isn't realized yet. This fixes
+    the layout of some websites when opening new tabs in the browser and anchor links
+    when opened in new tabs too.
+  - Add API to be notified about editor state changes.
+  - Add selection-changed signal to the Web Extensions API.
+  - Add initial WebKitWebsiteDataManager API for process configuration options.
+  - Make WebSQL work by using a default quota instead of always failing in openDatabase
+    with DOM Exception 18.
+  - Correctly restore accelerated compositing after a WebProcess crash.
+  - Only enable the input methods filter when there's an editable element focused.
+  - Fix a crash on memory allocation using bmalloc on 32bit systems.
+  - Allow to build with X11 and Wayland targets at the same time.
+  - Fix a crash when spell checker returns no guesses.
+  - Update and optimize some of the web inspector icons.
+  - Translation updates: Swedish.
+
+=================
+WebKitGTK+  2.9.3
+=================
+
+What's new in WebKitGTK+ 2.9.3?
+
+  - Inhibit screen saver when playing full screen video.
+  - Fix DOCUMENT_VIEWER cache model to actually disable the memory cache.
+  - Fix a regression that prevented the WebKitWebView::context-menu signal
+    from being emitted.
+  - Update web inspector icon so Rendering Frames timeline distinguish between
+    layout and painting.
+  - Ensure fragment identifier part of URI is not removed for custom URI scheme
+    requests.
+  - Improve performance of keyboard events handling.
+  - Expose element tag name as an object attribute to accessibility.
+  - Fix the build with Wayland target enabled.
+
+=================
 WebKitGTK+  2.9.2
 =================
 

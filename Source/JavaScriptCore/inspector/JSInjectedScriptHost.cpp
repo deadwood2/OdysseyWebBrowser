@@ -39,6 +39,7 @@
 #include "JSInjectedScriptHostPrototype.h"
 #include "JSMap.h"
 #include "JSMapIterator.h"
+#include "JSPromise.h"
 #include "JSSet.h"
 #include "JSSetIterator.h"
 #include "JSStringIterator.h"
@@ -51,10 +52,6 @@
 #include "SourceCode.h"
 #include "TypedArrayInlines.h"
 #include "WeakMapData.h"
-
-#if ENABLE(PROMISES)
-#include "JSPromise.h"
-#endif
 
 using namespace JSC;
 
@@ -243,27 +240,25 @@ JSValue JSInjectedScriptHost::getInternalProperties(ExecState* exec)
 
     JSValue value = exec->uncheckedArgument(0);
 
-#if ENABLE(PROMISES)
     if (JSPromise* promise = jsDynamicCast<JSPromise*>(value)) {
         unsigned index = 0;
         JSArray* array = constructEmptyArray(exec, nullptr);
-        switch (promise->status()) {
-        case JSPromise::Status::Unresolved:
+        switch (promise->status(exec->vm())) {
+        case JSPromise::Status::Pending:
             array->putDirectIndex(exec, index++, constructInternalProperty(exec, ASCIILiteral("status"), jsNontrivialString(exec, ASCIILiteral("pending"))));
             break;
-        case JSPromise::Status::HasResolution:
+        case JSPromise::Status::Fulfilled:
             array->putDirectIndex(exec, index++, constructInternalProperty(exec, ASCIILiteral("status"), jsNontrivialString(exec, ASCIILiteral("resolved"))));
-            array->putDirectIndex(exec, index++, constructInternalProperty(exec, ASCIILiteral("result"), promise->result()));
+            array->putDirectIndex(exec, index++, constructInternalProperty(exec, ASCIILiteral("result"), promise->result(exec->vm())));
             break;
-        case JSPromise::Status::HasRejection:
+        case JSPromise::Status::Rejected:
             array->putDirectIndex(exec, index++, constructInternalProperty(exec, ASCIILiteral("status"), jsNontrivialString(exec, ASCIILiteral("rejected"))));
-            array->putDirectIndex(exec, index++, constructInternalProperty(exec, ASCIILiteral("result"), promise->result()));
+            array->putDirectIndex(exec, index++, constructInternalProperty(exec, ASCIILiteral("result"), promise->result(exec->vm())));
             break;
         }
         // FIXME: <https://webkit.org/b/141664> Web Inspector: ES6: Improved Support for Promises - Promise Reactions
         return array;
     }
-#endif
 
     if (JSBoundFunction* boundFunction = jsDynamicCast<JSBoundFunction*>(value)) {
         unsigned index = 0;

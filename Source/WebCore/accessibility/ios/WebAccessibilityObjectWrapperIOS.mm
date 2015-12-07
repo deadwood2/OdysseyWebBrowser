@@ -362,8 +362,10 @@ static AccessibilityObjectWrapper* AccessibilityUnignoredAncestor(AccessibilityO
     if (![self _prepareAccessibilityCall])
         return 0;
 
-    if ([self isAttachment] && [self attachmentView])
-        return [[self attachmentView] accessibilityElementCount];
+    if ([self isAttachment]) {
+        if (id attachmentView = [self attachmentView])
+            return [attachmentView accessibilityElementCount];
+    }
     
     return m_object->children().size();
 }
@@ -373,8 +375,10 @@ static AccessibilityObjectWrapper* AccessibilityUnignoredAncestor(AccessibilityO
     if (![self _prepareAccessibilityCall])
         return nil;
 
-    if ([self isAttachment] && [self attachmentView])
-        return [[self attachmentView] accessibilityElementAtIndex:index];
+    if ([self isAttachment]) {
+        if (id attachmentView = [self attachmentView])
+            return [attachmentView accessibilityElementAtIndex:index];
+    }
     
     const auto& children = m_object->children();
     size_t elementIndex = static_cast<size_t>(index);
@@ -382,8 +386,10 @@ static AccessibilityObjectWrapper* AccessibilityUnignoredAncestor(AccessibilityO
         return nil;
     
     AccessibilityObjectWrapper* wrapper = children[elementIndex]->wrapper();
-    if (children[elementIndex]->isAttachment())
-        return [wrapper attachmentView];
+    if (children[elementIndex]->isAttachment()) {
+        if (id attachmentView = [wrapper attachmentView])
+            return attachmentView;
+    }
 
     return wrapper;
 }
@@ -393,8 +399,10 @@ static AccessibilityObjectWrapper* AccessibilityUnignoredAncestor(AccessibilityO
     if (![self _prepareAccessibilityCall])
         return NSNotFound;
     
-    if ([self isAttachment] && [self attachmentView])
-        return [[self attachmentView] indexOfAccessibilityElement:element];
+    if ([self isAttachment]) {
+        if (id attachmentView = [self attachmentView])
+            return [attachmentView indexOfAccessibilityElement:element];
+    }
     
     const auto& children = m_object->children();
     unsigned count = children.size();
@@ -422,6 +430,14 @@ static AccessibilityObjectWrapper* AccessibilityUnignoredAncestor(AccessibilityO
     return [self convertPathToScreenSpace:path];
 }
 
+- (BOOL)accessibilityHasPopup
+{
+    if (![self _prepareAccessibilityCall])
+        return NO;
+    
+    return m_object->ariaHasPopup();
+}
+
 - (NSString *)accessibilityLanguage
 {
     if (![self _prepareAccessibilityCall])
@@ -433,16 +449,17 @@ static AccessibilityObjectWrapper* AccessibilityUnignoredAncestor(AccessibilityO
 - (BOOL)_accessibilityIsLandmarkRole:(AccessibilityRole)role
 {
     switch (role) {
-        case LandmarkApplicationRole:
-        case LandmarkBannerRole:
-        case LandmarkComplementaryRole:
-        case LandmarkContentInfoRole:
-        case LandmarkMainRole:
-        case LandmarkNavigationRole:
-        case LandmarkSearchRole:
-            return YES;
-        default:
-            return NO;
+    case DocumentRegionRole:
+    case LandmarkApplicationRole:
+    case LandmarkBannerRole:
+    case LandmarkComplementaryRole:
+    case LandmarkContentInfoRole:
+    case LandmarkMainRole:
+    case LandmarkNavigationRole:
+    case LandmarkSearchRole:
+        return YES;
+    default:
+        return NO;
     }    
 }
 
@@ -470,7 +487,7 @@ static AccessibilityObjectWrapper* AccessibilityUnignoredAncestor(AccessibilityO
 - (AccessibilityObjectWrapper*)_accessibilityTableAncestor
 {
     for (AccessibilityObject* parent = m_object->parentObject(); parent != nil; parent = parent->parentObject()) {
-        if (parent->roleValue() == TableRole)
+        if (parent->roleValue() == TableRole || parent->roleValue() == GridRole)
             return parent->wrapper();   
     }
     
@@ -512,6 +529,7 @@ static AccessibilityObjectWrapper* AccessibilityUnignoredAncestor(AccessibilityO
             case ListRole:
                 traits |= [self _axContainedByListTrait];
                 break;
+            case GridRole:
             case TableRole:
                 traits |= [self _axContainedByTableTrait];
                 break;
@@ -638,8 +656,11 @@ static AccessibilityObjectWrapper* AccessibilityUnignoredAncestor(AccessibilityO
         case MenuButtonRole:
         case ValueIndicatorRole:
         case ImageRole:
+        case ImageMapLinkRole:
         case ProgressIndicatorRole:
         case MenuItemRole:
+        case MenuItemCheckboxRole:
+        case MenuItemRadioRole:
         case IncrementorRole:
         case ComboBoxRole:
         case DisclosureTriangleRole:
@@ -649,8 +670,10 @@ static AccessibilityObjectWrapper* AccessibilityUnignoredAncestor(AccessibilityO
         case TabRole:
         case DocumentMathRole:
         case HorizontalRuleRole:
+        case SliderThumbRole:
         case SwitchRole:
         case SearchFieldRole:
+        case SpinButtonRole:
             return true;
         case StaticTextRole:
         {
@@ -682,40 +705,106 @@ static AccessibilityObjectWrapper* AccessibilityUnignoredAncestor(AccessibilityO
                 return true;
             FALLTHROUGH;
         // All other elements are ignored on the iphone.
-        default:
-        case UnknownRole:
-        case TabGroupRole:
-        case ScrollAreaRole:
-        case TableRole:
+        case AnnotationRole:
         case ApplicationRole:
-        case RadioGroupRole:
+        case ApplicationAlertRole:
+        case ApplicationAlertDialogRole:
+        case ApplicationDialogRole:
+        case ApplicationLogRole:
+        case ApplicationMarqueeRole:
+        case ApplicationStatusRole:
+        case ApplicationTimerRole:
+        case AudioRole:
+        case BlockquoteRole:
+        case BrowserRole:
+        case BusyIndicatorRole:
+        case CanvasRole:
+        case CaptionRole:
+        case CellRole:
+        case ColorWellRole:
+        case ColumnRole:
+        case ColumnHeaderRole:
+        case DefinitionRole:
+        case DescriptionListRole:
+        case DescriptionListTermRole:
+        case DescriptionListDetailRole:
+        case DetailsRole:
+        case DirectoryRole:
+        case DivRole:
+        case DocumentRole:
+        case DocumentArticleRole:
+        case DocumentNoteRole:
+        case DocumentRegionRole:
+        case DrawerRole:
+        case EditableTextRole:
+        case FooterRole:
+        case FormRole:
+        case GridRole:
+        case GridCellRole:
+        case GrowAreaRole:
+        case HelpTagRole:
+        case IgnoredRole:
+        case InlineRole:
+        case LabelRole:
+        case LandmarkApplicationRole:
+        case LandmarkBannerRole:
+        case LandmarkComplementaryRole:
+        case LandmarkContentInfoRole:
+        case LandmarkMainRole:
+        case LandmarkNavigationRole:
+        case LandmarkSearchRole:
+        case LegendRole:
         case ListRole:
         case ListBoxRole:
-        case ScrollBarRole:
-        case MenuBarRole:
-        case MenuRole:
-        case ColumnRole:
-        case RowRole:
-        case ToolbarRole:
-        case BusyIndicatorRole:
-        case WindowRole:
-        case DrawerRole:
-        case SystemWideRole:
-        case OutlineRole:
-        case BrowserRole:
-        case SplitGroupRole:
-        case SplitterRole:
-        case ColorWellRole:
-        case GrowAreaRole:
-        case SheetRole:
-        case HelpTagRole:
+        case ListItemRole:
+        case MathElementRole:
         case MatteRole:
+        case MenuRole:
+        case MenuBarRole:
+        case MenuListPopupRole:
+        case MenuListOptionRole:
+        case OutlineRole:
+        case ParagraphRole:
+        case PreRole:
+        case PresentationalRole:
+        case RadioGroupRole:
+        case RowHeaderRole:
+        case RowRole:
+        case RubyBaseRole:
+        case RubyBlockRole:
+        case RubyInlineRole:
+        case RubyRunRole:
+        case RubyTextRole:
         case RulerRole:
         case RulerMarkerRole:
-        case GridRole:
+        case ScrollAreaRole:
+        case ScrollBarRole:
+        case SheetRole:
+        case SpinButtonPartRole:
+        case SplitGroupRole:
+        case SplitterRole:
+        case SummaryRole:
+        case SystemWideRole:
+        case SVGRootRole:
+        case TabGroupRole:
+        case TabListRole:
+        case TabPanelRole:
+        case TableRole:
+        case TableHeaderContainerRole:
+        case TreeRole:
+        case TreeItemRole:
+        case TreeGridRole:
+        case ToolbarRole:
+        case UnknownRole:
+        case UserInterfaceTooltipRole:
+        case VideoRole:
         case WebAreaRole:
+        case WindowRole:
             return false;
     }
+    
+    ASSERT_NOT_REACHED();
+    return false;
 }
 
 - (BOOL)isAccessibilityElement
@@ -772,6 +861,11 @@ static void appendStringToResult(NSMutableString *result, NSString *string)
 - (CGFloat)_accessibilityMaxValue
 {
     return m_object->maxValueForRange();
+}
+
+- (NSString *)accessibilityRoleDescription
+{
+    return m_object->roleDescription();
 }
 
 - (NSString *)accessibilityLabel
@@ -1055,54 +1149,36 @@ static void appendStringToResult(NSMutableString *result, NSString *string)
     if (![self _prepareAccessibilityCall])
         return NO;
     
-    ScrollView* scrollView = m_object->scrollViewAncestor();
-    if (!scrollView)
-        return NO;
-    
-    IntPoint scrollPosition = scrollView->scrollPosition();
-    IntPoint newScrollPosition = scrollPosition;
-    IntSize scrollSize = scrollView->contentsSize();
-    IntRect scrollVisibleRect = scrollView->visibleContentRect(ScrollableArea::LegacyIOSDocumentVisibleRect);
+    AccessibilityObject::ScrollByPageDirection scrollDirection;
     switch (direction) {
-    case UIAccessibilityScrollDirectionRight: {
-        int scrollAmount = scrollVisibleRect.size().width();
-        int newX = scrollPosition.x() - scrollAmount;
-        newScrollPosition.setX(std::max(newX, 0));
+    case UIAccessibilityScrollDirectionRight:
+        scrollDirection = AccessibilityObject::ScrollByPageDirection::Right;
         break;
-    }
-    case UIAccessibilityScrollDirectionLeft: {
-        int scrollAmount = scrollVisibleRect.size().width();
-        int newX = scrollAmount + scrollPosition.x();
-        int maxX = scrollSize.width() - scrollAmount;
-        newScrollPosition.setX(std::min(newX, maxX));
+    case UIAccessibilityScrollDirectionLeft:
+        scrollDirection = AccessibilityObject::ScrollByPageDirection::Left;
         break;
-    }
-    case UIAccessibilityScrollDirectionUp: {
-        int scrollAmount = scrollVisibleRect.size().height();
-        int newY = scrollPosition.y() - scrollAmount;
-        newScrollPosition.setY(std::max(newY, 0));
+    case UIAccessibilityScrollDirectionUp:
+        scrollDirection = AccessibilityObject::ScrollByPageDirection::Up;
         break;
-    }
-    case UIAccessibilityScrollDirectionDown: {
-        int scrollAmount = scrollVisibleRect.size().height();
-        int newY = scrollAmount + scrollPosition.y();
-        int maxY = scrollSize.height() - scrollAmount;
-        newScrollPosition.setY(std::min(newY, maxY));
+    case UIAccessibilityScrollDirectionDown:
+        scrollDirection = AccessibilityObject::ScrollByPageDirection::Down;
         break;
-    }
     default:
-        break;
+        return NO;
     }
+
+    BOOL result = m_object->scrollByPage(scrollDirection);
     
-    if (newScrollPosition != scrollPosition) {
-        scrollView->setScrollPosition(newScrollPosition);
-        m_object->document()->updateLayoutIgnorePendingStylesheets();
+    if (result) {
+        [self postScrollStatusChangeNotification];
+
+        CGPoint scrollPos = [self _accessibilityScrollPosition];
+        NSString *testString = [NSString stringWithFormat:@"AXScroll [position: %.2f %.2f]", scrollPos.x, scrollPos.y];
+        [self accessibilityPostedNotification:@"AXScrollByPage" userInfo:@{ @"status" : testString }];
     }
-    
-    [self postScrollStatusChangeNotification];
     
     // This means that this object handled the scroll and no other ancestor should attempt scrolling.
-    return YES;
+    return result;
 }
 
 - (CGPoint)convertPointToScreenSpace:(FloatPoint &)point
@@ -1515,6 +1591,11 @@ static RenderObject* rendererForView(WAKView* view)
     // The UIKit accessibility wrapper will override and post appropriate notification.
 }
 
+- (void)postExpandedChangedNotification
+{
+    // The UIKit accessibility wrapper will override and post appropriate notification.
+}
+
 - (void)postScrollStatusChangeNotification
 {
     // The UIKit accessibility wrapper will override and post appropriate notification.
@@ -1526,10 +1607,7 @@ static RenderObject* rendererForView(WAKView* view)
     if (![self _prepareAccessibilityCall])
         return CGPointZero;
     
-    ScrollView* scrollView = m_object->scrollViewAncestor();
-    if (!scrollView)
-        return CGPointZero;
-    return scrollView->scrollPosition();
+    return m_object->scrollPosition();
 }
 
 - (CGSize)_accessibilityScrollSize
@@ -1537,10 +1615,7 @@ static RenderObject* rendererForView(WAKView* view)
     if (![self _prepareAccessibilityCall])
         return CGSizeZero;
     
-    ScrollView* scrollView = m_object->scrollViewAncestor();
-    if (!scrollView)
-        return CGSizeZero;
-    return scrollView->contentsSize();
+    return m_object->scrollContentsSize();
 }
 
 - (CGRect)_accessibilityScrollVisibleRect
@@ -1548,10 +1623,7 @@ static RenderObject* rendererForView(WAKView* view)
     if (![self _prepareAccessibilityCall])
         return CGRectZero;
     
-    ScrollView* scrollView = m_object->scrollViewAncestor();
-    if (!scrollView)
-        return CGRectZero;
-    return scrollView->visibleContentRect(ScrollableArea::LegacyIOSDocumentVisibleRect);
+    return m_object->scrollVisibleContentRect();
 }
 
 - (void)accessibilityElementDidBecomeFocused
@@ -2300,12 +2372,28 @@ static void AXAttributedStringAppendText(NSMutableAttributedString* attrString, 
     return m_object->ariaLiveRegionAtomic();
 }
 
+- (BOOL)accessibilitySupportsARIAPressed
+{
+    if (![self _prepareAccessibilityCall])
+        return NO;
+    
+    return m_object->supportsARIAPressed();
+}
+
+- (BOOL)accessibilityIsPressed
+{
+    if (![self _prepareAccessibilityCall])
+        return NO;
+    
+    return m_object->isPressed();
+}
+
 - (BOOL)accessibilitySupportsARIAExpanded
 {
     if (![self _prepareAccessibilityCall])
         return NO;
     
-    return m_object->supportsARIAExpanded();
+    return m_object->supportsExpanded();
 }
 
 - (BOOL)accessibilityIsExpanded
@@ -2502,24 +2590,6 @@ static void AXAttributedStringAppendText(NSMutableAttributedString* attrString, 
 - (CGPoint)accessibilityClickPoint
 {
     return m_object->clickPoint();
-}
-
-// These are used by DRT so that it can know when notifications are sent.
-// Since they are static, only one callback can be installed at a time (that's all DRT should need).
-typedef void (*AXPostedNotificationCallback)(id element, NSString* notification, void* context);
-static AXPostedNotificationCallback AXNotificationCallback = nullptr;
-static void* AXPostedNotificationContext = nullptr;
-
-- (void)accessibilitySetPostedNotificationCallback:(AXPostedNotificationCallback)function withContext:(void*)context
-{
-    AXNotificationCallback = function;
-    AXPostedNotificationContext = context;
-}
-
-- (void)accessibilityPostedNotification:(NSString *)notificationName
-{
-    if (AXNotificationCallback && notificationName)
-        AXNotificationCallback(self, notificationName, AXPostedNotificationContext);
 }
 
 #ifndef NDEBUG

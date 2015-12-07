@@ -34,13 +34,16 @@
 #import "ManagedConfigurationSPI.h"
 #import "NativeWebKeyboardEvent.h"
 #import "NativeWebTouchEvent.h"
+#import "SafariServicesSPI.h"
 #import "SmartMagnificationController.h"
 #import "TextInputSPI.h"
 #import "UIKitSPI.h"
 #import "WKActionSheetAssistant.h"
 #import "WKFormInputControl.h"
 #import "WKFormSelectControl.h"
+#import "WKImagePreviewViewController.h"
 #import "WKInspectorNodeSearchGestureRecognizer.h"
+#import "WKNSURLExtras.h"
 #import "WKUIDelegatePrivate.h"
 #import "WKWebViewConfiguration.h"
 #import "WKWebViewInternal.h"
@@ -49,6 +52,7 @@
 #import "WebIOSEventFactory.h"
 #import "WebPageMessages.h"
 #import "WebProcessProxy.h"
+#import "_WKActivatedElementInfoInternal.h"
 #import "_WKFormDelegate.h"
 #import "_WKFormInputSession.h"
 #import <CoreText/CTFont.h>
@@ -58,11 +62,19 @@
 #import <WebCore/CoreGraphicsSPI.h>
 #import <WebCore/FloatQuad.h>
 #import <WebCore/Pasteboard.h>
+#import <WebCore/Path.h>
+#import <WebCore/PathUtilities.h>
+#import <WebCore/Scrollbar.h>
 #import <WebCore/SoftLinking.h>
+#import <WebCore/TextIndicator.h>
 #import <WebCore/WebEvent.h>
 #import <WebKit/WebSelectionRect.h> // FIXME: WK2 should not include WebKit headers!
 #import <WebKitSystemInterfaceIOS.h>
 #import <wtf/RetainPtr.h>
+
+@interface UIEvent(UIEventInternal)
+@property (nonatomic, assign) UIKeyboardInputFlags _inputFlags;
+@end
 
 using namespace WebCore;
 using namespace WebKit;
@@ -203,9 +215,7 @@ const CGFloat minimumTapHighlightRadius = 2.0;
 @end
 
 #if __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000
-@interface UIWebFormAccessory (StagingToRemove)
-- (UITextInputAssistantItem *)inputAssistantItem;
-@end
+@protocol UISelectionInteractionAssistant;
 #endif
 
 @interface WKFormInputSession : NSObject <_WKFormInputSession>
@@ -327,6 +337,10 @@ static UIWebSelectionMode toUIWebSelectionMode(WKSelectionGranularity granularit
     [_longPressGestureRecognizer setDelegate:self];
     [self addGestureRecognizer:_longPressGestureRecognizer.get()];
 
+#if HAVE(LINK_PREVIEW)
+    [self _registerPreview];
+#endif
+
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_resetShowingTextStyle:) name:UIMenuControllerDidHideMenuNotification object:nil];
     _showingTextStyleOptions = NO;
 
@@ -381,6 +395,10 @@ static UIWebSelectionMode toUIWebSelectionMode(WKSelectionGranularity granularit
         [self removeGestureRecognizer:_inspectorNodeSearchGestureRecognizer.get()];
         _inspectorNodeSearchGestureRecognizer = nil;
     }
+
+#if HAVE(LINK_PREVIEW)
+    [self _unregisterPreview];
+#endif
 
     if (_fileUploadPanel) {
         [_fileUploadPanel setDelegate:nil];
@@ -796,6 +814,7 @@ static NSValue *nsSizeForTapHighlightBorderRadius(WebCore::IntSize borderRadius)
               allowScaling:(_assistedNodeInformation.allowsUserScaling && !UICurrentUserInterfaceIdiomIsPad())
                forceScroll:[self requiresAccessoryView]];
     _didAccessoryTabInitiateFocus = NO;
+    [self _ensureFormAccessoryView];
     [self _updateAccessory];
 }
 
@@ -823,7 +842,7 @@ static NSValue *nsSizeForTapHighlightBorderRadius(WebCore::IntSize borderRadius)
 {
     // A long-press gesture can not be recognized while panning, but a pan can be recognized
     // during a long-press gesture.
-    BOOL shouldNotPreventScrollViewGestures = preventingGestureRecognizer == _highlightLongPressGestureRecognizer || preventingGestureRecognizer == _longPressGestureRecognizer || preventingGestureRecognizer == _previewGestureRecognizer;
+    BOOL shouldNotPreventScrollViewGestures = preventingGestureRecognizer == _highlightLongPressGestureRecognizer || preventingGestureRecognizer == _longPressGestureRecognizer;
     return !(shouldNotPreventScrollViewGestures
         && ([preventedGestureRecognizer isKindOfClass:NSClassFromString(@"UIScrollViewPanGestureRecognizer")] || [preventedGestureRecognizer isKindOfClass:NSClassFromString(@"UIScrollViewPinchGestureRecognizer")]));
 }
@@ -951,16 +970,6 @@ static inline bool isSamePair(UIGestureRecognizer *a, UIGestureRecognizer *b, UI
         }
     }
 
-    if (gestureRecognizer == _previewGestureRecognizer) {
-        [self ensurePositionInformationIsUpToDate:point];
-        if (_positionInformation.clickableElementName != "A" && _positionInformation.clickableElementName != "IMG")
-            return NO;
-
-        String absoluteLinkURL = _positionInformation.url;
-        if (absoluteLinkURL.isEmpty() || !WebCore::protocolIsInHTTPFamily(absoluteLinkURL))
-            return NO;
-    }
-
     return YES;
 }
 
@@ -1063,6 +1072,11 @@ static inline bool isSamePair(UIGestureRecognizer *a, UIGestureRecognizer *b, UI
 - (void)_longPressRecognized:(UILongPressGestureRecognizer *)gestureRecognizer
 {
     ASSERT(gestureRecognizer == _longPressGestureRecognizer);
+
+#if HAVE(LINK_PREVIEW)
+    if ([_previewItemController interactionInProgress])
+        return;
+#endif
 
     _lastInteractionLocation = gestureRecognizer.startPoint;
 
@@ -1245,34 +1259,26 @@ static void cancelPotentialTapIfNecessary(WKContentView* contentView)
     }
 }
 
+- (void)_ensureFormAccessoryView
+{
+    if (_formAccessoryView)
+        return;
+
+#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000
+    _formAccessoryView = adoptNS([[UIWebFormAccessory alloc] initWithInputAssistantItem:self.inputAssistantItem]);
+#else
+    _formAccessoryView = adoptNS([[UIWebFormAccessory alloc] init]);
+#endif
+    [_formAccessoryView setDelegate:self];
+}
+
 - (UIView *)inputAccessoryView
 {
     if (![self requiresAccessoryView])
         return nil;
 
-    if (!_formAccessoryView) {
-        _formAccessoryView = adoptNS([[UIWebFormAccessory alloc] init]);
-        [_formAccessoryView setDelegate:self];
-    }
-    
-    return _formAccessoryView.get();
+    return self.formAccessoryView;
 }
-
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000
-- (UITextInputAssistantItem *)inputAssistantItem
-{
-    if (!_formAccessoryView) {
-        _formAccessoryView = adoptNS([[UIWebFormAccessory alloc] init]);
-        [_formAccessoryView setDelegate:self];
-    }
-    return ([_formAccessoryView respondsToSelector:@selector(inputAssistantItem)]) ? [_formAccessoryView inputAssistantItem] : nil;
-}
-
-- (UITextInputAssistantItem *)_inputAssistantItem
-{
-    return [self inputAssistantItem];
-}
-#endif
 
 - (NSArray *)supportedPasteboardTypesForCurrentSelection
 {
@@ -1420,6 +1426,9 @@ static void cancelPotentialTapIfNecessary(WKContentView* contentView)
 {
     BOOL hasWebSelection = _webSelectionAssistant && !CGRectIsEmpty(_webSelectionAssistant.get().selectionFrame);
 
+    if (action == @selector(_arrowKey:))
+        return [self isFirstResponder];
+        
     if (action == @selector(_showTextStyleOptions:))
         return _page->editorState().isContentRichlyEditable && _page->editorState().selectionIsRange && !_showingTextStyleOptions;
     if (_showingTextStyleOptions)
@@ -2042,6 +2051,16 @@ static void selectionChangedWithTouch(WKContentView *view, const WebCore::IntPoi
     });
 }
 
+- (void)updateSelectionWithExtentPoint:(CGPoint)point withBoundary:(UITextGranularity)granularity completionHandler:(void (^)(BOOL selectionEndIsMoving))completionHandler
+{
+    UIWKSelectionWithDirectionCompletionHandler selectionHandler = [completionHandler copy];
+    
+    _page->updateSelectionWithExtentPointAndBoundary(WebCore::IntPoint(point), toWKTextGranularity(granularity), [selectionHandler](bool endIsMoving, WebKit::CallbackBase::Error error) {
+        selectionHandler(endIsMoving);
+        [selectionHandler release];
+    });
+}
+
 - (UTF32Char)_characterBeforeCaretSelection
 {
     return _page->editorState().postLayoutData().characterBeforeSelection;
@@ -2141,8 +2160,44 @@ static void selectionChangedWithTouch(WKContentView *view, const WebCore::IntPoi
 
 - (NSArray *)keyCommands
 {
-    return @[[UIKeyCommand keyCommandWithInput:@"\t" modifierFlags:0 action:@selector(_nextAccessoryTab:)],
-             [UIKeyCommand keyCommandWithInput:@"\t" modifierFlags:UIKeyModifierShift action:@selector(_prevAccessoryTab:)]];
+    static NSArray* nonEditableKeyCommands = [@[
+       [UIKeyCommand keyCommandWithInput:UIKeyInputUpArrow modifierFlags:0 action:@selector(_arrowKey:)],
+       [UIKeyCommand keyCommandWithInput:UIKeyInputDownArrow modifierFlags:0 action:@selector(_arrowKey:)],
+       [UIKeyCommand keyCommandWithInput:UIKeyInputLeftArrow modifierFlags:0 action:@selector(_arrowKey:)],
+       [UIKeyCommand keyCommandWithInput:UIKeyInputRightArrow modifierFlags:0 action:@selector(_arrowKey:)],
+       
+       [UIKeyCommand keyCommandWithInput:UIKeyInputUpArrow modifierFlags:UIKeyModifierCommand action:@selector(_arrowKey:)],
+       [UIKeyCommand keyCommandWithInput:UIKeyInputDownArrow modifierFlags:UIKeyModifierCommand action:@selector(_arrowKey:)],
+       
+       [UIKeyCommand keyCommandWithInput:UIKeyInputUpArrow modifierFlags:UIKeyModifierShift action:@selector(_arrowKey:)],
+       [UIKeyCommand keyCommandWithInput:UIKeyInputDownArrow modifierFlags:UIKeyModifierShift action:@selector(_arrowKey:)],
+       [UIKeyCommand keyCommandWithInput:UIKeyInputLeftArrow modifierFlags:UIKeyModifierShift action:@selector(_arrowKey:)],
+       [UIKeyCommand keyCommandWithInput:UIKeyInputRightArrow modifierFlags:UIKeyModifierShift action:@selector(_arrowKey:)],
+       
+       [UIKeyCommand keyCommandWithInput:UIKeyInputUpArrow modifierFlags:UIKeyModifierAlternate action:@selector(_arrowKey:)],
+       [UIKeyCommand keyCommandWithInput:UIKeyInputDownArrow modifierFlags:UIKeyModifierAlternate action:@selector(_arrowKey:)],
+       [UIKeyCommand keyCommandWithInput:UIKeyInputLeftArrow modifierFlags:UIKeyModifierAlternate action:@selector(_arrowKey:)],
+       [UIKeyCommand keyCommandWithInput:UIKeyInputRightArrow modifierFlags:UIKeyModifierAlternate action:@selector(_arrowKey:)],
+       
+       [UIKeyCommand keyCommandWithInput:@" " modifierFlags:0 action:@selector(_arrowKey:)],
+       [UIKeyCommand keyCommandWithInput:@" " modifierFlags:UIKeyModifierShift action:@selector(_arrowKey:)],
+       
+       [UIKeyCommand keyCommandWithInput:UIKeyInputPageDown modifierFlags:0 action:@selector(_arrowKey:)],
+       [UIKeyCommand keyCommandWithInput:UIKeyInputPageDown modifierFlags:0 action:@selector(_arrowKey:)],
+    ] retain];
+
+    static NSArray* editableKeyCommands = [@[
+       [UIKeyCommand keyCommandWithInput:@"\t" modifierFlags:0 action:@selector(_nextAccessoryTab:)],
+       [UIKeyCommand keyCommandWithInput:@"\t" modifierFlags:UIKeyModifierShift action:@selector(_prevAccessoryTab:)]
+    ] retain];
+    
+    return (_page->editorState().isContentEditable) ? editableKeyCommands : nonEditableKeyCommands;
+}
+
+- (void)_arrowKey:(id)sender
+{
+    UIKeyCommand* command = sender;
+    [self handleKeyEvent:command._triggeringEvent];
 }
 
 - (void)_nextAccessoryTab:(id)sender
@@ -2494,6 +2549,14 @@ static UITextAutocapitalizationType toUITextAutocapitalize(WebAutocapitalizeType
     return _webSelectionAssistant.get();
 }
 
+#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000
+- (id<UISelectionInteractionAssistant>)selectionInteractionAssistant
+{
+    if ([_webSelectionAssistant conformsToProtocol:@protocol(UISelectionInteractionAssistant)])
+        return (id<UISelectionInteractionAssistant>)_webSelectionAssistant.get();
+    return nil;
+}
+#endif
 
 // NSRange support.  Would like to deprecate to the extent possible, although some support
 // (i.e. selectionRange) has shipped as API.
@@ -2540,6 +2603,32 @@ static UITextAutocapitalizationType toUITextAutocapitalize(WebAutocapitalizeType
     return YES;
 }
 
+- (void)_handleKeyUIEvent:(::UIEvent *)event
+{
+    // We only want to handle key event from the hardware keyboard when we are
+    // first responder and we are not interacting with editable content.
+    if ([self isFirstResponder] && event._hidEvent && !_page->editorState().isContentEditable)
+        [self handleKeyEvent:event];
+
+    [super _handleKeyUIEvent:event];
+}
+
+- (void)handleKeyEvent:(::UIEvent *)event
+{
+    ::WebEvent *webEvent = [[[::WebEvent alloc] initWithKeyEventType:(event._isKeyDown) ? WebEventKeyDown : WebEventKeyUp
+                                                           timeStamp:event.timestamp
+                                                          characters:event._modifiedInput
+                                         charactersIgnoringModifiers:event._unmodifiedInput
+                                                           modifiers:event._modifierFlags
+                                                         isRepeating:(event._inputFlags & kUIKeyboardInputRepeat)
+                                                           withFlags:event._inputFlags
+                                                             keyCode:0
+                                                            isTabKey:[event._modifiedInput isEqualToString:@"\t"]
+                                                        characterSet:WebEventCharacterSetUnicode] autorelease];
+    
+    [self handleKeyWebEvent:webEvent];    
+}
+
 - (void)handleKeyWebEvent:(WebIOSEvent *)theEvent
 {
     _page->handleKeyboardEvent(NativeWebKeyboardEvent(theEvent));
@@ -2562,87 +2651,100 @@ static UITextAutocapitalizationType toUITextAutocapitalize(WebAutocapitalizeType
     static const unsigned kWebBackspaceKey = 0x0008;
     static const unsigned kWebReturnKey = 0x000D;
     static const unsigned kWebDeleteKey = 0x007F;
-    static const unsigned kWebLeftArrowKey = 0x00AC;
-    static const unsigned kWebUpArrowKey = 0x00AD;
-    static const unsigned kWebRightArrowKey = 0x00AE;
-    static const unsigned kWebDownArrowKey = 0x00AF;
     static const unsigned kWebDeleteForwardKey = 0xF728;
+    static const unsigned kWebSpaceKey = 0x20;
 
-    if (!_page->editorState().isContentEditable && event.isTabKey)
+    BOOL contentEditable = _page->editorState().isContentEditable;
+
+    if (!contentEditable && event.isTabKey)
         return NO;
 
     BOOL shift = event.modifierFlags & WebEventFlagMaskShift;
+    BOOL command = event.modifierFlags & WebEventFlagMaskCommand;
+    BOOL option = event.modifierFlags & WebEventFlagMaskAlternate;
+    NSString *charactersIgnoringModifiers = [event charactersIgnoringModifiers];
+    BOOL shouldScroll = YES;
+    FloatPoint scrollOffset;
 
-    switch (event.characterSet) {
-    case WebEventCharacterSetSymbol: {
-        String command;
-        NSString *characters = [event charactersIgnoringModifiers];
-        if ([characters length] == 0)
-            break;
-        switch ([characters characterAtIndex:0]) {
-        case kWebLeftArrowKey:
-            command = shift ? ASCIILiteral("moveLeftAndModifySelection") :  ASCIILiteral("moveLeft");
-            break;
+    if ([charactersIgnoringModifiers isEqualToString:UIKeyInputLeftArrow])
+        scrollOffset.setX(-Scrollbar::pixelsPerLineStep());
+    else if ([charactersIgnoringModifiers isEqualToString:UIKeyInputUpArrow]) {
+        if (option)
+            scrollOffset.setY(-_page->unobscuredContentRect().height());
+        else if (command)
+            scrollOffset.setY(-[self bounds].size.height);
+        else
+            scrollOffset.setY(-Scrollbar::pixelsPerLineStep());
+    } else if ([charactersIgnoringModifiers isEqualToString:UIKeyInputRightArrow])
+            scrollOffset.setX(Scrollbar::pixelsPerLineStep());
+    else if ([charactersIgnoringModifiers isEqualToString:UIKeyInputDownArrow]) {
+        if (option)
+            scrollOffset.setY(_page->unobscuredContentRect().height());
+        else if (command)
+            scrollOffset.setY([self bounds].size.height);
+        else
+            scrollOffset.setY(Scrollbar::pixelsPerLineStep());
+    } else if ([charactersIgnoringModifiers isEqualToString:UIKeyInputPageDown])
+        scrollOffset.setY(_page->unobscuredContentRect().height());
+    else if ([charactersIgnoringModifiers isEqualToString:UIKeyInputPageUp])
+        scrollOffset.setY(-_page->unobscuredContentRect().height());
+    else
+        shouldScroll = NO;
 
-        case kWebUpArrowKey:
-            command = shift ? ASCIILiteral("moveUpAndModifySelection") :  ASCIILiteral("moveUp");
-            break;
-
-        case kWebRightArrowKey:
-            command = shift ? ASCIILiteral("moveRightAndModifySelection") :  ASCIILiteral("moveRight");
-            break;
-
-        case kWebDownArrowKey:
-            command = shift ? ASCIILiteral("moveDownAndModifySelection") :  ASCIILiteral("moveDown");
-            break;
-        }
-        if (!command.isEmpty()) {
-            _page->executeEditCommand(command);
-            return YES;
-        }
-        break;
+    if (shouldScroll) {
+        [_webView _scrollByOffset:scrollOffset];
+        return YES;
     }
-    case WebEventCharacterSetASCII:
-    case WebEventCharacterSetUnicode: {
-        NSString *characters = [event characters];
-        if ([characters length] == 0)
-            break;
-        UIKeyboardImpl *keyboard = [UIKeyboardImpl sharedInstance];
-        switch ([characters characterAtIndex:0]) {
-        case kWebBackspaceKey:
-        case kWebDeleteKey:
+
+    UIKeyboardImpl *keyboard = [UIKeyboardImpl sharedInstance];
+    NSString *characters = [event characters];
+    
+    if (![characters length])
+        return NO;
+
+    switch ([characters characterAtIndex:0]) {
+    case kWebBackspaceKey:
+    case kWebDeleteKey:
+        if (contentEditable) {
             // FIXME: remove deleteFromInput once UIKit adopts deleteFromInputWithFlags
             if ([keyboard respondsToSelector:@selector(deleteFromInputWithFlags:)])
                 [keyboard deleteFromInputWithFlags:event.keyboardFlags];
             else
                 [keyboard deleteFromInput];
             return YES;
-
-        case kWebEnterKey:
-        case kWebReturnKey:
-            if (isCharEvent) {
-                // Map \r from HW keyboard to \n to match the behavior of the soft keyboard.
-                [keyboard addInputString:@"\n" withFlags:0];
-                return YES;
-            }
-            return NO;
-
-        case kWebDeleteForwardKey:
-            _page->executeEditCommand(ASCIILiteral("deleteForward"));
-            return YES;
-
-        default: {
-            if (isCharEvent) {
-                [keyboard addInputString:event.characters withFlags:event.keyboardFlags];
-                return YES;
-            }
-            return NO;
         }
-    }
         break;
-    }
+
+    case kWebSpaceKey:
+        if (!contentEditable) {
+            [_webView _scrollByOffset:FloatPoint(0, shift ? -_page->unobscuredContentRect().height() : _page->unobscuredContentRect().height())];
+            return YES;
+        }
+        if (isCharEvent) {
+            [keyboard addInputString:event.characters withFlags:event.keyboardFlags];
+            return YES;
+        }
+        break;
+
+    case kWebEnterKey:
+    case kWebReturnKey:
+        if (contentEditable && isCharEvent) {
+            // Map \r from HW keyboard to \n to match the behavior of the soft keyboard.
+            [keyboard addInputString:@"\n" withFlags:0];
+            return YES;
+        }
+        break;
+
+    case kWebDeleteForwardKey:
+        _page->executeEditCommand(ASCIILiteral("deleteForward"));
+        return YES;
+
     default:
-        return NO;
+        if (contentEditable && isCharEvent) {
+            [keyboard addInputString:event.characters withFlags:event.keyboardFlags];
+            return YES;
+        }
+        break;
     }
 
     return NO;
@@ -2659,73 +2761,73 @@ static UITextAutocapitalizationType toUITextAutocapitalize(WebAutocapitalizeType
 
 - (UITextInputArrowKeyHistory *)_moveUp:(BOOL)extending withHistory:(UITextInputArrowKeyHistory *)history
 {
-    [self executeEditCommandWithCallback:@"moveUp"];
+    [self executeEditCommandWithCallback:extending ? @"moveUpAndModifySelection" : @"moveUp"];
     return nil;
 }
 
 - (UITextInputArrowKeyHistory *)_moveDown:(BOOL)extending withHistory:(UITextInputArrowKeyHistory *)history
 {
-    [self executeEditCommandWithCallback:@"moveDown"];
+    [self executeEditCommandWithCallback:extending ? @"moveDownAndModifySelection" : @"moveDown"];
     return nil;
 }
 
-- (UITextInputArrowKeyHistory *)_moveLeft:(BOOL) extending withHistory:(UITextInputArrowKeyHistory *)history
+- (UITextInputArrowKeyHistory *)_moveLeft:(BOOL)extending withHistory:(UITextInputArrowKeyHistory *)history
 {
-    [self executeEditCommandWithCallback:@"moveLeft"];
+    [self executeEditCommandWithCallback:extending? @"moveLeftAndModifySelection" : @"moveLeft"];
     return nil;
 }
 
-- (UITextInputArrowKeyHistory *)_moveRight:(BOOL) extending withHistory:(UITextInputArrowKeyHistory *)history
+- (UITextInputArrowKeyHistory *)_moveRight:(BOOL)extending withHistory:(UITextInputArrowKeyHistory *)history
 {
-    [self executeEditCommandWithCallback:@"moveRight"];
+    [self executeEditCommandWithCallback:extending ? @"moveRightAndModifySelection" : @"moveRight"];
     return nil;
 }
 
 - (UITextInputArrowKeyHistory *)_moveToStartOfWord:(BOOL)extending withHistory:(UITextInputArrowKeyHistory *)history
 {
-    [self executeEditCommandWithCallback:@"moveWordBackward"];
+    [self executeEditCommandWithCallback:extending ? @"moveWordBackwardAndModifySelection" : @"moveWordBackward"];
     return nil;
 }
 
-- (UITextInputArrowKeyHistory *)_moveToStartOfParagraph:(BOOL) extending withHistory:(UITextInputArrowKeyHistory *)history
+- (UITextInputArrowKeyHistory *)_moveToStartOfParagraph:(BOOL)extending withHistory:(UITextInputArrowKeyHistory *)history
 {
-    [self executeEditCommandWithCallback:@"moveToStartOfParagraph"];
+    [self executeEditCommandWithCallback:extending ? @"moveToBeginningOfParagraphAndModifySelection" : @"moveToBeginningOfParagraph"];
     return nil;
 }
 
-- (UITextInputArrowKeyHistory *)_moveToStartOfLine:(BOOL) extending withHistory:(UITextInputArrowKeyHistory *)history
+- (UITextInputArrowKeyHistory *)_moveToStartOfLine:(BOOL)extending withHistory:(UITextInputArrowKeyHistory *)history
 {
-    [self executeEditCommandWithCallback:@"moveToStartOfLine"];
+    [self executeEditCommandWithCallback:extending ? @"moveToBeginningOfLineAndModifySelection" : @"moveToBeginningOfLine"];
     return nil;
 }
 
-- (UITextInputArrowKeyHistory *)_moveToStartOfDocument:(BOOL) extending withHistory:(UITextInputArrowKeyHistory *)history
+- (UITextInputArrowKeyHistory *)_moveToStartOfDocument:(BOOL)extending withHistory:(UITextInputArrowKeyHistory *)history
 {
-    [self executeEditCommandWithCallback:@"moveToBeginningOfDocument"];
+    [self executeEditCommandWithCallback:extending ? @"moveToBeginningOfDocumentAndModifySelection" : @"moveToBeginningOfDocument"];
     return nil;
 }
 
 - (UITextInputArrowKeyHistory *)_moveToEndOfWord:(BOOL)extending withHistory:(UITextInputArrowKeyHistory *)history
 {
-    [self executeEditCommandWithCallback:@"moveWordForward"];
+    [self executeEditCommandWithCallback:extending ? @"moveWordForwardAndModifySelection" : @"moveWordForward"];
     return nil;
 }
 
-- (UITextInputArrowKeyHistory *)_moveToEndOfParagraph:(BOOL) extending withHistory:(UITextInputArrowKeyHistory *)history
+- (UITextInputArrowKeyHistory *)_moveToEndOfParagraph:(BOOL)extending withHistory:(UITextInputArrowKeyHistory *)history
 {
-    [self executeEditCommandWithCallback:@"moveToEndOfParagraph"];
+    [self executeEditCommandWithCallback:extending ? @"moveToEndOfParagraphAndModifySelection" : @"moveToEndOfParagraph"];
     return nil;
 }
 
-- (UITextInputArrowKeyHistory *)_moveToEndOfLine:(BOOL) extending withHistory:(UITextInputArrowKeyHistory *)history
+- (UITextInputArrowKeyHistory *)_moveToEndOfLine:(BOOL)extending withHistory:(UITextInputArrowKeyHistory *)history
 {
-    [self executeEditCommandWithCallback:@"moveToEndOfLine"];
+    [self executeEditCommandWithCallback:extending ? @"moveToEndOfLineAndModifySelection" : @"moveToEndOfLine"];
     return nil;
 }
 
-- (UITextInputArrowKeyHistory *)_moveToEndOfDocument:(BOOL) extending withHistory:(UITextInputArrowKeyHistory *)history
+- (UITextInputArrowKeyHistory *)_moveToEndOfDocument:(BOOL)extending withHistory:(UITextInputArrowKeyHistory *)history
 {
-    [self executeEditCommandWithCallback:@"moveToEndOfDocument"];
+    [self executeEditCommandWithCallback:extending ? @"moveToEndOfDocumentAndModifySelection" : @"moveToEndOfDocument"];
     return nil;
 }
 
@@ -2870,6 +2972,7 @@ static UITextAutocapitalizationType toUITextAutocapitalize(WebAutocapitalizeType
 
 - (UIWebFormAccessory *)formAccessoryView
 {
+    [self _ensureFormAccessoryView];
     return _formAccessoryView.get();
 }
 
@@ -3078,6 +3181,13 @@ static bool isAssistableInputType(InputType type)
     [self _attemptClickAtLocation:location];
 }
 
+#if HAVE(APP_LINKS)
+- (BOOL)actionSheetAssistant:(WKActionSheetAssistant *)assistant shouldIncludeAppLinkActionsForElement:(_WKActivatedElementInfo *)element
+{
+    return _page->uiClient().shouldIncludeAppLinkActionsForElement(element);
+}
+#endif
+
 - (RetainPtr<NSArray>)actionSheetAssistant:(WKActionSheetAssistant *)assistant decideActionsForElement:(_WKActivatedElementInfo *)element defaultActions:(RetainPtr<NSArray>)defaultActions
 {
     return _page->uiClient().actionsForElement(element, WTF::move(defaultActions));
@@ -3099,68 +3209,208 @@ static bool isAssistableInputType(InputType type)
 
 @implementation WKContentView (WKInteractionPreview)
 
-- (void)_registerPreviewInWindow:(UIWindow *)window
+- (void)_registerPreview
 {
-    [window.rootViewController registerPreviewSourceView:self previewingDelegate:self];
-    _previewGestureRecognizer = self.gestureRecognizers.lastObject;
-    [_previewGestureRecognizer setDelegate:self];
+    _previewItemController = adoptNS([[UIPreviewItemController alloc] initWithView:self]);
+    [_previewItemController setDelegate:self];
+    _previewGestureRecognizer = _previewItemController.get().presentationGestureRecognizer;
 }
 
-- (void)_unregisterPreviewInWindow:(UIWindow *)window
+- (void)_unregisterPreview
 {
-    [window.rootViewController unregisterPreviewSourceView:self];
-    [_previewGestureRecognizer setDelegate:nil];
+    [_previewItemController setDelegate:nil];
     _previewGestureRecognizer = nil;
+    _previewItemController = nil;
 }
 
-- (UIViewController *)previewViewControllerForPosition:(CGPoint)position inSourceView:(UIView *)sourceView
+- (BOOL)_interactionShouldBeginFromPreviewItemController:(UIPreviewItemController *)controller forPosition:(CGPoint)position
 {
-    ASSERT(self == sourceView);
+    if (!_highlightLongPressCanClick)
+        return NO;
 
+    [self ensurePositionInformationIsUpToDate:position];
     if (_positionInformation.clickableElementName != "A" && _positionInformation.clickableElementName != "IMG")
+        return NO;
+    
+    String absoluteLinkURL = _positionInformation.url;
+    if (_positionInformation.clickableElementName == "A") {
+        if (absoluteLinkURL.isEmpty())
+            return NO;
+        if (WebCore::protocolIsInHTTPFamily(absoluteLinkURL))
+            return YES;
+        NSURL *targetURL = [NSURL _web_URLWithWTFString:_positionInformation.url];
+        if ([[getDDDetectionControllerClass() tapAndHoldSchemes] containsObject:[targetURL scheme]])
+            return YES;
+        return NO;
+    }
+    return YES;
+}
+
+- (NSDictionary *)_dataForPreviewItemController:(UIPreviewItemController *)controller atPosition:(CGPoint)position type:(UIPreviewItemType *)type
+{
+    *type = UIPreviewItemTypeNone;
+
+    id <WKUIDelegatePrivate> uiDelegate = static_cast<id <WKUIDelegatePrivate>>([_webView UIDelegate]);
+    BOOL supportsImagePreview = [uiDelegate respondsToSelector:@selector(_webView:commitPreviewedImageWithURL:)];
+    BOOL canShowImagePreview = _positionInformation.clickableElementName == "IMG" && supportsImagePreview;
+    BOOL canShowLinkPreview = _positionInformation.clickableElementName == "A" || canShowImagePreview;
+    BOOL useImageURLForLink = NO;
+
+    if (canShowImagePreview && _positionInformation.isAnimatedImage) {
+        canShowImagePreview = NO;
+        canShowLinkPreview = YES;
+        useImageURLForLink = YES;
+    }
+
+    if (!canShowLinkPreview && !canShowImagePreview)
         return nil;
 
     String absoluteLinkURL = _positionInformation.url;
-    if (absoluteLinkURL.isEmpty() || !WebCore::protocolIsInHTTPFamily(absoluteLinkURL))
-        return nil;
+    if (!useImageURLForLink && (absoluteLinkURL.isEmpty() || !WebCore::protocolIsInHTTPFamily(absoluteLinkURL))) {
+        if (canShowLinkPreview && !canShowImagePreview)
+            return nil;
+        canShowLinkPreview = NO;
+    }
 
-    _highlightLongPressCanClick = NO;
-
-    NSURL *targetURL = [NSURL URLWithString:_positionInformation.url];
-    id<WKUIDelegatePrivate> uiDelegate = static_cast<id <WKUIDelegatePrivate>>([_webView UIDelegate]);
-    if ([uiDelegate respondsToSelector:@selector(_webView:previewViewControllerForURL:)])
-        return [uiDelegate _webView:_webView previewViewControllerForURL:targetURL];
-
-    return WKGetPreviewViewController(targetURL);
+    NSMutableDictionary *dataForPreview = [[[NSMutableDictionary alloc] init] autorelease];
+    if (canShowLinkPreview) {
+        *type = UIPreviewItemTypeLink;
+        if (useImageURLForLink)
+            dataForPreview[UIPreviewDataLink] = [NSURL _web_URLWithWTFString:_positionInformation.imageURL];
+        else
+            dataForPreview[UIPreviewDataLink] = [NSURL _web_URLWithWTFString:_positionInformation.url];
+    } else if (canShowImagePreview) {
+        *type = UIPreviewItemTypeImage;
+        dataForPreview[UIPreviewDataLink] = [NSURL _web_URLWithWTFString:_positionInformation.imageURL];
+    }
+    
+    return dataForPreview;
 }
 
-- (void)commitPreviewViewController:(UIViewController *)viewController
+- (CGRect)_presentationRectForPreviewItemController:(UIPreviewItemController *)controller
 {
-    id<WKUIDelegatePrivate> uiDelegate = static_cast<id <WKUIDelegatePrivate>>([_webView UIDelegate]);
+    return _positionInformation.bounds;
+}
+
+- (UIViewController *)_presentedViewControllerForPreviewItemController:(UIPreviewItemController *)controller
+{
+    id <WKUIDelegatePrivate> uiDelegate = static_cast<id <WKUIDelegatePrivate>>([_webView UIDelegate]);
+
+    NSURL *targetURL = controller.previewData[UIPreviewDataLink];
+    URL coreTargetURL = targetURL;
+    bool isValidURLForImagePreview = !coreTargetURL.isEmpty() && (WebCore::protocolIsInHTTPFamily(coreTargetURL) || WebCore::protocolIs(coreTargetURL, "data"));
+
+    if ([_previewItemController type] == UIPreviewItemTypeLink) {
+        _highlightLongPressCanClick = NO;
+        _page->startInteractionWithElementAtPosition(_positionInformation.point);
+
+        // Treat animated images like a link preview
+        if (isValidURLForImagePreview && _positionInformation.isAnimatedImage) {
+            RetainPtr<_WKActivatedElementInfo> animatedImageElementInfo = adoptNS([[_WKActivatedElementInfo alloc] _initWithType:_WKActivatedElementTypeImage URL:targetURL location:_positionInformation.point title:_positionInformation.title rect:_positionInformation.bounds image:_positionInformation.image.get()]);
+
+            if ([uiDelegate respondsToSelector:@selector(_webView:previewViewControllerForAnimatedImageAtURL:defaultActions:elementInfo:imageSize:)]) {
+                RetainPtr<NSArray> actions = [_actionSheetAssistant defaultActionsForImageSheet:animatedImageElementInfo.get()];
+                return [uiDelegate _webView:_webView previewViewControllerForAnimatedImageAtURL:targetURL defaultActions:actions.get() elementInfo:animatedImageElementInfo.get() imageSize:_positionInformation.image->size()];
+            }
+        }
+
+        RetainPtr<_WKActivatedElementInfo> elementInfo = adoptNS([[_WKActivatedElementInfo alloc] _initWithType:_WKActivatedElementTypeLink URL:targetURL location:_positionInformation.point title:_positionInformation.title rect:_positionInformation.bounds image:_positionInformation.image.get()]);
+
+        RetainPtr<NSArray> actions = [_actionSheetAssistant defaultActionsForLinkSheet:elementInfo.get()];
+        if ([uiDelegate respondsToSelector:@selector(_webView:previewViewControllerForURL:defaultActions:elementInfo:)])
+            return [uiDelegate _webView:_webView previewViewControllerForURL:targetURL defaultActions:actions.get() elementInfo:elementInfo.get()];
+
+        if ([uiDelegate respondsToSelector:@selector(_webView:previewViewControllerForURL:)])
+            return [uiDelegate _webView:_webView previewViewControllerForURL:targetURL];
+        return nil;
+    }
+
+    if ([_previewItemController type] == UIPreviewItemTypeImage) {
+        if (!isValidURLForImagePreview)
+            return nil;
+
+        RetainPtr<_WKActivatedElementInfo> elementInfo = adoptNS([[_WKActivatedElementInfo alloc] _initWithType:_WKActivatedElementTypeImage URL:targetURL location:_positionInformation.point title:_positionInformation.title rect:_positionInformation.bounds image:_positionInformation.image.get()]);
+        _page->startInteractionWithElementAtPosition(_positionInformation.point);
+
+        if ([uiDelegate respondsToSelector:@selector(_webView:willPreviewImageWithURL:)])
+            [uiDelegate _webView:_webView willPreviewImageWithURL:targetURL];
+        return [[[WKImagePreviewViewController alloc] initWithCGImage:_positionInformation.image->makeCGImageCopy() defaultActions:[_actionSheetAssistant defaultActionsForImageSheet:elementInfo.get()] elementInfo:elementInfo] autorelease];
+    }
+
+    return nil;
+}
+
+- (void)_previewItemController:(UIPreviewItemController *)controller commitPreview:(UIViewController *)viewController
+{
+    id <WKUIDelegatePrivate> uiDelegate = static_cast<id <WKUIDelegatePrivate>>([_webView UIDelegate]);
+    if ([_previewItemController type] == UIPreviewItemTypeImage) {
+        if ([uiDelegate respondsToSelector:@selector(_webView:commitPreviewedImageWithURL:)]) {
+            String absoluteImageURL = _positionInformation.imageURL;
+            if (absoluteImageURL.isEmpty() || !(WebCore::protocolIsInHTTPFamily(absoluteImageURL) || WebCore::protocolIs(absoluteImageURL, "data")))
+                return;
+            [uiDelegate _webView:_webView commitPreviewedImageWithURL:[NSURL _web_URLWithWTFString:absoluteImageURL]];
+            return;
+        }
+        return;
+    }
+
     if ([uiDelegate respondsToSelector:@selector(_webView:commitPreviewedViewController:)]) {
         [uiDelegate _webView:_webView commitPreviewedViewController:viewController];
         return;
     }
 
-    UIViewController *presentingViewController = viewController.presentingViewController ?: self.window.rootViewController;
-    WKWillCommitPreviewViewController(viewController);
-
-    viewController.transitioningDelegate = nil;
-    viewController.modalPresentationStyle = UIModalPresentationFullScreen;
-    [presentingViewController presentViewController:viewController animated:NO completion:nil];
 }
 
-- (void)willPresentPreviewViewController:(UIViewController *)viewController forPosition:(CGPoint)position inSourceView:(UIView *)sourceView
+- (void)_previewItemController:(UIPreviewItemController *)controller willPresentPreview:(UIViewController *)viewController forPosition:(CGPoint)position inSourceView:(UIView *)sourceView
 {
+    [self _removeDefaultGestureRecognizers];
+
     [self _cancelInteraction];
-    [[viewController presentationController] setSourceRect:_positionInformation.bounds];
 }
 
-- (void)didDismissPreviewViewController:(UIViewController *)viewController committing:(BOOL)committing
+- (void)_previewItemController:(UIPreviewItemController *)controller didDismissPreview:(UIViewController *)viewController committing:(BOOL)committing
 {
+    [self _addDefaultGestureRecognizers];
+    _page->stopInteraction();
+
     id<WKUIDelegatePrivate> uiDelegate = static_cast<id <WKUIDelegatePrivate>>([_webView UIDelegate]);
-    if ([uiDelegate respondsToSelector:@selector(_webView:didDismissPreviewViewController:)])
+    if ([uiDelegate respondsToSelector:@selector(_webView:didDismissPreviewViewController:committing:)])
+        [uiDelegate _webView:_webView didDismissPreviewViewController:viewController committing:committing];
+    else if ([uiDelegate respondsToSelector:@selector(_webView:didDismissPreviewViewController:)])
         [uiDelegate _webView:_webView didDismissPreviewViewController:viewController];
+}
+
+- (UIImage *)_presentationSnapshotForPreviewItemController:(UIPreviewItemController *)controller
+{
+    if (!_positionInformation.linkIndicator.contentImage)
+        return nullptr;
+    return [[[UIImage alloc] initWithCGImage:_positionInformation.linkIndicator.contentImage->getCGImageRef()] autorelease];
+}
+
+- (NSArray *)_presentationRectsForPreviewItemController:(UIPreviewItemController *)controller
+{
+    RetainPtr<NSMutableArray> rectArray = adoptNS([[NSMutableArray alloc] init]);
+
+    if (_positionInformation.linkIndicator.contentImage) {
+        FloatPoint origin = _positionInformation.linkIndicator.textBoundingRectInRootViewCoordinates.location();
+        for (FloatRect& rect : _positionInformation.linkIndicator.textRectsInBoundingRectCoordinates) {
+            CGRect cgRect = rect;
+            cgRect.origin.x += origin.x();
+            cgRect.origin.y += origin.y();
+            [rectArray addObject:[NSValue valueWithCGRect:cgRect]];
+        }
+    } else {
+        const float marginInPx = 4 * _page->deviceScaleFactor();
+        CGRect cgRect = CGRectInset(_positionInformation.bounds, -marginInPx, -marginInPx);
+        [rectArray addObject:[NSValue valueWithCGRect:cgRect]];
+    }
+
+    return rectArray.autorelease();
+}
+
+- (void)_previewItemControllerDidCancelPreview:(UIPreviewItemController *)controller
+{
+    _highlightLongPressCanClick = NO;
 }
 
 @end

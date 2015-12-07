@@ -52,7 +52,7 @@ public:
     explicit HistoryController(Frame&);
     ~HistoryController();
 
-    void saveScrollPositionAndViewStateToItem(HistoryItem*);
+    WEBCORE_EXPORT void saveScrollPositionAndViewStateToItem(HistoryItem*);
     void clearScrollPositionAndViewState();
     WEBCORE_EXPORT void restoreScrollPositionAndViewState();
 
@@ -74,7 +74,7 @@ public:
     void updateForFrameLoadCompleted();
 
     HistoryItem* currentItem() const { return m_currentItem.get(); }
-    void setCurrentItem(HistoryItem&);
+    void setCurrentItem(HistoryItem*);
     void setCurrentItemTitle(const StringWithDirection&);
     bool currentItemShouldBeReplaced() const;
     WEBCORE_EXPORT void replaceCurrentItem(HistoryItem*);

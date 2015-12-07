@@ -503,9 +503,9 @@ namespace WebKit {
 
 using namespace HTMLNames;
 
-PassRefPtr<PDFPlugin> PDFPlugin::create(WebFrame* frame)
+Ref<PDFPlugin> PDFPlugin::create(WebFrame* frame)
 {
-    return adoptRef(new PDFPlugin(frame));
+    return adoptRef(*new PDFPlugin(frame));
 }
 
 PDFPlugin::PDFPlugin(WebFrame* frame)
@@ -1103,8 +1103,8 @@ void PDFPlugin::destroy()
             frameView->removeScrollableArea(this);
     }
 
-    m_activeAnnotation = 0;
-    m_annotationContainer = 0;
+    m_activeAnnotation = nullptr;
+    m_annotationContainer = nullptr;
 
     destroyScrollbar(HorizontalScrollbar);
     destroyScrollbar(VerticalScrollbar);
@@ -1152,7 +1152,7 @@ void PDFPlugin::paintControlForLayerInContext(CALayer *layer, CGContextRef conte
     scrollbar->paint(&graphicsContext, scrollbar->frameRect());
 }
 
-PassRefPtr<ShareableBitmap> PDFPlugin::snapshot()
+RefPtr<ShareableBitmap> PDFPlugin::snapshot()
 {
     if (size().isEmpty())
         return nullptr;
@@ -1169,7 +1169,7 @@ PassRefPtr<ShareableBitmap> PDFPlugin::snapshot()
 
     [m_pdfLayerController snapshotInContext:context->platformContext()];
 
-    return bitmap.release();
+    return bitmap;
 }
 
 PlatformLayer* PDFPlugin::pluginLayer()
@@ -1591,7 +1591,7 @@ void PDFPlugin::clickedLink(NSURL *url)
     if (m_lastMouseEvent.type() != WebEvent::NoType)
         coreEvent = MouseEvent::create(eventNames().clickEvent, frame->document()->defaultView(), platform(m_lastMouseEvent), 0, 0);
 
-    frame->loader().urlSelected(coreURL, emptyString(), coreEvent.get(), LockHistory::No, LockBackForwardList::No, MaybeSendReferrer);
+    frame->loader().urlSelected(coreURL, emptyString(), coreEvent.get(), LockHistory::No, LockBackForwardList::No, MaybeSendReferrer, ShouldOpenExternalURLsPolicy::ShouldAllow);
 }
 
 void PDFPlugin::setActiveAnnotation(PDFAnnotation *annotation)
@@ -1604,14 +1604,14 @@ void PDFPlugin::setActiveAnnotation(PDFAnnotation *annotation)
 
     if (annotation) {
         if ([annotation isKindOfClass:pdfAnnotationTextWidgetClass()] && static_cast<PDFAnnotationTextWidget *>(annotation).isReadOnly) {
-            m_activeAnnotation = 0;
+            m_activeAnnotation = nullptr;
             return;
         }
 
         m_activeAnnotation = PDFPluginAnnotation::create(annotation, m_pdfLayerController.get(), this);
         m_activeAnnotation->attach(m_annotationContainer.get());
     } else
-        m_activeAnnotation = 0;
+        m_activeAnnotation = nullptr;
 }
 
 bool PDFPlugin::supportsForms()
@@ -1635,12 +1635,12 @@ void PDFPlugin::notifyDisplayModeChanged(int)
     updateScrollbars();
 }
 
-PassRefPtr<SharedBuffer> PDFPlugin::liveResourceData() const
+RefPtr<SharedBuffer> PDFPlugin::liveResourceData() const
 {
     NSData *pdfData = liveData();
 
     if (!pdfData)
-        return 0;
+        return nullptr;
 
     return SharedBuffer::wrapNSData(pdfData);
 }

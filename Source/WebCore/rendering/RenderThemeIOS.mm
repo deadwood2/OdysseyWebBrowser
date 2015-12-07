@@ -1073,11 +1073,6 @@ Color RenderThemeIOS::platformInactiveSelectionBackgroundColor() const
     return Color::transparent;
 }
 
-bool RenderThemeIOS::shouldShowPlaceholderWhenFocused() const
-{
-    return true;
-}
-
 bool RenderThemeIOS::shouldHaveSpinButton(HTMLInputElement&) const
 {
     return false;
@@ -1285,8 +1280,6 @@ String RenderThemeIOS::mediaControlsStyleSheet()
     if (m_mediaControlsStyleSheet.isEmpty()) {
         StringBuilder builder;
         builder.append([NSString stringWithContentsOfFile:[[NSBundle bundleForClass:[WebCoreRenderThemeBundle class]] pathForResource:@"mediaControlsiOS" ofType:@"css"] encoding:NSUTF8StringEncoding error:nil]);
-        builder.append(wkGetMediaUIImageData(wkMediaUIPartOptimizedFullscreenButton));
-        builder.append(wkGetMediaUIImageData(wkMediaUIPartOptimizedFullscreenReturnButton));
         m_mediaControlsStyleSheet = builder.toString();
     }
     return m_mediaControlsStyleSheet;
@@ -1320,6 +1313,9 @@ Color RenderThemeIOS::systemColor(CSSValueID cssValueID) const
 
     Color color;
     switch (cssValueID) {
+    case CSSValueAppleWirelessPlaybackTargetActive:
+        color = [getUIColorClass() systemBlueColor].CGColor;
+        break;
     case CSSValueAppleSystemBlue:
         color = [getUIColorClass() systemBlueColor].CGColor;
         break;

@@ -142,7 +142,7 @@ public:
     WEBCORE_EXPORT void moveTo(const VisiblePosition&, const VisiblePosition&, EUserTriggered = NotUserTriggered);
     void moveTo(const Position&, EAffinity, EUserTriggered = NotUserTriggered);
     void moveTo(const Position&, const Position&, EAffinity, EUserTriggered = NotUserTriggered);
-    void moveWithoutValidationTo(const Position&, const Position&, bool selectionHasDirection, bool shouldSetFocus);
+    void moveWithoutValidationTo(const Position&, const Position&, bool selectionHasDirection, bool shouldSetFocus, const AXTextStateChangeIntent& = AXTextStateChangeIntent());
 
     const VisibleSelection& selection() const { return m_selection; }
     WEBCORE_EXPORT void setSelection(const VisibleSelection&, SetSelectionOptions = defaultSetSelectionOptions(), AXTextStateChangeIntent = AXTextStateChangeIntent(), CursorAlignOnScroll = AlignCursorOnScrollIfNeeded, TextGranularity = CharacterGranularity);
@@ -151,7 +151,7 @@ public:
     WEBCORE_EXPORT void clear();
     void prepareForDestruction();
 
-    void didLayout();
+    void updateAppearanceAfterLayout();
     void setNeedsSelectionUpdate();
 
     bool contains(const LayoutPoint&);
@@ -260,7 +260,8 @@ public:
 
     WEBCORE_EXPORT FloatRect selectionBounds(bool clipToVisibleContent = true) const;
 
-    WEBCORE_EXPORT void getClippedVisibleTextRectangles(Vector<FloatRect>&) const;
+    enum class TextRectangleHeight { TextHeight, SelectionHeight };
+    WEBCORE_EXPORT void getClippedVisibleTextRectangles(Vector<FloatRect>&, TextRectangleHeight = TextRectangleHeight::SelectionHeight) const;
 
     WEBCORE_EXPORT HTMLFormElement* currentForm() const;
 
@@ -359,7 +360,7 @@ inline EditingStyle* FrameSelection::typingStyle() const
 
 inline void FrameSelection::clearTypingStyle()
 {
-    m_typingStyle.clear();
+    m_typingStyle = nullptr;
 }
 
 inline void FrameSelection::setTypingStyle(PassRefPtr<EditingStyle> style)

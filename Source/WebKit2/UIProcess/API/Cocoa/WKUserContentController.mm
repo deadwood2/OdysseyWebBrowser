@@ -28,6 +28,8 @@
 
 #if WK_API_ENABLED
 
+#import "APISerializedScriptValue.h"
+#import "SecurityOriginData.h"
 #import "WKFrameInfoInternal.h"
 #import "WKNSArray.h"
 #import "WKScriptMessageHandler.h"
@@ -37,8 +39,6 @@
 #import "WebScriptMessageHandler.h"
 #import "WebUserContentControllerProxy.h"
 #import "_WKUserContentFilterInternal.h"
-#import <JavaScriptCore/JSContext.h>
-#import <JavaScriptCore/JSValue.h>
 #import <WebCore/SerializedScriptValue.h>
 
 @implementation WKUserContentController
@@ -84,18 +84,15 @@ public:
     {
     }
     
-    virtual void didPostMessage(WebKit::WebPageProxy& page, WebKit::WebFrameProxy& frame, WebCore::SerializedScriptValue& serializedScriptValue)
+    virtual void didPostMessage(WebKit::WebPageProxy& page, WebKit::WebFrameProxy& frame, const WebKit::SecurityOriginData& securityOriginData, WebCore::SerializedScriptValue& serializedScriptValue)
     {
-        RetainPtr<WKFrameInfo> frameInfo = wrapper(API::FrameInfo::create(frame));
-
-        RetainPtr<JSContext> context = adoptNS([[JSContext alloc] init]);
-        JSValueRef valueRef = serializedScriptValue.deserialize([context JSGlobalContextRef], 0);
-        JSValue *value = [JSValue valueWithJSValueRef:valueRef inContext:context.get()];
-        id body = [value toObject];
-
-        RetainPtr<WKScriptMessage> message = adoptNS([[WKScriptMessage alloc] _initWithBody:body webView:fromWebPageProxy(page) frameInfo:frameInfo.get() name:m_name.get()]);
-    
-        [m_handler userContentController:m_controller.get() didReceiveScriptMessage:message.get()];
+        @autoreleasepool {
+            RetainPtr<WKFrameInfo> frameInfo = wrapper(API::FrameInfo::create(frame, securityOriginData.securityOrigin()));
+            id body = API::SerializedScriptValue::deserialize(serializedScriptValue, 0);
+            auto message = adoptNS([[WKScriptMessage alloc] _initWithBody:body webView:fromWebPageProxy(page) frameInfo:frameInfo.get() name:m_name.get()]);
+        
+            [m_handler userContentController:m_controller.get() didReceiveScriptMessage:message.get()];
+        }
     }
 
 private:

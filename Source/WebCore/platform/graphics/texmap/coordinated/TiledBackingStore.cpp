@@ -21,8 +21,6 @@
 #include "TiledBackingStore.h"
 
 #if USE(COORDINATED_GRAPHICS)
-
-#include "CoordinatedTile.h"
 #include "GraphicsContext.h"
 #include "TiledBackingStoreClient.h"
 
@@ -36,11 +34,11 @@ static IntPoint innerBottomRight(const IntRect& rect)
     return IntPoint(rect.maxX() - 1, rect.maxY() - 1);
 }
 
-TiledBackingStore::TiledBackingStore(TiledBackingStoreClient* client)
+TiledBackingStore::TiledBackingStore(TiledBackingStoreClient* client, float contentsScale)
     : m_client(client)
     , m_tileSize(defaultTileDimension, defaultTileDimension)
     , m_coverAreaMultiplier(2.0f)
-    , m_contentsScale(1.f)
+    , m_contentsScale(contentsScale)
     , m_supportsAlpha(false)
     , m_pendingTileCreation(false)
 {
@@ -85,7 +83,7 @@ void TiledBackingStore::invalidate(const IntRect& contentsDirtyRect)
 
     for (int yCoordinate = topLeft.y(); yCoordinate <= bottomRight.y(); ++yCoordinate) {
         for (int xCoordinate = topLeft.x(); xCoordinate <= bottomRight.x(); ++xCoordinate) {
-            RefPtr<Tile> currentTile = tileAt(Tile::Coordinate(xCoordinate, yCoordinate));
+            Tile* currentTile = m_tiles.get(Tile::Coordinate(xCoordinate, yCoordinate));
             if (!currentTile)
                 continue;
             // Pass the full rect to each tile as coveredDirtyRect might not
@@ -97,47 +95,24 @@ void TiledBackingStore::invalidate(const IntRect& contentsDirtyRect)
 
 void TiledBackingStore::updateTileBuffers()
 {
-    m_client->tiledBackingStorePaintBegin();
-
-    Vector<IntRect> paintedArea;
-    Vector<RefPtr<Tile> > dirtyTiles;
-    for (auto& tile : m_tiles.values()) {
-        if (!tile->isDirty())
-            continue;
-        dirtyTiles.append(tile);
-    }
-
-    if (dirtyTiles.isEmpty()) {
-        m_client->tiledBackingStorePaintEnd(paintedArea);
-        return;
-    }
-
     // FIXME: In single threaded case, tile back buffers could be updated asynchronously 
     // one by one and then swapped to front in one go. This would minimize the time spent
     // blocking on tile updates.
-    unsigned size = dirtyTiles.size();
-    for (unsigned n = 0; n < size; ++n) {
-        Vector<IntRect> paintedRects = dirtyTiles[n]->updateBackBuffer();
-        paintedArea.appendVector(paintedRects);
-        dirtyTiles[n]->swapBackBufferToFront();
+    bool updated = false;
+    for (auto& tile : m_tiles.values()) {
+        if (!tile->isDirty())
+            continue;
+
+        updated |= tile->updateBackBuffer();
     }
 
-    m_client->tiledBackingStorePaintEnd(paintedArea);
+    if (updated)
+        m_client->didUpdateTileBuffers();
 }
 
 IntRect TiledBackingStore::visibleRect() const
 {
     return mapFromContents(m_client->tiledBackingStoreVisibleRect());
-}
-
-void TiledBackingStore::setContentsScale(float scale)
-{
-    if (scale == m_contentsScale)
-        return;
-
-    m_contentsScale = scale;
-    m_tiles.clear();
-    coverWithTilesIfNeeded();
 }
 
 double TiledBackingStore::tileDistance(const IntRect& viewport, const Tile::Coordinate& tileCoordinate) const
@@ -164,7 +139,7 @@ float TiledBackingStore::coverageRatio(const WebCore::IntRect& contentsRect) con
     for (int yCoordinate = topLeft.y(); yCoordinate <= bottomRight.y(); ++yCoordinate) {
         for (int xCoordinate = topLeft.x(); xCoordinate <= bottomRight.x(); ++xCoordinate) {
             Tile::Coordinate currentCoordinate(xCoordinate, yCoordinate);
-            RefPtr<Tile> currentTile = tileAt(currentCoordinate);
+            Tile* currentTile = m_tiles.get(currentCoordinate);
             if (currentTile && currentTile->isReadyToPaint()) {
                 IntRect coverRect = intersection(dirtyRect, currentTile->rect());
                 coverArea += coverRect.width() * coverRect.height();
@@ -245,7 +220,7 @@ void TiledBackingStore::createTiles()
     for (int yCoordinate = topLeft.y(); yCoordinate <= bottomRight.y(); ++yCoordinate) {
         for (int xCoordinate = topLeft.x(); xCoordinate <= bottomRight.x(); ++xCoordinate) {
             Tile::Coordinate currentCoordinate(xCoordinate, yCoordinate);
-            if (tileAt(currentCoordinate))
+            if (m_tiles.contains(currentCoordinate))
                 continue;
             ++requiredTileCount;
             double distance = tileDistance(m_visibleRect, currentCoordinate);
@@ -263,7 +238,7 @@ void TiledBackingStore::createTiles()
     unsigned tilesToCreateCount = tilesToCreate.size();
     for (unsigned n = 0; n < tilesToCreateCount; ++n) {
         Tile::Coordinate coordinate = tilesToCreate[n];
-        setTile(coordinate, CoordinatedTile::create(this, coordinate));
+        m_tiles.add(coordinate, std::make_unique<Tile>(*this, coordinate));
     }
     requiredTileCount -= tilesToCreateCount;
 
@@ -377,9 +352,10 @@ bool TiledBackingStore::resizeEdgeTiles()
             wasResized = true;
         }
     }
-    unsigned removeCount = tilesToRemove.size();
-    for (unsigned n = 0; n < removeCount; ++n)
-        removeTile(tilesToRemove[n]);
+
+    for (auto& coordinateToRemove : tilesToRemove)
+        m_tiles.remove(coordinateToRemove);
+
     return wasResized;
 }
 
@@ -396,9 +372,9 @@ void TiledBackingStore::setKeepRect(const IntRect& keepRect)
         if (!tileRect.intersects(keepRectF))
             toRemove.append(coordinate);
     }
-    unsigned removeCount = toRemove.size();
-    for (unsigned n = 0; n < removeCount; ++n)
-        removeTile(toRemove[n]);
+
+    for (auto& coordinateToRemove : toRemove)
+        m_tiles.remove(coordinateToRemove);
 
     m_keepRect = keepRect;
 }
@@ -407,21 +383,6 @@ void TiledBackingStore::removeAllNonVisibleTiles()
 {
     IntRect boundedVisibleRect = mapFromContents(intersection(m_client->tiledBackingStoreVisibleRect(), m_client->tiledBackingStoreContentsRect()));
     setKeepRect(boundedVisibleRect);
-}
-
-PassRefPtr<Tile> TiledBackingStore::tileAt(const Tile::Coordinate& coordinate) const
-{
-    return m_tiles.get(coordinate);
-}
-
-void TiledBackingStore::setTile(const Tile::Coordinate& coordinate, PassRefPtr<Tile> tile)
-{
-    m_tiles.set(coordinate, tile);
-}
-
-void TiledBackingStore::removeTile(const Tile::Coordinate& coordinate)
-{
-    m_tiles.remove(coordinate);
 }
 
 IntRect TiledBackingStore::mapToContents(const IntRect& rect) const

@@ -21,6 +21,9 @@ include_directories(
     ${FORWARDING_HEADERS_WEBKIT2GTK_DIR}
     ${FORWARDING_HEADERS_WEBKIT2GTK_EXTENSION_DIR}
     ${TOOLS_DIR}/TestWebKitAPI/gtk/WebKit2Gtk
+)
+
+include_directories(SYSTEM
     ${ATSPI_INCLUDE_DIRS}
     ${GLIB_INCLUDE_DIRS}
     ${GTK3_INCLUDE_DIRS}
@@ -86,7 +89,7 @@ macro(ADD_WK2_TEST test_name)
 endmacro()
 
 ADD_WK2_TEST_WEB_EXTENSION(WebExtensionTest WebExtensionTest.cpp)
-ADD_WK2_TEST_WEB_EXTENSION(WebProcessTest DOMNodeTest.cpp DOMNodeFilterTest.cpp DOMXPathNSResolverTest.cpp FrameTest.cpp WebProcessTest.cpp)
+ADD_WK2_TEST_WEB_EXTENSION(WebProcessTest DOMNodeTest.cpp DOMNodeFilterTest.cpp DOMXPathNSResolverTest.cpp FrameTest.cpp WebProcessTest.cpp EditorTest.cpp)
 
 ADD_WK2_TEST(InspectorTestServer InspectorTestServer.cpp)
 ADD_WK2_TEST(TestAuthentication TestAuthentication.cpp)
@@ -116,6 +119,7 @@ ADD_WK2_TEST(TestWebViewEditor TestWebViewEditor.cpp)
 ADD_WK2_TEST(TestWebKitWebContext TestWebKitWebContext.cpp)
 ADD_WK2_TEST(TestWebKitWebView TestWebKitWebView.cpp)
 ADD_WK2_TEST(TestWebKitUserContentManager TestWebKitUserContentManager.cpp)
+ADD_WK2_TEST(TestEditor TestEditor.cpp)
 
 if (ATSPI_FOUND)
     ADD_WK2_TEST(AccessibilityTestServer AccessibilityTestServer.cpp)

@@ -34,20 +34,18 @@ namespace API {
 
 class SecurityOrigin : public API::ObjectImpl<API::Object::Type::SecurityOrigin> {
 public:
-    static PassRefPtr<SecurityOrigin> createFromString(const WTF::String& string)
+    static RefPtr<SecurityOrigin> createFromString(const WTF::String& string)
     {
         return create(WebCore::SecurityOrigin::createFromString(string));
     }
 
-    static PassRefPtr<SecurityOrigin> create(const WTF::String& protocol, const WTF::String& host, int port)
+    static RefPtr<SecurityOrigin> create(const WTF::String& protocol, const WTF::String& host, int port)
     {
         return create(WebCore::SecurityOrigin::create(protocol, host, port));
     }
 
-    static PassRefPtr<SecurityOrigin> create(PassRefPtr<WebCore::SecurityOrigin> securityOrigin)
+    static RefPtr<SecurityOrigin> create(const WebCore::SecurityOrigin& securityOrigin)
     {
-        if (!securityOrigin)
-            return 0;
         return adoptRef(new SecurityOrigin(securityOrigin));
     }
 
@@ -56,6 +54,11 @@ public:
 private:
     SecurityOrigin(PassRefPtr<WebCore::SecurityOrigin> securityOrigin)
         : m_securityOrigin(securityOrigin)
+    {
+    }
+
+    SecurityOrigin(const WebCore::SecurityOrigin& securityOrigin)
+        : m_securityOrigin(securityOrigin.isolatedCopy())
     {
     }
 

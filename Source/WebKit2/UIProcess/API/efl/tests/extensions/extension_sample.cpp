@@ -30,6 +30,8 @@
 extern "C" {
 #endif
 
+static Eina_Bool s_isPageLoadTest = false;
+
 static JSValueRef helloCallback(JSContextRef context, JSObjectRef function, JSObjectRef thisObject, size_t argumentCount, const JSValueRef arguments[], JSValueRef* exception)
 {
     Ewk_Extension* extension = static_cast<Ewk_Extension*>(JSObjectGetPrivate(thisObject));
@@ -42,7 +44,33 @@ static JSValueRef helloCallback(JSContextRef context, JSObjectRef function, JSOb
     return nullptr;
 }
 
+void loadStarted(Ewk_Page* page, void* data)
+{
+    if (!s_isPageLoadTest)
+        return;
+
+    Ewk_Extension* extension = static_cast<Ewk_Extension*>(data);
+
+    Eina_Value* value = eina_value_new(EINA_VALUE_TYPE_STRING);
+    eina_value_set(value, "loadStarted");
+    ewk_extension_message_post(extension, "loadTest", value);
+    eina_value_free(value);
+}
+
 void loadFinished(Ewk_Page* page, void* data)
+{
+    if (!s_isPageLoadTest)
+        return;
+
+    Ewk_Extension* extension = static_cast<Ewk_Extension*>(data);
+
+    Eina_Value* value = eina_value_new(EINA_VALUE_TYPE_STRING);
+    eina_value_set(value, "loadFinished");
+    ewk_extension_message_post(extension, "loadTest", value);
+    eina_value_free(value);
+}
+
+void windowObjectCleared(Ewk_Page* page, void* data)
 {
     JSGlobalContextRef jsContext = ewk_page_js_global_context_get(page);
     JSObjectRef windowObject = JSContextGetGlobalObject(jsContext);
@@ -73,7 +101,9 @@ static void pageAdded(Ewk_Page* page, void* data)
 {
     pageClient.version = 1;
     pageClient.data = data;
+    pageClient.load_started = loadStarted;
     pageClient.load_finished = loadFinished;
+    pageClient.window_object_cleared = windowObjectCleared;
 
     ewk_page_client_register(page, &pageClient);
 }
@@ -85,10 +115,16 @@ static void pageDelete(Ewk_Page* page, void*)
 
 static void messageReceived(const char* name, const Eina_Value* body, void* data)
 {
-    Eina_Value* value = eina_value_new(EINA_VALUE_TYPE_STRING);
-    eina_value_set(value, "From extension");
-    ewk_extension_message_post(static_cast<Ewk_Extension*>(data), "pong", value);
-    eina_value_free(value);
+    if (!strcmp(name, "ping")) {
+        // For ewk_context_new_with_extensions_path
+        Eina_Value* value = eina_value_new(EINA_VALUE_TYPE_STRING);
+        eina_value_set(value, "From extension");
+        ewk_extension_message_post(static_cast<Ewk_Extension*>(data), "pong", value);
+        eina_value_free(value);
+    } else if (!strcmp(name, "load test")) {
+        // For ewk_page_load
+        s_isPageLoadTest = true;
+    }
 }
 
 void ewk_extension_init(Ewk_Extension* extension)

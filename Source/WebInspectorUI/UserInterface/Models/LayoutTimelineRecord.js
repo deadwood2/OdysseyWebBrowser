@@ -59,6 +59,8 @@ WebInspector.LayoutTimelineRecord = class LayoutTimelineRecord extends WebInspec
             return WebInspector.UIString("Layout");
         case WebInspector.LayoutTimelineRecord.EventType.Paint:
             return WebInspector.UIString("Paint");
+        case WebInspector.LayoutTimelineRecord.EventType.Composite:
+            return WebInspector.UIString("Composite");
         }
     }
 
@@ -120,7 +122,8 @@ WebInspector.LayoutTimelineRecord.EventType = {
     InvalidateLayout: "layout-timeline-record-invalidate-layout",
     ForcedLayout: "layout-timeline-record-forced-layout",
     Layout: "layout-timeline-record-layout",
-    Paint: "layout-timeline-record-paint"
+    Paint: "layout-timeline-record-paint",
+    Composite: "layout-timeline-record-composite"
 };
 
 WebInspector.LayoutTimelineRecord.TypeIdentifier = "layout-timeline-record";

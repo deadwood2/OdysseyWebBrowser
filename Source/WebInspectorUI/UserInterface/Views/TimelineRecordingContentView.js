@@ -41,6 +41,7 @@ WebInspector.TimelineRecordingContentView = function(recording, extraArguments)
 
     this._renderingFrameTimelineOverview = new WebInspector.RenderingFrameTimelineOverview(this._recording);
     this._renderingFrameTimelineOverview.addEventListener(WebInspector.TimelineOverview.Event.TimeRangeSelectionChanged, this._timeRangeSelectionChanged, this);
+    this._renderingFrameTimelineOverview.addEventListener(WebInspector.TimelineOverview.Event.RecordSelected, this._recordSelected, this);
 
     this._currentTimelineOverview = this._linearTimelineOverview;
     this.element.appendChild(this._currentTimelineOverview.element);
@@ -265,11 +266,12 @@ WebInspector.TimelineRecordingContentView.prototype = {
 
             if (this._renderingFrameTimeline && this._renderingFrameTimeline.records.length) {
                 var records = this._renderingFrameTimeline.records;
-                var startIndex = Math.floor(startTime);
+                var startIndex = this._currentTimelineOverview.timelineRuler.snapInterval ? startTime : Math.floor(startTime);
                 if (startIndex >= records.length)
                     return false;
 
-                var endIndex = Math.min(Math.floor(endTime), records.length - 1);
+                var endIndex = this._currentTimelineOverview.timelineRuler.snapInterval ? endTime - 1: Math.floor(endTime);
+                endIndex = Math.min(endIndex, records.length - 1);
                 console.assert(startIndex <= endIndex, startIndex);
 
                 startTime = records[startIndex].startTime;
@@ -307,10 +309,8 @@ WebInspector.TimelineRecordingContentView.prototype = {
 
         if (treeElement instanceof WebInspector.ProfileNodeTreeElement) {
             var profileNode = treeElement.profileNode;
-            for (var call of profileNode.calls) {
-                if (checkTimeBounds(call.startTime, call.endTime))
-                    return true;
-            }
+            if (checkTimeBounds(profileNode.startTime, profileNode.endTime))
+                return true;
 
             return false;
         }
@@ -333,6 +333,7 @@ WebInspector.TimelineRecordingContentView.prototype = {
         if (timelineView) {
             this._timelineSidebarPanel.contentTreeOutline = timelineView.navigationSidebarTreeOutline;
             this._timelineSidebarPanel.contentTreeOutlineLabel = timelineView.navigationSidebarTreeOutlineLabel;
+            this._timelineSidebarPanel.contentTreeOutlineScopeBar = timelineView.navigationSidebarTreeOutlineScopeBar;
 
             if (timelineView.representedObject.type === WebInspector.TimelineRecord.Type.RenderingFrame)
                 newTimelineOverview = this._renderingFrameTimelineOverview;
@@ -367,7 +368,15 @@ WebInspector.TimelineRecordingContentView.prototype = {
     {
         if (event.target !== this._contentViewContainer.currentContentView)
             return;
+
         this.dispatchEventToListeners(WebInspector.ContentView.Event.SelectionPathComponentsDidChange);
+
+        if (this.currentTimelineView === this._overviewTimelineView)
+            return;
+
+        var recordPathComponent = this.selectionPathComponents.find(function(element) { return element.representedObject instanceof WebInspector.TimelineRecord; });
+        var record = recordPathComponent ? recordPathComponent.representedObject : null;
+        this._currentTimelineOverview.selectRecord(event.target.representedObject, record);
     },
 
     _contentViewSupplementalRepresentedObjectsDidChange: function(event)
@@ -416,7 +425,7 @@ WebInspector.TimelineRecordingContentView.prototype = {
             for (var timelineView of this._timelineViewMap.values())
                 timelineView.zeroTime = startTime;
 
-            delete this._startTimeNeedsReset;
+            this._startTimeNeedsReset = false;
         }
 
         this._linearTimelineOverview.endTime = Math.max(endTime, currentTime);
@@ -442,18 +451,24 @@ WebInspector.TimelineRecordingContentView.prototype = {
             this.currentTimelineView.updateLayoutIfNeeded();
     },
 
-    _startUpdatingCurrentTime: function()
+    _startUpdatingCurrentTime: function(startTime)
     {
         console.assert(!this._updating);
         if (this._updating)
             return;
 
         if (!isNaN(this._currentTime)) {
-            // We have a current time already, so we likely need to jump into the future to a better current time.
             // This happens when you stop and later restart recording.
-            console.assert(!this._waitingToResetCurrentTime);
-            this._waitingToResetCurrentTime = true;
-            this._recording.addEventListener(WebInspector.TimelineRecording.Event.TimesUpdated, this._recordingTimesUpdated, this);
+            if (typeof startTime === "number")
+                this._currentTime = startTime;
+            else {
+                // COMPATIBILITY (iOS 9): Timeline.recordingStarted events did not include a timestamp.
+                // We likely need to jump into the future to a better current time which we can
+                // ascertained from a new incoming timeline record, so we wait for a Timeline to update.
+                console.assert(!this._waitingToResetCurrentTime);
+                this._waitingToResetCurrentTime = true;
+                this._recording.addEventListener(WebInspector.TimelineRecording.Event.TimesUpdated, this._recordingTimesUpdated, this);
+            }
         }
 
         this._updating = true;
@@ -478,7 +493,7 @@ WebInspector.TimelineRecordingContentView.prototype = {
 
     _capturingStarted: function(event)
     {
-        this._startUpdatingCurrentTime();
+        this._startUpdatingCurrentTime(event.data.startTime);
     },
 
     _capturingStopped: function(event)
@@ -508,16 +523,11 @@ WebInspector.TimelineRecordingContentView.prototype = {
         if (!this._waitingToResetCurrentTime)
             return;
 
+        // COMPATIBILITY (iOS 9): Timeline.recordingStarted events did not include a new startTime.
         // Make the current time be the start time of the last added record. This is the best way
         // currently to jump to the right period of time after recording starts.
-        // FIXME: If no activity is happening we can sit for a while until a record is added.
-        // We might want to have the backend send a "start" record to get current time moving.
 
         for (var timeline of this._recording.timelines.values()) {
-            // The rendering frame timeline doesn't use a time axis.
-            if (timeline.type === WebInspector.TimelineRecord.Type.RenderingFrame)
-                continue;
-
             var lastRecord = timeline.records.lastValue;
             if (!lastRecord)
                 continue;
@@ -530,6 +540,9 @@ WebInspector.TimelineRecordingContentView.prototype = {
 
     _clearTimeline: function(event)
     {
+        if (WebInspector.timelineManager.activeRecording === this._recording && WebInspector.timelineManager.isCapturing())
+            WebInspector.timelineManager.stopCapturing();
+
         this._recording.reset();
     },
 
@@ -661,6 +674,32 @@ WebInspector.TimelineRecordingContentView.prototype = {
         }.bind(this));
     },
 
+    _recordSelected: function(event)
+    {
+        var timelineView = this._timelineViewMap.get(event.data.timeline);
+        console.assert(timelineView === this.currentTimelineView, timelineView);
+        if (timelineView !== this.currentTimelineView)
+            return;
+
+        var selectedTreeElement = this.currentTimelineView.navigationSidebarTreeOutline.selectedTreeElement;
+        if (!event.data.record) {
+            if (selectedTreeElement)
+                selectedTreeElement.deselect();
+            return;
+        }
+
+        var treeElement = this.currentTimelineView.navigationSidebarTreeOutline.findTreeElement(event.data.record);
+        console.assert(treeElement, "Timeline view has no tree element for record selected in timeline overview.", timelineView, event.data.record);
+        if (!treeElement)
+            return;
+
+        // Don't select the record's tree element if one of it's children is already selected.
+        if (selectedTreeElement && selectedTreeElement.hasAncestor(treeElement))
+            return;
+
+        treeElement.revealAndSelect(false, false, false, true);
+    },
+
     _updateFrameSelection: function()
     {
         console.assert(this._renderingFrameTimeline);
@@ -668,7 +707,7 @@ WebInspector.TimelineRecordingContentView.prototype = {
             return;
 
         var startIndex = this._renderingFrameTimelineOverview.selectionStartTime;
-        var endIndex = startIndex + this._renderingFrameTimelineOverview.selectionDuration;
+        var endIndex = startIndex + this._renderingFrameTimelineOverview.selectionDuration - 1;
         this._timelineSidebarPanel.updateFrameSelection(startIndex, endIndex);
     }
 };

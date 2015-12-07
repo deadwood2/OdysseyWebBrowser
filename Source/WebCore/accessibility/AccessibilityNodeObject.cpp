@@ -44,6 +44,7 @@
 #include "FrameView.h"
 #include "HTMLAreaElement.h"
 #include "HTMLCanvasElement.h"
+#include "HTMLDetailsElement.h"
 #include "HTMLFieldSetElement.h"
 #include "HTMLFormElement.h"
 #include "HTMLFrameElementBase.h"
@@ -151,8 +152,11 @@ void AccessibilityNodeObject::childrenChanged()
         // In other words, they need to be sent even when the screen reader has not accessed this live region since the last update.
 
         // If this element supports ARIA live regions, then notify the AT of changes.
+        // Sometimes this function can be called many times within a short period of time, leading to posting too many AXLiveRegionChanged
+        // notifications. To fix this, we used a timer to make sure we only post one notification for the children changes within a pre-defined
+        // time interval.
         if (parent->supportsARIALiveRegion())
-            cache->postNotification(parent, parent->document(), AXObjectCache::AXLiveRegionChanged);
+            cache->postLiveRegionChangeNotification(parent);
         
         // If this element is an ARIA text control, notify the AT of changes.
         if ((parent->isARIATextControl() || parent->hasContentEditableAttributeSet()) && !parent->isNativeTextControl())
@@ -693,7 +697,8 @@ bool AccessibilityNodeObject::isPressed() const
         return false;
 
     // If this is an ARIA button, check the aria-pressed attribute rather than node()->active()
-    if (ariaRoleAttribute() == ButtonRole) {
+    AccessibilityRole ariaRole = ariaRoleAttribute();
+    if (ariaRole == ButtonRole || ariaRole == ToggleButtonRole) {
         if (equalIgnoringCase(getAttribute(aria_pressedAttr), "true"))
             return true;
         return false;
@@ -797,6 +802,7 @@ bool AccessibilityNodeObject::supportsRequiredAttribute() const
     case CheckBoxRole:
     case ComboBoxRole:
     case GridRole:
+    case GridCellRole:
     case IncrementorRole:
     case ListBoxRole:
     case PopUpButtonRole:
@@ -1607,6 +1613,19 @@ unsigned AccessibilityNodeObject::hierarchicalLevel() const
     return level;
 }
 
+void AccessibilityNodeObject::setIsExpanded(bool expand)
+{
+#if ENABLE(DETAILS_ELEMENT)
+    if (is<HTMLDetailsElement>(node())) {
+        auto& details = downcast<HTMLDetailsElement>(*node());
+        if (expand != details.isOpen())
+            details.toggleOpen();
+    }
+#else
+    UNUSED_PARAM(expand);
+#endif
+}
+    
 // When building the textUnderElement for an object, determine whether or not
 // we should include the inner text of this given descendant object or skip it.
 static bool shouldUseAccessibilityObjectInnerText(AccessibilityObject* obj, AccessibilityTextUnderElementMode mode)
@@ -2050,6 +2069,7 @@ bool AccessibilityNodeObject::canSetSelectedAttribute() const
     // Elements that can be selected
     switch (roleValue()) {
     case CellRole:
+    case GridCellRole:
     case RadioButtonRole:
     case RowHeaderRole:
     case RowRole:
