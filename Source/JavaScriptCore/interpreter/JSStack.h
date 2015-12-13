@@ -79,14 +79,11 @@ namespace JSC {
         static size_t committedByteCount();
 
 #if ENABLE(JIT)
-        void gatherConservativeRoots(ConservativeRoots&) { }
         void gatherConservativeRoots(ConservativeRoots&, JITStubRoutineSet&, CodeBlockSet&) { }
         void sanitizeStack() { }
-        static void initializeThreading() { }
 #else
         ~JSStack();
 
-        void gatherConservativeRoots(ConservativeRoots&);
         void gatherConservativeRoots(ConservativeRoots&, JITStubRoutineSet&, CodeBlockSet&);
         void sanitizeStack();
 
@@ -96,8 +93,6 @@ namespace JSC {
         }
 
         size_t size() const { return highAddress() - lowAddress(); }
-
-        static void initializeThreading();
 
         void setReservedZoneSize(size_t);
 

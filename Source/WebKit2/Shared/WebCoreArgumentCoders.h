@@ -47,7 +47,6 @@ class FloatRoundedRect;
 class FloatSize;
 class FixedPositionViewportConstraints;
 class HTTPHeaderMap;
-class IDBKeyPath;
 class IntPoint;
 class IntRect;
 class IntSize;
@@ -71,15 +70,11 @@ class URL;
 struct CompositionUnderline;
 struct Cookie;
 struct DictationAlternative;
+struct DictionaryPopupInfo;
 struct FileChooserSettings;
-struct IDBDatabaseMetadata;
-struct IDBGetResult;
-struct IDBIndexMetadata;
-struct IDBKeyData;
-struct IDBKeyRangeData;
-struct IDBObjectStoreMetadata;
 struct Length;
 struct GrammarDetail;
+struct IDBGetResult;
 struct MimeClassInfo;
 struct PasteboardImage;
 struct PasteboardWebContent;
@@ -123,7 +118,7 @@ struct MediaPlaybackTargetContext;
 
 #if ENABLE(MEDIA_SESSION)
 namespace WebCore {
-struct MediaSessionMetadata;
+class MediaSessionMetadata;
 }
 #endif
 
@@ -407,41 +402,10 @@ bool decodeFilterOperation(ArgumentDecoder&, RefPtr<WebCore::FilterOperation>&);
 #endif
 
 #if ENABLE(INDEXED_DATABASE)
-template<> struct ArgumentCoder<WebCore::IDBDatabaseMetadata> {
-    static void encode(ArgumentEncoder&, const WebCore::IDBDatabaseMetadata&);
-    static bool decode(ArgumentDecoder&, WebCore::IDBDatabaseMetadata&);
-};
-
 template<> struct ArgumentCoder<WebCore::IDBGetResult> {
     static void encode(ArgumentEncoder&, const WebCore::IDBGetResult&);
     static bool decode(ArgumentDecoder&, WebCore::IDBGetResult&);
 };
-
-template<> struct ArgumentCoder<WebCore::IDBIndexMetadata> {
-    static void encode(ArgumentEncoder&, const WebCore::IDBIndexMetadata&);
-    static bool decode(ArgumentDecoder&, WebCore::IDBIndexMetadata&);
-};
-
-template<> struct ArgumentCoder<WebCore::IDBKeyData> {
-    static void encode(ArgumentEncoder&, const WebCore::IDBKeyData&);
-    static bool decode(ArgumentDecoder&, WebCore::IDBKeyData&);
-};
-
-template<> struct ArgumentCoder<WebCore::IDBKeyPath> {
-    static void encode(ArgumentEncoder&, const WebCore::IDBKeyPath&);
-    static bool decode(ArgumentDecoder&, WebCore::IDBKeyPath&);
-};
-
-template<> struct ArgumentCoder<WebCore::IDBKeyRangeData> {
-    static void encode(ArgumentEncoder&, const WebCore::IDBKeyRangeData&);
-    static bool decode(ArgumentDecoder&, WebCore::IDBKeyRangeData&);
-};
-
-template<> struct ArgumentCoder<WebCore::IDBObjectStoreMetadata> {
-    static void encode(ArgumentEncoder&, const WebCore::IDBObjectStoreMetadata&);
-    static bool decode(ArgumentDecoder&, WebCore::IDBObjectStoreMetadata&);
-};
-
 #endif // ENABLE(INDEXED_DATABASE)
 
 template<> struct ArgumentCoder<WebCore::SessionID> {
@@ -471,6 +435,11 @@ template<> struct ArgumentCoder<WebCore::MediaSessionMetadata> {
 template<> struct ArgumentCoder<WebCore::TextIndicatorData> {
     static void encode(ArgumentEncoder&, const WebCore::TextIndicatorData&);
     static bool decode(ArgumentDecoder&, WebCore::TextIndicatorData&);
+};
+
+template<> struct ArgumentCoder<WebCore::DictionaryPopupInfo> {
+    static void encode(ArgumentEncoder&, const WebCore::DictionaryPopupInfo&);
+    static bool decode(ArgumentDecoder&, WebCore::DictionaryPopupInfo&);
 };
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)

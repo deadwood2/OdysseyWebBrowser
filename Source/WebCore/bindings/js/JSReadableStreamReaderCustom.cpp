@@ -44,15 +44,14 @@ using namespace JSC;
 
 namespace WebCore {
 
-JSValue JSReadableStreamReader::closed(ExecState* exec) const
+JSValue JSReadableStreamReader::closed(ExecState& state) const
 {
-    if (m_closedPromiseDeferred)
-        return m_closedPromiseDeferred->promise();
-
-    const_cast<JSReadableStreamReader*>(this)->m_closedPromiseDeferred.set(exec->vm(), JSPromiseDeferred::create(exec, globalObject()));
-    impl().closed(DeferredWrapper(exec, globalObject(), m_closedPromiseDeferred.get()));
-
-    return m_closedPromiseDeferred->promise();
+    if (!m_closed) {
+        JSPromiseDeferred* closedPromise = JSPromiseDeferred::create(&state, globalObject());
+        const_cast<JSReadableStreamReader*>(this)->m_closed.set(state.vm(), this, closedPromise->promise());
+        impl().closed(DeferredWrapper(&state, globalObject(), closedPromise));
+    }
+    return m_closed.get();
 }
 
 EncodedJSValue JSC_HOST_CALL constructJSReadableStreamReader(ExecState* exec)

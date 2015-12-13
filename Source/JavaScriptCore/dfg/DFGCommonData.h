@@ -29,6 +29,8 @@
 #if ENABLE(DFG_JIT)
 
 #include "CodeBlockJettisoningWatchpoint.h"
+#include "DFGAdaptiveInferredPropertyValueWatchpoint.h"
+#include "DFGAdaptiveStructureWatchpoint.h"
 #include "DFGJumpReplacement.h"
 #include "InlineCallFrameSet.h"
 #include "JSCell.h"
@@ -77,7 +79,8 @@ public:
     { }
     
     void notifyCompilingStructureTransition(Plan&, CodeBlock*, Node*);
-    unsigned addCodeOrigin(CodeOrigin);
+    CallSiteIndex addCodeOrigin(CodeOrigin);
+    CallSiteIndex lastCallSite() const;
     
     void shrinkToFit();
     
@@ -98,6 +101,8 @@ public:
     Vector<WriteBarrier<JSCell>> weakReferences;
     Vector<WriteBarrier<Structure>> weakStructureReferences;
     Bag<CodeBlockJettisoningWatchpoint> watchpoints;
+    Bag<AdaptiveStructureWatchpoint> adaptiveStructureWatchpoints;
+    Bag<AdaptiveInferredPropertyValueWatchpoint> adaptiveInferredPropertyValueWatchpoints;
     Vector<JumpReplacement> jumpReplacements;
     
     RefPtr<Profiler::Compilation> compilation;

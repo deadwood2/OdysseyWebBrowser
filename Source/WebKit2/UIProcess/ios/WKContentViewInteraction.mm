@@ -64,6 +64,7 @@
 #import <WebCore/Pasteboard.h>
 #import <WebCore/Path.h>
 #import <WebCore/PathUtilities.h>
+#import <WebCore/RuntimeApplicationChecksIOS.h>
 #import <WebCore/Scrollbar.h>
 #import <WebCore/SoftLinking.h>
 #import <WebCore/TextIndicator.h>
@@ -216,6 +217,12 @@ const CGFloat minimumTapHighlightRadius = 2.0;
 
 #if __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000
 @protocol UISelectionInteractionAssistant;
+#if HAVE(LINK_PREVIEW)
+@interface UIPreviewItemController (StagingToRemove)
+@property (strong, nonatomic, readonly) UIGestureRecognizer *presentationSecondaryGestureRecognizer;
+@end
+#endif
+
 #endif
 
 @interface WKFormInputSession : NSObject <_WKFormInputSession>
@@ -335,6 +342,9 @@ static UIWebSelectionMode toUIWebSelectionMode(WKSelectionGranularity granularit
     _longPressGestureRecognizer = adoptNS([[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(_longPressRecognized:)]);
     [_longPressGestureRecognizer setDelay:tapAndHoldDelay];
     [_longPressGestureRecognizer setDelegate:self];
+#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000
+    [_longPressGestureRecognizer _setRequiresQuietImpulse:YES];
+#endif
     [self addGestureRecognizer:_longPressGestureRecognizer.get()];
 
 #if HAVE(LINK_PREVIEW)
@@ -412,7 +422,6 @@ static UIWebSelectionMode toUIWebSelectionMode(WKSelectionGranularity granularit
     [self removeGestureRecognizer:_touchEventGestureRecognizer.get()];
     [self removeGestureRecognizer:_singleTapGestureRecognizer.get()];
     [self removeGestureRecognizer:_highlightLongPressGestureRecognizer.get()];
-    [self removeGestureRecognizer:_longPressGestureRecognizer.get()];
     [self removeGestureRecognizer:_doubleTapGestureRecognizer.get()];
     [self removeGestureRecognizer:_twoFingerDoubleTapGestureRecognizer.get()];
 }
@@ -422,7 +431,6 @@ static UIWebSelectionMode toUIWebSelectionMode(WKSelectionGranularity granularit
     [self addGestureRecognizer:_touchEventGestureRecognizer.get()];
     [self addGestureRecognizer:_singleTapGestureRecognizer.get()];
     [self addGestureRecognizer:_highlightLongPressGestureRecognizer.get()];
-    [self addGestureRecognizer:_longPressGestureRecognizer.get()];
     [self addGestureRecognizer:_doubleTapGestureRecognizer.get()];
     [self addGestureRecognizer:_twoFingerDoubleTapGestureRecognizer.get()];
 }
@@ -653,9 +661,9 @@ static inline bool highlightedQuadsAreSmallerThanRect(const Vector<FloatQuad>& q
     return true;
 }
 
-static NSValue *nsSizeForTapHighlightBorderRadius(WebCore::IntSize borderRadius)
+static NSValue *nsSizeForTapHighlightBorderRadius(WebCore::IntSize borderRadius, CGFloat borderRadiusScale)
 {
-    return [NSValue valueWithCGSize:CGSizeMake(borderRadius.width() + minimumTapHighlightRadius, borderRadius.height() + minimumTapHighlightRadius)];
+    return [NSValue valueWithCGSize:CGSizeMake((borderRadius.width() * borderRadiusScale) + minimumTapHighlightRadius, (borderRadius.height() * borderRadiusScale) + minimumTapHighlightRadius)];
 }
 
 - (void)_updateTapHighlight
@@ -706,10 +714,10 @@ static NSValue *nsSizeForTapHighlightBorderRadius(WebCore::IntSize borderRadius)
     }
 
     RetainPtr<NSMutableArray> borderRadii = adoptNS([[NSMutableArray alloc] initWithCapacity:4]);
-    [borderRadii addObject:nsSizeForTapHighlightBorderRadius(_tapHighlightInformation.topLeftRadius)];
-    [borderRadii addObject:nsSizeForTapHighlightBorderRadius(_tapHighlightInformation.topRightRadius)];
-    [borderRadii addObject:nsSizeForTapHighlightBorderRadius(_tapHighlightInformation.bottomLeftRadius)];
-    [borderRadii addObject:nsSizeForTapHighlightBorderRadius(_tapHighlightInformation.bottomRightRadius)];
+    [borderRadii addObject:nsSizeForTapHighlightBorderRadius(_tapHighlightInformation.topLeftRadius, selfScale)];
+    [borderRadii addObject:nsSizeForTapHighlightBorderRadius(_tapHighlightInformation.topRightRadius, selfScale)];
+    [borderRadii addObject:nsSizeForTapHighlightBorderRadius(_tapHighlightInformation.bottomLeftRadius, selfScale)];
+    [borderRadii addObject:nsSizeForTapHighlightBorderRadius(_tapHighlightInformation.bottomRightRadius, selfScale)];
     [_highlightView setCornerRadii:borderRadii.get()];
 }
 
@@ -871,6 +879,9 @@ static inline bool isSamePair(UIGestureRecognizer *a, UIGestureRecognizer *b, UI
         return YES;
 
     if (isSamePair(gestureRecognizer, otherGestureRecognizer, _singleTapGestureRecognizer.get(), _textSelectionAssistant.get().singleTapGesture))
+        return YES;
+
+    if (isSamePair(gestureRecognizer, otherGestureRecognizer, _highlightLongPressGestureRecognizer.get(), _previewSecondaryGestureRecognizer.get()))
         return YES;
 
     if (isSamePair(gestureRecognizer, otherGestureRecognizer, _highlightLongPressGestureRecognizer.get(), _previewGestureRecognizer.get()))
@@ -1073,11 +1084,6 @@ static inline bool isSamePair(UIGestureRecognizer *a, UIGestureRecognizer *b, UI
 {
     ASSERT(gestureRecognizer == _longPressGestureRecognizer);
 
-#if HAVE(LINK_PREVIEW)
-    if ([_previewItemController interactionInProgress])
-        return;
-#endif
-
     _lastInteractionLocation = gestureRecognizer.startPoint;
 
     if ([gestureRecognizer state] == UIGestureRecognizerStateBegan) {
@@ -1085,7 +1091,6 @@ static inline bool isSamePair(UIGestureRecognizer *a, UIGestureRecognizer *b, UI
         if (action) {
             [self performSelector:action];
             [self _cancelLongPressGestureRecognizer];
-            [UIApp _cancelAllTouches];
         }
     }
 }
@@ -3008,7 +3013,9 @@ static bool isAssistableInputType(InputType type)
 
 - (void)_startAssistingNode:(const AssistedNodeInformation&)information userIsInteracting:(BOOL)userIsInteracting blurPreviousNode:(BOOL)blurPreviousNode userObject:(NSObject <NSSecureCoding> *)userObject
 {
-    if (!userIsInteracting && !_textSelectionAssistant)
+    // FIXME: This is a temporary workaround for <rdar://problem/22126518>. The real fix will involve refactoring
+    // the way we assist programmatically focused nodes.
+    if (!userIsInteracting && !_textSelectionAssistant && !_webView.canAssistOnProgrammaticFocus)
         return;
 
     if (blurPreviousNode)
@@ -3211,15 +3218,21 @@ static bool isAssistableInputType(InputType type)
 
 - (void)_registerPreview
 {
+    if (!_webView.allowsLinkPreview)
+        return;
+
     _previewItemController = adoptNS([[UIPreviewItemController alloc] initWithView:self]);
     [_previewItemController setDelegate:self];
     _previewGestureRecognizer = _previewItemController.get().presentationGestureRecognizer;
+    if ([_previewItemController respondsToSelector:@selector(presentationSecondaryGestureRecognizer)])
+        _previewSecondaryGestureRecognizer = _previewItemController.get().presentationSecondaryGestureRecognizer;
 }
 
 - (void)_unregisterPreview
 {
     [_previewItemController setDelegate:nil];
     _previewGestureRecognizer = nil;
+    _previewSecondaryGestureRecognizer = nil;
     _previewItemController = nil;
 }
 
@@ -3361,18 +3374,23 @@ static bool isAssistableInputType(InputType type)
 
 }
 
-- (void)_previewItemController:(UIPreviewItemController *)controller willPresentPreview:(UIViewController *)viewController forPosition:(CGPoint)position inSourceView:(UIView *)sourceView
+- (void)_interactionStartedFromPreviewItemController:(UIPreviewItemController *)controller
 {
     [self _removeDefaultGestureRecognizers];
 
     [self _cancelInteraction];
 }
 
-- (void)_previewItemController:(UIPreviewItemController *)controller didDismissPreview:(UIViewController *)viewController committing:(BOOL)committing
+- (void)_interactionStoppedFromPreviewItemController:(UIPreviewItemController *)controller
 {
     [self _addDefaultGestureRecognizers];
-    _page->stopInteraction();
 
+    if (![_actionSheetAssistant isShowingSheet])
+        _page->stopInteraction();
+}
+
+- (void)_previewItemController:(UIPreviewItemController *)controller didDismissPreview:(UIViewController *)viewController committing:(BOOL)committing
+{
     id<WKUIDelegatePrivate> uiDelegate = static_cast<id <WKUIDelegatePrivate>>([_webView UIDelegate]);
     if ([uiDelegate respondsToSelector:@selector(_webView:didDismissPreviewViewController:committing:)])
         [uiDelegate _webView:_webView didDismissPreviewViewController:viewController committing:committing];

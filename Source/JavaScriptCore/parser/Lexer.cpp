@@ -44,10 +44,9 @@
 
 namespace JSC {
 
-Keywords::Keywords(VM& vm)
-    : m_vm(vm)
-    , m_keywordTable(JSC::mainTable)
+bool isLexerKeyword(const Identifier& identifier)
 {
+    return JSC::mainTable.entry(identifier);
 }
 
 enum CharacterType {
@@ -935,7 +934,7 @@ template <bool shouldCreateIdentifier> ALWAYS_INLINE JSTokenType Lexer<LChar>::p
                 return ERRORTOK;
             }
             if (isPrivateName)
-                ident = m_vm->propertyNames->getPrivateName(*ident);
+                ident = m_vm->propertyNames->lookUpPrivateName(*ident);
             else if (*ident == m_vm->propertyNames->undefinedKeyword)
                 tokenData->ident = &m_vm->propertyNames->undefinedPrivateName;
             if (!ident)
@@ -948,7 +947,7 @@ template <bool shouldCreateIdentifier> ALWAYS_INLINE JSTokenType Lexer<LChar>::p
     if (UNLIKELY((remaining < maxTokenLength) && !(lexerFlags & LexerFlagsIgnoreReservedWords)) && !isPrivateName) {
         ASSERT(shouldCreateIdentifier);
         if (remaining < maxTokenLength) {
-            const HashTableValue* entry = m_vm->keywords->getKeyword(*ident);
+            const HashTableValue* entry = JSC::mainTable.entry(*ident);
             ASSERT((remaining < maxTokenLength) || !entry);
             if (!entry)
                 return IDENT;
@@ -1012,7 +1011,7 @@ template <bool shouldCreateIdentifier> ALWAYS_INLINE JSTokenType Lexer<UChar>::p
                 return ERRORTOK;
             }
             if (isPrivateName)
-                ident = m_vm->propertyNames->getPrivateName(*ident);
+                ident = m_vm->propertyNames->lookUpPrivateName(*ident);
             else if (*ident == m_vm->propertyNames->undefinedKeyword)
                 tokenData->ident = &m_vm->propertyNames->undefinedPrivateName;
             if (!ident)
@@ -1025,7 +1024,7 @@ template <bool shouldCreateIdentifier> ALWAYS_INLINE JSTokenType Lexer<UChar>::p
     if (UNLIKELY((remaining < maxTokenLength) && !(lexerFlags & LexerFlagsIgnoreReservedWords)) && !isPrivateName) {
         ASSERT(shouldCreateIdentifier);
         if (remaining < maxTokenLength) {
-            const HashTableValue* entry = m_vm->keywords->getKeyword(*ident);
+            const HashTableValue* entry = JSC::mainTable.entry(*ident);
             ASSERT((remaining < maxTokenLength) || !entry);
             if (!entry)
                 return IDENT;
@@ -1089,7 +1088,7 @@ template<typename CharacterType> template<bool shouldCreateIdentifier> JSTokenTy
 
     if (LIKELY(!(lexerFlags & LexerFlagsIgnoreReservedWords))) {
         ASSERT(shouldCreateIdentifier);
-        const HashTableValue* entry = m_vm->keywords->getKeyword(*ident);
+        const HashTableValue* entry = JSC::mainTable.entry(*ident);
         if (!entry)
             return IDENT;
         JSTokenType token = static_cast<JSTokenType>(entry->lexerValue());
@@ -2032,7 +2031,7 @@ start:
         if ((m_current | 0x20) == 'x') {
             if (!isASCIIHexDigit(peek(1))) {
                 m_lexErrorMessage = ASCIILiteral("No hexadecimal digits after '0x'");
-                token = INVALID_HEX_NUMBER_ERRORTOK;
+                token = UNTERMINATED_HEX_NUMBER_ERRORTOK;
                 goto returnError;
             }
 
@@ -2042,7 +2041,7 @@ start:
             parseHex(tokenData->doubleValue);
             if (isIdentStart(m_current)) {
                 m_lexErrorMessage = ASCIILiteral("No space between hexadecimal literal and identifier");
-                token = INVALID_HEX_NUMBER_ERRORTOK;
+                token = UNTERMINATED_HEX_NUMBER_ERRORTOK;
                 goto returnError;
             }
             token = tokenTypeForIntegerLikeToken(tokenData->doubleValue);
@@ -2052,7 +2051,7 @@ start:
         if ((m_current | 0x20) == 'b') {
             if (!isASCIIBinaryDigit(peek(1))) {
                 m_lexErrorMessage = ASCIILiteral("No binary digits after '0b'");
-                token = INVALID_BINARY_NUMBER_ERRORTOK;
+                token = UNTERMINATED_BINARY_NUMBER_ERRORTOK;
                 goto returnError;
             }
 
@@ -2062,7 +2061,7 @@ start:
             parseBinary(tokenData->doubleValue);
             if (isIdentStart(m_current)) {
                 m_lexErrorMessage = ASCIILiteral("No space between binary literal and identifier");
-                token = INVALID_BINARY_NUMBER_ERRORTOK;
+                token = UNTERMINATED_BINARY_NUMBER_ERRORTOK;
                 goto returnError;
             }
             token = tokenTypeForIntegerLikeToken(tokenData->doubleValue);
@@ -2073,7 +2072,7 @@ start:
         if ((m_current | 0x20) == 'o') {
             if (!isASCIIOctalDigit(peek(1))) {
                 m_lexErrorMessage = ASCIILiteral("No octal digits after '0o'");
-                token = INVALID_OCTAL_NUMBER_ERRORTOK;
+                token = UNTERMINATED_OCTAL_NUMBER_ERRORTOK;
                 goto returnError;
             }
 
@@ -2083,7 +2082,7 @@ start:
             parseOctal(tokenData->doubleValue);
             if (isIdentStart(m_current)) {
                 m_lexErrorMessage = ASCIILiteral("No space between octal literal and identifier");
-                token = INVALID_OCTAL_NUMBER_ERRORTOK;
+                token = UNTERMINATED_OCTAL_NUMBER_ERRORTOK;
                 goto returnError;
             }
             token = tokenTypeForIntegerLikeToken(tokenData->doubleValue);
@@ -2094,7 +2093,7 @@ start:
         record8('0');
         if (strictMode && isASCIIDigit(m_current)) {
             m_lexErrorMessage = ASCIILiteral("Decimal integer literals with a leading zero are forbidden in strict mode");
-            token = INVALID_OCTAL_NUMBER_ERRORTOK;
+            token = UNTERMINATED_OCTAL_NUMBER_ERRORTOK;
             goto returnError;
         }
         if (isASCIIOctalDigit(m_current)) {

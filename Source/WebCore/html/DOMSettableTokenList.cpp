@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2010 Google Inc. All rights reserved.
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,42 +28,10 @@
 
 namespace WebCore {
 
-void DOMSettableTokenList::ref()
+void DOMSettableTokenList::setValue(const String& value)
 {
-    RefCounted<DOMSettableTokenList>::ref();
-}
-
-void DOMSettableTokenList::deref()
-{
-    RefCounted<DOMSettableTokenList>::deref();
-}
-
-unsigned DOMSettableTokenList::length() const
-{
-    return m_tokens.size();
-}
-
-const AtomicString DOMSettableTokenList::item(unsigned index) const
-{
-    if (index >= length())
-        return AtomicString();
-    return m_tokens[index];
-}
-
-bool DOMSettableTokenList::containsInternal(const AtomicString& token) const
-{
-    return m_tokens.contains(token);
-}
-
-AtomicString DOMSettableTokenList::value() const
-{
-    return m_value;
-}
-
-void DOMSettableTokenList::setValue(const AtomicString& value)
-{
-    m_value = value;
-    m_tokens.set(value, false);
+    setValueInternal(value);
+    updateAfterTokenChange();
 }
 
 } // namespace WebCore

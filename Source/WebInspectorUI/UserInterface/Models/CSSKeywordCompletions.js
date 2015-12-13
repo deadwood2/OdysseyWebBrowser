@@ -54,7 +54,7 @@ WebInspector.CSSKeywordCompletions.forProperty = function(propertyName)
     else if (isNotPrefixed && ("-webkit-" + propertyName) in WebInspector.CSSKeywordCompletions.InheritedProperties)
         acceptedKeywords.push("inherit");
 
-    if (acceptedKeywords.includes(WebInspector.CSSKeywordCompletions.AllPropertyNamesPlaceholder)) {
+    if (acceptedKeywords.includes(WebInspector.CSSKeywordCompletions.AllPropertyNamesPlaceholder) && WebInspector.CSSCompletions.cssNameCompletions) {
         acceptedKeywords.remove(WebInspector.CSSKeywordCompletions.AllPropertyNamesPlaceholder);
         acceptedKeywords = acceptedKeywords.concat(WebInspector.CSSCompletions.cssNameCompletions.values);
     }
@@ -64,10 +64,6 @@ WebInspector.CSSKeywordCompletions.forProperty = function(propertyName)
 
 WebInspector.CSSKeywordCompletions.addCustomCompletions = function(properties)
 {
-    // COMPATIBILITY (iOS 6): This used to be an array of strings. They won't have custom values.
-    if (properties.length && typeof properties[0] === "string")
-        return;
-
     for (var property of properties) {
         if (property.values)
             WebInspector.CSSKeywordCompletions.addPropertyCompletionValues(property.name, property.values);

@@ -49,38 +49,6 @@ using namespace JSC;
 
 namespace WebCore {
 
-JSValue JSInspectorFrontendHost::platform(ExecState* execState)
-{
-#if PLATFORM(MAC) || PLATFORM(IOS)
-    DEPRECATED_DEFINE_STATIC_LOCAL(const String, platform, (ASCIILiteral("mac")));
-#elif OS(WINDOWS)
-    DEPRECATED_DEFINE_STATIC_LOCAL(const String, platform, (ASCIILiteral("windows")));
-#elif OS(LINUX)
-    DEPRECATED_DEFINE_STATIC_LOCAL(const String, platform, (ASCIILiteral("linux")));
-#elif OS(FREEBSD)
-    DEPRECATED_DEFINE_STATIC_LOCAL(const String, platform, (ASCIILiteral("freebsd")));
-#elif OS(OPENBSD)
-    DEPRECATED_DEFINE_STATIC_LOCAL(const String, platform, (ASCIILiteral("openbsd")));
-#elif OS(SOLARIS)
-    DEPRECATED_DEFINE_STATIC_LOCAL(const String, platform, (ASCIILiteral("solaris")));
-#else
-    DEPRECATED_DEFINE_STATIC_LOCAL(const String, platform, (ASCIILiteral("unknown")));
-#endif
-    return jsStringWithCache(execState, platform);
-}
-
-JSValue JSInspectorFrontendHost::port(ExecState* execState)
-{
-#if PLATFORM(GTK)
-    DEPRECATED_DEFINE_STATIC_LOCAL(const String, port, (ASCIILiteral("gtk")));
-#elif PLATFORM(EFL)
-    DEPRECATED_DEFINE_STATIC_LOCAL(const String, port, (ASCIILiteral("efl")));
-#else
-    DEPRECATED_DEFINE_STATIC_LOCAL(const String, port, (ASCIILiteral("unknown")));
-#endif
-    return jsStringWithCache(execState, port);
-}
-
 #if ENABLE(CONTEXT_MENUS)
 static void populateContextMenuItems(ExecState* exec, JSArray* array, ContextMenu& menu)
 {
@@ -123,16 +91,16 @@ static void populateContextMenuItems(ExecState* exec, JSArray* array, ContextMen
 }
 #endif
 
-JSValue JSInspectorFrontendHost::showContextMenu(ExecState* exec)
+JSValue JSInspectorFrontendHost::showContextMenu(ExecState& state)
 {
 #if ENABLE(CONTEXT_MENUS)
-    if (exec->argumentCount() < 2)
+    if (state.argumentCount() < 2)
         return jsUndefined();
-    Event* event = JSEvent::toWrapped(exec->argument(0));
+    Event* event = JSEvent::toWrapped(state.argument(0));
 
-    JSArray* array = asArray(exec->argument(1));
+    JSArray* array = asArray(state.argument(1));
     ContextMenu menu;
-    populateContextMenuItems(exec, array, menu);
+    populateContextMenuItems(&state, array, menu);
 
 #if !USE(CROSS_PLATFORM_CONTEXT_MENUS)
     Vector<ContextMenuItem> items = contextMenuItemVector(menu.platformDescription());
@@ -141,7 +109,7 @@ JSValue JSInspectorFrontendHost::showContextMenu(ExecState* exec)
 #endif
     impl().showContextMenu(event, items);
 #else
-    UNUSED_PARAM(exec);
+    UNUSED_PARAM(state);
 #endif
     return jsUndefined();
 }

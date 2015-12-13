@@ -75,6 +75,8 @@ interface TestRunner {
     void setCacheModel(int model);
     void setAsynchronousSpellCheckingEnabled(boolean value);
     void setPrinting();
+    void setShouldDecideNavigationPolicyAfterDelay(boolean value);
+    void setNavigationGesturesEnabled(boolean value);
 
     // Special DOM functions.
     void clearBackForwardList();
@@ -125,6 +127,7 @@ interface TestRunner {
     void showWebInspector();
     void closeWebInspector();
     void evaluateInWebInspector(DOMString script);
+    readonly attribute DOMString inspectorTestStubURL;
 
     void setPOSIXLocale(DOMString locale);
 
@@ -142,6 +145,8 @@ interface TestRunner {
     void addChromeInputField(object callback);
     void removeChromeInputField(object callback);
     void focusWebView(object callback);
+
+    void clearTestRunnerCallbacks();
 
     void setBackingScaleFactor(double backingScaleFactor, object callback);
 
@@ -169,6 +174,7 @@ interface TestRunner {
     void setGeolocationPermission(boolean value);
     void setMockGeolocationPosition(double latitude, double longitude, double accuracy, [Default=Undefined] optional object altitude, optional object altitudeAccuracy, optional object heading, optional object speed);
     void setMockGeolocationPositionUnavailableError(DOMString errorMessage);
+    boolean isGeolocationProviderActive();
 
     // MediaStream
     void setUserMediaPermission(boolean value);
@@ -201,5 +207,14 @@ interface TestRunner {
     // Hooks to the JSC compiler.
     object numberOfDFGCompiles(object function);
     object neverInlineFunction(object function);
+
+    // Swipe gestures
+    void installDidBeginSwipeCallback(object callback);
+    void installWillEndSwipeCallback(object callback);
+    void installDidEndSwipeCallback(object callback);
+    void installDidRemoveSwipeSnapshotCallback(object callback);
+
+    // UI Process Testing
+    void runUIScript(DOMString script, object callback);
 };
 

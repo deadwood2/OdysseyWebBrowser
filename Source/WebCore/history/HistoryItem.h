@@ -28,6 +28,7 @@
 #define HistoryItem_h
 
 #include "FloatRect.h"
+#include "FrameLoaderTypes.h"
 #include "IntPoint.h"
 #include "IntRect.h"
 #include "SerializedScriptValue.h"
@@ -117,6 +118,9 @@ public:
     WEBCORE_EXPORT void setDocumentState(const Vector<String>&);
     void clearDocumentState();
 
+    WEBCORE_EXPORT void setShouldOpenExternalURLsPolicy(ShouldOpenExternalURLsPolicy);
+    WEBCORE_EXPORT ShouldOpenExternalURLsPolicy shouldOpenExternalURLsPolicy() const;
+
     void setURL(const URL&);
     WEBCORE_EXPORT void setURLString(const String&);
     WEBCORE_EXPORT void setOriginalURLString(const String&);
@@ -126,8 +130,8 @@ public:
     WEBCORE_EXPORT void setTitle(const String&);
     WEBCORE_EXPORT void setIsTargetItem(bool);
     
-    WEBCORE_EXPORT void setStateObject(PassRefPtr<SerializedScriptValue>);
-    PassRefPtr<SerializedScriptValue> stateObject() const { return m_stateObject; }
+    WEBCORE_EXPORT void setStateObject(RefPtr<SerializedScriptValue>&&);
+    RefPtr<SerializedScriptValue> stateObject() const { return m_stateObject; }
 
     void setItemSequenceNumber(long long number) { m_itemSequenceNumber = number; }
     long long itemSequenceNumber() const { return m_itemSequenceNumber; }
@@ -136,7 +140,7 @@ public:
     long long documentSequenceNumber() const { return m_documentSequenceNumber; }
 
     void setFormInfoFromRequest(const ResourceRequest&);
-    WEBCORE_EXPORT void setFormData(PassRefPtr<FormData>);
+    WEBCORE_EXPORT void setFormData(RefPtr<FormData>&&);
     WEBCORE_EXPORT void setFormContentType(const String&);
 
     void setLastVisitWasFailure(bool wasFailure) { m_lastVisitWasFailure = wasFailure; }
@@ -231,6 +235,8 @@ private:
     IntPoint m_scrollPoint;
     float m_pageScaleFactor;
     Vector<String> m_documentState;
+
+    ShouldOpenExternalURLsPolicy m_shouldOpenExternalURLsPolicy { ShouldOpenExternalURLsPolicy::ShouldNotAllow };
     
     HistoryItemVector m_children;
     

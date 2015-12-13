@@ -179,11 +179,12 @@ std::unique_ptr<Shape> Shape::createRasterShape(Image* image, float threshold, c
     IntRect imageRect = snappedIntRect(imageR);
     IntRect marginRect = snappedIntRect(marginR);
     auto intervals = std::make_unique<RasterShapeIntervals>(marginRect.height(), -marginRect.y());
-    std::unique_ptr<ImageBuffer> imageBuffer = ImageBuffer::create(imageRect.size());
+    // FIXME (149420): This buffer should not be unconditionally unaccelerated.
+    std::unique_ptr<ImageBuffer> imageBuffer = ImageBuffer::create(imageRect.size(), Unaccelerated);
 
     if (imageBuffer) {
-        GraphicsContext* graphicsContext = imageBuffer->context();
-        graphicsContext->drawImage(image, ColorSpaceDeviceRGB, IntRect(IntPoint(), imageRect.size()));
+        GraphicsContext& graphicsContext = imageBuffer->context();
+        graphicsContext.drawImage(image, ColorSpaceDeviceRGB, IntRect(IntPoint(), imageRect.size()));
 
         RefPtr<Uint8ClampedArray> pixelArray = imageBuffer->getUnmultipliedImageData(IntRect(IntPoint(), imageRect.size()));
         unsigned pixelArrayLength = pixelArray->length();

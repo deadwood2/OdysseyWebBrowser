@@ -139,10 +139,10 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case ArithCos:
     case ArithLog:
     case GetScope:
+    case LoadArrowFunctionThis:
     case SkipScope:
     case StringCharCodeAt:
     case StringFromCharCode:
-    case CompareEqConstant:
     case CompareStrictEq:
     case IsUndefined:
     case IsBoolean:
@@ -157,6 +157,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case BooleanToNumber:
     case FiatInt52:
     case MakeRope:
+    case StrCat:
     case ValueToInt32:
     case GetExecutable:
     case BottomValue:
@@ -268,12 +269,17 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         def(PureValue(CheckNotEmpty, AdjacencyList(AdjacencyList::Fixed, node->child1())));
         return;
 
+    case CheckIdent:
+        def(PureValue(CheckIdent, AdjacencyList(AdjacencyList::Fixed, node->child1()), node->uidOperand()));
+        return;
+
     case ConstantStoragePointer:
         def(PureValue(node, node->storagePointer()));
         return;
          
     case MovHint:
     case ZombieHint:
+    case ExitOK:
     case KillStack:
     case Upsilon:
     case Phi:
@@ -376,9 +382,12 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case ArrayPush:
     case ArrayPop:
     case Call:
+    case TailCallInlinedCaller:
     case Construct:
     case CallVarargs:
     case CallForwardVarargs:
+    case TailCallVarargsInlinedCaller:
+    case TailCallForwardVarargsInlinedCaller:
     case ConstructVarargs:
     case ConstructForwardVarargs:
     case ToPrimitive:
@@ -386,6 +395,13 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case ValueAdd:
         read(World);
         write(Heap);
+        return;
+
+    case TailCall:
+    case TailCallVarargs:
+    case TailCallForwardVarargs:
+        read(World);
+        write(SideState);
         return;
         
     case GetGetter:
@@ -463,7 +479,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         switch (mode.type()) {
         case Array::SelectUsingPredictions:
         case Array::Unprofiled:
-        case Array::Undecided:
+        case Array::SelectUsingArguments:
             // Assume the worst since we don't have profiling yet.
             read(World);
             write(Heap);
@@ -530,6 +546,10 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
             read(World);
             write(Heap);
             return;
+
+        case Array::Undecided:
+            def(PureValue(node));
+            return;
             
         case Array::ArrayStorage:
         case Array::SlowPutArrayStorage:
@@ -576,6 +596,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         Node* value = graph.varArgChild(node, 2).node();
         switch (mode.modeForPut().type()) {
         case Array::SelectUsingPredictions:
+        case Array::SelectUsingArguments:
         case Array::Unprofiled:
         case Array::Undecided:
             // Assume the worst since we don't have profiling yet.
@@ -830,11 +851,12 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     }
         
     case GetGlobalVar:
+    case GetGlobalLexicalVariable:
         read(AbstractHeap(Absolute, node->variablePointer()));
         def(HeapLocation(GlobalVariableLoc, AbstractHeap(Absolute, node->variablePointer())), LazyNode(node));
         return;
         
-    case PutGlobalVar:
+    case PutGlobalVariable:
         write(AbstractHeap(Absolute, node->variablePointer()));
         def(HeapLocation(GlobalVariableLoc, AbstractHeap(Absolute, node->variablePointer())), LazyNode(node->child2().node()));
         return;
@@ -886,6 +908,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
                 if (operandIdx >= numElements)
                     continue;
                 Edge use = graph.m_varArgChildren[node->firstChild() + operandIdx];
+                // operandIdx comes from graph.m_uint32ValuesInUse and thus is guaranteed to be already frozen
                 def(HeapLocation(IndexedPropertyLoc, heap, node, LazyNode(graph.freeze(jsNumber(operandIdx)))),
                     LazyNode(use.node()));
             }
@@ -928,9 +951,13 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
                     LazyNode(graph.freeze(data[index]), op));
             }
         } else {
+            Vector<uint32_t> possibleIndices;
             for (uint32_t index : graph.m_uint32ValuesInUse) {
                 if (index >= numElements)
                     continue;
+                possibleIndices.append(index);
+            }
+            for (uint32_t index : possibleIndices) {
                 def(HeapLocation(IndexedPropertyLoc, heap, node, LazyNode(graph.freeze(jsNumber(index)))),
                     LazyNode(graph.freeze(data[index]), op));
             }
@@ -949,7 +976,8 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         read(HeapObjectCount);
         write(HeapObjectCount);
         return;
-        
+    
+    case NewArrowFunction:
     case NewFunction:
         if (node->castOperand<FunctionExecutable*>()->singletonFunction()->isStillValid())
             write(Watchpoint_fire);

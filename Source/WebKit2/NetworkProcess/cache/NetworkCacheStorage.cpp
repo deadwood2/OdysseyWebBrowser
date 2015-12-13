@@ -32,7 +32,9 @@
 #include "NetworkCacheCoders.h"
 #include "NetworkCacheFileSystem.h"
 #include "NetworkCacheIOChannel.h"
-#include <condition_variable>
+#include <mutex>
+#include <wtf/Condition.h>
+#include <wtf/Lock.h>
 #include <wtf/RandomNumber.h>
 #include <wtf/RunLoop.h>
 #include <wtf/text/CString.h>
@@ -56,6 +58,9 @@ public:
         , completionHandler(completionHandler)
     { }
 
+    void cancel();
+    bool finish();
+
     const Key key;
     const RetrieveCompletionHandler completionHandler;
     
@@ -63,7 +68,33 @@ public:
     SHA1::Digest expectedBodyHash;
     BlobStorage::Blob resultBodyBlob;
     std::atomic<unsigned> activeCount { 0 };
+    bool isCanceled { false };
 };
+
+void Storage::ReadOperation::cancel()
+{
+    ASSERT(RunLoop::isMain());
+
+    if (isCanceled)
+        return;
+    isCanceled = true;
+    completionHandler(nullptr);
+}
+
+bool Storage::ReadOperation::finish()
+{
+    ASSERT(RunLoop::isMain());
+
+    if (isCanceled)
+        return false;
+    if (resultRecord && resultRecord->body.isNull()) {
+        if (resultBodyBlob.hash == expectedBodyHash)
+            resultRecord->body = resultBodyBlob.data;
+        else
+            resultRecord = nullptr;
+    }
+    return completionHandler(WTF::move(resultRecord));
+}
 
 struct Storage::WriteOperation {
     WTF_MAKE_FAST_ALLOCATED;
@@ -90,8 +121,8 @@ public:
     const TraverseFlags flags;
     const TraverseHandler handler;
 
-    std::mutex activeMutex;
-    std::condition_variable activeCondition;
+    Lock activeMutex;
+    Condition activeCondition;
     unsigned activeCount { 0 };
 };
 
@@ -147,6 +178,7 @@ static void deleteEmptyRecordsDirectories(const String& recordsPath)
 Storage::Storage(const String& baseDirectoryPath)
     : m_basePath(baseDirectoryPath)
     , m_recordsPath(makeRecordsDirectoryPath(baseDirectoryPath))
+    , m_readOperationTimeoutTimer(*this, &Storage::cancelAllReadOperations)
     , m_writeOperationDispatchTimer(*this, &Storage::dispatchPendingWriteOperations)
     , m_ioQueue(WorkQueue::create("com.apple.WebKit.Cache.Storage", WorkQueue::Type::Concurrent))
     , m_backgroundIOQueue(WorkQueue::create("com.apple.WebKit.Cache.Storage.background", WorkQueue::Type::Concurrent, WorkQueue::QOS::Background))
@@ -464,13 +496,30 @@ Data Storage::encodeRecord(const Record& record, Optional<BlobStorage::Blob> blo
     return { headerData };
 }
 
+bool Storage::removeFromPendingWriteOperations(const Key& key)
+{
+    auto end = m_pendingWriteOperations.end();
+    for (auto it = m_pendingWriteOperations.begin(); it != end; ++it) {
+        if ((*it)->record.key == key) {
+            m_pendingWriteOperations.remove(it);
+            return true;
+        }
+    }
+    return false;
+}
+
 void Storage::remove(const Key& key)
 {
     ASSERT(RunLoop::isMain());
 
+    if (!mayContain(key))
+        return;
+
     // We can't remove the key from the Bloom filter (but some false positives are expected anyway).
     // For simplicity we also don't reduce m_approximateSize on removals.
     // The next synchronization will update everything.
+
+    removeFromPendingWriteOperations(key);
 
     serialBackgroundIOQueue().dispatch([this, key] {
         WebCore::deleteFile(recordPathForKey(key));
@@ -486,10 +535,16 @@ void Storage::updateFileModificationTime(const String& path)
     });
 }
 
-void Storage::dispatchReadOperation(ReadOperation& readOperation)
+void Storage::dispatchReadOperation(std::unique_ptr<ReadOperation> readOperationPtr)
 {
     ASSERT(RunLoop::isMain());
-    ASSERT(m_activeReadOperations.contains(&readOperation));
+
+    auto& readOperation = *readOperationPtr;
+    m_activeReadOperations.add(WTF::move(readOperationPtr));
+
+    // I/O pressure may make disk operations slow. If they start taking very long time we rather go to network.
+    const auto readTimeout = 1500_ms;
+    m_readOperationTimeoutTimer.startOneShot(readTimeout);
 
     bool shouldGetBodyBlob = !m_bodyFilter || m_bodyFilter->mayContain(readOperation.key.hash());
 
@@ -524,24 +579,41 @@ void Storage::finishReadOperation(ReadOperation& readOperation)
         return;
 
     RunLoop::main().dispatch([this, &readOperation] {
-        if (readOperation.resultRecord && readOperation.resultRecord->body.isNull()) {
-            if (readOperation.resultBodyBlob.hash == readOperation.expectedBodyHash)
-                readOperation.resultRecord->body = readOperation.resultBodyBlob.data;
-            else
-                readOperation.resultRecord = nullptr;
-        }
-
-        bool success = readOperation.completionHandler(WTF::move(readOperation.resultRecord));
+        bool success = readOperation.finish();
         if (success)
             updateFileModificationTime(recordPathForKey(readOperation.key));
-        else
+        else if (!readOperation.isCanceled)
             remove(readOperation.key);
+
         ASSERT(m_activeReadOperations.contains(&readOperation));
         m_activeReadOperations.remove(&readOperation);
+
+        if (m_activeReadOperations.isEmpty())
+            m_readOperationTimeoutTimer.stop();
+        
         dispatchPendingReadOperations();
 
         LOG(NetworkCacheStorage, "(NetworkProcess) read complete success=%d", success);
     });
+}
+
+void Storage::cancelAllReadOperations()
+{
+    ASSERT(RunLoop::isMain());
+
+    for (auto& readOperation : m_activeReadOperations)
+        readOperation->cancel();
+
+    size_t pendingCount = 0;
+    for (int priority = maximumRetrievePriority; priority >= 0; --priority) {
+        auto& pendingRetrieveQueue = m_pendingReadOperationsByPriority[priority];
+        pendingCount += pendingRetrieveQueue.size();
+        for (auto it = pendingRetrieveQueue.rbegin(), end = pendingRetrieveQueue.rend(); it != end; ++it)
+            (*it)->cancel();
+        pendingRetrieveQueue.clear();
+    }
+
+    LOG(NetworkCacheStorage, "(NetworkProcess) retrieve timeout, canceled %u active and %zu pending", m_activeReadOperations.size(), pendingCount);
 }
 
 void Storage::dispatchPendingReadOperations()
@@ -558,10 +630,7 @@ void Storage::dispatchPendingReadOperations()
         auto& pendingRetrieveQueue = m_pendingReadOperationsByPriority[priority];
         if (pendingRetrieveQueue.isEmpty())
             continue;
-        auto readOperation = pendingRetrieveQueue.takeLast();
-        auto& read = *readOperation;
-        m_activeReadOperations.add(WTF::move(readOperation));
-        dispatchReadOperation(read);
+        dispatchReadOperation(pendingRetrieveQueue.takeLast());
     }
 }
 
@@ -591,11 +660,7 @@ void Storage::dispatchPendingWriteOperations()
             LOG(NetworkCacheStorage, "(NetworkProcess) limiting parallel writes");
             return;
         }
-        auto writeOperation = m_pendingWriteOperations.takeLast();
-        auto& write = *writeOperation;
-        m_activeWriteOperations.add(WTF::move(writeOperation));
-
-        dispatchWriteOperation(write);
+        dispatchWriteOperation(m_pendingWriteOperations.takeLast());
     }
 }
 
@@ -605,10 +670,12 @@ static bool shouldStoreBodyAsBlob(const Data& bodyData)
     return bodyData.size() > maximumInlineBodySize;
 }
 
-void Storage::dispatchWriteOperation(WriteOperation& writeOperation)
+void Storage::dispatchWriteOperation(std::unique_ptr<WriteOperation> writeOperationPtr)
 {
     ASSERT(RunLoop::isMain());
-    ASSERT(m_activeWriteOperations.contains(&writeOperation));
+
+    auto& writeOperation = *writeOperationPtr;
+    m_activeWriteOperations.add(WTF::move(writeOperationPtr));
 
     // This was added already when starting the store but filter might have been wiped.
     addToRecordFilter(writeOperation.record.key);
@@ -726,7 +793,7 @@ void Storage::traverse(TraverseFlags flags, TraverseHandler&& traverseHandler)
             if (traverseOperation.flags & TraverseFlag::ShareCount)
                 bodyShareCount = m_blobStorage.shareCount(bodyPathForRecordPath(recordPath));
 
-            std::unique_lock<std::mutex> lock(traverseOperation.activeMutex);
+            std::unique_lock<Lock> lock(traverseOperation.activeMutex);
             ++traverseOperation.activeCount;
 
             auto channel = IOChannel::open(recordPath, IOChannel::Type::Read);
@@ -749,9 +816,9 @@ void Storage::traverse(TraverseFlags flags, TraverseHandler&& traverseHandler)
                     traverseOperation.handler(&record, info);
                 }
 
-                std::lock_guard<std::mutex> lock(traverseOperation.activeMutex);
+                std::lock_guard<Lock> lock(traverseOperation.activeMutex);
                 --traverseOperation.activeCount;
-                traverseOperation.activeCondition.notify_one();
+                traverseOperation.activeCondition.notifyOne();
             });
 
             const unsigned maximumParallelReadCount = 5;
@@ -760,7 +827,7 @@ void Storage::traverse(TraverseFlags flags, TraverseHandler&& traverseHandler)
             });
         });
         // Wait for all reads to finish.
-        std::unique_lock<std::mutex> lock(traverseOperation.activeMutex);
+        std::unique_lock<Lock> lock(traverseOperation.activeMutex);
         traverseOperation.activeCondition.wait(lock, [&traverseOperation] {
             return !traverseOperation.activeCount;
         });

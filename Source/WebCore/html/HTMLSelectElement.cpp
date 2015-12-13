@@ -38,6 +38,7 @@
 #include "FormController.h"
 #include "FormDataList.h"
 #include "Frame.h"
+#include "GenericCachedHTMLCollection.h"
 #include "HTMLFormElement.h"
 #include "HTMLNames.h"
 #include "HTMLOptGroupElement.h"
@@ -46,6 +47,7 @@
 #include "KeyboardEvent.h"
 #include "LocalizedStrings.h"
 #include "MouseEvent.h"
+#include "NodeRareData.h"
 #include "Page.h"
 #include "PlatformMouseEvent.h"
 #include "RenderListBox.h"
@@ -225,7 +227,7 @@ void HTMLSelectElement::add(HTMLElement* element, HTMLElement* beforeElement, Ex
     // Make sure the element is ref'd and deref'd so we don't leak it.
     Ref<HTMLElement> protectNewChild(*element);
 
-    insertBefore(element, beforeElement, ec);
+    insertBefore(*element, beforeElement, ec);
     updateValidity();
 }
 
@@ -374,12 +376,12 @@ bool HTMLSelectElement::childShouldCreateRenderer(const Node& child) const
 
 Ref<HTMLCollection> HTMLSelectElement::selectedOptions()
 {
-    return ensureCachedHTMLCollection(SelectedOptions);
+    return ensureRareData().ensureNodeLists().addCachedCollection<GenericCachedHTMLCollection<CollectionTypeTraits<SelectedOptions>::traversalType>>(*this, SelectedOptions);
 }
 
 Ref<HTMLOptionsCollection> HTMLSelectElement::options()
 {
-    return downcast<HTMLOptionsCollection>(ensureCachedHTMLCollection(SelectOptions).get());
+    return ensureRareData().ensureNodeLists().addCachedCollection<HTMLOptionsCollection>(*this, SelectOptions);
 }
 
 void HTMLSelectElement::updateListItemSelectedStates()
@@ -484,12 +486,12 @@ void HTMLSelectElement::setLength(unsigned newLen, ExceptionCode& ec)
 
         // Removing children fires mutation events, which might mutate the DOM further, so we first copy out a list
         // of elements that we intend to remove then attempt to remove them one at a time.
-        Vector<RefPtr<Element>> itemsToRemove;
+        Vector<Ref<Element>> itemsToRemove;
         size_t optionIndex = 0;
         for (auto& item : items) {
             if (is<HTMLOptionElement>(*item) && optionIndex++ >= newLen) {
                 ASSERT(item->parentNode());
-                itemsToRemove.append(item);
+                itemsToRemove.append(*item);
             }
         }
 
@@ -899,6 +901,7 @@ void HTMLSelectElement::selectOption(int optionIndex, SelectOptionFlags flags)
 
     scrollToSelection();
 
+    updateValidity();
     if (usesMenuList()) {
         m_isProcessingUserDrivenChange = flags & UserDriven;
         if (flags & DispatchChangeEvent)
@@ -910,8 +913,6 @@ void HTMLSelectElement::selectOption(int optionIndex, SelectOptionFlags flags)
                 downcast<RenderListBox>(*renderer).selectionChanged();
         }
     }
-
-    updateValidity();
 }
 
 int HTMLSelectElement::optionToListIndex(int optionIndex) const
@@ -1591,8 +1592,7 @@ Node::InsertionNotificationRequest HTMLSelectElement::insertedInto(ContainerNode
     // items yet - but for innerHTML and related methods, this method is called
     // after the whole subtree is constructed.
     recalcListItems();
-    HTMLFormControlElementWithState::insertedInto(insertionPoint);
-    return InsertionDone;
+    return HTMLFormControlElementWithState::insertedInto(insertionPoint);
 }
 
 void HTMLSelectElement::accessKeySetSelectedIndex(int index)

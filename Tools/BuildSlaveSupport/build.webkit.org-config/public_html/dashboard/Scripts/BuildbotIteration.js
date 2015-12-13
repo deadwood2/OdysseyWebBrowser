@@ -43,8 +43,7 @@ BuildbotIteration = function(queue, dataOrID, finished)
     this.isLoading = false;
     this._productive = false;
 
-    this.openSourceRevision = null;
-    this.internalRevision = null;
+    this.revision = {};
 
     this.layoutTestResults = null; // Layout test results can be needed even if all tests passed, e.g. for the leaks bot.
 
@@ -102,9 +101,15 @@ function parseRevisionProperty(property, key, fallbackKey)
     if (!property)
         return null;
     var value = property[1];
+
+    // The property got_revision may have the following forms:
+    //
+    // ["got_revision",{"Internal":"1357","WebKitOpenSource":"2468"},"Source"]
+    // OR
+    // ["got_revision","2468","Source"]
     if (isMultiCodebaseGotRevisionProperty(property))
         value = (key in value) ? value[key] : value[fallbackKey];
-    return parseInt(value);
+    return value;
 }
 
 BuildbotIteration.prototype = {
@@ -188,23 +193,32 @@ BuildbotIteration.prototype = {
         console.assert(!this.id || this.id === data.number);
         this.id = data.number;
 
-        // The property got_revision may have the following forms:
-        //
-        // ["got_revision",{"Internal":"1357","WebKitOpenSource":"2468"},"Source"]
-        // OR
-        // ["got_revision","2468","Source"]
-        //
-        // When extracting the OpenSource revision from property got_revision we don't need to check whether the
-        // value of got_revision is a dictionary (represents multiple codebases) or a string literal because we
-        // assume that got_revision contains the OpenSource revision. However, it may not have the Internal
-        // revision. Therefore, we only look at got_revision to extract the Internal revision when it's
-        // a dictionary.
-
-        var openSourceRevisionProperty = data.properties.findFirst(function(property) { return property[0] === "got_revision"; });
-        this.openSourceRevision = parseRevisionProperty(openSourceRevisionProperty, "WebKit", "opensource");
-
-        var internalRevisionProperty = data.properties.findFirst(function(property) { return isMultiCodebaseGotRevisionProperty(property); });
-        this.internalRevision = parseRevisionProperty(internalRevisionProperty, "Internal", "internal");
+        this.revision = {};
+        var revisionProperty = data.properties.findFirst(function(property) {
+            return property[0] === "got_revision";
+        });
+        var branches = this.queue.branches;
+        for (var i = 0; i < branches.length; ++i) {
+            var repository = branches[i].repository;
+            var repositoryName = repository.name;
+            var key;
+            var fallbackKey;
+            if (repository === Dashboard.Repository.OpenSource) {
+                key = "WebKit";
+                fallbackKey = "opensource";
+            } else if (repository === Dashboard.Repository.Internal) {
+                key = "Internal";
+                fallbackKey = "internal";
+            } else {
+                key = repositoryName;
+                fallbackKey = null;
+            }
+            var revision = parseRevisionProperty(revisionProperty, key, fallbackKey);
+            if (repository.isSVN)
+                this.revision[repositoryName] = parseInt(revision);
+            else
+                this.revision[repositoryName] = revision;
+        }
 
         function sourceStampChanges(sourceStamp) {
             var result = [];
@@ -234,7 +248,7 @@ BuildbotIteration.prototype = {
 
         this.failedTestSteps = [];
         data.steps.forEach(function(step) {
-            if (!step.isFinished || !(step.name in BuildbotIteration.TestSteps))
+            if (!step.isFinished || step.hidden || !(step.name in BuildbotIteration.TestSteps))
                 return;
             var results = new BuildbotTestResults(step);
             if (step.name === "layout-test")
@@ -254,7 +268,7 @@ BuildbotIteration.prototype = {
 
         this.loaded = true;
 
-        this._firstFailedStep = data.steps.findFirst(function(step) { return step.results[0] === BuildbotIteration.FAILURE; });
+        this._firstFailedStep = data.steps.findFirst(function(step) { return !step.hidden && step.results[0] === BuildbotIteration.FAILURE; });
 
         console.assert(data.results === null || typeof data.results === "number");
         this._result = data.results;

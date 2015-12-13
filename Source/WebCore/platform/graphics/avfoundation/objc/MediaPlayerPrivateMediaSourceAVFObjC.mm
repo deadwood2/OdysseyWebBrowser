@@ -136,7 +136,7 @@ MediaPlayerPrivateMediaSourceAVFObjC::MediaPlayerPrivateMediaSourceAVFObjC(Media
     : m_player(player)
     , m_weakPtrFactory(this)
     , m_synchronizer(adoptNS([allocAVSampleBufferRenderSynchronizerInstance() init]))
-    , m_seekTimer(*this, &MediaPlayerPrivateMediaSourceAVFObjC::seekTimerFired)
+    , m_seekTimer(*this, &MediaPlayerPrivateMediaSourceAVFObjC::seekInternal)
     , m_session(nullptr)
     , m_networkState(MediaPlayer::Empty)
     , m_readyState(MediaPlayer::HaveNothing)
@@ -240,7 +240,8 @@ MediaPlayer::SupportsType MediaPlayerPrivateMediaSourceAVFObjC::supportsType(con
     if (parameters.isMediaStream)
         return MediaPlayer::IsNotSupported;
 #endif
-    if (!mimeTypeCache().contains(parameters.type))
+
+    if (parameters.type.isEmpty() || !mimeTypeCache().contains(parameters.type))
         return MediaPlayer::IsNotSupported;
 
     // The spec says:
@@ -421,11 +422,6 @@ void MediaPlayerPrivateMediaSourceAVFObjC::seekWithTolerance(const MediaTime& ti
     m_seekTimer.startOneShot(0);
 }
 
-void MediaPlayerPrivateMediaSourceAVFObjC::seekTimerFired()
-{
-    seekInternal();
-}
-
 void MediaPlayerPrivateMediaSourceAVFObjC::seekInternal()
 {
     std::unique_ptr<PendingSeek> pendingSeek;
@@ -529,12 +525,12 @@ void MediaPlayerPrivateMediaSourceAVFObjC::setSize(const IntSize&)
     // No-op.
 }
 
-void MediaPlayerPrivateMediaSourceAVFObjC::paint(GraphicsContext*, const FloatRect&)
+void MediaPlayerPrivateMediaSourceAVFObjC::paint(GraphicsContext&, const FloatRect&)
 {
     // FIXME(125157): Implement painting.
 }
 
-void MediaPlayerPrivateMediaSourceAVFObjC::paintCurrentFrameInContext(GraphicsContext*, const FloatRect&)
+void MediaPlayerPrivateMediaSourceAVFObjC::paintCurrentFrameInContext(GraphicsContext&, const FloatRect&)
 {
     // FIXME(125157): Implement painting.
 }

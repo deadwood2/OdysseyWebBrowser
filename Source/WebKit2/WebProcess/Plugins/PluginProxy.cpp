@@ -200,7 +200,7 @@ void PluginProxy::destroy()
     m_connection->removePluginProxy(this);
 }
 
-void PluginProxy::paint(GraphicsContext* graphicsContext, const IntRect& dirtyRect)
+void PluginProxy::paint(GraphicsContext& graphicsContext, const IntRect& dirtyRect)
 {
     if (!needsBackingStore() || !m_backingStore)
         return;
@@ -218,7 +218,7 @@ void PluginProxy::paint(GraphicsContext* graphicsContext, const IntRect& dirtyRe
         m_pluginBackingStoreContainsValidData = true;
     }
 
-    m_backingStore->paint(*graphicsContext, contentsScaleFactor(), dirtyRect.location(), dirtyRect);
+    m_backingStore->paint(graphicsContext, contentsScaleFactor(), dirtyRect.location(), dirtyRect);
 
     if (m_waitingForPaintInResponseToUpdate) {
         m_waitingForPaintInResponseToUpdate = false;
@@ -319,6 +319,11 @@ void PluginProxy::frameDidFail(uint64_t requestID, bool wasCancelled)
 void PluginProxy::didEvaluateJavaScript(uint64_t requestID, const WTF::String& result)
 {
     m_connection->connection()->send(Messages::PluginControllerProxy::DidEvaluateJavaScript(requestID, result), m_pluginInstanceID);
+}
+
+void PluginProxy::streamWillSendRequest(uint64_t streamID, const URL& requestURL, const URL& responseURL, int responseStatus)
+{
+    m_connection->connection()->send(Messages::PluginControllerProxy::StreamWillSendRequest(streamID, requestURL.string(), responseURL.string(), responseStatus), m_pluginInstanceID);
 }
 
 void PluginProxy::streamDidReceiveResponse(uint64_t streamID, const URL& responseURL, uint32_t streamLength, uint32_t lastModifiedTime, const WTF::String& mimeType, const WTF::String& headers, const String& /* suggestedFileName */)
@@ -656,6 +661,11 @@ void PluginProxy::evaluate(const NPVariantData& npObjectAsVariantData, const Str
 void PluginProxy::setPluginIsPlayingAudio(bool pluginIsPlayingAudio)
 {
     controller()->setPluginIsPlayingAudio(pluginIsPlayingAudio);
+}
+
+void PluginProxy::continueStreamLoad(uint64_t streamID)
+{
+    controller()->continueStreamLoad(streamID);
 }
 
 void PluginProxy::cancelStreamLoad(uint64_t streamID)

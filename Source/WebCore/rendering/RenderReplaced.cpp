@@ -178,10 +178,10 @@ void RenderReplaced::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
             completelyClippedOut = true;
         else {
             // Push a clip if we have a border radius, since we want to round the foreground content that gets painted.
-            paintInfo.context->save();
+            paintInfo.context().save();
             FloatRoundedRect roundedInnerRect = FloatRoundedRect(style().getRoundedInnerBorderFor(paintRect,
                 paddingTop() + borderTop(), paddingBottom() + borderBottom(), paddingLeft() + borderLeft(), paddingRight() + borderRight(), true, true));
-            clipRoundedInnerRect(paintInfo.context, paintRect, roundedInnerRect);
+            clipRoundedInnerRect(paintInfo.context(), paintRect, roundedInnerRect);
         }
     }
 
@@ -189,7 +189,7 @@ void RenderReplaced::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
         paintReplaced(paintInfo, adjustedPaintOffset);
 
         if (style().hasBorderRadius())
-            paintInfo.context->restore();
+            paintInfo.context().restore();
     }
         
     // The selection tint never gets clipped by border-radius rounding, since we want it to run right up to the edges of
@@ -197,7 +197,7 @@ void RenderReplaced::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
     if (drawSelectionTint) {
         LayoutRect selectionPaintingRect = localSelectionRect();
         selectionPaintingRect.moveBy(adjustedPaintOffset);
-        paintInfo.context->fillRect(snappedIntRect(selectionPaintingRect), selectionBackgroundColor(), style().colorSpace());
+        paintInfo.context().fillRect(snappedIntRect(selectionPaintingRect), selectionBackgroundColor(), style().colorSpace());
     }
 }
 
@@ -233,7 +233,7 @@ bool RenderReplaced::shouldPaint(PaintInfo& paintInfo, const LayoutPoint& paintO
     }
     
     LayoutRect localRepaintRect = paintInfo.rect;
-    localRepaintRect.inflate(maximalOutlineSize(paintInfo.phase));
+    adjustRectWithMaximumOutline(paintInfo.phase, localRepaintRect);
     if (adjustedPaintOffset.x() + visualOverflowRect().x() >= localRepaintRect.maxX() || adjustedPaintOffset.x() + visualOverflowRect().maxX() <= localRepaintRect.x())
         return false;
 
@@ -383,7 +383,7 @@ void RenderReplaced::computeIntrinsicRatioInformation(FloatSize& intrinsicSize, 
 LayoutUnit RenderReplaced::computeReplacedLogicalWidth(ShouldComputePreferred shouldComputePreferred) const
 {
     if (style().logicalWidth().isSpecified() || style().logicalWidth().isIntrinsic())
-        return computeReplacedLogicalWidthRespectingMinMaxWidth(computeReplacedLogicalWidthUsing(style().logicalWidth()), shouldComputePreferred);
+        return computeReplacedLogicalWidthRespectingMinMaxWidth(computeReplacedLogicalWidthUsing(MainOrPreferredSize, style().logicalWidth()), shouldComputePreferred);
 
     RenderBox* contentRenderer = embeddedContentBox();
 
@@ -418,7 +418,7 @@ LayoutUnit RenderReplaced::computeReplacedLogicalWidth(ShouldComputePreferred sh
                 // 'margin-left' + 'border-left-width' + 'padding-left' + 'width' + 'padding-right' + 'border-right-width' + 'margin-right' = width of containing block
                 LayoutUnit logicalWidth;
                 if (RenderBlock* blockWithWidth = firstContainingBlockWithLogicalWidth(this))
-                    logicalWidth = blockWithWidth->computeReplacedLogicalWidthRespectingMinMaxWidth(blockWithWidth->computeReplacedLogicalWidthUsing(blockWithWidth->style().logicalWidth()), shouldComputePreferred);
+                    logicalWidth = blockWithWidth->computeReplacedLogicalWidthRespectingMinMaxWidth(blockWithWidth->computeReplacedLogicalWidthUsing(MainOrPreferredSize, blockWithWidth->style().logicalWidth()), shouldComputePreferred);
                 else
                     logicalWidth = containingBlock()->availableLogicalWidth();
 
@@ -448,7 +448,7 @@ LayoutUnit RenderReplaced::computeReplacedLogicalHeight() const
 {
     // 10.5 Content height: the 'height' property: http://www.w3.org/TR/CSS21/visudet.html#propdef-height
     if (hasReplacedLogicalHeight())
-        return computeReplacedLogicalHeightRespectingMinMaxHeight(computeReplacedLogicalHeightUsing(style().logicalHeight()));
+        return computeReplacedLogicalHeightRespectingMinMaxHeight(computeReplacedLogicalHeightUsing(MainOrPreferredSize, style().logicalHeight()));
 
     RenderBox* contentRenderer = embeddedContentBox();
 

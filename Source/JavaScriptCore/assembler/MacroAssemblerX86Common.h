@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008, 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2008, 2014-2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -1403,6 +1403,11 @@ public:
         m_assembler.int3();
     }
 
+    Call nearTailCall()
+    {
+        return Call(m_assembler.jmp(), Call::LinkableNearTail);
+    }
+
     Call nearCall()
     {
         return Call(m_assembler.call(), Call::LinkableNear);
@@ -1491,11 +1496,6 @@ public:
     }
 
 #if ENABLE(MASM_PROBE)
-    // Methods required by the MASM_PROBE mechanism as defined in
-    // AbstractMacroAssembler.h. 
-    static void printCPURegisters(CPUState&, int indentation = 0);
-    static void printRegister(CPUState&, RegisterID);
-    static void printRegister(CPUState&, FPRegisterID);
     void probe(ProbeFunction, void* arg1 = 0, void* arg2 = 0);
 #endif // ENABLE(MASM_PROBE)
 
@@ -1577,7 +1577,7 @@ private:
                 cpuid;
                 mov flags, edx;
             }
-#elif COMPILER(GCC)
+#elif COMPILER(GCC_OR_CLANG)
             asm (
                  "movl $0x1, %%eax;"
                  "pushl %%ebx;"

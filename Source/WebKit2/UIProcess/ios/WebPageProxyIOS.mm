@@ -51,6 +51,7 @@
 
 #if USE(QUICK_LOOK)
 #import "APILoaderClient.h"
+#import "APINavigationClient.h"
 #import <wtf/text/WTFString.h>
 #endif
 
@@ -351,10 +352,17 @@ void WebPageProxy::didCommitLayerTree(const WebKit::RemoteLayerTreeTransaction& 
 
     m_pageClient.didCommitLayerTree(layerTreeTransaction);
 
+    // FIXME: Remove this special mechanism and fold it into the transaction's layout milestones.
     if (m_wantsSessionRestorationRenderTreeSizeThresholdEvent && !m_hitRenderTreeSizeThreshold
         && exceedsRenderTreeSizeSizeThreshold(m_sessionRestorationRenderTreeSize, layerTreeTransaction.renderTreeSize())) {
         m_hitRenderTreeSizeThreshold = true;
-        didLayout(WebCore::ReachedSessionRestorationRenderTreeSizeThreshold, UserData());
+        didLayout(WebCore::ReachedSessionRestorationRenderTreeSizeThreshold);
+    }
+
+    if (m_hasDeferredStartAssistingNode) {
+        m_pageClient.startAssistingNode(m_deferredNodeAssistanceArguments->m_nodeInformation, m_deferredNodeAssistanceArguments->m_userIsInteracting, m_deferredNodeAssistanceArguments->m_blurPreviousNode, m_deferredNodeAssistanceArguments->m_userData.get());
+        m_hasDeferredStartAssistingNode = false;
+        m_deferredNodeAssistanceArguments = nullptr;
     }
 }
 
@@ -803,11 +811,22 @@ void WebPageProxy::didGetTapHighlightGeometries(uint64_t requestID, const WebCor
 
 void WebPageProxy::startAssistingNode(const AssistedNodeInformation& information, bool userIsInteracting, bool blurPreviousNode, const UserData& userData)
 {
-    m_pageClient.startAssistingNode(information, userIsInteracting, blurPreviousNode, process().transformHandlesToObjects(userData.object()).get());
+    API::Object* userDataObject = process().transformHandlesToObjects(userData.object()).get();
+    if (m_editorState.isMissingPostLayoutData) {
+        m_deferredNodeAssistanceArguments = std::make_unique<NodeAssistanceArguments>(NodeAssistanceArguments { information, userIsInteracting, blurPreviousNode, userDataObject });
+        m_hasDeferredStartAssistingNode = true;
+        return;
+    }
+
+    m_pageClient.startAssistingNode(information, userIsInteracting, blurPreviousNode, userDataObject);
 }
 
 void WebPageProxy::stopAssistingNode()
 {
+    if (m_hasDeferredStartAssistingNode) {
+        m_hasDeferredStartAssistingNode = false;
+        m_deferredNodeAssistanceArguments = nullptr;
+    }
     m_pageClient.stopAssistingNode();
 }
 
@@ -951,12 +970,18 @@ void WebPageProxy::didStartLoadForQuickLookDocumentInMainFrame(const String& fil
 {
     // Ensure that fileName isn't really a path name
     static_assert(notFound + 1 == 0, "The following line assumes WTF::notFound equals -1");
-    m_loaderClient->didStartLoadForQuickLookDocumentInMainFrame(fileName.substring(fileName.reverseFind('/') + 1), uti);
+    if (m_navigationClient)
+        m_navigationClient->didStartLoadForQuickLookDocumentInMainFrame(fileName.substring(fileName.reverseFind('/') + 1), uti);
+    else
+        m_loaderClient->didStartLoadForQuickLookDocumentInMainFrame(fileName.substring(fileName.reverseFind('/') + 1), uti);
 }
 
 void WebPageProxy::didFinishLoadForQuickLookDocumentInMainFrame(const QuickLookDocumentData& data)
 {
-    m_loaderClient->didFinishLoadForQuickLookDocumentInMainFrame(data);
+    if (m_navigationClient)
+        m_navigationClient->didFinishLoadForQuickLookDocumentInMainFrame(data);
+    else
+        m_loaderClient->didFinishLoadForQuickLookDocumentInMainFrame(data);
 }
 #endif
 

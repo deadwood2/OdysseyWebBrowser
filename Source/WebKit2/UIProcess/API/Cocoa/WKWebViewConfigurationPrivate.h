@@ -29,6 +29,7 @@
 
 @class WKWebView;
 @class _WKVisitedLinkProvider;
+@class _WKVisitedLinkStore;
 @class _WKWebsiteDataStore;
 
 @interface WKWebViewConfiguration (WKPrivate)
@@ -36,17 +37,22 @@
 @property (nonatomic, weak, setter=_setRelatedWebView:) WKWebView *_relatedWebView;
 @property (nonatomic, copy, setter=_setGroupIdentifier:) NSString *_groupIdentifier;
 
-@property (nonatomic, strong, setter=_setVisitedLinkProvider:) _WKVisitedLinkProvider *_visitedLinkProvider;
-
-@property (nonatomic, strong, setter=_setWebsiteDataStore:) _WKWebsiteDataStore *_websiteDataStore WK_DEPRECATED(10_10, WK_MAC_TBA, 8_0, WK_IOS_TBA, "Please use websiteDataStore instead");
+@property (nonatomic, strong, setter=_setVisitedLinkStore:) _WKVisitedLinkStore *_visitedLinkStore;
 
 @property (nonatomic, weak, setter=_setAlternateWebViewForNavigationGestures:) WKWebView *_alternateWebViewForNavigationGestures;
 
-@property (nonatomic, setter=_setTreatsSHA1SignedCertificatesAsInsecure:) BOOL _treatsSHA1SignedCertificatesAsInsecure WK_AVAILABLE(NA, WK_IOS_TBA);
+@property (nonatomic, setter=_setTreatsSHA1SignedCertificatesAsInsecure:) BOOL _treatsSHA1SignedCertificatesAsInsecure WK_AVAILABLE(NA, 9_0);
 
 #if TARGET_OS_IPHONE
-@property (nonatomic, setter=_setAlwaysRunsAtForegroundPriority:) BOOL _alwaysRunsAtForegroundPriority WK_AVAILABLE(NA, WK_IOS_TBA);
+@property (nonatomic, setter=_setAlwaysRunsAtForegroundPriority:) BOOL _alwaysRunsAtForegroundPriority WK_AVAILABLE(NA, 9_0);
+
+@property (nonatomic, setter=_setInlineMediaPlaybackRequiresPlaysInlineAttribute:) BOOL _inlineMediaPlaybackRequiresPlaysInlineAttribute WK_AVAILABLE(NA, WK_IOS_TBA);
+@property (nonatomic, setter=_setMediaDataLoadsAutomatically:) BOOL _mediaDataLoadsAutomatically WK_AVAILABLE(NA, WK_IOS_TBA);
 #endif
+
+@property (nonatomic, strong, setter=_setVisitedLinkProvider:) _WKVisitedLinkProvider *_visitedLinkProvider WK_DEPRECATED(10_10, WK_MAC_TBA, 8_0, WK_IOS_TBA, "Please use visitedLinkStore instead");
+
+@property (nonatomic, strong, setter=_setWebsiteDataStore:) _WKWebsiteDataStore *_websiteDataStore WK_DEPRECATED(10_10, 10_11, 8_0, 9_0, "Please use websiteDataStore instead");
 
 @end
 

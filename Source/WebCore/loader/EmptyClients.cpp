@@ -37,6 +37,7 @@
 #include "FrameNetworkingContext.h"
 #include "HTMLFormElement.h"
 #include "IDBFactoryBackendInterface.h"
+#include "InProcessIDBServer.h"
 #include "PageConfiguration.h"
 #include "StorageArea.h"
 #include "StorageNamespace.h"
@@ -48,6 +49,13 @@ namespace WebCore {
 class EmptyDatabaseProvider final : public DatabaseProvider {
 #if ENABLE(INDEXED_DATABASE)
     virtual RefPtr<IDBFactoryBackendInterface> createIDBFactoryBackend() { return nullptr; }
+    virtual bool supportsModernIDB() const { return false; }
+    
+    virtual IDBClient::IDBConnectionToServer& idbConnectionToServerForSession(const SessionID&)
+    {
+        static NeverDestroyed<Ref<InProcessIDBServer>> sharedConnection(InProcessIDBServer::create());
+        return sharedConnection.get()->connectionToServer();
+    }
 #endif
 };
 
@@ -67,7 +75,7 @@ class EmptyStorageNamespaceProvider final : public StorageNamespaceProvider {
     };
 
     struct EmptyStorageNamespace final : public StorageNamespace {
-        virtual RefPtr<StorageArea> storageArea(PassRefPtr<SecurityOrigin>) override { return adoptRef(new EmptyStorageArea); }
+        virtual RefPtr<StorageArea> storageArea(RefPtr<SecurityOrigin>&&) override { return adoptRef(new EmptyStorageArea); }
         virtual RefPtr<StorageNamespace> copy(Page*) override { return adoptRef(new EmptyStorageNamespace); }
     };
 

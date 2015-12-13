@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2014, 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,7 @@
 #if ENABLE(JIT)
 
 #include "JSCInlines.h"
+#include "MaxFrameExtentForSlowPathCall.h"
 #include "VM.h"
 
 namespace JSC {
@@ -43,6 +44,8 @@ ScratchRegisterAllocator::~ScratchRegisterAllocator() { }
 
 void ScratchRegisterAllocator::lock(GPRReg reg)
 {
+    if (reg == InvalidGPRReg)
+        return;
     unsigned index = GPRInfo::toIndex(reg);
     if (index == GPRInfo::InvalidIndex)
         return;
@@ -51,10 +54,18 @@ void ScratchRegisterAllocator::lock(GPRReg reg)
 
 void ScratchRegisterAllocator::lock(FPRReg reg)
 {
+    if (reg == InvalidFPRReg)
+        return;
     unsigned index = FPRInfo::toIndex(reg);
     if (index == FPRInfo::InvalidIndex)
         return;
     m_lockedRegisters.setFPRByIndex(index);
+}
+
+void ScratchRegisterAllocator::lock(JSValueRegs regs)
+{
+    lock(regs.tagGPR());
+    lock(regs.payloadGPR());
 }
 
 template<typename BankInfo>
@@ -70,7 +81,7 @@ typename BankInfo::RegisterType ScratchRegisterAllocator::allocateScratch()
             return reg;
         }
     }
-        
+    
     // Since that failed, try to allocate a register that is not yet
     // locked or used for scratch.
     for (unsigned i = 0; i < BankInfo::numberOfRegisters; ++i) {
@@ -91,28 +102,46 @@ typename BankInfo::RegisterType ScratchRegisterAllocator::allocateScratch()
 GPRReg ScratchRegisterAllocator::allocateScratchGPR() { return allocateScratch<GPRInfo>(); }
 FPRReg ScratchRegisterAllocator::allocateScratchFPR() { return allocateScratch<FPRInfo>(); }
 
-void ScratchRegisterAllocator::preserveReusedRegistersByPushing(MacroAssembler& jit)
+size_t ScratchRegisterAllocator::preserveReusedRegistersByPushing(MacroAssembler& jit)
 {
     if (!didReuseRegisters())
-        return;
-        
+        return 0;
+
+    size_t numberOfBytesPushed = 0;
+
     for (unsigned i = 0; i < FPRInfo::numberOfRegisters; ++i) {
         FPRReg reg = FPRInfo::toRegister(i);
-        if (m_scratchRegisters.getFPRByIndex(i) && m_usedRegisters.get(reg))
+        if (m_scratchRegisters.getFPRByIndex(i) && m_usedRegisters.get(reg)) {
             jit.pushToSave(reg);
+            numberOfBytesPushed += sizeof(double);
+        }
     }
     for (unsigned i = 0; i < GPRInfo::numberOfRegisters; ++i) {
         GPRReg reg = GPRInfo::toRegister(i);
-        if (m_scratchRegisters.getGPRByIndex(i) && m_usedRegisters.get(reg))
+        if (m_scratchRegisters.getGPRByIndex(i) && m_usedRegisters.get(reg)) {
             jit.pushToSave(reg);
+            numberOfBytesPushed += sizeof(uintptr_t);
+        }
     }
+
+    size_t totalStackAdjustmentBytes = numberOfBytesPushed + maxFrameExtentForSlowPathCall;
+    totalStackAdjustmentBytes = WTF::roundUpToMultipleOf(stackAlignmentBytes(), totalStackAdjustmentBytes);
+
+    // FIXME: We shouldn't have to do this.
+    // https://bugs.webkit.org/show_bug.cgi?id=149030
+    size_t numberOfPaddingBytes = totalStackAdjustmentBytes - numberOfBytesPushed;
+    jit.subPtr(MacroAssembler::TrustedImm32(numberOfPaddingBytes), MacroAssembler::stackPointerRegister);
+
+    return numberOfPaddingBytes;
 }
 
-void ScratchRegisterAllocator::restoreReusedRegistersByPopping(MacroAssembler& jit)
+void ScratchRegisterAllocator::restoreReusedRegistersByPopping(MacroAssembler& jit, size_t numberOfPaddingBytes)
 {
     if (!didReuseRegisters())
         return;
-        
+
+    jit.addPtr(MacroAssembler::TrustedImm32(numberOfPaddingBytes), MacroAssembler::stackPointerRegister);
+
     for (unsigned i = GPRInfo::numberOfRegisters; i--;) {
         GPRReg reg = GPRInfo::toRegister(i);
         if (m_scratchRegisters.getGPRByIndex(i) && m_usedRegisters.get(reg))

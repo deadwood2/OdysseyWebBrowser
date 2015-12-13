@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,7 +30,6 @@
 
 #include "Document.h"
 #include "InspectorController.h"
-#include "InspectorForwarding.h"
 #include "MainFrame.h"
 #include "Page.h"
 #include "Settings.h"
@@ -77,15 +76,13 @@ void PageDebuggable::connect(Inspector::FrontendChannel* channel, bool isAutomat
         m_forcedDeveloperExtrasEnabled = false;
 
     InspectorController& inspectorController = m_page.inspectorController();
-    inspectorController.setHasRemoteFrontend(true);
-    inspectorController.connectFrontend(reinterpret_cast<Inspector::FrontendChannel*>(channel), isAutomaticInspection);
+    inspectorController.connectFrontend(channel, isAutomaticInspection);
 }
 
-void PageDebuggable::disconnect()
+void PageDebuggable::disconnect(Inspector::FrontendChannel* channel)
 {
     InspectorController& inspectorController = m_page.inspectorController();
-    inspectorController.disconnectFrontend(Inspector::DisconnectReason::InspectorDestroyed);
-    inspectorController.setHasRemoteFrontend(false);
+    inspectorController.disconnectFrontend(channel);
 
     if (m_forcedDeveloperExtrasEnabled) {
         m_forcedDeveloperExtrasEnabled = false;

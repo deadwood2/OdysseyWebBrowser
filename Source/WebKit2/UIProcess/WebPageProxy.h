@@ -121,7 +121,7 @@
 
 #if ENABLE(MEDIA_SESSION)
 namespace WebCore {
-struct MediaSessionMetadata;
+class MediaSessionMetadata;
 }
 #endif
 
@@ -155,7 +155,9 @@ class ProtectionSpace;
 class RunLoopObserver;
 class SharedBuffer;
 class TextIndicator;
+struct DictionaryPopupInfo;
 struct FileChooserSettings;
+struct SecurityOriginData;
 struct TextAlternativeWithRange;
 struct TextCheckingResult;
 struct ViewportAttributes;
@@ -183,7 +185,7 @@ class RemoteScrollingCoordinatorProxy;
 class StringPairVector;
 class UserData;
 class ViewSnapshot;
-class VisitedLinkProvider;
+class VisitedLinkStore;
 class WebBackForwardList;
 class WebBackForwardListItem;
 class WebContextMenuProxy;
@@ -201,12 +203,10 @@ class WebWheelEvent;
 class WebsiteDataStore;
 struct AttributedString;
 struct ColorSpaceData;
-struct DictionaryPopupInfo;
 struct EditingRange;
 struct EditorState;
 struct PlatformPopupMenuData;
 struct PrintInfo;
-struct SecurityOriginData;
 struct WebPopupItem;
 
 #if ENABLE(VIBRATION)
@@ -248,33 +248,17 @@ typedef GenericCallback<const String&, double, bool> FontAtSelectionCallback;
 #if PLATFORM(IOS)
 typedef GenericCallback<const WebCore::IntPoint&, uint32_t, uint32_t, uint32_t> GestureCallback;
 typedef GenericCallback<const WebCore::IntPoint&, uint32_t> TouchesCallback;
+struct NodeAssistanceArguments {
+    AssistedNodeInformation m_nodeInformation;
+    bool m_userIsInteracting;
+    bool m_blurPreviousNode;
+    RefPtr<API::Object> m_userData;
+};
 #endif
 
 #if PLATFORM(COCOA)
 typedef GenericCallback<const WebCore::MachSendRight&> MachSendRightCallback;
 #endif
-
-struct WebPageConfiguration {
-    WebPageGroup* pageGroup = nullptr;
-    WebPreferences* preferences = nullptr;
-    WebUserContentControllerProxy* userContentController = nullptr;
-    VisitedLinkProvider* visitedLinkProvider = nullptr;
-
-    WebsiteDataStore* websiteDataStore = nullptr;
-    // FIXME: We currently have to pass the session ID separately here to support the legacy private browsing session.
-    // Once we get rid of it we should get rid of this configuration parameter as well.
-    WebCore::SessionID sessionID;
-
-    WebPageProxy* relatedPage = nullptr;
-
-    bool treatsSHA1SignedCertificatesAsInsecure = false;
-
-#if PLATFORM(IOS)
-    bool alwaysRunsAtForegroundPriority = false;
-#endif
-
-    WebPreferencesStore::ValueMap preferenceValues;
-};
 
 class WebPageProxy : public API::ObjectImpl<API::Object::Type::Page>
 #if ENABLE(INPUT_TYPE_COLOR)
@@ -287,8 +271,10 @@ class WebPageProxy : public API::ObjectImpl<API::Object::Type::Page>
     , public IPC::MessageReceiver
     , public IPC::MessageSender {
 public:
-    static Ref<WebPageProxy> create(PageClient&, WebProcessProxy&, uint64_t pageID, const WebPageConfiguration&);
+    static Ref<WebPageProxy> create(PageClient&, WebProcessProxy&, uint64_t pageID, Ref<API::PageConfiguration>&&);
     virtual ~WebPageProxy();
+
+    const API::PageConfiguration& configuration() const;
 
     uint64_t pageID() const { return m_pageID; }
     WebCore::SessionID sessionID() const { return m_sessionID; }
@@ -529,6 +515,7 @@ public:
 
 #if USE(COORDINATED_GRAPHICS_MULTIPROCESS)
     void didRenderFrame(const WebCore::IntSize& contentsSize, const WebCore::IntRect& coveredRect);
+    void commitPageTransitionViewport();
 #endif
 #if PLATFORM(EFL)
     void setThemePath(const String&);
@@ -610,10 +597,6 @@ public:
     void setBackgroundColor(const WebCore::Color& color) { m_backgroundColor = color; }
 #endif
 
-#if USE(COORDINATED_GRAPHICS_MULTIPROCESS)
-    void commitPageTransitionViewport();
-#endif
-
     void handleMouseEvent(const NativeWebMouseEvent&);
     void handleWheelEvent(const NativeWebWheelEvent&);
     void handleKeyboardEvent(const NativeWebKeyboardEvent&);
@@ -665,9 +648,6 @@ public:
     double pageScaleFactor() const;
     double viewScaleFactor() const { return m_viewScaleFactor; }
     void scaleView(double scale);
-#if PLATFORM(COCOA)
-    void scaleViewAndUpdateGeometryFenced(double scale, WebCore::IntSize viewSize, std::function<void (const WebCore::MachSendRight&, CallbackBase::Error)>);
-#endif
     void setShouldScaleViewToFitDocument(bool);
     
     bool userContentExtensionsEnabled() { return m_userContentExtensionsEnabled; }
@@ -756,7 +736,7 @@ public:
     void hideFindUI();
     void countStringMatches(const String&, FindOptions, unsigned maxMatchCount);
     void didCountStringMatches(const String&, uint32_t matchCount);
-    void setTextIndicator(const WebCore::TextIndicatorData&, uint64_t /* WebCore::TextIndicatorLifetime */ lifetime = (uint64_t)WebCore::TextIndicatorLifetime::Permanent);
+    void setTextIndicator(const WebCore::TextIndicatorData&, uint64_t /* WebCore::TextIndicatorWindowLifetime */ lifetime = 0 /* Permanent */);
     void setTextIndicatorAnimationProgress(float);
     void clearTextIndicator();
     void didFindString(const String&, uint32_t matchCount, int32_t matchIndex);
@@ -880,7 +860,7 @@ public:
 
     WebPageCreationParameters creationParameters();
 
-#if USE(COORDINATED_GRAPHICS)
+#if USE(COORDINATED_GRAPHICS_MULTIPROCESS)
     void findZoomableAreaForPoint(const WebCore::IntPoint&, const WebCore::IntSize&);
 #endif
 
@@ -934,8 +914,6 @@ public:
 
     uint64_t renderTreeSize() const { return m_renderTreeSize; }
 
-    void setShouldSendEventsSynchronously(bool sync) { m_shouldSendEventsSynchronously = sync; };
-
     void printMainFrame();
     
     void setMediaVolume(float);
@@ -946,6 +924,7 @@ public:
 #if ENABLE(MEDIA_SESSION)
     bool hasMediaSessionWithActiveMediaElements() const { return m_hasMediaSessionWithActiveMediaElements; }
     void handleMediaEvent(WebCore::MediaEventType);
+    void setVolumeOfMediaElement(double, uint64_t);
 #endif
 
     // WebPopupMenuProxy::Client
@@ -1027,11 +1006,12 @@ public:
     bool isShowingNavigationGestureSnapshot() const { return m_isShowingNavigationGestureSnapshot; }
 
     bool isPlayingAudio() const { return !!(m_mediaState & WebCore::MediaProducer::IsPlayingAudio); }
-    void isPlayingMediaDidChange(WebCore::MediaProducer::MediaStateFlags);
+    void isPlayingMediaDidChange(WebCore::MediaProducer::MediaStateFlags, uint64_t);
 
 #if ENABLE(MEDIA_SESSION)
     void hasMediaSessionWithActiveMediaElementsDidChange(bool);
     void mediaSessionMetadataDidChange(const WebCore::MediaSessionMetadata&);
+    void focusedContentMediaElementDidChange(uint64_t);
 #endif
 
 #if PLATFORM(MAC)
@@ -1083,10 +1063,14 @@ public:
     void didChangeBackgroundColor();
     void didLayoutForCustomContentProvider();
 
+    // For testing
     void clearWheelEventTestTrigger();
+    void callAfterNextPresentationUpdate(std::function<void (CallbackBase::Error)>);
+
+    void didLayout(uint32_t layoutMilestones);
 
 private:
-    WebPageProxy(PageClient&, WebProcessProxy&, uint64_t pageID, const WebPageConfiguration&);
+    WebPageProxy(PageClient&, WebProcessProxy&, uint64_t pageID, Ref<API::PageConfiguration>&&);
     void platformInitialize();
 
     void updateViewState(WebCore::ViewState::Flags flagsToUpdate = WebCore::ViewState::AllFlags);
@@ -1125,8 +1109,8 @@ private:
     void didStartProvisionalLoadForFrame(uint64_t frameID, uint64_t navigationID, const String& url, const String& unreachableURL, const UserData&);
     void didReceiveServerRedirectForProvisionalLoadForFrame(uint64_t frameID, uint64_t navigationID, const String&, const UserData&);
     void didChangeProvisionalURLForFrame(uint64_t frameID, uint64_t navigationID, const String& url);
-    void didFailProvisionalLoadForFrame(uint64_t frameID, const SecurityOriginData& frameSecurityOrigin, uint64_t navigationID, const String& provisionalURL, const WebCore::ResourceError&, const UserData&);
-    void didCommitLoadForFrame(uint64_t frameID, uint64_t navigationID, const String& mimeType, bool frameHasCustomContentProvider, uint32_t frameLoadType, const WebCore::CertificateInfo&, const UserData&);
+    void didFailProvisionalLoadForFrame(uint64_t frameID, const WebCore::SecurityOriginData& frameSecurityOrigin, uint64_t navigationID, const String& provisionalURL, const WebCore::ResourceError&, const UserData&);
+    void didCommitLoadForFrame(uint64_t frameID, uint64_t navigationID, const String& mimeType, bool frameHasCustomContentProvider, uint32_t frameLoadType, const WebCore::CertificateInfo&, bool containsPluginDocument, const UserData&);
     void didFinishDocumentLoadForFrame(uint64_t frameID, uint64_t navigationID, const UserData&);
     void didFinishLoadForFrame(uint64_t frameID, uint64_t navigationID, const UserData&);
     void didFailLoadForFrame(uint64_t frameID, uint64_t navigationID, const WebCore::ResourceError&, const UserData&);
@@ -1134,7 +1118,6 @@ private:
     void didReceiveTitleForFrame(uint64_t frameID, const String&, const UserData&);
     void didFirstLayoutForFrame(uint64_t frameID, const UserData&);
     void didFirstVisuallyNonEmptyLayoutForFrame(uint64_t frameID, const UserData&);
-    void didLayout(uint32_t layoutMilestones, const UserData&);
     void didRemoveFrameFromHierarchy(uint64_t frameID, const UserData&);
     void didDisplayInsecureContentForFrame(uint64_t frameID, const UserData&);
     void didRunInsecureContentForFrame(uint64_t frameID, const UserData&);
@@ -1147,10 +1130,10 @@ private:
 
     void didDestroyNavigation(uint64_t navigationID);
 
-    void decidePolicyForNavigationAction(uint64_t frameID, const SecurityOriginData& frameSecurityOrigin, uint64_t navigationID, const NavigationActionData&, uint64_t originatingFrameID, const SecurityOriginData& originatingFrameSecurityOrigin, const WebCore::ResourceRequest& originalRequest, const WebCore::ResourceRequest&, uint64_t listenerID, const UserData&, bool& receivedPolicyAction, uint64_t& newNavigationID, uint64_t& policyAction, uint64_t& downloadID);
-    void decidePolicyForNewWindowAction(uint64_t frameID, const SecurityOriginData& frameSecurityOrigin, const NavigationActionData&, const WebCore::ResourceRequest&, const String& frameName, uint64_t listenerID, const UserData&);
-    void decidePolicyForResponse(uint64_t frameID, const SecurityOriginData& frameSecurityOrigin, const WebCore::ResourceResponse&, const WebCore::ResourceRequest&, bool canShowMIMEType, uint64_t listenerID, const UserData&);
-    void decidePolicyForResponseSync(uint64_t frameID, const SecurityOriginData& frameSecurityOrigin, const WebCore::ResourceResponse&, const WebCore::ResourceRequest&, bool canShowMIMEType, uint64_t listenerID, const UserData&, bool& receivedPolicyAction, uint64_t& policyAction, uint64_t& downloadID);
+    void decidePolicyForNavigationAction(uint64_t frameID, const WebCore::SecurityOriginData& frameSecurityOrigin, uint64_t navigationID, const NavigationActionData&, uint64_t originatingFrameID, const WebCore::SecurityOriginData& originatingFrameSecurityOrigin, const WebCore::ResourceRequest& originalRequest, const WebCore::ResourceRequest&, uint64_t listenerID, const UserData&, bool& receivedPolicyAction, uint64_t& newNavigationID, uint64_t& policyAction, uint64_t& downloadID);
+    void decidePolicyForNewWindowAction(uint64_t frameID, const WebCore::SecurityOriginData& frameSecurityOrigin, const NavigationActionData&, const WebCore::ResourceRequest&, const String& frameName, uint64_t listenerID, const UserData&);
+    void decidePolicyForResponse(uint64_t frameID, const WebCore::SecurityOriginData& frameSecurityOrigin, const WebCore::ResourceResponse&, const WebCore::ResourceRequest&, bool canShowMIMEType, uint64_t listenerID, const UserData&);
+    void decidePolicyForResponseSync(uint64_t frameID, const WebCore::SecurityOriginData& frameSecurityOrigin, const WebCore::ResourceResponse&, const WebCore::ResourceRequest&, bool canShowMIMEType, uint64_t listenerID, const UserData&, bool& receivedPolicyAction, uint64_t& policyAction, uint64_t& downloadID);
     void unableToImplementPolicy(uint64_t frameID, const WebCore::ResourceError&, const UserData&);
 
     void willSubmitForm(uint64_t frameID, uint64_t sourceFrameID, const Vector<std::pair<String, String>>& textFieldValues, uint64_t listenerID, const UserData&);
@@ -1162,12 +1145,12 @@ private:
     void didUpdateHistoryTitle(const String& title, const String& url, uint64_t frameID);
 
     // UI client
-    void createNewPage(uint64_t frameID, const SecurityOriginData&, const WebCore::ResourceRequest&, const WebCore::WindowFeatures&, const NavigationActionData&, uint64_t& newPageID, WebPageCreationParameters&);
+    void createNewPage(uint64_t frameID, const WebCore::SecurityOriginData&, const WebCore::ResourceRequest&, const WebCore::WindowFeatures&, const NavigationActionData&, uint64_t& newPageID, WebPageCreationParameters&);
     void showPage();
     void closePage(bool stopResponsivenessTimer);
-    void runJavaScriptAlert(uint64_t frameID, const SecurityOriginData&, const String&, RefPtr<Messages::WebPageProxy::RunJavaScriptAlert::DelayedReply>);
-    void runJavaScriptConfirm(uint64_t frameID, const SecurityOriginData&, const String&, RefPtr<Messages::WebPageProxy::RunJavaScriptConfirm::DelayedReply>);
-    void runJavaScriptPrompt(uint64_t frameID, const SecurityOriginData&, const String&, const String&, RefPtr<Messages::WebPageProxy::RunJavaScriptPrompt::DelayedReply>);
+    void runJavaScriptAlert(uint64_t frameID, const WebCore::SecurityOriginData&, const String&, RefPtr<Messages::WebPageProxy::RunJavaScriptAlert::DelayedReply>);
+    void runJavaScriptConfirm(uint64_t frameID, const WebCore::SecurityOriginData&, const String&, RefPtr<Messages::WebPageProxy::RunJavaScriptConfirm::DelayedReply>);
+    void runJavaScriptPrompt(uint64_t frameID, const WebCore::SecurityOriginData&, const String&, const String&, RefPtr<Messages::WebPageProxy::RunJavaScriptPrompt::DelayedReply>);
     void setStatusText(const String&);
     void mouseDidMoveOverElement(const WebHitTestResult::Data& hitTestResultData, uint32_t modifiers, const UserData&);
 
@@ -1207,7 +1190,7 @@ private:
     void reachedApplicationCacheOriginQuota(const String& originIdentifier, uint64_t currentQuota, uint64_t totalBytesNeeded, PassRefPtr<Messages::WebPageProxy::ReachedApplicationCacheOriginQuota::DelayedReply>);
     void requestGeolocationPermissionForFrame(uint64_t geolocationID, uint64_t frameID, String originIdentifier);
 
-    void requestUserMediaPermissionForFrame(uint64_t userMediaID, uint64_t frameID, String originIdentifier, bool audio, bool video, const Vector<String>& deviceUIDsVideo, const Vector<String>& deviceUIDsAudio);
+    void requestUserMediaPermissionForFrame(uint64_t userMediaID, uint64_t frameID, String originIdentifier, const Vector<String>& audioDeviceUIDs, const Vector<String>& videoDeviceUIDs);
 
     void runModal();
     void notifyScrollerThumbIsVisibleInRect(const WebCore::IntRect&);
@@ -1288,8 +1271,7 @@ private:
     };
     void showContextMenu(const WebCore::IntPoint& menuLocation, const ContextMenuContextData&, const Vector<WebContextMenuItemData>&, const UserData&);
     void internalShowContextMenu(const WebCore::IntPoint& menuLocation, const ContextMenuContextData&, const Vector<WebContextMenuItemData>&, ContextMenuClientEligibility, const UserData&);
-
-    void platformInitializeShareMenuItem(WebCore::ContextMenuItem&);
+    WebCore::ContextMenuItem platformInitializeShareMenuItem(const ContextMenuContextData&);
 #endif
 
 #if ENABLE(TELEPHONE_NUMBER_DETECTION)
@@ -1318,7 +1300,7 @@ private:
     void searchTheWeb(const String&);
 
     // Dictionary.
-    void didPerformDictionaryLookup(const DictionaryPopupInfo&);
+    void didPerformDictionaryLookup(const WebCore::DictionaryPopupInfo&);
 #endif
 
 #if PLATFORM(MAC)
@@ -1477,10 +1459,10 @@ private:
     void useFixedLayoutDidChange(bool useFixedLayout) { m_useFixedLayout = useFixedLayout; }
     void fixedLayoutSizeDidChange(WebCore::IntSize fixedLayoutSize) { m_fixedLayoutSize = fixedLayoutSize; }
 
+    void imageOrMediaDocumentSizeChanged(const WebCore::IntSize&);
 #if ENABLE(VIDEO)
-    void mediaDocumentNaturalSizeChanged(const WebCore::IntSize&);
 #if USE(GSTREAMER)
-    void requestInstallMissingMediaPlugins(const String& details);
+    void requestInstallMissingMediaPlugins(const String& details, const String& description);
 #endif
 #endif
 
@@ -1490,6 +1472,8 @@ private:
     void handleSynchronousMessage(IPC::Connection&, const String& messageName, const UserData& messageBody, UserData& returnUserData);
 
     PageClient& m_pageClient;
+    Ref<API::PageConfiguration> m_configuration;
+
     std::unique_ptr<API::LoaderClient> m_loaderClient;
     std::unique_ptr<API::PolicyClient> m_policyClient;
     std::unique_ptr<API::NavigationClient> m_navigationClient;
@@ -1522,7 +1506,7 @@ private:
     WebProcessLifetimeTracker m_webProcessLifetimeTracker { *this };
 
     const RefPtr<WebUserContentControllerProxy> m_userContentController;
-    Ref<VisitedLinkProvider> m_visitedLinkProvider;
+    Ref<VisitedLinkStore> m_visitedLinkStore;
     Ref<WebsiteDataStore> m_websiteDataStore;
 
     RefPtr<WebFrameProxy> m_mainFrame;
@@ -1743,8 +1727,6 @@ private:
     bool m_wantsSessionRestorationRenderTreeSizeThresholdEvent;
     bool m_hitRenderTreeSizeThreshold;
 
-    bool m_shouldSendEventsSynchronously;
-
     bool m_suppressVisibilityUpdates;
     bool m_autoSizingShouldExpandToViewHeight;
     WebCore::IntSize m_minimumLayoutSize;
@@ -1789,6 +1771,11 @@ private:
 #endif
 
     bool m_userContentExtensionsEnabled { true };
+
+#if PLATFORM(IOS)
+    bool m_hasDeferredStartAssistingNode { false };
+    std::unique_ptr<NodeAssistanceArguments> m_deferredNodeAssistanceArguments;
+#endif
 };
 
 } // namespace WebKit

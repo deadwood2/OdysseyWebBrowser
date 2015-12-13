@@ -146,13 +146,13 @@ using namespace WebCore;
 
 - (DOMDocumentFragment *)createDocumentFragmentWithMarkupString:(NSString *)markupString baseURL:(NSURL *)baseURL
 {
-    return kit(createFragmentFromMarkup(*core(self), markupString, [baseURL absoluteString]).get());
+    return kit(createFragmentFromMarkup(*core(self), markupString, [baseURL absoluteString]).ptr());
 }
 
 - (DOMDocumentFragment *)createDocumentFragmentWithText:(NSString *)text
 {
     // FIXME: Since this is not a contextual fragment, it won't handle whitespace properly.
-    return kit(createFragmentFromText(core(self)->createRange(), text).get());
+    return kit(createFragmentFromText(core(self)->createRange(), text).ptr());
 }
 
 @end

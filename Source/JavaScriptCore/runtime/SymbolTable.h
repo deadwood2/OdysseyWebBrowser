@@ -651,8 +651,10 @@ public:
 
     enum ScopeType {
         VarScope,
+        GlobalLexicalScope,
         LexicalScope,
-        CatchScope
+        CatchScope,
+        FunctionNameScope
     };
     void setScopeType(ScopeType type) { m_scopeType = type; }
     ScopeType scopeType() const { return static_cast<ScopeType>(m_scopeType); }
@@ -684,7 +686,7 @@ private:
     std::unique_ptr<TypeProfilingRareData> m_typeProfilingRareData;
 
     bool m_usesNonStrictEval : 1;
-    unsigned m_scopeType : 2; // ScopeType
+    unsigned m_scopeType : 3; // ScopeType
     
     WriteBarrier<ScopedArgumentsTable> m_arguments;
     WriteBarrier<InferredValue> m_singletonScope;

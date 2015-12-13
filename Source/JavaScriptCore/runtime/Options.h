@@ -33,6 +33,11 @@
 #include <wtf/PrintStream.h>
 #include <wtf/StdLibExtras.h>
 
+namespace WTF {
+class StringBuilder;
+}
+using WTF::StringBuilder;
+
 namespace JSC {
 
 // How do JSC VM options work?
@@ -80,11 +85,13 @@ public:
 
     bool init(const char*);
     bool isInRange(unsigned);
-    const char* rangeString() const { return (m_state > InitError) ? m_rangeString : "<null>"; }
+    const char* rangeString() const { return (m_state > InitError) ? m_rangeString : s_nullRangeStr; }
     
     void dump(PrintStream& out) const;
 
 private:
+    static const char* const s_nullRangeStr;
+
     RangeState m_state;
     const char* m_rangeString;
     unsigned m_lowLimit;
@@ -111,7 +118,7 @@ typedef const char* optionString;
     v(bool, crashIfCantAllocateJITMemory, false, nullptr) \
     v(unsigned, jitMemoryReservationSize, 0, nullptr) \
     \
-    v(bool, forceDFGCodeBlockLiveness, false, nullptr) \
+    v(bool, forceCodeBlockLiveness, false, nullptr) \
     v(bool, forceICFailure, false, nullptr) \
     \
     v(bool, dumpGeneratedBytecodes, false, nullptr) \
@@ -121,6 +128,7 @@ typedef const char* optionString;
     v(bool, forceProfilerBytecodeGeneration, false, nullptr) \
     \
     v(bool, enableFunctionDotArguments, true, nullptr) \
+    v(bool, enableTailCalls, false, nullptr) \
     \
     /* showDisassembly implies showDFGDisassembly. */ \
     v(bool, showDisassembly, false, "dumps disassembly of all JIT compiled code upon compilation") \
@@ -180,6 +188,7 @@ typedef const char* optionString;
     v(bool, clobberAllRegsInFTLICSlowPath, !ASSERT_DISABLED, nullptr) \
     v(bool, assumeAllRegsInFTLICAreLive, false, nullptr) \
     v(bool, enableAccessInlining, true, nullptr) \
+    v(unsigned, maxAccessVariantListSize, 8, nullptr) \
     v(bool, enablePolyvariantDevirtualization, true, nullptr) \
     v(bool, enablePolymorphicAccessInlining, true, nullptr) \
     v(bool, enablePolymorphicCallInlining, true, nullptr) \
@@ -188,6 +197,7 @@ typedef const char* optionString;
     v(unsigned, maxPolymorphicCallVariantsForInlining, 5, nullptr) \
     v(unsigned, frequentCallThreshold, 2, nullptr) \
     v(double, minimumCallToKnownRate, 0.51, nullptr) \
+    v(bool, createPreHeaders, true, nullptr) \
     v(bool, enableMovHintRemoval, true, nullptr) \
     v(bool, enableObjectAllocationSinking, true, nullptr) \
     \
@@ -228,6 +238,8 @@ typedef const char* optionString;
     \
     v(bool, enablePolyvariantCallInlining, true, nullptr) \
     v(bool, enablePolyvariantByIdInlining, true, nullptr) \
+    \
+    v(bool, enableMaximalFlushInsertionPhase, false, "Setting to true enables the DFG's MaximalFlushInsertionPhase to run.") \
     \
     v(unsigned, maximumBinaryStringSwitchCaseLength, 50, nullptr) \
     v(unsigned, maximumBinaryStringSwitchTotalLength, 2000, nullptr) \
@@ -320,6 +332,12 @@ typedef const char* optionString;
     \
     v(bool, enableDollarVM, false, "installs the $vm debugging tool in global objects") \
     v(optionString, functionOverrides, nullptr, "file with debugging overrides for function bodies") \
+    \
+    v(unsigned, watchdog, 0, "watchdog timeout (0 = Disabled, N = a timeout period of N milliseconds)") \
+    \
+    v(bool, dumpModuleRecord, false, nullptr) \
+    v(bool, dumpModuleLoadingState, false, nullptr) \
+    v(bool, exposeInternalModuleLoader, false, "expose the internal module loader object to the global space for debugging") \
 
 class Options {
 public:
@@ -355,11 +373,17 @@ public:
 
     JS_EXPORT_PRIVATE static void initialize();
 
+    // Parses a string of options where each option is of the format "--<optionName>=<value>"
+    // and are separated by a space. The leading "--" is optional and will be ignored.
+    JS_EXPORT_PRIVATE static bool setOptions(const char* optionsList);
+
     // Parses a single command line option in the format "<optionName>=<value>"
     // (no spaces allowed) and set the specified option if appropriate.
     JS_EXPORT_PRIVATE static bool setOption(const char* arg);
-    JS_EXPORT_PRIVATE static void dumpAllOptions(DumpLevel, const char* title = nullptr, FILE* stream = stdout);
-    static void dumpOption(DumpLevel, OptionID, FILE* stream = stdout, const char* header = "", const char* footer = "");
+
+    JS_EXPORT_PRIVATE static void dumpAllOptions(FILE*, DumpLevel, const char* title = nullptr);
+    JS_EXPORT_PRIVATE static void dumpAllOptionsInALine(StringBuilder&);
+
     JS_EXPORT_PRIVATE static void ensureOptionsAreCoherent();
 
     // Declare accessors for each option:
@@ -391,6 +415,16 @@ private:
 
     Options();
 
+    enum ShowDefaultsOption {
+        DontShowDefaults,
+        ShowDefaults
+    };
+    static void dumpOptionsIfNeeded();
+    static void dumpAllOptions(StringBuilder&, DumpLevel, const char* title,
+        const char* separator, const char* optionHeader, const char* optionFooter, ShowDefaultsOption);
+    static void dumpOption(StringBuilder&, DumpLevel, OptionID,
+        const char* optionHeader, const char* optionFooter, ShowDefaultsOption);
+
     // Declare the singleton instance of the options store:
     JS_EXPORTDATA static Entry s_options[numberOfOptions];
     static Entry s_defaultOptions[numberOfOptions];
@@ -407,7 +441,8 @@ public:
     {
     }
     
-    void dump(FILE*) const;
+    void dump(StringBuilder&) const;
+
     bool operator==(const Option& other) const;
     bool operator!=(const Option& other) const { return !(*this == other); }
     

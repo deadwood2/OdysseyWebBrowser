@@ -44,6 +44,7 @@ BEGIN {
 my (
     $threeDTransformsSupport,
     $accelerated2DCanvasSupport,
+    $allInOneBuild,
     $arrowfunctionSyntax,
     $attachmentElementSupport,
     $batteryStatusSupport,
@@ -122,6 +123,7 @@ my (
     $resourceTimingSupport,
     $scriptedSpeechSupport,
     $seccompFiltersSupport,
+    $shadowDOMSupport,
     $streamsAPISupport,
     $styleScopedSupport,
     $subtleCrypto,
@@ -146,7 +148,6 @@ my (
     $webReplaySupport,
     $webSocketsSupport,
     $webTimingSupport,
-    $xhrTimeoutSupport,
     $xsltSupport,
     $ftlJITSupport,
 );
@@ -157,6 +158,9 @@ my @features = (
 
     { option => "accelerated-2d-canvas", desc => "Toggle Accelerated 2D Canvas support",
       define => "ENABLE_ACCELERATED_2D_CANVAS", default => isGtk(), value => \$accelerated2DCanvasSupport },
+
+    { option => "allinone-build", desc => "Toggle all-in-one build",
+      define => "ENABLE_ALLINONE_BUILD", default => isWindows(), value => \$allInOneBuild },
 
     { option => "arrowfunction-syntax", desc => "Toggle ES6 arrow function syntax support",
       define => "ENABLE_ES6_ARROWFUNCTION_SYNTAX", default => 1, value => \$arrowfunctionSyntax },
@@ -380,6 +384,9 @@ my @features = (
     { option => "scripted-speech", desc => "Toggle Scripted Speech support",
       define => "ENABLE_SCRIPTED_SPEECH", default => 0, value => \$scriptedSpeechSupport },
 
+    { option => "shadow-dom", desc => "Toggle Shadow DOM support",
+      define => "ENABLE_SHADOW_DOM", default => (isAppleMacWebKit() || isIOSWebKit()), value => \$shadowDOMSupport },
+
     { option => "streams-api", desc => "Toggle Streams API support",
       define => "ENABLE_STREAMS_API", default => 1, value => \$streamsAPISupport },
 
@@ -442,9 +449,6 @@ my @features = (
 
     { option => "web-timing", desc => "Toggle Web Timing support",
       define => "ENABLE_WEB_TIMING", default => (isGtk() || isEfl()), value => \$webTimingSupport },
-
-    { option => "xhr-timeout", desc => "Toggle XHR Timeout support",
-      define => "ENABLE_XHR_TIMEOUT", default => (isEfl() || isGtk() || isAppleMacWebKit()), value => \$xhrTimeoutSupport },
 
     { option => "xslt", desc => "Toggle XSLT support",
       define => "ENABLE_XSLT", default => 1, value => \$xsltSupport },

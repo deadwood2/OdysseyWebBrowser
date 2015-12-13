@@ -31,6 +31,7 @@
 #include "CSSFontSelector.h"
 #include "Document.h"
 #include "Font.h"
+#include "FontCache.h"
 #include "FontDescription.h"
 #include "RuntimeEnabledFeatures.h"
 
@@ -44,9 +45,8 @@ CSSSegmentedFontFace::CSSSegmentedFontFace(CSSFontSelector* fontSelector)
 CSSSegmentedFontFace::~CSSSegmentedFontFace()
 {
     pruneTable();
-    unsigned size = m_fontFaces.size();
-    for (unsigned i = 0; i < size; i++)
-        m_fontFaces[i]->removedFromSegmentedFontFace(this);
+    for (auto& face : m_fontFaces)
+        face->removedFromSegmentedFontFace(this);
 }
 
 void CSSSegmentedFontFace::pruneTable()
@@ -57,9 +57,8 @@ void CSSSegmentedFontFace::pruneTable()
 bool CSSSegmentedFontFace::isValid() const
 {
     // Valid if at least one font face is valid.
-    unsigned size = m_fontFaces.size();
-    for (unsigned i = 0; i < size; i++) {
-        if (m_fontFaces[i]->isValid())
+    for (auto& face : m_fontFaces) {
+        if (face->isValid())
             return true;
     }
     return false;
@@ -83,11 +82,11 @@ void CSSSegmentedFontFace::fontLoaded(CSSFontFace*)
 #endif
 }
 
-void CSSSegmentedFontFace::appendFontFace(PassRefPtr<CSSFontFace> fontFace)
+void CSSSegmentedFontFace::appendFontFace(Ref<CSSFontFace>&& fontFace)
 {
     pruneTable();
     fontFace->addedToSegmentedFontFace(this);
-    m_fontFaces.append(fontFace);
+    m_fontFaces.append(WTF::move(fontFace));
 }
 
 static void appendFontWithInvalidUnicodeRangeIfLoading(FontRanges& ranges, Ref<Font>&& font, const Vector<CSSFontFace::UnicodeRange>& unicodeRanges)
@@ -113,14 +112,8 @@ FontRanges CSSSegmentedFontFace::fontRanges(const FontDescription& fontDescripti
         return FontRanges();
 
     FontTraitsMask desiredTraitsMask = fontDescription.traitsMask();
-    // FIXME: Unify this function with FontDescriptionKey in FontCache.h (Or just use the regular FontCache instead of this)
-    unsigned hashKey = ((fontDescription.computedPixelSize() + 1) << (FontTraitsMaskWidth + FontWidthVariantWidth + FontSynthesisWidth + 1))
-        | (fontDescription.fontSynthesis() << (FontTraitsMaskWidth + FontWidthVariantWidth + 1))
-        | ((fontDescription.orientation() == Vertical ? 1 : 0) << (FontTraitsMaskWidth + FontWidthVariantWidth))
-        | fontDescription.widthVariant() << FontTraitsMaskWidth
-        | desiredTraitsMask;
 
-    auto addResult = m_descriptionToRangesMap.add(hashKey, FontRanges());
+    auto addResult = m_descriptionToRangesMap.add(FontDescriptionKey(fontDescription), FontRanges());
     auto& fontRanges = addResult.iterator->value;
 
     if (addResult.isNewEntry) {

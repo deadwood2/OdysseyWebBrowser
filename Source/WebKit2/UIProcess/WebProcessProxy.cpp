@@ -129,8 +129,23 @@ WebProcessProxy::~WebProcessProxy()
 void WebProcessProxy::getLaunchOptions(ProcessLauncher::LaunchOptions& launchOptions)
 {
     launchOptions.processType = ProcessLauncher::WebProcess;
+
+    ChildProcessProxy::getLaunchOptions(launchOptions);
+
     if (WebInspectorProxy::isInspectorProcessPool(m_processPool))
         launchOptions.extraInitializationData.add(ASCIILiteral("inspector-process"), ASCIILiteral("1"));
+
+    auto overrideLanguages = m_processPool->configuration().overrideLanguages();
+    if (overrideLanguages.size()) {
+        StringBuilder languageString;
+        for (size_t i = 0; i < overrideLanguages.size(); ++i) {
+            if (i)
+                languageString.append(',');
+            languageString.append(overrideLanguages[i]);
+        }
+        launchOptions.extraInitializationData.add(ASCIILiteral("OverrideLanguages"), languageString.toString());
+    }
+
     platformGetLaunchOptions(launchOptions);
 }
 
@@ -190,9 +205,9 @@ void WebProcessProxy::shutDown()
     if (m_downloadProxyMap)
         m_downloadProxyMap->processDidClose();
 
-    for (VisitedLinkProvider* visitedLinkProvider : m_visitedLinkProviders)
-        visitedLinkProvider->removeProcess(*this);
-    m_visitedLinkProviders.clear();
+    for (VisitedLinkStore* visitedLinkStore : m_visitedLinkStores)
+        visitedLinkStore->removeProcess(*this);
+    m_visitedLinkStores.clear();
 
     for (WebUserContentControllerProxy* webUserContentControllerProxy : m_webUserContentControllerProxies)
         webUserContentControllerProxy->removeProcess(*this);
@@ -206,10 +221,10 @@ WebPageProxy* WebProcessProxy::webPage(uint64_t pageID)
     return globalPageMap().get(pageID);
 }
 
-Ref<WebPageProxy> WebProcessProxy::createWebPage(PageClient& pageClient, const WebPageConfiguration& configuration)
+Ref<WebPageProxy> WebProcessProxy::createWebPage(PageClient& pageClient, Ref<API::PageConfiguration>&& pageConfiguration)
 {
     uint64_t pageID = generatePageID();
-    Ref<WebPageProxy> webPage = WebPageProxy::create(pageClient, *this, pageID, configuration);
+    Ref<WebPageProxy> webPage = WebPageProxy::create(pageClient, *this, pageID, WTF::move(pageConfiguration));
 
     m_pageMap.set(pageID, webPage.ptr());
     globalPageMap().set(pageID, webPage.ptr());
@@ -247,10 +262,10 @@ void WebProcessProxy::removeWebPage(uint64_t pageID)
     shutDown();
 }
 
-void WebProcessProxy::addVisitedLinkProvider(VisitedLinkProvider& provider)
+void WebProcessProxy::addVisitedLinkStore(VisitedLinkStore& store)
 {
-    m_visitedLinkProviders.add(&provider);
-    provider.addProcess(*this);
+    m_visitedLinkStores.add(&store);
+    store.addProcess(*this);
 }
 
 void WebProcessProxy::addWebUserContentControllerProxy(WebUserContentControllerProxy& proxy)
@@ -259,10 +274,10 @@ void WebProcessProxy::addWebUserContentControllerProxy(WebUserContentControllerP
     proxy.addProcess(*this);
 }
 
-void WebProcessProxy::didDestroyVisitedLinkProvider(VisitedLinkProvider& provider)
+void WebProcessProxy::didDestroyVisitedLinkStore(VisitedLinkStore& store)
 {
-    ASSERT(m_visitedLinkProviders.contains(&provider));
-    m_visitedLinkProviders.remove(&provider);
+    ASSERT(m_visitedLinkStores.contains(&store));
+    m_visitedLinkStores.remove(&store);
 }
 
 void WebProcessProxy::didDestroyWebUserContentControllerProxy(WebUserContentControllerProxy& proxy)
@@ -893,8 +908,7 @@ void WebProcessProxy::sendProcessWillSuspendImminently()
         return;
 
     bool handled = false;
-    sendSync(Messages::WebProcess::ProcessWillSuspendImminently(), Messages::WebProcess::ProcessWillSuspendImminently::Reply(handled),
-        0, std::chrono::seconds(1), IPC::InterruptWaitingIfSyncMessageArrives);
+    sendSync(Messages::WebProcess::ProcessWillSuspendImminently(), Messages::WebProcess::ProcessWillSuspendImminently::Reply(handled), 0, std::chrono::seconds(1));
 }
 
 void WebProcessProxy::sendPrepareToSuspend()

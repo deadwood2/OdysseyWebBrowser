@@ -46,7 +46,7 @@ public:
 
 private:
     // System fonts.
-    virtual void updateCachedSystemFontDescription(CSSValueID, FontDescription&) const override;
+    virtual void updateCachedSystemFontDescription(CSSValueID, FontCascadeDescription&) const override;
 
 public:
 #ifndef GTK_API_VERSION_2
@@ -68,7 +68,7 @@ public:
     // A method to obtain the baseline position for a "leaf" control.  This will only be used if a baseline
     // position cannot be determined by examining child content. Checkboxes and radio buttons are examples of
     // controls that need to do this.
-    virtual int baselinePosition(const RenderObject&) const override;
+    virtual int baselinePosition(const RenderBox&) const override;
 
     // The platform selection color.
     virtual Color platformActiveSelectionBackgroundColor() const override;
@@ -130,7 +130,7 @@ private:
     virtual void adjustMenuListStyle(StyleResolver&, RenderStyle&, Element*) const override;
     virtual void adjustMenuListButtonStyle(StyleResolver&, RenderStyle&, Element*) const override;
     virtual bool paintMenuList(const RenderObject&, const PaintInfo&, const FloatRect&) override;
-    virtual bool paintMenuListButtonDecorations(const RenderObject&, const PaintInfo&, const FloatRect&) override;
+    virtual bool paintMenuListButtonDecorations(const RenderBox&, const PaintInfo&, const FloatRect&) override;
 
     virtual void adjustSearchFieldResultsDecorationPartStyle(StyleResolver&, RenderStyle&, Element*) const override;
     virtual bool paintSearchFieldResultsDecorationPart(const RenderObject&, const PaintInfo&, const IntRect&) override;
@@ -187,7 +187,7 @@ private:
     static void setTextInputBorders(RenderStyle&);
 
 #if ENABLE(VIDEO)
-    bool paintMediaButton(const RenderObject&, GraphicsContext*, const IntRect&, const char* symbolicIconName, const char* fallbackStockIconName);
+    bool paintMediaButton(const RenderObject&, GraphicsContext&, const IntRect&, const char* symbolicIconName, const char* fallbackStockIconName);
 #endif
 
     static IntRect calculateProgressRect(const RenderObject&, const IntRect&);

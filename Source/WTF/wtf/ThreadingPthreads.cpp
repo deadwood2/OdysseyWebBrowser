@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2009 Apple Inc. All rights reserved.
+ * Copyright (C) 2007, 2009, 2015 Apple Inc. All rights reserved.
  * Copyright (C) 2007 Justin Haygood (jhaygood@reaktix.com)
  * Copyright (C) 2011 Research In Motion Limited. All rights reserved.
  *
@@ -39,7 +39,6 @@
 #include "dtoa/cached-powers.h"
 #include "HashMap.h"
 #include "RandomNumberSeed.h"
-#include "StackStats.h"
 #include "StdLibExtras.h"
 #include "ThreadFunctionInvocation.h"
 #include "ThreadIdentifierDataPthreads.h"
@@ -124,9 +123,7 @@ void initializeThreading()
     threadMapMutex();
     initializeRandomNumberGenerator();
     ThreadIdentifierData::initializeOnce();
-    StackStats::initialize();
     wtfThreadData();
-    s_dtoaP5Mutex = new Mutex;
     initializeDates();
 }
 

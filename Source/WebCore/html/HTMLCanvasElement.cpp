@@ -366,12 +366,12 @@ bool HTMLCanvasElement::paintsIntoCanvasBuffer() const
 }
 
 
-void HTMLCanvasElement::paint(GraphicsContext* context, const LayoutRect& r, bool useLowQualityScale)
+void HTMLCanvasElement::paint(GraphicsContext& context, const LayoutRect& r, bool useLowQualityScale)
 {
     // Clear the dirty rect
     m_dirtyRect = FloatRect();
 
-    if (context->paintingDisabled())
+    if (context.paintingDisabled())
         return;
     
     if (m_context) {
@@ -388,9 +388,9 @@ void HTMLCanvasElement::paint(GraphicsContext* context, const LayoutRect& r, boo
 #if ENABLE(CSS_IMAGE_ORIENTATION)
                 orientationDescription.setImageOrientationEnum(renderer()->style().imageOrientation());
 #endif 
-                context->drawImage(m_presentedImage.get(), ColorSpaceDeviceRGB, snappedIntRect(r), ImagePaintingOptions(orientationDescription, useLowQualityScale));
+                context.drawImage(m_presentedImage.get(), ColorSpaceDeviceRGB, snappedIntRect(r), ImagePaintingOptions(orientationDescription, useLowQualityScale));
             } else
-                context->drawImageBuffer(imageBuffer, ColorSpaceDeviceRGB, snappedIntRect(r), useLowQualityScale);
+                context.drawImageBuffer(imageBuffer, ColorSpaceDeviceRGB, snappedIntRect(r), useLowQualityScale);
         }
     }
 
@@ -577,15 +577,15 @@ void HTMLCanvasElement::createImageBuffer() const
         return;
 
     RenderingMode renderingMode = shouldAccelerate(bufferSize) ? Accelerated : Unaccelerated;
-    m_imageBuffer = ImageBuffer::create(size(), 1, ColorSpaceDeviceRGB, renderingMode);
+    m_imageBuffer = ImageBuffer::create(size(), renderingMode);
     if (!m_imageBuffer)
         return;
-    m_imageBuffer->context()->setShadowsIgnoreTransforms(true);
-    m_imageBuffer->context()->setImageInterpolationQuality(DefaultInterpolationQuality);
+    m_imageBuffer->context().setShadowsIgnoreTransforms(true);
+    m_imageBuffer->context().setImageInterpolationQuality(DefaultInterpolationQuality);
     if (document().settings() && !document().settings()->antialiased2dCanvasEnabled())
-        m_imageBuffer->context()->setShouldAntialias(false);
-    m_imageBuffer->context()->setStrokeThickness(1);
-    m_contextStateSaver = std::make_unique<GraphicsContextStateSaver>(*m_imageBuffer->context());
+        m_imageBuffer->context().setShouldAntialias(false);
+    m_imageBuffer->context().setStrokeThickness(1);
+    m_contextStateSaver = std::make_unique<GraphicsContextStateSaver>(m_imageBuffer->context());
 
     JSC::JSLockHolder lock(scriptExecutionContext()->vm());
     scriptExecutionContext()->vm().heap.reportExtraMemoryAllocated(memoryCost());
@@ -599,7 +599,7 @@ void HTMLCanvasElement::createImageBuffer() const
 
 GraphicsContext* HTMLCanvasElement::drawingContext() const
 {
-    return buffer() ? m_imageBuffer->context() : nullptr;
+    return buffer() ? &m_imageBuffer->context() : nullptr;
 }
 
 GraphicsContext* HTMLCanvasElement::existingDrawingContext() const

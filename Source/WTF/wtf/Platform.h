@@ -518,9 +518,6 @@
 
 #if !PLATFORM(WATCHOS) && !PLATFORM(APPLETV)
 #define HAVE_AVKIT 1
-#endif
-
-#if !PLATFORM(WATCHOS)
 #define HAVE_PARENTAL_CONTROLS 1
 #endif
 
@@ -553,7 +550,10 @@
 #endif
 #define USE_UIKIT_EDITING 1
 #define USE_WEB_THREAD 1
+
+#if !PLATFORM(WATCHOS) && !PLATFORM(APPLETV)
 #define USE_QUICK_LOOK 1
+#endif
 
 #if defined(TARGET_OS_IOS) && TARGET_OS_IOS && __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000
 #define HAVE_APP_LINKS 1
@@ -784,15 +784,6 @@
 #define ENABLE_FTL_JIT 0
 #endif
 
-/* Generational collector for JSC */
-#if !defined(ENABLE_GGC)
-#if CPU(X86_64) || CPU(X86) || CPU(ARM64) || CPU(ARM)
-#define ENABLE_GGC 1
-#else
-#define ENABLE_GGC 0
-#endif /* CPU(X86_64) || CPU(X86) || CPU(ARM64) || CPU(ARM) */
-#endif /* !defined(ENABLE_GGC) */
-
 /* Counts uses of write barriers using sampling counters. Be sure to also
    set ENABLE_SAMPLING_COUNTERS to 1. */
 #if !defined(ENABLE_WRITE_BARRIER_PROFILING)
@@ -822,14 +813,14 @@
 /* Configure the JIT */
 #if CPU(X86) && COMPILER(MSVC)
 #define JSC_HOST_CALL __fastcall
-#elif CPU(X86) && COMPILER(GCC)
+#elif CPU(X86) && COMPILER(GCC_OR_CLANG)
 #define JSC_HOST_CALL __attribute__ ((fastcall))
 #else
 #define JSC_HOST_CALL
 #endif
 
 /* Configure the interpreter */
-#if COMPILER(GCC)
+#if COMPILER(GCC_OR_CLANG)
 #define HAVE_COMPUTED_GOTO 1
 #endif
 
@@ -975,14 +966,6 @@
 #define USE_IMLANG_FONT_LINK2 1
 #endif
 
-#if !defined(ENABLE_COMPARE_AND_SWAP) && (OS(WINDOWS) || (COMPILER(GCC) && (CPU(X86) || CPU(X86_64) || CPU(ARM_THUMB2) || CPU(ARM64))))
-#define ENABLE_COMPARE_AND_SWAP 1
-#endif
-
-#if !defined(ENABLE_PARALLEL_GC) && (OS(DARWIN) || PLATFORM(EFL) || PLATFORM(GTK)) && ENABLE(COMPARE_AND_SWAP)
-#define ENABLE_PARALLEL_GC 1
-#endif
-
 #if !defined(ENABLE_GC_VALIDATION) && !defined(NDEBUG)
 #define ENABLE_GC_VALIDATION 1
 #endif
@@ -1080,10 +1063,6 @@
 #define HAVE_TIMINGDATAOPTIONS 1
 #endif
 
-#if PLATFORM(IOS)
-#define USE_PLATFORM_TEXT_TRACK_MENU 1
-#endif
-
 #if PLATFORM(COCOA)
 #define USE_AUDIO_SESSION 1
 #endif
@@ -1109,8 +1088,10 @@
 #if COMPILER(MSVC)
 #undef __STDC_LIMIT_MACROS
 #define __STDC_LIMIT_MACROS
+#if _MSC_VER < 1900
 #undef _HAS_EXCEPTIONS
 #define _HAS_EXCEPTIONS 1
+#endif
 #endif
 
 #if PLATFORM(MAC)

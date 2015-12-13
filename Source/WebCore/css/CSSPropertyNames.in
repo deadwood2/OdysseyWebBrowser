@@ -108,7 +108,12 @@ text-rendering [Inherited, FontProperty, NameForMethods=TextRenderingMode]
 -webkit-font-feature-settings [Inherited, FontProperty, Custom=Initial|Inherit, Converter=FontFeatureSettings, NameForMethods=FeatureSettings]
 -webkit-font-kerning [Inherited, FontProperty, NameForMethods=Kerning]
 -webkit-font-smoothing [Inherited, FontProperty]
--webkit-font-variant-ligatures [Inherited, Custom=All]
+font-variant-ligatures [Inherited, FontProperty, NameForMethods=VariantLigatures, Custom=All]
+font-variant-position [Inherited, FontProperty, NameForMethods=VariantPosition]
+font-variant-caps [Inherited, FontProperty, NameForMethods=VariantCaps]
+font-variant-numeric [Inherited, FontProperty, NameForMethods=VariantNumeric, Custom=All]
+font-variant-alternates [Inherited, FontProperty, NameForMethods=VariantAlternates]
+font-variant-east-asian [Inherited, FontProperty, NameForMethods=VariantEastAsian, Custom=All]
 -webkit-locale [Inherited, FontProperty, Custom=Value]
 -webkit-text-orientation [Inherited, Custom=Value]
 -epub-text-orientation = -webkit-text-orientation
@@ -219,7 +224,6 @@ enable-background [SkipBuilder]
 fill [Inherited, SVG, Custom=All]
 fill-opacity [Inherited, SVG, Converter=Opacity]
 fill-rule [Inherited, SVG]
-filter [SVG, Converter=SVGURIReference, NameForMethods=FilterResource]
 float [NameForMethods=Floating]
 flood-color [SVG, Converter=SVGColor]
 flood-opacity [SVG, Converter=Opacity]
@@ -350,6 +354,7 @@ visibility [Inherited]
 white-space [Inherited]
 widows [Inherited, AutoFunctions]
 width [Initial=initialSize, Converter=LengthSizing]
+will-change [Custom=Value]
 word-break [Inherited]
 -epub-word-break = word-break
 word-spacing [Inherited, ConditionalConverter=WordSpacing]
@@ -419,7 +424,6 @@ alt [NameForMethods=ContentAltText, Custom=Value]
 // Let -webkit-box-shadow blur radius be w_r and box-shadow blur radius be b_r. For
 // w_r > 8px, b_r = 8 + 4 * sqrt((w_r - 8) / 2).
 -webkit-box-shadow [Custom=All]
--webkit-color-correction [Inherited, NameForMethods=ColorSpace]
 -webkit-column-axis
 -webkit-column-break-after [Initial=initialPageBreak]
 -webkit-column-break-before [Initial=initialPageBreak]
@@ -453,7 +457,8 @@ columns [Longhands=column-width|column-count]
 mix-blend-mode [NameForMethods=BlendMode]
 isolation
 #endif
--webkit-filter [ConditionalConverter=FilterOperations]
+filter [ConditionalConverter=FilterOperations]
+-webkit-filter = filter
 align-content [Initial=initialContentAlignment, Converter=ContentAlignmentData]
 -webkit-align-content = align-content
 align-items [Initial=initialSelfAlignment, Converter=SelfOrDefaultAlignmentData]

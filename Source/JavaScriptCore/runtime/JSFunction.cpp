@@ -67,7 +67,17 @@ JSFunction* JSFunction::create(VM& vm, FunctionExecutable* executable, JSScope* 
     return result;
 }
 
-static inline NativeExecutable* getNativeExecutable(VM& vm, NativeFunction nativeFunction, Intrinsic intrinsic, NativeFunction nativeConstructor)
+#if ENABLE(WEBASSEMBLY)
+JSFunction* JSFunction::create(VM& vm, WebAssemblyExecutable* executable, JSScope* scope)
+{
+    JSFunction* function = new (NotNull, allocateCell<JSFunction>(vm.heap)) JSFunction(vm, executable, scope);
+    ASSERT(function->structure()->globalObject());
+    function->finishCreation(vm);
+    return function;
+}
+#endif
+
+NativeExecutable* JSFunction::lookUpOrCreateNativeExecutable(VM& vm, NativeFunction nativeFunction, Intrinsic intrinsic, NativeFunction nativeConstructor)
 {
 #if !ENABLE(JIT)
     UNUSED_PARAM(intrinsic);
@@ -82,33 +92,8 @@ static inline NativeExecutable* getNativeExecutable(VM& vm, NativeFunction nativ
 
 JSFunction* JSFunction::create(VM& vm, JSGlobalObject* globalObject, int length, const String& name, NativeFunction nativeFunction, Intrinsic intrinsic, NativeFunction nativeConstructor)
 {
-    NativeExecutable* executable = getNativeExecutable(vm, nativeFunction, intrinsic, nativeConstructor);
+    NativeExecutable* executable = lookUpOrCreateNativeExecutable(vm, nativeFunction, intrinsic, nativeConstructor);
     JSFunction* function = new (NotNull, allocateCell<JSFunction>(vm.heap)) JSFunction(vm, globalObject, globalObject->functionStructure());
-    // Can't do this during initialization because getHostFunction might do a GC allocation.
-    function->finishCreation(vm, executable, length, name);
-    return function;
-}
-
-class JSStdFunction : public JSFunction {
-public:
-    JSStdFunction(VM& vm, JSGlobalObject* object, Structure* structure, NativeStdFunction&& function)
-        : JSFunction(vm, object, structure)
-        , stdFunction(WTF::move(function)) { }
-
-    NativeStdFunction stdFunction;
-};
-
-static EncodedJSValue JSC_HOST_CALL runStdFunction(ExecState* state)
-{
-    JSStdFunction* jsFunction = jsCast<JSStdFunction*>(state->callee());
-    ASSERT(jsFunction);
-    return jsFunction->stdFunction(state);
-}
-
-JSFunction* JSFunction::create(VM& vm, JSGlobalObject* globalObject, int length, const String& name, NativeStdFunction&& nativeStdFunction, Intrinsic intrinsic, NativeFunction nativeConstructor)
-{
-    NativeExecutable* executable = getNativeExecutable(vm, runStdFunction, intrinsic, nativeConstructor);
-    JSStdFunction* function = new (NotNull, allocateCell<JSStdFunction>(vm.heap)) JSStdFunction(vm, globalObject, globalObject->functionStructure(), WTF::move(nativeStdFunction));
     // Can't do this during initialization because getHostFunction might do a GC allocation.
     function->finishCreation(vm, executable, length, name);
     return function;
@@ -358,7 +343,7 @@ bool JSFunction::getOwnPropertySlot(JSObject* object, ExecState* exec, PropertyN
     if (thisObject->isHostOrBuiltinFunction())
         return Base::getOwnPropertySlot(thisObject, exec, propertyName, slot);
 
-    if (propertyName == exec->propertyNames().prototype) {
+    if (propertyName == exec->propertyNames().prototype && !thisObject->jsExecutable()->isArrowFunction()) {
         VM& vm = exec->vm();
         unsigned attributes;
         PropertyOffset offset = thisObject->getDirectOffset(vm, propertyName, attributes);
@@ -469,13 +454,16 @@ bool JSFunction::deleteProperty(JSCell* cell, ExecState* exec, PropertyName prop
 {
     JSFunction* thisObject = jsCast<JSFunction*>(cell);
     // For non-host functions, don't let these properties by deleted - except by DefineOwnProperty.
-    if (!thisObject->isHostOrBuiltinFunction() && !exec->vm().isInDefineOwnProperty()
-        && (propertyName == exec->propertyNames().arguments
+    if (!thisObject->isHostOrBuiltinFunction() && !exec->vm().isInDefineOwnProperty()) {
+        FunctionExecutable* executable = thisObject->jsExecutable();
+        if (propertyName == exec->propertyNames().arguments
             || propertyName == exec->propertyNames().length
             || propertyName == exec->propertyNames().name
-            || propertyName == exec->propertyNames().prototype
-            || propertyName == exec->propertyNames().caller))
+            || (propertyName == exec->propertyNames().prototype && !executable->isArrowFunction())
+            || propertyName == exec->propertyNames().caller)
         return false;
+    }
+    
     return Base::deleteProperty(thisObject, exec, propertyName);
 }
 

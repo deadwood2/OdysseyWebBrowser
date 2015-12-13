@@ -328,7 +328,7 @@ void HarfBuzzShaper::setPadding(int padding)
 
 void HarfBuzzShaper::setFontFeatures()
 {
-    const FontDescription& description = m_font->fontDescription();
+    const auto& description = m_font->fontDescription();
     if (description.orientation() == Vertical) {
         static hb_feature_t vert = { HarfBuzzFace::vertTag, 1, 0, static_cast<unsigned>(-1) };
         static hb_feature_t vrt2 = { HarfBuzzFace::vrt2Tag, 1, 0, static_cast<unsigned>(-1) };
@@ -338,30 +338,28 @@ void HarfBuzzShaper::setFontFeatures()
 
     hb_feature_t kerning = { HarfBuzzFace::kernTag, 0, 0, static_cast<unsigned>(-1) };
     switch (description.kerning()) {
-    case FontDescription::NormalKerning:
+    case FontCascadeDescription::NormalKerning:
         kerning.value = 1;
         m_features.append(kerning);
         break;
-    case FontDescription::NoneKerning:
+    case FontCascadeDescription::NoneKerning:
         kerning.value = 0;
         m_features.append(kerning);
         break;
-    case FontDescription::AutoKerning:
+    case FontCascadeDescription::AutoKerning:
         break;
     default:
         ASSERT_NOT_REACHED();
     }
 
-    FontFeatureSettings* settings = description.featureSettings();
-    if (!settings)
-        return;
+    const FontFeatureSettings& settings = description.featureSettings();
 
-    unsigned numFeatures = settings->size();
+    unsigned numFeatures = settings.size();
     for (unsigned i = 0; i < numFeatures; ++i) {
         hb_feature_t feature;
-        auto& tag = settings->at(i).tag();
+        auto& tag = settings[i].tag();
         feature.tag = HB_TAG(tag[0], tag[1], tag[2], tag[3]);
-        feature.value = settings->at(i).value();
+        feature.value = settings[i].value();
         feature.start = 0;
         feature.end = static_cast<unsigned>(-1);
         m_features.append(feature);

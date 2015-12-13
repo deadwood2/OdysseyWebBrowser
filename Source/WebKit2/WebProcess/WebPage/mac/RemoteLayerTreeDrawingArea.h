@@ -111,10 +111,11 @@ private:
 
     virtual bool adjustLayerFlushThrottling(WebCore::LayerFlushThrottleState::Flags) override;
 
+    virtual bool dispatchDidLayout(WebCore::LayoutMilestones) override;
+
     void updateScrolledExposedRect();
     void updateRootLayers();
 
-    void layerFlushTimerFired();
     void flushLayers();
 
     WebCore::TiledBacking* mainFrameTiledBacking() const;
@@ -166,6 +167,8 @@ private:
 
     uint64_t m_currentTransactionID;
     Vector<RemoteLayerTreeTransaction::TransactionCallbackID> m_pendingCallbackIDs;
+
+    WebCore::LayoutMilestones m_pendingNewlyReachedLayoutMilestones;
 
     WebCore::GraphicsLayer* m_contentLayer;
     WebCore::GraphicsLayer* m_viewOverlayRootLayer;

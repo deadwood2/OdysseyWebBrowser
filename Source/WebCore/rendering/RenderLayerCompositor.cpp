@@ -2190,6 +2190,7 @@ bool RenderLayerCompositor::requiresCompositingLayer(const RenderLayer& layer, R
         || clipsCompositingDescendants(*renderer.layer())
         || requiresCompositingForAnimation(renderer)
         || requiresCompositingForFilters(renderer)
+        || requiresCompositingForWillChange(renderer)
         || requiresCompositingForPosition(renderer, *renderer.layer(), viewportConstrainedNotCompositedReason)
 #if PLATFORM(IOS)
         || requiresCompositingForScrolling(*renderer.layer())
@@ -2232,6 +2233,7 @@ bool RenderLayerCompositor::requiresOwnBackingStore(const RenderLayer& layer, co
         || requiresCompositingForBackfaceVisibility(renderer)
         || requiresCompositingForAnimation(renderer)
         || requiresCompositingForFilters(renderer)
+        || requiresCompositingForWillChange(renderer)
         || requiresCompositingForPosition(renderer, layer)
         || requiresCompositingForOverflowScrolling(layer)
         || renderer.isTransparent()
@@ -2292,6 +2294,9 @@ CompositingReasons RenderLayerCompositor::reasonsForCompositing(const RenderLaye
 
     if (requiresCompositingForFilters(renderer))
         reasons |= CompositingReasonFilters;
+
+    if (requiresCompositingForWillChange(renderer))
+        reasons |= CompositingReasonWillChange;
 
     if (requiresCompositingForPosition(renderer, *renderer.layer()))
         reasons |= renderer.style().position() == FixedPosition ? CompositingReasonPositionFixed : CompositingReasonPositionSticky;
@@ -2609,7 +2614,7 @@ bool RenderLayerCompositor::requiresCompositingForAnimation(RenderLayerModelObje
     AnimationController& animController = renderer.animation();
     return (animController.isRunningAnimationOnRenderer(renderer, CSSPropertyOpacity, activeAnimationState)
             && (inCompositingMode() || (m_compositingTriggers & ChromeClient::AnimatedOpacityTrigger)))
-            || animController.isRunningAnimationOnRenderer(renderer, CSSPropertyWebkitFilter, activeAnimationState)
+            || animController.isRunningAnimationOnRenderer(renderer, CSSPropertyFilter, activeAnimationState)
 #if ENABLE(FILTERS_LEVEL_2)
             || animController.isRunningAnimationOnRenderer(renderer, CSSPropertyWebkitBackdropFilter, activeAnimationState)
 #endif
@@ -2656,6 +2661,17 @@ bool RenderLayerCompositor::requiresCompositingForFilters(RenderLayerModelObject
         return false;
 
     return renderer.hasFilter();
+}
+
+bool RenderLayerCompositor::requiresCompositingForWillChange(RenderLayerModelObject& renderer) const
+{
+    if (!renderer.style().willChange() || !renderer.style().willChange()->canTriggerCompositing())
+        return false;
+
+    if (is<RenderBox>(renderer))
+        return true;
+
+    return renderer.style().willChange()->canTriggerCompositingOnInline();
 }
 
 bool RenderLayerCompositor::isAsyncScrollableStickyLayer(const RenderLayer& layer, const RenderLayer** enclosingAcceleratedOverflowLayer) const
@@ -2850,7 +2866,7 @@ void paintScrollbar(Scrollbar* scrollbar, GraphicsContext& context, const IntRec
     context.translate(-scrollbarRect.x(), -scrollbarRect.y());
     IntRect transformedClip = clip;
     transformedClip.moveBy(scrollbarRect.location());
-    scrollbar->paint(&context, transformedClip);
+    scrollbar->paint(context, transformedClip);
     context.restore();
 }
 
@@ -2867,7 +2883,7 @@ void RenderLayerCompositor::paintContents(const GraphicsLayer* graphicsLayer, Gr
         context.translate(-scrollCorner.x(), -scrollCorner.y());
         IntRect transformedClip = pixelSnappedRectForIntegralPositionedItems;
         transformedClip.moveBy(scrollCorner.location());
-        m_renderView.frameView().paintScrollCorner(&context, transformedClip);
+        m_renderView.frameView().paintScrollCorner(context, transformedClip);
         context.restore();
     }
 }
@@ -4247,5 +4263,13 @@ unsigned RenderLayerCompositor::compositingUpdateCount() const
 {
     return m_compositingUpdateCount;
 }
+
+#if ENABLE(CSS_SCROLL_SNAP)
+void RenderLayerCompositor::updateScrollSnapPropertiesWithFrameView(const FrameView& frameView)
+{
+    if (ScrollingCoordinator* coordinator = scrollingCoordinator())
+        coordinator->updateScrollSnapPropertiesWithFrameView(frameView);
+}
+#endif
 
 } // namespace WebCore

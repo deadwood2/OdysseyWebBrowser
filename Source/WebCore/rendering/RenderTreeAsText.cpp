@@ -484,7 +484,7 @@ static void writeTextRun(TextStream& ts, const RenderText& o, const InlineTextBo
     ts << "\n";
 }
 
-static void writeSimpleLine(TextStream& ts, const RenderText& o, const LayoutRect& rect, StringView text)
+static void writeSimpleLine(TextStream& ts, const RenderText& o, const FloatRect& rect, StringView text)
 {
     int x = rect.x();
     int y = rect.y();
@@ -615,9 +615,9 @@ static void write(TextStream& ts, RenderLayer& l,
             ts << " scrollX " << l.scrollXOffset();
         if (l.scrollYOffset())
             ts << " scrollY " << l.scrollYOffset();
-        if (l.renderBox() && l.renderBox()->pixelSnappedClientWidth() != l.scrollWidth())
+        if (l.renderBox() && roundToInt(l.renderBox()->clientWidth()) != l.scrollWidth())
             ts << " scrollWidth " << l.scrollWidth();
-        if (l.renderBox() && l.renderBox()->pixelSnappedClientHeight() != l.scrollHeight())
+        if (l.renderBox() && roundToInt(l.renderBox()->clientHeight()) != l.scrollHeight())
             ts << " scrollHeight " << l.scrollHeight();
     }
 

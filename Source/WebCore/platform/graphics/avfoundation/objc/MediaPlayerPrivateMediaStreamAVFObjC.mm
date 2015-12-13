@@ -124,21 +124,22 @@ void MediaPlayerPrivateMediaStreamAVFObjC::getSupportedTypes(HashSet<String>& ty
 
 MediaPlayer::SupportsType MediaPlayerPrivateMediaStreamAVFObjC::supportsType(const MediaEngineSupportParameters& parameters)
 {
-    // This engine does not support non-media-stream sources.
     if (parameters.isMediaStream)
         return MediaPlayer::IsSupported;
+
     return MediaPlayer::IsNotSupported;
 }
 
 #pragma mark -
 #pragma mark MediaPlayerPrivateInterface Overrides
 
-void MediaPlayerPrivateMediaStreamAVFObjC::load(MediaStreamPrivate& client)
+void MediaPlayerPrivateMediaStreamAVFObjC::load(MediaStreamPrivate& stream)
 {
-    m_MediaStreamPrivate = MediaStreamPrivateAVFObjC::create(*this, *client.client());
-    for (auto track : client.tracks()) {
-        m_MediaStreamPrivate->addTrack(WTF::move(track), MediaStreamPrivate::NotifyClientOption::DontNotify);
-        m_MediaStreamPrivate->client()->didAddTrackToPrivate(*track);
+    LOG(Media, "MediaPlayerPrivateMediaStreamAVFObjC::load(%p)", this);
+
+    m_MediaStreamPrivate = MediaStreamPrivateAVFObjC::create(*this, stream);
+    for (auto track : stream.tracks()) {
+        m_MediaStreamPrivate->addTrack(WTF::move(track));
         if (!track->ended()) {
             track->source()->startProducingData();
             track->setEnabled(true);
@@ -188,8 +189,6 @@ void MediaPlayerPrivateMediaStreamAVFObjC::play()
 void MediaPlayerPrivateMediaStreamAVFObjC::playInternal()
 {
     m_playing = true;
-    if (shouldBePlaying())
-        [m_synchronizer setRate:m_rate];
 
     for (auto track : m_MediaStreamPrivate->tracks())
         track->source()->startProducingData();
@@ -345,12 +344,31 @@ void MediaPlayerPrivateMediaStreamAVFObjC::setSize(const IntSize&)
     // No-op.
 }
 
-void MediaPlayerPrivateMediaStreamAVFObjC::paint(GraphicsContext*, const FloatRect&)
+RetainPtr<CGImageRef> MediaPlayerPrivateMediaStreamAVFObjC::createImageFromSampleBuffer(CMSampleBufferRef sampleBuffer)
 {
-    // FIXME(125157): Implement painting.
+    CVPixelBufferRef imageBuffer = static_cast<CVPixelBufferRef>(CMSampleBufferGetImageBuffer(sampleBuffer));
+    CVPixelBufferLockBaseAddress(imageBuffer, 0);
+    
+    void *baseAddress = CVPixelBufferGetBaseAddress(imageBuffer);
+    size_t bytesPerRow = CVPixelBufferGetBytesPerRow(imageBuffer);
+    size_t width = CVPixelBufferGetWidth(imageBuffer);
+    size_t height = CVPixelBufferGetHeight(imageBuffer);
+    
+    RetainPtr<CGColorSpaceRef> colorSpace = adoptCF(CGColorSpaceCreateDeviceRGB());
+    RetainPtr<CGDataProviderRef> provider = adoptCF(CGDataProviderCreateWithData(NULL, baseAddress, bytesPerRow * height, NULL));
+    RetainPtr<CGImageRef> quartzImage = adoptCF(CGImageCreate(width, height, 8, 32, bytesPerRow, colorSpace.get(), kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst, provider.get(), NULL, true, kCGRenderingIntentDefault));
+    
+    CVPixelBufferUnlockBaseAddress(imageBuffer, 0);
+    
+    return quartzImage;
 }
 
-void MediaPlayerPrivateMediaStreamAVFObjC::paintCurrentFrameInContext(GraphicsContext*, const FloatRect&)
+void MediaPlayerPrivateMediaStreamAVFObjC::paint(GraphicsContext& context, const FloatRect& rect)
+{
+    paintCurrentFrameInContext(context, rect);
+}
+
+void MediaPlayerPrivateMediaStreamAVFObjC::paintCurrentFrameInContext(GraphicsContext&, const FloatRect&)
 {
     // FIXME(125157): Implement painting.
 }

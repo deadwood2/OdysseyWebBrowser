@@ -129,12 +129,12 @@ bool MediaElementSession::playbackPermitted(const HTMLMediaElement& element) con
     if (pageExplicitlyAllowsElementToAutoplayInline(element))
         return true;
 
-    if (m_restrictions & RequireUserGestureForRateChange && !ScriptController::processingUserGesture()) {
+    if (m_restrictions & RequireUserGestureForRateChange && !ScriptController::processingUserGestureForMedia()) {
         LOG(Media, "MediaElementSession::playbackPermitted - returning FALSE");
         return false;
     }
 
-    if (m_restrictions & RequireUserGestureForAudioRateChange && element.hasAudio() && !ScriptController::processingUserGesture()) {
+    if (m_restrictions & RequireUserGestureForAudioRateChange && element.hasAudio() && !ScriptController::processingUserGestureForMedia()) {
         LOG(Media, "MediaElementSession::playbackPermitted - returning FALSE");
         return false;
     }
@@ -144,7 +144,7 @@ bool MediaElementSession::playbackPermitted(const HTMLMediaElement& element) con
 
 bool MediaElementSession::dataLoadingPermitted(const HTMLMediaElement&) const
 {
-    if (m_restrictions & RequireUserGestureForLoad && !ScriptController::processingUserGesture()) {
+    if (m_restrictions & RequireUserGestureForLoad && !ScriptController::processingUserGestureForMedia()) {
         LOG(Media, "MediaElementSession::dataLoadingPermitted - returning FALSE");
         return false;
     }
@@ -154,7 +154,7 @@ bool MediaElementSession::dataLoadingPermitted(const HTMLMediaElement&) const
 
 bool MediaElementSession::fullscreenPermitted(const HTMLMediaElement&) const
 {
-    if (m_restrictions & RequireUserGestureForFullscreen && !ScriptController::processingUserGesture()) {
+    if (m_restrictions & RequireUserGestureForFullscreen && !ScriptController::processingUserGestureForMedia()) {
         LOG(Media, "MediaElementSession::fullscreenPermitted - returning FALSE");
         return false;
     }
@@ -189,7 +189,7 @@ void MediaElementSession::showPlaybackTargetPicker(const HTMLMediaElement& eleme
 {
     LOG(Media, "MediaElementSession::showPlaybackTargetPicker");
 
-    if (m_restrictions & RequireUserGestureToShowPlaybackTargetPicker && !ScriptController::processingUserGesture()) {
+    if (m_restrictions & RequireUserGestureToShowPlaybackTargetPicker && !ScriptController::processingUserGestureForMedia()) {
         LOG(Media, "MediaElementSession::showPlaybackTargetPicker - returning early because of permissions");
         return;
     }
@@ -200,8 +200,8 @@ void MediaElementSession::showPlaybackTargetPicker(const HTMLMediaElement& eleme
     }
 
 #if !PLATFORM(IOS)
-    if (!element.hasVideo()) {
-        LOG(Media, "MediaElementSession::showPlaybackTargetPicker - returning early because element has no video");
+    if (element.readyState() < HTMLMediaElementEnums::HAVE_METADATA) {
+        LOG(Media, "MediaElementSession::showPlaybackTargetPicker - returning early because element is not playable");
         return;
     }
 #endif
@@ -338,16 +338,15 @@ void MediaElementSession::mediaStateDidChange(const HTMLMediaElement& element, M
 
 MediaPlayer::Preload MediaElementSession::effectivePreloadForElement(const HTMLMediaElement& element) const
 {
-    PlatformMediaSessionManager::SessionRestrictions restrictions = PlatformMediaSessionManager::sharedManager().restrictions(mediaType());
     MediaPlayer::Preload preload = element.preloadValue();
 
     if (pageExplicitlyAllowsElementToAutoplayInline(element))
         return preload;
 
-    if ((restrictions & PlatformMediaSessionManager::MetadataPreloadingNotPermitted) == PlatformMediaSessionManager::MetadataPreloadingNotPermitted)
+    if (m_restrictions & MetadataPreloadingNotPermitted)
         return MediaPlayer::None;
 
-    if ((restrictions & PlatformMediaSessionManager::AutoPreloadingNotPermitted) == PlatformMediaSessionManager::AutoPreloadingNotPermitted) {
+    if (m_restrictions & AutoPreloadingNotPermitted) {
         if (preload > MediaPlayer::MetaData)
             return MediaPlayer::MetaData;
     }
@@ -360,22 +359,11 @@ bool MediaElementSession::requiresFullscreenForVideoPlayback(const HTMLMediaElem
     if (pageExplicitlyAllowsElementToAutoplayInline(element))
         return false;
 
-    if (!PlatformMediaSessionManager::sharedManager().sessionRestrictsInlineVideoPlayback(*this))
-        return false;
-
     Settings* settings = element.document().settings();
     if (!settings || !settings->allowsInlineMediaPlayback())
         return true;
 
-    if (element.fastHasAttribute(HTMLNames::webkit_playsinlineAttr))
-        return false;
-
-#if PLATFORM(IOS)
-    if (applicationIsDumpRenderTree())
-        return false;
-#endif
-
-    return true;
+    return settings->inlineMediaPlaybackRequiresPlaysInlineAttribute() && !element.fastHasAttribute(HTMLNames::webkit_playsinlineAttr);
 }
 
 bool MediaElementSession::allowsAutomaticMediaDataLoading(const HTMLMediaElement& element) const

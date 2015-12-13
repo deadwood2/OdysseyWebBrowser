@@ -48,8 +48,10 @@
 #include "DFGInvalidationPointInjectionPhase.h"
 #include "DFGJITCompiler.h"
 #include "DFGLICMPhase.h"
+#include "DFGLiveCatchVariablePreservationPhase.h"
 #include "DFGLivenessAnalysisPhase.h"
 #include "DFGLoopPreHeaderCreationPhase.h"
+#include "DFGMaximalFlushInsertionPhase.h"
 #include "DFGMovHintRemovalPhase.h"
 #include "DFGOSRAvailabilityAnalysisPhase.h"
 #include "DFGOSREntrypointCreationPhase.h"
@@ -241,6 +243,8 @@ Plan::CompilationPath Plan::compileInThreadImpl(LongLivedState& longLivedState)
         finalizer = std::make_unique<FailedFinalizer>(*this);
         return FailPath;
     }
+
+    codeBlock->setCalleeSaveRegisters(RegisterSet::dfgCalleeSaveRegisters());
     
     // By this point the DFG bytecode parser will have potentially mutated various tables
     // in the CodeBlock. This is a good time to perform an early shrink, which is more
@@ -255,6 +259,11 @@ Plan::CompilationPath Plan::compileInThreadImpl(LongLivedState& longLivedState)
         dataLog("Graph after parsing:\n");
         dfg.dump();
     }
+
+    performLiveCatchVariablePreservationPhase(dfg);
+
+    if (Options::enableMaximalFlushInsertionPhase())
+        performMaximalFlushInsertion(dfg);
     
     performCPSRethreading(dfg);
     performUnification(dfg);
@@ -374,7 +383,8 @@ Plan::CompilationPath Plan::compileInThreadImpl(LongLivedState& longLivedState)
         
         performCleanUp(dfg); // Reduce the graph size a bit.
         performCriticalEdgeBreaking(dfg);
-        performLoopPreHeaderCreation(dfg);
+        if (Options::createPreHeaders())
+            performLoopPreHeaderCreation(dfg);
         performCPSRethreading(dfg);
         performSSAConversion(dfg);
         performSSALowering(dfg);
@@ -594,18 +604,38 @@ CompilationKey Plan::key()
     return CompilationKey(codeBlock->alternative(), mode);
 }
 
-void Plan::checkLivenessAndVisitChildren(SlotVisitor& visitor, CodeBlockSet& codeBlocks)
+void Plan::clearCodeBlockMarks()
+{
+    // Compilation writes lots of values to a CodeBlock without performing
+    // an explicit barrier. So, we need to be pessimistic and assume that
+    // all our CodeBlocks must be visited during GC.
+
+    codeBlock->clearMarks();
+    codeBlock->alternative()->clearMarks();
+    if (profiledDFGCodeBlock)
+        profiledDFGCodeBlock->clearMarks();
+}
+
+void Plan::checkLivenessAndVisitChildren(SlotVisitor& visitor)
 {
     if (!isKnownToBeLiveDuringGC())
         return;
     
     for (unsigned i = mustHandleValues.size(); i--;)
         visitor.appendUnbarrieredValue(&mustHandleValues[i]);
-    
-    codeBlocks.mark(codeBlock->alternative());
-    codeBlocks.mark(codeBlock.get());
-    codeBlocks.mark(profiledDFGCodeBlock.get());
-    
+
+    codeBlock->visitStrongly(visitor);
+    codeBlock->alternative()->visitStrongly(visitor);
+    if (profiledDFGCodeBlock)
+        profiledDFGCodeBlock->visitStrongly(visitor);
+
+    if (inlineCallFrames) {
+        for (auto* inlineCallFrame : *inlineCallFrames) {
+            ASSERT(inlineCallFrame->baselineCodeBlock());
+            inlineCallFrame->baselineCodeBlock()->visitStrongly(visitor);
+        }
+    }
+
     weakReferences.visitChildren(visitor);
     transitions.visitChildren(visitor);
 }

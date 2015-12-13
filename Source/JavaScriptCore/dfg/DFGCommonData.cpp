@@ -31,6 +31,7 @@
 #include "CodeBlock.h"
 #include "DFGNode.h"
 #include "DFGPlan.h"
+#include "InlineCallFrame.h"
 #include "JSCInlines.h"
 #include "TrackedReferences.h"
 #include "VM.h"
@@ -46,14 +47,20 @@ void CommonData::notifyCompilingStructureTransition(Plan& plan, CodeBlock* codeB
         node->transition()->next);
 }
 
-unsigned CommonData::addCodeOrigin(CodeOrigin codeOrigin)
+CallSiteIndex CommonData::addCodeOrigin(CodeOrigin codeOrigin)
 {
     if (codeOrigins.isEmpty()
         || codeOrigins.last() != codeOrigin)
         codeOrigins.append(codeOrigin);
     unsigned index = codeOrigins.size() - 1;
     ASSERT(codeOrigins[index] == codeOrigin);
-    return index;
+    return CallSiteIndex(index);
+}
+
+CallSiteIndex CommonData::lastCallSite() const
+{
+    RELEASE_ASSERT(codeOrigins.size());
+    return CallSiteIndex(codeOrigins.size() - 1);
 }
 
 void CommonData::shrinkToFit()
@@ -89,6 +96,9 @@ void CommonData::validateReferences(const TrackedReferences& trackedReferences)
                 trackedReferences.check(inlineCallFrame->calleeRecovery.constant());
         }
     }
+    
+    for (AdaptiveStructureWatchpoint* watchpoint : adaptiveStructureWatchpoints)
+        watchpoint->key().validateReferences(trackedReferences);
 }
 
 } } // namespace JSC::DFG

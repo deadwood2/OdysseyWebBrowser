@@ -26,11 +26,13 @@
 #include "HTMLTableSectionElement.h"
 
 #include "ExceptionCode.h"
+#include "GenericCachedHTMLCollection.h"
 #include "HTMLCollection.h"
 #include "HTMLNames.h"
 #include "HTMLTableRowElement.h"
 #include "HTMLTableElement.h"
 #include "NodeList.h"
+#include "NodeRareData.h"
 #include "Text.h"
 
 namespace WebCore {
@@ -66,14 +68,14 @@ RefPtr<HTMLElement> HTMLTableSectionElement::insertRow(int index, ExceptionCode&
     else {
         row = HTMLTableRowElement::create(trTag, document());
         if (numRows == index || index == -1)
-            appendChild(row, ec);
+            appendChild(*row, ec);
         else {
             Node* n;
             if (index < 1)
                 n = firstChild();
             else
                 n = children->item(index);
-            insertBefore(row, n, ec);
+            insertBefore(*row, n, ec);
         }
     }
     return row;
@@ -87,7 +89,7 @@ void HTMLTableSectionElement::deleteRow(int index, ExceptionCode& ec)
         index = numRows - 1;
     if (index >= 0 && index < numRows) {
         RefPtr<Node> row = children->item(index);
-        HTMLElement::removeChild(row.get(), ec);
+        HTMLElement::removeChild(*row, ec);
     } else
         ec = INDEX_SIZE_ERR;
 }
@@ -147,7 +149,7 @@ void HTMLTableSectionElement::setVAlign(const AtomicString& value)
 
 Ref<HTMLCollection> HTMLTableSectionElement::rows()
 {
-    return ensureCachedHTMLCollection(TSectionRows);
+    return ensureRareData().ensureNodeLists().addCachedCollection<GenericCachedHTMLCollection<CollectionTypeTraits<TSectionRows>::traversalType>>(*this, TSectionRows);
 }
 
 }

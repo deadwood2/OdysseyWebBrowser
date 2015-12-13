@@ -145,7 +145,7 @@ bool SubframeLoader::requestPlugin(HTMLPlugInImageElement& ownerElement, const U
     // Application plug-ins are plug-ins implemented by the user agent, for example Qt plug-ins,
     // as opposed to third-party code such as Flash. The user agent decides whether or not they are
     // permitted, rather than WebKit.
-    if ((!allowPlugins(AboutToInstantiatePlugin) && !MIMETypeRegistry::isApplicationPluginMIMEType(mimeType)))
+    if ((!allowPlugins() && !MIMETypeRegistry::isApplicationPluginMIMEType(mimeType)))
         return false;
 
     if (!pluginIsLoadable(ownerElement, url, mimeType))
@@ -171,11 +171,10 @@ static String findPluginMIMETypeFromURL(Page* page, const String& url)
     Vector<MimeClassInfo> mimes;
     Vector<size_t> mimePluginIndices;
     pluginData.getWebVisibleMimesAndPluginIndices(mimes, mimePluginIndices);
-    for (size_t i = 0; i < mimes.size(); ++i) {
-        const MimeClassInfo& mimeClassInfo = mimes[i];
-        for (size_t j = 0; j < mimeClassInfo.extensions.size(); ++j) {
-            if (equalIgnoringCase(extension, mimeClassInfo.extensions[j]))
-                return mimeClassInfo.type;
+    for (auto& mime : mimes) {
+        for (auto& mimeExtension : mime.extensions) {
+            if (equalIgnoringCase(extension, mimeExtension))
+                return mime.type;
         }
     }
 
@@ -265,7 +264,7 @@ PassRefPtr<Widget> SubframeLoader::createJavaAppletWidget(const IntSize& size, H
     URL baseURL = completeURL(baseURLString);
 
     RefPtr<Widget> widget;
-    if (allowPlugins(AboutToInstantiatePlugin))
+    if (allowPlugins())
         widget = m_frame.loader().client().createJavaAppletWidget(size, &element, baseURL, paramNames, paramValues);
 
     logPluginRequest(document()->page(), element.serviceType(), String(), widget);
@@ -320,7 +319,13 @@ Frame* SubframeLoader::loadSubframe(HTMLFrameOwnerElement& ownerElement, const U
         return nullptr;
 
     String referrerToUse = SecurityPolicy::generateReferrerHeader(ownerElement.document().referrerPolicy(), url, referrer);
+
+    // Prevent initial empty document load from triggering load events.
+    m_frame.document()->incrementLoadEventDelayCount();
+
     RefPtr<Frame> frame = m_frame.loader().client().createFrame(url, name, &ownerElement, referrerToUse, allowsScrolling, marginWidth, marginHeight);
+
+    m_frame.document()->decrementLoadEventDelayCount();
 
     if (!frame)  {
         m_frame.loader().checkCallImplicitClose();
@@ -357,7 +362,7 @@ Frame* SubframeLoader::loadSubframe(HTMLFrameOwnerElement& ownerElement, const U
     return frame.get();
 }
 
-bool SubframeLoader::allowPlugins(ReasonForCallingAllowPlugins)
+bool SubframeLoader::allowPlugins()
 {
     return m_frame.settings().arePluginsEnabled();
 }

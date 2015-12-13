@@ -58,9 +58,9 @@ class RenderBox;
 class TextIndicator;
 class URL;
 struct DictationAlternative;
+struct DictionaryPopupInfo;
 }
 
-struct DictionaryPopupInfo;
 class WebMediaPlaybackTargetPicker;
 class WebSelectionServiceController;
 
@@ -266,12 +266,12 @@ OBJC_CLASS NSTextAlternatives;
 
 #if PLATFORM(MAC) && defined(__cplusplus)
 - (void)_setTextIndicator:(WebCore::TextIndicator&)textIndicator;
-- (void)_setTextIndicator:(WebCore::TextIndicator&)textIndicator withLifetime:(WebCore::TextIndicatorLifetime)lifetime;
-- (void)_clearTextIndicatorWithAnimation:(WebCore::TextIndicatorDismissalAnimation)animation;
+- (void)_setTextIndicator:(WebCore::TextIndicator&)textIndicator withLifetime:(WebCore::TextIndicatorWindowLifetime)lifetime;
+- (void)_clearTextIndicatorWithAnimation:(WebCore::TextIndicatorWindowDismissalAnimation)animation;
 - (void)_setTextIndicatorAnimationProgress:(float)progress;
-- (void)_showDictionaryLookupPopup:(const DictionaryPopupInfo&)dictionaryPopupInfo;
+- (void)_showDictionaryLookupPopup:(const WebCore::DictionaryPopupInfo&)dictionaryPopupInfo;
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
-- (id)_animationControllerForDictionaryLookupPopupInfo:(const DictionaryPopupInfo&)dictionaryPopupInfo;
+- (id)_animationControllerForDictionaryLookupPopupInfo:(const WebCore::DictionaryPopupInfo&)dictionaryPopupInfo;
 - (WebImmediateActionController *)_immediateActionController;
 #endif
 - (NSEvent *)_pressureEvent;

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008, 2013, 2014 Apple Inc.
+ * Copyright (C) 2008, 2013-2015 Apple Inc.
  * Copyright (C) 2009, 2010 University of Szeged
  * All rights reserved.
  *
@@ -904,6 +904,11 @@ public:
         return Call(m_assembler.blx(ARMRegisters::S1), Call::LinkableNear);
     }
 
+    Call nearTailCall()
+    {
+        return Call(m_assembler.jmp(), Call::LinkableNearTail);
+    }
+
     Call call(RegisterID target)
     {
         return Call(m_assembler.blx(target), Call::None);
@@ -1432,12 +1437,17 @@ public:
         UNREACHABLE_FOR_PLATFORM();
     }
 
+    static void repatchCall(CodeLocationCall call, CodeLocationLabel destination)
+    {
+        ARMAssembler::relinkCall(call.dataLocation(), destination.executableAddress());
+    }
+
+    static void repatchCall(CodeLocationCall call, FunctionPtr destination)
+    {
+        ARMAssembler::relinkCall(call.dataLocation(), destination.executableAddress());
+    }
+
 #if ENABLE(MASM_PROBE)
-    // Methods required by the MASM_PROBE mechanism as defined in
-    // AbstractMacroAssembler.h. 
-    static void printCPURegisters(CPUState&, int indentation = 0);
-    static void printRegister(CPUState&, RegisterID);
-    static void printRegister(CPUState&, FPRegisterID);
     void probe(ProbeFunction, void* arg1 = 0, void* arg2 = 0);
 #endif // ENABLE(MASM_PROBE)
 
@@ -1483,18 +1493,12 @@ private:
 
     static void linkCall(void* code, Call call, FunctionPtr function)
     {
-        ARMAssembler::linkCall(code, call.m_label, function.value());
+        if (call.isFlagSet(Call::Tail))
+            ARMAssembler::linkJump(code, call.m_label, function.value());
+        else
+            ARMAssembler::linkCall(code, call.m_label, function.value());
     }
 
-    static void repatchCall(CodeLocationCall call, CodeLocationLabel destination)
-    {
-        ARMAssembler::relinkCall(call.dataLocation(), destination.executableAddress());
-    }
-
-    static void repatchCall(CodeLocationCall call, FunctionPtr destination)
-    {
-        ARMAssembler::relinkCall(call.dataLocation(), destination.executableAddress());
-    }
 
 #if ENABLE(MASM_PROBE)
     inline TrustedImm32 trustedImm32FromPtr(void* ptr)

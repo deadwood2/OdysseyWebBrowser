@@ -28,8 +28,9 @@ elseif ("${PORT}" STREQUAL "GTK")
 endif ()
 
 if (WIN32)
-    # FIXME: Get DumpRenderTree working with CMake.
-    add_subdirectory(WinLauncher)
+    add_subdirectory(DumpRenderTree)
+    add_subdirectory(TestWebKitAPI)
+    add_subdirectory(MiniBrowser/win)
 endif ()
 
 if (ENABLE_WEBKIT2 AND ENABLE_API_TESTS)

@@ -36,6 +36,7 @@
 
 #if ENABLE(MEDIA_STREAM)
 
+#include "AudioSourceProvider.h"
 #include "MediaConstraints.h"
 #include "RealtimeMediaSourceCapabilities.h"
 #include <wtf/RefCounted.h>
@@ -44,7 +45,6 @@
 
 namespace WebCore {
 
-class AudioBus;
 class MediaConstraints;
 class MediaStreamPrivate;
 class RealtimeMediaSourceStates;
@@ -58,6 +58,7 @@ public:
         // Source state changes.
         virtual void sourceStopped() = 0;
         virtual void sourceMutedChanged() = 0;
+        virtual void sourceStatesChanged() = 0;
 
         // Observer state queries.
         virtual bool preventSourceFromStopping() = 0;
@@ -68,6 +69,9 @@ public:
     bool isAudioStreamSource() const { return type() == Audio; }
 
     const String& id() const { return m_id; }
+
+    const String& persistentID() const { return m_persistentID; }
+    virtual void setPersistentID(const String& persistentID) { m_persistentID = persistentID; }
 
     enum Type { None, Audio, Video };
     Type type() const { return m_type; }
@@ -80,6 +84,7 @@ public:
 
     virtual RefPtr<RealtimeMediaSourceCapabilities> capabilities() const = 0;
     virtual const RealtimeMediaSourceStates& states() = 0;
+    void statesDidChanged();
     
     bool stopped() const { return m_stopped; }
 
@@ -103,11 +108,14 @@ public:
 
     void reset();
 
+    virtual AudioSourceProvider* audioSourceProvider() { return nullptr; }
+    
 protected:
     RealtimeMediaSource(const String& id, Type, const String& name);
 
 private:
     String m_id;
+    String m_persistentID;
     Type m_type;
     String m_name;
     bool m_stopped;

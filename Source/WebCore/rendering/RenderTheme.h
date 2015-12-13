@@ -79,7 +79,7 @@ public:
     // This method is called to paint the widget as a background of the RenderObject.  A widget's foreground, e.g., the
     // text of a button, is always rendered by the engine itself.  The boolean return value indicates
     // whether the CSS border/background should also be painted.
-    bool paint(const RenderObject&, ControlStates*, const PaintInfo&, const LayoutRect&);
+    bool paint(const RenderBox&, ControlStates&, const PaintInfo&, const LayoutRect&);
     bool paintBorderOnly(const RenderBox&, const PaintInfo&, const LayoutRect&);
     bool paintDecorations(const RenderBox&, const PaintInfo&, const LayoutRect&);
 
@@ -106,7 +106,7 @@ public:
     // A method to obtain the baseline position for a "leaf" control.  This will only be used if a baseline
     // position cannot be determined by examining child content. Checkboxes and radio buttons are examples of
     // controls that need to do this.
-    virtual int baselinePosition(const RenderObject&) const;
+    virtual int baselinePosition(const RenderBox&) const;
 
     // A method for asking if a control is a container or not.  Leaf controls have to have some special behavior (like
     // the baseline position API above).
@@ -163,7 +163,7 @@ public:
     static Color focusRingColor();
     virtual Color platformFocusRingColor() const { return Color(0, 0, 0); }
     static void setCustomFocusRingColor(const Color&);
-    virtual int platformFocusRingMaxWidth() const { return 3; }
+    virtual int platformFocusRingWidth() const { return 3; }
 #if ENABLE(TOUCH_EVENTS)
     static Color tapHighlightColor();
     virtual Color platformTapHighlightColor() const { return RenderTheme::defaultTapHighlightColor; }
@@ -173,7 +173,7 @@ public:
     virtual double caretBlinkInterval() const { return 0.5; }
 
     // System fonts and colors for CSS.
-    void systemFont(CSSValueID, FontDescription&) const;
+    void systemFont(CSSValueID, FontCascadeDescription&) const;
     virtual Color systemColor(CSSValueID) const;
 
     virtual int minimumMenuListSize(RenderStyle&) const { return 0; }
@@ -209,7 +209,7 @@ public:
     virtual String formatMediaControlsRemainingTime(float currentTime, float duration) const;
     
     // Returns the media volume slider container's offset from the mute button.
-    virtual IntPoint volumeSliderOffsetFromMuteButton(RenderBox*, const IntSize&) const;
+    virtual LayoutPoint volumeSliderOffsetFromMuteButton(const RenderBox&, const LayoutSize&) const;
 #endif
 
 #if ENABLE(METER_ELEMENT)
@@ -255,8 +255,8 @@ public:
 #endif
 
 protected:
-    virtual FontDescription& cachedSystemFontDescription(CSSValueID systemFontID) const;
-    virtual void updateCachedSystemFontDescription(CSSValueID systemFontID, FontDescription&) const = 0;
+    virtual FontCascadeDescription& cachedSystemFontDescription(CSSValueID systemFontID) const;
+    virtual void updateCachedSystemFontDescription(CSSValueID systemFontID, FontCascadeDescription&) const = 0;
 
     // The platform selection color.
     virtual Color platformActiveSelectionBackgroundColor() const;
@@ -307,7 +307,7 @@ protected:
     virtual bool paintMenuListDecorations(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
 
     virtual void adjustMenuListButtonStyle(StyleResolver&, RenderStyle&, Element*) const;
-    virtual bool paintMenuListButtonDecorations(const RenderObject&, const PaintInfo&, const FloatRect&) { return true; }
+    virtual bool paintMenuListButtonDecorations(const RenderBox&, const PaintInfo&, const FloatRect&) { return true; }
 
     virtual bool paintPushButtonDecorations(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
     virtual bool paintSquareButtonDecorations(const RenderObject&, const PaintInfo&, const IntRect&) { return true; }
@@ -379,7 +379,7 @@ protected:
 #endif
 
 public:
-    void updateControlStatesForRenderer(const RenderObject&, ControlStates*) const;
+    void updateControlStatesForRenderer(const RenderBox&, ControlStates&) const;
     ControlStates::States extractControlStatesForRenderer(const RenderObject&) const;
     bool isActive(const RenderObject&) const;
     bool isChecked(const RenderObject&) const;

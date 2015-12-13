@@ -60,6 +60,7 @@ typedef void (*AXPostedNotificationCallback)(id element, NSString* notification,
 - (void)_accessibilitySetValue:(NSString *)value;
 - (void)_accessibilityActivate;
 - (UIAccessibilityTraits)_axSelectedTrait;
+- (NSString *)accessibilityARIACurrentStatus;
 @end
 
 @interface NSObject (WebAccessibilityObjectWrapperPrivate)
@@ -313,6 +314,9 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::stringAttributeValue(JSStringRe
 {
     if (JSStringIsEqualToUTF8CString(attribute, "AXPlaceholderValue"))
         return [[m_element accessibilityPlaceholderValue] createJSStringRef];
+    
+    if (JSStringIsEqualToUTF8CString(attribute, "AXARIACurrent"))
+        return [[m_element accessibilityARIACurrentStatus] createJSStringRef];
     
     return JSStringCreateWithCharacters(0, 0);
 }
@@ -699,6 +703,14 @@ PassRefPtr<AccessibilityUIElement> AccessibilityUIElement::verticalScrollbar() c
 void AccessibilityUIElement::scrollToMakeVisible()
 {
 }
+    
+void AccessibilityUIElement::scrollToGlobalPoint(int x, int y)
+{
+}
+    
+void AccessibilityUIElement::scrollToMakeVisibleWithSubFocus(int x, int y, int width, int height)
+{
+}
 
 JSRetainPtr<JSStringRef> AccessibilityUIElement::selectedTextRange()
 {
@@ -734,6 +746,14 @@ void AccessibilityUIElement::press()
 }
 
 void AccessibilityUIElement::setSelectedChild(AccessibilityUIElement* element) const
+{
+}
+
+void AccessibilityUIElement::setSelectedChildAtIndex(unsigned index) const
+{
+}
+
+void AccessibilityUIElement::removeSelectionAtIndex(unsigned index) const
 {
 }
 

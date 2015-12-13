@@ -383,7 +383,7 @@ void RenderFlowThread::repaintRectangleInRegions(const LayoutRect& repaintRect) 
     if (!shouldRepaint(repaintRect) || !hasValidRegionInfo())
         return;
 
-    LayoutStateDisabler layoutStateDisabler(&view()); // We can't use layout state to repaint, since the regions are somewhere else.
+    LayoutStateDisabler layoutStateDisabler(view()); // We can't use layout state to repaint, since the regions are somewhere else.
 
     for (auto& region : m_regionList)
         region->repaintFlowThreadContent(repaintRect);
@@ -1094,7 +1094,7 @@ bool RenderFlowThread::addForcedRegionBreak(const RenderBlock* block, LayoutUnit
         hasComputedAutoHeight = true;
 
         // Compute the region height pretending that the offsetBreakInCurrentRegion is the logicalHeight for the auto-height region.
-        LayoutUnit regionComputedAutoHeight = namedFlowFragment.constrainContentBoxLogicalHeightByMinMax(offsetBreakInCurrentRegion, -1);
+        LayoutUnit regionComputedAutoHeight = namedFlowFragment.constrainContentBoxLogicalHeightByMinMax(offsetBreakInCurrentRegion, Nullopt);
 
         // The new height of this region needs to be smaller than the initial value, the max height. A forced break is the only way to change the initial
         // height of an auto-height region besides content ending.

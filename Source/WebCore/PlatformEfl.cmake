@@ -1,4 +1,25 @@
 list(APPEND WebCore_INCLUDE_DIRECTORIES
+    "${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}"
+    "${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/inspector"
+    "${JAVASCRIPTCORE_DIR}"
+    "${JAVASCRIPTCORE_DIR}/ForwardingHeaders"
+    "${JAVASCRIPTCORE_DIR}/API"
+    "${JAVASCRIPTCORE_DIR}/assembler"
+    "${JAVASCRIPTCORE_DIR}/bytecode"
+    "${JAVASCRIPTCORE_DIR}/bytecompiler"
+    "${JAVASCRIPTCORE_DIR}/dfg"
+    "${JAVASCRIPTCORE_DIR}/disassembler"
+    "${JAVASCRIPTCORE_DIR}/heap"
+    "${JAVASCRIPTCORE_DIR}/debugger"
+    "${JAVASCRIPTCORE_DIR}/interpreter"
+    "${JAVASCRIPTCORE_DIR}/jit"
+    "${JAVASCRIPTCORE_DIR}/llint"
+    "${JAVASCRIPTCORE_DIR}/parser"
+    "${JAVASCRIPTCORE_DIR}/profiler"
+    "${JAVASCRIPTCORE_DIR}/runtime"
+    "${JAVASCRIPTCORE_DIR}/yarr"
+    "${THIRDPARTY_DIR}/ANGLE/"
+    "${THIRDPARTY_DIR}/ANGLE/include/KHR"
     "${WEBCORE_DIR}/editing/atk"
     "${WEBCORE_DIR}/page/efl"
     "${WEBCORE_DIR}/page/scrolling/coordinatedgraphics"
@@ -24,6 +45,8 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/network/soup"
     "${WEBCORE_DIR}/platform/text/efl"
     "${WEBCORE_DIR}/plugins/efl"
+    "${WTF_DIR}"
+    "${WTF_DIR}/wtf/efl"
 )
 
 list(APPEND WebCore_SOURCES
@@ -63,7 +86,6 @@ list(APPEND WebCore_SOURCES
 
     page/scrolling/coordinatedgraphics/ScrollingCoordinatorCoordinatedGraphics.cpp
     page/scrolling/coordinatedgraphics/ScrollingStateNodeCoordinatedGraphics.cpp
-    page/scrolling/coordinatedgraphics/ScrollingStateScrollingNodeCoordinatedGraphics.cpp
 
     platform/ContextMenuItemNone.cpp
     platform/ContextMenuNone.cpp
@@ -96,7 +118,6 @@ list(APPEND WebCore_SOURCES
     platform/efl/PlatformMouseEventEfl.cpp
     platform/efl/PlatformScreenEfl.cpp
     platform/efl/PlatformWheelEventEfl.cpp
-    platform/efl/RenderThemeEfl.cpp
     platform/efl/ScrollbarThemeEfl.cpp
     platform/efl/SharedTimerEfl.cpp
     platform/efl/SoundEfl.cpp
@@ -105,6 +126,9 @@ list(APPEND WebCore_SOURCES
 
     platform/geoclue/GeolocationProviderGeoclue1.cpp
     platform/geoclue/GeolocationProviderGeoclue2.cpp
+
+    platform/glib/KeyedDecoderGlib.cpp
+    platform/glib/KeyedEncoderGlib.cpp
 
     platform/graphics/ImageSource.cpp
     platform/graphics/PlatformDisplay.cpp
@@ -258,6 +282,8 @@ list(APPEND WebCore_SOURCES
     platform/text/enchant/TextCheckerEnchant.cpp
 
     platform/text/hyphen/HyphenationLibHyphen.cpp
+
+    rendering/RenderThemeEfl.cpp
 )
 
 if (USE_GEOCLUE2)
@@ -286,6 +312,14 @@ set(WebCore_USER_AGENT_SCRIPTS
     ${WEBCORE_DIR}/English.lproj/mediaControlsLocalizedStrings.js
     ${WEBCORE_DIR}/Modules/mediacontrols/mediaControlsBase.js
 )
+
+add_custom_command(
+    OUTPUT ${DERIVED_SOURCES_WEBCORE_DIR}/WebKitVersion.h
+    MAIN_DEPENDENCY ${WEBKIT_DIR}/scripts/generate-webkitversion.pl
+    DEPENDS ${WEBKIT_DIR}/mac/Configurations/Version.xcconfig
+    COMMAND ${PERL_EXECUTABLE} ${WEBKIT_DIR}/scripts/generate-webkitversion.pl --config ${WEBKIT_DIR}/mac/Configurations/Version.xcconfig --outputDir ${DERIVED_SOURCES_WEBCORE_DIR}
+    VERBATIM)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/WebKitVersion.h)
 
 set(WebCore_USER_AGENT_SCRIPTS_DEPENDENCIES ${WEBCORE_DIR}/platform/efl/RenderThemeEfl.cpp)
 
@@ -476,6 +510,12 @@ if (ENABLE_ACCESSIBILITY)
     )
     list(APPEND WebCore_LIBRARIES
         ${ATK_LIBRARIES}
+    )
+endif ()
+
+if (ENABLE_SMOOTH_SCROLLING)
+    list(APPEND WebCore_SOURCES
+        platform/ScrollAnimatorNone.cpp
     )
 endif ()
 

@@ -23,50 +23,41 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.TimelineRecordFrame = function(graphDataSource, record)
+WebInspector.TimelineRecordFrame = class TimelineRecordFrame extends WebInspector.Object
 {
-    // FIXME: Convert this to a WebInspector.Object subclass, and call super().
-    // WebInspector.Object.call(this);
+    constructor(graphDataSource, record)
+    {
+        super();
 
-    this._element = document.createElement("div");
-    this._element.classList.add("timeline-record-frame");
+        this._element = document.createElement("div");
+        this._element.classList.add("timeline-record-frame");
 
-    this._graphDataSource = graphDataSource;
-    this._record = record || null;
-};
-
-// FIXME: Move to a WebInspector.Object subclass and we can remove this.
-WebInspector.Object.deprecatedAddConstructorFunctions(WebInspector.TimelineRecordFrame);
-
-WebInspector.TimelineRecordFrame.MinimumHeightPixels = 3;
-WebInspector.TimelineRecordFrame.MaximumWidthPixels = 14;
-WebInspector.TimelineRecordFrame.MinimumWidthPixels = 4;
-
-WebInspector.TimelineRecordFrame.prototype = {
-    constructor: WebInspector.TimelineRecordFrame,
-    __proto__: WebInspector.Object.prototype,
+        this._graphDataSource = graphDataSource;
+        this._record = record || null;
+        this._filtered = false;
+    }
 
     // Public
 
     get element()
     {
         return this._element;
-    },
+    }
 
     get record()
     {
         return this._record;
-    },
+    }
 
     set record(record)
     {
         this._record = record;
-    },
+    }
 
     get selected()
     {
         return this._element.classList.contains("selected");
-    },
+    }
 
     set selected(x)
     {
@@ -74,7 +65,21 @@ WebInspector.TimelineRecordFrame.prototype = {
             return;
 
         this._element.classList.toggle("selected");
-    },
+    }
+
+    get filtered()
+    {
+        return this._filtered;
+    }
+
+    set filtered(x)
+    {
+        if (this._filtered === x)
+            return;
+
+        this._filtered = x;
+        this._element.classList.toggle("filtered");
+    }
 
     refresh(graphDataSource)
     {
@@ -97,7 +102,7 @@ WebInspector.TimelineRecordFrame.prototype = {
         this._updateChildElements(graphDataSource);
 
         return true;
-    },
+    }
 
     // Private
 
@@ -222,7 +227,7 @@ WebInspector.TimelineRecordFrame.prototype = {
         });
 
         return {frameDuration, segments};
-    },
+    }
 
     _updateChildElements(graphDataSource)
     {
@@ -262,7 +267,7 @@ WebInspector.TimelineRecordFrame.prototype = {
             element.classList.add("duration", segment.taskType);
             frameElement.insertBefore(element, frameElement.firstChild);
         }
-    },
+    }
 
     _updateElementPosition(element, newPosition, property)
     {
@@ -274,3 +279,7 @@ WebInspector.TimelineRecordFrame.prototype = {
             element.style[property] = newPosition + "%";
     }
 };
+
+WebInspector.TimelineRecordFrame.MinimumHeightPixels = 3;
+WebInspector.TimelineRecordFrame.MaximumWidthPixels = 14;
+WebInspector.TimelineRecordFrame.MinimumWidthPixels = 4;

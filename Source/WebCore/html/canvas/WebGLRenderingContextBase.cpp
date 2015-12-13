@@ -2744,13 +2744,11 @@ void WebGLRenderingContextBase::linkProgram(WebGLProgram* program, ExceptionCode
     UNUSED_PARAM(ec);
     if (isContextLostOrPending() || !validateWebGLObject("linkProgram", program))
         return;
-    if (!isGLES2Compliant()) {
-        WebGLShader* vertexShader = program->getAttachedShader(GraphicsContext3D::VERTEX_SHADER);
-        WebGLShader* fragmentShader = program->getAttachedShader(GraphicsContext3D::FRAGMENT_SHADER);
-        if (!vertexShader || !vertexShader->isValid() || !fragmentShader || !fragmentShader->isValid() || !m_context->precisionsMatch(objectOrZero(vertexShader), objectOrZero(fragmentShader)) || !m_context->checkVaryingsPacking(objectOrZero(vertexShader), objectOrZero(fragmentShader))) {
-            program->setLinkStatus(false);
-            return;
-        }
+    WebGLShader* vertexShader = program->getAttachedShader(GraphicsContext3D::VERTEX_SHADER);
+    WebGLShader* fragmentShader = program->getAttachedShader(GraphicsContext3D::FRAGMENT_SHADER);
+    if (!vertexShader || !vertexShader->isValid() || !fragmentShader || !fragmentShader->isValid() || !m_context->precisionsMatch(objectOrZero(vertexShader), objectOrZero(fragmentShader)) || !m_context->checkVaryingsPacking(objectOrZero(vertexShader), objectOrZero(fragmentShader))) {
+        program->setLinkStatus(false);
+        return;
     }
 
     m_context->linkProgram(objectOrZero(program));
@@ -3185,7 +3183,7 @@ PassRefPtr<Image> WebGLRenderingContextBase::drawImageIntoBuffer(Image* image, i
 
     FloatRect srcRect(FloatPoint(), image->size());
     FloatRect destRect(FloatPoint(), size);
-    buf->context()->drawImage(image, ColorSpaceDeviceRGB, destRect, srcRect);
+    buf->context().drawImage(image, ColorSpaceDeviceRGB, destRect, srcRect);
     return buf->copyImage(ImageBuffer::fastCopyImageMode());
 }
 
@@ -3219,10 +3217,12 @@ void WebGLRenderingContextBase::texImage2D(GC3Denum target, GC3Dint level, GC3De
     //
     // FIXME: restriction of (RGB || RGBA)/UNSIGNED_BYTE should be lifted when
     // ImageBuffer::copyToPlatformTexture implementations are fully functional.
-    if (GraphicsContext3D::TEXTURE_2D == target && texture && type == texture->getType(target, level)
-        && (format == GraphicsContext3D::RGB || format == GraphicsContext3D::RGBA) && type == GraphicsContext3D::UNSIGNED_BYTE) {
+    if (texture
+        && (format == GraphicsContext3D::RGB || format == GraphicsContext3D::RGBA)
+        && type == GraphicsContext3D::UNSIGNED_BYTE
+        && (texture->getType(target, level) == GraphicsContext3D::UNSIGNED_BYTE || !texture->isValid(target, level))) {
         ImageBuffer* buffer = canvas->buffer();
-        if (buffer && buffer->copyToPlatformTexture(*m_context.get(), texture->object(), internalformat, m_unpackPremultiplyAlpha, m_unpackFlipY)) {
+        if (buffer && buffer->copyToPlatformTexture(*m_context.get(), target, texture->object(), internalformat, m_unpackPremultiplyAlpha, m_unpackFlipY)) {
             texture->setLevelInfo(target, level, internalformat, canvas->width(), canvas->height(), type);
             return;
         }
@@ -4035,10 +4035,10 @@ void WebGLRenderingContextBase::checkTextureCompleteness(const char* functionNam
         if ((m_textureUnits[ii].texture2DBinding && m_textureUnits[ii].texture2DBinding->needToUseBlackTexture(extensions))
             || (m_textureUnits[ii].textureCubeMapBinding && m_textureUnits[ii].textureCubeMapBinding->needToUseBlackTexture(extensions))) {
             if (ii != m_activeTextureUnit) {
-                m_context->activeTexture(ii);
+                m_context->activeTexture(ii + GraphicsContext3D::TEXTURE0);
                 resetActiveUnit = true;
             } else if (resetActiveUnit) {
-                m_context->activeTexture(ii);
+                m_context->activeTexture(ii + GraphicsContext3D::TEXTURE0);
                 resetActiveUnit = false;
             }
             WebGLTexture* tex2D;
@@ -4061,7 +4061,7 @@ void WebGLRenderingContextBase::checkTextureCompleteness(const char* functionNam
         }
     }
     if (resetActiveUnit)
-        m_context->activeTexture(m_activeTextureUnit);
+        m_context->activeTexture(m_activeTextureUnit + GraphicsContext3D::TEXTURE0);
 }
 
 void WebGLRenderingContextBase::createFallbackBlackTextures1x1()
@@ -4880,7 +4880,8 @@ ImageBuffer* WebGLRenderingContextBase::LRUImageBufferCache::imageBuffer(const I
         return buf;
     }
 
-    std::unique_ptr<ImageBuffer> temp = ImageBuffer::create(size, 1);
+    // FIXME (149423): Should this ImageBuffer be unconditionally unaccelerated?
+    std::unique_ptr<ImageBuffer> temp = ImageBuffer::create(size, Unaccelerated);
     if (!temp)
         return nullptr;
     i = std::min(m_capacity - 1, i);

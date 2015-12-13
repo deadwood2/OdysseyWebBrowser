@@ -53,7 +53,7 @@ PassRefPtr<WebKitNamedFlow> DOMNamedFlowCollection::item(unsigned long index) co
     return *it;
 }
 
-PassRefPtr<WebKitNamedFlow> DOMNamedFlowCollection::namedItem(const AtomicString& name) const
+RefPtr<WebKitNamedFlow> DOMNamedFlowCollection::namedItem(const AtomicString& name) const
 {
     DOMNamedFlowSet::const_iterator it = m_namedFlows.find<String, DOMNamedFlowHashTranslator>(name);
     if (it != m_namedFlows.end())
@@ -61,9 +61,10 @@ PassRefPtr<WebKitNamedFlow> DOMNamedFlowCollection::namedItem(const AtomicString
     return nullptr;
 }
 
-bool DOMNamedFlowCollection::hasNamedItem(const AtomicString& name) const
+Vector<AtomicString> DOMNamedFlowCollection::supportedPropertyNames()
 {
-    return namedItem(name);
+    // FIXME: Should be implemented.
+    return Vector<AtomicString>();
 }
 
 // The HashFunctions object used by the HashSet to compare between RefPtr<NamedFlows>.

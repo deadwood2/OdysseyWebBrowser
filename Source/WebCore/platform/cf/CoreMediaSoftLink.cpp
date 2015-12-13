@@ -79,6 +79,7 @@ SOFT_LINK_FUNCTION_FOR_SOURCE(WebCore, CoreMedia, CMSampleBufferCreateCopy, OSSt
 SOFT_LINK_FUNCTION_FOR_SOURCE(WebCore, CoreMedia, CMSampleBufferCreateCopyWithNewTiming, OSStatus, (CFAllocatorRef allocator, CMSampleBufferRef originalSBuf, CMItemCount numSampleTimingEntries, const CMSampleTimingInfo *sampleTimingArray, CMSampleBufferRef *sBufCopyOut), (allocator, originalSBuf, numSampleTimingEntries, sampleTimingArray, sBufCopyOut))
 SOFT_LINK_FUNCTION_FOR_SOURCE(WebCore, CoreMedia, CMSampleBufferGetDecodeTimeStamp, CMTime, (CMSampleBufferRef sbuf), (sbuf))
 SOFT_LINK_FUNCTION_FOR_SOURCE(WebCore, CoreMedia, CMSampleBufferGetDuration, CMTime, (CMSampleBufferRef sbuf), (sbuf))
+SOFT_LINK_FUNCTION_FOR_SOURCE(WebCore, CoreMedia, CMSampleBufferGetImageBuffer, CVImageBufferRef, (CMSampleBufferRef sbuf), (sbuf))
 SOFT_LINK_FUNCTION_FOR_SOURCE(WebCore, CoreMedia, CMSampleBufferGetPresentationTimeStamp, CMTime, (CMSampleBufferRef sbuf), (sbuf))
 SOFT_LINK_FUNCTION_FOR_SOURCE(WebCore, CoreMedia, CMSampleBufferGetSampleAttachmentsArray, CFArrayRef, (CMSampleBufferRef sbuf, Boolean createIfNecessary), (sbuf, createIfNecessary))
 SOFT_LINK_FUNCTION_FOR_SOURCE(WebCore, CoreMedia, CMSampleBufferGetSampleTimingInfoArray, OSStatus, (CMSampleBufferRef sbuf, CMItemCount timingArrayEntries, CMSampleTimingInfo *timingArrayOut, CMItemCount *timingArrayEntriesNeededOut), (sbuf, timingArrayEntries, timingArrayOut, timingArrayEntriesNeededOut))
@@ -100,6 +101,9 @@ SOFT_LINK_CONSTANT_FOR_SOURCE(WebCore, CoreMedia, kCMSampleBufferAttachmentKey_E
 SOFT_LINK_CONSTANT_FOR_SOURCE(WebCore, CoreMedia, kCMSampleBufferAttachmentKey_ResetDecoderBeforeDecoding, CFStringRef)
 SOFT_LINK_CONSTANT_FOR_SOURCE(WebCore, CoreMedia, kCMTimebaseNotification_EffectiveRateChanged, CFStringRef)
 SOFT_LINK_CONSTANT_FOR_SOURCE(WebCore, CoreMedia, kCMTimebaseNotification_TimeJumped, CFStringRef)
+SOFT_LINK_FUNCTION_FOR_SOURCE(WebCore, CoreMedia, CMAudioFormatDescriptionGetStreamBasicDescription, const AudioStreamBasicDescription *, (CMAudioFormatDescriptionRef desc), (desc))
+SOFT_LINK_FUNCTION_FOR_SOURCE(WebCore, CoreMedia, CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer, OSStatus, (CMSampleBufferRef sbuf, size_t *bufferListSizeNeededOut, AudioBufferList *bufferListOut, size_t bufferListSize, CFAllocatorRef bbufStructAllocator, CFAllocatorRef bbufMemoryAllocator, uint32_t flags, CMBlockBufferRef *blockBufferOut), (sbuf, bufferListSizeNeededOut, bufferListOut, bufferListSize, bbufStructAllocator, bbufMemoryAllocator, flags, blockBufferOut))
+SOFT_LINK_FUNCTION_FOR_SOURCE(WebCore, CoreMedia, CMSampleBufferGetNumSamples, CMItemCount, (CMSampleBufferRef sbuf), (sbuf))
 #endif // PLATFORM(COCOA)
 
 #if PLATFORM(IOS)

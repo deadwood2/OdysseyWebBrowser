@@ -48,7 +48,6 @@
 #include "JITExceptions.h"
 #include "JSCInlines.h"
 #include "JSLexicalEnvironment.h"
-#include "JSNameScope.h"
 #include "ObjectConstructor.h"
 #include "Repatch.h"
 #include "ScopedArguments.h"
@@ -1109,6 +1108,44 @@ JSCell* JIT_OPERATION operationMakeRope3(ExecState* exec, JSString* a, JSString*
     return JSRopeString::create(vm, a, b, c);
 }
 
+JSCell* JIT_OPERATION operationStrCat2(ExecState* exec, EncodedJSValue a, EncodedJSValue b)
+{
+    VM& vm = exec->vm();
+    NativeCallFrameTracer tracer(&vm, exec);
+
+    JSString* str1 = JSValue::decode(a).toString(exec);
+    ASSERT(!exec->hadException()); // Impossible, since we must have been given primitives.
+    JSString* str2 = JSValue::decode(b).toString(exec);
+    ASSERT(!exec->hadException());
+
+    if (sumOverflows<int32_t>(str1->length(), str2->length())) {
+        throwOutOfMemoryError(exec);
+        return nullptr;
+    }
+
+    return JSRopeString::create(vm, str1, str2);
+}
+    
+JSCell* JIT_OPERATION operationStrCat3(ExecState* exec, EncodedJSValue a, EncodedJSValue b, EncodedJSValue c)
+{
+    VM& vm = exec->vm();
+    NativeCallFrameTracer tracer(&vm, exec);
+
+    JSString* str1 = JSValue::decode(a).toString(exec);
+    ASSERT(!exec->hadException()); // Impossible, since we must have been given primitives.
+    JSString* str2 = JSValue::decode(b).toString(exec);
+    ASSERT(!exec->hadException());
+    JSString* str3 = JSValue::decode(c).toString(exec);
+    ASSERT(!exec->hadException());
+
+    if (sumOverflows<int32_t>(str1->length(), str2->length(), str3->length())) {
+        throwOutOfMemoryError(exec);
+        return nullptr;
+    }
+
+    return JSRopeString::create(vm, str1, str2, str3);
+}
+
 char* JIT_OPERATION operationFindSwitchImmTargetForDouble(
     ExecState* exec, EncodedJSValue encodedValue, size_t tableIndex)
 {
@@ -1205,15 +1242,6 @@ void JIT_OPERATION operationProcessTypeProfilerLogDFG(ExecState* exec)
     exec->vm().typeProfilerLog()->processLogEntries(ASCIILiteral("Log Full, called from inside DFG."));
 }
 
-size_t JIT_OPERATION dfgConvertJSValueToInt32(ExecState* exec, EncodedJSValue value)
-{
-    VM* vm = &exec->vm();
-    NativeCallFrameTracer tracer(vm, exec);
-    
-    // toInt32/toUInt32 return the same value; we want the value zero extended to fill the register.
-    return JSValue::decode(value).toUInt32(exec);
-}
-
 void JIT_OPERATION debugOperationPrintSpeculationFailure(ExecState* exec, void* debugInfoRaw, void* scratch)
 {
     VM* vm = &exec->vm();
@@ -1278,7 +1306,7 @@ extern "C" void JIT_OPERATION triggerReoptimizationNow(CodeBlock* codeBlock, OSR
     ASSERT(JITCode::isOptimizingJIT(optimizedCodeBlock->jitType()));
     
     bool didTryToEnterIntoInlinedLoops = false;
-    for (InlineCallFrame* inlineCallFrame = exit->m_codeOrigin.inlineCallFrame; inlineCallFrame; inlineCallFrame = inlineCallFrame->caller.inlineCallFrame) {
+    for (InlineCallFrame* inlineCallFrame = exit->m_codeOrigin.inlineCallFrame; inlineCallFrame; inlineCallFrame = inlineCallFrame->directCaller.inlineCallFrame) {
         if (inlineCallFrame->executable->didTryToEnterInLoop()) {
             didTryToEnterIntoInlinedLoops = true;
             break;

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
+ * Copyright (C) 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -44,6 +45,7 @@
 namespace Inspector {
 class BackendDispatcher;
 class FrontendChannel;
+class FrontendRouter;
 class InspectorAgent;
 class InspectorObject;
 
@@ -86,7 +88,6 @@ public:
     Page& inspectedPage() const;
 
     WEBCORE_EXPORT void show();
-    WEBCORE_EXPORT void close();
 
     WEBCORE_EXPORT void setInspectorFrontendClient(InspectorFrontendClient*);
     bool hasInspectorFrontendClient() const;
@@ -94,17 +95,13 @@ public:
 
     WEBCORE_EXPORT void dispatchMessageFromFrontend(const String& message);
 
-    bool hasFrontend() const { return !!m_frontendChannel; }
     bool hasLocalFrontend() const;
     bool hasRemoteFrontend() const;
 
-    WEBCORE_EXPORT void connectFrontend(Inspector::FrontendChannel*, bool isAutomaticInspection);
-    WEBCORE_EXPORT void disconnectFrontend(Inspector::DisconnectReason);
+    WEBCORE_EXPORT void connectFrontend(Inspector::FrontendChannel*, bool isAutomaticInspection = false);
+    WEBCORE_EXPORT void disconnectFrontend(Inspector::FrontendChannel*);
+    WEBCORE_EXPORT void disconnectAllFrontends();
     void setProcessId(long);
-
-#if ENABLE(REMOTE_INSPECTOR)
-    void setHasRemoteFrontend(bool hasRemote) { m_hasRemoteFrontend = hasRemote; }
-#endif
 
     void inspect(Node*);
     WEBCORE_EXPORT void drawHighlight(GraphicsContext&) const;
@@ -123,8 +120,6 @@ public:
     WEBCORE_EXPORT bool profilerEnabled() const;
     WEBCORE_EXPORT void setProfilerEnabled(bool);
 
-    void resume();
-
     InspectorClient* inspectorClient() const { return m_inspectorClient; }
     InspectorPageAgent* pageAgent() const { return m_pageAgent; }
 
@@ -142,34 +137,30 @@ public:
 private:
     friend class InspectorInstrumentation;
 
-    RefPtr<InstrumentingAgents> m_instrumentingAgents;
+    Ref<InstrumentingAgents> m_instrumentingAgents;
     std::unique_ptr<WebInjectedScriptManager> m_injectedScriptManager;
+    Ref<Inspector::FrontendRouter> m_frontendRouter;
+    Ref<Inspector::BackendDispatcher> m_backendDispatcher;
     std::unique_ptr<InspectorOverlay> m_overlay;
-
-    Inspector::InspectorAgent* m_inspectorAgent;
-    InspectorDOMAgent* m_domAgent;
-    InspectorResourceAgent* m_resourceAgent;
-    InspectorPageAgent* m_pageAgent;
-    PageDebuggerAgent* m_debuggerAgent;
-    InspectorDOMDebuggerAgent* m_domDebuggerAgent;
-    InspectorTimelineAgent* m_timelineAgent;
-
-    RefPtr<Inspector::BackendDispatcher> m_backendDispatcher;
-    Inspector::FrontendChannel* m_frontendChannel;
     Ref<WTF::Stopwatch> m_executionStopwatch;
+    Inspector::AgentRegistry m_agents;
+
     Page& m_page;
     InspectorClient* m_inspectorClient;
-    InspectorFrontendClient* m_inspectorFrontendClient;
-    Inspector::AgentRegistry m_agents;
-    Vector<InspectorInstrumentationCookie, 2> m_injectedScriptInstrumentationCookies;
-    bool m_isUnderTest;
-    bool m_isAutomaticInspection;
+    InspectorFrontendClient* m_inspectorFrontendClient { nullptr };
 
-#if ENABLE(REMOTE_INSPECTOR)
-    bool m_hasRemoteFrontend;
-#endif
+    Inspector::InspectorAgent* m_inspectorAgent { nullptr };
+    InspectorDOMAgent* m_domAgent { nullptr };
+    InspectorResourceAgent* m_resourceAgent { nullptr };
+    InspectorPageAgent* m_pageAgent { nullptr };
+    InspectorDOMDebuggerAgent* m_domDebuggerAgent { nullptr };
+    InspectorTimelineAgent* m_timelineAgent { nullptr };
+
+    Vector<InspectorInstrumentationCookie, 2> m_injectedScriptInstrumentationCookies;
+    bool m_isUnderTest { false };
+    bool m_isAutomaticInspection { false };
 };
 
-}
+} // namespace WebCore
 
 #endif // !defined(InspectorController_h)

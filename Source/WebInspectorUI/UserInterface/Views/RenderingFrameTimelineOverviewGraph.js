@@ -23,34 +23,28 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.RenderingFrameTimelineOverviewGraph = function(timeline, timelineOverview)
+WebInspector.RenderingFrameTimelineOverviewGraph = class RenderingFrameTimelineOverviewGraph extends WebInspector.TimelineOverviewGraph
 {
-    WebInspector.TimelineOverviewGraph.call(this, timeline, timelineOverview);
+    constructor(timeline, timelineOverview)
+    {
+        super(timelineOverview);
 
-    this.element.classList.add(WebInspector.RenderingFrameTimelineOverviewGraph.StyleClassName);
-    this.element.addEventListener("click", this._mouseClicked.bind(this));
+        this.element.classList.add("rendering-frame");
+        this.element.addEventListener("click", this._mouseClicked.bind(this));
 
-    this._renderingFrameTimeline = timeline;
-    this._renderingFrameTimeline.addEventListener(WebInspector.Timeline.Event.RecordAdded, this._timelineRecordAdded, this);
+        this._renderingFrameTimeline = timeline;
+        this._renderingFrameTimeline.addEventListener(WebInspector.Timeline.Event.RecordAdded, this._timelineRecordAdded, this);
 
-    this._selectedFrameMarker = document.createElement("div");
-    this._selectedFrameMarker.className = "frame-marker";
+        this._selectedFrameMarker = document.createElement("div");
+        this._selectedFrameMarker.classList.add("frame-marker");
 
-    this._timelineRecordFrames = [];
-    this._selectedTimelineRecordFrame = null;
-    this._graphHeightSeconds = NaN;
-    this._framesPerSecondDividerMap = new Map;
+        this._timelineRecordFrames = [];
+        this._selectedTimelineRecordFrame = null;
+        this._graphHeightSeconds = NaN;
+        this._framesPerSecondDividerMap = new Map;
 
-    this.reset();
-};
-
-WebInspector.RenderingFrameTimelineOverviewGraph.StyleClassName = "rendering-frame";
-WebInspector.RenderingFrameTimelineOverviewGraph.MaximumGraphHeightSeconds = 0.037;
-WebInspector.RenderingFrameTimelineOverviewGraph.MinimumGraphHeightSeconds = 0.0185;
-
-WebInspector.RenderingFrameTimelineOverviewGraph.prototype = {
-    constructor: WebInspector.RenderingFrameTimelineOverviewGraph,
-    __proto__: WebInspector.TimelineOverviewGraph.prototype,
+        this.reset();
+    }
 
     // Public
 
@@ -67,22 +61,41 @@ WebInspector.RenderingFrameTimelineOverviewGraph.prototype = {
         this._graphHeightSeconds = Math.min(this._graphHeightSeconds, WebInspector.RenderingFrameTimelineOverviewGraph.MaximumGraphHeightSeconds);
         this._graphHeightSeconds = Math.max(this._graphHeightSeconds, WebInspector.RenderingFrameTimelineOverviewGraph.MinimumGraphHeightSeconds);
         return this._graphHeightSeconds;
-    },
+    }
 
     reset()
     {
-        WebInspector.TimelineOverviewGraph.prototype.reset.call(this);
+        super.reset();
 
         this.element.removeChildren();
 
         this.selectedRecord = null;
 
         this._framesPerSecondDividerMap.clear();
-    },
+    }
+
+    recordWasFiltered(record, filtered)
+    {
+        super.recordWasFiltered(record, filtered);
+
+        if (!(record instanceof WebInspector.RenderingFrameTimelineRecord))
+            return;
+
+        record[WebInspector.RenderingFrameTimelineOverviewGraph.RecordWasFilteredSymbol] = filtered;
+
+        // Set filtered style if the frame element is within the visible range.
+        const startIndex = Math.floor(this.startTime);
+        const endIndex = Math.min(Math.floor(this.endTime), this._renderingFrameTimeline.records.length - 1);
+        if (record.frameIndex < startIndex || record.frameIndex > endIndex)
+            return;
+
+        const frameIndex = record.frameIndex - startIndex;
+        this._timelineRecordFrames[frameIndex].filtered = filtered;
+    }
 
     updateLayout()
     {
-        WebInspector.TimelineOverviewGraph.prototype.updateLayout.call(this);
+        super.updateLayout();
 
         if (!this._renderingFrameTimeline.records.length)
             return;
@@ -104,6 +117,7 @@ WebInspector.RenderingFrameTimelineOverviewGraph.prototype = {
             if (!timelineRecordFrame.element.parentNode)
                 this.element.appendChild(timelineRecordFrame.element);
 
+            timelineRecordFrame.filtered = record[WebInspector.RenderingFrameTimelineOverviewGraph.RecordWasFilteredSymbol] || false;
             ++recordFrameIndex;
         }
 
@@ -115,7 +129,7 @@ WebInspector.RenderingFrameTimelineOverviewGraph.prototype = {
 
         this._updateDividers();
         this._updateFrameMarker();
-    },
+    }
 
     // Protected
 
@@ -142,7 +156,7 @@ WebInspector.RenderingFrameTimelineOverviewGraph.prototype = {
         }
 
         this._updateFrameMarker();
-    },
+    }
 
     // Private
 
@@ -151,7 +165,7 @@ WebInspector.RenderingFrameTimelineOverviewGraph.prototype = {
         this._graphHeightSeconds = NaN;
 
         this.needsLayout();
-    },
+    }
 
     _updateDividers()
     {
@@ -187,7 +201,7 @@ WebInspector.RenderingFrameTimelineOverviewGraph.prototype = {
 
         createDividerAtPosition.call(this, 60);
         createDividerAtPosition.call(this, 30);
-    },
+    }
 
     _updateFrameMarker()
     {
@@ -226,9 +240,9 @@ WebInspector.RenderingFrameTimelineOverviewGraph.prototype = {
         this._selectedTimelineRecordFrame.selected = true;
 
         this.dispatchSelectedRecordChangedEvent();
-    },
+    }
 
-    _mouseClicked: function(event)
+    _mouseClicked(event)
     {
         var position = event.pageX - this.element.getBoundingClientRect().left;
         var frameIndex = Math.floor(position * this.timelineOverview.secondsPerPixel + this.startTime);
@@ -236,6 +250,9 @@ WebInspector.RenderingFrameTimelineOverviewGraph.prototype = {
             return;
 
         var newSelectedRecord = this._renderingFrameTimeline.records[frameIndex];
+        if (newSelectedRecord[WebInspector.RenderingFrameTimelineOverviewGraph.RecordWasFilteredSymbol])
+            return;
+
         // Clicking the selected frame causes it to be deselected.
         if (this.selectedRecord === newSelectedRecord)
             newSelectedRecord = null;
@@ -251,3 +268,8 @@ WebInspector.RenderingFrameTimelineOverviewGraph.prototype = {
         this.timelineOverview.selectionDuration = 1;
     }
 };
+
+WebInspector.RenderingFrameTimelineOverviewGraph.RecordWasFilteredSymbol = Symbol("rendering-frame-overview-graph-record-was-filtered");
+
+WebInspector.RenderingFrameTimelineOverviewGraph.MaximumGraphHeightSeconds = 0.037;
+WebInspector.RenderingFrameTimelineOverviewGraph.MinimumGraphHeightSeconds = 0.0185;

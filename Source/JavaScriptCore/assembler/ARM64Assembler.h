@@ -469,8 +469,8 @@ namespace ARM64Registers {
         q31,
     } FPRegisterID;
 
-    static bool isSp(RegisterID reg) { return reg == sp; }
-    static bool isZr(RegisterID reg) { return reg == zr; }
+    static constexpr bool isSp(RegisterID reg) { return reg == sp; }
+    static constexpr bool isZr(RegisterID reg) { return reg == zr; }
 }
 
 class ARM64Assembler {
@@ -478,15 +478,15 @@ public:
     typedef ARM64Registers::RegisterID RegisterID;
     typedef ARM64Registers::FPRegisterID FPRegisterID;
     
-    static RegisterID firstRegister() { return ARM64Registers::x0; }
-    static RegisterID lastRegister() { return ARM64Registers::sp; }
+    static constexpr RegisterID firstRegister() { return ARM64Registers::x0; }
+    static constexpr RegisterID lastRegister() { return ARM64Registers::sp; }
     
-    static FPRegisterID firstFPRegister() { return ARM64Registers::q0; }
-    static FPRegisterID lastFPRegister() { return ARM64Registers::q31; }
+    static constexpr FPRegisterID firstFPRegister() { return ARM64Registers::q0; }
+    static constexpr FPRegisterID lastFPRegister() { return ARM64Registers::q31; }
 
 private:
-    static bool isSp(RegisterID reg) { return ARM64Registers::isSp(reg); }
-    static bool isZr(RegisterID reg) { return ARM64Registers::isZr(reg); }
+    static constexpr bool isSp(RegisterID reg) { return ARM64Registers::isSp(reg); }
+    static constexpr bool isZr(RegisterID reg) { return ARM64Registers::isZr(reg); }
 
 public:
     ARM64Assembler()
@@ -2851,7 +2851,7 @@ public:
 
     unsigned debugOffset() { return m_buffer.debugOffset(); }
 
-#if OS(LINUX) && COMPILER(GCC)
+#if OS(LINUX) && COMPILER(GCC_OR_CLANG)
     static inline void linuxPageFlush(uintptr_t begin, uintptr_t end)
     {
         __builtin___clear_cache(reinterpret_cast<void*>(begin), reinterpret_cast<void*>(end));

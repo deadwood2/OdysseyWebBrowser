@@ -39,6 +39,7 @@
 #include <WebCore/GraphicsContext.h>
 #include <WebCore/HWndDC.h>
 #include <WebCore/Page.h>
+#include <WebCore/PlatformCALayerClient.h>
 #include <WebCore/PlatformCALayerWin.h>
 #include <WebCore/TextRun.h>
 #include <WebKitSystemInterface/WebKitSystemInterface.h>
@@ -504,7 +505,7 @@ void FullscreenVideoController::draw()
     m_timeSlider.draw(context);
 
     // Draw the text strings
-    FontDescription desc;
+    FontCascadeDescription desc;
 
     NONCLIENTMETRICS metrics;
     metrics.cbSize = sizeof(metrics);

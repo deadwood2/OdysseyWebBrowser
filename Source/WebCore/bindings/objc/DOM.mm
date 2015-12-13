@@ -311,10 +311,6 @@ Class kitClass(WebCore::Node* impl)
             return [DOMText class];
         case WebCore::Node::CDATA_SECTION_NODE:
             return [DOMCDATASection class];
-        case WebCore::Node::ENTITY_REFERENCE_NODE:
-            return [DOMEntityReference class];
-        case WebCore::Node::ENTITY_NODE:
-            return [DOMEntity class];
         case WebCore::Node::PROCESSING_INSTRUCTION_NODE:
             return [DOMProcessingInstruction class];
         case WebCore::Node::COMMENT_NODE:
@@ -327,10 +323,6 @@ Class kitClass(WebCore::Node* impl)
             return [DOMDocumentType class];
         case WebCore::Node::DOCUMENT_FRAGMENT_NODE:
             return [DOMDocumentFragment class];
-        case WebCore::Node::XPATH_NAMESPACE_NODE:
-            // FIXME: Create an XPath objective C wrapper
-            // See http://bugs.webkit.org/show_bug.cgi?id=8755
-            return nil;
     }
     ASSERT_NOT_REACHED();
     return nil;
@@ -595,28 +587,44 @@ id <DOMEventTarget> kit(WebCore::EventTarget* eventTarget)
 
     Ref<Range> range = rangeOfContents(*coreNode);
 
-    const float margin = 4;
-    RefPtr<TextIndicator> textIndicator = TextIndicator::createWithRange(range, TextIndicatorPresentationTransition::None, margin);
+    const float margin = 4 / coreNode->document().page()->pageScaleFactor();
+    RefPtr<TextIndicator> textIndicator = TextIndicator::createWithRange(range, TextIndicatorOptionTightlyFitContent |
+        TextIndicatorOptionRespectTextColor |
+        TextIndicatorOptionPaintBackgrounds |
+        TextIndicatorOptionUseBoundingRectAndPaintAllContentForComplexRanges |
+        TextIndicatorOptionIncludeMarginIfRangeMatchesSelection,
+        TextIndicatorPresentationTransition::None, FloatSize(margin, margin));
 
-    if (!textIndicator)
-        return;
-
-    if (Image* image = textIndicator->contentImage())
-        *cgImage = (CGImageRef)CFAutorelease(CGImageRetain(image->getCGImageRef()));
+    if (textIndicator) {
+        if (Image* image = textIndicator->contentImage())
+            *cgImage = (CGImageRef)CFAutorelease(CGImageRetain(image->getCGImageRef()));
+    }
 
     RetainPtr<NSMutableArray> rectArray = adoptNS([[NSMutableArray alloc] init]);
 
-    if (*cgImage) {
-        FloatPoint origin = textIndicator->textBoundingRectInRootViewCoordinates().location();
-        for (const FloatRect& rect : textIndicator->textRectsInBoundingRectCoordinates()) {
-            CGRect cgRect = rect;
-            cgRect.origin.x += origin.x();
-            cgRect.origin.y += origin.y();
-            cgRect = coreNode->document().frame()->view()->contentsToWindow(enclosingIntRect(cgRect));
+    if (!*cgImage) {
+        if (RenderObject* renderer = coreNode->renderer()) {
+            FloatRect boundingBox;
+            if (renderer->isRenderImage())
+                boundingBox = downcast<RenderImage>(*renderer).absoluteContentQuad().enclosingBoundingBox();
+            else
+                boundingBox = renderer->absoluteBoundingBoxRect();
+
+            boundingBox.inflate(margin);
+
+            CGRect cgRect = coreNode->document().frame()->view()->contentsToWindow(enclosingIntRect(boundingBox));
             [rectArray addObject:[NSValue value:&cgRect withObjCType:@encode(CGRect)]];
+
+            *rects = rectArray.autorelease();
         }
-    } else {
-        CGRect cgRect = CGRectInset(range->boundingRect(), -margin, -margin);
+        return;
+    }
+
+    FloatPoint origin = textIndicator->textBoundingRectInRootViewCoordinates().location();
+    for (const FloatRect& rect : textIndicator->textRectsInBoundingRectCoordinates()) {
+        CGRect cgRect = rect;
+        cgRect.origin.x += origin.x();
+        cgRect.origin.y += origin.y();
         cgRect = coreNode->document().frame()->view()->contentsToWindow(enclosingIntRect(cgRect));
         [rectArray addObject:[NSValue value:&cgRect withObjCType:@encode(CGRect)]];
     }
@@ -636,7 +644,7 @@ id <DOMEventTarget> kit(WebCore::EventTarget* eventTarget)
 {
     // FIXME: The call to updateLayoutIgnorePendingStylesheets should be moved into WebCore::Range.
     core(self)->ownerDocument().updateLayoutIgnorePendingStylesheets();
-    return core(self)->boundingBox();
+    return core(self)->absoluteBoundingBox();
 }
 
 #if !PLATFORM(IOS)
@@ -669,7 +677,7 @@ id <DOMEventTarget> kit(WebCore::EventTarget* eventTarget)
     // FIXME: The call to updateLayoutIgnorePendingStylesheets should be moved into WebCore::Range.
     Vector<WebCore::IntRect> rects;
     core(self)->ownerDocument().updateLayoutIgnorePendingStylesheets();
-    core(self)->textRects(rects);
+    core(self)->absoluteTextRects(rects);
     return kit(rects);
 }
 

@@ -53,7 +53,7 @@ WebInspector.CSSRule = class CSSRule extends WebInspector.Object
 
     get editable()
     {
-        return !!this._id && (this._type === WebInspector.CSSRule.Type.Author || this._type === WebInspector.CSSRule.Type.Inspector);
+        return !!this._id && (this._type === WebInspector.CSSStyleSheet.Type.Author || this._type === WebInspector.CSSStyleSheet.Type.Inspector);
     }
 
     update(sourceCodeLocation, selectorText, selectors, matchedSelectorIndices, style, mediaList, dontFireEvents)
@@ -84,8 +84,8 @@ WebInspector.CSSRule = class CSSRule extends WebInspector.Object
         this._style = style;
         this._mediaList = mediaList;
 
-        delete this._matchedSelectors;
-        delete this._matchedSelectorText;
+        this._matchedSelectors = null;
+        this._matchedSelectorText = null;
 
         if (this._style)
             this._style.ownerRule = this;
@@ -135,12 +135,6 @@ WebInspector.CSSRule = class CSSRule extends WebInspector.Object
 
     get matchedSelectors()
     {
-        // COMPATIBILITY (iOS 6): The selectors array is always empty, so just return an empty array.
-        if (!this._selectors.length) {
-            console.assert(!this._matchedSelectorIndices.length);
-            return [];
-        }
-
         if (this._matchedSelectors)
             return this._matchedSelectors;
 
@@ -153,12 +147,6 @@ WebInspector.CSSRule = class CSSRule extends WebInspector.Object
 
     get matchedSelectorText()
     {
-        // COMPATIBILITY (iOS 6): The selectors array is always empty, so just return the whole selector.
-        if (!this._selectors.length) {
-            console.assert(!this._matchedSelectorIndices.length);
-            return this._selectorText;
-        }
-
         if ("_matchedSelectorText" in this)
             return this._matchedSelectorText;
 
@@ -175,6 +163,18 @@ WebInspector.CSSRule = class CSSRule extends WebInspector.Object
     get mediaList()
     {
         return this._mediaList;
+    }
+
+    get mediaText()
+    {
+        if (!this._mediaList.length)
+            return;
+
+        let mediaText = "";
+        for (let media of this._mediaList)
+            mediaText += media.text;
+
+        return mediaText;
     }
 
     isEqualTo(rule)
@@ -246,11 +246,4 @@ WebInspector.CSSRule = class CSSRule extends WebInspector.Object
 WebInspector.CSSRule.Event = {
     Changed: "css-rule-changed",
     SelectorChanged: "css-rule-invalid-selector"
-};
-
-WebInspector.CSSRule.Type = {
-    Author: "css-rule-type-author",
-    User: "css-rule-type-user",
-    UserAgent: "css-rule-type-user-agent",
-    Inspector: "css-rule-type-inspector"
 };

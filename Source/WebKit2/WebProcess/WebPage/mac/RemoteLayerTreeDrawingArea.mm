@@ -60,7 +60,7 @@ RemoteLayerTreeDrawingArea::RemoteLayerTreeDrawingArea(WebPage& webPage, const W
     , m_rootLayer(GraphicsLayer::create(graphicsLayerFactory(), *this))
     , m_exposedRect(FloatRect::infiniteRect())
     , m_scrolledExposedRect(FloatRect::infiniteRect())
-    , m_layerFlushTimer(*this, &RemoteLayerTreeDrawingArea::layerFlushTimerFired)
+    , m_layerFlushTimer(*this, &RemoteLayerTreeDrawingArea::flushLayers)
     , m_isFlushingSuspended(false)
     , m_hasDeferredFlush(false)
     , m_isThrottlingLayerFlushes(false)
@@ -332,11 +332,6 @@ bool RemoteLayerTreeDrawingArea::adjustLayerFlushThrottling(WebCore::LayerFlushT
     return true;
 }
 
-void RemoteLayerTreeDrawingArea::layerFlushTimerFired()
-{
-    flushLayers();
-}
-
 void RemoteLayerTreeDrawingArea::flushLayers()
 {
     if (!m_rootLayer)
@@ -387,6 +382,9 @@ void RemoteLayerTreeDrawingArea::flushLayers()
     m_remoteLayerTreeContext->buildTransaction(layerTransaction, *downcast<GraphicsLayerCARemote>(*m_rootLayer).platformCALayer());
     backingStoreCollection.willCommitLayerTree(layerTransaction);
     m_webPage.willCommitLayerTree(layerTransaction);
+
+    layerTransaction.setNewlyReachedLayoutMilestones(m_pendingNewlyReachedLayoutMilestones);
+    m_pendingNewlyReachedLayoutMilestones = 0;
 
     RemoteScrollingCoordinatorTransaction scrollingTransaction;
 #if ENABLE(ASYNC_SCROLLING)
@@ -507,6 +505,12 @@ void RemoteLayerTreeDrawingArea::addTransactionCallbackID(uint64_t callbackID)
 {
     m_pendingCallbackIDs.append(static_cast<RemoteLayerTreeTransaction::TransactionCallbackID>(callbackID));
     scheduleCompositingLayerFlush();
+}
+
+bool RemoteLayerTreeDrawingArea::dispatchDidLayout(WebCore::LayoutMilestones layoutMilestones)
+{
+    m_pendingNewlyReachedLayoutMilestones |= layoutMilestones;
+    return true;
 }
 
 } // namespace WebKit

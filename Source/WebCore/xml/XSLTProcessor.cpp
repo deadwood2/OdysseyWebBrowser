@@ -68,7 +68,7 @@ XSLTProcessor::~XSLTProcessor()
     ASSERT(!m_stylesheetRootNode || !m_stylesheet || m_stylesheet->hasOneRef());
 }
 
-PassRefPtr<Document> XSLTProcessor::createDocumentFromSource(const String& sourceString,
+Ref<Document> XSLTProcessor::createDocumentFromSource(const String& sourceString,
     const String& sourceEncoding, const String& sourceMIMEType, Node* sourceNode, Frame* frame)
 {
     Ref<Document> ownerDocument(sourceNode->document());
@@ -106,26 +106,26 @@ PassRefPtr<Document> XSLTProcessor::createDocumentFromSource(const String& sourc
 
     result->setContent(documentSource);
 
-    return result.release();
+    return result.releaseNonNull();
 }
 
-PassRefPtr<Document> XSLTProcessor::transformToDocument(Node* sourceNode)
+RefPtr<Document> XSLTProcessor::transformToDocument(Node* sourceNode)
 {
     if (!sourceNode)
-        return 0;
+        return nullptr;
 
     String resultMIMEType;
     String resultString;
     String resultEncoding;
     if (!transformToString(*sourceNode, resultMIMEType, resultString, resultEncoding))
-        return 0;
+        return nullptr;
     return createDocumentFromSource(resultString, resultEncoding, resultMIMEType, sourceNode, 0);
 }
 
-PassRefPtr<DocumentFragment> XSLTProcessor::transformToFragment(Node* sourceNode, Document* outputDoc)
+RefPtr<DocumentFragment> XSLTProcessor::transformToFragment(Node* sourceNode, Document* outputDoc)
 {
     if (!sourceNode || !outputDoc)
-        return 0;
+        return nullptr;
 
     String resultMIMEType;
     String resultString;
@@ -136,7 +136,7 @@ PassRefPtr<DocumentFragment> XSLTProcessor::transformToFragment(Node* sourceNode
         resultMIMEType = "text/html";
 
     if (!transformToString(*sourceNode, resultMIMEType, resultString, resultEncoding))
-        return 0;
+        return nullptr;
     return createFragmentForTransformToFragment(resultString, resultMIMEType, outputDoc);
 }
 

@@ -113,7 +113,7 @@ DEFINE_DEBUG_ONLY_GLOBAL(RefCountedLeakCounter, cachedResourceLeakCounter, ("Cac
 
 CachedResource::CachedResource(const ResourceRequest& request, Type type, SessionID sessionID)
     : m_resourceRequest(request)
-    , m_decodedDataDeletionTimer(*this, &CachedResource::decodedDataDeletionTimerFired, deadDecodedDataDeletionIntervalForResourceType(type))
+    , m_decodedDataDeletionTimer(*this, &CachedResource::destroyDecodedData, deadDecodedDataDeletionIntervalForResourceType(type))
     , m_sessionID(sessionID)
     , m_loadPriority(defaultPriorityForResourceType(type))
     , m_responseTimestamp(std::chrono::system_clock::now())
@@ -592,29 +592,25 @@ void CachedResource::setResourceToRevalidate(CachedResource* resource)
     ASSERT(resource != this);
     ASSERT(m_handlesToRevalidate.isEmpty());
     ASSERT(resource->type() == type());
+    ASSERT(!resource->m_proxyResource);
 
     LOG(ResourceLoading, "CachedResource %p setResourceToRevalidate %p", this, resource);
-
-    // The following assert should be investigated whenever it occurs. Although it should never fire, it currently does in rare circumstances.
-    // https://bugs.webkit.org/show_bug.cgi?id=28604.
-    // So the code needs to be robust to this assert failing thus the "if (m_resourceToRevalidate->m_proxyResource == this)" in CachedResource::clearResourceToRevalidate.
-    ASSERT(!resource->m_proxyResource);
 
     resource->m_proxyResource = this;
     m_resourceToRevalidate = resource;
 }
 
 void CachedResource::clearResourceToRevalidate() 
-{ 
+{
     ASSERT(m_resourceToRevalidate);
+    ASSERT(m_resourceToRevalidate->m_proxyResource == this);
+
     if (m_switchingClientsToRevalidatedResource)
         return;
 
-    // A resource may start revalidation before this method has been called, so check that this resource is still the proxy resource before clearing it out.
-    if (m_resourceToRevalidate->m_proxyResource == this) {
-        m_resourceToRevalidate->m_proxyResource = 0;
-        m_resourceToRevalidate->deleteIfPossible();
-    }
+    m_resourceToRevalidate->m_proxyResource = nullptr;
+    m_resourceToRevalidate->deleteIfPossible();
+
     m_handlesToRevalidate.clear();
     m_resourceToRevalidate = 0;
     deleteIfPossible();
@@ -629,9 +625,7 @@ void CachedResource::switchClientsToRevalidatedResource()
     LOG(ResourceLoading, "CachedResource %p switchClientsToRevalidatedResource %p", this, m_resourceToRevalidate);
 
     m_switchingClientsToRevalidatedResource = true;
-    HashSet<CachedResourceHandleBase*>::iterator end = m_handlesToRevalidate.end();
-    for (HashSet<CachedResourceHandleBase*>::iterator it = m_handlesToRevalidate.begin(); it != end; ++it) {
-        CachedResourceHandleBase* handle = *it;
+    for (auto& handle : m_handlesToRevalidate) {
         handle->m_resource = m_resourceToRevalidate;
         m_resourceToRevalidate->registerHandle(handle);
         --m_handleCount;
@@ -640,30 +634,28 @@ void CachedResource::switchClientsToRevalidatedResource()
     m_handlesToRevalidate.clear();
 
     Vector<CachedResourceClient*> clientsToMove;
-    HashCountedSet<CachedResourceClient*>::iterator end2 = m_clients.end();
-    for (HashCountedSet<CachedResourceClient*>::iterator it = m_clients.begin(); it != end2; ++it) {
-        CachedResourceClient* client = it->key;
-        unsigned count = it->value;
+    for (auto& entry : m_clients) {
+        CachedResourceClient* client = entry.key;
+        unsigned count = entry.value;
         while (count) {
             clientsToMove.append(client);
             --count;
         }
     }
 
-    unsigned moveCount = clientsToMove.size();
-    for (unsigned n = 0; n < moveCount; ++n)
-        removeClient(clientsToMove[n]);
+    for (auto& client : clientsToMove)
+        removeClient(client);
     ASSERT(m_clients.isEmpty());
 
-    for (unsigned n = 0; n < moveCount; ++n)
-        m_resourceToRevalidate->addClientToSet(clientsToMove[n]);
-    for (unsigned n = 0; n < moveCount; ++n) {
+    for (auto& client : clientsToMove)
+        m_resourceToRevalidate->addClientToSet(client);
+    for (auto& client : clientsToMove) {
         // Calling didAddClient may do anything, including trying to cancel revalidation.
         // Assert that it didn't succeed.
         ASSERT(m_resourceToRevalidate);
         // Calling didAddClient for a client may end up removing another client. In that case it won't be in the set anymore.
-        if (m_resourceToRevalidate->m_clients.contains(clientsToMove[n]))
-            m_resourceToRevalidate->didAddClient(clientsToMove[n]);
+        if (m_resourceToRevalidate->m_clients.contains(client))
+            m_resourceToRevalidate->didAddClient(client);
     }
     m_switchingClientsToRevalidatedResource = false;
 }

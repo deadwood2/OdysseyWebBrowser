@@ -103,18 +103,18 @@ public:
         }
 
     private:
-        MutexLocker m_locker;
+        LockHolder m_locker;
     };
 
     void add(MachineThreads* machineThreads)
     {
-        MutexLocker managerLock(m_lock);
+        LockHolder managerLock(m_lock);
         m_set.add(machineThreads);
     }
 
     void remove(MachineThreads* machineThreads)
     {
-        MutexLocker managerLock(m_lock);
+        LockHolder managerLock(m_lock);
         auto recordedMachineThreads = m_set.take(machineThreads);
         RELEASE_ASSERT(recordedMachineThreads = machineThreads);
     }
@@ -129,7 +129,7 @@ private:
 
     ActiveMachineThreadsManager() { }
     
-    Mutex m_lock;
+    Lock m_lock;
     MachineThreadsSet m_set;
 
     friend ActiveMachineThreadsManager& activeMachineThreadsManager();
@@ -160,9 +160,10 @@ static inline PlatformThread getCurrentPlatformThread()
 class MachineThreads::Thread {
     WTF_MAKE_FAST_ALLOCATED;
 
-    Thread(const PlatformThread& platThread, void* base)
+    Thread(const PlatformThread& platThread, void* base, void* end)
         : platformThread(platThread)
         , stackBase(base)
+        , stackEnd(end)
     {
 #if USE(PTHREADS) && !OS(WINDOWS) && !OS(DARWIN) && defined(SA_RESTART)
         // if we have SA_RESTART, enable SIGUSR2 debugging mechanism
@@ -195,7 +196,8 @@ public:
 
     static Thread* createForCurrentThread()
     {
-        return new Thread(getCurrentPlatformThread(), wtfThreadData().stack().origin());
+        auto stackBounds = wtfThreadData().stack();
+        return new Thread(getCurrentPlatformThread(), stackBounds.origin(), stackBounds.end());
     }
 
     struct Registers {
@@ -241,6 +243,7 @@ public:
     Thread* next;
     PlatformThread platformThread;
     void* stackBase;
+    void* stackEnd;
 #if OS(WINDOWS)
     HANDLE platformThreadHandle;
 #endif
@@ -263,7 +266,7 @@ MachineThreads::~MachineThreads()
     activeMachineThreadsManager().remove(this);
     threadSpecificKeyDelete(m_threadSpecific);
 
-    MutexLocker registeredThreadsLock(m_registeredThreadsMutex);
+    LockHolder registeredThreadsLock(m_registeredThreadsMutex);
     for (Thread* t = m_registeredThreads; t;) {
         Thread* next = t->next;
         delete t;
@@ -294,7 +297,7 @@ void MachineThreads::addCurrentThread()
     threadSpecificSet(m_threadSpecific, this);
     Thread* thread = Thread::createForCurrentThread();
 
-    MutexLocker lock(m_registeredThreadsMutex);
+    LockHolder lock(m_registeredThreadsMutex);
 
     thread->next = m_registeredThreads;
     m_registeredThreads = thread;
@@ -318,7 +321,7 @@ void MachineThreads::removeThread(void* p)
 template<typename PlatformThread>
 void MachineThreads::removeThreadIfFound(PlatformThread platformThread)
 {
-    MutexLocker lock(m_registeredThreadsMutex);
+    LockHolder lock(m_registeredThreadsMutex);
     Thread* t = m_registeredThreads;
     if (*t == platformThread) {
         m_registeredThreads = m_registeredThreads->next;
@@ -335,7 +338,8 @@ void MachineThreads::removeThreadIfFound(PlatformThread platformThread)
         delete t;
     }
 }
-    
+
+SUPPRESS_ASAN
 void MachineThreads::gatherFromCurrentThread(ConservativeRoots& conservativeRoots, JITStubRoutineSet& jitStubRoutines, CodeBlockSet& codeBlocks, void* stackOrigin, void* stackTop, RegisterState& calleeSavedRegisters)
 {
     void* registersBegin = &calleeSavedRegisters;
@@ -509,16 +513,38 @@ void MachineThreads::Thread::freeRegisters(MachineThreads::Thread::Registers& re
 #endif
 }
 
-std::pair<void*, size_t> MachineThreads::Thread::captureStack(void* stackTop)
+static inline int osRedZoneAdjustment()
 {
-    void* begin = stackBase;
-    void* end = reinterpret_cast<void*>(
-        WTF::roundUpToMultipleOf<sizeof(void*)>(reinterpret_cast<uintptr_t>(stackTop)));
-    if (begin > end)
-        std::swap(begin, end);
-    return std::make_pair(begin, static_cast<char*>(end) - static_cast<char*>(begin));
+    int redZoneAdjustment = 0;
+#if !OS(WINDOWS)
+#if CPU(X86_64)
+    // See http://people.freebsd.org/~obrien/amd64-elf-abi.pdf Section 3.2.2.
+    redZoneAdjustment = -128;
+#elif CPU(ARM64)
+    // See https://developer.apple.com/library/ios/documentation/Xcode/Conceptual/iPhoneOSABIReference/Articles/ARM64FunctionCallingConventions.html#//apple_ref/doc/uid/TP40013702-SW7
+    redZoneAdjustment = -128;
+#endif
+#endif // !OS(WINDOWS)
+    return redZoneAdjustment;
 }
 
+std::pair<void*, size_t> MachineThreads::Thread::captureStack(void* stackTop)
+{
+    char* begin = reinterpret_cast_ptr<char*>(stackBase);
+    char* end = bitwise_cast<char*>(WTF::roundUpToMultipleOf<sizeof(void*)>(reinterpret_cast<uintptr_t>(stackTop)));
+    ASSERT(begin >= end);
+
+    char* endWithRedZone = end + osRedZoneAdjustment();
+    ASSERT(WTF::roundUpToMultipleOf<sizeof(void*)>(reinterpret_cast<uintptr_t>(endWithRedZone)) == reinterpret_cast<uintptr_t>(endWithRedZone));
+
+    if (endWithRedZone < stackEnd)
+        endWithRedZone = reinterpret_cast_ptr<char*>(stackEnd);
+
+    std::swap(begin, endWithRedZone);
+    return std::make_pair(begin, endWithRedZone - begin);
+}
+
+SUPPRESS_ASAN
 static void copyMemory(void* dst, const void* src, size_t size)
 {
     size_t dstAsSize = reinterpret_cast<size_t>(dst);
@@ -564,12 +590,12 @@ void MachineThreads::tryCopyOtherThreadStack(Thread* thread, void* buffer, size_
     thread->freeRegisters(registers);
 }
 
-bool MachineThreads::tryCopyOtherThreadStacks(MutexLocker&, void* buffer, size_t capacity, size_t* size)
+bool MachineThreads::tryCopyOtherThreadStacks(LockHolder&, void* buffer, size_t capacity, size_t* size)
 {
     // Prevent two VMs from suspending each other's threads at the same time,
     // which can cause deadlock: <rdar://problem/20300842>.
-    static StaticSpinLock mutex;
-    std::lock_guard<StaticSpinLock> lock(mutex);
+    static StaticLock mutex;
+    std::lock_guard<StaticLock> lock(mutex);
 
     *size = 0;
 
@@ -658,7 +684,7 @@ void MachineThreads::gatherConservativeRoots(ConservativeRoots& conservativeRoot
     size_t size;
     size_t capacity = 0;
     void* buffer = nullptr;
-    MutexLocker lock(m_registeredThreadsMutex);
+    LockHolder lock(m_registeredThreadsMutex);
     while (!tryCopyOtherThreadStacks(lock, buffer, capacity, &size))
         growBuffer(size, &buffer, &capacity);
 

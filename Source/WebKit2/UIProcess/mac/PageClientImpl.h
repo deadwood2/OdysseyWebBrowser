@@ -127,8 +127,8 @@ private:
     virtual RefPtr<WebColorPicker> createColorPicker(WebPageProxy*, const WebCore::Color& initialColor, const WebCore::IntRect&) override;
 #endif
 
-    virtual void setTextIndicator(Ref<WebCore::TextIndicator>, WebCore::TextIndicatorLifetime = WebCore::TextIndicatorLifetime::Permanent) override;
-    virtual void clearTextIndicator(WebCore::TextIndicatorDismissalAnimation = WebCore::TextIndicatorDismissalAnimation::FadeOut) override;
+    virtual void setTextIndicator(Ref<WebCore::TextIndicator>, WebCore::TextIndicatorWindowLifetime) override;
+    virtual void clearTextIndicator(WebCore::TextIndicatorWindowDismissalAnimation) override;
     virtual void setTextIndicatorAnimationProgress(float) override;
 
     virtual void enterAcceleratedCompositingMode(const LayerTreeContext&) override;
@@ -145,7 +145,7 @@ private:
 
     virtual void makeFirstResponder() override;
     
-    virtual void didPerformDictionaryLookup(const DictionaryPopupInfo&) override;
+    virtual void didPerformDictionaryLookup(const WebCore::DictionaryPopupInfo&) override;
     virtual void dismissContentRelativeChildWindows(bool withAnimation = true) override;
 
     virtual void showCorrectionPanel(WebCore::AlternativeTextType, const WebCore::FloatRect& boundingBoxOfReplacedString, const String& replacedString, const String& replacementString, const Vector<String>& alternativeReplacementStrings) override;
@@ -188,6 +188,7 @@ private:
     virtual void navigationGestureDidEnd(bool willNavigate, WebBackForwardListItem&) override;
     virtual void navigationGestureDidEnd() override;
     virtual void willRecordNavigationSnapshot(WebBackForwardListItem&) override;
+    virtual void didRemoveNavigationGestureSnapshot() override;
 
     NSView *activeView() const;
     NSWindow *activeWindow() const;
@@ -202,10 +203,6 @@ private:
     virtual void showPlatformContextMenu(NSMenu *, WebCore::IntPoint) override;
 
     virtual void didChangeBackgroundColor() override;
-
-#if ENABLE(VIDEO)
-    virtual void mediaDocumentNaturalSizeChanged(const WebCore::IntSize&) override;
-#endif
 
     WKView *m_wkView;
     WKWebView *m_webView;

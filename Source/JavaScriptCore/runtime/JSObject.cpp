@@ -36,7 +36,6 @@
 #include "GetterSetter.h"
 #include "IndexingHeaderInlines.h"
 #include "JSFunction.h"
-#include "JSFunctionNameScope.h"
 #include "JSGlobalObject.h"
 #include "Lookup.h"
 #include "NativeErrorConstructor.h"
@@ -1199,21 +1198,31 @@ bool JSObject::allowsAccessFrom(ExecState* exec)
     return globalObject->globalObjectMethodTable()->allowsAccessFrom(globalObject, exec);
 }
 
-void JSObject::putGetter(ExecState* exec, PropertyName propertyName, JSValue getter)
+void JSObject::putGetter(ExecState* exec, PropertyName propertyName, JSValue getter, unsigned attributes)
 {
     PropertyDescriptor descriptor;
     descriptor.setGetter(getter);
-    descriptor.setEnumerable(true);
-    descriptor.setConfigurable(true);
+
+    ASSERT(attributes & Accessor);
+    if (!(attributes & ReadOnly))
+        descriptor.setConfigurable(true);
+    if (!(attributes & DontEnum))
+        descriptor.setEnumerable(true);
+
     defineOwnProperty(this, exec, propertyName, descriptor, false);
 }
 
-void JSObject::putSetter(ExecState* exec, PropertyName propertyName, JSValue setter)
+void JSObject::putSetter(ExecState* exec, PropertyName propertyName, JSValue setter, unsigned attributes)
 {
     PropertyDescriptor descriptor;
     descriptor.setSetter(setter);
-    descriptor.setEnumerable(true);
-    descriptor.setConfigurable(true);
+
+    ASSERT(attributes & Accessor);
+    if (!(attributes & ReadOnly))
+        descriptor.setConfigurable(true);
+    if (!(attributes & DontEnum))
+        descriptor.setEnumerable(true);
+
     defineOwnProperty(this, exec, propertyName, descriptor, false);
 }
 
@@ -1601,11 +1610,6 @@ JSValue JSObject::toThis(JSCell* cell, ExecState*, ECMAMode)
     return jsCast<JSObject*>(cell);
 }
 
-bool JSObject::isFunctionNameScopeObject() const
-{
-    return inherits(JSFunctionNameScope::info());
-}
-
 void JSObject::seal(VM& vm)
 {
     if (isSealed(vm))
@@ -1952,6 +1956,11 @@ void JSObject::putByIndexBeyondVectorLengthWithoutAttributes(ExecState* exec, un
     }
 }
 
+// Explicit instantiations needed by JSArray.cpp.
+template void JSObject::putByIndexBeyondVectorLengthWithoutAttributes<Int32Shape>(ExecState*, unsigned, JSValue);
+template void JSObject::putByIndexBeyondVectorLengthWithoutAttributes<DoubleShape>(ExecState*, unsigned, JSValue);
+template void JSObject::putByIndexBeyondVectorLengthWithoutAttributes<ContiguousShape>(ExecState*, unsigned, JSValue);
+
 void JSObject::putByIndexBeyondVectorLengthWithArrayStorage(ExecState* exec, unsigned i, JSValue value, bool shouldThrow, ArrayStorage* storage)
 {
     VM& vm = exec->vm();
@@ -2047,9 +2056,9 @@ void JSObject::putByIndexBeyondVectorLength(ExecState* exec, unsigned i, JSValue
             break;
         }
         if (structure(vm)->needsSlowPutIndexing()) {
-            ArrayStorage* storage = createArrayStorage(vm, i + 1, getNewVectorLength(0, 0, i + 1));
-            storage->m_vector[i].set(vm, this, value);
-            storage->m_numValuesInVector++;
+            // Convert the indexing type to the SlowPutArrayStorage and retry.
+            createArrayStorage(vm, i + 1, getNewVectorLength(0, 0, i + 1));
+            putByIndex(this, exec, i, value, shouldThrow);
             break;
         }
         
@@ -2721,6 +2730,13 @@ bool JSObject::defineOwnProperty(JSObject* object, ExecState* exec, PropertyName
 JSObject* throwTypeError(ExecState* exec, const String& message)
 {
     return exec->vm().throwException(exec, createTypeError(exec, message));
+}
+
+void JSObject::convertToDictionary(VM& vm)
+{
+    DeferredStructureTransitionWatchpointFire deferredWatchpointFire;
+    setStructure(
+        vm, Structure::toCacheableDictionaryTransition(vm, structure(vm), &deferredWatchpointFire));
 }
 
 void JSObject::shiftButterflyAfterFlattening(VM& vm, size_t outOfLineCapacityBefore, size_t outOfLineCapacityAfter)

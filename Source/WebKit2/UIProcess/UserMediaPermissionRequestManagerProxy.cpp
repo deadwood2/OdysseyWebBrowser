@@ -38,14 +38,14 @@ void UserMediaPermissionRequestManagerProxy::invalidateRequests()
     m_pendingRequests.clear();
 }
 
-PassRefPtr<UserMediaPermissionRequestProxy> UserMediaPermissionRequestManagerProxy::createRequest(uint64_t userMediaID, bool requiresAudio, bool requiresVideo, const Vector<String>& deviceUIDsVideo, const Vector<String>& deviceUIDsAudio)
+PassRefPtr<UserMediaPermissionRequestProxy> UserMediaPermissionRequestManagerProxy::createRequest(uint64_t userMediaID, const Vector<String>& audioDeviceUIDs, const Vector<String>& videoDeviceUIDs)
 {
-    RefPtr<UserMediaPermissionRequestProxy> request = UserMediaPermissionRequestProxy::create(*this, userMediaID, requiresAudio, requiresVideo, deviceUIDsVideo, deviceUIDsAudio);
+    RefPtr<UserMediaPermissionRequestProxy> request = UserMediaPermissionRequestProxy::create(*this, userMediaID, audioDeviceUIDs, videoDeviceUIDs);
     m_pendingRequests.add(userMediaID, request.get());
     return request.release();
 }
 
-void UserMediaPermissionRequestManagerProxy::didReceiveUserMediaPermissionDecision(uint64_t userMediaID, bool allowed)
+void UserMediaPermissionRequestManagerProxy::didReceiveUserMediaPermissionDecision(uint64_t userMediaID, bool allowed, const String& audioDeviceUID, const String& videoDeviceUID)
 {
     if (!m_page.isValid())
         return;
@@ -54,8 +54,7 @@ void UserMediaPermissionRequestManagerProxy::didReceiveUserMediaPermissionDecisi
         return;
 
 #if ENABLE(MEDIA_STREAM)
-    // FIXME(147062): Need to add in the support for Safari to pass strings given from user's decision on what piece of media to open
-    m_page.process().send(Messages::WebPage::DidReceiveUserMediaPermissionDecision(userMediaID, allowed, "", ""), m_page.pageID());
+    m_page.process().send(Messages::WebPage::DidReceiveUserMediaPermissionDecision(userMediaID, allowed, audioDeviceUID, videoDeviceUID), m_page.pageID());
 #else
     UNUSED_PARAM(allowed);
 #endif

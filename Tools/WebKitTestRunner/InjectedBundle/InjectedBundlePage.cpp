@@ -427,6 +427,9 @@ void InjectedBundlePage::resetAfterTest()
     JSGlobalContextRef context = WKBundleFrameGetJavaScriptContext(frame);
     WebCoreTestSupport::resetInternalsObject(context);
     assignedUrlsCache.clear();
+
+    // User scripts need to be removed after the test and before loading about:blank, as otherwise they would run in about:blank, and potentially leak results into a subsequest test.
+    WKBundlePageRemoveAllUserContent(m_page);
 }
 
 // Loader Client Callbacks
@@ -889,12 +892,29 @@ void InjectedBundlePage::dump()
         injectedBundle.dumpBackForwardListsForAllPages(stringBuilder);
 
     if (injectedBundle.shouldDumpPixels() && injectedBundle.testRunner()->shouldDumpPixels()) {
-        WKSnapshotOptions options = kWKSnapshotOptionsShareable | kWKSnapshotOptionsInViewCoordinates;
-        if (injectedBundle.testRunner()->shouldDumpSelectionRect())
-            options |= kWKSnapshotOptionsPaintSelectionRectangle;
+#if PLATFORM(IOS)
+        // IOS doesn't implement PlatformWebView::windowSnapshotImage() yet, so we need to generate the snapshot in the web process.
+        bool shouldCreateSnapshot = true;
+#else
+        bool shouldCreateSnapshot = injectedBundle.testRunner()->isPrinting();
+#endif
+        if (shouldCreateSnapshot) {
+            WKSnapshotOptions options = kWKSnapshotOptionsShareable;
+            WKRect snapshotRect = WKBundleFrameGetVisibleContentBounds(WKBundlePageGetMainFrame(m_page));
 
-        injectedBundle.setPixelResult(adoptWK(WKBundlePageCreateSnapshotWithOptions(m_page, WKBundleFrameGetVisibleContentBounds(WKBundlePageGetMainFrame(m_page)), options)).get());
-        if (WKBundlePageIsTrackingRepaints(m_page))
+            if (injectedBundle.testRunner()->isPrinting())
+                options |= kWKSnapshotOptionsPrinting;
+            else {
+                options |= kWKSnapshotOptionsInViewCoordinates;
+                if (injectedBundle.testRunner()->shouldDumpSelectionRect())
+                    options |= kWKSnapshotOptionsPaintSelectionRectangle;
+            }
+
+            injectedBundle.setPixelResult(adoptWK(WKBundlePageCreateSnapshotWithOptions(m_page, snapshotRect, options)).get());
+        } else
+            injectedBundle.setPixelResultIsPending(true);
+
+        if (WKBundlePageIsTrackingRepaints(m_page) && !injectedBundle.testRunner()->isPrinting())
             injectedBundle.setRepaintRects(adoptWK(WKBundlePageCopyTrackedRepaintRects(m_page)).get());
     }
 
@@ -1285,6 +1305,9 @@ WKBundlePagePolicyAction InjectedBundlePage::decidePolicyForNavigationAction(WKB
         stringBuilder.append('\n');
         injectedBundle.outputText(stringBuilder.toString());
     }
+
+    if (injectedBundle.testRunner()->shouldDecideNavigationPolicyAfterDelay())
+        return WKBundlePagePolicyActionPassThrough;
 
     if (!injectedBundle.testRunner()->isPolicyDelegateEnabled())
         return WKBundlePagePolicyActionUse;

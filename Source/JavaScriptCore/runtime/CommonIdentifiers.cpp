@@ -39,6 +39,7 @@ CommonIdentifiers::CommonIdentifiers(VM* vm)
     , underscoreProto(Identifier::fromString(vm, "__proto__"))
     , thisIdentifier(Identifier::fromString(vm, "this"))
     , useStrictIdentifier(Identifier::fromString(vm, "use strict"))
+    , timesIdentifier(Identifier::fromString(vm, "*"))
     , m_builtinNames(new BuiltinNames(vm, this))
     JSC_COMMON_IDENTIFIERS_EACH_KEYWORD(INITIALIZE_KEYWORD)
     JSC_COMMON_IDENTIFIERS_EACH_PROPERTY_NAME(INITIALIZE_PROPERTY_NAME)
@@ -67,14 +68,14 @@ bool CommonIdentifiers::isPrivateName(const Identifier& ident) const
     return m_builtinNames->isPrivateName(ident);
 }
 
-const Identifier* CommonIdentifiers::getPrivateName(const Identifier& ident) const
+const Identifier* CommonIdentifiers::lookUpPrivateName(const Identifier& ident) const
 {
-    return m_builtinNames->getPrivateName(ident);
+    return m_builtinNames->lookUpPrivateName(ident);
 }
     
-Identifier CommonIdentifiers::getPublicName(const Identifier& ident) const
+Identifier CommonIdentifiers::lookUpPublicName(const Identifier& ident) const
 {
-    return m_builtinNames->getPublicName(ident);
+    return m_builtinNames->lookUpPublicName(ident);
 }
 
 

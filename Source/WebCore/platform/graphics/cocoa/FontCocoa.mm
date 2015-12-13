@@ -93,6 +93,7 @@ bool fontFamilyShouldNotBeUsedForArabic(CFStringRef fontFamilyName)
 
 void Font::platformInit()
 {
+    // FIXME: Unify these two codepaths
 #if USE(APPKIT)
     m_syntheticBoldOffset = m_platformData.m_syntheticBold ? 1.0f : 0.f;
 
@@ -149,38 +150,35 @@ void Font::platformInit()
         LOG_ERROR("failed to set up font, using system font %s", m_platformData.font());
     }
 
+    m_isSystemFont = CTFontDescriptorIsSystemUIFont(adoptCF(CTFontCopyFontDescriptor(m_platformData.font())).get());
+
+#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 101100
     // Work around <rdar://problem/19433490>
     CGGlyph dummyGlyphs[] = {0, 0};
     CGSize dummySize[] = { CGSizeMake(0, 0), CGSizeMake(0, 0) };
     CTFontTransformGlyphs(m_platformData.ctFont(), dummyGlyphs, dummySize, 2, kCTFontTransformApplyPositioning | kCTFontTransformApplyShaping);
-    
-    int iAscent;
-    int iDescent;
-    int iCapHeight;
-    int iLineGap;
-    unsigned unitsPerEm;
-    iAscent = CGFontGetAscent(m_platformData.cgFont());
+#endif
+
+    unsigned unitsPerEm = CGFontGetUnitsPerEm(m_platformData.cgFont());
+
     // Some fonts erroneously specify a positive descender value. We follow Core Text in assuming that
     // such fonts meant the same distance, but in the reverse direction.
-    iDescent = -abs(CGFontGetDescent(m_platformData.cgFont()));
-    iCapHeight = CGFontGetCapHeight(m_platformData.cgFont());
-    iLineGap = CGFontGetLeading(m_platformData.cgFont());
-    unitsPerEm = CGFontGetUnitsPerEm(m_platformData.cgFont());
-
     float pointSize = m_platformData.m_size;
-    float ascent = scaleEmToUnits(iAscent, unitsPerEm) * pointSize;
-    float descent = -scaleEmToUnits(iDescent, unitsPerEm) * pointSize;
-    float capHeight = scaleEmToUnits(iCapHeight, unitsPerEm) * pointSize;
+    float ascent = scaleEmToUnits(CGFontGetAscent(m_platformData.cgFont()), unitsPerEm) * pointSize;
+    float descent = -scaleEmToUnits(-abs(CGFontGetDescent(m_platformData.cgFont())), unitsPerEm) * pointSize;
+    float capHeight = scaleEmToUnits(CGFontGetCapHeight(m_platformData.cgFont()), unitsPerEm) * pointSize;
     
-    float lineGap = scaleEmToUnits(iLineGap, unitsPerEm) * pointSize;
+    float lineGap = scaleEmToUnits(CGFontGetLeading(m_platformData.cgFont()), unitsPerEm) * pointSize;
 
     // We need to adjust Times, Helvetica, and Courier to closely match the
     // vertical metrics of their Microsoft counterparts that are the de facto
     // web standard. The AppKit adjustment of 20% is too big and is
     // incorrectly added to line spacing, so we use a 15% adjustment instead
     // and add it to the ascent.
-    NSString *familyName = [m_platformData.nsFont() familyName];
-    if ([familyName isEqualToString:@"Times"] || [familyName isEqualToString:@"Helvetica"] || [familyName isEqualToString:@"Courier"])
+    RetainPtr<CFStringRef> familyName = adoptCF(CTFontCopyFamilyName(m_platformData.font()));
+    if (familyName && (CFStringCompare(familyName.get(), CFSTR("Times"), kCFCompareCaseInsensitive) == kCFCompareEqualTo
+        || CFStringCompare(familyName.get(), CFSTR("Helvetica"), kCFCompareCaseInsensitive) == kCFCompareEqualTo
+        || CFStringCompare(familyName.get(), CFSTR("Courier"), kCFCompareCaseInsensitive) == kCFCompareEqualTo))
         ascent += floorf(((ascent + descent) * 0.15f) + 0.5f);
 
     // Compute and store line spacing, before the line metrics hacks are applied.
@@ -188,7 +186,7 @@ void Font::platformInit()
 
     // Hack Hiragino line metrics to allow room for marked text underlines.
     // <rdar://problem/5386183>
-    if (descent < 3 && lineGap >= 3 && [familyName hasPrefix:@"Hiragino"]) {
+    if (descent < 3 && lineGap >= 3 && familyName && CFStringHasPrefix(familyName.get(), CFSTR("Hiragino"))) {
         lineGap -= 3 - descent;
         descent = 3;
     }
@@ -215,65 +213,26 @@ void Font::platformInit()
     m_fontMetrics.setCapHeight(capHeight);
     m_fontMetrics.setLineGap(lineGap);
     m_fontMetrics.setXHeight(xHeight);
+
 #else
+
+    m_isSystemFont = CTFontDescriptorIsSystemUIFont(adoptCF(CTFontCopyFontDescriptor(m_platformData.font())).get());
     m_syntheticBoldOffset = m_platformData.m_syntheticBold ? ceilf(m_platformData.size()  / 24.0f) : 0.f;
-    m_spaceGlyph = 0;
-    m_spaceWidth = 0;
-    unsigned unitsPerEm;
-    float ascent;
-    float descent;
-    float capHeight;
-    float lineGap;
-    float lineSpacing;
-    float xHeight;
-    RetainPtr<CFStringRef> familyName;
-    if (CTFontRef ctFont = m_platformData.font()) {
-        FontServicesIOS fontService(ctFont);
-        ascent = ceilf(fontService.ascent());
-        descent = ceilf(fontService.descent());
-        lineSpacing = fontService.lineSpacing();
-        lineGap = fontService.lineGap();
-        xHeight = fontService.xHeight();
-        capHeight = fontService.capHeight();
-        unitsPerEm = fontService.unitsPerEm();
-        familyName = adoptCF(CTFontCopyFamilyName(ctFont));
-    } else {
-        CGFontRef cgFont = m_platformData.cgFont();
 
-        unitsPerEm = CGFontGetUnitsPerEm(cgFont);
-
-        float pointSize = m_platformData.size();
-        ascent = lroundf(scaleEmToUnits(CGFontGetAscent(cgFont), unitsPerEm) * pointSize);
-        descent = lroundf(-scaleEmToUnits(-abs(CGFontGetDescent(cgFont)), unitsPerEm) * pointSize);
-        lineGap = lroundf(scaleEmToUnits(CGFontGetLeading(cgFont), unitsPerEm) * pointSize);
-        xHeight = scaleEmToUnits(CGFontGetXHeight(cgFont), unitsPerEm) * pointSize;
-        capHeight = scaleEmToUnits(CGFontGetCapHeight(cgFont), unitsPerEm) * pointSize;
-
-        lineSpacing = ascent + descent + lineGap;
-        familyName = adoptCF(CGFontCopyFamilyName(cgFont));
-    }
-
-    m_fontMetrics.setUnitsPerEm(unitsPerEm);
-    m_fontMetrics.setAscent(ascent);
-    m_fontMetrics.setDescent(descent);
-    m_fontMetrics.setLineGap(lineGap);
-    m_fontMetrics.setLineSpacing(lineSpacing);
-    m_fontMetrics.setXHeight(xHeight);
-    m_fontMetrics.setCapHeight(capHeight);
-    m_shouldNotBeUsedForArabic = fontFamilyShouldNotBeUsedForArabic(familyName.get());
+    CTFontRef ctFont = m_platformData.font();
+    FontServicesIOS fontService(ctFont);
+    m_fontMetrics.setUnitsPerEm(fontService.unitsPerEm());
+    m_fontMetrics.setAscent(ceilf(fontService.ascent()));
+    m_fontMetrics.setDescent(ceilf(fontService.descent()));
+    m_fontMetrics.setLineGap(fontService.lineGap());
+    m_fontMetrics.setLineSpacing(fontService.lineSpacing());
+    m_fontMetrics.setXHeight(fontService.xHeight());
+    m_fontMetrics.setCapHeight(fontService.capHeight());
+    m_shouldNotBeUsedForArabic = fontFamilyShouldNotBeUsedForArabic(adoptCF(CTFontCopyFamilyName(ctFont)).get());
 
     if (platformData().orientation() == Vertical && !isTextOrientationFallback())
         m_hasVerticalGlyphs = fontHasVerticalGlyphs(m_platformData.ctFont());
-
-    if (m_platformData.isEmoji()) {
-        int thirdOfSize = m_platformData.size() / 3;
-        m_fontMetrics.setAscent(thirdOfSize);
-        m_fontMetrics.setDescent(thirdOfSize);
-        m_fontMetrics.setLineGap(thirdOfSize);
-    }
 #endif
-
-    m_isSystemFont = CTFontDescriptorIsSystemUIFont(adoptCF(CTFontCopyFontDescriptor(m_platformData.font())).get());
 }
 
 void Font::platformCharWidthInit()
@@ -324,7 +283,7 @@ PassRefPtr<Font> Font::platformCreateScaledFont(const FontDescription&, float sc
 #if USE(APPKIT)
     BEGIN_BLOCK_OBJC_EXCEPTIONS;
 
-    FontPlatformData scaledFontData(reinterpret_cast<CTFontRef>([[NSFontManager sharedFontManager] convertFont:m_platformData.nsFont() toSize:size]), size, false, false, m_platformData.orientation());
+    FontPlatformData scaledFontData(toCTFont([[NSFontManager sharedFontManager] convertFont:m_platformData.nsFont() toSize:size]), size, false, false, m_platformData.orientation());
 
     if (scaledFontData.font()) {
         NSFontManager *fontManager = [NSFontManager sharedFontManager];
@@ -457,13 +416,9 @@ static inline bool advanceForColorBitmapFont(const FontPlatformData& platformDat
 static inline bool canUseFastGlyphAdvanceGetter(const Font& font, Glyph glyph, CGSize& advance, bool& populatedAdvance)
 {
     const FontPlatformData& platformData = font.platformData();
-    // Fast getter doesn't take custom tracking into account
-    if (font.hasCustomTracking())
+    // Fast getter doesn't doesn't work for emoji, bitmap fonts, or take custom tracking into account
+    if (font.hasCustomTracking() || platformData.textRenderingMode() == OptimizeLegibility)
         return false;
-    // Fast getter doesn't work for emoji
-    if (platformData.isEmoji())
-        return false;
-    // ... or for any bitmap fonts in general
     if (advanceForColorBitmapFont(platformData, glyph, advance)) {
         populatedAdvance = true;
         return false;
@@ -538,29 +493,5 @@ bool Font::canRenderCombiningCharacterSequence(const UChar* characters, size_t l
     addResult.iterator->value = true;
     return true;
 }
-
-#if USE(APPKIT)
-const Font* Font::compositeFontReferenceFont(NSFont *key) const
-{
-    if (!key || CFEqual(adoptCF(CTFontCopyPostScriptName(CTFontRef(key))).get(), CFSTR("LastResort")))
-        return nullptr;
-
-    if (!m_derivedFontData)
-        m_derivedFontData = std::make_unique<DerivedFontData>(isCustomFont());
-
-    auto addResult = m_derivedFontData->compositeFontReferences.add(key, nullptr);
-    if (addResult.isNewEntry) {
-        NSFont *substituteFont = [key printerFont];
-
-        CTFontSymbolicTraits traits = CTFontGetSymbolicTraits((CTFontRef)substituteFont);
-        bool syntheticBold = platformData().syntheticBold() && !(traits & kCTFontBoldTrait);
-        bool syntheticOblique = platformData().syntheticOblique() && !(traits & kCTFontItalicTrait);
-
-        FontPlatformData substitutePlatform(reinterpret_cast<CTFontRef>(substituteFont), platformData().size(), syntheticBold, syntheticOblique, platformData().orientation(), platformData().widthVariant());
-        addResult.iterator->value = Font::create(substitutePlatform, isCustomFont());
-    }
-    return addResult.iterator->value.get();
-}
-#endif
 
 } // namespace WebCore

@@ -165,11 +165,11 @@ static bool executeInsertFragment(Frame& frame, PassRefPtr<DocumentFragment> fra
     return true;
 }
 
-static bool executeInsertNode(Frame& frame, PassRefPtr<Node> content)
+static bool executeInsertNode(Frame& frame, Ref<Node>&& content)
 {
     RefPtr<DocumentFragment> fragment = DocumentFragment::create(*frame.document());
     ExceptionCode ec = 0;
-    fragment->appendChild(content, ec);
+    fragment->appendChild(WTF::move(content), ec);
     if (ec)
         return false;
     return executeInsertFragment(frame, fragment.release());
@@ -182,7 +182,7 @@ static bool expandSelectionToGranularity(Frame& frame, TextGranularity granulari
     RefPtr<Range> newRange = selection.toNormalizedRange();
     if (!newRange)
         return false;
-    if (newRange->collapsed(IGNORE_EXCEPTION))
+    if (newRange->collapsed())
         return false;
     RefPtr<Range> oldRange = selection.toNormalizedRange();
     EAffinity affinity = selection.affinity();
@@ -235,7 +235,7 @@ static RefPtr<Range> unionDOMRanges(Range* a, Range* b)
     Range* start = a->compareBoundaryPoints(Range::START_TO_START, b, ASSERT_NO_EXCEPTION) <= 0 ? a : b;
     Range* end = a->compareBoundaryPoints(Range::END_TO_END, b, ASSERT_NO_EXCEPTION) <= 0 ? b : a;
 
-    return Range::create(a->ownerDocument(), start->startContainer(), start->startOffset(), end->endContainer(), end->endOffset());
+    return Range::create(a->ownerDocument(), &start->startContainer(), start->startOffset(), &end->endContainer(), end->endOffset());
 }
 
 // Execute command functions
@@ -464,10 +464,10 @@ static bool executeInsertBacktab(Frame& frame, Event* event, EditorCommandSource
 
 static bool executeInsertHorizontalRule(Frame& frame, Event*, EditorCommandSource, const String& value)
 {
-    RefPtr<HTMLHRElement> rule = HTMLHRElement::create(*frame.document());
+    Ref<HTMLHRElement> rule = HTMLHRElement::create(*frame.document());
     if (!value.isEmpty())
         rule->setIdAttribute(value);
-    return executeInsertNode(frame, rule.release());
+    return executeInsertNode(frame, WTF::move(rule));
 }
 
 static bool executeInsertHTML(Frame& frame, Event*, EditorCommandSource, const String& value)
@@ -478,9 +478,9 @@ static bool executeInsertHTML(Frame& frame, Event*, EditorCommandSource, const S
 static bool executeInsertImage(Frame& frame, Event*, EditorCommandSource, const String& value)
 {
     // FIXME: If userInterface is true, we should display a dialog box and let the user choose a local image.
-    RefPtr<HTMLImageElement> image = HTMLImageElement::create(*frame.document());
+    Ref<HTMLImageElement> image = HTMLImageElement::create(*frame.document());
     image->setSrc(value);
-    return executeInsertNode(frame, image.release());
+    return executeInsertNode(frame, WTF::move(image));
 }
 
 static bool executeInsertLineBreak(Frame& frame, Event* event, EditorCommandSource source, const String&)

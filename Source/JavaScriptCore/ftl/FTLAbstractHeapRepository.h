@@ -75,7 +75,6 @@ namespace JSC { namespace FTL {
     macro(JSSymbolTableObject_symbolTable, JSSymbolTableObject::offsetOfSymbolTable()) \
     macro(JSWrapperObject_internalValue, JSWrapperObject::internalValueOffset()) \
     macro(MarkedAllocator_freeListHead, MarkedAllocator::offsetOfFreeListHead()) \
-    macro(MarkedBlock_markBits, MarkedBlock::offsetOfMarks()) \
     macro(ScopedArguments_overrodeThings, ScopedArguments::offsetOfOverrodeThings()) \
     macro(ScopedArguments_scope, ScopedArguments::offsetOfScope()) \
     macro(ScopedArguments_table, ScopedArguments::offsetOfTable()) \
@@ -87,7 +86,12 @@ namespace JSC { namespace FTL {
     macro(Structure_classInfo, Structure::classInfoOffset()) \
     macro(Structure_globalObject, Structure::globalObjectOffset()) \
     macro(Structure_prototype, Structure::prototypeOffset()) \
-    macro(Structure_structureID, Structure::structureIDOffset())
+    macro(Structure_structureID, Structure::structureIDOffset()) \
+    macro(Symbol_privateName, Symbol::offsetOfPrivateName()) \
+    macro(JSArrowFunction_executable, JSArrowFunction::offsetOfExecutable()) \
+    macro(JSArrowFunction_scope, JSArrowFunction::offsetOfScopeChain()) \
+    macro(JSArrowFunction_rareData, JSArrowFunction::offsetOfRareData()) \
+    macro(JSArrowFunction_this, JSArrowFunction::offsetOfThisValue())
 
 #define FOR_EACH_INDEXED_ABSTRACT_HEAP(macro) \
     macro(DirectArguments_storage, DirectArguments::storageOffset(), sizeof(EncodedJSValue)) \

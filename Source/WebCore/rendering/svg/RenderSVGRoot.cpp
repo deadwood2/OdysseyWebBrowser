@@ -165,7 +165,7 @@ void RenderSVGRoot::layout()
     m_resourcesNeedingToInvalidateClients.clear();
 
     // Arbitrary affine transforms are incompatible with LayoutState.
-    LayoutStateDisabler layoutStateDisabler(&view());
+    LayoutStateDisabler layoutStateDisabler(view());
 
     bool needsLayout = selfNeedsLayout();
     LayoutRepainter repainter(*this, checkForRepaintDuringLayout() && needsLayout);
@@ -224,11 +224,11 @@ bool RenderSVGRoot::shouldApplyViewportClip() const
 void RenderSVGRoot::paintReplaced(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
 {
     // An empty viewport disables rendering.
-    if (pixelSnappedBorderBoxRect().isEmpty())
+    if (borderBoxRect().isEmpty())
         return;
 
     // Don't paint, if the context explicitly disabled it.
-    if (paintInfo.context->paintingDisabled())
+    if (paintInfo.context().paintingDisabled())
         return;
 
     // SVG outlines are painted during PaintPhaseForeground.
@@ -257,18 +257,18 @@ void RenderSVGRoot::paintReplaced(PaintInfo& paintInfo, const LayoutPoint& paint
 
     // Make a copy of the PaintInfo because applyTransform will modify the damage rect.
     PaintInfo childPaintInfo(paintInfo);
-    childPaintInfo.context->save();
+    childPaintInfo.context().save();
 
     // Apply initial viewport clip
     if (shouldApplyViewportClip())
-        childPaintInfo.context->clip(snappedIntRect(overflowClipRect(paintOffset, currentRenderNamedFlowFragment())));
+        childPaintInfo.context().clip(snappedIntRect(overflowClipRect(paintOffset, currentRenderNamedFlowFragment())));
 
     // Convert from container offsets (html renderers) to a relative transform (svg renderers).
     // Transform from our paint container's coordinate system to our local coords.
     IntPoint adjustedPaintOffset = roundedIntPoint(paintOffset);
     childPaintInfo.applyTransform(AffineTransform::translation(adjustedPaintOffset.x(), adjustedPaintOffset.y()) * localToBorderBoxTransform());
 
-    // SVGRenderingContext must be destroyed before we restore the childPaintInfo.context, because a filter may have
+    // SVGRenderingContext must be destroyed before we restore the childPaintInfo.context(), because a filter may have
     // changed the context and it is only reverted when the SVGRenderingContext destructor finishes applying the filter.
     {
         SVGRenderingContext renderingContext;
@@ -285,7 +285,7 @@ void RenderSVGRoot::paintReplaced(PaintInfo& paintInfo, const LayoutPoint& paint
         }
     }
 
-    childPaintInfo.context->restore();
+    childPaintInfo.context().restore();
 }
 
 void RenderSVGRoot::willBeDestroyed()
@@ -357,7 +357,7 @@ void RenderSVGRoot::computeFloatRectForRepaint(const RenderLayerModelObject* rep
 
     // Apply initial viewport clip
     if (shouldApplyViewportClip())
-        repaintRect.intersect(pixelSnappedBorderBoxRect());
+        repaintRect.intersect(snappedIntRect(borderBoxRect()));
 
     if (m_hasBoxDecorations || hasRenderOverflow()) {
         // The selectionRect can project outside of the overflowRect, so take their union

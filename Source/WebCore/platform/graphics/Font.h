@@ -76,7 +76,7 @@ public:
 
         virtual void initializeFont(Font*, float fontSize) = 0;
         virtual float widthForSVGGlyph(Glyph, float fontSize) const = 0;
-        virtual bool fillSVGGlyphPage(GlyphPage*, unsigned offset, unsigned length, UChar* buffer, unsigned bufferLength, const Font*) const = 0;
+        virtual bool fillSVGGlyphPage(GlyphPage*, UChar* buffer, unsigned bufferLength) const = 0;
     };
 
     // Used to create platform fonts.
@@ -185,7 +185,6 @@ public:
 #endif
 
 #if USE(APPKIT)
-    const Font* compositeFontReferenceFont(NSFont *key) const;
     NSFont* getNSFont() const { return m_platformData.nsFont(); }
 #endif
 
@@ -259,12 +258,12 @@ private:
     RefPtr<OpenTypeVerticalData> m_verticalData;
 #endif
 
-    Glyph m_spaceGlyph;
-    float m_spaceWidth;
-    Glyph m_zeroGlyph;
-    float m_adjustedSpaceWidth;
+    Glyph m_spaceGlyph { 0 };
+    float m_spaceWidth { 0 };
+    Glyph m_zeroGlyph { 0 };
+    float m_adjustedSpaceWidth { 0 };
 
-    Glyph m_zeroWidthSpaceGlyph;
+    Glyph m_zeroWidthSpaceGlyph { 0 };
 
     struct DerivedFontData {
 #if !COMPILER(MSVC)
@@ -284,9 +283,6 @@ private:
         RefPtr<Font> verticalRightOrientation;
         RefPtr<Font> uprightOrientation;
         RefPtr<Font> nonSyntheticItalic;
-#if USE(APPKIT)
-        HashMap<NSFont*, RefPtr<Font>> compositeFontReferences;
-#endif
     };
 
     mutable std::unique_ptr<DerivedFontData> m_derivedFontData;

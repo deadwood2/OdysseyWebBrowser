@@ -35,6 +35,7 @@
 #include "ClientRectList.h"
 #include "ContainerNodeAlgorithms.h"
 #include "DOMTokenList.h"
+#include "Dictionary.h"
 #include "DocumentSharedObjectPool.h"
 #include "ElementIterator.h"
 #include "ElementRareData.h"
@@ -56,6 +57,7 @@
 #include "IdTargetObserverRegistry.h"
 #include "InsertionPoint.h"
 #include "KeyboardEvent.h"
+#include "MainFrame.h"
 #include "MutationObserverInterestGroup.h"
 #include "MutationRecord.h"
 #include "NodeRenderStyle.h"
@@ -71,6 +73,7 @@
 #include "SVGDocumentExtensions.h"
 #include "SVGElement.h"
 #include "SVGNames.h"
+#include "ScrollLatchingState.h"
 #include "SelectorQuery.h"
 #include "Settings.h"
 #include "StyleProperties.h"
@@ -310,38 +313,37 @@ void Element::dispatchSimulatedClick(Event* underlyingEvent, SimulatedClickMouse
     EventDispatcher::dispatchSimulatedClick(this, underlyingEvent, eventOptions, visualOptions);
 }
 
-RefPtr<Node> Element::cloneNodeInternal(Document& targetDocument, CloningOperation type)
+Ref<Node> Element::cloneNodeInternal(Document& targetDocument, CloningOperation type)
 {
     switch (type) {
     case CloningOperation::OnlySelf:
     case CloningOperation::SelfWithTemplateContent:
         return cloneElementWithoutChildren(targetDocument);
     case CloningOperation::Everything:
-        return cloneElementWithChildren(targetDocument);
+        break;
     }
-    ASSERT_NOT_REACHED();
-    return nullptr;
+    return cloneElementWithChildren(targetDocument);
 }
 
-RefPtr<Element> Element::cloneElementWithChildren(Document& targetDocument)
+Ref<Element> Element::cloneElementWithChildren(Document& targetDocument)
 {
-    RefPtr<Element> clone = cloneElementWithoutChildren(targetDocument);
-    cloneChildNodes(clone.get());
-    return clone.release();
+    Ref<Element> clone = cloneElementWithoutChildren(targetDocument);
+    cloneChildNodes(clone);
+    return clone;
 }
 
-RefPtr<Element> Element::cloneElementWithoutChildren(Document& targetDocument)
+Ref<Element> Element::cloneElementWithoutChildren(Document& targetDocument)
 {
-    RefPtr<Element> clone = cloneElementWithoutAttributesAndChildren(targetDocument);
+    Ref<Element> clone = cloneElementWithoutAttributesAndChildren(targetDocument);
     // This will catch HTML elements in the wrong namespace that are not correctly copied.
     // This is a sanity check as HTML overloads some of the DOM methods.
     ASSERT(isHTMLElement() == clone->isHTMLElement());
 
     clone->cloneDataFromElement(*this);
-    return clone.release();
+    return clone;
 }
 
-RefPtr<Element> Element::cloneElementWithoutAttributesAndChildren(Document& targetDocument)
+Ref<Element> Element::cloneElementWithoutAttributesAndChildren(Document& targetDocument)
 {
     return targetDocument.createElement(tagQName(), false);
 }
@@ -714,7 +716,7 @@ double Element::offsetLeft()
 {
     document().updateLayoutIgnorePendingStylesheets();
     if (RenderBoxModelObject* renderer = renderBoxModelObject()) {
-        LayoutUnit offsetLeft = subpixelMetricsEnabled(renderer->document()) ? renderer->offsetLeft() : LayoutUnit(renderer->pixelSnappedOffsetLeft());
+        LayoutUnit offsetLeft = subpixelMetricsEnabled(renderer->document()) ? renderer->offsetLeft() : LayoutUnit(roundToInt(renderer->offsetLeft()));
         double zoomFactor = 1;
         double offsetLeftAdjustedWithZoom = adjustForLocalZoom(offsetLeft, *renderer, zoomFactor);
         return convertToNonSubpixelValueIfNeeded(offsetLeftAdjustedWithZoom, renderer->document(), zoomFactor == 1 ? Floor : Round);
@@ -726,7 +728,7 @@ double Element::offsetTop()
 {
     document().updateLayoutIgnorePendingStylesheets();
     if (RenderBoxModelObject* renderer = renderBoxModelObject()) {
-        LayoutUnit offsetTop = subpixelMetricsEnabled(renderer->document()) ? renderer->offsetTop() : LayoutUnit(renderer->pixelSnappedOffsetTop());
+        LayoutUnit offsetTop = subpixelMetricsEnabled(renderer->document()) ? renderer->offsetTop() : LayoutUnit(roundToInt(renderer->offsetTop()));
         double zoomFactor = 1;
         double offsetTopAdjustedWithZoom = adjustForLocalZoom(offsetTop, *renderer, zoomFactor);
         return convertToNonSubpixelValueIfNeeded(offsetTopAdjustedWithZoom, renderer->document(), zoomFactor == 1 ? Floor : Round);
@@ -738,7 +740,7 @@ double Element::offsetWidth()
 {
     document().updateLayoutIfDimensionsOutOfDate(*this, WidthDimensionsCheck);
     if (RenderBoxModelObject* renderer = renderBoxModelObject()) {
-        LayoutUnit offsetWidth = subpixelMetricsEnabled(renderer->document()) ? renderer->offsetWidth() : LayoutUnit(renderer->pixelSnappedOffsetWidth());
+        LayoutUnit offsetWidth = subpixelMetricsEnabled(renderer->document()) ? renderer->offsetWidth() : LayoutUnit(roundToInt(renderer->offsetWidth()));
         return convertToNonSubpixelValueIfNeeded(adjustLayoutUnitForAbsoluteZoom(offsetWidth, *renderer).toDouble(), renderer->document());
     }
     return 0;
@@ -748,7 +750,7 @@ double Element::offsetHeight()
 {
     document().updateLayoutIfDimensionsOutOfDate(*this, HeightDimensionsCheck);
     if (RenderBoxModelObject* renderer = renderBoxModelObject()) {
-        LayoutUnit offsetHeight = subpixelMetricsEnabled(renderer->document()) ? renderer->offsetHeight() : LayoutUnit(renderer->pixelSnappedOffsetHeight());
+        LayoutUnit offsetHeight = subpixelMetricsEnabled(renderer->document()) ? renderer->offsetHeight() : LayoutUnit(roundToInt(renderer->offsetHeight()));
         return convertToNonSubpixelValueIfNeeded(adjustLayoutUnitForAbsoluteZoom(offsetHeight, *renderer).toDouble(), renderer->document());
     }
     return 0;
@@ -759,7 +761,7 @@ Element* Element::bindingsOffsetParent()
     Element* element = offsetParent();
     if (!element || !element->isInShadowTree())
         return element;
-    return element->containingShadowRoot()->type() == ShadowRoot::UserAgentShadowRoot ? 0 : element;
+    return element->containingShadowRoot()->type() == ShadowRoot::Type::UserAgent ? nullptr : element;
 }
 
 Element* Element::offsetParent()
@@ -811,7 +813,7 @@ double Element::clientWidth()
         return adjustForAbsoluteZoom(renderView.frameView().layoutWidth(), renderView);
     
     if (RenderBox* renderer = renderBox()) {
-        LayoutUnit clientWidth = subpixelMetricsEnabled(renderer->document()) ? renderer->clientWidth() : LayoutUnit(renderer->pixelSnappedClientWidth());
+        LayoutUnit clientWidth = subpixelMetricsEnabled(renderer->document()) ? renderer->clientWidth() : LayoutUnit(roundToInt(renderer->clientWidth()));
         return convertToNonSubpixelValueIfNeeded(adjustLayoutUnitForAbsoluteZoom(clientWidth, *renderer).toDouble(), renderer->document());
     }
     return 0;
@@ -831,7 +833,7 @@ double Element::clientHeight()
         return adjustForAbsoluteZoom(renderView.frameView().layoutHeight(), renderView);
 
     if (RenderBox* renderer = renderBox()) {
-        LayoutUnit clientHeight = subpixelMetricsEnabled(renderer->document()) ? renderer->clientHeight() : LayoutUnit(renderer->pixelSnappedClientHeight());
+        LayoutUnit clientHeight = subpixelMetricsEnabled(renderer->document()) ? renderer->clientHeight() : LayoutUnit(roundToInt(renderer->clientHeight()));
         return convertToNonSubpixelValueIfNeeded(adjustLayoutUnitForAbsoluteZoom(clientHeight, *renderer).toDouble(), renderer->document());
     }
     return 0;
@@ -1234,6 +1236,14 @@ void Element::attributeChanged(const QualifiedName& name, const AtomicString& ol
             elementData()->setHasNameAttribute(!newValue.isNull());
         else if (name == HTMLNames::pseudoAttr)
             shouldInvalidateStyle |= testShouldInvalidateStyle && isInShadowTree();
+#if ENABLE(SHADOW_DOM)
+        else if (name == HTMLNames::slotAttr) {
+            if (auto* parent = parentElement()) {
+                if (auto* shadowRoot = parent->shadowRoot())
+                    shadowRoot->invalidateSlotAssignments();
+            }
+        }
+#endif
     }
 
     parseAttribute(name, newValue);
@@ -1345,8 +1355,10 @@ void Element::classAttributeChanged(const AtomicString& newClassString)
         elementData()->clearClass();
     }
 
-    if (hasRareData())
-        elementRareData()->clearClassListValueForQuirksMode();
+    if (hasRareData()) {
+        if (auto* classList = elementRareData()->classList())
+            classList->attributeValueChanged(newClassString);
+    }
 
     if (shouldInvalidateStyle)
         setNeedsStyleRecalc();
@@ -1367,6 +1379,19 @@ URL Element::absoluteLinkURL() const
         return URL();
 
     return document().completeURL(stripLeadingAndTrailingHTMLSpaces(linkAttribute));
+}
+
+StyleResolver& Element::styleResolver()
+{
+    if (auto* shadowRoot = containingShadowRoot())
+        return shadowRoot->styleResolver();
+
+    return document().ensureStyleResolver();
+}
+
+Ref<RenderStyle> Element::resolveStyle(RenderStyle* parentStyle)
+{
+    return styleResolver().styleForElement(this, parentStyle);
 }
 
 // Returns true is the given attribute is an event handler.
@@ -1465,24 +1490,6 @@ void Element::setPrefix(const AtomicString& prefix, ExceptionCode& ec)
     m_tagName.setPrefix(prefix.isEmpty() ? AtomicString() : prefix);
 }
 
-URL Element::baseURI() const
-{
-    const AtomicString& baseAttribute = getAttribute(baseAttr);
-    URL base(URL(), baseAttribute);
-    if (!base.protocol().isEmpty())
-        return base;
-
-    ContainerNode* parent = parentNode();
-    if (!parent)
-        return base;
-
-    const URL& parentBase = parent->baseURI();
-    if (parentBase.isNull())
-        return base;
-
-    return URL(parentBase, baseAttribute);
-}
-
 const AtomicString& Element::imageSourceURL() const
 {
     return fastGetAttribute(srcAttr);
@@ -1514,9 +1521,9 @@ Node::InsertionNotificationRequest Element::insertedInto(ContainerNode& insertio
     if (!insertionPoint.isInTreeScope())
         return InsertionDone;
 
-    if (hasRareData())
-        elementRareData()->clearClassListValueForQuirksMode();
-
+    // This function could be called when this element's shadow root's host or its ancestor is inserted.
+    // This element is new to the shadow tree (and its tree scope) only if the parent into which this element
+    // or its ancestor is inserted belongs to the same tree scope as this element's.
     TreeScope* newScope = &insertionPoint.treeScope();
     HTMLDocument* newDocument = !wasInDocument && inDocument() && is<HTMLDocument>(newScope->documentScope()) ? &downcast<HTMLDocument>(newScope->documentScope()) : nullptr;
     if (newScope != &treeScope())
@@ -1562,7 +1569,10 @@ void Element::removedFrom(ContainerNode& insertionPoint)
     if (insertionPoint.isInTreeScope()) {
         TreeScope* oldScope = &insertionPoint.treeScope();
         HTMLDocument* oldDocument = inDocument() && is<HTMLDocument>(oldScope->documentScope()) ? &downcast<HTMLDocument>(oldScope->documentScope()) : nullptr;
-        if (oldScope != &treeScope() || !isInTreeScope())
+
+        // ContainerNode::removeBetween always sets the removed chid's tree scope to Document's but InTreeScope flag is unset in Node::removedFrom.
+        // So this element has been removed from the old tree scope only if InTreeScope flag is set and this element's tree scope is Document's.
+        if (!isInTreeScope() || &treeScope() != &document())
             oldScope = nullptr;
 
         const AtomicString& idValue = getIdAttribute();
@@ -1591,6 +1601,12 @@ void Element::removedFrom(ContainerNode& insertionPoint)
 
     if (hasPendingResources())
         document().accessSVGExtensions().removeElementFromPendingResources(this);
+
+
+#if PLATFORM(MAC)
+    if (Frame* frame = document().frame())
+        frame->mainFrame().removeLatchingStateForTarget(*this);
+#endif
 }
 
 void Element::unregisterNamedFlowContentElement()
@@ -1623,13 +1639,11 @@ void Element::addShadowRoot(Ref<ShadowRoot>&& newShadowRoot)
     ShadowRoot& shadowRoot = newShadowRoot.get();
     ensureElementRareData().setShadowRoot(WTF::move(newShadowRoot));
 
-    shadowRoot.setHostElement(this);
+    shadowRoot.setHost(this);
     shadowRoot.setParentTreeScope(&treeScope());
-    shadowRoot.distributor().didShadowBoundaryChange(this);
 
     NodeVector postInsertionNotificationTargets;
-    ChildNodeInsertionNotifier(*this).notify(shadowRoot, postInsertionNotificationTargets);
-
+    notifyChildNodeInserted(*this, shadowRoot, postInsertionNotificationTargets);
     for (auto& target : postInsertionNotificationTargets)
         target->finishedInsertingSubtree();
 
@@ -1638,6 +1652,9 @@ void Element::addShadowRoot(Ref<ShadowRoot>&& newShadowRoot)
     setNeedsStyleRecalc(ReconstructRenderTree);
 
     InspectorInstrumentation::didPushShadowRoot(*this, shadowRoot);
+
+    if (shadowRoot.type() == ShadowRoot::Type::UserAgent)
+        didAddUserAgentShadowRoot(&shadowRoot);
 }
 
 void Element::removeShadowRoot()
@@ -1652,12 +1669,10 @@ void Element::removeShadowRoot()
 
     elementRareData()->clearShadowRoot();
 
-    oldRoot->setHostElement(0);
+    oldRoot->setHost(nullptr);
     oldRoot->setParentTreeScope(&document());
 
-    ChildNodeRemovalNotifier(*this).notify(*oldRoot);
-
-    oldRoot->distributor().invalidateDistribution(this);
+    notifyChildNodeRemoved(*this, *oldRoot);
 }
 
 RefPtr<ShadowRoot> Element::createShadowRoot(ExceptionCode& ec)
@@ -1669,10 +1684,49 @@ RefPtr<ShadowRoot> Element::createShadowRoot(ExceptionCode& ec)
     return nullptr;
 }
 
+RefPtr<ShadowRoot> Element::attachShadow(const Dictionary& dictionary, ExceptionCode& ec)
+{
+    String mode;
+    dictionary.get("mode", mode);
+
+    auto type = ShadowRoot::Type::Closed;
+    if (mode == "open")
+        type = ShadowRoot::Type::Open;
+    else if (mode != "closed") {
+        ec = TypeError;
+        return nullptr;
+    }
+
+    // FIXME: The current spec allows attachShadow on non-HTML elements.
+    if (!is<HTMLElement>(this) || downcast<HTMLElement>(this)->canHaveUserAgentShadowRoot()) {
+        ec = NOT_SUPPORTED_ERR;
+        return nullptr;
+    }
+
+    if (shadowRoot()) {
+        ec = INVALID_STATE_ERR;
+        return nullptr;
+    }
+
+    addShadowRoot(ShadowRoot::create(document(), type));
+
+    return shadowRoot();
+}
+
+ShadowRoot* Element::bindingShadowRoot() const
+{
+    ShadowRoot* root = shadowRoot();
+    if (!root)
+        return nullptr;
+    if (root->type() != ShadowRoot::Type::Open)
+        return nullptr;
+    return root;
+}
+
 ShadowRoot* Element::userAgentShadowRoot() const
 {
     if (ShadowRoot* shadowRoot = this->shadowRoot()) {
-        ASSERT(shadowRoot->type() == ShadowRoot::UserAgentShadowRoot);
+        ASSERT(shadowRoot->type() == ShadowRoot::Type::UserAgent);
         return shadowRoot;
     }
     return nullptr;
@@ -1682,9 +1736,8 @@ ShadowRoot& Element::ensureUserAgentShadowRoot()
 {
     ShadowRoot* shadowRoot = userAgentShadowRoot();
     if (!shadowRoot) {
-        addShadowRoot(ShadowRoot::create(document(), ShadowRoot::UserAgentShadowRoot));
+        addShadowRoot(ShadowRoot::create(document(), ShadowRoot::Type::UserAgent));
         shadowRoot = userAgentShadowRoot();
-        didAddUserAgentShadowRoot(shadowRoot);
     }
     return *shadowRoot;
 }
@@ -1702,7 +1755,6 @@ bool Element::childTypeAllowed(NodeType type) const
     case COMMENT_NODE:
     case PROCESSING_INSTRUCTION_NODE:
     case CDATA_SECTION_NODE:
-    case ENTITY_REFERENCE_NODE:
         return true;
     default:
         break;
@@ -1807,8 +1859,26 @@ void Element::childrenChanged(const ChildChange& change)
         checkForSiblingStyleChanges(*this, checkType, change.previousSiblingElement, change.nextSiblingElement);
     }
 
-    if (ShadowRoot* shadowRoot = this->shadowRoot())
-        shadowRoot->invalidateDistribution();
+    if (ShadowRoot* shadowRoot = this->shadowRoot()) {
+        if (auto* distributor = shadowRoot->distributor())
+            distributor->invalidateDistribution(this);
+#if ENABLE(SHADOW_DOM)
+        switch (change.type) {
+        case ElementInserted:
+        case ElementRemoved:
+        case AllChildrenRemoved:
+            shadowRoot->invalidateSlotAssignments();
+            break;
+        case TextInserted:
+        case TextRemoved:
+        case TextChanged:
+            shadowRoot->invalidateDefaultSlotAssignments();
+            break;
+        case NonContentsChildChanged:
+            break;
+        }
+#endif
+    }
 }
 
 void Element::removeAllEventListeners()
@@ -2117,8 +2187,12 @@ void Element::focus(bool restorePreviousSelection, FocusDirection direction)
     if (!inDocument())
         return;
 
-    if (document().focusedElement() == this)
+    if (document().focusedElement() == this) {
+        if (document().page())
+            document().page()->chrome().client().elementDidRefocus(this);
+
         return;
+    }
 
     // If the stylesheets have already been loaded we can reliably check isFocusable.
     // If not, we continue and set the focused node on the focus controller below so
@@ -2276,9 +2350,7 @@ void Element::mergeWithNextTextNode(Text& node, ExceptionCode& ec)
 
     Ref<Text> textNode(node);
     Ref<Text> textNext(downcast<Text>(*next));
-    textNode->appendData(textNext->data(), ec);
-    if (ec)
-        return;
+    textNode->appendData(textNext->data());
     textNext->remove(ec);
 }
 
@@ -2307,7 +2379,7 @@ void Element::setOuterHTML(const String& html, ExceptionCode& ec)
     if (ec)
         return;
     
-    parent->replaceChild(fragment.release(), this, ec);
+    parent->replaceChild(fragment.releaseNonNull(), *this, ec);
     RefPtr<Node> node = next ? next->previousSibling() : nullptr;
     if (!ec && is<Text>(node.get()))
         mergeWithNextTextNode(downcast<Text>(*node), ec);
@@ -2326,7 +2398,7 @@ void Element::setInnerHTML(const String& html, ExceptionCode& ec)
             container = downcast<HTMLTemplateElement>(*this).content();
 #endif
 
-        replaceChildrenWithFragment(*container, fragment.release(), ec);
+        replaceChildrenWithFragment(*container, fragment.releaseNonNull(), ec);
     }
 }
 
@@ -2643,7 +2715,7 @@ DOMTokenList& Element::classList()
 {
     ElementRareData& data = ensureElementRareData();
     if (!data.classList())
-        data.setClassList(std::make_unique<ClassList>(*this));
+        data.setClassList(std::make_unique<AttributeDOMTokenList>(*this, HTMLNames::classAttr));
     return *data.classList();
 }
 

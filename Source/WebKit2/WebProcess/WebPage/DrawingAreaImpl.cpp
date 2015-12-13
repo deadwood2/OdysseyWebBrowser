@@ -50,7 +50,11 @@ DrawingAreaImpl::~DrawingAreaImpl()
 }
 
 DrawingAreaImpl::DrawingAreaImpl(WebPage& webPage, const WebPageCreationParameters& parameters)
+#if USE(COORDINATED_GRAPHICS_MULTIPROCESS)
+    : DrawingArea(DrawingAreaTypeCoordinated, webPage)
+#else
     : DrawingArea(DrawingAreaTypeImpl, webPage)
+#endif
     , m_backingStoreStateID(0)
     , m_isPaintingEnabled(true)
     , m_inUpdateBackingStoreState(false)
@@ -193,6 +197,12 @@ void DrawingAreaImpl::setLayerTreeStateIsFrozen(bool isFrozen)
 
 void DrawingAreaImpl::forceRepaint()
 {
+    if (m_inUpdateBackingStoreState) {
+        m_forceRepaintAfterBackingStoreStateUpdate = true;
+        return;
+    }
+
+    m_forceRepaintAfterBackingStoreStateUpdate = false;
     setNeedsDisplay();
 
     m_webPage.layoutIfNeeded();
@@ -371,6 +381,8 @@ void DrawingAreaImpl::updateBackingStoreState(uint64_t stateID, bool respondImme
     }
 
     m_inUpdateBackingStoreState = false;
+    if (m_forceRepaintAfterBackingStoreStateUpdate)
+        forceRepaint();
 }
 
 void DrawingAreaImpl::sendDidUpdateBackingStoreState()

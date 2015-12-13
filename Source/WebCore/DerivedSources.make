@@ -174,6 +174,7 @@ NON_SVG_BINDING_IDLS = \
     $(WebCore)/Modules/speech/SpeechSynthesisEvent.idl \
     $(WebCore)/Modules/speech/SpeechSynthesisUtterance.idl \
     $(WebCore)/Modules/speech/SpeechSynthesisVoice.idl \
+    $(WebCore)/Modules/streams/CountQueuingStrategy.idl \
     $(WebCore)/Modules/streams/ReadableStream.idl \
     $(WebCore)/Modules/streams/ReadableStreamController.idl \
     $(WebCore)/Modules/streams/ReadableStreamReader.idl \
@@ -286,7 +287,6 @@ NON_SVG_BINDING_IDLS = \
     $(WebCore)/dom/EntityReference.idl \
     $(WebCore)/dom/ErrorEvent.idl \
     $(WebCore)/dom/Event.idl \
-    $(WebCore)/dom/EventException.idl \
     $(WebCore)/dom/EventListener.idl \
     $(WebCore)/dom/EventTarget.idl \
     $(WebCore)/dom/FocusEvent.idl \
@@ -316,9 +316,9 @@ NON_SVG_BINDING_IDLS = \
     $(WebCore)/dom/ProgressEvent.idl \
     $(WebCore)/dom/ProgressEvent.idl \
     $(WebCore)/dom/Range.idl \
-    $(WebCore)/dom/RangeException.idl \
     $(WebCore)/dom/RequestAnimationFrameCallback.idl \
     $(WebCore)/dom/SecurityPolicyViolationEvent.idl \
+    $(WebCore)/dom/ShadowRoot.idl \
     $(WebCore)/dom/StringCallback.idl \
     $(WebCore)/dom/Text.idl \
     $(WebCore)/dom/TextEvent.idl \
@@ -399,6 +399,7 @@ NON_SVG_BINDING_IDLS = \
     $(WebCore)/html/HTMLQuoteElement.idl \
     $(WebCore)/html/HTMLScriptElement.idl \
     $(WebCore)/html/HTMLSelectElement.idl \
+    $(WebCore)/html/HTMLSlotElement.idl \
     $(WebCore)/html/HTMLSourceElement.idl \
     $(WebCore)/html/HTMLSpanElement.idl \
     $(WebCore)/html/HTMLStyleElement.idl \
@@ -410,6 +411,7 @@ NON_SVG_BINDING_IDLS = \
     $(WebCore)/html/HTMLTableSectionElement.idl \
     $(WebCore)/html/HTMLTemplateElement.idl \
     $(WebCore)/html/HTMLTextAreaElement.idl \
+    $(WebCore)/html/HTMLTimeElement.idl \
     $(WebCore)/html/HTMLTitleElement.idl \
     $(WebCore)/html/HTMLTrackElement.idl \
     $(WebCore)/html/HTMLUListElement.idl \
@@ -732,7 +734,7 @@ ifeq ($(shell $(CC) -std=gnu++11 -x c++ -E -P -dM $(SDK_FLAGS) $(FRAMEWORK_FLAGS
 endif
 
 ifeq ($(PLATFORM_FEATURE_DEFINES),)
-ifeq ($(OS), Windows*)
+ifeq ($(OS), Windows_NT)
 PLATFORM_FEATURE_DEFINES = $(WEBKIT_LIBRARIES)/tools/vsprops/FeatureDefines.props
 else
 PLATFORM_FEATURE_DEFINES = Configurations/FeatureDefines.xcconfig
@@ -789,6 +791,7 @@ all : \
     $(WORKERGLOBALSCOPE_CONSTRUCTORS_FILE) \
     $(JS_DOM_HEADERS) \
     $(WEB_DOM_HEADERS) \
+    $(WEBCORE_JS_BUILTINS) \
     \
     CSSGrammar.cpp \
     CSSPropertyNames.cpp \
@@ -977,7 +980,7 @@ ifeq ($(OS),MACOS)
 	USER_AGENT_STYLE_SHEETS := $(USER_AGENT_STYLE_SHEETS) $(WebCore)/Modules/plugins/QuickTimePluginReplacement.css
 endif
 
-ifeq ($(OS), Windows*)
+ifeq ($(OS), Windows_NT)
     USER_AGENT_STYLE_SHEETS := $(USER_AGENT_STYLE_SHEETS) $(WebCore)/css/themeWin.css $(WebCore)/css/themeWinQuirks.css
 endif
 
@@ -1053,6 +1056,10 @@ endif
 
 ifeq ($(findstring ENABLE_MEDIA_STREAM,$(FEATURE_DEFINES)), ENABLE_MEDIA_STREAM)
     HTML_FLAGS := $(HTML_FLAGS) ENABLE_MEDIA_STREAM=1
+endif
+
+ifeq ($(findstring ENABLE_SHADOW_DOM,$(FEATURE_DEFINES)), ENABLE_SHADOW_DOM)
+    HTML_FLAGS := $(HTML_FLAGS) ENABLE_SHADOW_DOM=1
 endif
 
 JSHTMLElementWrapperFactory.cpp JSHTMLElementWrapperFactory.h HTMLElementFactory.cpp HTMLElementFactory.h HTMLElementTypeHelpers.h HTMLNames.cpp HTMLNames.h : htmlMakeNames.intermediate
@@ -1239,6 +1246,18 @@ WebReplayInputs.h : $(INPUT_GENERATOR_SPECIFICATIONS) $(INPUT_GENERATOR_SCRIPTS)
 
 -include $(JS_DOM_HEADERS:.h=.dep)
 
+# WebCore JS Builtins
+
+WEBCORE_JS_BUILTINS = \
+    $(WebCore)/Modules/streams/CountQueuingStrategy.js \
+    $(WebCore)/Modules/streams/ReadableStream.js \
+#
+
+all : $(WEBCORE_JS_BUILTINS:%.js=%Builtins.cpp)
+
+%Builtins.cpp: %.js
+	$(PYTHON) $(WebCore)/generate-js-builtins --input $< --generate_js_builtins_path $(GenerateJSBuiltinsScripts)
+
 # ------------------------
 
 # Mac-specific rules
@@ -1289,6 +1308,6 @@ ifeq ($(OS),Windows_NT)
 all : WebCoreHeaderDetection.h
 
 WebCoreHeaderDetection.h : $(WebCore)/AVFoundationSupport.py DerivedSources.make
-	$(PYTHON) $(WebCore)/AVFoundationSupport.py > $@
+	$(PYTHON) $(WebCore)/AVFoundationSupport.py $(WEBKIT_LIBRARIES) > $@
 
 endif # Windows_NT

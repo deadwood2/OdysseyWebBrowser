@@ -33,6 +33,7 @@
 #include "WidthIterator.h"
 #include <wtf/MainThread.h>
 #include <wtf/MathExtras.h>
+#include <wtf/NeverDestroyed.h>
 #include <wtf/text/AtomicStringHash.h>
 #include <wtf/text/StringBuilder.h>
 
@@ -41,7 +42,7 @@ using namespace Unicode;
 
 namespace WebCore {
 
-static Ref<FontCascadeFonts> retrieveOrAddCachedFonts(const FontDescription&, RefPtr<FontSelector>&&);
+static Ref<FontCascadeFonts> retrieveOrAddCachedFonts(const FontCascadeDescription&, RefPtr<FontSelector>&&);
 
 const uint8_t FontCascade::s_roundingHackCharacterTable[256] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 1 /*\t*/, 1 /*\n*/, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -106,7 +107,7 @@ FontCascade::FontCascade()
 {
 }
 
-FontCascade::FontCascade(const FontDescription& fd, float letterSpacing, float wordSpacing)
+FontCascade::FontCascade(const FontCascadeDescription& fd, float letterSpacing, float wordSpacing)
     : m_fontDescription(fd)
     , m_weakPtrFactory(this)
     , m_letterSpacing(letterSpacing)
@@ -214,8 +215,8 @@ static bool operator==(const FontCascadeCacheKey& a, const FontCascadeCacheKey& 
 
 static FontCascadeCache& fontCascadeCache()
 {
-    DEPRECATED_DEFINE_STATIC_LOCAL(FontCascadeCache, cache, ());
-    return cache;
+    static NeverDestroyed<FontCascadeCache> cache;
+    return cache.get();
 }
 
 void invalidateFontCascadeCache()
@@ -229,7 +230,7 @@ void clearWidthCaches()
         value->fonts.get().widthCache().clear();
 }
 
-static FontCascadeCacheKey makeFontCascadeCacheKey(const FontDescription& description, FontSelector* fontSelector)
+static FontCascadeCacheKey makeFontCascadeCacheKey(const FontCascadeDescription& description, FontSelector* fontSelector)
 {
     FontCascadeCacheKey key;
     key.fontDescriptionKey = FontDescriptionKey(description);
@@ -268,7 +269,7 @@ void pruneSystemFallbackFonts()
         entry->fonts->pruneSystemFallbacks();
 }
 
-static Ref<FontCascadeFonts> retrieveOrAddCachedFonts(const FontDescription& fontDescription, RefPtr<FontSelector>&& fontSelector)
+static Ref<FontCascadeFonts> retrieveOrAddCachedFonts(const FontCascadeDescription& fontDescription, RefPtr<FontSelector>&& fontSelector)
 {
     auto key = makeFontCascadeCacheKey(fontDescription, fontSelector.get());
 
@@ -300,7 +301,7 @@ void FontCascade::update(RefPtr<FontSelector>&& fontSelector) const
     m_typesettingFeatures = computeTypesettingFeatures();
 }
 
-float FontCascade::drawText(GraphicsContext* context, const TextRun& run, const FloatPoint& point, int from, int to, CustomFontNotReadyAction customFontNotReadyAction) const
+float FontCascade::drawText(GraphicsContext& context, const TextRun& run, const FloatPoint& point, int from, int to, CustomFontNotReadyAction customFontNotReadyAction) const
 {
     // Don't draw anything while we are using custom fonts that are in the process of loading,
     // except if the 'force' argument is set to true (in which case it will use a fallback
@@ -321,7 +322,7 @@ float FontCascade::drawText(GraphicsContext* context, const TextRun& run, const 
     return drawComplexText(context, run, point, from, to);
 }
 
-void FontCascade::drawEmphasisMarks(GraphicsContext* context, const TextRun& run, const AtomicString& mark, const FloatPoint& point, int from, int to) const
+void FontCascade::drawEmphasisMarks(GraphicsContext& context, const TextRun& run, const AtomicString& mark, const FloatPoint& point, int from, int to) const
 {
     if (isLoadingCustomFonts())
         return;
@@ -599,7 +600,8 @@ FontCascade::CodePath FontCascade::codePath(const TextRun& run) const
         return Simple;
 #endif
 
-    if (m_fontDescription.featureSettings() && m_fontDescription.featureSettings()->size() > 0)
+    // FIXME: This shouldn't be necessary because Font::applyTransforms() should perform all necessary shaping.
+    if (m_fontDescription.featureSettings().size() > 0 || !m_fontDescription.variantSettings().isAllNormal())
         return Complex;
     
     if (run.length() > 1 && !WidthIterator::supportsTypesettingFeatures(*this))
@@ -750,7 +752,7 @@ FontCascade::CodePath FontCascade::characterRangeCodePath(const UChar* character
             if (supplementaryCharacter <= 0x1F1FF)
                 return Complex;
 
-            if (supplementaryCharacter >= 0x1F466 && supplementaryCharacter <= 0x1F469) {
+            if (supplementaryCharacter == 0x1F441 || supplementaryCharacter == 0x1F5E8 || (supplementaryCharacter >= 0x1F466 && supplementaryCharacter <= 0x1F469)) {
                 previousCharacterIsEmojiGroupCandidate = true;
                 continue;
             }
@@ -1297,7 +1299,7 @@ float FontCascade::getGlyphsAndAdvancesForSimpleText(const TextRun& run, int fro
     return initialAdvance;
 }
 
-float FontCascade::drawSimpleText(GraphicsContext* context, const TextRun& run, const FloatPoint& point, int from, int to) const
+float FontCascade::drawSimpleText(GraphicsContext& context, const TextRun& run, const FloatPoint& point, int from, int to) const
 {
     // This glyph buffer holds our glyphs+advances+font data for each glyph.
     GlyphBuffer glyphBuffer;
@@ -1313,7 +1315,7 @@ float FontCascade::drawSimpleText(GraphicsContext* context, const TextRun& run, 
     return startPoint.x() - startX;
 }
 
-void FontCascade::drawEmphasisMarksForSimpleText(GraphicsContext* context, const TextRun& run, const AtomicString& mark, const FloatPoint& point, int from, int to) const
+void FontCascade::drawEmphasisMarksForSimpleText(GraphicsContext& context, const TextRun& run, const AtomicString& mark, const FloatPoint& point, int from, int to) const
 {
     GlyphBuffer glyphBuffer;
     float initialAdvance = getGlyphsAndAdvancesForSimpleText(run, from, to, glyphBuffer, ForTextEmphasis);
@@ -1324,7 +1326,7 @@ void FontCascade::drawEmphasisMarksForSimpleText(GraphicsContext* context, const
     drawEmphasisMarks(context, run, glyphBuffer, mark, FloatPoint(point.x() + initialAdvance, point.y()));
 }
 
-void FontCascade::drawGlyphBuffer(GraphicsContext* context, const TextRun& run, const GlyphBuffer& glyphBuffer, FloatPoint& point) const
+void FontCascade::drawGlyphBuffer(GraphicsContext& context, const TextRun& run, const GlyphBuffer& glyphBuffer, FloatPoint& point) const
 {
 #if !ENABLE(SVG_FONTS)
     UNUSED_PARAM(run);
@@ -1348,10 +1350,10 @@ void FontCascade::drawGlyphBuffer(GraphicsContext* context, const TextRun& run, 
         if (nextFontData != fontData || nextOffset != offset) {
 #if ENABLE(SVG_FONTS)
             if (renderingContext && fontData->isSVGFont())
-                renderingContext->drawSVGGlyphs(context, fontData, glyphBuffer, lastFrom, nextGlyph - lastFrom, startPoint);
+                renderingContext->drawSVGGlyphs(context, *fontData, glyphBuffer, lastFrom, nextGlyph - lastFrom, startPoint);
             else
 #endif
-                drawGlyphs(context, fontData, glyphBuffer, lastFrom, nextGlyph - lastFrom, startPoint);
+                drawGlyphs(context, *fontData, glyphBuffer, lastFrom, nextGlyph - lastFrom, startPoint);
 
             lastFrom = nextGlyph;
             fontData = nextFontData;
@@ -1366,11 +1368,11 @@ void FontCascade::drawGlyphBuffer(GraphicsContext* context, const TextRun& run, 
 
 #if ENABLE(SVG_FONTS)
     if (renderingContext && fontData->isSVGFont())
-        renderingContext->drawSVGGlyphs(context, fontData, glyphBuffer, lastFrom, nextGlyph - lastFrom, startPoint);
+        renderingContext->drawSVGGlyphs(context, *fontData, glyphBuffer, lastFrom, nextGlyph - lastFrom, startPoint);
     else
 #endif
     {
-        drawGlyphs(context, fontData, glyphBuffer, lastFrom, nextGlyph - lastFrom, startPoint);
+        drawGlyphs(context, *fontData, glyphBuffer, lastFrom, nextGlyph - lastFrom, startPoint);
         point.setX(nextX);
     }
 }
@@ -1390,7 +1392,7 @@ inline static float offsetToMiddleOfGlyphAtIndex(const GlyphBuffer& glyphBuffer,
     return offsetToMiddleOfGlyph(glyphBuffer.fontAt(i), glyphBuffer.glyphAt(i));
 }
 
-void FontCascade::drawEmphasisMarks(GraphicsContext* context, const TextRun& run, const GlyphBuffer& glyphBuffer, const AtomicString& mark, const FloatPoint& point) const
+void FontCascade::drawEmphasisMarks(GraphicsContext& context, const TextRun& run, const GlyphBuffer& glyphBuffer, const AtomicString& mark, const FloatPoint& point) const
 {
     GlyphData markGlyphData;
     if (!getEmphasisMarkGlyphData(mark, markGlyphData))

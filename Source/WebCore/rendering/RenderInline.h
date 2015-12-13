@@ -136,7 +136,7 @@ private:
 
     virtual bool nodeAtPoint(const HitTestRequest&, HitTestResult&, const HitTestLocation& locationInContainer, const LayoutPoint& accumulatedOffset, HitTestAction) override final;
 
-    virtual bool requiresLayer() const override { return isInFlowPositioned() || createsGroup() || hasClipPath(); }
+    virtual bool requiresLayer() const override { return isInFlowPositioned() || createsGroup() || hasClipPath() || willChangeCreatesStackingContext(); }
 
     virtual LayoutUnit offsetLeft() const override final;
     virtual LayoutUnit offsetTop() const override final;
@@ -173,9 +173,14 @@ private:
     
     RenderPtr<RenderInline> clone() const;
 
-    void paintOutlineForLine(GraphicsContext*, const LayoutPoint&, const LayoutRect& prevLine, const LayoutRect& thisLine,
+    void paintOutlineForLine(GraphicsContext&, const LayoutPoint&, const LayoutRect& prevLine, const LayoutRect& thisLine,
                              const LayoutRect& nextLine, const Color);
     RenderBoxModelObject* continuationBefore(RenderObject* beforeChild);
+
+    bool willChangeCreatesStackingContext() const
+    {
+        return style().willChange() && style().willChange()->canCreateStackingContextOnInline();
+    }
 
     RenderLineBoxList m_lineBoxes;   // All of the line boxes created for this inline flow.  For example, <i>Hello<br>world.</i> will have two <i> line boxes.
 };

@@ -199,6 +199,7 @@ public:
     void showWebInspector();
     void closeWebInspector();
     void evaluateInWebInspector(JSStringRef script);
+    JSRetainPtr<JSStringRef> inspectorTestStubURL();
 
     void setPOSIXLocale(JSStringRef);
 
@@ -256,6 +257,7 @@ public:
     void setGeolocationPermission(bool);
     void setMockGeolocationPosition(double latitude, double longitude, double accuracy, JSValueRef altitude, JSValueRef altitudeAccuracy, JSValueRef heading, JSValueRef speed);
     void setMockGeolocationPositionUnavailableError(JSStringRef message);
+    bool isGeolocationProviderActive();
 
     // MediaStream
     void setUserMediaPermission(bool);
@@ -280,6 +282,24 @@ public:
     
     JSValueRef numberOfDFGCompiles(JSValueRef theFunction);
     JSValueRef neverInlineFunction(JSValueRef theFunction);
+
+    bool shouldDecideNavigationPolicyAfterDelay() const { return m_shouldDecideNavigationPolicyAfterDelay; }
+    void setShouldDecideNavigationPolicyAfterDelay(bool);
+    void setNavigationGesturesEnabled(bool);
+
+    void runUIScript(JSStringRef script, JSValueRef callback);
+    void runUIScriptCallback(unsigned callbackID, JSStringRef result);
+
+    void installDidBeginSwipeCallback(JSValueRef);
+    void installWillEndSwipeCallback(JSValueRef);
+    void installDidEndSwipeCallback(JSValueRef);
+    void installDidRemoveSwipeSnapshotCallback(JSValueRef);
+    void callDidBeginSwipeCallback();
+    void callWillEndSwipeCallback();
+    void callDidEndSwipeCallback();
+    void callDidRemoveSwipeSnapshotCallback();
+
+    void clearTestRunnerCallbacks();
 
 private:
     TestRunner();
@@ -330,6 +350,8 @@ private:
 
     double m_databaseDefaultQuota;
     double m_databaseMaxQuota;
+
+    bool m_shouldDecideNavigationPolicyAfterDelay { false };
 
     bool m_userStyleSheetEnabled;
     WKRetainPtr<WKStringRef> m_userStyleSheetLocation;

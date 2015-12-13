@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009, 2010, 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2009-2010, 2014-2015 Apple Inc. All rights reserved.
  * Copyright (C) 2010 University of Szeged
  *
  * Redistribution and use in source and binary forms, with or without
@@ -1677,6 +1677,12 @@ public:
         return Call(m_assembler.blx(dataTempRegister), Call::LinkableNear);
     }
 
+    ALWAYS_INLINE Call nearTailCall()
+    {
+        moveFixedWidthEncoding(TrustedImm32(0), dataTempRegister);
+        return Call(m_assembler.bx(dataTempRegister), Call::LinkableNearTail);
+    }
+
     ALWAYS_INLINE Call call()
     {
         moveFixedWidthEncoding(TrustedImm32(0), dataTempRegister);
@@ -1901,12 +1907,17 @@ public:
         UNREACHABLE_FOR_PLATFORM();
     }
 
+    static void repatchCall(CodeLocationCall call, CodeLocationLabel destination)
+    {
+        ARMv7Assembler::relinkCall(call.dataLocation(), destination.executableAddress());
+    }
+
+    static void repatchCall(CodeLocationCall call, FunctionPtr destination)
+    {
+        ARMv7Assembler::relinkCall(call.dataLocation(), destination.executableAddress());
+    }
+
 #if ENABLE(MASM_PROBE)
-    // Methods required by the MASM_PROBE mechanism as defined in
-    // AbstractMacroAssembler.h. 
-    static void printCPURegisters(CPUState&, int indentation = 0);
-    static void printRegister(CPUState&, RegisterID);
-    static void printRegister(CPUState&, FPRegisterID);
     void probe(ProbeFunction, void* arg1 = 0, void* arg2 = 0);
 #endif // ENABLE(MASM_PROBE)
 
@@ -2007,17 +2018,10 @@ private:
 
     static void linkCall(void* code, Call call, FunctionPtr function)
     {
-        ARMv7Assembler::linkCall(code, call.m_label, function.value());
-    }
-
-    static void repatchCall(CodeLocationCall call, CodeLocationLabel destination)
-    {
-        ARMv7Assembler::relinkCall(call.dataLocation(), destination.executableAddress());
-    }
-
-    static void repatchCall(CodeLocationCall call, FunctionPtr destination)
-    {
-        ARMv7Assembler::relinkCall(call.dataLocation(), destination.executableAddress());
+        if (call.isFlagSet(Call::Tail))
+            ARMv7Assembler::linkJump(code, call.m_label, function.value());
+        else
+            ARMv7Assembler::linkCall(code, call.m_label, function.value());
     }
 
 #if ENABLE(MASM_PROBE)

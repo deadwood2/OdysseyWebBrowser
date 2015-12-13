@@ -87,11 +87,11 @@ std::unique_ptr<SVGFilterBuilder> RenderSVGResourceFilter::buildPrimitives(SVGFi
             builder->clearEffects();
             return nullptr;
         }
-        builder->appendEffectToEffectReferences(effect, element.renderer());
+        builder->appendEffectToEffectReferences(effect.copyRef(), element.renderer());
         element.setStandardAttributes(effect.get());
         effect->setEffectBoundaries(SVGLengthContext::resolveRectangle<SVGFilterPrimitiveStandardAttributes>(&element, filterElement().primitiveUnits(), targetBoundingBox));
         effect->setOperatingColorSpace(element.renderer()->style().svgStyle().colorInterpolationFilters() == CI_LINEARRGB ? ColorSpaceLinearRGB : ColorSpaceDeviceRGB);
-        builder->add(element.result(), effect.release());
+        builder->add(element.result(), WTF::move(effect));
     }
     return builder;
 }
@@ -198,13 +198,12 @@ bool RenderSVGResourceFilter::applyResource(RenderElement& renderer, const Rende
     // Set the rendering mode from the page's settings.
     filterData->filter->setRenderingMode(renderingMode);
 
-    GraphicsContext* sourceGraphicContext = sourceGraphic->context();
-    ASSERT(sourceGraphicContext);
+    GraphicsContext& sourceGraphicContext = sourceGraphic->context();
   
     filterData->sourceGraphicBuffer = WTF::move(sourceGraphic);
     filterData->savedContext = context;
 
-    context = sourceGraphicContext;
+    context = &sourceGraphicContext;
 
     ASSERT(!m_filter.contains(&renderer));
     m_filter.set(&renderer, WTF::move(filterData));

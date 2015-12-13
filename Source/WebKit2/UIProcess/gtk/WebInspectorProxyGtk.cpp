@@ -77,7 +77,12 @@ WebPageProxy* WebInspectorProxy::platformCreateInspectorPage()
     preferences->setJavaScriptRuntimeFlags({
     });
     RefPtr<WebPageGroup> pageGroup = WebPageGroup::create(inspectorPageGroupIdentifier(), false, false);
-    m_inspectorView = GTK_WIDGET(webkitWebViewBaseCreate(&inspectorProcessPool(), preferences.get(), pageGroup.get(), nullptr, nullptr));
+
+    auto pageConfiguration = API::PageConfiguration::create();
+    pageConfiguration->setProcessPool(&inspectorProcessPool());
+    pageConfiguration->setPreferences(preferences.get());
+    pageConfiguration->setPageGroup(pageGroup.get());
+    m_inspectorView = GTK_WIDGET(webkitWebViewBaseCreate(*pageConfiguration.ptr()));
     g_object_add_weak_pointer(G_OBJECT(m_inspectorView), reinterpret_cast<void**>(&m_inspectorView));
 
     WKPageUIClientV2 uiClient = {
@@ -245,17 +250,17 @@ void WebInspectorProxy::platformInspectedURLChanged(const String& url)
         updateInspectorWindowTitle();
 }
 
-String WebInspectorProxy::inspectorPageURL() const
+String WebInspectorProxy::inspectorPageURL()
 {
     return String("resource:///org/webkitgtk/inspector/UserInterface/Main.html");
 }
 
-String WebInspectorProxy::inspectorTestPageURL() const
+String WebInspectorProxy::inspectorTestPageURL()
 {
     return String("resource:///org/webkitgtk/inspector/UserInterface/Test.html");
 }
 
-String WebInspectorProxy::inspectorBaseURL() const
+String WebInspectorProxy::inspectorBaseURL()
 {
     return String("resource:///org/webkitgtk/inspector/UserInterface/");
 }

@@ -70,11 +70,17 @@ void printInternal(PrintStream& out, UseKind useKind)
     case BooleanUse:
         out.print("Boolean");
         return;
+    case KnownBooleanUse:
+        out.print("KnownBoolean");
+        return;
     case CellUse:
         out.print("Cell");
         return;
     case KnownCellUse:
         out.print("KnownCell");
+        return;
+    case CellOrOtherUse:
+        out.print("CellOrOther");
         return;
     case ObjectUse:
         out.print("Object");
@@ -96,6 +102,12 @@ void printInternal(PrintStream& out, UseKind useKind)
         return;
     case KnownStringUse:
         out.print("KnownString");
+        return;
+    case KnownPrimitiveUse:
+        out.print("KnownPrimitive");
+        return;
+    case SymbolUse:
+        out.print("Symbol");
         return;
     case StringObjectUse:
         out.print("StringObject");

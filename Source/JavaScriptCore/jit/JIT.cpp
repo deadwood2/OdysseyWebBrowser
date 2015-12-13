@@ -29,7 +29,6 @@
 
 #include "JIT.h"
 
-#include "ArityCheckFailReturnThunks.h"
 #include "CodeBlock.h"
 #include "CodeBlockWithJITType.h"
 #include "DFGCapabilities.h"
@@ -42,7 +41,6 @@
 #include "MaxFrameExtentForSlowPathCall.h"
 #include "JSCInlines.h"
 #include "ProfilerDatabase.h"
-#include "RepatchBuffer.h"
 #include "ResultType.h"
 #include "SamplingTool.h"
 #include "SlowPathCall.h"
@@ -54,22 +52,11 @@ using namespace std;
 
 namespace JSC {
 
-void ctiPatchNearCallByReturnAddress(CodeBlock* codeblock, ReturnAddressPtr returnAddress, MacroAssemblerCodePtr newCalleeFunction)
+void ctiPatchCallByReturnAddress(ReturnAddressPtr returnAddress, FunctionPtr newCalleeFunction)
 {
-    RepatchBuffer repatchBuffer(codeblock);
-    repatchBuffer.relinkNearCallerToTrampoline(returnAddress, newCalleeFunction);
-}
-
-void ctiPatchCallByReturnAddress(CodeBlock* codeblock, ReturnAddressPtr returnAddress, MacroAssemblerCodePtr newCalleeFunction)
-{
-    RepatchBuffer repatchBuffer(codeblock);
-    repatchBuffer.relinkCallerToTrampoline(returnAddress, newCalleeFunction);
-}
-
-void ctiPatchCallByReturnAddress(CodeBlock* codeblock, ReturnAddressPtr returnAddress, FunctionPtr newCalleeFunction)
-{
-    RepatchBuffer repatchBuffer(codeblock);
-    repatchBuffer.relinkCallerToFunction(returnAddress, newCalleeFunction);
+    MacroAssembler::repatchCall(
+        CodeLocationCall(MacroAssemblerCodePtr(returnAddress)),
+        newCalleeFunction);
 }
 
 JIT::JIT(VM* vm, CodeBlock* codeBlock)
@@ -97,6 +84,9 @@ void JIT::emitEnterOptimizationCheck()
     
     skipOptimize.append(branchAdd32(Signed, TrustedImm32(Options::executionCounterIncrementForEntry()), AbsoluteAddress(m_codeBlock->addressOfJITExecuteCounter())));
     ASSERT(!m_bytecodeOffset);
+
+    copyCalleeSavesFromFrameOrRegisterToVMCalleeSavesBuffer();
+
     callOperation(operationOptimize, m_bytecodeOffset);
     skipOptimize.append(branchTestPtr(Zero, returnValueGPR));
     move(returnValueGPR2, stackPointerRegister);
@@ -111,6 +101,11 @@ void JIT::emitNotifyWrite(WatchpointSet* set)
         return;
     
     addSlowCase(branch8(NotEqual, AbsoluteAddress(set->addressOfState()), TrustedImm32(IsInvalidated)));
+}
+
+void JIT::emitNotifyWrite(GPRReg pointerToSet)
+{
+    addSlowCase(branch8(NotEqual, Address(pointerToSet, WatchpointSet::offsetOfState()), TrustedImm32(IsInvalidated)));
 }
 
 void JIT::assertStackPointerOffset()
@@ -202,8 +197,10 @@ void JIT::privateCompileMainPass()
         DEFINE_OP(op_bitor)
         DEFINE_OP(op_bitxor)
         DEFINE_OP(op_call)
+        DEFINE_OP(op_tail_call)
         DEFINE_OP(op_call_eval)
         DEFINE_OP(op_call_varargs)
+        DEFINE_OP(op_tail_call_varargs)
         DEFINE_OP(op_construct_varargs)
         DEFINE_OP(op_catch)
         DEFINE_OP(op_construct)
@@ -219,9 +216,9 @@ void JIT::privateCompileMainPass()
         DEFINE_OP(op_end)
         DEFINE_OP(op_enter)
         DEFINE_OP(op_get_scope)
+        DEFINE_OP(op_load_arrowfunction_this)
         DEFINE_OP(op_eq)
         DEFINE_OP(op_eq_null)
-        case op_get_by_id_out_of_line:
         case op_get_array_length:
         DEFINE_OP(op_get_by_id)
         DEFINE_OP(op_get_by_val)
@@ -259,6 +256,7 @@ void JIT::privateCompileMainPass()
         DEFINE_OP(op_new_array_buffer)
         DEFINE_OP(op_new_func)
         DEFINE_OP(op_new_func_exp)
+        DEFINE_OP(op_new_arrow_func_exp) 
         DEFINE_OP(op_new_object)
         DEFINE_OP(op_new_regexp)
         DEFINE_OP(op_not)
@@ -269,15 +267,9 @@ void JIT::privateCompileMainPass()
         DEFINE_OP(op_profile_will_call)
         DEFINE_OP(op_profile_type)
         DEFINE_OP(op_profile_control_flow)
-        DEFINE_OP(op_push_name_scope)
         DEFINE_OP(op_push_with_scope)
         DEFINE_OP(op_create_lexical_environment)
         DEFINE_OP(op_get_parent_scope)
-        case op_put_by_id_out_of_line:
-        case op_put_by_id_transition_direct:
-        case op_put_by_id_transition_normal:
-        case op_put_by_id_transition_direct_out_of_line:
-        case op_put_by_id_transition_normal_out_of_line:
         DEFINE_OP(op_put_by_id)
         DEFINE_OP(op_put_by_index)
         case op_put_by_val_direct:
@@ -285,6 +277,8 @@ void JIT::privateCompileMainPass()
         DEFINE_OP(op_put_getter_by_id)
         DEFINE_OP(op_put_setter_by_id)
         DEFINE_OP(op_put_getter_setter)
+        DEFINE_OP(op_put_getter_by_val)
+        DEFINE_OP(op_put_setter_by_val)
 
         DEFINE_OP(op_ret)
         DEFINE_OP(op_rshift)
@@ -379,8 +373,10 @@ void JIT::privateCompileSlowCases()
         DEFINE_SLOWCASE_OP(op_bitor)
         DEFINE_SLOWCASE_OP(op_bitxor)
         DEFINE_SLOWCASE_OP(op_call)
+        DEFINE_SLOWCASE_OP(op_tail_call)
         DEFINE_SLOWCASE_OP(op_call_eval)
         DEFINE_SLOWCASE_OP(op_call_varargs)
+        DEFINE_SLOWCASE_OP(op_tail_call_varargs)
         DEFINE_SLOWCASE_OP(op_construct_varargs)
         DEFINE_SLOWCASE_OP(op_construct)
         DEFINE_SLOWCASE_OP(op_to_this)
@@ -388,7 +384,6 @@ void JIT::privateCompileSlowCases()
         DEFINE_SLOWCASE_OP(op_create_this)
         DEFINE_SLOWCASE_OP(op_div)
         DEFINE_SLOWCASE_OP(op_eq)
-        case op_get_by_id_out_of_line:
         case op_get_array_length:
         DEFINE_SLOWCASE_OP(op_get_by_id)
         DEFINE_SLOWCASE_OP(op_get_by_val)
@@ -415,11 +410,6 @@ void JIT::privateCompileSlowCases()
         DEFINE_SLOWCASE_OP(op_nstricteq)
         DEFINE_SLOWCASE_OP(op_dec)
         DEFINE_SLOWCASE_OP(op_inc)
-        case op_put_by_id_out_of_line:
-        case op_put_by_id_transition_direct:
-        case op_put_by_id_transition_normal:
-        case op_put_by_id_transition_direct_out_of_line:
-        case op_put_by_id_transition_normal_out_of_line:
         DEFINE_SLOWCASE_OP(op_put_by_id)
         case op_put_by_val_direct:
         DEFINE_SLOWCASE_OP(op_put_by_val)
@@ -485,6 +475,7 @@ CompilationResult JIT::privateCompile(JITCompilationEffort effort)
     
     switch (m_codeBlock->codeType()) {
     case GlobalCode:
+    case ModuleCode:
     case EvalCode:
         m_codeBlock->m_shouldAlwaysBeInlined = false;
         break;
@@ -494,6 +485,8 @@ CompilationResult JIT::privateCompile(JITCompilationEffort effort)
         m_codeBlock->m_shouldAlwaysBeInlined &= canInline(level) && DFG::mightInlineFunction(m_codeBlock);
         break;
     }
+
+    m_codeBlock->setCalleeSaveRegisters(RegisterSet::llintBaselineCalleeSaveRegisters()); // Might be able to remove as this is probably already set to this value.
 
     // This ensures that we have the most up to date type information when performing typecheck optimizations for op_profile_type.
     if (m_vm->typeProfiler())
@@ -517,7 +510,7 @@ CompilationResult JIT::privateCompile(JITCompilationEffort effort)
         nop();
 
     emitFunctionPrologue();
-    emitPutImmediateToCallFrameHeader(m_codeBlock, JSStack::CodeBlock);
+    emitPutToCallFrameHeader(m_codeBlock, JSStack::CodeBlock);
 
     Label beginLabel(this);
 
@@ -552,6 +545,9 @@ CompilationResult JIT::privateCompile(JITCompilationEffort effort)
     move(regT1, stackPointerRegister);
     checkStackPointerAlignment();
 
+    emitSaveCalleeSaves();
+    emitMaterializeTagCheckRegisters();
+
     privateCompileMainPass();
     privateCompileLinkPass();
     privateCompileSlowCases();
@@ -570,7 +566,7 @@ CompilationResult JIT::privateCompile(JITCompilationEffort effort)
         arityCheck = label();
         store8(TrustedImm32(0), &m_codeBlock->m_shouldAlwaysBeInlined);
         emitFunctionPrologue();
-        emitPutImmediateToCallFrameHeader(m_codeBlock, JSStack::CodeBlock);
+        emitPutToCallFrameHeader(m_codeBlock, JSStack::CodeBlock);
 
         load32(payloadFor(JSStack::ArgumentCount), regT1);
         branch32(AboveOrEqual, regT1, TrustedImm32(m_codeBlock->m_numParameters)).linkTo(beginLabel, this);
@@ -582,19 +578,8 @@ CompilationResult JIT::privateCompile(JITCompilationEffort effort)
         callOperationWithCallFrameRollbackOnException(m_codeBlock->m_isConstructor ? operationConstructArityCheck : operationCallArityCheck);
         if (maxFrameExtentForSlowPathCall)
             addPtr(TrustedImm32(maxFrameExtentForSlowPathCall), stackPointerRegister);
-        if (returnValueGPR != regT0)
-            move(returnValueGPR, regT0);
-        branchTest32(Zero, regT0).linkTo(beginLabel, this);
-        GPRReg thunkReg;
-#if USE(JSVALUE64)
-        thunkReg = GPRInfo::regT7;
-#else
-        thunkReg = GPRInfo::regT5;
-#endif
-        CodeLocationLabel* failThunkLabels =
-            m_vm->arityCheckFailReturnThunks->returnPCsFor(*m_vm, m_codeBlock->numParameters());
-        move(TrustedImmPtr(failThunkLabels), thunkReg);
-        loadPtr(BaseIndex(thunkReg, regT0, timesPtr()), thunkReg);
+        branchTest32(Zero, returnValueGPR).linkTo(beginLabel, this);
+        move(returnValueGPR, GPRInfo::argumentGPR0);
         emitNakedCall(m_vm->getCTIStub(arityFixupGenerator).code());
 
 #if !ASSERT_DISABLED
@@ -658,18 +643,25 @@ CompilationResult JIT::privateCompile(JITCompilationEffort effort)
     for (unsigned i = m_putByIds.size(); i--;)
         m_putByIds[i].finalize(patchBuffer);
 
-    m_codeBlock->setNumberOfByValInfos(m_byValCompilationInfo.size());
-    for (unsigned i = 0; i < m_byValCompilationInfo.size(); ++i) {
-        CodeLocationJump badTypeJump = CodeLocationJump(patchBuffer.locationOf(m_byValCompilationInfo[i].badTypeJump));
-        CodeLocationLabel doneTarget = patchBuffer.locationOf(m_byValCompilationInfo[i].doneTarget);
-        CodeLocationLabel slowPathTarget = patchBuffer.locationOf(m_byValCompilationInfo[i].slowPathTarget);
-        CodeLocationCall returnAddress = patchBuffer.locationOf(m_byValCompilationInfo[i].returnAddress);
-        
-        m_codeBlock->byValInfo(i) = ByValInfo(
-            m_byValCompilationInfo[i].bytecodeIndex,
+    for (const auto& byValCompilationInfo : m_byValCompilationInfo) {
+        PatchableJump patchableNotIndexJump = byValCompilationInfo.notIndexJump;
+        CodeLocationJump notIndexJump = CodeLocationJump();
+        if (Jump(patchableNotIndexJump).isSet())
+            notIndexJump = CodeLocationJump(patchBuffer.locationOf(patchableNotIndexJump));
+        CodeLocationJump badTypeJump = CodeLocationJump(patchBuffer.locationOf(byValCompilationInfo.badTypeJump));
+        CodeLocationLabel doneTarget = patchBuffer.locationOf(byValCompilationInfo.doneTarget);
+        CodeLocationLabel nextHotPathTarget = patchBuffer.locationOf(byValCompilationInfo.nextHotPathTarget);
+        CodeLocationLabel slowPathTarget = patchBuffer.locationOf(byValCompilationInfo.slowPathTarget);
+        CodeLocationCall returnAddress = patchBuffer.locationOf(byValCompilationInfo.returnAddress);
+
+        *byValCompilationInfo.byValInfo = ByValInfo(
+            byValCompilationInfo.bytecodeIndex,
+            notIndexJump,
             badTypeJump,
-            m_byValCompilationInfo[i].arrayMode,
+            byValCompilationInfo.arrayMode,
+            byValCompilationInfo.arrayProfile,
             differenceBetweenCodePtr(badTypeJump, doneTarget),
+            differenceBetweenCodePtr(badTypeJump, nextHotPathTarget),
             differenceBetweenCodePtr(returnAddress, slowPathTarget));
     }
     for (unsigned i = 0; i < m_callCompilationInfo.size(); ++i) {
@@ -724,6 +716,8 @@ void JIT::privateCompileExceptionHandlers()
     if (!m_exceptionChecksWithCallFrameRollback.empty()) {
         m_exceptionChecksWithCallFrameRollback.link(this);
 
+        copyCalleeSavesToVMCalleeSavesBuffer();
+
         // lookupExceptionHandlerFromCallerFrame is passed two arguments, the VM and the exec (the CallFrame*).
 
         move(TrustedImmPtr(vm()), GPRInfo::argumentGPR0);
@@ -740,6 +734,8 @@ void JIT::privateCompileExceptionHandlers()
 
     if (!m_exceptionChecks.empty()) {
         m_exceptionChecks.link(this);
+
+        copyCalleeSavesToVMCalleeSavesBuffer();
 
         // lookupExceptionHandler is passed two arguments, the VM and the exec (the CallFrame*).
         move(TrustedImmPtr(vm()), GPRInfo::argumentGPR0);

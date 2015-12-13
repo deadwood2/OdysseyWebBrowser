@@ -96,8 +96,8 @@ static void buildRendererHighlight(RenderObject* renderer, RenderRegion* region,
     if (isSVGRenderer) {
         highlight.type = HighlightType::Rects;
         renderer->absoluteQuads(highlight.quads);
-        for (size_t i = 0; i < highlight.quads.size(); ++i)
-            contentsQuadToCoordinateSystem(mainView, containingView, highlight.quads[i], coordinateSystem);
+        for (auto& quad : highlight.quads)
+            contentsQuadToCoordinateSystem(mainView, containingView, quad, coordinateSystem);
     } else if (is<RenderBox>(*renderer) || is<RenderInline>(*renderer)) {
         LayoutRect contentBox;
         LayoutRect paddingBox;
@@ -221,18 +221,27 @@ void InspectorOverlay::paint(GraphicsContext& context)
     GraphicsContextStateSaver stateSaver(context);
     FrameView* view = overlayPage()->mainFrame().view();
     view->updateLayoutAndStyleIfNeededRecursive();
-    view->paint(&context, IntRect(0, 0, view->width(), view->height()));
+    view->paint(context, IntRect(0, 0, view->width(), view->height()));
 }
 
 void InspectorOverlay::getHighlight(Highlight& highlight, InspectorOverlay::CoordinateSystem coordinateSystem) const
 {
-    if (!m_highlightNode && !m_highlightQuad)
+    if (!m_highlightNode && !m_highlightQuad && !m_highlightNodeList)
         return;
 
     highlight.type = HighlightType::Rects;
     if (m_highlightNode)
         buildNodeHighlight(*m_highlightNode, nullptr, m_nodeHighlightConfig, highlight, coordinateSystem);
-    else
+    else if (m_highlightNodeList) {
+        highlight.setDataFromConfig(m_nodeHighlightConfig);
+        for (unsigned i = 0; i < m_highlightNodeList->length(); ++i) {
+            Highlight nodeHighlight;
+            buildNodeHighlight(*(m_highlightNodeList->item(i)), nullptr, m_nodeHighlightConfig, nodeHighlight, coordinateSystem);
+            if (nodeHighlight.type == HighlightType::Node)
+                highlight.quads.appendVector(nodeHighlight.quads);
+        }
+        highlight.type = HighlightType::NodeList;
+    } else
         buildQuadHighlight(*m_highlightQuad, m_quadHighlightConfig, highlight);
 }
 
@@ -250,10 +259,10 @@ void InspectorOverlay::hideHighlight()
     update();
 }
 
-void InspectorOverlay::highlightNodeList(PassRefPtr<NodeList> nodes, const HighlightConfig& highlightConfig)
+void InspectorOverlay::highlightNodeList(RefPtr<NodeList>&& nodes, const HighlightConfig& highlightConfig)
 {
     m_nodeHighlightConfig = highlightConfig;
-    m_highlightNodeList = nodes;
+    m_highlightNodeList = WTF::move(nodes);
     m_highlightNode = nullptr;
     update();
 }
@@ -268,7 +277,7 @@ void InspectorOverlay::highlightNode(Node* node, const HighlightConfig& highligh
 
 void InspectorOverlay::highlightQuad(std::unique_ptr<FloatQuad> quad, const HighlightConfig& highlightConfig)
 {
-    if (m_quadHighlightConfig.usePageCoordinates)
+    if (highlightConfig.usePageCoordinates)
         *quad -= m_page.mainFrame().view()->scrollOffset();
 
     m_quadHighlightConfig = highlightConfig;
@@ -369,8 +378,8 @@ static Ref<Inspector::Protocol::OverlayTypes::Quad> buildArrayForQuad(const Floa
 static Ref<Inspector::Protocol::OverlayTypes::FragmentHighlightData> buildObjectForHighlight(const Highlight& highlight)
 {
     auto arrayOfQuads = Inspector::Protocol::Array<Inspector::Protocol::OverlayTypes::Quad>::create();
-    for (size_t i = 0; i < highlight.quads.size(); ++i)
-        arrayOfQuads->addItem(buildArrayForQuad(highlight.quads[i]));
+    for (auto& quad : highlight.quads)
+        arrayOfQuads->addItem(buildArrayForQuad(quad));
 
     return Inspector::Protocol::OverlayTypes::FragmentHighlightData::create()
         .setQuads(WTF::move(arrayOfQuads))
@@ -736,8 +745,8 @@ static RefPtr<Inspector::Protocol::OverlayTypes::ElementData> buildObjectForElem
     IntRect boundingBox = snappedIntRect(containingView->contentsToRootView(renderer->absoluteBoundingBoxRect()));
     RenderBoxModelObject* modelObject = is<RenderBoxModelObject>(*renderer) ? downcast<RenderBoxModelObject>(renderer) : nullptr;
     auto sizeObject = Inspector::Protocol::OverlayTypes::Size::create()
-        .setWidth(modelObject ? adjustForAbsoluteZoom(modelObject->pixelSnappedOffsetWidth(), *modelObject) : boundingBox.width())
-        .setHeight(modelObject ? adjustForAbsoluteZoom(modelObject->pixelSnappedOffsetHeight(), *modelObject) : boundingBox.height())
+        .setWidth(modelObject ? adjustForAbsoluteZoom(roundToInt(modelObject->offsetWidth()), *modelObject) : boundingBox.width())
+        .setHeight(modelObject ? adjustForAbsoluteZoom(roundToInt(modelObject->offsetHeight()), *modelObject) : boundingBox.height())
         .release();
     elementData->setSize(WTF::move(sizeObject));
 
@@ -938,7 +947,7 @@ void InspectorOverlay::evaluateInOverlay(const String& method, RefPtr<InspectorV
 
 void InspectorOverlay::freePage()
 {
-    m_overlayPage.reset();
+    m_overlayPage = nullptr;
 }
 
 } // namespace WebCore

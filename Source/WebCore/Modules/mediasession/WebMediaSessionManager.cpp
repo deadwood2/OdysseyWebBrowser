@@ -78,6 +78,8 @@ static String mediaProducerStateString(MediaProducer::MediaStateFlags flags)
         string.append("RequiresPlaybackTargetMonitoring + ");
     if (flags & MediaProducer::ExternalDeviceAutoPlayCandidate)
         string.append("ExternalDeviceAutoPlayCandidate + ");
+    if (flags & MediaProducer::DidPlayToEnd)
+        string.append("DidPlayToEnd + ");
     if (string.isEmpty())
         string.append("IsNotPlaying");
     else
@@ -86,6 +88,25 @@ static String mediaProducerStateString(MediaProducer::MediaStateFlags flags)
     return string.toString();
 }
 #endif
+
+static WebMediaSessionManager*& webMediaSessionManagerOverride()
+{
+    static WebMediaSessionManager* override;
+    return override;
+}
+
+WebMediaSessionManager& WebMediaSessionManager::shared()
+{
+    if (WebMediaSessionManager* override = webMediaSessionManagerOverride())
+        return *override;
+
+    return WebMediaSessionManager::platformManager();
+}
+
+void WebMediaSessionManager::setWebMediaSessionManagerOverride(WebMediaSessionManager* manager)
+{
+    webMediaSessionManagerOverride() = manager;
+}
 
 WebMediaSessionManager::WebMediaSessionManager()
     : m_taskTimer(RunLoop::current(), this, &WebMediaSessionManager::taskTimerFired)
@@ -272,7 +293,7 @@ void WebMediaSessionManager::configurePlaybackTargetClients()
         indexOfClientWillPlayToTarget = indexOfClientThatRequestedPicker;
     if (indexOfClientWillPlayToTarget == notFound && indexOfLastClientToRequestPicker != notFound)
         indexOfClientWillPlayToTarget = indexOfLastClientToRequestPicker;
-    if (indexOfClientWillPlayToTarget == notFound && haveActiveRoute)
+    if (indexOfClientWillPlayToTarget == notFound && haveActiveRoute && flagsAreSet(m_clientState[0]->flags, MediaProducer::ExternalDeviceAutoPlayCandidate) && !flagsAreSet(m_clientState[0]->flags, MediaProducer::IsPlayingVideo))
         indexOfClientWillPlayToTarget = 0;
 
     LOG(Media, "WebMediaSessionManager::configurePlaybackTargetClients - indexOfClientWillPlayToTarget = %zu", indexOfClientWillPlayToTarget);

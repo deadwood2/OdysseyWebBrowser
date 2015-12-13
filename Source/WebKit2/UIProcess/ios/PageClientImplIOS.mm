@@ -40,7 +40,6 @@
 #import "WKContentViewInteraction.h"
 #import "WKGeolocationProviderIOS.h"
 #import "WKProcessPoolInternal.h"
-#import "WKViewPrivate.h"
 #import "WKWebViewConfigurationInternal.h"
 #import "WKWebViewContentProviderRegistry.h"
 #import "WKWebViewInternal.h"
@@ -111,15 +110,6 @@ namespace WebKit {
 PageClientImpl::PageClientImpl(WKContentView *contentView, WKWebView *webView)
     : m_contentView(contentView)
     , m_webView(webView)
-    , m_wkView(nil)
-    , m_undoTarget(adoptNS([[WKEditorUndoTargetObjC alloc] init]))
-{
-}
-
-PageClientImpl::PageClientImpl(WKContentView *contentView, WKView *wkView)
-    : m_contentView(contentView)
-    , m_webView(nil)
-    , m_wkView(wkView)
     , m_undoTarget(adoptNS([[WKEditorUndoTargetObjC alloc] init]))
 {
 }
@@ -223,7 +213,6 @@ void PageClientImpl::didRelaunchProcess()
 {
     [m_contentView _didRelaunchProcess];
     [m_webView _didRelaunchProcess];
-    [m_wkView _didRelaunchProcess];
 }
 
 void PageClientImpl::pageClosed()
@@ -453,11 +442,11 @@ RefPtr<WebContextMenuProxy> PageClientImpl::createContextMenuProxy(WebPageProxy*
     return nullptr;
 }
 
-void PageClientImpl::setTextIndicator(Ref<TextIndicator> textIndicator, TextIndicatorLifetime)
+void PageClientImpl::setTextIndicator(Ref<TextIndicator> textIndicator, TextIndicatorWindowLifetime)
 {
 }
 
-void PageClientImpl::clearTextIndicator(TextIndicatorDismissalAnimation)
+void PageClientImpl::clearTextIndicator(TextIndicatorWindowDismissalAnimation)
 {
 }
 
@@ -715,6 +704,11 @@ void PageClientImpl::willRecordNavigationSnapshot(WebBackForwardListItem& item)
     NavigationState::fromWebPage(*m_webView->_page).willRecordNavigationSnapshot(item);
 }
 
+void PageClientImpl::didRemoveNavigationGestureSnapshot()
+{
+    NavigationState::fromWebPage(*m_webView->_page).navigationGestureSnapshotWasRemoved();
+}
+
 void PageClientImpl::didFirstVisuallyNonEmptyLayoutForMainFrame()
 {
 }
@@ -739,26 +733,16 @@ void PageClientImpl::didChangeBackgroundColor()
     [m_webView _updateScrollViewBackground];
 }
 
-#if ENABLE(VIDEO)
-void PageClientImpl::mediaDocumentNaturalSizeChanged(const IntSize& newSize)
-{
-    [m_webView _mediaDocumentNaturalSizeChanged:newSize];
-}
-#endif
-
-
 void PageClientImpl::refView()
 {
     [m_contentView retain];
     [m_webView retain];
-    [m_wkView retain];
 }
 
 void PageClientImpl::derefView()
 {
     [m_contentView release];
     [m_webView release];
-    [m_wkView release];
 }
 
 } // namespace WebKit

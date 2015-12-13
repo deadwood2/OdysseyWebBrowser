@@ -34,7 +34,6 @@
 #import "PlatformMediaSession.h"
 #import "SoftLinking.h"
 #import "SystemMemory.h"
-#import "WebCoreSystemInterface.h"
 #import "WebCoreThreadRun.h"
 #import <AVFoundation/AVAudioSession.h>
 #import <MediaPlayer/MPMediaItem.h>
@@ -148,10 +147,6 @@ void MediaSessionManageriOS::resetRestrictions()
 
     PlatformMediaSessionManager::resetRestrictions();
 
-    static wkDeviceClass deviceClass = iosDeviceClass();
-    if (deviceClass == wkDeviceClassiPhone || deviceClass == wkDeviceClassiPod)
-        addRestriction(PlatformMediaSession::Video, InlineVideoPlaybackRestricted);
-
     if (ramSize() < systemMemoryRequiredForVideoInBackgroundTabs) {
         LOG(Media, "MediaSessionManageriOS::resetRestrictions - restricting video in background tabs because system memory = %zul", ramSize());
         addRestriction(PlatformMediaSession::Video, BackgroundTabPlaybackRestricted);
@@ -165,12 +160,6 @@ void MediaSessionManageriOS::resetRestrictions()
 
     removeRestriction(PlatformMediaSession::WebAudio, ConcurrentPlaybackNotPermitted);
     removeRestriction(PlatformMediaSession::WebAudio, BackgroundProcessPlaybackRestricted);
-
-    removeRestriction(PlatformMediaSession::Audio, MetadataPreloadingNotPermitted);
-    removeRestriction(PlatformMediaSession::Video, MetadataPreloadingNotPermitted);
-
-    addRestriction(PlatformMediaSession::Audio, AutoPreloadingNotPermitted);
-    addRestriction(PlatformMediaSession::Video, AutoPreloadingNotPermitted);
 }
 
 bool MediaSessionManageriOS::hasWirelessTargetsAvailable()
@@ -245,7 +234,10 @@ void MediaSessionManageriOS::updateNowPlayingInfo()
 
 bool MediaSessionManageriOS::sessionCanLoadMedia(const PlatformMediaSession& session) const
 {
-    return session.state() == PlatformMediaSession::Playing || !session.isHidden() || session.displayType() == PlatformMediaSession::Optimized;
+    if (session.displayType() == PlatformMediaSession::Optimized)
+        return true;
+
+    return PlatformMediaSessionManager::sessionCanLoadMedia(session);
 }
 
 void MediaSessionManageriOS::externalOutputDeviceAvailableDidChange()
@@ -393,7 +385,7 @@ void MediaSessionManageriOS::externalOutputDeviceAvailableDidChange()
 
 - (void)interruption:(NSNotification *)notification
 {
-    if (!_callback)
+    if (!_callback || _callback->willIgnoreSystemInterruptions())
         return;
 
     NSUInteger type = [[[notification userInfo] objectForKey:AVAudioSessionInterruptionTypeKey] unsignedIntegerValue];
@@ -420,7 +412,7 @@ void MediaSessionManageriOS::externalOutputDeviceAvailableDidChange()
 {
     UNUSED_PARAM(notification);
 
-    if (!_callback)
+    if (!_callback || _callback->willIgnoreSystemInterruptions())
         return;
 
     LOG(Media, "-[WebMediaSessionHelper applicationWillEnterForeground]");
@@ -437,7 +429,7 @@ void MediaSessionManageriOS::externalOutputDeviceAvailableDidChange()
 {
     UNUSED_PARAM(notification);
 
-    if (!_callback)
+    if (!_callback || _callback->willIgnoreSystemInterruptions())
         return;
 
     LOG(Media, "-[WebMediaSessionHelper applicationDidBecomeActive]");
@@ -454,7 +446,7 @@ void MediaSessionManageriOS::externalOutputDeviceAvailableDidChange()
 {
     UNUSED_PARAM(notification);
 
-    if (!_callback)
+    if (!_callback || _callback->willIgnoreSystemInterruptions())
         return;
 
     LOG(Media, "-[WebMediaSessionHelper applicationWillResignActive]");
@@ -486,7 +478,7 @@ void MediaSessionManageriOS::externalOutputDeviceAvailableDidChange()
 
 - (void)applicationDidEnterBackground:(NSNotification *)notification
 {
-    if (!_callback)
+    if (!_callback || _callback->willIgnoreSystemInterruptions())
         return;
 
     LOG(Media, "-[WebMediaSessionHelper applicationDidEnterBackground]");

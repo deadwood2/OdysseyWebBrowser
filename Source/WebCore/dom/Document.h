@@ -3,7 +3,7 @@
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2001 Dirk Mueller (mueller@kde.org)
  *           (C) 2006 Alexey Proskuryakov (ap@webkit.org)
- * Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2012, 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2010, 2012-2013, 2015 Apple Inc. All rights reserved.
  * Copyright (C) 2008, 2009 Torch Mobile Inc. All rights reserved. (http://www.torchmobile.com/)
  * Copyright (C) 2010 Nokia Corporation and/or its subsidiary(-ies)
  * Copyright (C) 2011 Google Inc. All rights reserved.
@@ -32,7 +32,6 @@
 #include "Color.h"
 #include "ContainerNode.h"
 #include "DocumentEventQueue.h"
-#include "DocumentStyleSheetCollection.h"
 #include "DocumentTiming.h"
 #include "FocusDirection.h"
 #include "FontSelector.h"
@@ -47,6 +46,7 @@
 #include "ScriptExecutionContext.h"
 #include "StringWithDirection.h"
 #include "StyleResolveTree.h"
+#include "TextResourceDecoder.h"
 #include "Timer.h"
 #include "TreeScope.h"
 #include "UserActionElementSet.h"
@@ -69,6 +69,7 @@ namespace WebCore {
 
 class AXObjectCache;
 class Attr;
+class AuthorStyleSheets;
 class CDATASection;
 class CSSFontSelector;
 class CSSStyleDeclaration;
@@ -96,6 +97,7 @@ class Element;
 class EntityReference;
 class Event;
 class EventListener;
+class ExtensionStyleSheets;
 class FloatRect;
 class FloatQuad;
 class FormController;
@@ -113,7 +115,6 @@ class HTMLIFrameElement;
 class HTMLImageElement;
 class HTMLMapElement;
 class HTMLMediaElement;
-class HTMLNameCollection;
 class HTMLScriptElement;
 class HitTestRequest;
 class HitTestResult;
@@ -121,8 +122,10 @@ class IntPoint;
 class LayoutPoint;
 class LayoutRect;
 class LiveNodeList;
+class JSModuleLoader;
 class JSNode;
 class Locale;
+class Location;
 class MediaCanStartListener;
 class MediaPlaybackTarget;
 class MediaPlaybackTargetClient;
@@ -225,6 +228,8 @@ struct TextAutoSizingTraits : WTF::GenericHashTraits<TextAutoSizingKey> {
 #if ENABLE(MEDIA_SESSION)
 class MediaSession;
 #endif
+
+const uint64_t HTMLMediaElementInvalidID = 0;
 
 enum PageshowEventPersistence {
     PageshowEventNotPersisted = 0,
@@ -374,7 +379,7 @@ public:
     RefPtr<Attr> createAttribute(const String& name, ExceptionCode&);
     RefPtr<Attr> createAttributeNS(const String& namespaceURI, const String& qualifiedName, ExceptionCode&, bool shouldIgnoreNamespaceChecks = false);
     RefPtr<EntityReference> createEntityReference(const String& name, ExceptionCode&);
-    RefPtr<Node> importNode(Node* importedNode, ExceptionCode& ec) { return importNode(importedNode, true, ec); }
+    RefPtr<Node> importNode(Node* importedNode, ExceptionCode& ec) { return importNode(importedNode, false, ec); }
     RefPtr<Node> importNode(Node* importedNode, bool deep, ExceptionCode&);
     WEBCORE_EXPORT RefPtr<Element> createElementNS(const String& namespaceURI, const String& qualifiedName, ExceptionCode&);
     WEBCORE_EXPORT Ref<Element> createElement(const QualifiedName&, bool createdByParser);
@@ -399,11 +404,11 @@ public:
 
     String defaultCharset() const;
 
-    String inputEncoding() const { return Document::encoding(); }
     String charset() const { return Document::encoding(); }
-    String characterSet() const { return Document::encoding(); }
+    String characterSetWithUTF8Fallback() const;
+    TextEncoding textEncoding() const;
 
-    AtomicString encoding() const;
+    AtomicString encoding() const { return textEncoding().domName(); }
 
     void setCharset(const String&);
 
@@ -431,8 +436,6 @@ public:
 
     String documentURI() const { return m_documentURI; }
     void setDocumentURI(const String&);
-
-    virtual URL baseURI() const override final;
 
 #if ENABLE(WEB_REPLAY)
     JSC::InputCursor& inputCursor() const { return *m_inputCursor; }
@@ -492,6 +495,7 @@ public:
             createStyleResolver();
         return *m_styleResolver;
     }
+    StyleResolver& userAgentShadowTreeStyleResolver();
 
     CSSFontSelector& fontSelector();
 
@@ -502,7 +506,10 @@ public:
     // This is a DOM function.
     StyleSheetList& styleSheets();
 
-    DocumentStyleSheetCollection& styleSheetCollection() { return m_styleSheetCollection; }
+    AuthorStyleSheets& authorStyleSheets() { return *m_authorStyleSheets; }
+    const AuthorStyleSheets& authorStyleSheets() const { return *m_authorStyleSheets; }
+    ExtensionStyleSheets& extensionStyleSheets() { return *m_extensionStyleSheets; }
+    const ExtensionStyleSheets& extensionStyleSheets() const { return *m_extensionStyleSheets; }
 
     bool gotoAnchorNeededAfterStylesheetsLoad() { return m_gotoAnchorNeededAfterStylesheetsLoad; }
     void setGotoAnchorNeededAfterStylesheetsLoad(bool b) { m_gotoAnchorNeededAfterStylesheetsLoad = b; }
@@ -535,11 +542,15 @@ public:
 
     WEBCORE_EXPORT Ref<Range> createRange();
 
-    RefPtr<NodeIterator> createNodeIterator(Node* root, unsigned whatToShow,
-        PassRefPtr<NodeFilter>, bool expandEntityReferences, ExceptionCode&);
+    RefPtr<NodeIterator> createNodeIterator(Node* root, unsigned long whatToShow, RefPtr<NodeFilter>&&, bool, ExceptionCode&); // For ObjC bindings.
+    RefPtr<NodeIterator> createNodeIterator(Node* root, unsigned long whatToShow, RefPtr<NodeFilter>&&, ExceptionCode&);
+    RefPtr<NodeIterator> createNodeIterator(Node* root, unsigned long whatToShow, ExceptionCode&);
+    RefPtr<NodeIterator> createNodeIterator(Node* root, ExceptionCode&);
 
-    RefPtr<TreeWalker> createTreeWalker(Node* root, unsigned whatToShow,
-        PassRefPtr<NodeFilter>, bool expandEntityReferences, ExceptionCode&);
+    RefPtr<TreeWalker> createTreeWalker(Node* root, unsigned long whatToShow, RefPtr<NodeFilter>&&, bool, ExceptionCode&); // For ObjC bindings.
+    RefPtr<TreeWalker> createTreeWalker(Node* root, unsigned long whatToShow, RefPtr<NodeFilter>&&, ExceptionCode&);
+    RefPtr<TreeWalker> createTreeWalker(Node* root, unsigned long whatToShow, ExceptionCode&);
+    RefPtr<TreeWalker> createTreeWalker(Node* root, ExceptionCode&);
 
     // Special support for editing
     Ref<CSSStyleDeclaration> createCSSStyleDeclaration();
@@ -725,7 +736,6 @@ public:
     void unscheduleStyleRecalc();
     bool hasPendingStyleRecalc() const;
     bool hasPendingForcedStyleRecalc() const;
-    void styleRecalcTimerFired();
     void optimizedStyleSheetUpdateTimerFired();
 
     void registerNodeListForInvalidation(LiveNodeList&);
@@ -749,7 +759,8 @@ public:
     void nodeChildrenWillBeRemoved(ContainerNode&);
     // nodeWillBeRemoved is only safe when removing one node at a time.
     void nodeWillBeRemoved(Node&);
-    bool canReplaceChild(Node* newChild, Node* oldChild);
+    enum class AcceptChildOperation { Replace, InsertOrAdd };
+    bool canAcceptChild(const Node& newChild, const Node* refChild, AcceptChildOperation) const;
 
     void textInserted(Node*, unsigned offset, unsigned length);
     void textRemoved(Node*, unsigned offset, unsigned length);
@@ -837,8 +848,9 @@ public:
     String title() const { return m_title.string(); }
     void setTitle(const String&);
 
-    void setTitleElement(const StringWithDirection&, Element* titleElement);
-    void removeTitle(Element* titleElement);
+    void titleElementAdded(Element& titleElement);
+    void titleElementRemoved(Element& titleElement);
+    void titleElementTextChanged(Element& titleElement);
 
     String cookie(ExceptionCode&);
     void setCookie(const String&, ExceptionCode&);
@@ -896,6 +908,8 @@ public:
     WEBCORE_EXPORT HTMLElement* bodyOrFrameset() const;
     void setBodyOrFrameset(PassRefPtr<HTMLElement>, ExceptionCode&);
 
+    Location* location() const;
+
     WEBCORE_EXPORT HTMLHeadElement* head();
 
     DocumentMarkerController& markers() const { return *m_markers; }
@@ -922,6 +936,7 @@ public:
     Document& topDocument() const;
     
     ScriptRunner* scriptRunner() { return m_scriptRunner.get(); }
+    JSModuleLoader* moduleLoader() { return m_moduleLoader.get(); }
 
     HTMLScriptElement* currentScript() const { return !m_currentScriptStack.isEmpty() ? m_currentScriptStack.last().get() : 0; }
     void pushCurrentScript(PassRefPtr<HTMLScriptElement>);
@@ -1261,7 +1276,7 @@ public:
     WEBCORE_EXPORT void addAudioProducer(MediaProducer*);
     WEBCORE_EXPORT void removeAudioProducer(MediaProducer*);
     MediaProducer::MediaStateFlags mediaState() const { return m_mediaState; }
-    WEBCORE_EXPORT void updateIsPlayingMedia();
+    WEBCORE_EXPORT void updateIsPlayingMedia(uint64_t = HTMLMediaElementInvalidID);
     void pageMutedStateDidChange();
     WeakPtr<Document> createWeakPtr() { return m_weakFactory.createWeakPtr(); }
 
@@ -1278,6 +1293,7 @@ public:
 
     ShouldOpenExternalURLsPolicy shouldOpenExternalURLsPolicyToPropagate() const;
     bool shouldEnforceContentDispositionAttachmentSandbox() const;
+    void applyContentDispositionAttachmentSandbox();
 
 protected:
     enum ConstructionFlags { Synthesized = 1, NonRenderedPlaceholder = 1 << 1 };
@@ -1291,6 +1307,8 @@ private:
     friend class Node;
     friend class IgnoreDestructiveWriteCountIncrementer;
 
+    void updateTitleElement(Element* newTitleElement);
+
     void commonTeardown();
 
     RenderObject* renderer() const = delete;
@@ -1303,7 +1321,7 @@ private:
     void processArguments(const String& features, void* data, ArgumentsCallback);
 
     // FontSelectorClient
-    virtual void fontsNeedUpdate(FontSelector*) override final;
+    virtual void fontsNeedUpdate(FontSelector&) override final;
 
     virtual bool isDocument() const override final { return true; }
 
@@ -1312,7 +1330,7 @@ private:
     virtual String nodeName() const override final;
     virtual NodeType nodeType() const override final;
     virtual bool childTypeAllowed(NodeType) const override final;
-    virtual RefPtr<Node> cloneNodeInternal(Document&, CloningOperation) override final;
+    virtual Ref<Node> cloneNodeInternal(Document&, CloningOperation) override final;
     void cloneDataFromDocument(const Document&);
 
     virtual void refScriptExecutionContext() override final { ref(); }
@@ -1324,6 +1342,7 @@ private:
 
     virtual double timerAlignmentInterval(bool hasReachedMaxNestingLevel) const override final;
 
+    void updateTitleFromTitleElement();
     void updateTitle(const StringWithDirection&);
     void updateFocusAppearanceTimerFired();
     void updateBaseURL();
@@ -1343,7 +1362,8 @@ private:
 
     Node* nodeFromPoint(const LayoutPoint& clientPoint, LayoutPoint* localPoint = nullptr);
 
-    Ref<HTMLCollection> ensureCachedCollection(CollectionType);
+    template <CollectionType collectionType>
+    Ref<HTMLCollection> ensureCachedCollection();
 
 #if ENABLE(FULLSCREEN_API)
     void dispatchFullScreenChangeOrErrorEvent(Deque<RefPtr<Node>>&, const AtomicString& eventName, bool shouldNotifyMediaElement);
@@ -1370,12 +1390,12 @@ private:
     void setCachedDOMCookies(const String&);
     bool isDOMCookieCacheValid() const { return m_cookieCacheExpiryTimer.isActive(); }
     void invalidateDOMCookieCache();
-    void domCookieCacheExpiryTimerFired();
     virtual void didLoadResourceSynchronously(const ResourceRequest&) override final;
 
     unsigned m_referencingNodeCount;
 
     std::unique_ptr<StyleResolver> m_styleResolver;
+    std::unique_ptr<StyleResolver> m_userAgentShadowTreeStyleResolver;
     bool m_didCalculateStyleResolver;
     bool m_hasNodesWithPlaceholderStyle;
     bool m_needsNotifyRemoveAllPendingStylesheet;
@@ -1447,7 +1467,8 @@ private:
 
     MutationObserverOptions m_mutationObserverTypes;
 
-    DocumentStyleSheetCollection m_styleSheetCollection;
+    std::unique_ptr<AuthorStyleSheets> m_authorStyleSheets;
+    std::unique_ptr<ExtensionStyleSheets> m_extensionStyleSheets;
     RefPtr<StyleSheetList> m_styleSheetList;
 
     std::unique_ptr<FormController> m_formController;
@@ -1480,7 +1501,6 @@ private:
 
     StringWithDirection m_title;
     StringWithDirection m_rawTitle;
-    bool m_titleSetExplicitly;
     RefPtr<Element> m_titleElement;
 
     std::unique_ptr<AXObjectCache> m_axObjectCache;
@@ -1502,6 +1522,7 @@ private:
     bool m_overMinimumLayoutThreshold;
     
     std::unique_ptr<ScriptRunner> m_scriptRunner;
+    std::unique_ptr<JSModuleLoader> m_moduleLoader;
 
     Vector<RefPtr<HTMLScriptElement>> m_currentScriptStack;
 
@@ -1742,6 +1763,13 @@ inline void Document::notifyRemovePendingSheetIfNeeded()
 {
     if (m_needsNotifyRemoveAllPendingStylesheet)
         didRemoveAllPendingStylesheet();
+}
+
+inline TextEncoding Document::textEncoding() const
+{
+    if (auto* decoder = this->decoder())
+        return decoder->encoding();
+    return TextEncoding();
 }
 
 #if ENABLE(TEMPLATE_ELEMENT)

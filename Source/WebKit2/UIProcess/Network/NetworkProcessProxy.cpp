@@ -83,6 +83,7 @@ NetworkProcessProxy::~NetworkProcessProxy()
 void NetworkProcessProxy::getLaunchOptions(ProcessLauncher::LaunchOptions& launchOptions)
 {
     launchOptions.processType = ProcessLauncher::NetworkProcess;
+    ChildProcessProxy::getLaunchOptions(launchOptions);
     platformGetLaunchOptions(launchOptions);
 }
 
@@ -335,8 +336,7 @@ void NetworkProcessProxy::sendProcessWillSuspendImminently()
         return;
 
     bool handled = false;
-    sendSync(Messages::NetworkProcess::ProcessWillSuspendImminently(), Messages::NetworkProcess::ProcessWillSuspendImminently::Reply(handled),
-        0, std::chrono::seconds(1), IPC::InterruptWaitingIfSyncMessageArrives);
+    sendSync(Messages::NetworkProcess::ProcessWillSuspendImminently(), Messages::NetworkProcess::ProcessWillSuspendImminently::Reply(handled), 0, std::chrono::seconds(1));
 }
     
 void NetworkProcessProxy::sendPrepareToSuspend()

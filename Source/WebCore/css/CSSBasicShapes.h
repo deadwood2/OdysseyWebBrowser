@@ -52,9 +52,6 @@ public:
     virtual String cssText() const = 0;
     virtual bool equals(const CSSBasicShape&) const = 0;
 
-    CSSPrimitiveValue* referenceBox() const { return m_referenceBox.get(); }
-    void setReferenceBox(PassRefPtr<CSSPrimitiveValue> referenceBox) { m_referenceBox = referenceBox; }
-
 public:
     virtual ~CSSBasicShape() { }
 
@@ -192,8 +189,8 @@ public:
         m_values.append(y);
     }
 
-    PassRefPtr<CSSPrimitiveValue> getXAt(unsigned i) const { return m_values.at(i * 2); }
-    PassRefPtr<CSSPrimitiveValue> getYAt(unsigned i) const { return m_values.at(i * 2 + 1); }
+    RefPtr<CSSPrimitiveValue> getXAt(unsigned i) const { return m_values.at(i * 2); }
+    RefPtr<CSSPrimitiveValue> getYAt(unsigned i) const { return m_values.at(i * 2 + 1); }
     const Vector<RefPtr<CSSPrimitiveValue>>& values() const { return m_values; }
 
     void setWindRule(WindRule w) { m_windRule = w; }

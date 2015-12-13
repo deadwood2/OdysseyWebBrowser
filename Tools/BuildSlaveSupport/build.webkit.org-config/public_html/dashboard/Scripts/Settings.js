@@ -84,25 +84,46 @@ Settings.prototype = {
         document.body.classList.toggle("settings-visible");
     },
 
-    toggleHiddenPlatform: function(platform)
+    parsePlatformFamily: function(platformName)
     {
-        var hiddenPlatforms = this.getObject("hiddenPlatforms");
-        if (!hiddenPlatforms)
-            hiddenPlatforms = [];
-
-        var hiddenPlatformIndex = hiddenPlatforms.indexOf(platform);
-        if (hiddenPlatformIndex > -1)
-            hiddenPlatforms.splice(hiddenPlatformIndex, 1);
-        else
-            hiddenPlatforms.push(platform);
-
-        this.setObject("hiddenPlatforms", hiddenPlatforms);
-        this.fireSettingListener("hiddenPlatforms");
+        if (!platformName)
+            return '';
+        return platformName.substr(0, platformName.indexOf("-"));
     },
 
-    clearHiddenPlatforms: function()
+    toggleHiddenPlatformFamily: function(platformFamily)
     {
-        this.setObject("hiddenPlatforms", []);
-        this.fireSettingListener("hiddenPlatforms");
+        var hiddenPlatformFamilies = this.getObject("hiddenPlatformFamilies") || [];
+        var hiddenPlatformIndex = hiddenPlatformFamilies.indexOf(platformFamily);
+        if (hiddenPlatformIndex > -1)
+            hiddenPlatformFamilies.splice(hiddenPlatformIndex, 1);
+        else
+            hiddenPlatformFamilies.push(platformFamily);
+
+        this.setObject("hiddenPlatformFamilies", hiddenPlatformFamilies);
+        this.fireSettingListener("hiddenPlatformFamilies");
+    },
+
+    clearHiddenPlatformFamilies: function()
+    {
+        this.setObject("hiddenPlatformFamilies", []);
+        this.fireSettingListener("hiddenPlatformFamilies");
+    },
+
+    updateToggleButtons: function()
+    {
+        var hiddenPlatformFamilies = this.getObject("hiddenPlatformFamilies") || [];
+        var hiddenFamilyButtons = {"all": hiddenPlatformFamilies.length > 0};
+        for (var i = 0; i < hiddenPlatformFamilies.length; ++i)
+            hiddenFamilyButtons[hiddenPlatformFamilies[i]] = true;
+
+        var platformFamilyButtons = document.getElementsByClassName("platformFamilyToggleButton");
+        for (var i = 0; i < platformFamilyButtons.length; ++i) {
+            var hiddenPlatformFamily = this.parsePlatformFamily(platformFamilyButtons[i].id);
+            if (!hiddenFamilyButtons[hiddenPlatformFamily])
+                platformFamilyButtons[i].classList.add("familyShown");
+            else
+                platformFamilyButtons[i].classList.remove("familyShown");
+        }
     },
 };

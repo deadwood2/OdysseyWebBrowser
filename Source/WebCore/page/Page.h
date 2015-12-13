@@ -64,6 +64,10 @@ class Debugger;
 
 namespace WebCore {
 
+namespace IDBClient {
+class IDBConnectionToServer;
+}
+
 class AlternativeTextClient;
 class ApplicationCacheStorage;
 class BackForwardController;
@@ -436,12 +440,13 @@ public:
     bool usesEphemeralSession() const { return m_sessionID.isEphemeral(); }
 
     MediaProducer::MediaStateFlags mediaState() const { return m_mediaState; }
-    void updateIsPlayingMedia();
+    void updateIsPlayingMedia(uint64_t);
     bool isMuted() const { return m_muted; }
     WEBCORE_EXPORT void setMuted(bool);
 
 #if ENABLE(MEDIA_SESSION)
     WEBCORE_EXPORT void handleMediaEvent(MediaEventType);
+    WEBCORE_EXPORT void setVolumeOfMediaElement(double, uint64_t);
 #endif
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
@@ -463,6 +468,10 @@ public:
 #if ENABLE(VIDEO)
     bool allowsMediaDocumentInlinePlayback() const { return m_allowsMediaDocumentInlinePlayback; }
     WEBCORE_EXPORT void setAllowsMediaDocumentInlinePlayback(bool);
+#endif
+
+#if ENABLE(INDEXED_DATABASE)
+    IDBClient::IDBConnectionToServer& idbConnection();
 #endif
 
 private:
@@ -600,6 +609,10 @@ private:
 
 #if ENABLE(REMOTE_INSPECTOR)
     const std::unique_ptr<PageDebuggable> m_inspectorDebuggable;
+#endif
+
+#if ENABLE(INDEXED_DATABASE)
+    RefPtr<IDBClient::IDBConnectionToServer> m_idbIDBConnectionToServer;
 #endif
 
     HashSet<String> m_seenPlugins;

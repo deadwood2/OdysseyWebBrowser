@@ -26,7 +26,7 @@
 .hover-menu {
     position: absolute;
 
-    -webkit-transform: translate(-1px, -1px);
+    transform: translate(-1px, -1px);
 
     pointer-events: none;
     opacity: 0;
@@ -59,6 +59,7 @@
     height: 13px;
 
     content: -webkit-image-set(url(../Images/HoverMenuButton.png) 1x, url(../Images/HoverMenuButton@2x.png) 2x);
+    transform: translateY(-1px);
 }
 
 .hover-menu.visible > img {

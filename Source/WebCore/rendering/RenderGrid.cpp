@@ -116,19 +116,6 @@ private:
     bool m_infinitelyGrowable { false };
 };
 
-struct GridTrackForNormalization {
-    GridTrackForNormalization(const GridTrack& track, double flex)
-        : m_track(&track)
-        , m_flex(flex)
-        , m_normalizedFlexValue(track.baseSize() / flex)
-    {
-    }
-
-    const GridTrack* m_track;
-    double m_flex;
-    LayoutUnit m_normalizedFlexValue;
-};
-
 class RenderGrid::GridIterator {
     WTF_MAKE_NONCOPYABLE(GridIterator);
 public:
@@ -242,6 +229,53 @@ RenderGrid::~RenderGrid()
 {
 }
 
+static inline bool defaultAlignmentIsStretch(ItemPosition position)
+{
+    return position == ItemPositionStretch || position == ItemPositionAuto;
+}
+
+static inline bool defaultAlignmentChangedToStretchInRowAxis(const RenderStyle& oldStyle, const RenderStyle& newStyle)
+{
+    return !defaultAlignmentIsStretch(oldStyle.justifyItemsPosition()) && defaultAlignmentIsStretch(newStyle.justifyItemsPosition());
+}
+
+static inline bool defaultAlignmentChangedFromStretchInColumnAxis(const RenderStyle& oldStyle, const RenderStyle& newStyle)
+{
+    return defaultAlignmentIsStretch(oldStyle.alignItemsPosition()) && !defaultAlignmentIsStretch(newStyle.alignItemsPosition());
+}
+
+static inline bool selfAlignmentChangedToStretchInRowAxis(const RenderStyle& oldStyle, const RenderStyle& newStyle, const RenderStyle& childStyle)
+{
+    return RenderStyle::resolveJustification(oldStyle, childStyle, ItemPositionStretch) != ItemPositionStretch
+        && RenderStyle::resolveJustification(newStyle, childStyle, ItemPositionStretch) == ItemPositionStretch;
+}
+
+static inline bool selfAlignmentChangedFromStretchInColumnAxis(const RenderStyle& oldStyle, const RenderStyle& newStyle, const RenderStyle& childStyle)
+{
+    return RenderStyle::resolveAlignment(oldStyle, childStyle, ItemPositionStretch) == ItemPositionStretch
+        && RenderStyle::resolveAlignment(newStyle, childStyle, ItemPositionStretch) != ItemPositionStretch;
+}
+
+void RenderGrid::styleDidChange(StyleDifference diff, const RenderStyle* oldStyle)
+{
+    RenderBlock::styleDidChange(diff, oldStyle);
+    if (!oldStyle || diff != StyleDifferenceLayout)
+        return;
+
+    const RenderStyle& newStyle = style();
+    if (defaultAlignmentChangedToStretchInRowAxis(*oldStyle, newStyle) || defaultAlignmentChangedFromStretchInColumnAxis(*oldStyle, newStyle)) {
+        // Grid items that were not previously stretched in row-axis need to be relayed out so we can compute new available space.
+        // Grid items that were previously stretching in column-axis need to be relayed out so we can compute new available space.
+        // This is only necessary for stretching since other alignment values don't change the size of the box.
+        for (RenderBox* child = firstChildBox(); child; child = child->nextSiblingBox()) {
+            if (child->isOutOfFlowPositioned())
+                continue;
+            if (selfAlignmentChangedToStretchInRowAxis(*oldStyle, newStyle, child->style()) || selfAlignmentChangedFromStretchInColumnAxis(*oldStyle, newStyle, child->style()))
+                child->setChildNeedsLayout(MarkOnlyThis);
+        }
+    }
+}
+
 void RenderGrid::layoutBlock(bool relayoutChildren, LayoutUnit)
 {
     ASSERT(needsLayout());
@@ -311,25 +345,6 @@ void RenderGrid::computeIntrinsicLogicalWidths(LayoutUnit& minLogicalWidth, Layo
         const_cast<RenderGrid*>(this)->clearGrid();
 }
 
-void RenderGrid::computePreferredLogicalWidths()
-{
-    ASSERT(preferredLogicalWidthsDirty());
-
-    m_minPreferredLogicalWidth = 0;
-    m_maxPreferredLogicalWidth = 0;
-
-    // FIXME: We don't take our own logical width into account. Once we do, we need to make sure
-    // we apply (and test the interaction with) min-width / max-width.
-
-    computeIntrinsicLogicalWidths(m_minPreferredLogicalWidth, m_maxPreferredLogicalWidth);
-
-    LayoutUnit borderAndPaddingInInlineDirection = borderAndPaddingLogicalWidth();
-    m_minPreferredLogicalWidth += borderAndPaddingInInlineDirection;
-    m_maxPreferredLogicalWidth += borderAndPaddingInInlineDirection;
-
-    setPreferredLogicalWidthsDirty(false);
-}
-
 void RenderGrid::computeUsedBreadthOfGridTracks(GridTrackSizingDirection direction, GridSizingData& sizingData)
 {
     LayoutUnit availableLogicalSpace = (direction == ForColumns) ? availableLogicalWidth() : availableLogicalHeight(IncludeMarginBorderPadding);
@@ -339,6 +354,11 @@ void RenderGrid::computeUsedBreadthOfGridTracks(GridTrackSizingDirection directi
 bool RenderGrid::gridElementIsShrinkToFit()
 {
     return isFloatingOrOutOfFlowPositioned();
+}
+
+static inline double normalizedFlexFraction(const GridTrack& track, double flexFactor)
+{
+    return track.baseSize() / std::max<double>(1, flexFactor);
 }
 
 void RenderGrid::computeUsedBreadthOfGridTracks(GridTrackSizingDirection direction, GridSizingData& sizingData, LayoutUnit& availableLogicalSpace)
@@ -401,14 +421,12 @@ void RenderGrid::computeUsedBreadthOfGridTracks(GridTrackSizingDirection directi
         return;
 
     // 4. Grow all Grid tracks having a fraction as the MaxTrackSizingFunction.
-    double normalizedFractionBreadth = 0;
+    double flexFraction = 0;
     if (!hasUndefinedRemainingSpace)
-        normalizedFractionBreadth = computeNormalizedFractionBreadth(tracks, GridSpan(0, tracks.size() - 1), direction, initialAvailableLogicalSpace);
+        flexFraction = findFlexFactorUnitSize(tracks, GridSpan(0, tracks.size() - 1), direction, initialAvailableLogicalSpace);
     else {
-        for (auto trackIndex : flexibleSizedTracksIndex) {
-            const GridTrackSize& trackSize = gridTrackSize(direction, trackIndex);
-            normalizedFractionBreadth = std::max(normalizedFractionBreadth, tracks[trackIndex].baseSize() / trackSize.maxTrackBreadth().flex());
-        }
+        for (const auto& trackIndex : flexibleSizedTracksIndex)
+            flexFraction = std::max(flexFraction, normalizedFlexFraction(tracks[trackIndex], gridTrackSize(direction, trackIndex).maxTrackBreadth().flex()));
 
         for (unsigned i = 0; i < flexibleSizedTracksIndex.size(); ++i) {
             GridIterator iterator(m_grid, direction, flexibleSizedTracksIndex[i]);
@@ -420,8 +438,7 @@ void RenderGrid::computeUsedBreadthOfGridTracks(GridTrackSizingDirection directi
                 if (i > 0 && span.resolvedInitialPosition.toInt() <= flexibleSizedTracksIndex[i - 1])
                     continue;
 
-                double itemNormalizedFlexBreadth = computeNormalizedFractionBreadth(tracks, span, direction, maxContentForChild(*gridItem, direction, sizingData.columnTracks));
-                normalizedFractionBreadth = std::max(normalizedFractionBreadth, itemNormalizedFlexBreadth);
+                flexFraction = std::max(flexFraction, findFlexFactorUnitSize(tracks, span, direction, maxContentForChild(*gridItem, direction, sizingData.columnTracks)));
             }
         }
     }
@@ -429,7 +446,7 @@ void RenderGrid::computeUsedBreadthOfGridTracks(GridTrackSizingDirection directi
     for (auto trackIndex : flexibleSizedTracksIndex) {
         const GridTrackSize& trackSize = gridTrackSize(direction, trackIndex);
         GridTrack& track = tracks[trackIndex];
-        LayoutUnit baseSize = std::max<LayoutUnit>(track.baseSize(), normalizedFractionBreadth * trackSize.maxTrackBreadth().flex());
+        LayoutUnit baseSize = std::max<LayoutUnit>(track.baseSize(), flexFraction * trackSize.maxTrackBreadth().flex());
         track.setBaseSize(baseSize);
         availableLogicalSpace -= baseSize;
     }
@@ -441,11 +458,10 @@ LayoutUnit RenderGrid::computeUsedBreadthOfMinLength(GridTrackSizingDirection di
         return 0;
 
     const Length& trackLength = gridLength.length();
-    ASSERT(!trackLength.isAuto());
     if (trackLength.isSpecified())
         return computeUsedBreadthOfSpecifiedLength(direction, trackLength);
 
-    ASSERT(trackLength.isMinContent() || trackLength.isMaxContent());
+    ASSERT(trackLength.isMinContent() || trackLength.isAuto() || trackLength.isMaxContent());
     return 0;
 }
 
@@ -455,69 +471,74 @@ LayoutUnit RenderGrid::computeUsedBreadthOfMaxLength(GridTrackSizingDirection di
         return usedBreadth;
 
     const Length& trackLength = gridLength.length();
-    ASSERT(!trackLength.isAuto());
     if (trackLength.isSpecified()) {
         LayoutUnit computedBreadth = computeUsedBreadthOfSpecifiedLength(direction, trackLength);
         ASSERT(computedBreadth != infinity);
         return computedBreadth;
     }
 
-    ASSERT(trackLength.isMinContent() || trackLength.isMaxContent());
+    ASSERT(trackLength.isMinContent() || trackLength.isAuto() || trackLength.isMaxContent());
     return infinity;
 }
 
 LayoutUnit RenderGrid::computeUsedBreadthOfSpecifiedLength(GridTrackSizingDirection direction, const Length& trackLength) const
 {
     ASSERT(trackLength.isSpecified());
-    return valueForLength(trackLength, direction == ForColumns ? logicalWidth() : std::max(LayoutUnit(), computeContentLogicalHeight(style().logicalHeight(), -1)));
+    if (direction == ForColumns)
+        return valueForLength(trackLength, contentLogicalWidth());
+    return valueForLength(trackLength, computeContentLogicalHeight(MainOrPreferredSize, style().logicalHeight(), Nullopt).valueOr(0));
 }
 
-double RenderGrid::computeNormalizedFractionBreadth(Vector<GridTrack>& tracks, const GridSpan& tracksSpan, GridTrackSizingDirection direction, LayoutUnit spaceToFill) const
+double RenderGrid::computeFlexFactorUnitSize(const Vector<GridTrack>& tracks, GridTrackSizingDirection direction, double flexFactorSum, LayoutUnit leftOverSpace, const Vector<size_t, 8>& flexibleTracksIndexes, std::unique_ptr<TrackIndexSet> tracksToTreatAsInflexible) const
 {
-    LayoutUnit allocatedSpace;
-    Vector<GridTrackForNormalization> tracksForNormalization;
-    for (auto& position : tracksSpan) {
-        GridTrack& track = tracks[position.toInt()];
-        allocatedSpace += track.baseSize();
+    // We want to avoid the effect of flex factors sum below 1 making the factor unit size to grow exponentially.
+    double hypotheticalFactorUnitSize = leftOverSpace / std::max<double>(1, flexFactorSum);
 
-        const GridTrackSize& trackSize = gridTrackSize(direction, position.toInt());
-        if (!trackSize.maxTrackBreadth().isFlex())
+    // product of the hypothetical "flex factor unit" and any flexible track's "flex factor" must be grater than such track's "base size".
+    bool validFlexFactorUnit = true;
+    for (auto index : flexibleTracksIndexes) {
+        if (tracksToTreatAsInflexible && tracksToTreatAsInflexible->contains(index))
             continue;
+        LayoutUnit baseSize = tracks[index].baseSize();
+        double flexFactor = gridTrackSize(direction, index).maxTrackBreadth().flex();
+        // treating all such tracks as inflexible.
+        if (baseSize > hypotheticalFactorUnitSize * flexFactor) {
+            leftOverSpace -= baseSize;
+            flexFactorSum -= flexFactor;
+            if (!tracksToTreatAsInflexible)
+                tracksToTreatAsInflexible = std::unique_ptr<TrackIndexSet>(new TrackIndexSet());
+            tracksToTreatAsInflexible->add(index);
+            validFlexFactorUnit = false;
+        }
+    }
+    if (!validFlexFactorUnit)
+        return computeFlexFactorUnitSize(tracks, direction, flexFactorSum, leftOverSpace, flexibleTracksIndexes, WTF::move(tracksToTreatAsInflexible));
+    return hypotheticalFactorUnitSize;
+}
 
-        tracksForNormalization.append(GridTrackForNormalization(track, trackSize.maxTrackBreadth().flex()));
+double RenderGrid::findFlexFactorUnitSize(const Vector<GridTrack>& tracks, const GridSpan& tracksSpan, GridTrackSizingDirection direction, LayoutUnit leftOverSpace) const
+{
+    if (leftOverSpace <= 0)
+        return 0;
+
+    double flexFactorSum = 0;
+    Vector<size_t, 8> flexibleTracksIndexes;
+    for (const auto& resolvedPosition : tracksSpan) {
+        size_t trackIndex = resolvedPosition.toInt();
+        GridTrackSize trackSize = gridTrackSize(direction, trackIndex);
+        if (!trackSize.maxTrackBreadth().isFlex())
+            leftOverSpace -= tracks[trackIndex].baseSize();
+        else {
+            double flexFactor = trackSize.maxTrackBreadth().flex();
+            flexibleTracksIndexes.append(trackIndex);
+            flexFactorSum += flexFactor;
+        }
     }
 
     // The function is not called if we don't have <flex> grid tracks
-    ASSERT(!tracksForNormalization.isEmpty());
+    ASSERT(!flexibleTracksIndexes.isEmpty());
 
-    std::sort(tracksForNormalization.begin(), tracksForNormalization.end(),
-              [](const GridTrackForNormalization& track1, const GridTrackForNormalization& track2) {
-                  return track1.m_normalizedFlexValue < track2.m_normalizedFlexValue;
-              });
-
-    // These values work together: as we walk over our grid tracks, we increase fractionValueBasedOnGridItemsRatio
-    // to match a grid track's usedBreadth to <flex> ratio until the total fractions sized grid tracks wouldn't
-    // fit into availableLogicalSpaceIgnoringFractionTracks.
-    double accumulatedFractions = 0;
-    LayoutUnit fractionValueBasedOnGridItemsRatio = 0;
-    LayoutUnit availableLogicalSpaceIgnoringFractionTracks = spaceToFill - allocatedSpace;
-
-    for (auto& track : tracksForNormalization) {
-        if (track.m_normalizedFlexValue > fractionValueBasedOnGridItemsRatio) {
-            // If the normalized flex value (we ordered |tracksForNormalization| by increasing normalized flex value)
-            // will make us overflow our container, then stop. We have the previous step's ratio is the best fit.
-            if (track.m_normalizedFlexValue * accumulatedFractions > availableLogicalSpaceIgnoringFractionTracks)
-                break;
-
-            fractionValueBasedOnGridItemsRatio = track.m_normalizedFlexValue;
-        }
-
-        accumulatedFractions += track.m_flex;
-        // This item was processed so we re-add its used breadth to the available space to accurately count the remaining space.
-        availableLogicalSpaceIgnoringFractionTracks += track.m_track->baseSize();
-    }
-
-    return availableLogicalSpaceIgnoringFractionTracks / accumulatedFractions;
+    return computeFlexFactorUnitSize(tracks, direction, flexFactorSum, leftOverSpace, flexibleTracksIndexes);
 }
 
 bool RenderGrid::hasDefiniteLogicalSize(GridTrackSizingDirection direction) const
@@ -548,9 +569,9 @@ GridTrackSize RenderGrid::gridTrackSize(GridTrackSizingDirection direction, unsi
 
 LayoutUnit RenderGrid::logicalContentHeightForChild(RenderBox& child, Vector<GridTrack>& columnTracks)
 {
-    LayoutUnit oldOverrideContainingBlockContentLogicalWidth = child.hasOverrideContainingBlockLogicalWidth() ? child.overrideContainingBlockContentLogicalWidth() : LayoutUnit();
+    Optional<LayoutUnit> oldOverrideContainingBlockContentLogicalWidth = child.hasOverrideContainingBlockLogicalWidth() ? child.overrideContainingBlockContentLogicalWidth() : LayoutUnit();
     LayoutUnit overrideContainingBlockContentLogicalWidth = gridAreaBreadthForChild(child, ForColumns, columnTracks);
-    if (child.hasRelativeLogicalHeight() || oldOverrideContainingBlockContentLogicalWidth != overrideContainingBlockContentLogicalWidth) {
+    if (child.hasRelativeLogicalHeight() || !oldOverrideContainingBlockContentLogicalWidth || oldOverrideContainingBlockContentLogicalWidth.value() != overrideContainingBlockContentLogicalWidth) {
         child.setNeedsLayout(MarkOnlyThis);
         // We need to clear the stretched height to properly compute logical height during layout.
         child.clearOverrideLogicalContentHeight();
@@ -558,11 +579,30 @@ LayoutUnit RenderGrid::logicalContentHeightForChild(RenderBox& child, Vector<Gri
 
     child.setOverrideContainingBlockContentLogicalWidth(overrideContainingBlockContentLogicalWidth);
     // If |child| has a relative logical height, we shouldn't let it override its intrinsic height, which is
-    // what we are interested in here. Thus we need to set the override logical height to -1 (no possible resolution).
+    // what we are interested in here. Thus we need to set the override logical height to Nullopt (no possible resolution).
     if (child.hasRelativeLogicalHeight())
-        child.setOverrideContainingBlockContentLogicalHeight(-1);
+        child.setOverrideContainingBlockContentLogicalHeight(Nullopt);
     child.layoutIfNeeded();
     return child.logicalHeight() + child.marginLogicalHeight();
+}
+
+LayoutUnit RenderGrid::minSizeForChild(RenderBox& child, GridTrackSizingDirection direction, Vector<GridTrack>& columnTracks)
+{
+    bool hasOrthogonalWritingMode = child.isHorizontalWritingMode() != isHorizontalWritingMode();
+    // FIXME: Properly support orthogonal writing mode.
+    if (hasOrthogonalWritingMode)
+        return { };
+
+    const Length& childMinSize = direction == ForColumns ? child.style().logicalMinWidth() : child.style().logicalMinHeight();
+    if (childMinSize.isAuto()) {
+        // FIXME: Implement intrinsic aspect ratio support (transferred size in specs).
+        return minContentForChild(child, direction, columnTracks);
+    }
+
+    if (direction == ForColumns)
+        return child.computeLogicalWidthInRegionUsing(MinSize, childMinSize, contentLogicalWidth(), this, nullptr);
+
+    return child.computeContentAndScrollbarLogicalHeightUsing(MinSize, childMinSize, child.logicalHeight()).valueOr(0);
 }
 
 LayoutUnit RenderGrid::minContentForChild(RenderBox& child, GridTrackSizingDirection direction, Vector<GridTrack>& columnTracks)
@@ -574,9 +614,9 @@ LayoutUnit RenderGrid::minContentForChild(RenderBox& child, GridTrackSizingDirec
 
     if (direction == ForColumns) {
         // If |child| has a relative logical width, we shouldn't let it override its intrinsic width, which is
-        // what we are interested in here. Thus we need to set the override logical width to -1 (no possible resolution).
+        // what we are interested in here. Thus we need to set the override logical width to Nullopt (no possible resolution).
         if (child.hasRelativeLogicalWidth())
-            child.setOverrideContainingBlockContentLogicalWidth(-1);
+            child.setOverrideContainingBlockContentLogicalWidth(Nullopt);
 
         // FIXME: It's unclear if we should return the intrinsic width or the preferred width.
         // See http://lists.w3.org/Archives/Public/www-style/2013Jan/0245.html
@@ -595,9 +635,9 @@ LayoutUnit RenderGrid::maxContentForChild(RenderBox& child, GridTrackSizingDirec
 
     if (direction == ForColumns) {
         // If |child| has a relative logical width, we shouldn't let it override its intrinsic width, which is
-        // what we are interested in here. Thus we need to set the override logical width to -1 (no possible resolution).
+        // what we are interested in here. Thus we need to set the override logical width to Nullopt (no possible resolution).
         if (child.hasRelativeLogicalWidth())
-            child.setOverrideContainingBlockContentLogicalWidth(-1);
+            child.setOverrideContainingBlockContentLogicalWidth(Nullopt);
 
         // FIXME: It's unclear if we should return the intrinsic width or the preferred width.
         // See http://lists.w3.org/Archives/Public/www-style/2013Jan/0245.html
@@ -681,6 +721,7 @@ void RenderGrid::resolveContentBasedTrackSizingFunctions(GridTrackSizingDirectio
     while (it != end) {
         GridItemsSpanGroupRange spanGroupRange = { it, std::upper_bound(it, end, *it) };
         resolveContentBasedTrackSizingFunctionsForItems<ResolveIntrinsicMinimums>(direction, sizingData, spanGroupRange);
+        resolveContentBasedTrackSizingFunctionsForItems<ResolveContentBasedMinimums>(direction, sizingData, spanGroupRange);
         resolveContentBasedTrackSizingFunctionsForItems<ResolveMaxContentMinimums>(direction, sizingData, spanGroupRange);
         resolveContentBasedTrackSizingFunctionsForItems<ResolveIntrinsicMaximums>(direction, sizingData, spanGroupRange);
         resolveContentBasedTrackSizingFunctionsForItems<ResolveMaxContentMaximums>(direction, sizingData, spanGroupRange);
@@ -703,10 +744,12 @@ void RenderGrid::resolveContentBasedTrackSizingFunctionsForNonSpanningItems(Grid
         track.setBaseSize(std::max(track.baseSize(), minContentForChild(gridItem, direction, columnTracks)));
     else if (trackSize.hasMaxContentMinTrackBreadth())
         track.setBaseSize(std::max(track.baseSize(), maxContentForChild(gridItem, direction, columnTracks)));
+    else if (trackSize.hasAutoMinTrackBreadth())
+        track.setBaseSize(std::max(track.baseSize(), minSizeForChild(gridItem, direction, columnTracks)));
 
     if (trackSize.hasMinContentMaxTrackBreadth())
         track.setGrowthLimit(std::max(track.growthLimit(), minContentForChild(gridItem, direction, columnTracks)));
-    else if (trackSize.hasMaxContentMaxTrackBreadth())
+    else if (trackSize.hasMaxContentOrAutoMaxTrackBreadth())
         track.setGrowthLimit(std::max(track.growthLimit(), maxContentForChild(gridItem, direction, columnTracks)));
 }
 
@@ -714,6 +757,7 @@ const LayoutUnit& RenderGrid::trackSizeForTrackSizeComputationPhase(TrackSizeCom
 {
     switch (phase) {
     case ResolveIntrinsicMinimums:
+    case ResolveContentBasedMinimums:
     case ResolveMaxContentMinimums:
     case MaximizeTracks:
         return track.baseSize();
@@ -730,13 +774,15 @@ bool RenderGrid::shouldProcessTrackForTrackSizeComputationPhase(TrackSizeComputa
 {
     switch (phase) {
     case ResolveIntrinsicMinimums:
+        return trackSize.hasIntrinsicMinTrackBreadth();
+    case ResolveContentBasedMinimums:
         return trackSize.hasMinOrMaxContentMinTrackBreadth();
     case ResolveMaxContentMinimums:
         return trackSize.hasMaxContentMinTrackBreadth();
     case ResolveIntrinsicMaximums:
         return trackSize.hasMinOrMaxContentMaxTrackBreadth();
     case ResolveMaxContentMaximums:
-        return trackSize.hasMaxContentMaxTrackBreadth();
+        return trackSize.hasMaxContentOrAutoMaxTrackBreadth();
     case MaximizeTracks:
         ASSERT_NOT_REACHED();
         return false;
@@ -750,7 +796,8 @@ bool RenderGrid::trackShouldGrowBeyondGrowthLimitsForTrackSizeComputationPhase(T
 {
     switch (phase) {
     case ResolveIntrinsicMinimums:
-        return trackSize.hasMinContentMinTrackBreadthAndMinOrMaxContentMaxTrackBreadth();
+    case ResolveContentBasedMinimums:
+        return trackSize.hasAutoOrMinContentMinTrackBreadthAndIntrinsicMaxTrackBreadth();
     case ResolveMaxContentMinimums:
         return trackSize.hasMaxContentMinTrackBreadthAndMaxContentMaxTrackBreadth();
     case ResolveIntrinsicMaximums:
@@ -769,6 +816,7 @@ void RenderGrid::markAsInfinitelyGrowableForTrackSizeComputationPhase(TrackSizeC
 {
     switch (phase) {
     case ResolveIntrinsicMinimums:
+    case ResolveContentBasedMinimums:
     case ResolveMaxContentMinimums:
         return;
     case ResolveIntrinsicMaximums:
@@ -791,6 +839,7 @@ void RenderGrid::updateTrackSizeForTrackSizeComputationPhase(TrackSizeComputatio
 {
     switch (phase) {
     case ResolveIntrinsicMinimums:
+    case ResolveContentBasedMinimums:
     case ResolveMaxContentMinimums:
         track.setBaseSize(track.plannedSize());
         return;
@@ -810,6 +859,8 @@ LayoutUnit RenderGrid::currentItemSizeForTrackSizeComputationPhase(TrackSizeComp
 {
     switch (phase) {
     case ResolveIntrinsicMinimums:
+        return minSizeForChild(gridItem, direction, columnTracks);
+    case ResolveContentBasedMinimums:
     case ResolveIntrinsicMaximums:
         return minContentForChild(gridItem, direction, columnTracks);
     case ResolveMaxContentMinimums:
@@ -1174,13 +1225,17 @@ void RenderGrid::layoutGridItems()
     for (RenderBox* child = firstChildBox(); child; child = child->nextSiblingBox()) {
         // Because the grid area cannot be styled, we don't need to adjust
         // the grid breadth to account for 'box-sizing'.
-        LayoutUnit oldOverrideContainingBlockContentLogicalWidth = child->hasOverrideContainingBlockLogicalWidth() ? child->overrideContainingBlockContentLogicalWidth() : LayoutUnit();
-        LayoutUnit oldOverrideContainingBlockContentLogicalHeight = child->hasOverrideContainingBlockLogicalHeight() ? child->overrideContainingBlockContentLogicalHeight() : LayoutUnit();
+        Optional<LayoutUnit> oldOverrideContainingBlockContentLogicalWidth = child->hasOverrideContainingBlockLogicalWidth() ? child->overrideContainingBlockContentLogicalWidth() : LayoutUnit();
+        Optional<LayoutUnit> oldOverrideContainingBlockContentLogicalHeight = child->hasOverrideContainingBlockLogicalHeight() ? child->overrideContainingBlockContentLogicalHeight() : LayoutUnit();
 
         LayoutUnit overrideContainingBlockContentLogicalWidth = gridAreaBreadthForChild(*child, ForColumns, sizingData.columnTracks);
         LayoutUnit overrideContainingBlockContentLogicalHeight = gridAreaBreadthForChild(*child, ForRows, sizingData.rowTracks);
-        if (oldOverrideContainingBlockContentLogicalWidth != overrideContainingBlockContentLogicalWidth || (oldOverrideContainingBlockContentLogicalHeight != overrideContainingBlockContentLogicalHeight && child->hasRelativeLogicalHeight()))
+        if (!oldOverrideContainingBlockContentLogicalWidth || oldOverrideContainingBlockContentLogicalWidth.value() != overrideContainingBlockContentLogicalWidth
+            || ((!oldOverrideContainingBlockContentLogicalHeight || oldOverrideContainingBlockContentLogicalHeight.value() != overrideContainingBlockContentLogicalHeight)
+                && child->hasRelativeLogicalHeight()))
             child->setNeedsLayout(MarkOnlyThis);
+        else
+            resetAutoMarginsAndLogicalTopInColumnAxis(*child);
 
         child->setOverrideContainingBlockContentLogicalWidth(overrideContainingBlockContentLogicalWidth);
         child->setOverrideContainingBlockContentLogicalHeight(overrideContainingBlockContentLogicalHeight);
@@ -1190,12 +1245,13 @@ void RenderGrid::layoutGridItems()
         // Stretching logic might force a child layout, so we need to run it before the layoutIfNeeded
         // call to avoid unnecessary relayouts. This might imply that child margins, needed to correctly
         // determine the available space before stretching, are not set yet.
-        applyStretchAlignmentToChildIfNeeded(*child, overrideContainingBlockContentLogicalHeight);
+        applyStretchAlignmentToChildIfNeeded(*child);
 
         child->layoutIfNeeded();
 
         // We need pending layouts to be done in order to compute auto-margins properly.
-        updateAutoMarginsInColumnAxisIfNeeded(*child, overrideContainingBlockContentLogicalHeight);
+        updateAutoMarginsInColumnAxisIfNeeded(*child);
+        updateAutoMarginsInRowAxisIfNeeded(*child);
 
         child->setLogicalLocation(findChildLogicalPosition(*child));
 
@@ -1210,7 +1266,7 @@ void RenderGrid::layoutGridItems()
         setLogicalHeight(logicalHeight() + row.baseSize());
 
     // min / max logical height is handled in updateLogicalHeight().
-    setLogicalHeight(logicalHeight() + borderAndPaddingLogicalHeight());
+    setLogicalHeight(logicalHeight() + borderAndPaddingLogicalHeight() + scrollbarLogicalHeight());
     if (hasLineIfEmpty()) {
         LayoutUnit minHeight = borderAndPaddingLogicalHeight()
             + lineHeight(true, isHorizontalWritingMode() ? HorizontalLine : VerticalLine, PositionOfInteriorLineBoxes)
@@ -1271,11 +1327,6 @@ static inline LayoutUnit computeOverflowAlignmentOffset(OverflowAlignment overfl
     return 0;
 }
 
-bool RenderGrid::allowedToStretchLogicalHeightForChild(const RenderBox& child) const
-{
-    return child.style().logicalHeight().isAuto() && !child.style().marginBeforeUsing(&style()).isAuto() && !child.style().marginAfterUsing(&style()).isAuto();
-}
-
 // FIXME: This logic is shared by RenderFlexibleBox, so it should be moved to RenderBox.
 bool RenderGrid::needToStretchChildLogicalHeight(const RenderBox& child) const
 {
@@ -1297,27 +1348,48 @@ LayoutUnit RenderGrid::availableAlignmentSpaceForChildBeforeStretching(LayoutUni
 }
 
 // FIXME: This logic is shared by RenderFlexibleBox, so it should be moved to RenderBox.
-void RenderGrid::applyStretchAlignmentToChildIfNeeded(RenderBox& child, LayoutUnit gridAreaBreadthForChild)
+void RenderGrid::applyStretchAlignmentToChildIfNeeded(RenderBox& child)
 {
-    if (!allowedToStretchLogicalHeightForChild(child) || RenderStyle::resolveAlignment(style(), child.style(), ItemPositionStretch) != ItemPositionStretch) {
-        child.clearOverrideLogicalContentHeight();
-        return;
+    ASSERT(child.overrideContainingBlockContentLogicalWidth() && child.overrideContainingBlockContentLogicalHeight());
+
+    // We clear both width and height override values because we will decide now whether they
+    // are allowed or not, evaluating the conditions which might have changed since the old
+    // values were set.
+    child.clearOverrideSize();
+
+    auto& gridStyle = style();
+    auto& childStyle = child.style();
+    bool isHorizontalMode = isHorizontalWritingMode();
+    bool hasAutoSizeInRowAxis = isHorizontalMode ? childStyle.width().isAuto() : childStyle.height().isAuto();
+    bool allowedToStretchChildAlongRowAxis = hasAutoSizeInRowAxis && !childStyle.marginStartUsing(&gridStyle).isAuto() && !childStyle.marginEndUsing(&gridStyle).isAuto();
+    if (!allowedToStretchChildAlongRowAxis || RenderStyle::resolveJustification(gridStyle, childStyle, ItemPositionStretch) != ItemPositionStretch) {
+        bool hasAutoMinSizeInRowAxis = isHorizontalMode ? childStyle.minWidth().isAuto() : childStyle.minHeight().isAuto();
+        bool canShrinkToFitInRowAxisForChild = !hasAutoMinSizeInRowAxis || child.minPreferredLogicalWidth() <= child.overrideContainingBlockContentLogicalWidth().value();
+        // TODO(lajava): how to handle orthogonality in this case ?.
+        // TODO(lajava): grid track sizing and positioning do not support orthogonal modes yet.
+        if (hasAutoSizeInRowAxis && canShrinkToFitInRowAxisForChild) {
+            LayoutUnit childWidthToFitContent = std::max(std::min(child.maxPreferredLogicalWidth(), child.overrideContainingBlockContentLogicalWidth().value() - child.marginLogicalWidth()), child.minPreferredLogicalWidth());
+            LayoutUnit desiredLogicalWidth = child.constrainLogicalHeightByMinMax(childWidthToFitContent, Nullopt);
+            child.setOverrideLogicalContentWidth(desiredLogicalWidth - child.borderAndPaddingLogicalWidth());
+            if (desiredLogicalWidth != child.logicalWidth())
+                child.setNeedsLayout();
+        }
     }
 
-    bool hasOrthogonalWritingMode = child.isHorizontalWritingMode() != isHorizontalWritingMode();
-    // FIXME: If the child has orthogonal flow, then it already has an override height set, so use it.
-    // FIXME: grid track sizing and positioning do not support orthogonal modes yet.
-    if (!hasOrthogonalWritingMode) {
-        LayoutUnit stretchedLogicalHeight = availableAlignmentSpaceForChildBeforeStretching(gridAreaBreadthForChild, child);
-        LayoutUnit desiredLogicalHeight = child.constrainLogicalHeightByMinMax(stretchedLogicalHeight, -1);
-
-        // FIXME: Can avoid laying out here in some cases. See https://webkit.org/b/87905.
-        bool childNeedsRelayout = desiredLogicalHeight != child.logicalHeight();
-        if (childNeedsRelayout || !child.hasOverrideLogicalContentHeight())
+    bool hasAutoSizeInColumnAxis = isHorizontalMode ? childStyle.height().isAuto() : childStyle.width().isAuto();
+    bool allowedToStretchChildAlongColumnAxis = hasAutoSizeInColumnAxis && !childStyle.marginBeforeUsing(&gridStyle).isAuto() && !childStyle.marginAfterUsing(&gridStyle).isAuto();
+    if (allowedToStretchChildAlongColumnAxis && RenderStyle::resolveAlignment(gridStyle, childStyle, ItemPositionStretch) == ItemPositionStretch) {
+        // TODO (lajava): If the child has orthogonal flow, then it already has an override height set, so use it.
+        // TODO (lajava): grid track sizing and positioning do not support orthogonal modes yet.
+        if (child.isHorizontalWritingMode() == isHorizontalMode) {
+            LayoutUnit stretchedLogicalHeight = availableAlignmentSpaceForChildBeforeStretching(child.overrideContainingBlockContentLogicalHeight().value(), child);
+            LayoutUnit desiredLogicalHeight = child.constrainLogicalHeightByMinMax(stretchedLogicalHeight, Nullopt);
             child.setOverrideLogicalContentHeight(desiredLogicalHeight - child.borderAndPaddingLogicalHeight());
-        if (childNeedsRelayout) {
-            child.setLogicalHeight(0);
-            child.setNeedsLayout();
+            if (desiredLogicalHeight != child.logicalHeight()) {
+                // TODO (lajava): Can avoid laying out here in some cases. See https://webkit.org/b/87905.
+                child.setLogicalHeight(0);
+                child.setNeedsLayout();
+            }
         }
     }
 }
@@ -1339,11 +1411,67 @@ bool RenderGrid::hasAutoMarginsInRowAxis(const RenderBox& child) const
 }
 
 // FIXME: This logic is shared by RenderFlexibleBox, so it should be moved to RenderBox.
-void RenderGrid::updateAutoMarginsInColumnAxisIfNeeded(RenderBox& child, LayoutUnit gridAreaBreadthForChild)
+void RenderGrid::resetAutoMarginsAndLogicalTopInColumnAxis(RenderBox& child)
+{
+    if (hasAutoMarginsInColumnAxis(child) || child.needsLayout()) {
+        child.clearOverrideLogicalContentHeight();
+        child.updateLogicalHeight();
+        if (isHorizontalWritingMode()) {
+            if (child.style().marginTop().isAuto())
+                child.setMarginTop(0);
+            if (child.style().marginBottom().isAuto())
+                child.setMarginBottom(0);
+        } else {
+            if (child.style().marginLeft().isAuto())
+                child.setMarginLeft(0);
+            if (child.style().marginRight().isAuto())
+                child.setMarginRight(0);
+        }
+
+    }
+}
+
+// FIXME: This logic is shared by RenderFlexibleBox, so it should be moved to RenderBox.
+void RenderGrid::updateAutoMarginsInRowAxisIfNeeded(RenderBox& child)
 {
     ASSERT(!child.isOutOfFlowPositioned());
+    ASSERT(child.overrideContainingBlockContentLogicalWidth());
 
-    LayoutUnit availableAlignmentSpace = gridAreaBreadthForChild - child.logicalHeight();
+    LayoutUnit availableAlignmentSpace = child.overrideContainingBlockContentLogicalWidth().value() - child.logicalWidth();
+    if (availableAlignmentSpace <= 0)
+        return;
+
+    bool isHorizontal = isHorizontalWritingMode();
+    Length topOrLeft = isHorizontal ? child.style().marginLeft() : child.style().marginTop();
+    Length bottomOrRight = isHorizontal ? child.style().marginRight() : child.style().marginBottom();
+    if (topOrLeft.isAuto() && bottomOrRight.isAuto()) {
+        if (isHorizontal) {
+            child.setMarginLeft(availableAlignmentSpace / 2);
+            child.setMarginRight(availableAlignmentSpace / 2);
+        } else {
+            child.setMarginTop(availableAlignmentSpace / 2);
+            child.setMarginBottom(availableAlignmentSpace / 2);
+        }
+    } else if (topOrLeft.isAuto()) {
+        if (isHorizontal)
+            child.setMarginLeft(availableAlignmentSpace);
+        else
+            child.setMarginTop(availableAlignmentSpace);
+    } else if (bottomOrRight.isAuto()) {
+        if (isHorizontal)
+            child.setMarginRight(availableAlignmentSpace);
+        else
+            child.setMarginBottom(availableAlignmentSpace);
+    }
+}
+
+// FIXME: This logic is shared by RenderFlexibleBox, so it should be moved to RenderBox.
+void RenderGrid::updateAutoMarginsInColumnAxisIfNeeded(RenderBox& child)
+{
+    ASSERT(!child.isOutOfFlowPositioned());
+    ASSERT(child.overrideContainingBlockContentLogicalHeight());
+
+    LayoutUnit availableAlignmentSpace = child.overrideContainingBlockContentLogicalHeight().value() - child.logicalHeight();
     if (availableAlignmentSpace <= 0)
         return;
 
@@ -1461,7 +1589,7 @@ GridAxisPosition RenderGrid::rowAxisPositionForChild(const RenderBox& child) con
     return GridAxisStart;
 }
 
-LayoutUnit RenderGrid::rowPositionForChild(const RenderBox& child) const
+LayoutUnit RenderGrid::columnAxisOffsetForChild(const RenderBox& child) const
 {
     const GridCoordinate& coordinate = cachedGridCoordinate(child);
     LayoutUnit startOfRow = m_rowPositions[coordinate.rows.resolvedInitialPosition.toInt()];
@@ -1485,7 +1613,7 @@ LayoutUnit RenderGrid::rowPositionForChild(const RenderBox& child) const
 }
 
 
-LayoutUnit RenderGrid::columnPositionForChild(const RenderBox& child) const
+LayoutUnit RenderGrid::rowAxisOffsetForChild(const RenderBox& child) const
 {
     const GridCoordinate& coordinate = cachedGridCoordinate(child);
     LayoutUnit startOfColumn = m_columnPositions[coordinate.columns.resolvedInitialPosition.toInt()];
@@ -1510,14 +1638,17 @@ LayoutUnit RenderGrid::columnPositionForChild(const RenderBox& child) const
 
 LayoutPoint RenderGrid::findChildLogicalPosition(const RenderBox& child) const
 {
-    LayoutUnit columnPosition = columnPositionForChild(child);
+    LayoutUnit rowAxisOffset = rowAxisOffsetForChild(child);
     // We stored m_columnPositions's data ignoring the direction, hence we might need now
     // to translate positions from RTL to LTR, as it's more convenient for painting.
-    if (!style().isLeftToRightDirection())
-        columnPosition = (m_columnPositions[m_columnPositions.size() - 1] + borderAndPaddingLogicalLeft()) - columnPosition  - child.logicalWidth();
+    if (!style().isLeftToRightDirection()) {
+        LayoutUnit alignmentOffset =  m_columnPositions[0] - borderAndPaddingStart();
+        LayoutUnit rightGridEdgePosition = m_columnPositions[m_columnPositions.size() - 1] + alignmentOffset + borderAndPaddingLogicalLeft();
+        rowAxisOffset = rightGridEdgePosition - (rowAxisOffset + child.logicalWidth());
+    }
 
     // The grid items should be inside the grid container's border box, that's why they need to be shifted.
-    return LayoutPoint(columnPosition, rowPositionForChild(child));
+    return LayoutPoint(rowAxisOffset, columnAxisOffsetForChild(child));
 }
 
 void RenderGrid::paintChildren(PaintInfo& paintInfo, const LayoutPoint& paintOffset, PaintInfo& forChild, bool usePrintRect)

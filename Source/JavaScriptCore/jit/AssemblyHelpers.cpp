@@ -55,6 +55,78 @@ Vector<BytecodeAndMachineOffset>& AssemblyHelpers::decodedCodeMapFor(CodeBlock* 
     return result.iterator->value;
 }
 
+AssemblyHelpers::JumpList AssemblyHelpers::branchIfNotType(
+    JSValueRegs regs, GPRReg tempGPR, const InferredType::Descriptor& descriptor, TagRegistersMode mode)
+{
+    AssemblyHelpers::JumpList result;
+
+    switch (descriptor.kind()) {
+    case InferredType::Bottom:
+        result.append(jump());
+        break;
+
+    case InferredType::Boolean:
+        result.append(branchIfNotBoolean(regs, tempGPR));
+        break;
+
+    case InferredType::Other:
+        result.append(branchIfNotOther(regs, tempGPR));
+        break;
+
+    case InferredType::Int32:
+        result.append(branchIfNotInt32(regs, mode));
+        break;
+
+    case InferredType::Number:
+        result.append(branchIfNotNumber(regs, tempGPR, mode));
+        break;
+
+    case InferredType::String:
+        result.append(branchIfNotCell(regs, mode));
+        result.append(branchIfNotString(regs.payloadGPR()));
+        break;
+
+    case InferredType::ObjectWithStructure:
+        result.append(branchIfNotCell(regs, mode));
+        result.append(
+            branchStructure(
+                NotEqual,
+                Address(regs.payloadGPR(), JSCell::structureIDOffset()),
+                descriptor.structure()));
+        break;
+
+    case InferredType::ObjectWithStructureOrOther: {
+        Jump ok = branchIfOther(regs, tempGPR);
+        result.append(branchIfNotCell(regs, mode));
+        result.append(
+            branchStructure(
+                NotEqual,
+                Address(regs.payloadGPR(), JSCell::structureIDOffset()),
+                descriptor.structure()));
+        ok.link(this);
+        break;
+    }
+
+    case InferredType::Object:
+        result.append(branchIfNotCell(regs, mode));
+        result.append(branchIfNotObject(regs.payloadGPR()));
+        break;
+
+    case InferredType::ObjectOrOther: {
+        Jump ok = branchIfOther(regs, tempGPR);
+        result.append(branchIfNotCell(regs, mode));
+        result.append(branchIfNotObject(regs.payloadGPR()));
+        ok.link(this);
+        break;
+    }
+
+    case InferredType::Top:
+        break;
+    }
+
+    return result;
+}
+
 void AssemblyHelpers::purifyNaN(FPRReg fpr)
 {
     MacroAssembler::Jump notNaN = branchDouble(DoubleEqual, fpr, fpr);
@@ -194,6 +266,19 @@ void AssemblyHelpers::jitAssertArgumentCountSane()
     abortWithReason(AHInsaneArgumentCount);
     ok.link(this);
 }
+
+void AssemblyHelpers::jitAssertNoException()
+{
+    Jump noException;
+#if USE(JSVALUE64)
+    noException = branchTest64(Zero, AbsoluteAddress(vm()->addressOfException()));
+#elif USE(JSVALUE32_64)
+    noException = branch32(Equal, AbsoluteAddress(vm()->addressOfException()), TrustedImm32(0));
+#endif
+    abortWithReason(JITUncoughtExceptionAfterCall);
+    noException.link(this);
+}
+
 #endif // !ASSERT_DISABLED
 
 void AssemblyHelpers::callExceptionFuzz()
@@ -201,15 +286,40 @@ void AssemblyHelpers::callExceptionFuzz()
     if (!Options::enableExceptionFuzz())
         return;
 
-    ASSERT(stackAlignmentBytes() >= sizeof(void*) * 2);
-    subPtr(TrustedImm32(stackAlignmentBytes()), stackPointerRegister);
-    poke(GPRInfo::returnValueGPR, 0);
-    poke(GPRInfo::returnValueGPR2, 1);
+    EncodedJSValue* buffer = vm()->exceptionFuzzingBuffer(sizeof(EncodedJSValue) * (GPRInfo::numberOfRegisters + FPRInfo::numberOfRegisters));
+
+    for (unsigned i = 0; i < GPRInfo::numberOfRegisters; ++i) {
+#if USE(JSVALUE64)
+        store64(GPRInfo::toRegister(i), buffer + i);
+#else
+        store32(GPRInfo::toRegister(i), buffer + i);
+#endif
+    }
+    for (unsigned i = 0; i < FPRInfo::numberOfRegisters; ++i) {
+        move(TrustedImmPtr(buffer + GPRInfo::numberOfRegisters + i), GPRInfo::regT0);
+        storeDouble(FPRInfo::toRegister(i), Address(GPRInfo::regT0));
+    }
+
+    // Set up one argument.
+#if CPU(X86)
+    poke(GPRInfo::callFrameRegister, 0);
+#else
+    move(GPRInfo::callFrameRegister, GPRInfo::argumentGPR0);
+#endif
     move(TrustedImmPtr(bitwise_cast<void*>(operationExceptionFuzz)), GPRInfo::nonPreservedNonReturnGPR);
     call(GPRInfo::nonPreservedNonReturnGPR);
-    peek(GPRInfo::returnValueGPR, 0);
-    peek(GPRInfo::returnValueGPR2, 1);
-    addPtr(TrustedImm32(stackAlignmentBytes()), stackPointerRegister);
+
+    for (unsigned i = 0; i < FPRInfo::numberOfRegisters; ++i) {
+        move(TrustedImmPtr(buffer + GPRInfo::numberOfRegisters + i), GPRInfo::regT0);
+        loadDouble(Address(GPRInfo::regT0), FPRInfo::toRegister(i));
+    }
+    for (unsigned i = 0; i < GPRInfo::numberOfRegisters; ++i) {
+#if USE(JSVALUE64)
+        load64(buffer + i, GPRInfo::toRegister(i));
+#else
+        load32(buffer + i, GPRInfo::toRegister(i));
+#endif
+    }
 }
 
 AssemblyHelpers::Jump AssemblyHelpers::emitExceptionCheck(ExceptionCheckKind kind, ExceptionJumpWidth width)
@@ -233,6 +343,20 @@ AssemblyHelpers::Jump AssemblyHelpers::emitExceptionCheck(ExceptionCheckKind kin
     result.link(this);
     
     return realJump.m_jump;
+}
+
+AssemblyHelpers::Jump AssemblyHelpers::emitNonPatchableExceptionCheck()
+{
+    callExceptionFuzz();
+
+    Jump result;
+#if USE(JSVALUE64)
+    result = branchTest64(NonZero, AbsoluteAddress(vm()->addressOfException()));
+#elif USE(JSVALUE32_64)
+    result = branch32(NotEqual, AbsoluteAddress(vm()->addressOfException()), TrustedImm32(0));
+#endif
+    
+    return result;
 }
 
 void AssemblyHelpers::emitStoreStructureWithTypeInfo(AssemblyHelpers& jit, TrustedImmPtr structure, RegisterID dest)

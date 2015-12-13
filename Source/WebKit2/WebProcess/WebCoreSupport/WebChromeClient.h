@@ -243,6 +243,7 @@ private:
 #if PLATFORM(IOS)
     virtual void elementDidFocus(const WebCore::Node*) override;
     virtual void elementDidBlur(const WebCore::Node*) override;
+    virtual void elementDidRefocus(const WebCore::Node*) override;
 #endif
 
 #if PLATFORM(IOS)
@@ -291,12 +292,13 @@ private:
 
     virtual bool shouldUseTiledBackingForFrameView(const WebCore::FrameView*) const override;
 
-    virtual void isPlayingMediaDidChange(WebCore::MediaProducer::MediaStateFlags) override;
+    virtual void isPlayingMediaDidChange(WebCore::MediaProducer::MediaStateFlags, uint64_t) override;
     virtual void setPageActivityState(WebCore::PageActivityState::Flags) override;
 
 #if ENABLE(MEDIA_SESSION)
     virtual void hasMediaSessionWithActiveMediaElementsDidChange(bool) override;
     virtual void mediaSessionMetadataDidChange(const WebCore::MediaSessionMetadata&) override;
+    virtual void focusedContentMediaElementDidChange(uint64_t) override;
 #endif
 
 #if ENABLE(SUBTLE_CRYPTO)
@@ -323,12 +325,14 @@ private:
     virtual void playbackTargetPickerClientStateDidChange(uint64_t, WebCore::MediaProducer::MediaStateFlags) override;
 #endif
 
+    virtual void imageOrMediaDocumentSizeChanged(const WebCore::IntSize&) override;
 #if ENABLE(VIDEO)
-    virtual void mediaDocumentNaturalSizeChanged(const WebCore::IntSize&) override;
 #if USE(GSTREAMER)
-    virtual void requestInstallMissingMediaPlugins(const String&, WebCore::MediaPlayerRequestInstallMissingPluginsCallback&) override;
+    virtual void requestInstallMissingMediaPlugins(const String& /*details*/, const String& /*description*/, WebCore::MediaPlayerRequestInstallMissingPluginsCallback&) override;
 #endif
 #endif
+
+    virtual void didInvalidateDocumentMarkerRects() override;
 
     String m_cachedToolTip;
     mutable RefPtr<WebFrame> m_cachedFrameSetLargestFrame;

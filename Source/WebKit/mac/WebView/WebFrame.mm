@@ -644,9 +644,9 @@ static inline WebDataSource *dataSource(DocumentLoader* loader)
     }
     
     if (contentsOnly)
-        view->paintContents(&context, enclosingIntRect(rect));
+        view->paintContents(context, enclosingIntRect(rect));
     else
-        view->paint(&context, enclosingIntRect(rect));
+        view->paint(context, enclosingIntRect(rect));
 
     if (shouldFlatten)
         view->setPaintBehavior(oldBehavior);
@@ -868,7 +868,7 @@ static inline WebDataSource *dataSource(DocumentLoader* loader)
     if (!document)
         return nil;
 
-    return kit(createFragmentFromMarkup(*document, markupString, baseURLString, DisallowScriptingContent).get());
+    return kit(createFragmentFromMarkup(*document, markupString, baseURLString, DisallowScriptingContent).ptr());
 }
 
 - (DOMDocumentFragment *)_documentFragmentWithNodesAsParagraphs:(NSArray *)nodes
@@ -890,9 +890,9 @@ static inline WebDataSource *dataSource(DocumentLoader* loader)
     RefPtr<DocumentFragment> fragment = document->createDocumentFragment();
 
     for (auto* node : nodesVector) {
-        RefPtr<Element> element = createDefaultParagraphElement(*document);
-        element->appendChild(node);
-        fragment->appendChild(element.release());
+        Ref<Element> element = createDefaultParagraphElement(*document);
+        element->appendChild(*node);
+        fragment->appendChild(WTF::move(element));
     }
 
     return kit(fragment.release().get());
@@ -966,7 +966,7 @@ static inline WebDataSource *dataSource(DocumentLoader* loader)
 
     if (WebCore::DOMImplementation::isTextMIMEType(mimeType)
         || Image::supportsType(mimeType)
-        || (pluginData && pluginData->supportsWebVisibleMimeType(mimeType, PluginData::AllPlugins) && frame->loader().subframeLoader().allowPlugins(NotAboutToInstantiatePlugin))
+        || (pluginData && pluginData->supportsWebVisibleMimeType(mimeType, PluginData::AllPlugins) && frame->loader().subframeLoader().allowPlugins())
         || (pluginData && pluginData->supportsWebVisibleMimeType(mimeType, PluginData::OnlyApplicationPlugins)))
         return NO;
 
@@ -1102,7 +1102,7 @@ static WebFrameLoadType toWebFrameLoadType(FrameLoadType frameLoadType)
     
     
     Vector<IntRect> intRects;
-    range->textRects(intRects, NO);
+    range->absoluteTextRects(intRects, NO);
     unsigned size = intRects.size();
     
     NSMutableArray *rectArray = [NSMutableArray arrayWithCapacity:size];
@@ -1437,22 +1437,6 @@ static WebFrameLoadType toWebFrameLoadType(FrameLoadType frameLoadType)
 {
     Document *document = core(self)->document();
     return document->isTelephoneNumberParsingEnabled();
-}
-
-- (BOOL)mediaDataLoadsAutomatically
-{
-    WebCore::Frame *frame = core(self);
-    if (WebCore::Page* page = frame->page())
-        return page->settings().mediaDataLoadsAutomatically();
-
-    return NO;
-}
-
-- (void)setMediaDataLoadsAutomatically:(BOOL)flag
-{
-    WebCore::Frame *frame = core(self);
-    if (WebCore::Page* page = frame->page())
-        page->settings().setMediaDataLoadsAutomatically(flag);
 }
 
 - (DOMRange *)selectedDOMRange
@@ -1889,7 +1873,7 @@ static WebFrameLoadType toWebFrameLoadType(FrameLoadType frameLoadType)
 {
     RefPtr<Range> range = _private->coreFrame->selection().toNormalizedRange();
 
-    DOMDocumentFragment* fragment = range ? kit(createFragmentFromText(*range, text).get()) : nil;
+    DOMDocumentFragment* fragment = range ? kit(createFragmentFromText(*range, text).ptr()) : nil;
     [self _replaceSelectionWithFragment:fragment selectReplacement:selectReplacement smartReplace:smartReplace matchStyle:matchStyle];
 }
 
@@ -1974,7 +1958,7 @@ static WebFrameLoadType toWebFrameLoadType(FrameLoadType frameLoadType)
 {
     RefPtr<Range> range = _private->coreFrame->selection().toNormalizedRange();
     
-    DOMDocumentFragment* fragment = range ? kit(createFragmentFromText(*range, text).get()) : nil;
+    DOMDocumentFragment* fragment = range ? kit(createFragmentFromText(*range, text).ptr()) : nil;
     [self _replaceSelectionWithFragment:fragment selectReplacement:selectReplacement smartReplace:smartReplace matchStyle:YES];
 }
 
@@ -2280,7 +2264,7 @@ static WebFrameLoadType toWebFrameLoadType(FrameLoadType frameLoadType)
 #if PLATFORM(IOS)
 - (DOMDocumentFragment *)_documentFragmentForText:(NSString *)text
 {
-    return kit(createFragmentFromText(*_private->coreFrame->selection().toNormalizedRange().get(), text).get());
+    return kit(createFragmentFromText(*_private->coreFrame->selection().toNormalizedRange().get(), text).ptr());
 }
 
 - (DOMDocumentFragment *)_documentFragmentForWebArchive:(WebArchive *)webArchive

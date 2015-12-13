@@ -53,10 +53,6 @@
 #include "PlatformTextTrack.h"
 #endif
 
-#if USE(PLATFORM_TEXT_TRACK_MENU)
-#include "PlatformTextTrackMenu.h"
-#endif
-
 OBJC_CLASS AVAsset;
 OBJC_CLASS AVPlayer;
 OBJC_CLASS NSArray;
@@ -107,28 +103,15 @@ struct PlatformMedia {
 };
 
 struct MediaEngineSupportParameters {
+
+    MediaEngineSupportParameters() { }
+
     String type;
     String codecs;
     URL url;
-#if ENABLE(ENCRYPTED_MEDIA)
     String keySystem;
-#endif
-#if ENABLE(MEDIA_SOURCE)
-    bool isMediaSource;
-#endif
-#if ENABLE(MEDIA_STREAM)
-    bool isMediaStream;
-#endif
-
-    MediaEngineSupportParameters()
-#if ENABLE(MEDIA_SOURCE)
-        : isMediaSource(false)
-#endif
-    {
-#if ENABLE(MEDIA_STREAM)
-        isMediaStream = false;
-#endif
-    }
+    bool isMediaSource { false };
+    bool isMediaStream { false };
 };
 
 extern const PlatformMedia NoPlatformMedia;
@@ -229,6 +212,11 @@ public:
     virtual String mediaPlayerMediaKeysStorageDirectory() const { return emptyString(); }
 #endif
     
+#if ENABLE(MEDIA_STREAM)
+    virtual String mediaPlayerMediaDeviceIdentifierStorageDirectory() const { return emptyString(); }
+#endif
+
+    
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
     virtual void mediaPlayerCurrentPlaybackTargetIsWirelessChanged(MediaPlayer*) { };
 #endif
@@ -284,7 +272,7 @@ public:
     virtual Vector<String> mediaPlayerPreferredAudioCharacteristics() const { return Vector<String>(); }
 
 #if USE(GSTREAMER)
-    virtual void requestInstallMissingPlugins(const String&, MediaPlayerRequestInstallMissingPluginsCallback&) { };
+    virtual void requestInstallMissingPlugins(const String&, const String&, MediaPlayerRequestInstallMissingPluginsCallback&) { };
 #endif
 };
 
@@ -417,8 +405,8 @@ public:
     bool autoplay() const;
     void setAutoplay(bool);
 
-    void paint(GraphicsContext*, const FloatRect&);
-    void paintCurrentFrameInContext(GraphicsContext*, const FloatRect&);
+    void paint(GraphicsContext&, const FloatRect&);
+    void paintCurrentFrameInContext(GraphicsContext&, const FloatRect&);
 
     // copyVideoTextureToPlatformTexture() is used to do the GPU-GPU textures copy without a readback to system memory.
     // The first five parameters denote the corresponding GraphicsContext, destination texture, requested level, requested type and the required internalFormat for destination texture.
@@ -580,11 +568,6 @@ public:
 #endif
 
     static void resetMediaEngines();
-
-#if USE(PLATFORM_TEXT_TRACK_MENU)
-    bool implementsTextTrackControls() const;
-    PassRefPtr<PlatformTextTrackMenuInterface> textTrackMenu();
-#endif
 
 #if USE(GSTREAMER)
     void simulateAudioInterruption();

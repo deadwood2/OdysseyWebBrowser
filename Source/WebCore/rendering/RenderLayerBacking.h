@@ -255,6 +255,7 @@ private:
     std::unique_ptr<GraphicsLayer> createGraphicsLayer(const String&, GraphicsLayer::Type = GraphicsLayer::Type::Normal);
 
     RenderLayerModelObject& renderer() const { return m_owningLayer.renderer(); }
+    RenderBox* renderBox() const { return m_owningLayer.renderBox(); }
     RenderLayerCompositor& compositor() const { return m_owningLayer.compositor(); }
 
     void updateInternalHierarchy();
@@ -325,7 +326,7 @@ private:
     bool hasTiledBackingFlatteningLayer() const { return (m_childContainmentLayer && m_usingTiledCacheLayer); }
     GraphicsLayer* tileCacheFlatteningLayer() const { return m_usingTiledCacheLayer ? m_childContainmentLayer.get() : nullptr; }
 
-    void paintIntoLayer(const GraphicsLayer*, GraphicsContext*, const IntRect& paintDirtyRect, PaintBehavior, GraphicsLayerPaintingPhase);
+    void paintIntoLayer(const GraphicsLayer*, GraphicsContext&, const IntRect& paintDirtyRect, PaintBehavior, GraphicsLayerPaintingPhase);
 
     // Helper function for updateGeometry.
     void adjustAncestorCompositingBoundsForFlowThread(LayoutRect& ancestorCompositingBounds, const RenderLayer* compositingAncestor) const;

@@ -32,7 +32,6 @@
 #include "ContextMenuController.h"
 #include "DatabaseProvider.h"
 #include "DocumentMarkerController.h"
-#include "DocumentStyleSheetCollection.h"
 #include "DragController.h"
 #include "Editor.h"
 #include "EditorClient.h"
@@ -40,6 +39,7 @@
 #include "EventNames.h"
 #include "ExceptionCode.h"
 #include "ExceptionCodePlaceholder.h"
+#include "ExtensionStyleSheets.h"
 #include "FileSystem.h"
 #include "FocusController.h"
 #include "FrameLoader.h"
@@ -50,6 +50,7 @@
 #include "HTMLElement.h"
 #include "HistoryController.h"
 #include "HistoryItem.h"
+#include "IDBConnectionToServer.h"
 #include "InspectorController.h"
 #include "InspectorInstrumentation.h"
 #include "Logging.h"
@@ -113,6 +114,10 @@
 #include "MediaSessionManager.h"
 #endif
 
+#if ENABLE(INDEXED_DATABASE)
+#include "InProcessIDBServer.h"
+#endif
+
 namespace WebCore {
 
 static HashSet<Page*>* allPages;
@@ -157,7 +162,7 @@ Page::Page(PageConfiguration& pageConfiguration)
 #endif
     , m_settings(Settings::create(this))
     , m_progress(std::make_unique<ProgressTracker>(*pageConfiguration.progressTrackerClient))
-    , m_backForwardController(std::make_unique<BackForwardController>(*this, pageConfiguration.backForwardClient))
+    , m_backForwardController(std::make_unique<BackForwardController>(*this, WTF::move(pageConfiguration.backForwardClient)))
     , m_mainFrame(MainFrame::create(*this, pageConfiguration))
     , m_theme(RenderTheme::themeForPage(this))
     , m_editorClient(*pageConfiguration.editorClient)
@@ -253,6 +258,8 @@ Page::~Page()
     
     m_settings->pageDestroyed();
 
+    m_inspectorController->inspectedPageDestroyed();
+
     for (Frame* frame = &mainFrame(); frame; frame = frame->tree().traverseNext()) {
         frame->willDetachPage();
         frame->detachFromPage();
@@ -263,8 +270,6 @@ Page::~Page()
         m_plugInClient->pageDestroyed();
     if (m_alternativeTextClient)
         m_alternativeTextClient->pageDestroyed();
-
-    m_inspectorController->inspectedPageDestroyed();
 
     if (m_scrollingCoordinator)
         m_scrollingCoordinator->pageDestroyed();
@@ -1013,7 +1018,7 @@ void Page::userStyleSheetLocationChanged()
 
     for (Frame* frame = &mainFrame(); frame; frame = frame->tree().traverseNext()) {
         if (frame->document())
-            frame->document()->styleSheetCollection().updatePageUserSheet();
+            frame->document()->extensionStyleSheets().updatePageUserSheet();
     }
 }
 
@@ -1183,7 +1188,7 @@ void Page::enableLegacyPrivateBrowsing(bool privateBrowsingEnabled)
     setSessionID(privateBrowsingEnabled ? SessionID::legacyPrivateSessionID() : SessionID::defaultSessionID());
 }
 
-void Page::updateIsPlayingMedia()
+void Page::updateIsPlayingMedia(uint64_t sourceElementID)
 {
     MediaProducer::MediaStateFlags state = MediaProducer::IsNotPlaying;
     for (Frame* frame = &mainFrame(); frame; frame = frame->tree().traverseNext()) {
@@ -1195,7 +1200,7 @@ void Page::updateIsPlayingMedia()
 
     m_mediaState = state;
 
-    chrome().client().isPlayingMediaDidChange(state);
+    chrome().client().isPlayingMediaDidChange(state, sourceElementID);
 }
 
 void Page::setMuted(bool muted)
@@ -1223,6 +1228,12 @@ void Page::handleMediaEvent(MediaEventType eventType)
         MediaSessionManager::singleton().skipToPreviousTrack();
         break;
     }
+}
+
+void Page::setVolumeOfMediaElement(double volume, uint64_t elementID)
+{
+    if (HTMLMediaElement* element = HTMLMediaElement::elementWithID(elementID))
+        element->setVolume(volume, ASSERT_NO_EXCEPTION);
 }
 #endif
 
@@ -1625,7 +1636,7 @@ void Page::setUserContentController(UserContentController* userContentController
 
     for (Frame* frame = &mainFrame(); frame; frame = frame->tree().traverseNext()) {
         if (Document *document = frame->document()) {
-            document->styleSheetCollection().invalidateInjectedStyleSheetCache();
+            document->extensionStyleSheets().invalidateInjectedStyleSheetCache();
             document->styleResolverChanged(DeferRecalcStyle);
         }
     }
@@ -1749,6 +1760,21 @@ void Page::setAllowsMediaDocumentInlinePlayback(bool flag)
 
     for (auto& document : documents)
         document->allowsMediaDocumentInlinePlaybackChanged();
+}
+#endif
+
+#if ENABLE(INDEXED_DATABASE)
+IDBClient::IDBConnectionToServer& Page::idbConnection()
+{
+    if (!m_idbIDBConnectionToServer) {
+        if (usesEphemeralSession()) {
+            auto inProcessServer = InProcessIDBServer::create();
+            m_idbIDBConnectionToServer = &inProcessServer->connectionToServer();
+        } else
+            m_idbIDBConnectionToServer = &databaseProvider().idbConnectionToServerForSession(m_sessionID);
+    }
+    
+    return *m_idbIDBConnectionToServer;
 }
 #endif
 

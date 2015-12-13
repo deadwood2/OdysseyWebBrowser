@@ -35,7 +35,6 @@
 #import "DOMDocumentInternal.h"
 #import "DOMNodeInternal.h"
 #import "DOMRangeInternal.h"
-#import "DictionaryPopupInfo.h"
 #import "StorageThread.h"
 #import "WebAlternativeTextClient.h"
 #import "WebApplicationCacheInternal.h"
@@ -123,6 +122,7 @@
 #import <WebCore/Chrome.h>
 #import <WebCore/ColorMac.h>
 #import <WebCore/DatabaseManager.h>
+#import <WebCore/DictionaryLookup.h>
 #import <WebCore/Document.h>
 #import <WebCore/DocumentLoader.h>
 #import <WebCore/DragController.h>
@@ -295,7 +295,6 @@
 
 #if PLATFORM(MAC)
 SOFT_LINK_CONSTANT_MAY_FAIL(Lookup, LUNotificationPopoverWillClose, NSString *)
-SOFT_LINK_CONSTANT_MAY_FAIL(Lookup, LUTermOptionDisableSearchTermIndicator, NSString *)
 #endif
 
 #if !PLATFORM(IOS)
@@ -612,7 +611,7 @@ NSString *_WebMainFrameURLKey =         @"mainFrameURL";
 NSString *_WebMainFrameDocumentKey =    @"mainFrameDocument";
 #endif
 
-#if USE(QUICK_LOOK)
+#if PLATFORM(IOS)
 NSString *WebQuickLookFileNameKey = @"WebQuickLookFileNameKey";
 NSString *WebQuickLookUTIKey      = @"WebQuickLookUTIKey";
 #endif
@@ -1376,7 +1375,7 @@ static void WebKitInitializeGamepadProviderIfNecessary()
 {
     ASSERT(WebThreadIsCurrent());
     WebKit::MemoryMeasure measurer("Memory warning: Discarding JIT'ed code.");
-    GCController::singleton().discardAllCompiledCode();
+    GCController::singleton().deleteAllCode();
 }
 
 + (BOOL)isCharacterSmartReplaceExempt:(unichar)character isPreviousCharacter:(BOOL)b
@@ -1757,7 +1756,7 @@ static bool fastDocumentTeardownEnabled()
     [self setScriptDebugDelegate:nil];
     [self setUIDelegate:nil];
 
-    [_private->inspector webViewClosed];
+    [_private->inspector inspectedWebViewClosed];
 #endif
 #if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
     [_private->immediateActionController webViewClosed];
@@ -1891,7 +1890,7 @@ static bool fastDocumentTeardownEnabled()
 - (WebInspector *)inspector
 {
     if (!_private->inspector)
-        _private->inspector = [[WebInspector alloc] initWithWebView:self];
+        _private->inspector = [[WebInspector alloc] initWithInspectedWebView:self];
     return _private->inspector;
 }
 
@@ -2305,6 +2304,7 @@ static bool needsSelfRetainWhileLoadingQuirk()
 
     settings.setRequiresUserGestureForMediaPlayback([preferences mediaPlaybackRequiresUserGesture]);
     settings.setAllowsInlineMediaPlayback([preferences mediaPlaybackAllowsInline]);
+    settings.setInlineMediaPlaybackRequiresPlaysInlineAttribute([preferences inlineMediaPlaybackRequiresPlaysInlineAttribute]);
     settings.setAllowsPictureInPictureMediaPlayback([preferences allowsPictureInPictureMediaPlayback] && shouldAllowPictureInPictureMediaPlayback());
     settings.setMediaControlsScaleWithPageZoom([preferences mediaControlsScaleWithPageZoom]);
     settings.setSuppressesIncrementalRendering([preferences suppressesIncrementalRendering]);
@@ -2441,6 +2441,10 @@ static bool needsSelfRetainWhileLoadingQuirk()
     RuntimeEnabledFeatures::sharedFeatures().setGamepadsEnabled([preferences gamepadsEnabled]);
 #endif
 
+#if ENABLE(INDEXED_DATABASE)
+    RuntimeEnabledFeatures::sharedFeatures().setWebkitIndexedDBEnabled(true);
+#endif
+
     NSTimeInterval timeout = [preferences incrementalRenderingSuppressionTimeoutInSeconds];
     if (timeout > 0)
         settings.setIncrementalRenderingSuppressionTimeoutInSeconds(timeout);
@@ -2462,6 +2466,8 @@ static bool needsSelfRetainWhileLoadingQuirk()
 #if ENABLE(ENCRYPTED_MEDIA_V2)
     settings.setMediaKeysStorageDirectory([preferences mediaKeysStorageDirectory]);
 #endif
+
+    settings.setMediaDataLoadsAutomatically([preferences mediaDataLoadsAutomatically]);
 }
 
 static inline IMP getMethod(id o, SEL s)
@@ -3564,9 +3570,10 @@ static inline IMP getMethod(id o, SEL s)
     return _private->page->setDefersLoading(defer);
 }
 
-#if TARGET_OS_IPHONE && USE(QUICK_LOOK)
+#if PLATFORM(IOS)
 - (NSDictionary *)quickLookContentForURL:(NSURL *)url
 {
+#if USE(QUICK_LOOK)
     NSString *uti = qlPreviewConverterUTIForURL(url);
     if (!uti)
         return nil;
@@ -3576,10 +3583,11 @@ static inline IMP getMethod(id o, SEL s)
         return nil;
 
     return [NSDictionary dictionaryWithObjectsAndKeys: fileName, WebQuickLookFileNameKey, uti, WebQuickLookUTIKey, nil];
-}
+#else
+    return nil;
 #endif
+}
 
-#if PLATFORM(IOS)
 - (BOOL)_isStopping
 {
     return _private->isStopping;
@@ -3632,7 +3640,7 @@ static inline IMP getMethod(id o, SEL s)
 
     IntRect newRect;
     {
-        MutexLocker locker(_private->pendingFixedPositionLayoutRectMutex);
+        LockHolder locker(_private->pendingFixedPositionLayoutRectMutex);
         if (CGRectIsNull(_private->pendingFixedPositionLayoutRect))
             return;
         newRect = enclosingIntRect(_private->pendingFixedPositionLayoutRect);
@@ -3646,7 +3654,7 @@ static inline IMP getMethod(id o, SEL s)
 - (void)_setCustomFixedPositionLayoutRectInWebThread:(CGRect)rect synchronize:(BOOL)synchronize
 {
     {
-        MutexLocker locker(_private->pendingFixedPositionLayoutRectMutex);
+        LockHolder locker(_private->pendingFixedPositionLayoutRectMutex);
         _private->pendingFixedPositionLayoutRect = rect;
     }
     if (!synchronize)
@@ -3660,7 +3668,7 @@ static inline IMP getMethod(id o, SEL s)
 {
     ASSERT(WebThreadIsLocked());
     {
-        MutexLocker locker(_private->pendingFixedPositionLayoutRectMutex);
+        LockHolder locker(_private->pendingFixedPositionLayoutRectMutex);
         _private->pendingFixedPositionLayoutRect = rect;
     }
     [self _synchronizeCustomFixedPositionLayoutRect];
@@ -3668,7 +3676,7 @@ static inline IMP getMethod(id o, SEL s)
 
 - (BOOL)_fetchCustomFixedPositionLayoutRect:(NSRect*)rect
 {
-    MutexLocker locker(_private->pendingFixedPositionLayoutRectMutex);
+    LockHolder locker(_private->pendingFixedPositionLayoutRectMutex);
     if (CGRectIsNull(_private->pendingFixedPositionLayoutRect))
         return false;
 
@@ -7838,25 +7846,15 @@ static WebFrameView *containingFrameView(NSView *view)
     }
     case WebCacheModelPrimaryWebBrowser: {
         // Page cache capacity (in pages)
-        // (Research indicates that value / page drops substantially after 3 pages.)
-        if (memSize >= 2048)
-            pageCacheSize = 5;
-        else if (memSize >= 1024)
-            pageCacheSize = 4;
-        else if (memSize >= 512)
+        // Research indicates that value / page drops substantially after 3 pages.
+        if (memSize >= 1024)
             pageCacheSize = 3;
-        else if (memSize >= 256)
+        else if (memSize >= 512)
             pageCacheSize = 2;
-        else
+        else if (memSize >= 256)
             pageCacheSize = 1;
-
-#if PLATFORM(IOS)
-        // Cache page less aggressively in iOS to reduce the chance of being jettisoned.
-        // FIXME (<rdar://problem/11779846>): Avoiding jettisoning should not have to require reducing the page cache capacity.
-        // Reducing the capacity by 1 reduces overall back-forward performance.
-        if (pageCacheSize > 0)
-            pageCacheSize -= 1;
-#endif
+        else
+            pageCacheSize = 0;
 
         // Object cache capacities (in bytes)
         // (Testing indicates that value / MB depends heavily on content and
@@ -8561,26 +8559,14 @@ bool LayerFlushController::flushLayers()
     if (!dictionaryPopupInfo.attributedString)
         return nil;
 
-    NSPoint textBaselineOrigin = dictionaryPopupInfo.origin;
+    [self _prepareForDictionaryLookup];
 
-    // Convert to screen coordinates.
-    textBaselineOrigin = [self.window convertRectToScreen:NSMakeRect(textBaselineOrigin.x, textBaselineOrigin.y, 0, 0)].origin;
+    DictionaryPopupInfo adjustedPopupInfo = dictionaryPopupInfo;
+    adjustedPopupInfo.textIndicator.textBoundingRectInRootViewCoordinates = [self _convertRectFromRootView:adjustedPopupInfo.textIndicator.textBoundingRectInRootViewCoordinates];
 
-    if (canLoadLUTermOptionDisableSearchTermIndicator() && canLoadLUNotificationPopoverWillClose()) {
-        if (!_private->hasInitializedLookupObserver) {
-            [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_dictionaryLookupPopoverWillClose:) name:getLUNotificationPopoverWillClose() object:nil];
-            _private->hasInitializedLookupObserver = YES;
-        }
-
-        RetainPtr<NSMutableDictionary> mutableOptions = adoptNS([dictionaryPopupInfo.options mutableCopy]);
-        if (!mutableOptions)
-            mutableOptions = adoptNS([[NSMutableDictionary alloc] init]);
-        [mutableOptions setObject:@YES forKey:getLUTermOptionDisableSearchTermIndicator()];
-        [self _setTextIndicator:*dictionaryPopupInfo.textIndicator withLifetime:TextIndicatorLifetime::Permanent];
-        return [getLULookupDefinitionModuleClass() lookupAnimationControllerForTerm:dictionaryPopupInfo.attributedString.get() atLocation:textBaselineOrigin options:mutableOptions.get()];
-    }
-
-    return [getLULookupDefinitionModuleClass() lookupAnimationControllerForTerm:dictionaryPopupInfo.attributedString.get() atLocation:textBaselineOrigin options:dictionaryPopupInfo.options.get()];
+    return DictionaryLookup::animationControllerForPopup(adjustedPopupInfo, self, [self](TextIndicator& textIndicator) {
+        [self _setTextIndicator:textIndicator withLifetime:TextIndicatorWindowLifetime::Permanent];
+    });
 }
 #endif // __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
 
@@ -8596,23 +8582,23 @@ bool LayerFlushController::flushLayers()
 
 - (void)_setTextIndicator:(TextIndicator&)textIndicator
 {
-    [self _setTextIndicator:textIndicator withLifetime:TextIndicatorLifetime::Permanent];
+    [self _setTextIndicator:textIndicator withLifetime:TextIndicatorWindowLifetime::Permanent];
 }
 
-- (void)_setTextIndicator:(TextIndicator&)textIndicator withLifetime:(TextIndicatorLifetime)lifetime
+- (void)_setTextIndicator:(TextIndicator&)textIndicator withLifetime:(TextIndicatorWindowLifetime)lifetime
 {
     if (!_private->textIndicatorWindow)
         _private->textIndicatorWindow = std::make_unique<TextIndicatorWindow>(self);
 
-    NSRect textBoundingRectInWindowCoordinates = [self convertRect:[self _convertRectFromRootView:textIndicator.textBoundingRectInRootViewCoordinates()] toView:nil];
+    NSRect textBoundingRectInWindowCoordinates = [self convertRect:textIndicator.textBoundingRectInRootViewCoordinates() toView:nil];
     NSRect textBoundingRectInScreenCoordinates = [self.window convertRectToScreen:textBoundingRectInWindowCoordinates];
     _private->textIndicatorWindow->setTextIndicator(textIndicator, NSRectToCGRect(textBoundingRectInScreenCoordinates), lifetime);
 }
 
-- (void)_clearTextIndicatorWithAnimation:(TextIndicatorDismissalAnimation)animation
+- (void)_clearTextIndicatorWithAnimation:(TextIndicatorWindowDismissalAnimation)animation
 {
     if (_private->textIndicatorWindow)
-        _private->textIndicatorWindow->clearTextIndicator(TextIndicatorDismissalAnimation::FadeOut);
+        _private->textIndicatorWindow->clearTextIndicator(TextIndicatorWindowDismissalAnimation::FadeOut);
     _private->textIndicatorWindow = nullptr;
 }
 
@@ -8622,35 +8608,35 @@ bool LayerFlushController::flushLayers()
         _private->textIndicatorWindow->setAnimationProgress(progress);
 }
 
+- (void)_prepareForDictionaryLookup
+{
+    if (_private->hasInitializedLookupObserver)
+        return;
+
+    _private->hasInitializedLookupObserver = YES;
+
+    if (canLoadLUNotificationPopoverWillClose())
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_dictionaryLookupPopoverWillClose:) name:getLUNotificationPopoverWillClose() object:nil];
+}
+
 - (void)_showDictionaryLookupPopup:(const DictionaryPopupInfo&)dictionaryPopupInfo
 {
     if (!dictionaryPopupInfo.attributedString)
         return;
 
-    NSPoint textBaselineOrigin = dictionaryPopupInfo.origin;
+    [self _prepareForDictionaryLookup];
 
-    // Convert to screen coordinates.
-    textBaselineOrigin = [self.window convertRectToScreen:NSMakeRect(textBaselineOrigin.x, textBaselineOrigin.y, 0, 0)].origin;
+    DictionaryPopupInfo adjustedPopupInfo = dictionaryPopupInfo;
+    adjustedPopupInfo.textIndicator.textBoundingRectInRootViewCoordinates = [self _convertRectFromRootView:adjustedPopupInfo.textIndicator.textBoundingRectInRootViewCoordinates];
 
-    if (canLoadLUTermOptionDisableSearchTermIndicator() && canLoadLUNotificationPopoverWillClose()) {
-        if (!_private->hasInitializedLookupObserver) {
-            [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_dictionaryLookupPopoverWillClose:) name:getLUNotificationPopoverWillClose() object:nil];
-            _private->hasInitializedLookupObserver = YES;
-        }
-
-        RetainPtr<NSMutableDictionary> mutableOptions = adoptNS([dictionaryPopupInfo.options mutableCopy]);
-        if (!mutableOptions)
-            mutableOptions = adoptNS([[NSMutableDictionary alloc] init]);
-        [mutableOptions setObject:@YES forKey:getLUTermOptionDisableSearchTermIndicator()];
-        [self _setTextIndicator:*dictionaryPopupInfo.textIndicator withLifetime:TextIndicatorLifetime::Permanent];
-        [getLULookupDefinitionModuleClass() showDefinitionForTerm:dictionaryPopupInfo.attributedString.get() atLocation:textBaselineOrigin options:mutableOptions.get()];
-    } else
-        [getLULookupDefinitionModuleClass() showDefinitionForTerm:dictionaryPopupInfo.attributedString.get() atLocation:textBaselineOrigin options:dictionaryPopupInfo.options.get()];
+    DictionaryLookup::showPopup(adjustedPopupInfo, self, [self](TextIndicator& textIndicator) {
+        [self _setTextIndicator:textIndicator withLifetime:TextIndicatorWindowLifetime::Permanent];
+    });
 }
 
 - (void)_dictionaryLookupPopoverWillClose:(NSNotification *)notification
 {
-    [self _clearTextIndicatorWithAnimation:TextIndicatorDismissalAnimation::FadeOut];
+    [self _clearTextIndicatorWithAnimation:TextIndicatorWindowDismissalAnimation::FadeOut];
 }
 #endif // PLATFORM(MAC)
 

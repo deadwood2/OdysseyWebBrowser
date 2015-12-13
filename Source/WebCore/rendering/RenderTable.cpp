@@ -360,7 +360,6 @@ LayoutUnit RenderTable::convertStyleLogicalHeightToComputedHeight(const Length& 
     LayoutUnit borderAndPaddingBefore = borderBefore() + (collapseBorders() ? LayoutUnit() : paddingBefore());
     LayoutUnit borderAndPaddingAfter = borderAfter() + (collapseBorders() ? LayoutUnit() : paddingAfter());
     LayoutUnit borderAndPadding = borderAndPaddingBefore + borderAndPaddingAfter;
-    LayoutUnit computedLogicalHeight = 0;
     if (styleLogicalHeight.isFixed()) {
         // HTML tables size as though CSS height includes border/padding, CSS tables do not.
         LayoutUnit borders = LayoutUnit();
@@ -368,14 +367,14 @@ LayoutUnit RenderTable::convertStyleLogicalHeightToComputedHeight(const Length& 
         if (is<HTMLTableElement>(element()) || style().boxSizing() == BORDER_BOX) {
             borders = borderAndPadding;
         }
-        computedLogicalHeight = styleLogicalHeight.value() - borders;
+        return styleLogicalHeight.value() - borders;
     } else if (styleLogicalHeight.isPercentOrCalculated())
-        computedLogicalHeight = computePercentageLogicalHeight(styleLogicalHeight);
+        return computePercentageLogicalHeight(styleLogicalHeight).valueOr(0);
     else if (styleLogicalHeight.isIntrinsic())
-        computedLogicalHeight = computeIntrinsicLogicalContentHeightUsing(styleLogicalHeight, logicalHeight() - borderAndPadding, borderAndPadding);
+        return computeIntrinsicLogicalContentHeightUsing(styleLogicalHeight, logicalHeight() - borderAndPadding, borderAndPadding).valueOr(0);
     else
         ASSERT_NOT_REACHED();
-    return std::max<LayoutUnit>(0, computedLogicalHeight);
+    return LayoutUnit();
 }
 
 void RenderTable::layoutCaption(RenderTableCaption* caption)
@@ -638,7 +637,7 @@ void RenderTable::addOverflowFromChildren()
         int bottomBorderOverflow = height() + outerBorderBottom() - borderBottom();
         int topBorderOverflow = borderTop() - outerBorderTop();
         IntRect borderOverflowRect(leftBorderOverflow, topBorderOverflow, rightBorderOverflow - leftBorderOverflow, bottomBorderOverflow - topBorderOverflow);
-        if (borderOverflowRect != pixelSnappedBorderBoxRect()) {
+        if (borderOverflowRect != snappedIntRect(borderBoxRect())) {
             addLayoutOverflow(borderOverflowRect);
             addVisualOverflow(borderOverflowRect);
         }
@@ -661,8 +660,8 @@ void RenderTable::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
 
     if (!isRoot()) {
         LayoutRect overflowBox = visualOverflowRect();
+        adjustRectWithMaximumOutline(paintInfo.phase, overflowBox);
         flipForWritingMode(overflowBox);
-        overflowBox.inflate(maximalOutlineSize(paintInfo.phase));
         overflowBox.moveBy(adjustedPaintOffset);
         if (!overflowBox.intersects(paintInfo.rect))
             return;
@@ -750,7 +749,7 @@ void RenderTable::paintBoxDecorations(PaintInfo& paintInfo, const LayoutPoint& p
     LayoutRect rect(paintOffset, size());
     subtractCaptionRect(rect);
 
-    BackgroundBleedAvoidance bleedAvoidance = determineBackgroundBleedAvoidance(paintInfo.context);
+    BackgroundBleedAvoidance bleedAvoidance = determineBackgroundBleedAvoidance(paintInfo.context());
     if (!boxShadowShouldBeAppliedToBackground(rect.location(), bleedAvoidance))
         paintBoxShadow(paintInfo, rect, style(), Normal);
     paintBackground(paintInfo, rect, bleedAvoidance);

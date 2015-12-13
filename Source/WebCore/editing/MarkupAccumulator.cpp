@@ -343,9 +343,9 @@ void MarkupAccumulator::appendText(StringBuilder& result, const Text& text)
     unsigned length = textData.length();
 
     if (m_range) {
-        if (&text == m_range->endContainer())
+        if (&text == &m_range->endContainer())
             length = m_range->endOffset();
-        if (&text == m_range->startContainer()) {
+        if (&text == &m_range->startContainer()) {
             start = m_range->startOffset();
             length -= start;
         }
@@ -573,9 +573,6 @@ void MarkupAccumulator::appendStartMarkup(StringBuilder& result, const Node& nod
         appendCDATASection(result, downcast<CDATASection>(node).data());
         break;
     case Node::ATTRIBUTE_NODE:
-    case Node::ENTITY_NODE:
-    case Node::ENTITY_REFERENCE_NODE:
-    case Node::XPATH_NAMESPACE_NODE:
         ASSERT_NOT_REACHED();
         break;
     }

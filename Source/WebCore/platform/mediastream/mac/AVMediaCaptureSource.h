@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,8 +28,11 @@
 
 #if ENABLE(MEDIA_STREAM) && USE(AVFOUNDATION)
 
+#include "GenericTaskQueue.h"
 #include "RealtimeMediaSource.h"
+#include "Timer.h"
 #include <wtf/RetainPtr.h>
+#include <wtf/WeakPtr.h>
 
 OBJC_CLASS AVCaptureAudioDataOutput;
 OBJC_CLASS AVCaptureConnection;
@@ -53,13 +56,14 @@ public:
     
     AVCaptureSession *session() const { return m_session.get(); }
 
+    void startProducingData() override;
+    void stopProducingData() override;
+
 protected:
     AVMediaCaptureSource(AVCaptureDevice*, const AtomicString&, RealtimeMediaSource::Type, PassRefPtr<MediaConstraints>);
 
-    virtual const RealtimeMediaSourceStates& states() override;
-
-    virtual void startProducingData() override;
-    virtual void stopProducingData() override;
+    const RealtimeMediaSourceStates& states() override;
+    AudioSourceProvider* audioSourceProvider() override;
 
     virtual void setupCaptureSession() = 0;
     virtual void updateStates() = 0;
@@ -71,9 +75,15 @@ protected:
     void setVideoSampleBufferDelegate(AVCaptureVideoDataOutput*);
     void setAudioSampleBufferDelegate(AVCaptureAudioDataOutput*);
 
+    void scheduleDeferredTask(std::function<void ()>);
+
+    void statesDidChanged() { }
+    
 private:
     void setupSession();
+    WeakPtr<AVMediaCaptureSource> createWeakPtr() { return m_weakPtrFactory.createWeakPtr(); }
 
+    WeakPtrFactory<AVMediaCaptureSource> m_weakPtrFactory;
     RetainPtr<WebCoreAVMediaCaptureSourceObserver> m_objcObserver;
     RefPtr<MediaConstraints> m_constraints;
     RealtimeMediaSourceStates m_currentStates;

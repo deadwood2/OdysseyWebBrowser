@@ -125,7 +125,7 @@ CachedResourceLoader::CachedResourceLoader(DocumentLoader* documentLoader)
     : m_document(0)
     , m_documentLoader(documentLoader)
     , m_requestCount(0)
-    , m_garbageCollectDocumentResourcesTimer(*this, &CachedResourceLoader::garbageCollectDocumentResourcesTimerFired)
+    , m_garbageCollectDocumentResourcesTimer(*this, &CachedResourceLoader::garbageCollectDocumentResources)
     , m_autoLoadImages(true)
     , m_imagesEnabled(true)
     , m_allowStaleResources(false)
@@ -138,9 +138,8 @@ CachedResourceLoader::~CachedResourceLoader()
     m_document = 0;
 
     clearPreloads();
-    DocumentResourceMap::iterator end = m_documentResources.end();
-    for (DocumentResourceMap::iterator it = m_documentResources.begin(); it != end; ++it)
-        it->value->setOwningCachedResourceLoader(0);
+    for (auto& resource : m_documentResources.values())
+        resource->setOwningCachedResourceLoader(nullptr);
 
     // Make sure no requests still point to this CachedResourceLoader
     ASSERT(m_requestCount == 0);
@@ -233,7 +232,7 @@ CachedResourceHandle<CachedCSSStyleSheet> CachedResourceLoader::requestUserCSSSt
     memoryCache.add(*userSheet);
     // FIXME: loadResource calls setOwningCachedResourceLoader() if the resource couldn't be added to cache. Does this function need to call it, too?
 
-    userSheet->load(*this, ResourceLoaderOptions(DoNotSendCallbacks, SniffContent, BufferData, AllowStoredCredentials, AskClientForAllCredentials, SkipSecurityCheck, UseDefaultOriginRestrictionsForType, DoNotIncludeCertificateInfo, ContentSecurityPolicyImposition::SkipPolicyCheck));
+    userSheet->load(*this, ResourceLoaderOptions(DoNotSendCallbacks, SniffContent, BufferData, AllowStoredCredentials, AskClientForAllCredentials, SkipSecurityCheck, UseDefaultOriginRestrictionsForType, DoNotIncludeCertificateInfo, ContentSecurityPolicyImposition::SkipPolicyCheck, DefersLoadingPolicy::AllowDefersLoading));
     
     return userSheet;
 }
@@ -605,7 +604,7 @@ CachedResourceHandle<CachedResource> CachedResourceLoader::revalidateResource(co
     ASSERT(resource->sessionID() == sessionID());
 
     CachedResourceHandle<CachedResource> newResource = createResource(resource->type(), resource->resourceRequest(), resource->encoding(), resource->sessionID());
-    
+
     LOG(ResourceLoading, "Resource %p created to revalidate %p", newResource.get(), resource);
     newResource->setResourceToRevalidate(resource);
     
@@ -696,8 +695,14 @@ CachedResourceLoader::RevalidationPolicy CachedResourceLoader::determineRevalida
         return Reload;
     }
 
-    if (!existingResource->canReuse(request))
-        return Reload;
+    // FIXME: We should use the same cache policy for all resource types. The raw resource policy is overly strict
+    //        while the normal subresource policy is too loose.
+    if (existingResource->isMainOrRawResource()) {
+        bool strictPolicyDisabled = frame()->loader().isStrictRawResourceValidationPolicyDisabledForTesting();
+        bool canReuseRawResource = strictPolicyDisabled || downcast<CachedRawResource>(*existingResource).canReuse(request);
+        if (!canReuseRawResource)
+            return Reload;
+    }
 
     // Conditional requests should have failed canReuse check.
     ASSERT(!request.isConditional());
@@ -711,9 +716,14 @@ CachedResourceLoader::RevalidationPolicy CachedResourceLoader::determineRevalida
     if (m_allowStaleResources)
         return Use;
     
-    // Alwaus use preloads.
+    // Always use preloads.
     if (existingResource->isPreloaded())
         return Use;
+
+    // We can find resources that are being validated from cache only when validation is just successfully completing.
+    if (existingResource->validationCompleting())
+        return Use;
+    ASSERT(!existingResource->validationInProgress());
 
     // Validate the redirect chain.
     bool cachePolicyIsHistoryBuffer = cachePolicy(type) == CachePolicyHistoryBuffer;
@@ -850,9 +860,7 @@ bool CachedResourceLoader::shouldDeferImageLoad(const URL& url) const
 
 void CachedResourceLoader::reloadImagesIfNotDeferred()
 {
-    DocumentResourceMap::iterator end = m_documentResources.end();
-    for (DocumentResourceMap::iterator it = m_documentResources.begin(); it != end; ++it) {
-        CachedResource* resource = it->value.get();
+    for (auto& resource : m_documentResources.values()) {
         if (is<CachedImage>(*resource) && resource->stillNeedsLoad() && !clientDefersImage(resource->url()))
             downcast<CachedImage>(*resource).load(*this, defaultCachedResourceOptions());
     }
@@ -929,25 +937,20 @@ void CachedResourceLoader::loadDone(CachedResource* resource, bool shouldPerform
 // bookkeeping on CachedResources, so instead pseudo-GC them -- when the
 // reference count reaches 1, m_documentResources is the only reference, so
 // remove it from the map.
-void CachedResourceLoader::garbageCollectDocumentResourcesTimerFired()
-{
-    garbageCollectDocumentResources();
-}
-
 void CachedResourceLoader::garbageCollectDocumentResources()
 {
     typedef Vector<String, 10> StringVector;
     StringVector resourcesToDelete;
 
-    for (DocumentResourceMap::iterator it = m_documentResources.begin(); it != m_documentResources.end(); ++it) {
-        if (it->value->hasOneHandle()) {
-            resourcesToDelete.append(it->key);
-            it->value->setOwningCachedResourceLoader(0);
+    for (auto& resource : m_documentResources) {
+        if (resource.value->hasOneHandle()) {
+            resourcesToDelete.append(resource.key);
+            resource.value->setOwningCachedResourceLoader(nullptr);
         }
     }
 
-    for (StringVector::const_iterator it = resourcesToDelete.begin(); it != resourcesToDelete.end(); ++it)
-        m_documentResources.remove(*it);
+    for (auto& resource : resourcesToDelete)
+        m_documentResources.remove(resource);
 }
 
 void CachedResourceLoader::performPostLoadActions()
@@ -1043,17 +1046,13 @@ bool CachedResourceLoader::isPreloaded(const String& urlString) const
     const URL& url = m_document->completeURL(urlString);
 
     if (m_preloads) {
-        ListHashSet<CachedResource*>::iterator end = m_preloads->end();
-        for (ListHashSet<CachedResource*>::iterator it = m_preloads->begin(); it != end; ++it) {
-            CachedResource* resource = *it;
+        for (auto& resource : *m_preloads) {
             if (resource->url() == url)
                 return true;
         }
     }
 
-    Deque<PendingPreload>::const_iterator dequeEnd = m_pendingPreloads.end();
-    for (Deque<PendingPreload>::const_iterator it = m_pendingPreloads.begin(); it != dequeEnd; ++it) {
-        PendingPreload pendingPreload = *it;
+    for (auto& pendingPreload : m_pendingPreloads) {
         if (pendingPreload.m_request.resourceRequest().url() == url)
             return true;
     }
@@ -1091,34 +1090,32 @@ void CachedResourceLoader::printPreloadStats()
     unsigned stylesheetMisses = 0;
     unsigned images = 0;
     unsigned imageMisses = 0;
-    ListHashSet<CachedResource*>::iterator end = m_preloads.end();
-    for (ListHashSet<CachedResource*>::iterator it = m_preloads.begin(); it != end; ++it) {
-        CachedResource* res = *it;
-        if (res->preloadResult() == CachedResource::PreloadNotReferenced)
-            printf("!! UNREFERENCED PRELOAD %s\n", res->url().latin1().data());
-        else if (res->preloadResult() == CachedResource::PreloadReferencedWhileComplete)
-            printf("HIT COMPLETE PRELOAD %s\n", res->url().latin1().data());
-        else if (res->preloadResult() == CachedResource::PreloadReferencedWhileLoading)
-            printf("HIT LOADING PRELOAD %s\n", res->url().latin1().data());
+    for (auto& resource : m_preloads) {
+        if (resource->preloadResult() == CachedResource::PreloadNotReferenced)
+            printf("!! UNREFERENCED PRELOAD %s\n", resource->url().latin1().data());
+        else if (resource->preloadResult() == CachedResource::PreloadReferencedWhileComplete)
+            printf("HIT COMPLETE PRELOAD %s\n", resource->url().latin1().data());
+        else if (resource->preloadResult() == CachedResource::PreloadReferencedWhileLoading)
+            printf("HIT LOADING PRELOAD %s\n", resource->url().latin1().data());
         
-        if (res->type() == CachedResource::Script) {
+        if (resource->type() == CachedResource::Script) {
             scripts++;
-            if (res->preloadResult() < CachedResource::PreloadReferencedWhileLoading)
+            if (resource->preloadResult() < CachedResource::PreloadReferencedWhileLoading)
                 scriptMisses++;
-        } else if (res->type() == CachedResource::CSSStyleSheet) {
+        } else if (resource->type() == CachedResource::CSSStyleSheet) {
             stylesheets++;
-            if (res->preloadResult() < CachedResource::PreloadReferencedWhileLoading)
+            if (resource->preloadResult() < CachedResource::PreloadReferencedWhileLoading)
                 stylesheetMisses++;
         } else {
             images++;
-            if (res->preloadResult() < CachedResource::PreloadReferencedWhileLoading)
+            if (resource->preloadResult() < CachedResource::PreloadReferencedWhileLoading)
                 imageMisses++;
         }
         
-        if (res->errorOccurred())
-            MemoryCache::singleton().remove(res);
+        if (resource->errorOccurred())
+            MemoryCache::singleton().remove(resource);
         
-        res->decreasePreloadCount();
+        resource->decreasePreloadCount();
     }
     m_preloads = nullptr;
     
@@ -1133,7 +1130,7 @@ void CachedResourceLoader::printPreloadStats()
 
 const ResourceLoaderOptions& CachedResourceLoader::defaultCachedResourceOptions()
 {
-    static ResourceLoaderOptions options(SendCallbacks, SniffContent, BufferData, AllowStoredCredentials, AskClientForAllCredentials, DoSecurityCheck, UseDefaultOriginRestrictionsForType, DoNotIncludeCertificateInfo, ContentSecurityPolicyImposition::DoPolicyCheck);
+    static ResourceLoaderOptions options(SendCallbacks, SniffContent, BufferData, AllowStoredCredentials, AskClientForAllCredentials, DoSecurityCheck, UseDefaultOriginRestrictionsForType, DoNotIncludeCertificateInfo, ContentSecurityPolicyImposition::DoPolicyCheck, DefersLoadingPolicy::AllowDefersLoading);
     return options;
 }
 
