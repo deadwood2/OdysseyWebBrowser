@@ -172,7 +172,7 @@ ULONG open_libs(void)
 
 	if(!(MUIMasterBase = OpenLibrary(MUIMASTER_NAME, MUIMASTER_VMIN)))
 	{
-		fprintf(stderr, "Failed to open "MUIMASTER_NAME".\n");
+		fprintf(stderr, "Failed to open " MUIMASTER_NAME ".\n");
 		return FALSE;
 	}
 
@@ -315,6 +315,12 @@ Object *create_application(char *url)
 	return obj;
 }
 
+#if defined(__AROS__)
+extern "C" {
+void aros_register_trap_handler();
+}
+#endif
+
 void main_loop(void)
 {
 	ULONG running = TRUE;
@@ -326,6 +332,11 @@ void main_loop(void)
 	{
 	    running = FALSE;
 	}
+
+#if defined(__AROS__)
+    if (running)
+        aros_register_trap_handler();
+#endif
 
 	while (running)
 	{
