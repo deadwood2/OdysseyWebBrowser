@@ -15,6 +15,7 @@ set(WebKit_INCLUDE_DIRECTORIES
 )
 
 set(WebKit_SYSTEM_INCLUDE_DIRECTORIES "")
+set(WebKit_INCLUDE_DIRECTORIES)
 
 set(WebKit_LIBRARIES
     JavaScriptCore
@@ -43,3 +44,9 @@ endif ()
 POPULATE_LIBRARY_VERSION(WEBKIT)
 set_target_properties(WebKit PROPERTIES VERSION ${WEBKIT_VERSION} SOVERSION ${WEBKIT_VERSION_MAJOR})
 install(TARGETS WebKit DESTINATION "${LIB_INSTALL_DIR}")
+
+if (${PORT} STREQUAL "MUI")
+    add_custom_target(builddate COMMAND date +'%e.%m.%Y' | sed 's/\\\(.*\\\)/\#define DATE \\"\\1\\"/g' > ${WEBKIT_DIR}/mui/Api/MorphOS/builddate.h)
+    add_dependencies(WebKit builddate)
+endif ()
+
