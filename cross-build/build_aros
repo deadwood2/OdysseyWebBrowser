@@ -1,0 +1,14 @@
+#!/bin/bash
+
+AROS_DEVELOPMENT=/ssd/deadwood/repo-gitorious-aros/abi-v0-on-trunk-pc-i386-4.8.3/bin/pc-i386/AROS/Development
+
+cmake \
+    -DCMAKE_CROSSCOMPILING=ON \
+    -DCMAKE_TOOLCHAIN_FILE=../Source/cmake/AROS.cmake \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DPORT=MUI \
+    -DCMAKE_SYSTEM_PROCESSOR=i386 \
+    -DCAIRO_INCLUDE_DIRS=$AROS_DEVELOPMENT/include/cairo/ \
+    -DFREETYPE_INCLUDE_DIRS=$AROS_DEVELOPMENT/include/freetype/ \
+    -DLIBXML2_INCLUDE_DIR=$AROS_DEVELOPMENT/include/libxml2/ \
+   ..
