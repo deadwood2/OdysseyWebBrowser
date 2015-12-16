@@ -96,6 +96,10 @@ public:
     WEBCORE_EXPORT static HashSet<String>& getUnsupportedTextMIMETypes();
 
     static String getNormalizedMIMEType(const String&);
+
+#if PLATFORM(MUI)
+    static void reinitializeSupportedMediaMIMETypes();
+#endif
 };
 
 const String& defaultMIMEType();

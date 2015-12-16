@@ -31,6 +31,13 @@
 #include <stdlib.h>
 #include <wtf/StdLibExtras.h>
 
+#if PLATFORM(MUI)
+#include <proto/exec.h>
+#include <proto/dos.h>
+#include <clib/debug_protos.h>
+#define D(x)
+#endif
+
 #if OS(DARWIN)
 
 #include <mach/mach_init.h>
@@ -86,6 +93,8 @@ static void pthreadSignalHandlerSuspendResume(int)
     sigsuspend(&signalSet);
 }
 #endif
+#elif PLATFORM(MUI)
+typedef void * PlatformThread;
 #endif
 
 class ActiveMachineThreadsManager;
@@ -154,6 +163,8 @@ static inline PlatformThread getCurrentPlatformThread()
     return GetCurrentThreadId();
 #elif USE(PTHREADS)
     return pthread_self();
+#elif PLATFORM(MUI)
+	return (PlatformThread) FindTask(NULL);
 #endif
 }
 
@@ -198,6 +209,7 @@ public:
         return new Thread(getCurrentPlatformThread(), wtfThreadData().stack().origin());
     }
 
+#if !OS(AROS)
     struct Registers {
         inline void* stackPointer() const;
         
@@ -222,20 +234,69 @@ public:
         typedef CONTEXT PlatformRegisters;
 #elif USE(PTHREADS)
         typedef pthread_attr_t PlatformRegisters;
+#elif OS(MORPHOS)
+typedef double                  float64_t;
+struct __QVector
+{
+        u_int32_t       A;
+        u_int32_t       B;
+        u_int32_t       C;
+        u_int32_t       D;
+} __attribute__((aligned(16)));
+
+typedef struct __QVector                vector128_t;
+
+struct PPCRegFrame
+{
+        u_int32_t               StackGap[4];            /* StackFrame Gap..so a function working
+                                                         * with the PPCRegFrame as the GPR1 doesn`t                                                                                            * overwrite any contents with a LR store at 4(1)
+                                                         */
+
+        u_int32_t               Version;                /* Version of the structure */
+        u_int32_t               Type;                   /* Type of the regframe */
+        u_int32_t               Flags;                  /* The filled up registers */
+        u_int32_t               State;                  /* State of the Thread(only used for Get) */
+
+        u_int32_t               SRR0;
+        u_int32_t               SRR1;
+        u_int32_t               LR;
+        u_int32_t               CTR;
+
+        u_int32_t               CR;
+        u_int32_t               XER;
+
+        u_int32_t               GPR[32];
+
+        float64_t               FPR[32];
+        float64_t               FPSCR;
+
+        u_int32_t               VSAVE;
+        u_int32_t               AlignPad0;
+        u_int32_t               AlignPad1;
+        u_int32_t               AlignPad2;
+        vector128_t             VSCR;
+        vector128_t             VMX[32];
+        /* no size
+         */
+};
+
+typedef struct PPCRegFrame PlatformRegisters;
 #else
 #error Need a thread register struct for this platform
 #endif
-        
         PlatformRegisters regs;
     };
-    
+#endif
+
     inline bool operator==(const PlatformThread& other) const;
     inline bool operator!=(const PlatformThread& other) const { return !(*this == other); }
 
     inline bool suspend();
     inline void resume();
+#if !OS(AROS)
     size_t getRegisters(Registers&);
     void freeRegisters(Registers&);
+#endif
     std::pair<void*, size_t> captureStack(void* stackTop);
 
     Thread* next;
@@ -273,7 +334,7 @@ MachineThreads::~MachineThreads()
 
 inline bool MachineThreads::Thread::operator==(const PlatformThread& other) const
 {
-#if OS(DARWIN) || OS(WINDOWS)
+#if OS(DARWIN) || OS(WINDOWS) || PLATFORM(MUI)
     return platformThread == other;
 #elif USE(PTHREADS)
     return !!pthread_equal(platformThread, other);
@@ -345,6 +406,7 @@ void MachineThreads::gatherFromCurrentThread(ConservativeRoots& conservativeRoot
     conservativeRoots.add(stackTop, stackOrigin, jitStubRoutines, codeBlocks);
 }
 
+#if !OS(AROS)
 inline bool MachineThreads::Thread::suspend()
 {
 #if OS(DARWIN)
@@ -357,6 +419,10 @@ inline bool MachineThreads::Thread::suspend()
 #elif USE(PTHREADS)
     pthread_kill(platformThread, SigThreadSuspendResume);
     return true;
+#elif OS(MORPHOS)
+    Disable();
+    return true;
+    // FIXME THIS WILL NOT WORK!!!!!!!
 #else
 #error Need a way to suspend threads on this platform
 #endif
@@ -370,12 +436,16 @@ inline void MachineThreads::Thread::resume()
     ResumeThread(platformThreadHandle);
 #elif USE(PTHREADS)
     pthread_kill(platformThread, SigThreadSuspendResume);
+#elif OS(MORPHOS)
+    Enable();
 #else
 #error Need a way to resume threads on this platform
 #endif
 }
 
+
 size_t MachineThreads::Thread::getRegisters(MachineThreads::Thread::Registers& registers)
+
 {
     Thread::Registers::PlatformRegisters& regs = registers.regs;
 #if OS(DARWIN)
@@ -425,6 +495,9 @@ size_t MachineThreads::Thread::getRegisters(MachineThreads::Thread::Registers& r
     // FIXME: this function is non-portable; other POSIX systems may have different np alternatives
     pthread_getattr_np(platformThread, &regs);
 #endif
+#elif OS(MORPHOS)
+	PlatformThreadRegisters *registers = (PlatformThreadRegisters *) ((struct Task *)platformThread)->tc_ETask->PPCRegFrame;
+	regs = *registers;
     return 0;
 #else
 #error Need a way to get thread registers on this platform
@@ -494,6 +567,8 @@ inline void* MachineThreads::Thread::Registers::stackPointer() const
     (void)rc; // FIXME: Deal with error code somehow? Seems fatal.
     ASSERT(stackBase);
     return static_cast<char*>(stackBase) + stackSize;
+#elif OS(MORPHOS)
+	return (void *) regs.GPR[1];
 #else
 #error Need a way to get the stack pointer for another thread on this platform
 #endif
@@ -650,14 +725,17 @@ static void growBuffer(size_t size, void** buffer, size_t* capacity)
     *capacity = WTF::roundUpToMultipleOf(WTF::pageSize(), size * 2);
     *buffer = fastMalloc(*capacity);
 }
+#endif // !OS(AROS)
 
 void MachineThreads::gatherConservativeRoots(ConservativeRoots& conservativeRoots, JITStubRoutineSet& jitStubRoutines, CodeBlockSet& codeBlocks, void* stackOrigin, void* stackTop, RegisterState& calleeSavedRegisters)
 {
     gatherFromCurrentThread(conservativeRoots, jitStubRoutines, codeBlocks, stackOrigin, stackTop, calleeSavedRegisters);
 
+#if !OS(AROS)
     size_t size;
     size_t capacity = 0;
     void* buffer = nullptr;
+
     MutexLocker lock(m_registeredThreadsMutex);
     while (!tryCopyOtherThreadStacks(lock, buffer, capacity, &size))
         growBuffer(size, &buffer, &capacity);
@@ -667,6 +745,7 @@ void MachineThreads::gatherConservativeRoots(ConservativeRoots& conservativeRoot
 
     conservativeRoots.add(buffer, static_cast<char*>(buffer) + size, jitStubRoutines, codeBlocks);
     fastFree(buffer);
+#endif
 }
 
 } // namespace JSC

@@ -297,6 +297,10 @@ namespace WebCore {
         virtual bool shouldCacheResponse(DocumentLoader*, unsigned long identifier, const ResourceResponse&, const unsigned char* data, unsigned long long length) = 0;
 #endif
 
+#if USE(CURL_OPENSSL)
+        virtual void didReceiveSSLSecurityExtension(const ResourceRequest&, const char*) = 0;
+#endif
+
         virtual bool shouldAlwaysUsePluginDocument(const String& /*mimeType*/) const { return false; }
         virtual bool shouldLoadMediaElementURL(const URL&) const { return true; }
 

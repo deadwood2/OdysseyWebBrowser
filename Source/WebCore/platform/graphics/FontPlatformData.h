@@ -23,7 +23,7 @@
  */
 
 // FIXME: This is temporary until all ports switch to using this file.
-#if PLATFORM(EFL) || PLATFORM(GTK)
+#if PLATFORM(EFL) || PLATFORM(GTK) || PLATFORM(MUI)
 #include "freetype/FontPlatformData.h"
 #else
 

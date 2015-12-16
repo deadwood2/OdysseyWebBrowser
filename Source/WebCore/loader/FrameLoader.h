@@ -266,6 +266,10 @@ public:
 
     WEBCORE_EXPORT void setOriginalURLForDownloadRequest(ResourceRequest&);
 
+#if USE(CURL_OPENSSL)
+    void didReceiveSSLSecurityExtension(const ResourceRequest&, const char*);
+#endif
+
     bool quickRedirectComing() const { return m_quickRedirectComing; }
 
     WEBCORE_EXPORT bool shouldClose();

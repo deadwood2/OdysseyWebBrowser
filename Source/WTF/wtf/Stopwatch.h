@@ -25,7 +25,7 @@
 #ifndef Stopwatch_h
 #define Stopwatch_h
 
-#include <cmath>
+#include <wtf/MathExtras.h>
 #include <wtf/CurrentTime.h>
 #include <wtf/RefCounted.h>
 

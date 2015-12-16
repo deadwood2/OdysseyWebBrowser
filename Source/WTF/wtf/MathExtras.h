@@ -93,6 +93,33 @@ inline bool isinf(double x) { return !finite(x) && !isnand(x); }
 
 #endif
 
+#if OS(AROS)
+
+#undef isinf
+#undef isnan
+#undef isfinite
+#undef signbit
+
+namespace std {
+
+inline bool isinf(double num) { return __isinf(num); }
+inline bool isnan(double num) { return __isnan(num); }
+inline bool isfinite(double x) { return __isfinite(x); }
+inline bool signbit(double num) { return __signbit(num); }
+
+} // namespace std
+
+inline double log2(double num)
+{
+    return log(num) / 0.693147180559945309417232121458176568;
+}
+
+inline float log2f(float num)
+{
+    return logf(num) / 0.693147180559945309417232121458176568f;
+}
+#endif
+
 #if COMPILER(MSVC)
 
 // Work around a bug in Win, where atan2(+-infinity, +-infinity) yields NaN instead of specific values.

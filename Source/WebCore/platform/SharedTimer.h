@@ -55,6 +55,9 @@ namespace WebCore {
     void setSharedTimerFireInterval(double);
     void stopSharedTimer();
     void invalidateSharedTimer();
+#if PLATFORM(MUI)
+    void fireTimerIfNeeded();
+#endif
 
     // Implementation of SharedTimer for the main thread.
     class MainThreadSharedTimer final : public SharedTimer {

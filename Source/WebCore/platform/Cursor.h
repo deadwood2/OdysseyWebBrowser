@@ -40,6 +40,8 @@ typedef HICON HCURSOR;
 #include <wtf/RetainPtr.h>
 #elif PLATFORM(GTK)
 #include "GRefPtrGtk.h"
+#elif PLATFORM(MUI)
+#include "BALBase.h"
 #endif
 
 #if USE(APPKIT)

@@ -30,6 +30,14 @@
 #include "SharedBuffer.h"
 #include <wtf/ByteOrder.h>
 
+#if OS(AROS)
+#include <netinet/in.h>
+/* This is a workaround for a weird linking problem where uncompress from zlib cannot be found */
+extern "C" {
+int __uncompress(Bytef *dest, uLongf *destLen, const Bytef *source, uLong sourceLen);
+}
+#endif
+
 namespace WebCore {
 
 static bool readUInt32(SharedBuffer* buffer, size_t& offset, uint32_t& value)
@@ -202,7 +210,7 @@ bool convertWOFFToSfnt(SharedBuffer* woff, Vector<char>& sfnt)
                 return false;
             Bytef* dest = reinterpret_cast<Bytef*>(sfnt.end());
             sfnt.grow(sfnt.size() + tableOrigLength);
-            if (uncompress(dest, &destLen, reinterpret_cast<const Bytef*>(woff->data() + tableOffset), tableCompLength) != Z_OK)
+            if (__uncompress(dest, &destLen, reinterpret_cast<const Bytef*>(woff->data() + tableOffset), tableCompLength) != Z_OK)
                 return false;
             if (destLen != tableOrigLength)
                 return false;

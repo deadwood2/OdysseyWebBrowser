@@ -28,7 +28,6 @@
 
 #include "BAssert.h"
 #include "Mutex.h"
-#include "ObjectType.h"
 #include <mutex>
 
 namespace bmalloc {
