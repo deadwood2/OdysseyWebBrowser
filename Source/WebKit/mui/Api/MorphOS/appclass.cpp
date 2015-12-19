@@ -267,6 +267,7 @@ struct Data
 	ULONG use_webm;
 	ULONG use_flv;
 	ULONG use_ogg;
+	ULONG use_mp4;
 	ULONG loopfilter_mode;
 
 	char homepage[512];
@@ -1502,6 +1503,12 @@ DEFGET
 		}
 		return TRUE;
 
+		case MA_OWBApp_EnableMP4:
+		{
+			*msg->opg_Storage = (ULONG) data->use_mp4;
+		}
+		return TRUE;
+
 		case MA_OWBApp_EnablePartialContent:
 		{
 			*msg->opg_Storage = (ULONG) data->use_partial_content;
@@ -2312,6 +2319,7 @@ void prefs_update(Object *obj, struct Data *data)
 	data->use_webm = getv(data->prefswin, MA_OWBApp_EnableVP8);
 	data->use_flv = getv(data->prefswin, MA_OWBApp_EnableFLV);
 	data->use_ogg = getv(data->prefswin, MA_OWBApp_EnableOgg);
+	data->use_mp4 = getv(data->prefswin, MA_OWBApp_EnableMP4);
 	MIMETypeRegistry::reinitializeSupportedMediaMIMETypes();
 	data->use_partial_content = getv(data->prefswin, MA_OWBApp_EnablePartialContent);
 	data->loopfilter_mode = getv(data->prefswin, MA_OWBApp_LoopFilterMode);

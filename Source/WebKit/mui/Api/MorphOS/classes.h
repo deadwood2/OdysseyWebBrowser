@@ -217,6 +217,7 @@ enum {
 	MA_OWBApp_EnableVP8,
 	MA_OWBApp_EnableFLV,
 	MA_OWBApp_EnableOgg,
+	MA_OWBApp_EnableMP4,
 	MA_OWBApp_EnablePartialContent,
 	MA_OWBApp_LoopFilterMode,
 
