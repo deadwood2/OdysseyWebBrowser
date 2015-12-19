@@ -541,112 +541,6 @@ static void paintMenuListBackground(GraphicsContext* context, const Path& menuLi
     context->restore();
 }
 
-#if 0
-void RenderThemeBal::paintMenuListButtonGradientAndArrow(GraphicsContext* context, const RenderObject& object, IntRect buttonRect, const Path& clipPath)
-{
-    ASSERT(context);
-    context->save();
-    if (!isEnabled(object))
-        context->setFillGradient(createLinearGradient(disabledTop, disabledBottom, buttonRect.maxXMinYCorner(), buttonRect.maxXMaxYCorner()));
-    else if (isPressed(object))
-        context->setFillGradient(createLinearGradient(depressedTop, depressedBottom, buttonRect.maxXMinYCorner(), buttonRect.maxXMaxYCorner()));
-    else
-        context->setFillGradient(createLinearGradient(regularTop, regularBottom, buttonRect.maxXMinYCorner(), buttonRect.maxXMaxYCorner()));
-
-    // 1. Paint the background of the button.
-    context->clip(clipPath);
-    context->drawRect(buttonRect);
-    context->restore();
-
-    // 2. Paint the button arrow.
-    buttonRect.inflate(-buttonRect.width() / 3);
-    buttonRect.move(0, buttonRect.height() * 7 / 20);
-    Path path;
-    path.moveTo(FloatPoint(buttonRect.x(), buttonRect.y()));
-    path.addLineTo(FloatPoint(buttonRect.x() + buttonRect.width(), buttonRect.y()));
-    path.addLineTo(FloatPoint(buttonRect.x() + buttonRect.width() / 2.0, buttonRect.y() + buttonRect.height() / 2.0));
-    path.closeSubpath();
-
-    context->save();
-    context->setStrokeStyle(SolidStroke);
-    context->setStrokeThickness(lineWidth);
-    context->setStrokeColor(Color::black, ColorSpaceDeviceRGB);
-    context->setFillColor(Color::black, ColorSpaceDeviceRGB);
-    context->setLineJoin(BevelJoin);
-    context->fillPath(path);
-    context->restore();
-}
-
-static IntRect computeMenuListArrowButtonRect(const FloatRect& rect)
-{
-    // FIXME: The menu list arrow button should have a minimum and maximum width (to ensure usability) or
-    // scale with respect to the font size used in the menu list control or some combination of both.
-    return IntRect(IntPoint(rect.maxX() - rect.height(), rect.y()), IntSize(rect.height(), rect.height()));
-}
-
-bool RenderThemeBal::paintMenuList(const RenderObject& object, const PaintInfo& info, const FloatRect& rect)
-{
-    // Note, this method is not called if the menu list explicitly specifies either a border or background color.
-    // Instead, RenderThemeBal::paintMenuListButton is called. Therefore, when this method is called, we don't
-    // have to adjust rect with respect to the border dimensions.
-
-    ASSERT(info.context);
-    GraphicsContext* context = info.context;
-
-    Path menuListRoundedRectangle = roundedRectForBorder(object, rect);
-
-    // 1. Paint the background of the entire control.
-    paintMenuListBackground(context, menuListRoundedRectangle, Color::white);
-
-    // 2. Paint the background of the button and its arrow.
-    IntRect arrowButtonRectangle = computeMenuListArrowButtonRect(rect);
-    paintMenuListButtonGradientAndArrow(context, object, arrowButtonRectangle, menuListRoundedRectangle);
-
-    // 4. Stroke an outline around the entire control.
-    context->save();
-    context->setStrokeStyle(SolidStroke);
-    context->setStrokeThickness(lineWidth);
-    if (!isEnabled(object))
-        context->setStrokeColor(disabledOutline, ColorSpaceDeviceRGB);
-    else if (isPressed(object))
-        context->setStrokeGradient(createLinearGradient(depressedTopOutline, depressedBottomOutline, IntPoint(rect.maxXMinYCorner()), IntPoint(rect.maxXMaxYCorner())));
-    else
-        context->setStrokeGradient(createLinearGradient(regularTopOutline, regularBottomOutline, IntPoint(rect.maxXMinYCorner()), IntPoint(rect.maxXMaxYCorner())));
-
-    context->strokePath(menuListRoundedRectangle);
-    context->restore();
-    return false;
-}
-
-bool RenderThemeBal::paintMenuListButtonDecorations(const RenderObject& object, const PaintInfo& info, const FloatRect& rect)
-{
-    // Note, this method is only called if the menu list explicitly specifies either a border or background color.
-    // Otherwise, RenderThemeBal::paintMenuList is called. We need to fit the arrow button with the border box
-    // of the menu-list so as to not occlude the custom border.
-
-    // We compute menuListRoundedRectangle with respect to the dimensions of the entire menu-list control (i.e. rect) and
-    // its border radius so that we clip the contour of the arrow button (when we paint it below) to match the contour of
-    // the control.
-    Path menuListRoundedRectangle = roundedRectForBorder(object, rect);
-
-    // 1. Paint the background of the entire control.
-    Color fillColor = object.style().visitedDependentColor(CSSPropertyBackgroundColor);
-    if (!fillColor.isValid())
-        fillColor = Color::white;
-    paintMenuListBackground(info.context, menuListRoundedRectangle, fillColor);
-
-    // 2. Paint the background of the button and its arrow.
-    IntRect bounds = IntRect(rect.x() + object.style().borderLeftWidth(),
-                         rect.y() + object.style().borderTopWidth(),
-                         rect.width() - object.style().borderLeftWidth() - object.style().borderRightWidth(),
-                         rect.height() - object.style().borderTopWidth() - object.style().borderBottomWidth());
-
-    IntRect arrowButtonRectangle = computeMenuListArrowButtonRect(bounds); // Fit the arrow button within the border box of the menu-list.
-    paintMenuListButtonGradientAndArrow(info.context, object, arrowButtonRectangle, menuListRoundedRectangle);
-    return false;
-}
-#else
-
 const float baseFontSize = 11.0f;
 const float baseArrowHeight = 4.0f;
 const float baseArrowWidth = 5.0f;
@@ -659,29 +553,10 @@ const int styledPopupPaddingLeft = 8;
 const int styledPopupPaddingTop = 1;
 const int styledPopupPaddingBottom = 2;
 
-bool RenderThemeBal::paintMenuList(const RenderObject& o, const PaintInfo& paintInfo, const FloatRect& r)
+static void drawArrowsAndSeparator(const RenderObject& o, const PaintInfo& paintInfo, IntRect& bounds)
 {
-    IntRect bounds = IntRect(r.x() + o.style().borderLeftWidth(),
-                             r.y() + o.style().borderTopWidth(),
-                             r.width() - o.style().borderLeftWidth() - o.style().borderRightWidth(),
-                             r.height() - o.style().borderTopWidth() - o.style().borderBottomWidth());
-    // Draw the gradients to give the styled popup menu a button appearance
-    Path menuListRoundedRectangle = roundedRectForBorder(o, r);
-    paintMenuListBackground(paintInfo.context, menuListRoundedRectangle, Color::white);
-
-	EBorderStyle v = INSET;
-    o.style().setBorderTopStyle(v);
-	o.style().setBorderLeftStyle(v);
-	o.style().setBorderBottomStyle(v);
-	o.style().setBorderRightStyle(v);
-    int borderWidth = 1;
-	o.style().setBorderTopWidth(borderWidth);
-	o.style().setBorderLeftWidth(borderWidth);
-	o.style().setBorderBottomWidth(borderWidth);
-	o.style().setBorderRightWidth(borderWidth);
-
     // Since we actually know the size of the control here, we restrict the font scale to make sure the arrows will fit vertically in the bounds
-	float fontScale = std::min(o.style().fontSize() / baseFontSize, bounds.height() / (baseArrowHeight * 2 + baseSpaceBetweenArrows));
+    float fontScale = std::min(o.style().fontSize() / baseFontSize, bounds.height() / (baseArrowHeight * 2 + baseSpaceBetweenArrows));
     float centerY = bounds.y() + bounds.height() / 2.0f;
     float arrowHeight = baseArrowHeight * fontScale;
     float arrowWidth = baseArrowWidth * fontScale;
@@ -689,7 +564,7 @@ bool RenderThemeBal::paintMenuList(const RenderObject& o, const PaintInfo& paint
     float spaceBetweenArrows = baseSpaceBetweenArrows * fontScale;
 
     if (bounds.width() < arrowWidth + arrowPaddingLeft * o.style().effectiveZoom())
-        return false;
+        return;
 
     GraphicsContextStateSaver stateSaver(*paintInfo.context);
 
@@ -712,10 +587,9 @@ bool RenderThemeBal::paintMenuList(const RenderObject& o, const PaintInfo& paint
     // Draw the bottom arrow
     paintInfo.context->drawConvexPolygon(3, arrow2, true);
 
-	Color leftSeparatorColor(0, 0, 0, 40);
+    Color leftSeparatorColor(0, 0, 0, 40);
     Color rightSeparatorColor(255, 255, 255, 40);
 
-    // FIXME: Should the separator thickness and space be scaled up by fontScale?
     int separatorSpace = 2; // Deliberately ignores zoom since it looks nicer if it stays thin.
     int leftEdgeOfSeparator = static_cast<int>(leftEdge - arrowPaddingLeft * o.style().effectiveZoom()); // FIXME: Round?
 
@@ -729,6 +603,30 @@ bool RenderThemeBal::paintMenuList(const RenderObject& o, const PaintInfo& paint
     paintInfo.context->setStrokeColor(rightSeparatorColor, ColorSpaceDeviceRGB);
     paintInfo.context->drawLine(IntPoint(leftEdgeOfSeparator + separatorSpace, bounds.y()),
                                 IntPoint(leftEdgeOfSeparator + separatorSpace, bounds.maxY()));
+}
+
+bool RenderThemeBal::paintMenuList(const RenderObject& o, const PaintInfo& paintInfo, const FloatRect& r)
+{
+    IntRect bounds = IntRect(r.x() + o.style().borderLeftWidth(),
+                             r.y() + o.style().borderTopWidth(),
+                             r.width() - o.style().borderLeftWidth() - o.style().borderRightWidth(),
+                             r.height() - o.style().borderTopWidth() - o.style().borderBottomWidth());
+    // Draw the gradients to give the styled popup menu a button appearance
+    Path menuListRoundedRectangle = roundedRectForBorder(o, r);
+    paintMenuListBackground(paintInfo.context, menuListRoundedRectangle, Color::white);
+
+    EBorderStyle v = INSET;
+    o.style().setBorderTopStyle(v);
+    o.style().setBorderLeftStyle(v);
+    o.style().setBorderBottomStyle(v);
+    o.style().setBorderRightStyle(v);
+    int borderWidth = 1;
+    o.style().setBorderTopWidth(borderWidth);
+    o.style().setBorderLeftWidth(borderWidth);
+    o.style().setBorderBottomWidth(borderWidth);
+    o.style().setBorderRightWidth(borderWidth);
+
+    drawArrowsAndSeparator(o, paintInfo, bounds);
 
     // Stroke an outline around the entire control.
     paintInfo.context->setStrokeStyle(SolidStroke);
@@ -745,11 +643,33 @@ bool RenderThemeBal::paintMenuList(const RenderObject& o, const PaintInfo& paint
     return false;
 }
 
-bool RenderThemeBal::paintMenuListButtonDecorations(const RenderObject& object, const PaintInfo& info, const FloatRect& rect)
+bool RenderThemeBal::paintMenuListButtonDecorations(const RenderObject& o, const PaintInfo& paintInfo, const FloatRect& r)
 {
-    return paintMenuList(object, info, rect);
+    // Note, this method is only called if the menu list explicitly specifies either a border or background color.
+    // Otherwise, RenderThemeBal::paintMenuList is called. We need to fit the arrow button with the border box
+    // of the menu-list so as to not occlude the custom border.
+
+    // We compute menuListRoundedRectangle with respect to the dimensions of the entire menu-list control (i.e. rect) and
+    // its border radius so that we clip the contour of the arrow button (when we paint it below) to match the contour of
+    // the control.
+    Path menuListRoundedRectangle = roundedRectForBorder(o, r);
+
+    // 1. Paint the background of the entire control.
+    Color fillColor = o.style().visitedDependentColor(CSSPropertyBackgroundColor);
+    if (!fillColor.isValid())
+        fillColor = Color::white;
+    paintMenuListBackground(paintInfo.context, menuListRoundedRectangle, fillColor);
+
+    // 2. Paint the background of the button and its arrow.
+    IntRect bounds = IntRect(r.x() + o.style().borderLeftWidth(),
+                         r.y() + o.style().borderTopWidth(),
+                         r.width() - o.style().borderLeftWidth() - o.style().borderRightWidth(),
+                         r.height() - o.style().borderTopWidth() - o.style().borderBottomWidth());
+
+    drawArrowsAndSeparator(o, paintInfo, bounds);
+
+    return false;
 }
-#endif
 
 void RenderThemeBal::adjustSliderThumbSize(RenderStyle& style, Element* element) const
 {

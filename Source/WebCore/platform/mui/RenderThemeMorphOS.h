@@ -132,7 +132,6 @@ private:
     void setButtonStyle(RenderStyle&) const;
     void calculateButtonSize(RenderStyle&) const;
 
-    void paintMenuListButtonGradientAndArrow(GraphicsContext*, const RenderObject&, IntRect buttonRect, const Path& clipPath);
     bool paintTextFieldOrTextAreaOrSearchField(const RenderObject&, const PaintInfo&, const IntRect&);
     bool paintSliderTrackRect(const RenderObject&, const PaintInfo&, const IntRect&);
     bool paintSliderTrackRect(const RenderObject&, const PaintInfo&, const IntRect&, RGBA32 strokeColorStart,
