@@ -522,6 +522,7 @@ struct Data
 	Object *ch_webm;
 	Object *ch_flv;
 	Object *ch_ogg;
+	Object *ch_mp4;
 };
 
 DEFNEW
@@ -553,7 +554,7 @@ DEFNEW
 
 	Object *ch_ignoresslerrors, *str_certificatepath;
 
-	Object *cy_loopfilter, *ch_partialcontent, *ch_webm, *ch_flv, *ch_ogg;
+	Object *cy_loopfilter, *ch_partialcontent, *ch_webm, *ch_flv, *ch_ogg, *ch_mp4;
 
 	cycles_init();
 
@@ -969,6 +970,11 @@ DEFNEW
 								End,
 
 								Child, ColGroup(3),
+									Child, ch_mp4 = (Object *) MakePrefsCheck("_MP4 (H.264) support", TRUE, MAKE_ID('S','M','M','4')),
+									Child, LLabel("_MP4 (H.264) support"),
+									Child, HSpace(0),
+								End,
+								Child, ColGroup(3),
 									Child, ch_webm = (Object *) MakePrefsCheck(GSI(MSG_PREFSWINDOW_MEDIA_USE_WEBM), FALSE, MAKE_ID('S','M','V','8')),
 									Child, LLabel(GSI(MSG_PREFSWINDOW_MEDIA_USE_WEBM)),
 									Child, HSpace(0),
@@ -1121,6 +1127,7 @@ DEFNEW
 		data->ch_webm = ch_webm;
 		data->ch_flv  = ch_flv;
 		data->ch_ogg  = ch_ogg;
+		data->ch_mp4  = ch_mp4;
 
 		/* Set defaults */
 		set(data->cy_completiontype, MUIA_Cycle_Active, 2);
@@ -1681,6 +1688,12 @@ DEFGET
 		case MA_OWBApp_EnableOgg:
 		{
 			*msg->opg_Storage = (ULONG) getv(data->ch_ogg, MUIA_Selected);
+		}
+		return TRUE;
+
+		case MA_OWBApp_EnableMP4:
+		{
+			*msg->opg_Storage = (ULONG) getv(data->ch_mp4, MUIA_Selected);
 		}
 		return TRUE;
 
