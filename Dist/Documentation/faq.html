@@ -1,0 +1,292 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<title>Odyssey Web Browser | Doc</title>
+<link rel="shortcut icon"
+href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAADS0lEQVR4nD2STUwcZQCGn2/mm9lll12WpaWsFNgWgkAFLFrbRZPWkJo0XjR4MbFe1JteejbRRE3UUw9qTPRgQqJNPDSNJiZNa0xRpAKWULEplJ9SKLtdZpkuM7s7s/PjweqbPMcnz+UVs9ufhDyaIgSoKtVigfzSMlpEp6V3gDBUEK4gEAHRlI5A8L+jKAIUQQDU6j62abE+OYMrDmI9iGBNz9NWaaLTSxHuBNSc+r+hR8jKQw/FhaDikYrEcMsOaTVJR8Rjc2+VuqKhejZe4NPg1ymW6zQmEqhBSOgHyANWgmqlQuAFpGM6piqxah6leyv0jbxCxXVR/BghAU24WBvbWOUCpNNEW9qQD02T4o5BtEGncH+JSFhn5Pg4h586C0KCZ+KU7yOEQNEb6QkFe8Ya+Y2fKaxPIcvWHr7vUb53i57eHP3PvQ2ezeKVD/hr+iJGfp163UXTNeKJFjIdfXQPjdF+aIx91aeRtm0jjAVOPP8OrQMvc/Pyx/x04UNcx6Gj6yBd2U40PUZISOhZlPLzrCxeJR5PMHxsDEnhOrkX3yN9+CTff3qam7O/kDvej6qmMOzHMOlmdclFERpSt0nqBu1dBTQ1zx/XLiG2Zr8IM4Ov8tW7o7jWKiPD/fy2cIBq/AXaOo8SbYihawqRiI4fBpi7Fvn122BOcWxwCxHUCuHER6dxzBW6s1l+/HOUvtxZksko8biku3sfs9MriCBEj0VRpUpU6hglmxuTV1BPZpff31yaYuDxbr6dPMXQ6Guoos6uscf6nSKaJmlMxLh7p4gQClXbZa9cobk5RsuhfsRnbxE+m3uS8xe66Bh+k4isE/ghCEHZqJBobsBxQ6SU6FIg/jt+ooWh7R+Qw0ePcHVapxY5gwhcNrdsFEVFBXzXoz0bJ7k/yfVra0Q0BRmG2DLJqeVv8ApzKImmVi7PDbA/k6ZkOuwYNYpGhYJRJV/ycHzBiVyWB9s2pYLDWknnmfxFhme+5rv068j5WxqG28fdjV3cmkcYCoRQcF0ffDB3XY4MZujtaWXudpVxeYnxvyc413oGy2pDmVloQhcapW0by/KpVAJqTsDAExmQkkxnM5+f/x2ZSnGu71feWJ7gSxFlUb5EzXT4BzRleU49ddAFAAAAAElFTkSuQmCC"
+type="image/png" />
+<link rel="stylesheet" type="text/css" href="css/style.css" />
+</head>
+
+<body style="background-color:#C8D6F0;">
+
+<table cellspacing="0" cellpadding="0" align="center" border="0">
+	<tr>
+		<td>
+			<table cellspacing="0" cellpadding="0" border="0" align="center" width="940">
+				<tr>
+					<td colspan="3" style="background-image:url('img/app_odyssey_menu.png'); background-repeat:no-repeat; border-style:none;" width="940px" height="96px">
+						<table border="0" style="padding-left: 30px;">
+							<tr>
+								<td width="70" align="center"><a href="index.html" class="toplink"><b>INDEX</b></a></td>
+								<td width="70" align="center"><a href="history.html" class="toplink"><b>HISTORY</b></a></td>
+								<td width="70" align="center"><a href="faq.html" class="toplink"><b>FAQ</b></a></td>
+								<!--td width="70" align="center"><a href="bugreport.html" class="toplink"><b>REPORT</b></a></td-->
+							</tr>
+						</table>
+					</td>
+				</tr>
+				<tr>
+					<td width="940" height="620" colspan="3" style="background-color:#FFFFFF; border-style:none;">
+						<p align="center" class="text_title"><a name="indice" style="color:#FF0000; font-size:14px"><b>FAQ (Frequently Asked Questions)</b></a></p>
+						<br />  
+						<table width="600" align="center" border="0">
+							<tr>
+								<td class="text_title" width="200"><a href="#general">General FAQ</a></td>
+								<td class="text_title" width="200"><a href="#amigaos4">AmigaOS4 specific</a></td>
+								<td class="text_title" width="200"><a href="#shortcuts">Shortcuts</a></td>
+							</tr>
+						</table>
+						<br /><br />
+						<p align="center"><a name="general" class="text_title_red"><b>General</b></a></p>
+						<ul>
+							<li><b>It takes ages to start!?</b></li>
+						</ul>
+						<div align="justify" class="list_nested_faq">
+							It only happens at first start or when you update your fonts.
+							Current Odyssey version uses FontConfig, which is quite slow at indexing.
+							After that it should start in a second or so.
+						</div>
+						<ul>
+							<li><b>It's slow!</b></li>
+						</ul>
+						<div align="justify" class="list_nested_faq">
+							Odyssey Web Browser is based on WebKit and this version uses Cairo to render. 
+							Modern browsers tend to be a bit heavier than our good old browsers. :)
+							That said, there's still room for optimization, especially regarding Cairo rendering speed.
+						</div>
+						<ul>
+							<li><b>It's too memory-hungry!</b></li>
+						</ul>
+						<div align="justify" class="list_nested_faq">
+							See above. Also note that WebKit will often crash *voluntarily* when
+							running out of memory, instead of taking alternative measures. I could
+							avoid some of these crashes (like too large document/image allocations),
+							but it's quite impossible to fix WebKit everywhere.
+						</div>
+						<ul>
+							<li><b>Some SSL websites show a certificate error requester!</b></li>
+						</ul>
+						<div align="justify" class="list_nested_faq">
+							Maybe they're not certified. You can either update "curl-ca-bundle.crt" file,
+							or ignore SSL errors by enabling "Ignore SSL errors" in Settings/Security.
+						</div>
+						<ul>
+							<li><b>It crashes!</b></li>
+						</ul>
+						<div align="justify" class="list_nested_faq">
+							Odyssey is fairly stable (as long as you have enough memory, like most Posix 
+							application nowadays unfortunately...). If you get a reproducible crash
+							(unrelated to memory usage), send me a debug log.
+						</div>
+						<ul>
+							<li><b>Odyssey hits/crashes when opening more than n tabs.</b></li>
+						</ul>
+						<div align="justify" class="list_nested_faq">
+							It's known bug in MUI, which was fixed in MorphOS 2.3. For previous versions,
+							it can be avoided by just unchecking system prefs->Debug->MUI->Error
+							checkmark (the error was caused by MUI debug routine).
+						</div>
+						<ul>
+							<li><b>I get no sound in HTML5 playback! / Odyssey locks audio hardware!</b></li>
+						</ul>
+						<div align="justify" class="list_nested_faq">
+							Audio output uses AHI music unit at the moment, which is unfortunately exclusive.
+							It's still possible to play several sounds at once (and avoid blocking audio hardware)
+							with device.audio, by setting AHI music unit to: "Unit 0: &lt;mode&gt;" in system preferences.
+						</div>
+						<ul>
+							<li><b>Why url-history popup-window sometime not spawns when i have for url-comention "popup enabled" ?</b></li>
+						</ul>
+						<div align="justify" class="list_nested_faq">
+							Because it's already spawned and you maybe just don't see it. Let's explain: sometimes when you press on main
+							window or on an url-string (or on any other window of Odyssey) the url-history popupwindow jump over the main Odyssey 
+							window to back so you did not see it. That mean you need to press the history gadget again or move the Odyssey window to make the url-history
+							again visible, this is valid and it's the same on every version of the program (AmigaOS4, MorphOS or AROS) and it is a MUI's feature.
+						</div>
+						<ul>
+							<li><b>Why scripts does not work for me ?</b></li>
+						</ul>
+						<div align="justify" class="list_nested_faq">
+							You should be sure that you enter an exact (1:1) pattern. for example a path with/without WWW where is needed and with latest slash.
+							Like for example <a href="http://www.amigans.net/" target="_blank">http://www.amigans.net/</a> or <a href="http://www.google.ru/" target="_blank">http://www.google.ru/</a>
+							You can also  use * in order to make multiply choice, like: http://*.google.com/  - with or without www http://*.ru/ - all .ru domains
+							Sadly the WebKit script-parser is not perfect (for example it can't parse normally http://google.*), but at the end this is how webkit
+							parser are done for now.<br />
+							Maybe Fab will write his own parser in future, or WebKit guys will update it later, but for now that is how it is now. Anyway that should't be big problem,
+							because most Userscripts comes with their own whitelist (with the @include keyword) so in general the parser settings it's usually correct by default.
+						</div>
+						<ul>
+							<li><b>Why certain pages have their text wrongly aligned ?</b></li>
+						</ul>
+						<div align="justify" class="list_nested_faq">
+							That's because you use default set of fonts which comes with AmigaOS4. Please download the WebCore fonts using the download-font-script provided
+							into the archive and use them instead.
+							The Fontconfig conf file parse 2 directories: fonts _TrueType (for default the AmigaOS4 fonts which is availible in every version of AmigaOS) and fonts:_ttf (that is directory
+							will be created automatically by font_download_script and will extract all the webcore fonts into it).
+						</div> 
+						<ul>
+							<li><b>How can i read Japanese or Arabic fonts ?</b></li>
+						</ul>
+						<div align="justify" class="list_nested_faq">
+							You can, all you need is download manually these special fonts. They are usually too big for an inclusion (because of all their characters),
+							and slower so they are not not included by default for download-scripts and if you like to use them just go and download them manually.
+						</div>
+						<ul>
+							<li><b>Why Odyssey will not save my window position and its size on exit ?</b></li>
+						</ul>
+						<div class="list_nested_faq">
+							That is caused by your current MUI settings, you can set to save any type of size/position at exit or you can just decide to to not set it at all. By default MUI 3.9
+							set it to OFF so if you still not have it enabled you can do it by setting "MUI prefs/window/control position" to "remember on exit".
+						</div>
+						<ul>                        
+							<li><b>How can i play Youtube clips while you are not port the MediaPlayer part from the MorphOS version ?</b></li>
+						</ul>
+						<div align="justify" class="list_nested_faq">
+							With the old MUI OWB 1.9 you needed to use <a href="http://aminet.net/package/comm/www/getvideo" target="_blank">GetVideo</a>, but in compare of ReAction OWB you don't need ClipDown but just GetVideo. It's easy to setup: just add it
+							to your ContextMenu entries, for page/image/link with c:getvideo "%u" play, c:getvideo "%i" play, c:getvideo "%l" play (for example). 
+							Anyway, more info are well described on the GetVideo readme (it gives instructions for IBrowse, Odyssey Web Browser for MorphOS and so on).<br />
+							Here is a good step by step guide that explain how to watch YouTube videos using MUI OWB 1.9 under AmigaOS4: <a href="http://amigax1000.blogspot.com.au/2012/07/how-to-watch-youtube-videos-using-mui.html" target="_blank">Epsilon blog</a><br />
+							Starting from version 1.23 the AmigaOS4 port is able to open the video exactly like the MorphOS version, so please refer to the original documentation.
+						</div>
+						<p align="center"><a href="#indice"><b>Back</b></a></p>
+						<p align="center"><a name="amigaos4" class="text_title_red"><b>AmigaOS4 specific</b></a></p>
+						<ul>                        
+							<li><b>What are the minimum requirements for running Odyssey Web Browser under AmigaOS4</b></li>
+						</ul>
+						<div align="justify" class="list_nested_faq">
+							For running the old 1.9 port you needed atleast AmigaOS 4.1 Update 3 or just a MUI 3.9 release redistribuited with this version of the OS, full version requires atleast 45MB of free memory but potentially much more depending on the site visited.<br />
+							The latest Odyssey Web Browser port requires AmigaOS 4.1 Update 6 and a recent MUI4 snapshot
+						</div>
+						<ul>                        
+							<li><b>How all of this was done ?</b></li>
+						</ul>
+						<div class="list_nested_faq">
+							We used 2 different environments:<br />
+							<ul class="list_nested_faq_indent">
+								<li>Main one: cross-compiling (WinXP/CygWin): using CMake/CCMake for building the main core libs and most of the 3th parties libs.</li>
+								<li>Help one: native AmigaOS4 env for build one of the main libs where all the MUI code are placed. Of course all can be done again via cross-compiling but because Deniil have only an OS4 machine we go to this route in order to have the ability to build and finally test our binary on his machine as well.</li>
+							</ul>
+						</div>
+						<ul>                    
+							<li><b>About the first 1.9 release, how hard it was to port it ?</b></li>
+						</ul>
+						<div class="list_nested_faq">
+							Pretty hard ! This is in general what we did:<br />
+							<ul class="list_nested_faq_indent">
+								<li>Rewrite macros, hooks, tasks and creating similar processes from MorphOS to AmigaOS4.</li>
+								<li>Fixing various MUI 3.9 problems (some of them was real bugs while others was just "not react as MUI4 react"). all the work here was done by Thore.</li>
+								<li>Adding tons of new stuff into MUI in itself: that include many new native classes (Aboutbox, Lamp, process, etc) and new features as well. Also all of that was done by Thore.</li>
+								<li>MUI reworking: wrappers for tabs, list methods and other unsupported features, which in end it was only possibile updating the whole OS4 version of MUI, we still lack a proper tab handling implementation in our MUI version (so currently a sort of wrapper for the MUI OWB tabs still necessary) but all the rest are more or less complete. Almost all of that was done by Thore.</li>
+								<li>Porting all 3th parties libs, and some of them really needed code-change (and some still in development, like Curl for threading support).</li>
+								<li>Some differences beetwen MorphOS and AmigaOS4 which cause some heavy problems in end, like random freeze caused by not having CloseLocale() on the original MUI OWB source.</li>
+								<li>Some mysterious problem with elf.library.kmod and GCC, to understand while GCC compiled some stuff easily while it not worked for others. For more info see: <a href="http://amigans.net/index.php?function=viewcomments&amp;threadid=42" target="_blank">http://temp.amigans.net/?function=viewcomments&amp;threadid=42</a></li>
+								<li>Some small problems with code in itself, while it works fine with MorphOS because of some enabled features, we was surprised to obtain only a black screen for a few development days instead, which in end all was caused by certain #ifdef missing).</li>
+								<li>Differences in terms of STATIC const (AmigaOS4 tend to protect these areas and because that areas are sometimes used by MUI OWB 1.9 for writing, this caused various crashes on our port).</li>
+								<li>Differences in some internal Webkit structure handling, which works fine on MorphOS as is, but under AmigaOS4 it need strdup() in all the places.</li>
+								<li>All the other possible and unpossible small problems and moments which we even can't remember for now !</li>
+							</ul>
+						</div>
+						<ul>                    
+							<li><b>What are the libraries/deps used for compile the latest Odyssey Web Browser under AmigaOS4 ?</b></li>
+						</ul>
+						<div align="justify" class="list_nested_faq">
+							We used that set of 3th parties libs for building Odyssey Web Browser under AmigaOS4:<br />
+							<ul class="list_nested_faq_indent">
+								<li>Cairo 1.12.16</li>
+								<li>Pixman 0.32.5</li>
+								<li>FFMpeg 2.1.1 (snapshoot from 2014.01.09)</li>
+								<li>LibCurl 7.29.0</li>
+								<li>RTMP 2.4</li>
+								<li>LibJPEG 9</li>
+								<li>LibPNG 1.2.50</li>
+								<li>SQLite 3.8.2</li>
+								<li>XSLT 1.1.28</li>
+								<li>XML2 2.9.1</li>
+								<li>OpenSSL 1.0.0l</li>
+								<li>LibICU 49.1.2</li>
+								<li>PThread (latest from AmigaOS4 SDK)</li>
+								<li>LibZ 1.2.8</li>
+								<li>FontConfig 2.4.2</li>
+								<li>Freetype 2.4.11</li>
+								<li>Expat 53.1</li>
+							</ul>
+						</div>
+						<ul>                    
+							<li><b>How much time was needed to port the first 1.9 version ?</b></li>
+						</ul>
+						<div class="list_nested_faq">
+							To sum I think it took about 5 months + time waiting for the public release of AmigaOS 4.1 Update 3
+						</div>
+						<ul>
+							<li><b>Who worked on the AmigaOS4 port ?</b></li>
+						</ul>
+						<div class="list_nested_faq_indent">
+							<ul class="list_nested_faq">
+								<li>Kas1e (Roman Kargin)</li>
+								<li>Deniil from <a href="http://www.onyxsoft.se" target="_blank">OnyxSoft</a> (Daniel Westerberg)</li>
+								<li>Tboeckel (Thore B&ouml;ckelmann)</li>
+								<li>Fab (Fabien Coeurjoly) for his big help during our port and of course as original author !</li>
+								<li>Mason (Martin Merz) do all artwork (images/icons/buttons/etc) for the AmigaOS4 port</li>
+								<li>Samo79 (Samir Hawamdeh) wrote the entire documentation and was our betatester</li>
+							</ul>
+						</div>
+						<ul>
+							<li><b>Why final binary are so big ? 52MB !</b></li>
+						</ul>
+						<div align="justify" class="list_nested_faq">
+							Because we have included a full SVG support (+10MB), full LibICU (+20MB), and 16MB only for all the core libs and actual code.
+							Of course it's possible to go on this route instead: no SVG support, reduce LibICU to english only (to 4MB), but at the end it means less and less
+							features because of smaller binary size, while today having more features is better than reduce the binary size.
+						</div>
+						<p align="center"><a href="#indice"><b>Back</b></a></p>
+						<p align="center"><a name="shortcuts" class="text_title_red"><b>Shortcuts</b></a></p>
+						<div class="list_nested_faq">
+							Here an incomplete list of the availible shortcuts that can be used in Odyssey Web Browser on any supported platform.
+						</div>
+						<p class="list_nested_faq_indent">
+							<b>CTRL/AMIGA + PageUp/PageDown:</b> Cycle through tabs<br />
+							<b>Middle mouse button (MMB):</b> Open a link in a new background tab<br />
+							<b>Middle mouse button (MMB) + move mouse:</b> Scroll<br />
+							<b>SHIFT + TAB:</b> Cycle through elements<br />
+							<b>HOME or SHIFT + Cursor up or backspace:</b> Go on Top<br />
+							<b>END or SHIFT + Cursor down or space:</b> Go to end<br />
+							<b>Cursor up: </b>Up<br />
+							<b>Cursor down: </b>Down<br />
+							<b>Cursor left: </b>Left<br />
+							<b>Cursor right: </b>Right<br />
+							<b>Double MMB + Move mouse:</b> Alternative scroll<br />
+							<b>AMIGA + 0:</b> Zoom Reset<br />
+							<b>AMIGA + n: </b>Go to tab<br />
+							<b>F1 or ALT + cursor left:</b> Back<br />
+							<b>F2 or ALT + cursor right:</b> Forward<br />
+							<b>F3 or AMIGA + or CTRL + wheel up:</b> Zoom in<br />
+							<b>F4 or AMIGA - or CTRL + wheel down:</b> Zoom out<br />
+							<b>F5 or AMIGA + r:</b> Reload<br />
+							<b>F6 or AMIGA + s:</b> Stop<br />
+							<b>F9:</b> Load session<br />
+							<b>F10:</b> Save session<br />
+							<b>F11:</b> Fullscreen<br />
+							<b>F12:</b> Debug + Garbage collector<br />
+							<b>ESC:</b> Close OWB<br />
+							<br />
+							In text editor only:<br />
+							<br />
+							<b>CTRL/AMIGA + c/v/x:</b> For copy/cut and paste<br />
+							<b>CTRL/AMIGA + SHIFT + z:</b> For undo/redo<br />
+							<b>SHIFT + Backspace:</b> To delete everything before<br />
+						</p>
+						<p align="center"><a href="#indice"><b>Back</b></a></p>
+					</td>
+				</tr>
+				<tr>
+					<td width="940" height="96" colspan="3" style="background-color:#FFFFFF; border-style:none;"></td>
+				</tr>
+			</table>
+		</td>
+	</tr>
+</table>
+
+</body>
+</html>

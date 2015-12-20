@@ -1,0 +1,171 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>Problem loading page</title>
+<link rel="shortcut icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAK3RFWHRDcmVhdGlvbiBUaW1lAG1hciAxIGZlYiAyMDExIDE1OjE2OjQ5ICswMTAwwBEbXQAAAAd0SU1FB9sCAQ4YLbsLm28AAAAJcEhZcwAACxIAAAsSAdLdfvwAAAAEZ0FNQQAAsY8L/GEFAAACIUlEQVR42n2TP0hbURTGf4lKEmIIIeIgCKUaFBUCgkhTFTQOIjgEHBw6uBScRIo6FDIVRRyCe9ZuCi10CYKDQ2kXFzcJ1i5qBJNoNJrFnJ77Xv4ZQg98vHPf+77v3HvOuw6awgcyp893ireVd38UvxQpxQM4GvmvFjEVx4NBQsvLeKemcHR3Q7GInJ1RPD4mnUrxpVDgW4OulnxS8edolODWFrS1wePjazxo7dtbsvv7bKfTJCpaR7VycmKC4O4uPD+3Fjfk2aMjPmYy1k6cnWbbPh/BtTW4uYGrK9Bj8PJi55eX0KmskRF7fX1NsKeHuO7SaNtNw0Kzs9ZZrQoDA9pBbWE4DKur4HLBygq43aBVSSYtXsjpZE6LtEfUwNvXZ7ufnMDBAYyOQiAAOzvQ0aEEL2jz0CZyfm71TN9gtHzXbcj6usj8vIjJDSIRkVxOanF/LzI9Xf9egdE6LbuLCzg8rM+zXLYp1SiVIJ+nZewptRwI1J3Hx0WyWbtyoSCSz9t5JiMSDtd4poTROn+ryVOju44Tv98eXUwHvLAAd3fQ1QUzMzZH+/Lk8WC0KFVOm84mm5si0Wh9PTkpsrFh536/SCwmpy6XGK1luKRJrtmkFfr7LfPc8LAsVcXViP/PxOMRWVwUSSQkNzYm8Qbxq8v0wdwHfb5RuPWMjt5eGBpCBgcp6aT+6qS2tV9fW12mauhPLNo23jdd55+KH4psk+Yf2z1DCN4jRw4AAAAASUVORK5CYII=" />
+
+<style type="text/css">
+<!--
+.main {
+	background-color: #FFFFFF;
+	color: #000000;
+	padding: 14px;
+	width: 550px;
+	margin-top: 60px;
+	margin-bottom: 0px;
+	margin-left: auto;
+	margin-right: auto;
+	border: 1px solid #000000;
+}
+.content {
+	background-color: transparent;
+	color: #000000;
+	padding: 10px;
+	width: auto;
+	height: auto;
+	clear: both;
+	font-size: 12px;
+	text-align: justify;
+}
+.ObjCent {
+	background-color: transparent;
+	color: #000000;
+	padding: 0px;
+	width: auto;
+	height: auto;
+	clear: both;
+	font-size: 12px;
+	text-align: center;
+}
+body {
+	background-color: #FFFFFF;
+	font-family: "DejaVu Sans", "DejaVu Serif", "DejaVu Sans Mono", Tahoma, Verdana, sans-serif;
+}
+.title_left {
+	background-color: #FFFFFF;
+	color: #000000;
+	width: 45px;
+	height: 35px;
+	line-height: 35px;
+	text-align: left;
+	font-weight: bold;
+	float: left;
+	padding-top: 5px;
+	padding-right: 20px;
+	padding-bottom: 2px;
+	padding-left: 10px;
+	font-size: 12px;
+}
+.title_right {
+	background-color: #FFFFFF;
+	color: #000000;
+	width: 450px;
+	height: 35px;
+	line-height: 35px;
+	text-align: left;
+	font-weight: bold;
+	float: right;
+	padding-top: 10px;
+	padding-right: 10px;
+	padding-bottom: 2px;
+	padding-left: 3px;
+	font-size: 12px;
+}
+a:link {
+	background-color: transparent;
+	color: #526485;
+	text-decoration: none;
+}
+a:visited {
+	background-color: transparent;
+	color: #526485;
+	text-decoration: none;
+}
+a:hover {
+	background-color: transparent;
+	color: #526485;
+	text-decoration: underline;
+}
+a:active {
+	background-color: transparent;
+	color: #526485;
+	text-decoration: none;
+}
+
+.button {
+	cursor: pointer;
+}
+
+.list {
+	list-style-type: square;
+	line-height: 18px;
+}
+
+.row {
+	background-color: #C0C0C0;
+	border: 0;
+	width: 530px;
+	height: 1px;
+}
+-->
+</style>
+
+<script type="text/javascript">
+<!--
+function disableSelection(element) {
+	element.onselectstart = function() {
+	return false;
+	};
+	element.unselectable = "on";
+	element.style.MozUserSelect = "none";
+	element.style.cursor = "default";
+}
+
+function onLoad() {
+	disableSelection(document.getElementById("text"));
+}
+
+function tryagain()
+	{
+	location.reload();
+}
+//-->
+</script>
+
+</head>
+
+<body onload="onLoad()">
+
+<div class="main" id="text">
+	<table cellspacing="0" cellpadding="0" border="0">
+		<tr>
+			<td class="title_left"><img src="data:image/png;base64,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" width="46" height="46" alt="" title="" /></td> 
+			<td class="title_right">Odyssey Web Browser couldn't load the page</td>
+		</tr>
+	</table>
+	<div class="content">
+		<hr class="row" />
+		<div class="ObjCent">
+			<b>A problem occurred while loading %s.
+			<br>
+			<br>%s
+			<br>
+			</b>
+		</div>
+		<ul class="list">
+			<li>Please check the correct address for typing errors such as <b>ww</b>.example.com instead of <b>www</b>.example.com</li>
+			<li>If you are unable to load any page, check your computer's network connection.</li>
+                	<li>If your computer or network is protected by a firewall or proxy, make sure that OWB is allowed to access the Web.</li>
+		</ul>
+		<hr class="row" />
+	</div>
+	<div class="ObjCent">	
+		<form action="#" onsubmit="tryagain()" id="bl">
+			<p><input type="submit" value="Try Again" class="button" /></p>
+		</form>
+	</div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,40 @@
+; OWB font downloader
+
+.KEY foo
+.BRA {
+.KET }
+
+failat 21
+
+echo "Welcome to OWB font downloader!"
+
+if not exists c:xadUnFile
+	requestchoice >nil: "OWB font downloader" "You need to have a functional XADMaster in your system" "Ok"
+	quit 5
+endif
+
+requestchoice >env:OWBch{$$} "OWB font downloader" "Do you want to download and install fonts?*N*OWB needs to download ~4MB of fonts.*N*Installing fonts will result in copying a few ttf fonts to SYS:Fonts/_ttf" "Yes" "No"
+if not val "$OWBch{$$}" eq "1"
+	unsetenv OWBch{$$}
+	quit
+endif
+unsetenv OWBch{$$}
+
+echo >t:fetchfont{$$} ".KEY F*NDatas/wget --tries 10 --waitretry 10 http://downloads.sourceforge.net/project/corefonts/the%20fonts/final/<F>.exe -O t:ff_tmp<*$*$>*Nif not val *$RC eq 0*Nrequestchoice >nil: *"OWB font downloader*" *"Failed to fetch font '<F>'. OWB WON'T work*" *"Ok*"*Nquit 22*Nendif*Nc:xadUnFile t:ff_tmp<*$*$> sys:fonts/_ttf file=#?.TTF overwrite*Nif not val *$RC eq 0*Nrequestchoice >nil: *"OWB font downloader*" *"Failed to unpack '<F>' font archive. OWB WON'T work*" *"Ok*"*nquit 22*Nendif"
+protect "t:fetchfont{$$}" +se
+
+"t:fetchfont{$$}" andale32
+"t:fetchfont{$$}" arial32
+"t:fetchfont{$$}" arialb32
+"t:fetchfont{$$}" comic32
+"t:fetchfont{$$}" courie32
+"t:fetchfont{$$}" georgi32
+"t:fetchfont{$$}" impact32
+"t:fetchfont{$$}" times32
+"t:fetchfont{$$}" trebuc32
+"t:fetchfont{$$}" verdan32
+"t:fetchfont{$$}" webdin32
+
+delete "t:fetchfont{$$}" "t:ff_tmp{$$}" all quiet
+
+echo "*NDownload complete"
