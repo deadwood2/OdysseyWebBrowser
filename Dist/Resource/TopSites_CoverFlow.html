@@ -1,0 +1,171 @@
+<?xml version="1.0"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" class="commonPage" lang="en-GB" xml:lang="en-GB">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+    <title>Top Sites</title>
+	<script src="file:///PROGDIR:Resource/ContentFlow/contentflow.js" type="text/javascript"></script>
+	<script type="text/javascript">
+        var cf = new ContentFlow('ContentFlow', {startItem: "0", scaleFactor: "1.5"});
+    </script>
+	</script>
+	<style type="text/css">
+	body {
+		background: #7a7abb;
+		color: white;
+		font-size: 10pt;
+		font-family: sans-serif;
+		margin: 0;
+		padding: 0 7%; 
+	}		
+	h4 { display: block; font-style: normal; font-family: Tahoma, sans-serif; font-size: 1.4em; line-height: 1.2em; text-shadow: 1px 2px 1px #000; margin-bottom: 8px; }
+	</style>
+	
+	<script type="text/javascript">
+	function setMaxEntries()
+	{
+		document.location.href="topsites://?maxEntries=" + document.forms['settings']['maxEntries'].value;
+	}
+
+	function setDisplayMode()
+	{
+		document.location.href="topsites://?displayMode=" + document.forms['settings']['displayMode'].value;
+	}
+
+	function setFilterMode()
+	{
+		document.location.href="topsites://?filterMode=" + document.forms['settings']['filterMode'].value;
+	}
+
+	function setScreenshotSize()
+	{
+		document.location.href="topsites://?screenshotSize=" + document.forms['settings']['screenshotSize'].value;
+	}
+
+	function onLoad() 
+	{
+		var maxEntries = {{maxEntries}};
+		
+		switch(maxEntries)
+		{
+			case 3:
+				document.forms['settings']['maxEntries'].selectedIndex = 0;
+				break;	
+			case 4:
+				document.forms['settings']['maxEntries'].selectedIndex = 1;
+				break;
+			case 6:
+				document.forms['settings']['maxEntries'].selectedIndex = 2;
+				break;
+			case 8:
+				document.forms['settings']['maxEntries'].selectedIndex = 3;
+				break;	
+			case 9:
+				document.forms['settings']['maxEntries'].selectedIndex = 4;
+				break;					
+			case 12:
+				document.forms['settings']['maxEntries'].selectedIndex = 5;
+				break;	
+			case 15:
+				document.forms['settings']['maxEntries'].selectedIndex = 6;
+				break;			
+			case 16:
+				document.forms['settings']['maxEntries'].selectedIndex = 7;
+				break;				
+		}
+		
+		var displayMode = {{displayMode}};
+		
+		switch(displayMode)
+		{
+			case 0:
+				document.forms['settings']['displayMode'].selectedIndex = 0;
+				break;
+			case 1:
+				document.forms['settings']['displayMode'].selectedIndex = 1;
+				break;	
+		}	
+
+		var filterMode = {{filterMode}};
+		
+		switch(filterMode)
+		{
+			case 0:
+				document.forms['settings']['filterMode'].selectedIndex = 0;
+				break;
+			case 1:
+				document.forms['settings']['filterMode'].selectedIndex = 1;
+				break;	
+			case 2:
+				document.forms['settings']['filterMode'].selectedIndex = 2;
+				break;	
+			case 3:
+				document.forms['settings']['filterMode'].selectedIndex = 3;
+				break;										
+		}	
+		
+		var screenshotSize = {{screenshotSize}};
+		
+		switch(screenshotSize)
+		{
+			case 400:
+				document.forms['settings']['screenshotSize'].selectedIndex = 0;
+				break;
+			case 640:
+				document.forms['settings']['screenshotSize'].selectedIndex = 1;
+				break;	
+			case 800:
+				document.forms['settings']['screenshotSize'].selectedIndex = 2;
+				break;				
+		}			
+	}
+	</script>	
+</head>
+
+<body onload="onLoad()">
+
+	<div class="ContentFlow" id="ContentFlow">
+		<div class="loadIndicator"><div class="indicator"></div></div>
+		<div class="flow" id="flow">
+		{{topsites}}
+		</div>
+		<div class="globalCaption"></div>
+		<div class="scrollbar"><div class="slider"><div class="position"></div></div></div>
+    </div>
+
+	<form name="settings">
+		<fieldset>
+		<legend>Settings</legend>
+		<label>Maximum Entries:</label>
+		<select name="maxEntries" onchange="setMaxEntries();">
+			<option value="3">3</option>
+			<option value="4">4</option>
+			<option value="6">6</option>
+			<option value="8">8</option>
+			<option value="9">9</option>		  
+			<option value="12">12</option>
+			<option value="15">15</option>
+			<option value="16">16</option>   
+		</select>
+		<label>Display Mode:</label>	  
+		<select name="displayMode" onchange="setDisplayMode();">
+			<option value="0">Grid</option>
+			<option value="1">CoverFlow</option>
+		</select>	  
+		<label>Filter:</label>
+		<select name="filterMode" onchange="setFilterMode();">
+			<option value="0">Show all</option>
+			<option value="1">Show bookmarks</option>
+			<option value="2">Show all but bookmarks</option>		  
+		</select>	
+		<label>Screenshot resolution:</label>
+		<select name="screenshotSize" onchange="setScreenshotSize();">
+			<option value="400">400x300</option>
+			<option value="640">640x480</option>
+			<option value="800">800x600</option>  
+		</select>	
+		</fieldset>
+	</form>
+  
+</body>
+</html>

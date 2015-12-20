@@ -1,0 +1,1178 @@
+OWB 1.24 - MorphOS
+OWB 1.25 - AROS
+
+***********************************************************************************
+*                                                                                 *
+* IMPORTANT: if you're really impatient, look at the "Usage/First Run" section.   *
+*                                                                                 *
+* IMPORTANT BIS: read "Youtube" section, if you plan to play videos from Youtube. *
+*                                                                                 *
+***********************************************************************************
+
+What is Odyssey Web Browser
+---------------------------
+
+Odyssey Web Browser is a WebKit-based browser originally based on OWB from Sand-Labs/Pleyo. 
+Since then, it has been extensively developed to become a full-blown desktop browser 
+with modern functionality.
+
+License
+-------
+
+Copyright (C) 2009-2014 Fabien Coeurjoly
+Copyright (C) 2014-2015 Krzysztof Smiechowicz
+Copyright (C) 2009-2010 Pleyo. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+1.  Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+2.  Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+3.  The names of the authors may not be used to endorse or promote products 
+    derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY ITS AUTHORS "AS IS" AND ANY EXPRESS OR IMPLIED 
+WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF 
+MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO 
+EVENT SHALL ITS AUTHORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, 
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,  OR PROFITS; 
+OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE 
+OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF 
+ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+MorphOS Port
+------------
+
+Here are the key features:
+
+- Based on r161078 WebKit (January 2014) (1.24) / r185045 WebKit (May 2015) (1.25)
+- Javascript, CSS, DOM, SVG, Unicode, SSL, ...
+- HTML5 Video/Audio support (Ogg/Theora, WEBM, MPEG4/H264, MP3, AAC, WAV and a couple others formats/codecs)
+- Antialiased fonts and kerning, font families and support for international
+  charsets
+- MUI Interface
+- Cairo technology !!1
+- Multiple tabs and windows
+- Download manager with resume and history support
+- Password manager
+- Cookie manager
+- Messages console
+- Network connections manager
+- Proxy support
+- Session support
+- Form filling completion
+- Bookmarks
+- Fastlinks
+- Configurable MIME types
+- History
+- Content blocking
+- URL Completion
+- Favicon support
+- Private Browsing
+- Per URL settings
+- Configurable contextual menus
+- Configurable search engines
+- Contextual cursors
+- Drag and Drop support
+- Clipboard support
+- Spell checking support
+- Fullscreen support
+- OpenURL/Rexx support
+- PDF export
+- Printing support
+- Plugin support
+- WebInspector (FireBug-like)
+- User scripting (GreaseMonkey-like)
+- No PayPal donation needed
+...
+
+
+Requirements
+------------
+
+MorphOS 3.x is required.
+
+Full version requires at least 70MB of free memory and potentially much more depending on visited
+sites.
+
+Note: if you want to reduce the binary size, you can use lzmaloader from Harry "Piru" Sintonen.
+      It's available at: http://www.sintonen.fi/lzmaloader/ .
+
+
+NoSVG version
+-------------
+
+The NoSVG version doesn't support SVG format, hence the name. The reason for this special version
+is that SVG makes the binary about 8MB bigger.
+
+
+Usage
+-----
+
+- First run (IMPORTANT! READ!)
+
+  At *first* run, OWB will index your truetype fonts directory (MOSSYS:fonts/_ttf by default).
+  This operation can take a long time (expect a few minutes on efika). Once it's done,
+  a conf/font/fonts-<hash>.cache file is created for each configured font directory.
+
+  If you wish to use another truetype font directory, please edit conf/font/fonts.conf
+  and change the <dir> attribute. By default, it's:
+
+  ...
+  <!-- Font directory list -->
+	  <dir>SYS:fonts/_ttf</dir>
+	  <dir>MOSSYS:fonts/_ttf</dir>
+  ...
+
+  You can add additional directories by adding a <dir>..</dir> line.
+
+  I strongly advise to use Microsoft fonts instead of default MOSSYS:fonts/_ttf that aren't
+  really suited for web use. If you installed sputnik previously, you should already have them.
+  Otherwise, just run the "Download Fonts" script supplied with OWB. Once it's done, I also advise
+  removing "<dir>MOSSYS:fonts/_ttf</dir>" from fonts.conf files to reduce substitution times.
+
+  To use japanese fonts or anything else, just add relevant fonts in the configured
+  font directory. Please note that japanese fonts can slow down rendering quite a lot.
+
+- Settings
+  + General
+	Homepage, startpage and shell output window (useful for external actions).
+
+  + Interface
+	Toolbar, autocompletion modes, favicons, quicklink layout, ...
+
+  + Contextual Menus
+	Custom actions can be configured for link, page and image menus. For instance, you can link
+	a video/audio player to a link, or getvideo to play youtube content.
+
+  + Mimetypes
+	Each mimetype can be configured to trigger a specific action: view with browser, download or
+	display with an external viewer. That's the place to configure if you have some issues with
+	downloading direct links, for instance.
+
+  + Content
+	Cache model, content blocking, animation/picture/javascript activation, ...
+
+  + Fonts
+	Size and font families can be configured. For much finer configuration, see conf/font/fonts.conf.
+
+  + Network
+	User agent, number of simultaneous connections, proxy settings.
+
+  + Download
+	Download directory and download manager behaviour.
+
+  + Privacy
+	Settings for session, history, cookies, local storage, form credentials, form completion...
+
+  + Security
+	SSL settings
+
+  + Media
+	Settings for H264 filter mode, fast seeking and WEBM/VP8 codec.
+
+- Some additional exotic settings are only available through env vars at the
+  moment (they will end in regular settings later, if they still make sense):
+  OWB_DISABLE_TOPSITES	         disables topsites feature.  
+  HTTP_PROXY                     [proxy address string] - specifies the proxy address to use
+  OWB_USER_AGENT                 [user agent string] - overrides the user agent configured in settings
+  OWB_POLLTIME                   [value in milliseconds (default is 10ms)] - can help increasing network speed (the lower, the faster).
+  OWB_BENCHMARK                  prints timing information in debuglog about rendering process
+  OWB_NO_STATIC_BACKGROUND       ignores background "fixed" CSS attribute (interesting on slower machines)
+  OWB_CURL_DEBUG                 prints CURL debug (HTTP requests, answers and connection management)
+  OWB_CURL_FORBID_REUSE          prevents CURL from keeping request connections alive and re-using them (slower but more bullet-proof)
+  OWB_CURL_FORBID_ENCODING       disables gzip support (can help in some situations for some rare buggy sites). 
+  OWB_DISABLE_MOBILE_COMPRESSION disables cache, which as a consequence prevents some particular mobile provider/proxies from sending compressed content.
+  OWB_NO_PERIODIC_COLLECT        disables javascript periodic garbage collection.    
+
+- Bookmarks
+  OWB can import IBrowse bookmarks. Just copy it to OWB directory as bookmarks.html.
+  If you wish to make an entry appear in fastlinks or pulldown menu, just check
+  the relevant option in bookmark editor. Also note you can drag'n'drop links
+  between many different elements of the GUI.
+
+- REXX port
+  PRINT
+  ABOUT
+  OPEN         NAME/K,NEWPAGE/S,BACKGROUND/S,SOURCE/S
+  RELOAD
+  BACK
+  FORWARD
+  SAVEURL      URL/A,AS/K
+  ADDBOOKMARK  TITLE/A,URL/A,ALIAS/K,MENU/S,QUICKLINK/S
+  GETURL
+  GETTITLE
+  SELECTEDTEXT
+  FULLSCREEN
+
+- OpenURL configuration
+  Rexx Port: OWB
+  Show:SHOW
+  Screen To Front: SCREENTOFRONT
+  Open: OPEN NAME="%u"
+  Open in new window: OPEN NAME="%u" NEWPAGE
+
+- Tool Types
+  NO_JSC_JIT                     Disable usage of JIT for Java Script engine
+
+
+Youtube special notes
+---------------------
+
+  There are a few things to know about Youtube, since it tends to change
+  (or rather break) quite often.
+
+  Youtube introduced a new way to play media without using Flash: HTML5 video.
+  This service isn't enabled by default nor autodetected, so it has to be
+  enabled by going to http://www.youtube.com/html5 and clicking the subscription
+  link (no account needed, only a cookie will be set).
+
+  There are a few more important elements to consider:
+  - Youtube broke the fullscreen mode that worked just nicely before, so a script is needed
+    to workaround this. This is done by going to Windows->Scripts and adding the 
+    "Scripts/youtube_fullcreen_fix.js" userscript. This fullscreen mode is particularly 
+    important, since OWB uses overlay output in this mode, which makes it about 3 times 
+    faster, synchronized on VBL, and smoother as well, compared to windowed mode.
+
+  - Not all Youtube links are available as HTML5 yet. Fortunately, there's a way 
+    to "convert" the remaining Flash-only links to HTML5 by adding the "Script/Youtube.js" 
+    script in Windows->Scripts. When this script is enabled, the Flash element on Youtube 
+    is removed, the video direct URLs are retrieved, and a HTML5 <video> tag is added, 
+    playing the video file, without Flash. Direct links to the video are also displayed 
+    below the video. Please note that if the Flash plugin is not installed, a "Get Flash" 
+    message will be shown over the video, and will also prevent the video from being started
+    automatically, which means one of the links below the video will have to be clicked to 
+    play the video. Also note that format "18" (mp4) is the most efficient one, since FLV 
+    ones can have some speed and synchronisation issue when seeking.
+
+  - Since Youtube can break stuff anytime, be sure to check for updated userscripts in 
+	http://fabportnawak.free.fr/owb/scripts/ if something broke.
+
+
+Preempted rants
+---------------
+
+- It takes ages to start!
+  -> It only happens at first start or when you update your fonts.
+     Current OWB version uses FontConfig, which is quite slow at indexing.
+     After that, it should start in a second or so.
+
+- It's slow!
+  -> OWB is based on WebKit and this version uses Cairo to render. Modern
+     browsers tend to be a bit heavier than our good old browsers. :)
+     That said, there's still room for optimization, especially regarding
+     cairo rendering speed.
+
+- It's too memory-hungry!
+  -> See above. Also note that WebKit will often crash *voluntarily* when
+     running out of memory, instead of taking alternative measures. I could
+     avoid some of these crashes (like too large document/image allocations),
+     but it's quite impossible to fix WebKit everywhere.
+
+- Some SSL websites show a certificate error requester!
+  -> Maybe they're not certified. You can either update "curl-ca-bundle.crt" file,
+     or ignore SSL errors by enabling "Ignore SSL errors" in Settings/Security.
+
+- It crashes!
+  -> OWB is fairly stable (as long as you have enough memory, like most posix 
+     application nowadays unfortunately...). If you get a reproducible crash
+     (unrelated to memory usage), send me a debug log.
+
+- OWB hits/crashes when opening more than n tabs.
+  -> known bug in MUI, which was fixed in MorphOS 2.3. For previous versions,
+     it can be avoided by just unchecking system prefs->Debug->MUI->Error
+     checkmark (the error was caused by MUI debug routine).
+
+- I get no sound in HTML5 playback! / OWB locks audio hardware!
+  -> Audio output uses AHI music unit at the moment, which is unfortunately exclusive.
+     It's still possible to play several sounds at once (and avoid blocking audio hardware)
+     with device.audio, by setting AHI music unit to: "Unit 0: <mode>" in system preferences.
+
+
+What's missing and might be supported in next versions
+------------------------------------------------------
+
+- History with nicer sorting options
+- Certificate (SSL) manager
+- More configurable UI elements
+... and probably more...
+
+
+History
+-------
+
+- 16.12.2015: Odyssey Web Browser 1.25 BETA 4
+  - Updated to WebKit r187682 (July 2015). (AROS)
+  - Ported Odyssey directly on top of WebKit repository. (Common)
+  - Enable HTML5 video feature. (AROS)
+  - Bookmarks management panel has been made functional (needs updated MUI components). (AROS)
+  - Cookies management panel has been made functional (needs updated MUI components). (AROS)
+  - Fixed "second download crash". (AROS)
+  - Updated to ffmpeg 2.6.2. (AROS)
+  - Fixed problem with Odyssey not remembering window width after closing. (AROS)
+  - Fixed problem with pressing enter not beeing handled in search window. (AROS)
+  - Added a "gracefull exit" option on crash of Odyssey allowing to close the application and free memory. (AROS)
+  - It is possible to disable JavaScript Just-in-Time compiler using NO_JSC_JIT tooltype. (Common)
+  - WebKit codes revision is now presented in AboutBox. (Common)
+  - Disabled WebWorkers support. (Common)
+  - Browser spoofing agents are updated for Firefox and Chrome. (Common)
+  - Added option to disable/enable MP4 support (enabled by default). (Common)
+  - Fixed crash when closing bookmarks panel (needs updated MUI components). (AROS)
+  - Double-clicking on bookmarks opens it in current tab. (AROS)
+  - Fixed list-related code that was trashing memory. (AROS)
+  - Lists (download, mime settings, history) now have a scroll bar (needs updated MUI components). (AROS)
+  - Fixed "division by zero" error in Quick Links handling (Common)
+  - Synchronized display of checkboxes and radioboxes (Common)
+  - Updated Italian catalog (Common)
+  - Provided HTML documentation (Common)
+
+##############################################################################
+
+- 12.04.2014: Odyssey Web Browser 1.24
+
+  - Updated to WebKit r161078 (January 2014).
+  - Updated to OpenSSL 1.0.1g (which improves the SSL test at https://www.howsmyssl.com/).
+  - Compiled with GCC 4.7.3, since WebKit now relies strongly on C++11 features.
+  - Fixed an issue with large file support in CURL (fixes mail.one settings validation, for instance).
+  - Enabled WebP support again, it seems it had been disabled at some point.
+  - Enabled RequestAnimationFrame HTML5 feature.
+  - Added support for HTML5 "download" link attribute.
+  - Convert suggested download filenames to local charset.
+  - Adjusted Expect: 100 header handling (fixes easy-jet flight selection, for instance).
+  - Fixed CSS animation support (i.e www.morphos.net flying powerbook).
+
+##############################################################################
+
+- 25.12.2013: Odyssey Web Browser 1.23
+
+  - Fixed a nasty race condition in the ffmpeg version supplied since 1.21.
+  - Merry Christmas. :)
+
+##############################################################################
+
+- 20.12.2013: Odyssey Web Browser 1.22
+
+  - Fixed the slowness issue with topsites, when adblock was enabled. In that case, the generated
+    screenshot data: URI (which is basically the screenshot raw data encoded as base64)
+    was matched against the rules in adblock, which was obviously very slow.
+  - For security reasons, file:/// URL couldn't be accessed from topsites. Fixed as well.
+
+##############################################################################
+
+- 10.12.2013: Odyssey Web Browser 1.21.
+
+Core:
+  - Updated to WebKit r155188 (October 2013) : big changes (and thus regressions :))
+    happened in many parts of WebKit since previous Odyssey release (clipboard, 
+    drag'n'drop, network, javascript, inspector, c++0x requirements, ...). They 
+    should hopefully all be addressed.
+  - Updated to the new Webinspector layout. 
+  - Fixed the layout of the FTP listing, so that the rows don't use all the 
+    available vertical space.
+  - Fixed a crash with self-disposing <select> objects (e.g priority cycle 
+    in MLDonkey Web interface).
+  - Localstorage databases (conf/localstorage/#?.localstorage) were not released at 
+    exit, which prevented from deleting them manually.
+  - Disabled non functional HTML5 MediaSource (it should help with some non-working
+    YouTube links in HTML5 mode).
+  - Fixed a bug with the "view source code" function that would sometimes just show 
+    a blank view.
+  - The mimetype actions would not always be triggered properly in some cases (mainly 
+    because of redirections or content-disposition header). The response URL (or 
+    content-disposition filename if available) is now used when extension matching is needed.
+  - Added more common mimetype extensions in mimetype default configuration.
+  - Fixed a potential race condition at webview closing.
+    
+GUI:
+  - Contextual cursor was sometimes not reset to normal cursor when leaving 
+    the webview area.
+  - Added proxy support in network prefs section.
+  - If webinspector is enabled, webinspector button is now also shown in 
+    navigation toolbar.
+  - Added "TopSites" feature, showing most recently visited sites thumbnails. This
+    page can be accessed from "topsites://" URL. Feel free to make suggestions about 
+    this new option. :)
+  - Ambient deficons are now shown in file input controls (MorphOS 3.4+ required).
+  - Ambient deficons are now shown in download manager lists (MorphOS 3.4+ required).
+  - Select all the text in the search string when searching for text in a page.
+  - Close google and history suggestion popup lists when the text is fully erased.
+  - Added a "start downloads automatically" option, which allows to skip the 
+    file requester step.
+  - Added a status icon to indicate if userscripts are running on a given page.
+    The bubble help on this icon also shows which userscripts are actually running.
+  - In bookmarks window, quicklinks favicons and URL are now displayed, to make
+    it easier to create and identify title-less quick links.
+  - Added support for multiple selection with file input elements.
+  - Show FTP URL as window/tab title, instead of a blank title.
+  - In image views, show the image filename instead of "unnamed title".
+  - Implemented HTML5 ColorChooser dialog, using MUI Colorwheel.
+  - Added a filename popup gadget for mimetype viewer.
+  - Added a new page URL option (defaults to topsites://).
+  - Also show column number in javascript error/warning messages.
+
+Media player:
+  - Updated to ffmpeg from 27.11.2013.  
+  - Enabled support for VP9 codec.
+  - Audio-only media could sometimes report a null duration : in practice,
+    it fixes a hard crash with Facebook chat audio notifications.
+  - Fixed a 32bits overflow with audio-only media: the visible effect was
+    that the player would stop updating time controls at 2:32.
+  - Added more sanity checks in ffmpeg support.
+
+Network:
+  - Reimplemented HTTP authentication to be more compliant. It should also 
+    fix a crash that happened when cancelling the authentication requester in
+    some cases. 
+  - Added support for multipart contents. 
+  - Fixed potential crashes with data: URI handling.
+  - Fixed an illegal memory access that would sometimes happen at exit, when FTP was used.
+
+Spellchecker:
+  - Misspelled words are now underlined in red instead of black.
+  
+Scripts:
+  - Updated YouTube_Fullscreen_Fix.js: fullscreen mode should work again. It also replaces
+    all youtube links in right column so that the page is reloaded when clicking them, allowing
+    the script to be executed again.
+
+##############################################################################
+  
+- 10.03.2013: Odyssey Web Browser 1.20.
+  - Updated to WebKit r144529 (March 2013). Amongst many other fixes, it cures an issue with some asp sites.
+  - More bugfixes in websockets handling.
+  - With spellchecker.library 50.1+ (MorphOS 3.2+), word learning feature is now functional. 
+  - Added copy image URL location in image contextmenu.
+  - Don't crash when HTML5 desktop notifications are invoked.
+  - Plugins are now expected to have version 2 or later.
+
+##############################################################################
+
+- 01.02.2013: Odyssey Web Browser 1.19.
+  - Updated to WebKit r139311 (January 2013).
+  - Updated to cURL 7.28.1.
+  - Totally rewritten cookie system, which should be more robust and compliant 
+    to specifications. The database structure has changed, so all previous cookies 
+    will be ignored and a new database will be created instead (in conf/cookies.db).
+  - Fixed some issue with back/forward navigation buttons that could be wrongly ghosted
+    with frame-based sites.
+  - Make WebInspector custom contextmenu work again.
+  - Make cookies appear properly in WebInspector
+  - Make sure the garbage collector is called periodically and/or when memory gets too low.
+  - Fixed a crash with websockets where the class client disposed the connection by itself.
+
+##############################################################################
+   
+- 24.12.2012: Odyssey Web Browser 1.18 "Broken arm" release.
+  - Updated to WebKit r127386 (September 2012)
+  - Reworked forms elements default theme (buttons, checkmarks, strings, ...).
+  - Updated HTML5 MediaPlayer controls to work with the new WebKit behaviour. Look
+    is slightly updated as well.
+  - Modified the handling of autocompleted login/password forms to be more compliant with
+    WebKit internals.
+  - Exposed localstorage option to global and per-url settings.
+  - Changed some security settings to allow document upload in Google Docs/Drive.
+  - Enabled more HTML5 features, now scoring 392+16 bonus points at html5test.com.
+  - Updated main browsers useragents to their current version.
+  - Updated Youtube.js to deal with Youtube latest changes.
+  - Updated WebCore fonts downloader.
+
+##############################################################################
+  
+- 14.05.2012: Odyssey Web Browser 1.17
+  - Updated to WebKit r114842 (April 2012).
+  - Updated to Cairo 1.12 and Pixman 0.24.4: gives about 40% speedup in rendering.
+  - Updated to ICU 4.9.1: the data files are now stored externally in 
+    PROGDIR:resource/icudt49b/ to save some memory. Make sure to copy them if you 
+    update (a requester will warn you if you don't).
+  - Updated to OpenSSL 1.0.0j.
+  - Updated to Curl 7.25.0.
+  - Updated to FFMPEG GIT from 13.05.2012.
+  - Updated to SQLite 3.7.11.
+  - Updated to libXML2 2.7.8 and libXSLT 1.1.26.
+  - History completion popup is now multithreaded, which fixes a latency issue when 
+    typing the URL. 
+  - Implemented form filling completion feature. It can be enabled in prefs->privacy settings.
+    Note that calltips.mcc is required, which is included with MorphOS 3+ or 2.x SDK
+    with Scribble.
+  - The "add bookmark" button now has two states, to indicate whether the current 
+    URL is already bookmarked or not.
+  - Adding a bookmark from the browser window now always adds it to the end of 
+    the bookmarks, and no longer at the end of the currently selected group.
+  - Added Back/Forward/Reload/Stop in view menu.
+  - The password from the URL is now removed if present, when setting the comment
+    of a downloaded file.    
+  - Fixed the "Open in new window" function that didn't work anymore in 1.16 due 
+    to the new popup policy option.
+  - Fixed attachments not working anymore in GMail.
+  - Fixed again AltGr key handling for GoogleDocs.
+  - Fixed pasting from clipboard when multiple text chunks are used (YAM does it).
+  - Escape unwanted characters in bookmarks URLs, aliases and titles.  
+  - Prune favicons database at startup, since it can really grow a lot over time.
+  - Tweaked cross origin access control to make youtube video upload work.
+  - Fixed some issue with 401 handling. Should fix some cPanel administration pages, 
+    for instance (hello Christoph and Pampers :)).
+  - Fixed pagination in PDF export.
+  - Fixed HTML5 local storage. 
+  - Fixed some WebSocket potential crash issue at disconnection.
+  - Attempt to fix some deadlock issue in mediaplayer at disposal under heavy stress.
+  - Avoid spawning an useless video decoder thread for audio-only files, and vice-versa.
+
+##############################################################################
+
+- 24.12.2011: Odyssey Web Browser 1.16
+  - Updated to WebKit r103170 (December 2011).
+  - Added Postscript printing support.
+  - Added PRINT REXX command.
+  - Connected JavascriptCore print method to the printing system.
+  - Reworked PDF export to produce more usable output dimensions.
+  - Added an option to define if a popup should open in a tab or a window.
+  - The page where a download is coming from (when available) is now also stored 
+    and can be restored from download manager contextmenu.
+  - Enabled large file support in Curl (>4GB files, assuming the underlying filesystem 
+    supports it).    
+  - Make F11 key (fullscreen toggle) also work in the video overlay area.
+  - Disable blanker when entering video overlay mode.
+  - A quicklink wouldn't be updated properly after its URL was changed in bookmarks.
+  - Make the webview object active after a provisional load event, to be able to tab-cycle 
+    between the page form elements without clicking the webview first.
+  - Fixed a crash issue with the imp.free.fr webmail (old version). It was a deadly 
+    combination of the 417 status code handling and frame disposal. 
+  - Fixed an issue in authentication process happening for instance with system.ch server.
+  - In middle mouse button scrolling mode, releasing button over a link would open 
+    the link.
+  - Updated Youtube.js
+
+##############################################################################
+
+- 28.10.2011: Odyssey Web Browser 1.15
+  - Updated to WebKit r98566 (October 2011).
+  - Tabs are now detachable when dropped outside of the window. They can also be
+    attached to another existing window by dropping them on the target window 
+    webview/tab group.
+  - Added an new autoscroll mode when doubleclicking middle mouse button (click
+    button again to abort).
+  - Added GETTITLE REXX command.
+  - Updated a couple useragents.
+  - Improved dragimage for selected text. It now looks 1:1 like selected content.
+  - Make sure search suggestion poplist is closed when the search string is 
+    validated.
+  - Made AltGr key work in googledocs.
+  - Applied a patch to prevent mydrive.ch from hanging when uploading.
+  - Threading layer reworked so that a task uses only one signal for all its
+    child threads.It avoids "out of exec signal" situations that prevented
+    from running  more than 3-4 mediaplayer instances at the same time.
+  - Restore video fullpage/overlay mode after switching a webview to 
+    fullscreen/window mode.
+  - Hide panels when switching a webview to fullscreen mode and restore state 
+    when switching back.
+  - Make sure all media elements instances are disposed when closing a
+    webview (WebKit would sometimes forget some).
+  - When running out of memory, the "death requester" now also gives the choice
+    between retrying the allocation (giving a chance to free some memory from 
+    another application) or attempting to quit the application (it might just fail!).
+  - Fixed YouTube HTML5 fullscreen mode (Youtube_Fullscreen_Fix.js).    
+  - Updated youtube.js.    
+
+##############################################################################
+
+- 05.08.2011: Odyssey Web Browser 1.14 (July 2011)
+  - Changed the name to "Odyssey Web Browser". Like it or hate it, but you can
+    still call it OWB, anyway. :)
+  - Updated to WebKit r91657 (July 2011).
+  - Updated to Curl 7.21.7.
+  - Use OpenSSL 0.9.8o since 1.0.0d introduced issues with some sites that 
+    used to work previously.
+  - Added a popup menu in search string showing Google suggestions for the 
+    currently typed word.
+  - Added a cookie policy option in URL settings (possibility to filter on 
+    both URL and cookie names with regular expressions).
+  - Added a cookie policy option in global settings.
+  - Allow deleting a cookie domain (and all its cookies) in cookie manager 
+    window.
+  - Decrease rootgroup spacing in fullscreen mode.
+  - Added FULLSCREEN REXX command. 
+  - Added a fullscreen menu entry, for people lacking F11 key. :) 
+  - URLs with video/audio MIME types can now be played directly inside the 
+    browser, if the related MIME type action is set to "Internal viewer" 
+    (assuming the codec/format is supported).
+  - Don't show scrollbars in video fullpage mode.
+  - Fixed a possible deadlock in MediaPlayer when the object is disposed 
+    very early.
+  - Made support for FLV and OGG optional in media settings (disabled by default), 
+    since these formats can sometimes confuse some sites like DailyMotion (refusing
+    to play anything if OGG is available ?!), and YouTube (serving FLV in HTML5 mode ?!!).
+  - Honour the "attachment" attribute in Content-Disposition response header 
+    and force download when it's set.
+  - Implemented the necessary logic in CURL backend to upload documents in 
+    Google Docs and YouTube (it could already work before by spoofing to 
+    older browsers versions, but they're not supported anymore).
+  - Upload progress is now notified to the DOM (allows scripts to display progress).
+  - Show an appropriate status/progress and lamp for upload connections in network 
+    activity/network lamps.
+  - Fixed month display in FTP view.
+  - Make use of a FTP template page (resource/FTPDirectoryTemplate.html) to enhance
+    the look of the FTP view.
+  - Set a proper mimetype (based on extension) for the URLs with a FTP scheme, 
+    instead of displaying them as raw text content.
+  - Fixed YouTube HTML5 fullscreen mode, since it changed again (Youtube_Fullscreen_Fix.js).
+  - Updated youtube.js userscript to work after the recent YouTube changes.
+
+##############################################################################
+
+- 16.07.2011: OWB 1.13
+  - Updated to WebKit r90337 (July 2011).
+  - Updated OpenSSL to 1.0.0d.
+  - Updated SSL certificates.
+  - Added SpellChecker library support. Dictionaries are expected in that kind 
+    of path: LOCALE:dictionaries/<language>/base.dic
+    To enable spellchecker, use contextmenu in a text/textarea element and 
+    enable "Check Spelling While Typing".
+  - Added arrows to <select> element default style, to differentiate it from 
+    a plain text element.
+  - Added middle mouse button scrolling.
+  - Implemented a kind of fullscreen display, triggered on/off with F11 key.
+  - Attempt to fix a problem with cookies subdomain handling.
+  - Added a media control panel (play/pause/seek/volume) in fullwindow mode (overlay).
+    It can be hidden/shown with middle mouse button.
+  - Fixed an issue with some vimeo links that prevented videos from being played.
+  - Fixed an application deadlock that happened when closing a page while a WebM
+    video was still in seeking phase.  
+  - Fixed CSS issues in builtin media player stylesheet.
+  - Updated Youtube.js to enforce container height after recent Youtube changes, 
+    so that media controls aren't cropped.
+  - Added "OWB_DISABLE_MOBILE_COMPRESSION" ENV option to disable mobile compression (hello pampers :)).
+
+##############################################################################
+
+- 04.03.2011: OWB 1.12
+  - Updated to WebKit r80266 (March 2011).
+  - Added support for "private browsing". To enable it (on a per-tab basis),
+    enable "private browsing" in Settings menu. Once activated, private browsing
+    will disable any kind of data storage (history/cookies/favicons/sessions/...).
+    Private browsing is inherited for any page created from a page in private browsing mode.
+  - Implemented per-URL settings (for plugins/images/javascript/useragent options).
+    For instance, it could be used so that a given site is accessed under IPad
+    user agent with plugin (Flash) disabled.
+  - Improved UTF8/local charset support for clipboard. When copying, UTF8 and local strings
+    are copied in two different chunks, which allows legacy applications to retrieve local
+    charset string, while OWB (and possibly other applications) make use of the UTF8 chunk.
+  - Added a clipboard monitor to address an issue with DHTML copy. After a rich-text copy, 
+    paste would always reuse that content, even if system clipboard had been modified (externally or
+    not) in the meanwhile. This clipboard monitor allows to reset DHTML clipboard as soon as a
+    regular system clipboard copy has been performed.
+  - Added a "mark all matches" option in text find function.
+  - The bookmark class is not limited anymore to one level of depth. Please note that Intuition
+    menus also have this limitation, though. So if you plan to display subfolders in menu as well,
+    they'll be flattened, unless you use MUI menus instead of Intuition menus.
+  - Tweaked mediaplayer to work again with spiegel.de HTML5 videos.
+  - Fixed mediaplayer autoplay that got broken in some cases.
+  - Fixed an endianess bug in WebKit shadow effect that prevented them from being shown.
+  - Adjusted font backend to show font-weight:semi-bold as bold instead of showing it as normal
+    text (cairo/freetype backend only supports normal/bold levels).  
+  - Fixed an issue with per-tab settings being reset by WebKit after a new tab creation.
+  - Fixed some possible crash with select items that were deleted from DOM at selection change.
+  - Fixed youtube.js userscript for recent YouTube changes (in fact, it could already work,
+    with the alternative link method that could be selected in youtube.js preferences).
+  - Changed about: and error pages (contribution from Samir Hawamdeh).
+
+##############################################################################
+
+- 05.11.2010: OWB 1.11
+  - Updated to WebKit r71312 (5th November 2010). Fixes amongst other things:
+    - lazy loading of thumbnails on youtube and google image.
+    - crash at http://www.reco.se.
+  - Updated to Pixman 0.20.0.
+  - Now compiled with GCC 4.4.4.
+  - Avoid redrawing a bitmap each time a data chunk is received from network. Should speed
+    up pictures loading time, or at least decrease CPU usage substancially.
+  - Added a workaround to avoid using "complex font rendering" code path (triggered by
+    "text-rendering: optimizedlegibility" CSS attribute, or by fonts requiring ligatures). 
+    The complex mode is indeed not implemented in cairo/freetype font backend, which 
+    caused the sites using it to show invisible text (for instance http://www.mentor.com/).
+  - Replaced the contextmenu for media elements with WebKit's own implementation.
+  - Added SELECTEDTEXT REXX command (text is converted to local charset).
+  - Added "Ignore" to the available mimetype user actions.
+  - Added Safari 5 and Opera 10 user agents.
+  - Updated youtube_fullscreen_fix.js to support embedded youtube as well (remove/readd the script to take
+    the new URL pattern into account)
+  - In youtube.js, remove explicitely the dynamically created video element at unload event,
+    to avoid a potential media instance "leak".
+  - Hopefully fixed some rare random crash related to a bug in reference pointers holding cairo objects.
+  - Enabled again the "death requester" in case of low memory, since it had been disabled somehow.
+    This requester is somewhat useful, because it frees allocated memory and kills OWB in a harmless way.
+
+##############################################################################
+
+- 05.09.2010: OWB 1.10
+  - Updated to WebKit r66666 (2 September 2010).
+  - Implemented HTML5 Drag and Drop (text and images can be dragged/dropped from/to several places).
+  - Reworked login/password form detection rules to be more tolerant.
+  - Added a shortcut/keyword for search engine definition. For instance, if you have 'g' 
+    as shortcut for google engine, typing "g foobar" in URL will order a search using google 
+    engine.
+  - Enabled again CSS shadow effect, since the webkit/cairo implementation was
+    finally made fast enough.
+  - Fixed some potential crash in WebKit when a file can't be displayed internally
+    and that plugins are disabled or not available.
+  - Search engine string now handles input codepage correctly.
+  - "Find in page" now handles input codepage correctly.
+  - The focus ring wasn't displayed anymore after having cycled (tab key) through
+    the whole page and re-entering it again.
+  - Filter invalid characters for downloaded filenames.
+  - Convert downloaded filenames to local charset.
+  - Added amiga+r (reload) and amiga+s (stop) shortcuts.
+  - @exclude keyword in userscripts was actually adding the sites to the whitelist too. :)
+  - Updated youtube_fullscreen_fix.js since youtube broke it (again).
+  - Removed useless user-agent checks in youtube.js.
+  - Removed dailymotion userscript, since their HTML5 player has been rewritten and now
+    supports fullscreen properly.
+  - Added OWB_CURL_FORBID_ENCODING ENV var to disable gzip support (mostly for debug purpose,
+    but can also help for some broken sites).
+
+##############################################################################
+
+- 08.08.2010: OWB 1.9
+  - Updated to OWB r1468. To be noted OWB doesn't seem to be actively developped 
+    since May, so I'll merge directly against WebKit, from now on.
+  - Updated to WebKit r63894 (July 2010).
+  - Updated to CURL 7.21.0 
+    - Interrupt a pending DNS thread immediately when a connection handle is being disposed.
+    - Reduced the amount of Exec signals allocated for DNS resolution threads 
+      (one for all threads, instead of one per thread).
+    - Added OWB_CURL_FORBID_REUSE ENV var to disable CURL connection re-use feature 
+      (this feature sometimes causes stalled connections, for a yet unknown reason).
+  - MediaPlayer:
+    - Changed native controls skin and behaviour to look like Chrome's mediaplayer.
+    - Added optional support for VP8/WEBM codec (Settings->Media section).
+    - Added optional support for fast seeking (consists in creating a new connection 
+      instead of downloading everything before the target position). It can be disabled 
+      in Settings->Media section.
+    - Made the H264 loopfilter mode configurable in Settings->Media section
+    - Enabled altivec in ffmpeg (except for Theora, since it's currently broken).
+    - Disabled ffmpeg FAST flag for decoding, since it could give ugly results 
+      on some files.
+    - Added play/pause/mute/unmute/download media/copy media URL contextmenu 
+      entries for HTML Media elements.
+    - Defer audio hardware allocation until play event, and release it at the 
+      end of stream instead of waiting until media player destruction, to help 
+      a bit with people not using device.audio AHI mode. WebKit can indeed cache 
+      mediaplayer instances until tab destruction, so there are situations where audio
+      wouldn't be available anymore.
+  - Fixed a strange cookie path restriction in OWB cookie handling, which makes 
+    wordpress.com login work.
+  - Fixed youtube.js to work with Youtube latest changes, and made MPEG4 the 
+    default format (fmt=18), instead of FLV, since it's faster and better supported.
+  - Added per-tab options in settings menu for plugins, images, javascript and user-agent.
+  - Reworked the refresh method to use several rectangles, when it's more efficient to do so.
+  - Modified the scrolling implementation to behave correctly with the WebKit recent 
+    optimizations regarding fixed elements. It also fixes some occasional glitch in custom 
+    scrollers rendering.
+  - Disabled WebKit box-shadow effect rendering, since it was extremely slow with cairo. 
+    This "cures" abnormal slowness on sites like apple.com/html5 or ign.com.
+  - Added a "remaining time" column in download manager.
+  - Added Amiga + z and Amiga + shift + z qualifier for undo/redo.
+  - Added Shift + Space shortcut as "page up" function.
+  - Added a search string in bookmark and cookies window.
+  - "Add bookmark" button now adds bookmarks below the currently selected node, or at 
+    the end of the current group list, if a group node is selected.
+    If no entry is selected, the new link is still added to the end, like before.
+  - Allow to scroll in bookmark tree when dragging an entry over upper or lower areas 
+    of the listtree object.
+  - Added a persistant "show in menu" option in the bookmark title selection window 
+    (this window appears when dropping a link on quicklinks group or "add bookmark" button).
+  - Added a special favicon for bookmarks/quicklinks with "javascript:" scheme.
+  - Added a contextmenu to copy an entry URL in password manager.
+  - Character '&' wasn't processed properly in search engine string.
+  - Truncate history/bookmark to 64 characters in pulldown menu.
+  - Moved WebInspector ENV var option to a regular setting in Prefs->Content section.
+  - Added an option to enable/disable plugins globally in Prefs->Content section.
+  - Create a new tab/window when selecting an entry in "recently closed views" menu.
+  - Added user-agents for Chrome, Iphone and Ipad (spoofing as IPad can help showing 
+    some sites with HTML5 Video/Audio instead of Flash).
+  - Added OWB_NO_STATIC_BACKGROUND ENV variable to ignore background "fixed" CSS 
+    attribute, which improves scrolling performance.
+  - Added notes about Youtube and the specific settings to make it work 
+    in HTML5 or at least without Flash using the builtin player. So *please* 
+    read the Youtube section of this document if you have trouble playing 
+    Youtube videos.
+
+##############################################################################
+
+- 04.06.2010: OWB 1.8
+  - Updated to OWB SVN r1458.
+  - Updated to CURL 7.20.1 and implemented a threaded DNS resolver,
+    which prevents OWB network task from being blocked until a DNS resolution is finished.
+  - Updated to PixMan 0.18.0.
+  - Implemented fullscreen mode for HTML5 video, using overlay. In this
+    mode, the CPU usage is reduced drastically (about 300% speedup for youtube 360p content). 
+  - Added a "switch to fullscreen" context menu entry for plain HTML5 video elements.
+  - Fixed some possible audio glitches due to an error in buffer management.
+  - Fixed some minor issues in MediaPlayer timeline handling.
+  - Implemented an userscript manager (GreaseMonkey-like). In practice, it means
+    a webpage can be modified on-the-fly with a JavaScript script. 
+    In Scripts/ directory, two examples can be found:
+    - hello.js: a simple example to illustrate the script functionality.
+    - youtube.js: when applied to a youtube link (in Flash mode), this script 
+                  adds direct links to the video, and replaces the Flash element 
+                  by a HTML5 Video element. I suggest adding &fmt=18 to the youtube 
+                  link to play the 360p mp4 version by default.
+    To be noted scripts are only injected to tabs/windows created after their addition in 
+    the script manager.
+  - Use MorphOS 2.x charsets.library for UTF8->local conversions (if available).
+  - Added icons for "add bookmark" and "bookmarks" buttons.
+  - Added ctrl+pgup/pgdown shortcut to cycle between tabs.
+  - Added a search string for bookmarks and history panels.
+  - Added a "copy to clipboard" contextmenu entry for network activity window.
+  - Tabs can be now be dragged too (MorphOS 2.5 required).
+  - When dropping a tab to bookmarks or quicklinks, use the site title instead of "no title".
+  - Disable gzip on-the-fly decompression when downloading gzip files.
+  - Copying UTF8 strings to system clipboard from contextmenu could result in truncated strings.
+  - Adjusted timer to postpone short requests when they are too frequent, since
+    they could cause high CPU usage in some cases.
+  - Fixed a bug in download manager when a download connection fails before even asking for destination.
+  - Fixed some NULL pointer read access in OWB fontcache, when no fonts are found.
+  - Fixed some more minor memory leaks in OWB API usage.
+
+  Notes about YouTube and HTML5:
+  - You can enable HTML5 in YouTube by going to http://www.youtube.com/html5
+    and follow instructions (no account needed).
+  - Youtube broke the "fullscreen" mode just before this release. I supplied an userscript
+    in Scripts/ to fix it: go to windows->scripts and add Scripts/Youtube_Fullscreen_Fix.js.
+    Once it's effective, fullscreen mode will use overlay (i.e much faster).
+  - Don't forget to read notes about sound in "Preempted rants" section. :)
+
+##############################################################################
+
+- 04.03.2010: OWB 1.7
+  - Updated to OWB SVN r1369.
+  - Updated to Curl 7.20.
+  - Implemented HTML5 Media backend (<VIDEO> and <AUDIO>) through FFMpeg:
+    - Support for most common codecs: Ogg/Theora/Vorbis, MPEG4, H264, AAC, MP3, Wav, ...
+    - Builtin controls support.
+    - Sites like dailymotion/openvideo, youtube/html5 and vimeo work. Here are a few random links:
+      - http://openvideo.dailymotion.com/video/xbzemj_le-clan-suricate_animals
+      - http://vimeo.com/8504375 (select "switch to html5" at bottom right)
+      - http://camendesign.com/code/video_for_everybody/test.html
+      - http://diveintohtml5.org/video.html (bottom)
+      - http://people.opera.com/howcome/2007/video/controls.html
+      - http://www.scottandrew.com/pub/html5audioplayer/
+      - For youtube, subscribe to beta html5 program by going to http://www.youtube.com/html5
+    - Known issues/limitations:
+      - Audio output uses AHI music unit at the moment, which is unfortunately exclusive. It's still possible
+	to play several sounds at once with this mode, by setting AHI music unit to: "Unit 0: <mode>".
+      - Each media instance requires one exec signal in OWB main task, which means there can 
+	be 5 concurrent media players at most (depending on other OWB options that can also eat signals).
+      - Fullscreen mode isn't implemented yet.
+      - The whole media is stored in memory (sorry for this one, it will be handled in a more elegant way later).
+  - Added search engine configuration window.
+  - Implemented JavaScript window modes for popups (no toolbar, no status, window size, ...).
+  - Improved keyboard support, more texteditor shortcuts work now: ctrl+a (select all), ctrl+[shift]+z (undo/redo), ctrl+b/u/i (bold,underline,italic), ...
+    It also makes http://www.konamicodesites.com work properly. :)
+  - Added ctrl+wheel combination to zoom in/out.
+  - Added an option to make navigation toolbar frameless.
+  - Reworked navigation buttons: buttons now have hover and selection effects (note that brushes are not in .mim format anymore).
+  - Added dynamic frame for quicklinks in borderless mode.
+  - Added optional horizontal separators between navigation, quicklinks and address groups.
+  - Added status images for local/internet/secure/insecure areas.
+  - Added optional validation buttons for URL and search strings.
+  - Added balance between URL and search groups (balance appears on mouse hover).
+  - Reworked history popup in completion mode, so that the typed text is shown (as bold/underline)
+    in the matching entries in the list.
+  - Added "Open all bookmarks" entry for quicklinks folder items.
+  - Added SOURCE/S argument to OPEN REXX command to open current browser source view.
+  - Added %p placeholder for contextmenu and mimetype actions, referring to OWB REXX port name.
+  - In download manager, hilight tab title instead of switching page, when a new event occurs.
+  - Allow to restart a finished download too.
+  - Changed options regarding session restoration at startup (always/ask/never).
+  - Slight adjustments in cookie parsing (fixes MobileMe).
+  - Don't show authorization window with uncomplete 401 responses.
+  - Added more checks to know if a file can actually be resumed.
+  - The form credentials saving system now allows to ignore some sites, by pressing "never" button,
+    when asked if credentials should be saved.
+  - Hid the password column in passwords window (it can be shown with contextmenu over list header).
+  - Selecting an entry in the contextmenu of back/forward buttons no longer modifies the back/forward list.
+  - Don't focus to URL string anymore if a window was not manually opened.
+  - Don't render cairo surfaces for active browser when the program is iconified.
+  - Disable gzip on-the-fly decompression when downloading, since it seems to create some confusion.
+  - Favicon database was active even if favicons were disabled.
+  - Minor fixes in bookmark/quicklink handling.
+  - Fixed an encoding issue with the site titles in history database.
+  - Fixed an issue with middlebutton handling when sidepanels are enabled.
+  - Fixed a possible race in private static objects instanciation in WebKit (actually it's a gcc "bug").
+  - Removed the lame googlemap bug workaround and integrated the proper fix from WebKit.
+  - Changed some options defaults: history popup, network thread, experimental cookies and favicons are now enabled by default.
+
+  IMPORTANT: if you're using experimental cookies (which I strongly suggest), make sure to delete previous conf/cookieDatabase.db,
+  since some OWB generic fixes affected it, else you might encounter non-functional logins or similar bogus behaviour.
+
+##############################################################################
+
+- 16.12.2009: OWB 1.6 hotfix
+  - Enabled WebInspector (Firebug-like). WebInspector allows browsing resources/scripts, profiling, debugging...
+    It can be enabled with: "setenv OWB_ENABLE_INSPECTOR 1". When enabled, a new "inspect element" entry is
+    added to webview contextmenus. Here's what it looks like: http://fabportnawak.free.fr/inspector.png
+  - Avoid conflicts between regular context menus and javascript contextmenus.
+  - Updated russian, swedish and czech locales.
+  - Added a lame workaround in javascript interpreter that caused regressions in google maps.
+  - Fixed a possible crash with priority popups in MLdonkey HTML interface.
+
+##############################################################################
+
+- 11.12.2009: OWB 1.6
+  - Updated to OWB SVN r1158.
+  - Added a GUI for content blocking (windows->content blocking). Regular expressions are accepted,
+    and entries can either be white or blacklisted.
+  - Added "Block images from <linked domain>" context menu item for pictures.
+  - Save and restore the list of downloaded/finished/failed files (optional).
+  - Sessions now also restore scroll offset in pages.
+  - Added support for external transfer animations:
+    + PROGDIR:resource/transferanim.png and PROGDIR:resource/transferanim_tab.png will be used if they exist.
+    + The expect format is a 32bits PNG with square frames (horizontal layout). The rate is set to 30ms per frame.
+  - Enabled user stylesheet. PROGDIR:resource/userStyleSheet.css will be used if it exists. This user stylesheet
+    allows changing default form controls look, for instance (amongst many other things).
+  - Reworked history popup list to show favicons (optionally), title and url on 2 lines.
+  - Reworked network activity window to show a more precise state (connecting/waiting/current progress).
+  - Network activity leds now show different colours depending on connection state.
+  - Added favicons settings to configure the categories favicons should be displayed in (tabs/history/bookmarks/...).
+  - Added a few more tweaks in mimetype system to fallback to download action if no proper mimetype is sent (or configured).
+  - Added BACK and FORWARD REXX commands.
+  - Added GETURL to retrieve active browser URL (stored in RESULT).
+  - Added AS/K option to SAVEURL REXX command, to choose the target file path.
+  - Added more up-to-date user agents in spoof settings.
+  - Don't change active tab after closing an inactive tab.
+  - Bookmark groups can now also be added to quicklinks. In that case, a popup menu will display group entries.
+  - Allowed editing builtin mimetypes attributes, such as text/html and co (but think twice when modifying them, of course).
+  - Middle clicking an entry in history or bookmark now opens the link in a new tab.
+  - "Copy Image" context menu item now copies the actual image content to clipboard, instead of its URL.
+  - Many fixes in the new cookie system (thanks sszymczy).
+  - Fixed some left mouse button event issue that could cause trouble on googledocs or fckeditor toolbars (thx sszymczy).
+  - Fixed a focus issue with frames.
+  - Fixed a potential race in WebKit with plugins and stream disposal.
+  - Fixed ftp:// listings so that they are browsable.
+  - Fixed the "rewind" error message that could occur during file upload in some cases.
+  - Fixed Acid3 test 97.
+  - Fixed "Paste" to work in rich text editors (such as googledocs).
+  - Fixed a bug with "Cut" function.
+
+  Translators: please update your translations, i'll supply the locale archive separately.
+
+  There's a known regression since r1106 (or so): maps.google.* is kinda broken (some options/buttons don't have any effect).
+  It's a generic issue in WebKit when JIT is disabled, and it was reported to their bugtracker. I'll update a fixed version when it's fixed.
+
+##############################################################################
+
+- 17.10.2009: OWB 1.5
+  - Updated to OWB SVN r1092.
+  - Updated to Curl 7.19.6.
+  - Added Locale support: get to work, translators. :)
+  - Made webview links, quicklinks and bookmark entries draggable.
+  - Made webview, tabs, "new tab" button, "add to bookmark" button, quicklink group,
+    URL string and bookmark window droppable.
+  - Implemented (optional) Favicon support. They are displayed in tabs, history panel, bookmark,
+    bookmark panel and quicklinks.
+  - Added save/restore session menu entries in project menu.
+  - Made restore session requester at startup optional.
+  - Added password manager for auth and forms (for forms, enable "save form credentials" in options).
+  - Moved the experimental cookie system ENV var option to "settings/network" settings.
+  - Added cookie manager (designed to work with experimental cookie system).
+  - Added common user agents in "settings/network" (OWB_USER_AGENT env var still overrides if you set it).
+  - Added "Ignore SSL Errors" and certificate path to "settings/security".
+  - Added application/force-download and application/octet-stream to the default mimetype list.
+  - Allows file download in "READWRITE" mode (which allows previewing during download).
+  - Added history sidepanel.
+  - Made bookmark sidepanel update faster.
+  - Added "History" pulldown menu with recently visited entries and recently closed tabs submenu.
+  - Added REXX command: "ADDBOOKMARK TITLE/A,URL/A,ALIAS/K,MENU/S,QUICKLINK/S".
+  - Focus to progress/done/error tab in download window when related events occur.
+  - Setting file comment doesn't fail anymore if the URL length is > 79 characters.
+  - Download window wouldn't autoclose anymore if a download requester had been previously cancelled.
+  - Fixed "417" HTTP code response. Should fix mail sending with imp.free.fr, for instance.
+  - Fixed a memory leak with history handling.
+  - Fixed date handling.
+  - Take argument URL into account when restoring session at startup.
+  - Fixed an illegal access issue and other bugs with the new OWB cookie system.
+  - Added some memory checks in strategic places in WebKit to avoid crashing if there's not
+    enough memory (but don't expect it to be bullet-proof anyway. WebKit is just not designed
+    to handle properly low-memory cases).
+  - Show a nice requester when Webkit decides to crash because it can't deal
+    with failed memory allocations. Also free the whole heap memory in that case.
+
+##############################################################################
+
+- 16.08.2009: OWB 1.4 - MorphOS 2.4 Release (NoSVG build)
+  - Updated to OWB SVN r1015.
+  - Implemented NPAPI plugin system. Plugins are implemented as shared libraries.
+    They are loaded from PROGDIR:plugins/ directory.
+  - New OWB cookie system is now available (it helps with gmail or hotmail, for instance).
+    However, it's only available with "setenv OWB_EXPERIMENTAL_COOKIES 1" for now,
+    since it's still considered as WIP in OWB main branch.
+  - Mimetype system now also searches for defined filename extensions if an URL doesn't advertise
+    any registered mimetype. ftp:// URL also automatically makes use of these extensions bindings, 
+    since that's the only way to make a decision for this scheme.
+  - Mimetype list (preferences) is now sorted.
+  - Added backspace and alt+cursor navigation/scrolling keys.
+  - Fixed http://login:pass@host authentication method which was broken in 1.3.
+  - Escape filename in the mimetype "ask action" requester.
+  - Fixed an excessive VMEM consumption introduced in 1.3.
+  - Updated libxslt, which fixes a deadly crash in some XML/XPATH pages (for instance OpenGL SDK).
+  - A requester asking for HTTP: volume would sometimes appear at download completion. Fixed.
+
+##############################################################################
+
+- 07.06.2009: OWB 1.3
+  - Updated to OWB SVN r994.
+  - Network can now optionally run in a dedicated thread.
+    Just for information, CURL network backend has always been asynchronous,
+    but some specific parts can unfortunately block depending on the network
+    link (e.g dns resolution), hence the need for a dedicated thread.
+  - Improved CURL buffer management to cope more easily with higher
+    download speeds.
+  - Added resume support to download manager.
+  - Display more information in download overwrite/resume requester
+    (local/remote file dates and sizes).
+  - Added failure reason column in download manager 'Failed' tab.
+  - Added URL column in download manager.
+  - Added a gauge for each entry in download manager.
+  - Added a retry button for failed downloads.
+  - Download speed is now measured as an "instant" value (before, it was computed
+    as an average since the download start).
+  - Added a confirmation requester if POST data is about to be resent
+    (should avoid duplicated messages on fora, for instance).
+  - Added content blocking based on 'adblockplus' (optional). See conf/blocked.prefs
+    (it will be made configurable from settings/contextmenu later).
+  - Bookmark tree can now be shown as a side panel.
+  - Reworked refresh method (behaves better and faster with 2dlayers when moving
+    windows over browser area).
+  - Added mimetype configuration: for each mimetype, "view", "download",
+    "external command" and "ask" actions are available.
+  - Added configurable contextual menus for link, page and image objects,
+    which can now be extended with user actions.
+  - Added session saving/restoration (optional). F9 and F10 keys also respectively allow to manually
+    select a session file to restore from/save to.
+  - Added "Load in New Background Tab" contextmenu item (which was already available
+    before by pressing MMB).
+  - Added HTML (embedded) error reporting mode. Requester and HTML modes can be
+    selected from settings.
+  - Quit requester is now optional.
+  - Added "Paste to URL" menu entry.
+  - More work on PDF export (saves the whole site into a page-based
+    document, with or without backgrounds depending on settings).
+  - Added drag'n'drop support to browser window (each dropped file creates a new tab).
+  - Added mailto: support (through OpenURL).
+  - Added javascript: scheme support from URL string.
+  - Space key now also scrolls page down.
+  - New bookmark entries are also added to pulldown menu by default.
+  - asyncio.library is now used for file input/output.
+  - Added BACKGROUND switch to "Open" ARexx command (only relevant when used with NEWPAGE).
+  - Fixed SAVEURL ARexx command 'quiet' mode.
+  - Removed a 256 characters limit with bookmark entries.
+  - Changed widgets default colours to give more contrast.
+  - Added htm/php extensions for local browsing.
+  - Fixed an issue with duplicated entries in network window when using several windows.
+  - Fixed an issue with file upload (full path could be sent instead of just the file name).
+  - Moved history.db and cookieCollection.txt to conf/ directory (move your old
+    ones there, sorry for that :)).
+
+##############################################################################
+
+- 12.04.2009: OWB 1.2
+  - Updated to OWB SVN r884 (08.03.2009).
+  - Updated to Curl 7.19.3.
+  - Substancially increased scrolling speed in some cases.
+  - Reduced a lot CPU usage in some cases (i.e MorphZone forum when replying).
+  - Added authentication window (not all protocols are handled yet).
+  - Added history loading/saving with max age/max entries settings.
+  - Added support for visited links marking.
+  - Added URL completion: string and/or popup completion modes are available (and optional).
+  - Added console window (displaying JavaScript error messages amongst others).
+  - Added "Save as HTML" menu entry.
+  - Added cache model and page cache settings.
+  - Added "New Tab" button.
+  - Added context menu actions to tab titles.
+  - Added context menu in downloaded entries list to open file/directory with Ambient.
+  - Added loading transfer anim in tabs (optional).
+  - Added "SAVEURL URL/A" rexx command (downloads passed URL to download directory).
+  - Allow Euro symbol input in forms.
+  - Send "Accept-Language" http header set with system preferred languages.
+  - Implemented JavaScript prompt request.
+  - Enabled "Resizable TextArea" webkit option.
+  - Made tab-cycling work properly for the whole browser window (it was only working inside
+    the page content before).
+  - Remember last opened file path during session.
+  - Began implementing plugin interface (nothing to see yet, except plugin placeholder).
+  - Unescape downloaded file names.
+  - Protected tab and status labels against MUI escape-sequences abuses.
+  - URL filecomment wasn't written correctly when downloading to a SFS partition.
+  - Bookmarks menuitems are now updated in realtime too.
+  - QuickLink group reworked and (hopefully) fixed for pre-2.x MUI versions. It
+    also offers more layout options.
+  - Don't move downloaded entry to finished tab in case current size is greater
+    than advertised file size (which can happen with on-the-fly gzip unpacking).
+  - Fixed some issues with window/tab titles sometimes showing wrong label.
+  - Cosmetics here and there in the GUI.
+  - Use shared jpeg and png libraries.
+
+##############################################################################
+
+- 21.02.2009: OWB 1.1
+  - Updated to 12.02.2009 SVN (GaleKing). It at least fixes gifanims,
+    amongst many other things.
+  - Updated to Cairo 1.8.6 and pixman 0.14.0 (altivec enabled for MorphOS 2.x).
+  - Updated to Curl 7.19.2: it *seems* to be more robust and slightly faster.
+  - Added libICU support (which makes codepage actually work).
+  - Convert UTF8 to local charset in tab/window/status labels (MorphOS 2.x).
+  - Added persistant cookies saving.
+  - Added confirmation request when quitting.
+  - Navigation buttons can be displayed as text/text&image/image.
+  - Added history feature in back and forward buttons contextmenus.
+  - Reworked quicklink edition in bookmark window. Their look and layout is now
+    configurable and their edition is done in realtime (thanks Poly :)).
+  - Cosmetics in bookmark window.
+  - Added download speed in download window.
+  - Cosmetics in download window.
+  - Fixed a refresh issue in tabs.
+  - Middlebutton doubleclick now creates a new tab in background.
+  - Contextual cursors support (MorphOS 2.x only).
+  - Display filename in upload file forms.
+  - Added support for Javascript confirm alert and Javascript window.close().
+  - Added network activity leds.
+  - Added network connection manager window.
+  - Added a feedback requester for connection failures (connection refused, unknown hostname, ...)
+  - Added more settings (fonts families, interface settings, maximum active connections, javascript, ...)
+  - Added PDF export option (just an unfinished experiment for now, only first page will be saved correctly).
+  - Added a splash window during fontconfig cache generation.
+  - Fixed deadkeys input (i.e for typing ö, ü,... characters with some keymaps).
+  - Fixed a crash when directly closing a tab that hadn't been shown yet.
+  - Fixed a bug in fontconfig. Only first font directory would be scanned
+    (it also means font cache will be regenerated with this version).
+
+##############################################################################
+
+- 01.02.2009: OWB 1.0
+  First public release.
+
+
+Contact
+-------
+
+If you have any suggestion or bug to report, please contact me at: fabien.coeurjoly@wanadoo.fr
+But please, don't flood me. I'm quite aware of what's missing already. :)
+
+
+
+
+
+
+
+
+
+
+
+

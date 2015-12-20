@@ -1,0 +1,164 @@
+.text{
+font-family: "'DejaVu Sans Condensed', 'DejaVu Sans', 'DejaVu Serif', 'DejaVu Sans Mono', 'Tahoma', 'Verdana', 'sans-serif'";
+font-size: 12px;
+font-weight: normal;
+text-align: justify;
+padding-left: 60px;
+padding-right: 225px;
+}
+
+.text_bold{
+font-family: "'DejaVu Sans Condensed', 'DejaVu Sans', 'DejaVu Serif', 'DejaVu Sans Mono', 'Tahoma', 'Verdana', 'sans-serif'";
+font-size: 13px;
+font-weight: bold;
+text-align: justify;
+padding-left: 30px;
+}
+
+.text_title{
+font-family: "'DejaVu Sans Condensed', 'DejaVu Sans', 'DejaVu Serif', 'DejaVu Sans Mono', 'Tahoma', 'Verdana', 'sans-serif'";
+font-size: 14px;
+font-weight: bold;
+text-align: center;
+color: #FF0000;
+background-color:#FFFFFF;
+}
+
+.text_title_red{
+font-family: "'DejaVu Sans Condensed', 'DejaVu Sans', 'DejaVu Serif', 'DejaVu Sans Mono', 'Tahoma', 'Verdana', 'sans-serif'";
+font-size: 12px;
+font-weight: bold;
+text-align: center;
+color: #FF0000;
+background-color:#FFFFFF;
+}
+
+.text_title_black{
+font-family: "'DejaVu Sans Condensed', 'DejaVu Sans', 'DejaVu Serif', 'DejaVu Sans Mono', 'Tahoma', 'Verdana', 'sans-serif'";
+font-size: 14px;
+font-weight: bold;
+color: #000000;
+background-color:#FFFFFF;
+padding-left: 20px;
+padding-right: 20px;
+}
+
+.text_title_left{
+font-family: "'DejaVu Sans Condensed', 'DejaVu Sans', 'DejaVu Serif', 'DejaVu Sans Mono', 'Tahoma', 'Verdana', 'sans-serif'";
+font-size: 14px;
+font-weight: bold;
+color: #FF0000;
+padding-left: 30px;
+}
+
+.text_indent{
+font-family: "'DejaVu Sans Condensed', 'DejaVu Sans', 'DejaVu Serif', 'DejaVu Sans Mono', 'Tahoma', 'Verdana', 'sans-serif'";
+font-size: 12px;
+font-weight: normal;
+text-align: justify;
+padding-left: 70px;
+padding-right: 225px;
+}
+
+.normal_text{
+background-color:#FFFFFF;
+font-family: "'DejaVu Sans Condensed', 'DejaVu Sans', 'DejaVu Serif', 'DejaVu Sans Mono', 'Tahoma', 'Verdana', 'sans-serif'";
+font-size: 12px;
+font-weight: normal;
+text-align: justify;
+padding-left: 20px;
+padding-right: 20px;
+}
+
+.normal_text_not_indent{
+font-family: "'DejaVu Sans Condensed', 'DejaVu Sans', 'DejaVu Serif', 'DejaVu Sans Mono', 'Tahoma', 'Verdana', 'sans-serif'";
+font-size: 12px;
+font-weight: normal;
+text-align: justify;
+padding-left: 8px;
+padding-right: 20px;
+}
+
+.normal_text_table{
+background-color:#FFFFFF;
+font-family: "'DejaVu Sans Condensed', 'DejaVu Sans', 'DejaVu Serif', 'DejaVu Sans Mono', 'Tahoma', 'Verdana', 'sans-serif'";
+font-size: 12px;
+font-weight: bold;
+text-align: center;
+}
+
+ul{
+font-family: "'DejaVu Sans Condensed', 'DejaVu Sans', 'DejaVu Serif', 'DejaVu Sans Mono', 'Tahoma', 'Verdana', 'sans-serif'";
+font-size: 12px;
+font-weight: normal;
+text-align: justify;
+list-style-type: circle;
+padding-left: 60px;
+padding-right: 225px;
+}
+
+.list_nested{
+font-family: "'DejaVu Sans Condensed', 'DejaVu Sans', 'DejaVu Serif', 'DejaVu Sans Mono', 'Tahoma', 'Verdana', 'sans-serif'";
+font-size: 12px;
+font-weight: normal;
+text-align: justify;
+list-style-type: square;
+padding-left: 90px;
+padding-right: 225px;
+}
+
+.list_nested2{
+font-family: "'DejaVu Sans Condensed', 'DejaVu Sans', 'DejaVu Serif', 'DejaVu Sans Mono', 'Tahoma', 'Verdana', 'sans-serif'";
+font-size: 12px;
+font-weight: normal;
+text-align: justify;
+list-style-type: square;
+padding-left: 50px;
+}
+
+.list_nested_faq{
+font-family: "'DejaVu Sans Condensed', 'DejaVu Sans', 'DejaVu Serif', 'DejaVu Sans Mono', 'Tahoma', 'Verdana', 'sans-serif'";
+font-size: 12px;
+font-weight: normal;
+text-align: justify;
+padding-left: 70px;
+padding-right: 20px;
+}
+
+.list_nested_faq_indent{
+font-family: "'DejaVu Sans Condensed', 'DejaVu Sans', 'DejaVu Serif', 'DejaVu Sans Mono', 'Tahoma', 'Verdana', 'sans-serif'";
+font-size: 12px;
+font-weight: normal;
+text-align: justify;
+padding-left: 70px;
+padding-right: 5px;
+}
+
+a{
+font-family: "'DejaVu Sans Condensed', 'DejaVu Sans', 'DejaVu Serif', 'DejaVu Sans Mono', 'Tahoma', 'Verdana', 'sans-serif'";
+font-size: 12px;
+text-decoration: none;
+color: #000000;
+}
+
+a:hover{
+font-family: "'DejaVu Sans Condensed', 'DejaVu Sans', 'DejaVu Serif', 'DejaVu Sans Mono', 'Tahoma', 'Verdana', 'sans-serif'";
+font-size: 12px;
+text-decoration: none;
+color: #FF0000;
+}
+
+.thumb:hover,img.thumb:active {
+filter:alpha(opacity=50);
+-moz-opacity:0.5;
+-khtml-opacity: 0.5;
+opacity: 0.5;
+}
+
+a.toplink {
+color: #FFFFFF;
+}
+
+a.toplink:hover {
+color: #FF0000;
+}

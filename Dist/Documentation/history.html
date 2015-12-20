@@ -1,0 +1,718 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>Odyssey Web Browser | Doc</title>
+<link rel="shortcut icon"
+href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAADS0lEQVR4nD2STUwcZQCGn2/mm9lll12WpaWsFNgWgkAFLFrbRZPWkJo0XjR4MbFe1JteejbRRE3UUw9qTPRgQqJNPDSNJiZNa0xRpAKWULEplJ9SKLtdZpkuM7s7s/PjweqbPMcnz+UVs9ufhDyaIgSoKtVigfzSMlpEp6V3gDBUEK4gEAHRlI5A8L+jKAIUQQDU6j62abE+OYMrDmI9iGBNz9NWaaLTSxHuBNSc+r+hR8jKQw/FhaDikYrEcMsOaTVJR8Rjc2+VuqKhejZe4NPg1ymW6zQmEqhBSOgHyANWgmqlQuAFpGM6piqxah6leyv0jbxCxXVR/BghAU24WBvbWOUCpNNEW9qQD02T4o5BtEGncH+JSFhn5Pg4h586C0KCZ+KU7yOEQNEb6QkFe8Ya+Y2fKaxPIcvWHr7vUb53i57eHP3PvQ2ezeKVD/hr+iJGfp163UXTNeKJFjIdfXQPjdF+aIx91aeRtm0jjAVOPP8OrQMvc/Pyx/x04UNcx6Gj6yBd2U40PUZISOhZlPLzrCxeJR5PMHxsDEnhOrkX3yN9+CTff3qam7O/kDvej6qmMOzHMOlmdclFERpSt0nqBu1dBTQ1zx/XLiG2Zr8IM4Ov8tW7o7jWKiPD/fy2cIBq/AXaOo8SbYihawqRiI4fBpi7Fvn122BOcWxwCxHUCuHER6dxzBW6s1l+/HOUvtxZksko8biku3sfs9MriCBEj0VRpUpU6hglmxuTV1BPZpff31yaYuDxbr6dPMXQ6Guoos6uscf6nSKaJmlMxLh7p4gQClXbZa9cobk5RsuhfsRnbxE+m3uS8xe66Bh+k4isE/ghCEHZqJBobsBxQ6SU6FIg/jt+ooWh7R+Qw0ePcHVapxY5gwhcNrdsFEVFBXzXoz0bJ7k/yfVra0Q0BRmG2DLJqeVv8ApzKImmVi7PDbA/k6ZkOuwYNYpGhYJRJV/ycHzBiVyWB9s2pYLDWknnmfxFhme+5rv068j5WxqG28fdjV3cmkcYCoRQcF0ffDB3XY4MZujtaWXudpVxeYnxvyc413oGy2pDmVloQhcapW0by/KpVAJqTsDAExmQkkxnM5+f/x2ZSnGu71feWJ7gSxFlUb5EzXT4BzRleU49ddAFAAAAAElFTkSuQmCC"
+type="image/png" />
+<link rel="stylesheet" type="text/css" href="css/style.css" />
+</head>
+
+<body style="background-color:#C8D6F0;">
+
+<table cellspacing="0" cellpadding="0" align="center" border="0">
+	<tr>
+		<td>
+			<table cellspacing="0" cellpadding="0" border="0" align="center" width="940">
+				<tr>
+					<td colspan="3" style="background-image:url('img/app_odyssey_menu.png'); background-repeat:no-repeat; border-style:none;" width="940px" height="96px">
+						<table border="0" style="padding-left: 30px;">
+							<tr>
+								<td width="70" align="center"><a href="index.html" class="toplink"><b>INDEX</b></a></td>
+								<td width="70" align="center"><a href="history.html" class="toplink"><b>HISTORY</b></a></td>
+								<td width="70" align="center"><a href="faq.html" class="toplink"><b>FAQ</b></a></td>
+								<!--td width="70" align="center"><a href="bugreport.html" class="toplink"><b>REPORT</b></a></td-->
+							</tr>
+						</table>
+					</td>
+				</tr>
+				<tr>
+					<td width="940" height="620" colspan="3" style="background-color:#FFFFFF; border-style:none;">
+						<p align="center" class="text_title"><a name="indice" style="color:#FF0000; font-size:14px"><b>History and changelog</b></a></p>
+						<br /><br />
+						<div class="text_bold"><b>31.08.2015: Odyssey Web Browser 1.25 Beta 1</b></div>
+						<ul>
+							<li>Updated to <a href="http://trac.webkit.org/" target="_blank">WebKit</a> r183664 (May 2015). (AROS)</li>
+							<li>Ported Odyssey directly on top of WebKit repository. (Common)</li>
+							<li>Enable HTML5 video feature. (AROS)</li>
+							<li>Bookmarks management panel has been made functional (needs updated MUI components). (AROS)</li>
+							<li>Cookies management panel has been made functional (needs updated MUI components). (AROS)</li>
+							<li>Fixed "second download crash". (AROS)</li>
+							<li>Updated to <a href="http://www.ffmpeg.org" target="_blank">ffmpeg</a> 2.6.2. (AROS)</li>
+							<li>Fixed problem with Odyssey not remembering window width after closing. (AROS)</li>
+							<li>Fixed problem with pressing enter not beeing handled in search window. (AROS)</li>
+							<li>Added a "gracefull exit" option on crash of Odyssey allowing to close the application and free memory. (AROS)</li>
+							<li>It is possible to disable JavaScript Just-in-Time compiler using NO_JSC_JIT tooltype. (Common)</li>
+							<li><a href="http://trac.webkit.org/" target="_blank">WebKit</a> codes revision is now presented in AboutBox. (Common)</li>
+							<li>Disabled WebWorkers support. (Common)</li>
+							<li>Browser spoofing agents are updated for Firefox and Chrome. (Common)</li>
+							<li>Added option to disable/enable MP4 support (enabled by default). (Common)</li>
+							<li>Fixed crash when closing bookmarks panel (needs updated MUI components). (AROS)</li>
+							<li>Double-clicking on bookmarks opens it in current tab. (AROS)</li>
+							<li>Fixed list-related code that was trashing memory. (AROS)</li>
+							<li>Lists (download, mime settings, history) now have a scroll bar (needs updated MUI components). (AROS)</li>
+							<li>Fixed "division by zero" error in Quick Links handling (Common)</li>
+						</ul>
+						<div class="text_bold"><b>12.04.2014: Odyssey Web Browser 1.24</b></div>
+						<ul>
+							<li>Updated to <a href="http://trac.webkit.org/" target="_blank">WebKit</a> r161078 (January 2014).</li>
+							<li>Updated to OpenSSL 1.0.1g (which improves the SSL test at <a href="https://www.howsmyssl.com/" target="_blank">https://www.howsmyssl.com/)</a>.</li>
+							<li>Compiled with GCC 4.7.3, since WebKit now relies strongly on C++11 features.</li>
+							<li>Fixed an issue with large file support in CURL (fixes mail.one settings validation, for instance).</li>
+							<li>Enabled WebP support again, it seems it had been disabled at some point.</li>
+							<li>Enabled RequestAnimationFrame HTML5 feature.</li>
+							<li>Added support for HTML5 "download" link attribute.</li>
+							<li>Convert suggested download filenames to local charset.</li>
+							<li>Adjusted Expect: 100 header handling (fixes easy-jet flight selection, for instance).</li>
+							<li>Fixed CSS animation support (i.e <a href="http://www.morphos.net" target="_blank">www.morphos.net</a> flying powerbook).</li>
+						</ul>
+						<div class="text_bold"><b>25.12.2013: Odyssey Web Browser 1.23</b></div>
+						<ul>
+							<li>Fixed a nasty race condition in the ffmpeg version supplied since 1.21.</li>
+						</ul>
+						<div class="text_bold"><b>20.12.2013: Odyssey Web Browser 1.22</b></div>
+						<ul>
+							<li>Fixed the slowness issue with topsites, when adblock was enabled. In that case, the generated screenshot data: URI (which is basically the screenshot raw data encoded as base64) was matched against the rules in adblock, which was obviously very slow.</li>
+							<li>For security reasons, file:/// URL couldn't be accessed from topsites. Fixed as well.</li>
+						</ul>
+						<div class="text_bold"><b>12.12.2013: Odyssey Web Browser 1.21</b></div>
+						<ul class="list_nested2">
+							<li><b>Core:</b></li>
+						</ul>
+						<ul>
+							<li>Updated to <a href="http://trac.webkit.org/" target="_blank">WebKit</a> r155188 (October 2013) : big changes (and thus regressions :)) happened in many parts of WebKit since previous Odyssey release (clipboard, drag'n'drop, network, javascript, inspector, c++0x requirements, ...). They should hopefully all be addressed.</li>
+							<li>Updated to the new Webinspector layout.</li>
+							<li>Fixed the layout of the FTP listing, so that the rows don't use all the available vertical space.</li>
+							<li>Fixed a crash with self-disposing &lt;select&gt; objects (e.g priority cycle in MLDonkey Web interface).</li>
+							<li>Localstorage databases (conf/localstorage/#?.localstorage) were not released at exit, which prevented from deleting them manually.</li>
+							<li>Disabled non functional HTML5 MediaSource (it should help with some non-working YouTube links in HTML5 mode).</li>
+							<li>Fixed a bug with the "view source code" function that would sometimes just show a blank view.</li>
+							<li>The mimetype actions would not always be triggered properly in some cases (mainly because of redirections or content-disposition header). The response URL (or content-disposition filename if available) is now used when extension matching is needed.</li>
+							<li>Added more common mimetype extensions in mimetype default configuration.</li>
+							<li>Fixed a potential race condition at webview closing.</li>
+						</ul>
+						<ul class="list_nested2">
+							<li><b>GUI:</b></li>
+						</ul>
+						<ul>
+							<li>Contextual cursor was sometimes not reset to normal cursor when leaving the webview area.</li>
+							<li>Added proxy support in network prefs section.</li>
+							<li>If webinspector is enabled, webinspector button is now also shown in navigation toolbar.</li>
+							<li>Added "TopSites" feature, showing most recently visited sites thumbnails. This page can be accessed from "topsites://" URL. Feel free to make suggestions about this new option. :)</li>
+							<li>Ambient deficons are now shown in file input controls (MorphOS 3.4+ required).</li>
+							<li>Ambient deficons are now shown in download manager lists (MorphOS 3.4+ required).</li>
+							<li>Select all the text in the search string when searching for text in a page.</li>
+							<li>Close google and history suggestion popup lists when the text is fully erased.</li>
+							<li>Added a "start downloads automatically" option, which allows to skip the file requester step.</li>
+							<li>Added a status icon to indicate if userscripts are running on a given page. The bubble help on this icon also shows which userscripts are actually running.</li>
+							<li>In bookmarks window, quicklinks favicons and URL are now displayed, to make it easier to create and identify title-less quick links.</li>
+							<li>Added support for multiple selection with file input elements.</li>
+							<li>Show FTP URL as window/tab title, instead of a blank title.</li>
+							<li>In image views, show the image filename instead of "unnamed title".</li>
+							<li>Implemented HTML5 ColorChooser dialog, using MUI Colorwheel.</li>
+							<li>Added a filename popup gadget for mimetype viewer.</li>
+							<li>Added a new page URL option (defaults to topsites://).</li>
+							<li>Also show column number in javascript error/warning messages.</li>
+						</ul>
+						<ul class="list_nested2">
+							<li><b>Media player:</b></li>
+						</ul>
+						<ul>
+							<li>Updated to ffmpeg from 27.11.2013.</li>
+							<li>Enabled support for VP9 codec.</li>
+							<li>Audio-only media could sometimes report a null duration : in practice, it fixes a hard crash with Facebook chat audio notifications.</li>
+							<li>Fixed a 32bits overflow with audio-only media: the visible effect was that the player would stop updating time controls at 2:32.</li>
+							<li>Added more sanity checks in ffmpeg support.</li>
+						</ul>
+						<ul class="list_nested2">
+							<li><b>Network:</b></li>
+						</ul>
+						<ul>
+							<li>Reimplemented HTTP authentication to be more compliant. It should also fix a crash that happened when cancelling the authentication requester in some cases.</li>
+							<li>Added support for multipart contents.</li>
+							<li>Fixed potential crashes with data: URI handling.</li>
+							<li>Fixed an illegal memory access that would sometimes happen at exit, when FTP was used.</li>
+						</ul>
+						<ul class="list_nested2">
+							<li><b>Spellchecker:</b></li>
+						</ul>
+						<ul>
+							<li>Misspelled words are now underlined in red instead of black.</li>
+						</ul>
+						<ul class="list_nested2">
+							<li><b>Scripts:</b></li>
+						</ul>
+						<ul>
+							<li>Updated YouTube_Fullscreen_Fix.js: fullscreen mode should work again. It also replaces all YouTube links in right column so that the page is reloaded when clicking them, allowing the script to be executed again.</li>
+						</ul>
+						<div class="text_bold"><b>10.03.2013: Odyssey Web Browser 1.20</b></div>
+						<ul>
+							<li>Updated to <a href="http://trac.webkit.org/" target="_blank">WebKit</a> r144529 (March 2013). Amongst many other fixes, it cures an issue with some asp sites.</li>
+							<li>More bugfixes in websockets handling.</li>
+							<li>With spellchecker.library 50.1+ (MorphOS 3.2+), word learning feature is now functional.</li>
+							<li>Added copy image URL location in image contextmenu.</li>
+							<li>Don't crash when HTML5 desktop notifications are invoked.</li>
+							<li>Plugins are now expected to have version 2 or later.</li>
+						</ul>
+						<div class="text_bold"><b>01.02.2013: Odyssey Web Browser 1.19</b></div>
+						<ul>
+							<li>Updated to <a href="http://trac.webkit.org/" target="_blank">WebKit</a> r139311 (January 2013).</li>
+							<li>Updated to cURL 7.28.1.</li>
+							<li>Totally rewritten cookie system, which should be more robust and compliant to specifications. The database structure has changed, so all previous cookies will be ignored and a new database will be created instead (in conf/cookies.db).</li>
+							<li>Fixed some issue with back/forward navigation buttons that could be wrongly ghosted with frame-based sites.</li>
+							<li>Make WebInspector custom contextmenu work again.</li>
+							<li>Make cookies appear properly in WebInspector.</li>
+							<li>Make sure the garbage collector is called periodically and/or when memory gets too low.</li>
+							<li>Fixed a crash with websockets where the class client disposed the connection by itself.</li>
+						</ul>
+						<div class="text_bold"><b>24.12.2012: Odyssey Web Browser 1.18 ("Broken arm" release)</b></div>
+						<ul>
+							<li>Updated to <a href="http://trac.webkit.org/" target="_blank">WebKit</a> r127386 (September 2012).</li>
+							<li>Reworked forms elements default theme (buttons, checkmarks, strings, ...).</li>
+							<li>Updated HTML5 MediaPlayer controls to work with the new WebKit behaviour. Look is slightly updated as well.</li>
+							<li>Modified the handling of autocompleted login/password forms to be more compliant with WebKit internals.</li>
+							<li>Exposed localstorage option to global and per-url settings.</li>
+							<li>Changed some security settings to allow document upload in Google Docs/Drive.</li>
+							<li>Enabled more HTML5 features, now scoring 392+16 bonus points at <a href="http://html5test.com/" target="_blank">html5test.com</a>.</li>
+							<li>Updated main browsers useragents to their current version.</li>
+							<li>Updated Youtube.js to deal with Youtube latest changes.</li>
+							<li>Updated WebCore fonts downloader.</li>
+						</ul>
+						<div class="text_bold"><b>- 14.05.2012: Odyssey Web Browser 1.17</b></div>
+						<ul>
+							<li>Updated to <a href="http://trac.webkit.org/" target="_blank">WebKit</a> r114842 (April 2012).</li>
+							<li>Updated to Cairo 1.12 and Pixman 0.24.4: gives about 40% speedup in rendering.</li>
+							<li>Updated to ICU 4.9.1: the data files are now stored externally in PROGDIR:resource/icudt49b/ to save some memory. Make sure to copy them if you update (a requester will warn you if you don't).</li>
+							<li>Updated to OpenSSL 1.0.0j.</li>
+							<li>Updated to Curl 7.25.0.</li>
+							<li>Updated to FFMPEG GIT from 13.05.2012.</li>
+							<li>Updated to SQLite 3.7.11.</li>
+							<li>Updated to libXML2 2.7.8 and libXSLT 1.1.26.</li>
+							<li>History completion popup is now multithreaded, which fixes a latency issue when typing the URL.</li>
+							<li>Implemented form filling completion feature. It can be enabled in prefs->privacy settings. Note that you calltips.mcc is required, which is included with MorphOS 3+ or 2.x SDK with Scribble.</li>
+							<li>The "add bookmark" button now has two states, to indicate whether the current URL is already bookmarked or not.</li>
+							<li>Adding a bookmark from the browser window now always adds it to the end of the bookmarks, and no longer at the end of the currently selected group.</li>
+							<li>Added Back/Forward/Reload/Stop in view menu.</li>
+							<li>The password from the URL is now removed if present, when setting the comment of a downloaded file.</li>
+							<li>Fixed the "Open in new window" function that didn't work anymore in 1.16 due to the new popup policy option.</li>
+							<li>Fixed attachments not working anymore in GMail.</li>
+							<li>Fixed again AltGr key handling for GoogleDocs.</li>
+							<li>Fixed pasting from clipboard when multiple text chunks are used (YAM does it).</li>
+							<li>Escape unwanted characters in bookmarks URLs, aliases and titles.  </li>
+							<li>Prune favicons database at startup, since it can really grow a lot over time.</li>
+							<li>Tweaked cross origin access control to make youtube video upload work.</li>
+							<li>Fixed some issue with 401 handling. Should fix some cPanel administration pages, for instance (hello Christoph and Pampers :)).</li>
+							<li>Fixed pagination in PDF export.</li>
+							<li>Fixed HTML5 local storage.</li>
+							<li>Fixed some WebSocket potential crash issue at disconnection.</li>
+							<li>Attempt to fix some deadlock issue in mediaplayer at disposal under heavy stress.</li>
+							<li>Avoid spawning an useless video decoder thread for audio-only files, and vice-versa.</li>
+						</ul>
+						<div class="text_bold"><b>- 24.12.2011: Odyssey Web Browser 1.16</b></div>
+						<ul>
+							<li>Updated to <a href="http://trac.webkit.org/" target="_blank">WebKit</a> r103170 (December 2011).</li>
+							<li>Added Postscript printing support.</li>
+							<li>Added PRINT REXX command.</li>
+							<li>Connected JavascriptCore print method to the printing system.</li>
+							<li>Reworked PDF export to produce more usable output dimensions.</li>
+							<li>Added an option to define if a popup should open in a tab or a window.</li>
+							<li>The page where a download is coming from (when available) is now also stored and can be restored from download manager contextmenu.</li>
+							<li>Enabled large file support in Curl (>4GB files, assuming the underlying filesystem supports it).</li>
+							<li>Make F11 key (fullscreen toggle) also work in the video overlay area.</li>
+							<li>Disable blanker when entering video overlay mode.</li>
+							<li>A quicklink wouldn't be updated properly after its URL was changed in bookmarks.</li>
+							<li>Make the webview object active after a provisional load event, to be able to tab-cycle between the page form elements without clicking the webview first.</li>
+							<li>Fixed a crash issue with the <a href="http://imp.free.fr/" target="_blank">imp.free.fr</a> webmail (old version). It was a deadly combination of the 417 status code handling and frame disposal.</li>
+							<li>Fixed an issue in authentication process happening for instance with system.ch server.</li>
+							<li>In middle mouse button scrolling mode, releasing button over a link would open the link.</li>
+							<li>Updated Youtube.js</li>
+						</ul>
+						<div class="text_bold"><b>- 28.10.2011: Odyssey Web Browser 1.15</b></div>
+						<ul>
+							<li>Updated to <a href="http://trac.webkit.org/" target="_blank">WebKit</a> r98566 (October 2011).</li>
+							<li>Tabs are now detachable when dropped outside of the window. They can also be attached to another existing window by dropping them on the target window webview/tab group.</li>
+							<li>Added an new autoscroll mode when doubleclicking middle mouse button (click button again to abort).</li>
+							<li>Added GETTITLE REXX command.</li>
+							<li>Updated a couple useragents.</li>
+							<li>Improved dragimage for selected text. It now looks 1:1 like selected content.</li>
+							<li>Make sure search suggestion poplist is closed when the search string is validated.</li>
+							<li>Made AltGr key work in googledocs.</li>
+							<li>Applied a patch to prevent mydrive.ch from hanging when uploading.</li>
+							<li>Threading layer reworked so that a task uses only one signal for all its child threads. It avoids "out of exec signal" situations that prevented from running  more than 3-4 mediaplayer instances at the same time.</li>
+							<li>Restore video fullpage/overlay mode after switching a webview to fullscreen/window mode.</li>
+							<li>Hide panels when switching a webview to fullscreen mode and restore state when switching back.</li>
+							<li>Make sure all media elements instances are disposed when closing a webview (WebKit would sometimes forget some).</li>
+							<li>When running out of memory, the "death requester" now also gives the choice between retrying the allocation (giving a chance to free some memory from another application) or attempting to quit the application (it might just fail!).</li>    
+							<li>Fixed YouTube HTML5 fullscreen mode (Youtube_Fullscreen_Fix.js).</li>
+							<li>Updated youtube.js.</li>
+						</ul>
+						<div class="text_bold"><b>- 05.08.2011: Odyssey Web Browser 1.14 (July 2011)</b></div>
+						<ul>
+							<li>Changed the name to "Odyssey Web Browser". Like it or hate it, but you can still call it OWB, anyway. :)</li>
+							<li>Updated to <a href="http://trac.webkit.org/" target="_blank">WebKit</a> r91657 (July 2011).</li>
+							<li>Updated to Curl 7.21.7.</li>
+							<li>Use OpenSSL 0.9.8o since 1.0.0d introduced issues with some sites that used to work previously.</li>
+							<li>Added a popup menu in search string showing Google suggestions for the currently typed word.</li>
+							<li>Added a cookie policy option in URL settings (possibility to filter on both URL and cookie names with regular expressions).</li>
+							<li>Added a cookie policy option in global settings.</li>
+							<li>Allow deleting a cookie domain (and all its cookies) in cookie manager window.</li>
+							<li>Decrease rootgroup spacing in fullscreen mode.</li>
+							<li>Added FULLSCREEN REXX command.</li>
+							<li>Added a fullscreen menu entry, for people lacking F11 key. :)</li>
+							<li>URLs with video/audio MIME types can now be played directly inside the browser, if the related MIME type action is set to "Internal viewer" (assuming the codec/format is supported).</li>
+							<li>Don't show scrollbars in video fullpage mode.</li>
+							<li>Fixed a possible deadlock in MediaPlayer when the object is disposed very early.</li>
+							<li>Made support for FLV and OGG optional in media settings (disabled by default), since these formats can sometimes confuse some sites like DailyMotion (refusing to play anything if OGG is available ?!), and YouTube (serving FLV in HTML5 mode ?!!).</li>
+							<li>Honour the "attachment" attribute in Content-Disposition response header and force download when it's set.</li>
+							<li>Implemented the necessary logic in CURL backend to upload documents in Google Docs and YouTube (it could already work before by spoofing to older browsers versions, but they're not supported anymore).</li>
+							<li>Upload progress is now notified to the DOM (allows scripts to display progress).</li>
+							<li>Show an appropriate status/progress and lamp for upload connections in network activity/network lamps.</li>
+							<li>Fixed month display in FTP view.</li>
+							<li>Make use of a FTP template page (resource/FTPDirectoryTemplate.html) to enhance the look of the FTP view.</li>
+							<li>Set a proper mimetype (based on extension) for the URLs with a FTP scheme, instead of displaying them as raw text content.</li>
+							<li>Fixed YouTube HTML5 fullscreen mode, since it changed again (Youtube_Fullscreen_Fix.js).</li>
+							<li>Updated youtube.js userscript to work after the recent YouTube changes.</li>
+						</ul>
+						<div class="text_bold"><b>- 16.07.2011: Origyn Web Browser 1.13</b></div>
+						<ul>
+							<li>Updated to <a href="http://trac.webkit.org/" target="_blank">WebKit</a> r90337 (July 2011).</li>
+							<li>Updated OpenSSL to 1.0.0d.</li>
+							<li>Updated SSL certificates.</li>
+							<li>Added SpellChecker library support. Dictionaries are expected in that kind of path: LOCALE:dictionaries/&lt;language&gt;/base.dic To enable spellchecker, use contextmenu in a text/textarea element and  enable "Check Spelling While Typing".</li>
+							<li>Added arrows to &lt;select&gt; element default style, to differentiate it from a plain text element.</li>
+							<li>Added middle mouse button scrolling.</li>
+							<li>Implemented a kind of fullscreen display, triggered on/off with F11 key.</li>
+							<li>Attempt to fix a problem with cookies subdomain handling.</li>
+							<li>Added a media control panel (play/pause/seek/volume) in fullwindow mode (overlay). It can be hidden/shown with middle mouse button.</li>
+							<li>Fixed an issue with some vimeo links that prevented videos from being played.</li>
+							<li>Fixed an application deadlock that happened when closing a page while a WebM video was still in seeking phase.</li>
+							<li>Fixed CSS issues in builtin media player stylesheet.</li>
+							<li>Updated Youtube.js to enforce container height after recent Youtube changes, so that media controls aren't cropped.</li>
+							<li>Added "OWB_DISABLE_MOBILE_COMPRESSION" ENV option to disable mobile compression (hello pampers :)).</li>
+						</ul>
+						<div class="text_bold"><b>- 04.03.2011: Origyn Web Browser 1.12</b></div>
+						<ul>
+							<li>Updated to <a href="http://trac.webkit.org/" target="_blank">WebKit</a> r80266 (March 2011).</li>
+							<li>Added support for "private browsing". To enable it (on a per-tab basis), enable "private browsing" in Settings menu. Once activated, private browsing will disable any kind of data storage (history/cookies/favicons/sessions/...). Private browsing is inherited for any page created from a page in private browsing mode.</li>
+							<li>Implemented per-URL settings (for plugins/images/javascript/useragent options). For instance, it could be used so that a given site is accessed under IPad user agent with plugin (Flash) disabled.</li>
+							<li>Improved UTF8/local charset support for clipboard. When copying, UTF8 and local strings are copied in two different chunks, which allows legacy applications to retrieve local charset string, while OWB (and possibly other applications) make use of the UTF8 chunk.</li>
+							<li>Added a clipboard monitor to address an issue with DHTML copy. After a rich-text copy,  paste would always reuse that content, even if system clipboard had been modified (externally or not) in the meanwhile. This clipboard monitor allows to reset DHTML clipboard as soon as a regular system clipboard copy has been performed.</li>
+							<li>Added a "mark all matches" option in text find function.</li>
+							<li>The bookmark class is not limited anymore to one level of depth. Please note that Intuition menus also have this limitation, though. So if you plan to display subfolders in menu as well, they'll be flattened, unless you use MUI menus instead of Intuition menus.</li>
+							<li>Tweaked mediaplayer to work again with <a href="http://www.spiegel.de/" target="_blank">spiegel.de</a> HTML5 videos.</li>
+							<li>Fixed mediaplayer autoplay that got broken in some cases.</li>
+							<li>Fixed an endianess bug in WebKit shadow effect that prevented them from being shown.</li>
+							<li>Adjusted font backend to show font-weight:semi-bold as bold instead of showing it as normal text (cairo/freetype backend only supports normal/bold levels).</li>
+							<li>Fixed an issue with per-tab settings being reset by WebKit after a new tab creation.</li>
+							<li>Fixed some possible crash with select items that were deleted from DOM at selection change.</li>
+							<li>Fixed youtube.js userscript for recent YouTube changes (in fact, it could already work, with the alternative link method that could be selected in youtube.js preferences).</li>
+							<li>Changed about: and error pages (contribution from Samir Hawamdeh).</li>
+						</ul>
+						<div class="text_bold"><b>- 05.11.2010: Origyn Web Browser 1.11</b></div>
+						<ul>
+							<li>Updated to <a href="http://trac.webkit.org/" target="_blank">WebKit</a> r71312 (5th November 2010). Fixes amongst other things:</li>
+						</ul>
+						<ul class="list_nested">
+							<li>lazy loading of thumbnails on youtube and google image.</li>
+							<li>crash at <a href="http://www.reco.se" target="_blank">http://www.reco.se.</a></li>
+						</ul>
+						<ul>
+							<li>Updated to Pixman 0.20.0.</li>
+							<li>Now compiled with GCC 4.4.4.</li>
+							<li>Avoid redrawing a bitmap each time a data chunk is received from network. Should speed  up pictures loading time, or at least decrease CPU usage substancially.</li>
+							<li>Added a workaround to avoid using "complex font rendering" code path (triggered by "text-rendering: optimizedlegibility" CSS attribute, or by fonts requiring ligatures). The complex mode is indeed not implemented in cairo/freetype font backend, which caused the sites using it to show invisible text (for instance <a href="http://www.mentor.com" target="_blank">http://www.mentor.com/</a>).</li>
+							<li>Replaced the contextmenu for media elements with WebKit's own implementation.</li>
+							<li>Added SELECTEDTEXT REXX command (text is converted to local charset).</li>
+							<li>Added "Ignore" to the available mimetype user actions.</li>
+							<li>Added Safari 5 and Opera 10 user agents.</li>
+							<li>Updated youtube_fullscreen_fix.js to support embedded youtube as well (remove/readd the script to take the new URL pattern into account)</li>
+							<li>In youtube.js, remove explicitely the dynamically created video element at unload event, to avoid a potential media instance "leak".</li>
+							<li>Hopefully fixed some rare random crash related to a bug in reference pointers holding cairo objects.</li>
+							<li>Enabled again the "death requester" in case of low memory, since it had been disabled somehow. This requester is somewhat useful, because it frees allocated memory and kills OWB in a harmless way.</li>
+						</ul>
+						<div class="text_bold"><b>- 05.09.2010: Origyn Web Browser  1.10</b></div>
+						<ul>
+							<li>Updated to <a href="http://trac.webkit.org/" target="_blank">WebKit</a> r66666 (2 September 2010).</li>
+							<li>Implemented HTML5 Drag and Drop (text and images can be dragged/dropped from/to several places).</li>
+							<li>Reworked login/password form detection rules to be more tolerant.</li>
+							<li>Added a shortcut/keyword for search engine definition. For instance, if you have 'g' as shortcut for google engine, typing "g foobar" in URL will order a search using google engine.</li>
+							<li>Enabled again CSS shadow effect, since the webkit/cairo implementation was finally made fast enough.</li>
+							<li>Fixed some potential crash in WebKit when a file can't be displayed internally and that plugins are disabled or not available.</li>
+							<li>Search engine string now handles input codepage correctly.</li>
+							<li>"Find in page" now handles input codepage correctly.</li>
+							<li>The focus ring wasn't displayed anymore after having cycled (tab key) through the whole page and re-entering it again.</li>
+							<li>Filter invalid characters for downloaded filenames.</li>
+							<li>Convert downloaded filenames to local charset.</li>
+							<li>Added amiga+r (reload) and amiga+s (stop) shortcuts.</li>
+							<li>@exclude keyword in userscripts was actually adding the sites to the whitelist too. :)</li>
+							<li>Updated youtube_fullscreen_fix.js since youtube broke it (again).</li>
+							<li>Removed useless user-agent checks in youtube.js.</li>
+							<li>Removed dailymotion userscript, since their HTML5 player has been rewritten and now supports fullscreen properly.</li>
+							<li>Added OWB_CURL_FORBID_ENCODING ENV var to disable gzip support (mostly for debug purpose, but can also help for some broken sites).</li>
+						</ul>
+						<div class="text_bold"><b>- 08.08.2010: Origyn Web Browser 1.9</b></div>
+						<ul>
+							<li>Updated to OWB r1468. To be noted OWB doesn't seem to be actively developped since May, so I'll merge directly against WebKit, from now on.</li>
+							<li>Updated to <a href="http://trac.webkit.org/" target="_blank">WebKit</a> r63894 (July 2010).</li>
+							<li>Updated to CURL 7.21.0</li>
+							<li>Interrupt a pending DNS thread immediately when a connection handle is being disposed.</li>
+							<li>Reduced the amount of Exec signals allocated for DNS resolution threads (one for all threads, instead of one per thread).</li>
+							<li>Added OWB_CURL_FORBID_REUSE ENV var to disable CURL connection re-use feature (this feature sometimes causes stalled connections, for a yet unknown reason).</li>
+							<li>MediaPlayer:</li>
+						</ul>
+						<ul class="list_nested">
+							<li>Changed native controls skin and behaviour to look like Chrome's mediaplayer.</li>
+							<li>Added optional support for VP8/WEBM codec (Settings->Media section).</li>
+							<li>Added optional support for fast seeking (consists in creating a new connection instead of downloading everything before the target position). It can be disabled in Settings->Media section.</li>
+							<li>Made the H264 loopfilter mode configurable in Settings->Media section</li>
+							<li>Enabled altivec in FFMPEG (except for Theora, since it's currently broken).</li>
+							<li>Disabled FFMPEG FAST flag for decoding, since it could give ugly results on some files.</li>
+							<li>Added play/pause/mute/unmute/download media/copy media URL contextmenu entries for HTML Media elements.</li>
+							<li>Defer audio hardware allocation until play event, and release it at the end of stream instead of waiting until media player destruction, to help a bit with people not using device.audio AHI mode. WebKit can indeed cache mediaplayer instances until tab destruction, so there are situations where audio wouldn't be available anymore.</li>
+						</ul>
+						<ul>
+							<li>Fixed a strange cookie path restriction in OWB cookie handling, which makes wordpress.com login work.</li>
+							<li>Fixed youtube.js to work with Youtube latest changes, and made MPEG4 the default format (fmt=18), instead of FLV, since it's faster and better supported.</li>
+							<li>Added per-tab options in settings menu for plugins, images, javascript and user-agent.</li>
+							<li>Reworked the refresh method to use several rectangles, when it's more efficient to do so.</li>
+							<li>Modified the scrolling implementation to behave correctly with the WebKit recent optimizations regarding fixed elements. It also fixes some occasional glitch in custom scrollers rendering.</li>
+							<li>Disabled WebKit box-shadow effect rendering, since it was extremely slow with cairo. This "cures" abnormal slowness on sites like apple.com/html5 or ign.com.</li>
+							<li>Added a "remaining time" column in download manager.</li>
+							<li>Added Amiga + z and Amiga + shift + z qualifier for undo/redo.</li>
+							<li>Added Shift + Space shortcut as "page up" function.</li>
+							<li>Added a search string in bookmark and cookies window.</li>
+							<li>"Add bookmark" button now adds bookmarks below the currently selected node, or at the end of the current group list, if a group node is selected. If no entry is selected, the new link is still added to the end, like before.</li>
+							<li>Allow to scroll in bookmark tree when dragging an entry over upper or lower areas of the listtree object.</li>
+							<li>Added a persistant "show in menu" option in the bookmark title selection window (this window appears when dropping a link on quicklinks group or "add bookmark" button).</li>
+							<li>Added a special favicon for bookmarks/quicklinks with "javascript:" scheme.</li>
+							<li>Added a contextmenu to copy an entry URL in password manager.</li>
+							<li>Character '&amp;' wasn't processed properly in search engine string.</li>
+							<li>Truncate history/bookmark to 64 characters in pulldown menu.</li>
+							<li>Moved WebInspector ENV var option to a regular setting in Prefs->Content section.</li>
+							<li>Added an option to enable/disable plugins globally in Prefs->Content section.</li>
+							<li>Create a new tab/window when selecting an entry in "recently closed views" menu.</li>
+							<li>Added user-agents for Google Chrome, Iphone and Ipad (spoofing as IPad can help showing some sites with HTML5 Video/Audio instead of Flash).</li>
+							<li>Added OWB_NO_STATIC_BACKGROUND ENV variable to ignore background "fixed" CSS attribute, which improves scrolling performance.</li>
+							<li>Added notes about Youtube and the specific settings to make it work in HTML5 or at least without Flash using the builtin player. So *please* read the Youtube section of this document if you have trouble playing Youtube videos.</li>
+						</ul>
+						<div class="text_bold"><b>- 04.06.2010: Origyn Web Browser 1.8</b></div>
+						<ul>
+							<li>Updated to OWB SVN r1458.</li>
+							<li>Updated to CURL 7.20.1 and implemented a threaded DNS resolver, which prevents OWB network task from being blocked until a DNS resolution is finished.</li>
+							<li>Updated to PixMan 0.18.0.</li>
+							<li>Implemented fullscreen mode for HTML5 video, using overlay. In this mode, the CPU usage is reduced drastically (about 300% speedup for youtube 360p content).</li>
+							<li>Added a "switch to fullscreen" context menu entry for plain HTML5 video elements.</li>
+							<li>Fixed some possible audio glitches due to an error in buffer management.</li>
+							<li>Fixed some minor issues in MediaPlayer timeline handling.</li>
+							<li>Implemented an userscript manager (GreaseMonkey-like). In practice, it means a webpage can be modified on-the-fly with a JavaScript script. In Scripts/ directory, two examples can be found:</li>
+						</ul>
+						<ul class="list_nested">
+							<li>hello.js: a simple example to illustrate the script functionality.</li>
+							<li>youtube.js: when applied to a youtube link (in Flash mode), this script adds direct links to the video, and replaces the Flash element by a HTML5 Video element. I suggest adding &amp;fmt=18 to the youtube link to play the 360p mp4 version by default. To be noted scripts are only injected to tabs/windows created after their addition in the script manager.</li>
+						</ul>
+						<ul>
+							<li>Use MorphOS 2.x charsets.library for UTF8->local conversions (if available).</li>
+							<li>Added icons for "add bookmark" and "bookmarks" buttons.</li>
+							<li>Added ctrl+pgup/pgdown shortcut to cycle between tabs.</li>
+							<li>Added a search string for bookmarks and history panels.</li>
+							<li>Added a "copy to clipboard" contextmenu entry for network activity window.</li>
+							<li>Tabs can be now be dragged too (MorphOS 2.5 required).</li>
+							<li>When dropping a tab to bookmarks or quicklinks, use the site title instead of "no title".</li>
+							<li>Disable gzip on-the-fly decompression when downloading gzip files.</li>
+							<li>Copying UTF8 strings to system clipboard from contextmenu could result in truncated strings.</li>
+							<li>Adjusted timer to postpone short requests when they are too frequent, since they could cause high CPU usage in some cases.</li>
+							<li>Fixed a bug in download manager when a download connection fails before even asking for destination.</li>
+							<li>Fixed some NULL pointer read access in OWB fontcache, when no fonts are found.</li>
+							<li>Fixed some more minor memory leaks in OWB API usage.</li>
+						</ul>
+						<div class="text">Notes about YouTube and HTML5:</div>
+						<ul class="list_nested">
+							<li>You can enable HTML5 in YouTube by going to <a href="http://www.youtube.com/html5" target="_blank">http://www.youtube.com/html5</a> and follow instructions (no account needed).</li>
+							<li>Youtube broke the "fullscreen" mode just before this release. I supplied an userscript in Scripts/ to fix it: go to windows->scripts and add Scripts/Youtube_Fullscreen_Fix.js. Once it's effective, fullscreen mode will use overlay (i.e much faster).</li>
+							<li>Don't forget to read notes about sound in "Preempted rants" section. :)</li>
+						</ul>
+						<br />
+						<div class="text_bold"><b>- 04.03.2010: Origyn Web Browser 1.7</b></div>
+						<ul>
+							<li>Updated to OWB SVN r1369.</li>
+							<li>Updated to Curl 7.20.</li>
+							<li>Implemented HTML5 Media backend (&lt;VIDEO&gt; and &lt;AUDIO&gt;) through FFMpeg:</li>
+							<li>Support for most common codecs: Ogg/Theora/Vorbis, MPEG4, H264, AAC, MP3, Wav, ...</li>
+							<li>Builtin controls support.</li>
+						</ul>
+						<ul class="list_nested">
+							<li>Sites like dailymotion/openvideo, youtube/html5 and vimeo work. Here are a few random links:</li>
+							<li><a href="http://openvideo.dailymotion.com/video/xbzemj_le-clan-suricate_animals" target="_blank">http://openvideo.dailymotion.com/video/xbzemj_le-clan-suricate_animals</a></li>
+							<li><a href="http://vimeo.com/8504375" target="_blank">http://vimeo.com/8504375a</a> (select "switch to html5" at bottom right)</li>
+							<li><a href="http://camendesign.com/code/video_for_everybody/test.html" target="_blank">http://camendesign.com/code/video_for_everybody/test.html</a></li>
+							<li><a href="http://diveintohtml5.org/video.html" target="_blank">http://diveintohtml5.org/video.html</a> (bottom)</li>
+							<li><a href="http://people.opera.com/howcome/2007/video/controls.html" target="_blank">http://people.opera.com/howcome/2007/video/controls.html</a></li>
+							<li><a href="http://www.scottandrew.com/pub/html5audioplayer/" target="_blank">http://www.scottandrew.com/pub/html5audioplayer/</a></li>
+							<li>For youtube, subscribe to beta html5 program by going to <a href="http://www.youtube.com/html5" target="_blank">http://www.youtube.com/html5</a></li>
+						</ul>
+						<div class="text">Known issues/limitations:</div>
+						<ul class="list_nested">
+							<li>Audio output uses AHI music unit at the moment, which is unfortunately exclusive. It's still possible to play several sounds at once with this mode, by setting AHI music unit to: "Unit 0: &lt;mode&gt;".</li>
+							<li>Each media instance requires one exec signal in OWB main task, which means there can be 5 concurrent media players at most (depending on other OWB options that can also eat signals).</li>
+							<li>Fullscreen mode isn't implemented yet.</li>
+							<li>The whole media is stored in memory (sorry for this one, it will be handled in a more elegant way later).</li>
+						</ul>          
+						<ul>    
+							<li>Added search engine configuration window.</li>
+							<li>Implemented JavaScript window modes for popups (no toolbar, no status, window size, ...).</li>
+							<li>Improved keyboard support, more texteditor shortcuts work now: ctrl+a (select all), ctrl+[shift]+z (undo/redo), ctrl+b/u/i (bold,underline,italic), ... It also makes <a href="http://www.konamicodesites.com" target="_blank">http://www.konamicodesites.com</a> work properly. :)</li>
+							<li>Added ctrl+wheel combination to zoom in/out.</li>
+							<li>Added an option to make navigation toolbar frameless.</li>
+							<li>Reworked navigation buttons: buttons now have hover and selection effects (note that brushes are not in .mim format anymore).</li>
+							<li>Added dynamic frame for quicklinks in borderless mode.</li>
+							<li>Added optional horizontal separators between navigation, quicklinks and address groups.</li>
+							<li>Added status images for local/internet/secure/insecure areas.</li>
+							<li>Added optional validation buttons for URL and search strings.</li>
+							<li>Added balance between URL and search groups (balance appears on mouse hover).</li>
+							<li>Reworked history popup in completion mode, so that the typed text is shown (as bold/underline) in the matching entries in the list.</li>
+							<li>Added "Open all bookmarks" entry for quicklinks folder items.</li>
+							<li>Added SOURCE/S argument to OPEN REXX command to open current browser source view.</li>
+							<li>Added %p placeholder for contextmenu and mimetype actions, referring to OWB REXX port name.</li>
+							<li>In download manager, hilight tab title instead of switching page, when a new event occurs.</li>
+							<li>Allow to restart a finished download too.</li>
+							<li>Changed options regarding session restoration at startup (always/ask/never).</li>
+							<li>Slight adjustments in cookie parsing (fixes MobileMe).</li>
+							<li>Don't show authorization window with uncomplete 401 responses.</li>
+							<li>Added more checks to know if a file can actually be resumed.</li>
+							<li>The form credentials saving system now allows to ignore some sites, by pressing "never" button, when asked if credentials should be saved.</li>
+							<li>Hid the password column in passwords window (it can be shown with contextmenu over list header).</li>
+							<li>Selecting an entry in the contextmenu of back/forward buttons no longer modifies the back/forward list.</li>
+							<li>Don't focus to URL string anymore if a window was not manually opened.</li>
+							<li>Don't render cairo surfaces for active browser when the program is iconified.</li>
+							<li>Disable gzip on-the-fly decompression when downloading, since it seems to create some confusion.</li>
+							<li>Favicon database was active even if favicons were disabled.</li>
+							<li>Minor fixes in bookmark/quicklink handling.</li>
+							<li>Fixed an encoding issue with the site titles in history database.</li>
+							<li>Fixed an issue with middlebutton handling when sidepanels are enabled.</li>
+							<li>Fixed a possible race in private static objects instanciation in WebKit (actually it's a gcc "bug").</li>
+							<li>Removed the lame googlemap bug workaround and integrated the proper fix from WebKit.</li>
+							<li>Changed some options defaults: history popup, network thread, experimental cookies and favicons are now enabled by default.</li>
+						</ul>   
+						<div class="text">IMPORTANT: if you're using experimental cookies (which I strongly suggest), make sure to delete previous conf/cookieDatabase.db, since some OWB generic fixes affected it, else you might encounter non-functional logins or similar bogus behaviour.</div>
+						<br /><br />
+						<div class="text_bold"><b>- 16.12.2009: Origyn Web Browser 1.6 (Hotfix)</b></div>
+						<ul>
+							<li>Enabled WebInspector (Firebug-like). WebInspector allows browsing resources/scripts, profiling, debugging... It can be enabled with: "setenv OWB_ENABLE_INSPECTOR 1". When enabled, a new "inspect element" entry is added to webview contextmenus. Here's what it looks like: <a href="http://upload.wikimedia.org/wikipedia/commons/b/bd/Owb-inspector-debug.png" target="_blank">http://fabportnawak.free.fr/inspector.png</a> (Wikipedia link)</li>
+							<li>Avoid conflicts between regular context menus and javascript contextmenus.</li>
+							<li>Updated Russian, Swedish and Czech locales.</li>
+							<li>Added a lame workaround in javascript interpreter that caused regressions in google maps.</li>
+							<li>Fixed a possible crash with priority popups in MLdonkey HTML interface.</li>
+						</ul>
+						<div class="text_bold"><b>- 11.12.2009: Origyn Web Browser 1.6</b></div>
+						<ul>
+							<li>Updated to OWB SVN r1158.</li>
+							<li>Added a GUI for content blocking (windows->content blocking). Regular expressions are accepted, and entries can either be white or blacklisted.</li>
+							<li>Added "Block images from &lt;linked domain&gt;" context menu item for pictures.</li>
+							<li>Save and restore the list of downloaded/finished/failed files (optional).</li>
+							<li>Sessions now also restore scroll offset in pages.</li>
+							<li>Added support for external transfer animations:</li>
+						</ul>
+						<ul class="list_nested">
+							<li>+ PROGDIR:resource/transferanim.png and PROGDIR:resource/transferanim_tab.png will be used if they exist.</li>
+							<li>+ The expect format is a 32bits PNG with square frames (horizontal layout). The rate is set to 30ms per frame.</li>
+						</ul>
+						<ul>
+							<li>Enabled user stylesheet. PROGDIR:resource/userStyleSheet.css will be used if it exists. This user stylesheet allows changing default form controls look, for instance (amongst many other things).</li>
+							<li>Reworked history popup list to show favicons (optionally), title and url on 2 lines.</li>
+							<li>Reworked network activity window to show a more precise state (connecting/waiting/current progress).</li>
+							<li>Network activity leds now show different colours depending on connection state.</li>
+							<li>Added favicons settings to configure the categories favicons should be displayed in (tabs/history/bookmarks/...).</li>
+							<li>Added a few more tweaks in mimetype system to fallback to download action if no proper mimetype is sent (or configured).</li>
+							<li>Added BACK and FORWARD REXX commands.</li>
+							<li>Added GETURL to retrieve active browser URL (stored in RESULT).</li>
+							<li>Added AS/K option to SAVEURL REXX command, to choose the target file path.</li>
+							<li>Added more up-to-date user agents in spoof settings.</li>
+							<li>Don't change active tab after closing an inactive tab.</li>
+							<li>Bookmark groups can now also be added to quicklinks. In that case, a popup menu will display group entries.</li>
+							<li>Allowed editing builtin mimetypes attributes, such as text/html and co (but think twice when modifying them, of course).</li>
+							<li>Middle clicking an entry in history or bookmark now opens the link in a new tab.</li>
+							<li>"Copy Image" context menu item now copies the actual image content to clipboard, instead of its URL.</li>
+							<li>Many fixes in the new cookie system (thanks sszymczy).</li>
+							<li>Fixed some left mouse button event issue that could cause trouble on googledocs or fckeditor toolbars (thx sszymczy).</li>
+							<li>Fixed a focus issue with frames.</li>
+							<li>Fixed a potential race in WebKit with plugins and stream disposal.</li>
+							<li>Fixed ftp:// listings so that they are browsable.</li>
+							<li>Fixed the "rewind" error message that could occur during file upload in some cases.</li>
+							<li>Fixed Acid3 test 97.</li>
+							<li>Fixed "Paste" to work in rich text editors (such as googledocs).</li>
+							<li>Fixed a bug with "Cut" function.</li>
+						</ul>
+						<div class="text">
+							Translators: please update your translations, i'll supply the locale archive separately.<br /><br />
+							There's a known regression since r1106 (or so): maps.google.* is kinda broken (some options/buttons don't have any effect).<br />
+							It's a generic issue in WebKit when JIT is disabled, and it was reported to their bugtracker. I'll update a fixed version when it's fixed.
+						</div>
+						<br /><br />
+						<div class="text_bold"><b>- 17.10.2009: Origyn Web Browser 1.5</b></div>
+						<ul>
+							<li>Updated to OWB SVN r1092.</li>
+							<li>Updated to Curl 7.19.6.</li>
+							<li>Added Locale support: get to work, translators. :)</li>
+							<li>Made webview links, quicklinks and bookmark entries draggable.</li>
+							<li>Made webview, tabs, "new tab" button, "add to bookmark" button, quicklink group, URL string and bookmark window droppable.</li>
+							<li>Implemented (optional) Favicon support. They are displayed in tabs, history panel, bookmark, bookmark panel and quicklinks.</li>
+							<li>Added save/restore session menu entries in project menu.</li>
+							<li>Made restore session requester at startup optional.</li>
+							<li>Added password manager for auth and forms (for forms, enable "save form credentials" in options).</li>
+							<li>Moved the experimental cookie system ENV var option to "settings/network" settings.</li>
+							<li>Added cookie manager (designed to work with experimental cookie system).</li>
+							<li>Added common user agents in "settings/network" (OWB_USER_AGENT env var still overrides if you set it).</li>
+							<li>Added "Ignore SSL Errors" and certificate path to "settings/security".</li>
+							<li>Added application/force-download and application/octet-stream to the default mimetype list.</li>
+							<li>Allows file download in "READWRITE" mode (which allows previewing during download).</li>
+							<li>Added history sidepanel.</li>
+							<li>Made bookmark sidepanel update faster.</li>
+							<li>Added "History" pulldown menu with recently visited entries and recently closed tabs submenu.</li>
+							<li>Added REXX command: "ADDBOOKMARK TITLE/A,URL/A,ALIAS/K,MENU/S,QUICKLINK/S".</li>
+							<li>Focus to progress/done/error tab in download window when related events occur.</li>
+							<li>Setting file comment doesn't fail anymore if the URL length is > 79 characters.</li>
+							<li>Download window wouldn't autoclose anymore if a download requester had been previously cancelled.</li>
+							<li>Fixed "417" HTTP code response. Should fix mail sending with imp.free.fr, for instance.</li>
+							<li>Fixed a memory leak with history handling.</li>
+							<li>Fixed date handling.</li>
+							<li>Take argument URL into account when restoring session at startup.</li>
+							<li>Fixed an illegal access issue and other bugs with the new OWB cookie system.</li>
+							<li>Added some memory checks in strategic places in WebKit to avoid crashing if there's not enough memory (but don't expect it to be bullet-proof anyway. WebKit is just not designed to handle properly low-memory cases).</li>
+							<li>Show a nice requester when Webkit decides to crash because it can't deal with failed memory allocations. Also free the whole heap memory in that case.</li>
+						</ul>
+						<div class="text_bold"><b>- 16.08.2009: Origyn Web Browser 1.4 - MorphOS 2.4 Release (NoSVG build)</b></div>
+						<ul>
+							<li>Updated to OWB SVN r1015.</li>
+							<li>Implemented NPAPI plugin system. Plugins are implemented as shared libraries. They are loaded from PROGDIR:plugins/ directory.</li>
+							<li>New OWB cookie system is now available (it helps with gmail or hotmail, for instance). However, it's only available with "setenv OWB_EXPERIMENTAL_COOKIES 1" for now, since it's still considered as WIP in OWB main branch.</li>
+							<li>Mimetype system now also searches for defined filename extensions if an URL doesn't advertise any registered mimetype. ftp:// URL also automatically makes use of these extensions bindings,  since that's the only way to make a decision for this scheme.</li>
+							<li>Mimetype list (preferences) is now sorted.</li>
+							<li>Added backspace and alt+cursor navigation/scrolling keys.</li>
+							<li>Fixed http://login:pass@host authentication method which was broken in 1.3.</li>
+							<li>Escape filename in the mimetype "ask action" requester.</li>
+							<li>Fixed an excessive VMEM consumption introduced in 1.3.</li>
+							<li>Updated libxslt, which fixes a deadly crash in some XML/XPATH pages (for instance OpenGL SDK).</li>
+							<li>A requester asking for HTTP: volume would sometimes appear at download completion. Fixed.</li>
+						</ul>
+						<div class="text_bold"><b>- 07.06.2009: Origyn Web Browser 1.3</b></div>
+						<ul>
+							<li>Updated to OWB SVN r994.</li>
+							<li>Network can now optionally run in a dedicated thread. Just for information, CURL network backend has always been asynchronous, but some specific parts can unfortunately block depending on the network link (e.g dns resolution), hence the need for a dedicated thread.</li>
+							<li>Improved CURL buffer management to cope more easily with higher download speeds.</li>
+							<li>Added resume support to download manager.</li>
+							<li>Display more information in download overwrite/resume requester (local/remote file dates and sizes).</li>
+							<li>Added failure reason column in download manager 'Failed' tab.</li>
+							<li>Added URL column in download manager.</li>
+							<li>Added a gauge for each entry in download manager.</li>
+							<li>Added a retry button for failed downloads.</li>
+							<li>Download speed is now measured as an "instant" value (before, it was computed as an average since the download start).</li>
+							<li>Added a confirmation requester if POST data is about to be resent (should avoid duplicated messages on fora, for instance).</li>
+							<li>Added content blocking based on 'adblockplus' (optional). See conf/blocked.prefs (it will be made configurable from settings/contextmenu later).</li>
+							<li>Bookmark tree can now be shown as a side panel.</li>
+							<li>Reworked refresh method (behaves better and faster with 2dlayers when moving windows over browser area).</li>
+							<li>Added mimetype configuration: for each mimetype, "view", "download","external command" and "ask" actions are available.</li>
+							<li>Added configurable contextual menus for link, page and image objects, which can now be extended with user actions.</li>
+							<li>Added session saving/restoration (optional). F9 and F10 keys also respectively allow to manually select a session file to restore from/save to.</li>
+							<li>Added "Load in New Background Tab" contextmenu item (which was already available before by pressing MMB).</li>
+							<li>Added HTML (embedded) error reporting mode. Requester and HTML modes can be selected from settings.</li>
+							<li>Quit requester is now optional.</li>
+							<li>Added "Paste to URL" menu entry.</li>
+							<li>More work on PDF export (saves the whole site into a page-based document, with or without backgrounds depending on settings).</li>
+							<li>Added drag'n'drop support to browser window (each dropped file creates a new tab).</li>
+							<li>Added mailto: support (through OpenURL).</li>
+							<li>Added javascript: scheme support from URL string.</li>
+							<li>Space key now also scrolls page down.</li>
+							<li>New bookmark entries are also added to pulldown menu by default.</li>
+							<li>asyncio.library is now used for file input/output.</li>
+							<li>Fixed SAVEURL ARexx command 'quiet' mode.</li>
+							<li>Removed a 256 characters limit with bookmark entries.</li>
+							<li>Changed widgets default colours to give more contrast.</li>
+							<li>Added htm/php extensions for local browsing.</li>
+							<li>Fixed an issue with duplicated entries in network window when using several windows.</li>
+							<li>Fixed an issue with file upload (full path could be sent instead of just the file name).</li>
+							<li>Moved history.db and cookieCollection.txt to conf/ directory (move your old ones there, sorry for that :)).</li>
+						</ul>
+						<div class="text_bold"><b>- 12.04.2009: Origyn Web Browser 1.2</b></div>
+						<ul>
+							<li>Updated to OWB SVN r884 (08.03.2009).</li>
+							<li>Updated to Curl 7.19.3.</li>
+							<li>Substancially increased scrolling speed in some cases.</li>
+							<li>Reduced a lot CPU usage in some cases (i.e MorphZone forum when replying).</li>
+							<li>Added authentication window (not all protocols are handled yet).</li>
+							<li>Added history loading/saving with max age/max entries settings.</li>
+							<li>Added support for visited links marking.</li>
+							<li>Added URL completion: string and/or popup completion modes are available (and optional).</li>
+							<li>Added console window (displaying JavaScript error messages amongst others).</li>
+							<li>Added "Save as HTML" menu entry.</li>
+							<li>Added cache model and page cache settings.</li>
+							<li>Added "New Tab" button.</li>
+							<li>Added context menu actions to tab titles.</li>
+							<li>Added context menu in downloaded entries list to open file/directory with Ambient.</li>
+							<li>Added loading transfer anim in tabs (optional).</li>
+							<li>Added "SAVEURL URL/A" rexx command (downloads passed URL to download directory).</li>
+							<li>Allow Euro symbol input in forms.</li>
+							<li>Send "Accept-Language" http header set with system preferred languages.</li>
+							<li>Implemented JavaScript prompt request.</li>
+							<li>Enabled "Resizable TextArea" webkit option.</li>
+							<li>Made tab-cycling work properly for the whole browser window (it was only working inside the page content before).</li>
+							<li>Remember last opened file path during session.</li>
+							<li>Began implementing plugin interface (nothing to see yet, except plugin placeholder).</li>
+							<li>Unescape downloaded file names.</li>
+							<li>Protected tab and status labels against MUI escape-sequences abuses.</li>
+							<li>URL filecomment wasn't written correctly when downloading to a SFS partition.</li>
+							<li>Bookmarks menuitems are now updated in realtime too.</li>
+							<li>QuickLink group reworked and (hopefully) fixed for pre-2.x MUI versions. It also offers more layout options.</li>
+							<li>Don't move downloaded entry to finished tab in case current size is greater than advertised file size (which can happen with on-the-fly gzip unpacking).</li>
+							<li>Fixed some issues with window/tab titles sometimes showing wrong label.</li>
+							<li>Cosmetics here and there in the GUI.</li>
+							<li>Use shared jpeg and png libraries.</li>
+						</ul>
+						<div class="text_bold"><b>- 21.02.2009: Origyn Web Browser 1.1</b></div>
+						<ul>
+							<li>Updated to 12.02.2009 SVN (GaleKing). It at least fixes gifanims, amongst many other things.</li>
+							<li>Updated to Cairo 1.8.6 and Pixman 0.14.0 (altivec enabled for MorphOS 2.x).</li>
+							<li>Updated to Curl 7.19.2: it *seems* to be more robust and slightly faster.</li>
+							<li>Added libICU support (which makes codepage actually work).</li>
+							<li>Convert UTF8 to local charset in tab/window/status labels (MorphOS 2.x).</li>
+							<li>Added persistant cookies saving.</li>
+							<li>Added confirmation request when quitting.</li>
+							<li>Navigation buttons can be displayed as text/text&amp;image/image.</li>
+							<li>Added history feature in back and forward buttons contextmenus.</li>
+							<li>Reworked quicklink edition in bookmark window. Their look and layout is now configurable and their edition is done in realtime (thanks Poly :)).</li>
+							<li>Cosmetics in bookmark window.</li>
+							<li>Added download speed in download window.</li>
+							<li>Cosmetics in download window.</li>
+							<li>Fixed a refresh issue in tabs.</li>
+							<li>Middlebutton doubleclick now creates a new tab in background.</li>
+							<li>Contextual cursors support (MorphOS 2.x only).</li>
+							<li>Display filename in upload file forms.</li>
+							<li>Added support for Javascript confirm alert and Javascript window.close().</li>
+							<li>Added network activity leds.</li>
+							<li>Added network connection manager window.</li>
+							<li>Added a feedback requester for connection failures (connection refused, unknown hostname, ...)</li>
+							<li>Added more settings (fonts families, interface settings, maximum active connections, javascript, ...)</li>
+							<li>Added PDF export option (just an unfinished experiment for now, only first page will be saved correctly).</li>
+							<li>Added a splash window during fontconfig cache generation.</li>
+							<li>Fixed deadkeys input (i.e for typing &ouml;, &uuml;,... characters with some keymaps).</li>
+							<li>Fixed a crash when directly closing a tab that hadn't been shown yet.</li>
+							<li>Fixed a bug in fontconfig. Only first font directory would be scanned (it also means font cache will be regenerated with this version).</li>
+						</ul>
+						<div class="text_bold"><b>- 01.02.2009: Origyn Web Browser 1.0</b></div>
+						<ul>
+							<li>First public release.</li>
+						</ul>
+						<br />
+						<p align="center"><a href="#indice"><b>Back</b></a></p>
+					</td>
+				</tr>
+				<tr>
+					<td width="940" height="96" colspan="3" style="background-color:#FFFFFF; border-style:none;"></td>
+				</tr>
+			</table>
+		</td>
+	</tr>
+</table>
+
+</body>
+</html>

@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en-US">
+<head>
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8">
+<title>Top Sites</title>
+<style type="text/css">
+html, body, div, span, applet, object, iframe, h1, h2, h3, h4, h5, h6, p, blockquote, pre, a, abbr, acronym, address, big, cite, code, del, dfn, em, img, ins, kbd, q, s, samp, small, strike, strong, sub, sup, tt, var, b, u, i, center, dl, dt, dd, ol, ul, li, fieldset, form, label, legend, table, caption, tbody, tfoot, thead, tr, th, td, article, aside, canvas, details, embed, figure, figcaption, footer, header, hgroup, menu, nav, output, ruby, section, summary, time, mark, audio, video {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 100%;
+  font: inherit;
+  vertical-align: baseline;
+  outline: none;
+  -webkit-box-sizing: border-box;
+}
+html { height: 101%; }
+body { background: #d6d6d6; font-family: Verdana, Arial, sans-serif; font-size: 62.5%; line-height: 1; padding: 15px 15px 15px 15px; }
+
+article, aside, details, figcaption, figure, footer, header, hgroup, menu, nav, section { display: block; }
+ol, ul { list-style: none; }
+
+blockquote, q { quotes: none; }
+blockquote:before, blockquote:after, q:before, q:after { content: ''; content: none; }
+strong { font-weight: bold; } 
+
+table { border-collapse: collapse; border-spacing: 0; }
+img { border: 0; }
+
+h2 { display: block; font-family: Tahoma, sans-serif; font-size: 4.2em; line-height: 1.2em; text-shadow: 1px 2px 1px #fff; margin-bottom: 8px; }
+
+p { font-size: 1.3em; color: #666; margin-bottom: 16px; }
+
+a { text-decoration: none; color: #6a91d9; }
+a:hover { text-decoration: underline; }
+
+#w { display: block; max-width: 100%; min-width: 420px; text-align: center; }
+
+#container { width: 100%; background: #d6d6d6; }
+
+#thumbs { list-style: none; text-align: left; }
+#thumbs li { position: relative; margin-right: 14px; margin-bottom: 14px; }
+
+#thumbs li img { 
+  float: left;
+  cursor: pointer;
+  opacity: 0.8;
+  
+  -webkit-box-shadow: 5px 5px 5px #3f3f3f;
+}
+#thumbs li:hover img { 
+  opacity: 1.0
+}
+
+#thumbs li > .meta { 
+  float: left;
+  overflow: hidden;
+  position: absolute;
+  z-index: 9999;
+  left: 4px;
+  bottom:4px;
+  height: 75px;
+  width: 0;
+  
+  font-family: Arial, Tahoma, sans-serif;
+  font-size: 1.2em;
+  font-color: #fff;
+  background: #fff;
+  
+  -webkit-box-shadow: 1px 0px 4px #8f8e88;
+  -webkit-border-top-right-radius: 4px;
+  -webkit-border-bottom-right-radius: 4px;
+  -webkit-border-top-left-radius: 4px;
+  -webkit-border-bottom-left-radius: 4px; 
+}
+
+#thumbs li:hover > .meta {
+  width: 320px;
+  padding: 3px 5px;
+}
+
+#thumbs li > .remove { 
+  float: left;
+  overflow: hidden;
+  position: absolute;
+  z-index: 9999;
+  left: 0px;
+  top:0px;
+  height: 16px;
+  width: 0;  
+}
+
+#thumbs li:hover > .remove {
+  width: 16px;
+}
+
+#thumbs li img { width: 400px; }
+#thumbs li .remove img { width: 16px; }
+
+#thumbs li .meta h4 { font-weight: bold; margin-bottom: 11px; font-size: 1.25em; padding-top: 8px; color: #363636; }
+#thumbs li .meta span { display: block; margin-bottom: 5px; }
+
+/* clearfix */
+.clearfix:after { content: "."; display: block; clear: both; visibility: hidden; line-height: 0; height: 0; }
+.clearfix { display: inline-block; }
+ 
+html[xmlns] .clearfix { display: block; }
+* html .clearfix { height: 1%; }
+</style>
+</head>
+<script type="text/javascript">
+function setMaxEntries()
+{
+	document.location.href="topsites://?maxEntries=" + document.forms['settings']['maxEntries'].value;
+}
+
+function setDisplayMode()
+{
+	document.location.href="topsites://?displayMode=" + document.forms['settings']['displayMode'].value;
+}
+
+function setFilterMode()
+{
+	document.location.href="topsites://?filterMode=" + document.forms['settings']['filterMode'].value;
+}
+
+function setScreenshotSize()
+{
+	document.location.href="topsites://?screenshotSize=" + document.forms['settings']['screenshotSize'].value;
+}
+
+function onLoad() 
+{
+	var maxEntries = {{maxEntries}};
+	
+	switch(maxEntries)
+	{
+		case 3:
+			document.forms['settings']['maxEntries'].selectedIndex = 0;
+			break;	
+		case 4:
+			document.forms['settings']['maxEntries'].selectedIndex = 1;
+			break;
+		case 6:
+			document.forms['settings']['maxEntries'].selectedIndex = 2;
+			break;
+		case 8:
+			document.forms['settings']['maxEntries'].selectedIndex = 3;
+			break;	
+		case 9:
+			document.forms['settings']['maxEntries'].selectedIndex = 4;
+			break;					
+		case 12:
+			document.forms['settings']['maxEntries'].selectedIndex = 5;
+			break;	
+		case 15:
+			document.forms['settings']['maxEntries'].selectedIndex = 6;
+			break;			
+		case 16:
+			document.forms['settings']['maxEntries'].selectedIndex = 7;
+			break;				
+	}
+	
+	var displayMode = {{displayMode}};
+	
+	switch(displayMode)
+	{
+		case 0:
+			document.forms['settings']['displayMode'].selectedIndex = 0;
+			break;
+		case 1:
+			document.forms['settings']['displayMode'].selectedIndex = 1;
+			break;	
+	}	
+
+	var filterMode = {{filterMode}};
+	
+	switch(filterMode)
+	{
+		case 0:
+			document.forms['settings']['filterMode'].selectedIndex = 0;
+			break;
+		case 1:
+			document.forms['settings']['filterMode'].selectedIndex = 1;
+			break;	
+		case 2:
+			document.forms['settings']['filterMode'].selectedIndex = 2;
+			break;	
+		case 3:
+			document.forms['settings']['filterMode'].selectedIndex = 3;
+			break;										
+	}	
+	
+	var screenshotSize = {{screenshotSize}};
+	
+	switch(screenshotSize)
+	{
+		case 400:
+			document.forms['settings']['screenshotSize'].selectedIndex = 0;
+			break;
+		case 640:
+			document.forms['settings']['screenshotSize'].selectedIndex = 1;
+			break;	
+		case 800:
+			document.forms['settings']['screenshotSize'].selectedIndex = 2;
+			break;				
+	}			
+}
+</script>
+
+<body onload="onLoad()">
+
+	<div id="w">
+		<div id="container">
+			<ul id="thumbs">
+				{{topsites}}
+			</ul>
+		</div>
+	</div>
+  
+	<form name="settings">
+		<fieldset>
+		<legend>Settings</legend>
+		<label>Maximum Entries:</label>
+		<select name="maxEntries" onchange="setMaxEntries();">
+			<option value="3">3</option>
+			<option value="4">4</option>
+			<option value="6">6</option>
+			<option value="8">8</option>
+			<option value="9">9</option>		  
+			<option value="12">12</option>
+			<option value="15">15</option>
+			<option value="16">16</option>   
+		</select>
+		<label>Display Mode:</label>	  
+		<select name="displayMode" onchange="setDisplayMode();">
+			<option value="0">Grid</option>
+			<option value="1">CoverFlow</option>
+		</select>	  
+		<label>Filter:</label>
+		<select name="filterMode" onchange="setFilterMode();">
+			<option value="0">Show all</option>
+			<option value="1">Show bookmarks</option>
+			<option value="2">Show all but bookmarks</option>
+		</select>	
+		<label>Screenshot resolution:</label>
+		<select name="screenshotSize" onchange="setScreenshotSize();">
+			<option value="400">400x300</option>
+			<option value="640">640x480</option>
+			<option value="800">800x600</option>  
+		</select>	
+		</fieldset>
+	</form>
+  
+</body>
+</html>

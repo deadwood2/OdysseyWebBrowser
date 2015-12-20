@@ -1,0 +1,184 @@
+<html>
+<head>
+<style>
+
+body { font-family: "Lucida Grande", sans-serif; margin: 0; }
+
+a { text-decoration: none; color: black; }
+a:hover { text-decoration: underline; }
+
+.resizing { cursor:col-resize; }
+
+.resizerClass { 
+    float: right;
+    height: 15px;
+    width: 5px;
+    background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAABCAYAAAAW/mTzAAAAEUlEQVQImWNggIKDBw/+h7EBIe0DQ+aBTDEAAAAASUVORK5CYII=);
+    background-repeat: repeat-y; 
+    cursor: col-resize;
+}
+
+#SizeColumnRight {
+    float: right;
+    height: 15px;
+    width: 0; 
+}
+
+#ftpDirectoryTable {
+    width: 100%;
+    border-spacing: 0;
+}
+
+#HeaderRow { height: 17px; }
+
+th { 
+     font-size: 11px; 
+     font-weight: normal; 
+     height: 17px;
+     border-top: thin solid #c1c1c1; 
+     border-bottom: thin solid #c1c1c1; 
+     padding: 0; 
+     text-align: left; 
+     background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAPCAIAAACqfTKuAAAALElEQVQImT3DQQrAQAwDMWOc//83hsyeWoEEeHfd1ndn4N/WM+NPEicRYEkPLaAbCdW/XZAAAAAASUVORK5CYII=);
+     background-repeat: repeat-x; 
+}
+
+#NameHeader { min-width: 200px; }
+
+#DateHeader { 
+    width: 200px; 
+    min-width: 150px; 
+    padding: 0 0 0 12px; 
+}
+
+#SizeHeader { 
+    width: 100px; 
+    min-width: 75px; 
+    text-align: right; 
+    padding: 0 15px 0 0; 
+}
+
+td { font-size: 12px; }
+
+.ftpDirectoryIcon {
+    width: 16px; 
+    height: 16px; 
+    background-repeat: no-repeat;
+    background-position: top center; 
+    padding: 0 10px 1px 1px; 
+}
+
+.ftpDirectoryTypeDirectory {
+    background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAPCAYAAADtc08vAAABvElEQVQokYWSPYtUQRBFT/Xr3WUUFkFQMDAxFARNTU00EDQ08l8YiKEg/gkFMXRjzcxMRNjF1EAQg0XEcdmZ99FV16B7hllFtqCaol/3ubdelwF8l17uvT14wCqE3b997fUls4ecEgbwdO/j8TQOZwACSMDWzmzx+N6Ns6cCXvzQs/29d486Myz9y09m0KAYWNWkSFy9e+u5PXn1fn7n5vVdpHbJsdQRRUxRQGIKGOXIhUcQLrBtPuwfHOVQ8HP+G3lpgNpERAWYwMMqIISHcA9S2iFk5AiW8+OyazatbUqOS0SIEIQcyVDbE0EUgbHMxfDJRCqOmSFAAiEiwCRKgBQIGgCUwAPPZXSVCVQc2g+TqGo0xTWw1hggpxRX9ij2qy9sh1PZBq0KQURgGKG6R1s9gaJYHou6cegpmjY+c0K1jUvD1xORBnqny0Pfz47GQhfT+o3RJkg40G2OnoLoOqahn2UJlj10mhCpPqJBeBuersJycyAgCYoMCbKhGIcFW7EgmsEmUv2keilYm8MAz2AQefBy+O3zp3OYVg38N3SiMM5fvHBoX6TLV8zG1uYq01+5MrFKB/zNV23/AdO5O06+AqZOAAAAAElFTkSuQmCC);
+}
+
+.ftpDirectoryTypeFile {
+    background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABoklEQVQ4jYWSz6raQBTGf3NmnBCT7Bo1JLal0JcQoeu783HuK7gQu/IBuu1L9AXcddNNN6JUqCAEBYvN6eLe5MY/l35wGIaZ85vzfYzhSR+Xy+X30+nkVZXz+cx+v6csS+I4JgxDjaLoz3g8fg/8oiV5XvtxHPs0Ten1eqRpSp7nDIdDjscjQRCYPM+DxWLxFXh7D/BXRBARjDF474njmCRJyLKM9XpNURQ8PDyM5/P5F+DdNQDnHNbaprz3RFFEkiSsVisAiqJgMpl8mk6nn4E3AK4GWGsxxgCgqqgqIkJVVQwGA2azGYfDgX6/T5ZlE+AR+N0AOp1O46sGqCpRFDEajdjtdmy3W1SVzWYD0Ad+NADnHMaYi+a6rLU454jjmLIs6xZ/14KioLwKEREABToXgOcDxMjdKYwxBEGAqlJVFTcAQEXEXAfZLhGh2+3SXGoDjDHUfwEUvWOjhoRhyA3Ae29UFSMCqoC+Gqpz7hZgjMFa24zftnFtqa2LEOsg/wehBXEv/XJDv943jz1NKhcA59w34ANwutv1ogD4CZQA/wCSA+5Kc4yHyAAAAABJRU5ErkJggg==);
+}
+
+.ftpDirectoryFileName { padding: 1px 0 2px 0; }
+.ftpDirectoryFileDate { padding: 1px 0 2px 12px; }
+.ftpDirectoryFileSize { text-align: right; padding: 1px 15px 2px 0; }
+
+.evenFillerRow { background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAkCAIAAADHFsdbAAAAF0lEQVQImWP4//8/EwMDA8X47ReqmAMAheIGJOfQwJ4AAAAASUVORK5CYII=); }
+.oddFillerRow { background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAkCAIAAADHFsdbAAAAGUlEQVQImWN48/kfEwMDA6WY4f///9QwBwB7gAYfq3IQCAAAAABJRU5ErkJggg==); }
+
+.oddRowCell { background-color: #ecf3fe; }
+
+</style>
+
+<script>
+
+function setUpUI()
+{
+    document.getElementById("DateColumnResizer").addEventListener("mousedown", dateColumnDragStart, false);
+    document.getElementById("SizeColumnResizer").addEventListener("mousedown", sizeColumnDragStart, false);
+    addZebraStripes(document.getElementById('ftpDirectoryTable'));
+}
+
+function dateColumnDragStart()
+{
+    var element = document.getElementById("DateColumnResizer");
+    element.targetCell = document.getElementById("DateHeader");
+    dividerDragStart(element, event);
+}
+
+function sizeColumnDragStart()
+{
+    var element = document.getElementById("SizeColumnResizer");
+    element.targetCell = document.getElementById("SizeHeader");
+    dividerDragStart(element, event);
+}
+
+function dividerDragStart(element, event) 
+{
+    element.dragLastX = event.pageX;
+    document.addEventListener("mousemove", dividerDrag, true);
+    document.addEventListener("mouseup", dividerDragEnd, true);
+    document.body.className = "resizing";
+    document.draggingElement = element;
+    event.preventDefault();
+}
+
+function dividerDragEnd(element, event) 
+{
+    document.removeEventListener("mousemove", dividerDrag, true);
+    document.removeEventListener("mouseup", dividerDragEnd, true);
+    document.draggingElement = null;
+    document.body.className = "";
+    event.preventDefault();
+}
+
+function dividerDrag(event) 
+{
+    event.preventDefault();
+
+    var element = document.draggingElement;
+    var target = element.targetCell;
+
+    var delta = element.dragLastX - event.pageX;
+    var currentWidth = parseInt(window.getComputedStyle(target).width);
+    target.style.width = currentWidth + delta + "px";
+    var actualWidth = parseInt(window.getComputedStyle(target).width);
+    var actualDelta = actualWidth - currentWidth;
+
+    element.dragLastX = element.dragLastX - actualDelta;
+}
+
+function addZebraStripes(table)
+{ 
+    var tableRows = table.getElementsByTagName("tr");
+    
+    for (var i = 0; i < tableRows.length; i++) { // >
+        if (!tableRows[i].style.backgroundColor) {
+            var tableCells = tableRows[i].getElementsByTagName("td");        
+            for (var j = 0; j < tableCells.length; j++) { // >
+                // i = 0 really corresponds to row #1, so the even/odd relation here is flipped
+                tableCells[j].className += i % 2 ? " evenRowCell" : " oddRowCell";
+            }
+        }
+    }
+
+    // Add a "filler" row and cell at the bottom of the table to extend the pin striping
+    var cell = document.createElement("td");
+    cell.setAttribute("colspan", "1000");
+    cell.className = tableRows.length % 2 ? "evenFillerRow" : "oddFillerRow";
+    table.insertRow(tableRows.length).appendChild(cell);
+}
+
+</script>
+</head>
+
+<body onload="setUpUI();">
+<table id="ftpDirectoryTable">
+<tbody id="tableBody">
+<tr id="HeaderRow">
+<th id="IconHeader"></th>
+<th id="NameHeader">Name<div class="ResizerClass" id="DateColumnResizer"></div></th>
+<th id="DateHeader">Date Modified<div class="ResizerClass" id="SizeColumnResizer"></div></th>
+<th id="SizeHeader">Size<div id="SizeColumnRight"></div></th>
+</tr>
+</tbody>
+</table>
+</body>
+</html>
