@@ -67,6 +67,7 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     mui/Widgets
     mui/Plugins
     Storage
+    WebCoreSupport
     mui/Api/AROS/include/
     "${WEBCORE_DIR}/fileapi"
     "${WEBCORE_DIR}/platform/mui"
@@ -249,6 +250,8 @@ list(APPEND WebKit_SOURCES
     Storage/StorageTracker.cpp
     Storage/WebDatabaseProvider.cpp
     Storage/WebStorageNamespaceProvider.cpp
+
+    WebCoreSupport/WebViewGroup.cpp
 )
 
 set(WebKit_LIBRARY_TYPE STATIC)

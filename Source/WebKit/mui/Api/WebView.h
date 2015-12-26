@@ -47,6 +47,7 @@
 //#include "SuspendableTimer.h"
 #include "WebDragData.h"
 #include <string>
+#include <wtf/RefPtr.h>
 
 class DOMDocument;
 class DOMNode;
@@ -138,6 +139,7 @@ enum ScrollDirection {
 };
 
 class MouseEventPrivate;
+class WebViewGroup;
 
 class WEBKIT_OWB_API WebView : public SharedObject<WebView> {
 public:
@@ -1818,6 +1820,7 @@ protected:
 
     BalPoint m_scheduledScrollOffset;
 	WebInspectorFrontendClient* m_inspectorFrontendClient;
+    RefPtr<WebViewGroup> m_webViewGroup;
  public:
     BalPoint scheduledScrollOffset();
     void setScheduledScrollOffset(BalPoint offset);
