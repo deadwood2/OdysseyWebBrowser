@@ -77,6 +77,7 @@
 #include "WebResourceLoadDelegate.h"
 #include "WebScriptWorld.h"
 #include "WebStorageNamespaceProvider.h"
+#include "WebViewGroup.h"
 #include "WebViewPrivate.h"
 #include "WebVisitedLinkStore.h"
 #include "WebWidgetEngineDelegate.h"
@@ -145,6 +146,7 @@
 #include <Settings.h>
 #include <SubframeLoader.h>
 #include <TypingCommand.h>
+#include <UserContentController.h>
 #include <WindowsKeyboardCodes.h>
 
 #include <JSCell.h>
@@ -378,6 +380,8 @@ WebView::WebView()
     grammarCheckingEnabled = sharedPreferences->grammarCheckingEnabled();
     sharedPreferences->willAddToWebView();
     m_preferences = sharedPreferences;
+    m_webViewGroup = WebViewGroup::getOrCreate(String(), m_preferences->localStorageDatabasePath());
+    m_webViewGroup->addWebView(this);
 
     m_inspectorClient = new WebInspectorClient(this);
 
@@ -389,9 +393,11 @@ WebView::WebView()
     configuration.inspectorClient = m_inspectorClient;
     configuration.loaderClientForMainFrame = new WebFrameLoaderClient;
     configuration.databaseProvider = &WebDatabaseProvider::singleton();
-    configuration.storageNamespaceProvider = WebStorageNamespaceProvider::create(m_preferences->localStorageDatabasePath());
+    configuration.storageNamespaceProvider = &m_webViewGroup->storageNamespaceProvider();
     configuration.progressTrackerClient = static_cast<WebFrameLoaderClient *>(configuration.loaderClientForMainFrame);
+    configuration.userContentController = &m_webViewGroup->userContentController();
     configuration.visitedLinkStore = &WebVisitedLinkStore::singleton();
+
 
     m_page = new Page(configuration);
 #if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
@@ -417,6 +423,8 @@ WebView::~WebView()
 {
     close();
     
+    m_webViewGroup->removeWebView(this);
+
     if (m_preferences)
         if (m_preferences != WebPreferences::sharedStandardPreferences())
             delete m_preferences;

@@ -44,6 +44,11 @@ WebVisitedLinkStore& WebVisitedLinkStore::singleton()
     return visitedLinkStore;
 }
 
+Ref<WebVisitedLinkStore> WebVisitedLinkStore::create()
+{
+    return adoptRef(*new WebVisitedLinkStore);
+}
+
 WebVisitedLinkStore::WebVisitedLinkStore()
     : m_visitedLinksPopulated(false)
 {
