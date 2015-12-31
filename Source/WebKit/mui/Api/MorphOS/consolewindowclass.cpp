@@ -98,9 +98,9 @@ DEFSMETHOD(ConsoleWindow_Add)
 {
 	struct console_entry *e = (struct console_entry *) malloc(sizeof(*e));
 
-#if !OS(AROS)
 	if(e)
 	{
+		GETDATA;
 		struct timeval timeval;
 
 		GetSysTime(&timeval);
@@ -111,7 +111,7 @@ DEFSMETHOD(ConsoleWindow_Add)
 		DoMethod(data->lv_messages, MUIM_List_InsertSingle, e);
 		set(data->lv_messages, MUIA_List_Active, MUIV_List_Active_Bottom);
 	}
-#endif
+
 	return 0;
 }
 

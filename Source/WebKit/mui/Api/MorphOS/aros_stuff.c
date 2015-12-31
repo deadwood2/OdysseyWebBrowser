@@ -206,4 +206,37 @@ int aros_memory_allocation_error(size_t size, size_t alignment)
 
     return ret;
 }
+
+static struct MsgPort * timerMP = NULL;
+static struct IORequest * timerIO = NULL;
+struct Library * TimerBase = NULL;
+int aros_timer_open()
+{
+    timerMP = CreateMsgPort();
+    if (timerMP != NULL)
+    {
+        timerIO = CreateIORequest(timerMP, sizeof(struct timerequest));
+        if (timerIO != NULL)
+        {
+            if (OpenDevice((CONST_STRPTR)"timer.device", UNIT_VBLANK, timerIO, 0) == 0)
+            {
+                TimerBase = (struct Library *)timerIO->io_Device;
+                return 1;
+            }
+        }
+    }
+
+    return 0;
+}
+
+void aros_timer_close()
+{
+    if (timerIO != NULL)
+    {
+        CloseDevice(timerIO);
+        DeleteIORequest(timerIO);
+    }
+    if (timerMP != NULL)
+        DeleteMsgPort(timerMP);
+}
 #endif
