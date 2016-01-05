@@ -748,10 +748,8 @@ PassRefPtr<Frame> WebFrameLoaderClient::createFrame(const URL& url, const String
     ASSERT(coreFrame);
 
     WebFrame* webFrame = WebFrame::createInstance();
-    //webFrame->ref();
 
     RefPtr<Frame> childFrame = webFrame->createSubframeWithOwnerElement(m_webFrame->webView(), coreFrame->page(), ownerElement);
-    childFrame->ref();
 
     childFrame->tree().setName(name);
     coreFrame->tree().appendChild(childFrame);
