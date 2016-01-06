@@ -488,19 +488,13 @@ WebFrame* WebFrame::parentFrame()
 
 std::vector<WebFrame*>* WebFrame::children()
 {
-    m_rc.clear();
-    if (Frame* frame = core(this)) {
-        FrameTree *tree = &(frame->tree());
-        for (Frame *child = tree->firstChild(); child; child = child->tree().nextSibling()) {
-            FrameLoader *loader = &(child->loader());
-            WebFrameLoaderClient &client = static_cast<WebFrameLoaderClient&>(loader->client());
-	    m_rc.push_back(client.webFrame());
-        }
-
-    }
     return &m_rc;
 }
 
+void WebFrame::addChild(WebFrame* child)
+{
+    m_rc.push_back(child);
+}
 
 const char* WebFrame::renderTreeAsExternalRepresentation()
 {
