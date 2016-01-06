@@ -424,7 +424,7 @@ void trampoline(void)
 
     ReplyMsg((struct Message *)udata->tsm);
 
-    FreeVec(udata);
+    FreeMem(udata, sizeof(struct trampudata));
 }
 #endif
 
@@ -468,7 +468,7 @@ ThreadIdentifier createThreadInternal(ThreadFunction entryPoint, void* data, con
 				startup_msg->tsm_Msg.mn_ReplyPort    = threadHandle->td_MsgPort;
 				startup_msg->tsm_Msg.mn_Length       = sizeof (*startup_msg);
 #if OS(AROS)
-                struct trampudata * udata = (struct trampudata *)AllocVec(sizeof(struct trampudata), MEMF_ANY);
+                struct trampudata * udata = (struct trampudata *)AllocMem(sizeof(struct trampudata), MEMF_ANY);
                 udata->entry = entryPoint;
                 udata->data = data;
                 udata->tsm = startup_msg;
@@ -796,6 +796,7 @@ Mutex::Mutex()
 
 Mutex::~Mutex()
 {
+	FreeMem(m_mutex, sizeof(struct SignalSemaphore));
 }
 
 void Mutex::lock()
