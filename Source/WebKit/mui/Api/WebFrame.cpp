@@ -205,7 +205,6 @@ public:
 
 WebFrame::WebFrame()
     : d(new WebFrame::WebFramePrivate)
-    , m_loadClient(0)
     , m_quickRedirectComing(false)
     , m_inPrintingMode(false)
     , m_pageHeight(0)
@@ -644,8 +643,6 @@ bool WebFrame::deselectAll()
 PassRefPtr<Frame> WebFrame::createSubframeWithOwnerElement(WebView* webView, Page* page, HTMLFrameOwnerElement* ownerElement)
 {
     d->webView = webView;
-    if (!m_loadClient)
-        m_loadClient = new WebFrameLoaderClient(this);
 
     RefPtr<Frame> frame = Frame::create(page, ownerElement, new WebFrameLoaderClient(this));
     d->frame = frame.get();
