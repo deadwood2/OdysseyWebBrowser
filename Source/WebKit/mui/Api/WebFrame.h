@@ -252,6 +252,8 @@ public:
      */
     virtual std::vector<WebFrame*>* children();
 
+    virtual void addChild(WebFrame *);
+
     /**
      * get current form element
      */
