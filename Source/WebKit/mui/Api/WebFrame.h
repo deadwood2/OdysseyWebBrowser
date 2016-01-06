@@ -699,7 +699,6 @@ protected:
 
     class WebFramePrivate;
     WebFramePrivate* d;
-    WebFrameLoaderClient* m_loadClient;
     bool m_quickRedirectComing;
     bool m_inPrintingMode;
     int m_pageHeight;   // height of the page adjusted by margins
