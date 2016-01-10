@@ -1,0 +1,12 @@
+#!/bin/bash
+
+cmake \
+    -DCMAKE_CROSSCOMPILING=ON \
+    -DCMAKE_TOOLCHAIN_FILE=../Source/cmake/AMIGAOS4.cmake \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DPORT=MUI \
+    -DCMAKE_SYSTEM_PROCESSOR=ppc \
+    -DCAIRO_INCLUDE_DIRS=/usr/local/amiga/ppc-amigaos/SDK/local/common/include/cairo/ \
+    -DFREETYPE_INCLUDE_DIRS=/usr/local/amiga/ppc-amigaos/SDK/local/common/include/freetype/ \
+    -DLIBXML2_INCLUDE_DIR=/usr/local/amiga/ppc-amigaos/SDK/local/common/include/libxml2/ \
+   ..
