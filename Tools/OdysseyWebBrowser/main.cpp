@@ -279,9 +279,10 @@ void destroy_application(void)
 		MUI_DisposeObject(app);
 		methodstack_cleanup();
 		classes_cleanup();
-		locale_cleanup();
 		app = NULL;
 	}
+
+	locale_cleanup();
 }
 
 // Safety checks
