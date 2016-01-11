@@ -329,7 +329,12 @@ WebHistoryItem* WebHistory::itemForURL(const char* url)
 void WebHistory::addVisitedLinksToVisitedLinkStore(WebVisitedLinkStore& visitedLinkStore)
 {
     for (auto * url : m_historyList)
-        visitedLinkStore.addVisitedLink(url->URLString());
+    {
+        char * wurl = (char *)url->URLString();
+        WTF::String u(wurl);
+        visitedLinkStore.addVisitedLink(u);
+        free(wurl);
+    }
 }
 
 void WebHistory::setVisitedLinkTrackingEnabled(bool visitedLinkTrackingEnabled)
