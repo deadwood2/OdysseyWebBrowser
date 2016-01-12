@@ -1197,7 +1197,9 @@ bool WebViewPrivate::onKeyDown(BalEventKey event)
 
 				kprintf("\nPruning caches and running Garbage collector.\n");
 				
+				MemoryPressureHandler::singleton().setUnderMemoryPressure(true);
 				MemoryPressureHandler::singleton().releaseMemory(Critical::Yes, Synchronous::Yes);
+				MemoryPressureHandler::singleton().setUnderMemoryPressure(false);
 
 				if(getenv("OWB_RESETVM"))
 				{
