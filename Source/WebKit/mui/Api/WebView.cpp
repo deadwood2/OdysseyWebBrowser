@@ -74,6 +74,7 @@
 #include "WebMutableURLRequest.h"
 #include "WebNotificationDelegate.h"
 #include "WebPreferences.h"
+#include "WebProgressTrackerClient.h"
 #include "WebResourceLoadDelegate.h"
 #include "WebScriptWorld.h"
 #include "WebStorageNamespaceProvider.h"
@@ -385,16 +386,19 @@ WebView::WebView()
 
     m_inspectorClient = new WebInspectorClient(this);
 
+    WebFrameLoaderClient * pageWebFrameLoaderClient = new WebFrameLoaderClient();
+    WebProgressTrackerClient * pageProgressTrackerClient = new WebProgressTrackerClient();
+
     PageConfiguration configuration;
     configuration.chromeClient = new WebChromeClient(this);
     configuration.contextMenuClient = new WebContextMenuClient(this);
     configuration.editorClient = new WebEditorClient(this);
     configuration.dragClient = new WebDragClient(this);
     configuration.inspectorClient = m_inspectorClient;
-    configuration.loaderClientForMainFrame = new WebFrameLoaderClient;
+    configuration.loaderClientForMainFrame = pageWebFrameLoaderClient;
     configuration.databaseProvider = &WebDatabaseProvider::singleton();
     configuration.storageNamespaceProvider = &m_webViewGroup->storageNamespaceProvider();
-    configuration.progressTrackerClient = static_cast<WebFrameLoaderClient *>(configuration.loaderClientForMainFrame);
+    configuration.progressTrackerClient = pageProgressTrackerClient;
     configuration.userContentController = &m_webViewGroup->userContentController();
     configuration.visitedLinkStore = &WebVisitedLinkStore::singleton();
 
@@ -416,7 +420,11 @@ WebView::WebView()
     WebFrame* webFrame = WebFrame::createInstance(); 
     webFrame->initWithWebView(this, m_page); 
     m_mainFrame = webFrame;
-    static_cast<WebFrameLoaderClient&>(m_page->mainFrame().loader().client()).setWebFrame(webFrame); 
+    // webFrame is now owned by WebFrameLoaderClient and will be destroyed in
+    // chain Page->MainFrame->FrameLoader->WebFrameLoaderClient
+    pageWebFrameLoaderClient->setWebFrame(webFrame);
+
+    pageProgressTrackerClient->setWebFrame(webFrame);
 }
 
 WebView::~WebView()
