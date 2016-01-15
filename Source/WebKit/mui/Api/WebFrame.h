@@ -247,14 +247,6 @@ public:
     virtual WebFrame* parentFrame();
 
     /**
-     * children
-     * @result list of children contains by this frame, this content will be cleaned by owb
-     */
-    virtual std::vector<WebFrame*>* children();
-
-    virtual void addChild(WebFrame *);
-
-    /**
      * get current form element
      */
     virtual DOMElement* currentForm();
@@ -705,7 +697,6 @@ protected:
     bool m_inPrintingMode;
     int m_pageHeight;   // height of the page adjusted by margins
     WebFrameObserver* m_webFrameObserver;
-    std::vector<WebFrame*> m_rc;
 #if ENABLE(JS_ADDONS)
     BindingJS* m_bindingJS;
 #endif

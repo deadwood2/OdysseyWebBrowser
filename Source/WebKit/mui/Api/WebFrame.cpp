@@ -194,10 +194,11 @@ public:
     ~WebFramePrivate()
     {
         webView = 0;
+        frame = 0;
     }
     FrameView* frameView() { return frame ? frame->view() : 0; }
 
-    RefPtr<Frame> frame;
+    Frame* frame;
     WebView* webView;
 };
 
@@ -216,14 +217,6 @@ WebFrame::WebFrame()
 WebFrame::~WebFrame()
 {
     WebCore::ObserverServiceBookmarklet::createObserverService()->removeObserver("ExecuteBookmarklet", static_cast<ObserverBookmarklet*>(m_webFrameObserver));
-
-    if (core(this))
-        core(this)->loader().cancelAndClear();
-
-    std::vector<WebFrame*>* child = children();
-    std::vector<WebFrame*>::iterator it = child->begin();
-    for (; it != child->end(); ++it)
-        delete (*it);
 
     delete d;
 }
@@ -486,16 +479,6 @@ WebFrame* WebFrame::parentFrame()
     return 0;
 }
 
-std::vector<WebFrame*>* WebFrame::children()
-{
-    return &m_rc;
-}
-
-void WebFrame::addChild(WebFrame* child)
-{
-    m_rc.push_back(child);
-}
-
 const char* WebFrame::renderTreeAsExternalRepresentation()
 {
     Frame* coreFrame = core(this);
@@ -651,7 +634,7 @@ void WebFrame::initWithWebView(WebView* webView, Page* page)
 
 Frame* WebFrame::impl()
 {
-    return d->frame.get();
+    return d->frame;
 }
 
 void WebFrame::invalidate()
