@@ -439,51 +439,6 @@ void WebFrameLoaderClient::setMainDocumentError(DocumentLoader*, const ResourceE
     m_hasSentResponseToPlugin = false;
 }
 
-void WebFrameLoaderClient::progressStarted(WebCore::Frame&)
-{
-#ifdef BENCH_LOAD_TIME
-    gettimeofday(&m_timerStart, NULL);
-#endif
-
-    m_webFrame->webView()->stopLoading(false);
-
-    SharedPtr<WebNotificationDelegate> webNotificationDelegate = m_webFrame->webView()->webNotificationDelegate();
-    if (webNotificationDelegate)
-        webNotificationDelegate->startLoadNotification(m_webFrame);
-}
-
-void WebFrameLoaderClient::progressEstimateChanged(WebCore::Frame&)
-{
-    SharedPtr<WebNotificationDelegate> webNotificationDelegate = m_webFrame->webView()->webNotificationDelegate();
-    if (webNotificationDelegate)
-        webNotificationDelegate->progressNotification(m_webFrame);
-}
-
-void WebFrameLoaderClient::progressFinished(WebCore::Frame&)
-{
-    SharedPtr<WebNotificationDelegate> webNotificationDelegate = m_webFrame->webView()->webNotificationDelegate();
-    if (webNotificationDelegate)
-        webNotificationDelegate->finishedLoadNotification(m_webFrame);
-
-#ifdef BENCH_LOAD_TIME
-    gettimeofday(&m_timerStop, NULL);
-    if (m_timerStart.tv_sec == m_timerStop.tv_sec)
-        printf("load time: %06d us\n", static_cast<uint32_t> (m_timerStop.tv_usec - m_timerStart.tv_usec));
-    else {
-        int seconds = m_timerStop.tv_sec - m_timerStart.tv_sec;
-        int microseconds = m_timerStop.tv_usec - m_timerStart.tv_usec;
-        if (microseconds < 0) {
-            seconds -= 1;
-            microseconds = 1000000 + microseconds;
-        }
-        printf("load time: %d s %06d us\n", seconds, microseconds);
-    }
-    // This is meant to help script watching OWB activity so that they can kill it and
-    // dump the statistics.
-    fflush(stdout);
-#endif
-}
-
 void WebFrameLoaderClient::committedLoad(DocumentLoader* loader, const char* data, int length)
 {
     //	  const String& textEncoding = loader->response().textEncodingName();
