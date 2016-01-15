@@ -448,8 +448,6 @@ WebView::~WebView()
         m_jsActionDelegate = 0;
     if (m_historyDelegate)
         m_historyDelegate = 0;
-    if (m_mainFrame)
-        delete m_mainFrame;
     if (d)
         delete d;
     if (m_webViewObserver)
