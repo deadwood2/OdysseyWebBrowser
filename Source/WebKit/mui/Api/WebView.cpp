@@ -161,6 +161,7 @@
 #include <wtf/unicode/icu/EncodingICU.h>
 #include <wtf/HashSet.h>
 #include <wtf/MainThread.h>
+#include <wtf/RAMSize.h>
 
 #include "owb-config.h"
 #include "FileIOLinux.h"
@@ -480,11 +481,7 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
     if (s_didSetCacheModel && cacheModel == s_cacheModel)
         return;
 
-    //TODO : Calcul the next values
-    unsigned long long memSize = 256;
-    //unsigned long long diskFreeSize = 4096;
-    
-    memSize = AvailMem(MEMF_TOTAL) / (1024 * 1024);
+    unsigned long long memSize = ramSize() / (1024 * 1024);
 
     unsigned cacheTotalCapacity = 0;
     unsigned cacheMinDeadCapacity = 0;
@@ -507,10 +504,10 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
             cacheTotalCapacity = 32 * 1024 * 1024;
         else if (memSize >= 512)
             cacheTotalCapacity = 16 * 1024 * 1024;
-		else if (memSize >= 256)
-			cacheTotalCapacity = 8 * 1024 * 1024;
-		else if (memSize >= 128)
-			cacheTotalCapacity = 4 * 1024 * 1024;
+        else if (memSize >= 256)
+            cacheTotalCapacity = 8 * 1024 * 1024;
+        else if (memSize >= 128)
+            cacheTotalCapacity = 4 * 1024 * 1024;
 
         cacheMinDeadCapacity = 0;
         cacheMaxDeadCapacity = 0;
@@ -537,10 +534,10 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
             cacheTotalCapacity = 32 * 1024 * 1024;
         else if (memSize >= 512)
             cacheTotalCapacity = 16 * 1024 * 1024;
-		else if (memSize >= 256)
-			cacheTotalCapacity = 8 * 1024 * 1024;
-		else if (memSize >= 128)
-			cacheTotalCapacity = 4 * 1024 * 1024;
+        else if (memSize >= 256)
+            cacheTotalCapacity = 8 * 1024 * 1024;
+        else if (memSize >= 128)
+            cacheTotalCapacity = 4 * 1024 * 1024;
 
         cacheMinDeadCapacity = cacheTotalCapacity / 8;
         cacheMaxDeadCapacity = cacheTotalCapacity / 4;
@@ -573,12 +570,12 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
             cacheTotalCapacity = 64 * 1024 * 1024;
         else if (memSize >= 512)
             cacheTotalCapacity = 32 * 1024 * 1024;
-		else if (memSize >= 256)
-			cacheTotalCapacity = 16 * 1024 * 1024;
-		else if (memSize >= 128)
-			cacheTotalCapacity = 8 * 1024 * 1024;
+        else if (memSize >= 256)
+            cacheTotalCapacity = 16 * 1024 * 1024;
+        else if (memSize >= 128)
+            cacheTotalCapacity = 8 * 1024 * 1024;
 
-		cacheTotalCapacity*=4;
+        cacheTotalCapacity*=4;
 
         cacheMinDeadCapacity = cacheTotalCapacity / 4;
         cacheMaxDeadCapacity = cacheTotalCapacity / 2;
@@ -593,11 +590,12 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
     }
     default:
         ASSERT_NOT_REACHED();
-    };
+    }
 
-    WebCore::MemoryCache::singleton().setCapacities(cacheMinDeadCapacity, cacheMaxDeadCapacity, cacheTotalCapacity);
-    WebCore::MemoryCache::singleton().setDeadDecodedDataDeletionInterval(deadDecodedDataDeletionInterval);
-    WebCore::PageCache::singleton().setMaxSize(pageCacheCapacity);
+    auto& memoryCache = MemoryCache::singleton();
+    memoryCache.setCapacities(cacheMinDeadCapacity, cacheMaxDeadCapacity, cacheTotalCapacity);
+    memoryCache.setDeadDecodedDataDeletionInterval(deadDecodedDataDeletionInterval);
+    PageCache::singleton().setMaxSize(pageCacheCapacity);
 
     s_didSetCacheModel = true;
     s_cacheModel = cacheModel;
