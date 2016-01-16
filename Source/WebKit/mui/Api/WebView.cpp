@@ -448,8 +448,11 @@ WebView::~WebView()
         m_jsActionDelegate = 0;
     if (m_historyDelegate)
         m_historyDelegate = 0;
-    if (d)
+    if (d) {
+        // Force memory purging to keep the usage as low as possible
+        d->requestMemoryRelease();
         delete d;
+    }
     if (m_webViewObserver)
         delete m_webViewObserver;
     m_children.clear();

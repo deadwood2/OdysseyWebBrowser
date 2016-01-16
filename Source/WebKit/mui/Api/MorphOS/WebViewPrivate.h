@@ -260,6 +260,8 @@ public:
     bool screenshot(int &requested_width, int& requested_height, WTF::Vector<char> *imageData);
     bool screenshot(WTF::String& path);
     
+    void requestMemoryRelease();
+
  private:
     void updateView(BalWidget *widget, WebCore::IntRect rect, bool sync);
     void closeWindowTimerFired();
