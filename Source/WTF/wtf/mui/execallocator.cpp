@@ -33,7 +33,9 @@
 #undef PAGESIZE
 #define PAGESIZE                (4096)
 #define ALIGN(val, align)       ((val + align - 1) & (~(align - 1)))
-#define DEFAULTBLOCKSIZE        (1024) /* In pages */
+
+static const ULONG BLOCKSIZES[] = {1024, 512, 256, 128, 64}; /* In pages */
+static const ULONG BLOCKSIZESCOUNT = sizeof(BLOCKSIZES)/sizeof(BLOCKSIZES[0]);
 
 class PageAllocator
 {
@@ -172,15 +174,20 @@ PageAllocator::PageBlock * PageAllocator::allocateNewBlock(size_t count)
 {
     PageAllocator::PageBlock * block = (PageAllocator::PageBlock *)AllocMem(sizeof(PageAllocator::PageBlock), MEMF_ANY);
 
-    block->pb_TotalPages = count;
-    block->pb_FreePages = count;
     block->pb_Alignment = PAGESIZE;
 
-    int allocationsize = block->pb_TotalPages * PAGESIZE;
     void * memoryblock = NULL;
+    IPTR allocationsize = 0;
 
 retry:
-    memoryblock = AllocMemAligned(allocationsize, MEMF_ANY, block->pb_Alignment, 0);
+    ULONG i = 0;
+    /* Try to allocation a range of decreasing block sizes */
+    while (memoryblock == NULL && i < BLOCKSIZESCOUNT)
+    {
+        allocationsize = (BLOCKSIZES[i] > count ? BLOCKSIZES[i] : count) * PAGESIZE;
+        memoryblock = AllocMemAligned(allocationsize, MEMF_ANY, block->pb_Alignment, 0);
+        i++;
+    }
 
     if (!memoryblock)
     {
@@ -189,6 +196,9 @@ retry:
 
         goto retry; /* retry */
     }
+
+    block->pb_TotalPages = allocationsize / PAGESIZE;
+    block->pb_FreePages = allocationsize / PAGESIZE;
 
     block->pb_StartAddress = (IPTR)memoryblock;
     block->pb_EndAddress = (IPTR)memoryblock + (allocationsize);
@@ -204,7 +214,7 @@ retry:
 void PageAllocator::freeBlock(PageAllocator::PageBlock * block)
 {
 
-    int allocationsize = block->pb_TotalPages * PAGESIZE;
+    IPTR allocationsize = block->pb_TotalPages * PAGESIZE;
 
     D(bug("Removing page block 0x%x, %d\n", block->pb_StartAddress, block->pb_TotalPages));
 
@@ -312,8 +322,7 @@ void * PageAllocator::getPages(size_t count, size_t alignment)
     }
 
     /* If we are here, it means none of the blocks was big enough */
-    PageAllocator::PageBlock * block =
-            allocateNewBlock((count > DEFAULTBLOCKSIZE) ? count : DEFAULTBLOCKSIZE);
+    PageAllocator::PageBlock * block = allocateNewBlock(count);
     if (block)
         _return = allocatePagesFromBlock(block, count, alignment);
     ReleaseSemaphore(&lock);
