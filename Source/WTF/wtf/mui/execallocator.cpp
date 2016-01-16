@@ -33,7 +33,7 @@
 #undef PAGESIZE
 #define PAGESIZE                (4096)
 #define ALIGN(val, align)       ((val + align - 1) & (~(align - 1)))
-#define DEFAULTBLOCKSIZE        (1024)
+#define DEFAULTBLOCKSIZE        (1024) /* In pages */
 
 class PageAllocator
 {
@@ -47,7 +47,7 @@ private:
         IPTR        pb_StartAddress;
         IPTR        pb_EndAddress;
         IPTR        pb_Alignment;
-        BYTE        *pb_PagesBitMap;
+        WORD        *pb_PagesBitMap; /* 0 - free, -1 allocated, > 0 allocation size (only first page) */
         ULONG       pb_FreePages;
         ULONG       pb_TotalPages;
     };
@@ -62,6 +62,7 @@ public:
     void * getPages(size_t count);
     void * getPages(size_t count, size_t alignment);
     void freePages(void * address, size_t count);
+    void freePages(void * address);
     int getAllocatedPagesCount();
 };
 
@@ -191,7 +192,7 @@ retry:
 
     block->pb_StartAddress = (IPTR)memoryblock;
     block->pb_EndAddress = (IPTR)memoryblock + (allocationsize);
-    block->pb_PagesBitMap = (BYTE *)AllocMem(block->pb_TotalPages, MEMF_ANY | MEMF_CLEAR);
+    block->pb_PagesBitMap = (WORD *)AllocMem(block->pb_TotalPages * sizeof(WORD), MEMF_ANY | MEMF_CLEAR);
 
     AddTail(&blocks, (struct Node *)block);
 
@@ -210,7 +211,7 @@ void PageAllocator::freeBlock(PageAllocator::PageBlock * block)
     Remove((struct Node *)block);
 
     FreeMem((APTR)block->pb_StartAddress, allocationsize);
-    FreeMem(block->pb_PagesBitMap, block->pb_TotalPages);
+    FreeMem(block->pb_PagesBitMap, block->pb_TotalPages * sizeof(WORD));
     FreeMem(block, sizeof(PageAllocator::PageBlock));
 }
 
@@ -231,7 +232,7 @@ void * PageAllocator::allocatePagesFromBlock(PageAllocator::PageBlock * block, s
             /* Check for continous space */
             for (; (j < count && (i + j) < block->pb_TotalPages); j++)
             {
-                if (block->pb_PagesBitMap[i + j] == 1)
+                if (block->pb_PagesBitMap[i + j] != 0)
                 {
                     spacefound = false;
                     break;
@@ -246,9 +247,10 @@ void * PageAllocator::allocatePagesFromBlock(PageAllocator::PageBlock * block, s
             if (spacefound)
             {
                 /* Marks as used */
-                for (size_t k = 0; k < count; k++)
+                block->pb_PagesBitMap[i] = count; /* Store allocation size */
+                for (size_t k = 1; k < count; k++)
                 {
-                    block->pb_PagesBitMap[i + k] = 1;
+                    block->pb_PagesBitMap[i + k] = -1;
                 }
 
                 block->pb_FreePages -= count;
@@ -307,6 +309,12 @@ void * PageAllocator::getPages(size_t count, size_t alignment)
     return _return;
 }
 
+/* This version relies on size passed as parameter.
+ * Note that in such case, the following must be possible:
+ * X = getPages(A)
+ * freePages(X + Z, A - Z)
+ * freePages(X, Z)
+ */
 void PageAllocator::freePages(void * address, size_t count)
 {
    void * n; IPTR addr = (IPTR)address;
@@ -333,7 +341,44 @@ void PageAllocator::freePages(void * address, size_t count)
        }
    }
 
-   bug("Address 0x%x not part of any block!\n", addr);
+   bug("[ExecAllocator]: Address 0x%x not part of any block!\n", addr);
+   ReleaseSemaphore(&lock);
+}
+
+/* This version relies on allocation size stored internally */
+void PageAllocator::freePages(void * address)
+{
+   void * n; IPTR addr = (IPTR)address;
+
+   ObtainSemaphore(&lock);
+
+   ForeachNode(&blocks, n)
+   {
+       PageAllocator::PageBlock * block = (PageAllocator::PageBlock *)n;
+       if (addr >= block->pb_StartAddress && addr <= block->pb_EndAddress)
+       {
+           IPTR relative = addr - block->pb_StartAddress;
+           int pos = relative / PAGESIZE;
+           size_t count = 0;
+
+           if (block->pb_PagesBitMap[pos] > 0)
+               count = (size_t)block->pb_PagesBitMap[pos];
+           /* TODO: implement else ? */
+
+           for (size_t i = 0; i < count; i++)
+               block->pb_PagesBitMap[i + pos] = 0;
+           block->pb_FreePages += count;
+
+           /* Check if block can be freed */
+           if (block->pb_FreePages == block->pb_TotalPages)
+               freeBlock(block);
+
+           ReleaseSemaphore(&lock);
+           return;
+       }
+   }
+
+   bug("[ExecAllocator]: Address 0x%x not part of any block!\n", addr);
    ReleaseSemaphore(&lock);
 }
 
@@ -399,4 +444,12 @@ void allocator_freemem(void * address, size_t bytes)
 
     int pagecount = getPageCount(bytes);
     allocator.freePages(address, pagecount);
+}
+
+void allocator_freemem(void * address)
+{
+    D(bug("A:freemem 0x%x \n", address));
+
+    allocator.freePages(address);
+
 }
