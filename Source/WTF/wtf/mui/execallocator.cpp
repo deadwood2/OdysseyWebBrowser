@@ -52,8 +52,8 @@ private:
         ULONG       pb_TotalPages;
     };
 
-    void * allocatePagesFromBlock(PageAllocator::PageBlock * block, size_t count);
-    PageAllocator::PageBlock * allocateNewBlock(size_t count, size_t alignment);
+    void * allocatePagesFromBlock(PageAllocator::PageBlock * block, size_t count, size_t alignment);
+    PageAllocator::PageBlock * allocateNewBlock(size_t count);
     void freeBlock(PageAllocator::PageBlock * block);
     void reportBlockUsage();
 public:
@@ -168,23 +168,23 @@ static APTR AllocMemAligned(IPTR byteSize, ULONG attributes, IPTR alignSize, IPT
     return res;
 }
 
-PageAllocator::PageBlock * PageAllocator::allocateNewBlock(size_t count, size_t alignment)
+PageAllocator::PageBlock * PageAllocator::allocateNewBlock(size_t count)
 {
     PageAllocator::PageBlock * block = (PageAllocator::PageBlock *)AllocMem(sizeof(PageAllocator::PageBlock), MEMF_ANY);
 
     block->pb_TotalPages = count;
     block->pb_FreePages = count;
-    block->pb_Alignment = alignment;
+    block->pb_Alignment = PAGESIZE;
 
     int allocationsize = block->pb_TotalPages * PAGESIZE;
     void * memoryblock = NULL;
 
 retry:
-    memoryblock = AllocMemAligned(allocationsize, MEMF_ANY, alignment, 0);
+    memoryblock = AllocMemAligned(allocationsize, MEMF_ANY, block->pb_Alignment, 0);
 
     if (!memoryblock)
     {
-        if (aros_memory_allocation_error(allocationsize, alignment) == 2)
+        if (aros_memory_allocation_error(allocationsize, block->pb_Alignment) == 2)
             return NULL; /* quit */
 
         goto retry; /* retry */
@@ -213,17 +213,30 @@ void PageAllocator::freeBlock(PageAllocator::PageBlock * block)
     FreeMem((APTR)block->pb_StartAddress, allocationsize);
     FreeMem(block->pb_PagesBitMap, block->pb_TotalPages * sizeof(WORD));
     FreeMem(block, sizeof(PageAllocator::PageBlock));
+    D(reportBlockUsage());
 }
 
-void * PageAllocator::allocatePagesFromBlock(PageAllocator::PageBlock * block, size_t count)
+void * PageAllocator::allocatePagesFromBlock(PageAllocator::PageBlock * block,
+        size_t count, size_t alignment)
 {
+    const ULONG increment = alignment / PAGESIZE; /* Jump over that many pages */
+    IPTR alignedblockaddress;
+    ULONG i;
+
     if (!block)
         return NULL;
 
     if (block->pb_FreePages < count)
         return NULL;
 
-    for (ULONG i = 0; i < block->pb_TotalPages; i++)
+    /* Calculate initial index:
+     * The resulting address at i must be aligned to alignment */
+
+    alignedblockaddress = ALIGN(block->pb_StartAddress, alignment);
+    i = (alignedblockaddress - (block->pb_StartAddress)) / PAGESIZE;
+
+    /* i increments to point to next aligned address */
+    for (; i < block->pb_TotalPages; i += increment)
     {
         if (block->pb_PagesBitMap[i] == 0)
         {
@@ -285,14 +298,12 @@ void * PageAllocator::getPages(size_t count, size_t alignment)
     ForeachNode(&blocks, n)
     {
         PageAllocator::PageBlock * block = (PageAllocator::PageBlock *)n;
-        if (block->pb_Alignment != alignment)
-            continue;
 
         if (block->pb_FreePages < count)
             continue;
 
         /* Found block with enough free pages, let's check if they are continous */
-        _return = allocatePagesFromBlock(block, count);
+        _return = allocatePagesFromBlock(block, count, alignment);
         if (_return != NULL)
         {
             ReleaseSemaphore(&lock);
@@ -302,9 +313,9 @@ void * PageAllocator::getPages(size_t count, size_t alignment)
 
     /* If we are here, it means none of the blocks was big enough */
     PageAllocator::PageBlock * block =
-            allocateNewBlock((count > DEFAULTBLOCKSIZE) ? count : DEFAULTBLOCKSIZE, alignment);
+            allocateNewBlock((count > DEFAULTBLOCKSIZE) ? count : DEFAULTBLOCKSIZE);
     if (block)
-        _return = allocatePagesFromBlock(block, count);
+        _return = allocatePagesFromBlock(block, count, alignment);
     ReleaseSemaphore(&lock);
     return _return;
 }
