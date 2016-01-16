@@ -439,7 +439,14 @@
 #define _GLIBCXX_USE_C99_STDINT_TR1 1
 
 // missing func from newlib
+#ifdef __cplusplus
+extern "C" {
+#endif
 int strcasecmp (const char * str1, const char * str2); 
+#ifdef __cplusplus
+}
+#endif
+
 
 #endif
 

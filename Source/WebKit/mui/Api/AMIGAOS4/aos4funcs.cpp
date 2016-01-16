@@ -1,14 +1,14 @@
-#ifndef MISSING_FUNCS_H
-#define MISSING_FUNCS_H
+#ifndef AOS4_MISSING_FUNCS_H
+#define AOS4_MISSING_FUNCS_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 
-
 #if OS(AMIGAOS4)
 
+#include <config.h>
 #include <ctype.h>
 
 int strcasecmp (const char * str1, const char * str2)
@@ -32,9 +32,13 @@ int strcasecmp (const char * str1, const char * str2)
      return diff;
 }
 
-
-
 #endif
 
 
+
+#ifdef __cplusplus
+}
 #endif
+
+#endif
+
