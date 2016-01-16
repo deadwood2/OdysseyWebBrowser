@@ -2396,6 +2396,9 @@ void prefs_update(Object *obj, struct Data *data)
         JSC::Options::useFTLJIT() = false;
         JSC::Options::useRegExpJIT() = false;
     }
+
+    /* Force full collection */
+    JSC::Options::alwaysDoFullCollection() = true;
 }
 
 DEFSMETHOD(OWBApp_PrefsLoad)
