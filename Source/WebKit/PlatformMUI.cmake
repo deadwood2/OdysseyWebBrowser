@@ -215,7 +215,9 @@ list(APPEND WebKit_SOURCES
     mui/Api/WebUtils.cpp
     mui/Api/WebView.cpp
     mui/Api/WebURLResponse.cpp
-
+	
+    mui/Api/AMIGAOS4/aos4funcs.cpp
+	
     mui/Plugins/npapi.cpp
     mui/Plugins/PluginDatabase.cpp
     mui/Plugins/PluginDatabaseMUI.cpp
