@@ -434,6 +434,13 @@
 
 #if defined(__AMIGAOS4__)
 #define WTF_OS_AMIGAOS4 1
+
+// enable chrono for c++11, as currently newlib didn't have it
+#define _GLIBCXX_USE_C99_STDINT_TR1 1
+
+// missing func from newlib
+int strcasecmp (const char * str1, const char * str2); 
+
 #endif
 
 
