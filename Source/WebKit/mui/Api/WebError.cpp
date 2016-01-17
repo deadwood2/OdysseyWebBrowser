@@ -106,26 +106,6 @@ bool WebError::isPolicyChangeError()
         && m_error->errorCode() == WebKitErrorFrameLoadInterruptedByPolicyChange;
 }
 
-// OLE_HANDLE WebError::sslPeerCertificate()
-// {
-//     if (!m_cfErrorUserInfoDict) {
-//         // copy userinfo from CFErrorRef
-//         CFErrorRef cfError = m_error;
-//         m_cfErrorUserInfoDict.adoptCF(CFErrorCopyUserInfo(cfError));
-//     }
-// 
-//     if (!m_cfErrorUserInfoDict)
-//         return E_FAIL;
-// 
-// #if USE(CFNETWORK)
-//     void* data = wkGetSSLPeerCertificateData(m_cfErrorUserInfoDict.get());
-//     if (!data)
-//         return E_FAIL;
-//     *result = (OLE_HANDLE)(ULONG64)data;
-// #endif
-//     return *result ? S_OK : E_FAIL;
-// }
-
 const ResourceError& WebError::resourceError() const
 {
     return *m_error;

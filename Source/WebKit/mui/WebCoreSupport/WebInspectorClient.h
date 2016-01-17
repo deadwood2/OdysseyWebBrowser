@@ -124,9 +124,6 @@ private:
 
     WTF::String m_inspectedURL;
     bool m_destroyingInspectorView;
-#if ENABLE(DAE)
-    SharedPtr<WebApplication> m_application;
-#endif
 };
 
 #endif

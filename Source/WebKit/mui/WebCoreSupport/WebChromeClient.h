@@ -102,10 +102,6 @@ public:
     virtual bool tabsToLinks() const;
     virtual WebCore::IntRect windowResizerRect() const;
 
-#if ENABLE(REGISTER_PROTOCOL_HANDLER)
-    virtual void registerProtocolHandler(const String&, const String&, const String&, const String&);
-#endif
-
     virtual void invalidateRootView(const WebCore::IntRect&);
     virtual void invalidateContentsAndRootView(const WebCore::IntRect&);
     virtual void invalidateContentsForSlowScroll(const WebCore::IntRect&);

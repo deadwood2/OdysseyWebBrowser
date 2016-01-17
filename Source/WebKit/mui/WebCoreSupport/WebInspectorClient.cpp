@@ -48,11 +48,6 @@
 #include <stdlib.h>
 #include <string>
 
-#if ENABLE(DAE)
-#include "WebApplication.h"
-#include "WebApplicationManager.h"
-#endif
-
 #include "gui.h"
 #include "utils.h"
 #include <proto/intuition.h>

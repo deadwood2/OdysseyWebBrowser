@@ -33,9 +33,6 @@
 #include "WebKitTypes.h"
 #include "WebWindow.h"
 
-#if ENABLE(DAE_APPLICATION)
-class WebApplication;
-#endif
 class WebView;
 
 class WEBKIT_OWB_API WebViewWindow : public WebWindow
@@ -52,9 +49,6 @@ protected:
 private:
     WebView* m_winWebView;
     bool m_isInitialized;
-#if ENABLE(DAE_APPLICATION)
-    SharedPtr<WebApplication> m_app;
-#endif
 };
 
 #endif

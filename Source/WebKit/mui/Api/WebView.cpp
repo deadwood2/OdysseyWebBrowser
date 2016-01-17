@@ -36,7 +36,6 @@
 #include "JSActionDelegate.h"
 #include "WebBackForwardList.h"
 #include "WebBackForwardList_p.h"
-#include "WebBindingJSDelegate.h"
 #include "WebChromeClient.h"
 #include "WebContextMenuClient.h"
 #if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
@@ -337,7 +336,6 @@ WebView::WebView()
     , m_jsActionDelegate(0)
     , m_webEditingDelegate(0)
     , m_webResourceLoadDelegate(0)
-    , m_webBindingJSDelegate(0)
     , m_webWidgetEngineDelegate(0)
     , m_historyDelegate(0)
     , m_geolocationProvider(0)
@@ -345,10 +343,8 @@ WebView::WebView()
     , m_userAgentOverridden(false)
     , m_useBackForwardList(true)
     , m_zoomMultiplier(1.0f)
-	, m_zoomsTextOnly(false)
+    , m_zoomsTextOnly(false)
     , m_mouseActivated(false)
-    // , m_dragData(0)
-    // , m_currentCharacterCode(0)
     , m_isBeingDestroyed(false)
     , m_paintCount(0)
     , m_hasSpellCheckerDocumentTag(false)
@@ -705,11 +701,6 @@ void WebView::close()
     if (!WebCore::MemoryCache::singleton().disabled()) {
         WebCore::MemoryCache::singleton().setDisabled(true);
         WebCore::MemoryCache::singleton().setDisabled(false);
-
-#if ENABLE(STORAGE)
-        // Empty the application cache.
-        WebCore::cacheStorage().empty();
-#endif
 
         // Empty the Cross-Origin Preflight cache
         WebCore::CrossOriginPreflightResultCache::singleton().empty();
@@ -1391,16 +1382,6 @@ void WebView::setWebResourceLoadDelegate(TransferSharedPtr<WebResourceLoadDelega
 TransferSharedPtr<WebResourceLoadDelegate> WebView::webResourceLoadDelegate()
 {
     return m_webResourceLoadDelegate;
-}
-
-void WebView::setWebBindingJSDelegate(TransferSharedPtr<WebBindingJSDelegate> webBindingJSDelegate)
-{
-    m_webBindingJSDelegate = webBindingJSDelegate;
-}
-
-TransferSharedPtr<WebBindingJSDelegate> WebView::webBindingJSDelegate()
-{
-    return m_webBindingJSDelegate;
 }
 
 void WebView::setWebWidgetEngineDelegate(TransferSharedPtr<WebWidgetEngineDelegate> webWidgetEngineDelegate)

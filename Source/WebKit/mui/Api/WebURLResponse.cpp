@@ -235,22 +235,6 @@ bool WebURLResponse::isAttachment()
 }
 
 
-/*OLE_HANDLE WebURLResponse::sslPeerCertificate()
-{
-#if USE(CFNETWORK)
-    CFDictionaryRef dict = certificateDictionary();
-    if (!dict)
-        return E_FAIL;
-    void* data = wkGetSSLPeerCertificateData(dict);
-    if (!data)
-        return E_FAIL;
-    *result = (OLE_HANDLE)(ULONG64)data;
-#endif
-
-    return *result ? S_OK : E_FAIL;
-}*/
-
-
 const char* WebURLResponse::suggestedFileExtension()
 {
     //FIXME : trouver l'extension

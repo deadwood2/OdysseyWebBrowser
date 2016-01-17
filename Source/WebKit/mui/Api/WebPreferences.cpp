@@ -147,11 +147,7 @@ void WebPreferences::initializeDefaultSettings()
     m_privatePrefs[WebKitCSSRegionsEnabledPreferenceKey] = "1";//TRUE
 
     m_privatePrefs[WebKitDatabasesEnabledPreferenceKey] = "1";
-#if ENABLE(DOM_STORAGE)
     m_privatePrefs[WebKitLocalStorageEnabledPreferenceKey] = "1";
-#else
-    m_privatePrefs[WebKitLocalStorageEnabledPreferenceKey] = "0";
-#endif
 #if ENABLE(NOTIFICATIONS)
     m_privatePrefs[WebKitExperimentalNotificationsEnabledPreferenceKey] = "1";
 #else
@@ -196,19 +192,11 @@ void WebPreferences::initializeDefaultSettings()
     m_privatePrefs[WebKitOfflineWebApplicationCacheEnabledPreferenceKey] = "1";
     m_privatePrefs[WebKitPaintNativeControlsPreferenceKey] = "1";
     m_privatePrefs[WebKitUseHighResolutionTimersPreferenceKey] = "1"; // TRUE
-#if ENABLE(3D_CANVAS)
-    m_privatePrefs[WebKitWebGLEnabledPreferenceKey] = "1";
-#else
     m_privatePrefs[WebKitWebGLEnabledPreferenceKey] = "0";
-#endif
     m_privatePrefs[WebKitDNSPrefetchingEnabledPreferenceKey] = "0";
     m_privatePrefs[WebKitMemoryInfoEnabledPreferenceKey] = "0";
     m_privatePrefs[WebKitHyperlinkAuditingEnabledPreferenceKey] = "1";
-#if ENABLE(3D_RENDERING)
-    m_privatePrefs[WebKitAcceleratedCompositingEnabledPreferenceKey] = "1";
-#else
     m_privatePrefs[WebKitAcceleratedCompositingEnabledPreferenceKey] = "0";
-#endif
     m_privatePrefs[WebKitShowDebugBordersPreferenceKey] = "0"; // FALSE
     m_privatePrefs[WebKitMemoryLimitPreferenceKey] = "0";
     m_privatePrefs[WebKitAllowScriptsToCloseWindowsPreferenceKey] = "1"; // TRUE
