@@ -95,6 +95,7 @@
 #include <ContextMenu.h>
 #include <ContextMenuController.h>
 #include <CrossOriginPreflightResultCache.h>
+#include <CurlCacheManager.h>
 #include <Cursor.h>
 #include <Database.h>
 #include <DatabaseManager.h>
@@ -289,7 +290,7 @@ static bool continuousSpellCheckingEnabled;
 static bool grammarCheckingEnabled;
 
 static bool s_didSetCacheModel;
-static WebCacheModel s_cacheModel = WebCacheModelDocumentViewer;
+static WebCacheModel s_cacheModel = WebCacheModelDocumentBrowser;
 
 enum {
     UpdateActiveStateTimer = 1,
@@ -313,6 +314,20 @@ static void WebKitSetApplicationCachePathIfNecessary()
     initialized = true;
 }
 #endif
+
+static void WebKitEnableDiskCacheIfNecessary()
+{
+    static bool initialized = false;
+    if (initialized)
+        return;
+
+    WTF::String path = WebCore::pathByAppendingComponent("PROGDIR:conf", "Cache");
+
+    if (!path.isNull())
+        CurlCacheManager::getInstance().setCacheDirectory(path);
+
+    initialized = true;
+}
 
 WebView::WebView()
 	: m_viewWindow(0)
@@ -476,24 +491,41 @@ void initializeStaticObservers()
 
 }
 
+unsigned long long WebVolumeFreeSize(const String& path)
+{
+    // TODO: Implement, assume 8GB for now
+    return (unsigned long long)8192 * 1024 * 1024;
+}
+
 void WebView::setCacheModel(WebCacheModel cacheModel)
 {
     if (s_didSetCacheModel && cacheModel == s_cacheModel)
         return;
 
-    unsigned long long memSize = ramSize() / (1024 * 1024);
+    String cacheDirectory;
+
+    cacheDirectory = CurlCacheManager::getInstance().cacheDirectory();
+    long cacheMemoryCapacity = 0;
+    long cacheDiskCapacity = 0;
+
+    unsigned long long memSize = ramSize() / 1024 / 1024;
+
+    // As a fudge factor, use 1000 instead of 1024, in case the reported byte
+    // count doesn't align exactly to a megabyte boundary.
+    unsigned long long diskFreeSize = WebVolumeFreeSize(cacheDirectory) / 1024 / 1000;
 
     unsigned cacheTotalCapacity = 0;
     unsigned cacheMinDeadCapacity = 0;
     unsigned cacheMaxDeadCapacity = 0;
     auto deadDecodedDataDeletionInterval = std::chrono::seconds { 0 };
 
-    unsigned pageCacheCapacity = 0;
+    unsigned pageCacheSize = 0;
+
 
     switch (cacheModel) {
     case WebCacheModelDocumentViewer: {
         // Page cache capacity (in pages)
-        pageCacheCapacity = 0;
+        pageCacheSize = 0;
 
         // Object cache capacities (in bytes)
         if (memSize >= 2048)
@@ -512,18 +544,21 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
         cacheMinDeadCapacity = 0;
         cacheMaxDeadCapacity = 0;
 
+        // Memory cache capacity (in bytes)
+        cacheMemoryCapacity = 0;
+
         break;
     }
     case WebCacheModelDocumentBrowser: {
         // Page cache capacity (in pages)
         if (memSize >= 1024)
-            pageCacheCapacity = 3;
+            pageCacheSize = 3;
         else if (memSize >= 512)
-            pageCacheCapacity = 2;
+            pageCacheSize = 2;
         else if (memSize >= 256)
-            pageCacheCapacity = 1;
+            pageCacheSize = 1;
         else
-            pageCacheCapacity = 0;
+            pageCacheSize = 0;
 
         // Object cache capacities (in bytes)
         if (memSize >= 2048)
@@ -542,21 +577,41 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
         cacheMinDeadCapacity = cacheTotalCapacity / 8;
         cacheMaxDeadCapacity = cacheTotalCapacity / 4;
 
+        // Memory cache capacity (in bytes)
+        if (memSize >= 2048)
+            cacheMemoryCapacity = 4 * 1024 * 1024;
+        else if (memSize >= 1024)
+            cacheMemoryCapacity = 2 * 1024 * 1024;
+        else if (memSize >= 512)
+            cacheMemoryCapacity = 1 * 1024 * 1024;
+        else
+            cacheMemoryCapacity =      512 * 1024;
+
+        // Disk cache capacity (in bytes)
+        if (diskFreeSize >= 16384)
+            cacheDiskCapacity = 50 * 1024 * 1024;
+        else if (diskFreeSize >= 8192)
+            cacheDiskCapacity = 40 * 1024 * 1024;
+        else if (diskFreeSize >= 4096)
+            cacheDiskCapacity = 30 * 1024 * 1024;
+        else
+            cacheDiskCapacity = 20 * 1024 * 1024;
+
         break;
     }
     case WebCacheModelPrimaryWebBrowser: {
         // Page cache capacity (in pages)
         // (Research indicates that value / page drops substantially after 3 pages.)
         if (memSize >= 2048)
-            pageCacheCapacity = 5;
+            pageCacheSize = 5;
         else if (memSize >= 1024)
-            pageCacheCapacity = 4;
+            pageCacheSize = 4;
         else if (memSize >= 512)
-            pageCacheCapacity = 3;
+            pageCacheSize = 3;
         else if (memSize >= 256)
-            pageCacheCapacity = 2;
+            pageCacheSize = 2;
         else
-            pageCacheCapacity = 1;
+            pageCacheSize = 1;
 
         // Object cache capacities (in bytes)
         // (Testing indicates that value / MB depends heavily on content and
@@ -575,8 +630,6 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
         else if (memSize >= 128)
             cacheTotalCapacity = 8 * 1024 * 1024;
 
-        cacheTotalCapacity*=4;
-
         cacheMinDeadCapacity = cacheTotalCapacity / 4;
         cacheMaxDeadCapacity = cacheTotalCapacity / 2;
 
@@ -585,6 +638,31 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
         cacheMaxDeadCapacity = max(24u, cacheMaxDeadCapacity);
 
         deadDecodedDataDeletionInterval = std::chrono::seconds { 60 };
+
+        // Memory cache capacity (in bytes)
+        // (These values are small because WebCore does most caching itself.)
+        if (memSize >= 1024)
+            cacheMemoryCapacity = 4 * 1024 * 1024;
+        else if (memSize >= 512)
+            cacheMemoryCapacity = 2 * 1024 * 1024;
+        else if (memSize >= 256)
+            cacheMemoryCapacity = 1 * 1024 * 1024;
+        else
+            cacheMemoryCapacity =      512 * 1024;
+
+        // Disk cache capacity (in bytes)
+        if (diskFreeSize >= 16384)
+            cacheDiskCapacity = 175 * 1024 * 1024;
+        else if (diskFreeSize >= 8192)
+            cacheDiskCapacity = 150 * 1024 * 1024;
+        else if (diskFreeSize >= 4096)
+            cacheDiskCapacity = 125 * 1024 * 1024;
+        else if (diskFreeSize >= 2048)
+            cacheDiskCapacity = 100 * 1024 * 1024;
+        else if (diskFreeSize >= 1024)
+            cacheDiskCapacity = 75 * 1024 * 1024;
+        else
+            cacheDiskCapacity = 50 * 1024 * 1024;
 
         break;
     }
@@ -595,7 +673,10 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
     auto& memoryCache = MemoryCache::singleton();
     memoryCache.setCapacities(cacheMinDeadCapacity, cacheMaxDeadCapacity, cacheTotalCapacity);
     memoryCache.setDeadDecodedDataDeletionInterval(deadDecodedDataDeletionInterval);
-    PageCache::singleton().setMaxSize(pageCacheCapacity);
+    PageCache::singleton().setMaxSize(pageCacheSize);
+
+    (void)cacheMemoryCapacity;
+    CurlCacheManager::getInstance().setStorageSizeLimit(cacheDiskCapacity);
 
     s_didSetCacheModel = true;
     s_cacheModel = cacheModel;
@@ -1173,6 +1254,7 @@ void WebView::initWithFrame(BalRectangle& frame, const char* frameName, const ch
 #if ENABLE(OFFLINE_WEB_APPLICATIONS)
 		WebKitSetApplicationCachePathIfNecessary();
 #endif
+		WebKitEnableDiskCacheIfNecessary();
 		didOneTimeInitialization = true;
     }
 
