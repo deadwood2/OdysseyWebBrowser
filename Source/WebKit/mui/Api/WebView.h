@@ -55,7 +55,6 @@ class JSActionDelegate;
 class MemoryEvent;
 class WebArchive;
 class WebBackForwardList;
-class WebBindingJSDelegate;
 class WebDownloadDelegate;
 class WebEditingDelegate;
 class WebError;
@@ -299,18 +298,6 @@ public:
      * get the WebView's WebResourceLoadDelegate.
      */
     virtual TransferSharedPtr<WebResourceLoadDelegate> webResourceLoadDelegate();
-
-    /**
-     * setWebBindingJSDelegate
-     * set the WebView's WebBindingJSDelegate.
-     */
-    virtual void setWebBindingJSDelegate(TransferSharedPtr<WebBindingJSDelegate>);
-
-    /**
-     * webBindingJSDelegate
-     * get the WebView's WebBindingJSDelegate.
-     */
-    virtual TransferSharedPtr<WebBindingJSDelegate> webBindingJSDelegate();
 
     /**
      * setWebWidgetEngineDelegate
@@ -1724,11 +1711,7 @@ protected:
     BalWidget *m_viewWindow;
     WebFrame* m_mainFrame;
     WebCore::Page* m_page;
-	WebInspectorClient* m_inspectorClient;
-    
-//    OwnPtr<WebCore::Image> m_backingStoreBitmap;
-//    BalPoint m_backingStoreSize;
-//    BalRectangle m_backingStoreDirtyRegion;
+    WebInspectorClient* m_inspectorClient;
 
     SharedPtr<WebPolicyDelegate> m_policyDelegate;
     SharedPtr<WebDownloadDelegate> m_downloadDelegate;
@@ -1737,7 +1720,6 @@ protected:
     SharedPtr<JSActionDelegate> m_jsActionDelegate;
     SharedPtr<WebEditingDelegate> m_webEditingDelegate;
     SharedPtr<WebResourceLoadDelegate> m_webResourceLoadDelegate;
-    SharedPtr<WebBindingJSDelegate> m_webBindingJSDelegate;
     SharedPtr<WebWidgetEngineDelegate> m_webWidgetEngineDelegate;
     SharedPtr<WebHistoryDelegate> m_historyDelegate;
     WebGeolocationProvider* m_geolocationProvider;

@@ -366,12 +366,6 @@ IntRect WebChromeClient::windowResizerRect() const
     return IntRect();
 }
 
-#if ENABLE(REGISTER_PROTOCOL_HANDLER)
-void WebChromeClient::registerProtocolHandler(const String& scheme, const String& baseURL, const String& url, const String& title)
-{
-}
-#endif
-
 void WebChromeClient::invalidateRootView(const IntRect& windowRect)
 {
     ASSERT(core(m_webView->topLevelFrame()));
