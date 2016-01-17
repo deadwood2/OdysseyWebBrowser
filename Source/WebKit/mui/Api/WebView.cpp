@@ -84,9 +84,7 @@
 #include "WebWidgetEngineDelegate.h"
 #include "WebWindow.h"
 
-#if ENABLE(OFFLINE_WEB_APPLICATIONS)
 #include <ApplicationCacheStorage.h>
-#endif
 #if HAVE(ACCESSIBILITY)
 #include <AXObjectCache.h>
 #endif
@@ -299,21 +297,19 @@ enum {
 
 bool WebView::s_allowSiteSpecificHacks = false;
 
-#if ENABLE(OFFLINE_WEB_APPLICATIONS)
 static void WebKitSetApplicationCachePathIfNecessary()
 {
     static bool initialized = false;
     if (initialized)
         return;
 
-	WTF::String path = WebCore::pathByAppendingComponent("PROGDIR:conf", "ApplicationCache");
+    WTF::String path = WebCore::pathByAppendingComponent("PROGDIR:conf", "ApplicationCache");
 
     if (!path.isNull())
-        cacheStorage().setCacheDirectory(path);
+        ApplicationCacheStorage::singleton().setCacheDirectory(path);
 
     initialized = true;
 }
-#endif
 
 static void WebKitEnableDiskCacheIfNecessary()
 {
@@ -1248,14 +1244,11 @@ void WebView::initWithFrame(BalRectangle& frame, const char* frameName, const ch
 
     if (!didOneTimeInitialization)
     {
-        //WebCore::initializeLoggingChannelsIfNecessary();
-        //WebPlatformStrategies::initialize();   
-		WebKitInitializeWebDatabasesIfNecessary();
-#if ENABLE(OFFLINE_WEB_APPLICATIONS)
-		WebKitSetApplicationCachePathIfNecessary();
-#endif
-		WebKitEnableDiskCacheIfNecessary();
-		didOneTimeInitialization = true;
+        WebKitInitializeWebDatabasesIfNecessary();
+        WebKitSetApplicationCachePathIfNecessary();
+        WebKitEnableDiskCacheIfNecessary();
+
+        didOneTimeInitialization = true;
     }
 
     WebCore::ObserverServiceData::createObserverService()->registerObserver(WebPreferences::webPreferencesChangedNotification(), m_webViewObserver);
