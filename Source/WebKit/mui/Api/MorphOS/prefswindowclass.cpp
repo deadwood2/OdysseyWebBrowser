@@ -847,7 +847,7 @@ DEFNEW
 										Child, MakeLabel(GSI(MSG_PREFSWINDOW_NETWORK_PROXY_USERNAME)),
 										Child, str_proxyusername = (Object *) MakePrefsString(GSI(MSG_PREFSWINDOW_NETWORK_PROXY_USERNAME), "", 128, MAKE_ID('S','N','P','U')),
 										Child, MakeLabel(GSI(MSG_PREFSWINDOW_NETWORK_PROXY_PASSWORD)),
-										Child, str_proxypassword = (Object *) MakePrefsString(GSI(MSG_PREFSWINDOW_NETWORK_PROXY_PASSWORD), "", 128, MAKE_ID('S','N','P','U')),
+										Child, str_proxypassword = (Object *) MakePrefsString(GSI(MSG_PREFSWINDOW_NETWORK_PROXY_PASSWORD), "", 128, MAKE_ID('S','N','P','V')),
 									End,
 
 								End,
