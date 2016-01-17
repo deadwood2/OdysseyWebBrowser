@@ -193,11 +193,7 @@ void WebPreferences::initializeDefaultSettings()
     m_privatePrefs[WebKitAuthorAndUserStylesEnabledPreferenceKey] = "1";//TRUE
     m_privatePrefs[WebKitApplicationChromeModePreferenceKey] = "0";//FALSE
 
-#if ENABLE(OFFLINE_WEB_APPLICATIONS)
     m_privatePrefs[WebKitOfflineWebApplicationCacheEnabledPreferenceKey] = "1";
-#else
-    m_privatePrefs[WebKitOfflineWebApplicationCacheEnabledPreferenceKey] = "0";
-#endif
     m_privatePrefs[WebKitPaintNativeControlsPreferenceKey] = "1";
     m_privatePrefs[WebKitUseHighResolutionTimersPreferenceKey] = "1"; // TRUE
 #if ENABLE(3D_CANVAS)
