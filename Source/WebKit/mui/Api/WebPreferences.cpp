@@ -187,7 +187,7 @@ void WebPreferences::initializeDefaultSettings()
     m_privatePrefs[WebKitLocalStorageDatabasePathPreferenceKey] = "PROGDIR:Conf/LocalStorage";
 
 
-    m_privatePrefs[WebKitCacheModelPreferenceKey] = String::number(WebCacheModelDocumentViewer).latin1().data();
+    m_privatePrefs[WebKitCacheModelPreferenceKey] = String::number(WebCacheModelDocumentBrowser).latin1().data();
     m_privatePrefs[WebKitDOMPasteAllowedPreferenceKey] = "1";//TRUE
 
     m_privatePrefs[WebKitAuthorAndUserStylesEnabledPreferenceKey] = "1";//TRUE
