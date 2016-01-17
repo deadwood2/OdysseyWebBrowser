@@ -17,8 +17,8 @@
     Boston, MA 02110-1301, USA.
 */
 
-#ifndef PlatformStrategiesEfl_h
-#define PlatformStrategiesEfl_h
+#ifndef WebPlatformStrategies_h
+#define WebPlatformStrategies_h
 
 #include "CookiesStrategy.h"
 #include "LoaderStrategy.h"
@@ -26,13 +26,13 @@
 #include "PlatformStrategies.h"
 #include "PluginStrategy.h"
 
-class PlatformStrategiesMorphOS : public WebCore::PlatformStrategies, private WebCore::CookiesStrategy, private WebCore::LoaderStrategy, private WebCore::PluginStrategy
+class WebPlatformStrategies : public WebCore::PlatformStrategies, private WebCore::CookiesStrategy, private WebCore::LoaderStrategy, private WebCore::PluginStrategy
 {
 public:
     static void initialize();
 
 private:
-    PlatformStrategiesMorphOS();
+    WebPlatformStrategies();
 
     // WebCore::PlatformStrategies
     virtual WebCore::CookiesStrategy* createCookiesStrategy();
@@ -57,5 +57,5 @@ private:
     virtual void getWebVisiblePluginInfo(const WebCore::Page*, Vector<WebCore::PluginInfo>&);
 };
 
-#endif // PlatformStrategiesEfl_h
+#endif // WebPlatformStrategies_h
 

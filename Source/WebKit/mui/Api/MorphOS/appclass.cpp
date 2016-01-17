@@ -928,7 +928,7 @@ DEFNEW
 
 	// Initialize JS (still needed?)
 	JSC::initializeThreading();
-	PlatformStrategiesMorphOS::initialize();
+	WebPlatformStrategies::initialize();
 	//gcController().setJavaScriptGarbageCollectorTimerEnabled(true);
 
 	obj = (Object *) DoSuperNew(cl, obj,
