@@ -697,14 +697,6 @@ void WebView::close()
     // The preferences can be null.
     if (m_preferences && m_preferences->usesPageCache())
         m_page->settings().setUsesPageCache(false);
-    
-    if (!WebCore::MemoryCache::singleton().disabled()) {
-        WebCore::MemoryCache::singleton().setDisabled(true);
-        WebCore::MemoryCache::singleton().setDisabled(false);
-
-        // Empty the Cross-Origin Preflight cache
-        WebCore::CrossOriginPreflightResultCache::singleton().empty();
-    }
 
     if (m_page)
         m_page->mainFrame().loader().detachFromParent(); 
