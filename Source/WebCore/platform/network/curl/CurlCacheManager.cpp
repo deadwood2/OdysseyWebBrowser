@@ -40,7 +40,7 @@
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/CString.h>
 
-#define IO_BUFFERSIZE 4096
+#define IO_BUFFERSIZE 40960
 
 namespace WebCore {
 
@@ -143,7 +143,11 @@ void CurlCacheManager::loadIndex()
         String url = it->stripWhiteSpace();
         auto cacheEntry = std::make_unique<CurlCacheEntry>(url, nullptr, m_cacheDir);
 
+#if PLATFORM(MUI)
+        if (cacheEntry->isOnDisk() && cacheEntry->entrySize() < m_storageSizeLimit) {
+#else
         if (cacheEntry->isCached() && cacheEntry->entrySize() < m_storageSizeLimit) {
+#endif
             m_currentStorageSize += cacheEntry->entrySize();
             makeRoomForNewEntry();
             m_LRUEntryList.prependOrMoveToFirst(url);
@@ -220,6 +224,11 @@ void CurlCacheManager::didReceiveResponse(ResourceHandle& job, ResourceResponse&
             m_LRUEntryList.prependOrMoveToFirst(url);
             m_index.set(url, WTFMove(cacheEntry));
             saveResponseHeaders(url, response);
+#if PLATFORM(MUI)
+            static int counter = 0;
+            if ((++counter & 0x8F) == 0x0)
+                saveIndex();
+#endif
         }
     } else
         invalidateCacheEntry(url);
@@ -237,14 +246,23 @@ void CurlCacheManager::didFinishLoading(ResourceHandle& job)
         it->value->didFinishLoading();
 }
 
-bool CurlCacheManager::isCached(const String& url) const
+bool CurlCacheManager::isCached(const String& url)
 {
     if (m_disabled)
         return false;
 
     auto it = m_index.find(url);
     if (it != m_index.end())
+#if PLATFORM(MUI)
+    {
+        if (it->value->isCached())
+            return !it->value->isLoading();
+        else
+            invalidateCacheEntry(url);
+    }
+#else
         return it->value->isCached() && !it->value->isLoading();
+#endif
 
     return false;
 }
