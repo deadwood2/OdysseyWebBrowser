@@ -44,7 +44,115 @@
 #include <wtf/HexNumber.h>
 #include <wtf/MD5.h>
 
+#if PLATFORM(MUI)
+#include <aros/debug.h>
+#include <proto/dos.h>
+#endif
+
 namespace WebCore {
+
+#if PLATFORM(MUI)
+class DirCache{
+public:
+    DirCache() : inited(false)
+    {
+    }
+
+    void initOnce(const String& dir)
+    {
+        BPTR lock;
+        const LONG bufferSize = 4096;
+        struct ExAllData *ead;
+        struct ExAllControl *eac;
+        BOOL loop;
+
+        if(inited)
+            return;
+
+        lock = Lock(dir.latin1().data(), SHARED_LOCK);
+        if (!lock)
+            return;
+
+        ead = (struct ExAllData *)AllocVec(bufferSize, MEMF_CLEAR | MEMF_PUBLIC);
+        eac = (struct ExAllControl *)AllocDosObject(DOS_EXALLCONTROL, NULL);
+        eac->eac_LastKey = 0;
+
+        do
+        {
+            loop = ExAll(lock, ead, bufferSize, ED_COMMENT, eac);
+
+            if (!loop && IoErr() != ERROR_NO_MORE_ENTRIES)
+                break;
+
+            if (eac->eac_Entries != 0)
+            {
+                struct ExAllData * tmp = ead;
+
+                do
+                {
+                    if (tmp->ed_Type == ST_FILE)
+                        m_sizes.set(tmp->ed_Name, tmp->ed_Size);
+
+                    tmp = tmp->ed_Next;
+                }
+                while (tmp != NULL);
+            }
+
+        }while(loop);
+
+        FreeDosObject(DOS_EXALLCONTROL, eac);
+        UnLock(lock);
+        FreeVec(ead);
+
+        inited = true;
+    }
+
+    bool getFileSize(const String& path, long long& result)
+    {
+        String filename = pathGetFileName(path);
+        auto it = m_sizes.find(filename);
+        if (it != m_sizes.end())
+        {
+            result = it->value;
+            return true;
+        }
+
+        return WebCore::getFileSize(path, result);
+    }
+
+    bool fileExists(const String& path)
+    {
+        String filename = pathGetFileName(path);
+        auto it = m_sizes.find(filename);
+        if (it != m_sizes.end())
+            return true;
+
+        return WebCore::fileExists(path);
+    }
+private:
+    HashMap<String, int> m_sizes;
+    bool inited;
+};
+
+DirCache dc;
+
+bool CurlCacheEntry::getFileSize(const String& path, long long& result) const
+{
+    return dc.getFileSize(path, result);
+}
+bool CurlCacheEntry::fileExists(const String& path) const
+{
+    return dc.fileExists(path);
+}
+
+bool CurlCacheEntry::isOnDisk() const
+{
+    if (!fileExists(m_contentFilename) || !fileExists(m_headerFilename))
+        return false;
+
+    return true;
+}
+#endif
 
 CurlCacheEntry::CurlCacheEntry(const String& url, ResourceHandle* job, const String& cacheDir)
     : m_headerFilename(cacheDir)
@@ -63,6 +171,10 @@ CurlCacheEntry::CurlCacheEntry(const String& url, ResourceHandle* job, const Str
 
     m_contentFilename.append(m_basename);
     m_contentFilename.append(".content");
+
+#if PLATFORM(MUI)
+    dc.initOnce(cacheDir);
+#endif
 }
 
 CurlCacheEntry::~CurlCacheEntry()
@@ -242,7 +354,7 @@ bool CurlCacheEntry::loadFileToBuffer(const String& filepath, Vector<char>& buff
     // Load the file content into buffer
     buffer.resize(filesize);
     int bufferPosition = 0;
-    int bufferReadSize = 4096;
+    int bufferReadSize = 40960;
     int bytesRead = 0;
     while (filesize > bufferPosition) {
         if (filesize - bufferPosition < bufferReadSize)
