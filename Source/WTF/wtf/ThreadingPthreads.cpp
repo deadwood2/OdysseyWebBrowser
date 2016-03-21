@@ -174,6 +174,9 @@ ThreadIdentifier createThreadInternal(ThreadFunction entryPoint, void* data, con
     pthread_t threadHandle;
     pthread_attr_t attr;
     pthread_attr_init(&attr);
+#if PLATFORM(MUI)
+    pthread_attr_setstacksize(&attr, 512 * 1024);
+#endif
 #if HAVE(QOS_CLASSES)
     pthread_attr_set_qos_class_np(&attr, QOS_CLASS_USER_INITIATED, 0);
 #endif
@@ -195,6 +198,8 @@ void initializeCurrentThreadInternal(const char* threadName)
 {
 #if HAVE(PTHREAD_SETNAME_NP)
     pthread_setname_np(threadName);
+#elif PLATFORM(MUI)
+    pthread_setname_np(pthread_self(), threadName);
 #else
     UNUSED_PARAM(threadName);
 #endif
