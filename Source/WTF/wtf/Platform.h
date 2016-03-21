@@ -519,6 +519,7 @@
 #define USE_CURL_OPENSSL 1
 #define USE_TEXTURE_MAPPER 1
 #define USE_TEXTURE_MAPPER_GL 0
+#define USE_PTHREADS 1
 #endif
 
 /* On Windows, use QueryPerformanceCounter by default */

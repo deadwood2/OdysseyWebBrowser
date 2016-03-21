@@ -926,10 +926,9 @@ DEFNEW
 
 	menus_init();
 
-	// Initialize JS (still needed?)
 	JSC::initializeThreading();
+	WTF::initializeMainThread();
 	WebPlatformStrategies::initialize();
-	//gcController().setJavaScriptGarbageCollectorTimerEnabled(true);
 
 	obj = (Object *) DoSuperNew(cl, obj,
 			MUIA_Application_Title      , "Odyssey Web Browser",
