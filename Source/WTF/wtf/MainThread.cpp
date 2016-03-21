@@ -69,7 +69,7 @@ public:
 typedef Deque<FunctionWithContext> FunctionQueue;
 
 static bool callbacksPaused; // This global variable is only accessed from main thread.
-#if (!OS(DARWIN) && !PLATFORM(MUI)) || PLATFORM(EFL) || PLATFORM(GTK)
+#if !OS(DARWIN) || PLATFORM(EFL) || PLATFORM(GTK)
 static ThreadIdentifier mainThreadIdentifier;
 #endif
 
@@ -96,9 +96,7 @@ void initializeMainThread()
         return;
     initializedMainThread = true;
 
-#if !PLATFORM(MUI)
     mainThreadIdentifier = currentThread();
-#endif
 
     mainThreadFunctionQueueMutex();
     initializeMainThreadPlatform();
@@ -276,7 +274,7 @@ void setMainThreadCallbacksPaused(bool paused)
         scheduleDispatchFunctionsOnMainThread();
 }
 
-#if (!OS(DARWIN) && !PLATFORM(MUI)) || PLATFORM(EFL) || PLATFORM(GTK)
+#if !OS(DARWIN) || PLATFORM(EFL) || PLATFORM(GTK)
 bool isMainThread()
 {
     return currentThread() == mainThreadIdentifier;
