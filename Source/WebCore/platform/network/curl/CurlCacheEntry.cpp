@@ -114,21 +114,14 @@ public:
         if (it != m_sizes.end())
         {
             result = it->value;
+            // only one time read, next time through filesystem
+            m_sizes.remove(filename);
             return true;
         }
 
         return WebCore::getFileSize(path, result);
     }
 
-    bool fileExists(const String& path)
-    {
-        String filename = pathGetFileName(path);
-        auto it = m_sizes.find(filename);
-        if (it != m_sizes.end())
-            return true;
-
-        return WebCore::fileExists(path);
-    }
 private:
     HashMap<String, int> m_sizes;
     bool inited;
@@ -139,18 +132,6 @@ DirCache dc;
 bool CurlCacheEntry::getFileSize(const String& path, long long& result) const
 {
     return dc.getFileSize(path, result);
-}
-bool CurlCacheEntry::fileExists(const String& path) const
-{
-    return dc.fileExists(path);
-}
-
-bool CurlCacheEntry::isOnDisk() const
-{
-    if (!fileExists(m_contentFilename) || !fileExists(m_headerFilename))
-        return false;
-
-    return true;
 }
 #endif
 
