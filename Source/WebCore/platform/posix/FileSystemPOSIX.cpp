@@ -118,8 +118,7 @@ PlatformFileHandle openFile(const String& path, FileOpenMode mode)
     if (mode == OpenForRead)
         platformFlag |= O_RDONLY;
     else if (mode == OpenForWrite)
-#warning "replaced O_TRUNC, else APPEND would never work. Ok for now given this class use, but check sideeffects when updating."
-	platformFlag |= (O_WRONLY | O_CREAT | /*O_TRUNC*/ O_APPEND);
+        platformFlag |= (O_WRONLY | O_CREAT | O_TRUNC);
     return open(fsRep.data(), platformFlag, 0666);
 }
 
