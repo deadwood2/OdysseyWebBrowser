@@ -144,7 +144,7 @@ void CurlCacheManager::loadIndex()
         auto cacheEntry = std::make_unique<CurlCacheEntry>(url, nullptr, m_cacheDir);
 
 #if PLATFORM(MUI)
-        if (cacheEntry->isOnDisk() && cacheEntry->entrySize() < m_storageSizeLimit) {
+        if (cacheEntry->entrySize() && cacheEntry->entrySize() < m_storageSizeLimit) {
 #else
         if (cacheEntry->isCached() && cacheEntry->entrySize() < m_storageSizeLimit) {
 #endif
