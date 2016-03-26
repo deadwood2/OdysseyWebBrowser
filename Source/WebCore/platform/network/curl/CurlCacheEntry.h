@@ -45,9 +45,6 @@ public:
     CurlCacheEntry(const String& url, ResourceHandle* job, const String& cacheDir);
     ~CurlCacheEntry();
 
-#if PLATFORM(MUI)
-    bool isOnDisk() const;
-#endif
     bool isCached();
     bool isLoading() const;
     size_t entrySize();
@@ -100,7 +97,6 @@ private:
 
 #if PLATFORM(MUI)
     bool getFileSize(const String& path, long long& result) const;
-    bool fileExists(const String& path) const;
 #endif
 };
 
