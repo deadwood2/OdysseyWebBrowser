@@ -19,8 +19,8 @@ with modern functionality.
 License
 -------
 
+Copyright (C) 2014-2016 Krzysztof Smiechowicz
 Copyright (C) 2009-2014 Fabien Coeurjoly
-Copyright (C) 2014-2015 Krzysztof Smiechowicz
 Copyright (C) 2009-2010 Pleyo. All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -47,18 +47,18 @@ OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-MorphOS Port
+MorphOS/AROS Port
 ------------
 
 Here are the key features:
 
-- Based on r161078 WebKit (January 2014) (1.24) / r185045 WebKit (May 2015) (1.25)
+- Based on r161078 WebKit (January 2014) (1.24) / r187682 WebKit (July 2015) (1.25)
 - Javascript, CSS, DOM, SVG, Unicode, SSL, ...
 - HTML5 Video/Audio support (Ogg/Theora, WEBM, MPEG4/H264, MP3, AAC, WAV and a couple others formats/codecs)
 - Antialiased fonts and kerning, font families and support for international
   charsets
 - MUI Interface
-- Cairo technology !!1
+- Cairo technology
 - Multiple tabs and windows
 - Download manager with resume and history support
 - Password manager
@@ -90,27 +90,19 @@ Here are the key features:
 - Plugin support
 - WebInspector (FireBug-like)
 - User scripting (GreaseMonkey-like)
-- No PayPal donation needed
-...
 
 
 Requirements
 ------------
 
 MorphOS 3.x is required.
+Icaros 2.1 or compatible is required.
 
 Full version requires at least 70MB of free memory and potentially much more depending on visited
 sites.
 
 Note: if you want to reduce the binary size, you can use lzmaloader from Harry "Piru" Sintonen.
       It's available at: http://www.sintonen.fi/lzmaloader/ .
-
-
-NoSVG version
--------------
-
-The NoSVG version doesn't support SVG format, hence the name. The reason for this special version
-is that SVG makes the binary about 8MB bigger.
 
 
 Usage
@@ -158,7 +150,10 @@ Usage
 	downloading direct links, for instance.
 
   + Content
-	Cache model, content blocking, animation/picture/javascript activation, ...
+	Cache model, content blocking, animation/picture/javascript activation
+	For cache settings, Document Viewer mode uses least memory and have disk cache disabled, Document Browser
+	mode uses same memory as Document Viewer but has small disk cache enabled and Primary Web Browser
+	uses biggest amount of memory and has a large disk cache enabled.
 
   + Fonts
 	Size and font families can be configured. For much finer configuration, see conf/font/fonts.conf.
@@ -295,6 +290,12 @@ Preempted rants
      It's still possible to play several sounds at once (and avoid blocking audio hardware)
      with device.audio, by setting AHI music unit to: "Unit 0: <mode>" in system preferences.
 
+- I get no national characters when typing (AROS)
+  -> Go to Prefs/Locale and select a character set matching your set in the lower right corner.
+     Restart AROS for the change to take effect.
+
+- I can no longer log into Gmail/Google Applications. It was working the other day!
+  -> Clear disk cache. Go to PROGDIR:Conf/Cache and remove all files.
 
 What's missing and might be supported in next versions
 ------------------------------------------------------
@@ -308,7 +309,7 @@ What's missing and might be supported in next versions
 History
 -------
 
-- 16.12.2015: Odyssey Web Browser 1.25 BETA 4
+- 27.03.2016: Odyssey Web Browser 1.25
   - Updated to WebKit r187682 (July 2015). (AROS)
   - Ported Odyssey directly on top of WebKit repository. (Common)
   - Enable HTML5 video feature. (AROS)
@@ -321,7 +322,6 @@ History
   - Added a "gracefull exit" option on crash of Odyssey allowing to close the application and free memory. (AROS)
   - It is possible to disable JavaScript Just-in-Time compiler using NO_JSC_JIT tooltype. (Common)
   - WebKit codes revision is now presented in AboutBox. (Common)
-  - Disabled WebWorkers support. (Common)
   - Browser spoofing agents are updated for Firefox and Chrome. (Common)
   - Added option to disable/enable MP4 support (enabled by default). (Common)
   - Fixed crash when closing bookmarks panel (needs updated MUI components). (AROS)
@@ -330,8 +330,14 @@ History
   - Lists (download, mime settings, history) now have a scroll bar (needs updated MUI components). (AROS)
   - Fixed "division by zero" error in Quick Links handling (Common)
   - Synchronized display of checkboxes and radioboxes (Common)
-  - Updated Italian catalog (Common)
+  - Updated Russian and Italian catalog (Common)
   - Provided HTML documentation (Common)
+  - Messages console is enabled (AROS)
+  - Fixed continous allocations of memory when browsing (Common)
+  - Made memory freeing more agressive (Common)
+  - Enabled disk cache by default (Common)
+  - Fixed setting proxy users/password (Common)
+  - Fixed cookie handling on numerous sites (Common)
 
 ##############################################################################
 
@@ -1162,10 +1168,27 @@ Scripts:
 Contact
 -------
 
-If you have any suggestion or bug to report, please contact me at: fabien.coeurjoly@wanadoo.fr
+If you have a bug to report, please use the Odyssey issue tracker:
+https://github.com/deadwood-pl/OdysseyWebBrowser/issues
+
+If you have any suggestion please contact me at: deadwood@wp.pl
 But please, don't flood me. I'm quite aware of what's missing already. :)
 
 
+Donations
+---------
+
+If you like this software please consider donating!
+
+You can donate directly to me:
+
+via Paypay to: deadwood@onet.pl
+via Bitcoin to: 15XQRQVcKBHq3berD68dTTLFTupgX41pL6
+
+or
+
+You can dodate do any of the open bounties at:
+https://power2people.org/projects/overview/
 
 
 

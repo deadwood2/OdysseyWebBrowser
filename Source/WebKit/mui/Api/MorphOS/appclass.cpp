@@ -178,7 +178,7 @@ static CONST TEXT credits[] =
 	"\tRoman Brychta\n\n"
 
 	"\033b%W\033n\n"
-	"\thttp://fabportnawak.free.fr/owb/";
+	"\thttps://github.com/deadwood-pl/OdysseyWebBrowser";
 
 struct AppSettings
 {
@@ -933,7 +933,7 @@ DEFNEW
 	obj = (Object *) DoSuperNew(cl, obj,
 			MUIA_Application_Title      , "Odyssey Web Browser",
 			MUIA_Application_Version    , "$VER: Odyssey Web Browser " VERSION " (" DATE ")",
-			MUIA_Application_Copyright  , "©\n2009-2014 Fabien Coeurjoly\n2014-2015 Krzysztof Smiechowicz",
+			MUIA_Application_Copyright  , "©\n2014-2016 Krzysztof Smiechowicz\n2009-2014 Fabien Coeurjoly",
 			MUIA_Application_Author     , "Fabien Coeurjoly",
 			MUIA_Application_Description, APPLICATION_DESCRIPTION,
 			MUIA_Application_UsedClasses, classlist,
