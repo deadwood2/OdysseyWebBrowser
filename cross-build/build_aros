@@ -5,6 +5,7 @@ AROS_DEVELOPMENT=/ssd/deadwood/repo-gitorious-aros/abi-v0-on-trunk-pc-i386-4.8.3
 cmake \
     -DCMAKE_CROSSCOMPILING=ON \
     -DCMAKE_TOOLCHAIN_FILE=../Source/cmake/AROS.cmake \
+    -DCMAKE_EXE_LINKER_FLAGS=-static-libstdc++ \
     -DCMAKE_BUILD_TYPE=Release \
     -DPORT=MUI \
     -DCMAKE_SYSTEM_PROCESSOR=i386 \
