@@ -431,7 +431,7 @@ DEFTMETHOD(PrinterWindow_Start)
 				}
 				else
 				{
-					MUI_Request(app, obj, 0, GSI(MSG_REQUESTER_ERROR_TITLE), GSI(MSG_PRINTERWINDOW_ERROR), TAG_DONE);
+					MUI_RequestA(app, obj, 0, GSI(MSG_REQUESTER_ERROR_TITLE), GSI(MSG_REQUESTER_OK), GSI(MSG_PRINTERWINDOW_ERROR), NULL);
 				}
 
 				printContext.end();
@@ -778,7 +778,7 @@ DEFMMETHOD(Process_Process)
 						}
 						else
 						{
-							MUI_Request(app, obj, 0, GSI(MSG_REQUESTER_ERROR_TITLE), GSI(MSG_PRINTERWINDOW_ERROR), TAG_DONE);
+							MUI_RequestA(app, obj, 0, GSI(MSG_REQUESTER_ERROR_TITLE), GSI(MSG_REQUESTER_OK), GSI(MSG_PRINTERWINDOW_ERROR), NULL);
 						}
 
 						printContext.end();
