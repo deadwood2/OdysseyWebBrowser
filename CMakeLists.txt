@@ -137,7 +137,7 @@ if (SHARED_CORE)
     set(JavaScriptCore_LIBRARY_TYPE SHARED)
     set(WebCore_LIBRARY_TYPE SHARED)
 else ()
-    set(JavaScriptCore_LIBRARY_TYPE SHARED)
+    set(JavaScriptCore_LIBRARY_TYPE STATIC)
     set(WebCore_LIBRARY_TYPE STATIC)
 endif ()
 
