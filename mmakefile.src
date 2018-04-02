@@ -47,9 +47,11 @@ ODYSSEY_OPTIONS := \
     -DZLIB_LIBRARIES="$(AROS_LIB)/libz.a" \
     ..
 
-ifeq ($(AROS_TARGET_CPU),m68k)
+ifneq ($(AROS_TARGET_CPU),i386)
+ifneq ($(AROS_TARGET_CPU),x86_64)
 ODYSSEY_OPTIONS += \
     -DENABLE_JIT:BOOL=OFF
+endif
 endif
 
 # Uncomment to display verbose build info..
