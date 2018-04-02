@@ -9,7 +9,6 @@ set(JSC_LIBRARIES
 
 if ("${JavaScriptCore_LIBRARY_TYPE}" MATCHES "STATIC")
     add_definitions(-DSTATICALLY_LINKED_WITH_JavaScriptCore)
-    add_definitions(-DSTATICALLY_LINKED_WITH_WebCore)
 endif ()
 
 WEBKIT_INCLUDE_CONFIG_FILES_IF_EXISTS()
