@@ -3,6 +3,8 @@
 
 include $(SRCDIR)/config/aros-contrib.cfg
 
+ODYSSEY_EXEDIR := $(AROS_CONTRIB)/Networking/Apps/Odyssey
+
 #MM- local-odyssey : odyssey-files-cpy odyssey-exe-cpy
 
 #MM- odyssey-exe-cpy : odyssey-exe
@@ -28,12 +30,11 @@ USER_CFLAGS := $(NOWARN_CFLAGS)
 USER_CXXFLAGS := $(NOWARN_CXXFLAGS) -fpermissive
 
 USER_INCLUDES := -I$(AROS_INCLUDES) -I$(AROS_CONTRIB_INCLUDES)
-USER_LDFLAGS := -L$(AROS_CONTRIB_LIB)
+USER_LDFLAGS := -L$(AROS_CONTRIB_LIB) -static-libstdc++
 
 ODYSSEY_OPTIONS := \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_SYSTEM_NAME=AROS \
-    -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++" \
     -DPORT=MUI \
     -DCAIRO_INCLUDE_DIRS=$(AROS_INCLUDES)/cairo/ \
     -DFREETYPE_INCLUDE_DIRS=$(AROS_INCLUDES)/freetype/ \
@@ -58,12 +59,12 @@ endif
 ##ODYSSEY_OPTIONS += -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
 
 %build_with_cmake mmake=odyssey-exe		\
-	srcdir=$(SRCDIR)/$(CURDIR) prefix="$(AROS_CONTRIB)/odyssey"	\
+	srcdir=$(SRCDIR)/$(CURDIR) prefix="$(ODYSSEY_EXEDIR)"	\
 	extraoptions="$(ODYSSEY_OPTIONS)"
 
-%copy_files_q mmake=odyssey-exe-cpy files="owb" src="$(GENDIR)/$(CURDIR)/bin" dst="$(AROS_CONTRIB)/odyssey"
+%copy_files_q mmake=odyssey-exe-cpy files="owb" src="$(GENDIR)/$(CURDIR)/bin" dst="$(ODYSSEY_EXEDIR)"
 
-%copy_dir_recursive src="$(SRCDIR)/$(CURDIR)/Dist" dst="$(AROS_CONTRIB)/odyssey" mmake=odyssey-files-cpy
+%copy_dir_recursive src="$(SRCDIR)/$(CURDIR)/Dist" dst="$(ODYSSEY_EXEDIR)" mmake=odyssey-files-cpy
 
 %common
 
