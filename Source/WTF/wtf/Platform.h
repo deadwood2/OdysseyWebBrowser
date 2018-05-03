@@ -103,6 +103,16 @@
 #define USE_ARENA_ALLOC_ALIGNMENT_INTEGER 1
 #endif /* MIPS */
 
+/* CPU(M68K) - m68k 32-bit */
+#if    defined(__m68k__)       \
+    || defined(__m68000__)     \
+    || defined(__mc68000__)    \
+    || defined(__mc68020__)    \
+    || defined(_M_M68K)
+#define WTF_CPU_M68K 1
+#define WTF_CPU_BIG_ENDIAN 1
+#endif
+
 /* CPU(PPC) - PowerPC 32-bit */
 #if (  defined(__ppc__)        \
     || defined(__PPC__)        \
