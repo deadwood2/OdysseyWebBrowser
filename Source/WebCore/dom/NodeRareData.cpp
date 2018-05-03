@@ -38,6 +38,6 @@ struct SameSizeAsNodeRareData {
     void* m_pointer[3];
 };
 
-COMPILE_ASSERT(sizeof(NodeRareData) == sizeof(SameSizeAsNodeRareData), NodeRareDataShouldStaySmall);
+COMPILE_ASSERT(sizeof(NodeRareData) <= sizeof(SameSizeAsNodeRareData), NodeRareDataShouldStaySmall);
 
 } // namespace WebCore

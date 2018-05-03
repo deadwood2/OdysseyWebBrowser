@@ -42,7 +42,7 @@ struct SameSizeAsShadowRoot : public DocumentFragment, public TreeScope {
     void* host;
 };
 
-COMPILE_ASSERT(sizeof(ShadowRoot) == sizeof(SameSizeAsShadowRoot), shadowroot_should_stay_small);
+COMPILE_ASSERT(sizeof(ShadowRoot) <= sizeof(SameSizeAsShadowRoot), shadowroot_should_stay_small);
 
 enum ShadowRootUsageOriginType {
     ShadowRootUsageOriginWeb = 0,
