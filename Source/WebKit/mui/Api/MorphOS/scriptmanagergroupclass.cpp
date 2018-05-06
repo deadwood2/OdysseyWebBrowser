@@ -388,10 +388,10 @@ DEFTMETHOD(ScriptManagerGroup_Add)
 {
 	GETDATA;
 
-	APTR tags[] = { (APTR) ASLFR_TitleText, (APTR) GSI(MSG_SCRIPTMANAGERGROUP_SCRIPT_SELECT),
-					(APTR) ASLFR_InitialPattern, (APTR) "#?.js",
-					(APTR) ASLFR_InitialDrawer, (APTR) SCRIPT_DIRECTORY,
-					TAG_DONE };
+	struct TagItem tags[] = { ASLFR_TitleText, (IPTR) GSI(MSG_SCRIPTMANAGERGROUP_SCRIPT_SELECT),
+				ASLFR_InitialPattern, (IPTR) "#?.js",
+				ASLFR_InitialDrawer, (IPTR) SCRIPT_DIRECTORY,
+				TAG_DONE, 0 };
 
 	char *file = asl_run(SCRIPT_DIRECTORY, (struct TagItem *) &tags, FALSE);
 
