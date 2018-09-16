@@ -330,7 +330,7 @@ bool RenderThemeBal::paintSearchField(const RenderObject& object, const PaintInf
 
 bool RenderThemeBal::paintSearchFieldCancelButton(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
-    ASSERT(object->parent());
+    //ASSERT(object->parent());
     if (!object.parent() || !object.parent()->isBox())
         return false;
 

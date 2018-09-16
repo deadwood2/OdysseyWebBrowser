@@ -119,7 +119,7 @@ inline ElementDescendantIterator::ElementDescendantIterator(Element* current)
 ALWAYS_INLINE ElementDescendantIterator& ElementDescendantIterator::operator++()
 {
     ASSERT(m_current);
-    ASSERT(!m_assertions.domTreeHasMutated());
+    //ASSERT(!m_assertions.domTreeHasMutated());
 
     Element* firstChild = ElementTraversal::firstChild(*m_current);
     Element* nextSibling = ElementTraversal::nextSibling(*m_current);
@@ -150,7 +150,7 @@ ALWAYS_INLINE ElementDescendantIterator& ElementDescendantIterator::operator++()
 ALWAYS_INLINE ElementDescendantIterator& ElementDescendantIterator::operator--()
 {
     ASSERT(m_current);
-    ASSERT(!m_assertions.domTreeHasMutated());
+    //ASSERT(!m_assertions.domTreeHasMutated());
 
     Element* previousSibling = ElementTraversal::previousSibling(*m_current);
 
@@ -184,20 +184,20 @@ ALWAYS_INLINE ElementDescendantIterator& ElementDescendantIterator::operator--()
 inline Element& ElementDescendantIterator::operator*()
 {
     ASSERT(m_current);
-    ASSERT(!m_assertions.domTreeHasMutated());
+    //ASSERT(!m_assertions.domTreeHasMutated());
     return *m_current;
 }
 
 inline Element* ElementDescendantIterator::operator->()
 {
     ASSERT(m_current);
-    ASSERT(!m_assertions.domTreeHasMutated());
+    //ASSERT(!m_assertions.domTreeHasMutated());
     return m_current;
 }
 
 inline bool ElementDescendantIterator::operator==(const ElementDescendantIterator& other) const
 {
-    ASSERT(!m_assertions.domTreeHasMutated());
+    //ASSERT(!m_assertions.domTreeHasMutated());
     return m_current == other.m_current;
 }
 
@@ -222,7 +222,7 @@ inline ElementDescendantConstIterator::ElementDescendantConstIterator(const Elem
 ALWAYS_INLINE ElementDescendantConstIterator& ElementDescendantConstIterator::operator++()
 {
     ASSERT(m_current);
-    ASSERT(!m_assertions.domTreeHasMutated());
+    //ASSERT(!m_assertions.domTreeHasMutated());
 
     Element* firstChild = ElementTraversal::firstChild(*m_current);
     Element* nextSibling = ElementTraversal::nextSibling(*m_current);
@@ -253,20 +253,20 @@ ALWAYS_INLINE ElementDescendantConstIterator& ElementDescendantConstIterator::op
 inline const Element& ElementDescendantConstIterator::operator*() const
 {
     ASSERT(m_current);
-    ASSERT(!m_assertions.domTreeHasMutated());
+    //ASSERT(!m_assertions.domTreeHasMutated());
     return *m_current;
 }
 
 inline const Element* ElementDescendantConstIterator::operator->() const
 {
     ASSERT(m_current);
-    ASSERT(!m_assertions.domTreeHasMutated());
+    //ASSERT(!m_assertions.domTreeHasMutated());
     return m_current;
 }
 
 inline bool ElementDescendantConstIterator::operator==(const ElementDescendantConstIterator& other) const
 {
-    ASSERT(!m_assertions.domTreeHasMutated());
+    //ASSERT(!m_assertions.domTreeHasMutated());
     return m_current == other.m_current;
 }
 

@@ -116,7 +116,7 @@ inline void HandleStack::leaveScope(Frame& lastFrame)
 
 inline HandleSlot HandleStack::push()
 {
-    ASSERT(m_scopeDepth); // Creating a Local outside of a LocalScope is a memory leak.
+    //ASSERT(m_scopeDepth); // Creating a Local outside of a LocalScope is a memory leak.
     if (m_frame.m_next == m_frame.m_end)
         grow();
     return m_frame.m_next++;

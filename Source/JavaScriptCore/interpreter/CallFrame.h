@@ -191,7 +191,7 @@ namespace JSC  {
         ALWAYS_INLINE void init(CodeBlock* codeBlock, Instruction* vPC,
             CallFrame* callerFrame, int argc, JSObject* callee) 
         { 
-            ASSERT(callerFrame == noCaller() || callerFrame->stack()->containsAddress(this)); 
+            //ASSERT(callerFrame == noCaller() || callerFrame->stack()->containsAddress(this)); 
 
             setCodeBlock(codeBlock); 
             setCallerFrame(callerFrame); 

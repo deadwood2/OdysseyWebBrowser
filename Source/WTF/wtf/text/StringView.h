@@ -640,7 +640,7 @@ inline UChar32 StringView::CodePoints::Iterator::operator*() const
 inline bool StringView::CodePoints::Iterator::operator==(const Iterator& other) const
 {
     ASSERT(&m_stringView == &other.m_stringView);
-    ASSERT(!m_alreadyIncremented);
+    //ASSERT(!m_alreadyIncremented);
     return m_index == other.m_index;
 }
 

@@ -97,7 +97,7 @@ ALWAYS_INLINE void SlotVisitor::internalAppend(void* from, JSValue value)
 
 ALWAYS_INLINE void SlotVisitor::internalAppend(void* from, JSCell* cell)
 {
-    ASSERT(!m_isCheckingForDefaultMarkViolation);
+    //ASSERT(!m_isCheckingForDefaultMarkViolation);
     if (!cell)
         return;
 #if ENABLE(ALLOCATION_LOGGING)

@@ -185,7 +185,7 @@ namespace JSC {
         
         Opcode getOpcode(OpcodeID id)
         {
-            ASSERT(m_initialized);
+            //ASSERT(m_initialized);
 #if ENABLE(COMPUTED_GOTO_OPCODES)
             return m_opcodeTable[id];
 #else
@@ -195,7 +195,7 @@ namespace JSC {
 
         OpcodeID getOpcodeID(Opcode opcode)
         {
-            ASSERT(m_initialized);
+            //ASSERT(m_initialized);
 #if ENABLE(COMPUTED_GOTO_OPCODES)
             ASSERT(isOpcode(opcode));
             return m_opcodeIDTable.get(opcode);

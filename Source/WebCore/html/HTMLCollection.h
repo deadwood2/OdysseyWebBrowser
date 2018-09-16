@@ -165,7 +165,7 @@ inline void CollectionNamedElementCache::didPopulate()
 
 inline const Vector<Element*>* CollectionNamedElementCache::find(const StringToElementsMap& map, const AtomicString& key) const
 {
-    ASSERT(m_didPopulate);
+    //ASSERT(m_didPopulate);
     auto it = map.find(key.impl());
     return it != map.end() ? &it->value : nullptr;
 }

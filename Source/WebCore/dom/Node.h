@@ -733,9 +733,9 @@ inline void adopted(Node* node)
 ALWAYS_INLINE void Node::ref()
 {
     ASSERT(isMainThread());
-    ASSERT(!m_deletionHasBegun);
-    ASSERT(!m_inRemovedLastRefFunction);
-    ASSERT(!m_adoptionIsRequired);
+    //ASSERT(!m_deletionHasBegun);
+    //ASSERT(!m_inRemovedLastRefFunction);
+    //ASSERT(!m_adoptionIsRequired);
     ++m_refCount;
 }
 
@@ -743,9 +743,9 @@ ALWAYS_INLINE void Node::deref()
 {
     ASSERT(isMainThread());
     ASSERT(m_refCount >= 0);
-    ASSERT(!m_deletionHasBegun);
-    ASSERT(!m_inRemovedLastRefFunction);
-    ASSERT(!m_adoptionIsRequired);
+    //ASSERT(!m_deletionHasBegun);
+    //ASSERT(!m_inRemovedLastRefFunction);
+    //ASSERT(!m_adoptionIsRequired);
     if (--m_refCount <= 0 && !parentNode()) {
 #ifndef NDEBUG
         m_inRemovedLastRefFunction = true;
@@ -756,8 +756,8 @@ ALWAYS_INLINE void Node::deref()
 
 ALWAYS_INLINE bool Node::hasOneRef() const
 {
-    ASSERT(!m_deletionHasBegun);
-    ASSERT(!m_inRemovedLastRefFunction);
+    //ASSERT(!m_deletionHasBegun);
+    //ASSERT(!m_inRemovedLastRefFunction);
     return m_refCount == 1;
 }
 

@@ -49,7 +49,7 @@ public:
     
     ~CheckedBoolean()
     {
-        ASSERT(m_checked);
+        //ASSERT(m_checked);
     }
     
     operator bool()

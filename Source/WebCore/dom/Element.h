@@ -617,13 +617,13 @@ inline Element* Node::parentElement() const
 
 inline bool Element::fastHasAttribute(const QualifiedName& name) const
 {
-    ASSERT(fastAttributeLookupAllowed(name));
+    //ASSERT(fastAttributeLookupAllowed(name));
     return elementData() && findAttributeByName(name);
 }
 
 inline const AtomicString& Element::fastGetAttribute(const QualifiedName& name) const
 {
-    ASSERT(fastAttributeLookupAllowed(name));
+    //ASSERT(fastAttributeLookupAllowed(name));
     if (elementData()) {
         if (const Attribute* attribute = findAttributeByName(name))
             return attribute->value();

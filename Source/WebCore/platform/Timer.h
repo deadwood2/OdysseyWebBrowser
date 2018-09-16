@@ -140,7 +140,7 @@ inline bool TimerBase::isActive() const
 {
     // FIXME: Write this in terms of USE(WEB_THREAD) instead of PLATFORM(IOS).
 #if !PLATFORM(IOS)
-    ASSERT(m_thread == currentThread());
+    //ASSERT(m_thread == currentThread());
 #else
     ASSERT(WebThreadIsCurrent() || pthread_main_np() || m_thread == currentThread());
 #endif // PLATFORM(IOS)

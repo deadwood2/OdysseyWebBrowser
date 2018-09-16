@@ -128,7 +128,7 @@ inline VM& ExecState::vm() const
 template<typename T>
 void* allocateCell(Heap& heap, size_t size)
 {
-    ASSERT(!DisallowGC::isGCDisallowedOnCurrentThread());
+    //ASSERT(!DisallowGC::isGCDisallowedOnCurrentThread());
     ASSERT(size >= sizeof(T));
     JSCell* result = static_cast<JSCell*>(heap.allocateObjectOfType<T>(size));
 #if ENABLE(GC_VALIDATION)
