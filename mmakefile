@@ -1,0 +1,179 @@
+# Copyright © 2008-2017, The AROS Development Team. All rights reserved.
+# $Id: mmakefile.src 54586 2017-04-22 20:22:22Z NicJA $
+
+include $(SRCDIR)/config/aros.cfg
+
+ODYSSEY_EXEDIR := $(AROS_CONTRIB)/Networking/Apps/Odyssey
+
+#MM- local-odyssey : odyssey-files-cpy odyssey-exe-cpy
+
+#MM- odyssey-exe-cpy : odyssey-exe
+
+#MM- odyssey-exe : contrib-icu4c \
+#MM                contrib-cairo \
+#MM                contrib-curl \
+#MM                contrib-sqlite \
+#MM                contrib-libxslt \
+#MM                contrib-gfx-libs-pixman \
+#MM                contrib-libiconv \
+#MM                contrib-ffmpeg
+
+NOWARN_CFLAGS :=   $(NOWARN_DEPRECATED_DECLARATIONS)
+
+NOWARN_CXXFLAGS := $(NOWARN_MISLEADING_INDENTATION) $(NOWARN_UNUSED_FUNCTION) \
+                   $(NOWARN_ERROR) $(NOWARN_CONVERSION_NULL) \
+                   $(NOWARN_DEPRECATED_DECLARATIONS) \
+                   -Wno-cast-align
+
+# ifeq ($(AROS_TARGET_CPU),m68k)
+NOWARN_CXXFLAGS +=
+# endif
+
+USER_CFLAGS := $(NOWARN_CFLAGS)
+USER_CXXFLAGS := $(NOWARN_CXXFLAGS)
+
+USER_INCLUDES := -I$(AROS_INCLUDES) -I$(AROS_CONTRIB_INCLUDES)
+USER_LDFLAGS := -L$(AROS_CONTRIB_LIB) -static-libstdc++
+
+ODYSSEY_OPTIONS := \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_SYSTEM_NAME=AROS \
+    -DPORT=MUI \
+    -DCAIRO_INCLUDE_DIRS=$(AROS_INCLUDES)/cairo/ \
+    -DFREETYPE_INCLUDE_DIRS=$(AROS_INCLUDES)/freetype/ \
+    -DLIBXML2_INCLUDE_DIR=$(AROS_INCLUDES)/libxml2/ \
+    -DFREETYPE_LIBRARIES="$(AROS_LIB)/libfreetype2.a" \
+    -DFONTCONFIG_LIBRARIES="$(AROS_LIB)/libfontconfig.a" \
+    -DZLIB_LIBRARIES="$(AROS_LIB)/libz.a" \
+    ..
+
+ifneq ($(AROS_TARGET_CPU),i386)
+ifneq ($(AROS_TARGET_CPU),x86_64)
+ODYSSEY_OPTIONS += \
+    -DENABLE_DFG_JIT:BOOL=OFF \
+    -DENABLE_VIDEO:BOOL=OFF \
+    -DENABLE_VIDEO_TRACK:BOOL=OFF \
+    -DENABLE_JIT:BOOL=OFF
+endif
+endif
+
+# Uncomment to display verbose build info..
+ODYSSEY_OPTIONS += -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+
+
+ifneq ($(ODYSSEY_EXEDIR),)
+    odyssey-exe-prefix := $(ODYSSEY_EXEDIR)
+else
+    odyssey-exe-prefix := $(AROS_CONTRIB)
+endif
+
+ifneq (,)
+    odyssey-exe-aros_prefix := 
+else
+    odyssey-exe-aros_prefix := $(odyssey-exe-prefix)
+endif
+
+ifeq (target,host)
+    BD_LDFLAGS   := -L$(CROSSTOOLSDIR)/lib $(USER_LDFLAGS)
+    BD_CFLAGS := $(HOST_CFLAGS) -I$(CROSSTOOLSDIR)/include
+    BD_CXXFLAGS := $(HOST_CXXFLAGS) -I$(CROSSTOOLSDIR)/include
+    odyssey-exe-cmake_opts  := -DCMAKE_INSTALL_PREFIX=$(odyssey-exe-prefix) -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER="$(HOST_DEF_CC)" -DCMAKE_C_FLAGS="$(BD_CFLAGS)" -DCMAKE_CXX_COMPILER="$(HOST_CXX)" -DCMAKE_CXX_FLAGS="$(BD_CXXFLAGS)"
+    ifeq (,)
+        odyssey-exe-pkgdir := $(HOSTGENDIR)/$(CURDIR)
+    else
+        odyssey-exe-pkgdir := $(HOSTGENDIR)/$(CURDIR)/
+    endif
+else
+    BD_LDFLAGS   := $(LDFLAGS)
+    BD_CFLAGS := $(CFLAGS)
+    BD_CXXFLAGS := $(CXXFLAGS)
+    odyssey-exe-cmake_opts  := -DCMAKE_TOOLCHAIN_FILE=$(GENDIR)/config/conf.cmake -DCMAKE_INSTALL_PREFIX=$(odyssey-exe-prefix) -DCMAKE_C_FLAGS="$(BD_CFLAGS)" -DCMAKE_CXX_FLAGS="$(BD_CXXFLAGS)" -DCMAKE_EXE_LINKER_FLAGS="$(BD_LDFLAGS)"
+    ifeq (,)
+        odyssey-exe-pkgdir := $(GENDIR)/$(CURDIR)
+    else
+        odyssey-exe-pkgdir := $(GENDIR)/$(CURDIR)/
+    endif
+endif
+ifneq (,)
+    ifeq (,)
+        odyssey-exe-pkgdir := /$(CURDIR)
+    else
+        odyssey-exe-pkgdir := /$(CURDIR)/
+    endif
+endif
+
+odyssey-exe-cmakeflag := $(odyssey-exe-pkgdir)/.cmake
+odyssey-exe-installflag := $(odyssey-exe-pkgdir)/.installed
+
+.PHONY : odyssey-exe odyssey-exe-clean odyssey-exe-build_and_install-quick
+
+#MM- odyssey-exe: setup includes core-linklibs odyssey-exe-quick
+
+#MM- odyssey-exe-quick : odyssey-exe-cmake odyssey-exe-build_and_install-quick
+
+#MM
+odyssey-exe-build_and_install-quick :  $(odyssey-exe-installflag)
+
+$(odyssey-exe-installflag) : $(odyssey-exe-cmakeflag)
+	if ! $(MAKE) -q -C $(odyssey-exe-pkgdir); then \
+            $(RM)  $(odyssey-exe-installflag) && \
+	    $(MAKE) -C $(odyssey-exe-pkgdir)  && \
+	    cd $(odyssey-exe-pkgdir) && \
+	    cmake  -P cmake_install.cmake && \
+	    $(TOUCH) $@ -r $^; \
+        fi
+
+$(odyssey-exe-pkgdir)/.files-touched:
+	@$(FOR) dir in $(odyssey-exe-pkgdir) ; do \
+	    $(IF) $(TEST) ! -d $$dir ; then $(MKDIR) $$dir ; else $(NOP) ; fi ; \
+	done
+	find $(SRCDIR)/$(CURDIR) -exec $(TOUCH) -c -r $(SRCDIR)/$(CURDIR)/CMakeLists.txt '{}' \; && \
+	$(TOUCH) $@
+
+#MM
+odyssey-exe-cmake : $(odyssey-exe-cmakeflag)
+
+$(odyssey-exe-cmakeflag) : TMP_SRCDIR := $(shell echo $(SRCDIR)/$(CURDIR) | sed 's/^\(.\):\//\/\1\//')
+$(odyssey-exe-cmakeflag) : $(odyssey-exe-pkgdir)/.files-touched $(TOP)/$(CURDIR)/mmakefile
+	$(RM) $@
+	@$(FOR) dir in $(odyssey-exe-pkgdir) ; do \
+	    $(IF) $(TEST) ! -d $$dir ; then $(MKDIR) $$dir ; else $(NOP) ; fi ; \
+	done
+	cd $(odyssey-exe-pkgdir) && \
+	$(RM) -Rf CMakeCache.txt CMakeFiles \; && \
+	cmake $(odyssey-exe-cmake_opts) $(ODYSSEY_OPTIONS) $(TMP_SRCDIR) && \
+	$(TOUCH) $@
+
+#MM
+odyssey-exe-clean : odyssey-exe-uninstall
+	@$(RM) $(odyssey-exe-pkgdir)
+
+
+odyssey-exe-cpy_SRC := $(shell echo $(GENDIR)/$(CURDIR)/bin | sed 's/^\(.\):\//\/\1\//')
+
+GLOB_MKDIRS += $(ODYSSEY_EXEDIR)
+
+.PHONY : odyssey-exe-cpy
+
+#MM
+odyssey-exe-cpy : | $(ODYSSEY_EXEDIR) 
+	$(foreach file, owb, $(shell $(CP) $(addprefix $(if $(filter /%,$(odyssey-exe-cpy_SRC)),$(odyssey-exe-cpy_SRC),$(SRCDIR)/$(CURDIR)/$(odyssey-exe-cpy_SRC))/, $(file)) $(addprefix $(ODYSSEY_EXEDIR)/, $(file))))
+
+
+
+.PHONY : odyssey-files-cpy
+
+#MM
+odyssey-files-cpy :
+	@cd $(SRCDIR)/$(CURDIR) && $(CPYDIRREC) -s $(SRCDIR)/$(CURDIR)/Dist -d $(ODYSSEY_EXEDIR) -e 
+
+
+# Delete generated makefiles
+#MM
+clean ::
+	@$(RM) $(TOP)/$(CURDIR)/mmakefile $(TOP)/$(CURDIR)/mmakefile.bak
+
+include $(SRCDIR)/config/make.tail
+
+BDID := $(BDTARGETID)
+
