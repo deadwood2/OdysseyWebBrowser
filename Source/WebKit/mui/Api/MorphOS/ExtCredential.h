@@ -109,16 +109,16 @@ inline bool operator==(const ExtCredential& a, const ExtCredential& b)
         return false;
     if (a.persistence() != b.persistence())
         return false;
-	if (a.realm() != b.realm())
+    if (a.realm() != b.realm())
         return false;
-	if (a.userFieldName() != b.userFieldName())
+    if (a.userFieldName() != b.userFieldName())
         return false;
-	if (a.passwordFieldName() != b.passwordFieldName())
+    if (a.passwordFieldName() != b.passwordFieldName())
         return false;
-	if (a.type() != b.type())
+    if (a.type() != b.type())
         return false;
-	if (a.flags() != b.flags())
-		return false;
+    if (a.flags() != b.flags())
+	return false;
 
     return true;
 }

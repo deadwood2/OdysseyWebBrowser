@@ -176,7 +176,7 @@ WebResource* WebDataSource::subresourceForURL(String url)
     if (!doc)
         return 0;
 
-	CachedResource *cachedResource = doc->cachedResourceLoader().cachedResource(String(url));
+    CachedResource *cachedResource = doc->cachedResourceLoader().cachedResource(String(url));
 
     if (!cachedResource)
         return 0;

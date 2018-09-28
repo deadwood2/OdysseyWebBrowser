@@ -128,9 +128,9 @@ void MorphOSWebNotificationDelegate::progressNotification(WebFrame* webFrame)
     if (webView->mainFrame() != webFrame)
         return;
 
-	BalWidget* widget = webView->viewWindow();
+    BalWidget* widget = webView->viewWindow();
 
-	if (widget && widget->browser)
+    if (widget && widget->browser)
 	{
 		ULONG progress = int(webView->estimatedProgress() * 100);
 		SetAttrs(widget->browser, MA_OWBBrowser_LoadingProgress, progress, TAG_DONE);
@@ -256,8 +256,8 @@ void MorphOSWebFrameDelegate::didStartProvisionalLoad(WebFrame* webFrame)
 
 	D(kprintf("didStartProvisionalLoad\n"));
 
-    if (webView->mainFrame() != webFrame)
-        return;
+    	if (webView->mainFrame() != webFrame)
+        	return;
 
 	BalWidget* widget = webView->viewWindow();
 
@@ -300,8 +300,8 @@ void MorphOSWebFrameDelegate::didCommitLoad(WebFrame* webFrame)
 
 	D(kprintf("didCommitLoad\n"));
 
-    if (webView->mainFrame() != webFrame)
-        return;
+    	if (webView->mainFrame() != webFrame)
+        	return;
 
 	BalWidget* widget = webView->viewWindow();
 
@@ -332,12 +332,12 @@ void MorphOSWebFrameDelegate::didFinishLoad(WebFrame* webFrame)
 {
 	WebView* webView = webFrame->webView();
 	BalWidget* widget = webView->viewWindow();
-    WebFrame* mainFrame = webView->mainFrame();
+    	WebFrame* mainFrame = webView->mainFrame();
 
 	D(kprintf("didFinishLoad\n"));
 
-    if (mainFrame != webFrame)
-        return;
+    	if (mainFrame != webFrame)
+        	return;
 
 	if(webView->scheduledScrollOffset() != IntPoint(0, 0))
 	{
@@ -409,22 +409,22 @@ void MorphOSWebFrameDelegate::didFailLoad(WebFrame* webFrame, WebError* error)
     if (mainFrame != webFrame)
         return;
 
-	if (widget && widget->browser)
-	{
+    if (widget && widget->browser)
+    {
 		SetAttrs(widget->browser,
 		         MA_OWBBrowser_Loading, FALSE,
 				 MA_OWBBrowser_State, handleAsError ? MV_OWBBrowser_State_Error : MV_OWBBrowser_State_Ready,
 				 TAG_DONE);
 		
 		updateNavigation(widget->browser);
-	}
+     }
 
-	if(error->resourceError().sslErrors())
-	{
+     if(error->resourceError().sslErrors())
+     {
 		//kprintf("SSL Error %d\n", error->resourceError().sslErrors());
-	}
+     }
 
-	if(handleAsError)
+     if(handleAsError)
 	{
 		OWBFile f("PROGDIR:resource/error.html");
 
@@ -538,8 +538,8 @@ void MorphOSWebFrameDelegate::didDisplayInsecureContent(WebFrame* webFrame)
 
 	D(kprintf("didDisplayInsecureContent\n"));
 
-    if (webView->mainFrame() != webFrame)
-        return;
+    	if (webView->mainFrame() != webFrame)
+        	return;
 
 	BalWidget* widget = webView->viewWindow();
 
@@ -557,8 +557,8 @@ void MorphOSWebFrameDelegate::didRunInsecureContent(WebFrame* webFrame, WebSecur
 
 	D(kprintf("didRunInsecureContent\n"));
 
-    if (webView->mainFrame() != webFrame)
-        return;
+    	if (webView->mainFrame() != webFrame)
+        	return;
 
 	BalWidget* widget = webView->viewWindow();
 
@@ -1425,8 +1425,8 @@ void WebViewPrivate::updateView(BalWidget *widget, IntRect rect, bool sync)
 {
 	// kprintf("updateview(%p (%p),(%d,%d,%d,%d))\n", widget, widget?widget->window:NULL, rect.x(), rect.y(), rect.width(), rect.height());
 
-    if (!widget || !widget->window || rect.isEmpty())
-        return;
+    	if (!widget || !widget->window || rect.isEmpty())
+        	return;
 
 	rect.intersect(m_rect);
 
