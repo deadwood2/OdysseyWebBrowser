@@ -1,0 +1,72 @@
+# Copyright © 2008-2017, The AROS Development Team. All rights reserved.
+# $Id: mmakefile.src 54586 2017-04-22 20:22:22Z NicJA $
+
+include $(SRCDIR)/config/aros.cfg
+
+ODYSSEY_EXEDIR := $(AROS_CONTRIB)/Networking/Apps/Odyssey
+
+#MM- local-odyssey : odyssey-files-cpy odyssey-exe-cpy
+
+#MM- odyssey-exe-cpy : odyssey-exe
+
+#MM- odyssey-exe : contrib-icu4c \
+#MM                contrib-cairo \
+#MM                contrib-curl \
+#MM                contrib-sqlite \
+#MM                contrib-libxslt \
+#MM                contrib-gfx-libs-pixman \
+#MM                contrib-libiconv \
+#MM                contrib-ffmpeg
+
+NOWARN_CFLAGS :=   $(NOWARN_DEPRECATED_DECLARATIONS)
+
+NOWARN_CXXFLAGS := $(NOWARN_MISLEADING_INDENTATION) $(NOWARN_UNUSED_FUNCTION) \
+                   $(NOWARN_ERROR) $(NOWARN_CONVERSION_NULL) \
+                   $(NOWARN_DEPRECATED_DECLARATIONS) \
+                   -Wno-cast-align
+
+# ifeq ($(AROS_TARGET_CPU),m68k)
+NOWARN_CXXFLAGS +=
+# endif
+
+USER_CFLAGS := $(NOWARN_CFLAGS)
+USER_CXXFLAGS := $(NOWARN_CXXFLAGS)
+
+USER_INCLUDES := -I$(AROS_INCLUDES) -I$(AROS_CONTRIB_INCLUDES)
+USER_LDFLAGS := -L$(AROS_CONTRIB_LIB) -static-libstdc++
+
+ODYSSEY_OPTIONS := \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_SYSTEM_NAME=AROS \
+    -DPORT=MUI \
+    -DCAIRO_INCLUDE_DIRS=$(AROS_INCLUDES)/cairo/ \
+    -DFREETYPE_INCLUDE_DIRS=$(AROS_INCLUDES)/freetype/ \
+    -DLIBXML2_INCLUDE_DIR=$(AROS_INCLUDES)/libxml2/ \
+    -DFREETYPE_LIBRARIES="$(AROS_LIB)/libfreetype2.a" \
+    -DFONTCONFIG_LIBRARIES="$(AROS_LIB)/libfontconfig.a" \
+    -DZLIB_LIBRARIES="$(AROS_LIB)/libz.a" \
+    ..
+
+ifneq ($(AROS_TARGET_CPU),i386)
+ifneq ($(AROS_TARGET_CPU),x86_64)
+ODYSSEY_OPTIONS += \
+    -DENABLE_DFG_JIT:BOOL=OFF \
+    -DENABLE_VIDEO:BOOL=OFF \
+    -DENABLE_VIDEO_TRACK:BOOL=OFF \
+    -DENABLE_JIT:BOOL=OFF
+endif
+endif
+
+# Uncomment to display verbose build info..
+ODYSSEY_OPTIONS += -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+
+%build_with_cmake mmake=odyssey-exe		\
+	srcdir=$(SRCDIR)/$(CURDIR) prefix="$(ODYSSEY_EXEDIR)"	\
+	extraoptions="$(ODYSSEY_OPTIONS)"
+
+%copy_files_q mmake=odyssey-exe-cpy files="owb" src="$(GENDIR)/$(CURDIR)/bin" dst="$(ODYSSEY_EXEDIR)"
+
+%copy_dir_recursive src="$(SRCDIR)/$(CURDIR)/Dist" dst="$(ODYSSEY_EXEDIR)" mmake=odyssey-files-cpy
+
+%common
+
