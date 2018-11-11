@@ -8,7 +8,7 @@ odyssey - branch that contains Odyssey Web Browser rebased onto certain version 
 
 In order to build/develop the Odyssey Web Browser, checkout branch odyssey.
 
-#How to compile
+# How to compile
 The compilaton was successfully tested using Ubuntu 14.04.5 LTS 32 bit. Below the list of packages installed. In order to compile you need to apply the provided patch. Here the steps I followed.
 
 ```
@@ -32,7 +32,7 @@ make
 make local-odyssey
 ```
 
-##Setup of VM
+## Setup of VM
 Starting from a base installation of Ubuntu 14.04.5 LTS 32 bit Server execute following commands:
 ```
 sudo apt update
