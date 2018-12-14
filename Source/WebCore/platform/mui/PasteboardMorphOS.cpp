@@ -304,7 +304,7 @@ void Pasteboard::write(const PasteboardURL& pasteboardURL)
 {
 	D(kprintf("Pasteboard::writeURL %s %d\n", pasteboardURL.url.string().utf8().data(), m_morphosClipboard));
 
-    //ASSERT(!url.isEmpty());
+    ASSERT(!url.isEmpty());
 
 	if(m_morphosClipboard == 0)
 	{
@@ -338,7 +338,7 @@ static URL getURLForImageNode(Node* node)
 
 void Pasteboard::writeImage(Element& element, const URL&, const String& title)
 {
-    //ASSERT(node);
+    ASSERT(node);
 
 	D(kprintf("Pasteboard::writeImage\n"));
 

@@ -49,9 +49,9 @@ void AutofillManager::didChangeInTextField(HTMLInputElement* element)
     if (m_element != element)
         m_element = element;
 
-    IntRect rect = element->screenRect();
+	IntRect rect = element->screenRect();
     Vector<String> candidates = autofillBackingStore().get(element->getAttribute(HTMLNames::nameAttr).string(), element->value());
-    DoMethod((Object *) m_browser, MM_OWBBrowser_Autofill_ShowPopup, &candidates, &rect);
+	DoMethod((Object *) m_browser, MM_OWBBrowser_Autofill_ShowPopup, &candidates, &rect);
 }
 
 void AutofillManager::autofillTextField(const String& value)

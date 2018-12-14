@@ -52,7 +52,7 @@ public:
 #if USE(WEB_THREAD)
         ASSERT(canAccessThreadLocalDataForThread(m_boundThread));
 #else
-        //ASSERT(m_boundThread == currentThread());
+        ASSERT(m_boundThread == currentThread());
 #endif
         return m_ptr;
     }
@@ -62,7 +62,7 @@ public:
 #if USE(WEB_THREAD)
         ASSERT(canAccessThreadLocalDataForThread(m_boundThread));
 #else
-        //ASSERT(m_boundThread == currentThread());
+        ASSERT(m_boundThread == currentThread());
 #endif
         m_ptr = nullptr;
     }

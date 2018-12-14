@@ -104,7 +104,7 @@ public:
 private:
     uint8_t at(unsigned index) const
     {
-        //ASSERT(index < m_size);
+        ASSERT(index < m_size);
         return m_buffer[index];
     }
     
@@ -275,7 +275,7 @@ inline CompactJITCodeMap::Decoder::Decoder(const CompactJITCodeMap* jitCodeMap)
 
 inline unsigned CompactJITCodeMap::Decoder::numberOfEntriesRemaining() const
 {
-    //ASSERT(m_numberOfEntriesRemaining || m_bufferIndex == m_jitCodeMap->m_size);
+    ASSERT(m_numberOfEntriesRemaining || m_bufferIndex == m_jitCodeMap->m_size);
     return m_numberOfEntriesRemaining;
 }
 

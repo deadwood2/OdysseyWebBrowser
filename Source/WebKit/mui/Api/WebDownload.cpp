@@ -435,8 +435,8 @@ bool WebDownload::canResumeDownloadDecodedWithEncodingMIMEType(
 
 void WebDownload::start(bool quiet)
 {
-    	if (m_priv->state != WEBKIT_WEB_DOWNLOAD_STATE_CREATED)
-        	return;
+    if (m_priv->state != WEBKIT_WEB_DOWNLOAD_STATE_CREATED)
+        return;
 
 	// If quiet option is passed explicitely, use it
 	if(quiet)

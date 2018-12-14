@@ -300,13 +300,13 @@ public:
     // pointer without introducing reference cycles.
     void incrementReferencingNodeCount()
     {
-        //ASSERT(!m_deletionHasBegun);
+        ASSERT(!m_deletionHasBegun);
         ++m_referencingNodeCount;
     }
 
     void decrementReferencingNodeCount()
     {
-        //ASSERT(!m_deletionHasBegun || !m_referencingNodeCount);
+        ASSERT(!m_deletionHasBegun || !m_referencingNodeCount);
         --m_referencingNodeCount;
         if (!m_referencingNodeCount && !refCount()) {
 #if !ASSERT_DISABLED

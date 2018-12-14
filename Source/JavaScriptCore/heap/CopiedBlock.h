@@ -170,7 +170,7 @@ inline void CopiedBlock::didSurviveGC()
 inline void CopiedBlock::didEvacuateBytes(unsigned bytes)
 {
     ASSERT(m_liveBytes >= bytes);
-    //ASSERT(m_liveObjects);
+    ASSERT(m_liveObjects);
     checkConsistency();
     m_liveBytes -= bytes;
 #ifndef NDEBUG
@@ -291,7 +291,7 @@ inline CopyWorkList& CopiedBlock::workList()
 
 inline void CopiedBlock::checkConsistency()
 {
-    //ASSERT(!!m_liveBytes == !!m_liveObjects);
+    ASSERT(!!m_liveBytes == !!m_liveObjects);
 }
 
 } // namespace JSC

@@ -71,7 +71,7 @@ void GCSegmentedArray<T>::clear()
 template <typename T>
 void GCSegmentedArray<T>::expand()
 {
-    //ASSERT(m_segments.head()->m_top == s_segmentCapacity);
+    ASSERT(m_segments.head()->m_top == s_segmentCapacity);
     
     GCArraySegment<T>* nextSegment = GCArraySegment<T>::create();
     m_numberOfSegments++;
@@ -141,7 +141,7 @@ template <typename T>
 inline size_t GCSegmentedArray<T>::postIncTop()
 {
     size_t result = m_top++;
-    //ASSERT(result == m_segments.head()->m_top++);
+    ASSERT(result == m_segments.head()->m_top++);
     return result;
 }
 
@@ -163,7 +163,7 @@ inline void GCSegmentedArray<T>::setTopForFullSegment()
 template <typename T>
 inline void GCSegmentedArray<T>::setTopForEmptySegment()
 {
-    //ASSERT(!m_segments.head()->m_top);
+    ASSERT(!m_segments.head()->m_top);
     m_top = 0;
 }
 
@@ -213,7 +213,7 @@ inline bool GCSegmentedArray<T>::isEmpty()
     if (m_top)
         return false;
     if (m_segments.head()->next()) {
-        //ASSERT(m_segments.head()->next()->m_top == s_segmentCapacity);
+        ASSERT(m_segments.head()->next()->m_top == s_segmentCapacity);
         return false;
     }
     return true;

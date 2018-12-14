@@ -59,13 +59,13 @@ public:
     LayoutUnit width() const { return m_frameRect.width(); }
     LayoutUnit height() const { return m_frameRect.height(); }
 
-    void setX(LayoutUnit x) { m_frameRect.setX(x); }
-    void setY(LayoutUnit y) { m_frameRect.setY(y); }
-    void setWidth(LayoutUnit width) { m_frameRect.setWidth(width); }
-    void setHeight(LayoutUnit height) { m_frameRect.setHeight(height); }
+    void setX(LayoutUnit x) { ASSERT(!isInPlacedTree()); m_frameRect.setX(x); }
+    void setY(LayoutUnit y) { ASSERT(!isInPlacedTree()); m_frameRect.setY(y); }
+    void setWidth(LayoutUnit width) { ASSERT(!isInPlacedTree()); m_frameRect.setWidth(width); }
+    void setHeight(LayoutUnit height) { ASSERT(!isInPlacedTree()); m_frameRect.setHeight(height); }
 
     const LayoutRect& frameRect() const { ASSERT(isPlaced()); return m_frameRect; }
-    void setFrameRect(const LayoutRect& frameRect) { m_frameRect = frameRect; }
+    void setFrameRect(const LayoutRect& frameRect) { ASSERT(!isInPlacedTree()); m_frameRect = frameRect; }
 
     LayoutUnit paginationStrut() const { return m_paginationStrut; }
     void setPaginationStrut(LayoutUnit strut) { m_paginationStrut = strut; }

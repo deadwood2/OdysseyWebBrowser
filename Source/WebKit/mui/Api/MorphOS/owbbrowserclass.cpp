@@ -4039,7 +4039,7 @@ typedef struct
 // It has some sideeffects for pages that want to paint over plugin area
 DEFSMETHOD(Plugin_RenderRastPort)
 {
-	if(msg->src == NULL && msg->stride == 0)
+	if(msg->src == NULL && msg->stride == NULL)
 	{
 		PluginRect *npwindowrect = (PluginRect *) msg->windowrect;
 		IntRect windowrect(npwindowrect->x, npwindowrect->y, npwindowrect->width, npwindowrect->height);

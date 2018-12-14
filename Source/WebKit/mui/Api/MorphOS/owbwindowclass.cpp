@@ -2927,7 +2927,7 @@ DEFSMETHOD(OWBWindow_JavaScriptPrompt)
     if (!req_wnd)
         return NULL;
 
-    DoMethod(_app(obj), OM_ADDMEMBER, req_wnd);
+	DoMethod(_app(obj), OM_ADDMEMBER, req_wnd);
 
     DoMethod(bt_cancel, MUIM_Notify, MUIA_Pressed, FALSE,
 		_app(obj), 2, MUIM_Application_ReturnID, 1);

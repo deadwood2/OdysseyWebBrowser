@@ -816,18 +816,18 @@ String BufferFile(const char* url)
 	String path = url;
 
 	OWBFile *configFile = new OWBFile(path);
-    	if (!configFile)
-        	return String();
-    	if (configFile->open('r') == -1)
+    if (!configFile)
+        return String();
+	if (configFile->open('r') == -1)
 	{
-        	delete configFile;
-        	return String();
-    	}
+        delete configFile;
+        return String();
+    }
 	char *buffer = configFile->read(configFile->getSize());
 	String fileBuffer = buffer;
 	delete [] buffer;
-    	configFile->close();
-    	delete configFile;
+    configFile->close();
+    delete configFile;
 
 	return fileBuffer;
 }
@@ -2646,7 +2646,7 @@ DEFSMETHOD(OWBApp_SaveFormState)
 				{
 					D(kprintf("Valid formdata found for <%s>\n", webFormPasswordData.origin.string().latin1().data()));
 
-					if(getv(app, MA_OWBApp_SaveFormCredentials) && DoMethod(data->passwordmanagerwin, MM_PasswordManagerGroup_Get, &(webFormPasswordData.origin.string())) == 0)
+					if(getv(app, MA_OWBApp_SaveFormCredentials) && DoMethod(data->passwordmanagerwin, MM_PasswordManagerGroup_Get, &(webFormPasswordData.origin.string())) == NULL)
 					{
 						ExtCredential extCredential(webFormPasswordData.userNameValue,
 													webFormPasswordData.passwordValue,

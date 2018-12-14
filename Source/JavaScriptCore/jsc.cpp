@@ -117,7 +117,7 @@ NO_RETURN_WITH_VALUE static void jscExit(int status)
 #if OS(WINDOWS)
             Sleep(1000);
 #else
-            //pause();
+            pause();
 #endif
         }
     }
