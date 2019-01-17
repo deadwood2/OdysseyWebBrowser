@@ -27,6 +27,7 @@
 #include "libavcodec/avcodec.h"
 #include "libavutil/samplefmt.h"
 #include "libavutil/avutil.h"
+#include "libavutil/pixfmt.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixfmt.h"
 #include "libswscale/swscale.h"

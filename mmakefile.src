@@ -1,7 +1,7 @@
-# Copyright © 2008-2017, The AROS Development Team. All rights reserved.
+# Copyright Â© 2008-2017, The AROS Development Team. All rights reserved.
 # $Id: mmakefile.src 54586 2017-04-22 20:22:22Z NicJA $
 
-include $(SRCDIR)/config/aros-contrib.cfg
+include $(SRCDIR)/config/aros.cfg
 
 ODYSSEY_EXEDIR := $(AROS_CONTRIB)/Networking/Apps/Odyssey
 
@@ -25,9 +25,9 @@ NOWARN_CXXFLAGS := $(NOWARN_MISLEADING_INDENTATION) $(NOWARN_UNUSED_FUNCTION) \
                    $(NOWARN_DEPRECATED_DECLARATIONS) \
                    -Wno-cast-align
 
-ifeq ($(AROS_TARGET_CPU),m68k)
+# ifeq ($(AROS_TARGET_CPU),m68k)
 NOWARN_CXXFLAGS +=
-endif
+# endif
 
 USER_CFLAGS := $(NOWARN_CFLAGS)
 USER_CXXFLAGS := $(NOWARN_CXXFLAGS)
@@ -58,7 +58,7 @@ endif
 endif
 
 # Uncomment to display verbose build info..
-##ODYSSEY_OPTIONS += -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+ODYSSEY_OPTIONS += -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
 
 %build_with_cmake mmake=odyssey-exe		\
 	srcdir=$(SRCDIR)/$(CURDIR) prefix="$(ODYSSEY_EXEDIR)"	\
