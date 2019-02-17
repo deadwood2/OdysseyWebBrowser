@@ -117,7 +117,7 @@ void StackBounds::initialize()
     m_bound =  ppcsplower;/*estimateStackBound(m_origin);*/
 }
 
-#elif OS(AROS)
+#elif OS(AROS) || OS(AMIGAOS4)
 
 void StackBounds::initialize()
 {
