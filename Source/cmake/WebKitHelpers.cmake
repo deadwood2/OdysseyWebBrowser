@@ -20,7 +20,7 @@ macro(WEBKIT_SET_EXTRA_COMPILER_FLAGS _target)
             set(OLD_COMPILE_FLAGS "-Wno-parentheses-equality ${OLD_COMPILE_FLAGS}")
         endif ()
 
-		set(OLD_COMPILE_FLAGS "-march=i686 ${OLD_COMPILE_FLAGS}")
+	#	set(OLD_COMPILE_FLAGS "-march=i686 ${OLD_COMPILE_FLAGS}")
 
         # Enable warnings by default
         if (NOT ${OPTION_IGNORECXX_WARNINGS})
