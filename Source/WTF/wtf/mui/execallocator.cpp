@@ -26,9 +26,12 @@
 #include "execallocator.h"
 #include "arosbailout.h"
 
+#if OS(AROS)
 #include <proto/alib.h>
-#include <exec/lists.h>
 #include <aros/debug.h>
+#endif
+
+#include <exec/lists.h>
 
 #undef PAGESIZE
 #define PAGESIZE                (4096)
@@ -106,10 +109,13 @@ void PageAllocator::reportBlockUsage()
 }
 
 /* This function exposes internals of AROS and should be moved to exec.library */
+#if OS(AROS)
 #include <exec/memheaderext.h>
+#endif
 
 static APTR AllocMemAligned(IPTR byteSize, ULONG attributes, IPTR alignSize, IPTR alignOffset)
 {
+#if OS(AROS)
     APTR res = NULL;
     struct MemHeader *mh, *mhn;
     ULONG requirements = attributes & MEMF_PHYSICAL_MASK;
@@ -168,6 +174,11 @@ static APTR AllocMemAligned(IPTR byteSize, ULONG attributes, IPTR alignSize, IPT
         res = LibAllocAligned(byteSize, attributes, alignSize);
 
     return res;
+#elif OS(AMIGAOS4)
+    APTR res = NULL;
+    res = AllocVecTags(byteSize, AVT_Type, MEMF_SHARED, AVT_Alignment, alignSize, TAG_DONE);    
+    return res;	
+#endif
 }
 
 PageAllocator::PageBlock * PageAllocator::allocateNewBlock(size_t count)
