@@ -15,6 +15,7 @@ SET(CMAKE_C_FLAGS "")
 SET(CMAKE_C_FLAGS_DEBUG "-g -gdwarf-3")
 
 SET(CMAKE_MODULE_LINKER_FLAGS "")
+SET(CMAKE_EXE_LINKER_FLAGS "-static-libstdc++")
 
 # where is the target environment
 SET(CMAKE_FIND_ROOT_PATH  "")

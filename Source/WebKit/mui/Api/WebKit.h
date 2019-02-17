@@ -77,12 +77,6 @@
 #include "WebIconDatabase.h"
 #endif
 
-#if ENABLE(DAE_APPLICATION)
-#include "WebApplication.h"
-#include "WebApplicationManager.h"
-#include "WebConfigLoading.h"
-#endif
-
 #include "WebWindow.h"
 #include "WebWindowAlert.h"
 #include "WebWindowConfirm.h"

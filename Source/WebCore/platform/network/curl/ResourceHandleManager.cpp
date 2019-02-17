@@ -274,9 +274,6 @@ ResourceHandleManager::ResourceHandleManager()
 	    pollTimeSeconds = 0.001;
     }
 
-    if(getenv("OWB_ENABLE_DISK_CACHE"))
-       CurlCacheManager::getInstance().setCacheDirectory("PROGDIR:conf/cache");
-
     curl_global_init(CURL_GLOBAL_ALL);
     m_curlMultiHandle = curl_multi_init();
     m_curlShareHandle = curl_share_init();
@@ -875,6 +872,7 @@ void ResourceHandleManager::downloadTimerCallback()
         ASSERT(d->m_handle == handle);
 
         if (d->m_cancelled) {
+            CurlCacheManager::getInstance().didCancel(*job);
             removeFromCurl(job);
             continue;
         }
@@ -890,6 +888,7 @@ void ResourceHandleManager::downloadTimerCallback()
             if (!d->m_response.responseFired()) {
                 handleLocalReceiveResponse(d->m_handle, job, d);
                 if (d->m_cancelled) {
+                    CurlCacheManager::getInstance().didCancel(*job);
                     removeFromCurl(job);
                     continue;
                 }

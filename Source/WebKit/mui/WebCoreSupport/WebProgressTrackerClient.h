@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009 Pleyo.  All rights reserved.
+ * Copyright (C) Krzysztof Smiechowicz.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,22 +26,37 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef WebBindingJSDelegate_h
-#define WebBindingJSDelegate_h
+#ifndef WebProgressTrackerClient_h
+#define WebProgressTrackerClient_h
 
-#include "SharedObject.h"
+#include <ProgressTrackerClient.h>
 
 class WebFrame;
 
-class WebBindingJSDelegate : public SharedObject<WebBindingJSDelegate> {
+#ifdef BENCH_LOAD_TIME
+#include <sys/time.h>
+#endif
 
+class WebProgressTrackerClient : public WebCore::ProgressTrackerClient {
 public:
-    virtual ~WebBindingJSDelegate() { }
+    WebProgressTrackerClient();
+    virtual ~WebProgressTrackerClient();
 
-    /**
-     * registerBinding
-     */
-    virtual void registerBinding(WebFrame*) = 0;
+    void setWebFrame(WebFrame* webFrame) { m_webFrame = webFrame; }
+
+    virtual void progressTrackerDestroyed() override;
+
+    virtual void progressStarted(WebCore::Frame&) override;
+    virtual void progressEstimateChanged(WebCore::Frame&) override;
+    virtual void progressFinished(WebCore::Frame&) override;
+
+private:
+    WebFrame* m_webFrame;
+
+#ifdef BENCH_LOAD_TIME
+    struct timeval m_timerStart;
+    struct timeval m_timerStop;
+#endif
 };
 
-#endif // WebBindingJSDelegate_h
+#endif // WebProgressTrackerClient_h

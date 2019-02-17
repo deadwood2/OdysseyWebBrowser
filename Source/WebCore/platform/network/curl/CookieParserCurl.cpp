@@ -42,7 +42,7 @@ namespace WebCore {
 #define LOG_ERROR(...) do { char buffer[1024]; snprintf(buffer, sizeof(buffer), __VA_ARGS__); DoMethod(app, MM_OWBApp_AddConsoleMessage, buffer); } while (0)
 #define LOG_AND_DELETE(...) \
     { \
-	LOG_ERROR(__VA_ARGS__); \
+        LOG_ERROR(__VA_ARGS__); \
         delete res; \
         return 0; \
     }
@@ -62,13 +62,13 @@ CookieParser::CookieParser(const URL& defaultCookieURL)
 {
     m_defaultCookieHost = defaultCookieURL.host();
     m_defaultDomainIsIPAddress = false;
-	/*
+    /*
     string hostDomainCanonical = BlackBerry::Platform::getCanonicalIPFormat(m_defaultCookieHost.utf8().data()).c_str();
     if (!hostDomainCanonical.empty()) {
         m_defaultCookieHost = String(hostDomainCanonical.c_str());
         m_defaultDomainIsIPAddress = true;
-	} else */
-	m_defaultCookieHost = m_defaultCookieHost.startsWith(".") ? m_defaultCookieHost : "." + m_defaultCookieHost;
+    } else */
+    m_defaultCookieHost = m_defaultCookieHost.startsWith(".") ? m_defaultCookieHost : "." + m_defaultCookieHost;
 }
 
 CookieParser::~CookieParser()
@@ -114,6 +114,10 @@ ParsedCookie* CookieParser::parseOneCookie(const String& cookie)
     return parseOneCookie(cookie, 0, cookie.length() - 1, currentTime());
 }
 
+static inline bool matchName(const String& cookie, const String& name, unsigned start)
+{
+    return start == cookie.find(name, start, false);
+}
 // The cookie String passed into this method will only contian the name value pairs as well as other related cookie
 // attributes such as max-age and domain. Set-Cookie should never be part of this string.
 ParsedCookie* CookieParser::parseOneCookie(const String& cookie, unsigned start, unsigned end, double curTime)
@@ -245,7 +249,7 @@ ParsedCookie* CookieParser::parseOneCookie(const String& cookie, unsigned start,
         switch (cookie[tokenStartSvg]) {
         case 'P':
         case 'p' : {
-            if (length >= 4 && cookie.find("ath", tokenStartSvg + 1, false)) {
+            if (length >= 4 && matchName(cookie, "Path", tokenStartSvg)) {
                 // We need the path to be decoded to match those returned from URL::path().
                 // The path attribute may or may not include percent-encoded characters. Fortunately
                 // if there are no percent-encoded characters, decoding the url is a no-op.
@@ -259,14 +263,13 @@ ParsedCookie* CookieParser::parseOneCookie(const String& cookie, unsigned start,
                     LOG_AND_DELETE("Invalid cookie %s (path): it does not math the URL", cookie.ascii().data());
 #endif
 
-            } else
-                LOG_AND_DELETE("Invalid cookie %s (path)", cookie.ascii().data());
+            }
             break;
         }
 
         case 'D':
         case 'd' : {
-            if (length >= 6 && cookie.find("omain", tokenStartSvg + 1, false)) {
+            if (length >= 6 && matchName(cookie, "Domain", tokenStartSvg)) {
                 if (parsedValue.length() > 1 && parsedValue[0] == '"' && parsedValue[parsedValue.length() - 1] == '"')
                     parsedValue = parsedValue.substring(1, parsedValue.length() - 2);
 
@@ -287,12 +290,12 @@ ParsedCookie* CookieParser::parseOneCookie(const String& cookie, unsigned start,
                 // If it is an IP Address, we should treat it only if it matches the host exactly
                 // We determine the canonical IP format before comparing because IPv6 could be represented in multiple formats
                 if (m_defaultDomainIsIPAddress) {
-					/*
+                    /*
                     String realDomainCanonical = String(BlackBerry::Platform::getCanonicalIPFormat(realDomain.utf8().data()).c_str());
                     if (realDomainCanonical.isEmpty() || realDomainCanonical != m_defaultCookieHost)
                         LOG_AND_DELETE("Invalid cookie %s (domain): domain is IP but does not match host's IP", cookie.ascii().data());
                     realDomain = realDomainCanonical;
-					isIPAddress = true; */
+                    isIPAddress = true; */
                 } else {
                     // The request host should domain match the Domain attribute.
                     // Domain string starts with a dot, so a.b.com should domain match .a.b.com.
@@ -308,48 +311,41 @@ ParsedCookie* CookieParser::parseOneCookie(const String& cookie, unsigned start,
 
                     // Check whether the domain is a top level domain, if it is throw it out
                     // http://publicsuffix.org/list/
-					/*
+                    /*
                     if (BlackBerry::Platform::isTopLevelDomain(realDomain.utf8().data()))
                         LOG_AND_DELETE("Invalid cookie %s (domain): it did not pass the top level domain check", cookie.ascii().data());
-					*/
+                     */
                 }
                 res->setDomain(realDomain, isIPAddress);
-            } else
-                LOG_AND_DELETE("Invalid cookie %s (domain)", cookie.ascii().data());
+            }
             break;
         }
 
         case 'E' :
         case 'e' : {
-            if (length >= 7 && cookie.find("xpires", tokenStartSvg + 1, false))
+            if (length >= 7 && matchName(cookie, "Expires", tokenStartSvg))
                 res->setExpiry(parsedValue);
-            else
-                LOG_AND_DELETE("Invalid cookie %s (expires)", cookie.ascii().data());
             break;
         }
 
         case 'M' :
         case 'm' : {
-            if (length >= 7 && cookie.find("ax-age", tokenStartSvg + 1, false))
+            if (length >= 7 && matchName(cookie, "Max-age", tokenStartSvg))
                 res->setMaxAge(parsedValue);
-            else
-                LOG_AND_DELETE("Invalid cookie %s (max-age)", cookie.ascii().data());
             break;
         }
 
         case 'C' :
         case 'c' : {
-            if (length >= 7 && cookie.find("omment", tokenStartSvg + 1, false))
+            if (length >= 7 && matchName(cookie, "Comment", tokenStartSvg))
                 // We do not have room for the comment part (and so do Mozilla) so just log the comment.
                 LOG(Network, "Comment %s for ParsedCookie : %s\n", parsedValue.ascii().data(), cookie.ascii().data());
-            else
-                LOG_AND_DELETE("Invalid cookie %s (comment)", cookie.ascii().data());
             break;
         }
 
         case 'V' :
         case 'v' : {
-            if (length >= 7 && cookie.find("ersion", tokenStartSvg + 1, false)) {
+            if (length >= 7 && matchName(cookie, "Version", tokenStartSvg)) {
                 // Although the out-of-dated Cookie Spec(RFC2965, http://tools.ietf.org/html/rfc2965) defined
                 // the value of version can only contain DIGIT, some random sites, e.g. https://devforums.apple.com
                 // would use double quotation marks to quote the digit. So we need to get rid of them for compliance.
@@ -358,27 +354,22 @@ ParsedCookie* CookieParser::parseOneCookie(const String& cookie, unsigned start,
 
                 if (parsedValue.toInt() != 1)
                     LOG_AND_DELETE("ParsedCookie version %d not supported (only support version=1)", parsedValue.toInt());
-            } else
-                LOG_AND_DELETE("Invalid cookie %s (version)", cookie.ascii().data());
+            }
             break;
         }
 
         case 'S' :
         case 's' : {
             // Secure is a standalone token ("Secure;")
-            if (length >= 6 && cookie.find("ecure", tokenStartSvg + 1, false))
+            if (length >= 6 && matchName(cookie, "Secure", tokenStartSvg))
                 res->setSecureFlag(true);
-            else
-                LOG_AND_DELETE("Invalid cookie %s (secure)", cookie.ascii().data());
             break;
         }
         case 'H':
         case 'h': {
             // HttpOnly is a standalone token ("HttpOnly;")
-            if (length >= 8 && cookie.find("ttpOnly", tokenStartSvg + 1, false))
+            if (length >= 8 && matchName(cookie, "HttpOnly", tokenStartSvg))
                 res->setIsHttpOnly(true);
-            else
-                LOG_AND_DELETE("Invalid cookie %s (HttpOnly)", cookie.ascii().data());
             break;
         }
 
@@ -438,12 +429,12 @@ ParsedCookie* CookieParser::parseOneCookie(const String& cookie, unsigned start,
         res->setPath(decodeURLEscapeSequences(path));
     }
 
-	CookieStorageAcceptPolicy policy = (CookieStorageAcceptPolicy) DoMethod(app, MM_URLPrefsGroup_CookiePolicyForURLAndName, m_defaultCookieURL.string().latin1().data(), res->name().latin1().data());
+    CookieStorageAcceptPolicy policy = (CookieStorageAcceptPolicy) DoMethod(app, MM_URLPrefsGroup_CookiePolicyForURLAndName, m_defaultCookieURL.string().latin1().data(), res->name().latin1().data());
 
-	if(policy == CookieStorageAcceptPolicyNever)
-	{
-		LOG_AND_DELETE("Cookie %s for host %s is rejected by user-settings.", res->name().latin1().data(), m_defaultCookieURL.host().latin1().data());
-	}
+    if(policy == CookieStorageAcceptPolicyNever)
+    {
+        LOG_AND_DELETE("Cookie %s for host %s is rejected by user-settings.", res->name().latin1().data(), m_defaultCookieURL.host().latin1().data());
+    }
  
     return res;
 }

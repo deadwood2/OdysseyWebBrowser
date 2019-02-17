@@ -36,76 +36,76 @@
 
 using namespace WebCore;
 
-void PlatformStrategiesMorphOS::initialize()
+void WebPlatformStrategies::initialize()
 {
-    DEPRECATED_DEFINE_STATIC_LOCAL(PlatformStrategiesMorphOS, platformStrategies, ());
+    DEPRECATED_DEFINE_STATIC_LOCAL(WebPlatformStrategies, platformStrategies, ());
     setPlatformStrategies(&platformStrategies);
 }
 
-PlatformStrategiesMorphOS::PlatformStrategiesMorphOS()
+WebPlatformStrategies::WebPlatformStrategies()
 {
 }
 
-CookiesStrategy* PlatformStrategiesMorphOS::createCookiesStrategy()
-{
-    return this;
-}
-
-LoaderStrategy* PlatformStrategiesMorphOS::createLoaderStrategy()
+CookiesStrategy* WebPlatformStrategies::createCookiesStrategy()
 {
     return this;
 }
 
-PasteboardStrategy* PlatformStrategiesMorphOS::createPasteboardStrategy()
+LoaderStrategy* WebPlatformStrategies::createLoaderStrategy()
+{
+    return this;
+}
+
+PasteboardStrategy* WebPlatformStrategies::createPasteboardStrategy()
 {
     notImplemented();
     return 0;
 }
 
-PluginStrategy* PlatformStrategiesMorphOS::createPluginStrategy()
+PluginStrategy* WebPlatformStrategies::createPluginStrategy()
 {
     return this;
 }
 
 // CookiesStrategy
-String PlatformStrategiesMorphOS::cookiesForDOM(const NetworkStorageSession& session, const URL& firstParty, const URL& url)
+String WebPlatformStrategies::cookiesForDOM(const NetworkStorageSession& session, const URL& firstParty, const URL& url)
 {
     return WebCore::cookiesForDOM(session, firstParty, url);
 }
 
-void PlatformStrategiesMorphOS::setCookiesFromDOM(const NetworkStorageSession& session, const URL& firstParty, const URL& url, const String& cookieString)
+void WebPlatformStrategies::setCookiesFromDOM(const NetworkStorageSession& session, const URL& firstParty, const URL& url, const String& cookieString)
 {
     WebCore::setCookiesFromDOM(session, firstParty, url, cookieString);
 }
 
-bool PlatformStrategiesMorphOS::cookiesEnabled(const NetworkStorageSession& session, const URL& firstParty, const URL& url)
+bool WebPlatformStrategies::cookiesEnabled(const NetworkStorageSession& session, const URL& firstParty, const URL& url)
 {
     return WebCore::cookiesEnabled(session, firstParty, url);
 }
 
-String PlatformStrategiesMorphOS::cookieRequestHeaderFieldValue(const NetworkStorageSession& session, const URL& firstParty, const URL& url)
+String WebPlatformStrategies::cookieRequestHeaderFieldValue(const NetworkStorageSession& session, const URL& firstParty, const URL& url)
 {
     return WebCore::cookieRequestHeaderFieldValue(session, firstParty, url);
 }
 
-bool PlatformStrategiesMorphOS::getRawCookies(const NetworkStorageSession& session, const URL& firstParty, const URL& url, Vector<Cookie>& rawCookies)
+bool WebPlatformStrategies::getRawCookies(const NetworkStorageSession& session, const URL& firstParty, const URL& url, Vector<Cookie>& rawCookies)
 {
     return WebCore::getRawCookies(session, firstParty, url, rawCookies);
 }
 
-void PlatformStrategiesMorphOS::deleteCookie(const NetworkStorageSession& session, const URL& url, const String& cookieName)
+void WebPlatformStrategies::deleteCookie(const NetworkStorageSession& session, const URL& url, const String& cookieName)
 {
     WebCore::deleteCookie(session, url, cookieName);
 }
 
-void PlatformStrategiesMorphOS::refreshPlugins()
+void WebPlatformStrategies::refreshPlugins()
 {
 #if ENABLE(NETSCAPE_PLUGIN_API)
     PluginDatabase::installedPlugins()->refresh();
 #endif
 }
 
-void PlatformStrategiesMorphOS::getPluginInfo(const Page*, Vector<PluginInfo>& outPlugins)
+void WebPlatformStrategies::getPluginInfo(const Page*, Vector<PluginInfo>& outPlugins)
 {
 #if ENABLE(NETSCAPE_PLUGIN_API)
     PluginDatabase::installedPlugins()->refresh();
@@ -138,7 +138,7 @@ void PlatformStrategiesMorphOS::getPluginInfo(const Page*, Vector<PluginInfo>& o
 #endif
 }
 
-void PlatformStrategiesMorphOS::getWebVisiblePluginInfo(const Page* page, Vector<PluginInfo>& outPlugins)
+void WebPlatformStrategies::getWebVisiblePluginInfo(const Page* page, Vector<PluginInfo>& outPlugins)
 {
     getPluginInfo(page, outPlugins);
 }

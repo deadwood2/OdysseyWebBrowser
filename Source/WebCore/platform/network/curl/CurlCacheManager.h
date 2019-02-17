@@ -45,7 +45,7 @@ public:
     const String& cacheDirectory() { return m_cacheDir; }
     void setStorageSizeLimit(size_t);
 
-    bool isCached(const String&) const;
+    bool isCached(const String&);
     HTTPHeaderMap& requestHeaders(const String&); // Load headers
     bool getCachedResponse(const String& url, ResourceResponse&);
 
@@ -53,6 +53,7 @@ public:
     void didReceiveData(ResourceHandle&, const char*, size_t); // Save data
     void didFinishLoading(ResourceHandle&);
     void didFail(ResourceHandle&);
+    void didCancel(ResourceHandle&);
 
     void addCacheEntryClient(const String& url, ResourceHandle* job);
     void removeCacheEntryClient(const String& url, ResourceHandle* job);

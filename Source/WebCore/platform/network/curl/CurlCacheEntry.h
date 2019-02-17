@@ -95,6 +95,10 @@ private:
 
     bool openContentFile();
     bool closeContentFile();
+
+#if PLATFORM(MUI)
+    bool getFileSize(const String& path, long long& result) const;
+#endif
 };
 
 }

@@ -279,9 +279,10 @@ void destroy_application(void)
 		MUI_DisposeObject(app);
 		methodstack_cleanup();
 		classes_cleanup();
-		locale_cleanup();
 		app = NULL;
 	}
+
+	locale_cleanup();
 }
 
 // Safety checks
@@ -318,6 +319,8 @@ Object *create_application(char *url)
 #if defined(__AROS__)
 extern "C" {
 void aros_register_trap_handler();
+int aros_timer_open();
+void aros_timer_close();
 }
 #endif
 
@@ -392,12 +395,16 @@ int main (int argc, char* argv[])
 #endif
 	atexit(close_libs);
 	atexit(destroy_application);
+#if defined(__AROS__)
+	atexit(aros_timer_close);
+#endif
 
 	setlocale(LC_TIME, "C");
 	setlocale(LC_NUMERIC, "C");
 
 #if defined(__AROS__)
    SetVar("FONTCONFIG_PATH", "PROGDIR:Conf/font", -1, LV_VAR | GVF_LOCAL_ONLY);
+   aros_timer_open();
 #endif
 
 	if (!argc)

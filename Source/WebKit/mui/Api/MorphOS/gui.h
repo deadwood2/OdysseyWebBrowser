@@ -29,9 +29,6 @@
 #define APPLICATION_ENVARC_PREFS "ENVARC:Zune/OWB.config"
 #endif
 
-#define DEFAULT_PAGE_STRING "<html><head><title>Origyn Web Browser</title><head><body><table width=\"100%%\" height=\"100%%\"><tr align=\"center\"><td align=\"center\"><h1>Origyn Web Browser</h1><h4><a href=\"http://fabportnawak.free.fr/owb/\">MorphOS version " VERSION "</a></h4></table></body></html>"
-#define ERROR_PAGE_STRING   "<html><head><title>Origyn Web Browser Error</title><head><body>Unable to open %s.<br>Error %d: %s</body></html>"
-
 #define DEFAULT_WINDOW_NAME GSI(MSG_OWBAPP_DEFAULT_WINDOW_NAME)
 #define DEFAULT_PAGE_NAME   GSI(MSG_OWBAPP_DEFAULT_PAGE_NAME)
 
@@ -40,9 +37,6 @@
 #define SESSION_DIRECTORY   "PROGDIR:Conf/sessions/"
 #define SESSION_PATH        "PROGDIR:Conf/sessions/session.prefs"
 #define SCRIPT_DIRECTORY    "PROGDIR:Scripts/"
-
-#define OWB_URL		    "http://fabportnawak.free.fr/owb/"
-#define OWB_PLUGINS_URL     OWB_URL "plugins/"
 
 enum
 {

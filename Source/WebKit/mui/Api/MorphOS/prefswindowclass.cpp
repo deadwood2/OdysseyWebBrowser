@@ -1131,6 +1131,7 @@ DEFNEW
 
 		/* Set defaults */
 		set(data->cy_completiontype, MUIA_Cycle_Active, 2);
+		set(data->cy_cachemodel, MUIA_Cycle_Active, 1);
 
 		/* Font families notifications */
 		DoMethod(data->lv_standardfamily, MUIM_Notify, MUIA_Listview_DoubleClick, TRUE, data->pop_standardfamily, 2, MUIM_Popstring_Close, TRUE);

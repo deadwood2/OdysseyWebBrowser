@@ -1197,7 +1197,7 @@ bool WebViewPrivate::onKeyDown(BalEventKey event)
 
 				kprintf("\nPruning caches and running Garbage collector.\n");
 				
-				MemoryPressureHandler::singleton().releaseMemory(Critical::Yes, Synchronous::Yes);
+				requestMemoryRelease();
 
 				if(getenv("OWB_RESETVM"))
 				{
@@ -1609,4 +1609,11 @@ void WebViewPrivate::closeWindow()
 	{
 		DoMethod(app, MUIM_Application_PushMethod, app, 2, MM_OWBApp_RemoveBrowser, widget->browser);
 	}
+}
+
+void WebViewPrivate::requestMemoryRelease()
+{
+    MemoryPressureHandler::singleton().setUnderMemoryPressure(true);
+    MemoryPressureHandler::singleton().releaseMemory(Critical::Yes, Synchronous::Yes);
+    MemoryPressureHandler::singleton().setUnderMemoryPressure(false);
 }

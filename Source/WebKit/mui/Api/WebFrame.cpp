@@ -194,10 +194,11 @@ public:
     ~WebFramePrivate()
     {
         webView = 0;
+        frame = 0;
     }
     FrameView* frameView() { return frame ? frame->view() : 0; }
 
-    RefPtr<Frame> frame;
+    Frame* frame;
     WebView* webView;
 };
 
@@ -205,7 +206,6 @@ public:
 
 WebFrame::WebFrame()
     : d(new WebFrame::WebFramePrivate)
-    , m_loadClient(0)
     , m_quickRedirectComing(false)
     , m_inPrintingMode(false)
     , m_pageHeight(0)
@@ -217,14 +217,6 @@ WebFrame::WebFrame()
 WebFrame::~WebFrame()
 {
     WebCore::ObserverServiceBookmarklet::createObserverService()->removeObserver("ExecuteBookmarklet", static_cast<ObserverBookmarklet*>(m_webFrameObserver));
-
-    if (core(this))
-        core(this)->loader().cancelAndClear();
-
-    std::vector<WebFrame*>* child = children();
-    std::vector<WebFrame*>::iterator it = child->begin();
-    for (; it != child->end(); ++it)
-        delete (*it);
 
     delete d;
 }
@@ -487,22 +479,6 @@ WebFrame* WebFrame::parentFrame()
     return 0;
 }
 
-std::vector<WebFrame*>* WebFrame::children()
-{
-    m_rc.clear();
-    if (Frame* frame = core(this)) {
-        FrameTree *tree = &(frame->tree());
-        for (Frame *child = tree->firstChild(); child; child = child->tree().nextSibling()) {
-            FrameLoader *loader = &(child->loader());
-            WebFrameLoaderClient &client = static_cast<WebFrameLoaderClient&>(loader->client());
-	    m_rc.push_back(client.webFrame());
-        }
-
-    }
-    return &m_rc;
-}
-
-
 const char* WebFrame::renderTreeAsExternalRepresentation()
 {
     Frame* coreFrame = core(this);
@@ -644,8 +620,6 @@ bool WebFrame::deselectAll()
 PassRefPtr<Frame> WebFrame::createSubframeWithOwnerElement(WebView* webView, Page* page, HTMLFrameOwnerElement* ownerElement)
 {
     d->webView = webView;
-    if (!m_loadClient)
-        m_loadClient = new WebFrameLoaderClient(this);
 
     RefPtr<Frame> frame = Frame::create(page, ownerElement, new WebFrameLoaderClient(this));
     d->frame = frame.get();
@@ -660,7 +634,7 @@ void WebFrame::initWithWebView(WebView* webView, Page* page)
 
 Frame* WebFrame::impl()
 {
-    return d->frame.get();
+    return d->frame;
 }
 
 void WebFrame::invalidate()

@@ -208,7 +208,7 @@ namespace JSC {
         int m_lastLine;
     };
 
-    class VariableEnvironmentNode {
+    class VariableEnvironmentNode : public ParserArenaDeletable {
     public:
         VariableEnvironmentNode()
         {
@@ -1284,6 +1284,8 @@ namespace JSC {
 
     class BlockNode : public StatementNode, public VariableEnvironmentNode {
     public:
+        using ParserArenaDeletable::operator new;
+
         BlockNode(const JSTokenLocation&, SourceElements*, VariableEnvironment&);
 
         StatementNode* singleStatement() const;
@@ -1396,6 +1398,8 @@ namespace JSC {
 
     class ForNode : public StatementNode, public VariableEnvironmentNode {
     public:
+        using ParserArenaDeletable::operator new;
+
         ForNode(const JSTokenLocation&, ExpressionNode* expr1, ExpressionNode* expr2, ExpressionNode* expr3, StatementNode*, VariableEnvironment&);
 
     private:
@@ -1411,6 +1415,8 @@ namespace JSC {
     
     class EnumerationNode : public StatementNode, public ThrowableExpressionData, public VariableEnvironmentNode {
     public:
+        using ParserArenaDeletable::operator new;
+
         EnumerationNode(const JSTokenLocation&, ExpressionNode*, ExpressionNode*, StatementNode*, VariableEnvironment&);
         
     protected:
@@ -1511,8 +1517,10 @@ namespace JSC {
         ExpressionNode* m_expr;
     };
 
-    class TryNode : public StatementNode {
+    class TryNode : public StatementNode, public VariableEnvironmentNode {
     public:
+        using ParserArenaDeletable::operator new;
+
         TryNode(const JSTokenLocation&, StatementNode* tryBlock, const Identifier& exceptionIdent, StatementNode* catchBlock, VariableEnvironment& catchEnvironment, StatementNode* finallyBlock);
 
     private:
@@ -1522,7 +1530,6 @@ namespace JSC {
         const Identifier& m_thrownValueIdent;
         StatementNode* m_catchBlock;
         StatementNode* m_finallyBlock;
-        VariableEnvironment m_catchEnvironment;
     };
 
     class ScopeNode : public StatementNode, public ParserArenaRoot, public VariableEnvironmentNode {
@@ -1927,6 +1934,8 @@ namespace JSC {
 
     class SwitchNode : public StatementNode, public VariableEnvironmentNode {
     public:
+        using ParserArenaDeletable::operator new;
+
         SwitchNode(const JSTokenLocation&, ExpressionNode*, CaseBlockNode*, VariableEnvironment&);
 
     private:

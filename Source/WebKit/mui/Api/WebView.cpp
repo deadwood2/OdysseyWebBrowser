@@ -36,7 +36,6 @@
 #include "JSActionDelegate.h"
 #include "WebBackForwardList.h"
 #include "WebBackForwardList_p.h"
-#include "WebBindingJSDelegate.h"
 #include "WebChromeClient.h"
 #include "WebContextMenuClient.h"
 #if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
@@ -74,17 +73,17 @@
 #include "WebMutableURLRequest.h"
 #include "WebNotificationDelegate.h"
 #include "WebPreferences.h"
+#include "WebProgressTrackerClient.h"
 #include "WebResourceLoadDelegate.h"
 #include "WebScriptWorld.h"
 #include "WebStorageNamespaceProvider.h"
+#include "WebViewGroup.h"
 #include "WebViewPrivate.h"
 #include "WebVisitedLinkStore.h"
 #include "WebWidgetEngineDelegate.h"
 #include "WebWindow.h"
 
-#if ENABLE(OFFLINE_WEB_APPLICATIONS)
 #include <ApplicationCacheStorage.h>
-#endif
 #if HAVE(ACCESSIBILITY)
 #include <AXObjectCache.h>
 #endif
@@ -93,6 +92,7 @@
 #include <ContextMenu.h>
 #include <ContextMenuController.h>
 #include <CrossOriginPreflightResultCache.h>
+#include <CurlCacheManager.h>
 #include <Cursor.h>
 #include <Database.h>
 #include <DatabaseManager.h>
@@ -145,6 +145,7 @@
 #include <Settings.h>
 #include <SubframeLoader.h>
 #include <TypingCommand.h>
+#include <UserContentController.h>
 #include <WindowsKeyboardCodes.h>
 
 #include <JSCell.h>
@@ -158,6 +159,7 @@
 #include <wtf/unicode/icu/EncodingICU.h>
 #include <wtf/HashSet.h>
 #include <wtf/MainThread.h>
+#include <wtf/RAMSize.h>
 
 #include "owb-config.h"
 #include "FileIOLinux.h"
@@ -285,7 +287,7 @@ static bool continuousSpellCheckingEnabled;
 static bool grammarCheckingEnabled;
 
 static bool s_didSetCacheModel;
-static WebCacheModel s_cacheModel = WebCacheModelDocumentViewer;
+static WebCacheModel s_cacheModel = WebCacheModelDocumentBrowser;
 
 enum {
     UpdateActiveStateTimer = 1,
@@ -294,21 +296,33 @@ enum {
 
 bool WebView::s_allowSiteSpecificHacks = false;
 
-#if ENABLE(OFFLINE_WEB_APPLICATIONS)
 static void WebKitSetApplicationCachePathIfNecessary()
 {
     static bool initialized = false;
     if (initialized)
         return;
 
-	WTF::String path = WebCore::pathByAppendingComponent("PROGDIR:conf", "ApplicationCache");
+    WTF::String path = WebCore::pathByAppendingComponent("PROGDIR:conf", "ApplicationCache");
 
     if (!path.isNull())
-        cacheStorage().setCacheDirectory(path);
+        ApplicationCacheStorage::singleton().setCacheDirectory(path);
 
     initialized = true;
 }
-#endif
+
+static void WebKitEnableDiskCacheIfNecessary()
+{
+    static bool initialized = false;
+    if (initialized)
+        return;
+
+    WTF::String path = WebCore::pathByAppendingComponent("PROGDIR:conf", "Cache");
+
+    if (!path.isNull())
+        CurlCacheManager::getInstance().setCacheDirectory(path);
+
+    initialized = true;
+}
 
 WebView::WebView()
 	: m_viewWindow(0)
@@ -322,7 +336,6 @@ WebView::WebView()
     , m_jsActionDelegate(0)
     , m_webEditingDelegate(0)
     , m_webResourceLoadDelegate(0)
-    , m_webBindingJSDelegate(0)
     , m_webWidgetEngineDelegate(0)
     , m_historyDelegate(0)
     , m_geolocationProvider(0)
@@ -330,10 +343,8 @@ WebView::WebView()
     , m_userAgentOverridden(false)
     , m_useBackForwardList(true)
     , m_zoomMultiplier(1.0f)
-	, m_zoomsTextOnly(false)
+    , m_zoomsTextOnly(false)
     , m_mouseActivated(false)
-    // , m_dragData(0)
-    // , m_currentCharacterCode(0)
     , m_isBeingDestroyed(false)
     , m_paintCount(0)
     , m_hasSpellCheckerDocumentTag(false)
@@ -378,8 +389,13 @@ WebView::WebView()
     grammarCheckingEnabled = sharedPreferences->grammarCheckingEnabled();
     sharedPreferences->willAddToWebView();
     m_preferences = sharedPreferences;
+    m_webViewGroup = WebViewGroup::getOrCreate(String(), m_preferences->localStorageDatabasePath());
+    m_webViewGroup->addWebView(this);
 
     m_inspectorClient = new WebInspectorClient(this);
+
+    WebFrameLoaderClient * pageWebFrameLoaderClient = new WebFrameLoaderClient();
+    WebProgressTrackerClient * pageProgressTrackerClient = new WebProgressTrackerClient();
 
     PageConfiguration configuration;
     configuration.chromeClient = new WebChromeClient(this);
@@ -387,11 +403,13 @@ WebView::WebView()
     configuration.editorClient = new WebEditorClient(this);
     configuration.dragClient = new WebDragClient(this);
     configuration.inspectorClient = m_inspectorClient;
-    configuration.loaderClientForMainFrame = new WebFrameLoaderClient;
+    configuration.loaderClientForMainFrame = pageWebFrameLoaderClient;
     configuration.databaseProvider = &WebDatabaseProvider::singleton();
-    configuration.storageNamespaceProvider = WebStorageNamespaceProvider::create(m_preferences->localStorageDatabasePath());
-    configuration.progressTrackerClient = static_cast<WebFrameLoaderClient *>(configuration.loaderClientForMainFrame);
+    configuration.storageNamespaceProvider = &m_webViewGroup->storageNamespaceProvider();
+    configuration.progressTrackerClient = pageProgressTrackerClient;
+    configuration.userContentController = &m_webViewGroup->userContentController();
     configuration.visitedLinkStore = &WebVisitedLinkStore::singleton();
+
 
     m_page = new Page(configuration);
 #if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
@@ -410,13 +428,19 @@ WebView::WebView()
     WebFrame* webFrame = WebFrame::createInstance(); 
     webFrame->initWithWebView(this, m_page); 
     m_mainFrame = webFrame;
-    static_cast<WebFrameLoaderClient&>(m_page->mainFrame().loader().client()).setWebFrame(webFrame); 
+    // webFrame is now owned by WebFrameLoaderClient and will be destroyed in
+    // chain Page->MainFrame->FrameLoader->WebFrameLoaderClient
+    pageWebFrameLoaderClient->setWebFrame(webFrame);
+
+    pageProgressTrackerClient->setWebFrame(webFrame);
 }
 
 WebView::~WebView()
 {
     close();
     
+    m_webViewGroup->removeWebView(this);
+
     if (m_preferences)
         if (m_preferences != WebPreferences::sharedStandardPreferences())
             delete m_preferences;
@@ -432,10 +456,11 @@ WebView::~WebView()
         m_jsActionDelegate = 0;
     if (m_historyDelegate)
         m_historyDelegate = 0;
-    if (m_mainFrame)
-        delete m_mainFrame;
-    if (d)
+    if (d) {
+        // Force memory purging to keep the usage as low as possible
+        d->requestMemoryRelease();
         delete d;
+    }
     if (m_webViewObserver)
         delete m_webViewObserver;
     m_children.clear();
@@ -458,28 +483,41 @@ void initializeStaticObservers()
 
 }
 
+unsigned long long WebVolumeFreeSize(const String& path)
+{
+    // TODO: Implement, assume 8GB for now
+    return (unsigned long long)8192 * 1024 * 1024;
+}
+
 void WebView::setCacheModel(WebCacheModel cacheModel)
 {
     if (s_didSetCacheModel && cacheModel == s_cacheModel)
         return;
 
-    //TODO : Calcul the next values
-    unsigned long long memSize = 256;
-    //unsigned long long diskFreeSize = 4096;
-    
-    memSize = AvailMem(MEMF_TOTAL) / (1024 * 1024);
+    String cacheDirectory;
+
+    cacheDirectory = CurlCacheManager::getInstance().cacheDirectory();
+    long cacheMemoryCapacity = 0;
+    long cacheDiskCapacity = 0;
+
+    unsigned long long memSize = ramSize() / 1024 / 1024;
+
+    // As a fudge factor, use 1000 instead of 1024, in case the reported byte
+    // count doesn't align exactly to a megabyte boundary.
+    unsigned long long diskFreeSize = WebVolumeFreeSize(cacheDirectory) / 1024 / 1000;
 
     unsigned cacheTotalCapacity = 0;
     unsigned cacheMinDeadCapacity = 0;
     unsigned cacheMaxDeadCapacity = 0;
     auto deadDecodedDataDeletionInterval = std::chrono::seconds { 0 };
 
-    unsigned pageCacheCapacity = 0;
+    unsigned pageCacheSize = 0;
+
 
     switch (cacheModel) {
     case WebCacheModelDocumentViewer: {
         // Page cache capacity (in pages)
-        pageCacheCapacity = 0;
+        pageCacheSize = 0;
 
         // Object cache capacities (in bytes)
         if (memSize >= 2048)
@@ -490,26 +528,29 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
             cacheTotalCapacity = 32 * 1024 * 1024;
         else if (memSize >= 512)
             cacheTotalCapacity = 16 * 1024 * 1024;
-		else if (memSize >= 256)
-			cacheTotalCapacity = 8 * 1024 * 1024;
-		else if (memSize >= 128)
-			cacheTotalCapacity = 4 * 1024 * 1024;
+        else if (memSize >= 256)
+            cacheTotalCapacity = 8 * 1024 * 1024;
+        else if (memSize >= 128)
+            cacheTotalCapacity = 4 * 1024 * 1024;
 
         cacheMinDeadCapacity = 0;
         cacheMaxDeadCapacity = 0;
+
+        // Memory cache capacity (in bytes)
+        cacheMemoryCapacity = 0;
 
         break;
     }
     case WebCacheModelDocumentBrowser: {
         // Page cache capacity (in pages)
         if (memSize >= 1024)
-            pageCacheCapacity = 3;
+            pageCacheSize = 3;
         else if (memSize >= 512)
-            pageCacheCapacity = 2;
+            pageCacheSize = 2;
         else if (memSize >= 256)
-            pageCacheCapacity = 1;
+            pageCacheSize = 1;
         else
-            pageCacheCapacity = 0;
+            pageCacheSize = 0;
 
         // Object cache capacities (in bytes)
         if (memSize >= 2048)
@@ -520,13 +561,33 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
             cacheTotalCapacity = 32 * 1024 * 1024;
         else if (memSize >= 512)
             cacheTotalCapacity = 16 * 1024 * 1024;
-		else if (memSize >= 256)
-			cacheTotalCapacity = 8 * 1024 * 1024;
-		else if (memSize >= 128)
-			cacheTotalCapacity = 4 * 1024 * 1024;
+        else if (memSize >= 256)
+            cacheTotalCapacity = 8 * 1024 * 1024;
+        else if (memSize >= 128)
+            cacheTotalCapacity = 4 * 1024 * 1024;
 
         cacheMinDeadCapacity = cacheTotalCapacity / 8;
         cacheMaxDeadCapacity = cacheTotalCapacity / 4;
+
+        // Memory cache capacity (in bytes)
+        if (memSize >= 2048)
+            cacheMemoryCapacity = 4 * 1024 * 1024;
+        else if (memSize >= 1024)
+            cacheMemoryCapacity = 2 * 1024 * 1024;
+        else if (memSize >= 512)
+            cacheMemoryCapacity = 1 * 1024 * 1024;
+        else
+            cacheMemoryCapacity =      512 * 1024;
+
+        // Disk cache capacity (in bytes)
+        if (diskFreeSize >= 16384)
+            cacheDiskCapacity = 50 * 1024 * 1024;
+        else if (diskFreeSize >= 8192)
+            cacheDiskCapacity = 40 * 1024 * 1024;
+        else if (diskFreeSize >= 4096)
+            cacheDiskCapacity = 30 * 1024 * 1024;
+        else
+            cacheDiskCapacity = 20 * 1024 * 1024;
 
         break;
     }
@@ -534,15 +595,15 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
         // Page cache capacity (in pages)
         // (Research indicates that value / page drops substantially after 3 pages.)
         if (memSize >= 2048)
-            pageCacheCapacity = 5;
+            pageCacheSize = 5;
         else if (memSize >= 1024)
-            pageCacheCapacity = 4;
+            pageCacheSize = 4;
         else if (memSize >= 512)
-            pageCacheCapacity = 3;
+            pageCacheSize = 3;
         else if (memSize >= 256)
-            pageCacheCapacity = 2;
+            pageCacheSize = 2;
         else
-            pageCacheCapacity = 1;
+            pageCacheSize = 1;
 
         // Object cache capacities (in bytes)
         // (Testing indicates that value / MB depends heavily on content and
@@ -556,12 +617,10 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
             cacheTotalCapacity = 64 * 1024 * 1024;
         else if (memSize >= 512)
             cacheTotalCapacity = 32 * 1024 * 1024;
-		else if (memSize >= 256)
-			cacheTotalCapacity = 16 * 1024 * 1024;
-		else if (memSize >= 128)
-			cacheTotalCapacity = 8 * 1024 * 1024;
-
-		cacheTotalCapacity*=4;
+        else if (memSize >= 256)
+            cacheTotalCapacity = 16 * 1024 * 1024;
+        else if (memSize >= 128)
+            cacheTotalCapacity = 8 * 1024 * 1024;
 
         cacheMinDeadCapacity = cacheTotalCapacity / 4;
         cacheMaxDeadCapacity = cacheTotalCapacity / 2;
@@ -572,15 +631,44 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
 
         deadDecodedDataDeletionInterval = std::chrono::seconds { 60 };
 
+        // Memory cache capacity (in bytes)
+        // (These values are small because WebCore does most caching itself.)
+        if (memSize >= 1024)
+            cacheMemoryCapacity = 4 * 1024 * 1024;
+        else if (memSize >= 512)
+            cacheMemoryCapacity = 2 * 1024 * 1024;
+        else if (memSize >= 256)
+            cacheMemoryCapacity = 1 * 1024 * 1024;
+        else
+            cacheMemoryCapacity =      512 * 1024;
+
+        // Disk cache capacity (in bytes)
+        if (diskFreeSize >= 16384)
+            cacheDiskCapacity = 175 * 1024 * 1024;
+        else if (diskFreeSize >= 8192)
+            cacheDiskCapacity = 150 * 1024 * 1024;
+        else if (diskFreeSize >= 4096)
+            cacheDiskCapacity = 125 * 1024 * 1024;
+        else if (diskFreeSize >= 2048)
+            cacheDiskCapacity = 100 * 1024 * 1024;
+        else if (diskFreeSize >= 1024)
+            cacheDiskCapacity = 75 * 1024 * 1024;
+        else
+            cacheDiskCapacity = 50 * 1024 * 1024;
+
         break;
     }
     default:
         ASSERT_NOT_REACHED();
-    };
+    }
 
-    WebCore::MemoryCache::singleton().setCapacities(cacheMinDeadCapacity, cacheMaxDeadCapacity, cacheTotalCapacity);
-    WebCore::MemoryCache::singleton().setDeadDecodedDataDeletionInterval(deadDecodedDataDeletionInterval);
-    WebCore::PageCache::singleton().setMaxSize(pageCacheCapacity);
+    auto& memoryCache = MemoryCache::singleton();
+    memoryCache.setCapacities(cacheMinDeadCapacity, cacheMaxDeadCapacity, cacheTotalCapacity);
+    memoryCache.setDeadDecodedDataDeletionInterval(deadDecodedDataDeletionInterval);
+    PageCache::singleton().setMaxSize(pageCacheSize);
+
+    (void)cacheMemoryCapacity;
+    CurlCacheManager::getInstance().setStorageSizeLimit(cacheDiskCapacity);
 
     s_didSetCacheModel = true;
     s_cacheModel = cacheModel;
@@ -609,19 +697,6 @@ void WebView::close()
     // The preferences can be null.
     if (m_preferences && m_preferences->usesPageCache())
         m_page->settings().setUsesPageCache(false);
-    
-    if (!WebCore::MemoryCache::singleton().disabled()) {
-        WebCore::MemoryCache::singleton().setDisabled(true);
-        WebCore::MemoryCache::singleton().setDisabled(false);
-
-#if ENABLE(STORAGE)
-        // Empty the application cache.
-        WebCore::cacheStorage().empty();
-#endif
-
-        // Empty the Cross-Origin Preflight cache
-        WebCore::CrossOriginPreflightResultCache::singleton().empty();
-    }
 
     if (m_page)
         m_page->mainFrame().loader().detachFromParent(); 
@@ -1152,13 +1227,11 @@ void WebView::initWithFrame(BalRectangle& frame, const char* frameName, const ch
 
     if (!didOneTimeInitialization)
     {
-        //WebCore::initializeLoggingChannelsIfNecessary();
-        //WebPlatformStrategies::initialize();   
-		WebKitInitializeWebDatabasesIfNecessary();
-#if ENABLE(OFFLINE_WEB_APPLICATIONS)
-		WebKitSetApplicationCachePathIfNecessary();
-#endif
-		didOneTimeInitialization = true;
+        WebKitInitializeWebDatabasesIfNecessary();
+        WebKitSetApplicationCachePathIfNecessary();
+        WebKitEnableDiskCacheIfNecessary();
+
+        didOneTimeInitialization = true;
     }
 
     WebCore::ObserverServiceData::createObserverService()->registerObserver(WebPreferences::webPreferencesChangedNotification(), m_webViewObserver);
@@ -1301,16 +1374,6 @@ void WebView::setWebResourceLoadDelegate(TransferSharedPtr<WebResourceLoadDelega
 TransferSharedPtr<WebResourceLoadDelegate> WebView::webResourceLoadDelegate()
 {
     return m_webResourceLoadDelegate;
-}
-
-void WebView::setWebBindingJSDelegate(TransferSharedPtr<WebBindingJSDelegate> webBindingJSDelegate)
-{
-    m_webBindingJSDelegate = webBindingJSDelegate;
-}
-
-TransferSharedPtr<WebBindingJSDelegate> WebView::webBindingJSDelegate()
-{
-    return m_webBindingJSDelegate;
 }
 
 void WebView::setWebWidgetEngineDelegate(TransferSharedPtr<WebWidgetEngineDelegate> webWidgetEngineDelegate)

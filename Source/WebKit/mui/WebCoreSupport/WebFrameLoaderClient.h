@@ -30,17 +30,12 @@
 #define WebFrameLoaderClient_h
 
 #include <FrameLoaderClient.h>
-#include <ProgressTrackerClient.h>
 #include <wtf/Vector.h>
-
-#ifdef BENCH_LOAD_TIME
-#include <sys/time.h>
-#endif
 
 namespace WebCore {
     class CachedPage;
     class DocumentLoader;
-	class FrameNetworkingContext;
+    class FrameNetworkingContext;
     class URL;
     class PluginView;
     class FrameLoader;
@@ -52,13 +47,13 @@ class WebFrame;
 class WebFramePolicyListener;
 class WebHistory;
 
-class WebFrameLoaderClient : public WebCore::FrameLoaderClient, public WebCore::ProgressTrackerClient {
+class WebFrameLoaderClient : public WebCore::FrameLoaderClient {
 public:
     WebFrameLoaderClient(WebFrame* = 0);
     virtual ~WebFrameLoaderClient();
     
-	void setWebFrame(WebFrame* webFrame) { m_webFrame = webFrame; }     
-	WebFrame* webFrame() const { return m_webFrame; }
+    void setWebFrame(WebFrame* webFrame) { m_webFrame = webFrame; }
+    WebFrame* webFrame() const { return m_webFrame; }
 
     virtual void frameLoaderDestroyed();
     
@@ -125,10 +120,6 @@ public:
     virtual void setMainFrameDocumentReady(bool);
 
     virtual void startDownload(const WebCore::ResourceRequest&, const String& suggestedName = String());
-
-    virtual void progressStarted(WebCore::Frame&);
-    virtual void progressEstimateChanged(WebCore::Frame&);
-    virtual void progressFinished(WebCore::Frame&);
 
     virtual void willChangeTitle(WebCore::DocumentLoader*);
     virtual void didChangeTitle(WebCore::DocumentLoader*);
@@ -237,10 +228,6 @@ private:
 
     WebCore::FramePolicyFunction m_policyFunction;
     WebFramePolicyListener* m_policyListener;
-#ifdef BENCH_LOAD_TIME
-    struct timeval m_timerStart;
-    struct timeval m_timerStop;
-#endif
 };
 
 #endif // WebFrameLoaderClient_h

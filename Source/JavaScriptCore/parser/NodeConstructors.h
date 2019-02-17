@@ -825,7 +825,7 @@ namespace JSC {
         , m_catchBlock(catchBlock)
         , m_finallyBlock(finallyBlock)
     {
-        m_catchEnvironment.swap(catchEnvironment);
+        m_lexicalVariables.swap(catchEnvironment);
     }
 
     inline FunctionParameters::FunctionParameters()
