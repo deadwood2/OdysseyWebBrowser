@@ -35,7 +35,7 @@
 
 #if OS(WINDOWS)
 #include <windows.h>
-#elif OS(AROS)
+#elif OS(AROS)|| OS(AMIGAOS4)
 #else
 #include <pthread.h>
 #include <sys/resource.h>
@@ -79,8 +79,9 @@ TryMallocReturnValue tryFastZeroedMalloc(size_t n)
 
 #if OS(WINDOWS)
 #include <malloc.h>
-#elif OS(AROS)
+#elif OS(AROS)|| OS(AMIGAOS4)
 #include "mui/arosbailout.h"
+#include "mui/execallocator.h"
 #elif OS(MORPHOS)
 #include <clib/debug_protos.h>
 #endif
@@ -114,10 +115,15 @@ void* fastAlignedMalloc(size_t alignment, size_t size)
 {
 retry:
     void* p = nullptr;
+#if OS(AROS) || OS(AMIGAOS4)
+    p = allocator_getmem_aligned(size, alignment);
+#else
     posix_memalign(&p, alignment, size ? size : 2);
+#endif
+
     if (unlikely(!p))
     {
-#if OS(AROS)
+#if OS(AROS) || OS(AMIGAOS4)
         if (aros_memory_allocation_error(size ? size : 2, alignment) == 1)
             goto retry;
 
@@ -135,7 +141,11 @@ retry:
 
 void fastAlignedFree(void* p) 
 {
+#if OS(AROS) || OS(AMIGAOS4)
+    allocator_freemem(p);
+#else
     free(p);
+#endif
 }
 
 #endif // OS(WINDOWS)
@@ -151,7 +161,7 @@ retry:
     void* result = malloc(n ? n : 2);
     if (unlikely(!result))
     {
-#if OS(AROS)
+#if OS(AROS) || OS(AMIGAOS4)
         if (aros_memory_allocation_error(n ? n : 2, 4) == 1)
             goto retry;
 
@@ -179,7 +189,7 @@ retry:
     void* result = calloc(n_elements ? n_elements : 1, element_size ? element_size : 2);
     if (unlikely(!result))
     {
-#if OS(AROS)
+#if OS(AROS) || OS(AMIGAOS4)
         if (aros_memory_allocation_error((n_elements ? n_elements : 1)*(element_size ? element_size : 2), 4) == 1)
             goto retry;
 
@@ -207,7 +217,7 @@ retry:
     void* result = realloc(p, n ? n : 2);
     if (unlikely(!result))
     {
-#if OS(AROS)
+#if OS(AROS) || OS(AMIGAOS4)
         if (aros_memory_allocation_error(n ? n : 2, 4) == 1)
             goto retry;
 

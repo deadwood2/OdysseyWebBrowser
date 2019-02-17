@@ -72,6 +72,14 @@ inline size_t systemPageSize()
     return 4096;
 }
 
+#elif OS(AMIGAOS4)
+
+inline size_t systemPageSize()
+{
+	// COME BACK
+    return 4096;
+}
+
 #endif
 
 size_t pageSize()
