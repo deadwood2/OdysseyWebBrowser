@@ -235,7 +235,7 @@ public:
         typedef CONTEXT PlatformRegisters;
 #elif USE(PTHREADS)
         typedef pthread_attr_t PlatformRegisters;
-#elif OS(MORPHOS)
+#elif OS(MORPHOS) || OS(AMIGAOS4)
 typedef double                  float64_t;
 struct __QVector
 {
@@ -420,7 +420,7 @@ inline bool MachineThreads::Thread::suspend()
 #elif USE(PTHREADS)
     pthread_kill(platformThread, SigThreadSuspendResume);
     return true;
-#elif OS(MORPHOS)
+#elif OS(MORPHOS) || OS(AMIGAOS4)
     Disable();
     return true;
     // FIXME THIS WILL NOT WORK!!!!!!!
@@ -437,7 +437,7 @@ inline void MachineThreads::Thread::resume()
     ResumeThread(platformThreadHandle);
 #elif USE(PTHREADS)
     pthread_kill(platformThread, SigThreadSuspendResume);
-#elif OS(MORPHOS)
+#elif OS(MORPHOS) || OS(AMIGAOS4)
     Enable();
 #else
 #error Need a way to resume threads on this platform
@@ -496,7 +496,7 @@ size_t MachineThreads::Thread::getRegisters(MachineThreads::Thread::Registers& r
     // FIXME: this function is non-portable; other POSIX systems may have different np alternatives
     pthread_getattr_np(platformThread, &regs);
 #endif
-#elif OS(MORPHOS)
+#elif OS(MORPHOS) || OS(AMIGAOS4)
 	PlatformThreadRegisters *registers = (PlatformThreadRegisters *) ((struct Task *)platformThread)->tc_ETask->PPCRegFrame;
 	regs = *registers;
     return 0;
@@ -568,7 +568,7 @@ inline void* MachineThreads::Thread::Registers::stackPointer() const
     (void)rc; // FIXME: Deal with error code somehow? Seems fatal.
     ASSERT(stackBase);
     return static_cast<char*>(stackBase) + stackSize;
-#elif OS(MORPHOS)
+#elif OS(MORPHOS) || OS(AMIGAOS4)
 	return (void *) regs.GPR[1];
 #else
 #error Need a way to get the stack pointer for another thread on this platform
