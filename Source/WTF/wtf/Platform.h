@@ -706,6 +706,10 @@ int strcasecmp (const char * str1, const char * str2);
 #define USE_SYSTEM_MALLOC 1
 #endif
 
+#if OS(AMIGAOS4)
+#undef ENABLE_JIT
+#endif
+
 #define ENABLE_DEBUG_WITH_BREAKPOINT 0
 #define ENABLE_SAMPLING_COUNTERS 0
 #define ENABLE_SAMPLING_FLAGS 0

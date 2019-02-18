@@ -93,6 +93,11 @@ inline bool isinf(double x) { return !finite(x) && !isnand(x); }
 
 #endif
 
+#ifndef NAN
+#define NAN std::numeric_limits<double>::quiet_NaN()
+#else
+#endif
+
 #if OS(AROS)
 
 #undef isinf
