@@ -9,7 +9,7 @@ SET(CMAKE_CXX_COMPILER ppc-amigaos-g++)
 
 # options
 SET(CMAKE_CXX_FLAGS "-D__USE_INLINE__ -Wno-expansion-to-defined")
-SET(CMAKE_CXX_FLAGS_DEBUG "-g -gdwarf-3 -D__USE_INLINE__i -Wno-expansion-to-defined")
+SET(CMAKE_CXX_FLAGS_DEBUG "-g -gdwarf-3 -D__USE_INLINE__ -Wno-expansion-to-defined")
 
 SET(CMAKE_C_FLAGS "-D__USE_INLINE__ -Wno-expansion-to-defined")
 SET(CMAKE_C_FLAGS_DEBUG "-g -gdwarf-3 -D__USE_INLINE__ -Wno-expansion-to-defined")
