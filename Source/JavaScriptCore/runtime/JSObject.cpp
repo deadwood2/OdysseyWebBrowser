@@ -1952,6 +1952,11 @@ void JSObject::putByIndexBeyondVectorLengthWithoutAttributes(ExecState* exec, un
     }
 }
 
+// Explicit instantiations needed by JSArray.cpp.
+template void JSObject::putByIndexBeyondVectorLengthWithoutAttributes<Int32Shape>(ExecState* exec, unsigned i, JSValue value);
+template void JSObject::putByIndexBeyondVectorLengthWithoutAttributes<DoubleShape>(ExecState* exec, unsigned i, JSValue value);
+template void JSObject::putByIndexBeyondVectorLengthWithoutAttributes<ContiguousShape>(ExecState* exec, unsigned i, JSValue value);
+
 void JSObject::putByIndexBeyondVectorLengthWithArrayStorage(ExecState* exec, unsigned i, JSValue value, bool shouldThrow, ArrayStorage* storage)
 {
     VM& vm = exec->vm();

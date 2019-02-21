@@ -1,4 +1,4 @@
-# Copyright © 2008-2017, The AROS Development Team. All rights reserved.
+# Copyright Â© 2008-2017, The AROS Development Team. All rights reserved.
 # $Id: mmakefile.src 54586 2017-04-22 20:22:22Z NicJA $
 
 include $(SRCDIR)/config/aros.cfg

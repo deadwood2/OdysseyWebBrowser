@@ -29,6 +29,7 @@
 #include "libavutil/avutil.h"
 #include "libavutil/pixfmt.h"
 #include "libavutil/opt.h"
+#include "libavutil/pixfmt.h"
 #include "libswscale/swscale.h"
 #include "libswresample/swresample.h"
 #include <string.h>
@@ -253,6 +254,8 @@ static struct URLProtocol OWBProtocol =
 	"owb",
 	&file_open,
 	NULL,
+	NULL,
+	NULL,
 	&file_read,
 	&file_write,
 	&file_seek,
@@ -264,9 +267,15 @@ static struct URLProtocol OWBProtocol =
 	NULL,
 	NULL,
 	0,
-	NULL,
 	0,
-	NULL
+	0,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	0
 };
 
 lp_ac_package ac_flush_packet(void)

@@ -3246,6 +3246,7 @@ DEFTMETHOD(OWBWindow_RemoveHistoryPanel)
 
 DEFSMETHOD(OWBWindow_AddClosedView)
 {
+#if !defined(__mc68000__)
 	GETDATA;
 #define MAX_CLOSED_VIEWS_COUNT 20
 
@@ -3333,12 +3334,13 @@ DEFSMETHOD(OWBWindow_AddClosedView)
 			}
 		}
 	}
-
+#endif
 	return 0;
 }
 
 DEFSMETHOD(OWBWindow_AddHistoryItem)
 {
+#if !defined(__mc68000__)
 #define MAX_HISTORY_ENTRIES_COUNT 20
 	GETDATA;
 	WebHistoryItem *s = (WebHistoryItem *) msg->item;
@@ -3442,7 +3444,7 @@ DEFSMETHOD(OWBWindow_AddHistoryItem)
 		free(title);
 		free(url);
 	}
-
+#endif
 	return 0;
 }
 

@@ -128,22 +128,36 @@ static void aros_crash_handler()
     }
 }
 
-static void aros_trap_handler(ULONG trapNum, BYTE * p)
+/*
+  NB /TODO:
+ This currently uses hard coded values, since the name/offset of the PC is different for different archetectures.
+ arch/<cpu>-all/include/aros/cpucontext.h defines the relevant offsets for a given platform, but there is no
+ mechanism to set the PC value genericaly - consider adding a macro to each CPU's cpucontext.h that sets the correct
+ entry in its specific context structure, and directly include the file here so that we can use the macro instead.
+*/
+#if defined(__x86_64__)
+#  define PCOFFSET 168
+#elif defined(__i386__)
+#  define PCOFFSET 48
+#elif defined(__mc68000__)
+#  define PCOFFSET 64
+#elif defined(__arm__)
+#  define PCOFFSET 60
+#elif defined(__powerpc__)
+#  define PCOFFSET 12
+#else
+#error your architecture is currently unsupported - please check cpucontext.h and adjust this code.
+#endif
+
+static void aros_trap_handler(IPTR trapNum, IPTR * p)
 {
     /* Restore original handler in case we double-crash */
     struct Task * thistask = FindTask(NULL);
-
     thistask->tc_TrapCode = oldtraphandler;
     trapnumber = trapNum | AT_DeadEnd;
-
-#if defined (__i386__)
-    /* Set the eip to aros_crash_handler */
-    /* NOTE: This changes private structure and might stop working when the structure changes! */
-    crashlocation = (APTR)*((ULONG*)(p + 48));
-    *((ULONG*)(p + 48)) = (ULONG)aros_crash_handler;
-#else
-#error program counter setting code missing for your architecture
-#endif
+    /* Set the current contexts program counter to aros_crash_handler */
+    crashlocation = (APTR)*((IPTR*)(p + PCOFFSET));
+    *((IPTR*)(p + PCOFFSET)) = (IPTR)aros_crash_handler;
 }
 
 void aros_register_trap_handler()

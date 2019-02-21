@@ -88,7 +88,7 @@
  * - https://bugs.webkit.org/show_bug.cgi?id=38045
  * - http://gcc.gnu.org/bugzilla/show_bug.cgi?id=43976
  */
-#if (CPU(ARM) || CPU(MIPS)) && COMPILER(GCC)
+#if (CPU(ARM) || CPU(MIPS) || CPU(M68K)) && COMPILER(GCC)
 template<typename Type>
 inline bool isPointerTypeAlignmentOkay(Type* ptr)
 {
