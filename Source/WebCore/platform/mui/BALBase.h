@@ -38,7 +38,11 @@
 #endif
 
 #if OS(AMIGAOS4)
-#include "AmigaOS4/BALTypeAmigaOS4.h"
+// INLINE defined as __inline__ in AOS4 SDK
+#undef INLINE
+// DOUBLE defined in types.h in AOS4 SDK
+#undef DOUBLE
+//#include "AmigaOS4/BALTypeAmigaOS4.h"
 #endif
 
 #if PLATFORM(SDL)

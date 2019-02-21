@@ -52,6 +52,9 @@
 #include <windows.h>
 #include <malloc.h>
 
+#elif OS(AMIGAOS4)
+#define u_int32_t uint32_t
+
 #elif OS(UNIX)
 
 #include <sys/mman.h>
@@ -497,8 +500,8 @@ size_t MachineThreads::Thread::getRegisters(MachineThreads::Thread::Registers& r
     pthread_getattr_np(platformThread, &regs);
 #endif
 #elif OS(MORPHOS) || OS(AMIGAOS4)
-	PlatformThreadRegisters *registers = (PlatformThreadRegisters *) ((struct Task *)platformThread)->tc_ETask->PPCRegFrame;
-	regs = *registers;
+	Thread::Registers::PlatformRegisters *registers_from_task = ((Thread::Registers::PlatformRegisters *) ((struct Task *)platformThread)->tc_ETask);
+	regs = *registers_from_task;
     return 0;
 #else
 #error Need a way to get thread registers on this platform

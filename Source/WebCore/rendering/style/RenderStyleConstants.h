@@ -533,7 +533,7 @@ enum CursorVisibility {
     CursorVisibilityAutoHide,
 };
 #endif
-
+#undef INLINE
 // The order of this enum must match the order of the display values in CSSValueKeywords.in.
 enum EDisplay {
     INLINE, BLOCK, LIST_ITEM, COMPACT, INLINE_BLOCK,

@@ -43,6 +43,11 @@
 #include <machine/ieee.h>
 #endif
 
+#if OS(AMIGAOS4)
+// DOUBLE is defined in types.h, but collides with enums in WebCore
+#undef DOUBLE
+#endif
+
 #ifndef M_PI
 const double piDouble = 3.14159265358979323846;
 const float piFloat = 3.14159265358979323846f;

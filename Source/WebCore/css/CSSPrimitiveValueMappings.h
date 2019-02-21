@@ -274,7 +274,7 @@ template<> inline CSSPrimitiveValue::operator PrintColorAdjust() const
     ASSERT_NOT_REACHED();
     return PrintColorAdjustEconomy;
 }
-
+#undef DOUBLE
 
 template<> inline CSSPrimitiveValue::CSSPrimitiveValue(EBorderStyle e)
     : CSSValue(PrimitiveClass)
@@ -1312,7 +1312,8 @@ template<> inline CSSPrimitiveValue::operator CursorVisibility() const
     return CursorVisibilityAuto;
 }
 #endif
-
+#undef INLINE
+#undef DOUBLE
 template<> inline CSSPrimitiveValue::CSSPrimitiveValue(EDisplay e)
     : CSSValue(PrimitiveClass)
 {
