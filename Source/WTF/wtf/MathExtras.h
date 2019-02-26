@@ -43,6 +43,11 @@
 #include <machine/ieee.h>
 #endif
 
+#ifndef NAN
+#define NAN std::numeric_limits<double>::quiet_NaN()
+#else
+#endif
+
 #if OS(AMIGAOS4)
 // DOUBLE is defined in types.h, but collides with enums in WebCore
 #undef DOUBLE
