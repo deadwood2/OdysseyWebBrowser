@@ -3,7 +3,9 @@
 
 #include "include/macros/vapor.h"
 
+#if ! OS(AMIGAOS4)
 #include <proto/alib.h>
+#endif
 #include <exec/exec.h>
 #include <proto/exec.h>
 #include <utility/tagitem.h>

@@ -275,5 +275,9 @@ ULONG getv(APTR obj, ULONG attr);
 IPTR getv(APTR obj, ULONG attr);
 #include <aros-overrides.h>
 #endif
+#if defined(__amigaos__)
+#define QUAD uint64_t
+#endif
+
 
 #endif
