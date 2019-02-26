@@ -8,11 +8,11 @@ SET(CMAKE_C_COMPILER ppc-amigaos-gcc)
 SET(CMAKE_CXX_COMPILER ppc-amigaos-g++)
 
 # options
-SET(CMAKE_CXX_FLAGS "-D__USE_INLINE__ -Wno-expansion-to-defined")
-SET(CMAKE_CXX_FLAGS_DEBUG "-g -gdwarf-3 -D__USE_INLINE__ -Wno-expansion-to-defined")
+SET(CMAKE_CXX_FLAGS "-D__USE_INLINE__ -Wno-expansion-to-defined -D_GNU_SOURCE -I/usr/ppc-amigaos/SDK/MUI/C/include/")
+SET(CMAKE_CXX_FLAGS_DEBUG "-g -gdwarf-3 -D__USE_INLINE__ -D_GNU_SOURCE -Wno-expansion-to-defined  -I/usr/ppc-amigaos/SDK/MUI/C/include/")
 
-SET(CMAKE_C_FLAGS "-D__USE_INLINE__ -Wno-expansion-to-defined")
-SET(CMAKE_C_FLAGS_DEBUG "-g -gdwarf-3 -D__USE_INLINE__ -Wno-expansion-to-defined")
+SET(CMAKE_C_FLAGS "-D__USE_INLINE__ -Wno-expansion-to-defined -D_GNU_SOURCE -I/usr/ppc-amigaos/SDK/MUI/C/include/")
+SET(CMAKE_C_FLAGS_DEBUG "-g -gdwarf-3 -D__USE_INLINE__ -Wno-expansion-to-defined -D_GNU_SOURCE -I/usr/ppc-amigaos/SDK/MUI/C/include/")
 
 SET(CMAKE_MODULE_LINKER_FLAGS "")
 
