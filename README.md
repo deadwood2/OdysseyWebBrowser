@@ -9,6 +9,38 @@ odyssey - branch that contains Odyssey Web Browser rebased onto certain version 
 In order to build/develop the Odyssey Web Browser, checkout branch odyssey.
 
 # How to compile
+# AmigaOS 4 - cross-compile
+Make sure you have Dokcer installed.
+Check out the amiga_os4_compile branch
+
+```
+git clone https://github.com/deadwood-pl/OdysseyWebBrowser.git
+git branch jaokim_os4_compile
+```
+
+Now start the docker container, fetch dependecies, and build! Change direcotry to the one where the Dockerfile is.
+
+```
+docker build . -t odyssey_build
+docker run -it --mount src="$(pwd)",target=/workdir,type=bind odyssey_build
+```
+
+Inside the docker, cd to cross-build, and run the dep-get.py script to download all dependencies.
+
+```
+cd cross-build
+dep-get.py -i
+```
+
+The start cmake with build_aos4 script, and then make! 
+```
+./build_aos4
+make
+```
+
+
+
+# Aros
 The compilaton was successfully tested using Ubuntu 14.04.5 LTS 32 bit. Below the list of packages installed. In order to compile you need to apply the provided patch. Here the steps I followed.
 
 ```
