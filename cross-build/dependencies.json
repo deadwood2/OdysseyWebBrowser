@@ -1,1 +1,14 @@
-[{"Url": "http://os4depot.net/share/development/library/misc/libz.lha"}, {"Url": "http://os4depot.net/share/development/library/misc/libicu.lha"}, {"Url": "https://github.com/jaokim/aros-stuff/releases/download/1.0/pthreads.lha"}, {"Url": "http://os4depot.net/share/development/library/graphics/cairo.lha"}, {"Url": "http://os4depot.net/share/development/library/misc/libz.lha"}, {"Url": "http://os4depot.net/share/development/library/misc/libcurl.lha"}, {"Url": "http://os4depot.net/share/development/library/misc/sqlite.lha"}, {"Url": "http://os4depot.net/share/library/xml/libxml2.lha"}, {"Url": "http://os4depot.net/share/development/library/graphics/libfreetype.lha"}, {"Url": "https://downloads.sourceforge.net/project/odyssey-os4-dependencies/libxslt-1.1.30.tar?r=https%3A%2F%2Fsourceforge.net%2Fprojects%2Fodyssey-os4-dependencies%2Ffiles%2Flibxslt-1.1.30.tar%2Fdownload&ts=1551134852&use_mirror=netcologne"}, {"Url": "http://os4depot.net/share/development/library/misc/libopenssl.lha"}, {"Url": "https://muidev.de/download/MUI%205.0%20-%20Release/MUI-5.0-2018R4-os4.lha"}, {"Url": "http://os4depot.net/share/development/library/graphics/libfreetype.lha"}, {"Url": "http://os4depot.net/share/development/misc/libffmpeg.lha"}]
+[
+{"Url": "http://os4depot.net/share/development/library/misc/libz.lha"},
+{"Url": "http://os4depot.net/share/development/library/misc/libicu.lha"},
+{"Url": "https://github.com/jaokim/aros-stuff/releases/download/1.0/pthreads.lha"},
+{"Url": "http://os4depot.net/share/development/library/misc/libcurl.lha"},
+{"Url": "http://os4depot.net/share/development/library/misc/sqlite.lha"},
+{"Url": "http://os4depot.net/share/library/xml/libxml2.lha"},
+{"Url": "http://os4depot.net/share/development/library/graphics/libfreetype.lha"},
+{"Url": "http://downloads.sourceforge.net/project/odyssey-os4-dependencies/libxslt-1.1.30.tar"},
+{"Url": "http://downloads.sourceforge.net/project/odyssey-os4-dependencies/cairo_lib-1.14.10.tar"},
+{"Url": "http://os4depot.net/share/development/library/misc/libopenssl.lha"},
+{"Url": "https://muidev.de/download/MUI%205.0%20-%20Release/MUI-5.0-2018R4-os4.lha"},
+{"Url": "http://os4depot.net/share/development/misc/libffmpeg.lha"}
+]
