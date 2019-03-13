@@ -22,15 +22,14 @@ git checkout -b jaokim_os4_compile origin/jaokim_os4_compile
 Now start the docker container, fetch dependecies, and build! Make sure your in the directory where Dockerfile is.
 
 ```
-docker build . -t odyssey_build
-docker run -it --mount src="$(pwd)",target=/workdir,type=bind odyssey_build
+sudo docker build . -t odyssey_build
+sudo docker run -it --mount src="$(pwd)",target=/workdir,type=bind odyssey_build
 ```
 
 Inside the docker, cd to cross-build, and run the dep-get.py script to download all dependencies.
 
 ```
 cd cross-build
-dep-get.py -i
 ```
 
 The start cmake with build_aos4 script, and then make! 
