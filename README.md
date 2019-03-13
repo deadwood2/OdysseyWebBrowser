@@ -10,15 +10,16 @@ In order to build/develop the Odyssey Web Browser, checkout branch odyssey.
 
 # How to compile
 # AmigaOS 4 - cross-compile
-Make sure you have Dokcer installed.
+Make sure you have Docker installed.
 Check out the amiga_os4_compile branch
 
 ```
 git clone https://github.com/deadwood-pl/OdysseyWebBrowser.git
-git branch jaokim_os4_compile
+cd OdysseyWebBrowser
+git checkout -b jaokim_os4_compile origin/jaokim_os4_compile
 ```
 
-Now start the docker container, fetch dependecies, and build! Change direcotry to the one where the Dockerfile is.
+Now start the docker container, fetch dependecies, and build! Make sure your in the directory where Dockerfile is.
 
 ```
 docker build . -t odyssey_build
