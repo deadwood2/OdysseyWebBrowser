@@ -39,8 +39,16 @@
 #include <dos/dos.h>
 #include <proto/dos.h>
 #if !OS(AROS)
+#include <proto/exec.h>
 #include <proto/asyncio.h>
 #endif
+
+#if OS(AMIGAOS4)
+#define kprintf DebugPrintF
+#define stccpy strncpy
+#define DumpTaskState(x) DebugPrintF("Dump state task: %lx", x)
+#endif
+
 #include <clib/debug_protos.h>
 #define D(x)
 #endif
@@ -82,7 +90,11 @@ int OWBFile::open(char openType)
 		if((l=Lock(name, ACCESS_READ)))
 		{
 			UnLock(l);
+			#if OS(AMIGAOS4)
+			Delete(name);
+			#else
 			DeleteFile(name);
+			#endif
 		}
 		fd = OpenAsync(name, MODE_APPEND, 65536);
 		if(fd)
