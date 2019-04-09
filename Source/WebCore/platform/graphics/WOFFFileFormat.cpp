@@ -30,7 +30,7 @@
 #include "SharedBuffer.h"
 #include <wtf/ByteOrder.h>
 
-#if OS(AROS)
+#if OS(AROS) || OS(AMIGAOS4)
 #include <netinet/in.h>
 /* This is a workaround for a weird linking problem where uncompress from zlib cannot be found */
 extern "C" {
