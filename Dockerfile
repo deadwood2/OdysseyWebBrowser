@@ -1,5 +1,6 @@
-
-#FROM jaokim/amigade:20190225_2255
+# sudo docker build . -t odyssey_build
+# sudo docker tag odyssey_build:latest jaokim/aos4-odyssey-build:20190313_2326
+# sudo docker push jaokim/aos4-odyssey-build:20190313_2326
 FROM jaokim/amigade:20190313_2205
  
 RUN apt-get update
@@ -19,5 +20,11 @@ RUN dep-get.py -i "http://os4depot.net/share/development/library/misc/libopenssl
 RUN dep-get.py -i MUI5
 RUN dep-get.py -i "http://os4depot.net/share/development/misc/libffmpeg.lha"
 RUN dep-get.py -i "http://os4depot.net/share/library/misc/unilibdev.lha"
-#RUN dep-get.py -i
+RUN dep-get.py -i libuuid
+RUN dep-get.py -i libfontconfig-2.13.1
+RUN dep-get.py -i "http://os4depot.net/share/development/library/graphics/libjpeg.lha" 
+RUN dep-get-py -i "http://os4depot.net/share/development/library/graphics/libpng.lha"
+
+RUN apt-get install perl-modules-5.22
+
 WORKDIR /workdir
