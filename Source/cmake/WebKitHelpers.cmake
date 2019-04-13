@@ -24,7 +24,7 @@ macro(WEBKIT_SET_EXTRA_COMPILER_FLAGS _target)
         if ("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "(i[3-6]86|x86)")
             set(OLD_COMPILE_FLAGS "-march=i686 ${OLD_COMPILE_FLAGS}")
         elseif ("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "m68k")
-            set(OLD_COMPILE_FLAGS "-march=68040 ${OLD_COMPILE_FLAGS}")
+            set(OLD_COMPILE_FLAGS "${ISA_MC68020_FLAGS} ${OLD_COMPILE_FLAGS}")
         endif ()
 
         # Enable warnings by default
