@@ -2713,7 +2713,7 @@ DEFSMETHOD(OWBBrowser_PopupMenu)
     data->cancelledHook.h_SubEntry = (APTR) cancelled;
 
     data->hideHook.h_Entry = (APTR) HookEntry;
-    data->hideHook.h_SubEntry = (APTR) (HOOKFUNC) closed;
+    data->hideHook.h_SubEntry = (APTR) closed;
 
     DoMethod(list, MUIM_Notify, MUIA_List_Active, MUIV_EveryTime,
         list, 3,
