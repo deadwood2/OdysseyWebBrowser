@@ -54,14 +54,12 @@ ODYSSEY_OPTIONS += \
     -DATOMIC_LIBRARIES="$(TARGET_CXX_LIBS)"
 endif
 
-ifneq ($(AROS_TARGET_CPU),i386)
-ifneq ($(AROS_TARGET_CPU),x86_64)
+ifneq ($(AROS_TARGET_CPU),i386 x86_64))
 ODYSSEY_OPTIONS += \
     -DENABLE_DFG_JIT:BOOL=OFF \
     -DENABLE_VIDEO:BOOL=OFF \
     -DENABLE_VIDEO_TRACK:BOOL=OFF \
     -DENABLE_JIT:BOOL=OFF
-endif
 endif
 
 # Uncomment to display verbose build info..
