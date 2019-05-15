@@ -1147,6 +1147,7 @@ endif ()
 if (WTF_CPU_ARM)
 elseif (WTF_CPU_ARM64)
 elseif (WTF_CPU_HPPA)
+elseif (WTF_CPU_M68K)
 elseif (WTF_CPU_PPC)
 elseif (WTF_CPU_PPC64)
 elseif (WTF_CPU_PPC64LE)
@@ -1174,8 +1175,10 @@ WEBKIT_INCLUDE_CONFIG_FILES_IF_EXISTS()
 
 WEBKIT_CREATE_FORWARDING_HEADERS(JavaScriptCore DIRECTORIES ${JavaScriptCore_FORWARDING_HEADERS_DIRECTORIES} FILES ${JavaScriptCore_FORWARDING_HEADERS_FILES})
 
-
-add_subdirectory(shell)
+if (${PORT} STREQUAL "MUI")
+else ()
+    add_subdirectory(shell)
+endif ()
 
 WEBKIT_WRAP_SOURCELIST(${JavaScriptCore_SOURCES})
 include_directories(${JavaScriptCore_INCLUDE_DIRECTORIES})

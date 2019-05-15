@@ -45,6 +45,7 @@ set(OdysseyWebBrowser_LIBRARIES
     -lpthread
     -lz
     -lstdc
+    ${ATOMIC_LIBRARIES}
 )
 
 include_directories(${OdysseyWebBrowser_INCLUDE_DIRECTORIES})

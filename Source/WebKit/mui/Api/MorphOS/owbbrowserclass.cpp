@@ -2713,7 +2713,7 @@ DEFSMETHOD(OWBBrowser_PopupMenu)
     data->cancelledHook.h_SubEntry = (APTR) cancelled;
 
     data->hideHook.h_Entry = (APTR) HookEntry;
-    data->hideHook.h_SubEntry = (APTR) (HOOKFUNC) closed;
+    data->hideHook.h_SubEntry = (APTR) closed;
 
     DoMethod(list, MUIM_Notify, MUIA_List_Active, MUIV_EveryTime,
         list, 3,
@@ -4039,7 +4039,7 @@ typedef struct
 // It has some sideeffects for pages that want to paint over plugin area
 DEFSMETHOD(Plugin_RenderRastPort)
 {
-	if(msg->src == NULL && msg->stride == NULL)
+	if(msg->src == NULL && msg->stride == 0)
 	{
 		PluginRect *npwindowrect = (PluginRect *) msg->windowrect;
 		IntRect windowrect(npwindowrect->x, npwindowrect->y, npwindowrect->width, npwindowrect->height);

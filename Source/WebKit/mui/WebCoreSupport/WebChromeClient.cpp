@@ -502,9 +502,9 @@ void WebChromeClient::runOpenPanel(Frame*, PassRefPtr<FileChooser> prpFileChoose
 
     if(multiFile)
     {
-		APTR tags[] = { (APTR) ASLFR_TitleText, (APTR) GSI(MSG_WEBVIEW_UPLOAD_FILES),
-						(APTR) ASLFR_InitialPattern, (APTR) "#?",
-						TAG_DONE };
+		struct TagItem tags[] = { ASLFR_TitleText, (IPTR) GSI(MSG_WEBVIEW_UPLOAD_FILES),
+					ASLFR_InitialPattern, (IPTR) "#?",
+					TAG_DONE, 0 };
 
 		ULONG count;
 		char ** files = NULL;
@@ -527,9 +527,9 @@ void WebChromeClient::runOpenPanel(Frame*, PassRefPtr<FileChooser> prpFileChoose
 	}
 	else
 	{
-		APTR tags[] = { (APTR) ASLFR_TitleText, (APTR) GSI(MSG_WEBVIEW_UPLOAD_FILE),
-						(APTR) ASLFR_InitialPattern, (APTR) "#?",
-						TAG_DONE };
+		struct TagItem tags[] = { ASLFR_TitleText, (IPTR) GSI(MSG_WEBVIEW_UPLOAD_FILE),
+					ASLFR_InitialPattern, (IPTR) "#?",
+					TAG_DONE, 0 };
 
 		char *file = asl_run((char *)getv(app, MA_OWBApp_CurrentDirectory), (struct TagItem *) &tags, TRUE);
 

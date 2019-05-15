@@ -1,4 +1,4 @@
-# Copyright © 2008-2017, The AROS Development Team. All rights reserved.
+# Copyright Â© 2008-2017, The AROS Development Team. All rights reserved.
 # $Id: mmakefile.src 54586 2017-04-22 20:22:22Z NicJA $
 
 include $(SRCDIR)/config/aros.cfg
@@ -10,6 +10,7 @@ ODYSSEY_EXEDIR := $(AROS_CONTRIB)/Networking/Apps/Odyssey
 #MM- odyssey-exe-cpy : odyssey-exe
 
 #MM- odyssey-exe : contrib-icu4c \
+#MM                linklibs-atomic \
 #MM                contrib-cairo \
 #MM                contrib-curl \
 #MM                contrib-sqlite \
@@ -18,22 +19,22 @@ ODYSSEY_EXEDIR := $(AROS_CONTRIB)/Networking/Apps/Odyssey
 #MM                contrib-libiconv \
 #MM                contrib-ffmpeg
 
-NOWARN_CFLAGS :=   $(NOWARN_DEPRECATED_DECLARATIONS)
+NOWARN_CFLAGS   := $(NOWARN_DEPRECATED_DECLARATIONS)
 
 NOWARN_CXXFLAGS := $(NOWARN_MISLEADING_INDENTATION) $(NOWARN_UNUSED_FUNCTION) \
-                   $(NOWARN_ERROR) $(NOWARN_CONVERSION_NULL) \
-                   $(NOWARN_DEPRECATED_DECLARATIONS) \
-                   -Wno-cast-align
+                   $(NOWARN_ERROR) $(NOWARN_CONVERSION_NULL) $(NOWARN_FORMAT_TRUNCATION) $(NOWARN_STRINGOP_TRUNCATION) \
+                   $(NOWARN_DEPRECATED_DECLARATIONS) $(NOWARN_CLASS_MEMACCESS) $(NOWARN_IMPLICIT_FALLTHROUGH) \
+                   -Wno-cast-align -Wno-expansion-to-defined
 
-# ifeq ($(AROS_TARGET_CPU),m68k)
-NOWARN_CXXFLAGS +=
-# endif
+USER_CFLAGS     := $(NOWARN_CFLAGS)
+USER_CXXFLAGS   := $(NOWARN_CXXFLAGS)
 
-USER_CFLAGS := $(NOWARN_CFLAGS)
-USER_CXXFLAGS := $(NOWARN_CXXFLAGS)
+USER_INCLUDES   := -I$(AROS_INCLUDES) -I$(AROS_CONTRIB_INCLUDES)
+USER_LDFLAGS    := -L$(AROS_CONTRIB_LIB) -static-libstdc++
 
-USER_INCLUDES := -I$(AROS_INCLUDES) -I$(AROS_CONTRIB_INCLUDES)
-USER_LDFLAGS := -L$(AROS_CONTRIB_LIB) -static-libstdc++
+ifeq ($(AROS_TARGET_CPU),m68k)
+ISA_FLAGS       += $(ISA_MC68020_FLAGS)
+endif
 
 ODYSSEY_OPTIONS := \
     -DCMAKE_BUILD_TYPE=Release \
@@ -47,18 +48,22 @@ ODYSSEY_OPTIONS := \
     -DZLIB_LIBRARIES="$(AROS_LIB)/libz.a" \
     ..
 
-ifneq ($(AROS_TARGET_CPU),i386)
-ifneq ($(AROS_TARGET_CPU),x86_64)
+
+ifeq ($(AROS_TARGET_CPU),m68k)
+ODYSSEY_OPTIONS += \
+    -DATOMIC_LIBRARIES="$(TARGET_CXX_LIBS)"
+endif
+
+ifneq ($(AROS_TARGET_CPU),i386 x86_64)
 ODYSSEY_OPTIONS += \
     -DENABLE_DFG_JIT:BOOL=OFF \
     -DENABLE_VIDEO:BOOL=OFF \
     -DENABLE_VIDEO_TRACK:BOOL=OFF \
     -DENABLE_JIT:BOOL=OFF
 endif
-endif
 
 # Uncomment to display verbose build info..
-ODYSSEY_OPTIONS += -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+# ODYSSEY_OPTIONS += -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
 
 %build_with_cmake mmake=odyssey-exe		\
 	srcdir=$(SRCDIR)/$(CURDIR) prefix="$(ODYSSEY_EXEDIR)"	\

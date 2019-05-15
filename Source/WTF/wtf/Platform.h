@@ -103,6 +103,16 @@
 #define USE_ARENA_ALLOC_ALIGNMENT_INTEGER 1
 #endif /* MIPS */
 
+/* CPU(M68K) - m68k */
+#if    defined(__m68k__)       \
+    || defined(__m68000__)     \
+    || defined(__mc68000__)    \
+    || defined(__mc68020__)    \
+    || defined(_M_M68K)
+#define WTF_CPU_M68K 1
+#define WTF_CPU_BIG_ENDIAN 1
+#endif
+
 /* CPU(PPC) - PowerPC 32-bit */
 #if (  defined(__ppc__)        \
     || defined(__PPC__)        \
@@ -862,7 +872,7 @@
 #define ENABLE_REGEXP_TRACING 0
 
 /* Yet Another Regex Runtime - turned on by default for JIT enabled ports. */
-#if !defined(ENABLE_YARR_JIT) && ENABLE(JIT)
+#if !defined(ENABLE_YARR_JIT) && ENABLE(JIT) && !CPU(M68K)
 #define ENABLE_YARR_JIT 1
 
 /* Setting this flag compares JIT results with interpreter results. */
