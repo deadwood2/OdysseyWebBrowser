@@ -2646,7 +2646,7 @@ DEFSMETHOD(OWBApp_SaveFormState)
 				{
 					D(kprintf("Valid formdata found for <%s>\n", webFormPasswordData.origin.string().latin1().data()));
 
-					if(getv(app, MA_OWBApp_SaveFormCredentials) && DoMethod(data->passwordmanagerwin, MM_PasswordManagerGroup_Get, &(webFormPasswordData.origin.string())) == NULL)
+					if(getv(app, MA_OWBApp_SaveFormCredentials) && DoMethod(data->passwordmanagerwin, MM_PasswordManagerGroup_Get, &(webFormPasswordData.origin.string())) == 0)
 					{
 						ExtCredential extCredential(webFormPasswordData.userNameValue,
 													webFormPasswordData.passwordValue,
