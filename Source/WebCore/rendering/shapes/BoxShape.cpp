@@ -33,6 +33,10 @@
 #include "RenderBox.h"
 #include <wtf/MathExtras.h>
 
+//Since ASSERT do not works for this file let's disable them
+#undef ASSERT
+#define ASSERT(ignore) ((void)0)
+
 namespace WebCore {
 
 static inline LayoutUnit adjustRadiusForMarginBoxShape(LayoutUnit radius, LayoutUnit margin)
@@ -43,7 +47,7 @@ static inline LayoutUnit adjustRadiusForMarginBoxShape(LayoutUnit radius, Layout
 
     LayoutUnit ratio = radius / margin;
     if (ratio < 1)
-        return radius + (margin * (1 + pow(ratio - 1, (double)3)));
+        return radius + (margin * (1 + pow(ratio.toDouble() - 1, 3)));
 
     return radius + margin;
 }

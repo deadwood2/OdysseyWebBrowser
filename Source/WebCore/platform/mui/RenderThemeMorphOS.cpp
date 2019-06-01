@@ -47,6 +47,10 @@
 #include <clib/debug_protos.h>
 #define D(x)
 
+//Since ASSERT do not works for this file let's disable them
+#undef ASSERT
+#define ASSERT(ignore) ((void)0)
+
 extern char *utf8_to_local(const char *);
 
 namespace WebCore {

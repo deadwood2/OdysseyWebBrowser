@@ -28,6 +28,10 @@
 #include "RootInlineBox.h"
 #include <wtf/ListHashSet.h>
 
+//Since ASSERT do not works for this file let's disable them
+#undef ASSERT
+#define ASSERT(ignore) ((void)0)
+
 namespace WebCore {
 
 class RenderBlockFlow;

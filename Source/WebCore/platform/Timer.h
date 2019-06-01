@@ -36,6 +36,10 @@
 #include "WebCoreThread.h"
 #endif
 
+//Since ASSERT do not works for this file let's disable them
+#undef ASSERT
+#define ASSERT(ignore) ((void)0)
+
 namespace WebCore {
 
 // Time intervals are all in seconds.

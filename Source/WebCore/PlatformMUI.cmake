@@ -154,3 +154,6 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     ${ZLIB_INCLUDE_DIRS}
 )
 
+set_source_files_properties( platform/mui/acinerella.c PROPERTIES COMPILE_FLAGS -g )
+set_source_files_properties( platform/mui/MediaPlayerPrivateMorphOS.cpp PROPERTIES COMPILE_FLAGS -g )
+

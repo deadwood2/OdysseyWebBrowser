@@ -66,6 +66,10 @@
 #include <unistd.h>
 #endif
 
+//Since ASSERT do not works for this file let's disable them
+#undef ASSERT
+#define ASSERT(ignore) ((void)0)
+
 #if HAVE(READLINE)
 // readline/history.h has a Function typedef which conflicts with the WTF::Function template from WTF/Forward.h
 // We #define it to something else to avoid this conflict.

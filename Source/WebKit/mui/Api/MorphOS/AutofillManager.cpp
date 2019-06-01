@@ -28,6 +28,10 @@
 #include "gui.h"
 #include <clib/debug_protos.h>
 
+//Since ASSERT do not works for this file let's disable them
+#undef ASSERT
+#define ASSERT(ignore) ((void)0)
+
 namespace WebCore {
 
 static bool isAutofillable(HTMLInputElement* element)

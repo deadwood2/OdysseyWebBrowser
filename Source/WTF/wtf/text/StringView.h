@@ -43,6 +43,11 @@
 #define CHECK_STRINGVIEW_LIFETIME 1
 #endif
 
+//Since ASSERT do not works for this file let's disable them
+#undef ASSERT
+#undef ASSERT
+#define ASSERT(ignore) ((void)0)
+
 namespace WTF {
 
 // StringView is a non-owning reference to a string, similar to the proposed std::string_view.

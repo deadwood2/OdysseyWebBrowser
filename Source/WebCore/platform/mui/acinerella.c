@@ -35,11 +35,10 @@
 #include <proto/exec.h>
 #include <clib/debug_protos.h>
 
-
 #include "gui.h"
 #include "acinerella.h"
 
-#define D(x)
+#define D(x) x
 
 #define AUDIO_BUFFER_BASE_SIZE ((192000 * 3) / 2)
 
@@ -276,6 +275,7 @@ lp_ac_package ac_flush_packet(void)
 
 lp_ac_instance CALL_CONVT ac_init(void)
 {
+	D(kprintf("inside ac_init \n"));
 	if(!initialized)
 	{
 		InitSemaphore(&semAcinerella);
@@ -297,7 +297,9 @@ lp_ac_instance CALL_CONVT ac_init(void)
 	}
 
 	// Allocate a new instance of the videoplayer data and return it
+	D(kprintf("Before mgr_malloc\n"));
 	lp_ac_data ptmp = (lp_ac_data)mgr_malloc(sizeof(ac_data));
+	D(kprintf("After mgr_malloc\n"));
 
 	if(ptmp)
 	{
@@ -328,6 +330,8 @@ int CALL_CONVT ac_open(
 	ac_seek_callback seek_proc,
 	ac_openclose_callback close_proc)
 {
+	D(kprintf("Before int3\n"));
+	//asm("int3");
 	char filename[64];
 	AVFormatContext *ctx;
 
@@ -345,10 +349,12 @@ int CALL_CONVT ac_open(
 	D(kprintf("filename: <%s> instance <%p>\n", filename, pacInstance));
 
 	((lp_ac_data)pacInstance)->pFormatCtx =	avformat_alloc_context();
+	D(kprintf("Before avformat_open_input\n"));
 	if(avformat_open_input(&(((lp_ac_data)pacInstance)->pFormatCtx), filename, NULL, NULL) != 0)
 	{
 		return -1;
 	}
+	D(kprintf("After avformat_open_input\n"));
 
 	ctx = ((lp_ac_data)pacInstance)->pFormatCtx;
 
@@ -358,7 +364,9 @@ int CALL_CONVT ac_open(
 		return -1;
 	}
 
+	D(kprintf("Before av_dump_format\n"));
 	av_dump_format(ctx, 0, filename, 0);
+	D(kprintf("After av_dump_format\n"));
 
 	// Set some information in the instance variable 
 	pacInstance->stream_count = ctx->nb_streams;
@@ -541,7 +549,8 @@ lp_ac_package CALL_CONVT ac_read_package(lp_ac_instance pacInstance)
 				{
 					pTmp->pts = clone->dts;
 				}
-				D(kprintf("Allocate packet %p (data %p size %d stream %d destruct %p priv %p)\n", pTmp, pTmp->package.data, pTmp->package.size, pTmp->package.stream_index, pTmp->ffpackage->destruct, pTmp->ffpackage->priv));
+				//D(kprintf("Allocate packet %p (data %p size %d stream %d destruct %p priv %p)\n", pTmp, pTmp->package.data, pTmp->package.size, pTmp->package.stream_index, pTmp->ffpackage->destruct, pTmp->ffpackage->priv));
+				D(kprintf("Allocate packet\n"));
 			}
 			return (lp_ac_package)(pTmp);
 		}
@@ -556,7 +565,8 @@ void CALL_CONVT ac_free_package(lp_ac_package pPackage)
 	//Free the packet
 	if (pPackage != NULL && pPackage != ac_flush_packet())
 	{
-		D(kprintf("Free packet %p (data %p size %d stream %d destruct %p priv %p)\n", pPackage, ((lp_ac_package_data)pPackage)->package.data, ((lp_ac_package_data)pPackage)->package.size, ((lp_ac_package_data)pPackage)->package.stream_index, ((lp_ac_package_data)pPackage)->ffpackage->destruct, ((lp_ac_package_data)pPackage)->ffpackage->priv));
+		//D(kprintf("Free packet %p (data %p size %d stream %d destruct %p priv %p)\n", pPackage, ((lp_ac_package_data)pPackage)->package.data, ((lp_ac_package_data)pPackage)->package.size, ((lp_ac_package_data)pPackage)->package.stream_index, ((lp_ac_package_data)pPackage)->ffpackage->destruct, ((lp_ac_package_data)pPackage)->ffpackage->priv));
+		D(kprintf("Free packet\n"));
 		av_free_packet(((lp_ac_package_data)pPackage)->ffpackage);
 		mgr_free(((lp_ac_package_data)pPackage)->ffpackage);
 		mgr_free((lp_ac_package_data)pPackage);
@@ -993,7 +1003,7 @@ int CALL_CONVT ac_decode_package(lp_ac_package pPackage, lp_ac_decoder pDecoder)
 	    }
 	}
 	  
-	D(kprintf("Decode packet %p (data %p size %d stream %d destruct %p priv %p)\n", pPackage, ((lp_ac_package_data)pPackage)->package.data, ((lp_ac_package_data)pPackage)->package.size, ((lp_ac_package_data)pPackage)->package.stream_index, ((lp_ac_package_data)pPackage)->ffpackage->destruct, ((lp_ac_package_data)pPackage)->ffpackage->priv));
+	//D(kprintf("Decode packet %p (data %p size %d stream %d destruct %p priv %p)\n", pPackage, ((lp_ac_package_data)pPackage)->package.data, ((lp_ac_package_data)pPackage)->package.size, ((lp_ac_package_data)pPackage)->package.stream_index, ((lp_ac_package_data)pPackage)->ffpackage->destruct, ((lp_ac_package_data)pPackage)->ffpackage->priv));
 
 	if(pDecoder->type == AC_DECODER_TYPE_VIDEO)
 	{

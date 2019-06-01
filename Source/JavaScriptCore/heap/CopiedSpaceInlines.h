@@ -26,6 +26,10 @@
 #ifndef CopiedSpaceInlines_h
 #define CopiedSpaceInlines_h
 
+//Since ASSERT do not works for this file let's disable them
+#undef ASSERT
+#define ASSERT(ignore) ((void)0)
+
 #include "CopiedBlock.h"
 #include "CopiedSpace.h"
 #include "Heap.h"

@@ -102,7 +102,7 @@ extern void removeFromMainThreadFab(long long id);
 /********************************************************************************/
 
 /* debug */
-#define D(x)
+#define D(x) x
 
 /* options */
 #define USE_WEBM 1                          /* WebM/VP8/VP9 support */
@@ -643,12 +643,15 @@ public:
 
 	bool open()
 	{
+
+		D(kprintf("[MediaPlayer Thread] inside open\n"));
 		if(opened)
 		{
 			return false;
 		}
 
 		ac_open(ac, this, &open_callback, &read_callback, &seek_callback, &close_callback);
+		D(kprintf("[MediaPlayer Thread] after ac_open\n"));
 
 		opened = ac->opened;
 
@@ -656,6 +659,7 @@ public:
 		{
 			D(kprintf("[MediaPlayer Thread] Interrupted while parsing metadata.\n"));
 		}
+		D(kprintf("[MediaPlayer Thread] opened=%d running=%d\n",opened,running));
 
 		if(running && opened)
 		{
@@ -1796,6 +1800,7 @@ private:
 
 static int CALL_CONVT read_callback(void *sender, char *dst, int size)
 {
+	D(kprintf("Inside read_callback\n"));
 	FFMpegContext *ctx = (FFMpegContext *) sender;
 	bool needMoreData = false;
 	bool shouldSendRequest = false;
@@ -1895,15 +1900,19 @@ static int64_t CALL_CONVT seek_callback(void *sender, int64_t pos, int whence)
 		switch(whence)
 		{
 			case AVSEEK_SIZE:
+			D(kprintf("seek_callback(): 1\n"));
 				res = ctx->totalsize;
 				break;
 			case SEEK_SET:
+			D(kprintf("seek_callback(): 2\n"));
 				new_pos	= pos;
 				break;
 			case SEEK_CUR:
+				D(kprintf("seek_callback(): 3\n"));
 				new_pos = old_pos + pos;
 				break;
 			case SEEK_END:
+				D(kprintf("seek_callback(): 4\n"));
 				if(ctx->totalsize > 0)
 				{
 					new_pos	= ctx->totalsize + pos;
@@ -1916,6 +1925,7 @@ static int64_t CALL_CONVT seek_callback(void *sender, int64_t pos, int whence)
 			// Safety checks
 			if(new_pos < 0)
 			{
+				D(kprintf("seek_callback(): 5\n"));
 				new_pos = 0;
 			}
 
@@ -1950,6 +1960,7 @@ static int CALL_CONVT open_callback(void *sender)
 {
 	FFMpegContext *ctx = (FFMpegContext *) sender;
 	ctx->media_buffer.readpos = 0;
+	D(kprintf("exit from open_callback\n"));
 	return 0;
 }
 

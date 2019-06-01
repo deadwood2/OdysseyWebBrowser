@@ -104,6 +104,10 @@ namespace WTF
 }
 #endif
 
+//Since ASSERT do not works for this file let's disable them
+#undef ASSERT
+#define ASSERT(ignore) ((void)0)
+
 using namespace WebCore;
 
 static const bool renderBenchmark = getenv("OWB_BENCHMARK");

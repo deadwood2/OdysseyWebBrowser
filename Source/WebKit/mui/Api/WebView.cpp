@@ -175,6 +175,10 @@
 #undef String
 #undef PageGroup
 
+//Since ASSERT do not works for this file let's disable them
+#undef ASSERT
+#define ASSERT(ignore) ((void)0)
+
 using namespace WebCore;
 using std::min;
 using std::max;

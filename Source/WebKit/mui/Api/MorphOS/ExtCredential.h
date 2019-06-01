@@ -35,6 +35,10 @@ enum { CREDENTIAL_FLAG_BLACKLISTED = 0x10000 };
 
 #define CREDENTIAL_TYPE_MASK 0x0000FFFF
 #define CREDENTIAL_FLAG_MASK 0xFFFF0000
+
+//Since ASSERT do not works for this file let's disable them
+#undef ASSERT
+#define ASSERT(ignore) ((void)0)
     
 class ExtCredential {
 

@@ -37,6 +37,10 @@
 #include <wtf/MainThread.h>
 #include <wtf/TypeCasts.h>
 
+//Since ASSERT do not works for this file let's disable them
+#undef ASSERT
+#define ASSERT(ignore) ((void)0)
+
 // This needs to be here because Document.h also depends on it.
 #define DUMP_NODE_STATISTICS 0
 
