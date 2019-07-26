@@ -75,7 +75,7 @@ public:
     void invalidateClient();
     WEBCORE_EXPORT void setAuthenticationScheme(ProtectionSpaceAuthenticationScheme);
     WEBCORE_EXPORT void setUserPass(const String&, const String&);
-    void setStartTime(const MonotonicTime& startTime) { m_requestStartTime = startTime; }
+    void setStartTime(const MonotonicTime& startTime) { m_requestStartTime = startTime.isolatedCopy(); }
 
     void start();
     void cancel();
@@ -142,7 +142,7 @@ private:
     // Processing for DidReceiveResponse
     bool needToInvokeDidReceiveResponse() const { return m_didReceiveResponse && !m_didNotifyResponse; }
     bool needToInvokeDidCancelTransfer() const { return m_didNotifyResponse && !m_didReturnFromNotify && m_actionAfterInvoke == Action::FinishTransfer; }
-    void invokeDidReceiveResponseForFile(URL&);
+    void invokeDidReceiveResponseForFile(const URL&);
     void invokeDidReceiveResponse(const CurlResponse&, Action);
     void setRequestPaused(bool);
     void setCallbackPaused(bool);
