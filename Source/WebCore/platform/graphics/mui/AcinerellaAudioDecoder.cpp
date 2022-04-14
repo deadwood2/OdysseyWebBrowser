@@ -23,7 +23,7 @@ namespace Acinerella {
 #define AHI_BASE_NAME m_ahiBase
 
 #define D(x)
-#define DSYNC(x) 
+#define DSYNC(x)
 #define DSPAM(x) 
 #define DSPAMTS(x) 
 
@@ -418,6 +418,20 @@ void AcinerellaAudioDecoder::fillBuffer(int index)
 		auto lock = holdLock(m_lock);
 		while (!m_decodedFrames.empty() && bytesLeft)
 		{
+			if (0 == bytesLeft)
+				break;
+
+			if (m_decodedFrames.empty())
+				break;
+
+			if (m_didUnderrun)
+			{
+				D(dprintf("[AD]%s: Underrun, %f buddered\n", __func__, float(bufferSize())));
+				if (!isWarmedUp())
+					break;
+				m_didUnderrun = false;
+			}
+
 			const auto *frame = m_decodedFrames.front().frame();
 			size_t copyBytes = std::min(frame->buffer_size - m_ahiFrameOffset, bytesLeft);
 			
@@ -453,8 +467,12 @@ void AcinerellaAudioDecoder::fillBuffer(int index)
 		}
 	}
 
-	// Clear remaining buffer in case of an underrun
-	bzero(reinterpret_cast<uint8_t*>(m_ahiSample[index].ahisi_Address) + offset, bytesLeft);
+	if (bytesLeft > 0)
+	{
+		// Clear remaining buffer in case of an underrun
+		bzero(reinterpret_cast<uint8_t*>(m_ahiSample[index].ahisi_Address) + offset, bytesLeft);
+		m_didUnderrun = true;
+	}
 
 #if 0
 				BPTR f = Open("sys:out.raw", MODE_READWRITE);

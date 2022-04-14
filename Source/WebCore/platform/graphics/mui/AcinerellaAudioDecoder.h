@@ -61,6 +61,7 @@ protected:
 #endif
 	void fillBuffer(int index);
 	void ahiThreadEntryPoint();
+	void stopPlayingQuick() override { m_playing = false; };
 
 protected:
 	Library        *m_ahiBase = nullptr;
@@ -82,6 +83,7 @@ protected:
 	double          m_position = 0.0;
 	bool            m_waitingToPlay = false;
 	bool            m_didFlushBuffers = false;
+	bool            m_didUnderrun = false;
 	int             m_audioRate;
 	int             m_audioChannels;
 	int             m_audioBits;
