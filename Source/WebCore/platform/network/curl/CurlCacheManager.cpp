@@ -221,6 +221,11 @@ void CurlCacheManager::didReceiveResponse(ResourceHandle& job, ResourceResponse&
 
         invalidateCacheEntry(url); // Invalidate existing entry on 200
 
+        // Exclude HEAD, etc requests from being cached. We still want them to invalidate the
+        // caches, though.
+        if (job.firstRequest().httpMethod() != "GET" && job.firstRequest().httpMethod() != "POST")
+            return;
+
         auto cacheEntry = std::make_unique<CurlCacheEntry>(url, &job, m_cacheDir);
         bool cacheable = cacheEntry->parseResponseHeaders(response);
         if (cacheable) {
@@ -244,7 +249,6 @@ void CurlCacheManager::didFinishLoading(ResourceHandle& job)
         return;
 
     const String& url = job.firstRequest().url().string();
-
     auto it = m_index.find(url);
     if (it != m_index.end())
         it->value->didFinishLoading();
@@ -280,7 +284,7 @@ HTTPHeaderMap& CurlCacheManager::requestHeaders(const String& url)
 bool CurlCacheManager::getCachedResponse(const String& url, ResourceResponse& response)
 {
     auto it = m_index.find(url);
-    if (it != m_index.end()) {
+    if (it != m_index.end() && it->value->isCached() && !it->value->isLoading()) {
         it->value->setResponseFromCachedHeaders(response);
         return true;
     }
