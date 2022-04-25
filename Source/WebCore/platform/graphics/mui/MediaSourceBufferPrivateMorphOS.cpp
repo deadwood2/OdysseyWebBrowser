@@ -33,10 +33,10 @@ ALWAYS_INLINE decltype(auto) makeUnique(Args&&... args)
 using namespace WTF;
 #endif
 
-#define D(x) 
+#define D(x)
 #define DR(x)
 #define DM(x)
-#define DI(x) 
+#define DI(x)
 #define DN(x)    
 #define DIO(x)
 #define DIOCC(x)
@@ -62,8 +62,16 @@ MediaSourceChunkReader::MediaSourceChunkReader(MediaSourceBufferPrivateMorphOS *
 	});
 }
 
+MediaSourceChunkReader::~MediaSourceChunkReader()
+{
+	terminate();
+}
+
 void MediaSourceChunkReader::terminate()
 {
+	if (m_terminating)
+		return;
+
 	m_terminating = true;
 	m_event.signal();
 

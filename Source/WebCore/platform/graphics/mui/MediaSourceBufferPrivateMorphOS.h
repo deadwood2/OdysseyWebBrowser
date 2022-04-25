@@ -40,7 +40,7 @@ public:
 protected:
 	MediaSourceChunkReader(MediaSourceBufferPrivateMorphOS *, InitializationCallback &&, ChunkDecodedCallback &&);
 public:
-	~MediaSourceChunkReader() = default;
+	virtual ~MediaSourceChunkReader();
 
 	typedef WTF::StdList<WTF::RefPtr<WebCore::MediaSample>> MediaSamplesList;
 
