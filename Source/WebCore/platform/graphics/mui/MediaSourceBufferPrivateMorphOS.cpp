@@ -484,6 +484,7 @@ MediaSourceBufferPrivateMorphOS::MediaSourceBufferPrivateMorphOS(MediaSourcePriv
 MediaSourceBufferPrivateMorphOS::~MediaSourceBufferPrivateMorphOS()
 {
 	DI(dprintf("[MS]%s: %p bye!\n", __func__, this));
+	clearMediaSource();
 }
 
 void MediaSourceBufferPrivateMorphOS::setClient(SourceBufferPrivateClient* client)
