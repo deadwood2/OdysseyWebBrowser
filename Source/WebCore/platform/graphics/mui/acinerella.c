@@ -649,11 +649,7 @@ lp_ac_package CALL_CONVT ac_read_package(lp_ac_instance pacInstance) {
 	lp_ac_package_data pkt;
 	ERR(pkt = av_malloc(sizeof(ac_package_data)));
 	memset(pkt, 0, sizeof(ac_package_data));
-	ERR(pkt->pPack = av_malloc(sizeof(AVPacket)));
-
-	av_init_packet(pkt->pPack);
-	pkt->pPack->data = NULL;
-	pkt->pPack->size = 0;
+	ERR(pkt->pPack = av_packet_alloc());
 
 	// Try to read package
 	AV_ERR(av_read_frame(((lp_ac_data)(pacInstance))->pFormatCtx, pkt->pPack));
@@ -674,8 +670,7 @@ void CALL_CONVT ac_free_package(lp_ac_package pPackage) {
 	if (pPackage && pPackage != ac_flush_packet()) {
 		lp_ac_package_data self = (lp_ac_package_data)pPackage;
 		av_packet_unref(self->pPack);
-		av_free_packet(self->pPack);
-		av_free(self->pPack);
+		av_packet_free(self->pPack);
 		av_free(self);
 	}
 }
@@ -1150,6 +1145,7 @@ void ac_free_decoder_frame(lp_ac_decoder_frame pFrame)
 	av_frame_free(&frame->pFrame);
 	if (frame->own_buffer_size > 0)
 		av_free(frame->frame.pBuffer);
+	av_free(frame);
 }
 
 int CALL_CONVT ac_decode_package_ex(lp_ac_package pPackage, lp_ac_decoder pDecoder, lp_ac_decoder_frame pFrame)
