@@ -273,11 +273,11 @@ void AcinerellaDecoder::decodeUntilBufferFull()
 
 	DBF(dprintf("[%s]%s: %p - start! wmup %d prep %d\033[0m\n", isAudio() ? "\033[33mA":"\033[35mV", __func__, this, m_warminUp, m_readying));
 
-	do
+	while (bufferSize() < readAheadTime())
 	{
 		if (!decodeNextFrame())
 			break;
-	} while (bufferSize() < readAheadTime());
+	}
 
 	if (m_warminUp && bufferSize() >= readAheadTime())
 	{
