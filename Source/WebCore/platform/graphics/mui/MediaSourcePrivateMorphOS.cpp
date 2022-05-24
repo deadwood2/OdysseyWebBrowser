@@ -322,37 +322,42 @@ void MediaSourcePrivateMorphOS::onSourceBufferInitialized(RefPtr<MediaSourceBuff
 		D(dprintf("onSourceBufferInitialized: allinitialized %d seeking %d csdone %d\n", areDecodersInitialized(), m_seeking, m_clientSeekDone));
 		if (areDecodersInitialized())
 		{
-			if (!m_initialized)
-			{
-				MediaPlayerMorphOSInfo info;
+			MediaPlayerMorphOSInfo info;
 
-				for (auto& sourceBufferPrivate : m_activeSourceBuffers) {
-					auto &minfo = sourceBufferPrivate->info();
+			for (auto& sourceBufferPrivate : m_activeSourceBuffers) {
+				auto &minfo = sourceBufferPrivate->info();
 
-					if (minfo.m_width) {
-						info.m_width = minfo.m_width;
-						info.m_height = minfo.m_height;
-                        m_hasVideo = true;
-					}
-					
-					if (minfo.m_channels) {
-						info.m_channels = minfo.m_channels;
-						info.m_bits = minfo.m_bits;
-						info.m_frequency = minfo.m_frequency;
-                        m_hasAudio = true;
-					}
-					
-					info.m_duration = duration().toFloat(); //! client provides us with the actual duration!
-                    info.m_isDownloadable = false;
-                    info.m_isMediaSource = true;
-                    
-                    D(dprintf("onSourceBufferInitialized: src %p dur %f %d %d\n", sourceBufferPrivate.get(), minfo.m_frequency, minfo.m_width));
+				if (minfo.m_width) {
+					info.m_width = minfo.m_width;
+					info.m_height = minfo.m_height;
+					m_hasVideo = true;
+				}
+				
+				if (minfo.m_channels) {
+					info.m_channels = minfo.m_channels;
+					info.m_bits = minfo.m_bits;
+					info.m_frequency = minfo.m_frequency;
+					m_hasAudio = true;
 				}
 
-				D(dprintf("onSourceBufferInitialized: freq %d w %d h %d duration %f clientDuration %f asb %d\n", info.m_frequency, info.m_width, info.m_height, float(info.m_duration), float(duration().toDouble()), m_activeSourceBuffers.size()));
+				info.m_duration = duration().toFloat(); //! client provides us with the actual duration!
+				info.m_isDownloadable = false;
+				info.m_isMediaSource = true;
+
+				D(dprintf("onSourceBufferInitialized: src %p dur %f %d %d\n", sourceBufferPrivate.get(), minfo.m_frequency, minfo.m_width));
+			}
+
+			D(dprintf("onSourceBufferInitialized: freq %d w %d h %d duration %f clientDuration %f asb %d\n", info.m_frequency, info.m_width, info.m_height, float(info.m_duration), float(duration().toDouble()), m_activeSourceBuffers.size()));
+
+			if (!m_initialized)
+			{
 				m_initialized = true;
 				if (m_player)
 					m_player->accInitialized(info);
+			}
+			else if (m_player)
+			{
+				m_player->accUpdated(info);
 			}
 
 			if (!m_clientSeekDone && m_seeking)
