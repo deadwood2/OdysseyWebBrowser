@@ -83,6 +83,7 @@ public:
 	MediaPlayer::MovieLoadType movieLoadType() const final;
 
 	void accInitialized(MediaPlayerMorphOSInfo info) override;
+	void accUpdated(MediaPlayerMorphOSInfo info) override;
 	void accSetNetworkState(WebCore::MediaPlayerEnums::NetworkState state) override;
 	void accSetReadyState(WebCore::MediaPlayerEnums::ReadyState state) override;
 	void accSetBufferLength(double buffer) override;
