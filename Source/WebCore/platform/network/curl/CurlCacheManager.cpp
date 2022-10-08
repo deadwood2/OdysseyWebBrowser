@@ -223,7 +223,7 @@ void CurlCacheManager::didReceiveResponse(ResourceHandle& job, ResourceResponse&
 
         // Exclude HEAD, etc requests from being cached. We still want them to invalidate the
         // caches, though.
-        if (job.firstRequest().httpMethod() != "GET" && job.firstRequest().httpMethod() != "POST")
+        if (job.firstRequest().httpMethod() != "GET")
             return;
 
         auto cacheEntry = std::make_unique<CurlCacheEntry>(url, &job, m_cacheDir);
