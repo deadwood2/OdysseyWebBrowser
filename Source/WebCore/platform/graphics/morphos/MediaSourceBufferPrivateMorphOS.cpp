@@ -1109,6 +1109,12 @@ void MediaSourceBufferPrivateMorphOS::reinitialize(bool success,
 	double duration = 0.0;
 	uint32_t decoderIndexMask = 0;
 
+    if (m_reader->numDecoders() != m_numDecoders) {
+        dprintf("[MS] Warning: stream changed # of decoders from %d to %d. Please report this error on morph.zone forums along with the URL.");
+    }
+
+    m_numDecoders = m_reader->numDecoders();
+
 	for (int i = 0; i < m_numDecoders; i++)
 	{
 		ac_stream_info info;
