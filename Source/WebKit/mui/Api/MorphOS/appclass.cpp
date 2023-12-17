@@ -818,7 +818,7 @@ String BufferFile(const char* url)
 	OWBFile *configFile = new OWBFile(path);
     if (!configFile)
         return String();
-	if (configFile->open('r') == -1)
+    if (configFile->open('r') == -1)
 	{
         delete configFile;
         return String();
@@ -986,7 +986,7 @@ DEFNEW
 		else
 		{
 			CoerceMethod(cl, obj, OM_DISPOSE);
-			return NULL;
+			return (ULONG)0;
 		}
 
 		/* Load settings */
@@ -1040,12 +1040,12 @@ DEFNEW
 
 		if(restoremode == MV_OWBApp_SessionRestore_Off || DoMethod(app, MM_OWBApp_RestoreSession, restoremode == MV_OWBApp_SessionRestore_Ask ? TRUE : FALSE, FALSE) == FALSE)
 		{
-			char *starturl = (char *) GetTagData(MA_OWBBrowser_URL, NULL, msg->ops_AttrList);
+			char *starturl = (char *) GetTagData(MA_OWBBrowser_URL, 0, msg->ops_AttrList);
 			DoMethod(app, MM_OWBApp_AddWindow, (starturl && starturl[0]) ? starturl : data->startpage, FALSE, NULL, TRUE, NULL, FALSE);
 		}
 		else
 		{
-			char *starturl = (char *) GetTagData(MA_OWBBrowser_URL, NULL, msg->ops_AttrList);
+			char *starturl = (char *) GetTagData(MA_OWBBrowser_URL, 0, msg->ops_AttrList);
 			if(starturl && starturl[0])
 			{
 				DoMethod(app, MM_OWBApp_AddBrowser, NULL, starturl, FALSE, NULL, FALSE, FALSE, TRUE);

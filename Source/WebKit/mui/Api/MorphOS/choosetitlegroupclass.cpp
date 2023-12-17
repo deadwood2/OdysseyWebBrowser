@@ -51,7 +51,7 @@ DEFNEW
 {
 	Object *bt_ok, *bt_cancel, *str, *ch_menu;
 
-	char *title = (char *) GetTagData(MA_OWB_Title, NULL, msg->ops_AttrList);
+	char *title = (char *) GetTagData(MA_OWB_Title, 0, msg->ops_AttrList);
 
 	obj = (Object *) DoSuperNew(cl, obj,
         MUIA_Background, MUII_RequesterBack,
@@ -85,7 +85,7 @@ DEFNEW
 		data->str = str;
 		data->ch_menu = ch_menu;
 		data->title = title;
-		data->url = (char *) GetTagData(MA_OWB_URL, NULL, msg->ops_AttrList),
+		data->url = (char *) GetTagData(MA_OWB_URL, 0, msg->ops_AttrList),
 		data->quicklink = (ULONG) GetTagData(MA_ChooseTitleGroup_QuickLink, 0, msg->ops_AttrList),
 
 		set(data->str, MUIA_CycleChain, 1);

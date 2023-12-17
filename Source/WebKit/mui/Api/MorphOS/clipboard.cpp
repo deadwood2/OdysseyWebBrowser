@@ -435,7 +435,7 @@ static long putbody( struct IFFHandle  *iff,
 
     /* Write out a BODY chunk header */
 
-	if ( (error = PushChunk( iff, NULL, ID_BODY, IFFSIZE_UNKNOWN ) ) )
+	if ( (error = PushChunk( iff, 0, ID_BODY, IFFSIZE_UNKNOWN ) ) )
 	{
 		free( planarData );
 		return ( error );

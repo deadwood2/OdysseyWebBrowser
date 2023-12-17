@@ -140,7 +140,7 @@ DEFNEW
 
 	if(labels == NULL)
 	{
-		return NULL;
+		return (IPTR)0;
 	}
 
 	obj = (Object *) DoSuperNew(cl, obj,

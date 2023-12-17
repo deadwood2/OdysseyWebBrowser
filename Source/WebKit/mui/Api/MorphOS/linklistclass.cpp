@@ -97,7 +97,7 @@ DEFNEW
 	{
 		GETDATA;
 		data->cMenu=NULL;
-		data->Drop=NULL;
+		data->Drop=0;
 	}
 	return ((ULONG)obj);
 }

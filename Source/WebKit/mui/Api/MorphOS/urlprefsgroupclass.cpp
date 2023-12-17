@@ -581,7 +581,7 @@ DEFSMETHOD(URLPrefsGroup_UserAgentForURL)
 		}
 	}
 
-	return NULL;
+	return (IPTR)0;
 }
 
 DEFSMETHOD(URLPrefsGroup_CookiePolicyForURLAndName)

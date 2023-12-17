@@ -55,9 +55,9 @@ struct Data
 
 DEFNEW
 {
-	Object *source                     = (Object *) GetTagData(MA_ColorChooserPopup_Source, NULL, msg->ops_AttrList);
-	ColorChooserController *controller = (ColorChooserController *) GetTagData(MA_ColorChooserPopup_Controller, NULL, msg->ops_AttrList);
-	Color *color                       = (Color *) GetTagData(MA_ColorChooserPopup_InitialColor, NULL, msg->ops_AttrList);
+	Object *source                     = (Object *) GetTagData(MA_ColorChooserPopup_Source, 0, msg->ops_AttrList);
+	ColorChooserController *controller = (ColorChooserController *) GetTagData(MA_ColorChooserPopup_Controller, 0, msg->ops_AttrList);
+	Color *color                       = (Color *) GetTagData(MA_ColorChooserPopup_InitialColor, 0, msg->ops_AttrList);
 
 	if(controller)
 	{

@@ -334,7 +334,7 @@ DEFNEW
 	Object *menustrip;
 	//APTR n, m;
 	char id = 'W'; // Sigh, let's stay compatible with previous release, now the mistake is made :)
-	Object *initialbrowser = (Object *) GetTagData(MA_OWBWindow_InitialBrowser, NULL, msg->ops_AttrList);
+	Object *initialbrowser = (Object *) GetTagData(MA_OWBWindow_InitialBrowser, 0, msg->ops_AttrList);
 	struct windownode *node = (struct windownode *) malloc(sizeof(struct windownode));
 
 	ULONG showseparators = getv(app, MA_OWBApp_ShowSeparators);
@@ -497,9 +497,9 @@ DEFNEW
 		else
 		{
 			DoMethod(obj, MM_OWBWindow_AddBrowser,
-					 (char *) GetTagData(MA_OWBBrowser_URL, NULL, msg->ops_AttrList),
-					 (ULONG)  GetTagData(MA_OWBBrowser_IsFrame, NULL, msg->ops_AttrList),
-					 (APTR)   GetTagData(MA_OWBBrowser_SourceView, NULL, msg->ops_AttrList),
+					 (char *) GetTagData(MA_OWBBrowser_URL, 0, msg->ops_AttrList),
+					 (ULONG)  GetTagData(MA_OWBBrowser_IsFrame, 0, msg->ops_AttrList),
+					 (APTR)   GetTagData(MA_OWBBrowser_SourceView, 0, msg->ops_AttrList),
 					 FALSE,
 					 (ULONG)  GetTagData(MA_OWBBrowser_PrivateBrowsing, FALSE, msg->ops_AttrList),
 					 TRUE);
@@ -549,7 +549,7 @@ DEFDISP
 	{
 		data->abort_completion = TRUE;
 		waitForThreadCompletion(data->completion_thread);
-		data->completion_thread = NULL;
+		data->completion_thread = 0;
 	}
 
 	DoMethod((Object *) getv(app, MA_OWBApp_BookmarkWindow), MM_Bookmarkgroup_UnRegisterQLGroup, data->fastlinkgroup);
@@ -2925,9 +2925,9 @@ DEFSMETHOD(OWBWindow_JavaScriptPrompt)
         End;
 
     if (!req_wnd)
-        return NULL;
+        return (IPTR)0;
 
-	DoMethod(_app(obj), OM_ADDMEMBER, req_wnd);
+    DoMethod(_app(obj), OM_ADDMEMBER, req_wnd);
 
     DoMethod(bt_cancel, MUIM_Notify, MUIA_Pressed, FALSE,
 		_app(obj), 2, MUIM_Application_ReturnID, 1);

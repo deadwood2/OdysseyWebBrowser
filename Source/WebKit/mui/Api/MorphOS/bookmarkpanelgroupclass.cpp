@@ -156,7 +156,7 @@ DEFNEW
 
 	if (!obj)
 	{
-		return (NULL);
+		return (IPTR)0;
 	}
 
 	GETDATA;

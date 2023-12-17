@@ -152,7 +152,7 @@ DEFNEW
 		data->ch_showallmatches = ch_showallmatches;
 		data->txt_notfound      = txt_notfound;
 
-		data->obj_target = (Object *)GetTagData(MA_FindText_Target, NULL, INITTAGS);
+		data->obj_target = (Object *)GetTagData(MA_FindText_Target, 0, INITTAGS);
 
 		if(bt_prev) set(bt_prev, MUIA_Weight, 0);
 		if(bt_next)	set(bt_next, MUIA_Weight, 0);

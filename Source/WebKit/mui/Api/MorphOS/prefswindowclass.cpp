@@ -34,7 +34,7 @@
 #include <proto/intuition.h>
 #include <proto/utility.h>
 
-#include <strings.h>
+#include <string.h>
 #include <stdlib.h>
 
 #include <curl/curl.h>
@@ -234,7 +234,7 @@ STATIC CONST int proxy_values[] =
     CURLPROXY_SOCKS4A,
     CURLPROXY_SOCKS5,
     CURLPROXY_SOCKS5_HOSTNAME,
-    NULL,
+    0,
 };
 
 struct useragent_pair

@@ -167,7 +167,7 @@ Vector<String> AutofillBackingStore::get(const String& name, const String& value
     if (name.isEmpty() || valueHint.isEmpty() || !m_getStatement)
         return candidates;
 
-	String value = "%" + valueHint + "%";
+    String value = "%" + valueHint + "%";
     m_getStatement->bindText(1, name);
     m_getStatement->bindText(2, value);
 

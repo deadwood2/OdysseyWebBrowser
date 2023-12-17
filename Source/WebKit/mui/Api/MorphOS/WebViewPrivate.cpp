@@ -128,7 +128,7 @@ void MorphOSWebNotificationDelegate::progressNotification(WebFrame* webFrame)
     if (webView->mainFrame() != webFrame)
         return;
 
-	BalWidget* widget = webView->viewWindow();
+    BalWidget* widget = webView->viewWindow();
 
 	if (widget && widget->browser)
 	{
@@ -259,7 +259,7 @@ void MorphOSWebFrameDelegate::didStartProvisionalLoad(WebFrame* webFrame)
     if (webView->mainFrame() != webFrame)
         return;
 
-	BalWidget* widget = webView->viewWindow();
+    BalWidget* widget = webView->viewWindow();
 
 	if (widget && widget->browser)
 	{
@@ -303,7 +303,7 @@ void MorphOSWebFrameDelegate::didCommitLoad(WebFrame* webFrame)
     if (webView->mainFrame() != webFrame)
         return;
 
-	BalWidget* widget = webView->viewWindow();
+    BalWidget* widget = webView->viewWindow();
 
 	if (widget && widget->browser)
 	{
@@ -339,7 +339,7 @@ void MorphOSWebFrameDelegate::didFinishLoad(WebFrame* webFrame)
     if (mainFrame != webFrame)
         return;
 
-	if(webView->scheduledScrollOffset() != IntPoint(0, 0))
+    if(webView->scheduledScrollOffset() != IntPoint(0, 0))
 	{
 		webView->scrollBy(webView->scheduledScrollOffset());
 		webView->setScheduledScrollOffset(IntPoint(0, 0));
@@ -409,7 +409,7 @@ void MorphOSWebFrameDelegate::didFailLoad(WebFrame* webFrame, WebError* error)
     if (mainFrame != webFrame)
         return;
 
-	if (widget && widget->browser)
+    if (widget && widget->browser)
 	{
 		SetAttrs(widget->browser,
 		         MA_OWBBrowser_Loading, FALSE,
@@ -541,7 +541,7 @@ void MorphOSWebFrameDelegate::didDisplayInsecureContent(WebFrame* webFrame)
     if (webView->mainFrame() != webFrame)
         return;
 
-	BalWidget* widget = webView->viewWindow();
+    BalWidget* widget = webView->viewWindow();
 
 	if (widget && widget->browser)
 	{
@@ -560,7 +560,7 @@ void MorphOSWebFrameDelegate::didRunInsecureContent(WebFrame* webFrame, WebSecur
     if (webView->mainFrame() != webFrame)
         return;
 
-	BalWidget* widget = webView->viewWindow();
+    BalWidget* widget = webView->viewWindow();
 
 	if (widget && widget->browser)
 	{
@@ -639,44 +639,44 @@ MorphOSResourceLoadDelegate::~MorphOSResourceLoadDelegate()
 void MorphOSResourceLoadDelegate::identifierForInitialRequest(WebView* webView, WebMutableURLRequest* request, WebDataSource* dataSource, unsigned long identifier)
 {
 	const char *url = request->_URL();
-	kprintf("MorphOSResourceLoadDelegate::identifierForInitialRequest [%d - %s ]\n", identifier, url);
+	kprintf("MorphOSResourceLoadDelegate::identifierForInitialRequest [%ld - %s ]\n", identifier, url);
 	free((char *)url);
 }
 
 WebMutableURLRequest* MorphOSResourceLoadDelegate::willSendRequest(WebView* webView, unsigned long identifier, WebMutableURLRequest* request, WebURLResponse* redirectResponse, WebDataSource* dataSource)
 {
-	kprintf("MorphOSResourceLoadDelegate::willSendRequest(%d)\n", identifier);
+	kprintf("MorphOSResourceLoadDelegate::willSendRequest(%ld)\n", identifier);
     return request;
 }
 
 void MorphOSResourceLoadDelegate::didFinishLoadingFromDataSource(WebView* webView, unsigned long identifier, WebDataSource* dataSource)
 {
-	kprintf("MorphOSResourceLoadDelegate::didFinishLoadingFromDataSource(%d)\n", identifier);
+	kprintf("MorphOSResourceLoadDelegate::didFinishLoadingFromDataSource(%ld)\n", identifier);
 }
 
 void MorphOSResourceLoadDelegate::didFailLoadingWithError(WebView* webView, unsigned long identifier, WebError* error, WebDataSource* dataSource)
 {
-	kprintf("MorphOSResourceLoadDelegate::didFailLoadingWithError(%d)\n", identifier);
+	kprintf("MorphOSResourceLoadDelegate::didFailLoadingWithError(%ld)\n", identifier);
 }
 
 void MorphOSResourceLoadDelegate::didReceiveResponse(WebView *webView, unsigned long identifier, WebURLResponse *response, WebDataSource *dataSource)
 {
-	kprintf("MorphOSResourceLoadDelegate::didReceiveResponse(%d)\n", identifier);
+	kprintf("MorphOSResourceLoadDelegate::didReceiveResponse(%ld)\n", identifier);
 }
 
 void MorphOSResourceLoadDelegate::didReceiveContentLength(WebView *webView, unsigned long identifier, unsigned length, WebDataSource *dataSource)
 {
-	kprintf("MorphOSResourceLoadDelegate::didReceiveContentLength(%d)\n", identifier);
+	kprintf("MorphOSResourceLoadDelegate::didReceiveContentLength(%ld)\n", identifier);
 }
 
 void MorphOSResourceLoadDelegate::didReceiveAuthenticationChallenge(WebView *webView, unsigned long identifier, WebURLAuthenticationChallenge *challenge, WebDataSource *dataSource)
 {
-	kprintf("MorphOSResourceLoadDelegate::didReceiveAuthenticationChallenge(%d)\n", identifier);
+	kprintf("MorphOSResourceLoadDelegate::didReceiveAuthenticationChallenge(%ld)\n", identifier);
 }
 
 void MorphOSResourceLoadDelegate::didCancelAuthenticationChallenge(WebView *webView, unsigned long identifier, WebURLAuthenticationChallenge *challenge, WebDataSource *dataSource)
 {
-	kprintf("MorphOSResourceLoadDelegate::didCancelAuthenticationChallenge(%d)\n", identifier);
+	kprintf("MorphOSResourceLoadDelegate::didCancelAuthenticationChallenge(%ld)\n", identifier);
 }
 
 void MorphOSResourceLoadDelegate::plugInFailedWithError(WebView *webView, WebError *error, WebDataSource *dataSource)
@@ -739,7 +739,7 @@ BalRectangle WebViewPrivate::onExpose(BalEventExpose event)
 	{
 		bool coalesce = shouldCoalesce(rect);
 
-		if(renderBenchmark) { kprintf("dirtyRegion [%d %d %d %d] rects %d coalesce %d\n", rect.x(), rect.y(), rect.width(), rect.height(), m_dirtyRegions.size(), coalesce); } //
+		if(renderBenchmark) { kprintf("dirtyRegion [%d %d %d %d] rects %ld coalesce %d\n", rect.x(), rect.y(), rect.width(), rect.height(), m_dirtyRegions.size(), coalesce); } //
 
 		if(coalesce)
 		{
@@ -1193,7 +1193,7 @@ bool WebViewPrivate::onKeyDown(BalEventKey event)
 #if OS(MORPHOS)
 				kprintf("\tmemory allocated by allocator: %d\n", WTF::memory_consumption);
 #endif
-				kprintf("\theap: used %d - total %d\n", JSDOMWindow::commonVM().heap.size(), JSDOMWindow::commonVM().heap.capacity());
+				kprintf("\theap: used %ld - total %ld\n", JSDOMWindow::commonVM().heap.size(), JSDOMWindow::commonVM().heap.capacity());
 
 				kprintf("\nPruning caches and running Garbage collector.\n");
 				
@@ -1428,7 +1428,7 @@ void WebViewPrivate::updateView(BalWidget *widget, IntRect rect, bool sync)
     if (!widget || !widget->window || rect.isEmpty())
         return;
 
-	rect.intersect(m_rect);
+    rect.intersect(m_rect);
 
 	DoMethod(widget->browser, MM_OWBBrowser_Update, &rect, sync);
 }

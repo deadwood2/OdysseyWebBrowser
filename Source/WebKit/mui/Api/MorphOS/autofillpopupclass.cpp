@@ -52,9 +52,9 @@ struct Data
 DEFNEW
 {
 	Object *lv_suggestions;
-	Object *source              = (Object *) GetTagData(MA_AutofillPopup_Source, NULL, msg->ops_AttrList);
-	IntRect *rect               = (IntRect *) GetTagData(MA_AutofillPopup_Rect, NULL, msg->ops_AttrList);
-	Vector<String> *suggestions = (Vector<String> *) GetTagData(MA_AutofillPopup_Suggestions, NULL, msg->ops_AttrList);
+	Object *source              = (Object *) GetTagData(MA_AutofillPopup_Source, 0, msg->ops_AttrList);
+	IntRect *rect               = (IntRect *) GetTagData(MA_AutofillPopup_Rect, 0, msg->ops_AttrList);
+	Vector<String> *suggestions = (Vector<String> *) GetTagData(MA_AutofillPopup_Suggestions, 0, msg->ops_AttrList);
 	struct Rect32 r = { _mleft(source) + rect->x(), _mtop(source) + rect->y() + rect->height(), _mleft(source) + rect->maxX(), _mtop(source) + rect->y() + rect->height() + 100 };
 
 	obj = (Object *) DoSuperNew(cl, obj,

@@ -273,7 +273,7 @@ const char* WebFrame::name()
     if (!frameName.isEmpty())
         return strdup(frameName.string().utf8().data());
 
-	return strdup("");
+    return strdup("");
 }
 
 void WebFrame::setName(const char* frameName)
@@ -595,7 +595,7 @@ const char* WebFrame::selectedString()
     if (!coreFrame)
         return "";
 
-	String text = coreFrame->displayStringModifiedByEncoding(coreFrame->editor().selectedText());
+    String text = coreFrame->displayStringModifiedByEncoding(coreFrame->editor().selectedText());
     return text.utf8().data();
 }
 
@@ -662,7 +662,7 @@ bool WebFrame::allowsFollowingLink(const char* url) const
     if (!frame)
         return false;
 
-	return frame->document()->securityOrigin()->canDisplay(URL(URL(), url));
+    return frame->document()->securityOrigin()->canDisplay(URL(URL(), url));
 }
 
 /*HRESULT WebFrame::elementWithName(BSTR name, IDOMElement* form, IDOMElement** element)
@@ -1223,10 +1223,11 @@ static HTMLInputElement* inputElementFromDOMElement(DOMElement* element)
     if (!element)
         return 0;
 
-        //FIXME : fix this conversion
-        Element* ele = static_cast<WebCore::Element*>(element->coreElement());
-        if (ele && is<HTMLInputElement>(ele))
-            return downcast<HTMLInputElement>(ele);
+    //FIXME : fix this conversion
+    Element* ele = static_cast<WebCore::Element*>(element->coreElement());
+    if (ele && is<HTMLInputElement>(ele))
+        return downcast<HTMLInputElement>(ele);
+
     return 0;
 }
 

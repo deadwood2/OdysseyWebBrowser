@@ -874,7 +874,7 @@ bool WebView::defaultActionOnFocusedNode(BalEventKey event)
     Frame* frame = &(page()->focusController().focusedOrMainFrame());
     if (!frame)
         return false;
-	WebCore::Node* focusedNode = frame->document()->focusedElement();
+    WebCore::Node* focusedNode = frame->document()->focusedElement();
     if (!focusedNode)
         return false;
 
@@ -1841,7 +1841,7 @@ String buffer(const char* url)
     } else
         path = url;
 
-	OWBFile *configFile = new OWBFile(path);
+    OWBFile *configFile = new OWBFile(path);
     if (!configFile)
         return String();
     if (configFile->open('r') == -1) {
@@ -1978,7 +1978,7 @@ const char* WebView::selectedText()
     if (!focusedFrame)
         return NULL;
 
-	return strdup(focusedFrame->editor().selectedText().utf8().data());
+    return strdup(focusedFrame->editor().selectedText().utf8().data());
 }
 
 void WebView::centerSelectionInVisibleArea()
@@ -1987,7 +1987,7 @@ void WebView::centerSelectionInVisibleArea()
     if (!coreFrame)
         return ;
 
-	coreFrame->selection().revealSelection(ScrollAlignment::alignCenterAlways);
+    coreFrame->selection().revealSelection(ScrollAlignment::alignCenterAlways);
 }
 
 WebDragOperation WebView::dragEnter(WebDragData* webDragData, int identity,

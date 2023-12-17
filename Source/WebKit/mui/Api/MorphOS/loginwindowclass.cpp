@@ -59,10 +59,10 @@ DEFNEW
 	STRPTR realm, host, suggested_login, suggested_password;
 	char message[1024];
 
-	host  = (STRPTR) GetTagData(MA_LoginWindow_Host, NULL, msg->ops_AttrList);
-	realm = (STRPTR) GetTagData(MA_LoginWindow_Realm, NULL, msg->ops_AttrList);
-	suggested_login    = (STRPTR) GetTagData(MA_LoginWindow_Username, NULL, msg->ops_AttrList);
-	suggested_password = (STRPTR) GetTagData(MA_LoginWindow_Password, NULL, msg->ops_AttrList);
+	host  = (STRPTR) GetTagData(MA_LoginWindow_Host, 0, msg->ops_AttrList);
+	realm = (STRPTR) GetTagData(MA_LoginWindow_Realm, 0, msg->ops_AttrList);
+	suggested_login    = (STRPTR) GetTagData(MA_LoginWindow_Username, 0, msg->ops_AttrList);
+	suggested_password = (STRPTR) GetTagData(MA_LoginWindow_Password, 0, msg->ops_AttrList);
 
 	snprintf(message, sizeof(message), GSI(MSG_LOGINWINDOW_MESSAGE), realm, host);
 

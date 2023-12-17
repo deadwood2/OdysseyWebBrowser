@@ -439,7 +439,7 @@ void WebDownload::start(bool quiet)
         return;
 
 	// If quiet option is passed explicitely, use it
-	if(quiet)
+    if(quiet)
 	{
 		m_priv->quiet = quiet;
 	}

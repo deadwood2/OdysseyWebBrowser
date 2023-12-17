@@ -396,7 +396,7 @@ DEFNEW
 
 	if(obj)
 	{
-		char *url = (char *) GetTagData(MA_OWBBrowser_URL, NULL, msg->ops_AttrList);
+		char *url = (char *) GetTagData(MA_OWBBrowser_URL, 0, msg->ops_AttrList);
 		GETDATA;
 
 		data->added = FALSE;
@@ -411,9 +411,9 @@ DEFNEW
 		data->reload_available  = TRUE;
 		data->stop_available    = FALSE;
 
-		data->source_view = (APTR)     GetTagData(MA_OWBBrowser_SourceView, NULL, msg->ops_AttrList);
-		data->is_frame    = (ULONG)    GetTagData(MA_OWBBrowser_IsFrame,    NULL, msg->ops_AttrList);
-		data->titleobj   = (Object *) GetTagData(MA_OWBBrowser_TitleObj,   NULL, msg->ops_AttrList);
+		data->source_view = (APTR)     GetTagData(MA_OWBBrowser_SourceView, 0, msg->ops_AttrList);
+		data->is_frame    = (ULONG)    GetTagData(MA_OWBBrowser_IsFrame,    0, msg->ops_AttrList);
+		data->titleobj   = (Object *) GetTagData(MA_OWBBrowser_TitleObj,   0, msg->ops_AttrList);
 		set(data->titleobj, MUIA_UserData, obj);
 		DoMethod(obj, MUIM_Notify, MA_OWBBrowser_Title, MUIV_EveryTime, data->titleobj, 3, MUIM_Set, MUIA_Text_Contents, MUIV_TriggerValue);
 
@@ -425,7 +425,7 @@ DEFNEW
 		data->view->app     = _app(obj);
 #endif
 
-		data->view->window  = (Object *) GetTagData(MA_OWBBrowser_Window, NULL, msg->ops_AttrList);
+		data->view->window  = (Object *) GetTagData(MA_OWBBrowser_Window, 0, msg->ops_AttrList);
 
 		/* Browser default settings (could be set at init from opener) */
 		data->settings.javascript      = JAVASCRIPT_DEFAULT;
@@ -3208,7 +3208,7 @@ DEFMMETHOD(CreateDragImage)
 		STRPTR url;
 
 		if (parent == NULL)
-			return NULL;
+			return (IPTR)0;
 
 		url = (STRPTR) getv(obj, MA_OWBBrowser_DragURL);
 

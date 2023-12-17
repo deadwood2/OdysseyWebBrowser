@@ -57,8 +57,8 @@ struct Data
 
 DEFNEW
 {
-	Object *source                        = (Object *) GetTagData(MA_DateTimeChooserPopup_Source, NULL, msg->ops_AttrList);
-	DateTimeChooserController *controller = (DateTimeChooserController *) GetTagData(MA_DateTimeChooserPopup_Controller, NULL, msg->ops_AttrList);
+	Object *source                        = (Object *) GetTagData(MA_DateTimeChooserPopup_Source, 0, msg->ops_AttrList);
+	DateTimeChooserController *controller = (DateTimeChooserController *) GetTagData(MA_DateTimeChooserPopup_Controller, 0, msg->ops_AttrList);
 
 	if(controller)
 	{

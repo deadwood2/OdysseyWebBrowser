@@ -176,7 +176,7 @@ DEFNEW
         }
 	}
 
-	if (!tmp.node) return (NULL);
+	if (!tmp.node) return (IPTR)0;
 
 	if ((tmp.node->alias) && (*tmp.node->alias!='\0'))
 	{
@@ -193,7 +193,7 @@ DEFNEW
 
 	tmp.title = (STRPTR)malloc(strlen(title)+1);
 
-	if (!tmp.title) return (NULL);
+	if (!tmp.title) return (IPTR)0;
 
 	strcpy(tmp.title,title);
 
