@@ -14,13 +14,6 @@ IPTR DoSuperNew(struct IClass *cl, Object *obj, ULONG tag1, ...)
     AROS_SLOWSTACKTAGS_POST
 }
 
-#include <zlib.h>
-/* This is a workaround for a weird linking problem where uncompress from zlib cannot be found */
-int __uncompress(Bytef *dest, uLongf *destLen, const Bytef *source, uLong sourceLen)
-{
-    return uncompress(dest, destLen, source, sourceLen);
-}
-
 #include <stdlib.h>
 APTR AllocVecTaskPooled(ULONG byteSize)
 {
