@@ -67,7 +67,7 @@ if (MSVC)
 endif ()
 
 if (${PORT} STREQUAL "MUI")
-    add_custom_target(builddate COMMAND date +'%e.%m.%Y' | sed 's/\\\(.*\\\)/\#define DATE \\"\\1\\"/g' > ${WEBKIT_DIR}/mui/Api/MorphOS/builddate.h)
-    add_dependencies(WebKit builddate)
+    string(TIMESTAMP BUILD_DATE "%d.%m.%Y")
+    add_definitions(-DOWB_BUILD_DATE="${BUILD_DATE}")
 endif ()
 
