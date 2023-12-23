@@ -88,8 +88,7 @@ tags
 .cproject
 .settings
 
-cross-build
-/Source/WebKit/mui/Api/MorphOS/builddate.h
+cross-build-i386
 
 # Ignore YouCompleteMe symlinks
 .ycm_extra_conf.py
