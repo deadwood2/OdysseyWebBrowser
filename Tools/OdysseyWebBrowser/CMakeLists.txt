@@ -41,7 +41,7 @@ set(OdysseyWebBrowser_LIBRARIES
     -lavutil
     -lswresample
     -lswscale
-    -lz.static
+    ${ZLIB_LIBRARIES}
 )
 
 include_directories(${OdysseyWebBrowser_INCLUDE_DIRECTORIES})

@@ -54,6 +54,7 @@ main ()
         -DCAIRO_INCLUDE_DIRS=$SDK_DIR/include/cairo/ \
         -DFREETYPE_INCLUDE_DIRS=$SDK_DIR/include/freetype/ \
         -DLIBXML2_INCLUDE_DIR=$SDK_DIR/include/libxml2/ \
+        -DZLIB_LIBRARIES=$SDK_DIR/lib/libz.a \
        ..
 }
 
