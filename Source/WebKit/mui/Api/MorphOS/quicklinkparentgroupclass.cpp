@@ -293,7 +293,7 @@ DEFNEW
 		data->hidden=FALSE;
 		doset(obj, data, msg->ops_AttrList);
 	}
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFDISP

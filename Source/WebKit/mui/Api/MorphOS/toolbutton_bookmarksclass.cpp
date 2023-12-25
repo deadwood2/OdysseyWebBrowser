@@ -54,7 +54,7 @@ DEFNEW
 			TAG_MORE, INITTAGS,
 			TAG_DONE);
 
-	return (ULONG)obj;
+	return (IPTR)obj;
 }
 
 BEGINMTABLE

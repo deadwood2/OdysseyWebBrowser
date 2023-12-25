@@ -105,7 +105,7 @@ static void cycles_init(void)
 		STRPTR *current = (STRPTR *)*ptr;
 		while(*current)
 		{
-			*current = (STRPTR)GSI((ULONG)*current);
+			*current = (STRPTR)GSI((IPTR)*current);
 			current++;
 		}
 		ptr++;
@@ -577,7 +577,7 @@ DEFSMETHOD(URLPrefsGroup_UserAgentForURL)
 
 		if(re.match(msg->url) >=0)
 		{
-			return (ULONG) get_user_agent_strings()[un->settings.useragent];
+			return (IPTR) get_user_agent_strings()[un->settings.useragent];
 		}
 	}
 

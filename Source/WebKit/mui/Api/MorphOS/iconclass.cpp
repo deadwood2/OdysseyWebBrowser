@@ -71,7 +71,7 @@ STATIC VOID doset(struct Data *data, APTR obj, struct TagItem *taglist)
 
 	while ((tag = NextTagItem(&tstate)) != NULL)
 	{
-		ULONG tag_data = tag->ti_Data;
+		IPTR tag_data = tag->ti_Data;
 
 		switch (tag->ti_Tag)
 		{

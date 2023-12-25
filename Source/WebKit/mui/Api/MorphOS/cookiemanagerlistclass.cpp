@@ -83,7 +83,7 @@ MUI_HOOK(cookiemanagerlisttree_constructfunc, APTR pool, APTR t)
 		entry->session = tempentry->session;
 	}
 
-	return (ULONG) (entry);
+	return (IPTR) (entry);
 }
 
 MUI_HOOK(cookiemanagerlisttree_destructfunc, APTR pool, APTR t)
@@ -192,7 +192,7 @@ DEFNEW
 		TAG_MORE, INITTAGS
 	);
 
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFDISP
@@ -263,7 +263,7 @@ DEFMMETHOD(ContextMenuBuild)
 		if (item) DoMethod(data->cMenu, MUIM_Family_AddTail, item);
 
 	}
-	return (ULONG)data->cMenu;
+	return (IPTR)data->cMenu;
 }
 
 /***********************************************************************/

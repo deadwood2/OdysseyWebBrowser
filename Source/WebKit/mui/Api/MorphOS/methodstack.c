@@ -195,7 +195,9 @@ void methodstack_push(APTR obj, ULONG cnt, ...)
 			i++;
 		}
 
-		if (SysBase->ThisTask == (APTR)mstask)
+        struct Task *thisTask = FindTask(NULL);
+
+		if (thisTask == (APTR)mstask)
 		{
 			methodstack_check();
 			DoMethodA(obj, (Msg)&pm->m[0]);
@@ -232,7 +234,7 @@ ULONG methodstack_push_sync(APTR obj, ULONG cnt, ...)
 
 	if ((pm = AllocMem(size, MEMF_ANY)))
 	{
-		struct Process *thisproc = (APTR)SysBase->ThisTask;
+		struct Process *thisproc = (struct Process *)FindTask(NULL);
 		struct MsgPort *replyport = NULL;
 		ULONG i = 0;
 

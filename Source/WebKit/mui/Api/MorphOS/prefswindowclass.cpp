@@ -351,7 +351,7 @@ static void cycles_init(void)
 		STRPTR *current = (STRPTR *)*ptr;
 		while(*current)
 		{
-			*current = (STRPTR)GSI((ULONG)*current);
+			*current = (STRPTR)GSI((IPTR)*current);
 			current++;
 		}
 		ptr++;
@@ -1482,7 +1482,7 @@ DEFGET
 		case MA_OWBApp_TextEncoding:
 		{
 			ULONG i = getv(data->cy_textencoding, MUIA_Cycle_Active);
-			*msg->opg_Storage = (ULONG) textencodings[i];
+			*msg->opg_Storage = (IPTR) textencodings[i];
 		}
 		return TRUE;
 
@@ -1536,7 +1536,7 @@ DEFGET
 
 		case MA_OWBApp_UserAgent:
 		{
-			*msg->opg_Storage = (ULONG) useragents_strings[getv(data->cy_useragent, MUIA_Cycle_Active)];
+			*msg->opg_Storage = (IPTR) useragents_strings[getv(data->cy_useragent, MUIA_Cycle_Active)];
 		}
 		return TRUE;
 

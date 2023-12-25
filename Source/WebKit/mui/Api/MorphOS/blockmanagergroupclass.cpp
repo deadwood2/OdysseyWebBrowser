@@ -77,7 +77,7 @@ static void cycles_init(void)
 		STRPTR *current = (STRPTR *)*ptr;
 		while(*current)
 		{
-			*current = (STRPTR)GSI((ULONG)*current);
+			*current = (STRPTR)GSI((IPTR)*current);
 			current++;
 		}
 		ptr++;
@@ -139,7 +139,7 @@ DEFNEW
 		DoMethod(cy_type, MUIM_Notify, MUIA_Cycle_Active, MUIV_EveryTime, obj, 1, MM_BlockManagerGroup_Change);
 	}
 
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFDISP

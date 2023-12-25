@@ -1066,7 +1066,7 @@ struct MP_OWBWindow_Reload {
 
 struct MP_OWBWindow_MenuAction {
 	ULONG MethodID;
-	ULONG action;
+	IPTR  action;
 };
 
 struct MP_OWBWindow_UpdateTitle {

@@ -71,7 +71,7 @@ DEFNEW
 		GETDATA;
 		data->cmenu=NULL;
 	}
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFDISP
@@ -86,7 +86,7 @@ DEFDISP
 
 DEFMMETHOD(List_Construct)
 {
-	return (ULONG)msg->entry;
+	return (IPTR)msg->entry;
 }
 
 DEFMMETHOD(List_Destruct)
@@ -146,7 +146,7 @@ DEFMMETHOD(ContextMenuBuild)
 	            End;
 		}
 	}
-	return (ULONG)data->cmenu;
+	return (IPTR)data->cmenu;
 }
 
 DEFMMETHOD(ContextMenuChoice)

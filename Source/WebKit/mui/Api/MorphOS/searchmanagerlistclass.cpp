@@ -54,7 +54,7 @@ DEFNEW
 		TAG_MORE, INITTAGS
 	);
 
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFDISP
@@ -65,7 +65,7 @@ DEFDISP
 DEFMMETHOD(List_Construct)
 {
 	// Built by caller
-	return (ULONG)msg->entry;
+	return (IPTR)msg->entry;
 }
 
 DEFMMETHOD(List_Destruct)

@@ -81,7 +81,7 @@ DEFNEW
 		DoMethod(data->lv_suggestions, MUIM_Notify, MUIA_List_Active, MUIV_EveryTime, obj, 3, MM_AutofillPopup_DidSelect, MUIV_TriggerValue, FALSE);
 		DoMethod(data->lv_suggestions, MUIM_Notify, MUIA_List_DoubleClick, MUIV_EveryTime, obj, 3, MM_AutofillPopup_DidSelect, -1, TRUE);
 	}
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFDISP

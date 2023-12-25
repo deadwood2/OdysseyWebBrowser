@@ -90,7 +90,7 @@ DEFNEW
 		DoMethod(closebutton, MUIM_Notify, MUIA_Pressed, FALSE, MUIV_Notify_Window, 1, MM_OWBWindow_RemoveHistoryPanel);
 	}
 
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFDISP

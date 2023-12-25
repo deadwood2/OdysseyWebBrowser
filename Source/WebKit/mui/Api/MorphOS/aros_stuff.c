@@ -134,6 +134,9 @@ static void aros_trap_handler(ULONG trapNum, BYTE * p)
     /* NOTE: This changes private structure and might stop working when the structure changes! */
     crashlocation = (APTR)*((ULONG*)(p + 48));
     *((ULONG*)(p + 48)) = (ULONG)aros_crash_handler;
+#elif defined (__x86_64__)
+// FIXME
+(void)aros_crash_handler;
 #else
 #error program counter setting code missing for your architecture
 #endif

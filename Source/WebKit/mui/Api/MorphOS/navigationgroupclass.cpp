@@ -157,7 +157,7 @@ DEFNEW
 		set(obj, MA_OWBApp_ToolButtonType, type);
 	}
 
-	return (ULONG)obj;
+	return (IPTR)obj;
 }
 
 DEFSET

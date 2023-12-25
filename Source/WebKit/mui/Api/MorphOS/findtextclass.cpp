@@ -167,7 +167,7 @@ DEFNEW
 		if(bt_close) DoMethod(bt_close, MUIM_Notify, MUIA_Pressed, FALSE, obj, 3, MUIM_Set, MUIA_ShowMe, FALSE);
 	}
 
-	return (ULONG)obj;
+	return (IPTR)obj;
 }
 
 DEFSET

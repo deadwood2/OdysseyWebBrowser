@@ -179,7 +179,7 @@ DEFNEW
 		data->cmenu=NULL;
 		doset(obj, data, msg->ops_AttrList);
 	}
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFDISP
@@ -262,7 +262,7 @@ DEFSET
 
 DEFMMETHOD(List_Construct)
 {
-	return (ULONG)msg->entry;
+	return (IPTR)msg->entry;
 }
 
 DEFMMETHOD(List_Destruct)
@@ -279,7 +279,7 @@ DEFMMETHOD(List_Display)
 	{
 		STATIC char buf0[512];
 
-		if( (ULONG)msg->array[-1] % 2 )
+		if( (IPTR)msg->array[-1] % 2 )
 		{
 #if !OS(AROS)
 			/* This code overrides internal data structures and causes a crash on AROS */
@@ -476,7 +476,7 @@ DEFMMETHOD(ContextMenuBuild)
 	            End;
 		}
 	}
-	return (ULONG)data->cmenu;
+	return (IPTR)data->cmenu;
 }
 
 DEFMMETHOD(ContextMenuChoice)

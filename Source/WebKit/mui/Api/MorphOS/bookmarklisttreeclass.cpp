@@ -128,7 +128,7 @@ MUI_HOOK(bookmarklisttree_constructfunc, APTR pool, APTR t)
 		}
 	}
 	//kprintf( "End of construct\n");
-	return (ULONG) (td);
+	return (IPTR) (td);
 }
 
 MUI_HOOK(bookmarklisttree_destructfunc, APTR pool, APTR t)
@@ -259,7 +259,7 @@ MUI_HOOK(bookmarklisttree_displayfunc, APTR a, APTR t)
 			array[1] = (td->address) ? td->address : (STRPTR)"";
 		}
 
-		if( (ULONG)array[ -1 ] % 2 )
+		if( (IPTR)array[ -1 ] % 2 )
 		{
 #if !OS(AROS)
 			/* This code overrides internal data structures and causes a crash on AROS */
@@ -308,7 +308,7 @@ DEFNEW
 		data->ehnode.ehn_Flags    = MUI_EHF_GUIMODE;
 
 	}
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFDISP
@@ -380,7 +380,7 @@ DEFGET
 				url = current->address;
 			}
 
-			*msg->opg_Storage = (ULONG) url;
+			*msg->opg_Storage = (IPTR) url;
 		}
 		return TRUE;
 	}
@@ -659,7 +659,7 @@ DEFMMETHOD(ContextMenuBuild)
 		if (item) DoMethod(data->cMenu, MUIM_Family_AddTail, item);
  
 	}
-	return (ULONG)data->cMenu;
+	return (IPTR)data->cMenu;
 }
 
 /***********************************************************************/

@@ -57,12 +57,12 @@ DEFNEW
 	if (obj)
 	{
 	}
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFMMETHOD(List_Construct)
 {
-	return (ULONG)msg->entry;
+	return (IPTR)msg->entry;
 }
 
 DEFMMETHOD(List_Destruct)
@@ -114,7 +114,7 @@ DEFMMETHOD(List_Display)
 		msg->array[2] = action;
 		msg->array[3] = buf;
 
-		if( (ULONG)msg->array[-1] % 2 )
+		if( (IPTR)msg->array[-1] % 2 )
 		{
 #if !OS(AROS)
 			/* This code overrides internal data structures and causes a crash on AROS */

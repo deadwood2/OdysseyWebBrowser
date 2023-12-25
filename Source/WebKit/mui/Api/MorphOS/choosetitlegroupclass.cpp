@@ -100,7 +100,7 @@ DEFNEW
 				 obj, 1, MM_ChooseTitleGroup_Add);
 	}
 
-	return (ULONG)obj;
+	return (IPTR)obj;
 }
 
 DEFDISP

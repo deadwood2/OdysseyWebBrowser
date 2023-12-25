@@ -239,7 +239,7 @@ DEFNEW
 		DoMethod(st_shortcut, MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, obj, 1, MM_SearchManagerGroup_Change);
 	}
 
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFDISP
@@ -295,7 +295,7 @@ DEFGET
 				}
 			}
 
-			*msg->opg_Storage = (ULONG)&data->labels;
+			*msg->opg_Storage = (IPTR)&data->labels;
 			return TRUE;
 		}
 
@@ -329,7 +329,7 @@ DEFGET
 				}
 			}
 
-			*msg->opg_Storage = (ULONG)&data->requests;
+			*msg->opg_Storage = (IPTR)&data->requests;
 			return TRUE;
 		}
 
@@ -363,7 +363,7 @@ DEFGET
 				}
 			}
 
-			*msg->opg_Storage = (ULONG)&data->shortcuts;
+			*msg->opg_Storage = (IPTR)&data->shortcuts;
 			return TRUE;
 		}
 	}

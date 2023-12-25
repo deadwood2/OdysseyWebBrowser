@@ -141,7 +141,7 @@ DEFNEW
 		//DoMethod(obj, MM_CookieManagerGroup_Load);
 	}
 
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFDISP

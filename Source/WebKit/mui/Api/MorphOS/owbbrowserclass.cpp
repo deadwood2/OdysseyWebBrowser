@@ -194,11 +194,11 @@ static __inline IPTR _CALLFUNC2(void (*func)(void), IPTR arg1, IPTR arg2)
 Object *create_browser(char * url, ULONG is_frame, Object *title, APTR sourceview, Object *window, ULONG privatebrowsing)
 {
 	return (Object *) NewObject(getowbbrowserclass(), NULL,
-						MA_OWBBrowser_URL, (ULONG) url,
+						MA_OWBBrowser_URL, (IPTR) url,
 						MA_OWBBrowser_IsFrame, (ULONG) is_frame,
-						MA_OWBBrowser_TitleObj, (ULONG) title,
-						MA_OWBBrowser_SourceView, (ULONG) sourceview,
-						MA_OWBBrowser_Window, (ULONG) window,
+						MA_OWBBrowser_TitleObj, (IPTR) title,
+						MA_OWBBrowser_SourceView, (IPTR) sourceview,
+						MA_OWBBrowser_Window, (IPTR) window,
 						MA_OWBBrowser_PrivateBrowsing, (ULONG) privatebrowsing,
 						TAG_DONE);
 }
@@ -587,7 +587,7 @@ DEFNEW
 		if(view) free(view);
 	}
 
-	return (ULONG) obj;
+	return (IPTR) obj;
 }
 
 DEFDISPOSE
@@ -1123,19 +1123,19 @@ DEFGET
 
 		case MA_OWBBrowser_Widget:
 		{
-			*msg->opg_Storage = (ULONG) data->view;
+			*msg->opg_Storage = (IPTR) data->view;
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_URL:
 		{
-			*msg->opg_Storage = (ULONG) data->url;
+			*msg->opg_Storage = (IPTR) data->url;
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_EditedURL:
 		{
-			*msg->opg_Storage = (ULONG) data->editedurl;
+			*msg->opg_Storage = (IPTR) data->editedurl;
 		}
 		return TRUE;
 
@@ -1147,13 +1147,13 @@ DEFGET
 
 		case MA_OWBBrowser_SourceView:
 		{
-			*msg->opg_Storage = (ULONG) data->source_view;
+			*msg->opg_Storage = (IPTR) data->source_view;
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_Title:
 		{
-			*msg->opg_Storage = (ULONG) data->title;
+			*msg->opg_Storage = (IPTR) data->title;
 		}
 		return TRUE;
 
@@ -1189,19 +1189,19 @@ DEFGET
 
 		case MA_OWBBrowser_StatusText:
 		{
-			*msg->opg_Storage = (ULONG) data->status;
+			*msg->opg_Storage = (IPTR) data->status;
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_ToolTipText:
 		{
-			*msg->opg_Storage = (ULONG) data->tooltip;
+			*msg->opg_Storage = (IPTR) data->tooltip;
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_TitleObj:
 		{
-			*msg->opg_Storage = (ULONG) data->titleobj;
+			*msg->opg_Storage = (IPTR) data->titleobj;
 		}
 		return TRUE;
 
@@ -1219,7 +1219,7 @@ DEFGET
 
 		case MA_OWBBrowser_ParentBrowser:
 		{
-			*msg->opg_Storage = (ULONG) data->parent_browser;
+			*msg->opg_Storage = (IPTR) data->parent_browser;
 		}
 		break;
 
@@ -1268,9 +1268,9 @@ DEFGET
 		case MA_OWBBrowser_VideoElement:
 		{
 #if ENABLE(VIDEO)
-			*msg->opg_Storage = (ULONG) data->video_element;
+			*msg->opg_Storage = (IPTR) data->video_element;
 #else
-            *msg->opg_Storage = (ULONG) 0;
+            *msg->opg_Storage = (IPTR) 0;
 #endif
 		}
 		return TRUE;
@@ -1279,13 +1279,13 @@ DEFGET
 		case MA_OWBBrowser_DragURL:
 		case MA_OWB_URL:
 		{
-			*msg->opg_Storage = (ULONG) data->dragurl;
+			*msg->opg_Storage = (IPTR) data->dragurl;
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_DragData:
 		{
-			*msg->opg_Storage = (ULONG) dataObject;
+			*msg->opg_Storage = (IPTR) dataObject;
 		}
 		return TRUE;
 
@@ -1297,32 +1297,32 @@ DEFGET
 
 		case MA_OWBBrowser_DragImage:
 		{
-			*msg->opg_Storage = (ULONG) data->dragimage;
+			*msg->opg_Storage = (IPTR) data->dragimage;
 		}
 		return TRUE;
 
 		/* Scrollers */
 		case MA_OWBBrowser_VBar:
 		{
-			*msg->opg_Storage = (ULONG) data->vbar;
+			*msg->opg_Storage = (IPTR) data->vbar;
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_VBarGroup:
 		{
-			*msg->opg_Storage = (ULONG) data->vbargroup;
+			*msg->opg_Storage = (IPTR) data->vbargroup;
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_HBar:
 		{
-			*msg->opg_Storage = (ULONG) data->hbar;
+			*msg->opg_Storage = (IPTR) data->hbar;
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_HBarGroup:
 		{
-			*msg->opg_Storage = (ULONG) data->hbargroup;
+			*msg->opg_Storage = (IPTR) data->hbargroup;
 		}
 		return TRUE;
 		
@@ -1793,7 +1793,7 @@ DEFMMETHOD(Setup)
 		data->ehnode.ehn_Events =  IDCMP_MOUSEBUTTONS | IDCMP_RAWKEY | IDCMP_MOUSEMOVE | IDCMP_CHANGEWINDOW;
 		data->ehnode.ehn_Priority = 1;
 		data->ehnode.ehn_Flags = MUI_EHF_GUIMODE;
-		DoMethod(_win(obj), MUIM_Window_AddEventHandler, (ULONG)&data->ehnode);
+		DoMethod(_win(obj), MUIM_Window_AddEventHandler, (IPTR)&data->ehnode);
 
 		data->added = TRUE;
 	}
@@ -1817,7 +1817,7 @@ DEFMMETHOD(Cleanup)
 
 	if(data->added)
 	{
-		DoMethod(_win(obj), MUIM_Window_RemEventHandler, (ULONG)&data->ehnode);
+		DoMethod(_win(obj), MUIM_Window_RemEventHandler, (IPTR)&data->ehnode);
 		data->added = FALSE;
 	}
 
@@ -2473,7 +2473,7 @@ static void cancelled(struct Hook *hook, Object *popupwin, APTR *dummy)
 static void closed(struct Hook *hook, Object *popupwin, APTR *params)
 {
     PopupMenuMorphOS *that = (PopupMenuMorphOS *)params[0];
-    int itemCount = (int)params[1];
+    int itemCount = (IPTR)params[1];
     char ** items = (char **)params[2];
     that->client()->popupDidHide();
 
@@ -2798,7 +2798,7 @@ DEFMMETHOD(ContextMenuBuild)
 
 	data->menucontroller = &page->contextMenuController();
 
-	return (ULONG) data->contextmenu;
+	return (IPTR) data->contextmenu;
 }
 
 DEFMMETHOD(ContextMenuChoice)
@@ -3415,7 +3415,7 @@ DEFMMETHOD(CreateDragImage)
 #endif
 	}
 
-	return (ULONG)di;
+	return (IPTR)di;
 }
 
 DEFMMETHOD(DeleteDragImage)
@@ -3598,7 +3598,7 @@ DEFMMETHOD(CreateShortHelp)
 		result = frame->eventHandler().hitTestResultAtPoint(point, false);
 		
 		if(!result.altDisplayString().isEmpty())
-			return (ULONG) utf8_to_local(result.altDisplayString().utf8().data());
+			return (IPTR) utf8_to_local(result.altDisplayString().utf8().data());
 	}
 	
 	return 0;
@@ -4159,7 +4159,7 @@ DEFTMETHOD(Plugin_GetHeight)
 DEFSMETHOD(Plugin_GetSurface)
 {
 	GETDATA;
-	return (ULONG) data->view->cr;
+	return (IPTR) data->view->cr;
 }
 
 DEFTMETHOD(Plugin_IsBrowserActive)
@@ -4266,7 +4266,7 @@ DEFSMETHOD(Plugin_AddTimeOut)
 		timer->start(msg->delay);
 	}
 
-	return (ULONG) timer;
+	return (IPTR) timer;
 }
 
 DEFSMETHOD(Plugin_RemoveTimeOut)

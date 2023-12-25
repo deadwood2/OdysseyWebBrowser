@@ -306,7 +306,7 @@ Object *create_application(char *url)
 	if(classes_init())
 	{
 	    methodstack_init();
-		obj = (Object *) NewObject(getowbappclass(), NULL, MA_OWBBrowser_URL, (ULONG) url, TAG_DONE);
+		obj = (Object *) NewObject(getowbappclass(), NULL, MA_OWBBrowser_URL, (IPTR) url, TAG_DONE);
 	}
 	else
 	{

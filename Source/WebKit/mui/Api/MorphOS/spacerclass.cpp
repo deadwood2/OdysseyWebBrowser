@@ -50,7 +50,7 @@ DEFNEW
 		data->brightness_threshold = 255;
 	}
 
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 #define SPACE_WIDTH  10

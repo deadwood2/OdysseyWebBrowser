@@ -71,7 +71,7 @@ DEFNEW
 		data->added = FALSE;
 	}
 
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFMMETHOD(Hide)
@@ -223,7 +223,7 @@ DEFMMETHOD(Title_New)
 }
 DEFMMETHOD(Title_CreateNewButton)
 {
-	return (ULONG) NewObject(gettoolbutton_newtabclass(), NULL, TAG_DONE);
+	return (IPTR) NewObject(gettoolbutton_newtabclass(), NULL, TAG_DONE);
 }
 
 #endif

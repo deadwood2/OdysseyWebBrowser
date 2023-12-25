@@ -231,7 +231,7 @@ DEFGET
 
 		case MA_OWB_Browser:
 		{
-			*msg->opg_Storage = (ULONG) data->browser;
+			*msg->opg_Storage = (IPTR) data->browser;
 		}
 		return TRUE;
 	}

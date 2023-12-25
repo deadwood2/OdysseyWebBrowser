@@ -795,7 +795,7 @@ DEFSMETHOD(ScriptManagerGroup_ScriptsForURL)
 		}
 	}
 
-	return (ULONG) matchingscripts;
+	return (IPTR) matchingscripts;
 }
 
 BEGINMTABLE

@@ -78,7 +78,7 @@ STATIC VOID doset(struct Data *data, APTR obj, struct TagItem *taglist)
 
 						if (data->is_shown && !data->added)
 						{
-							DoMethod(_app(obj), MUIM_Application_AddInputHandler, (ULONG)&data->ihnode);
+							DoMethod(_app(obj), MUIM_Application_AddInputHandler, (IPTR)&data->ihnode);
 							data->added = TRUE;
 						}
 					}
@@ -89,7 +89,7 @@ STATIC VOID doset(struct Data *data, APTR obj, struct TagItem *taglist)
 
 					if (data->is_shown && data->added)
 					{
-						DoMethod(_app(obj), MUIM_Application_RemInputHandler, (ULONG)&data->ihnode);
+						DoMethod(_app(obj), MUIM_Application_RemInputHandler, (IPTR)&data->ihnode);
 						data->added = FALSE;
 					}
 

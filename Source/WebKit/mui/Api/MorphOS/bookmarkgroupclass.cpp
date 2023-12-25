@@ -502,7 +502,7 @@ DEFNEW
 
 	//data->notifyreq=dosnotify_start(BOOKMARK_PATH) ;
 
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFDISP
@@ -913,7 +913,7 @@ DEFSMETHOD(Bookmarkgroup_AddLink)
 					obj, 1 | MUIV_PushMethod_Delay(500) | MUIF_PUSHMETHOD_SINGLE,
 					MM_Bookmarkgroup_AutoSave);
 
-		return ((ULONG)entry->tn_User);
+		return ((IPTR)entry->tn_User);
 	}
 	return (0);
 }

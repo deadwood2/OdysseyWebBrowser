@@ -57,12 +57,12 @@ DEFNEW
 		TAG_MORE, INITTAGS
 	);
 
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFMMETHOD(List_Construct)
 {
-	return (ULONG)msg->entry;
+	return (IPTR)msg->entry;
 }
 
 DEFMMETHOD(List_Destruct)

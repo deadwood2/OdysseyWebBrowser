@@ -163,11 +163,11 @@ DEFGET
 	switch (msg->opg_AttrID)
 	{
 		case MUIA_Popobject_Object:
-            *msg->opg_Storage = (ULONG) data->lv_entries;
+            *msg->opg_Storage = (IPTR) data->lv_entries;
             return TRUE;
 
 		case MUIA_Popstring_String:
-			*msg->opg_Storage = (ULONG) data->str;
+			*msg->opg_Storage = (IPTR) data->str;
 			return TRUE;
 
 		case MUIA_String_Contents:

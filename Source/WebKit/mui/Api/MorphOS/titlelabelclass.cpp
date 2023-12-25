@@ -141,7 +141,7 @@ DEFNEW
 			DoMethod(favicon, MUIM_Notify, MA_FavIcon_NeedRedraw, MUIV_EveryTime, obj, 1, MM_Title_Redraw);
 		}
 	}
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFDISP
@@ -188,7 +188,7 @@ DEFGET
 		case MA_OWB_Browser:
 		{
 			Object *browser = (Object *) muiUserData(obj);
-			*msg->opg_Storage = (ULONG) browser;
+			*msg->opg_Storage = (IPTR) browser;
 		}
 		return TRUE;
 	}
@@ -260,7 +260,7 @@ DEFMMETHOD(ContextMenuBuild)
             End,
         End;
 
-	return (ULONG)data->cmenu;
+	return (IPTR)data->cmenu;
 }
 
 DEFMMETHOD(ContextMenuChoice)

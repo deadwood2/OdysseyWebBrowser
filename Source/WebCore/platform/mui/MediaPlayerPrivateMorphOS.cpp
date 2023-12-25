@@ -1491,15 +1491,15 @@ bool MediaPlayerPrivate::audioOpen()
 								  AHIA_Channels,  1,
 								  AHIA_Sounds,    2,
 								  AHIA_MixFreq,   stream->sample_rate,
-								  AHIA_SoundFunc, (ULONG) &SoundHook,
-								  AHIA_UserData,  (ULONG) stream,
+								  AHIA_SoundFunc, (IPTR) &SoundHook,
+								  AHIA_UserData,  (IPTR) stream,
 								  TAG_DONE)))
 							{
 								ULONG samples_count;
 
 							    AHI_GetAudioAttrs(AHI_INVALID_ID,
 									              stream->actrl,
-												  AHIDB_MaxPlaySamples, (ULONG) &samples_count,
+												  AHIDB_MaxPlaySamples, (IPTR) &samples_count,
 									              TAG_DONE);
 
 								stream->sample_count = samples_count * 3;

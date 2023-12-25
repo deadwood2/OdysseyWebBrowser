@@ -48,7 +48,7 @@ DEFNEW
 		TAG_DONE
 	);
 
-	return (ULONG)obj;
+	return (IPTR)obj;
 }
 
 static void doset(APTR obj, struct Data *data, struct TagItem *tags)
@@ -93,19 +93,19 @@ DEFGET
 	{
 		case MA_OWBGroup_Browser:
 		{
-			*msg->opg_Storage = (ULONG) data->browser;
+			*msg->opg_Storage = (IPTR) data->browser;
 		}
 		return TRUE; 
 
 		case MA_OWBGroup_MediaControlsGroup:
 		{
-			*msg->opg_Storage = (ULONG) data->mediacontrolsgroup;
+			*msg->opg_Storage = (IPTR) data->mediacontrolsgroup;
 		}
 		return TRUE;
 
 		case MA_OWBGroup_InspectorGroup:
 		{
-			*msg->opg_Storage = (ULONG) data->inspectorgroup;
+			*msg->opg_Storage = (IPTR) data->inspectorgroup;
 		}
 		return TRUE;
 	}

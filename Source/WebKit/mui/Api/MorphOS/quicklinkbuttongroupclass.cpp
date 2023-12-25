@@ -238,7 +238,7 @@ DEFNEW
 		}
 
 	}
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 
@@ -277,7 +277,7 @@ DEFGET
 
 		case MA_OWB_URL:
 		{
-			*msg->opg_Storage = (ULONG) data->node->address;
+			*msg->opg_Storage = (IPTR) data->node->address;
 		}
 		return TRUE;
 
@@ -475,7 +475,7 @@ DEFTMETHOD(QuickLinkButtonGroup_BuildMenu)
 	{
 		if(data->node->treenode)
 		{
-			ULONG rc;
+			IPTR rc;
 			ULONG count = 0;
 			APTR n, m;
             struct MinList menuentry_list;
@@ -613,7 +613,7 @@ DEFMMETHOD(ContextMenuBuild)
 			End,
 		End;
 	
-	return (ULONG)data->cMenu;
+	return (IPTR)data->cMenu;
 }
 
 DEFMMETHOD(ContextMenuChoice)
@@ -667,7 +667,7 @@ DEFMMETHOD(CreateShortHelp)
 		if (help)
 		{
 			sprintf(help, "%s\n%s", data->node->title, data->node->address);
-			return ((ULONG)help);
+			return ((IPTR)help);
 		}
 	}
 	return (0);

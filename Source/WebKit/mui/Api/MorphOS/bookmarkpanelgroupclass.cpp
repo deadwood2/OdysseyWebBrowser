@@ -173,7 +173,7 @@ DEFNEW
 
 	DoMethod(obj, MM_Bookmarkgroup_LoadHtml, BOOKMARK_PATH);
 
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFDISP

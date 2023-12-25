@@ -86,7 +86,7 @@ static void writeUTF8(const char* data, size_t len)
 			{
 				if (ClipboardHandle *ch = OpenClipboard(PRIMARY_CLIP))
 				{
-					ih->iff_Stream = (uint32)ch;
+					ih->iff_Stream = (IPTR)ch;
 					InitIFFasClip(ih);
 
 					if (0 == OpenIFF(ih, IFFF_WRITE))
@@ -545,7 +545,7 @@ static String getPlainText(Frame* )
 
     if (IFFHandle *ih = AllocIFF()) {
         if (ClipboardHandle *ch = OpenClipboard(PRIMARY_CLIP)) {
-            ih->iff_Stream = (uint32)ch;
+            ih->iff_Stream = (IPTR)ch;
             InitIFFasClip(ih);
 
             if (0 == OpenIFF(ih, IFFF_READ)) {

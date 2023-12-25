@@ -84,7 +84,7 @@ DEFNEW
 	obj = (Object *) DoSuperNew(cl, obj,
 		InputListFrame,
 		MUIA_List_MinLineHeight, 36,
-		MUIA_List_Format, (getv(app, MA_OWBApp_ShowFavIcons) & MV_OWBApp_ShowFavIcons_History) ? (ULONG) "," : (ULONG) "",
+		MUIA_List_Format, (getv(app, MA_OWBApp_ShowFavIcons) & MV_OWBApp_ShowFavIcons_History) ? (IPTR) "," : (IPTR) "",
 		MUIA_List_Title, FALSE,
 		MUIA_ContextMenu, TRUE,
 		TAG_MORE, INITTAGS
@@ -105,7 +105,7 @@ DEFNEW
 
 		doset(obj, data, msg->ops_AttrList);
 	}
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFDISP
@@ -273,7 +273,7 @@ DEFMMETHOD(List_Construct)
 		hitem->faviconobj = NULL;
 		hitem->faviconimg = NULL;
 	}
-	return (ULONG)hitem;
+	return (IPTR)hitem;
 }
 
 DEFMMETHOD(List_Destruct)
@@ -387,7 +387,7 @@ DEFMMETHOD(List_Display)
 			msg->array[0] = (char *) slabel;
 		}
 
-		if( (ULONG)msg->array[-1] % 2 )
+		if( (IPTR)msg->array[-1] % 2 )
 		{
 #if !OS(AROS)
 			/* This code overrides internal data structures and causes a crash on AROS */
@@ -473,7 +473,7 @@ DEFMMETHOD(ContextMenuBuild)
 	            End;
 		}
 	}
-	return (ULONG)data->cmenu;
+	return (IPTR)data->cmenu;
 }
 
 DEFMMETHOD(ContextMenuChoice)

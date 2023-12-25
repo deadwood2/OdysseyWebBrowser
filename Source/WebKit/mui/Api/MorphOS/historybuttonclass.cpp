@@ -110,7 +110,7 @@ DEFNEW
 
 		doset(obj, data, INITTAGS);
 
-		return (ULONG)obj;
+		return (IPTR)obj;
 	}
 
 	return(0);
@@ -145,7 +145,7 @@ DEFGET
 	{
 		case MA_HistoryButton_List:
 		{
-			*msg->opg_Storage = (ULONG) data->backforwardlist;
+			*msg->opg_Storage = (IPTR) data->backforwardlist;
 		}
 		return TRUE;
 	}
@@ -199,7 +199,7 @@ DEFMMETHOD(ContextMenuBuild)
 		}
 		else
 		{
-			return (ULONG) data->contextmenu;
+			return (IPTR) data->contextmenu;
 		}
 
 		for (int i = firstItemIndex ; (data->type == MV_HistoryButton_Type_Backward) ? i >= lastItemIndex : i <= lastItemIndex ; i+=di)
@@ -217,8 +217,8 @@ DEFMMETHOD(ContextMenuBuild)
 					sprintf(label, "%s%s", prefix, tmp);
 
 					Object *item = (Object *) NewObject(getmenuitemclass(), NULL,
-													    MUIA_Menuitem_Title, (ULONG) label,
-											            MUIA_UserData, (ULONG) data->backforwardlist->itemAtIndex(i),
+													    MUIA_Menuitem_Title, (IPTR) label,
+											            MUIA_UserData, (IPTR) data->backforwardlist->itemAtIndex(i),
 														MA_MenuItem_FreeUserData, FALSE, /* Don't free it, thx */
 														TAG_DONE);
 					if(item)
@@ -233,7 +233,7 @@ DEFMMETHOD(ContextMenuBuild)
 	    }
 	}
 
-	return (ULONG) data->contextmenu;
+	return (IPTR) data->contextmenu;
 }
 
 DEFMMETHOD(ContextMenuChoice)

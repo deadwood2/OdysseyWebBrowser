@@ -123,8 +123,8 @@ APTR MakeDirString(CONST_STRPTR str, CONST_STRPTR def, ULONG id)
 	obj = PopaslObject,
 		ASLFR_DrawersOnly, TRUE,
 		ASLFR_InitialShowVolumes, TRUE,
-		MUIA_Popstring_Button, (ULONG)pop,
-		MUIA_Popstring_String, (ULONG)MakePrefsString(str, def, 1024, id),
+		MUIA_Popstring_Button, (IPTR)pop,
+		MUIA_Popstring_String, (IPTR)MakePrefsString(str, def, 1024, id),
 		MUIA_Popasl_Type, ASL_FileRequest,
 		TAG_DONE);
 
@@ -142,8 +142,8 @@ APTR MakeFileString(CONST_STRPTR str, CONST_STRPTR def, ULONG id)
 
 	obj = PopaslObject,
 		ASLFR_InitialFile, def,
-		MUIA_Popstring_Button, (ULONG)pop,
-		MUIA_Popstring_String, (ULONG)MakePrefsString(str, def, 1024, id),
+		MUIA_Popstring_Button, (IPTR)pop,
+		MUIA_Popstring_String, (IPTR)MakePrefsString(str, def, 1024, id),
 		MUIA_Popasl_Type, ASL_FileRequest,
 		TAG_DONE);
 

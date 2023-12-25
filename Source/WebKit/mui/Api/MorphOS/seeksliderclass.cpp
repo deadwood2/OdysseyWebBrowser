@@ -25,7 +25,7 @@ DEFNEW
 		TAG_MORE, INITTAGS,
 	End;
 
-	return (ULONG)obj;
+	return (IPTR)obj;
 }
 
 DEFMMETHOD(Setup)
@@ -42,7 +42,7 @@ DEFMMETHOD(Setup)
 	data->ehnode.ehn_Events =  IDCMP_RAWKEY;
 	data->ehnode.ehn_Priority = 3;
 	data->ehnode.ehn_Flags = MUI_EHF_GUIMODE;
-	DoMethod(_win(obj), MUIM_Window_AddEventHandler, (ULONG)&data->ehnode);
+	DoMethod(_win(obj), MUIM_Window_AddEventHandler, (IPTR)&data->ehnode);
 
 	return TRUE;
 }
@@ -51,7 +51,7 @@ DEFMMETHOD(Cleanup)
 {
 	GETDATA;
 
-	DoMethod(_win(obj), MUIM_Window_RemEventHandler, (ULONG)&data->ehnode);
+	DoMethod(_win(obj), MUIM_Window_RemEventHandler, (IPTR)&data->ehnode);
 
 	return DOSUPER;
 }
@@ -69,7 +69,7 @@ DEFMMETHOD(Numeric_Stringify)
 
 	snprintf(data->buffer, sizeof(data->buffer), "%02d:%02d:%02d", h, m, s);
 
-	return ((ULONG)data->buffer);
+	return ((IPTR)data->buffer);
 }
 
 DEFMMETHOD(AskMinMax)

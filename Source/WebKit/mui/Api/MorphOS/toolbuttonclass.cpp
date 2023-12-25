@@ -304,7 +304,7 @@ DEFNEW
 	switch(background)
 	{
 		case MV_ToolButton_Background_Parent:
-			muibackground = (ULONG) "";
+			muibackground = (IPTR) "";
 			break;
 
 		default:
@@ -333,7 +333,7 @@ DEFNEW
 
 		doset(obj, data, INITTAGS);
 
-		return (ULONG)obj;
+		return (IPTR)obj;
 	}
 
 	return(0);

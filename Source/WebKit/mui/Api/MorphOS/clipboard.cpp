@@ -62,7 +62,7 @@ bool copyTextToClipboard(char *text, bool utf8)
 			{
 				if (ClipboardHandle *ch = OpenClipboard(PRIMARY_CLIP))
 				{
-		            ih->iff_Stream = (uint32)ch;
+		            ih->iff_Stream = (IPTR)ch;
 		            InitIFFasClip(ih);
 
 					if (0 == OpenIFF(ih, IFFF_WRITE))
@@ -147,7 +147,7 @@ WTF::String pasteFromClipboard(void)
 	{
 		if (ClipboardHandle *ch = OpenClipboard(PRIMARY_CLIP))
 		{
-            ih->iff_Stream = (uint32)ch;
+            ih->iff_Stream = (IPTR)ch;
             InitIFFasClip(ih);
 
 			if (0 == OpenIFF(ih, IFFF_READ))
@@ -575,7 +575,7 @@ bool copyImageToClipboard(ChkImage *img)
 
 	if((MyHandle = AllocIFF()))
     {
-		if((MyHandle->iff_Stream = (ULONG) OpenClipboard(0)))
+		if((MyHandle->iff_Stream = (IPTR) OpenClipboard(0)))
         {
 			InitIFFasClip(MyHandle);
 			result = WriteIFF(MyHandle, img, fname) != FALSE;

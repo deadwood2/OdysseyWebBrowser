@@ -104,7 +104,7 @@ static void cycles_init(void)
 		STRPTR *current = (STRPTR *)*ptr;
 		while(*current)
 		{
-			*current = (STRPTR)GSI((ULONG)*current);
+			*current = (STRPTR)GSI((IPTR)*current);
 			current++;
 		}
 		ptr++;

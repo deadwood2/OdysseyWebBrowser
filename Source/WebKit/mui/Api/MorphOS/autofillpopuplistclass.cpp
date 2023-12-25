@@ -52,13 +52,13 @@ DEFNEW
 		TAG_MORE, INITTAGS
 	);
 
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFMMETHOD(List_Construct)
 {
 	String *entry = (String *) msg->entry;
-	return (ULONG) (new String(*entry));
+	return (IPTR) (new String(*entry));
 }
 
 DEFMMETHOD(List_Destruct)

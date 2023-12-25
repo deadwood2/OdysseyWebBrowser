@@ -430,7 +430,7 @@ ULONG menus_init(void)
 	{
 		if (nmp->nm_Label != NM_BARLABEL)
 		{
-			nmp->nm_Label = (STRPTR)GSI((ULONG)nmp->nm_Label);
+			nmp->nm_Label = (STRPTR)GSI((IPTR)nmp->nm_Label);
 		}
 		nmp++;
 	}
@@ -552,13 +552,13 @@ AROS_UFH3
 
 	Object *window = (Object *) getv(obj, MA_OWBApp_ActiveWindow);
 
-	if ((ULONG)h->h_Data == REXX_ABOUT)
+	if ((IPTR)h->h_Data == REXX_ABOUT)
 	{
 		DoMethod(obj, MM_OWBApp_About);
 	}
 	else if (window)
 	{
-		switch ((ULONG)h->h_Data)
+		switch ((IPTR)h->h_Data)
 		{
 			case REXX_PRINT:
 				DoMethod(window, MM_OWBWindow_Print);
@@ -986,7 +986,7 @@ DEFNEW
 		else
 		{
 			CoerceMethod(cl, obj, OM_DISPOSE);
-			return (ULONG)0;
+			return (IPTR)0;
 		}
 
 		/* Load settings */
@@ -1056,7 +1056,7 @@ DEFNEW
 		DoMethod(app, MUIM_Notify, MA_OWBApp_BookmarksChanged, MUIV_EveryTime, obj, 1, MM_OWBApp_BookmarksChanged);
 	}
 
-	return (ULONG)obj;
+	return (IPTR)obj;
 }
 
 void FreeWebKitLeakedObjects()
@@ -1153,7 +1153,7 @@ DEFGET
 /* Settings */
 		case MA_OWBApp_DownloadDirectory:
 		{
-			*msg->opg_Storage = (ULONG) data->download_dir;
+			*msg->opg_Storage = (IPTR) data->download_dir;
 		}
 		return TRUE;
 
@@ -1177,19 +1177,19 @@ DEFGET
 
 		case MA_OWBApp_DefaultURL:
 		{
-			*msg->opg_Storage = (ULONG) data->homepage;
+			*msg->opg_Storage = (IPTR) data->homepage;
 		}
 		return TRUE;
 
 		case MA_OWBApp_StartPage:
 		{
-			*msg->opg_Storage = (ULONG) data->startpage;
+			*msg->opg_Storage = (IPTR) data->startpage;
 		}
 		return TRUE;
 
 		case MA_OWBApp_NewTabPage:
 		{
-			*msg->opg_Storage = (ULONG) data->newtabpage;
+			*msg->opg_Storage = (IPTR) data->newtabpage;
 		}
 		return TRUE;
 
@@ -1351,7 +1351,7 @@ DEFGET
 
 		case MA_OWBApp_DidReceiveFavIcon:
 		{
-			*msg->opg_Storage = (ULONG) data->favicon_url;
+			*msg->opg_Storage = (IPTR) data->favicon_url;
 		}
 		return TRUE;
 
@@ -1462,7 +1462,7 @@ DEFGET
 
 		case MA_OWBApp_UserAgent:
 		{
-			*msg->opg_Storage = (ULONG) data->useragent;
+			*msg->opg_Storage = (IPTR) data->useragent;
 		}
 		return TRUE;
 
@@ -1474,7 +1474,7 @@ DEFGET
 
 		case MA_OWBApp_CertificatePath:
 		{
-			*msg->opg_Storage = (ULONG) data->certificate_path;
+			*msg->opg_Storage = (IPTR) data->certificate_path;
 		}
 		return TRUE;
 
@@ -1562,7 +1562,7 @@ DEFGET
 
 		case MA_OWBApp_CurrentDirectory:
 		{
-			*msg->opg_Storage = (ULONG) data->current_dir;
+			*msg->opg_Storage = (IPTR) data->current_dir;
 		}
 		return TRUE;
 
@@ -1576,7 +1576,7 @@ DEFGET
 				browser = (Object *) getv(window, MA_OWBWindow_ActiveBrowser);
 			}
 
-			*msg->opg_Storage = (ULONG) browser;
+			*msg->opg_Storage = (IPTR) browser;
 		}
 		return TRUE;
 
@@ -1609,37 +1609,37 @@ DEFGET
 				window = firstwindow;
 			}
 
-			*msg->opg_Storage = (ULONG) window;
+			*msg->opg_Storage = (IPTR) window;
 		}
 		return TRUE;
 
 		case MA_OWBApp_BookmarkWindow:
 		{
-			*msg->opg_Storage = (ULONG) data->bookmarkwin;
+			*msg->opg_Storage = (IPTR) data->bookmarkwin;
 		}
 		return TRUE;
 
 		case MA_OWBApp_DownloadWindow:
 		{
-			*msg->opg_Storage = (ULONG) data->dlwin;
+			*msg->opg_Storage = (IPTR) data->dlwin;
 		}
 		return TRUE;
 
 		case MA_OWBApp_SearchManagerWindow:
 		{
-			*msg->opg_Storage = (ULONG) data->searchmanagerwin;
+			*msg->opg_Storage = (IPTR) data->searchmanagerwin;
 		}
 		return TRUE;
 
 		case MA_OWBApp_ScriptManagerWindow:
 		{
-			*msg->opg_Storage = (ULONG) data->scriptmanagerwin;
+			*msg->opg_Storage = (IPTR) data->scriptmanagerwin;
 		}
 		return TRUE;
 
 		case MA_OWBApp_PrinterWindow:
 		{
-			*msg->opg_Storage = (ULONG) data->printerwin;
+			*msg->opg_Storage = (IPTR) data->printerwin;
 		}
 		return TRUE;
 
@@ -1680,7 +1680,7 @@ static void doset(APTR obj, struct Data *data, struct TagItem *tags)
 
 	while ((tag = NextTagItem(&tstate)) != NULL)
 	{
-		ULONG tdata = tag->ti_Data;
+		IPTR tdata = tag->ti_Data;
 
 		switch (tag->ti_Tag)
 		{
@@ -1900,7 +1900,7 @@ DEFSMETHOD(OWBApp_AddPage)
 		widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddBrowser, msg->window, msg->url, msg->isframe, NULL, msg->donotactivate, msg->privatebrowsing, msg->addtoend);
 	}
 
-	return (ULONG) widget;
+	return (IPTR) widget;
 }
 
 /* Add a new window */
@@ -1969,7 +1969,7 @@ DEFSMETHOD(OWBApp_AddWindow)
 		}
 	}
 
-	return (ULONG) widget;
+	return (IPTR) widget;
 }
 
 /* Remove a window */
@@ -2004,7 +2004,7 @@ DEFSMETHOD(OWBApp_AddBrowser)
 		widget = (BalWidget *) DoMethod(window, MM_OWBWindow_AddBrowser, msg->url, msg->isframe, msg->sourceview, msg->donotactivate, msg->privatebrowsing, msg->addtoend);
 	}
 
-	return (ULONG) widget;
+	return (IPTR) widget;
 }
 
 /* Remove a browser */
@@ -2179,7 +2179,7 @@ DEFSMETHOD(OWBApp_Download)
 		DoMethod(data->dlwin, MUIM_List_InsertSingle, dl, MUIV_List_Insert_Bottom);
 	}
 
-	return (ULONG)dl;
+	return (IPTR)dl;
 }
 
 DEFSMETHOD(OWBApp_DownloadUpdate)

@@ -81,7 +81,7 @@ DEFGET
 
 		case MA_SearchManagerWindow_Group:
 		{
-			*msg->opg_Storage = (ULONG) data->group;
+			*msg->opg_Storage = (IPTR) data->group;
 		}
 		return TRUE;
 	}

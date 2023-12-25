@@ -24,7 +24,7 @@ DEFNEW
 		TAG_MORE, INITTAGS,
 	End;
 
-	return (ULONG)obj;
+	return (IPTR)obj;
 }
 
 DEFMMETHOD(Numeric_Stringify)
@@ -33,7 +33,7 @@ DEFMMETHOD(Numeric_Stringify)
 
 	snprintf(data->buffer, sizeof(data->buffer), " ");
 
-	return ((ULONG)data->buffer);
+	return ((IPTR)data->buffer);
 }
 
 DEFMMETHOD(AskMinMax)

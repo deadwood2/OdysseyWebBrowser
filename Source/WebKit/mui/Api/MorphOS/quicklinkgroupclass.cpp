@@ -518,7 +518,7 @@ DEFNEW
 		data->ehnode.ehn_Flags    = MUI_EHF_GUIMODE;
 		*/
 	}
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFDISP
@@ -534,7 +534,7 @@ DEFGET
 	{
 		case MA_QuickLinkGroup_Data:
 		{
-			*msg->opg_Storage = (ULONG)data;
+			*msg->opg_Storage = (IPTR)data;
 			return (TRUE);
 		}
 		case MA_QuickLinkGroup_Mode:
@@ -650,7 +650,7 @@ DEFSMETHOD(QuickLinkGroup_Add)
 
 	button=(Object *)NewObject(getquicklinkbuttongroupclass(), NULL,
 		MA_QuickLinkGroup_Mode, data->mode,
-		MA_QuickLinkButtonGroup_Node, (ULONG)msg->td,
+		MA_QuickLinkButtonGroup_Node, (IPTR)msg->td,
 		End;
 
 	if (button) DoMethod(obj, MUIM_Group_AddTail, button);

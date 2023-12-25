@@ -67,7 +67,7 @@ DEFDISP
 
 DEFMMETHOD(List_Construct)
 {
-	return (ULONG)msg->entry;
+	return (IPTR)msg->entry;
 }
 
 DEFMMETHOD(List_Destruct)

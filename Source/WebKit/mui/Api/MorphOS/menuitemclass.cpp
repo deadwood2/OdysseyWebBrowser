@@ -50,7 +50,7 @@ DEFNEW
 		data->freeuserdata = GetTagData(MA_MenuItem_FreeUserData, TRUE, msg->ops_AttrList);
 	}
 
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 

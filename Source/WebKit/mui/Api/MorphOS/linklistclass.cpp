@@ -99,7 +99,7 @@ DEFNEW
 		data->cMenu=NULL;
 		data->Drop=0;
 	}
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFDISP
@@ -121,7 +121,7 @@ DEFSET
 
 DEFMMETHOD(List_Construct)
 {
-	return (ULONG)msg->entry;
+	return (IPTR)msg->entry;
 }
 
 DEFMMETHOD(List_Destruct)
@@ -188,7 +188,7 @@ DEFMMETHOD(List_Display)
 		msg->array[0] = td->buffer2;
 		msg->array[1] = td->address;
 
-		if( (ULONG)msg->array[-1] % 2 )
+		if( (IPTR)msg->array[-1] % 2 )
 		{
 #if !OS(AROS)
 			/* This code overrides internal data structures and causes a crash on AROS */
@@ -315,7 +315,7 @@ DEFMMETHOD(CreateShortHelp)
 				if (help)
 				{
 					sprintf(help, "%s\n%s", td->title, td->address);
-					return ((ULONG)help);
+					return ((IPTR)help);
 				}
 			}
 		}

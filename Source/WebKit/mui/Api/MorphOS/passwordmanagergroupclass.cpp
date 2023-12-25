@@ -84,7 +84,7 @@ DEFNEW
 		DoMethod(obj, MM_PasswordManagerGroup_Load);
 	}
 
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFDISP
@@ -452,7 +452,7 @@ DEFSMETHOD(PasswordManagerGroup_Get)
 	String *host = (String *) msg->host;
 	ExtCredential *credential = credentialMap.get(*host);
 
-	return (ULONG) credential;
+	return (IPTR) credential;
 }
 
 

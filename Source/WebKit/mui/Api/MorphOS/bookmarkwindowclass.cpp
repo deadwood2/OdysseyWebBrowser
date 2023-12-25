@@ -59,7 +59,7 @@ DEFNEW
 		DoMethod(obj, MUIM_Notify, MUIA_Window_CloseRequest, TRUE, obj, 3, MUIM_Set, MUIA_Window_Open, FALSE);
 	}
 
-	return (ULONG)obj;
+	return (IPTR)obj;
 }
 
 DEFGET

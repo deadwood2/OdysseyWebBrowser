@@ -132,7 +132,7 @@ DEFNEW
 
 		DoMethod(obj, MUIM_Notify, MUIA_Pressed, FALSE, MUIV_Notify_Application, 2, MM_OWBApp_OpenWindow, MV_OWB_Window_Network);
 
-		return (ULONG)obj;
+		return (IPTR)obj;
 	}
 
 	return(0);

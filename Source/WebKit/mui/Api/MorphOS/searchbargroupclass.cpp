@@ -170,7 +170,7 @@ DEFNEW
 		DoMethod((Object *) getv(pop_search, MUIA_Popstring_String), MUIM_Notify, MUIA_String_Acknowledge, MUIV_EveryTime, obj, 3, MM_OWBWindow_LoadURL, NULL, NULL);
 	}
 
-	return (ULONG)obj;
+	return (IPTR)obj;
 }
 
 DEFDISP

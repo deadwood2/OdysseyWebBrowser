@@ -43,7 +43,7 @@ DEFNEW
 		TAG_MORE, INITTAGS
 	);
 
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 

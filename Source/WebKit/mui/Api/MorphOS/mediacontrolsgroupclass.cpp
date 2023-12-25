@@ -71,7 +71,7 @@ static void doset(APTR obj, struct Data *data, struct TagItem *tags)
 
 	while ((tag = NextTagItem(&tstate)) != NULL)
 	{
-		ULONG tdata = tag->ti_Data;
+		IPTR tdata = tag->ti_Data;
 
 		switch (tag->ti_Tag)
 		{
@@ -163,7 +163,7 @@ DEFNEW
 		DoMethod(data->sl_volume, MUIM_Notify, MUIA_Slider_Level, MUIV_EveryTime, obj, 1, MM_MediaControlsGroup_Volume);
 	}
 
-	return (ULONG)obj;
+	return (IPTR)obj;
 }
 
 DEFSET

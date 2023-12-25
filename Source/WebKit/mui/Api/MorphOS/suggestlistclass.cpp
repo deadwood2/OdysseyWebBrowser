@@ -88,7 +88,7 @@ DEFNEW
 
 		doset(obj, data, msg->ops_AttrList);
 	}
-	return ((ULONG)obj);
+	return ((IPTR)obj);
 }
 
 DEFDISP
@@ -182,7 +182,7 @@ DEFMMETHOD(HandleEvent)
 
 DEFMMETHOD(List_Construct)
 {
-	return (ULONG) msg->entry;
+	return (IPTR) msg->entry;
 }
 
 DEFMMETHOD(List_Destruct)

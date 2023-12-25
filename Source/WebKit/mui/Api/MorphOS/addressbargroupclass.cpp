@@ -206,7 +206,7 @@ DEFGET
   		        return DoMethodA(data->pop_path, (_Msg_*) msg);
 
 		case MA_AddressBarGroup_PopString:
-			*msg->opg_Storage = (ULONG) data->pop_path;
+			*msg->opg_Storage = (IPTR) data->pop_path;
 			return TRUE;
 
 		case MUIA_Popstring_String:
