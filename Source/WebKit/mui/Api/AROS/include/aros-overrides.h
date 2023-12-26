@@ -4,7 +4,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-IPTR DoSuperNew(struct IClass *cl, Object *obj, ULONG tag1, ...);
+IPTR DoSuperNew(struct IClass *cl, Object *obj, Tag tag1, ...);
 APTR AllocVecTaskPooled(ULONG byteSize);
 VOID FreeVecTaskPooled(APTR memory);
 APTR ARGB2BGRA(APTR src, ULONG stride, ULONG height);

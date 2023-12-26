@@ -114,53 +114,53 @@
 /*
  * MUI method (ie. MUIM_List_InsertSingle)
  */
-#define DEFMMETHOD(methodid) METHOD_INLINE static ULONG __attribute__ ((noinline)) handleMUIM_##methodid(struct IClass *cl,Object*obj,struct MUIP_##methodid *msg)
+#define DEFMMETHOD(methodid) METHOD_INLINE static IPTR __attribute__ ((noinline)) handleMUIM_##methodid(struct IClass *cl,Object*obj,struct MUIP_##methodid *msg)
 
 /*
  * Custom method with ONE argument only (no msg[n] please)
  */
-#define DEFMETHOD(methodid,type) METHOD_INLINE static ULONG __attribute__ ((noinline)) handleMM_##methodid(struct IClass *cl, Object *obj, type *msg)
+#define DEFMETHOD(methodid,type) METHOD_INLINE static IPTR __attribute__ ((noinline)) handleMM_##methodid(struct IClass *cl, Object *obj, type *msg)
 
 /*
  * Custom method with NO real arguments (Msg still passed for DSM etc.)
  */
-#define DEFTMETHOD(methodid) METHOD_INLINE static ULONG __attribute__ ((noinline)) handleMM_##methodid(struct IClass *cl, Object *obj, Msg msg)
+#define DEFTMETHOD(methodid) METHOD_INLINE static IPTR __attribute__ ((noinline)) handleMM_##methodid(struct IClass *cl, Object *obj, Msg msg)
 
 /*
  * Custom structured method
  */
-#define DEFSMETHOD(name) METHOD_INLINE static ULONG __attribute__ ((noinline)) handleMM_##name(struct IClass *cl,Object*obj,struct MP_##name *msg)
+#define DEFSMETHOD(name) METHOD_INLINE static IPTR __attribute__ ((noinline)) handleMM_##name(struct IClass *cl,Object*obj,struct MP_##name *msg)
 
 /*
  * OM_NEW method (construct)
  */
-#define DEFNEW METHOD_INLINE static ULONG __attribute__ ((noinline)) handleOM_NEW(struct IClass *cl,Object*obj,struct opSet *msg)
+#define DEFNEW METHOD_INLINE static IPTR __attribute__ ((noinline)) handleOM_NEW(struct IClass *cl,Object*obj,struct opSet *msg)
 #define DEFCONST DEFNEW
 
 /*
  * OM_SET method
  */
-#define DEFSET METHOD_INLINE static ULONG __attribute__ ((noinline)) handleOM_SET(struct IClass *cl,Object*obj,struct opSet *msg)
+#define DEFSET METHOD_INLINE static IPTR __attribute__ ((noinline)) handleOM_SET(struct IClass *cl,Object*obj,struct opSet *msg)
 
 /* 
  * OM_GET method
  */
-#define DEFGET METHOD_INLINE static ULONG handleOM_GET(struct IClass *cl,Object*obj,struct opGet *msg)
+#define DEFGET METHOD_INLINE static IPTR handleOM_GET(struct IClass *cl,Object*obj,struct opGet *msg)
 
 /*
  * OM_ADDMEMBER method
  */
-#define DEFADDMEMBER METHOD_INLINE static ULONG __attribute__ ((noinline)) handleOM_ADDMEMBER(struct IClass *cl,Object*obj,struct opMember *msg)
+#define DEFADDMEMBER METHOD_INLINE static IPTR __attribute__ ((noinline)) handleOM_ADDMEMBER(struct IClass *cl,Object*obj,struct opMember *msg)
 
 /*
  * OM_REMMEMBER method
  */
-#define DEFREMMEMBER METHOD_INLINE static ULONG __attribute__ ((noinline)) handleOM_REMMEMBER(struct IClass *cl,Object*obj,struct opMember *msg)
+#define DEFREMMEMBER METHOD_INLINE static IPTR __attribute__ ((noinline)) handleOM_REMMEMBER(struct IClass *cl,Object*obj,struct opMember *msg)
 
 /*
  * OM_DISPOSE method (destruct)
  */
-#define DEFDISPOSE METHOD_INLINE static ULONG __attribute__ ((noinline)) handleOM_DISPOSE( struct IClass *cl,Object*obj,struct opSet *msg)
+#define DEFDISPOSE METHOD_INLINE static IPTR __attribute__ ((noinline)) handleOM_DISPOSE( struct IClass *cl,Object*obj,struct opSet *msg)
 #define DEFDEST DEFDISPOSE
 #define DEFDISP DEFDISPOSE
 
@@ -259,8 +259,8 @@
 #define ENDASTORE }
 #define ASTORE(t,x) case t: data->x = tag->ti_Data;break;
 #define ASTOREP(t,x) case t: data->x = (APTR)tag->ti_Data;break;
-#define STOREP(x) *msg->opg_Storage=(ULONG)(x)
-#define STOREATTR(i,x) case i:*msg->opg_Storage=(ULONG)(x);return(TRUE);
+#define STOREP(x) *msg->opg_Storage=(IPTR)(x)
+#define STOREATTR(i,x) case i:*msg->opg_Storage=(IPTR)(x);return(TRUE);
 
 /* Hooks */
 

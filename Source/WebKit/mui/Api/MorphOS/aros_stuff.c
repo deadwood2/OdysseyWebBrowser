@@ -7,7 +7,7 @@
 
 #include <aros/debug.h>
 
-IPTR DoSuperNew(struct IClass *cl, Object *obj, ULONG tag1, ...)
+IPTR DoSuperNew(struct IClass *cl, Object *obj, Tag tag1, ...)
 {
     AROS_SLOWSTACKTAGS_PRE(tag1)
     retval = (IPTR)DoSuperMethod(cl, obj, OM_NEW, AROS_SLOWSTACKTAGS_ARG(tag1));
