@@ -822,888 +822,888 @@ enum
 /* OWBApp */
 
 struct MP_Search {
-	ULONG MethodID;
-	STRPTR string;
-	ULONG flags;
+	STACKED ULONG MethodID;
+	STACKED STRPTR string;
+	STACKED ULONG flags;
 };
 
 struct MP_OWBApp_DisposeObject {
-	ULONG MethodID;
-	APTR obj;
+	STACKED ULONG MethodID;
+	STACKED APTR obj;
 };
 
 struct MP_OWBApp_DisposeWindow {
-	ULONG MethodID;
-	APTR obj;
+	STACKED ULONG MethodID;
+	STACKED APTR obj;
 };
 
 struct MP_OWBApp_PrefsSave {
-	ULONG MethodID;
-	ULONG SaveENVARC;
+	STACKED ULONG MethodID;
+	STACKED ULONG SaveENVARC;
 };
 
 struct MP_OWBApp_OpenWindow {
-	ULONG MethodID;
-	ULONG window_id;
-	ULONG activate;
+	STACKED ULONG MethodID;
+	STACKED ULONG window_id;
+	STACKED ULONG activate;
 };
 
 struct MP_OWBApp_AddPage {
-	ULONG MethodID;
-	TEXT* url;
-	ULONG isframe;
-	ULONG donotactivate;
-	APTR  windowfeatures;
-	Object *window;
-	ULONG privatebrowsing;
-	ULONG addtoend;
+	STACKED ULONG MethodID;
+	STACKED TEXT* url;
+	STACKED ULONG isframe;
+	STACKED ULONG donotactivate;
+	STACKED APTR  windowfeatures;
+	STACKED Object *window;
+	STACKED ULONG privatebrowsing;
+	STACKED ULONG addtoend;
 };
 
 struct MP_OWBApp_AddWindow {
-	ULONG MethodID;
-	TEXT* url;
-	ULONG isframe;
-	APTR  sourceview;
-	ULONG urlfocus;
-	APTR  windowfeatures;
-	ULONG privatebrowsing;
+	STACKED ULONG MethodID;
+	STACKED TEXT* url;
+	STACKED ULONG isframe;
+	STACKED APTR  sourceview;
+	STACKED ULONG urlfocus;
+	STACKED APTR  windowfeatures;
+	STACKED ULONG privatebrowsing;
 };
 
 struct MP_OWBApp_RemoveWindow {
-	ULONG MethodID;
-	Object *window;
+	STACKED ULONG MethodID;
+	STACKED Object *window;
 };
 
 struct MP_OWBApp_AddBrowser {
-	ULONG MethodID;
-	Object* window;
-	TEXT* url;
-	ULONG isframe;
-	APTR  sourceview;
-	ULONG donotactivate;
-	ULONG privatebrowsing;
-	ULONG addtoend;
+	STACKED ULONG MethodID;
+	STACKED Object* window;
+	STACKED TEXT* url;
+	STACKED ULONG isframe;
+	STACKED APTR  sourceview;
+	STACKED ULONG donotactivate;
+	STACKED ULONG privatebrowsing;
+	STACKED ULONG addtoend;
 };
 
 struct MP_OWBApp_RemoveBrowser {
-	ULONG MethodID;
-	Object* browser;
+	STACKED ULONG MethodID;
+	STACKED Object* browser;
 };
 
 struct MP_OWBApp_Download {
-	ULONG MethodID;
-	STRPTR url;
-	STRPTR suggestedname;
-	APTR webdownload;
+	STACKED ULONG MethodID;
+	STACKED STRPTR url;
+	STACKED STRPTR suggestedname;
+	STACKED APTR webdownload;
 };
 
 struct MP_OWBApp_DownloadDone {
-	ULONG MethodID;
-	APTR entry;
+	STACKED ULONG MethodID;
+	STACKED APTR entry;
 };
 
 struct MP_OWBApp_DownloadError {
-	ULONG MethodID;
-	APTR entry;
-	char *error;
+	STACKED ULONG MethodID;
+	STACKED APTR entry;
+	STACKED char *error;
 };
 
 struct MP_OWBApp_DownloadCancelled {
-	ULONG MethodID;
-	APTR entry;
+	STACKED ULONG MethodID;
+	STACKED APTR entry;
 };
 
 struct MP_OWBApp_DownloadUpdate {
-	ULONG MethodID;
-	APTR entry;
+	STACKED ULONG MethodID;
+	STACKED APTR entry;
 };
 
 struct MP_OWBApp_Login {
-	ULONG MethodID;
-	TEXT *host;
-	TEXT *realm;
-	TEXT **username;
-	TEXT **password;
-	ULONG *persistence;
+	STACKED ULONG MethodID;
+	STACKED TEXT *host;
+	STACKED TEXT *realm;
+	STACKED TEXT **username;
+	STACKED TEXT **password;
+	STACKED ULONG *persistence;
 };
 
 struct MP_OWBApp_SetCredential {
-	ULONG MethodID;
-	APTR host;
-	APTR realm;
-	APTR credential;
+	STACKED ULONG MethodID;
+	STACKED APTR host;
+	STACKED APTR realm;
+	STACKED APTR credential;
 };
 
 struct MP_OWBApp_SetFormState {
-	ULONG MethodID;
-	APTR host;
-	APTR doc;
+	STACKED ULONG MethodID;
+	STACKED APTR host;
+	STACKED APTR doc;
 };
 
 struct MP_OWBApp_SaveFormState {
-	ULONG MethodID;
-	APTR webView;
-	APTR request;
+	STACKED ULONG MethodID;
+	STACKED APTR webView;
+	STACKED APTR request;
 };
 
 struct MP_OWBApp_MailTo {
-	ULONG MethodID;
-	TEXT *url;
+	STACKED ULONG MethodID;
+	STACKED TEXT *url;
 };
 
 struct MP_OWBApp_AddConsoleMessage {
-	ULONG MethodID;
-	STRPTR message;
+	STACKED ULONG MethodID;
+	STACKED STRPTR message;
 };
 
 struct MP_OWBApp_BuildUserMenu
 {
-	ULONG MethodID;
-	int  category;
-	APTR controller;
-	APTR menu;
+	STACKED ULONG MethodID;
+	STACKED int  category;
+	STACKED APTR controller;
+	STACKED APTR menu;
 };
 
 struct MP_OWBApp_SelectUserMenu
 {
-	ULONG MethodID;
-	APTR item;
-	APTR menucontroller;
+	STACKED ULONG MethodID;
+	STACKED APTR item;
+	STACKED APTR menucontroller;
 };
 
 struct MP_OWBApp_CanShowMediaMimeType
 {
-	ULONG MethodID;
-	STRPTR mimetype;
+	STACKED ULONG MethodID;
+	STACKED STRPTR mimetype;
 };
 
 struct MP_OWBApp_RequestPolicyForMimeType
 {
-	ULONG MethodID;
-        APTR response;
-	APTR request;
-	APTR webview;
-	APTR webframe;
-	APTR listener;
+	STACKED ULONG MethodID;
+    STACKED APTR response;
+	STACKED APTR request;
+	STACKED APTR webview;
+	STACKED APTR webframe;
+	STACKED APTR listener;
 };
 
 struct MP_OWBApp_ProcessResourceClientAction {
-	ULONG MethodID;
-	ULONG action;
-	APTR client;
-	APTR job;
-	APTR response;
-	APTR data;
-	int	totalsize;
-	APTR redirectedrequest;
-	APTR resourceerror;
-	APTR authenticationchallenge;
+	STACKED ULONG MethodID;
+	STACKED ULONG action;
+	STACKED APTR client;
+	STACKED APTR job;
+	STACKED APTR response;
+	STACKED APTR data;
+	STACKED int	totalsize;
+	STACKED APTR redirectedrequest;
+	STACKED APTR resourceerror;
+	STACKED APTR authenticationchallenge;
 };
 
 struct MP_OWBApp_RestoreSession {
-	ULONG MethodID;
-	ULONG ask;
-	ULONG selectfile;
+	STACKED ULONG MethodID;
+	STACKED ULONG ask;
+	STACKED ULONG selectfile;
 };
 
 struct MP_OWBApp_SaveSession {
-	ULONG MethodID;
-	ULONG selectfile;
+	STACKED ULONG MethodID;
+	STACKED ULONG selectfile;
 };
 
 /* OWBWindow */
 struct MP_OWBWindow_AddBrowser {
-	ULONG MethodID;
-	TEXT* url;
-	ULONG isframe;
-	APTR  sourceview;
-	ULONG donotactivate;
-	ULONG privatebrowsing;
-	ULONG addtoend;
+	STACKED ULONG MethodID;
+	STACKED TEXT* url;
+	STACKED ULONG isframe;
+	STACKED APTR  sourceview;
+	STACKED ULONG donotactivate;
+	STACKED ULONG privatebrowsing;
+	STACKED ULONG addtoend;
 };
 
 struct MP_OWBWindow_RemoveBrowser {
-	ULONG MethodID;
-	Object* browser;
+	STACKED ULONG MethodID;
+	STACKED Object* browser;
 };
 
 struct MP_OWBWindow_DetachBrowser {
-	ULONG MethodID;
-	Object* browser;
-	Object* window;
+	STACKED ULONG MethodID;
+	STACKED Object* browser;
+	STACKED Object* window;
 };
 
 struct MP_OWBWindow_TransferBrowser {
-	ULONG MethodID;
-	Object* browser;
+	STACKED ULONG MethodID;
+	STACKED Object* browser;
 };
 
 struct MP_OWBWindow_ActivePage {
-	ULONG MethodID;
-	ULONG pagenum;
+	STACKED ULONG MethodID;
+	STACKED ULONG pagenum;
 };
 
 struct MP_OWBWindow_CreateInspector {
-	ULONG MethodID;
-	Object* browser;
+	STACKED ULONG MethodID;
+	STACKED Object* browser;
 };
 
 struct MP_OWBWindow_DestroyInspector {
-	ULONG MethodID;
-	Object* browser;
+	STACKED ULONG MethodID;
+	STACKED Object* browser;
 };
 
 struct MP_OWBWindow_LoadURL {
-	ULONG MethodID;
-	TEXT* url;
-	APTR browser;
+	STACKED ULONG MethodID;
+	STACKED TEXT* url;
+	STACKED APTR browser;
 };
 
 struct MP_OWBWindow_Reload {
-	ULONG MethodID;
-	Object* browser;
+	STACKED ULONG MethodID;
+	STACKED Object* browser;
 };
 
 struct MP_OWBWindow_MenuAction {
-	ULONG MethodID;
-	IPTR  action;
+	STACKED ULONG MethodID;
+	STACKED IPTR  action;
 };
 
 struct MP_OWBWindow_UpdateTitle {
-	ULONG MethodID;
-	APTR browser;
-	TEXT* title;
+	STACKED ULONG MethodID;
+	STACKED APTR browser;
+	STACKED TEXT* title;
 };
 
 struct MP_OWBWindow_UpdateStatus {
-	ULONG MethodID;
-	APTR browser;
-	TEXT *status;
+	STACKED ULONG MethodID;
+	STACKED APTR browser;
+	STACKED TEXT *status;
 };
 
 struct MP_OWBWindow_UpdateURL {
-	ULONG MethodID;
-	APTR browser;
-	TEXT *url;
+	STACKED ULONG MethodID;
+	STACKED APTR browser;
+	STACKED TEXT *url;
 };
 
 struct MP_OWBWindow_UpdateNavigation {
-	ULONG MethodID;
-	APTR browser;
+	STACKED ULONG MethodID;
+	STACKED APTR browser;
 };
 
 struct MP_OWBWindow_UpdateProgress {
-	ULONG MethodID;
-	APTR browser;
+	STACKED ULONG MethodID;
+	STACKED APTR browser;
 };
 
 struct MP_OWBWindow_UpdateState {
-	ULONG MethodID;
-	APTR browser;
-	ULONG state;
+	STACKED ULONG MethodID;
+	STACKED APTR browser;
+	STACKED ULONG state;
 };
 
 struct MP_OWBWindow_UpdateZone {
-	ULONG MethodID;
-	APTR browser;
-	ULONG zone;
+	STACKED ULONG MethodID;
+	STACKED APTR browser;
+	STACKED ULONG zone;
 };
 
 struct MP_OWBWindow_UpdateSecurity {
-	ULONG MethodID;
-	APTR browser;
-	ULONG security;
+	STACKED ULONG MethodID;
+	STACKED APTR browser;
+	STACKED ULONG security;
 };
 
 struct MP_OWBWindow_UpdatePrivateBrowsing {
-	ULONG MethodID;
-	APTR browser;
-	ULONG enabled;
+	STACKED ULONG MethodID;
+	STACKED APTR browser;
+	STACKED ULONG enabled;
 };
 
 struct MP_OWBWindow_UpdateUserScript {
-	ULONG MethodID;
-	APTR browser;
-	STRPTR url;
+	STACKED ULONG MethodID;
+	STACKED APTR browser;
+	STACKED STRPTR url;
 };
 
 struct MP_OWBWindow_UpdateMenu {
-	ULONG MethodID;
-	APTR browser;
+	STACKED ULONG MethodID;
+	STACKED APTR browser;
 };
 
 struct MP_OWBWindow_AddClosedView {
-	ULONG MethodID;
-	APTR browser;
+	STACKED ULONG MethodID;
+	STACKED APTR browser;
 };
 
 struct MP_OWBWindow_AddHistoryItem {
-	ULONG MethodID;
-	APTR item;
+	STACKED ULONG MethodID;
+	STACKED APTR item;
 };
 
 struct MP_OWBWindow_Find {
-	ULONG MethodID;
-	STRPTR string;
-	ULONG flags;
+	STACKED ULONG MethodID;
+	STACKED STRPTR string;
+	STACKED ULONG flags;
 };
 
 struct MP_OWBWindow_InsertBookmarkAskTitle {
-	ULONG MethodID;
-	STRPTR url;
-	STRPTR title;
-	ULONG quicklink;
+	STACKED ULONG MethodID;
+	STACKED STRPTR url;
+	STACKED STRPTR title;
+	STACKED ULONG quicklink;
 };
 
 struct MP_OWBWindow_JavaScriptPrompt {
-	ULONG MethodID;
-	STRPTR message;
-	STRPTR defaultvalue;
+	STACKED ULONG MethodID;
+	STACKED STRPTR message;
+	STACKED STRPTR defaultvalue;
 };
 
 struct MP_OWBWindow_AutoComplete {
-	ULONG MethodID;
-	LONG len;
-	LONG prevlen;
+	STACKED ULONG MethodID;
+	STACKED LONG len;
+	STACKED LONG prevlen;
 };
 
 struct MP_OWBWindow_FullScreen {
-	ULONG MethodID;
-	ULONG fullscreen;
+	STACKED ULONG MethodID;
+	STACKED ULONG fullscreen;
 };
 
 /* OWBBrowser */
 
 struct MP_OWBBrowser_Expose {
-	ULONG MethodID;
-	ULONG updatecontrols;
+	STACKED ULONG MethodID;
+	STACKED ULONG updatecontrols;
 };
 
 struct MP_OWBBrowser_Update {
-	ULONG MethodID;
-	APTR rect;
-	ULONG sync;
+	STACKED ULONG MethodID;
+	STACKED APTR rect;
+	STACKED ULONG sync;
 };
 
 struct MP_OWBBrowser_Scroll {
-	ULONG MethodID;
-	int dx;
-	int dy;
-	APTR rect;
+	STACKED ULONG MethodID;
+	STACKED int dx;
+	STACKED int dy;
+	STACKED APTR rect;
 };
 
 struct MP_OWBBrowser_DidStartProvisionalLoad {
-	ULONG MethodID;
-	APTR webframe;
+	STACKED ULONG MethodID;
+	STACKED APTR webframe;
 };
 
 struct MP_OWBBrowser_DidCommitLoad {
-	ULONG MethodID;
-	APTR webframe;
+	STACKED ULONG MethodID;
+	STACKED APTR webframe;
 };
 
 struct MP_OWBBrowser_WillCloseFrame {
-	ULONG MethodID;
-	APTR webframe;
+	STACKED ULONG MethodID;
+	STACKED APTR webframe;
 };
 
 struct MP_OWBBrowser_PopupMenu {
-	ULONG MethodID;
-	APTR popupinfo;
+	STACKED ULONG MethodID;
+	STACKED APTR popupinfo;
 };
 
 struct MP_OWBBrowser_Autofill_ShowPopup {
-	ULONG MethodID;
-	APTR suggestions;
-	APTR rect;
+	STACKED ULONG MethodID;
+	STACKED APTR suggestions;
+	STACKED APTR rect;
 };
 
 struct MP_OWBBrowser_Autofill_HidePopup {
-	ULONG MethodID;
+	STACKED ULONG MethodID;
 };
 
 struct MP_OWBBrowser_Autofill_DidSelect {
-	ULONG MethodID;
-	APTR value;
+	STACKED ULONG MethodID;
+	STACKED APTR value;
 };
 
 struct MP_OWBBrowser_Autofill_SaveTextFields {
-	ULONG MethodID;
-	APTR form;
+	STACKED ULONG MethodID;
+	STACKED APTR form;
 };
 
 struct MP_OWBBrowser_Autofill_DidChangeInTextField {
-	ULONG MethodID;
-	APTR element;
+	STACKED ULONG MethodID;
+	STACKED APTR element;
 };
 
 struct MP_OWBBrowser_Autofill_HandleNavigationEvent {
-	ULONG MethodID;
-	APTR event;
+	STACKED ULONG MethodID;
+	STACKED APTR event;
 };
 
 struct MP_OWBBrowser_ColorChooser_ShowPopup {
-	ULONG MethodID;
-	APTR client;
-	APTR color;
+	STACKED ULONG MethodID;
+	STACKED APTR client;
+	STACKED APTR color;
 };
 
 struct MP_OWBBrowser_ColorChooser_HidePopup {
-	ULONG MethodID;
+	STACKED ULONG MethodID;
 };
 
 struct MP_OWBBrowser_DateTimeChooser_ShowPopup {
-	ULONG MethodID;
-	APTR client;
+	STACKED ULONG MethodID;
+	STACKED APTR client;
 };
 
 struct MP_OWBBrowser_DateTimeChooser_HidePopup {
-	ULONG MethodID;
+	STACKED ULONG MethodID;
 };
 
 struct MP_OWBBrowser_Print {
-	ULONG MethodID;
-	STRPTR file;
-	ULONG headerheight;
-	ULONG footerheight;
-	APTR scalefactor; // ptr to double
-	ULONG mode;
+	STACKED ULONG MethodID;
+	STACKED STRPTR file;
+	STACKED ULONG headerheight;
+	STACKED ULONG footerheight;
+	STACKED APTR scalefactor; // ptr to double
+	STACKED ULONG mode;
 };
 
 struct MP_OWBBrowser_SetScrollOffset {
-	ULONG MethodID;
-	LONG x;
-	LONG y;
+	STACKED ULONG MethodID;
+	STACKED LONG x;
+	STACKED LONG y;
 };
 
 struct MP_OWBBrowser_VideoEnterFullPage {
-	ULONG MethodID;
-	APTR element;
-	ULONG fullscreen;
+	STACKED ULONG MethodID;
+	STACKED APTR element;
+	STACKED ULONG fullscreen;
 };
 
 struct MP_OWBBrowser_VideoBlit {
-	ULONG MethodID;
-	unsigned char **src;
-	int *stride;
-	int	width;
-	int height;
+	STACKED ULONG MethodID;
+	STACKED unsigned char **src;
+	STACKED int *stride;
+	STACKED int	width;
+	STACKED int height;
 };
 
 /* AddressBarGroup */
 
 struct MP_AddressBarGroup_Mark {
-	ULONG MethodID;
-	STRPTR url;
+	STACKED ULONG MethodID;
+	STACKED STRPTR url;
 };
 
 struct MP_AddressBarGroup_CompleteString {
-	ULONG MethodID;
-	STRPTR url;
-	ULONG cursorpos;
-	ULONG markstart;
-	ULONG markend;
+	STACKED ULONG MethodID;
+	STACKED STRPTR url;
+	STACKED ULONG cursorpos;
+	STACKED ULONG markstart;
+	STACKED ULONG markend;
 };
 
 /* SearchBarGroup */
 
 struct MP_SearchBarGroup_LoadURLFromShortcut {
-	ULONG MethodID;
-	STRPTR shortcut;
-	STRPTR string;
+	STACKED ULONG MethodID;
+	STACKED STRPTR shortcut;
+	STACKED STRPTR string;
 };
 
 /* Download */
 struct MP_Download_Done {
-	ULONG MethodID;
-	APTR entry;
+	STACKED ULONG MethodID;
+	STACKED APTR entry;
 };
 
 struct MP_Download_Error {
-	ULONG MethodID;
-	APTR entry;
-	char *error;
+	STACKED ULONG MethodID;
+	STACKED APTR entry;
+	STACKED char *error;
 };
 
 struct MP_Download_Cancelled {
-	ULONG MethodID;
-	APTR entry;
+	STACKED ULONG MethodID;
+	STACKED APTR entry;
 };
 
 struct MP_Download_RemoveEntry {
-	ULONG MethodID;
-	APTR listview;
-	LONG all;
+	STACKED ULONG MethodID;
+	STACKED APTR listview;
+	STACKED LONG all;
 };
 
 struct MP_Download_Cancel {
-	ULONG MethodID;
-	LONG all;
+	STACKED ULONG MethodID;
+	STACKED LONG all;
 };
 
 struct MP_Download_Retry {
-	ULONG MethodID;
-	APTR listview;
+	STACKED ULONG MethodID;
+	STACKED APTR listview;
 };
 
 struct MP_Download_HilightPage {
-	ULONG MethodID;
-	ULONG pagenum;
+	STACKED ULONG MethodID;
+	STACKED ULONG pagenum;
 };
 
 struct MP_Download_UnhilightPage {
-	ULONG MethodID;
-	ULONG pagenum;
+	STACKED ULONG MethodID;
+	STACKED ULONG pagenum;
 };
 
 /* FindText */
 struct MP_FindText_DisableButtons {
-	ULONG MethodID;
-	LONG prev;
-	LONG next;
+	STACKED ULONG MethodID;
+	STACKED LONG prev;
+	STACKED LONG next;
 };
 
 struct MP_FindText_Find {
-	ULONG MethodID;
-	STRPTR string;
-	ULONG flags;
-	ULONG validate;
+	STACKED ULONG MethodID;
+	STACKED STRPTR string;
+	STACKED ULONG flags;
+	STACKED ULONG validate;
 };
 
 /* PopString */
 struct MP_PopString_Insert {
-	ULONG MethodID;
-	TEXT* txt;
+	STACKED ULONG MethodID;
+	STACKED TEXT* txt;
 };
 
 struct MP_FontFamilyPopString_InsertFamily {
-	ULONG MethodID;
-	TEXT* txt;
+	STACKED ULONG MethodID;
+	STACKED TEXT* txt;
 };
 
 /* HistoryList */
 struct MP_HistoryList_Redraw {
-	ULONG MethodID;
-	APTR entry;
+	STACKED ULONG MethodID;
+	STACKED APTR entry;
 };
 
 /* Bookmark */
 struct MP_Bookmarkgroup_Update  {
-	ULONG MethodID;
-	ULONG from;
+	STACKED ULONG MethodID;
+	STACKED ULONG from;
 };
 
 struct MP_Bookmarkgroup_AddLink {
-	ULONG MethodID;
-	TEXT* title;
-	TEXT* alias;
-	TEXT* address;
-	ULONG external;
-	ULONG menu;
-	ULONG quicklink;
+	STACKED ULONG MethodID;
+	STACKED TEXT* title;
+	STACKED TEXT* alias;
+	STACKED TEXT* address;
+	STACKED ULONG external;
+	STACKED ULONG menu;
+	STACKED ULONG quicklink;
 };
 
 struct MP_Bookmarkgroup_AddGroup {
-	ULONG MethodID;
-	TEXT* title;
+	STACKED ULONG MethodID;
+	STACKED TEXT* title;
 };
 
 struct MP_Bookmarkgroup_LoadHtml {
-	LONG MethodID;
-	TEXT* file;
+	STACKED LONG MethodID;
+	STACKED TEXT* file;
 };
 
 struct MP_Bookmarkgroup_SaveHtml {
-	LONG MethodID;
-	TEXT* file;
-	ULONG type;
+	STACKED LONG MethodID;
+	STACKED TEXT* file;
+	STACKED ULONG type;
 };
 
 struct MP_Bookmarkgroup_BuildMenu {
-	LONG MethodID;
-	Object *menu;
+	STACKED LONG MethodID;
+	STACKED Object *menu;
 };
 
 struct MP_Bookmarkgroup_RegisterQLGroup {
-	LONG MethodID;
-	Object *group;
-	Object *parent;
+	STACKED LONG MethodID;
+	STACKED Object *group;
+	STACKED Object *parent;
 };
 
 struct MP_Bookmarkgroup_UnRegisterQLGroup {
-	LONG MethodID;
-	Object *group;
+	STACKED LONG MethodID;
+	STACKED Object *group;
 };
 
 struct MP_Bookmarkgroup_AddQuickLink {
-	LONG MethodID;
-	struct treedata *node;
-	LONG	pos;
+	STACKED LONG MethodID;
+	STACKED struct treedata *node;
+	STACKED LONG	pos;
 };
 
 struct MP_Bookmarkgroup_RemoveQuickLink {
-	LONG MethodID;
-	struct treedata *node;
+	STACKED LONG MethodID;
+	STACKED struct treedata *node;
 };
 
 struct MP_Bookmarkgroup_ContainsURL {
-	LONG MethodID;
-	void *url;
+	STACKED LONG MethodID;
+	STACKED void *url;
 };
 
 /* QuickLinkButtonGroup */
 struct MP_QuickLinkButtonGroup_RedrawMenuItem {
-	LONG MethodID;
-	APTR obj;
+	STACKED LONG MethodID;
+	STACKED APTR obj;
 };
 
 /* QuickLinkGroup */
 struct MP_QuickLinkGroup_Add {
-	LONG MethodID;
-    struct treedata *td;
+	STACKED LONG MethodID;
+    STACKED struct treedata *td;
 };
 
 struct MP_QuickLinkGroup_Remove {
-	LONG MethodID;
-    struct treedata *td;
+	STACKED LONG MethodID;
+    STACKED struct treedata *td;
 };
 
 struct MP_QuickLinkGroup_Update {
-	LONG MethodID;
-    struct treedata *td;
+	STACKED LONG MethodID;
+    STACKED struct treedata *td;
 };
 
 struct MP_QuickLinkGroup_InitChange {
-	LONG MethodID;
-	ULONG mode;
+	STACKED LONG MethodID;
+	STACKED ULONG mode;
 };
 
 struct MP_QuickLinkGroup_ExitChange {
-	LONG MethodID;
-	ULONG mode;
+	STACKED LONG MethodID;
+	STACKED ULONG mode;
 };
 
 /* NetworkLedsGroup */
 struct MP_Network_AddJob {
-	LONG MethodID;
-	APTR job;
+	STACKED LONG MethodID;
+	STACKED APTR job;
 };
 
 struct MP_Network_UpdateJob {
-	LONG MethodID;
-	APTR job;
+	STACKED LONG MethodID;
+	STACKED APTR job;
 };
 
 struct MP_Network_RemoveJob {
-	LONG MethodID;
-	APTR job;
+	STACKED LONG MethodID;
+	STACKED APTR job;
 };
 
 /* NetworkWindow */
 struct MP_NetworkWindow_Cancel {
-	LONG MethodID;
-	LONG all;
+	STACKED LONG MethodID;
+	STACKED LONG all;
 };
 
 /* LoginWindow */
 struct MP_LoginWindow_Login {
-	LONG MethodID;
-	ULONG validate;
+	STACKED LONG MethodID;
+	STACKED ULONG validate;
 };
 
 /* SplashWindow */
 struct MP_SplashWindow_Update {
-	LONG MethodID;
-	int current;
-	int total;
-	TEXT* file;
+	STACKED LONG MethodID;
+	STACKED int current;
+	STACKED int total;
+	STACKED TEXT* file;
 };
 
 /* ConsoleWindow */
 struct MP_ConsoleWindow_Add {
-	ULONG MethodID;
-	STRPTR message;
+	STACKED ULONG MethodID;
+	STACKED STRPTR message;
 };
 
 /* FavIcon */
 struct MP_FavIcon_DidReceiveFavIcon {
-	ULONG MethodID;
-	STRPTR url;
+	STACKED ULONG MethodID;
+	STACKED STRPTR url;
 };
 
 /* History */
 struct MP_History_Insert {
-	ULONG MethodID;
-	APTR item;
+	STACKED ULONG MethodID;
+	STACKED APTR item;
 };
 
 struct MP_History_Remove {
-	ULONG MethodID;
-	APTR item;
+	STACKED ULONG MethodID;
+	STACKED APTR item;
 };
 
 struct MP_History_ContainsURL {
-	LONG MethodID;
-	void *url;
+	STACKED LONG MethodID;
+	STACKED void *url;
 };
 
 /* Password Manager */
 struct MP_PasswordManagerGroup_Insert {
-	ULONG MethodID;
-	APTR host;
-	APTR credential;
+	STACKED ULONG MethodID;
+	STACKED APTR host;
+	STACKED APTR credential;
 };
 
 struct MP_PasswordManagerGroup_Remove {
-	ULONG MethodID;
-	APTR host;
+	STACKED ULONG MethodID;
+	STACKED APTR host;
 };
 
 struct MP_PasswordManagerGroup_Get {
-	ULONG MethodID;
-	APTR host;
+	STACKED ULONG MethodID;
+	STACKED APTR host;
 };
 
 /* Cookie Manager */
 struct MP_CookieManagerGroup_DidInsert {
-	ULONG MethodID;
-	APTR cookie;
+	STACKED ULONG MethodID;
+	STACKED APTR cookie;
 };
 
 struct MP_CookieManagerGroup_DidRemove {
-	ULONG MethodID;
-	APTR cookie;
+	STACKED ULONG MethodID;
+	STACKED APTR cookie;
 };
 
 struct MP_CookieManagerGroup_Remove {
-	ULONG MethodID;
+	STACKED ULONG MethodID;
 };
 
 /* Block Manager */
 struct MP_BlockManagerGroup_DidInsert {
-	ULONG MethodID;
-	STRPTR rule;
-	int type;
-	APTR ptr;
+	STACKED ULONG MethodID;
+	STACKED STRPTR rule;
+	STACKED int type;
+	STACKED APTR ptr;
 };
 
 /* Script Manager */
 struct MP_ScriptManagerGroup_InjectScripts {
-	ULONG MethodID;
-	APTR webView;
+	STACKED ULONG MethodID;
+	STACKED APTR webView;
 };
 
 struct MP_ScriptManagerGroup_ScriptsForURL {
-	ULONG MethodID;
-	STRPTR url;
+	STACKED ULONG MethodID;
+	STACKED STRPTR url;
 };
 
 struct MP_ScriptManagerGroup_Update {
-	ULONG MethodID;
-	ULONG which;
+	STACKED ULONG MethodID;
+	STACKED ULONG which;
 };
 
 /* URLPrefsGroup */
 struct MP_URLPrefsGroup_ApplySettingsForURL {
-	ULONG MethodID;
-	STRPTR url;
-	APTR webView;
+	STACKED ULONG MethodID;
+	STACKED STRPTR url;
+	STACKED APTR webView;
 };
 
 struct MP_URLPrefsGroup_MatchesURL {
-	ULONG MethodID;
-	STRPTR url;
+	STACKED ULONG MethodID;
+	STACKED STRPTR url;
 };
 
 struct MP_URLPrefsGroup_UserAgentForURL {
-	ULONG MethodID;
-	STRPTR url;
-	APTR webView;
+	STACKED ULONG MethodID;
+	STACKED STRPTR url;
+	STACKED APTR webView;
 };
 
 struct MP_URLPrefsGroup_CookiePolicyForURLAndName {
-	ULONG MethodID;
-	STRPTR url;
-	STRPTR name;
+	STACKED ULONG MethodID;
+	STACKED STRPTR url;
+	STACKED STRPTR name;
 };
 
 /* SuggestPopString */
 struct MP_SuggestPopString_Insert {
-	ULONG MethodID;
-	APTR item;
+	STACKED ULONG MethodID;
+	STACKED APTR item;
 };
 
 /* PrinterWindow */
 struct MP_PrinterWindow_PrintDocument {
-	ULONG MethodID;
-	APTR frame;
+	STACKED ULONG MethodID;
+	STACKED APTR frame;
 };
 
 /* AutofillPopup */
 struct MP_AutofillPopup_Update {
-	ULONG MethodID;
-	void *suggestions;
+	STACKED ULONG MethodID;
+	STACKED void *suggestions;
 };
 
 struct MP_AutofillPopup_DidSelect {
-	ULONG MethodID;
-	LONG idx;
-	ULONG close;
+	STACKED ULONG MethodID;
+	STACKED LONG idx;
+	STACKED ULONG close;
 };
 
 struct MP_AutofillPopup_HandleNavigationEvent {
-	ULONG MethodID;
-	LONG event;
+	STACKED ULONG MethodID;
+	STACKED LONG event;
 };
 
 /* ColorChooserPopup */
 struct MP_ColorChooserPopup_DidSelect {
-	ULONG MethodID;
-	ULONG close;
+	STACKED ULONG MethodID;
+	STACKED ULONG close;
 };
 
 /* DateTimeChooserPopup */
 struct MP_DateTimeChooserPopup_DidSelect {
-	ULONG MethodID;
-	ULONG close;
+	STACKED ULONG MethodID;
+	STACKED ULONG close;
 };
 
 /* Plugins */
 
 struct MP_Plugin_RenderRastPort {
-	ULONG MethodID;
-	void* rect;
-	void* windowrect;
-	APTR src;
-	ULONG stride;
+	STACKED ULONG MethodID;
+	STACKED void* rect;
+	STACKED void* windowrect;
+	STACKED APTR src;
+	STACKED ULONG stride;
 };
 
 struct MP_Plugin_AddTimeOut {
-	ULONG MethodID;
-	LONG delay;
-	APTR timeoutfunc;
-	APTR instance;
+	STACKED ULONG MethodID;
+	STACKED LONG delay;
+	STACKED APTR timeoutfunc;
+	STACKED APTR instance;
 };
 
 struct MP_Plugin_RemoveTimeOut {
-	ULONG MethodID;
-	APTR timer;
+	STACKED ULONG MethodID;
+	STACKED APTR timer;
 };
 
 struct MP_Plugin_AddIDCMPHandler {
-	ULONG MethodID;
-	APTR  handlerfunc;
-	APTR  instance;
+	STACKED ULONG MethodID;
+	STACKED APTR  handlerfunc;
+	STACKED APTR  instance;
 };
 
 struct MP_Plugin_RemoveIDCMPHandler {
-	ULONG MethodID;
-	APTR instance;
+	STACKED ULONG MethodID;
+	STACKED APTR instance;
 };
 
 struct MP_Plugin_Message {
-	ULONG MethodID;
-	STRPTR message;
+	STACKED ULONG MethodID;
+	STACKED STRPTR message;
 };
 
 /* Variables */
