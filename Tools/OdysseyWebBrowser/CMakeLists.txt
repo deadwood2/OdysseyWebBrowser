@@ -45,5 +45,5 @@ set(OdysseyWebBrowser_LIBRARIES
 )
 
 include_directories(${OdysseyWebBrowser_INCLUDE_DIRECTORIES})
-add_executable(owb ${OdysseyWebBrowser_SOURCES})
-target_link_libraries(owb ${OdysseyWebBrowser_LIBRARIES})
+add_executable(OWB ${OdysseyWebBrowser_SOURCES})
+target_link_libraries(OWB ${OdysseyWebBrowser_LIBRARIES})
