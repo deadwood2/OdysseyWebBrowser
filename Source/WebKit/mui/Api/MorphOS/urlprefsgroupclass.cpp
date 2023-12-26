@@ -45,7 +45,7 @@
 #include "utils.h"
 
 #ifndef get
-#define get(obj,attr,store) GetAttr(attr,obj,(ULONG *)store)
+#define get(obj,attr,store) GetAttr(attr,obj,(IPTR *)store)
 #endif
 
 extern CONST_STRPTR * get_user_agent_strings();
@@ -627,7 +627,7 @@ DEFSMETHOD(URLPrefsGroup_CookiePolicyForURLAndName)
 		}
 	}
 
-	return (ULONG) policy;
+	return (IPTR) policy;
 }
 
 BEGINMTABLE

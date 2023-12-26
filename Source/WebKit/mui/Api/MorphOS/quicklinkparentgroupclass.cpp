@@ -38,7 +38,7 @@
 #include "bookmarkgroupclass.h"
 
 #ifndef get
-#define get(obj,attr,store) GetAttr(attr,obj,(ULONGPTR)store)
+#define get(obj,attr,store) GetAttr(attr,obj,(IPTR *)store)
 #endif
 
 //#define D(x)
@@ -63,7 +63,7 @@ static ULONG LayoutFonc( struct Hook *hook, Object *obj, struct MUI_LayoutMsg *l
 	{
 		case MUILM_MINMAX:
 		{
-			ULONG min_w=0,min_h=0,mode=0,max_w=0,max_h=0;
+			IPTR min_w=0,min_h=0,mode=0,max_w=0,max_h=0;
 			Object *cstate = (Object *)lm->lm_Children->mlh_Head;
 			Object *child;
 			if ( (child=(Object *)NextObject(&cstate)) )
@@ -135,7 +135,7 @@ static ULONG LayoutFonc( struct Hook *hook, Object *obj, struct MUI_LayoutMsg *l
 		{
 			APTR cstate = (APTR)lm->lm_Children->mlh_Head;
 			Object *child;
-			ULONG w,h,mode;
+			IPTR w,h,mode;
 			if ( (child=(Object *)NextObject(&cstate)) )
 			{
 				if (get(child, MA_QuickLinkGroup_Mode, &mode))
@@ -191,7 +191,7 @@ static void doset(Object *obj, struct Data *data, struct TagItem *tags)
 		case MA_QuickLinkParentGroup_QLGroup:      //Init only
 			if (!data->qlgroup)
 			{
-				ULONG mode=0;
+				IPTR mode=0;
 				Object *child;
 				data->qlgroup=(Object *)tag->ti_Data;
 				get(data->qlgroup, MA_QuickLinkGroup_Mode, &mode);
@@ -239,7 +239,7 @@ static void doset(Object *obj, struct Data *data, struct TagItem *tags)
 				else
 				{
 					// Group showed, remove it and add little space
-					ULONG mode=0;
+					IPTR mode=0;
 					APTR child;
 					struct MinList *l;
 					APTR cstate;

@@ -100,7 +100,7 @@ DEFDISP
 
 DEFMMETHOD(Setup)
 {
-	ULONG rc = DOSUPER;
+	IPTR rc = DOSUPER;
 
 	if(rc)
 	{

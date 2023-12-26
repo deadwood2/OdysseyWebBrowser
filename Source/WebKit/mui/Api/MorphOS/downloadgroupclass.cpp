@@ -411,7 +411,7 @@ DEFNEW
 
 DEFMMETHOD(Show)
 {
-	ULONG rc = DOSUPER;
+	IPTR rc = DOSUPER;
 
 	if(rc)
 	{
@@ -442,7 +442,7 @@ DEFMMETHOD(Hide)
 
 DEFMMETHOD(Setup)
 {
-	ULONG rc;
+	IPTR rc;
 	GETDATA;
 
 	if((rc=DOSUPER))

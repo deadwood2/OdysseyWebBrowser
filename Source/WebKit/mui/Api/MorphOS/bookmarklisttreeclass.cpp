@@ -323,7 +323,7 @@ DEFDISP
 
 DEFMMETHOD(Show)
 {
-	ULONG rc;
+	IPTR rc;
 	GETDATA;
 
 	if ((rc = DOSUPER))
@@ -740,7 +740,7 @@ DEFMMETHOD(ContextMenuChoice)
 			//kprintf("Bad Context menu return\n");
     }
 	data->drop=NULL;
-    return (ULONG)NULL;
+    return (IPTR)NULL;
 }
 
 /*

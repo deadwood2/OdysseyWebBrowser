@@ -171,7 +171,7 @@ DEFGET
 
 		case MA_OWB_URL:
 		case MUIA_String_Contents:
-			return GetAttr(MUIA_String_Contents, data->str, (ULONGPTR)msg->opg_Storage);
+			return GetAttr(MUIA_String_Contents, data->str, (IPTR *)msg->opg_Storage);
 	}
 
 	return DOSUPER;
@@ -179,7 +179,7 @@ DEFGET
 
 DEFMMETHOD(Show)
 {
-	ULONG rc;
+	IPTR rc;
 	GETDATA;
 
 	if ((rc = DOSUPER))
@@ -219,7 +219,7 @@ DEFMMETHOD(Cleanup)
 DEFMMETHOD(HandleEvent)
 {
 	GETDATA;
-	ULONG rc = 0;
+	IPTR rc = 0;
 	struct IntuiMessage *imsg;
 
 	if(msg->muikey > MUIKEY_NONE)

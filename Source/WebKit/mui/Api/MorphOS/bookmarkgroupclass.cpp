@@ -43,7 +43,7 @@
 #include "bookmarkgroupclass.h"
 
 #ifndef get
-#define get(obj,attr,store) GetAttr(attr,obj,(ULONGPTR)store)
+#define get(obj,attr,store) GetAttr(attr,obj,(IPTR *)store)
 #endif
 
 #define D(x)
@@ -583,7 +583,7 @@ static void handle_favicons(struct IClass *cl, Object *obj, struct MUIS_Listtree
 
 DEFMMETHOD(Setup)
 {
-	ULONG rc = DOSUPER;
+	IPTR rc = DOSUPER;
 	GETDATA;
 
 	if (rc && _win(obj))
@@ -1059,7 +1059,7 @@ DEFTMETHOD(Bookmarkgroup_ReadQLOrder)
 	// Read the current sort order of quick link
 	GETDATA;
 	struct treedata *td;
-	ULONG count,max=0,change=FALSE;
+	IPTR count,max=0,change=FALSE;
 	D(kprintf("Bookmarkgroup ReadQLOrder\n"));
 	get(data->lt_linklist, MUIA_List_Entries, &max);
 	
@@ -1755,7 +1755,7 @@ DEFTMETHOD(Bookmarkgroup_UpdateMenu)
 
 			if(menu)
 			{
-				ULONG id,found=FALSE;
+				IPTR id,found=FALSE;
 				Object *child2;
 
 				DoMethod(menu, MUIM_Menustrip_InitChange);
@@ -1880,7 +1880,7 @@ DEFSMETHOD(Bookmarkgroup_RemoveQuickLink)
 {
 	GETDATA;
 	struct treedata *node=NULL;
-	LONG pos=0,max=0;
+	IPTR pos=0,max=0;
 
 	if (msg->node)
 	{
@@ -1996,7 +1996,7 @@ DEFSMETHOD(Bookmarkgroup_UnRegisterQLGroup)
 {
 	GETDATA;
 	struct treedata *td;
-	ULONG count,max=0;
+	IPTR count,max=0;
 	APTR n = NULL;
 	Object *group = NULL;
 
@@ -2056,7 +2056,7 @@ DEFMMETHOD(HandleInput)
 					// Cursor key only if string active
 					GETDATA;
 					Object *active=NULL;
-					LONG pos=0;
+					IPTR pos=0;
 
 					get(data->win, MUIA_Window_ActiveObject, &active);
 					D(kprintf("Handle %08lx Obj %08lx\n", msg->imsg->Code, active));

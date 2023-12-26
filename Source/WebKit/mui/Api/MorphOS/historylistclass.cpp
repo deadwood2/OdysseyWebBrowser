@@ -125,10 +125,10 @@ DEFGET
 	switch (msg->opg_AttrID)
 	{
 		case MA_HistoryList_Opened:
-			*msg->opg_Storage = (ULONG) data->opened;
+			*msg->opg_Storage = (IPTR) data->opened;
             return TRUE;
 		case MA_HistoryList_Complete:
-			*msg->opg_Storage = (ULONG) data->complete;
+			*msg->opg_Storage = (IPTR) data->complete;
             return TRUE;
 	}
 
@@ -144,7 +144,7 @@ DEFSET
 
 DEFMMETHOD(Show)
 {
-	ULONG rc;
+	IPTR rc;
 	GETDATA;
 
 	data->opened = TRUE;
@@ -237,7 +237,7 @@ DEFMMETHOD(HandleEvent)
 
 						if (_isinobject(obj, imsg->MouseX, imsg->MouseY) && DoMethod(obj, MUIM_List_TestPos, imsg->MouseX, imsg->MouseY, &res) && (res.entry != -1))
 						{
-							DoMethod(obj, MUIM_List_GetEntry, res.entry, (ULONG *)&item);
+							DoMethod(obj, MUIM_List_GetEntry, res.entry, (IPTR *)&item);
 
 							if(item)
 							{
@@ -451,7 +451,7 @@ DEFMMETHOD(ContextMenuBuild)
 
 	if (DoMethod(obj, MUIM_List_TestPos, msg->mx, msg->my, &res) && (res.entry != -1))
 	{
-		DoMethod(obj, MUIM_List_GetEntry, res.entry, (ULONG *)&item);
+		DoMethod(obj, MUIM_List_GetEntry, res.entry, (IPTR *)&item);
 
 		if(item)
 		{
@@ -481,7 +481,7 @@ DEFMMETHOD(ContextMenuChoice)
 	GETDATA;
 	struct history_entry *item = NULL;
 
-	DoMethod(obj, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (ULONG *)&item);
+	DoMethod(obj, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (IPTR *)&item);
 
 	if(item)
 	{

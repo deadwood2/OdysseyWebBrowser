@@ -146,25 +146,25 @@ DEFGET
 	{
 		case MA_OWB_WindowType:
 		{
-			*msg->opg_Storage = (ULONG) MV_OWB_Window_Auth;
+			*msg->opg_Storage = (IPTR) MV_OWB_Window_Auth;
 		}
 		return TRUE;
 
 		case MA_LoginWindow_Username:
 		{
-			*msg->opg_Storage = (ULONG) getv(data->st_user, MUIA_String_Contents);
+			*msg->opg_Storage = (IPTR) getv(data->st_user, MUIA_String_Contents);
 		}
 		return TRUE;
 
 		case MA_LoginWindow_Password:
 		{
-			*msg->opg_Storage = (ULONG) getv(data->st_password, MUIA_String_Contents);
+			*msg->opg_Storage = (IPTR) getv(data->st_password, MUIA_String_Contents);
 		}
 		return TRUE;
 
 		case MA_LoginWindow_SaveAuthentication:
 		{
-			*msg->opg_Storage = (ULONG) getv(data->ch_save, MUIA_Selected);
+			*msg->opg_Storage = (IPTR) getv(data->ch_save, MUIA_Selected);
 		}
 		return TRUE;
 	}

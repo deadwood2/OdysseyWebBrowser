@@ -132,7 +132,7 @@ DEFMMETHOD(ContextMenuBuild)
 
 	if (DoMethod(obj, MUIM_List_TestPos, msg->mx, msg->my, &res) && (res.entry != -1))
 	{
-		DoMethod(obj, MUIM_List_GetEntry, res.entry, (ULONG *)&ce);
+		DoMethod(obj, MUIM_List_GetEntry, res.entry, (IPTR *)&ce);
 
 		if(ce)
 		{
@@ -153,7 +153,7 @@ DEFMMETHOD(ContextMenuChoice)
 {
 	struct console_entry *ce;
 
-	DoMethod(obj, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (ULONG *)&ce);
+	DoMethod(obj, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (IPTR *)&ce);
 
 	if(ce)
 	{

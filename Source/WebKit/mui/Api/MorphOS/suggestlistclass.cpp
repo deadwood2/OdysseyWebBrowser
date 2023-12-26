@@ -103,7 +103,7 @@ DEFGET
 	switch (msg->opg_AttrID)
 	{
 		case MA_SuggestList_Opened:
-			*msg->opg_Storage = (ULONG) data->opened;
+			*msg->opg_Storage = (IPTR) data->opened;
             return TRUE;
 	}
 
@@ -119,7 +119,7 @@ DEFSET
 
 DEFMMETHOD(Show)
 {
-	ULONG rc;
+	IPTR rc;
 	GETDATA;
 
 	data->opened = TRUE;

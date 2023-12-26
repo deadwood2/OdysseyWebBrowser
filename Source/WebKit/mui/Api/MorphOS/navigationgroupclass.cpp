@@ -52,7 +52,7 @@ static void doset(APTR obj, struct Data *data, struct TagItem *tags)
 
 	while ((tag = NextTagItem(&tstate)) != NULL)
 	{
-		ULONG tdata = tag->ti_Data;
+		IPTR tdata = tag->ti_Data;
 
 		switch (tag->ti_Tag)
 		{

@@ -134,7 +134,7 @@ DEFSMETHOD(AutofillPopup_DidSelect)
 DEFSMETHOD(AutofillPopup_HandleNavigationEvent)
 {
 	GETDATA;
-	ULONG handled = FALSE;
+	IPTR handled = FALSE;
 
 	if(getv(obj, MUIA_Window_Open))
 	{

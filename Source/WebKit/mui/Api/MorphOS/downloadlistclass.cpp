@@ -194,7 +194,7 @@ DEFDISP
 
 DEFMMETHOD(Setup)
 {
-	ULONG rc;
+	IPTR rc;
 
 	if((rc=DOSUPER))
 	{
@@ -454,7 +454,7 @@ DEFMMETHOD(ContextMenuBuild)
 
 	if (DoMethod(obj, MUIM_List_TestPos, msg->mx, msg->my, &res) && (res.entry != -1))
 	{
-		DoMethod(obj, MUIM_List_GetEntry, res.entry, (ULONG *)&dl);
+		DoMethod(obj, MUIM_List_GetEntry, res.entry, (IPTR *)&dl);
 
 		if(dl)
 		{
@@ -483,7 +483,7 @@ DEFMMETHOD(ContextMenuChoice)
 {
 	struct downloadnode *dl;
 
-	DoMethod(obj, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (ULONG *)&dl);
+	DoMethod(obj, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (IPTR *)&dl);
 
 	if(dl)
 	{

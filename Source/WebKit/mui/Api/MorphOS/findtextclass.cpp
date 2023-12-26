@@ -184,7 +184,7 @@ DEFGET
 	switch (msg->opg_AttrID)
 	{
 		case MUIA_String_Contents:
-			return GetAttr(MUIA_String_Contents, data->pop_search, (ULONGPTR)msg->opg_Storage);
+			return GetAttr(MUIA_String_Contents, data->pop_search, (IPTR *)msg->opg_Storage);
 	}
 
 	return DOSUPER;
@@ -193,7 +193,7 @@ DEFGET
 DEFMMETHOD(Show)
 {
 	GETDATA;
-	ULONG rc;
+	IPTR rc;
 
 	if ((rc = DOSUPER))
 	{

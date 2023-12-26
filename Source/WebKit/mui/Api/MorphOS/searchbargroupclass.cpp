@@ -236,7 +236,7 @@ DEFGET
 	switch (msg->opg_AttrID)
 	{
 		case MUIA_String_Contents:
-			return GetAttr(MUIA_String_Contents, data->pop_search, (ULONGPTR)msg->opg_Storage);
+			return GetAttr(MUIA_String_Contents, data->pop_search, (IPTR *)msg->opg_Storage);
 
 		case MA_SearchBarGroup_SearchButton:
 			*msg->opg_Storage = data->bt_search != NULL;
@@ -365,7 +365,7 @@ DEFSMETHOD(OWBWindow_LoadURL)
 DEFSMETHOD(SearchBarGroup_LoadURLFromShortcut)
 {
 	GETDATA;
-	ULONG res = FALSE;
+	IPTR res = FALSE;
 
 	if(data->gr_search)
 	{

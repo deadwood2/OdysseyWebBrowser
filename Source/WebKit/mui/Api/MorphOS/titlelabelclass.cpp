@@ -174,14 +174,14 @@ DEFGET
 		case MA_OWB_URL:
 		{
 			Object *browser = (Object *) muiUserData(obj);
-			*msg->opg_Storage = (ULONG) getv(browser, MA_OWBBrowser_URL);
+			*msg->opg_Storage = (IPTR) getv(browser, MA_OWBBrowser_URL);
 		}
 		return TRUE;
 
 		case MA_OWB_Title:
 		{
 			Object *browser = (Object *) muiUserData(obj);
-			*msg->opg_Storage = (ULONG) getv(browser, MA_OWBBrowser_Title);
+			*msg->opg_Storage = (IPTR) getv(browser, MA_OWBBrowser_Title);
 		}
 		return TRUE;
 
@@ -334,9 +334,9 @@ DEFMMETHOD(DragQuery)
 		// Sortable tabs handling
 		if(type == MV_OWB_ObjectType_Tab)
 		{
-			ULONG value = 0;
+			IPTR value = 0;
 
-			if(GetAttr(MUIA_Title_Sortable, _parent(msg->obj), (ULONGPTR) &value))
+			if(GetAttr(MUIA_Title_Sortable, _parent(msg->obj), (IPTR *) &value))
 			{
 				if(value)
 				{

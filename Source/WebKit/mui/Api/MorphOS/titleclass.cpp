@@ -89,7 +89,7 @@ DEFMMETHOD(Hide)
 
 DEFMMETHOD(Show)
 {
-	ULONG rc = DOSUPER;
+	IPTR rc = DOSUPER;
 
 	if (rc)
 	{
@@ -115,7 +115,7 @@ DEFMMETHOD(Show)
 DEFMMETHOD(HandleEvent)
 {
 	struct IntuiMessage *imsg = msg->imsg;
-	ULONG rc = 0;
+	IPTR rc = 0;
 
 	if (imsg)
 	{
@@ -189,9 +189,9 @@ DEFMMETHOD(DragQuery)
 
 	if (obj != msg->obj && (type == MV_OWB_ObjectType_Tab) /*&& _win(obj) == _win(msg->obj)*/)
 	{
-		ULONG value = 0;
+		IPTR value = 0;
 
-		if(GetAttr(MUIA_Title_Sortable, obj, (ULONGPTR) &value))
+		if(GetAttr(MUIA_Title_Sortable, obj, (IPTR *) &value))
 		{
 			return (MUIV_DragQuery_Accept);
 		}
@@ -202,7 +202,7 @@ DEFMMETHOD(DragQuery)
 DEFMMETHOD(DragDrop)
 {
 	LONG type = getv(msg->obj, MA_OWB_ObjectType);
-	ULONG rc = 0;
+	IPTR rc = 0;
 
 	// Drop from another window tab -> override and add to end.
 	if (type == MV_OWB_ObjectType_Tab && _win(obj) != _win(msg->obj))

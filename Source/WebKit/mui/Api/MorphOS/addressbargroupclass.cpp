@@ -290,7 +290,7 @@ DEFSMETHOD(AddressBarGroup_Mark)
 {
 	GETDATA;
 	STRPTR url = msg->url ? msg->url : (STRPTR) getv(data->pop_path, MUIA_String_Contents);
-	ULONG isbookmark = DoMethod((Object *) getv(app, MA_OWBApp_BookmarkWindow), MM_Bookmarkgroup_ContainsURL, url);
+	IPTR isbookmark = DoMethod((Object *) getv(app, MA_OWBApp_BookmarkWindow), MM_Bookmarkgroup_ContainsURL, url);
 	set(data->bt_add, MA_ToolButton_AddBookmark_IsBookmark, isbookmark);
 
 	return 0;

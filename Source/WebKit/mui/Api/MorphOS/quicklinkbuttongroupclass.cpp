@@ -283,7 +283,7 @@ DEFGET
 
 		case MA_QuickLinkGroup_Mode:
 		{
-			*msg->opg_Storage = (ULONG) data->mode;
+			*msg->opg_Storage = (IPTR) data->mode;
 		}
 		return TRUE;
 	}
@@ -651,7 +651,7 @@ DEFMMETHOD(ContextMenuChoice)
 		default:
 			;
     }
-    return (ULONG)NULL;
+    return (IPTR)NULL;
 }
 
 DEFMMETHOD(CreateShortHelp)

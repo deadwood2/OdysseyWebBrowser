@@ -37,7 +37,7 @@
 #include "bookmarkgroupclass.h"
 
 #ifndef get
-#define get(obj,attr,store) GetAttr(attr,obj,(ULONGPTR)store)
+#define get(obj,attr,store) GetAttr(attr,obj,(IPTR *)store)
 #endif
 
 #define D(x)

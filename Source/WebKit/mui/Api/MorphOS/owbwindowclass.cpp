@@ -880,19 +880,19 @@ DEFGET
 
 		case MA_OWB_WindowType:
 		{
-			*msg->opg_Storage = (ULONG) MV_OWB_Window_Browser;
+			*msg->opg_Storage = (IPTR) MV_OWB_Window_Browser;
 		}
 		return TRUE;
 
 		case MA_OWBWindow_ShowBookmarkPanel:
 		{
-			*msg->opg_Storage = (ULONG) (data->bookmarkpanelgroup != NULL);
+			*msg->opg_Storage = (IPTR) (data->bookmarkpanelgroup != NULL);
 		}
 		return TRUE;
 
 		case MA_OWBWindow_ShowHistoryPanel:
 		{
-			*msg->opg_Storage = (ULONG) (data->historypanelgroup != NULL);
+			*msg->opg_Storage = (IPTR) (data->historypanelgroup != NULL);
 		}
 		return TRUE;
 
@@ -1485,7 +1485,7 @@ DEFSMETHOD(OWBWindow_LoadURL)
 		// Handle possible shortcuts
 		if(spacepos != notFound)
 		{
-			ULONG res = FALSE;
+			IPTR res = FALSE;
 			String shortcut = url.left(spacepos);
 			String text = url.right(url.length() - (spacepos + 1));
 			char *converted_shortcut = utf8_to_local(shortcut.utf8().data());
@@ -2946,7 +2946,7 @@ DEFSMETHOD(OWBWindow_JavaScriptPrompt)
 
         while (result == -1)
         {
-			ULONG ret = DoMethod(_app(obj), MUIM_Application_NewInput, &sigs);
+			IPTR ret = DoMethod(_app(obj), MUIM_Application_NewInput, &sigs);
             if(ret == 1 || ret == 2)
             {
                 result = ret;

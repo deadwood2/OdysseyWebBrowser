@@ -485,7 +485,7 @@ DEFNEW
 		data->view->webView->onResize(re);
 
 		/* Passed attributes */
-		set(obj, MA_OWBBrowser_PrivateBrowsing, (ULONG) GetTagData(MA_OWBBrowser_PrivateBrowsing, FALSE, msg->ops_AttrList));
+		set(obj, MA_OWBBrowser_PrivateBrowsing, (IPTR) GetTagData(MA_OWBBrowser_PrivateBrowsing, FALSE, msg->ops_AttrList));
 
 		//kprintf("OWBBrowser: loading url <%s> is_frame: %d sourceview %p\n", data->url, data->is_frame, data->source_view);
 
@@ -1099,25 +1099,25 @@ DEFGET
 
 		case MA_OWBBrowser_BackAvailable:
 		{
-			*msg->opg_Storage = (ULONG) data->back_available;
+			*msg->opg_Storage = (IPTR) data->back_available;
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_ForwardAvailable:
 		{
-			*msg->opg_Storage = (ULONG) data->forward_available;
+			*msg->opg_Storage = (IPTR) data->forward_available;
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_ReloadAvailable:
 		{
-			*msg->opg_Storage = (ULONG) data->reload_available;
+			*msg->opg_Storage = (IPTR) data->reload_available;
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_StopAvailable:
 		{
-			*msg->opg_Storage = (ULONG) data->stop_available;
+			*msg->opg_Storage = (IPTR) data->stop_available;
 		}
 		return TRUE;
 
@@ -1141,7 +1141,7 @@ DEFGET
 
 		case MA_OWBBrowser_IsFrame:
 		{
-			*msg->opg_Storage = (ULONG) data->is_frame;
+			*msg->opg_Storage = (IPTR) data->is_frame;
 		}
 		return TRUE;
 
@@ -1159,31 +1159,31 @@ DEFGET
 
 		case MA_OWBBrowser_Loading:
 		{
-			*msg->opg_Storage = (ULONG) data->loading;
+			*msg->opg_Storage = (IPTR) data->loading;
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_State:
 		{
-			*msg->opg_Storage = (ULONG) data->state;
+			*msg->opg_Storage = (IPTR) data->state;
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_Zone:
 		{
-			*msg->opg_Storage = (ULONG) data->zone;
+			*msg->opg_Storage = (IPTR) data->zone;
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_Security:
 		{
-			*msg->opg_Storage = (ULONG) data->security;
+			*msg->opg_Storage = (IPTR) data->security;
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_LoadingProgress:
 		{
-			*msg->opg_Storage = (ULONG) data->loadprogress;
+			*msg->opg_Storage = (IPTR) data->loadprogress;
 		}
 		return TRUE;
 
@@ -1207,13 +1207,13 @@ DEFGET
 
 		case MA_OWBBrowser_Active:
 		{
-			*msg->opg_Storage = (ULONG) data->is_active;
+			*msg->opg_Storage = (IPTR) data->is_active;
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_ForbidEvents:
 		{
-			*msg->opg_Storage = (ULONG) data->forbid_events;
+			*msg->opg_Storage = (IPTR) data->forbid_events;
 		}
 		return TRUE;
 
@@ -1225,37 +1225,37 @@ DEFGET
 
 		case MA_OWBBrowser_PluginsEnabled:
 		{
-			*msg->opg_Storage = (ULONG) data->settings.plugins;
+			*msg->opg_Storage = (IPTR) data->settings.plugins;
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_PrivateBrowsing:
 		{
-			*msg->opg_Storage = (ULONG) data->settings.privatebrowsing;
+			*msg->opg_Storage = (IPTR) data->settings.privatebrowsing;
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_ContentBlocking:
 		{
-			*msg->opg_Storage = (ULONG) data->settings.blocking;
+			*msg->opg_Storage = (IPTR) data->settings.blocking;
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_LoadImagesAutomatically:
 		{
-			*msg->opg_Storage = (ULONG) data->settings.images;
+			*msg->opg_Storage = (IPTR) data->settings.images;
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_PlayAnimations:
 		{
-			*msg->opg_Storage = (ULONG) data->settings.animations;
+			*msg->opg_Storage = (IPTR) data->settings.animations;
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_JavaScriptEnabled:
 		{
-			*msg->opg_Storage = (ULONG) data->settings.javascript;
+			*msg->opg_Storage = (IPTR) data->settings.javascript;
 		}
 		return TRUE;
 
@@ -1291,7 +1291,7 @@ DEFGET
 
 		case MA_OWBBrowser_DragOperation:
 		{
-			*msg->opg_Storage = (ULONG) data->dragoperation;
+			*msg->opg_Storage = (IPTR) data->dragoperation;
 		}
 		return TRUE;
 
@@ -1328,37 +1328,37 @@ DEFGET
 		
 		case MA_OWBBrowser_VTopPixel:
 		{
-			*msg->opg_Storage = (ULONG) core(data->view->webView->mainFrame())->view()->visibleContentRect().y();
+			*msg->opg_Storage = (IPTR) core(data->view->webView->mainFrame())->view()->visibleContentRect().y();
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_VTotalPixel:
 		{
-			*msg->opg_Storage = (ULONG) core(data->view->webView->mainFrame())->view()->contentsHeight();
+			*msg->opg_Storage = (IPTR) core(data->view->webView->mainFrame())->view()->contentsHeight();
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_VVisiblePixel:
 		{
-			*msg->opg_Storage = (ULONG) core(data->view->webView->mainFrame())->view()->visibleHeight();
+			*msg->opg_Storage = (IPTR) core(data->view->webView->mainFrame())->view()->visibleHeight();
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_HTopPixel:
 		{
-			*msg->opg_Storage = (ULONG) core(data->view->webView->mainFrame())->view()->visibleContentRect().x();
+			*msg->opg_Storage = (IPTR) core(data->view->webView->mainFrame())->view()->visibleContentRect().x();
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_HTotalPixel:
 		{
-			*msg->opg_Storage = (ULONG) core(data->view->webView->mainFrame())->view()->contentsWidth();
+			*msg->opg_Storage = (IPTR) core(data->view->webView->mainFrame())->view()->contentsWidth();
 		}
 		return TRUE;
 
 		case MA_OWBBrowser_HVisiblePixel:
 		{
-			*msg->opg_Storage = (ULONG) core(data->view->webView->mainFrame())->view()->visibleWidth(); 
+			*msg->opg_Storage = (IPTR) core(data->view->webView->mainFrame())->view()->visibleWidth(); 
 		}
 		return TRUE;
 	}
@@ -1382,7 +1382,7 @@ DEFMMETHOD(AskMinMax)
 
 DEFMMETHOD(Show)
 {
-	ULONG rc;
+	IPTR rc;
 	GETDATA;
 
 	struct BitMap *obm = _rp(obj)->BitMap;
@@ -1902,7 +1902,7 @@ static void autoscroll_remove(Object *obj, struct Data *data)
 
 DEFMMETHOD(HandleEvent)
 {
-	ULONG rc = 0;
+	IPTR rc = 0;
 
 	GETDATA;
 
@@ -2538,7 +2538,7 @@ DEFSMETHOD(OWBBrowser_PopupMenu)
 
     if(data->popmenu)
     {
-	ULONG rc;
+	IPTR rc;
 	int i;
 	
 	char *labels[itemCount];
@@ -2901,7 +2901,7 @@ DEFSMETHOD(OWBBrowser_Autofill_DidChangeInTextField)
 DEFSMETHOD(OWBBrowser_Autofill_HandleNavigationEvent)
 {
 	GETDATA;
-	ULONG handled = FALSE;
+	IPTR handled = FALSE;
 
 	if(getv(app, MA_OWBApp_EnableFormAutofill))
 	{
@@ -4164,7 +4164,7 @@ DEFSMETHOD(Plugin_GetSurface)
 
 DEFTMETHOD(Plugin_IsBrowserActive)
 {
-	ULONG ret = FALSE;
+	IPTR ret = FALSE;
 
 	D(kprintf("IsBrowserActive\n"));
 

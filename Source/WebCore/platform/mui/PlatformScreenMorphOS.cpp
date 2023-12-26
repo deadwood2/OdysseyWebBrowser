@@ -73,7 +73,7 @@ int screenDepth(Widget* widget)
         if (window)
          {
 	   struct Window* win;
-	   GetAttr(MUIA_Window_Window, window, (ULONG*)&win);  
+	   GetAttr(MUIA_Window_Window, window, (IPTR *)&win);  
 	   
 	   if(win)
 	     {
@@ -99,7 +99,7 @@ int screenDepthPerComponent(Widget* widget)
         if (window)
 	  {
 	    struct Window* win;
-	    GetAttr(MUIA_Window_Window, window, (ULONG*)&win);
+	    GetAttr(MUIA_Window_Window, window, (IPTR *)&win);
 
 	    if(win)
 	      {
@@ -129,7 +129,7 @@ FloatRect screenRect(Widget* widget)
         if (window)
 		{
 		    struct Window* win;
-		    GetAttr(MUIA_Window_Window, window, (ULONGPTR)&win);
+		    GetAttr(MUIA_Window_Window, window, (IPTR *)&win);
 
 			if(win)
 			{

@@ -86,8 +86,6 @@ do                                                      \
 #undef XMLCALL
 #define XMLCALL
 
-typedef IPTR * ULONGPTR;
-
 #if (AROS_BIG_ENDIAN == 1)
 #define NATIVE_ARGB RECTFMT_ARGB32   /* Big Endian Archs. */
 #else

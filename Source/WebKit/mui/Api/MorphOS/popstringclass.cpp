@@ -171,7 +171,7 @@ DEFGET
 			return TRUE;
 
 		case MUIA_String_Contents:
-			return GetAttr(MUIA_String_Contents, data->str, (ULONGPTR)msg->opg_Storage);
+			return GetAttr(MUIA_String_Contents, data->str, (IPTR *)msg->opg_Storage);
 	}
 
 	return DOSUPER;
@@ -179,7 +179,7 @@ DEFGET
 
 DEFMMETHOD(Show)
 {
-	ULONG rc;
+	IPTR rc;
 	GETDATA;
 
 	if ((rc = DOSUPER))

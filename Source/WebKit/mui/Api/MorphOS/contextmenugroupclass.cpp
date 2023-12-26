@@ -40,7 +40,7 @@
 #include "utils.h"
 
 #ifndef get
-#define get(obj,attr,store) GetAttr(attr,obj,(ULONGPTR)store)
+#define get(obj,attr,store) GetAttr(attr,obj,(IPTR *)store)
 #endif
 
 using namespace WebCore;
@@ -221,7 +221,7 @@ DEFTMETHOD(ContextMenuGroup_AddPlaceholder)
 
     STRPTR oldpat;
 	char newpat[512];
-    ULONG clicked, pos;
+    IPTR clicked, pos;
 
 	DoMethod(data->pop_commandstring, MUIM_Popstring_Close, TRUE);
 

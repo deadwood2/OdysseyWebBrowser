@@ -119,7 +119,7 @@ DEFTMETHOD(ChooseTitleGroup_Add)
 
 	if(title)
 	{
-		ULONG addtomenu = getv(data->ch_menu, MUIA_Selected);
+		IPTR addtomenu = getv(data->ch_menu, MUIA_Selected);
 		set(app, MA_OWBApp_Bookmark_AddToMenu, addtomenu);
 
 		DoMethod(app, MM_Bookmarkgroup_AddLink, title, NULL, data->url, TRUE, addtomenu, data->quicklink);
@@ -141,7 +141,7 @@ DEFMMETHOD(Show)
 {
 	GETDATA;
 
-	ULONG rc = DOSUPER;
+	IPTR rc = DOSUPER;
 
 	set(_win(obj), MUIA_Window_ActiveObject, data->str);
 

@@ -168,7 +168,7 @@ DEFMMETHOD(ContextMenuBuild)
 
 	if (DoMethod(obj, MUIM_List_TestPos, msg->mx, msg->my, &res) && (res.entry != -1))
 	{
-		DoMethod(obj, MUIM_List_GetEntry, res.entry, (ULONG *)&e);
+		DoMethod(obj, MUIM_List_GetEntry, res.entry, (IPTR *)&e);
 
 		if(e)
 		{
@@ -197,7 +197,7 @@ DEFMMETHOD(ContextMenuChoice)
 {
 	struct credential_entry *e = NULL;
 
-	DoMethod(obj, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (ULONG *)&e);
+	DoMethod(obj, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (IPTR *)&e);
 
 	if(e)
 	{

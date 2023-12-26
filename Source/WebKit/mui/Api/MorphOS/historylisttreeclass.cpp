@@ -127,7 +127,7 @@ DEFDISP
 
 DEFMMETHOD(Show)
 {
-	ULONG rc;
+	IPTR rc;
 	GETDATA;
 
 	if ((rc = DOSUPER))
@@ -305,7 +305,7 @@ DEFMMETHOD(HandleEvent)
 
 						if (_isinobject(obj, imsg->MouseX, imsg->MouseY) && DoMethod(obj, MUIM_List_TestPos, imsg->MouseX, imsg->MouseY, &res) && (res.entry != -1))
 						{
-							DoMethod(obj, MUIM_List_GetEntry, res.entry, (ULONG *)&item);
+							DoMethod(obj, MUIM_List_GetEntry, res.entry, (IPTR *)&item);
 
 							if(item)
 							{
@@ -344,7 +344,7 @@ DEFMMETHOD(ContextMenuBuild)
 
 	if (DoMethod(obj, MUIM_List_TestPos, msg->mx, msg->my, &res) && (res.entry != -1))
 	{
-		DoMethod(obj, MUIM_List_GetEntry, res.entry, (ULONG *)&item);
+		DoMethod(obj, MUIM_List_GetEntry, res.entry, (IPTR *)&item);
 
 		if(item)
 		{
@@ -373,7 +373,7 @@ DEFMMETHOD(ContextMenuChoice)
 {
 	struct history_entry *item;
 
-	DoMethod(obj, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (ULONG *)&item);
+	DoMethod(obj, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (IPTR *)&item);
 
 	if(item)
 	{

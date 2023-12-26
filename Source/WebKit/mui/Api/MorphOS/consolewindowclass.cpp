@@ -86,7 +86,7 @@ DEFGET
 	{
 		case MA_OWB_WindowType:
 		{
-			*msg->opg_Storage = (ULONG) MV_OWB_Window_Console;
+			*msg->opg_Storage = (IPTR) MV_OWB_Window_Console;
 		}
 		return TRUE;
 	}

@@ -232,7 +232,7 @@ static void handle_favicons(struct IClass *cl, Object *obj, struct MUIS_Listtree
 
 DEFMMETHOD(Setup)
 {
-	ULONG rc = DOSUPER;
+	IPTR rc = DOSUPER;
 	GETDATA;
 
 	if (rc && _win(obj))

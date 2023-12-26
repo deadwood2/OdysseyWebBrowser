@@ -54,7 +54,7 @@ ContextMenuItem::ContextMenuItem(BalMenuItem* item)
 {
 	PlatformMenuItemDescription *description = NULL;
 
-	GetAttr(MUIA_UserData, (Object *)item, (ULONGPTR)&description);
+	GetAttr(MUIA_UserData, (Object *)item, (IPTR *)&description);
 
 	if(description)
 	{
