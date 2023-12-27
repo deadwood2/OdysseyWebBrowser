@@ -47,17 +47,19 @@ static uint32_t IDNScriptWhiteList[(USCRIPT_CODE_LIMIT + 31) / 32];
 static bool IDNScriptWhiteListisInitialized = false;
 
         inline int IDNToASCII(const UChar *src, int srcLength, UChar *dest, int destCapacity, bool *error) {
-            UErrorCode status = U_ZERO_ERROR;
-            int length = uidna_IDNToASCII(src, srcLength, dest, destCapacity, UIDNA_ALLOW_UNASSIGNED, 0, &status);
-            *error = !!U_FAILURE(status);
-            return length;
+//            UErrorCode status = U_ZERO_ERROR;
+//            int length = uidna_IDNToASCII(src, srcLength, dest, destCapacity, UIDNA_ALLOW_UNASSIGNED, 0, &status);
+//            *error = !!U_FAILURE(status);
+//            return length;
+            return 0;
         }
 
         inline int IDNToUnicode(const UChar *src, int srcLength, UChar *dest, int destCapacity, bool *error) {
-            UErrorCode status = U_ZERO_ERROR;
-            int length = uidna_IDNToUnicode(src, srcLength, dest, destCapacity, UIDNA_ALLOW_UNASSIGNED, 0, &status);
-            *error = !!U_FAILURE(status);
-            return length;
+//            UErrorCode status = U_ZERO_ERROR;
+//            int length = uidna_IDNToUnicode(src, srcLength, dest, destCapacity, UIDNA_ALLOW_UNASSIGNED, 0, &status);
+//            *error = !!U_FAILURE(status);
+//            return length;
+            return 0;
         }
 
         inline bool isLookalikeCharacter(int charCode)
