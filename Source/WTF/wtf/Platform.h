@@ -701,7 +701,7 @@
 #endif
 
 #if !defined(USE_JSVALUE64) && !defined(USE_JSVALUE32_64)
-#if (CPU(X86_64) && (OS(UNIX) || OS(WINDOWS))) \
+#if (CPU(X86_64) && (OS(UNIX) || OS(WINDOWS) || OS(AROS))) \
     || (CPU(IA64) && !CPU(IA64_32)) \
     || CPU(ALPHA) \
     || CPU(ARM64) \
