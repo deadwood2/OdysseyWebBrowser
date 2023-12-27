@@ -941,7 +941,7 @@ DEFNEW
 
 								Child, HGroup,
 									Child, MakeLabel(GSI(MSG_PREFSWINDOW_SECURITY_CERTIFICATE_PATH)),
-									Child, str_certificatepath = (Object *) MakeFileString(GSI(MSG_PREFSWINDOW_SECURITY_CERTIFICATE_PATH), "PROGDIR:curl-ca-bundle.crt", MAKE_ID('S','S','C','P')),
+									Child, str_certificatepath = (Object *) MakeFileString(GSI(MSG_PREFSWINDOW_SECURITY_CERTIFICATE_PATH), "ENV:SYS/Certificates/ca-bundle.crt", MAKE_ID('S','S','C','P')),
 								End,
 								Child, ColGroup(3),
 									Child, ch_ignoresslerrors = (Object *) MakePrefsCheck(GSI(MSG_PREFSWINDOW_SECURITY_IGNORE_SSL_ERRORS), FALSE, MAKE_ID('S','S','I','E')),
