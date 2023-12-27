@@ -116,7 +116,7 @@ public:
     /**
      * standardFontFamily 
      */
-    virtual const char* standardFontFamily();
+    virtual std::string standardFontFamily();
 
     /**
      *  setStandardFontFamily 
@@ -126,7 +126,7 @@ public:
     /**
      *  fixedFontFamily 
      */
-    virtual const char* fixedFontFamily();
+    virtual std::string fixedFontFamily();
 
     /**
      *  setFixedFontFamily 
@@ -136,7 +136,7 @@ public:
     /**
      *  serifFontFamily 
      */
-    virtual const char* serifFontFamily();
+    virtual std::string serifFontFamily();
 
     /**
      *  setSerifFontFamily 
@@ -146,7 +146,7 @@ public:
     /**
      *  sansSerifFontFamily
      */
-    virtual const char* sansSerifFontFamily();
+    virtual std::string sansSerifFontFamily();
 
     /**
      *  setSansSerifFontFamily 
@@ -156,7 +156,7 @@ public:
     /**
      *  cursiveFontFamily 
      */
-    virtual const char* cursiveFontFamily();
+    virtual std::string cursiveFontFamily();
 
     /**
      *  setCursiveFontFamily 
@@ -166,7 +166,7 @@ public:
     /**
      *  fantasyFontFamily 
      */
-    virtual const char* fantasyFontFamily();
+    virtual std::string fantasyFontFamily();
 
     /**
      *  setFantasyFontFamily 
@@ -176,7 +176,7 @@ public:
     /**
      *  fantasyFontFamily
      */
-	virtual const char* pictographFontFamily();
+	virtual std::string pictographFontFamily();
 
     /**
      *  setFantasyFontFamily
@@ -225,7 +225,7 @@ public:
     /**
      *  defaultTextEncodingName 
      */
-    virtual const char* defaultTextEncodingName();
+    virtual std::string defaultTextEncodingName();
 
     /**
      *  setDefaultTextEncodingName 
@@ -245,7 +245,7 @@ public:
     /**
      *  userStyleSheetLocation 
      */
-    virtual const char* userStyleSheetLocation();
+    virtual std::string userStyleSheetLocation();
 
     /**
      *  setUserStyleSheetLocation 
@@ -417,7 +417,7 @@ public:
     /**
      *  iconDatabaseLocation 
      */
-    virtual const char* iconDatabaseLocation();
+    virtual std::string iconDatabaseLocation();
 
     /**
      *  setIconDatabaseLocation 
@@ -609,7 +609,7 @@ public:
     virtual void setLocalStorageEnabled(bool enabled);
     virtual bool localStorageEnabled();
 
-    virtual const char* localStorageDatabasePath();
+    virtual std::string localStorageDatabasePath();
     virtual void setLocalStorageDatabasePath(const char* location);
 
     virtual void setShouldPaintNativeControls(bool shouldPaint);
@@ -890,12 +890,12 @@ protected:
     /**
      *  valueForKey 
      */
-    const char* valueForKey(const char* key);
+    std::string valueForKey(const char* key);
 
     /**
      *  stringValueForKey 
      */
-    const char* stringValueForKey(const char* key);
+    std::string stringValueForKey(const char* key);
 
     /**
      *  integerValueForKey 

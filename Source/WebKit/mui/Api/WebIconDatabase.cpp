@@ -105,7 +105,7 @@ void WebIconDatabase::startUpIconDatabase()
     WebPreferences* standardPrefs = WebPreferences::sharedStandardPreferences();
 	iconDatabase().setClient(m_webIconDatabaseClient);
 
-    String databasePath = standardPrefs->iconDatabaseLocation();
+    String databasePath = standardPrefs->iconDatabaseLocation().c_str();
 
     if (databasePath.isEmpty())
         databasePath = homeDirectoryPath();

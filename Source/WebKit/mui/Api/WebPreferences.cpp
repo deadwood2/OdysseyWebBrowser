@@ -235,10 +235,10 @@ void WebPreferences::clearAllCertificatesInfo()
 }
 #endif
 
-const char* WebPreferences::valueForKey(const char* key)
+string WebPreferences::valueForKey(const char* key)
 {
     string value = m_privatePrefs[key];
-    return value.c_str();
+    return value;
 }
 
 void WebPreferences::setValueForKey(const char* key, const char* value)
@@ -246,10 +246,10 @@ void WebPreferences::setValueForKey(const char* key, const char* value)
     m_privatePrefs[key] = value;
 }
 
-const char* WebPreferences::stringValueForKey(const char* key)
+string WebPreferences::stringValueForKey(const char* key)
 {
     string value = m_privatePrefs[key];
-    return value.c_str();
+    return value;
 }
 
 int WebPreferences::integerValueForKey(const char* key)
@@ -360,7 +360,7 @@ const char* WebPreferences::identifier()
     return m_identifier.c_str();
 }
 
-const char* WebPreferences::standardFontFamily()
+string WebPreferences::standardFontFamily()
 {
     return stringValueForKey(WebKitStandardFontPreferenceKey);
 }
@@ -370,7 +370,7 @@ void WebPreferences::setStandardFontFamily(const char* family)
     setStringValue(WebKitStandardFontPreferenceKey, family);
 }
 
-const char* WebPreferences::fixedFontFamily()
+string WebPreferences::fixedFontFamily()
 {
     return stringValueForKey(WebKitFixedFontPreferenceKey);
 }
@@ -380,7 +380,7 @@ void WebPreferences::setFixedFontFamily(const char* family)
     setStringValue(WebKitFixedFontPreferenceKey, family);
 }
 
-const char* WebPreferences::serifFontFamily()
+string WebPreferences::serifFontFamily()
 {
     return stringValueForKey(WebKitSerifFontPreferenceKey);
 }
@@ -390,7 +390,7 @@ void WebPreferences::setSerifFontFamily(const char* family)
     setStringValue(WebKitSerifFontPreferenceKey, family);
 }
 
-const char* WebPreferences::sansSerifFontFamily()
+string WebPreferences::sansSerifFontFamily()
 {
     return stringValueForKey(WebKitSansSerifFontPreferenceKey);
 }
@@ -400,7 +400,7 @@ void WebPreferences::setSansSerifFontFamily(const char* family)
     setStringValue(WebKitSansSerifFontPreferenceKey, family);
 }
 
-const char* WebPreferences::cursiveFontFamily()
+string WebPreferences::cursiveFontFamily()
 {
     return stringValueForKey(WebKitCursiveFontPreferenceKey);
 }
@@ -410,7 +410,7 @@ void WebPreferences::setCursiveFontFamily(const char* family)
     setStringValue(WebKitCursiveFontPreferenceKey, family);
 }
 
-const char* WebPreferences::fantasyFontFamily()
+string WebPreferences::fantasyFontFamily()
 {
     return stringValueForKey(WebKitFantasyFontPreferenceKey);
 }
@@ -420,7 +420,7 @@ void WebPreferences::setFantasyFontFamily(const char* family)
     setStringValue(WebKitFantasyFontPreferenceKey, family);
 }
 
-const char* WebPreferences::pictographFontFamily()
+string WebPreferences::pictographFontFamily()
 {
 	return stringValueForKey(WebKitPictographFontPreferenceKey);
 }
@@ -470,7 +470,7 @@ void WebPreferences::setMinimumLogicalFontSize(int fontSize)
     setIntegerValue(WebKitMinimumLogicalFontSizePreferenceKey, fontSize);
 }
 
-const char* WebPreferences::defaultTextEncodingName()
+string WebPreferences::defaultTextEncodingName()
 {
     return stringValueForKey(WebKitDefaultTextEncodingNamePreferenceKey);
 }
@@ -510,7 +510,7 @@ void WebPreferences::setUserStyleSheetEnabled(bool enabled)
     setBoolValue(WebKitUserStyleSheetEnabledPreferenceKey, enabled);
 }
 
-const char* WebPreferences::userStyleSheetLocation()
+string WebPreferences::userStyleSheetLocation()
 {
     return stringValueForKey(WebKitUserStyleSheetLocationPreferenceKey);
 }
@@ -779,7 +779,7 @@ void WebPreferences::setHistoryAgeInDaysLimit(int limit)
     setIntegerValue(WebKitHistoryAgeInDaysLimitKey, limit);
 }
 
-const char* WebPreferences::iconDatabaseLocation()
+string WebPreferences::iconDatabaseLocation()
 {
     return stringValueForKey(WebKitIconDatabaseLocationKey);
 }
@@ -1091,7 +1091,7 @@ bool WebPreferences::localStorageEnabled()
     return boolValueForKey(WebKitLocalStorageEnabledPreferenceKey);
 }
 
-const char* WebPreferences::localStorageDatabasePath()
+string WebPreferences::localStorageDatabasePath()
 {
     return stringValueForKey(WebKitLocalStorageDatabasePathPreferenceKey);
 }

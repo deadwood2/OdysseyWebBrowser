@@ -389,7 +389,7 @@ WebView::WebView()
     grammarCheckingEnabled = sharedPreferences->grammarCheckingEnabled();
     sharedPreferences->willAddToWebView();
     m_preferences = sharedPreferences;
-    m_webViewGroup = WebViewGroup::getOrCreate(String(), m_preferences->localStorageDatabasePath());
+    m_webViewGroup = WebViewGroup::getOrCreate(String(), m_preferences->localStorageDatabasePath().c_str());
     m_webViewGroup->addWebView(this);
 
     m_inspectorClient = new WebInspectorClient(this);
@@ -2441,7 +2441,7 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
 
     Settings* settings = &m_page->settings();
 
-    str = preferences->cursiveFontFamily();
+    str = preferences->cursiveFontFamily().c_str();
     settings->setCursiveFontFamily(str);
 
     size = preferences->defaultFixedFontSize();
@@ -2450,13 +2450,13 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     size = preferences->defaultFontSize();
     settings->setDefaultFontSize(size);
 
-    str = preferences->defaultTextEncodingName();
+    str = preferences->defaultTextEncodingName().c_str();
     settings->setDefaultTextEncodingName(str);
 
-    str = preferences->fantasyFontFamily();
+    str = preferences->fantasyFontFamily().c_str();
     settings->setFantasyFontFamily(str);
 
-    str = preferences->fixedFontFamily();
+    str = preferences->fixedFontFamily().c_str();
     settings->setFixedFontFamily(str);
 
 #if ENABLE(VIDEO_TRACK)
@@ -2488,13 +2488,13 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     enabled = preferences->arePlugInsEnabled();
     settings->setPluginsEnabled(!!enabled);
 
-    str = preferences->sansSerifFontFamily();
+    str = preferences->sansSerifFontFamily().c_str();
     settings->setSansSerifFontFamily(str);
 
-    str = preferences->serifFontFamily();
+    str = preferences->serifFontFamily().c_str();
     settings->setSerifFontFamily(str);
 
-    str = preferences->standardFontFamily();
+    str = preferences->standardFontFamily().c_str();
     settings->setStandardFontFamily(str);
 
 	/* Following ones need special care because they can be overridden by URLPrefs or temporary menu settings. */
@@ -2548,7 +2548,7 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
 
     enabled = preferences->userStyleSheetEnabled();
     if (enabled) {
-        str = preferences->userStyleSheetLocation();
+        str = preferences->userStyleSheetLocation().c_str();
         settings->setUserStyleSheetLocation(URL(ParsedURLString, str));
     } else {
         settings->setUserStyleSheetLocation(URL());
@@ -2626,7 +2626,7 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     enabled = preferences->showRepaintCounter();
     settings->setShowRepaintCounter(enabled);
 
-    str = preferences->localStorageDatabasePath();
+    str = preferences->localStorageDatabasePath().c_str();
     settings->setLocalStorageDatabasePath(str);
 
 	/*
