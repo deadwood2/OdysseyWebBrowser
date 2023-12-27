@@ -26,7 +26,7 @@
 #ifndef Chunk_h
 #define Chunk_h
 
-#include "ObjectType.h"
+#include "Line.h"
 #include "Sizes.h"
 #include "VMAllocate.h"
 

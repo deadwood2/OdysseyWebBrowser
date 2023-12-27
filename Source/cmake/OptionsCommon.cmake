@@ -70,8 +70,8 @@ EXPOSE_VARIABLE_TO_BUILD(WTF_CPU_ARM64_CORTEXA53)
 
 # Use ld.gold if it is available and isn't disabled explicitly
 include(CMakeDependentOption)
-CMAKE_DEPENDENT_OPTION(USE_LD_GOLD "Use GNU gold linker" ON
-                       "NOT CXX_ACCEPTS_MFIX_CORTEX_A53_835769" OFF)
+#CMAKE_DEPENDENT_OPTION(USE_LD_GOLD "Use GNU gold linker" ON
+#                       "NOT CXX_ACCEPTS_MFIX_CORTEX_A53_835769" OFF)
 if (USE_LD_GOLD)
     execute_process(COMMAND ${CMAKE_C_COMPILER} -fuse-ld=gold -Wl,--version ERROR_QUIET OUTPUT_VARIABLE LD_VERSION)
     if ("${LD_VERSION}" MATCHES "GNU gold")

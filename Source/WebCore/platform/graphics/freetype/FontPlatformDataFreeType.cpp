@@ -34,8 +34,9 @@
 #include FT_TRUETYPE_TABLES_H
 #include <wtf/MathExtras.h>
 #include <wtf/text/WTFString.h>
+#include <mutex>
 
-#if !PLATFORM(EFL)
+#if !PLATFORM(EFL) && !PLATFORM(MUI)
 #include <gdk/gdk.h>
 #endif
 
@@ -228,15 +229,12 @@ FontPlatformData& FontPlatformData::operator=(const FontPlatformData& other)
         cairo_scaled_font_destroy(m_scaledFont);
     m_scaledFont = cairo_scaled_font_reference(other.m_scaledFont);
 
-    m_harfBuzzFace = other.m_harfBuzzFace;
-
     return *this;
 }
 
 FontPlatformData::FontPlatformData(const FontPlatformData& other)
     : m_fallbacks(nullptr)
     , m_scaledFont(nullptr)
-    , m_harfBuzzFace(other.m_harfBuzzFace)
 {
     *this = other;
 }
@@ -244,7 +242,6 @@ FontPlatformData::FontPlatformData(const FontPlatformData& other)
 FontPlatformData::FontPlatformData(const FontPlatformData& other, float size)
     : m_fallbacks(nullptr)
     , m_scaledFont(nullptr)
-    , m_harfBuzzFace(other.m_harfBuzzFace)
 {
     *this = other;
 
@@ -263,14 +260,6 @@ FontPlatformData::~FontPlatformData()
 
     if (m_scaledFont && m_scaledFont != hashTableDeletedFontValue())
         cairo_scaled_font_destroy(m_scaledFont);
-}
-
-HarfBuzzFace* FontPlatformData::harfBuzzFace() const
-{
-    if (!m_harfBuzzFace)
-        m_harfBuzzFace = HarfBuzzFace::create(const_cast<FontPlatformData*>(this), hash());
-
-    return m_harfBuzzFace.get();
 }
 
 bool FontPlatformData::isFixedPitch()
@@ -361,11 +350,13 @@ bool FontPlatformData::hasCompatibleCharmap()
     return hasCompatibleCharmap;
 }
 
+#if ENABLE(OPENTYPE_VERTICAL)
 PassRefPtr<OpenTypeVerticalData> FontPlatformData::verticalData() const
 {
     ASSERT(hash());
     return FontCache::singleton().getVerticalData(String::number(hash()), *this);
 }
+#endif
 
 PassRefPtr<SharedBuffer> FontPlatformData::openTypeTable(uint32_t table) const
 {

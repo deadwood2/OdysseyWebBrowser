@@ -152,6 +152,13 @@ void ResourceHandle::clearClient()
     d->m_client = nullptr;
 }
 
+#if PLATFORM(MUI)
+void ResourceHandle::setClientInternal(ResourceHandleClient* client)
+{
+    d->m_client = client;
+}
+#endif
+
 #if !PLATFORM(COCOA) && !USE(CFNETWORK) && !USE(SOUP)
 // ResourceHandle never uses async client calls on these platforms yet.
 void ResourceHandle::continueWillSendRequest(const ResourceRequest&)

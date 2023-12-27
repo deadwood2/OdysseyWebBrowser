@@ -51,6 +51,8 @@ typedef struct _NSPoint NSPoint;
 #if PLATFORM(WIN)
 typedef struct tagPOINT POINT;
 typedef struct tagPOINTS POINTS;
+#elif PLATFORM(MUI)
+#include "BALBase.h"
 #endif
 
 namespace WebCore {
@@ -122,6 +124,9 @@ public:
     operator POINT() const;
     IntPoint(const POINTS&);
     operator POINTS() const;
+#elif PLATFORM(MUI)
+    IntPoint(const BalPoint&);
+    operator BalPoint() const;
 #elif PLATFORM(EFL)
     explicit IntPoint(const Evas_Point&);
     operator Evas_Point() const;

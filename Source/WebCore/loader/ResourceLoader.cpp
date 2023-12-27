@@ -57,6 +57,10 @@
 #include "UserContentController.h"
 #endif
 
+#if PLATFORM(MUI)
+extern bool canAllocateMemory(long long size);
+#endif
+
 namespace WebCore {
 
 ResourceLoader::ResourceLoader(Frame* frame, ResourceLoaderOptions options)
@@ -259,6 +263,11 @@ void ResourceLoader::addDataOrBuffer(const char* data, unsigned length, SharedBu
 {
     if (m_options.dataBufferingPolicy() == DoNotBufferData)
         return;
+
+#if PLATFORM(MUI)
+    if (!canAllocateMemory(length + (m_resourceData ? m_resourceData->size() : 0)))
+      return;
+#endif
 
     if (dataPayloadType == DataPayloadWholeResource) {
         m_resourceData = buffer ? buffer : SharedBuffer::create(data, length);
@@ -641,6 +650,13 @@ void ResourceLoader::didReceiveAuthenticationChallenge(const AuthenticationChall
     didFail(blockedError());
 #endif
 }
+#if USE(CURL_OPENSSL)
+void ResourceLoader::didReceiveSSLSecurityExtension(const ResourceRequest& request, const char* securityExtension)
+{
+    RefPtr<ResourceLoader> protector(this);
+    frameLoader()->didReceiveSSLSecurityExtension(request, securityExtension);
+}
+#endif
 
 void ResourceLoader::didCancelAuthenticationChallenge(const AuthenticationChallenge& challenge)
 {

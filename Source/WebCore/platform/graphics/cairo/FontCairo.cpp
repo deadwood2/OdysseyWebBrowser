@@ -33,6 +33,7 @@
 
 #if USE(CAIRO)
 
+#include "Logging.h"
 #include "AffineTransform.h"
 #include "CairoUtilities.h"
 #include "Font.h"
@@ -96,6 +97,48 @@ static void drawGlyphsShadow(GraphicsContext* graphicsContext, const FloatPoint&
         shadow.endShadowLayer(graphicsContext);
     }
 }
+
+#if PLATFORM(MUI)
+
+bool FontCascade::canReturnFallbackFontsForComplexText()
+{
+    return false;
+}
+
+bool FontCascade::canExpandAroundIdeographsInComplexText()
+{
+    return false;
+}
+
+float FontCascade::drawComplexText(GraphicsContext* context, const TextRun& run, const FloatPoint& point, int from, int to) const
+{
+#warning "bullshit"
+    return drawSimpleText(context, run, point, from,  to);
+}
+
+void FontCascade::drawEmphasisMarksForComplexText(GraphicsContext* /* context */, const TextRun& /* run */, const AtomicString& /* mark */, const FloatPoint& /* point */, int /* fm */, int /* to */) const
+{
+#warning "not implemented"
+}
+
+float FontCascade::floatWidthForComplexText(const TextRun& run, HashSet<const Font*>* fallbackFonts, GlyphOverflow* glyphOverflow) const
+{
+#warning "bullshit"
+    return floatWidthForSimpleText(run, fallbackFonts, glyphOverflow);
+}
+
+int FontCascade::offsetForPositionForComplexText(const TextRun& run, float x, bool includePartialGlyphs) const
+{
+#warning "bullshit"
+    return offsetForPositionForSimpleText(run, x, includePartialGlyphs);
+}
+
+void FontCascade::adjustSelectionRectForComplexText(const TextRun& run, LayoutRect& selectionRect, int from, int to) const
+{
+#warning "bullshit"
+    return adjustSelectionRectForSimpleText(run, selectionRect, from, to);
+}
+#endif
 
 void FontCascade::drawGlyphs(GraphicsContext* context, const Font* font, const GlyphBuffer& glyphBuffer,
     int from, int numGlyphs, const FloatPoint& point) const

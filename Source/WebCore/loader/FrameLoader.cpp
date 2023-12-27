@@ -582,7 +582,6 @@ void FrameLoader::didExplicitOpen()
     m_frame.navigationScheduler().cancel();
 }
 
-
 void FrameLoader::cancelAndClear()
 {
     m_frame.navigationScheduler().cancel();
@@ -3581,5 +3580,12 @@ RefPtr<Frame> createWindow(Frame& openerFrame, Frame& lookupFrame, const FrameLo
     created = true;
     return WTF::move(frame);
 }
+
+#if USE(CURL_OPENSSL)
+void FrameLoader::didReceiveSSLSecurityExtension(const ResourceRequest& request, const char* securityExtension)
+{
+    m_client.didReceiveSSLSecurityExtension(request, securityExtension);
+}
+#endif
 
 } // namespace WebCore

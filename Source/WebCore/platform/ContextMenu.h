@@ -84,6 +84,9 @@ namespace WebCore {
 #endif // USE(CROSS_PLATFORM_CONTEXT_MENUS)
 
     private:
+#if PLATFORM(MUI)
+        Vector<ContextMenuItem> m_items;
+#endif
 #if USE(CROSS_PLATFORM_CONTEXT_MENUS)
         Vector<ContextMenuItem> m_items;
 #else
