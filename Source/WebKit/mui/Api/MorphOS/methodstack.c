@@ -44,17 +44,7 @@ struct pushedmethod
 	APTR obj;
 	ULONG sync;
 	ULONG result;
-	ULONG m[0];
-};
-
-struct pushedmessage
-{
-	struct Message msg;
-	ULONG size;
-	APTR obj;
-	ULONG sync;
-	ULONG result;
-	ULONG m[0];
+	IPTR m[0];
 };
 
 void WakeTimer(void)
@@ -173,14 +163,12 @@ void methodstack_check(void)
  * Pushes a method asynchronously just like MUI, except
  * we have more control and there's no stupid static limit.
  */
-void methodstack_push(APTR obj, ULONG cnt, ...)
+void methodstack_push_A(APTR obj, ULONG cnt, IPTR *args)
 {
 	struct pushedmethod *pm;
 	ULONG size;
-	va_list va;
 
-	va_start(va, cnt);
-	size = sizeof(*pm) + cnt * sizeof(ULONG);
+	size = sizeof(*pm) + cnt * sizeof(IPTR);
 
 	if ((pm = AllocMem(size, MEMF_ANY)))
 	{
@@ -191,7 +179,7 @@ void methodstack_push(APTR obj, ULONG cnt, ...)
 
 		while (cnt--)
 		{
-			pm->m[i] = va_arg(va, ULONG);
+			pm->m[i] = args[i];
 			i++;
 		}
 
@@ -210,8 +198,6 @@ void methodstack_push(APTR obj, ULONG cnt, ...)
 			ReleaseSemaphore(&semaphore);
 		}
 	}
-
-	va_end(va);
 }
 
 /*
@@ -222,14 +208,12 @@ void methodstack_push(APTR obj, ULONG cnt, ...)
  */
 
 
-ULONG methodstack_push_sync(APTR obj, ULONG cnt, ...)
+ULONG methodstack_push_sync_A(APTR obj, ULONG cnt, IPTR *args)
 {
 	struct pushedmethod *pm;
 	ULONG res, size;
-	va_list va;
 
-	va_start(va, cnt);
-	size = sizeof(*pm) + cnt * sizeof(ULONG);
+	size = sizeof(*pm) + cnt * sizeof(IPTR);
 	res = 0;
 
 	if ((pm = AllocMem(size, MEMF_ANY)))
@@ -240,7 +224,7 @@ ULONG methodstack_push_sync(APTR obj, ULONG cnt, ...)
 
 		while (cnt--)
 		{
-			pm->m[i] = va_arg(va, ULONG);
+			pm->m[i] = args[i];
 			i++;
 		}
 
@@ -250,7 +234,6 @@ ULONG methodstack_push_sync(APTR obj, ULONG cnt, ...)
 			res = DoMethodA(obj, (Msg)&pm->m[0]);
 
 			FreeMem(pm, size);
-			va_end(va);
 
 			return res;
 		}
@@ -273,8 +256,6 @@ ULONG methodstack_push_sync(APTR obj, ULONG cnt, ...)
 		res = pm->result;
 		FreeMem(pm, pm->size);
 	}
-
-	va_end(va);
 
 	return res;
 }

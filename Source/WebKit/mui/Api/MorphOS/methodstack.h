@@ -25,8 +25,22 @@ void methodstack_init(void);
 void methodstack_cleanup(void);
 void methodstack_cleanup_flush(void);
 
-void methodstack_push(APTR obj, ULONG cnt, ...);
-ULONG methodstack_push_sync(APTR obj, ULONG cnt, ...);
+void methodstack_push_A(APTR obj, ULONG cnt, IPTR *args);
+ULONG methodstack_push_sync_A(APTR obj, ULONG cnt, IPTR *args);
+
+#define methodstack_push(obj, cnt, ...)                             \
+    ({                                                              \
+        IPTR __args[] = {AROS_PP_VARIADIC_CAST2IPTR(__VA_ARGS__)};  \
+        methodstack_push_A((obj), (cnt), __args);                   \
+    })
+
+#define methodstack_push_sync(obj, cnt, ...)                        \
+    ({                                                              \
+        IPTR __args[] = {AROS_PP_VARIADIC_CAST2IPTR(__VA_ARGS__)};  \
+        methodstack_push_sync_A((obj), (cnt), __args);              \
+    })
+
+
 void methodstack_check(void);
 
 #if defined(__cplusplus)
