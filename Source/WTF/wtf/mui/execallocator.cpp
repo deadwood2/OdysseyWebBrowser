@@ -32,7 +32,7 @@
 
 #undef PAGESIZE
 #define PAGESIZE                (4096)
-#define ALIGN(val, align)       ((val + align - 1) & (~(align - 1)))
+#define ALIGN(val, align)       (((IPTR)val + (IPTR)align - 1) & (~((IPTR)align - 1)))
 
 static const ULONG BLOCKSIZES[] = {1024, 512, 256, 128, 64}; /* In pages */
 static const ULONG BLOCKSIZESCOUNT = sizeof(BLOCKSIZES)/sizeof(BLOCKSIZES[0]);
@@ -46,9 +46,10 @@ private:
     struct PageBlock
     {
         struct Node pb_Node;
+        IPTR        pb_AllocAddress;
         IPTR        pb_StartAddress;
         IPTR        pb_EndAddress;
-        IPTR        pb_Alignment;
+        ULONG       pb_Alignment;
         WORD        *pb_PagesBitMap; /* 0 - free, -1 allocated, > 0 allocation size (only first page) */
         ULONG       pb_FreePages;
         ULONG       pb_TotalPages;
@@ -105,71 +106,6 @@ void PageAllocator::reportBlockUsage()
     bug("-------------------------\n");
 }
 
-/* This function exposes internals of AROS and should be moved to exec.library */
-#include <exec/memheaderext.h>
-
-static APTR AllocMemAligned(IPTR byteSize, ULONG attributes, IPTR alignSize, IPTR alignOffset)
-{
-    APTR res = NULL;
-    struct MemHeader *mh, *mhn;
-    ULONG requirements = attributes & MEMF_PHYSICAL_MASK;
-
-    if (alignOffset > 0)
-        return NULL;
-
-    /* Protect memory list against other tasks */
-    Forbid();
-
-    if (attributes & MEMF_REVERSE)
-        mhn = (struct MemHeader *)GetTail(&SysBase->MemList);
-    else
-        mhn = (struct MemHeader *)GetHead(&SysBase->MemList);
-
-    /* Loop over MemHeader structures */
-    while (mhn)
-    {
-        mh = mhn;
-
-        if (attributes & MEMF_REVERSE)
-            mhn = (struct MemHeader *)(((struct Node *)(mh))->ln_Pred);
-        else
-            mhn = (struct MemHeader *)(((struct Node *)(mh))->ln_Succ);
-
-        /*
-         * Check for the right requirements and enough free memory.
-         * The requirements are OK if there's no bit in the
-         * 'attributes' that isn't set in the 'mh->mh_Attributes'.
-         */
-        if ((requirements & ~mh->mh_Attributes)
-                || mh->mh_Free < byteSize)
-            continue;
-
-        if (IsManagedMem(mh))
-        {
-
-#if 0
-            /* Causes subsequent random crashes - probaly has a bug */
-            /* Causes 6 MB per start/exit OWB leaks - probably has a bug*/
-            struct MemHeaderExt *mhe = (struct MemHeaderExt *)mh;
-
-            if (mhe->mhe_AllocAligned)
-                res = mhe->mhe_AllocAligned(mhe, byteSize, alignSize, &attributes);
-#endif
-        }
-
-        if (res)
-            break;
-    }
-
-    Permit();
-
-    /* One last try */
-    if (!res)
-        res = LibAllocAligned(byteSize, attributes, alignSize);
-
-    return res;
-}
-
 PageAllocator::PageBlock * PageAllocator::allocateNewBlock(size_t count)
 {
     PageAllocator::PageBlock * block = (PageAllocator::PageBlock *)AllocMem(sizeof(PageAllocator::PageBlock), MEMF_ANY);
@@ -185,7 +121,7 @@ retry:
     while (memoryblock == NULL && i < BLOCKSIZESCOUNT)
     {
         allocationsize = (BLOCKSIZES[i] > count ? BLOCKSIZES[i] : count) * PAGESIZE;
-        memoryblock = AllocMemAligned(allocationsize, MEMF_ANY, block->pb_Alignment, 0);
+        memoryblock = AllocMem(allocationsize + block->pb_Alignment, MEMF_ANY);
         i++;
     }
 
@@ -200,13 +136,14 @@ retry:
     block->pb_TotalPages = allocationsize / PAGESIZE;
     block->pb_FreePages = allocationsize / PAGESIZE;
 
-    block->pb_StartAddress = (IPTR)memoryblock;
-    block->pb_EndAddress = (IPTR)memoryblock + (allocationsize);
+    block->pb_AllocAddress = (IPTR)memoryblock;
+    block->pb_StartAddress = (IPTR)ALIGN(block->pb_AllocAddress, block->pb_Alignment);
+    block->pb_EndAddress = block->pb_StartAddress + allocationsize;
     block->pb_PagesBitMap = (WORD *)AllocMem(block->pb_TotalPages * sizeof(WORD), MEMF_ANY | MEMF_CLEAR);
 
     AddTail(&blocks, (struct Node *)block);
 
-    D(bug("Adding page block 0x%x, %d\n", block->pb_StartAddress, block->pb_TotalPages));
+    D(bug("Adding page block 0x%lx, %d\n", block->pb_StartAddress, block->pb_TotalPages));
     D(reportBlockUsage());
     return block;
 }
@@ -220,7 +157,7 @@ void PageAllocator::freeBlock(PageAllocator::PageBlock * block)
 
     Remove((struct Node *)block);
 
-    FreeMem((APTR)block->pb_StartAddress, allocationsize);
+    FreeMem((APTR)block->pb_AllocAddress, allocationsize + block->pb_Alignment);
     FreeMem(block->pb_PagesBitMap, block->pb_TotalPages * sizeof(WORD));
     FreeMem(block, sizeof(PageAllocator::PageBlock));
     D(reportBlockUsage());
@@ -361,7 +298,7 @@ void PageAllocator::freePages(void * address, size_t count)
        }
    }
 
-   bug("[ExecAllocator]: Address 0x%x not part of any block!\n", addr);
+   bug("[ExecAllocator]: Address 0x%p not part of any block!\n", (APTR)addr);
    ReleaseSemaphore(&lock);
 }
 
@@ -398,7 +335,7 @@ void PageAllocator::freePages(void * address)
        }
    }
 
-   bug("[ExecAllocator]: Address 0x%x not part of any block!\n", addr);
+   bug("[ExecAllocator]: Address 0x%p not part of any block!\n", (APTR)addr);
    ReleaseSemaphore(&lock);
 }
 
