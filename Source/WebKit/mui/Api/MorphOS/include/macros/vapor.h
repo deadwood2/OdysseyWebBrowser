@@ -267,9 +267,9 @@
 #ifdef __AROS__
 
 #define MUI_HOOK(n, y, z) \
-    static LONG n##_func(struct Hook * n, y, z); \
+    static IPTR n##_func(struct Hook * n, y, z); \
     static struct Hook n##_hook = {{0, 0}, (APTR)n##_func, NULL, NULL}; \
-    static LONG n##_func(struct Hook * n, y, z)
+    static IPTR n##_func(struct Hook * n, y, z)
 
 #else
 #ifdef __MORPHOS__
