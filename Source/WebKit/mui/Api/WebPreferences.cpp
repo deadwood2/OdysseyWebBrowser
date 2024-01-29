@@ -116,10 +116,10 @@ void WebPreferences::removeReferenceForIdentifier(const char* identifier)
 
 void WebPreferences::initializeDefaultSettings()
 {
-    m_privatePrefs[WebKitStandardFontPreferenceKey] = "Times New Roman";
-    m_privatePrefs[WebKitFixedFontPreferenceKey] = "Courier New";
-    m_privatePrefs[WebKitSerifFontPreferenceKey] = "Times New Roman";
-    m_privatePrefs[WebKitSansSerifFontPreferenceKey] = "Arial";
+    m_privatePrefs[WebKitStandardFontPreferenceKey] = "Bitstream Vera Sans";
+    m_privatePrefs[WebKitFixedFontPreferenceKey] = "Bitstream Vera Sans Mono";
+    m_privatePrefs[WebKitSerifFontPreferenceKey] = "Bitstream Vera Serif";
+    m_privatePrefs[WebKitSansSerifFontPreferenceKey] = "Bitstream Vera Sans";
     m_privatePrefs[WebKitCursiveFontPreferenceKey] = "Comic Sans MS";
     m_privatePrefs[WebKitFantasyFontPreferenceKey] = "Comic Sans MS";
     m_privatePrefs[WebKitPictographFontPreferenceKey] = "Times New Roman";
