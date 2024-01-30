@@ -7,11 +7,11 @@ SET(CMAKE_SYSTEM_VERSION 1)
 SET(CMAKE_CROSSCOMPILING ON)
 
 # options
-SET(CMAKE_CXX_FLAGS "")
-SET(CMAKE_CXX_FLAGS_DEBUG "-g -gdwarf-3")
+SET(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG" CACHE STRING "Flags used by the C compiler during RELEASE builds.")
+SET(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG" CACHE STRING "Flags used by the CXX compiler during RELEASE builds.")
 
-SET(CMAKE_C_FLAGS "")
-SET(CMAKE_C_FLAGS_DEBUG "-g -gdwarf-3")
+SET(CMAKE_C_FLAGS_RELWITHDEBINFO "-O1 -gdwarf -g1 -DNDEBUG -fno-exceptions -fno-strict-aliasing" CACHE STRING "Flags used by the C compiler during RELWITHDEBINFO builds.")
+SET(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O1 -gdwarf -g1 -DNDEBUG -fno-exceptions -fno-strict-aliasing -fno-rtti" CACHE STRING "Flags used by the CXX compiler during RELWITHDEBINFO builds.")
 
 SET(CMAKE_MODULE_LINKER_FLAGS "")
 
