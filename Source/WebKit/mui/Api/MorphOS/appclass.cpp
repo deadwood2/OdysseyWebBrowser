@@ -178,7 +178,7 @@ static CONST TEXT credits[] =
 	"\tRoman Brychta\n\n"
 
 	"\033b%W\033n\n"
-	"\thttps://github.com/deadwood-pl/OdysseyWebBrowser";
+	"\thttps://github.com/deadwood2/OdysseyWebBrowser";
 
 struct AppSettings
 {
