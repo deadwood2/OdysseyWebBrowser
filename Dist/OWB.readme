@@ -1,5 +1,5 @@
 OWB 1.24 - MorphOS
-OWB 1.25 - AROS
+OWB 1.26 - AROS
 
 ***********************************************************************************
 *                                                                                 *
@@ -19,7 +19,7 @@ with modern functionality.
 License
 -------
 
-Copyright (C) 2014-2016 Krzysztof Smiechowicz
+Copyright (C) 2014-2024 Krzysztof Smiechowicz
 Copyright (C) 2009-2014 Fabien Coeurjoly
 Copyright (C) 2009-2010 Pleyo. All rights reserved.
 
@@ -52,7 +52,7 @@ MorphOS/AROS Port
 
 Here are the key features:
 
-- Based on r161078 WebKit (January 2014) (1.24) / r187682 WebKit (July 2015) (1.25)
+- Based on r161078 WebKit (January 2014) (1.24) / r187682 WebKit (July 2015) (1.26)
 - Javascript, CSS, DOM, SVG, Unicode, SSL, ...
 - HTML5 Video/Audio support (Ogg/Theora, WEBM, MPEG4/H264, MP3, AAC, WAV and a couple others formats/codecs)
 - Antialiased fonts and kerning, font families and support for international
@@ -96,13 +96,13 @@ Requirements
 ------------
 
 MorphOS 3.x is required.
-Icaros 2.1 or compatible is required.
+AROS ABIv0 20220318-1 is required
 
-Full version requires at least 70MB of free memory and potentially much more depending on visited
+Full version requires at least 100MB of free memory and potentially much more depending on visited
 sites.
 
-Note: if you want to reduce the binary size, you can use lzmaloader from Harry "Piru" Sintonen.
-      It's available at: http://www.sintonen.fi/lzmaloader/ .
+Note: if you want to reduce the binary size on MorphOS, you can use lzmaloader from Harry "Piru"
+      Sintonen. It's available at: http://www.sintonen.fi/lzmaloader/ .
 
 
 Usage
@@ -132,6 +132,14 @@ Usage
 
   To use japanese fonts or anything else, just add relevant fonts in the configured
   font directory. Please note that japanese fonts can slow down rendering quite a lot.
+
+  AROS Note: default font directory is Fonts:TrueType
+
+  ...
+  <!-- Font directory list -->
+	  <dir>Fonts:TrueType</dir>
+  ...
+
 
 - Settings
   + General
@@ -218,38 +226,6 @@ Usage
   NO_JSC_JIT                     Disable usage of JIT for Java Script engine
 
 
-Youtube special notes
----------------------
-
-  There are a few things to know about Youtube, since it tends to change
-  (or rather break) quite often.
-
-  Youtube introduced a new way to play media without using Flash: HTML5 video.
-  This service isn't enabled by default nor autodetected, so it has to be
-  enabled by going to http://www.youtube.com/html5 and clicking the subscription
-  link (no account needed, only a cookie will be set).
-
-  There are a few more important elements to consider:
-  - Youtube broke the fullscreen mode that worked just nicely before, so a script is needed
-    to workaround this. This is done by going to Windows->Scripts and adding the 
-    "Scripts/youtube_fullcreen_fix.js" userscript. This fullscreen mode is particularly 
-    important, since OWB uses overlay output in this mode, which makes it about 3 times 
-    faster, synchronized on VBL, and smoother as well, compared to windowed mode.
-
-  - Not all Youtube links are available as HTML5 yet. Fortunately, there's a way 
-    to "convert" the remaining Flash-only links to HTML5 by adding the "Script/Youtube.js" 
-    script in Windows->Scripts. When this script is enabled, the Flash element on Youtube 
-    is removed, the video direct URLs are retrieved, and a HTML5 <video> tag is added, 
-    playing the video file, without Flash. Direct links to the video are also displayed 
-    below the video. Please note that if the Flash plugin is not installed, a "Get Flash" 
-    message will be shown over the video, and will also prevent the video from being started
-    automatically, which means one of the links below the video will have to be clicked to 
-    play the video. Also note that format "18" (mp4) is the most efficient one, since FLV 
-    ones can have some speed and synchronisation issue when seeking.
-
-  - Since Youtube can break stuff anytime, be sure to check for updated userscripts in 
-	http://fabportnawak.free.fr/owb/scripts/ if something broke.
-
 
 Preempted rants
 ---------------
@@ -309,7 +285,19 @@ What's missing and might be supported in next versions
 History
 -------
 
+- 29.01.2024: Odyssey Web Browser 1.26
+
+  - Recompiled using GCC 6.5.0 (AROS)
+  - Fixed setting font families (Common)
+  - Change default certificates path to ENV:SYS/Certificates (AROS)
+  - Updated to ffmpeg 3.0.1 (AROS)
+  - Updated to curl 7.60 (AROS)
+  - Updated to openssl 1.1.0h (AROS)
+
+##############################################################################
+
 - 27.03.2016: Odyssey Web Browser 1.25
+
   - Updated to WebKit r187682 (July 2015). (AROS)
   - Ported Odyssey directly on top of WebKit repository. (Common)
   - Enable HTML5 video feature. (AROS)
