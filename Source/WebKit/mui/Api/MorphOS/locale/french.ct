@@ -1,0 +1,3173 @@
+## version $VER: OWB.catalog 1.9 (24.09.2010)
+## codeset 0
+## language français
+;
+;
+;
+;
+; Pulldown Menu
+;
+;
+MSG_MENU_PROJECT
+Projet
+; Project
+;
+;
+MSG_MENU_NEW_WINDOW
+Nouvelle fenêtre...
+; new Window...
+;
+;
+MSG_MENU_NEW_TAB
+Nouvel onglet
+; new tab
+;
+;
+MSG_MENU_OPEN_LOCAL_FILE
+Ouvrir un fichier...
+; Open file...
+;
+;
+MSG_MENU_OPEN_URL
+Ouvrir une adresse
+; Open URL
+;
+;
+MSG_MENU_OPEN_SESSION
+Charger une session...
+; Load Session...
+;
+;
+MSG_MENU_SAVE_SESSION
+Enregistrer une session...
+; Save Session...
+;
+;
+MSG_MENU_SAVE_AS_SOURCE
+Enregistrer au format HTML...
+; Save as HTML...
+;
+;
+MSG_MENU_SAVE_AS_PDF
+Enregistrer au format PDF...
+; Save as PDF...
+;
+;
+MSG_MENU_PRINT
+Imprimer...
+; Print...
+;
+;
+MSG_MENU_ABOUT
+À propos...
+; about...
+;
+;
+MSG_MENU_CLOSE_TAB
+Fermer l'onglet
+; close tab
+;
+;
+MSG_MENU_CLOSE_WINDOW
+Fermer la fenêtre
+; close Window
+;
+;
+MSG_MENU_QUIT
+Quitter
+; Quit
+;
+;
+MSG_MENU_EDIT
+Édition
+; edit
+;
+;
+MSG_MENU_CUT
+Couper
+; cut
+;
+;
+MSG_MENU_COPY
+Copier
+; copy
+;
+;
+MSG_MENU_COPY_LOCAL
+Copier avec le jeu de caractères du système
+; copy with System codepage
+;
+;
+MSG_MENU_PASTE
+Coller
+; Paste
+;
+;
+MSG_MENU_PASTE_TO_URL
+Coller dans la barre d'adresse
+; Paste to URL
+;
+;
+MSG_MENU_SELECT_ALL
+Tout sélectionner
+; Select all
+;
+;
+MSG_MENU_FIND
+Chercher
+; find
+;
+;
+MSG_MENU_VIEW
+Vue
+; View
+;
+;
+MSG_MENU_BACK
+Reculer
+; Back
+;
+;
+MSG_MENU_FORWARD
+Avancer
+; forward
+;
+;
+MSG_MENU_HOME
+Accueil
+; Home
+;
+;
+MSG_MENU_STOP
+Arrêter
+; Stop
+;
+;
+MSG_MENU_RELOAD
+Recharger
+; reload
+;
+;
+MSG_MENU_ZOOM_IN
+Agrandir
+; Zoom in
+;
+;
+MSG_MENU_ZOOM_OUT
+Rétrécir
+; Zoom Out
+;
+;
+MSG_MENU_ZOOM_RESET
+Réinitialiser
+; Zoom reset
+;
+;
+MSG_MENU_FULLSCREEN
+Plein écran
+; fullscreen
+;
+;
+MSG_MENU_SOURCE
+Afficher le code source...
+; Show Source code...
+;
+;
+MSG_MENU_PANELS
+Panneaux latéraux
+; Sidepanels
+;
+;
+MSG_MENU_NAVIGATION
+Barre de navigation
+; navigation
+;
+;
+MSG_MENU_QUICKLINKS
+Liens rapides
+; Quicklinks
+;
+;
+MSG_MENU_LOCATION
+Barre d'adresse
+; Location
+;
+;
+MSG_MENU_STATUS
+Barre d'état
+; Status
+;
+;
+MSG_MENU_BOOKMARK_PANEL
+Favoris
+; Bookmarks
+;
+;
+MSG_MENU_HISTORY_PANEL
+Historique
+; History
+;
+;
+MSG_MENU_NO_PANEL
+Aucun
+; Off
+;
+;
+MSG_MENU_HISTORY
+Historique
+; History
+;
+;
+MSG_MENU_HISTORY_CLOSEDVIEWS
+Navigateurs récemment fermés
+; recently closed Browsers
+;
+;
+MSG_MENU_BOOKMARKS
+Favoris
+; Bookmarks
+;
+;
+MSG_MENU_ADD_BOOKMARK
+Ajouter un favori
+; add Bookmark
+;
+;
+MSG_MENU_MANAGE_BOOKMARKS
+Gérer les favoris...
+; Manage Bookmarks...
+;
+;
+MSG_MENU_WINDOWS
+Fenêtres
+; Windows
+;
+;
+MSG_MENU_DOWNLOADS
+Téléchargements...
+; downloads...
+;
+;
+MSG_MENU_NETWORK
+Activité réseau...
+; network activity...
+;
+;
+MSG_MENU_PASSWORDS
+Mots de passe...
+; Passwords...
+;
+;
+MSG_MENU_COOKIES
+Cookies...
+; cookies...
+;
+MSG_MENU_BLOCK
+Blocage de contenu...
+; content Blocking...
+;
+;
+MSG_MENU_MESSAGES
+Messages...
+; Messages...
+;
+MSG_MENU_SEARCH_ENGINES
+Moteurs de recherche...
+; Search engines...
+;
+;
+MSG_MENU_SCRIPT
+Scripts...
+; Scripts...
+;
+;
+MSG_MENU_URLPREFS
+Réglages par URL...
+; URL Settings...
+;
+;
+MSG_MENU_SETTINGS
+Réglages
+; Settings
+;
+;
+MSG_MENU_PRIVATE_BROWSING
+Navigation privée
+; Private Browsing
+;
+;
+MSG_MENU_ENABLE
+Activer
+; enable
+;
+;
+MSG_MENU_DISABLE
+Désactiver
+; disable
+;
+;
+MSG_MENU_DEFAULT
+Réglage par défaut
+; default Setting
+;
+;
+MSG_MENU_ENABLE_JAVASCRIPT
+Support JavaScript
+; JavaScript Support
+;
+;
+MSG_MENU_ENABLE_IMAGES
+Chargement des images
+; image Loading
+;
+;
+MSG_MENU_ENABLE_ANIMATIONS
+Jouer les animations
+; Play animations
+;
+;
+MSG_MENU_ENABLE_PLUGINS
+Greffons
+; Plugins
+;
+;
+MSG_MENU_SPOOF_AS
+Naviguer en tant que
+; Spoof as
+;
+;
+MSG_MENU_PREFERENCES
+Réglages...
+; Preferences...
+;
+;
+MSG_MENU_MUI
+MUI...
+; MUI...
+;
+;
+;
+; app
+;
+;
+MSG_REQUESTER_NORMAL_TITLE
+OWB
+; OWB
+;
+;
+MSG_REQUESTER_ERROR_TITLE
+Erreur OWB
+; OWB error
+;
+;
+MSG_REQUESTER_YES_NO
+*_Oui|_Non
+; *_Yes|_No
+;
+;
+MSG_REQUESTER_NO_YES
+_Oui|*_Non
+; _Yes|*_No
+;
+;
+MSG_REQUESTER_OK
+*_Ok
+; *_Ok
+;
+MSG_REQUESTER_YES_NO_NEVER
+*_Oui|_Non|_Jamais
+; *_Yes|_No|N_ever
+;
+;
+MSG_REQUESTER_BOOKMARK_IMPORT_ERROR
+Format de favoris inconnu.\nSeuls les formats de OWB et iBrowse 2.4 sont supportés.
+; Unknown bookmark format.\nOnly iBrowse 2.4 and OWB MorphOS formats are supported.
+;
+;
+MSG_OWBAPP_DEFAULT_WINDOW_NAME
+Fenêtre Odyssey Web Browser
+; Odyssey Web Browser Window
+;
+;
+MSG_OWBAPP_DEFAULT_PAGE_NAME
+Page Odyssey Web Browser
+; Odyssey Web Browser Page
+;
+;
+MSG_OWBAPP_SAVE_CREDENTIALS
+Voulez-vous enregistrer les identifiants pour cette page ?\nNom d'utilisateur : %s
+; do you want to save credentials for this page?\nUsername: %s
+;
+;
+MSG_OWBAPP_MIMETYPE_REQUEST_ACTION
+Veuillez spécifier l'action à effectuer pour le fichier :\n'\033b%s\033n' (Type MIME : \033b%s\033n)
+; Specify the action to perform for file:\n'\033b%s\033n' (MIME type: \033b%s\033n)
+;
+;
+MSG_OWBAPP_MIMETYPE_ACTIONS
+*_Afficher dans la fenêtre|_Ouvrir avec un programme externe|_Télécharger|A_nnuler
+; *_Display in Window|Open with _External Program|Download _File|_Cancel
+;
+;
+MSG_OWBAPP_MIMETYPE_ACTIONS_FALLBACK
+*Afficher dans la fenêtre|_Télécharger|A_nnuler
+; *_Display in Window|Download _File|_Cancel
+;
+;
+MSG_OWBAPP_OPEN_SESSION
+Charger un fichier de session...
+; Load Session file...
+;
+;
+MSG_OWBAPP_SAVE_SESSION
+Enregistrer un fichier de session...
+; Save Session file as...
+;
+;
+MSG_OWBAPP_RESTORE_SESSION_CHOICES
+*_Restaurer la session|_Démarrer une nouvelle session
+; *_Restore Session|_Start new Session
+;
+;
+MSG_OWBAPP_RESTORE_SESSION
+Une session précédente a été détectée.
+; a previous session has been found.
+;
+;
+;
+;
+; addressBarGroup
+;
+;
+MSG_ADDRESSBARGROUP_URL
+URL :
+; URL:
+;
+;
+;
+; BCContextMenuMorphOS
+;
+;
+MSG_CONTEXTMENU_TITLE
+Menu
+; Menu
+;
+;
+;
+; BCLocalizedStrings (these ones need to be encoded in UTF8)
+;
+;
+MSG_LOCALIZED_SUBMIT
+Soumettre
+; Submit
+;
+;
+MSG_LOCALIZED_RESET
+RÃ©initialiser
+; reset
+;
+;
+MSG_LOCALIZED_SEARCHABLE_INDEX
+Index consultable
+; Searchable index
+;
+;
+MSG_LOCALIZED_CHOOSE_FILE
+Choisir un fichier...
+; Select file...
+;
+;
+MSG_LOCALIZED_NO_FILE
+(Aucun)
+; (None)
+;
+;
+MSG_LOCALIZED_DETAILS
+DÃ©tails
+; details
+;
+;
+MSG_LOCALIZED_OPEN_IN_NEW_WINDOW
+Ouvrir le lien dans une nouvelle fenÃªtre...
+; Open Link in new Window...
+;
+;
+MSG_LOCALIZED_OPEN_IN_NEW_TAB
+Ouvrir le lien dans un nouvel onglet
+; Open Link in new tab
+;
+;
+MSG_LOCALIZED_OPEN_IN_NEW_BACKGROUND_TAB
+Ouvrir en arriÃ¨re-plan le lien dans un nouvel onglet
+; Open Link in new Background tab
+;
+;
+MSG_LOCALIZED_DOWNLOAD_LINK
+TÃ©lÃ©charger la cible du lien...
+; download Linked file...
+;
+;
+MSG_LOCALIZED_COPY_LINK_LOCATION
+Copier l'adresse du lien
+; copy Link Location
+;
+;
+MSG_LOCALIZED_OPEN_IMAGE_IN_NEW_WINDOW
+Ouvrir l'image dans une nouvelle fenÃªtre...
+; Open image in new Window...
+;
+;
+MSG_LOCALIZED_OPEN_IMAGE_IN_NEW_TAB
+Ouvrir l'image dans un nouvel onglet
+; Open image in new tab
+;
+;
+MSG_LOCALIZED_SAVE_IMAGE_AS
+Enregistrer l'image...
+; Save image as...
+;
+;
+MSG_LOCALIZED_COPY_IMAGE
+Copier l'image...
+; copy image...
+;
+MSG_LOCALIZED_COPY_IMAGE_URL
+Copier l'adresse de l'image...
+; copy image location...
+;
+MSG_LOCALIZED_BLOCK_IMAGES
+Bloquer les images provenant de %s
+; Block images from %s
+;
+;
+MSG_LOCALIZED_OPEN_FRAME_IN_NEW_WINDOW
+Ouvrir le cadre dans une nouvelle fenÃªtre...
+; Open frame in new Window...
+;
+;
+MSG_LOCALIZED_OPEN_FRAME_IN_NEW_TAB
+Ouvrir le cadre dans un nouvel onglet
+; Open frame in new tab
+;
+;
+MSG_LOCALIZED_COPY
+Copier
+; copy
+;
+;
+MSG_LOCALIZED_DELETE
+Effacer
+; delete
+;
+;
+MSG_LOCALIZED_SELECT_ALL
+Tout sÃ©lectionner
+; Select all
+;
+;
+MSG_LOCALIZED_INSERT_UNICODE
+InsÃ©rer un caractÃ¨re de contrÃ´le Unicode
+; insert Unicode control character
+;
+;
+MSG_LOCALIZED_INPUT_METHODS
+MÃ©thodes de saisie
+; input Methods
+;
+;
+MSG_LOCALIZED_BACK
+PrÃ©cÃ©dent
+; Back
+;
+;
+MSG_LOCALIZED_FORWARD
+Suivant
+; forward
+;
+;
+MSG_LOCALIZED_STOP
+ArrÃªter
+; Stop
+;
+;
+MSG_LOCALIZED_RELOAD
+Recharger
+; reload
+;
+;
+MSG_LOCALIZED_CUT
+Couper
+; cut
+;
+;
+MSG_LOCALIZED_PASTE
+Coller
+; Paste
+;
+;
+MSG_LOCALIZED_NO_GUESSES
+Aucune suggestion trouvÃ©e
+; no Guesses found
+;
+;
+MSG_LOCALIZED_IGNORE_SPELLING
+Ignorer l'orthographe
+; ignore Spelling
+;
+;
+MSG_LOCALIZED_LEARN_SPELLING
+Apprendre l'orthographe
+; Learn Spelling
+;
+;
+MSG_LOCALIZED_SEARCH
+Rechercher sur Google
+; Search the Web
+;
+;
+MSG_LOCALIZED_LOOKUP_IN_DICTIONARY
+Chercher dans le dictionnaire
+; Look Up in dictionary
+;
+;
+MSG_LOCALIZED_OPEN_LINK
+Ouvrir le lien
+; Open Link
+;
+;
+MSG_LOCALIZED_IGNORE_GRAMMAR
+Ignorer la grammaire
+; ignore Grammar
+;
+;
+MSG_LOCALIZED_SPELLING_AND_GRAMMAR
+Orthographe et grammaire
+; Spelling and Grammar
+;
+;
+MSG_LOCALIZED_SHOW_SPELLING_AND_GRAMMAR
+Afficher l'orthographe et la grammaire
+; Show Spelling and Grammar
+;
+;
+MSG_LOCALIZED_HIDE_SPELLING_AND_GRAMMAR
+Cacher l'orthographe et la grammaire
+; Hide Spelling and Grammar
+;
+;
+MSG_LOCALIZED_CHECK_DOCUMENT
+VÃ©rifier le document
+; check document now
+;
+;
+MSG_LOCALIZED_CHECK_SPELLING_WHILE_TYPING
+VÃ©rifier l'ortographe en temps rÃ©el
+; check Spelling While typing
+;
+;
+MSG_LOCALIZED_CHECK_GRAMMAR_WITH_SPELLING
+VÃ©rifier la grammaire avec l'orthographe
+; check Grammar With Spelling
+;
+;
+MSG_LOCALIZED_DICTIONARIES
+Choisir une langue
+; choose Language
+;
+;
+MSG_LOCALIZED_FONT
+Police
+; font
+;
+;
+MSG_LOCALIZED_BOLD
+Gras
+; Bold
+;
+;
+MSG_LOCALIZED_ITALIC
+Italique
+; italic
+;
+;
+MSG_LOCALIZED_UNDERLINE
+SoulignÃ©
+; Underline
+;
+;
+MSG_LOCALIZED_OUTLINE
+Outline
+; Outline
+;
+;
+MSG_LOCALIZED_INSPECT_ELEMENT
+Inspecter l'Ã©lement
+; inspect element
+;
+;
+MSG_LOCALIZED_NO_RECENT_SEARCHES
+Pas de recherche rÃ©cente
+; no recent searches
+;
+;
+MSG_LOCALIZED_RECENT_SEARCHES
+Recherches rÃ©centes
+; recent searches
+;
+;
+MSG_LOCALIZED_CLEAR_RECENT_SEARCHES
+Effacer les recherches rÃ©centes
+; clear recent searches
+;
+;
+MSG_LOCALIZED_TERM
+Terme
+; term
+;
+;
+MSG_LOCALIZED_DEFINITION
+DÃ©finition
+; definition
+;
+;
+MSG_LOCALIZED_UNKNOWN
+Inconnu
+; Unknown
+;
+;
+MSG_LOCALIZED_LEFT_TO_RIGHT
+de gauche Ã  droite
+; Left to right
+;
+;
+MSG_LOCALIZED_DEFAULT_DIRECTION
+Direction d'Ã©criture par dÃ©fault
+; default Writing direction
+;
+;
+MSG_LOCALIZED_RIGHT_TO_LEFT
+de droite Ã  gauche
+; right to Left
+;
+;
+MSG_LOCALIZED_WRITING_DIRECTION
+Direction d'Ã©criture
+; Writing direction
+;
+;
+MSG_LOCALIZED_TEXT_DIRECTION
+Direction du texte
+; text direction
+;
+;
+MSG_LOCALIZED_PLAY
+Jouer
+; Play
+;
+;
+MSG_LOCALIZED_PAUSE
+ArrÃªter
+; Pause
+;
+;
+MSG_LOCALIZED_MUTE
+DÃ©sactiver le son
+; Mute
+;
+;
+MSG_LOCALIZED_UNMUTE
+Activer le son
+; Unmute
+;
+;
+MSG_LOCALIZED_SWITCH_TO_FULLSCREEN
+Passer en plein Ã©cran
+; Switch to fullscreen
+;
+;
+MSG_LOCALIZED_DOWNLOADMEDIA
+TÃ©lÃ©charger le flux...
+; download Media...
+;
+;
+MSG_LOCALIZED_COPYMEDIAURL
+Copier l'adresse du flux
+; copy Media Location
+;
+;
+MSG_LOCALIZED_OPEN_MEDIA_IN_NEW_WINDOW
+Ouvrir le flux dans une nouvelle fenÃªtre...
+; Open Media in new Window...
+;
+;
+MSG_LOCALIZED_MEDIACONTROLS
+Afficher les contrÃ´les
+; controls
+;
+;
+MSG_LOCALIZED_MEDIALOOP
+Jouer en boucle
+; Loop
+;
+;
+;
+; BookmarkGroup
+;
+;
+MSG_BOOKMARKGROUP_ADD_GROUP
+Ajouter un groupe
+; add Group
+;
+;
+MSG_BOOKMARKGROUP_ADD_LINK
+Ajouter un favori
+; add Link
+;
+;
+MSG_BOOKMARKGROUP_ADD_SEPARATOR
+Ajouter un séparateur
+; add Separator
+;
+;
+MSG_BOOKMARKGROUP_REMOVE
+Supprimer
+; remove
+;
+;
+MSG_BOOKMARKGROUP_TITLE
+Titre :
+; title:
+;
+;
+MSG_BOOKMARKGROUP_ADDRESS
+Adresse :
+; address:
+;
+;
+MSG_BOOKMARKGROUP_SHOW_IN_MENU
+Afficher dans le menu
+; Show in menu
+;
+;
+MSG_BOOKMARKGROUP_QUICKLINK
+Lien rapide
+; Quick link
+;
+;
+MSG_BOOKMARKGROUP_UNTITLED
+(Sans titre)
+; (No title)
+;
+;
+;
+; BookmarkListTree
+;
+;
+MSG_BOOKMARKLISTTREE_SEPARATOR
+---------- Séparateur ---------
+; ---------- Separator ----------
+;
+;
+MSG_BOOKMARKLISTTREE_NO_TITLE
+(Sans titre)
+; (No title)
+;
+;
+MSG_BOOKMARKLISTTREE_TITLE
+Titre
+; title
+;
+;
+MSG_BOOKMARKLISTTREE_ADDRESS
+Adresse
+; address
+;
+;
+MSG_BOOKMARKLISTTREE_FOLD_GROUP
+Plier le groupe
+; fold Group
+;
+;
+MSG_BOOKMARKLISTTREE_UNFOLD_GROUP
+Déplier le groupe
+; Unfold Group
+;
+;
+MSG_BOOKMARKLISTTREE_FOLD_GROUP_BOLD
+\033bPlier le groupe
+; \033bFold Group
+;
+;
+MSG_BOOKMARKLISTTREE_UNFOLD_GROUP_BOLD
+\033bDéplier le groupe
+; \033bUnfold Group
+;
+;
+MSG_BOOKMARKLISTTREE_SEPARATOR_LABEL
+Séparateur
+; Separator
+;
+;
+MSG_BOOKMARKLISTTREE_OPEN
+\033bOuvrir
+; \033bOpen
+;
+;
+MSG_BOOKMARKLISTTREE_OPEN_NEW_TAB
+Ouvrir le lien dans un nouvel onglet
+; Open Link in new tab
+;
+;
+MSG_BOOKMARKLISTTREE_OPEN_NEW_WINDOW
+Ouvrir le lien dans une nouvelle fenêtre...
+; Open Link in new Window...
+;
+;
+MSG_BOOKMARKLISTTREE_BOOKMARK
+Favoris
+; Bookmarks
+;
+;
+MSG_BOOKMARKLISTTREE_FOLD_ALL_GROUPS
+Plier tous les groupes
+; fold all Groups
+;
+;
+MSG_BOOKMARKLISTTREE_UNFOLD_ALL_GROUPS
+Déplier tous les groupes
+; Unfold all Groups
+;
+;
+;
+; BookmarkWindow
+;
+;
+MSG_BOOKMARKWINDOW_BOOKMARKS
+Favoris
+; Bookmarks
+;
+;
+;
+; chooseTitleGroup
+;
+;
+MSG_CHOOSETITLEGROUP_TITLE
+Titre :
+; title:
+;
+;
+MSG_CHOOSETITLEGROUP_MENU
+Afficher dans le _menu
+; add to _menu
+;
+;
+MSG_CHOOSETITLEGROUP_NO_TITLE
+(Sans titre)
+; (No title)
+;
+;
+MSG_CHOOSETITLEGROUP_ADD
+_Ajouter
+; _Add
+;
+;
+MSG_CHOOSETITLEGROUP_CANCEL
+A_nnuler
+; _Cancel
+;
+;
+;
+; consoleList
+;
+;
+MSG_CONSOLELIST_TIME
+Heure
+; time
+;
+;
+MSG_CONSOLELIST_MESSAGE
+Message
+; Message
+;
+;
+MSG_CONSOLELIST_COPY
+Copier dans le presse-papier
+; copy
+;
+;
+;
+; consoleWindow
+;
+;
+MSG_CONSOLEWINDOW_MESSAGES
+Messages
+; Messages
+;
+;
+MSG_CONSOLEWINDOW_CLEAR
+_Effacer
+; _Clear
+;
+;
+;
+; contextMenuGroup
+;
+;
+MSG_CONTEXTMENUGROUP_LINK
+Lien
+; Link
+;
+;
+MSG_CONTEXTMENUGROUP_PAGE
+Page
+; Page
+;
+;
+MSG_CONTEXTMENUGROUP_IMAGE
+Image
+; image
+;
+;
+MSG_CONTEXTMENUGROUP_INTERNAL
+Interne
+; internal
+;
+;
+MSG_CONTEXTMENUGROUP_ADD
+Ajouter
+; add
+;
+;
+MSG_CONTEXTMENUGROUP_REMOVE
+Supprimer
+; remove
+;
+;
+MSG_CONTEXTMENUGROUP_CATEGORY
+Catégorie :
+; category:
+;
+;
+MSG_CONTEXTMENUGROUP_LABEL
+Libellé :
+; Label:
+;
+;
+MSG_CONTEXTMENUGROUP_ACTION
+Action :
+; action:
+;
+;
+MSG_CONTEXTMENUGROUP_DEFAULT_LABEL
+<Libellé du menu>
+; Menu Label
+;
+;
+;
+;
+; contextMenuList
+;
+;
+MSG_CONTEXTMENULIST_LINK
+Lien
+; Link
+;
+;
+MSG_CONTEXTMENULIST_PAGE
+Page
+; Page
+;
+;
+MSG_CONTEXTMENULIST_IMAGE
+Image
+; image
+;
+;
+MSG_CONTEXTMENULIST_INTERNAL
+Interne
+; internal
+;
+;
+MSG_CONTEXTMENULIST_CATEGORY
+Catégorie
+; category
+;
+;
+MSG_CONTEXTMENULIST_LABEL
+Libellé
+; Label
+;
+;
+MSG_CONTEXTMENULIST_ACTION
+Action
+; action
+;
+;
+MSG_CONTEXTMENULIST_TYPE
+Type
+; type
+;
+;
+;
+;
+; cookieManagerGroup
+;
+;
+MSG_COOKIEMANAGERGROUP_REMOVE
+_Supprimer
+; _Remove
+;
+;
+MSG_COOKIEMANAGERGROUP_REMOVE_ALL
+_Tout supprimer
+; remove _All
+;
+;
+MSG_COOKIEMANAGERGROUP_DOMAIN
+Domaine :
+; domain:
+;
+;
+MSG_COOKIEMANAGERGROUP_NAME
+Nom :
+; name:
+;
+;
+MSG_COOKIEMANAGERGROUP_VALUE
+Contenu :
+; Value:
+;
+;
+MSG_COOKIEMANAGERGROUP_PATH
+Chemin :
+; Path:
+;
+;
+MSG_COOKIEMANAGERGROUP_TYPE
+Type :
+; type:
+;
+;
+MSG_COOKIEMANAGERGROUP_EXPIRATION
+Expiration :
+; expiration:
+;
+;
+;
+;
+; cookieManagerList
+;
+;
+MSG_COOKIEMANAGERLIST_DOMAIN
+Domaine
+; domain
+;
+;
+MSG_COOKIEMANAGERLIST_NAME
+Nom
+; name
+;
+;
+MSG_COOKIEMANAGERLIST_VALUE
+Valeur
+; Value
+;
+;
+MSG_COOKIEMANAGERLIST_COOKIES
+Cookies
+; cookies
+;
+;
+MSG_COOKIEMANAGERLIST_FOLD_DOMAIN
+Plier le domaine
+; fold domain
+;
+;
+MSG_COOKIEMANAGERLIST_UNFOLD_DOMAIN
+Déplier le domaine
+; Unfold domain
+;
+;
+MSG_COOKIEMANAGERLIST_FOLD_ALL_DOMAINS
+Plier tous les domaines
+; fold all domains
+;
+;
+MSG_COOKIEMANAGERLIST_UNFOLD_ALL_DOMAINS
+Déplier tous les domaines
+; Unfold all domains
+;
+;
+;
+; cookieManagerWindow
+;
+;
+MSG_COOKIEMANAGERWINDOW_COOKIES
+Cookies
+; cookies
+;
+;
+;
+; defaultPolicyDelegate
+;
+;
+MSG_DEFAULTPOLICYDELEGATE_MESSAGE
+La page que vous visitez comporte déjà des données POST.\nSi vous continuez, les données POST seront soumises à nouveau.\nVoulez-vous continuer ?
+; the page you're trying to open already includes POST data.\nIf you proceed, POST data will be sent again.\nDo you want to continue?
+;
+;
+;
+; downloadDelegate
+;
+;
+MSG_DOWNLOADDELEGATE_OVERWRITE_OR_RESUME
+Le fichier '%s' existe déjà.\nVoulez-vous le remplacer ?\n\n\033bnouvelle taille :\033n %llu octets\n\033bAncienne taille :\033n %ld octets\n\033bAncienne date :\033n %s %s
+; file '%s' already exists.\nDo you want to replace it?\n\n\033bNew Size:\033n %llu bytes\n\033bOld Size:\033n %ld bytes\n\033bOld date:\033n %s %s
+;
+;
+MSG_DOWNLOADDELEGATE_OVERWRITE_OR_RESUME_ACTIONS
+*_Remplacer|Re_prendre|_Annuler
+; *_Overwrite|_Resume|_Cancel
+;
+;
+;
+; downloadGroup
+;
+;
+MSG_DOWNLOADGROUP_IN_PROGRESS
+Téléchargements en cours
+; in Progress
+;
+;
+MSG_DOWNLOADGROUP_FINISHED
+Téléchargements terminés
+; finished
+;
+;
+MSG_DOWNLOADGROUP_FAILED
+Téléchargements interrompus
+; failed
+;
+;
+MSG_DOWNLOADGROUP_ABORT
+_Interrompre
+; _Abort
+;
+;
+MSG_DOWNLOADGROUP_ABORT_ALL
+_Tout annuler
+; a_bort all
+;
+;
+MSG_DOWNLOADGROUP_REMOVE
+_Retirer
+; _Remove
+;
+;
+MSG_DOWNLOADGROUP_REMOVE_ALL
+_Tout retirer
+; remove _All
+;
+;
+MSG_DOWNLOADGROUP_RETRY
+_Forcer le redémarrage
+; re_try
+;
+;
+MSG_DOWNLOADGROUP_CANCELLED_BY_USER
+Interrompu par l'utilisateur
+; cancelled by user
+;
+;
+MSG_DOWNLOADGROUP_INTERRUPTED
+Interrompu
+; interrupted
+;
+;
+;
+; downloadList
+;
+;
+MSG_DOWNLOADLIST_NAME
+Nom
+; name
+;
+;
+MSG_DOWNLOADLIST_SIZE
+Taille
+; Size
+;
+;
+MSG_DOWNLOADLIST_PROGRESS
+Complété
+; Progress
+;
+;
+MSG_DOWNLOADLIST_DETAIL
+Détails
+; detail
+;
+;
+MSG_DOWNLOADLIST_SPEED
+CPS
+; Speed
+;
+;
+MSG_DOWNLOADLIST_ETA
+Temps restant
+; eTA
+;
+;
+MSG_DOWNLOADLIST_PATH
+Chemin
+; Path
+;
+;
+MSG_DOWNLOADLIST_URL
+Adresse
+; URL
+;
+;
+MSG_DOWNLOADLIST_DOWNLOADPAGE
+Page de téléchargement
+; download Page
+;
+;
+MSG_DOWNLOADLIST_STATUS
+État
+; Status
+;
+;
+MSG_DOWNLOADLIST_OPEN_FILE
+\033bOuvrir le fichier
+; \033bOpen file
+;
+;
+MSG_DOWNLOADLIST_OPEN_DIRECTORY
+Ouvrir le répertoire
+; Open directory
+;
+;
+MSG_DOWNLOADLIST_OPEN_DOWNLOADPAGE
+Ouvrir la page de téléchargement
+; Open download Page
+;
+;
+MSG_DOWNLOADLIST_SIZE_UNKNOWN
+Inconnue
+; Unknown
+;
+;
+;
+; downloadWindow
+;
+;
+MSG_DOWNLOADWINDOW_DOWNLOADS
+Téléchargements
+; downloads
+;
+;
+;
+; findText
+;
+;
+MSG_FINDTEXT_PREV
+Précédent
+; Previous
+;
+;
+MSG_FINDTEXT_NEXT
+Suivant
+; next
+;
+;
+MSG_FINDTEXT_CASE_SENSITIVE
+Sensible à la casse
+; case sensitive
+;
+;
+MSG_FINDTEXT_MARK_ALL_MATCHES
+Surligner toutes les correspondances
+; Mark all matches
+;
+;
+MSG_FINDTEXT_TEXT_NOT_FOUND
+Texte non trouvé
+; not found
+;
+;
+;
+; HistoryButton
+;
+;
+MSG_HISTORYBUTTON_MENU_TITLE
+Historique
+; History
+;
+;
+MSG_HISTORYBUTTON_NO_TITLE
+(Sans titre)
+; (No title)
+;
+;
+;
+; HistoryList
+;
+;
+MSG_HISTORYLIST_NO_URL
+(Sans adresse)
+; (No URL)
+;
+;
+MSG_HISTORYLIST_NO_TITLE
+(Sans titre)
+; (No title)
+;
+;
+MSG_HISTORYLIST_HISTORY
+Historique
+; History
+;
+;
+MSG_HISTORYLIST_OPEN_URL
+\033bOuvrir
+; \033bOpen
+;
+;
+MSG_HISTORYLIST_OPEN_NEW_TAB
+Ouvrir dans un nouvel onglet
+; Open in new tab
+;
+;
+MSG_HISTORYLIST_OPEN_NEW_WINDOW
+Ouvrir dans une nouvelle fenêtre...
+; Open in new Window...
+;
+;
+;
+; HistoryListTree
+;
+;
+MSG_HISTORYLISTTREE_NO_TITLE
+(Sans titre)
+; (No title)
+;
+;
+MSG_HISTORYLISTTREE_NO_URL
+(Sans adresse)
+; (No URL)
+;
+;
+MSG_HISTORYLISTTREE_TITLE
+Titre
+; title
+;
+;
+MSG_HISTORYLISTTREE_ADDRESS
+Adresse
+; address
+;
+;
+MSG_HISTORYLISTTREE_HISTORY
+Historique
+; History
+;
+;
+MSG_HISTORYLISTTREE_OPEN_URL
+\033bOuvrir
+; \033bOpen
+;
+;
+MSG_HISTORYLISTTREE_OPEN_NEW_TAB
+Ouvrir dans un nouvel onglet
+; Open in new tab
+;
+;
+MSG_HISTORYLISTTREE_OPEN_NEW_WINDOW
+Ouvrir dans une nouvelle fenêtre...
+; Open in new Window...
+;
+;
+;
+; HistoryPanelGroup
+;
+;
+MSG_HISTORYPANELGROUP_HISTORY
+Historique
+; History
+;
+;
+;
+; LinkList
+;
+;
+MSG_LINKLIST_NO_NAME
+(Sans nom)
+; (No name)
+;
+;
+MSG_LINKLIST_QUICK_LINK
+Lien rapide
+; Quick Link
+;
+;
+;
+; LoginWindow
+;
+;
+MSG_LOGINWINDOW_MESSAGE
+Veuillez saisir l'identifiant et le mot de passe pour accéder à %s sur %s.
+; enter username and password to access %s on %s.
+;
+;
+MSG_LOGINWINDOW_TITLE
+Requête d'identification
+; authentication request
+;
+;
+MSG_LOGINWINDOW_USERNAME
+Nom d'utilisateur :
+; Username:
+;
+;
+MSG_LOGINWINDOW_PASSWORD
+Mot de passe :
+; Password:
+;
+;
+MSG_LOGINWINDOW_SAVE_CREDENTIALS
+_Enregistrer l'identification
+; _Save credentials
+;
+;
+MSG_LOGINWINDOW_LOGIN
+_Ok
+; _Login
+;
+;
+MSG_LOGINWINDOW_CANCEL
+_Annuler
+; _Cancel
+;
+;
+;
+; MimetypeGroup
+;
+;
+MSG_MIMETYPEGROUP_EXTERNAL_VIEWER
+Visionneur externe
+; external Viewer
+;
+;
+MSG_MIMETYPEGROUP_INTERNAL_VIEWER
+Visionneur interne
+; internal Viewer
+;
+;
+MSG_MIMETYPEGROUP_SAVE_TO_DISK
+Enregistrer sur disque
+; Save to disk
+;
+;
+MSG_MIMETYPEGROUP_ASK
+Demander
+; ask
+;
+;
+MSG_MIMETYPEGROUP_STREAM
+Lien de transfert
+; Stream
+;
+;
+MSG_MIMETYPEGROUP_PIPE
+Pipe
+; Pipe
+;
+;
+MSG_MIMETYPEGROUP_IGNORE
+Ignorer
+; ignore
+;
+;
+MSG_MIMETYPEGROUP_PLUGIN
+Greffon
+; Plugin
+;
+;
+MSG_MIMETYPEGROUP_ADD
+Ajouter
+; add
+;
+;
+MSG_MIMETYPEGROUP_REMOVE
+Supprimer
+; remove
+;
+;
+MSG_MIMETYPEGROUP_MIMETYPE
+Type MIME :
+; MIME type:
+;
+;
+MSG_MIMETYPEGROUP_EXTENSION
+Extension :
+; extension:
+;
+;
+MSG_MIMETYPEGROUP_ACTION
+Action :
+; action:
+;
+;
+MSG_MIMETYPEGROUP_VIEWER
+Visionneur :
+; Viewer:
+;
+;
+;
+; MimetypeList
+;
+;
+MSG_MIMETYPELIST_EXTERNAL_VIEWER
+Visionneur externe
+; external viewer
+;
+;
+MSG_MIMETYPELIST_INTERNAL_VIEWER
+Visionneur interne
+; internal viewer
+;
+;
+MSG_MIMETYPELIST_SAVE_TO_DISK
+Enregistrer sur le disque
+; Save to disk
+;
+;
+MSG_MIMETYPELIST_ASK
+Demander
+; ask
+;
+;
+MSG_MIMETYPELIST_STREAM
+Lien de transfert
+; Stream
+;
+;
+MSG_MIMETYPELIST_PIPE
+Pipe
+; Pipe
+;
+;
+MSG_MIMETYPELIST_IGNORE
+Ignorer
+; ignore
+;
+;
+MSG_MIMETYPELIST_PLUGIN
+Greffon
+; Plugin
+;
+;
+MSG_MIMETYPELIST_MIMETYPE
+Type MIME
+; MIME type
+;
+;
+MSG_MIMETYPELIST_EXTENSION
+Extension
+; extension
+;
+;
+MSG_MIMETYPELIST_ACTION
+Action
+; action
+;
+;
+MSG_MIMETYPELIST_VIEWER
+Visionneur
+; Viewer
+;
+;
+;
+; navigationGroup
+;
+;
+MSG_NAVIGATIONGROUP_BACK
+Reculer
+; Back
+;
+;
+MSG_NAVIGATIONGROUP_FORWARD
+Avancer
+; forward
+;
+;
+MSG_NAVIGATIONGROUP_RELOAD
+Recharger
+; reload
+;
+;
+MSG_NAVIGATIONGROUP_STOP
+Arrêter
+; Stop
+;
+;
+MSG_NAVIGATIONGROUP_HOME
+Accueil
+; Home
+;
+;
+MSG_NAVIGATIONGROUP_INSPECT
+Inspecter
+; Inspect
+;
+;
+;
+; networkWindow
+;
+;
+MSG_NETWORKWINDOW_TITLE
+Activité réseau
+; network activity
+;
+;
+MSG_NETWORKWINDOW_URL
+URL
+; URL
+;
+;
+MSG_NETWORKWINDOW_STATE
+État
+; State
+;
+;
+MSG_NETWORKWINDOW_ABORT
+_Interrompre
+; a_bort
+;
+;
+MSG_NETWORKWINDOW_ABORT_ALL
+_Tout interrompre
+; _Abort all
+;
+;
+MSG_NETWORKWINDOW_STATUS_RECEIVING_DATA
+%s de %s lus
+; %s of %s read
+;
+;
+MSG_NETWORKWINDOW_STATUS_SENDING_DATA
+%s de %s envoyés
+; %s of %s sent
+;
+;
+MSG_NETWORKWINDOW_STATUS_WAITING_FOR_DATA
+En attente de données
+; Waiting for data
+;
+;
+MSG_NETWORKWINDOW_STATUS_CONNECTING
+En cours de connexion
+; connecting
+;
+;
+;
+; OWBWindow
+;
+;
+MSG_OWBWINDOW_PENDING_DOWNLOADS
+Des fichiers sont en cours de téléchargement.\nVoulez-vous vraiment quitter ?
+; Some files are currently being downloaded.\nDo you really want to quit?
+;
+;
+MSG_OWBWINDOW_QUIT_CONFIRMATION
+Voulez-vous vraiment quitter ?
+; do you really want to quit?
+;
+;
+MSG_OWBWINDOW_CLOSE_ALL_PAGES_CONFIRMATION
+Voulez-vous fermer tous les onglets ?
+; do you want to close all tabs?
+;
+;
+MSG_OWBWINDOW_OPEN_FILE
+Ouvrir un fichier...
+; Open file...
+;
+;
+MSG_OWBWINDOW_SAVE_AS
+Enregistrer...
+; Save as...
+;
+;
+MSG_OWBWINDOW_READ_PROGRESS
+%s sur %s lus
+; %s of %s read
+;
+;
+MSG_OWBWINDOW_STATE_READY
+Prêt
+; ready
+;
+;
+MSG_OWBWINDOW_STATE_RECEIVING_DATA
+Transfert de données...
+; receiving data...
+;
+;
+MSG_OWBWINDOW_STATE_SENDING_REQUEST
+Envoi de la requête...
+; Sending request...
+;
+;
+MSG_OWBWINDOW_STATE_ERROR
+Erreur
+; error
+;
+;
+MSG_OWBWINDOW_CHOOSE_TITLE
+Choisir un titre
+; choose a title
+;
+;
+MSG_OWBWINDOW_JAVASCRIPT_PROMPT
+Requête JavaScript
+; JavaScript Prompt
+;
+;
+MSG_OWBWINDOW_JAVASCRIPT_OK
+_Ok
+; _Ok
+;
+;
+MSG_OWBWINDOW_JAVASCRIPT_CANCEL
+_Annuler
+; _Cancel
+;
+;
+MSG_OWBWINDOW_RUNNING_USERSCRIPTS
+\033bScripts en cours d'exécution :\033n\n\n
+; \033bRunning userscripts:\033n\n\n 
+;
+;
+;
+; PasswordManagerGroup
+;
+;
+MSG_PASSWORDMANAGERGROUP_REMOVE
+_Supprimer
+; _Remove
+;
+;
+MSG_PASSWORDMANAGERGROUP_REMOVE_ALL
+_Tout supprimer
+; remove _All
+;
+;
+;
+; PasswordManagerList
+;
+;
+MSG_PASSWORDMANAGERLIST_HOST
+Hôte
+; Host
+;
+;
+MSG_PASSWORDMANAGERLIST_REALM
+Zone
+; realm
+;
+;
+MSG_PASSWORDMANAGERLIST_USERNAME
+Nom d'utilisateur
+; Username
+;
+;
+MSG_PASSWORDMANAGERLIST_PASSWORD
+Mot de passe
+; Password
+;
+;
+MSG_PASSWORDMANAGERLIST_FORM
+Formulaire
+; form
+;
+;
+MSG_PASSWORDMANAGERLIST_FILTER
+Filtre
+; filter
+;
+;
+MSG_PASSWORDMANAGERLIST_FILTER_REMEMBER
+Utiliser
+; remember
+;
+;
+MSG_PASSWORDMANAGERLIST_FILTER_IGNORE
+Ignorer
+; ignore
+;
+;
+;
+; PasswordManagerWindow
+;
+;
+MSG_PASSWORDMANAGERWINDOW_TITLE
+Mots de passe
+; Passwords
+;
+;
+MSG_BLOCKMANAGERWINDOW_TITLE
+Blocage de contenu
+; content Blocking
+;
+;
+MSG_BLOCKMANAGERLIST_DENY
+Refuser
+; deny
+;
+;
+MSG_BLOCKMANAGERLIST_ALLOW
+Autoriser
+; allow
+;
+;
+MSG_BLOCKMANAGERLIST_TYPE
+Type de filtre
+; filter type
+;
+;
+MSG_BLOCKMANAGERLIST_RULE
+Règle
+; rule
+;
+;
+MSG_BLOCKMANAGERGROUP_REMOVE
+_Supprimer
+; _Remove
+;
+;
+MSG_BLOCKMANAGERGROUP_ADD
+_Ajouter
+; _Add
+;
+;
+MSG_BLOCKMANAGERGROUP_TYPE
+Type de filtre :
+; filter type:
+;
+;
+MSG_BLOCKMANAGERGROUP_RULE
+Règle :
+; rule:
+;
+;
+MSG_BLOCKMANAGERGROUP_DENY
+Refuser
+; deny
+;
+;
+MSG_BLOCKMANAGERGROUP_ALLOW
+Autoriser
+; allow
+;
+;
+;
+; SearchManagerWindow
+;
+;
+MSG_SEARCHMANAGERWINDOW_TITLE
+Moteurs de recherche
+; Search engines
+;
+;
+;
+; SearchManagerGroup
+;
+;
+MSG_SEARCHMANAGERGROUP_ADD
+_Ajouter
+; _Add
+;
+;
+MSG_SEARCHMANAGERGROUP_REMOVE
+_Supprimer
+; _Remove
+;
+;
+MSG_SEARCHMANAGERGROUP_TITLE
+Titre :
+; title:
+;
+;
+MSG_SEARCHMANAGERGROUP_LINK
+Lien :
+; Link:
+;
+;
+MSG_SEARCHMANAGERGROUP_SHORTCUT
+Raccourci :
+; Shortcut:
+;
+;
+;
+; SearchManagerList
+;
+;
+MSG_SEARCHMANAGERLIST_TITLE
+Titre
+; title
+;
+;
+MSG_SEARCHMANAGERLIST_LINK
+Lien
+; Link
+;
+;
+MSG_SEARCHMANAGERLIST_SHORTCUT
+Raccourci
+; Shortcut
+;
+;
+;
+; ScriptManagerWindow
+;
+;
+MSG_SCRIPTMANAGERWINDOW_TITLE
+Scripts
+; Scripts
+;
+;
+;
+; ScriptManagerGroup
+;
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_SELECT
+Choisir un script utilisateur...
+; Select User Script...
+;
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_ADD
+_Ajouter
+; _Add
+;
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_REMOVE
+_Supprimer
+; _Remove
+;
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_ENABLE
+A_ctiver
+; _Enable
+;
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_PATH
+Chemin :
+; Path:
+;
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_NAME
+Nom :
+; name:
+;
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_DESCRIPTION
+Description :
+; description:
+;
+;
+MSG_SCRIPTMANAGERGROUP_WHITELIST
+Sites autorisés
+; allowed Sites
+;
+;
+MSG_SCRIPTMANAGERGROUP_BLACKLIST
+Sites interdits
+; forbidden Sites
+;
+;
+MSG_SCRIPTMANAGERGROUP_WHITELIST_ADD
+Ajouter
+; add
+;
+;
+MSG_SCRIPTMANAGERGROUP_WHITELIST_REMOVE
+Supprimer
+; remove
+;
+;
+MSG_SCRIPTMANAGERGROUP_BLACKLIST_ADD
+Ajouter
+; add
+;
+;
+MSG_SCRIPTMANAGERGROUP_BLACKLIST_REMOVE
+Supprimer
+; remove
+;
+;
+;
+; URLPrefsWindow
+;
+;
+MSG_URLPREFSWINDOW_TITLE
+Réglages par URL
+; URL Preferences
+;
+;
+;
+; URLPrefsGroup
+;
+;
+MSG_URLPREFSGROUP_ADD
+_Ajouter
+; _Add
+;
+;
+MSG_URLPREFSGROUP_REMOVE
+_Supprimer
+; _Remove
+;
+;
+MSG_URLPREFSGROUP_JAVASCRIPT
+Support _JavaScript
+; _JavaScript support
+;
+;
+MSG_URLPREFSGROUP_LOAD_IMAGES
+Charger les _images automatiquement
+; Load _images automatically
+;
+;
+MSG_URLPREFSGROUP_PLUGINS
+Autoriser les _greffons
+; _Plugins
+;
+;
+MSG_URLPREFSGROUP_SPOOF
+_Naviguer en tant que :
+; _Spoof as:
+;
+;
+MSG_URLPREFSGROUP_COOKIE_POLICY
+Cookies :
+; _Cookie Policy:
+;
+;
+MSG_URLPREFSGROUP_COOKIE_FILTER
+Noms des cookies pris en compte (motif) :
+; cookie name _Filter:
+;
+;
+;
+; PrinterWindow
+;
+;
+MSG_PRINTERWINDOW_TITLE
+Imprimer le document...
+; Print...
+;
+;
+MSG_PRINTERWINDOW_PRINT_MODE
+_Mode :
+; _Mode:
+;
+;
+MSG_PRINTERWINDOW_PSLEVEL
+_Niveau PostScript:
+; P_S Level:
+;
+;
+MSG_PRINTERWINDOW_PREFERENCES
+Pré_férences d'impression
+; P_rinter Preferences
+;
+;
+MSG_PRINTERWINDOW_OUTPUT
+_Sortie :
+; _Output:
+;
+;
+MSG_PRINTERWINDOW_FIRST_PAGE
+_Première page :
+; _First Page:
+;
+;
+MSG_PRINTERWINDOW_LAST_PAGE
+_Dernière page:
+; _Last Page:
+;
+;
+MSG_PRINTERWINDOW_SCALE
+_Echelle :
+; Sca_le:
+;
+;
+MSG_PRINTERWINDOW_PRINT
+_Imprimer
+; _Print
+;
+;
+MSG_PRINTERWINDOW_CANCEL
+_Annuler
+; _Cancel
+;
+;
+MSG_PRINTERWINDOW_STATUS
+Impression de la page %d/%d...
+; Printing page %d/%d...
+;
+;
+MSG_PRINTERWINDOW_ERROR
+L'initialisation de la sortie d'impression a échoué.
+; failed to initialize output device.
+;
+;
+;
+; PrefsWindow
+;
+;
+MSG_PREFSWINDOW_TITLE
+Réglages
+; Settings
+;
+;
+MSG_PREFSWINDOW_CATEGORY_GENERAL
+Général
+; General
+;
+;
+MSG_PREFSWINDOW_CATEGORY_INTERFACE
+Interface
+; interface
+;
+;
+MSG_PREFSWINDOW_CATEGORY_CONTEXTUAL_MENUS
+Menus contextuels
+; contextual Menus
+;
+;
+MSG_PREFSWINDOW_CATEGORY_MIMETYPES
+Types MIME
+; MIME types
+;
+;
+MSG_PREFSWINDOW_CATEGORY_CONTENT
+Contenu
+; content
+;
+;
+MSG_PREFSWINDOW_CATEGORY_FONTS
+Polices
+; fonts
+;
+;
+MSG_PREFSWINDOW_CATEGORY_DOWNLOADS
+Téléchargements
+; downloads
+;
+;
+MSG_PREFSWINDOW_CATEGORY_NETWORK
+Réseau
+; network
+;
+;
+MSG_PREFSWINDOW_CATEGORY_PRIVACY
+Vie privée
+; Privacy
+;
+;
+MSG_PREFSWINDOW_CATEGORY_SECURITY
+Sécurité
+; Security
+;
+;
+MSG_PREFSWINDOW_CATEGORY_MEDIA
+Media
+; Media
+;
+;
+MSG_PREFSWINDOW_CATEGORY_MISCELLANEOUS
+Divers
+; Miscellaneous
+;
+;
+MSG_PREFSWINDOW_CACHE_DOCUMENT_VIEWER
+Simple visionneur
+; document Viewer
+;
+;
+MSG_PREFSWINDOW_CACHE_DOCUMENT_BROWSER
+Navigateur
+; document Browser
+;
+;
+MSG_PREFSWINDOW_CACHE_PRIMARY_BROWSER
+Navigateur principal
+; Primary Web Browser
+;
+;
+MSG_PREFSWINDOW_SMOOTH_NORMAL
+Normal
+; normal
+;
+;
+MSG_PREFSWINDOW_SMOOTH_ALTERNATIVE
+Alternatif
+; alternative
+;
+;
+MSG_PREFSWINDOW_NEWPAGE_NEWTAB
+Nouvel onglet
+; new tab
+;
+;
+MSG_PREFSWINDOW_NEWPAGE_NEWWINDOW
+Nouvelle fenêtre
+; new Window
+;
+;
+MSG_PREFSWINDOW_NEWPAGE_LAST
+À la fin
+; at end
+;
+;
+MSG_PREFSWINDOW_NEWPAGE_AFTERACTIVE
+Après l'onglet actif
+; after current
+;
+;
+MSG_PREFSWINDOW_QUICKLINK_BUTTON
+Bouton
+; Button
+;
+;
+MSG_PREFSWINDOW_QUICKLINK_LINK
+Lien
+; Link
+;
+;
+MSG_PREFSWINDOW_QUICKLINK_DYNAMIC
+Grille dynamique
+; dynamic Grid
+;
+;
+MSG_PREFSWINDOW_QUICKLINK_FIXED
+Grille fixe
+; fixed Grid
+;
+;
+MSG_PREFSWINDOW_QUICKLINK_BESTFIT
+Grille ajustée
+; dynamic Best-Fit
+;
+;
+MSG_PREFSWINDOW_NAVIGATION_ICON
+Icône
+; icon
+;
+;
+MSG_PREFSWINDOW_NAVIGATION_TEXT
+Texte
+; text
+;
+;
+MSG_PREFSWINDOW_NAVIGATION_ICON_AND_TEXT
+Icone et texte
+; icon and text
+;
+;
+MSG_PREFSWINDOW_COOKIE_ACCEPT
+Accepter
+; accept
+;
+;
+MSG_PREFSWINDOW_COOKIE_REJECT
+Rejeter
+; reject
+;
+;
+MSG_PREFSWINDOW_COOKIE_ASK
+Demander
+; ask
+;
+;
+MSG_PREFSWINDOW_COMPLETION_NONE
+Désactivé
+; none
+;
+;
+MSG_PREFSWINDOW_COMPLETION_STRING
+Chaîne
+; String
+;
+;
+MSG_PREFSWINDOW_COMPLETION_POPUP
+Fenêtre popup
+; Popup
+;
+;
+MSG_PREFSWINDOW_COMPLETION_STRING_AND_POPUP
+Chaîne et fenêtre popup
+; String and Popup
+;
+;
+MSG_PREFSWINDOW_CLOSE_REQUESTER_ALWAYS
+Toujours
+; always
+;
+;
+MSG_PREFSWINDOW_CLOSE_REQUESTER_NEVER
+Jamais
+; never
+;
+;
+MSG_PREFSWINDOW_CLOSE_REQUESTER_IF_MORE_THAN_ONE
+Avec plusieurs navigateurs
+; With Multiple tabs
+;
+;
+MSG_PREFSWINDOW_ERROR_REQUESTER
+Requête de dialogue
+; requester dialog
+;
+;
+MSG_PREFSWINDOW_ERROR_HTML
+Affichage HTML
+; HTML display
+;
+;
+MSG_PREFSWINDOW_ANIMATE_NEVER
+Jamais
+; never
+;
+;
+MSG_PREFSWINDOW_ANIMATE_ALWAYS
+Toujours
+; always
+;
+;
+MSG_PREFSWINDOW_ANIMATE_ACTIVE_WINDOW
+Fenêtre actives seulement
+; active Window Only
+;
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR_NEW_TAB
+Nouvel onglet
+; new tab
+;
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR_NEW_BACKGROUND_TAB
+Nouvel onglet en arrière-plan
+; new Background tab
+;
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR_NEW_WINDOW
+Nouvelle fenêtre
+; new Window
+;
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_OFF
+Désactivée
+; disabled
+;
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_ASK
+Demander
+; ask
+;
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_ON
+Automatique
+; automatically
+;
+;
+; General
+;
+MSG_PREFSWINDOW_GENERAL_HOME_PAGE
+Page d'acc_ueil :
+; _Home Page:
+;
+;
+MSG_PREFSWINDOW_GENERAL_START_PAGE
+Page de _démarrage :
+; S_tart Page:
+;
+;
+MSG_PREFSWINDOW_GENERAL_NEW_PAGE
+_Nouvelle Page :
+; _New Page:
+;
+;
+MSG_PREFSWINDOW_GENERAL_OUTPUT_WINDOW
+Fenêtre de s_ortie :
+; _Output Window:
+;
+;
+; interface
+;
+MSG_PREFSWINDOW_INTERFACE_GENERAL
+Général
+; General
+;
+;
+MSG_PREFSWINDOW_INTERFACE_NEW_PAGE_POLICY
+Comportement de nouvelle page :
+; _New Page Policy:
+;
+;
+MSG_PREFSWINDOW_INTERFACE_NEW_PAGE_POSITION
+Position d'ouverture des onglets :
+; tab Opening Position:
+;
+;
+MSG_PREFSWINDOW_INTERFACE_POPUP_POLICY
+Ouverture des popups :
+; _Popup Policy:
+;
+;
+MSG_PREFSWINDOW_INTERFACE_NAVIGATION_BUTTON_TYPE
+Style des boutons de navigation :
+; navigation _Button type:
+;
+;
+MSG_PREFSWINDOW_INTERFACE_COMPLETION_MODE
+Mode d'auto-complétion d'adresse :
+; URL completion Mode:
+;
+;
+MSG_PREFSWINDOW_INTERFACE_CLOSE_REQUESTER
+Confirmer la fermeture :
+; con_firm closing:
+;
+;
+MSG_PREFSWINDOW_INTERFACE_ERROR_REPORTING
+Rapport d'erreurs :
+; error _Reporting:
+;
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR
+Comportement du bouton du milieu :
+; Middle Button Be_haviour:
+;
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_BUTTON_FRAME
+Afficher les cadres des boutons
+; Sho_w buttons frames
+;
+;
+MSG_PREFSWINDOW_INTERFACE_CONTEXTUAL_POINTERS
+Pointeurs de souris contextuels
+; Use contextual _mouse pointers
+;
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_SEARCH_BAR
+Afficher la barre de recherche
+; Show s_earch bar
+;
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_VALIDATION_BUTTONS
+Afficher les boutons de validation
+; Show _validation buttons
+;
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_SEPARATORS
+Afficher les séparateurs
+; Show _group separators
+;
+;
+MSG_PREFSWINDOW_INTERFACE_FAVICONS
+Favicons
+; Website icons
+;
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_TABS
+Onglets
+; t_abs
+;
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_BOOKMARKS
+Favoris
+; B_ookmarks
+;
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_HISTORY
+Historique
+; H_istory
+;
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_BOOKMARK_PANEL
+Panneau des favoris
+; Boo_kmarks panel
+;
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_HISTORY_PANEL
+Panneau de l'historique
+; History pane_l
+;
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_QUICKLINKS
+Liens rapides
+; Quick links
+;
+;
+MSG_PREFSWINDOW_INTERFACE_TAB_TRANSFERANIM
+Afficher l'animation de transfert des onglets
+; Show _tab transfer animation
+;
+;
+MSG_PREFSWINDOW_INTERFACE_QUICK_LINKS
+Liens rapides
+; Quick Links
+;
+;
+MSG_PREFSWINDOW_INTERFACE_QUICK_LINK_LOOK
+Aspect :
+; Look:
+;
+;
+MSG_PREFSWINDOW_INTERFACE_QUICK_LINK_LAYOUT
+Disposition :
+; La_yout:
+;
+;
+MSG_PREFSWINDOW_INTERFACE_MAXIMUM_ROWS
+Nombre de lignes maximum :
+; Ma_ximum rows:
+;
+;
+; content
+;
+MSG_PREFSWINDOW_CONTENT_CACHE_MODEL
+Modèle de _tampons :
+; cache _Model:
+;
+;
+MSG_PREFSWINDOW_CONTENT_PAGE_CACHE
+Tampons de _pages
+; Page cac_he
+;
+;
+MSG_PREFSWINDOW_CONTENT_JAVASCRIPT
+Support _JavaScript
+; _JavaScript support
+;
+;
+MSG_PREFSWINDOW_CONTENT_ALLOW_NEW_WINDOW
+Autoriser JavaScript à ouvrir de nouvelles _fenêtres
+; allow JavaScript to open new _windows
+;
+;
+MSG_PREFSWINDOW_CONTENT_PLAY_ANIMATIONS
+Jouer les ani_mations
+; Play _animations
+;
+;
+MSG_PREFSWINDOW_CONTENT_LOAD_IMAGES
+Charger les _images automatiquement
+; Load _images automatically
+;
+;
+MSG_PREFSWINDOW_CONTENT_PRINT_BACKGROUNDS
+Imprimer avec le fon_d de la page
+; _Print backgrounds
+;
+;
+MSG_PREFSWINDOW_CONTENT_BLOCKING
+_Blocage de contenu (AdBlock)
+; content _blocking (AdBlock)
+;
+;
+MSG_PREFSWINDOW_CONTENT_PLUGINS
+Autoriser les _greffons
+; allow plu_gins
+;
+;
+MSG_PREFSWINDOW_CONTENT_INSPECTOR
+_WebInspector
+; WebInspector
+;
+;
+; fonts
+;
+MSG_PREFSWINDOW_FONTS_DEFAULT_SIZE
+Taille de la police par défaut :
+; default font Size:
+;
+;
+MSG_PREFSWINDOW_FONTS_DEFAULT_MONOSPACED_SIZE
+Taille de la police fixe par défaut :
+; default Monospaced font Size:
+;
+;
+MSG_PREFSWINDOW_FONTS_MINIMUM_SIZE
+Taille minimale de la police :
+; Minimum font Size:
+;
+;
+MSG_PREFSWINDOW_FONTS_MINIMUM_LOGICAL_SIZE
+Taille minimale de la police logique :
+; Minimum Logical font Size:
+;
+;
+MSG_PREFSWINDOW_FONTS_SMOOTHING_METHOD
+Méthode d'anti-crénelage :
+; antialiasing Method:
+;
+;
+MSG_PREFSWINDOW_FONTS_ENCODING
+Encodage du texte :
+; text encoding:
+;
+;
+MSG_PREFSWINDOW_FONTS_STANDARD_FAMILY
+Famille standard :
+; Standard font family:
+;
+;
+MSG_PREFSWINDOW_FONTS_MONOSPACED_FAMILY
+Famille fixe :
+; Monospaced font family:
+;
+;
+MSG_PREFSWINDOW_FONTS_SERIF_FAMILY
+Famille sérif :
+; Serif font family:
+;
+;
+MSG_PREFSWINDOW_FONTS_SANS_SERIF_FAMILY
+Famille sans sérif :
+; Sans Serif font family:
+;
+;
+MSG_PREFSWINDOW_FONTS_CURSIVE_FAMILY
+Famille cursive :
+; cursive font family:
+;
+;
+MSG_PREFSWINDOW_FONTS_FANTASY_FAMILY
+Famille fantaisie :
+; fantasy font family:
+;
+;
+; downloads
+;
+MSG_PREFSWINDOW_DOWNLOADS_PATH
+Chemin de _téléchargement :
+; _Download Path:
+;
+;
+MSG_PREFSWINDOW_DOWNLOADS_AUTOCLOSE
+_Fermer la fenêtre de téléchargements automatiquement
+; close "Downloads" _window when finished
+;
+;
+MSG_PREFSWINDOW_DOWNLOADS_SAVEDOWNLOADS
+_Mémoriser les fichiers téléchargés
+; _Remember downloaded files
+;
+MSG_PREFSWINDOW_DOWNLOADS_START_AUTOMATICALLY
+_Démarrer les téléchargements automatiquement
+; Start downloads _automatically      
+;
+;
+; network
+;
+MSG_PREFSWINDOW_NETWORK_SPOOF
+_Naviguer en tant que :
+; S_poof as:
+;
+;
+MSG_PREFSWINDOW_NETWORK_EXPERIMENTAL_COOKIES
+Système de cookies e_xpérimental (redémarrage nécessaire)
+; e_xperimental cookie system (restart required)
+;
+;
+MSG_PREFSWINDOW_NETWORK_THREAD
+Tâche _réseau (redémarrage nécessaire)
+; network _thread (restart required)
+;
+;
+MSG_PREFSWINDOW_NETWORK_ACTIVE_CONNECTIONS
+Nombre de _connexions :
+; _Active connections:
+;
+;
+MSG_PREFSWINDOW_NETWORK_PROXY
+Proxy
+; Proxy
+;    
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_PASSWORD
+Mot de passe :
+; Password:
+;
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_USERNAME
+Nom d'utilisateur :
+; Username:
+;
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_PORT
+Port :
+; Port:
+;
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_HOST
+Hôte :
+; Host:
+;
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_TYPE
+Type :
+; type:
+;
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_USE
+Utiliser le proxy
+; Use proxy
+;
+;
+; Privacy
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_SESSION
+En_registrer la session
+; Save s_ession
+;
+;
+MSG_PREFSWINDOW_PRIVACY_DELETE_SESSION_AT_EXIT
+_Effacer la session à la sortie
+; _Delete session at exit
+;
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_REQUESTER
+_Demander à restaurer la session au démarrage
+; _Ask for session restoration at startup
+;
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_MODE
+Res_tauration de session :
+; Session _Restoration:
+;
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_COOKIES
+Enregistrer les _cookies dans la base de données
+; Save c_ookies to database
+;
+;
+MSG_PREFSWINDOW_PRIVACY_COOKIES_POLICY
+Coo_kies :
+; coo_kie Policy:
+;
+;
+MSG_PREFSWINDOW_PRIVACY_ENABLE_LOCAL_STORAGE
+Autoriser le stocka_ge de données locales (localstorage)
+; Enable local stora_ge
+;
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_FORM_CREDENTIALS
+Enregistrer les mots de _passe des formulaires
+; Save _form credentials
+;
+;
+MSG_PREFSWINDOW_PRIVACY_ENABLE_FORM_AUTOFILL
+Activer le remplissage automati_que des formulaires
+; enable form autof_ill
+;
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_HISTORY
+Enregistrer l'_historique
+; Save _history
+;
+;
+MSG_PREFSWINDOW_PRIVACY_HISTORY_ENTRIES
+Nombre d'entrées ma_ximal de l'historique :
+; History entries:
+;
+;
+MSG_PREFSWINDOW_PRIVACY_HISTORY_AGE
+Âge _maximal de l'historique :
+; History age in days:
+;
+;
+; Security
+;
+MSG_PREFSWINDOW_SECURITY_IGNORE_SSL_ERRORS
+_Ignorer les erreurs SSL
+; _Ignore SSL errors
+;
+;
+MSG_PREFSWINDOW_SECURITY_CERTIFICATE_PATH
+_Chemin des certificats :
+; certificate _Path:
+;
+;
+; Media
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_NONE
+Traiter toutes les images
+; Process all frames
+;
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_NONREF
+Traiter uniquement les images de référence
+; Skip all But reference frames
+;
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_NONKEY
+Traiter uniquement les images clé
+; Skip all But Key frames
+;
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_ALL
+Sauter toutes les images
+; Skip all frames
+;
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_MODE
+Mode du _filtre de boucle (H264) :
+; _Loopfilter Mode (H264):
+;
+;
+MSG_PREFSWINDOW_MEDIA_ENABLE_PARTIAL_CONTENT
+_Recherche rapide
+; _Fast seeking
+;
+;
+MSG_PREFSWINDOW_MEDIA_USE_WEBM
+Support du format _WebM (VP8)
+; _WebM (VP8) support
+;
+;
+MSG_PREFSWINDOW_MEDIA_USE_FLV
+Support du format F_LV (H.263/H.264)
+; fL_V (H.263/H.264) support
+;
+;
+MSG_PREFSWINDOW_MEDIA_USE_OGG
+Support du format _Ogg (Theora/Vorbis)
+; _Ogg (Theora/Vorbis) support
+;
+;
+; Prefs validation
+;
+MSG_PREFSWINDOW_SAVE
+_Sauver
+; _Save
+;
+;
+MSG_PREFSWINDOW_USE
+_Utiliser
+; _Use
+;
+;
+MSG_PREFSWINDOW_CANCEL
+_Annuler
+; _Cancel
+;
+;
+;
+; QuickLinkButtonGroup
+;
+;
+MSG_QUICKLINKBUTTONGROUP_NO_NAME
+(Sans nom)
+; (No name)
+;
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN
+\033bOuvrir
+; \033bOpen
+;
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN_NEW_TAB
+Ouvrir dans un nouvel onglet
+; Open in new tab
+;
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN_NEW_WINDOW
+Ouvrir dans une nouvelle fenêtre...
+; Open in new Window...
+;
+;
+MSG_QUICKLINKBUTTONGROUP_REMOVE
+Supprimer
+; remove
+;
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN_ALL
+Ouvrir tous les favoris
+; Open all Bookmarks
+;
+;
+;
+; SplashWindow
+;
+;
+MSG_SPLASHWINDOW_INITIALIZING
+Initialisation des polices...
+; initializing fonts...
+;
+;
+MSG_TITLELABEL_BROWSER
+Navigateur
+; Browser
+;
+;
+MSG_SPLASHWINDOW_LOADING
+Charge...
+; Loading...
+;
+;
+MSG_TITLELABEL_NEW_TAB
+Nouvel onglet
+; new tab
+;
+;
+MSG_TITLELABEL_RELOAD
+Recharger
+; reload
+;
+;
+MSG_TITLELABEL_RELOAD_ALL_TABS
+Recharger tous les onglets
+; reload all tabs
+;
+;
+MSG_TITLELABEL_CLOSE
+Fermer
+; close
+;
+;
+MSG_TITLELABEL_CLOSE_ALL_OTHER_TABS
+Fermer tous les autres onglets
+; close all Other tabs
+;
+;
+;
+; toolButton_AddBookmark
+;
+;
+MSG_TOOLBUTTON_ADDBOOKMARK_ADD
+Ajouter
+; add
+;
+;
+MSG_TOOLBUTTON_ADDBOOKMARK_NO_TITLE
+(Sans titre)
+; (No title)
+;
+;
+;
+; toolButton_NewTab
+;
+;
+MSG_TOOLBUTTON_NEWTAB_LABEL
+Nouvel onglet
+; new tab
+;
+;
+;
+; Utils
+;
+;
+MSG_CAPACITY_BYTE
+o
+; B
+;
+;
+MSG_CAPACITY_KILOBYTE
+Ko
+; kB
+;
+;
+MSG_CAPACITY_MEGABYTE
+Mo
+; MB
+;
+;
+MSG_CAPACITY_GIGABYTE
+Go
+; GB
+;
+;
+MSG_CAPACITY_TERABYTE
+To
+; tB
+;
+;
+MSG_PROGRESS_DAY
+%lu jour
+; %lu day
+;
+;
+MSG_PROGRESS_DAYS
+%lu jours
+; %lu days
+;
+;
+MSG_PROGRESS_HOUR
+%lu heure
+; %lu hour
+;
+;
+MSG_PROGRESS_HOURS
+%lu heures
+; %lu hours
+;
+;
+MSG_PROGRESS_MINUTE
+%lu minute
+; %lu minute
+;
+;
+MSG_PROGRESS_MINUTES
+%lu minutes
+; %lu minutes
+;
+;
+MSG_PROGRESS_SECOND
+%lu seconde
+; %lu second
+;
+;
+MSG_PROGRESS_SECONDS
+%lu secondes
+; %lu seconds
+;
+;
+MSG_WEBVIEW_UPLOAD_FILES
+Envoyer des fichiers...
+; Upload files...
+;
+;
+MSG_WEBVIEW_UPLOAD_FILE
+Envoyer un fichier...
+; Upload file...
+;
+;
+MSG_WEBVIEW_ERROR_MSG_HTML
+Erreur %d : %s.
+; error %d: %s.
+;
+;
+MSG_WEBVIEW_ERROR_MSG
+Impossible d'accéder à '%s'.\nErreur %d : %s.\n
+; Unable to open '%s'.\nError %d: %s.\n
+;
+;
+MSG_WEBVIEW_PROVISIONAL_TITLE
+(Sans titre)
+; (Untitled)
+;
+;
+MSG_WEBVIEW_INTERRUPT_SCRIPT
+Voulez-vous interrompre le script en cours d'exécution ?
+; do you want to interrupt processing of the current script?
+;
+;
+MSG_WEBVIEW_JSACTION_TITLE
+Alerte JavaScript
+; Javascript alert
+;

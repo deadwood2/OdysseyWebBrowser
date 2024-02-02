@@ -1,0 +1,2590 @@
+## version $VER: OWB.catalog 1.13 (04.11.2013)
+## codeset 0
+## language svenska
+## chunk AUTH Stefan Blixth
+;
+;
+;
+; Pulldown Menu
+;
+;
+MSG_MENU_PROJECT
+Projekt
+; Project
+;
+MSG_MENU_NEW_WINDOW
+Nytt fönster...
+; New Window...
+;
+MSG_MENU_NEW_TAB
+Ny flik
+; New Tab
+;
+MSG_MENU_OPEN_LOCAL_FILE
+Öppna lokal fil...
+; Open File...
+;
+MSG_MENU_OPEN_URL
+Öppna URL
+; Open URL
+;
+MSG_MENU_OPEN_SESSION
+Öppna session...
+; Load Session...
+;
+MSG_MENU_SAVE_SESSION
+Spara session...
+; Save Session...
+;
+MSG_MENU_SAVE_AS_SOURCE
+Spara som HTML...
+; Save as HTML...
+;
+MSG_MENU_SAVE_AS_PDF
+Spara som PDF...
+; Save as PDF...
+;
+MSG_MENU_PRINT
+Skriv ut...
+; Print...
+;
+MSG_MENU_ABOUT
+Om...
+; About...
+;
+MSG_MENU_CLOSE_TAB
+Stäng flik
+; Close Tab
+;
+MSG_MENU_CLOSE_WINDOW
+Stäng fönster
+; Close Window
+;
+MSG_MENU_QUIT
+Avsluta
+; Quit
+;
+MSG_MENU_EDIT
+Redigera
+; Edit
+;
+MSG_MENU_CUT
+Klipp
+; Cut
+;
+MSG_MENU_COPY
+Kopiera
+; Copy
+;
+MSG_MENU_COPY_LOCAL
+Kopiera med teckenöversättning
+; Copy with System Codepage
+;
+MSG_MENU_PASTE
+Klistra in
+; Paste
+;
+MSG_MENU_PASTE_TO_URL
+Klistra in URL
+; Paste to URL
+;
+MSG_MENU_SELECT_ALL
+Välj alla
+; Select All
+;
+MSG_MENU_FIND
+Hitta
+; Find
+;
+MSG_MENU_VIEW
+Visa
+; View
+;
+MSG_MENU_BACK
+Tillbaka
+; Back
+;
+MSG_MENU_FORWARD
+Framåt
+; Forward
+;
+MSG_MENU_HOME
+Hem
+; Home
+;
+MSG_MENU_STOP
+Avbryt inläsning
+; Stop
+;
+MSG_MENU_RELOAD
+Läs om
+; Reload
+;
+MSG_MENU_ZOOM_IN
+Zooma in
+; Zoom In
+;
+MSG_MENU_ZOOM_OUT
+Zooma ut
+; Zoom Out
+;
+MSG_MENU_ZOOM_RESET
+Återställ zoom
+; Zoom Reset
+;
+MSG_MENU_FULLSCREEN
+Fullskärm
+; Fullscreen
+;
+MSG_MENU_SOURCE
+Visa källkod...
+; Show Source Code...
+;
+MSG_MENU_PANELS
+Sidofält
+; Sidepanels
+;
+MSG_MENU_NAVIGATION
+Navigation
+; Navigation
+;
+MSG_MENU_QUICKLINKS
+Snabblänkar
+; Quicklinks
+;
+MSG_MENU_LOCATION
+Plats
+; Location
+;
+MSG_MENU_STATUS
+Status
+; Status
+;
+MSG_MENU_BOOKMARK_PANEL
+Visa bokmärkesfält
+; Bookmarks
+;
+MSG_MENU_HISTORY_PANEL
+Visa historikfält
+; History
+;
+MSG_MENU_NO_PANEL
+Av
+; Off
+;
+MSG_MENU_HISTORY
+Historik
+; History
+;
+MSG_MENU_HISTORY_CLOSEDVIEWS
+Senast stängda webläsare
+; Recently Closed Browsers
+;
+MSG_MENU_BOOKMARKS
+Bokmärken
+; Bookmarks
+;
+MSG_MENU_ADD_BOOKMARK
+Lägg till bokmärke
+; Add Bookmark
+;
+MSG_MENU_MANAGE_BOOKMARKS
+Hantera bokmärken...
+; Manage Bookmarks...
+;
+MSG_MENU_WINDOWS
+Fönster
+; Windows
+;
+MSG_MENU_DOWNLOADS
+Nedladdningar...
+; Downloads...
+;
+MSG_MENU_NETWORK
+Nätverksstatus...
+; Network Activity...
+;
+MSG_MENU_PASSWORDS
+Lösenord...
+; Passwords...
+;
+MSG_MENU_COOKIES
+Kakor...
+; Cookies...
+;
+MSG_MENU_BLOCK
+Innehållsblockering...
+; Content Blocking...
+;
+MSG_MENU_MESSAGES
+Meddelanden...
+; Messages...
+;
+MSG_MENU_SEARCH_ENGINES
+Sökmotorer...
+; Search Engines...
+;
+MSG_MENU_SCRIPT
+Skript...
+; Scripts...
+;
+MSG_MENU_URLPREFS
+URL-Inställningar...
+; URL Settings...
+;
+MSG_MENU_SETTINGS
+Inställningar
+; Settings
+;
+MSG_MENU_PRIVATE_BROWSING
+Privat surfning
+; Private Browsing
+;
+MSG_MENU_ENABLE
+Slå på
+; Enable
+;
+MSG_MENU_DISABLE
+Slå av
+; Disable
+;
+MSG_MENU_DEFAULT
+Standardinställning
+; Default Setting
+;
+MSG_MENU_ENABLE_JAVASCRIPT
+JavaScript-support
+; JavaScript Support
+;
+MSG_MENU_ENABLE_IMAGES
+Bildnedladdning
+; Image Loading
+;
+MSG_MENU_ENABLE_ANIMATIONS
+Spela animationer
+; Play Animations
+;
+MSG_MENU_ENABLE_PLUGINS
+Tillägg
+; Plugins
+;
+MSG_MENU_SPOOF_AS
+Identifiera som
+; Spoof as
+;
+MSG_MENU_PREFERENCES
+Inställningar...
+; Preferences...
+;
+MSG_MENU_MUI
+MUI...
+; MUI...
+;
+;
+; App
+;
+;
+MSG_REQUESTER_NORMAL_TITLE
+OWB
+; OWB
+;
+MSG_REQUESTER_ERROR_TITLE
+OWB-Fel
+; OWB Error
+;
+MSG_REQUESTER_YES_NO
+*_Ja|_Nej
+; *_Yes|_No
+;
+MSG_REQUESTER_NO_YES
+_Ja|*_Nej
+; _Yes|*_No
+;
+MSG_REQUESTER_OK
+*_Ok
+; *_Ok
+;
+MSG_REQUESTER_YES_NO_NEVER
+*_Ja|_Nej|_Aldrig
+; *_Yes|_No|N_ever
+;
+MSG_REQUESTER_BOOKMARK_IMPORT_ERROR
+Okänt bokmärkesformat.\nEndast bokmärken från IBrowse 2.4 och OWB MorphOS kan användas.
+; Unknown bookmark format.\nOnly IBrowse 2.4 and OWB MorphOS formats are supported.
+;
+MSG_OWBAPP_DEFAULT_WINDOW_NAME
+Odyssey Web Browser-Fönster
+; Odyssey Web Browser Window
+;
+MSG_OWBAPP_DEFAULT_PAGE_NAME
+Odyssey Web Browser-Sida
+; Odyssey Web Browser Page
+;
+MSG_OWBAPP_SAVE_CREDENTIALS
+Vill du spara uppgifter för denna sida?\nAnvändarnamn: %s
+; Do you want to save credentials for this page?\nUsername: %s
+;
+MSG_OWBAPP_MIMETYPE_REQUEST_ACTION
+Specificera hur filen ska hanteras:\n'\033b%s\033n' (MIME-Typ: \033b%s\033n)
+; Specify the action to perform for file:\n'\033b%s\033n' (MIME Type: \033b%s\033n)
+;
+MSG_OWBAPP_MIMETYPE_ACTIONS
+*_Visa i fönster|Öppna med _extern visare|_Spara fil|_Avbryt
+; *_Display in Window|Open with _External Program|Download _File|_Cancel
+;
+MSG_OWBAPP_MIMETYPE_ACTIONS_FALLBACK
+*_Visa i fönster|_Spara fil|_Avbryt
+; *_Display in Window|Download _File|_Cancel
+;
+MSG_OWBAPP_OPEN_SESSION
+Öppna sessionsfil...
+; Load Session File...
+;
+MSG_OWBAPP_SAVE_SESSION
+Spara sessionsfil som...
+; Save Session File As...
+;
+MSG_OWBAPP_RESTORE_SESSION_CHOICES
+*_Återställ session|_Starta ny session
+; *_Restore Session|_Start New Session
+;
+MSG_OWBAPP_RESTORE_SESSION
+En tidigare session har hittats.\nDu kan återställla denna session eller starta en ny.
+; A previous session has been found.
+;
+;
+;
+; AddressBarGroup
+;
+;
+MSG_ADDRESSBARGROUP_URL
+URL:
+; URL:
+;
+;
+; BCContextMenuMorphOS
+;
+;
+MSG_CONTEXTMENU_TITLE
+Meny
+; Menu
+;
+;
+; BCLocalizedStrings (these ones need to be encoded in UTF8)
+;
+;
+MSG_LOCALIZED_SUBMIT
+Ange
+; Submit
+;
+MSG_LOCALIZED_RESET
+Ã…terstÃ¤ll
+; Reset
+;
+MSG_LOCALIZED_SEARCHABLE_INDEX
+SÃ¶kbart index
+; Searchable Index
+;
+MSG_LOCALIZED_CHOOSE_FILE
+VÃ¤lj fil...
+; Select File...
+;
+MSG_LOCALIZED_NO_FILE
+(Ingen)
+; (None)
+;
+MSG_LOCALIZED_DETAILS
+Detaljer
+; Details
+;
+MSG_LOCALIZED_OPEN_IN_NEW_WINDOW
+Ã–ppna lÃ¤nk i nytt fÃ¶nster...
+; Open Link in New Window...
+;
+MSG_LOCALIZED_OPEN_IN_NEW_TAB
+Ã–ppna lÃ¤nk i ny flik
+; Open Link in New Tab
+;
+MSG_LOCALIZED_OPEN_IN_NEW_BACKGROUND_TAB
+Ã–ppna lÃ¤nk i ny bakgrundsflik
+; Open Link in New Background Tab
+;
+MSG_LOCALIZED_DOWNLOAD_LINK
+Ladda ner lÃ¤nken...
+; Download Linked File...
+;
+MSG_LOCALIZED_COPY_LINK_LOCATION
+Kopiera lÃ¤nkens sÃ¶kvÃ¤g
+; Copy Link Location
+;
+MSG_LOCALIZED_OPEN_IMAGE_IN_NEW_WINDOW
+Ã–ppna bild i nytt fÃ¶nster...
+; Open Image in New Window...
+;
+MSG_LOCALIZED_OPEN_IMAGE_IN_NEW_TAB
+Ã–ppna bild i ny flik
+; Open Image in New Tab
+;
+MSG_LOCALIZED_SAVE_IMAGE_AS
+Spara bild som...
+; Save Image As...
+;
+MSG_LOCALIZED_COPY_IMAGE
+Kopiera bild...
+; Copy Image...
+;
+MSG_LOCALIZED_COPY_IMAGE_URL
+Kopiera bildlänk...
+; Copy Image Location...
+;
+MSG_LOCALIZED_BLOCK_IMAGES
+Blockera bilder frÃ¥n %s
+; Block Images from %s
+;
+MSG_LOCALIZED_OPEN_FRAME_IN_NEW_WINDOW
+Ã–ppna ram i nytt fÃ¶nster...
+; Open Frame in New Window...
+;
+MSG_LOCALIZED_OPEN_FRAME_IN_NEW_TAB
+Ã–ppna ram i ny flik
+; Open Frame in New Tab
+;
+MSG_LOCALIZED_COPY
+Kopiera
+; Copy
+;
+MSG_LOCALIZED_DELETE
+Ta bort
+; Delete
+;
+MSG_LOCALIZED_SELECT_ALL
+Markera allt
+; Select All
+;
+MSG_LOCALIZED_INSERT_UNICODE
+Infoga unicode-kontrolltecken
+; Insert Unicode Control Character
+;
+MSG_LOCALIZED_INPUT_METHODS
+Inmatningsmetod
+; Input Methods
+;
+MSG_LOCALIZED_BACK
+Tillbaka
+; Back
+;
+MSG_LOCALIZED_FORWARD
+FramÃ¥t
+; Forward
+;
+MSG_LOCALIZED_STOP
+Avbryt
+; Stop
+;
+MSG_LOCALIZED_RELOAD
+LÃ¤s om
+; Reload
+;
+MSG_LOCALIZED_CUT
+Klipp ut
+; Cut
+;
+MSG_LOCALIZED_PASTE
+Klistra in
+; Paste
+;
+MSG_LOCALIZED_NO_GUESSES
+Inga gissningar funna
+; No Guesses Found
+;
+MSG_LOCALIZED_IGNORE_SPELLING
+Ignorera stavning
+; Ignore Spelling
+;
+MSG_LOCALIZED_LEARN_SPELLING
+LÃ¤ra in stavning
+; Learn Spelling
+;
+MSG_LOCALIZED_SEARCH
+SÃ¶k pÃ¥ webben
+; Search the Web
+;
+MSG_LOCALIZED_LOOKUP_IN_DICTIONARY
+Leta upp i ordlistan
+; Look Up in Dictionary
+;
+MSG_LOCALIZED_OPEN_LINK
+Ã–ppna lÃ¤nk
+; Open Link
+;
+MSG_LOCALIZED_IGNORE_GRAMMAR
+Ignorera grammatik
+; Ignore Grammar
+;
+MSG_LOCALIZED_SPELLING_AND_GRAMMAR
+Stavning och grammatik
+; Spelling and Grammar
+;
+MSG_LOCALIZED_SHOW_SPELLING_AND_GRAMMAR
+Visa stavning och grammatik
+; Show Spelling and Grammar
+;
+MSG_LOCALIZED_HIDE_SPELLING_AND_GRAMMAR
+GÃ¶m  stavning och grammatik
+; Hide Spelling and Grammar
+;
+MSG_LOCALIZED_CHECK_DOCUMENT
+Kontrollera dokument nu
+; Check Document Now
+;
+MSG_LOCALIZED_CHECK_SPELLING_WHILE_TYPING
+Kontrollera stavning vid skrift
+; Check Spelling While Typing
+;
+MSG_LOCALIZED_CHECK_GRAMMAR_WITH_SPELLING
+Kontrollera grammatik vid stavning
+; Check Grammar With Spelling
+;
+MSG_LOCALIZED_DICTIONARIES
+VÃ¤lj sprÃ¥k
+; Choose Language
+;
+MSG_LOCALIZED_FONT
+Typsnitt
+; Font
+;
+MSG_LOCALIZED_BOLD
+Fetstil
+; Bold
+;
+MSG_LOCALIZED_ITALIC
+Kursiv
+; Italic
+;
+MSG_LOCALIZED_UNDERLINE
+Understruken
+; Underline
+;
+MSG_LOCALIZED_OUTLINE
+Ytterlinjerat
+; Outline
+;
+MSG_LOCALIZED_INSPECT_ELEMENT
+Kontrollera element
+; Inspect Element
+;
+MSG_LOCALIZED_NO_RECENT_SEARCHES
+Inga tidigare sÃ¶kningar
+; No recent searches
+;
+MSG_LOCALIZED_RECENT_SEARCHES
+Tidigare sÃ¶kningar
+; Recent searches
+;
+MSG_LOCALIZED_CLEAR_RECENT_SEARCHES
+Rensa tidigare sÃ¶kningar
+; Clear recent searches
+;
+MSG_LOCALIZED_TERM
+term
+; term
+;
+MSG_LOCALIZED_DEFINITION
+definition
+; definition
+;
+MSG_LOCALIZED_UNKNOWN
+OkÃ¤nd
+; Unknown
+;
+MSG_LOCALIZED_LEFT_TO_RIGHT
+VÃ¤nster till hÃ¶ger
+; Left to Right
+;
+MSG_LOCALIZED_DEFAULT_DIRECTION
+Normalt skrivsÃ¤tt
+; Default Writing Direction
+;
+MSG_LOCALIZED_RIGHT_TO_LEFT
+HÃ¶ger till vÃ¤nster
+; Right to Left
+;
+MSG_LOCALIZED_WRITING_DIRECTION
+SkrivsÃ¤tt
+; Writing Direction
+;
+MSG_LOCALIZED_TEXT_DIRECTION
+TextsÃ¤tt
+; Text Direction
+;
+MSG_LOCALIZED_PLAY
+Spela
+; Play
+;
+MSG_LOCALIZED_PAUSE
+Paus
+; Pause
+;
+MSG_LOCALIZED_MUTE
+Ljud av
+; Mute
+;
+MSG_LOCALIZED_UNMUTE
+Ljud pÃ¥
+; Unmute
+;
+MSG_LOCALIZED_SWITCH_TO_FULLSCREEN
+VÃ¤xla till fullskÃ¤rm
+; Switch to Fullscreen
+;
+MSG_LOCALIZED_DOWNLOADMEDIA
+Ladda ner media...
+; Download Media...
+;
+MSG_LOCALIZED_COPYMEDIAURL
+Kopiera mediaplats
+; Copy Media Location
+;
+MSG_LOCALIZED_OPEN_MEDIA_IN_NEW_WINDOW
+Ã–ppna media i nytt fÃ¶nster...
+; Open Media in New Window...
+;
+MSG_LOCALIZED_MEDIACONTROLS
+Kontroller
+; Controls
+;
+MSG_LOCALIZED_MEDIALOOP
+Repetera
+; Loop
+;
+;
+; BookmarkGroup
+;
+;
+MSG_BOOKMARKGROUP_ADD_GROUP
+Lägg till grupp
+; Add Group
+;
+MSG_BOOKMARKGROUP_ADD_LINK
+Lägg till länk
+; Add Link
+;
+MSG_BOOKMARKGROUP_ADD_SEPARATOR
+Lägg till avskiljare
+; Add Separator
+;
+MSG_BOOKMARKGROUP_REMOVE
+Ta bort
+; Remove
+;
+MSG_BOOKMARKGROUP_TITLE
+Titel:
+; Title:
+;
+MSG_BOOKMARKGROUP_ADDRESS
+Adress:
+; Address:
+;
+MSG_BOOKMARKGROUP_SHOW_IN_MENU
+Visa i menyn
+; Show in menu
+;
+MSG_BOOKMARKGROUP_QUICKLINK
+Snabblänk
+; Quick link
+;
+MSG_BOOKMARKGROUP_UNTITLED
+(Ingen titel)
+; (No Title)
+;
+;
+; BookmarkListTree
+;
+;
+MSG_BOOKMARKLISTTREE_SEPARATOR
+---------- Avskiljare ----------
+; ---------- Separator ----------
+;
+MSG_BOOKMARKLISTTREE_NO_TITLE
+(Ingen titel)
+; (No Title)
+;
+MSG_BOOKMARKLISTTREE_TITLE
+Titel
+; Title
+;
+MSG_BOOKMARKLISTTREE_ADDRESS
+Adress
+; Address
+;
+MSG_BOOKMARKLISTTREE_FOLD_GROUP
+Dölj grupp
+; Fold Group
+;
+MSG_BOOKMARKLISTTREE_UNFOLD_GROUP
+Visa grupp
+; Unfold Group
+;
+MSG_BOOKMARKLISTTREE_FOLD_GROUP_BOLD
+\033bDölj Grupp
+; \033bFold Group
+;
+MSG_BOOKMARKLISTTREE_UNFOLD_GROUP_BOLD
+\033bVisa grupp
+; \033bUnfold Group
+;
+MSG_BOOKMARKLISTTREE_SEPARATOR_LABEL
+Avskiljare
+; Separator
+;
+MSG_BOOKMARKLISTTREE_OPEN
+\033bÖppna
+; \033bOpen
+;
+MSG_BOOKMARKLISTTREE_OPEN_NEW_TAB
+Öppna länk i ny flik
+; Open Link in New Tab
+;
+MSG_BOOKMARKLISTTREE_OPEN_NEW_WINDOW
+Öppna länk i nytt fönster...
+; Open Link in New Window...
+;
+MSG_BOOKMARKLISTTREE_BOOKMARK
+Bokmärke
+; Bookmarks
+;
+MSG_BOOKMARKLISTTREE_FOLD_ALL_GROUPS
+Dölj alla grupper
+; Fold All Groups
+;
+MSG_BOOKMARKLISTTREE_UNFOLD_ALL_GROUPS
+Visa alla grupper
+; Unfold All Groups
+;
+;
+; BookmarkWindow
+;
+;
+MSG_BOOKMARKWINDOW_BOOKMARKS
+Bokmärken
+; Bookmarks
+;
+;
+; ChooseTitleGroup
+;
+;
+MSG_CHOOSETITLEGROUP_TITLE
+Titel:
+; Title:
+;
+MSG_CHOOSETITLEGROUP_MENU
+Lägg till i _menyn
+; Add to _menu
+;
+MSG_CHOOSETITLEGROUP_NO_TITLE
+(Ingen titel)
+; (No Title)
+;
+MSG_CHOOSETITLEGROUP_ADD
+_Lägg till
+; _Add
+;
+MSG_CHOOSETITLEGROUP_CANCEL
+_Avbryt
+; _Cancel
+;
+;
+; ConsoleList
+;
+;
+MSG_CONSOLELIST_TIME
+Tid
+; Time
+;
+MSG_CONSOLELIST_MESSAGE
+Meddelande
+; Message
+;
+MSG_CONSOLELIST_COPY
+Kopiera till utklipp
+; Copy
+;
+;
+; ConsoleWindow
+;
+;
+MSG_CONSOLEWINDOW_MESSAGES
+Meddelande
+; Messages
+;
+MSG_CONSOLEWINDOW_CLEAR
+_Rensa
+; _Clear
+;
+;
+; ContextMenuGroup
+;
+;
+MSG_CONTEXTMENUGROUP_LINK
+Länk
+; Link
+;
+MSG_CONTEXTMENUGROUP_PAGE
+Sida
+; Page
+;
+MSG_CONTEXTMENUGROUP_IMAGE
+Bild
+; Image
+;
+MSG_CONTEXTMENUGROUP_INTERNAL
+Intern
+; Internal
+;
+MSG_CONTEXTMENUGROUP_ADD
+Lägg till
+; Add
+;
+MSG_CONTEXTMENUGROUP_REMOVE
+Ta bort
+; Remove
+;
+MSG_CONTEXTMENUGROUP_CATEGORY
+Kategori:
+; Category:
+;
+MSG_CONTEXTMENUGROUP_LABEL
+Etikett:
+; Label:
+;
+MSG_CONTEXTMENUGROUP_ACTION
+Funktion:
+; Action:
+;
+MSG_CONTEXTMENUGROUP_DEFAULT_LABEL
+Menyetikett
+; Menu Label
+;
+;
+;
+; ContextMenuList
+;
+;
+MSG_CONTEXTMENULIST_LINK
+Länk
+; Link
+;
+MSG_CONTEXTMENULIST_PAGE
+Sida
+; Page
+;
+MSG_CONTEXTMENULIST_IMAGE
+Bild
+; Image
+;
+MSG_CONTEXTMENULIST_INTERNAL
+Intern
+; Internal
+;
+MSG_CONTEXTMENULIST_CATEGORY
+Kategori
+; Category
+;
+MSG_CONTEXTMENULIST_LABEL
+Etikett
+; Label
+;
+MSG_CONTEXTMENULIST_ACTION
+Funktion
+; Action
+;
+MSG_CONTEXTMENULIST_TYPE
+Typ
+; Type
+;
+;
+;
+; CookieManagerGroup
+;
+;
+MSG_COOKIEMANAGERGROUP_REMOVE
+_Ta bort
+; _Remove
+;
+MSG_COOKIEMANAGERGROUP_REMOVE_ALL
+Ta bort _alla
+; Remove _All
+;
+MSG_COOKIEMANAGERGROUP_DOMAIN
+Domän:
+; Domain:
+;
+MSG_COOKIEMANAGERGROUP_NAME
+Namn:
+; Name:
+;
+MSG_COOKIEMANAGERGROUP_VALUE
+Värde:
+; Value:
+;
+MSG_COOKIEMANAGERGROUP_PATH
+Sökväg:
+; Path:
+;
+MSG_COOKIEMANAGERGROUP_TYPE
+Typ:
+; Type:
+;
+MSG_COOKIEMANAGERGROUP_EXPIRATION
+Upphör att gälla:
+; Expiration:
+;
+;
+;
+; CookieManagerList
+;
+;
+MSG_COOKIEMANAGERLIST_DOMAIN
+Domän
+; Domain
+;
+MSG_COOKIEMANAGERLIST_NAME
+Namn
+; Name
+;
+MSG_COOKIEMANAGERLIST_VALUE
+Värde
+; Value
+;
+MSG_COOKIEMANAGERLIST_COOKIES
+Kakor
+; Cookies
+;
+MSG_COOKIEMANAGERLIST_FOLD_DOMAIN
+Dölj domän
+; Fold Domain
+;
+MSG_COOKIEMANAGERLIST_UNFOLD_DOMAIN
+Visa domän
+; Unfold Domain
+;
+MSG_COOKIEMANAGERLIST_FOLD_ALL_DOMAINS
+Dölj alla domäner
+; Fold All Domains
+;
+MSG_COOKIEMANAGERLIST_UNFOLD_ALL_DOMAINS
+Visa alla domäner
+; Unfold All Domains
+;
+;
+; CookieManagerWindow
+;
+;
+MSG_COOKIEMANAGERWINDOW_COOKIES
+Kakor
+; Cookies
+;
+;
+; DefaultPolicyDelegate
+;
+;
+MSG_DEFAULTPOLICYDELEGATE_MESSAGE
+Sidan du försöker öppna innehåller redan POST-data.\nOm du fortsätter kommer POST-datan att skickas igen.\nVill du fortsätta ?
+; The page you're trying to open already includes POST data.\nIf you proceed, POST data will be sent again.\nDo you want to continue?
+;
+;
+; DownloadDelegate
+;
+;
+MSG_DOWNLOADDELEGATE_OVERWRITE_OR_RESUME
+Filen '%s' finns redan.\nVill du ersätta den ?\n\n\033bNy storlek:\033n %llu bytes\n\033bGammal storlek:\033n %ld bytes\n\033bGammalt datum:\033n %s %s
+; File '%s' already exists.\nDo you want to replace it?\n\n\033bNew Size:\033n %llu bytes\n\033bOld Size:\033n %ld bytes\n\033bOld Date:\033n %s %s
+;
+MSG_DOWNLOADDELEGATE_OVERWRITE_OR_RESUME_ACTIONS
+*_Skriv över|_Återuppta|_Avbryt
+; *_Overwrite|_Resume|_Cancel
+;
+;
+; DownloadGroup
+;
+;
+MSG_DOWNLOADGROUP_IN_PROGRESS
+Pågående
+; In Progress
+;
+MSG_DOWNLOADGROUP_FINISHED
+Klara
+; Finished
+;
+MSG_DOWNLOADGROUP_FAILED
+Avbrutna
+; Failed
+;
+MSG_DOWNLOADGROUP_ABORT
+Avbryt
+; _Abort
+;
+MSG_DOWNLOADGROUP_ABORT_ALL
+Avbryt allt
+; A_bort All
+;
+MSG_DOWNLOADGROUP_REMOVE
+_Ta bort
+; _Remove
+;
+MSG_DOWNLOADGROUP_REMOVE_ALL
+Ta bort _alla
+; Remove _All
+;
+MSG_DOWNLOADGROUP_RETRY
+_Försök igen
+; Re_try
+;
+MSG_DOWNLOADGROUP_CANCELLED_BY_USER
+Avbruten av användaren
+; Cancelled by user
+;
+MSG_DOWNLOADGROUP_INTERRUPTED
+Avbrutet
+; Interrupted
+;
+;
+; DownloadList
+;
+;
+MSG_DOWNLOADLIST_NAME
+Namn
+; Name
+;
+MSG_DOWNLOADLIST_SIZE
+Storlek
+; Size
+;
+MSG_DOWNLOADLIST_PROGRESS
+Färdigt
+; Progress
+;
+MSG_DOWNLOADLIST_DETAIL
+Detaljer
+; Detail
+;
+MSG_DOWNLOADLIST_SPEED
+Hastighet
+; Speed
+;
+MSG_DOWNLOADLIST_ETA
+ETA
+; ETA
+;
+MSG_DOWNLOADLIST_PATH
+Sökväg
+; Path
+;
+MSG_DOWNLOADLIST_URL
+URL
+; URL
+;
+MSG_DOWNLOADLIST_DOWNLOADPAGE
+Nedladdningssida
+; Download Page
+;
+MSG_DOWNLOADLIST_STATUS
+Status
+; Status
+;
+MSG_DOWNLOADLIST_OPEN_FILE
+\033bÖppna fil
+; \033bOpen File
+;
+MSG_DOWNLOADLIST_OPEN_DIRECTORY
+Öppna låda
+; Open Directory
+;
+MSG_DOWNLOADLIST_OPEN_DOWNLOADPAGE
+Öppna nedladdningssida
+; Open Download Page
+;
+MSG_DOWNLOADLIST_SIZE_UNKNOWN
+Okänd
+; Unknown
+;
+;
+; DownloadWindow
+;
+;
+MSG_DOWNLOADWINDOW_DOWNLOADS
+Nedladdningar
+; Downloads
+;
+;
+; FindText
+;
+;
+MSG_FINDTEXT_PREV
+Föregående
+; Previous
+;
+MSG_FINDTEXT_NEXT
+Nästa
+; Next
+;
+MSG_FINDTEXT_CASE_SENSITIVE
+Skiftlägeskänslig
+; Case sensitive
+;
+MSG_FINDTEXT_MARK_ALL_MATCHES
+Markera alla träffar
+; Mark all matches
+;
+MSG_FINDTEXT_TEXT_NOT_FOUND
+Ej funnet
+; Not found
+;
+;
+; HistoryButton
+;
+;
+MSG_HISTORYBUTTON_MENU_TITLE
+Historik
+; History
+;
+MSG_HISTORYBUTTON_NO_TITLE
+(Ingen titel)
+; (No Title)
+;
+;
+; HistoryList
+;
+;
+MSG_HISTORYLIST_NO_URL
+(Ingen URL)
+; (No URL)
+;
+MSG_HISTORYLIST_NO_TITLE
+(Ingen titel)
+; (No Title)
+;
+MSG_HISTORYLIST_HISTORY
+Historik
+; History
+;
+MSG_HISTORYLIST_OPEN_URL
+\033bÖppna URL
+; \033bOpen
+;
+MSG_HISTORYLIST_OPEN_NEW_TAB
+Öppna URL i ny flik
+; Open in New Tab
+;
+MSG_HISTORYLIST_OPEN_NEW_WINDOW
+Öppna URL i nytt fönster...
+; Open in New Window...
+;
+;
+; HistoryListTree
+;
+;
+MSG_HISTORYLISTTREE_NO_TITLE
+(Ingen titel)
+; (No Title)
+;
+MSG_HISTORYLISTTREE_NO_URL
+(Ingen URL)
+; (No URL)
+;
+MSG_HISTORYLISTTREE_TITLE
+Titel
+; Title
+;
+MSG_HISTORYLISTTREE_ADDRESS
+Adress
+; Address
+;
+MSG_HISTORYLISTTREE_HISTORY
+OWB Historik
+; History
+;
+MSG_HISTORYLISTTREE_OPEN_URL
+\033bÖppna URL
+; \033bOpen
+;
+MSG_HISTORYLISTTREE_OPEN_NEW_TAB
+Öppna URL i ny flik
+; Open in New Tab
+;
+MSG_HISTORYLISTTREE_OPEN_NEW_WINDOW
+Öppna URL i nytt fönster...
+; Open in New Window...
+;
+;
+; HistoryPanelGroup
+;
+;
+MSG_HISTORYPANELGROUP_HISTORY
+Historik
+; History
+;
+;
+; LinkList
+;
+;
+MSG_LINKLIST_NO_NAME
+(Inget namn)
+; (No name)
+;
+MSG_LINKLIST_QUICK_LINK
+Snabblänk
+; Quick Link
+;
+;
+; LoginWindow
+;
+;
+MSG_LOGINWINDOW_MESSAGE
+Ange användarnamn och lösenord för att komma åt %s på %s.
+; Enter username and password to access %s on %s.
+;
+MSG_LOGINWINDOW_TITLE
+Verifieringsbegäran
+; Authentication Request
+;
+MSG_LOGINWINDOW_USERNAME
+Användarnamn:
+; Username:
+;
+MSG_LOGINWINDOW_PASSWORD
+Lösenord:
+; Password:
+;
+MSG_LOGINWINDOW_SAVE_CREDENTIALS
+_Spara uppgifter
+; _Save credentials
+;
+MSG_LOGINWINDOW_LOGIN
+_Logga in
+; _Login
+;
+MSG_LOGINWINDOW_CANCEL
+_Avbryt
+; _Cancel
+;
+;
+; MimetypeGroup
+;
+;
+MSG_MIMETYPEGROUP_EXTERNAL_VIEWER
+Extern visare
+; External Viewer
+;
+MSG_MIMETYPEGROUP_INTERNAL_VIEWER
+Intern visare
+; Internal Viewer
+;
+MSG_MIMETYPEGROUP_SAVE_TO_DISK
+Spara till disk
+; Save to Disk
+;
+MSG_MIMETYPEGROUP_ASK
+Fråga
+; Ask
+;
+MSG_MIMETYPEGROUP_STREAM
+Ström
+; Stream
+;
+MSG_MIMETYPEGROUP_PIPE
+Pipe
+; Pipe
+;
+MSG_MIMETYPEGROUP_IGNORE
+Ignorera
+; Ignore
+;
+MSG_MIMETYPEGROUP_PLUGIN
+Tillägg
+; Plugin
+;
+MSG_MIMETYPEGROUP_ADD
+Lägg till
+; Add
+;
+MSG_MIMETYPEGROUP_REMOVE
+Ta bort
+; Remove
+;
+MSG_MIMETYPEGROUP_MIMETYPE
+MIME-Typ:
+; MIME Type:
+;
+MSG_MIMETYPEGROUP_EXTENSION
+Suffix:
+; Extension:
+;
+MSG_MIMETYPEGROUP_ACTION
+Funktion:
+; Action:
+;
+MSG_MIMETYPEGROUP_VIEWER
+Visare:
+; Viewer:
+;
+;
+; MimetypeList
+;
+;
+MSG_MIMETYPELIST_EXTERNAL_VIEWER
+Extern visare
+; External viewer
+;
+MSG_MIMETYPELIST_INTERNAL_VIEWER
+Intern visare
+; Internal viewer
+;
+MSG_MIMETYPELIST_SAVE_TO_DISK
+Spara till disk
+; Save to disk
+;
+MSG_MIMETYPELIST_ASK
+Fråga
+; Ask
+;
+MSG_MIMETYPELIST_STREAM
+Ström
+; Stream
+;
+MSG_MIMETYPELIST_PIPE
+Pipe
+; Pipe
+;
+MSG_MIMETYPELIST_IGNORE
+Ignorera
+; Ignore
+;
+MSG_MIMETYPELIST_PLUGIN
+Tillägg
+; Plugin
+;
+MSG_MIMETYPELIST_MIMETYPE
+MIME-Typ
+; MIME Type
+;
+MSG_MIMETYPELIST_EXTENSION
+Suffix
+; Extension
+;
+MSG_MIMETYPELIST_ACTION
+Funktion
+; Action
+;
+MSG_MIMETYPELIST_VIEWER
+Visare
+; Viewer
+;
+;
+; NavigationGroup
+;
+;
+MSG_NAVIGATIONGROUP_BACK
+Tillbaka
+; Back
+;
+MSG_NAVIGATIONGROUP_FORWARD
+Framåt
+; Forward
+;
+MSG_NAVIGATIONGROUP_RELOAD
+Läs om
+; Reload
+;
+MSG_NAVIGATIONGROUP_STOP
+Avbryt
+; Stop
+;
+MSG_NAVIGATIONGROUP_HOME
+Hem
+; Home
+;
+MSG_NAVIGATIONGROUP_INSPECT
+Kontrollera
+; Inspect
+;
+;
+; NetworkWindow
+;
+;
+MSG_NETWORKWINDOW_TITLE
+Nätverksstatus
+; Network Activity
+;
+MSG_NETWORKWINDOW_URL
+URL
+; URL
+;
+MSG_NETWORKWINDOW_STATE
+Tillstånd
+; State
+;
+MSG_NETWORKWINDOW_ABORT
+A_vbryt
+; A_bort
+;
+MSG_NETWORKWINDOW_ABORT_ALL
+Avbryt _allt
+; _Abort All
+;
+MSG_NETWORKWINDOW_STATUS_RECEIVING_DATA
+%s av %s inläst
+; %s of %s read
+;
+MSG_NETWORKWINDOW_STATUS_SENDING_DATA
+%s av %s ›skickat
+; %s of %s sent
+;
+MSG_NETWORKWINDOW_STATUS_WAITING_FOR_DATA
+Väntar på data
+; Waiting for data
+;
+MSG_NETWORKWINDOW_STATUS_CONNECTING
+Ansluter
+; Connecting
+;
+;
+; OWBWindow
+;
+;
+MSG_OWBWINDOW_PENDING_DOWNLOADS
+Några filer håller på att laddas ner.\nÄr du säker på att du vill avsluta?
+; Some files are currently being downloaded.\nDo you really want to quit?
+;
+MSG_OWBWINDOW_QUIT_CONFIRMATION
+Vill du verkligen avsluta?
+; Do you really want to quit?
+;
+MSG_OWBWINDOW_CLOSE_ALL_PAGES_CONFIRMATION
+Vill du stänga alla flikar ?
+; Do you want to close all tabs?
+;
+MSG_OWBWINDOW_OPEN_FILE
+Öppna fil...
+; Open File...
+;
+MSG_OWBWINDOW_SAVE_AS
+Spara som...
+; Save As...
+;
+MSG_OWBWINDOW_READ_PROGRESS
+%s av %s inläst
+; %s of %s read
+;
+MSG_OWBWINDOW_STATE_READY
+Klart
+; Ready
+;
+MSG_OWBWINDOW_STATE_RECEIVING_DATA
+Tar emot data...
+; Receiving data...
+;
+MSG_OWBWINDOW_STATE_SENDING_REQUEST
+Skickar förfrågan...
+; Sending request...
+;
+MSG_OWBWINDOW_STATE_ERROR
+Fel
+; Error
+;
+MSG_OWBWINDOW_CHOOSE_TITLE
+Välj en titel
+; Choose a title
+;
+MSG_OWBWINDOW_JAVASCRIPT_PROMPT
+OWB JavaScript-Prompt
+; JavaScript Prompt
+;
+MSG_OWBWINDOW_JAVASCRIPT_OK
+_Ok
+; _Ok
+;
+MSG_OWBWINDOW_JAVASCRIPT_CANCEL
+_Avbryt
+; _Cancel
+;
+MSG_OWBWINDOW_RUNNING_USERSCRIPTS
+\033bKör userscripts:\033n\n\n
+; \033bRunning userscripts:\033n\n\n
+;
+;
+; PasswordManagerGroup
+;
+;
+MSG_PASSWORDMANAGERGROUP_REMOVE
+_Ta bort
+; _Remove
+;
+MSG_PASSWORDMANAGERGROUP_REMOVE_ALL
+Ta bort _allt
+; Remove _All
+;
+;
+; PasswordManagerList
+;
+;
+MSG_PASSWORDMANAGERLIST_HOST
+Värd
+; Host
+;
+MSG_PASSWORDMANAGERLIST_REALM
+Plats
+; Realm
+;
+MSG_PASSWORDMANAGERLIST_USERNAME
+Användarnamn
+; Username
+;
+MSG_PASSWORDMANAGERLIST_PASSWORD
+Lösenord
+; Password
+;
+MSG_PASSWORDMANAGERLIST_FORM
+Formulär
+; Form
+;
+MSG_PASSWORDMANAGERLIST_FILTER
+Filter
+; Filter
+;
+MSG_PASSWORDMANAGERLIST_FILTER_REMEMBER
+Kom ihåg
+; Remember
+;
+MSG_PASSWORDMANAGERLIST_FILTER_IGNORE
+Ignorera
+; Ignore
+;
+;
+; PasswordManagerWindow
+;
+;
+MSG_PASSWORDMANAGERWINDOW_TITLE
+Lösenord
+; Passwords
+;
+MSG_BLOCKMANAGERWINDOW_TITLE
+Innehållsblockering
+; Content Blocking
+;
+MSG_BLOCKMANAGERLIST_DENY
+Vägra
+; Deny
+;
+MSG_BLOCKMANAGERLIST_ALLOW
+Tillåt
+; Allow
+;
+MSG_BLOCKMANAGERLIST_TYPE
+Filtertyp
+; Filter Type
+;
+MSG_BLOCKMANAGERLIST_RULE
+Regel
+; Rule
+;
+MSG_BLOCKMANAGERGROUP_REMOVE
+_Ta bort
+; _Remove
+;
+MSG_BLOCKMANAGERGROUP_ADD
+_Lägg till
+; _Add
+;
+MSG_BLOCKMANAGERGROUP_TYPE
+Filtertyp:
+; Filter Type:
+;
+MSG_BLOCKMANAGERGROUP_RULE
+Regel:
+; Rule:
+;
+MSG_BLOCKMANAGERGROUP_DENY
+Vägra
+; Deny
+;
+MSG_BLOCKMANAGERGROUP_ALLOW
+Tillåt
+; Allow
+;
+;
+; SearchManagerWindow
+;
+;
+MSG_SEARCHMANAGERWINDOW_TITLE
+Sökmotorer
+; Search Engines
+;
+;
+; SearchManagerGroup
+;
+;
+MSG_SEARCHMANAGERGROUP_ADD
+_Lägg till
+; _Add
+;
+MSG_SEARCHMANAGERGROUP_REMOVE
+_Ta bort
+; _Remove
+;
+MSG_SEARCHMANAGERGROUP_TITLE
+Titel:
+; Title:
+;
+MSG_SEARCHMANAGERGROUP_LINK
+Länk:
+; Link:
+;
+MSG_SEARCHMANAGERGROUP_SHORTCUT
+Snabblänk:
+; Shortcut:
+;
+;
+; SearchManagerList
+;
+;
+MSG_SEARCHMANAGERLIST_TITLE
+Titel
+; Title
+;
+MSG_SEARCHMANAGERLIST_LINK
+Länk
+; Link
+;
+MSG_SEARCHMANAGERLIST_SHORTCUT
+Snabblänk
+; Shortcut
+;
+;
+; ScriptManagerWindow
+;
+;
+MSG_SCRIPTMANAGERWINDOW_TITLE
+Skript
+; Scripts
+;
+;
+; ScriptManagerGroup
+;
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_SELECT
+Välj användarskript...
+; Select User Script...
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_ADD
+_Lägg till
+; _Add
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_REMOVE
+_Ta bort
+; _Remove
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_ENABLE
+Tillåt
+; _Enable
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_PATH
+Sökväg:
+; Path:
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_NAME
+Namn:
+; Name:
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_DESCRIPTION
+Beskrivning:
+; Description:
+;
+MSG_SCRIPTMANAGERGROUP_WHITELIST
+Tillåtna sidor
+; Allowed Sites
+;
+MSG_SCRIPTMANAGERGROUP_BLACKLIST
+Förbjudna sidor
+; Forbidden Sites
+;
+MSG_SCRIPTMANAGERGROUP_WHITELIST_ADD
+Lägg till
+; Add
+;
+MSG_SCRIPTMANAGERGROUP_WHITELIST_REMOVE
+Ta bort
+; Remove
+;
+MSG_SCRIPTMANAGERGROUP_BLACKLIST_ADD
+Lägg till
+; Add
+;
+MSG_SCRIPTMANAGERGROUP_BLACKLIST_REMOVE
+Ta bort
+; Remove
+;
+;
+; URLPrefsWindow
+;
+;
+MSG_URLPREFSWINDOW_TITLE
+URL-Inställningar
+; URL Preferences
+;
+;
+; URLPrefsGroup
+;
+;
+MSG_URLPREFSGROUP_ADD
+_Lägg till
+; _Add
+;
+MSG_URLPREFSGROUP_REMOVE
+_Ta bort
+; _Remove
+;
+MSG_URLPREFSGROUP_JAVASCRIPT
+_Javascript-support
+; _JavaScript support
+;
+MSG_URLPREFSGROUP_LOAD_IMAGES
+Ladda _bilder automatiskt
+; Load _images automatically
+;
+MSG_URLPREFSGROUP_PLUGINS
+_Tillägg
+; _Plugins
+;
+MSG_URLPREFSGROUP_SPOOF
+_Identifiera som:
+; _Spoof As:
+;
+MSG_URLPREFSGROUP_COOKIE_POLICY
+_Cookiepolicy:
+; _Cookie Policy:
+;
+MSG_URLPREFSGROUP_COOKIE_FILTER
+Cookienamnfilter:
+; Cookie Name _Filter:
+;
+;
+; PrinterWindow
+;
+;
+MSG_PRINTERWINDOW_TITLE
+Skriv ut...
+; Print...
+;
+MSG_PRINTERWINDOW_PRINT_MODE
+_Läge:
+; _Mode:
+;
+MSG_PRINTERWINDOW_PSLEVEL
+_PS-nivå:
+; P_S Level:
+;
+MSG_PRINTERWINDOW_PREFERENCES
+Sk_rivarinställningar
+; P_rinter Preferences
+;
+MSG_PRINTERWINDOW_OUTPUT
+_Utenhet:
+; _Output:
+;
+MSG_PRINTERWINDOW_FIRST_PAGE
+_Första sida:
+; _First Page:
+;
+MSG_PRINTERWINDOW_LAST_PAGE
+S_ista sida:
+; _Last Page:
+;
+MSG_PRINTERWINDOW_SCALE
+Ska_la:
+; Sca_le:
+;
+MSG_PRINTERWINDOW_PRINT
+_Skriv ut
+; _Print
+;
+MSG_PRINTERWINDOW_CANCEL
+_Avbryt
+; _Cancel
+;
+MSG_PRINTERWINDOW_STATUS
+Skriver ut sida %d/%d...
+; Printing page %d/%d...
+;
+MSG_PRINTERWINDOW_ERROR
+Misslyckades med att initiera utenhet.
+; Failed to initialize output device.
+;
+;
+; PrefsWindow
+;
+;
+MSG_PREFSWINDOW_TITLE
+Inställningar
+; Settings
+;
+MSG_PREFSWINDOW_CATEGORY_GENERAL
+Allmänt
+; General
+;
+MSG_PREFSWINDOW_CATEGORY_INTERFACE
+Gränssnitt
+; Interface
+;
+MSG_PREFSWINDOW_CATEGORY_CONTEXTUAL_MENUS
+Snabbmenyer
+; Contextual Menus
+;
+MSG_PREFSWINDOW_CATEGORY_MIMETYPES
+MIME-Typer
+; MIME Types
+;
+MSG_PREFSWINDOW_CATEGORY_CONTENT
+Innehåll
+; Content
+;
+MSG_PREFSWINDOW_CATEGORY_FONTS
+Typsnitt
+; Fonts
+;
+MSG_PREFSWINDOW_CATEGORY_DOWNLOADS
+Nedladdningar
+; Downloads
+;
+MSG_PREFSWINDOW_CATEGORY_NETWORK
+Nätverk
+; Network
+;
+MSG_PREFSWINDOW_CATEGORY_PRIVACY
+Sekretess
+; Privacy
+;
+MSG_PREFSWINDOW_CATEGORY_SECURITY
+Säkerhet
+; Security
+;
+MSG_PREFSWINDOW_CATEGORY_MEDIA
+Media
+; Media
+;
+MSG_PREFSWINDOW_CATEGORY_MISCELLANEOUS
+Övrigt
+; Miscellaneous
+;
+MSG_PREFSWINDOW_CACHE_DOCUMENT_VIEWER
+Dokumentvisare
+; Document Viewer
+;
+MSG_PREFSWINDOW_CACHE_DOCUMENT_BROWSER
+Dokumentbrowser
+; Document Browser
+;
+MSG_PREFSWINDOW_CACHE_PRIMARY_BROWSER
+Primär webläsare
+; Primary Web Browser
+;
+MSG_PREFSWINDOW_SMOOTH_NORMAL
+Normal
+; Normal
+;
+MSG_PREFSWINDOW_SMOOTH_ALTERNATIVE
+Alternativ
+; Alternative
+;
+MSG_PREFSWINDOW_NEWPAGE_NEWTAB
+Ny flik
+; New Tab
+;
+MSG_PREFSWINDOW_NEWPAGE_NEWWINDOW
+Nytt fönster
+; New Window
+;
+MSG_PREFSWINDOW_NEWPAGE_LAST
+Vid slutet
+; At End
+;
+MSG_PREFSWINDOW_NEWPAGE_AFTERACTIVE
+Efter aktuell
+; After Current
+;
+MSG_PREFSWINDOW_QUICKLINK_BUTTON
+Knapp
+; Button
+;
+MSG_PREFSWINDOW_QUICKLINK_LINK
+Länk
+; Link
+;
+MSG_PREFSWINDOW_QUICKLINK_DYNAMIC
+Dynamisk bredd
+; Dynamic Grid
+;
+MSG_PREFSWINDOW_QUICKLINK_FIXED
+Fast bredd
+; Fixed Grid
+;
+MSG_PREFSWINDOW_QUICKLINK_BESTFIT
+Dynamisk passning
+; Dynamic Best-Fit
+;
+MSG_PREFSWINDOW_NAVIGATION_ICON
+Symbol
+; Icon
+;
+MSG_PREFSWINDOW_NAVIGATION_TEXT
+Text
+; Text
+;
+MSG_PREFSWINDOW_NAVIGATION_ICON_AND_TEXT
+Symboler och text
+; Icon and Text
+;
+MSG_PREFSWINDOW_COOKIE_ACCEPT
+Acceptera
+; Accept
+;
+MSG_PREFSWINDOW_COOKIE_REJECT
+Acceptera ej
+; Reject
+;
+MSG_PREFSWINDOW_COOKIE_ASK
+Fråga
+; Ask
+;
+MSG_PREFSWINDOW_COMPLETION_NONE
+Ingen
+; None
+;
+MSG_PREFSWINDOW_COMPLETION_STRING
+Sträng
+; String
+;
+MSG_PREFSWINDOW_COMPLETION_POPUP
+Pop-up
+; Popup
+;
+MSG_PREFSWINDOW_COMPLETION_STRING_AND_POPUP
+Sträng och Pop-up
+; String and Popup
+;
+MSG_PREFSWINDOW_CLOSE_REQUESTER_ALWAYS
+Alltid
+; Always
+;
+MSG_PREFSWINDOW_CLOSE_REQUESTER_NEVER
+Aldrig
+; Never
+;
+MSG_PREFSWINDOW_CLOSE_REQUESTER_IF_MORE_THAN_ONE
+Om det finns mer än en webbläsare
+; With Multiple Tabs
+;
+MSG_PREFSWINDOW_ERROR_REQUESTER
+Dialogruta
+; Requester Dialog
+;
+MSG_PREFSWINDOW_ERROR_HTML
+HTML-fönster
+; HTML Display
+;
+MSG_PREFSWINDOW_ANIMATE_NEVER
+Aldrig
+; Never
+;
+MSG_PREFSWINDOW_ANIMATE_ALWAYS
+Alltid
+; Always
+;
+MSG_PREFSWINDOW_ANIMATE_ACTIVE_WINDOW
+Endast på aktiva fönster
+; Active Window Only
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR_NEW_TAB
+Ny flik
+; New Tab
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR_NEW_BACKGROUND_TAB
+Ny bakgrundsflik
+; New Background Tab
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR_NEW_WINDOW
+Nytt fönster
+; New Window
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_OFF
+Avaktiverad
+; Disabled
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_ASK
+Fråga
+; Ask
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_ON
+Automatisk
+; Automatically
+;
+; General
+;
+MSG_PREFSWINDOW_GENERAL_HOME_PAGE
+_Hemsida:
+; _Home Page:
+;
+MSG_PREFSWINDOW_GENERAL_START_PAGE
+S_tartsida:
+; S_tart Page:
+;
+MSG_PREFSWINDOW_GENERAL_NEW_PAGE
+_New Page:
+; _New Page:
+;
+MSG_PREFSWINDOW_GENERAL_OUTPUT_WINDOW
+_Utmatningsfönster:
+; _Output Window:
+;
+; Interface
+;
+MSG_PREFSWINDOW_INTERFACE_GENERAL
+Allmänt
+; General
+;
+MSG_PREFSWINDOW_INTERFACE_NEW_PAGE_POLICY
+_Öppna ny sida som:
+; _New Page Policy:
+;
+MSG_PREFSWINDOW_INTERFACE_NEW_PAGE_POSITION
+Fliköppningsposition:
+; Tab Opening Position:
+;
+MSG_PREFSWINDOW_INTERFACE_POPUP_POLICY
+Pop-up-policy:
+; _Popup Policy:
+;
+MSG_PREFSWINDOW_INTERFACE_NAVIGATION_BUTTON_TYPE
+_Navigeringsknappar:
+; Navigation _Button Type:
+;
+MSG_PREFSWINDOW_INTERFACE_COMPLETION_MODE
+_URL-förslagsläge:
+; URL Completion Mode:
+;
+MSG_PREFSWINDOW_INTERFACE_CLOSE_REQUESTER
+Visa avslutnings_dialog:
+; Con_firm Closing:
+;
+MSG_PREFSWINDOW_INTERFACE_ERROR_REPORTING
+_Felrapportering:
+; Error _Reporting:
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR
+Mittknappens funktion:
+; Middle Button Be_haviour:
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_BUTTON_FRAME
+Visa knappramar
+; Sho_w buttons frames
+;
+MSG_PREFSWINDOW_INTERFACE_CONTEXTUAL_POINTERS
+Ändra _muspekaren över länkar
+; Use contextual _mouse pointers
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_SEARCH_BAR
+Visa sö_kfält
+; Show s_earch bar
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_VALIDATION_BUTTONS
+Visa valideringsknapp
+; Show _validation buttons
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_SEPARATORS
+Visa gruppavskiljare
+; Show _group separators
+;
+MSG_PREFSWINDOW_INTERFACE_FAVICONS
+Favikoner
+; Website Icons
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_TABS
+Flikar
+; T_abs
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_BOOKMARKS
+Bokmärken
+; B_ookmarks
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_HISTORY
+Historik
+; H_istory
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_BOOKMARK_PANEL
+Bokmärkespanel
+; Boo_kmarks panel
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_HISTORY_PANEL
+Historikpanel
+; History pane_l
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_QUICKLINKS
+Snabblänkar
+; Quick links
+;
+MSG_PREFSWINDOW_INTERFACE_TAB_TRANSFERANIM
+Visa överföringsanima_tion i flikar
+; Show _tab transfer animation
+;
+MSG_PREFSWINDOW_INTERFACE_QUICK_LINKS
+Snabblänkar
+; Quick Links
+;
+MSG_PREFSWINDOW_INTERFACE_QUICK_LINK_LOOK
+Snabb_länksvisning:
+; Look:
+;
+MSG_PREFSWINDOW_INTERFACE_QUICK_LINK_LAYOUT
+Snabbl_änksutseende:
+; La_yout:
+;
+MSG_PREFSWINDOW_INTERFACE_MAXIMUM_ROWS
+Maximalt antal _rader:
+; Ma_ximum Rows:
+;
+; Content
+;
+MSG_PREFSWINDOW_CONTENT_CACHE_MODEL
+Buffert_model:
+; Cache _Model:
+;
+MSG_PREFSWINDOW_CONTENT_PAGE_CACHE
+Aktivera sid_buffert
+; Page cac_he
+;
+MSG_PREFSWINDOW_CONTENT_JAVASCRIPT
+Aktivera _JavaScript
+; _JavaScript support
+;
+MSG_PREFSWINDOW_CONTENT_ALLOW_NEW_WINDOW
+Tillåt att JavaScript får öppna nya _fönster
+; Allow JavaScript to open new _windows
+;
+MSG_PREFSWINDOW_CONTENT_PLAY_ANIMATIONS
+Spe_la animationer
+; Play _animations
+;
+MSG_PREFSWINDOW_CONTENT_LOAD_IMAGES
+Ladda b_ilder automatiskt
+; Load _images automatically
+;
+MSG_PREFSWINDOW_CONTENT_PRINT_BACKGROUNDS
+Skriv ut bak_grunder
+; _Print backgrounds
+;
+MSG_PREFSWINDOW_CONTENT_BLOCKING
+Aktivera a_nnonsblockerare (AdBlock)
+; Content _blocking (AdBlock)
+;
+MSG_PREFSWINDOW_CONTENT_PLUGINS
+Tillåt tillägg
+; Allow plu_gins
+;
+MSG_PREFSWINDOW_CONTENT_INSPECTOR
+WebInspector
+; WebInspector
+;
+; Fonts
+;
+MSG_PREFSWINDOW_FONTS_DEFAULT_SIZE
+Standardstorlek för typsnitt:
+; Default Font Size:
+;
+MSG_PREFSWINDOW_FONTS_DEFAULT_MONOSPACED_SIZE
+Standardstorlek för Monospace-typsnitt:
+; Default Monospaced Font Size:
+;
+MSG_PREFSWINDOW_FONTS_MINIMUM_SIZE
+Minimumstorlek för typsnitt:
+; Minimum Font Size:
+;
+MSG_PREFSWINDOW_FONTS_MINIMUM_LOGICAL_SIZE
+Logisk minimumstorlek för typsnitt:
+; Minimum Logical Font Size:
+;
+MSG_PREFSWINDOW_FONTS_SMOOTHING_METHOD
+Kantutjämningsmetod:
+; Antialiasing Method:
+;
+MSG_PREFSWINDOW_FONTS_ENCODING
+Teckenkodning:
+; Text Encoding:
+;
+MSG_PREFSWINDOW_FONTS_STANDARD_FAMILY
+Standardfamilj för typsnitt:
+; Standard Font Family:
+;
+MSG_PREFSWINDOW_FONTS_MONOSPACED_FAMILY
+Typsnittsfamiljen Monospace:
+; Monospaced Font Family:
+;
+MSG_PREFSWINDOW_FONTS_SERIF_FAMILY
+Typsnittsfamiljen Serif:
+; Serif Font Family:
+;
+MSG_PREFSWINDOW_FONTS_SANS_SERIF_FAMILY
+Typsnittsfamiljen Sans Serif:
+; Sans Serif Font Family:
+;
+MSG_PREFSWINDOW_FONTS_CURSIVE_FAMILY
+Typsnittsfamiljen Cursive:
+; Cursive Font Family:
+;
+MSG_PREFSWINDOW_FONTS_FANTASY_FAMILY
+Typsnittsfamiljen Fantasy:
+; Fantasy Font Family:
+;
+; Downloads
+;
+MSG_PREFSWINDOW_DOWNLOADS_PATH
+Sökväg för _nedladdning:
+; _Download Path:
+;
+MSG_PREFSWINDOW_DOWNLOADS_AUTOCLOSE
+Stäng nedladdnings_fönster efter avslutad överföring
+; Close "Downloads" _window when finished
+;
+MSG_PREFSWINDOW_DOWNLOADS_SAVEDOWNLOADS
+_Kom ihåg nedladdade filer
+; _Remember downloaded files
+;
+MSG_PREFSWINDOW_DOWNLOADS_START_AUTOMATICALLY
+Starta nedladdningar a_utomatiskt
+; Start downloads _automatically
+;
+; Network
+;
+MSG_PREFSWINDOW_NETWORK_SPOOF
+_Presentera sig som:
+; S_poof As:
+;
+MSG_PREFSWINDOW_NETWORK_EXPERIMENTAL_COOKIES
+Använd ett e_xprimentellt cookie-system (kräver omstart)
+; E_xperimental cookie system (restart required)
+;
+MSG_PREFSWINDOW_NETWORK_THREAD
+Aktivera _nätverkstrådar (kräver omstart)
+; Network _thread (restart required)
+;
+MSG_PREFSWINDOW_NETWORK_ACTIVE_CONNECTIONS
+Anta_l aktiva anslutningar:
+; _Active Connections:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY
+Proxy
+; Proxy
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_PASSWORD
+Lösenord:
+; Password:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_USERNAME
+Användarnamn:
+; Username:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_PORT
+Port:
+; Port:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_HOST
+Värd:
+; Host:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_TYPE
+Typ:
+; Type:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_USE
+Använd proxy
+; Use proxy
+;
+; Privacy
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_SESSION
+Spara s_ession
+; Save s_ession
+;
+MSG_PREFSWINDOW_PRIVACY_DELETE_SESSION_AT_EXIT
+_Radera session vid avslut
+; _Delete session at exit
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_REQUESTER
+Fråga om att _återuppta session vid uppstart
+; _Ask for session restoration at startup
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_MODE
+Sessionsåterställning:
+; Session _Restoration:
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_COOKIES
+Spara k_akor
+; Save c_ookies to database
+;
+MSG_PREFSWINDOW_PRIVACY_COOKIES_POLICY
+Coo_kiepolicy:
+; Coo_kie Policy:
+;
+MSG_PREFSWINDOW_PRIVACY_ENABLE_LOCAL_STORAGE
+Möjliggör lokal la_gring
+; Enable local stora_ge
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_FORM_CREDENTIALS
+Spara _formuläruppgifter
+; Save _form credentials
+;
+MSG_PREFSWINDOW_PRIVACY_ENABLE_FORM_AUTOFILL
+Möjliggör automat_isk formulärifyllnad
+; Enable form autof_ill
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_HISTORY
+Spara _historik
+; Save _history
+;
+MSG_PREFSWINDOW_PRIVACY_HISTORY_ENTRIES
+Historikinlägg:
+; History Entries:
+;
+MSG_PREFSWINDOW_PRIVACY_HISTORY_AGE
+Historikålder i dagar:
+; History Age in Days:
+;
+; Security
+;
+MSG_PREFSWINDOW_SECURITY_IGNORE_SSL_ERRORS
+_Ignorera SSL-varningar
+; _Ignore SSL errors
+;
+MSG_PREFSWINDOW_SECURITY_CERTIFICATE_PATH
+_Certifikatsökväg
+; Certificate _Path:
+;
+; Media
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_NONE
+Bearbeta alla bildrutor
+; Process All Frames
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_NONREF
+Bearbeta endast referensbildrutor
+; Skip All But Reference Frames
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_NONKEY
+Bearbeta endast nyckelbildrutor
+; Skip All But Key Frames
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_ALL
+Hoppa över alla bildrutor
+; Skip All Frames
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_MODE
+H.264 - Loo_pfilterläge:
+; _Loopfilter Mode (H264):
+;
+MSG_PREFSWINDOW_MEDIA_ENABLE_PARTIAL_CONTENT
+S_nabbsökning
+; _Fast seeking
+;
+MSG_PREFSWINDOW_MEDIA_USE_WEBM
+_WebM (VP8) codec-support
+; _WebM (VP8) support
+;
+MSG_PREFSWINDOW_MEDIA_USE_FLV
+F_LV (H.263/H.264)-support
+; FL_V (H.263/H.264) support
+;
+MSG_PREFSWINDOW_MEDIA_USE_OGG
+_Ogg (Theora/Vorbis)-support
+; _Ogg (Theora/Vorbis) support
+;
+; Prefs validation
+;
+MSG_PREFSWINDOW_SAVE
+_Spara
+; _Save
+;
+MSG_PREFSWINDOW_USE
+_Använd
+; _Use
+;
+MSG_PREFSWINDOW_CANCEL
+A_vbryt
+; _Cancel
+;
+;
+; QuickLinkButtonGroup
+;
+;
+MSG_QUICKLINKBUTTONGROUP_NO_NAME
+(Inget namn)
+; (No name)
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN
+\033bÖppna
+; \033bOpen
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN_NEW_TAB
+Öppna i ny flik
+; Open in New Tab
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN_NEW_WINDOW
+Öppna i nytt fönster...
+; Open in New Window...
+;
+MSG_QUICKLINKBUTTONGROUP_REMOVE
+Ta bort
+; Remove
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN_ALL
+Öppna alla bokmärken
+; Open All Bookmarks
+;
+;
+; SplashWindow
+;
+;
+MSG_SPLASHWINDOW_INITIALIZING
+Initierar typsnitt...
+; Initializing Fonts...
+;
+MSG_TITLELABEL_BROWSER
+Webbläsare
+; Browser
+;
+MSG_SPLASHWINDOW_LOADING
+Laddar...
+; Loading...
+;
+MSG_TITLELABEL_NEW_TAB
+Ny flik
+; New Tab
+;
+MSG_TITLELABEL_RELOAD
+Ladda om
+; Reload
+;
+MSG_TITLELABEL_RELOAD_ALL_TABS
+Ladda om alla flikar
+; Reload All Tabs
+;
+MSG_TITLELABEL_CLOSE
+Stäng
+; Close
+;
+MSG_TITLELABEL_CLOSE_ALL_OTHER_TABS
+Stäng alla andra flikar
+; Close All Other Tabs
+;
+;
+; ToolButton_AddBookmark
+;
+;
+MSG_TOOLBUTTON_ADDBOOKMARK_ADD
+Lägg till
+; Add
+;
+MSG_TOOLBUTTON_ADDBOOKMARK_NO_TITLE
+(Ingen titel)
+; (No Title)
+;
+;
+; ToolButton_NewTab
+;
+;
+MSG_TOOLBUTTON_NEWTAB_LABEL
+Ny flik
+; New Tab
+;
+;
+; Utils
+;
+;
+MSG_CAPACITY_BYTE
+B
+; B
+;
+MSG_CAPACITY_KILOBYTE
+kB
+; kB
+;
+MSG_CAPACITY_MEGABYTE
+MB
+; MB
+;
+MSG_CAPACITY_GIGABYTE
+GB
+; GB
+;
+MSG_CAPACITY_TERABYTE
+TB
+; TB
+;
+MSG_PROGRESS_DAY
+%lu dag
+; %lu day
+;
+MSG_PROGRESS_DAYS
+%lu dagar
+; %lu days
+;
+MSG_PROGRESS_HOUR
+%lu timme
+; %lu hour
+;
+MSG_PROGRESS_HOURS
+%lu timmar
+; %lu hours
+;
+MSG_PROGRESS_MINUTE
+%lu minut
+; %lu minute
+;
+MSG_PROGRESS_MINUTES
+%lu minuter
+; %lu minutes
+;
+MSG_PROGRESS_SECOND
+%lu sekund
+; %lu second
+;
+MSG_PROGRESS_SECONDS
+%lu sekunder
+; %lu seconds
+;
+MSG_WEBVIEW_UPLOAD_FILES
+Ladda upp filer...
+; Upload Files...
+;
+MSG_WEBVIEW_UPLOAD_FILE
+Ladda upp fil...
+; Upload File...
+;
+MSG_WEBVIEW_ERROR_MSG_HTML
+Fel %d: %s.
+; Error %d: %s.
+;
+MSG_WEBVIEW_ERROR_MSG
+Kan inte öppna '%s'.\nFel %d: %s.\n
+; Unable to open '%s'.\nError %d: %s.\n
+;
+MSG_WEBVIEW_PROVISIONAL_TITLE
+(Ingen titel)
+; (Untitled)
+;
+MSG_WEBVIEW_INTERRUPT_SCRIPT
+Vill du avbryta nuvarande skript?
+; Do you want to interrupt processing of the current script?
+;
+MSG_WEBVIEW_JSACTION_TITLE
+OWB javaskriptsvarning
+; Javascript Alert
+;

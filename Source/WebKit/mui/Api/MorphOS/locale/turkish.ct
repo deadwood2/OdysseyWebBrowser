@@ -1,0 +1,2586 @@
+## version $VER: OWB.catalog 1.14 (07.08.2011)
+## language türkçe
+## codeset 0
+## chunk AUTH Serkan Dursun, Alper Sönmez
+;
+;
+;
+;
+; Pulldown Menu
+;
+;
+MSG_MENU_PROJECT
+Proje
+; Project
+;
+MSG_MENU_NEW_WINDOW
+Yeni Pencere...
+; New Window...
+;
+MSG_MENU_NEW_TAB
+Yeni Sekme
+; New Tab
+;
+MSG_MENU_OPEN_LOCAL_FILE
+Dosya Aç...
+; Open File...
+;
+MSG_MENU_OPEN_URL
+URL Aç
+; Open URL
+;
+MSG_MENU_OPEN_SESSION
+Oturum Yükle...
+; Load Session...
+;
+MSG_MENU_SAVE_SESSION
+Oturumu Kaydet...
+; Save Session...
+;
+MSG_MENU_SAVE_AS_SOURCE
+HTML Olarak Kaydet...
+; Save as HTML...
+;
+MSG_MENU_SAVE_AS_PDF
+PDF Olarak Kaydet...
+; Save as PDF...
+;
+MSG_MENU_PRINT
+Print...
+; Print...
+;
+MSG_MENU_ABOUT
+Hakkýnda...
+; About...
+;
+MSG_MENU_CLOSE_TAB
+Sekmeyi Kapat
+; Close Tab
+;
+MSG_MENU_CLOSE_WINDOW
+Pencereyi Kapat
+; Close Window
+;
+MSG_MENU_QUIT
+Çýkýþ
+; Quit
+;
+MSG_MENU_EDIT
+Düzen
+; Edit
+;
+MSG_MENU_CUT
+Kes
+; Cut
+;
+MSG_MENU_COPY
+Kopyala
+; Copy
+;
+MSG_MENU_COPY_LOCAL
+Sistem Kod-sayfasý ile Kopyala
+; Copy with System Codepage
+;
+MSG_MENU_PASTE
+Yapýþtýr
+; Paste
+;
+MSG_MENU_PASTE_TO_URL
+URL Yapýþtýr
+; Paste to URL
+;
+MSG_MENU_SELECT_ALL
+Hepsini Seç
+; Select All
+;
+MSG_MENU_FIND
+Ara
+; Find
+;
+MSG_MENU_VIEW
+Göster
+; View
+;
+MSG_MENU_BACK
+Geri
+; Back
+;
+MSG_MENU_FORWARD
+Ýleri
+; Forward
+;
+MSG_MENU_HOME
+Ana Sayfa
+; Home
+;
+MSG_MENU_STOP
+Dur
+; Stop
+;
+MSG_MENU_RELOAD
+Yenile
+; Reload
+;
+MSG_MENU_ZOOM_IN
+Yakýnlaþ
+; Zoom In
+;
+MSG_MENU_ZOOM_OUT
+Uzaklaþ
+; Zoom Out
+;
+MSG_MENU_ZOOM_RESET
+Yakýnlaþmayý Sýfýrla
+; Zoom Reset
+;
+MSG_MENU_FULLSCREEN
+Tam ekran
+; Fullscreen
+;
+MSG_MENU_SOURCE
+Kaynak Kodlarýný Göster...
+; Show Source Code...
+;
+MSG_MENU_PANELS
+Yan panaller
+; Sidepanels
+;
+MSG_MENU_NAVIGATION
+Haraket
+; Navigation
+;
+MSG_MENU_QUICKLINKS
+Hýzlý baðlantý
+; Quicklinks
+;
+MSG_MENU_LOCATION
+Konum
+; Location
+;
+MSG_MENU_STATUS
+Durum
+; Status
+;
+MSG_MENU_BOOKMARK_PANEL
+Yer imleri
+; Bookmarks
+;
+MSG_MENU_HISTORY_PANEL
+Geçmiþ
+; History
+;
+MSG_MENU_NO_PANEL
+Kapalý
+; Off
+;
+MSG_MENU_HISTORY
+Geçmiþ
+; History
+;
+MSG_MENU_HISTORY_CLOSEDVIEWS
+Kapatýlan Son Tarayýcý Sayfalarý
+; Recently Closed Browsers
+;
+MSG_MENU_BOOKMARKS
+Yer imleri
+; Bookmarks
+;
+MSG_MENU_ADD_BOOKMARK
+Yer imlerine Ekle
+; Add Bookmark
+;
+MSG_MENU_MANAGE_BOOKMARKS
+Yer imlerini Yönet...
+; Manage Bookmarks...
+;
+MSG_MENU_WINDOWS
+Pencereler
+; Windows
+;
+MSG_MENU_DOWNLOADS
+Ýndirilenler...
+; Downloads...
+;
+MSG_MENU_NETWORK
+Að Aktivitesi...
+; Network Activity...
+;
+MSG_MENU_PASSWORDS
+Parolalar...
+; Passwords...
+;
+MSG_MENU_COOKIES
+Çerezler...
+; Cookies...
+MSG_MENU_BLOCK
+Ýçerik Engelleme...
+; Content Blocking...
+;
+MSG_MENU_MESSAGES
+Ýletiler...
+; Messages...
+MSG_MENU_SEARCH_ENGINES
+Arama Motorlarý...
+; Search Engines...
+;
+MSG_MENU_SCRIPT
+Betikler...
+; Scripts...
+;
+MSG_MENU_URLPREFS
+URL Ayarlarý...
+; URL Settings...
+;
+MSG_MENU_SETTINGS
+Ayarlar
+; Settings
+;
+MSG_MENU_PRIVATE_BROWSING
+Gizli Gezinme
+; Private Browsing
+;
+MSG_MENU_ENABLE
+Etkin
+; Enable
+;
+MSG_MENU_DISABLE
+Devre dýþý
+; Disable
+;
+MSG_MENU_DEFAULT
+Varsayýlan Ayarlar
+; Default Setting
+;
+MSG_MENU_ENABLE_JAVASCRIPT
+JavaScript Desteði
+; JavaScript Support
+;
+MSG_MENU_ENABLE_IMAGES
+Resimleri Yükle
+; Image Loading
+;
+MSG_MENU_ENABLE_ANIMATIONS
+Animasyonlarý Oynat
+; Play Animations
+;
+MSG_MENU_ENABLE_PLUGINS
+Eklentiler
+; Plugins
+;
+MSG_MENU_SPOOF_AS
+Gibi göster
+; Spoof as
+;
+MSG_MENU_PREFERENCES
+Tercihler...
+; Preferences...
+;
+MSG_MENU_MUI
+MUI...
+; MUI...
+;
+;
+; App
+;
+;
+MSG_REQUESTER_NORMAL_TITLE
+OWB
+; OWB
+;
+MSG_REQUESTER_ERROR_TITLE
+OWB Hatasý
+; OWB Error
+;
+MSG_REQUESTER_YES_NO
+*_Evet|_Hayýr
+; *_Yes|_No
+;
+MSG_REQUESTER_NO_YES
+_Evet|*_Hayýr
+; _Yes|*_No
+;
+MSG_REQUESTER_OK
+*_Tamam
+; *_Ok
+MSG_REQUESTER_YES_NO_NEVER
+*_Evet|_Hayýr|_Asla
+; *_Yes|_No|N_ever
+;
+MSG_REQUESTER_BOOKMARK_IMPORT_ERROR
+Bilinmeyen yer imi biçemi.\nSadece IBrowse 2.4 ve OWB MorphOS biçemleri desteklenmektedir.
+; Unknown bookmark format.\nOnly IBrowse 2.4 and OWB MorphOS formats are supported.
+;
+MSG_OWBAPP_DEFAULT_WINDOW_NAME
+Odyssey Web Browser Penceresi
+; Odyssey Web Browser Window
+;
+MSG_OWBAPP_DEFAULT_PAGE_NAME
+Odyssey Web Browser Sayfasý
+; Odyssey Web Browser Page
+;
+MSG_OWBAPP_SAVE_CREDENTIALS
+Bu sayfa için kimlik bilgileri kayýt edilsin mi?\nKullanýcý Adý: %s
+; Do you want to save credentials for this page?\nUsername: %s
+;
+MSG_OWBAPP_MIMETYPE_REQUEST_ACTION
+'\033b%s\033n' (MIME Türü: \033b%s\033n)\ndosyasý için uygulanacak eylemi belirleyin.
+; Specify the action to perform for file:\n'\033b%s\033n' (MIME Type: \033b%s\033n)
+;
+MSG_OWBAPP_MIMETYPE_ACTIONS
+*_Pencerede Görüntüle|H_arici Program ile Aç|_Dosyayý Ýndir|_Vazgeç
+; *_Display in Window|Open with _External Program|Download _File|_Cancel
+;
+MSG_OWBAPP_MIMETYPE_ACTIONS_FALLBACK
+*_Pencerede Görüntüle|_Dosyayý Ýndir|_Vazgeç
+; *_Display in Window|Download _File|_Cancel
+;
+MSG_OWBAPP_OPEN_SESSION
+Oturum Dosyasý Yükle...
+; Load Session File...
+;
+MSG_OWBAPP_SAVE_SESSION
+Oturum Dosyasý Olarak Kaydet...
+; Save Session File As...
+;
+MSG_OWBAPP_RESTORE_SESSION_CHOICES
+*_Önceki Oturumu Yükle|_Yeni Oturumla Baþla
+; *_Restore Session|_Start New Session
+;
+MSG_OWBAPP_RESTORE_SESSION
+Bir önceki oturum bulundu.
+; A previous session has been found.
+;
+;
+;
+; AddressBarGroup
+;
+;
+MSG_ADDRESSBARGROUP_URL
+URL:
+; URL:
+;
+;
+; BCContextMenuMorphOS
+;
+;
+MSG_CONTEXTMENU_TITLE
+Menü
+; Menu
+;
+;
+; BCLocalizedStrings (these ones need to be encoded in UTF8)
+;
+;
+MSG_LOCALIZED_SUBMIT
+Kabul
+; Submit
+;
+MSG_LOCALIZED_RESET
+Sifirla
+; Reset
+;
+MSG_LOCALIZED_SEARCHABLE_INDEX
+Aranabilir index
+; Searchable Index
+;
+MSG_LOCALIZED_CHOOSE_FILE
+Dosya Seç...
+; Select File...
+;
+MSG_LOCALIZED_NO_FILE
+(Hiçbiri)
+; (None)
+;
+MSG_LOCALIZED_DETAILS
+Detaylar
+; Details
+;
+MSG_LOCALIZED_OPEN_IN_NEW_WINDOW
+Yeni Pencerede AÃ§...
+; Open Link in New Window...
+;
+MSG_LOCALIZED_OPEN_IN_NEW_TAB
+Yeni Sekmede AÃ§
+; Open Link in New Tab
+;
+MSG_LOCALIZED_OPEN_IN_NEW_BACKGROUND_TAB
+Arkaplan Sekmesinde AÃ§
+; Open Link in New Background Tab
+;
+MSG_LOCALIZED_DOWNLOAD_LINK
+Baglantiyi Farkli indir...
+; Download Linked File...
+;
+MSG_LOCALIZED_COPY_LINK_LOCATION
+Baglanti Konumunu Kopyala
+; Copy Link Location
+;
+MSG_LOCALIZED_OPEN_IMAGE_IN_NEW_WINDOW
+Resmi Yeni Pencerede AÃ§...
+; Open Image in New Window...
+;
+MSG_LOCALIZED_OPEN_IMAGE_IN_NEW_TAB
+Resmi Yeni Sekmede AÃ§
+; Open Image in New Tab
+;
+MSG_LOCALIZED_SAVE_IMAGE_AS
+Resmi Farkli Kaydet...
+; Save Image As...
+;
+MSG_LOCALIZED_COPY_IMAGE
+Resmi Kopyala...
+MSG_LOCALIZED_COPY_IMAGE_URL
+Copy Image Location...
+; Copy Image Location...
+; Copy Image...
+MSG_LOCALIZED_BLOCK_IMAGES
+Engellenecek Resim %s
+; Block Images from %s
+;
+MSG_LOCALIZED_OPEN_FRAME_IN_NEW_WINDOW
+Cerceveyi Yeni Pencerede AÃ§...
+; Open Frame in New Window...
+;
+MSG_LOCALIZED_OPEN_FRAME_IN_NEW_TAB
+Cerceveyi Sekmede AÃ§
+; Open Frame in New Tab
+;
+MSG_LOCALIZED_COPY
+Kopyala
+; Copy
+;
+MSG_LOCALIZED_DELETE
+Sil
+; Delete
+;
+MSG_LOCALIZED_SELECT_ALL
+Tümünü SeÃ§
+; Select All
+;
+MSG_LOCALIZED_INSERT_UNICODE
+Unicode Kontrol Karakteri Ekle
+; Insert Unicode Control Character
+;
+MSG_LOCALIZED_INPUT_METHODS
+Girdi Metotlari
+; Input Methods
+;
+MSG_LOCALIZED_BACK
+Geri
+; Back
+;
+MSG_LOCALIZED_FORWARD
+ileri
+; Forward
+;
+MSG_LOCALIZED_STOP
+Dur
+; Stop
+;
+MSG_LOCALIZED_RELOAD
+Yenile
+; Reload
+;
+MSG_LOCALIZED_CUT
+Kes
+; Cut
+;
+MSG_LOCALIZED_PASTE
+Yapistir
+; Paste
+;
+MSG_LOCALIZED_NO_GUESSES
+Tahmin Bulunamadi
+; No Guesses Found
+;
+MSG_LOCALIZED_IGNORE_SPELLING
+Yazimi Yoksay
+; Ignore Spelling
+;
+MSG_LOCALIZED_LEARN_SPELLING
+Yazimi Ogren
+; Learn Spelling
+;
+MSG_LOCALIZED_SEARCH
+Web'de Ara
+; Search the Web
+;
+MSG_LOCALIZED_LOOKUP_IN_DICTIONARY
+Sozlukte bak
+; Look Up in Dictionary
+;
+MSG_LOCALIZED_OPEN_LINK
+Baglantiyi AÃ§
+; Open Link
+;
+MSG_LOCALIZED_IGNORE_GRAMMAR
+Dilbilgisini Yoksay
+; Ignore Grammar
+;
+MSG_LOCALIZED_SPELLING_AND_GRAMMAR
+Yazim ve Dilbilgisi
+; Spelling and Grammar
+;
+MSG_LOCALIZED_SHOW_SPELLING_AND_GRAMMAR
+Yazim ve Dil Bilgisini Goster
+; Show Spelling and Grammar
+;
+MSG_LOCALIZED_HIDE_SPELLING_AND_GRAMMAR
+Yazim ve Dil Bilgisini Gizle
+; Hide Spelling and Grammar
+;
+MSG_LOCALIZED_CHECK_DOCUMENT
+Belgeyi Denetle
+; Check Document Now
+;
+MSG_LOCALIZED_CHECK_SPELLING_WHILE_TYPING
+Yazarken Yazim Denetimi Yap
+; Check Spelling While Typing
+;
+MSG_LOCALIZED_CHECK_GRAMMAR_WITH_SPELLING
+Yazim ve Dilbilgisini Denetle
+; Check Grammar With Spelling
+;
+MSG_LOCALIZED_DICTIONARIES
+Dili Seçin
+; Choose Language
+;
+MSG_LOCALIZED_FONT
+Yazý tipi
+; Font
+;
+MSG_LOCALIZED_BOLD
+Kalin
+; Bold
+;
+MSG_LOCALIZED_ITALIC
+Italik
+; Italic
+;
+MSG_LOCALIZED_UNDERLINE
+Alticizili
+; Underline
+;
+MSG_LOCALIZED_OUTLINE
+Kabatmali
+; Outline
+;
+MSG_LOCALIZED_INSPECT_ELEMENT
+Elementi Teftis Et
+; Inspect Element
+;
+MSG_LOCALIZED_NO_RECENT_SEARCHES
+Son Arama Bulunamadi
+; No recent searches
+;
+MSG_LOCALIZED_RECENT_SEARCHES
+Son Arananlar
+; Recent searches
+;
+MSG_LOCALIZED_CLEAR_RECENT_SEARCHES
+Son Arananlari Temizle
+; Clear recent searches
+;
+MSG_LOCALIZED_TERM
+sozlesme
+; term
+;
+MSG_LOCALIZED_DEFINITION
+tanimlama
+; definition
+;
+MSG_LOCALIZED_UNKNOWN
+Bilinmiyor
+; Unknown
+;
+MSG_LOCALIZED_LEFT_TO_RIGHT
+Soldan Saga
+; Left to Right
+;
+MSG_LOCALIZED_DEFAULT_DIRECTION
+Varsayilan Yazma Yonu
+; Default Writing Direction
+;
+MSG_LOCALIZED_RIGHT_TO_LEFT
+Sagdan Sola
+; Right to Left
+;
+MSG_LOCALIZED_WRITING_DIRECTION
+Yazma Yonu
+; Writing Direction
+;
+MSG_LOCALIZED_TEXT_DIRECTION
+Metin Yonu
+; Text Direction
+;
+MSG_LOCALIZED_PLAY
+Oynat
+; Play
+;
+MSG_LOCALIZED_PAUSE
+Beklet
+; Pause
+;
+MSG_LOCALIZED_MUTE
+Sessiz
+; Mute
+;
+MSG_LOCALIZED_UNMUTE
+Sesi AÃ§
+; Unmute
+;
+MSG_LOCALIZED_SWITCH_TO_FULLSCREEN
+Tam Ekrana GeÃ§
+; Switch to Fullscreen
+;
+MSG_LOCALIZED_DOWNLOADMEDIA
+Medyayi Indir...
+; Download Media...
+;
+MSG_LOCALIZED_COPYMEDIAURL
+Medya Konumunu Kopyala
+; Copy Media Location
+;
+MSG_LOCALIZED_OPEN_MEDIA_IN_NEW_WINDOW
+Medyayi Yeni Pencerede AÃ§...
+; Open Media in New Window...
+;
+MSG_LOCALIZED_MEDIACONTROLS
+Kontroller
+; Controls
+;
+MSG_LOCALIZED_MEDIALOOP
+Tekrarla
+; Loop
+;
+;
+; BookmarkGroup
+;
+;
+MSG_BOOKMARKGROUP_ADD_GROUP
+Gurup Ekle
+; Add Group
+;
+MSG_BOOKMARKGROUP_ADD_LINK
+Baðlantý Ekle
+; Add Link
+;
+MSG_BOOKMARKGROUP_ADD_SEPARATOR
+Ayraç Ekle
+; Add Separator
+;
+MSG_BOOKMARKGROUP_REMOVE
+Kaldýr
+; Remove
+;
+MSG_BOOKMARKGROUP_TITLE
+Baþlýk:
+; Title:
+;
+MSG_BOOKMARKGROUP_ADDRESS
+Adres:
+; Address:
+;
+MSG_BOOKMARKGROUP_SHOW_IN_MENU
+Menüde göster
+; Show in menu
+;
+MSG_BOOKMARKGROUP_QUICKLINK
+Hýzlý baðlantý
+; Quick link
+;
+MSG_BOOKMARKGROUP_UNTITLED
+(Baþlýk Yok)
+; (No Title)
+;
+;
+; BookmarkListTree
+;
+;
+MSG_BOOKMARKLISTTREE_SEPARATOR
+---------- Ayraç ----------------
+; ---------- Separator ----------
+;
+MSG_BOOKMARKLISTTREE_NO_TITLE
+(Baþlýk Yok)
+; (No Title)
+;
+MSG_BOOKMARKLISTTREE_TITLE
+Baþlýk
+; Title
+;
+MSG_BOOKMARKLISTTREE_ADDRESS
+Adres
+; Address
+;
+MSG_BOOKMARKLISTTREE_FOLD_GROUP
+Gurubu Daralt
+; Fold Group
+;
+MSG_BOOKMARKLISTTREE_UNFOLD_GROUP
+Gurubu Geniþlet
+; Unfold Group
+;
+MSG_BOOKMARKLISTTREE_FOLD_GROUP_BOLD
+\033bGurubu Daralt
+; \033bFold Group
+;
+MSG_BOOKMARKLISTTREE_UNFOLD_GROUP_BOLD
+\033bGurubu Geniþlet
+; \033bUnfold Group
+;
+MSG_BOOKMARKLISTTREE_SEPARATOR_LABEL
+Ayraç
+; Separator
+;
+MSG_BOOKMARKLISTTREE_OPEN
+\033bAç
+; \033bOpen
+;
+MSG_BOOKMARKLISTTREE_OPEN_NEW_TAB
+Baðlantýyý Yeni Sekmede Aç
+; Open Link in New Tab
+;
+MSG_BOOKMARKLISTTREE_OPEN_NEW_WINDOW
+Baðlantýyý Yeni Pencerede Aç...
+; Open Link in New Window...
+;
+MSG_BOOKMARKLISTTREE_BOOKMARK
+Yer imleri
+; Bookmarks
+;
+MSG_BOOKMARKLISTTREE_FOLD_ALL_GROUPS
+Tüm Guruplarý Daralt
+; Fold All Groups
+;
+MSG_BOOKMARKLISTTREE_UNFOLD_ALL_GROUPS
+Tüm Guruplarý Geniþlet
+; Unfold All Groups
+;
+;
+; BookmarkWindow
+;
+;
+MSG_BOOKMARKWINDOW_BOOKMARKS
+Yer imleri
+; Bookmarks
+;
+;
+; ChooseTitleGroup
+;
+;
+MSG_CHOOSETITLEGROUP_TITLE
+Baþlýk:
+; Title:
+;
+MSG_CHOOSETITLEGROUP_MENU
+_Menüye Ekle
+; Add to _menu
+;
+MSG_CHOOSETITLEGROUP_NO_TITLE
+(Baþlýk Yok)
+; (No Title)
+;
+MSG_CHOOSETITLEGROUP_ADD
+_Ekle
+; _Add
+;
+MSG_CHOOSETITLEGROUP_CANCEL
+_Vazgeç
+; _Cancel
+;
+;
+; ConsoleList
+;
+;
+MSG_CONSOLELIST_TIME
+Süre
+; Time
+;
+MSG_CONSOLELIST_MESSAGE
+Ýleti
+; Message
+;
+MSG_CONSOLELIST_COPY
+Kopyala
+; Copy
+;
+;
+; ConsoleWindow
+;
+;
+MSG_CONSOLEWINDOW_MESSAGES
+Ýletiler
+; Messages
+;
+MSG_CONSOLEWINDOW_CLEAR
+_Temizle
+; _Clear
+;
+;
+; ContextMenuGroup
+;
+;
+MSG_CONTEXTMENUGROUP_LINK
+Baðlantý
+; Link
+;
+MSG_CONTEXTMENUGROUP_PAGE
+Sayfa
+; Page
+;
+MSG_CONTEXTMENUGROUP_IMAGE
+Resim
+; Image
+;
+MSG_CONTEXTMENUGROUP_INTERNAL
+Dahili
+; Internal
+;
+MSG_CONTEXTMENUGROUP_ADD
+Ekle
+; Add
+;
+MSG_CONTEXTMENUGROUP_REMOVE
+Kaldýr
+; Remove
+;
+MSG_CONTEXTMENUGROUP_CATEGORY
+Kategori:
+; Category:
+;
+MSG_CONTEXTMENUGROUP_LABEL
+Etiket:
+; Label:
+;
+MSG_CONTEXTMENUGROUP_ACTION
+Eylem:
+; Action:
+;
+MSG_CONTEXTMENUGROUP_DEFAULT_LABEL
+Menü Etiketi
+; Menu Label
+;
+;
+;
+; ContextMenuList
+;
+;
+MSG_CONTEXTMENULIST_LINK
+Baðlantý
+; Link
+;
+MSG_CONTEXTMENULIST_PAGE
+Sayfa
+; Page
+;
+MSG_CONTEXTMENULIST_IMAGE
+Resim
+; Image
+;
+MSG_CONTEXTMENULIST_INTERNAL
+Dahili
+; Internal
+;
+MSG_CONTEXTMENULIST_CATEGORY
+Katagori
+; Category
+;
+MSG_CONTEXTMENULIST_LABEL
+Etiket
+; Label
+;
+MSG_CONTEXTMENULIST_ACTION
+Eylem
+; Action
+;
+MSG_CONTEXTMENULIST_TYPE
+Tür
+; Type
+;
+;
+;
+; CookieManagerGroup
+;
+;
+MSG_COOKIEMANAGERGROUP_REMOVE
+_Kaldýr
+; _Remove
+;
+MSG_COOKIEMANAGERGROUP_REMOVE_ALL
+Tümünü K_aldýr
+; Remove _All
+;
+MSG_COOKIEMANAGERGROUP_DOMAIN
+Sunucu:
+; Domain:
+;
+MSG_COOKIEMANAGERGROUP_NAME
+Ýsim:
+; Name:
+;
+MSG_COOKIEMANAGERGROUP_VALUE
+Deðer:
+; Value:
+;
+MSG_COOKIEMANAGERGROUP_PATH
+Yol:
+; Path:
+;
+MSG_COOKIEMANAGERGROUP_TYPE
+Tür:
+; Type:
+;
+MSG_COOKIEMANAGERGROUP_EXPIRATION
+Bitiþ:
+; Expiration:
+;
+;
+;
+; CookieManagerList
+;
+;
+MSG_COOKIEMANAGERLIST_DOMAIN
+Sunucu
+; Domain
+;
+MSG_COOKIEMANAGERLIST_NAME
+Adý
+; Name
+;
+MSG_COOKIEMANAGERLIST_VALUE
+Deðer
+; Value
+;
+MSG_COOKIEMANAGERLIST_COOKIES
+Çerezler
+; Cookies
+;
+MSG_COOKIEMANAGERLIST_FOLD_DOMAIN
+Sunucuyu Daralt
+; Fold Domain
+;
+MSG_COOKIEMANAGERLIST_UNFOLD_DOMAIN
+Sunucuyu Geniþlet
+; Unfold Domain
+;
+MSG_COOKIEMANAGERLIST_FOLD_ALL_DOMAINS
+Tüm Sunucularý Daralt
+; Fold All Domains
+;
+MSG_COOKIEMANAGERLIST_UNFOLD_ALL_DOMAINS
+Tüm Sunucularý Geniþlet
+; Unfold All Domains
+;
+;
+; CookieManagerWindow
+;
+;
+MSG_COOKIEMANAGERWINDOW_COOKIES
+Çerezler
+; Cookies
+;
+;
+; DefaultPolicyDelegate
+;
+;
+MSG_DEFAULTPOLICYDELEGATE_MESSAGE
+Açmaya çalýþtýgýnýz sayfa zaten POST verileri içermektedir.\nDevam ederseniz, POST veriler tekrar gönderilecektir.\nDevam etmek istiyor musunuz?
+; The page you're trying to open already includes POST data.\nIf you proceed, POST data will be sent again.\nDo you want to continue?
+;
+;
+; DownloadDelegate
+;
+;
+MSG_DOWNLOADDELEGATE_OVERWRITE_OR_RESUME
+'%s' dosyasý zaten var.\nÜzerine yazmak istiyor musunuz?\n\n\033bYeni Boyut:\033n %llu bayt\n\033bEski Boyut:\033n %ld bayt\n\033bEski Tarih:\033n %s %s
+; File '%s' already exists.\nDo you want to replace it?\n\n\033bNew Size:\033n %llu bytes\n\033bOld Size:\033n %ld bytes\n\033bOld Date:\033n %s %s
+;
+MSG_DOWNLOADDELEGATE_OVERWRITE_OR_RESUME_ACTIONS
+*Ü_zerine Yaz|_Devam Et|_Vazgeç
+; *_Overwrite|_Resume|_Cancel
+;
+;
+; DownloadGroup
+;
+;
+MSG_DOWNLOADGROUP_IN_PROGRESS
+Ýndirilen
+; In Progress
+;
+MSG_DOWNLOADGROUP_FINISHED
+Tamamlanan
+; Finished
+;
+MSG_DOWNLOADGROUP_FAILED
+Hatalý
+; Failed
+;
+MSG_DOWNLOADGROUP_ABORT
+_Ýptal Et
+; _Abort
+;
+MSG_DOWNLOADGROUP_ABORT_ALL
+_Tümünü Ýptal Et
+; A_bort All
+;
+MSG_DOWNLOADGROUP_REMOVE
+_Kaldýr
+; _Remove
+;
+MSG_DOWNLOADGROUP_REMOVE_ALL
+T_ümünü Kaldýr
+; Remove _All
+;
+MSG_DOWNLOADGROUP_RETRY
+Ye_niden Dene
+; Re_try
+;
+MSG_DOWNLOADGROUP_CANCELLED_BY_USER
+Kullanýcý tarafýndan vazgeçildi
+; Cancelled by user
+;
+MSG_DOWNLOADGROUP_INTERRUPTED
+Kesildi
+; Interrupted
+;
+;
+; DownloadList
+;
+;
+MSG_DOWNLOADLIST_NAME
+Adý
+; Name
+;
+MSG_DOWNLOADLIST_SIZE
+Boyut
+; Size
+;
+MSG_DOWNLOADLIST_PROGRESS
+Ýlerleme
+; Progress
+;
+MSG_DOWNLOADLIST_DETAIL
+Detay
+; Detail
+;
+MSG_DOWNLOADLIST_SPEED
+Hýz
+; Speed
+;
+MSG_DOWNLOADLIST_ETA
+ETA
+; ETA
+;
+MSG_DOWNLOADLIST_PATH
+Yol
+; Path
+;
+MSG_DOWNLOADLIST_URL
+URL
+; URL
+;
+MSG_DOWNLOADLIST_DOWNLOADPAGE
+Download Page
+; Download Page
+;
+MSG_DOWNLOADLIST_STATUS
+Durum
+; Status
+;
+MSG_DOWNLOADLIST_OPEN_FILE
+\033bDosyayý Aç
+; \033bOpen File
+;
+MSG_DOWNLOADLIST_OPEN_DIRECTORY
+Dizini Aç
+; Open Directory
+;
+MSG_DOWNLOADLIST_OPEN_DOWNLOADPAGE
+Open Download Page
+; Open Download Page
+;
+MSG_DOWNLOADLIST_SIZE_UNKNOWN
+Bilinmiyor
+; Unknown
+;
+;
+; DownloadWindow
+;
+;
+MSG_DOWNLOADWINDOW_DOWNLOADS
+Ýndirilenler
+; Downloads
+;
+;
+; FindText
+;
+;
+MSG_FINDTEXT_PREV
+Önceki
+; Previous
+;
+MSG_FINDTEXT_NEXT
+Ýleri
+; Next
+;
+MSG_FINDTEXT_CASE_SENSITIVE
+Büyük/küçük harf duyarlý
+; Case sensitive
+;
+MSG_FINDTEXT_MARK_ALL_MATCHES
+Eþleþenlerin hepsini seç
+; Mark all matches
+;
+MSG_FINDTEXT_TEXT_NOT_FOUND
+Bulunamadý
+; Not found
+;
+;
+; HistoryButton
+;
+;
+MSG_HISTORYBUTTON_MENU_TITLE
+Geçmiþ
+; History
+;
+MSG_HISTORYBUTTON_NO_TITLE
+(Baþlýk Yok)
+; (No Title)
+;
+;
+; HistoryList
+;
+;
+MSG_HISTORYLIST_NO_URL
+(URL Yok)
+; (No URL)
+;
+MSG_HISTORYLIST_NO_TITLE
+(Baþlýk Yok)
+; (No Title)
+;
+MSG_HISTORYLIST_HISTORY
+Geçmiþ
+; History
+;
+MSG_HISTORYLIST_OPEN_URL
+\033bAç
+; \033bOpen
+;
+MSG_HISTORYLIST_OPEN_NEW_TAB
+Yeni Sekmede Aç
+; Open in New Tab
+;
+MSG_HISTORYLIST_OPEN_NEW_WINDOW
+Yeni Pencerede Aç...
+; Open in New Window...
+;
+;
+; HistoryListTree
+;
+;
+MSG_HISTORYLISTTREE_NO_TITLE
+(Baþlýk Yok)
+; (No Title)
+;
+MSG_HISTORYLISTTREE_NO_URL
+(URL Yok)
+; (No URL)
+;
+MSG_HISTORYLISTTREE_TITLE
+Baþlýk
+; Title
+;
+MSG_HISTORYLISTTREE_ADDRESS
+Adres
+; Address
+;
+MSG_HISTORYLISTTREE_HISTORY
+Geçmiþ
+; History
+;
+MSG_HISTORYLISTTREE_OPEN_URL
+\033bAç
+; \033bOpen
+;
+MSG_HISTORYLISTTREE_OPEN_NEW_TAB
+Yeni Sekmede Aç
+; Open in New Tab
+;
+MSG_HISTORYLISTTREE_OPEN_NEW_WINDOW
+Yeni Pecerede Aç...
+; Open in New Window...
+;
+;
+; HistoryPanelGroup
+;
+;
+MSG_HISTORYPANELGROUP_HISTORY
+Geçmiþ
+; History
+;
+;
+; LinkList
+;
+;
+MSG_LINKLIST_NO_NAME
+(Ýsimsiz)
+; (No name)
+;
+MSG_LINKLIST_QUICK_LINK
+Hýzlý Baðlantý
+; Quick Link
+;
+;
+; LoginWindow
+;
+;
+MSG_LOGINWINDOW_MESSAGE
+%s a %s eriþmek için lütfen kullanýcý adý ve parola girin.
+; Enter username and password to access %s on %s.
+;
+MSG_LOGINWINDOW_TITLE
+Dogrulama Ýsteði
+; Authentication Request
+;
+MSG_LOGINWINDOW_USERNAME
+Kullanýcý adý:
+; Username:
+;
+MSG_LOGINWINDOW_PASSWORD
+Parola:
+; Password:
+;
+MSG_LOGINWINDOW_SAVE_CREDENTIALS
+_Kriterleri kaydet
+; _Save credentials
+;
+MSG_LOGINWINDOW_LOGIN
+_Giriþ
+; _Login
+;
+MSG_LOGINWINDOW_CANCEL
+_Vazgeç
+; _Cancel
+;
+;
+; MimetypeGroup
+;
+;
+MSG_MIMETYPEGROUP_EXTERNAL_VIEWER
+Harici Görüntüleyici
+; External Viewer
+;
+MSG_MIMETYPEGROUP_INTERNAL_VIEWER
+Dahili Görüntüleyici
+; Internal Viewer
+;
+MSG_MIMETYPEGROUP_SAVE_TO_DISK
+Diske Kaydet
+; Save to Disk
+;
+MSG_MIMETYPEGROUP_ASK
+Sor
+; Ask
+;
+MSG_MIMETYPEGROUP_STREAM
+Yayýnla
+; Stream
+;
+MSG_MIMETYPEGROUP_PIPE
+Boru
+; Pipe
+;
+MSG_MIMETYPEGROUP_IGNORE
+Yoksay
+; Ignore
+;
+MSG_MIMETYPEGROUP_PLUGIN
+Eklenti
+; Plugin
+;
+MSG_MIMETYPEGROUP_ADD
+Ekle
+; Add
+;
+MSG_MIMETYPEGROUP_REMOVE
+Kaldýr
+; Remove
+;
+MSG_MIMETYPEGROUP_MIMETYPE
+MIME Türü:
+; MIME Type:
+;
+MSG_MIMETYPEGROUP_EXTENSION
+Uzantýlar:
+; Extension:
+;
+MSG_MIMETYPEGROUP_ACTION
+Eylem:
+; Action:
+;
+MSG_MIMETYPEGROUP_VIEWER
+Görüntüleyici:
+; Viewer:
+;
+;
+; MimetypeList
+;
+;
+MSG_MIMETYPELIST_EXTERNAL_VIEWER
+Harici görüntüleyici
+; External viewer
+;
+MSG_MIMETYPELIST_INTERNAL_VIEWER
+Dahili görüntüleyici
+; Internal viewer
+;
+MSG_MIMETYPELIST_SAVE_TO_DISK
+Diske kaydet
+; Save to disk
+;
+MSG_MIMETYPELIST_ASK
+Sor
+; Ask
+;
+MSG_MIMETYPELIST_STREAM
+Yayýnla
+; Stream
+;
+MSG_MIMETYPELIST_PIPE
+Boru
+; Pipe
+;
+MSG_MIMETYPELIST_IGNORE
+Yoksay
+; Ignore
+;
+MSG_MIMETYPELIST_PLUGIN
+Eklenti
+; Plugin
+;
+MSG_MIMETYPELIST_MIMETYPE
+MIME Türü
+; MIME Type
+;
+MSG_MIMETYPELIST_EXTENSION
+Uzantýlar
+; Extension
+;
+MSG_MIMETYPELIST_ACTION
+Eylem
+; Action
+;
+MSG_MIMETYPELIST_VIEWER
+Görüntüleyici
+; Viewer
+;
+;
+; NavigationGroup
+;
+;
+MSG_NAVIGATIONGROUP_BACK
+Geri
+; Back
+;
+MSG_NAVIGATIONGROUP_FORWARD
+Ýleri
+; Forward
+;
+MSG_NAVIGATIONGROUP_RELOAD
+Yeniden Yükle
+; Reload
+;
+MSG_NAVIGATIONGROUP_STOP
+Dur
+; Stop
+;
+MSG_NAVIGATIONGROUP_HOME
+Ana Sayfa
+; Home
+;
+MSG_NAVIGATIONGROUP_INSPECT
+Inspect
+; Inspect
+;
+;
+; NetworkWindow
+;
+;
+MSG_NETWORKWINDOW_TITLE
+Að Aktivitesi
+; Network Activity
+;
+MSG_NETWORKWINDOW_URL
+URL
+; URL
+;
+MSG_NETWORKWINDOW_STATE
+Durum
+; State
+;
+MSG_NETWORKWINDOW_ABORT
+Ý_ptal Et
+; A_bort
+;
+MSG_NETWORKWINDOW_ABORT_ALL
+_Tümünü Ýptal Et
+; _Abort All
+;
+MSG_NETWORKWINDOW_STATUS_RECEIVING_DATA
+%s ta %s okundu
+; %s of %s read
+;
+MSG_NETWORKWINDOW_STATUS_SENDING_DATA
+%s ta %s gönderildi
+; %s of %s sent
+;
+MSG_NETWORKWINDOW_STATUS_WAITING_FOR_DATA
+Veri bekleniyor
+; Waiting for data
+;
+MSG_NETWORKWINDOW_STATUS_CONNECTING
+Baðlanýyor
+; Connecting
+;
+;
+; OWBWindow
+;
+;
+MSG_OWBWINDOW_PENDING_DOWNLOADS
+Bazý dosyalar þu anda karþýdan indiriliyor.\nYinede çýkmak istediðinize emin misiniz?
+; Some files are currently being downloaded.\nDo you really want to quit?
+;
+MSG_OWBWINDOW_QUIT_CONFIRMATION
+Çýkmak istediðinize emin misiniz?
+; Do you really want to quit?
+;
+MSG_OWBWINDOW_CLOSE_ALL_PAGES_CONFIRMATION
+Tüm sekmeleri kapatmak istediðinize emin misiniz?
+; Do you want to close all tabs?
+;
+MSG_OWBWINDOW_OPEN_FILE
+Dosya Aç...
+; Open File...
+;
+MSG_OWBWINDOW_SAVE_AS
+Farklý Kaydet...
+; Save As...
+;
+MSG_OWBWINDOW_READ_PROGRESS
+%s ta %s okundu
+; %s of %s read
+;
+MSG_OWBWINDOW_STATE_READY
+Hazýr
+; Ready
+;
+MSG_OWBWINDOW_STATE_RECEIVING_DATA
+Veri alýnýyor...
+; Receiving data...
+;
+MSG_OWBWINDOW_STATE_SENDING_REQUEST
+Ýstek gönderiliyor...
+; Sending request...
+;
+MSG_OWBWINDOW_STATE_ERROR
+Hata
+; Error
+;
+MSG_OWBWINDOW_CHOOSE_TITLE
+Bir baþlýk seçin
+; Choose a title
+;
+MSG_OWBWINDOW_JAVASCRIPT_PROMPT
+JavaScript Bilgi Ýstemi
+; JavaScript Prompt
+;
+MSG_OWBWINDOW_JAVASCRIPT_OK
+_Tamam
+; _Ok
+;
+MSG_OWBWINDOW_JAVASCRIPT_CANCEL
+_Vazgeç
+; _Cancel
+;
+MSG_OWBWINDOW_RUNNING_USERSCRIPTS
+\033bRunning userscripts:\033n\n\n
+; \033bRunning userscripts:\033n\n\n
+;
+;
+; PasswordManagerGroup
+;
+;
+MSG_PASSWORDMANAGERGROUP_REMOVE
+_Kaldýr
+; _Remove
+;
+MSG_PASSWORDMANAGERGROUP_REMOVE_ALL
+_Tümünü Kaldýr
+; Remove _All
+;
+;
+; PasswordManagerList
+;
+;
+MSG_PASSWORDMANAGERLIST_HOST
+Ana Bilgisayar
+; Host
+;
+MSG_PASSWORDMANAGERLIST_REALM
+Yetki alaný
+; Realm
+;
+MSG_PASSWORDMANAGERLIST_USERNAME
+Kullanýcý adý
+; Username
+;
+MSG_PASSWORDMANAGERLIST_PASSWORD
+Parola
+; Password
+;
+MSG_PASSWORDMANAGERLIST_FORM
+Form
+; Form
+;
+MSG_PASSWORDMANAGERLIST_FILTER
+Filtre
+; Filter
+;
+MSG_PASSWORDMANAGERLIST_FILTER_REMEMBER
+Hatýrla
+; Remember
+;
+MSG_PASSWORDMANAGERLIST_FILTER_IGNORE
+Yoksay
+; Ignore
+;
+;
+; PasswordManagerWindow
+;
+;
+MSG_PASSWORDMANAGERWINDOW_TITLE
+Parolalar
+; Passwords
+;
+MSG_BLOCKMANAGERWINDOW_TITLE
+Ýçerik Engelleme
+; Content Blocking
+;
+MSG_BLOCKMANAGERLIST_DENY
+Reddet
+; Deny
+;
+MSG_BLOCKMANAGERLIST_ALLOW
+Ýzin ver
+; Allow
+;
+MSG_BLOCKMANAGERLIST_TYPE
+Filtre Türü
+; Filter Type
+;
+MSG_BLOCKMANAGERLIST_RULE
+Rol
+; Rule
+;
+MSG_BLOCKMANAGERGROUP_REMOVE
+_Kaldýr
+; _Remove
+;
+MSG_BLOCKMANAGERGROUP_ADD
+_Ekle
+; _Add
+;
+MSG_BLOCKMANAGERGROUP_TYPE
+Filtre Türü:
+; Filter Type:
+;
+MSG_BLOCKMANAGERGROUP_RULE
+_Kaldýr
+; Rule:
+;
+MSG_BLOCKMANAGERGROUP_DENY
+Reddet
+; Deny
+;
+MSG_BLOCKMANAGERGROUP_ALLOW
+Ýzin ver
+; Allow
+;
+;
+; SearchManagerWindow
+;
+;
+MSG_SEARCHMANAGERWINDOW_TITLE
+Arama Motorlarý
+; Search Engines
+;
+;
+; SearchManagerGroup
+;
+;
+MSG_SEARCHMANAGERGROUP_ADD
+_Ekle
+; _Add
+;
+MSG_SEARCHMANAGERGROUP_REMOVE
+_Kaldýr
+; _Remove
+;
+MSG_SEARCHMANAGERGROUP_TITLE
+Baþlýk:
+; Title:
+;
+MSG_SEARCHMANAGERGROUP_LINK
+Baðlantý:
+; Link:
+;
+MSG_SEARCHMANAGERGROUP_SHORTCUT
+Kýsayol:
+; Shortcut:
+;
+;
+; SearchManagerList
+;
+;
+MSG_SEARCHMANAGERLIST_TITLE
+Baþlýk
+; Title
+;
+MSG_SEARCHMANAGERLIST_LINK
+Baðlantý
+; Link
+;
+MSG_SEARCHMANAGERLIST_SHORTCUT
+Kýsayol
+; Shortcut
+;
+;
+; ScriptManagerWindow
+;
+;
+MSG_SCRIPTMANAGERWINDOW_TITLE
+Betikler
+; Scripts
+;
+;
+; ScriptManagerGroup
+;
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_SELECT
+Kullanýcý Betiðini Seç...
+; Select User Script...
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_ADD
+_Ekle
+; _Add
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_REMOVE
+_Kaldýr
+; _Remove
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_ENABLE
+_Etkin
+; _Enable
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_PATH
+Yol:
+; Path:
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_NAME
+Adý:
+; Name:
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_DESCRIPTION
+Açýklama:
+; Description:
+;
+MSG_SCRIPTMANAGERGROUP_WHITELIST
+Ýzinli Siteler
+; Allowed Sites
+;
+MSG_SCRIPTMANAGERGROUP_BLACKLIST
+Yasaklý Siteler
+; Forbidden Sites
+;
+MSG_SCRIPTMANAGERGROUP_WHITELIST_ADD
+Ekle
+; Add
+;
+MSG_SCRIPTMANAGERGROUP_WHITELIST_REMOVE
+Kaldýr
+; Remove
+;
+MSG_SCRIPTMANAGERGROUP_BLACKLIST_ADD
+Ekle
+; Add
+;
+MSG_SCRIPTMANAGERGROUP_BLACKLIST_REMOVE
+Kaldýr
+; Remove
+;
+;
+; URLPrefsWindow
+;
+;
+MSG_URLPREFSWINDOW_TITLE
+URL Terçihleri
+; URL Preferences
+;
+;
+; URLPrefsGroup
+;
+;
+MSG_URLPREFSGROUP_ADD
+_Ekle
+; _Add
+;
+MSG_URLPREFSGROUP_REMOVE
+_Kaldýr
+; _Remove
+;
+MSG_URLPREFSGROUP_JAVASCRIPT
+_JavaScript desteði
+; _JavaScript support
+;
+MSG_URLPREFSGROUP_LOAD_IMAGES
+Res_imleri otomatik yükle
+; Load _images automatically
+;
+MSG_URLPREFSGROUP_PLUGINS
+E_klentiler
+; _Plugins
+;
+MSG_URLPREFSGROUP_SPOOF
+_Gibi Göster:
+; _Spoof As:
+;
+MSG_URLPREFSGROUP_COOKIE_POLICY
+_Çerez Ýlkeleri:
+; _Cookie Policy:
+;
+MSG_URLPREFSGROUP_COOKIE_FILTER
+Çerez Adý _Filtresi:
+; Cookie Name _Filter:
+;
+;
+; PrinterWindow
+;
+;
+MSG_PRINTERWINDOW_TITLE
+Print Document
+; Print Document
+;
+MSG_PRINTERWINDOW_PRINT_MODE
+_Mode:
+; _Mode:
+;
+MSG_PRINTERWINDOW_PSLEVEL
+P_S Level:
+; P_S Level:
+;
+MSG_PRINTERWINDOW_PREFERENCES
+P_rinter Preferences
+; P_rinter Preferences
+;
+MSG_PRINTERWINDOW_OUTPUT
+_Output:
+; _Output:
+;
+MSG_PRINTERWINDOW_FIRST_PAGE
+_First Page:
+; _First Page:
+;
+MSG_PRINTERWINDOW_LAST_PAGE
+_Last Page:
+; _Last Page:
+;
+MSG_PRINTERWINDOW_SCALE
+Sca_le:
+; Sca_le:
+;
+MSG_PRINTERWINDOW_PRINT
+_Print
+; _Print
+;
+MSG_PRINTERWINDOW_CANCEL
+_Cancel
+; _Cancel
+;
+MSG_PRINTERWINDOW_STATUS
+Printing page %d/%d...
+; Printing page %d/%d...
+;
+MSG_PRINTERWINDOW_ERROR
+Failed to initialize output device.
+; Failed to initialize output device.
+;
+;
+; PrefsWindow
+;
+;
+MSG_PREFSWINDOW_TITLE
+Ayarlar
+; Settings
+;
+MSG_PREFSWINDOW_CATEGORY_GENERAL
+Genel
+; General
+;
+MSG_PREFSWINDOW_CATEGORY_INTERFACE
+Arabirim
+; Interface
+;
+MSG_PREFSWINDOW_CATEGORY_CONTEXTUAL_MENUS
+Ýçeriksel Menüler
+; Contextual Menus
+;
+MSG_PREFSWINDOW_CATEGORY_MIMETYPES
+MIME Türleri
+; MIME Types
+;
+MSG_PREFSWINDOW_CATEGORY_CONTENT
+Ýçerik
+; Content
+;
+MSG_PREFSWINDOW_CATEGORY_FONTS
+Yazý tipleri
+; Fonts
+;
+MSG_PREFSWINDOW_CATEGORY_DOWNLOADS
+Ýndirilenler
+; Downloads
+;
+MSG_PREFSWINDOW_CATEGORY_NETWORK
+Að
+; Network
+;
+MSG_PREFSWINDOW_CATEGORY_PRIVACY
+Gizlilik
+; Privacy
+;
+MSG_PREFSWINDOW_CATEGORY_SECURITY
+Güvenlik
+; Security
+;
+MSG_PREFSWINDOW_CATEGORY_MEDIA
+Medya
+; Media
+;
+MSG_PREFSWINDOW_CATEGORY_MISCELLANEOUS
+Çeþitli
+; Miscellaneous
+;
+MSG_PREFSWINDOW_CACHE_DOCUMENT_VIEWER
+Belge Görüntüleyici
+; Document Viewer
+;
+MSG_PREFSWINDOW_CACHE_DOCUMENT_BROWSER
+Belge Tarayýcý
+; Document Browser
+;
+MSG_PREFSWINDOW_CACHE_PRIMARY_BROWSER
+Birincil Web Tarayýcý
+; Primary Web Browser
+;
+MSG_PREFSWINDOW_SMOOTH_NORMAL
+Normal
+; Normal
+;
+MSG_PREFSWINDOW_SMOOTH_ALTERNATIVE
+Alternatif
+; Alternative
+;
+MSG_PREFSWINDOW_NEWPAGE_NEWTAB
+Yeni Sekme
+; New Tab
+;
+MSG_PREFSWINDOW_NEWPAGE_NEWWINDOW
+Yeni Pencere
+; New Window
+;
+MSG_PREFSWINDOW_NEWPAGE_LAST
+Sonunda
+; At End
+;
+MSG_PREFSWINDOW_NEWPAGE_AFTERACTIVE
+Mevuttakinden Sonra
+; After Current
+;
+MSG_PREFSWINDOW_QUICKLINK_BUTTON
+Düðme
+; Button
+;
+MSG_PREFSWINDOW_QUICKLINK_LINK
+Baðlantý
+; Link
+;
+MSG_PREFSWINDOW_QUICKLINK_DYNAMIC
+Dinamik Izgara
+; Dynamic Grid
+;
+MSG_PREFSWINDOW_QUICKLINK_FIXED
+Sabit Izgara
+; Fixed Grid
+;
+MSG_PREFSWINDOW_QUICKLINK_BESTFIT
+Dinamik Eniyi-Sýðan
+; Dynamic Best-Fit
+;
+MSG_PREFSWINDOW_NAVIGATION_ICON
+Simge
+; Icon
+;
+MSG_PREFSWINDOW_NAVIGATION_TEXT
+Metin
+; Text
+;
+MSG_PREFSWINDOW_NAVIGATION_ICON_AND_TEXT
+Simge ve Metin
+; Icon and Text
+;
+MSG_PREFSWINDOW_COOKIE_ACCEPT
+Kabul et
+; Accept
+;
+MSG_PREFSWINDOW_COOKIE_REJECT
+Reddet
+; Reject
+;
+MSG_PREFSWINDOW_COOKIE_ASK
+Sor
+; Ask
+;
+MSG_PREFSWINDOW_COMPLETION_NONE
+Hiçbiri
+; None
+;
+MSG_PREFSWINDOW_COMPLETION_STRING
+Dize
+; String
+;
+MSG_PREFSWINDOW_COMPLETION_POPUP
+Açýlýr Pencere
+; Popup
+;
+MSG_PREFSWINDOW_COMPLETION_STRING_AND_POPUP
+Dize ve Açýlýr Pencere
+; String and Popup
+;
+MSG_PREFSWINDOW_CLOSE_REQUESTER_ALWAYS
+Her zaman
+; Always
+;
+MSG_PREFSWINDOW_CLOSE_REQUESTER_NEVER
+Asla
+; Never
+;
+MSG_PREFSWINDOW_CLOSE_REQUESTER_IF_MORE_THAN_ONE
+Çoklu Sekme Ýle
+; With Multiple Tabs
+;
+MSG_PREFSWINDOW_ERROR_REQUESTER
+Uyarý Penceresi
+; Requester Dialog
+;
+MSG_PREFSWINDOW_ERROR_HTML
+HTML Ekraný
+; HTML Display
+;
+MSG_PREFSWINDOW_ANIMATE_NEVER
+Asla
+; Never
+;
+MSG_PREFSWINDOW_ANIMATE_ALWAYS
+Her zaman
+; Always
+;
+MSG_PREFSWINDOW_ANIMATE_ACTIVE_WINDOW
+Sadece Etkin Pencere
+; Active Window Only
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR_NEW_TAB
+Yeni Sekme
+; New Tab
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR_NEW_BACKGROUND_TAB
+Yeni Arkaplan Sekmesi
+; New Background Tab
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR_NEW_WINDOW
+Yeni Pencere
+; New Window
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_OFF
+Devre dýþý
+; Disabled
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_ASK
+Sor
+; Ask
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_ON
+Otomatik olarak
+; Automatically
+;
+; General
+;
+MSG_PREFSWINDOW_GENERAL_HOME_PAGE
+_Ana Sayfa:
+; _Home Page:
+;
+MSG_PREFSWINDOW_GENERAL_START_PAGE
+_Baþlangýç Sayfasý:
+; S_tart Page:
+;
+MSG_PREFSWINDOW_GENERAL_NEW_PAGE
+_New Page:
+; _New Page:
+;
+MSG_PREFSWINDOW_GENERAL_OUTPUT_WINDOW
+Çýktý _Penceresi:
+; _Output Window:
+;
+; Interface
+;
+MSG_PREFSWINDOW_INTERFACE_GENERAL
+Genel
+; General
+;
+MSG_PREFSWINDOW_INTERFACE_NEW_PAGE_POLICY
+_Yeni Sayfa Ýlkesi:
+; _New Page Policy:
+;
+MSG_PREFSWINDOW_INTERFACE_NEW_PAGE_POSITION
+Sekme Açýlýþ Konumu:
+; Tab Opening Position:
+;
+MSG_PREFSWINDOW_INTERFACE_POPUP_POLICY
+Popup Policy:
+; Popup Policy:
+;
+MSG_PREFSWINDOW_INTERFACE_NAVIGATION_BUTTON_TYPE
+_Fare Orta Tuþu Türü:
+; Navigation _Button Type:
+;
+MSG_PREFSWINDOW_INTERFACE_COMPLETION_MODE
+_URL Tamamlama Kipi:
+; URL Com_pletion Mode:
+;
+MSG_PREFSWINDOW_INTERFACE_CLOSE_REQUESTER
+_Kapatma Doðrulama:
+; Con_firm Closing:
+;
+MSG_PREFSWINDOW_INTERFACE_ERROR_REPORTING
+_Hatayý Raporlama:
+; Error _Reporting:
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR
+_Orta Tuþ Davranýþý:
+; Middle Button Be_haviour:
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_BUTTON_FRAME
+_Düðme çerçevelerini göster
+; Sho_w buttons frames
+;
+MSG_PREFSWINDOW_INTERFACE_CONTEXTUAL_POINTERS
+_Ýçeriksel fare iþaretçilerini kullan
+; Use contextual _mouse pointers
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_SEARCH_BAR
+Arama çubuðunu gö_ster
+; Show s_earch bar
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_VALIDATION_BUTTONS
+D_oðrulama düðmelerini göster
+; Show _validation buttons
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_SEPARATORS
+_Gurup ayraçlarýný göster
+; Show _group separators
+;
+MSG_PREFSWINDOW_INTERFACE_FAVICONS
+Websitesi Simgeleri
+; Website Icons
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_TABS
+S_ekmeler
+; T_abs
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_BOOKMARKS
+Ye_r imleri
+; B_ookmarks
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_HISTORY
+_Geçmiþ
+; H_istory
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_BOOKMARK_PANEL
+Yer im_leri paneli
+; Boo_kmarks panel
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_HISTORY_PANEL
+Geç_miþ paneli
+; History pane_l
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_QUICKLINKS
+Hýzlý Baðlantýlar
+; Quick links
+;
+MSG_PREFSWINDOW_INTERFACE_TAB_TRANSFERANIM
+Sekmede _transfer animasyonunu göster
+; Show _tab transfer animation
+;
+MSG_PREFSWINDOW_INTERFACE_QUICK_LINKS
+Hýzlý Baðlantýlar
+; Quick Links
+;
+MSG_PREFSWINDOW_INTERFACE_QUICK_LINK_LOOK
+Görüntüleme Türü:
+; Look:
+;
+MSG_PREFSWINDOW_INTERFACE_QUICK_LINK_LAYOUT
+Dü_zen:
+; La_yout:
+;
+MSG_PREFSWINDOW_INTERFACE_MAXIMUM_ROWS
+En Fazla Sýra:
+; Ma_ximum Rows:
+;
+; Content
+;
+MSG_PREFSWINDOW_CONTENT_CACHE_MODEL
+Önbellek _Modeli:
+; Cache _Model:
+;
+MSG_PREFSWINDOW_CONTENT_PAGE_CACHE
+_Sayfa önbelleði
+; Page cac_he
+;
+MSG_PREFSWINDOW_CONTENT_JAVASCRIPT
+_JavaScript desteði
+; _JavaScript support
+;
+MSG_PREFSWINDOW_CONTENT_ALLOW_NEW_WINDOW
+_Yeni pencere açmak için JavaScript'e izin ver
+; Allow JavaScript to open new _windows
+;
+MSG_PREFSWINDOW_CONTENT_PLAY_ANIMATIONS
+_Animasyonlarý oynat
+; Play _animations
+;
+MSG_PREFSWINDOW_CONTENT_LOAD_IMAGES
+_Resimleri otomatik yükle
+; Load _images automatically
+;
+MSG_PREFSWINDOW_CONTENT_PRINT_BACKGROUNDS
+Arkaplaný _yazdýr
+; _Print backgrounds
+;
+MSG_PREFSWINDOW_CONTENT_BLOCKING
+Ýçeri_k engelleme (AdBlock)
+; Content _blocking (AdBlock)
+;
+MSG_PREFSWINDOW_CONTENT_PLUGINS
+_Eklentilere izin ver
+; Allow plu_gins
+;
+MSG_PREFSWINDOW_CONTENT_INSPECTOR
+Web müfettiþi
+; WebInspector
+;
+; Fonts
+;
+MSG_PREFSWINDOW_FONTS_DEFAULT_SIZE
+Varsayýlan Yazý Tipi Boyutu:
+; Default Font Size:
+;
+MSG_PREFSWINDOW_FONTS_DEFAULT_MONOSPACED_SIZE
+Varsayýlan Monospaced Yazý Tipi Boyutu:
+; Default Monospaced Font Size:
+;
+MSG_PREFSWINDOW_FONTS_MINIMUM_SIZE
+En Küçük Yazý Tipi Boyutu:
+; Minimum Font Size:
+;
+MSG_PREFSWINDOW_FONTS_MINIMUM_LOGICAL_SIZE
+En Küçük Mantýksal Yazý Tipi Boyutu:
+; Minimum Logical Font Size:
+;
+MSG_PREFSWINDOW_FONTS_SMOOTHING_METHOD
+Köþe Yumuþatma Metodu:
+; Antialiasing Method:
+;
+MSG_PREFSWINDOW_FONTS_ENCODING
+Metin Kodlama:
+; Text Encoding:
+;
+MSG_PREFSWINDOW_FONTS_STANDARD_FAMILY
+Standart Yazý Tipi Ailesi:
+; Standard Font Family:
+;
+MSG_PREFSWINDOW_FONTS_MONOSPACED_FAMILY
+Monospaced Yazý Tipi Ailesi:
+; Monospaced Font Family:
+;
+MSG_PREFSWINDOW_FONTS_SERIF_FAMILY
+Serif Yazý Tipi Ailesi:
+; Serif Font Family:
+;
+MSG_PREFSWINDOW_FONTS_SANS_SERIF_FAMILY
+Sans Serif Font Ailesi:
+; Sans Serif Font Family:
+;
+MSG_PREFSWINDOW_FONTS_CURSIVE_FAMILY
+Elyazýsý Yazý Tipi Ailesi:
+; Cursive Font Family:
+;
+MSG_PREFSWINDOW_FONTS_FANTASY_FAMILY
+Fantazi Yazý Tipi Ailesi:
+; Fantasy Font Family:
+;
+; Downloads
+;
+MSG_PREFSWINDOW_DOWNLOADS_PATH
+Ýn_dirme Yolu:
+; _Download Path:
+;
+MSG_PREFSWINDOW_DOWNLOADS_AUTOCLOSE
+"Ýndirme" _iþlemi bitince pencereyi kapat
+; Close "Downloads" _window when finished
+;
+MSG_PREFSWINDOW_DOWNLOADS_SAVEDOWNLOADS
+Ýndi_rilen dosyalarý hatýrla
+; _Remember downloaded files
+;
+MSG_PREFSWINDOW_DOWNLOADS_START_AUTOMATICALLY
+Start downloads _automatically
+; Start downloads _automatically
+;
+; Network
+;
+MSG_PREFSWINDOW_NETWORK_SPOOF
+_Gibi Göster:
+; S_poof As:
+;
+MSG_PREFSWINDOW_NETWORK_EXPERIMENTAL_COOKIES
+Deney_sel çerez sistemi (yeniden baþlatmak gerekir)
+; E_xperimental cookie system (restart required)
+;
+MSG_PREFSWINDOW_NETWORK_THREAD
+Að iþ pa_rçasý (yeniden baþlatmak gerekir)
+; Network _thread (restart required)
+;
+MSG_PREFSWINDOW_NETWORK_ACTIVE_CONNECTIONS
+_Etkin Baðlantýlar:
+; _Active Connections:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY
+Proxy
+; Proxy
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_PASSWORD
+Parola:
+; Password:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_USERNAME
+Kullanýcý adý:
+; Username:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_PORT
+Port:
+; Port:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_HOST
+Ana Bilgisayar:
+; Host:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_TYPE
+Tür:
+; Type:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_USE
+Vekil sunucusu kullan
+; Use proxy
+;
+; Privacy
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_SESSION
+_Oturumu kaydet
+; Save s_ession
+;
+MSG_PREFSWINDOW_PRIVACY_DELETE_SESSION_AT_EXIT
+Çýkarken ot_urumu sil
+; _Delete session at exit
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_REQUESTER
+_Baþlangýçta önceki oturumu yüklemeyi sor
+; _Ask for session restoration at startup
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_MODE
+Otu_rum Kurtarma:
+; Session _Restoration:
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_COOKIES
+Çerezleri veritabanýna _kaydet
+; Save c_ookies to database
+;
+MSG_PREFSWINDOW_PRIVACY_COOKIES_POLICY
+Çe_rez Ýlkesi:
+; Coo_kie Policy:
+;
+MSG_PREFSWINDOW_PRIVACY_ENABLE_LOCAL_STORAGE
+Enable local storage
+; Enable local storage
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_FORM_CREDENTIALS
+_Form kriterlerini kaydet
+; Save _form credentials
+;
+MSG_PREFSWINDOW_PRIVACY_ENABLE_FORM_AUTOFILL
+Enable form autofill
+; Enable form autof_ill
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_HISTORY
+_Geçmiþi kaydet
+; Save _history
+;
+MSG_PREFSWINDOW_PRIVACY_HISTORY_ENTRIES
+Geçmiþ Giriþleri:
+; History Entries:
+;
+MSG_PREFSWINDOW_PRIVACY_HISTORY_AGE
+Geçmiþ Saklanacak Gün Sayýsý:
+; History Age in Days:
+;
+; Security
+;
+MSG_PREFSWINDOW_SECURITY_IGNORE_SSL_ERRORS
+_SSL Hatalarýný Yoksay
+; _Ignore SSL errors
+;
+MSG_PREFSWINDOW_SECURITY_CERTIFICATE_PATH
+Serfitika _Yolu:
+; Certificate _Path:
+;
+; Media
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_NONE
+Tüm Çerçeveleri Ýþle
+; Process All Frames
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_NONREF
+Referans Çerçeveleri Hariç Digerlerini Atla
+; Skip All But Reference Frames
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_NONKEY
+Anahtar Çerçeveleri Hariç Digerlerini Atla
+; Skip All But Key Frames
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_ALL
+Tüm Çerçeveleri Atla
+; Skip All Frames
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_MODE
+_Döngü Filtre Kipi (H264):
+; _Loopfilter Mode (H264):
+;
+MSG_PREFSWINDOW_MEDIA_ENABLE_PARTIAL_CONTENT
+_Hýzlý Arama
+; _Fast seeking
+;
+MSG_PREFSWINDOW_MEDIA_USE_WEBM
+_WebM (VP8) kodek desteði
+; _WebM (VP8) support
+;
+MSG_PREFSWINDOW_MEDIA_USE_FLV
+FL_V (H.263/H.264) desteði
+; FL_V (H.263/H.264) support
+;
+MSG_PREFSWINDOW_MEDIA_USE_OGG
+_Ogg (Theora/Vorbis) desteði
+; _Ogg (Theora/Vorbis) support
+;
+; Prefs validation
+;
+MSG_PREFSWINDOW_SAVE
+_Kaydet
+; _Save
+;
+MSG_PREFSWINDOW_USE
+_Kullan
+; _Use
+;
+MSG_PREFSWINDOW_CANCEL
+_Vazgeç
+; _Cancel
+;
+;
+; QuickLinkButtonGroup
+;
+;
+MSG_QUICKLINKBUTTONGROUP_NO_NAME
+(Adsýz)
+; (No name)
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN
+\033bAç
+; \033bOpen
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN_NEW_TAB
+Yeni Sekmede Aç
+; Open in New Tab
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN_NEW_WINDOW
+Yeni Pencerede Aç...
+; Open in New Window...
+;
+MSG_QUICKLINKBUTTONGROUP_REMOVE
+Kaldýr
+; Remove
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN_ALL
+Tüm Yer imlerini Aç
+; Open All Bookmarks
+;
+;
+; SplashWindow
+;
+;
+MSG_SPLASHWINDOW_INITIALIZING
+Yazý Tipleri Önyükleniyor...
+; Initializing Fonts...
+;
+MSG_TITLELABEL_BROWSER
+Tarayýcý
+; Browser
+;
+MSG_SPLASHWINDOW_LOADING
+Yükleniyor...
+; Loading...
+;
+MSG_TITLELABEL_NEW_TAB
+Yeni Sekme
+; New Tab
+;
+MSG_TITLELABEL_RELOAD
+Yeniden Yükle
+; Reload
+;
+MSG_TITLELABEL_RELOAD_ALL_TABS
+Tüm Sekmeleri Yeniden Yükle
+; Reload All Tabs
+;
+MSG_TITLELABEL_CLOSE
+Kapat
+; Close
+;
+MSG_TITLELABEL_CLOSE_ALL_OTHER_TABS
+Diðer Tüm Sekmeleri Kapat
+; Close All Other Tabs
+;
+;
+; ToolButton_AddBookmark
+;
+;
+MSG_TOOLBUTTON_ADDBOOKMARK_ADD
+Ekle
+; Add
+;
+MSG_TOOLBUTTON_ADDBOOKMARK_NO_TITLE
+(Baþlýk Yok)
+; (No Title)
+;
+;
+; ToolButton_NewTab
+;
+;
+MSG_TOOLBUTTON_NEWTAB_LABEL
+Yeni Sekme
+; New Tab
+;
+;
+; Utils
+;
+;
+MSG_CAPACITY_BYTE
+B
+; B
+;
+MSG_CAPACITY_KILOBYTE
+kB
+; kB
+;
+MSG_CAPACITY_MEGABYTE
+MB
+; MB
+;
+MSG_CAPACITY_GIGABYTE
+GB
+; GB
+;
+MSG_CAPACITY_TERABYTE
+TB
+; TB
+;
+MSG_PROGRESS_DAY
+%lu gün
+; %lu day
+;
+MSG_PROGRESS_DAYS
+%lu gün
+; %lu days
+;
+MSG_PROGRESS_HOUR
+%lu saat
+; %lu hour
+;
+MSG_PROGRESS_HOURS
+%lu saat
+; %lu hours
+;
+MSG_PROGRESS_MINUTE
+%lu dakika
+; %lu minute
+;
+MSG_PROGRESS_MINUTES
+%lu dakika
+; %lu minutes
+;
+MSG_PROGRESS_SECOND
+%lu saniye
+; %lu second
+;
+MSG_PROGRESS_SECONDS
+%lu saniye
+; %lu seconds
+;
+MSG_WEBVIEW_UPLOAD_FILES
+Dosyalarý Karþýya Yükle...
+; Upload Files...
+;
+MSG_WEBVIEW_UPLOAD_FILE
+Karþýya Dosya Yükle...
+; Upload File...
+;
+MSG_WEBVIEW_ERROR_MSG_HTML
+Hata %d: %s.
+; Error %d: %s.
+;
+MSG_WEBVIEW_ERROR_MSG
+'%s' açýlamadý.\nHata %d: %s.\n
+; Unable to open '%s'.\nError %d: %s.\n
+;
+MSG_WEBVIEW_PROVISIONAL_TITLE
+(Baþlýksýz)
+; (Untitled)
+;
+MSG_WEBVIEW_INTERRUPT_SCRIPT
+Betik iþlemeyi durdurmak istiyor musunuz?
+; Do you want to interrupt processing of the current script?
+;
+MSG_WEBVIEW_JSACTION_TITLE
+Javascript Uyarýsý
+; Javascript Alert
+;

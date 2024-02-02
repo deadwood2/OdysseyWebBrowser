@@ -1,0 +1,2455 @@
+## version $VER: OWB.catalog 1.10 (07.03.2013)
+## codeset 0
+## language suomi
+## chunk AUTH Harry Sintonen
+;
+;
+;
+; Pulldown Menu
+;
+;
+MSG_MENU_PROJECT
+Projekti
+; Project
+;
+MSG_MENU_NEW_WINDOW
+Uusi ikkuna...
+; New Window...
+;
+MSG_MENU_NEW_TAB
+Uusi v‰lilehti
+; New Tab
+;
+MSG_MENU_OPEN_LOCAL_FILE
+Avaa paikallinen tiedosto...
+; Open File...
+;
+MSG_MENU_OPEN_URL
+Avaa URL
+; Open URL
+;
+MSG_MENU_OPEN_SESSION
+Avaa istunto...
+; Load Session...
+;
+MSG_MENU_SAVE_SESSION
+Tallenna istunto...
+; Save Session...
+;
+MSG_MENU_SAVE_AS_SOURCE
+Tallenna HTML:‰n‰...
+; Save as HTML...
+;
+MSG_MENU_SAVE_AS_PDF
+Tallenna PDF:‰n‰...
+; Save as PDF...
+;
+MSG_MENU_PRINT
+Tulosta...
+; Print...
+;
+MSG_MENU_ABOUT
+Tietoja...
+; About...
+;
+MSG_MENU_CLOSE_TAB
+Sulje v‰lilehti
+; Close Tab
+;
+MSG_MENU_CLOSE_WINDOW
+Sulje ikkuna
+; Close Window
+;
+MSG_MENU_QUIT
+Lopeta
+; Quit
+;
+MSG_MENU_EDIT
+Muokkaa
+; Edit
+;
+MSG_MENU_CUT
+Leikkaa
+; Cut
+;
+MSG_MENU_COPY
+Kopioi
+; Copy
+;
+MSG_MENU_COPY_LOCAL
+Kopioi j‰rjestelm‰n koodisivulla
+; Copy with System Codepage
+;
+MSG_MENU_PASTE
+Liit‰
+; Paste
+;
+MSG_MENU_PASTE_TO_URL
+Liit‰ URLiin
+; Paste to URL
+;
+MSG_MENU_SELECT_ALL
+Valitse kaikki
+; Select All
+;
+MSG_MENU_FIND
+Etsi
+; Find
+;
+MSG_MENU_VIEW
+N‰yt‰
+; View
+;
+MSG_MENU_BACK
+Takaisin
+; Back
+;
+MSG_MENU_FORWARD
+Eteenp‰in
+; Forward
+;
+MSG_MENU_HOME
+Hae uudelleen
+; Reload
+;
+MSG_MENU_STOP
+Seis
+; Stop
+;
+MSG_MENU_RELOAD
+Hae uudelleen
+; Reload
+;
+MSG_MENU_ZOOM_IN
+L‰hemm‰s
+; Zoom In
+;
+MSG_MENU_ZOOM_OUT
+Kauemmas
+; Zoom Out
+;
+MSG_MENU_ZOOM_RESET
+Palauta
+; Zoom Reset
+;
+MSG_MENU_FULLSCREEN
+T‰ysruutu
+; Fullscreen
+;
+MSG_MENU_SOURCE
+N‰yt‰ l‰hdekoodi...
+; Show Source Code...
+;
+MSG_MENU_PANELS
+Paneelit
+; Sidepanels
+MSG_MENU_NAVIGATION
+Navigaatio
+; Navigation
+MSG_MENU_QUICKLINKS
+Pikalinkit
+; Quicklinks
+MSG_MENU_LOCATION
+Sijainti
+; Location
+MSG_MENU_STATUS
+Tila
+; Status
+;
+MSG_MENU_BOOKMARK_PANEL
+N‰yt‰ kirjanmerkkipaneeli
+; Bookmarks
+;
+MSG_MENU_HISTORY_PANEL
+N‰yt‰ historiapaneeli
+; History
+;
+MSG_MENU_NO_PANEL
+Pois p‰‰lt‰
+; Off
+;
+MSG_MENU_HISTORY
+Historia
+; History
+;
+MSG_MENU_HISTORY_CLOSEDVIEWS
+Viime aikoina suljetut selaimet
+; Recently Closed Browsers
+;
+MSG_MENU_BOOKMARKS
+Kirjanmerkit
+; Bookmarks
+;
+MSG_MENU_ADD_BOOKMARK
+Lis‰‰ kirjanmerkki
+; Add Bookmark
+;
+MSG_MENU_MANAGE_BOOKMARKS
+Hallinnoi kirjanmerkkej‰...
+; Manage Bookmarks...
+;
+MSG_MENU_WINDOWS
+Ikkunat
+; Windows
+;
+MSG_MENU_DOWNLOADS
+Lataukset...
+; Downloads...
+;
+MSG_MENU_NETWORK
+Verkkoliikenne...
+; Network Activity...
+;
+MSG_MENU_PASSWORDS
+Salasanat...
+; Passwords...
+;
+MSG_MENU_COOKIES
+Ev‰steet...
+; Cookies...
+MSG_MENU_BLOCK
+Sis‰llˆnsuodatus...
+; Content Blocking...
+;
+MSG_MENU_MESSAGES
+Viestit...
+; Messages...
+MSG_MENU_SEARCH_ENGINES
+Hakukoneet...
+; Search Engines...
+MSG_MENU_SCRIPT
+Komentojonot...
+; Scripts...
+MSG_MENU_URLPREFS
+URL-asetukset...
+; URL Settings...
+MSG_MENU_SETTINGS
+Asetukset
+; Settings
+MSG_MENU_PRIVATE_BROWSING
+Yksityisyystila
+; Private Browsing
+MSG_MENU_ENABLE
+P‰‰ll‰
+; Enabled
+MSG_MENU_DISABLE
+Pois p‰‰lt‰
+; Disabled
+MSG_MENU_DEFAULT
+Oletusasetus
+; Default Setting
+MSG_MENU_ENABLE_JAVASCRIPT
+JavaScript -tuki
+; JavaScript Support
+MSG_MENU_ENABLE_IMAGES
+Kuvien lataus
+; Image Loading
+MSG_MENU_ENABLE_ANIMATIONS
+Animaatioiden toisto
+; Play Animations
+MSG_MENU_ENABLE_PLUGINS
+Lis‰osat
+; Plugins
+MSG_MENU_SPOOF_AS
+Tekeytyminen
+; Spoof As
+;
+MSG_MENU_PREFERENCES
+Asetukset...
+; Preferences...
+;
+MSG_MENU_MUI
+MUI...
+; MUI...
+;
+;
+; App
+;
+;
+MSG_REQUESTER_NORMAL_TITLE
+OWB
+; OWB
+;
+MSG_REQUESTER_ERROR_TITLE
+OWB-virhe
+; OWB Error
+;
+MSG_REQUESTER_YES_NO
+*_Kyll‰|_Ei
+; *_Yes|_No
+;
+MSG_REQUESTER_NO_YES
+_Kyll‰|*_Ei
+; _Yes|*_No
+;
+MSG_REQUESTER_OK
+*_Ok
+; *_Ok
+MSG_REQUESTER_YES_NO_NEVER
+*_Kyll‰|_Ei|E_i koskaan
+; *_Yes|_No|N_ever
+;
+MSG_REQUESTER_BOOKMARK_IMPORT_ERROR
+Tuntematon kirjanmerkkimuoto.\nVain IBrowse 2.4 ja OWB MorphOS -muotoja tuetaan.
+; Unknown bookmark format.\nOnly IBrowse 2.4 and OWB MorphOS formats are supported.
+;
+MSG_OWBAPP_DEFAULT_WINDOW_NAME
+Odyssey Web Browser -ikkuna
+; Odyssey Web Browser Window
+;
+MSG_OWBAPP_DEFAULT_PAGE_NAME
+Odyssey Web Browser -sivu
+; Odyssey Web Browser Page
+;
+MSG_OWBAPP_SAVE_CREDENTIALS
+Haluatko tallentaa valtuustiedot t‰lle sivulle?\nK‰ytt‰j‰tunnus: %s
+; Do you want to save credentials for this page?\nUsername: %s
+;
+MSG_OWBAPP_MIMETYPE_REQUEST_ACTION
+M‰‰rittele suoritettava toiminto tiedostolle:\n'\033b%s\033n' (MIME-tyyppi: \033b%s\033n)
+; Specify the action to perform for file:\n'\033b%s\033n' (MIME Type: \033b%s\033n)
+;
+MSG_OWBAPP_MIMETYPE_ACTIONS
+*_N‰yt‰ ikkunassa|Avaa _ulkoisella ohjelmalla|_Lataa tiedosto|_Peruuta
+; *_Display in Window|Open with _External Program|Download _File|_Cancel
+;
+MSG_OWBAPP_MIMETYPE_ACTIONS_FALLBACK
+*_N‰yt‰ ikkunassa|_Lataa tiedosto|_Peruuta
+; *_Display in Window|Download _File|_Cancel
+;
+MSG_OWBAPP_OPEN_SESSION
+Avaa istuntotiedosto...
+; Load Session File...
+;
+MSG_OWBAPP_SAVE_SESSION
+Tallenna istuntotiedosto nimell‰...
+; Save Session File As...
+;
+MSG_OWBAPP_RESTORE_SESSION_CHOICES
+*_Palauta istunto|_Aloita uusi istunto
+; *_Restore Session|_Start New Session
+;
+MSG_OWBAPP_RESTORE_SESSION
+Havaittiin edellinen istunto.\nVoit palauttaa t‰m‰n istunnon tai aloittaa uuden.
+; A previous session has been found.
+;
+;
+;
+; AddressBarGroup
+;
+;
+MSG_ADDRESSBARGROUP_URL
+Sijainti:
+; URL:
+;
+;
+; BCContextMenuMorphOS
+;
+;
+MSG_CONTEXTMENU_TITLE
+Valikko
+; Menu
+;
+;
+; BCLocalizedStrings (these ones need to be encoded in UTF8)
+;
+;
+MSG_LOCALIZED_SUBMIT
+L√§het√§
+; Submit
+;
+MSG_LOCALIZED_RESET
+Nollaa
+; Reset
+;
+MSG_LOCALIZED_SEARCHABLE_INDEX
+Hakuindeksi
+; Searchable Index
+;
+MSG_LOCALIZED_CHOOSE_FILE
+Valitse tiedosto...
+; Select File...
+;
+MSG_LOCALIZED_DETAILS
+Yksyiskohdat
+; Details
+;
+MSG_LOCALIZED_NO_FILE
+(Ei mit√§√§n)
+; (None)
+;
+MSG_LOCALIZED_OPEN_IN_NEW_WINDOW
+Avaa linkki uuteen ikkunaan...
+; Open Link in New Window...
+;
+MSG_LOCALIZED_OPEN_IN_NEW_TAB
+Avaa linkki uuteen v√§lilehteen
+; Open Link in New Tab
+;
+MSG_LOCALIZED_OPEN_IN_NEW_BACKGROUND_TAB
+Avaa linkki taustav√§lilehteen
+; Open Link in New Background Tab
+;
+MSG_LOCALIZED_DOWNLOAD_LINK
+Lataa tiedosto...
+; Download Linked File...
+;
+MSG_LOCALIZED_COPY_LINK_LOCATION
+Kopioi linkin sijainti
+; Copy Link Location
+;
+MSG_LOCALIZED_OPEN_IMAGE_IN_NEW_WINDOW
+Avaa kuva uuteen ikkunaan...
+; Open Image in New Window...
+;
+MSG_LOCALIZED_OPEN_IMAGE_IN_NEW_TAB
+Avaa kuva uuteen v√§lilehteen
+; Open Image in New Tab
+;
+MSG_LOCALIZED_SAVE_IMAGE_AS
+Tallenna kuva nimell√§...
+; Save Image As...
+;
+MSG_LOCALIZED_COPY_IMAGE
+Kopioi kuva...
+; Copy Image...
+;
+MSG_LOCALIZED_COPY_IMAGE_URL
+Kopioi kuvan sijainti...
+; Copy Image Location...
+;
+MSG_LOCALIZED_BLOCK_IMAGES
+Est√§ kuvat kohteesta %s
+; Block Images from %s
+;
+MSG_LOCALIZED_OPEN_FRAME_IN_NEW_WINDOW
+Avaa kehys uuteen ikkunaan...
+; Open Frame in New Window...
+;
+MSG_LOCALIZED_OPEN_FRAME_IN_NEW_TAB
+Avaa kehys uuteen v√§lilehteen
+; Open Frame in New Tab
+;
+MSG_LOCALIZED_COPY
+Kopioi
+; Copy
+;
+MSG_LOCALIZED_DELETE
+Poista
+; Delete
+;
+MSG_LOCALIZED_SELECT_ALL
+Valitse kaikki
+; Select All
+;
+MSG_LOCALIZED_INSERT_UNICODE
+Lis√§√§ unicode kontrollimerkki
+; Insert Unicode Control Character
+;
+MSG_LOCALIZED_INPUT_METHODS
+Sy√∂tt√∂tavat
+; Input Methods
+;
+MSG_LOCALIZED_BACK
+Takaisin
+; Back
+;
+MSG_LOCALIZED_FORWARD
+Eteenp√§in
+; Forward
+;
+MSG_LOCALIZED_STOP
+Seis
+; Stop
+;
+MSG_LOCALIZED_RELOAD
+Hae uudelleen
+; Reload
+;
+MSG_LOCALIZED_CUT
+Leikkaa
+; Cut
+;
+MSG_LOCALIZED_PASTE
+Liit√§
+; Paste
+;
+MSG_LOCALIZED_NO_GUESSES
+Ei l√∂ydetty veikkauksia
+; No Guesses Found
+;
+MSG_LOCALIZED_IGNORE_SPELLING
+J√§t√§ oikeinkirjoitus huomioimatta
+; Ignore Spelling
+;
+MSG_LOCALIZED_LEARN_SPELLING
+Opi oikeinkirjoitus
+; Learn Spelling
+;
+MSG_LOCALIZED_SEARCH
+Etsi verkosta
+; Search the Web
+;
+MSG_LOCALIZED_LOOKUP_IN_DICTIONARY
+Etsi sanakirjasta
+; Look Up in Dictionary
+;
+MSG_LOCALIZED_OPEN_LINK
+Avaa linkki
+; Open Link
+;
+MSG_LOCALIZED_IGNORE_GRAMMAR
+J√§t√§ kielioppi huomioimatta
+; Ignore Grammar
+;
+MSG_LOCALIZED_SPELLING_AND_GRAMMAR
+Oikeinkirjoitus ja kielioppi
+; Spelling and Grammar
+;
+MSG_LOCALIZED_SHOW_SPELLING_AND_GRAMMAR
+N√§yt√§ oikeinkirjoitus ja kielioppi
+; Show Spelling and Grammar
+;
+MSG_LOCALIZED_HIDE_SPELLING_AND_GRAMMAR
+Piilota oikeinkirjoitus ja kielioppi
+; Hide Spelling and Grammar
+;
+MSG_LOCALIZED_CHECK_DOCUMENT
+Tarkista asiakirja
+; Check Document Now
+;
+MSG_LOCALIZED_CHECK_SPELLING_WHILE_TYPING
+Tarkista oikeinkirjoitus kirjoitettaessa
+; Check Spelling While Typing
+;
+MSG_LOCALIZED_CHECK_GRAMMAR_WITH_SPELLING
+Tarkista kielioppi oikeinkirjoituksella
+; Check Grammar With Spelling
+;
+MSG_LOCALIZED_DICTIONARIES
+Valitse kieli
+; Choose Language
+;
+MSG_LOCALIZED_FONT
+Kirjasin
+; Font
+;
+MSG_LOCALIZED_BOLD
+Lihavointi
+; Bold
+;
+MSG_LOCALIZED_ITALIC
+Kursiivi
+; Italic
+;
+MSG_LOCALIZED_UNDERLINE
+Alleviivaus
+; Underline
+;
+MSG_LOCALIZED_OUTLINE
+√§√§riviiva
+; Outline
+;
+MSG_LOCALIZED_INSPECT_ELEMENT
+Tutki elementti√§
+; Inspect Element
+;
+MSG_LOCALIZED_NO_RECENT_SEARCHES
+Ei viimeaikaisia hakuja
+; No recent searches
+;
+MSG_LOCALIZED_RECENT_SEARCHES
+Viimeaikaiset haut
+; Recent searches
+;
+MSG_LOCALIZED_CLEAR_RECENT_SEARCHES
+Tyhjenn√§ viimeaikaiset haut
+; Clear recent searches
+;
+MSG_LOCALIZED_TERM
+termi
+; term
+;
+MSG_LOCALIZED_DEFINITION
+m√§√§ritelm√§
+; definition
+;
+MSG_LOCALIZED_UNKNOWN
+Tuntematon
+; Unknown
+;
+MSG_LOCALIZED_LEFT_TO_RIGHT
+Vasemmalta oikealle
+; Left to Right
+;
+MSG_LOCALIZED_DEFAULT_DIRECTION
+Oletuskirjoitussuunta
+; Default Writing Direction
+;
+MSG_LOCALIZED_RIGHT_TO_LEFT
+Oikealta vasemmalle
+; Right to Left
+;
+MSG_LOCALIZED_WRITING_DIRECTION
+Kirjoitussuunta
+; Writing Direction
+;
+MSG_LOCALIZED_TEXT_DIRECTION
+Tekstin suunta
+; Text Direction
+MSG_LOCALIZED_PLAY
+Toista
+; Play
+MSG_LOCALIZED_PAUSE
+Tauota
+; Pause
+MSG_LOCALIZED_MUTE
+Mykist√§ √§√§net
+; Mute
+MSG_LOCALIZED_UNMUTE
+Palauta √§√§net
+; Unmute
+MSG_LOCALIZED_SWITCH_TO_FULLSCREEN
+Vaihda kokoruututilaan
+; Switch to Fullscreen
+MSG_LOCALIZED_DOWNLOADMEDIA
+Lataa mediatiedosto...
+; Download Media...
+MSG_LOCALIZED_COPYMEDIAURL
+Kopioi mediatiedoston sijainti
+; Copy Media Location
+MSG_LOCALIZED_OPEN_MEDIA_IN_NEW_WINDOW
+Avaa media uudessa ikkunassa...
+; Open Media in New Window...
+MSG_LOCALIZED_MEDIACONTROLS
+Kontrollit
+; Controls
+MSG_LOCALIZED_MEDIALOOP
+Silmukka
+; Loop
+;
+;
+; BookmarkGroup
+;
+;
+MSG_BOOKMARKGROUP_ADD_GROUP
+Lis‰‰ ryhm‰
+; Add Group
+;
+MSG_BOOKMARKGROUP_ADD_LINK
+Lis‰‰ linkki
+; Add Link
+;
+MSG_BOOKMARKGROUP_ADD_SEPARATOR
+Lis‰‰ erotin
+; Add Separator
+;
+MSG_BOOKMARKGROUP_REMOVE
+Poista
+; Remove
+;
+MSG_BOOKMARKGROUP_TITLE
+Otsikko:
+; Title:
+;
+MSG_BOOKMARKGROUP_ADDRESS
+Osoite:
+; Address:
+;
+MSG_BOOKMARKGROUP_SHOW_IN_MENU
+N‰yt‰ valikossa
+; Show in menu
+;
+MSG_BOOKMARKGROUP_QUICKLINK
+Pikalinkki
+; Quick link
+;
+MSG_BOOKMARKGROUP_UNTITLED
+(Nime‰m‰tˆn)
+; (No Title)
+;
+;
+; BookmarkListTree
+;
+;
+MSG_BOOKMARKLISTTREE_SEPARATOR
+---------- Erotin ----------
+; ---------- Separator ----------
+;
+MSG_BOOKMARKLISTTREE_NO_TITLE
+(Ei otsikkoa)
+; (No Title)
+;
+MSG_BOOKMARKLISTTREE_TITLE
+Otsikko
+; Title
+;
+MSG_BOOKMARKLISTTREE_ADDRESS
+Osoite
+; Address
+;
+MSG_BOOKMARKLISTTREE_FOLD_GROUP
+Laskosta ryhm‰
+; Fold Group
+;
+MSG_BOOKMARKLISTTREE_UNFOLD_GROUP
+Levit‰ ryhm‰
+; Unfold Group
+;
+MSG_BOOKMARKLISTTREE_FOLD_GROUP_BOLD
+\033bLaskosta ryhm‰
+; \033bFold Group
+;
+MSG_BOOKMARKLISTTREE_UNFOLD_GROUP_BOLD
+\033bLevit‰ ryhm‰
+; \033bUnfold Group
+;
+MSG_BOOKMARKLISTTREE_SEPARATOR_LABEL
+Erotin
+; Separator
+;
+MSG_BOOKMARKLISTTREE_OPEN
+\033bAvaa
+; \033bOpen
+;
+MSG_BOOKMARKLISTTREE_OPEN_NEW_TAB
+Avaa linkki uuteen v‰lilehteen
+; Open Link in New Tab
+;
+MSG_BOOKMARKLISTTREE_OPEN_NEW_WINDOW
+Avaa linkki uuteen ikkunaan...
+; Open Link in New Window...
+;
+MSG_BOOKMARKLISTTREE_BOOKMARK
+Kirjanmerkit
+; Bookmarks
+;
+MSG_BOOKMARKLISTTREE_FOLD_ALL_GROUPS
+Laskosta kaikki ryhm‰t
+; Fold All Groups
+;
+MSG_BOOKMARKLISTTREE_UNFOLD_ALL_GROUPS
+Levit‰ kaikki ryhm‰t
+; Unfold All Groups
+;
+;
+; BookmarkWindow
+;
+;
+MSG_BOOKMARKWINDOW_BOOKMARKS
+Kirjanmerkit
+; Bookmarks
+;
+;
+; ChooseTitleGroup
+;
+;
+MSG_CHOOSETITLEGROUP_TITLE
+Otsikko:
+; Title:
+MSG_CHOOSETITLEGROUP_MENU
+Lis‰‰ _valikkoon
+; Add to _menu
+;
+MSG_CHOOSETITLEGROUP_NO_TITLE
+(Ei otsikkoa)
+; (No Title)
+;
+MSG_CHOOSETITLEGROUP_ADD
+_Lis‰‰
+; _Add
+;
+MSG_CHOOSETITLEGROUP_CANCEL
+_Peruuta
+; _Cancel
+;
+;
+; ConsoleList
+;
+;
+MSG_CONSOLELIST_TIME
+Aika
+; Time
+;
+MSG_CONSOLELIST_MESSAGE
+Viesti
+; Message
+;
+MSG_CONSOLELIST_COPY
+Kopioi leikepˆyd‰lle
+; Copy
+;
+;
+; ConsoleWindow
+;
+;
+MSG_CONSOLEWINDOW_MESSAGES
+Viestit
+; Messages
+;
+MSG_CONSOLEWINDOW_CLEAR
+_Tyhjenn‰
+; _Clear
+;
+;
+; ContextMenuGroup
+;
+;
+MSG_CONTEXTMENUGROUP_LINK
+Linkki
+; Link
+;
+MSG_CONTEXTMENUGROUP_PAGE
+Sivu
+; Page
+;
+MSG_CONTEXTMENUGROUP_IMAGE
+Kuva
+; Image
+;
+MSG_CONTEXTMENUGROUP_INTERNAL
+Sis‰inen
+; Internal
+;
+MSG_CONTEXTMENUGROUP_ADD
+Lis‰‰
+; Add
+;
+MSG_CONTEXTMENUGROUP_REMOVE
+Poista
+; Remove
+;
+MSG_CONTEXTMENUGROUP_CATEGORY
+Kategoria:
+; Category:
+;
+MSG_CONTEXTMENUGROUP_LABEL
+Nimiˆ:
+; Label:
+;
+MSG_CONTEXTMENUGROUP_ACTION
+Toiminto:
+; Action:
+;
+MSG_CONTEXTMENUGROUP_DEFAULT_LABEL
+Valikkonimiˆ
+; Menu Label
+;
+;
+;
+; ContextMenuList
+;
+;
+MSG_CONTEXTMENULIST_LINK
+Linkki
+; Link
+;
+MSG_CONTEXTMENULIST_PAGE
+Sivu
+; Page
+;
+MSG_CONTEXTMENULIST_IMAGE
+Kuva
+; Image
+;
+MSG_CONTEXTMENULIST_INTERNAL
+Sis‰inen
+; Internal
+;
+MSG_CONTEXTMENULIST_CATEGORY
+Kategoria
+; Category
+;
+MSG_CONTEXTMENULIST_LABEL
+Nimiˆ
+; Label
+;
+MSG_CONTEXTMENULIST_ACTION
+Toiminto
+; Action
+;
+MSG_CONTEXTMENULIST_TYPE
+Tyyppi
+; Type
+;
+;
+;
+; CookieManagerGroup
+;
+;
+MSG_COOKIEMANAGERGROUP_REMOVE
+_Poista
+; _Remove
+;
+MSG_COOKIEMANAGERGROUP_REMOVE_ALL
+Poista _kaikki
+; Remove _All
+;
+MSG_COOKIEMANAGERGROUP_DOMAIN
+Toimialue:
+; Domain:
+;
+MSG_COOKIEMANAGERGROUP_NAME
+Nimi:
+; Name:
+;
+MSG_COOKIEMANAGERGROUP_VALUE
+Arvo:
+; Value:
+;
+MSG_COOKIEMANAGERGROUP_PATH
+Polku:
+; Path:
+;
+MSG_COOKIEMANAGERGROUP_TYPE
+Tyyppi:
+; Type:
+;
+MSG_COOKIEMANAGERGROUP_EXPIRATION
+Vanheneminen:
+; Expiration:
+;
+;
+;
+; CookieManagerList
+;
+;
+MSG_COOKIEMANAGERLIST_DOMAIN
+Toimialue
+; Domain
+;
+MSG_COOKIEMANAGERLIST_NAME
+Nimi
+; Name
+;
+MSG_COOKIEMANAGERLIST_VALUE
+Arvo
+; Value
+;
+MSG_COOKIEMANAGERLIST_COOKIES
+Ev‰steet
+; Cookies
+;
+MSG_COOKIEMANAGERLIST_FOLD_DOMAIN
+Laskosta toimialue
+; Fold Domain
+;
+MSG_COOKIEMANAGERLIST_UNFOLD_DOMAIN
+Levit‰ toimialue
+; Unfold Domain
+;
+MSG_COOKIEMANAGERLIST_FOLD_ALL_DOMAINS
+Laskosta kaikki toimialueet
+; Fold All Domains
+;
+MSG_COOKIEMANAGERLIST_UNFOLD_ALL_DOMAINS
+Levit‰ kaikki toimialueet
+; Unfold All Domains
+;
+;
+; CookieManagerWindow
+;
+;
+MSG_COOKIEMANAGERWINDOW_COOKIES
+Ev‰steet
+; Cookies
+;
+;
+; DefaultPolicyDelegate
+;
+;
+MSG_DEFAULTPOLICYDELEGATE_MESSAGE
+Sivu jota yrit‰t avata sis‰lt‰‰ jo POST -dataa.\nJos jatkat, POST -data l‰hetet‰‰n uudelleen.\nHaluatko jatkaa?
+; The page you're trying to open already includes POST data.\nIf you proceed, POST data will be sent again.\nDo you want to continue?
+;
+;
+; DownloadDelegate
+;
+;
+MSG_DOWNLOADDELEGATE_OVERWRITE_OR_RESUME
+Tiedosto '%s' on jo olemassa.\nHaluatko korvata sen?\n\n\033bUusi:\033n Koko: %llu tavua\n\033bVanha:\033n Koko: %ld tavua P‰iv‰ys: %s %s\n
+; File '%s' already exists.\nDo you want to replace it?\n\n\033bNew Size:\033n %llu bytes\n\033bOld Size:\033n %ld bytes\n\033bOld Date:\033n %s %s
+;
+MSG_DOWNLOADDELEGATE_OVERWRITE_OR_RESUME_ACTIONS
+*_Ylikirjoita|_Jatka|_Peruuta
+; *_Overwrite|_Resume|_Cancel
+;
+;
+; DownloadGroup
+;
+;
+MSG_DOWNLOADGROUP_IN_PROGRESS
+K‰ynniss‰
+; In Progress
+;
+MSG_DOWNLOADGROUP_FINISHED
+Valmiit
+; Finished
+;
+MSG_DOWNLOADGROUP_FAILED
+Ep‰onnistuneet
+; Failed
+;
+MSG_DOWNLOADGROUP_ABORT
+Keskeyt‰
+; _Abort
+;
+MSG_DOWNLOADGROUP_ABORT_ALL
+Keskeyt‰ kaikki
+; A_bort All
+;
+MSG_DOWNLOADGROUP_REMOVE
+_Poista
+; _Remove
+;
+MSG_DOWNLOADGROUP_REMOVE_ALL
+Poista _kaikki
+; Remove _All
+;
+MSG_DOWNLOADGROUP_RETRY
+_Yrit‰ uudelleen
+; Re_try
+;
+MSG_DOWNLOADGROUP_CANCELLED_BY_USER
+K‰ytt‰j‰n keskeytt‰m‰
+; Cancelled by user
+MSG_DOWNLOADGROUP_INTERRUPTED
+Keskeytynyt
+; Interrupted
+;
+;
+; DownloadList
+;
+;
+MSG_DOWNLOADLIST_NAME
+Nimi
+; Name
+;
+MSG_DOWNLOADLIST_SIZE
+Koko
+; Size
+;
+MSG_DOWNLOADLIST_PROGRESS
+Edistyminen
+; Progress
+;
+MSG_DOWNLOADLIST_DETAIL
+Yksityiskohdat
+; Detail
+;
+MSG_DOWNLOADLIST_SPEED
+Nopeus
+; Speed
+MSG_DOWNLOADLIST_ETA
+Saapumisennuste
+; ETA
+;
+MSG_DOWNLOADLIST_PATH
+Polku
+; Path
+;
+MSG_DOWNLOADLIST_URL
+URL
+; URL
+;
+MSG_DOWNLOADLIST_DOWNLOADPAGE
+Lataussivu
+; Download Page
+;
+MSG_DOWNLOADLIST_STATUS
+Tila
+; Status
+;
+MSG_DOWNLOADLIST_OPEN_FILE
+\033bAvaa tiedosto
+; \033bOpen File
+;
+MSG_DOWNLOADLIST_OPEN_DIRECTORY
+Avaa hakemisto
+; Open Directory
+;
+MSG_DOWNLOADLIST_OPEN_DOWNLOADPAGE
+Avaa lataussivu
+; Open Download Page
+;
+MSG_DOWNLOADLIST_SIZE_UNKNOWN
+Tuntematon
+; Unknown
+;
+;
+; DownloadWindow
+;
+;
+MSG_DOWNLOADWINDOW_DOWNLOADS
+Lataukset
+; Downloads
+;
+;
+; FindText
+;
+;
+MSG_FINDTEXT_PREV
+Edellinen
+; Previous
+;
+MSG_FINDTEXT_NEXT
+Seuraava
+; Next
+;
+MSG_FINDTEXT_CASE_SENSITIVE
+V‰lit‰ kirjainkoosta
+; Case sensitive
+;
+MSG_FINDTEXT_MARK_ALL_MATCHES
+N‰yt‰ kaikki osumat
+; Mark all matches
+;
+MSG_FINDTEXT_TEXT_NOT_FOUND
+Ei lˆytynyt
+; Not found
+;
+;
+; HistoryButton
+;
+;
+MSG_HISTORYBUTTON_MENU_TITLE
+Historia
+; History
+;
+MSG_HISTORYBUTTON_NO_TITLE
+(Ei otsikkoa)
+; (No Title)
+;
+;
+; HistoryList
+;
+;
+MSG_HISTORYLIST_NO_URL
+(Ei URLia)
+; (No URL)
+;
+MSG_HISTORYLIST_NO_TITLE
+(Ei otsikkoa)
+; (No Title)
+;
+MSG_HISTORYLIST_HISTORY
+Historia
+; History
+;
+MSG_HISTORYLIST_OPEN_URL
+\033bAvaa URL
+; \033bOpen
+;
+MSG_HISTORYLIST_OPEN_NEW_TAB
+Avaa URL uuteen v‰lilehteen
+; Open in New Tab
+;
+MSG_HISTORYLIST_OPEN_NEW_WINDOW
+Avaa URL uuteen ikkunaan...
+; Open in New Window...
+;
+;
+; HistoryListTree
+;
+;
+MSG_HISTORYLISTTREE_NO_TITLE
+(Ei otsikkoa)
+; (No Title)
+;
+MSG_HISTORYLISTTREE_NO_URL
+(Ei URLia)
+; (No URL)
+;
+MSG_HISTORYLISTTREE_TITLE
+Otsikko
+; Title
+;
+MSG_HISTORYLISTTREE_ADDRESS
+Osoite
+; Address
+;
+MSG_HISTORYLISTTREE_HISTORY
+OWB -historia
+; History
+;
+MSG_HISTORYLISTTREE_OPEN_URL
+\033bAvaa URL
+; \033bOpen
+;
+MSG_HISTORYLISTTREE_OPEN_NEW_TAB
+Avaa URL uuteen v‰lilehteen
+; Open in New Tab
+;
+MSG_HISTORYLISTTREE_OPEN_NEW_WINDOW
+Avaa URL uuteen ikkunaan...
+; Open in New Window...
+;
+;
+; HistoryPanelGroup
+;
+;
+MSG_HISTORYPANELGROUP_HISTORY
+Historia
+; History
+;
+;
+; LinkList
+;
+;
+MSG_LINKLIST_NO_NAME
+(Nimetˆn)
+; (No name)
+;
+MSG_LINKLIST_QUICK_LINK
+Pikalinkki
+; Quick Link
+;
+;
+; LoginWindow
+;
+;
+MSG_LOGINWINDOW_MESSAGE
+Syˆt‰ k‰ytt‰j‰tunnus ja salasana k‰ytt‰‰ksesi %s kohteessa %s.
+; Enter username and password to access %s on %s.
+;
+MSG_LOGINWINDOW_TITLE
+Todentamispyyntˆ
+; Authentication Request
+;
+MSG_LOGINWINDOW_USERNAME
+K‰ytt‰j‰tunnus:
+; Username:
+;
+MSG_LOGINWINDOW_PASSWORD
+Salasana:
+; Password:
+;
+MSG_LOGINWINDOW_SAVE_CREDENTIALS
+_Tallenna valtuustiedot
+; _Save credentials
+;
+MSG_LOGINWINDOW_LOGIN
+_Kirjaudu
+; _Login
+;
+MSG_LOGINWINDOW_CANCEL
+_Peruuta
+; _Cancel
+;
+;
+; MimetypeGroup
+;
+;
+MSG_MIMETYPEGROUP_EXTERNAL_VIEWER
+Ulkoinen katselin
+; External Viewer
+;
+MSG_MIMETYPEGROUP_INTERNAL_VIEWER
+Sis‰inen katselin
+; Internal Viewer
+;
+MSG_MIMETYPEGROUP_SAVE_TO_DISK
+Tallenna levylle
+; Save to Disk
+;
+MSG_MIMETYPEGROUP_ASK
+Kysy
+; Ask
+;
+MSG_MIMETYPEGROUP_STREAM
+Jono
+; Stream
+;
+MSG_MIMETYPEGROUP_PIPE
+Putki
+; Pipe
+;
+MSG_MIMETYPEGROUP_IGNORE
+J‰t‰ huomiotta
+; Ignore
+;
+MSG_MIMETYPEGROUP_PLUGIN
+Lis‰osa
+; Plugin
+;
+MSG_MIMETYPEGROUP_ADD
+Lis‰‰
+; Add
+;
+MSG_MIMETYPEGROUP_REMOVE
+Poista
+; Remove
+;
+MSG_MIMETYPEGROUP_MIMETYPE
+MIME-tyyppi:
+; MIME Type:
+;
+MSG_MIMETYPEGROUP_EXTENSION
+Tarkennin:
+; Extension:
+;
+MSG_MIMETYPEGROUP_ACTION
+Toiminto:
+; Action:
+;
+MSG_MIMETYPEGROUP_VIEWER
+Katselin:
+; Viewer:
+;
+;
+; MimetypeList
+;
+;
+MSG_MIMETYPELIST_EXTERNAL_VIEWER
+Ulkoinen katselin
+; External viewer
+;
+MSG_MIMETYPELIST_INTERNAL_VIEWER
+Sis‰inen katselin
+; Internal viewer
+;
+MSG_MIMETYPELIST_SAVE_TO_DISK
+Tallenna levylle
+; Save to disk
+;
+MSG_MIMETYPELIST_ASK
+Kysy
+; Ask
+;
+MSG_MIMETYPELIST_STREAM
+Jono
+; Stream
+;
+MSG_MIMETYPELIST_PIPE
+Putki
+; Pipe
+;
+MSG_MIMETYPELIST_IGNORE
+J‰t‰ huomiotta
+; Ignore
+;
+MSG_MIMETYPELIST_PLUGIN
+Lis‰osa
+; Plugin
+;
+MSG_MIMETYPELIST_MIMETYPE
+MIME-tyyppi
+; MIME Type
+;
+MSG_MIMETYPELIST_EXTENSION
+Tarkennin
+; Extension
+;
+MSG_MIMETYPELIST_ACTION
+Toiminto
+; Action
+;
+MSG_MIMETYPELIST_VIEWER
+Katselin
+; Viewer
+;
+;
+; NavigationGroup
+;
+;
+MSG_NAVIGATIONGROUP_BACK
+Takaisin
+; Back
+;
+MSG_NAVIGATIONGROUP_FORWARD
+Eteenp‰in
+; Forward
+;
+MSG_NAVIGATIONGROUP_RELOAD
+Hae uudelleen
+; Reload
+;
+MSG_NAVIGATIONGROUP_STOP
+Seis
+; Stop
+;
+MSG_NAVIGATIONGROUP_HOME
+Koti
+; Home
+;
+MSG_NAVIGATIONGROUP_INSPECT
+Inspect
+; Inspect
+;
+;
+; NetworkWindow
+;
+;
+MSG_NETWORKWINDOW_TITLE
+Verkkoliikenne
+; Network Activity
+;
+MSG_NETWORKWINDOW_URL
+URL
+; URL
+;
+MSG_NETWORKWINDOW_STATE
+Tila
+; State
+;
+MSG_NETWORKWINDOW_ABORT
+_Keskeyt‰
+; A_bort
+;
+MSG_NETWORKWINDOW_ABORT_ALL
+Keskeyt‰ k_aikki
+; _Abort All
+MSG_NETWORKWINDOW_STATUS_RECEIVING_DATA
+%s / %s luettu
+; %s of %s read
+MSG_NETWORKWINDOW_STATUS_SENDING_DATA
+%s / %s l‰hetetty
+; %s of %s read
+MSG_NETWORKWINDOW_STATUS_WAITING_FOR_DATA
+Odottaa dataa
+; Waiting for data
+MSG_NETWORKWINDOW_STATUS_CONNECTING
+Yhdist‰‰
+; Connecting
+;
+;
+; OWBWindow
+;
+;
+MSG_OWBWINDOW_PENDING_DOWNLOADS
+Joitakin tiedostoja ladataan yh‰.\nHaluatko varmasti lopettaa?
+; Some files are currently being downloaded.\nDo you really want to quit?
+;
+MSG_OWBWINDOW_QUIT_CONFIRMATION
+Haluatko varmasti lopettaa?
+; Do you really want to quit?
+;
+MSG_OWBWINDOW_CLOSE_ALL_PAGES_CONFIRMATION
+Haluatko sulkea kaikki v‰lilehdet?
+; Do you want to close all tabs?
+;
+MSG_OWBWINDOW_OPEN_FILE
+Avaa tiedosto...
+; Open File...
+;
+MSG_OWBWINDOW_SAVE_AS
+Tallenna nimell‰...
+; Save As...
+;
+MSG_OWBWINDOW_READ_PROGRESS
+%s / %s luettu
+; %s of %s read
+;
+MSG_OWBWINDOW_STATE_READY
+Valmis
+; Ready
+;
+MSG_OWBWINDOW_STATE_RECEIVING_DATA
+Vastaanotetaan dataa...
+; Receiving data...
+;
+MSG_OWBWINDOW_STATE_SENDING_REQUEST
+L‰hetet‰‰n pyyntˆ‰...
+; Sending request...
+;
+MSG_OWBWINDOW_STATE_ERROR
+Virhe
+; Error
+;
+MSG_OWBWINDOW_CHOOSE_TITLE
+Valitse otsikko
+; Choose a title
+;
+MSG_OWBWINDOW_JAVASCRIPT_PROMPT
+OWB JavaScript -pyyntˆ
+; JavaScript Prompt
+;
+MSG_OWBWINDOW_JAVASCRIPT_OK
+_Ok
+; _Ok
+;
+MSG_OWBWINDOW_JAVASCRIPT_CANCEL
+_Peruuta
+; _Cancel
+;
+MSG_OWBWINDOW_RUNNING_USERSCRIPTS
+\033bRunning userscripts:\033n\n\n
+; \033bRunning userscripts:\033n\n\n
+;
+;
+; PasswordManagerGroup
+;
+;
+MSG_PASSWORDMANAGERGROUP_REMOVE
+_Poista
+; _Remove
+;
+MSG_PASSWORDMANAGERGROUP_REMOVE_ALL
+Poista _kaikki
+; Remove _All
+;
+;
+; PasswordManagerList
+;
+;
+MSG_PASSWORDMANAGERLIST_HOST
+Kone
+; Host
+;
+MSG_PASSWORDMANAGERLIST_REALM
+Piiri
+; Realm
+;
+MSG_PASSWORDMANAGERLIST_USERNAME
+K‰ytt‰j‰tunnus
+; Username
+;
+MSG_PASSWORDMANAGERLIST_PASSWORD
+Salasana
+; Password
+;
+MSG_PASSWORDMANAGERLIST_FORM
+Lomake
+; Form
+MSG_PASSWORDMANAGERLIST_FILTER
+Suodatin
+; Filter
+MSG_PASSWORDMANAGERLIST_FILTER_REMEMBER
+Muista
+; Remember
+MSG_PASSWORDMANAGERLIST_FILTER_IGNORE
+J‰t‰ huomioimatta
+; Ignore
+;
+;
+; PasswordManagerWindow
+;
+;
+MSG_PASSWORDMANAGERWINDOW_TITLE
+Salasanat
+; Passwords
+MSG_BLOCKMANAGERWINDOW_TITLE
+Sis‰llˆnsuodatus
+; Content Blocking
+MSG_BLOCKMANAGERLIST_DENY
+Kiell‰
+; Deny
+MSG_BLOCKMANAGERLIST_ALLOW
+Salli
+; Allow
+MSG_BLOCKMANAGERLIST_TYPE
+Suodattimen tyyppi
+; Filter Type
+MSG_BLOCKMANAGERLIST_RULE
+S‰‰ntˆ
+; Rule
+MSG_BLOCKMANAGERGROUP_REMOVE
+_Poista
+; _Remove
+MSG_BLOCKMANAGERGROUP_ADD
+_Lis‰‰
+; _Add
+MSG_BLOCKMANAGERGROUP_TYPE
+Suodattimen tyyppi:
+; Filter Type:
+MSG_BLOCKMANAGERGROUP_RULE
+S‰‰ntˆ:
+; Rule:
+MSG_BLOCKMANAGERGROUP_DENY
+Kiell‰
+; Deny
+MSG_BLOCKMANAGERGROUP_ALLOW
+Salli
+; Allow
+MSG_SEARCHMANAGERWINDOW_TITLE
+Hakukoneet
+; Search Engines
+MSG_SEARCHMANAGERGROUP_ADD
+_Lis‰‰
+; _Add
+MSG_SEARCHMANAGERGROUP_REMOVE
+_Poista
+; _Remove
+MSG_SEARCHMANAGERGROUP_TITLE
+Otsikko:
+; Title:
+MSG_SEARCHMANAGERGROUP_LINK
+Linkki:
+; Link:
+MSG_SEARCHMANAGERGROUP_SHORTCUT
+Hakuoikopolku:
+; Shortcut:
+MSG_SEARCHMANAGERLIST_TITLE
+Otsikko
+; Title
+MSG_SEARCHMANAGERLIST_LINK
+Linkki
+; Link
+MSG_SEARCHMANAGERLIST_SHORTCUT
+Hakuoikopolku
+; Shortcut
+MSG_SCRIPTMANAGERWINDOW_TITLE
+Komentojonot
+; Scripts
+MSG_SCRIPTMANAGERGROUP_SCRIPT_SELECT
+Valitse k‰ytt‰j‰n komentojono...
+; Select User Script...
+MSG_SCRIPTMANAGERGROUP_SCRIPT_ADD
+_Lis‰‰
+; _Add
+MSG_SCRIPTMANAGERGROUP_SCRIPT_REMOVE
+_Poista
+; _Remove
+MSG_SCRIPTMANAGERGROUP_SCRIPT_ENABLE
+_Aktivoi
+; _Enable
+MSG_SCRIPTMANAGERGROUP_SCRIPT_PATH
+Polku:
+; Path:
+MSG_SCRIPTMANAGERGROUP_SCRIPT_NAME
+Nimi:
+; Name:
+MSG_SCRIPTMANAGERGROUP_SCRIPT_DESCRIPTION
+Kuvaus:
+; Description:
+MSG_SCRIPTMANAGERGROUP_WHITELIST
+Sallitut sivustot
+; Allowed Sites
+MSG_SCRIPTMANAGERGROUP_BLACKLIST
+Kielletyt sivustot
+; Forbidden Sites
+MSG_SCRIPTMANAGERGROUP_WHITELIST_ADD
+Lis‰‰
+; Add
+MSG_SCRIPTMANAGERGROUP_WHITELIST_REMOVE
+Poista
+; Remove
+MSG_SCRIPTMANAGERGROUP_BLACKLIST_ADD
+Lis‰‰
+; Add
+MSG_SCRIPTMANAGERGROUP_BLACKLIST_REMOVE
+Poista
+; Remove
+;
+;
+; URLPrefsWindow
+;
+;
+MSG_URLPREFSWINDOW_TITLE
+URL-Asetukset
+; URL Preferences
+;
+;
+; URLPrefsGroup
+;
+;
+MSG_URLPREFSGROUP_ADD
+_Lis‰‰
+; _Add
+;
+MSG_URLPREFSGROUP_REMOVE
+_Poista
+; _Remove
+;
+MSG_URLPREFSGROUP_JAVASCRIPT
+_JavaScript -tuki
+; _JavaScript support
+;
+MSG_URLPREFSGROUP_LOAD_IMAGES
+Lataa _kuvat automaattisesti
+; Load _images automatically
+;
+MSG_URLPREFSGROUP_PLUGINS
+Lis‰_osat
+; _Plugins
+;
+MSG_URLPREFSGROUP_SPOOF
+_Tekeydy:
+; _Spoof As:
+;
+MSG_URLPREFSGROUP_COOKIE_POLICY
+Ev‰stepolitiikka:
+; Cookie Policy:
+;
+MSG_URLPREFSGROUP_COOKIE_FILTER
+Ev‰steen nimen suodatin:
+; Cookie Name Filter:
+;
+;
+; PrinterWindow
+;
+;
+MSG_PRINTERWINDOW_TITLE
+Tulosta...
+; Print...
+;
+MSG_PRINTERWINDOW_PRINT_MODE
+T_ila:
+; _Mode:
+;
+MSG_PRINTERWINDOW_PSLEVEL
+P_S -taso:
+; P_S Level:
+;
+MSG_PRINTERWINDOW_PREFERENCES
+T_ulostimen asetukset
+; P_rinter Preferences
+;
+MSG_PRINTERWINDOW_OUTPUT
+Ul_ostulo:
+; _Output:
+;
+MSG_PRINTERWINDOW_FIRST_PAGE
+_Ensimm‰inen sivu:
+; _First Page:
+;
+MSG_PRINTERWINDOW_LAST_PAGE
+_Viimeinen sivu:
+; _Last Page:
+;
+MSG_PRINTERWINDOW_SCALE
+Skaa_laus:
+; Sca_le:
+;
+MSG_PRINTERWINDOW_PRINT
+_Tulosta
+; _Print
+;
+MSG_PRINTERWINDOW_CANCEL
+_Peruuta
+; _Cancel
+;
+MSG_PRINTERWINDOW_STATUS
+Tulostetaan sivua %d/%d...
+; Printing page %d/%d...
+;
+MSG_PRINTERWINDOW_ERROR
+Ulostulolaitteen alustus ep‰onnistui.
+; Failed to initialize output device.
+;
+;
+; PrefsWindow
+;
+;
+MSG_PREFSWINDOW_TITLE
+Asetukset
+; Settings
+;
+MSG_PREFSWINDOW_CATEGORY_GENERAL
+Yleiset
+; General
+;
+MSG_PREFSWINDOW_CATEGORY_INTERFACE
+K‰yttˆliittym‰
+; Interface
+;
+MSG_PREFSWINDOW_CATEGORY_CONTEXTUAL_MENUS
+Tilannevalikot
+; Contextual Menus
+;
+MSG_PREFSWINDOW_CATEGORY_MIMETYPES
+MIME-tyypit
+; MIME Types
+;
+MSG_PREFSWINDOW_CATEGORY_CONTENT
+Sis‰ltˆ
+; Content
+;
+MSG_PREFSWINDOW_CATEGORY_FONTS
+Kirjasimet
+; Fonts
+;
+MSG_PREFSWINDOW_CATEGORY_DOWNLOADS
+Lataukset
+; Downloads
+;
+MSG_PREFSWINDOW_CATEGORY_NETWORK
+Verkko
+; Network
+;
+MSG_PREFSWINDOW_CATEGORY_PRIVACY
+Yksityisyys
+; Privacy
+;
+MSG_PREFSWINDOW_CATEGORY_SECURITY
+Tietoturva
+; Security
+MSG_PREFSWINDOW_CATEGORY_MEDIA
+Media
+; Media
+;
+MSG_PREFSWINDOW_CATEGORY_MISCELLANEOUS
+Sekalaiset
+; Miscellaneous
+;
+MSG_PREFSWINDOW_CACHE_DOCUMENT_VIEWER
+Asiakirjan‰ytin
+; Document Viewer
+;
+MSG_PREFSWINDOW_CACHE_DOCUMENT_BROWSER
+Asiakirjaselain
+; Document Browser
+;
+MSG_PREFSWINDOW_CACHE_PRIMARY_BROWSER
+P‰‰k‰yttˆinen WWW-selain
+; Primary Web Browser
+;
+MSG_PREFSWINDOW_SMOOTH_NORMAL
+Normaali
+; Normal
+;
+MSG_PREFSWINDOW_SMOOTH_ALTERNATIVE
+Vaihtoehtoinen
+; Alternative
+;
+MSG_PREFSWINDOW_NEWPAGE_NEWTAB
+Uusi v‰lilehti
+; New Tab
+;
+MSG_PREFSWINDOW_NEWPAGE_NEWWINDOW
+Uusi ikkuna
+; New Window
+;
+MSG_PREFSWINDOW_NEWPAGE_LAST
+Loppuun
+; At End
+;
+MSG_PREFSWINDOW_NEWPAGE_AFTERACTIVE
+Nykyisen j‰lkeen
+; After Current
+;
+MSG_PREFSWINDOW_QUICKLINK_BUTTON
+Painike
+; Button
+;
+MSG_PREFSWINDOW_QUICKLINK_LINK
+Linkki
+; Link
+;
+MSG_PREFSWINDOW_QUICKLINK_DYNAMIC
+Dynaaminen ruudukko
+; Dynamic Grid
+;
+MSG_PREFSWINDOW_QUICKLINK_FIXED
+Kiinte‰ ruudukko
+; Fixed Grid
+;
+MSG_PREFSWINDOW_QUICKLINK_BESTFIT
+Dynaaminen paras sovitus
+; Dynamic Best-Fit
+;
+MSG_PREFSWINDOW_NAVIGATION_ICON
+Kuvake
+; Icon
+;
+MSG_PREFSWINDOW_NAVIGATION_TEXT
+Teksti
+; Text
+;
+MSG_PREFSWINDOW_NAVIGATION_ICON_AND_TEXT
+Kuvake ja teksti
+; Icon and Text
+;
+MSG_PREFSWINDOW_COOKIE_ACCEPT
+Hyv‰ksy
+; Accept
+;
+MSG_PREFSWINDOW_COOKIE_REJECT
+Est‰
+; Reject
+;
+MSG_PREFSWINDOW_COOKIE_ASK
+Kysy
+; Ask
+;
+MSG_PREFSWINDOW_COMPLETION_NONE
+Ei mit‰‰n
+; None
+;
+MSG_PREFSWINDOW_COMPLETION_STRING
+Merkkijono
+; String
+;
+MSG_PREFSWINDOW_COMPLETION_POPUP
+Ponnahdusvalikko
+; Popup
+;
+MSG_PREFSWINDOW_COMPLETION_STRING_AND_POPUP
+Merkkijono ja ponnahdusvalikko
+; String and Popup
+;
+MSG_PREFSWINDOW_CLOSE_REQUESTER_ALWAYS
+Aina
+; Always
+;
+MSG_PREFSWINDOW_CLOSE_REQUESTER_NEVER
+Ei koskaan
+; Never
+;
+MSG_PREFSWINDOW_CLOSE_REQUESTER_IF_MORE_THAN_ONE
+Jos useampi kuin yksi selain
+; With Multiple Tabs
+;
+MSG_PREFSWINDOW_ERROR_REQUESTER
+Valintaikkuna
+; Requester Dialog
+;
+MSG_PREFSWINDOW_ERROR_HTML
+HTML -n‰yttˆ
+; HTML Display
+;
+MSG_PREFSWINDOW_ANIMATE_NEVER
+Ei koskaan
+; Never
+;
+MSG_PREFSWINDOW_ANIMATE_ALWAYS
+Aina
+; Always
+;
+MSG_PREFSWINDOW_ANIMATE_ACTIVE_WINDOW
+Vain aktiivinen ikkuna
+; Active Window Only
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR_NEW_TAB
+Uusi v‰lilehti
+; New Tab
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR_NEW_BACKGROUND_TAB
+Uusi taustav‰lilehti
+; New Background Tab
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR_NEW_WINDOW
+Uusi ikkuna
+; New Window
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_OFF
+Pois p‰‰lt‰
+; Disabled
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_ASK
+Kysy
+; Ask
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_ON
+Automaattisesti
+; Automatically
+;
+; General
+;
+MSG_PREFSWINDOW_GENERAL_HOME_PAGE
+K_otisivu:
+; _Home Page:
+;
+MSG_PREFSWINDOW_GENERAL_START_PAGE
+_Aloitussivu:
+; S_tart Page:
+;
+MSG_PREFSWINDOW_GENERAL_NEW_PAGE
+_New Page:
+; _New Page:
+;
+MSG_PREFSWINDOW_GENERAL_OUTPUT_WINDOW
+_Vasteikkuna:
+; _Output Window:
+;
+; Interface
+;
+MSG_PREFSWINDOW_INTERFACE_GENERAL
+Yleiset
+; General
+;
+MSG_PREFSWINDOW_INTERFACE_NEW_PAGE_POLICY
+_Uuden sivun avaus:
+; _New Page Policy:
+;
+MSG_PREFSWINDOW_INTERFACE_NEW_PAGE_POSITION
+V‰lilehden avautumiskohta:
+; Tab Opening Position:
+;
+MSG_PREFSWINDOW_INTERFACE_POPUP_POLICY
+Ponnahdusikkunapolitiikka:
+; Popup Policy:
+;
+MSG_PREFSWINDOW_INTERFACE_NAVIGATION_BUTTON_TYPE
+_Navigointipainikkeiden tyyppi:
+; Navigation _Button Type:
+;
+MSG_PREFSWINDOW_INTERFACE_COMPLETION_MODE
+UR_L-t‰ydennys -tila:
+; URL Com_pletion Mode:
+;
+MSG_PREFSWINDOW_INTERFACE_CLOSE_REQUESTER
+N‰yt‰ _sulje -ikkuna:
+; Con_firm Closing:
+;
+MSG_PREFSWINDOW_INTERFACE_ERROR_REPORTING
+Virheen _raportointi:
+; Error _Reporting:
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR
+K_eskinapin k‰ytt‰ytyminen:
+; Middle Button Be_haviour:
+MSG_PREFSWINDOW_INTERFACE_SHOW_BUTTON_FRAME
+N‰yt‰ painikkei_den kehykset
+; Sho_w buttons frames
+;
+MSG_PREFSWINDOW_INTERFACE_CONTEXTUAL_POINTERS
+Ota k‰yttˆˆn tilannekohtaiset _osoittimet
+; Use contextual _mouse pointers
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_SEARCH_BAR
+N‰yt‰ _hakupalkki
+; Show s_earch bar
+MSG_PREFSWINDOW_INTERFACE_SHOW_VALIDATION_BUTTONS
+N‰yt‰ mene -painikkeet
+; Show _validation buttons
+MSG_PREFSWINDOW_INTERFACE_SHOW_SEPARATORS
+N‰yt‰ r_yhmien erottimet
+; Show _group separators
+;
+MSG_PREFSWINDOW_INTERFACE_FAVICONS
+Sivustokuvakkeet
+; Website Icons
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_TABS
+V‰lilehdet
+; T_abs
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_BOOKMARKS
+Kirjanmerkit
+; B_ookmarks
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_HISTORY
+Historia
+; H_istory
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_BOOKMARK_PANEL
+Kirjanmerkkipaneeli
+; Boo_kmarks panel
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_HISTORY_PANEL
+Historiapaneeli
+; History pane_l
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_QUICKLINKS
+Pikalinkit
+; Quick links
+;
+MSG_PREFSWINDOW_INTERFACE_TAB_TRANSFERANIM
+N‰yt‰ _v‰lilehtien siirtoanimaatio
+; Show _tab transfer animation
+;
+MSG_PREFSWINDOW_INTERFACE_QUICK_LINKS
+Pikalinkit
+; Quick Links
+;
+MSG_PREFSWINDOW_INTERFACE_QUICK_LINK_LOOK
+P_ikalinkkien ulkon‰kˆ:
+; Look:
+;
+MSG_PREFSWINDOW_INTERFACE_QUICK_LINK_LAYOUT
+Pikalinkkien _muotoilu:
+; La_yout:
+;
+MSG_PREFSWINDOW_INTERFACE_MAXIMUM_ROWS
+Suurin s_allittu rivien m‰‰r‰:
+; Ma_ximum Rows:
+;
+; Content
+;
+MSG_PREFSWINDOW_CONTENT_CACHE_MODEL
+V‰limuisti_malli:
+; Cache _Model:
+;
+MSG_PREFSWINDOW_CONTENT_PAGE_CACHE
+K‰_yt‰ sivuv‰limuistia
+; Page cac_he
+;
+MSG_PREFSWINDOW_CONTENT_JAVASCRIPT
+K‰yt‰ _JavaScriptia
+; _JavaScript support
+;
+MSG_PREFSWINDOW_CONTENT_ALLOW_NEW_WINDOW
+Salli JavaScriptin aukaista uusia _ikkunoita
+; Allow JavaScript to open new _windows
+;
+MSG_PREFSWINDOW_CONTENT_PLAY_ANIMATIONS
+Toista _animaatiot
+; Play _animations
+;
+MSG_PREFSWINDOW_CONTENT_LOAD_IMAGES
+Lataa k_uvat automaattisesti
+; Load _images automatically
+;
+MSG_PREFSWINDOW_CONTENT_PRINT_BACKGROUNDS
+Tu_losta taustakuvat
+; _Print backgrounds
+;
+MSG_PREFSWINDOW_CONTENT_BLOCKING
+K‰yt‰ sis‰llˆn _suodatusta (AdBlock)
+; Content _blocking (AdBlock)
+MSG_PREFSWINDOW_CONTENT_PLUGINS
+Salli lis‰_osat
+; Allow plu_gins
+MSG_PREFSWINDOW_CONTENT_INSPECTOR
+W_ebInspector
+; W_ebInspector
+;
+; Fonts
+;
+MSG_PREFSWINDOW_FONTS_DEFAULT_SIZE
+Kirjasimen oletuskoko:
+; Default Font Size:
+;
+MSG_PREFSWINDOW_FONTS_DEFAULT_MONOSPACED_SIZE
+Kiinte‰v‰lisen kirjasimen oletuskoko:
+; Default Monospaced Font Size:
+;
+MSG_PREFSWINDOW_FONTS_MINIMUM_SIZE
+Pienin kirjasimen koko:
+; Minimum Font Size:
+;
+MSG_PREFSWINDOW_FONTS_MINIMUM_LOGICAL_SIZE
+Pienin looginen kirjasimen koko:
+; Minimum Logical Font Size:
+;
+MSG_PREFSWINDOW_FONTS_SMOOTHING_METHOD
+Reunojen pehmennysmenetelm‰:
+; Antialiasing Method:
+;
+MSG_PREFSWINDOW_FONTS_ENCODING
+Merkistˆn koodaus:
+; Text Encoding:
+;
+MSG_PREFSWINDOW_FONTS_STANDARD_FAMILY
+Standardi kirjasinperhe:
+; Standard Font Family:
+;
+MSG_PREFSWINDOW_FONTS_MONOSPACED_FAMILY
+Kiinte‰v‰linen kirjasinperhe:
+; Monospaced Font Family:
+;
+MSG_PREFSWINDOW_FONTS_SERIF_FAMILY
+P‰‰tteellinen kirjasinperhe:
+; Serif Font Family:
+;
+MSG_PREFSWINDOW_FONTS_SANS_SERIF_FAMILY
+P‰‰tteetˆn kirjasinperhe:
+; Sans Serif Font Family:
+;
+MSG_PREFSWINDOW_FONTS_CURSIVE_FAMILY
+Kursiivi kirjasinperhe:
+; Cursive Font Family:
+;
+MSG_PREFSWINDOW_FONTS_FANTASY_FAMILY
+Fantasia kirjasinperhe:
+; Fantasy Font Family:
+;
+; Downloads
+;
+MSG_PREFSWINDOW_DOWNLOADS_PATH
+_Latauspolku:
+; _Download Path:
+;
+MSG_PREFSWINDOW_DOWNLOADS_AUTOCLOSE
+Sulje lataus_ikkuna kun lataus valmistuu
+; Close "Downloads" _window when finished
+;
+MSG_PREFSWINDOW_DOWNLOADS_SAVEDOWNLOADS
+_Muista ladatatut tiedostot
+; _Remember downloaded files
+;
+MSG_PREFSWINDOW_DOWNLOADS_START_AUTOMATICALLY
+Start downloads _automatically
+; Start downloads _automatically
+;
+; Network
+;
+MSG_PREFSWINDOW_NETWORK_SPOOF
+T_ekeydy:
+; S_poof As:
+;
+MSG_PREFSWINDOW_NETWORK_EXPERIMENTAL_COOKIES
+K‰_yt‰ kokeellista ev‰stej‰rjestelm‰‰ (uudelleenk‰ynnistys vaaditaan)
+; E_xperimental cookie system (restart required)
+;
+MSG_PREFSWINDOW_NETWORK_THREAD
+K‰yt‰ _verkkos‰ikeit‰ (uudelleenk‰ynnistys vaaditaan)
+; Network _thread (restart required)
+;
+MSG_PREFSWINDOW_NETWORK_ACTIVE_CONNECTIONS
+Yht‰_aikaisten yhteyksien m‰‰r‰:
+; _Active Connections:
+MSG_PREFSWINDOW_NETWORK_PROXY
+Proxy
+; Proxy
+MSG_PREFSWINDOW_NETWORK_PROXY_PASSWORD
+Salasana:
+; Password:
+MSG_PREFSWINDOW_NETWORK_PROXY_USERNAME
+K‰ytt‰j‰tunnus:
+; Username:
+MSG_PREFSWINDOW_NETWORK_PROXY_PORT
+Portti:
+; Port:
+MSG_PREFSWINDOW_NETWORK_PROXY_HOST
+Kone:
+; Host:
+MSG_PREFSWINDOW_NETWORK_PROXY_TYPE
+Tyyppi:
+; Type:
+MSG_PREFSWINDOW_NETWORK_PROXY_USE
+K‰yt‰ v‰lityspalvelinta
+; Use proxy
+;
+; Privacy
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_SESSION
+Tallenna _istunto
+; Save s_ession
+;
+MSG_PREFSWINDOW_PRIVACY_DELETE_SESSION_AT_EXIT
+P_oista istunto lopetettaessa
+; _Delete session at exit
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_REQUESTER
+K_ysy istunnon palauttamisesta k‰ynnistyksess‰
+; _Ask for session restoration at startup
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_MODE
+I_stunnon palauttaminen:
+; Session _Restoration:
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_COOKIES
+Tallenna _ev‰steet
+; Save c_ookies
+;
+MSG_PREFSWINDOW_PRIVACY_COOKIES_POLICY
+Ev‰stepolitiikka:
+; Cookie Policy:
+;
+MSG_PREFSWINDOW_PRIVACY_ENABLE_LOCAL_STORAGE
+K‰yt‰ local stora_gea
+; Enable local stora_ge
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_FORM_CREDENTIALS
+Tallenna _lomakevaltuutukset
+; Save _form credentials
+;
+MSG_PREFSWINDOW_PRIVACY_ENABLE_FORM_AUTOFILL
+Sall_i lomakkeiden automaattit‰yttˆ
+; Enable form autof_ill
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_HISTORY
+Tallenna _historia
+; Save _history
+;
+MSG_PREFSWINDOW_PRIVACY_HISTORY_ENTRIES
+Historia -kohteet:
+; History Entries:
+;
+MSG_PREFSWINDOW_PRIVACY_HISTORY_AGE
+Historian ik‰ p‰iviss‰:
+; History Age in Days:
+;
+; Security
+;
+MSG_PREFSWINDOW_SECURITY_IGNORE_SSL_ERRORS
+_J‰t‰ SSL-virheet huomioimatta
+; _Ignore SSL errors
+;
+MSG_PREFSWINDOW_SECURITY_CERTIFICATE_PATH
+_Varmennepolku:
+; Certificate _Path:
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_NONE
+K‰sittele kaikki kehykset
+; Process All Frames
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_NONREF
+Ohita kaikki paitsi referenssikehykset
+; Only Process Reference Frames
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_NONKEY
+Ohita kaikki paitsi avainkehykset
+; Only Process Key Frames
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_ALL
+Ohita kaikki kehykset
+; Skip All Frames
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_MODE
+_Rengassuodattimen tila (H264):
+; H.264 _Loopfilter Mode:
+MSG_PREFSWINDOW_MEDIA_ENABLE_PARTIAL_CONTENT
+_Nopea hakeminen
+; _Fast seeking
+MSG_PREFSWINDOW_MEDIA_USE_WEBM
+_WebM (VP8) -koodektuki
+; _WebM (VP8) codec support
+MSG_PREFSWINDOW_MEDIA_USE_FLV
+FL_V (H.263/H.264) -koodektuki
+; FL_V (H.263/H.264) support
+MSG_PREFSWINDOW_MEDIA_USE_OGG
+_Ogg (Theora/Vorbis) -koodektuki
+; _Ogg (Theora/Vorbis) support
+;
+; Prefs validation
+;
+MSG_PREFSWINDOW_SAVE
+_Tallenna
+; _Save
+;
+MSG_PREFSWINDOW_USE
+_K‰yt‰
+; _Use
+;
+MSG_PREFSWINDOW_CANCEL
+_Peruuta
+; _Cancel
+;
+;
+; QuickLinkButtonGroup
+;
+;
+MSG_QUICKLINKBUTTONGROUP_NO_NAME
+(Nimetˆn)
+; (No name)
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN
+\033bAvaa
+; \033bOpen
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN_NEW_TAB
+Avaa uuteen v‰lilehteen
+; Open in New Tab
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN_NEW_WINDOW
+Avaa uuteen ikkunaan...
+; Open in New Window...
+;
+MSG_QUICKLINKBUTTONGROUP_REMOVE
+Poista
+; Remove
+MSG_QUICKLINKBUTTONGROUP_OPEN_ALL
+Avaa kaikki kirjanmerkit
+; Open All Bookmarks
+;
+;
+; SplashWindow
+;
+;
+MSG_SPLASHWINDOW_INITIALIZING
+Alustetaan kirjasimia...
+; Initializing Fonts...
+;
+MSG_TITLELABEL_BROWSER
+Selain
+; Browser
+;
+MSG_SPLASHWINDOW_LOADING
+Ladataan...
+; Loading...
+;
+MSG_TITLELABEL_NEW_TAB
+Uusi v‰lilehti
+; New Tab
+;
+MSG_TITLELABEL_RELOAD
+Hae uudelleen
+; Reload
+;
+MSG_TITLELABEL_RELOAD_ALL_TABS
+Hae kaikki v‰lilehdet uudelleen
+; Reload All Tabs
+;
+MSG_TITLELABEL_CLOSE
+Sulje
+; Close
+;
+MSG_TITLELABEL_CLOSE_ALL_OTHER_TABS
+Sulje kaikki muut v‰lilehdet
+; Close All Other Tabs
+;
+;
+; ToolButton_AddBookmark
+;
+;
+MSG_TOOLBUTTON_ADDBOOKMARK_ADD
+Lis‰‰
+; Add
+;
+MSG_TOOLBUTTON_ADDBOOKMARK_NO_TITLE
+(Ei otsikkoa)
+; (No Title)
+;
+;
+; ToolButton_NewTab
+;
+;
+MSG_TOOLBUTTON_NEWTAB_LABEL
+Uusi v‰lilehti
+; New Tab
+;
+;
+; Utils
+;
+;
+MSG_CAPACITY_BYTE
+t
+; B
+;
+MSG_CAPACITY_KILOBYTE
+kt
+; kB
+;
+MSG_CAPACITY_MEGABYTE
+Mt
+; MB
+;
+MSG_CAPACITY_GIGABYTE
+Gt
+; GB
+;
+MSG_CAPACITY_TERABYTE
+Tt
+; TB
+MSG_PROGRESS_DAY
+%lu p‰iv‰
+; %lu day
+MSG_PROGRESS_DAYS
+%lu p‰iv‰‰
+; %lu days
+MSG_PROGRESS_HOUR
+%lu tunti
+; %lu hour
+MSG_PROGRESS_HOURS
+%lu tuntia
+; %lu hours
+MSG_PROGRESS_MINUTE
+%lu minuutti
+; %lu minute
+MSG_PROGRESS_MINUTES
+%lu minuuttia
+; %lu minutes
+MSG_PROGRESS_SECOND
+%lu sekunti
+; %lu second
+MSG_PROGRESS_SECONDS
+%lu sekuntia
+; %lu seconds
+MSG_WEBVIEW_UPLOAD_FILES
+L‰het‰ tiedostoja...
+; Upload Files...
+MSG_WEBVIEW_UPLOAD_FILE
+L‰het‰ tiedosto...
+; Upload File...
+MSG_WEBVIEW_ERROR_MSG_HTML
+Virhe %d: %s.
+; Error %d: %s.
+MSG_WEBVIEW_ERROR_MSG
+Ei voitu avata '%s'.\nVirhe %d: %s.\n
+; Unable to open '%s'.\nError %d: %s.\n
+MSG_WEBVIEW_PROVISIONAL_TITLE
+(Nime‰m‰tˆn)
+; (Untitled)
+MSG_WEBVIEW_INTERRUPT_SCRIPT
+Haluatko keskeytt‰‰ t‰m‰nhetkisen komentotiedoston?
+; Do you want to interrupt processing of the current script?
+MSG_WEBVIEW_JSACTION_TITLE
+JavaScript -h‰lytys
+; Javascript Alert
+;
+;$Id: suomi.ct,v 1.5 2014/01/02 12:41:15 fab Exp $

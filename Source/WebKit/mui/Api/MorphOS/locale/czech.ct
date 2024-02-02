@@ -1,0 +1,2589 @@
+## version $VER: OWB.catalog 1.9 (06.08.11)
+## codeset 0
+## language èe¹tina
+;
+;
+;
+; Pulldown Menu
+;
+;
+MSG_MENU_PROJECT
+Projekt
+; Project
+;
+MSG_MENU_NEW_WINDOW
+Nové okno...
+; New Window...
+;
+MSG_MENU_NEW_TAB
+Nový panel
+; New Tab
+;
+MSG_MENU_OPEN_LOCAL_FILE
+Naèíst soubor...
+; Open File...
+;
+MSG_MENU_OPEN_URL
+Otevøít URL
+; Open URL
+;
+MSG_MENU_OPEN_SESSION
+Naèíst sezení...
+; Load Session...
+;
+MSG_MENU_SAVE_SESSION
+Ulo¾it sezení...
+; Save Session...
+;
+MSG_MENU_SAVE_AS_SOURCE
+Ulo¾it jako HTML...
+; Save as HTML...
+;
+MSG_MENU_SAVE_AS_PDF
+Ulo¾it jako PDF...
+; Save as PDF...
+;
+MSG_MENU_PRINT
+Print...
+; Print...
+;
+MSG_MENU_ABOUT
+O programu...
+; About...
+;
+MSG_MENU_CLOSE_TAB
+Zavøít panel
+; Close Tab
+;
+MSG_MENU_CLOSE_WINDOW
+Zavøít okno
+; Close Window
+;
+MSG_MENU_QUIT
+Ukonèit
+; Quit
+;
+MSG_MENU_EDIT
+Úpravy
+; Edit
+;
+MSG_MENU_CUT
+Vyjmout
+; Cut
+;
+MSG_MENU_COPY
+Kopírovat
+; Copy
+;
+MSG_MENU_COPY_LOCAL
+Kopírovat v kódové stránce systému
+; Copy with System Codepage
+;
+MSG_MENU_PASTE
+Vlo¾it
+; Paste
+;
+MSG_MENU_PASTE_TO_URL
+Vlo¾it jako adresu URL
+; Paste to URL
+;
+MSG_MENU_SELECT_ALL
+Vybrat v¹e
+; Select All
+;
+MSG_MENU_FIND
+Vyhledat
+; Find
+;
+MSG_MENU_VIEW
+Zobrazení
+; View
+;
+MSG_MENU_BACK
+Zpìt
+; Back
+;
+MSG_MENU_FORWARD
+Vpøed
+; Forward
+;
+MSG_MENU_HOME
+Znova naèíst
+; Home
+;
+MSG_MENU_STOP
+Zastavit
+; Stop
+;
+MSG_MENU_RELOAD
+Znova naèíst
+; Reload
+;
+MSG_MENU_ZOOM_IN
+Zvìt¹it stránku
+; Zoom In
+;
+MSG_MENU_ZOOM_OUT
+Zmen¹it stránku
+; Zoom Out
+;
+MSG_MENU_ZOOM_RESET
+Normální velikost stránky
+; Zoom Reset
+;
+MSG_MENU_FULLSCREEN
+Plná obrazovka
+; Fullscreen
+;
+MSG_MENU_SOURCE
+Zobrazit zdrojový kód...
+; Show Source Code...
+;
+MSG_MENU_PANELS
+Li¹ty
+; Sidepanels
+;
+MSG_MENU_NAVIGATION
+Navigaèní tlaèítka
+; Navigation
+;
+MSG_MENU_QUICKLINKS
+Rychlé odkazy
+; Quicklinks
+;
+MSG_MENU_LOCATION
+Adresa
+; Location
+;
+MSG_MENU_STATUS
+Stav
+; Status
+;
+MSG_MENU_BOOKMARK_PANEL
+Zálo¾ky
+; Bookmarks
+;
+MSG_MENU_HISTORY_PANEL
+Historie
+; History
+;
+MSG_MENU_NO_PANEL
+®ádná
+; Off
+;
+MSG_MENU_HISTORY
+Historie
+; History
+;
+MSG_MENU_HISTORY_CLOSEDVIEWS
+Poslední prohlí¾ené stránky
+; Recently Closed Browsers
+;
+MSG_MENU_BOOKMARKS
+Zálo¾ky
+; Bookmarks
+;
+MSG_MENU_ADD_BOOKMARK
+Pøidat zálo¾ku
+; Add Bookmark
+;
+MSG_MENU_MANAGE_BOOKMARKS
+Správce zálo¾ek...
+; Manage Bookmarks...
+;
+MSG_MENU_WINDOWS
+Okna
+; Windows
+;
+MSG_MENU_DOWNLOADS
+Stahování...
+; Downloads...
+;
+MSG_MENU_NETWORK
+Sí»ové aktivity...
+; Network Activity...
+;
+MSG_MENU_PASSWORDS
+Hesla...
+; Passwords...
+;
+MSG_MENU_COOKIES
+Cookies...
+; Cookies...
+;
+MSG_MENU_BLOCK
+Blokovaný obsah...
+; Content Blocking...
+;
+MSG_MENU_MESSAGES
+Hlá¹ení a zprávy...
+; Messages...
+;
+MSG_MENU_SEARCH_ENGINES
+Vyhledávací moduly...
+; Search Engines...
+;
+MSG_MENU_SCRIPT
+Skripty...
+; Scripts...
+;
+MSG_MENU_URLPREFS
+Nastavení URL...
+; URL Settings...
+;
+MSG_MENU_SETTINGS
+Nastavení
+; Settings
+;
+MSG_MENU_PRIVATE_BROWSING
+Soukromé prohlí¾ení
+; Private Browsing
+;
+MSG_MENU_ENABLE
+Zapnuto
+; Enable
+;
+MSG_MENU_DISABLE
+Vypnuto
+; Disable
+;
+MSG_MENU_DEFAULT
+Základní nastavení
+; Default Setting
+;
+MSG_MENU_ENABLE_JAVASCRIPT
+Podpora JavaScriptu
+; JavaScript Support
+;
+MSG_MENU_ENABLE_IMAGES
+Naèítání obrázkù
+; Image Loading
+;
+MSG_MENU_ENABLE_ANIMATIONS
+Pøehrávání animací
+; Play Animations
+;
+MSG_MENU_ENABLE_PLUGINS
+Zásuvné moduly
+; Plugins
+;
+MSG_MENU_SPOOF_AS
+Hlásit se jako
+; Spoof as
+;
+MSG_MENU_PREFERENCES
+Nastavení OWB...
+; Preferences...
+;
+MSG_MENU_MUI
+MUI...
+; MUI...
+;
+;
+; App
+;
+;
+MSG_REQUESTER_NORMAL_TITLE
+OWB
+; OWB
+;
+MSG_REQUESTER_ERROR_TITLE
+OWB chyba
+; OWB Error
+;
+MSG_REQUESTER_YES_NO
+*_Ano|_Ne
+; *_Yes|_No
+;
+MSG_REQUESTER_NO_YES
+_Ano|*_Ne
+; _Yes|*_No
+;
+MSG_REQUESTER_OK
+*_Ok
+; *_Ok
+;
+MSG_REQUESTER_YES_NO_NEVER
+*_Ano|_Ne|N_ikdy
+; *_Yes|_No|N_ever
+;
+MSG_REQUESTER_BOOKMARK_IMPORT_ERROR
+Neznámý formát zálo¾ky.\nPodporovány jsou pouze formáty OWB a IBrowse2.4.
+; Unknown bookmark format.\nOnly IBrowse 2.4 and OWB MorphOS formats are supported.
+;
+MSG_OWBAPP_DEFAULT_WINDOW_NAME
+Odyssey Web Browser okno
+; Odyssey Web Browser Window
+;
+MSG_OWBAPP_DEFAULT_PAGE_NAME
+Odyssey Web Browser stránka
+; Odyssey Web Browser Page
+;
+MSG_OWBAPP_SAVE_CREDENTIALS
+Chcete ulo¾it pøihla¹ovací data této stránky?\nU¾ivatelské jméno: %s
+; Do you want to save credentials for this page?\nUsername: %s
+;
+MSG_OWBAPP_MIMETYPE_REQUEST_ACTION
+Specifikujte akci pøiøazenou k tomuto souboru:\n'\x00x1Bb%s\x00x1Bn' (MIME Typ: \x00x1Bb%s\x00x1Bn)
+; Specify the action to perform for file:\n'\033b%s\033n' (MIME Type: \033b%s\033n)
+;
+MSG_OWBAPP_MIMETYPE_ACTIONS
+*Z_obrazit v oknì|Otevøít v _externím programu|_Stáhnout soubor|_Zru¹it
+; *_Display in Window|Open with _External Program|Download _File|_Cancel
+;
+MSG_OWBAPP_MIMETYPE_ACTIONS_FALLBACK
+*Z_obrazit v oknì|_Stáhnout soubor|_Zru¹it
+; *_Display in Window|Download _File|_Cancel
+;
+MSG_OWBAPP_OPEN_SESSION
+Naèíst soubor sezení...
+; Load Session File...
+;
+MSG_OWBAPP_SAVE_SESSION
+Ulo¾it soubor sezení jako...
+; Save Session File As...
+;
+MSG_OWBAPP_RESTORE_SESSION_CHOICES
+*_Obnovit sezení|_Spustit nové sezení
+; *_Restore Session|_Start New Session
+;
+MSG_OWBAPP_RESTORE_SESSION
+Bylo nalezeno pøedchozí sezení.
+; A previous session has been found.
+;
+;
+;
+; AddressBarGroup
+;
+;
+MSG_ADDRESSBARGROUP_URL
+URL:
+; URL:
+;
+;
+; BCContextMenuMorphOS
+;
+;
+MSG_CONTEXTMENU_TITLE
+Menu
+; Menu
+;
+;
+; BCLocalizedStrings (these ones need to be encoded in UTF8)
+;
+;
+MSG_LOCALIZED_SUBMIT
+NabÃ­dka
+; Submit
+;
+MSG_LOCALIZED_RESET
+Resetovat
+; Reset
+;
+MSG_LOCALIZED_SEARCHABLE_INDEX
+ProhledÃ¡vacÃ­ index
+; Searchable Index
+;
+MSG_LOCALIZED_CHOOSE_FILE
+Zvolte soubor...
+; Select File...
+;
+MSG_LOCALIZED_NO_FILE
+(nic)
+; (None)
+;
+MSG_LOCALIZED_DETAILS
+Detaily
+; Details
+;
+MSG_LOCALIZED_OPEN_IN_NEW_WINDOW
+OtevÃ¸Ã­t odkaz v novÃ©m oknÃ¬...
+; Open Link in New Window...
+;
+MSG_LOCALIZED_OPEN_IN_NEW_TAB
+OtevÃ¸Ã­t odkaz v novÃ©m panelu
+; Open Link in New Tab
+;
+MSG_LOCALIZED_OPEN_IN_NEW_BACKGROUND_TAB
+OtevÃ¸Ã­t odkaz v novÃ©m panelu na pozadÃ­
+; Open Link in New Background Tab
+;
+MSG_LOCALIZED_DOWNLOAD_LINK
+StÃ¡hnout odkazovanÃ½ soubor...
+; Download Linked File...
+;
+MSG_LOCALIZED_COPY_LINK_LOCATION
+KopÃ­rovat adresu odkazu
+; Copy Link Location
+;
+MSG_LOCALIZED_OPEN_IMAGE_IN_NEW_WINDOW
+OtevÃ¸Ã­t obrÃ¡zek v novÃ©m oknÃ¬...
+; Open Image in New Window...
+;
+MSG_LOCALIZED_OPEN_IMAGE_IN_NEW_TAB
+OtevÃ¸Ã­t obrÃ¡zek v novÃ©m panelu
+; Open Image in New Tab
+;
+MSG_LOCALIZED_SAVE_IMAGE_AS
+UloÂ¾it obrÃ¡zek jako...
+; Save Image As...
+;
+MSG_LOCALIZED_COPY_IMAGE
+KopÃ­rovat obrÃ¡zek...
+; Copy Image...
+;
+MSG_LOCALIZED_COPY_IMAGE_URL
+Copy Image Location...
+; Copy Image Location...
+;
+MSG_LOCALIZED_BLOCK_IMAGES
+Blokovat obrÃ¡zky z %s
+; Block Images from %s
+;
+MSG_LOCALIZED_OPEN_FRAME_IN_NEW_WINDOW
+OtevÃ¸Ã­t rÃ¡mec v novÃ©m oknÃ¬...
+; Open Frame in New Window...
+;
+MSG_LOCALIZED_OPEN_FRAME_IN_NEW_TAB
+OtevÃ¸Ã­t rÃ¡mec v novÃ©m panelu
+; Open Frame in New Tab
+;
+MSG_LOCALIZED_COPY
+KopÃ­rovat
+; Copy
+;
+MSG_LOCALIZED_DELETE
+Smazat
+; Delete
+;
+MSG_LOCALIZED_SELECT_ALL
+Vybrat vÂ¹e
+; Select All
+;
+MSG_LOCALIZED_INSERT_UNICODE
+VloÂ¾it znak (unicode)
+; Insert Unicode Control Character
+;
+MSG_LOCALIZED_INPUT_METHODS
+VstupnÃ­ metody
+; Input Methods
+;
+MSG_LOCALIZED_BACK
+ZpÃ¬t
+; Back
+;
+MSG_LOCALIZED_FORWARD
+VpÃ¸ed
+; Forward
+;
+MSG_LOCALIZED_STOP
+Zastavit
+; Stop
+;
+MSG_LOCALIZED_RELOAD
+Znova naÃ¨Ã­st
+; Reload
+;
+MSG_LOCALIZED_CUT
+Vyjmout
+; Cut
+;
+MSG_LOCALIZED_PASTE
+VloÂ¾it
+; Paste
+;
+MSG_LOCALIZED_NO_GUESSES
+Nenalezena Â¾Ã¡dnÃ¡ moÂ¾nost
+; No Guesses Found
+;
+MSG_LOCALIZED_IGNORE_SPELLING
+Ignorovat pravopis
+; Ignore Spelling
+;
+MSG_LOCALIZED_LEARN_SPELLING
+UÃ¨it se slova
+; Learn Spelling
+;
+MSG_LOCALIZED_SEARCH
+Vyhledat na webu
+; Search the Web
+;
+MSG_LOCALIZED_LOOKUP_IN_DICTIONARY
+Vyhledat ve slovnÃ­ku
+; Look Up in Dictionary
+;
+MSG_LOCALIZED_OPEN_LINK
+OtevÃ¸Ã­t odkaz
+; Open Link
+;
+MSG_LOCALIZED_IGNORE_GRAMMAR
+Ignorovat gramatiku
+; Ignore Grammar
+;
+MSG_LOCALIZED_SPELLING_AND_GRAMMAR
+SlovnÃ­k a gramatika
+; Spelling and Grammar
+;
+MSG_LOCALIZED_SHOW_SPELLING_AND_GRAMMAR
+Zobrazit slovnÃ­k a gramatiku
+; Show Spelling and Grammar
+;
+MSG_LOCALIZED_HIDE_SPELLING_AND_GRAMMAR
+SkrÃ½t slovnÃ­k a gramatiku
+; Hide Spelling and Grammar
+;
+MSG_LOCALIZED_CHECK_DOCUMENT
+Zontrolovat dokument
+; Check Document Now
+;
+MSG_LOCALIZED_CHECK_SPELLING_WHILE_TYPING
+Kontrolovat slovnÃ­k bÃ¬hem psanÃ­
+; Check Spelling While Typing
+;
+MSG_LOCALIZED_CHECK_GRAMMAR_WITH_SPELLING
+Kontrolovat gramatiku bÃ¬hem psanÃ­
+; Check Grammar With Spelling
+;
+MSG_LOCALIZED_DICTIONARIES
+Výbìr jazyka
+; Choose Language
+;
+MSG_LOCALIZED_FONT
+PÃ­smo
+; Font
+;
+MSG_LOCALIZED_BOLD
+TuÃ¨nÃ©
+; Bold
+;
+MSG_LOCALIZED_ITALIC
+KurzÃ­va
+; Italic
+;
+MSG_LOCALIZED_UNDERLINE
+PodrÂ¾enÃ©
+; Underline
+;
+MSG_LOCALIZED_OUTLINE
+Silueta
+; Outline
+;
+MSG_LOCALIZED_INSPECT_ELEMENT
+Element kontroly
+; Inspect Element
+;
+MSG_LOCALIZED_NO_RECENT_SEARCHES
+SouÃ¨asnÃ¬ nehledat
+; No recent searches
+;
+MSG_LOCALIZED_RECENT_SEARCHES
+Hledat souÃ¨asnÃ¬
+; Recent searches
+;
+MSG_LOCALIZED_CLEAR_RECENT_SEARCHES
+Vymazat vyhledanÃ©
+; Clear recent searches
+;
+MSG_LOCALIZED_TERM
+termÃ­n
+; term
+;
+MSG_LOCALIZED_DEFINITION
+definice
+; definition
+;
+MSG_LOCALIZED_UNKNOWN
+neznÃ¡mÃ©
+; Unknown
+;
+MSG_LOCALIZED_LEFT_TO_RIGHT
+zleva doprava
+; Left to Right
+;
+MSG_LOCALIZED_DEFAULT_DIRECTION
+ZÃ¡kladnÃ­ smÃ¬r psanÃ­
+; Default Writing Direction
+;
+MSG_LOCALIZED_RIGHT_TO_LEFT
+Zprava doleva
+; Right to Left
+;
+MSG_LOCALIZED_WRITING_DIRECTION
+SmÃ¬r psanÃ­
+; Writing Direction
+;
+MSG_LOCALIZED_TEXT_DIRECTION
+SmÃ¬r textu
+; Text Direction
+;
+MSG_LOCALIZED_PLAY
+PÃ¸ehrÃ¡t
+; Play
+;
+MSG_LOCALIZED_PAUSE
+Puaza
+; Pause
+;
+MSG_LOCALIZED_MUTE
+ZtiÂ¹it
+; Mute
+;
+MSG_LOCALIZED_UNMUTE
+Zapnout zvuk
+; Unmute
+;
+MSG_LOCALIZED_SWITCH_TO_FULLSCREEN
+PÃ¸epnout na plnou obrazovku
+; Switch to Fullscreen
+;
+MSG_LOCALIZED_DOWNLOADMEDIA
+UklÃ¡dacÃ­ medium...
+; Download Media...
+;
+MSG_LOCALIZED_COPYMEDIAURL
+KopÃ­rovat umÃ­stÃ¬nÃ­ mÃ©dia
+; Copy Media Location
+;
+MSG_LOCALIZED_OPEN_MEDIA_IN_NEW_WINDOW
+Otevøít média v novém oknì...
+; Open Media in New Window...
+;
+MSG_LOCALIZED_MEDIACONTROLS
+Ovládání
+; Controls
+;
+MSG_LOCALIZED_MEDIALOOP
+Do smyèky
+; Loop
+;
+;
+; BookmarkGroup
+;
+;
+MSG_BOOKMARKGROUP_ADD_GROUP
+Pøidat skupinu
+; Add Group
+;
+MSG_BOOKMARKGROUP_ADD_LINK
+Pøidat odkaz
+; Add Link
+;
+MSG_BOOKMARKGROUP_ADD_SEPARATOR
+Pøidat oddìlovaè
+; Add Separator
+;
+MSG_BOOKMARKGROUP_REMOVE
+Odstranit
+; Remove
+;
+MSG_BOOKMARKGROUP_TITLE
+Název:
+; Title:
+;
+MSG_BOOKMARKGROUP_ADDRESS
+Adresa:
+; Address:
+;
+MSG_BOOKMARKGROUP_SHOW_IN_MENU
+Zobrazit v menu
+; Show in menu
+;
+MSG_BOOKMARKGROUP_QUICKLINK
+Rychlý odkaz
+; Quick link
+;
+MSG_BOOKMARKGROUP_UNTITLED
+(bez názvu)
+; (No Title)
+;
+;
+; BookmarkListTree
+;
+;
+MSG_BOOKMARKLISTTREE_SEPARATOR
+--------------------------------
+; ---------- Separator ----------
+;
+MSG_BOOKMARKLISTTREE_NO_TITLE
+(bez názvu)
+; (No Title)
+;
+MSG_BOOKMARKLISTTREE_TITLE
+Název
+; Title
+;
+MSG_BOOKMARKLISTTREE_ADDRESS
+Adresa
+; Address
+;
+MSG_BOOKMARKLISTTREE_FOLD_GROUP
+Sbalit skupinu
+; Fold Group
+;
+MSG_BOOKMARKLISTTREE_UNFOLD_GROUP
+Rozbalit skupinu
+; Unfold Group
+;
+MSG_BOOKMARKLISTTREE_FOLD_GROUP_BOLD
+\x00x1BbSbalit skupinu
+; \033bFold Group
+;
+MSG_BOOKMARKLISTTREE_UNFOLD_GROUP_BOLD
+\x00x1BbRozbalit skupinu
+; \033bUnfold Group
+;
+MSG_BOOKMARKLISTTREE_SEPARATOR_LABEL
+Oddìlovaè
+; Separator
+;
+MSG_BOOKMARKLISTTREE_OPEN
+\x00x1BbOtevøít
+; \033bOpen
+;
+MSG_BOOKMARKLISTTREE_OPEN_NEW_TAB
+Otevøít odkaz v novém panelu
+; Open Link in New Tab
+;
+MSG_BOOKMARKLISTTREE_OPEN_NEW_WINDOW
+Otevøít odkaz v novém oknì...
+; Open Link in New Window...
+;
+MSG_BOOKMARKLISTTREE_BOOKMARK
+Zálo¾ky
+; Bookmarks
+;
+MSG_BOOKMARKLISTTREE_FOLD_ALL_GROUPS
+Sbalit v¹echny skupiny
+; Fold All Groups
+;
+MSG_BOOKMARKLISTTREE_UNFOLD_ALL_GROUPS
+Rozbalit v¹echny skupiny
+; Unfold All Groups
+;
+;
+; BookmarkWindow
+;
+;
+MSG_BOOKMARKWINDOW_BOOKMARKS
+Zálo¾ky
+; Bookmarks
+;
+;
+; ChooseTitleGroup
+;
+;
+MSG_CHOOSETITLEGROUP_TITLE
+Název:
+; Title:
+;
+MSG_CHOOSETITLEGROUP_MENU
+Pøidat do menu
+; Add to _menu
+;
+MSG_CHOOSETITLEGROUP_NO_TITLE
+(bez názvu)
+; (No Title)
+;
+MSG_CHOOSETITLEGROUP_ADD
+Pøid_at
+; _Add
+;
+MSG_CHOOSETITLEGROUP_CANCEL
+_Zru¹it
+; _Cancel
+;
+;
+; ConsoleList
+;
+;
+MSG_CONSOLELIST_TIME
+Èas
+; Time
+;
+MSG_CONSOLELIST_MESSAGE
+Zpráva
+; Message
+;
+MSG_CONSOLELIST_COPY
+Kopírovat
+; Copy
+;
+;
+; ConsoleWindow
+;
+;
+MSG_CONSOLEWINDOW_MESSAGES
+Zprávy
+; Messages
+;
+MSG_CONSOLEWINDOW_CLEAR
+Vymazat
+; _Clear
+;
+;
+; ContextMenuGroup
+;
+;
+MSG_CONTEXTMENUGROUP_LINK
+Odkaz
+; Link
+;
+MSG_CONTEXTMENUGROUP_PAGE
+Stránka
+; Page
+;
+MSG_CONTEXTMENUGROUP_IMAGE
+Obrázek
+; Image
+;
+MSG_CONTEXTMENUGROUP_INTERNAL
+Interní
+; Internal
+;
+MSG_CONTEXTMENUGROUP_ADD
+Pøidat
+; Add
+;
+MSG_CONTEXTMENUGROUP_REMOVE
+Odstranit
+; Remove
+;
+MSG_CONTEXTMENUGROUP_CATEGORY
+Kategorie:
+; Category:
+;
+MSG_CONTEXTMENUGROUP_LABEL
+Popis:
+; Label:
+;
+MSG_CONTEXTMENUGROUP_ACTION
+Akce:
+; Action:
+;
+MSG_CONTEXTMENUGROUP_DEFAULT_LABEL
+Název polo¾ky menu
+; Menu Label
+;
+;
+;
+; ContextMenuList
+;
+;
+MSG_CONTEXTMENULIST_LINK
+Odkaz
+; Link
+;
+MSG_CONTEXTMENULIST_PAGE
+Stránka
+; Page
+;
+MSG_CONTEXTMENULIST_IMAGE
+Obrázek
+; Image
+;
+MSG_CONTEXTMENULIST_INTERNAL
+Interní
+; Internal
+;
+MSG_CONTEXTMENULIST_CATEGORY
+Kategorie
+; Category
+;
+MSG_CONTEXTMENULIST_LABEL
+Popis
+; Label
+;
+MSG_CONTEXTMENULIST_ACTION
+Akce
+; Action
+;
+MSG_CONTEXTMENULIST_TYPE
+Typ
+; Type
+;
+;
+;
+; CookieManagerGroup
+;
+;
+MSG_COOKIEMANAGERGROUP_REMOVE
+Odst_ranit
+; _Remove
+;
+MSG_COOKIEMANAGERGROUP_REMOVE_ALL
+Odstranit _v¹e
+; Remove _All
+;
+MSG_COOKIEMANAGERGROUP_DOMAIN
+Doména:
+; Domain:
+;
+MSG_COOKIEMANAGERGROUP_NAME
+Název:
+; Name:
+;
+MSG_COOKIEMANAGERGROUP_VALUE
+Hodnota:
+; Value:
+;
+MSG_COOKIEMANAGERGROUP_PATH
+Cesta:
+; Path:
+;
+MSG_COOKIEMANAGERGROUP_TYPE
+Typ:
+; Type:
+;
+MSG_COOKIEMANAGERGROUP_EXPIRATION
+Platnost do:
+; Expiration:
+;
+;
+;
+; CookieManagerList
+;
+;
+MSG_COOKIEMANAGERLIST_DOMAIN
+Doména
+; Domain
+;
+MSG_COOKIEMANAGERLIST_NAME
+Název
+; Name
+;
+MSG_COOKIEMANAGERLIST_VALUE
+Hodnota
+; Value
+;
+MSG_COOKIEMANAGERLIST_COOKIES
+Cookies
+; Cookies
+;
+MSG_COOKIEMANAGERLIST_FOLD_DOMAIN
+Sbalit doménu
+; Fold Domain
+;
+MSG_COOKIEMANAGERLIST_UNFOLD_DOMAIN
+Rozbalit doménu
+; Unfold Domain
+;
+MSG_COOKIEMANAGERLIST_FOLD_ALL_DOMAINS
+Sbalit v¹e
+; Fold All Domains
+;
+MSG_COOKIEMANAGERLIST_UNFOLD_ALL_DOMAINS
+Rozbalit v¹e
+; Unfold All Domains
+;
+;
+; CookieManagerWindow
+;
+;
+MSG_COOKIEMANAGERWINDOW_COOKIES
+Cookies
+; Cookies
+;
+;
+; DefaultPolicyDelegate
+;
+;
+MSG_DEFAULTPOLICYDELEGATE_MESSAGE
+Stránka ji¾ ke svému otevøení pou¾ila POST data.\nPokud budete pokraèovat, POST data budou znova zaslána.\nOpravdu chcete pokraèovat?
+; The page you're trying to open already includes POST data.\nIf you proceed, POST data will be sent again.\nDo you want to continue?
+;
+;
+; DownloadDelegate
+;
+;
+MSG_DOWNLOADDELEGATE_OVERWRITE_OR_RESUME
+Soubor '%s' ji¾ existstuje.\nChcete jej pøepsat?\n\n\x00x1BbNová velikost:\x00x1Bn %llu bytes\n\x00x1BbStará velikost:\x00x1Bn %ld bytes\n\x00x1BbStaré datum:\x00x1Bn %s %st
+; File '%s' already exists.\nDo you want to replace it?\n\n\033bNew Size:\033n %llu bytes\n\033bOld Size:\033n %ld bytes\n\033bOld Date:\033n %s %s
+;
+MSG_DOWNLOADDELEGATE_OVERWRITE_OR_RESUME_ACTIONS
+*_Pøepsat|Pok_raèovat|_Zru¹it
+; *_Overwrite|_Resume|_Cancel
+;
+;
+; DownloadGroup
+;
+;
+MSG_DOWNLOADGROUP_IN_PROGRESS
+Probíhající
+; In Progress
+;
+MSG_DOWNLOADGROUP_FINISHED
+Dokonèené
+; Finished
+;
+MSG_DOWNLOADGROUP_FAILED
+Selhané
+; Failed
+;
+MSG_DOWNLOADGROUP_ABORT
+_Pøeru¹it
+; _Abort
+;
+MSG_DOWNLOADGROUP_ABORT_ALL
+Pøeru¹it _v¹e
+; A_bort All
+;
+MSG_DOWNLOADGROUP_REMOVE
+Odst_ranit
+; _Remove
+;
+MSG_DOWNLOADGROUP_REMOVE_ALL
+Odstranit _v¹e
+; Remove _All
+;
+MSG_DOWNLOADGROUP_RETRY
+Znova stáhnout
+; Re_try
+;
+MSG_DOWNLOADGROUP_CANCELLED_BY_USER
+Zru¹eno u¾ivatelem
+; Cancelled by user
+;
+MSG_DOWNLOADGROUP_INTERRUPTED
+Pøeru¹eno
+; Interrupted
+;
+;
+; DownloadList
+;
+;
+MSG_DOWNLOADLIST_NAME
+Název
+; Name
+;
+MSG_DOWNLOADLIST_SIZE
+Velikost
+; Size
+;
+MSG_DOWNLOADLIST_PROGRESS
+Prùbìh
+; Progress
+;
+MSG_DOWNLOADLIST_DETAIL
+Dateil
+; Detail
+;
+MSG_DOWNLOADLIST_SPEED
+Rychlost
+; Speed
+;
+MSG_DOWNLOADLIST_ETA
+Zbývá
+; ETA
+;
+MSG_DOWNLOADLIST_PATH
+Cesta
+; Path
+;
+MSG_DOWNLOADLIST_URL
+URL
+; URL
+;
+MSG_DOWNLOADLIST_DOWNLOADPAGE
+Download Page
+; Download Page
+;
+MSG_DOWNLOADLIST_STATUS
+Stav
+; Status
+;
+MSG_DOWNLOADLIST_OPEN_FILE
+\x00x1BbOtevøít soubor
+; \033bOpen File
+;
+MSG_DOWNLOADLIST_OPEN_DIRECTORY
+Otevøít adresáø
+; Open Directory
+;
+MSG_DOWNLOADLIST_OPEN_DOWNLOADPAGE
+Open Download Page
+; Open Download Page
+;
+MSG_DOWNLOADLIST_SIZE_UNKNOWN
+Neznámý
+; Unknown
+;
+;
+; DownloadWindow
+;
+;
+MSG_DOWNLOADWINDOW_DOWNLOADS
+Stahování
+; Downloads
+;
+;
+; FindText
+;
+;
+MSG_FINDTEXT_PREV
+Pøedchozí
+; Previous
+;
+MSG_FINDTEXT_NEXT
+Následující
+; Next
+;
+MSG_FINDTEXT_CASE_SENSITIVE
+Rozli¹ovat malá/VELKÁ
+; Case sensitive
+;
+MSG_FINDTEXT_MARK_ALL_MATCHES
+Oznaèit v¹e vybrané
+; Mark all matches
+;
+MSG_FINDTEXT_TEXT_NOT_FOUND
+Nenalezeno
+; Not found
+;
+;
+; HistoryButton
+;
+;
+MSG_HISTORYBUTTON_MENU_TITLE
+Historie
+; History
+;
+MSG_HISTORYBUTTON_NO_TITLE
+(bez názvu)
+; (No Title)
+;
+;
+; HistoryList
+;
+;
+MSG_HISTORYLIST_NO_URL
+(bez URL)
+; (No URL)
+;
+MSG_HISTORYLIST_NO_TITLE
+(bez názvu)
+; (No Title)
+;
+MSG_HISTORYLIST_HISTORY
+Historie
+; History
+;
+MSG_HISTORYLIST_OPEN_URL
+\x00x1BbOtevøít
+; \033bOpen
+;
+MSG_HISTORYLIST_OPEN_NEW_TAB
+Otevøít v novém panelu
+; Open in New Tab
+;
+MSG_HISTORYLIST_OPEN_NEW_WINDOW
+Otevøít v novém oknì...
+; Open in New Window...
+;
+;
+; HistoryListTree
+;
+;
+MSG_HISTORYLISTTREE_NO_TITLE
+(bez názvu)
+; (No Title)
+;
+MSG_HISTORYLISTTREE_NO_URL
+(bez URL)
+; (No URL)
+;
+MSG_HISTORYLISTTREE_TITLE
+Název
+; Title
+;
+MSG_HISTORYLISTTREE_ADDRESS
+Adresa
+; Address
+;
+MSG_HISTORYLISTTREE_HISTORY
+OWB historie
+; History
+;
+MSG_HISTORYLISTTREE_OPEN_URL
+\x00x1BbOtevøít
+; \033bOpen
+;
+MSG_HISTORYLISTTREE_OPEN_NEW_TAB
+Otevøít v novém panelu
+; Open in New Tab
+;
+MSG_HISTORYLISTTREE_OPEN_NEW_WINDOW
+Otevøít v novém oknì...
+; Open in New Window...
+;
+;
+; HistoryPanelGroup
+;
+;
+MSG_HISTORYPANELGROUP_HISTORY
+Historie
+; History
+;
+;
+; LinkList
+;
+;
+MSG_LINKLIST_NO_NAME
+(beze jména)
+; (No name)
+;
+MSG_LINKLIST_QUICK_LINK
+Rychlý odkaz
+; Quick Link
+;
+;
+; LoginWindow
+;
+;
+MSG_LOGINWINDOW_MESSAGE
+Zadejte prosím u¾ivatelské jméno a heslo pro pøístup %s do %s.
+; Enter username and password to access %s on %s.
+;
+MSG_LOGINWINDOW_TITLE
+Autentifikace u¾ivatele
+; Authentication Request
+;
+MSG_LOGINWINDOW_USERNAME
+U¾ivatelské jméno:
+; Username:
+;
+MSG_LOGINWINDOW_PASSWORD
+Heslo:
+; Password:
+;
+MSG_LOGINWINDOW_SAVE_CREDENTIALS
+_Ulo¾it pøihla¹ovací data
+; _Save credentials
+;
+MSG_LOGINWINDOW_LOGIN
+Pøihlá¹ení
+; _Login
+;
+MSG_LOGINWINDOW_CANCEL
+Zru¹it
+; _Cancel
+;
+;
+; MimetypeGroup
+;
+;
+MSG_MIMETYPEGROUP_EXTERNAL_VIEWER
+Externí prohlí¾eè
+; External Viewer
+;
+MSG_MIMETYPEGROUP_INTERNAL_VIEWER
+Interní prohlí¾eè
+; Internal Viewer
+;
+MSG_MIMETYPEGROUP_SAVE_TO_DISK
+Ulo¾it na disk
+; Save to Disk
+;
+MSG_MIMETYPEGROUP_ASK
+Dotázat se
+; Ask
+;
+MSG_MIMETYPEGROUP_STREAM
+Stream
+; Stream
+;
+MSG_MIMETYPEGROUP_PIPE
+Pipe
+; Pipe
+;
+MSG_MIMETYPEGROUP_IGNORE
+Ignorovat
+; Ignore
+;
+MSG_MIMETYPEGROUP_PLUGIN
+Zásuvný modul
+; Plugin
+;
+MSG_MIMETYPEGROUP_ADD
+Pøidat
+; Add
+;
+MSG_MIMETYPEGROUP_REMOVE
+Odstranit
+; Remove
+;
+MSG_MIMETYPEGROUP_MIMETYPE
+MIME typ:
+; MIME Type:
+;
+MSG_MIMETYPEGROUP_EXTENSION
+Koncovka:
+; Extension:
+;
+MSG_MIMETYPEGROUP_ACTION
+Akce:
+; Action:
+;
+MSG_MIMETYPEGROUP_VIEWER
+Prohlí¾eè:
+; Viewer:
+;
+;
+; MimetypeList
+;
+;
+MSG_MIMETYPELIST_EXTERNAL_VIEWER
+Exrterní prohlí¾eè
+; External viewer
+;
+MSG_MIMETYPELIST_INTERNAL_VIEWER
+Interní prohlí¾eè
+; Internal viewer
+;
+MSG_MIMETYPELIST_SAVE_TO_DISK
+Ulo¾it na disk
+; Save to disk
+;
+MSG_MIMETYPELIST_ASK
+Dotázat se
+; Ask
+;
+MSG_MIMETYPELIST_STREAM
+Stream
+; Stream
+;
+MSG_MIMETYPELIST_PIPE
+Pipe
+; Pipe
+;
+MSG_MIMETYPELIST_IGNORE
+Ignorovat
+; Ignore
+;
+MSG_MIMETYPELIST_PLUGIN
+Zásuvný modul
+; Plugin
+;
+MSG_MIMETYPELIST_MIMETYPE
+MIME typ
+; MIME Type
+;
+MSG_MIMETYPELIST_EXTENSION
+Koncovka
+; Extension
+;
+MSG_MIMETYPELIST_ACTION
+Akce
+; Action
+;
+MSG_MIMETYPELIST_VIEWER
+Prohlí¾eè
+; Viewer
+;
+;
+; NavigationGroup
+;
+;
+MSG_NAVIGATIONGROUP_BACK
+Zpìt
+; Back
+;
+MSG_NAVIGATIONGROUP_FORWARD
+Vpøed
+; Forward
+;
+MSG_NAVIGATIONGROUP_RELOAD
+Znova naèíst
+; Reload
+;
+MSG_NAVIGATIONGROUP_STOP
+Zastavit
+; Stop
+;
+MSG_NAVIGATIONGROUP_HOME
+Domù
+; Home
+;
+MSG_NAVIGATIONGROUP_INSPECT
+Inspect
+; Inspect
+;
+;
+; NetworkWindow
+;
+;
+MSG_NETWORKWINDOW_TITLE
+Sí»ové aktivity
+; Network Activity
+;
+MSG_NETWORKWINDOW_URL
+URL
+; URL
+;
+MSG_NETWORKWINDOW_STATE
+Stav
+; State
+;
+MSG_NETWORKWINDOW_ABORT
+_Pøeru¹it
+; A_bort
+;
+MSG_NETWORKWINDOW_ABORT_ALL
+Pøeru¹it _v¹e
+; _Abort All
+;
+MSG_NETWORKWINDOW_STATUS_RECEIVING_DATA
+%s z %s naèteno
+; %s of %s read
+;
+MSG_NETWORKWINDOW_STATUS_SENDING_DATA
+%s z %s odesláno
+; %s of %s sent
+;
+MSG_NETWORKWINDOW_STATUS_WAITING_FOR_DATA
+Èeká se na data
+; Waiting for data
+;
+MSG_NETWORKWINDOW_STATUS_CONNECTING
+Pøipojování
+; Connecting
+;
+;
+; OWBWindow
+;
+;
+MSG_OWBWINDOW_PENDING_DOWNLOADS
+Nìkteré soubory se stále je¹tì stahují.\nOpravdu chcete skonèit?
+; Some files are currently being downloaded.\nDo you really want to quit?
+;
+MSG_OWBWINDOW_QUIT_CONFIRMATION
+Opravdu chcete ukonèit OWB?
+; Do you really want to quit?
+;
+MSG_OWBWINDOW_CLOSE_ALL_PAGES_CONFIRMATION
+Opravdu chcete zavøít v¹echny panely?
+; Do you want to close all tabs?
+;
+MSG_OWBWINDOW_OPEN_FILE
+Otevøít soubor...
+; Open File...
+;
+MSG_OWBWINDOW_SAVE_AS
+Ulo¾it jako...
+; Save As...
+;
+MSG_OWBWINDOW_READ_PROGRESS
+%s z %s naèteno
+; %s of %s read
+;
+MSG_OWBWINDOW_STATE_READY
+Hotovo
+; Ready
+;
+MSG_OWBWINDOW_STATE_RECEIVING_DATA
+Pøijímání dat...
+; Receiving data...
+;
+MSG_OWBWINDOW_STATE_SENDING_REQUEST
+Zasílání ¾ádosti...
+; Sending request...
+;
+MSG_OWBWINDOW_STATE_ERROR
+Chyba
+; Error
+;
+MSG_OWBWINDOW_CHOOSE_TITLE
+Zadejte název
+; Choose a title
+;
+MSG_OWBWINDOW_JAVASCRIPT_PROMPT
+Výzva JavaScriptu
+; JavaScript Prompt
+;
+MSG_OWBWINDOW_JAVASCRIPT_OK
+_Ok
+; _Ok
+;
+MSG_OWBWINDOW_JAVASCRIPT_CANCEL
+_Zru¹it
+; _Cancel
+;
+MSG_OWBWINDOW_RUNNING_USERSCRIPTS
+\033bRunning userscripts:\033n\n\n
+; \033bRunning userscripts:\033n\n\n
+;
+;
+; PasswordManagerGroup
+;
+;
+MSG_PASSWORDMANAGERGROUP_REMOVE
+Odst_ranit
+; _Remove
+;
+MSG_PASSWORDMANAGERGROUP_REMOVE_ALL
+Odstranit _v¹e
+; Remove _All
+;
+;
+; PasswordManagerList
+;
+;
+MSG_PASSWORDMANAGERLIST_HOST
+Hostitel
+; Host
+;
+MSG_PASSWORDMANAGERLIST_REALM
+Oblast
+; Realm
+;
+MSG_PASSWORDMANAGERLIST_USERNAME
+U¾ivatelské jméno
+; Username
+;
+MSG_PASSWORDMANAGERLIST_PASSWORD
+Heslo
+; Password
+;
+MSG_PASSWORDMANAGERLIST_FORM
+Form
+; Form
+;
+MSG_PASSWORDMANAGERLIST_FILTER
+Filtr
+; Filter
+;
+MSG_PASSWORDMANAGERLIST_FILTER_REMEMBER
+Pamatovat si
+; Remember
+;
+MSG_PASSWORDMANAGERLIST_FILTER_IGNORE
+Ignorovat
+; Ignore
+;
+;
+; PasswordManagerWindow
+;
+;
+MSG_PASSWORDMANAGERWINDOW_TITLE
+Správce hesel
+; Passwords
+;
+MSG_BLOCKMANAGERWINDOW_TITLE
+Blokování obsahu
+; Content Blocking
+;
+MSG_BLOCKMANAGERLIST_DENY
+Odepøít
+; Deny
+;
+MSG_BLOCKMANAGERLIST_ALLOW
+Povolit
+; Allow
+;
+MSG_BLOCKMANAGERLIST_TYPE
+Zpùsob filtrování
+; Filter Type
+;
+MSG_BLOCKMANAGERLIST_RULE
+Odkaz
+; Rule
+;
+MSG_BLOCKMANAGERGROUP_REMOVE
+Odst_ranit
+; _Remove
+;
+MSG_BLOCKMANAGERGROUP_ADD
+Pøid_at
+; _Add
+;
+MSG_BLOCKMANAGERGROUP_TYPE
+Zpùsob filtrování:
+; Filter Type:
+;
+MSG_BLOCKMANAGERGROUP_RULE
+Odkaz:
+; Rule:
+;
+MSG_BLOCKMANAGERGROUP_DENY
+Odepøít
+; Deny
+;
+MSG_BLOCKMANAGERGROUP_ALLOW
+Povolit
+; Allow
+;
+;
+; SearchManagerWindow
+;
+;
+MSG_SEARCHMANAGERWINDOW_TITLE
+Vyhledávací moduly
+; Search Engines
+;
+;
+; SearchManagerGroup
+;
+;
+MSG_SEARCHMANAGERGROUP_ADD
+Pøid_at
+; _Add
+;
+MSG_SEARCHMANAGERGROUP_REMOVE
+Odst_ranit
+; _Remove
+;
+MSG_SEARCHMANAGERGROUP_TITLE
+Název:
+; Title:
+;
+MSG_SEARCHMANAGERGROUP_LINK
+Odkaz:
+; Link:
+;
+MSG_SEARCHMANAGERGROUP_SHORTCUT
+Zkratka:
+; Shortcut:
+;
+;
+; SearchManagerList
+;
+;
+MSG_SEARCHMANAGERLIST_TITLE
+Název
+; Title
+;
+MSG_SEARCHMANAGERLIST_LINK
+Odkaz
+; Link
+;
+MSG_SEARCHMANAGERLIST_SHORTCUT
+Zkratka
+; Shortcut
+;
+;
+; ScriptManagerWindow
+;
+;
+MSG_SCRIPTMANAGERWINDOW_TITLE
+Skripty
+; Scripts
+;
+;
+; ScriptManagerGroup
+;
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_SELECT
+Zvolte u¾ivatelský skript...
+; Select User Script...
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_ADD
+Pøidat
+; _Add
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_REMOVE
+Odstranit
+; _Remove
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_ENABLE
+Zapnout
+; _Enable
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_PATH
+Cesta:
+; Path:
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_NAME
+Název:
+; Name:
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_DESCRIPTION
+Popis:
+; Description:
+;
+MSG_SCRIPTMANAGERGROUP_WHITELIST
+Povolené stránky
+; Allowed Sites
+;
+MSG_SCRIPTMANAGERGROUP_BLACKLIST
+Zakázané stránky
+; Forbidden Sites
+;
+MSG_SCRIPTMANAGERGROUP_WHITELIST_ADD
+Pøidat
+; Add
+;
+MSG_SCRIPTMANAGERGROUP_WHITELIST_REMOVE
+Odstranit
+; Remove
+;
+MSG_SCRIPTMANAGERGROUP_BLACKLIST_ADD
+Pøidat
+; Add
+;
+MSG_SCRIPTMANAGERGROUP_BLACKLIST_REMOVE
+Odstranit
+; Remove
+;
+;
+; URLPrefsWindow
+;
+;
+MSG_URLPREFSWINDOW_TITLE
+Nastavení URL
+; URL Preferences
+;
+;
+; URLPrefsGroup
+;
+;
+MSG_URLPREFSGROUP_ADD
+Pøid_at
+; _Add
+;
+MSG_URLPREFSGROUP_REMOVE
+Odst_ranit
+; _Remove
+;
+MSG_URLPREFSGROUP_JAVASCRIPT
+_JavaScript Support
+; _JavaScript support
+;
+MSG_URLPREFSGROUP_LOAD_IMAGES
+Naèítat obrázky automat_icky
+; Load _images automatically
+;
+MSG_URLPREFSGROUP_PLUGINS
+Zásuvné moduly
+; _Plugins
+;
+MSG_URLPREFSGROUP_SPOOF
+Hlá_sit se jako:
+; _Spoof As:
+;
+MSG_URLPREFSGROUP_COOKIE_POLICY
+Cookie Policy:
+; _Cookie Policy:
+;
+MSG_URLPREFSGROUP_COOKIE_FILTER
+Cookie Name Filter:
+; Cookie Name _Filter:
+;
+;
+; PrinterWindow
+;
+;
+MSG_PRINTERWINDOW_TITLE
+Print...
+; Print...
+;
+MSG_PRINTERWINDOW_PRINT_MODE
+_Mode:
+; _Mode:
+;
+MSG_PRINTERWINDOW_PSLEVEL
+P_S Level:
+; P_S Level:
+;
+MSG_PRINTERWINDOW_PREFERENCES
+P_rinter Preferences
+; P_rinter Preferences
+;
+MSG_PRINTERWINDOW_OUTPUT
+_Output:
+; _Output:
+;
+MSG_PRINTERWINDOW_FIRST_PAGE
+_First Page:
+; _First Page:
+;
+MSG_PRINTERWINDOW_LAST_PAGE
+_Last Page:
+; _Last Page:
+;
+MSG_PRINTERWINDOW_SCALE
+Sca_le:
+; Sca_le:
+;
+MSG_PRINTERWINDOW_PRINT
+_Print
+; _Print
+;
+MSG_PRINTERWINDOW_CANCEL
+_Cancel
+; _Cancel
+;
+MSG_PRINTERWINDOW_STATUS
+Printing page %d/%d...
+; Printing page %d/%d...
+;
+MSG_PRINTERWINDOW_ERROR
+Failed to initialize output device.
+; Failed to initialize output device.
+;
+;
+; PrefsWindow
+;
+;
+MSG_PREFSWINDOW_TITLE
+Nastavení
+; Settings
+;
+MSG_PREFSWINDOW_CATEGORY_GENERAL
+Hlavní
+; General
+;
+MSG_PREFSWINDOW_CATEGORY_INTERFACE
+Rozhranní
+; Interface
+;
+MSG_PREFSWINDOW_CATEGORY_CONTEXTUAL_MENUS
+Kontextové menu
+; Contextual Menus
+;
+MSG_PREFSWINDOW_CATEGORY_MIMETYPES
+MIME typy
+; MIME Types
+;
+MSG_PREFSWINDOW_CATEGORY_CONTENT
+Obsah
+; Content
+;
+MSG_PREFSWINDOW_CATEGORY_FONTS
+Písma
+; Fonts
+;
+MSG_PREFSWINDOW_CATEGORY_DOWNLOADS
+Stahování
+; Downloads
+;
+MSG_PREFSWINDOW_CATEGORY_NETWORK
+Sí»
+; Network
+;
+MSG_PREFSWINDOW_CATEGORY_PRIVACY
+Soukromí
+; Privacy
+;
+MSG_PREFSWINDOW_CATEGORY_SECURITY
+Bezpeènost
+; Security
+;
+MSG_PREFSWINDOW_CATEGORY_MEDIA
+Média
+; Media
+;
+MSG_PREFSWINDOW_CATEGORY_MISCELLANEOUS
+Rùzné
+; Miscellaneous
+;
+MSG_PREFSWINDOW_CACHE_DOCUMENT_VIEWER
+Zobrazení dokumentu
+; Document Viewer
+;
+MSG_PREFSWINDOW_CACHE_DOCUMENT_BROWSER
+Prohlí¾eè dokumentu
+; Document Browser
+;
+MSG_PREFSWINDOW_CACHE_PRIMARY_BROWSER
+Primární WEB prohlí¾eè
+; Primary Web Browser
+;
+MSG_PREFSWINDOW_SMOOTH_NORMAL
+Normální
+; Normal
+;
+MSG_PREFSWINDOW_SMOOTH_ALTERNATIVE
+Alternativní
+; Alternative
+;
+MSG_PREFSWINDOW_NEWPAGE_NEWTAB
+Nový panel
+; New Tab
+;
+MSG_PREFSWINDOW_NEWPAGE_NEWWINDOW
+Nové okno
+; New Window
+;
+MSG_PREFSWINDOW_NEWPAGE_LAST
+Na konec
+; At End
+;
+MSG_PREFSWINDOW_NEWPAGE_AFTERACTIVE
+Za atkuálnì otevøený
+; After Current
+;
+MSG_PREFSWINDOW_QUICKLINK_BUTTON
+Tlaèítko
+; Button
+;
+MSG_PREFSWINDOW_QUICKLINK_LINK
+Odkaz
+; Link
+;
+MSG_PREFSWINDOW_QUICKLINK_DYNAMIC
+Dynamická møí¾
+; Dynamic Grid
+;
+MSG_PREFSWINDOW_QUICKLINK_FIXED
+Pevná møí¾
+; Fixed Grid
+;
+MSG_PREFSWINDOW_QUICKLINK_BESTFIT
+Nejvhodnìj¹í dynamické
+; Dynamic Best-Fit
+;
+MSG_PREFSWINDOW_NAVIGATION_ICON
+Ikona
+; Icon
+;
+MSG_PREFSWINDOW_NAVIGATION_TEXT
+Text
+; Text
+;
+MSG_PREFSWINDOW_NAVIGATION_ICON_AND_TEXT
+Ikona s textem
+; Icon and Text
+;
+MSG_PREFSWINDOW_COOKIE_ACCEPT
+Pøijmout
+; Accept
+;
+MSG_PREFSWINDOW_COOKIE_REJECT
+Odmítnout
+; Reject
+;
+MSG_PREFSWINDOW_COOKIE_ASK
+Dotazovat se
+; Ask
+;
+MSG_PREFSWINDOW_COMPLETION_NONE
+Nic
+; None
+;
+MSG_PREFSWINDOW_COMPLETION_STRING
+Doplnit øetìzec
+; String
+;
+MSG_PREFSWINDOW_COMPLETION_POPUP
+Nabídka
+; Popup
+;
+MSG_PREFSWINDOW_COMPLETION_STRING_AND_POPUP
+Doplnit øetìzec i nabídka
+; String and Popup
+;
+MSG_PREFSWINDOW_CLOSE_REQUESTER_ALWAYS
+V¾dy
+; Always
+;
+MSG_PREFSWINDOW_CLOSE_REQUESTER_NEVER
+Nikdy
+; Never
+;
+MSG_PREFSWINDOW_CLOSE_REQUESTER_IF_MORE_THAN_ONE
+Jen pøi více panelech
+; With Multiple Tabs
+;
+MSG_PREFSWINDOW_ERROR_REQUESTER
+Dialogové okno
+; Requester Dialog
+;
+MSG_PREFSWINDOW_ERROR_HTML
+Zobrazit jako HTML
+; HTML Display
+;
+MSG_PREFSWINDOW_ANIMATE_NEVER
+Nikdy
+; Never
+;
+MSG_PREFSWINDOW_ANIMATE_ALWAYS
+V¾dy
+; Always
+;
+MSG_PREFSWINDOW_ANIMATE_ACTIVE_WINDOW
+Jen v aktivním oknì
+; Active Window Only
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR_NEW_TAB
+Nový panel
+; New Tab
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR_NEW_BACKGROUND_TAB
+Nový panel na pozadí
+; New Background Tab
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR_NEW_WINDOW
+Nové okno
+; New Window
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_OFF
+Vypnuto
+; Disabled
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_ASK
+Dotázat se
+; Ask
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_ON
+Automaticky
+; Automatically
+;
+; General
+;
+MSG_PREFSWINDOW_GENERAL_HOME_PAGE
+Domovská stránka:
+; _Home Page:
+;
+MSG_PREFSWINDOW_GENERAL_START_PAGE
+Startovací stránka:
+; S_tart Page:
+;
+MSG_PREFSWINDOW_GENERAL_NEW_PAGE
+_New Page:
+; _New Page:
+;
+MSG_PREFSWINDOW_GENERAL_OUTPUT_WINDOW
+Výstupní okno:
+; _Output Window:
+;
+; Interface
+;
+MSG_PREFSWINDOW_INTERFACE_GENERAL
+Hlavní
+; General
+;
+MSG_PREFSWINDOW_INTERFACE_NEW_PAGE_POLICY
+Otvírání nové stránky:
+; _New Page Policy:
+;
+MSG_PREFSWINDOW_INTERFACE_NEW_PAGE_POSITION
+Pozice nového panelu:
+; Tab Opening Position:
+;
+MSG_PREFSWINDOW_INTERFACE_POPUP_POLICY
+Popup Policy:
+; Popup Policy:
+;
+MSG_PREFSWINDOW_INTERFACE_NAVIGATION_BUTTON_TYPE
+Navigaèní tlaèítka:
+; Navigation _Button Type:
+;
+MSG_PREFSWINDOW_INTERFACE_COMPLETION_MODE
+Mód kompletace URL:
+; URL Com_pletion Mode:
+;
+MSG_PREFSWINDOW_INTERFACE_CLOSE_REQUESTER
+Potvrzovat zavøení:
+; Con_firm Closing:
+;
+MSG_PREFSWINDOW_INTERFACE_ERROR_REPORTING
+Hlá¹ení chyb:
+; Error _Reporting:
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR
+Prostøední tlaèítko my¹i otevøe:
+; Middle Button Be_haviour:
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_BUTTON_FRAME
+Zobrazovat okraje tlaèítek
+; Sho_w buttons frames
+;
+MSG_PREFSWINDOW_INTERFACE_CONTEXTUAL_POINTERS
+Pou¾ívat kontextové ukazetele my¹i
+; Use contextual _mouse pointers
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_SEARCH_BAR
+Zobrazovat vyhledávací li¹tu
+; Show s_earch bar
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_VALIDATION_BUTTONS
+Zobrazovat potvrzovací tlaèítka
+; Show _validation buttons
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_SEPARATORS
+Zobrazovat oddìlovaèe skupin
+; Show _group separators
+;
+MSG_PREFSWINDOW_INTERFACE_FAVICONS
+Favikony
+; Website Icons
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_TABS
+Panely
+; T_abs
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_BOOKMARKS
+Zálo¾ky
+; B_ookmarks
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_HISTORY
+Historie
+; H_istory
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_BOOKMARK_PANEL
+Panel zálo¾ek
+; Boo_kmarks panel
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_HISTORY_PANEL
+Pane_l historie
+; History pane_l
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_QUICKLINKS
+Rychlé odkazy
+; Quick links
+;
+MSG_PREFSWINDOW_INTERFACE_TAB_TRANSFERANIM
+Zobrazovat animaci pøenosu
+; Show _tab transfer animation
+;
+MSG_PREFSWINDOW_INTERFACE_QUICK_LINKS
+Rychlé odkazy
+; Quick Links
+;
+MSG_PREFSWINDOW_INTERFACE_QUICK_LINK_LOOK
+Vzhled:
+; Look:
+;
+MSG_PREFSWINDOW_INTERFACE_QUICK_LINK_LAYOUT
+Øazení:
+; La_yout:
+;
+MSG_PREFSWINDOW_INTERFACE_MAXIMUM_ROWS
+Maximum øádek:
+; Ma_ximum Rows:
+;
+; Content
+;
+MSG_PREFSWINDOW_CONTENT_CACHE_MODEL
+Model zásobníku:
+; Cache _Model:
+;
+MSG_PREFSWINDOW_CONTENT_PAGE_CACHE
+Zásobník stránek
+; Page cac_he
+;
+MSG_PREFSWINDOW_CONTENT_JAVASCRIPT
+Podporovat JavaScript
+; _JavaScript support
+;
+MSG_PREFSWINDOW_CONTENT_ALLOW_NEW_WINDOW
+JavaScript v¾dy otvírat v novém oknì
+; Allow JavaScript to open new _windows
+;
+MSG_PREFSWINDOW_CONTENT_PLAY_ANIMATIONS
+Pøehrávat animace
+; Play _animations
+;
+MSG_PREFSWINDOW_CONTENT_LOAD_IMAGES
+Naèítat obrázky automaticky
+; Load _images automatically
+;
+MSG_PREFSWINDOW_CONTENT_PRINT_BACKGROUNDS
+Tisknout i pozadí
+; _Print backgrounds
+;
+MSG_PREFSWINDOW_CONTENT_BLOCKING
+Blokovat obsah (AdBlock)
+; Content _blocking (AdBlock)
+;
+MSG_PREFSWINDOW_CONTENT_PLUGINS
+Povolit zásuvné moduly
+; Allow plu_gins
+;
+MSG_PREFSWINDOW_CONTENT_INSPECTOR
+WebInspector
+; WebInspector
+;
+; Fonts
+;
+MSG_PREFSWINDOW_FONTS_DEFAULT_SIZE
+Základní velikost písma:
+; Default Font Size:
+;
+MSG_PREFSWINDOW_FONTS_DEFAULT_MONOSPACED_SIZE
+Základní velikost fixního písma:
+; Default Monospaced Font Size:
+;
+MSG_PREFSWINDOW_FONTS_MINIMUM_SIZE
+Minimální velikost písma:
+; Minimum Font Size:
+;
+MSG_PREFSWINDOW_FONTS_MINIMUM_LOGICAL_SIZE
+Minimální logická velikost písma:
+; Minimum Logical Font Size:
+;
+MSG_PREFSWINDOW_FONTS_SMOOTHING_METHOD
+Metoda vyhlazování:
+; Antialiasing Method:
+;
+MSG_PREFSWINDOW_FONTS_ENCODING
+Kódová stránka textu:
+; Text Encoding:
+;
+MSG_PREFSWINDOW_FONTS_STANDARD_FAMILY
+Standardní písmo:
+; Standard Font Family:
+;
+MSG_PREFSWINDOW_FONTS_MONOSPACED_FAMILY
+Fixní písmo:
+; Monospaced Font Family:
+;
+MSG_PREFSWINDOW_FONTS_SERIF_FAMILY
+Písmo typu Serif:
+; Serif Font Family:
+;
+MSG_PREFSWINDOW_FONTS_SANS_SERIF_FAMILY
+Písmo typu Sans Serif:
+; Sans Serif Font Family:
+;
+MSG_PREFSWINDOW_FONTS_CURSIVE_FAMILY
+Písmo - kurzíva:
+; Cursive Font Family:
+;
+MSG_PREFSWINDOW_FONTS_FANTASY_FAMILY
+Fantasy písmo:
+; Fantasy Font Family:
+;
+; Downloads
+;
+MSG_PREFSWINDOW_DOWNLOADS_PATH
+Cesta k ukládání:
+; _Download Path:
+;
+MSG_PREFSWINDOW_DOWNLOADS_AUTOCLOSE
+Zavøít okno stahování pøi dokonèení
+; Close "Downloads" _window when finished
+;
+MSG_PREFSWINDOW_DOWNLOADS_SAVEDOWNLOADS
+Pamatovat si stahované soubory
+; _Remember downloaded files
+;
+MSG_PREFSWINDOW_DOWNLOADS_START_AUTOMATICALLY
+Start downloads _automatically
+; Start downloads _automatically
+;
+; Network
+;
+MSG_PREFSWINDOW_NETWORK_SPOOF
+Hlásit se jako:
+; S_poof As:
+;
+MSG_PREFSWINDOW_NETWORK_EXPERIMENTAL_COOKIES
+E_xperimentální cookie systém (vy¾aduje restart)
+; E_xperimental cookie system (restart required)
+;
+MSG_PREFSWINDOW_NETWORK_THREAD
+Spojovat sí» (vy¾aduje restart)
+; Network _thread (restart required)
+;
+MSG_PREFSWINDOW_NETWORK_ACTIVE_CONNECTIONS
+Aktivních spojení:
+; _Active Connections:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY
+Proxy
+; Proxy
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_PASSWORD
+Heslo:
+; Password:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_USERNAME
+U¾ivatelské jméno:
+; Username:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_PORT
+Port:
+; Port:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_HOST
+Hostitel:
+; Host:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_TYPE
+Typ:
+; Type:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_USE
+Pou¾ívat proxy
+; Use proxy
+;
+; Privacy
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_SESSION
+Ukládat sezení
+; Save s_ession
+;
+MSG_PREFSWINDOW_PRIVACY_DELETE_SESSION_AT_EXIT
+Mazat sezení pøi ukonèení
+; _Delete session at exit
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_REQUESTER
+Dotaz pøi obnovì sezení po startu
+; _Ask for session restoration at startup
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_MODE
+Obnova sezení:
+; Session _Restoration:
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_COOKIES
+Ukládat cookies
+; Save c_ookies to database
+;
+MSG_PREFSWINDOW_PRIVACY_COOKIES_POLICY
+Cookie Policy:
+; Coo_kie Policy:
+;
+MSG_PREFSWINDOW_PRIVACY_ENABLE_LOCAL_STORAGE
+Enable local storage
+; Enable local storage
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_FORM_CREDENTIALS
+Ukládat pøihla¹ovací formuláøe
+; Save _form credentials
+;
+MSG_PREFSWINDOW_PRIVACY_ENABLE_FORM_AUTOFILL
+Enable form autofill
+; Enable form autof_ill
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_HISTORY
+Ukládat historii
+; Save _history
+;
+MSG_PREFSWINDOW_PRIVACY_HISTORY_ENTRIES
+Polo¾ek v historii
+; History Entries:
+;
+MSG_PREFSWINDOW_PRIVACY_HISTORY_AGE
+Poèet dnù historie
+; History Age in Days:
+;
+; Security
+;
+MSG_PREFSWINDOW_SECURITY_IGNORE_SSL_ERRORS
+Ignorovat SSL chyby
+; _Ignore SSL errors
+;
+MSG_PREFSWINDOW_SECURITY_CERTIFICATE_PATH
+Cesta k souboru certifikátù:
+; Certificate _Path:
+;
+; Media
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_NONE
+Aplikovat ve v¹ech rámcích
+; Process All Frames
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_NONREF
+Pouze v referenèních rámcích
+; Skip All But Reference Frames
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_NONKEY
+Pouze v klíèových rámcích
+; Skip All But Key Frames
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_ALL
+Pøeskoèit ve v¹ech rámcích
+; Skip All Frames
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_MODE
+Mód loop_filtru pro kodek H.264
+; _Loopfilter Mode (H264):
+;
+MSG_PREFSWINDOW_MEDIA_ENABLE_PARTIAL_CONTENT
+Rychlé hledání
+; _Fast seeking
+;
+MSG_PREFSWINDOW_MEDIA_USE_WEBM
+Podpora WebM (VP8) kodeku
+; _WebM (VP8) support
+;
+MSG_PREFSWINDOW_MEDIA_USE_FLV
+FL_V(H.263/H.264) podpora
+; FL_V (H.263/H.264) support
+;
+MSG_PREFSWINDOW_MEDIA_USE_OGG
+_Ogg (Theora/Vorbis) podpora
+; _Ogg (Theora/Vorbis) support
+;
+; Prefs validation
+;
+MSG_PREFSWINDOW_SAVE
+_Ulo¾it
+; _Save
+;
+MSG_PREFSWINDOW_USE
+_Pou¾ít
+; _Use
+;
+MSG_PREFSWINDOW_CANCEL
+_Zru¹it
+; _Cancel
+;
+;
+; QuickLinkButtonGroup
+;
+;
+MSG_QUICKLINKBUTTONGROUP_NO_NAME
+(bez názvu)
+; (No name)
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN
+\x00x1BbOtevøít
+; \033bOpen
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN_NEW_TAB
+Otevøít v novém panelu
+; Open in New Tab
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN_NEW_WINDOW
+Otevøít v novém oknì...
+; Open in New Window...
+;
+MSG_QUICKLINKBUTTONGROUP_REMOVE
+Odstranit
+; Remove
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN_ALL
+Otevøít v¹echny zálo¾ky
+; Open All Bookmarks
+;
+;
+; SplashWindow
+;
+;
+MSG_SPLASHWINDOW_INITIALIZING
+Inicializace písem...
+; Initializing Fonts...
+;
+MSG_TITLELABEL_BROWSER
+Prohlí¾eè
+; Browser
+;
+MSG_SPLASHWINDOW_LOADING
+Naèítání...
+; Loading...
+;
+MSG_TITLELABEL_NEW_TAB
+Nový panel
+; New Tab
+;
+MSG_TITLELABEL_RELOAD
+Znova naèíst
+; Reload
+;
+MSG_TITLELABEL_RELOAD_ALL_TABS
+Znova naèíst v¹echny panely
+; Reload All Tabs
+;
+MSG_TITLELABEL_CLOSE
+Zavøít
+; Close
+;
+MSG_TITLELABEL_CLOSE_ALL_OTHER_TABS
+Zavøít v¹echny ostatní panely
+; Close All Other Tabs
+;
+;
+; ToolButton_AddBookmark
+;
+;
+MSG_TOOLBUTTON_ADDBOOKMARK_ADD
+Pøidat
+; Add
+;
+MSG_TOOLBUTTON_ADDBOOKMARK_NO_TITLE
+(bez názvu)
+; (No Title)
+;
+;
+; ToolButton_NewTab
+;
+;
+MSG_TOOLBUTTON_NEWTAB_LABEL
+Otevøít nový panel
+; New Tab
+;
+;
+; Utils
+;
+;
+MSG_CAPACITY_BYTE
+B
+; B
+;
+MSG_CAPACITY_KILOBYTE
+kB
+; kB
+;
+MSG_CAPACITY_MEGABYTE
+MB
+; MB
+;
+MSG_CAPACITY_GIGABYTE
+GB
+; GB
+;
+MSG_CAPACITY_TERABYTE
+TB
+; TB
+;
+MSG_PROGRESS_DAY
+%lu dní
+; %lu day
+;
+MSG_PROGRESS_DAYS
+%lu dní
+; %lu days
+;
+MSG_PROGRESS_HOUR
+%lu hodina
+; %lu hour
+;
+MSG_PROGRESS_HOURS
+%lu hodin
+; %lu hours
+;
+MSG_PROGRESS_MINUTE
+%lu minuta
+; %lu minute
+;
+MSG_PROGRESS_MINUTES
+%lu minut
+; %lu minutes
+;
+MSG_PROGRESS_SECOND
+%lu sekunda
+; %lu second
+;
+MSG_PROGRESS_SECONDS
+%lu sekund
+; %lu seconds
+;
+MSG_WEBVIEW_UPLOAD_FILES
+Nahrávání souborù...
+; Upload Files...
+;
+MSG_WEBVIEW_UPLOAD_FILE
+Nahrávání souboru...
+; Upload File...
+;
+MSG_WEBVIEW_ERROR_MSG_HTML
+Chyba %d: %s.
+; Error %d: %s.
+;
+MSG_WEBVIEW_ERROR_MSG
+Nelze otevøít '%s'.\nChyba %d: %s.\n
+; Unable to open '%s'.\nError %d: %s.\n
+;
+MSG_WEBVIEW_PROVISIONAL_TITLE
+(bez názvu)
+; (Untitled)
+;
+MSG_WEBVIEW_INTERRUPT_SCRIPT
+Opravdu chcete pøeru¹it tento skript?
+; Do you want to interrupt processing of the current script?
+;
+MSG_WEBVIEW_JSACTION_TITLE
+Javascript - výstraha
+; Javascript Alert
+;

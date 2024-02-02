@@ -1,0 +1,2589 @@
+## version $VER: OWB.catalog 1.12 (27.12.2010)
+## codeset 0
+## language magyar
+;
+;
+;
+; Pulldown Menu
+;
+;
+MSG_MENU_PROJECT
+Projekt
+; Project
+;
+MSG_MENU_NEW_WINDOW
+⁄j ablak....
+; New Window...
+;
+MSG_MENU_NEW_TAB
+⁄j lap
+; New Tab
+;
+MSG_MENU_OPEN_LOCAL_FILE
+Helyi f·jl megnyit·sa...
+; Open File...
+;
+MSG_MENU_OPEN_URL
+URL megnyit·sa
+; Open URL
+;
+MSG_MENU_OPEN_SESSION
+Munkaf·zis betˆltÈse...
+; Load Session...
+;
+MSG_MENU_SAVE_SESSION
+Munkaf·zis mentÈse...
+; Save Session...
+;
+MSG_MENU_SAVE_AS_SOURCE
+MentÈs, mint HTML...
+; Save as HTML...
+;
+MSG_MENU_SAVE_AS_PDF
+MentÈs, mint PDF...
+; Save as PDF...
+;
+MSG_MENU_PRINT
+Print...
+; Print...
+;
+MSG_MENU_ABOUT
+NÈvjegy...
+; About...
+;
+MSG_MENU_CLOSE_TAB
+Lap bez·r·sa
+; Close Tab
+;
+MSG_MENU_CLOSE_WINDOW
+Ablak bez·r·sa
+; Close Window
+;
+MSG_MENU_QUIT
+KilÈpÈs
+; Quit
+;
+MSG_MENU_EDIT
+SzerkesztÈs
+; Edit
+;
+MSG_MENU_CUT
+Kiv·g·s
+; Cut
+;
+MSG_MENU_COPY
+M·sol·s
+; Copy
+;
+MSG_MENU_COPY_LOCAL
+M·sol·s kÛdlap haszn·lat·val
+; Copy with System Codepage
+;
+MSG_MENU_PASTE
+BeillesztÈs
+; Paste
+;
+MSG_MENU_PASTE_TO_URL
+BeillesztÈs URL mezıbe
+; Paste to URL
+;
+MSG_MENU_SELECT_ALL
+Az ˆsszes kijelˆlÈse
+; Select All
+;
+MSG_MENU_FIND
+KeresÈs
+; Find
+;
+MSG_MENU_VIEW
+NÈzet
+; View
+;
+MSG_MENU_BACK
+Vissza
+; Back
+;
+MSG_MENU_FORWARD
+Elıre
+; Forward
+;
+MSG_MENU_HOME
+⁄jratˆltÈs
+; Home
+;
+MSG_MENU_STOP
+¡llj
+; Stop
+;
+MSG_MENU_RELOAD
+⁄jratˆltÈs
+; Reload
+;
+MSG_MENU_ZOOM_IN
+NagyÌt·s
+; Zoom In
+;
+MSG_MENU_ZOOM_OUT
+KicsinyÌtÈs
+; Zoom Out
+;
+MSG_MENU_ZOOM_RESET
+Eredeti mÈret
+; Zoom Reset
+;
+MSG_MENU_FULLSCREEN
+Fullscreen
+; Fullscreen
+;
+MSG_MENU_SOURCE
+Forr·skÛd megjelenÌtÈse...
+; Show Source Code...
+;
+MSG_MENU_PANELS
+Panelek
+; Sidepanels
+;
+MSG_MENU_NAVIGATION
+Navig·ciÛ
+; Navigation
+;
+MSG_MENU_QUICKLINKS
+Gyorslinkek
+; Quicklinks
+;
+MSG_MENU_LOCATION
+Hely
+; Location
+;
+MSG_MENU_STATUS
+St·tusz
+; Status
+;
+MSG_MENU_BOOKMARK_PANEL
+Mutassa a kˆnyvjelzı panelt
+; Bookmarks
+;
+MSG_MENU_HISTORY_PANEL
+Mutassa az elızmÈnyek panelt
+; History
+;
+MSG_MENU_NO_PANEL
+Kikapcsolva
+; Off
+;
+MSG_MENU_HISTORY
+ElızmÈnyek
+; History
+;
+MSG_MENU_HISTORY_CLOSEDVIEWS
+Legutolj·ra bez·rt lapok
+; Recently Closed Browsers
+;
+MSG_MENU_BOOKMARKS
+Kˆnyvjelzık
+; Bookmarks
+;
+MSG_MENU_ADD_BOOKMARK
+Kˆnyvjelzı hozz·ad·sa
+; Add Bookmark
+;
+MSG_MENU_MANAGE_BOOKMARKS
+Kˆnyvjelzık szerkesztÈse...
+; Manage Bookmarks...
+;
+MSG_MENU_WINDOWS
+Ablakok
+; Windows
+;
+MSG_MENU_DOWNLOADS
+LetˆltÈsek...
+; Downloads...
+;
+MSG_MENU_NETWORK
+H·lÛzati aktivit·s...
+; Network Activity...
+;
+MSG_MENU_PASSWORDS
+Jelszavak...
+; Passwords...
+;
+MSG_MENU_COOKIES
+S¸tik...
+; Cookies...
+;
+MSG_MENU_BLOCK
+Tartalomsz˚rÈs...
+; Content Blocking...
+;
+MSG_MENU_MESSAGES
+‹zenetek...
+; Messages...
+;
+MSG_MENU_SEARCH_ENGINES
+Keresımotorok...
+; Search Engines...
+;
+MSG_MENU_SCRIPT
+Szkriptek...
+; Scripts...
+;
+MSG_MENU_URLPREFS
+URL Be·llÌt·sok...
+; URL Settings...
+;
+MSG_MENU_SETTINGS
+Be·llÌt·sok
+; Settings
+;
+MSG_MENU_PRIVATE_BROWSING
+Priv·t BˆngÈszÈs
+; Private Browsing
+;
+MSG_MENU_ENABLE
+Bekapcsolva
+; Enable
+;
+MSG_MENU_DISABLE
+Kikapcsolva
+; Disable
+;
+MSG_MENU_DEFAULT
+AlapÈrtelmezett be·llÌt·s
+; Default Setting
+;
+MSG_MENU_ENABLE_JAVASCRIPT
+JavaScript t·mogat·s
+; JavaScript Support
+;
+MSG_MENU_ENABLE_IMAGES
+KÈpbetˆltÈs
+; Image Loading
+;
+MSG_MENU_ENABLE_ANIMATIONS
+Anim·ciÛk lej·tsz·sa
+; Play Animations
+;
+MSG_MENU_ENABLE_PLUGINS
+BeÈp¸lık
+; Plugins
+;
+MSG_MENU_SPOOF_AS
+Tegyen ˙gy, mint
+; Spoof as
+;
+MSG_MENU_PREFERENCES
+Be·llÌt·sok...
+; Preferences...
+;
+MSG_MENU_MUI
+MUI...
+; MUI...
+;
+;
+; App
+;
+;
+MSG_REQUESTER_NORMAL_TITLE
+OWB
+; OWB
+;
+MSG_REQUESTER_ERROR_TITLE
+OWB hiba¸zenet
+; OWB Error
+;
+MSG_REQUESTER_YES_NO
+*_Igen|_Nem
+; *_Yes|_No
+;
+MSG_REQUESTER_NO_YES
+_Igen|*_Nem
+; _Yes|*_No
+;
+MSG_REQUESTER_OK
+*_Rendben
+; *_Ok
+;
+MSG_REQUESTER_YES_NO_NEVER
+*_Igen|_Nem|_Soha
+; *_Yes|_No|N_ever
+;
+MSG_REQUESTER_BOOKMARK_IMPORT_ERROR
+Ismeretlen kˆnyvjelzı form·tum.\nCsak az IBrowse 2.4 Ès az OWB MorphOS form·tumai t·mogatottak.
+; Unknown bookmark format.\nOnly IBrowse 2.4 and OWB MorphOS formats are supported.
+;
+MSG_OWBAPP_DEFAULT_WINDOW_NAME
+OWB ablak
+; Odyssey Web Browser Window
+;
+MSG_OWBAPP_DEFAULT_PAGE_NAME
+OWB lap
+; Odyssey Web Browser Page
+;
+MSG_OWBAPP_SAVE_CREDENTIALS
+El akarod menteni az adatokat ehhez az oldalhoz?\nFelhaszn·lÛnÈv: %s
+; Do you want to save credentials for this page?\nUsername: %s
+;
+MSG_OWBAPP_MIMETYPE_REQUEST_ACTION
+Add meg a vÈgrehajtandÛ m˚veletet ehhez a f·jlhoz:\n'\eb%s\en' (MIME tÌpus: \eb%s\en)
+; Specify the action to perform for file:\n'\033b%s\033n' (MIME Type: \033b%s\033n)
+;
+MSG_OWBAPP_MIMETYPE_ACTIONS
+*MegjelenÌtÈs _ablakban|_K¸lsı program haszn·lata|_LetˆltÈs|_MÈgsem
+; *_Display in Window|Open with _External Program|Download _File|_Cancel
+;
+MSG_OWBAPP_MIMETYPE_ACTIONS_FALLBACK
+*MegjelenÌtÈs _ablakban|_LetˆltÈs|_MÈgsem
+; *_Display in Window|Download _File|_Cancel
+;
+MSG_OWBAPP_OPEN_SESSION
+Munkaf·zis betˆltÈse...
+; Load Session File...
+;
+MSG_OWBAPP_SAVE_SESSION
+Munkaf·zis mentÈse, mint...
+; Save Session File As...
+;
+MSG_OWBAPP_RESTORE_SESSION_CHOICES
+_Munkaf·zis vissza·llÌt·sa|⁄j munkaf·zis _indÌt·sa
+; *_Restore Session|_Start New Session
+;
+MSG_OWBAPP_RESTORE_SESSION
+Tal·ltam egy elızı munkaf·zist.\nVissza·llÌthatod azt a f·zist, vagy indÌthatsz egy ˙jat.
+; A previous session has been found.
+;
+;
+;
+; AddressBarGroup
+;
+;
+MSG_ADDRESSBARGROUP_URL
+URL:
+; URL:
+;
+;
+; BCContextMenuMorphOS
+;
+;
+MSG_CONTEXTMENU_TITLE
+Men¸
+; Menu
+;
+;
+; BCLocalizedStrings (these ones need to be encoded in UTF8)
+;
+;
+MSG_LOCALIZED_SUBMIT
+Elk√ºld
+; Submit
+;
+MSG_LOCALIZED_RESET
+Vissza√°ll√≠t
+; Reset
+;
+MSG_LOCALIZED_SEARCHABLE_INDEX
+Kereshet√µ index
+; Searchable Index
+;
+MSG_LOCALIZED_CHOOSE_FILE
+F√°jl kiv√°laszt√°sa....
+; Select File...
+;
+MSG_LOCALIZED_NO_FILE
+(semmi)
+; (None)
+;
+MSG_LOCALIZED_DETAILS
+Details
+; Details
+;
+MSG_LOCALIZED_OPEN_IN_NEW_WINDOW
+Hely megnyit√°sa √∫j ablakban...
+; Open Link in New Window...
+;
+MSG_LOCALIZED_OPEN_IN_NEW_TAB
+Hely megnyit√°sa √∫j lapon
+; Open Link in New Tab
+;
+MSG_LOCALIZED_OPEN_IN_NEW_BACKGROUND_TAB
+Hely megnyit√°sa √∫j lapon, a h√°tt√©rben
+; Open Link in New Background Tab
+;
+MSG_LOCALIZED_DOWNLOAD_LINK
+Let√∂lt√©s...
+; Download Linked File...
+;
+MSG_LOCALIZED_COPY_LINK_LOCATION
+Hely c√≠m√©nek m√°sol√°sa
+; Copy Link Location
+;
+MSG_LOCALIZED_OPEN_IMAGE_IN_NEW_WINDOW
+K√©p megnyit√°sa √∫j ablakban...
+; Open Image in New Window...
+;
+MSG_LOCALIZED_OPEN_IMAGE_IN_NEW_TAB
+K√©p megnyit√°sa √∫j lapon
+; Open Image in New Tab
+;
+MSG_LOCALIZED_SAVE_IMAGE_AS
+K√©p ment√©se, mint...
+; Save Image As...
+;
+MSG_LOCALIZED_COPY_IMAGE
+K√©p m√°sol√°sa...
+; Copy Image...
+;
+MSG_LOCALIZED_COPY_IMAGE_URL
+Copy Image Location...
+; Copy Image Location...
+;
+MSG_LOCALIZED_BLOCK_IMAGES
+K√©pek tilt√°sa innen: %s
+; Block Images from %s
+;
+MSG_LOCALIZED_OPEN_FRAME_IN_NEW_WINDOW
+Keret megnyit√°sa √∫j ablakban...
+; Open Frame in New Window...
+;
+MSG_LOCALIZED_OPEN_FRAME_IN_NEW_TAB
+Keret megnyit√°sa √∫j lapon
+; Open Frame in New Tab
+;
+MSG_LOCALIZED_COPY
+M√°sol√°s
+; Copy
+;
+MSG_LOCALIZED_DELETE
+T√∂rl√©s
+; Delete
+;
+MSG_LOCALIZED_SELECT_ALL
+Az √∂sszes kijel√∂l√©se
+; Select All
+;
+MSG_LOCALIZED_INSERT_UNICODE
+Unicode karakter beilleszt√©se
+; Insert Unicode Control Character
+;
+MSG_LOCALIZED_INPUT_METHODS
+Beviteli m√≥dszerek
+; Input Methods
+;
+MSG_LOCALIZED_BACK
+Vissza
+; Back
+;
+MSG_LOCALIZED_FORWARD
+El√µre
+; Forward
+;
+MSG_LOCALIZED_STOP
+√Ållj
+; Stop
+;
+MSG_LOCALIZED_RELOAD
+√öjrat√∂lt√©s
+; Reload
+;
+MSG_LOCALIZED_CUT
+Kiv√°g√°s
+; Cut
+;
+MSG_LOCALIZED_PASTE
+Beilleszt√©s
+; Paste
+;
+MSG_LOCALIZED_NO_GUESSES
+Nincs tal√°lat
+; No Guesses Found
+;
+MSG_LOCALIZED_IGNORE_SPELLING
+Helyes√≠r√°s mell√µz√©se
+; Ignore Spelling
+;
+MSG_LOCALIZED_LEARN_SPELLING
+Helyes√≠r√°s tanul√°sa
+; Learn Spelling
+;
+MSG_LOCALIZED_SEARCH
+Keress r√° a vil√°gh√°l√≥n
+; Search the Web
+;
+MSG_LOCALIZED_LOOKUP_IN_DICTIONARY
+N√©zd meg a sz√≥t√°rban
+; Look Up in Dictionary
+;
+MSG_LOCALIZED_OPEN_LINK
+Hely megnyit√°sa
+; Open Link
+;
+MSG_LOCALIZED_IGNORE_GRAMMAR
+Nyelvtan mell√µz√©se
+; Ignore Grammar
+;
+MSG_LOCALIZED_SPELLING_AND_GRAMMAR
+Helyes√≠r√°s √©s nyelvtan
+; Spelling and Grammar
+;
+MSG_LOCALIZED_SHOW_SPELLING_AND_GRAMMAR
+Mutassa a nyelvtant √©s a helyes√≠r√°st
+; Show Spelling and Grammar
+;
+MSG_LOCALIZED_HIDE_SPELLING_AND_GRAMMAR
+Rejtse el a nyelvtant √©s helyes√≠r√°st
+; Hide Spelling and Grammar
+;
+MSG_LOCALIZED_CHECK_DOCUMENT
+Dokumentum vizsg√°lata
+; Check Document Now
+;
+MSG_LOCALIZED_CHECK_SPELLING_WHILE_TYPING
+Helyes√≠r√°s ellen√µrz√©se g√©pel√©skor
+; Check Spelling While Typing
+;
+MSG_LOCALIZED_CHECK_GRAMMAR_WITH_SPELLING
+Nyelvtan ellen√µrz√©se g√©pel√©skor
+; Check Grammar With Spelling
+;
+MSG_LOCALIZED_DICTIONARIES
+Choose Language
+; Choose Language
+;
+MSG_LOCALIZED_FONT
+Bet√ªt√≠pus
+; Font
+;
+MSG_LOCALIZED_BOLD
+Vastag
+; Bold
+;
+MSG_LOCALIZED_ITALIC
+D√µlt
+; Italic
+;
+MSG_LOCALIZED_UNDERLINE
+Al√°h√∫zott
+; Underline
+;
+MSG_LOCALIZED_OUTLINE
+K√∂rvonalas
+; Outline
+;
+MSG_LOCALIZED_INSPECT_ELEMENT
+Elem vizsg√°lata
+; Inspect Element
+;
+MSG_LOCALIZED_NO_RECENT_SEARCHES
+Nincsenek keres√©sek
+; No recent searches
+;
+MSG_LOCALIZED_RECENT_SEARCHES
+Legut√≥bbi keres√©sek
+; Recent searches
+;
+MSG_LOCALIZED_CLEAR_RECENT_SEARCHES
+Legut√≥bbi keres√©sek t√∂rl√©se
+; Clear recent searches
+;
+MSG_LOCALIZED_TERM
+term
+; term
+;
+MSG_LOCALIZED_DEFINITION
+meghat√°roz√°s
+; definition
+;
+MSG_LOCALIZED_UNKNOWN
+Ismeretlen
+; Unknown
+;
+MSG_LOCALIZED_LEFT_TO_RIGHT
+Balr√≥l jobbra
+; Left to Right
+;
+MSG_LOCALIZED_DEFAULT_DIRECTION
+Alap √≠r√°sir√°ny
+; Default Writing Direction
+;
+MSG_LOCALIZED_RIGHT_TO_LEFT
+Jobbr√≥l balra
+; Right to Left
+;
+MSG_LOCALIZED_WRITING_DIRECTION
+√çr√°sir√°ny
+; Writing Direction
+;
+MSG_LOCALIZED_TEXT_DIRECTION
+Sz√∂veg ir√°nya
+; Text Direction
+;
+MSG_LOCALIZED_PLAY
+Lej√°tsz√°s
+; Play
+;
+MSG_LOCALIZED_PAUSE
+Sz√ºnet
+; Pause
+;
+MSG_LOCALIZED_MUTE
+Hang ki
+; Mute
+;
+MSG_LOCALIZED_UNMUTE
+Hang be
+; Unmute
+;
+MSG_LOCALIZED_SWITCH_TO_FULLSCREEN
+Teljes k√©perny≈ëre v√°lt√°s
+; Switch to Fullscreen
+;
+MSG_LOCALIZED_DOWNLOADMEDIA
+M√©dia let√∂lt√©se...
+; Download Media...
+;
+MSG_LOCALIZED_COPYMEDIAURL
+M√©dia c√≠m√©nek m√°sol√°sa
+; Copy Media Location
+;
+MSG_LOCALIZED_OPEN_MEDIA_IN_NEW_WINDOW
+M√©dia megnyit√°sa √∫j ablakban...
+; Open Media in New Window...
+;
+MSG_LOCALIZED_MEDIACONTROLS
+Ir√°ny√≠t√≥pult
+; Controls
+;
+MSG_LOCALIZED_MEDIALOOP
+Ism√©tl√©s
+; Loop
+;
+;
+; BookmarkGroup
+;
+;
+MSG_BOOKMARKGROUP_ADD_GROUP
+Csoport hozz·ad·sa
+; Add Group
+;
+MSG_BOOKMARKGROUP_ADD_LINK
+Hely hozz·ad·sa
+; Add Link
+;
+MSG_BOOKMARKGROUP_ADD_SEPARATOR
+Elv·lasztÛ hozz·ad·sa
+; Add Separator
+;
+MSG_BOOKMARKGROUP_REMOVE
+Elt·volÌt·s
+; Remove
+;
+MSG_BOOKMARKGROUP_TITLE
+NÈv:
+; Title:
+;
+MSG_BOOKMARKGROUP_ADDRESS
+Hely:
+; Address:
+;
+MSG_BOOKMARKGROUP_SHOW_IN_MENU
+Mutassa a men¸ben
+; Show in menu
+;
+MSG_BOOKMARKGROUP_QUICKLINK
+Gyorslink
+; Quick link
+;
+MSG_BOOKMARKGROUP_UNTITLED
+(NÈvtelen)
+; (No Title)
+;
+;
+; BookmarkListTree
+;
+;
+MSG_BOOKMARKLISTTREE_SEPARATOR
+----------Elv·lasztÛ-----------
+; ---------- Separator ----------
+;
+MSG_BOOKMARKLISTTREE_NO_TITLE
+(Nincs neve)
+; (No Title)
+;
+MSG_BOOKMARKLISTTREE_TITLE
+NÈv
+; Title
+;
+MSG_BOOKMARKLISTTREE_ADDRESS
+Hely
+; Address
+;
+MSG_BOOKMARKLISTTREE_FOLD_GROUP
+Csoport becsuk·sa
+; Fold Group
+;
+MSG_BOOKMARKLISTTREE_UNFOLD_GROUP
+Csoport kinyit·sa
+; Unfold Group
+;
+MSG_BOOKMARKLISTTREE_FOLD_GROUP_BOLD
+\ebCsoport becsuk·sa
+; \033bFold Group
+;
+MSG_BOOKMARKLISTTREE_UNFOLD_GROUP_BOLD
+\ebCsoport kinyit·sa
+; \033bUnfold Group
+;
+MSG_BOOKMARKLISTTREE_SEPARATOR_LABEL
+Elv·lasztÛ
+; Separator
+;
+MSG_BOOKMARKLISTTREE_OPEN
+\ebMegnyit·s
+; \033bOpen
+;
+MSG_BOOKMARKLISTTREE_OPEN_NEW_TAB
+Hely megnyit·sa ˙j lapon
+; Open Link in New Tab
+;
+MSG_BOOKMARKLISTTREE_OPEN_NEW_WINDOW
+Hely megnyit·sa ˙j ablakban...
+; Open Link in New Window...
+;
+MSG_BOOKMARKLISTTREE_BOOKMARK
+Kˆnyvjelzı
+; Bookmarks
+;
+MSG_BOOKMARKLISTTREE_FOLD_ALL_GROUPS
+÷sszes csoport becsuk·sa
+; Fold All Groups
+;
+MSG_BOOKMARKLISTTREE_UNFOLD_ALL_GROUPS
+÷sszes csoport kinyit·sa
+; Unfold All Groups
+;
+;
+; BookmarkWindow
+;
+;
+MSG_BOOKMARKWINDOW_BOOKMARKS
+Kˆnyvjelzık
+; Bookmarks
+;
+;
+; ChooseTitleGroup
+;
+;
+MSG_CHOOSETITLEGROUP_TITLE
+NÈv:
+; Title:
+;
+MSG_CHOOSETITLEGROUP_MENU
+Hozz·ad·s a _men¸hˆz
+; Add to _menu
+;
+MSG_CHOOSETITLEGROUP_NO_TITLE
+(Nincs neve)
+; (No Title)
+;
+MSG_CHOOSETITLEGROUP_ADD
+_Hozz·ad·s
+; _Add
+;
+MSG_CHOOSETITLEGROUP_CANCEL
+_MÈgsem
+; _Cancel
+;
+;
+; ConsoleList
+;
+;
+MSG_CONSOLELIST_TIME
+Idı
+; Time
+;
+MSG_CONSOLELIST_MESSAGE
+‹zenet
+; Message
+;
+MSG_CONSOLELIST_COPY
+V·gÛlapra m·sol·s
+; Copy
+;
+;
+; ConsoleWindow
+;
+;
+MSG_CONSOLEWINDOW_MESSAGES
+‹zenetek
+; Messages
+;
+MSG_CONSOLEWINDOW_CLEAR
+_TˆrlÈs
+; _Clear
+;
+;
+; ContextMenuGroup
+;
+;
+MSG_CONTEXTMENUGROUP_LINK
+Hely
+; Link
+;
+MSG_CONTEXTMENUGROUP_PAGE
+Lap
+; Page
+;
+MSG_CONTEXTMENUGROUP_IMAGE
+KÈp
+; Image
+;
+MSG_CONTEXTMENUGROUP_INTERNAL
+Belsı
+; Internal
+;
+MSG_CONTEXTMENUGROUP_ADD
+Hozz·ad·s
+; Add
+;
+MSG_CONTEXTMENUGROUP_REMOVE
+Elt·volÌt·s
+; Remove
+;
+MSG_CONTEXTMENUGROUP_CATEGORY
+KategÛria:
+; Category:
+;
+MSG_CONTEXTMENUGROUP_LABEL
+CÌmke:
+; Label:
+;
+MSG_CONTEXTMENUGROUP_ACTION
+M˚velet:
+; Action:
+;
+MSG_CONTEXTMENUGROUP_DEFAULT_LABEL
+Men¸ cÌmke
+; Menu Label
+;
+;
+;
+; ContextMenuList
+;
+;
+MSG_CONTEXTMENULIST_LINK
+Hely
+; Link
+;
+MSG_CONTEXTMENULIST_PAGE
+Lap
+; Page
+;
+MSG_CONTEXTMENULIST_IMAGE
+KÈp
+; Image
+;
+MSG_CONTEXTMENULIST_INTERNAL
+Belsı
+; Internal
+;
+MSG_CONTEXTMENULIST_CATEGORY
+KategÛria
+; Category
+;
+MSG_CONTEXTMENULIST_LABEL
+CÌmke
+; Label
+;
+MSG_CONTEXTMENULIST_ACTION
+M˚velet
+; Action
+;
+MSG_CONTEXTMENULIST_TYPE
+TÌpus
+; Type
+;
+;
+;
+; CookieManagerGroup
+;
+;
+MSG_COOKIEMANAGERGROUP_REMOVE
+_Elt·volÌt·s
+; _Remove
+;
+MSG_COOKIEMANAGERGROUP_REMOVE_ALL
+Az ˆsszes elt·volÌt·sa
+; Remove _All
+;
+MSG_COOKIEMANAGERGROUP_DOMAIN
+Tartom·ny:
+; Domain:
+;
+MSG_COOKIEMANAGERGROUP_NAME
+NÈv:
+; Name:
+;
+MSG_COOKIEMANAGERGROUP_VALUE
+…rtÈk:
+; Value:
+;
+MSG_COOKIEMANAGERGROUP_PATH
+⁄tvonal:
+; Path:
+;
+MSG_COOKIEMANAGERGROUP_TYPE
+TÌpus:
+; Type:
+;
+MSG_COOKIEMANAGERGROUP_EXPIRATION
+Lej·rat:
+; Expiration:
+;
+;
+;
+; CookieManagerList
+;
+;
+MSG_COOKIEMANAGERLIST_DOMAIN
+Tartom·ny
+; Domain
+;
+MSG_COOKIEMANAGERLIST_NAME
+NÈv
+; Name
+;
+MSG_COOKIEMANAGERLIST_VALUE
+…rtÈk
+; Value
+;
+MSG_COOKIEMANAGERLIST_COOKIES
+S¸tik
+; Cookies
+;
+MSG_COOKIEMANAGERLIST_FOLD_DOMAIN
+Tartom·ny behajt·sa
+; Fold Domain
+;
+MSG_COOKIEMANAGERLIST_UNFOLD_DOMAIN
+Tartom·ny kihajt·sa
+; Unfold Domain
+;
+MSG_COOKIEMANAGERLIST_FOLD_ALL_DOMAINS
+÷sszes tartom·ny behajat·sa
+; Fold All Domains
+;
+MSG_COOKIEMANAGERLIST_UNFOLD_ALL_DOMAINS
+÷sszes tartom·ny kihajt·sa
+; Unfold All Domains
+;
+;
+; CookieManagerWindow
+;
+;
+MSG_COOKIEMANAGERWINDOW_COOKIES
+S¸tik
+; Cookies
+;
+;
+; DefaultPolicyDelegate
+;
+;
+MSG_DEFAULTPOLICYDELEGATE_MESSAGE
+Az oldal amit meg akarsz nyitni POST adatot tartalmaz.\nHa folytatod, a POST adat ˙jra el lesz k¸ldve.\nFolytatni akarod?
+; The page you're trying to open already includes POST data.\nIf you proceed, POST data will be sent again.\nDo you want to continue?
+;
+;
+; DownloadDelegate
+;
+;
+MSG_DOWNLOADDELEGATE_OVERWRITE_OR_RESUME
+A(z) '%s' ·llom·ny m·r lÈtezik.\nFel¸l akarod Ìrni?\n\n\eb⁄j:\en mÈret: %llu b·jt\n\ebRÈgi:\en mÈret: %ld b·jt D·tum: %s%s\n
+; File '%s' already exists.\nDo you want to replace it?\n\n\033bNew Size:\033n %llu bytes\n\033bOld Size:\033n %ld bytes\n\033bOld Date:\033n %s %s
+;
+MSG_DOWNLOADDELEGATE_OVERWRITE_OR_RESUME_ACTIONS
+*_Fel¸lÌr·s|F_olytat·s|_MÈgsem
+; *_Overwrite|_Resume|_Cancel
+;
+;
+; DownloadGroup
+;
+;
+MSG_DOWNLOADGROUP_IN_PROGRESS
+Folyamatban
+; In Progress
+;
+MSG_DOWNLOADGROUP_FINISHED
+KÈsz
+; Finished
+;
+MSG_DOWNLOADGROUP_FAILED
+Sikertelen
+; Failed
+;
+MSG_DOWNLOADGROUP_ABORT
+MegszakÌt·s
+; _Abort
+;
+MSG_DOWNLOADGROUP_ABORT_ALL
+Az ˆsszes megszakÌt·sa
+; A_bort All
+;
+MSG_DOWNLOADGROUP_REMOVE
+_Elt·volÌt·s
+; _Remove
+;
+MSG_DOWNLOADGROUP_REMOVE_ALL
+_Az ˆsszes elt·volÌt·sa
+; Remove _All
+;
+MSG_DOWNLOADGROUP_RETRY
+⁄_jra
+; Re_try
+;
+MSG_DOWNLOADGROUP_CANCELLED_BY_USER
+Felhaszn·lÛi megszakÌt·s
+; Cancelled by user
+;
+MSG_DOWNLOADGROUP_INTERRUPTED
+MegszakÌtva
+; Interrupted
+;
+;
+; DownloadList
+;
+;
+MSG_DOWNLOADLIST_NAME
+NÈv
+; Name
+;
+MSG_DOWNLOADLIST_SIZE
+MÈret
+; Size
+;
+MSG_DOWNLOADLIST_PROGRESS
+Folyamat
+; Progress
+;
+MSG_DOWNLOADLIST_DETAIL
+RÈszletes
+; Detail
+;
+MSG_DOWNLOADLIST_SPEED
+SebessÈg
+; Speed
+;
+MSG_DOWNLOADLIST_ETA
+ETA
+; ETA
+;
+MSG_DOWNLOADLIST_PATH
+⁄tvonal
+; Path
+;
+MSG_DOWNLOADLIST_URL
+URL
+; URL
+;
+MSG_DOWNLOADLIST_DOWNLOADPAGE
+Download Page
+; Download Page
+;
+MSG_DOWNLOADLIST_STATUS
+¡llapot
+; Status
+;
+MSG_DOWNLOADLIST_OPEN_FILE
+\ebF·jl megnyit·sa
+; \033bOpen File
+;
+MSG_DOWNLOADLIST_OPEN_DIRECTORY
+Kˆnyvt·r megnyit·sa
+; Open Directory
+;
+MSG_DOWNLOADLIST_OPEN_DOWNLOADPAGE
+Open Download Page
+; Open Download Page
+;
+MSG_DOWNLOADLIST_SIZE_UNKNOWN
+Ismeretlen
+; Unknown
+;
+;
+; DownloadWindow
+;
+;
+MSG_DOWNLOADWINDOW_DOWNLOADS
+LetˆltÈsek
+; Downloads
+;
+;
+; FindText
+;
+;
+MSG_FINDTEXT_PREV
+Elızı
+; Previous
+;
+MSG_FINDTEXT_NEXT
+Kˆvetkezı
+; Next
+;
+MSG_FINDTEXT_CASE_SENSITIVE
+Bet˚mÈret figyelÈse
+; Case sensitive
+;
+MSG_FINDTEXT_MARK_ALL_MATCHES
+÷sszes egyezÈs megjelˆlÈse
+; Mark all matches
+;
+MSG_FINDTEXT_TEXT_NOT_FOUND
+Nem tal·lhatÛ
+; Not found
+;
+;
+; HistoryButton
+;
+;
+MSG_HISTORYBUTTON_MENU_TITLE
+elızmÈnyek
+; History
+;
+MSG_HISTORYBUTTON_NO_TITLE
+(Nincs nÈv)
+; (No Title)
+;
+;
+; HistoryList
+;
+;
+MSG_HISTORYLIST_NO_URL
+(Nincs URL)
+; (No URL)
+;
+MSG_HISTORYLIST_NO_TITLE
+(Nincs nÈv)
+; (No Title)
+;
+MSG_HISTORYLIST_HISTORY
+elızmÈnyek
+; History
+;
+MSG_HISTORYLIST_OPEN_URL
+\ebURL megnyit·sa
+; \033bOpen
+;
+MSG_HISTORYLIST_OPEN_NEW_TAB
+URL megnyit·sa ˙j lapon
+; Open in New Tab
+;
+MSG_HISTORYLIST_OPEN_NEW_WINDOW
+URL megnyit·sa ˙j ablakban...
+; Open in New Window...
+;
+;
+; HistoryListTree
+;
+;
+MSG_HISTORYLISTTREE_NO_TITLE
+(Nincs nÈv)
+; (No Title)
+;
+MSG_HISTORYLISTTREE_NO_URL
+(Nincs URL)
+; (No URL)
+;
+MSG_HISTORYLISTTREE_TITLE
+NÈv
+; Title
+;
+MSG_HISTORYLISTTREE_ADDRESS
+Hely
+; Address
+;
+MSG_HISTORYLISTTREE_HISTORY
+OWB elızmÈnyek
+; History
+;
+MSG_HISTORYLISTTREE_OPEN_URL
+\ebURL megnyit·sa
+; \033bOpen
+;
+MSG_HISTORYLISTTREE_OPEN_NEW_TAB
+URL megnyit·sa ˙j lapon
+; Open in New Tab
+;
+MSG_HISTORYLISTTREE_OPEN_NEW_WINDOW
+URL megnyit·sa ˙j ablakban...
+; Open in New Window...
+;
+;
+; HistoryPanelGroup
+;
+;
+MSG_HISTORYPANELGROUP_HISTORY
+ElızmÈnyek
+; History
+;
+;
+; LinkList
+;
+;
+MSG_LINKLIST_NO_NAME
+(Nincs nÈv)
+; (No name)
+;
+MSG_LINKLIST_QUICK_LINK
+Gyorslink
+; Quick Link
+;
+;
+; LoginWindow
+;
+;
+MSG_LOGINWINDOW_MESSAGE
+Add meg a felhaszn·lÛnevet Ès a jelszÛt %s / %s elÈrÈsÈhez.
+; Enter username and password to access %s on %s.
+;
+MSG_LOGINWINDOW_TITLE
+HitelesÌtÈs kÈrelem
+; Authentication Request
+;
+MSG_LOGINWINDOW_USERNAME
+Felhaszn·lÛnÈv:
+; Username:
+;
+MSG_LOGINWINDOW_PASSWORD
+JelszÛ:
+; Password:
+;
+MSG_LOGINWINDOW_SAVE_CREDENTIALS
+_Adatok mentÈse
+; _Save credentials
+;
+MSG_LOGINWINDOW_LOGIN
+_BejelentkezÈs
+; _Login
+;
+MSG_LOGINWINDOW_CANCEL
+_MÈgsem
+; _Cancel
+;
+;
+; MimetypeGroup
+;
+;
+MSG_MIMETYPEGROUP_EXTERNAL_VIEWER
+K¸lsı megjelenÌtı
+; External Viewer
+;
+MSG_MIMETYPEGROUP_INTERNAL_VIEWER
+Belsı megjelenÌtı
+; Internal Viewer
+;
+MSG_MIMETYPEGROUP_SAVE_TO_DISK
+Lemezre mentÈs
+; Save to Disk
+;
+MSG_MIMETYPEGROUP_ASK
+R·kÈrdez
+; Ask
+;
+MSG_MIMETYPEGROUP_STREAM
+Adatfolyam
+; Stream
+;
+MSG_MIMETYPEGROUP_PIPE
+Csı
+; Pipe
+;
+MSG_MIMETYPEGROUP_IGNORE
+MellızÈs
+; Ignore
+;
+MSG_MIMETYPEGROUP_PLUGIN
+BeÈp¸lı
+; Plugin
+;
+MSG_MIMETYPEGROUP_ADD
+Hozz·ad·s
+; Add
+;
+MSG_MIMETYPEGROUP_REMOVE
+Elt·volÌt·s
+; Remove
+;
+MSG_MIMETYPEGROUP_MIMETYPE
+MIME tÌpus:
+; MIME Type:
+;
+MSG_MIMETYPEGROUP_EXTENSION
+KiterjesztÈs:
+; Extension:
+;
+MSG_MIMETYPEGROUP_ACTION
+M˚velet:
+; Action:
+;
+MSG_MIMETYPEGROUP_VIEWER
+MegjelenÌtı:
+; Viewer:
+;
+;
+; MimetypeList
+;
+;
+MSG_MIMETYPELIST_EXTERNAL_VIEWER
+K¸lsı megjelenÌtı:
+; External viewer
+;
+MSG_MIMETYPELIST_INTERNAL_VIEWER
+Belsı megjelenÌtı
+; Internal viewer
+;
+MSG_MIMETYPELIST_SAVE_TO_DISK
+Lemezre mentÈs
+; Save to disk
+;
+MSG_MIMETYPELIST_ASK
+R·kÈrdez
+; Ask
+;
+MSG_MIMETYPELIST_STREAM
+Adatfolyam
+; Stream
+;
+MSG_MIMETYPELIST_PIPE
+Csı
+; Pipe
+;
+MSG_MIMETYPELIST_IGNORE
+MellızÈs
+; Ignore
+;
+MSG_MIMETYPELIST_PLUGIN
+BeÈp¸lı
+; Plugin
+;
+MSG_MIMETYPELIST_MIMETYPE
+MIME tÌpus
+; MIME Type
+;
+MSG_MIMETYPELIST_EXTENSION
+KiterjesztÈs
+; Extension
+;
+MSG_MIMETYPELIST_ACTION
+M˚velet
+; Action
+;
+MSG_MIMETYPELIST_VIEWER
+MegjelenÌtı
+; Viewer
+;
+;
+; NavigationGroup
+;
+;
+MSG_NAVIGATIONGROUP_BACK
+Vissza
+; Back
+;
+MSG_NAVIGATIONGROUP_FORWARD
+Elıre
+; Forward
+;
+MSG_NAVIGATIONGROUP_RELOAD
+⁄jratˆltÈs
+; Reload
+;
+MSG_NAVIGATIONGROUP_STOP
+¡llj
+; Stop
+;
+MSG_NAVIGATIONGROUP_HOME
+Kezdılap
+; Home
+;
+MSG_NAVIGATIONGROUP_INSPECT
+Inspect
+; Inspect
+;
+;
+; NetworkWindow
+;
+;
+MSG_NETWORKWINDOW_TITLE
+H·lÛzati aktivit·s
+; Network Activity
+;
+MSG_NETWORKWINDOW_URL
+URL
+; URL
+;
+MSG_NETWORKWINDOW_STATE
+¡llapot
+; State
+;
+MSG_NETWORKWINDOW_ABORT
+Meg_szakÌt·s
+; A_bort
+;
+MSG_NETWORKWINDOW_ABORT_ALL
+_Az ˆsszes megszakÌt·sa
+; _Abort All
+;
+MSG_NETWORKWINDOW_STATUS_RECEIVING_DATA
+%s / %s beolvasva
+; %s of %s read
+;
+MSG_NETWORKWINDOW_STATUS_SENDING_DATA
+%s of %s sent
+; %s of %s read
+;
+MSG_NETWORKWINDOW_STATUS_WAITING_FOR_DATA
+V·rakoz·s az adatokra
+; Waiting for data
+;
+MSG_NETWORKWINDOW_STATUS_CONNECTING
+Csatlakoz·s
+; Connecting
+;
+;
+; OWBWindow
+;
+;
+MSG_OWBWINDOW_PENDING_DOWNLOADS
+MÈg folyamatban van nÈh·ny letˆltÈs.\nBiztosan ki akarsz lÈpni?
+; Some files are currently being downloaded.\nDo you really want to quit?
+;
+MSG_OWBWINDOW_QUIT_CONFIRMATION
+Biztosan ki akarsz lÈpni?
+; Do you really want to quit?
+;
+MSG_OWBWINDOW_CLOSE_ALL_PAGES_CONFIRMATION
+Biztosan be akarod z·rni az ˆsszes oldalt?
+; Do you want to close all tabs?
+;
+MSG_OWBWINDOW_OPEN_FILE
+F·jl megnyit·sa...
+; Open File...
+;
+MSG_OWBWINDOW_SAVE_AS
+MentÈs, mint...
+; Save As...
+;
+MSG_OWBWINDOW_READ_PROGRESS
+%s / %s beolvasva
+; %s of %s read
+;
+MSG_OWBWINDOW_STATE_READY
+KÈsz
+; Ready
+;
+MSG_OWBWINDOW_STATE_RECEIVING_DATA
+Adat fogad·sa...
+; Receiving data...
+;
+MSG_OWBWINDOW_STATE_SENDING_REQUEST
+KÈrÈs k¸ldÈse...
+; Sending request...
+;
+MSG_OWBWINDOW_STATE_ERROR
+Hiba
+; Error
+;
+MSG_OWBWINDOW_CHOOSE_TITLE
+NÈv v·laszt·sa
+; Choose a title
+;
+MSG_OWBWINDOW_JAVASCRIPT_PROMPT
+OWB JavaScript Prompt
+; JavaScript Prompt
+;
+MSG_OWBWINDOW_JAVASCRIPT_OK
+_Rendben
+; _Ok
+;
+MSG_OWBWINDOW_JAVASCRIPT_CANCEL
+_MÈgsem
+; _Cancel
+;
+MSG_OWBWINDOW_RUNNING_USERSCRIPTS
+\033bRunning userscripts:\033n\n\n
+; \033bRunning userscripts:\033n\n\n
+;
+;
+; PasswordManagerGroup
+;
+;
+MSG_PASSWORDMANAGERGROUP_REMOVE
+_Elt·volÌt·s
+; _Remove
+;
+MSG_PASSWORDMANAGERGROUP_REMOVE_ALL
+Az ˆsszes elt·volÌt·sa
+; Remove _All
+;
+;
+; PasswordManagerList
+;
+;
+MSG_PASSWORDMANAGERLIST_HOST
+Gazda
+; Host
+;
+MSG_PASSWORDMANAGERLIST_REALM
+Birtok
+; Realm
+;
+MSG_PASSWORDMANAGERLIST_USERNAME
+Felhaszn·lÛnÈv
+; Username
+;
+MSG_PASSWORDMANAGERLIST_PASSWORD
+JelszÛ
+; Password
+;
+MSG_PASSWORDMANAGERLIST_FORM
+Oszt·ly
+; Form
+;
+MSG_PASSWORDMANAGERLIST_FILTER
+Sz˚rı
+; Filter
+;
+MSG_PASSWORDMANAGERLIST_FILTER_REMEMBER
+MegjegyzÈs
+; Remember
+;
+MSG_PASSWORDMANAGERLIST_FILTER_IGNORE
+Ignor·l·s
+; Ignore
+;
+;
+; PasswordManagerWindow
+;
+;
+MSG_PASSWORDMANAGERWINDOW_TITLE
+Jelszavak
+; Passwords
+;
+MSG_BLOCKMANAGERWINDOW_TITLE
+Tartalomsz˚rÈs
+; Content Blocking
+;
+MSG_BLOCKMANAGERLIST_DENY
+ElutasÌt
+; Deny
+;
+MSG_BLOCKMANAGERLIST_ALLOW
+EngedÈlyez
+; Allow
+;
+MSG_BLOCKMANAGERLIST_TYPE
+Sz˚rı tÌpusa
+; Filter Type
+;
+MSG_BLOCKMANAGERLIST_RULE
+Szab·ly
+; Rule
+;
+MSG_BLOCKMANAGERGROUP_REMOVE
+_Elt·volÌt·s
+; _Remove
+;
+MSG_BLOCKMANAGERGROUP_ADD
+_Hozz·ad·s
+; _Add
+;
+MSG_BLOCKMANAGERGROUP_TYPE
+Sz˚rı tÌpusa:
+; Filter Type:
+;
+MSG_BLOCKMANAGERGROUP_RULE
+Szab·ly:
+; Rule:
+;
+MSG_BLOCKMANAGERGROUP_DENY
+ElutasÌt
+; Deny
+;
+MSG_BLOCKMANAGERGROUP_ALLOW
+EngedÈlyez
+; Allow
+;
+;
+; SearchManagerWindow
+;
+;
+MSG_SEARCHMANAGERWINDOW_TITLE
+Keresımotorok
+; Search Engines
+;
+;
+; SearchManagerGroup
+;
+;
+MSG_SEARCHMANAGERGROUP_ADD
+_Hozz·ad·s
+; _Add
+;
+MSG_SEARCHMANAGERGROUP_REMOVE
+_Elt·volÌt·s
+; _Remove
+;
+MSG_SEARCHMANAGERGROUP_TITLE
+NÈv:
+; Title:
+;
+MSG_SEARCHMANAGERGROUP_LINK
+Hely:
+; Link:
+;
+MSG_SEARCHMANAGERGROUP_SHORTCUT
+RˆvidÌtÈs:
+; Shortcut:
+;
+;
+; SearchManagerList
+;
+;
+MSG_SEARCHMANAGERLIST_TITLE
+NÈv
+; Title
+;
+MSG_SEARCHMANAGERLIST_LINK
+Hely:
+; Link
+;
+MSG_SEARCHMANAGERLIST_SHORTCUT
+RˆvidÌtÈs
+; Shortcut
+;
+;
+; ScriptManagerWindow
+;
+;
+MSG_SCRIPTMANAGERWINDOW_TITLE
+Szkriptek
+; Scripts
+;
+;
+; ScriptManagerGroup
+;
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_SELECT
+Felhaszn·lÛi szkript kiv·laszt·sa...
+; Select User Script...
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_ADD
+_Hozz·ad·s
+; _Add
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_REMOVE
+_Elt·volÌt·s
+; _Remove
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_ENABLE
+E_ngedÈlyezÈs
+; _Enable
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_PATH
+⁄tvonal:
+; Path:
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_NAME
+NÈv:
+; Name:
+;
+MSG_SCRIPTMANAGERGROUP_SCRIPT_DESCRIPTION
+LeÌr·s:
+; Description:
+;
+MSG_SCRIPTMANAGERGROUP_WHITELIST
+EngedÈlyezett oldalak
+; Allowed Sites
+;
+MSG_SCRIPTMANAGERGROUP_BLACKLIST
+Letiltott oldalak
+; Forbidden Sites
+;
+MSG_SCRIPTMANAGERGROUP_WHITELIST_ADD
+Hozz·ad·s
+; Add
+;
+MSG_SCRIPTMANAGERGROUP_WHITELIST_REMOVE
+Elt·volÌt·s
+; Remove
+;
+MSG_SCRIPTMANAGERGROUP_BLACKLIST_ADD
+Hozz·ad·s
+; Add
+;
+MSG_SCRIPTMANAGERGROUP_BLACKLIST_REMOVE
+Elt·volÌt·s
+; Remove
+;
+;
+; URLPrefsWindow
+;
+;
+MSG_URLPREFSWINDOW_TITLE
+URL Be·llÌt·sok
+; URL Preferences
+;
+;
+; URLPrefsGroup
+;
+;
+MSG_URLPREFSGROUP_ADD
+Hozz·_ad
+; _Add
+;
+MSG_URLPREFSGROUP_REMOVE
+_Elt·volÌt
+; _Remove
+;
+MSG_URLPREFSGROUP_JAVASCRIPT
+_JavaScript t·mogat·s
+; _JavaScript support
+;
+MSG_URLPREFSGROUP_LOAD_IMAGES
+KÈpek automat_ikus betˆltÈse
+; Load _images automatically
+;
+MSG_URLPREFSGROUP_PLUGINS
+BeÈ_p¸lık
+; _Plugins
+;
+MSG_URLPREFSGROUP_SPOOF
+Tegyen ˙gy, mint:
+; _Spoof As:
+;
+MSG_URLPREFSGROUP_COOKIE_POLICY
+Cookie Policy:
+; Cookie Policy:
+;
+MSG_URLPREFSGROUP_COOKIE_FILTER
+Cookie Name Filter:
+; Cookie Name Filter:
+;
+;
+; PrinterWindow
+;
+;
+MSG_PRINTERWINDOW_TITLE
+Print Document
+; Print Document
+;
+MSG_PRINTERWINDOW_PRINT_MODE
+_Mode:
+; _Mode:
+;
+MSG_PRINTERWINDOW_PSLEVEL
+P_S Level:
+; P_S Level:
+;
+MSG_PRINTERWINDOW_PREFERENCES
+P_rinter Preferences
+; P_rinter Preferences
+;
+MSG_PRINTERWINDOW_OUTPUT
+_Output:
+; _Output:
+;
+MSG_PRINTERWINDOW_FIRST_PAGE
+_First Page:
+; _First Page:
+;
+MSG_PRINTERWINDOW_LAST_PAGE
+_Last Page:
+; _Last Page:
+;
+MSG_PRINTERWINDOW_SCALE
+Sca_le:
+; Sca_le:
+;
+MSG_PRINTERWINDOW_PRINT
+_Print
+; _Print
+;
+MSG_PRINTERWINDOW_CANCEL
+_Cancel
+; _Cancel
+;
+MSG_PRINTERWINDOW_STATUS
+Printing page %d/%d...
+; Printing page %d/%d...
+;
+MSG_PRINTERWINDOW_ERROR
+Failed to initialize output device.
+; Failed to initialize output device.
+;
+;
+; PrefsWindow
+;
+;
+MSG_PREFSWINDOW_TITLE
+Be·llÌt·sok
+; Settings
+;
+MSG_PREFSWINDOW_CATEGORY_GENERAL
+¡ltal·nos
+; General
+;
+MSG_PREFSWINDOW_CATEGORY_INTERFACE
+Fel¸let
+; Interface
+;
+MSG_PREFSWINDOW_CATEGORY_CONTEXTUAL_MENUS
+HelyÈrzÈkeny men¸k
+; Contextual Menus
+;
+MSG_PREFSWINDOW_CATEGORY_MIMETYPES
+MIME tÌpusok
+; MIME Types
+;
+MSG_PREFSWINDOW_CATEGORY_CONTENT
+Tartalom
+; Content
+;
+MSG_PREFSWINDOW_CATEGORY_FONTS
+Bet˚tÌpusok
+; Fonts
+;
+MSG_PREFSWINDOW_CATEGORY_DOWNLOADS
+LetˆltÈsek
+; Downloads
+;
+MSG_PREFSWINDOW_CATEGORY_NETWORK
+H·lÛzat
+; Network
+;
+MSG_PREFSWINDOW_CATEGORY_PRIVACY
+Mag·nÈlet
+; Privacy
+;
+MSG_PREFSWINDOW_CATEGORY_SECURITY
+Biztons·g
+; Security
+;
+MSG_PREFSWINDOW_CATEGORY_MEDIA
+MÈdia
+; Media
+;
+MSG_PREFSWINDOW_CATEGORY_MISCELLANEOUS
+Egyebek
+; Miscellaneous
+;
+MSG_PREFSWINDOW_CACHE_DOCUMENT_VIEWER
+Dokumentum megjelenÌtı
+; Document Viewer
+;
+MSG_PREFSWINDOW_CACHE_DOCUMENT_BROWSER
+Dokumentum bˆngÈszı
+; Document Browser
+;
+MSG_PREFSWINDOW_CACHE_PRIMARY_BROWSER
+Elsıdleges webbˆngÈszı
+; Primary Web Browser
+;
+MSG_PREFSWINDOW_SMOOTH_NORMAL
+Norm·l
+; Normal
+;
+MSG_PREFSWINDOW_SMOOTH_ALTERNATIVE
+AlternatÌv
+; Alternative
+;
+MSG_PREFSWINDOW_NEWPAGE_NEWTAB
+⁄j lap
+; New Tab
+;
+MSG_PREFSWINDOW_NEWPAGE_NEWWINDOW
+⁄j ablak
+; New Window
+;
+MSG_PREFSWINDOW_NEWPAGE_LAST
+At End
+; At End
+;
+MSG_PREFSWINDOW_NEWPAGE_AFTERACTIVE
+After Current
+; After Current
+;
+MSG_PREFSWINDOW_QUICKLINK_BUTTON
+Gomb
+; Button
+;
+MSG_PREFSWINDOW_QUICKLINK_LINK
+Hely
+; Link
+;
+MSG_PREFSWINDOW_QUICKLINK_DYNAMIC
+Dinamikus r·cs
+; Dynamic Grid
+;
+MSG_PREFSWINDOW_QUICKLINK_FIXED
+RˆgzÌtett r·cs
+; Fixed Grid
+;
+MSG_PREFSWINDOW_QUICKLINK_BESTFIT
+Dinamikus helykihaszn·l·s
+; Dynamic Best-Fit
+;
+MSG_PREFSWINDOW_NAVIGATION_ICON
+Ikon
+; Icon
+;
+MSG_PREFSWINDOW_NAVIGATION_TEXT
+Szˆveg
+; Text
+;
+MSG_PREFSWINDOW_NAVIGATION_ICON_AND_TEXT
+Ikon Ès szˆveg
+; Icon and Text
+;
+MSG_PREFSWINDOW_COOKIE_ACCEPT
+Elfogad
+; Accept
+;
+MSG_PREFSWINDOW_COOKIE_REJECT
+ElutasÌt
+; Reject
+;
+MSG_PREFSWINDOW_COOKIE_ASK
+R·kÈrdez
+; Ask
+;
+MSG_PREFSWINDOW_COMPLETION_NONE
+Nincs
+; None
+;
+MSG_PREFSWINDOW_COMPLETION_STRING
+Sor
+; String
+;
+MSG_PREFSWINDOW_COMPLETION_POPUP
+FelugrÛ
+; Popup
+;
+MSG_PREFSWINDOW_COMPLETION_STRING_AND_POPUP
+Sor Ès felugrÛ
+; String and Popup
+;
+MSG_PREFSWINDOW_CLOSE_REQUESTER_ALWAYS
+Mindig
+; Always
+;
+MSG_PREFSWINDOW_CLOSE_REQUESTER_NEVER
+Soha
+; Never
+;
+MSG_PREFSWINDOW_CLOSE_REQUESTER_IF_MORE_THAN_ONE
+Ha tˆbb, mint egy bˆngÈszı van
+; With Multiple Tabs
+;
+MSG_PREFSWINDOW_ERROR_REQUESTER
+P·rbeszÈd ablak
+; Requester Dialog
+;
+MSG_PREFSWINDOW_ERROR_HTML
+HTML megjelenÌtÈs
+; HTML Display
+;
+MSG_PREFSWINDOW_ANIMATE_NEVER
+Soha
+; Never
+;
+MSG_PREFSWINDOW_ANIMATE_ALWAYS
+Mindig
+; Always
+;
+MSG_PREFSWINDOW_ANIMATE_ACTIVE_WINDOW
+Csak az aktÌv ablakban
+; Active Window Only
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR_NEW_TAB
+⁄j lap
+; New Tab
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR_NEW_BACKGROUND_TAB
+⁄j lap a h·ttÈrben
+; New Background Tab
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR_NEW_WINDOW
+⁄j ablak
+; New Window
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_OFF
+Kikapcsolva
+; Disabled
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_ASK
+R·kÈrdez
+; Ask
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_ON
+Automatikus
+; Automatically
+;
+; General
+;
+MSG_PREFSWINDOW_GENERAL_HOME_PAGE
+_Saj·t oldal:
+; _Home Page:
+;
+MSG_PREFSWINDOW_GENERAL_START_PAGE
+_Kezdılap:
+; S_tart Page:
+;
+MSG_PREFSWINDOW_GENERAL_NEW_PAGE
+_New Page:
+; _New Page:
+;
+MSG_PREFSWINDOW_GENERAL_OUTPUT_WINDOW
+K_imeneti ablak:
+; _Output Window:
+;
+; Interface
+;
+MSG_PREFSWINDOW_INTERFACE_GENERAL
+¡ltal·nos
+; General
+;
+MSG_PREFSWINDOW_INTERFACE_NEW_PAGE_POLICY
+_⁄j oldal vezÈrelv:
+; _New Page Policy:
+;
+MSG_PREFSWINDOW_INTERFACE_NEW_PAGE_POSITION
+Tab Opening Position:
+; Tab Opening Position:
+;
+MSG_PREFSWINDOW_INTERFACE_POPUP_POLICY
+Popup Policy:
+; Popup Policy:
+;
+MSG_PREFSWINDOW_INTERFACE_NAVIGATION_BUTTON_TYPE
+Navig·ciÛs _gombok tÌpusa:
+; Navigation _Button Type:
+;
+MSG_PREFSWINDOW_INTERFACE_COMPLETION_MODE
+URL kiegÈszÌ_tı mÛd:
+; URL Com_pletion Mode:
+;
+MSG_PREFSWINDOW_INTERFACE_CLOSE_REQUESTER
+MegerısÌtÈs kÈrÈse be_z·r·skor:
+; Con_firm Closing:
+;
+MSG_PREFSWINDOW_INTERFACE_ERROR_REPORTING
+_HibajelentÈs:
+; Error _Reporting:
+;
+MSG_PREFSWINDOW_INTERFACE_MIDDLEBUTTON_BEHAVIOUR
+KˆzÈpsı egÈrgomb _m˚velete:
+; Middle Button Be_haviour:
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_BUTTON_FRAME
+Gombkeretek meg_jelenÌtÈse
+; Sho_w buttons frames
+;
+MSG_PREFSWINDOW_INTERFACE_CONTEXTUAL_POINTERS
+HelyÈrzÈkeny _egÈrmutatÛk engedÈlyezÈse
+; Use contextual _mouse pointers
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_SEARCH_BAR
+Gyorske_resı megjelenÌtÈse
+; Show s_earch bar
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_VALIDATION_BUTTONS
+_…rvÈnyesÌtı gombok megjelenÌtÈse
+; Show _validation buttons
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_SEPARATORS
+Cso_port-elv·lasztÛk megjelenÌtÈse
+; Show _group separators
+;
+MSG_PREFSWINDOW_INTERFACE_FAVICONS
+Favicon-ok
+; Website Icons
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_TABS
+L_apok
+; T_abs
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_BOOKMARKS
+_Kˆnyvjelzık
+; B_ookmarks
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_HISTORY
+El_ızmÈnyek
+; H_istory
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_BOOKMARK_PANEL
+Kˆ_nyvjelzık panel
+; Boo_kmarks panel
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_HISTORY_PANEL
+ElızmÈnyek pa_nel
+; History pane_l
+;
+MSG_PREFSWINDOW_INTERFACE_SHOW_FAVICONS_QUICKLINKS
+Gyorslinkek
+; Quick links
+;
+MSG_PREFSWINDOW_INTERFACE_TAB_TRANSFERANIM
+_Lap ·tviteli anim·ciÛj·nak megjelenÌtÈse
+; Show _tab transfer animation
+;
+MSG_PREFSWINDOW_INTERFACE_QUICK_LINKS
+Gyorslinkek
+; Quick Links
+;
+MSG_PREFSWINDOW_INTERFACE_QUICK_LINK_LOOK
+Gy_orslink kinÈzete:
+; Look:
+;
+MSG_PREFSWINDOW_INTERFACE_QUICK_LINK_LAYOUT
+Gyorslinkek elren_dezÈse:
+; La_yout:
+;
+MSG_PREFSWINDOW_INTERFACE_MAXIMUM_ROWS
+Ma_xim·lis sorok:
+; Ma_ximum Rows:
+;
+; Content
+;
+MSG_PREFSWINDOW_CONTENT_CACHE_MODEL
+_T·rÛlÛ modell:
+; Cache _Model:
+;
+MSG_PREFSWINDOW_CONTENT_PAGE_CACHE
+Oldal t·rolÛ engedÈl_yezÈse
+; Page cac_he
+;
+MSG_PREFSWINDOW_CONTENT_JAVASCRIPT
+_JavaScript engedÈlyezÈse
+; _JavaScript support
+;
+MSG_PREFSWINDOW_CONTENT_ALLOW_NEW_WINDOW
+E_ngedÈlyezze a JavaScript-nek ˙j ablak nyit·s·t
+; Allow JavaScript to open new _windows
+;
+MSG_PREFSWINDOW_CONTENT_PLAY_ANIMATIONS
+Anim·_ciÛk lej·tsz·sa
+; Play _animations
+;
+MSG_PREFSWINDOW_CONTENT_LOAD_IMAGES
+KÈpek a_utomatikus betˆltÈse
+; Load _images automatically
+;
+MSG_PREFSWINDOW_CONTENT_PRINT_BACKGROUNDS
+H_·tterek nyomtat·sa
+; _Print backgrounds
+;
+MSG_PREFSWINDOW_CONTENT_BLOCKING
+T_artalomsz˚rÈs engedÈlyezÈse (AdBlock)
+; Content _blocking (AdBlock)
+;
+MSG_PREFSWINDOW_CONTENT_PLUGINS
+_BeÈp¸lık engedÈlyezÈse
+; Allow plu_gins
+;
+MSG_PREFSWINDOW_CONTENT_INSPECTOR
+WebInspector
+; WebInspector
+;
+; Fonts
+;
+MSG_PREFSWINDOW_FONTS_DEFAULT_SIZE
+Alap bet˚mÈret:
+; Default Font Size:
+;
+MSG_PREFSWINDOW_FONTS_DEFAULT_MONOSPACED_SIZE
+Alap fix bet˚mÈret:
+; Default Monospaced Font Size:
+;
+MSG_PREFSWINDOW_FONTS_MINIMUM_SIZE
+Minimum bet˚mÈret:
+; Minimum Font Size:
+;
+MSG_PREFSWINDOW_FONTS_MINIMUM_LOGICAL_SIZE
+Minimum logikai bet˚mÈret:
+; Minimum Logical Font Size:
+;
+MSG_PREFSWINDOW_FONTS_SMOOTHING_METHOD
+…lsimÌtÛ mÛdszer:
+; Antialiasing Method:
+;
+MSG_PREFSWINDOW_FONTS_ENCODING
+SzˆvegkÛdÛl·s:
+; Text Encoding:
+;
+MSG_PREFSWINDOW_FONTS_STANDARD_FAMILY
+Szabv·nyos bet˚tÌpus csal·d:
+; Standard Font Family:
+;
+MSG_PREFSWINDOW_FONTS_MONOSPACED_FAMILY
+Fix bet˚tÌpus csal·d:
+; Monospaced Font Family:
+;
+MSG_PREFSWINDOW_FONTS_SERIF_FAMILY
+Serif bet˚tÌpus csal·d:
+; Serif Font Family:
+;
+MSG_PREFSWINDOW_FONTS_SANS_SERIF_FAMILY
+Sans bet˚tÌpus csal·d:
+; Sans Serif Font Family:
+;
+MSG_PREFSWINDOW_FONTS_CURSIVE_FAMILY
+KurzÌv bet˚tÌpus csal·d:
+; Cursive Font Family:
+;
+MSG_PREFSWINDOW_FONTS_FANTASY_FAMILY
+Fant·zia bet˚tÌpus csal·d:
+; Fantasy Font Family:
+;
+; Downloads
+;
+MSG_PREFSWINDOW_DOWNLOADS_PATH
+_LetˆltÈs helye:
+; _Download Path:
+;
+MSG_PREFSWINDOW_DOWNLOADS_AUTOCLOSE
+LetˆltÈsek _ablak bez·r·sa, ha kÈsz
+; Close "Downloads" _window when finished
+;
+MSG_PREFSWINDOW_DOWNLOADS_SAVEDOWNLOADS
+_EmlÈkezzen a letˆltˆtt ·llom·nyokra
+; _Remember downloaded files
+;
+MSG_PREFSWINDOW_DOWNLOADS_START_AUTOMATICALLY
+Start downloads _automatically
+; Start downloads _automatically
+;
+; Network
+;
+MSG_PREFSWINDOW_NETWORK_SPOOF
+Tegyen ˙gy, mint:
+; S_poof As:
+;
+MSG_PREFSWINDOW_NETWORK_EXPERIMENTAL_COOKIES
+KÌsÈrleti _s¸tirendszer haszn·lata (˙jraindÌt·st igÈnyel)
+; E_xperimental cookie system (restart required)
+;
+MSG_PREFSWINDOW_NETWORK_THREAD
+H·lÛzatkezelÈs k¸lˆn sz·lon (˙jraindÌt·st igÈnyel)
+; Network _thread (restart required)
+;
+MSG_PREFSWINDOW_NETWORK_ACTIVE_CONNECTIONS
+AktÌv kapcsolatok s_z·ma:
+; _Active Connections:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY
+Proxy
+; Proxy
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_PASSWORD
+JelszÛ:
+; Password:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_USERNAME
+Felhaszn·lÛnÈv:
+; Username:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_PORT
+Port:
+; Port:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_HOST
+Gazda:
+; Host:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_TYPE
+TÌpus:
+; Type:
+;
+MSG_PREFSWINDOW_NETWORK_PROXY_USE
+Proxy haszn·lata
+; Use proxy
+;
+; Privacy
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_SESSION
+Munkaf·zis _mentÈse:
+; Save s_ession
+;
+MSG_PREFSWINDOW_PRIVACY_DELETE_SESSION_AT_EXIT
+Munkaf·zis tˆ_rlÈse kilÈpÈskor
+; _Delete session at exit
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_REQUESTER
+Indul·skor r·kÈrdezÈs a munkaf·zis vissza·llÌt·s·ra
+; _Ask for session restoration at startup
+;
+MSG_PREFSWINDOW_PRIVACY_SESSION_RESTORATION_MODE
+Munkaf·zis-_vissza·llÌt·s:
+; Session _Restoration:
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_COOKIES
+S_¸tik mentÈse
+; Save c_ookies
+;
+MSG_PREFSWINDOW_PRIVACY_COOKIES_POLICY
+Cookie Policy:
+; Cookie Policy:
+;
+MSG_PREFSWINDOW_PRIVACY_ENABLE_LOCAL_STORAGE
+Enable local storage
+; Enable local storage
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_FORM_CREDENTIALS
+_JelszÛadatok mentÈse
+; Save _form credentials
+;
+MSG_PREFSWINDOW_PRIVACY_SAVE_HISTORY
+E_lızmÈnyek mentÈse
+; Save _history
+;
+MSG_PREFSWINDOW_PRIVACY_ENABLE_FORM_AUTOFILL
+Enable form autofill
+; Enable form autof_ill
+;
+MSG_PREFSWINDOW_PRIVACY_HISTORY_ENTRIES
+ElızmÈnyek sz·ma:
+; History Entries:
+;
+MSG_PREFSWINDOW_PRIVACY_HISTORY_AGE
+ElızmÈnyek kora napokban:
+; History Age in Days:
+;
+; Security
+;
+MSG_PREFSWINDOW_SECURITY_IGNORE_SSL_ERRORS
+SSL _hiba¸zenetek figyelmen kÌv¸l hagy·sa
+; _Ignore SSL errors
+;
+MSG_PREFSWINDOW_SECURITY_CERTIFICATE_PATH
+⁄tvonal a _tan˙sÌtv·nyokhoz:
+; Certificate _Path:
+;
+; Media
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_NONE
+Minden kÈpkocka feldolgoz·sa
+; Process All Frames
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_NONREF
+Csak referencia kÈpkock·k feldolgoz·sa
+; Skip All But Reference Frames
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_NONKEY
+Csak kulcs kÈpkock·k feldolgoz·sa
+; Skip All But Key Frames
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_SKIP_ALL
+Minden kÈpkocka kihagy·sa
+; Skip All Frames
+;
+MSG_PREFSWINDOW_MEDIA_LOOPFILTER_MODE
+_Huroksz˚rı tÌpusa (H264):
+; _Loopfilter Mode (H264):
+;
+MSG_PREFSWINDOW_MEDIA_ENABLE_PARTIAL_CONTENT
+_Gyors keresÈs
+; _Fast seeking
+;
+MSG_PREFSWINDOW_MEDIA_USE_WEBM
+_WebM (VP8) feldolgozÛ t·mogat·sa
+; _WebM (VP8) codec support
+;
+MSG_PREFSWINDOW_MEDIA_USE_FLV
+FL_V (H.263/H.264) support
+; FL_V (H.263/H.264) support
+;
+MSG_PREFSWINDOW_MEDIA_USE_OGG
+_Ogg (Theora/Vorbis) support
+; _Ogg (Theora/Vorbis) support
+;
+; Prefs validation
+;
+MSG_PREFSWINDOW_SAVE
+_MentÈs
+; _Save
+;
+MSG_PREFSWINDOW_USE
+_Haszn·lat
+; _Use
+;
+MSG_PREFSWINDOW_CANCEL
+M_Ègsem
+; _Cancel
+;
+;
+; QuickLinkButtonGroup
+;
+;
+MSG_QUICKLINKBUTTONGROUP_NO_NAME
+(Nincs nÈv)
+; (No name)
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN
+\ebMegnyit·s
+; \033bOpen
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN_NEW_TAB
+Megnyit·s ˙j lapon
+; Open in New Tab
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN_NEW_WINDOW
+Megnyit·s ˙j ablakban...
+; Open in New Window...
+;
+MSG_QUICKLINKBUTTONGROUP_REMOVE
+Elt·volÌt·s
+; Remove
+;
+MSG_QUICKLINKBUTTONGROUP_OPEN_ALL
+÷sszes kˆnyvjelzı megnyit·sa
+; Open All Bookmarks
+;
+;
+; SplashWindow
+;
+;
+MSG_SPLASHWINDOW_INITIALIZING
+Bet˚tÌpusok inicializ·l·sa...
+; Initializing Fonts...
+;
+MSG_TITLELABEL_BROWSER
+BˆngÈszı
+; Browser
+;
+MSG_SPLASHWINDOW_LOADING
+BetˆltÈs...
+; Loading...
+;
+MSG_TITLELABEL_NEW_TAB
+⁄j lap
+; New Tab
+;
+MSG_TITLELABEL_RELOAD
+⁄jratˆlt
+; Reload
+;
+MSG_TITLELABEL_RELOAD_ALL_TABS
+÷sszes lap ˙jratˆltÈse
+; Reload All Tabs
+;
+MSG_TITLELABEL_CLOSE
+Bez·r·s
+; Close
+;
+MSG_TITLELABEL_CLOSE_ALL_OTHER_TABS
+Minden m·s lap bez·r·sa
+; Close All Other Tabs
+;
+;
+; ToolButton_AddBookmark
+;
+;
+MSG_TOOLBUTTON_ADDBOOKMARK_ADD
+Hozz·ad·s
+; Add
+;
+MSG_TOOLBUTTON_ADDBOOKMARK_NO_TITLE
+(Nincs nÈv)
+; (No Title)
+;
+;
+; ToolButton_NewTab
+;
+;
+MSG_TOOLBUTTON_NEWTAB_LABEL
+⁄j lap
+; New Tab
+;
+;
+; Utils
+;
+;
+MSG_CAPACITY_BYTE
+B
+; B
+;
+MSG_CAPACITY_KILOBYTE
+kB
+; kB
+;
+MSG_CAPACITY_MEGABYTE
+MB
+; MB
+;
+MSG_CAPACITY_GIGABYTE
+GB
+; GB
+;
+MSG_CAPACITY_TERABYTE
+TB
+; TB
+;
+MSG_PROGRESS_DAY
+%lu nap
+; %lu day
+;
+MSG_PROGRESS_DAYS
+%lu nap
+; %lu days
+;
+MSG_PROGRESS_HOUR
+%lu Ûra
+; %lu hour
+;
+MSG_PROGRESS_HOURS
+%lu Ûra
+; %lu hours
+;
+MSG_PROGRESS_MINUTE
+%lu perc
+; %lu minute
+;
+MSG_PROGRESS_MINUTES
+%lu perc
+; %lu minutes
+;
+MSG_PROGRESS_SECOND
+%lu m·sodperc
+; %lu second
+;
+MSG_PROGRESS_SECONDS
+%lu m·sodperc
+; %lu seconds
+;
+MSG_WEBVIEW_UPLOAD_FILES
+¡llom·nyok feltˆltÈse...
+; Upload Files...
+;
+MSG_WEBVIEW_UPLOAD_FILE
+¡llom·ny feltˆltÈse...
+; Upload File...
+;
+MSG_WEBVIEW_ERROR_MSG_HTML
+Hiba %d: %s.
+; Error %d: %s.
+;
+MSG_WEBVIEW_ERROR_MSG
+Nem lehet megnyitni a(z) '%s' cÌmet.\nHiba %d: %s.\n
+; Unable to open '%s'.\nError %d: %s.\n
+;
+MSG_WEBVIEW_PROVISIONAL_TITLE
+(NÈvtelen)
+; (Untitled)
+;
+MSG_WEBVIEW_INTERRUPT_SCRIPT
+MegszakÌtod a jelenleg futÛ szkriptet?
+; Do you want to interrupt processing of the current script?
+;
+MSG_WEBVIEW_JSACTION_TITLE
+Javascript figyelmeztetÈs
+; Javascript Alert
+;
