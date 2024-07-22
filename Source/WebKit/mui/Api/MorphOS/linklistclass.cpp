@@ -167,7 +167,7 @@ DEFMMETHOD(List_Display)
 			else
 				alias = td->alias;
 
-			td->buffer2 = (STRPTR) AllocVecTaskPooled(strlen(alias)+1+16);
+			td->buffer2 = (STRPTR) AllocVecTaskPooled(strlen(alias)+1+24);
 			if (td->buffer2 )
 				sprintf(td->buffer2, " \033O[%08lx] %s", (unsigned long) td->iconimg, alias);
 		}

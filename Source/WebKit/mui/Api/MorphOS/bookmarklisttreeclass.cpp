@@ -189,7 +189,7 @@ MUI_HOOK(bookmarklisttree_displayfunc, APTR a, APTR t)
 				FreeVecTaskPooled(td->buffer1);
 				td->buffer1=NULL;
 			}
-			td->buffer1=(STRPTR) AllocVecTaskPooled(strlen(td->title)+4+16);
+			td->buffer1=(STRPTR) AllocVecTaskPooled(strlen(td->title)+4+24);
 			if (td->buffer1) sprintf(td->buffer1, " \033O[%08lx]", (unsigned long) td->iconimg);
 
 			if (td->buffer1) array[0]=td->buffer1;
@@ -230,7 +230,7 @@ MUI_HOOK(bookmarklisttree_displayfunc, APTR a, APTR t)
 				// add bold
 				if((getv(app, MA_OWBApp_ShowFavIcons) & MV_OWBApp_ShowFavIcons_Bookmark) && td->iconimg)
 				{
-					td->buffer1=(STRPTR) AllocVecTaskPooled(strlen(td->title)+4+16);
+					td->buffer1=(STRPTR) AllocVecTaskPooled(strlen(td->title)+4+24);
 					if (td->buffer1) sprintf(td->buffer1, " \033b\033O[%08lx] %s", (unsigned long) td->iconimg, td->title);
 				}
 				else
@@ -244,7 +244,7 @@ MUI_HOOK(bookmarklisttree_displayfunc, APTR a, APTR t)
 				// simple
 				if((getv(app, MA_OWBApp_ShowFavIcons) & MV_OWBApp_ShowFavIcons_Bookmark) && td->iconimg)
 				{
-					td->buffer1=(STRPTR) AllocVecTaskPooled(strlen(title)+1+16);
+					td->buffer1=(STRPTR) AllocVecTaskPooled(strlen(title)+1+24);
 					if (td->buffer1) sprintf(td->buffer1, " \033O[%08lx] %s", (unsigned long) td->iconimg, title);
 				}
 				else
