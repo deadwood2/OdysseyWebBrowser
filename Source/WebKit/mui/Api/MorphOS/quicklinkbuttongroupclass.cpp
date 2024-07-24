@@ -663,7 +663,7 @@ DEFMMETHOD(CreateShortHelp)
 
 	if ((address_len) && (title_len))
 	{
-		help = (STRPTR)malloc(address_len+title_len+1);
+		help = (STRPTR)malloc(address_len+title_len+1+1);
 		if (help)
 		{
 			sprintf(help, "%s\n%s", data->node->title, data->node->address);
