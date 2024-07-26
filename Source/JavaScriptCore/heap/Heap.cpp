@@ -43,6 +43,7 @@
 #include "JSCInlines.h"
 #include "JSVirtualMachineInternal.h"
 #include "RecursiveAllocationScope.h"
+#include "RegExpCache.h"
 #include "Tracing.h"
 #include "TypeProfilerLog.h"
 #include "UnlinkedCodeBlock.h"
@@ -355,7 +356,7 @@ Heap::Heap(VM* vm, HeapType heapType)
 #if USE(CF)
     , m_sweeper(std::make_unique<IncrementalSweeper>(this, CFRunLoopGetCurrent()))
 #else
-    , m_sweeper(std::make_unique<IncrementalSweeper>(this->vm()))
+    , m_sweeper(std::make_unique<IncrementalSweeper>(this))
 #endif
     , m_deferralDepth(0)
 #if USE(CF)
@@ -903,8 +904,8 @@ std::unique_ptr<TypeCountSet> Heap::objectTypeCounts()
 
 void Heap::deleteAllCompiledCode()
 {
-    // If JavaScript is running, it's not safe to delete code, since we'll end
-    // up deleting code that is live on the stack.
+    // If JavaScript is running, it's not safe to delete JavaScript code, since
+    // we'll end up returning to deleted code.
     if (m_vm->entryScope)
         return;
     
@@ -1143,6 +1144,7 @@ void Heap::deleteOldCode(double gcStartTime)
 
     GCPHASE(DeleteOldCode);
     if (gcStartTime - m_lastCodeDiscardTime > minute) {
+        m_vm->regExpCache()->deleteAllCode();
         deleteAllCompiledCode();
         m_lastCodeDiscardTime = WTF::monotonicallyIncreasingTime();
     }

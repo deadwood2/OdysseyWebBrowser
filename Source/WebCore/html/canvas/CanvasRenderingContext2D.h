@@ -132,18 +132,18 @@ public:
 
     void beginPath();
 
-    void fill(const String& winding = "nonzero");
+    void fill(const String& winding = ASCIILiteral("nonzero"));
     void stroke();
-    void clip(const String& winding = "nonzero");
+    void clip(const String& winding = ASCIILiteral("nonzero"));
 
-    void fill(DOMPath*, const String& winding = "nonzero");
+    void fill(DOMPath*, const String& winding = ASCIILiteral("nonzero"));
     void stroke(DOMPath*);
-    void clip(DOMPath*, const String& winding = "nonzero");
+    void clip(DOMPath*, const String& winding = ASCIILiteral("nonzero"));
 
-    bool isPointInPath(const float x, const float y, const String& winding = "nonzero");
+    bool isPointInPath(const float x, const float y, const String& winding = ASCIILiteral("nonzero"));
     bool isPointInStroke(const float x, const float y);
 
-    bool isPointInPath(DOMPath*, const float x, const float y, const String& winding = "nonzero");
+    bool isPointInPath(DOMPath*, const float x, const float y, const String& winding = ASCIILiteral("nonzero"));
     bool isPointInStroke(DOMPath*, const float x, const float y);
 
     void clearRect(float x, float y, float width, float height);
@@ -225,8 +225,8 @@ public:
     LineCap getLineCap() const { return state().m_lineCap; }
     LineJoin getLineJoin() const { return state().m_lineJoin; }
 
-    bool webkitImageSmoothingEnabled() const;
-    void setWebkitImageSmoothingEnabled(bool);
+    bool imageSmoothingEnabled() const;
+    void setImageSmoothingEnabled(bool);
 
 private:
     enum class Direction {
@@ -235,14 +235,32 @@ private:
         LTR
     };
 
-    struct State final : FontSelectorClient {
+    class FontProxy : public FontSelectorClient {
+    public:
+        FontProxy() = default;
+        virtual ~FontProxy();
+        FontProxy(const FontProxy&);
+        FontProxy& operator=(const FontProxy&);
+
+        bool realized() const { return m_font.fontSelector(); }
+        void initialize(FontSelector&, RenderStyle&);
+        FontMetrics fontMetrics() const;
+        const FontDescription& fontDescription() const;
+        float width(const TextRun&) const;
+        void drawBidiText(GraphicsContext&, const TextRun&, const FloatPoint&, FontCascade::CustomFontNotReadyAction) const;
+
+    private:
+        void update(FontSelector&);
+        virtual void fontsNeedUpdate(FontSelector&) override;
+
+        FontCascade m_font;
+    };
+
+    struct State final {
         State();
-        virtual ~State();
 
         State(const State&);
         State& operator=(const State&);
-
-        virtual void fontsNeedUpdate(FontSelector*) override;
 
         String m_unparsedStrokeColor;
         String m_unparsedFillColor;
@@ -270,8 +288,7 @@ private:
         Direction m_direction;
 
         String m_unparsedFont;
-        FontCascade m_font;
-        bool m_realizedFont;
+        FontProxy m_font;
     };
 
     enum CanvasDidDrawOption {
@@ -308,7 +325,9 @@ private:
 
     void drawTextInternal(const String& text, float x, float y, bool fill, float maxWidth = 0, bool useMaxWidth = false);
 
-    const FontCascade& accessFont();
+    // The relationship between FontCascade and CanvasRenderingContext2D::FontProxy must hold certain invariants.
+    // Therefore, all font operations must pass through the State.
+    const FontProxy& fontProxy();
 
 #if ENABLE(DASHBOARD_SUPPORT)
     void clearPathForDashboardBackwardCompatibilityMode();

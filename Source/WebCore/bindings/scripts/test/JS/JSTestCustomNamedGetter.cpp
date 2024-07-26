@@ -99,7 +99,7 @@ static const HashTableValue JSTestCustomNamedGetterTableValues[] =
     { "constructor", DontEnum | ReadOnly, NoIntrinsic, (intptr_t)static_cast<PropertySlot::GetValueFunc>(jsTestCustomNamedGetterConstructor), (intptr_t) static_cast<PutPropertySlot::PutValueFunc>(0) },
 };
 
-static const HashTable JSTestCustomNamedGetterTable = { 1, 1, true, JSTestCustomNamedGetterTableValues, 0, JSTestCustomNamedGetterTableIndex };
+static const HashTable JSTestCustomNamedGetterTable = { 1, 1, true, JSTestCustomNamedGetterTableValues, JSTestCustomNamedGetterTableIndex };
 const ClassInfo JSTestCustomNamedGetterConstructor::s_info = { "TestCustomNamedGetterConstructor", &Base::s_info, 0, CREATE_METHOD_TABLE(JSTestCustomNamedGetterConstructor) };
 
 JSTestCustomNamedGetterConstructor::JSTestCustomNamedGetterConstructor(Structure* structure, JSDOMGlobalObject* globalObject)
@@ -111,8 +111,9 @@ void JSTestCustomNamedGetterConstructor::finishCreation(VM& vm, JSDOMGlobalObjec
 {
     Base::finishCreation(vm);
     ASSERT(inherits(info()));
-    putDirect(vm, vm.propertyNames->prototype, JSTestCustomNamedGetter::getPrototype(vm, globalObject), DontDelete | ReadOnly);
-    putDirect(vm, vm.propertyNames->length, jsNumber(0), ReadOnly | DontDelete | DontEnum);
+    putDirect(vm, vm.propertyNames->prototype, JSTestCustomNamedGetter::getPrototype(vm, globalObject), DontDelete | ReadOnly | DontEnum);
+    putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String(ASCIILiteral("TestCustomNamedGetter"))), ReadOnly | DontEnum);
+    putDirect(vm, vm.propertyNames->length, jsNumber(0), ReadOnly | DontEnum);
 }
 
 /* Hash table for prototype */

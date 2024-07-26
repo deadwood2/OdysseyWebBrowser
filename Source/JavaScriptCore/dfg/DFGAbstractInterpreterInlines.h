@@ -1287,12 +1287,21 @@ bool AbstractInterpreter<AbstractStateType>::executeEffects(unsigned clobberLimi
         switch (node->arrayMode().type()) {
         case Array::SelectUsingPredictions:
         case Array::Unprofiled:
-        case Array::Undecided:
+        case Array::SelectUsingArguments:
             RELEASE_ASSERT_NOT_REACHED();
             break;
         case Array::ForceExit:
             m_state.setIsValid(false);
             break;
+        case Array::Undecided: {
+            JSValue index = forNode(node->child2()).value();
+            if (index && index.isInt32() && index.asInt32() >= 0) {
+                setConstant(node, jsUndefined());
+                break;
+            }
+            forNode(node).setType(SpecOther);
+            break;
+        }
         case Array::Generic:
             clobberWorld(node->origin.semantic, clobberLimit);
             forNode(node).makeHeapTop();
@@ -1779,7 +1788,10 @@ bool AbstractInterpreter<AbstractStateType>::executeEffects(unsigned clobberLimi
                 // something more subtle?
                 AbstractValue result;
                 for (unsigned i = status.numVariants(); i--;) {
-                    DFG_ASSERT(m_graph, node, !status[i].alternateBase());
+                    // This thing won't give us a variant that involves prototypes. If it did, we'd
+                    // have more work to do here.
+                    DFG_ASSERT(m_graph, node, status[i].conditionSet().isEmpty());
+                    
                     JSValue constantResult =
                         m_graph.tryGetConstantProperty(value, status[i].offset());
                     if (!constantResult) {
@@ -1907,6 +1919,7 @@ bool AbstractInterpreter<AbstractStateType>::executeEffects(unsigned clobberLimi
         case Array::Int32:
         case Array::Double:
         case Array::Contiguous:
+        case Array::Undecided:
         case Array::ArrayStorage:
         case Array::SlowPutArrayStorage:
             break;
@@ -2060,30 +2073,22 @@ bool AbstractInterpreter<AbstractStateType>::executeEffects(unsigned clobberLimi
         AbstractValue base = forNode(node->child1());
         StructureSet baseSet;
         AbstractValue result;
-        for (unsigned i = node->multiGetByOffsetData().variants.size(); i--;) {
-            GetByIdVariant& variant = node->multiGetByOffsetData().variants[i];
-            StructureSet set = variant.structureSet();
+        for (const MultiGetByOffsetCase& getCase : node->multiGetByOffsetData().cases) {
+            StructureSet set = getCase.set();
             set.filter(base);
             if (set.isEmpty())
                 continue;
             baseSet.merge(set);
             
-            JSValue baseForLoad;
-            if (variant.alternateBase())
-                baseForLoad = variant.alternateBase();
-            else
-                baseForLoad = base.m_value;
-            JSValue constantResult =
-                m_graph.tryGetConstantProperty(
-                    baseForLoad, variant.baseStructure(), variant.offset());
-            if (!constantResult) {
+            if (getCase.method().kind() != GetByOffsetMethod::Constant) {
                 result.makeHeapTop();
                 continue;
             }
+            
             AbstractValue thisResult;
             thisResult.set(
                 m_graph,
-                *m_graph.freeze(constantResult),
+                *getCase.method().constant(),
                 m_state.structureClobberState());
             result.merge(thisResult);
         }
@@ -2165,6 +2170,32 @@ bool AbstractInterpreter<AbstractStateType>::executeEffects(unsigned clobberLimi
         }
         
         filter(value, ~SpecEmpty);
+        break;
+    }
+
+    case CheckIdent: {
+        AbstractValue& value = forNode(node->child1());
+        UniquedStringImpl* uid = node->uidOperand();
+        ASSERT(uid->isSymbol() ? !(value.m_type & ~SpecSymbol) : !(value.m_type & ~SpecStringIdent)); // Edge filtering should have already ensured this.
+
+        JSValue childConstant = value.value();
+        if (childConstant) {
+            if (uid->isSymbol()) {
+                ASSERT(childConstant.isSymbol());
+                if (asSymbol(childConstant)->privateName().uid() == uid) {
+                    m_state.setFoundConstants(true);
+                    break;
+                }
+            } else {
+                ASSERT(childConstant.isString());
+                if (asString(childConstant)->tryGetValueImpl() == uid) {
+                    m_state.setFoundConstants(true);
+                    break;
+                }
+            }
+        }
+
+        filter(value, uid->isSymbol() ? SpecSymbol : SpecStringIdent);
         break;
     }
 

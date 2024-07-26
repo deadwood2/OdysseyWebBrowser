@@ -747,7 +747,7 @@ bool RenderThemeWin::paintMenuList(const RenderObject& renderer, const PaintInfo
 
     drawControl(paintInfo.context, renderer, theme, ThemeData(part, determineState(renderer)), IntRect(rect));
     
-    return paintMenuListButtonDecorations(renderer, paintInfo, FloatRect(rect));
+    return paintMenuListButtonDecorations(downcast<RenderBox>(renderer), paintInfo, FloatRect(rect));
 }
 
 void RenderThemeWin::adjustMenuListStyle(StyleResolver& styleResolver, RenderStyle& style, Element* e) const
@@ -787,7 +787,7 @@ void RenderThemeWin::adjustMenuListButtonStyle(StyleResolver& styleResolver, Ren
     style.setWhiteSpace(PRE);
 }
 
-bool RenderThemeWin::paintMenuListButtonDecorations(const RenderObject& renderer, const PaintInfo& paintInfo, const FloatRect& rect)
+bool RenderThemeWin::paintMenuListButtonDecorations(const RenderBox& renderer, const PaintInfo& paintInfo, const FloatRect& rect)
 {
     // FIXME: Don't make hardcoded assumptions about the thickness of the textfield border.
     int borderThickness = haveTheme ? 1 : 2;
@@ -872,7 +872,7 @@ void RenderThemeWin::adjustSearchFieldStyle(StyleResolver& styleResolver, Render
         style.setOutlineOffset(-2);
 }
 
-bool RenderThemeWin::paintSearchFieldCancelButton(const RenderObject& o, const PaintInfo& paintInfo, const IntRect& r)
+bool RenderThemeWin::paintSearchFieldCancelButton(const RenderBox& o, const PaintInfo& paintInfo, const IntRect& r)
 {
     IntRect bounds = r;
     ASSERT(o.parent());
@@ -921,7 +921,7 @@ void RenderThemeWin::adjustSearchFieldResultsDecorationPartStyle(StyleResolver&,
     style.setHeight(Length(magnifierSize, Fixed));
 }
 
-bool RenderThemeWin::paintSearchFieldResultsDecorationPart(const RenderObject& o, const PaintInfo& paintInfo, const IntRect& r)
+bool RenderThemeWin::paintSearchFieldResultsDecorationPart(const RenderBox& o, const PaintInfo& paintInfo, const IntRect& r)
 {
     IntRect bounds = r;
     ASSERT(o.parent());
@@ -954,7 +954,7 @@ void RenderThemeWin::adjustSearchFieldResultsButtonStyle(StyleResolver&, RenderS
     style.setHeight(Length(magnifierHeight, Fixed));
 }
 
-bool RenderThemeWin::paintSearchFieldResultsButton(const RenderObject& o, const PaintInfo& paintInfo, const IntRect& r)
+bool RenderThemeWin::paintSearchFieldResultsButton(const RenderBox& o, const PaintInfo& paintInfo, const IntRect& r)
 {
     IntRect bounds = r;
     ASSERT(o.parent());

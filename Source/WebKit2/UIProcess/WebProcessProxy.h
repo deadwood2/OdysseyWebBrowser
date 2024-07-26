@@ -84,7 +84,7 @@ public:
     WebProcessPool& processPool() { return m_processPool; }
 
     static WebPageProxy* webPage(uint64_t pageID);
-    Ref<WebPageProxy> createWebPage(PageClient&, const WebPageConfiguration&);
+    Ref<WebPageProxy> createWebPage(PageClient&, Ref<API::PageConfiguration>&&);
     void addExistingWebPage(WebPageProxy*, uint64_t pageID);
     void removeWebPage(uint64_t pageID);
 
@@ -131,6 +131,7 @@ public:
 
     void enableSuddenTermination();
     void disableSuddenTermination();
+    bool isSuddenTerminationEnabled() { return !m_numberOfTimesSuddenTerminationWasDisabled; }
 
     void requestTermination();
 
@@ -154,6 +155,9 @@ public:
 #if ENABLE(NETWORK_PROCESS)
     void reinstateNetworkProcessAssertionState(NetworkProcessProxy&);
 #endif
+
+    void sendMainThreadPing();
+    void didReceiveMainThreadPing();
 
 private:
     explicit WebProcessProxy(WebProcessPool&);

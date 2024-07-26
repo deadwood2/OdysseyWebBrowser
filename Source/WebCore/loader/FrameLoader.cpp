@@ -175,6 +175,24 @@ static bool isDocumentSandboxed(Frame& frame, SandboxFlags mask)
     return frame.document() && frame.document()->isSandboxed(mask);
 }
 
+struct ForbidPromptsScope {
+    ForbidPromptsScope(Page* page) : m_page(page)
+    {
+        if (!m_page)
+            return;
+        m_page->forbidPrompts();
+    }
+
+    ~ForbidPromptsScope()
+    {
+        if (!m_page)
+            return;
+        m_page->allowPrompts();
+    }
+
+    Page* m_page;
+};
+
 class FrameLoader::FrameProgressTracker {
 public:
     explicit FrameProgressTracker(Frame& frame)
@@ -419,55 +437,8 @@ void FrameLoader::stopLoading(UnloadEventPolicy unloadEventPolicy)
     if (m_frame.document() && m_frame.document()->parser())
         m_frame.document()->parser()->stopParsing();
 
-    if (unloadEventPolicy != UnloadEventPolicyNone) {
-        if (m_frame.document()) {
-            if (m_didCallImplicitClose && !m_wasUnloadEventEmitted) {
-                Element* currentFocusedElement = m_frame.document()->focusedElement();
-                if (currentFocusedElement && currentFocusedElement->toInputElement())
-                    currentFocusedElement->toInputElement()->endEditing();
-                if (m_pageDismissalEventBeingDispatched == PageDismissalType::None) {
-                    if (unloadEventPolicy == UnloadEventPolicyUnloadAndPageHide) {
-                        m_pageDismissalEventBeingDispatched = PageDismissalType::PageHide;
-                        m_frame.document()->domWindow()->dispatchEvent(PageTransitionEvent::create(eventNames().pagehideEvent, m_frame.document()->inPageCache()), m_frame.document());
-                    }
-
-                    // FIXME: update Page Visibility state here.
-                    // https://bugs.webkit.org/show_bug.cgi?id=116770
-
-                    if (!m_frame.document()->inPageCache()) {
-                        RefPtr<Event> unloadEvent(Event::create(eventNames().unloadEvent, false, false));
-                        // The DocumentLoader (and thus its DocumentLoadTiming) might get destroyed
-                        // while dispatching the event, so protect it to prevent writing the end
-                        // time into freed memory.
-                        RefPtr<DocumentLoader> documentLoader = m_provisionalDocumentLoader;
-                        m_pageDismissalEventBeingDispatched = PageDismissalType::Unload;
-                        if (documentLoader && !documentLoader->timing().unloadEventStart() && !documentLoader->timing().unloadEventEnd()) {
-                            DocumentLoadTiming& timing = documentLoader->timing();
-                            ASSERT(timing.navigationStart());
-                            timing.markUnloadEventStart();
-                            m_frame.document()->domWindow()->dispatchEvent(unloadEvent, m_frame.document());
-                            timing.markUnloadEventEnd();
-                        } else
-                            m_frame.document()->domWindow()->dispatchEvent(unloadEvent, m_frame.document());
-                    }
-                }
-                m_pageDismissalEventBeingDispatched = PageDismissalType::None;
-                if (m_frame.document())
-                    m_frame.document()->updateStyleIfNeeded();
-                m_wasUnloadEventEmitted = true;
-            }
-        }
-
-        // Dispatching the unload event could have made m_frame.document() null.
-        if (m_frame.document() && !m_frame.document()->inPageCache()) {
-            // Don't remove event listeners from a transitional empty document (see bug 28716 for more information).
-            bool keepEventListeners = m_stateMachine.isDisplayingInitialEmptyDocument() && m_provisionalDocumentLoader
-                && m_frame.document()->isSecureTransitionTo(m_provisionalDocumentLoader->url());
-
-            if (!keepEventListeners)
-                m_frame.document()->removeAllEventListeners();
-        }
-    }
+    if (unloadEventPolicy != UnloadEventPolicyNone)
+        handleUnloadEvents(unloadEventPolicy);
 
     m_isComplete = true; // to avoid calling completed() in finishedParsing()
     m_didCallImplicitClose = true; // don't want that one either
@@ -753,6 +724,8 @@ void FrameLoader::finishedParsing()
 
     m_client.dispatchDidFinishDocumentLoad();
 
+    scrollToFragmentWithParentBoundary(m_frame.document()->url());
+
     checkCompleted();
 
     if (!m_frame.view())
@@ -761,7 +734,6 @@ void FrameLoader::finishedParsing()
     // Check if the scrollbars are really needed for the content.
     // If not, remove them, relayout, and repaint.
     m_frame.view()->restoreScrollbar();
-    scrollToFragmentWithParentBoundary(m_frame.document()->url());
 }
 
 void FrameLoader::loadDone()
@@ -1493,6 +1465,15 @@ void FrameLoader::reportLocalLoadFailed(Frame* frame, const String& url)
     frame->document()->addConsoleMessage(MessageSource::Security, MessageLevel::Error, "Not allowed to load local resource: " + url);
 }
 
+void FrameLoader::reportBlockedPortFailed(Frame* frame, const String& url)
+{
+    ASSERT(!url.isEmpty());
+    if (!frame)
+        return;
+    
+    frame->document()->addConsoleMessage(MessageSource::Security, MessageLevel::Error, "Not allowed to use restricted network port: " + url);
+}
+
 const ResourceRequest& FrameLoader::initialRequest() const
 {
     return activeDocumentLoader()->originalRequest();
@@ -1818,6 +1799,14 @@ void FrameLoader::commitProvisionalLoad()
 #endif
         prepareForCachedPageRestore();
 
+        // Start request for the main resource and dispatch didReceiveResponse before the load is committed for
+        // consistency with all other loads. See https://bugs.webkit.org/show_bug.cgi?id=150927.
+        ResourceError mainResouceError;
+        unsigned long mainResourceIdentifier;
+        ResourceRequest mainResourceRequest(cachedPage->documentLoader()->request());
+        requestFromDelegate(mainResourceRequest, mainResourceIdentifier, mainResouceError);
+        notifier().dispatchDidReceiveResponse(cachedPage->documentLoader(), mainResourceIdentifier, cachedPage->documentLoader()->response());
+
         // FIXME: This API should be turned around so that we ground CachedPage into the Page.
         cachedPage->restore(*m_frame.page());
 
@@ -1830,6 +1819,10 @@ void FrameLoader::commitProvisionalLoad()
         StringWithDirection title = m_documentLoader->title();
         if (!title.isNull())
             m_client.dispatchDidReceiveTitle(title);
+
+        // Send remaining notifications for the main resource.
+        notifier().sendRemainingDelegateMessages(m_documentLoader.get(), mainResourceIdentifier, mainResourceRequest, ResourceResponse(),
+            nullptr, static_cast<int>(m_documentLoader->response().expectedContentLength()), 0, mainResouceError);
 
         checkCompleted();
     } else
@@ -1857,10 +1850,9 @@ void FrameLoader::commitProvisionalLoad()
         m_frame.view()->forceLayout();
 #endif
 
-        const ResponseVector& responses = m_documentLoader->responses();
-        size_t count = responses.size();
-        for (size_t i = 0; i < count; i++) {
-            const ResourceResponse& response = responses[i];
+        // Main resource delegates were already sent, so we skip the first response here.
+        for (unsigned i = 1; i < m_documentLoader->responses().size(); ++i) {
+            const auto& response = m_documentLoader->responses()[i];
             // FIXME: If the WebKit client changes or cancels the request, this is not respected.
             ResourceError error;
             unsigned long identifier;
@@ -2461,8 +2453,10 @@ void FrameLoader::checkLoadComplete()
         frames.append(*frame);
 
     // To process children before their parents, iterate the vector backwards.
-    for (unsigned i = frames.size(); i; --i)
-        frames[i - 1]->loader().checkLoadCompleteForThisFrame();
+    for (auto frame = frames.rbegin(); frame != frames.rend(); ++frame) {
+        if ((*frame)->page())
+            (*frame)->loader().checkLoadCompleteForThisFrame();
+    }
 }
 
 int FrameLoader::numPendingOrLoadingRequests(bool recurse) const
@@ -2869,6 +2863,64 @@ bool FrameLoader::shouldClose()
     return shouldClose;
 }
 
+void FrameLoader::handleUnloadEvents(UnloadEventPolicy unloadEventPolicy)
+{
+    if (!m_frame.document())
+        return;
+
+    // We store the frame's page in a local variable because the frame might get detached inside dispatchEvent.
+    ForbidPromptsScope forbidPrompts(m_frame.page());
+
+    if (m_didCallImplicitClose && !m_wasUnloadEventEmitted) {
+        auto* currentFocusedElement = m_frame.document()->focusedElement();
+        if (is<HTMLInputElement>(currentFocusedElement))
+            downcast<HTMLInputElement>(*currentFocusedElement).endEditing();
+        if (m_pageDismissalEventBeingDispatched == PageDismissalType::None) {
+            if (unloadEventPolicy == UnloadEventPolicyUnloadAndPageHide) {
+                m_pageDismissalEventBeingDispatched = PageDismissalType::PageHide;
+                m_frame.document()->domWindow()->dispatchEvent(PageTransitionEvent::create(eventNames().pagehideEvent, m_frame.document()->inPageCache()), m_frame.document());
+            }
+
+            // FIXME: update Page Visibility state here.
+            // https://bugs.webkit.org/show_bug.cgi?id=116770
+
+            if (!m_frame.document()->inPageCache()) {
+                RefPtr<Event> unloadEvent(Event::create(eventNames().unloadEvent, false, false));
+                // The DocumentLoader (and thus its DocumentLoadTiming) might get destroyed
+                // while dispatching the event, so protect it to prevent writing the end
+                // time into freed memory.
+                RefPtr<DocumentLoader> documentLoader = m_provisionalDocumentLoader;
+                m_pageDismissalEventBeingDispatched = PageDismissalType::Unload;
+                if (documentLoader && documentLoader->timing().navigationStart() && !documentLoader->timing().unloadEventStart() && !documentLoader->timing().unloadEventEnd()) {
+                    auto& timing = documentLoader->timing();
+                    timing.markUnloadEventStart();
+                    m_frame.document()->domWindow()->dispatchEvent(unloadEvent, m_frame.document());
+                    timing.markUnloadEventEnd();
+                } else
+                    m_frame.document()->domWindow()->dispatchEvent(unloadEvent, m_frame.document());
+            }
+        }
+        m_pageDismissalEventBeingDispatched = PageDismissalType::None;
+        if (m_frame.document())
+            m_frame.document()->updateStyleIfNeeded();
+        m_wasUnloadEventEmitted = true;
+    }
+
+    // Dispatching the unload event could have made m_frame.document() null.
+    if (!m_frame.document())
+        return;
+
+    if (m_frame.document()->inPageCache())
+        return;
+
+    // Don't remove event listeners from a transitional empty document (see bug 28716 for more information).
+    bool keepEventListeners = m_stateMachine.isDisplayingInitialEmptyDocument() && m_provisionalDocumentLoader
+        && m_frame.document()->isSecureTransitionTo(m_provisionalDocumentLoader->url());
+
+    if (!keepEventListeners)
+        m_frame.document()->removeAllEventListeners();
+}
+
 bool FrameLoader::handleBeforeUnloadEvent(Chrome& chrome, FrameLoader* frameLoaderBeingNavigated)
 {
     DOMWindow* domWindow = m_frame.document()->domWindow();
@@ -2882,11 +2934,10 @@ bool FrameLoader::handleBeforeUnloadEvent(Chrome& chrome, FrameLoader* frameLoad
     RefPtr<BeforeUnloadEvent> beforeUnloadEvent = BeforeUnloadEvent::create();
     m_pageDismissalEventBeingDispatched = PageDismissalType::BeforeUnload;
 
-    // We store the frame's page in a local variable because the frame might get detached inside dispatchEvent.
-    Page* page = m_frame.page();
-    page->incrementFrameHandlingBeforeUnloadEventCount();
-    domWindow->dispatchEvent(beforeUnloadEvent.get(), domWindow->document());
-    page->decrementFrameHandlingBeforeUnloadEventCount();
+    {
+        ForbidPromptsScope forbidPrompts(m_frame.page());
+        domWindow->dispatchEvent(beforeUnloadEvent.get(), domWindow->document());
+    }
 
     m_pageDismissalEventBeingDispatched = PageDismissalType::None;
 
@@ -3185,6 +3236,8 @@ void FrameLoader::loadSameDocumentItem(HistoryItem& item)
 {
     ASSERT(item.documentSequenceNumber() == history().currentItem()->documentSequenceNumber());
 
+    Ref<Frame> protect(m_frame);
+
     // Save user view state to the current history item here since we don't do a normal load.
     // FIXME: Does form state need to be saved here too?
     history().saveScrollPositionAndViewStateToItem(history().currentItem());
@@ -3228,7 +3281,11 @@ void FrameLoader::loadDifferentDocumentItem(HistoryItem& item, FrameLoadType loa
 
     if (!item.referrer().isNull())
         request.setHTTPReferrer(item.referrer());
-    
+
+    ShouldOpenExternalURLsPolicy shouldOpenExternalURLsPolicy = shouldOpenExternalURLsPolicyToApply(m_frame, item.shouldOpenExternalURLsPolicy());
+    bool isFormSubmission = false;
+    Event* event = nullptr;
+
     // If this was a repost that failed the page cache, we might try to repost the form.
     NavigationAction action;
     if (formData) {
@@ -3254,10 +3311,10 @@ void FrameLoader::loadDifferentDocumentItem(HistoryItem& item, FrameLoadType loa
         
         if (cacheLoadPolicy == MayAttemptCacheOnlyLoadForFormSubmissionItem) {
             request.setCachePolicy(ReturnCacheDataDontLoad);
-            action = NavigationAction(request, loadType, false);
+            action = NavigationAction(request, loadType, isFormSubmission, event, shouldOpenExternalURLsPolicy);
         } else {
             request.setCachePolicy(ReturnCacheDataElseLoad);
-            action = NavigationAction(request, NavigationType::FormResubmitted);
+            action = NavigationAction(request, NavigationType::FormResubmitted, event, shouldOpenExternalURLsPolicy);
         }
     } else {
         switch (loadType) {
@@ -3282,7 +3339,7 @@ void FrameLoader::loadDifferentDocumentItem(HistoryItem& item, FrameLoadType loa
 
         ResourceRequest requestForOriginalURL(request);
         requestForOriginalURL.setURL(itemOriginalURL);
-        action = NavigationAction(requestForOriginalURL, loadType, false);
+        action = NavigationAction(requestForOriginalURL, loadType, isFormSubmission, event, shouldOpenExternalURLsPolicy);
     }
 
     loadWithNavigationAction(request, action, LockHistory::No, loadType, 0, AllowNavigationToInvalidURL::Yes);
@@ -3319,6 +3376,13 @@ void FrameLoader::retryAfterFailedCacheOnlyMainResourceLoad()
 ResourceError FrameLoader::cancelledError(const ResourceRequest& request) const
 {
     ResourceError error = m_client.cancelledError(request);
+    error.setIsCancellation(true);
+    return error;
+}
+
+ResourceError FrameLoader::blockedError(const ResourceRequest& request) const
+{
+    ResourceError error = m_client.blockedError(request);
     error.setIsCancellation(true);
     return error;
 }
@@ -3547,15 +3611,15 @@ RefPtr<Frame> createWindow(Frame& openerFrame, Frame& lookupFrame, const FrameLo
 #if !PLATFORM(IOS)
     FloatSize viewportSize = page->chrome().pageRect().size();
     FloatRect windowRect = page->chrome().windowRect();
-    if (features.xSet)
-        windowRect.setX(features.x);
-    if (features.ySet)
-        windowRect.setY(features.y);
+    if (features.x)
+        windowRect.setX(*features.x);
+    if (features.y)
+        windowRect.setY(*features.y);
     // Zero width and height mean using default size, not minumum one.
-    if (features.widthSet && features.width)
-        windowRect.setWidth(features.width + (windowRect.width() - viewportSize.width()));
-    if (features.heightSet && features.height)
-        windowRect.setHeight(features.height + (windowRect.height() - viewportSize.height()));
+    if (features.width && *features.width)
+        windowRect.setWidth(*features.width + (windowRect.width() - viewportSize.width()));
+    if (features.height && *features.height)
+        windowRect.setHeight(*features.height + (windowRect.height() - viewportSize.height()));
 
     // Ensure non-NaN values, minimum size as well as being within valid screen area.
     FloatRect newWindowRect = DOMWindow::adjustWindowRect(page, windowRect);
@@ -3567,10 +3631,10 @@ RefPtr<Frame> createWindow(Frame& openerFrame, Frame& lookupFrame, const FrameLo
     // On iOS, width and height refer to the viewport dimensions.
     ViewportArguments arguments;
     // Zero width and height mean using default size, not minimum one.
-    if (features.widthSet && features.width)
-        arguments.width = features.width;
-    if (features.heightSet && features.height)
-        arguments.height = features.height;
+    if (features.width && *features.width)
+        arguments.width = *features.width;
+    if (features.height && *features.height)
+        arguments.height = *features.height;
     frame->setViewportArguments(arguments);
 #endif
 

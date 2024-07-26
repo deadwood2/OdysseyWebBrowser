@@ -495,6 +495,14 @@ Controller.prototype = {
         wirelessTargetPicker.setAttribute('aria-label', this.UIString('Choose Wireless Display'));
         this.listenFor(wirelessTargetPicker, 'click', this.handleWirelessPickerButtonClicked);
 
+        // Show controls button is an accessibility workaround since the controls are now removed from the DOM. http://webkit.org/b/145684
+        var showControlsButton = this.showControlsButton = document.createElement('button');
+        showControlsButton.setAttribute('pseudo', '-webkit-media-show-controls');
+        showControlsButton.hidden = true;
+        showControlsButton.setAttribute('aria-label', this.UIString('Show Controls'));
+        this.listenFor(showControlsButton, 'click', this.handleShowControlsClick);
+        this.base.appendChild(showControlsButton);
+
         if (!Controller.gSimulateWirelessPlaybackTarget)
             wirelessTargetPicker.classList.add(this.ClassNames.hidden);
     },
@@ -688,6 +696,7 @@ Controller.prototype = {
         this.updateCaptionButton();
         this.updateCaptionContainer();
         this.updateFullscreenButtons();
+        this.updateWirelessTargetAvailable();
         this.updateWirelessTargetPickerButton();
         this.updateProgress();
         this.updateControls();
@@ -791,6 +800,15 @@ Controller.prototype = {
             this.controls.fullscreenButton.setAttribute('aria-label', this.UIString('Display Full Screen'));
             this.host.exitedFullscreen();
         }
+    },
+
+    handleShowControlsClick: function(event)
+    {
+        if (!this.video.controls && !this.isFullScreen())
+            return;
+
+        if (this.controlsAreHidden())
+            this.showControls(true);
     },
 
     handleWrapperMouseMove: function(event)
@@ -1404,7 +1422,7 @@ Controller.prototype = {
         }
     },
 
-    showControls: function()
+    showControls: function(focusControls)
     {
         this.updateShouldListenForPlaybackTargetAvailabilityEvent();
         if (!this.video.controls && !this.isFullScreen())
@@ -1414,7 +1432,10 @@ Controller.prototype = {
         if (this.shouldHaveControls() && !this.controls.panel.parentElement) {
             this.base.appendChild(this.controls.inlinePlaybackPlaceholder);
             this.base.appendChild(this.controls.panel);
+            if (focusControls)
+                this.controls.playButton.focus();
         }
+        this.showControlsButton.hidden = true;
     },
 
     hideControls: function()
@@ -1427,6 +1448,7 @@ Controller.prototype = {
         this.controls.panel.classList.remove(this.ClassNames.show);
         if (this.controls.panelBackground)
             this.controls.panelBackground.classList.remove(this.ClassNames.show);
+        this.showControlsButton.hidden = false;
     },
 
     setNeedsUpdateForDisplayedWidth: function()
@@ -1453,7 +1475,10 @@ Controller.prototype = {
         if (!this.controls || !this.controls.panel)
             return;
 
-        var visibleWidth = this.controls.panel.getBoundingClientRect().width * this._pageScaleFactor;
+        var visibleWidth = this.controls.panel.getBoundingClientRect().width;
+        if (this._pageScaleFactor > 1)
+            visibleWidth *= this._pageScaleFactor;
+
         if (visibleWidth <= 0 || visibleWidth == this.currentDisplayWidth)
             return;
 
@@ -1470,6 +1495,7 @@ Controller.prototype = {
 
         // Check if there is enough room for the scrubber.
         var shouldDropTimeline = (visibleWidth - visibleButtonWidth) < this.MinimumTimelineWidth;
+        this.controls.timeline.classList.toggle(this.ClassNames.dropped, shouldDropTimeline);
         this.controls.currentTime.classList.toggle(this.ClassNames.dropped, shouldDropTimeline);
         this.controls.thumbnailTrack.classList.toggle(this.ClassNames.dropped, shouldDropTimeline);
         this.controls.remainingTime.classList.toggle(this.ClassNames.dropped, shouldDropTimeline);
@@ -1866,9 +1892,6 @@ Controller.prototype = {
             this.controls.panel.classList.remove(this.ClassNames.noVideo);
         else
             this.controls.panel.classList.add(this.ClassNames.noVideo);
-
-        // The wireless target picker is only visible for files with video, force an update.
-        this.updateWirelessTargetAvailable();
     },
 
     updateVolume: function()
@@ -1982,7 +2005,7 @@ Controller.prototype = {
         if (this.wirelessPlaybackDisabled)
             wirelessPlaybackTargetsAvailable = false;
 
-        if (wirelessPlaybackTargetsAvailable && this.isPlayable() && this.hasVideo())
+        if (wirelessPlaybackTargetsAvailable && this.isPlayable())
             this.controls.wirelessTargetPicker.classList.remove(this.ClassNames.hidden);
         else
             this.controls.wirelessTargetPicker.classList.add(this.ClassNames.hidden);

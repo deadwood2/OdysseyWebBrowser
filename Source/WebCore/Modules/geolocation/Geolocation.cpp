@@ -40,6 +40,7 @@
 #include "Geoposition.h"
 #include "Page.h"
 #include "PositionError.h"
+#include "SecurityOrigin.h"
 #include <wtf/CurrentTime.h>
 #include <wtf/Ref.h>
 
@@ -48,6 +49,7 @@ namespace WebCore {
 static const char permissionDeniedErrorMessage[] = "User denied Geolocation";
 static const char failedToStartServiceErrorMessage[] = "Failed to start Geolocation service";
 static const char framelessDocumentErrorMessage[] = "Geolocation cannot be used in frameless documents";
+static const char originCannotRequestGeolocationErrorMessage[] = "Origin does not have permission to use Geolocation service";
 
 static PassRefPtr<Geoposition> createGeoposition(GeolocationPosition* position)
 {
@@ -152,6 +154,11 @@ Document* Geolocation::document() const
     return downcast<Document>(scriptExecutionContext());
 }
 
+SecurityOrigin* Geolocation::securityOrigin() const
+{
+    return scriptExecutionContext()->securityOrigin();
+}
+
 Frame* Geolocation::frame() const
 {
     return document() ? document()->frame() : nullptr;
@@ -164,15 +171,12 @@ Page* Geolocation::page() const
 
 bool Geolocation::canSuspendForPageCache() const
 {
-    return !hasListeners();
+    return true;
 }
 
 void Geolocation::suspend(ReasonForSuspension reason)
 {
-    // Allow pages that no longer have listeners to enter the page cache.
-    // Have them stop updating and reset geolocation permissions when the page is resumed.
     if (reason == ActiveDOMObject::PageCache) {
-        ASSERT(!hasListeners());
         stop();
         m_resetOnResume = true;
     }
@@ -336,6 +340,11 @@ int Geolocation::watchPosition(PassRefPtr<PositionCallback> successCallback, Pas
 
 void Geolocation::startRequest(GeoNotifier *notifier)
 {
+    if (!securityOrigin()->canRequestGeolocation()) {
+        notifier->setFatalError(PositionError::create(PositionError::POSITION_UNAVAILABLE, ASCIILiteral(originCannotRequestGeolocationErrorMessage)));
+        return;
+    }
+
     // Check whether permissions have already been denied. Note that if this is the case,
     // the permission state can not change again in the lifetime of this page.
     if (isDenied())

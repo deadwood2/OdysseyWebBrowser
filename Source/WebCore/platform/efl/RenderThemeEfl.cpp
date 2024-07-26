@@ -653,16 +653,11 @@ bool RenderThemeEfl::controlSupportsTints(const RenderObject& object) const
     return isEnabled(object);
 }
 
-int RenderThemeEfl::baselinePosition(const RenderObject& object) const
+int RenderThemeEfl::baselinePosition(const RenderBox& box) const
 {
-    if (!is<RenderBox>(object))
-        return 0;
-
-    if (object.style().appearance() == CheckboxPart
-    ||  object.style().appearance() == RadioPart)
-        return downcast<RenderBox>(object).marginTop() + downcast<RenderBox>(object).height() - 3;
-
-    return RenderTheme::baselinePosition(object);
+    if (box.style().appearance() == CheckboxPart || box.style().appearance() == RadioPart)
+        return box.marginTop() + box.height() - 3;
+    return RenderTheme::baselinePosition(box);
 }
 
 Color RenderThemeEfl::platformActiveSelectionBackgroundColor() const
@@ -879,7 +874,7 @@ void RenderThemeEfl::adjustMenuListButtonStyle(StyleResolver& styleResolver, Ren
     adjustMenuListStyle(styleResolver, style, element);
 }
 
-bool RenderThemeEfl::paintMenuListButtonDecorations(const RenderObject& object, const PaintInfo& info, const FloatRect& rect)
+bool RenderThemeEfl::paintMenuListButtonDecorations(const RenderBox& object, const PaintInfo& info, const FloatRect& rect)
 {
     return paintMenuList(object, info, rect);
 }

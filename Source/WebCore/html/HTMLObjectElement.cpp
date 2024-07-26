@@ -65,11 +65,11 @@ using namespace HTMLNames;
 
 inline HTMLObjectElement::HTMLObjectElement(const QualifiedName& tagName, Document& document, HTMLFormElement* form, bool createdByParser)
     : HTMLPlugInImageElement(tagName, document, createdByParser, ShouldNotPreferPlugInsForImages)
+    , FormAssociatedElement(form)
     , m_docNamedItem(true)
     , m_useFallbackContent(false)
 {
     ASSERT(hasTagName(objectTag));
-    setForm(form);
 }
 
 inline HTMLObjectElement::~HTMLObjectElement()
@@ -337,7 +337,12 @@ Node::InsertionNotificationRequest HTMLObjectElement::insertedInto(ContainerNode
 {
     HTMLPlugInImageElement::insertedInto(insertionPoint);
     FormAssociatedElement::insertedInto(insertionPoint);
-    return InsertionDone;
+    return InsertionShouldCallFinishedInsertingSubtree;
+}
+
+void HTMLObjectElement::finishedInsertingSubtree()
+{
+    resetFormOwner();
 }
 
 void HTMLObjectElement::removedFrom(ContainerNode& insertionPoint)

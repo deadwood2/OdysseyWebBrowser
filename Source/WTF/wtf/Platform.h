@@ -615,7 +615,7 @@
 #endif
 #endif
 
-#if OS(DARWIN) || OS(FREEBSD) || OS(NETBSD)
+#if (OS(DARWIN) || OS(FREEBSD) || OS(NETBSD)) && !defined(__GLIBC__)
 #define HAVE_STAT_BIRTHTIME 1
 #endif
 
@@ -634,8 +634,10 @@
 #define HAVE_PTHREAD_SETNAME_NP 1
 #define HAVE_READLINE 1
 #define HAVE_SYS_TIMEB_H 1
-#define USE_ACCELERATE 1
 
+#if !PLATFORM(GTK)
+#define USE_ACCELERATE 1
+#endif
 #if !PLATFORM(IOS)
 #define HAVE_HOSTED_CORE_ANIMATION 1
 #endif
@@ -822,14 +824,14 @@
 /* Configure the JIT */
 #if CPU(X86) && COMPILER(MSVC)
 #define JSC_HOST_CALL __fastcall
-#elif CPU(X86) && COMPILER(GCC)
+#elif CPU(X86) && COMPILER(GCC_OR_CLANG)
 #define JSC_HOST_CALL __attribute__ ((fastcall))
 #else
 #define JSC_HOST_CALL
 #endif
 
 /* Configure the interpreter */
-#if COMPILER(GCC)
+#if COMPILER(GCC_OR_CLANG)
 #define HAVE_COMPUTED_GOTO 1
 #endif
 
@@ -975,7 +977,7 @@
 #define USE_IMLANG_FONT_LINK2 1
 #endif
 
-#if !defined(ENABLE_COMPARE_AND_SWAP) && (OS(WINDOWS) || (COMPILER(GCC) && (CPU(X86) || CPU(X86_64) || CPU(ARM_THUMB2) || CPU(ARM64))))
+#if !defined(ENABLE_COMPARE_AND_SWAP) && (OS(WINDOWS) || (COMPILER(GCC_OR_CLANG) && (CPU(X86) || CPU(X86_64) || CPU(ARM_THUMB2) || CPU(ARM64))))
 #define ENABLE_COMPARE_AND_SWAP 1
 #endif
 
@@ -1109,8 +1111,10 @@
 #if COMPILER(MSVC)
 #undef __STDC_LIMIT_MACROS
 #define __STDC_LIMIT_MACROS
+#if _MSC_VER < 1900
 #undef _HAS_EXCEPTIONS
 #define _HAS_EXCEPTIONS 1
+#endif
 #endif
 
 #if PLATFORM(MAC)

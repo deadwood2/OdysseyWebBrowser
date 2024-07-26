@@ -1918,7 +1918,7 @@ static const AccessibilityRoleMap& createAccessibilityRoleMap()
         { RulerMarkerRole, NSAccessibilityRulerMarkerRole },
         { LinkRole, NSAccessibilityLinkRole },
         { DisclosureTriangleRole, NSAccessibilityDisclosureTriangleRole },
-        { GridRole, NSAccessibilityGridRole },
+        { GridRole, NSAccessibilityTableRole },
         { WebCoreLinkRole, NSAccessibilityLinkRole },
         { ImageMapLinkRole, NSAccessibilityLinkRole },
         { ImageMapRole, @"AXImageMap" },
@@ -4048,8 +4048,9 @@ static void formatForDebugger(const VisiblePositionRange& range, char* buffer, u
             
             NSUInteger arrayLength = std::min(childCount - index, maxCount);
             return [children subarrayWithRange:NSMakeRange(index, arrayLength)];
-        } else if (m_object->isTree()) {
-            // Tree objects return their rows as their children. We can use the original method in this case.
+        } else if (m_object->isTree() || m_object->isTreeItem()) {
+            // Tree objects return their rows as their children & tree items return their contents sans rows.
+            // We can use the original method in this case.
             return [super accessibilityArrayAttributeValues:attribute index:index maxCount:maxCount];
         }
         

@@ -23,6 +23,7 @@
 
 #include "RenderBlock.h"
 #include "StyleInheritedData.h"
+#include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
 
@@ -61,7 +62,7 @@ void RenderCombineText::setRenderedText(const String& text)
 float RenderCombineText::width(unsigned from, unsigned length, const FontCascade& font, float xPosition, HashSet<const Font*>* fallbackFonts, GlyphOverflow* glyphOverflow) const
 {
     if (m_isCombined)
-        return font.size();
+        return !length ? 0 : font.size();
 
     return RenderText::width(from, length, font, xPosition, fallbackFonts, glyphOverflow);
 }
@@ -90,6 +91,10 @@ void RenderCombineText::combineText()
     if (!m_needsFontUpdate)
         return;
 
+    // An ancestor element may trigger us to lay out again, even when we're already combined.
+    if (m_isCombined)
+        RenderText::setRenderedText(originalText());
+
     m_isCombined = false;
     m_needsFontUpdate = false;
 
@@ -117,7 +122,7 @@ void RenderCombineText::combineText()
         // Need to try compressed glyphs.
         static const FontWidthVariant widthVariants[] = { HalfWidth, ThirdWidth, QuarterWidth };
         for (size_t i = 0 ; i < WTF_ARRAY_LENGTH(widthVariants) ; ++i) {
-            description.setWidthVariant(widthVariants[i]);
+            description.setWidthVariant(widthVariants[i]); // When modifying this, make sure to keep it in sync with FontPlatformData::isForTextCombine()!
 
             FontCascade compressedFont(description, style().fontCascade().letterSpacing(), style().fontCascade().wordSpacing());
             compressedFont.update(fontSelector);
@@ -141,8 +146,8 @@ void RenderCombineText::combineText()
         m_combineFontStyle->fontCascade().update(fontSelector);
 
     if (m_isCombined) {
-        DEPRECATED_DEFINE_STATIC_LOCAL(String, objectReplacementCharacterString, (&objectReplacementCharacter, 1));
-        RenderText::setRenderedText(objectReplacementCharacterString.impl());
+        static NeverDestroyed<String> objectReplacementCharacterString(&objectReplacementCharacter, 1);
+        RenderText::setRenderedText(objectReplacementCharacterString.get());
         m_combinedTextSize = FloatSize(combinedTextWidth, glyphOverflow.bottom + glyphOverflow.top);
     }
 }

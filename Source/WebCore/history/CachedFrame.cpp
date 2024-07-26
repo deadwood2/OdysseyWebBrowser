@@ -180,6 +180,9 @@ CachedFrame::CachedFrame(Frame& frame)
     // documentWillSuspendForPageCache() can set up a layout timer on the FrameView, so clear timers after that.
     frame.clearTimers();
 
+    // documentWillSuspendForPageCache() can set up a layout timer on the FrameView, so clear timers after that.
+    frame.clearTimers();
+
     // Deconstruct the FrameTree, to restore it later.
     // We do this for two reasons:
     // 1 - We reuse the main frame, so when it navigates to a new page load it needs to start with a blank FrameTree.

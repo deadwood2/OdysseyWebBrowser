@@ -129,13 +129,15 @@ void MemoryPressureHandler::releaseCriticalMemory(Synchronous synchronous)
 
     {
         ReliefLogger log("Discard StyleResolvers");
-        for (auto* document : Document::allDocuments())
+        Vector<RefPtr<Document>> documents;
+        copyToVector(Document::allDocuments(), documents);
+        for (auto& document : documents)
             document->clearStyleResolver();
     }
 
     {
         ReliefLogger log("Discard all JIT-compiled code");
-        GCController::singleton().discardAllCompiledCode();
+        GCController::singleton().deleteAllCode();
     }
 
     {

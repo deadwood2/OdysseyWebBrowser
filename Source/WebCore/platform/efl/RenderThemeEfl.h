@@ -90,7 +90,7 @@ public:
     // A method to obtain the baseline position for a "leaf" control. This will only be used if a baseline
     // position cannot be determined by examining child content. Checkboxes and radio buttons are examples of
     // controls that need to do this.
-    virtual int baselinePosition(const RenderObject&) const override;
+    virtual int baselinePosition(const RenderBox&) const override;
 
     virtual Color platformActiveSelectionBackgroundColor() const override;
     virtual Color platformInactiveSelectionBackgroundColor() const override;
@@ -127,7 +127,7 @@ public:
     virtual bool paintMenuList(const RenderObject&, const PaintInfo&, const FloatRect&) override;
 
     virtual void adjustMenuListButtonStyle(StyleResolver&, RenderStyle&, Element*) const override;
-    virtual bool paintMenuListButtonDecorations(const RenderObject&, const PaintInfo&, const FloatRect&) override;
+    virtual bool paintMenuListButtonDecorations(const RenderBox&, const PaintInfo&, const FloatRect&) override;
 
     virtual void adjustSearchFieldResultsDecorationPartStyle(StyleResolver&, RenderStyle&, Element*) const override;
     virtual bool paintSearchFieldResultsDecorationPart(const RenderObject&, const PaintInfo&, const IntRect&) override;

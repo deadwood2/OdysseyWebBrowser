@@ -40,6 +40,7 @@
 #include "APINavigationAction.h"
 #include "APINavigationClient.h"
 #include "APINavigationResponse.h"
+#include "APIPageConfiguration.h"
 #include "APIPolicyClient.h"
 #include "APISecurityOrigin.h"
 #include "APIUIClient.h"
@@ -160,6 +161,7 @@
 #endif
 
 #if ENABLE(MEDIA_SESSION)
+#include "WebMediaSessionFocusManager.h"
 #include "WebMediaSessionMetadata.h"
 #include <WebCore/MediaSessionMetadata.h>
 #endif
@@ -292,13 +294,14 @@ private:
     PageClient& m_pageClient;
 };
 
-Ref<WebPageProxy> WebPageProxy::create(PageClient& pageClient, WebProcessProxy& process, uint64_t pageID, const WebPageConfiguration& configuration)
+Ref<WebPageProxy> WebPageProxy::create(PageClient& pageClient, WebProcessProxy& process, uint64_t pageID, Ref<API::PageConfiguration>&& configuration)
 {
-    return adoptRef(*new WebPageProxy(pageClient, process, pageID, configuration));
+    return adoptRef(*new WebPageProxy(pageClient, process, pageID, WTF::move(configuration)));
 }
 
-WebPageProxy::WebPageProxy(PageClient& pageClient, WebProcessProxy& process, uint64_t pageID, const WebPageConfiguration& configuration)
+WebPageProxy::WebPageProxy(PageClient& pageClient, WebProcessProxy& process, uint64_t pageID, Ref<API::PageConfiguration>&& configuration)
     : m_pageClient(pageClient)
+    , m_configuration(WTF::move(configuration))
     , m_loaderClient(std::make_unique<API::LoaderClient>())
     , m_policyClient(std::make_unique<API::PolicyClient>())
     , m_formClient(std::make_unique<API::FormClient>())
@@ -310,14 +313,14 @@ WebPageProxy::WebPageProxy(PageClient& pageClient, WebProcessProxy& process, uin
 #endif
     , m_navigationState(std::make_unique<WebNavigationState>())
     , m_process(process)
-    , m_pageGroup(*configuration.pageGroup)
-    , m_preferences(*configuration.preferences)
-    , m_userContentController(configuration.userContentController)
-    , m_visitedLinkProvider(*configuration.visitedLinkProvider)
-    , m_websiteDataStore(*configuration.websiteDataStore)
+    , m_pageGroup(*m_configuration->pageGroup())
+    , m_preferences(*m_configuration->preferences())
+    , m_userContentController(m_configuration->userContentController())
+    , m_visitedLinkProvider(*m_configuration->visitedLinkProvider())
+    , m_websiteDataStore(m_configuration->websiteDataStore()->websiteDataStore())
     , m_mainFrame(nullptr)
     , m_userAgent(standardUserAgent())
-    , m_treatsSHA1CertificatesAsInsecure(configuration.treatsSHA1SignedCertificatesAsInsecure)
+    , m_treatsSHA1CertificatesAsInsecure(m_configuration->treatsSHA1SignedCertificatesAsInsecure())
 #if PLATFORM(IOS)
     , m_hasReceivedLayerTreeTransactionAfterDidCommitLoad(true)
     , m_firstLayerTreeTransactionIdAfterDidCommitLoad(0)
@@ -334,7 +337,7 @@ WebPageProxy::WebPageProxy(PageClient& pageClient, WebProcessProxy& process, uin
     , m_viewState(ViewState::NoFlags)
     , m_viewWasEverInWindow(false)
 #if PLATFORM(IOS)
-    , m_alwaysRunsAtForegroundPriority(configuration.alwaysRunsAtForegroundPriority)
+    , m_alwaysRunsAtForegroundPriority(m_configuration->alwaysRunsAtForegroundPriority())
 #endif
     , m_backForwardList(WebBackForwardList::create(*this))
     , m_maintainsInactiveSelection(false)
@@ -378,7 +381,7 @@ WebPageProxy::WebPageProxy(PageClient& pageClient, WebProcessProxy& process, uin
     , m_isTrackingTouchEvents(false)
 #endif
     , m_pageID(pageID)
-    , m_sessionID(configuration.sessionID)
+    , m_sessionID(m_configuration->sessionID())
     , m_isPageSuspended(false)
     , m_addsVisitedLinks(true)
 #if ENABLE(REMOTE_INSPECTOR)
@@ -435,7 +438,7 @@ WebPageProxy::WebPageProxy(PageClient& pageClient, WebProcessProxy& process, uin
 #endif
     , m_scrollPinningBehavior(DoNotPin)
     , m_navigationID(0)
-    , m_configurationPreferenceValues(configuration.preferenceValues)
+    , m_configurationPreferenceValues(m_configuration->preferenceValues())
     , m_potentiallyChangedViewStateFlags(ViewState::NoFlags)
     , m_viewStateChangeWantsSynchronousReply(false)
 {
@@ -515,6 +518,11 @@ WebPageProxy::~WebPageProxy()
 #ifndef NDEBUG
     webPageProxyCounter.decrement();
 #endif
+}
+
+const API::PageConfiguration& WebPageProxy::configuration() const
+{
+    return m_configuration.get();
 }
 
 PlatformProcessIdentifier WebPageProxy::processIdentifier() const
@@ -732,14 +740,14 @@ RefPtr<API::Navigation> WebPageProxy::reattachToWebProcessWithItem(WebBackForwar
     if (m_isClosed)
         return nullptr;
 
-    if (item && item != m_backForwardList->currentItem())
-        m_backForwardList->goToItem(item);
-
     ASSERT(!isValid());
     reattachToWebProcess();
 
     if (!item)
         return nullptr;
+
+    if (item != m_backForwardList->currentItem())
+        m_backForwardList->goToItem(item);
 
     auto navigation = m_navigationState->createBackForwardNavigation();
 
@@ -843,6 +851,11 @@ void WebPageProxy::close()
 bool WebPageProxy::tryClose()
 {
     if (!isValid())
+        return true;
+
+    // Close without delay if the process allows it. Our goal is to terminate
+    // the process, so we check a per-process status bit.
+    if (m_process->isSuddenTerminationEnabled())
         return true;
 
     m_process->send(Messages::WebPage::TryClose(), m_pageID);
@@ -1577,16 +1590,6 @@ void WebPageProxy::didCommitLayerTree(const RemoteLayerTreeTransaction&)
 }
 #endif
 
-#if USE(COORDINATED_GRAPHICS_MULTIPROCESS)
-void WebPageProxy::commitPageTransitionViewport()
-{
-    if (!isValid())
-        return;
-
-    process().send(Messages::WebPage::CommitPageTransitionViewport(), m_pageID);
-}
-#endif
-
 #if ENABLE(DRAG_SUPPORT)
 void WebPageProxy::dragEntered(DragData& dragData, const String& dragStorageName)
 {
@@ -1797,8 +1800,6 @@ void WebPageProxy::processNextQueuedWheelEvent()
 
 void WebPageProxy::sendWheelEvent(const WebWheelEvent& event)
 {
-    m_process->responsivenessTimer()->start();
-
     if (m_shouldSendEventsSynchronously) {
         bool handled = false;
         m_process->sendSync(Messages::WebPage::WheelEventSyncForTesting(event), Messages::WebPage::WheelEventSyncForTesting::Reply(handled), m_pageID);
@@ -1815,6 +1816,8 @@ void WebPageProxy::sendWheelEvent(const WebWheelEvent& event)
             rubberBandsAtTop(),
             rubberBandsAtBottom()
         ), 0);
+
+    m_process->sendMainThreadPing();
 }
 
 void WebPageProxy::handleKeyboardEvent(const NativeWebKeyboardEvent& event)
@@ -2973,7 +2976,7 @@ void WebPageProxy::clearLoadDependentCallbacks()
     }
 }
 
-void WebPageProxy::didCommitLoadForFrame(uint64_t frameID, uint64_t navigationID, const String& mimeType, bool frameHasCustomContentProvider, uint32_t opaqueFrameLoadType, const WebCore::CertificateInfo& certificateInfo, const UserData& userData)
+void WebPageProxy::didCommitLoadForFrame(uint64_t frameID, uint64_t navigationID, const String& mimeType, bool frameHasCustomContentProvider, uint32_t opaqueFrameLoadType, const WebCore::CertificateInfo& certificateInfo, bool containsPluginDocument, const UserData& userData)
 {
     PageClientProtector protector(m_pageClient);
 
@@ -3010,7 +3013,7 @@ void WebPageProxy::didCommitLoadForFrame(uint64_t frameID, uint64_t navigationID
 
     clearLoadDependentCallbacks();
 
-    frame->didCommitLoad(mimeType, webCertificateInfo);
+    frame->didCommitLoad(mimeType, webCertificateInfo, containsPluginDocument);
 
     if (frame->isMainFrame()) {
         m_mainFrameHasCustomContentProvider = frameHasCustomContentProvider;
@@ -3797,6 +3800,13 @@ void WebPageProxy::didRenderFrame(const WebCore::IntSize& contentsSize, const We
     m_pageClient.didRenderFrame(contentsSize, coveredRect);
 }
 
+void WebPageProxy::commitPageTransitionViewport()
+{
+    if (!isValid())
+        return;
+
+    process().send(Messages::WebPage::CommitPageTransitionViewport(), m_pageID);
+}
 #endif
 
 void WebPageProxy::didChangeViewportProperties(const ViewportAttributes& attr)
@@ -4591,6 +4601,7 @@ void WebPageProxy::didReceiveEvent(uint32_t opaqueType, bool handled)
     switch (type) {
     case WebEvent::NoType:
     case WebEvent::MouseMove:
+    case WebEvent::Wheel:
         break;
 
     case WebEvent::MouseDown:
@@ -4598,7 +4609,6 @@ void WebPageProxy::didReceiveEvent(uint32_t opaqueType, bool handled)
     case WebEvent::MouseForceChanged:
     case WebEvent::MouseForceDown:
     case WebEvent::MouseForceUp:
-    case WebEvent::Wheel:
     case WebEvent::KeyDown:
     case WebEvent::KeyUp:
     case WebEvent::RawKeyDown:
@@ -4618,10 +4628,8 @@ void WebPageProxy::didReceiveEvent(uint32_t opaqueType, bool handled)
         break;
     case WebEvent::MouseMove:
         m_processingMouseMoveEvent = false;
-        if (m_nextMouseMoveEvent) {
-            handleMouseEvent(*m_nextMouseMoveEvent);
-            m_nextMouseMoveEvent = nullptr;
-        }
+        if (m_nextMouseMoveEvent)
+            handleMouseEvent(*std::exchange(m_nextMouseMoveEvent, nullptr));
         break;
     case WebEvent::MouseDown:
         break;
@@ -5223,6 +5231,11 @@ void WebPageProxy::exitAcceleratedCompositingMode()
 void WebPageProxy::updateAcceleratedCompositingMode(const LayerTreeContext& layerTreeContext)
 {
     m_pageClient.updateAcceleratedCompositingMode(layerTreeContext);
+}
+
+void WebPageProxy::willEnterAcceleratedCompositingMode()
+{
+    m_pageClient.willEnterAcceleratedCompositingMode();
 }
 
 void WebPageProxy::backForwardClear()
@@ -5939,8 +5952,14 @@ void WebPageProxy::navigationGestureSnapshotWasRemoved()
     m_isShowingNavigationGestureSnapshot = false;
 }
 
-void WebPageProxy::isPlayingMediaDidChange(MediaProducer::MediaStateFlags state)
+void WebPageProxy::isPlayingMediaDidChange(MediaProducer::MediaStateFlags state, uint64_t sourceElementID)
 {
+#if ENABLE(MEDIA_SESSION)
+    WebMediaSessionFocusManager* focusManager = process().processPool().supplement<WebMediaSessionFocusManager>();
+    ASSERT(focusManager);
+    focusManager->updatePlaybackAttributesFromMediaState(this, sourceElementID, state);
+#endif
+
     if (state == m_mediaState)
         return;
 
@@ -5963,6 +5982,13 @@ void WebPageProxy::mediaSessionMetadataDidChange(const WebCore::MediaSessionMeta
 {
     Ref<WebMediaSessionMetadata> webMetadata = WebMediaSessionMetadata::create(metadata);
     m_uiClient->mediaSessionMetadataDidChange(*this, webMetadata.ptr());
+}
+
+void WebPageProxy::focusedContentMediaElementDidChange(uint64_t elementID)
+{
+    WebMediaSessionFocusManager* focusManager = process().processPool().supplement<WebMediaSessionFocusManager>();
+    ASSERT(focusManager);
+    focusManager->setFocusedMediaElement(*this, elementID);
 }
 #endif
 

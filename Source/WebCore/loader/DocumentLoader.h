@@ -306,6 +306,7 @@ namespace WebCore {
         void finishedLoading(double finishTime);
         void mainReceivedError(const ResourceError&);
         WEBCORE_EXPORT virtual void redirectReceived(CachedResource*, ResourceRequest&, const ResourceResponse&) override;
+        WEBCORE_EXPORT virtual void syntheticRedirectReceived(CachedResource*, ResourceRequest&, const ResourceResponse&, bool& /* shouldContinue */) override;
         WEBCORE_EXPORT virtual void responseReceived(CachedResource*, const ResourceResponse&) override;
         WEBCORE_EXPORT virtual void dataReceived(CachedResource*, const char* data, int length) override;
         WEBCORE_EXPORT virtual void notifyFinished(CachedResource*) override;
@@ -316,7 +317,6 @@ namespace WebCore {
         bool isPostOrRedirectAfterPost(const ResourceRequest&, const ResourceResponse&);
 
         void continueAfterNavigationPolicy(const ResourceRequest&, bool shouldContinue);
-
         void continueAfterContentPolicy(PolicyAction);
 
         void stopLoadingForPolicyChange();
@@ -427,7 +427,8 @@ namespace WebCore {
         unsigned long m_identifierForLoadWithoutResourceLoader;
 
         DocumentLoaderTimer m_dataLoadTimer;
-        bool m_waitingForContentPolicy;
+        bool m_waitingForContentPolicy { false };
+        bool m_waitingForNavigationPolicy { false };
 
         RefPtr<IconLoadDecisionCallback> m_iconLoadDecisionCallback;
         RefPtr<IconDataCallback> m_iconDataCallback;

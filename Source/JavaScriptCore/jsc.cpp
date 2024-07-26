@@ -101,10 +101,6 @@
 using namespace JSC;
 using namespace WTF;
 
-namespace JSC {
-WTF_IMPORT extern const struct HashTable globalObjectTable;
-}
-
 namespace {
 
 NO_RETURN_WITH_VALUE static void jscExit(int status)
@@ -463,7 +459,6 @@ static EncodedJSValue JSC_HOST_CALL functionHeapSize(ExecState*);
 static EncodedJSValue JSC_HOST_CALL functionDeleteAllCompiledCode(ExecState*);
 static EncodedJSValue JSC_HOST_CALL functionAddressOf(ExecState*);
 #ifndef NDEBUG
-static EncodedJSValue JSC_HOST_CALL functionReleaseExecutableMemory(ExecState*);
 static EncodedJSValue JSC_HOST_CALL functionDumpCallFrame(ExecState*);
 #endif
 static EncodedJSValue JSC_HOST_CALL functionVersion(ExecState*);
@@ -478,6 +473,7 @@ static EncodedJSValue JSC_HOST_CALL functionOptimizeNextInvocation(ExecState*);
 static EncodedJSValue JSC_HOST_CALL functionNumberOfDFGCompiles(ExecState*);
 static EncodedJSValue JSC_HOST_CALL functionReoptimizationRetryCount(ExecState*);
 static EncodedJSValue JSC_HOST_CALL functionTransferArrayBuffer(ExecState*);
+static EncodedJSValue JSC_HOST_CALL functionFailNextNewCodeBlock(ExecState*);
 static NO_RETURN_WITH_VALUE EncodedJSValue JSC_HOST_CALL functionQuit(ExecState*);
 static EncodedJSValue JSC_HOST_CALL functionFalse1(ExecState*);
 static EncodedJSValue JSC_HOST_CALL functionFalse2(ExecState*);
@@ -496,6 +492,9 @@ static EncodedJSValue JSC_HOST_CALL functionHasBasicBlockExecuted(ExecState*);
 static EncodedJSValue JSC_HOST_CALL functionEnableExceptionFuzz(ExecState*);
 #if ENABLE(WEBASSEMBLY)
 static EncodedJSValue JSC_HOST_CALL functionLoadWebAssembly(ExecState*);
+#endif
+#if ENABLE(ES6_MODULES)
+static EncodedJSValue JSC_HOST_CALL functionCheckModuleSyntax(ExecState*);
 #endif
 
 #if ENABLE(SAMPLING_FLAGS)
@@ -609,7 +608,6 @@ protected:
         addFunction(vm, "addressOf", functionAddressOf, 1);
 #ifndef NDEBUG
         addFunction(vm, "dumpCallFrame", functionDumpCallFrame, 0);
-        addFunction(vm, "releaseExecutableMemory", functionReleaseExecutableMemory, 0);
 #endif
         addFunction(vm, "version", functionVersion, 1);
         addFunction(vm, "run", functionRun, 1);
@@ -625,6 +623,7 @@ protected:
         addFunction(vm, "optimizeNextInvocation", functionOptimizeNextInvocation, 1);
         addFunction(vm, "reoptimizationRetryCount", functionReoptimizationRetryCount, 1);
         addFunction(vm, "transferArrayBuffer", functionTransferArrayBuffer, 1);
+        addFunction(vm, "failNextNewCodeBlock", functionFailNextNewCodeBlock, 1);
 #if ENABLE(SAMPLING_FLAGS)
         addFunction(vm, "setSamplingFlags", functionSetSamplingFlags, 1);
         addFunction(vm, "clearSamplingFlags", functionClearSamplingFlags, 1);
@@ -663,6 +662,9 @@ protected:
 #if ENABLE(WEBASSEMBLY)
         addFunction(vm, "loadWebAssembly", functionLoadWebAssembly, 1);
 #endif
+#if ENABLE(ES6_MODULES)
+        addFunction(vm, "checkModuleSyntax", functionCheckModuleSyntax, 1);
+#endif
 
         JSArray* array = constructEmptyArray(globalExec(), 0);
         for (size_t i = 0; i < arguments.size(); ++i)
@@ -685,9 +687,8 @@ protected:
     }
 };
 
-const ClassInfo GlobalObject::s_info = { "global", &JSGlobalObject::s_info, &globalObjectTable, CREATE_METHOD_TABLE(GlobalObject) };
+const ClassInfo GlobalObject::s_info = { "global", &JSGlobalObject::s_info, nullptr, CREATE_METHOD_TABLE(GlobalObject) };
 const GlobalObjectMethodTable GlobalObject::s_globalObjectMethodTable = { &allowsAccessFrom, &supportsProfiling, &supportsRichSourceInfo, &shouldInterruptScript, &javaScriptRuntimeFlags, 0, &shouldInterruptScriptBeforeTimeout };
-
 
 GlobalObject::GlobalObject(VM& vm, Structure* structure)
     : JSGlobalObject(vm, structure, &s_globalObjectMethodTable)
@@ -903,16 +904,6 @@ EncodedJSValue JSC_HOST_CALL functionAddressOf(ExecState* exec)
     return returnValue;
 }
 
-
-#ifndef NDEBUG
-EncodedJSValue JSC_HOST_CALL functionReleaseExecutableMemory(ExecState* exec)
-{
-    JSLockHolder lock(exec);
-    exec->vm().releaseExecutableMemory();
-    return JSValue::encode(jsUndefined());
-}
-#endif
-
 EncodedJSValue JSC_HOST_CALL functionVersion(ExecState*)
 {
     // We need this function for compatibility with the Mozilla JS tests but for now
@@ -1079,6 +1070,12 @@ EncodedJSValue JSC_HOST_CALL functionTransferArrayBuffer(ExecState* exec)
     return JSValue::encode(jsUndefined());
 }
 
+EncodedJSValue JSC_HOST_CALL functionFailNextNewCodeBlock(ExecState* exec)
+{
+    exec->vm().setFailNextNewCodeBlock();
+    return JSValue::encode(jsUndefined());
+}
+
 EncodedJSValue JSC_HOST_CALL functionQuit(ExecState*)
 {
     jscExit(EXIT_SUCCESS);
@@ -1206,6 +1203,24 @@ EncodedJSValue JSC_HOST_CALL functionLoadWebAssembly(ExecState* exec)
     if (!module)
         return JSValue::encode(exec->vm().throwException(exec, createSyntaxError(exec, errorMessage)));
     return JSValue::encode(module);
+}
+#endif
+
+#if ENABLE(ES6_MODULES)
+EncodedJSValue JSC_HOST_CALL functionCheckModuleSyntax(ExecState* exec)
+{
+    String source = exec->argument(0).toString(exec)->value(exec);
+
+    StopWatch stopWatch;
+    stopWatch.start();
+
+    ParserError error;
+    bool validSyntax = checkModuleSyntax(exec->vm(), makeSource(source), error);
+    stopWatch.stop();
+
+    if (!validSyntax)
+        exec->vm().throwException(exec, jsNontrivialString(exec, toString("SyntaxError: ", error.message(), ":", error.line())));
+    return JSValue::encode(jsNumber(stopWatch.getElapsedMS()));
 }
 #endif
 
@@ -1538,7 +1553,7 @@ void CommandLine::parseArguments(int argc, char** argv)
         m_arguments.append(argv[i]);
 
     if (needToDumpOptions)
-        JSC::Options::dumpAllOptions(JSC::Options::DumpLevel::Verbose, "All JSC runtime options:", stderr);
+        JSC::Options::dumpAllOptions(stderr, JSC::Options::DumpLevel::Verbose, "All JSC runtime options:");
     JSC::Options::ensureOptionsAreCoherent();
     if (needToExit)
         jscExit(EXIT_SUCCESS);

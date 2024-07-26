@@ -409,9 +409,10 @@ public:
     void captionPreferencesChanged();
 #endif
 
-    void incrementFrameHandlingBeforeUnloadEventCount();
-    void decrementFrameHandlingBeforeUnloadEventCount();
-    bool isAnyFrameHandlingBeforeUnloadEvent();
+    void forbidPrompts();
+    void allowPrompts();
+    bool arePromptsAllowed();
+
     void setLastSpatialNavigationCandidateCount(unsigned count) { m_lastSpatialNavigationCandidatesCount = count; }
     unsigned lastSpatialNavigationCandidateCount() const { return m_lastSpatialNavigationCandidatesCount; }
 
@@ -436,7 +437,7 @@ public:
     bool usesEphemeralSession() const { return m_sessionID.isEphemeral(); }
 
     MediaProducer::MediaStateFlags mediaState() const { return m_mediaState; }
-    void updateIsPlayingMedia();
+    void updateIsPlayingMedia(uint64_t);
     bool isMuted() const { return m_muted; }
     WEBCORE_EXPORT void setMuted(bool);
 
@@ -539,7 +540,7 @@ private:
 
     float m_pageScaleFactor;
     float m_zoomedOutPageScaleFactor;
-    float m_deviceScaleFactor;
+    float m_deviceScaleFactor { 1 };
     float m_viewScaleFactor { 1 };
 
     float m_topContentInset;
@@ -606,7 +607,7 @@ private:
     HashSet<String> m_seenMediaEngines;
 
     unsigned m_lastSpatialNavigationCandidatesCount;
-    unsigned m_framesHandlingBeforeUnloadEvent;
+    unsigned m_forbidPromptsDepth;
 
     Ref<ApplicationCacheStorage> m_applicationCacheStorage;
     Ref<DatabaseProvider> m_databaseProvider;

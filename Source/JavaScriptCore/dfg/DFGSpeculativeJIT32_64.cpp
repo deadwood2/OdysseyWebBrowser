@@ -44,6 +44,7 @@
 #include "JSCInlines.h"
 #include "SetupVarargsFrame.h"
 #include "TypeProfilerLog.h"
+#include "Watchdog.h"
 
 namespace JSC { namespace DFG {
 
@@ -1054,6 +1055,7 @@ GPRReg SpeculativeJIT::fillSpeculateBoolean(Edge edge)
 {
     AbstractValue& value = m_state.forNode(edge);
     SpeculatedType type = value.m_type;
+    ASSERT(edge.useKind() != KnownBooleanUse || !(value.m_type & ~SpecBoolean));
 
     m_interpreter.filter(value, SpecBoolean);
     if (value.isClear()) {
@@ -1484,7 +1486,8 @@ void SpeculativeJIT::compileObjectOrOtherLogicalNot(Edge nodeUse)
 void SpeculativeJIT::compileLogicalNot(Node* node)
 {
     switch (node->child1().useKind()) {
-    case BooleanUse: {
+    case BooleanUse:
+    case KnownBooleanUse: {
         SpeculateBooleanOperand value(this, node->child1());
         GPRTemporary result(this, Reuse, value);
         m_jit.xor32(TrustedImm32(1), value.gpr(), result.gpr());
@@ -1603,7 +1606,8 @@ void SpeculativeJIT::emitBranch(Node* node)
     BasicBlock* notTaken = node->branchData()->notTaken.block;
 
     switch (node->child1().useKind()) {
-    case BooleanUse: {
+    case BooleanUse:
+    case KnownBooleanUse: {
         SpeculateBooleanOperand value(this, node->child1());
         MacroAssembler::ResultCondition condition = MacroAssembler::NonZero;
 
@@ -2330,6 +2334,26 @@ void SpeculativeJIT::compile(Node* node)
             terminateSpeculativeExecution(InadequateCoverage, JSValueRegs(), 0);
 #endif
             break;
+        case Array::Undecided: {
+            SpeculateStrictInt32Operand index(this, node->child2());
+            GPRTemporary resultTag(this, Reuse, index);
+            GPRTemporary resultPayload(this);
+
+            GPRReg indexGPR = index.gpr();
+            GPRReg resultTagGPR = resultTag.gpr();
+            GPRReg resultPayloadGPR = resultPayload.gpr();
+
+            use(node->child1());
+            index.use();
+
+            speculationCheck(OutOfBounds, JSValueRegs(), node,
+                m_jit.branch32(MacroAssembler::LessThan, indexGPR, MacroAssembler::TrustedImm32(0)));
+
+            m_jit.move(MacroAssembler::TrustedImm32(JSValue::UndefinedTag), resultTagGPR);
+            m_jit.move(MacroAssembler::TrustedImm32(0), resultPayloadGPR);
+            jsValueResult(resultTagGPR, resultPayloadGPR, node, UseChildrenCalledExplicitly);
+            break;
+        }
         case Array::Generic: {
             SpeculateCellOperand base(this, node->child1()); // Save a register, speculate cell. We'll probably be right.
             JSValueOperand property(this, node->child2());
@@ -3819,6 +3843,10 @@ void SpeculativeJIT::compile(Node* node)
         noResult(node);
         break;
     }
+
+    case CheckIdent:
+        compileCheckIdent(node);
+        break;
 
     case GetExecutable: {
         SpeculateCellOperand function(this, node->child1());

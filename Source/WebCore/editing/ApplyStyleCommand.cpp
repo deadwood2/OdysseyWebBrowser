@@ -339,16 +339,24 @@ void ApplyStyleCommand::applyRelativeFontStyleChange(EditingStyle* style)
         end = endPosition();
     }
 
+    if (start.isNull() || end.isNull())
+        return;
+
     if (isValidCaretPositionInTextNode(end)) {
         splitTextAtEnd(start, end);
         start = startPosition();
         end = endPosition();
     }
 
+    if (start.isNull() || end.isNull())
+        return;
+
     // Calculate loop end point.
     // If the end node is before the start node (can only happen if the end node is
     // an ancestor of the start node), we gather nodes up to the next sibling of the end node
-    Node *beyondEnd;
+    Node* beyondEnd;
+    ASSERT(start.deprecatedNode());
+    ASSERT(end.deprecatedNode());
     if (start.deprecatedNode()->isDescendantOf(end.deprecatedNode()))
         beyondEnd = NodeTraversal::nextSkippingChildren(*end.deprecatedNode());
     else
@@ -356,20 +364,33 @@ void ApplyStyleCommand::applyRelativeFontStyleChange(EditingStyle* style)
     
     start = start.upstream(); // Move upstream to ensure we do not add redundant spans.
     Node* startNode = start.deprecatedNode();
-    if (startNode->isTextNode() && start.deprecatedEditingOffset() >= caretMaxOffset(startNode)) // Move out of text node if range does not include its characters.
+
+    // Make sure we're not already at the end or the next NodeTraversal::next() will traverse
+    // past it.
+    if (startNode == beyondEnd)
+        return;
+
+    if (startNode->isTextNode() && start.deprecatedEditingOffset() >= caretMaxOffset(startNode)) {
+        // Move out of text node if range does not include its characters.
         startNode = NodeTraversal::next(*startNode);
+        if (!startNode)
+            return;
+    }
 
     // Store away font size before making any changes to the document.
     // This ensures that changes to one node won't effect another.
     HashMap<Node*, float> startingFontSizes;
-    for (Node *node = startNode; node != beyondEnd; node = NodeTraversal::next(*node))
+    for (Node* node = startNode; node != beyondEnd; node = NodeTraversal::next(*node)) {
+        ASSERT(node);
         startingFontSizes.set(node, computedFontSize(node));
+    }
 
     // These spans were added by us. If empty after font size changes, they can be removed.
     Vector<RefPtr<HTMLElement>> unstyledSpans;
     
-    Node* lastStyledNode = 0;
+    Node* lastStyledNode = nullptr;
     for (Node* node = startNode; node != beyondEnd; node = NodeTraversal::next(*node)) {
+        ASSERT(node);
         RefPtr<HTMLElement> element;
         if (is<HTMLElement>(*node)) {
             // Only work on fully selected nodes.
@@ -571,6 +592,9 @@ void ApplyStyleCommand::applyInlineStyle(EditingStyle* style)
         startDummySpanAncestor = dummySpanAncestorForNode(start.deprecatedNode());
     }
 
+    if (start.isNull() || end.isNull())
+        return;
+
     // split the end node and containing element if the selection ends inside of it
     bool splitEnd = isValidCaretPositionInTextNode(end);
     if (splitEnd) {
@@ -582,6 +606,9 @@ void ApplyStyleCommand::applyInlineStyle(EditingStyle* style)
         end = endPosition();
         endDummySpanAncestor = dummySpanAncestorForNode(end.deprecatedNode());
     }
+
+    if (start.isNull() || end.isNull())
+        return;
 
     // Remove style from the selection.
     // Use the upstream position of the start for removing style.
@@ -634,6 +661,9 @@ void ApplyStyleCommand::applyInlineStyle(EditingStyle* style)
         start = startPosition();
         end = endPosition();
     }
+
+    if (start.isNull() || end.isNull())
+        return;
 
     // update document layout once before running the rest of the function
     // so that we avoid the expense of updating before each and every call

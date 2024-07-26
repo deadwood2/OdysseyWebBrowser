@@ -289,6 +289,7 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/speech/SpeechSynthesisUtterance.idl
     Modules/speech/SpeechSynthesisVoice.idl
 
+    Modules/streams/CountQueuingStrategy.idl
     Modules/streams/ReadableStream.idl
     Modules/streams/ReadableStreamController.idl
     Modules/streams/ReadableStreamReader.idl
@@ -912,7 +913,6 @@ set(WebCore_SOURCES
     Modules/mediastream/MediaTrackConstraintSet.cpp
     Modules/mediastream/MediaTrackConstraints.cpp
     Modules/mediastream/NavigatorMediaDevices.cpp
-    Modules/mediastream/NavigatorUserMedia.cpp
     Modules/mediastream/NavigatorUserMediaError.cpp
     Modules/mediastream/RTCDTMFSender.cpp
     Modules/mediastream/RTCDTMFToneChangeEvent.cpp
@@ -1004,8 +1004,6 @@ set(WebCore_SOURCES
     Modules/webdatabase/DOMWindowWebDatabase.cpp
     Modules/webdatabase/Database.cpp
     Modules/webdatabase/DatabaseAuthorizer.cpp
-    Modules/webdatabase/DatabaseBackend.cpp
-    Modules/webdatabase/DatabaseBackendBase.cpp
     Modules/webdatabase/DatabaseContext.cpp
     Modules/webdatabase/DatabaseManager.cpp
     Modules/webdatabase/DatabaseServer.cpp
@@ -1017,7 +1015,6 @@ set(WebCore_SOURCES
     Modules/webdatabase/SQLResultSet.cpp
     Modules/webdatabase/SQLResultSetRowList.cpp
     Modules/webdatabase/SQLStatement.cpp
-    Modules/webdatabase/SQLStatementBackend.cpp
     Modules/webdatabase/SQLTransaction.cpp
     Modules/webdatabase/SQLTransactionBackend.cpp
     Modules/webdatabase/SQLTransactionClient.cpp
@@ -1092,6 +1089,7 @@ set(WebCore_SOURCES
     bindings/js/JSCanvasRenderingContextCustom.cpp
     bindings/js/JSCharacterDataCustom.cpp
     bindings/js/JSCommandLineAPIHostCustom.cpp
+    bindings/js/JSCountQueuingStrategyCustom.cpp
     bindings/js/JSCryptoAlgorithmBuilder.cpp
     bindings/js/JSCryptoAlgorithmDictionary.cpp
     bindings/js/JSCryptoCustom.cpp
@@ -2269,6 +2267,7 @@ set(WebCore_SOURCES
     platform/network/CredentialStorage.cpp
     platform/network/DNSResolveQueue.cpp
     platform/network/DataURL.cpp
+    platform/network/DataURLDecoder.cpp
     platform/network/FormData.cpp
     platform/network/FormDataBuilder.cpp
     platform/network/HTTPHeaderMap.cpp
@@ -2791,6 +2790,46 @@ set(WebCore_SOURCES
     xml/parser/XMLDocumentParserScope.cpp
 )
 
+if (ENABLE_ALLINONE_BUILD)
+    message(STATUS "All-in-One build is enabled.")
+    set(allInOnes
+        accessibility/AccessibilityAllInOne.cpp
+
+        bindings/js/JSBindingsAllInOne.cpp
+
+        css/CSSAllInOne.cpp
+
+        dom/DOMAllInOne.cpp
+
+        editing/EditingAllInOne.cpp
+
+        html/HTMLElementsAllInOne.cpp
+
+        inspector/InspectorAllInOne.cpp
+
+        loader/appcache/ApplicationCacheAllInOne.cpp
+
+        mathml/MathMLAllInOne.cpp
+
+        platform/text/TextAllInOne.cpp
+
+        rendering/RenderingAllInOne.cpp
+
+        rendering/style/StyleAllInOne.cpp
+
+        rendering/svg/RenderSVGAllInOne.cpp
+
+        svg/SVGAllInOne.cpp
+    )
+    foreach (allInOne ${allInOnes})
+        PROCESS_ALLINONE_FILE("${WebCore_SOURCES}" ${allInOne} newSources ${AllInOne})
+        set(WebCore_SOURCES
+            ${allInOne}
+            ${newSources}
+        )
+    endforeach ()
+endif ()
+
 set(WebCore_CSS_PROPERTY_NAMES
     ${WEBCORE_DIR}/css/CSSPropertyNames.in
 )
@@ -2831,7 +2870,8 @@ if (ENABLE_ENCRYPTED_MEDIA OR ENABLE_ENCRYPTED_MEDIA_V2)
         Modules/encryptedmedia/MediaKeys.cpp
 
         html/MediaKeyEvent.cpp
-
+    )
+    list(APPEND WebCoreTestSupport_SOURCES
         testing/MockCDM.cpp
     )
     list(APPEND WebCore_IDL_FILES
@@ -3151,6 +3191,8 @@ if (ENABLE_GRAPHICS_CONTEXT_3D)
         ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/timing/RestrictFragmentShaderTiming.cpp
         ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/timing/RestrictVertexShaderTiming.cpp
 
+        ${THIRDPARTY_DIR}/ANGLE/src/libANGLE/Platform.cpp
+
         ${THIRDPARTY_DIR}/ANGLE/src/third_party/compiler/ArrayBoundsClamper.cpp
     )
 
@@ -3236,7 +3278,7 @@ set(WebCoreTestSupport_IDL_FILES
     testing/TypeConversions.idl
 )
 
-set(WebCoreTestSupport_SOURCES
+list(APPEND WebCoreTestSupport_SOURCES
     platform/mock/PlatformSpeechSynthesizerMock.cpp
 
     platform/mock/mediasource/MockBox.cpp
@@ -3256,7 +3298,6 @@ set(WebCoreTestSupport_SOURCES
 set(WebCoreTestSupport_LIBRARIES
     JavaScriptCore
     WTF
-    WebCore
 )
 
 # Modules that the bindings generator scripts may use
@@ -3515,6 +3556,7 @@ list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/EventFactory.cpp)
 
 GENERATE_EVENT_FACTORY(${WEBCORE_DIR}/dom/EventTargetFactory.in EventTargetInterfaces.h)
 ADD_SOURCE_WEBCORE_DERIVED_DEPENDENCIES(${WEBCORE_DIR}/dom/EventNames.cpp EventTargetInterfaces.h)
+ADD_SOURCE_WEBCORE_DERIVED_DEPENDENCIES(${WEBCORE_DIR}/dom/DOMAllInOne.cpp EventTargetInterfaces.h)
 list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/EventTargetInterfaces.h)
 
 
@@ -3603,6 +3645,7 @@ if (MSVC)
 endif ()
 
 add_library(WebCoreTestSupport ${WebCoreTestSupport_LIBRARY_TYPE} ${WebCoreTestSupport_SOURCES})
+add_dependencies(WebCoreTestSupport WebCore)
 target_link_libraries(WebCoreTestSupport ${WebCoreTestSupport_LIBRARIES})
 set_target_properties(WebCoreTestSupport PROPERTIES FOLDER "WebCore")
 
@@ -3610,7 +3653,7 @@ if (WebCoreTestSupport_OUTPUT_NAME)
     set_target_properties(WebCoreTestSupport PROPERTIES OUTPUT_NAME ${WebCoreTestSupport_OUTPUT_NAME})
 endif ()
 
-if (ENABLE_GRAPHICS_CONTEXT_3D)
+if (ENABLE_GRAPHICS_CONTEXT_3D AND NOT WIN32)
     add_library(ANGLESupport STATIC ${ANGLESupport_SOURCES})
     set_target_properties(ANGLESupport PROPERTIES FOLDER "WebCore")
 

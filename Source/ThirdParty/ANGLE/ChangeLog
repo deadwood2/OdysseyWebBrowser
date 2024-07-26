@@ -1,3 +1,74 @@
+2016-01-08  Brent Fulgham  <bfulgham@apple.com>
+
+        [ANGLE] Correct UNREACHABLE runtime assertion for void constructors
+        https://bugs.webkit.org/show_bug.cgi?id=152900
+        <rdar://problem/24107501>
+
+        Reviewed by Alex Christensen.
+
+        Tested by Khronos WebGL 1.0.4 suite.
+
+        Merge a small part of ANGLE upstream commit r284735:
+        
+            commit    01971113492d9aca386f2bca021b1f4b134fc277
+            author    Dmitry Skiba <dskiba@google.com>  Fri Jul 10 18:54:00 2015
+            committer Jamie Madill <jmadill@chromium.org>  Fri Jul 10 19:03:34 2015
+            tree      47e42eac00f7d64cddb14b3cc21a4e605c189d20
+
+        This issue was found by <https://www.khronos.org/registry/webgl/sdk/tests/conformance/glsl/bugs/angle-constructor-invalid-parameters.html?webglVersion=1&quiet=0>
+
+        * src/compiler/translator/Types.cpp:
+        (TType::buildMangledName): Don't assert with UNREACHABLE here.
+
+2015-08-11  Brent Fulgham  <bfulgham@apple.com>
+
+        [Win] Switch Windows build to Visual Studio 2015
+        https://bugs.webkit.org/show_bug.cgi?id=147887
+        <rdar://problem/22235098>
+
+        Reviewed by Alex Christensen.
+
+        Update Visual Studio project file settings to use the current Visual
+        Studio and compiler. Continue targeting binaries to run on our minimum
+        supported configuration of Windows 7.
+
+        * ANGLE.vcxproj/libEGL.vcxproj:
+        * ANGLE.vcxproj/libGLESv2.vcxproj:
+        * ANGLE.vcxproj/preprocessor.vcxproj:
+        * ANGLE.vcxproj/translator_common.vcxproj:
+        * ANGLE.vcxproj/translator_glsl.vcxproj:
+        * ANGLE.vcxproj/translator_hlsl.vcxproj:
+
+2015-08-04  Alex Christensen  <achristensen@webkit.org>
+
+        Build fix after r187928.
+
+        * CMakeLists.txt:
+        Typo. Set libGLESv2 compile definitions instead of libEGL, which are set separately.
+
+2015-08-04  Alex Christensen  <achristensen@webkit.org>
+
+        Soft link libGLESv2 and libEGL on Windows again
+        https://bugs.webkit.org/show_bug.cgi?id=147671
+
+        Reviewed by Dean Jackson.
+
+        * CMakeLists.txt:
+        Clean up some warnings when compiling with CMake.
+        * include/EGL/egl.h:
+        * include/EGL/eglsoftlinking.h:
+        * include/GLES2/gl2.h:
+        Soft link egl optionally.
+
+2015-08-04  Alex Christensen  <achristensen@webkit.org>
+
+        Enable WebGL on Windows CMake build.
+        https://bugs.webkit.org/show_bug.cgi?id=143311
+
+        Reviewed by Csaba Osztrogonác.
+
+        * CMakeLists.txt: Added.
+
 2015-07-03  Dan Bernstein  <mitz@apple.com>
 
         [Xcode] Update some build settings as recommended by Xcode 7

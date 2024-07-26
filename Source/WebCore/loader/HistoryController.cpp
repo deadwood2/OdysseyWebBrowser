@@ -191,6 +191,9 @@ void HistoryController::saveDocumentState()
     ASSERT(m_frame.document());
     Document& document = *m_frame.document();
     if (item->isCurrentDocument(document) && document.hasLivingRenderTree()) {
+        if (DocumentLoader* documentLoader = document.loader())
+            item->setShouldOpenExternalURLsPolicy(documentLoader->shouldOpenExternalURLsPolicyToPropagate());
+
         LOG(Loading, "WebCoreLoading %s: saving form state to %p", m_frame.tree().uniqueName().string().utf8().data(), item);
         item->setDocumentState(document.formElementsState());
     }
@@ -229,6 +232,8 @@ void HistoryController::restoreDocumentState()
         return;
     if (m_frame.loader().documentLoader()->isClientRedirect())
         return;
+
+    m_frame.loader().documentLoader()->setShouldOpenExternalURLsPolicy(m_currentItem->shouldOpenExternalURLsPolicy());
 
     LOG(Loading, "WebCoreLoading %s: restoring form state from %p", m_frame.tree().uniqueName().string().utf8().data(), m_currentItem.get());
     m_frame.document()->setStateForNewFormElements(m_currentItem->documentState());
@@ -648,6 +653,8 @@ void HistoryController::initializeItem(HistoryItem& item)
     if (!unreachableURL.isEmpty() || documentLoader->response().httpStatusCode() >= 400)
         item.setLastVisitWasFailure(true);
 
+    item.setShouldOpenExternalURLsPolicy(documentLoader->shouldOpenExternalURLsPolicyToPropagate());
+
     // Save form state if this is a POST
     item.setFormInfoFromRequest(documentLoader->request());
 }
@@ -740,9 +747,8 @@ void HistoryController::recursiveGoToItem(HistoryItem& item, HistoryItem* fromIt
 
         HistoryItem* fromChildItem = fromItem->childItemWithTarget(childFrameName);
         ASSERT(fromChildItem);
-        Frame* childFrame = m_frame.tree().child(childFrameName);
-        ASSERT(childFrame);
-        childFrame->loader().history().recursiveGoToItem(const_cast<HistoryItem&>(childItem.get()), fromChildItem, type);
+        if (Frame* childFrame = m_frame.tree().child(childFrameName))
+            childFrame->loader().history().recursiveGoToItem(const_cast<HistoryItem&>(childItem.get()), fromChildItem, type);
     }
 }
 

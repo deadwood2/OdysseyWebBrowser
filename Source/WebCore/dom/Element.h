@@ -197,8 +197,6 @@ public:
     virtual const AtomicString& prefix() const override final { return m_tagName.prefix(); }
     virtual const AtomicString& namespaceURI() const override final { return m_tagName.namespaceURI(); }
 
-    virtual URL baseURI() const override final;
-
     virtual String nodeName() const override;
 
     RefPtr<Element> cloneElementWithChildren(Document&);
@@ -325,7 +323,7 @@ public:
     static AXTextStateChangeIntent defaultFocusTextStateChangeIntent() { return AXTextStateChangeIntent(AXTextStateChangeTypeSelectionMove, AXTextSelection { AXTextSelectionDirectionDiscontiguous, AXTextSelectionGranularityUnknown, true }); }
     void updateFocusAppearanceAfterAttachIfNeeded();
     virtual void focus(bool restorePreviousSelection = true, FocusDirection = FocusDirectionNone);
-    virtual void updateFocusAppearance(bool restorePreviousSelection);
+    virtual void updateFocusAppearance(SelectionRestorationMode, SelectionRevealMode = SelectionRevealMode::Reveal);
     virtual void blur();
 
     String innerHTML() const;

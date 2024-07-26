@@ -900,9 +900,9 @@ sub GenerateHeader
     # JSValue to implementation type
     if (!$hasParent || $interface->extendedAttributes->{"JSGenerateToNativeObject"}) {
         if ($interfaceName eq "NodeFilter") {
-            push(@headerContent, "    static PassRefPtr<NodeFilter> toWrapped(JSC::VM&, JSC::JSValue);\n");
+            push(@headerContent, "    static RefPtr<NodeFilter> toWrapped(JSC::VM&, JSC::JSValue);\n");
         } elsif ($interfaceName eq "DOMStringList") {
-            push(@headerContent, "    static PassRefPtr<DOMStringList> toWrapped(JSC::ExecState*, JSC::JSValue);\n");
+            push(@headerContent, "    static RefPtr<DOMStringList> toWrapped(JSC::ExecState*, JSC::JSValue);\n");
         } else {
             push(@headerContent, "    static $implType* toWrapped(JSC::JSValue);\n");
         }
@@ -1049,14 +1049,7 @@ sub GenerateHeader
                 $needsVisitChildren = 1;
                 push(@headerContent, "#endif\n") if $conditionalString;
             }
-            elsif (IsReturningPromise($attribute)) {
-                $headerIncludes{"JSDOMPromise.h"} = 1;
 
-                my $conditionalString = $codeGenerator->GenerateConditionalString($attribute->signature);
-                push(@headerContent, "#if ${conditionalString}\n") if $conditionalString;
-                push(@headerContent, "    JSC::Strong<JSC::JSPromiseDeferred> m_" . $attribute->signature->name . "PromiseDeferred;\n");
-                push(@headerContent, "#endif\n") if $conditionalString;
-            }
             if ($attribute->signature->extendedAttributes->{"ForwardDeclareInHeader"}) {
                 $hasForwardDeclaringAttributes = 1;
             }
@@ -1092,7 +1085,7 @@ sub GenerateHeader
     foreach my $function (@{$interface->functions}) {
         $numCustomFunctions++ if HasCustomMethod($function->signature->extendedAttributes);
 
-        if ($function->signature->extendedAttributes->{"ForwardDeclareInHeader"}) {
+        if ($function->signature->extendedAttributes->{"ForwardDeclareInHeader"} or $function->signature->extendedAttributes->{"CustomBinding"}) {
             $hasForwardDeclaringFunctions = 1;
         }
     }
@@ -1225,7 +1218,7 @@ sub GenerateHeader
         push(@headerContent,"// Functions\n\n");
         foreach my $function (@{$interface->functions}) {
             next if $function->{overloadIndex} && $function->{overloadIndex} > 1;
-            next unless $function->signature->extendedAttributes->{"ForwardDeclareInHeader"};
+            next unless $function->signature->extendedAttributes->{"ForwardDeclareInHeader"} or $function->signature->extendedAttributes->{"CustomBinding"};
 
             my $needsAppleCopyright = $function->signature->extendedAttributes->{"AppleCopyright"};
             if ($needsAppleCopyright) {
@@ -1246,6 +1239,7 @@ sub GenerateHeader
         }
 
         push(@headerContent, $endAppleCopyright) if $inAppleCopyright;
+        push(@headerContent,"\n");
     }
 
     if ($hasForwardDeclaringAttributes) {
@@ -1743,6 +1737,7 @@ sub GenerateImplementation
         foreach my $function (@{$interface->functions}) {
             next if $function->{overloadIndex} && $function->{overloadIndex} > 1;
             next if $function->signature->extendedAttributes->{"ForwardDeclareInHeader"};
+            next if $function->signature->extendedAttributes->{"CustomBinding"};
 
             my $needsAppleCopyright = $function->signature->extendedAttributes->{"AppleCopyright"};
             if ($needsAppleCopyright) {
@@ -2760,6 +2755,7 @@ sub GenerateImplementation
     if ($numFunctions > 0) {
         my $inAppleCopyright = 0;
         foreach my $function (@{$interface->functions}) {
+            next if $function->signature->extendedAttributes->{"CustomBinding"};
             my $needsAppleCopyright = $function->signature->extendedAttributes->{"AppleCopyright"};
             if ($needsAppleCopyright) {
                 if (!$inAppleCopyright) {
@@ -4136,16 +4132,20 @@ sub GenerateHashTableValueArray
             $secondTargetType = "static_cast<PutPropertySlot::PutValueFunc>";
             $hasSetter = "true";
         }
-        push(@implContent, "    { \"$key\", @$specials[$i], NoIntrinsic, (intptr_t)" . $firstTargetType . "(@$value1[$i]), (intptr_t) " . $secondTargetType . "(@$value2[$i]) },\n");
+        if ("@$specials[$i]" =~ m/ConstantInteger/) {
+            push(@implContent, "    { \"$key\", @$specials[$i], NoIntrinsic, { (long long)" . $firstTargetType . "(@$value1[$i]) } },\n");
+        } else {
+            push(@implContent, "    { \"$key\", @$specials[$i], NoIntrinsic, { (intptr_t)" . $firstTargetType . "(@$value1[$i]), (intptr_t) " . $secondTargetType . "(@$value2[$i]) } },\n");
+        }
         if ($conditional) {
             push(@implContent, "#else\n") ;
-            push(@implContent, "    { 0, 0, NoIntrinsic, 0, 0 },\n");
+            push(@implContent, "    { 0, 0, NoIntrinsic, { 0, 0 } },\n");
             push(@implContent, "#endif\n") ;
         }
         ++$i;
     }
 
-    push(@implContent, "    { 0, 0, NoIntrinsic, 0, 0 }\n") if (!$packedSize);
+    push(@implContent, "    { 0, 0, NoIntrinsic, { 0, 0 } }\n") if (!$packedSize);
     push(@implContent, "};\n\n");
 
     return $hasSetter;
@@ -4240,7 +4240,7 @@ sub GenerateHashTable
     my $packedSize = scalar @{$keys};
 
     my $compactSizeMask = $numEntries - 1;
-    push(@implContent, "static const HashTable $name = { $packedSize, $compactSizeMask, $hasSetter, $nameEntries, 0, $nameIndex };\n");
+    push(@implContent, "static const HashTable $name = { $packedSize, $compactSizeMask, $hasSetter, $nameEntries, $nameIndex };\n");
 }
 
 sub WriteData
@@ -4778,19 +4778,21 @@ sub GenerateConstructorHelperMethods
     if (IsDOMGlobalObject($interface)) {
         push(@$outputArray, "    Base::finishCreation(vm);\n");
         push(@$outputArray, "    ASSERT(inherits(info()));\n");
-        push(@$outputArray, "    putDirect(vm, vm.propertyNames->prototype, globalObject->prototype(), DontDelete | ReadOnly);\n");
+        push(@$outputArray, "    putDirect(vm, vm.propertyNames->prototype, globalObject->prototype(), DontDelete | ReadOnly | DontEnum);\n");
     } elsif ($generatingNamedConstructor) {
         push(@$outputArray, "    Base::finishCreation(globalObject);\n");
         push(@$outputArray, "    ASSERT(inherits(info()));\n");
-        push(@$outputArray, "    putDirect(vm, vm.propertyNames->prototype, ${className}::getPrototype(vm, globalObject), None);\n");
+        push(@$outputArray, "    putDirect(vm, vm.propertyNames->prototype, ${className}::getPrototype(vm, globalObject), DontDelete | ReadOnly | DontEnum);\n");
     } else {
         push(@$outputArray, "    Base::finishCreation(vm);\n");
         push(@$outputArray, "    ASSERT(inherits(info()));\n");
-        push(@$outputArray, "    putDirect(vm, vm.propertyNames->prototype, ${className}::getPrototype(vm, globalObject), DontDelete | ReadOnly);\n");
+        push(@$outputArray, "    putDirect(vm, vm.propertyNames->prototype, ${className}::getPrototype(vm, globalObject), DontDelete | ReadOnly | DontEnum);\n");
     }
 
+    push(@$outputArray, "    putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String(ASCIILiteral(\"$visibleInterfaceName\"))), ReadOnly | DontEnum);\n");
+
     if (defined $leastConstructorLength) {
-        push(@$outputArray, "    putDirect(vm, vm.propertyNames->length, jsNumber(${leastConstructorLength}), ReadOnly | DontDelete | DontEnum);\n");
+        push(@$outputArray, "    putDirect(vm, vm.propertyNames->length, jsNumber(${leastConstructorLength}), ReadOnly | DontEnum);\n");
     }
 
     if (ConstructorHasProperties($interface)) {

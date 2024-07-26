@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008, 2009, 2013, 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2008, 2009, 2013-2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,6 +38,7 @@
 #include "StructureRareDataInlines.h"
 #include "WeakGCMapInlines.h"
 #include <wtf/CommaPrinter.h>
+#include <wtf/NeverDestroyed.h>
 #include <wtf/ProcessID.h>
 #include <wtf/RefCountedLeakCounter.h>
 #include <wtf/RefPtr.h>
@@ -59,6 +60,41 @@ namespace JSC {
 #if DUMP_STRUCTURE_ID_STATISTICS
 static HashSet<Structure*>& liveStructureSet = *(new HashSet<Structure*>);
 #endif
+
+class SingleSlotTransitionWeakOwner final : public WeakHandleOwner {
+    void finalize(Handle<Unknown>, void* context) override
+    {
+        StructureTransitionTable* table = reinterpret_cast<StructureTransitionTable*>(context);
+        ASSERT(table->isUsingSingleSlot());
+        WeakSet::deallocate(table->weakImpl());
+        table->m_data = StructureTransitionTable::UsingSingleSlotFlag;
+    }
+};
+
+static SingleSlotTransitionWeakOwner& singleSlotTransitionWeakOwner()
+{
+    static NeverDestroyed<SingleSlotTransitionWeakOwner> owner;
+    return owner;
+}
+
+inline Structure* StructureTransitionTable::singleTransition() const
+{
+    ASSERT(isUsingSingleSlot());
+    if (WeakImpl* impl = this->weakImpl()) {
+        if (impl->state() == WeakImpl::Live)
+            return jsCast<Structure*>(impl->jsValue().asCell());
+    }
+    return nullptr;
+}
+
+inline void StructureTransitionTable::setSingleTransition(Structure* structure)
+{
+    ASSERT(isUsingSingleSlot());
+    if (WeakImpl* impl = this->weakImpl())
+        WeakSet::deallocate(impl);
+    WeakImpl* impl = WeakSet::allocate(structure, &singleSlotTransitionWeakOwner(), this);
+    m_data = reinterpret_cast<intptr_t>(impl) | UsingSingleSlotFlag;
+}
 
 bool StructureTransitionTable::contains(UniquedStringImpl* rep, unsigned attributes) const
 {
@@ -85,7 +121,7 @@ void StructureTransitionTable::add(VM& vm, Structure* structure)
 
         // This handles the first transition being added.
         if (!existingTransition) {
-            setSingleTransition(vm, structure);
+            setSingleTransition(structure);
             return;
         }
 
@@ -412,7 +448,7 @@ Structure* Structure::addPropertyTransition(VM& vm, Structure* structure, Proper
     else
         maxTransitionLength = s_maxTransitionLength;
     if (structure->transitionCount() > maxTransitionLength) {
-        Structure* transition = toCacheableDictionaryTransition(vm, structure);
+        Structure* transition = toCacheableDictionaryTransition(vm, structure, deferred);
         ASSERT(structure != transition);
         offset = transition->add(vm, propertyName, attributes);
         return transition;
@@ -489,11 +525,11 @@ Structure* Structure::attributeChangeTransition(VM& vm, Structure* structure, Pr
     return structure;
 }
 
-Structure* Structure::toDictionaryTransition(VM& vm, Structure* structure, DictionaryKind kind)
+Structure* Structure::toDictionaryTransition(VM& vm, Structure* structure, DictionaryKind kind, DeferredStructureTransitionWatchpointFire* deferred)
 {
     ASSERT(!structure->isUncacheableDictionary());
     
-    Structure* transition = create(vm, structure);
+    Structure* transition = create(vm, structure, deferred);
 
     DeferGC deferGC(vm.heap);
     structure->materializePropertyMapIfNecessary(vm, deferGC);
@@ -507,9 +543,9 @@ Structure* Structure::toDictionaryTransition(VM& vm, Structure* structure, Dicti
     return transition;
 }
 
-Structure* Structure::toCacheableDictionaryTransition(VM& vm, Structure* structure)
+Structure* Structure::toCacheableDictionaryTransition(VM& vm, Structure* structure, DeferredStructureTransitionWatchpointFire* deferred)
 {
-    return toDictionaryTransition(vm, structure, CachedDictionaryKind);
+    return toDictionaryTransition(vm, structure, CachedDictionaryKind, deferred);
 }
 
 Structure* Structure::toUncacheableDictionaryTransition(VM& vm, Structure* structure)
@@ -761,6 +797,10 @@ void Structure::allocateRareData(VM& vm)
 WatchpointSet* Structure::ensurePropertyReplacementWatchpointSet(VM& vm, PropertyOffset offset)
 {
     ASSERT(!isUncacheableDictionary());
+
+    // In some places it's convenient to call this with an invalid offset. So, we do the check here.
+    if (!isValidOffset(offset))
+        return nullptr;
     
     if (!hasRareData())
         allocateRareData(vm);
@@ -781,11 +821,7 @@ void Structure::startWatchingPropertyForReplacements(VM& vm, PropertyName proper
 {
     ASSERT(!isUncacheableDictionary());
     
-    PropertyOffset offset = get(vm, propertyName);
-    if (!JSC::isValidOffset(offset))
-        return;
-    
-    startWatchingPropertyForReplacements(vm, offset);
+    startWatchingPropertyForReplacements(vm, get(vm, propertyName));
 }
 
 void Structure::didCachePropertyReplacement(VM& vm, PropertyOffset offset)
@@ -1117,6 +1153,17 @@ void Structure::dump(PrintStream& out) const
     
     if (m_prototype.get().isCell())
         out.print(", Proto:", RawPointer(m_prototype.get().asCell()));
+
+    switch (dictionaryKind()) {
+    case NoneDictionaryKind:
+        break;
+    case CachedDictionaryKind:
+        out.print(", Dictionary");
+        break;
+    case UncachedDictionaryKind:
+        out.print(", UncacheableDictionary");
+        break;
+    }
     
     out.print("]");
 }

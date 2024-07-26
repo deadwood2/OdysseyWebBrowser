@@ -719,12 +719,15 @@ void RenderBlockFlow::computeInlineDirectionPositionsForLine(RootInlineBox* line
 
 static inline ExpansionBehavior expansionBehaviorForInlineTextBox(RenderBlockFlow& block, InlineTextBox& textBox, BidiRun* previousRun, BidiRun* nextRun, ETextAlign textAlign, bool isAfterExpansion)
 {
+    // Tatechuyoko is modeled as the Object Replacement Character (U+FFFC), which can never have expansion opportunities inside nor intrinsically adjacent to it.
+    if (textBox.renderer().style().textCombine() == TextCombineHorizontal)
+        return ForbidLeadingExpansion | ForbidTrailingExpansion;
+
     ExpansionBehavior result = 0;
     bool setLeadingExpansion = false;
     bool setTrailingExpansion = false;
     if (textAlign == JUSTIFY) {
-        // If the next box is ruby, and we're justifying, and the first box in the ruby base has a leading expansion, and we are a text box, then
-        // force a trailing expansion.
+        // If the next box is ruby, and we're justifying, and the first box in the ruby base has a leading expansion, and we are a text box, then force a trailing expansion.
         if (nextRun && is<RenderRubyRun>(nextRun->renderer()) && downcast<RenderRubyRun>(nextRun->renderer()).rubyBase() && nextRun->renderer().style().collapseWhiteSpace()) {
             auto& rubyBase = *downcast<RenderRubyRun>(nextRun->renderer()).rubyBase();
             if (rubyBase.firstRootBox() && !rubyBase.firstRootBox()->nextRootBox()) {
@@ -2030,7 +2033,7 @@ void RenderBlockFlow::checkLinesForTextOverflow()
     }
 }
 
-bool RenderBlockFlow::positionNewFloatOnLine(FloatingObject* newFloat, FloatingObject* lastFloatFromPreviousLine, LineInfo& lineInfo, LineWidth& width)
+bool RenderBlockFlow::positionNewFloatOnLine(const FloatingObject& newFloat, FloatingObject* lastFloatFromPreviousLine, LineInfo& lineInfo, LineWidth& width)
 {
     if (!positionNewFloats())
         return false;
@@ -2040,14 +2043,14 @@ bool RenderBlockFlow::positionNewFloatOnLine(FloatingObject* newFloat, FloatingO
     // We only connect floats to lines for pagination purposes if the floats occur at the start of
     // the line and the previous line had a hard break (so this line is either the first in the block
     // or follows a <br>).
-    if (!newFloat->paginationStrut() || !lineInfo.previousLineBrokeCleanly() || !lineInfo.isEmpty())
+    if (!newFloat.paginationStrut() || !lineInfo.previousLineBrokeCleanly() || !lineInfo.isEmpty())
         return true;
 
     const FloatingObjectSet& floatingObjectSet = m_floatingObjects->set();
-    ASSERT(floatingObjectSet.last().get() == newFloat);
+    ASSERT(floatingObjectSet.last().get() == &newFloat);
 
-    LayoutUnit floatLogicalTop = logicalTopForFloat(newFloat);
-    LayoutUnit paginationStrut = newFloat->paginationStrut();
+    LayoutUnit floatLogicalTop = logicalTopForFloat(&newFloat);
+    LayoutUnit paginationStrut = newFloat.paginationStrut();
 
     if (floatLogicalTop - paginationStrut != logicalHeight() + lineInfo.floatPaginationStrut())
         return true;

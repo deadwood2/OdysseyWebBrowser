@@ -699,6 +699,11 @@ void TestRunner::setGeolocationPermission(bool enabled)
     InjectedBundle::singleton().setGeolocationPermission(enabled);
 }
 
+bool TestRunner::isGeolocationProviderActive()
+{
+    return InjectedBundle::singleton().isGeolocationProviderActive();
+}
+
 void TestRunner::setMockGeolocationPosition(double latitude, double longitude, double accuracy, JSValueRef jsAltitude, JSValueRef jsAltitudeAccuracy, JSValueRef jsHeading, JSValueRef jsSpeed)
 {
     auto& injectedBundle = InjectedBundle::singleton();
@@ -835,6 +840,13 @@ void TestRunner::setBlockAllPlugins(bool shouldBlock)
     WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("SetBlockAllPlugins"));
     WKRetainPtr<WKBooleanRef> messageBody(AdoptWK, WKBooleanCreate(shouldBlock));
     WKBundlePagePostMessage(InjectedBundle::singleton().page()->page(), messageName.get(), messageBody.get());
+}
+
+JSValueRef TestRunner::failNextNewCodeBlock()
+{
+    WKBundleFrameRef mainFrame = WKBundlePageGetMainFrame(InjectedBundle::singleton().page()->page());
+    JSContextRef context = WKBundleFrameGetJavaScriptContext(mainFrame);
+    return JSC::failNextNewCodeBlock(context);
 }
 
 JSValueRef TestRunner::numberOfDFGCompiles(JSValueRef theFunction)

@@ -37,7 +37,6 @@
 #include "JSArray.h"
 #include "JSCell.h"
 #include "JSFunction.h"
-#include "JSNameScope.h"
 #include "JSPropertyNameEnumerator.h"
 #include "LinkBuffer.h"
 #include "MaxFrameExtentForSlowPathCall.h"
@@ -46,6 +45,7 @@
 #include "TypeLocation.h"
 #include "TypeProfilerLog.h"
 #include "VirtualRegister.h"
+#include "Watchdog.h"
 
 namespace JSC {
 
@@ -426,9 +426,8 @@ void JIT::emit_op_throw(Instruction* currentInstruction)
 
 void JIT::emit_op_push_with_scope(Instruction* currentInstruction)
 {
-    int dst = currentInstruction[1].u.operand;
-    emitGetVirtualRegister(currentInstruction[2].u.operand, regT0);
-    callOperation(operationPushWithScope, dst, regT0);
+    JITSlowPathCall slowPathCall(this, currentInstruction, slow_path_push_with_scope);
+    slowPathCall.call();
 }
 
 void JIT::compileOpStrictEq(Instruction* currentInstruction, CompileOpStrictEqType type)
@@ -493,14 +492,6 @@ void JIT::emit_op_to_string(Instruction* currentInstruction)
     emitPutVirtualRegister(currentInstruction[1].u.operand);
 }
 
-void JIT::emit_op_push_name_scope(Instruction* currentInstruction)
-{
-    int dst = currentInstruction[1].u.operand;
-    emitGetVirtualRegister(currentInstruction[2].u.operand, regT0);
-    RELEASE_ASSERT(currentInstruction[4].u.operand == JSNameScope::FunctionNameScope);
-    callOperation(operationPushFunctionNameScope, dst, jsCast<SymbolTable*>(getConstantOperand(currentInstruction[3].u.operand)), regT0);
-}
-
 void JIT::emit_op_catch(Instruction* currentInstruction)
 {
     // Gotta restore the tag registers. We could be throwing from FTL, which may
@@ -510,8 +501,6 @@ void JIT::emit_op_catch(Instruction* currentInstruction)
     
     move(TrustedImmPtr(m_vm), regT3);
     load64(Address(regT3, VM::callFrameForThrowOffset()), callFrameRegister);
-    load64(Address(regT3, VM::vmEntryFrameForThrowOffset()), regT0);
-    store64(regT0, Address(regT3, VM::topVMEntryFrameOffset()));
 
     addPtr(TrustedImm32(stackPointerOffsetFor(codeBlock()) * sizeof(Register)), callFrameRegister, stackPointerRegister);
 
@@ -915,7 +904,7 @@ void JIT::emit_op_loop_hint(Instruction*)
     }
 
     // Emit the watchdog timer check:
-    if (m_vm->watchdog && m_vm->watchdog->isEnabled())
+    if (m_vm->watchdog)
         addSlowCase(branchTest8(NonZero, AbsoluteAddress(m_vm->watchdog->timerDidFireAddress())));
 }
 
@@ -941,7 +930,7 @@ void JIT::emitSlow_op_loop_hint(Instruction*, Vector<SlowCaseEntry>::iterator& i
 #endif
 
     // Emit the slow path of the watchdog timer check:
-    if (m_vm->watchdog && m_vm->watchdog->isEnabled()) {
+    if (m_vm->watchdog) {
         linkSlowCase(iter);
         callOperation(operationHandleWatchdogTimer);
 
@@ -1077,6 +1066,7 @@ void JIT::emit_op_has_indexed_property(Instruction* currentInstruction)
     int base = currentInstruction[2].u.operand;
     int property = currentInstruction[3].u.operand;
     ArrayProfile* profile = currentInstruction[4].u.arrayProfile;
+    ByValInfo* byValInfo = m_codeBlock->addByValInfo();
     
     emitGetVirtualRegisters(base, regT0, property, regT1);
 
@@ -1107,8 +1097,10 @@ void JIT::emit_op_has_indexed_property(Instruction* currentInstruction)
     Label done = label();
     
     emitPutVirtualRegister(dst);
+
+    Label nextHotPath = label();
     
-    m_byValCompilationInfo.append(ByValCompilationInfo(m_bytecodeOffset, badType, mode, done));
+    m_byValCompilationInfo.append(ByValCompilationInfo(byValInfo, m_bytecodeOffset, PatchableJump(), badType, mode, profile, done, nextHotPath));
 }
 
 void JIT::emitSlow_op_has_indexed_property(Instruction* currentInstruction, Vector<SlowCaseEntry>::iterator& iter)
@@ -1116,7 +1108,7 @@ void JIT::emitSlow_op_has_indexed_property(Instruction* currentInstruction, Vect
     int dst = currentInstruction[1].u.operand;
     int base = currentInstruction[2].u.operand;
     int property = currentInstruction[3].u.operand;
-    ArrayProfile* profile = currentInstruction[4].u.arrayProfile;
+    ByValInfo* byValInfo = m_byValCompilationInfo[m_byValInstructionIndex].byValInfo;
     
     linkSlowCaseIfNotJSCell(iter, base); // base cell check
     linkSlowCase(iter); // base array check
@@ -1127,7 +1119,7 @@ void JIT::emitSlow_op_has_indexed_property(Instruction* currentInstruction, Vect
     
     emitGetVirtualRegister(base, regT0);
     emitGetVirtualRegister(property, regT1);
-    Call call = callOperation(operationHasIndexedPropertyDefault, dst, regT0, regT1, profile);
+    Call call = callOperation(operationHasIndexedPropertyDefault, dst, regT0, regT1, byValInfo);
 
     m_byValCompilationInfo[m_byValInstructionIndex].slowPathTarget = slowPath;
     m_byValCompilationInfo[m_byValInstructionIndex].returnAddress = call;

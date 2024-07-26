@@ -973,7 +973,7 @@ LayoutRect Element::absoluteEventBounds(bool& boundsIncludeAllDescendantElements
         // Get the bounding rectangle from the SVG model.
         SVGElement& svgElement = downcast<SVGElement>(*this);
         FloatRect localRect;
-        if (svgElement.getBoundingBox(localRect))
+        if (svgElement.getBoundingBox(localRect, SVGLocatable::DisallowStyleUpdate))
             result = LayoutRect(renderer()->localToAbsoluteQuad(localRect, UseTransforms, &includesFixedPositionElements).boundingBox());
     } else {
         if (is<RenderBox>(renderer())) {
@@ -1465,24 +1465,6 @@ void Element::setPrefix(const AtomicString& prefix, ExceptionCode& ec)
     m_tagName.setPrefix(prefix.isEmpty() ? AtomicString() : prefix);
 }
 
-URL Element::baseURI() const
-{
-    const AtomicString& baseAttribute = getAttribute(baseAttr);
-    URL base(URL(), baseAttribute);
-    if (!base.protocol().isEmpty())
-        return base;
-
-    ContainerNode* parent = parentNode();
-    if (!parent)
-        return base;
-
-    const URL& parentBase = parent->baseURI();
-    if (parentBase.isNull())
-        return base;
-
-    return URL(parentBase, baseAttribute);
-}
-
 const AtomicString& Element::imageSourceURL() const
 {
     return fastGetAttribute(srcAttr);
@@ -1562,7 +1544,7 @@ void Element::removedFrom(ContainerNode& insertionPoint)
     if (insertionPoint.isInTreeScope()) {
         TreeScope* oldScope = &insertionPoint.treeScope();
         HTMLDocument* oldDocument = inDocument() && is<HTMLDocument>(oldScope->documentScope()) ? &downcast<HTMLDocument>(oldScope->documentScope()) : nullptr;
-        if (oldScope != &treeScope() || !isInTreeScope())
+        if (!isInTreeScope() || &treeScope() != &document())
             oldScope = nullptr;
 
         const AtomicString& idValue = getIdAttribute();
@@ -2160,7 +2142,7 @@ void Element::focus(bool restorePreviousSelection, FocusDirection direction)
     if (isFormControl)
         view->setProhibitsScrolling(true);
 #endif
-    updateFocusAppearance(restorePreviousSelection);
+    updateFocusAppearance(restorePreviousSelection ? SelectionRestorationMode::Restore : SelectionRestorationMode::SetDefault);
 #if PLATFORM(IOS)
     if (isFormControl)
         view->setProhibitsScrolling(false);
@@ -2175,14 +2157,15 @@ void Element::updateFocusAppearanceAfterAttachIfNeeded()
     if (!data->needsFocusAppearanceUpdateSoonAfterAttach())
         return;
     if (isFocusable() && document().focusedElement() == this)
-        document().updateFocusAppearanceSoon(false /* don't restore selection */);
+        document().updateFocusAppearanceSoon(SelectionRestorationMode::SetDefault);
     data->setNeedsFocusAppearanceUpdateSoonAfterAttach(false);
 }
 
-void Element::updateFocusAppearance(bool /*restorePreviousSelection*/)
+void Element::updateFocusAppearance(SelectionRestorationMode, SelectionRevealMode revealMode)
 {
     if (isRootEditableElement()) {
-        Frame* frame = document().frame();
+        // Keep frame alive in this method, since setSelection() may release the last reference to |frame|.
+        RefPtr<Frame> frame = document().frame();
         if (!frame)
             return;
         
@@ -2195,9 +2178,10 @@ void Element::updateFocusAppearance(bool /*restorePreviousSelection*/)
         
         if (frame->selection().shouldChangeSelection(newSelection)) {
             frame->selection().setSelection(newSelection, FrameSelection::defaultSetSelectionOptions(), Element::defaultFocusTextStateChangeIntent());
-            frame->selection().revealSelection();
+            if (revealMode == SelectionRevealMode::Reveal)
+                frame->selection().revealSelection();
         }
-    } else if (renderer() && !renderer()->isWidget())
+    } else if (renderer() && !renderer()->isWidget() && revealMode == SelectionRevealMode::Reveal)
         renderer()->scrollRectToVisible(renderer()->anchorRect());
 }
 

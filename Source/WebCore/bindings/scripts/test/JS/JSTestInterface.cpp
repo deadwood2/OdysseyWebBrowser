@@ -195,7 +195,7 @@ static const HashTableValue JSTestInterfaceTableValues[] =
 #endif
 };
 
-static const HashTable JSTestInterfaceTable = { 2, 3, true, JSTestInterfaceTableValues, 0, JSTestInterfaceTableIndex };
+static const HashTable JSTestInterfaceTable = { 2, 3, true, JSTestInterfaceTableValues, JSTestInterfaceTableIndex };
 /* Hash table for constructor */
 
 static const HashTableValue JSTestInterfaceConstructorTableValues[] =
@@ -300,8 +300,9 @@ void JSTestInterfaceConstructor::finishCreation(VM& vm, JSDOMGlobalObject* globa
 {
     Base::finishCreation(vm);
     ASSERT(inherits(info()));
-    putDirect(vm, vm.propertyNames->prototype, JSTestInterface::getPrototype(vm, globalObject), DontDelete | ReadOnly);
-    putDirect(vm, vm.propertyNames->length, jsNumber(1), ReadOnly | DontDelete | DontEnum);
+    putDirect(vm, vm.propertyNames->prototype, JSTestInterface::getPrototype(vm, globalObject), DontDelete | ReadOnly | DontEnum);
+    putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String(ASCIILiteral("TestInterface"))), ReadOnly | DontEnum);
+    putDirect(vm, vm.propertyNames->length, jsNumber(1), ReadOnly | DontEnum);
     reifyStaticProperties(vm, JSTestInterfaceConstructorTableValues, *this);
 }
 

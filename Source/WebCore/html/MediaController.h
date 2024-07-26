@@ -127,7 +127,6 @@ private:
     void clearPositionTimerFired();
     bool hasEnded() const;
     void scheduleTimeupdateEvent();
-    void timeupdateTimerFired();
     void startTimeupdateTimer();
 
     // EventTarget
@@ -155,6 +154,7 @@ private:
     ScriptExecutionContext& m_scriptExecutionContext;
     Timer m_timeupdateTimer;
     double m_previousTimeupdateTime;
+    bool m_resetCurrentTimeInNextPlay { false };
 };
 
 } // namespace WebCore

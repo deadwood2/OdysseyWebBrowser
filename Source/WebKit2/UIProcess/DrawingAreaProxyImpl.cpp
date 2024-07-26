@@ -208,6 +208,15 @@ void DrawingAreaProxyImpl::updateAcceleratedCompositingMode(uint64_t backingStor
     updateAcceleratedCompositingMode(layerTreeContext);
 }
 
+void DrawingAreaProxyImpl::willEnterAcceleratedCompositingMode(uint64_t backingStoreStateID)
+{
+    // WillEnterAcceleratedCompositingMode message is sent when the LayerTreeHost is created in the Web Process.
+    // This can happen while there's still a DidUpdateBackingStoreState pending, in which case we are receiving
+    // here the new backingStoreStateID, but m_currentBackingStoreStateID hasn't been updated yet.
+    ASSERT_ARG(backingStoreStateID, backingStoreStateID <= m_nextBackingStoreStateID);
+    m_webPageProxy.willEnterAcceleratedCompositingMode();
+}
+
 void DrawingAreaProxyImpl::incorporateUpdate(const UpdateInfo& updateInfo)
 {
     ASSERT(!isInAcceleratedCompositingMode());
@@ -300,10 +309,16 @@ void DrawingAreaProxyImpl::enterAcceleratedCompositingMode(const LayerTreeContex
     m_webPageProxy.enterAcceleratedCompositingMode(layerTreeContext);
 }
 
-#if USE(TEXTURE_MAPPER_GL) && PLATFORM(GTK)
+#if USE(TEXTURE_MAPPER) && PLATFORM(GTK)
 void DrawingAreaProxyImpl::setNativeSurfaceHandleForCompositing(uint64_t handle)
 {
     m_webPageProxy.process().send(Messages::DrawingArea::SetNativeSurfaceHandleForCompositing(handle), m_webPageProxy.pageID());
+}
+
+void DrawingAreaProxyImpl::destroyNativeSurfaceHandleForCompositing()
+{
+    bool handled;
+    m_webPageProxy.process().sendSync(Messages::DrawingArea::DestroyNativeSurfaceHandleForCompositing(), Messages::DrawingArea::DestroyNativeSurfaceHandleForCompositing::Reply(handled), m_webPageProxy.pageID());
 }
 #endif
 

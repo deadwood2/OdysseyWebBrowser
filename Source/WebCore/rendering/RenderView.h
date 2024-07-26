@@ -188,8 +188,8 @@ public:
     WEBCORE_EXPORT bool usesCompositing() const;
 
     WEBCORE_EXPORT IntRect unscaledDocumentRect() const;
-    LayoutRect unextendedBackgroundRect(RenderBox* backgroundRenderer) const;
-    LayoutRect backgroundRect(RenderBox* backgroundRenderer) const;
+    LayoutRect unextendedBackgroundRect() const;
+    LayoutRect backgroundRect() const;
 
     WEBCORE_EXPORT IntRect documentRect() const;
 
@@ -304,6 +304,7 @@ private:
 
     friend class LayoutStateMaintainer;
     friend class LayoutStateDisabler;
+    friend class SubtreeLayoutStateMaintainer;
 
     virtual bool isScrollableOrRubberbandableBox() const override;
 
@@ -322,7 +323,8 @@ private:
     int m_selectionUnsplitStartPos;
     int m_selectionUnsplitEndPos;
 
-    uint64_t m_rendererCount;
+    // Include this RenderView.
+    uint64_t m_rendererCount { 1 };
 
     mutable std::unique_ptr<Region> m_accumulatedRepaintRegion;
 
@@ -445,20 +447,19 @@ private:
 class LayoutStateDisabler {
     WTF_MAKE_NONCOPYABLE(LayoutStateDisabler);
 public:
-    LayoutStateDisabler(RenderView* view)
+    LayoutStateDisabler(RenderView& view)
         : m_view(view)
     {
-        if (m_view)
-            m_view->disableLayoutState();
+        m_view.disableLayoutState();
     }
 
     ~LayoutStateDisabler()
     {
-        if (m_view)
-            m_view->enableLayoutState();
+        m_view.enableLayoutState();
     }
+
 private:
-    RenderView* m_view;
+    RenderView& m_view;
 };
 
 } // namespace WebCore

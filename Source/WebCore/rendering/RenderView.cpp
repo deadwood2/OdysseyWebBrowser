@@ -121,7 +121,6 @@ RenderView::RenderView(Document& document, Ref<RenderStyle>&& style)
     , m_selectionUnsplitEnd(nullptr)
     , m_selectionUnsplitStartPos(-1)
     , m_selectionUnsplitEndPos(-1)
-    , m_rendererCount(0)
     , m_maximalOutlineSize(0)
     , m_lazyRepaintTimer(*this, &RenderView::lazyRepaintTimerFired)
     , m_pageLogicalHeight(0)
@@ -206,8 +205,8 @@ bool RenderView::hitTest(const HitTestRequest& request, const HitTestLocation& l
     if (request.allowsFrameScrollbars()) {
         // ScrollView scrollbars are not the same as RenderLayer scrollbars tested by RenderLayer::hitTestOverflowControls,
         // so we need to test ScrollView scrollbars separately here.
-        Scrollbar* frameScrollbar = frameView().scrollbarAtPoint(location.roundedPoint());
-        if (frameScrollbar) {
+        IntPoint windowPoint = frameView().contentsToWindow(location.roundedPoint());
+        if (Scrollbar* frameScrollbar = frameView().scrollbarAtPoint(windowPoint)) {
             result.setScrollbar(frameScrollbar);
             return true;
         }
@@ -524,11 +523,6 @@ void RenderView::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
     paintObject(paintInfo, paintOffset);
 }
 
-static inline bool isComposited(RenderElement* object)
-{
-    return object->hasLayer() && downcast<RenderLayerModelObject>(*object).layer()->isComposited();
-}
-
 static inline bool rendererObscuresBackground(RenderElement* rootObject)
 {
     if (!rootObject)
@@ -540,7 +534,7 @@ static inline bool rendererObscuresBackground(RenderElement* rootObject)
         || style.hasTransform())
         return false;
     
-    if (isComposited(rootObject))
+    if (rootObject->isComposited())
         return false;
 
     if (rootObject->rendererForRootBackground().style().backgroundClip() == TextFillBox)
@@ -1162,19 +1156,19 @@ bool RenderView::rootBackgroundIsEntirelyFixed() const
     return rootObject->rendererForRootBackground().hasEntirelyFixedBackground();
 }
     
-LayoutRect RenderView::unextendedBackgroundRect(RenderBox*) const
+LayoutRect RenderView::unextendedBackgroundRect() const
 {
     // FIXME: What is this? Need to patch for new columns?
     return unscaledDocumentRect();
 }
     
-LayoutRect RenderView::backgroundRect(RenderBox* backgroundRenderer) const
+LayoutRect RenderView::backgroundRect() const
 {
     // FIXME: New columns care about this?
     if (frameView().hasExtendedBackgroundRectForPainting())
         return frameView().extendedBackgroundRectForPainting();
 
-    return unextendedBackgroundRect(backgroundRenderer);
+    return unextendedBackgroundRect();
 }
 
 IntRect RenderView::documentRect() const

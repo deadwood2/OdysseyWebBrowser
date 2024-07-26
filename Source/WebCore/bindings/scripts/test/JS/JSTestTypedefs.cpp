@@ -136,7 +136,7 @@ static const HashTableValue JSTestTypedefsTableValues[] =
     { 0, 0, NoIntrinsic, 0, 0 }
 };
 
-static const HashTable JSTestTypedefsTable = { 0, 1, false, JSTestTypedefsTableValues, 0, JSTestTypedefsTableIndex };
+static const HashTable JSTestTypedefsTable = { 0, 1, false, JSTestTypedefsTableValues, JSTestTypedefsTableIndex };
 /* Hash table for constructor */
 
 static const HashTableValue JSTestTypedefsConstructorTableValues[] =
@@ -170,8 +170,9 @@ void JSTestTypedefsConstructor::finishCreation(VM& vm, JSDOMGlobalObject* global
 {
     Base::finishCreation(vm);
     ASSERT(inherits(info()));
-    putDirect(vm, vm.propertyNames->prototype, JSTestTypedefs::getPrototype(vm, globalObject), DontDelete | ReadOnly);
-    putDirect(vm, vm.propertyNames->length, jsNumber(2), ReadOnly | DontDelete | DontEnum);
+    putDirect(vm, vm.propertyNames->prototype, JSTestTypedefs::getPrototype(vm, globalObject), DontDelete | ReadOnly | DontEnum);
+    putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String(ASCIILiteral("TestTypedefs"))), ReadOnly | DontEnum);
+    putDirect(vm, vm.propertyNames->length, jsNumber(2), ReadOnly | DontEnum);
     reifyStaticProperties(vm, JSTestTypedefsConstructorTableValues, *this);
 }
 

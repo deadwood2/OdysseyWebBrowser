@@ -273,11 +273,13 @@ bool ScriptElement::requestScript(const String& sourceUrl)
         m_isExternalScript = true;
     }
 
-    if (m_cachedScript) {
+    if (m_cachedScript)
         return true;
-    }
 
-    dispatchErrorEvent();
+    RefPtr<Element> element = &m_element;
+    callOnMainThread([this, element] {
+        dispatchErrorEvent();
+    });
     return false;
 }
 

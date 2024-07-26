@@ -966,7 +966,7 @@ static inline WebDataSource *dataSource(DocumentLoader* loader)
 
     if (WebCore::DOMImplementation::isTextMIMEType(mimeType)
         || Image::supportsType(mimeType)
-        || (pluginData && pluginData->supportsWebVisibleMimeType(mimeType, PluginData::AllPlugins) && frame->loader().subframeLoader().allowPlugins(NotAboutToInstantiatePlugin))
+        || (pluginData && pluginData->supportsWebVisibleMimeType(mimeType, PluginData::AllPlugins) && frame->loader().subframeLoader().allowPlugins())
         || (pluginData && pluginData->supportsWebVisibleMimeType(mimeType, PluginData::OnlyApplicationPlugins)))
         return NO;
 
@@ -1736,7 +1736,7 @@ static WebFrameLoadType toWebFrameLoadType(FrameLoadType frameLoadType)
     
     for (Node* node = root; node; node = NodeTraversal::next(*node)) {
         auto markers = document->markers().markersFor(node);
-        for (auto marker : markers) {
+        for (auto* marker : markers) {
 
             if (marker->type() != DocumentMarker::DictationResult)
                 continue;

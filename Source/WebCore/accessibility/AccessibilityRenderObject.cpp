@@ -632,10 +632,12 @@ String AccessibilityRenderObject::textUnderElement(AccessibilityTextUnderElement
     if (m_renderer->isBR())
         return ASCIILiteral("\n");
 
+    bool isRenderText = is<RenderText>(*m_renderer);
+
 #if ENABLE(MATHML)
     // Math operators create RenderText nodes on the fly that are not tied into the DOM in a reasonable way,
     // so rangeOfContents does not work for them (nor does regular text selection).
-    if (is<RenderText>(*m_renderer) && m_renderer->isAnonymous() && ancestorsOfType<RenderMathMLOperator>(*m_renderer).first())
+    if (isRenderText && m_renderer->isAnonymous() && ancestorsOfType<RenderMathMLOperator>(*m_renderer).first())
         return downcast<RenderText>(*m_renderer).text();
     if (is<RenderMathMLOperator>(*m_renderer) && !m_renderer->isAnonymous())
         return downcast<RenderMathMLOperator>(*m_renderer).element().textContent();
@@ -647,7 +649,8 @@ String AccessibilityRenderObject::textUnderElement(AccessibilityTextUnderElement
 
     // We use a text iterator for text objects AND for those cases where we are
     // explicitly asking for the full text under a given element.
-    if (is<RenderText>(*m_renderer) || mode.childrenInclusion == AccessibilityTextUnderElementMode::TextUnderElementModeIncludeAllChildren) {
+    bool shouldIncludeAllChildren = mode.childrenInclusion == AccessibilityTextUnderElementMode::TextUnderElementModeIncludeAllChildren;
+    if (isRenderText || shouldIncludeAllChildren) {
         // If possible, use a text iterator to get the text, so that whitespace
         // is handled consistently.
         Document* nodeDocument = nullptr;
@@ -686,6 +689,12 @@ String AccessibilityRenderObject::textUnderElement(AccessibilityTextUnderElement
                 // catch stale WebCoreAXObject (see <rdar://problem/3960196>)
                 if (frame->document() != nodeDocument)
                     return String();
+
+                // The tree should be stable before looking through the children of a non-Render Text object.
+                // Otherwise, further uses of TextIterator will force a layout update, potentially altering
+                // the accessibility tree and causing crashes in the loop that computes the result text.
+                ASSERT((isRenderText || !shouldIncludeAllChildren) || (!nodeDocument->renderView()->layoutState() && !nodeDocument->childNeedsStyleRecalc()));
+
                 return plainText(textRange.get(), textIteratorBehaviorForTextRange());
             }
         }
@@ -1677,21 +1686,23 @@ void AccessibilityRenderObject::setFocused(bool on)
         return;
     }
 
+    // When a node is told to set focus, that can cause it to be deallocated, which means that doing
+    // anything else inside this object will crash. To fix this, we added a RefPtr to protect this object
+    // long enough for duration.
+    RefPtr<AccessibilityObject> protect(this);
+    
     // If this node is already the currently focused node, then calling focus() won't do anything.
     // That is a problem when focus is removed from the webpage to chrome, and then returns.
     // In these cases, we need to do what keyboard and mouse focus do, which is reset focus first.
     if (document->focusedElement() == node)
         document->setFocusedElement(nullptr);
 
-    // When a node is told to set focus, that can cause it to be deallocated, which means that doing
-    // anything else inside this object will crash. To fix this, we added a RefPtr to protect this object
-    // long enough for duration. We can also locally cache the axObjectCache.
-    RefPtr<AccessibilityObject> protect(this);
-    AXObjectCache* cache = axObjectCache();
-    
-    cache->setIsSynchronizingSelection(true);
-    downcast<Element>(*node).focus();
-    cache->setIsSynchronizingSelection(false);
+    // If we return from setFocusedElement and our element has been removed from a tree, axObjectCache() may be null.
+    if (AXObjectCache* cache = axObjectCache()) {
+        cache->setIsSynchronizingSelection(true);
+        downcast<Element>(*node).focus();
+        cache->setIsSynchronizingSelection(false);
+    }
 }
 
 void AccessibilityRenderObject::setSelectedRows(AccessibilityChildrenVector& selectedRows)
@@ -2694,13 +2705,20 @@ AccessibilityRole AccessibilityRenderObject::determineAccessibilityRole()
         return LandmarkBannerRole;
     if (node && node->hasTagName(footerTag) && !isDescendantOfElementType(articleTag) && !isDescendantOfElementType(sectionTag))
         return FooterRole;
-
-    if (m_renderer->isRenderBlockFlow())
-        return GroupRole;
     
     // If the element does not have role, but it has ARIA attributes, or accepts tab focus, accessibility should fallback to exposing it as a group.
     if (supportsARIAAttributes() || canSetFocusAttribute())
         return GroupRole;
+
+    if (m_renderer->isRenderBlockFlow()) {
+#if PLATFORM(GTK)
+        // For ATK, GroupRole maps to ATK_ROLE_PANEL. Panels are most commonly found (and hence
+        // expected) in UI elements; not text blocks.
+        return m_renderer->isAnonymousBlock() ? DivRole : GroupRole;
+#else
+        return GroupRole;
+#endif
+    }
     
     // InlineRole is the final fallback before assigning UnknownRole to an object. It makes it
     // possible to distinguish truly unknown objects from non-focusable inline text elements

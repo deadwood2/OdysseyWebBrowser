@@ -1,3 +1,274 @@
+2016-03-17  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.10.9 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2016-03-11  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.10.8 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2016-01-29  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.10.7 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2016-01-27  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.10.6 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2016-01-20  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.10.5 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2015-11-11  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.10.4 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2015-11-06  Philippe Normand  <pnormand@igalia.com>
+
+        Unreviewed, GTK build fix after r192095.
+
+        * Source/cmake/FindGTK3.cmake:
+
+2015-11-06  Philip Chimento  <philip.chimento@gmail.com> and Michael Catanzaro <mcatanzaro@igalia.com>
+
+        [GTK] Re-enable Quartz backend on cmake build system
+        https://bugs.webkit.org/show_bug.cgi?id=144561
+
+        Reviewed by Philippe Normand.
+
+        * Source/cmake/FindGTK3.cmake: Set GTK3_SUPPORTS_QUARTZ based on
+        the presence of of gtk+-quartz-3.0 module.
+        * Source/cmake/OptionsGTK.cmake: Reintroduce the
+        ENABLE_QUARTZ_TARGET option to the CMake build, for building the
+        GTK+ Quartz backend on OS X.
+
+2015-11-02  Philippe Normand  <pnormand@igalia.com>
+
+        [Mac][GTK] Disable Ninja response file support
+        https://bugs.webkit.org/show_bug.cgi?id=150801
+
+        Reviewed by Alex Christensen.
+
+        * Source/cmake/OptionsCommon.cmake: The OSX toolchain doesn't
+        support response files, so instruct Ninja to not generate those.
+
+2015-10-26  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.10.3 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2015-10-22  Philippe Normand  <pnormand@igalia.com>
+
+        [GTK][Mac] ICU-related build fixes
+        https://bugs.webkit.org/show_bug.cgi?id=150032
+
+        Rubber-stamped by Darin Adler.
+
+        * Source/cmake/FindICU.cmake: Use pkg-config to hint at icu-i18n's library location.
+
+2015-10-15  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.10.2 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2015-10-14  Tomas Popela  <tpopela@redhat.com>
+
+        [GTK][EFL] Fix build with cmake 3.4
+        https://bugs.webkit.org/show_bug.cgi?id=150117
+
+        Explicitely include the CheckIncludeFiles module before using
+        the CHECK_INCLUDE_FILES command.
+
+        Reviewed by Žan Doberšek.
+
+        * Source/cmake/FindOpenGL.cmake:
+        * Source/cmake/FindWebP.cmake:
+        * Source/cmake/OptionsEfl.cmake:
+
+2015-10-14  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.10.1 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2015-10-12  Philip Chimento  <philip.chimento@gmail.com>
+
+        [GTK] OSX linker doesn't understand --whole-archive
+        https://bugs.webkit.org/show_bug.cgi?id=144557
+
+        Reviewed by Martin Robinson.
+
+        * Source/cmake/OptionsGTK.cmake: Turn the macro
+        ADD_WHOLE_ARCHIVE_TO_LIBRARIES into a no-op on Darwin systems,
+        because XCode's linker doesn't have the --whole-archive option.
+
+2015-10-12  Philip Chimento  <philip.chimento@gmail.com>
+
+        [GTK] Use --version-script only on Linux
+        https://bugs.webkit.org/show_bug.cgi?id=144555
+
+        Reviewed by Philippe Normand.
+
+        * Source/cmake/OptionsGTK.cmake: Don't add --version-script
+        option on Darwin (whose linker doesn't support it.)
+
+2015-10-06  Emanuele Aina  <emanuele.aina@collabora.com>
+
+        Fix ENABLE_OPENGL=OFF builds
+        https://bugs.webkit.org/show_bug.cgi?id=146511
+
+        Reviewed by Darin Adler.
+
+        * Source/cmake/OptionsGTK.cmake: Make ENABLE_WAYLAND_TARGET depend on
+        ENABLE_OPENGL due to EGL usage.
+
+2015-09-21  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.10.0 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2015-08-26  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        [GTK] Disable ACCELERATED_2D_CANVAS by default
+        https://bugs.webkit.org/show_bug.cgi?id=148473
+
+        Reviewed by Martin Robinson.
+
+        Currently ACCELERATED_2D_CANVAS is enabled by default on most systems (which have CairoGL)
+        but not on Debian (which does not). We've known this was problematic for a while, since it
+        means we have two different sets of distro-dependent bugs, but never decided whether that
+        outweighed the benefits of CarioGL or not. I'm making the call now: it's more important to
+        have the same bugs everywhere. We can turn this on again for other distros when we're ready
+        to turn it on for Debian.
+
+        Also, properly fail the build if ENABLE_ACCELERATED_2D_CANVAS is enabled but CairoGL is not
+        available.
+
+        * Source/cmake/OptionsGTK.cmake:
+
+2015-09-16  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.9.92 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2015-08-26  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.9.91 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2015-08-25  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        [GTK] r186800 broke the build on Ubuntu 14.04
+        https://bugs.webkit.org/show_bug.cgi?id=147559
+
+        Reviewed by Martin Robinson.
+
+        * Source/cmake/FindGTK3.cmake: Always define GTK3_SUPPORTS_X11 and GTK3_SUPPORTS_WAYLAND.
+        * Source/cmake/OptionsGTK.cmake: Autodetect support for X11 and Wayland backends.
+
+2015-08-14  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.9.90 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2015-08-12  Alex Christensen  <achristensen@webkit.org>
+
+        Fix Debug CMake builds on Windows
+        https://bugs.webkit.org/show_bug.cgi?id=147940
+
+        Reviewed by Chris Dumez.
+
+        * Source/cmake/OptionsWindows.cmake:
+        Put 32-bit binaries in a bin32 subdirectory and 64-bit binaries in a bin64 subdirectory.
+
+2015-08-10  Alex Christensen  <achristensen@webkit.org>
+
+        Build TestWebKitAPI with CMake on Windows
+        https://bugs.webkit.org/show_bug.cgi?id=147851
+
+        Reviewed by Chris Dumez.
+
+        * Source/cmake/OptionsWindows.cmake:
+        Enable api tests and set USE_SYSTEM_MALLOC to avoid warnings when redefining it.
+
+2015-08-06  Alex Christensen  <achristensen@webkit.org>
+
+        [Win] CMake build fix after r188098.
+
+        * Source/cmake/OptionsWinCairo.cmake:
+        OptionsWindows.cmake uses WTF_PLATFORM_WIN_CAIRO now, so we need to set it before including OptionsWindows.
+
+2015-08-04  Alex Christensen  <achristensen@webkit.org>
+
+        Fix quirks with CMake and VS2015
+        https://bugs.webkit.org/show_bug.cgi?id=147663
+
+        Reviewed by Brent Fulgham.
+
+        * Source/cmake/OptionsWindows.cmake:
+        Hide some warnings.  Using the same variable names in nested scopes is ok for now.
+        Disable INTL for now.
+
+2015-08-04  Alex Christensen  <achristensen@webkit.org>
+
+        Enable WebGL on Windows CMake build.
+        https://bugs.webkit.org/show_bug.cgi?id=143311
+
+        Reviewed by Csaba Osztrogonác.
+
+        * Source/cmake/OptionsWindows.cmake:
+        Enable WebGL by default in CMake builds now that it works.
+
+2015-08-04  Mario Sanchez Prada  <mario@endlessm.com>
+
+        [GTK] Accelerated 2D Canvas enabled when cairo-gl is not available
+        https://bugs.webkit.org/show_bug.cgi?id=147625
+
+        Reviewed by Martin Robinson.
+
+        Do not set the CAIRO_<COMPONENT>_* CMake variables for cairo-gl
+        components unless they were actually found, not to accidentally
+        enable Accelerated 2D canvas, which would cause the build to fail.
+
+        * Source/cmake/FindCairoGL.cmake: Set this variables only when
+        pkg_check_modules() had actually found the relevant component.
+
+2015-08-03  Csaba Osztrogonác  <ossy@webkit.org>
+
+        [CMake] Add an option to build AllInOne files
+        https://bugs.webkit.org/show_bug.cgi?id=102647
+
+        Reviewed by Alex Christensen.
+
+        * Source/cmake/OptionsEfl.cmake: Disabled by default.
+        * Source/cmake/OptionsGTK.cmake: Disabled by default.
+        * Source/cmake/OptionsWindows.cmake: Enabled by default.
+        * Source/cmake/WebKitFeatures.cmake:
+        * Source/cmake/WebKitMacros.cmake:
+
+2015-08-03  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.9.5 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
 2015-07-31  Alex Christensen  <achristensen@webkit.org>
 
         Prepare for debug CMake builds on Windows.

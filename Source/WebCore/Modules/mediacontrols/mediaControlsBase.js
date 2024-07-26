@@ -998,6 +998,7 @@ Controller.prototype = {
             this.controls.panel.classList.add(this.ClassNames.paused);
             this.controls.playButton.classList.add(this.ClassNames.paused);
             this.controls.playButton.setAttribute('aria-label', this.UIString('Play'));
+            this.showControls();
         } else {
             this.controls.panel.classList.remove(this.ClassNames.paused);
             this.controls.playButton.classList.remove(this.ClassNames.paused);
@@ -1013,6 +1014,7 @@ Controller.prototype = {
         this.controls.panel.classList.add(this.ClassNames.show);
         this.controls.panel.classList.remove(this.ClassNames.hidden);
 
+        this.updateTime();
         this.setNeedsTimelineMetricsUpdate();
     },
 
@@ -1021,9 +1023,19 @@ Controller.prototype = {
         this.controls.panel.classList.remove(this.ClassNames.show);
     },
 
+    controlsAreAlwaysVisible: function()
+    {
+        return this.controls.panel.classList.contains(this.ClassNames.noVideo);
+    },
+
     controlsAreHidden: function()
     {
-        return !this.controls.panel.classList.contains(this.ClassNames.show) || this.controls.panel.classList.contains(this.ClassNames.hidden);
+        if (this.controlsAreAlwaysVisible())
+            return false;
+
+        var panel = this.controls.panel;
+        return (!panel.classList.contains(this.ClassNames.show) || panel.classList.contains(this.ClassNames.hidden))
+            && (panel.parentElement.querySelector(':hover') !== panel);
     },
 
     removeControls: function()

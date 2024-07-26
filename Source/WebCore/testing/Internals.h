@@ -102,6 +102,8 @@ public:
     void pruneMemoryCacheToSize(unsigned size);
     unsigned memoryCacheSize() const;
 
+    size_t imageFrameIndex(Element*, ExceptionCode&);
+
     void clearPageCache();
     unsigned pageCacheSize() const;
 
@@ -337,6 +339,8 @@ public:
     String toolTipFromElement(Element*, ExceptionCode&) const;
 
     void forceReload(bool endToEnd);
+
+    void enableAutoSizeMode(bool enabled, int minimumWidth, int minimumHeight, int maximumWidth, int maximumHeight);
 
 #if ENABLE(ENCRYPTED_MEDIA_V2)
     void initializeMockCDM();

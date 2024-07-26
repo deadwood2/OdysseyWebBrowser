@@ -55,12 +55,6 @@ enum Multiply {
     Unmultiplied
 };
 
-enum RenderingMode {
-    Unaccelerated,
-    UnacceleratedNonPlatformBuffer, // Use plain memory allocation rather than platform API to allocate backing store.
-    Accelerated
-};
-
 enum BackingStoreCopy {
     CopyBackingStore, // Guarantee subsequent draws don't affect the copy.
     DontCopyBackingStore // Subsequent draws may affect the copy.
@@ -75,7 +69,7 @@ class ImageBuffer {
     WTF_MAKE_NONCOPYABLE(ImageBuffer); WTF_MAKE_FAST_ALLOCATED;
 public:
     // Will return a null pointer on allocation failure.
-    static std::unique_ptr<ImageBuffer> create(const FloatSize& size, float resolutionScale = 1, ColorSpace colorSpace = ColorSpaceDeviceRGB, RenderingMode renderingMode = Unaccelerated)
+    static std::unique_ptr<ImageBuffer> create(const FloatSize& size, RenderingMode renderingMode, float resolutionScale = 1, ColorSpace colorSpace = ColorSpaceDeviceRGB)
     {
         bool success = false;
         std::unique_ptr<ImageBuffer> buffer(new ImageBuffer(size, resolutionScale, colorSpace, renderingMode, success));
@@ -122,7 +116,7 @@ public:
 
     // FIXME: current implementations of this method have the restriction that they only work
     // with textures that are RGB or RGBA format, and UNSIGNED_BYTE type.
-    bool copyToPlatformTexture(GraphicsContext3D&, Platform3DObject, GC3Denum, bool, bool);
+    bool copyToPlatformTexture(GraphicsContext3D&, GC3Denum, Platform3DObject, GC3Denum, bool, bool);
 
     FloatSize spaceSize() const { return m_space; }
     void setSpaceSize(const FloatSize& space) { m_space = space; }

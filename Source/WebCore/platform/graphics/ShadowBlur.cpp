@@ -57,7 +57,7 @@ class ScratchBuffer {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     ScratchBuffer()
-        : m_purgeTimer(*this, &ScratchBuffer::timerFired)
+        : m_purgeTimer(*this, &ScratchBuffer::clearScratchBuffer)
         , m_lastWasInset(false)
 #if !ASSERT_DISABLED
         , m_bufferInUse(false)
@@ -79,7 +79,9 @@ public:
         IntSize roundedSize(roundUpToMultipleOf32(size.width()), roundUpToMultipleOf32(size.height()));
 
         clearScratchBuffer();
-        m_imageBuffer = ImageBuffer::create(roundedSize, 1);
+
+        // ShadowBlur is not used with accelerated drawing, so it's OK to make an unconditionally unaccelerated buffer.
+        m_imageBuffer = ImageBuffer::create(roundedSize, Unaccelerated, 1);
         return m_imageBuffer.get();
     }
 
@@ -130,11 +132,6 @@ public:
     static ScratchBuffer& singleton();
 
 private:
-    void timerFired()
-    {
-        clearScratchBuffer();
-    }
-    
     void clearScratchBuffer()
     {
         m_imageBuffer = nullptr;

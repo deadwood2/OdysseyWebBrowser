@@ -59,6 +59,7 @@
 #include "RenderNamedFlowFragment.h"
 #include "RenderNamedFlowThread.h"
 #include "RenderRegion.h"
+#include "RenderSVGResourceClipper.h"
 #include "RenderTableCell.h"
 #include "RenderTextFragment.h"
 #include "RenderTheme.h"
@@ -242,11 +243,14 @@ void RenderBlock::styleWillChange(StyleDifference diff, const RenderStyle& newSt
 
     setReplaced(newStyle.isDisplayInlineType());
 
+    if (oldStyle && oldStyle->hasTransformRelatedProperty() && !newStyle.hasTransformRelatedProperty())
+        removePositionedObjects(nullptr, NewContainingBlock);
+
     if (oldStyle && parent() && diff == StyleDifferenceLayout && oldStyle->position() != newStyle.position()) {
         if (newStyle.position() == StaticPosition)
             // Clear our positioned objects list. Our absolutely positioned descendants will be
             // inserted into our containing block's positioned objects list during layout.
-            removePositionedObjects(0, NewContainingBlock);
+            removePositionedObjects(nullptr, NewContainingBlock);
         else if (oldStyle->position() == StaticPosition) {
             // Remove our absolutely positioned descendants from their current containing block.
             // They will be inserted into our positioned objects list during layout.
@@ -637,7 +641,7 @@ void RenderBlock::removeLeftoverAnonymousBlock(RenderBlock* child)
     child->destroy();
 }
 
-static bool canMergeAnonymousBlock(RenderBlock& anonymousBlock)
+static bool canDropAnonymousBlock(const RenderBlock& anonymousBlock)
 {
     if (anonymousBlock.beingDestroyed() || anonymousBlock.continuation())
         return false;
@@ -655,33 +659,32 @@ static bool canMergeContiguousAnonymousBlocks(RenderObject& oldChild, RenderObje
         if (!previous->isAnonymousBlock())
             return false;
         RenderBlock& previousAnonymousBlock = downcast<RenderBlock>(*previous);
-        if (!canMergeAnonymousBlock(previousAnonymousBlock))
+        if (!canDropAnonymousBlock(previousAnonymousBlock))
             return false;
     }
     if (next) {
         if (!next->isAnonymousBlock())
             return false;
         RenderBlock& nextAnonymousBlock = downcast<RenderBlock>(*next);
-        if (!canMergeAnonymousBlock(nextAnonymousBlock))
+        if (!canDropAnonymousBlock(nextAnonymousBlock))
             return false;
     }
     return true;
 }
 
-void RenderBlock::collapseAnonymousBoxChild(RenderBlock& parent, RenderBlock* child)
+void RenderBlock::dropAnonymousBoxChild(RenderBlock& parent, RenderBlock& child)
 {
     parent.setNeedsLayoutAndPrefWidthsRecalc();
-    parent.setChildrenInline(child->childrenInline());
-    RenderObject* nextSibling = child->nextSibling();
+    parent.setChildrenInline(child.childrenInline());
+    if (auto* childFlowThread = child.flowThreadContainingBlock())
+        childFlowThread->removeFlowChildInfo(&child);
 
-    if (auto* childFlowThread = child->flowThreadContainingBlock())
-        childFlowThread->removeFlowChildInfo(child);
-
-    parent.removeChildInternal(*child, child->hasLayer() ? NotifyChildren : DontNotifyChildren);
-    child->moveAllChildrenTo(&parent, nextSibling, child->hasLayer());
+    RenderObject* nextSibling = child.nextSibling();
+    parent.removeChildInternal(child, child.hasLayer() ? NotifyChildren : DontNotifyChildren);
+    child.moveAllChildrenTo(&parent, nextSibling, child.hasLayer());
     // Delete the now-empty block's lines and nuke it.
-    child->deleteLines();
-    child->destroy();
+    child.deleteLines();
+    child.destroy();
 }
 
 void RenderBlock::removeChild(RenderObject& oldChild)
@@ -746,19 +749,26 @@ void RenderBlock::removeChild(RenderObject& oldChild)
     RenderBox::removeChild(oldChild);
 
     RenderObject* child = prev ? prev : next;
-    if (canMergeAnonymousBlocks && child && !child->previousSibling() && !child->nextSibling() && canCollapseAnonymousBlockChild()) {
+    if (canMergeAnonymousBlocks && child && !child->previousSibling() && !child->nextSibling() && canDropAnonymousBlockChild()) {
         // The removal has knocked us down to containing only a single anonymous
         // box. We can pull the content right back up into our box.
-        collapseAnonymousBoxChild(*this, downcast<RenderBlock>(child));
-    } else if (((prev && prev->isAnonymousBlock()) || (next && next->isAnonymousBlock())) && canCollapseAnonymousBlockChild()) {
+        dropAnonymousBoxChild(*this, downcast<RenderBlock>(*child));
+    } else if (((prev && prev->isAnonymousBlock()) || (next && next->isAnonymousBlock())) && canDropAnonymousBlockChild()) {
         // It's possible that the removal has knocked us down to a single anonymous
-        // block with pseudo-style element siblings (e.g. first-letter). If these
-        // are floating, then we need to pull the content up also.
-        RenderBlock* anonBlock = downcast<RenderBlock>((prev && prev->isAnonymousBlock()) ? prev : next);
-        if ((anonBlock->previousSibling() || anonBlock->nextSibling())
-            && (!anonBlock->previousSibling() || (anonBlock->previousSibling()->style().styleType() != NOPSEUDO && anonBlock->previousSibling()->isFloating() && !anonBlock->previousSibling()->previousSibling()))
-            && (!anonBlock->nextSibling() || (anonBlock->nextSibling()->style().styleType() != NOPSEUDO && anonBlock->nextSibling()->isFloating() && !anonBlock->nextSibling()->nextSibling()))) {
-            collapseAnonymousBoxChild(*this, anonBlock);
+        // block with floating siblings.
+        RenderBlock& anonBlock = downcast<RenderBlock>((prev && prev->isAnonymousBlock()) ? *prev : *next);
+        if (canDropAnonymousBlock(anonBlock)) {
+            bool dropAnonymousBlock = true;
+            for (auto& sibling : childrenOfType<RenderObject>(*this)) {
+                if (&sibling == &anonBlock)
+                    continue;
+                if (!sibling.isFloating()) {
+                    dropAnonymousBlock = false;
+                    break;
+                }
+            }
+            if (dropAnonymousBlock)
+                dropAnonymousBoxChild(*this, anonBlock);
         }
     }
 
@@ -795,6 +805,19 @@ void RenderBlock::removeChild(RenderObject& oldChild)
     }
 }
 
+bool RenderBlock::childrenPreventSelfCollapsing() const
+{
+    // Whether or not we collapse is dependent on whether all our normal flow children
+    // are also self-collapsing.
+    for (RenderBox* child = firstChildBox(); child; child = child->nextSiblingBox()) {
+        if (child->isFloatingOrOutOfFlowPositioned())
+            continue;
+        if (!child->isSelfCollapsingBlock())
+            return true;
+    }
+    return false;
+}
+
 bool RenderBlock::isSelfCollapsingBlock() const
 {
     // We are not self-collapsing if we
@@ -821,22 +844,9 @@ bool RenderBlock::isSelfCollapsingBlock() const
 
     // If the height is 0 or auto, then whether or not we are a self-collapsing block depends
     // on whether we have content that is all self-collapsing or not.
-    if (hasAutoHeight || ((logicalHeightLength.isFixed() || logicalHeightLength.isPercentOrCalculated()) && logicalHeightLength.isZero())) {
-        // If the block has inline children, see if we generated any line boxes.  If we have any
-        // line boxes, then we can't be self-collapsing, since we have content.
-        if (childrenInline())
-            return !hasLines();
-        
-        // Whether or not we collapse is dependent on whether all our normal flow children
-        // are also self-collapsing.
-        for (RenderBox* child = firstChildBox(); child; child = child->nextSiblingBox()) {
-            if (child->isFloatingOrOutOfFlowPositioned())
-                continue;
-            if (!child->isSelfCollapsingBlock())
-                return false;
-        }
-        return true;
-    }
+    if (hasAutoHeight || ((logicalHeightLength.isFixed() || logicalHeightLength.isPercentOrCalculated()) && logicalHeightLength.isZero()))
+        return !childrenPreventSelfCollapsing();
+
     return false;
 }
 
@@ -894,23 +904,22 @@ void RenderBlock::removeFromUpdateScrollInfoAfterLayoutTransaction()
 
 void RenderBlock::updateScrollInfoAfterLayout()
 {
-    if (hasOverflowClip()) {
-        if (style().isFlippedBlocksWritingMode()) {
-            // FIXME: https://bugs.webkit.org/show_bug.cgi?id=97937
-            // Workaround for now. We cannot delay the scroll info for overflow
-            // for items with opposite writing directions, as the contents needs
-            // to overflow in that direction
-            layer()->updateScrollInfoAfterLayout();
-            return;
-        }
-
+    if (!hasOverflowClip())
+        return;
+    
+    // FIXME: https://bugs.webkit.org/show_bug.cgi?id=97937
+    // Workaround for now. We cannot delay the scroll info for overflow
+    // for items with opposite writing directions, as the contents needs
+    // to overflow in that direction
+    if (!style().isFlippedBlocksWritingMode()) {
         UpdateScrollInfoAfterLayoutTransaction* transaction = currentUpdateScrollInfoAfterLayoutTransaction();
         if (transaction && transaction->view == &view()) {
             transaction->blocks.add(this);
             return;
         }
-        layer()->updateScrollInfoAfterLayout();
     }
+    if (layer())
+        layer()->updateScrollInfoAfterLayout();
 }
 
 void RenderBlock::layout()
@@ -1039,7 +1048,7 @@ void RenderBlock::clearLayoutOverflow()
 
 void RenderBlock::addOverflowFromBlockChildren()
 {
-    for (auto child = firstChildBox(); child; child = child->nextSiblingBox()) {
+    for (auto* child = firstChildBox(); child; child = child->nextSiblingBox()) {
         if (!child->isFloatingOrOutOfFlowPositioned())
             addOverflowFromChild(child);
     }
@@ -1192,7 +1201,7 @@ void RenderBlock::simplifiedNormalFlowLayout()
             box->computeOverflow(box->lineTop(), box->lineBottom(), textBoxDataMap);
         }
     } else {
-        for (auto box = firstChildBox(); box; box = box->nextSiblingBox()) {
+        for (auto* box = firstChildBox(); box; box = box->nextSiblingBox()) {
             if (!box->isOutOfFlowPositioned())
                 box->layoutIfNeeded();
         }
@@ -1416,9 +1425,10 @@ void RenderBlock::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
         popContentsClip(paintInfo, phase, adjustedPaintOffset);
 
     // Our scrollbar widgets paint exactly when we tell them to, so that they work properly with
-    // z-index.  We paint after we painted the background/border, so that the scrollbars will
+    // z-index. We paint after we painted the background/border, so that the scrollbars will
     // sit above the background/border.
-    if ((phase == PaintPhaseBlockBackground || phase == PaintPhaseChildBlockBackground) && hasOverflowClip() && style().visibility() == VISIBLE && paintInfo.shouldPaintWithinRoot(*this) && !paintInfo.paintRootBackgroundOnly())
+    if ((phase == PaintPhaseBlockBackground || phase == PaintPhaseChildBlockBackground) && hasOverflowClip() && layer()
+        && style().visibility() == VISIBLE && paintInfo.shouldPaintWithinRoot(*this) && !paintInfo.paintRootBackgroundOnly())
         layer()->paintOverflowControls(paintInfo.context, roundedIntPoint(adjustedPaintOffset), snappedIntRect(paintInfo.rect));
 }
 
@@ -1450,7 +1460,7 @@ void RenderBlock::paintContents(PaintInfo& paintInfo, const LayoutPoint& paintOf
 
 void RenderBlock::paintChildren(PaintInfo& paintInfo, const LayoutPoint& paintOffset, PaintInfo& paintInfoForChild, bool usePrintRect)
 {
-    for (auto child = firstChildBox(); child; child = child->nextSiblingBox()) {
+    for (auto* child = firstChildBox(); child; child = child->nextSiblingBox()) {
         if (!paintChild(*child, paintInfo, paintOffset, paintInfoForChild, usePrintRect))
             return;
     }
@@ -2451,8 +2461,18 @@ bool RenderBlock::nodeAtPoint(const HitTestRequest& request, HitTestResult& resu
                 return false;
             break;
         }
-        // FIXME: handle Reference/Box
-        case ClipPathOperation::Reference:
+        case ClipPathOperation::Reference: {
+            const auto& referenceClipPathOperation = downcast<ReferenceClipPathOperation>(*style().clipPath());
+            auto* element = document().getElementById(referenceClipPathOperation.fragment());
+            if (!element || !element->renderer())
+                break;
+            if (!is<SVGClipPathElement>(*element))
+                break;
+            auto& clipper = downcast<RenderSVGResourceClipper>(*element->renderer());
+            if (!clipper.hitTestClipContent(FloatRect(borderBoxRect()), FloatPoint(locationInContainer.point() - localOffset)))
+                return false;
+            break;
+        }
         case ClipPathOperation::Box:
             break;
         }
@@ -2466,12 +2486,12 @@ bool RenderBlock::nodeAtPoint(const HitTestRequest& request, HitTestResult& resu
         // Hit test descendants first.
         LayoutSize scrolledOffset(localOffset - scrolledContentOffset());
 
+        if (hitTestAction == HitTestFloat && hitTestFloats(request, result, locationInContainer, toLayoutPoint(scrolledOffset)))
+            return true;
         if (hitTestContents(request, result, locationInContainer, toLayoutPoint(scrolledOffset), hitTestAction)) {
             updateHitTestResult(result, flipForWritingMode(locationInContainer.point() - localOffset));
             return true;
         }
-        if (hitTestAction == HitTestFloat && hitTestFloats(request, result, locationInContainer, toLayoutPoint(scrolledOffset)))
-            return true;
     }
 
     // Check if the point is outside radii.
@@ -2505,7 +2525,7 @@ bool RenderBlock::hitTestContents(const HitTestRequest& request, HitTestResult& 
     HitTestAction childHitTest = hitTestAction;
     if (hitTestAction == HitTestChildBlockBackgrounds)
         childHitTest = HitTestChildBlockBackground;
-    for (auto child = lastChildBox(); child; child = child->previousSiblingBox()) {
+    for (auto* child = lastChildBox(); child; child = child->previousSiblingBox()) {
         LayoutPoint childPoint = flipForWritingModeForChild(child, accumulatedOffset);
         if (!child->hasSelfPaintingLayer() && !child->isFloating() && child->nodeAtPoint(request, result, locationInContainer, childPoint, childHitTest))
             return true;
@@ -2627,7 +2647,7 @@ VisiblePosition RenderBlock::positionForPoint(const LayoutPoint& point, const Re
             || (!blocksAreFlipped && pointInLogicalContents.y() == logicalTopForChild(*lastCandidateBox)))
             return positionForPointRespectingEditingBoundaries(*this, *lastCandidateBox, pointInContents);
 
-        for (auto childBox = firstChildBox(); childBox; childBox = childBox->nextSiblingBox()) {
+        for (auto* childBox = firstChildBox(); childBox; childBox = childBox->nextSiblingBox()) {
             if (!isChildHitTestCandidate(*childBox, region, pointInLogicalContents))
                 continue;
             LayoutUnit childLogicalBottom = logicalTopForChild(*childBox) + logicalHeightForChild(*childBox);
@@ -2752,6 +2772,14 @@ void RenderBlock::computeBlockPreferredLogicalWidths(LayoutUnit& minLogicalWidth
         } else {
             childMinPreferredLogicalWidth = child->minPreferredLogicalWidth();
             childMaxPreferredLogicalWidth = child->maxPreferredLogicalWidth();
+
+            if (is<RenderBlock>(*child)) {
+                const Length& computedInlineSize = child->style().logicalWidth();
+                if (computedInlineSize.isMaxContent())
+                    childMinPreferredLogicalWidth = childMaxPreferredLogicalWidth;
+                else if (computedInlineSize.isMinContent())
+                    childMaxPreferredLogicalWidth = childMinPreferredLogicalWidth;
+            }
         }
 
         LayoutUnit w = childMinPreferredLogicalWidth + margin;
@@ -2913,7 +2941,7 @@ Optional<int> RenderBlock::inlineBlockBaseline(LineDirectionMode lineDirection) 
         return Optional<int>();
 
     bool haveNormalFlowChild = false;
-    for (auto box = lastChildBox(); box; box = box->previousSiblingBox()) {
+    for (auto* box = lastChildBox(); box; box = box->previousSiblingBox()) {
         if (box->isFloatingOrOutOfFlowPositioned())
             continue;
         haveNormalFlowChild = true;
@@ -3061,7 +3089,7 @@ void RenderBlock::updateFirstLetterStyle(RenderElement* firstLetterBlock, Render
         newFirstLetter->initializeStyle();
 
         // Move the first letter into the new renderer.
-        LayoutStateDisabler layoutStateDisabler(&view());
+        LayoutStateDisabler layoutStateDisabler(view());
         while (RenderObject* child = firstLetter->firstChild()) {
             if (is<RenderText>(*child))
                 downcast<RenderText>(*child).removeAndDestroyTextBoxes();
@@ -3237,7 +3265,7 @@ void RenderBlock::updateFirstLetter()
 
     // Our layout state is not valid for the repaints we are going to trigger by
     // adding and removing children of firstLetterContainer.
-    LayoutStateDisabler layoutStateDisabler(&view());
+    LayoutStateDisabler layoutStateDisabler(view());
 
     createFirstLetterRenderer(firstLetterContainer, downcast<RenderText>(firstLetterObj));
 }

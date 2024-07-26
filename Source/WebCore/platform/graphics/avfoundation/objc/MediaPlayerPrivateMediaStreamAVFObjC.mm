@@ -145,7 +145,7 @@ void MediaPlayerPrivateMediaStreamAVFObjC::load(MediaStreamPrivate& client)
         }
     }
     m_previewLayer = nullptr;
-    for (auto track : m_MediaStreamPrivate->tracks()) {
+    for (auto& track : m_MediaStreamPrivate->tracks()) {
         if (track->type() == RealtimeMediaSource::Type::Video)
             m_previewLayer = static_cast<AVVideoCaptureSource*>(track->source())->previewLayer();
     }
@@ -188,10 +188,8 @@ void MediaPlayerPrivateMediaStreamAVFObjC::play()
 void MediaPlayerPrivateMediaStreamAVFObjC::playInternal()
 {
     m_playing = true;
-    if (shouldBePlaying())
-        [m_synchronizer setRate:m_rate];
 
-    for (auto track : m_MediaStreamPrivate->tracks())
+    for (auto& track : m_MediaStreamPrivate->tracks())
         track->source()->startProducingData();
 }
 
@@ -209,7 +207,7 @@ void MediaPlayerPrivateMediaStreamAVFObjC::pauseInternal()
 {
     m_playing = false;
 
-    for (auto track : m_MediaStreamPrivate->tracks())
+    for (auto& track : m_MediaStreamPrivate->tracks())
         track->source()->stopProducingData();
 }
 
@@ -230,7 +228,7 @@ bool MediaPlayerPrivateMediaStreamAVFObjC::supportsScanning() const
 
 void MediaPlayerPrivateMediaStreamAVFObjC::setMuted(bool muted)
 {
-    for (auto track : m_MediaStreamPrivate->tracks()) {
+    for (auto& track : m_MediaStreamPrivate->tracks()) {
         if (track->type() == RealtimeMediaSource::Type::Audio)
             track->source()->setMuted(muted);
     }
@@ -239,7 +237,7 @@ void MediaPlayerPrivateMediaStreamAVFObjC::setMuted(bool muted)
 FloatSize MediaPlayerPrivateMediaStreamAVFObjC::naturalSize() const
 {
     FloatSize floatSize(0, 0);
-    for (auto track : m_MediaStreamPrivate->tracks()) {
+    for (auto& track : m_MediaStreamPrivate->tracks()) {
         if (track->type() == RealtimeMediaSource::Type::Video) {
             AVVideoCaptureSource* source = (AVVideoCaptureSource*)track->source();
             if (!source->stopped() && track->enabled()) {
@@ -255,7 +253,7 @@ FloatSize MediaPlayerPrivateMediaStreamAVFObjC::naturalSize() const
 
 bool MediaPlayerPrivateMediaStreamAVFObjC::hasVideo() const
 {
-    for (auto track : m_MediaStreamPrivate->tracks()) {
+    for (auto& track : m_MediaStreamPrivate->tracks()) {
         if (track->type() == RealtimeMediaSource::Type::Video)
             return true;
     }
@@ -264,7 +262,7 @@ bool MediaPlayerPrivateMediaStreamAVFObjC::hasVideo() const
 
 bool MediaPlayerPrivateMediaStreamAVFObjC::hasAudio() const
 {
-    for (auto track : m_MediaStreamPrivate->tracks()) {
+    for (auto& track : m_MediaStreamPrivate->tracks()) {
         if (track->type() == RealtimeMediaSource::Type::Audio)
             return true;
     }
@@ -345,9 +343,28 @@ void MediaPlayerPrivateMediaStreamAVFObjC::setSize(const IntSize&)
     // No-op.
 }
 
-void MediaPlayerPrivateMediaStreamAVFObjC::paint(GraphicsContext*, const FloatRect&)
+RetainPtr<CGImageRef> MediaPlayerPrivateMediaStreamAVFObjC::createImageFromSampleBuffer(CMSampleBufferRef sampleBuffer)
 {
-    // FIXME(125157): Implement painting.
+    CVPixelBufferRef imageBuffer = static_cast<CVPixelBufferRef>(CMSampleBufferGetImageBuffer(sampleBuffer));
+    CVPixelBufferLockBaseAddress(imageBuffer, 0);
+    
+    void *baseAddress = CVPixelBufferGetBaseAddress(imageBuffer);
+    size_t bytesPerRow = CVPixelBufferGetBytesPerRow(imageBuffer);
+    size_t width = CVPixelBufferGetWidth(imageBuffer);
+    size_t height = CVPixelBufferGetHeight(imageBuffer);
+    
+    RetainPtr<CGColorSpaceRef> colorSpace = adoptCF(CGColorSpaceCreateDeviceRGB());
+    RetainPtr<CGDataProviderRef> provider = adoptCF(CGDataProviderCreateWithData(NULL, baseAddress, bytesPerRow * height, NULL));
+    RetainPtr<CGImageRef> quartzImage = adoptCF(CGImageCreate(width, height, 8, 32, bytesPerRow, colorSpace.get(), kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst, provider.get(), NULL, true, kCGRenderingIntentDefault));
+    
+    CVPixelBufferUnlockBaseAddress(imageBuffer, 0);
+    
+    return quartzImage;
+}
+
+void MediaPlayerPrivateMediaStreamAVFObjC::paint(GraphicsContext* context, const FloatRect& rect)
+{
+    paintCurrentFrameInContext(context, rect);
 }
 
 void MediaPlayerPrivateMediaStreamAVFObjC::paintCurrentFrameInContext(GraphicsContext*, const FloatRect&)
