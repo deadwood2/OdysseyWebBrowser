@@ -206,6 +206,8 @@ int OWBFile::open(char openType)
         m_fd = ::fopen(name, "w");
     else if (openType == 'r')
         m_fd = ::fopen(name, "r");
+    else if (openType == 'a')
+        m_fd = ::fopen(name, "a");
 
     if (m_fd) return 0;
 

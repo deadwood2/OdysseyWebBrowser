@@ -125,7 +125,7 @@ void DownloadClient::didReceiveResponse(ResourceHandle*, const WebCore::Resource
 	{
 		if(priv->resourceHandle.get()->canResume())
 		{
-			priv->outputChannel = new OWBFile(priv->resourceHandle.get()->path());
+			priv->outputChannel = new OWBFile(priv->destinationPath);
 
 		    // Fail if not possible to open destination file to writing
 			if(priv->outputChannel->open('a') == -1)
@@ -189,8 +189,9 @@ void DownloadClient::didReceiveResponse(ResourceHandle*, const WebCore::Resource
 
 		if(priv->allowResume)
 		{
-			priv->resourceHandle.get()->setStartOffset(priv->startOffset);
-			priv->resourceHandle.get()->resume(priv->destinationPath);
+			priv->resourceHandle->cancel();
+			priv->resourceHandle = ResourceHandle::create(NULL, *priv->resourceRequest, priv->downloadClient, false, false);
+			priv->resourceHandle->setStartOffset(priv->startOffset);
 			return;
 		}
 		else
