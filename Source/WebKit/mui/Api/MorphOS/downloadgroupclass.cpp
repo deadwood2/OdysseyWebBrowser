@@ -326,9 +326,6 @@ DEFNEW
 								MUIA_Background, MUII_RegisterBack,
 								MUIA_Frame, MUIV_Frame_Register,
 								MUIA_Group_PageMode, TRUE,
-#if OS(AROS) // Needed as long as MUIV_Frame_Register is not implemented, see area.c/set_inner_sizes (right now random memory access)
-                                InnerSpacing(0, 0),
-#endif
 				Child, gr_titles = MUI_NewObject(MUIC_Title,
 										MUIA_CycleChain, 1,
 										Child, titles[PAGE_IN_PROGRESS] = TextObject, MUIA_Text_Contents, dltitles[PAGE_IN_PROGRESS], End,
