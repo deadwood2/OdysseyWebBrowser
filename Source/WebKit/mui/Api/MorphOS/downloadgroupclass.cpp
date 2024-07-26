@@ -266,7 +266,7 @@ struct downloadnode* download_create(char *url, char *filename, char *path, char
 	return dl;
 }
 
-void download_dispose_objects(struct Data *data, struct downloadnode *dl)
+void download_dispose_objects(struct downloadnode *dl)
 {
 	if(dl->gaugeobj)
 	{
@@ -281,26 +281,26 @@ void download_dispose_objects(struct Data *data, struct downloadnode *dl)
 	}
 }
 
-void download_clear_images(struct Data *data, struct downloadnode *dl)
+void download_clear_images(Object *lv, struct downloadnode *dl)
 {
 	if(dl->gaugeimg)
 	{
-		DoMethod(data->lv_downloads, MUIM_List_DeleteImage, dl->gaugeimg);
+		DoMethod(lv, MUIM_List_DeleteImage, dl->gaugeimg);
 		dl->gaugeimg = NULL;
 	}
 
 	if(dl->iconimg)
 	{
-		DoMethod(data->lv_downloads, MUIM_List_DeleteImage, dl->iconimg);
+		DoMethod(lv, MUIM_List_DeleteImage, dl->iconimg);
 		dl->iconimg = NULL;
 	}
 }
 
-void download_delete(struct Data *data, struct downloadnode *dl)
+void download_delete(Object *lv, struct downloadnode *dl)
 {
 	REMOVE((APTR) dl);
-	download_clear_images(data, dl);
-	download_dispose_objects(data, dl);
+	download_clear_images(lv, dl);
+	download_dispose_objects(dl);
 	free(dl->path);
 	free(dl->filename);
 	free(dl->url);
@@ -464,12 +464,13 @@ DEFMMETHOD(Cleanup)
 
 DEFDISP
 {
-	GETDATA;
 	APTR n, m;
 
 	ITERATELISTSAFE(n, m, &download_list)
 	{
-		download_delete(data, (struct downloadnode *) n);
+		/* It is ok to pass NULL at this point. All the guageimg/iconimg objects have already been disposed in
+		   MUIM_Cleanup of downloadlistclass */
+		download_delete(NULL, (struct downloadnode *) n);
 	}
 
 	return DOSUPER;
@@ -532,8 +533,8 @@ DEFSMETHOD(Download_Done)
 		{
 			DoMethod(data->lv_downloads, MUIM_List_Remove, i);
 
-			download_clear_images(data, dl);
-			download_dispose_objects(data, dl);
+			download_clear_images(data->lv_downloads, dl);
+			download_dispose_objects(dl);
 
 			DoMethod(data->lv_finished, MUIM_List_InsertSingle, msg->entry, MUIV_List_Insert_Bottom);
 			DoMethod(obj, MM_Download_HilightPage, PAGE_FINISHED);
@@ -585,7 +586,7 @@ DEFSMETHOD(Download_Cancelled)
 			struct external_notification notification = { "OWB.TRANSFERCANCELLED", dl->filename };
 			send_external_notification(&notification);
 
-			download_delete(data, dl); // This one can be freed at that point
+			download_delete(data->lv_downloads, dl); // This one can be freed at that point
 			break;
 		}
 
@@ -620,8 +621,8 @@ DEFSMETHOD(Download_Error)
 			{
 				DoMethod(data->lv_downloads, MUIM_List_Remove, i);
 
-				download_clear_images(data, dl);
-				download_dispose_objects(data, dl);
+				download_clear_images(data->lv_downloads, dl);
+				download_dispose_objects(dl);
 
 				DoMethod(data->lv_failed, MUIM_List_InsertSingle, msg->entry, MUIV_List_Insert_Bottom);
 				DoMethod(obj, MM_Download_HilightPage, PAGE_FAILED);
@@ -647,8 +648,6 @@ DEFSMETHOD(Download_Error)
 
 DEFSMETHOD(Download_RemoveEntry)
 {
-	GETDATA;
-
 	set((Object *) msg->listview, MUIA_List_Quiet, TRUE);
 
 	if (msg->all)
@@ -663,7 +662,7 @@ DEFSMETHOD(Download_RemoveEntry)
 			{
 				DoMethod((Object *) msg->listview, MUIM_List_Remove, MUIV_List_Remove_First);				 
 
-				download_delete(data, dl);
+				download_delete((Object *) msg->listview, dl);
 			}
 		}
 		while (dl);
@@ -677,7 +676,7 @@ DEFSMETHOD(Download_RemoveEntry)
 		{
 			DoMethod((Object *) msg->listview, MUIM_List_Remove, MUIV_List_Remove_Active);
 
-			download_delete(data, dl);
+			download_delete((Object *) msg->listview, dl);
 		}
 	}
 
@@ -711,8 +710,8 @@ DEFSMETHOD(Download_Cancel)
 
 				DoMethod(data->lv_downloads, MUIM_List_Remove, MUIV_List_Remove_First);
 
-				download_clear_images(data, dl);
-				download_dispose_objects(data, dl);
+				download_clear_images(data->lv_downloads, dl);
+				download_dispose_objects(dl);
 
 				DoMethod(data->lv_failed, MUIM_List_InsertSingle, dl, MUIV_List_Insert_Bottom);
 			}
@@ -741,8 +740,8 @@ DEFSMETHOD(Download_Cancel)
 
 			DoMethod(data->lv_downloads, MUIM_List_Remove, MUIV_List_Remove_Active);
 
-			download_clear_images(data, dl);
-			download_dispose_objects(data, dl);
+			download_clear_images(data->lv_downloads, dl);
+			download_dispose_objects(dl);
 
 			DoMethod(data->lv_failed, MUIM_List_InsertSingle, dl, MUIV_List_Insert_Bottom);
 
@@ -757,7 +756,6 @@ DEFSMETHOD(Download_Cancel)
 
 DEFSMETHOD(Download_Retry)
 {
-	GETDATA;
 	struct downloadnode *dl;
 
 	DoMethod((Object *) msg->listview, MUIM_List_GetEntry, MUIV_List_GetEntry_Active, (struct downloadnode *) &dl);
@@ -785,7 +783,7 @@ DEFSMETHOD(Download_Retry)
 			}
 		}
 
-		download_delete(data, dl);
+		download_delete((Object *) msg->listview, dl);
 	}
 
 	save_download_state();
