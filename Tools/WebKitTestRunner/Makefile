@@ -5,6 +5,14 @@ BUILD_WEBKITTESTRUNNER = $(shell (( $(OSX_VERSION) >= 6 )) && echo "YES" )
 
 ifeq "$(BUILD_WEBKITTESTRUNNER)" "YES"
 
+ifneq (,$(SDKROOT))
+	ifeq (,$(findstring macosx,$(SDKROOT)))
+		ifeq (,$(findstring clean,$(MAKECMDGOALS)))
+			OTHER_OPTIONS += -target WebKitTestRunnerApp
+		endif
+	endif
+endif
+
 SCRIPTS_PATH = ../Scripts
 include ../../Makefile.shared
 

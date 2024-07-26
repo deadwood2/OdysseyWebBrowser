@@ -28,15 +28,18 @@
 #if WK_API_ENABLED
 
 typedef NS_ENUM(NSUInteger, _WKLayoutMode) {
-    _WKLayoutModeViewSize = 0,
-    _WKLayoutModeFixedSize = 1,
+    _WKLayoutModeViewSize,
+    _WKLayoutModeFixedSize,
 
     // Lay out the view with its frame scaled by the inverse viewScale.
-    _WKLayoutModeDynamicSizeComputedFromViewScale = 2,
+    _WKLayoutModeDynamicSizeComputedFromViewScale,
+
+    // Lay out the view at a heuristically-determined size based on the minimum view size.
+    _WKLayoutModeDynamicSizeWithMinimumViewSize,
 
     // Lay out the view at a heuristically-determined size based on the minimum size of the document.
-    _WKLayoutModeDynamicSizeComputedFromMinimumDocumentSize = 4,
+    _WKLayoutModeDynamicSizeComputedFromMinimumDocumentSize,
 
-} WK_ENUM_AVAILABLE(10_11, 9_0);
+} WK_ENUM_AVAILABLE(WK_MAC_TBA, WK_IOS_TBA);
 
 #endif

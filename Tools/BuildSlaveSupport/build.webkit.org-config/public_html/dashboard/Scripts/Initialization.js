@@ -25,7 +25,7 @@
 
 var settings = new Settings;
 var buildbots = [ new WebKitBuildbot ];
-Dashboard.Repository.OpenSource.trac = new Trac("https://trac.webkit.org/");
+var webkitTrac = new Trac("https://trac.webkit.org/");
 if (typeof Bugzilla !== "undefined")
     var bugzilla = new Bugzilla;
 if (typeof BubbleQueueServer !== "undefined")

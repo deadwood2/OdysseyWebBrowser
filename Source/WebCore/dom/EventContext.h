@@ -76,6 +76,12 @@ private:
     RefPtr<EventTarget> m_relatedTarget;
 };
 
+inline MouseOrFocusEventContext& toMouseOrFocusEventContext(EventContext& eventContext)
+{
+    ASSERT_WITH_SECURITY_IMPLICATION(eventContext.isMouseOrFocusEventContext());
+    return static_cast<MouseOrFocusEventContext&>(eventContext);
+}
+
 
 #if ENABLE(TOUCH_EVENTS) && !PLATFORM(IOS)
 class TouchEventContext final : public EventContext {
@@ -155,9 +161,5 @@ inline void MouseOrFocusEventContext::setRelatedTarget(PassRefPtr<EventTarget> r
 }
 
 }
-
-SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::MouseOrFocusEventContext)
-static bool isType(const WebCore::EventContext& context) { return context.isMouseOrFocusEventContext(); }
-SPECIALIZE_TYPE_TRAITS_END()
 
 #endif // EventContext_h

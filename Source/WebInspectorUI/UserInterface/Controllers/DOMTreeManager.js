@@ -59,7 +59,8 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
     requestDocument(callback)
     {
         if (this._document) {
-            callback(this._document);
+            if (callback)
+                callback(this._document);
             return;
         }
 
@@ -75,10 +76,12 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
             if (!error)
                 this._setDocument(root);
 
-            for (let callback of this._pendingDocumentRequestCallbacks)
-                callback(this._document);
-
-            this._pendingDocumentRequestCallbacks = null;
+            for (var i = 0; i < this._pendingDocumentRequestCallbacks.length; ++i) {
+                var callback = this._pendingDocumentRequestCallbacks[i];
+                if (callback)
+                    callback(this._document);
+            }
+            delete this._pendingDocumentRequestCallbacks;
         }
 
         DOMAgent.getDocument(onDocumentAvailable.bind(this));
@@ -91,7 +94,8 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
 
     pushNodeByPathToFrontend(path, callback)
     {
-        this._dispatchWhenDocumentAvailable(DOMAgent.pushNodeByPathToFrontend.bind(DOMAgent, path), callback);
+        var callbackCast = callback;
+        this._dispatchWhenDocumentAvailable(DOMAgent.pushNodeByPathToFrontend.bind(DOMAgent, path), callbackCast);
     }
 
     // Private
@@ -99,8 +103,7 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
     _wrapClientCallback(callback)
     {
         if (!callback)
-            return null;
-
+            return;
         return function(error, result) {
             if (error)
                 console.error("Error during DOMAgent operation: " + error);
@@ -129,7 +132,6 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
         var node = this._idToDOMNode[nodeId];
         if (!node)
             return;
-
         node._setAttribute(name, value);
         this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.AttributeModified, {node, name});
         node.dispatchEventToListeners(WebInspector.DOMNode.Event.AttributeModified, {name});
@@ -140,7 +142,6 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
         var node = this._idToDOMNode[nodeId];
         if (!node)
             return;
-
         node._removeAttribute(name);
         this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.AttributeRemoved, {node, name});
         node.dispatchEventToListeners(WebInspector.DOMNode.Event.AttributeRemoved, {name});
@@ -148,8 +149,8 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
 
     _inlineStyleInvalidated(nodeIds)
     {
-        for (var nodeId of nodeIds)
-            this._attributeLoadNodeIds[nodeId] = true;
+        for (var i = 0; i < nodeIds.length; ++i)
+            this._attributeLoadNodeIds[nodeIds[i]] = true;
         if ("_loadNodeAttributesTimeout" in this)
             return;
         this._loadNodeAttributesTimeout = setTimeout(this._loadNodeAttributes.bind(this), 0);
@@ -171,10 +172,10 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
             }
         }
 
-        this._loadNodeAttributesTimeout = undefined;
+        delete this._loadNodeAttributesTimeout;
 
         for (var nodeId in this._attributeLoadNodeIds) {
-            var nodeIdAsNumber = parseInt(nodeId);
+            var nodeIdAsNumber = parseInt(nodeId, 10);
             DOMAgent.getAttributes(nodeIdAsNumber, callback.bind(this, nodeIdAsNumber));
         }
         this._attributeLoadNodeIds = {};
@@ -285,14 +286,14 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
 
         delete this._idToDOMNode[node.id];
 
-        for (let i = 0; node.children && i < node.children.length; ++i)
+        for (var i = 0; node.children && i < node.children.length; ++i)
             this._unbind(node.children[i]);
 
-        let templateContent = node.templateContent();
-        if (templateContent)
-            this._unbind(templateContent);
+        if (node.templateContent())
+            this._unbind(node.templateContent());
 
-        for (let pseudoElement of node.pseudoElements().values())
+        var pseudoElements = node.pseudoElements();
+        for (var pseudoElement of pseudoElements)
             this._unbind(pseudoElement);
 
         // FIXME: Handle shadow roots.
@@ -370,25 +371,27 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
     {
         if (this._searchId) {
             DOMAgent.discardSearchResults(this._searchId);
-            this._searchId = undefined;
+            delete this._searchId;
         }
     }
 
     querySelector(nodeId, selectors, callback)
     {
-        DOMAgent.querySelector(nodeId, selectors, this._wrapClientCallback(callback));
+        var callbackCast = callback;
+        DOMAgent.querySelector(nodeId, selectors, this._wrapClientCallback(callbackCast));
     }
 
     querySelectorAll(nodeId, selectors, callback)
     {
-        DOMAgent.querySelectorAll(nodeId, selectors, this._wrapClientCallback(callback));
+        var callbackCast = callback;
+        DOMAgent.querySelectorAll(nodeId, selectors, this._wrapClientCallback(callbackCast));
     }
 
     highlightDOMNode(nodeId, mode)
     {
         if (this._hideDOMNodeHighlightTimeout) {
             clearTimeout(this._hideDOMNodeHighlightTimeout);
-            this._hideDOMNodeHighlightTimeout = undefined;
+            delete this._hideDOMNodeHighlightTimeout;
         }
 
         this._highlightedDOMNodeId = nodeId;
@@ -400,8 +403,7 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
 
     highlightSelector(selectorText, frameId, mode)
     {
-        // COMPATIBILITY (iOS 8): DOM.highlightSelector did not exist.
-        if (!DOMAgent.highlightSelector)
+        if (!DOMAgent.highlightSelector || typeof DOMAgent.highlightSelector !== "function")
             return;
 
         DOMAgent.highlightSelector(this._buildHighlightConfig(mode), selectorText, frameId);
@@ -447,10 +449,10 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
         DOMAgent.setInspectModeEnabled(enabled, this._buildHighlightConfig(), callback.bind(this));
     }
 
-    _buildHighlightConfig(mode = "all")
+    _buildHighlightConfig(mode)
     {
-        let highlightConfig = {showInfo: mode === "all"};
-
+        mode = mode || "all";
+        var highlightConfig = { showInfo: mode === "all" };
         if (mode === "all" || mode === "content")
             highlightConfig.contentColor = {r: 111, g: 168, b: 220, a: 0.66};
 
@@ -511,7 +513,7 @@ WebInspector.DOMTreeManager = class DOMTreeManager extends WebInspector.Object
             this.dispatchEventToListeners(WebInspector.DOMTreeManager.Event.ContentFlowListWasUpdated, {documentNodeIdentifier, flows: contentFlows});
         }
 
-        if (window.CSSAgent)
+        if (window.CSSAgent && CSSAgent.getNamedFlowCollection)
             CSSAgent.getNamedFlowCollection(documentNodeIdentifier, onNamedFlowCollectionAvailable.bind(this));
     }
 

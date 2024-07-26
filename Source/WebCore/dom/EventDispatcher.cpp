@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2001 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2013 Apple Inc. All rights reserved.
  * Copyright (C) 2008 Nokia Corporation and/or its subsidiary(-ies)
  * Copyright (C) 2009 Torch Mobile Inc. All rights reserved. (http://www.torchmobile.com/)
  * Copyright (C) 2010, 2011, 2012, 2013 Google Inc. All rights reserved.
@@ -31,7 +31,6 @@
 #include "FrameView.h"
 #include "HTMLInputElement.h"
 #include "HTMLMediaElement.h"
-#include "HTMLSlotElement.h"
 #include "InsertionPoint.h"
 #include "InspectorInstrumentation.h"
 #include "MouseEvent.h"
@@ -101,14 +100,24 @@ private:
     void updateTouchListsInEventPath(const TouchList*, TouchEventContext::TouchListType);
 #endif
 
-    Event& m_event;
     Vector<std::unique_ptr<EventContext>, 32> m_path;
 };
 
-#if ENABLE(TOUCH_EVENTS) && !PLATFORM(IOS)
-// FIXME: Use RelatedNodeRetargeter instead.
 class EventRelatedNodeResolver {
 public:
+    EventRelatedNodeResolver(Node& relatedNode)
+        : m_relatedNode(relatedNode)
+        , m_relatedNodeTreeScope(relatedNode.treeScope())
+        , m_relatedNodeInCurrentTreeScope(nullptr)
+        , m_currentTreeScope(nullptr)
+#if ENABLE(TOUCH_EVENTS) && !PLATFORM(IOS)
+        , m_touch(0)
+        , m_touchListType(TouchEventContext::NotTouchList)
+#endif
+    {
+    }
+
+#if ENABLE(TOUCH_EVENTS) && !PLATFORM(IOS)
     EventRelatedNodeResolver(Touch& touch, TouchEventContext::TouchListType touchListType)
         : m_relatedNode(*touch.target()->toNode())
         , m_relatedNodeTreeScope(m_relatedNode.treeScope())
@@ -119,9 +128,12 @@ public:
     {
         ASSERT(touch.target()->toNode());
     }
+#endif
 
+#if ENABLE(TOUCH_EVENTS) && !PLATFORM(IOS)
     Touch* touch() const { return m_touch; }
     TouchEventContext::TouchListType touchListType() const { return m_touchListType; }
+#endif
 
     Node* moveToParentOrShadowHost(Node& newTarget)
     {
@@ -131,7 +143,7 @@ public:
 
         if (m_currentTreeScope) {
             ASSERT(is<ShadowRoot>(m_currentTreeScope->rootNode()));
-            ASSERT(&newTarget == downcast<ShadowRoot>(m_currentTreeScope->rootNode()).host());
+            ASSERT(&newTarget == downcast<ShadowRoot>(m_currentTreeScope->rootNode()).hostElement());
             ASSERT(m_currentTreeScope->parentTreeScope() == &newTreeScope);
         }
 
@@ -172,7 +184,7 @@ public:
                 return previousHost;
             }
             if (is<ShadowRoot>(scope->rootNode()))
-                previousHost = downcast<ShadowRoot>(scope->rootNode()).host();
+                previousHost = downcast<ShadowRoot>(scope->rootNode()).hostElement();
             else
                 ASSERT_WITH_SECURITY_IMPLICATION(!scope->parentTreeScope());
         }
@@ -184,10 +196,11 @@ private:
     const TreeScope& m_relatedNodeTreeScope;
     Node* m_relatedNodeInCurrentTreeScope;
     TreeScope* m_currentTreeScope;
+#if ENABLE(TOUCH_EVENTS) && !PLATFORM(IOS)
     Touch* m_touch;
     TouchEventContext::TouchListType m_touchListType;
-};
 #endif
+};
 
 inline EventTarget* eventTargetRespectingTargetRules(Node& referenceNode)
 {
@@ -372,7 +385,7 @@ static inline bool shouldEventCrossShadowBoundary(Event& event, ShadowRoot& shad
         if (Element* element = targetNode->document().webkitCurrentFullScreenElement()) {
             // FIXME: We assume that if the full screen element is a media element that it's
             // the video-only full screen. Both here and elsewhere. But that is probably wrong.
-            if (element->isMediaElement() && shadowRoot.host() == element)
+            if (element->isMediaElement() && shadowRoot.hostElement() == element)
                 return false;
         }
     }
@@ -400,25 +413,21 @@ static Node* nodeOrHostIfPseudoElement(Node* node)
     return is<PseudoElement>(*node) ? downcast<PseudoElement>(*node).hostElement() : node;
 }
 
-EventPath::EventPath(Node& originalTarget, Event& event)
-    : m_event(event)
+EventPath::EventPath(Node& targetNode, Event& event)
 {
-#if ENABLE(SHADOW_DOM)
-    Vector<EventTarget*, 16> targetStack;
-#endif
-
+    bool inDocument = targetNode.inDocument();
+    bool isSVGElement = targetNode.isSVGElement();
     bool isMouseOrFocusEvent = event.isMouseEvent() || event.isFocusEvent();
 #if ENABLE(TOUCH_EVENTS) && !PLATFORM(IOS)
     bool isTouchEvent = event.isTouchEvent();
 #endif
     EventTarget* target = nullptr;
 
-    Node* node = nodeOrHostIfPseudoElement(&originalTarget);
+    Node* node = nodeOrHostIfPseudoElement(&targetNode);
     while (node) {
-        if (!target)
+        if (!target || !isSVGElement) // FIXME: This code doesn't make sense once we've climbed out of the SVG subtree in a HTML document.
             target = eventTargetRespectingTargetRules(*node);
-        ContainerNode* parent;
-        for (; node; node = parent) {
+        for (; node; node = node->parentNode()) {
             EventTarget* currentTarget = eventTargetRespectingTargetRules(*node);
             if (isMouseOrFocusEvent)
                 m_path.append(std::make_unique<MouseOrFocusEventContext>(node, currentTarget, target));
@@ -428,39 +437,14 @@ EventPath::EventPath(Node& originalTarget, Event& event)
 #endif
             else
                 m_path.append(std::make_unique<EventContext>(node, currentTarget, target));
+            if (!inDocument)
+                return;
             if (is<ShadowRoot>(*node))
                 break;
-            parent = node->parentNode();
-            if (!parent)
-                return;
-#if ENABLE(SHADOW_DOM)
-            if (ShadowRoot* shadowRootOfParent = parent->shadowRoot()) {
-                if (auto* assignedSlot = shadowRootOfParent->findAssignedSlot(*node)) {
-                    // node is assigned to a slot. Continue dispatching the event at this slot.
-                    targetStack.append(target);
-                    parent = assignedSlot;
-                    target = assignedSlot;
-                }
-            }
-#endif
-            node = parent;
         }
-
-        ShadowRoot& shadowRoot = downcast<ShadowRoot>(*node);
-        // At a shadow root. Continue dispatching the event at the shadow host.
-#if ENABLE(SHADOW_DOM)
-        if (!targetStack.isEmpty()) {
-            // Move target back to a descendant of the shadow host if the event did not originate in this shadow tree or its inner shadow trees.
-            target = targetStack.last();
-            targetStack.removeLast();
-            ASSERT(shadowRoot.host()->contains(target->toNode()));
-        } else
-#endif
-            target = nullptr;
-
-        if (!shouldEventCrossShadowBoundary(event, shadowRoot, originalTarget))
+        if (!node || !shouldEventCrossShadowBoundary(event, downcast<ShadowRoot>(*node), *target))
             return;
-        node = shadowRoot.host();
+        node = downcast<ShadowRoot>(*node).hostElement();
     }
 }
 
@@ -501,170 +485,30 @@ bool EventPath::updateTouchLists(const TouchEvent& touchEvent)
 }
 #endif
 
-class RelatedNodeRetargeter {
-public:
-    RelatedNodeRetargeter(Node& relatedNode, TreeScope& targetTreeScope)
-        : m_relatedNode(relatedNode)
-        , m_retargetedRelatedNode(&relatedNode)
-    {
-        TreeScope* currentTreeScope = &m_relatedNode.treeScope();
-        if (LIKELY(currentTreeScope == &targetTreeScope))
-            return;
-
-        if (&currentTreeScope->documentScope() != &targetTreeScope.documentScope()) {
-            m_hasDifferentTreeRoot = true;
-            m_retargetedRelatedNode = nullptr;
-            return;
-        }
-        if (relatedNode.inDocument() != targetTreeScope.rootNode().inDocument()) {
-            m_hasDifferentTreeRoot = true;
-            while (m_retargetedRelatedNode->isInShadowTree())
-                m_retargetedRelatedNode = downcast<ShadowRoot>(m_retargetedRelatedNode->treeScope().rootNode()).host();
-            return;
-        }
-
-        collectTreeScopes();
-
-        // FIXME: We should collect this while constructing the event path.
-        Vector<TreeScope*, 8> targetTreeScopeAncestors;
-        for (TreeScope* currentTreeScope = &targetTreeScope; currentTreeScope; currentTreeScope = currentTreeScope->parentTreeScope())
-            targetTreeScopeAncestors.append(currentTreeScope);
-        ASSERT_WITH_SECURITY_IMPLICATION(!targetTreeScopeAncestors.isEmpty());
-
-        unsigned i = m_ancestorTreeScopes.size();
-        unsigned j = targetTreeScopeAncestors.size();
-        ASSERT_WITH_SECURITY_IMPLICATION(m_ancestorTreeScopes.last() == targetTreeScopeAncestors.last());
-        while (m_ancestorTreeScopes[i - 1] == targetTreeScopeAncestors[j - 1]) {
-            i--;
-            j--;
-            if (!i || !j)
-                break;
-        }
-
-        m_lowestCommonAncestorIndex = i;
-        m_retargetedRelatedNode = nodeInLowestCommonAncestor();
-    }
-
-    Node* currentNode(TreeScope& currentTreeScope)
-    {
-        checkConsistency(currentTreeScope);
-        return m_retargetedRelatedNode;
-    }
-
-    void moveToNewTreeScope(TreeScope* previousTreeScope, TreeScope& newTreeScope)
-    {
-        if (m_hasDifferentTreeRoot)
-            return;
-
-        auto& currentRelatedNodeScope = m_retargetedRelatedNode->treeScope();
-        if (previousTreeScope != &currentRelatedNodeScope) {
-            // currentRelatedNode is still outside our shadow tree. New tree scope may contain currentRelatedNode
-            // but there is no need to re-target it. Moving into a slot (thereby a deeper shadow tree) doesn't matter.
-            return;
-        }
-
-        bool enteredSlot = newTreeScope.parentTreeScope() == previousTreeScope;
-        if (enteredSlot) {
-            if (m_lowestCommonAncestorIndex) {
-                if (m_ancestorTreeScopes.isEmpty())
-                    collectTreeScopes();
-                bool relatedNodeIsInSlot = m_ancestorTreeScopes[m_lowestCommonAncestorIndex - 1] == &newTreeScope;
-                if (relatedNodeIsInSlot) {
-                    m_lowestCommonAncestorIndex--;
-                    m_retargetedRelatedNode = nodeInLowestCommonAncestor();
-                    ASSERT(&newTreeScope == &m_retargetedRelatedNode->treeScope());
-                }
-            } else
-                ASSERT(m_retargetedRelatedNode == &m_relatedNode);
-        } else {
-            ASSERT(previousTreeScope->parentTreeScope() == &newTreeScope);
-            m_lowestCommonAncestorIndex++;
-            ASSERT_WITH_SECURITY_IMPLICATION(m_ancestorTreeScopes.isEmpty() || m_lowestCommonAncestorIndex < m_ancestorTreeScopes.size());
-            m_retargetedRelatedNode = downcast<ShadowRoot>(currentRelatedNodeScope.rootNode()).host();
-            ASSERT(&newTreeScope == &m_retargetedRelatedNode->treeScope());
-        }
-    }
-
-    void checkConsistency(TreeScope& currentTreeScope)
-    {
-#if !ASSERT_DISABLED
-        for (auto* relatedNodeScope = &m_relatedNode.treeScope(); relatedNodeScope; relatedNodeScope = relatedNodeScope->parentTreeScope()) {
-            for (auto* targetScope = &currentTreeScope; targetScope; targetScope = targetScope->parentTreeScope()) {
-                if (targetScope == relatedNodeScope) {
-                    ASSERT(&m_retargetedRelatedNode->treeScope() == relatedNodeScope);
-                    return;
-                }
-            }
-        }
-        ASSERT(!m_retargetedRelatedNode);
-#else
-        UNUSED_PARAM(currentTreeScope);
-#endif
-    }
-
-private:
-    Node* nodeInLowestCommonAncestor()
-    {
-        if (!m_lowestCommonAncestorIndex)
-            return &m_relatedNode;
-        auto& rootNode = m_ancestorTreeScopes[m_lowestCommonAncestorIndex - 1]->rootNode();
-        return downcast<ShadowRoot>(rootNode).host();
-    }
-
-    void collectTreeScopes()
-    {
-        ASSERT(m_ancestorTreeScopes.isEmpty());
-        for (TreeScope* currentTreeScope = &m_relatedNode.treeScope(); currentTreeScope; currentTreeScope = currentTreeScope->parentTreeScope())
-            m_ancestorTreeScopes.append(currentTreeScope);
-        ASSERT_WITH_SECURITY_IMPLICATION(!m_ancestorTreeScopes.isEmpty());
-    }
-
-    Node& m_relatedNode;
-    Node* m_retargetedRelatedNode;
-    Vector<TreeScope*, 8> m_ancestorTreeScopes;
-    unsigned m_lowestCommonAncestorIndex { 0 };
-    bool m_hasDifferentTreeRoot { false };
-};
-
 void EventPath::setRelatedTarget(Node& origin, EventTarget& relatedTarget)
 {
-    UNUSED_PARAM(origin);
     Node* relatedNode = relatedTarget.toNode();
-    if (!relatedNode || m_path.isEmpty())
+    if (!relatedNode)
         return;
 
-    RelatedNodeRetargeter retargeter(*relatedNode, downcast<MouseOrFocusEventContext>(*m_path[0]).node()->treeScope());
+    EventRelatedNodeResolver resolver(*relatedNode);
 
     bool originIsRelatedTarget = &origin == relatedNode;
-    // FIXME: We should add a new flag on Event instead.
-    bool shouldTrimEventPath = m_event.type() == eventNames().mouseoverEvent
-        || m_event.type() == eventNames().mousemoveEvent
-        || m_event.type() == eventNames().mouseoutEvent;
     Node& rootNodeInOriginTreeScope = origin.treeScope().rootNode();
-    TreeScope* previousTreeScope = nullptr;
-    size_t originalEventPathSize = m_path.size();
-    for (unsigned contextIndex = 0; contextIndex < originalEventPathSize; contextIndex++) {
-        auto& context = downcast<MouseOrFocusEventContext>(*m_path[contextIndex]);
 
-        TreeScope& currentTreeScope = context.node()->treeScope();
-        if (UNLIKELY(previousTreeScope && &currentTreeScope != previousTreeScope))
-            retargeter.moveToNewTreeScope(previousTreeScope, currentTreeScope);
-
-        Node* currentRelatedNode = retargeter.currentNode(currentTreeScope);
-        if (UNLIKELY(shouldTrimEventPath && !originIsRelatedTarget && context.target() == currentRelatedNode)) {
-            m_path.shrink(contextIndex);
+    size_t eventPathSize = m_path.size();
+    size_t i = 0;
+    while (i < eventPathSize) {
+        Node* contextNode = m_path[i]->node();
+        Node* currentRelatedNode = resolver.moveToParentOrShadowHost(*contextNode);
+        if (!originIsRelatedTarget && m_path[i]->target() == currentRelatedNode)
             break;
-        }
-
-        context.setRelatedTarget(currentRelatedNode);
-
-        if (UNLIKELY(shouldTrimEventPath && originIsRelatedTarget && context.node() == &rootNodeInOriginTreeScope)) {
-            m_path.shrink(contextIndex + 1);
+        toMouseOrFocusEventContext(*m_path[i]).setRelatedTarget(currentRelatedNode);
+        i++;
+        if (originIsRelatedTarget && &rootNodeInOriginTreeScope == contextNode)
             break;
-        }
-
-        previousTreeScope = &currentTreeScope;
     }
+    m_path.shrink(i);
 }
 
 bool EventPath::hasEventListeners(const AtomicString& eventType) const

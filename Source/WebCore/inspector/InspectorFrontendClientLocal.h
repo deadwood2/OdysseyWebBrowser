@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2010 Google Inc. All rights reserved.
- * Copyright (C) 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -56,7 +55,7 @@ public:
         virtual void setProperty(const String& name, const String& value);
     };
 
-    WEBCORE_EXPORT InspectorFrontendClientLocal(InspectorController* inspectedPageController, Page* frontendPage, std::unique_ptr<Settings>);
+    WEBCORE_EXPORT InspectorFrontendClientLocal(InspectorController*, Page*, std::unique_ptr<Settings>);
     WEBCORE_EXPORT virtual ~InspectorFrontendClientLocal();
 
     WEBCORE_EXPORT virtual void windowObjectCleared() override final;
@@ -105,8 +104,6 @@ public:
 
     WEBCORE_EXPORT void setAttachedWindow(DockSide);
 
-    WEBCORE_EXPORT Page* inspectedPage() const;
-    Page* frontendPage() const { return m_frontendPage; }
 protected:
     virtual void setAttachedWindowHeight(unsigned) = 0;
     virtual void setAttachedWindowWidth(unsigned) = 0;
@@ -117,15 +114,15 @@ private:
     void evaluateOnLoad(const String& expression);
 
     friend class FrontendMenuProvider;
-    InspectorController* m_inspectedPageController { nullptr };
-    Page* m_frontendPage { nullptr };
+    InspectorController* m_inspectorController;
+    Page* m_frontendPage;
     // TODO(yurys): this ref shouldn't be needed.
     RefPtr<InspectorFrontendHost> m_frontendHost;
     std::unique_ptr<InspectorFrontendClientLocal::Settings> m_settings;
-    bool m_frontendLoaded { false };
+    bool m_frontendLoaded;
     DockSide m_dockSide;
     Vector<String> m_evaluateOnLoad;
-    Ref<InspectorBackendDispatchTask> m_dispatchTask;
+    std::unique_ptr<InspectorBackendDispatchTask> m_dispatchTask;
 };
 
 } // namespace WebCore

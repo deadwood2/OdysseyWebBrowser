@@ -90,14 +90,15 @@ void ReadableStream::close()
 
 void ReadableStream::releaseReader()
 {
-    for (auto& request : m_readRequests)
-        request.resolveEnd();
-    if (m_reader)
-        m_releasedReaders.append(WTF::move(m_reader));
-
     if (m_closedPromise)
         m_closedPromise.value().resolve(nullptr);
+
+    for (auto& request : m_readRequests)
+        request.resolveEnd();
+
     clearCallbacks();
+    if (m_reader)
+        m_releasedReaders.append(WTF::move(m_reader));
 }
 
 void ReadableStream::changeStateToErrored()
@@ -106,20 +107,18 @@ void ReadableStream::changeStateToErrored()
         return;
 
     clearValues();
-
     m_state = State::Errored;
 
-    if (!m_reader)
-        return;
-
     JSC::JSValue error = this->error();
-    for (auto& request : m_readRequests)
-        request.reject(error);
-    m_releasedReaders.append(WTF::move(m_reader));
-
     if (m_closedPromise)
         m_closedPromise.value().reject(error);
+
+    for (auto& request : m_readRequests)
+        request.reject(error);
+
     clearCallbacks();
+    if (m_reader)
+        releaseReader();
 }
 
 void ReadableStream::start()

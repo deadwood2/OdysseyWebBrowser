@@ -38,7 +38,6 @@
 #include "DFGRegisterBank.h"
 #include "FPRInfo.h"
 #include "GPRInfo.h"
-#include "HandlerInfo.h"
 #include "JITCode.h"
 #include "JITInlineCacheGenerator.h"
 #include "LinkBuffer.h"
@@ -151,20 +150,11 @@ public:
         m_disassembler->setEndOfCode(labelIgnoringWatchpoints());
     }
     
-    CallSiteIndex addCallSite(CodeOrigin codeOrigin)
-    {
-        return m_jitCode->common.addCodeOrigin(codeOrigin);
-    }
-
     void emitStoreCodeOrigin(CodeOrigin codeOrigin)
     {
-        CallSiteIndex callSite = addCallSite(codeOrigin);
-        emitStoreCallSiteIndex(callSite);
-    }
-
-    void emitStoreCallSiteIndex(CallSiteIndex callSite)
-    {
-        store32(TrustedImm32(callSite.bits()), tagFor(static_cast<VirtualRegister>(JSStack::ArgumentCount)));
+        unsigned index = m_jitCode->common.addCodeOrigin(codeOrigin);
+        unsigned locationBits = CallFrame::Location::encodeAsCodeOriginIndex(index);
+        store32(TrustedImm32(locationBits), tagFor(static_cast<VirtualRegister>(JSStack::ArgumentCount)));
     }
 
     // Add a call out from JIT code, without an exception check.
@@ -175,7 +165,15 @@ public:
         return functionCall;
     }
     
-    void exceptionCheck();
+    void exceptionCheck(Jump jumpToHandler)
+    {
+        m_exceptionChecks.append(jumpToHandler);
+    }
+    
+    void exceptionCheck()
+    {
+        m_exceptionChecks.append(emitExceptionCheck());
+    }
 
     void exceptionCheckWithCallFrameRollback()
     {
@@ -257,20 +255,27 @@ public:
 #endif
     }
 
+    template<typename T>
+    Jump branchStructurePtr(RelationalCondition cond, T left, Structure* structure)
+    {
+#if USE(JSVALUE64)
+        return branch32(cond, left, TrustedImm32(structure->id()));
+#else
+        return branchPtr(cond, left, TrustedImmPtr(structure));
+#endif
+    }
+
     void noticeOSREntry(BasicBlock&, JITCompiler::Label blockHead, LinkBuffer&);
     
     RefPtr<JITCode> jitCode() { return m_jitCode; }
     
     Vector<Label>& blockHeads() { return m_blockHeads; }
 
-    CallSiteIndex recordCallSiteAndGenerateExceptionHandlingOSRExitIfNeeded(const CodeOrigin&, unsigned eventStreamIndex);
-
 private:
     friend class OSRExitJumpPlaceholder;
     
     // Internal implementation to compile.
     void compileEntry();
-    void compileSetupRegistersForEntry();
     void compileBody();
     void link(LinkBuffer&);
     
@@ -278,10 +283,7 @@ private:
     void compileExceptionHandlers();
     void linkOSRExits();
     void disassemble(LinkBuffer&);
-
-    bool willCatchExceptionInMachineFrame(CodeOrigin, CodeOrigin& opCatchOriginOut, HandlerInfo*& catchHandlerOut);
-    void appendExceptionHandlingOSRExit(unsigned eventStreamIndex, CodeOrigin, HandlerInfo* exceptionHandler, CallSiteIndex, MacroAssembler::JumpList jumpsToFail = MacroAssembler::JumpList());
-
+    
     // The dataflow graph currently being generated.
     Graph& m_graph;
 
@@ -318,13 +320,6 @@ private:
     Vector<JSCallRecord, 4> m_jsCalls;
     SegmentedVector<OSRExitCompilationInfo, 4> m_exitCompilationInfo;
     Vector<Vector<Label>> m_exitSiteLabels;
-    
-    struct ExceptionHandlingOSRExitInfo {
-        OSRExitCompilationInfo& exitInfo;
-        HandlerInfo baselineExceptionHandler;
-        CallSiteIndex callSiteIndex;
-    };
-    Vector<ExceptionHandlingOSRExitInfo> m_exceptionHandlerOSRExitCallSites;
     
     Call m_callArityFixup;
     Label m_arityCheck;

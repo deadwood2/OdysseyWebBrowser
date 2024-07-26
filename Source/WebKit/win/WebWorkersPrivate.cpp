@@ -35,11 +35,9 @@
 
 // IUnknown -------------------------------------------------------------------
 
-HRESULT WebWorkersPrivate::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE WebWorkersPrivate::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, __uuidof(IWebWorkersPrivate)))
         *ppvObject = this;
     else if (IsEqualGUID(riid, IID_IUnknown))
@@ -53,12 +51,12 @@ HRESULT WebWorkersPrivate::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** 
     return S_OK;
 }
 
-ULONG WebWorkersPrivate::AddRef()
+ULONG STDMETHODCALLTYPE WebWorkersPrivate::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG WebWorkersPrivate::Release()
+ULONG STDMETHODCALLTYPE WebWorkersPrivate::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -69,7 +67,7 @@ ULONG WebWorkersPrivate::Release()
 
 // IWebWorkersPrivate ---------------------------------------------------------
 
-HRESULT WebWorkersPrivate::workerThreadCount(_Out_ UINT* number)
+HRESULT WebWorkersPrivate::workerThreadCount(UINT* number)
 {
     if (!number)
         return E_POINTER;
@@ -88,6 +86,7 @@ WebWorkersPrivate* WebWorkersPrivate::createInstance()
 }
 
 WebWorkersPrivate::WebWorkersPrivate()
+    : m_refCount(0)
 {
     gClassCount++;
     gClassNameCount().add("WebWorkersPrivate");

@@ -395,8 +395,7 @@ void CompositeEditCommand::insertNodeAt(PassRefPtr<Node> insertChild, const Posi
 void CompositeEditCommand::appendNode(PassRefPtr<Node> node, PassRefPtr<ContainerNode> parent)
 {
     ASSERT(canHaveChildrenForEditing(parent.get()));
-    ASSERT(node);
-    applyCommandToComposite(AppendNodeCommand::create(parent, *node, editingAction()));
+    applyCommandToComposite(AppendNodeCommand::create(parent, node, editingAction()));
 }
 
 void CompositeEditCommand::removeChildrenInRange(PassRefPtr<Node> node, unsigned from, unsigned to)
@@ -415,7 +414,7 @@ void CompositeEditCommand::removeNode(PassRefPtr<Node> node, ShouldAssumeContent
 {
     if (!node || !node->nonShadowBoundaryParentNode())
         return;
-    applyCommandToComposite(RemoveNodeCommand::create(*node, shouldAssumeContentIsAlwaysEditable));
+    applyCommandToComposite(RemoveNodeCommand::create(node, shouldAssumeContentIsAlwaysEditable));
 }
 
 void CompositeEditCommand::removeNodePreservingChildren(PassRefPtr<Node> node, ShouldAssumeContentIsAlwaysEditable shouldAssumeContentIsAlwaysEditable)
@@ -1542,7 +1541,7 @@ PassRefPtr<Node> CompositeEditCommand::splitTreeToNode(Node* start, Node* end, b
     return node.release();
 }
 
-Ref<Element> createBlockPlaceholderElement(Document& document)
+PassRefPtr<Element> createBlockPlaceholderElement(Document& document)
 {
     return document.createElement(brTag, false);
 }

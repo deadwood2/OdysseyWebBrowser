@@ -29,6 +29,7 @@
 
 #include "NodeFilterCondition.h"
 
+#include <wtf/PassRefPtr.h>
 #include <wtf/RetainPtr.h>
 
 @protocol DOMNodeFilter;
@@ -43,7 +44,7 @@ namespace WebCore {
             return adoptRef(*new ObjCNodeFilterCondition(filter));
         }
 
-        virtual short acceptNode(Node*) const;
+        virtual short acceptNode(JSC::ExecState*, Node*) const;
 
     private:
         ObjCNodeFilterCondition(id <DOMNodeFilter> filter)

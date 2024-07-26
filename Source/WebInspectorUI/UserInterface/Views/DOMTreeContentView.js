@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,89 +23,91 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.DOMTreeContentView = class DOMTreeContentView extends WebInspector.ContentView
+WebInspector.DOMTreeContentView = function(representedObject)
 {
-    constructor(representedObject)
-    {
-        console.assert(representedObject);
+    console.assert(representedObject);
 
-        super(representedObject);
+    WebInspector.ContentView.call(this, representedObject);
 
-        this._compositingBordersButtonNavigationItem = new WebInspector.ActivateButtonNavigationItem("layer-borders", WebInspector.UIString("Show compositing borders"), WebInspector.UIString("Hide compositing borders"), "Images/LayerBorders.svg", 13, 13);
-        this._compositingBordersButtonNavigationItem.addEventListener(WebInspector.ButtonNavigationItem.Event.Clicked, this._toggleCompositingBorders, this);
-        this._compositingBordersButtonNavigationItem.enabled = !!PageAgent.getCompositingBordersVisible;
+    this._compositingBordersButtonNavigationItem = new WebInspector.ActivateButtonNavigationItem("layer-borders", WebInspector.UIString("Show compositing borders"), WebInspector.UIString("Hide compositing borders"), "Images/LayerBorders.svg", 13, 13);
+    this._compositingBordersButtonNavigationItem.addEventListener(WebInspector.ButtonNavigationItem.Event.Clicked, this._toggleCompositingBorders, this);
+    this._compositingBordersButtonNavigationItem.enabled = !!PageAgent.getCompositingBordersVisible;
 
-        WebInspector.showPaintRectsSetting.addEventListener(WebInspector.Setting.Event.Changed, this._showPaintRectsSettingChanged, this);
-        this._paintFlashingButtonNavigationItem = new WebInspector.ActivateButtonNavigationItem("paint-flashing", WebInspector.UIString("Enable paint flashing"), WebInspector.UIString("Disable paint flashing"), "Images/PaintFlashing.svg", 16, 16);
-        this._paintFlashingButtonNavigationItem.addEventListener(WebInspector.ButtonNavigationItem.Event.Clicked, this._togglePaintFlashing, this);
-        this._paintFlashingButtonNavigationItem.enabled = !!PageAgent.setShowPaintRects;
-        this._paintFlashingButtonNavigationItem.activated = PageAgent.setShowPaintRects && WebInspector.showPaintRectsSetting.value;
+    WebInspector.showPaintRectsSetting.addEventListener(WebInspector.Setting.Event.Changed, this._showPaintRectsSettingChanged, this);
+    this._paintFlashingButtonNavigationItem = new WebInspector.ActivateButtonNavigationItem("paint-flashing", WebInspector.UIString("Enable paint flashing"), WebInspector.UIString("Disable paint flashing"), "Images/PaintFlashing.svg", 16, 16);
+    this._paintFlashingButtonNavigationItem.addEventListener(WebInspector.ButtonNavigationItem.Event.Clicked, this._togglePaintFlashing, this);
+    this._paintFlashingButtonNavigationItem.enabled = !!PageAgent.setShowPaintRects;
+    this._paintFlashingButtonNavigationItem.activated = PageAgent.setShowPaintRects && WebInspector.showPaintRectsSetting.value;
 
-        WebInspector.showShadowDOMSetting.addEventListener(WebInspector.Setting.Event.Changed, this._showShadowDOMSettingChanged, this);
-        this._showsShadowDOMButtonNavigationItem = new WebInspector.ActivateButtonNavigationItem("shows-shadow-DOM", WebInspector.UIString("Show shadow DOM nodes"), WebInspector.UIString("Hide shadow DOM nodes"), "Images/ShadowDOM.svg", 13, 13);
-        this._showsShadowDOMButtonNavigationItem.addEventListener(WebInspector.ButtonNavigationItem.Event.Clicked, this._toggleShowsShadowDOMSetting, this);
-        this._showShadowDOMSettingChanged();
+    WebInspector.showShadowDOMSetting.addEventListener(WebInspector.Setting.Event.Changed, this._showShadowDOMSettingChanged, this);
+    this._showsShadowDOMButtonNavigationItem = new WebInspector.ActivateButtonNavigationItem("shows-shadow-DOM", WebInspector.UIString("Show shadow DOM nodes"), WebInspector.UIString("Hide shadow DOM nodes"), "Images/ShadowDOM.svg", 13, 13);
+    this._showsShadowDOMButtonNavigationItem.addEventListener(WebInspector.ButtonNavigationItem.Event.Clicked, this._toggleShowsShadowDOMSetting, this);
+    this._showShadowDOMSettingChanged();
 
-        this.element.classList.add("dom-tree");
-        this.element.addEventListener("click", this._mouseWasClicked.bind(this), false);
+    this.element.classList.add("dom-tree");
+    this.element.addEventListener("click", this._mouseWasClicked.bind(this), false);
 
-        this._domTreeOutline = new WebInspector.DOMTreeOutline(true, true, true);
-        this._domTreeOutline.addEventListener(WebInspector.DOMTreeOutline.Event.SelectedNodeChanged, this._selectedNodeDidChange, this);
-        this._domTreeOutline.wireToDomAgent();
-        this._domTreeOutline.editable = true;
-        this.element.appendChild(this._domTreeOutline.element);
+    this._domTreeOutline = new WebInspector.DOMTreeOutline(true, true, true);
+    this._domTreeOutline.addEventListener(WebInspector.DOMTreeOutline.Event.SelectedNodeChanged, this._selectedNodeDidChange, this);
+    this._domTreeOutline.wireToDomAgent();
+    this._domTreeOutline.editable = true;
+    this.element.appendChild(this._domTreeOutline.element);
 
-        WebInspector.domTreeManager.addEventListener(WebInspector.DOMTreeManager.Event.AttributeModified, this._domNodeChanged, this);
-        WebInspector.domTreeManager.addEventListener(WebInspector.DOMTreeManager.Event.AttributeRemoved, this._domNodeChanged, this);
-        WebInspector.domTreeManager.addEventListener(WebInspector.DOMTreeManager.Event.CharacterDataModified, this._domNodeChanged, this);
+    WebInspector.domTreeManager.addEventListener(WebInspector.DOMTreeManager.Event.AttributeModified, this._domNodeChanged, this);
+    WebInspector.domTreeManager.addEventListener(WebInspector.DOMTreeManager.Event.AttributeRemoved, this._domNodeChanged, this);
+    WebInspector.domTreeManager.addEventListener(WebInspector.DOMTreeManager.Event.CharacterDataModified, this._domNodeChanged, this);
 
-        this._lastSelectedNodePathSetting = new WebInspector.Setting("last-selected-node-path", null);
+    this._lastSelectedNodePathSetting = new WebInspector.Setting("last-selected-node-path", null);
 
-        this._numberOfSearchResults = null;
-    }
+    this._numberOfSearchResults = null;
+};
+
+WebInspector.DOMTreeContentView.prototype = {
+    constructor: WebInspector.DOMTreeContentView,
+    __proto__: WebInspector.ContentView.prototype,
 
     // Public
 
     get navigationItems()
     {
         return [this._showsShadowDOMButtonNavigationItem, this._compositingBordersButtonNavigationItem, this._paintFlashingButtonNavigationItem];
-    }
+    },
 
     get domTreeOutline()
     {
         return this._domTreeOutline;
-    }
+    },
 
     get scrollableElements()
     {
         return [this.element];
-    }
+    },
 
-    updateLayout()
+    updateLayout: function()
     {
         this._domTreeOutline.updateSelection();
-    }
+    },
 
-    shown()
+    shown: function()
     {
         this._domTreeOutline.setVisible(true, WebInspector.isConsoleFocused());
         this._updateCompositingBordersButtonToMatchPageSettings();
-    }
+    },
 
-    hidden()
+    hidden: function()
     {
         WebInspector.domTreeManager.hideDOMNodeHighlight();
         this._domTreeOutline.setVisible(false);
-    }
+    },
 
-    closed()
+    closed: function()
     {
         WebInspector.showPaintRectsSetting.removeEventListener(null, null, this);
         WebInspector.showShadowDOMSetting.removeEventListener(null, null, this);
         WebInspector.domTreeManager.removeEventListener(null, null, this);
 
         this._domTreeOutline.close();
-    }
+    },
 
     get selectionPathComponents()
     {
@@ -127,9 +129,9 @@ WebInspector.DOMTreeContentView = class DOMTreeContentView extends WebInspector.
         }
 
         return pathComponents;
-    }
+    },
 
-    restoreFromCookie(cookie)
+    restoreFromCookie: function(cookie)
     {
         if (!cookie || !cookie.nodeToSelect)
             return;
@@ -139,14 +141,14 @@ WebInspector.DOMTreeContentView = class DOMTreeContentView extends WebInspector.
         // Because nodeToSelect is ephemeral, we don't want to keep
         // it around in the back-forward history entries.
         cookie.nodeToSelect = undefined;
-    }
+    },
 
-    selectAndRevealDOMNode(domNode, preventFocusChange)
+    selectAndRevealDOMNode: function(domNode, preventFocusChange)
     {
         this._domTreeOutline.selectDOMNode(domNode, !preventFocusChange);
-    }
+    },
 
-    handleCopyEvent(event)
+    handleCopyEvent: function(event)
     {
         var selectedDOMNode = this._domTreeOutline.selectedDOMNode();
         if (!selectedDOMNode)
@@ -156,12 +158,12 @@ WebInspector.DOMTreeContentView = class DOMTreeContentView extends WebInspector.
         event.preventDefault();
 
         selectedDOMNode.copyNode();
-    }
+    },
 
     get supportsSave()
     {
         return WebInspector.canArchiveMainFrame();
-    }
+    },
 
     get saveData()
     {
@@ -171,22 +173,22 @@ WebInspector.DOMTreeContentView = class DOMTreeContentView extends WebInspector.
         }
 
         return { customSaveHandler: saveHandler };
-    }
+    },
 
     get supportsSearch()
     {
         return true;
-    }
+    },
 
     get numberOfSearchResults()
     {
         return this._numberOfSearchResults;
-    }
+    },
 
     get hasPerformedSearch()
     {
         return this._numberOfSearchResults !== null;
-    }
+    },
 
     set automaticallyRevealFirstSearchResult(reveal)
     {
@@ -197,9 +199,9 @@ WebInspector.DOMTreeContentView = class DOMTreeContentView extends WebInspector.
             if (this._currentSearchResultIndex === -1)
                 this.revealNextSearchResult();
         }
-    }
+    },
 
-    performSearch(query)
+    performSearch: function(query)
     {
         if (this._searchQuery === query)
             return;
@@ -236,16 +238,16 @@ WebInspector.DOMTreeContentView = class DOMTreeContentView extends WebInspector.
         }
 
         this.getSearchContextNodes(contextNodesReady.bind(this));
-    }
+    },
 
-    getSearchContextNodes(callback)
+    getSearchContextNodes: function(callback)
     {
         // Overwrite this to limit the search to just a subtree.
         // Passing undefined will make DOMAgent.performSearch search through all the documents.
         callback(undefined);
-    }
+    },
 
-    searchCleared()
+    searchCleared: function()
     {
         if (this._searchIdentifier) {
             DOMAgent.discardSearchResults(this._searchIdentifier);
@@ -256,9 +258,9 @@ WebInspector.DOMTreeContentView = class DOMTreeContentView extends WebInspector.
         this._searchIdentifier = null;
         this._numberOfSearchResults = null;
         this._currentSearchResultIndex = -1;
-    }
+    },
 
-    revealPreviousSearchResult(changeFocus)
+    revealPreviousSearchResult: function(changeFocus)
     {
         if (!this._numberOfSearchResults)
             return;
@@ -269,9 +271,9 @@ WebInspector.DOMTreeContentView = class DOMTreeContentView extends WebInspector.
             this._currentSearchResultIndex = this._numberOfSearchResults - 1;
 
         this._revealSearchResult(this._currentSearchResultIndex, changeFocus);
-    }
+    },
 
-    revealNextSearchResult(changeFocus)
+    revealNextSearchResult: function(changeFocus)
     {
         if (!this._numberOfSearchResults)
             return;
@@ -282,11 +284,11 @@ WebInspector.DOMTreeContentView = class DOMTreeContentView extends WebInspector.
             this._currentSearchResultIndex = 0;
 
         this._revealSearchResult(this._currentSearchResultIndex, changeFocus);
-    }
+    },
 
     // Private
 
-    _revealSearchResult(index, changeFocus)
+    _revealSearchResult: function(index, changeFocus)
     {
         console.assert(this._searchIdentifier);
 
@@ -316,9 +318,9 @@ WebInspector.DOMTreeContentView = class DOMTreeContentView extends WebInspector.
         }
 
         DOMAgent.getSearchResults(this._searchIdentifier, index, index + 1, revealResult.bind(this));
-    }
+    },
 
-    _restoreSelectedNodeAfterUpdate(documentURL, defaultNode)
+    _restoreSelectedNodeAfterUpdate: function(documentURL, defaultNode)
     {
         if (!WebInspector.domTreeManager.restoreSelectedNodeIsAllowed)
             return;
@@ -353,9 +355,9 @@ WebInspector.DOMTreeContentView = class DOMTreeContentView extends WebInspector.
             WebInspector.domTreeManager.pushNodeByPathToFrontend(this._lastSelectedNodePathSetting.value.path, selectLastSelectedNode.bind(this));
         else
             selectNode.call(this);
-    }
+    },
 
-    _selectedNodeDidChange(event)
+    _selectedNodeDidChange: function(event)
     {
         var selectedDOMNode = this._domTreeOutline.selectedDOMNode();
         if (selectedDOMNode && !this._dontSetLastSelectedNodePath)
@@ -365,26 +367,26 @@ WebInspector.DOMTreeContentView = class DOMTreeContentView extends WebInspector.
             ConsoleAgent.addInspectedNode(selectedDOMNode.id);
 
         this.dispatchEventToListeners(WebInspector.ContentView.Event.SelectionPathComponentsDidChange);
-    }
+    },
 
-    _pathComponentSelected(event)
+    _pathComponentSelected: function(event)
     {
         console.assert(event.data.pathComponent instanceof WebInspector.DOMTreeElementPathComponent);
         console.assert(event.data.pathComponent.domTreeElement instanceof WebInspector.DOMTreeElement);
 
         this._domTreeOutline.selectDOMNode(event.data.pathComponent.domTreeElement.representedObject, true);
-    }
+    },
 
-    _domNodeChanged(event)
+    _domNodeChanged: function(event)
     {
         var selectedDOMNode = this._domTreeOutline.selectedDOMNode();
         if (selectedDOMNode !== event.data.node)
             return;
 
         this.dispatchEventToListeners(WebInspector.ContentView.Event.SelectionPathComponentsDidChange);
-    }
+    },
 
-    _mouseWasClicked(event)
+    _mouseWasClicked: function(event)
     {
         var anchorElement = event.target.enclosingNodeOrSelfWithNodeName("a");
         if (!anchorElement || !anchorElement.href)
@@ -422,24 +424,27 @@ WebInspector.DOMTreeContentView = class DOMTreeContentView extends WebInspector.
         // then a double-click happened or another link was clicked.
         // FIXME: The duration might be longer or shorter than the user's configured double click speed.
         this._followLinkTimeoutIdentifier = setTimeout(followLink.bind(this), 333);
-    }
+    },
 
-    _toggleCompositingBorders(event)
+    _toggleCompositingBorders: function(event)
     {
         console.assert(PageAgent.setCompositingBordersVisible);
 
         var activated = !this._compositingBordersButtonNavigationItem.activated;
         this._compositingBordersButtonNavigationItem.activated = activated;
         PageAgent.setCompositingBordersVisible(activated);
-    }
+    },
 
-    _togglePaintFlashing(event)
+    _togglePaintFlashing: function(event)
     {
         WebInspector.showPaintRectsSetting.value = !WebInspector.showPaintRectsSetting.value;
-    }
+    },
 
-    _updateCompositingBordersButtonToMatchPageSettings()
+    _updateCompositingBordersButtonToMatchPageSettings: function()
     {
+        if (!PageAgent.getCompositingBordersVisible)
+            return;
+
         var button = this._compositingBordersButtonNavigationItem;
 
         // We need to sync with the page settings since these can be controlled
@@ -448,28 +453,28 @@ WebInspector.DOMTreeContentView = class DOMTreeContentView extends WebInspector.
             button.activated = error ? false : compositingBordersVisible;
             button.enabled = error !== "unsupported";
         });
-    }
+    },
 
-    _showPaintRectsSettingChanged(event)
+    _showPaintRectsSettingChanged: function(event)
     {
         console.assert(PageAgent.setShowPaintRects);
 
         this._paintFlashingButtonNavigationItem.activated = WebInspector.showPaintRectsSetting.value;
 
         PageAgent.setShowPaintRects(this._paintFlashingButtonNavigationItem.activated);
-    }
+    },
 
-    _showShadowDOMSettingChanged(event)
+    _showShadowDOMSettingChanged: function(event)
     {
         this._showsShadowDOMButtonNavigationItem.activated = WebInspector.showShadowDOMSetting.value;
-    }
+    },
 
-    _toggleShowsShadowDOMSetting(event)
+    _toggleShowsShadowDOMSetting: function(event)
     {
         WebInspector.showShadowDOMSetting.value = !WebInspector.showShadowDOMSetting.value;
-    }
+    },
 
-    _showSearchHighlights()
+    _showSearchHighlights: function()
     {
         console.assert(this._searchIdentifier);
 
@@ -500,9 +505,9 @@ WebInspector.DOMTreeContentView = class DOMTreeContentView extends WebInspector.
                     treeElement.highlightSearchResults(this._searchQuery);
             }
         }.bind(this));
-    }
+    },
 
-    _hideSearchHighlights()
+    _hideSearchHighlights: function()
     {
         if (!this._searchResultNodes)
             return;

@@ -31,13 +31,13 @@
 #include "TinyBloomFilter.h"
 #include <wtf/Assertions.h>
 #include <wtf/CheckedBoolean.h>
-#include <wtf/Condition.h>
 #include <wtf/DoublyLinkedList.h>
 #include <wtf/HashSet.h>
-#include <wtf/Lock.h>
 #include <wtf/OSAllocator.h>
 #include <wtf/PageBlock.h>
+#include <wtf/SpinLock.h>
 #include <wtf/StdLibExtras.h>
+#include <wtf/ThreadingPrimitives.h>
 
 namespace JSC {
 
@@ -46,7 +46,7 @@ class CopiedBlock;
 
 class CopiedSpace {
     friend class CopyVisitor;
-    friend class Heap;
+    friend class GCThreadSharedData;
     friend class SlotVisitor;
     friend class JIT;
 public:
@@ -113,7 +113,7 @@ private:
 
     HashSet<CopiedBlock*> m_blockSet;
 
-    Lock m_toSpaceLock;
+    SpinLock m_toSpaceLock;
 
     struct CopiedGeneration {
         CopiedGeneration()
@@ -138,7 +138,8 @@ private:
     bool m_inCopyingPhase;
     bool m_shouldDoCopyPhase;
 
-    Lock m_loanedBlocksLock; 
+    Mutex m_loanedBlocksLock; 
+    ThreadCondition m_loanedBlocksCondition;
     size_t m_numberOfLoanedBlocks;
     
     size_t m_bytesRemovedFromOldSpaceDueToReallocation;

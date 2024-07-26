@@ -798,7 +798,7 @@ void CoordinatedGraphicsLayer::resetLayerState()
 bool CoordinatedGraphicsLayer::imageBackingVisible()
 {
     ASSERT(m_coordinatedImageBacking);
-    return transformedVisibleRect().intersects(IntRect(contentsRect()));
+    return tiledBackingStoreVisibleRect().intersects(IntRect(contentsRect()));
 }
 
 void CoordinatedGraphicsLayer::releaseImageBackingIfNeeded()
@@ -860,7 +860,7 @@ void CoordinatedGraphicsLayer::adjustContentsScale()
     m_previousBackingStore = WTF::move(m_mainBackingStore);
 
     // No reason to save the previous backing store for non-visible areas.
-    m_previousBackingStore->removeAllNonVisibleTiles(transformedVisibleRect(), IntRect(0, 0, size().width(), size().height()));
+    m_previousBackingStore->removeAllNonVisibleTiles();
 }
 
 void CoordinatedGraphicsLayer::createBackingStore()
@@ -869,11 +869,11 @@ void CoordinatedGraphicsLayer::createBackingStore()
     m_mainBackingStore->setSupportsAlpha(!contentsOpaque());
 }
 
-void CoordinatedGraphicsLayer::tiledBackingStorePaint(GraphicsContext& context, const IntRect& rect)
+void CoordinatedGraphicsLayer::tiledBackingStorePaint(GraphicsContext* context, const IntRect& rect)
 {
     if (rect.isEmpty())
         return;
-    paintGraphicsLayerContents(context, rect);
+    paintGraphicsLayerContents(*context, rect);
 }
 
 void CoordinatedGraphicsLayer::didUpdateTileBuffers()
@@ -891,20 +891,25 @@ void CoordinatedGraphicsLayer::tiledBackingStoreHasPendingTileCreation()
     notifyFlushRequired();
 }
 
-static void clampToContentsRectIfRectIsInfinite(FloatRect& rect, const FloatSize& contentsSize)
+IntRect CoordinatedGraphicsLayer::tiledBackingStoreContentsRect()
+{
+    return IntRect(0, 0, size().width(), size().height());
+}
+
+static void clampToContentsRectIfRectIsInfinite(FloatRect& rect, const IntRect& contentsRect)
 {
     if (rect.width() >= LayoutUnit::nearlyMax() || rect.width() <= LayoutUnit::nearlyMin()) {
-        rect.setX(0);
-        rect.setWidth(contentsSize.width());
+        rect.setX(contentsRect.x());
+        rect.setWidth(contentsRect.width());
     }
 
     if (rect.height() >= LayoutUnit::nearlyMax() || rect.height() <= LayoutUnit::nearlyMin()) {
-        rect.setY(0);
-        rect.setHeight(contentsSize.height());
+        rect.setY(contentsRect.y());
+        rect.setHeight(contentsRect.height());
     }
 }
 
-IntRect CoordinatedGraphicsLayer::transformedVisibleRect()
+IntRect CoordinatedGraphicsLayer::tiledBackingStoreVisibleRect()
 {
     // Non-invertible layers are not visible.
     if (!m_layerTransform.combined().isInvertible())
@@ -915,7 +920,7 @@ IntRect CoordinatedGraphicsLayer::transformedVisibleRect()
     // so it might spread further than the real visible area (and then even more amplified by the cover rect multiplier).
     ASSERT(m_cachedInverseTransform == m_layerTransform.combined().inverse());
     FloatRect rect = m_cachedInverseTransform.clampedBoundsOfProjectedQuad(FloatQuad(m_coordinator->visibleContentsRect()));
-    clampToContentsRectIfRectIsInfinite(rect, size());
+    clampToContentsRectIfRectIsInfinite(rect, tiledBackingStoreContentsRect());
     return enclosingIntRect(rect);
 }
 
@@ -992,7 +997,7 @@ void CoordinatedGraphicsLayer::updateContentBuffers()
 
     if (m_pendingVisibleRectAdjustment) {
         m_pendingVisibleRectAdjustment = false;
-        m_mainBackingStore->createTilesIfNeeded(transformedVisibleRect(), IntRect(0, 0, size().width(), size().height()));
+        m_mainBackingStore->coverWithTilesIfNeeded();
     }
 
     m_mainBackingStore->updateTileBuffers();
@@ -1145,7 +1150,7 @@ bool CoordinatedGraphicsLayer::addAnimation(const KeyframeValueList& valueList, 
 {
     ASSERT(!keyframesName.isEmpty());
 
-    if (!anim || anim->isEmptyOrZeroDuration() || valueList.size() < 2 || (valueList.property() != AnimatedPropertyTransform && valueList.property() != AnimatedPropertyOpacity && valueList.property() != AnimatedPropertyFilter))
+    if (!anim || anim->isEmptyOrZeroDuration() || valueList.size() < 2 || (valueList.property() != AnimatedPropertyTransform && valueList.property() != AnimatedPropertyOpacity && valueList.property() != AnimatedPropertyWebkitFilter))
         return false;
 
     bool listsMatch = false;

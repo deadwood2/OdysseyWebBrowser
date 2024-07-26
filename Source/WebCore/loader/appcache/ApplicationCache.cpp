@@ -153,8 +153,9 @@ void ApplicationCache::setOnlineWhitelist(const Vector<URL>& onlineWhitelist)
 
 bool ApplicationCache::isURLInOnlineWhitelist(const URL& url)
 {
-    for (auto& whitelistURL : m_onlineWhitelist) {
-        if (protocolHostAndPortAreEqual(url, whitelistURL) && url.string().startsWith(whitelistURL.string()))
+    size_t whitelistSize = m_onlineWhitelist.size();
+    for (size_t i = 0; i < whitelistSize; ++i) {
+        if (protocolHostAndPortAreEqual(url, m_onlineWhitelist[i]) && url.string().startsWith(m_onlineWhitelist[i].string()))
             return true;
     }
     return false;
@@ -170,10 +171,11 @@ void ApplicationCache::setFallbackURLs(const FallbackURLVector& fallbackURLs)
 
 bool ApplicationCache::urlMatchesFallbackNamespace(const URL& url, URL* fallbackURL)
 {
-    for (auto& fallback : m_fallbackURLs) {
-        if (protocolHostAndPortAreEqual(url, fallback.first) && url.string().startsWith(fallback.first.string())) {
+    size_t fallbackCount = m_fallbackURLs.size();
+    for (size_t i = 0; i < fallbackCount; ++i) {
+        if (protocolHostAndPortAreEqual(url, m_fallbackURLs[i].first) && url.string().startsWith(m_fallbackURLs[i].first.string())) {
             if (fallbackURL)
-                *fallbackURL = fallback.second;
+                *fallbackURL = m_fallbackURLs[i].second;
             return true;
         }
     }

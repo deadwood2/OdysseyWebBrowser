@@ -47,7 +47,7 @@ public:
 
     String customCSSText() const;
 
-    Ref<CSSValue> cloneForCSSOM() const;
+    PassRefPtr<CSSValue> cloneForCSSOM() const;
 
     bool traverseSubresources(const std::function<bool (const CachedResource&)>& handler) const;
 

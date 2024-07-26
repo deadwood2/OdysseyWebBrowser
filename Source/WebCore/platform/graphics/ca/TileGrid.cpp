@@ -642,9 +642,13 @@ void TileGrid::drawTileMapContents(CGContextRef context, CGRect layerBounds) con
         String repaintCount = String::number(m_tileRepaintCounts.get(tileLayer));
 
         CGContextSaveGState(context);
+        CGContextSetTextMatrix(context, CGAffineTransformMakeScale(3, -3));
 
-        tileLayer->drawTextAtPoint(context, frame.origin.x + 64, frame.origin.y + 192, CGSizeMake(3, -3), 58,
-            repaintCount.ascii().data(), repaintCount.length());
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        CGContextSelectFont(context, "Helvetica", 58, kCGEncodingMacRoman);
+        CGContextShowTextAtPoint(context, frame.origin.x + 64, frame.origin.y + 192, repaintCount.ascii().data(), repaintCount.length());
+#pragma clang diagnostic pop
 
         CGContextRestoreGState(context);
     }
@@ -669,13 +673,8 @@ void TileGrid::platformCALayerPaintContents(PlatformCALayer* platformCALayer, Gr
     }
 
     int repaintCount = platformCALayerIncrementRepaintCount(platformCALayer);
-    if (m_controller.rootLayer().owner()->platformCALayerShowRepaintCounter(0)) {
-#if OS(WINDOWS)
-        // Tiled layers in Windows have flipped coordinates
-        PlatformCALayer::flipContext(context.platformContext(), platformCALayer->bounds().size().height());
-#endif
+    if (m_controller.rootLayer().owner()->platformCALayerShowRepaintCounter(0))
         PlatformCALayer::drawRepaintIndicator(context.platformContext(), platformCALayer, repaintCount, cachedCGColor(m_controller.tileDebugBorderColor(), ColorSpaceDeviceRGB));
-    }
 
     if (m_controller.scrollingPerformanceLoggingEnabled()) {
         FloatRect visiblePart(platformCALayer->position().x(), platformCALayer->position().y(), platformCALayer->bounds().size().width(), platformCALayer->bounds().size().height());

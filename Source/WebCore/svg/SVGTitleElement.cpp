@@ -43,8 +43,10 @@ Node::InsertionNotificationRequest SVGTitleElement::insertedInto(ContainerNode& 
     if (!rootParent.inDocument())
         return InsertionDone;
 
-    if (firstChild() && document().isSVGDocument())
-        document().titleElementAdded(*this);
+    if (firstChild() && document().isSVGDocument()) {
+        // FIXME: does SVG have a title text direction?
+        document().setTitleElement(StringWithDirection(textContent(), LTR), this);
+    }
     return InsertionDone;
 }
 
@@ -52,13 +54,16 @@ void SVGTitleElement::removedFrom(ContainerNode& rootParent)
 {
     SVGElement::removedFrom(rootParent);
     if (rootParent.inDocument() && document().isSVGDocument())
-        document().titleElementRemoved(*this);
+        document().removeTitle(this);
 }
 
 void SVGTitleElement::childrenChanged(const ChildChange& change)
 {
     SVGElement::childrenChanged(change);
-    document().titleElementTextChanged(*this);
+    if (inDocument() && document().isSVGDocument()) {
+        // FIXME: does SVG have title text direction?
+        document().setTitleElement(StringWithDirection(textContent(), LTR), this);
+    }
 }
 
 }

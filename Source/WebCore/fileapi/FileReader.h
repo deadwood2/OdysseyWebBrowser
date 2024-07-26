@@ -74,9 +74,9 @@ public:
     void doAbort();
 
     ReadyState readyState() const { return m_state; }
-    RefPtr<FileError> error() { return m_error; }
+    PassRefPtr<FileError> error() { return m_error; }
     FileReaderLoader::ReadType readType() const { return m_readType; }
-    RefPtr<JSC::ArrayBuffer> arrayBufferResult() const;
+    PassRefPtr<JSC::ArrayBuffer> arrayBufferResult() const;
     String stringResult();
 
     // EventTarget

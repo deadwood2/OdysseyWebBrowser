@@ -27,6 +27,7 @@
 #define CryptoKeyPair_h
 
 #include "CryptoKey.h"
+#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 
@@ -36,9 +37,9 @@ namespace WebCore {
 
 class CryptoKeyPair : public RefCounted<CryptoKeyPair> {
 public:
-    static Ref<CryptoKeyPair> create(RefPtr<CryptoKey>&& publicKey, RefPtr<CryptoKey>&& privateKey)
+    static Ref<CryptoKeyPair> create(PassRefPtr<CryptoKey> publicKey, PassRefPtr<CryptoKey> privateKey)
     {
-        return adoptRef(*new CryptoKeyPair(WTF::move(publicKey), WTF::move(privateKey)));
+        return adoptRef(*new CryptoKeyPair(publicKey, privateKey));
     }
     ~CryptoKeyPair();
 
@@ -46,7 +47,7 @@ public:
     CryptoKey* privateKey() { return m_privateKey.get(); }
 
 private:
-    CryptoKeyPair(RefPtr<CryptoKey>&& publicKey, RefPtr<CryptoKey>&& privateKey);
+    CryptoKeyPair(PassRefPtr<CryptoKey> publicKey, PassRefPtr<CryptoKey> privateKey);
 
     RefPtr<CryptoKey> m_publicKey;
     RefPtr<CryptoKey> m_privateKey;

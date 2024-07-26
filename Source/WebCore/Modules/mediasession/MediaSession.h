@@ -53,11 +53,13 @@ public:
         Ambient
     };
 
-    static Ref<MediaSession> create(ScriptExecutionContext& context, const String& kind = String())
+    static Ref<MediaSession> create(ScriptExecutionContext& context, const String& kind)
     {
         return adoptRef(*new MediaSession(context, kind));
     }
 
+    explicit MediaSession(Document&);
+    MediaSession(ScriptExecutionContext&, const String&);
     ~MediaSession();
 
     String kind() const;
@@ -69,7 +71,7 @@ public:
 
     void setMetadata(const Dictionary&);
 
-    void deactivate();
+    void releaseSession();
 
     // Runs the media session invocation algorithm and returns true on success.
     bool invoke();
@@ -84,12 +86,8 @@ public:
     void skipToNextTrack();
     void skipToPreviousTrack();
 
-    void controlIsEnabledDidChange();
-
 private:
     friend class HTMLMediaElement;
-
-    MediaSession(ScriptExecutionContext&, const String&);
 
     static Kind parseKind(const String&);
 

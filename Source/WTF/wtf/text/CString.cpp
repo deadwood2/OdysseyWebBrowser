@@ -28,7 +28,7 @@
 #include "CString.h"
 
 #include <string.h>
-#include <wtf/Hasher.h>
+#include <wtf/StringHasher.h>
 
 namespace WTF {
 

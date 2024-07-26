@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2007, 2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006, 2007 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -48,7 +48,8 @@ static HashMap<BackForwardList*, WebBackForwardList*>& backForwardListWrappers()
 }
 
 WebBackForwardList::WebBackForwardList(PassRefPtr<BackForwardList> backForwardList)
-    : m_backForwardList(backForwardList)
+    : m_refCount(0)
+    , m_backForwardList(backForwardList)
 {
     ASSERT(!backForwardListWrappers().contains(m_backForwardList.get()));
     backForwardListWrappers().set(m_backForwardList.get(), this);
@@ -70,7 +71,9 @@ WebBackForwardList::~WebBackForwardList()
 
 WebBackForwardList* WebBackForwardList::createInstance(PassRefPtr<BackForwardList> backForwardList)
 {
-    WebBackForwardList* instance = backForwardListWrappers().get(backForwardList.get());
+    WebBackForwardList* instance;
+
+    instance = backForwardListWrappers().get(backForwardList.get());
 
     if (!instance)
         instance = new WebBackForwardList(backForwardList);
@@ -81,11 +84,9 @@ WebBackForwardList* WebBackForwardList::createInstance(PassRefPtr<BackForwardLis
 
 // IUnknown -------------------------------------------------------------------
 
-HRESULT WebBackForwardList::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE WebBackForwardList::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<IWebBackForwardList*>(this);
     else if (IsEqualGUID(riid, IID_IWebBackForwardList))
@@ -99,12 +100,12 @@ HRESULT WebBackForwardList::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void**
     return S_OK;
 }
 
-ULONG WebBackForwardList::AddRef()
+ULONG STDMETHODCALLTYPE WebBackForwardList::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG WebBackForwardList::Release()
+ULONG STDMETHODCALLTYPE WebBackForwardList::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -115,7 +116,8 @@ ULONG WebBackForwardList::Release()
 
 // IWebBackForwardList ---------------------------------------------------------
 
-HRESULT WebBackForwardList::addItem(_In_opt_ IWebHistoryItem* item)
+HRESULT STDMETHODCALLTYPE WebBackForwardList::addItem( 
+    /* [in] */ IWebHistoryItem* item)
 {
     COMPtr<WebHistoryItem> webHistoryItem;
  
@@ -126,19 +128,20 @@ HRESULT WebBackForwardList::addItem(_In_opt_ IWebHistoryItem* item)
     return S_OK;
 }
 
-HRESULT WebBackForwardList::goBack()
+HRESULT STDMETHODCALLTYPE WebBackForwardList::goBack( void)
 {
     m_backForwardList->goBack();
     return S_OK;
 }
 
-HRESULT WebBackForwardList::goForward()
+HRESULT STDMETHODCALLTYPE WebBackForwardList::goForward( void)
 {
     m_backForwardList->goForward();
     return S_OK;
 }
 
-HRESULT WebBackForwardList::goToItem(_In_opt_ IWebHistoryItem* item)
+HRESULT STDMETHODCALLTYPE WebBackForwardList::goToItem( 
+    /* [in] */ IWebHistoryItem* item)
 {
     COMPtr<WebHistoryItem> webHistoryItem;
  
@@ -149,11 +152,12 @@ HRESULT WebBackForwardList::goToItem(_In_opt_ IWebHistoryItem* item)
     return S_OK;
 }
 
-HRESULT WebBackForwardList::backItem(_COM_Outptr_opt_ IWebHistoryItem** item)
+HRESULT STDMETHODCALLTYPE WebBackForwardList::backItem( 
+    /* [retval][out] */ IWebHistoryItem** item)
 {
     if (!item)
         return E_POINTER;
-    *item = nullptr;
+
     HistoryItem* historyItem = m_backForwardList->backItem();
 
     if (!historyItem)
@@ -163,13 +167,14 @@ HRESULT WebBackForwardList::backItem(_COM_Outptr_opt_ IWebHistoryItem** item)
     return S_OK;
 }
 
-HRESULT WebBackForwardList::currentItem(_COM_Outptr_opt_ IWebHistoryItem** item)
+HRESULT STDMETHODCALLTYPE WebBackForwardList::currentItem( 
+    /* [retval][out] */ IWebHistoryItem** item)
 {
     if (!item)
         return E_POINTER;
-    *item = nullptr;
 
     HistoryItem* historyItem = m_backForwardList->currentItem();
+
     if (!historyItem)
         return E_FAIL;
 
@@ -177,13 +182,14 @@ HRESULT WebBackForwardList::currentItem(_COM_Outptr_opt_ IWebHistoryItem** item)
     return S_OK;
 }
 
-HRESULT WebBackForwardList::forwardItem(_COM_Outptr_opt_ IWebHistoryItem** item)
+HRESULT STDMETHODCALLTYPE WebBackForwardList::forwardItem( 
+    /* [retval][out] */ IWebHistoryItem** item)
 {
     if (!item)
         return E_POINTER;
-    *item = nullptr;
 
     HistoryItem* historyItem = m_backForwardList->forwardItem();
+
     if (!historyItem)
         return E_FAIL;
 
@@ -191,50 +197,49 @@ HRESULT WebBackForwardList::forwardItem(_COM_Outptr_opt_ IWebHistoryItem** item)
     return S_OK;
 }
 
-HRESULT WebBackForwardList::backListWithLimit(int limit, _Out_ int* listCount,
-    __deref_inout_opt IWebHistoryItem** list)
+HRESULT STDMETHODCALLTYPE WebBackForwardList::backListWithLimit( 
+    /* [in] */ int limit,
+    /* [out] */ int* listCount,
+    /* [retval][out] */ IWebHistoryItem** list)
 {
     HistoryItemVector historyItemVector;
     m_backForwardList->backListWithLimit(limit, historyItemVector);
 
     *listCount = static_cast<int>(historyItemVector.size());
 
-    if (!list)
-        return E_NOT_SUFFICIENT_BUFFER;
-
-    for (unsigned i = 0; i < historyItemVector.size(); i++)
-        list[i] = WebHistoryItem::createInstance(historyItemVector[i].ptr());
+    if (list)
+        for (unsigned i = 0; i < historyItemVector.size(); i++)
+            list[i] = WebHistoryItem::createInstance(historyItemVector[i].ptr());
 
     return S_OK;
 }
 
-HRESULT WebBackForwardList::forwardListWithLimit(int limit, _Out_ int* listCount,
-    __deref_inout_opt IWebHistoryItem** list)
+HRESULT STDMETHODCALLTYPE WebBackForwardList::forwardListWithLimit( 
+    /* [in] */ int limit,
+    /* [out] */ int* listCount,
+    /* [retval][out] */ IWebHistoryItem** list)
 {
     HistoryItemVector historyItemVector;
     m_backForwardList->forwardListWithLimit(limit, historyItemVector);
 
     *listCount = static_cast<int>(historyItemVector.size());
 
-    if (!list)
-        return E_NOT_SUFFICIENT_BUFFER;
-    
-    for (unsigned i = 0; i < historyItemVector.size(); i++)
-        list[i] = WebHistoryItem::createInstance(historyItemVector[i].ptr());
+    if (list)
+        for (unsigned i = 0; i < historyItemVector.size(); i++)
+            list[i] = WebHistoryItem::createInstance(historyItemVector[i].ptr());
 
     return S_OK;
 }
 
-HRESULT WebBackForwardList::capacity(_Out_ int* result)
+HRESULT STDMETHODCALLTYPE WebBackForwardList::capacity( 
+    /* [retval][out] */ int* result)
 {
-    if (!result)
-        return E_POINTER;
-
-    *result = m_backForwardList->capacity();
+    *result = (int)m_backForwardList->capacity();
     return S_OK;
 }
 
-HRESULT WebBackForwardList::setCapacity(int size)
+HRESULT STDMETHODCALLTYPE WebBackForwardList::setCapacity( 
+    /* [in] */ int size)
 {
     if (size < 0)
         return E_FAIL;
@@ -243,29 +248,24 @@ HRESULT WebBackForwardList::setCapacity(int size)
     return S_OK;
 }
 
-HRESULT WebBackForwardList::backListCount(_Out_ int* count)
+HRESULT STDMETHODCALLTYPE WebBackForwardList::backListCount( 
+    /* [retval][out] */ int* count)
 {
-    if (!count)
-        return E_POINTER;
-
     *count = m_backForwardList->backListCount();
     return S_OK;
 }
 
-HRESULT WebBackForwardList::forwardListCount(_Out_ int* count)
+HRESULT STDMETHODCALLTYPE WebBackForwardList::forwardListCount( 
+    /* [retval][out] */ int* count)
 {
-    if (!count)
-        return E_POINTER;
-
     *count = m_backForwardList->forwardListCount();
     return S_OK;
 }
 
-HRESULT WebBackForwardList::containsItem(_In_opt_ IWebHistoryItem* item, _Out_ BOOL* result)
+HRESULT STDMETHODCALLTYPE WebBackForwardList::containsItem( 
+    /* [in] */ IWebHistoryItem* item,
+    /* [retval][out] */ BOOL* result)
 {
-    if (!result)
-        return E_POINTER;
-
     COMPtr<WebHistoryItem> webHistoryItem;
 
     if (!item || FAILED(item->QueryInterface(&webHistoryItem)))
@@ -275,13 +275,15 @@ HRESULT WebBackForwardList::containsItem(_In_opt_ IWebHistoryItem* item, _Out_ B
     return S_OK;
 }
 
-HRESULT WebBackForwardList::itemAtIndex(int index, _COM_Outptr_opt_ IWebHistoryItem** item)
+HRESULT STDMETHODCALLTYPE WebBackForwardList::itemAtIndex( 
+    /* [in] */ int index,
+    /* [retval][out] */ IWebHistoryItem** item)
 {
     if (!item)
         return E_POINTER;
-    *item = nullptr;
 
     HistoryItem* historyItem = m_backForwardList->itemAtIndex(index);
+
     if (!historyItem)
         return E_FAIL;
  
@@ -291,7 +293,8 @@ HRESULT WebBackForwardList::itemAtIndex(int index, _COM_Outptr_opt_ IWebHistoryI
 
 // IWebBackForwardListPrivate --------------------------------------------------------
 
-HRESULT WebBackForwardList::removeItem(_In_opt_ IWebHistoryItem* item)
+HRESULT STDMETHODCALLTYPE WebBackForwardList::removeItem( 
+    /* [in] */ IWebHistoryItem* item)
 {
     COMPtr<WebHistoryItem> webHistoryItem;
  

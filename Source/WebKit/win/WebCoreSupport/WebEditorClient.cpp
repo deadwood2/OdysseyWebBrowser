@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2007, 2011, 2014-2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006, 2007, 2011, 2014 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -69,9 +69,9 @@ public:
     WebEditorUndoTarget();
 
     // IUnknown
-    virtual HRESULT STDMETHODCALLTYPE QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject);
-    virtual ULONG STDMETHODCALLTYPE AddRef();
-    virtual ULONG STDMETHODCALLTYPE Release();
+    virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject);
+    virtual ULONG STDMETHODCALLTYPE AddRef(void);
+    virtual ULONG STDMETHODCALLTYPE Release(void);
 
     // IWebUndoTarget
     virtual HRESULT STDMETHODCALLTYPE invoke( 
@@ -87,11 +87,9 @@ WebEditorUndoTarget::WebEditorUndoTarget()
 {
 }
 
-HRESULT WebEditorUndoTarget::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE WebEditorUndoTarget::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<IWebUndoTarget*>(this);
     else if (IsEqualGUID(riid, IID_IWebUndoTarget))
@@ -103,12 +101,12 @@ HRESULT WebEditorUndoTarget::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void*
     return S_OK;
 }
 
-ULONG WebEditorUndoTarget::AddRef()
+ULONG STDMETHODCALLTYPE WebEditorUndoTarget::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG WebEditorUndoTarget::Release()
+ULONG STDMETHODCALLTYPE WebEditorUndoTarget::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -117,7 +115,9 @@ ULONG WebEditorUndoTarget::Release()
     return newRef;
 }
 
-HRESULT WebEditorUndoTarget::invoke(/* [in] */ BSTR /*actionName*/, /* [in] */ IUnknown *obj)
+HRESULT STDMETHODCALLTYPE WebEditorUndoTarget::invoke( 
+    /* [in] */ BSTR /*actionName*/,
+    /* [in] */ IUnknown *obj)
 {
     IWebUndoCommand* undoCommand = 0;
     if (SUCCEEDED(obj->QueryInterface(IID_IWebUndoCommand, (void**)&undoCommand))) {
@@ -510,9 +510,9 @@ public:
     void execute();
 
     // IUnknown
-    virtual HRESULT STDMETHODCALLTYPE QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject);
-    virtual ULONG STDMETHODCALLTYPE AddRef();
-    virtual ULONG STDMETHODCALLTYPE Release();
+    virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject);
+    virtual ULONG STDMETHODCALLTYPE AddRef(void);
+    virtual ULONG STDMETHODCALLTYPE Release(void);
 
 private:
     ULONG m_refCount;
@@ -535,11 +535,9 @@ void WebEditorUndoCommand::execute()
         m_step->reapply();
 }
 
-HRESULT WebEditorUndoCommand::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE WebEditorUndoCommand::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<IWebUndoCommand*>(this);
     else if (IsEqualGUID(riid, IID_IWebUndoCommand))
@@ -551,12 +549,12 @@ HRESULT WebEditorUndoCommand::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void
     return S_OK;
 }
 
-ULONG WebEditorUndoCommand::AddRef()
+ULONG STDMETHODCALLTYPE WebEditorUndoCommand::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG WebEditorUndoCommand::Release()
+ULONG STDMETHODCALLTYPE WebEditorUndoCommand::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef)

@@ -49,7 +49,7 @@ private:
 
     // MediaStreamTrackSourcesRequestClient
     virtual const String& requestOrigin() const override { return m_origin; }
-    virtual void didCompleteRequest(const TrackSourceInfoVector&) override;
+    virtual void didCompleteRequest(const Vector<RefPtr<TrackSourceInfo>>&) override;
 
     String m_origin;
     RefPtr<MediaStreamTrackSourcesCallback> m_callback;

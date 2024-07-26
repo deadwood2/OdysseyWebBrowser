@@ -70,9 +70,6 @@ public:
     String localizedStringsURL();
     String debuggableType();
 
-    String platform();
-    String port();
-
     void copyText(const String& text);
     void openInNewTab(const String& url);
     bool canSave();
@@ -91,6 +88,9 @@ public:
     void unbufferedLog(const String& message);
 
     void beep();
+
+    bool canInspectWorkers();
+    bool canSaveAs();
 
 private:
 #if ENABLE(CONTEXT_MENUS)

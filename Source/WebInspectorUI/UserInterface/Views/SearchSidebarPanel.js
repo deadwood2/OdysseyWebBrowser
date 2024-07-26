@@ -55,6 +55,9 @@ WebInspector.SearchSidebarPanel = class SearchSidebarPanel extends WebInspector.
         WebInspector.Frame.addEventListener(WebInspector.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
 
         this.contentTreeOutline.onselect = this._treeElementSelected.bind(this);
+
+        if (WebInspector.debuggableType === WebInspector.DebuggableType.JavaScript)
+            this._resourcesContentTreeOutline.element.classList.add(WebInspector.NavigationSidebarPanel.HideDisclosureButtonsStyleClassName);
     }
 
     // Public
@@ -268,7 +271,7 @@ WebInspector.SearchSidebarPanel = class SearchSidebarPanel extends WebInspector.
         }
 
         if (window.DOMAgent)
-            WebInspector.domTreeManager.requestDocument(function(){});
+            WebInspector.domTreeManager.requestDocument();
 
         if (window.PageAgent)
             PageAgent.searchInResources(searchQuery, isCaseSensitive, isRegex, resourcesCallback.bind(this));

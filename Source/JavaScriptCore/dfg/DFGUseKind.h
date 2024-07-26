@@ -48,10 +48,8 @@ enum UseKind {
     NumberUse,
     RealNumberUse,
     BooleanUse,
-    KnownBooleanUse,
     CellUse,
     KnownCellUse,
-    CellOrOtherUse,
     ObjectUse,
     FunctionUse,
     FinalObjectUse,
@@ -59,8 +57,6 @@ enum UseKind {
     StringIdentUse,
     StringUse,
     KnownStringUse,
-    KnownPrimitiveUse, // This bizarre type arises for op_strcat, which has a bytecode guarantee that it will only see primitives (i.e. not objects).
-    SymbolUse,
     StringObjectUse,
     StringOrStringObjectUse,
     NotStringVarUse,
@@ -104,13 +100,10 @@ inline SpeculatedType typeFilterFor(UseKind useKind)
     case DoubleRepMachineIntUse:
         return SpecInt52AsDouble;
     case BooleanUse:
-    case KnownBooleanUse:
         return SpecBoolean;
     case CellUse:
     case KnownCellUse:
         return SpecCell;
-    case CellOrOtherUse:
-        return SpecCell | SpecOther;
     case ObjectUse:
         return SpecObject;
     case FunctionUse:
@@ -124,10 +117,6 @@ inline SpeculatedType typeFilterFor(UseKind useKind)
     case StringUse:
     case KnownStringUse:
         return SpecString;
-    case KnownPrimitiveUse:
-        return SpecHeapTop & ~SpecObject;
-    case SymbolUse:
-        return SpecSymbol;
     case StringObjectUse:
         return SpecStringObject;
     case StringOrStringObjectUse:
@@ -153,8 +142,6 @@ inline bool shouldNotHaveTypeCheck(UseKind kind)
     case KnownInt32Use:
     case KnownCellUse:
     case KnownStringUse:
-    case KnownPrimitiveUse:
-    case KnownBooleanUse:
     case Int52RepUse:
     case DoubleRepUse:
         return true;
@@ -198,8 +185,6 @@ inline bool isDouble(UseKind kind)
     }
 }
 
-// Returns true if the use kind only admits cells, and is therefore appropriate for
-// SpeculateCellOperand in the DFG or lowCell() in the FTL.
 inline bool isCell(UseKind kind)
 {
     switch (kind) {
@@ -211,7 +196,6 @@ inline bool isCell(UseKind kind)
     case StringIdentUse:
     case StringUse:
     case KnownStringUse:
-    case SymbolUse:
     case StringObjectUse:
     case StringOrStringObjectUse:
         return true;

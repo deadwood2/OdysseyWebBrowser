@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,38 +23,46 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ResourceTimelineDataGridNode = class ResourceTimelineDataGridNode extends WebInspector.TimelineDataGridNode
+WebInspector.ResourceTimelineDataGridNode = function(resourceTimelineRecord, graphOnly, graphDataSource)
 {
-    constructor(resourceTimelineRecord, graphOnly, graphDataSource)
-    {
-        super(graphOnly, graphDataSource);
+    WebInspector.TimelineDataGridNode.call(this, graphOnly, graphDataSource);
 
-        this._resource = resourceTimelineRecord.resource;
-        this._record = resourceTimelineRecord;
+    this._resource = resourceTimelineRecord.resource;
+    this._record = resourceTimelineRecord;
 
-        this._record.addEventListener(WebInspector.TimelineRecord.Event.Updated, graphOnly ? this._timelineRecordUpdated : this._needsRefresh, this);
+    this._record.addEventListener(WebInspector.TimelineRecord.Event.Updated, graphOnly ? this._timelineRecordUpdated : this._needsRefresh, this);
 
-        if (!graphOnly) {
-            this._resource.addEventListener(WebInspector.Resource.Event.URLDidChange, this._needsRefresh, this);
-            this._resource.addEventListener(WebInspector.Resource.Event.TypeDidChange, this._needsRefresh, this);
-            this._resource.addEventListener(WebInspector.Resource.Event.LoadingDidFinish, this._needsRefresh, this);
-            this._resource.addEventListener(WebInspector.Resource.Event.LoadingDidFail, this._needsRefresh, this);
-            this._resource.addEventListener(WebInspector.Resource.Event.SizeDidChange, this._needsRefresh, this);
-            this._resource.addEventListener(WebInspector.Resource.Event.TransferSizeDidChange, this._needsRefresh, this);
-        }
+    if (!graphOnly) {
+        this._resource.addEventListener(WebInspector.Resource.Event.URLDidChange, this._needsRefresh, this);
+        this._resource.addEventListener(WebInspector.Resource.Event.TypeDidChange, this._needsRefresh, this);
+        this._resource.addEventListener(WebInspector.Resource.Event.LoadingDidFinish, this._needsRefresh, this);
+        this._resource.addEventListener(WebInspector.Resource.Event.LoadingDidFail, this._needsRefresh, this);
+        this._resource.addEventListener(WebInspector.Resource.Event.SizeDidChange, this._needsRefresh, this);
+        this._resource.addEventListener(WebInspector.Resource.Event.TransferSizeDidChange, this._needsRefresh, this);
     }
+};
+
+// FIXME: Move to a WebInspector.Object subclass and we can remove this.
+WebInspector.Object.deprecatedAddConstructorFunctions(WebInspector.ResourceTimelineDataGridNode);
+
+WebInspector.ResourceTimelineDataGridNode.IconStyleClassName = "icon";
+WebInspector.ResourceTimelineDataGridNode.ErrorStyleClassName = "error";
+
+WebInspector.ResourceTimelineDataGridNode.prototype = {
+    constructor: WebInspector.ResourceTimelineDataGridNode,
+    __proto__: WebInspector.TimelineDataGridNode.prototype,
 
     // Public
 
     get records()
     {
         return [this._record];
-    }
+    },
 
     get resource()
     {
         return this._resource;
-    }
+    },
 
     get data()
     {
@@ -84,14 +92,14 @@ WebInspector.ResourceTimelineDataGridNode = class ResourceTimelineDataGridNode e
 
         this._cachedData = data;
         return data;
-    }
+    },
 
-    createCellContent(columnIdentifier, cell)
+    createCellContent: function(columnIdentifier, cell)
     {
         var resource = this._resource;
 
         if (resource.failed || resource.canceled || resource.statusCode >= 400)
-            cell.classList.add("error");
+            cell.classList.add(WebInspector.ResourceTimelineDataGridNode.ErrorStyleClassName);
 
         const emptyValuePlaceholderString = "\u2014";
         var value = this.data[columnIdentifier];
@@ -120,10 +128,10 @@ WebInspector.ResourceTimelineDataGridNode = class ResourceTimelineDataGridNode e
             return isNaN(value) ? emptyValuePlaceholderString : Number.secondsToString(value, true);
         }
 
-        return super.createCellContent(columnIdentifier, cell);
-    }
+        return WebInspector.TimelineDataGridNode.prototype.createCellContent.call(this, columnIdentifier, cell);
+    },
 
-    refresh()
+    refresh: function()
     {
         if (this._scheduledRefreshIdentifier) {
             cancelAnimationFrame(this._scheduledRefreshIdentifier);
@@ -132,12 +140,12 @@ WebInspector.ResourceTimelineDataGridNode = class ResourceTimelineDataGridNode e
 
         delete this._cachedData;
 
-        super.refresh();
-    }
+        WebInspector.TimelineDataGridNode.prototype.refresh.call(this);
+    },
 
     // Private
 
-    _needsRefresh()
+    _needsRefresh: function()
     {
         if (this.dataGrid instanceof WebInspector.TimelineDataGrid) {
             this.dataGrid.dataGridNodeNeedsRefresh(this);
@@ -148,9 +156,9 @@ WebInspector.ResourceTimelineDataGridNode = class ResourceTimelineDataGridNode e
             return;
 
         this._scheduledRefreshIdentifier = requestAnimationFrame(this.refresh.bind(this));
-    }
+    },
 
-    _timelineRecordUpdated(event)
+    _timelineRecordUpdated: function(event)
     {
         if (this.isRecordVisible(this._record))
             this.needsGraphRefresh();

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005, 2006, 2007, 2008, 2011, 2012, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2005, 2006, 2007, 2008, 2011, 2012 Apple Inc. All rights reserved.
  * Copyright (C) 2008 David Levin <levin@chromium.org>
  *
  * This library is free software; you can redistribute it and/or
@@ -30,8 +30,6 @@
 #include <wtf/Assertions.h>
 #include <wtf/FastMalloc.h>
 #include <wtf/HashTraits.h>
-#include <wtf/Lock.h>
-#include <wtf/MathExtras.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/ValueCheck.h>
 
@@ -286,7 +284,6 @@ namespace WTF {
     };
 
     template<typename IteratorType> struct HashTableAddResult {
-        HashTableAddResult() : isNewEntry(false) { }
         HashTableAddResult(IteratorType iter, bool isNewEntry) : iterator(iter), isNewEntry(isNewEntry) { }
         IteratorType iterator;
         bool isNewEntry;
@@ -434,8 +431,6 @@ namespace WTF {
         template<typename HashTranslator, typename T> FullLookupType fullLookupForWriting(const T&);
         template<typename HashTranslator, typename T> LookupType lookupForWriting(const T&);
 
-        template<typename HashTranslator, typename T, typename Extra> void addUniqueForInitialization(T&& key, Extra&&);
-
         template<typename HashTranslator, typename T> void checkKey(const T&);
 
         void removeAndInvalidateWithoutEntryConsistencyCheck(ValueType*);
@@ -488,7 +483,7 @@ namespace WTF {
         // All access to m_iterators should be guarded with m_mutex.
         mutable const_iterator* m_iterators;
         // Use std::unique_ptr so HashTable can still be memmove'd or memcpy'ed.
-        mutable std::unique_ptr<Lock> m_mutex;
+        mutable std::unique_ptr<std::mutex> m_mutex;
 #endif
 
 #if DUMP_HASHTABLE_STATS_PER_TABLE
@@ -544,7 +539,7 @@ namespace WTF {
         , m_deletedCount(0)
 #if CHECK_HASHTABLE_ITERATORS
         , m_iterators(0)
-        , m_mutex(std::make_unique<Lock>())
+        , m_mutex(std::make_unique<std::mutex>())
 #endif
 #if DUMP_HASHTABLE_STATS_PER_TABLE
         , m_stats(std::make_unique<Stats>())
@@ -764,59 +759,6 @@ namespace WTF {
                 k = 1 | doubleHash(h);
             i = (i + k) & sizeMask;
         }
-    }
-
-    template<typename Key, typename Value, typename Extractor, typename HashFunctions, typename Traits, typename KeyTraits>
-    template<typename HashTranslator, typename T, typename Extra>
-    ALWAYS_INLINE void HashTable<Key, Value, Extractor, HashFunctions, Traits, KeyTraits>::addUniqueForInitialization(T&& key, Extra&& extra)
-    {
-        ASSERT(m_table);
-
-        checkKey<HashTranslator>(key);
-
-        invalidateIterators();
-
-        internalCheckTableConsistency();
-
-        unsigned k = 0;
-        ValueType* table = m_table;
-        unsigned sizeMask = m_tableSizeMask;
-        unsigned h = HashTranslator::hash(key);
-        unsigned i = h & sizeMask;
-
-#if DUMP_HASHTABLE_STATS
-        ++HashTableStats::numAccesses;
-        unsigned probeCount = 0;
-#endif
-
-#if DUMP_HASHTABLE_STATS_PER_TABLE
-        ++m_stats->numAccesses;
-#endif
-
-        ValueType* entry;
-        while (1) {
-            entry = table + i;
-
-            if (isEmptyBucket(*entry))
-                break;
-
-#if DUMP_HASHTABLE_STATS
-            ++probeCount;
-            HashTableStats::recordCollisionAtCount(probeCount);
-#endif
-
-#if DUMP_HASHTABLE_STATS_PER_TABLE
-            m_stats->recordCollisionAtCount(probeCount);
-#endif
-
-            if (k == 0)
-                k = 1 | doubleHash(h);
-            i = (i + k) & sizeMask;
-        }
-
-        HashTranslator::translate(*entry, std::forward<T>(key), std::forward<Extra>(extra));
-
-        internalCheckTableConsistency();
     }
 
     template<bool emptyValueIsZero> struct HashTableBucketInitializer;
@@ -1213,40 +1155,26 @@ namespace WTF {
 
     template<typename Key, typename Value, typename Extractor, typename HashFunctions, typename Traits, typename KeyTraits>
     HashTable<Key, Value, Extractor, HashFunctions, Traits, KeyTraits>::HashTable(const HashTable& other)
-        : m_table(nullptr)
+        : m_table(0)
         , m_tableSize(0)
         , m_tableSizeMask(0)
         , m_keyCount(0)
         , m_deletedCount(0)
 #if CHECK_HASHTABLE_ITERATORS
-        , m_iterators(nullptr)
-        , m_mutex(std::make_unique<Lock>())
+        , m_iterators(0)
+        , m_mutex(std::make_unique<std::mutex>())
 #endif
 #if DUMP_HASHTABLE_STATS_PER_TABLE
         , m_stats(std::make_unique<Stats>(*other.m_stats))
 #endif
     {
-        unsigned otherKeyCount = other.size();
-        if (!otherKeyCount)
-            return;
-
-        unsigned bestTableSize = WTF::roundUpToPowerOfTwo(otherKeyCount) * 2;
-
-        // With maxLoad at 1/2 and minLoad at 1/6, our average load is 2/6.
-        // If we are getting halfway between 2/6 and 1/2 (past 5/12), we double the size to avoid being too close to
-        // loadMax and bring the ratio close to 2/6. This give us a load in the bounds [3/12, 5/12).
-        bool aboveThreeQuarterLoad = otherKeyCount * 12 >= bestTableSize * 5;
-        if (aboveThreeQuarterLoad)
-            bestTableSize *= 2;
-
-        unsigned minimumTableSize = KeyTraits::minimumTableSize;
-        m_tableSize = std::max<unsigned>(bestTableSize, minimumTableSize);
-        m_tableSizeMask = m_tableSize - 1;
-        m_keyCount = otherKeyCount;
-        m_table = allocateTable(m_tableSize);
-
-        for (const auto& otherValue : other)
-            addUniqueForInitialization<IdentityTranslatorType>(Extractor::extract(otherValue), otherValue);
+        // Copy the hash table the dumb way, by adding each element to the new table.
+        // It might be more efficient to copy the table slots, but it's not clear that efficiency is needed.
+        // FIXME: It's likely that this can be improved, for static analyses that use
+        // HashSets. https://bugs.webkit.org/show_bug.cgi?id=118455
+        const_iterator end = other.end();
+        for (const_iterator it = other.begin(); it != end; ++it)
+            add(*it);
     }
 
     template<typename Key, typename Value, typename Extractor, typename HashFunctions, typename Traits, typename KeyTraits>
@@ -1269,6 +1197,8 @@ namespace WTF {
     template<typename Key, typename Value, typename Extractor, typename HashFunctions, typename Traits, typename KeyTraits>
     auto HashTable<Key, Value, Extractor, HashFunctions, Traits, KeyTraits>::operator=(const HashTable& other) -> HashTable&
     {
+        // FIXME: It's likely that this can be improved, for static analyses that use
+        // HashSets. https://bugs.webkit.org/show_bug.cgi?id=118455
         HashTable tmp(other);
         swap(tmp);
         return *this;
@@ -1278,7 +1208,7 @@ namespace WTF {
     inline HashTable<Key, Value, Extractor, HashFunctions, Traits, KeyTraits>::HashTable(HashTable&& other)
 #if CHECK_HASHTABLE_ITERATORS
         : m_iterators(nullptr)
-        , m_mutex(std::make_unique<Lock>())
+        , m_mutex(std::make_unique<std::mutex>())
 #endif
     {
         other.invalidateIterators();
@@ -1358,7 +1288,7 @@ namespace WTF {
     template<typename Key, typename Value, typename Extractor, typename HashFunctions, typename Traits, typename KeyTraits>
     void HashTable<Key, Value, Extractor, HashFunctions, Traits, KeyTraits>::invalidateIterators()
     {
-        std::lock_guard<Lock> lock(*m_mutex);
+        std::lock_guard<std::mutex> lock(*m_mutex);
         const_iterator* next;
         for (const_iterator* p = m_iterators; p; p = next) {
             next = p->m_next;
@@ -1380,7 +1310,7 @@ namespace WTF {
         if (!table) {
             it->m_next = 0;
         } else {
-            std::lock_guard<Lock> lock(*table->m_mutex);
+            std::lock_guard<std::mutex> lock(*table->m_mutex);
             ASSERT(table->m_iterators != it);
             it->m_next = table->m_iterators;
             table->m_iterators = it;
@@ -1399,7 +1329,7 @@ namespace WTF {
             ASSERT(!it->m_next);
             ASSERT(!it->m_previous);
         } else {
-            std::lock_guard<Lock> lock(*it->m_table->m_mutex);
+            std::lock_guard<std::mutex> lock(*it->m_table->m_mutex);
             if (it->m_next) {
                 ASSERT(it->m_next->m_previous == it);
                 it->m_next->m_previous = it->m_previous;

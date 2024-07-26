@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2009, 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2006, 2007, 2008, 2009, 2013-2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,9 +31,8 @@
 #include <WebCore/IconDatabaseClient.h>
 #include <WebCore/IntSize.h>
 #include <WebCore/IntSizeHash.h>
-#include <wtf/Lock.h>
-#include <wtf/Threading.h>
 #include <wtf/Vector.h>
+#include <wtf/Threading.h>
 
 #include <windows.h>
 
@@ -58,23 +57,43 @@ private:
 public:
 
     // IUnknown
-    virtual HRESULT STDMETHODCALLTYPE QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject);
-    virtual ULONG STDMETHODCALLTYPE AddRef();
-    virtual ULONG STDMETHODCALLTYPE Release();
+    virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject);
+    virtual ULONG STDMETHODCALLTYPE AddRef(void);
+    virtual ULONG STDMETHODCALLTYPE Release(void);
 
     // IWebIconDatabase
-    virtual HRESULT STDMETHODCALLTYPE sharedIconDatabase(_COM_Outptr_opt_ IWebIconDatabase**);
-    virtual HRESULT STDMETHODCALLTYPE iconForURL(_In_ BSTR url, _In_ LPSIZE, BOOL cache, __deref_opt_out HBITMAP* image);
-    virtual HRESULT STDMETHODCALLTYPE defaultIconWithSize(_In_ LPSIZE, __deref_opt_out HBITMAP* result);
-    virtual HRESULT STDMETHODCALLTYPE retainIconForURL(_In_ BSTR);
-    virtual HRESULT STDMETHODCALLTYPE releaseIconForURL(_In_ BSTR);
-    virtual HRESULT STDMETHODCALLTYPE removeAllIcons();
-    virtual HRESULT STDMETHODCALLTYPE delayDatabaseCleanup();
-    virtual HRESULT STDMETHODCALLTYPE allowDatabaseCleanup();
-    virtual HRESULT STDMETHODCALLTYPE iconURLForURL(_In_ BSTR url, __deref_opt_out BSTR* iconURL);
-    virtual HRESULT STDMETHODCALLTYPE isEnabled(_Out_ BOOL*);
-    virtual HRESULT STDMETHODCALLTYPE setEnabled(BOOL);
-    virtual HRESULT STDMETHODCALLTYPE hasIconForURL(_In_ BSTR url, _Out_ BOOL* result);
+    virtual HRESULT STDMETHODCALLTYPE sharedIconDatabase( 
+        /* [retval][out] */ IWebIconDatabase **result);
+    
+    virtual HRESULT STDMETHODCALLTYPE iconForURL(BSTR url, LPSIZE, BOOL cache, HBITMAP* image);
+
+    virtual HRESULT STDMETHODCALLTYPE defaultIconWithSize(/* [in] */ LPSIZE size, /* [retval][out] */ HBITMAP* result);
+    
+    virtual HRESULT STDMETHODCALLTYPE retainIconForURL( 
+        /* [in] */ BSTR url);
+    
+    virtual HRESULT STDMETHODCALLTYPE releaseIconForURL( 
+        /* [in] */ BSTR url);
+
+    virtual HRESULT STDMETHODCALLTYPE removeAllIcons( void);
+    
+    virtual HRESULT STDMETHODCALLTYPE delayDatabaseCleanup( void);
+    
+    virtual HRESULT STDMETHODCALLTYPE allowDatabaseCleanup( void);
+
+    virtual HRESULT STDMETHODCALLTYPE iconURLForURL( 
+        /* [in] */ BSTR url,
+        /* [retval][out] */ BSTR *iconURL);
+
+    virtual HRESULT STDMETHODCALLTYPE isEnabled( 
+        /* [retval][out] */ BOOL *result);
+
+    virtual HRESULT STDMETHODCALLTYPE setEnabled( 
+        /* [in] */ BOOL /*flag*/);
+
+    virtual HRESULT STDMETHODCALLTYPE hasIconForURL(
+        /* [in] */ BSTR url,
+        /* [retval][out] */ BOOL* result);
 
     // IconDatabaseClient
     virtual void didRemoveAllIcons();
@@ -87,7 +106,7 @@ public:
     static BSTR iconDatabaseDidRemoveAllIconsNotification();
     static BSTR iconDatabaseNotificationUserInfoURLKey();
 protected:
-    ULONG m_refCount { 0 };
+    ULONG m_refCount;
     static WebIconDatabase* m_sharedWebIconDatabase;
 
     // Keep a set of HBITMAPs around for the default icon, and another
@@ -97,10 +116,10 @@ protected:
     HashMap<IntSize, HBITMAP> m_defaultIconMap;
     HashMap<IntSize, HBITMAP> m_sharedIconMap;
 
-    Lock m_notificationMutex;
+    Mutex m_notificationMutex;
     Vector<String> m_notificationQueue;
     void scheduleNotificationDelivery();
-    bool m_deliveryRequested { false };
+    bool m_deliveryRequested;
 
     static void deliverNotifications(void*);
 };

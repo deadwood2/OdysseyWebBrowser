@@ -79,12 +79,12 @@ HTMLCanvasElement* CSSCanvasValue::element(Document& document)
     return m_element;
 }
 
-RefPtr<Image> CSSCanvasValue::image(RenderElement* renderer, const FloatSize& /*size*/)
+PassRefPtr<Image> CSSCanvasValue::image(RenderElement* renderer, const FloatSize& /*size*/)
 {
     ASSERT(clients().contains(renderer));
     HTMLCanvasElement* element = this->element(renderer->document());
     if (!element || !element->buffer())
-        return nullptr;
+        return 0;
     return element->copiedImage();
 }
 

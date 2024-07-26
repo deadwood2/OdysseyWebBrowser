@@ -32,6 +32,7 @@
 #include "DOMWindow.h"
 #include "CachedResourceLoader.h"
 #include "Document.h"
+#include "EventException.h"
 #include "EventListener.h"
 #include "EventNames.h"
 #include "ExceptionCode.h"

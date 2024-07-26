@@ -23,7 +23,7 @@
 #define NodeRareData_h
 
 #include "ChildNodeList.h"
-#include "ClassCollection.h"
+#include "ClassNodeList.h"
 #include "DOMSettableTokenList.h"
 #include "HTMLCollection.h"
 #include "HTMLNames.h"
@@ -32,7 +32,7 @@
 #include "MutationObserverRegistration.h"
 #include "Page.h"
 #include "QualifiedName.h"
-#include "TagCollection.h"
+#include "TagNodeList.h"
 #include <wtf/HashSet.h>
 #include <wtf/text/AtomicString.h>
 
@@ -47,9 +47,12 @@ class RadioNodeList;
 class TreeScope;
 
 template <class ListType> struct NodeListTypeIdentifier;
-template <> struct NodeListTypeIdentifier<NameNodeList> { static int value() { return 0; } };
-template <> struct NodeListTypeIdentifier<RadioNodeList> { static int value() { return 1; } };
-template <> struct NodeListTypeIdentifier<LabelsNodeList> { static int value() { return 2; } };
+template <> struct NodeListTypeIdentifier<ClassNodeList> { static int value() { return 0; } };
+template <> struct NodeListTypeIdentifier<NameNodeList> { static int value() { return 1; } };
+template <> struct NodeListTypeIdentifier<TagNodeList> { static int value() { return 2; } };
+template <> struct NodeListTypeIdentifier<HTMLTagNodeList> { static int value() { return 3; } };
+template <> struct NodeListTypeIdentifier<RadioNodeList> { static int value() { return 4; } };
+template <> struct NodeListTypeIdentifier<LabelsNodeList> { static int value() { return 5; } };
 
 class NodeListsNodeData {
     WTF_MAKE_NONCOPYABLE(NodeListsNodeData); WTF_MAKE_FAST_ALLOCATED;
@@ -113,7 +116,7 @@ public:
 
     typedef HashMap<std::pair<unsigned char, AtomicString>, LiveNodeList*, NodeListCacheMapEntryHash> NodeListAtomicNameCacheMap;
     typedef HashMap<std::pair<unsigned char, AtomicString>, HTMLCollection*, NodeListCacheMapEntryHash> CollectionCacheMap;
-    typedef HashMap<QualifiedName, TagCollection*> TagCollectionCacheNS;
+    typedef HashMap<QualifiedName, TagNodeList*> TagNodeListCacheNS;
 
     template<typename T, typename ContainerType>
     ALWAYS_INLINE Ref<T> addCacheWithAtomicName(ContainerType& container, const AtomicString& name)
@@ -127,14 +130,14 @@ public:
         return list;
     }
 
-    ALWAYS_INLINE Ref<TagCollection> addCachedCollectionWithQualifiedName(ContainerNode& node, const AtomicString& namespaceURI, const AtomicString& localName)
+    ALWAYS_INLINE Ref<TagNodeList> addCacheWithQualifiedName(ContainerNode& node, const AtomicString& namespaceURI, const AtomicString& localName)
     {
         QualifiedName name(nullAtom, localName, namespaceURI);
-        TagCollectionCacheNS::AddResult result = m_tagCollectionCacheNS.fastAdd(name, nullptr);
+        TagNodeListCacheNS::AddResult result = m_tagNodeListCacheNS.fastAdd(name, nullptr);
         if (!result.isNewEntry)
             return *result.iterator->value;
 
-        auto list = TagCollection::create(node, namespaceURI, localName);
+        auto list = TagNodeList::create(node, namespaceURI, localName);
         result.iterator->value = list.ptr();
         return list;
     }
@@ -178,13 +181,13 @@ public:
         m_atomicNameCaches.remove(namedNodeListKey<NodeListType>(name));
     }
 
-    void removeCachedCollectionWithQualifiedName(HTMLCollection& collection, const AtomicString& namespaceURI, const AtomicString& localName)
+    void removeCacheWithQualifiedName(LiveNodeList* list, const AtomicString& namespaceURI, const AtomicString& localName)
     {
         QualifiedName name(nullAtom, localName, namespaceURI);
-        ASSERT(&collection == m_tagCollectionCacheNS.get(name));
-        if (deleteThisAndUpdateNodeRareDataIfAboutToRemoveLastList(collection.ownerNode()))
+        ASSERT(list == m_tagNodeListCacheNS.get(name));
+        if (deleteThisAndUpdateNodeRareDataIfAboutToRemoveLastList(list->ownerNode()))
             return;
-        m_tagCollectionCacheNS.remove(name);
+        m_tagNodeListCacheNS.remove(name);
     }
 
     void removeCachedCollection(HTMLCollection* collection, const AtomicString& name = starAtom)
@@ -198,7 +201,7 @@ public:
     void invalidateCaches(const QualifiedName* attrName = 0);
     bool isEmpty() const
     {
-        return m_atomicNameCaches.isEmpty() && m_cachedCollections.isEmpty() && m_tagCollectionCacheNS.isEmpty();
+        return m_atomicNameCaches.isEmpty() && m_cachedCollections.isEmpty() && m_tagNodeListCacheNS.isEmpty();
     }
 
     void adoptTreeScope()
@@ -217,7 +220,7 @@ public:
         for (auto& cache : m_atomicNameCaches.values())
             cache->invalidateCache(*oldDocument);
 
-        for (auto& list : m_tagCollectionCacheNS.values()) {
+        for (auto& list : m_tagNodeListCacheNS.values()) {
             ASSERT(!list->isRootedAtDocument());
             list->invalidateCache(*oldDocument);
         }
@@ -245,7 +248,7 @@ private:
     EmptyNodeList* m_emptyChildNodeList;
 
     NodeListAtomicNameCacheMap m_atomicNameCaches;
-    TagCollectionCacheNS m_tagCollectionCacheNS;
+    TagNodeListCacheNS m_tagNodeListCacheNS;
     CollectionCacheMap m_cachedCollections;
 };
 
@@ -306,7 +309,7 @@ inline bool NodeListsNodeData::deleteThisAndUpdateNodeRareDataIfAboutToRemoveLas
 {
     ASSERT(ownerNode.nodeLists() == this);
     if ((m_childNodeList ? 1 : 0) + (m_emptyChildNodeList ? 1 : 0) + m_atomicNameCaches.size()
-        + m_tagCollectionCacheNS.size() + m_cachedCollections.size() != 1)
+        + m_tagNodeListCacheNS.size() + m_cachedCollections.size() != 1)
         return false;
     ownerNode.clearNodeLists();
     return true;

@@ -33,7 +33,7 @@ namespace WebCore {
 class CSSStyleDeclaration;
 class MutableStyleProperties;
 
-// Attr can have Text children
+// Attr can have Text and EntityReference children
 // therefore it has to be a fullblown Node. The plan
 // is to dynamically allocate a textchild and store the
 // resulting nodevalue in the attribute upon
@@ -80,7 +80,7 @@ private:
 
     virtual String nodeValue() const override { return value(); }
     virtual void setNodeValue(const String&, ExceptionCode&) override;
-    virtual Ref<Node> cloneNodeInternal(Document&, CloningOperation) override;
+    virtual RefPtr<Node> cloneNodeInternal(Document&, CloningOperation) override;
 
     virtual bool isAttributeNode() const override { return true; }
     virtual bool childTypeAllowed(NodeType) const override;

@@ -231,20 +231,20 @@ RefPtr<Document> DOMImplementation::createDocument(const String& namespaceURI,
     }
 
     if (doctype)
-        doc->appendChild(*doctype);
+        doc->appendChild(doctype);
     if (documentElement)
-        doc->appendChild(documentElement.releaseNonNull());
+        doc->appendChild(documentElement.release());
 
     return doc;
 }
 
-Ref<CSSStyleSheet> DOMImplementation::createCSSStyleSheet(const String&, const String& media, ExceptionCode&)
+RefPtr<CSSStyleSheet> DOMImplementation::createCSSStyleSheet(const String&, const String& media, ExceptionCode&)
 {
     // FIXME: Title should be set.
     // FIXME: Media could have wrong syntax, in which case we should generate an exception.
-    Ref<CSSStyleSheet> sheet = CSSStyleSheet::create(StyleSheetContents::create());
-    sheet->setMediaQueries(MediaQuerySet::createAllowingDescriptionSyntax(media));
-    return sheet;
+    auto sheet = CSSStyleSheet::create(StyleSheetContents::create());
+    sheet.get().setMediaQueries(MediaQuerySet::createAllowingDescriptionSyntax(media));
+    return WTF::move(sheet);
 }
 
 static inline bool isValidXMLMIMETypeChar(UChar c)
@@ -289,18 +289,18 @@ bool DOMImplementation::isTextMIMEType(const String& mimeType)
     return false;
 }
 
-Ref<HTMLDocument> DOMImplementation::createHTMLDocument(const String& title)
+RefPtr<HTMLDocument> DOMImplementation::createHTMLDocument(const String& title)
 {
-    Ref<HTMLDocument> doc = HTMLDocument::create(nullptr, URL());
-    doc->open();
-    doc->write("<!doctype html><html><body></body></html>");
+    RefPtr<HTMLDocument> d = HTMLDocument::create(0, URL());
+    d->open();
+    d->write("<!doctype html><html><body></body></html>");
     if (!title.isNull())
-        doc->setTitle(title);
-    doc->setSecurityOriginPolicy(m_document.securityOriginPolicy());
-    return doc;
+        d->setTitle(title);
+    d->setSecurityOriginPolicy(m_document.securityOriginPolicy());
+    return d;
 }
 
-Ref<Document> DOMImplementation::createDocument(const String& type, Frame* frame, const URL& url)
+RefPtr<Document> DOMImplementation::createDocument(const String& type, Frame* frame, const URL& url)
 {
     // Plugins cannot take HTML and XHTML from us, and we don't even need to initialize the plugin database for those.
     if (type == "text/html")
@@ -318,10 +318,10 @@ Ref<Document> DOMImplementation::createDocument(const String& type, Frame* frame
     if (frame && !frame->isMainFrame() && MIMETypeRegistry::isPDFMIMEType(type) && frame->settings().useImageDocumentForSubframePDF())
         return ImageDocument::create(*frame, url);
 
-    PluginData* pluginData = nullptr;
+    PluginData* pluginData = 0;
     PluginData::AllowedPluginTypes allowedPluginTypes = PluginData::OnlyApplicationPlugins;
     if (frame && frame->page()) {
-        if (frame->loader().subframeLoader().allowPlugins())
+        if (frame->loader().subframeLoader().allowPlugins(NotAboutToInstantiatePlugin))
             allowedPluginTypes = PluginData::AllPlugins;
 
         pluginData = &frame->page()->pluginData();

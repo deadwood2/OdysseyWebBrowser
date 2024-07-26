@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,28 +23,30 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.IndexedDatabaseEntryDataGridNode = class IndexedDatabaseEntryDataGridNode extends WebInspector.DataGridNode
+WebInspector.IndexedDatabaseEntryDataGridNode = function(entry)
 {
-    constructor(entry)
-    {
-        super(entry);
+    WebInspector.DataGridNode.call(this, entry);
 
-        this._entry = entry;
-    }
+    this._entry = entry;
+};
+
+WebInspector.IndexedDatabaseEntryDataGridNode.prototype = {
+    constructor: WebInspector.IndexedDatabaseEntryDataGridNode,
+    __proto__: WebInspector.DataGridNode.prototype,
 
     // Public
 
     get entry()
     {
         return this._entry;
-    }
+    },
 
-    createCellContent(columnIdentifier, cell)
+    createCellContent: function(columnIdentifier, cell)
     {
         var value = this._entry[columnIdentifier];
         if (value instanceof WebInspector.RemoteObject)
             return WebInspector.FormattedValue.createObjectTreeOrFormattedValueForRemoteObject(value, null, true);
 
-        return super.createCellContent(columnIdentifier, cell);
+        return WebInspector.DataGridNode.prototype.createCellContent.call(this, columnIdentifier, cell);
     }
 };

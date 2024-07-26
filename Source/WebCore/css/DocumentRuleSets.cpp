@@ -31,7 +31,7 @@
 
 #include "CSSDefaultStyleSheets.h"
 #include "CSSStyleSheet.h"
-#include "ExtensionStyleSheets.h"
+#include "DocumentStyleSheetCollection.h"
 #include "MediaQueryEvaluator.h"
 #include "StyleResolver.h"
 #include "StyleSheetContents.h"
@@ -46,13 +46,13 @@ DocumentRuleSets::~DocumentRuleSets()
 {
 }
 
-void DocumentRuleSets::initUserStyle(ExtensionStyleSheets& extensionStyleSheets, const MediaQueryEvaluator& medium, StyleResolver& resolver)
+void DocumentRuleSets::initUserStyle(DocumentStyleSheetCollection& styleSheetCollection, const MediaQueryEvaluator& medium, StyleResolver& resolver)
 {
     auto tempUserStyle = std::make_unique<RuleSet>();
-    if (CSSStyleSheet* pageUserSheet = extensionStyleSheets.pageUserSheet())
+    if (CSSStyleSheet* pageUserSheet = styleSheetCollection.pageUserSheet())
         tempUserStyle->addRulesFromSheet(&pageUserSheet->contents(), medium, &resolver);
-    collectRulesFromUserStyleSheets(extensionStyleSheets.injectedUserStyleSheets(), *tempUserStyle, medium, resolver);
-    collectRulesFromUserStyleSheets(extensionStyleSheets.documentUserStyleSheets(), *tempUserStyle, medium, resolver);
+    collectRulesFromUserStyleSheets(styleSheetCollection.injectedUserStyleSheets(), *tempUserStyle, medium, resolver);
+    collectRulesFromUserStyleSheets(styleSheetCollection.documentUserStyleSheets(), *tempUserStyle, medium, resolver);
     if (tempUserStyle->ruleCount() > 0 || tempUserStyle->pageRules().size() > 0)
         m_userStyle = WTF::move(tempUserStyle);
 }
@@ -83,16 +83,18 @@ void DocumentRuleSets::resetAuthorStyle()
     m_authorStyle->disableAutoShrinkToFit();
 }
 
-void DocumentRuleSets::appendAuthorStyleSheets(const Vector<RefPtr<CSSStyleSheet>>& styleSheets, MediaQueryEvaluator* medium, InspectorCSSOMWrappers& inspectorCSSOMWrappers, StyleResolver* resolver)
+void DocumentRuleSets::appendAuthorStyleSheets(unsigned firstNew, const Vector<RefPtr<CSSStyleSheet>>& styleSheets, MediaQueryEvaluator* medium, InspectorCSSOMWrappers& inspectorCSSOMWrappers, StyleResolver* resolver)
 {
     // This handles sheets added to the end of the stylesheet list only. In other cases the style resolver
     // needs to be reconstructed. To handle insertions too the rule order numbers would need to be updated.
-    for (auto& cssSheet : styleSheets) {
+    unsigned size = styleSheets.size();
+    for (unsigned i = firstNew; i < size; ++i) {
+        CSSStyleSheet* cssSheet = styleSheets[i].get();
         ASSERT(!cssSheet->disabled());
         if (cssSheet->mediaQueries() && !medium->eval(cssSheet->mediaQueries(), resolver))
             continue;
         m_authorStyle->addRulesFromSheet(&cssSheet->contents(), *medium, resolver);
-        inspectorCSSOMWrappers.collectFromStyleSheetIfNeeded(cssSheet.get());
+        inspectorCSSOMWrappers.collectFromStyleSheetIfNeeded(cssSheet);
     }
     m_authorStyle->shrinkToFit();
     collectFeatures();

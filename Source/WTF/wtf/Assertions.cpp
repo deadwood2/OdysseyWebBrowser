@@ -140,7 +140,7 @@ static void vprintf_stderr_common(const char* format, va_list args)
     vfprintf(stderr, format, args);
 }
 
-#if COMPILER(GCC_OR_CLANG)
+#if COMPILER(CLANG) || COMPILER(GCC)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-nonliteral"
 #endif
@@ -173,7 +173,7 @@ static void vprintf_stderr_with_trailing_newline(const char* format, va_list arg
     vprintf_stderr_common(formatWithNewline.get(), args);
 }
 
-#if COMPILER(GCC_OR_CLANG)
+#if COMPILER(CLANG) || COMPILER(GCC)
 #pragma GCC diagnostic pop
 #endif
 
@@ -320,7 +320,7 @@ void WTFCrash()
     WTFReportBacktrace();
     *(int *)(uintptr_t)0xbbadbeef = 0;
     // More reliable, but doesn't say BBADBEEF.
-#if COMPILER(GCC_OR_CLANG)
+#if COMPILER(CLANG) || COMPILER(GCC)
     __builtin_trap();
 #else
     ((void(*)())0)();
@@ -334,7 +334,7 @@ void WTFCrashWithSecurityImplication()
     WTFReportBacktrace();
     *(int *)(uintptr_t)0xfbadbeef = 0;
     // More reliable, but doesn't say fbadbeef.
-#if COMPILER(GCC_OR_CLANG)
+#if COMPILER(CLANG) || COMPILER(GCC)
     __builtin_trap();
 #else
     ((void(*)())0)();

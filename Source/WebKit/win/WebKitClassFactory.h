@@ -35,16 +35,16 @@ public:
     ~WebKitClassFactory();
 
     // IUnknown
-    virtual HRESULT STDMETHODCALLTYPE QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject);
-    virtual ULONG STDMETHODCALLTYPE AddRef();
-    virtual ULONG STDMETHODCALLTYPE Release();
+    virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject);
+    virtual ULONG STDMETHODCALLTYPE AddRef(void);
+    virtual ULONG STDMETHODCALLTYPE Release(void);
 
     // IClassFactory
-    virtual HRESULT STDMETHODCALLTYPE CreateInstance(_In_opt_ IUnknown* pUnkOuter, _In_ REFIID riid, _COM_Outptr_ void** ppvObject);
-    virtual HRESULT STDMETHODCALLTYPE LockServer(BOOL);
+    virtual HRESULT STDMETHODCALLTYPE CreateInstance(IUnknown* pUnkOuter, REFIID riid, void** ppvObject);
+    virtual HRESULT STDMETHODCALLTYPE LockServer(BOOL fLock);
 
 protected:
-    ULONG m_refCount { 0 };
+    ULONG m_refCount;
     CLSID m_targetClass;
 };
 

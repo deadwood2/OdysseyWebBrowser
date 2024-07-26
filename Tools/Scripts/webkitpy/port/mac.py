@@ -102,19 +102,11 @@ class MacPort(ApplePort):
             if self.get_option('leaks'):
                 env['MallocStackLogging'] = '1'
             if self.get_option('guard_malloc'):
-                self._append_value_colon_separated(env, 'DYLD_INSERT_LIBRARIES', '/usr/lib/libgmalloc.dylib')
-            self._append_value_colon_separated(env, 'DYLD_INSERT_LIBRARIES', self._build_path("libWebCoreTestShim.dylib"))
+                env['DYLD_INSERT_LIBRARIES'] = '/usr/lib/libgmalloc.dylib:' + self._build_path("libWebCoreTestShim.dylib")
+            else:
+                env['DYLD_INSERT_LIBRARIES'] = self._build_path("libWebCoreTestShim.dylib")
         env['XML_CATALOG_FILES'] = ''  # work around missing /etc/catalog <rdar://problem/4292995>
         return env
-
-    def _clear_global_caches_and_temporary_files(self):
-        self._filesystem.rmtree(os.path.expanduser('~/Library/' + self.driver_name()))
-        self._filesystem.rmtree(os.path.expanduser('~/Library/Application Support/' + self.driver_name()))
-        self._filesystem.rmtree(os.path.expanduser('~/Library/Caches/' + self.driver_name()))
-        self._filesystem.rmtree(os.path.expanduser('~/Library/WebKit/' + self.driver_name()))
-
-    def remove_cache_directory(self, name):
-        self._filesystem.rmtree(os.confstr(65538) + name)
 
     def operating_system(self):
         return 'mac'

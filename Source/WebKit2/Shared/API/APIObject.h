@@ -145,13 +145,11 @@ public:
         UserMediaPermissionRequest,
         Vibration,
         ViewportAttributes,
-        VisitedLinkStore,
+        VisitedLinkProvider,
         WebsiteDataRecord,
         WebsiteDataStore,
-        WindowFeatures,
 
 #if ENABLE(MEDIA_SESSION)
-        MediaSessionFocusManager,
         MediaSessionMetadata,
 #endif
 
@@ -165,6 +163,7 @@ public:
         BundleFrame,
         BundleHitTestResult,
         BundleInspector,
+        BundleInspectorUI,
         BundleNavigationAction,
         BundleNodeHandle,
         BundlePage,

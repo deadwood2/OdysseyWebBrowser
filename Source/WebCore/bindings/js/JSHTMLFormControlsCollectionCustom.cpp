@@ -30,7 +30,7 @@ using namespace JSC;
 
 namespace WebCore {
 
-static JSValue namedItems(ExecState& state, JSHTMLFormControlsCollection* collection, PropertyName propertyName)
+static JSValue namedItems(ExecState* exec, JSHTMLFormControlsCollection* collection, PropertyName propertyName)
 {
     const AtomicString& name = propertyNameToAtomicString(propertyName);
     Vector<Ref<Element>> namedItems = collection->impl().namedItems(name);
@@ -38,25 +38,26 @@ static JSValue namedItems(ExecState& state, JSHTMLFormControlsCollection* collec
     if (namedItems.isEmpty())
         return jsUndefined();
     if (namedItems.size() == 1)
-        return toJS(&state, collection->globalObject(), namedItems[0].ptr());
+        return toJS(exec, collection->globalObject(), namedItems[0].ptr());
 
     ASSERT(collection->impl().type() == FormControls);
-    return toJS(&state, collection->globalObject(), collection->impl().ownerNode().radioNodeList(name).get());
+    return toJS(exec, collection->globalObject(), collection->impl().ownerNode().radioNodeList(name).get());
 }
 
-bool JSHTMLFormControlsCollection::nameGetter(ExecState* state, PropertyName propertyName, JSValue& value)
+bool JSHTMLFormControlsCollection::canGetItemsForName(ExecState*, HTMLFormControlsCollection* collection, PropertyName propertyName)
 {
-    auto items = namedItems(*state, this, propertyName);
-    if (items.isUndefined())
-        return false;
-
-    value = items;
-    return true;
+    return collection->hasNamedItem(propertyNameToAtomicString(propertyName));
 }
 
-JSValue JSHTMLFormControlsCollection::namedItem(ExecState& state)
+EncodedJSValue JSHTMLFormControlsCollection::nameGetter(ExecState* exec, JSObject* slotBase, EncodedJSValue, PropertyName propertyName)
 {
-    JSValue value = namedItems(state, this, Identifier::fromString(&state, state.argument(0).toString(&state)->value(&state)));
+    JSHTMLFormControlsCollection* thisObj = jsCast<JSHTMLFormControlsCollection*>(slotBase);
+    return JSValue::encode(namedItems(exec, thisObj, propertyName));
+}
+
+JSValue JSHTMLFormControlsCollection::namedItem(ExecState* exec)
+{
+    JSValue value = namedItems(exec, this, Identifier::fromString(exec, exec->argument(0).toString(exec)->value(exec)));
     return value.isUndefined() ? jsNull() : value;
 }
 

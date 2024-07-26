@@ -28,18 +28,17 @@
 
 #if ENABLE(INDEXED_DATABASE)
 
-#include "IndexedDB.h"
 #include <wtf/Forward.h>
 #include <wtf/RefCounted.h>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
 
-using WebCore::IndexedDB::KeyType;
-
 namespace WebCore {
 
 class IDBKey : public RefCounted<IDBKey> {
 public:
+    typedef Vector<RefPtr<IDBKey>> KeyArray;
+
     static Ref<IDBKey> createInvalid()
     {
         return adoptRef(*new IDBKey());
@@ -47,7 +46,7 @@ public:
 
     static Ref<IDBKey> createNumber(double number)
     {
-        return adoptRef(*new IDBKey(KeyType::Number, number));
+        return adoptRef(*new IDBKey(NumberType, number));
     }
 
     static Ref<IDBKey> createString(const String& string)
@@ -57,12 +56,12 @@ public:
 
     static Ref<IDBKey> createDate(double date)
     {
-        return adoptRef(*new IDBKey(KeyType::Date, date));
+        return adoptRef(*new IDBKey(DateType, date));
     }
 
-    static PassRefPtr<IDBKey> createMultiEntryArray(const Vector<RefPtr<IDBKey>>& array)
+    static PassRefPtr<IDBKey> createMultiEntryArray(const KeyArray& array)
     {
-        Vector<RefPtr<IDBKey>> result;
+        KeyArray result;
 
         size_t sizeEstimate = 0;
         for (auto& key : array) {
@@ -86,7 +85,7 @@ public:
         return idbKey.release();
     }
 
-    static Ref<IDBKey> createArray(const Vector<RefPtr<IDBKey>>& array)
+    static Ref<IDBKey> createArray(const KeyArray& array)
     {
         size_t sizeEstimate = 0;
         for (auto& key : array)
@@ -97,30 +96,41 @@ public:
 
     WEBCORE_EXPORT ~IDBKey();
 
-    KeyType type() const { return m_type; }
+    // In order of the least to the highest precedent in terms of sort order.
+    enum Type {
+        MaxType = -1,
+        InvalidType = 0,
+        ArrayType,
+        StringType,
+        DateType,
+        NumberType,
+        MinType
+    };
+
+    Type type() const { return m_type; }
     WEBCORE_EXPORT bool isValid() const;
 
-    const Vector<RefPtr<IDBKey>>& array() const
+    const KeyArray& array() const
     {
-        ASSERT(m_type == KeyType::Array);
+        ASSERT(m_type == ArrayType);
         return m_array;
     }
 
     const String& string() const
     {
-        ASSERT(m_type == KeyType::String);
+        ASSERT(m_type == StringType);
         return m_string;
     }
 
     double date() const
     {
-        ASSERT(m_type == KeyType::Date);
+        ASSERT(m_type == DateType);
         return m_number;
     }
 
     double number() const
     {
-        ASSERT(m_type == KeyType::Number);
+        ASSERT(m_type == NumberType);
         return m_number;
     }
 
@@ -130,7 +140,7 @@ public:
 
     size_t sizeEstimate() const { return m_sizeEstimate; }
 
-    static int compareTypes(KeyType a, KeyType b)
+    static int compareTypes(Type a, Type b)
     {
         return b - a;
     }
@@ -143,13 +153,13 @@ public:
 #endif
 
 private:
-    IDBKey() : m_type(KeyType::Invalid), m_number(0), m_sizeEstimate(OverheadSize) { }
-    IDBKey(KeyType type, double number) : m_type(type), m_number(number), m_sizeEstimate(OverheadSize + sizeof(double)) { }
-    explicit IDBKey(const String& value) : m_type(KeyType::String), m_string(value), m_number(0), m_sizeEstimate(OverheadSize + value.length() * sizeof(UChar)) { }
-    IDBKey(const Vector<RefPtr<IDBKey>>& keyArray, size_t arraySize) : m_type(KeyType::Array), m_array(keyArray), m_number(0), m_sizeEstimate(OverheadSize + arraySize) { }
+    IDBKey() : m_type(InvalidType), m_number(0), m_sizeEstimate(OverheadSize) { }
+    IDBKey(Type type, double number) : m_type(type), m_number(number), m_sizeEstimate(OverheadSize + sizeof(double)) { }
+    explicit IDBKey(const String& value) : m_type(StringType), m_string(value), m_number(0), m_sizeEstimate(OverheadSize + value.length() * sizeof(UChar)) { }
+    IDBKey(const KeyArray& keyArray, size_t arraySize) : m_type(ArrayType), m_array(keyArray), m_number(0), m_sizeEstimate(OverheadSize + arraySize) { }
 
-    const KeyType m_type;
-    const Vector<RefPtr<IDBKey>> m_array;
+    const Type m_type;
+    const KeyArray m_array;
     const String m_string;
     const double m_number;
 

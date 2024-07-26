@@ -76,7 +76,6 @@ public:
     void keepWebHistory();
     void notifyDone();
     int numberOfPendingGeolocationPermissionRequests();
-    bool isGeolocationProviderActive();
     void overridePreference(JSStringRef key, JSStringRef value);
     JSStringRef pathToLocalResource(JSContextRef, JSStringRef url);
     void queueBackNavigation(int howFarBackward);
@@ -308,8 +307,6 @@ public:
     void showWebInspector();
     void closeWebInspector();
     void evaluateInWebInspector(JSStringRef script);
-    JSStringRef inspectorTestStubURL();
-
     void evaluateScriptInIsolatedWorld(unsigned worldID, JSObjectRef globalObject, JSStringRef script);
     void evaluateScriptInIsolatedWorldAndReturnValue(unsigned worldID, JSObjectRef globalObject, JSStringRef script);
 

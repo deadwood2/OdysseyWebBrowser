@@ -24,7 +24,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.FormatterContentBuilder = class FormatterContentBuilder
+class FormatterContentBuilder
 {
     constructor(mapping, originalLineEndings, formattedLineEndings, originalOffset, formattedOffset, indentString)
     {

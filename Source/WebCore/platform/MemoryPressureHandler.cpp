@@ -124,20 +124,18 @@ void MemoryPressureHandler::releaseCriticalMemory(Synchronous synchronous)
 
     {
         ReliefLogger log("Drain CSSValuePool");
-        CSSValuePool::singleton().drain();
+        cssValuePool().drain();
     }
 
     {
         ReliefLogger log("Discard StyleResolvers");
-        Vector<RefPtr<Document>> documents;
-        copyToVector(Document::allDocuments(), documents);
-        for (auto& document : documents)
+        for (auto* document : Document::allDocuments())
             document->clearStyleResolver();
     }
 
     {
         ReliefLogger log("Discard all JIT-compiled code");
-        GCController::singleton().deleteAllCode();
+        GCController::singleton().discardAllCompiledCode();
     }
 
     {

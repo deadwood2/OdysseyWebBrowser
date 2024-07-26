@@ -112,8 +112,7 @@ private:
     """void ObjCInspector${domainName}BackendDispatcher::${commandName}(${parameters})
 {
     id errorCallback = ^(NSString *error) {
-        backendDispatcher()->reportProtocolError(requestId, BackendDispatcher::ServerError, error);
-        backendDispatcher()->sendPendingErrors();
+        backendDispatcher()->sendResponse(callId, InspectorObject::create(), error);
     };
 
 ${successCallback}
@@ -138,7 +137,7 @@ ${invocation}
     _${variableNamePrefix}Handler = [handler retain];
 
     auto alternateDispatcher = std::make_unique<ObjCInspector${domainName}BackendDispatcher>(handler);
-    auto alternateAgent = std::make_unique<AlternateDispatchableAgent<${domainName}BackendDispatcher, Alternate${domainName}BackendDispatcher>>(ASCIILiteral("${domainName}"), *_controller, WTF::move(alternateDispatcher));
+    auto alternateAgent = std::make_unique<AlternateDispatchableAgent<${domainName}BackendDispatcher, Alternate${domainName}BackendDispatcher>>(ASCIILiteral("${domainName}"), WTF::move(alternateDispatcher));
     _controller->appendExtraAgent(WTF::move(alternateAgent));
 }
 

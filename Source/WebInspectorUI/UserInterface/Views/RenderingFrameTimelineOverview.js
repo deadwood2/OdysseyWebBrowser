@@ -23,31 +23,35 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.RenderingFrameTimelineOverview = class RenderingFrameTimelineOverview extends WebInspector.TimelineOverview
+WebInspector.RenderingFrameTimelineOverview = function(timelineRecording)
 {
-    constructor(timelineRecording)
-    {
-        var minimumDurationPerPixel = 1 / WebInspector.TimelineRecordFrame.MaximumWidthPixels;
-        var maximumDurationPerPixel = 1 / WebInspector.TimelineRecordFrame.MinimumWidthPixels;
-        var defaultSettingsValues = {
-            durationPerPixel: minimumDurationPerPixel,
-            selectionStartValue: 0,
-            selectionDuration: 100
-        };
+    // FIXME: Convert this to a WebInspector.TimelineOverview subclass, and call super().
 
-        super("frames", timelineRecording, minimumDurationPerPixel, maximumDurationPerPixel, defaultSettingsValues);
+    var minimumDurationPerPixel = 1 / WebInspector.TimelineRecordFrame.MaximumWidthPixels;
+    var maximumDurationPerPixel = 1 / WebInspector.TimelineRecordFrame.MinimumWidthPixels;
+    var defaultSettingsValues = {
+        durationPerPixel: minimumDurationPerPixel,
+        selectionStartValue: 0,
+        selectionDuration: 100
+    };
 
-        this.pixelAlignDuration = true;
-        this.timelineRuler.minimumSelectionDuration = 1;
-        this.timelineRuler.snapInterval = 1;
-        this.timelineRuler.formatLabelCallback = function(value) {
-            return value.toFixed(0);
-        };
-    }
+    WebInspector.TimelineOverview.call(this, "frames", timelineRecording, minimumDurationPerPixel, maximumDurationPerPixel, defaultSettingsValues);
+
+    this.pixelAlignDuration = true;
+    this.timelineRuler.minimumSelectionDuration = 1;
+    this.timelineRuler.snapInterval = 1;
+    this.timelineRuler.formatLabelCallback = function(value) {
+        return value.toFixed(0);
+    };
+};
+
+WebInspector.RenderingFrameTimelineOverview.prototype = {
+    constructor: WebInspector.RenderingFrameTimelineOverview,
+    __proto__: WebInspector.TimelineOverview.prototype,
 
     // Protected
 
-    canShowTimeline(timeline)
+    canShowTimeline: function(timeline)
     {
         return timeline.type === WebInspector.TimelineRecord.Type.RenderingFrame;
     }

@@ -35,6 +35,7 @@
 #include "LinkBuffer.h"
 #include "OperandsInlines.h"
 #include "JSCInlines.h"
+#include "RepatchBuffer.h"
 #include <wtf/StringPrintStream.h>
 
 namespace JSC { namespace DFG {
@@ -115,9 +116,10 @@ void compileOSRExit(ExecState* exec)
     SamplingRegion samplingRegion("DFG OSR Exit Compilation");
     
     CodeBlock* codeBlock = exec->codeBlock();
+    
     ASSERT(codeBlock);
     ASSERT(codeBlock->jitType() == JITCode::DFGJIT);
-
+    
     VM* vm = &exec->vm();
     
     // It's sort of preferable that we don't GC while in here. Anyways, doing so wouldn't
@@ -126,12 +128,6 @@ void compileOSRExit(ExecState* exec)
 
     uint32_t exitIndex = vm->osrExitIndex;
     OSRExit& exit = codeBlock->jitCode()->dfg()->osrExit[exitIndex];
-    
-    if (vm->callFrameForCatch)
-        ASSERT(exit.m_willArriveAtOSRExitFromGenericUnwind);
-    if (exit.m_isExceptionHandler)
-        ASSERT(!!vm->exception());
-        
     
     prepareCodeOriginForOSRExit(exec, exit.m_codeOrigin);
     
@@ -158,7 +154,7 @@ void compileOSRExit(ExecState* exec)
                 exit.m_kind, exit.m_kind == UncountableInvalidation);
             jit.add64(CCallHelpers::TrustedImm32(1), CCallHelpers::AbsoluteAddress(profilerExit->counterAddress()));
         }
-
+        
         exitCompiler.compileExit(exit, operands, recovery);
         
         LinkBuffer patchBuffer(*vm, jit, codeBlock);
@@ -171,7 +167,10 @@ void compileOSRExit(ExecState* exec)
                 toCString(ignoringContext<DumpContext>(operands)).data()));
     }
     
-    MacroAssembler::repatchJump(exit.codeLocationForRepatch(codeBlock), CodeLocationLabel(exit.m_code.code()));
+    {
+        RepatchBuffer repatchBuffer(codeBlock);
+        repatchBuffer.relink(exit.codeLocationForRepatch(codeBlock), CodeLocationLabel(exit.m_code.code()));
+    }
     
     vm->osrExitJumpDestination = exit.m_code.code().executableAddress();
 }

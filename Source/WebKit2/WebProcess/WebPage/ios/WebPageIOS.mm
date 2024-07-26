@@ -872,7 +872,7 @@ PassRefPtr<Range> WebPage::rangeForWebSelectionAtPosition(const IntPoint& point,
 
     if (currentNode->isTextNode()) {
         range = enclosingTextUnitOfGranularity(position, ParagraphGranularity, DirectionForward);
-        if (!range || range->collapsed())
+        if (!range || range->collapsed(ASSERT_NO_EXCEPTION))
             range = Range::create(currentNode->document(), position, position);
         if (!range)
             return nullptr;
@@ -882,7 +882,7 @@ PassRefPtr<Range> WebPage::rangeForWebSelectionAtPosition(const IntPoint& point,
         if (boundingRectInScrollViewCoordinates.width() > m_blockSelectionDesiredSize.width() && boundingRectInScrollViewCoordinates.height() > m_blockSelectionDesiredSize.height())
             return wordRangeFromPosition(position);
 
-        currentNode = range->commonAncestorContainer();
+        currentNode = range->commonAncestorContainer(ASSERT_NO_EXCEPTION);
     }
 
     if (!currentNode->isElementNode())
@@ -909,7 +909,7 @@ PassRefPtr<Range> WebPage::rangeForWebSelectionAtPosition(const IntPoint& point,
 
     if (renderer->childrenInline() && (is<RenderBlock>(*renderer) && !downcast<RenderBlock>(*renderer).inlineElementContinuation()) && !renderer->isTable()) {
         range = enclosingTextUnitOfGranularity(position, WordGranularity, DirectionBackward);
-        if (range && !range->collapsed())
+        if (range && !range->collapsed(ASSERT_NO_EXCEPTION))
             return range;
     }
 
@@ -924,7 +924,7 @@ PassRefPtr<Range> WebPage::rangeForWebSelectionAtPosition(const IntPoint& point,
     flags = IsBlockSelection;
     range = Range::create(bestChoice->document());
     range->selectNodeContents(bestChoice, ASSERT_NO_EXCEPTION);
-    return range->collapsed() ? nullptr : range;
+    return range->collapsed(ASSERT_NO_EXCEPTION) ? nullptr : range;
 }
 
 PassRefPtr<Range> WebPage::rangeForBlockAtPoint(const IntPoint& point)
@@ -936,7 +936,7 @@ PassRefPtr<Range> WebPage::rangeForBlockAtPoint(const IntPoint& point)
 
     if (currentNode->isTextNode()) {
         range = enclosingTextUnitOfGranularity(m_page->focusController().focusedOrMainFrame().visiblePositionForPoint(point), ParagraphGranularity, DirectionForward);
-        if (range && !range->collapsed())
+        if (range && !range->collapsed(ASSERT_NO_EXCEPTION))
             return range;
     }
 
@@ -1202,7 +1202,7 @@ static inline bool containsRange(Range* first, Range* second)
 {
     if (!first || !second)
         return false;
-    return (first->commonAncestorContainer()->ownerDocument() == second->commonAncestorContainer()->ownerDocument()
+    return (first->commonAncestorContainer(ASSERT_NO_EXCEPTION)->ownerDocument() == second->commonAncestorContainer(ASSERT_NO_EXCEPTION)->ownerDocument()
         && first->compareBoundaryPoints(Range::START_TO_START, second, ASSERT_NO_EXCEPTION) <= 0
         && first->compareBoundaryPoints(Range::END_TO_END, second, ASSERT_NO_EXCEPTION) >= 0);
 }
@@ -1217,7 +1217,7 @@ static inline RefPtr<Range> unionDOMRanges(Range* rangeA, Range* rangeB)
     Range* start = rangeA->compareBoundaryPoints(Range::START_TO_START, rangeB, ASSERT_NO_EXCEPTION) <= 0 ? rangeA : rangeB;
     Range* end = rangeA->compareBoundaryPoints(Range::END_TO_END, rangeB, ASSERT_NO_EXCEPTION) <= 0 ? rangeB : rangeA;
 
-    return Range::create(rangeA->ownerDocument(), &start->startContainer(), start->startOffset(), &end->endContainer(), end->endOffset());
+    return Range::create(rangeA->ownerDocument(), start->startContainer(), start->startOffset(), end->endContainer(), end->endOffset());
 }
 
 static inline IntPoint computeEdgeCenter(const IntRect& box, SelectionHandlePosition handlePosition)
@@ -1397,9 +1397,9 @@ PassRefPtr<Range> WebPage::contractedRangeFromHandle(Range* currentRange, Select
             continue;
 
         if (handlePosition == SelectionHandlePosition::Top || handlePosition == SelectionHandlePosition::Left)
-            newRange = Range::create(newRange->startContainer().document(), newRange->endPosition(), currentRange->endPosition());
+            newRange = Range::create(newRange->startContainer()->document(), newRange->endPosition(), currentRange->endPosition());
         else
-            newRange = Range::create(newRange->startContainer().document(), currentRange->startPosition(), newRange->startPosition());
+            newRange = Range::create(newRange->startContainer()->document(), currentRange->startPosition(), newRange->startPosition());
 
         IntRect copyRect = selectionBoxForRange(newRange.get());
         if (copyRect.isEmpty()) {
@@ -1447,7 +1447,7 @@ PassRefPtr<Range> WebPage::contractedRangeFromHandle(Range* currentRange, Select
     // there are multiple sub-element blocks beneath us.  If we didn't find
     // multiple sub-element blocks, don't shrink to a sub-element block.
 
-    Node* node = bestRange->commonAncestorContainer();
+    Node* node = bestRange->commonAncestorContainer(ASSERT_NO_EXCEPTION);
     if (!node->isElementNode())
         node = node->parentElement();
 
@@ -2144,6 +2144,19 @@ static Element* containingLinkElement(Element* element)
     return nullptr;
 }
 
+static bool shouldUseTextIndicatorForLink(Element& element)
+{
+    if (element.renderer() && !element.renderer()->isInline())
+        return false;
+
+    for (auto& child : descendantsOfType<Element>(element)) {
+        if (child.renderer() && !child.renderer()->isInline())
+            return false;
+    }
+
+    return true;
+}
+
 void WebPage::getPositionInformation(const IntPoint& point, InteractionInformationAtPosition& info)
 {
     FloatPoint adjustedPoint;
@@ -2195,15 +2208,15 @@ void WebPage::getPositionInformation(const IntPoint& point, InteractionInformati
                     if (RefPtr<WebImage> snapshot = snapshotNode(*element, SnapshotOptionsShareable, 600 * 1024))
                         info.image = snapshot->bitmap();
 
-                    RefPtr<Range> linkRange = rangeOfContents(*linkElement);
-                    if (linkRange) {
-                        float deviceScaleFactor = corePage()->deviceScaleFactor();
-                        const float marginInPoints = 4;
-
-                        RefPtr<TextIndicator> textIndicator = TextIndicator::createWithRange(*linkRange, TextIndicatorOptionTightlyFitContent | TextIndicatorOptionRespectTextColor | TextIndicatorOptionPaintBackgrounds | TextIndicatorOptionUseBoundingRectAndPaintAllContentForComplexRanges |
-                            TextIndicatorOptionIncludeMarginIfRangeMatchesSelection, TextIndicatorPresentationTransition::None, FloatSize(marginInPoints * deviceScaleFactor, marginInPoints * deviceScaleFactor));
-                        if (textIndicator)
-                            info.linkIndicator = textIndicator->data();
+                    if (shouldUseTextIndicatorForLink(*linkElement)) {
+                        RefPtr<Range> linkRange = rangeOfContents(*linkElement);
+                        if (linkRange) {
+                            float deviceScaleFactor = corePage()->deviceScaleFactor();
+                            const float marginInPoints = 4;
+                            RefPtr<TextIndicator> textIndicator = TextIndicator::createWithRange(*linkRange, TextIndicatorPresentationTransition::None, marginInPoints * deviceScaleFactor);
+                            if (textIndicator)
+                                info.linkIndicator = textIndicator->data();
+                        }
                     }
                 } else if (element->renderer() && element->renderer()->isRenderImage()) {
                     auto& renderImage = downcast<RenderImage>(*(element->renderer()));
@@ -2324,11 +2337,11 @@ static inline bool isAssistableElement(Element& node)
     if (is<HTMLSelectElement>(node))
         return true;
     if (is<HTMLTextAreaElement>(node))
-        return true;
+        return !downcast<HTMLTextAreaElement>(node).isReadOnlyNode();
     if (is<HTMLInputElement>(node)) {
         HTMLInputElement& inputElement = downcast<HTMLInputElement>(node);
         // FIXME: This laundry list of types is not a good way to factor this. Need a suitable function on HTMLInputElement itself.
-        return inputElement.isTextField() || inputElement.isDateField() || inputElement.isDateTimeLocalField() || inputElement.isMonthField() || inputElement.isTimeField();
+        return !inputElement.isReadOnlyNode() && (inputElement.isTextField() || inputElement.isDateField() || inputElement.isDateTimeLocalField() || inputElement.isMonthField() || inputElement.isTimeField());
     }
     return node.isContentEditable();
 }

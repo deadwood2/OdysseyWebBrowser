@@ -1,28 +1,5 @@
 #!/usr/bin/perl -w
 
-# Copyright (C) 2015 Apple Inc. All rights reserved.
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions
-# are met:
-# 1. Redistributions of source code must retain the above copyright
-#    notice, this list of conditions and the following disclaimer.
-# 2. Redistributions in binary form must reproduce the above copyright
-#    notice, this list of conditions and the following disclaimer in the
-#    documentation and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-# PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
-# BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
-# THE POSSIBILITY OF SUCH DAMAGE.
-
 use English;
 use File::Copy qw(copy);
 use File::Path qw(make_path remove_tree);
@@ -78,7 +55,7 @@ sub readLicenseFile($)
 
 my $inspectorLicense = <<'EOF';
 /*
- * Copyright (C) 2007-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2007-2014 Apple Inc. All rights reserved.
  * Copyright (C) 2008 Matt Lilek. All rights reserved.
  * Copyright (C) 2008-2009 Anthony Ricaud <rik@webkit.org>
  * Copyright (C) 2009-2010 Joseph Pecoraro. All rights reserved.
@@ -90,10 +67,7 @@ my $inspectorLicense = <<'EOF';
  * Copyright (C) 2013 Samsung Electronics. All rights reserved.
  * Copyright (C) 2013 Seokju Kwon (seokju.kwon@gmail.com)
  * Copyright (C) 2013 Adobe Systems Inc. All rights reserved.
- * Copyright (C) 2013-2015 University of Washington. All rights reserved.
- * Copyright (C) 2014-2015 Saam Barati <saambarati1@gmail.com>
- * Copyright (C) 2014 Antoine Quint
- * Copyright (C) 2015 Tobias Reiss <tobi+webkit@basecode.de>
+ * Copyright (C) 2013-2014 University of Washington. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -131,6 +105,7 @@ my $eslintPath = File::Spec->catdir($uiRoot, 'External', 'ESLint');
 my $codeMirrorLicense = readLicenseFile(File::Spec->catfile($codeMirrorPath, 'LICENSE'));
 my $esprimaLicense = readLicenseFile(File::Spec->catfile($esprimaPath, 'LICENSE'));
 my $eslintLicense = readLicenseFile(File::Spec->catfile($eslintPath, 'LICENSE'));
+
 make_path($protocolDir, $targetResourcePath);
 
 # Copy over dynamically loaded files from other frameworks, even if we aren't combining resources.
@@ -143,11 +118,9 @@ if (defined $ENV{'FORCE_TOOL_INSTALL'} && ($ENV{'FORCE_TOOL_INSTALL'} eq 'YES'))
     ditto($uiRoot, $targetResourcePath);
 }
 
-my $shouldCombineMain = defined $ENV{'COMBINE_INSPECTOR_RESOURCES'} && ($ENV{'COMBINE_INSPECTOR_RESOURCES'} eq 'YES');
-my $shouldCombineTest = defined $ENV{'COMBINE_TEST_RESOURCES'} && ($ENV{'COMBINE_TEST_RESOURCES'} eq 'YES');
-my $combineResourcesCmd = File::Spec->catfile($scriptsRoot, 'combine-resources.pl');
+if (defined $ENV{'COMBINE_INSPECTOR_RESOURCES'} && ($ENV{'COMBINE_INSPECTOR_RESOURCES'} eq 'YES')) {
+    my $combineResourcesCmd = File::Spec->catfile($scriptsRoot, 'combine-resources.pl');
 
-if ($shouldCombineMain) {
     # Combine the JavaScript and CSS files in Production builds into single files (Main.js and Main.css).
     system($combineResourcesCmd, '--input-html', File::Spec->catfile($uiRoot, 'Main.html'), '--derived-sources-dir', $derivedSourcesDir, '--output-dir', $derivedSourcesDir, '--output-script-name', 'Main.js', '--output-style-name', 'Main.css');
 
@@ -206,18 +179,18 @@ if ($shouldCombineMain) {
     system(qq("$python" "$cssMinScript" < "$derivedSourcesMainCSS" >> "$targetMainCSS")) and die "Failed to minify $derivedSourcesMainCSS: $!";
 
     # Minify the CodeMirror.js and CodeMirror.css files, appending to the license that was exported above.
-    my $derivedSourcesCodeMirrorJS = File::Spec->catfile($derivedSourcesDir, 'CodeMirror.js');
+    my $derivedSouressCodeMirrorJS = File::Spec->catfile($derivedSourcesDir, 'CodeMirror.js');
     my $derivedSourcesCodeMirrorCSS = File::Spec->catfile($derivedSourcesDir, 'CodeMirror.css');
-    system(qq("$python" "$jsMinScript" < "$derivedSourcesCodeMirrorJS" >> "$targetCodeMirrorJS")) and die "Failed to minify $derivedSourcesCodeMirrorJS: $!";
+    system(qq("$python" "$jsMinScript" < "$derivedSouressCodeMirrorJS" >> "$targetCodeMirrorJS")) and die "Failed to minify $derivedSouressCodeMirrorJS: $!";
     system(qq("$python" "$cssMinScript" < "$derivedSourcesCodeMirrorCSS" >> "$targetCodeMirrorCSS")) and die "Failed to minify $derivedSourcesCodeMirrorCSS: $!";
 
     # Minify the Esprima.js file, appending to the license that was exported above.
-    my $derivedSourcesEsprimaJS = File::Spec->catfile($derivedSourcesDir, 'Esprima.js');
-    system(qq("$python" "$jsMinScript" < "$derivedSourcesEsprimaJS" >> "$targetEsprimaJS")) and die "Failed to minify $derivedSourcesEsprimaJS: $!";
+    my $derivedSouressEsprimaJS = File::Spec->catfile($derivedSourcesDir, 'Esprima.js');
+    system(qq("$python" "$jsMinScript" < "$derivedSouressEsprimaJS" >> "$targetEsprimaJS")) and die "Failed to minify $derivedSouressEsprimaJS: $!";
 
     # Minify the ESLint.js file, appending to the license that was exported above.
-    my $derivedSourcesESLintJS = File::Spec->catfile($derivedSourcesDir, 'ESLint.js');
-    system(qq("$python" "$jsMinScript" < "$derivedSourcesESLintJS" >> "$targetESLintJS")) and die "Failed to minify $derivedSourcesESLintJS: $!";
+    my $derivedSouressESLintJS = File::Spec->catfile($derivedSourcesDir, 'ESLint.js');
+    system(qq("$python" "$jsMinScript" < "$derivedSouressESLintJS" >> "$targetESLintJS")) and die "Failed to minify $derivedSouressESLintJS: $!";
 
     # Copy over Main.html and the Images directory.
     copy($derivedSourcesMainHTML, File::Spec->catfile($targetResourcePath, 'Main.html'));
@@ -235,35 +208,4 @@ if ($shouldCombineMain) {
 } else {
     # Keep the files separate for engineering builds.
     ditto($uiRoot, $targetResourcePath);
-}
-
-if ($shouldCombineTest) {
-    # Combine the JavaScript files for testing into a single file (TestCombined.js ).
-    system($combineResourcesCmd, '--input-html', File::Spec->catfile($uiRoot, 'Test.html'), '--derived-sources-dir', $derivedSourcesDir, '--output-dir', $derivedSourcesDir, '--output-script-name', 'TestCombined.js', '--output-style-name', 'TestCombined.css');
-
-    my $derivedSourcesTestHTML = File::Spec->catfile($derivedSourcesDir, 'Test.html');
-    my $derivedSourcesTestJS = File::Spec->catfile($derivedSourcesDir, 'TestCombined.js');
-    # Combine the Esprima JavaScript files for testing into a single file (Esprima.js).
-    system($combineResourcesCmd, '--input-dir', 'External/Esprima', '--input-html', $derivedSourcesTestHTML, '--input-html-dir', $uiRoot, '--derived-sources-dir', $derivedSourcesDir, '--output-dir', $derivedSourcesDir, '--output-script-name', 'TestEsprima.js');
-
-    # Export the license into TestCombined.js.
-    my $targetTestJS = File::Spec->catfile($targetResourcePath, 'TestCombined.js');
-    seedFile($targetTestJS, $inspectorLicense);
-
-    # Export the license into Esprima.js.
-    my $targetEsprimaJS = File::Spec->catfile($targetResourcePath, 'TestEsprima.js');
-    seedFile($targetEsprimaJS, $esprimaLicense);
-
-    # Append TestCombined.js to the license that was exported above.
-    system(qq(cat "$derivedSourcesTestJS" >> "$targetTestJS")) and die "Failed to append $derivedSourcesTestJS: $!";
-
-    # Append Esprima.js to the license that was exported above.
-    my $derivedSourcesEsprimaJS = File::Spec->catfile($derivedSourcesDir, 'TestEsprima.js');
-    system(qq(cat "$derivedSourcesEsprimaJS" >> "$targetEsprimaJS")) and die "Failed to append $derivedSourcesEsprimaJS: $!";
-
-    # Copy over Test.html.
-    copy($derivedSourcesTestHTML, File::Spec->catfile($targetResourcePath, 'Test.html'));
-
-    # Copy the Legacy directory.
-    ditto(File::Spec->catfile($uiRoot, 'Protocol', 'Legacy'), File::Spec->catfile($protocolDir, 'Legacy'));
 }

@@ -40,6 +40,7 @@
 #include "NetworkProcessProxyMessages.h"
 #include "NetworkResourceLoader.h"
 #include "RemoteNetworkingContext.h"
+#include "SecurityOriginData.h"
 #include "SessionTracker.h"
 #include "StatisticsData.h"
 #include "WebCookieManager.h"
@@ -49,7 +50,6 @@
 #include <WebCore/Logging.h>
 #include <WebCore/PlatformCookieJar.h>
 #include <WebCore/ResourceRequest.h>
-#include <WebCore/SecurityOriginData.h>
 #include <WebCore/SecurityOriginHash.h>
 #include <WebCore/SessionID.h>
 #include <wtf/RunLoop.h>

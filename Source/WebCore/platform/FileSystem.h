@@ -32,7 +32,6 @@
 #define FileSystem_h
 
 #include <time.h>
-#include <utility>
 #include <wtf/Forward.h>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>

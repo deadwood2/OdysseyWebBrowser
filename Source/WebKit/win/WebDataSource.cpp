@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2007, 2013, 2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006, 2007, 2013 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -50,10 +50,12 @@ using namespace WebCore;
 // WebDataSource ----------------------------------------------------------------
 
 // {F230854D-7091-428a-8DB5-37CABA44C105}
-const GUID IID_WebDataSource = { 0x5c2f9099, 0xe65e, 0x4a0f, { 0x9c, 0xa0, 0x6a, 0xd6, 0x92, 0x52, 0xa6, 0x2a } };
+const GUID IID_WebDataSource = 
+{ 0x5c2f9099, 0xe65e, 0x4a0f, { 0x9c, 0xa0, 0x6a, 0xd6, 0x92, 0x52, 0xa6, 0x2a } };
 
 WebDataSource::WebDataSource(WebDocumentLoader* loader)
-    : m_loader(loader)
+    : m_refCount(0)
+    , m_loader(loader)
 {
     WebDataSourceCount++;
     gClassCount++;
@@ -83,29 +85,32 @@ WebDocumentLoader* WebDataSource::documentLoader() const
 
 // IWebDataSourcePrivate ------------------------------------------------------
 
-HRESULT WebDataSource::overrideEncoding(_Deref_opt_out_ BSTR* /*encoding*/)
+HRESULT STDMETHODCALLTYPE WebDataSource::overrideEncoding( 
+    /* [retval][out] */ BSTR* /*encoding*/)
 {
     ASSERT_NOT_REACHED();
     return E_NOTIMPL;
 }
 
-HRESULT WebDataSource::setOverrideEncoding(_In_ BSTR /*encoding*/)
+HRESULT STDMETHODCALLTYPE WebDataSource::setOverrideEncoding( 
+    /* [in] */ BSTR /*encoding*/)
 {
     ASSERT_NOT_REACHED();
     return E_NOTIMPL;
 }
 
-HRESULT WebDataSource::mainDocumentError(_COM_Outptr_opt_ IWebError** error)
+HRESULT STDMETHODCALLTYPE WebDataSource::mainDocumentError(
+        /* [retval][out] */ IWebError** error)
 {
     if (!error) {
         ASSERT_NOT_REACHED();
         return E_POINTER;
     }
 
-    *error = nullptr;
+    *error = 0;
 
     if (!m_loader)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     if (m_loader->mainDocumentError().isNull())
         return S_OK;
@@ -114,10 +119,11 @@ HRESULT WebDataSource::mainDocumentError(_COM_Outptr_opt_ IWebError** error)
     return S_OK;
 }
 
-HRESULT WebDataSource::setDeferMainResourceDataLoad(BOOL flag)
+HRESULT STDMETHODCALLTYPE WebDataSource::setDeferMainResourceDataLoad(
+    /* [in] */ BOOL flag)
 {
     if (!m_loader)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     m_loader->setDeferMainResourceDataLoad(flag);
     return S_OK;
@@ -125,11 +131,9 @@ HRESULT WebDataSource::setDeferMainResourceDataLoad(BOOL flag)
 
 // IUnknown -------------------------------------------------------------------
 
-HRESULT WebDataSource::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE WebDataSource::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_WebDataSource))
         *ppvObject = this;
     else if (IsEqualGUID(riid, IID_IUnknown))
@@ -145,12 +149,12 @@ HRESULT WebDataSource::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvO
     return S_OK;
 }
 
-ULONG WebDataSource::AddRef()
+ULONG STDMETHODCALLTYPE WebDataSource::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG WebDataSource::Release()
+ULONG STDMETHODCALLTYPE WebDataSource::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -161,31 +165,25 @@ ULONG WebDataSource::Release()
 
 // IWebDataSource --------------------------------------------------------------
 
-HRESULT WebDataSource::initWithRequest(_In_opt_ IWebURLRequest* /*request*/)
+HRESULT STDMETHODCALLTYPE WebDataSource::initWithRequest( 
+    /* [in] */ IWebURLRequest* /*request*/)
 {
     ASSERT_NOT_REACHED();
     return E_NOTIMPL;
 }
 
-HRESULT WebDataSource::data(_COM_Outptr_opt_ IStream** stream)
+HRESULT STDMETHODCALLTYPE WebDataSource::data( 
+    /* [retval][out] */ IStream** stream)
 {
-    if (!stream)
-        return E_POINTER;
-    *stream = nullptr;
+    *stream = 0;
     if (!m_loader)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     return MemoryStream::createInstance(m_loader->mainResourceData()).copyRefTo(stream);
 }
 
-HRESULT WebDataSource::representation(_COM_Outptr_opt_ IWebDocumentRepresentation** rep)
+HRESULT WebDataSource::representation(/* [retval][out] */ IWebDocumentRepresentation** rep)
 {
-    if (!rep)
-        return E_POINTER;
-    *rep = nullptr;
-    if (!m_loader)
-        return E_UNEXPECTED;
-
     HRESULT hr = S_OK;
     if (!m_representation) {
         WebHTMLRepresentation* htmlRep = WebHTMLRepresentation::createInstance(static_cast<WebFrameLoaderClient&>(m_loader->frameLoader()->client()).webFrame());
@@ -196,63 +194,37 @@ HRESULT WebDataSource::representation(_COM_Outptr_opt_ IWebDocumentRepresentatio
     return m_representation.copyRefTo(rep);
 }
 
-HRESULT WebDataSource::webFrame(_COM_Outptr_opt_ IWebFrame** frame)
+HRESULT WebDataSource::webFrame(/* [retval][out] */ IWebFrame** frame)
 {
-    if (!frame)
-        return E_POINTER;
-    *frame = nullptr;
-    if (!m_loader)
-        return E_UNEXPECTED;
-
     *frame = static_cast<WebFrameLoaderClient&>(m_loader->frameLoader()->client()).webFrame();
     (*frame)->AddRef();
     return S_OK;
 }
 
-HRESULT WebDataSource::initialRequest(_COM_Outptr_opt_ IWebURLRequest** request)
+HRESULT STDMETHODCALLTYPE WebDataSource::initialRequest( 
+    /* [retval][out] */ IWebURLRequest** request)
 {
-    if (!request)
-        return E_POINTER;
-    *request = nullptr;
-    if (!m_loader)
-        return E_UNEXPECTED;
-
     *request = WebMutableURLRequest::createInstance(m_loader->originalRequest());
     return S_OK;
 }
 
-HRESULT WebDataSource::request(_COM_Outptr_opt_ IWebMutableURLRequest** request)
+HRESULT STDMETHODCALLTYPE WebDataSource::request( 
+    /* [retval][out] */ IWebMutableURLRequest** request)
 {
-    if (!request)
-        return E_POINTER;
-    *request = nullptr;
-    if (!m_loader)
-        return E_UNEXPECTED;
-
     *request = WebMutableURLRequest::createInstance(m_loader->request());
     return S_OK;
 }
 
-HRESULT WebDataSource::response(_COM_Outptr_opt_ IWebURLResponse** response)
+HRESULT STDMETHODCALLTYPE WebDataSource::response( 
+    /* [retval][out] */ IWebURLResponse** response)
 {
-    if (!response)
-        return E_POINTER;
-    *response = nullptr;
-    if (!m_loader)
-        return E_UNEXPECTED;
-
     *response = WebURLResponse::createInstance(m_loader->response());
     return S_OK;
 }
 
-HRESULT WebDataSource::textEncodingName(_Deref_opt_out_ BSTR* name)
+HRESULT STDMETHODCALLTYPE WebDataSource::textEncodingName( 
+    /* [retval][out] */ BSTR* name)
 {
-    if (!name)
-        return E_POINTER;
-
-    if (!m_loader)
-        return E_UNEXPECTED;
-
     String encoding = m_loader->overrideEncoding();
     if (encoding.isNull())
         encoding = m_loader->response().textEncodingName();
@@ -262,38 +234,23 @@ HRESULT WebDataSource::textEncodingName(_Deref_opt_out_ BSTR* name)
     return S_OK;
 }
 
-HRESULT WebDataSource::isLoading(_Out_ BOOL* loading)
+HRESULT STDMETHODCALLTYPE WebDataSource::isLoading( 
+    /* [retval][out] */ BOOL* loading)
 {
-    if (!loading)
-        return E_POINTER;
-
-    if (!m_loader)
-        return E_UNEXPECTED;
-
     *loading = m_loader->isLoadingInAPISense();
     return S_OK;
 }
 
-HRESULT WebDataSource::pageTitle(_Deref_opt_out_ BSTR* title)
+HRESULT STDMETHODCALLTYPE WebDataSource::pageTitle( 
+    /* [retval][out] */ BSTR* title)
 {
-    if (!title)
-        return E_POINTER;
-
-    if (!m_loader)
-        return E_UNEXPECTED;
-
     *title = BString(m_loader->title().string()).release();
     return S_OK;
 }
 
-HRESULT WebDataSource::unreachableURL(_Deref_opt_out_ BSTR* url)
+HRESULT STDMETHODCALLTYPE WebDataSource::unreachableURL( 
+    /* [retval][out] */ BSTR* url)
 {
-    if (!url)
-        return E_POINTER;
-
-    if (!m_loader)
-        return E_UNEXPECTED;
-
     URL unreachableURL = m_loader->unreachableURL();
     BString urlString(unreachableURL.string());
 
@@ -301,34 +258,30 @@ HRESULT WebDataSource::unreachableURL(_Deref_opt_out_ BSTR* url)
     return S_OK;
 }
 
-HRESULT WebDataSource::webArchive(_COM_Outptr_opt_ IWebArchive** archive)
+HRESULT STDMETHODCALLTYPE WebDataSource::webArchive( 
+    /* [retval][out] */ IWebArchive** /*archive*/)
 {
     ASSERT_NOT_REACHED();
-    if (!archive)
-        return E_POINTER;
-    *archive = nullptr;
     return E_NOTIMPL;
 }
 
-HRESULT WebDataSource::mainResource(_COM_Outptr_opt_ IWebResource** resource)
+HRESULT STDMETHODCALLTYPE WebDataSource::mainResource( 
+    /* [retval][out] */ IWebResource** /*resource*/)
 {
     ASSERT_NOT_REACHED();
-    if (!resource)
-        return E_POINTER;
-    *resource = nullptr;
     return E_NOTIMPL;
 }
 
-HRESULT WebDataSource::subresources(_COM_Outptr_opt_ IEnumVARIANT** result)
+HRESULT STDMETHODCALLTYPE WebDataSource::subresources( 
+    /* [retval][out] */ IEnumVARIANT** /*result*/)
 {
     ASSERT_NOT_REACHED();
-    if (!result)
-        return E_POINTER;
-    *result = nullptr;
     return E_NOTIMPL;
 }
 
-HRESULT WebDataSource::subresourceForURL(_In_ BSTR url, _COM_Outptr_opt_ IWebResource** resource)
+HRESULT STDMETHODCALLTYPE WebDataSource::subresourceForURL( 
+    /* [in] */ BSTR url,
+    /* [retval][out] */ IWebResource** resource)
 {
     if (!resource) {
         ASSERT_NOT_REACHED();
@@ -337,10 +290,8 @@ HRESULT WebDataSource::subresourceForURL(_In_ BSTR url, _COM_Outptr_opt_ IWebRes
 
     *resource = nullptr;
 
-    if (!m_loader)
-        return E_UNEXPECTED;
-    
     Document* doc = m_loader->frameLoader()->frame().document();
+
     if (!doc)
         return E_FAIL;
 
@@ -353,7 +304,8 @@ HRESULT WebDataSource::subresourceForURL(_In_ BSTR url, _COM_Outptr_opt_ IWebRes
     return S_OK;
 }
 
-HRESULT WebDataSource::addSubresource(_In_opt_ IWebResource* /*subresource*/)
+HRESULT STDMETHODCALLTYPE WebDataSource::addSubresource( 
+    /* [in] */ IWebResource* /*subresource*/)
 {
     ASSERT_NOT_REACHED();
     return E_NOTIMPL;

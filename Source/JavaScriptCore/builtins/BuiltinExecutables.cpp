@@ -35,8 +35,6 @@
 
 namespace JSC {
 
-static UnlinkedFunctionExecutable* createExecutableInternal(VM&, const SourceCode&, const Identifier&, ConstructorKind, ConstructAbility);
-
 BuiltinExecutables::BuiltinExecutables(VM& vm)
     : m_vm(vm)
 #define INITIALIZE_BUILTIN_SOURCE_MEMBERS(name, functionName, length) , m_##name##Source(makeSource(StringImpl::createFromLiteral(s_##name, length)))
@@ -54,25 +52,15 @@ UnlinkedFunctionExecutable* BuiltinExecutables::createDefaultConstructor(Constru
     case ConstructorKind::None:
         break;
     case ConstructorKind::Base:
-        return createExecutableInternal(m_vm, makeSource(baseConstructorCode), name, constructorKind, ConstructAbility::CanConstruct);
+        return createExecutableInternal(makeSource(baseConstructorCode), name, constructorKind, ConstructAbility::CanConstruct);
     case ConstructorKind::Derived:
-        return createExecutableInternal(m_vm, makeSource(derivedConstructorCode), name, constructorKind, ConstructAbility::CanConstruct);
+        return createExecutableInternal(makeSource(derivedConstructorCode), name, constructorKind, ConstructAbility::CanConstruct);
     }
     ASSERT_NOT_REACHED();
     return nullptr;
 }
 
-UnlinkedFunctionExecutable* BuiltinExecutables::createBuiltinExecutable(const SourceCode& code, const Identifier& name, ConstructAbility constructAbility)
-{
-    return createExecutableInternal(m_vm, code, name, ConstructorKind::None, constructAbility);
-}
-
-UnlinkedFunctionExecutable* createBuiltinExecutable(VM& vm, const SourceCode& code, const Identifier& name, ConstructAbility constructAbility)
-{
-    return createExecutableInternal(vm, code, name, ConstructorKind::None, constructAbility);
-}
-
-UnlinkedFunctionExecutable* createExecutableInternal(VM& vm, const SourceCode& source, const Identifier& name, ConstructorKind constructorKind, ConstructAbility constructAbility)
+UnlinkedFunctionExecutable* BuiltinExecutables::createExecutableInternal(const SourceCode& source, const Identifier& name, ConstructorKind constructorKind, ConstructAbility constructAbility)
 {
     JSTextPosition positionBeforeLastNewline;
     ParserError error;
@@ -81,9 +69,9 @@ UnlinkedFunctionExecutable* createExecutableInternal(VM& vm, const SourceCode& s
     UnlinkedFunctionKind kind = isParsingDefaultConstructor ? UnlinkedNormalFunction : UnlinkedBuiltinFunction;
     RefPtr<SourceProvider> sourceOverride = isParsingDefaultConstructor ? source.provider() : nullptr;
     std::unique_ptr<ProgramNode> program = parse<ProgramNode>(
-        &vm, source, Identifier(), builtinMode,
-        JSParserStrictMode::NotStrict, SourceParseMode::ProgramMode, error,
-        &positionBeforeLastNewline, constructorKind);
+        &m_vm, source, Identifier(), builtinMode, 
+        JSParserStrictMode::NotStrict, JSParserCodeType::Program, error, 
+        &positionBeforeLastNewline, FunctionParseMode::NotAFunctionMode, constructorKind);
 
     if (!program) {
         dataLog("Fatal error compiling builtin function '", name.string(), "': ", error.message());
@@ -96,27 +84,27 @@ UnlinkedFunctionExecutable* createExecutableInternal(VM& vm, const SourceCode& s
     ExpressionNode* funcExpr = static_cast<ExprStatementNode*>(exprStatement)->expr();
     RELEASE_ASSERT(funcExpr);
     RELEASE_ASSERT(funcExpr->isFuncExprNode());
-    FunctionMetadataNode* metadata = static_cast<FuncExprNode*>(funcExpr)->metadata();
+    FunctionBodyNode* body = static_cast<FuncExprNode*>(funcExpr)->body();
     RELEASE_ASSERT(!program->hasCapturedVariables());
     
-    metadata->setEndPosition(positionBeforeLastNewline);
-    RELEASE_ASSERT(metadata);
-    RELEASE_ASSERT(metadata->ident().isNull());
+    body->setEndPosition(positionBeforeLastNewline);
+    RELEASE_ASSERT(body);
+    RELEASE_ASSERT(body->ident().isNull());
     
     // This function assumes an input string that would result in a single anonymous function expression.
-    metadata->setEndPosition(positionBeforeLastNewline);
-    RELEASE_ASSERT(metadata);
+    body->setEndPosition(positionBeforeLastNewline);
+    RELEASE_ASSERT(body);
     for (const auto& closedVariable : program->closedVariables()) {
-        if (closedVariable == vm.propertyNames->arguments.impl())
+        if (closedVariable == m_vm.propertyNames->arguments.impl())
             continue;
         
-        if (closedVariable == vm.propertyNames->undefinedKeyword.impl())
+        if (closedVariable == m_vm.propertyNames->undefinedKeyword.impl())
             continue;
     }
-    metadata->overrideName(name);
+    body->overrideName(name);
     VariableEnvironment dummyTDZVariables;
-    UnlinkedFunctionExecutable* functionExecutable = UnlinkedFunctionExecutable::create(&vm, source, metadata, kind, constructAbility, dummyTDZVariables, WTF::move(sourceOverride));
-    functionExecutable->setNameValue(vm, jsString(&vm, name.string()));
+    UnlinkedFunctionExecutable* functionExecutable = UnlinkedFunctionExecutable::create(&m_vm, source, body, kind, constructAbility, dummyTDZVariables, WTF::move(sourceOverride));
+    functionExecutable->m_nameValue.set(m_vm, functionExecutable, jsString(&m_vm, name.string()));
     return functionExecutable;
 }
 

@@ -67,20 +67,14 @@ typedef NS_ENUM(NSInteger, AVPlayerControllerExternalPlaybackType) {
 @property (nonatomic, readonly) AVPlayerLayer *playerLayer;
 @end
 
-@interface __AVPlayerLayerView : UIView
+@interface AVPlayerLayerView : UIView
 @property (nonatomic, readonly) AVPlayerLayer *playerLayer;
 @property (nonatomic, readonly) AVPictureInPicturePlayerLayerView *pictureInPicturePlayerLayerView;
 - (void)startRoutingVideoToPictureInPicturePlayerLayerView;
 - (void)stopRoutingVideoToPictureInPicturePlayerLayerView;
 @end
 
-#if __IPHONE_OS_VERSION_MIN_REQUIRED < 90000
 @protocol AVPlayerViewControllerDelegate <NSObject>
-- (void)playerViewController:(AVPlayerViewController *)playerViewController restoreUserInterfaceForPictureInPictureStopWithCompletionHandler:(void (^)(BOOL restored))completionHandler;
-@end
-#endif
-
-@protocol AVPlayerViewControllerDelegate_WebKitOnly <AVPlayerViewControllerDelegate>
 @optional
 typedef NS_ENUM(NSInteger, AVPlayerViewControllerExitFullScreenReason) {
     AVPlayerViewControllerExitFullScreenReasonDoneButtonTapped,
@@ -90,10 +84,11 @@ typedef NS_ENUM(NSInteger, AVPlayerViewControllerExitFullScreenReason) {
     AVPlayerViewControllerExitFullScreenReasonPictureInPictureStarted
 };
 - (BOOL)playerViewController:(AVPlayerViewController *)playerViewController shouldExitFullScreenWithReason:(AVPlayerViewControllerExitFullScreenReason)reason;
+- (void)playerViewController:(AVPlayerViewController *)playerViewController restoreUserInterfaceForPictureInPictureStopWithCompletionHandler:(void (^)(BOOL restored))completionHandler;
 @end
 
 @interface AVPlayerViewController ()
-- (instancetype)initWithPlayerLayerView:(__AVPlayerLayerView *)playerLayerView;
+- (instancetype)initWithPlayerLayerView:(AVPlayerLayerView *)playerLayerView;
 - (void)enterFullScreenAnimated:(BOOL)animated completionHandler:(void (^)(BOOL success, NSError *))completionHandler;
 - (void)exitFullScreenAnimated:(BOOL)animated completionHandler:(void (^)(BOOL success, NSError *))completionHandler;
 
@@ -101,11 +96,9 @@ typedef NS_ENUM(NSInteger, AVPlayerViewControllerExitFullScreenReason) {
 - (void)startPictureInPicture;
 - (void)stopPictureInPicture;
 
-#if __IPHONE_OS_VERSION_MIN_REQUIRED < 90000
 @property (nonatomic) BOOL allowsPictureInPicturePlayback;
-@property (nonatomic, weak) id <AVPlayerViewControllerDelegate> delegate;
-#endif
 @property (nonatomic, strong) AVPlayerController *playerController;
+@property (nonatomic, weak) id <AVPlayerViewControllerDelegate> delegate;
 @end
 
 #endif // USE(APPLE_INTERNAL_SDK)

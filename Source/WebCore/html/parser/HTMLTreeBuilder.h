@@ -29,8 +29,6 @@
 
 #include "HTMLConstructionSite.h"
 #include "HTMLParserOptions.h"
-#include <wtf/text/StringBuilder.h>
-#include <wtf/text/TextPosition.h>
 
 namespace WebCore {
 

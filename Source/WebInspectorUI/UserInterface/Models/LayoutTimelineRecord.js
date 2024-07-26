@@ -25,18 +25,21 @@
 
 WebInspector.LayoutTimelineRecord = class LayoutTimelineRecord extends WebInspector.TimelineRecord
 {
-    constructor(eventType, startTime, endTime, callFrames, sourceCodeLocation, quad)
+    constructor(eventType, startTime, endTime, callFrames, sourceCodeLocation, x, y, width, height, quad)
     {
         super(WebInspector.TimelineRecord.Type.Layout, startTime, endTime, callFrames, sourceCodeLocation);
 
         console.assert(eventType);
-        console.assert(!quad || quad instanceof WebInspector.Quad);
 
         if (eventType in WebInspector.LayoutTimelineRecord.EventType)
             eventType = WebInspector.LayoutTimelineRecord.EventType[eventType];
 
         this._eventType = eventType;
-        this._quad = quad || null;
+        this._x = typeof x === "number" ? x : NaN;
+        this._y = typeof y === "number" ? y : NaN;
+        this._width = typeof width === "number" ? width : NaN;
+        this._height = typeof height === "number" ? height : NaN;
+        this._quad = quad instanceof WebInspector.Quad ? quad : null;
     }
 
     // Static
@@ -68,19 +71,36 @@ WebInspector.LayoutTimelineRecord = class LayoutTimelineRecord extends WebInspec
         return this._eventType;
     }
 
+    get x()
+    {
+        return this._x;
+    }
+
+    get y()
+    {
+        return this._y;
+    }
+
     get width()
     {
-        return this._quad ? this._quad.width : NaN;
+        return this._width;
     }
 
     get height()
     {
-        return this._quad ? this._quad.height : NaN;
+        return this._height;
     }
 
     get area()
     {
-        return this.width * this.height;
+        return this._width * this._height;
+    }
+
+    get rect()
+    {
+        if (!isNaN(this._x) && !isNaN(this._y))
+            return new WebInspector.Rect(this._x, this._y, this._width, this._height);
+        return null;
     }
 
     get quad()

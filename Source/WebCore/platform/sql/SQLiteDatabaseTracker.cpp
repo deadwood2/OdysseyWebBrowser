@@ -27,7 +27,7 @@
 #include "SQLiteDatabaseTracker.h"
 
 #include <mutex>
-#include <wtf/Lock.h>
+#include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
 
@@ -36,7 +36,11 @@ namespace SQLiteDatabaseTracker {
 static SQLiteDatabaseTrackerClient* s_staticSQLiteDatabaseTrackerClient = nullptr;
 static unsigned s_transactionInProgressCounter = 0;
 
-static StaticLock transactionInProgressMutex;
+static std::mutex& transactionInProgressMutex()
+{
+    static NeverDestroyed<std::mutex> tipMutex;
+    return tipMutex;
+}
 
 void setClient(SQLiteDatabaseTrackerClient* client)
 {
@@ -50,7 +54,7 @@ void incrementTransactionInProgressCount()
     if (!s_staticSQLiteDatabaseTrackerClient)
         return;
 
-    std::lock_guard<StaticLock> lock(transactionInProgressMutex);
+    std::lock_guard<std::mutex> lock(transactionInProgressMutex());
 
     s_transactionInProgressCounter++;
     if (s_transactionInProgressCounter == 1)
@@ -62,7 +66,7 @@ void decrementTransactionInProgressCount()
     if (!s_staticSQLiteDatabaseTrackerClient)
         return;
 
-    std::lock_guard<StaticLock> lock(transactionInProgressMutex);
+    std::lock_guard<std::mutex> lock(transactionInProgressMutex());
 
     ASSERT(s_transactionInProgressCounter);
     s_transactionInProgressCounter--;

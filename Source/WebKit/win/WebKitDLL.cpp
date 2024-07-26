@@ -94,8 +94,7 @@ STDAPI_(BOOL) DllMain( HMODULE hModule, DWORD  ul_reason_for_call, LPVOID /*lpRe
     return FALSE;
 }
 
-_Check_return_
-STDAPI DllGetClassObject(_In_ REFCLSID rclsid, _In_ REFIID riid, _Outptr_ LPVOID* ppv)
+STDAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, LPVOID* ppv)
 {
     bool found = false;
     for (size_t i = 0; i < WTF_ARRAY_LENGTH(gRegCLSIDs); ++i) {
@@ -158,7 +157,6 @@ void shutDownWebKit()
 }
 
 //FIXME: We should consider moving this to a new file for cross-project functionality
-WEBKIT_API PassRefPtr<WebCore::SharedBuffer> loadResourceIntoBuffer(const char* name);
 PassRefPtr<WebCore::SharedBuffer> loadResourceIntoBuffer(const char* name)
 {
     int idr;

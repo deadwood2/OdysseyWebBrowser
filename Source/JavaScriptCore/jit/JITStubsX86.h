@@ -43,7 +43,7 @@
 
 namespace JSC {
 
-#if COMPILER(GCC_OR_CLANG)
+#if COMPILER(GCC)
 
 #if ENABLE(MASM_PROBE)
 asm (
@@ -198,7 +198,7 @@ SYMBOL_STRING(ctiMasmProbeTrampolineEnd) ":" "\n"
 );
 #endif // ENABLE(MASM_PROBE)
 
-#endif // COMPILER(GCC_OR_CLANG)
+#endif // COMPILER(GCC)
 
 } // namespace JSC
 

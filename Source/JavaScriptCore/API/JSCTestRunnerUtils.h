@@ -33,7 +33,6 @@ namespace JSC {
 
 JS_EXPORT_PRIVATE JSValueRef numberOfDFGCompiles(JSContextRef, JSValueRef theFunction);
 JS_EXPORT_PRIVATE JSValueRef setNeverInline(JSContextRef, JSValueRef theFunction);
-JS_EXPORT_PRIVATE JSValueRef setNeverOptimize(JSContextRef, JSValueRef theFunction);
 
 } // namespace JSC
 

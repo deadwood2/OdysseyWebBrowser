@@ -21,8 +21,6 @@
 #include "config.h"
 #include "FontCustomPlatformData.h"
 
-#include "FontCache.h"
-#include "FontDescription.h"
 #include "FontPlatformData.h"
 #include "SharedBuffer.h"
 #include <CoreGraphics/CoreGraphics.h>
@@ -34,17 +32,12 @@ FontCustomPlatformData::~FontCustomPlatformData()
 {
 }
 
-FontPlatformData FontCustomPlatformData::fontPlatformData(const FontDescription& fontDescription, bool bold, bool italic)
+FontPlatformData FontCustomPlatformData::fontPlatformData(int size, bool bold, bool italic, FontOrientation orientation, FontWidthVariant widthVariant, FontRenderingMode)
 {
-    int size = fontDescription.computedPixelSize();
-    FontOrientation orientation = fontDescription.orientation();
-    FontWidthVariant widthVariant = fontDescription.widthVariant();
 #if CORETEXT_WEB_FONTS
-    RetainPtr<CTFontRef> font = adoptCF(CTFontCreateWithFontDescriptor(m_fontDescriptor.get(), size, nullptr));
-    font = preparePlatformFont(font.get(), fontDescription.textRenderingMode(), fontDescription.featureSettings(), fontDescription.variantSettings());
-    return FontPlatformData(font.get(), size, bold, italic, orientation, widthVariant, fontDescription.textRenderingMode());
+    return FontPlatformData(adoptCF(CTFontCreateWithFontDescriptor(m_fontDescriptor.get(), size, nullptr)).get(), size, bold, italic, orientation, widthVariant);
 #else
-    return FontPlatformData(m_cgFont.get(), size, bold, italic, orientation, widthVariant, fontDescription.textRenderingMode());
+    return FontPlatformData(m_cgFont.get(), size, bold, italic, orientation, widthVariant);
 #endif
 }
 

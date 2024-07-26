@@ -35,6 +35,7 @@
 #include "ContentSecurityPolicy.h"
 #include "ErrorEvent.h"
 #include "Event.h"
+#include "EventException.h"
 #include "EventNames.h"
 #include "ExceptionCode.h"
 #include "InspectorInstrumentation.h"

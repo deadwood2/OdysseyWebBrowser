@@ -33,13 +33,3 @@ WKTypeID WKWebsiteDataStoreGetTypeID()
 {
     return WebKit::toAPI(API::WebsiteDataStore::APIType);
 }
-
-WKWebsiteDataStoreRef WKWebsiteDataStoreGetDefaultDataStore()
-{
-    return WebKit::toAPI(API::WebsiteDataStore::defaultDataStore().get());
-}
-
-WKWebsiteDataStoreRef WKWebsiteDataStoreCreateNonPersistentDataStore()
-{
-    return WebKit::toAPI(&API::WebsiteDataStore::createNonPersistentDataStore().leakRef());
-}

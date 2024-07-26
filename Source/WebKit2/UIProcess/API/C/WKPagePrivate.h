@@ -82,6 +82,8 @@ WK_EXPORT void WKPageBeginPrinting(WKPageRef page, WKFrameRef frame, WKPrintInfo
 WK_EXPORT void WKPageDrawPagesToPDF(WKPageRef page, WKFrameRef frame, WKPrintInfo printInfo, uint32_t first, uint32_t count, WKPageDrawToPDFFunction callback, void* context);
 WK_EXPORT void WKPageEndPrinting(WKPageRef page);
 
+WK_EXPORT void WKPageSetShouldSendEventsSynchronously(WKPageRef page, bool sync);
+
 WK_EXPORT bool WKPageGetAllowsRemoteInspection(WKPageRef page);
 WK_EXPORT void WKPageSetAllowsRemoteInspection(WKPageRef page, bool allow);
 
@@ -120,9 +122,6 @@ WK_EXPORT bool WKPageHasMediaSessionWithActiveMediaElements(WKPageRef page);
 WK_EXPORT void WKPageHandleMediaEvent(WKPageRef page, WKMediaEventType event);
 
 WK_EXPORT void WKPageLoadURLWithShouldOpenExternalURLsPolicy(WKPageRef page, WKURLRef url, bool shouldOpenExternalURLs);
-
-typedef void (*WKPagePostPresentationUpdateFunction)(WKErrorRef, void*);
-WK_EXPORT void WKPageCallAfterNextPresentationUpdate(WKPageRef page, void* context, WKPagePostPresentationUpdateFunction function);
 
 #ifdef __cplusplus
 }

@@ -34,7 +34,6 @@
 #import <WebCore/LayerFlushSchedulerClient.h>
 #import <WebCore/WebCoreKeyboardUIMode.h>
 #import <wtf/HashMap.h>
-#import <wtf/Lock.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/ThreadingPrimitives.h>
 #import <wtf/text/WTFString.h>
@@ -250,7 +249,7 @@ private:
     CGSize fixedLayoutSize;
     BOOL mainViewIsScrollingOrZooming;
     int32_t didDrawTiles;
-    WTF::Lock pendingFixedPositionLayoutRectMutex;
+    WTF::Mutex pendingFixedPositionLayoutRectMutex;
     CGRect pendingFixedPositionLayoutRect;
 #endif
 

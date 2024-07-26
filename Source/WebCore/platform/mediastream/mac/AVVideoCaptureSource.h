@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,48 +32,37 @@
 
 OBJC_CLASS AVCaptureVideoPreviewLayer;
 
-typedef struct CGImage *CGImageRef;
 typedef const struct opaqueCMFormatDescription *CMFormatDescriptionRef;
-typedef struct opaqueCMSampleBuffer *CMSampleBufferRef;
 
 namespace WebCore {
-
-class FloatRect;
-class GraphicsContext;
 
 class AVVideoCaptureSource : public AVMediaCaptureSource {
 public:
     static RefPtr<AVMediaCaptureSource> create(AVCaptureDevice*, const AtomicString&, PassRefPtr<MediaConstraints>);
 
-    int32_t width() const { return m_width; }
-    int32_t height() const { return m_height; }
+    virtual RefPtr<RealtimeMediaSourceCapabilities> capabilities() const override;
+    virtual void captureOutputDidOutputSampleBufferFromConnection(AVCaptureOutput*, CMSampleBufferRef, AVCaptureConnection*) override;
+    
+    virtual int32_t width() const { return m_width; }
+    virtual int32_t height() const { return m_height; }
 
     AVCaptureVideoPreviewLayer* previewLayer() { return m_videoPreviewLayer.get(); }
-    CMSampleBufferRef currentFrameSampleBuffer() const { return m_buffer.get(); }
-    void paintCurrentFrameInContext(GraphicsContext&, const FloatRect&);
-    RetainPtr<CGImageRef> currentFrameImage();
-
+    
 private:
     AVVideoCaptureSource(AVCaptureDevice*, const AtomicString&, PassRefPtr<MediaConstraints>);
     virtual ~AVVideoCaptureSource();
 
-    void setupCaptureSession() override;
-    void updateStates() override;
-
-    RefPtr<RealtimeMediaSourceCapabilities> capabilities() const override;
+    virtual void setupCaptureSession() override;
+    virtual void updateStates() override;
 
     bool applyConstraints(MediaConstraints*);
     bool setFrameRateConstraint(float minFrameRate, float maxFrameRate);
 
-    bool calculateFramerate(CMSampleBufferRef);
-
-    void captureOutputDidOutputSampleBufferFromConnection(AVCaptureOutput*, CMSampleBufferRef, AVCaptureConnection*) override;
-    void processNewFrame(RetainPtr<CMSampleBufferRef>);
+    void calculateFramerate(CMSampleBufferRef);
 
     RetainPtr<AVCaptureConnection> m_videoConnection;
+    RetainPtr<CMFormatDescriptionRef> m_videoFormatDescription;
     RetainPtr<AVCaptureVideoPreviewLayer> m_videoPreviewLayer;
-    RetainPtr<CMSampleBufferRef> m_buffer;
-    RetainPtr<CGImageRef> m_lastImage;
     Vector<Float64> m_videoFrameTimeStamps;
     Float64 m_frameRate;
     int32_t m_width;

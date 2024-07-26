@@ -47,7 +47,6 @@ enum PromotedLocationKind {
     FunctionActivationPLoc,
     ActivationScopePLoc,
     ClosureVarPLoc,
-    ArrowFunctionBoundThisPLoc
 };
 
 class PromotedLocationDescriptor {

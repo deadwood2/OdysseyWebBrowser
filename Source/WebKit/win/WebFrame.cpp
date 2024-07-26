@@ -150,7 +150,7 @@ const float PrintingMaximumShrinkFactor = 2.0f;
 WebFrame* kit(Frame* frame)
 {
     if (!frame)
-        return nullptr;
+        return 0;
 
     // FIXME: Doesn't this need to be aware of EmptyFrameLoaderClient?
     FrameLoaderClient& frameLoaderClient = frame->loader().client();
@@ -160,7 +160,7 @@ WebFrame* kit(Frame* frame)
 Frame* core(WebFrame* webFrame)
 {
     if (!webFrame)
-        return nullptr;
+        return 0;
     return webFrame->impl();
 }
 
@@ -168,16 +168,16 @@ Frame* core(WebFrame* webFrame)
 Frame* core(const WebFrame* webFrame)
 {
     if (!webFrame)
-        return nullptr;
+        return 0;
     return const_cast<WebFrame*>(webFrame)->impl();
 }
 
 //-----------------------------------------------------------------------------
 
-static Element* elementFromDOMElement(IDOMElement* element)
+static Element *elementFromDOMElement(IDOMElement *element)
 {
     if (!element)
-        return nullptr;
+        return 0;
 
     COMPtr<IDOMElementPrivate> elePriv;
     HRESULT hr = element->QueryInterface(IID_IDOMElementPrivate, (void**) &elePriv);
@@ -229,20 +229,26 @@ static HTMLInputElement* inputElementFromDOMElement(IDOMElement* element)
 class WebFrame::WebFramePrivate {
 public:
     WebFramePrivate() 
+        : frame(0)
+        , webView(0)
     {
     }
 
     ~WebFramePrivate() { }
-    FrameView* frameView() { return frame ? frame->view() : nullptr; }
+    FrameView* frameView() { return frame ? frame->view() : 0; }
 
-    Frame* frame { nullptr };
-    WebView* webView { nullptr };
+    Frame* frame;
+    WebView* webView;
 };
 
 // WebFrame ----------------------------------------------------------------
 
 WebFrame::WebFrame()
-    : d(new WebFrame::WebFramePrivate)
+    : m_refCount(0)
+    , d(new WebFrame::WebFramePrivate)
+    , m_quickRedirectComing(false)
+    , m_inPrintingMode(false)
+    , m_pageHeight(0)
 {
     WebFrameCount++;
     gClassCount++;
@@ -264,7 +270,8 @@ WebFrame* WebFrame::createInstance()
     return instance;
 }
 
-HRESULT WebFrame::setAllowsScrolling(BOOL flag)
+HRESULT STDMETHODCALLTYPE WebFrame::setAllowsScrolling(
+    /* [in] */ BOOL flag)
 {
     if (Frame* frame = core(this))
         if (FrameView* view = frame->view())
@@ -273,48 +280,44 @@ HRESULT WebFrame::setAllowsScrolling(BOOL flag)
     return S_OK;
 }
 
-HRESULT WebFrame::allowsScrolling(_Out_ BOOL* flag)
+HRESULT STDMETHODCALLTYPE WebFrame::allowsScrolling(
+    /* [retval][out] */ BOOL *flag)
 {
-    if (!flag)
-        return E_POINTER;
-
-    *flag = FALSE;
-
-    if (Frame* frame = core(this)) {
-        if (FrameView* view = frame->view())
-            *flag = view->canHaveScrollbars();
-    }
+    if (flag)
+        if (Frame* frame = core(this))
+            if (FrameView* view = frame->view())
+                *flag = view->canHaveScrollbars();
 
     return S_OK;
 }
 
-HRESULT WebFrame::setIsDisconnected(BOOL flag)
+HRESULT STDMETHODCALLTYPE WebFrame::setIsDisconnected(
+    /* [in] */ BOOL flag)
 {
-    ASSERT_NOT_REACHED();
     return E_FAIL;
 }
 
-HRESULT WebFrame::setExcludeFromTextSearch(BOOL flag)
+HRESULT STDMETHODCALLTYPE WebFrame::setExcludeFromTextSearch(
+    /* [in] */ BOOL flag)
 {
-    ASSERT_NOT_REACHED();
-    return E_NOTIMPL;
+    return E_FAIL;
 }
 
 HRESULT WebFrame::reloadFromOrigin()
 {
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     coreFrame->loader().reload(true);
     return S_OK;
 }
 
-HRESULT WebFrame::paintDocumentRectToContext(RECT rect, _In_ HDC deviceContext)
+HRESULT WebFrame::paintDocumentRectToContext(RECT rect, HDC deviceContext)
 {
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     FrameView* view = coreFrame->view();
     if (!view)
@@ -335,17 +338,17 @@ HRESULT WebFrame::paintDocumentRectToContext(RECT rect, _In_ HDC deviceContext)
     gc.translate(-rect.left, -rect.top);
     float scaleFactor = webView()->deviceScaleFactor();
     gc.scale(WebCore::FloatSize(scaleFactor, scaleFactor));
-    view->paintContents(gc, rect);
+    view->paintContents(&gc, rect);
     gc.restore();
 
     return S_OK;
 }
 
-HRESULT WebFrame::paintScrollViewRectToContextAtPoint(RECT rect, POINT pt, _In_ HDC deviceContext)
+HRESULT WebFrame::paintScrollViewRectToContextAtPoint(RECT rect, POINT pt, HDC deviceContext)
 {
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     FrameView* view = coreFrame->view();
     if (!view)
@@ -361,7 +364,7 @@ HRESULT WebFrame::paintScrollViewRectToContextAtPoint(RECT rect, POINT pt, _In_ 
     dirtyRect.move(-pt.x, -pt.y);
     float scaleFactor = webView()->deviceScaleFactor();
     gc.scale(WebCore::FloatSize(scaleFactor, scaleFactor));
-    view->paint(gc, dirtyRect);
+    view->paint(&gc, dirtyRect);
     gc.restore();
 
     return S_OK;
@@ -369,19 +372,15 @@ HRESULT WebFrame::paintScrollViewRectToContextAtPoint(RECT rect, POINT pt, _In_ 
 
 // IUnknown -------------------------------------------------------------------
 
-HRESULT WebFrame::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE WebFrame::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, __uuidof(WebFrame)))
         *ppvObject = this;
     else if (IsEqualGUID(riid, IID_IUnknown))
-        *ppvObject = static_cast<IWebFrame2*>(this);
+        *ppvObject = static_cast<IWebFrame*>(this);
     else if (IsEqualGUID(riid, IID_IWebFrame))
-        *ppvObject = static_cast<IWebFrame2*>(this);
-    else if (IsEqualGUID(riid, IID_IWebFrame2))
-        *ppvObject = static_cast<IWebFrame2*>(this);
+        *ppvObject = static_cast<IWebFrame*>(this);
     else if (IsEqualGUID(riid, IID_IWebFramePrivate))
         *ppvObject = static_cast<IWebFramePrivate*>(this);
     else if (IsEqualGUID(riid, IID_IWebDocumentText))
@@ -393,12 +392,12 @@ HRESULT WebFrame::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject
     return S_OK;
 }
 
-ULONG WebFrame::AddRef()
+ULONG STDMETHODCALLTYPE WebFrame::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG WebFrame::Release()
+ULONG STDMETHODCALLTYPE WebFrame::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -409,28 +408,28 @@ ULONG WebFrame::Release()
 
 // IWebFrame -------------------------------------------------------------------
 
-HRESULT WebFrame::name(_Deref_opt_out_ BSTR* frameName)
+HRESULT STDMETHODCALLTYPE WebFrame::name( 
+    /* [retval][out] */ BSTR* frameName)
 {
     if (!frameName) {
         ASSERT_NOT_REACHED();
         return E_POINTER;
     }
 
-    *frameName = nullptr;
+    *frameName = 0;
 
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     *frameName = BString(coreFrame->tree().uniqueName()).release();
     return S_OK;
 }
 
-HRESULT WebFrame::webView(_COM_Outptr_opt_ IWebView** view)
+HRESULT STDMETHODCALLTYPE WebFrame::webView( 
+    /* [retval][out] */ IWebView** view)
 {
-    if (!view)
-        return E_POINTER;
-    *view = nullptr;
+    *view = 0;
     if (!d->webView)
         return E_FAIL;
     *view = d->webView;
@@ -438,64 +437,58 @@ HRESULT WebFrame::webView(_COM_Outptr_opt_ IWebView** view)
     return S_OK;
 }
 
-HRESULT WebFrame::frameView(_COM_Outptr_opt_ IWebFrameView** view)
+HRESULT STDMETHODCALLTYPE WebFrame::frameView(
+    /* [retval][out] */ IWebFrameView** /*view*/)
 {
     ASSERT_NOT_REACHED();
-    if (!view)
-        return E_POINTER;
-    *view = nullptr;
     return E_NOTIMPL;
 }
 
-HRESULT WebFrame::DOMDocument(_COM_Outptr_opt_ IDOMDocument** result)
+HRESULT STDMETHODCALLTYPE WebFrame::DOMDocument( 
+    /* [retval][out] */ IDOMDocument** result)
 {
     if (!result) {
         ASSERT_NOT_REACHED();
         return E_POINTER;
     }
 
-    *result = nullptr;
+    *result = 0;
 
-    Frame* coreFrame = core(this);
-    if (!coreFrame)
-        return E_UNEXPECTED;
-
-    if (Document* document = coreFrame->document())
-        *result = DOMDocument::createInstance(document);
+    if (Frame* coreFrame = core(this))
+        if (Document* document = coreFrame->document())
+            *result = DOMDocument::createInstance(document);
 
     return *result ? S_OK : E_FAIL;
 }
 
 
-HRESULT WebFrame::DOMWindow(_COM_Outptr_opt_ IDOMWindow** window)
+HRESULT WebFrame::DOMWindow(/* [retval][out] */ IDOMWindow** window)
 {
     if (!window) {
         ASSERT_NOT_REACHED();
         return E_POINTER;
     }
 
-    *window = nullptr;
+    *window = 0;
 
-    Frame* coreFrame = core(this);
-    if (!coreFrame)
-        return E_UNEXPECTED;
-
-    if (WebCore::DOMWindow* coreWindow = coreFrame->document()->domWindow())
-        *window = ::DOMWindow::createInstance(coreWindow);
+    if (Frame* coreFrame = core(this)) {
+        if (WebCore::DOMWindow* coreWindow = coreFrame->document()->domWindow())
+            *window = ::DOMWindow::createInstance(coreWindow);
+    }
 
     return *window ? S_OK : E_FAIL;
 }
 
-HRESULT WebFrame::frameElement(_COM_Outptr_opt_ IDOMHTMLElement** frameElement)
+HRESULT STDMETHODCALLTYPE WebFrame::frameElement( 
+    /* [retval][out] */ IDOMHTMLElement** frameElement)
 {
     if (!frameElement)
         return E_POINTER;
 
-    *frameElement = nullptr;
-
+    *frameElement = 0;
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     COMPtr<IDOMElement> domElement(AdoptCOM, DOMElement::createInstance(coreFrame->ownerElement()));
     COMPtr<IDOMHTMLElement> htmlElement(Query, domElement);
@@ -504,30 +497,29 @@ HRESULT WebFrame::frameElement(_COM_Outptr_opt_ IDOMHTMLElement** frameElement)
     return htmlElement.copyRefTo(frameElement);
 }
 
-HRESULT WebFrame::currentForm(_COM_Outptr_opt_ IDOMElement** currentForm)
+HRESULT STDMETHODCALLTYPE WebFrame::currentForm( 
+        /* [retval][out] */ IDOMElement **currentForm)
 {
     if (!currentForm) {
         ASSERT_NOT_REACHED();
         return E_POINTER;
     }
 
-    *currentForm = nullptr;
+    *currentForm = 0;
 
-    Frame* coreFrame = core(this);
-    if (!coreFrame)
-        return E_UNEXPECTED;
-
-    if (HTMLFormElement* formElement = coreFrame->selection().currentForm())
-        *currentForm = DOMElement::createInstance(formElement);
+    if (Frame* coreFrame = core(this)) {
+        if (HTMLFormElement* formElement = coreFrame->selection().currentForm())
+            *currentForm = DOMElement::createInstance(formElement);
+    }
 
     return *currentForm ? S_OK : E_FAIL;
 }
 
-JSGlobalContextRef WebFrame::globalContext()
+JSGlobalContextRef STDMETHODCALLTYPE WebFrame::globalContext()
 {
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return nullptr;
+        return 0;
 
     return toGlobalRef(coreFrame->script().globalObject(mainThreadNormalWorld())->globalExec());
 }
@@ -545,11 +537,9 @@ JSGlobalContextRef WebFrame::globalContextForScriptWorld(IWebScriptWorld* iWorld
     return toGlobalRef(coreFrame->script().globalObject(world->world())->globalExec());
 }
 
-HRESULT WebFrame::loadRequest(_In_opt_ IWebURLRequest* request)
+HRESULT STDMETHODCALLTYPE WebFrame::loadRequest( 
+    /* [in] */ IWebURLRequest* request)
 {
-    if (!request)
-        return S_OK;
-
     COMPtr<WebMutableURLRequest> requestImpl;
 
     HRESULT hr = request->QueryInterface(&requestImpl);
@@ -558,7 +548,7 @@ HRESULT WebFrame::loadRequest(_In_opt_ IWebURLRequest* request)
  
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     coreFrame->loader().load(FrameLoadRequest(coreFrame, requestImpl->resourceRequest(), ShouldOpenExternalURLsPolicy::ShouldNotAllow));
     return S_OK;
@@ -588,7 +578,12 @@ void WebFrame::loadData(PassRefPtr<WebCore::SharedBuffer> data, BSTR mimeType, B
         coreFrame->loader().load(FrameLoadRequest(coreFrame, request, ShouldOpenExternalURLsPolicy::ShouldNotAllow, substituteData));
 }
 
-HRESULT WebFrame::loadData(_In_opt_ IStream* data, _In_ BSTR mimeType, _In_ BSTR textEncodingName, _In_ BSTR url)
+
+HRESULT STDMETHODCALLTYPE WebFrame::loadData( 
+    /* [in] */ IStream* data,
+    /* [in] */ BSTR mimeType,
+    /* [in] */ BSTR textEncodingName,
+    /* [in] */ BSTR url)
 {
     RefPtr<SharedBuffer> sharedBuffer = SharedBuffer::create();
 
@@ -604,61 +599,70 @@ HRESULT WebFrame::loadData(_In_opt_ IStream* data, _In_ BSTR mimeType, _In_ BSTR
         }
     }
 
-    loadData(sharedBuffer, mimeType, textEncodingName, url, nullptr);
+    loadData(sharedBuffer, mimeType, textEncodingName, url, 0);
     return S_OK;
 }
 
-HRESULT WebFrame::loadPlainTextString(_In_ BSTR plainText, _In_ BSTR url)
+HRESULT WebFrame::loadPlainTextString(
+    /* [in] */ BSTR string,
+    /* [in] */ BSTR url)
 {
-    RefPtr<SharedBuffer> sharedBuffer = SharedBuffer::create(reinterpret_cast<char*>(plainText), sizeof(UChar) * SysStringLen(plainText));
+    RefPtr<SharedBuffer> sharedBuffer = SharedBuffer::create(reinterpret_cast<char*>(string), sizeof(UChar) * SysStringLen(string));
     BString plainTextMimeType(TEXT("text/plain"), 10);
     BString utf16Encoding(TEXT("utf-16"), 6);
-    loadData(sharedBuffer.release(), plainTextMimeType, utf16Encoding, url, nullptr);
+    loadData(sharedBuffer.release(), plainTextMimeType, utf16Encoding, url, 0);
     return S_OK;
 }
 
-void WebFrame::loadHTMLString(_In_ BSTR htmlString, _In_ BSTR baseURL, _In_ BSTR unreachableURL)
+void WebFrame::loadHTMLString(BSTR string, BSTR baseURL, BSTR unreachableURL)
 {
-    RefPtr<SharedBuffer> sharedBuffer = SharedBuffer::create(reinterpret_cast<char*>(htmlString), sizeof(UChar) * SysStringLen(htmlString));
+    RefPtr<SharedBuffer> sharedBuffer = SharedBuffer::create(reinterpret_cast<char*>(string), sizeof(UChar) * SysStringLen(string));
     BString utf16Encoding(TEXT("utf-16"), 6);
     loadData(sharedBuffer.release(), 0, utf16Encoding, baseURL, unreachableURL);
 }
 
-HRESULT WebFrame::loadHTMLString(_In_ BSTR htmlString, _In_ BSTR baseURL)
+HRESULT STDMETHODCALLTYPE WebFrame::loadHTMLString( 
+    /* [in] */ BSTR string,
+    /* [in] */ BSTR baseURL)
 {
-    loadHTMLString(htmlString, baseURL, nullptr);
+    loadHTMLString(string, baseURL, 0);
     return S_OK;
 }
 
-HRESULT WebFrame::loadAlternateHTMLString(_In_ BSTR str, _In_ BSTR baseURL, _In_ BSTR unreachableURL)
+HRESULT STDMETHODCALLTYPE WebFrame::loadAlternateHTMLString( 
+    /* [in] */ BSTR str,
+    /* [in] */ BSTR baseURL,
+    /* [in] */ BSTR unreachableURL)
 {
     loadHTMLString(str, baseURL, unreachableURL);
     return S_OK;
 }
 
-HRESULT WebFrame::loadArchive(_In_opt_ IWebArchive* /*archive*/)
+HRESULT STDMETHODCALLTYPE WebFrame::loadArchive( 
+    /* [in] */ IWebArchive* /*archive*/)
 {
     ASSERT_NOT_REACHED();
     return E_NOTIMPL;
 }
 
-static inline WebDataSource* getWebDataSource(DocumentLoader* loader)
+static inline WebDataSource *getWebDataSource(DocumentLoader* loader)
 {
-    return loader ? static_cast<WebDocumentLoader*>(loader)->dataSource() : nullptr;
+    return loader ? static_cast<WebDocumentLoader*>(loader)->dataSource() : 0;
 }
 
-HRESULT WebFrame::dataSource(_COM_Outptr_opt_ IWebDataSource** source)
+HRESULT STDMETHODCALLTYPE WebFrame::dataSource( 
+    /* [retval][out] */ IWebDataSource** source)
 {
     if (!source) {
         ASSERT_NOT_REACHED();
         return E_POINTER;
     }
 
-    *source = nullptr;
+    *source = 0;
 
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     WebDataSource* webDataSource = getWebDataSource(coreFrame->loader().documentLoader());
 
@@ -670,18 +674,19 @@ HRESULT WebFrame::dataSource(_COM_Outptr_opt_ IWebDataSource** source)
     return *source ? S_OK : E_FAIL;
 }
 
-HRESULT WebFrame::provisionalDataSource(_COM_Outptr_opt_ IWebDataSource** source)
+HRESULT STDMETHODCALLTYPE WebFrame::provisionalDataSource( 
+    /* [retval][out] */ IWebDataSource** source)
 {
     if (!source) {
         ASSERT_NOT_REACHED();
         return E_POINTER;
     }
 
-    *source = nullptr;
+    *source = 0;
 
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     WebDataSource* webDataSource = getWebDataSource(coreFrame->loader().provisionalDocumentLoader());
 
@@ -702,35 +707,37 @@ URL WebFrame::url() const
     return coreFrame->document()->url();
 }
 
-HRESULT WebFrame::stopLoading()
+HRESULT STDMETHODCALLTYPE WebFrame::stopLoading( void)
 {
     if (Frame* coreFrame = core(this))
         coreFrame->loader().stopAllLoaders();
     return S_OK;
 }
 
-HRESULT WebFrame::reload()
+HRESULT STDMETHODCALLTYPE WebFrame::reload( void)
 {
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     coreFrame->loader().reload();
     return S_OK;
 }
 
-HRESULT WebFrame::findFrameNamed(_In_ BSTR name, _COM_Outptr_opt_ IWebFrame** frame)
+HRESULT STDMETHODCALLTYPE WebFrame::findFrameNamed( 
+    /* [in] */ BSTR name,
+    /* [retval][out] */ IWebFrame** frame)
 {
     if (!frame) {
         ASSERT_NOT_REACHED();
         return E_POINTER;
     }
 
-    *frame = nullptr;
+    *frame = 0;
 
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     Frame* foundFrame = coreFrame->tree().find(AtomicString(name, SysStringLen(name)));
     if (!foundFrame)
@@ -743,14 +750,11 @@ HRESULT WebFrame::findFrameNamed(_In_ BSTR name, _COM_Outptr_opt_ IWebFrame** fr
     return foundWebFrame->QueryInterface(IID_IWebFrame, (void**)frame);
 }
 
-HRESULT WebFrame::parentFrame(_COM_Outptr_opt_ IWebFrame** frame)
+HRESULT STDMETHODCALLTYPE WebFrame::parentFrame( 
+    /* [retval][out] */ IWebFrame** frame)
 {
-    if (!frame)
-        return E_POINTER;
-
-    *frame = nullptr;
-
     HRESULT hr = S_OK;
+    *frame = 0;
     if (Frame* coreFrame = core(this))
         if (WebFrame* webFrame = kit(coreFrame->tree().parent()))
             hr = webFrame->QueryInterface(IID_IWebFrame, (void**) frame);
@@ -761,14 +765,11 @@ HRESULT WebFrame::parentFrame(_COM_Outptr_opt_ IWebFrame** frame)
 class EnumChildFrames : public IEnumVARIANT
 {
 public:
-    EnumChildFrames(Frame* f)
-        : m_frame(f), m_curChild(f ? f->tree().firstChild() : nullptr)
-    {
-    }
+    EnumChildFrames(Frame* f) : m_refCount(1), m_frame(f), m_curChild(f ? f->tree().firstChild() : 0) { }
 
-    virtual HRESULT STDMETHODCALLTYPE QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+    virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject)
     {
-        *ppvObject = nullptr;
+        *ppvObject = 0;
         if (IsEqualGUID(riid, IID_IUnknown) || IsEqualGUID(riid, IID_IEnumVARIANT))
             *ppvObject = this;
         else
@@ -778,12 +779,12 @@ public:
         return S_OK;
     }
 
-    virtual ULONG STDMETHODCALLTYPE AddRef()
+    virtual ULONG STDMETHODCALLTYPE AddRef(void)
     {
         return ++m_refCount;
     }
 
-    virtual ULONG STDMETHODCALLTYPE Release()
+    virtual ULONG STDMETHODCALLTYPE Release(void)
     {
         ULONG newRef = --m_refCount;
         if (!newRef)
@@ -841,12 +842,13 @@ public:
     }
 
 private:
-    ULONG m_refCount { 1 };
+    ULONG m_refCount;
     Frame* m_frame;
     Frame* m_curChild;
 };
 
-HRESULT WebFrame::childFrames(_COM_Outptr_opt_ IEnumVARIANT** enumFrames)
+HRESULT STDMETHODCALLTYPE WebFrame::childFrames( 
+    /* [retval][out] */ IEnumVARIANT **enumFrames)
 {
     if (!enumFrames)
         return E_POINTER;
@@ -857,36 +859,44 @@ HRESULT WebFrame::childFrames(_COM_Outptr_opt_ IEnumVARIANT** enumFrames)
 
 // IWebFramePrivate ------------------------------------------------------
 
-HRESULT WebFrame::renderTreeAsExternalRepresentation(BOOL forPrinting, _Deref_opt_out_ BSTR* result)
+HRESULT WebFrame::renderTreeAsExternalRepresentation(BOOL forPrinting, BSTR *result)
 {
     if (!result)
         return E_POINTER;
 
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     *result = BString(externalRepresentation(coreFrame, forPrinting ? RenderAsTextPrintingMode : RenderAsTextBehaviorNormal)).release();
     return S_OK;
 }
 
-HRESULT WebFrame::pageNumberForElementById(_In_ BSTR id, float pageWidthInPixels, float pageHeightInPixels, _Out_ int* pageNumber)
+HRESULT STDMETHODCALLTYPE WebFrame::pageNumberForElementById(
+    /* [in] */ BSTR id,
+    /* [in] */ float pageWidthInPixels,
+    /* [in] */ float pageHeightInPixels,
+    /* [retval][out] */ int* result)
 {
     // TODO: Please remove this function if not needed as this is LTC specific function
     // and has been moved to Internals.
-    ASSERT_NOT_REACHED();
-    return E_NOTIMPL;
+    notImplemented();
+    return E_FAIL;
 }
 
-HRESULT WebFrame::numberOfPages(float pageWidthInPixels, float pageHeightInPixels, _Out_ int* pageCount)
+HRESULT STDMETHODCALLTYPE WebFrame::numberOfPages(
+    /* [in] */ float pageWidthInPixels,
+    /* [in] */ float pageHeightInPixels,
+    /* [retval][out] */ int* result)
 {
     // TODO: Please remove this function if not needed as this is LTC specific function
     // and has been moved to Internals.
-    ASSERT_NOT_REACHED();
-    return E_NOTIMPL;
+    notImplemented();
+    return E_FAIL;
 }
 
-HRESULT WebFrame::scrollOffset(_Out_ SIZE* offset)
+HRESULT STDMETHODCALLTYPE WebFrame::scrollOffset(
+        /* [retval][out] */ SIZE* offset)
 {
     if (!offset) {
         ASSERT_NOT_REACHED();
@@ -895,7 +905,7 @@ HRESULT WebFrame::scrollOffset(_Out_ SIZE* offset)
 
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     FrameView* view = coreFrame->view();
     if (!view)
@@ -905,11 +915,11 @@ HRESULT WebFrame::scrollOffset(_Out_ SIZE* offset)
     return S_OK;
 }
 
-HRESULT WebFrame::layout()
+HRESULT STDMETHODCALLTYPE WebFrame::layout()
 {
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     FrameView* view = coreFrame->view();
     if (!view)
@@ -919,24 +929,8 @@ HRESULT WebFrame::layout()
     return S_OK;
 }
 
-HRESULT WebFrame::firstLayoutDone(_Out_ BOOL* result)
-{
-    if (!result) {
-        ASSERT_NOT_REACHED();
-        return E_POINTER;
-    }
-
-    *result = FALSE;
-
-    Frame* coreFrame = core(this);
-    if (!coreFrame)
-        return E_UNEXPECTED;
-
-    *result = coreFrame->loader().stateMachine().firstLayoutDone();
-    return S_OK;
-}
-
-HRESULT WebFrame::pendingFrameUnloadEventCount(_Out_ UINT* result)
+HRESULT STDMETHODCALLTYPE WebFrame::firstLayoutDone(
+    /* [retval][out] */ BOOL* result)
 {
     if (!result) {
         ASSERT_NOT_REACHED();
@@ -947,35 +941,56 @@ HRESULT WebFrame::pendingFrameUnloadEventCount(_Out_ UINT* result)
 
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
+
+    *result = coreFrame->loader().stateMachine().firstLayoutDone();
+    return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE WebFrame::pendingFrameUnloadEventCount( 
+    /* [retval][out] */ UINT* result)
+{
+    if (!result) {
+        ASSERT_NOT_REACHED();
+        return E_POINTER;
+    }
+
+    *result = 0;
+
+    Frame* coreFrame = core(this);
+    if (!coreFrame)
+        return E_FAIL;
 
     *result = coreFrame->document()->domWindow()->pendingUnloadEventListeners();
     return S_OK;
 }
 
-HRESULT WebFrame::hasSpellingMarker(UINT from, UINT length, BOOL* result)
+HRESULT STDMETHODCALLTYPE WebFrame::hasSpellingMarker(
+        /* [in] */ UINT from,
+        /* [in] */ UINT length,
+        /* [retval][out] */ BOOL* result)
 {
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
     *result = coreFrame->editor().selectionStartHasMarkerFor(DocumentMarker::Spelling, from, length);
     return S_OK;
 }
 
-HRESULT WebFrame::clearOpener()
+HRESULT STDMETHODCALLTYPE WebFrame::clearOpener()
 {
     HRESULT hr = S_OK;
     if (Frame* coreFrame = core(this))
-        coreFrame->loader().setOpener(nullptr);
+        coreFrame->loader().setOpener(0);
 
     return hr;
 }
 
-HRESULT WebFrame::setTextDirection(_In_ BSTR direction)
+HRESULT WebFrame::setTextDirection(BSTR direction)
 {
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     String directionString(direction, SysStringLen(direction));
     if (directionString == "auto")
@@ -989,21 +1004,21 @@ HRESULT WebFrame::setTextDirection(_In_ BSTR direction)
 
 // IWebDocumentText -----------------------------------------------------------
 
-HRESULT WebFrame::supportsTextEncoding(_Out_ BOOL* result)
+HRESULT STDMETHODCALLTYPE WebFrame::supportsTextEncoding( 
+    /* [retval][out] */ BOOL* result)
 {
     *result = FALSE;
     return E_NOTIMPL;
 }
 
-HRESULT WebFrame::selectedString(_Deref_opt_out_ BSTR* result)
+HRESULT STDMETHODCALLTYPE WebFrame::selectedString( 
+    /* [retval][out] */ BSTR* result)
 {
-    if (!result)
-        return E_POINTER;
-    *result = nullptr;
+    *result = 0;
 
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     String text = coreFrame->displayStringModifiedByEncoding(coreFrame->editor().selectedText());
 
@@ -1011,11 +1026,11 @@ HRESULT WebFrame::selectedString(_Deref_opt_out_ BSTR* result)
     return S_OK;
 }
 
-HRESULT WebFrame::selectAll()
+HRESULT STDMETHODCALLTYPE WebFrame::selectAll()
 {
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     if (!coreFrame->editor().command("SelectAll").execute())
         return E_FAIL;
@@ -1023,7 +1038,7 @@ HRESULT WebFrame::selectAll()
     return S_OK;
 }
 
-HRESULT WebFrame::deselectAll()
+HRESULT STDMETHODCALLTYPE WebFrame::deselectAll()
 {
     return E_NOTIMPL;
 }
@@ -1120,7 +1135,7 @@ HRESULT WebFrame::formForElement(IDOMElement* element, IDOMElement** form)
     return S_OK;
 }
 
-HRESULT WebFrame::elementDoesAutoComplete(_In_opt_ IDOMElement *element, _Out_ BOOL* result)
+HRESULT WebFrame::elementDoesAutoComplete(IDOMElement *element, BOOL *result)
 {
     *result = false;
     if (!element)
@@ -1135,27 +1150,27 @@ HRESULT WebFrame::elementDoesAutoComplete(_In_opt_ IDOMElement *element, _Out_ B
     return S_OK;
 }
 
-HRESULT WebFrame::resumeAnimations()
+HRESULT STDMETHODCALLTYPE WebFrame::resumeAnimations()
 {
     Frame* frame = core(this);
     if (!frame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     frame->animation().resumeAnimations();
     return S_OK;
 }
 
-HRESULT WebFrame::suspendAnimations()
+HRESULT STDMETHODCALLTYPE WebFrame::suspendAnimations()
 {
     Frame* frame = core(this);
     if (!frame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     frame->animation().suspendAnimations();
     return S_OK;
 }
 
-HRESULT WebFrame::pauseAnimation(_In_ BSTR animationName, _In_opt_ IDOMNode* node, double secondsFromNow, _Out_ BOOL* animationWasRunning)
+HRESULT WebFrame::pauseAnimation(BSTR animationName, IDOMNode* node, double secondsFromNow, BOOL* animationWasRunning)
 {
     if (!node || !animationWasRunning)
         return E_POINTER;
@@ -1164,7 +1179,7 @@ HRESULT WebFrame::pauseAnimation(_In_ BSTR animationName, _In_opt_ IDOMNode* nod
 
     Frame* frame = core(this);
     if (!frame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     COMPtr<DOMNode> domNode(Query, node);
     if (!domNode)
@@ -1174,7 +1189,7 @@ HRESULT WebFrame::pauseAnimation(_In_ BSTR animationName, _In_opt_ IDOMNode* nod
     return S_OK;
 }
 
-HRESULT WebFrame::pauseTransition(_In_ BSTR propertyName, _In_opt_ IDOMNode* node, double secondsFromNow, _Out_ BOOL* transitionWasRunning)
+HRESULT WebFrame::pauseTransition(BSTR propertyName, IDOMNode* node, double secondsFromNow, BOOL* transitionWasRunning)
 {
     if (!node || !transitionWasRunning)
         return E_POINTER;
@@ -1183,7 +1198,7 @@ HRESULT WebFrame::pauseTransition(_In_ BSTR propertyName, _In_opt_ IDOMNode* nod
 
     Frame* frame = core(this);
     if (!frame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     COMPtr<DOMNode> domNode(Query, node);
     if (!domNode)
@@ -1193,7 +1208,7 @@ HRESULT WebFrame::pauseTransition(_In_ BSTR propertyName, _In_opt_ IDOMNode* nod
     return S_OK;
 }
 
-HRESULT WebFrame::visibleContentRect(_Out_ RECT* rect)
+HRESULT WebFrame::visibleContentRect(RECT* rect)
 {
     if (!rect)
         return E_POINTER;
@@ -1201,7 +1216,7 @@ HRESULT WebFrame::visibleContentRect(_Out_ RECT* rect)
 
     Frame* frame = core(this);
     if (!frame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     FrameView* view = frame->view();
     if (!view)
@@ -1211,7 +1226,7 @@ HRESULT WebFrame::visibleContentRect(_Out_ RECT* rect)
     return S_OK;
 }
 
-HRESULT WebFrame::numberOfActiveAnimations(_Out_ UINT* number)
+HRESULT WebFrame::numberOfActiveAnimations(UINT* number)
 {
     if (!number)
         return E_POINTER;
@@ -1220,13 +1235,13 @@ HRESULT WebFrame::numberOfActiveAnimations(_Out_ UINT* number)
 
     Frame* frame = core(this);
     if (!frame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     *number = frame->animation().numberOfActiveAnimations(frame->document());
     return S_OK;
 }
 
-HRESULT WebFrame::isDisplayingStandaloneImage(_Out_ BOOL* result)
+HRESULT WebFrame::isDisplayingStandaloneImage(BOOL* result)
 {
     if (!result)
         return E_POINTER;
@@ -1235,14 +1250,14 @@ HRESULT WebFrame::isDisplayingStandaloneImage(_Out_ BOOL* result)
 
     Frame* frame = core(this);
     if (!frame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     Document* document = frame->document();
     *result = document && document->isImageDocument();
     return S_OK;
 }
 
-HRESULT WebFrame::allowsFollowingLink(_In_ BSTR url, _Out_ BOOL* result)
+HRESULT WebFrame::allowsFollowingLink(BSTR url, BOOL* result)
 {
     if (!result)
         return E_POINTER;
@@ -1251,7 +1266,7 @@ HRESULT WebFrame::allowsFollowingLink(_In_ BSTR url, _Out_ BOOL* result)
 
     Frame* frame = core(this);
     if (!frame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     *result = frame->document()->securityOrigin()->canDisplay(MarshallingHelpers::BSTRToKURL(url));
     return S_OK;
@@ -1312,7 +1327,7 @@ HRESULT WebFrame::searchForLabelsBeforeElement(const BSTR* labels, unsigned cLab
 
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     Vector<String> labelStrings(cLabels);
     for (int i=0; i<cLabels; i++)
@@ -1352,7 +1367,7 @@ HRESULT WebFrame::matchLabelsAgainstElement(const BSTR* labels, int cLabels, IDO
 
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     Vector<String> labelStrings(cLabels);
     for (int i=0; i<cLabels; i++)
@@ -1391,15 +1406,15 @@ HRESULT WebFrame::canProvideDocumentSource(bool* result)
     return hr;
 }
 
-HRESULT WebFrame::layerTreeAsText(_Deref_out_opt_ BSTR* result)
+HRESULT STDMETHODCALLTYPE WebFrame::layerTreeAsText(BSTR* result)
 {
     if (!result)
         return E_POINTER;
-    *result = nullptr;
+    *result = 0;
 
     Frame* frame = core(this);
     if (!frame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     String text = frame->layerTreeAsText();
     *result = BString(text).release();
@@ -1429,16 +1444,15 @@ void WebFrame::setPrinting(bool printing, const FloatSize& pageSize, const Float
     coreFrame->setPrinting(printing, pageSize, originalPageSize, maximumShrinkRatio, adjustViewSize ? AdjustViewSize : DoNotAdjustViewSize);
 }
 
-HRESULT WebFrame::setInPrintingMode(BOOL value, _In_ HDC printDC)
+HRESULT STDMETHODCALLTYPE WebFrame::setInPrintingMode( 
+    /* [in] */ BOOL value,
+    /* [in] */ HDC printDC)
 {
     if (m_inPrintingMode == !!value)
         return S_OK;
 
     Frame* coreFrame = core(this);
-    if (!coreFrame)
-        return E_UNEXPECTED;
-
-    if (!coreFrame->document())
+    if (!coreFrame || !coreFrame->document())
         return E_FAIL;
 
     m_inPrintingMode = !!value;
@@ -1535,7 +1549,9 @@ const Vector<WebCore::IntRect>& WebFrame::computePageRects(HDC printDC)
     return m_pageRects;
 }
 
-HRESULT WebFrame::getPrintedPageCount(_In_ HDC printDC, _Out_ UINT *pageCount)
+HRESULT STDMETHODCALLTYPE WebFrame::getPrintedPageCount( 
+    /* [in] */ HDC printDC,
+    /* [retval][out] */ UINT *pageCount)
 {
     if (!pageCount || !printDC) {
         ASSERT_NOT_REACHED();
@@ -1550,10 +1566,7 @@ HRESULT WebFrame::getPrintedPageCount(_In_ HDC printDC, _Out_ UINT *pageCount)
     }
 
     Frame* coreFrame = core(this);
-    if (!coreFrame)
-        return E_UNEXPECTED;
-
-    if (!coreFrame->document())
+    if (!coreFrame || !coreFrame->document())
         return E_FAIL;
 
     const Vector<IntRect>& pages = computePageRects(printDC);
@@ -1579,7 +1592,7 @@ void WebFrame::drawFooter(PlatformGraphicsContext* pctx, IWebUIDelegate* ui, con
     ui->drawFooterInRect(d->webView, &footerRect, reinterpret_cast<ULONG_PTR>(pctx), page + 1, pageCount);
 }
 
-void WebFrame::spoolPage(PlatformGraphicsContext* pctx, GraphicsContext& spoolCtx, HDC printDC, IWebUIDelegate* ui, float headerHeight, float footerHeight, UINT page, UINT pageCount)
+void WebFrame::spoolPage(PlatformGraphicsContext* pctx, GraphicsContext* spoolCtx, HDC printDC, IWebUIDelegate* ui, float headerHeight, float footerHeight, UINT page, UINT pageCount)
 {
     Frame* coreFrame = core(this);
 
@@ -1676,7 +1689,7 @@ static XFORM buildXFORMFromCairo(HDC targetDC, cairo_t* previewContext)
     return scaled;
 }
 
-void WebFrame::spoolPage(PlatformGraphicsContext* pctx, GraphicsContext& spoolCtx, HDC printDC, IWebUIDelegate* ui, float headerHeight, float footerHeight, UINT page, UINT pageCount)
+void WebFrame::spoolPage(PlatformGraphicsContext* pctx, GraphicsContext* spoolCtx, HDC printDC, IWebUIDelegate* ui, float headerHeight, float footerHeight, UINT page, UINT pageCount)
 {
     Frame* coreFrame = core(this);
 
@@ -1686,7 +1699,7 @@ void WebFrame::spoolPage(PlatformGraphicsContext* pctx, GraphicsContext& spoolCt
     // In preview, the printDC is a placeholder, so just always use the HDC backing the graphics context.
     HDC hdc = hdcFromContext(pctx);
 
-    spoolCtx.save();
+    spoolCtx->save();
     
     XFORM original, scaled;
     GetWorldTransform(hdc, &original);
@@ -1737,7 +1750,7 @@ void WebFrame::spoolPage(PlatformGraphicsContext* pctx, GraphicsContext& spoolCt
 
     cairo_show_page(cr);
     ASSERT(!cairo_status(cr));
-    spoolCtx.restore();
+    spoolCtx->restore();
 }
 
 static void setCairoTransformToPreviewHDC(cairo_t* previewCtx, HDC previewDC)
@@ -1763,7 +1776,11 @@ static void setCairoTransformToPreviewHDC(cairo_t* previewCtx, HDC previewDC)
 
 #endif
 
-HRESULT WebFrame::spoolPages(HDC printDC, UINT startPage, UINT endPage, void* ctx)
+HRESULT STDMETHODCALLTYPE WebFrame::spoolPages( 
+    /* [in] */ HDC printDC,
+    /* [in] */ UINT startPage,
+    /* [in] */ UINT endPage,
+    /* [retval][out] */ void* ctx)
 {
 #if USE(CG)
     if (!printDC || !ctx) {
@@ -1810,10 +1827,7 @@ HRESULT WebFrame::spoolPages(HDC printDC, UINT startPage, UINT endPage, void* ct
     }
 
     Frame* coreFrame = core(this);
-    if (!coreFrame)
-        return E_UNEXPECTED;
-
-    if (!coreFrame->document())
+    if (!coreFrame || !coreFrame->document())
         return E_FAIL;
 
     UINT pageCount = (UINT) m_pageRects.size();
@@ -1842,7 +1856,7 @@ HRESULT WebFrame::spoolPages(HDC printDC, UINT startPage, UINT endPage, void* ct
     spoolCtx.setShouldIncludeChildWindows(true);
 
     for (UINT ii = startPage; ii < endPage; ii++)
-        spoolPage(pctx, spoolCtx, printDC, ui.get(), headerHeight, footerHeight, ii, pageCount);
+        spoolPage(pctx, &spoolCtx, printDC, ui.get(), headerHeight, footerHeight, ii, pageCount);
 
 #if USE(CAIRO)
     cairo_surface_finish(printSurface);
@@ -1853,34 +1867,27 @@ HRESULT WebFrame::spoolPages(HDC printDC, UINT startPage, UINT endPage, void* ct
     return S_OK;
 }
 
-HRESULT WebFrame::isFrameSet(_Out_ BOOL* result)
+HRESULT STDMETHODCALLTYPE WebFrame::isFrameSet( 
+    /* [retval][out] */ BOOL* result)
 {
-    if (!result)
-        return E_POINTER;
-
     *result = FALSE;
 
     Frame* coreFrame = core(this);
-    if (!coreFrame)
-        return E_UNEXPECTED;
-
-    if (!coreFrame->document())
+    if (!coreFrame || !coreFrame->document())
         return E_FAIL;
 
     *result = coreFrame->document()->isFrameSet() ? TRUE : FALSE;
     return S_OK;
 }
 
-HRESULT WebFrame::string(_Deref_opt_out_ BSTR* result)
+HRESULT STDMETHODCALLTYPE WebFrame::string( 
+    /* [retval][out] */ BSTR *result)
 {
-    if (!result)
-        return E_POINTER;
-
-    *result = nullptr;
+    *result = 0;
 
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     RefPtr<Range> allRange(rangeOfContents(*coreFrame->document()));
     String allString = plainText(allRange.get());
@@ -1888,7 +1895,8 @@ HRESULT WebFrame::string(_Deref_opt_out_ BSTR* result)
     return S_OK;
 }
 
-HRESULT WebFrame::size(_Out_ SIZE* size)
+HRESULT STDMETHODCALLTYPE WebFrame::size( 
+    /* [retval][out] */ SIZE *size)
 {
     if (!size)
         return E_POINTER;
@@ -1896,7 +1904,7 @@ HRESULT WebFrame::size(_Out_ SIZE* size)
 
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
     FrameView* view = coreFrame->view();
     if (!view)
         return E_FAIL;
@@ -1905,7 +1913,8 @@ HRESULT WebFrame::size(_Out_ SIZE* size)
     return S_OK;
 }
 
-HRESULT WebFrame::hasScrollBars(_Out_ BOOL* result)
+HRESULT STDMETHODCALLTYPE WebFrame::hasScrollBars( 
+    /* [retval][out] */ BOOL *result)
 {
     if (!result)
         return E_POINTER;
@@ -1913,7 +1922,7 @@ HRESULT WebFrame::hasScrollBars(_Out_ BOOL* result)
 
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     FrameView* view = coreFrame->view();
     if (!view)
@@ -1925,7 +1934,8 @@ HRESULT WebFrame::hasScrollBars(_Out_ BOOL* result)
     return S_OK;
 }
 
-HRESULT WebFrame::contentBounds(_Out_ RECT* result)
+HRESULT STDMETHODCALLTYPE WebFrame::contentBounds( 
+    /* [retval][out] */ RECT *result)
 {
     if (!result)
         return E_POINTER;
@@ -1933,7 +1943,7 @@ HRESULT WebFrame::contentBounds(_Out_ RECT* result)
 
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     FrameView* view = coreFrame->view();
     if (!view)
@@ -1944,7 +1954,8 @@ HRESULT WebFrame::contentBounds(_Out_ RECT* result)
     return S_OK;
 }
 
-HRESULT WebFrame::frameBounds(_Out_ RECT* result)
+HRESULT STDMETHODCALLTYPE WebFrame::frameBounds( 
+    /* [retval][out] */ RECT *result)
 {
     if (!result)
         return E_POINTER;
@@ -1952,7 +1963,7 @@ HRESULT WebFrame::frameBounds(_Out_ RECT* result)
 
     Frame* coreFrame = core(this);
     if (!coreFrame)
-        return E_UNEXPECTED;
+        return E_FAIL;
 
     FrameView* view = coreFrame->view();
     if (!view)
@@ -1964,7 +1975,9 @@ HRESULT WebFrame::frameBounds(_Out_ RECT* result)
     return S_OK;
 }
 
-HRESULT WebFrame::isDescendantOfFrame(_In_opt_ IWebFrame* ancestor, _Out_ BOOL* result)
+HRESULT STDMETHODCALLTYPE WebFrame::isDescendantOfFrame( 
+    /* [in] */ IWebFrame *ancestor,
+    /* [retval][out] */ BOOL *result)
 {
     if (!result)
         return E_POINTER;
@@ -2089,7 +2102,7 @@ void WebFrame::updateBackground()
 }
 
 // IWebFrame2
-HRESULT WebFrame::isMainFrame(_Out_ BOOL* value)
+HRESULT WebFrame::isMainFrame(BOOL* value)
 {
     if (!value)
         return E_POINTER;

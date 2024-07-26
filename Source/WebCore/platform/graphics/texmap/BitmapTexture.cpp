@@ -33,26 +33,21 @@
 
 namespace WebCore {
 
-void BitmapTexture::updateContents(TextureMapper* textureMapper, GraphicsLayer* sourceLayer, const IntRect& targetRect, const IntPoint& offset, UpdateContentsFlag updateContentsFlag, float scale)
+void BitmapTexture::updateContents(TextureMapper* textureMapper, GraphicsLayer* sourceLayer, const IntRect& targetRect, const IntPoint& offset, UpdateContentsFlag updateContentsFlag)
 {
-    // Making an unconditionally unaccelerated buffer here is OK because this code
-    // isn't used by any platforms that respect the accelerated bit.
-    std::unique_ptr<ImageBuffer> imageBuffer = ImageBuffer::create(targetRect.size(), Unaccelerated);
+    std::unique_ptr<ImageBuffer> imageBuffer = ImageBuffer::create(targetRect.size());
 
     if (!imageBuffer)
         return;
 
-    GraphicsContext& context = imageBuffer->context();
-    context.setImageInterpolationQuality(textureMapper->imageInterpolationQuality());
-    context.setTextDrawingMode(textureMapper->textDrawingMode());
+    GraphicsContext* context = imageBuffer->context();
+    context->setImageInterpolationQuality(textureMapper->imageInterpolationQuality());
+    context->setTextDrawingMode(textureMapper->textDrawingMode());
 
     IntRect sourceRect(targetRect);
     sourceRect.setLocation(offset);
-    sourceRect.scale(1 / scale);
-    context.applyDeviceScaleFactor(scale);
-    context.translate(-sourceRect.x(), -sourceRect.y());
-
-    sourceLayer->paintGraphicsLayerContents(context, sourceRect);
+    context->translate(-offset.x(), -offset.y());
+    sourceLayer->paintGraphicsLayerContents(*context, sourceRect);
 
     RefPtr<Image> image = imageBuffer->copyImage(DontCopyBackingStore);
     if (!image)

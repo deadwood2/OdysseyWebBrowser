@@ -41,8 +41,8 @@ public:
     CSSStyleSheet* sheet() const { return m_sheet.get(); }
 
     bool isLoading() const;
-    bool sheetLoaded(Element&);
-    void startLoadingDynamicSheet(Element&);
+    bool sheetLoaded(Document&);
+    void startLoadingDynamicSheet(Document&);
 
     void insertedIntoDocument(Document&, Element&);
     void removedFromDocument(Document&, Element&);

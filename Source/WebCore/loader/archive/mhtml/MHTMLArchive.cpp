@@ -176,7 +176,9 @@ PassRefPtr<SharedBuffer> MHTMLArchive::generateMHTMLData(Page* page, bool useBin
     RefPtr<SharedBuffer> mhtmlData = SharedBuffer::create();
     mhtmlData->append(asciiString.data(), asciiString.length());
 
-    for (auto& resource : resources) {
+    for (size_t i = 0; i < resources.size(); ++i) {
+        const PageSerializer::Resource& resource = resources[i];
+
         stringBuilder.clear();
         stringBuilder.append(endOfResourceBoundary);
         stringBuilder.append("Content-Type: ");

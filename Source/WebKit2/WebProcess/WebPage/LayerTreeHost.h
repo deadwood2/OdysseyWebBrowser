@@ -44,7 +44,7 @@ class IntSize;
 class GraphicsLayer;
 class GraphicsLayerFactory;
 #if USE(COORDINATED_GRAPHICS_THREADED)
-struct ViewportAttributes;
+class ViewportAttributes;
 #endif
 }
 

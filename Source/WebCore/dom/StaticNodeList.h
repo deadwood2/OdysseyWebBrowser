@@ -53,6 +53,7 @@ public:
 
     virtual unsigned length() const override;
     virtual Node* item(unsigned index) const override;
+    virtual Node* namedItem(const AtomicString&) const override;
 
 private:
     StaticNodeList() { }
@@ -76,6 +77,7 @@ public:
 
     virtual unsigned length() const override;
     virtual Node* item(unsigned index) const override;
+    virtual Node* namedItem(const AtomicString&) const override;
 
 private:
     StaticElementList()

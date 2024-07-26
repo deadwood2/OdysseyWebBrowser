@@ -117,7 +117,7 @@ public:
     bool isInLayout() const { return m_layoutPhase == InLayout; }
     WEBCORE_EXPORT bool inPaintableState() { return m_layoutPhase != InLayout && m_layoutPhase != InViewSizeAdjust && m_layoutPhase != InPostLayout; }
 
-    RenderElement* layoutRoot() const { return m_layoutRoot; }
+    RenderObject* layoutRoot(bool onlyDuringLayout = false) const;
     void clearLayoutRoot() { m_layoutRoot = nullptr; }
     int layoutCount() const { return m_layoutCount; }
 
@@ -155,6 +155,7 @@ public:
     void willRecalcStyle();
     bool updateCompositingLayersAfterStyleChange();
     void updateCompositingLayersAfterLayout();
+    bool flushCompositingStateForThisFrame(Frame* rootFrameForFlush);
 
     void clearBackingStores();
     void restoreBackingStores();
@@ -244,6 +245,7 @@ public:
     virtual bool isRubberBandInProgress() const override;
     WEBCORE_EXPORT virtual IntPoint minimumScrollPosition() const override;
     WEBCORE_EXPORT virtual IntPoint maximumScrollPosition() const override;
+    void delayedScrollEventTimerFired();
 
     void viewportContentsChanged();
     WEBCORE_EXPORT void resumeVisibleImageAnimationsIncludingSubframes();
@@ -264,7 +266,7 @@ public:
 
     void addSlowRepaintObject(RenderElement*);
     void removeSlowRepaintObject(RenderElement*);
-    bool hasSlowRepaintObject(const RenderElement& renderer) const { return m_slowRepaintObjects && m_slowRepaintObjects->contains(&renderer); }
+    bool hasSlowRepaintObject(RenderElement* o) const { return m_slowRepaintObjects && m_slowRepaintObjects->contains(o); }
     bool hasSlowRepaintObjects() const { return m_slowRepaintObjects && m_slowRepaintObjects->size(); }
 
     // Includes fixed- and sticky-position objects.
@@ -314,6 +316,8 @@ public:
 
     void restoreScrollbar();
 
+    void postLayoutTimerFired();
+
     WEBCORE_EXPORT bool wasScrolledByUser() const;
     WEBCORE_EXPORT void setWasScrolledByUser(bool);
 
@@ -323,7 +327,7 @@ public:
     void addEmbeddedObjectToUpdate(RenderEmbeddedObject&);
     void removeEmbeddedObjectToUpdate(RenderEmbeddedObject&);
 
-    WEBCORE_EXPORT virtual void paintContents(GraphicsContext&, const IntRect& dirtyRect) override;
+    WEBCORE_EXPORT virtual void paintContents(GraphicsContext*, const IntRect& dirtyRect) override;
 
     struct PaintingState {
         PaintBehavior paintBehavior;
@@ -337,8 +341,8 @@ public:
         }
     };
 
-    void willPaintContents(GraphicsContext&, const IntRect& dirtyRect, PaintingState&);
-    void didPaintContents(GraphicsContext&, const IntRect& dirtyRect, PaintingState&);
+    void willPaintContents(GraphicsContext*, const IntRect& dirtyRect, PaintingState&);
+    void didPaintContents(GraphicsContext*, const IntRect& dirtyRect, PaintingState&);
 
 #if PLATFORM(IOS)
     WEBCORE_EXPORT void didReplaceMultipartContent();
@@ -353,11 +357,11 @@ public:
 
     enum SelectionInSnapshot { IncludeSelection, ExcludeSelection };
     enum CoordinateSpaceForSnapshot { DocumentCoordinates, ViewCoordinates };
-    WEBCORE_EXPORT void paintContentsForSnapshot(GraphicsContext&, const IntRect& imageRect, SelectionInSnapshot shouldPaintSelection, CoordinateSpaceForSnapshot);
+    WEBCORE_EXPORT void paintContentsForSnapshot(GraphicsContext*, const IntRect& imageRect, SelectionInSnapshot shouldPaintSelection, CoordinateSpaceForSnapshot);
 
-    virtual void paintOverhangAreas(GraphicsContext&, const IntRect& horizontalOverhangArea, const IntRect& verticalOverhangArea, const IntRect& dirtyRect) override;
-    virtual void paintScrollCorner(GraphicsContext&, const IntRect& cornerRect) override;
-    virtual void paintScrollbar(GraphicsContext&, Scrollbar&, const IntRect&) override;
+    virtual void paintOverhangAreas(GraphicsContext*, const IntRect& horizontalOverhangArea, const IntRect& verticalOverhangArea, const IntRect& dirtyRect) override;
+    virtual void paintScrollCorner(GraphicsContext*, const IntRect& cornerRect) override;
+    virtual void paintScrollbar(GraphicsContext*, Scrollbar*, const IntRect&) override;
 
     WEBCORE_EXPORT Color documentBackgroundColor() const;
 
@@ -403,7 +407,7 @@ public:
     bool scrollToFragment(const URL&);
     bool scrollToAnchor(const String&);
     void maintainScrollPositionAtAnchor(ContainerNode*);
-    WEBCORE_EXPORT void scrollElementToRect(const Element&, const IntRect&);
+    WEBCORE_EXPORT void scrollElementToRect(Element*, const IntRect&);
 
     // Methods to convert points and rects between the coordinate space of the renderer, and this view.
     WEBCORE_EXPORT IntRect convertFromRendererToContainingView(const RenderElement*, const IntRect&) const;
@@ -417,7 +421,7 @@ public:
     virtual IntPoint convertToContainingView(const IntPoint&) const override;
     virtual IntPoint convertFromContainingView(const IntPoint&) const override;
 
-    bool isFrameViewScrollCorner(const RenderScrollbarPart& scrollCorner) const { return m_scrollCorner == &scrollCorner; }
+    bool isFrameViewScrollCorner(RenderScrollbarPart* scrollCorner) const { return m_scrollCorner == scrollCorner; }
 
     // isScrollable() takes an optional Scrollability parameter that allows the caller to define what they mean by 'scrollable.'
     // Most callers are interested in the default value, Scrollability::Scrollable, which means that there is actually content
@@ -458,7 +462,6 @@ public:
     WEBCORE_EXPORT bool removeScrollableArea(ScrollableArea*);
     bool containsScrollableArea(ScrollableArea*) const;
     const ScrollableAreaSet* scrollableAreas() const { return m_scrollableAreas.get(); }
-    void clearScrollableAreas();
 
     virtual void removeChild(Widget&) override;
 
@@ -544,7 +547,6 @@ public:
 #if ENABLE(CSS_SCROLL_SNAP)
     void updateSnapOffsets() override;
     bool isScrollSnapInProgress() const override;
-    void updateScrollingCoordinatorScrollSnapProperties() const;
 #endif
 
     virtual float adjustScrollStepForFixedContent(float step, ScrollbarOrientation, ScrollGranularity) override;
@@ -590,13 +592,12 @@ private:
     bool shouldLayoutAfterContentsResized() const;
 
     bool shouldUpdateCompositingLayersAfterScrolling() const;
-    bool flushCompositingStateForThisFrame(const Frame& rootFrameForFlush);
 
     virtual bool shouldDeferScrollUpdateAfterContentSizeChange() override;
 
     virtual void scrollPositionChangedViaPlatformWidgetImpl(const IntPoint& oldPosition, const IntPoint& newPosition) override;
 
-    void applyOverflowToViewport(const RenderElement&, ScrollbarMode& hMode, ScrollbarMode& vMode);
+    void applyOverflowToViewport(RenderElement*, ScrollbarMode& hMode, ScrollbarMode& vMode);
     void applyPaginationToViewport();
 
     void updateOverflowStatus(bool horizontalOverflow, bool verticalOverflow);
@@ -677,8 +678,6 @@ private:
     void removeFromAXObjectCache();
     void notifyWidgets(WidgetNotification);
 
-    RenderElement* viewportRenderer() const;
-
     HashSet<Widget*> m_widgetsInRenderTree;
 
     static double sCurrentPaintTimeStamp; // used for detecting decoded resource thrash in the cache
@@ -689,7 +688,7 @@ private:
     std::unique_ptr<ListHashSet<RenderEmbeddedObject*>> m_embeddedObjectsToUpdate;
     const Ref<Frame> m_frame;
 
-    std::unique_ptr<HashSet<const RenderElement*>> m_slowRepaintObjects;
+    std::unique_ptr<HashSet<RenderElement*>> m_slowRepaintObjects;
 
     bool m_needsFullRepaint;
     
@@ -700,7 +699,7 @@ private:
 
     Timer m_layoutTimer;
     bool m_delayedLayout;
-    RenderElement* m_layoutRoot { nullptr };
+    RenderElement* m_layoutRoot;
 
     LayoutPhase m_layoutPhase;
     bool m_layoutSchedulingEnabled;
@@ -722,9 +721,8 @@ private:
 
     bool m_overflowStatusDirty;
     bool m_horizontalOverflow;
-    bool m_verticalOverflow;
-    enum class ViewportRendererType { None, Document, Body };
-    ViewportRendererType m_viewportRendererType { ViewportRendererType::None };
+    bool m_verticalOverflow;    
+    RenderElement* m_viewportRenderer;
 
     Pagination m_pagination;
 

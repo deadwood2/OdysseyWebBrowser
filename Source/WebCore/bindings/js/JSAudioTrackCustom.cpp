@@ -40,28 +40,28 @@ void JSAudioTrack::visitAdditionalChildren(SlotVisitor& visitor)
     visitor.addOpaqueRoot(root(&impl()));
 }
 
-void JSAudioTrack::setKind(ExecState& state, JSValue value)
+void JSAudioTrack::setKind(ExecState* exec, JSValue value)
 {
 #if ENABLE(MEDIA_SOURCE)
-    auto& string = value.toString(&state)->value(&state);
-    if (state.hadException())
+    auto& string = value.toString(exec)->value(exec);
+    if (exec->hadException())
         return;
     impl().setKind(string);
 #else
-    UNUSED_PARAM(state);
+    UNUSED_PARAM(exec);
     UNUSED_PARAM(value);
 #endif
 }
 
-void JSAudioTrack::setLanguage(ExecState& state, JSValue value)
+void JSAudioTrack::setLanguage(ExecState* exec, JSValue value)
 {
 #if ENABLE(MEDIA_SOURCE)
-    auto& string = value.toString(&state)->value(&state);
-    if (state.hadException())
+    auto& string = value.toString(exec)->value(exec);
+    if (exec->hadException())
         return;
     impl().setLanguage(string);
 #else
-    UNUSED_PARAM(state);
+    UNUSED_PARAM(exec);
     UNUSED_PARAM(value);
 #endif
 }

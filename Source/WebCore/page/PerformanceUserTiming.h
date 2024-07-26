@@ -28,6 +28,7 @@
 
 #if ENABLE(USER_TIMING)
 
+#include "EventException.h"
 #include "ExceptionCode.h"
 #include "Performance.h"
 #include "PerformanceTiming.h"

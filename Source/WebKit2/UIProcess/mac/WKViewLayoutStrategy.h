@@ -54,6 +54,7 @@ class WebPageProxy;
 - (BOOL)frameSizeUpdatesDisabled;
 
 - (void)didChangeViewScale;
+- (void)didChangeMinimumViewSize;
 - (void)willStartLiveResize;
 - (void)didEndLiveResize;
 - (void)didChangeFrameSize;

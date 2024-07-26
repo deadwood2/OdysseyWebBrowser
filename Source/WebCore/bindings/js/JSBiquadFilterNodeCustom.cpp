@@ -37,26 +37,26 @@ using namespace JSC;
 
 namespace WebCore {
 
-void JSBiquadFilterNode::setType(ExecState& state, JSValue value)
+void JSBiquadFilterNode::setType(ExecState* exec, JSValue value)
 {
 #if ENABLE(LEGACY_WEB_AUDIO)
     if (value.isNumber()) {
-        uint32_t type = value.toUInt32(&state);
+        uint32_t type = value.toUInt32(exec);
         if (!impl().setType(type))
-            state.vm().throwException(&state, createTypeError(&state, "Illegal BiquadFilterNode type"));
+            exec->vm().throwException(exec, createTypeError(exec, "Illegal BiquadFilterNode type"));
         return;
     }
 #endif
 
     if (value.isString()) {
-        String type = value.toString(&state)->value(&state);
+        String type = value.toString(exec)->value(exec);
         if (type == "lowpass" || type == "highpass" || type == "bandpass" || type == "lowshelf" || type == "highshelf" || type == "peaking" || type == "notch" || type == "allpass") {
             impl().setType(type);
             return;
         }
     }
     
-    state.vm().throwException(&state, createTypeError(&state, "Illegal BiquadFilterNode type"));
+    exec->vm().throwException(exec, createTypeError(exec, "Illegal BiquadFilterNode type"));
 }
 
 } // namespace WebCore

@@ -36,6 +36,11 @@ DocumentType::DocumentType(Document& document, const String& name, const String&
 {
 }
 
+URL DocumentType::baseURI() const
+{
+    return URL();
+}
+
 String DocumentType::nodeName() const
 {
     return name();
@@ -46,7 +51,7 @@ Node::NodeType DocumentType::nodeType() const
     return DOCUMENT_TYPE_NODE;
 }
 
-Ref<Node> DocumentType::cloneNodeInternal(Document& documentTarget, CloningOperation)
+RefPtr<Node> DocumentType::cloneNodeInternal(Document& documentTarget, CloningOperation)
 {
     return create(documentTarget, m_name, m_publicId, m_systemId);
 }

@@ -23,95 +23,94 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ContentBrowserTabContentView = class ContentBrowserTabContentView extends WebInspector.TabContentView
+WebInspector.ContentBrowserTabContentView = function(identifier, styleClassNames, tabBarItem, navigationSidebarPanelClass, detailsSidebarPanels, disableBackForward)
 {
-    constructor(identifier, styleClassNames, tabBarItem, navigationSidebarPanelClass, detailsSidebarPanels, disableBackForward)
-    {
-        if (typeof styleClassNames === "string")
-            styleClassNames = [styleClassNames];
+    if (typeof styleClassNames === "string")
+        styleClassNames = [styleClassNames];
 
-        styleClassNames.push("content-browser");
+    styleClassNames.push("content-browser");
 
-        var contentBrowser = new WebInspector.ContentBrowser(null, null, disableBackForward);
-        var navigationSidebarPanel = navigationSidebarPanelClass ? new navigationSidebarPanelClass(contentBrowser) : null;
+    var contentBrowser = new WebInspector.ContentBrowser(null, this, disableBackForward);
+    var navigationSidebarPanel = navigationSidebarPanelClass ? new navigationSidebarPanelClass(contentBrowser) : null;
 
-        super(identifier, styleClassNames, tabBarItem, navigationSidebarPanel, detailsSidebarPanels);
+    WebInspector.TabContentView.call(this, identifier, styleClassNames, tabBarItem, navigationSidebarPanel, detailsSidebarPanels);
 
-        this._contentBrowser = contentBrowser;
-        this._contentBrowser.delegate = this;
+    this._lastSelectedDetailsSidebarPanelSetting = new WebInspector.Setting(identifier + "-last-selected-details-sidebar-panel", null);
 
-        this._lastSelectedDetailsSidebarPanelSetting = new WebInspector.Setting(identifier + "-last-selected-details-sidebar-panel", null);
+    this._contentBrowser = contentBrowser;
+    this._contentBrowser.addEventListener(WebInspector.ContentBrowser.Event.CurrentRepresentedObjectsDidChange, this.showDetailsSidebarPanels, this);
+    this._contentBrowser.addEventListener(WebInspector.ContentBrowser.Event.CurrentContentViewDidChange, this._contentBrowserCurrentContentViewDidChange, this);
 
-        this._contentBrowser = this._contentBrowser;
-        this._contentBrowser.addEventListener(WebInspector.ContentBrowser.Event.CurrentRepresentedObjectsDidChange, this.showDetailsSidebarPanels, this);
-        this._contentBrowser.addEventListener(WebInspector.ContentBrowser.Event.CurrentContentViewDidChange, this._contentBrowserCurrentContentViewDidChange, this);
+    // If any content views were shown during sidebar construction, contentBrowserTreeElementForRepresentedObject() would have returned null.
+    // Explicitly update the path for the navigation bar to prevent it from showing up as blank.
+    this._contentBrowser.updateHierarchicalPathForCurrentContentView();
 
-        // If any content views were shown during sidebar construction, contentBrowserTreeElementForRepresentedObject() would have returned null.
-        // Explicitly update the path for the navigation bar to prevent it from showing up as blank.
-        this._contentBrowser.updateHierarchicalPathForCurrentContentView();
+    if (navigationSidebarPanel) {
+        var showToolTip = WebInspector.UIString("Show the navigation sidebar (%s)").format(WebInspector.navigationSidebarKeyboardShortcut.displayName);
+        var hideToolTip = WebInspector.UIString("Hide the navigation sidebar (%s)").format(WebInspector.navigationSidebarKeyboardShortcut.displayName);
 
-        if (navigationSidebarPanel) {
-            var showToolTip = WebInspector.UIString("Show the navigation sidebar (%s)").format(WebInspector.navigationSidebarKeyboardShortcut.displayName);
-            var hideToolTip = WebInspector.UIString("Hide the navigation sidebar (%s)").format(WebInspector.navigationSidebarKeyboardShortcut.displayName);
+        this._showNavigationSidebarItem = new WebInspector.ActivateButtonNavigationItem("toggle-navigation-sidebar", showToolTip, hideToolTip, "Images/ToggleLeftSidebar.svg", 16, 16);
+        this._showNavigationSidebarItem.addEventListener(WebInspector.ButtonNavigationItem.Event.Clicked, WebInspector.toggleNavigationSidebar, WebInspector);
+        this._showNavigationSidebarItem.activated = !WebInspector.navigationSidebar.collapsed;
 
-            this._showNavigationSidebarItem = new WebInspector.ActivateButtonNavigationItem("toggle-navigation-sidebar", showToolTip, hideToolTip, "Images/ToggleLeftSidebar.svg", 16, 16);
-            this._showNavigationSidebarItem.addEventListener(WebInspector.ButtonNavigationItem.Event.Clicked, WebInspector.toggleNavigationSidebar, WebInspector);
-            this._showNavigationSidebarItem.activated = !WebInspector.navigationSidebar.collapsed;
+        this._contentBrowser.navigationBar.insertNavigationItem(this._showNavigationSidebarItem, 0);
+        this._contentBrowser.navigationBar.insertNavigationItem(new WebInspector.DividerNavigationItem, 1);
 
-            this._contentBrowser.navigationBar.insertNavigationItem(this._showNavigationSidebarItem, 0);
-            this._contentBrowser.navigationBar.insertNavigationItem(new WebInspector.DividerNavigationItem, 1);
+        navigationSidebarPanel.contentBrowser = this._contentBrowser;
 
-            navigationSidebarPanel.contentBrowser = this._contentBrowser;
-
-            WebInspector.navigationSidebar.addEventListener(WebInspector.Sidebar.Event.CollapsedStateDidChange, this._navigationSidebarCollapsedStateDidChange, this);
-        }
-
-        if (detailsSidebarPanels && detailsSidebarPanels.length) {
-            var showToolTip = WebInspector.UIString("Show the details sidebar (%s)").format(WebInspector.detailsSidebarKeyboardShortcut.displayName);
-            var hideToolTip = WebInspector.UIString("Hide the details sidebar (%s)").format(WebInspector.detailsSidebarKeyboardShortcut.displayName);
-
-            this._showDetailsSidebarItem = new WebInspector.ActivateButtonNavigationItem("toggle-details-sidebar", showToolTip, hideToolTip, "Images/ToggleRightSidebar.svg", 16, 16);
-            this._showDetailsSidebarItem.addEventListener(WebInspector.ButtonNavigationItem.Event.Clicked, WebInspector.toggleDetailsSidebar, WebInspector);
-            this._showDetailsSidebarItem.activated = !WebInspector.detailsSidebar.collapsed;
-            this._showDetailsSidebarItem.enabled = false;
-
-            this._contentBrowser.navigationBar.addNavigationItem(new WebInspector.DividerNavigationItem);
-            this._contentBrowser.navigationBar.addNavigationItem(this._showDetailsSidebarItem);
-
-            WebInspector.detailsSidebar.addEventListener(WebInspector.Sidebar.Event.CollapsedStateDidChange, this._detailsSidebarCollapsedStateDidChange, this);
-            WebInspector.detailsSidebar.addEventListener(WebInspector.Sidebar.Event.SidebarPanelSelected, this._detailsSidebarPanelSelected, this);
-        }
-
-        this.element.appendChild(this._contentBrowser.element);
+        WebInspector.navigationSidebar.addEventListener(WebInspector.Sidebar.Event.CollapsedStateDidChange, this._navigationSidebarCollapsedStateDidChange, this);
     }
+
+    if (detailsSidebarPanels && detailsSidebarPanels.length) {
+        var showToolTip = WebInspector.UIString("Show the details sidebar (%s)").format(WebInspector.detailsSidebarKeyboardShortcut.displayName);
+        var hideToolTip = WebInspector.UIString("Hide the details sidebar (%s)").format(WebInspector.detailsSidebarKeyboardShortcut.displayName);
+
+        this._showDetailsSidebarItem = new WebInspector.ActivateButtonNavigationItem("toggle-details-sidebar", showToolTip, hideToolTip, "Images/ToggleRightSidebar.svg", 16, 16);
+        this._showDetailsSidebarItem.addEventListener(WebInspector.ButtonNavigationItem.Event.Clicked, WebInspector.toggleDetailsSidebar, WebInspector);
+        this._showDetailsSidebarItem.activated = !WebInspector.detailsSidebar.collapsed;
+        this._showDetailsSidebarItem.enabled = false;
+
+        this._contentBrowser.navigationBar.addNavigationItem(new WebInspector.DividerNavigationItem);
+        this._contentBrowser.navigationBar.addNavigationItem(this._showDetailsSidebarItem);
+
+        WebInspector.detailsSidebar.addEventListener(WebInspector.Sidebar.Event.CollapsedStateDidChange, this._detailsSidebarCollapsedStateDidChange, this);
+        WebInspector.detailsSidebar.addEventListener(WebInspector.Sidebar.Event.SidebarPanelSelected, this._detailsSidebarPanelSelected, this);
+    }
+
+    this.element.appendChild(this._contentBrowser.element);
+};
+
+WebInspector.ContentBrowserTabContentView.prototype = {
+    constructor: WebInspector.ContentBrowserTabContentView,
+    __proto__: WebInspector.TabContentView.prototype,
 
     // Public
 
     get contentBrowser()
     {
         return this._contentBrowser;
-    }
+    },
 
-    shown()
+    shown: function()
     {
-        super.shown();
+        WebInspector.TabContentView.prototype.shown.call(this);
 
         this._contentBrowser.shown();
 
         if (this.navigationSidebarPanel && !this._contentBrowser.currentContentView)
             this.navigationSidebarPanel.showDefaultContentView();
-    }
+    },
 
-    hidden()
+    hidden: function()
     {
-        super.hidden();
+        WebInspector.TabContentView.prototype.hidden.call(this);
 
         this._contentBrowser.hidden();
-    }
+    },
 
-    closed()
+    closed: function()
     {
-        super.closed();
+        WebInspector.TabContentView.prototype.closed.call(this);
 
         WebInspector.navigationSidebar.removeEventListener(null, null, this);
         WebInspector.detailsSidebar.removeEventListener(null, null, this);
@@ -120,21 +119,21 @@ WebInspector.ContentBrowserTabContentView = class ContentBrowserTabContentView e
             this.navigationSidebarPanel.closed();
 
         this._contentBrowser.contentViewContainer.closeAllContentViews();
-    }
+    },
 
-    updateLayout()
+    updateLayout: function()
     {
-        super.updateLayout();
+        WebInspector.TabContentView.prototype.updateLayout.call(this);
 
         this._contentBrowser.updateLayout();
-    }
+    },
 
     get managesDetailsSidebarPanels()
     {
         return true;
-    }
+    },
 
-    showDetailsSidebarPanels()
+    showDetailsSidebarPanels: function()
     {
         if (!this.visible)
             return;
@@ -184,32 +183,32 @@ WebInspector.ContentBrowserTabContentView = class ContentBrowserTabContentView e
             return;
 
         this._showDetailsSidebarItem.enabled = WebInspector.detailsSidebar.sidebarPanels.length;
-    }
+    },
 
-    showRepresentedObject(representedObject, cookie)
+    showRepresentedObject: function(representedObject, cookie)
     {
         if (this.navigationSidebarPanel)
             this.navigationSidebarPanel.cancelRestoringState();
         this.contentBrowser.showContentViewForRepresentedObject(representedObject, cookie);
-    }
+    },
 
     // ContentBrowser Delegate
 
-    contentBrowserTreeElementForRepresentedObject(contentBrowser, representedObject)
+    contentBrowserTreeElementForRepresentedObject: function(contentBrowser, representedObject)
     {
         if (this.navigationSidebarPanel)
             return this.navigationSidebarPanel.treeElementForRepresentedObject(representedObject);
         return null;
-    }
+    },
 
     // Private
 
-    _navigationSidebarCollapsedStateDidChange(event)
+    _navigationSidebarCollapsedStateDidChange: function(event)
     {
         this._showNavigationSidebarItem.activated = !WebInspector.navigationSidebar.collapsed;
-    }
+    },
 
-    _detailsSidebarCollapsedStateDidChange(event)
+    _detailsSidebarCollapsedStateDidChange: function(event)
     {
         if (!this.visible)
             return;
@@ -221,9 +220,9 @@ WebInspector.ContentBrowserTabContentView = class ContentBrowserTabContentView e
             return;
 
         this.detailsSidebarCollapsedSetting.value = WebInspector.detailsSidebar.collapsed;
-    }
+    },
 
-    _detailsSidebarPanelSelected(event)
+    _detailsSidebarPanelSelected: function(event)
     {
         if (!this.visible)
             return;
@@ -235,18 +234,18 @@ WebInspector.ContentBrowserTabContentView = class ContentBrowserTabContentView e
             return;
 
         this._lastSelectedDetailsSidebarPanelSetting.value = WebInspector.detailsSidebar.selectedSidebarPanel.identifier;
-    }
+    },
 
-    _contentBrowserCurrentContentViewDidChange(event)
+    _contentBrowserCurrentContentViewDidChange: function(event)
     {
         var currentContentView = this._contentBrowser.currentContentView;
         if (!currentContentView)
             return;
 
         this._revealAndSelectRepresentedObjectInNavigationSidebar(currentContentView.representedObject);
-    }
+    },
 
-    _revealAndSelectRepresentedObjectInNavigationSidebar(representedObject)
+    _revealAndSelectRepresentedObjectInNavigationSidebar: function(representedObject)
     {
         if (!this.navigationSidebarPanel)
             return;

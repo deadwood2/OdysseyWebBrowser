@@ -36,11 +36,11 @@ extern NSString *WebInspectorDidStopSearchingForNode;
 
 @interface WebInspector : NSObject
 {
-    WebView *_inspectedWebView;
+    WebView *_webView;
     WebInspectorFrontend *_frontend;
 }
-- (id)initWithInspectedWebView:(WebView *)inspectedWebView;
-- (void)inspectedWebViewClosed;
+- (id)initWithWebView:(WebView *)webView;
+- (void)webViewClosed;
 - (void)show:(id)sender;
 - (void)showConsole:(id)sender;
 - (void)close:(id)sender;
@@ -61,6 +61,4 @@ extern NSString *WebInspectorDidStopSearchingForNode;
 - (void)toggleProfilingJavaScript:(id)sender;
 - (void)startProfilingJavaScript:(id)sender;
 - (void)stopProfilingJavaScript:(id)sender;
-
-@property (nonatomic, readonly, getter=isOpen) BOOL open;
 @end

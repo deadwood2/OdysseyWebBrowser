@@ -1,5 +1,4 @@
 /*
-* Copyright (C) 2015 Apple Inc.  All rights reserved.
 * Copyright (C) 2012 Baidu Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
@@ -28,6 +27,8 @@
 #include "DRTDropSource.h"
 
 DRTDropSource::DRTDropSource()
+    : m_ref(1)
+    , m_dropped(false)
 {
 }
 
@@ -35,11 +36,9 @@ DRTDropSource::~DRTDropSource()
 {
 }
 
-STDMETHODIMP DRTDropSource::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+STDMETHODIMP DRTDropSource::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, IID_IDropSource)) {
         *ppvObject = this;
         AddRef();
@@ -71,7 +70,7 @@ HRESULT DRTDropSource::createInstance(IDropSource** result)
     return S_OK;
 }
 
-STDMETHODIMP DRTDropSource::QueryContinueDrag(_In_ BOOL fEscapePressed, _In_ DWORD grfKeyState)
+STDMETHODIMP DRTDropSource::QueryContinueDrag(BOOL fEscapePressed, DWORD grfKeyState)
 {
     if (fEscapePressed || !(grfKeyState & (MK_LBUTTON | MK_RBUTTON))) {
         m_dropped = !fEscapePressed;
@@ -81,7 +80,7 @@ STDMETHODIMP DRTDropSource::QueryContinueDrag(_In_ BOOL fEscapePressed, _In_ DWO
     return S_OK;
 }
 
-STDMETHODIMP DRTDropSource::GiveFeedback(_In_ DWORD dwEffect)
+STDMETHODIMP DRTDropSource::GiveFeedback(DWORD dwEffect)
 {
     return DRAGDROP_S_USEDEFAULTCURSORS;
 }

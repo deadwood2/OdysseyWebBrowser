@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2009, 2014-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2007, 2009, 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -55,15 +55,16 @@ static wstring dumpPath(IDOMNode* node)
 }
 
 PolicyDelegate::PolicyDelegate()
+    : m_refCount(1)
+    , m_permissiveDelegate(false)
+    , m_controllerToNotifyDone(0)
 {
 }
 
 // IUnknown
-HRESULT PolicyDelegate::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT PolicyDelegate::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<IWebPolicyDelegate*>(this);
     else if (IsEqualGUID(riid, IID_IWebPolicyDelegate))
@@ -75,12 +76,12 @@ HRESULT PolicyDelegate::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppv
     return S_OK;
 }
 
-ULONG PolicyDelegate::AddRef()
+ULONG PolicyDelegate::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG PolicyDelegate::Release()
+ULONG PolicyDelegate::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -89,8 +90,8 @@ ULONG PolicyDelegate::Release()
     return newRef;
 }
 
-HRESULT PolicyDelegate::decidePolicyForNavigationAction(_In_opt_ IWebView*, _In_opt_ IPropertyBag* actionInformation,
-    _In_opt_ IWebURLRequest* request, _In_opt_ IWebFrame* frame, _In_opt_ IWebPolicyDecisionListener* listener)
+HRESULT PolicyDelegate::decidePolicyForNavigationAction(IWebView* /*webView*/, IPropertyBag* actionInformation, 
+    IWebURLRequest* request, IWebFrame* frame, IWebPolicyDecisionListener* listener)
 {
     _bstr_t url;
     request->URL(&url.GetBSTR());
@@ -155,7 +156,10 @@ HRESULT PolicyDelegate::decidePolicyForNavigationAction(_In_opt_ IWebView*, _In_
 }
 
 
-HRESULT PolicyDelegate::unableToImplementPolicyWithError(_In_opt_ IWebView*, _In_opt_ IWebError* error, _In_opt_ IWebFrame* frame)
+HRESULT PolicyDelegate::unableToImplementPolicyWithError(
+    /*[in]*/ IWebView* /*webView*/, 
+    /*[in]*/ IWebError* error, 
+    /*[in]*/ IWebFrame* frame)
 {
     _bstr_t domainStr;
     error->domain(&domainStr.GetBSTR());

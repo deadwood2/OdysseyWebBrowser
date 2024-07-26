@@ -38,7 +38,6 @@
 
 namespace API {
 class Object;
-class PageConfiguration;
 }
 
 namespace IPC {
@@ -49,8 +48,6 @@ namespace WebCore {
 class Image;
 class SharedBuffer;
 class TextIndicator;
-enum class TextIndicatorWindowLifetime : uint8_t;
-enum class TextIndicatorWindowDismissalAnimation : uint8_t;
 struct KeypressCommand;
 }
 
@@ -61,6 +58,7 @@ class ViewSnapshot;
 class WebProcessPool;
 struct ColorSpaceData;
 struct EditorState;
+struct WebPageConfiguration;
 }
 
 @class WKFullScreenWindowController;
@@ -71,7 +69,7 @@ struct EditorState;
 
 @interface WKView ()
 #if WK_API_ENABLED
-- (instancetype)initWithFrame:(NSRect)frame processPool:(WebKit::WebProcessPool&)processPool configuration:(Ref<API::PageConfiguration>&&)configuration webView:(WKWebView *)webView;
+- (instancetype)initWithFrame:(CGRect)frame processPool:(WebKit::WebProcessPool&)processPool configuration:(WebKit::WebPageConfiguration)webPageConfiguration webView:(WKWebView *)webView;
 #endif
 
 - (std::unique_ptr<WebKit::DrawingAreaProxy>)_createDrawingAreaProxy;
@@ -88,8 +86,8 @@ struct EditorState;
 - (NSRect)_convertToDeviceSpace:(NSRect)rect;
 - (NSRect)_convertToUserSpace:(NSRect)rect;
 - (void)_setTextIndicator:(WebCore::TextIndicator&)textIndicator;
-- (void)_setTextIndicator:(WebCore::TextIndicator&)textIndicator withLifetime:(WebCore::TextIndicatorWindowLifetime)lifetime;
-- (void)_clearTextIndicatorWithAnimation:(WebCore::TextIndicatorWindowDismissalAnimation)animation;
+- (void)_setTextIndicator:(WebCore::TextIndicator&)textIndicator withLifetime:(WebCore::TextIndicatorLifetime)lifetime;
+- (void)_clearTextIndicatorWithAnimation:(WebCore::TextIndicatorDismissalAnimation)animation;
 - (void)_setTextIndicatorAnimationProgress:(float)progress;
 - (void)_selectionChanged;
 
@@ -121,7 +119,6 @@ struct EditorState;
 - (BOOL)_suppressVisibilityUpdates;
 
 - (void)_didFirstVisuallyNonEmptyLayoutForMainFrame;
-- (void)_didCommitLoadForMainFrame;
 - (void)_didFinishLoadForMainFrame;
 - (void)_didFailLoadForMainFrame;
 - (void)_didSameDocumentNavigationForMainFrame:(WebKit::SameDocumentNavigationType)type;
@@ -160,7 +157,5 @@ struct EditorState;
 - (void)_setDrawingAreaSize:(NSSize)size;
 - (void)_updateViewExposedRect;
 - (CALayer *)_rootLayer;
-
-- (void)_updateSupportsArbitraryLayoutModes;
 
 @end

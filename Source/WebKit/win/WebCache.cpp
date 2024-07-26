@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2007, 2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006, 2007 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -39,6 +39,7 @@
 // WebCache ---------------------------------------------------------------------------
 
 WebCache::WebCache()
+    : m_refCount(0)
 {
     gClassCount++;
     gClassNameCount().add("WebCache");
@@ -59,11 +60,9 @@ WebCache* WebCache::createInstance()
 
 // IUnknown -------------------------------------------------------------------
 
-HRESULT WebCache::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE WebCache::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<WebCache*>(this);
     else if (IsEqualGUID(riid, IID_IWebCache))
@@ -75,12 +74,12 @@ HRESULT WebCache::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject
     return S_OK;
 }
 
-ULONG WebCache::AddRef()
+ULONG STDMETHODCALLTYPE WebCache::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG WebCache::Release()
+ULONG STDMETHODCALLTYPE WebCache::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -91,7 +90,7 @@ ULONG WebCache::Release()
 
 // IWebCache ------------------------------------------------------------------------------
 
-HRESULT WebCache::statistics(_Inout_ int* count, _Inout_opt_ IPropertyBag** s)
+HRESULT WebCache::statistics(int* count, IPropertyBag** s)
 {
     if (!count || (s && *count < 6))
         return E_FAIL;
@@ -205,7 +204,7 @@ HRESULT WebCache::statistics(_Inout_ int* count, _Inout_opt_ IPropertyBag** s)
     return S_OK;
 }
 
-HRESULT WebCache::empty()
+HRESULT STDMETHODCALLTYPE WebCache::empty( void)
 {
     auto& memoryCache = WebCore::MemoryCache::singleton();
     if (memoryCache.disabled())
@@ -222,13 +221,15 @@ HRESULT WebCache::empty()
     return S_OK;
 }
 
-HRESULT WebCache::setDisabled(BOOL disabled)
+HRESULT STDMETHODCALLTYPE WebCache::setDisabled( 
+    /* [in] */ BOOL disabled)
 {
     WebCore::MemoryCache::singleton().setDisabled(!!disabled);
     return S_OK;
 }
 
-HRESULT WebCache::disabled(_Out_ BOOL* disabled)
+HRESULT STDMETHODCALLTYPE WebCache::disabled(
+    /* [out][retval] */ BOOL* disabled)
 {
     if (!disabled)
         return E_POINTER;
@@ -236,7 +237,7 @@ HRESULT WebCache::disabled(_Out_ BOOL* disabled)
     return S_OK;
 }
 
-HRESULT WebCache::cacheFolder(__deref_out_opt BSTR* location)
+HRESULT WebCache::cacheFolder(BSTR* location)
 {
 #if USE(CURL)
     String cacheFolder = WebCore::CurlCacheManager::getInstance().cacheDirectory();
@@ -247,7 +248,7 @@ HRESULT WebCache::cacheFolder(__deref_out_opt BSTR* location)
 #endif
 }
 
-HRESULT WebCache::setCacheFolder(_In_ BSTR location)
+HRESULT WebCache::setCacheFolder(BSTR location)
 {
 #if USE(CURL)
     String cacheFolder(location, SysStringLen(location));

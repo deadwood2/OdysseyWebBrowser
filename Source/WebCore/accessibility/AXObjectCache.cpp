@@ -81,7 +81,7 @@
 #include "RenderTableRow.h"
 #include "RenderView.h"
 #include "ScrollView.h"
-#include <wtf/DataLog.h>
+#include <wtf/PassRefPtr.h>
 
 #if ENABLE(VIDEO)
 #include "MediaControlElements.h"
@@ -129,12 +129,6 @@ void AXObjectCache::disableAccessibility()
 void AXObjectCache::setEnhancedUserInterfaceAccessibility(bool flag)
 {
     gAccessibilityEnhancedUserInterfaceEnabled = flag;
-#if PLATFORM(MAC)
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100
-    if (flag)
-        enableAccessibility();
-#endif
-#endif
 }
 
 AXObjectCache::AXObjectCache(Document& document)

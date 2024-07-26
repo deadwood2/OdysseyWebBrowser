@@ -23,9 +23,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-midl_pragma warning(disable: 2111)
-midl_pragma warning(disable: 2402)
-
 #ifndef DO_NO_IMPORTS
 import "oaidl.idl";
 import "ocidl.idl";

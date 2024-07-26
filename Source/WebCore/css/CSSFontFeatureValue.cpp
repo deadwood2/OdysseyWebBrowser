@@ -32,9 +32,9 @@
 
 namespace WebCore {
 
-CSSFontFeatureValue::CSSFontFeatureValue(FontFeatureTag&& tag, int value)
+CSSFontFeatureValue::CSSFontFeatureValue(const String& tag, int value)
     : CSSValue(FontFeatureClass)
-    , m_tag(WTF::move(tag))
+    , m_tag(tag)
     , m_value(value)
 {
 }
@@ -43,8 +43,7 @@ String CSSFontFeatureValue::customCSSText() const
 {
     StringBuilder builder;
     builder.append('\'');
-    for (char c : m_tag)
-        builder.append(c);
+    builder.append(m_tag);
     builder.appendLiteral("' ");
     builder.appendNumber(m_value);
     return builder.toString();

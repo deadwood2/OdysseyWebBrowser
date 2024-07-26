@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2007-2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -63,19 +63,16 @@
 
 #if PLATFORM(COCOA)
 #include "MediaPlayerPrivateQTKit.h"
-
 #if USE(AVFOUNDATION)
 #include "MediaPlayerPrivateAVFoundationObjC.h"
-#endif
-
-#if ENABLE(MEDIA_SOURCE) && USE(AVFOUNDATION)
+#if ENABLE(MEDIA_SOURCE)
 #include "MediaPlayerPrivateMediaSourceAVFObjC.h"
 #endif
-
-#endif // PLATFORM(COCOA)
-
-#if PLATFORM(WIN) && USE(AVFOUNDATION) && !USE(GSTREAMER)
+#endif
+#elif PLATFORM(WIN) && !USE(GSTREAMER)
+#if USE(AVFOUNDATION)
 #include "MediaPlayerPrivateAVFoundationCF.h"
+#endif // USE(AVFOUNDATION)
 #endif
 
 namespace WebCore {
@@ -141,7 +138,7 @@ public:
 
     void setSize(const IntSize&) override { }
 
-    void paint(GraphicsContext&, const FloatRect&) override { }
+    void paint(GraphicsContext*, const FloatRect&) override { }
 
     bool canLoadPoster() const override { return false; }
     void setPoster(const String&) override { }
@@ -181,20 +178,16 @@ static void buildMediaEnginesVector()
 {
 #if USE(AVFOUNDATION)
     if (Settings::isAVFoundationEnabled()) {
-
 #if PLATFORM(COCOA)
         MediaPlayerPrivateAVFoundationObjC::registerMediaEngine(addMediaEngine);
-#endif
-
 #if ENABLE(MEDIA_SOURCE)
         MediaPlayerPrivateMediaSourceAVFObjC::registerMediaEngine(addMediaEngine);
 #endif
-
-#if PLATFORM(WIN)
+#elif PLATFORM(WIN)
         MediaPlayerPrivateAVFoundationCF::registerMediaEngine(addMediaEngine);
 #endif
     }
-#endif // USE(AVFOUNDATION)
+#endif
 
 #if PLATFORM(MAC)
     if (Settings::isQTKitEnabled())
@@ -245,7 +238,7 @@ static const AtomicString& codecs()
 
 static const MediaPlayerFactory* bestMediaEngineForSupportParameters(const MediaEngineSupportParameters& parameters, const MediaPlayerFactory* current = nullptr)
 {
-    if (parameters.type.isEmpty() && !parameters.isMediaSource && !parameters.isMediaStream)
+    if (parameters.type.isEmpty())
         return nullptr;
 
     // 4.8.10.3 MIME types - In the absence of a specification to the contrary, the MIME type "application/octet-stream"
@@ -314,8 +307,6 @@ MediaPlayer::~MediaPlayer()
 
 bool MediaPlayer::load(const URL& url, const ContentType& contentType, const String& keySystem)
 {
-    ASSERT(!m_reloadTimer.isActive());
-
     m_contentMIMEType = contentType.type().lower();
     m_contentTypeCodecs = contentType.parameter(codecs());
     m_url = url;
@@ -354,9 +345,7 @@ bool MediaPlayer::load(const URL& url, const ContentType& contentType, const Str
 #if ENABLE(MEDIA_SOURCE)
 bool MediaPlayer::load(const URL& url, const ContentType& contentType, MediaSourcePrivateClient* mediaSource)
 {
-    ASSERT(!m_reloadTimer.isActive());
     ASSERT(mediaSource);
-
     m_mediaSource = mediaSource;
     m_contentMIMEType = contentType.type().lower();
     m_contentTypeCodecs = contentType.parameter(codecs());
@@ -371,9 +360,7 @@ bool MediaPlayer::load(const URL& url, const ContentType& contentType, MediaSour
 #if ENABLE(MEDIA_STREAM)
 bool MediaPlayer::load(MediaStreamPrivate* mediaStream)
 {
-    ASSERT(!m_reloadTimer.isActive());
     ASSERT(mediaStream);
-
     m_mediaStream = mediaStream;
     m_keySystem = "";
     m_contentMIMEType = "";
@@ -404,21 +391,9 @@ const MediaPlayerFactory* MediaPlayer::nextBestMediaEngine(const MediaPlayerFact
 
 void MediaPlayer::loadWithNextMediaEngine(const MediaPlayerFactory* current)
 {
-#if ENABLE(MEDIA_SOURCE) 
-#define MEDIASOURCE m_mediaSource
-#else
-#define MEDIASOURCE 0
-#endif
-
-#if ENABLE(MEDIA_STREAM)
-#define MEDIASTREAM m_mediaStream
-#else
-#define MEDIASTREAM 0
-#endif
-
     const MediaPlayerFactory* engine = nullptr;
 
-    if (!m_contentMIMEType.isEmpty() || MEDIASTREAM || MEDIASOURCE)
+    if (!m_contentMIMEType.isEmpty())
         engine = nextBestMediaEngine(current);
 
     // If no MIME type is specified or the type was inferred from the file extension, just use the next engine.
@@ -804,12 +779,12 @@ void MediaPlayer::setPreload(MediaPlayer::Preload preload)
     m_private->setPreload(preload);
 }
 
-void MediaPlayer::paint(GraphicsContext& p, const FloatRect& r)
+void MediaPlayer::paint(GraphicsContext* p, const FloatRect& r)
 {
     m_private->paint(p, r);
 }
 
-void MediaPlayer::paintCurrentFrameInContext(GraphicsContext& p, const FloatRect& r)
+void MediaPlayer::paintCurrentFrameInContext(GraphicsContext* p, const FloatRect& r)
 {
     m_private->paintCurrentFrameInContext(p, r);
 }
@@ -1286,6 +1261,18 @@ Vector<RefPtr<PlatformTextTrack>> MediaPlayer::outOfBandTrackSources()
 #endif
 
 #endif // ENABLE(VIDEO_TRACK)
+
+#if USE(PLATFORM_TEXT_TRACK_MENU)
+bool MediaPlayer::implementsTextTrackControls() const
+{
+    return m_private->implementsTextTrackControls();
+}
+
+PassRefPtr<PlatformTextTrackMenuInterface> MediaPlayer::textTrackMenu()
+{
+    return m_private->textTrackMenu();
+}
+#endif // USE(PLATFORM_TEXT_TRACK_MENU)
 
 void MediaPlayer::resetMediaEngines()
 {

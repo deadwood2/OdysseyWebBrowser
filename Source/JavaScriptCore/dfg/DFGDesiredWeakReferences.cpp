@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013, 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -50,14 +50,7 @@ DesiredWeakReferences::~DesiredWeakReferences()
 
 void DesiredWeakReferences::addLazily(JSCell* cell)
 {
-    if (cell)
-        m_references.add(cell);
-}
-
-void DesiredWeakReferences::addLazily(JSValue value)
-{
-    if (value.isCell())
-        addLazily(value.asCell());
+    m_references.add(cell);
 }
 
 bool DesiredWeakReferences::contains(JSCell* cell)

@@ -28,7 +28,8 @@
     ImplementationLacksVTable,
     InterfaceName=KeyPair,
     JSCustomMarkFunction,
-    NoInterfaceObject
+    NoInterfaceObject,
+    OperationsNotDeletable
 ] interface CryptoKeyPair {
     readonly attribute CryptoKey publicKey;
     readonly attribute CryptoKey privateKey;

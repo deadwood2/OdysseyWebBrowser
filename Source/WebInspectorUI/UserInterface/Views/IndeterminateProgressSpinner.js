@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,15 +23,19 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.IndeterminateProgressSpinner = class IndeterminateProgressSpinner extends WebInspector.Object
+WebInspector.IndeterminateProgressSpinner = function()
 {
-    constructor()
-    {
-        super();
+    // FIXME: Convert this to a WebInspector.Object subclass, and call super().
+    // WebInspector.Object.call(this);
 
-        this._element = document.createElement("div");
-        this._element.classList.add("indeterminate-progress-spinner");
-    }
+    this._element = document.createElement("div");
+    this._element.className = WebInspector.IndeterminateProgressSpinner.StyleClassName;
+};
+
+WebInspector.IndeterminateProgressSpinner.StyleClassName = "indeterminate-progress-spinner";
+
+WebInspector.IndeterminateProgressSpinner.prototype = {
+    constructor: WebInspector.IndeterminateProgressSpinner,
 
     // Public
 
@@ -40,3 +44,5 @@ WebInspector.IndeterminateProgressSpinner = class IndeterminateProgressSpinner e
         return this._element;
     }
 };
+
+WebInspector.IndeterminateProgressSpinner.prototype.__proto__ = WebInspector.Object.prototype;

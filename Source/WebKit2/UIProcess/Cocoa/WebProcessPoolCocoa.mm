@@ -53,7 +53,6 @@
 #endif
 
 #if PLATFORM(IOS)
-#import "ArgumentCodersCF.h"
 #import <WebCore/RuntimeApplicationChecksIOS.h>
 #else
 #import <QuartzCore/CARemoteLayerServer.h>
@@ -144,7 +143,6 @@ void WebProcessPool::platformInitialize()
     registerNotificationObservers();
 
 #if PLATFORM(IOS)
-    IPC::setAllowsDecodingSecKeyRef(true);
     WebKit::WebMemoryPressureHandler::singleton();
 #endif
 }

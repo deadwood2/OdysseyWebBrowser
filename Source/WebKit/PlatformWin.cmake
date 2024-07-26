@@ -1,9 +1,9 @@
 if (${WTF_PLATFORM_WIN_CAIRO})
     add_definitions(-DUSE_CAIRO=1 -DUSE_CURL=1 -DWEBKIT_EXPORTS=1)
     list(APPEND WebKit_INCLUDE_DIRECTORIES
-        "${WEBKIT_LIBRARIES_DIR}/include"
-        "${WEBKIT_LIBRARIES_DIR}/include/cairo"
-        "${WEBKIT_LIBRARIES_DIR}/include/sqlite"
+        "$ENV{WEBKIT_LIBRARIES}/include"
+        "$ENV{WEBKIT_LIBRARIES}/include/cairo"
+        "$ENV{WEBKIT_LIBRARIES}/include/sqlite"
         "${WEBCORE_DIR}/platform/graphics/cairo"
     )
     list(APPEND WebKit_SOURCES_Classes
@@ -11,10 +11,8 @@ if (${WTF_PLATFORM_WIN_CAIRO})
         win/WebURLAuthenticationChallengeSenderCURL.cpp
     )
     list(APPEND WebKit_LIBRARIES
-        PRIVATE libeay32.lib
-        PRIVATE mfuuid.lib
-        PRIVATE ssleay32.lib
-        PRIVATE strmiids.lib
+        libeay32.lib
+        ssleay32.lib
     )
 else ()
     list(APPEND WebKit_SOURCES_Classes
@@ -22,56 +20,38 @@ else ()
         win/WebURLAuthenticationChallengeSenderCFNet.cpp
     )
     list(APPEND WebKit_LIBRARIES
-        PRIVATE ASL${DEBUG_SUFFIX}
-        PRIVATE AVFoundationCF${DEBUG_SUFFIX}
-        PRIVATE CFNetwork${DEBUG_SUFFIX}
-        PRIVATE CoreAudioToolbox${DEBUG_SUFFIX}
-        PRIVATE CoreFoundation${DEBUG_SUFFIX}
-        PRIVATE CoreGraphics${DEBUG_SUFFIX}
-        PRIVATE CoreMedia${DEBUG_SUFFIX}
-        PRIVATE CoreText${DEBUG_SUFFIX}
-        PRIVATE CoreVideo${DEBUG_SUFFIX}
-        PRIVATE MediaAccessibility${DEBUG_SUFFIX}
-        PRIVATE QuartzCore${DEBUG_SUFFIX}
-        PRIVATE SQLite3${DEBUG_SUFFIX}
-        PRIVATE WebKitSystemInterface${DEBUG_SUFFIX}
-        PRIVATE WebKitQuartzCoreAdditions${DEBUG_SUFFIX}
-        PRIVATE libdispatch${DEBUG_SUFFIX}
-        PRIVATE libexslt${DEBUG_SUFFIX}
-        PRIVATE libicuin${DEBUG_SUFFIX}
-        PRIVATE libicuuc${DEBUG_SUFFIX}
-        PRIVATE libxml2${DEBUG_SUFFIX}
-        PRIVATE libxslt${DEBUG_SUFFIX}
-        PRIVATE zdll${DEBUG_SUFFIX}
+        WebKitSystemInterface
     )
 endif ()
 
-add_custom_command(
-    OUTPUT ${DERIVED_SOURCES_WEBKIT_DIR}/WebKitVersion.h
-    MAIN_DEPENDENCY ${WEBKIT_DIR}/scripts/generate-webkitversion.pl
-    DEPENDS ${WEBKIT_DIR}/mac/Configurations/Version.xcconfig
-    COMMAND ${PERL_EXECUTABLE} ${WEBKIT_DIR}/scripts/generate-webkitversion.pl --config ${WEBKIT_DIR}/mac/Configurations/Version.xcconfig --outputDir ${DERIVED_SOURCES_WEBKIT_DIR}
-    VERBATIM)
-list(APPEND WebKit_SOURCES ${DERIVED_SOURCES_WEBKIT_DIR}/WebKitVersion.h)
-
 list(APPEND WebKit_INCLUDE_DIRECTORIES
-    "${CMAKE_BINARY_DIR}/../include/private"
-    "${CMAKE_BINARY_DIR}/../include/private/JavaScriptCore"
-    "${CMAKE_BINARY_DIR}/../include/private/WebCore"
     Storage
     win
     win/plugins
     win/WebCoreSupport
+    WebCoreSupport
     WebKit.vcxproj/WebKit
-    "${WEBKIT_DIR}/.."
     "${DERIVED_SOURCES_WEBKIT_DIR}/include"
-    "${DERIVED_SOURCES_WEBKIT_DIR}/Interfaces"
+    "${CMAKE_SOURCE_DIR}/Source"
+    "${DERIVED_SOURCES_WEBKIT_DIR}/include/WebCore"
+    "${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}"
+    "${DERIVED_SOURCES_WEBCORE_DIR}"
     "${DERIVED_SOURCES_DIR}"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/ANGLE"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/ANGLE/include"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/ANGLE/include/egl"
-    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/ANGLE/include/khr"
-    "${DERIVED_SOURCES_DIR}/WebKit"
+    "${JAVASCRIPTCORE_DIR}/dfg"
+    "${WEBCORE_DIR}/style"
+    "${WEBCORE_DIR}/loader/archive"
+    "${WEBCORE_DIR}/loader/archive/cf"
+    "${WEBCORE_DIR}/page/scrolling"
+    "${WEBCORE_DIR}/platform/cf"
+    "${WEBCORE_DIR}/platform/graphics/win"
+    "${WEBCORE_DIR}/platform/graphics/filters"
+    "${WEBCORE_DIR}/platform/audio"
+    "${WEBCORE_DIR}/platform/win"
+    "${WEBCORE_DIR}/rendering/line"
+    "${WEBCORE_DIR}/html/shadow"
+    "${WEBCORE_DIR}/modules/websockets"
+    "${DERIVED_SOURCES_WEBKIT_DIR}/Interfaces"
+    "${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/inspector"
 )
 
 list(APPEND WebKit_INCLUDES
@@ -236,7 +216,9 @@ list(APPEND WebKit_SOURCES_Classes
 )
 
 list(APPEND WebKit_SOURCES_WebCoreSupport
-    win/WebCoreSupport/AcceleratedCompositingContext.cpp
+    WebCoreSupport/WebViewGroup.cpp
+    WebCoreSupport/WebViewGroup.h
+
     win/WebCoreSupport/EmbeddedWidget.cpp
     win/WebCoreSupport/EmbeddedWidget.h
     win/WebCoreSupport/WebChromeClient.cpp
@@ -264,13 +246,6 @@ list(APPEND WebKit_SOURCES_WebCoreSupport
     win/WebCoreSupport/WebVisitedLinkStore.cpp
     win/WebCoreSupport/WebVisitedLinkStore.h
 )
-
-if (CMAKE_SIZEOF_VOID_P EQUAL 8)
-    enable_language(ASM_MASM)
-    list(APPEND WebKit_SOURCES
-        win/plugins/PaintHooks.asm
-    )
-endif ()
 
 list(APPEND WebKit_SOURCES ${WebKit_INCLUDES} ${WebKit_SOURCES_Classes} ${WebKit_SOURCES_WebCoreSupport})
 
@@ -392,7 +367,7 @@ set(WEBKIT_IDL_DEPENDENCIES
 add_custom_command(
     OUTPUT ${DERIVED_SOURCES_WEBKIT_DIR}/autoversion.h
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMAND ${PERL_EXECUTABLE} ${WEBKIT_LIBRARIES_DIR}/tools/scripts/auto-version.pl ${DERIVED_SOURCES_WEBKIT_DIR}
+    COMMAND ${PERL_EXECUTABLE} ${CMAKE_SOURCE_DIR}/WebKitLibraries/win/tools/scripts/auto-version.pl ${DERIVED_SOURCES_WEBKIT_DIR}
     VERBATIM)
 
 GENERATE_INTERFACE(win/Interfaces/WebKit.idl ${MIDL_DEFINES} "${WEBKIT_IDL_DEPENDENCIES}")
@@ -426,31 +401,19 @@ add_library(WebKitGUID STATIC
     "${DERIVED_SOURCES_WEBKIT_DIR}/Interfaces/AccessibleText_i.c"
     "${DERIVED_SOURCES_WEBKIT_DIR}/Interfaces/AccessibleText2_i.c"
 )
-set_target_properties(WebKitGUID PROPERTIES OUTPUT_NAME WebKitGUID${DEBUG_SUFFIX})
 set_target_properties(WebKitGUID PROPERTIES FOLDER "WebKit")
 
 list(APPEND WebKit_LIBRARIES
-    PRIVATE Comctl32
-    PRIVATE Comsupp
-    PRIVATE Crypt32
-    PRIVATE Iphlpapi
-    PRIVATE Rpcrt4
-    PRIVATE Shlwapi
-    PRIVATE Usp10
-    PRIVATE Version
-    PRIVATE Winmm
-    PRIVATE WebKitGUID${DEBUG_SUFFIX}
+    Comctl32
+    Comsupp
+    Crypt32
+    Iphlpapi
+    Rpcrt4
+    Shlwapi
+    Usp10
+    Version
+    WebKitGUID
 )
-
-if (ENABLE_GRAPHICS_CONTEXT_3D)
-    list(APPEND WebKit_LIBRARIES
-        libANGLE${DEBUG_SUFFIX}
-        libEGL${DEBUG_SUFFIX}
-        libGLESv2${DEBUG_SUFFIX}
-    )
-endif ()
-
-set(WebKit_LIBRARY_TYPE SHARED)
 
 # We need the webkit libraries to come before the system default libraries to prevent symbol conflicts with uuid.lib.
 # To do this we add system default libs as webkit libs and zero out system default libs.
@@ -458,18 +421,17 @@ string(REPLACE " " "\;" CXX_LIBS ${CMAKE_CXX_STANDARD_LIBRARIES})
 list(APPEND WebKit_LIBRARIES ${CXX_LIBS})
 set(CMAKE_CXX_STANDARD_LIBRARIES "")
 
-if (${WTF_PLATFORM_WIN_CAIRO})
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /NODEFAULTLIB:LIBCMT /NODEFAULTLIB:LIBCMTD")
-else ()
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /NODEFAULTLIB:MSVCRT /NODEFAULTLIB:MSVCRTD")
-endif ()
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /NODEFAULTLIB:LIBCMT")
 
 # If this directory isn't created before midl runs and attempts to output WebKit.tlb,
 # It fails with an unusual error - midl failed - failed to save all changes
 file(MAKE_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 file(MAKE_DIRECTORY ${DERIVED_SOURCES_WEBKIT_DIR}/Interfaces)
 
-set(WebKitGUID_POST_BUILD_COMMAND "${CMAKE_BINARY_DIR}/DerivedSources/WebKit/postBuild.cmd")
-file(WRITE "${WebKitGUID_POST_BUILD_COMMAND}" "@xcopy /y /d /f \"${DERIVED_SOURCES_WEBKIT_DIR}/Interfaces/WebKit.h\" \"${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebKit\" >nul 2>nul\n@xcopy /y /d /f \"${CMAKE_CURRENT_SOURCE_DIR}/win/WebKitCOMAPI.h\" \"${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebKit\" >nul 2>nul\n@xcopy /y /d /f \"${CMAKE_CURRENT_SOURCE_DIR}/win/CFDictionaryPropertyBag.h\" \"${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebKit\" >nul 2>nul\n")
-file(MAKE_DIRECTORY ${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebKit)
-add_custom_command(TARGET WebKitGUID POST_BUILD COMMAND ${WebKitGUID_POST_BUILD_COMMAND} VERBATIM)
+set(WebKit_FORWARDING_HEADERS
+    "${DERIVED_SOURCES_WEBKIT_DIR}/Interfaces/WebKit.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/win/WebKitCOMAPI.h"
+    "win/CFDictionaryPropertyBag.h"
+)
+
+WEBKIT_CREATE_FORWARDING_HEADERS(WebKit FILES ${WebKit_FORWARDING_HEADERS})

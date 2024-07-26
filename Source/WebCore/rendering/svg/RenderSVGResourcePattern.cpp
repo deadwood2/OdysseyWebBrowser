@@ -54,7 +54,7 @@ void RenderSVGResourcePattern::removeClientFromCache(RenderElement& client, bool
     markClientForInvalidation(client, markForInvalidation ? RepaintInvalidation : ParentOnlyInvalidation);
 }
 
-PatternData* RenderSVGResourcePattern::buildPattern(RenderElement& renderer, unsigned short resourceMode, GraphicsContext& context)
+PatternData* RenderSVGResourcePattern::buildPattern(RenderElement& renderer, unsigned short resourceMode)
 {
     PatternData* currentData = m_patternMap.get(&renderer);
     if (currentData && currentData->pattern)
@@ -94,7 +94,7 @@ PatternData* RenderSVGResourcePattern::buildPattern(RenderElement& renderer, uns
         static_cast<float>(m_attributes.patternTransform().yScale()));
 
     // Build tile image.
-    auto tileImage = createTileImage(m_attributes, tileBoundaries, absoluteTileBoundaries, tileImageTransform, clampedAbsoluteTileBoundaries, context.renderingMode());
+    auto tileImage = createTileImage(m_attributes, tileBoundaries, absoluteTileBoundaries, tileImageTransform, clampedAbsoluteTileBoundaries);
     if (!tileImage)
         return nullptr;
 
@@ -140,7 +140,7 @@ bool RenderSVGResourcePattern::applyResource(RenderElement& renderer, const Rend
     if (m_attributes.patternUnits() == SVGUnitTypes::SVG_UNIT_TYPE_OBJECTBOUNDINGBOX && objectBoundingBox.isEmpty())
         return false;
 
-    PatternData* patternData = buildPattern(renderer, resourceMode, *context);
+    PatternData* patternData = buildPattern(renderer, resourceMode);
     if (!patternData)
         return false;
 
@@ -189,13 +189,13 @@ void RenderSVGResourcePattern::postApplyResource(RenderElement&, GraphicsContext
         if (path)
             context->fillPath(*path);
         else if (shape)
-            shape->fillShape(*context);
+            shape->fillShape(context);
     }
     if (resourceMode & ApplyToStrokeMode) {
         if (path)
             context->strokePath(*path);
         else if (shape)
-            shape->strokeShape(*context);
+            shape->strokeShape(context);
     }
 
     context->restore();
@@ -230,22 +230,23 @@ bool RenderSVGResourcePattern::buildTileImageTransform(RenderElement& renderer,
     return true;
 }
 
-std::unique_ptr<ImageBuffer> RenderSVGResourcePattern::createTileImage(const PatternAttributes& attributes, const FloatRect& tileBoundaries, const FloatRect& absoluteTileBoundaries, const AffineTransform& tileImageTransform, FloatRect& clampedAbsoluteTileBoundaries, RenderingMode renderingMode) const
+std::unique_ptr<ImageBuffer> RenderSVGResourcePattern::createTileImage(const PatternAttributes& attributes, const FloatRect& tileBoundaries, const FloatRect& absoluteTileBoundaries, const AffineTransform& tileImageTransform, FloatRect& clampedAbsoluteTileBoundaries) const
 {
     clampedAbsoluteTileBoundaries = ImageBuffer::clampedRect(absoluteTileBoundaries);
-    auto tileImage = SVGRenderingContext::createImageBuffer(absoluteTileBoundaries, clampedAbsoluteTileBoundaries, ColorSpaceDeviceRGB, renderingMode);
+    auto tileImage = SVGRenderingContext::createImageBuffer(absoluteTileBoundaries, clampedAbsoluteTileBoundaries, ColorSpaceDeviceRGB, Unaccelerated);
     if (!tileImage)
         return nullptr;
 
-    GraphicsContext& tileImageContext = tileImage->context();
+    GraphicsContext* tileImageContext = tileImage->context();
+    ASSERT(tileImageContext);
 
     // The image buffer represents the final rendered size, so the content has to be scaled (to avoid pixelation).
-    tileImageContext.scale(FloatSize(clampedAbsoluteTileBoundaries.width() / tileBoundaries.width(),
+    tileImageContext->scale(FloatSize(clampedAbsoluteTileBoundaries.width() / tileBoundaries.width(),
                                       clampedAbsoluteTileBoundaries.height() / tileBoundaries.height()));
 
     // Apply tile image transformations.
     if (!tileImageTransform.isIdentity())
-        tileImageContext.concatCTM(tileImageTransform);
+        tileImageContext->concatCTM(tileImageTransform);
 
     AffineTransform contentTransformation;
     if (attributes.patternContentUnits() == SVGUnitTypes::SVG_UNIT_TYPE_OBJECTBOUNDINGBOX)

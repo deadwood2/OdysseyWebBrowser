@@ -27,6 +27,7 @@
 #define RenderObject_h
 
 #include "CachedImageClient.h"
+#include "DocumentStyleSheetCollection.h"
 #include "Element.h"
 #include "FloatQuad.h"
 #include "Frame.h"
@@ -34,18 +35,18 @@
 #include "PaintPhase.h"
 #include "RenderStyle.h"
 #include "ScrollBehavior.h"
-#include "StyleImage.h"
+#include "StyleInheritedData.h"
 #include "TextAffinity.h"
+#include <wtf/HashSet.h>
+#include <wtf/TypeCasts.h>
 
 namespace WebCore {
 
 class AffineTransform;
 class AnimationController;
-class Color;
 class Cursor;
 class Document;
 class HitTestLocation;
-class HitTestRequest;
 class HitTestResult;
 class InlineBox;
 class Path;
@@ -59,14 +60,12 @@ class RenderFlowThread;
 class RenderGeometryMap;
 class RenderLayer;
 class RenderLayerModelObject;
-class RenderNamedFlowFragment;
 class RenderNamedFlowThread;
 class RenderRegion;
 class RenderTheme;
 class SelectionSubtreeRoot;
 class TransformState;
 class VisiblePosition;
-
 #if PLATFORM(IOS)
 class SelectionRect;
 #endif
@@ -252,6 +251,24 @@ public:
     virtual bool createsAnonymousWrapper() const { return false; }
     //////////////////////////////////////////
 
+protected:
+    //////////////////////////////////////////
+    // Helper functions. Dangerous to use!
+    void setPreviousSibling(RenderObject* previous) { m_previous = previous; }
+    void setNextSibling(RenderObject* next) { m_next = next; }
+    void setParent(RenderElement*);
+    //////////////////////////////////////////
+private:
+#ifndef NDEBUG
+    bool isSetNeedsLayoutForbidden() const { return m_setNeedsLayoutForbidden; }
+    void setNeedsLayoutIsForbidden(bool flag) { m_setNeedsLayoutForbidden = flag; }
+#endif
+
+    void addAbsoluteRectForLayer(LayoutRect& result);
+    void setLayerNeedsFullRepaint();
+    void setLayerNeedsFullRepaintForPositionedMovementLayout();
+
+public:
 #if ENABLE(TREE_DEBUGGING)
     void showNodeTreeForThis() const;
     void showRenderTreeForThis() const;
@@ -262,6 +279,7 @@ public:
     void showRegionsInformation() const;
 #endif
 
+public:
     bool isPseudoElement() const { return node() && node()->isPseudoElement(); }
 
     bool isRenderElement() const { return !isText(); }
@@ -550,8 +568,8 @@ public:
 
     RenderView& view() const { return *document().renderView(); };
 
-    // Returns true if this renderer is rooted.
-    bool isRooted() const;
+    // Returns true if this renderer is rooted, and optionally returns the hosting view (the root of the hierarchy).
+    bool isRooted(RenderView** = nullptr) const;
 
     Node* node() const { return isAnonymous() ? nullptr : &m_node; }
     Node* nonPseudoNode() const { return isPseudoElement() ? nullptr : node(); }
@@ -745,7 +763,7 @@ public:
     bool isFloatingOrOutOfFlowPositioned() const { return (isFloating() || isOutOfFlowPositioned()); }
 
     // Applied as a "slop" to dirty rect checks during the outline painting phase's dirty-rect checks.
-    void adjustRectWithMaximumOutline(PaintPhase, LayoutRect&) const;
+    int maximalOutlineSize(PaintPhase) const;
 
     enum SelectionState {
         SelectionNone, // The object is not selected.
@@ -839,18 +857,16 @@ public:
 
     RespectImageOrientationEnum shouldRespectImageOrientation() const;
 
+    void drawLineForBoxSide(GraphicsContext*, float x1, float y1, float x2, float y2, BoxSide, Color, EBorderStyle, float adjbw1, float adjbw2, bool antialias = false) const;
 protected:
-    //////////////////////////////////////////
-    // Helper functions. Dangerous to use!
-    void setPreviousSibling(RenderObject* previous) { m_previous = previous; }
-    void setNextSibling(RenderObject* next) { m_next = next; }
-    void setParent(RenderElement*);
-    //////////////////////////////////////////
+    void paintFocusRing(PaintInfo&, const LayoutPoint&, RenderStyle*);
+    void paintOutline(PaintInfo&, const LayoutRect&);
     void addPDFURLRect(PaintInfo&, const LayoutPoint&);
     Node& nodeForNonAnonymous() const { ASSERT(!isAnonymous()); return m_node; }
 
     void adjustRectForOutlineAndShadow(LayoutRect&) const;
 
+    void clearLayoutRootIfNeeded() const;
     virtual void willBeDestroyed();
 
     virtual void insertedIntoTree();
@@ -866,15 +882,6 @@ protected:
     static void calculateBorderStyleColor(const EBorderStyle&, const BoxSide&, Color&);
 
 private:
-#ifndef NDEBUG
-    bool isSetNeedsLayoutForbidden() const { return m_setNeedsLayoutForbidden; }
-    void setNeedsLayoutIsForbidden(bool flag) { m_setNeedsLayoutForbidden = flag; }
-#endif
-
-    void addAbsoluteRectForLayer(LayoutRect& result);
-    void setLayerNeedsFullRepaint();
-    void setLayerNeedsFullRepaintForPositionedMovementLayout();
-
     void removeFromRenderFlowThread();
     void removeFromRenderFlowThreadIncludingDescendants(bool);
     Node* generatingPseudoHostElement() const;

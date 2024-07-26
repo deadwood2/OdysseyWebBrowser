@@ -42,9 +42,9 @@ public:
 
     unsigned length() const;
 
-    RefPtr<DOMMimeType> item(unsigned index);
-    RefPtr<DOMMimeType> namedItem(const AtomicString& propertyName);
-    Vector<AtomicString> supportedPropertyNames();
+    PassRefPtr<DOMMimeType> item(unsigned index);
+    bool canGetItemsForName(const AtomicString& propertyName);
+    PassRefPtr<DOMMimeType> namedItem(const AtomicString& propertyName);
 
 private:
     DOMPlugin(PluginData*, Frame*, PluginInfo);

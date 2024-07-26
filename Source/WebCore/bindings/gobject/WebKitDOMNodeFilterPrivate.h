@@ -21,6 +21,7 @@
 #define WebKitDOMNodeFilterPrivate_h
 
 #include <webkitdom/WebKitDOMNodeFilter.h>
+#include <wtf/PassRefPtr.h>
 
 namespace WebCore {
 class NodeFilter;
@@ -28,7 +29,7 @@ class NodeFilter;
 
 namespace WebKit {
 WebKitDOMNodeFilter* kit(WebCore::NodeFilter*);
-RefPtr<WebCore::NodeFilter> core(WebKitDOMNodeFilter*);
+PassRefPtr<WebCore::NodeFilter> core(WebKitDOMNodeFilter*);
 } // namespace WebKit
 
 #endif /* WebKitDOMNodeFilterPrivate_h */

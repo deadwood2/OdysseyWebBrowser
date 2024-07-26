@@ -28,7 +28,6 @@
 
 #if ENABLE(INTL)
 
-#include "JSCJSValueInlines.h"
 #include "JSObject.h"
 
 namespace JSC {
@@ -56,9 +55,6 @@ protected:
 private:
     IntlObject(VM&, Structure*);
 };
-
-JSArray* canonicalizeLocaleList(ExecState*, JSValue locales);
-JSValue supportedLocales(ExecState*, const HashSet<String>& availableLocales, JSArray* requestedLocales, JSValue options);
 
 } // namespace JSC
 

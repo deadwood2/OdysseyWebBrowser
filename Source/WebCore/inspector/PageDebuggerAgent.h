@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
- * Copyright (C) 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -39,6 +38,7 @@ namespace WebCore {
 
 class InspectorOverlay;
 class InspectorPageAgent;
+class InstrumentingAgents;
 class Page;
 class PageScriptDebugServer;
 
@@ -46,14 +46,10 @@ class PageDebuggerAgent final : public WebDebuggerAgent {
     WTF_MAKE_NONCOPYABLE(PageDebuggerAgent);
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    PageDebuggerAgent(PageAgentContext&, InspectorPageAgent*, InspectorOverlay*);
+    PageDebuggerAgent(Inspector::InjectedScriptManager*, InstrumentingAgents*, InspectorPageAgent*, InspectorOverlay*);
     virtual ~PageDebuggerAgent() { }
 
     void didClearMainFrameWindowObject();
-
-    void mainFrameStartedLoading();
-    void mainFrameStoppedLoading();
-    void mainFrameNavigated();
 
     virtual PageScriptDebugServer& scriptDebugServer() override;
 
@@ -74,10 +70,8 @@ private:
     virtual Inspector::InjectedScript injectedScriptForEval(ErrorString&, const int* executionContextId) override;
     virtual void setOverlayMessage(ErrorString&, const String*) override;
 
-    Page& m_page;
-
     InspectorPageAgent* m_pageAgent;
-    InspectorOverlay* m_overlay { nullptr };
+    InspectorOverlay* m_overlay;
     PageScriptDebugServer m_scriptDebugServer;
 };
 

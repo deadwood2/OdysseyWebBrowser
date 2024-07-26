@@ -59,7 +59,7 @@ public:
 
     FilterOperationType operationType() const { return m_type; }
 
-    Ref<WebKitCSSFilterValue> cloneForCSSOM() const;
+    PassRefPtr<WebKitCSSFilterValue> cloneForCSSOM() const;
 
     bool equals(const WebKitCSSFilterValue&) const;
 

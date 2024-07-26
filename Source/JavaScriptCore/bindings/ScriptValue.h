@@ -33,7 +33,6 @@
 #define ScriptValue_h
 
 #include "JSCJSValue.h"
-#include "JSCJSValueInlines.h"
 #include "Operations.h"
 #include "Strong.h"
 #include "StrongInlines.h"

@@ -462,7 +462,7 @@ HRESULT AccessibleText::scrollSubstringTo(long startIndex, long endIndex, enum I
     if (textRange.start.isNull() || textRange.end.isNull())
         return S_FALSE;
 
-    IntRect boundingBox = makeRange(textRange.start, textRange.end)->absoluteBoundingBox();
+    IntRect boundingBox = makeRange(textRange.start, textRange.end)->boundingBox();
     switch (scrollType) {
     case IA2_SCROLL_TYPE_TOP_LEFT:
         m_object->scrollToGlobalPoint(boundingBox.minXMinYCorner());
@@ -678,10 +678,8 @@ HRESULT AccessibleText::get_attributes(BSTR* attributes)
 }
 
 // IUnknown
-HRESULT AccessibleText::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE AccessibleText::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
     if (IsEqualGUID(riid, __uuidof(IAccessibleText)))
         *ppvObject = static_cast<IAccessibleText*>(this);
     else if (IsEqualGUID(riid, __uuidof(IAccessibleEditableText)))
@@ -703,14 +701,14 @@ HRESULT AccessibleText::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppv
     else if (IsEqualGUID(riid, __uuidof(AccessibleBase)))
         *ppvObject = static_cast<AccessibleBase*>(this);
     else {
-        *ppvObject = nullptr;
+        *ppvObject = 0;
         return E_NOINTERFACE;
     }
     AddRef();
     return S_OK;
 }
 
-ULONG AccessibleText::Release()
+ULONG STDMETHODCALLTYPE AccessibleText::Release(void)
 {
     ASSERT(m_refCount > 0);
     if (--m_refCount)

@@ -127,7 +127,6 @@ WebInspector.SourceMapResource = class SourceMapResource extends WebInspector.Re
             });
         }
 
-        // COMPATIBILITY (iOS 7): Network.loadResource did not exist.
         if (!NetworkAgent.loadResource)
             return sourceMapResourceLoadError.call(this);
 
@@ -138,7 +137,7 @@ WebInspector.SourceMapResource = class SourceMapResource extends WebInspector.Re
         if (!frameIdentifier)
             frameIdentifier = WebInspector.frameResourceManager.mainFrame.id;
 
-        return NetworkAgent.loadResource(frameIdentifier, this.url).then(sourceMapResourceLoaded.bind(this)).catch(sourceMapResourceLoadError.bind(this));
+        return NetworkAgent.loadResource.promise(frameIdentifier, this.url).then(sourceMapResourceLoaded.bind(this)).catch(sourceMapResourceLoadError.bind(this));
     }
 
     createSourceCodeLocation(lineNumber, columnNumber)

@@ -54,6 +54,7 @@
 #include "DocumentLoader.h"
 #include "Editor.h"
 #include "Element.h"
+#include "EventException.h"
 #include "EventHandler.h"
 #include "EventListener.h"
 #include "EventNames.h"
@@ -743,7 +744,7 @@ Performance* DOMWindow::performance() const
 Location* DOMWindow::location() const
 {
     if (!isCurrentlyDisplayedInFrame())
-        return nullptr;
+        return 0;
     if (!m_location)
         m_location = Location::create(m_frame);
     return m_location.get();
@@ -1691,9 +1692,9 @@ static void didAddStorageEventListener(DOMWindow* window)
     window->sessionStorage(IGNORE_EXCEPTION);
 }
 
-bool DOMWindow::addEventListener(const AtomicString& eventType, RefPtr<EventListener>&& listener, bool useCapture)
+bool DOMWindow::addEventListener(const AtomicString& eventType, PassRefPtr<EventListener> listener, bool useCapture)
 {
-    if (!EventTarget::addEventListener(eventType, WTF::move(listener), useCapture))
+    if (!EventTarget::addEventListener(eventType, listener, useCapture))
         return false;
 
     if (Document* document = this->document()) {
@@ -1964,7 +1965,7 @@ void DOMWindow::finishedLoading()
     }
 }
 
-void DOMWindow::setLocation(DOMWindow& activeWindow, DOMWindow& firstWindow, const String& urlString, SetLocationLocking locking)
+void DOMWindow::setLocation(const String& urlString, DOMWindow& activeWindow, DOMWindow& firstWindow, SetLocationLocking locking)
 {
     if (!isCurrentlyDisplayedInFrame())
         return;

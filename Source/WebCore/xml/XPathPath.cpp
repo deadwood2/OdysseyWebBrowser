@@ -61,7 +61,7 @@ Value Filter::evaluate() const
             ++evaluationContext.position;
             
             if (evaluatePredicate(*predicate))
-                newNodes.append(node.copyRef());
+                newNodes.append(node);
         }
         nodes = WTF::move(newNodes);
     }
@@ -130,7 +130,7 @@ void LocationPath::evaluate(NodeSet& nodes) const
 
             for (auto& match : matches) {
                 if (!needToCheckForDuplicateNodes || newNodesSet.add(match.get()).isNewEntry)
-                    newNodes.append(match.copyRef());
+                    newNodes.append(match);
             }
         }
         

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2010, 2013, 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,75 +23,79 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ApplicationCacheFrameContentView = class ApplicationCacheFrameContentView extends WebInspector.ApplicationCacheFrame
+WebInspector.ApplicationCacheFrameContentView = function(representedObject)
 {
-    constructor(representedObject)
-    {
-        console.assert(representedObject instanceof WebInspector.ApplicationCacheFrame);
+    console.assert(representedObject instanceof WebInspector.ApplicationCacheFrame);
 
-        super(representedObject);
+    WebInspector.ContentView.call(this, representedObject);
 
-        this.element.classList.add("application-cache-frame", "table");
+    this.element.classList.add("application-cache-frame");
 
-        this._frame = representedObject.frame;
+    this.element.classList.add("storage-view");
+    this.element.classList.add("table");
 
-        this._emptyView = WebInspector.createMessageTextView(WebInspector.UIString("No Application Cache information available"), false);
-        this._emptyView.classList.add("hidden");
-        this.element.appendChild(this._emptyView);
+    this._frame = representedObject.frame;
 
-        this._markDirty();
+    this._emptyView = WebInspector.createMessageTextView(WebInspector.UIString("No Application Cache information available"), false);
+    this._emptyView.classList.add("hidden");
+    this.element.appendChild(this._emptyView);
 
-        var status = representedObject.status;
-        this.updateStatus(status);
+    this._markDirty();
 
-        WebInspector.applicationCacheManager.addEventListener(WebInspector.ApplicationCacheManager.Event.FrameManifestStatusChanged, this._updateStatus, this);
-    }
+    var status = representedObject.status;
+    this.updateStatus(status);
 
-    shown()
+    WebInspector.applicationCacheManager.addEventListener(WebInspector.ApplicationCacheManager.Event.FrameManifestStatusChanged, this._updateStatus, this);
+}
+
+WebInspector.ApplicationCacheFrameContentView.prototype = {
+    constructor: WebInspector.ApplicationCacheFrameContentView,
+
+    shown: function()
     {
         this._maybeUpdate();
-    }
+    },
 
-    closed()
+    closed: function()
     {
         WebInspector.applicationCacheManager.removeEventListener(null, null, this);
-    }
+    },
 
-    updateLayout()
+    updateLayout: function()
     {
         if (this.dataGrid)
             this.dataGrid.updateLayout();
-    }
+    },
 
-    saveToCookie(cookie)
+    saveToCookie: function(cookie)
     {
         cookie.type = WebInspector.ContentViewCookieType.ApplicationCache;
         cookie.frame = this.representedObject.frame.url;
         cookie.manifest = this.representedObject.manifest.manifestURL;
-    }
+    },
 
     get scrollableElements()
     {
         if (!this._dataGrid)
             return [];
         return [this._dataGrid.scrollContainer];
-    }
+    },
 
-    _maybeUpdate()
+    _maybeUpdate: function()
     {
         if (!this.visible || !this._viewDirty)
             return;
 
         this._update();
         this._viewDirty = false;
-    }
+    },
 
-    _markDirty()
+    _markDirty: function()
     {
         this._viewDirty = true;
-    }
+    },
 
-    _updateStatus(event)
+    _updateStatus: function(event)
     {
         var frameManifest = event.data.frameManifest;
         if (frameManifest !== this.representedObject)
@@ -100,9 +104,9 @@ WebInspector.ApplicationCacheFrameContentView = class ApplicationCacheFrameConte
         console.assert(frameManifest instanceof WebInspector.ApplicationCacheFrame);
 
         this.updateStatus(frameManifest.status);
-    }
+    },
 
-    updateStatus(status)
+    updateStatus: function(status)
     {
         var oldStatus = this._status;
         this._status = status;
@@ -111,14 +115,14 @@ WebInspector.ApplicationCacheFrameContentView = class ApplicationCacheFrameConte
             this._markDirty();
 
         this._maybeUpdate();
-    }
+    },
 
-    _update()
+    _update: function()
     {
         WebInspector.applicationCacheManager.requestApplicationCache(this._frame, this._updateCallback.bind(this));
-    }
+    },
 
-    _updateCallback(applicationCache)
+    _updateCallback: function(applicationCache)
     {
         if (!applicationCache || !applicationCache.manifestURL) {
             delete this._manifest;
@@ -149,9 +153,9 @@ WebInspector.ApplicationCacheFrameContentView = class ApplicationCacheFrameConte
         this._dataGrid.element.classList.remove("hidden");
 
         this._emptyView.classList.add("hidden");
-    }
+    },
 
-    _createDataGrid()
+    _createDataGrid: function()
     {
         var columns = {url: {}, type: {}, size: {}};
 
@@ -173,9 +177,9 @@ WebInspector.ApplicationCacheFrameContentView = class ApplicationCacheFrameConte
 
         this.element.appendChild(this._dataGrid.element);
         this._dataGrid.updateLayout();
-    }
+    },
 
-    _sortDataGrid()
+    _sortDataGrid: function()
     {
         function numberCompare(columnIdentifier, nodeA, nodeB)
         {
@@ -195,9 +199,9 @@ WebInspector.ApplicationCacheFrameContentView = class ApplicationCacheFrameConte
         }
 
         this._dataGrid.sortNodes(comparator);
-    }
+    },
 
-    _populateDataGrid()
+    _populateDataGrid: function()
     {
         this._dataGrid.removeChildren();
 
@@ -210,21 +214,23 @@ WebInspector.ApplicationCacheFrameContentView = class ApplicationCacheFrameConte
             var node = new WebInspector.DataGridNode(data);
             this._dataGrid.appendChild(node);
         }
-    }
+    },
 
-    _deleteButtonClicked(event)
+    _deleteButtonClicked: function(event)
     {
         if (!this._dataGrid || !this._dataGrid.selectedNode)
             return;
 
         // FIXME: Delete Button semantics are not yet defined. (Delete a single, or all?)
         this._deleteCallback(this._dataGrid.selectedNode);
-    }
+    },
 
-    _deleteCallback(node)
+    _deleteCallback: function(node)
     {
         // FIXME: Should we delete a single (selected) resource or all resources?
         // InspectorBackend.deleteCachedResource(...)
         // this._update();
     }
-};
+}
+
+WebInspector.ApplicationCacheFrameContentView.prototype.__proto__ = WebInspector.ContentView.prototype;

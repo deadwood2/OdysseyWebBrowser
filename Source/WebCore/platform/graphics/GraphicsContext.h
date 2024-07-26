@@ -32,7 +32,6 @@
 #include "FloatRect.h"
 #include "FontCascade.h"
 #include "Gradient.h"
-#include "GraphicsTypes.h"
 #include "Image.h"
 #include "ImageOrientation.h"
 #include "Path.h"
@@ -271,7 +270,6 @@ namespace WebCore {
         WEBCORE_EXPORT void setIsAcceleratedContext(bool);
 #endif
         bool isAcceleratedContext() const;
-        RenderingMode renderingMode() const { return isAcceleratedContext() ? Accelerated : Unaccelerated; }
 
         WEBCORE_EXPORT void save();
         WEBCORE_EXPORT void restore();
@@ -452,7 +450,6 @@ namespace WebCore {
 #if OS(WINDOWS)
         HDC getWindowsContext(const IntRect&, bool supportAlphaBlend, bool mayCreateBitmap); // The passed in rect is used to create a bitmap for compositing inside transparency layers.
         void releaseWindowsContext(HDC, const IntRect&, bool supportAlphaBlend, bool mayCreateBitmap); // The passed in HDC should be the one handed back by getWindowsContext.
-        HDC hdc() const;
 #if PLATFORM(WIN)
 #if USE(WINGDI)
         void setBitmap(PassRefPtr<SharedBitmap>);
@@ -460,7 +457,7 @@ namespace WebCore {
         AffineTransform& affineTransform();
         void resetAffineTransform();
         void fillRect(const FloatRect&, const Gradient*);
-        void drawText(const Font&, const GlyphBuffer&, int from, int numGlyphs, const FloatPoint&);
+        void drawText(const Font*, const GlyphBuffer&, int from, int numGlyphs, const FloatPoint&);
         void drawFrameControl(const IntRect& rect, unsigned type, unsigned state);
         void drawFocusRect(const IntRect& rect);
         void paintTextField(const IntRect& rect, unsigned state);

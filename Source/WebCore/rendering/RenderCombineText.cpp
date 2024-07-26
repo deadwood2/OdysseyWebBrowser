@@ -97,7 +97,7 @@ void RenderCombineText::combineText()
     if (style().isHorizontalWritingMode())
         return;
 
-    auto description = originalFont().fontDescription();
+    FontDescription description = originalFont().fontDescription();
     float emWidth = description.computedSize() * textCombineMargin;
     bool shouldUpdateFont = false;
 
@@ -117,7 +117,7 @@ void RenderCombineText::combineText()
         // Need to try compressed glyphs.
         static const FontWidthVariant widthVariants[] = { HalfWidth, ThirdWidth, QuarterWidth };
         for (size_t i = 0 ; i < WTF_ARRAY_LENGTH(widthVariants) ; ++i) {
-            description.setWidthVariant(widthVariants[i]); // When modifying this, make sure to keep it in sync with FontPlatformData::isForTextCombine()!
+            description.setWidthVariant(widthVariants[i]);
 
             FontCascade compressedFont(description, style().fontCascade().letterSpacing(), style().fontCascade().wordSpacing());
             compressedFont.update(fontSelector);

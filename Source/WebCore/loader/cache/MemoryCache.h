@@ -187,6 +187,7 @@ private:
     unsigned liveCapacity() const;
     unsigned deadCapacity() const;
     bool needsPruning() const;
+    void pruneTimerFired();
 
     CachedResource* resourceForRequestImpl(const ResourceRequest&, CachedResourceMap&);
 

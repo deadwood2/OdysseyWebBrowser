@@ -29,11 +29,8 @@
 #ifndef WindowFeatures_h
 #define WindowFeatures_h
 
-#include <wtf/Forward.h>
 #include <wtf/HashMap.h>
-#include <wtf/Optional.h>
-#include <wtf/Vector.h>
-#include <wtf/text/StringHash.h>
+#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
@@ -41,7 +38,15 @@ class FloatRect;
 
 struct WindowFeatures {
     WindowFeatures()
-        : menuBarVisible(true)
+        : x(0)
+        , xSet(false)
+        , y(0)
+        , ySet(false)
+        , width(0)
+        , widthSet(false)
+        , height(0)
+        , heightSet(false)
+        , menuBarVisible(true)
         , statusBarVisible(true)
         , toolBarVisible(true)
         , locationBarVisible(true)
@@ -54,10 +59,14 @@ struct WindowFeatures {
     explicit WindowFeatures(const String& windowFeaturesString);
     WindowFeatures(const String& dialogFeaturesString, const FloatRect& screenAvailableRect);
 
-    Optional<float> x;
-    Optional<float> y;
-    Optional<float> width;
-    Optional<float> height;
+    float x;
+    bool xSet;
+    float y;
+    bool ySet;
+    float width;
+    bool widthSet;
+    float height;
+    bool heightSet;
 
     bool menuBarVisible;
     bool statusBarVisible;
@@ -72,9 +81,10 @@ struct WindowFeatures {
     Vector<String> additionalFeatures;
 
 private:
-    static HashMap<String, String> parseDialogFeatures(const String&);
-    static bool boolFeature(const HashMap<String, String>&, const char* key, bool defaultValue = false);
-    static float floatFeature(const HashMap<String, String>&, const char* key, float min, float max, float defaultValue);
+    typedef HashMap<String, String> DialogFeaturesMap;
+    static void parseDialogFeatures(const String&, HashMap<String, String>&);
+    static bool boolFeature(const DialogFeaturesMap&, const char* key, bool defaultValue = false);
+    static float floatFeature(const DialogFeaturesMap&, const char* key, float min, float max, float defaultValue);
     void setWindowFeature(const String& keyString, const String& valueString);
 };
 

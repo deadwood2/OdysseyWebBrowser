@@ -1,7 +1,9 @@
 namespace=Exception
 
 DOMCoreException
+EventException
 FileException
+RangeException
 SQLException
 SVGException
 XMLHttpRequestException

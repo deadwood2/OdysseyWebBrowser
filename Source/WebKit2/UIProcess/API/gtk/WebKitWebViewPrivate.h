@@ -27,7 +27,6 @@
 #ifndef WebKitWebViewPrivate_h
 #define WebKitWebViewPrivate_h
 
-#include "InstallMissingMediaPluginsPermissionRequest.h"
 #include "WebContextMenuItemData.h"
 #include "WebHitTestResult.h"
 #include "WebImage.h"
@@ -64,6 +63,5 @@ bool webkitWebViewEmitRunColorChooser(WebKitWebView*, WebKitColorChooserRequest*
 void webkitWebViewWebProcessCrashed(WebKitWebView*);
 void webkitWebViewIsPlayingAudioChanged(WebKitWebView*);
 void webkitWebViewSelectionDidChange(WebKitWebView*);
-void webkitWebViewRequestInstallMissingMediaPlugins(WebKitWebView*, WebKit::InstallMissingMediaPluginsPermissionRequest&);
 
 #endif // WebKitWebViewPrivate_h

@@ -19,7 +19,6 @@
 
 [
     JSGenerateToNativeObject,
-    JSGenerateToJSObject
 ] interface DocumentType : Node {
 
     // DOM Level 1

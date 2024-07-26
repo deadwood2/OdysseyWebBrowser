@@ -77,7 +77,7 @@ public:
     explicit ScriptController(Frame&);
     ~ScriptController();
 
-    WEBCORE_EXPORT static Ref<DOMWrapperWorld> createWorld();
+    WEBCORE_EXPORT static PassRefPtr<DOMWrapperWorld> createWorld();
 
     JSDOMWindowShell* createWindowShell(DOMWrapperWorld&);
     void destroyWindowShell(DOMWrapperWorld&);
@@ -121,7 +121,6 @@ public:
     void disableEval(const String& errorMessage);
 
     WEBCORE_EXPORT static bool processingUserGesture();
-    WEBCORE_EXPORT static bool processingUserGestureForMedia();
 
     static bool canAccessFromCurrentOrigin(Frame*);
     WEBCORE_EXPORT bool canExecuteScripts(ReasonForCallingCanExecuteScripts);
@@ -146,11 +145,11 @@ public:
 
     void updatePlatformScriptObjects();
 
-    RefPtr<JSC::Bindings::Instance>  createScriptInstanceForWidget(Widget*);
+    PassRefPtr<JSC::Bindings::Instance>  createScriptInstanceForWidget(Widget*);
     JSC::Bindings::RootObject* bindingRootObject();
     JSC::Bindings::RootObject* cacheableBindingRootObject();
 
-    WEBCORE_EXPORT RefPtr<JSC::Bindings::RootObject> createRootObject(void* nativeHandle);
+    WEBCORE_EXPORT PassRefPtr<JSC::Bindings::RootObject> createRootObject(void* nativeHandle);
 
     void collectIsolatedContexts(Vector<std::pair<JSC::ExecState*, SecurityOrigin*>>&);
 

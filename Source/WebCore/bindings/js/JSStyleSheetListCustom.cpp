@@ -35,17 +35,19 @@ using namespace JSC;
 
 namespace WebCore {
 
-bool JSStyleSheetList::nameGetter(ExecState* exec, PropertyName propertyName, JSValue& value)
+bool JSStyleSheetList::canGetItemsForName(ExecState*, StyleSheetList* styleSheetList, PropertyName propertyName)
 {
     if (propertyName.isSymbol())
         return false;
+    return styleSheetList->getNamedItem(propertyNameToString(propertyName));
+}
 
-    auto* item = impl().getNamedItem(propertyNameToString(propertyName));
-    if (!item)
-        return false;
-
-    value = toJS(exec, globalObject(), item->sheet());
-    return true;
+EncodedJSValue JSStyleSheetList::nameGetter(ExecState* exec, JSObject* slotBase, EncodedJSValue, PropertyName propertyName)
+{
+    JSStyleSheetList* thisObj = jsCast<JSStyleSheetList*>(slotBase);
+    HTMLStyleElement* element = thisObj->impl().getNamedItem(propertyNameToString(propertyName));
+    ASSERT(element);
+    return JSValue::encode(toJS(exec, thisObj->globalObject(), element->sheet()));
 }
 
 } // namespace WebCore

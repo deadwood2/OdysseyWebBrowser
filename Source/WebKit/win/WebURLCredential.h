@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2007 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -39,22 +39,34 @@ private:
     ~WebURLCredential();
 public:
     // IUnknown
-    virtual HRESULT STDMETHODCALLTYPE QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject);
-    virtual ULONG STDMETHODCALLTYPE AddRef();
-    virtual ULONG STDMETHODCALLTYPE Release();
+    virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject);
+    virtual ULONG STDMETHODCALLTYPE AddRef(void);
+    virtual ULONG STDMETHODCALLTYPE Release(void);
 
     // IWebURLCredential
-    virtual HRESULT STDMETHODCALLTYPE hasPassword(_Out_ BOOL* result);
-    virtual HRESULT STDMETHODCALLTYPE initWithUser(_In_ BSTR user, _In_ BSTR password, WebURLCredentialPersistence);
-    virtual HRESULT STDMETHODCALLTYPE password(__deref_opt_out BSTR* password);
-    virtual HRESULT STDMETHODCALLTYPE persistence(_Out_ WebURLCredentialPersistence* result);
-    virtual HRESULT STDMETHODCALLTYPE user(__deref_opt_out BSTR* result);
+    virtual HRESULT STDMETHODCALLTYPE hasPassword(
+        /* [out, retval] */ BOOL* result);
+
+    virtual HRESULT STDMETHODCALLTYPE initWithUser(
+        /* [in] */ BSTR user, 
+        /* [in] */ BSTR password, 
+        /* [in] */ WebURLCredentialPersistence persistence);
+
+    virtual HRESULT STDMETHODCALLTYPE password(
+        /* [out, retval] */ BSTR* password);
+
+    virtual HRESULT STDMETHODCALLTYPE persistence(
+        /* [out, retval] */ WebURLCredentialPersistence* result);
+
+    virtual HRESULT STDMETHODCALLTYPE user(
+        /* [out, retval] */ BSTR* result);
 
     // WebURLCredential
     const WebCore::Credential& credential() const;
 
 protected:
-    ULONG m_refCount { 0 };
+    ULONG m_refCount;
+
     WebCore::Credential m_credential;
 };
 

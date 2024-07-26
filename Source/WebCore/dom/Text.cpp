@@ -73,7 +73,7 @@ RefPtr<Text> Text::splitText(unsigned offset, ExceptionCode& ec)
     dispatchModifiedEvent(oldStr);
 
     if (parentNode())
-        parentNode()->insertBefore(newText.copyRef(), nextSibling(), ec);
+        parentNode()->insertBefore(newText.ptr(), nextSibling(), ec);
     if (ec)
         return 0;
 
@@ -132,28 +132,28 @@ RefPtr<Text> Text::replaceWholeText(const String& newText, ExceptionCode&)
     RefPtr<Text> protectedThis(this); // Mutation event handlers could cause our last ref to go away
     RefPtr<ContainerNode> parent = parentNode(); // Protect against mutation handlers moving this node during traversal
     for (RefPtr<Node> n = startText; n && n != this && n->isTextNode() && n->parentNode() == parent;) {
-        Ref<Node> nodeToRemove(n.releaseNonNull());
+        RefPtr<Node> nodeToRemove(n.release());
         n = nodeToRemove->nextSibling();
-        parent->removeChild(WTF::move(nodeToRemove), IGNORE_EXCEPTION);
+        parent->removeChild(nodeToRemove.get(), IGNORE_EXCEPTION);
     }
 
     if (this != endText) {
         Node* onePastEndText = endText->nextSibling();
         for (RefPtr<Node> n = nextSibling(); n && n != onePastEndText && n->isTextNode() && n->parentNode() == parent;) {
-            Ref<Node> nodeToRemove(n.releaseNonNull());
+            RefPtr<Node> nodeToRemove(n.release());
             n = nodeToRemove->nextSibling();
-            parent->removeChild(WTF::move(nodeToRemove), IGNORE_EXCEPTION);
+            parent->removeChild(nodeToRemove.get(), IGNORE_EXCEPTION);
         }
     }
 
     if (newText.isEmpty()) {
         if (parent && parentNode() == parent)
-            parent->removeChild(*this, IGNORE_EXCEPTION);
-        return nullptr;
+            parent->removeChild(this, IGNORE_EXCEPTION);
+        return 0;
     }
 
     setData(newText, IGNORE_EXCEPTION);
-    return protectedThis;
+    return protectedThis.release();
 }
 
 String Text::nodeName() const
@@ -166,7 +166,7 @@ Node::NodeType Text::nodeType() const
     return TEXT_NODE;
 }
 
-Ref<Node> Text::cloneNodeInternal(Document& targetDocument, CloningOperation)
+RefPtr<Node> Text::cloneNodeInternal(Document& targetDocument, CloningOperation)
 {
     return create(targetDocument, data());
 }
@@ -175,7 +175,7 @@ static bool isSVGShadowText(Text* text)
 {
     Node* parentNode = text->parentNode();
     ASSERT(parentNode);
-    return is<ShadowRoot>(*parentNode) && downcast<ShadowRoot>(*parentNode).host()->hasTagName(SVGNames::trefTag);
+    return is<ShadowRoot>(*parentNode) && downcast<ShadowRoot>(*parentNode).hostElement()->hasTagName(SVGNames::trefTag);
 }
 
 static bool isSVGText(Text* text)

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,90 +23,95 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ScriptTimelineView = class ScriptTimelineView extends WebInspector.TimelineView
+WebInspector.ScriptTimelineView = function(timeline, extraArguments)
 {
-    constructor(timeline, extraArguments)
-    {
-        super(timeline, extraArguments);
+    WebInspector.TimelineView.call(this, timeline, extraArguments);
 
-        console.assert(timeline.type === WebInspector.TimelineRecord.Type.Script);
+    console.assert(timeline.type === WebInspector.TimelineRecord.Type.Script);
 
-        this.navigationSidebarTreeOutline.element.classList.add("script");
+    this.navigationSidebarTreeOutline.element.classList.add(WebInspector.ScriptTimelineView.TreeOutlineStyleClassName);
 
-        var columns = {location: {}, callCount: {}, startTime: {}, totalTime: {}, selfTime: {}, averageTime: {}};
+    var columns = {location: {}, callCount: {}, startTime: {}, totalTime: {}, selfTime: {}, averageTime: {}};
 
-        columns.location.title = WebInspector.UIString("Location");
-        columns.location.width = "15%";
+    columns.location.title = WebInspector.UIString("Location");
+    columns.location.width = "15%";
 
-        columns.callCount.title = WebInspector.UIString("Calls");
-        columns.callCount.width = "5%";
-        columns.callCount.aligned = "right";
+    columns.callCount.title = WebInspector.UIString("Calls");
+    columns.callCount.width = "5%";
+    columns.callCount.aligned = "right";
 
-        columns.startTime.title = WebInspector.UIString("Start Time");
-        columns.startTime.width = "10%";
-        columns.startTime.aligned = "right";
+    columns.startTime.title = WebInspector.UIString("Start Time");
+    columns.startTime.width = "10%";
+    columns.startTime.aligned = "right";
 
-        columns.totalTime.title = WebInspector.UIString("Total Time");
-        columns.totalTime.width = "10%";
-        columns.totalTime.aligned = "right";
+    columns.totalTime.title = WebInspector.UIString("Total Time");
+    columns.totalTime.width = "10%";
+    columns.totalTime.aligned = "right";
 
-        columns.selfTime.title = WebInspector.UIString("Self Time");
-        columns.selfTime.width = "10%";
-        columns.selfTime.aligned = "right";
+    columns.selfTime.title = WebInspector.UIString("Self Time");
+    columns.selfTime.width = "10%";
+    columns.selfTime.aligned = "right";
 
-        columns.averageTime.title = WebInspector.UIString("Average Time");
-        columns.averageTime.width = "10%";
-        columns.averageTime.aligned = "right";
+    columns.averageTime.title = WebInspector.UIString("Average Time");
+    columns.averageTime.width = "10%";
+    columns.averageTime.aligned = "right";
 
-        for (var column in columns)
-            columns[column].sortable = true;
+    for (var column in columns)
+        columns[column].sortable = true;
 
-        this._dataGrid = new WebInspector.ScriptTimelineDataGrid(this.navigationSidebarTreeOutline, columns, this);
-        this._dataGrid.addEventListener(WebInspector.TimelineDataGrid.Event.FiltersDidChange, this._dataGridFiltersDidChange, this);
-        this._dataGrid.addEventListener(WebInspector.DataGrid.Event.SelectedNodeChanged, this._dataGridNodeSelected, this);
-        this._dataGrid.sortColumnIdentifier = "startTime";
-        this._dataGrid.sortOrder = WebInspector.DataGrid.SortOrder.Ascending;
+    this._dataGrid = new WebInspector.ScriptTimelineDataGrid(this.navigationSidebarTreeOutline, columns, this);
+    this._dataGrid.addEventListener(WebInspector.TimelineDataGrid.Event.FiltersDidChange, this._dataGridFiltersDidChange, this);
+    this._dataGrid.addEventListener(WebInspector.DataGrid.Event.SelectedNodeChanged, this._dataGridNodeSelected, this);
+    this._dataGrid.sortColumnIdentifier = "startTime";
+    this._dataGrid.sortOrder = WebInspector.DataGrid.SortOrder.Ascending;
 
-        this.element.classList.add("script");
-        this.element.appendChild(this._dataGrid.element);
+    this.element.classList.add(WebInspector.ScriptTimelineView.StyleClassName);
+    this.element.appendChild(this._dataGrid.element);
 
-        timeline.addEventListener(WebInspector.Timeline.Event.RecordAdded, this._scriptTimelineRecordAdded, this);
+    timeline.addEventListener(WebInspector.Timeline.Event.RecordAdded, this._scriptTimelineRecordAdded, this);
 
-        this._pendingRecords = [];
-    }
+    this._pendingRecords = [];
+};
+
+WebInspector.ScriptTimelineView.StyleClassName = "script";
+WebInspector.ScriptTimelineView.TreeOutlineStyleClassName = "script";
+
+WebInspector.ScriptTimelineView.prototype = {
+    constructor: WebInspector.ScriptTimelineView,
+    __proto__: WebInspector.TimelineView.prototype,
 
     // Public
 
     get navigationSidebarTreeOutlineLabel()
     {
         return WebInspector.UIString("Records");
-    }
+    },
 
-    shown()
+    shown: function()
     {
-        super.shown();
+        WebInspector.ContentView.prototype.shown.call(this);
 
         this._dataGrid.shown();
-    }
+    },
 
-    hidden()
+    hidden: function()
     {
         this._dataGrid.hidden();
 
-        super.hidden();
-    }
+        WebInspector.ContentView.prototype.hidden.call(this);
+    },
 
-    closed()
+    closed: function()
     {
         console.assert(this.representedObject instanceof WebInspector.Timeline);
         this.representedObject.removeEventListener(null, null, this);
 
         this._dataGrid.closed();
-    }
+    },
 
-    updateLayout()
+    updateLayout: function()
     {
-        super.updateLayout();
+        WebInspector.TimelineView.prototype.updateLayout.call(this);
 
         this._dataGrid.updateLayout();
 
@@ -124,7 +129,7 @@ WebInspector.ScriptTimelineView = class ScriptTimelineView extends WebInspector.
         }
 
         this._processPendingRecords();
-    }
+    },
 
     get selectionPathComponents()
     {
@@ -150,32 +155,30 @@ WebInspector.ScriptTimelineView = class ScriptTimelineView extends WebInspector.
         }
 
         return pathComponents;
-    }
+    },
 
-    matchTreeElementAgainstCustomFilters(treeElement)
+    matchTreeElementAgainstCustomFilters: function(treeElement)
     {
         return this._dataGrid.treeElementMatchesActiveScopeFilters(treeElement);
-    }
+    },
 
-    reset()
+    reset: function()
     {
-        super.reset();
+        WebInspector.TimelineView.prototype.reset.call(this);
 
         this._dataGrid.reset();
-
-        this._pendingRecords = [];
-    }
+    },
 
     // Protected
 
-    canShowContentViewForTreeElement(treeElement)
+    canShowContentViewForTreeElement: function(treeElement)
     {
         if (treeElement instanceof WebInspector.ProfileNodeTreeElement)
             return !!treeElement.profileNode.sourceCodeLocation;
-        return super.canShowContentViewForTreeElement(treeElement);
-    }
+        return WebInspector.TimelineView.prototype.canShowContentViewForTreeElement(treeElement);
+    },
 
-    showContentViewForTreeElement(treeElement)
+    showContentViewForTreeElement: function(treeElement)
     {
         if (treeElement instanceof WebInspector.ProfileNodeTreeElement) {
             if (treeElement.profileNode.sourceCodeLocation)
@@ -183,33 +186,33 @@ WebInspector.ScriptTimelineView = class ScriptTimelineView extends WebInspector.
             return;
         }
 
-        super.showContentViewForTreeElement(treeElement);
-    }
+        WebInspector.TimelineView.prototype.showContentViewForTreeElement.call(this, treeElement);
+    },
 
-    treeElementPathComponentSelected(event)
+    treeElementPathComponentSelected: function(event)
     {
         var dataGridNode = this._dataGrid.dataGridNodeForTreeElement(event.data.pathComponent.generalTreeElement);
         if (!dataGridNode)
             return;
         dataGridNode.revealAndSelect();
-    }
+    },
 
-    treeElementSelected(treeElement, selectedByUser)
+    treeElementSelected: function(treeElement, selectedByUser)
     {
         if (this._dataGrid.shouldIgnoreSelectionEvent())
             return;
 
-        super.treeElementSelected(treeElement, selectedByUser);
-    }
+        WebInspector.TimelineView.prototype.treeElementSelected.call(this, treeElement, selectedByUser);
+    },
 
-    dataGridNodeForTreeElement(treeElement)
+    dataGridNodeForTreeElement: function(treeElement)
     {
         if (treeElement instanceof WebInspector.ProfileNodeTreeElement)
             return new WebInspector.ProfileNodeDataGridNode(treeElement.profileNode, this.zeroTime, this.startTime, this.endTime);
         return null;
-    }
+    },
 
-    populateProfileNodeTreeElement(treeElement)
+    populateProfileNodeTreeElement: function(treeElement)
     {
         var zeroTime = this.zeroTime;
         var startTime = this.startTime;
@@ -220,11 +223,11 @@ WebInspector.ScriptTimelineView = class ScriptTimelineView extends WebInspector.
             var profileNodeDataGridNode = new WebInspector.ProfileNodeDataGridNode(childProfileNode, zeroTime, startTime, endTime);
             this._dataGrid.addRowInSortOrder(profileNodeTreeElement, profileNodeDataGridNode, treeElement);
         }
-    }
+    },
 
     // Private
 
-    _processPendingRecords()
+    _processPendingRecords: function()
     {
         if (!this._pendingRecords.length)
             return;
@@ -253,9 +256,9 @@ WebInspector.ScriptTimelineView = class ScriptTimelineView extends WebInspector.
         }
 
         this._pendingRecords = [];
-    }
+    },
 
-    _scriptTimelineRecordAdded(event)
+    _scriptTimelineRecordAdded: function(event)
     {
         var scriptTimelineRecord = event.data.record;
         console.assert(scriptTimelineRecord instanceof WebInspector.ScriptTimelineRecord);
@@ -263,14 +266,14 @@ WebInspector.ScriptTimelineView = class ScriptTimelineView extends WebInspector.
         this._pendingRecords.push(scriptTimelineRecord);
 
         this.needsLayout();
-    }
+    },
 
-    _dataGridFiltersDidChange(event)
+    _dataGridFiltersDidChange: function(event)
     {
         this.timelineSidebarPanel.updateFilter();
-    }
+    },
 
-    _dataGridNodeSelected(event)
+    _dataGridNodeSelected: function(event)
     {
         this.dispatchEventToListeners(WebInspector.ContentView.Event.SelectionPathComponentsDidChange);
     }

@@ -52,35 +52,42 @@ unsigned DOMPluginArray::length() const
     return data->webVisiblePlugins().size();
 }
 
-RefPtr<DOMPlugin> DOMPluginArray::item(unsigned index)
+PassRefPtr<DOMPlugin> DOMPluginArray::item(unsigned index)
 {
     PluginData* data = pluginData();
     if (!data)
-        return nullptr;
+        return 0;
 
     const Vector<PluginInfo>& plugins = data->webVisiblePlugins();
     if (index >= plugins.size())
-        return nullptr;
+        return 0;
     return DOMPlugin::create(data, m_frame, plugins[index]);
 }
 
-RefPtr<DOMPlugin> DOMPluginArray::namedItem(const AtomicString& propertyName)
+bool DOMPluginArray::canGetItemsForName(const AtomicString& propertyName)
 {
     PluginData* data = pluginData();
     if (!data)
-        return nullptr;
+        return 0;
+
+    for (auto& plugin : data->webVisiblePlugins()) {
+        if (plugin.name == propertyName)
+            return true;
+    }
+    return false;
+}
+
+PassRefPtr<DOMPlugin> DOMPluginArray::namedItem(const AtomicString& propertyName)
+{
+    PluginData* data = pluginData();
+    if (!data)
+        return 0;
 
     for (auto& plugin : data->webVisiblePlugins()) {
         if (plugin.name == propertyName)
             return DOMPlugin::create(data, m_frame, plugin);
     }
-    return nullptr;
-}
-
-Vector<AtomicString> DOMPluginArray::supportedPropertyNames()
-{
-    // FIXME: Should be implemented.
-    return Vector<AtomicString>();
+    return 0;
 }
 
 void DOMPluginArray::refresh(bool reload)

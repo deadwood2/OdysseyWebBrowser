@@ -83,7 +83,6 @@
 #import <WebCore/AXObjectCache.h>
 #import <WebCore/ColorMac.h>
 #import <WebCore/DataDetectorsSPI.h>
-#import <WebCore/DictionaryLookup.h>
 #import <WebCore/DragController.h>
 #import <WebCore/DragData.h>
 #import <WebCore/FloatRect.h>
@@ -262,11 +261,9 @@ struct WKViewInterpretKeyEventsParameters {
     BOOL _ignoresNonWheelEvents;
     BOOL _ignoresAllEvents;
     BOOL _allowsBackForwardNavigationGestures;
-    BOOL _allowsLinkPreview;
 
     RetainPtr<WKViewLayoutStrategy> _layoutStrategy;
-    WKLayoutMode _lastRequestedLayoutMode;
-    float _lastRequestedViewScale;
+    CGSize _minimumViewSize;
 
     RetainPtr<CALayer> _rootLayer;
 
@@ -2709,7 +2706,7 @@ static void* keyValueObservingContext = &keyValueObservingContext;
         [self _accessibilityRegisterUIProcessTokens];
 
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
-        if (_data->_immediateActionGestureRecognizer && ![[self gestureRecognizers] containsObject:_data->_immediateActionGestureRecognizer.get()] && !_data->_ignoresNonWheelEvents && _data->_allowsLinkPreview)
+        if (_data->_immediateActionGestureRecognizer && ![[self gestureRecognizers] containsObject:_data->_immediateActionGestureRecognizer.get()] && !_data->_ignoresNonWheelEvents)
             [self addGestureRecognizer:_data->_immediateActionGestureRecognizer.get()];
 #endif
     } else {
@@ -2870,7 +2867,7 @@ static void* keyValueObservingContext = &keyValueObservingContext;
 
 - (void)_dictionaryLookupPopoverWillClose:(NSNotification *)notification
 {
-    [self _clearTextIndicatorWithAnimation:TextIndicatorWindowDismissalAnimation::None];
+    [self _clearTextIndicatorWithAnimation:TextIndicatorDismissalAnimation::None];
 }
 
 - (void)_accessibilityRegisterUIProcessTokens
@@ -3258,10 +3255,10 @@ static void* keyValueObservingContext = &keyValueObservingContext;
 
 - (void)_setTextIndicator:(TextIndicator&)textIndicator
 {
-    [self _setTextIndicator:textIndicator withLifetime:TextIndicatorWindowLifetime::Permanent];
+    [self _setTextIndicator:textIndicator withLifetime:TextIndicatorLifetime::Permanent];
 }
 
-- (void)_setTextIndicator:(TextIndicator&)textIndicator withLifetime:(TextIndicatorWindowLifetime)lifetime
+- (void)_setTextIndicator:(TextIndicator&)textIndicator withLifetime:(TextIndicatorLifetime)lifetime
 {
     if (!_data->_textIndicatorWindow)
         _data->_textIndicatorWindow = std::make_unique<TextIndicatorWindow>(self);
@@ -3270,7 +3267,7 @@ static void* keyValueObservingContext = &keyValueObservingContext;
     _data->_textIndicatorWindow->setTextIndicator(textIndicator, NSRectToCGRect(textBoundingRectInScreenCoordinates), lifetime);
 }
 
-- (void)_clearTextIndicatorWithAnimation:(TextIndicatorWindowDismissalAnimation)animation
+- (void)_clearTextIndicatorWithAnimation:(TextIndicatorDismissalAnimation)animation
 {
     if (_data->_textIndicatorWindow)
         _data->_textIndicatorWindow->clearTextIndicator(animation);
@@ -3343,24 +3340,6 @@ static void* keyValueObservingContext = &keyValueObservingContext;
     return _data->_rootLayer.get();
 }
 
-static RetainPtr<CGImageRef> takeWindowSnapshot(CGSWindowID windowID, bool captureAtNominalResolution)
-{
-    CGSWindowCaptureOptions options = kCGSCaptureIgnoreGlobalClipShape;
-    if (captureAtNominalResolution)
-        options |= kCGSWindowCaptureNominalResolution;
-    RetainPtr<CFArrayRef> windowSnapshotImages = adoptCF(CGSHWCaptureWindowList(CGSMainConnectionID(), &windowID, 1, options));
-
-    if (windowSnapshotImages && CFArrayGetCount(windowSnapshotImages.get()))
-        return (CGImageRef)CFArrayGetValueAtIndex(windowSnapshotImages.get(), 0);
-
-    // Fall back to the non-hardware capture path if we didn't get a snapshot
-    // (which usually happens if the window is fully off-screen).
-    CGWindowImageOption imageOptions = kCGWindowImageBoundsIgnoreFraming | kCGWindowImageShouldBeOpaque;
-    if (captureAtNominalResolution)
-        imageOptions |= kCGWindowImageNominalResolution;
-    return adoptCF(CGWindowListCreateImage(CGRectNull, kCGWindowListOptionIncludingWindow, windowID, imageOptions));
-}
-
 - (PassRefPtr<ViewSnapshot>)_takeViewSnapshot
 {
     NSWindow *window = self.window;
@@ -3369,17 +3348,22 @@ static RetainPtr<CGImageRef> takeWindowSnapshot(CGSWindowID windowID, bool captu
     if (!windowID || ![window isVisible])
         return nullptr;
 
-    RetainPtr<CGImageRef> windowSnapshotImage = takeWindowSnapshot(windowID, false);
-    if (!windowSnapshotImage)
+    CGSWindowCaptureOptions options = kCGSCaptureIgnoreGlobalClipShape;
+    RetainPtr<CFArrayRef> windowSnapshotImages = adoptCF(CGSHWCaptureWindowList(CGSMainConnectionID(), &windowID, 1, options));
+    if (!windowSnapshotImages || !CFArrayGetCount(windowSnapshotImages.get()))
         return nullptr;
+
+    RetainPtr<CGImageRef> windowSnapshotImage = (CGImageRef)CFArrayGetValueAtIndex(windowSnapshotImages.get(), 0);
 
     // Work around <rdar://problem/17084993>; re-request the snapshot at kCGWindowImageNominalResolution if it was captured at the wrong scale.
     CGFloat desiredSnapshotWidth = window.frame.size.width * window.screen.backingScaleFactor;
-    if (CGImageGetWidth(windowSnapshotImage.get()) != desiredSnapshotWidth)
-        windowSnapshotImage = takeWindowSnapshot(windowID, true);
-
-    if (!windowSnapshotImage)
-        return nullptr;
+    if (CGImageGetWidth(windowSnapshotImage.get()) != desiredSnapshotWidth) {
+        options |= kCGSWindowCaptureNominalResolution;
+        windowSnapshotImages = adoptCF(CGSHWCaptureWindowList(CGSMainConnectionID(), &windowID, 1, options));
+        if (!windowSnapshotImages || !CFArrayGetCount(windowSnapshotImages.get()))
+            return nullptr;
+        windowSnapshotImage = (CGImageRef)CFArrayGetValueAtIndex(windowSnapshotImages.get(), 0);
+    }
 
     [self _ensureGestureController];
 
@@ -3757,7 +3741,7 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
     [self addTrackingArea:trackingArea];
 }
 
-- (instancetype)initWithFrame:(NSRect)frame processPool:(WebProcessPool&)processPool configuration:(Ref<API::PageConfiguration>&&)configuration webView:(WKWebView *)webView
+- (instancetype)initWithFrame:(NSRect)frame processPool:(WebProcessPool&)processPool configuration:(WebPageConfiguration)webPageConfiguration webView:(WKWebView *)webView
 {
     self = [super initWithFrame:frame];
     if (!self)
@@ -3779,7 +3763,7 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
     [self addTrackingArea:_data->_primaryTrackingArea.get()];
 
     _data->_pageClient = std::make_unique<PageClientImpl>(self, webView);
-    _data->_page = processPool.createWebPage(*_data->_pageClient, WTF::move(configuration));
+    _data->_page = processPool.createWebPage(*_data->_pageClient, WTF::move(webPageConfiguration));
     _data->_page->setAddsVisitedLinks(processPool.historyClient().addsVisitedLinks());
 
     _data->_page->setIntrinsicDeviceScaleFactor([self _intrinsicDeviceScaleFactor]);
@@ -3791,8 +3775,6 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
     _data->_clipsToVisibleRect = NO;
     _data->_useContentPreparationRectForVisibleRect = NO;
     _data->_windowOcclusionDetectionEnabled = YES;
-    _data->_lastRequestedLayoutMode = kWKLayoutModeViewSize;
-    _data->_lastRequestedViewScale = 1;
 
     _data->_windowVisibilityObserver = adoptNS([[WKWindowVisibilityObserver alloc] initWithView:self]);
 
@@ -3815,8 +3797,6 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
     [workspaceNotificationCenter addObserver:self selector:@selector(_activeSpaceDidChange:) name:NSWorkspaceActiveSpaceDidChangeNotification object:nil];
 
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
-    _data->_allowsLinkPreview = YES;
-
     if (Class gestureClass = NSClassFromString(@"NSImmediateActionGestureRecognizer")) {
         _data->_immediateActionGestureRecognizer = adoptNS([(NSImmediateActionGestureRecognizer *)[gestureClass alloc] init]);
         _data->_immediateActionController = adoptNS([[WKImmediateActionController alloc] initWithPage:*_data->_page view:self recognizer:_data->_immediateActionGestureRecognizer.get()]);
@@ -3911,49 +3891,6 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
         _data->_gestureController->didFirstVisuallyNonEmptyLayoutForMainFrame();
 }
 
-- (BOOL)_supportsArbitraryLayoutModes
-{
-    if ([_data->_fullScreenWindowController isFullScreen])
-        return NO;
-
-    WebPageProxy* page = _data->_page.get();
-    if (!page)
-        return YES;
-    WebFrameProxy* frame = page->mainFrame();
-    if (!frame)
-        return YES;
-
-    // If we have a plugin document in the main frame, avoid using custom WKLayoutModes
-    // and fall back to the defaults, because there's a good chance that it won't work (e.g. with PDFPlugin).
-    if (frame->containsPluginDocument())
-        return NO;
-
-    return YES;
-}
-
-- (void)_updateSupportsArbitraryLayoutModes
-{
-    if (![self _supportsArbitraryLayoutModes]) {
-        WKLayoutMode oldRequestedLayoutMode = _data->_lastRequestedLayoutMode;
-        float oldRequestedViewScale = _data->_lastRequestedViewScale;
-        [self _setViewScale:1];
-        [self _setLayoutMode:kWKLayoutModeViewSize];
-
-        // The 'last requested' parameters will have been overwritten by setting them above, but we don't
-        // want this to count as a request (only changes from the client count), so reset them.
-        _data->_lastRequestedLayoutMode = oldRequestedLayoutMode;
-        _data->_lastRequestedViewScale = oldRequestedViewScale;
-    } else if (_data->_lastRequestedLayoutMode != [_data->_layoutStrategy layoutMode]) {
-        [self _setViewScale:_data->_lastRequestedViewScale];
-        [self _setLayoutMode:_data->_lastRequestedLayoutMode];
-    }
-}
-
-- (void)_didCommitLoadForMainFrame
-{
-    [self _updateSupportsArbitraryLayoutModes];
-}
-
 - (void)_didFinishLoadForMainFrame
 {
     if (_data->_gestureController)
@@ -4015,20 +3952,19 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
 
 - (id)initWithFrame:(NSRect)frame contextRef:(WKContextRef)contextRef pageGroupRef:(WKPageGroupRef)pageGroupRef relatedToPage:(WKPageRef)relatedPage
 {
-    auto configuration = API::PageConfiguration::create();
-    configuration->setProcessPool(toImpl(contextRef));
-    configuration->setPageGroup(toImpl(pageGroupRef));
-    configuration->setRelatedPage(toImpl(relatedPage));
+    WebPageConfiguration webPageConfiguration;
+    webPageConfiguration.pageGroup = toImpl(pageGroupRef);
+    webPageConfiguration.relatedPage = toImpl(relatedPage);
 
-    return [self initWithFrame:frame processPool:*toImpl(contextRef) configuration:WTF::move(configuration) webView:nil];
+    return [self initWithFrame:frame processPool:*toImpl(contextRef) configuration:webPageConfiguration webView:nil];
 }
 
-- (id)initWithFrame:(NSRect)frame configurationRef:(WKPageConfigurationRef)configurationRef
+- (id)initWithFrame:(NSRect)frame configurationRef:(WKPageConfigurationRef)configuration
 {
-    Ref<API::PageConfiguration> configuration = toImpl(configurationRef)->copy();
-    auto& processPool = *configuration->processPool();
+    auto& processPool = *toImpl(configuration)->processPool();
+    auto webPageConfiguration = toImpl(configuration)->webPageConfiguration();
 
-    return [self initWithFrame:frame processPool:processPool configuration:WTF::move(configuration) webView:nil];
+    return [self initWithFrame:frame processPool:processPool configuration:webPageConfiguration webView:nil];
 }
 
 - (BOOL)wantsUpdateLayer
@@ -4104,7 +4040,9 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
 
 + (void)hideWordDefinitionWindow
 {
-    DictionaryLookup::hidePopup();
+    if (!getLULookupDefinitionModuleClass())
+        return;
+    [getLULookupDefinitionModuleClass() hideDefinition];
 }
 
 - (NSSize)minimumSizeForAutoLayout
@@ -4283,26 +4221,6 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
     return _data->_allowsBackForwardNavigationGestures;
 }
 
-- (BOOL)allowsLinkPreview
-{
-    return _data->_allowsLinkPreview;
-}
-
-- (void)setAllowsLinkPreview:(BOOL)allowsLinkPreview
-{
-    if (_data->_allowsLinkPreview == allowsLinkPreview)
-        return;
-
-    _data->_allowsLinkPreview = allowsLinkPreview;
-    
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
-    if (!allowsLinkPreview)
-        [self removeGestureRecognizer:_data->_immediateActionGestureRecognizer.get()];
-    else if (NSGestureRecognizer *immediateActionRecognizer = _data->_immediateActionGestureRecognizer.get())
-        [self addGestureRecognizer:immediateActionRecognizer];
-#endif
-}
-
 - (void)_setIgnoresAllEvents:(BOOL)ignoresAllEvents
 {
     _data->_ignoresAllEvents = ignoresAllEvents;
@@ -4326,10 +4244,8 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
     if (ignoresNonWheelEvents)
         [self removeGestureRecognizer:_data->_immediateActionGestureRecognizer.get()];
-    else if (NSGestureRecognizer *immediateActionRecognizer = _data->_immediateActionGestureRecognizer.get()) {
-        if (_data->_allowsLinkPreview)
-            [self addGestureRecognizer:immediateActionRecognizer];
-    }
+    else if (NSGestureRecognizer *immediateActionRecognizer = _data->_immediateActionGestureRecognizer.get())
+        [self addGestureRecognizer:immediateActionRecognizer];
 #endif
 }
 
@@ -4361,11 +4277,6 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
 
 - (void)_setLayoutMode:(WKLayoutMode)layoutMode
 {
-    _data->_lastRequestedLayoutMode = layoutMode;
-
-    if (![self _supportsArbitraryLayoutModes] && layoutMode != kWKLayoutModeViewSize)
-        return;
-
     if (layoutMode == [_data->_layoutStrategy layoutMode])
         return;
 
@@ -4390,16 +4301,22 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
 
 - (void)_setViewScale:(CGFloat)viewScale
 {
-    _data->_lastRequestedViewScale = viewScale;
-
-    if (![self _supportsArbitraryLayoutModes] && viewScale != 1)
-        return;
-
     if (viewScale <= 0 || isnan(viewScale) || isinf(viewScale))
         [NSException raise:NSInvalidArgumentException format:@"View scale should be a positive number"];
 
     _data->_page->scaleView(viewScale);
     [_data->_layoutStrategy didChangeViewScale];
+}
+
+- (void)_setMinimumViewSize:(CGSize)minimumViewSize
+{
+    _data->_minimumViewSize = minimumViewSize;
+    [_data->_layoutStrategy didChangeMinimumViewSize];
+}
+
+- (CGSize)_minimumViewSize
+{
+    return _data->_minimumViewSize;
 }
 
 - (void)_dispatchSetTopContentInset
@@ -4684,7 +4601,8 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
         || [_data->_immediateActionController hasActiveImmediateAction]
 #endif
         ) {
-        DictionaryLookup::hidePopup();
+        if (Class lookupDefinitionModuleClass = getLULookupDefinitionModuleClass())
+            [lookupDefinitionModuleClass hideDefinition];
 
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
         DDActionsManager *actionsManager = [getDDActionsManagerClass() sharedManager];
@@ -4693,7 +4611,7 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
 #endif
     }
 
-    [self _clearTextIndicatorWithAnimation:TextIndicatorWindowDismissalAnimation::FadeOut];
+    [self _clearTextIndicatorWithAnimation:TextIndicatorDismissalAnimation::FadeOut];
 
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
     [_data->_immediateActionController dismissContentRelativeChildWindows];
@@ -4706,7 +4624,7 @@ static NSString *pathWithUniqueFilenameForPath(NSString *path)
 {
     // Calling _clearTextIndicatorWithAnimation here will win out over the animated clear in _dismissContentRelativeChildWindows.
     // We can't invert these because clients can override (and have overridden) _dismissContentRelativeChildWindows, so it needs to be called.
-    [self _clearTextIndicatorWithAnimation:withAnimation ? TextIndicatorWindowDismissalAnimation::FadeOut : TextIndicatorWindowDismissalAnimation::None];
+    [self _clearTextIndicatorWithAnimation:withAnimation ? TextIndicatorDismissalAnimation::FadeOut : TextIndicatorDismissalAnimation::None];
     [self _dismissContentRelativeChildWindows];
 }
 

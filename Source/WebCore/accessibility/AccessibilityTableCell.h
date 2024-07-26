@@ -34,8 +34,7 @@
 namespace WebCore {
     
 class AccessibilityTable;
-class AccessibilityTableRow;
-
+    
 class AccessibilityTableCell : public AccessibilityRenderObject {
 public:
     static Ref<AccessibilityTableCell> create(RenderObject*);
@@ -57,7 +56,6 @@ public:
 protected:
     explicit AccessibilityTableCell(RenderObject*);
 
-    AccessibilityTableRow* parentRow() const;
     virtual AccessibilityTable* parentTable() const;
     virtual AccessibilityRole determineAccessibilityRole() override final;
 

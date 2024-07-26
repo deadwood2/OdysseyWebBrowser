@@ -88,11 +88,6 @@ MacroAssemblerCodeRef programEntryThunkGenerator(VM* vm)
     return generateThunkWithJumpTo(vm, LLInt::getCodeFunctionPtr(llint_program_prologue), "program");
 }
 
-MacroAssemblerCodeRef moduleProgramEntryThunkGenerator(VM* vm)
-{
-    return generateThunkWithJumpTo(vm, LLInt::getCodeFunctionPtr(llint_module_program_prologue), "module_program");
-}
-
 } // namespace LLInt
 
 #else // ENABLE(JIT)

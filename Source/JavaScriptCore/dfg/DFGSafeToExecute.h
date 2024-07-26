@@ -53,14 +53,12 @@ public:
         case RealNumberUse:
         case BooleanUse:
         case CellUse:
-        case CellOrOtherUse:
         case ObjectUse:
         case FunctionUse:
         case FinalObjectUse:
         case ObjectOrOtherUse:
         case StringIdentUse:
         case StringUse:
-        case SymbolUse:
         case StringObjectUse:
         case StringOrStringObjectUse:
         case NotStringVarUse:
@@ -75,11 +73,6 @@ public:
             if (m_state.forNode(edge).m_type & ~SpecInt32)
                 m_result = false;
             return;
-
-        case KnownBooleanUse:
-            if (m_state.forNode(edge).m_type & ~SpecBoolean)
-                m_result = false;
-            return;
             
         case KnownCellUse:
             if (m_state.forNode(edge).m_type & ~SpecCell)
@@ -88,11 +81,6 @@ public:
             
         case KnownStringUse:
             if (m_state.forNode(edge).m_type & ~SpecString)
-                m_result = false;
-            return;
-
-        case KnownPrimitiveUse:
-            if (m_state.forNode(edge).m_type & ~(SpecHeapTop & ~SpecObject))
                 m_result = false;
             return;
             
@@ -128,9 +116,6 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     if (!safeToExecuteEdge.result())
         return false;
 
-    // NOTE: This tends to lie when it comes to effectful nodes, because it knows that they aren't going to
-    // get hoisted anyway.
-
     switch (node->op()) {
     case JSConstant:
     case DoubleConstant:
@@ -147,7 +132,6 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case GetStack:
     case MovHint:
     case ZombieHint:
-    case ExitOK:
     case Phantom:
     case Upsilon:
     case Phi:
@@ -195,18 +179,15 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case Arrayify:
     case ArrayifyToStructure:
     case GetScope:
-    case LoadArrowFunctionThis:
     case SkipScope:
     case GetClosureVar:
     case PutClosureVar:
     case GetGlobalVar:
-    case GetGlobalLexicalVariable:
-    case PutGlobalVariable:
+    case PutGlobalVar:
     case VarInjectionWatchpoint:
     case CheckCell:
     case CheckBadCell:
     case CheckNotEmpty:
-    case CheckIdent:
     case RegExpExec:
     case RegExpTest:
     case CompareLess:
@@ -214,13 +195,11 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case CompareGreater:
     case CompareGreaterEq:
     case CompareEq:
+    case CompareEqConstant:
     case CompareStrictEq:
     case Call:
-    case TailCallInlinedCaller:
     case Construct:
     case CallVarargs:
-    case TailCallVarargsInlinedCaller:
-    case TailCallForwardVarargsInlinedCaller:
     case ConstructVarargs:
     case LoadVarargs:
     case CallForwardVarargs:
@@ -248,7 +227,6 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case LogicalNot:
     case ToPrimitive:
     case ToString:
-    case StrCat:
     case CallStringConstructor:
     case NewStringObject:
     case MakeRope:
@@ -259,15 +237,11 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case CreateClonedArguments:
     case GetFromArguments:
     case PutToArguments:
-    case NewArrowFunction:
     case NewFunction:
     case Jump:
     case Branch:
     case Switch:
     case Return:
-    case TailCall:
-    case TailCallVarargs:
-    case TailCallForwardVarargs:
     case Throw:
     case ThrowReferenceError:
     case CountExecution:
@@ -350,18 +324,10 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case GetByOffset:
     case GetGetterSetterByOffset:
     case PutByOffset: {
-        PropertyOffset offset = node->storageAccessData().offset;
-
-        if (state.structureClobberState() == StructuresAreWatched) {
-            if (JSObject* knownBase = node->child1()->dynamicCastConstant<JSObject*>()) {
-                if (graph.isSafeToLoad(knownBase, offset))
-                    return true;
-            }
-        }
-        
         StructureAbstractValue& value = state.forNode(node->child1()).m_structure;
         if (value.isInfinite())
             return false;
+        PropertyOffset offset = node->storageAccessData().offset;
         for (unsigned i = value.size(); i--;) {
             if (!value[i]->isValidOffset(offset))
                 return false;
@@ -371,28 +337,42 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
         
     case MultiGetByOffset: {
         // We can't always guarantee that the MultiGetByOffset is safe to execute if it
-        // contains loads from prototypes. If the load requires a check in IR, which is rare, then
-        // we currently claim that we don't know if it's safe to execute because finding that
-        // check in the abstract state would be hard. If the load requires watchpoints, we just
-        // check if we're not in a clobbered state (i.e. in between a side effect and an
-        // invalidation point).
-        for (const MultiGetByOffsetCase& getCase : node->multiGetByOffsetData().cases) {
-            GetByOffsetMethod method = getCase.method();
-            switch (method.kind()) {
-            case GetByOffsetMethod::Invalid:
-                RELEASE_ASSERT_NOT_REACHED();
-                break;
-            case GetByOffsetMethod::Constant: // OK because constants are always safe to execute.
-            case GetByOffsetMethod::Load: // OK because the MultiGetByOffset has its own checks for loading from self.
-                break;
-            case GetByOffsetMethod::LoadFromPrototype:
-                // Only OK if the state isn't clobbered. That's almost always the case.
-                if (state.structureClobberState() != StructuresAreWatched)
-                    return false;
-                if (!graph.isSafeToLoad(method.prototype()->cast<JSObject*>(), method.offset()))
-                    return false;
-                break;
+        // contains loads from prototypes. We know that it won't load from those prototypes if
+        // we watch the mutability of the properties being loaded. So, here we try to
+        // constant-fold prototype loads, and if that fails, we claim that we cannot hoist. We
+        // also know that a load is safe to execute if we are watching the prototype's
+        // structure.
+        for (const GetByIdVariant& variant : node->multiGetByOffsetData().variants) {
+            if (!variant.alternateBase()) {
+                // It's not a prototype load.
+                continue;
             }
+            
+            JSValue base = variant.alternateBase();
+            FrozenValue* frozen = graph.freeze(base);
+            if (state.structureClobberState() == StructuresAreWatched
+                && frozen->structure()->dfgShouldWatch()
+                && frozen->structure()->isValidOffset(variant.offset())) {
+                // We're already watching that it's safe to load from this.
+                continue;
+            }
+            
+            JSValue constantResult = graph.tryGetConstantProperty(
+                variant.alternateBase(), variant.baseStructure(), variant.offset());
+            if (!constantResult) {
+                // Couldn't constant-fold a prototype load. Therefore, we shouldn't hoist
+                // because the safety of the load depends on structure checks on the prototype,
+                // and we're too cheap to verify that here.
+                return false;
+            }
+            
+            // Otherwise, we will either:
+            // - Not load from the prototype because constant folding will succeed in the
+            //   backend, or
+            // - Emit invalid code that fails watchpoint checks. This could happen if the
+            //   property becomes mutable after this point, since we already set the watchpoint
+            //   above. This case is OK since the code will fail watchpoint checks and never
+            //   get installed.
         }
         return true;
     }

@@ -136,14 +136,6 @@ HDC GraphicsContext::getWindowsContext(const IntRect& dstRect, bool supportAlpha
     return m_data->m_hdc;
 }
 
-HDC GraphicsContext::hdc() const
-{
-    if (!m_data)
-        return nullptr;
-
-    return m_data->m_hdc;
-}
-
 #if PLATFORM(WIN)
 void GraphicsContextPlatformPrivate::save()
 {

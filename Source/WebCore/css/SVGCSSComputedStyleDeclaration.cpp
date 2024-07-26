@@ -64,7 +64,7 @@ static Ref<CSSValue> paintOrder(PaintOrder paintOrder)
     return WTF::move(paintOrderList);
 }
 
-static RefPtr<CSSPrimitiveValue> glyphOrientationToCSSPrimitiveValue(EGlyphOrientation orientation)
+static PassRefPtr<CSSPrimitiveValue> glyphOrientationToCSSPrimitiveValue(EGlyphOrientation orientation)
 {
     switch (orientation) {
         case GO_0DEG:
@@ -76,11 +76,11 @@ static RefPtr<CSSPrimitiveValue> glyphOrientationToCSSPrimitiveValue(EGlyphOrien
         case GO_270DEG:
             return CSSPrimitiveValue::create(270.0f, CSSPrimitiveValue::CSS_DEG);
         default:
-            return nullptr;
+            return 0;
     }
 }
 
-static RefPtr<CSSValue> strokeDashArrayToCSSValueList(const Vector<SVGLength>& dashes)
+static PassRefPtr<CSSValue> strokeDashArrayToCSSValueList(const Vector<SVGLength>& dashes)
 {
     if (dashes.isEmpty())
         return CSSPrimitiveValue::createIdentifier(CSSValueNone);
@@ -90,22 +90,22 @@ static RefPtr<CSSValue> strokeDashArrayToCSSValueList(const Vector<SVGLength>& d
     for (Vector<SVGLength>::const_iterator it = dashes.begin(); it != end; ++it)
         list->append(SVGLength::toCSSPrimitiveValue(*it));
 
-    return list;
+    return list.release();
 }
 
-RefPtr<SVGPaint> ComputedStyleExtractor::adjustSVGPaintForCurrentColor(PassRefPtr<SVGPaint> newPaint, RenderStyle* style) const
+PassRefPtr<SVGPaint> ComputedStyleExtractor::adjustSVGPaintForCurrentColor(PassRefPtr<SVGPaint> newPaint, RenderStyle* style) const
 {
     RefPtr<SVGPaint> paint = newPaint;
     if (paint->paintType() == SVGPaint::SVG_PAINTTYPE_CURRENTCOLOR || paint->paintType() == SVGPaint::SVG_PAINTTYPE_URI_CURRENTCOLOR)
         paint->setColor(style->color());
-    return paint;
+    return paint.release();
 }
 
-RefPtr<CSSValue> ComputedStyleExtractor::svgPropertyValue(CSSPropertyID propertyID, EUpdateLayout updateLayout) const
+PassRefPtr<CSSValue> ComputedStyleExtractor::svgPropertyValue(CSSPropertyID propertyID, EUpdateLayout updateLayout) const
 {
     Node* node = m_node.get();
     if (!node)
-        return nullptr;
+        return 0;
 
     // Make sure our layout is up to date before we allow a query on these attributes.
     if (updateLayout)
@@ -113,7 +113,7 @@ RefPtr<CSSValue> ComputedStyleExtractor::svgPropertyValue(CSSPropertyID property
 
     RenderStyle* style = node->computedStyle();
     if (!style)
-        return nullptr;
+        return 0;
 
     const SVGRenderStyle& svgStyle = style->svgStyle();
 
@@ -160,6 +160,10 @@ RefPtr<CSSValue> ComputedStyleExtractor::svgPropertyValue(CSSPropertyID property
             if (!svgStyle.maskerResource().isEmpty())
                 return CSSPrimitiveValue::create(svgStyle.maskerResource(), CSSPrimitiveValue::CSS_URI);
             return CSSPrimitiveValue::createIdentifier(CSSValueNone);
+        case CSSPropertyFilter:
+            if (!svgStyle.filterResource().isEmpty())
+                return CSSPrimitiveValue::create(svgStyle.filterResource(), CSSPrimitiveValue::CSS_URI);
+            return CSSPrimitiveValue::createIdentifier(CSSValueNone);
         case CSSPropertyFloodColor:
             return currentColorOrValidColor(style, svgStyle.floodColor());
         case CSSPropertyLightingColor:
@@ -198,7 +202,7 @@ RefPtr<CSSValue> ComputedStyleExtractor::svgPropertyValue(CSSPropertyID property
                     return SVGLength::toCSSPrimitiveValue(svgStyle.baselineShiftValue());
             }
             ASSERT_NOT_REACHED();
-            return nullptr;
+            return 0;
         }
         case CSSPropertyBufferedRendering:
             return CSSPrimitiveValue::create(svgStyle.bufferedRendering());
@@ -211,7 +215,7 @@ RefPtr<CSSValue> ComputedStyleExtractor::svgPropertyValue(CSSPropertyID property
             if (svgStyle.glyphOrientationVertical() == GO_AUTO)
                 return CSSPrimitiveValue::createIdentifier(CSSValueAuto);
 
-            return nullptr;
+            return 0;
         }
         case CSSPropertyWebkitSvgShadow:
             return valueForShadow(svgStyle.shadow(), propertyID, *style);
@@ -232,7 +236,7 @@ RefPtr<CSSValue> ComputedStyleExtractor::svgPropertyValue(CSSPropertyID property
         ASSERT_WITH_MESSAGE(0, "unimplemented propertyID: %d", propertyID);
     }
     LOG_ERROR("unimplemented propertyID: %d", propertyID);
-    return nullptr;
+    return 0;
 }
 
 }

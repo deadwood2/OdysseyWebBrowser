@@ -39,7 +39,6 @@ namespace WebCore {
 class ResourceError;
 class ResourceRequest;
 class ResourceResponse;
-struct SecurityOriginData;
 }
 
 namespace WebKit {
@@ -51,6 +50,7 @@ class WebFrameProxy;
 class WebPageProxy;
 class WebProtectionSpace;
 struct NavigationActionData;
+struct SecurityOriginData;
 struct WebNavigationDataStore;
 }
 
@@ -69,14 +69,14 @@ public:
     virtual void didStartProvisionalNavigation(WebKit::WebPageProxy&, API::Navigation*, API::Object*) { }
     virtual void didReceiveServerRedirectForProvisionalNavigation(WebKit::WebPageProxy&, API::Navigation*, API::Object*) { }
     virtual void didFailProvisionalNavigationWithError(WebKit::WebPageProxy&, WebKit::WebFrameProxy&, API::Navigation*, const WebCore::ResourceError&, API::Object*) { }
-    virtual void didFailProvisionalLoadInSubframeWithError(WebKit::WebPageProxy&, WebKit::WebFrameProxy&, const WebCore::SecurityOriginData&, API::Navigation*, const WebCore::ResourceError&, API::Object*) { }
+    virtual void didFailProvisionalLoadInSubframeWithError(WebKit::WebPageProxy&, WebKit::WebFrameProxy&, const WebKit::SecurityOriginData&, API::Navigation*, const WebCore::ResourceError&, API::Object*) { }
     virtual void didCommitNavigation(WebKit::WebPageProxy&, API::Navigation*, API::Object*) { }
     virtual void didFinishDocumentLoad(WebKit::WebPageProxy&, API::Navigation*, API::Object*) { }
     virtual void didFinishNavigation(WebKit::WebPageProxy&, API::Navigation*, API::Object*) { }
     virtual void didFailNavigationWithError(WebKit::WebPageProxy&, WebKit::WebFrameProxy&, API::Navigation*, const WebCore::ResourceError&, API::Object*) { }
     virtual void didSameDocumentNavigation(WebKit::WebPageProxy&, API::Navigation*, WebKit::SameDocumentNavigationType, API::Object*) { }
 
-    virtual void renderingProgressDidChange(WebKit::WebPageProxy&, WebCore::LayoutMilestones) { }
+    virtual void renderingProgressDidChange(WebKit::WebPageProxy&, WebCore::LayoutMilestones, API::Object*) { }
 
     virtual bool canAuthenticateAgainstProtectionSpace(WebKit::WebPageProxy&, WebKit::WebProtectionSpace*) { return false; }
     virtual void didReceiveAuthenticationChallenge(WebKit::WebPageProxy&, WebKit::AuthenticationChallengeProxy*) { }
@@ -107,11 +107,6 @@ public:
         return currentPluginLoadPolicy;
     }
 #endif
-
-    virtual void didBeginNavigationGesture(WebKit::WebPageProxy&) { }
-    virtual void willEndNavigationGesture(WebKit::WebPageProxy&, bool willNavigate, WebKit::WebBackForwardListItem&) { }
-    virtual void didEndNavigationGesture(WebKit::WebPageProxy&, bool willNavigate, WebKit::WebBackForwardListItem&) { }
-    virtual void didRemoveNavigationGestureSnapshot(WebKit::WebPageProxy&) { }
 };
 
 } // namespace API

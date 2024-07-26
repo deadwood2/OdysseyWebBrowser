@@ -37,7 +37,6 @@
 #include "DFGCommon.h"
 #include "DFGEpoch.h"
 #include "DFGLazyJSValue.h"
-#include "DFGMultiGetByOffsetData.h"
 #include "DFGNodeFlags.h"
 #include "DFGNodeOrigin.h"
 #include "DFGNodeType.h"
@@ -64,11 +63,11 @@ struct BasicBlock;
 struct StorageAccessData {
     PropertyOffset offset;
     unsigned identifierNumber;
+};
 
-    // This needs to know the inferred type. For puts, this is necessary because we need to remember
-    // what check is needed. For gets, this is necessary because otherwise AI might forget what type is
-    // guaranteed.
-    InferredType::Descriptor inferredType;
+struct MultiGetByOffsetData {
+    unsigned identifierNumber;
+    Vector<GetByIdVariant, 2> variants;
 };
 
 struct MultiPutByOffsetData {
@@ -585,7 +584,7 @@ struct Node {
 
     void convertToPhantomNewFunction()
     {
-        ASSERT(m_op == NewFunction || m_op == NewArrowFunction);
+        ASSERT(m_op == NewFunction);
         m_op = PhantomNewFunction;
         m_flags |= NodeMustGenerate;
         m_opInfo = 0;
@@ -695,12 +694,7 @@ struct Node {
     {
         return constant()->value().asBoolean();
     }
-
-    bool isUndefinedOrNullConstant()
-    {
-        return isConstant() && constant()->value().isUndefinedOrNull();
-    }
-
+     
     bool isCellConstant()
     {
         return isConstant() && constant()->value() && constant()->value().isCell();
@@ -994,7 +988,7 @@ struct Node {
     
     bool hasRegisterPointer()
     {
-        return op() == GetGlobalVar || op() == GetGlobalLexicalVariable || op() == PutGlobalVariable;
+        return op() == GetGlobalVar || op() == PutGlobalVar;
     }
     
     WriteBarrier<Unknown>* variablePointer()
@@ -1007,10 +1001,6 @@ struct Node {
         switch (op()) {
         case CallVarargs:
         case CallForwardVarargs:
-        case TailCallVarargs:
-        case TailCallForwardVarargs:
-        case TailCallVarargsInlinedCaller:
-        case TailCallForwardVarargsInlinedCaller:
         case ConstructVarargs:
         case ConstructForwardVarargs:
             return true;
@@ -1108,9 +1098,6 @@ struct Node {
         case Branch:
         case Switch:
         case Return:
-        case TailCall:
-        case TailCallVarargs:
-        case TailCallForwardVarargs:
         case Unreachable:
             return true;
         default:
@@ -1261,13 +1248,10 @@ struct Node {
         case GetByIdFlush:
         case GetByVal:
         case Call:
-        case TailCallInlinedCaller:
         case Construct:
         case CallVarargs:
-        case TailCallVarargsInlinedCaller:
         case ConstructVarargs:
         case CallForwardVarargs:
-        case TailCallForwardVarargsInlinedCaller:
         case GetByOffset:
         case MultiGetByOffset:
         case GetClosureVar:
@@ -1277,7 +1261,6 @@ struct Node {
         case RegExpExec:
         case RegExpTest:
         case GetGlobalVar:
-        case GetGlobalLexicalVariable:
             return true;
         default:
             return false;
@@ -1301,7 +1284,6 @@ struct Node {
         switch (op()) {
         case CheckCell:
         case NewFunction:
-        case NewArrowFunction:
         case CreateActivation:
         case MaterializeCreateActivation:
             return true;
@@ -1348,17 +1330,6 @@ struct Node {
     {
         ASSERT(hasStoragePointer());
         return reinterpret_cast<void*>(m_opInfo);
-    }
-
-    bool hasUidOperand()
-    {
-        return op() == CheckIdent;
-    }
-
-    UniquedStringImpl* uidOperand()
-    {
-        ASSERT(hasUidOperand());
-        return reinterpret_cast<UniquedStringImpl*>(m_opInfo);
     }
 
     bool hasTransition()
@@ -1518,7 +1489,6 @@ struct Node {
     bool isFunctionAllocation()
     {
         switch (op()) {
-        case NewArrowFunction:
         case NewFunction:
             return true;
         default:

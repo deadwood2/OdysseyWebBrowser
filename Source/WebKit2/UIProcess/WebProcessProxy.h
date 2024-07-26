@@ -84,16 +84,16 @@ public:
     WebProcessPool& processPool() { return m_processPool; }
 
     static WebPageProxy* webPage(uint64_t pageID);
-    Ref<WebPageProxy> createWebPage(PageClient&, Ref<API::PageConfiguration>&&);
+    Ref<WebPageProxy> createWebPage(PageClient&, const WebPageConfiguration&);
     void addExistingWebPage(WebPageProxy*, uint64_t pageID);
     void removeWebPage(uint64_t pageID);
 
     WTF::IteratorRange<WebPageProxyMap::const_iterator::Values> pages() const { return m_pageMap.values(); }
     unsigned pageCount() const { return m_pageMap.size(); }
 
-    void addVisitedLinkStore(VisitedLinkStore&);
+    void addVisitedLinkProvider(VisitedLinkProvider&);
     void addWebUserContentControllerProxy(WebUserContentControllerProxy&);
-    void didDestroyVisitedLinkStore(VisitedLinkStore&);
+    void didDestroyVisitedLinkProvider(VisitedLinkProvider&);
     void didDestroyWebUserContentControllerProxy(WebUserContentControllerProxy&);
 
     WebBackForwardListItem* webBackForwardItem(uint64_t itemID) const;
@@ -238,7 +238,7 @@ private:
     WebFrameProxyMap m_frameMap;
     WebBackForwardListItemMap m_backForwardListItemMap;
 
-    HashSet<VisitedLinkStore*> m_visitedLinkStores;
+    HashSet<VisitedLinkProvider*> m_visitedLinkProviders;
     HashSet<WebUserContentControllerProxy*> m_webUserContentControllerProxies;
 
     std::unique_ptr<DownloadProxyMap> m_downloadProxyMap;

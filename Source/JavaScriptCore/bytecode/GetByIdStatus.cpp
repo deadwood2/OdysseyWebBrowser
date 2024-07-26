@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2012, 2013, 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,13 +26,14 @@
 #include "config.h"
 #include "GetByIdStatus.h"
 
+#include "AccessorCallJITStubRoutine.h"
 #include "CodeBlock.h"
 #include "ComplexGetStatus.h"
 #include "JSCInlines.h"
 #include "JSScope.h"
 #include "LLIntData.h"
 #include "LowLevelInterpreter.h"
-#include "PolymorphicAccess.h"
+#include "PolymorphicGetByIdList.h"
 #include <wtf/ListDump.h>
 
 namespace JSC {
@@ -70,19 +71,14 @@ GetByIdStatus GetByIdStatus::computeFromLLInt(CodeBlock* profiledBlock, unsigned
     UNUSED_PARAM(profiledBlock);
     UNUSED_PARAM(bytecodeIndex);
     UNUSED_PARAM(uid);
-
-    VM& vm = *profiledBlock->vm();
-    
     Instruction* instruction = profiledBlock->instructions().begin() + bytecodeIndex;
     
     if (instruction[0].u.opcode == LLInt::getOpcode(op_get_array_length))
         return GetByIdStatus(NoInformation, false);
 
-    StructureID structureID = instruction[4].u.structureID;
-    if (!structureID)
+    Structure* structure = instruction[4].u.structure.get();
+    if (!structure)
         return GetByIdStatus(NoInformation, false);
-
-    Structure* structure = vm.heap.structureIDTable().get(structureID);
 
     if (structure->takesSlowPathInDFGForImpureProperty())
         return GetByIdStatus(NoInformation, false);
@@ -102,7 +98,7 @@ GetByIdStatus GetByIdStatus::computeFor(CodeBlock* profiledBlock, StubInfoMap& m
     GetByIdStatus result;
 
 #if ENABLE(DFG_JIT)
-    result = computeForStubInfoWithoutExitSiteFeedback(
+    result = computeForStubInfo(
         locker, profiledBlock, map.get(CodeOrigin(bytecodeIndex)), uid,
         CallLinkStatus::computeExitSiteData(locker, profiledBlock, bytecodeIndex));
     
@@ -119,21 +115,8 @@ GetByIdStatus GetByIdStatus::computeFor(CodeBlock* profiledBlock, StubInfoMap& m
     return result;
 }
 
-#if ENABLE(DFG_JIT)
-GetByIdStatus GetByIdStatus::computeForStubInfo(const ConcurrentJITLocker& locker, CodeBlock* profiledBlock, StructureStubInfo* stubInfo, CodeOrigin codeOrigin, UniquedStringImpl* uid)
-{
-    GetByIdStatus result = GetByIdStatus::computeForStubInfoWithoutExitSiteFeedback(
-        locker, profiledBlock, stubInfo, uid,
-        CallLinkStatus::computeExitSiteData(locker, profiledBlock, codeOrigin.bytecodeIndex));
-
-    if (!result.takesSlowPath() && GetByIdStatus::hasExitSite(locker, profiledBlock, codeOrigin.bytecodeIndex))
-        return GetByIdStatus(result.makesCalls() ? GetByIdStatus::MakesCalls : GetByIdStatus::TakesSlowPath, true);
-    return result;
-}
-#endif // ENABLE(DFG_JIT)
-
 #if ENABLE(JIT)
-GetByIdStatus GetByIdStatus::computeForStubInfoWithoutExitSiteFeedback(
+GetByIdStatus GetByIdStatus::computeForStubInfo(
     const ConcurrentJITLocker& locker, CodeBlock* profiledBlock, StructureStubInfo* stubInfo, UniquedStringImpl* uid,
     CallLinkStatus::ExitSiteData callExitSiteData)
 {
@@ -143,12 +126,12 @@ GetByIdStatus GetByIdStatus::computeForStubInfoWithoutExitSiteFeedback(
     if (!stubInfo->seen)
         return GetByIdStatus(NoInformation);
     
-    PolymorphicAccess* list = 0;
+    PolymorphicGetByIdList* list = 0;
     State slowPathState = TakesSlowPath;
-    if (stubInfo->cacheType == CacheType::Stub) {
-        list = stubInfo->u.stub;
+    if (stubInfo->accessType == access_get_by_id_list) {
+        list = stubInfo->u.getByIdList.list;
         for (unsigned i = 0; i < list->size(); ++i) {
-            const AccessCase& access = list->at(i);
+            const GetByIdAccess& access = list->at(i);
             if (access.doesCalls())
                 slowPathState = MakesCalls;
         }
@@ -161,12 +144,12 @@ GetByIdStatus GetByIdStatus::computeForStubInfoWithoutExitSiteFeedback(
     GetByIdStatus result;
     result.m_state = Simple;
     result.m_wasSeenInJIT = true; // This is interesting for bytecode dumping only.
-    switch (stubInfo->cacheType) {
-    case CacheType::Unset:
+    switch (stubInfo->accessType) {
+    case access_unset:
         return GetByIdStatus(NoInformation);
         
-    case CacheType::GetByIdSelf: {
-        Structure* structure = stubInfo->u.byIdSelf.baseObjectStructure.get();
+    case access_get_by_id_self: {
+        Structure* structure = stubInfo->u.getByIdSelf.baseObjectStructure.get();
         if (structure->takesSlowPathInDFGForImpureProperty())
             return GetByIdStatus(slowPathState, true);
         unsigned attributesIgnored;
@@ -181,25 +164,13 @@ GetByIdStatus GetByIdStatus::computeForStubInfoWithoutExitSiteFeedback(
         return result;
     }
         
-    case CacheType::Stub: {
+    case access_get_by_id_list: {
         for (unsigned listIndex = 0; listIndex < list->size(); ++listIndex) {
-            const AccessCase& access = list->at(listIndex);
-            if (access.viaProxy())
-                return GetByIdStatus(slowPathState, true);
-            
-            Structure* structure = access.structure();
-            if (!structure) {
-                // The null structure cases arise due to array.length and string.length. We have no way
-                // of creating a GetByIdVariant for those, and we don't really have to since the DFG
-                // handles those cases in FixupPhase using value profiling. That's a bit awkward - we
-                // shouldn't have to use value profiling to discover something that the AccessCase
-                // could have told us. But, it works well enough. So, our only concern here is to not
-                // crash on null structure.
-                return GetByIdStatus(slowPathState, true);
-            }
+            Structure* structure = list->at(listIndex).structure();
             
             ComplexGetStatus complexGetStatus = ComplexGetStatus::computeFor(
-                structure, access.conditionSet(), uid);
+                profiledBlock, structure, list->at(listIndex).chain(),
+                list->at(listIndex).chainCount(), uid);
              
             switch (complexGetStatus.kind()) {
             case ComplexGetStatus::ShouldSkip:
@@ -210,27 +181,33 @@ GetByIdStatus GetByIdStatus::computeForStubInfoWithoutExitSiteFeedback(
                  
             case ComplexGetStatus::Inlineable: {
                 std::unique_ptr<CallLinkStatus> callLinkStatus;
-                switch (access.type()) {
-                case AccessCase::Load: {
+                switch (list->at(listIndex).type()) {
+                case GetByIdAccess::SimpleInline:
+                case GetByIdAccess::SimpleStub: {
                     break;
                 }
-                case AccessCase::Getter: {
-                    CallLinkInfo* callLinkInfo = access.callLinkInfo();
-                    ASSERT(callLinkInfo);
+                case GetByIdAccess::Getter: {
+                    AccessorCallJITStubRoutine* stub = static_cast<AccessorCallJITStubRoutine*>(
+                        list->at(listIndex).stubRoutine());
                     callLinkStatus = std::make_unique<CallLinkStatus>(
                         CallLinkStatus::computeFor(
-                            locker, profiledBlock, *callLinkInfo, callExitSiteData));
+                            locker, profiledBlock, *stub->m_callLinkInfo, callExitSiteData));
                     break;
                 }
-                default: {
-                    // FIXME: It would be totally sweet to support more of these at some point in the
-                    // future. https://bugs.webkit.org/show_bug.cgi?id=133052
+                case GetByIdAccess::SimpleMiss:
+                case GetByIdAccess::CustomGetter:
+                case GetByIdAccess::WatchedStub:{
+                    // FIXME: It would be totally sweet to support this at some point in the future.
+                    // https://bugs.webkit.org/show_bug.cgi?id=133052
                     return GetByIdStatus(slowPathState, true);
-                } }
+                }
+                default:
+                    RELEASE_ASSERT_NOT_REACHED();
+                }
                  
                 GetByIdVariant variant(
-                    StructureSet(structure), complexGetStatus.offset(),
-                    complexGetStatus.conditionSet(), WTF::move(callLinkStatus));
+                    StructureSet(structure), complexGetStatus.offset(), complexGetStatus.chain(),
+                    WTF::move(callLinkStatus));
                  
                 if (!result.appendVariant(variant))
                     return GetByIdStatus(slowPathState, true);
@@ -266,7 +243,7 @@ GetByIdStatus GetByIdStatus::computeFor(
         GetByIdStatus result;
         {
             ConcurrentJITLocker locker(dfgBlock->m_lock);
-            result = computeForStubInfoWithoutExitSiteFeedback(
+            result = computeForStubInfo(
                 locker, dfgBlock, dfgMap.get(codeOrigin), uid, exitSiteData);
         }
         

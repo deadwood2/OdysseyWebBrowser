@@ -46,12 +46,15 @@
 #include "Text.h"
 #include "TextTrack.h"
 #include "TextTrackCueList.h"
-#include "VTTRegionList.h"
 #include "VTTScanner.h"
 #include "WebVTTElement.h"
 #include "WebVTTParser.h"
 #include <wtf/MathExtras.h>
 #include <wtf/text/StringBuilder.h>
+
+#if ENABLE(WEBVTT_REGIONS)
+#include "VTTRegionList.h"
+#endif
 
 namespace WebCore {
 
@@ -141,10 +144,12 @@ VTTCue* VTTCueBox::getCue() const
 void VTTCueBox::applyCSSProperties(const IntSize& videoSize)
 {
     // FIXME: Apply all the initial CSS positioning properties. http://wkb.ug/79916
+#if ENABLE(WEBVTT_REGIONS)
     if (!m_cue.regionId().isEmpty()) {
         setInlineStyleProperty(CSSPropertyPosition, CSSValueRelative);
         return;
     }
+#endif
 
     // 3.5.1 On the (root) List of WebVTT Node Objects:
 
@@ -496,7 +501,7 @@ void VTTCue::copyWebVTTNodeToDOMTree(ContainerNode* webVTTNode, ContainerNode* p
             clonedNode = downcast<WebVTTElement>(*node).createEquivalentHTMLElement(ownerDocument());
         else
             clonedNode = node->cloneNode(false);
-        parent->appendChild(*clonedNode, ASSERT_NO_EXCEPTION);
+        parent->appendChild(clonedNode, ASSERT_NO_EXCEPTION);
         if (is<ContainerNode>(*node))
             copyWebVTTNodeToDOMTree(downcast<ContainerNode>(node), downcast<ContainerNode>(clonedNode.get()));
     }
@@ -518,13 +523,14 @@ PassRefPtr<DocumentFragment> VTTCue::createCueRenderingTree()
     RefPtr<DocumentFragment> clonedFragment;
     createWebVTTNodeTree();
     if (!m_webVTTNodeTree)
-        return nullptr;
+        return 0;
 
     clonedFragment = DocumentFragment::create(ownerDocument());
-    m_webVTTNodeTree->cloneChildNodes(*clonedFragment);
+    m_webVTTNodeTree->cloneChildNodes(clonedFragment.get());
     return clonedFragment.release();
 }
 
+#if ENABLE(WEBVTT_REGIONS)
 void VTTCue::setRegionId(const String& regionId)
 {
     if (m_regionId == regionId)
@@ -539,6 +545,7 @@ void VTTCue::notifyRegionWhenRemovingDisplayTree(bool notifyRegion)
 {
     m_notifyRegion = notifyRegion;
 }
+#endif
 
 void VTTCue::setIsActive(bool active)
 {
@@ -785,7 +792,7 @@ void VTTCue::updateDisplayTree(const MediaTime& movieTime)
         return;
 
     markFutureAndPastNodes(referenceTree.get(), startMediaTime(), movieTime);
-    m_cueHighlightBox->appendChild(referenceTree.releaseNonNull());
+    m_cueHighlightBox->appendChild(referenceTree);
 }
 
 VTTCueBox* VTTCue::getDisplayTree(const IntSize& videoSize, int fontSize)
@@ -812,8 +819,8 @@ VTTCueBox* VTTCue::getDisplayTree(const IntSize& videoSize, int fontSize)
     m_cueHighlightBox->setPseudo(cueShadowPseudoId());
 
     m_cueBackdropBox->setPseudo(cueBackdropShadowPseudoId());
-    m_cueBackdropBox->appendChild(*m_cueHighlightBox, ASSERT_NO_EXCEPTION);
-    displayTree->appendChild(*m_cueBackdropBox, ASSERT_NO_EXCEPTION);
+    m_cueBackdropBox->appendChild(m_cueHighlightBox, ASSERT_NO_EXCEPTION);
+    displayTree->appendChild(m_cueBackdropBox, ASSERT_NO_EXCEPTION);
 
     // FIXME(BUG 79916): Runs of children of WebVTT Ruby Objects that are not
     // WebVTT Ruby Text Objects must be wrapped in anonymous boxes whose
@@ -831,6 +838,7 @@ VTTCueBox* VTTCue::getDisplayTree(const IntSize& videoSize, int fontSize)
 
 void VTTCue::removeDisplayTree()
 {
+#if ENABLE(WEBVTT_REGIONS)
     // The region needs to be informed about the cue removal.
     if (m_notifyRegion && track()) {
         if (VTTRegionList* regions = track()->regions()) {
@@ -838,6 +846,7 @@ void VTTCue::removeDisplayTree()
                 region->willRemoveTextTrackCueBox(m_displayTree.get());
         }
     }
+#endif
 
     if (!hasDisplayTree())
         return;
@@ -895,9 +904,10 @@ VTTCue::CueSetting VTTCue::settingName(VTTScanner& input)
         parsedSetting = Size;
     else if (input.scan("align"))
         parsedSetting = Align;
+#if ENABLE(WEBVTT_REGIONS)
     else if (input.scan("region"))
         parsedSetting = RegionId;
-
+#endif
     // Verify that a ':' follows.
     if (parsedSetting != None && input.scan(':'))
         return parsedSetting;
@@ -1048,9 +1058,11 @@ void VTTCue::setCueSettings(const String& inputString)
 
             break;
         }
+#if ENABLE(WEBVTT_REGIONS)
         case RegionId:
             m_regionId = input.extractString(valueRun);
             break;
+#endif
         case None:
             break;
         }
@@ -1058,7 +1070,7 @@ void VTTCue::setCueSettings(const String& inputString)
         // Make sure the entire run is consumed.
         input.skipRun(valueRun);
     }
-
+#if ENABLE(WEBVTT_REGIONS)
     // If cue's line position is not auto or cue's size is not 100 or cue's
     // writing direction is not horizontal, but cue's region identifier is not
     // the empty string, let cue's region identifier be the empty string.
@@ -1067,6 +1079,7 @@ void VTTCue::setCueSettings(const String& inputString)
 
     if (m_linePosition != undefinedPosition || m_cueSize != 100 || m_writingDirection != Horizontal)
         m_regionId = emptyString();
+#endif
 }
 
 CSSValueID VTTCue::getCSSAlignment() const

@@ -1,5 +1,5 @@
-<?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="DebugSuffix|Win32">
       <Configuration>DebugSuffix</Configuration>
@@ -106,7 +106,6 @@
     <ClCompile Include="..\wtf\glib\GThreadSafeMainLoopSource.cpp" />
     <ClCompile Include="..\wtf\GregorianDateTime.cpp" />
     <ClCompile Include="..\wtf\HashTable.cpp" />
-    <ClCompile Include="..\wtf\Lock.cpp" />
     <ClCompile Include="..\wtf\MainThread.cpp" />
     <ClCompile Include="..\wtf\MD5.cpp" />
     <ClCompile Include="..\wtf\MediaTime.cpp" />
@@ -115,9 +114,7 @@
     <ClCompile Include="..\wtf\OSAllocatorWin.cpp" />
     <ClCompile Include="..\wtf\OSRandomSource.cpp" />
     <ClCompile Include="..\wtf\PageBlock.cpp" />
-    <ClCompile Include="..\wtf\ParallelHelperPool.cpp" />
     <ClCompile Include="..\wtf\ParallelJobsGeneric.cpp" />
-    <ClCompile Include="..\wtf\ParkingLot.cpp" />
     <ClCompile Include="..\wtf\PrintStream.cpp" />
     <ClCompile Include="..\wtf\RAMSize.cpp" />
     <ClCompile Include="..\wtf\RandomNumber.cpp" />
@@ -155,7 +152,6 @@
     <ClCompile Include="..\wtf\win\WorkItemWin.cpp" />
     <ClCompile Include="..\wtf\win\WorkQueueWin.cpp" />
     <ClCompile Include="..\wtf\win\WTFDLL.cpp" />
-    <ClCompile Include="..\wtf\WordLock.cpp" />
     <ClCompile Include="..\wtf\WorkQueue.cpp" />
     <ClCompile Include="..\wtf\WTFThreadData.cpp" />
     <ClCompile Include="..\wtf\SchedulePairCF.cpp" />
@@ -177,7 +173,6 @@
     <ClInclude Include="..\wtf\CheckedArithmetic.h" />
     <ClInclude Include="..\wtf\CheckedBoolean.h" />
     <ClInclude Include="..\wtf\Compiler.h" />
-    <ClInclude Include="..\wtf\Condition.h" />
     <ClInclude Include="..\wtf\CryptographicUtilities.h" />
     <ClInclude Include="..\wtf\CryptographicallyRandomNumber.h" />
     <ClInclude Include="..\wtf\CurrentTime.h" />
@@ -217,7 +212,6 @@
     <ClInclude Include="..\wtf\glib\GUniquePtr.h" />
     <ClInclude Include="..\wtf\GregorianDateTime.h" />
     <ClInclude Include="..\wtf\HashCountedSet.h" />
-    <ClInclude Include="..\wtf\Hasher.h" />
     <ClInclude Include="..\wtf\HashFunctions.h" />
     <ClInclude Include="..\wtf\HashIterators.h" />
     <ClInclude Include="..\wtf\HashMap.h" />
@@ -229,7 +223,6 @@
     <ClInclude Include="..\wtf\IteratorAdaptors.h" />
     <ClInclude Include="..\wtf\IteratorRange.h" />
     <ClInclude Include="..\wtf\ListHashSet.h" />
-    <ClInclude Include="..\wtf\Lock.h" />
     <ClInclude Include="..\wtf\Locker.h" />
     <ClInclude Include="..\wtf\MainThread.h" />
     <ClInclude Include="..\wtf\MallocPtr.h" />
@@ -247,13 +240,10 @@
     <ClInclude Include="..\wtf\PageAllocation.h" />
     <ClInclude Include="..\wtf\PageBlock.h" />
     <ClInclude Include="..\wtf\PageReservation.h" />
-    <ClInclude Include="..\wtf\ParallelHelperPool.h" />
     <ClInclude Include="..\wtf\ParallelJobs.h" />
     <ClInclude Include="..\wtf\ParallelJobsGeneric.h" />
     <ClInclude Include="..\wtf\ParallelJobsLibdispatch.h" />
     <ClInclude Include="..\wtf\ParallelJobsOpenMP.h" />
-    <ClInclude Include="..\wtf\ParallelVectorIterator.h" />
-    <ClInclude Include="..\wtf\ParkingLot.h" />
     <ClInclude Include="..\wtf\PassRefPtr.h" />
     <ClInclude Include="..\wtf\Platform.h" />
     <ClInclude Include="..\wtf\PrintStream.h" />
@@ -272,14 +262,15 @@
     <ClInclude Include="..\wtf\SegmentedVector.h" />
     <ClInclude Include="..\wtf\SentinelLinkedList.h" />
     <ClInclude Include="..\wtf\SHA1.h" />
-    <ClInclude Include="..\wtf\SharedTask.h" />
     <ClInclude Include="..\wtf\SinglyLinkedList.h" />
     <ClInclude Include="..\wtf\SixCharacterHash.h" />
+    <ClInclude Include="..\wtf\SpinLock.h" />
     <ClInclude Include="..\wtf\StackBounds.h" />
     <ClInclude Include="..\wtf\StaticConstructors.h" />
     <ClInclude Include="..\wtf\StdLibExtras.h" />
     <ClInclude Include="..\wtf\Stopwatch.h" />
     <ClInclude Include="..\wtf\StringExtras.h" />
+    <ClInclude Include="..\wtf\StringHasher.h" />
     <ClInclude Include="..\wtf\StringPrintStream.h" />
     <ClInclude Include="..\wtf\TemporaryChange.h" />
     <ClInclude Include="..\wtf\text\ASCIIFastPath.h" />
@@ -317,8 +308,6 @@
     <ClInclude Include="..\wtf\VMTags.h" />
     <ClInclude Include="..\wtf\win\GDIObject.h" />
     <ClInclude Include="..\wtf\win\WorkItemWin.h" />
-    <ClInclude Include="..\wtf\WeakRandom.h" />
-    <ClInclude Include="..\wtf\WordLock.h" />
     <ClInclude Include="..\wtf\WorkQueue.h" />
     <ClInclude Include="..\wtf\WTFThreadData.h" />
   </ItemGroup>
@@ -336,80 +325,79 @@
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>WTFvcproj</RootNamespace>
     <ProjectName>WTF</ProjectName>
-    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v120</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v120</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_WinCairo|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v120_xp</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_WinCairo|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v120_xp</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugSuffix|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v120</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugSuffix|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v120</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v120</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v120</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_WinCairo|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v120_xp</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_WinCairo|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v120_xp</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Production|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v120</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Production|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v120</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">

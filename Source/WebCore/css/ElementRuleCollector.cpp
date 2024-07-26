@@ -40,7 +40,6 @@
 #include "RenderRegion.h"
 #include "SVGElement.h"
 #include "SelectorCompiler.h"
-#include "ShadowRoot.h"
 #include "StyleProperties.h"
 #include "StyledElement.h"
 
@@ -113,6 +112,35 @@ inline void ElementRuleCollector::addElementStyleProperties(const StylePropertie
         m_result.isCacheable = false;
 }
 
+class MatchingUARulesScope {
+public:
+    MatchingUARulesScope();
+    ~MatchingUARulesScope();
+
+    static bool isMatchingUARules();
+
+private:
+    static bool m_matchingUARules;
+};
+
+MatchingUARulesScope::MatchingUARulesScope()
+{
+    ASSERT(!m_matchingUARules);
+    m_matchingUARules = true;
+}
+
+MatchingUARulesScope::~MatchingUARulesScope()
+{
+    m_matchingUARules = false;
+}
+
+inline bool MatchingUARulesScope::isMatchingUARules()
+{
+    return m_matchingUARules;
+}
+
+bool MatchingUARulesScope::m_matchingUARules = false;
+
 void ElementRuleCollector::collectMatchingRules(const MatchRequest& matchRequest, StyleResolver::RuleRange& ruleRange)
 {
     ASSERT(matchRequest.ruleSet);
@@ -124,11 +152,14 @@ void ElementRuleCollector::collectMatchingRules(const MatchRequest& matchRequest
         collectMatchingRulesForList(matchRequest.ruleSet->cuePseudoRules(), matchRequest, ruleRange);
 #endif
 
-    auto* shadowRoot = m_element.containingShadowRoot();
-    if (shadowRoot && shadowRoot->type() == ShadowRoot::Type::UserAgent) {
+    if (m_element.isInShadowTree()) {
         const AtomicString& pseudoId = m_element.shadowPseudoId();
         if (!pseudoId.isEmpty())
             collectMatchingRulesForList(matchRequest.ruleSet->shadowPseudoElementRules(pseudoId.impl()), matchRequest, ruleRange);
+
+        // Only match UA rules in shadow tree.
+        if (!MatchingUARulesScope::isMatchingUARules())
+            return;
     }
 
     // We need to collect the rules for id, class, tag, and everything else into a buffer and
@@ -182,7 +213,7 @@ void ElementRuleCollector::sortAndTransferMatchedRules()
     for (const MatchedRule& matchedRule : matchedRules) {
         if (m_style && matchedRule.ruleData->containsUncommonAttributeSelector())
             m_style->setUnique();
-        m_result.addMatchedProperties(matchedRule.ruleData->rule()->properties(), matchedRule.ruleData->rule(), matchedRule.ruleData->linkMatchType(), matchedRule.ruleData->propertyWhitelistType());
+        m_result.addMatchedProperties(matchedRule.ruleData->rule()->properties(), matchedRule.ruleData->rule(), matchedRule.ruleData->linkMatchType(), matchedRule.ruleData->propertyWhitelistType(MatchingUARulesScope::isMatchingUARules()));
     }
 }
 
@@ -218,6 +249,8 @@ void ElementRuleCollector::matchUserRules(bool includeEmptyRules)
 
 void ElementRuleCollector::matchUARules()
 {
+    MatchingUARulesScope scope;
+
     // First we match rules from the user agent sheet.
     if (CSSDefaultStyleSheets::simpleDefaultStyleSheet)
         m_result.isCacheable = false;

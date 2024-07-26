@@ -149,12 +149,12 @@ void CachedImage::switchClientsToRevalidatedResource()
     if (!m_pendingContainerSizeRequests.isEmpty()) {
         // A copy of pending size requests is needed as they are deleted during CachedResource::switchClientsToRevalidateResouce().
         ContainerSizeRequests switchContainerSizeRequests;
-        for (auto& request : m_pendingContainerSizeRequests)
-            switchContainerSizeRequests.set(request.key, request.value);
+        for (ContainerSizeRequests::iterator it = m_pendingContainerSizeRequests.begin(); it != m_pendingContainerSizeRequests.end(); ++it)
+            switchContainerSizeRequests.set(it->key, it->value);
         CachedResource::switchClientsToRevalidatedResource();
         CachedImage& revalidatedCachedImage = downcast<CachedImage>(*resourceToRevalidate());
-        for (auto& request : switchContainerSizeRequests)
-            revalidatedCachedImage.setContainerSizeForRenderer(request.key, request.value.first, request.value.second);
+        for (ContainerSizeRequests::iterator it = switchContainerSizeRequests.begin(); it != switchContainerSizeRequests.end(); ++it)
+            revalidatedCachedImage.setContainerSizeForRenderer(it->key, it->value.first, it->value.second);
         return;
     }
 
@@ -353,8 +353,8 @@ inline void CachedImage::createImage()
     if (m_image) {
         // Send queued container size requests.
         if (m_image->usesContainerSize()) {
-            for (auto& request : m_pendingContainerSizeRequests)
-                setContainerSizeForRenderer(request.key, request.value.first, request.value.second);
+            for (ContainerSizeRequests::iterator it = m_pendingContainerSizeRequests.begin(); it != m_pendingContainerSizeRequests.end(); ++it)
+                setContainerSizeForRenderer(it->key, it->value.first, it->value.second);
         }
         m_pendingContainerSizeRequests.clear();
     }
@@ -419,8 +419,11 @@ void CachedImage::finishLoading(SharedBuffer* data)
     if (!m_image && data)
         createImage();
 
-    if (m_image)
+    if (m_image) {
+        if (m_loader && m_image->isSVGImage())
+            downcast<SVGImage>(*m_image).setDataProtocolLoader(&m_loader->dataProtocolFrameLoader());
         m_image->setData(data, true);
+    }
 
     if (!m_image || m_image->isNull()) {
         // Image decoding failed; the image data is malformed.

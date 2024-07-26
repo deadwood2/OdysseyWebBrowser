@@ -311,12 +311,12 @@ void WKContextAddVisitedLink(WKContextRef contextRef, WKStringRef visitedURL)
     if (visitedURLString.isEmpty())
         return;
 
-    toImpl(contextRef)->visitedLinkStore().addVisitedLinkHash(visitedLinkHash(visitedURLString));
+    toImpl(contextRef)->visitedLinkProvider().addVisitedLinkHash(visitedLinkHash(visitedURLString));
 }
 
 void WKContextClearVisitedLinks(WKContextRef contextRef)
 {
-    toImpl(contextRef)->visitedLinkStore().removeAll();
+    toImpl(contextRef)->visitedLinkProvider().removeAll();
 }
 
 void WKContextSetCacheModel(WKContextRef contextRef, WKCacheModel cacheModel)
@@ -452,16 +452,6 @@ WKKeyValueStorageManagerRef WKContextGetKeyValueStorageManager(WKContextRef cont
 WKMediaCacheManagerRef WKContextGetMediaCacheManager(WKContextRef contextRef)
 {
     return toAPI(toImpl(contextRef)->supplement<WebMediaCacheManagerProxy>());
-}
-
-WKMediaSessionFocusManagerRef WKContextGetMediaSessionFocusManager(WKContextRef context)
-{
-#if ENABLE(MEDIA_SESSION)
-    return toAPI(toImpl(context)->supplement<WebMediaSessionFocusManager>());
-#else
-    UNUSED_PARAM(context);
-    return nullptr;
-#endif
 }
 
 WKNotificationManagerRef WKContextGetNotificationManager(WKContextRef contextRef)

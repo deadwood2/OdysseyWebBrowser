@@ -37,7 +37,15 @@ static bool isWindowFeaturesSeparator(UChar c)
 }
 
 WindowFeatures::WindowFeatures(const String& features)
-    : resizable(true)
+    : x(0)
+    , xSet(false)
+    , y(0)
+    , ySet(false)
+    , width(0)
+    , widthSet(false)
+    , height(0)
+    , heightSet(false)
+    , resizable(true)
     , fullscreen(false)
     , dialog(false)
 {
@@ -126,15 +134,19 @@ void WindowFeatures::setWindowFeature(const String& keyString, const String& val
     // We treat keyString of "resizable" here as an additional feature rather than setting resizeable to true.
     // This is consistent with Firefox, but could also be handled at another level.
 
-    if (keyString == "left" || keyString == "screenx")
+    if (keyString == "left" || keyString == "screenx") {
+        xSet = true;
         x = value;
-    else if (keyString == "top" || keyString == "screeny")
+    } else if (keyString == "top" || keyString == "screeny") {
+        ySet = true;
         y = value;
-    else if (keyString == "width" || keyString == "innerwidth")
+    } else if (keyString == "width" || keyString == "innerwidth") {
+        widthSet = true;
         width = value;
-    else if (keyString == "height" || keyString == "innerheight")
+    } else if (keyString == "height" || keyString == "innerheight") {
+        heightSet = true;
         height = value;
-    else if (keyString == "menubar")
+    } else if (keyString == "menubar")
         menuBarVisible = value;
     else if (keyString == "toolbar")
         toolBarVisible = value;
@@ -151,13 +163,16 @@ void WindowFeatures::setWindowFeature(const String& keyString, const String& val
 }
 
 WindowFeatures::WindowFeatures(const String& dialogFeaturesString, const FloatRect& screenAvailableRect)
-    : menuBarVisible(false)
+    : widthSet(true)
+    , heightSet(true)
+    , menuBarVisible(false)
     , toolBarVisible(false)
     , locationBarVisible(false)
     , fullscreen(false)
     , dialog(true)
 {
-    auto features = parseDialogFeatures(dialogFeaturesString);
+    DialogFeaturesMap features;
+    parseDialogFeatures(dialogFeaturesString, features);
 
     const bool trusted = false;
 
@@ -172,20 +187,20 @@ WindowFeatures::WindowFeatures(const String& dialogFeaturesString, const FloatRe
     width = floatFeature(features, "dialogwidth", 100, screenAvailableRect.width(), 620); // default here came from frame size of dialog in MacIE
     height = floatFeature(features, "dialogheight", 100, screenAvailableRect.height(), 450); // default here came from frame size of dialog in MacIE
 
-    auto dialogLeft = floatFeature(features, "dialogleft", screenAvailableRect.x(), screenAvailableRect.maxX() - *width, -1);
-    if (dialogLeft > 0)
-        x = dialogLeft;
-
-    auto dialogTop = floatFeature(features, "dialogtop", screenAvailableRect.y(), screenAvailableRect.maxY() - *height, -1);
-    if (dialogTop > 0)
-        y = dialogTop;
+    x = floatFeature(features, "dialogleft", screenAvailableRect.x(), screenAvailableRect.maxX() - width, -1);
+    xSet = x > 0;
+    y = floatFeature(features, "dialogtop", screenAvailableRect.y(), screenAvailableRect.maxY() - height, -1);
+    ySet = y > 0;
 
     if (boolFeature(features, "center", true)) {
-        if (!x)
-            x = screenAvailableRect.x() + (screenAvailableRect.width() - *width) / 2;
-
-        if (!y)
-            y = screenAvailableRect.y() + (screenAvailableRect.height() - *height) / 2;
+        if (!xSet) {
+            x = screenAvailableRect.x() + (screenAvailableRect.width() - width) / 2;
+            xSet = true;
+        }
+        if (!ySet) {
+            y = screenAvailableRect.y() + (screenAvailableRect.height() - height) / 2;
+            ySet = true;
+        }
     }
 
     resizable = boolFeature(features, "resizable");
@@ -193,22 +208,20 @@ WindowFeatures::WindowFeatures(const String& dialogFeaturesString, const FloatRe
     statusBarVisible = boolFeature(features, "status", !trusted);
 }
 
-bool WindowFeatures::boolFeature(const HashMap<String, String>& features, const char* key, bool defaultValue)
+bool WindowFeatures::boolFeature(const DialogFeaturesMap& features, const char* key, bool defaultValue)
 {
-    auto it = features.find(key);
+    DialogFeaturesMap::const_iterator it = features.find(key);
     if (it == features.end())
         return defaultValue;
-
     const String& value = it->value;
     return value.isNull() || value == "1" || value == "yes" || value == "on";
 }
 
-float WindowFeatures::floatFeature(const HashMap<String, String>& features, const char* key, float min, float max, float defaultValue)
+float WindowFeatures::floatFeature(const DialogFeaturesMap& features, const char* key, float min, float max, float defaultValue)
 {
-    auto it = features.find(key);
+    DialogFeaturesMap::const_iterator it = features.find(key);
     if (it == features.end())
         return defaultValue;
-
     // FIXME: The toDouble function does not offer a way to tell "0q" from string with no digits in it: Both
     // return the number 0 and false for ok. But "0q" should yield the minimum rather than the default.
     bool ok;
@@ -219,18 +232,14 @@ float WindowFeatures::floatFeature(const HashMap<String, String>& features, cons
         return min;
     if (parsedNumber > max)
         return max;
-
     // FIXME: Seems strange to cast a double to int and then convert back to a float. Why is this a good idea?
     return static_cast<int>(parsedNumber);
 }
 
-HashMap<String, String> WindowFeatures::parseDialogFeatures(const String& string)
+void WindowFeatures::parseDialogFeatures(const String& string, DialogFeaturesMap& map)
 {
-    HashMap<String, String> features;
-
     Vector<String> vector;
     string.split(';', vector);
-
     for (auto& featureString : vector) {
         size_t separatorPosition = featureString.find('=');
         size_t colonPosition = featureString.find(':');
@@ -248,10 +257,8 @@ HashMap<String, String> WindowFeatures::parseDialogFeatures(const String& string
             value = value.left(value.find(' '));
         }
 
-        features.set(key, value);
+        map.set(key, value);
     }
-
-    return features;
 }
 
 } // namespace WebCore

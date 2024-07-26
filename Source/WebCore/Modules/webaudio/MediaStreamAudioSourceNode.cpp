@@ -35,21 +35,18 @@
 
 namespace WebCore {
 
-Ref<MediaStreamAudioSourceNode> MediaStreamAudioSourceNode::create(AudioContext& context, MediaStream& mediaStream, MediaStreamTrack& audioTrack)
+Ref<MediaStreamAudioSourceNode> MediaStreamAudioSourceNode::create(AudioContext* context, MediaStream* mediaStream, MediaStreamTrack* audioTrack, AudioSourceProvider* audioSourceProvider)
 {
-    return adoptRef(*new MediaStreamAudioSourceNode(context, mediaStream, audioTrack));
+    return adoptRef(*new MediaStreamAudioSourceNode(context, mediaStream, audioTrack, audioSourceProvider));
 }
 
-MediaStreamAudioSourceNode::MediaStreamAudioSourceNode(AudioContext& context, MediaStream& mediaStream, MediaStreamTrack& audioTrack)
-    : AudioNode(&context, context.sampleRate())
+MediaStreamAudioSourceNode::MediaStreamAudioSourceNode(AudioContext* context, MediaStream* mediaStream, MediaStreamTrack* audioTrack, AudioSourceProvider* audioSourceProvider)
+    : AudioNode(context, context->sampleRate())
     , m_mediaStream(mediaStream)
     , m_audioTrack(audioTrack)
+    , m_audioSourceProvider(audioSourceProvider)
+    , m_sourceNumberOfChannels(0)
 {
-    AudioSourceProvider* audioSourceProvider = m_audioTrack->audioSourceProvider();
-    ASSERT(audioSourceProvider);
-
-    audioSourceProvider->setClient(this);
-    
     // Default to stereo. This could change depending on the format of the MediaStream's audio track.
     addOutput(std::make_unique<AudioNodeOutput>(this, 2));
 
@@ -60,18 +57,14 @@ MediaStreamAudioSourceNode::MediaStreamAudioSourceNode(AudioContext& context, Me
 
 MediaStreamAudioSourceNode::~MediaStreamAudioSourceNode()
 {
-    AudioSourceProvider* audioSourceProvider = m_audioTrack->audioSourceProvider();
-    ASSERT(audioSourceProvider);
-    audioSourceProvider->setClient(nullptr);
     uninitialize();
 }
 
 void MediaStreamAudioSourceNode::setFormat(size_t numberOfChannels, float sourceSampleRate)
 {
-    float sampleRate = this->sampleRate();
-    if (numberOfChannels != m_sourceNumberOfChannels || sourceSampleRate != sampleRate) {
+    if (numberOfChannels != m_sourceNumberOfChannels || sourceSampleRate != sampleRate()) {
         // The sample-rate must be equal to the context's sample-rate.
-        if (!numberOfChannels || numberOfChannels > AudioContext::maxNumberOfChannels() || sourceSampleRate != sampleRate) {
+        if (!numberOfChannels || numberOfChannels > AudioContext::maxNumberOfChannels() || sourceSampleRate != sampleRate()) {
             // process() will generate silence for these uninitialized values.
             LOG(Media, "MediaStreamAudioSourceNode::setFormat(%u, %f) - unhandled format change", static_cast<unsigned>(numberOfChannels), sourceSampleRate);
             m_sourceNumberOfChannels = 0;
@@ -79,17 +72,7 @@ void MediaStreamAudioSourceNode::setFormat(size_t numberOfChannels, float source
         }
 
         // Synchronize with process().
-        std::lock_guard<Lock> lock(m_processMutex);
-
-        m_sourceNumberOfChannels = numberOfChannels;
-        m_sourceSampleRate = sourceSampleRate;
-
-        if (sourceSampleRate == sampleRate)
-            m_multiChannelResampler = nullptr;
-        else {
-            double scaleFactor = sourceSampleRate / sampleRate;
-            m_multiChannelResampler = std::make_unique<MultiChannelResampler>(scaleFactor, numberOfChannels);
-        }
+        std::lock_guard<std::mutex> lock(m_processMutex);
 
         m_sourceNumberOfChannels = numberOfChannels;
 
@@ -106,9 +89,13 @@ void MediaStreamAudioSourceNode::setFormat(size_t numberOfChannels, float source
 void MediaStreamAudioSourceNode::process(size_t numberOfFrames)
 {
     AudioBus* outputBus = output(0)->bus();
-    AudioSourceProvider* provider = m_audioTrack->audioSourceProvider();
 
-    if (!mediaStream() || !m_sourceNumberOfChannels || !m_sourceSampleRate || !provider) {
+    if (!audioSourceProvider()) {
+        outputBus->zero();
+        return;
+    }
+
+    if (!mediaStream() || m_sourceNumberOfChannels != outputBus->numberOfChannels()) {
         outputBus->zero();
         return;
     }
@@ -116,21 +103,18 @@ void MediaStreamAudioSourceNode::process(size_t numberOfFrames)
     // Use std::try_to_lock to avoid contention in the real-time audio thread.
     // If we fail to acquire the lock then the MediaStream must be in the middle of
     // a format change, so we output silence in this case.
-    std::unique_lock<Lock> lock(m_processMutex, std::try_to_lock);
+    std::unique_lock<std::mutex> lock(m_processMutex, std::try_to_lock);
     if (!lock.owns_lock()) {
         // We failed to acquire the lock.
         outputBus->zero();
         return;
     }
 
-    if (m_multiChannelResampler.get()) {
-        ASSERT(m_sourceSampleRate != sampleRate());
-        m_multiChannelResampler->process(provider, outputBus, numberOfFrames);
-    } else {
-        // Bypass the resampler completely if the source is at the context's sample-rate.
-        ASSERT(m_sourceSampleRate == sampleRate());
-        provider->provideInput(outputBus, numberOfFrames);
-    }
+    audioSourceProvider()->provideInput(outputBus, numberOfFrames);
+}
+
+void MediaStreamAudioSourceNode::reset()
+{
 }
 
 } // namespace WebCore

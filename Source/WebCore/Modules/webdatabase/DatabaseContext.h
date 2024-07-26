@@ -50,6 +50,10 @@ public:
 
     DatabaseThread* databaseThread();
 
+#if PLATFORM(IOS)
+    void setPaused(bool);
+#endif
+
     void setHasOpenDatabases() { m_hasOpenDatabases = true; }
     bool hasOpenDatabases() const { return m_hasOpenDatabases; }
 
@@ -80,6 +84,11 @@ private:
     bool m_hasRequestedTermination;
 
     friend class DatabaseManager;
+
+#if PLATFORM(IOS)
+    Mutex m_databaseThreadMutex;
+    bool m_paused;
+#endif
 };
 
 } // namespace WebCore

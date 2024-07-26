@@ -261,6 +261,7 @@ namespace WebCore {
         }
 
         String clipper;
+        String filter;
         String masker;
 
     private:

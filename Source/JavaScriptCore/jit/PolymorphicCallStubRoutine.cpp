@@ -41,13 +41,13 @@ PolymorphicCallNode::~PolymorphicCallNode()
         remove();
 }
 
-void PolymorphicCallNode::unlink(VM& vm)
+void PolymorphicCallNode::unlink(RepatchBuffer& repatchBuffer)
 {
     if (m_callLinkInfo) {
         if (Options::showDisassembly())
             dataLog("Unlinking polymorphic call at ", m_callLinkInfo->callReturnLocation(), ", ", m_callLinkInfo->codeOrigin(), "\n");
 
-        m_callLinkInfo->unlink(vm);
+        m_callLinkInfo->unlink(repatchBuffer);
     }
 
     if (isOnList())
@@ -117,7 +117,7 @@ void PolymorphicCallStubRoutine::clearCallNodesFor(CallLinkInfo* info)
     }
 }
 
-bool PolymorphicCallStubRoutine::visitWeak(VM&)
+bool PolymorphicCallStubRoutine::visitWeak(RepatchBuffer&)
 {
     for (auto& variant : m_variants) {
         if (!Heap::isMarked(variant.get()))

@@ -29,7 +29,6 @@
 
 #include <functional>
 #include <sqlite3.h>
-#include <wtf/Lock.h>
 #include <wtf/Threading.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
@@ -56,6 +55,8 @@ public:
     WEBCORE_EXPORT bool open(const String& filename, bool forWebSQLDatabase = false);
     bool isOpen() const { return m_db; }
     WEBCORE_EXPORT void close();
+    void interrupt();
+    bool isInterrupted();
 
     void updateLastChangesCount();
 
@@ -107,7 +108,7 @@ public:
     
     void setAuthorizer(PassRefPtr<DatabaseAuthorizer>);
 
-    Lock& databaseMutex() { return m_lockingMutex; }
+    Mutex& databaseMutex() { return m_lockingMutex; }
     bool isAutoCommitOn() const;
 
     // The SQLite AUTO_VACUUM pragma can be either NONE, FULL, or INCREMENTAL.
@@ -148,13 +149,14 @@ private:
     bool m_transactionInProgress;
     bool m_sharable;
     
-    Lock m_authorizerLock;
+    Mutex m_authorizerLock;
     RefPtr<DatabaseAuthorizer> m_authorizer;
 
-    Lock m_lockingMutex;
+    Mutex m_lockingMutex;
     ThreadIdentifier m_openingThread;
 
-    Lock m_databaseClosingMutex;
+    Mutex m_databaseClosingMutex;
+    bool m_interrupted;
 
     int m_openError;
     CString m_openErrorMessage;

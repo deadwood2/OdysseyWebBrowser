@@ -36,14 +36,17 @@
 #include <WebCore/Cursor.h>
 #include <WebCore/DatabaseDetails.h>
 #include <WebCore/DictationAlternative.h>
-#include <WebCore/DictionaryPopupInfo.h>
 #include <WebCore/Editor.h>
 #include <WebCore/FileChooser.h>
 #include <WebCore/FilterOperation.h>
 #include <WebCore/FilterOperations.h>
 #include <WebCore/GraphicsContext.h>
 #include <WebCore/GraphicsLayer.h>
+#include <WebCore/IDBDatabaseMetadata.h>
 #include <WebCore/IDBGetResult.h>
+#include <WebCore/IDBKeyData.h>
+#include <WebCore/IDBKeyPath.h>
+#include <WebCore/IDBKeyRangeData.h>
 #include <WebCore/Image.h>
 #include <WebCore/Length.h>
 #include <WebCore/Path.h>
@@ -70,7 +73,6 @@
 
 #if PLATFORM(COCOA)
 #include "ArgumentCodersCF.h"
-#include "ArgumentCodersMac.h"
 #endif
 
 #if PLATFORM(IOS)
@@ -592,7 +594,8 @@ bool ArgumentCoder<PluginInfo>::decode(ArgumentDecoder& decoder, PluginInfo& plu
         return false;
     if (!decoder.decode(pluginInfo.isApplicationPlugin))
         return false;
-    if (!decoder.decodeEnum(pluginInfo.clientLoadPolicy))
+    PluginLoadClientPolicy clientLoadPolicy;
+    if (!decoder.decodeEnum(clientLoadPolicy))
         return false;
 #if PLATFORM(MAC)
     if (!decoder.decode(pluginInfo.bundleIdentifier))
@@ -745,29 +748,6 @@ static bool decodeImage(ArgumentDecoder& decoder, RefPtr<Image>& image)
     if (!image)
         return false;
     return true;
-}
-
-static void encodeOptionalImage(ArgumentEncoder& encoder, Image* image)
-{
-    bool hasImage = !!image;
-    encoder << hasImage;
-
-    if (hasImage)
-        encodeImage(encoder, image);
-}
-
-static bool decodeOptionalImage(ArgumentDecoder& decoder, RefPtr<Image>& image)
-{
-    image = nullptr;
-
-    bool hasImage;
-    if (!decoder.decode(hasImage))
-        return false;
-
-    if (!hasImage)
-        return true;
-
-    return decodeImage(decoder, image);
 }
 
 #if !PLATFORM(IOS)
@@ -976,6 +956,10 @@ void ArgumentCoder<WindowFeatures>::encode(ArgumentEncoder& encoder, const Windo
     encoder << windowFeatures.y;
     encoder << windowFeatures.width;
     encoder << windowFeatures.height;
+    encoder << windowFeatures.xSet;
+    encoder << windowFeatures.ySet;
+    encoder << windowFeatures.widthSet;
+    encoder << windowFeatures.heightSet;
     encoder << windowFeatures.menuBarVisible;
     encoder << windowFeatures.statusBarVisible;
     encoder << windowFeatures.toolBarVisible;
@@ -995,6 +979,14 @@ bool ArgumentCoder<WindowFeatures>::decode(ArgumentDecoder& decoder, WindowFeatu
     if (!decoder.decode(windowFeatures.width))
         return false;
     if (!decoder.decode(windowFeatures.height))
+        return false;
+    if (!decoder.decode(windowFeatures.xSet))
+        return false;
+    if (!decoder.decode(windowFeatures.ySet))
+        return false;
+    if (!decoder.decode(windowFeatures.widthSet))
+        return false;
+    if (!decoder.decode(windowFeatures.heightSet))
         return false;
     if (!decoder.decode(windowFeatures.menuBarVisible))
         return false;
@@ -1806,6 +1798,55 @@ bool ArgumentCoder<FilterOperations>::decode(ArgumentDecoder& decoder, FilterOpe
 #endif // !USE(COORDINATED_GRAPHICS)
 
 #if ENABLE(INDEXED_DATABASE)
+void ArgumentCoder<IDBDatabaseMetadata>::encode(ArgumentEncoder& encoder, const IDBDatabaseMetadata& metadata)
+{
+    encoder << metadata.name << metadata.id << metadata.version << metadata.maxObjectStoreId << metadata.objectStores;
+}
+
+bool ArgumentCoder<IDBDatabaseMetadata>::decode(ArgumentDecoder& decoder, IDBDatabaseMetadata& metadata)
+{
+    if (!decoder.decode(metadata.name))
+        return false;
+
+    if (!decoder.decode(metadata.id))
+        return false;
+
+    if (!decoder.decode(metadata.version))
+        return false;
+
+    if (!decoder.decode(metadata.maxObjectStoreId))
+        return false;
+
+    if (!decoder.decode(metadata.objectStores))
+        return false;
+
+    return true;
+}
+
+void ArgumentCoder<IDBIndexMetadata>::encode(ArgumentEncoder& encoder, const IDBIndexMetadata& metadata)
+{
+    encoder << metadata.name << metadata.id << metadata.keyPath << metadata.unique << metadata.multiEntry;
+}
+
+bool ArgumentCoder<IDBIndexMetadata>::decode(ArgumentDecoder& decoder, IDBIndexMetadata& metadata)
+{
+    if (!decoder.decode(metadata.name))
+        return false;
+
+    if (!decoder.decode(metadata.id))
+        return false;
+
+    if (!decoder.decode(metadata.keyPath))
+        return false;
+
+    if (!decoder.decode(metadata.unique))
+        return false;
+
+    if (!decoder.decode(metadata.multiEntry))
+        return false;
+
+    return true;
+}
 
 void ArgumentCoder<IDBGetResult>::encode(ArgumentEncoder& encoder, const IDBGetResult& result)
 {
@@ -1838,6 +1879,185 @@ bool ArgumentCoder<IDBGetResult>::decode(ArgumentDecoder& decoder, IDBGetResult&
         return false;
 
     if (!decoder.decode(result.keyPath))
+        return false;
+
+    return true;
+}
+
+void ArgumentCoder<IDBKeyData>::encode(ArgumentEncoder& encoder, const IDBKeyData& keyData)
+{
+    encoder << keyData.isNull;
+    if (keyData.isNull)
+        return;
+
+    encoder.encodeEnum(keyData.type);
+
+    switch (keyData.type) {
+    case IDBKey::InvalidType:
+        break;
+    case IDBKey::ArrayType:
+        encoder << keyData.arrayValue;
+        break;
+    case IDBKey::StringType:
+        encoder << keyData.stringValue;
+        break;
+    case IDBKey::DateType:
+    case IDBKey::NumberType:
+        encoder << keyData.numberValue;
+        break;
+    case IDBKey::MaxType:
+    case IDBKey::MinType:
+        // MaxType and MinType are only used for comparison to other keys.
+        // They should never be sent across the wire.
+        ASSERT_NOT_REACHED();
+        break;
+    }
+}
+
+bool ArgumentCoder<IDBKeyData>::decode(ArgumentDecoder& decoder, IDBKeyData& keyData)
+{
+    if (!decoder.decode(keyData.isNull))
+        return false;
+
+    if (keyData.isNull)
+        return true;
+
+    if (!decoder.decodeEnum(keyData.type))
+        return false;
+
+    switch (keyData.type) {
+    case IDBKey::InvalidType:
+        break;
+    case IDBKey::ArrayType:
+        if (!decoder.decode(keyData.arrayValue))
+            return false;
+        break;
+    case IDBKey::StringType:
+        if (!decoder.decode(keyData.stringValue))
+            return false;
+        break;
+    case IDBKey::DateType:
+    case IDBKey::NumberType:
+        if (!decoder.decode(keyData.numberValue))
+            return false;
+        break;
+    case IDBKey::MaxType:
+    case IDBKey::MinType:
+        // MaxType and MinType are only used for comparison to other keys.
+        // They should never be sent across the wire.
+        ASSERT_NOT_REACHED();
+        decoder.markInvalid();
+        return false;
+    }
+
+    return true;
+}
+
+void ArgumentCoder<IDBKeyPath>::encode(ArgumentEncoder& encoder, const IDBKeyPath& keyPath)
+{
+    encoder.encodeEnum(keyPath.type());
+
+    switch (keyPath.type()) {
+    case IDBKeyPath::NullType:
+        break;
+    case IDBKeyPath::StringType:
+        encoder << keyPath.string();
+        break;
+    case IDBKeyPath::ArrayType:
+        encoder << keyPath.array();
+        break;
+    default:
+        ASSERT_NOT_REACHED();
+    }
+}
+
+bool ArgumentCoder<IDBKeyPath>::decode(ArgumentDecoder& decoder, IDBKeyPath& keyPath)
+{
+    IDBKeyPath::Type type;
+    if (!decoder.decodeEnum(type))
+        return false;
+
+    switch (type) {
+    case IDBKeyPath::NullType:
+        keyPath = IDBKeyPath();
+        return true;
+
+    case IDBKeyPath::StringType: {
+        String string;
+        if (!decoder.decode(string))
+            return false;
+
+        keyPath = IDBKeyPath(string);
+        return true;
+    }
+    case IDBKeyPath::ArrayType: {
+        Vector<String> array;
+        if (!decoder.decode(array))
+            return false;
+
+        keyPath = IDBKeyPath(array);
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
+void ArgumentCoder<IDBKeyRangeData>::encode(ArgumentEncoder& encoder, const IDBKeyRangeData& keyRange)
+{
+    encoder << keyRange.isNull;
+    if (keyRange.isNull)
+        return;
+
+    encoder << keyRange.upperKey << keyRange.lowerKey << keyRange.upperOpen << keyRange.lowerOpen;
+}
+
+bool ArgumentCoder<IDBKeyRangeData>::decode(ArgumentDecoder& decoder, IDBKeyRangeData& keyRange)
+{
+    if (!decoder.decode(keyRange.isNull))
+        return false;
+
+    if (keyRange.isNull)
+        return true;
+
+    if (!decoder.decode(keyRange.upperKey))
+        return false;
+
+    if (!decoder.decode(keyRange.lowerKey))
+        return false;
+
+    if (!decoder.decode(keyRange.upperOpen))
+        return false;
+
+    if (!decoder.decode(keyRange.lowerOpen))
+        return false;
+
+    return true;
+}
+
+void ArgumentCoder<IDBObjectStoreMetadata>::encode(ArgumentEncoder& encoder, const IDBObjectStoreMetadata& metadata)
+{
+    encoder << metadata.name << metadata.id << metadata.keyPath << metadata.autoIncrement << metadata.maxIndexId << metadata.indexes;
+}
+
+bool ArgumentCoder<IDBObjectStoreMetadata>::decode(ArgumentDecoder& decoder, IDBObjectStoreMetadata& metadata)
+{
+    if (!decoder.decode(metadata.name))
+        return false;
+
+    if (!decoder.decode(metadata.id))
+        return false;
+
+    if (!decoder.decode(metadata.keyPath))
+        return false;
+
+    if (!decoder.decode(metadata.autoIncrement))
+        return false;
+
+    if (!decoder.decode(metadata.maxIndexId))
+        return false;
+
+    if (!decoder.decode(metadata.indexes))
         return false;
 
     return true;
@@ -1908,11 +2128,18 @@ void ArgumentCoder<TextIndicatorData>::encode(ArgumentEncoder& encoder, const Te
     encoder << textIndicatorData.textBoundingRectInRootViewCoordinates;
     encoder << textIndicatorData.textRectsInBoundingRectCoordinates;
     encoder << textIndicatorData.contentImageScaleFactor;
+    encoder << textIndicatorData.wantsMargin;
     encoder.encodeEnum(textIndicatorData.presentationTransition);
-    encoder << static_cast<uint64_t>(textIndicatorData.options);
 
-    encodeOptionalImage(encoder, textIndicatorData.contentImage.get());
-    encodeOptionalImage(encoder, textIndicatorData.contentImageWithHighlight.get());
+    bool hasImage = textIndicatorData.contentImage;
+    encoder << hasImage;
+    if (hasImage)
+        encodeImage(encoder, textIndicatorData.contentImage.get());
+
+    bool hasImageWithHighlight = textIndicatorData.contentImageWithHighlight;
+    encoder << hasImageWithHighlight;
+    if (hasImageWithHighlight)
+        encodeImage(encoder, textIndicatorData.contentImageWithHighlight.get());
 }
 
 bool ArgumentCoder<TextIndicatorData>::decode(ArgumentDecoder& decoder, TextIndicatorData& textIndicatorData)
@@ -1929,18 +2156,22 @@ bool ArgumentCoder<TextIndicatorData>::decode(ArgumentDecoder& decoder, TextIndi
     if (!decoder.decode(textIndicatorData.contentImageScaleFactor))
         return false;
 
+    if (!decoder.decode(textIndicatorData.wantsMargin))
+        return false;
+
     if (!decoder.decodeEnum(textIndicatorData.presentationTransition))
         return false;
 
-    uint64_t options;
-    if (!decoder.decode(options))
+    bool hasImage;
+    if (!decoder.decode(hasImage))
         return false;
-    textIndicatorData.options = static_cast<TextIndicatorOptions>(options);
-
-    if (!decodeOptionalImage(decoder, textIndicatorData.contentImage))
+    if (hasImage && !decodeImage(decoder, textIndicatorData.contentImage))
         return false;
 
-    if (!decodeOptionalImage(decoder, textIndicatorData.contentImageWithHighlight))
+    bool hasImageWithHighlight;
+    if (!decoder.decode(hasImageWithHighlight))
+        return false;
+    if (hasImageWithHighlight && !decodeImage(decoder, textIndicatorData.contentImageWithHighlight))
         return false;
 
     return true;
@@ -1971,53 +2202,5 @@ bool ArgumentCoder<MediaPlaybackTargetContext>::decode(ArgumentDecoder& decoder,
     return decodePlatformData(decoder, target);
 }
 #endif
-
-void ArgumentCoder<DictionaryPopupInfo>::encode(IPC::ArgumentEncoder& encoder, const DictionaryPopupInfo& info)
-{
-    encoder << info.origin;
-    encoder << info.textIndicator;
-
-#if PLATFORM(COCOA)
-    bool hadOptions = info.options;
-    encoder << hadOptions;
-    if (hadOptions)
-        IPC::encode(encoder, info.options.get());
-
-    bool hadAttributedString = info.attributedString;
-    encoder << hadAttributedString;
-    if (hadAttributedString)
-        IPC::encode(encoder, info.attributedString.get());
-#endif
-}
-
-bool ArgumentCoder<DictionaryPopupInfo>::decode(IPC::ArgumentDecoder& decoder, DictionaryPopupInfo& result)
-{
-    if (!decoder.decode(result.origin))
-        return false;
-
-    if (!decoder.decode(result.textIndicator))
-        return false;
-
-#if PLATFORM(COCOA)
-    bool hadOptions;
-    if (!decoder.decode(hadOptions))
-        return false;
-    if (hadOptions) {
-        if (!IPC::decode(decoder, result.options))
-            return false;
-    } else
-        result.options = nullptr;
-
-    bool hadAttributedString;
-    if (!decoder.decode(hadAttributedString))
-        return false;
-    if (hadAttributedString) {
-        if (!IPC::decode(decoder, result.attributedString))
-            return false;
-    } else
-        result.attributedString = nullptr;
-#endif
-    return true;
-}
 
 } // namespace IPC

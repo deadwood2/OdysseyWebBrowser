@@ -31,6 +31,7 @@
 #include "ActiveDOMObject.h"
 #include "DOMTimer.h"
 #include "ResourceRequest.h"
+#include "ScheduledAction.h"
 #include "SecurityContext.h"
 #include "Supplementable.h"
 #include <runtime/ConsoleTypes.h>

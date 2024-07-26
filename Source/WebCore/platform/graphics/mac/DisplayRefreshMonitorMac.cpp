@@ -36,7 +36,6 @@ namespace WebCore {
 
 DisplayRefreshMonitorMac::DisplayRefreshMonitorMac(PlatformDisplayID displayID)
     : DisplayRefreshMonitor(displayID)
-    , m_weakFactory(this)
     , m_displayLink(nullptr)
 {
 }
@@ -48,6 +47,8 @@ DisplayRefreshMonitorMac::~DisplayRefreshMonitorMac()
         CVDisplayLinkRelease(m_displayLink);
         m_displayLink = nullptr;
     }
+
+    cancelCallOnMainThread(DisplayRefreshMonitor::handleDisplayRefreshedNotificationOnMainThread, this);
 }
 
 static CVReturn displayLinkCallback(CVDisplayLinkRef, const CVTimeStamp* now, const CVTimeStamp* outputTime, CVOptionFlags, CVOptionFlags*, void* data)
@@ -83,14 +84,14 @@ bool DisplayRefreshMonitorMac::requestRefreshCallback()
         setIsActive(true);
     }
 
-    LockHolder lock(mutex());
+    MutexLocker lock(mutex());
     setIsScheduled(true);
     return true;
 }
 
 void DisplayRefreshMonitorMac::displayLinkFired(double nowSeconds, double outputTimeSeconds)
 {
-    LockHolder lock(mutex());
+    MutexLocker lock(mutex());
     if (!isPreviousFrameDone())
         return;
 
@@ -101,12 +102,7 @@ void DisplayRefreshMonitorMac::displayLinkFired(double nowSeconds, double output
     // FIXME: Should this be using webKitMonotonicNow?
     setMonotonicAnimationStartTime(webKitMonotonicNow + timeUntilOutput);
 
-    auto weakPtr = m_weakFactory.createWeakPtr();
-
-    callOnMainThread([weakPtr] {
-        if (auto* monitor = weakPtr.get())
-            handleDisplayRefreshedNotificationOnMainThread(monitor);
-    });
+    callOnMainThread(handleDisplayRefreshedNotificationOnMainThread, this);
 }
 
 }

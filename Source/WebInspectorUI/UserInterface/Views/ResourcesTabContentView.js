@@ -23,29 +23,31 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ResourcesTabContentView = class ResourcesTabContentView extends WebInspector.ContentBrowserTabContentView
+WebInspector.ResourcesTabContentView = function(identifier)
 {
-    constructor(identifier)
-    {
-        var tabBarItem = new WebInspector.TabBarItem("Images/Resources.svg", WebInspector.UIString("Resources"));
-        var detailsSidebarPanels = [WebInspector.resourceDetailsSidebarPanel, WebInspector.probeDetailsSidebarPanel];
+    var tabBarItem = new WebInspector.TabBarItem("Images/Resources.svg", WebInspector.UIString("Resources"));
+    var detailsSidebarPanels = [WebInspector.resourceDetailsSidebarPanel, WebInspector.probeDetailsSidebarPanel];
 
-        // FIXME: Until ContentFlows are moved to the Elements tab, these details sidebar panels need to be included.
-        detailsSidebarPanels = detailsSidebarPanels.concat([WebInspector.domNodeDetailsSidebarPanel, WebInspector.cssStyleDetailsSidebarPanel]);
-        if (WebInspector.layerTreeDetailsSidebarPanel)
-            detailsSidebarPanels.push(WebInspector.layerTreeDetailsSidebarPanel);
+    // FIXME: Until ContentFlows are moved to the Elements tab, these details sidebar panels need to be included.
+    detailsSidebarPanels = detailsSidebarPanels.concat([WebInspector.domNodeDetailsSidebarPanel, WebInspector.cssStyleDetailsSidebarPanel]);
+    if (WebInspector.layerTreeDetailsSidebarPanel)
+        detailsSidebarPanels.push(WebInspector.layerTreeDetailsSidebarPanel);
 
-        super(identifier || "resources", "resources", tabBarItem, WebInspector.ResourceSidebarPanel, detailsSidebarPanels);
-    }
+    WebInspector.ContentBrowserTabContentView.call(this, identifier || "resources", "resources", tabBarItem, WebInspector.ResourceSidebarPanel, detailsSidebarPanels);
+};
+
+WebInspector.ResourcesTabContentView.prototype = {
+    constructor: WebInspector.ResourcesTabContentView,
+    __proto__: WebInspector.ContentBrowserTabContentView.prototype,
 
     // Public
 
     get type()
     {
         return WebInspector.ResourcesTabContentView.Type;
-    }
+    },
 
-    canShowRepresentedObject(representedObject)
+    canShowRepresentedObject: function(representedObject)
     {
         return representedObject instanceof WebInspector.Frame
             || representedObject instanceof WebInspector.Resource

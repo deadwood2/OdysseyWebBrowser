@@ -93,7 +93,7 @@ void TileController::tileCacheLayerBoundsChanged()
 void TileController::setNeedsDisplay()
 {
     tileGrid().setNeedsDisplay();
-    clearZoomedOutTileGrid();
+    m_zoomedOutTileGrid = nullptr;
 }
 
 void TileController::setNeedsDisplayInRect(const IntRect& rect)
@@ -125,8 +125,7 @@ void TileController::setContentsScale(float scale)
     if (m_zoomedOutTileGrid && m_zoomedOutTileGrid->scale() == scale) {
         m_tileGrid = WTF::move(m_zoomedOutTileGrid);
         m_tileGrid->setIsZoomedOutTileGrid(false);
-        m_tileGrid->revalidateTiles();
-        tileGridsChanged();
+        m_tileGrid->revalidateTiles(0);
         return;
     }
 
@@ -134,7 +133,6 @@ void TileController::setContentsScale(float scale)
         m_zoomedOutTileGrid = WTF::move(m_tileGrid);
         m_zoomedOutTileGrid->setIsZoomedOutTileGrid(true);
         m_tileGrid = std::make_unique<TileGrid>(*this);
-        tileGridsChanged();
     }
 
     tileGrid().setScale(scale);
@@ -163,7 +161,7 @@ void TileController::setZoomedOutContentsScale(float scale)
     m_zoomedOutContentsScale = scale;
 
     if (m_zoomedOutTileGrid && m_zoomedOutTileGrid->scale() != m_zoomedOutContentsScale)
-        clearZoomedOutTileGrid();
+        m_zoomedOutTileGrid = nullptr;
 }
 
 void TileController::setAcceleratesDrawing(bool acceleratesDrawing)
@@ -263,7 +261,7 @@ void TileController::setTileCoverage(TileCoverage coverage)
 void TileController::revalidateTiles()
 {
     ASSERT(owningGraphicsLayer()->isCommittingChanges());
-    tileGrid().revalidateTiles();
+    tileGrid().revalidateTiles(0);
 }
 
 void TileController::forceRepaint()
@@ -428,17 +426,6 @@ bool TileController::shouldTemporarilyRetainTileCohorts() const
     return owningGraphicsLayer()->platformCALayerShouldTemporarilyRetainTileCohorts(m_tileCacheLayer);
 }
 
-void TileController::clearZoomedOutTileGrid()
-{
-    m_zoomedOutTileGrid = nullptr;
-    tileGridsChanged();
-}
-
-void TileController::tileGridsChanged()
-{
-    return owningGraphicsLayer()->platformCALayerCustomSublayersChanged(m_tileCacheLayer);
-}
-
 void TileController::tileRevalidationTimerFired()
 {
     if (!owningGraphicsLayer())
@@ -449,7 +436,7 @@ void TileController::tileRevalidationTimerFired()
         return;
     }
     // If we are not visible get rid of the zoomed-out tiles.
-    clearZoomedOutTileGrid();
+    m_zoomedOutTileGrid = nullptr;
 
     TileGrid::TileValidationPolicy validationPolicy = (shouldAggressivelyRetainTiles() ? 0 : TileGrid::PruneSecondaryTiles) | TileGrid::UnparentAllTiles;
 

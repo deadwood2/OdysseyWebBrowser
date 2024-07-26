@@ -78,15 +78,17 @@ static void drawPatternCallback(void* info, CGContextRef context)
     CGContextDrawImage(context, GraphicsContext(context).roundToDevicePixels(FloatRect(0, 0, CGImageGetWidth(image), height)), image);
 }
 
-static void patternReleaseCallback(void* info)
+static void patternReleaseOnMainThreadCallback(void* info)
 {
-    auto image = static_cast<CGImageRef>(info);
-    callOnMainThread([image] {
-        CGImageRelease(image);
-    });
+    CGImageRelease((CGImageRef)info);
 }
 
-void Image::drawPattern(GraphicsContext& ctxt, const FloatRect& tileRect, const AffineTransform& patternTransform,
+static void patternReleaseCallback(void* info)
+{
+    callOnMainThread(patternReleaseOnMainThreadCallback, info);
+}
+
+void Image::drawPattern(GraphicsContext* ctxt, const FloatRect& tileRect, const AffineTransform& patternTransform,
     const FloatPoint& phase, ColorSpace styleColorSpace, CompositeOperator op, const FloatRect& destRect, BlendMode blendMode)
 {
     if (!nativeImageForCurrentFrame())
@@ -95,10 +97,10 @@ void Image::drawPattern(GraphicsContext& ctxt, const FloatRect& tileRect, const 
     if (!patternTransform.isInvertible())
         return;
 
-    CGContextRef context = ctxt.platformContext();
-    GraphicsContextStateSaver stateSaver(ctxt);
+    CGContextRef context = ctxt->platformContext();
+    GraphicsContextStateSaver stateSaver(*ctxt);
     CGContextClipToRect(context, destRect);
-    ctxt.setCompositeOperation(op, blendMode);
+    ctxt->setCompositeOperation(op, blendMode);
     CGContextTranslateCTM(context, destRect.x(), destRect.y() + destRect.height());
     CGContextScaleCTM(context, 1, -1);
     

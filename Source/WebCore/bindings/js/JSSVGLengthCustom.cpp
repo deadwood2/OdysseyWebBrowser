@@ -31,29 +31,29 @@ using namespace JSC;
 
 namespace WebCore {
 
-JSValue JSSVGLength::value(ExecState& state) const
+JSValue JSSVGLength::value(ExecState* exec) const
 {
     SVGLength& podImp = impl().propertyReference();
     ExceptionCode ec = 0;
     SVGLengthContext lengthContext(impl().contextElement());
     float value = podImp.value(lengthContext, ec);
     if (ec) {
-        setDOMException(&state, ec);
+        setDOMException(exec, ec);
         return jsUndefined();
     }
 
     return jsNumber(value);
 }
 
-void JSSVGLength::setValue(ExecState& state, JSValue value)
+void JSSVGLength::setValue(ExecState* exec, JSValue value)
 {
     if (impl().isReadOnly()) {
-        setDOMException(&state, NO_MODIFICATION_ALLOWED_ERR);
+        setDOMException(exec, NO_MODIFICATION_ALLOWED_ERR);
         return;
     }
 
     if (!value.isUndefinedOrNull() && !value.isNumber() && !value.isBoolean()) {
-        throwVMTypeError(&state);
+        throwVMTypeError(exec);
         return;
     }
 
@@ -61,36 +61,36 @@ void JSSVGLength::setValue(ExecState& state, JSValue value)
 
     ExceptionCode ec = 0;
     SVGLengthContext lengthContext(impl().contextElement());
-    podImp.setValue(value.toFloat(&state), lengthContext, ec);
+    podImp.setValue(value.toFloat(exec), lengthContext, ec);
     if (ec) {
-        setDOMException(&state, ec);
+        setDOMException(exec, ec);
         return;
     }
 
     impl().commitChange();
 }
 
-JSValue JSSVGLength::convertToSpecifiedUnits(ExecState& state)
+JSValue JSSVGLength::convertToSpecifiedUnits(ExecState* exec)
 {
     if (impl().isReadOnly()) {
-        setDOMException(&state, NO_MODIFICATION_ALLOWED_ERR);
+        setDOMException(exec, NO_MODIFICATION_ALLOWED_ERR);
         return jsUndefined();
     }
 
     SVGLength& podImp = impl().propertyReference();
 
-    if (state.argumentCount() < 1)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+    if (exec->argumentCount() < 1)
+        return exec->vm().throwException(exec, createNotEnoughArgumentsError(exec));
 
-    unsigned short unitType = state.uncheckedArgument(0).toUInt32(&state);
-    if (state.hadException())
+    unsigned short unitType = exec->uncheckedArgument(0).toUInt32(exec);
+    if (exec->hadException())
         return jsUndefined();
 
     ExceptionCode ec = 0;
     SVGLengthContext lengthContext(impl().contextElement());
     podImp.convertToSpecifiedUnits(unitType, lengthContext, ec);
     if (ec) {
-        setDOMException(&state, ec);
+        setDOMException(exec, ec);
         return jsUndefined();
     }
 

@@ -34,7 +34,6 @@
 #include "TextureMapperLayer.h"
 #include <WebCore/GLContext.h>
 #include <WebCore/GraphicsLayerClient.h>
-#include <WebCore/TransformationMatrix.h>
 #include <wtf/glib/GMainLoopSource.h>
 
 namespace WebKit {
@@ -76,8 +75,6 @@ private:
 
     // GraphicsLayerClient
     virtual void paintContents(const WebCore::GraphicsLayer*, WebCore::GraphicsContext&, WebCore::GraphicsLayerPaintingPhase, const WebCore::FloatRect& clipRect) override;
-    virtual float deviceScaleFactor() const override;
-    virtual float pageScaleFactor() const override;
 
     bool flushPendingLayerChanges();
 
@@ -102,7 +99,6 @@ private:
     bool m_layerFlushSchedulingEnabled;
     GMainLoopSource m_layerFlushTimerCallback;
     WebCore::GraphicsLayer* m_viewOverlayRootLayer;
-    WebCore::TransformationMatrix m_scaleMatrix;
 };
 
 } // namespace WebKit

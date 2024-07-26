@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
- * Copyright (C) 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -44,6 +43,7 @@
 #include "HTTPHeaderMap.h"
 #include "HTTPHeaderNames.h"
 #include "IconController.h"
+#include "InspectorClient.h"
 #include "InspectorPageAgent.h"
 #include "InspectorTimelineAgent.h"
 #include "InstrumentingAgents.h"
@@ -62,7 +62,6 @@
 #include "URL.h"
 #include "WebSocketFrame.h"
 #include <inspector/IdentifiersFactory.h>
-#include <inspector/InspectorFrontendRouter.h>
 #include <inspector/InspectorValues.h>
 #include <inspector/ScriptCallStack.h>
 #include <inspector/ScriptCallStackFactory.h>
@@ -80,8 +79,8 @@ namespace {
 class InspectorThreadableLoaderClient final : public ThreadableLoaderClient {
     WTF_MAKE_NONCOPYABLE(InspectorThreadableLoaderClient);
 public:
-    InspectorThreadableLoaderClient(RefPtr<LoadResourceCallback>&& callback)
-        : m_callback(WTF::move(callback)) { }
+    InspectorThreadableLoaderClient(PassRefPtr<LoadResourceCallback> callback)
+        : m_callback(callback) { }
 
     virtual ~InspectorThreadableLoaderClient() { }
 
@@ -139,9 +138,9 @@ public:
         dispose();
     }
 
-    void setLoader(RefPtr<ThreadableLoader>&& loader)
+    void setLoader(PassRefPtr<ThreadableLoader> loader)
     {
-        m_loader = WTF::move(loader);
+        m_loader = loader;
     }
 
 private:
@@ -161,21 +160,29 @@ private:
 
 } // namespace
 
-InspectorResourceAgent::InspectorResourceAgent(WebAgentContext& context, InspectorPageAgent* pageAgent)
-    : InspectorAgentBase(ASCIILiteral("Network"), context)
-    , m_frontendDispatcher(std::make_unique<Inspector::NetworkFrontendDispatcher>(context.frontendRouter))
-    , m_backendDispatcher(Inspector::NetworkBackendDispatcher::create(context.backendDispatcher, this))
+InspectorResourceAgent::InspectorResourceAgent(InstrumentingAgents* instrumentingAgents, InspectorPageAgent* pageAgent, InspectorClient* client)
+    : InspectorAgentBase(ASCIILiteral("Network"), instrumentingAgents)
     , m_pageAgent(pageAgent)
+    , m_client(client)
     , m_resourcesData(std::make_unique<NetworkResourcesData>())
+    , m_enabled(false)
+    , m_cacheDisabled(false)
+    , m_loadingXHRSynchronously(false)
+    , m_isRecalculatingStyle(false)
 {
 }
 
-void InspectorResourceAgent::didCreateFrontendAndBackend(Inspector::FrontendRouter*, Inspector::BackendDispatcher*)
+void InspectorResourceAgent::didCreateFrontendAndBackend(Inspector::FrontendChannel* frontendChannel, Inspector::BackendDispatcher* backendDispatcher)
 {
+    m_frontendDispatcher = std::make_unique<Inspector::NetworkFrontendDispatcher>(frontendChannel);
+    m_backendDispatcher = Inspector::NetworkBackendDispatcher::create(backendDispatcher, this);
 }
 
 void InspectorResourceAgent::willDestroyFrontendAndBackend(Inspector::DisconnectReason)
 {
+    m_frontendDispatcher = nullptr;
+    m_backendDispatcher = nullptr;
+
     ErrorString unused;
     disable(unused);
 }
@@ -261,12 +268,12 @@ InspectorResourceAgent::~InspectorResourceAgent()
         ErrorString unused;
         disable(unused);
     }
-    ASSERT(!m_instrumentingAgents.inspectorResourceAgent());
+    ASSERT(!m_instrumentingAgents->inspectorResourceAgent());
 }
 
 double InspectorResourceAgent::timestamp()
 {
-    return m_instrumentingAgents.inspectorEnvironment().executionStopwatch()->elapsedTime();
+    return m_instrumentingAgents->inspectorEnvironment().executionStopwatch()->elapsedTime();
 }
 
 void InspectorResourceAgent::willSendRequest(unsigned long identifier, DocumentLoader& loader, ResourceRequest& request, const ResourceResponse& redirectResponse)
@@ -388,7 +395,7 @@ void InspectorResourceAgent::didFinishLoading(unsigned long identifier, Document
 
     String requestId = IdentifiersFactory::requestId(identifier);
     if (m_resourcesData->resourceType(requestId) == InspectorPageAgent::DocumentResource)
-        m_resourcesData->addResourceSharedBuffer(requestId, loader.frameLoader()->documentLoader()->mainResourceData(), loader.frame()->document()->encoding());
+        m_resourcesData->addResourceSharedBuffer(requestId, loader.frameLoader()->documentLoader()->mainResourceData(), loader.frame()->document()->inputEncoding());
 
     m_resourcesData->maybeDecodeDataToContent(requestId);
 
@@ -418,7 +425,7 @@ void InspectorResourceAgent::didFailLoading(unsigned long identifier, DocumentLo
         if (frame && frame->loader().documentLoader() && frame->document()) {
             m_resourcesData->addResourceSharedBuffer(requestId,
                 frame->loader().documentLoader()->mainResourceData(),
-                frame->document()->encoding());
+                frame->document()->inputEncoding());
         }
     }
 
@@ -483,8 +490,9 @@ void InspectorResourceAgent::willDestroyCachedResource(CachedResource& cachedRes
     bool base64Encoded;
     if (!InspectorPageAgent::cachedResourceContent(&cachedResource, &content, &base64Encoded))
         return;
-    for (auto& id : requestIds)
-        m_resourcesData->setResourceContent(id, content, base64Encoded);
+    Vector<String>::iterator end = requestIds.end();
+    for (Vector<String>::iterator it = requestIds.begin(); it != end; ++it)
+        m_resourcesData->setResourceContent(*it, content, base64Encoded);
 }
 
 void InspectorResourceAgent::willRecalculateStyle()
@@ -596,14 +604,16 @@ void InspectorResourceAgent::enable(ErrorString&)
 
 void InspectorResourceAgent::enable()
 {
+    if (!m_frontendDispatcher)
+        return;
     m_enabled = true;
-    m_instrumentingAgents.setInspectorResourceAgent(this);
+    m_instrumentingAgents->setInspectorResourceAgent(this);
 }
 
 void InspectorResourceAgent::disable(ErrorString&)
 {
     m_enabled = false;
-    m_instrumentingAgents.setInspectorResourceAgent(nullptr);
+    m_instrumentingAgents->setInspectorResourceAgent(nullptr);
     m_resourcesData->clear();
     m_extraRequestHeaders.clear();
 }
@@ -650,6 +660,26 @@ void InspectorResourceAgent::getResponseBody(ErrorString& errorString, const Str
     errorString = ASCIILiteral("No data found for resource with given identifier");
 }
 
+void InspectorResourceAgent::canClearBrowserCache(ErrorString&, bool* result)
+{
+    *result = m_client->canClearBrowserCache();
+}
+
+void InspectorResourceAgent::clearBrowserCache(ErrorString&)
+{
+    m_client->clearBrowserCache();
+}
+
+void InspectorResourceAgent::canClearBrowserCookies(ErrorString&, bool* result)
+{
+    *result = m_client->canClearBrowserCookies();
+}
+
+void InspectorResourceAgent::clearBrowserCookies(ErrorString&)
+{
+    m_client->clearBrowserCookies();
+}
+
 void InspectorResourceAgent::setCacheDisabled(ErrorString&, bool cacheDisabled)
 {
     m_cacheDisabled = cacheDisabled;
@@ -677,7 +707,6 @@ void InspectorResourceAgent::loadResource(ErrorString& errorString, const String
     ThreadableLoaderOptions options;
     options.setSendLoadCallbacks(SendCallbacks); // So we remove this from m_hiddenRequestIdentifiers on completion.
     options.setAllowCredentials(AllowStoredCredentials);
-    options.setDefersLoadingPolicy(DefersLoadingPolicy::DisallowDefersLoading); // So the request is never deferred.
     options.crossOriginRequestPolicy = AllowCrossOriginRequests;
 
     // InspectorThreadableLoaderClient deletes itself when the load completes.
@@ -688,6 +717,8 @@ void InspectorResourceAgent::loadResource(ErrorString& errorString, const String
         inspectorThreadableLoaderClient->didFailLoaderCreation();
         return;
     }
+
+    loader->setDefersLoading(false);
 
     // If the load already completed, inspectorThreadableLoaderClient will have been deleted and we will have already called the callback.
     if (!callback->isActive())

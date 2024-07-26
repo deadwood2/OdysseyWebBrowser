@@ -36,4 +36,5 @@
 + (void)endBackgroundTask;
 @end
 
+void WebKitSetWebDatabasePaused(bool);
 #endif

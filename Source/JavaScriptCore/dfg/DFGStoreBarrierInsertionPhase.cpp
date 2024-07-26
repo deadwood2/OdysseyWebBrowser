@@ -260,24 +260,20 @@ private:
                 
             case PutClosureVar:
             case PutToArguments:
+            case PutById:
+            case PutByIdFlush:
+            case PutByIdDirect:
             case MultiPutByOffset: {
                 considerBarrier(m_node->child1(), m_node->child2());
                 break;
             }
                 
-            case PutById:
-            case PutByIdFlush:
-            case PutByIdDirect: {
-                considerBarrier(m_node->child1());
-                break;
-            }
-
             case PutByOffset: {
                 considerBarrier(m_node->child2(), m_node->child3());
                 break;
             }
                 
-            case PutGlobalVariable: {
+            case PutGlobalVar: {
                 considerBarrier(m_node->child1(), m_node->child2());
                 break;
             }
@@ -304,7 +300,6 @@ private:
             case CreateDirectArguments:
             case CreateScopedArguments:
             case CreateClonedArguments:
-            case NewArrowFunction:
             case NewFunction:
                 // Nodes that allocate get to set their epoch because for those nodes we know
                 // that they will be the newest object in the heap.
@@ -314,7 +309,7 @@ private:
             case AllocatePropertyStorage:
             case ReallocatePropertyStorage:
                 // These allocate but then run their own barrier.
-                insertBarrier(m_nodeIndex + 1, Edge(m_node->child1().node(), KnownCellUse));
+                insertBarrier(m_nodeIndex + 1, m_node->child1().node());
                 m_node->setEpoch(Epoch());
                 break;
                 
@@ -478,10 +473,10 @@ private:
         
         if (verbose)
             dataLog("            Inserting barrier.\n");
-        insertBarrier(m_nodeIndex, base);
+        insertBarrier(m_nodeIndex, base.node());
     }
-
-    void insertBarrier(unsigned nodeIndex, Edge base, bool exitOK = true)
+    
+    void insertBarrier(unsigned nodeIndex, Node* base)
     {
         // If we're in global mode, we should only insert the barriers once we have converged.
         if (!reallyInsertBarriers())
@@ -489,18 +484,8 @@ private:
         
         // FIXME: We could support StoreBarrier(UntypedUse:). That would be sort of cool.
         // But right now we don't need it.
-
-        // If the original edge was unchecked, we should also not have a check. We may be in a context
-        // where checks are not allowed. If we ever did have to insert a barrier at an ExitInvalid
-        // context and that barrier needed a check, then we could make that work by hoisting the check.
-        // That doesn't happen right now.
-        if (base.useKind() != KnownCellUse) {
-            DFG_ASSERT(m_graph, m_node, m_node->origin.exitOK);
-            base.setUseKind(CellUse);
-        }
-        
         m_insertionSet.insertNode(
-            nodeIndex, SpecNone, StoreBarrier, m_node->origin.takeValidExit(exitOK), base);
+            nodeIndex, SpecNone, StoreBarrier, m_node->origin, Edge(base, CellUse));
 
         base->setEpoch(m_currentEpoch);
     }

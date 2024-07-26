@@ -347,10 +347,10 @@ bool JSCSSStyleDeclaration::putDelegate(ExecState* exec, PropertyName propertyNa
     return true;
 }
 
-JSValue JSCSSStyleDeclaration::getPropertyCSSValue(ExecState& state)
+JSValue JSCSSStyleDeclaration::getPropertyCSSValue(ExecState* exec)
 {
-    const String& propertyName = state.argument(0).toString(&state)->value(&state);
-    if (state.hadException())
+    const String& propertyName = exec->argument(0).toString(exec)->value(exec);
+    if (exec->hadException())
         return jsUndefined();
 
     RefPtr<CSSValue> cssValue = impl().getPropertyCSSValue(propertyName);
@@ -358,7 +358,7 @@ JSValue JSCSSStyleDeclaration::getPropertyCSSValue(ExecState& state)
         return jsNull();
 
     globalObject()->world().m_cssValueRoots.add(cssValue.get(), root(&impl())); // Balanced by JSCSSValueOwner::finalize().
-    return toJS(&state, globalObject(), WTF::getPtr(cssValue));
+    return toJS(exec, globalObject(), WTF::getPtr(cssValue));
 }
 
 void JSCSSStyleDeclaration::getOwnPropertyNames(JSObject* object, ExecState* exec, PropertyNameArray& propertyNames, EnumerationMode mode)

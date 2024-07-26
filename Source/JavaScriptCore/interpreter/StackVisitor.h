@@ -52,7 +52,6 @@ public:
             Global,
             Eval,
             Function,
-            Module,
             Native
         };
 
@@ -131,7 +130,6 @@ public:
 
     Frame& operator*() { return m_frame; }
     ALWAYS_INLINE Frame* operator->() { return &m_frame; }
-    void unwindToMachineCodeBlockFrame();
 
 private:
     JS_EXPORT_PRIVATE StackVisitor(CallFrame* startFrame);

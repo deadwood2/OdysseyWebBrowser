@@ -71,6 +71,7 @@ private:
     void offlineRender();
     
     // For completion callback on main thread.
+    static void notifyCompleteDispatch(void* userData);
     void notifyComplete();
 };
 

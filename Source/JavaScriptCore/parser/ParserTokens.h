@@ -76,8 +76,9 @@ enum JSTokenType {
     FINALLY,
     DEBUGGER,
     ELSE,
-    IMPORT,
-    EXPORT,
+#if ENABLE(ES6_ARROWFUNCTION_SYNTAX)
+    ARROWFUNCTION,
+#endif
 #if ENABLE(ES6_CLASS_SYNTAX)
     CLASSTOKEN,
     EXTENDS,
@@ -117,9 +118,6 @@ enum JSTokenType {
     XOREQUAL,
     OREQUAL,
     DOTDOTDOT,
-#if ENABLE(ES6_ARROWFUNCTION_SYNTAX)
-    ARROWFUNCTION,
-#endif
     LastUntaggedToken,
 
     // Begin tagged tokens
@@ -162,13 +160,13 @@ enum JSTokenType {
     INVALID_IDENTIFIER_UNICODE_ESCAPE_ERRORTOK = 3 | ErrorTokenFlag,
     UNTERMINATED_MULTILINE_COMMENT_ERRORTOK = 4 | ErrorTokenFlag | UnterminatedErrorTokenFlag,
     UNTERMINATED_NUMERIC_LITERAL_ERRORTOK = 5 | ErrorTokenFlag | UnterminatedErrorTokenFlag,
-    UNTERMINATED_OCTAL_NUMBER_ERRORTOK = 6 | ErrorTokenFlag | UnterminatedErrorTokenFlag,
+    INVALID_OCTAL_NUMBER_ERRORTOK = 6 | ErrorTokenFlag | UnterminatedErrorTokenFlag,
     INVALID_NUMERIC_LITERAL_ERRORTOK = 7 | ErrorTokenFlag,
     UNTERMINATED_STRING_LITERAL_ERRORTOK = 8 | ErrorTokenFlag | UnterminatedErrorTokenFlag,
     INVALID_STRING_LITERAL_ERRORTOK = 9 | ErrorTokenFlag,
     INVALID_PRIVATE_NAME_ERRORTOK = 10 | ErrorTokenFlag,
-    UNTERMINATED_HEX_NUMBER_ERRORTOK = 11 | ErrorTokenFlag | UnterminatedErrorTokenFlag,
-    UNTERMINATED_BINARY_NUMBER_ERRORTOK = 12 | ErrorTokenFlag | UnterminatedErrorTokenFlag,
+    INVALID_HEX_NUMBER_ERRORTOK = 11 | ErrorTokenFlag,
+    INVALID_BINARY_NUMBER_ERRORTOK = 12 | ErrorTokenFlag,
     UNTERMINATED_TEMPLATE_LITERAL_ERRORTOK = 13 | ErrorTokenFlag | UnterminatedErrorTokenFlag,
     INVALID_TEMPLATE_LITERAL_ERRORTOK = 14 | ErrorTokenFlag,
 };

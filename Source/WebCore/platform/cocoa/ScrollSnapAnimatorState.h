@@ -52,8 +52,6 @@ struct ScrollSnapAnimatorState {
     void clearInitialWheelDeltaWindow();
     bool isSnapping() const;
     bool canReachTargetWithCurrentInitialScrollDelta() const;
-    bool wheelDeltaTrackingIsInProgress() const;
-    bool hasFinishedTrackingWheelDeltas() const;
     float interpolatedOffsetAtProgress(float) const;
     
     static const int wheelDeltaWindowSize = 3;

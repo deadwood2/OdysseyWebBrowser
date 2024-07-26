@@ -35,10 +35,10 @@
 
 namespace WebCore {
 
-ScrollbarTheme& ScrollbarTheme::nativeTheme()
+ScrollbarTheme* ScrollbarTheme::nativeTheme()
 {
     static NeverDestroyed<ScrollbarThemeIOS> theme;
-    return theme;
+    return &theme.get();
 }
 
 void ScrollbarThemeIOS::registerScrollbar(Scrollbar&)

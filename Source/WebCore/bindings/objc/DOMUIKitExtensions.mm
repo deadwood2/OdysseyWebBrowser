@@ -231,8 +231,8 @@ using WebCore::VisiblePosition;
     Position paragraphEnd = visibleParagraphEnd.deepEquivalent().parentAnchoredEquivalent();    
     
     if (paragraphStart.isNotNull() && paragraphEnd.isNotNull()) {
-        Ref<Range> range = Range::create(*node->ownerDocument(), paragraphStart, paragraphEnd);
-        result = kit(range.ptr());
+        PassRefPtr<Range> range = Range::create(*node->ownerDocument(), paragraphStart, paragraphEnd);
+        result = kit(range.get());
     }
     
     return result;

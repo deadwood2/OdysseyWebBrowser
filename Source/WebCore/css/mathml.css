@@ -26,8 +26,8 @@ math {
 }
 
 math[display="block"] {
-    display: flex !important;
-    justify-content: center;
+    display: -webkit-flex !important;
+    -webkit-justify-content: center;
     page-break-inside: avoid;
     /* -webkit-margin-before: 1em; -- FIXME: Ask www-math for a default MathML stylesheet, including this (or margin-top). */
     -webkit-margin-after: 1em;
@@ -38,31 +38,31 @@ ms, mi, mo, mrow, mfenced, mfrac, msub, msup, msubsup, mmultiscripts, mprescript
 }
 
 math, mrow, mfenced, merror, mphantom, mstyle, menclose {
-    align-items: baseline;
+    -webkit-align-items: baseline;
 }
 
 mo, mfrac, munder, mover, munderover {
-    flex-direction: column;
+    -webkit-flex-direction: column;
 }
 
 munder, mover, munderover {
-    align-items: center;
+    -webkit-align-items: center;
 }
 
 mfrac > * {
-    align-self: center;
+    -webkit-align-self: center;
 }
 mfrac[numalign="left"] > :first-child {
-    align-self: flex-start;
+    -webkit-align-self: flex-start;
 }
 mfrac[numalign="right"] > :first-child {
-    align-self: flex-end;
+    -webkit-align-self: flex-end;
 }
 mfrac[denomalign="left"] > :last-child {
-    align-self: flex-start;
+    -webkit-align-self: flex-start;
 }
 mfrac[denomalign="right"] > :last-child {
-    align-self: flex-end;
+    -webkit-align-self: flex-end;
 }
 mfrac > :first-child {
     -webkit-margin-after: 0.2em;
@@ -76,7 +76,7 @@ mfrac {
 }
 
 mover > :last-child, munderover > :last-child {
-    order: -1;
+    -webkit-order: -1;
 }
 
 msub > * + *, msup > * + *, msubsup > * + *, mmultiscripts > * + *, munder > * + *, mover > * + *, munderover > * + * {

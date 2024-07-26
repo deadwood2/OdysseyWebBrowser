@@ -52,8 +52,7 @@ public:
     bool enabled();
 
     // GraphicsLayerClient
-    void paintContents(const WebCore::GraphicsLayer*, WebCore::GraphicsContext&, WebCore::GraphicsLayerPaintingPhase, const WebCore::FloatRect& rectToPaint) override;
-    float deviceScaleFactor() const override;
+    virtual void paintContents(const WebCore::GraphicsLayer*, WebCore::GraphicsContext&, WebCore::GraphicsLayerPaintingPhase, const WebCore::FloatRect& rectToPaint);
 
     void initialize();
 
@@ -96,7 +95,6 @@ private:
     void stopAnyPendingLayerFlush();
     bool prepareForRendering();
     bool startedAnimation(WebCore::GraphicsLayer*);
-    void applyDeviceScaleFactor();
 };
 
 #endif // TEXTURE_MAPPER_GL

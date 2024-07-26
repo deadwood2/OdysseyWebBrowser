@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2008, 2010, 2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006, 2007, 2008, 2010 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -42,18 +42,19 @@
 
 using namespace WebCore;
 
-WebInspectorClient::WebInspectorClient(WebView* inspectedWebView)
-    : m_inspectedWebView(inspectedWebView)
-    , m_highlighter(adoptNS([[WebNodeHighlighter alloc] initWithInspectedWebView:inspectedWebView]))
+WebInspectorClient::WebInspectorClient(WebView *webView)
+    : m_webView(webView)
+    , m_highlighter(adoptNS([[WebNodeHighlighter alloc] initWithInspectedWebView:webView]))
+    , m_frontendPage(0)
 {
 }
 
-void WebInspectorClient::inspectedPageDestroyed()
+void WebInspectorClient::inspectorDestroyed()
 {
     delete this;
 }
 
-Inspector::FrontendChannel* WebInspectorClient::openLocalFrontend(InspectorController*)
+InspectorFrontendChannel* WebInspectorClient::openInspectorFrontend(InspectorController*)
 {
     // iOS does not have a local inspector, this should not be reached.
     ASSERT_NOT_REACHED();
@@ -61,6 +62,11 @@ Inspector::FrontendChannel* WebInspectorClient::openLocalFrontend(InspectorContr
 }
 
 void WebInspectorClient::bringFrontendToFront()
+{
+    // iOS does not have a local inspector, nothing to do here.
+}
+
+void WebInspectorClient::closeInspectorFrontend()
 {
     // iOS does not have a local inspector, nothing to do here.
 }
@@ -82,12 +88,12 @@ void WebInspectorClient::hideHighlight()
 
 void WebInspectorClient::showInspectorIndication()
 {
-    [m_inspectedWebView setShowingInspectorIndication:YES];
+    [m_webView setShowingInspectorIndication:YES];
 }
 
 void WebInspectorClient::hideInspectorIndication()
 {
-    [m_inspectedWebView setShowingInspectorIndication:NO];
+    [m_webView setShowingInspectorIndication:NO];
 }
 
 void WebInspectorClient::setShowPaintRects(bool)
@@ -102,7 +108,7 @@ void WebInspectorClient::showPaintRect(const FloatRect&)
 
 void WebInspectorClient::didSetSearchingForNode(bool enabled)
 {
-    WebInspector *inspector = [m_inspectedWebView inspector];
+    WebInspector *inspector = [m_webView inspector];
     NSString *notificationName = enabled ? WebInspectorDidStartSearchingForNode : WebInspectorDidStopSearchingForNode;
     dispatch_async(dispatch_get_main_queue(), ^{
         [[NSNotificationCenter defaultCenter] postNotificationName:notificationName object:inspector];
@@ -112,8 +118,8 @@ void WebInspectorClient::didSetSearchingForNode(bool enabled)
 #pragma mark -
 #pragma mark WebInspectorFrontendClient Implementation
 
-WebInspectorFrontendClient::WebInspectorFrontendClient(WebView* inspectedWebView, WebInspectorWindowController* frontendWindowController, InspectorController* inspectedPageController, Page* frontendPage, std::unique_ptr<Settings> settings)
-    : InspectorFrontendClientLocal(inspectedPageController, frontendPage, WTF::move(settings))
+WebInspectorFrontendClient::WebInspectorFrontendClient(WebView* inspectedWebView, WebInspectorWindowController* windowController, InspectorController* inspectorController, Page* frontendPage, std::unique_ptr<Settings> settings)
+    : InspectorFrontendClientLocal(inspectorController,  frontendPage, WTF::move(settings))
 {
     // iOS does not have a local inspector, this should not be reached.
     notImplemented();
@@ -124,6 +130,7 @@ void WebInspectorFrontendClient::frontendLoaded() { }
 String WebInspectorFrontendClient::localizedStringsURL() { return String(); }
 void WebInspectorFrontendClient::bringToFront() { }
 void WebInspectorFrontendClient::closeWindow() { }
+void WebInspectorFrontendClient::disconnectFromBackend() { }
 void WebInspectorFrontendClient::attachWindow(DockSide) { }
 void WebInspectorFrontendClient::detachWindow() { }
 void WebInspectorFrontendClient::setAttachedWindowHeight(unsigned) { }

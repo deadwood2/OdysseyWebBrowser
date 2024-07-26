@@ -37,38 +37,32 @@ require "risc"
 #
 # GPR conventions, to match the baseline JIT:
 #
-#  x0  => t0, a0, r0
+#  x0  => return value, cached result, first argument, t0, a0, r0
 #  x1  => t1, a1, r1
 #  x2  => t2, a2
-#  x3  => t3, a3
-#  x4  => t4
-#  x5  => t5
-# x13  =>                  (scratch)
-# x16  =>                  (scratch)
-# x17  =>                  (scratch)
-# x26  =>             csr0 (PB)
-# x27  =>             csr1 (tagTypeNumber)
-# x28  =>             csr2 (tagMask)
+#  x3  => a3
+#  x5  => t4
+#  x6  => t6
+#  x9  => (nonArgGPR1 in baseline)
+# x13  => scratch (unused in baseline)
+# x16  => scratch
+# x17  => scratch
+# x23  => t3
+# x24  => t5
+# x27  => csr1 (tagTypeNumber)
+# x28  => csr2 (tagMask)
 # x29  => cfr
 #  sp  => sp
 #  lr  => lr
 #
-# FPR conventions, to match the baseline JIT:
+# FPR conentions, to match the baseline JIT:
 #
-#  q0  => ft0, fa0, fr
-#  q1  => ft1, fa1
-#  q2  => ft2, fa2
-#  q3  => ft3, fa3
-#  q4  => ft4          (unused in baseline)
-#  q5  => ft5          (unused in baseline)
-#  q8  => csfr0        (Only the lower 64 bits)
-#  q9  => csfr1        (Only the lower 64 bits)
-# q10  => csfr2        (Only the lower 64 bits)
-# q11  => csfr3        (Only the lower 64 bits)
-# q12  => csfr4        (Only the lower 64 bits)
-# q13  => csfr5        (Only the lower 64 bits)
-# q14  => csfr6        (Only the lower 64 bits)
-# q15  => csfr7        (Only the lower 64 bits)
+#  q0  => ft0
+#  q1  => ft1
+#  q2  => ft2
+#  q3  => ft3
+#  q4  => ft4 (unused in baseline)
+#  q5  => ft5 (unused in baseline)
 # q31  => scratch
 
 def arm64GPRName(name, kind)
@@ -115,33 +109,23 @@ class RegisterID
             arm64GPRName('x1', kind)
         when 't2', 'a2'
             arm64GPRName('x2', kind)
-        when 't3', 'a3'
+        when 'a3'
             arm64GPRName('x3', kind)
+        when 't3'
+            arm64GPRName('x23', kind)
         when 't4'
-            arm64GPRName('x4', kind)
-        when 't5'
             arm64GPRName('x5', kind)
+        when 't5'
+            arm64GPRName('x24', kind)
+        when 't6'
+            arm64GPRName('x6', kind)
+        when 't7'
+            arm64GPRName('x7', kind)
         when 'cfr'
             arm64GPRName('x29', kind)
-        when 'csr0'
-            arm64GPRName('x19', kind)
         when 'csr1'
-            arm64GPRName('x20', kind)
-        when 'csr2'
-            arm64GPRName('x21', kind)
-        when 'csr3'
-            arm64GPRName('x22', kind)
-        when 'csr4'
-            arm64GPRName('x23', kind)
-        when 'csr5'
-            arm64GPRName('x24', kind)
-        when 'csr6'
-            arm64GPRName('x25', kind)
-        when 'csr7'
-            arm64GPRName('x26', kind)
-        when 'csr8'
             arm64GPRName('x27', kind)
-        when 'csr9'
+        when 'csr2'
             arm64GPRName('x28', kind)
         when 'sp'
             'sp'
@@ -156,34 +140,18 @@ end
 class FPRegisterID
     def arm64Operand(kind)
         case @name
-        when 'ft0', 'fr', 'fa0'
+        when 'ft0'
             arm64FPRName('q0', kind)
-        when 'ft1', 'fa1'
+        when 'ft1'
             arm64FPRName('q1', kind)
-        when 'ft2', 'fa2'
+        when 'ft2'
             arm64FPRName('q2', kind)
-        when 'ft3', 'fa3'
+        when 'ft3'
             arm64FPRName('q3', kind)
         when 'ft4'
             arm64FPRName('q4', kind)
         when 'ft5'
             arm64FPRName('q5', kind)
-        when 'csfr0'
-            arm64FPRName('q8', kind)
-        when 'csfr1'
-            arm64FPRName('q9', kind)
-        when 'csfr2'
-            arm64FPRName('q10', kind)
-        when 'csfr3'
-            arm64FPRName('q11', kind)
-        when 'csfr4'
-            arm64FPRName('q12', kind)
-        when 'csfr5'
-            arm64FPRName('q13', kind)
-        when 'csfr6'
-            arm64FPRName('q14', kind)
-        when 'csfr7'
-            arm64FPRName('q15', kind)
         else "Bad register name #{@name} at #{codeOriginString}"
         end
     end

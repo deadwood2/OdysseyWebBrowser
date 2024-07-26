@@ -86,6 +86,7 @@ MediaPlayerPrivateAVFoundation::~MediaPlayerPrivateAVFoundation()
 {
     LOG(Media, "MediaPlayerPrivateAVFoundation::~MediaPlayerPrivateAVFoundation(%p)", this);
     setIgnoreLoadStateChanges(true);
+    cancelCallOnMainThread(mainThreadCallback, this);
 }
 
 MediaPlayerPrivateAVFoundation::MediaRenderingMode MediaPlayerPrivateAVFoundation::currentRenderingMode() const
@@ -272,6 +273,9 @@ void MediaPlayerPrivateAVFoundation::seekWithTolerance(const MediaTime& mediaTim
 
     if (time > durationMediaTime())
         time = durationMediaTime();
+
+    if (currentMediaTime() == time)
+        return;
 
     if (currentTextTrack())
         currentTextTrack()->beginSeeking();
@@ -680,6 +684,8 @@ void MediaPlayerPrivateAVFoundation::didEnd()
 
 void MediaPlayerPrivateAVFoundation::invalidateCachedDuration()
 {
+    LOG(Media, "MediaPlayerPrivateAVFoundation::invalidateCachedDuration(%p)", this);
+    
     m_cachedDuration = MediaTime::invalidTime();
 
     // For some media files, reported duration is estimated and updated as media is loaded
@@ -734,7 +740,7 @@ void MediaPlayerPrivateAVFoundation::setPreload(MediaPlayer::Preload preload)
 
 void MediaPlayerPrivateAVFoundation::setDelayCallbacks(bool delay) const
 {
-    LockHolder lock(m_queueMutex);
+    MutexLocker lock(m_queueMutex);
     if (delay)
         ++m_delayCallbacks;
     else {
@@ -743,17 +749,17 @@ void MediaPlayerPrivateAVFoundation::setDelayCallbacks(bool delay) const
     }
 }
 
-void MediaPlayerPrivateAVFoundation::mainThreadCallback()
+void MediaPlayerPrivateAVFoundation::mainThreadCallback(void* context)
 {
-    LOG(Media, "MediaPlayerPrivateAVFoundation::mainThreadCallback(%p)", this);
-
-    clearMainThreadPendingFlag();
-    dispatchNotification();
+    LOG(Media, "MediaPlayerPrivateAVFoundation::mainThreadCallback(%p)", context);
+    MediaPlayerPrivateAVFoundation* player = static_cast<MediaPlayerPrivateAVFoundation*>(context);
+    player->clearMainThreadPendingFlag();
+    player->dispatchNotification();
 }
 
 void MediaPlayerPrivateAVFoundation::clearMainThreadPendingFlag()
 {
-    LockHolder lock(m_queueMutex);
+    MutexLocker lock(m_queueMutex);
     m_mainThreadCallPending = false;
 }
 
@@ -799,14 +805,7 @@ void MediaPlayerPrivateAVFoundation::scheduleMainThreadNotification(Notification
 #endif
     if (delayDispatch && !m_mainThreadCallPending) {
         m_mainThreadCallPending = true;
-
-        auto weakThis = createWeakPtr();
-        callOnMainThread([weakThis] {
-            if (!weakThis)
-                return;
-
-            weakThis->mainThreadCallback();
-        });
+        callOnMainThread(mainThreadCallback, this);
     }
 
     m_queueMutex.unlock();
@@ -826,7 +825,7 @@ void MediaPlayerPrivateAVFoundation::dispatchNotification()
 
     Notification notification = Notification();
     {
-        LockHolder lock(m_queueMutex);
+        MutexLocker lock(m_queueMutex);
         
         if (m_queuedNotifications.isEmpty())
             return;
@@ -837,15 +836,8 @@ void MediaPlayerPrivateAVFoundation::dispatchNotification()
             m_queuedNotifications.remove(0);
         }
         
-        if (!m_queuedNotifications.isEmpty() && !m_mainThreadCallPending) {
-            auto weakThis = createWeakPtr();
-            callOnMainThread([weakThis] {
-                if (!weakThis)
-                    return;
-
-                weakThis->mainThreadCallback();
-            });
-        }
+        if (!m_queuedNotifications.isEmpty() && !m_mainThreadCallPending)
+            callOnMainThread(mainThreadCallback, this);
 
         if (!notification.isValid())
             return;

@@ -121,7 +121,6 @@ public:
 
 private:
     virtual void layout() override;
-    bool isFlexibleBoxImpl() const override { return true; }
 };
 
 void RenderSliderContainer::computeLogicalHeight(LayoutUnit logicalHeight, LayoutUnit logicalTop, LogicalExtentComputedValues& computedValues) const
@@ -612,7 +611,7 @@ const AtomicString& SliderThumbElement::shadowPseudoId() const
     }
 }
 
-Ref<Element> SliderThumbElement::cloneElementWithoutAttributesAndChildren(Document& targetDocument)
+RefPtr<Element> SliderThumbElement::cloneElementWithoutAttributesAndChildren(Document& targetDocument)
 {
     return create(targetDocument);
 }

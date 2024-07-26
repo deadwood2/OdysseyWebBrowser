@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012, 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2012, 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,7 +33,7 @@ namespace JSC {
 
 enum class JSParserStrictMode { NotStrict, Strict };
 enum class JSParserBuiltinMode { NotBuiltin, Builtin };
-enum class JSParserCodeType { Program, Function, Module };
+enum class JSParserCodeType { Program, Function };
 
 enum class ConstructorKind { None, Base, Derived };
 enum class SuperBinding { Needed, NotNeeded };
@@ -44,73 +44,14 @@ enum DebuggerMode { DebuggerOff, DebuggerOn };
 
 enum FunctionMode { FunctionExpression, FunctionDeclaration };
 
-enum class SourceParseMode {
+enum FunctionParseMode {
     NormalFunctionMode,
     GetterMode,
     SetterMode,
     MethodMode,
-    ArrowFunctionMode,
-    ProgramMode,
-    ModuleAnalyzeMode,
-    ModuleEvaluateMode
+    NotAFunctionMode,
+    ArrowFunctionMode
 };
-
-inline bool isFunctionParseMode(SourceParseMode parseMode)
-{
-    switch (parseMode) {
-    case SourceParseMode::NormalFunctionMode:
-    case SourceParseMode::GetterMode:
-    case SourceParseMode::SetterMode:
-    case SourceParseMode::MethodMode:
-    case SourceParseMode::ArrowFunctionMode:
-        return true;
-
-    case SourceParseMode::ProgramMode:
-    case SourceParseMode::ModuleAnalyzeMode:
-    case SourceParseMode::ModuleEvaluateMode:
-        return false;
-    }
-    RELEASE_ASSERT_NOT_REACHED();
-    return false;
-}
-
-inline bool isModuleParseMode(SourceParseMode parseMode)
-{
-    switch (parseMode) {
-    case SourceParseMode::ModuleAnalyzeMode:
-    case SourceParseMode::ModuleEvaluateMode:
-        return true;
-
-    case SourceParseMode::NormalFunctionMode:
-    case SourceParseMode::GetterMode:
-    case SourceParseMode::SetterMode:
-    case SourceParseMode::MethodMode:
-    case SourceParseMode::ArrowFunctionMode:
-    case SourceParseMode::ProgramMode:
-        return false;
-    }
-    RELEASE_ASSERT_NOT_REACHED();
-    return false;
-}
-
-inline bool isProgramParseMode(SourceParseMode parseMode)
-{
-    switch (parseMode) {
-    case SourceParseMode::ProgramMode:
-        return true;
-
-    case SourceParseMode::NormalFunctionMode:
-    case SourceParseMode::GetterMode:
-    case SourceParseMode::SetterMode:
-    case SourceParseMode::MethodMode:
-    case SourceParseMode::ArrowFunctionMode:
-    case SourceParseMode::ModuleAnalyzeMode:
-    case SourceParseMode::ModuleEvaluateMode:
-        return false;
-    }
-    RELEASE_ASSERT_NOT_REACHED();
-    return false;
-}
 
 inline bool functionNameIsInScope(const Identifier& name, FunctionMode functionMode)
 {
@@ -139,17 +80,18 @@ inline bool functionNameScopeIsDynamic(bool usesEval, bool isStrictMode)
 
 typedef unsigned CodeFeatures;
 
-const CodeFeatures NoFeatures =                    0;
-const CodeFeatures EvalFeature =              1 << 0;
-const CodeFeatures ArgumentsFeature =         1 << 1;
-const CodeFeatures WithFeature =              1 << 2;
-const CodeFeatures ThisFeature =              1 << 3;
-const CodeFeatures StrictModeFeature =        1 << 4;
-const CodeFeatures ShadowsArgumentsFeature =  1 << 5;
-const CodeFeatures ModifiedParameterFeature = 1 << 6;
-const CodeFeatures ModifiedArgumentsFeature = 1 << 7;
+const CodeFeatures NoFeatures = 0;
+const CodeFeatures EvalFeature = 1 << 0;
+const CodeFeatures ArgumentsFeature = 1 << 1;
+const CodeFeatures WithFeature = 1 << 2;
+const CodeFeatures CatchFeature = 1 << 3;
+const CodeFeatures ThisFeature = 1 << 4;
+const CodeFeatures StrictModeFeature = 1 << 5;
+const CodeFeatures ShadowsArgumentsFeature = 1 << 6;
+const CodeFeatures ModifiedParameterFeature = 1 << 7;
+const CodeFeatures ModifiedArgumentsFeature = 1 << 8;
 
-const CodeFeatures AllFeatures = EvalFeature | ArgumentsFeature | WithFeature | ThisFeature | StrictModeFeature | ShadowsArgumentsFeature | ModifiedParameterFeature;
+const CodeFeatures AllFeatures = EvalFeature | ArgumentsFeature | WithFeature | CatchFeature | ThisFeature | StrictModeFeature | ShadowsArgumentsFeature | ModifiedParameterFeature;
 
 } // namespace JSC
 

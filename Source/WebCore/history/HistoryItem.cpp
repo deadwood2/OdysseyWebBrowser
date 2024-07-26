@@ -351,16 +351,6 @@ void HistoryItem::clearDocumentState()
     m_documentState.clear();
 }
 
-void HistoryItem::setShouldOpenExternalURLsPolicy(ShouldOpenExternalURLsPolicy policy)
-{
-    m_shouldOpenExternalURLsPolicy = policy;
-}
-
-ShouldOpenExternalURLsPolicy HistoryItem::shouldOpenExternalURLsPolicy() const
-{
-    return m_shouldOpenExternalURLsPolicy;
-}
-
 bool HistoryItem::isTargetItem() const
 {
     return m_isTargetItem;
@@ -371,9 +361,9 @@ void HistoryItem::setIsTargetItem(bool flag)
     m_isTargetItem = flag;
 }
 
-void HistoryItem::setStateObject(RefPtr<SerializedScriptValue>&& object)
+void HistoryItem::setStateObject(PassRefPtr<SerializedScriptValue> object)
 {
-    m_stateObject = WTF::move(object);
+    m_stateObject = object;
 }
 
 void HistoryItem::addChildItem(Ref<HistoryItem>&& child)
@@ -539,9 +529,9 @@ void HistoryItem::setFormInfoFromRequest(const ResourceRequest& request)
     }
 }
 
-void HistoryItem::setFormData(RefPtr<FormData>&& formData)
+void HistoryItem::setFormData(PassRefPtr<FormData> formData)
 {
-    m_formData = WTF::move(formData);
+    m_formData = formData;
 }
 
 void HistoryItem::setFormContentType(const String& formContentType)

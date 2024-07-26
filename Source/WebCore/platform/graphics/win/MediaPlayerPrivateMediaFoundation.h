@@ -31,9 +31,7 @@
 #include <Mfidl.h>
 #include <evr.h>
 
-#include <wtf/Lock.h>
 #include <wtf/ThreadingPrimitives.h>
-#include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
@@ -75,7 +73,7 @@ public:
 
     virtual void setSize(const IntSize&);
 
-    virtual void paint(GraphicsContext&, const FloatRect&) override;
+    virtual void paint(GraphicsContext*, const FloatRect&);
 
 private:
     MediaPlayer* m_player;
@@ -91,9 +89,8 @@ private:
 
     class MediaPlayerListener;
     HashSet<MediaPlayerListener*> m_listeners;
-    Lock m_mutexListeners;
+    Mutex m_mutexListeners;
 
-    WeakPtrFactory<MediaPlayerPrivateMediaFoundation> m_weakPtrFactory;
     COMPtr<IMFMediaSession> m_mediaSession;
     COMPtr<IMFSourceResolver> m_sourceResolver;
     COMPtr<IMFMediaSource> m_mediaSource;
@@ -113,6 +110,8 @@ private:
 
     void onCreatedMediaSource();
     void onTopologySet();
+    static void onCreatedMediaSourceCallback(void* context);
+    static void onTopologySetCallback(void* context);
 
     LPCWSTR registerVideoWindowClass();
     void createVideoWindow();
@@ -150,7 +149,7 @@ private:
         ULONG m_refCount;
         MediaPlayerPrivateMediaFoundation* m_mediaPlayer;
         bool m_event;
-        Lock m_mutex;
+        Mutex m_mutex;
     };
 
 };

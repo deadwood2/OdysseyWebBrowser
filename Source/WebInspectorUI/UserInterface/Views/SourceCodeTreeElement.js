@@ -54,7 +54,7 @@ WebInspector.SourceCodeTreeElement = class SourceCodeTreeElement extends WebInsp
 
     onattach()
     {
-        super.onattach();
+        WebInspector.GeneralTreeElement.prototype.onattach.call(this);
 
         this.updateSourceMapResources();
     }

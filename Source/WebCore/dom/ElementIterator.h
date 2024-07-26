@@ -53,8 +53,6 @@ public:
     ElementIterator& traverseNextSkippingChildren();
     ElementIterator& traverseAncestor();
 
-    void dropAssertions();
-
 private:
     const ContainerNode* m_root;
     ElementType* m_current;
@@ -82,8 +80,6 @@ public:
     ElementConstIterator& traversePreviousSibling();
     ElementConstIterator& traverseNextSkippingChildren();
     ElementConstIterator& traverseAncestor();
-
-    void dropAssertions();
 
 private:
     const ContainerNode* m_root;
@@ -181,14 +177,6 @@ inline ElementIterator<ElementType>& ElementIterator<ElementType>::traverseNextS
         m_assertions.dropEventDispatchAssertion();
 #endif
     return *this;
-}
-
-template <typename ElementType>
-inline void ElementIterator<ElementType>::dropAssertions()
-{
-#if !ASSERT_DISABLED
-    m_assertions.clear();
-#endif
 }
 
 template <typename ElementType>
@@ -354,14 +342,6 @@ inline ElementConstIterator<ElementType>& ElementConstIterator<ElementType>::tra
         m_assertions.dropEventDispatchAssertion();
 #endif
     return *this;
-}
-
-template <typename ElementType>
-inline void ElementConstIterator<ElementType>::dropAssertions()
-{
-#if !ASSERT_DISABLED
-    m_assertions.clear();
-#endif
 }
 
 template <typename ElementType>

@@ -27,8 +27,6 @@
 
 #import <WebCore/IntRectHash.h>
 #import <condition_variable>
-#import <wtf/Condition.h>
-#import <wtf/Lock.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/Vector.h>
 
@@ -59,8 +57,8 @@ class WebFrameProxy;
     uint64_t _expectedPrintCallback;
 
     BOOL _isPrintingFromSecondaryThread;
-    Lock _printingCallbackMutex;
-    Condition _printingCallbackCondition;
+    std::mutex _printingCallbackMutex;
+    std::condition_variable _printingCallbackCondition;
 
     NSTimer *_autodisplayResumeTimer;
 }

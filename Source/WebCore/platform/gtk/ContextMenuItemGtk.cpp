@@ -288,6 +288,11 @@ GtkAction* ContextMenuItem::gtkAction() const
     return gtk_activatable_get_related_action(GTK_ACTIVATABLE(m_platformDescription));
 }
 
+ContextMenuItem ContextMenuItem::shareMenuItem(const URL&, const URL&, Image*, const String&)
+{
+    return ContextMenuItem();
+}
+
 }
 
 #endif // ENABLE(CONTEXT_MENUS)

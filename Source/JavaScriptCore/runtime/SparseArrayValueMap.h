@@ -42,6 +42,7 @@ struct SparseArrayEntry : public WriteBarrier<Unknown> {
 
     SparseArrayEntry() : attributes(0) { }
 
+    JSValue get(ExecState*, JSObject*) const;
     void get(JSObject*, PropertySlot&) const;
     void get(PropertyDescriptor&) const;
     void put(ExecState*, JSValue thisValue, SparseArrayValueMap*, JSValue, bool shouldThrow);

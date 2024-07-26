@@ -455,40 +455,38 @@ PassRefPtr<MediaElementAudioSourceNode> AudioContext::createMediaElementSource(H
 #if ENABLE(MEDIA_STREAM)
 PassRefPtr<MediaStreamAudioSourceNode> AudioContext::createMediaStreamSource(MediaStream* mediaStream, ExceptionCode& ec)
 {
-    ASSERT(isMainThread());
-
     ASSERT(mediaStream);
     if (!mediaStream) {
         ec = INVALID_STATE_ERR;
         return nullptr;
     }
 
-    auto audioTracks = mediaStream->getAudioTracks();
-    if (audioTracks.isEmpty()) {
-        ec = INVALID_STATE_ERR;
-        return nullptr;
-    }
+    ASSERT(isMainThread());
+    lazyInitialize();
 
-    MediaStreamTrack* providerTrack = nullptr;
-    for (auto& track : audioTracks) {
-        if (track->audioSourceProvider()) {
-            providerTrack = track.get();
+    AudioSourceProvider* provider = nullptr;
+
+    RefPtr<MediaStreamTrack> audioTrack;
+
+    // FIXME: get a provider for non-local MediaStreams (like from a remote peer).
+    for (auto& track : mediaStream->getAudioTracks()) {
+        audioTrack = track;
+        if (audioTrack->source()->isAudioStreamSource()) {
+            auto source = static_cast<MediaStreamAudioSource*>(audioTrack->source());
+            ASSERT(!source->deviceId().isEmpty());
+            destination()->enableInput(source->deviceId());
+            provider = destination()->localAudioInputProvider();
             break;
         }
     }
 
-    if (!providerTrack) {
-        ec = INVALID_STATE_ERR;
-        return nullptr;
-    }
+    RefPtr<MediaStreamAudioSourceNode> node = MediaStreamAudioSourceNode::create(this, mediaStream, audioTrack.get(), provider);
 
-    lazyInitialize();
-
-    auto node = MediaStreamAudioSourceNode::create(*this, *mediaStream, *providerTrack);
+    // FIXME: Only stereo streams are supported right now. We should be able to accept multi-channel streams.
     node->setFormat(2, sampleRate());
 
-    refNode(&node.get()); // context keeps reference until node is disconnected
-    return &node.get();
+    refNode(node.get()); // context keeps reference until node is disconnected
+    return node;
 }
 
 PassRefPtr<MediaStreamAudioDestinationNode> AudioContext::createMediaStreamDestination()
@@ -1004,7 +1002,7 @@ void AudioContext::nodeWillBeginPlayback()
 bool AudioContext::willBeginPlayback()
 {
     if (userGestureRequiredForAudioStart()) {
-        if (!ScriptController::processingUserGestureForMedia())
+        if (!ScriptController::processingUserGesture())
             return false;
         removeBehaviorRestriction(AudioContext::RequireUserGestureForAudioStartRestriction);
     }
@@ -1024,7 +1022,7 @@ bool AudioContext::willBeginPlayback()
 bool AudioContext::willPausePlayback()
 {
     if (userGestureRequiredForAudioStart()) {
-        if (!ScriptController::processingUserGestureForMedia())
+        if (!ScriptController::processingUserGesture())
             return false;
         removeBehaviorRestriction(AudioContext::RequireUserGestureForAudioStartRestriction);
     }

@@ -108,16 +108,8 @@ public:
             BasicBlock* block = m_graph.block(blockIndex);
             if (!block)
                 continue;
-            unsigned indexForChecks = UINT_MAX;
-            NodeOrigin originForChecks;
             for (unsigned indexInBlock = 0; indexInBlock < block->size(); ++indexInBlock) {
                 Node* node = block->at(indexInBlock);
-                
-                if (node->origin.exitOK) {
-                    indexForChecks = indexInBlock;
-                    originForChecks = node->origin;
-                }
-                
                 // Be careful not to use 'node' after appending to the graph. In those switch
                 // cases where we need to append, we first carefully extract everything we need
                 // from the node, before doing any appending.
@@ -178,15 +170,13 @@ public:
                     
                     if (iter->value.m_structure) {
                         insertionSet.insertNode(
-                            indexForChecks, SpecNone, CheckStructure,
-                            originForChecks.withSemantic(origin.semantic),
+                            indexInBlock, SpecNone, CheckStructure, origin,
                             OpInfo(m_graph.addStructureSet(iter->value.m_structure)),
                             Edge(child1.node(), CellUse));
                     } else if (iter->value.m_arrayModeIsValid) {
                         ASSERT(iter->value.m_arrayModeHoistingOkay);
                         insertionSet.insertNode(
-                            indexForChecks, SpecNone, CheckArray,
-                            originForChecks.withSemantic(origin.semantic),
+                            indexInBlock, SpecNone, CheckArray, origin,
                             OpInfo(iter->value.m_arrayMode.asWord()),
                             Edge(child1.node(), CellUse));
                     } else

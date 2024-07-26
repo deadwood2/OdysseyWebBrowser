@@ -33,7 +33,7 @@ QueueView = function()
 
     this.updateTimer = null;
     setTimeout(this._updateHiddenState.bind(this), 0); // Lets subclass constructor finish before calling _updateHiddenState.
-    settings.addSettingListener("hiddenPlatformFamilies", this._updateHiddenState.bind(this));
+    settings.addSettingListener("hiddenPlatforms", this._updateHiddenState.bind(this));
 };
 
 BaseObject.addConstructorFunctions(QueueView);
@@ -67,9 +67,9 @@ QueueView.prototype = {
         if (!settings.available())
             return;
 
-        var hiddenPlatformFamilies = settings.getObject("hiddenPlatformFamilies");
+        var hiddenPlatforms = settings.getObject("hiddenPlatforms");
         var wasHidden = !this.updateTimer;
-        var isHidden = hiddenPlatformFamilies && hiddenPlatformFamilies.contains(settings.parsePlatformFamily(this.platform));
+        var isHidden = hiddenPlatforms && hiddenPlatforms.contains(this.platform);
 
         if (wasHidden && !isHidden) {
             this._updateQueues();

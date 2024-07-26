@@ -46,7 +46,6 @@
 #include "RawDataDocumentParser.h"
 #include "ScriptController.h"
 #include "ShadowRoot.h"
-#include "TypedElementDescendantIterator.h"
 
 namespace WebCore {
 
@@ -78,30 +77,30 @@ private:
     
 void MediaDocumentParser::createDocumentStructure()
 {
-    Ref<Element> rootElement = document()->createElement(htmlTag, false);
-    document()->appendChild(rootElement.copyRef(), IGNORE_EXCEPTION);
-    document()->setCSSTarget(rootElement.ptr());
-    downcast<HTMLHtmlElement>(rootElement.get()).insertedByParser();
+    RefPtr<Element> rootElement = document()->createElement(htmlTag, false);
+    document()->appendChild(rootElement, IGNORE_EXCEPTION);
+    document()->setCSSTarget(rootElement.get());
+    downcast<HTMLHtmlElement>(*rootElement).insertedByParser();
 
     if (document()->frame())
         document()->frame()->injectUserScripts(InjectAtDocumentStart);
 
 #if PLATFORM(IOS)
-    Ref<Element> headElement = document()->createElement(headTag, false);
-    rootElement->appendChild(headElement.copyRef(), IGNORE_EXCEPTION);
+    RefPtr<Element> headElement = document()->createElement(headTag, false);
+    rootElement->appendChild(headElement, IGNORE_EXCEPTION);
 
-    Ref<Element> metaElement = document()->createElement(metaTag, false);
+    RefPtr<Element> metaElement = document()->createElement(metaTag, false);
     metaElement->setAttribute(nameAttr, "viewport");
     metaElement->setAttribute(contentAttr, "width=device-width,initial-scale=1,user-scalable=no");
-    headElement->appendChild(WTF::move(metaElement), IGNORE_EXCEPTION);
+    headElement->appendChild(metaElement, IGNORE_EXCEPTION);
 #endif
 
-    Ref<Element> body = document()->createElement(bodyTag, false);
-    rootElement->appendChild(body.copyRef(), IGNORE_EXCEPTION);
+    RefPtr<Element> body = document()->createElement(bodyTag, false);
+    rootElement->appendChild(body, IGNORE_EXCEPTION);
 
-    Ref<Element> mediaElement = document()->createElement(videoTag, false);
+    RefPtr<Element> mediaElement = document()->createElement(videoTag, false);
 
-    m_mediaElement = downcast<HTMLVideoElement>(mediaElement.ptr());
+    m_mediaElement = downcast<HTMLVideoElement>(mediaElement.get());
     m_mediaElement->setAttribute(controlsAttr, emptyAtom);
     m_mediaElement->setAttribute(autoplayAttr, emptyAtom);
 
@@ -114,15 +113,15 @@ void MediaDocumentParser::createDocumentStructure()
 #endif
     m_mediaElement->setAttribute(styleAttr, elementStyle.toString());
 
-    Ref<Element> sourceElement = document()->createElement(sourceTag, false);
-    HTMLSourceElement& source = downcast<HTMLSourceElement>(sourceElement.get());
+    RefPtr<Element> sourceElement = document()->createElement(sourceTag, false);
+    HTMLSourceElement& source = downcast<HTMLSourceElement>(*sourceElement);
     source.setSrc(document()->url());
 
     if (DocumentLoader* loader = document()->loader())
         source.setType(loader->responseMIMEType());
 
-    m_mediaElement->appendChild(WTF::move(sourceElement), IGNORE_EXCEPTION);
-    body->appendChild(WTF::move(mediaElement), IGNORE_EXCEPTION);
+    m_mediaElement->appendChild(sourceElement, IGNORE_EXCEPTION);
+    body->appendChild(mediaElement, IGNORE_EXCEPTION);
 
     Frame* frame = document()->frame();
     if (!frame)
@@ -161,12 +160,17 @@ Ref<DocumentParser> MediaDocument::createParser()
     return MediaDocumentParser::create(*this);
 }
 
-static inline HTMLVideoElement* descendantVideoElement(ContainerNode& node)
+static inline HTMLVideoElement* descendentVideoElement(ContainerNode& node)
 {
     if (is<HTMLVideoElement>(node))
         return downcast<HTMLVideoElement>(&node);
 
-    return descendantsOfType<HTMLVideoElement>(node).first();
+    RefPtr<NodeList> nodeList = node.getElementsByTagNameNS(videoTag.namespaceURI(), videoTag.localName());
+   
+    if (nodeList->length() > 0)
+        return downcast<HTMLVideoElement>(nodeList->item(0));
+
+    return nullptr;
 }
 
 static inline HTMLVideoElement* ancestorVideoElement(Node* node)
@@ -203,7 +207,7 @@ void MediaDocument::defaultEventHandler(Event* event)
         return;
     ContainerNode& targetContainer = downcast<ContainerNode>(*targetNode);
     if (event->type() == eventNames().keydownEvent && is<KeyboardEvent>(*event)) {
-        HTMLVideoElement* video = descendantVideoElement(targetContainer);
+        HTMLVideoElement* video = descendentVideoElement(targetContainer);
         if (!video)
             return;
 
@@ -239,7 +243,7 @@ void MediaDocument::replaceMediaElementTimerFired()
     htmlBody->setAttribute(marginwidthAttr, "0");
     htmlBody->setAttribute(marginheightAttr, "0");
 
-    if (HTMLVideoElement* videoElement = descendantVideoElement(*htmlBody)) {
+    if (HTMLVideoElement* videoElement = descendentVideoElement(*htmlBody)) {
         RefPtr<Element> element = Document::createElement(embedTag, false);
         HTMLEmbedElement& embedElement = downcast<HTMLEmbedElement>(*element);
 
@@ -253,7 +257,7 @@ void MediaDocument::replaceMediaElementTimerFired()
         if (documentLoader)
             embedElement.setAttribute(typeAttr, documentLoader->writer().mimeType());
 
-        videoElement->parentNode()->replaceChild(embedElement, *videoElement, IGNORE_EXCEPTION);
+        videoElement->parentNode()->replaceChild(&embedElement, videoElement, IGNORE_EXCEPTION);
     }
 }
 
@@ -266,7 +270,7 @@ void MediaDocument::mediaElementNaturalSizeChanged(const IntSize& newSize)
         return;
 
     if (page())
-        page()->chrome().client().imageOrMediaDocumentSizeChanged(newSize);
+        page()->chrome().client().mediaDocumentNaturalSizeChanged(newSize);
 }
 
 }

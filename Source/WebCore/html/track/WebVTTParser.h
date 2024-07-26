@@ -58,7 +58,9 @@ public:
     virtual ~WebVTTParserClient() { }
 
     virtual void newCuesParsed() = 0;
+#if ENABLE(WEBVTT_REGIONS)
     virtual void newRegionsParsed() = 0;
+#endif
     virtual void fileFailedToParse() = 0;
 };
 
@@ -130,7 +132,9 @@ public:
 
     // Useful functions for parsing percentage settings.
     static bool parseFloatPercentageValue(VTTScanner& valueScanner, float&);
+#if ENABLE(WEBVTT_REGIONS)
     static bool parseFloatPercentageValuePair(VTTScanner& valueScanner, char, FloatPoint&);
+#endif
 
     // Input data to the parser to parse.
     void parseBytes(const char*, unsigned);
@@ -141,7 +145,9 @@ public:
 
     // Transfers ownership of last parsed cues to caller.
     void getNewCues(Vector<RefPtr<WebVTTCueData>>&);
+#if ENABLE(WEBVTT_REGIONS)
     void getNewRegions(Vector<RefPtr<VTTRegion>>&);
+#endif
 
     // Create the DocumentFragment representation of the WebVTT cue text.
     static PassRefPtr<DocumentFragment> createDocumentFragmentFromCueText(Document&, const String&);
@@ -164,7 +170,9 @@ private:
     void resetCueValues();
 
     void collectMetadataHeader(const String&);
+#if ENABLE(WEBVTT_REGIONS)
     void createNewRegion(const String& headerValue);
+#endif
 
     static bool collectTimeStamp(VTTScanner& input, MediaTime& timeStamp);
 
@@ -179,7 +187,10 @@ private:
     WebVTTParserClient* m_client;
 
     Vector<RefPtr<WebVTTCueData>> m_cuelist;
+
+#if ENABLE(WEBVTT_REGIONS)
     Vector<RefPtr<VTTRegion>> m_regionList;
+#endif
 };
 
 } // namespace WebCore

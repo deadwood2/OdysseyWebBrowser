@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2008, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2007, 2008 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -40,7 +40,8 @@ using namespace WebCore;
 // WebActionPropertyBag ------------------------------------------------
 
 WebActionPropertyBag::WebActionPropertyBag(const NavigationAction& action, PassRefPtr<HTMLFormElement> form, PassRefPtr<Frame> frame)
-    : m_action(action)
+    : m_refCount(0)
+    , m_action(action)
     , m_form(form)
     , m_frame(frame)
 {
@@ -63,11 +64,9 @@ WebActionPropertyBag* WebActionPropertyBag::createInstance(const NavigationActio
 
 // IUnknown -------------------------------------------------------------------
 
-HRESULT WebActionPropertyBag::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE WebActionPropertyBag::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<IPropertyBag*>(this);
     else if (IsEqualGUID(riid, IID_IPropertyBag))
@@ -79,12 +78,12 @@ HRESULT WebActionPropertyBag::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void
     return S_OK;
 }
 
-ULONG WebActionPropertyBag::AddRef()
+ULONG STDMETHODCALLTYPE WebActionPropertyBag::AddRef()
 {
     return ++m_refCount;
 }
 
-ULONG WebActionPropertyBag::Release()
+ULONG STDMETHODCALLTYPE WebActionPropertyBag::Release()
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -103,7 +102,7 @@ static const MouseEvent* findMouseEvent(const Event* event)
     for (const Event* e = event; e; e = e->underlyingEvent())
         if (e->isMouseEvent())
             return static_cast<const MouseEvent*>(e);
-    return nullptr;
+    return 0;
 }
 
 HRESULT WebActionPropertyBag::Read(LPCOLESTR pszPropName, VARIANT *pVar, IErrorLog * /*pErrorLog*/)
@@ -162,10 +161,10 @@ HRESULT WebActionPropertyBag::Read(LPCOLESTR pszPropName, VARIANT *pVar, IErrorL
     return E_INVALIDARG;
 }
 
-HRESULT WebActionPropertyBag::Write(_In_ LPCOLESTR pszPropName, _In_ VARIANT* pVar)
+HRESULT STDMETHODCALLTYPE WebActionPropertyBag::Write(LPCOLESTR pszPropName, VARIANT* pVar)
 {
     if (!pszPropName || !pVar)
         return E_POINTER;
 
-    return E_NOTIMPL;
+    return E_FAIL;
 }

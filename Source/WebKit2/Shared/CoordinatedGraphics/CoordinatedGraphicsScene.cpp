@@ -690,7 +690,7 @@ void CoordinatedGraphicsScene::appendUpdate(std::function<void()> function)
         return;
 
     ASSERT(isMainThread());
-    LockHolder locker(m_renderQueueMutex);
+    MutexLocker locker(m_renderQueueMutex);
     m_renderQueue.append(WTF::move(function));
 }
 

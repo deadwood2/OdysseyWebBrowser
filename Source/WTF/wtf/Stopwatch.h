@@ -75,10 +75,15 @@ inline void Stopwatch::stop()
 
 inline double Stopwatch::elapsedTime()
 {
-    if (!isActive())
-        return m_elapsedTime;
+    bool shouldSuspend = !std::isnan(m_lastStartTime);
+    if (shouldSuspend)
+        stop();
 
-    return m_elapsedTime + (monotonicallyIncreasingTime() - m_lastStartTime);
+    double elapsedTime = m_elapsedTime;
+
+    if (shouldSuspend)
+        start();
+    return elapsedTime;
 }
 
 } // namespace WTF

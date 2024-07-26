@@ -39,9 +39,9 @@ using namespace JSC;
 
 namespace WebCore {
 
-JSC::JSValue JSDedicatedWorkerGlobalScope::postMessage(JSC::ExecState& state)
+JSC::JSValue JSDedicatedWorkerGlobalScope::postMessage(JSC::ExecState* exec)
 {
-    return handlePostMessage(state, &impl());
+    return handlePostMessage(exec, &impl());
 }
 
 } // namespace WebCore

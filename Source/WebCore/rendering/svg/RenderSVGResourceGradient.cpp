@@ -61,19 +61,20 @@ static inline bool createMaskAndSwapContextForTextGradient(GraphicsContext*& con
     AffineTransform absoluteTransform = SVGRenderingContext::calculateTransformationToOutermostCoordinateSystem(*textRootBlock);
     FloatRect repaintRect = textRootBlock->repaintRectInLocalCoordinates();
 
-    auto maskImage = SVGRenderingContext::createImageBuffer(repaintRect, absoluteTransform, ColorSpaceDeviceRGB, context->renderingMode());
+    auto maskImage = SVGRenderingContext::createImageBuffer(repaintRect, absoluteTransform, ColorSpaceDeviceRGB, Unaccelerated);
     if (!maskImage)
         return false;
 
-    GraphicsContext& maskImageContext = maskImage->context();
+    GraphicsContext* maskImageContext = maskImage->context();
+    ASSERT(maskImageContext);
     ASSERT(maskImage);
     savedContext = context;
-    context = &maskImageContext;
+    context = maskImageContext;
     imageBuffer = WTF::move(maskImage);
     return true;
 }
 
-static inline AffineTransform clipToTextMask(GraphicsContext& context, std::unique_ptr<ImageBuffer>& imageBuffer, FloatRect& targetRect, RenderObject* object, bool boundingBoxMode, const AffineTransform& gradientTransform)
+static inline AffineTransform clipToTextMask(GraphicsContext* context, std::unique_ptr<ImageBuffer>& imageBuffer, FloatRect& targetRect, RenderObject* object, bool boundingBoxMode, const AffineTransform& gradientTransform)
 {
     auto* textRootBlock = RenderSVGText::locateRenderSVGTextAncestor(*object);
     ASSERT(textRootBlock);
@@ -206,7 +207,7 @@ void RenderSVGResourceGradient::postApplyResource(RenderElement& renderer, Graph
             calculateGradientTransform(gradientTransform);
 
             FloatRect targetRect;
-            gradientData->gradient->setGradientSpaceTransform(clipToTextMask(*context, m_imageBuffer, targetRect, &renderer, gradientUnits() == SVGUnitTypes::SVG_UNIT_TYPE_OBJECTBOUNDINGBOX, gradientTransform));
+            gradientData->gradient->setGradientSpaceTransform(clipToTextMask(context, m_imageBuffer, targetRect, &renderer, gradientUnits() == SVGUnitTypes::SVG_UNIT_TYPE_OBJECTBOUNDINGBOX, gradientTransform));
             context->setFillGradient(*gradientData->gradient);
 
             context->fillRect(targetRect);
@@ -220,13 +221,13 @@ void RenderSVGResourceGradient::postApplyResource(RenderElement& renderer, Graph
             if (path)
                 context->fillPath(*path);
             else if (shape)
-                shape->fillShape(*context);
+                shape->fillShape(context);
         }
         if (resourceMode & ApplyToStrokeMode) {
             if (path)
                 context->strokePath(*path);
             else if (shape)
-                shape->strokeShape(*context);
+                shape->strokeShape(context);
         }
     }
 

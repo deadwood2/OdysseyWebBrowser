@@ -75,7 +75,7 @@ void JITCode::initializeAddressForCall(CodePtr address)
     m_addressForCall = address;
 }
 
-JITCode::CodePtr JITCode::addressForCall(ArityCheckMode arityCheck)
+JITCode::CodePtr JITCode::addressForCall(VM&, ExecutableBase*, ArityCheckMode arityCheck, RegisterPreservationMode)
 {
     switch (arityCheck) {
     case ArityCheckNotRequired:

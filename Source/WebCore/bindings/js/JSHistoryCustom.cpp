@@ -105,7 +105,7 @@ void JSHistory::getOwnPropertyNames(JSObject* object, ExecState* exec, PropertyN
     Base::getOwnPropertyNames(thisObject, exec, propertyNames, mode);
 }
 
-JSValue JSHistory::state(ExecState& state) const
+JSValue JSHistory::state(ExecState *exec) const
 {
     History& history = impl();
 
@@ -114,63 +114,63 @@ JSValue JSHistory::state(ExecState& state) const
         return cachedValue;
 
     RefPtr<SerializedScriptValue> serialized = history.state();
-    JSValue result = serialized ? serialized->deserialize(&state, globalObject(), 0) : jsNull();
-    const_cast<JSHistory*>(this)->m_state.set(state.vm(), this, result);
+    JSValue result = serialized ? serialized->deserialize(exec, globalObject(), 0) : jsNull();
+    const_cast<JSHistory*>(this)->m_state.set(exec->vm(), this, result);
     return result;
 }
 
-JSValue JSHistory::pushState(ExecState& state)
+JSValue JSHistory::pushState(ExecState* exec)
 {
-    if (!shouldAllowAccessToFrame(&state, impl().frame()))
+    if (!shouldAllowAccessToFrame(exec, impl().frame()))
         return jsUndefined();
 
-    RefPtr<SerializedScriptValue> historyState = SerializedScriptValue::create(&state, state.argument(0), 0, 0);
-    if (state.hadException())
+    RefPtr<SerializedScriptValue> historyState = SerializedScriptValue::create(exec, exec->argument(0), 0, 0);
+    if (exec->hadException())
         return jsUndefined();
 
-    String title = valueToStringWithUndefinedOrNullCheck(&state, state.argument(1));
-    if (state.hadException())
+    String title = valueToStringWithUndefinedOrNullCheck(exec, exec->argument(1));
+    if (exec->hadException())
         return jsUndefined();
-
+        
     String url;
-    if (state.argumentCount() > 2) {
-        url = valueToStringWithUndefinedOrNullCheck(&state, state.argument(2));
-        if (state.hadException())
+    if (exec->argumentCount() > 2) {
+        url = valueToStringWithUndefinedOrNullCheck(exec, exec->argument(2));
+        if (exec->hadException())
             return jsUndefined();
     }
 
     ExceptionCode ec = 0;
     impl().stateObjectAdded(historyState.release(), title, url, History::StateObjectType::Push, ec);
-    setDOMException(&state, ec);
+    setDOMException(exec, ec);
 
     m_state.clear();
 
     return jsUndefined();
 }
 
-JSValue JSHistory::replaceState(ExecState& state)
+JSValue JSHistory::replaceState(ExecState* exec)
 {
-    if (!shouldAllowAccessToFrame(&state, impl().frame()))
+    if (!shouldAllowAccessToFrame(exec, impl().frame()))
         return jsUndefined();
 
-    RefPtr<SerializedScriptValue> historyState = SerializedScriptValue::create(&state, state.argument(0), 0, 0);
-    if (state.hadException())
+    RefPtr<SerializedScriptValue> historyState = SerializedScriptValue::create(exec, exec->argument(0), 0, 0);
+    if (exec->hadException())
         return jsUndefined();
 
-    String title = valueToStringWithUndefinedOrNullCheck(&state, state.argument(1));
-    if (state.hadException())
+    String title = valueToStringWithUndefinedOrNullCheck(exec, exec->argument(1));
+    if (exec->hadException())
         return jsUndefined();
-
+        
     String url;
-    if (state.argumentCount() > 2) {
-        url = valueToStringWithUndefinedOrNullCheck(&state, state.argument(2));
-        if (state.hadException())
+    if (exec->argumentCount() > 2) {
+        url = valueToStringWithUndefinedOrNullCheck(exec, exec->argument(2));
+        if (exec->hadException())
             return jsUndefined();
     }
 
     ExceptionCode ec = 0;
     impl().stateObjectAdded(historyState.release(), title, url, History::StateObjectType::Replace, ec);
-    setDOMException(&state, ec);
+    setDOMException(exec, ec);
 
     m_state.clear();
 

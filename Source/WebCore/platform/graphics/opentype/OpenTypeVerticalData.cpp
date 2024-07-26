@@ -535,19 +535,19 @@ void OpenTypeVerticalData::getVerticalTranslationsForGlyphs(const Font* font, co
     }
 }
 
-void OpenTypeVerticalData::substituteWithVerticalGlyphs(const Font* font, GlyphPage* glyphPage) const
+void OpenTypeVerticalData::substituteWithVerticalGlyphs(const Font* font, GlyphPage* glyphPage, unsigned offset, unsigned length) const
 {
     const HashMap<Glyph, Glyph>& map = m_verticalGlyphMap;
     if (map.isEmpty())
         return;
 
-    for (unsigned index = 0; index < GlyphPage::size; ++index) {
-        Glyph glyph = glyphPage->glyphForIndex(index);
+    for (unsigned index = offset, end = offset + length; index < end; ++index) {
+        Glyph glyph = glyphPage->glyphAt(index);
         if (glyph) {
-            ASSERT_UNUSED(font, &glyphPage->font() == font);
+            ASSERT(glyphPage->glyphDataForIndex(index).font == font);
             Glyph to = map.get(glyph);
             if (to)
-                glyphPage->setGlyphForIndex(index, to);
+                glyphPage->setGlyphDataForIndex(index, to, font);
         }
     }
 }

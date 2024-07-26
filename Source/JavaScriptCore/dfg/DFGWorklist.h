@@ -30,14 +30,14 @@
 
 #include "DFGPlan.h"
 #include "DFGThreadData.h"
-#include <wtf/Condition.h>
 #include <wtf/Deque.h>
 #include <wtf/HashMap.h>
-#include <wtf/Lock.h>
 #include <wtf/Noncopyable.h>
+#include <wtf/ThreadingPrimitives.h>
 
 namespace JSC {
 
+class CodeBlockSet;
 class SlotVisitor;
 
 namespace DFG {
@@ -56,9 +56,7 @@ public:
     // worklist->waitUntilAllPlansForVMAreReady(vm);
     // worklist->completeAllReadyPlansForVM(vm);
     void completeAllPlansForVM(VM&);
-
-    void clearCodeBlockMarks(VM&);
-
+    
     void waitUntilAllPlansForVMAreReady(VM&);
     State completeAllReadyPlansForVM(VM&, CompilationKey = CompilationKey());
     void removeAllReadyPlansForVM(VM&);
@@ -73,7 +71,7 @@ public:
     bool isActiveForVM(VM&) const;
     
     // Only called on the main thread after suspending all threads.
-    void visitWeakReferences(SlotVisitor&);
+    void visitWeakReferences(SlotVisitor&, CodeBlockSet&);
     void removeDeadPlans(VM&);
     
     void dump(PrintStream&) const;
@@ -87,7 +85,7 @@ private:
     
     void removeAllReadyPlansForVM(VM&, Vector<RefPtr<Plan>, 8>&);
 
-    void dump(const LockHolder&, PrintStream&) const;
+    void dump(const MutexLocker&, PrintStream&) const;
     
     CString m_threadName;
     
@@ -105,11 +103,11 @@ private:
     // be completed.
     Vector<RefPtr<Plan>, 16> m_readyPlans;
 
-    Lock m_suspensionLock;
+    Mutex m_suspensionLock;
     
-    mutable Lock m_lock;
-    Condition m_planEnqueued;
-    Condition m_planCompiled;
+    mutable Mutex m_lock;
+    ThreadCondition m_planEnqueued;
+    ThreadCondition m_planCompiled;
     
     Vector<std::unique_ptr<ThreadData>> m_threads;
     unsigned m_numberOfActiveThreads;
@@ -139,9 +137,6 @@ inline Worklist* worklistForIndexOrNull(unsigned index)
         return 0;
     }
 }
-
-void completeAllPlansForVM(VM&);
-void clearCodeBlockMarks(VM&);
 
 } } // namespace JSC::DFG
 

@@ -78,7 +78,6 @@ enum MediaControlEvent {
     long memoryCacheSize();
     void setOverrideCachePolicy(CachePolicy policy);
     void setOverrideResourceLoadPriority(ResourceLoadPriority priority);
-    void setStrictRawResourceValidationPolicyDisabled(boolean disabled);
 
     void clearPageCache();
     unsigned int pageCacheSize();
@@ -131,7 +130,6 @@ enum MediaControlEvent {
     [RaisesException] unsigned long markerCountForNode(Node node, DOMString markerType);
     [RaisesException] Range markerRangeForNode(Node node, DOMString markerType, unsigned long index);
     [RaisesException] DOMString markerDescriptionForNode(Node node, DOMString markerType, unsigned long index);
-    [RaisesException] DOMString dumpMarkerRects(DOMString markerType);
     void addTextMatchMarker(Range range, boolean isActive);
     [RaisesException] void setMarkedTextMatchesAreHighlighted(boolean flag);
 
@@ -388,9 +386,7 @@ enum MediaControlEvent {
 
     void setPageMuted(boolean muted);
     boolean isPagePlayingAudio();
-
-    void setPageDefersLoading(boolean defersLoading);
-
+    
     File createFile(DOMString url);
     void queueMicroTask(long testNumber);
     boolean testPreloaderSettingViewport();
@@ -402,8 +398,4 @@ enum MediaControlEvent {
 #endif
 
     [RaisesException] DOMString pathStringWithShrinkWrappedRects(sequence<double> rectComponents, double radius);
-
-    [Conditional=VIDEO] DOMString getCurrentMediaControlsStatusForElement(HTMLMediaElement element);
-
-    DOMString userVisibleString(DOMURL url);
 };

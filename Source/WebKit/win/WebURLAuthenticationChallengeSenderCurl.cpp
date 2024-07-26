@@ -37,7 +37,7 @@ using namespace WebCore;
 
 // IWebURLAuthenticationChallengeSender -------------------------------------------------------------------
 
-HRESULT WebURLAuthenticationChallengeSender::cancelAuthenticationChallenge(
+HRESULT STDMETHODCALLTYPE WebURLAuthenticationChallengeSender::cancelAuthenticationChallenge(
         /* [in] */ IWebURLAuthenticationChallenge* challenge)
 {
     COMPtr<WebURLAuthenticationChallenge> webChallenge(Query, challenge);
@@ -48,7 +48,7 @@ HRESULT WebURLAuthenticationChallengeSender::cancelAuthenticationChallenge(
     return S_OK;
 }
 
-HRESULT WebURLAuthenticationChallengeSender::continueWithoutCredentialForAuthenticationChallenge(
+HRESULT STDMETHODCALLTYPE WebURLAuthenticationChallengeSender::continueWithoutCredentialForAuthenticationChallenge(
         /* [in] */ IWebURLAuthenticationChallenge* challenge)
 {
     COMPtr<WebURLAuthenticationChallenge> webChallenge(Query, challenge);
@@ -59,7 +59,7 @@ HRESULT WebURLAuthenticationChallengeSender::continueWithoutCredentialForAuthent
     return S_OK;
 }
 
-HRESULT WebURLAuthenticationChallengeSender::useCredential(
+HRESULT STDMETHODCALLTYPE WebURLAuthenticationChallengeSender::useCredential(
         /* [in] */ IWebURLCredential* credential, 
         /* [in] */ IWebURLAuthenticationChallenge* challenge)
 {

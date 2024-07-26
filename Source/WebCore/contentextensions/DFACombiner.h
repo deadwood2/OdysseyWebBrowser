@@ -26,8 +26,6 @@
 #ifndef DFACombiner_h
 #define DFACombiner_h
 
-#if ENABLE(CONTENT_EXTENSIONS)
-
 #include "DFA.h"
 #include <wtf/Vector.h>
 
@@ -53,7 +51,5 @@ inline void DFACombiner::addDFA(DFA&& dfa)
 }
 
 } // namespace WebCore
-
-#endif
 
 #endif

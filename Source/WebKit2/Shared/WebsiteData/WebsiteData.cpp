@@ -27,20 +27,20 @@
 #include "WebsiteData.h"
 
 #include "ArgumentCoders.h"
-#include <WebCore/SecurityOriginData.h>
+#include "SecurityOriginData.h"
 #include <wtf/text/StringHash.h>
 
 namespace WebKit {
 
 void WebsiteData::Entry::encode(IPC::ArgumentEncoder& encoder) const
 {
-    encoder << WebCore::SecurityOriginData::fromSecurityOrigin(*origin);
+    encoder << SecurityOriginData::fromSecurityOrigin(*origin);
     encoder.encodeEnum(type);
 }
 
 bool WebsiteData::Entry::decode(IPC::ArgumentDecoder& decoder, WebsiteData::Entry& result)
 {
-    WebCore::SecurityOriginData securityOriginData;
+    SecurityOriginData securityOriginData;
     if (!decoder.decode(securityOriginData))
         return false;
 

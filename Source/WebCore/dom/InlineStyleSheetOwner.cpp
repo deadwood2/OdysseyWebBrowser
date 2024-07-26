@@ -21,13 +21,11 @@
 #include "config.h"
 #include "InlineStyleSheetOwner.h"
 
-#include "AuthorStyleSheets.h"
 #include "ContentSecurityPolicy.h"
 #include "Element.h"
 #include "MediaList.h"
 #include "MediaQueryEvaluator.h"
 #include "ScriptableDocumentParser.h"
-#include "ShadowRoot.h"
 #include "StyleSheetContents.h"
 #include "TextNodeTraversal.h"
 #include <wtf/text/StringBuilder.h>
@@ -47,15 +45,9 @@ InlineStyleSheetOwner::~InlineStyleSheetOwner()
 {
 }
 
-static AuthorStyleSheets& authorStyleSheetsForElement(Element& element)
+void InlineStyleSheetOwner::insertedIntoDocument(Document& document, Element& element)
 {
-    auto* shadowRoot = element.containingShadowRoot();
-    return shadowRoot ? shadowRoot->authorStyleSheets() : element.document().authorStyleSheets();
-}
-
-void InlineStyleSheetOwner::insertedIntoDocument(Document&, Element& element)
-{
-    authorStyleSheetsForElement(element).addStyleSheetCandidateNode(element, m_isParsingChildren);
+    document.styleSheetCollection().addStyleSheetCandidateNode(element, m_isParsingChildren);
 
     if (m_isParsingChildren)
         return;
@@ -64,7 +56,7 @@ void InlineStyleSheetOwner::insertedIntoDocument(Document&, Element& element)
 
 void InlineStyleSheetOwner::removedFromDocument(Document& document, Element& element)
 {
-    authorStyleSheetsForElement(element).removeStyleSheetCandidateNode(element);
+    document.styleSheetCollection().removeStyleSheetCandidateNode(element);
 
     if (m_sheet)
         clearSheet();
@@ -74,14 +66,14 @@ void InlineStyleSheetOwner::removedFromDocument(Document& document, Element& ele
         document.styleResolverChanged(DeferRecalcStyle);
 }
 
-void InlineStyleSheetOwner::clearDocumentData(Document&, Element& element)
+void InlineStyleSheetOwner::clearDocumentData(Document& document, Element& element)
 {
     if (m_sheet)
         m_sheet->clearOwnerNode();
 
     if (!element.inDocument())
         return;
-    authorStyleSheetsForElement(element).removeStyleSheetCandidateNode(element);
+    document.styleSheetCollection().removeStyleSheetCandidateNode(element);
 }
 
 void InlineStyleSheetOwner::childrenChanged(Element& element)
@@ -125,7 +117,7 @@ void InlineStyleSheetOwner::createSheet(Element& element, const String& text)
     Document& document = element.document();
     if (m_sheet) {
         if (m_sheet->isLoading())
-            document.authorStyleSheets().removePendingSheet();
+            document.styleSheetCollection().removePendingSheet();
         clearSheet();
     }
 
@@ -145,11 +137,11 @@ void InlineStyleSheetOwner::createSheet(Element& element, const String& text)
     if (!screenEval.eval(mediaQueries.get()) && !printEval.eval(mediaQueries.get()))
         return;
 
-    authorStyleSheetsForElement(element).addPendingSheet();
+    document.styleSheetCollection().addPendingSheet();
 
     m_loading = true;
 
-    m_sheet = CSSStyleSheet::createInline(element, URL(), m_startTextPosition, document.encoding());
+    m_sheet = CSSStyleSheet::createInline(element, URL(), document.inputEncoding());
     m_sheet->setMediaQueries(mediaQueries.release());
     m_sheet->setTitle(element.title());
     m_sheet->contents().parseStringAtPosition(text, m_startTextPosition, m_isParsingChildren);
@@ -167,18 +159,18 @@ bool InlineStyleSheetOwner::isLoading() const
     return m_sheet && m_sheet->isLoading();
 }
 
-bool InlineStyleSheetOwner::sheetLoaded(Element& element)
+bool InlineStyleSheetOwner::sheetLoaded(Document& document)
 {
     if (isLoading())
         return false;
 
-    authorStyleSheetsForElement(element).removePendingSheet();
+    document.styleSheetCollection().removePendingSheet();
     return true;
 }
 
-void InlineStyleSheetOwner::startLoadingDynamicSheet(Element& element)
+void InlineStyleSheetOwner::startLoadingDynamicSheet(Document& document)
 {
-    authorStyleSheetsForElement(element).addPendingSheet();
+    document.styleSheetCollection().addPendingSheet();
 }
 
 }

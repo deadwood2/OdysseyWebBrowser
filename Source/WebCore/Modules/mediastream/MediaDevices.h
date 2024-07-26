@@ -35,7 +35,6 @@
 
 #include "ContextDestructionObserver.h"
 #include "JSDOMPromise.h"
-#include "MediaDeviceInfo.h"
 #include "ScriptWrappable.h"
 #include <functional>
 #include <wtf/RefCounted.h>
@@ -58,10 +57,7 @@ public:
     Document* document() const;
 
     typedef DOMPromiseWithCallback<RefPtr<MediaStream>, RefPtr<NavigatorUserMediaError>> Promise;
-    typedef DOMPromiseWithCallback<MediaDeviceInfoVector, ExceptionCode> EnumerateDevicesPromise;
-
     void getUserMedia(const Dictionary&, Promise&&, ExceptionCode&) const;
-    void enumerateDevices(EnumerateDevicesPromise&&, ExceptionCode&) const;
 
 private:
     explicit MediaDevices(ScriptExecutionContext*);

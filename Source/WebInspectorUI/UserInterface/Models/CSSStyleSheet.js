@@ -34,14 +34,6 @@ WebInspector.CSSStyleSheet = class CSSStyleSheet extends WebInspector.SourceCode
         this._id = id || null;
         this._url = null;
         this._parentFrame = null;
-        this._origin = null;
-        this._startLineNumber = 0;
-        this._startColumnNumber = 0;
-
-        this._inlineStyleAttribute = false;
-        this._inlineStyleTag = false;
-
-        this._hasInfo = false;
     }
 
     // Static
@@ -61,11 +53,6 @@ WebInspector.CSSStyleSheet = class CSSStyleSheet extends WebInspector.SourceCode
     get parentFrame()
     {
         return this._parentFrame;
-    }
-
-    get origin()
-    {
-        return this._origin;
     }
 
     get url()
@@ -97,70 +84,24 @@ WebInspector.CSSStyleSheet = class CSSStyleSheet extends WebInspector.SourceCode
         return WebInspector.UIString("Anonymous StyleSheet %d").format(this._uniqueDisplayNameNumber);
     }
 
-    get startLineNumber()
+    isInlineStyle()
     {
-        return this._startLineNumber;
+        return !!this._inlineStyle;
     }
 
-    get startColumnNumber()
+    markAsInlineStyle()
     {
-        return this._startColumnNumber;
-    }
-
-    hasInfo()
-    {
-        return this._hasInfo;
-    }
-
-    isInspectorStyleSheet()
-    {
-        return this._origin === WebInspector.CSSStyleSheet.Type.Inspector;
-    }
-
-    isInlineStyleTag()
-    {
-        return this._inlineStyleTag;
-    }
-
-    isInlineStyleAttributeStyleSheet()
-    {
-        return this._inlineStyleAttribute;
-    }
-
-    markAsInlineStyleAttributeStyleSheet()
-    {
-        this._inlineStyleAttribute = true;
-    }
-
-    offsetSourceCodeLocation(sourceCodeLocation)
-    {
-        if (!sourceCodeLocation)
-            return null;
-
-        if (!this._hasInfo)
-            return sourceCodeLocation;
-
-        let sourceCode = sourceCodeLocation.sourceCode;
-        let lineNumber = this._startLineNumber + sourceCodeLocation.lineNumber;
-        let columnNumber = this._startColumnNumber + sourceCodeLocation.columnNumber;
-        return sourceCode.createSourceCodeLocation(lineNumber, columnNumber);
+        this._inlineStyle = true;
     }
 
     // Protected
 
-    updateInfo(url, parentFrame, origin, inlineStyle, startLineNumber, startColumnNumber)
+    updateInfo(url, parentFrame)
     {
-        this._hasInfo = true;
-
         this._url = url || null;
-        this._urlComponents = undefined;
+        delete this._urlComponents;
 
         this._parentFrame = parentFrame || null;
-        this._origin = origin;
-
-        this._inlineStyleTag = inlineStyle;
-        this._startLineNumber = startLineNumber;
-        this._startColumnNumber = startColumnNumber;
     }
 
     get revisionForRequestedContent()
@@ -202,7 +143,7 @@ WebInspector.CSSStyleSheet = class CSSStyleSheet extends WebInspector.SourceCode
     noteContentDidChange()
     {
         if (this._ignoreNextContentDidChangeNotification) {
-            this._ignoreNextContentDidChangeNotification = false;
+            delete this._ignoreNextContentDidChangeNotification;
             return false;
         }
 
@@ -216,11 +157,4 @@ WebInspector.CSSStyleSheet._nextUniqueDisplayNameNumber = 1;
 
 WebInspector.CSSStyleSheet.Event = {
     ContentDidChange: "stylesheet-content-did-change"
-};
-
-WebInspector.CSSStyleSheet.Type = {
-    Author: "css-stylesheet-type-author",
-    User: "css-stylesheet-type-user",
-    UserAgent: "css-stylesheet-type-user-agent",
-    Inspector: "css-stylesheet-type-inspector"
 };

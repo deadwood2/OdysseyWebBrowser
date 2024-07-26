@@ -35,20 +35,32 @@ using namespace JSC;
 
 namespace WebCore {
 
-bool JSStorage::nameGetter(ExecState* exec, PropertyName propertyName, JSValue& value)
+bool JSStorage::canGetItemsForName(ExecState* exec, Storage* impl, PropertyName propertyName)
 {
     if (propertyName.isSymbol())
         return false;
 
     ExceptionCode ec = 0;
-    String item = impl().getItem(propertyNameToString(propertyName), ec);
+    bool result = impl->contains(propertyNameToString(propertyName), ec);
     setDOMException(exec, ec);
+    return result;
+}
 
-    if (item.isNull())
+EncodedJSValue JSStorage::nameGetter(ExecState* exec, JSObject* slotBase, EncodedJSValue, PropertyName propertyName)
+{
+    JSStorage* thisObject = jsCast<JSStorage*>(slotBase);
+    JSValue prototype = thisObject->prototype();
+    PropertySlot slot(thisObject);
+    if (prototype.isObject() && asObject(prototype)->getPropertySlot(exec, propertyName, slot))
+        return JSValue::encode(slot.getValue(exec, propertyName));
+
+    if (propertyName.isSymbol())
         return false;
 
-    value = jsStringWithCache(exec, item);
-    return true;
+    ExceptionCode ec = 0;
+    JSValue result = jsStringOrNull(exec, thisObject->impl().getItem(propertyNameToString(propertyName), ec));
+    setDOMException(exec, ec);
+    return JSValue::encode(result);
 }
 
 bool JSStorage::deleteProperty(JSCell* cell, ExecState* exec, PropertyName propertyName)

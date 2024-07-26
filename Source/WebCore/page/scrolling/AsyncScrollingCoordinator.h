@@ -62,10 +62,6 @@ public:
     void removeTestDeferralForReason(WheelEventTestTrigger::ScrollableAreaIdentifier, WheelEventTestTrigger::DeferTestTriggerReason) const;
 #endif
 
-#if ENABLE(CSS_SCROLL_SNAP)
-    WEBCORE_EXPORT void updateScrollSnapPropertiesWithFrameView(const FrameView&) override;
-#endif
-
 protected:
     WEBCORE_EXPORT AsyncScrollingCoordinator(Page*);
 

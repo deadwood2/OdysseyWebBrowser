@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,22 +23,23 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ClusterContentView = class ClusterContentView extends WebInspector.ContentView
+WebInspector.ClusterContentView = function(representedObject)
 {
-    constructor(representedObject)
-    {
-        super(representedObject);
+    WebInspector.ContentView.call(this, representedObject);
 
-        this.element.classList.add("cluster");
+    this.element.classList.add("cluster");
 
-        this._contentViewContainer = new WebInspector.ContentViewContainer;
-        this._contentViewContainer.addEventListener(WebInspector.ContentViewContainer.Event.CurrentContentViewDidChange, this._currentContentViewDidChange, this);
-        this.element.appendChild(this._contentViewContainer.element);
+    this._contentViewContainer = new WebInspector.ContentViewContainer();
+    this._contentViewContainer.addEventListener(WebInspector.ContentViewContainer.Event.CurrentContentViewDidChange, this._currentContentViewDidChange, this);
+    this.element.appendChild(this._contentViewContainer.element);
 
-        WebInspector.ContentView.addEventListener(WebInspector.ContentView.Event.SelectionPathComponentsDidChange, this._contentViewSelectionPathComponentDidChange, this);
-        WebInspector.ContentView.addEventListener(WebInspector.ContentView.Event.SupplementalRepresentedObjectsDidChange, this._contentViewSupplementalRepresentedObjectsDidChange, this);
-        WebInspector.ContentView.addEventListener(WebInspector.ContentView.Event.NumberOfSearchResultsDidChange, this._contentViewNumberOfSearchResultsDidChange, this);
-    }
+    WebInspector.ContentView.addEventListener(WebInspector.ContentView.Event.SelectionPathComponentsDidChange, this._contentViewSelectionPathComponentDidChange, this);
+    WebInspector.ContentView.addEventListener(WebInspector.ContentView.Event.SupplementalRepresentedObjectsDidChange, this._contentViewSupplementalRepresentedObjectsDidChange, this);
+    WebInspector.ContentView.addEventListener(WebInspector.ContentView.Event.NumberOfSearchResultsDidChange, this._contentViewNumberOfSearchResultsDidChange, this);
+};
+
+WebInspector.ClusterContentView.prototype = {
+    constructor: WebInspector.ClusterContentView,
 
     // Public
 
@@ -46,99 +47,101 @@ WebInspector.ClusterContentView = class ClusterContentView extends WebInspector.
     {
         var currentContentView = this._contentViewContainer.currentContentView;
         return currentContentView ? currentContentView.navigationItems : [];
-    }
+    },
 
     get contentViewContainer()
     {
         return this._contentViewContainer;
-    }
+    },
 
     get supportsSplitContentBrowser()
     {
         if (this._contentViewContainer.currentContentView)
             return this._contentViewContainer.currentContentView.supportsSplitContentBrowser;
         return true;
-    }
+    },
 
-    updateLayout()
+    updateLayout: function()
     {
-        this._contentViewContainer.updateLayout();
-    }
+        var currentContentView = this._contentViewContainer.currentContentView;
+        if (currentContentView)
+            currentContentView.updateLayout();
+    },
 
-    shown()
+    shown: function()
     {
         this._contentViewContainer.shown();
-    }
+    },
 
-    hidden()
+    hidden: function()
     {
         this._contentViewContainer.hidden();
-    }
+    },
 
-    closed()
+    closed: function()
     {
         this._contentViewContainer.closeAllContentViews();
 
         WebInspector.ContentView.removeEventListener(null, null, this);
-    }
+    },
 
-    canGoBack()
+    canGoBack: function()
     {
         return this._contentViewContainer.canGoBack();
-    }
+    },
 
-    canGoForward()
+    canGoForward: function()
     {
         return this._contentViewContainer.canGoForward();
-    }
+    },
 
-    goBack()
+    goBack: function()
     {
         this._contentViewContainer.goBack();
-    }
+    },
 
-    goForward()
+    goForward: function()
     {
         this._contentViewContainer.goForward();
-    }
+    },
 
     get selectionPathComponents()
     {
         if (!this._contentViewContainer.currentContentView)
             return [];
         return this._contentViewContainer.currentContentView.selectionPathComponents;
-    }
+    },
 
     get supplementalRepresentedObjects()
     {
         if (!this._contentViewContainer.currentContentView)
             return [];
         return this._contentViewContainer.currentContentView.supplementalRepresentedObjects;
-    }
+    },
 
     get handleCopyEvent()
     {
         var currentContentView = this._contentViewContainer.currentContentView;
         return currentContentView && typeof currentContentView.handleCopyEvent === "function" ? currentContentView.handleCopyEvent.bind(currentContentView) : null;
-    }
+    },
 
     get supportsSave()
     {
         var currentContentView = this._contentViewContainer.currentContentView;
         return currentContentView && currentContentView.supportsSave;
-    }
+    },
 
     get saveData()
     {
         var currentContentView = this._contentViewContainer.currentContentView;
         return currentContentView && currentContentView.saveData || null;
-    }
+    },
 
     get supportsSearch()
     {
         // Always return true so we can intercept the search query to resend it when switching content views.
         return true;
-    }
+    },
 
     get numberOfSearchResults()
     {
@@ -146,7 +149,7 @@ WebInspector.ClusterContentView = class ClusterContentView extends WebInspector.
         if (!currentContentView || !currentContentView.supportsSearch)
             return null;
         return currentContentView.numberOfSearchResults;
-    }
+    },
 
     get hasPerformedSearch()
     {
@@ -154,7 +157,7 @@ WebInspector.ClusterContentView = class ClusterContentView extends WebInspector.
         if (!currentContentView || !currentContentView.supportsSearch)
             return false;
         return currentContentView.hasPerformedSearch;
-    }
+    },
 
     set automaticallyRevealFirstSearchResult(reveal)
     {
@@ -162,9 +165,9 @@ WebInspector.ClusterContentView = class ClusterContentView extends WebInspector.
         if (!currentContentView || !currentContentView.supportsSearch)
             return;
         currentContentView.automaticallyRevealFirstSearchResult = reveal;
-    }
+    },
 
-    performSearch(query)
+    performSearch: function(query)
     {
         this._searchQuery = query;
 
@@ -172,9 +175,9 @@ WebInspector.ClusterContentView = class ClusterContentView extends WebInspector.
         if (!currentContentView || !currentContentView.supportsSearch)
             return;
         currentContentView.performSearch(query);
-    }
+    },
 
-    searchCleared()
+    searchCleared: function()
     {
         this._searchQuery = null;
 
@@ -182,35 +185,35 @@ WebInspector.ClusterContentView = class ClusterContentView extends WebInspector.
         if (!currentContentView || !currentContentView.supportsSearch)
             return;
         currentContentView.searchCleared();
-    }
+    },
 
-    searchQueryWithSelection()
+    searchQueryWithSelection: function()
     {
         var currentContentView = this._contentViewContainer.currentContentView;
         if (!currentContentView || !currentContentView.supportsSearch)
             return null;
         return currentContentView.searchQueryWithSelection();
-    }
+    },
 
-    revealPreviousSearchResult(changeFocus)
+    revealPreviousSearchResult: function(changeFocus)
     {
         var currentContentView = this._contentViewContainer.currentContentView;
         if (!currentContentView || !currentContentView.supportsSearch)
             return;
         currentContentView.revealPreviousSearchResult(changeFocus);
-    }
+    },
 
-    revealNextSearchResult(changeFocus)
+    revealNextSearchResult: function(changeFocus)
     {
         var currentContentView = this._contentViewContainer.currentContentView;
         if (!currentContentView || !currentContentView.supportsSearch)
             return;
         currentContentView.revealNextSearchResult(changeFocus);
-    }
+    },
 
     // Private
 
-    _currentContentViewDidChange(event)
+    _currentContentViewDidChange: function(event)
     {
         var currentContentView = this._contentViewContainer.currentContentView;
         if (currentContentView && currentContentView.supportsSearch) {
@@ -223,26 +226,28 @@ WebInspector.ClusterContentView = class ClusterContentView extends WebInspector.
         this.dispatchEventToListeners(WebInspector.ContentView.Event.SelectionPathComponentsDidChange);
         this.dispatchEventToListeners(WebInspector.ContentView.Event.NumberOfSearchResultsDidChange);
         this.dispatchEventToListeners(WebInspector.ContentView.Event.NavigationItemsDidChange);
-    }
+    },
 
-    _contentViewSelectionPathComponentDidChange(event)
+    _contentViewSelectionPathComponentDidChange: function(event)
     {
         if (event.target !== this._contentViewContainer.currentContentView)
             return;
         this.dispatchEventToListeners(WebInspector.ContentView.Event.SelectionPathComponentsDidChange);
-    }
+    },
 
-    _contentViewSupplementalRepresentedObjectsDidChange(event)
+    _contentViewSupplementalRepresentedObjectsDidChange: function(event)
     {
         if (event.target !== this._contentViewContainer.currentContentView)
             return;
         this.dispatchEventToListeners(WebInspector.ContentView.Event.SupplementalRepresentedObjectsDidChange);
-    }
+    },
 
-    _contentViewNumberOfSearchResultsDidChange(event)
+    _contentViewNumberOfSearchResultsDidChange: function(event)
     {
         if (event.target !== this._contentViewContainer.currentContentView)
             return;
         this.dispatchEventToListeners(WebInspector.ContentView.Event.NumberOfSearchResultsDidChange);
     }
 };
+
+WebInspector.ClusterContentView.prototype.__proto__ = WebInspector.ContentView.prototype;

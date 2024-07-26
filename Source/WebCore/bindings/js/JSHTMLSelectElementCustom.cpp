@@ -32,21 +32,21 @@ namespace WebCore {
 using namespace JSC;
 using namespace HTMLNames;
 
-JSValue JSHTMLSelectElement::remove(ExecState& state)
+JSValue JSHTMLSelectElement::remove(ExecState* exec)
 {
     HTMLSelectElement& select = impl();
 
-    if (!state.argumentCount()) {
+    if (!exec->argumentCount()) {
         // When called with no argument, we should call Element::remove() to detach.
         ExceptionCode ec = 0;
         select.remove(ec);
-        setDOMException(&state, ec);
+        setDOMException(exec, ec);
     } else {
         // The HTMLSelectElement::remove() function can take either an option object or the index of an option.
-        if (HTMLOptionElement* option = JSHTMLOptionElement::toWrapped(state.argument(0)))
+        if (HTMLOptionElement* option = JSHTMLOptionElement::toWrapped(exec->argument(0)))
             select.remove(option);
         else
-            select.removeByIndex(state.argument(0).toInt32(&state));
+            select.removeByIndex(exec->argument(0).toInt32(exec));
     }
 
     return jsUndefined();

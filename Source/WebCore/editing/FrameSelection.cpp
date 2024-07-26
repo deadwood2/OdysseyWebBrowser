@@ -1542,7 +1542,7 @@ void CaretBase::invalidateCaretRect(Node* node, bool caretRectChanged)
     }
 }
 
-void FrameSelection::paintCaret(GraphicsContext& context, const LayoutPoint& paintOffset, const LayoutRect& clipRect)
+void FrameSelection::paintCaret(GraphicsContext* context, const LayoutPoint& paintOffset, const LayoutRect& clipRect)
 {
     if (m_selection.isCaret() && m_caretPaint)
         CaretBase::paintCaret(m_selection.start().deprecatedNode(), context, paintOffset, clipRect);
@@ -1555,7 +1555,7 @@ static inline bool disappearsIntoBackground(Color foreground, Color background)
 }
 #endif
 
-void CaretBase::paintCaret(Node* node, GraphicsContext& context, const LayoutPoint& paintOffset, const LayoutRect& clipRect) const
+void CaretBase::paintCaret(Node* node, GraphicsContext* context, const LayoutPoint& paintOffset, const LayoutRect& clipRect) const
 {
 #if ENABLE(TEXT_CARET)
     if (m_caretVisibility == Hidden)
@@ -1593,7 +1593,7 @@ void CaretBase::paintCaret(Node* node, GraphicsContext& context, const LayoutPoi
         }
     }
 
-    context.fillRect(caret, caretColor, colorSpace);
+    context->fillRect(caret, caretColor, colorSpace);
 #else
     UNUSED_PARAM(node);
     UNUSED_PARAM(context);
@@ -1799,15 +1799,15 @@ void FrameSelection::selectAll()
 
 bool FrameSelection::setSelectedRange(Range* range, EAffinity affinity, bool closeTyping)
 {
-    if (!range)
+    if (!range || !range->startContainer() || !range->endContainer())
         return false;
-    ASSERT(&range->startContainer().document() == &range->endContainer().document());
+    ASSERT(&range->startContainer()->document() == &range->endContainer()->document());
 
     VisibleSelection newSelection(*range, affinity);
 
 #if PLATFORM(IOS)
     // FIXME: Why do we need this check only in iOS?
-    if (newSelection.isNone())
+    if (range->startContainer() && range->endContainer() && newSelection.isNone())
         return false;
 #endif
 
@@ -2031,7 +2031,7 @@ void FrameSelection::setFocusedElementIfNeeded()
         m_frame->page()->focusController().setFocusedElement(0, m_frame);
 }
 
-void DragCaretController::paintDragCaret(Frame* frame, GraphicsContext& p, const LayoutPoint& paintOffset, const LayoutRect& clipRect) const
+void DragCaretController::paintDragCaret(Frame* frame, GraphicsContext* p, const LayoutPoint& paintOffset, const LayoutRect& clipRect) const
 {
 #if ENABLE(TEXT_CARET)
     if (m_position.deepEquivalent().deprecatedNode()->document().frame() == frame)
@@ -2081,29 +2081,21 @@ void FrameSelection::getClippedVisibleTextRectangles(Vector<FloatRect>& rectangl
     if (!root)
         return;
 
-    Vector<FloatRect> textRects;
-    getTextRectangles(textRects, textRectHeight);
-
-    FloatRect visibleContentRect = m_frame->view()->visibleContentRect(ScrollableArea::LegacyIOSDocumentVisibleRect);
-
-    for (const auto& rect : textRects) {
-        FloatRect intersectionRect = intersection(rect, visibleContentRect);
-        if (!intersectionRect.isEmpty())
-            rectangles.append(intersectionRect);
-    }
-}
-
-void FrameSelection::getTextRectangles(Vector<FloatRect>& rectangles, TextRectangleHeight textRectHeight) const
-{
     RefPtr<Range> range = toNormalizedRange();
     if (!range)
         return;
 
-    Vector<FloatQuad> quads;
-    range->absoluteTextQuads(quads, textRectHeight == TextRectangleHeight::SelectionHeight);
+    FloatRect visibleContentRect = m_frame->view()->visibleContentRect(ScrollableArea::LegacyIOSDocumentVisibleRect);
 
-    for (const auto& quad : quads)
-        rectangles.append(quad.boundingBox());
+    Vector<FloatQuad> quads;
+    range->textQuads(quads, textRectHeight == TextRectangleHeight::SelectionHeight);
+
+    size_t size = quads.size();
+    for (size_t i = 0; i < size; ++i) {
+        FloatRect intersectionRect = intersection(quads[i].enclosingBoundingBox(), visibleContentRect);
+        if (!intersectionRect.isEmpty())
+            rectangles.append(intersectionRect);
+    }
 }
 
 // Scans logically forward from "start", including any child frames.
@@ -2384,7 +2376,9 @@ int FrameSelection::wordOffsetInRange(const Range *range) const
     // FIXME: This will only work in cases where the selection remains in
     // the same node after it is expanded. Improve to handle more complicated
     // cases.
-    int result = selection.start().deprecatedEditingOffset() - range->startOffset();
+    ExceptionCode ec = 0;
+    int result = selection.start().deprecatedEditingOffset() - range->startOffset(ec);
+    ASSERT(!ec);
     if (result < 0)
         result = 0;
     return result;
@@ -2394,9 +2388,12 @@ bool FrameSelection::spaceFollowsWordInRange(const Range *range) const
 {
     if (!range)
         return false;
-    Node& node = range->endContainer();
-    int endOffset = range->endOffset();
-    VisiblePosition pos(createLegacyEditingPosition(&node, endOffset), VP_DEFAULT_AFFINITY);
+    ExceptionCode ec = 0;
+    Node* node = range->endContainer(ec);
+    ASSERT(!ec);
+    int endOffset = range->endOffset(ec);
+    ASSERT(!ec);
+    VisiblePosition pos(createLegacyEditingPosition(node, endOffset), VP_DEFAULT_AFFINITY);
     return isSpaceOrNewline(pos.characterAfter());
 }
 

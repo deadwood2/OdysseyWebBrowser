@@ -29,8 +29,6 @@
 #include <cstring>
 #if BOS(DARWIN)
 #include <mach-o/dyld.h>
-#elif BOS(UNIX)
-#include <dlfcn.h>
 #endif
 
 namespace bmalloc {
@@ -80,20 +78,10 @@ static bool isASanEnabled()
 #if BOS(DARWIN)
     uint32_t imageCount = _dyld_image_count();
     for (uint32_t i = 0; i < imageCount; ++i) {
-        const char* imageName = _dyld_get_image_name(i);
-        if (!imageName)
-            continue;
-        if (strstr(imageName, "/libclang_rt.asan_"))
+        if (strstr(_dyld_get_image_name(i), "/libclang_rt.asan_"))
             return true;
     }
     return false;
-#elif BOS(UNIX)
-    void* handle = dlopen(nullptr, RTLD_NOW);
-    if (!handle)
-        return false;
-    bool result = !!dlsym(handle, "__asan_poison_memory_region");
-    dlclose(handle);
-    return result;
 #else
     return false;
 #endif

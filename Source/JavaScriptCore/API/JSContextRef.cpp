@@ -37,7 +37,6 @@
 #include "JSCInlines.h"
 #include "SourceProvider.h"
 #include "StackVisitor.h"
-#include "Watchdog.h"
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/StringHash.h>
 
@@ -92,24 +91,38 @@ static bool internalScriptTimeoutCallback(ExecState* exec, void* callbackPtr, vo
     return callback(contextRef, callbackData);
 }
 
+static void createWatchdogIfNeeded(VM& vm)
+{
+    if (!vm.watchdog) {
+        vm.watchdog = std::make_unique<Watchdog>();
+
+        // The LLINT peeks into the Watchdog object directly. In order to do that,
+        // the LLINT assumes that the internal shape of a std::unique_ptr is the
+        // same as a plain C++ pointer, and loads the address of Watchdog from it.
+        RELEASE_ASSERT(*reinterpret_cast<Watchdog**>(&vm.watchdog) == vm.watchdog.get());
+    }
+}
+
 void JSContextGroupSetExecutionTimeLimit(JSContextGroupRef group, double limit, JSShouldTerminateCallback callback, void* callbackData)
 {
     VM& vm = *toJS(group);
     JSLockHolder locker(&vm);
-    Watchdog& watchdog = vm.ensureWatchdog();
+    createWatchdogIfNeeded(vm);
+    Watchdog& watchdog = *vm.watchdog;
     if (callback) {
         void* callbackPtr = reinterpret_cast<void*>(callback);
-        watchdog.setTimeLimit(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::duration<double>(limit)), internalScriptTimeoutCallback, callbackPtr, callbackData);
+        watchdog.setTimeLimit(vm, std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::duration<double>(limit)), internalScriptTimeoutCallback, callbackPtr, callbackData);
     } else
-        watchdog.setTimeLimit(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::duration<double>(limit)));
+        watchdog.setTimeLimit(vm, std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::duration<double>(limit)));
 }
 
 void JSContextGroupClearExecutionTimeLimit(JSContextGroupRef group)
 {
     VM& vm = *toJS(group);
     JSLockHolder locker(&vm);
-    if (vm.watchdog)
-        vm.watchdog->setTimeLimit(Watchdog::noTimeLimit);
+    createWatchdogIfNeeded(vm);
+    Watchdog& watchdog = *vm.watchdog;
+    watchdog.setTimeLimit(vm, std::chrono::microseconds::max());
 }
 
 // From the API's perspective, a global context remains alive iff it has been JSGlobalContextRetained.

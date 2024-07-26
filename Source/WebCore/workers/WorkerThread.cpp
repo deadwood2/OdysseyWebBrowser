@@ -35,7 +35,6 @@
 #include "ThreadGlobalData.h"
 #include "URL.h"
 #include <utility>
-#include <wtf/Lock.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/text/WTFString.h>
@@ -47,7 +46,17 @@
 
 namespace WebCore {
 
-static StaticLock threadSetMutex;
+static std::mutex& threadSetMutex()
+{
+    static std::once_flag onceFlag;
+    static LazyNeverDestroyed<std::mutex> mutex;
+
+    std::call_once(onceFlag, []{
+        mutex.construct();
+    });
+
+    return mutex;
+}
 
 static HashSet<WorkerThread*>& workerThreads()
 {
@@ -58,7 +67,7 @@ static HashSet<WorkerThread*>& workerThreads()
 
 unsigned WorkerThread::workerThreadCount()
 {
-    std::lock_guard<StaticLock> lock(threadSetMutex);
+    std::lock_guard<std::mutex> lock(threadSetMutex());
 
     return workerThreads().size();
 }
@@ -97,14 +106,14 @@ WorkerThread::WorkerThread(const URL& scriptURL, const String& userAgent, const 
     , m_notificationClient(0)
 #endif
 {
-    std::lock_guard<StaticLock> lock(threadSetMutex);
+    std::lock_guard<std::mutex> lock(threadSetMutex());
 
     workerThreads().add(this);
 }
 
 WorkerThread::~WorkerThread()
 {
-    std::lock_guard<StaticLock> lock(threadSetMutex);
+    std::lock_guard<std::mutex> lock(threadSetMutex());
 
     ASSERT(workerThreads().contains(this));
     workerThreads().remove(this);
@@ -113,7 +122,7 @@ WorkerThread::~WorkerThread()
 bool WorkerThread::start()
 {
     // Mutex protection is necessary to ensure that m_threadID is initialized when the thread starts.
-    LockHolder lock(m_threadCreationMutex);
+    MutexLocker lock(m_threadCreationMutex);
 
     if (m_threadID)
         return true;
@@ -136,7 +145,7 @@ void WorkerThread::workerThread()
 #endif
 
     {
-        LockHolder lock(m_threadCreationMutex);
+        MutexLocker lock(m_threadCreationMutex);
         m_workerGlobalScope = createWorkerGlobalScope(m_startupData->m_scriptURL, m_startupData->m_userAgent, m_startupData->m_contentSecurityPolicy, m_startupData->m_contentSecurityPolicyType, m_startupData->m_topOrigin.release());
 
         if (m_runLoop.terminated()) {
@@ -180,7 +189,7 @@ void WorkerThread::runEventLoop()
 void WorkerThread::stop()
 {
     // Mutex protection is necessary because stop() can be called before the context is fully created.
-    LockHolder lock(m_threadCreationMutex);
+    MutexLocker lock(m_threadCreationMutex);
 
     // Ensure that tasks are being handled by thread event loop. If script execution weren't forbidden, a while(1) loop in JS could keep the thread alive forever.
     if (m_workerGlobalScope) {
@@ -212,7 +221,7 @@ void WorkerThread::stop()
 
 void WorkerThread::releaseFastMallocFreeMemoryInAllThreads()
 {
-    std::lock_guard<StaticLock> lock(threadSetMutex);
+    std::lock_guard<std::mutex> lock(threadSetMutex());
 
     for (auto* workerThread : workerThreads()) {
         workerThread->runLoop().postTask([] (ScriptExecutionContext&) {

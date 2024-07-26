@@ -44,7 +44,6 @@ public:
     virtual PlatformSurfaceConfig configuration() override;
     virtual void destroy() override;
     virtual GLPlatformSurface::SurfaceAttributes attributes() const override;
-    virtual bool isCurrentDrawable() const override;
 
 protected:
     EGLTransportSurface(const IntSize&, SurfaceAttributes);
@@ -58,7 +57,6 @@ public:
     virtual PlatformSurfaceConfig configuration() override;
     virtual void destroy() override;
     virtual GLPlatformSurface::SurfaceAttributes attributes() const override;
-    virtual bool isCurrentDrawable() const override;
 
 protected:
     EGLOffScreenSurface(SurfaceAttributes);

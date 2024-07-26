@@ -27,7 +27,6 @@
 #include "PlatformWebView.h"
 
 #include <WebCore/GUniquePtrGtk.h>
-#include <WebKit/WKRetainPtr.h>
 #include <gtk/gtk.h>
 #include <wtf/glib/GUniquePtr.h>
 
@@ -35,40 +34,16 @@ namespace TestWebKitAPI {
 
 PlatformWebView::PlatformWebView(WKContextRef contextRef, WKPageGroupRef pageGroupRef)
 {
-    WKRetainPtr<WKPageConfigurationRef> configuration = adoptWK(WKPageConfigurationCreate());
-    WKPageConfigurationSetContext(configuration.get(), contextRef);
-    WKPageConfigurationSetPageGroup(configuration.get(), pageGroupRef);
-
-    initialize(configuration.get());
-}
-
-PlatformWebView::PlatformWebView(WKPageConfigurationRef configuration)
-{
-    initialize(configuration);
-}
-
-PlatformWebView::PlatformWebView(WKPageRef relatedPage)
-{
-    WKRetainPtr<WKPageConfigurationRef> configuration = adoptWK(WKPageConfigurationCreate());
-    WKPageConfigurationSetContext(configuration.get(), WKPageGetContext(relatedPage));
-    WKPageConfigurationSetPageGroup(configuration.get(), WKPageGetPageGroup(relatedPage));
-    WKPageConfigurationSetRelatedPage(configuration.get(), relatedPage);
-
-    initialize(configuration.get());
+    m_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    m_view = WKViewCreate(contextRef, pageGroupRef, nullptr);
+    gtk_container_add(GTK_CONTAINER(m_window), GTK_WIDGET(m_view));
+    gtk_widget_show(GTK_WIDGET(m_view));
+    gtk_widget_show(m_window);
 }
 
 PlatformWebView::~PlatformWebView()
 {
     gtk_widget_destroy(m_window);
-}
-
-void PlatformWebView::initialize(WKPageConfigurationRef configuration)
-{
-    m_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    m_view = WKViewCreate(configuration);
-    gtk_container_add(GTK_CONTAINER(m_window), GTK_WIDGET(m_view));
-    gtk_widget_show(GTK_WIDGET(m_view));
-    gtk_widget_show(m_window);
 }
 
 WKPageRef PlatformWebView::page() const

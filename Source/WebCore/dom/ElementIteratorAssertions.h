@@ -35,7 +35,6 @@ public:
     ElementIteratorAssertions(const Element* first = nullptr);
     bool domTreeHasMutated() const;
     void dropEventDispatchAssertion();
-    void clear();
 
 private:
     const Document* m_document;
@@ -62,14 +61,6 @@ inline void ElementIteratorAssertions::dropEventDispatchAssertion()
 {
     m_eventDispatchAssertion = Nullopt;
 }
-
-inline void ElementIteratorAssertions::clear()
-{
-    m_document = nullptr;
-    m_initialDOMTreeVersion = 0;
-    m_eventDispatchAssertion = Nullopt;
-}
-
 
 }
 

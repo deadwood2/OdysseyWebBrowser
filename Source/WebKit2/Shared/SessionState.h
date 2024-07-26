@@ -31,7 +31,6 @@
 #endif
 
 #include <WebCore/FloatRect.h>
-#include <WebCore/FrameLoaderTypes.h>
 #include <WebCore/IntRect.h>
 #include <WebCore/URL.h>
 #include <wtf/Optional.h>
@@ -44,8 +43,6 @@ class ArgumentEncoder;
 }
 
 namespace WebKit {
-
-bool isValidEnum(WebCore::ShouldOpenExternalURLsPolicy);
 
 struct HTTPBody {
     struct Element {
@@ -118,7 +115,6 @@ struct PageState {
 
     String title;
     FrameState mainFrameState;
-    WebCore::ShouldOpenExternalURLsPolicy shouldOpenExternalURLsPolicy { WebCore::ShouldOpenExternalURLsPolicy::ShouldNotAllow };
 };
 
 struct BackForwardListItemState {

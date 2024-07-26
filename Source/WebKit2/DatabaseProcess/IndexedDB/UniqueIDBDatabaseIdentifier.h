@@ -28,7 +28,7 @@
 
 #if ENABLE(INDEXED_DATABASE) && ENABLE(DATABASE_PROCESS)
 
-#include <WebCore/SecurityOriginData.h>
+#include "SecurityOriginData.h"
 #include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/text/WTFString.h>
@@ -38,13 +38,13 @@ namespace WebKit {
 class UniqueIDBDatabaseIdentifier {
 public:
     UniqueIDBDatabaseIdentifier();
-    UniqueIDBDatabaseIdentifier(const String& databaseName, const WebCore::SecurityOriginData& openingOrigin, const WebCore::SecurityOriginData& mainFrameOrigin);
+    UniqueIDBDatabaseIdentifier(const String& databaseName, const SecurityOriginData& openingOrigin, const SecurityOriginData& mainFrameOrigin);
 
     bool isNull() const;
 
     const String& databaseName() const { return m_databaseName; }
-    const WebCore::SecurityOriginData& openingOrigin() const { return m_openingOrigin; }
-    const WebCore::SecurityOriginData& mainFrameOrigin() const { return m_mainFrameOrigin; }
+    const SecurityOriginData& openingOrigin() const { return m_openingOrigin; }
+    const SecurityOriginData& mainFrameOrigin() const { return m_mainFrameOrigin; }
 
     UniqueIDBDatabaseIdentifier(WTF::HashTableDeletedValueType);
     bool isHashTableDeletedValue() const;
@@ -54,8 +54,8 @@ public:
 
 private:
     String m_databaseName;
-    WebCore::SecurityOriginData m_openingOrigin;
-    WebCore::SecurityOriginData m_mainFrameOrigin;
+    SecurityOriginData m_openingOrigin;
+    SecurityOriginData m_mainFrameOrigin;
 };
 
 bool operator==(const UniqueIDBDatabaseIdentifier&, const UniqueIDBDatabaseIdentifier&);

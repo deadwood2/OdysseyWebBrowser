@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,34 +23,42 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.LayoutTimelineDataGridNode = class LayoutTimelineDataGridNode extends WebInspector.TimelineDataGridNode
+WebInspector.LayoutTimelineDataGridNode = function(layoutTimelineRecord, baseStartTime)
 {
-    constructor(layoutTimelineRecord, baseStartTime)
-    {
-        super(false, null);
+    WebInspector.TimelineDataGridNode.call(this, false, null);
 
-        this._record = layoutTimelineRecord;
-        this._baseStartTime = baseStartTime || 0;
-    }
+    this._record = layoutTimelineRecord;
+    this._baseStartTime = baseStartTime || 0;
+};
+
+// FIXME: Move to a WebInspector.Object subclass and we can remove this.
+WebInspector.Object.deprecatedAddConstructorFunctions(WebInspector.LayoutTimelineDataGridNode);
+
+WebInspector.LayoutTimelineDataGridNode.IconStyleClassName = "icon";
+WebInspector.LayoutTimelineDataGridNode.SubtitleStyleClassName = "subtitle";
+
+WebInspector.LayoutTimelineDataGridNode.prototype = {
+    constructor: WebInspector.LayoutTimelineDataGridNode,
+    __proto__: WebInspector.TimelineDataGridNode.prototype,
 
     // Public
 
     get record()
     {
         return this._record;
-    }
+    },
 
     get records()
     {
         return [this._record];
-    }
+    },
 
     get data()
     {
         return {eventType: this._record.eventType, width: this._record.width, height: this._record.height, area: this._record.width * this._record.height, startTime: this._record.startTime, totalTime: this._record.duration, location: this._record.initiatorCallFrame};
-    }
+    },
 
-    createCellContent(columnIdentifier, cell)
+    createCellContent: function(columnIdentifier, cell)
     {
         const emptyValuePlaceholderString = "\u2014";
         var value = this.data[columnIdentifier];
@@ -73,6 +81,6 @@ WebInspector.LayoutTimelineDataGridNode = class LayoutTimelineDataGridNode exten
             return isNaN(value) ? emptyValuePlaceholderString : Number.secondsToString(value, true);
         }
 
-        return super.createCellContent(columnIdentifier, cell);
+        return WebInspector.TimelineDataGridNode.prototype.createCellContent.call(this, columnIdentifier, cell);
     }
 };

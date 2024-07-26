@@ -88,9 +88,9 @@ WebKitCSSFilterValue::WebKitCSSFilterValue(const WebKitCSSFilterValue& cloneFrom
 {
 }
 
-Ref<WebKitCSSFilterValue> WebKitCSSFilterValue::cloneForCSSOM() const
+PassRefPtr<WebKitCSSFilterValue> WebKitCSSFilterValue::cloneForCSSOM() const
 {
-    return adoptRef(*new WebKitCSSFilterValue(*this));
+    return adoptRef(new WebKitCSSFilterValue(*this));
 }
 
 bool WebKitCSSFilterValue::equals(const WebKitCSSFilterValue& other) const

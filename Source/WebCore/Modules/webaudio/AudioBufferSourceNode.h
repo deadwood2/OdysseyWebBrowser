@@ -32,7 +32,7 @@
 #include "ExceptionCode.h"
 #include "PannerNode.h"
 #include <memory>
-#include <wtf/Lock.h>
+#include <mutex>
 #include <wtf/PassRefPtr.h>
 #include <wtf/RefPtr.h>
 
@@ -159,7 +159,7 @@ private:
     PannerNode* m_pannerNode;
 
     // This synchronizes process() with setBuffer() which can cause dynamic channel count changes.
-    mutable Lock m_processMutex;
+    mutable std::mutex m_processMutex;
 };
 
 } // namespace WebCore

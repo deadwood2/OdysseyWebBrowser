@@ -60,11 +60,9 @@ CurlDownloadManager::~CurlDownloadManager()
 
 bool CurlDownloadManager::add(CURL* curlHandle)
 {
-    {
-        LockHolder locker(m_mutex);
-        m_pendingHandleList.append(curlHandle);
-    }
+    MutexLocker locker(m_mutex);
 
+    m_pendingHandleList.append(curlHandle);
     startThreadIfNeeded();
 
     return true;
@@ -72,7 +70,7 @@ bool CurlDownloadManager::add(CURL* curlHandle)
 
 bool CurlDownloadManager::remove(CURL* curlHandle)
 {
-    LockHolder locker(m_mutex);
+    MutexLocker locker(m_mutex);
 
     m_removedHandleList.append(curlHandle);
 
@@ -81,29 +79,29 @@ bool CurlDownloadManager::remove(CURL* curlHandle)
 
 int CurlDownloadManager::getActiveDownloadCount() const
 {
-    LockHolder locker(m_mutex);
+    MutexLocker locker(m_mutex);
     return m_activeHandleList.size();
 }
 
 int CurlDownloadManager::getPendingDownloadCount() const
 {
-    LockHolder locker(m_mutex);
+    MutexLocker locker(m_mutex);
     return m_pendingHandleList.size();
 }
 
 void CurlDownloadManager::startThreadIfNeeded()
 {
-    if (!runThread()) {
+    if (!m_runThread) {
         if (m_threadId)
             waitForThreadCompletion(m_threadId);
-        setRunThread(true);
+        m_runThread = true;
         m_threadId = createThread(downloadThread, this, "downloadThread");
     }
 }
 
 void CurlDownloadManager::stopThread()
 {
-    setRunThread(false);
+    m_runThread = false;
 
     if (m_threadId) {
         waitForThreadCompletion(m_threadId);
@@ -113,13 +111,15 @@ void CurlDownloadManager::stopThread()
 
 void CurlDownloadManager::stopThreadIfIdle()
 {
+    MutexLocker locker(m_mutex);
+
     if (!getActiveDownloadCount() && !getPendingDownloadCount())
         setRunThread(false);
 }
 
 void CurlDownloadManager::updateHandleList()
 {
-    LockHolder locker(m_mutex);
+    MutexLocker locker(m_mutex);
 
     // Remove curl easy handles from multi list 
     int size = m_removedHandleList.size();
@@ -245,15 +245,13 @@ CurlDownload::CurlDownload()
 
 CurlDownload::~CurlDownload()
 {
-    {
-        LockHolder locker(m_mutex);
+    MutexLocker locker(m_mutex);
 
-        if (m_url)
-            fastFree(m_url);
+    if (m_url)
+        fastFree(m_url);
 
-        if (m_customHeaders)
-            curl_slist_free_all(m_customHeaders);
-    }
+    if (m_customHeaders)
+        curl_slist_free_all(m_customHeaders);
 
     closeFile();
     moveFileToDestination();
@@ -264,7 +262,7 @@ void CurlDownload::init(CurlDownloadListener* listener, const URL& url)
     if (!listener)
         return;
 
-    LockHolder locker(m_mutex);
+    MutexLocker locker(m_mutex);
 
     m_curlHandle = curl_easy_init();
 
@@ -297,6 +295,8 @@ void CurlDownload::init(CurlDownloadListener* listener, ResourceHandle*, const R
     if (!listener)
         return;
 
+    MutexLocker locker(m_mutex);
+
     URL url(ParsedURLString, request.url());
 
     init(listener, url);
@@ -317,25 +317,25 @@ bool CurlDownload::cancel()
 
 String CurlDownload::getTempPath() const
 {
-    LockHolder locker(m_mutex);
+    MutexLocker locker(m_mutex);
     return m_tempPath;
 }
 
 String CurlDownload::getUrl() const
 {
-    LockHolder locker(m_mutex);
+    MutexLocker locker(m_mutex);
     return String(m_url);
 }
 
 ResourceResponse CurlDownload::getResponse() const
 {
-    LockHolder locker(m_mutex);
+    MutexLocker locker(m_mutex);
     return m_response;
 }
 
 void CurlDownload::closeFile()
 {
-    LockHolder locker(m_mutex);
+    MutexLocker locker(m_mutex);
 
     if (m_tempHandle != invalidPlatformFileHandle) {
         WebCore::closeFile(m_tempHandle);
@@ -345,8 +345,6 @@ void CurlDownload::closeFile()
 
 void CurlDownload::moveFileToDestination()
 {
-    LockHolder locker(m_mutex);
-
     if (m_destination.isEmpty())
         return;
 
@@ -364,8 +362,6 @@ void CurlDownload::writeDataToFile(const char* data, int size)
 
 void CurlDownload::addHeaders(const ResourceRequest& request)
 {
-    LockHolder locker(m_mutex);
-
     if (request.httpHeaderFields().size() > 0) {
         struct curl_slist* headers = 0;
 
@@ -394,7 +390,7 @@ void CurlDownload::addHeaders(const ResourceRequest& request)
 
 void CurlDownload::didReceiveHeader(const String& header)
 {
-    LockHolder locker(m_mutex);
+    MutexLocker locker(m_mutex);
 
     if (header == "\r\n" || header == "\n") {
 
@@ -434,7 +430,7 @@ void CurlDownload::didReceiveHeader(const String& header)
 
 void CurlDownload::didReceiveData(void* data, int size)
 {
-    LockHolder locker(m_mutex);
+    MutexLocker locker(m_mutex);
 
     RefPtr<CurlDownload> protectedDownload(this);
 
@@ -468,9 +464,9 @@ void CurlDownload::didFinish()
 
 void CurlDownload::didFail()
 {
-    closeFile();
+    MutexLocker locker(m_mutex);
 
-    LockHolder locker(m_mutex);
+    closeFile();
 
     if (m_deletesFileUponFailure)
         deleteFile(m_tempPath);

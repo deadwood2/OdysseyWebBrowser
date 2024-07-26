@@ -31,52 +31,112 @@
 
 namespace JSC  {
 
-inline bool CallFrame::callSiteBitsAreBytecodeOffset() const
+inline uint32_t CallFrame::Location::encode(CallFrame::Location::TypeTag tag, uint32_t bits)
 {
-    ASSERT(codeBlock());
-    switch (codeBlock()->jitType()) {
-    case JITCode::InterpreterThunk:
-    case JITCode::BaselineJIT:
-        return true;
-    case JITCode::None:
-    case JITCode::HostCallThunk:
-        RELEASE_ASSERT_NOT_REACHED();
-        return false;
-    default:
-        return false;
-    }
-
-    RELEASE_ASSERT_NOT_REACHED();
-    return false;
+#if USE(JSVALUE64)
+    ASSERT(!(bits & s_shiftedMask));
+    ASSERT(!(tag & ~s_mask));
+    return bits | (tag << s_shift);
+#else
+    ASSERT(!(tag & ~s_mask));
+    if (tag & CodeOriginIndexTag)
+        bits = (bits << s_shift);
+    ASSERT(!(bits & s_mask));
+    bits |= tag;
+    return bits;
+#endif
 }
 
-inline bool CallFrame::callSiteBitsAreCodeOriginIndex() const
+inline uint32_t CallFrame::Location::decode(uint32_t bits)
 {
-    ASSERT(codeBlock());
-    switch (codeBlock()->jitType()) {
-    case JITCode::DFGJIT:
-    case JITCode::FTLJIT:
-        return true;
-    case JITCode::None:
-    case JITCode::HostCallThunk:
-        RELEASE_ASSERT_NOT_REACHED();
-        return false;
-    default:
-        return false;
-    }
-
-    RELEASE_ASSERT_NOT_REACHED();
-    return false;
+#if USE(JSVALUE64)
+    return bits & ~s_shiftedMask;
+#else
+    if (isCodeOriginIndex(bits))
+        return bits >> s_shift;
+    return bits & ~s_mask;
+#endif
 }
 
-inline unsigned CallFrame::callSiteAsRawBits() const
+#if USE(JSVALUE64)
+inline uint32_t CallFrame::Location::encodeAsBytecodeOffset(uint32_t bits)
+{
+    uint32_t encodedBits = encode(BytecodeLocationTag, bits);
+    ASSERT(isBytecodeLocation(encodedBits));
+    return encodedBits;
+}
+#else
+inline uint32_t CallFrame::Location::encodeAsBytecodeInstruction(Instruction* instruction)
+{
+    uint32_t encodedBits = encode(BytecodeLocationTag, reinterpret_cast<uint32_t>(instruction));
+    ASSERT(isBytecodeLocation(encodedBits));
+    return encodedBits;
+}
+#endif
+
+inline uint32_t CallFrame::Location::encodeAsCodeOriginIndex(uint32_t bits)
+{
+    uint32_t encodedBits = encode(CodeOriginIndexTag, bits);
+    ASSERT(isCodeOriginIndex(encodedBits));
+    return encodedBits;
+}
+
+inline bool CallFrame::Location::isBytecodeLocation(uint32_t bits)
+{
+    return !isCodeOriginIndex(bits);
+}
+
+inline bool CallFrame::Location::isCodeOriginIndex(uint32_t bits)
+{
+#if USE(JSVALUE64)
+    TypeTag tag = static_cast<TypeTag>(bits >> s_shift);
+    return !!(tag & CodeOriginIndexTag);
+#else
+    return !!(bits & CodeOriginIndexTag);
+#endif
+}
+
+inline bool CallFrame::hasLocationAsBytecodeOffset() const
+{
+    return Location::isBytecodeLocation(locationAsRawBits());
+}
+
+inline bool CallFrame::hasLocationAsCodeOriginIndex() const
+{
+    return Location::isCodeOriginIndex(locationAsRawBits());
+}
+
+inline unsigned CallFrame::locationAsRawBits() const
 {
     return this[JSStack::ArgumentCount].tag();
 }
 
-inline CallSiteIndex CallFrame::callSiteIndex() const
+inline void CallFrame::setLocationAsRawBits(unsigned bits)
 {
-    return CallSiteIndex(callSiteAsRawBits());
+    this[JSStack::ArgumentCount].tag() = static_cast<int32_t>(bits);
+}
+
+#if USE(JSVALUE64)
+inline unsigned CallFrame::locationAsBytecodeOffset() const
+{
+    ASSERT(hasLocationAsBytecodeOffset());
+    ASSERT(codeBlock());
+    return Location::decode(locationAsRawBits());
+}
+
+inline void CallFrame::setLocationAsBytecodeOffset(unsigned offset)
+{
+    ASSERT(codeBlock());
+    setLocationAsRawBits(Location::encodeAsBytecodeOffset(offset));
+    ASSERT(hasLocationAsBytecodeOffset());
+}
+#endif // USE(JSVALUE64)
+
+inline unsigned CallFrame::locationAsCodeOriginIndex() const
+{
+    ASSERT(hasLocationAsCodeOriginIndex());
+    ASSERT(codeBlock());
+    return Location::decode(locationAsRawBits());
 }
 
 inline bool CallFrame::hasActivation() const

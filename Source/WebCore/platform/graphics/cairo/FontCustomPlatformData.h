@@ -33,7 +33,6 @@ typedef struct _cairo_font_face cairo_font_face_t;
 
 namespace WebCore {
 
-class FontDescription;
 class FontPlatformData;
 class SharedBuffer;
 
@@ -42,7 +41,7 @@ struct FontCustomPlatformData {
 public:
     FontCustomPlatformData(FT_Face, SharedBuffer&);
     ~FontCustomPlatformData();
-    FontPlatformData fontPlatformData(const FontDescription&, bool bold, bool italic);
+    FontPlatformData fontPlatformData(int size, bool bold, bool italic, FontOrientation = Horizontal, FontWidthVariant = RegularWidth, FontRenderingMode = NormalRenderingMode);
     static bool supportsFormat(const String&);
 
 private:

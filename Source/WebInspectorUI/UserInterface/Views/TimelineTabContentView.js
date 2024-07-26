@@ -23,38 +23,40 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.TimelineTabContentView = class TimelineTabContentView extends WebInspector.ContentBrowserTabContentView
+WebInspector.TimelineTabContentView = function(identifier)
 {
-    constructor(identifier)
-    {
-        var tabBarItem = new WebInspector.TabBarItem("Images/Timeline.svg", WebInspector.UIString("Timelines"));
-        var detailsSidebarPanels = [WebInspector.resourceDetailsSidebarPanel, WebInspector.probeDetailsSidebarPanel];
+    var tabBarItem = new WebInspector.TabBarItem("Images/Timeline.svg", WebInspector.UIString("Timelines"));
+    var detailsSidebarPanels = [WebInspector.resourceDetailsSidebarPanel, WebInspector.probeDetailsSidebarPanel];
 
-        super(identifier || "timeline", "timeline", tabBarItem, WebInspector.TimelineSidebarPanel, detailsSidebarPanels);
-    }
+    WebInspector.ContentBrowserTabContentView.call(this, identifier || "timeline", "timeline", tabBarItem, WebInspector.TimelineSidebarPanel, detailsSidebarPanels);
+};
+
+WebInspector.TimelineTabContentView.prototype = {
+    constructor: WebInspector.TimelineTabContentView,
+    __proto__: WebInspector.ContentBrowserTabContentView.prototype,
 
     // Public
 
     get type()
     {
         return WebInspector.TimelineTabContentView.Type;
-    }
+    },
 
-    shown()
+    shown: function()
     {
-        super.shown();
+        WebInspector.ContentBrowserTabContentView.prototype.shown.call(this);
 
         WebInspector.timelineManager.autoCaptureOnPageLoad = true;
-    }
+    },
 
-    hidden()
+    hidden: function()
     {
-        super.hidden();
+        WebInspector.ContentBrowserTabContentView.prototype.hidden.call(this);
 
         WebInspector.timelineManager.autoCaptureOnPageLoad = false;
-    }
+    },
 
-    canShowRepresentedObject(representedObject)
+    canShowRepresentedObject: function(representedObject)
     {
         if (representedObject instanceof WebInspector.TimelineRecording)
             return true;
@@ -64,7 +66,7 @@ WebInspector.TimelineTabContentView = class TimelineTabContentView extends WebIn
             return !!this.navigationSidebarPanel.treeElementForRepresentedObject(representedObject);
 
         return false;
-    }
+    },
 
     get supportsSplitContentBrowser()
     {

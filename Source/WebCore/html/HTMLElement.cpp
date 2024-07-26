@@ -75,11 +75,9 @@ String HTMLElement::nodeName() const
 {
     // FIXME: Would be nice to have an atomicstring lookup based off uppercase
     // chars that does not have to copy the string on a hit in the hash.
-    if (document().isHTMLDocument()) {
-        if (!tagQName().hasPrefix())
-            return tagQName().localNameUpper();
-        return Element::nodeName().upper();
-    }
+    // FIXME: We should have a way to detect XHTML elements and replace the hasPrefix() check with it.
+    if (document().isHTMLDocument() && !tagQName().hasPrefix())
+        return tagQName().localNameUpper();
     return Element::nodeName();
 }
 
@@ -586,9 +584,9 @@ void HTMLElement::setInnerText(const String& text, ExceptionCode& ec)
 
     // Add text nodes and <br> elements.
     ec = 0;
-    Ref<DocumentFragment> fragment = textToFragment(text, ec);
+    RefPtr<DocumentFragment> fragment = textToFragment(text, ec);
     if (!ec)
-        replaceChildrenWithFragment(*this, WTF::move(fragment), ec);
+        replaceChildrenWithFragment(*this, fragment.release(), ec);
 }
 
 void HTMLElement::setOuterText(const String& text, ExceptionCode& ec)
@@ -623,7 +621,7 @@ void HTMLElement::setOuterText(const String& text, ExceptionCode& ec)
         ec = HIERARCHY_REQUEST_ERR;
     if (ec)
         return;
-    parent->replaceChild(newChild.releaseNonNull(), *this, ec);
+    parent->replaceChild(newChild.release(), this, ec);
 
     RefPtr<Node> node = next ? next->previousSibling() : nullptr;
     if (!ec && is<Text>(node.get()))
@@ -632,7 +630,7 @@ void HTMLElement::setOuterText(const String& text, ExceptionCode& ec)
         mergeWithNextTextNode(downcast<Text>(*prev), ec);
 }
 
-Node* HTMLElement::insertAdjacent(const String& where, Ref<Node>&& newChild, ExceptionCode& ec)
+Node* HTMLElement::insertAdjacent(const String& where, Node* newChild, ExceptionCode& ec)
 {
     // In Internet Explorer if the element has no parent and where is "beforeBegin" or "afterEnd",
     // a document fragment is created and the elements appended in the correct order. This document
@@ -643,18 +641,18 @@ Node* HTMLElement::insertAdjacent(const String& where, Ref<Node>&& newChild, Exc
 
     if (equalIgnoringCase(where, "beforeBegin")) {
         ContainerNode* parent = this->parentNode();
-        return (parent && parent->insertBefore(newChild.copyRef(), this, ec)) ? newChild.ptr() : nullptr;
+        return (parent && parent->insertBefore(newChild, this, ec)) ? newChild : nullptr;
     }
 
     if (equalIgnoringCase(where, "afterBegin"))
-        return insertBefore(newChild.copyRef(), firstChild(), ec) ? newChild.ptr() : nullptr;
+        return insertBefore(newChild, firstChild(), ec) ? newChild : nullptr;
 
     if (equalIgnoringCase(where, "beforeEnd"))
-        return appendChild(newChild.copyRef(), ec) ? newChild.ptr() : nullptr;
+        return appendChild(newChild, ec) ? newChild : nullptr;
 
     if (equalIgnoringCase(where, "afterEnd")) {
         ContainerNode* parent = this->parentNode();
-        return (parent && parent->insertBefore(newChild.copyRef(), nextSibling(), ec)) ? newChild.ptr() : nullptr;
+        return (parent && parent->insertBefore(newChild, nextSibling(), ec)) ? newChild : nullptr;
     }
     
     // IE throws COM Exception E_INVALIDARG; this is the best DOM exception alternative.
@@ -670,7 +668,7 @@ Element* HTMLElement::insertAdjacentElement(const String& where, Element* newChi
         return nullptr;
     }
 
-    Node* returnValue = insertAdjacent(where, *newChild, ec);
+    Node* returnValue = insertAdjacent(where, newChild, ec);
     ASSERT_WITH_SECURITY_IMPLICATION(!returnValue || is<Element>(*returnValue));
     return downcast<Element>(returnValue); 
 }
@@ -701,12 +699,13 @@ void HTMLElement::insertAdjacentHTML(const String& where, const String& markup, 
     RefPtr<DocumentFragment> fragment = createFragmentForInnerOuterHTML(markup, contextElement, AllowScriptingContent, ec);
     if (!fragment)
         return;
-    insertAdjacent(where, fragment.releaseNonNull(), ec);
+    insertAdjacent(where, fragment.get(), ec);
 }
 
 void HTMLElement::insertAdjacentText(const String& where, const String& text, ExceptionCode& ec)
 {
-    insertAdjacent(where, document().createTextNode(text), ec);
+    RefPtr<Text> textNode = document().createTextNode(text);
+    insertAdjacent(where, textNode.get(), ec);
 }
 
 void HTMLElement::applyAlignmentAttributeToStyle(const AtomicString& alignment, MutableStyleProperties& style)
@@ -870,7 +869,7 @@ bool HTMLElement::rendererIsNeeded(const RenderStyle& style)
             return false;
     } else if (hasTagName(noembedTag)) {
         Frame* frame = document().frame();
-        if (frame && frame->loader().subframeLoader().allowPlugins())
+        if (frame && frame->loader().subframeLoader().allowPlugins(NotAboutToInstantiatePlugin))
             return false;
     }
     return StyledElement::rendererIsNeeded(style);
@@ -1151,7 +1150,7 @@ void HTMLElement::addHTMLColorToStyle(MutableStyleProperties& style, CSSProperty
     if (!parsedColor.isValid())
         parsedColor.setRGB(parseColorStringWithCrazyLegacyRules(colorString));
 
-    style.setProperty(propertyID, CSSValuePool::singleton().createColorValue(parsedColor.rgb()));
+    style.setProperty(propertyID, cssValuePool().createColorValue(parsedColor.rgb()));
 }
 
 bool HTMLElement::willRespondToMouseMoveEvents()

@@ -43,7 +43,6 @@ public:
     virtual void swapBuffers() override;
     virtual void setGeometry(const IntRect&) override;
     virtual GLPlatformSurface::SurfaceAttributes attributes() const override;
-    virtual bool isCurrentDrawable() const override;
     virtual void destroy() override;
 
 private:
@@ -56,7 +55,6 @@ public:
     GLXOffScreenSurface(SurfaceAttributes);
     virtual ~GLXOffScreenSurface();
     virtual PlatformSurfaceConfig configuration() override;
-    virtual bool isCurrentDrawable() const override;
     virtual void destroy() override;
 
 private:

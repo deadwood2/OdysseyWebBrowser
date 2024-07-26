@@ -23,14 +23,16 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.SettingsTabContentView = class SettingsTabContentView extends WebInspector.TabContentView
+WebInspector.SettingsTabContentView = function(identifier)
 {
-    constructor(identifier)
-    {
-        var tabBarItem = new WebInspector.TabBarItem("Images/Gear.svg", WebInspector.UIString("Settings"), true);
+    var tabBarItem = new WebInspector.TabBarItem("Images/Gear.svg", WebInspector.UIString("Settings"), true);
 
-        super(identifier || "settings", "settings", tabBarItem);
-    }
+    WebInspector.TabContentView.call(this, identifier || "settings", "settings", tabBarItem);
+};
+
+WebInspector.SettingsTabContentView.prototype = {
+    constructor: WebInspector.SettingsTabContentView,
+    __proto__: WebInspector.TabContentView.prototype,
 
     // Public
 

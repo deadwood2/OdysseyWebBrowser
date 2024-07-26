@@ -40,7 +40,7 @@
 
 namespace JSC {
 
-void genericUnwind(VM* vm, ExecState* callFrame, UnwindStart unwindStart)
+void genericUnwind(VM* vm, ExecState* callFrame)
 {
     if (Options::breakOnThrow()) {
         dataLog("In call frame ", RawPointer(callFrame), " for code block ", *callFrame->codeBlock(), "\n");
@@ -49,19 +49,13 @@ void genericUnwind(VM* vm, ExecState* callFrame, UnwindStart unwindStart)
     
     Exception* exception = vm->exception();
     RELEASE_ASSERT(exception);
-    HandlerInfo* handler = vm->interpreter->unwind(*vm, callFrame, exception, unwindStart); // This may update callFrame.
+    VMEntryFrame* vmEntryFrame = vm->topVMEntryFrame;
+    HandlerInfo* handler = vm->interpreter->unwind(vmEntryFrame, callFrame, exception); // This may update vmEntryFrame and callFrame.
 
     void* catchRoutine;
     Instruction* catchPCForInterpreter = 0;
     if (handler) {
-        // handler->target is meaningless for getting a code offset when catching
-        // the exception in a DFG frame. This bytecode target offset could be
-        // something that's in an inlined frame, which means an array access
-        // with this bytecode offset in the machine frame is utterly meaningless
-        // and can cause an overflow. OSR exit properly exits to handler->target
-        // in the proper frame.
-        if (callFrame->codeBlock()->jitType() != JITCode::DFGJIT)
-            catchPCForInterpreter = &callFrame->codeBlock()->instructions()[handler->target];
+        catchPCForInterpreter = &callFrame->codeBlock()->instructions()[handler->target];
 #if ENABLE(JIT)
         catchRoutine = handler->nativeCode.executableAddress();
 #else
@@ -70,7 +64,8 @@ void genericUnwind(VM* vm, ExecState* callFrame, UnwindStart unwindStart)
     } else
         catchRoutine = LLInt::getCodePtr(handleUncaughtException);
     
-    vm->callFrameForCatch = callFrame;
+    vm->vmEntryFrameForThrow = vmEntryFrame;
+    vm->callFrameForThrow = callFrame;
     vm->targetMachinePCForThrow = catchRoutine;
     vm->targetInterpreterPCForThrow = catchPCForInterpreter;
     

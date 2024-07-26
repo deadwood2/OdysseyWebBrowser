@@ -34,22 +34,22 @@
 
 namespace WebCore {
 
-bool GlyphPage::fill(UChar* buffer, unsigned bufferLength, const Font* fontData)
+bool GlyphPage::fill(unsigned offset, unsigned length, UChar* buffer, unsigned bufferLength, const Font* fontData)
 {
     // bufferLength will be greater than the requested number of glyphs if the buffer contains surrogate pairs.
     // We won't support this for now.
-    if (bufferLength > GlyphPage::size)
+    if (bufferLength > length)
         return false;
 
     bool haveGlyphs = false;
     CGGlyph localGlyphBuffer[GlyphPage::size];
     wkGetGlyphs(fontData->platformData().cgFont(), buffer, localGlyphBuffer, bufferLength);
-    for (unsigned i = 0; i < GlyphPage::size; i++) {
+    for (unsigned i = 0; i < length; i++) {
         Glyph glyph = localGlyphBuffer[i];
         if (!glyph)
-            setGlyphForIndex(i, 0);
+            setGlyphDataForIndex(offset + i, 0, 0);
         else {
-            setGlyphForIndex(i, glyph);
+            setGlyphDataForIndex(offset + i, glyph, fontData);
             haveGlyphs = true;
         }
     }

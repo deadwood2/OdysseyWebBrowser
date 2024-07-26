@@ -35,7 +35,6 @@
 #include "ExceptionCode.h"
 #include "Logging.h"
 #include "SQLError.h"
-#include "SQLStatement.h"
 #include "SQLStatementCallback.h"
 #include "SQLStatementErrorCallback.h"
 #include "SQLTransactionBackend.h"
@@ -95,10 +94,10 @@ SQLTransaction::StateFunction SQLTransaction::stateFunctionFor(SQLTransactionSta
         &SQLTransaction::unreachableState,                // 1. idle
         &SQLTransaction::unreachableState,                // 2. acquireLock
         &SQLTransaction::unreachableState,                // 3. openTransactionAndPreflight
-        &SQLTransaction::unreachableState,                // 4. runStatements
+        &SQLTransaction::sendToBackendState,              // 4. runStatements
         &SQLTransaction::unreachableState,                // 5. postflightAndCommit
-        &SQLTransaction::unreachableState,                // 6. cleanupAndTerminate
-        &SQLTransaction::unreachableState,                // 7. cleanupAfterTransactionErrorCallback
+        &SQLTransaction::sendToBackendState,              // 6. cleanupAndTerminate
+        &SQLTransaction::sendToBackendState,              // 7. cleanupAfterTransactionErrorCallback
         &SQLTransaction::deliverTransactionCallback,      // 8.
         &SQLTransaction::deliverTransactionErrorCallback, // 9.
         &SQLTransaction::deliverStatementCallback,        // 10.
@@ -122,7 +121,18 @@ void SQLTransaction::requestTransitToState(SQLTransactionState nextState)
     m_database->scheduleTransactionCallback(this);
 }
 
-void SQLTransaction::deliverTransactionCallback()
+SQLTransactionState SQLTransaction::nextStateForTransactionError()
+{
+    ASSERT(m_transactionError);
+    if (m_errorCallbackWrapper.hasCallback())
+        return SQLTransactionState::DeliverTransactionErrorCallback;
+
+    // No error callback, so fast-forward to:
+    // Transaction Step 11 - Rollback the transaction.
+    return SQLTransactionState::CleanupAfterTransactionErrorCallback;
+}
+
+SQLTransactionState SQLTransaction::deliverTransactionCallback()
 {
     bool shouldDeliverErrorCallback = false;
 
@@ -135,15 +145,15 @@ void SQLTransaction::deliverTransactionCallback()
     }
 
     // Spec 4.3.2 5: If the transaction callback was null or raised an exception, jump to the error callback
+    SQLTransactionState nextState = SQLTransactionState::RunStatements;
     if (shouldDeliverErrorCallback) {
         m_transactionError = SQLError::create(SQLError::UNKNOWN_ERR, "the SQLTransactionCallback was null or threw an exception");
-        return deliverTransactionErrorCallback();
+        nextState = SQLTransactionState::DeliverTransactionErrorCallback;
     }
-
-    m_backend->requestTransitToState(SQLTransactionState::RunStatements);
+    return nextState;
 }
 
-void SQLTransaction::deliverTransactionErrorCallback()
+SQLTransactionState SQLTransaction::deliverTransactionErrorCallback()
 {
     // Spec 4.3.2.10: If exists, invoke error callback with the last
     // error to have occurred in this transaction.
@@ -165,10 +175,10 @@ void SQLTransaction::deliverTransactionErrorCallback()
     clearCallbackWrappers();
 
     // Spec 4.3.2.10: Rollback the transaction.
-    m_backend->requestTransitToState(SQLTransactionState::CleanupAfterTransactionErrorCallback);
+    return SQLTransactionState::CleanupAfterTransactionErrorCallback;
 }
 
-void SQLTransaction::deliverStatementCallback()
+SQLTransactionState SQLTransaction::deliverStatementCallback()
 {
     // Spec 4.3.2.6.6 and 4.3.2.6.3: If the statement callback went wrong, jump to the transaction error callback
     // Otherwise, continue to loop through the statement queue
@@ -183,30 +193,22 @@ void SQLTransaction::deliverStatementCallback()
 
     if (result) {
         m_transactionError = SQLError::create(SQLError::UNKNOWN_ERR, "the statement callback raised an exception or statement error callback did not return false");
-
-        if (m_errorCallbackWrapper.hasCallback())
-            return deliverTransactionErrorCallback();
-
-        // No error callback, so fast-forward to:
-        // Transaction Step 11 - Rollback the transaction.
-        m_backend->requestTransitToState(SQLTransactionState::CleanupAfterTransactionErrorCallback);
-        return;
+        return nextStateForTransactionError();
     }
-
-    m_backend->requestTransitToState(SQLTransactionState::RunStatements);
+    return SQLTransactionState::RunStatements;
 }
 
-void SQLTransaction::deliverQuotaIncreaseCallback()
+SQLTransactionState SQLTransaction::deliverQuotaIncreaseCallback()
 {
     ASSERT(m_backend->currentStatement());
 
     bool shouldRetryCurrentStatement = m_database->transactionClient()->didExceedQuota(&database());
     m_backend->setShouldRetryCurrentStatement(shouldRetryCurrentStatement);
 
-    m_backend->requestTransitToState(SQLTransactionState::RunStatements);
+    return SQLTransactionState::RunStatements;
 }
 
-void SQLTransaction::deliverSuccessCallback()
+SQLTransactionState SQLTransaction::deliverSuccessCallback()
 {
     // Spec 4.3.2.8: Deliver success callback.
     RefPtr<VoidCallback> successCallback = m_successCallbackWrapper.unwrap();
@@ -217,15 +219,23 @@ void SQLTransaction::deliverSuccessCallback()
 
     // Schedule a "post-success callback" step to return control to the database thread in case there
     // are further transactions queued up for this Database
-    m_backend->requestTransitToState(SQLTransactionState::CleanupAndTerminate);
+    return SQLTransactionState::CleanupAndTerminate;
 }
 
 // This state function is used as a stub function to plug unimplemented states
 // in the state dispatch table. They are unimplemented because they should
 // never be reached in the course of correct execution.
-void SQLTransaction::unreachableState()
+SQLTransactionState SQLTransaction::unreachableState()
 {
     ASSERT_NOT_REACHED();
+    return SQLTransactionState::End;
+}
+
+SQLTransactionState SQLTransaction::sendToBackendState()
+{
+    ASSERT(m_nextState != SQLTransactionState::Idle);
+    m_backend->requestTransitToState(m_nextState);
+    return SQLTransactionState::Idle;
 }
 
 void SQLTransaction::performPendingCallback()
@@ -247,15 +257,15 @@ void SQLTransaction::executeSQL(const String& sqlStatement, const Vector<SQLValu
     else if (m_readOnly)
         permissions |= DatabaseAuthorizer::ReadOnlyMask;
 
-    auto statement = std::make_unique<SQLStatement>(m_database, sqlStatement, arguments, WTF::move(callback), WTF::move(callbackError), permissions);
-    m_backend->executeSQL(WTF::move(statement));
+    auto statement = std::make_unique<SQLStatement>(m_database, WTF::move(callback), WTF::move(callbackError));
+    m_backend->executeSQL(WTF::move(statement), sqlStatement, arguments, permissions);
 }
 
-void SQLTransaction::computeNextStateAndCleanupIfNeeded()
+bool SQLTransaction::computeNextStateAndCleanupIfNeeded()
 {
     // Only honor the requested state transition if we're not supposed to be
     // cleaning up and shutting down:
-    if (m_database->opened()) {
+    if (m_database->opened() && !m_database->isInterrupted()) {
         setStateToRequestedState();
         ASSERT(m_nextState == SQLTransactionState::End
             || m_nextState == SQLTransactionState::DeliverTransactionCallback
@@ -265,11 +275,13 @@ void SQLTransaction::computeNextStateAndCleanupIfNeeded()
             || m_nextState == SQLTransactionState::DeliverSuccessCallback);
 
         LOG(StorageAPI, "Callback %s\n", nameForSQLTransactionState(m_nextState));
-        return;
+        return false;
     }
 
     clearCallbackWrappers();
-    m_backend->requestTransitToState(SQLTransactionState::CleanupAndTerminate);
+    m_nextState = SQLTransactionState::CleanupAndTerminate;
+
+    return true;
 }
 
 void SQLTransaction::clearCallbackWrappers()

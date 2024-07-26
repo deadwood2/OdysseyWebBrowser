@@ -194,16 +194,12 @@ private:
         case MultiGetByOffset:
         case GetDirectPname:
         case Call:
-        case TailCallInlinedCaller:
         case Construct:
         case CallVarargs:
-        case TailCallVarargsInlinedCaller:
         case ConstructVarargs:
         case CallForwardVarargs:
         case ConstructForwardVarargs:
-        case TailCallForwardVarargsInlinedCaller:
         case GetGlobalVar:
-        case GetGlobalLexicalVariable:
         case GetClosureVar:
         case GetFromArguments: {
             changed |= setPrediction(node->getHeapPrediction());
@@ -219,7 +215,6 @@ private:
         case GetGetter:
         case GetSetter:
         case GetCallee:
-        case NewArrowFunction:
         case NewFunction: {
             changed |= setPrediction(SpecFunction);
             break;
@@ -375,6 +370,7 @@ private:
         case CompareGreater:
         case CompareGreaterEq:
         case CompareEq:
+        case CompareEqConstant:
         case CompareStrictEq:
         case InstanceOf:
         case IsUndefined:
@@ -499,8 +495,7 @@ private:
         case StringCharAt:
         case CallStringConstructor:
         case ToString:
-        case MakeRope:
-        case StrCat: {
+        case MakeRope: {
             changed |= setPrediction(SpecString);
             break;
         }
@@ -590,15 +585,11 @@ private:
             // These don't get inserted until we go into SSA.
             RELEASE_ASSERT_NOT_REACHED();
             break;
-    
+
         case GetScope:
             changed |= setPrediction(SpecObjectOther);
             break;
-
-        case LoadArrowFunctionThis:
-            changed |= setPrediction(SpecFinalObject);
-            break;
-
+            
         case In:
             changed |= setPrediction(SpecBoolean);
             break;
@@ -637,9 +628,6 @@ private:
         case PutClosureVar:
         case PutToArguments:
         case Return:
-        case TailCall:
-        case TailCallVarargs:
-        case TailCallForwardVarargs:
         case Throw:
         case PutById:
         case PutByIdFlush:
@@ -661,13 +649,12 @@ private:
         case CheckStructure:
         case CheckCell:
         case CheckNotEmpty:
-        case CheckIdent:
         case CheckBadCell:
         case PutStructure:
         case VarInjectionWatchpoint:
         case Phantom:
         case Check:
-        case PutGlobalVariable:
+        case PutGlobalVar:
         case CheckWatchdogTimer:
         case Unreachable:
         case LoopHint:
@@ -675,7 +662,6 @@ private:
         case ConstantStoragePointer:
         case MovHint:
         case ZombieHint:
-        case ExitOK:
         case LoadVarargs:
             break;
             

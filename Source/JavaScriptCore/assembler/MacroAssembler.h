@@ -69,42 +69,42 @@ namespace JSC {
 class MacroAssembler : public MacroAssemblerBase {
 public:
 
-    static constexpr RegisterID nextRegister(RegisterID reg)
+    static RegisterID nextRegister(RegisterID reg)
     {
         return static_cast<RegisterID>(reg + 1);
     }
     
-    static constexpr FPRegisterID nextFPRegister(FPRegisterID reg)
+    static FPRegisterID nextFPRegister(FPRegisterID reg)
     {
         return static_cast<FPRegisterID>(reg + 1);
     }
     
-    static constexpr unsigned numberOfRegisters()
+    static unsigned numberOfRegisters()
     {
         return lastRegister() - firstRegister() + 1;
     }
     
-    static constexpr unsigned registerIndex(RegisterID reg)
+    static unsigned registerIndex(RegisterID reg)
     {
         return reg - firstRegister();
     }
     
-    static constexpr unsigned numberOfFPRegisters()
+    static unsigned numberOfFPRegisters()
     {
         return lastFPRegister() - firstFPRegister() + 1;
     }
     
-    static constexpr unsigned fpRegisterIndex(FPRegisterID reg)
+    static unsigned fpRegisterIndex(FPRegisterID reg)
     {
         return reg - firstFPRegister();
     }
     
-    static constexpr unsigned registerIndex(FPRegisterID reg)
+    static unsigned registerIndex(FPRegisterID reg)
     {
         return fpRegisterIndex(reg) + numberOfRegisters();
     }
     
-    static constexpr unsigned totalNumberOfRegisters()
+    static unsigned totalNumberOfRegisters()
     {
         return numberOfRegisters() + numberOfFPRegisters();
     }
@@ -1583,13 +1583,6 @@ public:
     {
         urshift32(src, trustedImm32ForShift(amount), dest);
     }
-
-#if ENABLE(MASM_PROBE)
-    // Let's you print from your JIT generated code.
-    // See comments in MacroAssemblerPrinter.h for examples of how to use this.
-    template<typename... Arguments>
-    void print(Arguments... args);
-#endif
 };
 
 } // namespace JSC

@@ -94,6 +94,7 @@ public:
     ~MarkedSpace();
     void lastChanceToFinalize();
 
+    MarkedAllocator& firstAllocator();
     MarkedAllocator& allocatorFor(size_t);
     MarkedAllocator& destructorAllocatorFor(size_t);
     void* allocateWithDestructor(size_t);
@@ -261,7 +262,11 @@ inline void MarkedSpace::didAddBlock(MarkedBlock* block)
 
 inline void MarkedSpace::didAllocateInBlock(MarkedBlock* block)
 {
+#if ENABLE(GGC)
     m_blocksWithNewObjects.append(block);
+#else
+    UNUSED_PARAM(block);
+#endif
 }
 
 inline size_t MarkedSpace::objectCount()

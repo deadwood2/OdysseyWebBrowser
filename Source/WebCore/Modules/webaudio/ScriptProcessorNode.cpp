@@ -210,17 +210,24 @@ void ScriptProcessorNode::process(size_t framesToProcess)
             // Fire the event on the main thread, not this one (which is the realtime audio thread).
             m_doubleBufferIndexForEvent = m_doubleBufferIndex;
             m_isRequestOutstanding = true;
-
-            callOnMainThread([this] {
-                fireProcessEvent();
-
-                // De-reference to match the ref() call in process().
-                deref();
-            });
+            callOnMainThread(fireProcessEventDispatch, this);
         }
 
         swapBuffers();
     }
+}
+
+void ScriptProcessorNode::fireProcessEventDispatch(void* userData)
+{
+    ScriptProcessorNode* jsAudioNode = static_cast<ScriptProcessorNode*>(userData);
+    ASSERT(jsAudioNode);
+    if (!jsAudioNode)
+        return;
+
+    jsAudioNode->fireProcessEvent();
+
+    // De-reference to match the ref() call in process().
+    jsAudioNode->deref();
 }
 
 void ScriptProcessorNode::fireProcessEvent()
@@ -273,9 +280,9 @@ double ScriptProcessorNode::latencyTime() const
     return std::numeric_limits<double>::infinity();
 }
 
-bool ScriptProcessorNode::addEventListener(const AtomicString& eventType, RefPtr<EventListener>&& listener, bool useCapture)
+bool ScriptProcessorNode::addEventListener(const AtomicString& eventType, PassRefPtr<EventListener> listener, bool useCapture)
 {
-    bool success = AudioNode::addEventListener(eventType, WTF::move(listener), useCapture);
+    bool success = AudioNode::addEventListener(eventType, listener, useCapture);
     if (success && eventType == eventNames().audioprocessEvent)
         m_hasAudioProcessListener = hasEventListeners(eventNames().audioprocessEvent);
     return success;

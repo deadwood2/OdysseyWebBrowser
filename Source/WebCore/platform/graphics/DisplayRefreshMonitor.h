@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2014, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2010, 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,9 +30,9 @@
 
 #include "PlatformScreen.h"
 #include <wtf/HashSet.h>
-#include <wtf/Lock.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
+#include <wtf/Threading.h>
 
 namespace WebCore {
 
@@ -72,7 +72,7 @@ public:
 
     void setMonotonicAnimationStartTime(double startTime) { m_monotonicAnimationStartTime = startTime; }
 
-    Lock& mutex() { return m_mutex; }
+    Mutex& mutex() { return m_mutex; }
 
     static RefPtr<DisplayRefreshMonitor> createDefaultDisplayRefreshMonitor(PlatformDisplayID);
 
@@ -89,7 +89,7 @@ private:
     bool m_previousFrameDone;
     int m_unscheduledFireCount; // Number of times the display link has fired with no clients.
     PlatformDisplayID m_displayID;
-    Lock m_mutex;
+    Mutex m_mutex;
 
     HashSet<DisplayRefreshMonitorClient*> m_clients;
     HashSet<DisplayRefreshMonitorClient*>* m_clientsToBeNotified;

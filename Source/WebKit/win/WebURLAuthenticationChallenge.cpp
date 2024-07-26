@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2007 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -41,8 +41,10 @@ using namespace WebCore;
 
 // WebURLAuthenticationChallenge ----------------------------------------------------------------
 
-WebURLAuthenticationChallenge::WebURLAuthenticationChallenge(const AuthenticationChallenge& authenticationChallenge, IWebURLAuthenticationChallengeSender* sender)
-    : m_authenticationChallenge(authenticationChallenge)
+WebURLAuthenticationChallenge::WebURLAuthenticationChallenge(const AuthenticationChallenge& authenticationChallenge,
+                                                             IWebURLAuthenticationChallengeSender* sender)
+    : m_refCount(0)
+    , m_authenticationChallenge(authenticationChallenge)
     , m_sender(sender)
 {
     gClassCount++;
@@ -72,11 +74,9 @@ WebURLAuthenticationChallenge* WebURLAuthenticationChallenge::createInstance(con
 
 // IUnknown -------------------------------------------------------------------
 
-HRESULT WebURLAuthenticationChallenge::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE WebURLAuthenticationChallenge::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<IUnknown*>(this);
     else if (IsEqualGUID(riid, __uuidof(this)))
@@ -90,12 +90,12 @@ HRESULT WebURLAuthenticationChallenge::QueryInterface(_In_ REFIID riid, _COM_Out
     return S_OK;
 }
 
-ULONG WebURLAuthenticationChallenge::AddRef()
+ULONG STDMETHODCALLTYPE WebURLAuthenticationChallenge::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG WebURLAuthenticationChallenge::Release()
+ULONG STDMETHODCALLTYPE WebURLAuthenticationChallenge::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -106,9 +106,13 @@ ULONG WebURLAuthenticationChallenge::Release()
 
 // IWebURLAuthenticationChallenge -------------------------------------------------------------------
 
-HRESULT WebURLAuthenticationChallenge::initWithProtectionSpace(_In_opt_ IWebURLProtectionSpace* space, 
-    _In_opt_ IWebURLCredential* proposedCredential, int previousFailureCount, _In_opt_ IWebURLResponse* failureResponse, 
-    _In_opt_ IWebError* error, _In_opt_ IWebURLAuthenticationChallengeSender* sender)
+HRESULT STDMETHODCALLTYPE WebURLAuthenticationChallenge::initWithProtectionSpace(
+    /* [in] */ IWebURLProtectionSpace* space, 
+    /* [in] */ IWebURLCredential* proposedCredential, 
+    /* [in] */ int previousFailureCount, 
+    /* [in] */ IWebURLResponse* failureResponse, 
+    /* [in] */ IWebError* error, 
+    /* [in] */ IWebURLAuthenticationChallengeSender* sender)
 {
     LOG_ERROR("Calling the ala carte init for WebURLAuthenticationChallenge - is this really what you want to do?");
 
@@ -148,8 +152,9 @@ HRESULT WebURLAuthenticationChallenge::initWithProtectionSpace(_In_opt_ IWebURLP
     return S_OK;
 }
 
-HRESULT WebURLAuthenticationChallenge::initWithAuthenticationChallenge(_In_opt_ IWebURLAuthenticationChallenge* challenge, 
-    _In_opt_ IWebURLAuthenticationChallengeSender* sender)
+HRESULT STDMETHODCALLTYPE WebURLAuthenticationChallenge::initWithAuthenticationChallenge(
+    /* [in] */ IWebURLAuthenticationChallenge* challenge, 
+    /* [in] */ IWebURLAuthenticationChallengeSender* sender)
 {
     if (!challenge || !sender)
         return E_POINTER;
@@ -172,51 +177,44 @@ HRESULT WebURLAuthenticationChallenge::initWithAuthenticationChallenge(_In_opt_ 
 #endif
 }
 
-HRESULT WebURLAuthenticationChallenge::error(_COM_Outptr_opt_ IWebError** result)
+HRESULT STDMETHODCALLTYPE WebURLAuthenticationChallenge::error(
+    /* [out, retval] */ IWebError** result)
 {
-    if (!result)
-        return E_POINTER;
     *result = WebError::createInstance(m_authenticationChallenge.error());
     return S_OK;
 }
 
-HRESULT WebURLAuthenticationChallenge::failureResponse(_COM_Outptr_opt_ IWebURLResponse** result)
+HRESULT STDMETHODCALLTYPE WebURLAuthenticationChallenge::failureResponse(
+    /* [out, retval] */ IWebURLResponse** result)
 {
-    if (!result)
-        return E_POINTER;
     *result = WebURLResponse::createInstance(m_authenticationChallenge.failureResponse());
     return S_OK;
 }
 
-HRESULT WebURLAuthenticationChallenge::previousFailureCount(_Out_ UINT* result)
+HRESULT STDMETHODCALLTYPE WebURLAuthenticationChallenge::previousFailureCount(
+    /* [out, retval] */ UINT* result)
 {
-    if (!result)
-        return E_POINTER;
     *result = m_authenticationChallenge.previousFailureCount();
     return S_OK;
 }
 
-HRESULT WebURLAuthenticationChallenge::proposedCredential(_COM_Outptr_opt_ IWebURLCredential** result)
+HRESULT STDMETHODCALLTYPE WebURLAuthenticationChallenge::proposedCredential(
+    /* [out, retval] */ IWebURLCredential** result)
 {
-    if (!result)
-        return E_POINTER;
     *result = WebURLCredential::createInstance(m_authenticationChallenge.proposedCredential());
     return S_OK;
 }
 
-HRESULT WebURLAuthenticationChallenge::protectionSpace(_COM_Outptr_opt_ IWebURLProtectionSpace** result)
+HRESULT STDMETHODCALLTYPE WebURLAuthenticationChallenge::protectionSpace(
+    /* [out, retval] */ IWebURLProtectionSpace** result)
 {
-    if (!result)
-        return E_POINTER;
     *result = WebURLProtectionSpace::createInstance(m_authenticationChallenge.protectionSpace());
     return S_OK;
 }
 
-HRESULT WebURLAuthenticationChallenge::sender(_COM_Outptr_opt_ IWebURLAuthenticationChallengeSender** sender)
+HRESULT STDMETHODCALLTYPE WebURLAuthenticationChallenge::sender(
+    /* [out, retval] */ IWebURLAuthenticationChallengeSender** sender)
 {
-    if (!sender)
-        return E_POINTER;
-    *sender = nullptr;
     if (!m_sender) {
         AuthenticationClient* client = m_authenticationChallenge.authenticationClient();
         m_sender.adoptRef(WebURLAuthenticationChallengeSender::createInstance(client));

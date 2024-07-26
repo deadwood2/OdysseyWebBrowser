@@ -67,9 +67,9 @@ size_t sizeOfPutById()
 size_t sizeOfCall()
 {
 #if CPU(ARM64)
-    return 60;
+    return 56;
 #else
-    return 60;
+    return 53;
 #endif
 }
 

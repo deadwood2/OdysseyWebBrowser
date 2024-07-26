@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2009 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -39,7 +39,8 @@ static WorldMap& allWorlds()
 }
 
 inline WebScriptWorld::WebScriptWorld(PassRefPtr<DOMWrapperWorld> world)
-    : m_world(world)
+    : m_refCount(0)
+    , m_world(world)
 {
     ASSERT_ARG(world, m_world);
 
@@ -99,11 +100,11 @@ ULONG WebScriptWorld::Release()
     return newRefCount;
 }
 
-HRESULT WebScriptWorld::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT WebScriptWorld::QueryInterface(REFIID riid, void** ppvObject)
 {
     if (!ppvObject)
         return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
 
     if (IsEqualIID(riid, __uuidof(WebScriptWorld)))
         *ppvObject = this;
@@ -118,7 +119,7 @@ HRESULT WebScriptWorld::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppv
     return S_OK;
 }
 
-HRESULT WebScriptWorld::standardWorld(_COM_Outptr_opt_ IWebScriptWorld** outWorld)
+HRESULT WebScriptWorld::standardWorld(IWebScriptWorld** outWorld)
 {
     if (!outWorld)
         return E_POINTER;

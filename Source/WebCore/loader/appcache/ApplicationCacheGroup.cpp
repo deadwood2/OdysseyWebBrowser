@@ -729,8 +729,9 @@ void ApplicationCacheGroup::didFinishLoadingManifest()
     m_cacheBeingUpdated = ApplicationCache::create();
     m_cacheBeingUpdated->setGroup(this);
 
-    for (auto& loader : m_pendingMasterResourceLoaders)
-        associateDocumentLoaderWithCache(loader, m_cacheBeingUpdated.get());
+    HashSet<DocumentLoader*>::const_iterator masterEnd = m_pendingMasterResourceLoaders.end();
+    for (HashSet<DocumentLoader*>::const_iterator iter = m_pendingMasterResourceLoaders.begin(); iter != masterEnd; ++iter)
+        associateDocumentLoaderWithCache(*iter, m_cacheBeingUpdated.get());
 
     // We have the manifest, now download the resources.
     setUpdateStatus(Downloading);
@@ -750,8 +751,9 @@ void ApplicationCacheGroup::didFinishLoadingManifest()
     for (const auto& explicitURL : manifest.explicitURLs)
         addEntry(explicitURL, ApplicationCacheResource::Explicit);
 
-    for (auto& fallbackURL : manifest.fallbackURLs)
-        addEntry(fallbackURL.second, ApplicationCacheResource::Fallback);
+    size_t fallbackCount = manifest.fallbackURLs.size();
+    for (size_t i = 0; i  < fallbackCount; ++i)
+        addEntry(manifest.fallbackURLs[i].second, ApplicationCacheResource::Fallback);
     
     m_cacheBeingUpdated->setOnlineWhitelist(manifest.onlineWhitelistedURLs);
     m_cacheBeingUpdated->setFallbackURLs(manifest.fallbackURLs);
@@ -939,8 +941,9 @@ void ApplicationCacheGroup::checkIfLoadIsComplete()
             // Need to copy loaders, because the cache group may be destroyed at the end of iteration.
             Vector<DocumentLoader*> loaders;
             copyToVector(m_pendingMasterResourceLoaders, loaders);
-            for (auto& loader : loaders)
-                disassociateDocumentLoader(loader); // This can delete this group.
+            size_t count = loaders.size();
+            for (size_t i = 0; i != count; ++i)
+                disassociateDocumentLoader(loaders[i]); // This can delete this group.
 
             // Reinstate the oldNewestCache, if there was one.
             if (oldNewestCache) {
@@ -1076,8 +1079,9 @@ void ApplicationCacheGroup::scheduleReachedMaxAppCacheSizeCallback()
 
 void ApplicationCacheGroup::postListenerTask(ApplicationCacheHost::EventID eventID, int progressTotal, int progressDone, const HashSet<DocumentLoader*>& loaderSet)
 {
-    for (auto& loader : loaderSet)
-        postListenerTask(eventID, progressTotal, progressDone, loader);
+    HashSet<DocumentLoader*>::const_iterator loaderSetEnd = loaderSet.end();
+    for (HashSet<DocumentLoader*>::const_iterator iter = loaderSet.begin(); iter != loaderSetEnd; ++iter)
+        postListenerTask(eventID, progressTotal, progressDone, *iter);
 }
 
 void ApplicationCacheGroup::postListenerTask(ApplicationCacheHost::EventID eventID, int progressTotal, int progressDone, DocumentLoader* loader)

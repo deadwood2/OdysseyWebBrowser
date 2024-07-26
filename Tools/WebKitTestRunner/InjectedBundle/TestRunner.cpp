@@ -172,8 +172,10 @@ void TestRunner::notifyDone()
 void TestRunner::addUserScript(JSStringRef source, bool runAtStart, bool allFrames)
 {
     WKRetainPtr<WKStringRef> sourceWK = toWK(source);
+    WKRetainPtr<WKBundleScriptWorldRef> scriptWorld(AdoptWK, WKBundleScriptWorldCreateWorld());
 
-    WKBundlePageAddUserScript(InjectedBundle::singleton().page()->page(), sourceWK.get(),
+    auto& injectedBundle = InjectedBundle::singleton();
+    WKBundleAddUserScript(injectedBundle.bundle(), injectedBundle.pageGroup(), scriptWorld.get(), sourceWK.get(), 0, 0, 0,
         (runAtStart ? kWKInjectAtDocumentStart : kWKInjectAtDocumentEnd),
         (allFrames ? kWKInjectInAllFrames : kWKInjectInTopFrameOnly));
 }
@@ -181,8 +183,10 @@ void TestRunner::addUserScript(JSStringRef source, bool runAtStart, bool allFram
 void TestRunner::addUserStyleSheet(JSStringRef source, bool allFrames)
 {
     WKRetainPtr<WKStringRef> sourceWK = toWK(source);
+    WKRetainPtr<WKBundleScriptWorldRef> scriptWorld(AdoptWK, WKBundleScriptWorldCreateWorld());
 
-    WKBundlePageAddUserStyleSheet(InjectedBundle::singleton().page()->page(), sourceWK.get(),
+    auto& injectedBundle = InjectedBundle::singleton();
+    WKBundleAddUserStyleSheet(injectedBundle.bundle(), injectedBundle.pageGroup(), scriptWorld.get(), sourceWK.get(), 0, 0, 0,
         (allFrames ? kWKInjectInAllFrames : kWKInjectInTopFrameOnly));
 }
 
@@ -509,12 +513,7 @@ enum {
     AddChromeInputFieldCallbackID = 1,
     RemoveChromeInputFieldCallbackID,
     FocusWebViewCallbackID,
-    SetBackingScaleFactorCallbackID,
-    DidBeginSwipeCallbackID,
-    WillEndSwipeCallbackID,
-    DidEndSwipeCallbackID,
-    DidRemoveSwipeSnapshotCallbackID,
-    FirstUIScriptCallbackID = 100
+    SetBackingScaleFactorCallbackID
 };
 
 static void cacheTestRunnerCallback(unsigned index, JSValueRef callback)
@@ -522,38 +521,21 @@ static void cacheTestRunnerCallback(unsigned index, JSValueRef callback)
     if (!callback)
         return;
 
-    if (callbackMap().contains(index)) {
-        InjectedBundle::singleton().outputText(String::format("FAIL: Tried to install a second TestRunner callback for the same event (id %d)\n\n", index));
-        return;
-    }
-
     WKBundleFrameRef mainFrame = WKBundlePageGetMainFrame(InjectedBundle::singleton().page()->page());
     JSContextRef context = WKBundleFrameGetJavaScriptContext(mainFrame);
     JSValueProtect(context, callback);
     callbackMap().add(index, callback);
 }
 
-static void callTestRunnerCallback(unsigned index, size_t argumentCount = 0, const JSValueRef arguments[] = nullptr)
+static void callTestRunnerCallback(unsigned index)
 {
     if (!callbackMap().contains(index))
         return;
     WKBundleFrameRef mainFrame = WKBundlePageGetMainFrame(InjectedBundle::singleton().page()->page());
     JSContextRef context = WKBundleFrameGetJavaScriptContext(mainFrame);
     JSObjectRef callback = JSValueToObject(context, callbackMap().take(index), 0);
-    JSObjectCallAsFunction(context, callback, JSContextGetGlobalObject(context), argumentCount, arguments, 0);
+    JSObjectCallAsFunction(context, callback, JSContextGetGlobalObject(context), 0, 0, 0);
     JSValueUnprotect(context, callback);
-}
-
-void TestRunner::clearTestRunnerCallbacks()
-{
-    for (auto& iter : callbackMap()) {
-        WKBundleFrameRef mainFrame = WKBundlePageGetMainFrame(InjectedBundle::singleton().page()->page());
-        JSContextRef context = WKBundleFrameGetJavaScriptContext(mainFrame);
-        JSObjectRef callback = JSValueToObject(context, iter.value, 0);
-        JSValueUnprotect(context, callback);
-    }
-
-    callbackMap().clear();
 }
 
 void TestRunner::addChromeInputField(JSValueRef callback)
@@ -717,11 +699,6 @@ void TestRunner::setGeolocationPermission(bool enabled)
     InjectedBundle::singleton().setGeolocationPermission(enabled);
 }
 
-bool TestRunner::isGeolocationProviderActive()
-{
-    return InjectedBundle::singleton().isGeolocationProviderActive();
-}
-
 void TestRunner::setMockGeolocationPosition(double latitude, double longitude, double accuracy, JSValueRef jsAltitude, JSValueRef jsAltitudeAccuracy, JSValueRef jsHeading, JSValueRef jsSpeed)
 {
     auto& injectedBundle = InjectedBundle::singleton();
@@ -849,7 +826,7 @@ bool TestRunner::secureEventInputIsEnabled() const
     WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("SecureEventInputIsEnabled"));
     WKTypeRef returnData = 0;
 
-    WKBundlePagePostSynchronousMessageForTesting(InjectedBundle::singleton().page()->page(), messageName.get(), 0, &returnData);
+    WKBundlePagePostSynchronousMessage(InjectedBundle::singleton().page()->page(), messageName.get(), 0, &returnData);
     return WKBooleanGetValue(static_cast<WKBooleanRef>(returnData));
 }
 
@@ -872,97 +849,6 @@ JSValueRef TestRunner::neverInlineFunction(JSValueRef theFunction)
     WKBundleFrameRef mainFrame = WKBundlePageGetMainFrame(InjectedBundle::singleton().page()->page());
     JSContextRef context = WKBundleFrameGetJavaScriptContext(mainFrame);
     return JSC::setNeverInline(context, theFunction);
-}
-
-void TestRunner::setShouldDecideNavigationPolicyAfterDelay(bool value)
-{
-    m_shouldDecideNavigationPolicyAfterDelay = value;
-    WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("SetShouldDecideNavigationPolicyAfterDelay"));
-    WKRetainPtr<WKBooleanRef> messageBody(AdoptWK, WKBooleanCreate(value));
-    WKBundlePagePostMessage(InjectedBundle::singleton().page()->page(), messageName.get(), messageBody.get());
-}
-
-void TestRunner::setNavigationGesturesEnabled(bool value)
-{
-    WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("SetNavigationGesturesEnabled"));
-    WKRetainPtr<WKBooleanRef> messageBody(AdoptWK, WKBooleanCreate(value));
-    WKBundlePagePostMessage(InjectedBundle::singleton().page()->page(), messageName.get(), messageBody.get());
-}
-
-static unsigned nextUIScriptCallbackID()
-{
-    static unsigned callbackID = FirstUIScriptCallbackID;
-    return callbackID++;
-}
-
-void TestRunner::runUIScript(JSStringRef script, JSValueRef callback)
-{
-    unsigned callbackID = nextUIScriptCallbackID();
-    cacheTestRunnerCallback(callbackID, callback);
-
-    WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("RunUIProcessScript"));
-
-    WKRetainPtr<WKMutableDictionaryRef> testDictionary(AdoptWK, WKMutableDictionaryCreate());
-
-    WKRetainPtr<WKStringRef> scriptKey(AdoptWK, WKStringCreateWithUTF8CString("Script"));
-    WKRetainPtr<WKStringRef> scriptValue(AdoptWK, WKStringCreateWithJSString(script));
-
-    WKRetainPtr<WKStringRef> callbackIDKey(AdoptWK, WKStringCreateWithUTF8CString("CallbackID"));
-    WKRetainPtr<WKUInt64Ref> callbackIDValue = adoptWK(WKUInt64Create(callbackID));
-
-    WKDictionarySetItem(testDictionary.get(), scriptKey.get(), scriptValue.get());
-    WKDictionarySetItem(testDictionary.get(), callbackIDKey.get(), callbackIDValue.get());
-
-    WKBundlePagePostMessage(InjectedBundle::singleton().page()->page(), messageName.get(), testDictionary.get());
-}
-
-void TestRunner::runUIScriptCallback(unsigned callbackID, JSStringRef result)
-{
-    WKBundleFrameRef mainFrame = WKBundlePageGetMainFrame(InjectedBundle::singleton().page()->page());
-    JSContextRef context = WKBundleFrameGetJavaScriptContext(mainFrame);
-
-    JSValueRef resultValue = JSValueMakeString(context, result);
-    callTestRunnerCallback(callbackID, 1, &resultValue);
-}
-
-void TestRunner::installDidBeginSwipeCallback(JSValueRef callback)
-{
-    cacheTestRunnerCallback(DidBeginSwipeCallbackID, callback);
-}
-
-void TestRunner::installWillEndSwipeCallback(JSValueRef callback)
-{
-    cacheTestRunnerCallback(WillEndSwipeCallbackID, callback);
-}
-
-void TestRunner::installDidEndSwipeCallback(JSValueRef callback)
-{
-    cacheTestRunnerCallback(DidEndSwipeCallbackID, callback);
-}
-
-void TestRunner::installDidRemoveSwipeSnapshotCallback(JSValueRef callback)
-{
-    cacheTestRunnerCallback(DidRemoveSwipeSnapshotCallbackID, callback);
-}
-
-void TestRunner::callDidBeginSwipeCallback()
-{
-    callTestRunnerCallback(DidBeginSwipeCallbackID);
-}
-
-void TestRunner::callWillEndSwipeCallback()
-{
-    callTestRunnerCallback(WillEndSwipeCallbackID);
-}
-
-void TestRunner::callDidEndSwipeCallback()
-{
-    callTestRunnerCallback(DidEndSwipeCallbackID);
-}
-
-void TestRunner::callDidRemoveSwipeSnapshotCallback()
-{
-    callTestRunnerCallback(DidRemoveSwipeSnapshotCallbackID);
 }
 
 } // namespace WTR

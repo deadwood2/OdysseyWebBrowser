@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2003-2009, 2011, 2013-2015 Apple Inc. All rights reserved.
+ *  Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2011, 2013, 2014 Apple Inc. All rights reserved.
  *  Copyright (C) 2007 Eric Seidel <eric@webkit.org>
  *
  *  This library is free software; you can redistribute it and/or
@@ -31,7 +31,6 @@
 #include "FullGCActivityCallback.h"
 #include "GCActivityCallback.h"
 #include "GCIncomingRefCountedSetInlines.h"
-#include "HeapHelperPool.h"
 #include "HeapIterationScope.h"
 #include "HeapRootVisitor.h"
 #include "HeapStatistics.h"
@@ -44,7 +43,6 @@
 #include "JSCInlines.h"
 #include "JSVirtualMachineInternal.h"
 #include "RecursiveAllocationScope.h"
-#include "RegExpCache.h"
 #include "Tracing.h"
 #include "TypeProfilerLog.h"
 #include "UnlinkedCodeBlock.h"
@@ -53,7 +51,6 @@
 #include <algorithm>
 #include <wtf/RAMSize.h>
 #include <wtf/CurrentTime.h>
-#include <wtf/ParallelVectorIterator.h>
 #include <wtf/ProcessID.h>
 
 using namespace std;
@@ -61,7 +58,7 @@ using namespace JSC;
 
 namespace JSC {
 
-namespace {
+namespace { 
 
 static const size_t largeHeapSize = 32 * MB; // About 1.5X the average webpage.
 static const size_t smallHeapSize = 1 * MB; // Matches the FastMalloc per-thread cache.
@@ -337,7 +334,9 @@ Heap::Heap(VM* vm, HeapType heapType)
     , m_extraMemorySize(0)
     , m_deprecatedExtraMemorySize(0)
     , m_machineThreads(this)
-    , m_slotVisitor(*this)
+    , m_sharedData(vm)
+    , m_slotVisitor(m_sharedData)
+    , m_copyVisitor(m_sharedData)
     , m_handleSet(vm)
     , m_isSafeToCollect(false)
     , m_writeBarrierBuffer(256)
@@ -346,8 +345,13 @@ Heap::Heap(VM* vm, HeapType heapType)
     // schedule the timer if we've never done a collection.
     , m_lastFullGCLength(0.01)
     , m_lastEdenGCLength(0.01)
+    , m_lastCodeDiscardTime(WTF::monotonicallyIncreasingTime())
     , m_fullActivityCallback(GCActivityCallback::createFullTimer(this))
+#if ENABLE(GGC)
     , m_edenActivityCallback(GCActivityCallback::createEdenTimer(this))
+#else
+    , m_edenActivityCallback(m_fullActivityCallback)
+#endif
 #if USE(CF)
     , m_sweeper(std::make_unique<IncrementalSweeper>(this, CFRunLoopGetCurrent()))
 #else
@@ -357,7 +361,6 @@ Heap::Heap(VM* vm, HeapType heapType)
 #if USE(CF)
     , m_delayedReleaseRecursionCount(0)
 #endif
-    , m_helperClient(&heapHelperPool())
 {
     m_storageSpace.init();
     if (Options::verifyHeap())
@@ -506,11 +509,18 @@ void Heap::didFinishIterating()
     m_objectSpace.didFinishIterating();
 }
 
-void Heap::completeAllDFGPlans()
+void Heap::getConservativeRegisterRoots(HashSet<JSCell*>& roots)
 {
-#if ENABLE(DFG_JIT)
-    DFG::completeAllPlansForVM(*m_vm);
-#endif
+    ASSERT(isValidThreadState(m_vm));
+    ConservativeRoots stackRoots(&m_objectSpace.blocks(), &m_storageSpace);
+    stack().gatherConservativeRoots(stackRoots);
+    size_t stackRootCount = stackRoots.size();
+    JSCell** registerRoots = stackRoots.roots();
+    for (size_t i = 0; i < stackRootCount; i++) {
+        setMarked(registerRoots[i]);
+        registerRoots[i]->setMarked();
+        roots.add(registerRoots[i]);
+    }
 }
 
 void Heap::markRoots(double gcStartTime, void* stackOrigin, void* stackTop, MachineThreads::RegisterState& calleeSavedRegisters)
@@ -520,12 +530,13 @@ void Heap::markRoots(double gcStartTime, void* stackOrigin, void* stackTop, Mach
     GCPHASE(MarkRoots);
     ASSERT(isValidThreadState(m_vm));
 
+#if ENABLE(GGC)
     Vector<const JSCell*> rememberedSet(m_slotVisitor.markStack().size());
     m_slotVisitor.markStack().fillVector(rememberedSet);
-
-#if ENABLE(DFG_JIT)
-    DFG::clearCodeBlockMarks(*m_vm);
+#else
+    Vector<const JSCell*> rememberedSet;
 #endif
+
     if (m_operationInProgress == EdenCollection)
         m_codeBlocks.clearMarksForEdenCollection(rememberedSet);
     else
@@ -540,43 +551,8 @@ void Heap::markRoots(double gcStartTime, void* stackOrigin, void* stackTop, Mach
 
     clearLivenessData();
 
-    if (m_operationInProgress == FullCollection)
-        m_opaqueRoots.clear();
-
-    m_shouldHashCons = m_vm->haveEnoughNewStringsToHashCons();
-
-    m_parallelMarkersShouldExit = false;
-
-    m_helperClient.setFunction(
-        [this] () {
-            SlotVisitor* slotVisitor;
-            {
-                LockHolder locker(m_parallelSlotVisitorLock);
-                if (m_availableParallelSlotVisitors.isEmpty()) {
-                    std::unique_ptr<SlotVisitor> newVisitor =
-                        std::make_unique<SlotVisitor>(*this);
-                    slotVisitor = newVisitor.get();
-                    m_parallelSlotVisitors.append(WTF::move(newVisitor));
-                } else
-                    slotVisitor = m_availableParallelSlotVisitors.takeLast();
-            }
-
-            WTF::registerGCThread();
-
-            {
-                ParallelModeEnabler parallelModeEnabler(*slotVisitor);
-                slotVisitor->didStartMarking();
-                slotVisitor->drainFromShared(SlotVisitor::SlaveDrain);
-            }
-
-            {
-                LockHolder locker(m_parallelSlotVisitorLock);
-                m_availableParallelSlotVisitors.append(slotVisitor);
-            }
-        });
-
+    m_sharedData.didStartMarking();
     m_slotVisitor.didStartMarking();
-    
     HeapRootVisitor heapRootVisitor(m_slotVisitor);
 
     {
@@ -599,12 +575,7 @@ void Heap::markRoots(double gcStartTime, void* stackOrigin, void* stackTop, Mach
     visitWeakHandles(heapRootVisitor);
 
     clearRememberedSet(rememberedSet);
-    {
-        std::lock_guard<Lock> lock(m_markingMutex);
-        m_parallelMarkersShouldExit = true;
-        m_markingConditionVariable.notifyAll();
-    }
-    m_helperClient.finish();
+    m_sharedData.didFinishMarking();
     updateObjectCounts(gcStartTime);
     resetVisitors();
 }
@@ -620,51 +591,16 @@ void Heap::copyBackingStores()
     }
 
     if (m_storageSpace.shouldDoCopyPhase()) {
-        if (m_operationInProgress == EdenCollection) {
-            // Reset the vector to be empty, but don't throw away the backing store.
-            m_blocksToCopy.shrink(0);
-            for (CopiedBlock* block = m_storageSpace.m_newGen.fromSpace->head(); block; block = block->next())
-                m_blocksToCopy.append(block);
-        } else {
-            ASSERT(m_operationInProgress == FullCollection);
-            WTF::copyToVector(m_storageSpace.m_blockSet, m_blocksToCopy);
-        }
-
-        ParallelVectorIterator<Vector<CopiedBlock*>> iterator(
-            m_blocksToCopy, s_blockFragmentLength);
-
-        // Note that it's safe to use the [&] capture list here, even though we're creating a task
-        // that other threads run. That's because after runFunctionInParallel() returns, the task
-        // we have created is not going to be running anymore. Hence, everything on the stack here
-        // outlives the task.
-        m_helperClient.runFunctionInParallel(
-            [&] () {
-                CopyVisitor copyVisitor(*this);
-                
-                iterator.iterate(
-                    [&] (CopiedBlock* block) {
-                        if (!block->hasWorkList())
-                            return;
-                        
-                        CopyWorkList& workList = block->workList();
-                        for (CopyWorklistItem item : workList) {
-                            if (item.token() == ButterflyCopyToken) {
-                                JSObject::copyBackingStore(
-                                    item.cell(), copyVisitor, ButterflyCopyToken);
-                                continue;
-                            }
-                            
-                            item.cell()->methodTable()->copyBackingStore(
-                                item.cell(), copyVisitor, item.token());
-                        }
-                        
-                        ASSERT(!block->liveBytes());
-                        m_storageSpace.recycleEvacuatedBlock(block, m_operationInProgress);
-                    });
-            });
-    }
-    
-    m_storageSpace.doneCopying();
+        m_sharedData.didStartCopying();
+        m_copyVisitor.startCopying();
+        m_copyVisitor.copyFromShared();
+        m_copyVisitor.doneCopying();
+        // We need to wait for everybody to finish and return their CopiedBlocks 
+        // before signaling that the phase is complete.
+        m_storageSpace.doneCopying();
+        m_sharedData.didFinishCopying();
+    } else
+        m_storageSpace.doneCopying();
 }
 
 void Heap::gatherStackRoots(ConservativeRoots& roots, void* stackOrigin, void* stackTop, MachineThreads::RegisterState& calleeSavedRegisters)
@@ -735,7 +671,7 @@ void Heap::visitCompilerWorklistWeakReferences()
 {
 #if ENABLE(DFG_JIT)
     for (auto worklist : m_suspendedCompilerWorklists)
-        worklist->visitWeakReferences(m_slotVisitor);
+        worklist->visitWeakReferences(m_slotVisitor, m_codeBlocks);
 
     if (Options::logGC() == GCLogging::Verbose)
         dataLog("DFG Worklists:\n", m_slotVisitor);
@@ -829,8 +765,10 @@ void Heap::traceCodeBlocksAndJITStubRoutines()
 
 void Heap::converge()
 {
+#if ENABLE(PARALLEL_GC)
     GCPHASE(Convergence);
     m_slotVisitor.drainFromShared(SlotVisitor::MasterDrain);
+#endif
 }
 
 void Heap::visitWeakHandles(HeapRootVisitor& visitor)
@@ -840,6 +778,7 @@ void Heap::visitWeakHandles(HeapRootVisitor& visitor)
         m_objectSpace.visitWeakSets(visitor);
         harvestWeakReferences();
         visitCompilerWorklistWeakReferences();
+        m_codeBlocks.traceMarked(m_slotVisitor); // New "executing" code blocks may be discovered.
         if (m_slotVisitor.isEmpty())
             break;
 
@@ -849,16 +788,22 @@ void Heap::visitWeakHandles(HeapRootVisitor& visitor)
         {
             ParallelModeEnabler enabler(m_slotVisitor);
             m_slotVisitor.donateAndDrain();
+#if ENABLE(PARALLEL_GC)
             m_slotVisitor.drainFromShared(SlotVisitor::MasterDrain);
+#endif
         }
     }
 }
 
 void Heap::clearRememberedSet(Vector<const JSCell*>& rememberedSet)
 {
+#if ENABLE(GGC)
     GCPHASE(ClearRememberedSet);
     for (auto* cell : rememberedSet)
         const_cast<JSCell*>(cell)->setRemembered(false);
+#else
+    UNUSED_PARAM(rememberedSet);
+#endif
 }
 
 void Heap::updateObjectCounts(double gcStartTime)
@@ -867,7 +812,9 @@ void Heap::updateObjectCounts(double gcStartTime)
 
     if (Options::logGC() == GCLogging::Verbose) {
         size_t visitCount = m_slotVisitor.visitCount();
-        visitCount += threadVisitCount();
+#if ENABLE(PARALLEL_GC)
+        visitCount += m_sharedData.childVisitCount();
+#endif
         dataLogF("\nNumber of live Objects after GC %lu, took %.6f secs\n", static_cast<unsigned long>(visitCount), WTF::monotonicallyIncreasingTime() - gcStartTime);
     }
     
@@ -882,23 +829,19 @@ void Heap::updateObjectCounts(double gcStartTime)
     
     m_totalBytesVisited += m_slotVisitor.bytesVisited();
     m_totalBytesCopied += m_slotVisitor.bytesCopied();
-    m_totalBytesVisited += threadBytesVisited();
-    m_totalBytesCopied += threadBytesCopied();
+#if ENABLE(PARALLEL_GC)
+    m_totalBytesVisited += m_sharedData.childBytesVisited();
+    m_totalBytesCopied += m_sharedData.childBytesCopied();
+#endif
 }
 
 void Heap::resetVisitors()
 {
     m_slotVisitor.reset();
-
-    for (auto& parallelVisitor : m_parallelSlotVisitors)
-        parallelVisitor->reset();
-
-    ASSERT(m_sharedMarkStack.isEmpty());
-    m_weakReferenceHarvesters.removeAll();
-    if (m_shouldHashCons) {
-        m_vm->resetNewStringsSinceLastHashCons();
-        m_shouldHashCons = false;
-    }
+#if ENABLE(PARALLEL_GC)
+    m_sharedData.resetChildren();
+#endif
+    m_sharedData.reset();
 }
 
 size_t Heap::objectCount()
@@ -958,15 +901,30 @@ std::unique_ptr<TypeCountSet> Heap::objectTypeCounts()
     return m_objectSpace.forEachLiveCell<RecordType>(iterationScope);
 }
 
-void Heap::deleteAllCodeBlocks()
+void Heap::deleteAllCompiledCode()
 {
-    // If JavaScript is running, it's not safe to delete all JavaScript code, since
-    // we'll end up returning to deleted code.
-    RELEASE_ASSERT(!m_vm->entryScope);
+    // If JavaScript is running, it's not safe to delete code, since we'll end
+    // up deleting code that is live on the stack.
+    if (m_vm->entryScope)
+        return;
+    
+    // If we have things on any worklist, then don't delete code. This is kind of
+    // a weird heuristic. It's definitely not safe to throw away code that is on
+    // the worklist. But this change was made in a hurry so we just avoid throwing
+    // away any code if there is any code on any worklist. I suspect that this
+    // might not actually be too dumb: if there is code on worklists then that
+    // means that we are running some hot JS code right now. Maybe causing
+    // recompilations isn't a good idea.
+#if ENABLE(DFG_JIT)
+    for (unsigned i = DFG::numberOfWorklists(); i--;) {
+        if (DFG::Worklist* worklist = DFG::worklistForIndexOrNull(i)) {
+            if (worklist->isActiveForVM(*vm()))
+                return;
+        }
+    }
+#endif // ENABLE(DFG_JIT)
 
-    completeAllDFGPlans();
-
-    for (ExecutableBase* current : m_executables) {
+    for (ExecutableBase* current : m_compiledCode) {
         if (!current->isFunctionExecutable())
             continue;
         static_cast<FunctionExecutable*>(current)->clearCode();
@@ -977,28 +935,28 @@ void Heap::deleteAllCodeBlocks()
     m_codeBlocks.deleteUnmarkedAndUnreferenced(FullCollection);
 }
 
-void Heap::deleteAllUnlinkedCodeBlocks()
+void Heap::deleteAllUnlinkedFunctionCode()
 {
-    for (ExecutableBase* current : m_executables) {
+    for (ExecutableBase* current : m_compiledCode) {
         if (!current->isFunctionExecutable())
             continue;
-        static_cast<FunctionExecutable*>(current)->unlinkedExecutable()->clearCode();
+        static_cast<FunctionExecutable*>(current)->clearUnlinkedCodeForRecompilation();
     }
 }
 
 void Heap::clearUnmarkedExecutables()
 {
     GCPHASE(ClearUnmarkedExecutables);
-    for (unsigned i = m_executables.size(); i--;) {
-        ExecutableBase* current = m_executables[i];
+    for (unsigned i = m_compiledCode.size(); i--;) {
+        ExecutableBase* current = m_compiledCode[i];
         if (isMarked(current))
             continue;
 
         // We do this because executable memory is limited on some platforms and because
         // CodeBlock requires eager finalization.
         ExecutableBase::clearCodeVirtual(current);
-        std::swap(m_executables[i], m_executables.last());
-        m_executables.removeLast();
+        std::swap(m_compiledCode[i], m_compiledCode.last());
+        m_compiledCode.removeLast();
     }
 }
 
@@ -1035,6 +993,8 @@ void Heap::collectAndSweep(HeapOperation collectionType)
 
     sweepAllLogicallyEmptyWeakBlocks();
 }
+
+static double minute = 60.0;
 
 NEVER_INLINE void Heap::collect(HeapOperation collectionType)
 {
@@ -1086,6 +1046,7 @@ NEVER_INLINE void Heap::collectImpl(HeapOperation collectionType, void* stackOri
         m_verifier->gatherLiveObjects(HeapVerifier::Phase::BeforeMarking);
     }
 
+    deleteOldCode(gcStartTime);
     flushOldStructureIDTables();
     stopAllocation();
     flushWriteBarrierBuffer();
@@ -1173,6 +1134,18 @@ void Heap::willStartCollection(HeapOperation collectionType)
 
     if (m_edenActivityCallback)
         m_edenActivityCallback->willCollect();
+}
+
+void Heap::deleteOldCode(double gcStartTime)
+{
+    if (m_operationInProgress == EdenCollection)
+        return;
+
+    GCPHASE(DeleteOldCode);
+    if (gcStartTime - m_lastCodeDiscardTime > minute) {
+        deleteAllCompiledCode();
+        m_lastCodeDiscardTime = WTF::monotonicallyIncreasingTime();
+    }
 }
 
 void Heap::flushOldStructureIDTables()
@@ -1431,9 +1404,9 @@ void Heap::FinalizerOwner::finalize(Handle<Unknown> handle, void* context)
     WeakSet::deallocate(WeakImpl::asWeakImpl(slot));
 }
 
-void Heap::addExecutable(ExecutableBase* executable)
+void Heap::addCompiledCode(ExecutableBase* executable)
 {
-    m_executables.append(executable);
+    m_compiledCode.append(executable);
 }
 
 void Heap::collectAllGarbageIfNotDoneRecently()
@@ -1488,12 +1461,17 @@ void Heap::zombifyDeadObjects()
 
 void Heap::flushWriteBarrierBuffer(JSCell* cell)
 {
+#if ENABLE(GGC)
     m_writeBarrierBuffer.flush(*this);
     m_writeBarrierBuffer.add(cell);
+#else
+    UNUSED_PARAM(cell);
+#endif
 }
 
 bool Heap::shouldDoFullCollection(HeapOperation requestedCollectionType) const
 {
+#if ENABLE(GGC)
     if (Options::alwaysDoFullCollection())
         return true;
 
@@ -1510,6 +1488,10 @@ bool Heap::shouldDoFullCollection(HeapOperation requestedCollectionType) const
     }
     RELEASE_ASSERT_NOT_REACHED();
     return false;
+#else
+    UNUSED_PARAM(requestedCollectionType);
+    return true;
+#endif
 }
 
 void Heap::addLogicallyEmptyWeakBlock(WeakBlock* block)
@@ -1547,30 +1529,6 @@ bool Heap::sweepNextLogicallyEmptyWeakBlock()
     }
 
     return true;
-}
-
-size_t Heap::threadVisitCount()
-{       
-    unsigned long result = 0;
-    for (auto& parallelVisitor : m_parallelSlotVisitors)
-        result += parallelVisitor->visitCount();
-    return result;
-}
-
-size_t Heap::threadBytesVisited()
-{       
-    size_t result = 0;
-    for (auto& parallelVisitor : m_parallelSlotVisitors)
-        result += parallelVisitor->bytesVisited();
-    return result;
-}
-
-size_t Heap::threadBytesCopied()
-{       
-    size_t result = 0;
-    for (auto& parallelVisitor : m_parallelSlotVisitors)
-        result += parallelVisitor->bytesCopied();
-    return result;
 }
 
 } // namespace JSC

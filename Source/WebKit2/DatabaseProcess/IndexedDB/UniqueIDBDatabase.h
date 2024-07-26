@@ -45,20 +45,21 @@ class DataReference;
 }
 
 namespace WebCore {
-class CrossThreadTask;
 class SharedBuffer;
 
 struct IDBDatabaseMetadata;
 struct IDBGetResult;
 struct IDBKeyData;
 struct IDBKeyRangeData;
-struct SecurityOriginData;
 }
 
 namespace WebKit {
 
+class AsyncTask;
 class DatabaseProcessIDBConnection;
 class UniqueIDBDatabaseBackingStore;
+
+struct SecurityOriginData;
 
 enum class UniqueIDBDatabaseShutdownType {
     NormalShutdown,
@@ -125,7 +126,7 @@ private:
         Normal,
         Shutdown
     };
-    void postDatabaseTask(std::unique_ptr<WebCore::CrossThreadTask>, DatabaseTaskType = DatabaseTaskType::Normal);
+    void postDatabaseTask(std::unique_ptr<AsyncTask>, DatabaseTaskType = DatabaseTaskType::Normal);
 
     void shutdown(UniqueIDBDatabaseShutdownType);
 
@@ -133,16 +134,16 @@ private:
     String filenameForDatabaseName() const;
 
     // Returns a string that is appropriate for use as a unique filename
-    String databaseFilenameIdentifier(const WebCore::SecurityOriginData&) const;
+    String databaseFilenameIdentifier(const SecurityOriginData&) const;
 
     // Returns true if this origin can use the same databases as the given origin.
-    bool canShareDatabases(const WebCore::SecurityOriginData&, const WebCore::SecurityOriginData&) const;
+    bool canShareDatabases(const SecurityOriginData&, const SecurityOriginData&) const;
 
-    void postTransactionOperation(const IDBIdentifier& transactionIdentifier, std::unique_ptr<WebCore::CrossThreadTask>, std::function<void (bool)> successCallback);
+    void postTransactionOperation(const IDBIdentifier& transactionIdentifier, std::unique_ptr<AsyncTask>, std::function<void (bool)> successCallback);
     
     // To be called from the database workqueue thread only
     void performNextDatabaseTask();
-    void postMainThreadTask(std::unique_ptr<WebCore::CrossThreadTask>, DatabaseTaskType = DatabaseTaskType::Normal);
+    void postMainThreadTask(std::unique_ptr<AsyncTask>, DatabaseTaskType = DatabaseTaskType::Normal);
     void openBackingStoreAndReadMetadata(const UniqueIDBDatabaseIdentifier&, const String& databaseDirectory);
     void openBackingStoreTransaction(const IDBIdentifier& transactionIdentifier, const Vector<int64_t>& objectStoreIDs, WebCore::IndexedDB::TransactionMode);
     void beginBackingStoreTransaction(const IDBIdentifier&);
@@ -208,11 +209,11 @@ private:
 
     RefPtr<UniqueIDBDatabaseBackingStore> m_backingStore;
 
-    Deque<std::unique_ptr<WebCore::CrossThreadTask>> m_databaseTasks;
-    Lock m_databaseTaskMutex;
+    Deque<std::unique_ptr<AsyncTask>> m_databaseTasks;
+    Mutex m_databaseTaskMutex;
 
-    Deque<std::unique_ptr<WebCore::CrossThreadTask>> m_mainThreadTasks;
-    Lock m_mainThreadTaskMutex;
+    Deque<std::unique_ptr<AsyncTask>> m_mainThreadTasks;
+    Mutex m_mainThreadTaskMutex;
 };
 
 } // namespace WebKit

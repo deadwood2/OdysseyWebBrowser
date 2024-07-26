@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2007, 2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006, 2007 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,7 +32,9 @@ using namespace WebCore;
 // MemoryStream ---------------------------------------------------------------
 
 MemoryStream::MemoryStream(PassRefPtr<SharedBuffer> buffer)
-    : m_buffer(buffer)
+    : m_refCount(0)
+    , m_buffer(buffer)
+    , m_pos(0)
 {
     gClassCount++;
     gClassNameCount().add("MemoryStream");
@@ -51,11 +53,9 @@ COMPtr<MemoryStream> MemoryStream::createInstance(PassRefPtr<SharedBuffer> buffe
 
 // IUnknown -------------------------------------------------------------------
 
-HRESULT MemoryStream::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE MemoryStream::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<IUnknown*>(this);
     else if (IsEqualGUID(riid, IID_ISequentialStream))
@@ -69,12 +69,12 @@ HRESULT MemoryStream::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvOb
     return S_OK;
 }
 
-ULONG MemoryStream::AddRef()
+ULONG STDMETHODCALLTYPE MemoryStream::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG MemoryStream::Release()
+ULONG STDMETHODCALLTYPE MemoryStream::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -85,7 +85,10 @@ ULONG MemoryStream::Release()
 
 // ISequentialStream ----------------------------------------------------------
 
-HRESULT MemoryStream::Read(/* [length_is][size_is][out] */ void* pv, /* [in] */ ULONG cb, /* [out] */ ULONG* pcbRead)
+HRESULT STDMETHODCALLTYPE MemoryStream::Read( 
+    /* [length_is][size_is][out] */ void* pv,
+    /* [in] */ ULONG cb,
+    /* [out] */ ULONG* pcbRead)
 {
     *pcbRead = 0;
 
@@ -106,7 +109,10 @@ HRESULT MemoryStream::Read(/* [length_is][size_is][out] */ void* pv, /* [in] */ 
     return S_OK;
 }
 
-HRESULT MemoryStream::Write(/* [size_is][in] */ const void* /*pv*/, /* [in] */ ULONG /*cb*/, /* [out] */ ULONG* /*pcbWritten*/)
+HRESULT STDMETHODCALLTYPE MemoryStream::Write( 
+    /* [size_is][in] */ const void* /*pv*/,
+    /* [in] */ ULONG /*cb*/,
+    /* [out] */ ULONG* /*pcbWritten*/)
 {
     // we use this for read-only streams
     return STG_E_ACCESSDENIED;
@@ -114,7 +120,10 @@ HRESULT MemoryStream::Write(/* [size_is][in] */ const void* /*pv*/, /* [in] */ U
 
 // IStream --------------------------------------------------------------------
 
-HRESULT MemoryStream::Seek(/* [in] */ LARGE_INTEGER dlibMove, /* [in] */ DWORD dwOrigin, /* [out] */ ULARGE_INTEGER* plibNewPosition)
+HRESULT STDMETHODCALLTYPE MemoryStream::Seek( 
+    /* [in] */ LARGE_INTEGER dlibMove,
+    /* [in] */ DWORD dwOrigin,
+    /* [out] */ ULARGE_INTEGER* plibNewPosition)
 {
     if (!m_buffer)
         return E_FAIL;
@@ -163,12 +172,17 @@ HRESULT MemoryStream::Seek(/* [in] */ LARGE_INTEGER dlibMove, /* [in] */ DWORD d
     return S_OK;
 }
 
-HRESULT MemoryStream::SetSize(ULARGE_INTEGER /*libNewSize*/)
+HRESULT STDMETHODCALLTYPE MemoryStream::SetSize( 
+    /* [in] */ ULARGE_INTEGER /*libNewSize*/)
 {
     return STG_E_INVALIDFUNCTION;
 }
 
-HRESULT MemoryStream::CopyTo(/* [unique][in] */ IStream* pstm, /* [in] */ ULARGE_INTEGER cb, /* [out] */ ULARGE_INTEGER* pcbRead, /* [out] */ ULARGE_INTEGER* pcbWritten)
+HRESULT STDMETHODCALLTYPE MemoryStream::CopyTo( 
+    /* [unique][in] */ IStream* pstm,
+    /* [in] */ ULARGE_INTEGER cb,
+    /* [out] */ ULARGE_INTEGER* pcbRead,
+    /* [out] */ ULARGE_INTEGER* pcbWritten)
 {
     if (!m_buffer)
         return E_FAIL;
@@ -192,27 +206,36 @@ HRESULT MemoryStream::CopyTo(/* [unique][in] */ IStream* pstm, /* [in] */ ULARGE
     return hr;
 }
 
-HRESULT MemoryStream::Commit(DWORD /*grfCommitFlags*/)
+HRESULT STDMETHODCALLTYPE MemoryStream::Commit( 
+    /* [in] */ DWORD /*grfCommitFlags*/)
 {
     return S_OK;
 }
 
-HRESULT MemoryStream::Revert()
+HRESULT STDMETHODCALLTYPE MemoryStream::Revert( void)
 {
     return S_OK;
 }
 
-HRESULT MemoryStream::LockRegion(ULARGE_INTEGER /*libOffset*/, ULARGE_INTEGER /*cb*/, DWORD /*dwLockType*/)
+HRESULT STDMETHODCALLTYPE MemoryStream::LockRegion( 
+    /* [in] */ ULARGE_INTEGER /*libOffset*/,
+    /* [in] */ ULARGE_INTEGER /*cb*/,
+    /* [in] */ DWORD /*dwLockType*/)
 {
     return STG_E_INVALIDFUNCTION;
 }
 
-HRESULT MemoryStream::UnlockRegion(ULARGE_INTEGER /*libOffset*/, ULARGE_INTEGER /*cb*/, DWORD /*dwLockType*/)
+HRESULT STDMETHODCALLTYPE MemoryStream::UnlockRegion( 
+    /* [in] */ ULARGE_INTEGER /*libOffset*/,
+    /* [in] */ ULARGE_INTEGER /*cb*/,
+    /* [in] */ DWORD /*dwLockType*/)
 {
     return STG_E_INVALIDFUNCTION;
 }
 
-HRESULT MemoryStream::Stat(_Out_ STATSTG* pstatstg, DWORD /*grfStatFlag*/)
+HRESULT STDMETHODCALLTYPE MemoryStream::Stat( 
+    /* [out] */ STATSTG* pstatstg,
+    /* [in] */ DWORD /*grfStatFlag*/)
 {
     if (!pstatstg)
         return E_POINTER;
@@ -226,7 +249,8 @@ HRESULT MemoryStream::Stat(_Out_ STATSTG* pstatstg, DWORD /*grfStatFlag*/)
     return S_OK;
 }
 
-HRESULT MemoryStream::Clone(_COM_Outptr_ IStream** ppstm)
+HRESULT STDMETHODCALLTYPE MemoryStream::Clone( 
+    /* [out] */ IStream** ppstm)
 {
     MemoryStream::createInstance(m_buffer).copyRefTo(ppstm);
     // FIXME: MSDN says we should be returning STG_E_INSUFFICIENT_MEMORY instead of E_OUTOFMEMORY here.

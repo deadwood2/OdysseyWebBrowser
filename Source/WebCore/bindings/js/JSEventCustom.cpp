@@ -44,23 +44,14 @@ using namespace JSC;
 
 namespace WebCore {
 
-JSValue JSEvent::clipboardData(ExecState& state) const
+JSValue JSEvent::clipboardData(ExecState* exec) const
 {
-    return impl().isClipboardEvent() ? toJS(&state, globalObject(), impl().clipboardData()) : jsUndefined();
+    return impl().isClipboardEvent() ? toJS(exec, globalObject(), impl().clipboardData()) : jsUndefined();
 }
 
 #define TRY_TO_WRAP_WITH_INTERFACE(interfaceName) \
     case interfaceName##InterfaceType: \
-        return CREATE_DOM_WRAPPER(&globalObject, interfaceName, &event);
-
-static inline JSValue createNewEventWrapper(JSDOMGlobalObject& globalObject, Event& event)
-{
-    switch (event.eventInterface()) {
-        DOM_EVENT_INTERFACES_FOR_EACH(TRY_TO_WRAP_WITH_INTERFACE)
-    }
-
-    return CREATE_DOM_WRAPPER(&globalObject, Event, &event);
-}
+        return CREATE_DOM_WRAPPER(globalObject, interfaceName, event);
 
 JSValue toJS(ExecState*, JSDOMGlobalObject* globalObject, Event* event)
 {
@@ -73,13 +64,11 @@ JSValue toJS(ExecState*, JSDOMGlobalObject* globalObject, Event* event)
     if (wrapper)
         return wrapper;
 
-    return createNewEventWrapper(*globalObject, *event);
-}
+    switch (event->eventInterface()) {
+        DOM_EVENT_INTERFACES_FOR_EACH(TRY_TO_WRAP_WITH_INTERFACE)
+    }
 
-
-JSValue toJSNewlyCreated(ExecState*, JSDOMGlobalObject* globalObject, Event* event)
-{
-    return event ? createNewEventWrapper(*globalObject, *event) : jsNull();
+    return CREATE_DOM_WRAPPER(globalObject, Event, event);
 }
 
 #undef TRY_TO_WRAP_WITH_INTERFACE

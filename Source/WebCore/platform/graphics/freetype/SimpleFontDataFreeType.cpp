@@ -103,12 +103,11 @@ void Font::platformCharWidthInit()
 PassRefPtr<Font> Font::platformCreateScaledFont(const FontDescription& fontDescription, float scaleFactor) const
 {
     ASSERT(m_platformData.scaledFont());
-    FontDescription scaledFontDescription = fontDescription;
-    scaledFontDescription.setComputedSize(scaleFactor * fontDescription.computedSize());
     return Font::create(FontPlatformData(cairo_scaled_font_get_font_face(m_platformData.scaledFont()),
-        scaledFontDescription,
+        scaleFactor * fontDescription.computedSize(),
         m_platformData.syntheticBold(),
-        m_platformData.syntheticOblique()),
+        m_platformData.syntheticOblique(),
+        fontDescription.orientation()),
         isCustomFont(), false);
 }
 

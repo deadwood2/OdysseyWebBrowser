@@ -32,6 +32,7 @@
 #include "JIT.h"
 #include "JSFunction.h"
 #include "JSGlobalObject.h"
+#include "JSNameScope.h"
 #include "LabelScope.h"
 #include "Lexer.h"
 #include "JSCInlines.h"
@@ -128,15 +129,6 @@ void ProgramNode::setClosedVariables(Vector<RefPtr<UniquedStringImpl>>&& closedV
     m_closedVariables = WTF::move(closedVariables);
 }
 
-// ------------------------------ ModuleProgramNode -----------------------------
-
-ModuleProgramNode::ModuleProgramNode(ParserArena& parserArena, const JSTokenLocation& startLocation, const JSTokenLocation& endLocation, unsigned startColumn, unsigned endColumn, SourceElements* children, VariableEnvironment& varEnvironment, FunctionStack& funcStack, VariableEnvironment& lexicalVariables, FunctionParameters*, const SourceCode& source, CodeFeatures features, int numConstants)
-    : ScopeNode(parserArena, startLocation, endLocation, source, children, varEnvironment, funcStack, lexicalVariables, features, numConstants)
-    , m_startColumn(startColumn)
-    , m_endColumn(endColumn)
-{
-}
-
 // ------------------------------ EvalNode -----------------------------
 
 EvalNode::EvalNode(ParserArena& parserArena, const JSTokenLocation& startLocation, const JSTokenLocation& endLocation, unsigned, unsigned endColumn, SourceElements* children, VariableEnvironment& varEnvironment, FunctionStack& funcStack, VariableEnvironment& lexicalVariables, FunctionParameters*, const SourceCode& source, CodeFeatures features, int numConstants)
@@ -145,14 +137,14 @@ EvalNode::EvalNode(ParserArena& parserArena, const JSTokenLocation& startLocatio
 {
 }
 
-// ------------------------------ FunctionMetadataNode -----------------------------
+// ------------------------------ FunctionBodyNode -----------------------------
 
-FunctionMetadataNode::FunctionMetadataNode(
+FunctionBodyNode::FunctionBodyNode(
     ParserArena&, const JSTokenLocation& startLocation, 
     const JSTokenLocation& endLocation, unsigned startColumn, unsigned endColumn, 
     int functionKeywordStart, int functionNameStart, int parametersStart, bool isInStrictContext, 
-    ConstructorKind constructorKind, unsigned parameterCount, SourceParseMode mode, bool isArrowFunction, bool isArrowFunctionBodyExpression)
-        : Node(endLocation)
+    ConstructorKind constructorKind, unsigned parameterCount, FunctionParseMode mode)
+        : StatementNode(endLocation)
         , m_startColumn(startColumn)
         , m_endColumn(endColumn)
         , m_functionKeywordStart(functionKeywordStart)
@@ -163,20 +155,18 @@ FunctionMetadataNode::FunctionMetadataNode(
         , m_parseMode(mode)
         , m_isInStrictContext(isInStrictContext)
         , m_constructorKind(static_cast<unsigned>(constructorKind))
-        , m_isArrowFunction(isArrowFunction)
-        , m_isArrowFunctionBodyExpression(isArrowFunctionBodyExpression)
 {
     ASSERT(m_constructorKind == static_cast<unsigned>(constructorKind));
 }
 
-void FunctionMetadataNode::finishParsing(const SourceCode& source, const Identifier& ident, enum FunctionMode functionMode)
+void FunctionBodyNode::finishParsing(const SourceCode& source, const Identifier& ident, enum FunctionMode functionMode)
 {
     m_source = source;
     m_ident = ident;
     m_functionMode = functionMode;
 }
 
-void FunctionMetadataNode::setEndPosition(JSTextPosition position)
+void FunctionBodyNode::setEndPosition(JSTextPosition position)
 {
     m_lastLine = position.line;
     m_endColumn = position.offset - position.lineStartOffset;

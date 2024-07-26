@@ -30,7 +30,7 @@
 
 #include "GPRInfo.h"
 #include "MacroAssembler.h"
-#include <wtf/WeakRandom.h>
+#include "WeakRandom.h"
 
 namespace JSC {
 
@@ -94,8 +94,6 @@ private:
         {
             return value < other.value;
         }
-
-        void dump(PrintStream& out) const;
         
         int64_t value;
         unsigned index;
@@ -119,8 +117,6 @@ private:
             , index(index)
         {
         }
-
-        void dump(PrintStream& out) const;
         
         BranchKind kind;
         unsigned index;

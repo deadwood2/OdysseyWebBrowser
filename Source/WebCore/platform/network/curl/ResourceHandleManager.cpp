@@ -68,7 +68,6 @@
 #if USE(CF)
 #include <wtf/RetainPtr.h>
 #endif
-#include <wtf/Lock.h>
 #include <wtf/Threading.h>
 #include <wtf/Vector.h>
 #include <wtf/text/CString.h>
@@ -134,11 +133,10 @@ static char* cookieJarPath()
 #endif
 }
 
-static Lock* sharedResourceMutex(curl_lock_data data)
-{
-    DEPRECATED_DEFINE_STATIC_LOCAL(Lock, cookieMutex, ());
-    DEPRECATED_DEFINE_STATIC_LOCAL(Lock, dnsMutex, ());
-    DEPRECATED_DEFINE_STATIC_LOCAL(Lock, shareMutex, ());
+static Mutex* sharedResourceMutex(curl_lock_data data) {
+    DEPRECATED_DEFINE_STATIC_LOCAL(Mutex, cookieMutex, ());
+    DEPRECATED_DEFINE_STATIC_LOCAL(Mutex, dnsMutex, ());
+    DEPRECATED_DEFINE_STATIC_LOCAL(Mutex, shareMutex, ());
 
     switch (data) {
         case CURL_LOCK_DATA_COOKIE:
@@ -192,13 +190,13 @@ static void calculateWebTimingInformations(ResourceHandleInternal* d)
 // cache.
 static void curl_lock_callback(CURL* /* handle */, curl_lock_data data, curl_lock_access /* access */, void* /* userPtr */)
 {
-    if (Lock* mutex = sharedResourceMutex(data))
+    if (Mutex* mutex = sharedResourceMutex(data))
         mutex->lock();
 }
 
 static void curl_unlock_callback(CURL* /* handle */, curl_lock_data data, void* /* userPtr */)
 {
-    if (Lock* mutex = sharedResourceMutex(data))
+    if (Mutex* mutex = sharedResourceMutex(data))
         mutex->unlock();
 }
 

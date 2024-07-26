@@ -30,6 +30,7 @@
 
 #import "AttributedString.h"
 #import "DataReference.h"
+#import "DictionaryPopupInfo.h"
 #import "EditingRange.h"
 #import "EditorState.h"
 #import "InjectedBundleHitTestResult.h"
@@ -414,6 +415,9 @@ void WebPage::firstRectForCharacterRange(const EditingRange& editingRange, WebCo
     RefPtr<Range> range = rangeFromEditingRange(frame, editingRange);
     if (!range)
         return;
+    
+    ASSERT(range->startContainer());
+    ASSERT(range->endContainer());
      
     IntRect rect = frame.editor().firstRectForRange(range.get());
     resultRect = frame.view()->contentsToWindow(rect);
@@ -514,7 +518,7 @@ void WebPage::performDictionaryLookupAtLocation(const FloatPoint& floatPoint)
     HitTestResult result = m_page->mainFrame().eventHandler().hitTestResultAtPoint(m_page->mainFrame().view()->windowToContents(point));
     Frame* frame = result.innerNonSharedNode() ? result.innerNonSharedNode()->document().frame() : &m_page->focusController().focusedOrMainFrame();
     NSDictionary *options = nil;
-    RefPtr<Range> range = DictionaryLookup::rangeAtHitTestResult(result, &options);
+    RefPtr<Range> range = rangeForDictionaryLookupAtHitTestResult(result, &options);
     if (!range)
         return;
 
@@ -524,7 +528,7 @@ void WebPage::performDictionaryLookupAtLocation(const FloatPoint& floatPoint)
 void WebPage::performDictionaryLookupForSelection(Frame* frame, const VisibleSelection& selection, TextIndicatorPresentationTransition presentationTransition)
 {
     NSDictionary *options = nil;
-    RefPtr<Range> selectedRange = DictionaryLookup::rangeForSelection(selection, &options);
+    RefPtr<Range> selectedRange = rangeForDictionaryLookupForSelection(selection, &options);
     if (selectedRange)
         performDictionaryLookupForRange(frame, *selectedRange, options, presentationTransition);
 }
@@ -541,18 +545,18 @@ DictionaryPopupInfo WebPage::dictionaryPopupInfoForRange(Frame* frame, Range& ra
     if (range.text().stripWhiteSpace().isEmpty())
         return dictionaryPopupInfo;
     
-    RenderObject* renderer = range.startContainer().renderer();
+    RenderObject* renderer = range.startContainer()->renderer();
     const RenderStyle& style = renderer->style();
 
     Vector<FloatQuad> quads;
-    range.absoluteTextQuads(quads);
+    range.textQuads(quads);
     if (quads.isEmpty())
         return dictionaryPopupInfo;
 
     IntRect rangeRect = frame->view()->contentsToWindow(quads[0].enclosingBoundingBox());
 
     dictionaryPopupInfo.origin = FloatPoint(rangeRect.x(), rangeRect.y() + (style.fontMetrics().ascent() * pageScaleFactor()));
-    dictionaryPopupInfo.options = *options;
+    dictionaryPopupInfo.options = (CFDictionaryRef)*options;
 
     NSAttributedString *nsAttributedString = editingAttributedStringFromRange(range, IncludeImagesInAttributedString::No);
 
@@ -572,16 +576,12 @@ DictionaryPopupInfo WebPage::dictionaryPopupInfoForRange(Frame* frame, Range& ra
         [scaledNSAttributedString addAttributes:scaledAttributes.get() range:range];
     }];
 
-    TextIndicatorOptions indicatorOptions = TextIndicatorOptionDefault;
-    if (presentationTransition == TextIndicatorPresentationTransition::BounceAndCrossfade)
-        indicatorOptions |= TextIndicatorOptionIncludeSnapshotWithSelectionHighlight;
-
-    RefPtr<TextIndicator> textIndicator = TextIndicator::createWithRange(range, indicatorOptions, presentationTransition);
+    RefPtr<TextIndicator> textIndicator = TextIndicator::createWithRange(range, presentationTransition);
     if (!textIndicator)
         return dictionaryPopupInfo;
 
     dictionaryPopupInfo.textIndicator = textIndicator->data();
-    dictionaryPopupInfo.attributedString = scaledNSAttributedString;
+    dictionaryPopupInfo.attributedString.string = scaledNSAttributedString;
 
     return dictionaryPopupInfo;
 }
@@ -634,9 +634,9 @@ DictionaryPopupInfo WebPage::dictionaryPopupInfoForSelectionInPDFPlugin(PDFSelec
     dataForSelection.presentationTransition = presentationTransition;
     
     dictionaryPopupInfo.origin = rangeRect.origin;
-    dictionaryPopupInfo.options = *options;
+    dictionaryPopupInfo.options = (CFDictionaryRef)*options;
     dictionaryPopupInfo.textIndicator = dataForSelection;
-    dictionaryPopupInfo.attributedString = scaledNSAttributedString;
+    dictionaryPopupInfo.attributedString.string = scaledNSAttributedString;
     
     return dictionaryPopupInfo;
 }
@@ -1097,7 +1097,7 @@ void WebPage::performImmediateActionHitTestAtLocation(WebCore::FloatPoint locati
     Element *URLElement = hitTestResult.URLElement();
     if (!absoluteLinkURL.isEmpty() && URLElement) {
         RefPtr<Range> linkRange = rangeOfContents(*URLElement);
-        immediateActionResult.linkTextIndicator = TextIndicator::createWithRange(*linkRange, TextIndicatorOptionDefault, TextIndicatorPresentationTransition::FadeIn);
+        immediateActionResult.linkTextIndicator = TextIndicator::createWithRange(*linkRange, TextIndicatorPresentationTransition::FadeIn);
     }
 
     NSDictionary *options = nil;
@@ -1126,27 +1126,27 @@ void WebPage::performImmediateActionHitTestAtLocation(WebCore::FloatPoint locati
         immediateActionResult.detectedDataActionContext = actionContext;
 
         Vector<FloatQuad> quads;
-        mainResultRange->absoluteTextQuads(quads);
+        mainResultRange->textQuads(quads);
         FloatRect detectedDataBoundingBox;
         FrameView* frameView = mainResultRange->ownerDocument().view();
         for (const auto& quad : quads)
             detectedDataBoundingBox.unite(frameView->contentsToWindow(quad.enclosingBoundingBox()));
 
         immediateActionResult.detectedDataBoundingBox = detectedDataBoundingBox;
-        immediateActionResult.detectedDataTextIndicator = TextIndicator::createWithRange(*mainResultRange, TextIndicatorOptionDefault, TextIndicatorPresentationTransition::FadeIn);
+        immediateActionResult.detectedDataTextIndicator = TextIndicator::createWithRange(*mainResultRange, TextIndicatorPresentationTransition::FadeIn);
         immediateActionResult.detectedDataOriginatingPageOverlay = overlay->pageOverlayID();
 
         break;
     }
 
     // FIXME: Avoid scanning if we will just throw away the result (e.g. we're over a link).
-    if (!pageOverlayDidOverrideDataDetectors && hitTestResult.innerNode() && (hitTestResult.innerNode()->isTextNode() || hitTestResult.isOverTextInsideFormControlElement())) {
+    if (!pageOverlayDidOverrideDataDetectors && hitTestResult.innerNode() && hitTestResult.innerNode()->isTextNode()) {
         FloatRect detectedDataBoundingBox;
         RefPtr<Range> detectedDataRange;
         immediateActionResult.detectedDataActionContext = DataDetection::detectItemAroundHitTestResult(hitTestResult, detectedDataBoundingBox, detectedDataRange);
         if (immediateActionResult.detectedDataActionContext && detectedDataRange) {
             immediateActionResult.detectedDataBoundingBox = detectedDataBoundingBox;
-            immediateActionResult.detectedDataTextIndicator = TextIndicator::createWithRange(*detectedDataRange, TextIndicatorOptionDefault, TextIndicatorPresentationTransition::FadeIn);
+            immediateActionResult.detectedDataTextIndicator = TextIndicator::createWithRange(*detectedDataRange, TextIndicatorPresentationTransition::FadeIn);
         }
     }
 
@@ -1194,7 +1194,7 @@ RefPtr<WebCore::Range> WebPage::lookupTextAtLocation(FloatPoint locationInViewCo
 
     IntPoint point = roundedIntPoint(locationInViewCoordinates);
     HitTestResult result = mainFrame.eventHandler().hitTestResultAtPoint(m_page->mainFrame().view()->windowToContents(point));
-    return DictionaryLookup::rangeAtHitTestResult(result, options);
+    return rangeForDictionaryLookupAtHitTestResult(result, options);
 }
 
 void WebPage::immediateActionDidUpdate()
@@ -1204,11 +1204,7 @@ void WebPage::immediateActionDidUpdate()
 
 void WebPage::immediateActionDidCancel()
 {
-    ImmediateActionStage lastStage = m_page->mainFrame().eventHandler().immediateActionStage();
-    if (lastStage == ImmediateActionStage::ActionUpdated)
-        m_page->mainFrame().eventHandler().setImmediateActionStage(ImmediateActionStage::ActionCancelledAfterUpdate);
-    else
-        m_page->mainFrame().eventHandler().setImmediateActionStage(ImmediateActionStage::ActionCancelledWithoutUpdate);
+    m_page->mainFrame().eventHandler().setImmediateActionStage(ImmediateActionStage::ActionCancelled);
 }
 
 void WebPage::immediateActionDidComplete()

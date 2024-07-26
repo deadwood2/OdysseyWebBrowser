@@ -899,18 +899,20 @@ bool isEmptyTableCell(const Node* node)
     return !childRenderer->nextSibling();
 }
 
-Ref<HTMLElement> createDefaultParagraphElement(Document& document)
+PassRefPtr<HTMLElement> createDefaultParagraphElement(Document& document)
 {
     switch (document.frame()->editor().defaultParagraphSeparator()) {
     case EditorParagraphSeparatorIsDiv:
         return HTMLDivElement::create(document);
     case EditorParagraphSeparatorIsP:
-        break;
+        return HTMLParagraphElement::create(document);
     }
-    return HTMLParagraphElement::create(document);
+
+    ASSERT_NOT_REACHED();
+    return 0;
 }
 
-Ref<HTMLElement> createBreakElement(Document& document)
+PassRefPtr<HTMLElement> createBreakElement(Document& document)
 {
     return HTMLBRElement::create(document);
 }
@@ -969,7 +971,7 @@ Position positionOutsideTabSpan(const Position& pos)
     return positionInParentBeforeNode(node);
 }
 
-Ref<Element> createTabSpanElement(Document& document, PassRefPtr<Node> prpTabTextNode)
+PassRefPtr<Element> createTabSpanElement(Document& document, PassRefPtr<Node> prpTabTextNode)
 {
     RefPtr<Node> tabTextNode = prpTabTextNode;
 
@@ -982,17 +984,17 @@ Ref<Element> createTabSpanElement(Document& document, PassRefPtr<Node> prpTabTex
     if (!tabTextNode)
         tabTextNode = document.createEditingTextNode("\t");
 
-    spanElement->appendChild(tabTextNode.releaseNonNull(), ASSERT_NO_EXCEPTION);
+    spanElement->appendChild(tabTextNode.release(), ASSERT_NO_EXCEPTION);
 
-    return spanElement.releaseNonNull();
+    return spanElement.release();
 }
 
-Ref<Element> createTabSpanElement(Document& document, const String& tabText)
+PassRefPtr<Element> createTabSpanElement(Document& document, const String& tabText)
 {
     return createTabSpanElement(document, document.createTextNode(tabText));
 }
 
-Ref<Element> createTabSpanElement(Document& document)
+PassRefPtr<Element> createTabSpanElement(Document& document)
 {
     return createTabSpanElement(document, PassRefPtr<Node>());
 }

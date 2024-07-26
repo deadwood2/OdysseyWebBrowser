@@ -159,7 +159,7 @@ PageLoadClientEfl::PageLoadClientEfl(EwkView* view)
     ASSERT(pageRef);
 
     WKPageLoaderClientV3 loadClient;
-    memset(&loadClient, 0, sizeof(loadClient));
+    memset(&loadClient, 0, sizeof(WKPageLoaderClient));
     loadClient.base.version = 3;
     loadClient.base.clientInfo = this;
     loadClient.didReceiveTitleForFrame = didReceiveTitleForFrame;

@@ -23,27 +23,27 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ConsoleTabContentView = class ConsoleTabContentView extends WebInspector.ContentBrowserTabContentView
+WebInspector.ConsoleTabContentView = function(identifier)
 {
-    constructor(identifier)
-    {
-        var tabBarItem = new WebInspector.TabBarItem("Images/Console.svg", WebInspector.UIString("Console"));
+    var tabBarItem = new WebInspector.TabBarItem("Images/Console.svg", WebInspector.UIString("Console"));
 
-        super(identifier || "console", "console", tabBarItem, null, null, true);
-    }
+    WebInspector.ContentBrowserTabContentView.call(this, identifier || "console", "console", tabBarItem, null, null, true);
+};
+
+WebInspector.ConsoleTabContentView.prototype = {
+    constructor: WebInspector.ConsoleTabContentView,
+    __proto__: WebInspector.ContentBrowserTabContentView.prototype,
 
     // Public
 
     get type()
     {
         return WebInspector.ConsoleTabContentView.Type;
-    }
+    },
 
-    shown()
+    shown: function()
     {
-        super.shown();
-
-        WebInspector.consoleContentView.prompt.focus();
+        WebInspector.ContentBrowserTabContentView.prototype.shown.call(this);
 
         if (this.contentBrowser.currentContentView === WebInspector.consoleContentView)
             return;
@@ -56,20 +56,20 @@ WebInspector.ConsoleTabContentView = class ConsoleTabContentView extends WebInsp
         this.contentBrowser.showContentView(WebInspector.consoleContentView);
 
         console.assert(this.contentBrowser.currentContentView === WebInspector.consoleContentView);
-    }
+    },
 
-    showRepresentedObject(representedObject, cookie)
+    showRepresentedObject: function(representedObject, cookie)
     {
         // Do nothing. The shown function will handle things. Calling
         // ContentBrowserTabContentView.shown will cause a new LogContentView
         // to be created instead of reusing WebInspector.consoleContentView.
         console.assert(representedObject instanceof WebInspector.LogObject);
-    }
+    },
 
-    canShowRepresentedObject(representedObject)
+    canShowRepresentedObject: function(representedObject)
     {
         return representedObject instanceof WebInspector.LogObject;
-    }
+    },
 
     get supportsSplitContentBrowser()
     {

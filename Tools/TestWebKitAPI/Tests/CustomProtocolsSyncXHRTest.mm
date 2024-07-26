@@ -40,7 +40,7 @@
 #import <WebKit/WKViewPrivate.h>
 #import <wtf/RetainPtr.h>
 
-#if WK_API_ENABLED && PLATFORM(MAC)
+#if WK_API_ENABLED
 
 static bool testFinished = false;
 
@@ -69,8 +69,6 @@ TEST(WebKit2CustomProtocolsTest, SyncXHR)
     WKPageLoadURL(wkView.get().pageRef, Util::createURLForResource("custom-protocol-sync-xhr", "html"));
 
     TestWebKitAPI::Util::run(&testFinished);
-    [NSURLProtocol unregisterClass:[TestProtocol class]];
-    [WKBrowsingContextController unregisterSchemeForCustomProtocol:[TestProtocol scheme]];
 }
 
 } // namespace TestWebKitAPI

@@ -36,8 +36,6 @@ parser = argparse.ArgumentParser()
 parser.add_argument('input_file', nargs='*', help='Input JS files which builtins generated from')
 parser.add_argument('--input-directory', help='All JS files will be used as input from this directory.')
 parser.add_argument('--output', help='path to output cpp or h file')
-parser.add_argument('--prefix', default='JSC', help='prefix used for public macros')
-parser.add_argument('--namespace', default='JSC', help='C++ namespace')
 args = parser.parse_args()
 
 copyrightText = """ *
@@ -155,9 +153,6 @@ def getFunctions(source):
         result.append(Function(functionName, function, functionIsConstructor, functionParameters))
     return result
 
-def writeIncludeDirectives(writer, headerNames):
-    for headerName in headerNames:
-        writer.write("#include " + headerName + "\n")
 
 def generateCode(source):
     inputFile = open(source, "r")
@@ -184,14 +179,6 @@ for file in args.input_file:
         (baseName, functions, objectCopyrights) = generateCode(file)
         copyrights.extend(objectCopyrights)
         builtins.append((baseName, functions))
-namespace = args.namespace
-macroPrefix = args.prefix
-scopeName = os.path.splitext(os.path.basename(args.output))[0]
-includeGuard = scopeName + "_H"
-headerName = scopeName + ".h"
-
-headerIncludes = ["\"BuiltinUtils.h\""] if namespace == "JSC" else ["<builtins/BuiltinUtils.h>"]
-contentIncludes = ["\"BuiltinExecutables.h\"", "\"Executable.h\"", "\"JSCellInlines.h\"", "\"VM.h\""] if namespace == "JSC" else ["<runtime/Executable.h>", "<runtime/StructureInlines.h>", "<runtime/JSCJSValueInlines.h>", "<runtime/JSCellInlines.h>", "<runtime/VM.h>", "\"WebCoreJSClientData.h\""]
 
 copyrights = list(set(copyrights))
 
@@ -205,21 +192,23 @@ copyrightText = "/*\n" + copyrightBody + copyrightText
 builtinsHeader.write("""%s
 %s
 
-#ifndef %s
-#define %s
+#ifndef JSCBuiltins_H
+#define JSCBuiltins_H
 
-""" % (generatorString, copyrightText, includeGuard, includeGuard))
+#include "ConstructAbility.h"
 
-writeIncludeDirectives(builtinsHeader, headerIncludes)
-
-builtinsHeader.write("""
 namespace JSC {
-    class FunctionExecutable;
-}
 
-namespace %s {
+class FunctionExecutable;
+class Identifier;
+class JSGlobalObject;
+class SourceCode;
+class UnlinkedFunctionExecutable;
+class VM;
 
-""" % namespace)
+FunctionExecutable* createBuiltinExecutable(VM&, UnlinkedFunctionExecutable*, const SourceCode&);
+
+""" % (generatorString, copyrightText))
 
 codeReferences = []
 
@@ -233,59 +222,58 @@ for (objectName, functions) in builtins:
         codeReferences.append((mangledName, function))
         builtinsHeader.write("extern const char* s_%s;\n" % mangledName)
         builtinsHeader.write("extern const int s_%sLength;\n" % mangledName)
-        builtinsHeader.write("extern const JSC::ConstructAbility s_%sConstructAbility;\n" % mangledName)
+        builtinsHeader.write("extern const ConstructAbility s_%sConstructAbility;\n" % mangledName)
     builtinsHeader.write("\n")
-    builtinsHeader.write("#define %s_FOREACH_%s_BUILTIN(macro) \\\n" % (macroPrefix, objectName.replace(".", "_").upper()))
+    builtinsHeader.write("#define JSC_FOREACH_%s_BUILTIN(macro) \\\n" % objectName.replace(".", "_").upper())
     for function in functions:
         mangledName = function.mangleName(objectName)
         builtinsHeader.write("    macro(%s, %s, %d) \\\n" % (function.name, mangledName, len(function.parameters)))
     builtinsHeader.write("\n")
     for function in functions:
-        builtinsHeader.write("#define %s_BUILTIN_%s 1\n" % (macroPrefix, function.mangleName(objectName).upper()))
+        builtinsHeader.write("#define JSC_BUILTIN_%s 1\n" % function.mangleName(objectName).upper())
     builtinsHeader.write("\n\n")
 names = []
-builtinsHeader.write("#define %s_FOREACH_BUILTIN(macro)\\\n" % macroPrefix)
+builtinsHeader.write("#define JSC_FOREACH_BUILTIN(macro)\\\n")
 for (codeReference, function) in codeReferences:
     builtinsHeader.write("    macro(%s, %s, s_%sLength) \\\n" % (codeReference, function.name, codeReference))
     names.append(function.name)
 
 builtinsHeader.write("\n\n")
-builtinsHeader.write("#define %s_FOREACH_BUILTIN_FUNCTION_NAME(macro) \\\n" % macroPrefix)
+builtinsHeader.write("#define JSC_FOREACH_BUILTIN_FUNCTION_NAME(macro) \\\n")
 for name in sorted(set(names)):
     builtinsHeader.write("    macro(%s) \\\n" % name)
 builtinsHeader.write("""
 
-#define DECLARE_BUILTIN_GENERATOR(codeName, functionName, argumentCount) \\
-    JSC::FunctionExecutable* codeName##Generator(JSC::VM&);
+#define JSC_DECLARE_BUILTIN_GENERATOR(codeName, functionName, argumentCount) \\
+    FunctionExecutable* codeName##Generator(VM&);
 
-%s_FOREACH_BUILTIN(DECLARE_BUILTIN_GENERATOR)
-#undef DECLARE_BUILTIN_GENERATOR
+JSC_FOREACH_BUILTIN(JSC_DECLARE_BUILTIN_GENERATOR)
+#undef JSC_DECLARE_BUILTIN_GENERATOR
 
-#define %s_BUILTIN_EXISTS(name) defined %s_BUILTIN_ ## name
+#define JSC_BUILTIN_EXISTS(name) defined JSC_BUILTIN_ ## name
 
 }
 
-#endif // %s
+#endif
 
-""" % (macroPrefix, macroPrefix, macroPrefix, includeGuard))
+""")
 
 builtinsImplementation.write("""%s
 %s
 
 #include "config.h"
 
-#include "%s"
+#include "JSCBuiltins.h"
 
-"""  % (generatorString, copyrightText, headerName))
+#include "BuiltinExecutables.h"
+#include "ConstructAbility.h"
+#include "Executable.h"
+#include "JSCellInlines.h"
+#include "VM.h"
 
-writeIncludeDirectives(builtinsImplementation, contentIncludes)
+namespace JSC {
 
-builtinsImplementation.write("""
-namespace %s {
-
-"""  % (namespace))
-
-
+"""  % (generatorString, copyrightText))
 
 for (codeReference, function) in codeReferences:
     source = function.source
@@ -297,33 +285,23 @@ for (codeReference, function) in codeReferences:
         source = source + ("    \"%s\\n\" \\\n" % line)
     builtinsImplementation.write("const char* s_%s =\n%s;\n\n" % (codeReference, source))
     builtinsImplementation.write("const int s_%sLength = %d;\n\n" % (codeReference, sourceLength + 1)) # + 1 for \n
-    constructAbility = "JSC::ConstructAbility::CannotConstruct"
+    constructAbility = "ConstructAbility::CannotConstruct"
     if function.isConstructor:
-        constructAbility = "JSC::ConstructAbility::CanConstruct"
-    builtinsImplementation.write("const JSC::ConstructAbility s_%sConstructAbility = %s;\n\n" % (codeReference, constructAbility)) # + 1 for \n
+        constructAbility = "ConstructAbility::CanConstruct"
+    builtinsImplementation.write("const ConstructAbility s_%sConstructAbility = %s;\n\n" % (codeReference, constructAbility)) # + 1 for \n
 
 builtinsImplementation.write("""
-#define DEFINE_BUILTIN_GENERATOR(codeName, functionName, argumentCount) \\
-JSC::FunctionExecutable* codeName##Generator(JSC::VM& vm) \\
-""");
-
-if (namespace == "JSC"):
-    builtinsImplementation.write("""{\\
+#define JSC_DEFINE_BUILTIN_GENERATOR(codeName, functionName, argumentCount) \\
+FunctionExecutable* codeName##Generator(VM& vm) \\
+{ \\
     return vm.builtinExecutables()->codeName##Executable()->link(vm, vm.builtinExecutables()->codeName##Source()); \\
-""")
-else:
-    builtinName = scopeName[0].lower() + scopeName[1:]
-    builtinsImplementation.write("""{\\
-    WebCoreJSClientData* clientData = static_cast<WebCoreJSClientData*>(vm.clientData); \\
-    return clientData->%s().codeName##Executable()->link(vm, clientData->%s().codeName##Source()); \\
-"""% (builtinName, builtinName))
-
-builtinsImplementation.write("""}
-%s_FOREACH_BUILTIN(DEFINE_BUILTIN_GENERATOR)
-#undef DEFINE_BUILTIN_GENERATOR
 }
 
-"""% (macroPrefix))
+JSC_FOREACH_BUILTIN(JSC_DEFINE_BUILTIN_GENERATOR)
+#undef JSC_DEFINE_BUILTIN_GENERATOR
+}
+
+""")
 
 builtinsHeader.close()
 builtinsImplementation.close()

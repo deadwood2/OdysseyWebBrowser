@@ -35,14 +35,15 @@ using namespace JSC;
 
 namespace WebCore {
 
-bool JSNamedNodeMap::nameGetter(ExecState* exec, PropertyName propertyName, JSValue& value)
+bool JSNamedNodeMap::canGetItemsForName(ExecState*, NamedNodeMap* impl, PropertyName propertyName)
 {
-    auto item = impl().getNamedItem(propertyNameToAtomicString(propertyName));
-    if (!item)
-        return false;
+    return impl->getNamedItem(propertyNameToAtomicString(propertyName));
+}
 
-    value = toJS(exec, globalObject(), item);
-    return true;
+EncodedJSValue JSNamedNodeMap::nameGetter(ExecState* exec, JSObject* slotBase, EncodedJSValue, PropertyName propertyName)
+{
+    JSNamedNodeMap* thisObj = jsCast<JSNamedNodeMap*>(slotBase);
+    return JSValue::encode(toJS(exec, thisObj->globalObject(), thisObj->impl().getNamedItem(propertyNameToAtomicString(propertyName))));
 }
 
 } // namespace WebCore

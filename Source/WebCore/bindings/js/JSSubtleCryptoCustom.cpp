@@ -61,24 +61,24 @@ enum class CryptoKeyFormat {
     JWK
 };
 
-static std::unique_ptr<CryptoAlgorithm> createAlgorithmFromJSValue(ExecState& state, JSValue value)
+static std::unique_ptr<CryptoAlgorithm> createAlgorithmFromJSValue(ExecState* exec, JSValue value)
 {
     CryptoAlgorithmIdentifier algorithmIdentifier;
-    if (!JSCryptoAlgorithmDictionary::getAlgorithmIdentifier(&state, value, algorithmIdentifier)) {
-        ASSERT(state.hadException());
+    if (!JSCryptoAlgorithmDictionary::getAlgorithmIdentifier(exec, value, algorithmIdentifier)) {
+        ASSERT(exec->hadException());
         return nullptr;
     }
 
     auto result = CryptoAlgorithmRegistry::singleton().create(algorithmIdentifier);
     if (!result)
-        setDOMException(&state, NOT_SUPPORTED_ERR);
+        setDOMException(exec, NOT_SUPPORTED_ERR);
     return result;
 }
 
-static bool cryptoKeyFormatFromJSValue(ExecState& state, JSValue value, CryptoKeyFormat& result)
+static bool cryptoKeyFormatFromJSValue(ExecState* exec, JSValue value, CryptoKeyFormat& result)
 {
-    String keyFormatString = value.toString(&state)->value(&state);
-    if (state.hadException())
+    String keyFormatString = value.toString(exec)->value(exec);
+    if (exec->hadException())
         return false;
     if (keyFormatString == "raw")
         result = CryptoKeyFormat::Raw;
@@ -89,16 +89,16 @@ static bool cryptoKeyFormatFromJSValue(ExecState& state, JSValue value, CryptoKe
     else if (keyFormatString == "jwk")
         result = CryptoKeyFormat::JWK;
     else {
-        throwTypeError(&state, "Unknown key format");
+        throwTypeError(exec, "Unknown key format");
         return false;
     }
     return true;
 }
 
-static bool cryptoKeyUsagesFromJSValue(ExecState& state, JSValue value, CryptoKeyUsage& result)
+static bool cryptoKeyUsagesFromJSValue(ExecState* exec, JSValue value, CryptoKeyUsage& result)
 {
     if (!isJSArray(value)) {
-        throwTypeError(&state);
+        throwTypeError(exec);
         return false;
     }
 
@@ -106,9 +106,9 @@ static bool cryptoKeyUsagesFromJSValue(ExecState& state, JSValue value, CryptoKe
 
     JSArray* array = asArray(value);
     for (size_t i = 0; i < array->length(); ++i) {
-        JSValue element = array->getIndex(&state, i);
-        String usageString = element.toString(&state)->value(&state);
-        if (state.hadException())
+        JSValue element = array->getIndex(exec, i);
+        String usageString = element.toString(exec)->value(exec);
+        if (exec->hadException())
             return false;
         if (usageString == "encrypt")
             result |= CryptoKeyUsageEncrypt;
@@ -130,42 +130,42 @@ static bool cryptoKeyUsagesFromJSValue(ExecState& state, JSValue value, CryptoKe
     return true;
 }
 
-JSValue JSSubtleCrypto::encrypt(ExecState& state)
+JSValue JSSubtleCrypto::encrypt(ExecState* exec)
 {
-    if (state.argumentCount() < 3)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+    if (exec->argumentCount() < 3)
+        return exec->vm().throwException(exec, createNotEnoughArgumentsError(exec));
 
-    auto algorithm = createAlgorithmFromJSValue(state, state.uncheckedArgument(0));
+    auto algorithm = createAlgorithmFromJSValue(exec, exec->uncheckedArgument(0));
     if (!algorithm) {
-        ASSERT(state.hadException());
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
-    auto parameters = JSCryptoAlgorithmDictionary::createParametersForEncrypt(&state, algorithm->identifier(), state.uncheckedArgument(0));
+    auto parameters = JSCryptoAlgorithmDictionary::createParametersForEncrypt(exec, algorithm->identifier(), exec->uncheckedArgument(0));
     if (!parameters) {
-        ASSERT(state.hadException());
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
-    RefPtr<CryptoKey> key = JSCryptoKey::toWrapped(state.uncheckedArgument(1));
+    RefPtr<CryptoKey> key = JSCryptoKey::toWrapped(exec->uncheckedArgument(1));
     if (!key)
-        return throwTypeError(&state);
+        return throwTypeError(exec);
 
     if (!key->allows(CryptoKeyUsageEncrypt)) {
         m_impl->document()->addConsoleMessage(MessageSource::JS, MessageLevel::Error, ASCIILiteral("Key usages do not include 'encrypt'"));
-        setDOMException(&state, NOT_SUPPORTED_ERR);
+        setDOMException(exec, NOT_SUPPORTED_ERR);
         return jsUndefined();
     }
 
     CryptoOperationData data;
-    if (!cryptoOperationDataFromJSValue(&state, state.uncheckedArgument(2), data)) {
-        ASSERT(state.hadException());
+    if (!cryptoOperationDataFromJSValue(exec, exec->uncheckedArgument(2), data)) {
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
     
-    JSPromiseDeferred* promiseDeferred = JSPromiseDeferred::create(&state, globalObject());
-    DeferredWrapper wrapper(&state, globalObject(), promiseDeferred);
+    JSPromiseDeferred* promiseDeferred = JSPromiseDeferred::create(exec, globalObject());
+    DeferredWrapper wrapper(exec, globalObject(), promiseDeferred);
     auto successCallback = [wrapper](const Vector<uint8_t>& result) mutable {
         wrapper.resolve(result);
     };
@@ -176,48 +176,48 @@ JSValue JSSubtleCrypto::encrypt(ExecState& state)
     ExceptionCode ec = 0;
     algorithm->encrypt(*parameters, *key, data, WTF::move(successCallback), WTF::move(failureCallback), ec);
     if (ec) {
-        setDOMException(&state, ec);
+        setDOMException(exec, ec);
         return jsUndefined();
     }
 
     return promiseDeferred->promise();
 }
 
-JSValue JSSubtleCrypto::decrypt(ExecState& state)
+JSValue JSSubtleCrypto::decrypt(ExecState* exec)
 {
-    if (state.argumentCount() < 3)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+    if (exec->argumentCount() < 3)
+        return exec->vm().throwException(exec, createNotEnoughArgumentsError(exec));
 
-    auto algorithm = createAlgorithmFromJSValue(state, state.uncheckedArgument(0));
+    auto algorithm = createAlgorithmFromJSValue(exec, exec->uncheckedArgument(0));
     if (!algorithm) {
-        ASSERT(state.hadException());
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
-    auto parameters = JSCryptoAlgorithmDictionary::createParametersForDecrypt(&state, algorithm->identifier(), state.uncheckedArgument(0));
+    auto parameters = JSCryptoAlgorithmDictionary::createParametersForDecrypt(exec, algorithm->identifier(), exec->uncheckedArgument(0));
     if (!parameters) {
-        ASSERT(state.hadException());
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
-    RefPtr<CryptoKey> key = JSCryptoKey::toWrapped(state.uncheckedArgument(1));
+    RefPtr<CryptoKey> key = JSCryptoKey::toWrapped(exec->uncheckedArgument(1));
     if (!key)
-        return throwTypeError(&state);
+        return throwTypeError(exec);
 
     if (!key->allows(CryptoKeyUsageDecrypt)) {
         m_impl->document()->addConsoleMessage(MessageSource::JS, MessageLevel::Error, ASCIILiteral("Key usages do not include 'decrypt'"));
-        setDOMException(&state, NOT_SUPPORTED_ERR);
+        setDOMException(exec, NOT_SUPPORTED_ERR);
         return jsUndefined();
     }
 
     CryptoOperationData data;
-    if (!cryptoOperationDataFromJSValue(&state, state.uncheckedArgument(2), data)) {
-        ASSERT(state.hadException());
+    if (!cryptoOperationDataFromJSValue(exec, exec->uncheckedArgument(2), data)) {
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
-    JSPromiseDeferred* promiseDeferred = JSPromiseDeferred::create(&state, globalObject());
-    DeferredWrapper wrapper(&state, globalObject(), promiseDeferred);
+    JSPromiseDeferred* promiseDeferred = JSPromiseDeferred::create(exec, globalObject());
+    DeferredWrapper wrapper(exec, globalObject(), promiseDeferred);
     auto successCallback = [wrapper](const Vector<uint8_t>& result) mutable {
         wrapper.resolve(result);
     };
@@ -228,48 +228,48 @@ JSValue JSSubtleCrypto::decrypt(ExecState& state)
     ExceptionCode ec = 0;
     algorithm->decrypt(*parameters, *key, data, WTF::move(successCallback), WTF::move(failureCallback), ec);
     if (ec) {
-        setDOMException(&state, ec);
+        setDOMException(exec, ec);
         return jsUndefined();
     }
 
     return promiseDeferred->promise();
 }
 
-JSValue JSSubtleCrypto::sign(ExecState& state)
+JSValue JSSubtleCrypto::sign(ExecState* exec)
 {
-    if (state.argumentCount() < 3)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+    if (exec->argumentCount() < 3)
+        return exec->vm().throwException(exec, createNotEnoughArgumentsError(exec));
 
-    auto algorithm = createAlgorithmFromJSValue(state, state.uncheckedArgument(0));
+    auto algorithm = createAlgorithmFromJSValue(exec, exec->uncheckedArgument(0));
     if (!algorithm) {
-        ASSERT(state.hadException());
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
-    auto parameters = JSCryptoAlgorithmDictionary::createParametersForSign(&state, algorithm->identifier(), state.uncheckedArgument(0));
+    auto parameters = JSCryptoAlgorithmDictionary::createParametersForSign(exec, algorithm->identifier(), exec->uncheckedArgument(0));
     if (!parameters) {
-        ASSERT(state.hadException());
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
-    RefPtr<CryptoKey> key = JSCryptoKey::toWrapped(state.uncheckedArgument(1));
+    RefPtr<CryptoKey> key = JSCryptoKey::toWrapped(exec->uncheckedArgument(1));
     if (!key)
-        return throwTypeError(&state);
+        return throwTypeError(exec);
 
     if (!key->allows(CryptoKeyUsageSign)) {
         m_impl->document()->addConsoleMessage(MessageSource::JS, MessageLevel::Error, ASCIILiteral("Key usages do not include 'sign'"));
-        setDOMException(&state, NOT_SUPPORTED_ERR);
+        setDOMException(exec, NOT_SUPPORTED_ERR);
         return jsUndefined();
     }
 
     CryptoOperationData data;
-    if (!cryptoOperationDataFromJSValue(&state, state.uncheckedArgument(2), data)) {
-        ASSERT(state.hadException());
+    if (!cryptoOperationDataFromJSValue(exec, exec->uncheckedArgument(2), data)) {
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
-    JSPromiseDeferred* promiseDeferred = JSPromiseDeferred::create(&state, globalObject());
-    DeferredWrapper wrapper(&state, globalObject(), promiseDeferred);
+    JSPromiseDeferred* promiseDeferred = JSPromiseDeferred::create(exec, globalObject());
+    DeferredWrapper wrapper(exec, globalObject(), promiseDeferred);
     auto successCallback = [wrapper](const Vector<uint8_t>& result) mutable {
         wrapper.resolve(result);
     };
@@ -280,54 +280,54 @@ JSValue JSSubtleCrypto::sign(ExecState& state)
     ExceptionCode ec = 0;
     algorithm->sign(*parameters, *key, data, WTF::move(successCallback), WTF::move(failureCallback), ec);
     if (ec) {
-        setDOMException(&state, ec);
+        setDOMException(exec, ec);
         return jsUndefined();
     }
 
     return promiseDeferred->promise();
 }
 
-JSValue JSSubtleCrypto::verify(ExecState& state)
+JSValue JSSubtleCrypto::verify(ExecState* exec)
 {
-    if (state.argumentCount() < 4)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+    if (exec->argumentCount() < 4)
+        return exec->vm().throwException(exec, createNotEnoughArgumentsError(exec));
 
-    auto algorithm = createAlgorithmFromJSValue(state, state.uncheckedArgument(0));
+    auto algorithm = createAlgorithmFromJSValue(exec, exec->uncheckedArgument(0));
     if (!algorithm) {
-        ASSERT(state.hadException());
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
-    auto parameters = JSCryptoAlgorithmDictionary::createParametersForVerify(&state, algorithm->identifier(), state.uncheckedArgument(0));
+    auto parameters = JSCryptoAlgorithmDictionary::createParametersForVerify(exec, algorithm->identifier(), exec->uncheckedArgument(0));
     if (!parameters) {
-        ASSERT(state.hadException());
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
-    RefPtr<CryptoKey> key = JSCryptoKey::toWrapped(state.uncheckedArgument(1));
+    RefPtr<CryptoKey> key = JSCryptoKey::toWrapped(exec->uncheckedArgument(1));
     if (!key)
-        return throwTypeError(&state);
+        return throwTypeError(exec);
 
     if (!key->allows(CryptoKeyUsageVerify)) {
         m_impl->document()->addConsoleMessage(MessageSource::JS, MessageLevel::Error, ASCIILiteral("Key usages do not include 'verify'"));
-        setDOMException(&state, NOT_SUPPORTED_ERR);
+        setDOMException(exec, NOT_SUPPORTED_ERR);
         return jsUndefined();
     }
 
     CryptoOperationData signature;
-    if (!cryptoOperationDataFromJSValue(&state, state.uncheckedArgument(2), signature)) {
-        ASSERT(state.hadException());
+    if (!cryptoOperationDataFromJSValue(exec, exec->uncheckedArgument(2), signature)) {
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
     CryptoOperationData data;
-    if (!cryptoOperationDataFromJSValue(&state, state.uncheckedArgument(3), data)) {
-        ASSERT(state.hadException());
+    if (!cryptoOperationDataFromJSValue(exec, exec->uncheckedArgument(3), data)) {
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
-    JSPromiseDeferred* promiseDeferred = JSPromiseDeferred::create(&state, globalObject());
-    DeferredWrapper wrapper(&state, globalObject(), promiseDeferred);
+    JSPromiseDeferred* promiseDeferred = JSPromiseDeferred::create(exec, globalObject());
+    DeferredWrapper wrapper(exec, globalObject(), promiseDeferred);
     auto successCallback = [wrapper](bool result) mutable {
         wrapper.resolve(result);
     };
@@ -338,38 +338,38 @@ JSValue JSSubtleCrypto::verify(ExecState& state)
     ExceptionCode ec = 0;
     algorithm->verify(*parameters, *key, signature, data, WTF::move(successCallback), WTF::move(failureCallback), ec);
     if (ec) {
-        setDOMException(&state, ec);
+        setDOMException(exec, ec);
         return jsUndefined();
     }
 
     return promiseDeferred->promise();
 }
 
-JSValue JSSubtleCrypto::digest(ExecState& state)
+JSValue JSSubtleCrypto::digest(ExecState* exec)
 {
-    if (state.argumentCount() < 2)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+    if (exec->argumentCount() < 2)
+        return exec->vm().throwException(exec, createNotEnoughArgumentsError(exec));
 
-    auto algorithm = createAlgorithmFromJSValue(state, state.uncheckedArgument(0));
+    auto algorithm = createAlgorithmFromJSValue(exec, exec->uncheckedArgument(0));
     if (!algorithm) {
-        ASSERT(state.hadException());
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
-    auto parameters = JSCryptoAlgorithmDictionary::createParametersForDigest(&state, algorithm->identifier(), state.uncheckedArgument(0));
+    auto parameters = JSCryptoAlgorithmDictionary::createParametersForDigest(exec, algorithm->identifier(), exec->uncheckedArgument(0));
     if (!parameters) {
-        ASSERT(state.hadException());
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
     CryptoOperationData data;
-    if (!cryptoOperationDataFromJSValue(&state, state.uncheckedArgument(1), data)) {
-        ASSERT(state.hadException());
+    if (!cryptoOperationDataFromJSValue(exec, exec->uncheckedArgument(1), data)) {
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
-    JSPromiseDeferred* promiseDeferred = JSPromiseDeferred::create(&state, globalObject());
-    DeferredWrapper wrapper(&state, globalObject(), promiseDeferred);
+    JSPromiseDeferred* promiseDeferred = JSPromiseDeferred::create(exec, globalObject());
+    DeferredWrapper wrapper(exec, globalObject(), promiseDeferred);
     auto successCallback = [wrapper](const Vector<uint8_t>& result) mutable {
         wrapper.resolve(result);
     };
@@ -380,47 +380,47 @@ JSValue JSSubtleCrypto::digest(ExecState& state)
     ExceptionCode ec = 0;
     algorithm->digest(*parameters, data, WTF::move(successCallback), WTF::move(failureCallback), ec);
     if (ec) {
-        setDOMException(&state, ec);
+        setDOMException(exec, ec);
         return jsUndefined();
     }
 
     return promiseDeferred->promise();
 }
 
-JSValue JSSubtleCrypto::generateKey(ExecState& state)
+JSValue JSSubtleCrypto::generateKey(ExecState* exec)
 {
-    if (state.argumentCount() < 1)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+    if (exec->argumentCount() < 1)
+        return exec->vm().throwException(exec, createNotEnoughArgumentsError(exec));
 
-    auto algorithm = createAlgorithmFromJSValue(state, state.uncheckedArgument(0));
+    auto algorithm = createAlgorithmFromJSValue(exec, exec->uncheckedArgument(0));
     if (!algorithm) {
-        ASSERT(state.hadException());
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
-    auto parameters = JSCryptoAlgorithmDictionary::createParametersForGenerateKey(&state, algorithm->identifier(), state.uncheckedArgument(0));
+    auto parameters = JSCryptoAlgorithmDictionary::createParametersForGenerateKey(exec, algorithm->identifier(), exec->uncheckedArgument(0));
     if (!parameters) {
-        ASSERT(state.hadException());
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
     bool extractable = false;
-    if (state.argumentCount() >= 2) {
-        extractable = state.uncheckedArgument(1).toBoolean(&state);
-        if (state.hadException())
+    if (exec->argumentCount() >= 2) {
+        extractable = exec->uncheckedArgument(1).toBoolean(exec);
+        if (exec->hadException())
             return jsUndefined();
     }
 
     CryptoKeyUsage keyUsages = 0;
-    if (state.argumentCount() >= 3) {
-        if (!cryptoKeyUsagesFromJSValue(state, state.argument(2), keyUsages)) {
-            ASSERT(state.hadException());
+    if (exec->argumentCount() >= 3) {
+        if (!cryptoKeyUsagesFromJSValue(exec, exec->argument(2), keyUsages)) {
+            ASSERT(exec->hadException());
             return jsUndefined();
         }
     }
 
-    JSPromiseDeferred* promiseDeferred = JSPromiseDeferred::create(&state, globalObject());
-    DeferredWrapper wrapper(&state, globalObject(), promiseDeferred);
+    JSPromiseDeferred* promiseDeferred = JSPromiseDeferred::create(exec, globalObject());
+    DeferredWrapper wrapper(exec, globalObject(), promiseDeferred);
     auto successCallback = [wrapper](CryptoKey* key, CryptoKeyPair* keyPair) mutable {
         ASSERT(key || keyPair);
         ASSERT(!key || !keyPair);
@@ -436,14 +436,14 @@ JSValue JSSubtleCrypto::generateKey(ExecState& state)
     ExceptionCode ec = 0;
     algorithm->generateKey(*parameters, extractable, keyUsages, WTF::move(successCallback), WTF::move(failureCallback), ec);
     if (ec) {
-        setDOMException(&state, ec);
+        setDOMException(exec, ec);
         return jsUndefined();
     }
 
     return promiseDeferred->promise();
 }
 
-static void importKey(ExecState& state, CryptoKeyFormat keyFormat, CryptoOperationData data, std::unique_ptr<CryptoAlgorithm> algorithm, std::unique_ptr<CryptoAlgorithmParameters> parameters, bool extractable, CryptoKeyUsage keyUsages, CryptoAlgorithm::KeyCallback callback, CryptoAlgorithm::VoidCallback failureCallback)
+static void importKey(ExecState* exec, CryptoKeyFormat keyFormat, CryptoOperationData data, std::unique_ptr<CryptoAlgorithm> algorithm, std::unique_ptr<CryptoAlgorithmParameters> parameters, bool extractable, CryptoKeyUsage keyUsages, CryptoAlgorithm::KeyCallback callback, CryptoAlgorithm::VoidCallback failureCallback)
 {
     std::unique_ptr<CryptoKeySerialization> keySerialization;
     switch (keyFormat) {
@@ -453,102 +453,102 @@ static void importKey(ExecState& state, CryptoKeyFormat keyFormat, CryptoOperati
     case CryptoKeyFormat::JWK: {
         String jwkString = String::fromUTF8(data.first, data.second);
         if (jwkString.isNull()) {
-            throwTypeError(&state, "JWK JSON serialization is not valid UTF-8");
+            throwTypeError(exec, "JWK JSON serialization is not valid UTF-8");
             return;
         }
-        keySerialization = std::make_unique<JSCryptoKeySerializationJWK>(&state, jwkString);
-        if (state.hadException())
+        keySerialization = std::make_unique<JSCryptoKeySerializationJWK>(exec, jwkString);
+        if (exec->hadException())
             return;
         break;
     }
     default:
-        throwTypeError(&state, "Unsupported key format for import");
+        throwTypeError(exec, "Unsupported key format for import");
         return;
     }
 
     ASSERT(keySerialization);
 
     if (!keySerialization->reconcileAlgorithm(algorithm, parameters)) {
-        if (!state.hadException())
-            throwTypeError(&state, "Algorithm specified in key is not compatible with one passed to importKey as argument");
+        if (!exec->hadException())
+            throwTypeError(exec, "Algorithm specified in key is not compatible with one passed to importKey as argument");
         return;
     }
-    if (state.hadException())
+    if (exec->hadException())
         return;
 
     if (!algorithm) {
-        throwTypeError(&state, "Neither key nor function argument has crypto algorithm specified");
+        throwTypeError(exec, "Neither key nor function argument has crypto algorithm specified");
         return;
     }
     ASSERT(parameters);
 
     keySerialization->reconcileExtractable(extractable);
-    if (state.hadException())
+    if (exec->hadException())
         return;
 
     keySerialization->reconcileUsages(keyUsages);
-    if (state.hadException())
+    if (exec->hadException())
         return;
 
     auto keyData = keySerialization->keyData();
-    if (state.hadException())
+    if (exec->hadException())
         return;
 
     ExceptionCode ec = 0;
     algorithm->importKey(*parameters, *keyData, extractable, keyUsages, WTF::move(callback), WTF::move(failureCallback), ec);
     if (ec)
-        setDOMException(&state, ec);
+        setDOMException(exec, ec);
 }
 
-JSValue JSSubtleCrypto::importKey(ExecState& state)
+JSValue JSSubtleCrypto::importKey(ExecState* exec)
 {
-    if (state.argumentCount() < 3)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+    if (exec->argumentCount() < 3)
+        return exec->vm().throwException(exec, createNotEnoughArgumentsError(exec));
 
     CryptoKeyFormat keyFormat;
-    if (!cryptoKeyFormatFromJSValue(state, state.argument(0), keyFormat)) {
-        ASSERT(state.hadException());
+    if (!cryptoKeyFormatFromJSValue(exec, exec->argument(0), keyFormat)) {
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
     CryptoOperationData data;
-    if (!cryptoOperationDataFromJSValue(&state, state.uncheckedArgument(1), data)) {
-        ASSERT(state.hadException());
+    if (!cryptoOperationDataFromJSValue(exec, exec->uncheckedArgument(1), data)) {
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
     std::unique_ptr<CryptoAlgorithm> algorithm;
     std::unique_ptr<CryptoAlgorithmParameters> parameters;
-    if (!state.uncheckedArgument(2).isNull()) {
-        algorithm = createAlgorithmFromJSValue(state, state.uncheckedArgument(2));
+    if (!exec->uncheckedArgument(2).isNull()) {
+        algorithm = createAlgorithmFromJSValue(exec, exec->uncheckedArgument(2));
         if (!algorithm) {
-            ASSERT(state.hadException());
+            ASSERT(exec->hadException());
             return jsUndefined();
         }
-        parameters = JSCryptoAlgorithmDictionary::createParametersForImportKey(&state, algorithm->identifier(), state.uncheckedArgument(2));
+        parameters = JSCryptoAlgorithmDictionary::createParametersForImportKey(exec, algorithm->identifier(), exec->uncheckedArgument(2));
         if (!parameters) {
-            ASSERT(state.hadException());
+            ASSERT(exec->hadException());
             return jsUndefined();
         }
     }
 
     bool extractable = false;
-    if (state.argumentCount() >= 4) {
-        extractable = state.uncheckedArgument(3).toBoolean(&state);
-        if (state.hadException())
+    if (exec->argumentCount() >= 4) {
+        extractable = exec->uncheckedArgument(3).toBoolean(exec);
+        if (exec->hadException())
             return jsUndefined();
     }
 
     CryptoKeyUsage keyUsages = 0;
-    if (state.argumentCount() >= 5) {
-        if (!cryptoKeyUsagesFromJSValue(state, state.argument(4), keyUsages)) {
-            ASSERT(state.hadException());
+    if (exec->argumentCount() >= 5) {
+        if (!cryptoKeyUsagesFromJSValue(exec, exec->argument(4), keyUsages)) {
+            ASSERT(exec->hadException());
             return jsUndefined();
         }
     }
 
-    JSPromiseDeferred* promiseDeferred = JSPromiseDeferred::create(&state, globalObject());
-    DeferredWrapper wrapper(&state, globalObject(), promiseDeferred);
+    JSPromiseDeferred* promiseDeferred = JSPromiseDeferred::create(exec, globalObject());
+    DeferredWrapper wrapper(exec, globalObject(), promiseDeferred);
     auto successCallback = [wrapper](CryptoKey& result) mutable {
         wrapper.resolve(&result);
     };
@@ -556,17 +556,17 @@ JSValue JSSubtleCrypto::importKey(ExecState& state)
         wrapper.reject(nullptr);
     };
 
-    WebCore::importKey(state, keyFormat, data, WTF::move(algorithm), WTF::move(parameters), extractable, keyUsages, WTF::move(successCallback), WTF::move(failureCallback));
-    if (state.hadException())
+    WebCore::importKey(exec, keyFormat, data, WTF::move(algorithm), WTF::move(parameters), extractable, keyUsages, WTF::move(successCallback), WTF::move(failureCallback));
+    if (exec->hadException())
         return jsUndefined();
 
     return promiseDeferred->promise();
 }
 
-static void exportKey(ExecState& state, CryptoKeyFormat keyFormat, const CryptoKey& key, CryptoAlgorithm::VectorCallback callback, CryptoAlgorithm::VoidCallback failureCallback)
+static void exportKey(ExecState* exec, CryptoKeyFormat keyFormat, const CryptoKey& key, CryptoAlgorithm::VectorCallback callback, CryptoAlgorithm::VoidCallback failureCallback)
 {
     if (!key.extractable()) {
-        throwTypeError(&state, "Key is not extractable");
+        throwTypeError(exec, "Key is not extractable");
         return;
     }
 
@@ -580,8 +580,8 @@ static void exportKey(ExecState& state, CryptoKeyFormat keyFormat, const CryptoK
         break;
     }
     case CryptoKeyFormat::JWK: {
-        String result = JSCryptoKeySerializationJWK::serialize(&state, key);
-        if (state.hadException())
+        String result = JSCryptoKeySerializationJWK::serialize(exec, key);
+        if (exec->hadException())
             return;
         CString utf8String = result.utf8(StrictConversion);
         Vector<uint8_t> resultBuffer;
@@ -590,28 +590,28 @@ static void exportKey(ExecState& state, CryptoKeyFormat keyFormat, const CryptoK
         break;
     }
     default:
-        throwTypeError(&state, "Unsupported key format for export");
+        throwTypeError(exec, "Unsupported key format for export");
         break;
     }
 }
 
-JSValue JSSubtleCrypto::exportKey(ExecState& state)
+JSValue JSSubtleCrypto::exportKey(ExecState* exec)
 {
-    if (state.argumentCount() < 2)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+    if (exec->argumentCount() < 2)
+        return exec->vm().throwException(exec, createNotEnoughArgumentsError(exec));
 
     CryptoKeyFormat keyFormat;
-    if (!cryptoKeyFormatFromJSValue(state, state.argument(0), keyFormat)) {
-        ASSERT(state.hadException());
+    if (!cryptoKeyFormatFromJSValue(exec, exec->argument(0), keyFormat)) {
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
-    RefPtr<CryptoKey> key = JSCryptoKey::toWrapped(state.uncheckedArgument(1));
+    RefPtr<CryptoKey> key = JSCryptoKey::toWrapped(exec->uncheckedArgument(1));
     if (!key)
-        return throwTypeError(&state);
+        return throwTypeError(exec);
 
-    JSPromiseDeferred* promiseDeferred = JSPromiseDeferred::create(&state, globalObject());
-    DeferredWrapper wrapper(&state, globalObject(), promiseDeferred);
+    JSPromiseDeferred* promiseDeferred = JSPromiseDeferred::create(exec, globalObject());
+    DeferredWrapper wrapper(exec, globalObject(), promiseDeferred);
     auto successCallback = [wrapper](const Vector<uint8_t>& result) mutable {
         wrapper.resolve(result);
     };
@@ -619,52 +619,52 @@ JSValue JSSubtleCrypto::exportKey(ExecState& state)
         wrapper.reject(nullptr);
     };
 
-    WebCore::exportKey(state, keyFormat, *key, WTF::move(successCallback), WTF::move(failureCallback));
-    if (state.hadException())
+    WebCore::exportKey(exec, keyFormat, *key, WTF::move(successCallback), WTF::move(failureCallback));
+    if (exec->hadException())
         return jsUndefined();
 
     return promiseDeferred->promise();
 }
 
-JSValue JSSubtleCrypto::wrapKey(ExecState& state)
+JSValue JSSubtleCrypto::wrapKey(ExecState* exec)
 {
-    if (state.argumentCount() < 4)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+    if (exec->argumentCount() < 4)
+        return exec->vm().throwException(exec, createNotEnoughArgumentsError(exec));
 
     CryptoKeyFormat keyFormat;
-    if (!cryptoKeyFormatFromJSValue(state, state.argument(0), keyFormat)) {
-        ASSERT(state.hadException());
+    if (!cryptoKeyFormatFromJSValue(exec, exec->argument(0), keyFormat)) {
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
-    RefPtr<CryptoKey> key = JSCryptoKey::toWrapped(state.uncheckedArgument(1));
+    RefPtr<CryptoKey> key = JSCryptoKey::toWrapped(exec->uncheckedArgument(1));
     if (!key)
-        return throwTypeError(&state);
+        return throwTypeError(exec);
 
-    RefPtr<CryptoKey> wrappingKey = JSCryptoKey::toWrapped(state.uncheckedArgument(2));
+    RefPtr<CryptoKey> wrappingKey = JSCryptoKey::toWrapped(exec->uncheckedArgument(2));
     if (!key)
-        return throwTypeError(&state);
+        return throwTypeError(exec);
 
     if (!wrappingKey->allows(CryptoKeyUsageWrapKey)) {
         m_impl->document()->addConsoleMessage(MessageSource::JS, MessageLevel::Error, ASCIILiteral("Key usages do not include 'wrapKey'"));
-        setDOMException(&state, NOT_SUPPORTED_ERR);
+        setDOMException(exec, NOT_SUPPORTED_ERR);
         return jsUndefined();
     }
 
-    auto algorithm = createAlgorithmFromJSValue(state, state.uncheckedArgument(3));
+    auto algorithm = createAlgorithmFromJSValue(exec, exec->uncheckedArgument(3));
     if (!algorithm) {
-        ASSERT(state.hadException());
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
-    auto parameters = JSCryptoAlgorithmDictionary::createParametersForEncrypt(&state, algorithm->identifier(), state.uncheckedArgument(3));
+    auto parameters = JSCryptoAlgorithmDictionary::createParametersForEncrypt(exec, algorithm->identifier(), exec->uncheckedArgument(3));
     if (!parameters) {
-        ASSERT(state.hadException());
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
-    JSPromiseDeferred* promiseDeferred = JSPromiseDeferred::create(&state, globalObject());
-    DeferredWrapper wrapper(&state, globalObject(), promiseDeferred);
+    JSPromiseDeferred* promiseDeferred = JSPromiseDeferred::create(exec, globalObject());
+    DeferredWrapper wrapper(exec, globalObject(), promiseDeferred);
 
     CryptoAlgorithm* algorithmPtr = algorithm.release();
     CryptoAlgorithmParameters* parametersPtr = parameters.release();
@@ -695,90 +695,90 @@ JSValue JSSubtleCrypto::wrapKey(ExecState& state)
     };
 
     ExceptionCode ec = 0;
-    WebCore::exportKey(state, keyFormat, *key, WTF::move(exportSuccessCallback), WTF::move(exportFailureCallback));
+    WebCore::exportKey(exec, keyFormat, *key, WTF::move(exportSuccessCallback), WTF::move(exportFailureCallback));
     if (ec) {
         delete algorithmPtr;
         delete parametersPtr;
-        setDOMException(&state, ec);
+        setDOMException(exec, ec);
         return jsUndefined();
     }
 
     return promiseDeferred->promise();
 }
 
-JSValue JSSubtleCrypto::unwrapKey(ExecState& state)
+JSValue JSSubtleCrypto::unwrapKey(ExecState* exec)
 {
-    if (state.argumentCount() < 5)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+    if (exec->argumentCount() < 5)
+        return exec->vm().throwException(exec, createNotEnoughArgumentsError(exec));
 
     CryptoKeyFormat keyFormat;
-    if (!cryptoKeyFormatFromJSValue(state, state.argument(0), keyFormat)) {
-        ASSERT(state.hadException());
+    if (!cryptoKeyFormatFromJSValue(exec, exec->argument(0), keyFormat)) {
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
     CryptoOperationData wrappedKeyData;
-    if (!cryptoOperationDataFromJSValue(&state, state.uncheckedArgument(1), wrappedKeyData)) {
-        ASSERT(state.hadException());
+    if (!cryptoOperationDataFromJSValue(exec, exec->uncheckedArgument(1), wrappedKeyData)) {
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
-    RefPtr<CryptoKey> unwrappingKey = JSCryptoKey::toWrapped(state.uncheckedArgument(2));
+    RefPtr<CryptoKey> unwrappingKey = JSCryptoKey::toWrapped(exec->uncheckedArgument(2));
     if (!unwrappingKey)
-        return throwTypeError(&state);
+        return throwTypeError(exec);
 
     if (!unwrappingKey->allows(CryptoKeyUsageUnwrapKey)) {
         m_impl->document()->addConsoleMessage(MessageSource::JS, MessageLevel::Error, ASCIILiteral("Key usages do not include 'unwrapKey'"));
-        setDOMException(&state, NOT_SUPPORTED_ERR);
+        setDOMException(exec, NOT_SUPPORTED_ERR);
         return jsUndefined();
     }
 
     std::unique_ptr<CryptoAlgorithm> unwrapAlgorithm;
     std::unique_ptr<CryptoAlgorithmParameters> unwrapAlgorithmParameters;
-    unwrapAlgorithm = createAlgorithmFromJSValue(state, state.uncheckedArgument(3));
+    unwrapAlgorithm = createAlgorithmFromJSValue(exec, exec->uncheckedArgument(3));
     if (!unwrapAlgorithm) {
-        ASSERT(state.hadException());
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
-    unwrapAlgorithmParameters = JSCryptoAlgorithmDictionary::createParametersForDecrypt(&state, unwrapAlgorithm->identifier(), state.uncheckedArgument(3));
+    unwrapAlgorithmParameters = JSCryptoAlgorithmDictionary::createParametersForDecrypt(exec, unwrapAlgorithm->identifier(), exec->uncheckedArgument(3));
     if (!unwrapAlgorithmParameters) {
-        ASSERT(state.hadException());
+        ASSERT(exec->hadException());
         return jsUndefined();
     }
 
     std::unique_ptr<CryptoAlgorithm> unwrappedKeyAlgorithm;
     std::unique_ptr<CryptoAlgorithmParameters> unwrappedKeyAlgorithmParameters;
-    if (!state.uncheckedArgument(4).isNull()) {
-        unwrappedKeyAlgorithm = createAlgorithmFromJSValue(state, state.uncheckedArgument(4));
+    if (!exec->uncheckedArgument(4).isNull()) {
+        unwrappedKeyAlgorithm = createAlgorithmFromJSValue(exec, exec->uncheckedArgument(4));
         if (!unwrappedKeyAlgorithm) {
-            ASSERT(state.hadException());
+            ASSERT(exec->hadException());
             return jsUndefined();
         }
-        unwrappedKeyAlgorithmParameters = JSCryptoAlgorithmDictionary::createParametersForImportKey(&state, unwrappedKeyAlgorithm->identifier(), state.uncheckedArgument(4));
+        unwrappedKeyAlgorithmParameters = JSCryptoAlgorithmDictionary::createParametersForImportKey(exec, unwrappedKeyAlgorithm->identifier(), exec->uncheckedArgument(4));
         if (!unwrappedKeyAlgorithmParameters) {
-            ASSERT(state.hadException());
+            ASSERT(exec->hadException());
             return jsUndefined();
         }
     }
 
     bool extractable = false;
-    if (state.argumentCount() >= 6) {
-        extractable = state.uncheckedArgument(5).toBoolean(&state);
-        if (state.hadException())
+    if (exec->argumentCount() >= 6) {
+        extractable = exec->uncheckedArgument(5).toBoolean(exec);
+        if (exec->hadException())
             return jsUndefined();
     }
 
     CryptoKeyUsage keyUsages = 0;
-    if (state.argumentCount() >= 7) {
-        if (!cryptoKeyUsagesFromJSValue(state, state.argument(6), keyUsages)) {
-            ASSERT(state.hadException());
+    if (exec->argumentCount() >= 7) {
+        if (!cryptoKeyUsagesFromJSValue(exec, exec->argument(6), keyUsages)) {
+            ASSERT(exec->hadException());
             return jsUndefined();
         }
     }
 
-    JSPromiseDeferred* promiseDeferred = JSPromiseDeferred::create(&state, globalObject());
-    DeferredWrapper wrapper(&state, globalObject(), promiseDeferred);
-    Strong<JSDOMGlobalObject> domGlobalObject(state.vm(), globalObject());
+    JSPromiseDeferred* promiseDeferred = JSPromiseDeferred::create(exec, globalObject());
+    DeferredWrapper wrapper(exec, globalObject(), promiseDeferred);
+    Strong<JSDOMGlobalObject> domGlobalObject(exec->vm(), globalObject());
 
     CryptoAlgorithm* unwrappedKeyAlgorithmPtr = unwrappedKeyAlgorithm.release();
     CryptoAlgorithmParameters* unwrappedKeyAlgorithmParametersPtr = unwrappedKeyAlgorithmParameters.release();
@@ -790,11 +790,11 @@ JSValue JSSubtleCrypto::unwrapKey(ExecState& state)
         auto importFailureCallback = [wrapper]() mutable {
             wrapper.reject(nullptr);
         };
-        ExecState& state = *domGlobalObject->globalExec();
-        WebCore::importKey(state, keyFormat, std::make_pair(result.data(), result.size()), std::unique_ptr<CryptoAlgorithm>(unwrappedKeyAlgorithmPtr), std::unique_ptr<CryptoAlgorithmParameters>(unwrappedKeyAlgorithmParametersPtr), extractable, keyUsages, WTF::move(importSuccessCallback), WTF::move(importFailureCallback));
-        if (state.hadException()) {
+        ExecState* exec = domGlobalObject->globalExec();
+        WebCore::importKey(exec, keyFormat, std::make_pair(result.data(), result.size()), std::unique_ptr<CryptoAlgorithm>(unwrappedKeyAlgorithmPtr), std::unique_ptr<CryptoAlgorithmParameters>(unwrappedKeyAlgorithmParametersPtr), extractable, keyUsages, WTF::move(importSuccessCallback), WTF::move(importFailureCallback));
+        if (exec->hadException()) {
             // FIXME: Report exception details to console, and possibly to calling script once there is a standardized way to pass errors to WebCrypto promise reject functions.
-            state.clearException();
+            exec->clearException();
             importFailureCallback();
         }
     };
@@ -810,7 +810,7 @@ JSValue JSSubtleCrypto::unwrapKey(ExecState& state)
     if (ec) {
         delete unwrappedKeyAlgorithmPtr;
         delete unwrappedKeyAlgorithmParametersPtr;
-        setDOMException(&state, ec);
+        setDOMException(exec, ec);
         return jsUndefined();
     }
 

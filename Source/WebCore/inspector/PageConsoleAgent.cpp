@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
- * Copyright (C) 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -41,8 +40,8 @@ using namespace Inspector;
 
 namespace WebCore {
 
-PageConsoleAgent::PageConsoleAgent(WebAgentContext& context, InspectorDOMAgent* domAgent)
-    : WebConsoleAgent(context)
+PageConsoleAgent::PageConsoleAgent(WebInjectedScriptManager* injectedScriptManager, InspectorDOMAgent* domAgent)
+    : WebConsoleAgent(injectedScriptManager)
     , m_inspectorDOMAgent(domAgent)
 {
 }
@@ -73,7 +72,7 @@ void PageConsoleAgent::addInspectedNode(ErrorString& errorString, int nodeId)
         return;
     }
 
-    if (CommandLineAPIHost* commandLineAPIHost = static_cast<WebInjectedScriptManager&>(m_injectedScriptManager).commandLineAPIHost())
+    if (CommandLineAPIHost* commandLineAPIHost = static_cast<WebInjectedScriptManager*>(m_injectedScriptManager)->commandLineAPIHost())
         commandLineAPIHost->addInspectedObject(std::make_unique<InspectableNode>(node));
 }
 

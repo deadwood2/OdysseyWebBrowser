@@ -204,13 +204,9 @@ static LSAppLink *appLinkForURL(NSURL *url)
     [_interactionSheet updateSheetPosition];
 }
 
-- (BOOL)isShowingSheet
-{
-    return _interactionSheet != nil;
-}
-
 - (void)_createSheetWithElementActions:(NSArray *)actions showLinkTitle:(BOOL)showLinkTitle
 {
+    ASSERT(!_interactionSheet);
     auto delegate = _delegate.get();
     if (!delegate)
         return;
@@ -267,6 +263,7 @@ static LSAppLink *appLinkForURL(NSURL *url)
 
 - (void)showImageSheet
 {
+    ASSERT(!_interactionSheet);
     ASSERT(!_elementInfo);
 
     auto delegate = _delegate.get();
@@ -376,6 +373,7 @@ static LSAppLink *appLinkForURL(NSURL *url)
 
 - (void)showLinkSheet
 {
+    ASSERT(!_interactionSheet);
     ASSERT(!_elementInfo);
 
     auto delegate = _delegate.get();
@@ -408,6 +406,8 @@ static LSAppLink *appLinkForURL(NSURL *url)
 
 - (void)showDataDetectorsSheet
 {
+    ASSERT(!_interactionSheet);
+
     auto delegate = _delegate.get();
     if (!delegate)
         return;

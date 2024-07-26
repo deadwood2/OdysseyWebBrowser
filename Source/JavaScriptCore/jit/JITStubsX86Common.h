@@ -34,7 +34,7 @@
 
 namespace JSC {
 
-#if COMPILER(GCC_OR_CLANG)
+#if COMPILER(GCC)
 
 #if ENABLE(MASM_PROBE)
 // The following are offsets for MacroAssembler::ProbeContext fields accessed
@@ -157,7 +157,7 @@ COMPILE_ASSERT(sizeof(MacroAssembler::ProbeContext) == PROBE_SIZE, ProbeContext_
 
 #endif // ENABLE(MASM_PROBE)
 
-#endif // COMPILER(GCC_OR_CLANG)
+#endif // COMPILER(GCC)
 
 } // namespace JSC
 

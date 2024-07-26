@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2010 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -41,6 +41,7 @@ namespace WebCore {
 
 class Frame;
 class InspectorPageAgent;
+class InstrumentingAgents;
 class Page;
 class ResourceResponse;
 
@@ -49,10 +50,10 @@ typedef String ErrorString;
 class InspectorApplicationCacheAgent final : public InspectorAgentBase, public Inspector::ApplicationCacheBackendDispatcherHandler {
     WTF_MAKE_NONCOPYABLE(InspectorApplicationCacheAgent); WTF_MAKE_FAST_ALLOCATED;
 public:
-    InspectorApplicationCacheAgent(WebAgentContext&, InspectorPageAgent*);
+    InspectorApplicationCacheAgent(InstrumentingAgents*, InspectorPageAgent*);
     virtual ~InspectorApplicationCacheAgent() { }
 
-    virtual void didCreateFrontendAndBackend(Inspector::FrontendRouter*, Inspector::BackendDispatcher*) override;
+    virtual void didCreateFrontendAndBackend(Inspector::FrontendChannel*, Inspector::BackendDispatcher*) override;
     virtual void willDestroyFrontendAndBackend(Inspector::DisconnectReason) override;
 
     void updateApplicationCacheStatus(Frame*);
@@ -70,9 +71,9 @@ private:
 
     DocumentLoader* assertFrameWithDocumentLoader(ErrorString&, const String& frameId);
 
+    InspectorPageAgent* m_pageAgent;
     std::unique_ptr<Inspector::ApplicationCacheFrontendDispatcher> m_frontendDispatcher;
     RefPtr<Inspector::ApplicationCacheBackendDispatcher> m_backendDispatcher;
-    InspectorPageAgent* m_pageAgent { nullptr };
 };
 
 } // namespace WebCore

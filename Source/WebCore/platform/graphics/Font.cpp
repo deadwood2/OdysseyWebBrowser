@@ -38,7 +38,6 @@
 #include "OpenTypeMathData.h"
 #include <wtf/MathExtras.h>
 #include <wtf/NeverDestroyed.h>
-#include <wtf/text/AtomicStringHash.h>
 
 #if ENABLE(OPENTYPE_VERTICAL)
 #include "OpenTypeVerticalData.h"
@@ -118,7 +117,12 @@ void Font::platformGlyphInit()
 {
     auto* glyphPageZero = glyphPage(0);
     if (!glyphPageZero) {
+        m_spaceGlyph = 0;
+        m_spaceWidth = 0;
+        m_zeroGlyph = 0;
+        m_adjustedSpaceWidth = 0;
         determinePitch();
+        m_zeroWidthSpaceGlyph = 0;
         return;
     }
 
@@ -149,27 +153,27 @@ Font::~Font()
     removeFromSystemFallbackCache();
 }
 
-static bool fillGlyphPage(GlyphPage& pageToFill, UChar* buffer, unsigned bufferLength, const Font& font)
+static bool fillGlyphPage(GlyphPage& pageToFill, unsigned offset, unsigned length, UChar* buffer, unsigned bufferLength, const Font* font)
 {
 #if ENABLE(SVG_FONTS)
-    if (auto* svgData = font.svgData())
-        return svgData->fillSVGGlyphPage(&pageToFill, buffer, bufferLength);
+    if (auto* svgData = font->svgData())
+        return svgData->fillSVGGlyphPage(&pageToFill, offset, length, buffer, bufferLength, font);
 #endif
-    bool hasGlyphs = pageToFill.fill(buffer, bufferLength, &font);
+    bool hasGlyphs = pageToFill.fill(offset, length, buffer, bufferLength, font);
 #if ENABLE(OPENTYPE_VERTICAL)
-    if (hasGlyphs && font.verticalData())
-        font.verticalData()->substituteWithVerticalGlyphs(&font, &pageToFill);
+    if (hasGlyphs && font->verticalData())
+        font->verticalData()->substituteWithVerticalGlyphs(font, &pageToFill, offset, length);
 #endif
     return hasGlyphs;
 }
 
-static RefPtr<GlyphPage> createAndFillGlyphPage(unsigned pageNumber, const Font& font)
+static RefPtr<GlyphPage> createAndFillGlyphPage(unsigned pageNumber, const Font* font)
 {
 #if PLATFORM(IOS)
     // FIXME: Times New Roman contains Arabic glyphs, but Core Text doesn't know how to shape them. See <rdar://problem/9823975>.
     // Once we have the fix for <rdar://problem/9823975> then remove this code together with Font::shouldNotBeUsedForArabic()
     // in <rdar://problem/12096835>.
-    if (pageNumber == 6 && font.shouldNotBeUsedForArabic())
+    if (pageNumber == 6 && font->shouldNotBeUsedForArabic())
         return nullptr;
 #endif
 
@@ -226,25 +230,30 @@ static RefPtr<GlyphPage> createAndFillGlyphPage(unsigned pageNumber, const Font&
     // routine of our glyph map for actually filling in the page with the glyphs.
     // Success is not guaranteed. For example, Times fails to fill page 260, giving glyph data
     // for only 128 out of 256 characters.
-    Ref<GlyphPage> glyphPage = GlyphPage::create(font);
+    RefPtr<GlyphPage> glyphPage;
+    if (GlyphPage::mayUseMixedFontsWhenFilling(buffer, bufferLength, font))
+        glyphPage = GlyphPage::createForMixedFonts();
+    else
+        glyphPage = GlyphPage::createForSingleFont(font);
 
-    bool haveGlyphs = fillGlyphPage(glyphPage, buffer, bufferLength, font);
+    bool haveGlyphs = fillGlyphPage(*glyphPage, 0, GlyphPage::size, buffer, bufferLength, font);
     if (!haveGlyphs)
         return nullptr;
 
-    return WTF::move(glyphPage);
+    glyphPage->setImmutable();
+    return glyphPage;
 }
 
 const GlyphPage* Font::glyphPage(unsigned pageNumber) const
 {
     if (!pageNumber) {
         if (!m_glyphPageZero)
-            m_glyphPageZero = createAndFillGlyphPage(0, *this);
+            m_glyphPageZero = createAndFillGlyphPage(0, this);
         return m_glyphPageZero.get();
     }
     auto addResult = m_glyphPages.add(pageNumber, nullptr);
     if (addResult.isNewEntry)
-        addResult.iterator->value = createAndFillGlyphPage(pageNumber, *this);
+        addResult.iterator->value = createAndFillGlyphPage(pageNumber, this);
 
     return addResult.iterator->value.get();
 }
@@ -254,7 +263,7 @@ Glyph Font::glyphForCharacter(UChar32 character) const
     auto* page = glyphPage(character / GlyphPage::size);
     if (!page)
         return 0;
-    return page->glyphForCharacter(character);
+    return page->glyphAt(character % GlyphPage::size);
 }
 
 GlyphData Font::glyphDataForCharacter(UChar32 character) const
@@ -387,58 +396,9 @@ bool Font::applyTransforms(GlyphBufferGlyph* glyphs, GlyphBufferAdvance* advance
 #endif
 }
 
-class CharacterFallbackMapKey {
-public:
-    CharacterFallbackMapKey()
-    {
-    }
-
-    CharacterFallbackMapKey(const AtomicString& locale, UChar32 character, bool isForPlatformFont)
-        : locale(locale)
-        , character(character)
-        , isForPlatformFont(isForPlatformFont)
-    {
-    }
-
-    CharacterFallbackMapKey(WTF::HashTableDeletedValueType)
-        : character(-1)
-    {
-    }
-
-    bool isHashTableDeletedValue() const { return character == -1; }
-
-    bool operator==(const CharacterFallbackMapKey& other) const
-    {
-        return locale == other.locale && character == other.character && isForPlatformFont == other.isForPlatformFont;
-    }
-
-    static const bool emptyValueIsZero = true;
-
-private:
-    friend struct CharacterFallbackMapKeyHash;
-
-    AtomicString locale;
-    UChar32 character { 0 };
-    bool isForPlatformFont { false };
-};
-
-struct CharacterFallbackMapKeyHash {
-    static unsigned hash(const CharacterFallbackMapKey& key)
-    {
-        return WTF::pairIntHash(key.locale.isNull() ? 0 : WTF::AtomicStringHash::hash(key.locale), WTF::pairIntHash(key.character, key.isForPlatformFont));
-    }
-
-    static bool equal(const CharacterFallbackMapKey& a, const CharacterFallbackMapKey& b)
-    {
-        return a == b;
-    }
-
-    static const bool safeToCompareToEmptyOrDeleted = true;
-};
-
 // Fonts are not ref'd to avoid cycles.
-// FIXME: Shouldn't these be WeakPtrs?
-typedef HashMap<CharacterFallbackMapKey, Font*, CharacterFallbackMapKeyHash, WTF::SimpleClassHashTraits<CharacterFallbackMapKey>> CharacterFallbackMap;
+typedef std::pair<UChar32, bool /* isForPlatformFont */> CharacterFallbackMapKey;
+typedef HashMap<CharacterFallbackMapKey, Font*> CharacterFallbackMap;
 typedef HashMap<const Font*, CharacterFallbackMap> SystemFallbackCache;
 
 static SystemFallbackCache& systemFallbackCache()
@@ -456,8 +416,8 @@ RefPtr<Font> Font::systemFallbackFontForCharacter(UChar32 character, const FontD
         return FontCache::singleton().systemFallbackForCharacters(description, this, isForPlatformFont, &codeUnit, 1);
     }
 
-    auto key = CharacterFallbackMapKey(description.locale(), character, isForPlatformFont);
-    auto characterAddResult = fontAddResult.iterator->value.add(WTF::move(key), nullptr);
+    auto key = std::make_pair(character, isForPlatformFont);
+    auto characterAddResult = fontAddResult.iterator->value.add(key, nullptr);
 
     Font*& fallbackFont = characterAddResult.iterator->value;
 

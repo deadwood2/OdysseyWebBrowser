@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2007 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -37,18 +37,19 @@
 
 using namespace WebCore;
 
-WebInspector* WebInspector::createInstance(WebView* inspectedWebView, WebInspectorClient* inspectorClient)
+WebInspector* WebInspector::createInstance(WebView* webView, WebInspectorClient* inspectorClient)
 {
-    WebInspector* inspector = new WebInspector(inspectedWebView, inspectorClient);
+    WebInspector* inspector = new WebInspector(webView, inspectorClient);
     inspector->AddRef();
     return inspector;
 }
 
-WebInspector::WebInspector(WebView* inspectedWebView, WebInspectorClient* inspectorClient)
-    : m_inspectedWebView(inspectedWebView)
+WebInspector::WebInspector(WebView* webView, WebInspectorClient* inspectorClient)
+    : m_refCount(0)
+    , m_webView(webView)
     , m_inspectorClient(inspectorClient)
 {
-    ASSERT_ARG(inspectedWebView, inspectedWebView);
+    ASSERT_ARG(webView, webView);
 
     gClassCount++;
     gClassNameCount().add("WebInspector");
@@ -62,20 +63,18 @@ WebInspector::~WebInspector()
 
 WebInspectorFrontendClient* WebInspector::frontendClient()
 {
-    return m_inspectorClient ? m_inspectorClient->frontendClient() : nullptr;
+    return m_inspectorClient ? m_inspectorClient->frontendClient() : 0;
 }
 
-void WebInspector::inspectedWebViewClosed()
+void WebInspector::webViewClosed()
 {
-    m_inspectedWebView = nullptr;
-    m_inspectorClient = nullptr;
+    m_webView = 0;
+    m_inspectorClient = 0;
 }
 
-HRESULT WebInspector::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE WebInspector::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IWebInspector))
         *ppvObject = static_cast<IWebInspector*>(this);
     else if (IsEqualGUID(riid, IID_IWebInspectorPrivate))
@@ -89,12 +88,12 @@ HRESULT WebInspector::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvOb
     return S_OK;
 }
 
-ULONG WebInspector::AddRef()
+ULONG STDMETHODCALLTYPE WebInspector::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG WebInspector::Release()
+ULONG STDMETHODCALLTYPE WebInspector::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -103,16 +102,16 @@ ULONG WebInspector::Release()
     return newRef;
 }
 
-HRESULT WebInspector::show()
+HRESULT STDMETHODCALLTYPE WebInspector::show()
 {
-    if (m_inspectedWebView)
-        if (Page* page = m_inspectedWebView->page())
+    if (m_webView)
+        if (Page* page = m_webView->page())
             page->inspectorController().show();
 
     return S_OK;
 }
 
-HRESULT WebInspector::showConsole()
+HRESULT STDMETHODCALLTYPE WebInspector::showConsole()
 {
     if (frontendClient())
         frontendClient()->showConsole();
@@ -120,30 +119,31 @@ HRESULT WebInspector::showConsole()
     return S_OK;
 }
 
-HRESULT WebInspector::unused1()
+HRESULT STDMETHODCALLTYPE WebInspector::unused1()
 {
     return S_OK;
 }
 
-HRESULT WebInspector::close()
+HRESULT STDMETHODCALLTYPE WebInspector::close()
 {
-    if (frontendClient())
-        frontendClient()->closeWindow();
+    if (m_webView)
+        if (Page* page = m_webView->page())
+            page->inspectorController().close();
 
     return S_OK;
 }
 
-HRESULT WebInspector::attach()
+HRESULT STDMETHODCALLTYPE WebInspector::attach()
 {
     return S_OK;
 }
 
-HRESULT WebInspector::detach()
+HRESULT STDMETHODCALLTYPE WebInspector::detach()
 {
     return S_OK;
 }
 
-HRESULT WebInspector::isDebuggingJavaScript(_Out_ BOOL* isDebugging)
+HRESULT STDMETHODCALLTYPE WebInspector::isDebuggingJavaScript(BOOL* isDebugging)
 {
     if (!isDebugging)
         return E_POINTER;
@@ -157,7 +157,7 @@ HRESULT WebInspector::isDebuggingJavaScript(_Out_ BOOL* isDebugging)
     return S_OK;
 }
 
-HRESULT WebInspector::toggleDebuggingJavaScript()
+HRESULT STDMETHODCALLTYPE WebInspector::toggleDebuggingJavaScript()
 {
     show();
 
@@ -172,7 +172,7 @@ HRESULT WebInspector::toggleDebuggingJavaScript()
     return S_OK;
 }
 
-HRESULT WebInspector::isProfilingJavaScript(_Out_ BOOL* isProfiling)
+HRESULT STDMETHODCALLTYPE WebInspector::isProfilingJavaScript(BOOL* isProfiling)
 {
     if (!isProfiling)
         return E_POINTER;
@@ -187,7 +187,7 @@ HRESULT WebInspector::isProfilingJavaScript(_Out_ BOOL* isProfiling)
     return S_OK;
 }
 
-HRESULT WebInspector::toggleProfilingJavaScript()
+HRESULT STDMETHODCALLTYPE WebInspector::toggleProfilingJavaScript()
 {
     show();
 
@@ -202,53 +202,53 @@ HRESULT WebInspector::toggleProfilingJavaScript()
     return S_OK;
 }
 
-HRESULT WebInspector::isJavaScriptProfilingEnabled(_Out_ BOOL* isProfilingEnabled)
+HRESULT STDMETHODCALLTYPE WebInspector::isJavaScriptProfilingEnabled(BOOL* isProfilingEnabled)
 {
     if (!isProfilingEnabled)
         return E_POINTER;
 
     *isProfilingEnabled = FALSE;
 
-    if (!m_inspectedWebView)
+    if (!m_webView)
         return S_OK;
 
-    Page* inspectedPage = m_inspectedWebView->page();
-    if (!inspectedPage)
+    Page* page = m_webView->page();
+    if (!page)
         return S_OK;
 
-    *isProfilingEnabled = inspectedPage->inspectorController().profilerEnabled();
+    *isProfilingEnabled = page->inspectorController().profilerEnabled();
     return S_OK;
 }
 
-HRESULT WebInspector::setJavaScriptProfilingEnabled(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebInspector::setJavaScriptProfilingEnabled(BOOL enabled)
 {
-    if (!m_inspectedWebView)
+    if (!m_webView)
         return S_OK;
 
-    Page* inspectedPage = m_inspectedWebView->page();
-    if (!inspectedPage)
+    Page* page = m_webView->page();
+    if (!page)
         return S_OK;
 
-    inspectedPage->inspectorController().setProfilerEnabled(enabled);
+    page->inspectorController().setProfilerEnabled(enabled);
 
     return S_OK;
 }
 
-HRESULT WebInspector::evaluateInFrontend(_In_ BSTR bScript)
+HRESULT STDMETHODCALLTYPE  WebInspector::evaluateInFrontend(BSTR bScript)
 {
-    if (!m_inspectedWebView)
+    if (!m_webView)
         return S_OK;
 
-    Page* inspectedPage = m_inspectedWebView->page();
-    if (!inspectedPage)
+    Page* page = m_webView->page();
+    if (!page)
         return S_OK;
 
     String script(bScript, SysStringLen(bScript));
-    inspectedPage->inspectorController().evaluateForTestInFrontend(script);
+    page->inspectorController().evaluateForTestInFrontend(script);
     return S_OK;
 }
 
-HRESULT WebInspector::isTimelineProfilingEnabled(_Out_ BOOL* isEnabled)
+HRESULT STDMETHODCALLTYPE WebInspector::isTimelineProfilingEnabled(BOOL* isEnabled)
 {
     if (!isEnabled)
         return E_POINTER;
@@ -262,7 +262,7 @@ HRESULT WebInspector::isTimelineProfilingEnabled(_Out_ BOOL* isEnabled)
     return S_OK;
 }
 
-HRESULT WebInspector::setTimelineProfilingEnabled(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebInspector::setTimelineProfilingEnabled(BOOL enabled)
 {
     show();
 

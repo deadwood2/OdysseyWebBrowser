@@ -24,7 +24,7 @@
 
 #include <wtf/text/AtomicString.h>
 #include <wtf/HashTraits.h>
-#include <wtf/Hasher.h>
+#include <wtf/StringHasher.h>
 
 namespace WTF {
 

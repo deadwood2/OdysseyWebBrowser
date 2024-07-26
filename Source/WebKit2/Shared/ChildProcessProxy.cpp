@@ -56,12 +56,6 @@ ChildProcessProxy* ChildProcessProxy::fromConnection(IPC::Connection* connection
     return childProcessProxy;
 }
 
-void ChildProcessProxy::getLaunchOptions(ProcessLauncher::LaunchOptions& launchOptions)
-{
-    if (const char* userDirectorySuffix = getenv("DIRHELPER_USER_DIR_SUFFIX"))
-        launchOptions.extraInitializationData.add(ASCIILiteral("user-directory-suffix"), userDirectorySuffix);
-}
-
 void ChildProcessProxy::connect()
 {
     ASSERT(!m_processLauncher);

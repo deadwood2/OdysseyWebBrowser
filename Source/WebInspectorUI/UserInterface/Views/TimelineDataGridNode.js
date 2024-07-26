@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,22 +23,27 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.TimelineDataGridNode = class TimelineDataGridNode extends WebInspector.DataGridNode
+WebInspector.TimelineDataGridNode = function(graphOnly, graphDataSource, hasChildren)
 {
-    constructor(graphOnly, graphDataSource, hasChildren)
-    {
-        super({}, hasChildren);
+    WebInspector.DataGridNode.call(this, {}, hasChildren);
 
-        this.copyable = false;
+    this.copyable = false;
 
-        this._graphOnly = graphOnly || false;
-        this._graphDataSource = graphDataSource || null;
+    this._graphOnly = graphOnly || false;
+    this._graphDataSource = graphDataSource || null;
 
-        if (graphDataSource) {
-            this._graphContainerElement = document.createElement("div");
-            this._timelineRecordBars = [];
-        }
+    if (graphDataSource) {
+        this._graphContainerElement = document.createElement("div");
+        this._timelineRecordBars = [];
     }
+};
+
+// FIXME: Move to a WebInspector.Object subclass and we can remove this.
+WebInspector.Object.deprecatedAddConstructorFunctions(WebInspector.TimelineDataGridNode);
+
+WebInspector.TimelineDataGridNode.prototype = {
+    constructor: WebInspector.TimelineDataGridNode,
+    __proto__: WebInspector.DataGridNode.prototype,
 
     // Public
 
@@ -46,12 +51,12 @@ WebInspector.TimelineDataGridNode = class TimelineDataGridNode extends WebInspec
     {
         // Implemented by subclasses.
         return [];
-    }
+    },
 
     get graphDataSource()
     {
         return this._graphDataSource;
-    }
+    },
 
     get data()
     {
@@ -60,22 +65,22 @@ WebInspector.TimelineDataGridNode = class TimelineDataGridNode extends WebInspec
 
         var records = this.records || [];
         return {graph: records.length ? records[0].startTime : 0};
-    }
+    },
 
-    collapse()
+    collapse: function()
     {
-        super.collapse();
+        WebInspector.DataGridNode.prototype.collapse.call(this);
 
         if (!this._graphDataSource || !this.revealed)
             return;
 
         // Refresh to show child bars in our graph now that we collapsed.
         this.refreshGraph();
-    }
+    },
 
-    expand()
+    expand: function()
     {
-        super.expand();
+        WebInspector.DataGridNode.prototype.expand.call(this);
 
         if (!this._graphDataSource || !this.revealed)
             return;
@@ -90,9 +95,9 @@ WebInspector.TimelineDataGridNode = class TimelineDataGridNode extends WebInspec
                 childNode.refreshGraph();
             childNode = childNode.traverseNextNode(true, this);
         }
-    }
+    },
 
-    createCellContent(columnIdentifier, cell)
+    createCellContent: function(columnIdentifier, cell)
     {
         if (columnIdentifier === "graph" && this._graphDataSource) {
             this.needsGraphRefresh();
@@ -125,7 +130,7 @@ WebInspector.TimelineDataGridNode = class TimelineDataGridNode extends WebInspec
             fragment.appendChild(goToArrowButtonLink);
 
             var icon = document.createElement("div");
-            icon.className = "icon";
+            icon.className = WebInspector.ScriptTimelineDataGridNode.IconStyleClassName;
             fragment.appendChild(icon);
 
             var titleElement = document.createElement("span");
@@ -157,7 +162,7 @@ WebInspector.TimelineDataGridNode = class TimelineDataGridNode extends WebInspec
                 fragment.appendChild(goToArrowButtonLink);
 
                 var icon = document.createElement("div");
-                icon.classList.add("icon");
+                icon.className = WebInspector.LayoutTimelineDataGridNode.IconStyleClassName;
                 fragment.appendChild(icon);
 
                 if (isAnonymousFunction) {
@@ -185,7 +190,7 @@ WebInspector.TimelineDataGridNode = class TimelineDataGridNode extends WebInspec
                     fragment.append(functionName);
 
                     var subtitleElement = document.createElement("span");
-                    subtitleElement.classList.add("subtitle");
+                    subtitleElement.className = WebInspector.LayoutTimelineDataGridNode.SubtitleStyleClassName;
                     callFrame.sourceCodeLocation.populateLiveDisplayLocationString(subtitleElement, "textContent");
 
                     fragment.appendChild(subtitleElement);
@@ -195,27 +200,27 @@ WebInspector.TimelineDataGridNode = class TimelineDataGridNode extends WebInspec
             }
 
             var icon = document.createElement("div");
-            icon.classList.add("icon");
+            icon.className = WebInspector.LayoutTimelineDataGridNode.IconStyleClassName;
 
             fragment.append(icon, functionName);
 
             return fragment;
         }
 
-        return super.createCellContent(columnIdentifier, cell);
-    }
+        return WebInspector.DataGridNode.prototype.createCellContent.call(this, columnIdentifier, cell);
+    },
 
-    refresh()
+    refresh: function()
     {
         if (this._graphDataSource && this._graphOnly) {
             this.needsGraphRefresh();
             return;
         }
 
-        super.refresh();
-    }
+        WebInspector.DataGridNode.prototype.refresh.call(this);
+    },
 
-    refreshGraph()
+    refreshGraph: function()
     {
         if (!this._graphDataSource)
             return;
@@ -251,19 +256,6 @@ WebInspector.TimelineDataGridNode = class TimelineDataGridNode extends WebInspec
             ++recordBarIndex;
         }
 
-        function collectRecordsByType(records, recordsByTypeMap)
-        {
-            for (var record of records) {
-                var typedRecords = recordsByTypeMap.get(record.type);
-                if (!typedRecords) {
-                    typedRecords = [];
-                    recordsByTypeMap.set(record.type, typedRecords);
-                }
-
-                typedRecords.push(record);
-            }
-        }
-
         var boundCreateBar = createBar.bind(this);
 
         if (this.expanded) {
@@ -274,12 +266,26 @@ WebInspector.TimelineDataGridNode = class TimelineDataGridNode extends WebInspec
             // To share bars better, group records by type.
 
             var recordTypeMap = new Map;
-            collectRecordsByType(this.records, recordTypeMap);
+
+            function collectRecordsByType(records)
+            {
+                for (var record of records) {
+                    var typedRecords = recordTypeMap.get(record.type);
+                    if (!typedRecords) {
+                        typedRecords = [];
+                        recordTypeMap.set(record.type, typedRecords);
+                    }
+
+                    typedRecords.push(record);
+                }
+            }
+
+            collectRecordsByType(this.records);
 
             var childNode = this.children[0];
             while (childNode) {
                 if (childNode instanceof WebInspector.TimelineDataGridNode)
-                    collectRecordsByType(childNode.records, recordTypeMap);
+                    collectRecordsByType(childNode.records);
                 childNode = childNode.traverseNextNode(false, this);
             }
 
@@ -292,9 +298,9 @@ WebInspector.TimelineDataGridNode = class TimelineDataGridNode extends WebInspec
             this._timelineRecordBars[recordBarIndex].records = null;
             this._timelineRecordBars[recordBarIndex].element.remove();
         }
-    }
+    },
 
-    needsGraphRefresh()
+    needsGraphRefresh: function()
     {
         if (!this.revealed) {
             // We are not visible, but an ancestor will be drawing our graph.
@@ -316,11 +322,11 @@ WebInspector.TimelineDataGridNode = class TimelineDataGridNode extends WebInspec
             return;
 
         this._scheduledGraphRefreshIdentifier = requestAnimationFrame(this.refreshGraph.bind(this));
-    }
+    },
 
     // Protected
 
-    isRecordVisible(record)
+    isRecordVisible: function(record)
     {
         if (!this._graphDataSource)
             return false;

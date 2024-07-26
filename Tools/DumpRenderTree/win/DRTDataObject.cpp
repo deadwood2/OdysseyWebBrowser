@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2014-2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2007, 2014 Apple Inc.  All rights reserved.
  * Copyright (C) 2012 Baidu Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -53,38 +53,40 @@ public:
     explicit WCEnumFormatEtc(const Vector<std::unique_ptr<FORMATETC>>& formats);
 
     // IUnknown members
-    STDMETHOD(QueryInterface)(_In_ REFIID, _COM_Outptr_ void**);
+    STDMETHOD(QueryInterface)(REFIID, void**);
     STDMETHOD_(ULONG, AddRef)();
     STDMETHOD_(ULONG, Release)();
 
     // IEnumFORMATETC members
-    STDMETHOD(Next)(ULONG celt, _Out_writes_to_(celt, *pceltFetched) LPFORMATETC, _Out_opt_ ULONG* pceltFetched);
+    STDMETHOD(Next)(ULONG, LPFORMATETC, ULONG*);
     STDMETHOD(Skip)(ULONG);
     STDMETHOD(Reset)();
-    STDMETHOD(Clone)(_COM_Outptr_opt_ IEnumFORMATETC**);
+    STDMETHOD(Clone)(IEnumFORMATETC**);
 
 private:
+    long m_ref;
     Vector<FORMATETC> m_formats;
-    long m_ref { 1 };
-    size_t m_current { 0 };
+    size_t m_current;
 };
 
 WCEnumFormatEtc::WCEnumFormatEtc(const Vector<FORMATETC>& formats)
-    : m_formats(formats)
+    : m_ref(1)
+    , m_current(0)
+    , m_formats(formats)
 {
 }
 
 WCEnumFormatEtc::WCEnumFormatEtc(const Vector<std::unique_ptr<FORMATETC>>& formats)
+    : m_ref(1)
+    , m_current(0)
 {
     for (auto& format : formats)
         m_formats.append(*format);
 }
 
-STDMETHODIMP WCEnumFormatEtc::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+STDMETHODIMP WCEnumFormatEtc::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, IID_IEnumFORMATETC)) {
         *ppvObject = this;
         AddRef();
@@ -107,7 +109,7 @@ STDMETHODIMP_(ULONG) WCEnumFormatEtc::Release()
     return refCount;
 }
 
-STDMETHODIMP WCEnumFormatEtc::Next(ULONG celt, _Out_writes_to_(celt, *pceltFetched) LPFORMATETC lpFormatEtc, _Out_opt_ ULONG* pceltFetched)
+STDMETHODIMP WCEnumFormatEtc::Next(ULONG celt, LPFORMATETC lpFormatEtc, ULONG* pceltFetched)
 {
     if (pceltFetched)
         *pceltFetched = 0;
@@ -144,7 +146,7 @@ STDMETHODIMP WCEnumFormatEtc::Reset()
     return S_OK;
 }
 
-STDMETHODIMP WCEnumFormatEtc::Clone(_COM_Outptr_opt_ IEnumFORMATETC** ppCloneEnumFormatEtc)
+STDMETHODIMP WCEnumFormatEtc::Clone(IEnumFORMATETC** ppCloneEnumFormatEtc)
 {
     if (!ppCloneEnumFormatEtc)
         return E_POINTER;
@@ -169,14 +171,13 @@ HRESULT DRTDataObject::createInstance(DRTDataObject** result)
 }
 
 DRTDataObject::DRTDataObject()
+    : m_ref(1)
 {
 }
 
-STDMETHODIMP DRTDataObject::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+STDMETHODIMP DRTDataObject::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, IID_IDataObject))
         *ppvObject = this;
 
@@ -200,11 +201,11 @@ STDMETHODIMP_(ULONG) DRTDataObject::Release()
     return refCount;
 }
 
-STDMETHODIMP DRTDataObject::GetData(_In_ FORMATETC* pformatetcIn, _Out_ STGMEDIUM* pmedium)
+STDMETHODIMP DRTDataObject::GetData(FORMATETC* pformatetcIn, STGMEDIUM* pmedium)
 { 
     if (!pformatetcIn || !pmedium)
         return E_POINTER;
-    pmedium->hGlobal = nullptr;
+    pmedium->hGlobal = 0;
 
     for (size_t i = 0; i < m_formats.size(); ++i) {
         if (pformatetcIn->lindex == m_formats[i]->lindex && pformatetcIn->dwAspect == m_formats[i]->dwAspect && pformatetcIn->cfFormat == m_formats[i]->cfFormat) {
@@ -215,12 +216,12 @@ STDMETHODIMP DRTDataObject::GetData(_In_ FORMATETC* pformatetcIn, _Out_ STGMEDIU
     return DV_E_FORMATETC;
 }
 
-STDMETHODIMP DRTDataObject::GetDataHere(_In_ FORMATETC*, _Inout_ STGMEDIUM*)
+STDMETHODIMP DRTDataObject::GetDataHere(FORMATETC*, STGMEDIUM*)
 { 
     return E_NOTIMPL;
 }
 
-STDMETHODIMP DRTDataObject::QueryGetData(_In_opt_ FORMATETC* pformatetc)
+STDMETHODIMP DRTDataObject::QueryGetData(FORMATETC* pformatetc)
 { 
     if (!pformatetc)
         return E_POINTER;
@@ -237,14 +238,12 @@ STDMETHODIMP DRTDataObject::QueryGetData(_In_opt_ FORMATETC* pformatetc)
     return DV_E_TYMED;
 }
 
-STDMETHODIMP DRTDataObject::GetCanonicalFormatEtc(_In_opt_ FORMATETC*, _Out_ FORMATETC* formatOut)
+STDMETHODIMP DRTDataObject::GetCanonicalFormatEtc(FORMATETC*, FORMATETC*)
 { 
-    if (!formatOut)
-        return E_POINTER;
     return DATA_S_SAMEFORMATETC;
 }
 
-STDMETHODIMP DRTDataObject::SetData(_In_ FORMATETC* pformatetc, _In_ STGMEDIUM* pmedium, BOOL fRelease)
+STDMETHODIMP DRTDataObject::SetData(FORMATETC* pformatetc, STGMEDIUM* pmedium, BOOL fRelease)
 { 
     if (!pformatetc || !pmedium)
         return E_POINTER;
@@ -297,18 +296,18 @@ void DRTDataObject::CopyMedium(STGMEDIUM* pMedDest, STGMEDIUM* pMedSrc, FORMATET
         break;
     }
     pMedDest->tymed = pMedSrc->tymed;
-    pMedDest->pUnkForRelease = nullptr;
+    pMedDest->pUnkForRelease = 0;
     if (pMedSrc->pUnkForRelease) {
         pMedDest->pUnkForRelease = pMedSrc->pUnkForRelease;
         pMedSrc->pUnkForRelease->AddRef();
     }
 }
-STDMETHODIMP DRTDataObject::EnumFormatEtc(DWORD dwDirection, _COM_Outptr_opt_ IEnumFORMATETC** ppenumFormatEtc)
+STDMETHODIMP DRTDataObject::EnumFormatEtc(DWORD dwDirection, IEnumFORMATETC** ppenumFormatEtc)
 { 
     if (!ppenumFormatEtc)
         return E_POINTER;
 
-    *ppenumFormatEtc = nullptr;
+    *ppenumFormatEtc = 0;
     switch (dwDirection) {
     case DATADIR_GET:
         *ppenumFormatEtc = new WCEnumFormatEtc(m_formats);
@@ -325,7 +324,7 @@ STDMETHODIMP DRTDataObject::EnumFormatEtc(DWORD dwDirection, _COM_Outptr_opt_ IE
     return S_OK;
 }
 
-STDMETHODIMP DRTDataObject::DAdvise(_In_ FORMATETC*, DWORD, _Inout_ IAdviseSink*, _Out_ DWORD*)
+STDMETHODIMP DRTDataObject::DAdvise(FORMATETC*, DWORD, IAdviseSink*, DWORD*)
 { 
     return OLE_E_ADVISENOTSUPPORTED;
 }
@@ -335,11 +334,8 @@ STDMETHODIMP DRTDataObject::DUnadvise(DWORD)
     return E_NOTIMPL;
 }
 
-HRESULT DRTDataObject::EnumDAdvise(_COM_Outptr_opt_ IEnumSTATDATA** dadvise)
+HRESULT STDMETHODCALLTYPE DRTDataObject::EnumDAdvise(IEnumSTATDATA**)
 {
-    if (!dadvise)
-        return E_POINTER;
-    *dadvise = nullptr;
     return OLE_E_ADVISENOTSUPPORTED;
 }
 

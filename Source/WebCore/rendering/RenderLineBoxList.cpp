@@ -200,17 +200,11 @@ bool RenderLineBoxList::anyLineIntersectsRect(RenderBoxModelObject* renderer, co
     return rangeIntersectsRect(renderer, logicalTop, logicalBottom, rect, offset);
 }
 
-static bool isOutlinePhase(PaintPhase phase)
-{
-    return phase == PaintPhaseOutline || phase == PaintPhaseSelfOutline || phase == PaintPhaseChildOutlines;
-}
-
 bool RenderLineBoxList::lineIntersectsDirtyRect(RenderBoxModelObject* renderer, InlineFlowBox* box, const PaintInfo& paintInfo, const LayoutPoint& offset) const
 {
     const RootInlineBox& rootBox = box->root();
-    const LayoutUnit outlineSize = isOutlinePhase(paintInfo.phase) ? renderer->view().maximalOutlineSize() : 0;
-    LayoutUnit logicalTop = std::min(box->logicalTopVisualOverflow(rootBox.lineTop()), rootBox.selectionTop()) - outlineSize;
-    LayoutUnit logicalBottom = box->logicalBottomVisualOverflow(rootBox.lineBottom()) + outlineSize;
+    LayoutUnit logicalTop = std::min<LayoutUnit>(box->logicalTopVisualOverflow(rootBox.lineTop()), rootBox.selectionTop()) - renderer->maximalOutlineSize(paintInfo.phase);
+    LayoutUnit logicalBottom = box->logicalBottomVisualOverflow(rootBox.lineBottom()) + renderer->maximalOutlineSize(paintInfo.phase);
     
     return rangeIntersectsRect(renderer, logicalTop, logicalBottom, paintInfo.rect, offset);
 }
@@ -227,7 +221,7 @@ void RenderLineBoxList::paint(RenderBoxModelObject* renderer, PaintInfo& paintIn
     // NSViews.  Do not add any more code for this.
     RenderView& v = renderer->view();
     bool usePrintRect = !v.printRect().isEmpty();
-    LayoutUnit outlineSize = isOutlinePhase(paintInfo.phase) ? v.maximalOutlineSize() : 0;
+    LayoutUnit outlineSize = renderer->maximalOutlineSize(paintInfo.phase);
     if (!anyLineIntersectsRect(renderer, paintInfo.rect, paintOffset, usePrintRect, outlineSize))
         return;
 

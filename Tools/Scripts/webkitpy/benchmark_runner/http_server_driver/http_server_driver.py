@@ -1,13 +1,10 @@
 #!/usr/bin/env python
 
-from abc import abstractmethod, ABCMeta
+from abc import abstractmethod
 
 
 class HTTPServerDriver(object):
-    platforms = []
-
-    __metaclass__ = ABCMeta
-
+    name = None
     @abstractmethod
     def serve(self, webRoot):
         pass
@@ -25,5 +22,5 @@ class HTTPServerDriver(object):
         pass
 
     @abstractmethod
-    def set_device_id(self, device_id):
+    def set_device_id(self, deviceID):
         pass

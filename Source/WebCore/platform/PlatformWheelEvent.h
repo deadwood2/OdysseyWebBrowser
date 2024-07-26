@@ -119,11 +119,17 @@ namespace WebCore {
             return copy;
         }
 
-        PlatformWheelEvent copyWithDeltas(float deltaX, float deltaY) const
+        PlatformWheelEvent copyIgnoringHorizontalDelta() const
         {
             PlatformWheelEvent copy = *this;
-            copy.m_deltaX = deltaX;
-            copy.m_deltaY = deltaY;
+            copy.m_deltaX = 0;
+            return copy;
+        }
+
+        PlatformWheelEvent copyIgnoringVerticalDelta() const
+        {
+            PlatformWheelEvent copy = *this;
+            copy.m_deltaY = 0;
             return copy;
         }
 

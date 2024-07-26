@@ -37,11 +37,6 @@ using namespace WebKit;
 
 namespace API {
 
-Ref<PageConfiguration> PageConfiguration::create()
-{
-    return adoptRef(*new PageConfiguration);
-}
-
 PageConfiguration::PageConfiguration()
 {
 }
@@ -49,28 +44,6 @@ PageConfiguration::PageConfiguration()
 PageConfiguration::~PageConfiguration()
 {
 }
-
-Ref<PageConfiguration> PageConfiguration::copy() const
-{
-    auto copy = create();
-
-    copy->m_processPool = this->m_processPool;
-    copy->m_userContentController = this->m_userContentController;
-    copy->m_pageGroup = this->m_pageGroup;
-    copy->m_preferences = this->m_preferences;
-    copy->m_preferenceValues = this->m_preferenceValues;
-    copy->m_relatedPage = this->m_relatedPage;
-    copy->m_visitedLinkStore = this->m_visitedLinkStore;
-    copy->m_websiteDataStore = this->m_websiteDataStore;
-    copy->m_sessionID = this->m_sessionID;
-    copy->m_treatsSHA1SignedCertificatesAsInsecure = this->m_treatsSHA1SignedCertificatesAsInsecure;
-#if PLATFORM(IOS)
-    copy->m_alwaysRunsAtForegroundPriority = this->m_alwaysRunsAtForegroundPriority;
-#endif
-
-    return copy;
-}
-
 
 WebProcessPool* PageConfiguration::processPool()
 {
@@ -122,40 +95,16 @@ void PageConfiguration::setRelatedPage(WebPageProxy* relatedPage)
     m_relatedPage = relatedPage;
 }
 
-
-VisitedLinkStore* PageConfiguration::visitedLinkStore()
+WebKit::WebPageConfiguration PageConfiguration::webPageConfiguration()
 {
-    return m_visitedLinkStore.get();
-}
+    WebKit::WebPageConfiguration configuration;
 
-void PageConfiguration::setVisitedLinkStore(VisitedLinkStore* visitedLinkStore)
-{
-    m_visitedLinkStore = visitedLinkStore;
-}
+    configuration.userContentController = userContentController();
+    configuration.pageGroup = pageGroup();
+    configuration.preferences = preferences();
+    configuration.relatedPage = relatedPage();
 
-API::WebsiteDataStore* PageConfiguration::websiteDataStore()
-{
-    return m_websiteDataStore.get();
-}
-
-void PageConfiguration::setWebsiteDataStore(API::WebsiteDataStore* websiteDataStore)
-{
-    m_websiteDataStore = websiteDataStore;
-
-    if (m_websiteDataStore)
-        m_sessionID = m_websiteDataStore->websiteDataStore().sessionID();
-    else
-        m_sessionID = WebCore::SessionID();
-}
-
-WebCore::SessionID PageConfiguration::sessionID()
-{
-    return m_sessionID;
-}
-
-void PageConfiguration::setSessionID(WebCore::SessionID sessionID)
-{
-    m_sessionID = sessionID;
+    return configuration;
 }
 
 } // namespace API

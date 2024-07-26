@@ -38,33 +38,184 @@
 #include "ParserModes.h"
 #include "RegExp.h"
 #include "SpecialPointer.h"
-#include "UnlinkedFunctionExecutable.h"
+#include "SymbolTable.h"
 #include "VariableEnvironment.h"
 #include "VirtualRegister.h"
+
 #include <wtf/RefCountedArray.h>
 #include <wtf/Vector.h>
 
 namespace JSC {
 
 class Debugger;
-class FunctionMetadataNode;
+class FunctionBodyNode;
 class FunctionExecutable;
 class JSScope;
 class ParserError;
 class ScriptExecutable;
 class SourceCode;
 class SourceProvider;
+class SymbolTable;
 class UnlinkedCodeBlock;
 class UnlinkedFunctionCodeBlock;
-class UnlinkedFunctionExecutable;
 class UnlinkedInstructionStream;
-struct ExecutableInfo;
 
 typedef unsigned UnlinkedValueProfile;
 typedef unsigned UnlinkedArrayProfile;
 typedef unsigned UnlinkedArrayAllocationProfile;
 typedef unsigned UnlinkedObjectAllocationProfile;
 typedef unsigned UnlinkedLLIntCallLinkInfo;
+
+struct ExecutableInfo {
+    ExecutableInfo(bool needsActivation, bool usesEval, bool isStrictMode, bool isConstructor, bool isBuiltinFunction, ConstructorKind constructorKind)
+        : m_needsActivation(needsActivation)
+        , m_usesEval(usesEval)
+        , m_isStrictMode(isStrictMode)
+        , m_isConstructor(isConstructor)
+        , m_isBuiltinFunction(isBuiltinFunction)
+        , m_constructorKind(static_cast<unsigned>(constructorKind))
+    {
+        ASSERT(m_constructorKind == static_cast<unsigned>(constructorKind));
+    }
+
+    bool needsActivation() const { return m_needsActivation; }
+    bool usesEval() const { return m_usesEval; }
+    bool isStrictMode() const { return m_isStrictMode; }
+    bool isConstructor() const { return m_isConstructor; }
+    bool isBuiltinFunction() const { return m_isBuiltinFunction; }
+    ConstructorKind constructorKind() const { return static_cast<ConstructorKind>(m_constructorKind); }
+
+private:
+    unsigned m_needsActivation : 1;
+    unsigned m_usesEval : 1;
+    unsigned m_isStrictMode : 1;
+    unsigned m_isConstructor : 1;
+    unsigned m_isBuiltinFunction : 1;
+    unsigned m_constructorKind : 2;
+};
+
+enum UnlinkedFunctionKind {
+    UnlinkedNormalFunction,
+    UnlinkedBuiltinFunction,
+};
+
+class UnlinkedFunctionExecutable final : public JSCell {
+public:
+    friend class BuiltinExecutables;
+    friend class CodeCache;
+    friend class VM;
+
+    typedef JSCell Base;
+    static const unsigned StructureFlags = Base::StructureFlags | StructureIsImmortal;
+
+    static UnlinkedFunctionExecutable* create(VM* vm, const SourceCode& source, FunctionBodyNode* node, UnlinkedFunctionKind unlinkedFunctionKind, ConstructAbility constructAbility, VariableEnvironment& parentScopeTDZVariables, RefPtr<SourceProvider>&& sourceOverride = nullptr)
+    {
+        UnlinkedFunctionExecutable* instance = new (NotNull, allocateCell<UnlinkedFunctionExecutable>(vm->heap))
+            UnlinkedFunctionExecutable(vm, vm->unlinkedFunctionExecutableStructure.get(), source, WTF::move(sourceOverride), node, unlinkedFunctionKind, constructAbility, parentScopeTDZVariables);
+        instance->finishCreation(*vm);
+        return instance;
+    }
+
+    const Identifier& name() const { return m_name; }
+    const Identifier& inferredName() const { return m_inferredName; }
+    JSString* nameValue() const { return m_nameValue.get(); }
+    unsigned parameterCount() const { return m_parameterCount; };
+    FunctionParseMode parseMode() const { return m_parseMode; };
+    bool isInStrictContext() const { return m_isInStrictContext; }
+    FunctionMode functionMode() const { return static_cast<FunctionMode>(m_functionMode); }
+    ConstructorKind constructorKind() const { return static_cast<ConstructorKind>(m_constructorKind); }
+
+    unsigned unlinkedFunctionNameStart() const { return m_unlinkedFunctionNameStart; }
+    unsigned unlinkedBodyStartColumn() const { return m_unlinkedBodyStartColumn; }
+    unsigned unlinkedBodyEndColumn() const { return m_unlinkedBodyEndColumn; }
+    unsigned startOffset() const { return m_startOffset; }
+    unsigned sourceLength() { return m_sourceLength; }
+    unsigned parametersStartOffset() const { return m_parametersStartOffset; }
+    unsigned typeProfilingStartOffset() const { return m_typeProfilingStartOffset; }
+    unsigned typeProfilingEndOffset() const { return m_typeProfilingEndOffset; }
+
+    UnlinkedFunctionCodeBlock* codeBlockFor(
+        VM&, const SourceCode&, CodeSpecializationKind, DebuggerMode, ProfilerMode, 
+        ParserError&);
+
+    static UnlinkedFunctionExecutable* fromGlobalCode(
+        const Identifier&, ExecState&, const SourceCode&, JSObject*& exception, 
+        int overrideLineNumber);
+
+    FunctionExecutable* link(VM&, const SourceCode&, int overrideLineNumber = -1);
+
+    void clearCodeForRecompilation()
+    {
+        m_codeBlockForCall.clear();
+        m_codeBlockForConstruct.clear();
+    }
+
+    void recordParse(CodeFeatures features, bool hasCapturedVariables)
+    {
+        m_features = features;
+        m_hasCapturedVariables = hasCapturedVariables;
+    }
+
+    CodeFeatures features() const { return m_features; }
+    bool hasCapturedVariables() const { return m_hasCapturedVariables; }
+
+    static const bool needsDestruction = true;
+    static void destroy(JSCell*);
+
+    bool isBuiltinFunction() const { return m_isBuiltinFunction; }
+    ConstructAbility constructAbility() const { return static_cast<ConstructAbility>(m_constructAbility); }
+    bool isClassConstructorFunction() const { return constructorKind() != ConstructorKind::None; }
+    const VariableEnvironment* parentScopeTDZVariables() const { return &m_parentScopeTDZVariables; }
+
+private:
+    UnlinkedFunctionExecutable(VM*, Structure*, const SourceCode&, RefPtr<SourceProvider>&& sourceOverride, FunctionBodyNode*, UnlinkedFunctionKind, ConstructAbility, VariableEnvironment&);
+    WriteBarrier<UnlinkedFunctionCodeBlock> m_codeBlockForCall;
+    WriteBarrier<UnlinkedFunctionCodeBlock> m_codeBlockForConstruct;
+
+    Identifier m_name;
+    Identifier m_inferredName;
+    WriteBarrier<JSString> m_nameValue;
+    RefPtr<SourceProvider> m_sourceOverride;
+    VariableEnvironment m_parentScopeTDZVariables;
+    unsigned m_firstLineOffset;
+    unsigned m_lineCount;
+    unsigned m_unlinkedFunctionNameStart;
+    unsigned m_unlinkedBodyStartColumn;
+    unsigned m_unlinkedBodyEndColumn;
+    unsigned m_startOffset;
+    unsigned m_sourceLength;
+    unsigned m_parametersStartOffset;
+    unsigned m_typeProfilingStartOffset;
+    unsigned m_typeProfilingEndOffset;
+    unsigned m_parameterCount;
+    FunctionParseMode m_parseMode;
+
+    CodeFeatures m_features;
+
+    unsigned m_isInStrictContext : 1;
+    unsigned m_hasCapturedVariables : 1;
+    unsigned m_isBuiltinFunction : 1;
+    unsigned m_constructAbility: 1;
+    unsigned m_constructorKind : 2;
+    unsigned m_functionMode : 1; // FunctionMode
+
+protected:
+    void finishCreation(VM& vm)
+    {
+        Base::finishCreation(vm);
+        m_nameValue.set(vm, this, jsString(&vm, name().string()));
+    }
+
+    static void visitChildren(JSCell*, SlotVisitor&);
+
+public:
+    static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue proto)
+    {
+        return Structure::create(vm, globalObject, proto, TypeInfo(UnlinkedFunctionExecutableType, StructureFlags), info());
+    }
+
+    DECLARE_EXPORT_INFO;
+};
 
 struct UnlinkedStringJumpTable {
     typedef HashMap<RefPtr<StringImpl>, int32_t> StringOffsetTable;
@@ -116,7 +267,6 @@ public:
     bool isConstructor() const { return m_isConstructor; }
     bool isStrictMode() const { return m_isStrictMode; }
     bool usesEval() const { return m_usesEval; }
-    bool isArrowFunction() const { return m_isArrowFunction; }
 
     bool needsFullScopeChain() const { return m_needsFullScopeChain; }
 
@@ -358,6 +508,9 @@ protected:
     void finishCreation(VM& vm)
     {
         Base::finishCreation(vm);
+        if (codeType() == GlobalCode)
+            return;
+        m_symbolTable.set(vm, this, SymbolTable::create(vm));
     }
 
 private:
@@ -387,7 +540,6 @@ private:
     unsigned m_hasCapturedVariables : 1;
     unsigned m_isBuiltinFunction : 1;
     unsigned m_constructorKind : 2;
-    unsigned m_isArrowFunction : 1;
 
     unsigned m_firstLine;
     unsigned m_lineCount;
@@ -406,6 +558,8 @@ private:
     typedef Vector<WriteBarrier<UnlinkedFunctionExecutable>> FunctionExpressionVector;
     FunctionExpressionVector m_functionDecls;
     FunctionExpressionVector m_functionExprs;
+
+    WriteBarrier<SymbolTable> m_symbolTable;
 
     Vector<unsigned> m_propertyAccessInstructions;
 
@@ -488,9 +642,6 @@ public:
     void setVariableDeclarations(const VariableEnvironment& environment) { m_varDeclarations = environment; }
     const VariableEnvironment& variableDeclarations() const { return m_varDeclarations; }
 
-    void setLexicalDeclarations(const VariableEnvironment& environment) { m_lexicalDeclarations = environment; }
-    const VariableEnvironment& lexicalDeclarations() const { return m_lexicalDeclarations; }
-
     static void visitChildren(JSCell*, SlotVisitor&);
 
 private:
@@ -500,77 +651,11 @@ private:
     }
 
     VariableEnvironment m_varDeclarations;
-    VariableEnvironment m_lexicalDeclarations;
 
 public:
     static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue proto)
     {
         return Structure::create(vm, globalObject, proto, TypeInfo(UnlinkedProgramCodeBlockType, StructureFlags), info());
-    }
-
-    DECLARE_INFO;
-};
-
-class UnlinkedModuleProgramCodeBlock final : public UnlinkedGlobalCodeBlock {
-private:
-    friend class CodeCache;
-    static UnlinkedModuleProgramCodeBlock* create(VM* vm, const ExecutableInfo& info)
-    {
-        UnlinkedModuleProgramCodeBlock* instance = new (NotNull, allocateCell<UnlinkedModuleProgramCodeBlock>(vm->heap)) UnlinkedModuleProgramCodeBlock(vm, vm->unlinkedModuleProgramCodeBlockStructure.get(), info);
-        instance->finishCreation(*vm);
-        return instance;
-    }
-
-public:
-    typedef UnlinkedGlobalCodeBlock Base;
-    static const unsigned StructureFlags = Base::StructureFlags | StructureIsImmortal;
-
-    static void destroy(JSCell*);
-
-    static void visitChildren(JSCell*, SlotVisitor&);
-
-    // This offset represents the constant register offset to the stored symbol table that represents the layout of the
-    // module environment. This symbol table is created by the byte code generator since the module environment includes
-    // the top-most lexical captured variables inside the module code. This means that, once the module environment is
-    // allocated and instantiated from this symbol table, it is titely coupled with the specific unlinked module program
-    // code block and the stored symbol table. So before executing the module code, we should not clear the unlinked module
-    // program code block in the module executable. This requirement is met because the garbage collector only clears
-    // unlinked code in (1) unmarked executables and (2) function executables.
-    //
-    // Since the function code may be executed repeatedly and the environment of each function execution is different,
-    // the function code need to allocate and instantiate the environment in the prologue of the function code. On the
-    // other hand, the module code is executed only once. So we can instantiate the module environment outside the module
-    // code. At that time, we construct the module environment by using the symbol table that is held by the module executable.
-    // The symbol table held by the executable is the cloned one from one in the unlinked code block. Instantiating the module
-    // environment before executing and linking the module code is required to link the imported bindings between the modules.
-    //
-    // The unlinked module program code block only holds the pre-cloned symbol table in its constant register pool. It does
-    // not hold the instantiated module environment. So while the module environment requires the specific unlinked module
-    // program code block, the unlinked module code block can be used for the module environment instantiated from this
-    // unlinked code block. There is 1:N relation between the unlinked module code block and the module environments. So the
-    // unlinked module program code block can be cached.
-    //
-    // On the other hand, the linked code block for the module environment includes the resolved references to the imported
-    // bindings. The imported binding references the other module environment, so the linked code block is titly coupled
-    // with the specific set of the module environments. Thus, the linked code block should not be cached.
-    int moduleEnvironmentSymbolTableConstantRegisterOffset() { return m_moduleEnvironmentSymbolTableConstantRegisterOffset; }
-    void setModuleEnvironmentSymbolTableConstantRegisterOffset(int offset)
-    {
-        m_moduleEnvironmentSymbolTableConstantRegisterOffset = offset;
-    }
-
-private:
-    UnlinkedModuleProgramCodeBlock(VM* vm, Structure* structure, const ExecutableInfo& info)
-        : Base(vm, structure, ModuleCode, info)
-    {
-    }
-
-    int m_moduleEnvironmentSymbolTableConstantRegisterOffset { 0 };
-
-public:
-    static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue proto)
-    {
-        return Structure::create(vm, globalObject, proto, TypeInfo(UnlinkedModuleProgramCodeBlockType, StructureFlags), info());
     }
 
     DECLARE_INFO;

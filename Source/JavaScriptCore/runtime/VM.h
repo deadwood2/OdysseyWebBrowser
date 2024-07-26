@@ -33,9 +33,6 @@
 #include "DateInstanceCache.h"
 #include "ExecutableAllocator.h"
 #include "FunctionHasExecutedCache.h"
-#if ENABLE(JIT)
-#include "GPRInfo.h"
-#endif
 #include "Heap.h"
 #include "Intrinsic.h"
 #include "JITThunks.h"
@@ -53,7 +50,9 @@
 #include "ThunkGenerators.h"
 #include "TypedArrayController.h"
 #include "VMEntryRecord.h"
+#include "Watchdog.h"
 #include "Watchpoint.h"
+#include "WeakRandom.h"
 #include <wtf/Bag.h>
 #include <wtf/BumpPointerAllocator.h>
 #include <wtf/DateMath.h>
@@ -66,7 +65,6 @@
 #include <wtf/ThreadSafeRefCounted.h>
 #include <wtf/ThreadSpecific.h>
 #include <wtf/WTFThreadData.h>
-#include <wtf/WeakRandom.h>
 #include <wtf/text/SymbolRegistry.h>
 #include <wtf/text/WTFString.h>
 #if ENABLE(REGEXP_TRACING)
@@ -75,6 +73,7 @@
 
 namespace JSC {
 
+class ArityCheckFailReturnThunks;
 class BuiltinExecutables;
 class CodeBlock;
 class CodeCache;
@@ -88,11 +87,11 @@ class Identifier;
 class Interpreter;
 class JSGlobalObject;
 class JSObject;
+class Keywords;
 class LLIntOffsetsExtractor;
 class LegacyProfiler;
 class NativeExecutable;
 class RegExpCache;
-class RegisterAtOffsetList;
 class ScriptExecutable;
 class SourceProvider;
 class SourceProviderCache;
@@ -106,10 +105,8 @@ class UnlinkedCodeBlock;
 class UnlinkedEvalCodeBlock;
 class UnlinkedFunctionExecutable;
 class UnlinkedProgramCodeBlock;
-class UnlinkedModuleProgramCodeBlock;
 class VirtualRegister;
 class VMEntryScope;
-class Watchdog;
 class Watchpoint;
 class WatchpointSet;
 
@@ -240,8 +237,6 @@ public:
     static Ref<VM> createContextGroup(HeapType = SmallHeap);
     JS_EXPORT_PRIVATE ~VM();
 
-    JS_EXPORT_PRIVATE Watchdog& ensureWatchdog();
-
 private:
     RefPtr<JSLock> m_apiLock;
 
@@ -264,7 +259,7 @@ public:
     ClientData* clientData;
     VMEntryFrame* topVMEntryFrame;
     ExecState* topCallFrame;
-    RefPtr<Watchdog> watchdog;
+    std::unique_ptr<Watchdog> watchdog;
 
     Strong<Structure> structureStructure;
     Strong<Structure> structureRareDataStructure;
@@ -283,10 +278,6 @@ public:
     Strong<Structure> evalExecutableStructure;
     Strong<Structure> programExecutableStructure;
     Strong<Structure> functionExecutableStructure;
-#if ENABLE(WEBASSEMBLY)
-    Strong<Structure> webAssemblyExecutableStructure;
-#endif
-    Strong<Structure> moduleProgramExecutableStructure;
     Strong<Structure> regExpStructure;
     Strong<Structure> symbolStructure;
     Strong<Structure> symbolTableStructure;
@@ -298,17 +289,12 @@ public:
     Strong<Structure> unlinkedProgramCodeBlockStructure;
     Strong<Structure> unlinkedEvalCodeBlockStructure;
     Strong<Structure> unlinkedFunctionCodeBlockStructure;
-    Strong<Structure> unlinkedModuleProgramCodeBlockStructure;
     Strong<Structure> propertyTableStructure;
     Strong<Structure> weakMapDataStructure;
     Strong<Structure> inferredValueStructure;
-    Strong<Structure> inferredTypeStructure;
-    Strong<Structure> inferredTypeTableStructure;
     Strong<Structure> functionRareDataStructure;
     Strong<Structure> exceptionStructure;
     Strong<Structure> promiseDeferredStructure;
-    Strong<Structure> internalPromiseDeferredStructure;
-    Strong<Structure> nativeStdFunctionCellStructure;
     Strong<JSCell> iterationTerminator;
     Strong<JSCell> emptyPropertyNameEnumerator;
 
@@ -360,28 +346,17 @@ public:
 
     typedef HashMap<RefPtr<SourceProvider>, RefPtr<SourceProviderCache>> SourceProviderCacheMap;
     SourceProviderCacheMap sourceProviderCacheMap;
+    std::unique_ptr<Keywords> keywords;
     Interpreter* interpreter;
 #if ENABLE(JIT)
-#if NUMBER_OF_CALLEE_SAVES_REGISTERS > 0
-    intptr_t calleeSaveRegistersBuffer[NUMBER_OF_CALLEE_SAVES_REGISTERS];
-
-    static ptrdiff_t calleeSaveRegistersBufferOffset()
-    {
-        return OBJECT_OFFSETOF(VM, calleeSaveRegistersBuffer);
-    }
-#endif // NUMBER_OF_CALLEE_SAVES_REGISTERS > 0
-
     std::unique_ptr<JITThunks> jitStubs;
     MacroAssemblerCodeRef getCTIStub(ThunkGenerator generator)
     {
         return jitStubs->ctiStub(this, generator);
     }
     NativeExecutable* getHostFunction(NativeFunction, Intrinsic);
-    
-    std::unique_ptr<RegisterAtOffsetList> allCalleeSaveRegisterOffsets;
-    
-    RegisterAtOffsetList* getAllCalleeSaveRegisterOffsets() { return allCalleeSaveRegisterOffsets.get(); }
 
+    std::unique_ptr<ArityCheckFailReturnThunks> arityCheckFailReturnThunks;
 #endif // ENABLE(JIT)
     std::unique_ptr<CommonSlowPaths::ArityCheckData> arityCheckData;
 #if ENABLE(FTL_JIT)
@@ -394,9 +369,19 @@ public:
         return OBJECT_OFFSETOF(VM, m_exception);
     }
 
-    static ptrdiff_t callFrameForCatchOffset()
+    static ptrdiff_t vmEntryFrameForThrowOffset()
     {
-        return OBJECT_OFFSETOF(VM, callFrameForCatch);
+        return OBJECT_OFFSETOF(VM, vmEntryFrameForThrow);
+    }
+
+    static ptrdiff_t topVMEntryFrameOffset()
+    {
+        return OBJECT_OFFSETOF(VM, topVMEntryFrame);
+    }
+
+    static ptrdiff_t callFrameForThrowOffset()
+    {
+        return OBJECT_OFFSETOF(VM, callFrameForThrow);
     }
 
     static ptrdiff_t targetMachinePCForThrowOffset()
@@ -404,12 +389,14 @@ public:
         return OBJECT_OFFSETOF(VM, targetMachinePCForThrow);
     }
 
-    void restorePreviousException(Exception* exception) { setException(exception); }
-
     void clearException() { m_exception = nullptr; }
     void clearLastException() { m_lastException = nullptr; }
 
-    ExecState** addressOfCallFrameForCatch() { return &callFrameForCatch; }
+    void setException(Exception* exception)
+    {
+        m_exception = exception;
+        m_lastException = exception;
+    }
 
     Exception* exception() const { return m_exception; }
     JSCell** addressOfException() { return reinterpret_cast<JSCell**>(&m_exception); }
@@ -456,7 +443,8 @@ public:
     JSValue hostCallReturnValue;
     unsigned varargsLength;
     ExecState* newCallFrameReturnValue;
-    ExecState* callFrameForCatch;
+    VMEntryFrame* vmEntryFrameForThrow;
+    ExecState* callFrameForThrow;
     void* targetMachinePCForThrow;
     Instruction* targetInterpreterPCForThrow;
     uint32_t osrExitIndex;
@@ -484,14 +472,6 @@ public:
         ScratchBuffer* result = scratchBuffers.last();
         result->setActiveLength(0);
         return result;
-    }
-
-    EncodedJSValue* exceptionFuzzingBuffer(size_t size)
-    {
-        ASSERT(Options::enableExceptionFuzz());
-        if (!m_exceptionFuzzBuffer)
-            m_exceptionFuzzBuffer = MallocPtr<EncodedJSValue>::malloc(size);
-        return m_exceptionFuzzBuffer.get();
     }
 
     void gatherConservativeRoots(ConservativeRoots&);
@@ -532,6 +512,7 @@ public:
     JS_EXPORT_PRIVATE void dumpRegExpTrace();
 
     bool isCollectorBusy() { return heap.isBusy(); }
+    JS_EXPORT_PRIVATE void releaseExecutableMemory();
 
 #if ENABLE(GC_VALIDATION)
     bool isInitializingObject() const; 
@@ -550,12 +531,11 @@ public:
     JSLock& apiLock() { return *m_apiLock; }
     CodeCache* codeCache() { return m_codeCache.get(); }
 
-    void whenIdle(std::function<void()>);
-
-    JS_EXPORT_PRIVATE void deleteAllCode();
+    void prepareToDiscardCode();
+        
+    JS_EXPORT_PRIVATE void discardAllCode();
 
     void registerWatchpointForImpureProperty(const Identifier&, Watchpoint*);
-    
     // FIXME: Use AtomicString once it got merged with Identifier.
     JS_EXPORT_PRIVATE void addImpureProperty(const String&);
 
@@ -576,8 +556,6 @@ public:
     JS_EXPORT_PRIVATE void queueMicrotask(JSGlobalObject*, PassRefPtr<Microtask>);
     JS_EXPORT_PRIVATE void drainMicrotasks();
 
-    inline bool shouldTriggerTermination(ExecState*);
-
 private:
     friend class LLIntOffsetsExtractor;
     friend class ClearExceptionScope;
@@ -588,12 +566,6 @@ private:
     void createNativeThunk();
 
     void updateStackLimit();
-
-    void setException(Exception* exception)
-    {
-        m_exception = exception;
-        m_lastException = exception;
-    }
 
 #if ENABLE(ASSEMBLER)
     bool m_canUseAssembler;
@@ -639,7 +611,6 @@ private:
     std::unique_ptr<ControlFlowProfiler> m_controlFlowProfiler;
     unsigned m_controlFlowProfilerEnabledCount;
     Deque<std::unique_ptr<QueuedTask>> m_microtaskQueue;
-    MallocPtr<EncodedJSValue> m_exceptionFuzzBuffer;
 };
 
 #if ENABLE(GC_VALIDATION)

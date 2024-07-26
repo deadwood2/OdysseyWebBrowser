@@ -34,7 +34,7 @@
 
 namespace WebCore {
 
-CSSValuePool& CSSValuePool::singleton()
+CSSValuePool& cssValuePool()
 {
     static NeverDestroyed<CSSValuePool> pool;
     return pool;

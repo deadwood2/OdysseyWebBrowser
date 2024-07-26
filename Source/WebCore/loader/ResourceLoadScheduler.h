@@ -76,6 +76,10 @@ protected:
     WEBCORE_EXPORT ResourceLoadScheduler();
     WEBCORE_EXPORT virtual ~ResourceLoadScheduler();
 
+#if USE(QUICK_LOOK)
+    WEBCORE_EXPORT bool maybeLoadQuickLookResource(ResourceLoader&);
+#endif
+
 private:
     void scheduleLoad(ResourceLoader*);
     void scheduleServePendingRequests();

@@ -31,11 +31,23 @@
 #if ENABLE(FTL_JIT)
 
 #include "FTLGeneratedFunction.h"
-class RegisterAtOffsetList;
+#include "FTLRegisterAtOffset.h"
 
 namespace JSC { namespace FTL {
 
-std::unique_ptr<RegisterAtOffsetList>  parseUnwindInfo(void*, size_t, GeneratedFunction);
+struct UnwindInfo {
+    UnwindInfo();
+    ~UnwindInfo();
+    
+    bool parse(void*, size_t, GeneratedFunction);
+    
+    void dump(PrintStream&) const;
+    
+    RegisterAtOffset* find(Reg) const;
+    unsigned indexOf(Reg) const; // Returns UINT_MAX if not found.
+    
+    Vector<RegisterAtOffset> m_registers;
+};
 
 } } // namespace JSC::FTL
 

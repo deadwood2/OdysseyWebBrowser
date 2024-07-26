@@ -44,6 +44,7 @@ class CSSFontFaceRule;
 class CSSSegmentedFontFace;
 class CachedFont;
 class Document;
+class FontDescription;
 class StyleRuleFontFace;
 
 class CSSFontSelector final : public FontSelector {
@@ -62,7 +63,7 @@ public:
     virtual PassRefPtr<Font> fallbackFontAt(const FontDescription&, size_t) override;
     CSSSegmentedFontFace* getFontFace(const FontDescription&, const AtomicString& family);
 
-    virtual bool resolvesFamilyFor(const FontCascadeDescription&) const override;
+    virtual bool resolvesFamilyFor(const FontDescription&) const override;
 
     void clearDocument();
 
@@ -73,8 +74,8 @@ public:
 
     bool isEmpty() const;
 
-    virtual void registerForInvalidationCallbacks(FontSelectorClient&) override;
-    virtual void unregisterForInvalidationCallbacks(FontSelectorClient&) override;
+    virtual void registerForInvalidationCallbacks(FontSelectorClient*) override;
+    virtual void unregisterForInvalidationCallbacks(FontSelectorClient*) override;
 
     Document* document() const { return m_document; }
 
@@ -88,9 +89,9 @@ private:
     void beginLoadTimerFired();
 
     Document* m_document;
-    HashMap<String, Vector<Ref<CSSFontFace>>, CaseFoldingHash> m_fontFaces;
-    HashMap<String, Vector<Ref<CSSFontFace>>, CaseFoldingHash> m_locallyInstalledFontFaces;
-    HashMap<String, HashMap<unsigned, RefPtr<CSSSegmentedFontFace>>, CaseFoldingHash> m_fonts;
+    HashMap<String, std::unique_ptr<Vector<RefPtr<CSSFontFace>>>, CaseFoldingHash> m_fontFaces;
+    HashMap<String, std::unique_ptr<Vector<RefPtr<CSSFontFace>>>, CaseFoldingHash> m_locallyInstalledFontFaces;
+    HashMap<String, std::unique_ptr<HashMap<unsigned, RefPtr<CSSSegmentedFontFace>>>, CaseFoldingHash> m_fonts;
     HashSet<FontSelectorClient*> m_clients;
 
     Vector<CachedResourceHandle<CachedFont>> m_fontsToBeginLoading;

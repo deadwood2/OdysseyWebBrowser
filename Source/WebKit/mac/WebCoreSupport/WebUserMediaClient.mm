@@ -47,6 +47,7 @@ using namespace WebCore;
 }
 - (id)initWithUserMediaRequest:(PassRefPtr<UserMediaRequest>)request;
 - (void)cancelRequest;
+- (void)allow;
 - (void)deny;
 @end
 
@@ -113,13 +114,12 @@ void WebUserMediaClient::requestPermission(Ref<UserMediaRequest>&& prpRequest)
 
 void WebUserMediaClient::cancelRequest(UserMediaRequest& request)
 {
-    UserMediaRequestsMap& requestsMap = userMediaRequestsMap();
-    UserMediaRequestsMap::iterator it = requestsMap.find(&request);
-    if (it == requestsMap.end())
+    UserMediaRequestsMap::iterator it = userMediaRequestsMap().find(&request);
+    if (it == userMediaRequestsMap().end())
         return;
 
     [it->value cancelRequest];
-    requestsMap.remove(it);
+    userMediaRequestsMap().remove(it);
 }
 
 
@@ -152,9 +152,8 @@ void WebUserMediaClient::cancelRequest(UserMediaRequest& request)
 #if ENABLE(MEDIA_STREAM)
     if (!_request)
         return;
-    
-    _request->userMediaAccessGranted(_request->allowedAudioDeviceUID(), _request->allowedVideoDeviceUID());
 
+    _request->userMediaAccessGranted();
     RemoveRequestFromMap(_request.get());
 #endif
 }

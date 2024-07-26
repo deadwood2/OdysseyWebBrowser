@@ -39,7 +39,6 @@ namespace WebCore {
 class ClientRect;
 class ClientRectList;
 class DatasetDOMStringMap;
-class Dictionary;
 class DOMTokenList;
 class ElementRareData;
 class HTMLDocument;
@@ -198,10 +197,12 @@ public:
     virtual const AtomicString& prefix() const override final { return m_tagName.prefix(); }
     virtual const AtomicString& namespaceURI() const override final { return m_tagName.namespaceURI(); }
 
+    virtual URL baseURI() const override final;
+
     virtual String nodeName() const override;
 
-    Ref<Element> cloneElementWithChildren(Document&);
-    Ref<Element> cloneElementWithoutChildren(Document&);
+    RefPtr<Element> cloneElementWithChildren(Document&);
+    RefPtr<Element> cloneElementWithoutChildren(Document&);
 
     void normalizeAttributes();
     String nodeNamePreservingCase() const;
@@ -247,9 +248,6 @@ public:
 
     WEBCORE_EXPORT ShadowRoot* shadowRoot() const;
     WEBCORE_EXPORT RefPtr<ShadowRoot> createShadowRoot(ExceptionCode&);
-
-    ShadowRoot* bindingShadowRoot() const;
-    RefPtr<ShadowRoot> attachShadow(const Dictionary&, ExceptionCode&);
 
     ShadowRoot* userAgentShadowRoot() const;
     WEBCORE_EXPORT ShadowRoot& ensureUserAgentShadowRoot();
@@ -487,9 +485,6 @@ public:
 
     WEBCORE_EXPORT URL absoluteLinkURL() const;
 
-    StyleResolver& styleResolver();
-    Ref<RenderStyle> resolveStyle(RenderStyle* parentStyle);
-
 protected:
     Element(const QualifiedName&, Document&, ConstructionType);
 
@@ -506,8 +501,6 @@ protected:
     // parseAttribute (called via setAttribute()) and
     // svgAttributeChanged (called when element.className.baseValue is set)
     void classAttributeChanged(const AtomicString& newClassString);
-
-    void addShadowRoot(Ref<ShadowRoot>&&);
 
     static void mergeWithNextTextNode(Text& node, ExceptionCode&);
 
@@ -570,9 +563,10 @@ private:
 
     // cloneNode is private so that non-virtual cloneElementWithChildren and cloneElementWithoutChildren
     // are used instead.
-    virtual Ref<Node> cloneNodeInternal(Document&, CloningOperation) override;
-    virtual Ref<Element> cloneElementWithoutAttributesAndChildren(Document&);
+    virtual RefPtr<Node> cloneNodeInternal(Document&, CloningOperation) override;
+    virtual RefPtr<Element> cloneElementWithoutAttributesAndChildren(Document&);
 
+    void addShadowRoot(Ref<ShadowRoot>&&);
     void removeShadowRoot();
 
     bool rareDataStyleAffectedByEmpty() const;

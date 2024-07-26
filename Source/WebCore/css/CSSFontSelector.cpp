@@ -84,13 +84,31 @@ bool CSSFontSelector::isEmpty() const
     return m_fonts.isEmpty();
 }
 
-static Optional<FontTraitsMask> computeTraitsMask(const StyleProperties& style)
+void CSSFontSelector::addFontFaceRule(const StyleRuleFontFace* fontFaceRule, bool isInitiatingElementInUserAgentShadowTree)
 {
+    // Obtain the font-family property and the src property.  Both must be defined.
+    const StyleProperties& style = fontFaceRule->properties();
+    RefPtr<CSSValue> fontFamily = style.getPropertyCSSValue(CSSPropertyFontFamily);
+    RefPtr<CSSValue> src = style.getPropertyCSSValue(CSSPropertySrc);
+    RefPtr<CSSValue> unicodeRange = style.getPropertyCSSValue(CSSPropertyUnicodeRange);
+    if (!is<CSSValueList>(fontFamily.get()) || !is<CSSValueList>(src.get()) || (unicodeRange && !is<CSSValueList>(*unicodeRange)))
+        return;
+
+    CSSValueList& familyList = downcast<CSSValueList>(*fontFamily);
+    if (!familyList.length())
+        return;
+
+    CSSValueList& srcList = downcast<CSSValueList>(*src);
+    if (!srcList.length())
+        return;
+
+    CSSValueList* rangeList = downcast<CSSValueList>(unicodeRange.get());
+
     unsigned traitsMask = 0;
 
     if (RefPtr<CSSValue> fontStyle = style.getPropertyCSSValue(CSSPropertyFontStyle)) {
         if (!is<CSSPrimitiveValue>(*fontStyle))
-            return Nullopt;
+            return;
 
         switch (downcast<CSSPrimitiveValue>(*fontStyle).getValueID()) {
         case CSSValueNormal:
@@ -108,7 +126,7 @@ static Optional<FontTraitsMask> computeTraitsMask(const StyleProperties& style)
 
     if (RefPtr<CSSValue> fontWeight = style.getPropertyCSSValue(CSSPropertyFontWeight)) {
         if (!is<CSSPrimitiveValue>(*fontWeight))
-            return Nullopt;
+            return;
 
         switch (downcast<CSSPrimitiveValue>(*fontWeight).getValueID()) {
         case CSSValueBold:
@@ -153,12 +171,12 @@ static Optional<FontTraitsMask> computeTraitsMask(const StyleProperties& style)
             list->append(fontVariant.releaseNonNull());
             fontVariant = list.releaseNonNull();
         } else if (!is<CSSValueList>(*fontVariant))
-            return Nullopt;
+            return;
 
         CSSValueList& variantList = downcast<CSSValueList>(*fontVariant);
         unsigned numVariants = variantList.length();
         if (!numVariants)
-            return Nullopt;
+            return;
 
         for (unsigned i = 0; i < numVariants; ++i) {
             switch (downcast<CSSPrimitiveValue>(variantList.itemWithoutBoundsCheck(i))->getValueID()) {
@@ -175,20 +193,8 @@ static Optional<FontTraitsMask> computeTraitsMask(const StyleProperties& style)
     } else
         traitsMask |= FontVariantMask;
 
-    return static_cast<FontTraitsMask>(traitsMask);
-}
-
-static Ref<CSSFontFace> createFontFace(CSSValueList& srcList, FontTraitsMask traitsMask, Document* document, const StyleRuleFontFace* fontFaceRule, bool isInitiatingElementInUserAgentShadowTree)
-{
-    RefPtr<CSSFontFaceRule> rule;
-#if ENABLE(FONT_LOAD_EVENTS)
-    // FIXME: https://bugs.webkit.org/show_bug.cgi?id=112116 - This CSSFontFaceRule has no parent.
-    if (RuntimeEnabledFeatures::sharedFeatures().fontLoadEventsEnabled())
-        rule = static_pointer_cast<CSSFontFaceRule>(fontFaceRule->createCSSOMWrapper());
-#else
-    UNUSED_PARAM(fontFaceRule);
-#endif
-    Ref<CSSFontFace> fontFace = CSSFontFace::create(traitsMask, WTF::move(rule));
+    // Each item in the src property's list is a single CSSFontFaceSource. Put them all into a CSSFontFace.
+    RefPtr<CSSFontFace> fontFace;
 
     int srcLength = srcList.length();
 
@@ -203,10 +209,10 @@ static Ref<CSSFontFace> createFontFace(CSSValueList& srcList, FontTraitsMask tra
         foundSVGFont = item.isSVGFontFaceSrc() || item.svgFontFaceElement();
 #endif
         if (!item.isLocal()) {
-            Settings* settings = document ? document->frame() ? &document->frame()->settings() : 0 : 0;
+            Settings* settings = m_document ? m_document->frame() ? &m_document->frame()->settings() : 0 : 0;
             bool allowDownloading = foundSVGFont || (settings && settings->downloadableBinaryFontsEnabled());
-            if (allowDownloading && item.isSupportedFormat() && document) {
-                CachedFont* cachedFont = item.cachedFont(document, foundSVGFont, isInitiatingElementInUserAgentShadowTree);
+            if (allowDownloading && item.isSupportedFormat() && m_document) {
+                CachedFont* cachedFont = item.cachedFont(m_document, foundSVGFont, isInitiatingElementInUserAgentShadowTree);
                 if (cachedFont) {
                     source = std::make_unique<CSSFontFaceSource>(item.resource(), cachedFont);
 #if ENABLE(SVG_FONTS)
@@ -219,6 +225,16 @@ static Ref<CSSFontFace> createFontFace(CSSValueList& srcList, FontTraitsMask tra
             source = std::make_unique<CSSFontFaceSource>(item.resource());
         }
 
+        if (!fontFace) {
+            RefPtr<CSSFontFaceRule> rule;
+#if ENABLE(FONT_LOAD_EVENTS)
+            // FIXME: https://bugs.webkit.org/show_bug.cgi?id=112116 - This CSSFontFaceRule has no parent.
+            if (RuntimeEnabledFeatures::sharedFeatures().fontLoadEventsEnabled())
+                rule = static_pointer_cast<CSSFontFaceRule>(fontFaceRule->createCSSOMWrapper());
+#endif
+            fontFace = CSSFontFace::create(static_cast<FontTraitsMask>(traitsMask), rule);
+        }
+
         if (source) {
 #if ENABLE(SVG_FONTS)
             source->setSVGFontFaceElement(item.svgFontFaceElement());
@@ -227,82 +243,9 @@ static Ref<CSSFontFace> createFontFace(CSSValueList& srcList, FontTraitsMask tra
         }
     }
 
-    return fontFace;
-}
+    ASSERT(fontFace);
 
-static String familyNameFromPrimitive(const CSSPrimitiveValue& value)
-{
-    if (value.isFontFamily())
-        return value.fontFamily().familyName;
-    if (!value.isValueID())
-        return { };
-
-    // We need to use the raw text for all the generic family types, since @font-face is a way of actually
-    // defining what font to use for those types.
-    switch (value.getValueID()) {
-    case CSSValueSerif:
-        return serifFamily;
-    case CSSValueSansSerif:
-        return sansSerifFamily;
-    case CSSValueCursive:
-        return cursiveFamily;
-    case CSSValueFantasy:
-        return fantasyFamily;
-    case CSSValueMonospace:
-        return monospaceFamily;
-    case CSSValueWebkitPictograph:
-        return pictographFamily;
-    default:
-        return { };
-    }
-}
-
-static Vector<Ref<CSSFontFace>> constructFamilyFontFaces(const String& familyName, HashMap<String, Vector<Ref<CSSFontFace>>, CaseFoldingHash>& locallyInstalledFontFaces)
-{
-    auto result = Vector<Ref<CSSFontFace>>();
-
-    ASSERT(!locallyInstalledFontFaces.contains(familyName));
-
-    Vector<FontTraitsMask> traitsMasks = FontCache::singleton().getTraitsInFamily(familyName);
-    if (!traitsMasks.isEmpty()) {
-        Vector<Ref<CSSFontFace>> faces = { };
-        for (auto mask : traitsMasks) {
-            Ref<CSSFontFace> face = CSSFontFace::create(mask, nullptr, true);
-            face->addSource(std::make_unique<CSSFontFaceSource>(familyName));
-            ASSERT(face->isValid());
-            faces.append(WTF::move(face));
-        }
-        locallyInstalledFontFaces.add(familyName, WTF::move(faces));
-    }
-    return result;
-}
-
-void CSSFontSelector::addFontFaceRule(const StyleRuleFontFace* fontFaceRule, bool isInitiatingElementInUserAgentShadowTree)
-{
-    const StyleProperties& style = fontFaceRule->properties();
-    RefPtr<CSSValue> fontFamily = style.getPropertyCSSValue(CSSPropertyFontFamily);
-    RefPtr<CSSValue> src = style.getPropertyCSSValue(CSSPropertySrc);
-    RefPtr<CSSValue> unicodeRange = style.getPropertyCSSValue(CSSPropertyUnicodeRange);
-    if (!is<CSSValueList>(fontFamily.get()) || !is<CSSValueList>(src.get()) || (unicodeRange && !is<CSSValueList>(*unicodeRange)))
-        return;
-
-    CSSValueList& familyList = downcast<CSSValueList>(*fontFamily);
-    if (!familyList.length())
-        return;
-
-    CSSValueList& srcList = downcast<CSSValueList>(*src);
-    if (!srcList.length())
-        return;
-
-    CSSValueList* rangeList = downcast<CSSValueList>(unicodeRange.get());
-
-    auto computedTraitsMask = computeTraitsMask(style);
-    if (!computedTraitsMask)
-        return;
-    auto traitsMask = computedTraitsMask.value();
-
-    Ref<CSSFontFace> fontFace = createFontFace(srcList, traitsMask, m_document, fontFaceRule, isInitiatingElementInUserAgentShadowTree);
-    if (!fontFace->isValid())
+    if (fontFace && !fontFace->isValid())
         return;
 
     if (rangeList) {
@@ -313,30 +256,78 @@ void CSSFontSelector::addFontFaceRule(const StyleRuleFontFace* fontFaceRule, boo
         }
     }
 
+    // Hash under every single family name.
     for (auto& item : familyList) {
-        String familyName = familyNameFromPrimitive(downcast<CSSPrimitiveValue>(item.get()));
+        auto& value = downcast<CSSPrimitiveValue>(item.get());
+        String familyName;
+        if (value.isFontFamily()) {
+            familyName = value.fontFamily().familyName;
+        } else if (value.isValueID()) {
+            // We need to use the raw text for all the generic family types, since @font-face is a way of actually
+            // defining what font to use for those types.
+            switch (value.getValueID()) {
+                case CSSValueSerif:
+                    familyName = serifFamily;
+                    break;
+                case CSSValueSansSerif:
+                    familyName = sansSerifFamily;
+                    break;
+                case CSSValueCursive:
+                    familyName = cursiveFamily;
+                    break;
+                case CSSValueFantasy:
+                    familyName = fantasyFamily;
+                    break;
+                case CSSValueMonospace:
+                    familyName = monospaceFamily;
+                    break;
+                case CSSValueWebkitPictograph:
+                    familyName = pictographFamily;
+                    break;
+                default:
+                    break;
+            }
+        }
+
         if (familyName.isEmpty())
             continue;
 
-        auto addResult = m_fontFaces.add(familyName, Vector<Ref<CSSFontFace>>());
-        auto& familyFontFaces = addResult.iterator->value;
-        if (addResult.isNewEntry)
-            familyFontFaces = constructFamilyFontFaces(familyName, m_locallyInstalledFontFaces);
+        std::unique_ptr<Vector<RefPtr<CSSFontFace>>>& familyFontFaces = m_fontFaces.add(familyName, nullptr).iterator->value;
+        if (!familyFontFaces) {
+            familyFontFaces = std::make_unique<Vector<RefPtr<CSSFontFace>>>();
 
-        familyFontFaces.append(fontFace.copyRef());
+            ASSERT(!m_locallyInstalledFontFaces.contains(familyName));
+
+            Vector<unsigned> locallyInstalledFontsTraitsMasks;
+            FontCache::singleton().getTraitsInFamily(familyName, locallyInstalledFontsTraitsMasks);
+            if (unsigned numLocallyInstalledFaces = locallyInstalledFontsTraitsMasks.size()) {
+                auto familyLocallyInstalledFaces = std::make_unique<Vector<RefPtr<CSSFontFace>>>();
+
+                for (unsigned i = 0; i < numLocallyInstalledFaces; ++i) {
+                    RefPtr<CSSFontFace> locallyInstalledFontFace = CSSFontFace::create(static_cast<FontTraitsMask>(locallyInstalledFontsTraitsMasks[i]), 0, true);
+                    locallyInstalledFontFace->addSource(std::make_unique<CSSFontFaceSource>(familyName));
+                    ASSERT(locallyInstalledFontFace->isValid());
+                    familyLocallyInstalledFaces->append(locallyInstalledFontFace);
+                }
+
+                m_locallyInstalledFontFaces.set(familyName, WTF::move(familyLocallyInstalledFaces));
+            }
+        }
+
+        familyFontFaces->append(fontFace);
         
         ++m_version;
     }
 }
 
-void CSSFontSelector::registerForInvalidationCallbacks(FontSelectorClient& client)
+void CSSFontSelector::registerForInvalidationCallbacks(FontSelectorClient* client)
 {
-    m_clients.add(&client);
+    m_clients.add(client);
 }
 
-void CSSFontSelector::unregisterForInvalidationCallbacks(FontSelectorClient& client)
+void CSSFontSelector::unregisterForInvalidationCallbacks(FontSelectorClient* client)
 {
-    m_clients.remove(&client);
+    m_clients.remove(client);
 }
 
 void CSSFontSelector::dispatchInvalidationCallbacks()
@@ -346,7 +337,7 @@ void CSSFontSelector::dispatchInvalidationCallbacks()
     Vector<FontSelectorClient*> clients;
     copyToVector(m_clients, clients);
     for (size_t i = 0; i < clients.size(); ++i)
-        clients[i]->fontsNeedUpdate(*this);
+        clients[i]->fontsNeedUpdate(this);
 }
 
 void CSSFontSelector::fontLoaded()
@@ -387,10 +378,10 @@ static const AtomicString& resolveGenericFamily(Document* document, const FontDe
 
 static FontTraitsMask desiredTraitsMaskForComparison;
 
-static inline bool compareFontFaces(const CSSFontFace& first, const CSSFontFace& second)
+static inline bool compareFontFaces(CSSFontFace* first, CSSFontFace* second)
 {
-    FontTraitsMask firstTraitsMask = first.traitsMask();
-    FontTraitsMask secondTraitsMask = second.traitsMask();
+    FontTraitsMask firstTraitsMask = first->traitsMask();
+    FontTraitsMask secondTraitsMask = second->traitsMask();
 
     bool firstHasDesiredVariant = firstTraitsMask & desiredTraitsMaskForComparison & FontVariantMask;
     bool secondHasDesiredVariant = secondTraitsMask & desiredTraitsMaskForComparison & FontVariantMask;
@@ -399,7 +390,7 @@ static inline bool compareFontFaces(const CSSFontFace& first, const CSSFontFace&
         return firstHasDesiredVariant;
 
     // We need to check font-variant css property for CSS2.1 compatibility.
-    if ((desiredTraitsMaskForComparison & FontVariantSmallCapsMask) && !first.isLocalFallback() && !second.isLocalFallback()) {
+    if ((desiredTraitsMaskForComparison & FontVariantSmallCapsMask) && !first->isLocalFallback() && !second->isLocalFallback()) {
         // Prefer a font that has indicated that it can only support small-caps to a font that claims to support
         // all variants.  The specialized font is more likely to be true small-caps and not require synthesis.
         bool firstRequiresSmallCaps = (firstTraitsMask & FontVariantSmallCapsMask) && !(firstTraitsMask & FontVariantNormalMask);
@@ -414,7 +405,7 @@ static inline bool compareFontFaces(const CSSFontFace& first, const CSSFontFace&
     if (firstHasDesiredStyle != secondHasDesiredStyle)
         return firstHasDesiredStyle;
 
-    if ((desiredTraitsMaskForComparison & FontStyleItalicMask) && !first.isLocalFallback() && !second.isLocalFallback()) {
+    if ((desiredTraitsMaskForComparison & FontStyleItalicMask) && !first->isLocalFallback() && !second->isLocalFallback()) {
         // Prefer a font that has indicated that it can only support italics to a font that claims to support
         // all styles.  The specialized font is more likely to be the one the author wants used.
         bool firstRequiresItalics = (firstTraitsMask & FontStyleItalicMask) && !(firstTraitsMask & FontStyleNormalMask);
@@ -485,23 +476,25 @@ FontRanges CSSFontSelector::fontRangesForFamily(const FontDescription& fontDescr
 
 CSSSegmentedFontFace* CSSFontSelector::getFontFace(const FontDescription& fontDescription, const AtomicString& family)
 {
-    auto iterator = m_fontFaces.find(family);
-    if (iterator == m_fontFaces.end())
-        return nullptr;
-    auto& familyFontFaces = iterator->value;
+    Vector<RefPtr<CSSFontFace>>* familyFontFaces = m_fontFaces.get(family);
+    if (!familyFontFaces || familyFontFaces->isEmpty())
+        return 0;
 
-    auto& segmentedFontFaceCache = m_fonts.add(family, HashMap<unsigned, RefPtr<CSSSegmentedFontFace>>()).iterator->value;
+    std::unique_ptr<HashMap<unsigned, RefPtr<CSSSegmentedFontFace>>>& segmentedFontFaceCache = m_fonts.add(family, nullptr).iterator->value;
+    if (!segmentedFontFaceCache)
+        segmentedFontFaceCache = std::make_unique<HashMap<unsigned, RefPtr<CSSSegmentedFontFace>>>();
 
     FontTraitsMask traitsMask = fontDescription.traitsMask();
 
-    RefPtr<CSSSegmentedFontFace>& face = segmentedFontFaceCache.add(traitsMask, nullptr).iterator->value;
+    RefPtr<CSSSegmentedFontFace>& face = segmentedFontFaceCache->add(traitsMask, nullptr).iterator->value;
     if (!face) {
         face = CSSSegmentedFontFace::create(this);
 
-        Vector<std::reference_wrapper<CSSFontFace>, 32> candidateFontFaces;
-        for (int i = familyFontFaces.size() - 1; i >= 0; --i) {
-            CSSFontFace& candidate = familyFontFaces[i];
-            unsigned candidateTraitsMask = candidate.traitsMask();
+        // Collect all matching faces and sort them in order of preference.
+        Vector<CSSFontFace*, 32> candidateFontFaces;
+        for (int i = familyFontFaces->size() - 1; i >= 0; --i) {
+            CSSFontFace* candidate = familyFontFaces->at(i).get();
+            unsigned candidateTraitsMask = candidate->traitsMask();
             if ((traitsMask & FontStyleNormalMask) && !(candidateTraitsMask & FontStyleNormalMask))
                 continue;
             if ((traitsMask & FontVariantNormalMask) && !(candidateTraitsMask & FontVariantNormalMask))
@@ -509,15 +502,16 @@ CSSSegmentedFontFace* CSSFontSelector::getFontFace(const FontDescription& fontDe
 #if ENABLE(SVG_FONTS)
             // For SVG Fonts that specify that they only support the "normal" variant, we will assume they are incapable
             // of small-caps synthesis and just ignore the font face as a candidate.
-            if (candidate.hasSVGFontFaceSource() && (traitsMask & FontVariantSmallCapsMask) && !(candidateTraitsMask & FontVariantSmallCapsMask))
+            if (candidate->hasSVGFontFaceSource() && (traitsMask & FontVariantSmallCapsMask) && !(candidateTraitsMask & FontVariantSmallCapsMask))
                 continue;
 #endif
             candidateFontFaces.append(candidate);
         }
 
-        auto iterator = m_locallyInstalledFontFaces.find(family);
-        if (iterator != m_locallyInstalledFontFaces.end()) {
-            for (auto& candidate : iterator->value) {
+        if (Vector<RefPtr<CSSFontFace>>* familyLocallyInstalledFontFaces = m_locallyInstalledFontFaces.get(family)) {
+            unsigned numLocallyInstalledFontFaces = familyLocallyInstalledFontFaces->size();
+            for (unsigned i = 0; i < numLocallyInstalledFontFaces; ++i) {
+                CSSFontFace* candidate = familyLocallyInstalledFontFaces->at(i).get();
                 unsigned candidateTraitsMask = candidate->traitsMask();
                 if ((traitsMask & FontStyleNormalMask) && !(candidateTraitsMask & FontStyleNormalMask))
                     continue;
@@ -529,8 +523,9 @@ CSSSegmentedFontFace* CSSFontSelector::getFontFace(const FontDescription& fontDe
 
         desiredTraitsMaskForComparison = traitsMask;
         std::stable_sort(candidateFontFaces.begin(), candidateFontFaces.end(), compareFontFaces);
-        for (auto& candidate : candidateFontFaces)
-            face->appendFontFace(candidate.get());
+        unsigned numCandidates = candidateFontFaces.size();
+        for (unsigned i = 0; i < numCandidates; ++i)
+            face->appendFontFace(candidateFontFaces[i]);
     }
     return face.get();
 }
@@ -590,7 +585,7 @@ void CSSFontSelector::beginLoadTimerFired()
         m_document->frame()->loader().checkLoadComplete();
 }
 
-bool CSSFontSelector::resolvesFamilyFor(const FontCascadeDescription& description) const
+bool CSSFontSelector::resolvesFamilyFor(const FontDescription& description) const
 {
     for (unsigned i = 0; i < description.familyCount(); ++i) {
         const AtomicString& familyName = description.familyAt(i);

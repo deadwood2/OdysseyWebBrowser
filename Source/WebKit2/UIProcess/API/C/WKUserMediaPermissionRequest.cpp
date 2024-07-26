@@ -21,9 +21,6 @@
 
 #include "UserMediaPermissionRequestProxy.h"
 #include "WKAPICast.h"
-#include "WKArray.h"
-#include "WKMutableArray.h"
-#include "WKString.h"
 
 using namespace WebKit;
 
@@ -32,33 +29,12 @@ WKTypeID WKUserMediaPermissionRequestGetTypeID()
     return toAPI(UserMediaPermissionRequestProxy::APIType);
 }
 
-
-void WKUserMediaPermissionRequestAllow(WKUserMediaPermissionRequestRef userMediaPermissionRequestRef, WKStringRef audioDeviceUID, WKStringRef videoDeviceUID)
+void WKUserMediaPermissionRequestAllow(WKUserMediaPermissionRequestRef userMediaPermissionRequestRef)
 {
-    toImpl(userMediaPermissionRequestRef)->allow(toWTFString(audioDeviceUID), toWTFString(videoDeviceUID));
+    toImpl(userMediaPermissionRequestRef)->allow();
 }
 
 void WKUserMediaPermissionRequestDeny(WKUserMediaPermissionRequestRef userMediaPermissionRequestRef)
 {
     toImpl(userMediaPermissionRequestRef)->deny();
-}
-
-WKArrayRef WKUserMediaPermissionRequestVideoDeviceUIDs(WKUserMediaPermissionRequestRef userMediaPermissionRef)
-{
-    WKMutableArrayRef array = WKMutableArrayCreate();
-#if ENABLE(MEDIA_STREAM)
-    for (auto& deviceUID : toImpl(userMediaPermissionRef)->videoDeviceUIDs())
-        WKArrayAppendItem(array, toAPI(API::String::create(deviceUID).ptr()));
-#endif
-    return array;
-}
-
-WKArrayRef WKUserMediaPermissionRequestAudioDeviceUIDs(WKUserMediaPermissionRequestRef userMediaPermissionRef)
-{
-    WKMutableArrayRef array = WKMutableArrayCreate();
-#if ENABLE(MEDIA_STREAM)
-    for (auto& deviceUID : toImpl(userMediaPermissionRef)->audioDeviceUIDs())
-        WKArrayAppendItem(array, toAPI(API::String::create(deviceUID).ptr()));
-#endif
-    return array;
 }

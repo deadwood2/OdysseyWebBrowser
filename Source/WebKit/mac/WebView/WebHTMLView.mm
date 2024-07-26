@@ -34,6 +34,7 @@
 #import "DOMDocumentInternal.h"
 #import "DOMNodeInternal.h"
 #import "DOMRangeInternal.h"
+#import "DictionaryPopupInfo.h"
 #import "WebArchive.h"
 #import "WebClipView.h"
 #import "WebContextMenuClient.h"
@@ -81,7 +82,6 @@
 #import <WebCore/ColorMac.h>
 #import <WebCore/ContextMenu.h>
 #import <WebCore/ContextMenuController.h>
-#import <WebCore/DictionaryLookup.h>
 #import <WebCore/Document.h>
 #import <WebCore/DocumentFragment.h>
 #import <WebCore/DocumentMarkerController.h>
@@ -334,7 +334,7 @@ static IMP oldSetNeedsDisplayInRectIMP;
 
 static void setNeedsDisplayInRect(NSView *self, SEL cmd, NSRect invalidRect)
 {
-    if (![NSThread isMainThread] || ![self _drawnByAncestor]) {
+    if (![self _drawnByAncestor]) {
         wtfCallIMP<id>(oldSetNeedsDisplayInRectIMP, self, cmd, invalidRect);
         return;
     }
@@ -2267,7 +2267,7 @@ static bool mouseEventIsPartOfClickOrDrag(NSEvent *event)
     if (pboardType == NSStringPboardType) {
         if (!context)
             return nil;
-        return kit(createFragmentFromText(*core(context), [[pasteboard stringForType:NSStringPboardType] precomposedStringWithCanonicalMapping]).ptr());
+        return kit(createFragmentFromText(*core(context), [[pasteboard stringForType:NSStringPboardType] precomposedStringWithCanonicalMapping]).get());
     }
     return nil;
 }
@@ -4915,12 +4915,13 @@ static PassRefPtr<KeyboardEvent> currentKeyboardEvent(Frame* coreFrame)
     return [[NSFontManager sharedFontManager] fontWithFamily:@"Times" traits:NSFontItalicTrait weight:STANDARD_BOLD_WEIGHT size:12.0f];
 }
 
-static NSString *fontNameForDescription(NSString *familyName, BOOL italic, BOOL bold)
+static NSString *fontNameForDescription(NSString *familyName, BOOL italic, BOOL bold, int pointSize)
 {
     // Find the font the same way the rendering code would later if it encountered this CSS.
     FontDescription fontDescription;
     fontDescription.setIsItalic(italic);
     fontDescription.setWeight(bold ? FontWeight900 : FontWeight500);
+    fontDescription.setSpecifiedSize(pointSize);
     RefPtr<Font> font = FontCache::singleton().fontForFamily(fontDescription, familyName);
     return [font->platformData().nsFont() fontName];
 }
@@ -4961,7 +4962,7 @@ static NSString *fontNameForDescription(NSString *familyName, BOOL italic, BOOL 
         // the Postscript name.
         // If we don't find a font with the same Postscript name, then we'll have to use the
         // Postscript name to make the CSS specific enough.
-        if (![fontNameForDescription(aFamilyName, aIsItalic, aIsBold) isEqualToString:[a fontName]])
+        if (![fontNameForDescription(aFamilyName, aIsItalic, aIsBold, aPointSize) isEqualToString:[a fontName]])
             familyNameForCSS = [a fontName];
 
         // FIXME: Need more sophisticated escaping code if we want to handle family names
@@ -5484,7 +5485,7 @@ static BOOL writingDirectionKeyBindingsEnabled()
     NSDictionary *attributes = nil;
     if (Frame* coreFrame = core([self _frame])) {
         if (const Font* fd = coreFrame->editor().fontForSelection(multipleFonts))
-            font = (NSFont *)fd->platformData().registeredFont();
+            font = fd->getNSFont();
         attributes = coreFrame->editor().fontAttributesForSelectionStart();
     }
 
@@ -5688,14 +5689,13 @@ static BOOL writingDirectionKeyBindingsEnabled()
     DictionaryPopupInfo info;
     info.attributedString = attrString;
     info.origin = coreFrame->view()->contentsToWindow(enclosingIntRect(rect)).location();
-    if (auto textIndicator = TextIndicator::createWithSelectionInFrame(*coreFrame, TextIndicatorOptionIncludeSnapshotWithSelectionHighlight, TextIndicatorPresentationTransition::BounceAndCrossfade))
-        info.textIndicator = textIndicator->data();
+    info.textIndicator = TextIndicator::createWithSelectionInFrame(*coreFrame, TextIndicatorPresentationTransition::BounceAndCrossfade);
     [[self _webView] _showDictionaryLookupPopup:info];
 }
 
 - (void)quickLookWithEvent:(NSEvent *)event
 {
-    [[self _webView] _clearTextIndicatorWithAnimation:TextIndicatorWindowDismissalAnimation::FadeOut];
+    [[self _webView] _clearTextIndicatorWithAnimation:TextIndicatorDismissalAnimation::FadeOut];
     [super quickLookWithEvent:event];
 }
 #endif // !PLATFORM(IOS)
@@ -6862,7 +6862,7 @@ static CGImageRef selectionImage(Frame* frame, bool forceBlackText)
     if (!document)
         return [NSArray array];
 
-    Vector<FloatRect> rects = document->markers().renderedRectsForMarkers(DocumentMarker::TextMatch);
+    Vector<IntRect> rects = document->markers().renderedRectsForMarkers(DocumentMarker::TextMatch);
     unsigned count = rects.size();
     NSMutableArray *result = [NSMutableArray arrayWithCapacity:count];
     for (unsigned index = 0; index < count; ++index)

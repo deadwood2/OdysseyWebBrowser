@@ -31,7 +31,6 @@
 #include "CodeBlock.h"
 #include "DFGJITCode.h"
 #include "DFGValueSource.h"
-#include "InlineCallFrame.h"
 #include "JSCInlines.h"
 #include <wtf/DataLog.h>
 #include <wtf/HashMap.h>
@@ -209,7 +208,7 @@ void VariableEventStream::reconstruct(
         
         if (info.filled) {
             if (info.format == DataFormatDouble) {
-                valueRecoveries[i] = ValueRecovery::inFPR(info.u.fpr, DataFormatDouble);
+                valueRecoveries[i] = ValueRecovery::inFPR(info.u.fpr);
                 continue;
             }
 #if USE(JSVALUE32_64)

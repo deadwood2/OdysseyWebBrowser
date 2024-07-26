@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,34 +23,39 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.DatabaseContentView = class DatabaseContentView extends WebInspector.ContentView
+WebInspector.DatabaseContentView = function(representedObject)
 {
-    constructor(representedObject)
-    {
-        super(representedObject);
+    WebInspector.ContentView.call(this, representedObject);
 
-        this.database = representedObject;
+    this.database = representedObject;
 
-        this.element.classList.add("storage-view", "query", "monospace");
+    this.element.classList.add("storage-view", "query", "monospace");
 
-        this._promptElement = document.createElement("div");
-        this._promptElement.classList.add("database-query-prompt");
-        this.element.appendChild(this._promptElement);
+    this._promptElement = document.createElement("div");
+    this._promptElement.className = "database-query-prompt";
+    this.element.appendChild(this._promptElement);
 
-        this.prompt = new WebInspector.ConsolePrompt(this, "text/x-sql");
-        this._promptElement.appendChild(this.prompt.element);
+    this.prompt = new WebInspector.ConsolePrompt(this, "text/x-sql");
+    this._promptElement.appendChild(this.prompt.element);
 
-        this.element.addEventListener("click", this._messagesClicked.bind(this), true);
-    }
+    this.element.addEventListener("click", this._messagesClicked.bind(this), true);
+};
+
+WebInspector.DatabaseContentView.Event = {
+    SchemaUpdated: "SchemaUpdated"
+};
+
+WebInspector.DatabaseContentView.prototype = {
+    constructor: WebInspector.DatabaseContentView,
 
     // Public
 
-    shown()
+    shown: function()
     {
         this.prompt.shown();
-    }
+    },
 
-    updateLayout()
+    updateLayout: function()
     {
         this.prompt.updateLayout();
 
@@ -60,16 +65,16 @@ WebInspector.DatabaseContentView = class DatabaseContentView extends WebInspecto
             if (resultElement.dataGrid)
                 resultElement.dataGrid.updateLayout();
         }
-    }
+    },
 
-    saveToCookie(cookie)
+    saveToCookie: function(cookie)
     {
         cookie.type = WebInspector.ContentViewCookieType.Database;
         cookie.host = this.representedObject.host;
         cookie.name = this.representedObject.name;
-    }
+    },
 
-    consolePromptCompletionsNeeded(prompt, defaultCompletions, base, prefix, suffix)
+    consolePromptCompletionsNeeded: function(prompt, defaultCompletions, base, prefix, suffix)
     {
         var results = [];
 
@@ -93,21 +98,21 @@ WebInspector.DatabaseContentView = class DatabaseContentView extends WebInspecto
         }
 
         this.database.getTableNames(tableNamesCallback.bind(this));
-    }
+    },
 
-    consolePromptTextCommitted(prompt, query)
+    consolePromptTextCommitted: function(prompt, query)
     {
         this.database.executeSQL(query, this._queryFinished.bind(this, query), this._queryError.bind(this, query));
-    }
+    },
 
     // Private
 
-    _messagesClicked()
+    _messagesClicked: function()
     {
         this.prompt.focus();
-    }
+    },
 
-    _queryFinished(query, columnNames, values)
+    _queryFinished: function(query, columnNames, values)
     {
         var dataGrid = WebInspector.DataGrid.createSortableDataGrid(columnNames, values);
         var trimmedQuery = query.trim();
@@ -120,9 +125,9 @@ WebInspector.DatabaseContentView = class DatabaseContentView extends WebInspecto
 
         if (trimmedQuery.match(/^create /i) || trimmedQuery.match(/^drop table /i))
             this.dispatchEventToListeners(WebInspector.DatabaseContentView.Event.SchemaUpdated, this.database);
-    }
+    },
 
-    _queryError(query, error)
+    _queryError: function(query, error)
     {
         if (error.message)
             var message = error.message;
@@ -132,9 +137,9 @@ WebInspector.DatabaseContentView = class DatabaseContentView extends WebInspecto
             var message = WebInspector.UIString("An unexpected error %s occurred.").format(error.code);
 
         this._appendErrorQueryResult(query, message);
-    }
+    },
 
-    _appendViewQueryResult(query, view)
+    _appendViewQueryResult: function(query, view)
     {
         var resultElement = this._appendQueryResult(query);
 
@@ -143,18 +148,18 @@ WebInspector.DatabaseContentView = class DatabaseContentView extends WebInspecto
         resultElement.appendChild(view.element);
 
         this._promptElement.scrollIntoView(false);
-    }
+    },
 
-    _appendErrorQueryResult(query, errorText)
+    _appendErrorQueryResult: function(query, errorText)
     {
         var resultElement = this._appendQueryResult(query);
         resultElement.classList.add("error");
         resultElement.textContent = errorText;
 
         this._promptElement.scrollIntoView(false);
-    }
+    },
 
-    _appendQueryResult(query)
+    _appendQueryResult: function(query)
     {
         var element = document.createElement("div");
         element.className = "database-user-query";
@@ -172,6 +177,4 @@ WebInspector.DatabaseContentView = class DatabaseContentView extends WebInspecto
     }
 };
 
-WebInspector.DatabaseContentView.Event = {
-    SchemaUpdated: "SchemaUpdated"
-};
+WebInspector.DatabaseContentView.prototype.__proto__ = WebInspector.ContentView.prototype;

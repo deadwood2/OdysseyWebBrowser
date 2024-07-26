@@ -58,41 +58,45 @@ public:
 
     Document& ownerDocument() const { return const_cast<Document&>(m_ownerDocument.get()); }
 
-    Node& startContainer() const { ASSERT(m_start.container()); return *m_start.container(); }
+    Node* startContainer() const { return m_start.container(); }
     int startOffset() const { return m_start.offset(); }
-    Node& endContainer() const { ASSERT(m_end.container()); return *m_end.container(); }
+    Node* endContainer() const { return m_end.container(); }
     int endOffset() const { return m_end.offset(); }
-    bool collapsed() const { return m_start == m_end; }
 
-    Node* commonAncestorContainer() const { return commonAncestorContainer(&startContainer(), &endContainer()); }
-    WEBCORE_EXPORT static Node* commonAncestorContainer(Node* containerA, Node* containerB);
+    WEBCORE_EXPORT Node* startContainer(ExceptionCode&) const;
+    WEBCORE_EXPORT int startOffset(ExceptionCode&) const;
+    WEBCORE_EXPORT Node* endContainer(ExceptionCode&) const;
+    WEBCORE_EXPORT int endOffset(ExceptionCode&) const;
+    WEBCORE_EXPORT bool collapsed(ExceptionCode&) const;
+
+    WEBCORE_EXPORT Node* commonAncestorContainer(ExceptionCode&) const;
+    static Node* commonAncestorContainer(Node* containerA, Node* containerB);
     WEBCORE_EXPORT void setStart(PassRefPtr<Node> container, int offset, ExceptionCode& = ASSERT_NO_EXCEPTION);
     WEBCORE_EXPORT void setEnd(PassRefPtr<Node> container, int offset, ExceptionCode& = ASSERT_NO_EXCEPTION);
-    WEBCORE_EXPORT void collapse(bool toStart);
+    WEBCORE_EXPORT void collapse(bool toStart, ExceptionCode&);
     WEBCORE_EXPORT bool isPointInRange(Node* refNode, int offset, ExceptionCode&);
     short comparePoint(Node* refNode, int offset, ExceptionCode&) const;
     enum CompareResults { NODE_BEFORE, NODE_AFTER, NODE_BEFORE_AND_AFTER, NODE_INSIDE };
     CompareResults compareNode(Node* refNode, ExceptionCode&) const;
     enum CompareHow { START_TO_START, START_TO_END, END_TO_END, END_TO_START };
     WEBCORE_EXPORT short compareBoundaryPoints(CompareHow, const Range* sourceRange, ExceptionCode&) const;
-    short compareBoundaryPointsForBindings(unsigned short compareHow, const Range* sourceRange, ExceptionCode&) const;
     static short compareBoundaryPoints(Node* containerA, int offsetA, Node* containerB, int offsetB, ExceptionCode&);
     static short compareBoundaryPoints(const RangeBoundaryPoint& boundaryA, const RangeBoundaryPoint& boundaryB, ExceptionCode&);
     WEBCORE_EXPORT bool boundaryPointsValid() const;
-    bool intersectsNode(Node* refNode, ExceptionCode&) const;
+    bool intersectsNode(Node* refNode, ExceptionCode&);
     void deleteContents(ExceptionCode&);
-    RefPtr<DocumentFragment> extractContents(ExceptionCode&);
-    RefPtr<DocumentFragment> cloneContents(ExceptionCode&);
-    void insertNode(RefPtr<Node>&&, ExceptionCode&);
-    String toString() const;
+    PassRefPtr<DocumentFragment> extractContents(ExceptionCode&);
+    PassRefPtr<DocumentFragment> cloneContents(ExceptionCode&);
+    void insertNode(PassRefPtr<Node>, ExceptionCode&);
+    String toString(ExceptionCode&) const;
 
     String toHTML() const;
     WEBCORE_EXPORT String text() const;
 
-    RefPtr<DocumentFragment> createContextualFragment(const String& html, ExceptionCode&);
+    PassRefPtr<DocumentFragment> createContextualFragment(const String& html, ExceptionCode&);
 
-    void detach();
-    WEBCORE_EXPORT Ref<Range> cloneRange() const;
+    void detach(ExceptionCode&);
+    WEBCORE_EXPORT RefPtr<Range> cloneRange(ExceptionCode&) const;
 
     WEBCORE_EXPORT void setStartAfter(Node*, ExceptionCode& = ASSERT_NO_EXCEPTION);
     WEBCORE_EXPORT void setEndBefore(Node*, ExceptionCode& = ASSERT_NO_EXCEPTION);
@@ -119,12 +123,13 @@ public:
     };
 
     // Not transform-friendly
-    WEBCORE_EXPORT void absoluteTextRects(Vector<IntRect>&, bool useSelectionHeight = false, RangeInFixedPosition* = nullptr) const;
-    WEBCORE_EXPORT IntRect absoluteBoundingBox() const;
+    WEBCORE_EXPORT void textRects(Vector<IntRect>&, bool useSelectionHeight = false, RangeInFixedPosition* = nullptr) const;
+    WEBCORE_EXPORT IntRect boundingBox() const;
 
     // Transform-friendly
-    WEBCORE_EXPORT void absoluteTextQuads(Vector<FloatQuad>&, bool useSelectionHeight = false, RangeInFixedPosition* = nullptr) const;
-    WEBCORE_EXPORT FloatRect absoluteBoundingRect() const;
+    WEBCORE_EXPORT void textQuads(Vector<FloatQuad>&, bool useSelectionHeight = false, RangeInFixedPosition* = nullptr) const;
+    void getBorderAndTextQuads(Vector<FloatQuad>&) const;
+    WEBCORE_EXPORT FloatRect boundingRect() const;
 #if PLATFORM(IOS)
     WEBCORE_EXPORT void collectSelectionRects(Vector<SelectionRect>&);
 #endif
@@ -151,7 +156,6 @@ public:
 #endif
 
     WEBCORE_EXPORT bool contains(const Range&) const;
-    bool contains(const VisiblePosition&) const;
 
 private:
     explicit Range(Document&);
@@ -160,17 +164,16 @@ private:
     void setDocument(Document&);
 
     Node* checkNodeWOffset(Node*, int offset, ExceptionCode&) const;
+    void checkNodeBA(Node*, ExceptionCode&) const;
+    void checkDeleteExtract(ExceptionCode&);
+    bool containedByReadOnly() const;
 
     enum ActionType { Delete, Extract, Clone };
-    RefPtr<DocumentFragment> processContents(ActionType, ExceptionCode&);
-    static RefPtr<Node> processContentsBetweenOffsets(ActionType, PassRefPtr<DocumentFragment>, Node*, unsigned startOffset, unsigned endOffset, ExceptionCode&);
+    PassRefPtr<DocumentFragment> processContents(ActionType, ExceptionCode&);
+    static PassRefPtr<Node> processContentsBetweenOffsets(ActionType, PassRefPtr<DocumentFragment>, Node*, unsigned startOffset, unsigned endOffset, ExceptionCode&);
     static void processNodes(ActionType, Vector<RefPtr<Node>>&, PassRefPtr<Node> oldContainer, PassRefPtr<Node> newContainer, ExceptionCode&);
     enum ContentsProcessDirection { ProcessContentsForward, ProcessContentsBackward };
-    static RefPtr<Node> processAncestorsAndTheirSiblings(ActionType, Node* container, ContentsProcessDirection, PassRefPtr<Node> clonedContainer, Node* commonRoot, ExceptionCode&);
-
-    enum class CoordinateSpace { Absolute, Client };
-    void getBorderAndTextQuads(Vector<FloatQuad>&, CoordinateSpace) const;
-    FloatRect boundingRectInternal(CoordinateSpace) const;
+    static PassRefPtr<Node> processAncestorsAndTheirSiblings(ActionType, Node* container, ContentsProcessDirection, PassRefPtr<Node> clonedContainer, Node* commonRoot, ExceptionCode&);
 
     Ref<Document> m_ownerDocument;
     RangeBoundaryPoint m_start;

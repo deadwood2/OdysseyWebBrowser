@@ -53,7 +53,7 @@ Ref<ScrollingCoordinator> ScrollingCoordinator::create(Page* page)
 
 ScrollingCoordinatorMac::ScrollingCoordinatorMac(Page* page)
     : AsyncScrollingCoordinator(page)
-    , m_scrollingStateTreeCommitterTimer(*this, &ScrollingCoordinatorMac::commitTreeState)
+    , m_scrollingStateTreeCommitterTimer(*this, &ScrollingCoordinatorMac::scrollingStateTreeCommitterTimerFired)
 {
     setScrollingTree(ScrollingTreeMac::create(this));
 }
@@ -105,6 +105,11 @@ void ScrollingCoordinatorMac::scheduleTreeStateCommit()
         return;
 
     m_scrollingStateTreeCommitterTimer.startOneShot(0);
+}
+
+void ScrollingCoordinatorMac::scrollingStateTreeCommitterTimerFired()
+{
+    commitTreeState();
 }
 
 void ScrollingCoordinatorMac::commitTreeState()

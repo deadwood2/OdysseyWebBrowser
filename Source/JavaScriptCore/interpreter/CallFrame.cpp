@@ -28,7 +28,6 @@
 
 #include "CallFrameInlines.h"
 #include "CodeBlock.h"
-#include "InlineCallFrame.h"
 #include "Interpreter.h"
 #include "JSLexicalEnvironment.h"
 #include "JSCInlines.h"
@@ -46,63 +45,63 @@ JSStack* CallFrame::stack()
 #endif
 
 #if USE(JSVALUE32_64)
-Instruction* CallFrame::currentVPC() const
-{
-    return bitwise_cast<Instruction*>(callSiteIndex().bits());
-}
-
-void CallFrame::setCurrentVPC(Instruction* vpc)
-{
-    CallSiteIndex callSite(vpc);
-    this[JSStack::ArgumentCount].tag() = callSite.bits();
-}
-
-unsigned CallFrame::callSiteBitsAsBytecodeOffset() const
+unsigned CallFrame::locationAsBytecodeOffset() const
 {
     ASSERT(codeBlock());
-    ASSERT(callSiteBitsAreBytecodeOffset());
-    return currentVPC() - codeBlock()->instructions().begin();     
+    ASSERT(hasLocationAsBytecodeOffset());
+    return currentVPC() - codeBlock()->instructions().begin();
 }
 
-#else // USE(JSVALUE32_64)
-Instruction* CallFrame::currentVPC() const
-{
-    ASSERT(callSiteBitsAreBytecodeOffset());
-    return codeBlock()->instructions().begin() + callSiteBitsAsBytecodeOffset();
-}
-
-void CallFrame::setCurrentVPC(Instruction* vpc)
-{
-    CallSiteIndex callSite(vpc - codeBlock()->instructions().begin());
-    this[JSStack::ArgumentCount].tag() = static_cast<int32_t>(callSite.bits());
-}
-
-unsigned CallFrame::callSiteBitsAsBytecodeOffset() const
+void CallFrame::setLocationAsBytecodeOffset(unsigned offset)
 {
     ASSERT(codeBlock());
-    ASSERT(callSiteBitsAreBytecodeOffset());
-    return callSiteIndex().bits();
+    setCurrentVPC(codeBlock()->instructions().begin() + offset);
+    ASSERT(hasLocationAsBytecodeOffset());
 }
-
+#else
+Instruction* CallFrame::currentVPC() const
+{
+    return codeBlock()->instructions().begin() + locationAsBytecodeOffset();
+}
+void CallFrame::setCurrentVPC(Instruction* vpc)
+{
+    setLocationAsBytecodeOffset(vpc - codeBlock()->instructions().begin());
+}
 #endif
     
+#if ENABLE(DFG_JIT)
+unsigned CallFrame::bytecodeOffsetFromCodeOriginIndex()
+{
+    ASSERT(hasLocationAsCodeOriginIndex());
+    CodeBlock* codeBlock = this->codeBlock();
+    ASSERT(codeBlock);
+
+    CodeOrigin codeOrigin;
+    unsigned index = locationAsCodeOriginIndex();
+    ASSERT(codeBlock->canGetCodeOrigin(index));
+    codeOrigin = codeBlock->codeOrigin(index);
+
+    for (InlineCallFrame* inlineCallFrame = codeOrigin.inlineCallFrame; inlineCallFrame;) {
+        if (inlineCallFrame->baselineCodeBlock() == codeBlock)
+            return codeOrigin.bytecodeIndex;
+
+        codeOrigin = inlineCallFrame->caller;
+        inlineCallFrame = codeOrigin.inlineCallFrame;
+    }
+    return codeOrigin.bytecodeIndex;
+}
+
+#endif // ENABLE(DFG_JIT)
+
 unsigned CallFrame::bytecodeOffset()
 {
     if (!codeBlock())
         return 0;
 #if ENABLE(DFG_JIT)
-    if (callSiteBitsAreCodeOriginIndex()) {
-        ASSERT(codeBlock());
-        CodeOrigin codeOrigin = this->codeOrigin();
-        for (InlineCallFrame* inlineCallFrame = codeOrigin.inlineCallFrame; inlineCallFrame;) {
-            codeOrigin = inlineCallFrame->directCaller;
-            inlineCallFrame = codeOrigin.inlineCallFrame;
-        }
-        return codeOrigin.bytecodeIndex;
-    }
+    if (hasLocationAsCodeOriginIndex())
+        return bytecodeOffsetFromCodeOriginIndex();
 #endif
-    ASSERT(callSiteBitsAreBytecodeOffset());
-    return callSiteBitsAsBytecodeOffset();
+    return locationAsBytecodeOffset();
 }
 
 CodeOrigin CallFrame::codeOrigin()
@@ -110,13 +109,13 @@ CodeOrigin CallFrame::codeOrigin()
     if (!codeBlock())
         return CodeOrigin(0);
 #if ENABLE(DFG_JIT)
-    if (callSiteBitsAreCodeOriginIndex()) {
-        CallSiteIndex index = callSiteIndex();
+    if (hasLocationAsCodeOriginIndex()) {
+        unsigned index = locationAsCodeOriginIndex();
         ASSERT(codeBlock()->canGetCodeOrigin(index));
         return codeBlock()->codeOrigin(index);
     }
 #endif
-    return CodeOrigin(callSiteBitsAsBytecodeOffset());
+    return CodeOrigin(locationAsBytecodeOffset());
 }
 
 Register* CallFrame::topOfFrameInternal()

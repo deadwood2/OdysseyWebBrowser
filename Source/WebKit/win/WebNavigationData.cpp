@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009, 2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2009 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,11 +30,9 @@ using namespace WebCore;
 
 // IUnknown -------------------------------------------------------------------
 
-HRESULT WebNavigationData::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE WebNavigationData::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<IWebNavigationData*>(this);
     else if (IsEqualGUID(riid, IID_IWebNavigationData))
@@ -46,12 +44,12 @@ HRESULT WebNavigationData::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** 
     return S_OK;
 }
 
-ULONG WebNavigationData::AddRef()
+ULONG STDMETHODCALLTYPE WebNavigationData::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG WebNavigationData::Release()
+ULONG STDMETHODCALLTYPE WebNavigationData::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -63,7 +61,8 @@ ULONG WebNavigationData::Release()
 // WebNavigationData -------------------------------------------------------------------
 
 WebNavigationData::WebNavigationData(const String& url, const String& title, IWebURLRequest* request, IWebURLResponse* response, bool hasSubstituteData, const String& clientRedirectSource)
-    : m_url(url)
+    : m_refCount(0)
+    , m_url(url)
     , m_title(title)
     , m_request(request)
     , m_response(response)
@@ -90,7 +89,7 @@ WebNavigationData* WebNavigationData::createInstance(const String& url, const St
 
 // IWebNavigationData -------------------------------------------------------------------
 
-HRESULT WebNavigationData::url(__deref_opt_out BSTR* url)
+HRESULT WebNavigationData::url(BSTR* url)
 {
     if (!url)
         return E_POINTER;
@@ -98,7 +97,7 @@ HRESULT WebNavigationData::url(__deref_opt_out BSTR* url)
     return S_OK;
 }
 
-HRESULT WebNavigationData::title(__deref_opt_out BSTR* title)
+HRESULT WebNavigationData::title(BSTR* title)
 {
     if (!title)
         return E_POINTER;
@@ -106,7 +105,7 @@ HRESULT WebNavigationData::title(__deref_opt_out BSTR* title)
     return S_OK;
 }
 
-HRESULT WebNavigationData::originalRequest(_COM_Outptr_opt_ IWebURLRequest** request)
+HRESULT WebNavigationData::originalRequest(IWebURLRequest** request)
 {
     if (!request)
         return E_POINTER;
@@ -115,7 +114,7 @@ HRESULT WebNavigationData::originalRequest(_COM_Outptr_opt_ IWebURLRequest** req
     return S_OK;
 }
 
-HRESULT WebNavigationData::response(_COM_Outptr_opt_ IWebURLResponse** response)
+HRESULT WebNavigationData::response(IWebURLResponse** response)
 {
     if (!response)
         return E_POINTER;
@@ -124,7 +123,7 @@ HRESULT WebNavigationData::response(_COM_Outptr_opt_ IWebURLResponse** response)
     return S_OK;
 }
 
-HRESULT WebNavigationData::hasSubstituteData(_Out_ BOOL* hasSubstituteData)
+HRESULT WebNavigationData::hasSubstituteData(BOOL* hasSubstituteData)
 {
     if (!hasSubstituteData)
         return E_POINTER;
@@ -132,7 +131,7 @@ HRESULT WebNavigationData::hasSubstituteData(_Out_ BOOL* hasSubstituteData)
     return S_OK;
 }
 
-HRESULT WebNavigationData::clientRedirectSource(__deref_opt_out BSTR* clientRedirectSource)
+HRESULT WebNavigationData::clientRedirectSource(BSTR* clientRedirectSource)
 {
     if (!clientRedirectSource)
         return E_POINTER;

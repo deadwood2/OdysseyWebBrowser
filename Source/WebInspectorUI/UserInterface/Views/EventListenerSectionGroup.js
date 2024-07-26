@@ -79,7 +79,13 @@ WebInspector.EventListenerSectionGroup = class EventListenerSectionGroup extends
         if (!this._eventListener.location)
             return functionName;
 
-        var sourceCode = WebInspector.debuggerManager.scriptForIdentifier(this._eventListener.location.scriptId);
+        // COMPATIBILITY (iOS 6): In the past scriptId could be a URL. Now it is always a script identifier.
+        // So try looking up the resource by URL if a script can't be found directly.
+        var scriptIdentifierOrURL = this._eventListener.location.scriptId;
+        var sourceCode = WebInspector.debuggerManager.scriptForIdentifier(scriptIdentifierOrURL);
+        if (!sourceCode)
+            sourceCode = WebInspector.frameResourceManager.resourceForURL(scriptIdentifierOrURL);
+
         if (!sourceCode)
             return functionName;
 

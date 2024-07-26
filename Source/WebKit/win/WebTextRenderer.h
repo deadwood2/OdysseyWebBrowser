@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2007 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,17 +35,22 @@ class WebTextRenderer : public IWebTextRenderer {
 public:
     static WebTextRenderer* createInstance();
 
-    virtual HRESULT STDMETHODCALLTYPE QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject);
+    virtual HRESULT STDMETHODCALLTYPE QueryInterface(
+        /* [in] */ REFIID riid,
+        /* [iid_is][out] */ void** ppvObject);
+    
     virtual ULONG STDMETHODCALLTYPE AddRef();
+    
     virtual ULONG STDMETHODCALLTYPE Release();
 
-    virtual HRESULT STDMETHODCALLTYPE registerPrivateFont(_In_ LPCOLESTR fontFilePath);
+    virtual HRESULT STDMETHODCALLTYPE registerPrivateFont(
+        /* [in] */ LPCOLESTR fontFilePath);
     
 private:
     WebTextRenderer();
     ~WebTextRenderer();
 
-    ULONG m_refCount { 0 };
+    ULONG m_refCount;
 };
 
 #endif // !defined(WebTextRenderer_h)

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,17 +23,20 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ScriptTimelineDataGrid = class ScriptTimelineDataGrid extends WebInspector.TimelineDataGrid
+WebInspector.ScriptTimelineDataGrid = function(treeOutline, columns, delegate, editCallback, deleteCallback)
 {
-    constructor(treeOutline, columns, delegate, editCallback, deleteCallback)
-    {
-        super(treeOutline, columns, delegate, editCallback, deleteCallback);
-    }
+    WebInspector.TimelineDataGrid.call(this, treeOutline, columns, delegate, editCallback, deleteCallback);
+};
+
+WebInspector.ScriptTimelineDataGrid.prototype = {
+    constructor: WebInspector.ScriptTimelineDataGrid,
 
     // Protected
 
-    callFramePopoverAnchorElement()
+    callFramePopoverAnchorElement: function()
     {
         return this.selectedNode.elementWithColumnIdentifier("location");
     }
 };
+
+WebInspector.ScriptTimelineDataGrid.prototype.__proto__ = WebInspector.TimelineDataGrid.prototype;

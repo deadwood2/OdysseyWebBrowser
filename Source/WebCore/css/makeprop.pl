@@ -38,7 +38,7 @@ die "We've reached more than 1024 CSS properties, please make sure to update CSS
 my %namesHash;
 my @duplicates = ();
 
-my $numPredefinedProperties = 2;
+my $numPredefinedProperties = 1;
 my @names = ();
 my %nameIsInherited;
 my %propertiesWithStyleBuilderOptions;
@@ -236,7 +236,6 @@ String getJSPropertyName(CSSPropertyID id)
 
 static const bool isInheritedPropertyTable[numCSSProperties + $numPredefinedProperties] = {
     false, // CSSPropertyInvalid
-    false, // CSSPropertyCustom
 EOF
 
 foreach my $name (@names) {
@@ -284,7 +283,6 @@ namespace WebCore {
 
 enum CSSPropertyID : uint16_t {
     CSSPropertyInvalid = 0,
-    CSSPropertyCustom = 1,
 EOF
 
 my $first = $numPredefinedProperties;
@@ -315,7 +313,7 @@ WTF::String getJSPropertyName(CSSPropertyID);
 
 inline CSSPropertyID convertToCSSPropertyID(int value)
 {
-    ASSERT((value >= firstCSSProperty && value <= lastCSSProperty) || value == CSSPropertyInvalid || value == CSSPropertyCustom);
+    ASSERT((value >= firstCSSProperty && value <= lastCSSProperty) || value == CSSPropertyInvalid);
     return static_cast<CSSPropertyID>(value);
 }
 
@@ -711,8 +709,8 @@ sub generateInitialValueSetter {
   } elsif (exists $propertiesWithStyleBuilderOptions{$name}{"AnimationProperty"}) {
     $setterContent .= generateAnimationPropertyInitialValueSetter($name, $indent . "    ");
   } elsif (exists $propertiesWithStyleBuilderOptions{$name}{"FontProperty"}) {
-    $setterContent .= $indent . "    auto fontDescription = styleResolver.fontDescription();\n";
-    $setterContent .= $indent . "    fontDescription." . $setter . "(FontCascadeDescription::" . $initial . "());\n";
+    $setterContent .= $indent . "    FontDescription fontDescription = styleResolver.fontDescription();\n";
+    $setterContent .= $indent . "    fontDescription." . $setter . "(FontDescription::" . $initial . "());\n";
     $setterContent .= $indent . "    styleResolver.setFontDescription(fontDescription);\n";
   } elsif (exists $propertiesWithStyleBuilderOptions{$name}{"FillLayerProperty"}) {
     $setterContent .= generateFillLayerPropertyInitialValueSetter($name, $indent . "    ");
@@ -755,7 +753,7 @@ sub generateInheritValueSetter {
     $setterContent .= generateAnimationPropertyInheritValueSetter($name, $indent . "    ");
     $didCallSetValue = 1;
   } elsif (exists $propertiesWithStyleBuilderOptions{$name}{"FontProperty"}) {
-    $setterContent .= $indent . "    auto fontDescription = styleResolver.fontDescription();\n";
+    $setterContent .= $indent . "    FontDescription fontDescription = styleResolver.fontDescription();\n";
     $setterContent .= $indent . "    fontDescription." . $setter . "(styleResolver.parentFontDescription()." . $getter . "());\n";
     $setterContent .= $indent . "    styleResolver.setFontDescription(fontDescription);\n";
     $didCallSetValue = 1;
@@ -809,7 +807,7 @@ sub generateValueSetter {
     $setterContent .= generateAnimationPropertyValueSetter($name, $indent . "    ");
     $didCallSetValue = 1;
   } elsif (exists $propertiesWithStyleBuilderOptions{$name}{"FontProperty"}) {
-    $setterContent .= $indent . "    auto fontDescription = styleResolver.fontDescription();\n";
+    $setterContent .= $indent . "    FontDescription fontDescription = styleResolver.fontDescription();\n";
     $setterContent .= $indent . "    fontDescription." . $setter . "(" . $convertedValue . ");\n";
     $setterContent .= $indent . "    styleResolver.setFontDescription(fontDescription);\n";
     $didCallSetValue = 1;
@@ -874,7 +872,6 @@ void StyleBuilder::applyProperty(CSSPropertyID property, StyleResolver& styleRes
 {
     switch (property) {
     case CSSPropertyInvalid:
-    case CSSPropertyCustom:
         break;
 EOF
 

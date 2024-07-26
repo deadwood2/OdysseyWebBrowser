@@ -39,7 +39,6 @@ class FullBytecodeLiveness;
 
 class BytecodeLivenessAnalysis {
     WTF_MAKE_FAST_ALLOCATED;
-    WTF_MAKE_NONCOPYABLE(BytecodeLivenessAnalysis);
 public:
     BytecodeLivenessAnalysis(CodeBlock*);
     
@@ -57,7 +56,7 @@ private:
     void getLivenessInfoAtBytecodeOffset(unsigned bytecodeOffset, FastBitVector&);
 
     CodeBlock* m_codeBlock;
-    Vector<std::unique_ptr<BytecodeBasicBlock>> m_basicBlocks;
+    Vector<RefPtr<BytecodeBasicBlock> > m_basicBlocks;
 };
 
 inline bool operandIsAlwaysLive(int operand);

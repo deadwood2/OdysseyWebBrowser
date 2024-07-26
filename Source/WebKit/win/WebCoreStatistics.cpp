@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008, 2014-2015 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2008, 2014 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -46,6 +46,7 @@ using namespace WebCore;
 // WebCoreStatistics ---------------------------------------------------------------------------
 
 WebCoreStatistics::WebCoreStatistics()
+: m_refCount(0)
 {
     gClassCount++;
     gClassNameCount().add("WebCoreStatistics");
@@ -66,11 +67,9 @@ WebCoreStatistics* WebCoreStatistics::createInstance()
 
 // IUnknown -------------------------------------------------------------------
 
-HRESULT WebCoreStatistics::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE WebCoreStatistics::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<WebCoreStatistics*>(this);
     else if (IsEqualGUID(riid, IID_IWebCoreStatistics))
@@ -82,12 +81,12 @@ HRESULT WebCoreStatistics::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** 
     return S_OK;
 }
 
-ULONG WebCoreStatistics::AddRef()
+ULONG STDMETHODCALLTYPE WebCoreStatistics::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG WebCoreStatistics::Release()
+ULONG STDMETHODCALLTYPE WebCoreStatistics::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -98,7 +97,8 @@ ULONG WebCoreStatistics::Release()
 
 // IWebCoreStatistics ------------------------------------------------------------------------------
 
-HRESULT WebCoreStatistics::javaScriptObjectsCount(_Out_ UINT* count)
+HRESULT STDMETHODCALLTYPE WebCoreStatistics::javaScriptObjectsCount( 
+    /* [retval][out] */ UINT* count)
 {
     if (!count)
         return E_POINTER;
@@ -108,7 +108,8 @@ HRESULT WebCoreStatistics::javaScriptObjectsCount(_Out_ UINT* count)
     return S_OK;
 }
 
-HRESULT WebCoreStatistics::javaScriptGlobalObjectsCount(_Out_ UINT* count)
+HRESULT STDMETHODCALLTYPE WebCoreStatistics::javaScriptGlobalObjectsCount( 
+    /* [retval][out] */ UINT* count)
 {
     if (!count)
         return E_POINTER;
@@ -118,7 +119,8 @@ HRESULT WebCoreStatistics::javaScriptGlobalObjectsCount(_Out_ UINT* count)
     return S_OK;
 }
 
-HRESULT WebCoreStatistics::javaScriptProtectedObjectsCount(_Out_ UINT* count)
+HRESULT STDMETHODCALLTYPE WebCoreStatistics::javaScriptProtectedObjectsCount( 
+    /* [retval][out] */ UINT* count)
 {
     if (!count)
         return E_POINTER;
@@ -128,7 +130,8 @@ HRESULT WebCoreStatistics::javaScriptProtectedObjectsCount(_Out_ UINT* count)
     return S_OK;
 }
 
-HRESULT WebCoreStatistics::javaScriptProtectedGlobalObjectsCount(_Out_ UINT* count)
+HRESULT STDMETHODCALLTYPE WebCoreStatistics::javaScriptProtectedGlobalObjectsCount( 
+    /* [retval][out] */ UINT* count)
 {
     if (!count)
         return E_POINTER;
@@ -138,11 +141,9 @@ HRESULT WebCoreStatistics::javaScriptProtectedGlobalObjectsCount(_Out_ UINT* cou
     return S_OK;
 }
 
-HRESULT WebCoreStatistics::javaScriptProtectedObjectTypeCounts(_COM_Outptr_opt_ IPropertyBag2** typeNamesAndCounts)
+HRESULT STDMETHODCALLTYPE WebCoreStatistics::javaScriptProtectedObjectTypeCounts( 
+    /* [retval][out] */ IPropertyBag2** typeNamesAndCounts)
 {
-    if (!typeNamesAndCounts)
-        return E_POINTER;
-
     JSLockHolder lock(JSDOMWindow::commonVM());
     std::unique_ptr<TypeCountSet> jsObjectTypeNames(JSDOMWindow::commonVM().heap.protectedObjectTypeCounts());
     typedef TypeCountSet::const_iterator Iterator;
@@ -156,7 +157,7 @@ HRESULT WebCoreStatistics::javaScriptProtectedObjectTypeCounts(_COM_Outptr_opt_ 
     return S_OK;
 }
 
-HRESULT WebCoreStatistics::javaScriptObjectTypeCounts(_COM_Outptr_opt_ IPropertyBag2** typeNamesAndCounts)
+HRESULT WebCoreStatistics::javaScriptObjectTypeCounts(IPropertyBag2** typeNamesAndCounts)
 {
     if (!typeNamesAndCounts)
         return E_POINTER;
@@ -174,7 +175,8 @@ HRESULT WebCoreStatistics::javaScriptObjectTypeCounts(_COM_Outptr_opt_ IProperty
     return S_OK;
 }
 
-HRESULT WebCoreStatistics::iconPageURLMappingCount(_Out_ UINT* count)
+HRESULT STDMETHODCALLTYPE WebCoreStatistics::iconPageURLMappingCount( 
+    /* [retval][out] */ UINT* count)
 {
     if (!count)
         return E_POINTER;
@@ -182,7 +184,8 @@ HRESULT WebCoreStatistics::iconPageURLMappingCount(_Out_ UINT* count)
     return S_OK;
 }
 
-HRESULT WebCoreStatistics::iconRetainedPageURLCount(_Out_ UINT *count)
+HRESULT STDMETHODCALLTYPE WebCoreStatistics::iconRetainedPageURLCount( 
+    /* [retval][out] */ UINT *count)
 {
     if (!count)
         return E_POINTER;
@@ -190,7 +193,8 @@ HRESULT WebCoreStatistics::iconRetainedPageURLCount(_Out_ UINT *count)
     return S_OK;
 }
 
-HRESULT WebCoreStatistics::iconRecordCount(_Out_ UINT *count)
+HRESULT STDMETHODCALLTYPE WebCoreStatistics::iconRecordCount( 
+    /* [retval][out] */ UINT *count)
 {
     if (!count)
         return E_POINTER;
@@ -198,7 +202,8 @@ HRESULT WebCoreStatistics::iconRecordCount(_Out_ UINT *count)
     return S_OK;
 }
 
-HRESULT WebCoreStatistics::iconsWithDataCount(_Out_ UINT *count)
+HRESULT STDMETHODCALLTYPE WebCoreStatistics::iconsWithDataCount( 
+    /* [retval][out] */ UINT *count)
 {
     if (!count)
         return E_POINTER;
@@ -206,7 +211,8 @@ HRESULT WebCoreStatistics::iconsWithDataCount(_Out_ UINT *count)
     return S_OK;
 }
 
-HRESULT WebCoreStatistics::cachedFontDataCount(_Out_ UINT *count)
+HRESULT STDMETHODCALLTYPE WebCoreStatistics::cachedFontDataCount( 
+    /* [retval][out] */ UINT *count)
 {
     if (!count)
         return E_POINTER;
@@ -214,7 +220,8 @@ HRESULT WebCoreStatistics::cachedFontDataCount(_Out_ UINT *count)
     return S_OK;
 }
 
-HRESULT WebCoreStatistics::cachedFontDataInactiveCount(_Out_ UINT *count)
+HRESULT STDMETHODCALLTYPE WebCoreStatistics::cachedFontDataInactiveCount( 
+    /* [retval][out] */ UINT *count)
 {
     if (!count)
         return E_POINTER;
@@ -222,13 +229,14 @@ HRESULT WebCoreStatistics::cachedFontDataInactiveCount(_Out_ UINT *count)
     return S_OK;
 }
 
-HRESULT WebCoreStatistics::purgeInactiveFontData(void)
+HRESULT STDMETHODCALLTYPE WebCoreStatistics::purgeInactiveFontData(void)
 {
     FontCache::singleton().purgeInactiveFontData();
     return S_OK;
 }
 
-HRESULT WebCoreStatistics::glyphPageCount(_Out_ UINT *count)
+HRESULT STDMETHODCALLTYPE WebCoreStatistics::glyphPageCount( 
+    /* [retval][out] */ UINT *count)
 {
     if (!count)
         return E_POINTER;
@@ -254,7 +262,7 @@ HRESULT WebCoreStatistics::setJavaScriptGarbageCollectorTimerEnabled(BOOL enable
     return S_OK;
 }
 
-HRESULT WebCoreStatistics::shouldPrintExceptions(_Out_ BOOL* shouldPrint)
+HRESULT WebCoreStatistics::shouldPrintExceptions(BOOL* shouldPrint)
 {
     if (!shouldPrint)
         return E_POINTER;
@@ -283,7 +291,7 @@ HRESULT WebCoreStatistics::stopIgnoringWebCoreNodeLeaks()
     return S_OK;
 }
 
-HRESULT WebCoreStatistics::memoryStatistics(_COM_Outptr_opt_ IPropertyBag** statistics)
+HRESULT WebCoreStatistics::memoryStatistics(IPropertyBag** statistics)
 {
     if (!statistics)
         return E_POINTER;
@@ -315,7 +323,7 @@ HRESULT WebCoreStatistics::returnFreeMemoryToSystem()
     return S_OK;
 }
 
-HRESULT WebCoreStatistics::cachedPageCount(_Out_ INT* count)
+HRESULT WebCoreStatistics::cachedPageCount(INT* count)
 {
     if (!count)
         return E_POINTER;
@@ -324,7 +332,7 @@ HRESULT WebCoreStatistics::cachedPageCount(_Out_ INT* count)
     return S_OK;
 }
 
-HRESULT WebCoreStatistics::cachedFrameCount(_Out_ INT* count)
+HRESULT WebCoreStatistics::cachedFrameCount(INT* count)
 {
     if (!count)
         return E_POINTER;

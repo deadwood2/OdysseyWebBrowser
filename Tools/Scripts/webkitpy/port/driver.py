@@ -313,11 +313,10 @@ class Driver(object):
     def _setup_environ_for_driver(self, environment):
         environment['DYLD_LIBRARY_PATH'] = self._port._build_path()
         environment['DYLD_FRAMEWORK_PATH'] = self._port._build_path()
-        # Use an isolated temp directory that can be deleted after testing (especially important on Mac, as
-        # CoreMedia disk cache is in the temp directory).
-        environment['TMPDIR'] = str(self._driver_tempdir)
-        environment['DIRHELPER_USER_DIR_SUFFIX'] = os.path.basename(str(self._driver_tempdir))
-        # Put certain normally persistent files into the temp directory (e.g. IndexedDB storage).
+        # FIXME: We're assuming that WebKitTestRunner checks this DumpRenderTree-named environment variable.
+        # FIXME: Commented out for now to avoid tests breaking. Re-enable after
+        # we cut over to NRWT
+        #environment['DUMPRENDERTREE_TEMP'] = str(self._port._driver_tempdir_for_environment())
         environment['DUMPRENDERTREE_TEMP'] = str(self._driver_tempdir)
         environment['LOCAL_RESOURCE_ROOT'] = self._port.layout_tests_dir()
         environment['ASAN_OPTIONS'] = "allocator_may_return_null=1"
@@ -329,9 +328,6 @@ class Driver(object):
 
     def _start(self, pixel_tests, per_test_args):
         self.stop()
-        # Each driver process should be using individual directories under _driver_tempdir (which is deleted when stopping),
-        # however some subsystems on some platforms could end up using process default ones.
-        self._port._clear_global_caches_and_temporary_files()
         self._driver_tempdir = self._port._driver_tempdir()
         server_name = self._port.driver_name()
         environment = self._port.setup_environ_for_server(server_name)
@@ -359,7 +355,6 @@ class Driver(object):
 
         if self._driver_tempdir:
             self._port._filesystem.rmtree(str(self._driver_tempdir))
-            self._port.remove_cache_directory(os.path.basename(str(self._driver_tempdir)))
             self._driver_tempdir = None
 
     def cmd_line(self, pixel_tests, per_test_args):
@@ -427,7 +422,7 @@ class Driver(object):
         # FIXME: performance tests pass in full URLs instead of test names.
         if driver_input.test_name.startswith('http://') or driver_input.test_name.startswith('https://')  or driver_input.test_name == ('about:blank'):
             command = driver_input.test_name
-        elif self.is_web_platform_test(driver_input.test_name) or (self.is_http_test(driver_input.test_name) and (self._port.get_option('webkit_test_runner') or sys.platform == "cygwin")):
+        elif self.is_http_test(driver_input.test_name) or self.is_web_platform_test(driver_input.test_name):
             command = self.test_to_uri(driver_input.test_name)
         else:
             command = self._port.abspath_for_test(driver_input.test_name)

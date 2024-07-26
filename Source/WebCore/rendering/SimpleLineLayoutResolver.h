@@ -61,16 +61,14 @@ public:
         unsigned start() const;
         unsigned end() const;
 
-        FloatRect rect() const;
-        int baselinePosition() const;
+        LayoutRect rect() const;
+        FloatPoint baseline() const;
         StringView text() const;
         bool isEndOfLine() const;
 
         unsigned lineIndex() const;
 
     private:
-        float computeBaselinePosition() const;
-
         const Iterator& m_iterator;
     };
 
@@ -138,7 +136,7 @@ public:
         bool operator==(const Iterator&) const;
         bool operator!=(const Iterator&) const;
 
-        const FloatRect operator*() const;
+        const LayoutRect operator*() const;
 
     private:
         RunResolver::Iterator m_runIterator;
@@ -169,11 +167,6 @@ inline unsigned RunResolver::Run::end() const
     return m_iterator.simpleRun().end;
 }
 
-inline int RunResolver::Run::baselinePosition() const
-{
-    return roundToInt(computeBaselinePosition());
-}
-
 inline bool RunResolver::Run::isEndOfLine() const
 {
     return m_iterator.simpleRun().isEndOfLine;
@@ -187,12 +180,6 @@ inline unsigned RunResolver::Run::lineIndex() const
 inline RunResolver::Iterator& RunResolver::Iterator::operator++()
 {
     return advance();
-}
-
-inline float RunResolver::Run::computeBaselinePosition() const
-{
-    auto& resolver = m_iterator.resolver();
-    return resolver.m_lineHeight * lineIndex() + resolver.m_baseline + resolver.m_borderAndPaddingBefore;
 }
 
 inline RunResolver::Iterator& RunResolver::Iterator::operator--()

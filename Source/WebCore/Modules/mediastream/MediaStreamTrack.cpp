@@ -59,12 +59,12 @@ MediaStreamTrack::MediaStreamTrack(ScriptExecutionContext& context, MediaStreamT
 {
     suspendIfNeeded();
 
-    m_private->addObserver(*this);
+    m_private->setClient(this);
 }
 
 MediaStreamTrack::~MediaStreamTrack()
 {
-    m_private->removeObserver(*this);
+    m_private->setClient(nullptr);
 }
 
 const AtomicString& MediaStreamTrack::kind() const
@@ -190,7 +190,7 @@ void MediaStreamTrack::removeObserver(MediaStreamTrack::Observer* observer)
         m_observers.remove(pos);
 }
 
-void MediaStreamTrack::trackEnded(MediaStreamTrackPrivate&)
+void MediaStreamTrack::trackEnded()
 {
     dispatchEvent(Event::create(eventNames().endedEvent, false, false));
 
@@ -200,16 +200,11 @@ void MediaStreamTrack::trackEnded(MediaStreamTrackPrivate&)
     configureTrackRendering();
 }
     
-void MediaStreamTrack::trackMutedChanged(MediaStreamTrackPrivate&)
+void MediaStreamTrack::trackMutedChanged()
 {
     AtomicString eventType = muted() ? eventNames().muteEvent : eventNames().unmuteEvent;
     dispatchEvent(Event::create(eventType, false, false));
 
-    configureTrackRendering();
-}
-
-void MediaStreamTrack::trackStatesChanged(MediaStreamTrackPrivate&)
-{
     configureTrackRendering();
 }
 
@@ -233,11 +228,6 @@ bool MediaStreamTrack::canSuspendForPageCache() const
 {
     // FIXME: We should try and do better here.
     return false;
-}
-
-AudioSourceProvider* MediaStreamTrack::audioSourceProvider()
-{
-    return m_private->audioSourceProvider();
 }
 
 } // namespace WebCore

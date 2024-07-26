@@ -433,19 +433,11 @@ Object.defineProperty(Array.prototype, "remove",
     }
 });
 
-Object.defineProperty(Array.prototype, "insertAtIndex",
-{
-    value: function(value, index)
-    {
-        this.splice(index, 0, value);
-    }
-});
-
 Object.defineProperty(Array.prototype, "keySet",
 {
     value: function()
     {
-        let keys = Object.create(null);
+        var keys = {};
         for (var i = 0; i < this.length; ++i)
             keys[this[i]] = true;
         return keys;
@@ -596,7 +588,7 @@ Object.defineProperty(String.prototype, "hash",
 {
     get: function()
     {
-        // Matches the wtf/Hasher.h (SuperFastHash) algorithm.
+        // Matches the wtf/StringHasher.h (SuperFastHash) algorithm.
 
         // Arbitrary start value to avoid mapping all 0's to all 0's.
         const stringHashingStartValue = 0x9e3779b9;
@@ -1087,6 +1079,11 @@ function doubleQuotedString(str)
     return "\"" + str.replace(/"/g, "\\\"") + "\"";
 }
 
+function clamp(min, value, max)
+{
+    return Math.min(Math.max(min, value), max);
+}
+
 function insertionIndexForObjectInListSortedByFunction(object, list, comparator, insertionIndexAfter)
 {
     if (insertionIndexAfter) {
@@ -1123,10 +1120,4 @@ function decodeBase64ToBlob(base64Data, mimeType)
     }
 
     return new Blob(byteArrays, {type: mimeType});
-}
-
-// FIXME: This can be removed when WEB_TIMING is enabled for all platforms.
-function timestamp()
-{
-    return window.performance ? performance.now() : Date.now();
 }

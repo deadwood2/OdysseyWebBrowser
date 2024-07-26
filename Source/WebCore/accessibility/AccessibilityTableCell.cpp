@@ -93,24 +93,6 @@ AccessibilityTable* AccessibilityTableCell::parentTable() const
     AccessibilityObject* parentTable = axObjectCache()->get(downcast<RenderTableCell>(*m_renderer).table());
     if (!is<AccessibilityTable>(parentTable))
         return nullptr;
-    
-    // The RenderTableCell's table() object might be anonymous sometimes. We should handle it gracefully
-    // by finding the right table.
-    if (!parentTable->node()) {
-        for (AccessibilityObject* parent = parentObject(); parent; parent = parent->parentObject()) {
-            // If this is a non-anonymous table object, but not an accessibility table, we should stop because
-            // we don't want to choose another ancestor table as this cell's table.
-            if (is<AccessibilityTable>(*parent)) {
-                auto& parentTable = downcast<AccessibilityTable>(*parent);
-                if (parentTable.isExposableThroughAccessibility())
-                    return &parentTable;
-                if (parentTable.node())
-                    break;
-            }
-        }
-        return nullptr;
-    }
-    
     return downcast<AccessibilityTable>(parentTable);
 }
     
@@ -302,25 +284,34 @@ void AccessibilityTableCell::rowHeaders(AccessibilityChildrenVector& headers)
             headers.append(tableCell);
     }
 }
-
-AccessibilityTableRow* AccessibilityTableCell::parentRow() const
-{
-    AccessibilityObject* parent = parentObjectUnignored();
-    if (!is<AccessibilityTableRow>(*parent))
-        return nullptr;
-    return downcast<AccessibilityTableRow>(parent);
-}
-
+    
 void AccessibilityTableCell::rowIndexRange(std::pair<unsigned, unsigned>& rowRange) const
 {
     if (!is<RenderTableCell>(m_renderer))
         return;
     
     RenderTableCell& renderCell = downcast<RenderTableCell>(*m_renderer);
+    rowRange.first = renderCell.rowIndex();
     rowRange.second = renderCell.rowSpan();
     
-    if (AccessibilityTableRow* parentRow = this->parentRow())
-        rowRange.first = parentRow->rowIndex();
+    // since our table might have multiple sections, we have to offset our row appropriately
+    RenderTableSection* section = renderCell.section();
+    RenderTable* table = renderCell.table();
+    if (!table || !section)
+        return;
+
+    RenderTableSection* footerSection = table->footer();
+    unsigned rowOffset = 0;
+    for (RenderTableSection* tableSection = table->topSection(); tableSection; tableSection = table->sectionBelow(tableSection, SkipEmptySections)) {
+        // Don't add row offsets for bottom sections that are placed in before the body section.
+        if (tableSection == footerSection)
+            continue;
+        if (tableSection == section)
+            break;
+        rowOffset += tableSection->numRows();
+    }
+
+    rowRange.first += rowOffset;
 }
     
 void AccessibilityTableCell::columnIndexRange(std::pair<unsigned, unsigned>& columnRange) const

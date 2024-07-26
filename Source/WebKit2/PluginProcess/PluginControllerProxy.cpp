@@ -194,7 +194,7 @@ void PluginControllerProxy::paint()
     if (m_plugin->isTransparent())
         graphicsContext->clearRect(dirtyRect);
 
-    m_plugin->paint(*graphicsContext, dirtyRect);
+    m_plugin->paint(graphicsContext.get(), dirtyRect);
 
     m_connection->connection()->send(Messages::PluginProxy::Update(dirtyRect), m_pluginInstanceID);
 }
@@ -239,11 +239,6 @@ String PluginControllerProxy::userAgent()
 void PluginControllerProxy::loadURL(uint64_t requestID, const String& method, const String& urlString, const String& target, const HTTPHeaderMap& headerFields, const Vector<uint8_t>& httpBody, bool allowPopups)
 {
     m_connection->connection()->send(Messages::PluginProxy::LoadURL(requestID, method, urlString, target, headerFields, httpBody, allowPopups), m_pluginInstanceID);
-}
-
-void PluginControllerProxy::continueStreamLoad(uint64_t streamID)
-{
-    m_connection->connection()->send(Messages::PluginProxy::ContinueStreamLoad(streamID), m_pluginInstanceID);
 }
 
 void PluginControllerProxy::cancelStreamLoad(uint64_t streamID)
@@ -466,11 +461,6 @@ void PluginControllerProxy::updateVisibilityActivity()
 void PluginControllerProxy::didEvaluateJavaScript(uint64_t requestID, const String& result)
 {
     m_plugin->didEvaluateJavaScript(requestID, result);
-}
-
-void PluginControllerProxy::streamWillSendRequest(uint64_t streamID, const String& requestURLString, const String& redirectResponseURLString, uint32_t redirectResponseStatusCode)
-{
-    m_plugin->streamWillSendRequest(streamID, URL(ParsedURLString, requestURLString), URL(ParsedURLString, redirectResponseURLString), redirectResponseStatusCode);
 }
 
 void PluginControllerProxy::streamDidReceiveResponse(uint64_t streamID, const String& responseURLString, uint32_t streamLength, uint32_t lastModifiedTime, const String& mimeType, const String& headers)

@@ -51,7 +51,6 @@
 #import <WebCore/MemoryCache.h>
 #import <WebCore/MemoryPressureHandler.h>
 #import <WebCore/PageCache.h>
-#import <WebCore/pthreadSPI.h>
 #import <WebCore/VNodeTracker.h>
 #import <WebCore/WebCoreNSURLExtras.h>
 #import <WebKitSystemInterface.h>
@@ -214,15 +213,11 @@ void WebProcess::initializeSandbox(const ChildProcessInitializationParameters& p
 #if ENABLE(WEB_PROCESS_SANDBOX)
 #if ENABLE(MANUAL_SANDBOXING)
     // Need to override the default, because service has a different bundle ID.
-#if WK_API_ENABLED
-    NSBundle *webKit2Bundle = [NSBundle bundleForClass:NSClassFromString(@"WKWebView")];
-#else
-    NSBundle *webKit2Bundle = [NSBundle bundleForClass:NSClassFromString(@"WKView")];
-#endif
+    NSBundle *webkit2Bundle = [NSBundle bundleForClass:NSClassFromString(@"WKView")];
 #if PLATFORM(IOS)
-    sandboxParameters.setOverrideSandboxProfilePath([webKit2Bundle pathForResource:@"com.apple.WebKit.WebContent" ofType:@"sb"]);
+    sandboxParameters.setOverrideSandboxProfilePath([webkit2Bundle pathForResource:@"com.apple.WebKit.WebContent" ofType:@"sb"]);
 #else
-    sandboxParameters.setOverrideSandboxProfilePath([webKit2Bundle pathForResource:@"com.apple.WebProcess" ofType:@"sb"]);
+    sandboxParameters.setOverrideSandboxProfilePath([webkit2Bundle pathForResource:@"com.apple.WebProcess" ofType:@"sb"]);
 #endif
     ChildProcess::initializeSandbox(parameters, sandboxParameters);
 #endif
@@ -260,18 +255,13 @@ static NSURL *origin(WebPage& page)
 void WebProcess::updateActivePages()
 {
 #if PLATFORM(MAC)
-    auto activePageURLs = adoptNS([[NSMutableArray alloc] init]);
-
+    RetainPtr<CFMutableArrayRef> activePageURLs = adoptCF(CFArrayCreateMutable(0, 0, &kCFTypeArrayCallBacks));
     for (auto& page : m_pageMap.values()) {
-        if (page->usesEphemeralSession())
-            continue;
-
         if (NSURL *originAsURL = origin(*page))
-            [activePageURLs addObject:userVisibleString(originAsURL)];
+            CFArrayAppendValue(activePageURLs.get(), userVisibleString(originAsURL));
     }
-
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), [activePageURLs] {
-        WKSetApplicationInformationItem(CFSTR("LSActivePageUserVisibleOriginsKey"), (__bridge CFArrayRef)activePageURLs.get());
+        WKSetApplicationInformationItem(CFSTR("LSActivePageUserVisibleOriginsKey"), activePageURLs.get());
     });
 #endif
 }

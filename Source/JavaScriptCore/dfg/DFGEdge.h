@@ -158,9 +158,11 @@ public:
 #endif
         return result;
     }
-
+    
+    typedef void* Edge::*UnspecifiedBoolType;
+    operator UnspecifiedBoolType*() const { return reinterpret_cast<UnspecifiedBoolType*>(isSet()); }
+    
     bool operator!() const { return !isSet(); }
-    explicit operator bool() const { return isSet(); }
     
     bool operator==(Edge other) const
     {

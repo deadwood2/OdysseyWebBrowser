@@ -41,14 +41,17 @@ void prepareCodeOriginForOSRExit(ExecState* exec, CodeOrigin codeOrigin)
     VM& vm = exec->vm();
     DeferGC deferGC(vm.heap);
     
-    for (; codeOrigin.inlineCallFrame; codeOrigin = codeOrigin.inlineCallFrame->directCaller) {
-        CodeBlock* codeBlock = codeOrigin.inlineCallFrame->baselineCodeBlock();
+    for (; codeOrigin.inlineCallFrame; codeOrigin = codeOrigin.inlineCallFrame->caller) {
+        FunctionExecutable* executable =
+            static_cast<FunctionExecutable*>(codeOrigin.inlineCallFrame->executable.get());
+        CodeBlock* codeBlock = executable->baselineCodeBlockFor(
+            codeOrigin.inlineCallFrame->specializationKind());
+        
         if (codeBlock->jitType() == JSC::JITCode::BaselineJIT)
             continue;
-
         ASSERT(codeBlock->jitType() == JSC::JITCode::InterpreterThunk);
         JIT::compile(&vm, codeBlock, JITCompilationMustSucceed);
-        codeBlock->ownerScriptExecutable()->installCode(codeBlock);
+        codeBlock->install();
     }
 }
 

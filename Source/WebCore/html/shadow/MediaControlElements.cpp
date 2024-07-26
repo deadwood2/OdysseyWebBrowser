@@ -56,7 +56,10 @@
 #if ENABLE(VIDEO_TRACK)
 #include "TextTrackList.h"
 #endif
+
+#if ENABLE(WEBVTT_REGIONS)
 #include "VTTRegionList.h"
+#endif
 
 namespace WebCore {
 
@@ -807,21 +810,21 @@ void MediaControlClosedCaptionsTrackListElement::rebuildTrackListMenu()
     CaptionUserPreferences* captionPreferences = document().page()->group().captionPreferences();
     Vector<RefPtr<TextTrack>> tracksForMenu = captionPreferences->sortedTrackListForMenu(trackList);
 
-    Ref<Element> captionsHeader = document().createElement(h3Tag, ASSERT_NO_EXCEPTION);
+    RefPtr<Element> captionsHeader = document().createElement(h3Tag, ASSERT_NO_EXCEPTION);
     captionsHeader->appendChild(document().createTextNode(textTrackSubtitlesText()));
-    appendChild(WTF::move(captionsHeader));
-    Ref<Element> captionsMenuList = document().createElement(ulTag, ASSERT_NO_EXCEPTION);
+    appendChild(captionsHeader);
+    RefPtr<Element> captionsMenuList = document().createElement(ulTag, ASSERT_NO_EXCEPTION);
 
     for (unsigned i = 0, length = tracksForMenu.size(); i < length; ++i) {
         RefPtr<TextTrack> textTrack = tracksForMenu[i];
-        Ref<Element> menuItem = document().createElement(liTag, ASSERT_NO_EXCEPTION);
+        RefPtr<Element> menuItem = document().createElement(liTag, ASSERT_NO_EXCEPTION);
         menuItem->appendChild(document().createTextNode(captionPreferences->displayNameForTrack(textTrack.get())));
-        captionsMenuList->appendChild(menuItem.copyRef());
-        m_menuItems.append(menuItem.ptr());
-        m_menuToTrackMap.add(menuItem.ptr(), textTrack);
+        captionsMenuList->appendChild(menuItem);
+        m_menuItems.append(menuItem);
+        m_menuToTrackMap.add(menuItem, textTrack);
     }
 
-    appendChild(WTF::move(captionsMenuList));
+    appendChild(captionsMenuList);
 #endif
 }
 
@@ -1176,6 +1179,7 @@ void MediaControlTextTrackContainerElement::updateDisplay()
         LOG(Media, "MediaControlTextTrackContainerElement::updateDisplay(%p) - adding and positioning cue #%zu: \"%s\", start=%.2f, end=%.2f, line=%.2f", this, i, cue->text().utf8().data(), cue->startTime(), cue->endTime(), cue->line());
 
         RefPtr<VTTCueBox> displayBox = cue->getDisplayTree(m_videoDisplaySize.size(), m_fontSize);
+#if ENABLE(WEBVTT_REGIONS)
         if (cue->track()->mode() == TextTrack::disabledKeyword())
             continue;
 
@@ -1184,22 +1188,25 @@ void MediaControlTextTrackContainerElement::updateDisplay()
             // If cue has an empty text track cue region identifier or there is no
             // WebVTT region whose region identifier is identical to cue's text
             // track cue region identifier, run the following substeps:
+#endif
             if (displayBox->hasChildNodes() && !contains(displayBox.get())) {
                 // Note: the display tree of a cue is removed when the active flag of the cue is unset.
-                appendChild(*displayBox, ASSERT_NO_EXCEPTION);
+                appendChild(displayBox, ASSERT_NO_EXCEPTION);
                 cue->setFontSize(m_fontSize, m_videoDisplaySize.size(), m_fontSizeIsImportant);
             }
+#if ENABLE(WEBVTT_REGIONS)
         } else {
             // Let region be the WebVTT region whose region identifier
             // matches the text track cue region identifier of cue.
-            Ref<HTMLDivElement> regionNode = region->getDisplayTree();
+            RefPtr<HTMLDivElement> regionNode = region->getDisplayTree();
 
             // Append the region to the viewport, if it was not already.
-            if (!contains(regionNode.ptr()))
+            if (!contains(regionNode.get()))
                 appendChild(region->getDisplayTree());
 
             region->appendTextTrackCueBox(displayBox);
         }
+#endif
     }
 
     // 11. Return output.
@@ -1371,8 +1378,7 @@ RefPtr<Image> MediaControlTextTrackContainerElement::createTextTrackRepresentati
 
     IntRect paintingRect = IntRect(IntPoint(), layer->size());
 
-    // FIXME (149422): This buffer should not be unconditionally unaccelerated.
-    std::unique_ptr<ImageBuffer> buffer(ImageBuffer::create(paintingRect.size(), Unaccelerated, deviceScaleFactor));
+    std::unique_ptr<ImageBuffer> buffer(ImageBuffer::create(paintingRect.size(), deviceScaleFactor, ColorSpaceDeviceRGB));
     if (!buffer)
         return nullptr;
 

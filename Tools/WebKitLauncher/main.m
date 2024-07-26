@@ -47,7 +47,7 @@ int posix_spawnattr_setflags(posix_spawnattr_t *, short) WEAK_IMPORT;
 static void displayErrorAndQuit(NSString *title, NSString *message)
 {
     NSApplicationLoad();
-    NSRunCriticalAlertPanel(title, @"%@", @"Quit", nil, nil, message);
+    NSRunCriticalAlertPanel(title, message, @"Quit", nil, nil);
     exit(0);
 }
 

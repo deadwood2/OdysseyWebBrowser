@@ -151,12 +151,13 @@ MappedFileData::MappedFileData(const String& filePath, bool& success)
         return;
     }
 
-    unsigned size;
-    if (!WTF::convertSafely(fileStat.st_size, size)) {
+    if (fileStat.st_size < 0 || fileStat.st_size > std::numeric_limits<unsigned>::max()) {
         close(fd);
         success = false;
         return;
     }
+
+    unsigned size = static_cast<unsigned>(fileStat.st_size);
 
     if (!size) {
         close(fd);

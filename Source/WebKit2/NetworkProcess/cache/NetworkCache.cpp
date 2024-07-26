@@ -113,7 +113,7 @@ static Key makeCacheKey(const WebCore::ResourceRequest& request)
     // FIXME: This implements minimal Range header disk cache support. We don't parse
     // ranges so only the same exact range request will be served from the cache.
     String range = request.httpHeaderField(WebCore::HTTPHeaderName::Range);
-    return { partition, range, request.url().string() };
+    return { request.httpMethod(), partition, range, request.url().string()  };
 }
 
 static String headerValueForVary(const WebCore::ResourceRequest& request, const String& headerName)
@@ -204,11 +204,6 @@ static bool responseNeedsRevalidation(const WebCore::ResourceResponse& response,
 
 static UseDecision makeUseDecision(const Entry& entry, const WebCore::ResourceRequest& request)
 {
-    // The request is conditional so we force revalidation from the network. We merely check the disk cache
-    // so we can update the cache entry.
-    if (request.isConditional())
-        return UseDecision::Validate;
-
     if (!verifyVaryingRequestHeaders(entry.varyingRequestHeaders(), request))
         return UseDecision::NoDueToVaryingHeaderMismatch;
 
@@ -230,7 +225,10 @@ static RetrieveDecision makeRetrieveDecision(const WebCore::ResourceRequest& req
     // FIXME: Support HEAD requests.
     if (request.httpMethod() != "GET")
         return RetrieveDecision::NoDueToHTTPMethod;
-    if (request.cachePolicy() == WebCore::ReloadIgnoringCacheData && !request.isConditional())
+    // FIXME: We should be able to validate conditional requests using cache.
+    if (request.isConditional())
+        return RetrieveDecision::NoDueToConditionalRequest;
+    if (request.cachePolicy() == WebCore::ReloadIgnoringCacheData)
         return RetrieveDecision::NoDueToReloadIgnoringCache;
 
     return RetrieveDecision::Yes;
@@ -407,17 +405,10 @@ void Cache::store(const WebCore::ResourceRequest& originalRequest, const WebCore
     StoreDecision storeDecision = makeStoreDecision(originalRequest, response);
     if (storeDecision != StoreDecision::Yes) {
         LOG(NetworkCache, "(NetworkProcess) didn't store, storeDecision=%d", storeDecision);
-        auto key = makeCacheKey(originalRequest);
-
-        auto isSuccessfulRevalidation = response.httpStatusCode() == 304;
-        if (!isSuccessfulRevalidation) {
-            // Make sure we don't keep a stale entry in the cache.
-            remove(key);
-        }
-
-        if (m_statistics)
+        if (m_statistics) {
+            auto key = makeCacheKey(originalRequest);
             m_statistics->recordNotCachingResponse(key, storeDecision);
-
+        }
         return;
     }
 
@@ -463,11 +454,6 @@ void Cache::remove(const Key& key)
     m_storage->remove(key);
 }
 
-void Cache::remove(const WebCore::ResourceRequest& request)
-{
-    remove(makeCacheKey(request));
-}
-
 void Cache::traverse(std::function<void (const Entry*)>&& traverseHandler)
 {
     ASSERT(isEnabled());
@@ -496,7 +482,7 @@ void Cache::dumpContentsToFile()
     if (!m_storage)
         return;
     auto fd = WebCore::openFile(dumpFilePath(), WebCore::OpenForWrite);
-    if (!WebCore::isHandleValid(fd))
+    if (!fd)
         return;
     auto prologue = String("{\n\"entries\": [\n").utf8();
     WebCore::writeToFile(fd, prologue.data(), prologue.length());

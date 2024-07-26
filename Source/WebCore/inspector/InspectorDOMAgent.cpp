@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2009 Apple Inc. All rights reserved.
  * Copyright (C) 2011 Google Inc. All rights reserved.
  * Copyright (C) 2009 Joseph Pecoraro
  *
@@ -64,7 +64,6 @@
 #include "HitTestResult.h"
 #include "InspectorHistory.h"
 #include "InspectorNodeFinder.h"
-#include "InspectorOverlay.h"
 #include "InspectorPageAgent.h"
 #include "InstrumentingAgents.h"
 #include "IntRect.h"
@@ -186,8 +185,8 @@ void RevalidateStyleAttributeTask::timerFired()
 {
     // The timer is stopped on m_domAgent destruction, so this method will never be called after m_domAgent has been destroyed.
     Vector<Element*> elements;
-    for (auto& element : m_elements)
-        elements.append(element.get());
+    for (HashSet<RefPtr<Element>>::iterator it = m_elements.begin(), end = m_elements.end(); it != end; ++it)
+        elements.append(it->get());
     m_domAgent->styleAttributeInvalidated(elements);
 
     m_elements.clear();
@@ -202,13 +201,17 @@ String InspectorDOMAgent::toErrorString(const ExceptionCode& ec)
     return "";
 }
 
-InspectorDOMAgent::InspectorDOMAgent(WebAgentContext& context, InspectorPageAgent* pageAgent, InspectorOverlay* overlay)
-    : InspectorAgentBase(ASCIILiteral("DOM"), context)
-    , m_injectedScriptManager(context.injectedScriptManager)
-    , m_frontendDispatcher(std::make_unique<Inspector::DOMFrontendDispatcher>(context.frontendRouter))
-    , m_backendDispatcher(Inspector::DOMBackendDispatcher::create(context.backendDispatcher, this))
+InspectorDOMAgent::InspectorDOMAgent(InstrumentingAgents* instrumentingAgents, InspectorPageAgent* pageAgent, InjectedScriptManager* injectedScriptManager, InspectorOverlay* overlay)
+    : InspectorAgentBase(ASCIILiteral("DOM"), instrumentingAgents)
     , m_pageAgent(pageAgent)
+    , m_injectedScriptManager(injectedScriptManager)
     , m_overlay(overlay)
+    , m_domListener(0)
+    , m_lastNodeId(1)
+    , m_lastBackendNodeId(-1)
+    , m_searchingForNode(false)
+    , m_suppressAttributeModifiedEvent(false)
+    , m_documentRequested(false)
 {
 }
 
@@ -218,13 +221,16 @@ InspectorDOMAgent::~InspectorDOMAgent()
     ASSERT(!m_searchingForNode);
 }
 
-void InspectorDOMAgent::didCreateFrontendAndBackend(Inspector::FrontendRouter*, Inspector::BackendDispatcher*)
+void InspectorDOMAgent::didCreateFrontendAndBackend(Inspector::FrontendChannel* frontendChannel, Inspector::BackendDispatcher* backendDispatcher)
 {
+    m_frontendDispatcher = std::make_unique<Inspector::DOMFrontendDispatcher>(frontendChannel);
+    m_backendDispatcher = Inspector::DOMBackendDispatcher::create(backendDispatcher, this);
+
     m_history = std::make_unique<InspectorHistory>();
     m_domEditor = std::make_unique<DOMEditor>(m_history.get());
 
-    m_instrumentingAgents.setInspectorDOMAgent(this);
-    m_document = m_pageAgent->mainFrame().document();
+    m_instrumentingAgents->setInspectorDOMAgent(this);
+    m_document = m_pageAgent->mainFrame()->document();
 
     if (m_nodeToFocus)
         focusNode();
@@ -232,6 +238,9 @@ void InspectorDOMAgent::didCreateFrontendAndBackend(Inspector::FrontendRouter*, 
 
 void InspectorDOMAgent::willDestroyFrontendAndBackend(Inspector::DisconnectReason)
 {
+    m_frontendDispatcher = nullptr;
+    m_backendDispatcher = nullptr;
+
     m_history.reset();
     m_domEditor.reset();
 
@@ -239,7 +248,7 @@ void InspectorDOMAgent::willDestroyFrontendAndBackend(Inspector::DisconnectReaso
     setSearchingForNode(unused, false, 0);
     hideHighlight(unused);
 
-    m_instrumentingAgents.setInspectorDOMAgent(0);
+    m_instrumentingAgents->setInspectorDOMAgent(0);
     m_documentRequested = false;
     reset();
 }
@@ -631,8 +640,8 @@ void InspectorDOMAgent::releaseBackendNodeIds(ErrorString& errorString, const St
 {
     if (m_nodeGroupToBackendIdMap.contains(nodeGroup)) {
         NodeToBackendIdMap& map = m_nodeGroupToBackendIdMap.find(nodeGroup)->value;
-        for (auto& backendId : map.values())
-            m_backendIdToNode.remove(backendId);
+        for (NodeToBackendIdMap::iterator it = map.begin(); it != map.end(); ++it)
+            m_backendIdToNode.remove(it->value);
         m_nodeGroupToBackendIdMap.remove(nodeGroup);
         return;
     }
@@ -813,8 +822,11 @@ void InspectorDOMAgent::getEventListenersForNode(ErrorString& errorString, int n
 
     // Get Capturing Listeners (in this order)
     size_t eventInformationLength = eventInformation.size();
-    for (auto& info : eventInformation) {
-        for (auto& listener : info.eventListenerVector) {
+    for (size_t i = 0; i < eventInformationLength; ++i) {
+        const EventListenerInfo& info = eventInformation[i];
+        const EventListenerVector& vector = info.eventListenerVector;
+        for (size_t j = 0; j < vector.size(); ++j) {
+            const RegisteredEventListener& listener = vector[j];
             if (listener.useCapture)
                 listenersArray->addItem(buildObjectForEventListener(listener, info.eventType, info.node, objectGroup));
         }
@@ -823,7 +835,9 @@ void InspectorDOMAgent::getEventListenersForNode(ErrorString& errorString, int n
     // Get Bubbling Listeners (reverse order)
     for (size_t i = eventInformationLength; i; --i) {
         const EventListenerInfo& info = eventInformation[i - 1];
-        for (auto& listener : info.eventListenerVector) {
+        const EventListenerVector& vector = info.eventListenerVector;
+        for (size_t j = 0; j < vector.size(); ++j) {
+            const RegisteredEventListener& listener = vector[j];
             if (!listener.useCapture)
                 listenersArray->addItem(buildObjectForEventListener(listener, info.eventType, info.node, objectGroup));
         }
@@ -848,13 +862,15 @@ void InspectorDOMAgent::getEventListeners(Node* node, Vector<EventListenerInfo>&
         if (!d)
             continue;
         // Get the list of event types this Node is concerned with
-        for (auto& type : d->eventListenerMap.eventTypes()) {
+        Vector<AtomicString> eventTypes = d->eventListenerMap.eventTypes();
+        for (size_t j = 0; j < eventTypes.size(); ++j) {
+            AtomicString& type = eventTypes[j];
             const EventListenerVector& listeners = ancestor->getEventListeners(type);
             EventListenerVector filteredListeners;
             filteredListeners.reserveCapacity(listeners.size());
-            for (auto& listener : listeners) {
-                if (listener.listener->type() == EventListener::JSEventListenerType)
-                    filteredListeners.append(listener);
+            for (size_t k = 0; k < listeners.size(); ++k) {
+                if (listeners[k].listener->type() == EventListener::JSEventListenerType)
+                    filteredListeners.append(listeners[k]);
             }
             if (!filteredListeners.isEmpty())
                 eventInformation.append(EventListenerInfo(ancestor, type, filteredListeners));
@@ -877,7 +893,8 @@ void InspectorDOMAgent::performSearch(ErrorString& errorString, const String& wh
     InspectorNodeFinder finder(whitespaceTrimmedQuery);
 
     if (nodeIds) {
-        for (auto& nodeValue : *nodeIds) {
+        for (unsigned i = 0; i < nodeIds->length(); ++i) {
+            RefPtr<InspectorValue> nodeValue = nodeIds->get(i);
             if (!nodeValue) {
                 errorString = ASCIILiteral("Invalid nodeIds item.");
                 return;
@@ -904,8 +921,8 @@ void InspectorDOMAgent::performSearch(ErrorString& errorString, const String& wh
     *searchId = IdentifiersFactory::createIdentifier();
 
     auto& resultsVector = m_searchResults.add(*searchId, Vector<RefPtr<Node>>()).iterator->value;
-    for (auto& result : finder.results())
-        resultsVector.append(result);
+    for (auto iterator = finder.results().begin(); iterator != finder.results().end(); ++iterator)
+        resultsVector.append(*iterator);
 
     *resultCount = resultsVector.size();
 }
@@ -989,7 +1006,7 @@ void InspectorDOMAgent::focusNode()
         return;
 
     JSC::ExecState* scriptState = mainWorldExecState(frame);
-    InjectedScript injectedScript = m_injectedScriptManager.injectedScriptFor(scriptState);
+    InjectedScript injectedScript = m_injectedScriptManager->injectedScriptFor(scriptState);
     if (injectedScript.hasNoValue())
         return;
 
@@ -1104,15 +1121,15 @@ void InspectorDOMAgent::highlightSelector(ErrorString& errorString, const Inspec
     if (!highlightConfig)
         return;
 
-    m_overlay->highlightNodeList(WTF::move(nodes), *highlightConfig);
+    m_overlay->highlightNodeList(nodes, *highlightConfig);
 }
 
 void InspectorDOMAgent::highlightNode(ErrorString& errorString, const InspectorObject& highlightInspectorObject, const int* nodeId, const String* objectId)
 {
-    Node* node = nullptr;
-    if (nodeId)
+    Node* node = 0;
+    if (nodeId) {
         node = assertNode(errorString, *nodeId);
-    else if (objectId) {
+    } else if (objectId) {
         node = nodeForObjectId(*objectId);
         if (!node)
             errorString = ASCIILiteral("Node for given objectId not found");
@@ -1129,13 +1146,10 @@ void InspectorDOMAgent::highlightNode(ErrorString& errorString, const InspectorO
     m_overlay->highlightNode(node, *highlightConfig);
 }
 
-void InspectorDOMAgent::highlightFrame(ErrorString& errorString, const String& frameId, const InspectorObject* color, const InspectorObject* outlineColor)
+void InspectorDOMAgent::highlightFrame(ErrorString&, const String& frameId, const InspectorObject* color, const InspectorObject* outlineColor)
 {
-    Frame* frame = m_pageAgent->assertFrame(errorString, frameId);
-    if (!frame)
-        return;
-
-    if (frame->ownerElement()) {
+    Frame* frame = m_pageAgent->frameForId(frameId);
+    if (frame && frame->ownerElement()) {
         auto highlightConfig = std::make_unique<HighlightConfig>();
         highlightConfig->showInfo = true; // Always show tooltips for frames.
         highlightConfig->content = parseColor(color);
@@ -1468,7 +1482,7 @@ Ref<Inspector::Protocol::DOM::EventListener> InspectorDOMAgent::buildObjectForEv
         .setHandlerBody(body)
         .release();
     if (objectGroupId && handler && state) {
-        InjectedScript injectedScript = m_injectedScriptManager.injectedScriptFor(state);
+        InjectedScript injectedScript = m_injectedScriptManager->injectedScriptFor(state);
         if (!injectedScript.hasNoValue())
             value->setHandler(injectedScript.wrapObject(Deprecated::ScriptValue(state->vm(), handler), *objectGroupId));
     }
@@ -1515,7 +1529,6 @@ RefPtr<Inspector::Protocol::DOM::AccessibilityProperties> InspectorDOMAgent::bui
     auto checked = Inspector::Protocol::DOM::AccessibilityProperties::Checked::False;
     RefPtr<Inspector::Protocol::Array<int>> childNodeIds;
     RefPtr<Inspector::Protocol::Array<int>> controlledNodeIds;
-    auto currentState = Inspector::Protocol::DOM::AccessibilityProperties::Current::False;
     bool exists = false;
     bool expanded = false;
     bool disabled = false;
@@ -1579,31 +1592,6 @@ RefPtr<Inspector::Protocol::DOM::AccessibilityProperties> InspectorDOMAgent::bui
                     for (Element* controlledElement : controlledElements)
                         controlledNodeIds->addItem(pushNodePathToFrontend(controlledElement));
                 }
-            }
-            
-            switch (axObject->ariaCurrentState()) {
-            case ARIACurrentFalse:
-                currentState = Inspector::Protocol::DOM::AccessibilityProperties::Current::False;
-                break;
-            case ARIACurrentPage:
-                currentState = Inspector::Protocol::DOM::AccessibilityProperties::Current::Page;
-                break;
-            case ARIACurrentStep:
-                currentState = Inspector::Protocol::DOM::AccessibilityProperties::Current::Step;
-                break;
-            case ARIACurrentLocation:
-                currentState = Inspector::Protocol::DOM::AccessibilityProperties::Current::Location;
-                break;
-            case ARIACurrentDate:
-                currentState = Inspector::Protocol::DOM::AccessibilityProperties::Current::Date;
-                break;
-            case ARIACurrentTime:
-                currentState = Inspector::Protocol::DOM::AccessibilityProperties::Current::Time;
-                break;
-            default:
-            case ARIACurrentTrue:
-                currentState = Inspector::Protocol::DOM::AccessibilityProperties::Current::True;
-                break;
             }
 
             disabled = !axObject->isEnabled(); 
@@ -1742,8 +1730,6 @@ RefPtr<Inspector::Protocol::DOM::AccessibilityProperties> InspectorDOMAgent::bui
             value->setChildNodeIds(childNodeIds);
         if (controlledNodeIds)
             value->setControlledNodeIds(controlledNodeIds);
-        if (currentState != Inspector::Protocol::DOM::AccessibilityProperties::Current::False)
-            value->setCurrent(currentState);
         if (disabled)
             value->setDisabled(disabled);
         if (supportsExpanded)
@@ -1955,7 +1941,8 @@ void InspectorDOMAgent::didRemoveDOMAttr(Element& element, const AtomicString& n
 void InspectorDOMAgent::styleAttributeInvalidated(const Vector<Element*>& elements)
 {
     auto nodeIds = Inspector::Protocol::Array<int>::create();
-    for (auto& element : elements) {
+    for (unsigned i = 0, size = elements.size(); i < size; ++i) {
+        Element* element = elements.at(i);
         int id = boundNodeId(element);
         // If node is not mapped yet -> ignore the event.
         if (!id)
@@ -2085,7 +2072,7 @@ Node* InspectorDOMAgent::nodeForPath(const String& path)
 
 Node* InspectorDOMAgent::nodeForObjectId(const String& objectId)
 {
-    InjectedScript injectedScript = m_injectedScriptManager.injectedScriptForObjectId(objectId);
+    InjectedScript injectedScript = m_injectedScriptManager->injectedScriptForObjectId(objectId);
     if (injectedScript.hasNoValue())
         return nullptr;
 
@@ -2125,7 +2112,7 @@ RefPtr<Inspector::Protocol::Runtime::RemoteObject> InspectorDOMAgent::resolveNod
         return 0;
 
     JSC::ExecState* scriptState = mainWorldExecState(frame);
-    InjectedScript injectedScript = m_injectedScriptManager.injectedScriptFor(scriptState);
+    InjectedScript injectedScript = m_injectedScriptManager->injectedScriptFor(scriptState);
     if (injectedScript.hasNoValue())
         return 0;
 

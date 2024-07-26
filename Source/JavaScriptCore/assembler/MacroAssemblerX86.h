@@ -345,6 +345,15 @@ public:
         X86Assembler::revertJumpTo_cmpl_im_force32(instructionStart.executableAddress(), initialValue, 0, address.base);
     }
 
+private:
+    friend class LinkBuffer;
+    friend class RepatchBuffer;
+
+    static void linkCall(void* code, Call call, FunctionPtr function)
+    {
+        X86Assembler::linkCall(code, call.m_label, function.value());
+    }
+
     static void repatchCall(CodeLocationCall call, CodeLocationLabel destination)
     {
         X86Assembler::relinkCall(call.dataLocation(), destination.executableAddress());
@@ -353,18 +362,6 @@ public:
     static void repatchCall(CodeLocationCall call, FunctionPtr destination)
     {
         X86Assembler::relinkCall(call.dataLocation(), destination.executableAddress());
-    }
-
-private:
-    friend class LinkBuffer;
-    friend class RepatchBuffer;
-
-    static void linkCall(void* code, Call call, FunctionPtr function)
-    {
-        if (call.isFlagSet(Call::Tail))
-            X86Assembler::linkJump(code, call.m_label, function.value());
-        else
-            X86Assembler::linkCall(code, call.m_label, function.value());
     }
 };
 

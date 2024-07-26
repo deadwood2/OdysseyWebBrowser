@@ -69,15 +69,6 @@ typedef WKDataRef (*WKPageNavigationCopyWebCryptoMasterKeyCallback)(WKPageRef pa
     
 typedef WKPluginLoadPolicy (*WKPageNavigationDecidePolicyForPluginLoadCallback)(WKPageRef page, WKPluginLoadPolicy currentPluginLoadPolicy, WKDictionaryRef pluginInfoDictionary, WKStringRef* unavailabilityDescription, const void* clientInfo);
 
-typedef void (*WKPageNavigationDidBeginNavigationGesture)(WKPageRef page, const void* clientInfo);
-
-typedef void (*WKPageNavigationWillEndNavigationGesture)(WKPageRef page, WKBackForwardListItemRef backForwardListItem, const void* clientInfo);
-
-typedef void (*WKPageNavigationDidEndNavigationGesture)(WKPageRef page, WKBackForwardListItemRef backForwardListItem, const void* clientInfo);
-
-typedef void (*WKPageNavigationDidRemoveNavigationGestureSnapshot)(WKPageRef page, const void* clientInfo);
-
-
 typedef struct WKPageNavigationClientBase {
     int version;
     const void* clientInfo;
@@ -104,12 +95,8 @@ typedef struct WKPageNavigationClientV0 {
     WKPageNavigationDidReceiveAuthenticationChallengeCallback didReceiveAuthenticationChallenge;
     WKPageNavigationWebProcessDidCrashCallback webProcessDidCrash;
     WKPageNavigationCopyWebCryptoMasterKeyCallback copyWebCryptoMasterKey;
-
-    WKPageNavigationDidBeginNavigationGesture didBeginNavigationGesture;
-    WKPageNavigationWillEndNavigationGesture willEndNavigationGesture;
-    WKPageNavigationDidEndNavigationGesture didEndNavigationGesture;
-    WKPageNavigationDidRemoveNavigationGestureSnapshot didRemoveNavigationGestureSnapshot;
 } WKPageNavigationClientV0;
+
 
 #ifdef __cplusplus
 }

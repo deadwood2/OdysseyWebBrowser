@@ -34,6 +34,10 @@
 #include <WebCore/EditorClient.h>
 #include <wtf/Forward.h>
 
+#if USE(GSTREAMER)
+#include <WebCore/GUniquePtrGStreamer.h>
+#endif
+
 #if PLATFORM(COCOA)
 #include "PluginComplexTextInputState.h"
 
@@ -49,8 +53,6 @@ namespace WebCore {
 class Cursor;
 class TextIndicator;
 class WebMediaSessionManager;
-enum class TextIndicatorWindowLifetime : uint8_t;
-enum class TextIndicatorWindowDismissalAnimation : uint8_t;
 struct Highlight;
 struct ViewportAttributes;
 }
@@ -75,10 +77,6 @@ class WebColorPicker;
 
 #if ENABLE(FULLSCREEN_API)
 class WebFullScreenManagerProxyClient;
-#endif
-
-#if USE(GSTREAMER)
-class InstallMissingMediaPluginsPermissionRequest;
 #endif
 
 #if PLATFORM(COCOA)
@@ -226,11 +224,9 @@ public:
     virtual RefPtr<WebColorPicker> createColorPicker(WebPageProxy*, const WebCore::Color& initialColor, const WebCore::IntRect&) = 0;
 #endif
 
-#if PLATFORM(COCOA)
-    virtual void setTextIndicator(Ref<WebCore::TextIndicator>, WebCore::TextIndicatorWindowLifetime) = 0;
-    virtual void clearTextIndicator(WebCore::TextIndicatorWindowDismissalAnimation) = 0;
+    virtual void setTextIndicator(Ref<WebCore::TextIndicator>, WebCore::TextIndicatorLifetime = WebCore::TextIndicatorLifetime::Permanent) = 0;
+    virtual void clearTextIndicator(WebCore::TextIndicatorDismissalAnimation = WebCore::TextIndicatorDismissalAnimation::FadeOut) = 0;
     virtual void setTextIndicatorAnimationProgress(float) = 0;
-#endif
 
     virtual void enterAcceleratedCompositingMode(const LayerTreeContext&) = 0;
     virtual void exitAcceleratedCompositingMode() = 0;
@@ -239,7 +235,7 @@ public:
 #if PLATFORM(MAC)
     virtual void pluginFocusOrWindowFocusChanged(uint64_t pluginComplexTextInputIdentifier, bool pluginHasFocusAndWindowHasFocus) = 0;
     virtual void setPluginComplexTextInputState(uint64_t pluginComplexTextInputIdentifier, PluginComplexTextInputState) = 0;
-    virtual void didPerformDictionaryLookup(const WebCore::DictionaryPopupInfo&) = 0;
+    virtual void didPerformDictionaryLookup(const DictionaryPopupInfo&) = 0;
     virtual void dismissContentRelativeChildWindows(bool withAnimation = true) = 0;
     virtual void showCorrectionPanel(WebCore::AlternativeTextType, const WebCore::FloatRect& boundingBoxOfReplacedString, const String& replacedString, const String& replacementString, const Vector<String>& alternativeReplacementStrings) = 0;
     virtual void dismissCorrectionPanel(WebCore::ReasonForDismissingAlternativeText) = 0;
@@ -321,7 +317,6 @@ public:
     virtual void navigationGestureDidEnd(bool willNavigate, WebBackForwardListItem&) = 0;
     virtual void navigationGestureDidEnd() = 0;
     virtual void willRecordNavigationSnapshot(WebBackForwardListItem&) = 0;
-    virtual void didRemoveNavigationGestureSnapshot() = 0;
 
     virtual void didFirstVisuallyNonEmptyLayoutForMainFrame() = 0;
     virtual void didFinishLoadForMainFrame() = 0;
@@ -338,11 +333,15 @@ public:
     virtual WebCore::WebMediaSessionManager& mediaSessionManager() = 0;
 #endif
 
+#if ENABLE(VIDEO)
+    virtual void mediaDocumentNaturalSizeChanged(const WebCore::IntSize&) = 0;
+#endif
+
     virtual void refView() = 0;
     virtual void derefView() = 0;
 
 #if USE(GSTREAMER)
-    virtual bool decicePolicyForInstallMissingMediaPluginsPermissionRequest(InstallMissingMediaPluginsPermissionRequest&) = 0;
+    virtual GUniquePtr<GstInstallPluginsContext> createGstInstallPluginsContext() = 0;
 #endif
 };
 

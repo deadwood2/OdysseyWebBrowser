@@ -60,13 +60,12 @@
 #import "WKWebProcessPlugInScriptWorldInternal.h"
 #import "WKWebsiteDataRecordInternal.h"
 #import "WKWebsiteDataStoreInternal.h"
-#import "WKWindowFeaturesInternal.h"
 #import "_WKDownloadInternal.h"
 #import "_WKFrameHandleInternal.h"
 #import "_WKProcessPoolConfigurationInternal.h"
 #import "_WKUserContentExtensionStoreInternal.h"
 #import "_WKUserContentFilterInternal.h"
-#import "_WKVisitedLinkStoreInternal.h"
+#import "_WKVisitedLinkProviderInternal.h"
 #import <objc/objc-auto.h>
 
 namespace API {
@@ -206,8 +205,8 @@ void* Object::newObject(size_t size, Type type)
         wrapper = [WKUserScript alloc];
         break;
 
-    case Type::VisitedLinkStore:
-        wrapper = [_WKVisitedLinkStore alloc];
+    case Type::VisitedLinkProvider:
+        wrapper = [_WKVisitedLinkProvider alloc];
         break;
 
     case Type::WebsiteDataRecord:
@@ -216,10 +215,6 @@ void* Object::newObject(size_t size, Type type)
 
     case Type::WebsiteDataStore:
         wrapper = [WKWebsiteDataStore alloc];
-        break;
-
-    case Type::WindowFeatures:
-        wrapper = [WKWindowFeatures alloc];
         break;
 
     case Type::BundleFrame:

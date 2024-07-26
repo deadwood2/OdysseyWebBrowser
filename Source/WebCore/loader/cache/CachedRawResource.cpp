@@ -138,16 +138,8 @@ void CachedRawResource::didAddClient(CachedResourceClient* c)
     }
     ASSERT(redirectCount == m_redirectChain.size());
 
-    if (!m_response.isNull()) {
-        ResourceResponse response(m_response);
-        if (validationCompleting())
-            response.setSource(ResourceResponse::Source::MemoryCacheAfterValidation);
-        else {
-            ASSERT(!validationInProgress());
-            response.setSource(ResourceResponse::Source::MemoryCache);
-        }
-        client->responseReceived(this, response);
-    }
+    if (!m_response.isNull())
+        client->responseReceived(this, m_response);
     if (!hasClient(c))
         return;
     if (m_data)

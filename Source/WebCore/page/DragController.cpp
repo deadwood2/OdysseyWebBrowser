@@ -138,7 +138,7 @@ static PassRefPtr<DocumentFragment> documentFragmentFromDragData(DragData& dragD
             String title;
             String url = dragData.asURL(DragData::DoNotConvertFilenames, &title);
             if (!url.isEmpty()) {
-                Ref<HTMLAnchorElement> anchor = HTMLAnchorElement::create(document);
+                RefPtr<HTMLAnchorElement> anchor = HTMLAnchorElement::create(document);
                 anchor->setHref(url);
                 if (title.isEmpty()) {
                     // Try the plain text first because the url might be normalized or escaped.
@@ -147,19 +147,20 @@ static PassRefPtr<DocumentFragment> documentFragmentFromDragData(DragData& dragD
                     if (title.isEmpty())
                         title = url;
                 }
-                anchor->appendChild(document.createTextNode(title), IGNORE_EXCEPTION);
-                Ref<DocumentFragment> fragment = document.createDocumentFragment();
-                fragment->appendChild(WTF::move(anchor), IGNORE_EXCEPTION);
-                return fragment.ptr();
+                RefPtr<Node> anchorText = document.createTextNode(title);
+                anchor->appendChild(anchorText, IGNORE_EXCEPTION);
+                RefPtr<DocumentFragment> fragment = document.createDocumentFragment();
+                fragment->appendChild(anchor, IGNORE_EXCEPTION);
+                return fragment.get();
             }
         }
     }
     if (allowPlainText && dragData.containsPlainText()) {
         chosePlainText = true;
-        return createFragmentFromText(context, dragData.asPlainText()).ptr();
+        return createFragmentFromText(context, dragData.asPlainText()).get();
     }
 
-    return nullptr;
+    return 0;
 }
 
 bool DragController::dragIsMove(FrameSelection& selection, DragData& dragData)
@@ -289,7 +290,7 @@ static HTMLInputElement* asFileInput(Node* node)
 
     // If this is a button inside of the a file input, move up to the file input.
     if (inputElement && inputElement->isTextButton() && is<ShadowRoot>(inputElement->treeScope().rootNode()))
-        inputElement = downcast<ShadowRoot>(inputElement->treeScope().rootNode()).host()->toInputElement();
+        inputElement = downcast<ShadowRoot>(inputElement->treeScope().rootNode()).hostElement()->toInputElement();
 
     return inputElement && inputElement->isFileUpload() ? inputElement : 0;
 }

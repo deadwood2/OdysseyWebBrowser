@@ -26,7 +26,6 @@
 #ifndef FontFeatureSettings_h
 #define FontFeatureSettings_h
 
-#include <array>
 #include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
@@ -35,55 +34,32 @@
 
 namespace WebCore {
 
-typedef std::array<char, 4> FontFeatureTag;
-
-inline FontFeatureTag fontFeatureTag(const char arr[4]) { return {{ arr[0], arr[1], arr[2], arr[3] }}; }
-
-struct FontFeatureTagHash {
-    static unsigned hash(const FontFeatureTag& characters) { return (characters[0] << 24) | (characters[1] << 16) | (characters[2] << 8) | characters[3]; }
-    static bool equal(const FontFeatureTag& a, const FontFeatureTag& b) { return a == b; }
-    static const bool safeToCompareToEmptyOrDeleted = true;
-};
-
-struct FontFeatureTagHashTraits : WTF::GenericHashTraits<FontFeatureTag> {
-    static const bool emptyValueIsZero = true;
-    static void constructDeletedValue(FontFeatureTag& slot) { new (NotNull, std::addressof(slot)) FontFeatureTag({{ -1, -1, -1, -1 }}); }
-    static bool isDeletedValue(const FontFeatureTag& value) { return value == FontFeatureTag({{ -1, -1, -1, -1 }}); }
-};
-
 class FontFeature {
 public:
-    FontFeature() = delete;
-    FontFeature(const FontFeatureTag&, int value);
-    FontFeature(FontFeatureTag&&, int value);
+    FontFeature(const AtomicString& tag, int value);
+    bool operator==(const FontFeature&);
 
-    bool operator==(const FontFeature& other) const;
-    bool operator<(const FontFeature& other) const;
-
-    const FontFeatureTag& tag() const { return m_tag; }
+    const AtomicString& tag() const { return m_tag; }
     int value() const { return m_value; }
-    bool enabled() const { return value(); }
 
 private:
-    FontFeatureTag m_tag;
-    int m_value;
+    AtomicString m_tag;
+    const int m_value;
 };
 
-class FontFeatureSettings {
+class FontFeatureSettings : public RefCounted<FontFeatureSettings> {
 public:
-    void insert(FontFeature&&);
-    bool operator==(const FontFeatureSettings& other) const { return m_list == other.m_list; }
-
+    static Ref<FontFeatureSettings> create()
+    {
+        return adoptRef(*new FontFeatureSettings);
+    }
+    void append(const FontFeature& feature) { m_list.append(feature); }
     size_t size() const { return m_list.size(); }
     const FontFeature& operator[](int index) const { return m_list[index]; }
     const FontFeature& at(size_t index) const { return m_list.at(index); }
 
-    Vector<FontFeature>::const_iterator begin() const { return m_list.begin(); }
-    Vector<FontFeature>::const_iterator end() const { return m_list.end(); }
-
-    unsigned hash() const;
-
 private:
+    FontFeatureSettings();
     Vector<FontFeature> m_list;
 };
 

@@ -30,7 +30,6 @@
 
 #include "AudioDestinationConsumer.h"
 #include "RealtimeMediaSource.h"
-#include <wtf/Lock.h>
 #include <wtf/RefCounted.h>
 #include <wtf/ThreadingPrimitives.h>
 #include <wtf/Vector.h>
@@ -47,8 +46,10 @@ public:
 
     ~MediaStreamAudioSource() { }
 
-    RefPtr<RealtimeMediaSourceCapabilities> capabilities() const override;
-    const RealtimeMediaSourceStates& states() override;
+    virtual bool useIDForTrackID() const { return true; }
+
+    virtual RefPtr<RealtimeMediaSourceCapabilities> capabilities() const;
+    virtual const RealtimeMediaSourceStates& states();
     
     const String& deviceId() const { return m_deviceId; }
     void setDeviceId(const String& deviceId) { m_deviceId = deviceId; }
@@ -63,10 +64,8 @@ public:
 private:
     MediaStreamAudioSource();
 
-    AudioSourceProvider* audioSourceProvider() override;
-
     String m_deviceId;
-    Lock m_audioConsumersLock;
+    Mutex m_audioConsumersLock;
     Vector<RefPtr<AudioDestinationConsumer>> m_audioConsumers;
     RealtimeMediaSourceStates m_currentStates;
 };

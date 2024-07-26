@@ -92,7 +92,7 @@ FontCache& FontCache::singleton()
 }
 
 FontCache::FontCache()
-    : m_purgeTimer(*this, &FontCache::purgeInactiveFontDataIfNeeded)
+    : m_purgeTimer(*this, &FontCache::purgeTimerFired)
 {
 }
 
@@ -105,11 +105,8 @@ public:
         , m_family(family)
     { }
 
-    explicit FontPlatformDataCacheKey(HashTableDeletedValueType t)
-        : m_fontDescriptionKey(t)
-    { }
-
-    bool isHashTableDeletedValue() const { return m_fontDescriptionKey.isHashTableDeletedValue(); }
+    FontPlatformDataCacheKey(HashTableDeletedValueType) : m_fontDescriptionKey(hashTableDeletedSize()) { }
+    bool isHashTableDeletedValue() const { return m_fontDescriptionKey.size == hashTableDeletedSize(); }
 
     bool operator==(const FontPlatformDataCacheKey& other) const
     {
@@ -118,6 +115,9 @@ public:
 
     FontDescriptionKey m_fontDescriptionKey;
     AtomicString m_family;
+
+private:
+    static unsigned hashTableDeletedSize() { return 0xFFFFFFFFU; }
 };
 
 struct FontPlatformDataCacheKeyHash {
@@ -395,6 +395,11 @@ Ref<Font> FontCache::fontForPlatformData(const FontPlatformData& platformData)
     return *addResult.iterator->value;
 }
 
+void FontCache::purgeTimerFired()
+{
+    purgeInactiveFontDataIfNeeded();
+}
+
 void FontCache::purgeInactiveFontDataIfNeeded()
 {
     bool underMemoryPressure = MemoryPressureHandler::singleton().isUnderMemoryPressure();
@@ -467,8 +472,6 @@ void FontCache::purgeInactiveFontData(unsigned purgeCount)
             fontVerticalDataCache.remove(key);
     }
 #endif
-
-    platformPurgeInactiveFontData();
 }
 
 size_t FontCache::fontCount()
@@ -539,7 +542,7 @@ void FontCache::invalidate()
 }
 
 #if !PLATFORM(COCOA)
-RefPtr<Font> FontCache::similarFont(const FontDescription&, const AtomicString&)
+RefPtr<Font> FontCache::similarFont(const FontDescription&)
 {
     return nullptr;
 }

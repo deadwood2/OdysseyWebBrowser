@@ -66,11 +66,11 @@ RefPtr<Font> CachedSVGFont::createFont(const FontDescription& fontDescription, c
     return nullptr;
 }
 
-FontPlatformData CachedSVGFont::platformDataFromCustomData(const FontDescription& fontDescription, bool bold, bool italic)
+FontPlatformData CachedSVGFont::platformDataFromCustomData(float size, bool bold, bool italic, FontOrientation orientation, FontWidthVariant widthVariant, FontRenderingMode renderingMode)
 {
     if (m_externalSVGDocument)
-        return FontPlatformData(fontDescription.computedPixelSize(), bold, italic);
-    return CachedFont::platformDataFromCustomData(fontDescription, bold, italic);
+        return FontPlatformData(size, bold, italic);
+    return CachedFont::platformDataFromCustomData(size, bold, italic, orientation, widthVariant, renderingMode);
 }
 
 bool CachedSVGFont::ensureCustomFontData(bool externalSVG, const AtomicString& remoteURI)

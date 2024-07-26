@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008, 2009, 2012-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2008, 2009, 2012, 2013, 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,7 +29,6 @@
 #include "ClassInfo.h"
 #include "ConcurrentJITLock.h"
 #include "IndexingType.h"
-#include "InferredTypeTable.h"
 #include "JSCJSValue.h"
 #include "JSCell.h"
 #include "JSType.h"
@@ -81,14 +80,12 @@ static const unsigned outOfLineGrowthFactor = 2;
 struct PropertyMapEntry {
     UniquedStringImpl* key;
     PropertyOffset offset;
-    uint8_t attributes;
-    bool hasInferredType; // This caches whether or not a property has an inferred type in the inferred type table, and is used for a fast check in JSObject::putDirectInternal().
+    unsigned attributes;
 
     PropertyMapEntry()
         : key(nullptr)
         , offset(invalidOffset)
         , attributes(0)
-        , hasInferredType(false)
     {
     }
     
@@ -96,9 +93,7 @@ struct PropertyMapEntry {
         : key(key)
         , offset(offset)
         , attributes(attributes)
-        , hasInferredType(false)
     {
-        ASSERT(this->attributes == attributes);
     }
 };
 
@@ -173,7 +168,7 @@ public:
     static Structure* removePropertyTransition(VM&, Structure*, PropertyName, PropertyOffset&);
     JS_EXPORT_PRIVATE static Structure* changePrototypeTransition(VM&, Structure*, JSValue prototype);
     JS_EXPORT_PRIVATE static Structure* attributeChangeTransition(VM&, Structure*, PropertyName, unsigned attributes);
-    JS_EXPORT_PRIVATE static Structure* toCacheableDictionaryTransition(VM&, Structure*, DeferredStructureTransitionWatchpointFire* = nullptr);
+    JS_EXPORT_PRIVATE static Structure* toCacheableDictionaryTransition(VM&, Structure*);
     static Structure* toUncacheableDictionaryTransition(VM&, Structure*);
     JS_EXPORT_PRIVATE static Structure* sealTransition(VM&, Structure*);
     JS_EXPORT_PRIVATE static Structure* freezeTransition(VM&, Structure*);
@@ -199,19 +194,7 @@ public:
     bool isDictionary() const { return dictionaryKind() != NoneDictionaryKind; }
     bool isUncacheableDictionary() const { return dictionaryKind() == UncachedDictionaryKind; }
   
-    bool propertyAccessesAreCacheable()
-    {
-        return dictionaryKind() != UncachedDictionaryKind
-            && !typeInfo().prohibitsPropertyCaching()
-            && !(typeInfo().hasImpureGetOwnPropertySlot() && !typeInfo().newImpurePropertyFiresWatchpoints());
-    }
-    
-    bool needImpurePropertyWatchpoint()
-    {
-        return propertyAccessesAreCacheable()
-            && typeInfo().hasImpureGetOwnPropertySlot()
-            && typeInfo().newImpurePropertyFiresWatchpoints();
-    }
+    bool propertyAccessesAreCacheable() { return dictionaryKind() != UncachedDictionaryKind && !typeInfo().prohibitsPropertyCaching(); }
 
     // We use SlowPath in GetByIdStatus for structures that may get new impure properties later to prevent
     // DFG from inlining property accesses since structures don't transition when a new impure property appears.
@@ -219,7 +202,7 @@ public:
     {
         return typeInfo().hasImpureGetOwnPropertySlot();
     }
-    
+
     // Type accessors.
     TypeInfo typeInfo() const { ASSERT(structure()->classInfo() == info()); return m_blob.typeInfo(m_outOfLineTypeFlags); }
     bool isObject() const { return typeInfo().isObject(); }
@@ -327,7 +310,6 @@ public:
 
     PropertyOffset get(VM&, PropertyName);
     PropertyOffset get(VM&, PropertyName, unsigned& attributes);
-    PropertyOffset get(VM&, PropertyName, unsigned& attributes, bool& hasInferredType);
 
     // This is a somewhat internalish method. It will call your functor while possibly holding the
     // Structure's lock. There is no guarantee whether the lock is held or not in any particular
@@ -434,12 +416,8 @@ public:
         
         // - We don't watch Structures that either decided not to be watched, or whose predecessors
         //   decided not to be watched. This happens either when a transition is fired while being
-        //   watched.
+        //   watched, or if a dictionary transition occurs.
         if (transitionWatchpointIsLikelyToBeFired())
-            return false;
-
-        // - Don't watch Structures that had been dictionaries.
-        if (hasBeenDictionary())
             return false;
         
         return true;
@@ -484,40 +462,6 @@ public:
     {
         for (Structure* structure = this; structure; structure = structure->storedPrototypeStructure())
             structure->startWatchingInternalPropertiesIfNecessary(vm);
-    }
-
-    bool hasInferredTypes() const
-    {
-        return !!m_inferredTypeTable;
-    }
-
-    InferredType* inferredTypeFor(UniquedStringImpl* uid)
-    {
-        if (InferredTypeTable* table = m_inferredTypeTable.get())
-            return table->get(uid);
-        return nullptr;
-    }
-
-    InferredType::Descriptor inferredTypeDescriptorFor(UniquedStringImpl* uid)
-    {
-        if (InferredType* result = inferredTypeFor(uid))
-            return result->descriptor();
-        return InferredType::Top;
-    }
-
-    ALWAYS_INLINE void willStoreValueForTransition(
-        VM& vm, PropertyName propertyName, JSValue value, bool shouldOptimize)
-    {
-        if (hasBeenDictionary() || (!shouldOptimize && !m_inferredTypeTable))
-            return;
-        willStoreValueSlow(vm, propertyName, value, shouldOptimize, InferredTypeTable::NewProperty);
-    }
-    ALWAYS_INLINE void willStoreValueForReplace(
-        VM& vm, PropertyName propertyName, JSValue value, bool shouldOptimize)
-    {
-        if (hasBeenDictionary())
-            return;
-        willStoreValueSlow(vm, propertyName, value, shouldOptimize, InferredTypeTable::OldProperty);
     }
 
     PassRefPtr<StructureShape> toStructureShape(JSValue);
@@ -566,7 +510,6 @@ public:
     DEFINE_BITFIELD(bool, hasCustomGetterSetterProperties, HasCustomGetterSetterProperties, 1, 25);
     DEFINE_BITFIELD(bool, didWatchInternalProperties, DidWatchInternalProperties, 1, 26);
     DEFINE_BITFIELD(bool, transitionWatchpointIsLikelyToBeFired, TransitionWatchpointIsLikelyToBeFired, 1, 27);
-    DEFINE_BITFIELD(bool, hasBeenDictionary, HasBeenDictionary, 1, 28);
 
 private:
     friend class LLIntOffsetsExtractor;
@@ -585,7 +528,7 @@ private:
     // to unlock it.
     void findStructuresAndMapForMaterialization(Vector<Structure*, 8>& structures, Structure*&, PropertyTable*&);
     
-    static Structure* toDictionaryTransition(VM&, Structure*, DictionaryKind, DeferredStructureTransitionWatchpointFire* = nullptr);
+    static Structure* toDictionaryTransition(VM&, Structure*, DictionaryKind);
 
     PropertyOffset add(VM&, PropertyName, unsigned attributes);
     PropertyOffset remove(PropertyName);
@@ -671,9 +614,6 @@ private:
     
     void startWatchingInternalProperties(VM&);
 
-    JS_EXPORT_PRIVATE void willStoreValueSlow(
-        VM&, PropertyName, JSValue, bool, InferredTypeTable::StoredPropertyAge);
-
     static const int s_maxTransitionLength = 64;
     static const int s_maxTransitionLengthForNonEvalPutById = 512;
 
@@ -696,8 +636,6 @@ private:
 
     // Should be accessed through propertyTable(). During GC, it may be set to 0 by another thread.
     WriteBarrier<PropertyTable> m_propertyTableUnsafe;
-
-    WriteBarrier<InferredTypeTable> m_inferredTypeTable;
 
     mutable InlineWatchpointSet m_transitionWatchpointSet;
 

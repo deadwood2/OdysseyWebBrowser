@@ -25,7 +25,7 @@
  */
 
 [
-    Conditional=VIDEO_TRACK,
+    Conditional=VIDEO_TRACK & WEBVTT_REGIONS,
     JSGenerateToNativeObject,
     Constructor(),
     ConstructorCallWith=ScriptExecutionContext

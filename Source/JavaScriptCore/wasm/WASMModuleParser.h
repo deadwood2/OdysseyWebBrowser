@@ -28,14 +28,12 @@
 
 #if ENABLE(WEBASSEMBLY)
 
-#include "Strong.h"
 #include "WASMReader.h"
 #include <wtf/text/WTFString.h>
 
 namespace JSC {
 
 class ExecState;
-class JSArrayBuffer;
 class JSGlobalObject;
 class JSWASMModule;
 class SourceCode;
@@ -43,32 +41,17 @@ class VM;
 
 class WASMModuleParser {
 public:
-    WASMModuleParser(VM&, JSGlobalObject*, const SourceCode&, JSObject* imports, JSArrayBuffer*);
-    JSWASMModule* parse(ExecState*, String& errorMessage);
+    WASMModuleParser(const SourceCode&);
+    JSWASMModule* parse(VM&, JSGlobalObject*, String& errorMessage);
 
 private:
-    void parseModule(ExecState*);
-    void parseConstantPoolSection();
-    void parseSignatureSection();
-    void parseFunctionImportSection(ExecState*);
-    void parseGlobalSection(ExecState*);
-    void parseFunctionDeclarationSection();
-    void parseFunctionPointerTableSection();
-    void parseFunctionDefinitionSection();
-    void parseFunctionDefinition(size_t functionIndex);
-    void parseExportSection();
-    void getImportedValue(ExecState*, const String& importName, JSValue&);
+    bool parseModule();
 
-    VM& m_vm;
-    Strong<JSGlobalObject> m_globalObject;
-    const SourceCode& m_source;
-    Strong<JSObject> m_imports;
     WASMReader m_reader;
-    Strong<JSWASMModule> m_module;
     String m_errorMessage;
 };
 
-JS_EXPORT_PRIVATE JSWASMModule* parseWebAssembly(ExecState*, const SourceCode&, JSObject* imports, JSArrayBuffer*, String& errorMessage);
+JS_EXPORT_PRIVATE JSWASMModule* parseWebAssembly(ExecState*, const SourceCode&, String& errorMessage);
 
 } // namespace JSC
 

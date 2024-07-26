@@ -206,7 +206,6 @@ public:
 #if ENABLE(CSS_SCROLL_SNAP)
     bool isLengthRepeat() const { return m_primitiveUnitType == CSS_LENGTH_REPEAT; }
 #endif
-    bool isPropertyID() const { return m_primitiveUnitType == CSS_PROPERTY_ID; }
     bool isRGBColor() const { return m_primitiveUnitType == CSS_RGBCOLOR; }
     bool isShape() const { return m_primitiveUnitType == CSS_SHAPE; }
     bool isString() const { return m_primitiveUnitType == CSS_STRING; }
@@ -364,7 +363,7 @@ public:
 
     void addSubresourceStyleURLs(ListHashSet<URL>&, const StyleSheetContents*) const;
 
-    RefPtr<CSSPrimitiveValue> cloneForCSSOM() const;
+    PassRefPtr<CSSPrimitiveValue> cloneForCSSOM() const;
     void setCSSOMSafe() { m_isCSSOMSafe = true; }
 
     bool equals(const CSSPrimitiveValue&) const;

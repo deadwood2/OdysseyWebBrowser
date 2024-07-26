@@ -48,7 +48,7 @@ MediaStreamTrackSourcesRequest::MediaStreamTrackSourcesRequest(ScriptExecutionCo
     m_origin = context->securityOrigin()->toString();
 }
 
-void MediaStreamTrackSourcesRequest::didCompleteRequest(const TrackSourceInfoVector& requestSourceInfos)
+void MediaStreamTrackSourcesRequest::didCompleteRequest(const Vector<RefPtr<TrackSourceInfo>>& requestSourceInfos)
 {
     ASSERT(m_callback);
 

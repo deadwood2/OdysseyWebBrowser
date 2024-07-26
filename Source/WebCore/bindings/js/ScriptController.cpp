@@ -180,7 +180,7 @@ Deprecated::ScriptValue ScriptController::evaluate(const ScriptSourceCode& sourc
     return evaluateInWorld(sourceCode, mainThreadNormalWorld());
 }
 
-Ref<DOMWrapperWorld> ScriptController::createWorld()
+PassRefPtr<DOMWrapperWorld> ScriptController::createWorld()
 {
     return DOMWrapperWorld::create(JSDOMWindow::commonVM());
 }
@@ -306,11 +306,6 @@ bool ScriptController::processingUserGesture()
     return UserGestureIndicator::processingUserGesture();
 }
 
-bool ScriptController::processingUserGestureForMedia()
-{
-    return UserGestureIndicator::processingUserGestureForMedia();
-}
-
 bool ScriptController::canAccessFromCurrentOrigin(Frame *frame)
 {
     ExecState* exec = JSMainThreadExecState::currentState();
@@ -375,7 +370,7 @@ Bindings::RootObject* ScriptController::bindingRootObject()
     return m_bindingRootObject.get();
 }
 
-RefPtr<Bindings::RootObject> ScriptController::createRootObject(void* nativeHandle)
+PassRefPtr<Bindings::RootObject> ScriptController::createRootObject(void* nativeHandle)
 {
     RootObjectMap::iterator it = m_rootObjects.find(nativeHandle);
     if (it != m_rootObjects.end())
@@ -384,7 +379,7 @@ RefPtr<Bindings::RootObject> ScriptController::createRootObject(void* nativeHand
     RefPtr<Bindings::RootObject> rootObject = Bindings::RootObject::create(nativeHandle, globalObject(pluginWorld()));
 
     m_rootObjects.set(nativeHandle, rootObject);
-    return rootObject;
+    return rootObject.release();
 }
 
 void ScriptController::collectIsolatedContexts(Vector<std::pair<JSC::ExecState*, SecurityOrigin*>>& result)
@@ -432,7 +427,7 @@ NPObject* ScriptController::createScriptObjectForPluginElement(HTMLPlugInElement
 #endif
 
 #if !PLATFORM(COCOA)
-RefPtr<JSC::Bindings::Instance> ScriptController::createScriptInstanceForWidget(Widget* widget)
+PassRefPtr<JSC::Bindings::Instance> ScriptController::createScriptInstanceForWidget(Widget* widget)
 {
     if (!is<PluginViewBase>(*widget))
         return nullptr;

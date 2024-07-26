@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2011-2013 University of Washington. All rights reserved.
- * Copyright (C) 2014, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -43,6 +43,7 @@ class DocumentLoader;
 class Event;
 class Frame;
 class InspectorPageAgent;
+class InstrumentingAgents;
 class Page;
 class ReplaySession;
 class ReplaySessionSegment;
@@ -61,10 +62,10 @@ class InspectorReplayAgent final
     WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(InspectorReplayAgent);
 public:
-    InspectorReplayAgent(PageAgentContext&);
+    InspectorReplayAgent(InstrumentingAgents*, InspectorPageAgent*);
     virtual ~InspectorReplayAgent();
 
-    virtual void didCreateFrontendAndBackend(Inspector::FrontendRouter*, Inspector::BackendDispatcher*) override;
+    virtual void didCreateFrontendAndBackend(Inspector::FrontendChannel*, Inspector::BackendDispatcher*) override;
     virtual void willDestroyFrontendAndBackend(Inspector::DisconnectReason) override;
 
     // InspectorInstrumentation callbacks.

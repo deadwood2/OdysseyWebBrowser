@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,9 +36,10 @@ namespace Inspector {
 
 class JSGlobalObjectRuntimeAgent final : public InspectorRuntimeAgent {
 public:
-    JSGlobalObjectRuntimeAgent(JSAgentContext&);
+    JSGlobalObjectRuntimeAgent(InjectedScriptManager*, JSC::JSGlobalObject&);
 
-    virtual void didCreateFrontendAndBackend(FrontendRouter*, BackendDispatcher*) override;
+    virtual void didCreateFrontendAndBackend(FrontendChannel*, BackendDispatcher*) override;
+    virtual void willDestroyFrontendAndBackend(DisconnectReason) override;
 
     virtual JSC::VM& globalVM() override;
     virtual InjectedScript injectedScriptForEval(ErrorString&, const int* executionContextId) override;

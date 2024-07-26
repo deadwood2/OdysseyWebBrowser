@@ -35,21 +35,21 @@ using namespace JSC;
 
 namespace WebCore {
 
-JSValue JSCrypto::getRandomValues(ExecState& state)
+JSValue JSCrypto::getRandomValues(ExecState* exec)
 {
-    if (state.argumentCount() < 1)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+    if (exec->argumentCount() < 1)
+        return exec->vm().throwException(exec, createNotEnoughArgumentsError(exec));
 
-    JSValue buffer = state.argument(0);
+    JSValue buffer = exec->argument(0);
     RefPtr<ArrayBufferView> arrayBufferView = toArrayBufferView(buffer);
     if (!arrayBufferView)
-        return throwTypeError(&state);
+        return throwTypeError(exec);
 
     ExceptionCode ec = 0;
     impl().getRandomValues(arrayBufferView.get(), ec);
 
     if (ec) {
-        setDOMException(&state, ec);
+        setDOMException(exec, ec);
         return jsUndefined();
     }
 

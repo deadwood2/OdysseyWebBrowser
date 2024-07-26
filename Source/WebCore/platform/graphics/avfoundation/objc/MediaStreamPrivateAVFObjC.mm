@@ -43,14 +43,14 @@ namespace WebCore {
 #pragma mark -
 #pragma mark MediaStreamPrivateAVFObjC
 
-RefPtr<MediaStreamPrivateAVFObjC> MediaStreamPrivateAVFObjC::create(MediaPlayerPrivateMediaStreamAVFObjC& parent, MediaStreamPrivate& stream)
+RefPtr<MediaStreamPrivateAVFObjC> MediaStreamPrivateAVFObjC::create(MediaPlayerPrivateMediaStreamAVFObjC& parent, MediaStreamPrivateClient& client)
 {
-    return adoptRef(new MediaStreamPrivateAVFObjC(parent, stream));
+    return adoptRef(new MediaStreamPrivateAVFObjC(parent, client));
 }
 
-MediaStreamPrivateAVFObjC::MediaStreamPrivateAVFObjC(MediaPlayerPrivateMediaStreamAVFObjC& parent, MediaStreamPrivate& stream)
-    : MediaStreamPrivate(*stream.client())
-    , m_player(&parent)
+MediaStreamPrivateAVFObjC::MediaStreamPrivateAVFObjC(MediaPlayerPrivateMediaStreamAVFObjC& parent, MediaStreamPrivateClient& client)
+    : m_player(&parent)
+    , m_client(&client)
 {
 }
 

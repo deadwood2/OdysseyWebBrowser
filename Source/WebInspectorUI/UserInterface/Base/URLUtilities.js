@@ -74,9 +74,6 @@ function parseURL(url)
 {
     url = url ? url.trim() : "";
 
-    if (url.startsWith("data:"))
-        return {scheme: "data", host: null, port: null, path: null, queryString: null, fragment: null, lastPathComponent: null};
-
     var match = url.match(/^([^:]+):\/\/([^\/:]*)(?::([\d]+))?(?:(\/[^#]*)(?:#(.*))?)?$/i);
     if (!match)
         return {scheme: null, host: null, port: null, path: null, queryString: null, fragment: null, lastPathComponent: null};
@@ -172,7 +169,7 @@ function parseQueryString(queryString, arrayResult)
     function decode(string)
     {
         try {
-            // Replace "+" with " " then decode percent encoded values.
+            // Replace "+" with " " then decode precent encoded values.
             return decodeURIComponent(string.replace(/\+/g, " "));
         } catch (e) {
             return string;
@@ -194,9 +191,6 @@ function parseQueryString(queryString, arrayResult)
 
 WebInspector.displayNameForURL = function(url, urlComponents)
 {
-    if (url.startsWith("data:"))
-        return WebInspector.truncateURL(url);
-
     if (!urlComponents)
         urlComponents = parseURL(url);
 
@@ -208,27 +202,6 @@ WebInspector.displayNameForURL = function(url, urlComponents)
     }
 
     return displayName || WebInspector.displayNameForHost(urlComponents.host) || url;
-};
-
-WebInspector.truncateURL = function(url, multiline = false, dataURIMaxSize = 6)
-{
-    if (!url.startsWith("data:"))
-        return url;
-
-    const dataIndex = url.indexOf(",") + 1;
-    let header = url.slice(0, dataIndex);
-    if (multiline)
-        header += "\n";
-
-    const data = url.slice(dataIndex);
-    if (data.length < dataURIMaxSize)
-        return header + data;
-
-    const firstChunk = data.slice(0, Math.ceil(dataURIMaxSize / 2));
-    const ellipsis = "\u2026";
-    const middleChunk = multiline ? `\n${ellipsis}\n` : ellipsis;
-    const lastChunk = data.slice(-Math.floor(dataURIMaxSize / 2));
-    return header + firstChunk + middleChunk + lastChunk;
 };
 
 WebInspector.displayNameForHost = function(host)

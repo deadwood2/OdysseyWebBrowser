@@ -31,7 +31,7 @@
 #include "config.h"
 #include "SQLTransactionClient.h"
 
-#include "Database.h"
+#include "DatabaseBackendBase.h"
 #include "DatabaseContext.h"
 #include "DatabaseManager.h"
 #include "DatabaseTracker.h"
@@ -40,13 +40,13 @@
 
 namespace WebCore {
 
-void SQLTransactionClient::didCommitWriteTransaction(Database* database)
+void SQLTransactionClient::didCommitWriteTransaction(DatabaseBackendBase* database)
 {
     DatabaseTracker::tracker().scheduleNotifyDatabaseChanged(
         database->securityOrigin(), database->stringIdentifier());
 }
 
-bool SQLTransactionClient::didExceedQuota(Database* database)
+bool SQLTransactionClient::didExceedQuota(DatabaseBackendBase* database)
 {
     ASSERT(database->databaseContext()->scriptExecutionContext()->isContextThread());
     auto& databaseManager = DatabaseManager::singleton();

@@ -33,8 +33,7 @@ static void setDefaultsToConsistentValuesForTesting()
         @"AppleKeyboardUIMode": @1,
         // FIXME: This is likely insufficient, as tests change (and don't reset) these settings via Internals.
         @"WebAutomaticQuoteSubstitutionEnabled": @NO,
-        @"WebAutomaticDashSubstitutionEnabled": @NO,
-        @"NSFakeForceTouchDevice" : @YES
+        @"WebAutomaticDashSubstitutionEnabled": @NO
     };
 
     [[NSUserDefaults standardUserDefaults] setValuesForKeysWithDictionary:dict];

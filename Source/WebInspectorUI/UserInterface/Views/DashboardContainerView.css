@@ -74,7 +74,7 @@ body.javascript .toolbar .dashboard-container {
 
     padding: 0 10px 0 5px;
 
-    animation-duration: 0.4s;
+    -webkit-animation-duration: 0.4s;
 }
 
 .toolbar .dashboard.visible {
@@ -86,38 +86,38 @@ body.javascript .toolbar .dashboard-container {
 }
 
 .toolbar .dashboard.slide-out-up {
-    animation-name: slide-top-edge;
-    animation-direction: reverse;
+    -webkit-animation-name: slide-top-edge;
+    -webkit-animation-direction: reverse;
 }
 
 .toolbar .dashboard.slide-out-down {
-    animation-name: slide-bottom-edge;
+    -webkit-animation-name: slide-bottom-edge;
 }
 
 .toolbar .dashboard.slide-in-up {
-    animation-name: slide-bottom-edge;
-    animation-direction: reverse;
+    -webkit-animation-name: slide-bottom-edge;
+    -webkit-animation-direction: reverse;
 }
 
 .toolbar .dashboard.slide-in-down {
-    animation-name: slide-top-edge;
+    -webkit-animation-name: slide-top-edge;
 }
 
-@keyframes slide-top-edge {
+@-webkit-keyframes slide-top-edge {
     from {
-        transform: translateY(-30px);
+        -webkit-transform: translateY(-30px);
     }
     to {
-        transform: translateY(0);
+        -webkit-transform: translateY(0);
     }
 }
 
-@keyframes slide-bottom-edge {
+@-webkit-keyframes slide-bottom-edge {
     from {
-        transform: translateY(0);
+        -webkit-transform: translateY(0);
     }
     to {
-        transform: translateY(30px);
+        -webkit-transform: translateY(30px);
     }
 }
 

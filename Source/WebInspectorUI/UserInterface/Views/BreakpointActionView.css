@@ -42,7 +42,7 @@
 
 .breakpoint-action-append-button:active,
 .breakpoint-action-remove-button:active {
-    filter: brightness(50%);
+    -webkit-filter: brightness(50%);
 }
 
 .breakpoint-action-append-button {

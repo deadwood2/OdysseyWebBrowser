@@ -314,15 +314,8 @@ EwkView::EwkView(WKViewRef view, Evas_Object* evasObject)
 
     // FIXME: Consider it to move into EvasGLContext.
     m_evasGL = evas_gl_new(evas_object_evas_get(m_evasObject));
-    if (m_evasGL) {
-        Evas_GL_Context* context = evas_gl_context_create(m_evasGL, 0);
-        if (!context) {
-            WARN("Failed to create Evas_GL_Context. EwkView is not created.");
-            return;
-        }
-
-        m_evasGLContext = std::make_unique<EvasGLContext>(m_evasGL, context);
-    }
+    if (m_evasGL)
+        m_evasGLContext = EvasGLContext::create(m_evasGL);
 
     if (!m_evasGLContext) {
         WARN("Failed to create Evas_GL, falling back to software mode.");
@@ -845,15 +838,7 @@ bool EwkView::createGLSurface()
     };
 
     // Recreate to current size: Replaces if non-null, and frees existing surface after (OwnPtr).
-    if (deviceSize().width() && deviceSize().height()) {
-        Evas_GL_Surface* surface = nullptr;
-        surface = evas_gl_surface_create(m_evasGL, &evasGLConfig, deviceSize().width(), deviceSize().height());
-        if (!surface)
-            return false;
-
-        m_evasGLSurface = std::make_unique<EvasGLSurface>(m_evasGL, surface);
-    }
-
+    m_evasGLSurface = EvasGLSurface::create(m_evasGL, &evasGLConfig, deviceSize());
     if (!m_evasGLSurface)
         return false;
 

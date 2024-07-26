@@ -34,7 +34,7 @@
 namespace WebCore {
 
 IDBKeyData::IDBKeyData(const IDBKey* key)
-    : type(KeyType::Invalid)
+    : type(IDBKey::InvalidType)
     , numberValue(0)
     , isNull(false)
 {
@@ -47,23 +47,23 @@ IDBKeyData::IDBKeyData(const IDBKey* key)
     numberValue = 0;
 
     switch (type) {
-    case KeyType::Invalid:
+    case IDBKey::InvalidType:
         break;
-    case KeyType::Array:
+    case IDBKey::ArrayType:
         for (auto& key2 : key->array())
             arrayValue.append(IDBKeyData(key2.get()));
         break;
-    case KeyType::String:
+    case IDBKey::StringType:
         stringValue = key->string();
         break;
-    case KeyType::Date:
+    case IDBKey::DateType:
         numberValue = key->date();
         break;
-    case KeyType::Number:
+    case IDBKey::NumberType:
         numberValue = key->number();
         break;
-    case KeyType::Max:
-    case KeyType::Min:
+    case IDBKey::MaxType:
+    case IDBKey::MinType:
         break;
     }
 }
@@ -74,25 +74,25 @@ PassRefPtr<IDBKey> IDBKeyData::maybeCreateIDBKey() const
         return nullptr;
 
     switch (type) {
-    case KeyType::Invalid:
+    case IDBKey::InvalidType:
         return IDBKey::createInvalid();
-    case KeyType::Array:
+    case IDBKey::ArrayType:
         {
-            Vector<RefPtr<IDBKey>> array;
+            IDBKey::KeyArray array;
             for (auto& keyData : arrayValue) {
                 array.append(keyData.maybeCreateIDBKey());
                 ASSERT(array.last());
             }
             return IDBKey::createArray(array);
         }
-    case KeyType::String:
+    case IDBKey::StringType:
         return IDBKey::createString(stringValue);
-    case KeyType::Date:
+    case IDBKey::DateType:
         return IDBKey::createDate(numberValue);
-    case KeyType::Number:
+    case IDBKey::NumberType:
         return IDBKey::createNumber(numberValue);
-    case KeyType::Max:
-    case KeyType::Min:
+    case IDBKey::MaxType:
+    case IDBKey::MinType:
         ASSERT_NOT_REACHED();
         return nullptr;
     }
@@ -108,21 +108,21 @@ IDBKeyData IDBKeyData::isolatedCopy() const
     result.isNull = isNull;
 
     switch (type) {
-    case KeyType::Invalid:
+    case IDBKey::InvalidType:
         return result;
-    case KeyType::Array:
+    case IDBKey::ArrayType:
         for (auto& key : arrayValue)
             result.arrayValue.append(key.isolatedCopy());
         return result;
-    case KeyType::String:
+    case IDBKey::StringType:
         result.stringValue = stringValue.isolatedCopy();
         return result;
-    case KeyType::Date:
-    case KeyType::Number:
+    case IDBKey::DateType:
+    case IDBKey::NumberType:
         result.numberValue = numberValue;
         return result;
-    case KeyType::Max:
-    case KeyType::Min:
+    case IDBKey::MaxType:
+    case IDBKey::MinType:
         return result;
     }
 
@@ -139,22 +139,22 @@ void IDBKeyData::encode(KeyedEncoder& encoder) const
     encoder.encodeEnum("type", type);
 
     switch (type) {
-    case KeyType::Invalid:
+    case IDBKey::InvalidType:
         return;
-    case KeyType::Array:
+    case IDBKey::ArrayType:
         encoder.encodeObjects("array", arrayValue.begin(), arrayValue.end(), [](KeyedEncoder& encoder, const IDBKeyData& key) {
             key.encode(encoder);
         });
         return;
-    case KeyType::String:
+    case IDBKey::StringType:
         encoder.encodeString("string", stringValue);
         return;
-    case KeyType::Date:
-    case KeyType::Number:
+    case IDBKey::DateType:
+    case IDBKey::NumberType:
         encoder.encodeDouble("number", numberValue);
         return;
-    case KeyType::Max:
-    case KeyType::Min:
+    case IDBKey::MaxType:
+    case IDBKey::MinType:
         return;
     }
 
@@ -170,33 +170,33 @@ bool IDBKeyData::decode(KeyedDecoder& decoder, IDBKeyData& result)
         return true;
 
     auto enumFunction = [](int64_t value) {
-        return value == KeyType::Max
-            || value == KeyType::Invalid
-            || value == KeyType::Array
-            || value == KeyType::String
-            || value == KeyType::Date
-            || value == KeyType::Number
-            || value == KeyType::Min;
+        return value == IDBKey::MaxType
+            || value == IDBKey::InvalidType
+            || value == IDBKey::ArrayType
+            || value == IDBKey::StringType
+            || value == IDBKey::DateType
+            || value == IDBKey::NumberType
+            || value == IDBKey::MinType;
     };
     if (!decoder.decodeEnum("type", result.type, enumFunction))
         return false;
 
-    if (result.type == KeyType::Invalid)
+    if (result.type == IDBKey::InvalidType)
         return true;
 
-    if (result.type == KeyType::Max)
+    if (result.type == IDBKey::MaxType)
         return true;
 
-    if (result.type == KeyType::Min)
+    if (result.type == IDBKey::MinType)
         return true;
 
-    if (result.type == KeyType::String)
+    if (result.type == IDBKey::StringType)
         return decoder.decodeString("string", result.stringValue);
 
-    if (result.type == KeyType::Number || result.type == KeyType::Date)
+    if (result.type == IDBKey::NumberType || result.type == IDBKey::DateType)
         return decoder.decodeDouble("number", result.numberValue);
 
-    ASSERT(result.type == KeyType::Array);
+    ASSERT(result.type == IDBKey::ArrayType);
 
     auto arrayFunction = [](KeyedDecoder& decoder, IDBKeyData& result) {
         return decode(decoder, result);
@@ -208,12 +208,12 @@ bool IDBKeyData::decode(KeyedDecoder& decoder, IDBKeyData& result)
 
 int IDBKeyData::compare(const IDBKeyData& other) const
 {
-    if (type == KeyType::Invalid) {
-        if (other.type != KeyType::Invalid)
+    if (type == IDBKey::InvalidType) {
+        if (other.type != IDBKey::InvalidType)
             return -1;
-        if (other.type == KeyType::Invalid)
+        if (other.type == IDBKey::InvalidType)
             return 0;
-    } else if (other.type == KeyType::Invalid)
+    } else if (other.type == IDBKey::InvalidType)
         return 1;
 
     // The IDBKey::Type enum is in reverse sort order.
@@ -222,11 +222,11 @@ int IDBKeyData::compare(const IDBKeyData& other) const
 
     // The types are the same, so handle actual value comparison.
     switch (type) {
-    case KeyType::Invalid:
+    case IDBKey::InvalidType:
         // InvalidType should have been fully handled above
         ASSERT_NOT_REACHED();
         return 0;
-    case KeyType::Array:
+    case IDBKey::ArrayType:
         for (size_t i = 0; i < arrayValue.size() && i < other.arrayValue.size(); ++i) {
             if (int result = arrayValue[i].compare(other.arrayValue[i]))
                 return result;
@@ -236,15 +236,15 @@ int IDBKeyData::compare(const IDBKeyData& other) const
         if (arrayValue.size() > other.arrayValue.size())
             return 1;
         return 0;
-    case KeyType::String:
+    case IDBKey::StringType:
         return codePointCompare(stringValue, other.stringValue);
-    case KeyType::Date:
-    case KeyType::Number:
+    case IDBKey::DateType:
+    case IDBKey::NumberType:
         if (numberValue == other.numberValue)
             return 0;
         return numberValue > other.numberValue ? 1 : -1;
-    case KeyType::Max:
-    case KeyType::Min:
+    case IDBKey::MaxType:
+    case IDBKey::MinType:
         return 0;
     }
 
@@ -259,9 +259,9 @@ String IDBKeyData::loggingString() const
         return "<null>";
 
     switch (type) {
-    case KeyType::Invalid:
+    case IDBKey::InvalidType:
         return "<invalid>";
-    case KeyType::Array:
+    case IDBKey::ArrayType:
         {
             StringBuilder result;
             result.appendLiteral("<array> - { ");
@@ -273,15 +273,15 @@ String IDBKeyData::loggingString() const
             result.appendLiteral(" }");
             return result.toString();
         }
-    case KeyType::String:
+    case IDBKey::StringType:
         return "<string> - " + stringValue;
-    case KeyType::Date:
+    case IDBKey::DateType:
         return String::format("Date type - %f", numberValue);
-    case KeyType::Number:
+    case IDBKey::NumberType:
         return String::format("<number> - %f", numberValue);
-    case KeyType::Max:
+    case IDBKey::MaxType:
         return "<maximum>";
-    case KeyType::Min:
+    case IDBKey::MinType:
         return "<minimum>";
     default:
         return String();
@@ -294,7 +294,7 @@ void IDBKeyData::setArrayValue(const Vector<IDBKeyData>& value)
 {
     *this = IDBKeyData();
     arrayValue = value;
-    type = KeyType::Array;
+    type = IDBKey::ArrayType;
     isNull = false;
 }
 
@@ -302,7 +302,7 @@ void IDBKeyData::setStringValue(const String& value)
 {
     *this = IDBKeyData();
     stringValue = value;
-    type = KeyType::String;
+    type = IDBKey::StringType;
     isNull = false;
 }
 
@@ -310,7 +310,7 @@ void IDBKeyData::setDateValue(double value)
 {
     *this = IDBKeyData();
     numberValue = value;
-    type = KeyType::Date;
+    type = IDBKey::DateType;
     isNull = false;
 }
 
@@ -318,7 +318,7 @@ void IDBKeyData::setNumberValue(double value)
 {
     *this = IDBKeyData();
     numberValue = value;
-    type = KeyType::Number;
+    type = IDBKey::NumberType;
     isNull = false;
 }
 

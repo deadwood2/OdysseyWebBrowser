@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="dtoa">
@@ -174,9 +174,6 @@
     <ClCompile Include="..\wtf\PageBlock.cpp">
       <Filter>wtf</Filter>
     </ClCompile>
-    <ClCompile Include="..\wtf\ParallelHelperPool.cpp">
-      <Filter>wtf</Filter>
-    </ClCompile>
     <ClCompile Include="..\wtf\ParallelJobsGeneric.cpp">
       <Filter>wtf</Filter>
     </ClCompile>
@@ -262,7 +259,6 @@
     <ClCompile Include="..\wtf\win\WorkItemWin.cpp">
       <Filter>wtf\win</Filter>
     </ClCompile>
-    <ClCompile Include="..\wtf\Lock.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\wtf\dtoa\utils.h">
@@ -466,9 +462,6 @@
     <ClInclude Include="..\wtf\HashCountedSet.h">
       <Filter>wtf</Filter>
     </ClInclude>
-    <ClInclude Include="..\wtf\Hasher.h">
-      <Filter>wtf</Filter>
-    </ClInclude>
     <ClInclude Include="..\wtf\HashFunctions.h">
       <Filter>wtf</Filter>
     </ClInclude>
@@ -550,9 +543,6 @@
     <ClInclude Include="..\wtf\PageReservation.h">
       <Filter>wtf</Filter>
     </ClInclude>
-    <ClInclude Include="..\wtf\ParallelHelperPool.h">
-      <Filter>wtf</Filter>
-    </ClInclude>
     <ClInclude Include="..\wtf\ParallelJobs.h">
       <Filter>wtf</Filter>
     </ClInclude>
@@ -563,9 +553,6 @@
       <Filter>wtf</Filter>
     </ClInclude>
     <ClInclude Include="..\wtf\ParallelJobsOpenMP.h">
-      <Filter>wtf</Filter>
-    </ClInclude>
-    <ClInclude Include="..\wtf\ParallelVectorIterator.h">
       <Filter>wtf</Filter>
     </ClInclude>
     <ClInclude Include="..\wtf\PassRefPtr.h">
@@ -613,9 +600,6 @@
     <ClInclude Include="..\wtf\SHA1.h">
       <Filter>wtf</Filter>
     </ClInclude>
-    <ClInclude Include="..\wtf\SharedTask.h">
-      <Filter>wtf</Filter>
-    </ClInclude>
     <ClInclude Include="..\wtf\SinglyLinkedList.h">
       <Filter>wtf</Filter>
     </ClInclude>
@@ -635,6 +619,9 @@
       <Filter>wtf</Filter>
     </ClInclude>
     <ClInclude Include="..\wtf\StringExtras.h">
+      <Filter>wtf</Filter>
+    </ClInclude>
+    <ClInclude Include="..\wtf\StringHasher.h">
       <Filter>wtf</Filter>
     </ClInclude>
     <ClInclude Include="..\wtf\StringPrintStream.h">
@@ -726,8 +713,6 @@
     <ClInclude Include="..\wtf\win\WorkItemWin.h">
       <Filter>wtf\win</Filter>
     </ClInclude>
-    <ClInclude Include="..\wtf\TinyPtrSet.h" />
-    <ClInclude Include="..\wtf\Lock.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="WTFPostBuild.cmd" />

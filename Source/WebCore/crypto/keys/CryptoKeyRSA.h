@@ -53,7 +53,7 @@ public:
     {
         return adoptRef(*new CryptoKeyRSA(identifier, type, platformKey, extractable, usage));
     }
-    static RefPtr<CryptoKeyRSA> create(CryptoAlgorithmIdentifier, const CryptoKeyDataRSAComponents&, bool extractable, CryptoKeyUsage);
+    static PassRefPtr<CryptoKeyRSA> create(CryptoAlgorithmIdentifier, const CryptoKeyDataRSAComponents&, bool extractable, CryptoKeyUsage);
     virtual ~CryptoKeyRSA();
 
     void restrictToHash(CryptoAlgorithmIdentifier);

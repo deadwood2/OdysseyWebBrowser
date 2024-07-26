@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2007 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,7 +34,8 @@ using namespace WebCore;
 // WebURLProtectionSpace ----------------------------------------------------------------
 
 WebURLProtectionSpace::WebURLProtectionSpace(const ProtectionSpace& protectionSpace)
-    : m_protectionSpace(protectionSpace)
+    : m_refCount(0)
+    , m_protectionSpace(protectionSpace)
 {
     gClassCount++;
     gClassNameCount().add("WebURLProtectionSpace");
@@ -62,11 +63,9 @@ WebURLProtectionSpace* WebURLProtectionSpace::createInstance(const ProtectionSpa
 
 // IUnknown -------------------------------------------------------------------
 
-HRESULT WebURLProtectionSpace::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE WebURLProtectionSpace::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<IUnknown*>(this);
     else if (IsEqualGUID(riid, CLSID_WebURLProtectionSpace))
@@ -80,12 +79,12 @@ HRESULT WebURLProtectionSpace::QueryInterface(_In_ REFIID riid, _COM_Outptr_ voi
     return S_OK;
 }
 
-ULONG WebURLProtectionSpace::AddRef()
+ULONG STDMETHODCALLTYPE WebURLProtectionSpace::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG WebURLProtectionSpace::Release()
+ULONG STDMETHODCALLTYPE WebURLProtectionSpace::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -96,11 +95,9 @@ ULONG WebURLProtectionSpace::Release()
 
 // IWebURLProtectionSpace -------------------------------------------------------------------
 
-HRESULT WebURLProtectionSpace::authenticationMethod(__deref_opt_out BSTR* result)
+HRESULT STDMETHODCALLTYPE WebURLProtectionSpace::authenticationMethod(
+    /* [out, retval] */ BSTR* result)
 {
-    if (!result)
-        return E_POINTER;
-
     switch (m_protectionSpace.authenticationScheme()) {
     case ProtectionSpaceAuthenticationSchemeDefault:
         *result = SysAllocString(WebURLAuthenticationMethodDefault);
@@ -121,11 +118,9 @@ HRESULT WebURLProtectionSpace::authenticationMethod(__deref_opt_out BSTR* result
     return S_OK;
 }
 
-HRESULT WebURLProtectionSpace::host(__deref_opt_out BSTR* result)
+HRESULT STDMETHODCALLTYPE WebURLProtectionSpace::host(
+    /* [out, retval] */ BSTR* result)
 {
-    if (!result)
-        return E_POINTER;
-
     BString str = m_protectionSpace.host();
     *result = str.release();
     return S_OK;
@@ -147,7 +142,12 @@ static ProtectionSpaceAuthenticationScheme coreScheme(BSTR authenticationMethod)
     return scheme;
 }
 
-HRESULT WebURLProtectionSpace::initWithHost(_In_ BSTR host, int port, _In_ BSTR protocol, _In_ BSTR realm, _In_ BSTR authenticationMethod)
+HRESULT STDMETHODCALLTYPE WebURLProtectionSpace::initWithHost(
+    /* [in] */ BSTR host, 
+    /* [in] */ int port, 
+    /* [in] */ BSTR protocol, 
+    /* [in] */ BSTR realm, 
+    /* [in] */ BSTR authenticationMethod)
 {
     static BString& webURLProtectionSpaceHTTPBString = *new BString(WebURLProtectionSpaceHTTP);
     static BString& webURLProtectionSpaceHTTPSBString = *new BString(WebURLProtectionSpaceHTTPS);
@@ -170,7 +170,12 @@ HRESULT WebURLProtectionSpace::initWithHost(_In_ BSTR host, int port, _In_ BSTR 
     return S_OK;
 }
 
-HRESULT WebURLProtectionSpace::initWithProxyHost(_In_ BSTR host, int port, _In_ BSTR proxyType, _In_ BSTR realm, _In_ BSTR authenticationMethod)
+HRESULT STDMETHODCALLTYPE WebURLProtectionSpace::initWithProxyHost(
+    /* [in] */ BSTR host, 
+    /* [in] */ int port, 
+    /* [in] */ BSTR proxyType, 
+    /* [in] */ BSTR realm, 
+    /* [in] */ BSTR authenticationMethod)
 {
     static BString& webURLProtectionSpaceHTTPProxyBString = *new BString(WebURLProtectionSpaceHTTPProxy);
     static BString& webURLProtectionSpaceHTTPSProxyBString = *new BString(WebURLProtectionSpaceHTTPSProxy);
@@ -195,27 +200,23 @@ HRESULT WebURLProtectionSpace::initWithProxyHost(_In_ BSTR host, int port, _In_ 
     return S_OK;
 }
 
-HRESULT WebURLProtectionSpace::isProxy(_Out_ BOOL* result)
+HRESULT STDMETHODCALLTYPE WebURLProtectionSpace::isProxy(
+    /* [out, retval] */ BOOL* result)
 {
-    if (!result)
-        return E_POINTER;
     *result = m_protectionSpace.isProxy();
     return S_OK;
 }
 
-HRESULT WebURLProtectionSpace::port(_Out_ int* result)
+HRESULT STDMETHODCALLTYPE WebURLProtectionSpace::port(
+    /* [out, retval] */ int* result)
 {
-    if (!result)
-        return E_POINTER;
     *result = m_protectionSpace.port();
     return S_OK;
 }
 
-HRESULT WebURLProtectionSpace::protocol(__deref_opt_out BSTR* result)
+HRESULT STDMETHODCALLTYPE WebURLProtectionSpace::protocol(
+    /* [out, retval] */ BSTR* result)
 {
-    if (!result)
-        return E_POINTER;
-
     switch (m_protectionSpace.serverType()) {
     case ProtectionSpaceServerHTTP:
         *result = SysAllocString(WebURLProtectionSpaceHTTP);
@@ -236,11 +237,9 @@ HRESULT WebURLProtectionSpace::protocol(__deref_opt_out BSTR* result)
     return S_OK;
 }
 
-HRESULT WebURLProtectionSpace::proxyType(__deref_opt_out BSTR* result)
+HRESULT STDMETHODCALLTYPE WebURLProtectionSpace::proxyType(
+    /* [out, retval] */ BSTR* result)
 {
-    if (!result)
-        return E_POINTER;
-
     switch (m_protectionSpace.serverType()) {
     case ProtectionSpaceProxyHTTP:
         *result = SysAllocString(WebURLProtectionSpaceHTTPProxy);
@@ -261,19 +260,17 @@ HRESULT WebURLProtectionSpace::proxyType(__deref_opt_out BSTR* result)
     return S_OK;
 }
 
-HRESULT WebURLProtectionSpace::realm(__deref_opt_out BSTR* result)
+HRESULT STDMETHODCALLTYPE WebURLProtectionSpace::realm(
+    /* [out, retval] */ BSTR* result)
 {
-    if (!result)
-        return E_POINTER;
     BString bstring = m_protectionSpace.realm();
     *result = bstring.release();
     return S_OK;
 }
 
-HRESULT WebURLProtectionSpace::receivesCredentialSecurely(_Out_ BOOL* result)
+HRESULT STDMETHODCALLTYPE WebURLProtectionSpace::receivesCredentialSecurely(
+    /* [out, retval] */ BOOL* result)
 {
-    if (!result)
-        return E_POINTER;
     *result = m_protectionSpace.receivesCredentialSecurely();
     return S_OK;
 }

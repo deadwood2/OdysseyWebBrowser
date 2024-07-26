@@ -92,6 +92,7 @@
 #include "FontLoader.cpp"
 #include "InspectorCSSOMWrappers.cpp"
 #include "LengthFunctions.cpp"
+#include "MediaFeatureNames.cpp"
 #include "MediaList.cpp"
 #include "MediaQuery.cpp"
 #include "MediaQueryEvaluator.cpp"

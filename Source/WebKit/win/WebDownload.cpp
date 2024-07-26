@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2007 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -52,6 +52,7 @@ using namespace WebCore;
 // WebDownload ----------------------------------------------------------------
 
 WebDownload::WebDownload()
+    : m_refCount(0)
 {
     gClassCount++;
     gClassNameCount().add("WebDownload");
@@ -90,11 +91,9 @@ WebDownload* WebDownload::createInstance(const URL& url, IWebDownloadDelegate* d
 
 // IUnknown -------------------------------------------------------------------
 
-HRESULT WebDownload::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE WebDownload::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<IWebDownload*>(this);
     else if (IsEqualGUID(riid, IID_IWebDownload))
@@ -110,12 +109,12 @@ HRESULT WebDownload::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObj
     return S_OK;
 }
 
-ULONG WebDownload::AddRef()
+ULONG STDMETHODCALLTYPE WebDownload::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG WebDownload::Release()
+ULONG STDMETHODCALLTYPE WebDownload::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -126,13 +125,17 @@ ULONG WebDownload::Release()
 
 // IWebDownload -------------------------------------------------------------------
 
-HRESULT WebDownload::canResumeDownloadDecodedWithEncodingMIMEType(_In_ BSTR, _Out_ BOOL*)
+HRESULT STDMETHODCALLTYPE WebDownload::canResumeDownloadDecodedWithEncodingMIMEType(
+        /* [in] */ BSTR, 
+        /* [out, retval] */ BOOL*)
 {
     notImplemented();
     return E_FAIL;
 }
 
-HRESULT WebDownload::bundlePathForTargetPath(_In_ BSTR targetPath, __deref_out_opt BSTR* bundlePath)
+HRESULT STDMETHODCALLTYPE WebDownload::bundlePathForTargetPath(
+        /* [in] */ BSTR targetPath, 
+        /* [out, retval] */ BSTR* bundlePath)
 {
     if (!targetPath)
         return E_INVALIDARG;
@@ -151,14 +154,13 @@ HRESULT WebDownload::bundlePathForTargetPath(_In_ BSTR targetPath, __deref_out_o
     return S_OK;
 }
 
-HRESULT WebDownload::request(_COM_Outptr_opt_ IWebURLRequest** request)
+HRESULT STDMETHODCALLTYPE WebDownload::request(
+        /* [out, retval] */ IWebURLRequest** request)
 {
-    if (!request)
-        return E_POINTER;
-
-    *request = m_request.get();
-    if (*request)
-        (*request)->AddRef();
-
+    if (request) {
+        *request = m_request.get();
+        if (*request)
+            (*request)->AddRef();
+    }
     return S_OK;
 }

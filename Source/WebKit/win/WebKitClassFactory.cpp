@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2007, 2014-2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006, 2007, 2014-2015 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -62,7 +62,8 @@
 
 // WebKitClassFactory ---------------------------------------------------------
 WebKitClassFactory::WebKitClassFactory(CLSID targetClass)
-    : m_targetClass(targetClass)
+: m_targetClass(targetClass)
+, m_refCount(0)
 {
     JSC::initializeThreading();
     WTF::initializeMainThread();
@@ -78,11 +79,9 @@ WebKitClassFactory::~WebKitClassFactory()
 }
 
 // IUnknown -------------------------------------------------------------------
-HRESULT WebKitClassFactory::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT WebKitClassFactory::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<IUnknown*>(this);
     else if (IsEqualGUID(riid, IID_IClassFactory))
@@ -94,12 +93,12 @@ HRESULT WebKitClassFactory::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void**
     return S_OK;
 }
 
-ULONG WebKitClassFactory::AddRef()
+ULONG WebKitClassFactory::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG WebKitClassFactory::Release()
+ULONG WebKitClassFactory::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef && !gLockCount)
@@ -122,13 +121,10 @@ static T* leakRefFromCreateInstance(COMPtr<T> object)
 }
 
 // IClassFactory --------------------------------------------------------------
-HRESULT WebKitClassFactory::CreateInstance(_In_opt_ IUnknown* pUnkOuter, _In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT WebKitClassFactory::CreateInstance(IUnknown* pUnkOuter, REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-
-    IUnknown* unknown = nullptr;
-    *ppvObject = nullptr;
+    IUnknown* unknown = 0;
+    *ppvObject = 0;
     
     if (pUnkOuter)
         return CLASS_E_NOAGGREGATION;

@@ -108,7 +108,7 @@ static FontCascade dragLabelFont(int size, bool bold, FontRenderingMode renderin
     metrics.cbSize = sizeof(metrics);
     SystemParametersInfo(SPI_GETNONCLIENTMETRICS, metrics.cbSize, &metrics, 0);
 
-    FontCascadeDescription description;
+    FontDescription description;
     description.setWeight(bold ? FontWeightBold : FontWeightNormal);
     description.setOneFamily(metrics.lfSmCaptionFont.lfFaceName);
     description.setSpecifiedSize((float)size);

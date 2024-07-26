@@ -29,10 +29,10 @@
 #include "DatabaseBasicTypes.h"
 #include "DatabaseDetails.h"
 #include "DatabaseError.h"
+#include <mutex>
 #include <wtf/Assertions.h>
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
-#include <wtf/Lock.h>
 #include <wtf/PassRefPtr.h>
 #include <wtf/Threading.h>
 
@@ -40,6 +40,7 @@ namespace WebCore {
 
 class AbstractDatabaseServer;
 class Database;
+class DatabaseBackendBase;
 class DatabaseCallback;
 class DatabaseContext;
 class DatabaseManagerClient;
@@ -105,6 +106,8 @@ public:
     WEBCORE_EXPORT bool deleteOrigin(SecurityOrigin*);
     WEBCORE_EXPORT bool deleteDatabase(SecurityOrigin*, const String& name);
 
+    void interruptAllDatabasesForContext(ScriptExecutionContext*);
+
 private:
     class ProposedDatabase {
     public:
@@ -128,7 +131,7 @@ private:
     // it already exist previously. Otherwise, it returns 0.
     RefPtr<DatabaseContext> existingDatabaseContextFor(ScriptExecutionContext*);
 
-    PassRefPtr<Database> openDatabaseBackend(ScriptExecutionContext*, const String& name, const String& expectedVersion, const String& displayName, unsigned long estimatedSize, bool setVersionInNewDatabase, DatabaseError&, String& errorMessage);
+    PassRefPtr<DatabaseBackendBase> openDatabaseBackend(ScriptExecutionContext*, const String& name, const String& expectedVersion, const String& displayName, unsigned long estimatedSize, bool setVersionInNewDatabase, DatabaseError&, String& errorMessage);
 
     void addProposedDatabase(ProposedDatabase*);
     void removeProposedDatabase(ProposedDatabase*);
@@ -149,7 +152,7 @@ private:
     HashSet<ProposedDatabase*> m_proposedDatabases;
 
     // This mutex protects m_contextMap, and m_proposedDatabases.
-    Lock m_mutex;
+    std::mutex m_mutex;
 };
 
 } // namespace WebCore

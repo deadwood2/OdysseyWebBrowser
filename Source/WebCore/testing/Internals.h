@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012 Google Inc. All rights reserved.
- * Copyright (C) 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013, 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,6 +35,7 @@
 #include <bindings/ScriptValue.h>
 #include <runtime/ArrayBuffer.h>
 #include <runtime/Float32Array.h>
+#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/text/WTFString.h>
 
@@ -45,14 +46,14 @@ class ClientRect;
 class ClientRectList;
 class DOMPath;
 class DOMStringList;
-class DOMURL;
 class DOMWindow;
 class Document;
 class Element;
 class File;
 class Frame;
 class HTMLMediaElement;
-class InspectorStubFrontend;
+class InspectorFrontendChannelDummy;
+class InspectorFrontendClientDummy;
 class InternalSettings;
 class MallocStatistics;
 class MediaSession;
@@ -77,7 +78,7 @@ typedef int ExceptionCode;
 class Internals : public RefCounted<Internals>
                 , public ContextDestructionObserver {
 public:
-    static Ref<Internals> create(Document*);
+    static PassRefPtr<Internals> create(Document*);
     virtual ~Internals();
 
     static void resetToConsistentState(Page*);
@@ -96,7 +97,6 @@ public:
     bool isStyleSheetLoadingSubresources(Element* link);
     void setOverrideCachePolicy(const String&);
     void setOverrideResourceLoadPriority(const String&);
-    void setStrictRawResourceValidationPolicyDisabled(bool);
 
     void clearMemoryCache();
     void pruneMemoryCacheToSize(unsigned size);
@@ -105,7 +105,7 @@ public:
     void clearPageCache();
     unsigned pageCacheSize() const;
 
-    RefPtr<CSSComputedStyleDeclaration> computedStyleIncludingVisitedInfo(Node*, ExceptionCode&) const;
+    PassRefPtr<CSSComputedStyleDeclaration> computedStyleIncludingVisitedInfo(Node*, ExceptionCode&) const;
 
     Node* ensureShadowRoot(Element* host, ExceptionCode&);
     Node* ensureUserAgentShadowRoot(Element* host, ExceptionCode&);
@@ -156,9 +156,8 @@ public:
     String inspectorHighlightObject(ExceptionCode&);
 
     unsigned markerCountForNode(Node*, const String&, ExceptionCode&);
-    RefPtr<Range> markerRangeForNode(Node*, const String& markerType, unsigned index, ExceptionCode&);
+    PassRefPtr<Range> markerRangeForNode(Node*, const String& markerType, unsigned index, ExceptionCode&);
     String markerDescriptionForNode(Node*, const String& markerType, unsigned index, ExceptionCode&);
-    String dumpMarkerRects(const String& markerType, ExceptionCode&);
     void addTextMatchMarker(const Range*, bool isActive);
     void setMarkedTextMatchesAreHighlighted(bool, ExceptionCode&);
 
@@ -180,11 +179,11 @@ public:
 
     void paintControlTints(ExceptionCode&);
 
-    RefPtr<Range> rangeFromLocationAndLength(Element* scope, int rangeLocation, int rangeLength, ExceptionCode&);
+    PassRefPtr<Range> rangeFromLocationAndLength(Element* scope, int rangeLocation, int rangeLength, ExceptionCode&);
     unsigned locationFromRange(Element* scope, const Range*, ExceptionCode&);
     unsigned lengthFromRange(Element* scope, const Range*, ExceptionCode&);
     String rangeAsText(const Range*, ExceptionCode&);
-    RefPtr<Range> subrange(Range*, int rangeLocation, int rangeLength, ExceptionCode&);
+    PassRefPtr<Range> subrange(Range* range, int rangeLocation, int rangeLength, ExceptionCode&);
     RefPtr<Range> rangeForDictionaryLookupAtLocation(int x, int y, ExceptionCode&);
 
     void setDelegatesScrolling(bool enabled, ExceptionCode&);
@@ -201,7 +200,7 @@ public:
     unsigned wheelEventHandlerCount(ExceptionCode&);
     unsigned touchEventHandlerCount(ExceptionCode&);
 
-    RefPtr<NodeList> nodesFromRect(Document*, int x, int y, unsigned topPadding, unsigned rightPadding,
+    PassRefPtr<NodeList> nodesFromRect(Document*, int x, int y, unsigned topPadding, unsigned rightPadding,
         unsigned bottomPadding, unsigned leftPadding, bool ignoreClipping, bool allowShadowContent, bool allowChildFrameContent, ExceptionCode&) const;
 
     String parserMetaData(Deprecated::ScriptValue = Deprecated::ScriptValue());
@@ -264,7 +263,7 @@ public:
     unsigned numberOfLiveDocuments() const;
 
     Vector<String> consoleMessageArgumentCounts() const;
-    RefPtr<DOMWindow> openDummyInspectorFrontend(const String& url);
+    PassRefPtr<DOMWindow> openDummyInspectorFrontend(const String& url);
     void closeDummyInspectorFrontend();
     void setJavaScriptProfilingEnabled(bool enabled, ExceptionCode&);
     void setInspectorIsUnderTest(bool isUnderTest, ExceptionCode&);
@@ -302,9 +301,9 @@ public:
     void registerURLSchemeAsBypassingContentSecurityPolicy(const String& scheme);
     void removeURLSchemeRegisteredAsBypassingContentSecurityPolicy(const String& scheme);
 
-    Ref<MallocStatistics> mallocStatistics() const;
-    Ref<TypeConversions> typeConversions() const;
-    Ref<MemoryInfo> memoryInfo() const;
+    PassRefPtr<MallocStatistics> mallocStatistics() const;
+    PassRefPtr<TypeConversions> typeConversions() const;
+    PassRefPtr<MemoryInfo> memoryInfo() const;
 
     Vector<String> getReferencedFilePaths() const;
 
@@ -324,8 +323,8 @@ public:
     void updateLayoutIgnorePendingStylesheetsAndRunPostLayoutTasks(Node*, ExceptionCode&);
     unsigned layoutCount() const;
 
-    RefPtr<ArrayBuffer> serializeObject(PassRefPtr<SerializedScriptValue>) const;
-    RefPtr<SerializedScriptValue> deserializeBuffer(PassRefPtr<ArrayBuffer>) const;
+    PassRefPtr<ArrayBuffer> serializeObject(PassRefPtr<SerializedScriptValue>) const;
+    PassRefPtr<SerializedScriptValue> deserializeBuffer(PassRefPtr<ArrayBuffer>) const;
 
     bool isFromCurrentWorld(Deprecated::ScriptValue) const;
 
@@ -366,7 +365,7 @@ public:
     void setCaptionDisplayMode(const String&, ExceptionCode&);
 
 #if ENABLE(VIDEO)
-    Ref<TimeRanges> createTimeRanges(Float32Array* startTimes, Float32Array* endTimes);
+    PassRefPtr<TimeRanges> createTimeRanges(Float32Array* startTimes, Float32Array* endTimes);
     double closestTimeToTimeRanges(double time, TimeRanges*);
 #endif
 
@@ -417,8 +416,6 @@ public:
     void setPageMuted(bool);
     bool isPagePlayingAudio();
 
-    void setPageDefersLoading(bool);
-
     RefPtr<File> createFile(const String&);
     void queueMicroTask(int);
     bool testPreloaderSettingViewport();
@@ -433,10 +430,6 @@ public:
 
     String pathStringWithShrinkWrappedRects(Vector<double> rectComponents, double radius, ExceptionCode&);
 
-    String getCurrentMediaControlsStatusForElement(HTMLMediaElement*);
-
-    String userVisibleString(const DOMURL*);
-
 private:
     explicit Internals(Document*);
     Document* contextDocument() const;
@@ -444,7 +437,9 @@ private:
 
     RenderedDocumentMarker* markerAt(Node*, const String& markerType, unsigned index, ExceptionCode&);
 
-    std::unique_ptr<InspectorStubFrontend> m_inspectorFrontend;
+    RefPtr<DOMWindow> m_frontendWindow;
+    std::unique_ptr<InspectorFrontendClientDummy> m_frontendClient;
+    std::unique_ptr<InspectorFrontendChannelDummy> m_frontendChannel;
 };
 
 } // namespace WebCore

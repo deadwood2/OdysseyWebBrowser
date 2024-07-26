@@ -68,7 +68,7 @@ DocumentFragment* HTMLTemplateElement::content() const
     return m_content.get();
 }
 
-Ref<Node> HTMLTemplateElement::cloneNodeInternal(Document& targetDocument, CloningOperation type)
+RefPtr<Node> HTMLTemplateElement::cloneNodeInternal(Document& targetDocument, CloningOperation type)
 {
     RefPtr<Node> clone;
     switch (type) {
@@ -82,8 +82,8 @@ Ref<Node> HTMLTemplateElement::cloneNodeInternal(Document& targetDocument, Cloni
         break;
     }
     if (m_content)
-        content()->cloneChildNodes(*downcast<HTMLTemplateElement>(clone.get())->content());
-    return clone.releaseNonNull();
+        content()->cloneChildNodes(downcast<HTMLTemplateElement>(clone.get())->content());
+    return clone.release();
 }
 
 void HTMLTemplateElement::didMoveToNewDocument(Document* oldDocument)

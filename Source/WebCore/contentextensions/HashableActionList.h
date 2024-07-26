@@ -26,7 +26,7 @@
 #ifndef HashableActionList_h
 #define HashableActionList_h
 
-#include <wtf/Hasher.h>
+#include <wtf/StringHasher.h>
 #include <wtf/Vector.h>
 
 namespace WebCore {

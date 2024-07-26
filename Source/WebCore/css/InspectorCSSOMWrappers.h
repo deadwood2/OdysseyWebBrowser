@@ -31,10 +31,9 @@
 
 namespace WebCore {
 
-class AuthorStyleSheets;
 class CSSStyleRule;
 class CSSStyleSheet;
-class ExtensionStyleSheets;
+class DocumentStyleSheetCollection;
 class StyleRule;
 class StyleSheetContents;
 
@@ -42,7 +41,7 @@ class InspectorCSSOMWrappers {
 public:
     // WARNING. This will construct CSSOM wrappers for all style rules and cache them in a map for significant memory cost.
     // It is here to support inspector. Don't use for any regular engine functions.
-    CSSStyleRule* getWrapperForRuleInSheets(StyleRule*, AuthorStyleSheets&, ExtensionStyleSheets&);
+    CSSStyleRule* getWrapperForRuleInSheets(StyleRule*, DocumentStyleSheetCollection&);
     void collectFromStyleSheetIfNeeded(CSSStyleSheet*);
 
 private:
@@ -51,6 +50,7 @@ private:
 
     void collectFromStyleSheetContents(HashSet<RefPtr<CSSStyleSheet>>& sheetWrapperSet, StyleSheetContents*);
     void collectFromStyleSheets(const Vector<RefPtr<CSSStyleSheet>>&);
+    void collectFromDocumentStyleSheetCollection(DocumentStyleSheetCollection&);
 
     HashMap<StyleRule*, RefPtr<CSSStyleRule>> m_styleRuleToCSSOMWrapperMap;
     HashSet<RefPtr<CSSStyleSheet>> m_styleSheetCSSOMWrapperSet;

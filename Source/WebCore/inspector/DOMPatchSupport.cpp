@@ -210,14 +210,14 @@ DOMPatchSupport::diff(const Vector<std::unique_ptr<Digest>>& oldList, const Vect
     ResultMap newMap(newList.size());
     ResultMap oldMap(oldList.size());
 
-    for (auto& result : oldMap) {
-        result.first = nullptr;
-        result.second = 0;
+    for (size_t i = 0; i < oldMap.size(); ++i) {
+        oldMap[i].first = nullptr;
+        oldMap[i].second = 0;
     }
 
-    for (auto& result : newMap) {
-        result.first = nullptr;
-        result.second = 0;
+    for (size_t i = 0; i < newMap.size(); ++i) {
+        newMap[i].first = nullptr;
+        newMap[i].second = 0;
     }
 
     // Trim head and tail.
@@ -342,7 +342,7 @@ bool DOMPatchSupport::innerPatchChildren(ContainerNode* parentNode, const Vector
     }
 
     // Mark retained nodes as used, do not reuse node more than once.
-    HashSet<size_t, WTF::IntHash<size_t>, WTF::UnsignedWithZeroKeyHashTraits<size_t>> usedOldOrdinals;
+    HashSet<size_t, WTF::IntHash<size_t>, WTF::UnsignedWithZeroKeyHashTraits<size_t>>  usedOldOrdinals;
     for (size_t i = 0; i < newList.size(); ++i) {
         if (!newMap[i].first)
             continue;
@@ -368,16 +368,17 @@ bool DOMPatchSupport::innerPatchChildren(ContainerNode* parentNode, const Vector
     }
 
     // 2. Patch nodes marked for merge.
-    for (auto& merge : merges) {
-        if (!innerPatchNode(merge.value, merge.key, ec))
+    for (HashMap<Digest*, Digest*>::iterator it = merges.begin(); it != merges.end(); ++it) {
+        if (!innerPatchNode(it->value, it->key, ec))
             return false;
     }
 
     // 3. Insert missing nodes.
-    for (size_t i = 0; i < newMap.size(); ++i) {
+    Node* node = parentNode->firstChild();
+    for (unsigned i = 0; node && i < newMap.size(); ++i, node = node->nextSibling()) {
         if (newMap[i].first || merges.contains(newList[i].get()))
             continue;
-        if (!insertBeforeAndMarkAsUsed(parentNode, newList[i].get(), parentNode->traverseToChildAt(i), ec))
+        if (!insertBeforeAndMarkAsUsed(parentNode, newList[i].get(), node, ec))
             return false;
     }
 
@@ -468,15 +469,15 @@ bool DOMPatchSupport::removeChildAndMoveToNew(Digest* oldDigest, ExceptionCode& 
     if (it != m_unusedNodesMap.end()) {
         Digest* newDigest = it->value;
         Node* newNode = newDigest->m_node;
-        if (!m_domEditor->replaceChild(newNode->parentNode(), WTF::move(oldNode), newNode, ec))
+        if (!m_domEditor->replaceChild(newNode->parentNode(), oldNode, newNode, ec))
             return false;
         newDigest->m_node = oldNode.get();
         markNodeAsUsed(newDigest);
         return true;
     }
 
-    for (auto& child : oldDigest->m_children) {
-        if (!removeChildAndMoveToNew(child.get(), ec))
+    for (size_t i = 0; i < oldDigest->m_children.size(); ++i) {
+        if (!removeChildAndMoveToNew(oldDigest->m_children[i].get(), ec))
             return false;
     }
     return true;
@@ -489,8 +490,8 @@ void DOMPatchSupport::markNodeAsUsed(Digest* digest)
     while (!queue.isEmpty()) {
         Digest* first = queue.takeFirst();
         m_unusedNodesMap.remove(first->m_sha1);
-        for (auto& child : first->m_children)
-            queue.append(child.get());
+        for (size_t i = 0; i < first->m_children.size(); ++i)
+            queue.append(first->m_children[i].get());
     }
 }
 

@@ -46,33 +46,33 @@ using namespace JSC;
 
 namespace WebCore {
 
-JSValue JSXSLTProcessor::setParameter(ExecState& state)
+JSValue JSXSLTProcessor::setParameter(ExecState* exec)
 {
-    if (state.argument(1).isUndefinedOrNull() || state.argument(2).isUndefinedOrNull())
+    if (exec->argument(1).isUndefinedOrNull() || exec->argument(2).isUndefinedOrNull())
         return jsUndefined(); // Throw exception?
-    String namespaceURI = state.uncheckedArgument(0).toString(&state)->value(&state);
-    String localName = state.uncheckedArgument(1).toString(&state)->value(&state);
-    String value = state.uncheckedArgument(2).toString(&state)->value(&state);
+    String namespaceURI = exec->uncheckedArgument(0).toString(exec)->value(exec);
+    String localName = exec->uncheckedArgument(1).toString(exec)->value(exec);
+    String value = exec->uncheckedArgument(2).toString(exec)->value(exec);
     impl().setParameter(namespaceURI, localName, value);
     return jsUndefined();
 }
 
-JSValue JSXSLTProcessor::getParameter(ExecState& state)
+JSValue JSXSLTProcessor::getParameter(ExecState* exec)
 {
-    if (state.argument(1).isUndefinedOrNull())
+    if (exec->argument(1).isUndefinedOrNull())
         return jsUndefined();
-    String namespaceURI = state.uncheckedArgument(0).toString(&state)->value(&state);
-    String localName = state.uncheckedArgument(1).toString(&state)->value(&state);
+    String namespaceURI = exec->uncheckedArgument(0).toString(exec)->value(exec);
+    String localName = exec->uncheckedArgument(1).toString(exec)->value(exec);
     String value = impl().getParameter(namespaceURI, localName);
-    return jsStringOrUndefined(&state, value);
+    return jsStringOrUndefined(exec, value);
 }
 
-JSValue JSXSLTProcessor::removeParameter(ExecState& state)
+JSValue JSXSLTProcessor::removeParameter(ExecState* exec)
 {
-    if (state.argument(1).isUndefinedOrNull())
+    if (exec->argument(1).isUndefinedOrNull())
         return jsUndefined();
-    String namespaceURI = state.uncheckedArgument(0).toString(&state)->value(&state);
-    String localName = state.uncheckedArgument(1).toString(&state)->value(&state);
+    String namespaceURI = exec->uncheckedArgument(0).toString(exec)->value(exec);
+    String localName = exec->uncheckedArgument(1).toString(exec)->value(exec);
     impl().removeParameter(namespaceURI, localName);
     return jsUndefined();
 }

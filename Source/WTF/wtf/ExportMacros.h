@@ -89,13 +89,13 @@
 
 #else // !USE(EXPORT_MACROS)
 
-#if OS(WINDOWS) && !COMPILER(GCC_OR_CLANG)
+#if OS(WINDOWS) && !COMPILER(GCC)
 #if defined(BUILDING_WTF) || defined(STATICALLY_LINKED_WITH_WTF)
 #define WTF_EXPORTDATA __declspec(dllexport)
 #else
 #define WTF_EXPORTDATA __declspec(dllimport)
 #endif
-#else // !OS(WINDOWS) || COMPILER(GCC_OR_CLANG)
+#else // !OS(WINDOWS) || COMPILER(GCC)
 #define WTF_EXPORTDATA
 #endif
 

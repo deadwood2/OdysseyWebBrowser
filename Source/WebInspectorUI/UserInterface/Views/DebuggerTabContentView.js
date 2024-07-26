@@ -23,24 +23,26 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.DebuggerTabContentView = class DebuggerTabContentView extends WebInspector.ContentBrowserTabContentView
+WebInspector.DebuggerTabContentView = function(identifier)
 {
-    constructor(identifier)
-    {
-        var tabBarItem = new WebInspector.TabBarItem("Images/Debugger.svg", WebInspector.UIString("Debugger"));
-        var detailsSidebarPanels = [WebInspector.resourceDetailsSidebarPanel, WebInspector.scopeChainDetailsSidebarPanel, WebInspector.probeDetailsSidebarPanel];
+    var tabBarItem = new WebInspector.TabBarItem("Images/Debugger.svg", WebInspector.UIString("Debugger"));
+    var detailsSidebarPanels = [WebInspector.resourceDetailsSidebarPanel, WebInspector.scopeChainDetailsSidebarPanel, WebInspector.probeDetailsSidebarPanel];
 
-        super(identifier || "debugger", "debugger", tabBarItem, WebInspector.DebuggerSidebarPanel, detailsSidebarPanels);
-    }
+    WebInspector.ContentBrowserTabContentView.call(this, identifier || "debugger", "debugger", tabBarItem, WebInspector.DebuggerSidebarPanel, detailsSidebarPanels);
+};
+
+WebInspector.DebuggerTabContentView.prototype = {
+    constructor: WebInspector.DebuggerTabContentView,
+    __proto__: WebInspector.ContentBrowserTabContentView.prototype,
 
     // Public
 
     get type()
     {
         return WebInspector.DebuggerTabContentView.Type;
-    }
+    },
 
-    canShowRepresentedObject(representedObject)
+    canShowRepresentedObject: function(representedObject)
     {
         if (representedObject instanceof WebInspector.Script)
             return true;
@@ -49,11 +51,11 @@ WebInspector.DebuggerTabContentView = class DebuggerTabContentView extends WebIn
             return false;
 
         return representedObject.type === WebInspector.Resource.Type.Document || representedObject.type === WebInspector.Resource.Type.Script;
-    }
+    },
 
-    showDetailsSidebarPanels()
+    showDetailsSidebarPanels: function()
     {
-        super.showDetailsSidebarPanels();
+        WebInspector.ContentBrowserTabContentView.prototype.showDetailsSidebarPanels.call(this);
 
         if (!this._showScopeChainDetailsSidebarPanel || !WebInspector.scopeChainDetailsSidebarPanel.parentSidebar)
             return;
@@ -61,14 +63,14 @@ WebInspector.DebuggerTabContentView = class DebuggerTabContentView extends WebIn
         WebInspector.scopeChainDetailsSidebarPanel.show();
 
         this._showScopeChainDetailsSidebarPanel = false;
-    }
+    },
 
-    showScopeChainDetailsSidebarPanel()
+    showScopeChainDetailsSidebarPanel: function()
     {
         this._showScopeChainDetailsSidebarPanel = true;
-    }
+    },
 
-    revealAndSelectBreakpoint(breakpoint)
+    revealAndSelectBreakpoint: function(breakpoint)
     {
         console.assert(breakpoint instanceof WebInspector.Breakpoint);
 

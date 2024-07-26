@@ -31,6 +31,7 @@ using namespace WebCore;
 class WebStorageTrackerClient : public WebCore::StorageTrackerClient {
 public:
     static WebStorageTrackerClient* sharedWebStorageTrackerClient();
+    static void dispatchDidModifyOriginOnMainThread(void* context);
     
     virtual ~WebStorageTrackerClient();
     virtual void dispatchDidModifyOrigin(const String& originIdentifier) override;

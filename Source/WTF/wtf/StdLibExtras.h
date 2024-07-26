@@ -33,11 +33,19 @@
 #include <wtf/CheckedArithmetic.h>
 
 // This was used to declare and define a static local variable (static T;) so that
-//  it was leaked so that its destructors were not called at exit.
+//  it was leaked so that its destructors were not called at exit. Using this
+//  macro also allowed to workaround a compiler bug present in Apple's version of GCC 4.0.1.
+//
 // Newly written code should use static NeverDestroyed<T> instead.
 #ifndef DEPRECATED_DEFINE_STATIC_LOCAL
+#if COMPILER(GCC) && defined(__APPLE_CC__) && __GNUC__ == 4 && __GNUC_MINOR__ == 0 && __GNUC_PATCHLEVEL__ == 1
+#define DEPRECATED_DEFINE_STATIC_LOCAL(type, name, arguments) \
+    static type* name##Ptr = new type arguments; \
+    type& name = *name##Ptr
+#else
 #define DEPRECATED_DEFINE_STATIC_LOCAL(type, name, arguments) \
     static type& name = *new type arguments
+#endif
 #endif
 
 // Use this macro to declare and define a debug-only global variable that may have a
@@ -80,7 +88,7 @@
  * - https://bugs.webkit.org/show_bug.cgi?id=38045
  * - http://gcc.gnu.org/bugzilla/show_bug.cgi?id=43976
  */
-#if (CPU(ARM) || CPU(MIPS)) && COMPILER(GCC_OR_CLANG)
+#if (CPU(ARM) || CPU(MIPS)) && COMPILER(GCC)
 template<typename Type>
 inline bool isPointerTypeAlignmentOkay(Type* ptr)
 {
@@ -172,7 +180,7 @@ inline size_t bitCount(uint64_t bits)
 // Macro that returns a compile time constant with the length of an array, but gives an error if passed a non-array.
 template<typename T, size_t Size> char (&ArrayLengthHelperFunction(T (&)[Size]))[Size];
 // GCC needs some help to deduce a 0 length array.
-#if COMPILER(GCC_OR_CLANG)
+#if COMPILER(GCC)
 template<typename T> char (&ArrayLengthHelperFunction(T (&)[0]))[0];
 #endif
 #define WTF_ARRAY_LENGTH(array) sizeof(::WTF::ArrayLengthHelperFunction(array))
@@ -330,8 +338,6 @@ template<class T, class... Args> typename _Unique_if<T>::_Known_bound
 make_unique(Args&&...) = delete;
 #endif
 
-// MSVC 2015 supports these functions.
-#if !COMPILER(MSVC) || _MSC_VER < 1900
 // Compile-time integer sequences
 // http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2013/n3658.html
 // (Note that we only implement index_sequence, and not the more generic integer_sequence).
@@ -360,7 +366,6 @@ T exchange(T& t, U&& newValue)
 
     return oldValue;
 }
-#endif
 
 #if COMPILER_SUPPORTS(CXX_USER_LITERALS)
 // These literals are available in C++14, so once we require C++14 compilers we can get rid of them here.

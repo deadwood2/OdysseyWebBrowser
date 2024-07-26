@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -57,7 +57,6 @@ public:
             BasicBlock* block = m_graph.block(blockIndex);
             if (!block)
                 continue;
-            block->ssa->liveAtTailIsDirty = true;
             block->ssa->liveAtHead.clear();
             block->ssa->liveAtTail.clear();
         }
@@ -85,12 +84,11 @@ private:
         BasicBlock* block = m_graph.block(blockIndex);
         if (!block)
             return;
-
-        if (!block->ssa->liveAtTailIsDirty)
-            return;
-        block->ssa->liveAtTailIsDirty = false;
-
+        
+        // FIXME: It's likely that this can be improved, for static analyses that use
+        // HashSets. https://bugs.webkit.org/show_bug.cgi?id=118455
         m_live = block->ssa->liveAtTail;
+        
         for (unsigned nodeIndex = block->size(); nodeIndex--;) {
             Node* node = block->at(nodeIndex);
             
@@ -132,17 +130,13 @@ private:
             }
         }
         
-        for (Node* node : m_live) {
-            if (!block->ssa->liveAtHead.contains(node)) {
-                m_changed = true;
-                for (unsigned i = block->predecessors.size(); i--;) {
-                    BasicBlock* predecessor = block->predecessors[i];
-                    if (predecessor->ssa->liveAtTail.add(node).isNewEntry)
-                        predecessor->ssa->liveAtTailIsDirty = true;
-                }
-            }
-        }
-        block->ssa->liveAtHead = WTF::move(m_live);
+        if (m_live == block->ssa->liveAtHead)
+            return;
+        
+        m_changed = true;
+        block->ssa->liveAtHead = m_live;
+        for (unsigned i = block->predecessors.size(); i--;)
+            block->predecessors[i]->ssa->liveAtTail.add(m_live.begin(), m_live.end());
     }
     
     void addChildUse(Node*, Edge& edge)

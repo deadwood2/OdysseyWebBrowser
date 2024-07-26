@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2014, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2010, 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -60,6 +60,11 @@ Ref<WebInspector> WebInspector::create(WebPage* page)
 
 WebInspector::WebInspector(WebPage* page)
     : m_page(page)
+    , m_attached(false)
+    , m_previousCanAttach(false)
+#if ENABLE(INSPECTOR_SERVER)
+    , m_remoteFrontendConnected(false)
+#endif
 {
 }
 
@@ -70,7 +75,7 @@ WebInspector::~WebInspector()
 }
 
 // Called from WebInspectorClient
-void WebInspector::openFrontendConnection(bool underTest)
+void WebInspector::createInspectorPage(bool underTest)
 {
 #if OS(DARWIN)
     mach_port_t listeningPort;
@@ -93,15 +98,12 @@ void WebInspector::openFrontendConnection(bool underTest)
     WebProcess::singleton().parentProcessConnection()->send(Messages::WebInspectorProxy::CreateInspectorPage(connectionClientPort, canAttachWindow(), underTest), m_page->pageID());
 }
 
-void WebInspector::closeFrontendConnection()
+void WebInspector::closeFrontend()
 {
     WebProcess::singleton().parentProcessConnection()->send(Messages::WebInspectorProxy::DidClose(), m_page->pageID());
 
-    // If we tried to close the frontend before it was created, then no connection exists yet.
-    if (m_frontendConnection) {
-        m_frontendConnection->invalidate();
-        m_frontendConnection = nullptr;
-    }
+    m_frontendConnection->invalidate();
+    m_frontendConnection = nullptr;
 
     m_attached = false;
     m_previousCanAttach = false;
@@ -126,12 +128,7 @@ void WebInspector::close()
     if (!m_page->corePage())
         return;
 
-    // Close could be called multiple times during teardown.
-    if (!m_frontendConnection)
-        return;
-
-    m_page->corePage()->inspectorController().disconnectFrontend(this);
-    closeFrontendConnection();
+    m_page->corePage()->inspectorController().close();
 }
 
 void WebInspector::openInNewTab(const String& urlString)
@@ -267,7 +264,8 @@ void WebInspector::remoteFrontendConnected()
 {
     if (m_page->corePage()) {
         m_remoteFrontendConnected = true;
-        m_page->corePage()->inspectorController().connectFrontend(this);
+        bool isAutomaticInspection = false;
+        m_page->corePage()->inspectorController().connectFrontend(this, isAutomaticInspection);
     }
 }
 
@@ -276,7 +274,7 @@ void WebInspector::remoteFrontendDisconnected()
     m_remoteFrontendConnected = false;
 
     if (m_page->corePage())
-        m_page->corePage()->inspectorController().disconnectFrontend(this);
+        m_page->corePage()->inspectorController().disconnectFrontend(Inspector::DisconnectReason::InspectorDestroyed);
 }
 #endif
 

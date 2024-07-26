@@ -123,7 +123,7 @@ private:
                 break;
             }
             
-            if (mayExit(m_graph, node) != DoesNotExit) {
+            if (mayExit(m_graph, node)) {
                 currentEpoch.bump();
                 lastExitingIndex = nodeIndex;
             }
@@ -160,13 +160,10 @@ private:
                     // We have exact ref counts, so creating a new use means that we have to
                     // increment the ref count.
                     killedNode->postfixRef();
-
-                    Node* lastExitingNode = block->at(lastExitingIndex);
                     
                     m_insertionSet.insertNode(
                         lastExitingIndex + 1, SpecNone, Phantom,
-                        lastExitingNode->origin.forInsertingAfter(m_graph, lastExitingNode),
-                        killedNode->defaultEdge());
+                        block->at(lastExitingIndex)->origin, killedNode->defaultEdge());
             });
         }
         

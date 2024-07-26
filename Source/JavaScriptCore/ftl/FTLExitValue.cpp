@@ -51,36 +51,37 @@ ExitValue ExitValue::withLocalsOffset(int offset) const
     return withVirtualRegister(virtualRegister() + offset);
 }
 
-DataFormat ExitValue::dataFormat() const
+ValueFormat ExitValue::valueFormat() const
 {
     switch (kind()) {
     case InvalidExitValue:
         RELEASE_ASSERT_NOT_REACHED();
-        return DataFormatNone;
+        return InvalidValueFormat;
             
     case ExitValueDead:
     case ExitValueConstant:
     case ExitValueInJSStack:
     case ExitValueMaterializeNewObject:
-        return DataFormatJS;
+        return ValueFormatJSValue;
             
     case ExitValueArgument:
         return exitArgument().format();
             
     case ExitValueInJSStackAsInt32:
-        return DataFormatInt32;
+        return ValueFormatInt32;
             
     case ExitValueInJSStackAsInt52:
-        return DataFormatInt52;
+        return ValueFormatInt52;
             
     case ExitValueInJSStackAsDouble:
-        return DataFormatDouble;
+        return ValueFormatDouble;
             
     case ExitValueRecovery:
         return recoveryFormat();
     }
         
     RELEASE_ASSERT_NOT_REACHED();
+    return InvalidValueFormat;
 }
 
 void ExitValue::dumpInContext(PrintStream& out, DumpContext* context) const

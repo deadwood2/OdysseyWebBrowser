@@ -55,7 +55,7 @@ Vector<PassRefPtr<MediaTrackConstraint>> MediaTrackConstraints::optional(bool) c
     return Vector<PassRefPtr<MediaTrackConstraint>>();
 }
 
-MediaTrackConstraintSet* MediaTrackConstraints::mandatory() const
+RefPtr<MediaTrackConstraintSet> MediaTrackConstraints::mandatory(bool) const
 {
     // https://bugs.webkit.org/show_bug.cgi?id=121954
     notImplemented();

@@ -397,7 +397,7 @@ void Editor::WebContentReader::addFragment(PassRefPtr<DocumentFragment> newFragm
     if (fragment) {
         if (newFragment && newFragment->firstChild()) {
             ExceptionCode ec;
-            fragment->appendChild(*newFragment->firstChild(), ec);
+            fragment->appendChild(newFragment->firstChild(), ec);
         }
     } else
         fragment = newFragment;
@@ -494,12 +494,12 @@ bool Editor::WebContentReader::readURL(const URL& url, const String&)
             return fragment;
         }
     } else {
-        Ref<Element> anchor = frame.document()->createElement(HTMLNames::aTag, false);
+        RefPtr<Element> anchor = frame.document()->createElement(HTMLNames::aTag, false);
         anchor->setAttribute(HTMLNames::hrefAttr, url.string());
         anchor->appendChild(frame.document()->createTextNode([[(NSURL *)url absoluteString] precomposedStringWithCanonicalMapping]));
 
         RefPtr<DocumentFragment> newFragment = frame.document()->createDocumentFragment();
-        newFragment->appendChild(WTF::move(anchor));
+        newFragment->appendChild(anchor.release());
         addFragment(newFragment);
         return true;
     }
@@ -583,7 +583,7 @@ PassRefPtr<DocumentFragment> Editor::createFragmentForImageResourceAndAddResourc
     if (!resource)
         return nullptr;
 
-    Ref<Element> imageElement = m_frame.document()->createElement(HTMLNames::imgTag, false);
+    RefPtr<Element> imageElement = m_frame.document()->createElement(HTMLNames::imgTag, false);
     // FIXME: The code in createFragmentAndAddResources calls setDefersLoading(true). Don't we need that here?
     if (DocumentLoader* loader = m_frame.loader().documentLoader())
         loader->addArchiveResource(resource.get());
@@ -592,7 +592,7 @@ PassRefPtr<DocumentFragment> Editor::createFragmentForImageResourceAndAddResourc
     imageElement->setAttribute(HTMLNames::srcAttr, [URL isFileURL] ? [URL absoluteString] : resource->url());
 
     RefPtr<DocumentFragment> fragment = m_frame.document()->createDocumentFragment();
-    fragment->appendChild(WTF::move(imageElement));
+    fragment->appendChild(imageElement.release());
 
     return fragment.release();
 }

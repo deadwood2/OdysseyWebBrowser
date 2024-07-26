@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2007 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -43,11 +43,11 @@ NSString *WebInspectorDidStartSearchingForNode = @"WebInspectorDidStartSearching
 NSString *WebInspectorDidStopSearchingForNode = @"WebInspectorDidStopSearchingForNode";
 
 @implementation WebInspector
-- (id)initWithInspectedWebView:(WebView *)inspectedWebView
+- (id)initWithWebView:(WebView *)webView
 {
     if (!(self = [super init]))
         return nil;
-    _inspectedWebView = inspectedWebView; // not retained to prevent a cycle
+    _webView = webView; // not retained to prevent a cycle
 
     return self;
 }
@@ -58,16 +58,15 @@ NSString *WebInspectorDidStopSearchingForNode = @"WebInspectorDidStopSearchingFo
     [super dealloc];
 }
 
-- (void)inspectedWebViewClosed
+- (void)webViewClosed
 {
-    [self close:nil];
-    _inspectedWebView = nil;
+    _webView = nil;
 }
 
 - (void)showWindow
 {
-    if (Page* inspectedPage = core(_inspectedWebView))
-        inspectedPage->inspectorController().show();
+    if (Page* page = core(_webView))
+        page->inspectorController().show();
 }
 
 - (void)show:(id)sender
@@ -151,14 +150,10 @@ NSString *WebInspectorDidStopSearchingForNode = @"WebInspectorDidStopSearchingFo
         [_frontend setTimelineProfilingEnabled:enabled];
 }
 
-- (BOOL)isOpen
-{
-    return !!_frontend;
-}
-
 - (void)close:(id)sender 
 {
-    [_frontend close];
+    if (Page* page = core(_webView))
+        page->inspectorController().close();
 }
 
 - (void)attach:(id)sender
@@ -173,8 +168,8 @@ NSString *WebInspectorDidStopSearchingForNode = @"WebInspectorDidStopSearchingFo
 
 - (void)evaluateInFrontend:(id)sender script:(NSString *)script
 {
-    if (Page* inspectedPage = core(_inspectedWebView))
-        inspectedPage->inspectorController().evaluateForTestInFrontend(script);
+    if (Page* page = core(_webView))
+        page->inspectorController().evaluateForTestInFrontend(script);
 }
 
 - (void)setFrontend:(WebInspectorFrontend *)frontend
@@ -185,6 +180,6 @@ NSString *WebInspectorDidStopSearchingForNode = @"WebInspectorDidStopSearchingFo
 - (void)releaseFrontend
 {
     [_frontend release];
-    _frontend = nil;
+    _frontend = 0;
 }
 @end

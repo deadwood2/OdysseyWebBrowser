@@ -33,7 +33,6 @@
 #include "IntRect.h"
 #include "IntSize.h"
 #include "Timer.h"
-#include <wtf/Lock.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/Optional.h>
 #include <wtf/PassRefPtr.h>
@@ -212,9 +211,9 @@ private:
     float m_pendingScale;
     float m_pendingZoomedOutScale;
 
-    mutable Lock m_tileMutex;
-    mutable Lock m_savedDisplayRectMutex;
-    mutable Lock m_contentReplacementImageMutex;
+    mutable Mutex m_tileMutex;
+    mutable Mutex m_savedDisplayRectMutex;
+    mutable Mutex m_contentReplacementImageMutex;
 
     bool m_tileControllerShouldUseLowScaleTiles;
 };

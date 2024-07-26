@@ -72,7 +72,7 @@ public:
 
     bool encodingRequiresPlatformData() const { return false; }
 
-    WEBCORE_EXPORT static bool compare(const ProtectionSpace&, const ProtectionSpace&);
+    static bool compare(const ProtectionSpace& a, const ProtectionSpace& b);
 
 protected:
     WEBCORE_EXPORT ProtectionSpaceBase();

@@ -39,7 +39,7 @@
 #include "ProcessModel.h"
 #include "ProcessThrottler.h"
 #include "StatisticsRequest.h"
-#include "VisitedLinkStore.h"
+#include "VisitedLinkProvider.h"
 #include "WebContextClient.h"
 #include "WebContextConnectionClient.h"
 #include "WebContextInjectedBundleClient.h"
@@ -63,10 +63,6 @@
 #include "NetworkProcessProxy.h"
 #endif
 
-#if ENABLE(MEDIA_SESSION)
-#include "WebMediaSessionFocusManager.h"
-#endif
-
 #if PLATFORM(COCOA)
 OBJC_CLASS NSMutableDictionary;
 OBJC_CLASS NSObject;
@@ -76,7 +72,6 @@ OBJC_CLASS NSString;
 namespace API {
 class DownloadClient;
 class LegacyContextHistoryClient;
-class PageConfiguration;
 }
 
 namespace WebKit {
@@ -87,6 +82,7 @@ class WebIconDatabase;
 class WebPageGroup;
 class WebPageProxy;
 struct StatisticsData;
+struct WebPageConfiguration;
 struct WebProcessCreationParameters;
     
 typedef GenericCallback<API::Dictionary*> DictionaryCallback;
@@ -171,7 +167,7 @@ public:
 
     API::WebsiteDataStore* websiteDataStore() const { return m_websiteDataStore.get(); }
 
-    PassRefPtr<WebPageProxy> createWebPage(PageClient&, Ref<API::PageConfiguration>&&);
+    PassRefPtr<WebPageProxy> createWebPage(PageClient&, WebPageConfiguration);
 
     const String& injectedBundlePath() const { return m_configuration->injectedBundlePath(); }
 
@@ -213,7 +209,7 @@ public:
     void registerURLSchemeAsCachePartitioned(const String&);
 #endif
 
-    VisitedLinkStore& visitedLinkStore() { return m_visitedLinkStore.get(); }
+    VisitedLinkProvider& visitedLinkProvider() { return m_visitedLinkProvider.get(); }
 
     void setCacheModel(CacheModel);
     CacheModel cacheModel() const { return m_configuration->cacheModel(); }
@@ -445,7 +441,7 @@ private:
 #if ENABLE(NETSCAPE_PLUGIN_API)
     PluginInfoStore m_pluginInfoStore;
 #endif
-    Ref<VisitedLinkStore> m_visitedLinkStore;
+    Ref<VisitedLinkProvider> m_visitedLinkProvider;
     bool m_visitedLinksPopulated;
 
     PlugInAutoStartProvider m_plugInAutoStartProvider;

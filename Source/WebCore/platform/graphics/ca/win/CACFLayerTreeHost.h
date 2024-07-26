@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2012, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2009, 2010, 2011, 2012 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,7 +28,6 @@
 
 #include "AbstractCACFLayerTreeHost.h"
 #include "COMPtr.h"
-#include "Page.h"
 #include "Timer.h"
 
 #include <wtf/HashSet.h>
@@ -53,7 +52,6 @@ namespace WebCore {
 
 class CACFLayerTreeHostClient;
 class PlatformCALayer;
-class TiledBacking;
 
 class CACFLayerTreeHost : public RefCounted<CACFLayerTreeHost>, private AbstractCACFLayerTreeHost {
 public:
@@ -66,8 +64,7 @@ public:
 
     void setRootChildLayer(PlatformCALayer*);
     void setWindow(HWND);
-    void setPage(Page*);
-    virtual void paint(HDC = nullptr);
+    virtual void paint();
     virtual void resize() = 0;
     void flushPendingGraphicsLayerChangesSoon();
     virtual void setShouldInvertColors(bool);
@@ -80,17 +77,12 @@ public:
     // AbstractCACFLayerTreeHost
     virtual void flushPendingLayerChangesNow();
 
-    String layerTreeAsString() const;
-    void updateDebugInfoLayer(bool);
-
 protected:
     CACFLayerTreeHost();
 
     CGRect bounds() const;
     HWND window() const { return m_window; }
     void notifyAnimationsStarted();
-
-    TiledBacking* mainFrameTiledBacking() const;
 
     // AbstractCACFLayerTreeHost
     virtual PlatformCALayer* rootLayer() const;
@@ -108,21 +100,19 @@ private:
 
     virtual void flushContext() = 0;
     virtual CFTimeInterval lastCommitTime() const = 0;
-    virtual void render(const Vector<CGRect>& dirtyRects = Vector<CGRect>(), HDC dc = nullptr) = 0;
+    virtual void render(const Vector<CGRect>& dirtyRects = Vector<CGRect>()) = 0;
     virtual void initializeContext(void* userData, PlatformCALayer*) = 0;
 
-    CACFLayerTreeHostClient* m_client { nullptr };
-    Page* m_page { nullptr };
+    CACFLayerTreeHostClient* m_client;
     RefPtr<PlatformCALayer> m_rootLayer;
     RefPtr<PlatformCALayer> m_rootChildLayer;
-    RefPtr<PlatformCALayer> m_debugInfoLayer;
     HashSet<RefPtr<PlatformCALayer> > m_pendingAnimatedLayers;
-    HWND m_window { nullptr };
-    bool m_shouldFlushPendingGraphicsLayerChanges { false };
-    bool m_isFlushingLayerChanges { false };
+    HWND m_window;
+    bool m_shouldFlushPendingGraphicsLayerChanges;
+    bool m_isFlushingLayerChanges;
 
 #if !ASSERT_DISABLED
-    enum { WindowNotSet, WindowSet, WindowCleared } m_state { WindowNotSet };
+    enum { WindowNotSet, WindowSet, WindowCleared } m_state;
 #endif
 };
 

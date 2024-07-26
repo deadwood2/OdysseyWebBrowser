@@ -82,6 +82,5 @@ WebInspector.TextMarker = class TextMarker extends WebInspector.Object
 WebInspector.TextMarker.Type = {
     Color: "text-marker-type-color",
     Gradient: "text-marker-type-gradient",
-    Plain: "text-marker-type-plain",
-    CubicBezier: "text-marker-type-cubic-bezier"
+    Plain: "text-marker-type-plain"
 };

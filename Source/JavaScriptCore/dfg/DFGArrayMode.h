@@ -53,7 +53,6 @@ enum Action {
 
 enum Type {
     SelectUsingPredictions, // Implies that we need predictions to decide. We will never get to the backend in this mode.
-    SelectUsingArguments, // Implies that we use the Node's arguments to decide. We will never get to the backend in this mode.
     Unprofiled, // Implies that array profiling didn't see anything. But that could be because the operands didn't comply with basic type assumptions (base is cell, property is int). This either becomes Generic or ForceExit depending on value profiling.
     ForceExit, // Implies that we have no idea how to execute this operation, so we should just give up.
     Generic,
@@ -196,7 +195,7 @@ public:
     ArrayMode withProfile(const ConcurrentJITLocker& locker, ArrayProfile* profile, bool makeSafe) const
     {
         Array::Class myArrayClass;
-
+        
         if (isJSArray()) {
             if (profile->usesOriginalArrayStructures(locker) && benefitsFromOriginalArray())
                 myArrayClass = Array::OriginalArray;
@@ -294,9 +293,7 @@ public:
     {
         switch (type()) {
         case Array::SelectUsingPredictions:
-        case Array::SelectUsingArguments:
         case Array::Unprofiled:
-        case Array::Undecided:
         case Array::ForceExit:
         case Array::Generic:
         case Array::DirectArguments:
@@ -310,6 +307,7 @@ public:
     bool lengthNeedsStorage() const
     {
         switch (type()) {
+        case Array::Undecided:
         case Array::Int32:
         case Array::Double:
         case Array::Contiguous:
@@ -337,10 +335,10 @@ public:
     {
         switch (type()) {
         case Array::SelectUsingPredictions:
-        case Array::SelectUsingArguments:
         case Array::Unprofiled:
         case Array::ForceExit:
         case Array::Generic:
+        case Array::Undecided:
             return false;
         default:
             return true;
@@ -374,7 +372,6 @@ public:
         case Array::Int32:
         case Array::Double:
         case Array::Contiguous:
-        case Array::Undecided:
         case Array::ArrayStorage:
             return true;
         default:

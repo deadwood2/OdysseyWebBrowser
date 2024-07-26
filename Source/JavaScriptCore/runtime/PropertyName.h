@@ -51,8 +51,6 @@ public:
         ASSERT(m_impl->isSymbol());
     }
 
-    bool isNull() const { return !m_impl; }
-
     bool isSymbol()
     {
         return m_impl && m_impl->isSymbol();

@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
- * Copyright (C) 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -32,7 +31,6 @@
 #ifndef PageRuntimeAgent_h
 #define PageRuntimeAgent_h
 
-#include "InspectorWebAgentBase.h"
 #include <inspector/InspectorFrontendDispatchers.h>
 #include <inspector/agents/InspectorRuntimeAgent.h>
 
@@ -55,10 +53,10 @@ typedef String ErrorString;
 class PageRuntimeAgent final : public Inspector::InspectorRuntimeAgent {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    PageRuntimeAgent(PageAgentContext&, InspectorPageAgent*);
+    PageRuntimeAgent(Inspector::InjectedScriptManager*, Page*, InspectorPageAgent*);
     virtual ~PageRuntimeAgent() { }
 
-    virtual void didCreateFrontendAndBackend(Inspector::FrontendRouter*, Inspector::BackendDispatcher*) override;
+    virtual void didCreateFrontendAndBackend(Inspector::FrontendChannel*, Inspector::BackendDispatcher*) override;
     virtual void willDestroyFrontendAndBackend(Inspector::DisconnectReason) override;
     virtual void enable(ErrorString&) override;
     virtual void disable(ErrorString&) override;
@@ -74,13 +72,11 @@ private:
     void reportExecutionContextCreation();
     void notifyContextCreated(const String& frameId, JSC::ExecState*, SecurityOrigin*, bool isPageContext);
 
+    Page* m_inspectedPage;
+    InspectorPageAgent* m_pageAgent;
     std::unique_ptr<Inspector::RuntimeFrontendDispatcher> m_frontendDispatcher;
     RefPtr<Inspector::RuntimeBackendDispatcher> m_backendDispatcher;
-    InspectorPageAgent* m_pageAgent;
-
-    Page& m_inspectedPage;
-
-    bool m_mainWorldContextCreated { false };
+    bool m_mainWorldContextCreated;
 };
 
 } // namespace WebCore

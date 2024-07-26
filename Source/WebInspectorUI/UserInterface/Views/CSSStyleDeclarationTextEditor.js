@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
  * Copyright (C) 2015 Tobias Reiss <tobi+webkit@basecode.de>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,8 +43,8 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
         this._filterResultPropertyNames = null;
         this._sortProperties = false;
 
-        this._prefixWhitespace = "\n";
-        this._suffixWhitespace = "\n";
+        this._prefixWhitespace = "";
+        this._suffixWhitespace = "";
         this._linePrefixWhitespace = "";
 
         this._delegate = delegate || null;
@@ -54,7 +54,7 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
             lineWrapping: true,
             mode: "css-rule",
             electricChars: false,
-            indentWithTabs: false,
+            indentWithTabs: true,
             indentUnit: 4,
             smartIndent: false,
             matchBrackets: true,
@@ -389,9 +389,7 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
     didDismissPopover(popover)
     {
         if (popover === this._colorPickerPopover)
-            this._colorPickerPopover = null;
-        if (popover === this._cubicBezierEditorPopover)
-            this._cubicBezierEditorPopover = null;
+            delete this._colorPickerPopover;
     }
 
     completionControllerCompletionsHidden(completionController)
@@ -441,12 +439,13 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
 
     _handleMouseDown(event)
     {
-        if (this._codeMirror.options.readOnly)
+        if (this._codeMirror.options.readOnly || this._codeMirror.state.focused)
             return;
 
-        let cursor = this._codeMirror.coordsChar({left: event.x, top: event.y});
-        let line = this._codeMirror.getLine(cursor.line);
-        let trimmedLine = line.trimRight();
+        var cursor = this._codeMirror.coordsChar({left: event.x, top: event.y});
+        var line = this._codeMirror.getLine(cursor.line);
+        var trimmedLine = line.trimRight();
+
         if (!trimmedLine.trimLeft().length || cursor.ch !== trimmedLine.length)
             return;
 
@@ -458,19 +457,16 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
         if (this._codeMirror.options.readOnly || !this._mouseDownCursorPosition)
             return;
 
-        let cursor = this._codeMirror.coordsChar({left: event.x, top: event.y});
-        if (this._mouseDownCursorPosition.line === cursor.line && this._mouseDownCursorPosition.ch === cursor.ch) {
-            let nextLine = this._codeMirror.getLine(cursor.line + 1);
-            if (cursor.line < this._codeMirror.lineCount() - 1 && (!nextLine || !nextLine.trim().length)) {
-                this._codeMirror.setCursor({line: cursor.line + 1, ch: 0});
-            } else {
-                let line = this._codeMirror.getLine(cursor.line);
-                let replacement = "\n";
-                if (!line.trimRight().endsWith(";") && !this._textAtCursorIsComment(this._codeMirror, cursor))
-                    replacement = ";" + replacement;
+        var cursor = this._codeMirror.coordsChar({left: event.x, top: event.y});
+        var line = this._codeMirror.getLine(cursor.line);
 
-                this._codeMirror.replaceRange(replacement, cursor);
-            }
+        if (this._mouseDownCursorPosition.line === cursor.line && this._mouseDownCursorPosition.ch === cursor.ch) {
+            var replacement = "\n";
+
+            if (!line.trimRight().endsWith(";") && !this._textAtCursorIsComment(this._codeMirror, cursor))
+                replacement = ";" + replacement;
+
+            this._codeMirror.replaceRange(replacement, cursor);
         }
 
         this._mouseDownCursorPosition = null;
@@ -726,9 +722,7 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
         // Add the suffix whitespace we stripped.
         content += this._suffixWhitespace;
 
-        // This regular expression replacement removes extra newlines
-        // in between properties while preserving leading whitespace
-        return content.replace(/\s*\n\s*\n(\s*)/g, "\n$1");
+        return content;
     }
 
     _commitChanges()
@@ -750,7 +744,6 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
         // Reset the content on blur since we stop accepting external changes while the the editor is focused.
         // This causes us to pick up any change that was suppressed while the editor was focused.
         this._resetContent();
-        this.dispatchEventToListeners(WebInspector.CSSStyleDeclarationTextEditor.Event.Blurred);
     }
 
     _editorFocused(codeMirror)
@@ -774,10 +767,8 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
         // When the change is a completion change, create color swatches now since the changes
         // will not go through _propertiesChanged until completionControllerCompletionsHidden happens.
         // This way any auto completed colors get swatches right away.
-        if (this._completionController.isCompletionChange(change)) {
+        if (this._completionController.isCompletionChange(change))
             this._createColorSwatches(false, change.from.line);
-            this._createBezierEditors(false, change.from.line);
-        }
 
         // Use a short delay for user input to coalesce more changes before committing. Other actions like
         // undo, redo and paste are atomic and work better with a zero delay. CodeMirror identifies changes that
@@ -788,8 +779,6 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
         if (this._commitChangesTimeout)
             clearTimeout(this._commitChangesTimeout);
         this._commitChangesTimeout = setTimeout(this._commitChanges.bind(this), delay);
-
-        this.dispatchEventToListeners(WebInspector.CSSStyleDeclarationTextEditor.Event.ContentChanged);
     }
 
     _updateTextMarkers(nonatomic)
@@ -829,7 +818,6 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
 
             // Look for colors and make swatches.
             this._createColorSwatches(true);
-            this._createBezierEditors(true);
 
             this._markLinesWithCheckboxPlaceholder();
         }
@@ -882,9 +870,9 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
             var range = typeof lineNumber === "number" ? new WebInspector.TextRange(lineNumber, 0, lineNumber + 1, 0) : null;
 
             // Look for color strings and add swatches in front of them.
-            createCodeMirrorColorTextMarkers(this._codeMirror, range, function(marker, color, colorString) {
+            this._codeMirror.createColorMarkers(range, function(marker, color, colorString) {
                 var swatchElement = document.createElement("span");
-                swatchElement.title = WebInspector.UIString("Click to select a color. Shift-click to switch color formats.");
+                swatchElement.title = WebInspector.UIString("Click to open a colorpicker. Shift-click to change color format.");
                 swatchElement.className = WebInspector.CSSStyleDeclarationTextEditor.ColorSwatchElementStyleClassName;
                 swatchElement.addEventListener("click", this._colorSwatchClicked.bind(this));
 
@@ -897,33 +885,6 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
 
                 swatchInnerElement.__colorTextMarker = codeMirrorTextMarker;
                 swatchInnerElement.__color = color;
-            }.bind(this));
-        }
-
-        if (nonatomic)
-            update.call(this);
-        else
-            this._codeMirror.operation(update.bind(this));
-    }
-
-    _createBezierEditors(nonatomic, lineNumber)
-    {
-        function update()
-        {
-            var range = typeof lineNumber === "number" ? new WebInspector.TextRange(lineNumber, 0, lineNumber + 1, 0) : null;
-
-            // Look for cubic-bezier and timing functions and add cubic-bezier icons in front of them.
-            createCodeMirrorCubicBezierTextMarkers(this._codeMirror, range, function(marker, cubicBezier) {
-                var bezierMarker = document.createElement("span");
-                bezierMarker.title = WebInspector.UIString("Click to open a cubic-bezier editor");
-                bezierMarker.className = WebInspector.CSSStyleDeclarationTextEditor.BezierEditorClassName;
-                bezierMarker.addEventListener("click", this._cubicBezierMarkerClicked.bind(this));
-
-                var codeMirrorTextMarker = marker.codeMirrorTextMarker;
-                this._codeMirror.setUniqueBookmark(codeMirrorTextMarker.find().from, bezierMarker);
-
-                bezierMarker.__textMarker = codeMirrorTextMarker;
-                bezierMarker.__bezier = cubicBezier;
             }.bind(this));
         }
 
@@ -1278,9 +1239,8 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
             // Replace the text with a commented version.
             this._codeMirror.replaceRange("/* " + text + " */", range.from, range.to);
 
-            // Update the line for any color swatches or cubic-beziers that got removed.
+            // Update the line for any color swatches that got removed.
             this._createColorSwatches(true, range.from.line);
-            this._createBezierEditors(true, range.from.line);
         }
 
         this._codeMirror.operation(update.bind(this));
@@ -1318,9 +1278,8 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
             this._codeMirror.addLineClass(range.from.line, "wrap", WebInspector.CSSStyleDeclarationTextEditor.EditingLineStyleClassName);
             this._codeMirror.replaceRange(text, range.from, range.to);
 
-            // Update the line for any color swatches or cubic-beziers that got removed.
+            // Update the line for any color swatches that got removed.
             this._createColorSwatches(true, range.from.line);
-            this._createBezierEditors(true, range.from.line);
         }
 
         this._codeMirror.operation(update.bind(this));
@@ -1429,93 +1388,6 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
         }
     }
 
-    _cubicBezierMarkerClicked(event)
-    {
-        if (this._cubicBezierEditorPopover)
-            return;
-
-        var bezierMarker = event.target;
-
-        var bezier = bezierMarker.__bezier;
-        console.assert(bezier);
-        if (!bezier)
-            return;
-
-        var bezierTextMarker = bezierMarker.__textMarker;
-        console.assert(bezierTextMarker);
-        if (!bezierTextMarker)
-            return;
-
-        var range = bezierTextMarker.find();
-        console.assert(range);
-        if (!range)
-            return;
-
-        function updateCodeMirror(newCubicBezierText)
-        {
-            function update()
-            {
-                // The original text marker might have been cleared by a style update,
-                // in this case we need to find the new bezier text marker so we know
-                // the right range for the new style bezier text.
-                if (!bezierTextMarker || !bezierTextMarker.find()) {
-                    bezierTextMarker = null;
-
-                    var marks = this._codeMirror.findMarksAt(range.from);
-                    if (!marks.length)
-                        return;
-
-                    for (var i = 0; i < marks.length; ++i) {
-                        var mark = marks[i];
-                        if (WebInspector.TextMarker.textMarkerForCodeMirrorTextMarker(mark).type !== WebInspector.TextMarker.Type.CubicBezier)
-                            continue;
-                        bezierTextMarker = mark;
-                        break;
-                    }
-                }
-
-                if (!bezierTextMarker)
-                    return;
-
-                // Sometimes we still might find a stale text marker with findMarksAt.
-                var newRange = bezierTextMarker.find();
-                if (!newRange)
-                    return;
-
-                range = newRange;
-
-                bezierTextMarker.clear();
-
-                this._codeMirror.replaceRange(newCubicBezierText, range.from, range.to);
-
-                // The bezier's text format could have changed, so we need to update the "range"
-                // variable to anticipate a different "range.to" property.
-                range.to.ch = range.from.ch + newCubicBezierText.length;
-
-                bezierTextMarker = this._codeMirror.markText(range.from, range.to);
-
-                bezierMarker.__textMarker = bezierTextMarker;
-            }
-
-            this._codeMirror.operation(update.bind(this));
-        }
-
-        this._cubicBezierEditorPopover = new WebInspector.Popover(this);
-
-        var bezierEditor = new WebInspector.BezierEditor;
-
-        bezierEditor.addEventListener(WebInspector.BezierEditor.Event.BezierChanged, function(event) {
-            updateCodeMirror.call(this, event.data.bezier.toString());
-        }.bind(this));
-
-        var bounds = WebInspector.Rect.rectFromClientRect(bezierMarker.getBoundingClientRect());
-
-        this._cubicBezierEditorPopover.content = bezierEditor.element;
-        this._cubicBezierEditorPopover.present(bounds.pad(2), [WebInspector.RectEdge.MIN_X]);
-
-        bezierEditor.bezier = bezier;
-    }
-
     _propertyOverriddenStatusChanged(event)
     {
         this._updateTextMarkerForPropertyIfNeeded(event.target);
@@ -1595,8 +1467,8 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
         var mapping = {original: [0], formatted: [0]};
         // FIXME: <rdar://problem/10593948> Provide a way to change the tab width in the Web Inspector
         var indentString = "    ";
-        var builder = new WebInspector.FormatterContentBuilder(mapping, [], [], 0, 0, indentString);
-        var formatter = new WebInspector.Formatter(this._codeMirror, builder);
+        var builder = new FormatterContentBuilder(mapping, [], [], 0, 0, indentString);
+        var formatter = new Formatter(this._codeMirror, builder);
         var start = {line: 0, ch: 0};
         var end = {line: this._codeMirror.lineCount() - 1};
         formatter.format(start, end);
@@ -1608,13 +1480,13 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
     {
         if (this._commitChangesTimeout) {
             clearTimeout(this._commitChangesTimeout);
-            this._commitChangesTimeout = null;
+            delete this._commitChangesTimeout;
         }
 
         this._removeEditingLineClasses();
 
         // Only allow editing if we have a style, it is editable and we have text range in the stylesheet.
-        const readOnly = !this._style || !this._style.editable || !this._style.styleSheetTextRange;
+        var readOnly = !this._style || !this._style.editable || !this._style.styleSheetTextRange;
         this._codeMirror.setOption("readOnly", readOnly);
 
         if (readOnly) {
@@ -1629,24 +1501,28 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
             this._ignoreCodeMirrorContentDidChangeEvent = true;
 
             this._clearTextMarkers(false, true);
+
             this._codeMirror.setValue("");
             this._codeMirror.clearHistory();
             this._codeMirror.markClean();
 
-            this._ignoreCodeMirrorContentDidChangeEvent = false;
+            delete this._ignoreCodeMirrorContentDidChangeEvent;
+
             return;
         }
 
         function update()
         {
             // Remember the cursor position/selection.
-            let isEditorReadOnly = this._codeMirror.getOption("readOnly");
-            let styleText = this._style.text;
-            let trimmedStyleText = styleText.trim();
+            var selectionAnchor = this._codeMirror.getCursor("anchor");
+            var selectionHead = this._codeMirror.getCursor("head");
+            var isEditorReadOnly = this._codeMirror.getOption("readOnly");
+            var styleText = this._style.text.trim();
+            var findWhitespace = /\s+/g;
 
             // We only need to format non-empty styles, but prepare checkbox placeholders
             // in any case because that will indent the cursor when the User starts typing.
-            if (!trimmedStyleText && !isEditorReadOnly) {
+            if (!styleText && !isEditorReadOnly) {
                 this._markLinesWithCheckboxPlaceholder();
                 return;
             }
@@ -1654,10 +1530,10 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
             // Generate formatted content for readonly editors by iterating properties.
             if (isEditorReadOnly) {
                 this._codeMirror.setValue("");
-                let lineNumber = 0;
+                var lineNumber = 0;
                 this._iterateOverProperties(false, function(property) {
-                    let from = {line: lineNumber, ch: 0};
-                    let to = {line: lineNumber};
+                    var from = {line: lineNumber, ch: 0};
+                    var to = {line: lineNumber};
                     // Readonly properties are pretty printed by `synthesizedText` and not the Formatter.
                     this._codeMirror.replaceRange((lineNumber ? "\n" : "") + property.synthesizedText, from);
                     this._createTextMarkerForPropertyIfNeeded(from, to, property);
@@ -1666,25 +1542,8 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
                 return;
             }
 
-            let selectionAnchor = this._codeMirror.getCursor("anchor");
-            let selectionHead = this._codeMirror.getCursor("head");
-            let whitespaceRegex = /\s+/g;
-
-            // FIXME: <rdar://problem/10593948> Provide a way to change the tab width in the Web Inspector
-            this._linePrefixWhitespace = "    ";
-            let styleTextPrefixWhitespace = styleText.match(/^\s*/);
-
-            // If there is a match and the style text contains a newline, attempt to pull out the prefix whitespace
-            // in front of the first line of CSS to use for every line.  If  there is no newline, we want to avoid
-            // adding multiple spaces to a single line CSS rule and instead format it on multiple lines.
-            if (styleTextPrefixWhitespace && trimmedStyleText.includes("\n")) {
-                let linePrefixWhitespaceMatch = styleTextPrefixWhitespace[0].match(/[^\S\n]+$/);
-                if (linePrefixWhitespaceMatch)
-                    this._linePrefixWhitespace = linePrefixWhitespaceMatch[0];
-            }
-
             // Set non-optimized, valid and invalid styles in preparation for the Formatter.
-            this._codeMirror.setValue(trimmedStyleText);
+            this._codeMirror.setValue(styleText);
 
             // Now the Formatter pretty prints the styles.
             this._codeMirror.setValue(this._formattedContentFromEditor());
@@ -1693,12 +1552,12 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
             // 1) `this._style.properties` only holds valid CSSProperty instances but not
             // comments and invalid properties like `color;`.
             // 2) `_createTextMarkerForPropertyIfNeeded` relies on CSSProperty instances.
-            let cssPropertiesMap = new Map();
+            var cssPropertiesMap = new Map();
             this._iterateOverProperties(false, function(cssProperty) {
                 cssProperty.__refreshedAfterBlur = false;
 
-                let propertyTextSansWhitespace = cssProperty.text.replace(whitespaceRegex, "");
-                let existingProperties = cssPropertiesMap.get(propertyTextSansWhitespace) || [];
+                var propertyTextSansWhitespace = cssProperty.text.replace(findWhitespace, "");
+                var existingProperties = cssPropertiesMap.get(propertyTextSansWhitespace) || [];
                 existingProperties.push(cssProperty);
 
                 cssPropertiesMap.set(propertyTextSansWhitespace, existingProperties);
@@ -1707,29 +1566,31 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
             // Go through the Editor line by line and create TextMarker when a
             // CSSProperty instance for that property exists. If not, then don't create a TextMarker.
             this._codeMirror.eachLine(function(lineHandler) {
-                let lineNumber = lineHandler.lineNo();
-                let lineContentSansWhitespace = lineHandler.text.replace(whitespaceRegex, "");
-                let properties = cssPropertiesMap.get(lineContentSansWhitespace);
+                var lineNumber = lineHandler.lineNo();
+                var lineContentSansWhitespace = lineHandler.text.replace(findWhitespace, "");
+                var properties = cssPropertiesMap.get(lineContentSansWhitespace);
+
                 if (!properties) {
                     this._createCommentedCheckboxMarker(lineHandler);
                     return;
                 }
 
-                for (let property of properties) {
+                for (var property of properties) {
                     if (property.__refreshedAfterBlur)
                         continue;
 
-                    let from = {line: lineNumber, ch: 0};
-                    let to = {line: lineNumber};
+                    var from = {line: lineNumber, ch: 0};
+                    var to = {line: lineNumber};
+
                     this._createTextMarkerForPropertyIfNeeded(from, to, property);
                     property.__refreshedAfterBlur = true;
+
                     break;
                 }
             }.bind(this));
 
             // Look for colors and make swatches.
             this._createColorSwatches(true);
-            this._createBezierEditors(true);
 
             // Restore the cursor position/selection.
             this._codeMirror.setSelection(selectionAnchor, selectionHead);
@@ -1749,7 +1610,7 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
 
         this._ignoreCodeMirrorContentDidChangeEvent = true;
         this._codeMirror.operation(update.bind(this));
-        this._ignoreCodeMirrorContentDidChangeEvent = false;
+        delete this._ignoreCodeMirrorContentDidChangeEvent;
     }
 
     _updateJumpToSymbolTrackingMode()
@@ -1810,15 +1671,9 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
     }
 };
 
-WebInspector.CSSStyleDeclarationTextEditor.Event = {
-    ContentChanged: "css-style-declaration-text-editor-content-changed",
-    Blurred: "css-style-declaration-text-editor-blurred"
-};
-
 WebInspector.CSSStyleDeclarationTextEditor.StyleClassName = "css-style-text-editor";
 WebInspector.CSSStyleDeclarationTextEditor.ReadOnlyStyleClassName = "read-only";
 WebInspector.CSSStyleDeclarationTextEditor.ColorSwatchElementStyleClassName = "color-swatch";
-WebInspector.CSSStyleDeclarationTextEditor.BezierEditorClassName = "cubic-bezier-marker";
 WebInspector.CSSStyleDeclarationTextEditor.CheckboxPlaceholderElementStyleClassName = "checkbox-placeholder";
 WebInspector.CSSStyleDeclarationTextEditor.EditingLineStyleClassName = "editing-line";
 WebInspector.CSSStyleDeclarationTextEditor.CommitCoalesceDelay = 250;

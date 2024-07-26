@@ -164,14 +164,14 @@ typedef HashMap<String, UScriptCode, DefaultHash<String>::Hash, ScriptNameCodeMa
 
 UScriptCode scriptNameToCode(const String& scriptName)
 {
-    static NeverDestroyed<ScriptNameCodeMap> scriptNameCodeMap;
-    if (scriptNameCodeMap.get().isEmpty()) {
+    DEPRECATED_DEFINE_STATIC_LOCAL(ScriptNameCodeMap, scriptNameCodeMap, ());
+    if (scriptNameCodeMap.isEmpty()) {
         for (size_t i = 0; i < sizeof(scriptNameCodeList) / sizeof(ScriptNameCode); ++i)
-            scriptNameCodeMap.get().set(ASCIILiteral(scriptNameCodeList[i].name), scriptNameCodeList[i].code);
+            scriptNameCodeMap.set(ASCIILiteral(scriptNameCodeList[i].name), scriptNameCodeList[i].code);
     }
 
-    ScriptNameCodeMap::iterator it = scriptNameCodeMap.get().find(scriptName.lower());
-    if (it != scriptNameCodeMap.get().end())
+    ScriptNameCodeMap::iterator it = scriptNameCodeMap.find(scriptName.lower());
+    if (it != scriptNameCodeMap.end())
         return it->value;
     return USCRIPT_INVALID_CODE;
 }
@@ -376,7 +376,7 @@ static const LocaleScript localeScriptList[] = {
     { "yap", USCRIPT_LATIN },
     { "yo", USCRIPT_LATIN },
     { "za", USCRIPT_LATIN },
-    { "zh", USCRIPT_HAN },
+    { "zh", USCRIPT_SIMPLIFIED_HAN },
     { "zh_hk", USCRIPT_TRADITIONAL_HAN },
     { "zh_tw", USCRIPT_TRADITIONAL_HAN },
     { "zu", USCRIPT_LATIN }

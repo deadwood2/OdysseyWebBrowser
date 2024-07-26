@@ -38,7 +38,7 @@ namespace WebCore {
 AsyncAudioDecoder::AsyncAudioDecoder()
 {
     // Start worker thread.
-    LockHolder lock(m_threadCreationMutex);
+    MutexLocker lock(m_threadCreationMutex);
     m_threadID = createThread(AsyncAudioDecoder::threadEntry, this, "Audio Decoder");
 }
 
@@ -76,7 +76,7 @@ void AsyncAudioDecoder::runLoop()
 
     {
         // Wait for until we have m_threadID established before starting the run loop.
-        LockHolder lock(m_threadCreationMutex);
+        MutexLocker lock(m_threadCreationMutex);
     }
 
     // Keep running decoding tasks until we're killed.
@@ -105,9 +105,17 @@ void AsyncAudioDecoder::DecodingTask::decode()
     m_audioBuffer = AudioBuffer::createFromAudioFileData(m_audioData->data(), m_audioData->byteLength(), false, sampleRate());
     
     // Decoding is finished, but we need to do the callbacks on the main thread.
-    callOnMainThread([this] {
-        notifyComplete();
-    });
+    callOnMainThread(notifyCompleteDispatch, this);
+}
+
+void AsyncAudioDecoder::DecodingTask::notifyCompleteDispatch(void* userData)
+{
+    AsyncAudioDecoder::DecodingTask* task = reinterpret_cast<AsyncAudioDecoder::DecodingTask*>(userData);
+    ASSERT(task);
+    if (!task)
+        return;
+
+    task->notifyComplete();
 }
 
 void AsyncAudioDecoder::DecodingTask::notifyComplete()

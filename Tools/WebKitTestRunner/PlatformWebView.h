@@ -26,23 +26,18 @@
 #ifndef PlatformWebView_h
 #define PlatformWebView_h
 
-#include "TestOptions.h"
 #include <WebKit/WKRetainPtr.h>
 
-#if PLATFORM(COCOA)
-#include <WebKit/WKFoundation.h>
-OBJC_CLASS NSView;
-OBJC_CLASS UIView;
-OBJC_CLASS TestRunnerWKWebView;
-OBJC_CLASS WKWebViewConfiguration;
-OBJC_CLASS WebKitTestRunnerWindow;
-
-#if WK_API_ENABLED
-typedef TestRunnerWKWebView *PlatformWKView;
+#if defined(__APPLE__) && __APPLE__
+#ifdef __OBJC__
+@class WKView;
+@class WebKitTestRunnerWindow;
 #else
-typedef NSView *PlatformWKView;
+class WKView;
+class WebKitTestRunnerWindow;
 #endif
-typedef WebKitTestRunnerWindow *PlatformWindow;
+typedef WKView* PlatformWKView;
+typedef WebKitTestRunnerWindow* PlatformWindow;
 #elif defined(BUILDING_GTK__)
 typedef struct _GtkWidget GtkWidget;
 typedef WKViewRef PlatformWKView;
@@ -56,11 +51,7 @@ namespace WTR {
 
 class PlatformWebView {
 public:
-#if PLATFORM(COCOA)
-    PlatformWebView(WKWebViewConfiguration*, const TestOptions&);
-#else
-    PlatformWebView(WKPageConfigurationRef, const TestOptions&);
-#endif
+    PlatformWebView(WKContextRef, WKPageGroupRef, WKPageRef relatedPage, WKDictionaryRef options = 0);
     ~PlatformWebView();
 
     WKPageRef page();
@@ -68,6 +59,9 @@ public:
     PlatformWindow platformWindow() { return m_window; }
     void resizeTo(unsigned width, unsigned height);
     void focus();
+
+    // Window snapshot is always enabled by default on all other platform.
+    static bool windowSnapshotEnabled() { return true; }
 
     WKRect windowFrame();
     void setWindowFrame(WKRect);
@@ -77,16 +71,19 @@ public:
     void addChromeInputField();
     void removeChromeInputField();
     void makeWebViewFirstResponder();
-    void setWindowIsKey(bool);
+    void setWindowIsKey(bool isKey) { m_windowIsKey = isKey; }
     bool windowIsKey() const { return m_windowIsKey; }
 
-    bool viewSupportsOptions(const TestOptions&) const;
+#if PLATFORM(COCOA) || PLATFORM(EFL)
+    bool viewSupportsOptions(WKDictionaryRef) const;
+#else
+    bool viewSupportsOptions(WKDictionaryRef) const { return true; }
+#endif
 
     WKRetainPtr<WKImageRef> windowSnapshotImage();
-    const TestOptions& options() const { return m_options; }
+    WKDictionaryRef options() const { return m_options.get(); }
 
     void changeWindowScaleIfNeeded(float newScale);
-    void setNavigationGesturesEnabled(bool);
 
 #if PLATFORM(GTK)
     void dismissAllPopupMenus();
@@ -98,8 +95,7 @@ private:
     PlatformWKView m_view;
     PlatformWindow m_window;
     bool m_windowIsKey;
-    const TestOptions m_options;
-
+    WKRetainPtr<WKDictionaryRef> m_options;
 #if PLATFORM(EFL)
     bool m_usingFixedLayout;
 #endif

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2013, 2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2007, 2013 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,7 +36,8 @@ using namespace WebCore;
 // WebFramePolicyListener ----------------------------------------------------------------
 
 WebFramePolicyListener::WebFramePolicyListener(PassRefPtr<Frame> frame)
-    : m_frame(frame)
+    : m_refCount(0)
+    , m_frame(frame)
 {
     gClassCount++;
     gClassNameCount().add("WebFramePolicyListener");
@@ -57,11 +58,9 @@ WebFramePolicyListener* WebFramePolicyListener::createInstance(PassRefPtr<Frame>
 
 // IUnknown -------------------------------------------------------------------
 
-HRESULT WebFramePolicyListener::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE WebFramePolicyListener::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<IWebPolicyDecisionListener*>(this);
     else if (IsEqualGUID(riid, IID_IWebPolicyDecisionListener))
@@ -75,12 +74,12 @@ HRESULT WebFramePolicyListener::QueryInterface(_In_ REFIID riid, _COM_Outptr_ vo
     return S_OK;
 }
 
-ULONG WebFramePolicyListener::AddRef()
+ULONG STDMETHODCALLTYPE WebFramePolicyListener::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG WebFramePolicyListener::Release()
+ULONG STDMETHODCALLTYPE WebFramePolicyListener::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -91,19 +90,19 @@ ULONG WebFramePolicyListener::Release()
 
 // IWebPolicyDecisionListener ------------------------------------------------------------
 
-HRESULT WebFramePolicyListener::use()
+HRESULT STDMETHODCALLTYPE WebFramePolicyListener::use(void)
 {
     receivedPolicyDecision(PolicyUse);
     return S_OK;
 }
 
-HRESULT WebFramePolicyListener::download()
+HRESULT STDMETHODCALLTYPE WebFramePolicyListener::download(void)
 {
     receivedPolicyDecision(PolicyDownload);
     return S_OK;
 }
 
-HRESULT WebFramePolicyListener::ignore()
+HRESULT STDMETHODCALLTYPE WebFramePolicyListener::ignore(void)
 {
     receivedPolicyDecision(PolicyIgnore);
     return S_OK;
@@ -111,7 +110,7 @@ HRESULT WebFramePolicyListener::ignore()
 
 // IWebFormSubmissionListener ------------------------------------------------------------
 
-HRESULT WebFramePolicyListener::continueSubmit()
+HRESULT STDMETHODCALLTYPE WebFramePolicyListener::continueSubmit(void)
 {
     receivedPolicyDecision(PolicyUse);
     return S_OK;

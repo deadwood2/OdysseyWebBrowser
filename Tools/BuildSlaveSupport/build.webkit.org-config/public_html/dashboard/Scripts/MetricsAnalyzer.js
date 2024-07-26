@@ -30,7 +30,7 @@ Analyzer = function()
     // Only load one queue at a time to not overload the server.
     this._queueBeingLoaded = null;
 
-    Dashboard.Repository.OpenSource.trac.addEventListener(Trac.Event.Loaded, this._loadedFromTrac, this);
+    webkitTrac.addEventListener(Trac.Event.Loaded, this._loadedFromTrac, this);
 };
 
 BaseObject.addConstructorFunctions(Analyzer);
@@ -77,7 +77,7 @@ Analyzer.prototype = {
                 this._queuesReadyToAnalyze.push(queue);
         }, this);
 
-        Dashboard.Repository.OpenSource.trac.load(this._rangeStartTime, this._rangeEndTime);
+        webkitTrac.load(this._rangeStartTime, this._rangeEndTime);
 
         bubbleQueueServer.loadProcessingTimes(this._rangeStartTime, this._rangeEndTime, this._loadedBubblesTiming.bind(this));
     },
@@ -124,7 +124,7 @@ Analyzer.prototype = {
         if (i < iterations.length)
             result = i++;
         while (i < iterations.length) {
-            if (iterations[i].revision[Dashboard.Repository.OpenSource.name] > iterations[result].revision[Dashboard.Repository.OpenSource.name])
+            if (iterations[i].openSourceRevision > iterations[result].openSourceRevision)
                 result = i;
             ++i;
         }
@@ -213,7 +213,7 @@ Analyzer.prototype = {
                 this._updateStretchOfRedCounters(topIterationByQueue, currentTime, stretchOfRedCounters);
                 continue;
             }
-            if (iterations[i].revision[Dashboard.Repository.OpenSource.name] <= topIterationByQueue[iterations[i].queue.id].revision[Dashboard.Repository.OpenSource.name])
+            if (iterations[i].openSourceRevision <= topIterationByQueue[iterations[i].queue.id].openSourceRevision)
                 continue;
 
             var dashboardWasAllGreen = this._dashboardIsAllGreen(topIterationByQueue);
@@ -264,7 +264,7 @@ Analyzer.prototype = {
         var worstTimeRevision;
         var worstOwnTimeRevision;
 
-        Dashboard.Repository.OpenSource.trac.recordedCommits.forEach(function(revision) {
+        webkitTrac.recordedCommits.forEach(function(revision) {
             if (revision.date < this._rangeStartTime || revision.date >= this._rangeEndTime)
                 return;
 
@@ -275,7 +275,7 @@ Analyzer.prototype = {
                     return;
                 for (var i = 0; i < relevantIterationsByQueue[queue.id].length; ++i) {
                     var iteration = relevantIterationsByQueue[queue.id][i];
-                    if (iteration.revision[Dashboard.Repository.OpenSource.name] >= revision.revisionNumber) {
+                    if (iteration.openSourceRevision >= revision.revisionNumber) {
                         endTime = Math.max(endTime, iteration.endTime);
                         ownTime = Math.max(ownTime, iteration.endTime - iteration.startTime);
                         break;

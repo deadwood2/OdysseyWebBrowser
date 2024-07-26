@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
- * Copyright (C) 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -60,11 +59,12 @@ using namespace Inspector;
 
 namespace WebCore {
 
-InspectorDOMDebuggerAgent::InspectorDOMDebuggerAgent(WebAgentContext& context, InspectorDOMAgent* domAgent, InspectorDebuggerAgent* debuggerAgent)
-    : InspectorAgentBase(ASCIILiteral("DOMDebugger"), context)
-    , m_backendDispatcher(Inspector::DOMDebuggerBackendDispatcher::create(context.backendDispatcher, this))
+InspectorDOMDebuggerAgent::InspectorDOMDebuggerAgent(InstrumentingAgents* instrumentingAgents, InspectorDOMAgent* domAgent, InspectorDebuggerAgent* debuggerAgent)
+    : InspectorAgentBase(ASCIILiteral("DOMDebugger"), instrumentingAgents)
     , m_domAgent(domAgent)
     , m_debuggerAgent(debuggerAgent)
+    , m_pauseInNextEventListener(false)
+    , m_pauseOnAllXHRsEnabled(false)
 {
     m_debuggerAgent->setListener(this);
 }
@@ -72,13 +72,13 @@ InspectorDOMDebuggerAgent::InspectorDOMDebuggerAgent(WebAgentContext& context, I
 InspectorDOMDebuggerAgent::~InspectorDOMDebuggerAgent()
 {
     ASSERT(!m_debuggerAgent);
-    ASSERT(!m_instrumentingAgents.inspectorDOMDebuggerAgent());
+    ASSERT(!m_instrumentingAgents->inspectorDOMDebuggerAgent());
 }
 
 // Browser debugger agent enabled only when JS debugger is enabled.
 void InspectorDOMDebuggerAgent::debuggerWasEnabled()
 {
-    m_instrumentingAgents.setInspectorDOMDebuggerAgent(this);
+    m_instrumentingAgents->setInspectorDOMDebuggerAgent(this);
 }
 
 void InspectorDOMDebuggerAgent::debuggerWasDisabled()
@@ -98,16 +98,19 @@ void InspectorDOMDebuggerAgent::didPause()
 
 void InspectorDOMDebuggerAgent::disable()
 {
-    m_instrumentingAgents.setInspectorDOMDebuggerAgent(nullptr);
+    m_instrumentingAgents->setInspectorDOMDebuggerAgent(nullptr);
     clear();
 }
 
-void InspectorDOMDebuggerAgent::didCreateFrontendAndBackend(Inspector::FrontendRouter*, Inspector::BackendDispatcher*)
+void InspectorDOMDebuggerAgent::didCreateFrontendAndBackend(Inspector::FrontendChannel*, Inspector::BackendDispatcher* backendDispatcher)
 {
+    m_backendDispatcher = Inspector::DOMDebuggerBackendDispatcher::create(backendDispatcher, this);
 }
 
 void InspectorDOMDebuggerAgent::willDestroyFrontendAndBackend(Inspector::DisconnectReason)
 {
+    m_backendDispatcher = nullptr;
+
     disable();
 }
 
@@ -395,9 +398,9 @@ void InspectorDOMDebuggerAgent::willSendXMLHttpRequest(const String& url)
     if (m_pauseOnAllXHRsEnabled)
         breakpointURL = emptyString();
     else {
-        for (auto& breakpoint : m_xhrBreakpoints) {
-            if (url.contains(breakpoint)) {
-                breakpointURL = breakpoint;
+        for (auto it = m_xhrBreakpoints.begin(), end = m_xhrBreakpoints.end(); it != end; ++it) {
+            if (url.contains(*it)) {
+                breakpointURL = *it;
                 break;
             }
         }

@@ -189,10 +189,10 @@ public:
     // Used to check the operands of operations to see if they are on
     // their last use; in some cases it may be safe to reuse the same
     // machine register for the result of the operation.
-    uint32_t useCount()
+    bool canReuse()
     {
         ASSERT(m_useCount);
-        return m_useCount;
+        return m_useCount == 1;
     }
 
     // Get the format of the value in machine registers (or 'none').
@@ -376,29 +376,6 @@ public:
     bool alive()
     {
         return m_useCount;
-    }
-
-    ValueRecovery recovery(VirtualRegister spillSlot) const
-    {
-        if (m_isConstant)
-            return ValueRecovery::constant(m_node->constant()->value());
-
-        if (m_registerFormat == DataFormatDouble)
-            return ValueRecovery::inFPR(u.fpr, DataFormatDouble);
-
-#if USE(JSVALUE32_64)
-        if (m_registerFormat & DataFormatJS) {
-            if (m_registerFormat == DataFormatJS)
-                return ValueRecovery::inPair(u.v.tagGPR, u.v.payloadGPR);
-            return ValueRecovery::inGPR(u.v.payloadGPR, static_cast<DataFormat>(m_registerFormat & ~DataFormatJS));
-        }
-#endif
-        if (m_registerFormat)
-            return ValueRecovery::inGPR(u.gpr, m_registerFormat);
-
-        ASSERT(m_spillFormat);
-
-        return ValueRecovery::displacedInJSStack(spillSlot, m_spillFormat);
     }
 
 private:

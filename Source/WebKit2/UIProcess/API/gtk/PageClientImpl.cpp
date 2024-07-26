@@ -44,8 +44,13 @@
 #include <WebCore/Cursor.h>
 #include <WebCore/EventNames.h>
 #include <WebCore/GtkUtilities.h>
+#include <WebCore/PlatformDisplay.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
+
+#if PLATFORM(X11)
+#include <gdk/gdkx.h>
+#endif
 
 using namespace WebCore;
 
@@ -221,6 +226,21 @@ RefPtr<WebColorPicker> PageClientImpl::createColorPicker(WebPageProxy* page, con
     if (WEBKIT_IS_WEB_VIEW(m_viewWidget))
         return WebKitColorChooser::create(*page, color, rect);
     return WebColorPickerGtk::create(*page, color, rect);
+}
+
+void PageClientImpl::setTextIndicator(Ref<WebCore::TextIndicator>, WebCore::TextIndicatorLifetime)
+{
+    notImplemented();
+}
+
+void PageClientImpl::clearTextIndicator(WebCore::TextIndicatorDismissalAnimation)
+{
+    notImplemented();
+}
+
+void PageClientImpl::setTextIndicatorAnimationProgress(float)
+{
+    notImplemented();
 }
 
 void PageClientImpl::enterAcceleratedCompositingMode(const LayerTreeContext&)
@@ -402,10 +422,6 @@ void PageClientImpl::willRecordNavigationSnapshot(WebBackForwardListItem&)
 {
 }
 
-void PageClientImpl::didRemoveNavigationGestureSnapshot()
-{
-}
-
 void PageClientImpl::didFirstVisuallyNonEmptyLayoutForMainFrame()
 {
 }
@@ -432,15 +448,17 @@ void PageClientImpl::derefView()
     g_object_unref(m_viewWidget);
 }
 
-#if ENABLE(VIDEO)
-bool PageClientImpl::decicePolicyForInstallMissingMediaPluginsPermissionRequest(InstallMissingMediaPluginsPermissionRequest& request)
+GUniquePtr<GstInstallPluginsContext> PageClientImpl::createGstInstallPluginsContext()
 {
-    if (!WEBKIT_IS_WEB_VIEW(m_viewWidget))
-        return false;
-
-    webkitWebViewRequestInstallMissingMediaPlugins(WEBKIT_WEB_VIEW(m_viewWidget), request);
-    return true;
-}
+#if PLATFORM(X11)
+    if (PlatformDisplay::sharedDisplay().type() == PlatformDisplay::Type::X11) {
+        GUniquePtr<GstInstallPluginsContext> context(gst_install_plugins_context_new());
+        gst_install_plugins_context_set_xid(context.get(), GDK_WINDOW_XID(gtk_widget_get_window(m_viewWidget)));
+        return context;
+    }
 #endif
+
+    return nullptr;
+}
 
 } // namespace WebKit

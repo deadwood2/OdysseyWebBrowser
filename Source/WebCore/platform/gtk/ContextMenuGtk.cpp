@@ -61,6 +61,7 @@ void ContextMenu::appendItem(ContextMenuItem& item)
 
 void ContextMenu::setPlatformDescription(PlatformMenuDescription menu)
 {
+    ASSERT(menu);
     if (m_platformDescription == menu)
         return;
     if (m_platformDescription)

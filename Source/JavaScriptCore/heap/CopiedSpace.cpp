@@ -191,17 +191,19 @@ void CopiedSpace::doneFillingBlock(CopiedBlock* block, CopiedBlock** exchange)
 
     {
         // Always put the block into the old gen because it's being promoted!
-        LockHolder locker(&m_toSpaceLock);
+        SpinLockHolder locker(&m_toSpaceLock);
         m_oldGen.toSpace->push(block);
         m_blockSet.add(block);
         m_oldGen.blockFilter.add(reinterpret_cast<Bits>(block));
     }
 
     {
-        LockHolder locker(m_loanedBlocksLock);
+        MutexLocker locker(m_loanedBlocksLock);
         ASSERT(m_numberOfLoanedBlocks > 0);
         ASSERT(m_inCopyingPhase);
         m_numberOfLoanedBlocks--;
+        if (!m_numberOfLoanedBlocks)
+            m_loanedBlocksCondition.signal();
     }
 }
 
@@ -228,8 +230,13 @@ void CopiedSpace::didStartFullCollection()
 
 void CopiedSpace::doneCopying()
 {
-    RELEASE_ASSERT(!m_numberOfLoanedBlocks);
-    RELEASE_ASSERT(m_inCopyingPhase == m_shouldDoCopyPhase);
+    {
+        MutexLocker locker(m_loanedBlocksLock);
+        while (m_numberOfLoanedBlocks > 0)
+            m_loanedBlocksCondition.wait(m_loanedBlocksLock);
+    }
+
+    ASSERT(m_inCopyingPhase == m_shouldDoCopyPhase);
     m_inCopyingPhase = false;
 
     DoublyLinkedList<CopiedBlock>* toSpace;

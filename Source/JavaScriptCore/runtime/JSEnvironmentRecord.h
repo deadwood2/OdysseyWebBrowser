@@ -52,14 +52,14 @@ public:
         return bitwise_cast<WriteBarrierBase<Unknown>*>(bitwise_cast<char*>(this) + offsetOfVariables());
     }
     
-    bool isValidScopeOffset(ScopeOffset offset)
+    bool isValid(ScopeOffset offset)
     {
         return !!offset && offset.offset() < symbolTable()->scopeSize();
     }
     
     WriteBarrierBase<Unknown>& variableAt(ScopeOffset offset)
     {
-        ASSERT(isValidScopeOffset(offset));
+        ASSERT(isValid(offset));
         return variables()[offset.offset()];
     }
 

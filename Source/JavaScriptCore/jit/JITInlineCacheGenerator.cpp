@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,24 +36,21 @@ namespace JSC {
 
 static StructureStubInfo* garbageStubInfo()
 {
-    static StructureStubInfo* stubInfo = new StructureStubInfo(AccessType::Get);
+    static StructureStubInfo* stubInfo = new StructureStubInfo();
     return stubInfo;
 }
 
-JITInlineCacheGenerator::JITInlineCacheGenerator(
-    CodeBlock* codeBlock, CodeOrigin codeOrigin, CallSiteIndex callSite, AccessType accessType)
+JITInlineCacheGenerator::JITInlineCacheGenerator(CodeBlock* codeBlock, CodeOrigin codeOrigin)
     : m_codeBlock(codeBlock)
 {
-    m_stubInfo = m_codeBlock ? m_codeBlock->addStubInfo(accessType) : garbageStubInfo();
+    m_stubInfo = m_codeBlock ? m_codeBlock->addStubInfo() : garbageStubInfo();
     m_stubInfo->codeOrigin = codeOrigin;
-    m_stubInfo->callSiteIndex = callSite;
 }
 
 JITByIdGenerator::JITByIdGenerator(
-    CodeBlock* codeBlock, CodeOrigin codeOrigin, CallSiteIndex callSite, AccessType accessType,
-    const RegisterSet& usedRegisters, JSValueRegs base, JSValueRegs value,
-    SpillRegistersMode spillMode)
-    : JITInlineCacheGenerator(codeBlock, codeOrigin, callSite, accessType)
+    CodeBlock* codeBlock, CodeOrigin codeOrigin, const RegisterSet& usedRegisters,
+    JSValueRegs base, JSValueRegs value, SpillRegistersMode spillMode)
+    : JITInlineCacheGenerator(codeBlock, codeOrigin)
     , m_base(base)
     , m_value(value)
 {
@@ -114,10 +111,9 @@ void JITByIdGenerator::generateFastPathChecks(MacroAssembler& jit, GPRReg butter
 }
 
 JITGetByIdGenerator::JITGetByIdGenerator(
-    CodeBlock* codeBlock, CodeOrigin codeOrigin, CallSiteIndex callSite, const RegisterSet& usedRegisters,
+    CodeBlock* codeBlock, CodeOrigin codeOrigin, const RegisterSet& usedRegisters,
     JSValueRegs base, JSValueRegs value, SpillRegistersMode spillMode)
-    : JITByIdGenerator(
-        codeBlock, codeOrigin, callSite, AccessType::Get, usedRegisters, base, value, spillMode)
+    : JITByIdGenerator(codeBlock, codeOrigin, usedRegisters, base, value, spillMode)
 {
     RELEASE_ASSERT(base.payloadGPR() != value.tagGPR());
 }
@@ -140,11 +136,10 @@ void JITGetByIdGenerator::generateFastPath(MacroAssembler& jit)
 }
 
 JITPutByIdGenerator::JITPutByIdGenerator(
-    CodeBlock* codeBlock, CodeOrigin codeOrigin, CallSiteIndex callSite, const RegisterSet& usedRegisters,
+    CodeBlock* codeBlock, CodeOrigin codeOrigin, const RegisterSet& usedRegisters,
     JSValueRegs base, JSValueRegs value, GPRReg scratch, SpillRegistersMode spillMode,
     ECMAMode ecmaMode, PutKind putKind)
-    : JITByIdGenerator(
-        codeBlock, codeOrigin, callSite, AccessType::Put, usedRegisters, base, value, spillMode)
+    : JITByIdGenerator(codeBlock, codeOrigin, usedRegisters, base, value, spillMode)
     , m_scratch(scratch)
     , m_ecmaMode(ecmaMode)
     , m_putKind(putKind)

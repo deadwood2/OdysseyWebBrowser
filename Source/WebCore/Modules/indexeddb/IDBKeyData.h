@@ -37,7 +37,7 @@ class KeyedEncoder;
 
 struct IDBKeyData {
     IDBKeyData()
-        : type(KeyType::Invalid)
+        : type(IDBKey::InvalidType)
         , numberValue(0)
         , isNull(true)
     {
@@ -48,7 +48,7 @@ struct IDBKeyData {
     static IDBKeyData minimum()
     {
         IDBKeyData result;
-        result.type = KeyType::Min;
+        result.type = IDBKey::MinType;
         result.isNull = false;
         return result;
     }
@@ -56,7 +56,7 @@ struct IDBKeyData {
     static IDBKeyData maximum()
     {
         IDBKeyData result;
-        result.type = KeyType::Max;
+        result.type = IDBKey::MaxType;
         result.isNull = false;
         return result;
     }
@@ -79,90 +79,16 @@ struct IDBKeyData {
     void setDateValue(double);
     WEBCORE_EXPORT void setNumberValue(double);
 
-    template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static bool decode(Decoder&, IDBKeyData&);
-    
 #ifndef NDEBUG
     WEBCORE_EXPORT String loggingString() const;
 #endif
 
-    KeyType type;
+    IDBKey::Type type;
     Vector<IDBKeyData> arrayValue;
     String stringValue;
     double numberValue;
     bool isNull;
 };
-
-template<class Encoder>
-void IDBKeyData::encode(Encoder& encoder) const
-{
-    encoder << isNull;
-    if (isNull)
-        return;
-
-    encoder.encodeEnum(type);
-
-    switch (type) {
-    case KeyType::Invalid:
-        break;
-    case KeyType::Array:
-        encoder << arrayValue;
-        break;
-    case KeyType::String:
-        encoder << stringValue;
-        break;
-    case KeyType::Date:
-    case KeyType::Number:
-        encoder << numberValue;
-        break;
-    case KeyType::Max:
-    case KeyType::Min:
-        // MaxType and MinType are only used for comparison to other keys.
-        // They should never be encoded/decoded.
-        ASSERT_NOT_REACHED();
-        break;
-    }
-}
-
-template<class Decoder>
-bool IDBKeyData::decode(Decoder& decoder, IDBKeyData& keyData)
-{
-    if (!decoder.decode(keyData.isNull))
-        return false;
-
-    if (keyData.isNull)
-        return true;
-
-    if (!decoder.decodeEnum(keyData.type))
-        return false;
-
-    switch (keyData.type) {
-    case KeyType::Invalid:
-        break;
-    case KeyType::Array:
-        if (!decoder.decode(keyData.arrayValue))
-            return false;
-        break;
-    case KeyType::String:
-        if (!decoder.decode(keyData.stringValue))
-            return false;
-        break;
-    case KeyType::Date:
-    case KeyType::Number:
-        if (!decoder.decode(keyData.numberValue))
-            return false;
-        break;
-    case KeyType::Max:
-    case KeyType::Min:
-        // MaxType and MinType are only used for comparison to other keys.
-        // They should never be encoded/decoded.
-        ASSERT_NOT_REACHED();
-        decoder.markInvalid();
-        return false;
-    }
-
-    return true;
-}
 
 } // namespace WebCore
 

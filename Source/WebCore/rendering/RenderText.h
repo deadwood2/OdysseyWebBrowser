@@ -33,7 +33,6 @@
 namespace WebCore {
 
 class InlineTextBox;
-struct GlyphOverflow;
 
 class RenderText : public RenderObject {
 public:

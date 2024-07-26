@@ -32,9 +32,9 @@
 
 namespace WebCore {
 
-BackForwardController::BackForwardController(Page& page, RefPtr<BackForwardClient>&& client)
+BackForwardController::BackForwardController(Page& page, PassRefPtr<BackForwardClient> client)
     : m_page(page)
-    , m_client(WTF::move(client))
+    , m_client(client)
 {
     if (!m_client)
         m_client = BackForwardList::create(&page);

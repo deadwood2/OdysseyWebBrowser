@@ -26,8 +26,6 @@
 #include "config.h"
 #include "DFACombiner.h"
 
-#if ENABLE(CONTENT_EXTENSIONS)
-
 #include "MutableRangeList.h"
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
@@ -223,5 +221,3 @@ void DFACombiner::combineDFAs(unsigned minimumSize, std::function<void(DFA&&)> h
 }
 
 } // namespace WebCore
-
-#endif

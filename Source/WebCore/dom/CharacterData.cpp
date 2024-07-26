@@ -107,7 +107,7 @@ unsigned CharacterData::parserAppendData(const String& string, unsigned offset, 
     return characterLengthLimit;
 }
 
-void CharacterData::appendData(const String& data)
+void CharacterData::appendData(const String& data, ExceptionCode&)
 {
     String newStr = m_data;
     newStr.append(data);
@@ -137,14 +137,18 @@ void CharacterData::deleteData(unsigned offset, unsigned count, ExceptionCode& e
     if (ec)
         return;
 
-    count = std::min(count, length() - offset);
+    unsigned realCount;
+    if (offset + count > length())
+        realCount = length() - offset;
+    else
+        realCount = count;
 
     String newStr = m_data;
-    newStr.remove(offset, count);
+    newStr.remove(offset, realCount);
 
     setDataAndUpdate(newStr, offset, count, 0);
 
-    document().textRemoved(this, offset, count);
+    document().textRemoved(this, offset, realCount);
 }
 
 void CharacterData::replaceData(unsigned offset, unsigned count, const String& data, ExceptionCode& ec)
@@ -153,16 +157,20 @@ void CharacterData::replaceData(unsigned offset, unsigned count, const String& d
     if (ec)
         return;
 
-    count = std::min(count, length() - offset);
+    unsigned realCount;
+    if (offset + count > length())
+        realCount = length() - offset;
+    else
+        realCount = count;
 
     String newStr = m_data;
-    newStr.remove(offset, count);
+    newStr.remove(offset, realCount);
     newStr.insert(data, offset);
 
     setDataAndUpdate(newStr, offset, count, data.length());
 
     // update the markers for spell checking and grammar checking
-    document().textRemoved(this, offset, count);
+    document().textRemoved(this, offset, realCount);
     document().textInserted(this, offset, data.length());
 }
 

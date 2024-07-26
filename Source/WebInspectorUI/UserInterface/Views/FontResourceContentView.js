@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,24 +23,32 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.FontResourceContentView = class FontResourceContentView extends WebInspector.ResourceContentView
+WebInspector.FontResourceContentView = function(resource)
 {
-    constructor(resource)
-    {
-        super(resource, "font");
+    WebInspector.ResourceContentView.call(this, resource, "font");
 
-        this._styleElement = null;
-        this._previewElement = null;
-    }
+    this._styleElement = null;
+    this._previewElement = null;
+};
+
+WebInspector.FontResourceContentView._uniqueFontIdentifier = 0;
+
+WebInspector.FontResourceContentView.PreviewLines = ["ABCDEFGHIJKLM", "NOPQRSTUVWXYZ", "abcdefghijklm", "nopqrstuvwxyz", "1234567890"];
+
+WebInspector.FontResourceContentView.MaximumFontSize = 72;
+WebInspector.FontResourceContentView.MinimumFontSize = 12;
+
+WebInspector.FontResourceContentView.prototype = {
+    constructor: WebInspector.FontResourceContentView,
 
     // Public
 
     get previewElement()
     {
         return this._previewElement;
-    }
+    },
 
-    sizeToFit()
+    sizeToFit: function()
     {
         if (!this._previewElement)
             return;
@@ -51,9 +59,9 @@ WebInspector.FontResourceContentView = class FontResourceContentView extends Web
             if (this._previewElement.offsetWidth <= this.element.offsetWidth)
                 break;
         }
-    }
+    },
 
-    contentAvailable(content, base64Encoded)
+    contentAvailable: function(content, base64Encoded)
     {
         this.element.removeChildren();
 
@@ -110,28 +118,28 @@ WebInspector.FontResourceContentView = class FontResourceContentView extends Web
         this.element.appendChild(this._previewElement);
 
         this.sizeToFit();
-    }
+    },
 
-    updateLayout()
+    updateLayout: function()
     {
         this.sizeToFit();
-    }
+    },
 
-    shown()
+    shown: function()
     {
         // Add the style element since it is removed when hidden.
         if (this._styleElement)
             document.head.appendChild(this._styleElement);
-    }
+    },
 
-    hidden()
+    hidden: function()
     {
         // Remove the style element so it will not stick around when this content view is destroyed.
         if (this._styleElement && this._styleElement.parentNode)
             this._styleElement.parentNode.removeChild(this._styleElement);
-    }
+    },
 
-    closed()
+    closed: function()
     {
         // This is a workaround for the fact that the browser does not send any events
         // when a @font-face resource is loaded. So, we assume it could be needed until
@@ -140,11 +148,6 @@ WebInspector.FontResourceContentView = class FontResourceContentView extends Web
         if (this._fontObjectURL)
             URL.revokeObjectURL(this._fontObjectURL);
     }
-}
+};
 
-WebInspector.FontResourceContentView._uniqueFontIdentifier = 0;
-
-WebInspector.FontResourceContentView.PreviewLines = ["ABCDEFGHIJKLM", "NOPQRSTUVWXYZ", "abcdefghijklm", "nopqrstuvwxyz", "1234567890"];
-
-WebInspector.FontResourceContentView.MaximumFontSize = 72;
-WebInspector.FontResourceContentView.MinimumFontSize = 12;
+WebInspector.FontResourceContentView.prototype.__proto__ = WebInspector.ResourceContentView.prototype;

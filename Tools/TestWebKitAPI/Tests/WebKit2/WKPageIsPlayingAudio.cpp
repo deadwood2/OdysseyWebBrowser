@@ -86,10 +86,10 @@ static void setUpClients(WKPageRef page)
 
     WKPageSetPageLoaderClient(page, &loaderClient.base);
 
-    WKPageUIClientV5 uiClient;
+    WKPageUIClientV4 uiClient;
     memset(&uiClient, 0, sizeof(uiClient));
 
-    uiClient.base.version = 5;
+    uiClient.base.version = 4;
     uiClient.isPlayingAudioDidChange = isPlayingAudioDidChangeCallback;
 
     WKPageSetPageUIClient(page, &uiClient.base);

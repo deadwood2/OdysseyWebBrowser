@@ -40,18 +40,18 @@ using namespace JSC;
 namespace WebCore {
 
 // Save the state value to the m_state member of a JSPopStateEvent, and return it, for convenience.
-static const JSValue& cacheState(ExecState& state, JSPopStateEvent* event, const JSValue& eventState)
+static const JSValue& cacheState(ExecState* exec, JSPopStateEvent* event, const JSValue& state)
 {
-    event->m_state.set(state.vm(), event, eventState);
-    return eventState;
+    event->m_state.set(exec->vm(), event, state);
+    return state;
 }
 
-JSValue JSPopStateEvent::state(ExecState& state) const
+JSValue JSPopStateEvent::state(ExecState* exec) const
 {
     JSValue cachedValue = m_state.get();
     if (!cachedValue.isEmpty()) {
         // We cannot use a cached object if we are in a different world than the one it was created in.
-        if (!cachedValue.isObject() || &worldForDOMObject(cachedValue.getObject()) == &currentWorld(&state))
+        if (!cachedValue.isObject() || &worldForDOMObject(cachedValue.getObject()) == &currentWorld(exec))
             return cachedValue;
         ASSERT_NOT_REACHED();
     }
@@ -61,20 +61,20 @@ JSValue JSPopStateEvent::state(ExecState& state) const
     if (!event.state().hasNoValue()) {
         // We need to make sure a PopStateEvent does not leak objects in its state property across isolated DOM worlds.
         // Ideally, we would check that the worlds have different privileges but that's not possible yet.
-        JSValue eventState = event.state().jsValue();
-        if (eventState.isObject() && &worldForDOMObject(eventState.getObject()) != &currentWorld(&state)) {
-            if (RefPtr<SerializedScriptValue> serializedValue = event.trySerializeState(&state))
-                eventState = serializedValue->deserialize(&state, globalObject(), nullptr);
+        JSValue state = event.state().jsValue();
+        if (state.isObject() && &worldForDOMObject(state.getObject()) != &currentWorld(exec)) {
+            if (RefPtr<SerializedScriptValue> serializedValue = event.trySerializeState(exec))
+                state = serializedValue->deserialize(exec, globalObject(), nullptr);
             else
-                eventState = jsNull();
+                state = jsNull();
         }
         
-        return cacheState(state, const_cast<JSPopStateEvent*>(this), eventState);
+        return cacheState(exec, const_cast<JSPopStateEvent*>(this), state);
     }
     
     History* history = event.history();
     if (!history || !event.serializedState())
-        return cacheState(state, const_cast<JSPopStateEvent*>(this), jsNull());
+        return cacheState(exec, const_cast<JSPopStateEvent*>(this), jsNull());
 
     // There's no cached value from a previous invocation, nor a state value was provided by the
     // event, but there is a history object, so first we need to see if the state object has been
@@ -86,12 +86,12 @@ JSValue JSPopStateEvent::state(ExecState& state) const
     JSValue result;
 
     if (isSameState) {
-        JSHistory* jsHistory = jsCast<JSHistory*>(toJS(&state, globalObject(), history).asCell());
-        result = jsHistory->state(state);
+        JSHistory* jsHistory = jsCast<JSHistory*>(toJS(exec, globalObject(), history).asCell());
+        result = jsHistory->state(exec);
     } else
-        result = event.serializedState()->deserialize(&state, globalObject(), 0);
+        result = event.serializedState()->deserialize(exec, globalObject(), 0);
 
-    return cacheState(state, const_cast<JSPopStateEvent*>(this), result);
+    return cacheState(exec, const_cast<JSPopStateEvent*>(this), result);
 }
 
 } // namespace WebCore

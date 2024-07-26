@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,27 +23,11 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ContentView = class ContentView extends WebInspector.Object
+WebInspector.ContentView = function(representedObject, extraArguments)
 {
-    constructor(representedObject, extraArguments)
-    {
-        // Concrete object instantiation.
-        console.assert(!representedObject || WebInspector.ContentView.isViewable(representedObject), representedObject);
+    if (this.constructor === WebInspector.ContentView) {
+        // When instantiated directly return an instance of a type-based concrete subclass.
 
-        super();
-
-        this._representedObject = representedObject;
-
-        this._element = document.createElement("div");
-        this._element.classList.add("content-view");
-
-        this._parentContainer = null;
-    }
-
-    // Public
-
-    static createFromRepresentedObject(representedObject, extraArguments)
-    {
         console.assert(representedObject);
 
         if (representedObject instanceof WebInspector.Frame)
@@ -75,7 +59,7 @@ WebInspector.ContentView = class ContentView extends WebInspector.Object
 
         if (representedObject instanceof WebInspector.Breakpoint) {
             if (representedObject.sourceCodeLocation)
-                return WebInspector.ContentView.createFromRepresentedObject(representedObject.sourceCodeLocation.displaySourceCode, extraArguments);
+                return new WebInspector.ContentView(representedObject.sourceCodeLocation.displaySourceCode, extraArguments);
         }
 
         if (representedObject instanceof WebInspector.DOMStorageObject)
@@ -135,216 +119,68 @@ WebInspector.ContentView = class ContentView extends WebInspector.Object
 
         console.assert(!WebInspector.ContentView.isViewable(representedObject));
 
-        throw new Error("Can't make a ContentView for an unknown representedObject.");
+        throw "Can't make a ContentView for an unknown representedObject.";
     }
 
-    static isViewable(representedObject)
-    {
-        if (representedObject instanceof WebInspector.Frame)
-            return true;
-        if (representedObject instanceof WebInspector.Resource)
-            return true;
-        if (representedObject instanceof WebInspector.Script)
-            return true;
-        if (representedObject instanceof WebInspector.TimelineRecording)
-            return true;
-        if (representedObject instanceof WebInspector.Timeline)
-            return true;
-        if (representedObject instanceof WebInspector.Breakpoint)
-            return representedObject.sourceCodeLocation;
-        if (representedObject instanceof WebInspector.DOMStorageObject)
-            return true;
-        if (representedObject instanceof WebInspector.CookieStorageObject)
-            return true;
-        if (representedObject instanceof WebInspector.DatabaseTableObject)
-            return true;
-        if (representedObject instanceof WebInspector.DatabaseObject)
-            return true;
-        if (representedObject instanceof WebInspector.IndexedDatabaseObjectStore)
-            return true;
-        if (representedObject instanceof WebInspector.IndexedDatabaseObjectStoreIndex)
-            return true;
-        if (representedObject instanceof WebInspector.ApplicationCacheFrame)
-            return true;
-        if (representedObject instanceof WebInspector.DOMTree)
-            return true;
-        if (representedObject instanceof WebInspector.DOMSearchMatchObject)
-            return true;
-        if (representedObject instanceof WebInspector.SourceCodeSearchMatchObject)
-            return true;
-        if (representedObject instanceof WebInspector.LogObject)
-            return true;
-        if (representedObject instanceof WebInspector.ContentFlow)
-            return true;
-        if (typeof representedObject === "string" || representedObject instanceof String)
-            return true;
-        return false;
-    }
+    // Concrete object instantiation.
+    console.assert(this.constructor !== WebInspector.ContentView && this instanceof WebInspector.ContentView);
+    console.assert(!representedObject || WebInspector.ContentView.isViewable(representedObject));
 
-    // Public
+    // FIXME: Convert this to a WebInspector.Object subclass, and call super().
+    // WebInspector.Object.call(this);
 
-    get representedObject()
-    {
-        return this._representedObject;
-    }
+    this._representedObject = representedObject;
 
-    get navigationItems()
-    {
-        // Navigation items that will be displayed by the ContentBrowser instance,
-        // meant to be subclassed. Implemented by subclasses.
-        return [];
-    }
+    this._element = document.createElement("div");
+    this._element.classList.add("content-view");
 
-    get element()
-    {
-        return this._element;
-    }
+    this._parentContainer = null;
+};
 
-    get parentContainer()
-    {
-        return this._parentContainer;
-    }
+// FIXME: Move to a WebInspector.Object subclass and we can remove this.
+WebInspector.Object.deprecatedAddConstructorFunctions(WebInspector.ContentView);
 
-    get visible()
-    {
-        return this._visible;
-    }
-
-    set visible(flag)
-    {
-        this._visible = flag;
-    }
-
-    get scrollableElements()
-    {
-        // Implemented by subclasses.
-        return [];
-    }
-
-    get shouldKeepElementsScrolledToBottom()
-    {
-        // Implemented by subclasses.
-        return false;
-    }
-
-    get selectionPathComponents()
-    {
-        // Implemented by subclasses.
-        return [];
-    }
-
-    get supplementalRepresentedObjects()
-    {
-        // Implemented by subclasses.
-        return [];
-    }
-
-    get supportsSplitContentBrowser()
-    {
-        // Implemented by subclasses.
+WebInspector.ContentView.isViewable = function(representedObject)
+{
+    if (representedObject instanceof WebInspector.Frame)
         return true;
-    }
-
-    updateLayout()
-    {
-        // Implemented by subclasses.
-    }
-
-    shown()
-    {
-        // Implemented by subclasses.
-    }
-
-    hidden()
-    {
-        // Implemented by subclasses.
-    }
-
-    closed()
-    {
-        // Implemented by subclasses.
-    }
-
-    saveToCookie(cookie)
-    {
-        // Implemented by subclasses.
-    }
-
-    restoreFromCookie(cookie)
-    {
-        // Implemented by subclasses.
-    }
-
-    canGoBack()
-    {
-        // Implemented by subclasses.
-        return false;
-    }
-
-    canGoForward()
-    {
-        // Implemented by subclasses.
-        return false;
-    }
-
-    goBack()
-    {
-        // Implemented by subclasses.
-    }
-
-    goForward()
-    {
-        // Implemented by subclasses.
-    }
-
-    get supportsSearch()
-    {
-        // Implemented by subclasses.
-        return false;
-    }
-
-    get numberOfSearchResults()
-    {
-        // Implemented by subclasses.
-        return null;
-    }
-
-    get hasPerformedSearch()
-    {
-        // Implemented by subclasses.
-        return false;
-    }
-
-    set automaticallyRevealFirstSearchResult(reveal)
-    {
-        // Implemented by subclasses.
-    }
-
-    performSearch(query)
-    {
-        // Implemented by subclasses.
-    }
-
-    searchCleared()
-    {
-        // Implemented by subclasses.
-    }
-
-    searchQueryWithSelection()
-    {
-        // Implemented by subclasses.
-        return null;
-    }
-
-    revealPreviousSearchResult(changeFocus)
-    {
-        // Implemented by subclasses.
-    }
-
-    revealNextSearchResult(changeFocus)
-    {
-        // Implemented by subclasses.
-    }
+    if (representedObject instanceof WebInspector.Resource)
+        return true;
+    if (representedObject instanceof WebInspector.Script)
+        return true;
+    if (representedObject instanceof WebInspector.TimelineRecording)
+        return true;
+    if (representedObject instanceof WebInspector.Timeline)
+        return true;
+    if (representedObject instanceof WebInspector.Breakpoint)
+        return representedObject.sourceCodeLocation;
+    if (representedObject instanceof WebInspector.DOMStorageObject)
+        return true;
+    if (representedObject instanceof WebInspector.CookieStorageObject)
+        return true;
+    if (representedObject instanceof WebInspector.DatabaseTableObject)
+        return true;
+    if (representedObject instanceof WebInspector.DatabaseObject)
+        return true;
+    if (representedObject instanceof WebInspector.IndexedDatabaseObjectStore)
+        return true;
+    if (representedObject instanceof WebInspector.IndexedDatabaseObjectStoreIndex)
+        return true;
+    if (representedObject instanceof WebInspector.ApplicationCacheFrame)
+        return true;
+    if (representedObject instanceof WebInspector.DOMTree)
+        return true;
+    if (representedObject instanceof WebInspector.DOMSearchMatchObject)
+        return true;
+    if (representedObject instanceof WebInspector.SourceCodeSearchMatchObject)
+        return true;
+    if (representedObject instanceof WebInspector.LogObject)
+        return true;
+    if (representedObject instanceof WebInspector.ContentFlow)
+        return true;
+    if (typeof representedObject === "string" || representedObject instanceof String)
+        return true;
+    return false;
 };
 
 WebInspector.ContentView.Event = {
@@ -353,3 +189,174 @@ WebInspector.ContentView.Event = {
     NumberOfSearchResultsDidChange: "content-view-number-of-search-results-did-change",
     NavigationItemsDidChange: "content-view-navigation-items-did-change"
 };
+
+WebInspector.ContentView.prototype = {
+    constructor: WebInspector.ContentView,
+
+    // Public
+
+    get representedObject()
+    {
+        return this._representedObject;
+    },
+
+    get navigationItems()
+    {
+        // Navigation items that will be displayed by the ContentBrowser instance,
+        // meant to be subclassed. Implemented by subclasses.
+        return [];
+    },
+
+    get element()
+    {
+        return this._element;
+    },
+
+    get parentContainer()
+    {
+        return this._parentContainer;
+    },
+
+    get visible()
+    {
+        return this._visible;
+    },
+
+    set visible(flag)
+    {
+        this._visible = flag;
+    },
+
+    get scrollableElements()
+    {
+        // Implemented by subclasses.
+        return [];
+    },
+
+    get shouldKeepElementsScrolledToBottom()
+    {
+        // Implemented by subclasses.
+        return false;
+    },
+
+    get selectionPathComponents()
+    {
+        // Implemented by subclasses.
+        return [];
+    },
+
+    get supplementalRepresentedObjects()
+    {
+        // Implemented by subclasses.
+        return [];
+    },
+
+    get supportsSplitContentBrowser()
+    {
+        // Implemented by subclasses.
+        return true;
+    },
+
+    updateLayout: function()
+    {
+        // Implemented by subclasses.
+    },
+
+    shown: function()
+    {
+        // Implemented by subclasses.
+    },
+
+    hidden: function()
+    {
+        // Implemented by subclasses.
+    },
+
+    closed: function()
+    {
+        // Implemented by subclasses.
+    },
+
+    saveToCookie: function(cookie)
+    {
+        // Implemented by subclasses.
+    },
+
+    restoreFromCookie: function(cookie)
+    {
+        // Implemented by subclasses.
+    },
+
+    canGoBack: function()
+    {
+        // Implemented by subclasses.
+        return false;
+    },
+
+    canGoForward: function()
+    {
+        // Implemented by subclasses.
+        return false;
+    },
+
+    goBack: function()
+    {
+        // Implemented by subclasses.
+    },
+
+    goForward: function()
+    {
+        // Implemented by subclasses.
+    },
+
+    get supportsSearch()
+    {
+        // Implemented by subclasses.
+        return false;
+    },
+
+    get numberOfSearchResults()
+    {
+        // Implemented by subclasses.
+        return null;
+    },
+
+    get hasPerformedSearch()
+    {
+        // Implemented by subclasses.
+        return false;
+    },
+
+    set automaticallyRevealFirstSearchResult(reveal)
+    {
+        // Implemented by subclasses.
+    },
+
+    performSearch: function(query)
+    {
+        // Implemented by subclasses.
+    },
+
+    searchCleared: function()
+    {
+        // Implemented by subclasses.
+    },
+
+    searchQueryWithSelection: function()
+    {
+        // Implemented by subclasses.
+        return null;
+    },
+
+    revealPreviousSearchResult: function(changeFocus)
+    {
+        // Implemented by subclasses.
+    },
+
+    revealNextSearchResult: function(changeFocus)
+    {
+        // Implemented by subclasses.
+    }
+};
+
+WebInspector.ContentView.prototype.__proto__ = WebInspector.Object.prototype;

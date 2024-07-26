@@ -60,24 +60,25 @@ bool DocumentFragment::childTypeAllowed(NodeType type) const
         case COMMENT_NODE:
         case TEXT_NODE:
         case CDATA_SECTION_NODE:
+        case ENTITY_REFERENCE_NODE:
             return true;
         default:
             return false;
     }
 }
 
-Ref<Node> DocumentFragment::cloneNodeInternal(Document& targetDocument, CloningOperation type)
+RefPtr<Node> DocumentFragment::cloneNodeInternal(Document& targetDocument, CloningOperation type)
 {
-    Ref<DocumentFragment> clone = create(targetDocument);
+    RefPtr<DocumentFragment> clone = create(targetDocument);
     switch (type) {
     case CloningOperation::OnlySelf:
     case CloningOperation::SelfWithTemplateContent:
         break;
     case CloningOperation::Everything:
-        cloneChildNodes(clone);
+        cloneChildNodes(clone.get());
         break;
     }
-    return WTF::move(clone);
+    return clone;
 }
 
 void DocumentFragment::parseHTML(const String& source, Element* contextElement, ParserContentPolicy parserContentPolicy)

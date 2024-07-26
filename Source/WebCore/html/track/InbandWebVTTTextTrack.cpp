@@ -32,8 +32,11 @@
 #include "InbandTextTrackPrivate.h"
 #include "Logging.h"
 #include "NotImplemented.h"
-#include "VTTRegionList.h"
 #include <wtf/text/CString.h>
+
+#if ENABLE(WEBVTT_REGIONS)
+#include "VTTRegionList.h"
+#endif
 
 namespace WebCore {
 
@@ -86,6 +89,7 @@ void InbandWebVTTTextTrack::newCuesParsed()
     }
 }
     
+#if ENABLE(WEBVTT_REGIONS)
 void InbandWebVTTTextTrack::newRegionsParsed()
 {
     Vector<RefPtr<VTTRegion>> newRegions;
@@ -96,6 +100,7 @@ void InbandWebVTTTextTrack::newRegionsParsed()
         regions()->add(region);
     }
 }
+#endif
     
 void InbandWebVTTTextTrack::fileFailedToParse()
 {

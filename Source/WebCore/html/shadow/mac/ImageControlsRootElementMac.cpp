@@ -85,13 +85,12 @@ RefPtr<ImageControlsRootElement> ImageControlsRootElement::maybeCreate(Document&
     if (!document.page())
         return nullptr;
 
-    Ref<ImageControlsRootElementMac> controls = adoptRef(*new ImageControlsRootElementMac(document));
+    RefPtr<ImageControlsRootElementMac> controls = adoptRef(*new ImageControlsRootElementMac(document));
     controls->setAttribute(HTMLNames::classAttr, "x-webkit-image-controls");
 
-    if (RefPtr<ImageControlsButtonElementMac> button = ImageControlsButtonElementMac::maybeCreate(document))
-        controls->appendChild(button.releaseNonNull());
+    controls->appendChild(ImageControlsButtonElementMac::maybeCreate(document));
 
-    return WTF::move(controls);
+    return controls.release();
 }
 
 ImageControlsRootElementMac::ImageControlsRootElementMac(Document& document)

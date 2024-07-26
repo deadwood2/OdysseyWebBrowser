@@ -542,7 +542,7 @@ static int CALLBACK traitsInFamilyEnumProc(CONST LOGFONT* logFont, CONST TEXTMET
     procData->m_traitsMasks.add(traitsMask);
     return 1;
 }
-Vector<FontTraitsMask> FontCache::getTraitsInFamily(const AtomicString& familyName)
+void FontCache::getTraitsInFamily(const AtomicString& familyName, Vector<unsigned>& traitsMasks)
 {
     HWndDC hdc(0);
 
@@ -555,11 +555,7 @@ Vector<FontTraitsMask> FontCache::getTraitsInFamily(const AtomicString& familyNa
 
     TraitsInFamilyProcData procData(familyName);
     EnumFontFamiliesEx(hdc, &logFont, traitsInFamilyEnumProc, reinterpret_cast<LPARAM>(&procData), 0);
-    Vector<FontTraitsMask> result;
-    result.reserveInitialCapacity(procData.m_traitsMasks.size());
-    for (unsigned mask : procData.m_traitsMasks)
-        result.uncheckedAppend(static_cast<FontTraitsMask>(mask));
-    return result;
+    copyToVector(procData.m_traitsMasks, traitsMasks);
 }
 
 std::unique_ptr<FontPlatformData> FontCache::createFontPlatformData(const FontDescription& fontDescription, const AtomicString& family)

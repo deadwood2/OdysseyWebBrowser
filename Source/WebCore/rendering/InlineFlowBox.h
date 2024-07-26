@@ -214,8 +214,7 @@ public:
     
     bool hasAnonymousInlineBlock() const { return m_hasAnonymousInlineBlock; }
     void setHasAnonymousInlineBlock(bool b) { m_hasAnonymousInlineBlock = b; }
-    RenderBlockFlow* anonymousInlineBlock() const;
-    
+
     void checkConsistency() const;
     void setHasBadChildList();
 

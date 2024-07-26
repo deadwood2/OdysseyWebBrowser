@@ -25,7 +25,6 @@
 
 #include "config.h"
 #include "FunctionExecutableDump.h"
-#include "JSCellInlines.h"
 
 #include "CodeBlock.h"
 

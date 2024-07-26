@@ -29,7 +29,6 @@
 #include "APIArray.h"
 #include "APIDownloadClient.h"
 #include "APILegacyContextHistoryClient.h"
-#include "APIPageConfiguration.h"
 #include "APIProcessPoolConfiguration.h"
 #include "CustomProtocolManagerMessages.h"
 #include "DownloadProxy.h"
@@ -146,7 +145,7 @@ WebProcessPool::WebProcessPool(API::ProcessPoolConfiguration& configuration)
     , m_defaultPageGroup(WebPageGroup::createNonNull())
     , m_downloadClient(std::make_unique<API::DownloadClient>())
     , m_historyClient(std::make_unique<API::LegacyContextHistoryClient>())
-    , m_visitedLinkStore(VisitedLinkStore::create())
+    , m_visitedLinkProvider(VisitedLinkProvider::create())
     , m_visitedLinksPopulated(false)
     , m_plugInAutoStartProvider(this)
     , m_alwaysUsesComplexTextCodePath(false)
@@ -192,9 +191,6 @@ WebProcessPool::WebProcessPool(API::ProcessPoolConfiguration& configuration)
 #endif
 #if ENABLE(BATTERY_STATUS)
     addSupplement<WebBatteryManagerProxy>();
-#endif
-#if ENABLE(MEDIA_SESSION)
-    addSupplement<WebMediaSessionFocusManager>();
 #endif
 
     processPools().append(this);
@@ -469,16 +465,15 @@ void WebProcessPool::ensureDatabaseProcess()
 
     m_databaseProcess = DatabaseProcessProxy::create(this);
 
+    ASSERT(!m_configuration->indexedDBDatabaseDirectory().isEmpty());
+
     // *********
     // IMPORTANT: Do not change the directory structure for indexed databases on disk without first consulting a reviewer from Apple (<rdar://problem/17454712>)
     // *********
     DatabaseProcessCreationParameters parameters;
-#if ENABLE(INDEXED_DATABASE)
-    ASSERT(!m_configuration->indexedDBDatabaseDirectory().isEmpty());
     parameters.indexedDatabaseDirectory = m_configuration->indexedDBDatabaseDirectory();
 
     SandboxExtension::createHandleForReadWriteDirectory(parameters.indexedDatabaseDirectory, parameters.indexedDatabaseDirectoryExtensionHandle);
-#endif
 
     m_databaseProcess->send(Messages::DatabaseProcess::InitializeDatabaseProcess(parameters), 0);
 }
@@ -783,9 +778,6 @@ void WebProcessPool::processDidFinishLaunching(WebProcessProxy* process)
         process->send(Messages::WebProcess::StartMemorySampler(sampleLogSandboxHandle, sampleLogFilePath, m_memorySamplerInterval), 0);
     }
 
-    if (m_configuration->fullySynchronousModeIsAllowedForTesting())
-        process->connection()->allowFullySynchronousModeForTesting();
-
     m_connectionClient.didCreateConnection(this, process->webConnection());
 }
 
@@ -836,18 +828,18 @@ WebProcessProxy& WebProcessPool::createNewWebProcessRespectingProcessCountLimit(
     return *process;
 }
 
-PassRefPtr<WebPageProxy> WebProcessPool::createWebPage(PageClient& pageClient, Ref<API::PageConfiguration>&& pageConfiguration)
+PassRefPtr<WebPageProxy> WebProcessPool::createWebPage(PageClient& pageClient, WebPageConfiguration configuration)
 {
-    if (!pageConfiguration->pageGroup())
-        pageConfiguration->setPageGroup(m_defaultPageGroup.ptr());
-    if (!pageConfiguration->preferences())
-        pageConfiguration->setPreferences(&pageConfiguration->pageGroup()->preferences());
-    if (!pageConfiguration->visitedLinkStore())
-        pageConfiguration->setVisitedLinkStore(m_visitedLinkStore.ptr());
-    if (!pageConfiguration->websiteDataStore()) {
-        ASSERT(!pageConfiguration->sessionID().isValid());
-        pageConfiguration->setWebsiteDataStore(m_websiteDataStore.get());
-        pageConfiguration->setSessionID(pageConfiguration->preferences()->privateBrowsingEnabled() ? SessionID::legacyPrivateSessionID() : SessionID::defaultSessionID());
+    if (!configuration.pageGroup)
+        configuration.pageGroup = m_defaultPageGroup.ptr();
+    if (!configuration.preferences)
+        configuration.preferences = &configuration.pageGroup->preferences();
+    if (!configuration.visitedLinkProvider)
+        configuration.visitedLinkProvider = m_visitedLinkProvider.ptr();
+    if (!configuration.websiteDataStore) {
+        ASSERT(!configuration.sessionID.isValid());
+        configuration.websiteDataStore = &m_websiteDataStore->websiteDataStore();
+        configuration.sessionID = configuration.preferences->privateBrowsingEnabled() ? SessionID::legacyPrivateSessionID() : SessionID::defaultSessionID();
     }
 
     RefPtr<WebProcessProxy> process;
@@ -857,14 +849,14 @@ PassRefPtr<WebPageProxy> WebProcessPool::createWebPage(PageClient& pageClient, R
         if (m_haveInitialEmptyProcess) {
             process = m_processes.last();
             m_haveInitialEmptyProcess = false;
-        } else if (pageConfiguration->relatedPage()) {
+        } else if (configuration.relatedPage) {
             // Sharing processes, e.g. when creating the page via window.open().
-            process = &pageConfiguration->relatedPage()->process();
+            process = &configuration.relatedPage->process();
         } else
             process = &createNewWebProcessRespectingProcessCountLimit();
     }
 
-    return process->createWebPage(pageClient, WTF::move(pageConfiguration));
+    return process->createWebPage(pageClient, WTF::move(configuration));
 }
 
 DownloadProxy* WebProcessPool::download(WebPageProxy* initiatingPage, const ResourceRequest& request)

@@ -52,7 +52,7 @@ public:
 
     String customCSSText() const;
 
-    RefPtr<Image> image(RenderElement*, const FloatSize&);
+    PassRefPtr<Image> image(RenderElement*, const FloatSize&);
     bool isFixedSize() const { return true; }
     FloatSize fixedSize(const RenderElement*);
 
@@ -65,7 +65,7 @@ public:
 
     bool traverseSubresources(const std::function<bool (const CachedResource&)>& handler) const;
 
-    RefPtr<CSSCrossfadeValue> blend(const CSSCrossfadeValue&, double) const;
+    PassRefPtr<CSSCrossfadeValue> blend(const CSSCrossfadeValue&, double) const;
 
     bool equals(const CSSCrossfadeValue&) const;
 

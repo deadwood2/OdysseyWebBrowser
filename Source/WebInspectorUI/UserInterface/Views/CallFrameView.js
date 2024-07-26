@@ -25,7 +25,7 @@
 
 WebInspector.CallFrameView = class CallFrameView extends WebInspector.Object
 {
-    constructor(callFrame, showFunctionName)
+    constructor(callFrame)
     {
         console.assert(callFrame instanceof WebInspector.CallFrame);
 
@@ -40,33 +40,31 @@ WebInspector.CallFrameView = class CallFrameView extends WebInspector.Object
             WebInspector.linkifyElement(callFrameElement, sourceCodeLocation);
 
             var linkElement = document.createElement("a");
-            linkElement.classList.add("source-link");
+            linkElement.className = "source-link";
             linkElement.href = sourceCodeLocation.sourceCode.url;
-
-            if (showFunctionName) {
-                var separatorElement = document.createElement("span");
-                separatorElement.classList.add("separator");
-                separatorElement.textContent = " — ";
-                subtitleElement.append(separatorElement);
-            }
-
-            subtitleElement.append(linkElement);
+            subtitleElement.appendChild(linkElement);
 
             sourceCodeLocation.populateLiveDisplayLocationTooltip(linkElement);
             sourceCodeLocation.populateLiveDisplayLocationString(linkElement, "textContent");
         }
 
-        var titleElement = document.createElement("span");
-        titleElement.classList.add("title");
-
-        if (showFunctionName) {
+        if (callFrame.functionName) {
             var imgElement = document.createElement("img");
-            imgElement.classList.add("icon");
+            imgElement.className = "icon";
+            callFrameElement.appendChild(imgElement);
 
-            titleElement.append(imgElement, callFrame.functionName || WebInspector.UIString("(anonymous function)"));
-        }
+            var titlesElement = document.createElement("div");
+            titlesElement.className = "titles";
+            callFrameElement.appendChild(titlesElement);
 
-        callFrameElement.append(titleElement, subtitleElement);
+            var titleElement = document.createElement("span");
+            titleElement.className = "title";
+            titleElement.textContent = callFrame.functionName;
+            titlesElement.appendChild(titleElement);
+
+            titlesElement.appendChild(subtitleElement);
+        } else
+            callFrameElement.appendChild(subtitleElement);
 
         return callFrameElement;
     }

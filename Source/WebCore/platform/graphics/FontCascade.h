@@ -115,7 +115,7 @@ public:
 class FontCascade {
 public:
     WEBCORE_EXPORT FontCascade();
-    WEBCORE_EXPORT FontCascade(const FontCascadeDescription&, float letterSpacing, float wordSpacing);
+    WEBCORE_EXPORT FontCascade(const FontDescription&, float letterSpacing, float wordSpacing);
     // This constructor is only used if the platform wants to start with a native font.
     WEBCORE_EXPORT FontCascade(const FontPlatformData&, FontSmoothingMode = AutoSmoothing);
 
@@ -125,7 +125,7 @@ public:
     WEBCORE_EXPORT bool operator==(const FontCascade& other) const;
     bool operator!=(const FontCascade& other) const { return !(*this == other); }
 
-    const FontCascadeDescription& fontDescription() const { return m_fontDescription; }
+    const FontDescription& fontDescription() const { return m_fontDescription; }
 
     int pixelSize() const { return fontDescription().computedPixelSize(); }
     float size() const { return fontDescription().computedSize(); }
@@ -133,9 +133,9 @@ public:
     void update(RefPtr<FontSelector>&&) const;
 
     enum CustomFontNotReadyAction { DoNotPaintIfFontNotReady, UseFallbackIfFontNotReady };
-    WEBCORE_EXPORT float drawText(GraphicsContext&, const TextRun&, const FloatPoint&, int from = 0, int to = -1, CustomFontNotReadyAction = DoNotPaintIfFontNotReady) const;
-    void drawGlyphs(GraphicsContext&, const Font&, const GlyphBuffer&, int from, int numGlyphs, const FloatPoint&) const;
-    void drawEmphasisMarks(GraphicsContext&, const TextRun&, const AtomicString& mark, const FloatPoint&, int from = 0, int to = -1) const;
+    WEBCORE_EXPORT float drawText(GraphicsContext*, const TextRun&, const FloatPoint&, int from = 0, int to = -1, CustomFontNotReadyAction = DoNotPaintIfFontNotReady) const;
+    void drawGlyphs(GraphicsContext*, const Font*, const GlyphBuffer&, int from, int numGlyphs, const FloatPoint&) const;
+    void drawEmphasisMarks(GraphicsContext*, const TextRun&, const AtomicString& mark, const FloatPoint&, int from = 0, int to = -1) const;
 
     DashArray dashesForIntersectionsWithRect(const TextRun&, const FloatPoint& textOrigin, const FloatRect& lineExtents) const;
 
@@ -223,10 +223,10 @@ private:
 
     // Returns the initial in-stream advance.
     float getGlyphsAndAdvancesForSimpleText(const TextRun&, int from, int to, GlyphBuffer&, ForTextEmphasisOrNot = NotForTextEmphasis) const;
-    float drawSimpleText(GraphicsContext&, const TextRun&, const FloatPoint&, int from, int to) const;
-    void drawEmphasisMarksForSimpleText(GraphicsContext&, const TextRun&, const AtomicString& mark, const FloatPoint&, int from, int to) const;
-    void drawGlyphBuffer(GraphicsContext&, const TextRun&, const GlyphBuffer&, FloatPoint&) const;
-    void drawEmphasisMarks(GraphicsContext&, const TextRun&, const GlyphBuffer&, const AtomicString&, const FloatPoint&) const;
+    float drawSimpleText(GraphicsContext*, const TextRun&, const FloatPoint&, int from, int to) const;
+    void drawEmphasisMarksForSimpleText(GraphicsContext*, const TextRun&, const AtomicString& mark, const FloatPoint&, int from, int to) const;
+    void drawGlyphBuffer(GraphicsContext*, const TextRun&, const GlyphBuffer&, FloatPoint&) const;
+    void drawEmphasisMarks(GraphicsContext*, const TextRun&, const GlyphBuffer&, const AtomicString&, const FloatPoint&) const;
     float floatWidthForSimpleText(const TextRun&, HashSet<const Font*>* fallbackFonts = 0, GlyphOverflow* = 0) const;
     int offsetForPositionForSimpleText(const TextRun&, float position, bool includePartialGlyphs) const;
     void adjustSelectionRectForSimpleText(const TextRun&, LayoutRect& selectionRect, int from, int to) const;
@@ -238,8 +238,8 @@ private:
 
     // Returns the initial in-stream advance.
     float getGlyphsAndAdvancesForComplexText(const TextRun&, int from, int to, GlyphBuffer&, ForTextEmphasisOrNot = NotForTextEmphasis) const;
-    float drawComplexText(GraphicsContext&, const TextRun&, const FloatPoint&, int from, int to) const;
-    void drawEmphasisMarksForComplexText(GraphicsContext&, const TextRun&, const AtomicString& mark, const FloatPoint&, int from, int to) const;
+    float drawComplexText(GraphicsContext*, const TextRun&, const FloatPoint&, int from, int to) const;
+    void drawEmphasisMarksForComplexText(GraphicsContext*, const TextRun&, const AtomicString& mark, const FloatPoint&, int from, int to) const;
     float floatWidthForComplexText(const TextRun&, HashSet<const Font*>* fallbackFonts = 0, GlyphOverflow* = 0) const;
     int offsetForPositionForComplexText(const TextRun&, float position, bool includePartialGlyphs) const;
     void adjustSelectionRectForComplexText(const TextRun&, LayoutRect& selectionRect, int from, int to) const;
@@ -318,24 +318,24 @@ private:
         }
 
         switch (m_fontDescription.kerning()) {
-        case FontCascadeDescription::NoneKerning:
+        case FontDescription::NoneKerning:
             features &= ~Kerning;
             break;
-        case FontCascadeDescription::NormalKerning:
+        case FontDescription::NormalKerning:
             features |= Kerning;
             break;
-        case FontCascadeDescription::AutoKerning:
+        case FontDescription::AutoKerning:
             break;
         }
 
-        switch (m_fontDescription.variantCommonLigatures()) {
-        case FontVariantLigatures::No:
+        switch (m_fontDescription.commonLigaturesState()) {
+        case FontDescription::DisabledLigaturesState:
             features &= ~Ligatures;
             break;
-        case FontVariantLigatures::Yes:
+        case FontDescription::EnabledLigaturesState:
             features |= Ligatures;
             break;
-        default:
+        case FontDescription::NormalLigaturesState:
             break;
         }
 
@@ -344,7 +344,7 @@ private:
 
     static TypesettingFeatures s_defaultTypesettingFeatures;
 
-    FontCascadeDescription m_fontDescription;
+    FontDescription m_fontDescription;
     mutable RefPtr<FontCascadeFonts> m_fonts;
     WeakPtrFactory<FontCascade> m_weakPtrFactory;
     float m_letterSpacing;

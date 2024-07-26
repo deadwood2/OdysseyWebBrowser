@@ -37,6 +37,7 @@
 #include "FileException.h"
 #include "FileReaderLoader.h"
 #include <runtime/ArrayBuffer.h>
+#include <wtf/PassRefPtr.h>
 
 namespace WebCore {
 
@@ -44,11 +45,11 @@ FileReaderSync::FileReaderSync()
 {
 }
 
-RefPtr<ArrayBuffer> FileReaderSync::readAsArrayBuffer(ScriptExecutionContext* scriptExecutionContext, Blob* blob, ExceptionCode& ec)
+PassRefPtr<ArrayBuffer> FileReaderSync::readAsArrayBuffer(ScriptExecutionContext* scriptExecutionContext, Blob* blob, ExceptionCode& ec)
 {
     if (!blob) {
         ec = NOT_FOUND_ERR;
-        return nullptr;
+        return 0;
     }
 
     FileReaderLoader loader(FileReaderLoader::ReadAsArrayBuffer, 0);

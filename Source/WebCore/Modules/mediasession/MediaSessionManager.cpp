@@ -45,7 +45,6 @@ MediaSessionManager::MediaSessionManager()
 {
 #if PLATFORM(MAC)
     m_interruptionProvider = adoptRef(new MediaSessionInterruptionProviderMac(*this));
-    m_interruptionProvider->beginListeningForInterruptions();
 #endif
 }
 

@@ -67,19 +67,11 @@ template <typename T> struct CacheTypes { };
 template <> struct CacheTypes<UnlinkedProgramCodeBlock> {
     typedef JSC::ProgramNode RootNode;
     static const SourceCodeKey::CodeType codeType = SourceCodeKey::ProgramType;
-    static const SourceParseMode parseMode = SourceParseMode::ProgramMode;
 };
 
 template <> struct CacheTypes<UnlinkedEvalCodeBlock> {
     typedef JSC::EvalNode RootNode;
     static const SourceCodeKey::CodeType codeType = SourceCodeKey::EvalType;
-    static const SourceParseMode parseMode = SourceParseMode::ProgramMode;
-};
-
-template <> struct CacheTypes<UnlinkedModuleProgramCodeBlock> {
-    typedef JSC::ModuleProgramNode RootNode;
-    static const SourceCodeKey::CodeType codeType = SourceCodeKey::ModuleType;
-    static const SourceParseMode parseMode = SourceParseMode::ModuleEvaluateMode;
 };
 
 template <class UnlinkedCodeBlockType, class ExecutableType>
@@ -102,8 +94,8 @@ UnlinkedCodeBlockType* CodeCache::getGlobalCodeBlock(VM& vm, ExecutableType* exe
 
     typedef typename CacheTypes<UnlinkedCodeBlockType>::RootNode RootNode;
     std::unique_ptr<RootNode> rootNode = parse<RootNode>(
-        &vm, source, Identifier(), builtinMode, strictMode,
-        CacheTypes<UnlinkedCodeBlockType>::parseMode, error, nullptr, ConstructorKind::None, thisTDZMode);
+        &vm, source, Identifier(), builtinMode, strictMode, 
+        JSParserCodeType::Program, error, nullptr, FunctionParseMode::NotAFunctionMode, ConstructorKind::None, thisTDZMode);
     if (!rootNode)
         return nullptr;
 
@@ -140,12 +132,6 @@ UnlinkedEvalCodeBlock* CodeCache::getEvalCodeBlock(VM& vm, EvalExecutable* execu
     return getGlobalCodeBlock<UnlinkedEvalCodeBlock>(vm, executable, source, builtinMode, strictMode, thisTDZMode, debuggerMode, profilerMode, error, variablesUnderTDZ);
 }
 
-UnlinkedModuleProgramCodeBlock* CodeCache::getModuleProgramCodeBlock(VM& vm, ModuleProgramExecutable* executable, const SourceCode& source, JSParserBuiltinMode builtinMode, DebuggerMode debuggerMode, ProfilerMode profilerMode, ParserError& error)
-{
-    VariableEnvironment emptyParentTDZVariables;
-    return getGlobalCodeBlock<UnlinkedModuleProgramCodeBlock>(vm, executable, source, builtinMode, JSParserStrictMode::Strict, ThisTDZMode::CheckIfNeeded, debuggerMode, profilerMode, error, &emptyParentTDZVariables);
-}
-
 // FIXME: There's no need to add the function's name to the key here. It's already in the source code.
 UnlinkedFunctionExecutable* CodeCache::getFunctionExecutableFromGlobalCode(VM& vm, const Identifier& name, const SourceCode& source, ParserError& error)
 {
@@ -159,8 +145,8 @@ UnlinkedFunctionExecutable* CodeCache::getFunctionExecutableFromGlobalCode(VM& v
 
     JSTextPosition positionBeforeLastNewline;
     std::unique_ptr<ProgramNode> program = parse<ProgramNode>(
-        &vm, source, Identifier(), JSParserBuiltinMode::NotBuiltin,
-        JSParserStrictMode::NotStrict, SourceParseMode::ProgramMode,
+        &vm, source, Identifier(), JSParserBuiltinMode::NotBuiltin, 
+        JSParserStrictMode::NotStrict, JSParserCodeType::Program, 
         error, &positionBeforeLastNewline);
     if (!program) {
         RELEASE_ASSERT(error.isValid());
@@ -180,15 +166,15 @@ UnlinkedFunctionExecutable* CodeCache::getFunctionExecutableFromGlobalCode(VM& v
     if (!funcDecl || !funcDecl->isFuncDeclNode())
         return nullptr;
 
-    FunctionMetadataNode* metadata = static_cast<FuncDeclNode*>(funcDecl)->metadata();
-    ASSERT(metadata);
-    if (!metadata)
+    FunctionBodyNode* body = static_cast<FuncDeclNode*>(funcDecl)->body();
+    ASSERT(body);
+    if (!body)
         return nullptr;
     
-    metadata->setEndPosition(positionBeforeLastNewline);
+    body->setEndPosition(positionBeforeLastNewline);
     // The Function constructor only has access to global variables, so no variables will be under TDZ.
     VariableEnvironment emptyTDZVariables;
-    UnlinkedFunctionExecutable* functionExecutable = UnlinkedFunctionExecutable::create(&vm, source, metadata, UnlinkedNormalFunction, ConstructAbility::CanConstruct, emptyTDZVariables);
+    UnlinkedFunctionExecutable* functionExecutable = UnlinkedFunctionExecutable::create(&vm, source, body, UnlinkedNormalFunction, ConstructAbility::CanConstruct, emptyTDZVariables);
     functionExecutable->m_nameValue.set(vm, functionExecutable, jsString(&vm, name.string()));
 
     m_sourceCode.addCache(key, SourceCodeValue(vm, functionExecutable, m_sourceCode.age()));

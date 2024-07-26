@@ -24,7 +24,6 @@
 #include "config.h"
 #include "HTMLAnchorElement.h"
 
-#include "AttributeDOMTokenList.h"
 #include "DNS.h"
 #include "ElementIterator.h"
 #include "EventHandler.h"
@@ -41,6 +40,7 @@
 #include "MouseEvent.h"
 #include "PingLoader.h"
 #include "PlatformMouseEvent.h"
+#include "RelList.h"
 #include "RenderImage.h"
 #include "ResourceRequest.h"
 #include "SVGImage.h"
@@ -265,7 +265,7 @@ void HTMLAnchorElement::parseAttribute(const QualifiedName& name, const AtomicSt
         if (SpaceSplitString::spaceSplitStringContainsValue(value, "noreferrer", true))
             m_linkRelations |= RelationNoReferrer;
         if (m_relList)
-            m_relList->attributeValueChanged(value);
+            m_relList->updateRelAttribute(value);
     }
     else
         HTMLElement::parseAttribute(name, value);
@@ -317,7 +317,7 @@ bool HTMLAnchorElement::hasRel(uint32_t relation) const
 DOMTokenList& HTMLAnchorElement::relList()
 {
     if (!m_relList) 
-        m_relList = std::make_unique<AttributeDOMTokenList>(*this, HTMLNames::relAttr);
+        m_relList = std::make_unique<RelList>(*this);
     return *m_relList;
 }
 

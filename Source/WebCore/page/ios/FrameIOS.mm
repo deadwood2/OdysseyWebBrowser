@@ -95,8 +95,8 @@ void Frame::initWithSimpleHTMLDocument(const String& style, const URL& url)
     if (!style.isEmpty())
         body->setAttribute(HTMLNames::styleAttr, style);
 
-    rootElement->appendChild(body.releaseNonNull(), ec);
-    document->appendChild(rootElement.releaseNonNull(), ec);
+    rootElement->appendChild(body, ec);
+    document->appendChild(rootElement, ec);
 }
 
 const ViewportArguments& Frame::viewportArguments() const
@@ -123,7 +123,8 @@ int Frame::indexCountOfWordPrecedingSelection(NSString *word) const
 
     setEnd(searchRange.get(), oneBeforeStart.isNotNull() ? oneBeforeStart : start);
 
-    if (searchRange->collapsed())
+    int exception = 0;
+    if (searchRange->collapsed(exception))
         return result;
 
     WordAwareIterator it(*searchRange);
@@ -175,7 +176,8 @@ NSArray *Frame::wordsInCurrentParagraph() const
     setStart(searchRange.get(), start);
     setEnd(searchRange.get(), end);
 
-    if (searchRange->collapsed())
+    int exception = 0;
+    if (searchRange->collapsed(exception))
         return nil;
 
     NSMutableArray *words = [NSMutableArray array];

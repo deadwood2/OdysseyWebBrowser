@@ -42,14 +42,13 @@
 
 namespace WebCore {
 
-class AudioSourceProvider;
 class Dictionary;
 class MediaConstraintsImpl;
 class MediaSourceStates;
 class MediaStreamCapabilities;
 class MediaTrackConstraints;
 
-class MediaStreamTrack final : public RefCounted<MediaStreamTrack>, public ScriptWrappable, public ActiveDOMObject, public EventTargetWithInlineData, public MediaStreamTrackPrivate::Observer {
+class MediaStreamTrack final : public RefCounted<MediaStreamTrack>, public ScriptWrappable, public ActiveDOMObject, public EventTargetWithInlineData, public MediaStreamTrackPrivateClient {
 public:
     class Observer {
     public:
@@ -87,8 +86,6 @@ public:
     RealtimeMediaSource* source() const { return m_private->source(); }
     MediaStreamTrackPrivate& privateTrack() { return m_private.get(); }
 
-    AudioSourceProvider* audioSourceProvider();
-
     void addObserver(Observer*);
     void removeObserver(Observer*);
 
@@ -114,18 +111,15 @@ private:
     virtual void refEventTarget() override final { ref(); }
     virtual void derefEventTarget() override final { deref(); }
 
-    // MediaStreamTrackPrivate::Observer
-    void trackEnded(MediaStreamTrackPrivate&) override;
-    void trackMutedChanged(MediaStreamTrackPrivate&) override;
-    void trackStatesChanged(MediaStreamTrackPrivate&) override;
+    // MediaStreamTrackPrivateClient
+    void trackEnded() override;
+    void trackMutedChanged() override;
 
     Vector<Observer*> m_observers;
     Ref<MediaStreamTrackPrivate> m_private;
 
     RefPtr<MediaConstraintsImpl> m_constraints;
 };
-
-typedef Vector<RefPtr<MediaStreamTrack>> MediaStreamTrackVector;
 
 } // namespace WebCore
 

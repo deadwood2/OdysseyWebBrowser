@@ -53,7 +53,6 @@ private:
     virtual void commitTransientZoom(double scale, WebCore::FloatPoint origin) override;
 
     virtual void waitForDidUpdateViewState() override;
-    virtual void dispatchAfterEnsuringDrawing(std::function<void (CallbackBase::Error)>) override;
 
     virtual void willSendUpdateGeometry() override;
 

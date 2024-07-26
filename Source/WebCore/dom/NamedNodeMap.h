@@ -53,7 +53,6 @@ public:
 
     RefPtr<Node> getNamedItem(const AtomicString&) const;
     RefPtr<Node> removeNamedItem(const AtomicString& name, ExceptionCode&);
-    Vector<AtomicString> supportedPropertyNames();
 
     RefPtr<Node> getNamedItemNS(const AtomicString& namespaceURI, const AtomicString& localName) const;
     RefPtr<Node> removeNamedItemNS(const AtomicString& namespaceURI, const AtomicString& localName, ExceptionCode&);

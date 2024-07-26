@@ -38,7 +38,6 @@
 #if TARGET_OS_IPHONE
 - (id)initWithFrame:(CGRect)frame contextRef:(WKContextRef)contextRef pageGroupRef:(WKPageGroupRef)pageGroupRef;
 - (id)initWithFrame:(CGRect)frame contextRef:(WKContextRef)contextRef pageGroupRef:(WKPageGroupRef)pageGroupRef relatedToPage:(WKPageRef)relatedPage;
-- (id)initWithFrame:(CGRect)frame configurationRef:(WKPageConfigurationRef)configuration;
 #else
 - (id)initWithFrame:(NSRect)frame contextRef:(WKContextRef)contextRef pageGroupRef:(WKPageGroupRef)pageGroupRef;
 - (id)initWithFrame:(NSRect)frame contextRef:(WKContextRef)contextRef pageGroupRef:(WKPageGroupRef)pageGroupRef relatedToPage:(WKPageRef)relatedPage;
@@ -95,10 +94,12 @@
 @property (nonatomic, setter=_setLayoutMode:) WKLayoutMode _layoutMode;
 // For use with _layoutMode = kWKLayoutModeFixedSize:
 @property (nonatomic, setter=_setFixedLayoutSize:) CGSize _fixedLayoutSize;
+// For use with _layoutMode = kWKLayoutModeDynamicSizeWithMinimumViewSize:
+@property (nonatomic, setter=_setMinimumViewSize:) CGSize _minimumViewSize;
 
 @property (nonatomic, setter=_setViewScale:) CGFloat _viewScale;
 
-@property (nonatomic, setter=_setOverrideDeviceScaleFactor:) CGFloat _overrideDeviceScaleFactor WK_AVAILABLE(10_11, NA);
+@property (nonatomic, setter=_setOverrideDeviceScaleFactor:) CGFloat _overrideDeviceScaleFactor WK_AVAILABLE(WK_MAC_TBA, NA);
 
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
 @property (nonatomic, setter=_setAutomaticallyAdjustsContentInsets:) BOOL _automaticallyAdjustsContentInsets;
@@ -108,7 +109,7 @@
 @property (copy, nonatomic) NSColor *underlayColor;
 
 #if WK_API_ENABLED
-@property (strong, nonatomic, setter=_setInspectorAttachmentView:) NSView *_inspectorAttachmentView WK_AVAILABLE(10_11, NA);
+@property (strong, nonatomic, setter=_setInspectorAttachmentView:) NSView *_inspectorAttachmentView WK_AVAILABLE(WK_MAC_TBA, NA);
 #endif
 
 - (NSView*)fullScreenPlaceholderView;
@@ -127,9 +128,6 @@
 - (void)waitForAsyncDrawingAreaSizeUpdate;
 
 - (void)setMagnification:(double)magnification centeredAtPoint:(NSPoint)point;
-
-- (void)setAllowsLinkPreview:(BOOL)allowsLinkPreview;
-- (BOOL)allowsLinkPreview;
 
 - (void)saveBackForwardSnapshotForCurrentItem;
 - (void)saveBackForwardSnapshotForItem:(WKBackForwardListItemRef)item;

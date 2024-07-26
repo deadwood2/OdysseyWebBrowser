@@ -35,7 +35,8 @@ InspectorBackendClass = class InspectorBackendClass
     constructor()
     {
         this._lastSequenceId = 1;
-        this._pendingResponses = new Map;
+        this._pendingResponsesCount = 0;
+        this._callbackData = new Map;
         this._agents = {};
         this._deferredScripts = [];
 
@@ -43,8 +44,6 @@ InspectorBackendClass = class InspectorBackendClass
         this.dumpInspectorProtocolMessages = false;
         this.warnForLongMessageHandling = false;
         this.longMessageHandlingThreshold = 10; // milliseconds.
-
-        this._log = window.InspectorTest ? InspectorFrontendHost.unbufferedLog.bind(InspectorFrontendHost) : console.log.bind(console);
     }
 
     // Public
@@ -79,12 +78,12 @@ InspectorBackendClass = class InspectorBackendClass
     dispatch(message)
     {
         if (this.dumpInspectorProtocolMessages)
-            this._log("backend: " + ((typeof message === "string") ? message : JSON.stringify(message)));
+            console.log("backend: " + ((typeof message === "string") ? message : JSON.stringify(message)));
 
         var messageObject = (typeof message === "string") ? JSON.parse(message) : message;
 
         if ("id" in messageObject)
-            this._dispatchResponse(messageObject);
+            this._dispatchCallback(messageObject);
         else
             this._dispatchEvent(messageObject);
     }
@@ -94,7 +93,7 @@ InspectorBackendClass = class InspectorBackendClass
         console.assert(script);
         console.assert(typeof script === "function");
 
-        if (!this._pendingResponses.size)
+        if (!this._pendingResponsesCount)
             script.call(this);
         else
             this._deferredScripts.push(script);
@@ -123,126 +122,79 @@ InspectorBackendClass = class InspectorBackendClass
         return agent;
     }
 
-    _sendCommandToBackendWithCallback(command, parameters, callback)
+    _willSendMessageToBackend(command, callback)
     {
-        let sequenceId = this._lastSequenceId++;
+        ++this._pendingResponsesCount;
+        var sequenceId = this._lastSequenceId++;
 
-        let messageObject = {
-            "id": sequenceId,
-            "method": command.qualifiedName,
-        };
+        if (callback && typeof callback === "function") {
+            var callbackData =  {
+                "callback": callback,
+                "command": command,
+            };
 
-        if (Object.keys(parameters).length)
-            messageObject["params"] = parameters;
+            if (this.dumpInspectorTimeStats)
+                callbackData.sendRequestTime = Date.now();
 
-        let responseData = {command, callback};
+            this._callbackData.set(sequenceId, callbackData);
+        }
 
-        if (this.dumpInspectorTimeStats)
-            responseData.sendRequestTimestamp = timestamp();
-
-        this._pendingResponses.set(sequenceId, responseData);
-        this._sendMessageToBackend(messageObject);
+        return sequenceId;
     }
 
-    _sendCommandToBackendExpectingPromise(command, parameters)
+    _dispatchCallback(messageObject)
     {
-        let sequenceId = this._lastSequenceId++;
-
-        let messageObject = {
-            "id": sequenceId,
-            "method": command.qualifiedName,
-        };
-
-        if (Object.keys(parameters).length)
-            messageObject["params"] = parameters;
-
-        let responseData = {command};
-
-        if (this.dumpInspectorTimeStats)
-            responseData.sendRequestTimestamp = timestamp();
-
-        let responsePromise = new Promise(function(resolve, reject) {
-            responseData.promise = {resolve, reject};
-        });
-
-        this._pendingResponses.set(sequenceId, responseData);
-        this._sendMessageToBackend(messageObject);
-
-        return responsePromise;
-    }
-
-    _sendMessageToBackend(messageObject)
-    {
-        let stringifiedMessage = JSON.stringify(messageObject);
-        if (this.dumpInspectorProtocolMessages)
-            this._log("frontend: " + stringifiedMessage);
-
-        InspectorFrontendHost.sendMessageToBackend(stringifiedMessage);
-    }
-
-    _dispatchResponse(messageObject)
-    {
-        console.assert(this._pendingResponses.size >= 0);
+        --this._pendingResponsesCount;
+        console.assert(this._pendingResponsesCount >= 0);
 
         if (messageObject["error"]) {
             if (messageObject["error"].code !== -32000)
                 this._reportProtocolError(messageObject);
         }
 
-        let sequenceId = messageObject["id"];
-        console.assert(this._pendingResponses.has(sequenceId), sequenceId, this._pendingResponses);
+        var callbackData = this._callbackData.get(messageObject["id"]);
+        if (callbackData && typeof callbackData.callback === "function") {
+            var command = callbackData.command;
+            var callback = callbackData.callback;
+            var callbackArguments = [];
 
-        let responseData = this._pendingResponses.take(sequenceId);
-        let {command, callback, promise} = responseData;
+            callbackArguments.push(messageObject["error"] ? messageObject["error"].message : null);
 
-        var processingStartTimestamp;
-        if (this.dumpInspectorTimeStats)
-            processingStartTimestamp = timestamp();
+            if (messageObject["result"]) {
+                // FIXME: this should be indicated by invoking the command differently, rather
+                // than by setting a magical property on the callback. <webkit.org/b/132386>
+                if (callback.expectsResultObject) {
+                    // The callback expects results as an object with properties, this is useful
+                    // for backwards compatibility with renamed or different parameters.
+                    callbackArguments.push(messageObject["result"]);
+                } else {
+                    for (var parameterName of command.replySignature)
+                        callbackArguments.push(messageObject["result"][parameterName]);
+                }
+            }
 
-        if (typeof callback === "function")
-            this._dispatchResponseToCallback(command, messageObject, callback);
-        else if (typeof promise === "object")
-            this._dispatchResponseToPromise(command, messageObject, promise);
-        else
-            console.error("Received a command response without a corresponding callback or promise.", messageObject, command);
+            var processingStartTime;
+            if (this.dumpInspectorTimeStats)
+                processingStartTime = Date.now();
 
-        let processingDuration = (timestamp() - processingStartTimestamp).toFixed(3);
-        if (this.warnForLongMessageHandling && processingDuration > this.longMessageHandlingThreshold)
-            console.warn(`InspectorBackend: took ${processingDuration}ms to handle response for command: ${command.qualifiedName}`);
+            try {
+                callback.apply(null, callbackArguments);
+            } catch (e) {
+                console.error("Uncaught exception in inspector page while dispatching callback for command " + command.qualifiedName + ": ", e, e.stack);
+            }
 
-        if (this.dumpInspectorTimeStats) {
-            let roundTripDuration = (processingStartTimestamp - responseData.sendRequestTimestamp).toFixed(3);
-            console.log(`time-stats: Handling: ${processingDuration}ms; RTT: ${roundTripDuration}ms; (command ${command.qualifiedName})`);
+            var processingDuration = Date.now() - processingStartTime;
+            if (this.warnForLongMessageHandling && processingDuration > this.longMessageHandlingThreshold)
+                console.warn("InspectorBackend: took " + processingDuration + "ms to handle response for command: " + command.qualifiedName);
+
+            if (this.dumpInspectorTimeStats)
+                console.log("time-stats: Handling: " + processingDuration + "ms; RTT: " + (processingStartTime - callbackData.sendRequestTime) + "ms; (command " + command.qualifiedName + ")");
+
+            this._callbackData.delete(messageObject["id"]);
         }
 
-        if (this._deferredScripts.length && !this._pendingResponses.size)
+        if (this._deferredScripts.length && !this._pendingResponsesCount)
             this._flushPendingScripts();
-    }
-
-    _dispatchResponseToCallback(command, messageObject, callback)
-    {
-        let callbackArguments = [];
-        callbackArguments.push(messageObject["error"] ? messageObject["error"].message : null);
-
-        if (messageObject["result"]) {
-            for (var parameterName of command.replySignature)
-                callbackArguments.push(messageObject["result"][parameterName]);
-        }
-
-        try {
-            callback.apply(null, callbackArguments);
-        } catch (e) {
-            console.error("Uncaught exception in inspector page while dispatching callback for command " + command.qualifiedName + ": ", e, e.stack);
-        }
-    }
-
-    _dispatchResponseToPromise(command, messageObject, promise)
-    {
-        let {resolve, reject} = promise;
-        if (messageObject["error"])
-            reject(new Error(messageObject["error"].message));
-        else
-            resolve(messageObject["result"]);
     }
 
     _dispatchEvent(messageObject)
@@ -273,9 +225,9 @@ InspectorBackendClass = class InspectorBackendClass
                 eventArguments.push(messageObject["params"][parameterNames[i]]);
         }
 
-        var processingStartTimestamp;
+        var processingStartTime;
         if (this.dumpInspectorTimeStats)
-            processingStartTimestamp = timestamp();
+            processingStartTime = Date.now();
 
         try {
             agent.dispatchEvent(eventName, eventArguments);
@@ -283,12 +235,31 @@ InspectorBackendClass = class InspectorBackendClass
             console.error("Uncaught exception in inspector page while handling event " + qualifiedName + ": ", e, e.stack);
         }
 
-        let processingDuration = (timestamp() - processingStartTimestamp).toFixed(3);
+        var processingDuration = Date.now() - processingStartTime;
         if (this.warnForLongMessageHandling && processingDuration > this.longMessageHandlingThreshold)
-            console.warn(`InspectorBackend: took ${processingDuration}ms to handle event: ${messageObject.method}`);
+            console.warn("InspectorBackend: took " + processingDuration + "ms to handle event: " + messageObject["method"]);
 
         if (this.dumpInspectorTimeStats)
-            console.log(`time-stats: Handling: ${processingDuration}ms (event ${messageObject.method})`);
+            console.log("time-stats: Handling: " + processingDuration + "ms (event " + messageObject["method"] + ")");
+    }
+
+    _invokeCommand(command, parameters, callback)
+    {
+        var messageObject = {};
+        messageObject["method"] = command.qualifiedName;
+
+        if (parameters)
+            messageObject["params"] = parameters;
+
+        // We always assign an id as a sequence identifier.
+        // Callback data is saved only if a callback is actually passed.
+        messageObject["id"] = this._willSendMessageToBackend(command, callback);
+
+        var stringifiedMessage = JSON.stringify(messageObject);
+        if (this.dumpInspectorProtocolMessages)
+            console.log("frontend: " + stringifiedMessage);
+
+        InspectorFrontendHost.sendMessageToBackend(stringifiedMessage);
     }
 
     _reportProtocolError(messageObject)
@@ -298,7 +269,7 @@ InspectorBackendClass = class InspectorBackendClass
 
     _flushPendingScripts()
     {
-        console.assert(this._pendingResponses.size === 0);
+        console.assert(!this._pendingResponsesCount);
 
         var scriptsToRun = this._deferredScripts;
         this._deferredScripts = [];
@@ -407,6 +378,9 @@ InspectorBackend.Command.create = function(backend, commandName, callSignature, 
     var instance = new InspectorBackend.Command(backend, commandName, callSignature, replySignature);
 
     function callable() {
+        // If the last argument to the command is not a function, return a result promise.
+        if (!arguments.length || typeof arguments[arguments.length - 1] !== "function")
+            return instance.promise.apply(instance, arguments);
         return instance._invokeWithArguments.apply(instance, arguments);
     }
 
@@ -447,12 +421,28 @@ InspectorBackend.Command.prototype = {
     {
         'use strict';
 
-        let instance = this._instance;
+        var instance = this._instance;
+        instance._backend._invokeCommand(instance, commandArguments, callback);
+    },
 
-        if (typeof callback === "function")
-            instance._backend._sendCommandToBackendWithCallback(instance, commandArguments, callback);
-        else
-            return instance._backend._sendCommandToBackendExpectingPromise(instance, commandArguments);
+    promise: function()
+    {
+        'use strict';
+
+        var instance = this._instance;
+        var promiseArguments = Array.from(arguments);
+        return new Promise(function(resolve, reject) {
+            function convertToPromiseCallback(error, payload) {
+                return error ? reject(new Error(error)) : resolve(payload);
+            }
+
+            // FIXME: this should be indicated by invoking the command differently, rather
+            // than by setting a magical property on the callback. <webkit.org/b/132386>
+            convertToPromiseCallback.expectsResultObject = true;
+
+            promiseArguments.push(convertToPromiseCallback);
+            instance._invokeWithArguments.apply(instance, promiseArguments);
+        });
     },
 
     supports: function(parameterName)
@@ -471,44 +461,42 @@ InspectorBackend.Command.prototype = {
     {
         'use strict';
 
-        let instance = this._instance;
-        let commandArguments = Array.from(arguments);
-        let callback = typeof commandArguments.lastValue === "function" ? commandArguments.pop() : null;
+        var instance = this._instance;
+        var commandArguments = Array.from(arguments);
+        var callback = typeof commandArguments.lastValue === "function" ? commandArguments.pop() : null;
 
-        function deliverFailure(message) {
-            console.error(`Protocol Error: ${message}`);
-            if (callback)
-                setTimeout(callback.bind(null, message), 0);
-            else
-                return Promise.reject(new Error(message));
-        }
+        var parameters = {};
+        for (var i = 0; i < instance.callSignature.length; ++i) {
+            var parameter = instance.callSignature[i];
+            var parameterName = parameter["name"];
+            var typeName = parameter["type"];
+            var optionalFlag = parameter["optional"];
 
-        let parameters = {};
-        for (let parameter of instance.callSignature) {
-            let parameterName = parameter["name"];
-            let typeName = parameter["type"];
-            let optionalFlag = parameter["optional"];
+            if (!commandArguments.length && !optionalFlag) {
+                console.error("Protocol Error: Invalid number of arguments for method '" + instance.qualifiedName + "' call. It must have the following arguments '" + JSON.stringify(instance.callSignature) + "'.");
+                return;
+            }
 
-            if (!commandArguments.length && !optionalFlag)
-                return deliverFailure(`Invalid number of arguments for command '${instance.qualifiedName}'.`);
-
-            let value = commandArguments.shift();
+            var value = commandArguments.shift();
             if (optionalFlag && value === undefined)
                 continue;
 
-            if (typeof value !== typeName)
-                return deliverFailure(`Invalid type of argument '${parameterName}' for command '${instance.qualifiedName}' call. It must be '${typeName}' but it is '${typeof value}'.`);
+            if (typeof value !== typeName) {
+                console.error("Protocol Error: Invalid type of argument '" + parameterName + "' for method '" + instance.qualifiedName + "' call. It must be '" + typeName + "' but it is '" + typeof value + "'.");
+                return;
+            }
 
             parameters[parameterName] = value;
         }
 
-        if (!callback && commandArguments.length === 1 && commandArguments[0] !== undefined)
-            return deliverFailure(`Protocol Error: Optional callback argument for command '${instance.qualifiedName}' call must be a function but its type is '${typeof args[0]}'.`);
+        if (commandArguments.length === 1 && !callback) {
+            if (commandArguments[0] !== undefined) {
+                console.error("Protocol Error: Optional callback argument for method '" + instance.qualifiedName + "' call must be a function but its type is '" + typeof args[0] + "'.");
+                return;
+            }
+        }
 
-        if (callback)
-            instance._backend._sendCommandToBackendWithCallback(instance, parameters, callback);
-        else
-            return instance._backend._sendCommandToBackendExpectingPromise(instance, parameters);
+        instance._backend._invokeCommand(instance, Object.keys(parameters).length ? parameters : null, callback);
     }
 };
 

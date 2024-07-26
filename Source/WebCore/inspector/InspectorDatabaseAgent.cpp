@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2010 Google Inc. All rights reserved.
- * Copyright (C) 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -45,7 +44,6 @@
 #include "SQLTransactionErrorCallback.h"
 #include "SQLValue.h"
 #include "VoidCallback.h"
-#include <inspector/InspectorFrontendRouter.h>
 #include <inspector/InspectorValues.h>
 #include <wtf/Vector.h>
 
@@ -80,11 +78,14 @@ public:
         SQLResultSetRowList* rowList = resultSet->rows();
 
         auto columnNames = Inspector::Protocol::Array<String>::create();
-        for (auto& column : rowList->columnNames())
-            columnNames->addItem(column);
+        const Vector<String>& columns = rowList->columnNames();
+        for (size_t i = 0; i < columns.size(); ++i)
+            columnNames->addItem(columns[i]);
 
         auto values = Inspector::Protocol::Array<InspectorValue>::create();
-        for (auto& value : rowList->values()) {
+        const Vector<SQLValue>& data = rowList->values();
+        for (size_t i = 0; i < data.size(); ++i) {
+            const SQLValue& value = rowList->values()[i];
             RefPtr<InspectorValue> inspectorValue;
             switch (value.type()) {
             case SQLValue::StringValue: inspectorValue = InspectorString::create(value.string()); break;
@@ -190,17 +191,17 @@ private:
 
 } // namespace
 
-void InspectorDatabaseAgent::didOpenDatabase(RefPtr<Database>&& database, const String& domain, const String& name, const String& version)
+void InspectorDatabaseAgent::didOpenDatabase(PassRefPtr<Database> database, const String& domain, const String& name, const String& version)
 {
     if (InspectorDatabaseResource* resource = findByFileName(database->fileName())) {
-        resource->setDatabase(WTF::move(database));
+        resource->setDatabase(database);
         return;
     }
 
-    RefPtr<InspectorDatabaseResource> resource = InspectorDatabaseResource::create(WTF::move(database), domain, name, version);
+    RefPtr<InspectorDatabaseResource> resource = InspectorDatabaseResource::create(database, domain, name, version);
     m_resources.set(resource->id(), resource);
     // Resources are only bound while visible.
-    if (m_enabled)
+    if (m_frontendDispatcher && m_enabled)
         resource->bind(m_frontendDispatcher.get());
 }
 
@@ -209,25 +210,29 @@ void InspectorDatabaseAgent::clearResources()
     m_resources.clear();
 }
 
-InspectorDatabaseAgent::InspectorDatabaseAgent(WebAgentContext& context)
-    : InspectorAgentBase(ASCIILiteral("Database"), context)
-    , m_frontendDispatcher(std::make_unique<Inspector::DatabaseFrontendDispatcher>(context.frontendRouter))
-    , m_backendDispatcher(Inspector::DatabaseBackendDispatcher::create(context.backendDispatcher, this))
+InspectorDatabaseAgent::InspectorDatabaseAgent(InstrumentingAgents* instrumentingAgents)
+    : InspectorAgentBase(ASCIILiteral("Database"), instrumentingAgents)
+    , m_enabled(false)
 {
-    m_instrumentingAgents.setInspectorDatabaseAgent(this);
+    m_instrumentingAgents->setInspectorDatabaseAgent(this);
 }
 
 InspectorDatabaseAgent::~InspectorDatabaseAgent()
 {
-    m_instrumentingAgents.setInspectorDatabaseAgent(nullptr);
+    m_instrumentingAgents->setInspectorDatabaseAgent(nullptr);
 }
 
-void InspectorDatabaseAgent::didCreateFrontendAndBackend(Inspector::FrontendRouter*, Inspector::BackendDispatcher*)
+void InspectorDatabaseAgent::didCreateFrontendAndBackend(Inspector::FrontendChannel* frontendChannel, Inspector::BackendDispatcher* backendDispatcher)
 {
+    m_frontendDispatcher = std::make_unique<Inspector::DatabaseFrontendDispatcher>(frontendChannel);
+    m_backendDispatcher = Inspector::DatabaseBackendDispatcher::create(backendDispatcher, this);
 }
 
 void InspectorDatabaseAgent::willDestroyFrontendAndBackend(Inspector::DisconnectReason)
 {
+    m_frontendDispatcher = nullptr;
+    m_backendDispatcher = nullptr;
+
     ErrorString unused;
     disable(unused);
 }
@@ -238,8 +243,9 @@ void InspectorDatabaseAgent::enable(ErrorString&)
         return;
     m_enabled = true;
 
-    for (auto& resource : m_resources.values())
-        resource->bind(m_frontendDispatcher.get());
+    DatabaseResourcesMap::iterator databasesEnd = m_resources.end();
+    for (DatabaseResourcesMap::iterator it = m_resources.begin(); it != databasesEnd; ++it)
+        it->value->bind(m_frontendDispatcher.get());
 }
 
 void InspectorDatabaseAgent::disable(ErrorString&)
@@ -260,8 +266,10 @@ void InspectorDatabaseAgent::getDatabaseTableNames(ErrorString& error, const Str
 
     Database* database = databaseForId(databaseId);
     if (database) {
-        for (auto& tableName : database->tableNames())
-            names->addItem(tableName);
+        Vector<String> tableNames = database->tableNames();
+        unsigned length = tableNames.size();
+        for (unsigned i = 0; i < length; ++i)
+            names->addItem(tableNames[i]);
     }
 }
 
@@ -286,18 +294,18 @@ void InspectorDatabaseAgent::executeSQL(ErrorString&, const String& databaseId, 
 
 String InspectorDatabaseAgent::databaseId(Database* database)
 {
-    for (auto& resource : m_resources) {
-        if (resource.value->database() == database)
-            return resource.key;
+    for (DatabaseResourcesMap::iterator it = m_resources.begin(); it != m_resources.end(); ++it) {
+        if (it->value->database() == database)
+            return it->key;
     }
     return String();
 }
 
 InspectorDatabaseResource* InspectorDatabaseAgent::findByFileName(const String& fileName)
 {
-    for (auto& resource : m_resources.values()) {
-        if (resource->database()->fileName() == fileName)
-            return resource.get();
+    for (DatabaseResourcesMap::iterator it = m_resources.begin(); it != m_resources.end(); ++it) {
+        if (it->value->database()->fileName() == fileName)
+            return it->value.get();
     }
     return nullptr;
 }

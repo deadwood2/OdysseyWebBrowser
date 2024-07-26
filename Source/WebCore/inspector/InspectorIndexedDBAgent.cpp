@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2012 Google Inc. All rights reserved.
- * Copyright (C) 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -65,7 +64,6 @@
 #include <inspector/InjectedScript.h>
 #include <inspector/InjectedScriptManager.h>
 #include <inspector/InspectorFrontendDispatchers.h>
-#include <inspector/InspectorFrontendRouter.h>
 #include <inspector/InspectorValues.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/Vector.h>
@@ -122,7 +120,7 @@ public:
             m_requestCallback->sendFailure("Could not get result in callback.");
             return;
         }
-        if (requestResult->type() != IDBAny::Type::DOMStringList) {
+        if (requestResult->type() != IDBAny::DOMStringListType) {
             m_requestCallback->sendFailure("Unexpected result type.");
             return;
         }
@@ -184,7 +182,7 @@ public:
             m_executableWithDatabase->requestCallback().sendFailure("Could not get result in callback.");
             return;
         }
-        if (requestResult->type() != IDBAny::Type::IDBDatabase) {
+        if (requestResult->type() != IDBAny::IDBDatabaseType) {
             m_executableWithDatabase->requestCallback().sendFailure("Unexpected result type.");
             return;
         }
@@ -259,8 +257,9 @@ static RefPtr<KeyPath> keyPathFromIDBKeyPath(const IDBKeyPath& idbKeyPath)
         break;
     case IDBKeyPath::ArrayType: {
         auto array = Inspector::Protocol::Array<String>::create();
-        for (auto& string : idbKeyPath.array())
-            array->addItem(string);
+        const Vector<String>& stringArray = idbKeyPath.array();
+        for (size_t i = 0; i < stringArray.size(); ++i)
+            array->addItem(stringArray[i]);
         keyPath = KeyPath::create()
             .setType(KeyPath::Type::Array)
             .release();
@@ -361,7 +360,7 @@ static RefPtr<IDBKey> idbKeyFromInspectorObject(InspectorObject* key)
             return nullptr;
         idbKey = IDBKey::createDate(date);
     } else if (type == arrayType) {
-        Vector<RefPtr<IDBKey>> keyArray;
+        IDBKey::KeyArray keyArray;
         RefPtr<InspectorArray> array;
         if (!key->getArray("array", array))
             return nullptr;
@@ -438,11 +437,11 @@ public:
             m_requestCallback->sendFailure("Could not get result in callback.");
             return;
         }
-        if (requestResult->type() == IDBAny::Type::ScriptValue) {
+        if (requestResult->type() == IDBAny::ScriptValueType) {
             end(false);
             return;
         }
-        if (requestResult->type() != IDBAny::Type::IDBCursorWithValue) {
+        if (requestResult->type() != IDBAny::IDBCursorWithValueType) {
             m_requestCallback->sendFailure("Unexpected result type.");
             return;
         }
@@ -538,9 +537,9 @@ public:
                 return;
             }
 
-            idbRequest = idbIndex->openCursor(context(), m_idbKeyRange.get(), ec);
+            idbRequest = idbIndex->openCursor(context(), m_idbKeyRange.copyRef(), ec);
         } else
-            idbRequest = idbObjectStore->openCursor(context(), m_idbKeyRange.get(), ec);
+            idbRequest = idbObjectStore->openCursor(context(), m_idbKeyRange.copyRef(), ec);
         idbRequest->addEventListener(eventNames().successEvent, WTF::move(openCursorCallback), false);
     }
 
@@ -565,10 +564,9 @@ public:
 
 } // namespace
 
-InspectorIndexedDBAgent::InspectorIndexedDBAgent(WebAgentContext& context, InspectorPageAgent* pageAgent)
-    : InspectorAgentBase(ASCIILiteral("IndexedDB"), context)
-    , m_injectedScriptManager(context.injectedScriptManager)
-    , m_backendDispatcher(Inspector::IndexedDBBackendDispatcher::create(context.backendDispatcher, this))
+InspectorIndexedDBAgent::InspectorIndexedDBAgent(InstrumentingAgents* instrumentingAgents, InjectedScriptManager* injectedScriptManager, InspectorPageAgent* pageAgent)
+    : InspectorAgentBase(ASCIILiteral("IndexedDB"), instrumentingAgents)
+    , m_injectedScriptManager(injectedScriptManager)
     , m_pageAgent(pageAgent)
 {
 }
@@ -577,12 +575,15 @@ InspectorIndexedDBAgent::~InspectorIndexedDBAgent()
 {
 }
 
-void InspectorIndexedDBAgent::didCreateFrontendAndBackend(Inspector::FrontendRouter*, Inspector::BackendDispatcher*)
+void InspectorIndexedDBAgent::didCreateFrontendAndBackend(Inspector::FrontendChannel*, Inspector::BackendDispatcher* backendDispatcher)
 {
+    m_backendDispatcher = Inspector::IndexedDBBackendDispatcher::create(backendDispatcher, this);
 }
 
 void InspectorIndexedDBAgent::willDestroyFrontendAndBackend(Inspector::DisconnectReason)
 {
+    m_backendDispatcher = nullptr;
+
     ErrorString unused;
     disable(unused);
 }
@@ -665,7 +666,7 @@ void InspectorIndexedDBAgent::requestData(ErrorString& errorString, const String
     if (!idbFactory)
         return;
 
-    InjectedScript injectedScript = m_injectedScriptManager.injectedScriptFor(mainWorldExecState(frame));
+    InjectedScript injectedScript = m_injectedScriptManager->injectedScriptFor(mainWorldExecState(frame));
 
     RefPtr<IDBKeyRange> idbKeyRange = keyRange ? idbKeyRangeFromKeyRange(keyRange) : nullptr;
     if (keyRange && !idbKeyRange) {

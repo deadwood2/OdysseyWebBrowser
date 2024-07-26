@@ -62,7 +62,12 @@ MediaPlayerPrivateMediaFoundation::MediaPlayerPrivateMediaFoundation(MediaPlayer
     , m_hasVideo(false)
     , m_hwndVideo(nullptr)
     , m_readyState(MediaPlayer::HaveNothing)
-    , m_weakPtrFactory(this)
+    , m_mediaSession(nullptr)
+    , m_sourceResolver(nullptr)
+    , m_mediaSource(nullptr)
+    , m_topology(nullptr)
+    , m_sourcePD(nullptr)
+    , m_videoDisplay(nullptr)
 {
     createSession();
     createVideoWindow();
@@ -73,6 +78,8 @@ MediaPlayerPrivateMediaFoundation::~MediaPlayerPrivateMediaFoundation()
     notifyDeleted();
     destroyVideoWindow();
     endSession();
+    cancelCallOnMainThread(onTopologySetCallback, this);
+    cancelCallOnMainThread(onCreatedMediaSourceCallback, this);
 }
 
 void MediaPlayerPrivateMediaFoundation::registerMediaEngine(MediaEngineRegistrar registrar)
@@ -234,11 +241,8 @@ void MediaPlayerPrivateMediaFoundation::setSize(const IntSize& size)
     IntPoint positionInWindow(m_lastPaintRect.location());
 
     FrameView* view = nullptr;
-    float deviceScaleFactor = 1.0f;
-    if (m_player && m_player->cachedResourceLoader() && m_player->cachedResourceLoader()->document()) {
+    if (m_player && m_player->cachedResourceLoader() && m_player->cachedResourceLoader()->document())
         view = m_player->cachedResourceLoader()->document()->view();
-        deviceScaleFactor = m_player->cachedResourceLoader()->document()->deviceScaleFactor();
-    }
 
     if (view) {
         scrollOffset = view->scrollOffsetForFixedPosition();
@@ -247,21 +251,16 @@ void MediaPlayerPrivateMediaFoundation::setSize(const IntSize& size)
 
     positionInWindow.move(-scrollOffset.width().toInt(), -scrollOffset.height().toInt());
 
-    int x = positionInWindow.x() * deviceScaleFactor;
-    int y = positionInWindow.y() * deviceScaleFactor;
-    int w = m_size.width() * deviceScaleFactor;
-    int h = m_size.height() * deviceScaleFactor;
-
     if (m_hwndVideo && !m_lastPaintRect.isEmpty())
-        ::MoveWindow(m_hwndVideo, x, y, w, h, FALSE);
+        ::MoveWindow(m_hwndVideo, positionInWindow.x(), positionInWindow.y(), m_size.width(), m_size.height(), FALSE);
 
-    RECT rc = { 0, 0, w, h };
+    RECT rc = { 0, 0, m_size.width(), m_size.height() };
     m_videoDisplay->SetVideoPosition(nullptr, &rc);
 }
 
-void MediaPlayerPrivateMediaFoundation::paint(GraphicsContext& context, const FloatRect& rect)
+void MediaPlayerPrivateMediaFoundation::paint(GraphicsContext* context, const FloatRect& rect)
 {
-    if (context.paintingDisabled()
+    if (context->paintingDisabled()
         || !m_player->visible())
         return;
 
@@ -343,12 +342,7 @@ bool MediaPlayerPrivateMediaFoundation::endCreatedMediaSource(IMFAsyncResult* as
     hr = asyncResult->GetStatus();
     m_loadingProgress = SUCCEEDED(hr);
 
-    auto weakPtr = m_weakPtrFactory.createWeakPtr();
-    callOnMainThread([weakPtr] {
-        if (!weakPtr)
-            return;
-        weakPtr->onCreatedMediaSource();
-    });
+    callOnMainThread(onCreatedMediaSourceCallback, this);
 
     return true;
 }
@@ -372,15 +366,9 @@ bool MediaPlayerPrivateMediaFoundation::endGetEvent(IMFAsyncResult* asyncResult)
         return false;
 
     switch (mediaEventType) {
-    case MESessionTopologySet: {
-        auto weakPtr = m_weakPtrFactory.createWeakPtr();
-        callOnMainThread([weakPtr] {
-            if (!weakPtr)
-                return;
-            weakPtr->onTopologySet();
-        });
+    case MESessionTopologySet:
+        callOnMainThread(onTopologySetCallback, this);
         break;
-    }
 
     case MESessionClosed:
         break;
@@ -524,21 +512,21 @@ void MediaPlayerPrivateMediaFoundation::destroyVideoWindow()
 
 void MediaPlayerPrivateMediaFoundation::addListener(MediaPlayerListener* listener)
 {
-    LockHolder locker(m_mutexListeners);
+    MutexLocker locker(m_mutexListeners);
 
     m_listeners.add(listener);
 }
 
 void MediaPlayerPrivateMediaFoundation::removeListener(MediaPlayerListener* listener)
 {
-    LockHolder locker(m_mutexListeners);
+    MutexLocker locker(m_mutexListeners);
 
     m_listeners.remove(listener);
 }
 
 void MediaPlayerPrivateMediaFoundation::notifyDeleted()
 {
-    LockHolder locker(m_mutexListeners);
+    MutexLocker locker(m_mutexListeners);
 
     for (HashSet<MediaPlayerListener*>::const_iterator it = m_listeners.begin(); it != m_listeners.end(); ++it)
         (*it)->onMediaPlayerDeleted();
@@ -655,6 +643,18 @@ void MediaPlayerPrivateMediaFoundation::onTopologySet()
     m_player->playbackStateChanged();
 }
 
+void MediaPlayerPrivateMediaFoundation::onCreatedMediaSourceCallback(void* context)
+{
+    MediaPlayerPrivateMediaFoundation* mediaPlayer = static_cast<MediaPlayerPrivateMediaFoundation*>(context);
+    mediaPlayer->onCreatedMediaSource();
+}
+
+void MediaPlayerPrivateMediaFoundation::onTopologySetCallback(void* context)
+{
+    MediaPlayerPrivateMediaFoundation* mediaPlayer = static_cast<MediaPlayerPrivateMediaFoundation*>(context);
+    mediaPlayer->onTopologySet();
+}
+
 MediaPlayerPrivateMediaFoundation::AsyncCallback::AsyncCallback(MediaPlayerPrivateMediaFoundation* mediaPlayer, bool event)
     : m_refCount(0)
     , m_mediaPlayer(mediaPlayer)
@@ -704,7 +704,7 @@ HRESULT STDMETHODCALLTYPE MediaPlayerPrivateMediaFoundation::AsyncCallback::GetP
 
 HRESULT STDMETHODCALLTYPE MediaPlayerPrivateMediaFoundation::AsyncCallback::Invoke(__RPC__in_opt IMFAsyncResult *pAsyncResult)
 {
-    LockHolder locker(m_mutex);
+    MutexLocker locker(m_mutex);
 
     if (!m_mediaPlayer)
         return S_OK;
@@ -719,7 +719,7 @@ HRESULT STDMETHODCALLTYPE MediaPlayerPrivateMediaFoundation::AsyncCallback::Invo
 
 void MediaPlayerPrivateMediaFoundation::AsyncCallback::onMediaPlayerDeleted()
 {
-    LockHolder locker(m_mutex);
+    MutexLocker locker(m_mutex);
 
     m_mediaPlayer = nullptr;
 }

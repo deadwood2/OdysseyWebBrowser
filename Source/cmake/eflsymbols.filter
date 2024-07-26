@@ -2,7 +2,6 @@
 global:
   ewk_*;
   WebProcessMainUnix;
-  DatabaseProcessMainUnix;
   NetworkProcessMainUnix;
   PluginProcessMainUnix;
   _ZN6WebKit19ExtensionManagerEfl9singletonEv;

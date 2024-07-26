@@ -33,40 +33,34 @@
 
 namespace WebCore {
 
-class MediaSession;
-
 class MediaRemoteControls : public RefCounted<MediaRemoteControls>, public EventTargetWithInlineData {
 public:
-    static Ref<MediaRemoteControls> create(ScriptExecutionContext& context, MediaSession* session = nullptr)
+    static Ref<MediaRemoteControls> create(ScriptExecutionContext& context)
     {
-        return adoptRef(*new MediaRemoteControls(context, session));
+        return adoptRef(*new MediaRemoteControls(context));
     }
 
     bool previousTrackEnabled() const { return m_previousTrackEnabled; }
-    void setPreviousTrackEnabled(bool);
+    void setPreviousTrackEnabled(bool enabled) { m_previousTrackEnabled = enabled; }
 
     bool nextTrackEnabled() const { return m_nextTrackEnabled; }
-    void setNextTrackEnabled(bool);
+    void setNextTrackEnabled(bool enabled) { m_nextTrackEnabled = enabled; }
 
     using RefCounted<MediaRemoteControls>::ref;
     using RefCounted<MediaRemoteControls>::deref;
 
-    void clearSession();
-
     virtual ~MediaRemoteControls();
+
+    MediaRemoteControls(ScriptExecutionContext&);
 
     virtual EventTargetInterface eventTargetInterface() const override { return MediaRemoteControlsEventTargetInterfaceType; }
     virtual ScriptExecutionContext* scriptExecutionContext() const override { return &m_scriptExecutionContext; }
 
 private:
-    MediaRemoteControls(ScriptExecutionContext&, MediaSession*);
-
     ScriptExecutionContext& m_scriptExecutionContext;
 
     bool m_previousTrackEnabled { false };
     bool m_nextTrackEnabled { false };
-
-    MediaSession* m_session { nullptr };
 
     virtual void refEventTarget() override final { ref(); }
     virtual void derefEventTarget() override final { deref(); }

@@ -34,6 +34,16 @@
 
 namespace JSC {
 
+LiveObjectData* LiveObjectList::findObject(JSObject* obj)
+{
+    for (size_t i = 0; i < liveObjects.size(); i++) {
+        LiveObjectData& data = liveObjects[i];
+        if (obj == data.obj)
+            return &data;
+    }
+    return nullptr;
+}
+
 HeapVerifier::HeapVerifier(Heap* heap, unsigned numberOfGCCyclesToRecord)
     : m_heap(heap)
     , m_currentCycle(0)

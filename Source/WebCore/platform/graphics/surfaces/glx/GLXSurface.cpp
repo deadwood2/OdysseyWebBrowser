@@ -128,11 +128,6 @@ GLPlatformSurface::SurfaceAttributes GLXTransportSurface::attributes() const
     return m_configSelector->attributes();
 }
 
-bool GLXTransportSurface::isCurrentDrawable() const
-{
-    return m_drawable == glXGetCurrentDrawable();
-}
-
 GLXOffScreenSurface::GLXOffScreenSurface(SurfaceAttributes surfaceAttributes)
     : GLPlatformSurface(surfaceAttributes)
     , m_pixmap(0)
@@ -170,11 +165,6 @@ void GLXOffScreenSurface::initialize(SurfaceAttributes attributes)
 PlatformSurfaceConfig GLXOffScreenSurface::configuration()
 {
     return m_configSelector->pixmapContextConfig();
-}
-
-bool GLXOffScreenSurface::isCurrentDrawable() const
-{
-    return m_drawable == glXGetCurrentDrawable();
 }
 
 void GLXOffScreenSurface::destroy()

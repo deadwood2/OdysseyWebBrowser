@@ -48,26 +48,26 @@ class Location : public ScriptWrappable, public RefCounted<Location>, public DOM
 public:
     static Ref<Location> create(Frame* frame) { return adoptRef(*new Location(frame)); }
 
-    void setHref(DOMWindow& activeWindow, DOMWindow& firstWindow, const String&);
+    void setHref(const String&, DOMWindow& activeWindow, DOMWindow& firstWindow);
     String href() const;
 
-    void assign(DOMWindow& activeWindow, DOMWindow& firstWindow, const String&);
-    void replace(DOMWindow& activeWindow, DOMWindow& firstWindow, const String&);
+    void assign(const String&, DOMWindow& activeWindow, DOMWindow& firstWindow);
+    void replace(const String&, DOMWindow& activeWindow, DOMWindow& firstWindow);
     void reload(DOMWindow& activeWindow);
 
-    void setProtocol(DOMWindow& activeWindow, DOMWindow& firstWindow, const String&, ExceptionCode&);
+    void setProtocol(const String&, DOMWindow& activeWindow, DOMWindow& firstWindow, ExceptionCode&);
     String protocol() const;
-    void setHost(DOMWindow& activeWindow, DOMWindow& firstWindow, const String&);
+    void setHost(const String&, DOMWindow& activeWindow, DOMWindow& firstWindow);
     String host() const;
-    void setHostname(DOMWindow& activeWindow, DOMWindow& firstWindow, const String&);
+    void setHostname(const String&, DOMWindow& activeWindow, DOMWindow& firstWindow);
     String hostname() const;
-    void setPort(DOMWindow& activeWindow, DOMWindow& firstWindow, const String&);
+    void setPort(const String&, DOMWindow& activeWindow, DOMWindow& firstWindow);
     String port() const;
-    void setPathname(DOMWindow& activeWindow, DOMWindow& firstWindow, const String&);
+    void setPathname(const String&, DOMWindow& activeWindow, DOMWindow& firstWindow);
     String pathname() const;
-    void setSearch(DOMWindow& activeWindow, DOMWindow& firstWindow, const String&);
+    void setSearch(const String&, DOMWindow& activeWindow, DOMWindow& firstWindow);
     String search() const;
-    void setHash(DOMWindow& activeWindow, DOMWindow& firstWindow, const String&);
+    void setHash(const String&, DOMWindow& activeWindow, DOMWindow& firstWindow);
     String hash() const;
     String origin() const;
 
@@ -78,7 +78,7 @@ public:
 private:
     explicit Location(Frame*);
 
-    void setLocation(DOMWindow& activeWindow, DOMWindow& firstWindow, const String&);
+    void setLocation(const String&, DOMWindow& activeWindow, DOMWindow& firstWindow);
 
     const URL& url() const;
 };

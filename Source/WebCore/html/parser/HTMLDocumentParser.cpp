@@ -356,7 +356,7 @@ void HTMLDocumentParser::insert(const SegmentedString& source)
     endIfDelayed();
 }
 
-void HTMLDocumentParser::append(RefPtr<StringImpl>&& inputSource)
+void HTMLDocumentParser::append(PassRefPtr<StringImpl> inputSource)
 {
     if (isStopped())
         return;
@@ -365,7 +365,7 @@ void HTMLDocumentParser::append(RefPtr<StringImpl>&& inputSource)
     // but we need to ensure it isn't deleted yet.
     Ref<HTMLDocumentParser> protect(*this);
 
-    String source(WTF::move(inputSource));
+    String source(inputSource);
 
     if (m_preloadScanner) {
         if (m_input.current().isEmpty() && !isWaitingForScripts()) {

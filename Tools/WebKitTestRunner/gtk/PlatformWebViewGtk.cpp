@@ -29,15 +29,14 @@
 #include "PlatformWebView.h"
 
 #include <WebKit/WKImageCairo.h>
-#include <WebKit/WKPageConfigurationRef.h>
 #include <WebKit/WKViewPrivate.h>
 #include <gtk/gtk.h>
 #include <wtf/Assertions.h>
 
 namespace WTR {
 
-PlatformWebView::PlatformWebView(WKPageConfigurationRef configuration, const TestOptions& options)
-    : m_view(WKViewCreate(configuration))
+PlatformWebView::PlatformWebView(WKContextRef context, WKPageGroupRef pageGroup, WKPageRef relatedPage, WKDictionaryRef options)
+    : m_view(WKViewCreate(context, pageGroup, relatedPage))
     , m_window(gtk_window_new(GTK_WINDOW_POPUP))
     , m_windowIsKey(true)
     , m_options(options)
@@ -56,11 +55,6 @@ PlatformWebView::PlatformWebView(WKPageConfigurationRef configuration, const Tes
 PlatformWebView::~PlatformWebView()
 {
     gtk_widget_destroy(m_window);
-}
-
-void PlatformWebView::setWindowIsKey(bool isKey)
-{
-    m_windowIsKey = isKey;
 }
 
 void PlatformWebView::resizeTo(unsigned width, unsigned height)
@@ -147,11 +141,6 @@ void PlatformWebView::didInitializeClients()
 {
 }
 
-bool PlatformWebView::viewSupportsOptions(const TestOptions&) const
-{
-    return true;
-}
-
 void PlatformWebView::dismissAllPopupMenus()
 {
     // gtk_menu_popdown doesn't modify the GList of attached menus, so it should
@@ -161,10 +150,6 @@ void PlatformWebView::dismissAllPopupMenus()
         ASSERT(data);
         gtk_menu_popdown(GTK_MENU(data));
     }, nullptr);
-}
-
-void PlatformWebView::setNavigationGesturesEnabled(bool)
-{
 }
 
 } // namespace WTR

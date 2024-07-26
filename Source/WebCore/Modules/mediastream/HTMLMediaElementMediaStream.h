@@ -37,7 +37,7 @@ class MediaStream;
 
 class HTMLMediaElementMediaStream {
 public:
-    static MediaStream* srcObject(HTMLMediaElement*);
+    static MediaStream* srcObject(HTMLMediaElement*, bool& isNull);
     static void setSrcObject(HTMLMediaElement*, MediaStream*);
 };
 

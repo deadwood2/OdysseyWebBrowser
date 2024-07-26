@@ -35,12 +35,13 @@
 
 namespace WebCore {
 
-AppendNodeCommand::AppendNodeCommand(PassRefPtr<ContainerNode> parent, Ref<Node>&& node, EditAction editingAction)
+AppendNodeCommand::AppendNodeCommand(PassRefPtr<ContainerNode> parent, PassRefPtr<Node> node, EditAction editingAction)
     : SimpleEditCommand(parent->document(), editingAction)
     , m_parent(parent)
-    , m_node(WTF::move(node))
+    , m_node(node)
 {
     ASSERT(m_parent);
+    ASSERT(m_node);
     ASSERT(!m_node->parentNode());
 
     ASSERT(m_parent->hasEditableStyle() || !m_parent->renderer());
@@ -67,10 +68,10 @@ void AppendNodeCommand::doApply()
     if (!m_parent->hasEditableStyle() && m_parent->renderer())
         return;
 
-    m_parent->appendChild(m_node.copyRef(), IGNORE_EXCEPTION);
+    m_parent->appendChild(m_node.get(), IGNORE_EXCEPTION);
 
     if (shouldPostAccessibilityNotification())
-        sendAXTextChangedIgnoringLineBreaks(m_node.ptr(), applyEditType());
+        sendAXTextChangedIgnoringLineBreaks(m_node.get(), applyEditType());
 }
 
 void AppendNodeCommand::doUnapply()
@@ -80,7 +81,7 @@ void AppendNodeCommand::doUnapply()
 
     // Need to notify this before actually deleting the text
     if (shouldPostAccessibilityNotification())
-        sendAXTextChangedIgnoringLineBreaks(m_node.ptr(), unapplyEditType());
+        sendAXTextChangedIgnoringLineBreaks(m_node.get(), unapplyEditType());
 
     m_node->remove(IGNORE_EXCEPTION);
 }
@@ -89,7 +90,7 @@ void AppendNodeCommand::doUnapply()
 void AppendNodeCommand::getNodesInCommand(HashSet<Node*>& nodes)
 {
     addNodeAndDescendants(m_parent.get(), nodes);
-    addNodeAndDescendants(m_node.ptr(), nodes);
+    addNodeAndDescendants(m_node.get(), nodes);
 }
 #endif
 

@@ -204,30 +204,33 @@ bool SVGFontData::applySVGGlyphSelection(WidthIterator& iterator, GlyphData& gly
     return false;
 }
 
-bool SVGFontData::fillSVGGlyphPage(GlyphPage* pageToFill, UChar* buffer, unsigned bufferLength) const
+bool SVGFontData::fillSVGGlyphPage(GlyphPage* pageToFill, unsigned offset, unsigned length, UChar* buffer, unsigned bufferLength, const Font* font) const
 {
+    ASSERT(font->isCustomFont());
+    ASSERT(font->isSVGFont());
+
     SVGFontFaceElement* fontFaceElement = this->svgFontFaceElement();
     ASSERT(fontFaceElement);
 
     SVGFontElement* fontElement = fontFaceElement->associatedFontElement();
     ASSERT(fontElement);
 
-    if (bufferLength == GlyphPage::size)
-        return fillBMPGlyphs(fontElement, pageToFill, buffer);
+    if (bufferLength == length)
+        return fillBMPGlyphs(fontElement, pageToFill, offset, length, buffer, font);
 
-    ASSERT(bufferLength == 2 * GlyphPage::size);
-    return fillNonBMPGlyphs(fontElement, pageToFill, buffer);
+    ASSERT(bufferLength == 2 * length);
+    return fillNonBMPGlyphs(fontElement, pageToFill, offset, length, buffer, font);
 }
 
-bool SVGFontData::fillBMPGlyphs(SVGFontElement* fontElement, GlyphPage* pageToFill, UChar* buffer) const
+bool SVGFontData::fillBMPGlyphs(SVGFontElement* fontElement, GlyphPage* pageToFill, unsigned offset, unsigned length, UChar* buffer, const Font* font) const
 {
     bool haveGlyphs = false;
     Vector<SVGGlyph> glyphs;
-    for (unsigned i = 0; i < GlyphPage::size; ++i) {
+    for (unsigned i = 0; i < length; ++i) {
         String lookupString(buffer + i, 1);
         fontElement->collectGlyphsForString(lookupString, glyphs);
         if (glyphs.isEmpty()) {
-            pageToFill->setGlyphForIndex(i, 0);
+            pageToFill->setGlyphDataForIndex(offset + i, 0, 0);
             continue;
         }
 
@@ -236,23 +239,23 @@ bool SVGFontData::fillBMPGlyphs(SVGFontElement* fontElement, GlyphPage* pageToFi
         // care of matching to the correct glyph, if multiple ones are available, as that's
         // only possible within the context of a string (eg. arabic form matching).
         haveGlyphs = true;
-        pageToFill->setGlyphForIndex(i, glyphs.first().tableEntry);
+        pageToFill->setGlyphDataForIndex(offset + i, glyphs.first().tableEntry, font);
         glyphs.clear();
     }
 
     return haveGlyphs;
 }
 
-bool SVGFontData::fillNonBMPGlyphs(SVGFontElement* fontElement, GlyphPage* pageToFill, UChar* buffer) const
+bool SVGFontData::fillNonBMPGlyphs(SVGFontElement* fontElement, GlyphPage* pageToFill, unsigned offset, unsigned length, UChar* buffer, const Font* font) const
 {
     bool haveGlyphs = false;
     Vector<SVGGlyph> glyphs;
-    for (unsigned i = 0; i < GlyphPage::size; ++i) {
+    for (unsigned i = 0; i < length; ++i) {
         // Each character here consists of a surrogate pair
         String lookupString(buffer + i * 2, 2);
         fontElement->collectGlyphsForString(lookupString, glyphs);
         if (glyphs.isEmpty()) {
-            pageToFill->setGlyphForIndex(i, 0);
+            pageToFill->setGlyphDataForIndex(offset + i, 0, 0);
             continue;
         }
 
@@ -261,7 +264,7 @@ bool SVGFontData::fillNonBMPGlyphs(SVGFontElement* fontElement, GlyphPage* pageT
         // care of matching to the correct glyph, if multiple ones are available, as that's
         // only possible within the context of a string (eg. arabic form matching).
         haveGlyphs = true;
-        pageToFill->setGlyphForIndex(i, glyphs.first().tableEntry);
+        pageToFill->setGlyphDataForIndex(offset + i, glyphs.first().tableEntry, font);
         glyphs.clear();
     }
 

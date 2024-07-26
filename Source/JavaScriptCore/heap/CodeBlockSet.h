@@ -109,8 +109,7 @@ private:
     // and all, but that seemed like overkill.
     HashSet<CodeBlock*> m_oldCodeBlocks;
     HashSet<CodeBlock*> m_newCodeBlocks;
-    HashSet<RefPtr<CodeBlock>> m_currentlyExecuting;
-    HashSet<RefPtr<CodeBlock>> m_remembered;
+    Vector<CodeBlock*> m_currentlyExecuting;
 };
 
 } // namespace JSC

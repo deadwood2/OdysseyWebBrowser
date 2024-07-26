@@ -267,6 +267,15 @@ PlatformMediaSession* PlatformMediaSessionManager::currentSession()
     return m_sessions[0];
 }
     
+bool PlatformMediaSessionManager::sessionRestrictsInlineVideoPlayback(const PlatformMediaSession& session) const
+{
+    PlatformMediaSession::MediaType sessionType = session.presentationType();
+    if (sessionType != PlatformMediaSession::Video)
+        return false;
+
+    return m_restrictions[sessionType] & InlineVideoPlaybackRestricted;
+}
+
 bool PlatformMediaSessionManager::sessionCanLoadMedia(const PlatformMediaSession& session) const
 {
     return session.state() == PlatformMediaSession::Playing || !session.isHidden() || session.isPlayingToWirelessPlaybackTarget();
@@ -275,12 +284,6 @@ bool PlatformMediaSessionManager::sessionCanLoadMedia(const PlatformMediaSession
 void PlatformMediaSessionManager::applicationWillEnterBackground() const
 {
     LOG(Media, "PlatformMediaSessionManager::applicationWillEnterBackground");
-
-    if (m_isApplicationInBackground)
-        return;
-
-    m_isApplicationInBackground = true;
-    
     Vector<PlatformMediaSession*> sessions = m_sessions;
     for (auto* session : sessions) {
         if (m_restrictions[session->mediaType()] & BackgroundProcessPlaybackRestricted)
@@ -305,26 +308,11 @@ void PlatformMediaSessionManager::applicationDidEnterBackground(bool isSuspended
 void PlatformMediaSessionManager::applicationWillEnterForeground() const
 {
     LOG(Media, "PlatformMediaSessionManager::applicationWillEnterForeground");
-
-    if (!m_isApplicationInBackground)
-        return;
-
-    m_isApplicationInBackground = false;
-
     Vector<PlatformMediaSession*> sessions = m_sessions;
     for (auto* session : sessions) {
         if (m_restrictions[session->mediaType()] & BackgroundProcessPlaybackRestricted)
             session->endInterruption(PlatformMediaSession::MayResumePlaying);
     }
-}
-
-void PlatformMediaSessionManager::sessionIsPlayingToWirelessPlaybackTargetChanged(PlatformMediaSession& session)
-{
-    if (!m_isApplicationInBackground || !(m_restrictions[session.mediaType()] & BackgroundProcessPlaybackRestricted))
-        return;
-
-    if (session.state() != PlatformMediaSession::Interrupted && session.shouldDoInterruption(PlatformMediaSession::EnteringBackground))
-        session.doInterruption();
 }
 
 #if !PLATFORM(COCOA)

@@ -39,16 +39,16 @@ using namespace JSC;
 
 namespace WebCore {
 
-void JSAudioBufferSourceNode::setBuffer(ExecState& state, JSValue value)
+void JSAudioBufferSourceNode::setBuffer(ExecState* exec, JSValue value)
 {
     AudioBuffer* buffer = JSAudioBuffer::toWrapped(value);
     if (!buffer) {
-        state.vm().throwException(&state, createTypeError(&state, "Value is not of type AudioBuffer"));
+        exec->vm().throwException(exec, createTypeError(exec, "Value is not of type AudioBuffer"));
         return;
     }
     
     if (!impl().setBuffer(buffer))
-        state.vm().throwException(&state, createTypeError(&state, "AudioBuffer unsupported number of channels"));
+        exec->vm().throwException(exec, createTypeError(exec, "AudioBuffer unsupported number of channels"));
 }
 
 } // namespace WebCore

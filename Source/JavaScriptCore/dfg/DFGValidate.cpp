@@ -29,7 +29,6 @@
 #if ENABLE(DFG_JIT)
 
 #include "CodeBlockWithJITType.h"
-#include "DFGClobbersExitState.h"
 #include "DFGMayExit.h"
 #include "JSCInlines.h"
 #include <wtf/Assertions.h>
@@ -186,31 +185,13 @@ public:
             
             for (size_t i = 0; i < block->size(); ++i) {
                 Node* node = block->at(i);
-
-                VALIDATE((node), node->origin.isSet());
-                VALIDATE((node), node->origin.semantic.isSet() == node->origin.forExit.isSet());
-                VALIDATE((node), !(!node->origin.forExit.isSet() && node->origin.exitOK));
-                VALIDATE((node), !(mayExit(m_graph, node) == Exits && !node->origin.exitOK));
-
-                if (i) {
-                    Node* previousNode = block->at(i - 1);
-                    VALIDATE(
-                        (node),
-                        !clobbersExitState(m_graph, previousNode)
-                        || !node->origin.exitOK
-                        || node->op() == ExitOK
-                        || node->origin.forExit != previousNode->origin.forExit);
-                    VALIDATE(
-                        (node),
-                        !(!previousNode->origin.exitOK && node->origin.exitOK)
-                        || node->op() == ExitOK
-                        || node->origin.forExit != previousNode->origin.forExit);
-                }
                 
+                VALIDATE((node), node->origin.semantic.isSet() == node->origin.forExit.isSet());
+                VALIDATE((node), !mayExit(m_graph, node) || node->origin.forExit.isSet());
                 VALIDATE((node), !node->hasStructure() || !!node->structure());
                 VALIDATE((node), !node->hasCellOperand() || node->cellOperand()->value().isCell());
                 VALIDATE((node), !node->hasCellOperand() || !!node->cellOperand()->value());
-                
+                 
                 if (!(node->flags() & NodeHasVarArgs)) {
                     if (!node->child2())
                         VALIDATE((node), !node->child3());
@@ -229,13 +210,10 @@ public:
                     switch (node->child1().useKind()) {
                     case UntypedUse:
                     case CellUse:
-                    case KnownCellUse:
                     case Int32Use:
-                    case KnownInt32Use:
                     case Int52RepUse:
                     case DoubleRepUse:
                     case BooleanUse:
-                    case KnownBooleanUse:
                         break;
                     default:
                         VALIDATE((node), !"Bad use kind");
@@ -258,13 +236,10 @@ public:
                 case CompareGreater:
                 case CompareGreaterEq:
                 case CompareEq:
+                case CompareEqConstant:
                 case CompareStrictEq:
-                case StrCat:
                     VALIDATE((node), !!node->child1());
                     VALIDATE((node), !!node->child2());
-                    break;
-                case CheckStructure:
-                    VALIDATE((node), !!node->child1());
                     break;
                 case PutStructure:
                     VALIDATE((node), !node->transition()->previous->dfgShouldWatch());
@@ -530,21 +505,20 @@ private:
                 continue;
             
             VALIDATE((block), block->phis.isEmpty());
-
-            bool didSeeExitOK = false;
+            
+            unsigned nodeIndex = 0;
+            for (; nodeIndex < block->size() && !block->at(nodeIndex)->origin.forExit.isSet(); nodeIndex++) { }
+            
+            VALIDATE((block), nodeIndex < block->size());
+            
+            for (; nodeIndex < block->size(); nodeIndex++)
+                VALIDATE((block->at(nodeIndex)), block->at(nodeIndex)->origin.forExit.isSet());
             
             for (unsigned nodeIndex = 0; nodeIndex < block->size(); ++nodeIndex) {
                 Node* node = block->at(nodeIndex);
-                didSeeExitOK |= node->origin.exitOK;
                 switch (node->op()) {
                 case Phi:
-                    // Phi cannot exit, and it would be wrong to hoist anything to the Phi that could
-                    // exit.
-                    VALIDATE((node), !node->origin.exitOK);
-
-                    // It never makes sense to have exitOK anywhere in the block before a Phi. It's only
-                    // OK to exit after all Phis are done.
-                    VALIDATE((node), !didSeeExitOK);
+                    VALIDATE((node), !node->origin.forExit.isSet());
                     break;
                     
                 case GetLocal:
@@ -570,8 +544,6 @@ private:
                 case Upsilon:
                 case ForwardVarargs:
                 case CallForwardVarargs:
-                case TailCallForwardVarargs:
-                case TailCallForwardVarargsInlinedCaller:
                 case ConstructForwardVarargs:
                 case GetMyArgumentByVal:
                     break;

@@ -40,13 +40,11 @@ struct ScratchBuffer;
 
 class ScratchRegisterAllocator {
 public:
-    ScratchRegisterAllocator() { }
     ScratchRegisterAllocator(const RegisterSet& usedRegisters);
     ~ScratchRegisterAllocator();
 
-    void lock(GPRReg);
-    void lock(FPRReg);
-    void lock(JSValueRegs);
+    void lock(GPRReg reg);
+    void lock(FPRReg reg);
     
     template<typename BankInfo>
     typename BankInfo::RegisterType allocateScratch();
@@ -64,12 +62,8 @@ public:
         return m_numberOfReusedRegisters;
     }
     
-    // preserveReusedRegistersByPushing() returns the number of padding bytes used to keep the stack
-    // pointer properly aligned and to reserve room for calling a C helper. This number of padding
-    // bytes must be provided to restoreReusedRegistersByPopping() in order to reverse the work done
-    // by preserveReusedRegistersByPushing().
-    size_t preserveReusedRegistersByPushing(MacroAssembler& jit);
-    void restoreReusedRegistersByPopping(MacroAssembler& jit, size_t numberOfPaddingBytes);
+    void preserveReusedRegistersByPushing(MacroAssembler& jit);
+    void restoreReusedRegistersByPopping(MacroAssembler& jit);
     
     RegisterSet usedRegistersForCall() const;
     

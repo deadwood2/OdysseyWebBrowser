@@ -29,7 +29,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <mutex>
 #include <wtf/HashMap.h>
-#include <wtf/Lock.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/unicode/UTF8.h>
 
@@ -118,7 +117,11 @@ StringView::UnderlyingString::UnderlyingString(const StringImpl& string)
 {
 }
 
-static StaticLock underlyingStringsMutex;
+static std::mutex& underlyingStringsMutex()
+{
+    static NeverDestroyed<std::mutex> mutex;
+    return mutex;
+}
 
 static HashMap<const StringImpl*, StringView::UnderlyingString*>& underlyingStrings()
 {
@@ -130,7 +133,7 @@ void StringView::invalidate(const StringImpl& stringToBeDestroyed)
 {
     UnderlyingString* underlyingString;
     {
-        std::lock_guard<StaticLock> lock(underlyingStringsMutex);
+        std::lock_guard<std::mutex> lock(underlyingStringsMutex());
         underlyingString = underlyingStrings().take(&stringToBeDestroyed);
         if (!underlyingString)
             return;
@@ -149,7 +152,7 @@ void StringView::adoptUnderlyingString(UnderlyingString* underlyingString)
     if (m_underlyingString) {
         if (!--m_underlyingString->refCount) {
             if (m_underlyingString->isValid) {
-                std::lock_guard<StaticLock> lock(underlyingStringsMutex);
+                std::lock_guard<std::mutex> lock(underlyingStringsMutex());
                 underlyingStrings().remove(&m_underlyingString->string);
             }
             delete m_underlyingString;
@@ -164,7 +167,7 @@ void StringView::setUnderlyingString(const StringImpl* string)
     if (!string)
         underlyingString = nullptr;
     else {
-        std::lock_guard<StaticLock> lock(underlyingStringsMutex);
+        std::lock_guard<std::mutex> lock(underlyingStringsMutex());
         auto result = underlyingStrings().add(string, nullptr);
         if (result.isNewEntry)
             result.iterator->value = new UnderlyingString(*string);

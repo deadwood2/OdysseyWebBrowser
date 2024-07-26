@@ -40,8 +40,6 @@ class MediaStream;
 
 class MediaStreamRegistry final : public URLRegistry {
 public:
-    friend class NeverDestroyed<MediaStreamRegistry>;
-
     // Returns a single instance of MediaStreamRegistry.
     static MediaStreamRegistry& registry();
 
@@ -52,7 +50,6 @@ public:
     virtual URLRegistrable* lookup(const String&) const override;
 
 private:
-    MediaStreamRegistry();
     HashMap<String, RefPtr<MediaStream>> m_mediaStreams;
 };
 

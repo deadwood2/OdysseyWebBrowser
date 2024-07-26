@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2007, 2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006, 2007 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,6 +32,7 @@
 // WebScriptObject ------------------------------------------------------------
 
 WebScriptObject::WebScriptObject()
+    : m_refCount(0)
 {
     gClassCount++;
     gClassNameCount().add("WebScriptObject");
@@ -45,11 +46,9 @@ WebScriptObject::~WebScriptObject()
 
 // IUnknown -------------------------------------------------------------------
 
-HRESULT WebScriptObject::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE WebScriptObject::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<IWebScriptObject*>(this);
     else if (IsEqualGUID(riid, IID_IWebScriptObject))
@@ -61,12 +60,12 @@ HRESULT WebScriptObject::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** pp
     return S_OK;
 }
 
-ULONG WebScriptObject::AddRef()
+ULONG STDMETHODCALLTYPE WebScriptObject::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG WebScriptObject::Release()
+ULONG STDMETHODCALLTYPE WebScriptObject::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -77,54 +76,64 @@ ULONG WebScriptObject::Release()
 
 // WebScriptObject ------------------------------------------------------------
 
-HRESULT WebScriptObject::throwException(_In_ BSTR /*exceptionMessage*/, _Out_ BOOL* result)
-{
-    ASSERT_NOT_REACHED();
-    if (!result)
-        return E_POINTER;
-    *result = FALSE;
-    return E_NOTIMPL;
-}
-
-HRESULT WebScriptObject::callWebScriptMethod(_In_ BSTR name, __in_ecount_opt(cArgs) const VARIANT args[], int cArgs, _Out_ VARIANT* result)
-{
-    ASSERT_NOT_REACHED();
-    if (!result)
-        return E_POINTER;
-    return E_NOTIMPL;
-}
-
-HRESULT WebScriptObject::evaluateWebScript(_In_ BSTR /*script*/, _Out_ VARIANT* /*result*/)
+HRESULT STDMETHODCALLTYPE WebScriptObject::throwException( 
+    /* [in] */ BSTR /*exceptionMessage*/,
+    /* [retval][out] */ BOOL* /*result*/)
 {
     ASSERT_NOT_REACHED();
     return E_NOTIMPL;
 }
 
-HRESULT WebScriptObject::removeWebScriptKey(_In_ BSTR /*name*/)
+HRESULT STDMETHODCALLTYPE WebScriptObject::callWebScriptMethod( 
+    /* [in] */ BSTR /*name*/,
+    /* [size_is][in] */ const VARIANT /*args*/[  ],
+    /* [in] */ int /*cArgs*/,
+    /* [retval][out] */ VARIANT* /*result*/)
 {
     ASSERT_NOT_REACHED();
     return E_NOTIMPL;
 }
 
-HRESULT WebScriptObject::stringRepresentation(__deref_opt_out BSTR* /*stringRepresentation*/)
+HRESULT STDMETHODCALLTYPE WebScriptObject::evaluateWebScript( 
+    /* [in] */ BSTR /*script*/,
+    /* [retval][out] */ VARIANT* /*result*/)
 {
     ASSERT_NOT_REACHED();
     return E_NOTIMPL;
 }
 
-HRESULT WebScriptObject::webScriptValueAtIndex(unsigned /*index*/, _Out_ VARIANT* /*result*/)
+HRESULT STDMETHODCALLTYPE WebScriptObject::removeWebScriptKey( 
+    /* [in] */ BSTR /*name*/)
 {
     ASSERT_NOT_REACHED();
     return E_NOTIMPL;
 }
 
-HRESULT WebScriptObject::setWebScriptValueAtIndex(unsigned /*index*/, VARIANT /*val*/)
+HRESULT STDMETHODCALLTYPE WebScriptObject::stringRepresentation( 
+    /* [retval][out] */ BSTR* /*stringRepresentation*/)
 {
     ASSERT_NOT_REACHED();
     return E_NOTIMPL;
 }
 
-HRESULT WebScriptObject::setException(_In_ BSTR /*description*/)
+HRESULT STDMETHODCALLTYPE WebScriptObject::webScriptValueAtIndex( 
+    /* [in] */ unsigned int /*index*/,
+    /* [retval][out] */ VARIANT* /*result*/)
+{
+    ASSERT_NOT_REACHED();
+    return E_NOTIMPL;
+}
+
+HRESULT STDMETHODCALLTYPE WebScriptObject::setWebScriptValueAtIndex( 
+    /* [in] */ unsigned int /*index*/,
+    /* [in] */ VARIANT /*val*/)
+{
+    ASSERT_NOT_REACHED();
+    return E_NOTIMPL;
+}
+
+HRESULT STDMETHODCALLTYPE WebScriptObject::setException( 
+    /* [in] */ BSTR /*description*/)
 {
     ASSERT_NOT_REACHED();
     return E_NOTIMPL;

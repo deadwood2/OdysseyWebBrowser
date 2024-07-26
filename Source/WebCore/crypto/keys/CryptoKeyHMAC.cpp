@@ -46,7 +46,7 @@ CryptoKeyHMAC::~CryptoKeyHMAC()
 {
 }
 
-RefPtr<CryptoKeyHMAC> CryptoKeyHMAC::generate(size_t lengthBytes, CryptoAlgorithmIdentifier hash, bool extractable, CryptoKeyUsage usages)
+PassRefPtr<CryptoKeyHMAC> CryptoKeyHMAC::generate(size_t lengthBytes, CryptoAlgorithmIdentifier hash, bool extractable, CryptoKeyUsage usages)
 {
     if (!lengthBytes) {
         switch (hash) {

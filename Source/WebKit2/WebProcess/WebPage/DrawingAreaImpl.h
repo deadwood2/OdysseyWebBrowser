@@ -74,10 +74,6 @@ private:
     virtual void setNativeSurfaceHandleForCompositing(uint64_t) override;
 #endif
 
-#if USE(COORDINATED_GRAPHICS_MULTIPROCESS)
-    virtual void didReceiveCoordinatedLayerTreeHostMessage(IPC::Connection&, IPC::MessageDecoder&) override { };
-#endif
-
     // IPC message handlers.
     virtual void updateBackingStoreState(uint64_t backingStoreStateID, bool respondImmediately, float deviceScaleFactor, const WebCore::IntSize&, const WebCore::IntSize& scrollOffset) override;
     virtual void didUpdate() override;
@@ -131,8 +127,6 @@ private:
     // won't paint until painting has resumed again.
     bool m_isPaintingSuspended;
     bool m_alwaysUseCompositing;
-
-    bool m_forceRepaintAfterBackingStoreStateUpdate { false };
 
     RunLoop::Timer<DrawingAreaImpl> m_displayTimer;
     RunLoop::Timer<DrawingAreaImpl> m_exitCompositingTimer;

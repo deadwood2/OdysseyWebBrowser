@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
  * Copyright (C) 2011, 2015 Ericsson AB. All rights reserved.
- * Copyright (C) 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
  * Copyright (C) 2013 Nokia Corporation and/or its subsidiary(-ies).
  *
  * Redistribution and use in source and binary forms, with or without
@@ -52,12 +52,9 @@ public:
         virtual void didAddOrRemoveTrack() = 0;
     };
 
-    static void setRegistry(URLRegistry&);
-    static MediaStream* lookUp(const URL&);
-
     static Ref<MediaStream> create(ScriptExecutionContext&);
     static Ref<MediaStream> create(ScriptExecutionContext&, MediaStream*);
-    static Ref<MediaStream> create(ScriptExecutionContext&, const MediaStreamTrackVector&);
+    static Ref<MediaStream> create(ScriptExecutionContext&, const Vector<RefPtr<MediaStreamTrack>>&);
     static Ref<MediaStream> create(ScriptExecutionContext&, RefPtr<MediaStreamPrivate>&&);
     virtual ~MediaStream();
 
@@ -67,9 +64,9 @@ public:
     void removeTrack(MediaStreamTrack*);
     MediaStreamTrack* getTrackById(String);
 
-    MediaStreamTrackVector getAudioTracks() const;
-    MediaStreamTrackVector getVideoTracks() const;
-    MediaStreamTrackVector getTracks() const;
+    Vector<RefPtr<MediaStreamTrack>> getAudioTracks();
+    Vector<RefPtr<MediaStreamTrack>> getVideoTracks();
+    Vector<RefPtr<MediaStreamTrack>> getTracks() const;
 
     RefPtr<MediaStream> clone();
 
@@ -91,7 +88,7 @@ public:
     void removeObserver(Observer*);
 
 protected:
-    MediaStream(ScriptExecutionContext&, const MediaStreamTrackVector&);
+    MediaStream(ScriptExecutionContext&, const Vector<RefPtr<MediaStreamTrack>>&);
     MediaStream(ScriptExecutionContext&, RefPtr<MediaStreamPrivate>&&);
 
     // ContextDestructionObserver
@@ -109,8 +106,8 @@ private:
 
     // MediaStreamPrivateClient
     virtual void activeStatusChanged() override final;
-    virtual void didAddTrack(MediaStreamTrackPrivate&) override final;
-    virtual void didRemoveTrack(MediaStreamTrackPrivate&) override final;
+    virtual void didAddTrackToPrivate(MediaStreamTrackPrivate&) override final;
+    virtual void didRemoveTrackFromPrivate(MediaStreamTrackPrivate&) override final;
 
     bool internalAddTrack(RefPtr<MediaStreamTrack>&&, StreamModifier);
     bool internalRemoveTrack(RefPtr<MediaStreamTrack>&&, StreamModifier);
@@ -118,7 +115,7 @@ private:
     void scheduleActiveStateChange();
     void activityEventTimerFired();
 
-    MediaStreamTrackVector trackVectorForType(RealtimeMediaSource::Type) const;
+    Vector<RefPtr<MediaStreamTrack>> trackVectorForType(RealtimeMediaSource::Type) const;
 
     RefPtr<MediaStreamPrivate> m_private;
 

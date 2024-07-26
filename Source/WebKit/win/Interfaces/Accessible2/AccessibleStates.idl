@@ -51,9 +51,6 @@
  * 
  ************************************************************************/ 
 
-midl_pragma warning(disable: 2111)
-midl_pragma warning(disable: 2402)
-
 import "objidl.idl";
 
 typedef long AccessibleStates;

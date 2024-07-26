@@ -80,9 +80,8 @@ enum {
     CompositingReasonBlendingWithCompositedDescendants      = 1 << 20,
     CompositingReasonPerspective                            = 1 << 21,
     CompositingReasonPreserve3D                             = 1 << 22,
-    CompositingReasonWillChange                             = 1 << 23,
-    CompositingReasonRoot                                   = 1 << 24,
-    CompositingReasonIsolatesCompositedBlendingDescendants  = 1 << 25,
+    CompositingReasonRoot                                   = 1 << 23,
+    CompositingReasonIsolatesCompositedBlendingDescendants  = 1 << 24,
 };
 typedef unsigned CompositingReasons;
 
@@ -313,10 +312,6 @@ public:
     void setRootExtendedBackgroundColor(const Color&);
     Color rootExtendedBackgroundColor() const { return m_rootExtendedBackgroundColor; }
 
-#if ENABLE(CSS_SCROLL_SNAP)
-    void updateScrollSnapPropertiesWithFrameView(const FrameView&);
-#endif
-
     // For testing.
     WEBCORE_EXPORT void startTrackingLayerFlushes();
     WEBCORE_EXPORT unsigned layerFlushCount() const;
@@ -427,7 +422,6 @@ private:
     bool requiresCompositingForPlugin(RenderLayerModelObject&) const;
     bool requiresCompositingForFrame(RenderLayerModelObject&) const;
     bool requiresCompositingForFilters(RenderLayerModelObject&) const;
-    bool requiresCompositingForWillChange(RenderLayerModelObject&) const;
     bool requiresCompositingForScrollableFrame() const;
     bool requiresCompositingForPosition(RenderLayerModelObject&, const RenderLayer&, RenderLayer::ViewportConstrainedNotCompositedReason* = nullptr) const;
     bool requiresCompositingForOverflowScrolling(const RenderLayer&) const;

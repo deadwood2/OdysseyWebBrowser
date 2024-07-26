@@ -29,9 +29,9 @@
 
 namespace WebCore {
 
-DOMMimeType::DOMMimeType(RefPtr<PluginData>&& pluginData, Frame* frame, unsigned index)
+DOMMimeType::DOMMimeType(PassRefPtr<PluginData> pluginData, Frame* frame, unsigned index)
     : FrameDestructionObserver(frame)
-    , m_pluginData(WTF::move(pluginData))
+    , m_pluginData(pluginData)
 {
     Vector<MimeClassInfo> mimes;
     Vector<size_t> mimePluginIndices;
@@ -67,10 +67,10 @@ String DOMMimeType::description() const
     return m_mimeClassInfo.desc;
 }
 
-RefPtr<DOMPlugin> DOMMimeType::enabledPlugin() const
+PassRefPtr<DOMPlugin> DOMMimeType::enabledPlugin() const
 {
-    if (!m_frame || !m_frame->page() || !m_frame->page()->mainFrame().loader().subframeLoader().allowPlugins())
-        return nullptr;
+    if (!m_frame || !m_frame->page() || !m_frame->page()->mainFrame().loader().subframeLoader().allowPlugins(NotAboutToInstantiatePlugin))
+        return 0;
 
     Vector<MimeClassInfo> mimes;
     Vector<size_t> mimePluginIndices;

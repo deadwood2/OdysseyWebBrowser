@@ -40,6 +40,7 @@
 #include <wtf/RetainPtr.h>
 #include <wtf/RunLoop.h>
 
+OBJC_CLASS NSButton;
 OBJC_CLASS NSURL;
 OBJC_CLASS NSView;
 OBJC_CLASS NSWindow;
@@ -59,6 +60,7 @@ OBJC_CLASS WKWebInspectorWKWebView;
 namespace WebKit {
 
 class WebFrameProxy;
+class WebPageGroup;
 class WebPageProxy;
 class WebPreferences;
 class WebProcessPool;
@@ -139,9 +141,9 @@ public:
     static bool isInspectorPage(WebPageProxy&);
 
     // Provided by platform WebInspectorProxy implementations.
-    static String inspectorPageURL();
-    static String inspectorTestPageURL();
-    static String inspectorBaseURL();
+    String inspectorPageURL() const;
+    String inspectorTestPageURL() const;
+    String inspectorBaseURL() const;
 
 #if ENABLE(INSPECTOR_SERVER)
     void enableRemoteInspection();

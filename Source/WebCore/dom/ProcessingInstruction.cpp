@@ -22,7 +22,6 @@
 #include "config.h"
 #include "ProcessingInstruction.h"
 
-#include "AuthorStyleSheets.h"
 #include "CSSStyleSheet.h"
 #include "CachedCSSStyleSheet.h"
 #include "CachedResourceLoader.h"
@@ -67,7 +66,7 @@ ProcessingInstruction::~ProcessingInstruction()
         m_cachedSheet->removeClient(this);
 
     if (inDocument())
-        document().authorStyleSheets().removeStyleSheetCandidateNode(*this);
+        document().styleSheetCollection().removeStyleSheetCandidateNode(*this);
 }
 
 String ProcessingInstruction::nodeName() const
@@ -80,7 +79,7 @@ Node::NodeType ProcessingInstruction::nodeType() const
     return PROCESSING_INSTRUCTION_NODE;
 }
 
-Ref<Node> ProcessingInstruction::cloneNodeInternal(Document& targetDocument, CloningOperation)
+RefPtr<Node> ProcessingInstruction::cloneNodeInternal(Document& targetDocument, CloningOperation)
 {
     // FIXME: Is it a problem that this does not copy m_localHref?
     // What about other data members?
@@ -143,7 +142,7 @@ void ProcessingInstruction::checkStyleSheet()
                 return;
             
             m_loading = true;
-            document().authorStyleSheets().addPendingSheet();
+            document().styleSheetCollection().addPendingSheet();
             
             CachedResourceRequest request(ResourceRequest(document().completeURL(href)));
 #if ENABLE(XSLT)
@@ -164,7 +163,7 @@ void ProcessingInstruction::checkStyleSheet()
             else {
                 // The request may have been denied if (for example) the stylesheet is local and the document is remote.
                 m_loading = false;
-                document().authorStyleSheets().removePendingSheet();
+                document().styleSheetCollection().removePendingSheet();
             }
         }
     }
@@ -182,7 +181,7 @@ bool ProcessingInstruction::isLoading() const
 bool ProcessingInstruction::sheetLoaded()
 {
     if (!isLoading()) {
-        document().authorStyleSheets().removePendingSheet();
+        document().styleSheetCollection().removePendingSheet();
         return true;
     }
     return false;
@@ -266,7 +265,7 @@ Node::InsertionNotificationRequest ProcessingInstruction::insertedInto(Container
     CharacterData::insertedInto(insertionPoint);
     if (!insertionPoint.inDocument())
         return InsertionDone;
-    document().authorStyleSheets().addStyleSheetCandidateNode(*this, m_createdByParser);
+    document().styleSheetCollection().addStyleSheetCandidateNode(*this, m_createdByParser);
     checkStyleSheet();
     return InsertionDone;
 }
@@ -277,7 +276,7 @@ void ProcessingInstruction::removedFrom(ContainerNode& insertionPoint)
     if (!insertionPoint.inDocument())
         return;
     
-    document().authorStyleSheets().removeStyleSheetCandidateNode(*this);
+    document().styleSheetCollection().removeStyleSheetCandidateNode(*this);
 
     if (m_sheet) {
         ASSERT(m_sheet->ownerNode() == this);

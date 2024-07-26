@@ -41,7 +41,6 @@ public:
     StyleSheet* item(unsigned index);
 
     HTMLStyleElement* getNamedItem(const String&) const;
-    Vector<AtomicString> supportedPropertyNames();
 
     Document* document() { return m_document; }
 

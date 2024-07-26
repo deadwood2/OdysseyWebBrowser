@@ -56,7 +56,6 @@ my $buildJSC = 1;
 my $runTestAPI = isAppleMacWebKit() || isAppleWinWebKit() || isWinCairo();
 
 my $runJSCStress = 1;
-my $runJITStressTests = 1;
 
 my $enableFTL = isAppleMacWebKit();
 my $createTarball = 0;
@@ -67,7 +66,6 @@ my $programName = basename($0);
 my $buildJSCDefault = $buildJSC ? "will check" : "will not check";
 my $testapiDefault = $runTestAPI ? "will run" : "will not run";
 my $jscStressDefault = $runJSCStress ? "will run" : " will not run";
-my $jitStressTestsDefault = $runJITStressTests ? "will run" : " will not run";
 my $filter;
 my $usage = <<EOF;
 Usage: $programName [options] [options to pass to build system]
@@ -77,7 +75,6 @@ Usage: $programName [options] [options to pass to build system]
   --[no-]build                  Check (or don't check) to see if the jsc build is up-to-date (default: $buildJSCDefault)
   --[no-]testapi                Run (or don't run) testapi (default: $testapiDefault)
   --[no-]jsc-stress             Run (or don't run) the JSC stress tests (default: $jscStressDefault)
-  --[no-]jit-stress-tests       Run (or don't tun) the JIT stress tests (default: $jitStressTestsDefault)
 
   Mozilla tests only options (--no-jsc-stress):
   ----------------------------------------------
@@ -105,7 +102,6 @@ GetOptions(
     'ftl-jit!' => \$enableFTL,
     'testapi!' => \$runTestAPI,
     'jsc-stress!' => \$runJSCStress,
-    'jit-stress-tests!' => \$runJITStressTests,
     'tarball!' => \$createTarball,
     'remote=s' => \$remoteHost,
     'remote-config-file=s' => \$remoteConfigFile,
@@ -287,19 +283,13 @@ sub runJSCStressTests
         "PerformanceTests/SunSpider/profiler-test.yaml",
         "LayoutTests/jsc-layout-tests.yaml",
         "Source/JavaScriptCore/tests/typeProfiler.yaml",
-        "Source/JavaScriptCore/tests/controlFlowProfiler.yaml",
-        "Source/JavaScriptCore/tests/es6.yaml",
-        "Source/JavaScriptCore/tests/modules.yaml",
+        "Source/JavaScriptCore/tests/controlFlowProfiler.yaml"
     );
     if (isWindows() && !isCygwin()) {
         shift @jscStressDriverCmd; # Remove /usr/bin/env
     }
-    if (!$runJITStressTests) {
-        push(@jscStressDriverCmd, "--no-jit");
-    } else {
-        if ($enableFTL) {
-            push(@jscStressDriverCmd, "--ftl-jit");
-        }
+    if ($enableFTL) {
+        push(@jscStressDriverCmd, "--ftl-jit");
     }
     if ($createTarball) {
         push(@jscStressDriverCmd, "--tarball");

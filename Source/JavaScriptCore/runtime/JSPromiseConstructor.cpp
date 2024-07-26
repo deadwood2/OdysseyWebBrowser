@@ -26,7 +26,6 @@
 #include "config.h"
 #include "JSPromiseConstructor.h"
 
-#include "BuiltinNames.h"
 #include "Error.h"
 #include "Exception.h"
 #include "IteratorOperations.h"
@@ -49,7 +48,7 @@ STATIC_ASSERT_IS_TRIVIALLY_DESTRUCTIBLE(JSPromiseConstructor);
 
 namespace JSC {
 
-const ClassInfo JSPromiseConstructor::s_info = { "Function", &Base::s_info, &promiseConstructorTable, CREATE_METHOD_TABLE(JSPromiseConstructor) };
+const ClassInfo JSPromiseConstructor::s_info = { "Function", &InternalFunction::s_info, &promiseConstructorTable, CREATE_METHOD_TABLE(JSPromiseConstructor) };
 
 /* Source for JSPromiseConstructor.lut.h
 @begin promiseConstructorTable
@@ -73,7 +72,7 @@ Structure* JSPromiseConstructor::createStructure(VM& vm, JSGlobalObject* globalO
 }
 
 JSPromiseConstructor::JSPromiseConstructor(VM& vm, Structure* structure)
-    : Base(vm, structure)
+    : InternalFunction(vm, structure)
 {
 }
 
@@ -86,11 +85,19 @@ void JSPromiseConstructor::finishCreation(VM& vm, JSPromisePrototype* promisePro
 
 static EncodedJSValue JSC_HOST_CALL constructPromise(ExecState* exec)
 {
-    JSGlobalObject* globalObject = exec->callee()->globalObject();
     VM& vm = exec->vm();
+    JSGlobalObject* globalObject = exec->callee()->globalObject();
 
-    JSPromise* promise = JSPromise::create(vm, globalObject->promiseStructure());
-    promise->initialize(exec, globalObject, exec->argument(0));
+    JSPromise* promise = JSPromise::create(vm, globalObject);
+
+    JSFunction* initializePromise = globalObject->initializePromiseFunction();
+    CallData callData;
+    CallType callType = getCallData(initializePromise, callData);
+    ASSERT(callType != CallTypeNone);
+
+    MarkedArgumentBuffer arguments;
+    arguments.append(exec->argument(0));
+    call(exec, initializePromise, callType, callData, promise, arguments);
 
     return JSValue::encode(promise);
 }
@@ -109,7 +116,7 @@ CallType JSPromiseConstructor::getCallData(JSCell*, CallData& callData)
 
 bool JSPromiseConstructor::getOwnPropertySlot(JSObject* object, ExecState* exec, PropertyName propertyName, PropertySlot& slot)
 {
-    return getStaticFunctionSlot<Base>(exec, promiseConstructorTable, jsCast<JSPromiseConstructor*>(object), propertyName, slot);
+    return getStaticFunctionSlot<InternalFunction>(exec, promiseConstructorTable, jsCast<JSPromiseConstructor*>(object), propertyName, slot);
 }
 
 } // namespace JSC

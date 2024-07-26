@@ -28,6 +28,7 @@
 
 #include "File.h"
 #include "ScriptWrappable.h"
+#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 #include <wtf/Vector.h>
@@ -61,7 +62,7 @@ private:
     // FileLists can only be changed by their owners.
     friend class DataTransfer;
     friend class FileInputType;
-    void append(RefPtr<File>&& file) { m_files.append(WTF::move(file)); }
+    void append(PassRefPtr<File> file) { m_files.append(file); }
     void clear() { m_files.clear(); }
 
     Vector<RefPtr<File>> m_files;

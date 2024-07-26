@@ -65,16 +65,17 @@ namespace JSC {
 
 #if USE(JSVALUE64)
         Jump emitJumpIfNotJSCell(RegisterID);
-        Jump emitJumpIfNumber(RegisterID);
-        Jump emitJumpIfNotNumber(RegisterID);
-        void emitTagInt(RegisterID src, RegisterID dest);
+        Jump emitJumpIfImmediateNumber(RegisterID reg);
+        Jump emitJumpIfNotImmediateNumber(RegisterID reg);
+        void emitFastArithImmToInt(RegisterID reg);
+        void emitFastArithIntToImmNoCheck(RegisterID src, RegisterID dest);
 #endif
 
         Jump emitJumpIfNotType(RegisterID baseReg, JSType);
 
         void emitGetFromCallFrameHeaderPtr(JSStack::CallFrameHeaderEntry, RegisterID to, RegisterID from = callFrameRegister);
         void emitPutToCallFrameHeader(RegisterID from, JSStack::CallFrameHeaderEntry);
-        void emitPutToCallFrameHeader(void* value, JSStack::CallFrameHeaderEntry);
+        void emitPutImmediateToCallFrameHeader(void* value, JSStack::CallFrameHeaderEntry);
         void emitPutCellToCallFrameHeader(RegisterID from, JSStack::CallFrameHeaderEntry);
 
         inline Address payloadFor(int index, RegisterID base = callFrameRegister);
@@ -153,11 +154,11 @@ namespace JSC {
         return branchTest64(NonZero, reg, tagMaskRegister);
     }
 
-    ALWAYS_INLINE JSInterfaceJIT::Jump JSInterfaceJIT::emitJumpIfNumber(RegisterID reg)
+    ALWAYS_INLINE JSInterfaceJIT::Jump JSInterfaceJIT::emitJumpIfImmediateNumber(RegisterID reg)
     {
         return branchTest64(NonZero, reg, tagTypeNumberRegister);
     }
-    ALWAYS_INLINE JSInterfaceJIT::Jump JSInterfaceJIT::emitJumpIfNotNumber(RegisterID reg)
+    ALWAYS_INLINE JSInterfaceJIT::Jump JSInterfaceJIT::emitJumpIfNotImmediateNumber(RegisterID reg)
     {
         return branchTest64(Zero, reg, tagTypeNumberRegister);
     }
@@ -178,7 +179,7 @@ namespace JSC {
     inline JSInterfaceJIT::Jump JSInterfaceJIT::emitLoadDouble(unsigned virtualRegisterIndex, FPRegisterID dst, RegisterID scratch)
     {
         load64(addressFor(virtualRegisterIndex), scratch);
-        Jump notNumber = emitJumpIfNotNumber(scratch);
+        Jump notNumber = emitJumpIfNotImmediateNumber(scratch);
         Jump notInt = branch64(Below, scratch, tagTypeNumberRegister);
         convertInt32ToDouble(scratch, dst);
         Jump done = jump();
@@ -189,8 +190,12 @@ namespace JSC {
         return notNumber;
     }
 
+    ALWAYS_INLINE void JSInterfaceJIT::emitFastArithImmToInt(RegisterID)
+    {
+    }
+    
     // operand is int32_t, must have been zero-extended if register is 64-bit.
-    ALWAYS_INLINE void JSInterfaceJIT::emitTagInt(RegisterID src, RegisterID dest)
+    ALWAYS_INLINE void JSInterfaceJIT::emitFastArithIntToImmNoCheck(RegisterID src, RegisterID dest)
     {
         if (src != dest)
             move(src, dest);
@@ -236,7 +241,7 @@ namespace JSC {
 #endif
     }
 
-    ALWAYS_INLINE void JSInterfaceJIT::emitPutToCallFrameHeader(void* value, JSStack::CallFrameHeaderEntry entry)
+    ALWAYS_INLINE void JSInterfaceJIT::emitPutImmediateToCallFrameHeader(void* value, JSStack::CallFrameHeaderEntry entry)
     {
         storePtr(TrustedImmPtr(value), Address(callFrameRegister, entry * sizeof(Register)));
     }

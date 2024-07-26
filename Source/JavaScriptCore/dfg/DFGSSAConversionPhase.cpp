@@ -149,7 +149,7 @@ public:
                     return nullptr;
                 
                 Node* phiNode = m_graph.addNode(
-                    variable->prediction(), Phi, block->at(0)->origin.withInvalidExit());
+                    variable->prediction(), Phi, NodeOrigin());
                 FlushFormat format = variable->flushFormat();
                 NodeFlags result = resultFor(format);
                 phiNode->mergeFlags(result);
@@ -252,12 +252,9 @@ public:
                 valueForOperand.operand(variable->local()) = phiDef->value();
                 
                 m_insertionSet.insertNode(
-                    phiInsertionPoint, SpecNone, MovHint, block->at(0)->origin.withInvalidExit(),
+                    phiInsertionPoint, SpecNone, MovHint, NodeOrigin(),
                     OpInfo(variable->local().offset()), phiDef->value()->defaultEdge());
             }
-
-            if (block->at(0)->origin.exitOK)
-                m_insertionSet.insertNode(phiInsertionPoint, SpecNone, ExitOK, block->at(0)->origin);
             
             for (unsigned nodeIndex = 0; nodeIndex < block->size(); ++nodeIndex) {
                 Node* node = block->at(nodeIndex);
@@ -274,7 +271,6 @@ public:
                     m_insertionSet.insertNode(
                         nodeIndex, SpecNone, KillStack, node->origin,
                         OpInfo(node->unlinkedLocal().offset()));
-                    node->origin.exitOK = false; // KillStack clobbers exit.
                     break;
                 }
                     
@@ -350,11 +346,7 @@ public:
                     SSACalculator::Variable* ssaVariable = phiDef->variable();
                     VariableAccessData* variable = m_variableForSSAIndex[ssaVariable->index()];
                     FlushFormat format = variable->flushFormat();
-
-                    // We can use an unchecked use kind because the SetLocal was turned into a Check.
-                    // We have to use an unchecked use because at least sometimes, the end of the block
-                    // is not exitOK.
-                    UseKind useKind = uncheckedUseKindFor(format);
+                    UseKind useKind = useKindFor(format);
                     
                     m_insertionSet.insertNode(
                         upsilonInsertionPoint, SpecNone, Upsilon, upsilonOrigin,

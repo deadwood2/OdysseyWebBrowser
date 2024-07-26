@@ -24,6 +24,7 @@
 #include "HTMLQuoteElement.h"
 
 #include "Document.h"
+#include "DocumentStyleSheetCollection.h"
 #include "HTMLNames.h"
 
 namespace WebCore {

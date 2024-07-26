@@ -28,13 +28,13 @@
 
 #include "Connection.h"
 
-#include <WebCore/WheelEventDeltaFilter.h>
+#include <WebCore/WheelEventDeltaTracker.h>
 #include <WebEvent.h>
 #include <memory>
 #include <wtf/HashMap.h>
-#include <wtf/Lock.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/RefPtr.h>
+#include <wtf/SpinLock.h>
 #include <wtf/ThreadingPrimitives.h>
 
 namespace WebCore {
@@ -92,12 +92,12 @@ private:
     Ref<WorkQueue> m_queue;
 
 #if ENABLE(ASYNC_SCROLLING)
-    Lock m_scrollingTreesMutex;
+    Mutex m_scrollingTreesMutex;
     HashMap<uint64_t, RefPtr<WebCore::ThreadedScrollingTree>> m_scrollingTrees;
 #endif
-    std::unique_ptr<WebCore::WheelEventDeltaFilter> m_recentWheelEventDeltaFilter;
+    std::unique_ptr<WebCore::WheelEventDeltaTracker> m_recentWheelEventDeltaTracker;
 #if ENABLE(IOS_TOUCH_EVENTS)
-    Lock m_touchEventsLock;
+    SpinLock m_touchEventsLock;
     HashMap<uint64_t, TouchEventQueue> m_touchEvents;
 #endif
 };

@@ -32,6 +32,7 @@
 #import "WebAccessibilityObjectWrapperIOS.h"
 #import "RenderObject.h"
 
+#import <wtf/PassRefPtr.h>
 #import <wtf/RetainPtr.h>
 
 namespace WebCore {

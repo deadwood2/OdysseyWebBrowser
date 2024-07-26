@@ -105,17 +105,17 @@ bool ParallelEnvironment::ThreadPrivate::tryLockFor(ParallelEnvironment* parent)
 
 void ParallelEnvironment::ThreadPrivate::execute(ThreadFunction threadFunction, void* parameters)
 {
-    LockHolder lock(m_mutex);
+    MutexLocker lock(m_mutex);
 
     m_threadFunction = threadFunction;
     m_parameters = parameters;
     m_running = true;
-    m_threadCondition.notifyOne();
+    m_threadCondition.signal();
 }
 
 void ParallelEnvironment::ThreadPrivate::waitForFinish()
 {
-    LockHolder lock(m_mutex);
+    MutexLocker lock(m_mutex);
 
     while (m_running)
         m_threadCondition.wait(m_mutex);
@@ -124,14 +124,14 @@ void ParallelEnvironment::ThreadPrivate::waitForFinish()
 void ParallelEnvironment::ThreadPrivate::workerThread(void* threadData)
 {
     ThreadPrivate* sharedThread = reinterpret_cast<ThreadPrivate*>(threadData);
-    LockHolder lock(sharedThread->m_mutex);
+    MutexLocker lock(sharedThread->m_mutex);
 
     while (sharedThread->m_threadID) {
         if (sharedThread->m_running) {
             (*sharedThread->m_threadFunction)(sharedThread->m_parameters);
             sharedThread->m_running = false;
             sharedThread->m_parent = 0;
-            sharedThread->m_threadCondition.notifyOne();
+            sharedThread->m_threadCondition.signal();
         }
 
         sharedThread->m_threadCondition.wait(sharedThread->m_mutex);

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,36 +23,38 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ScriptTimelineOverviewGraph = class ScriptTimelineOverviewGraph extends WebInspector.TimelineOverviewGraph
+WebInspector.ScriptTimelineOverviewGraph = function(timeline, timelineOverview)
 {
-    constructor(timeline, timelineOverview)
-    {
-        super(timelineOverview);
+    WebInspector.TimelineOverviewGraph.call(this, timeline, timelineOverview);
 
-        this.element.classList.add("script");
+    this.element.classList.add("script");
 
-        this._scriptTimeline = timeline;
-        this._scriptTimeline.addEventListener(WebInspector.Timeline.Event.RecordAdded, this._scriptTimelineRecordAdded, this);
+    this._scriptTimeline = timeline;
+    this._scriptTimeline.addEventListener(WebInspector.Timeline.Event.RecordAdded, this._scriptTimelineRecordAdded, this);
 
-        this._timelineRecordBars = [];
+    this._timelineRecordBars = [];
 
-        this.reset();
-    }
+    this.reset();
+};
+
+WebInspector.ScriptTimelineOverviewGraph.prototype = {
+    constructor: WebInspector.ScriptTimelineOverviewGraph,
+    __proto__: WebInspector.TimelineOverviewGraph.prototype,
 
     // Public
 
-    reset()
+    reset: function()
     {
-        super.reset();
+        WebInspector.TimelineOverviewGraph.prototype.reset.call(this);
 
         this._timelineRecordBarMap = new Map;
 
         this.element.removeChildren();
-    }
+    },
 
-    updateLayout()
+    updateLayout: function()
     {
-        super.updateLayout();
+        WebInspector.TimelineOverviewGraph.prototype.updateLayout.call(this);
 
         var secondsPerPixel = this.timelineOverview.secondsPerPixel;
 
@@ -80,11 +82,11 @@ WebInspector.ScriptTimelineOverviewGraph = class ScriptTimelineOverviewGraph ext
             this._timelineRecordBars[recordBarIndex].records = null;
             this._timelineRecordBars[recordBarIndex].element.remove();
         }
-    }
+    },
 
     // Private
 
-    _scriptTimelineRecordAdded(event)
+    _scriptTimelineRecordAdded: function(event)
     {
         this.needsLayout();
     }

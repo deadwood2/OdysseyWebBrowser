@@ -31,7 +31,6 @@ typedef struct CGFont* CGFontRef;
 
 namespace WebCore {
 
-class FontDescription;
 class FontPlatformData;
 class SharedBuffer;
 
@@ -46,7 +45,8 @@ public:
 
     ~FontCustomPlatformData();
 
-    FontPlatformData fontPlatformData(const FontDescription&, bool bold, bool italic);
+    FontPlatformData fontPlatformData(int size, bool bold, bool italic, FontOrientation = Horizontal,
+                                      FontWidthVariant = RegularWidth, FontRenderingMode = NormalRenderingMode);
 
     static bool supportsFormat(const String&);
 

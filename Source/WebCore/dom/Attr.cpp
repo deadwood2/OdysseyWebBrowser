@@ -138,17 +138,23 @@ void Attr::setNodeValue(const String& v, ExceptionCode& ec)
     setValue(v, ec);
 }
 
-Ref<Node> Attr::cloneNodeInternal(Document& targetDocument, CloningOperation)
+RefPtr<Node> Attr::cloneNodeInternal(Document& targetDocument, CloningOperation)
 {
-    Ref<Attr> clone = adoptRef(*new Attr(targetDocument, qualifiedName(), value()));
-    cloneChildNodes(clone);
-    return WTF::move(clone);
+    RefPtr<Attr> clone = adoptRef(new Attr(targetDocument, qualifiedName(), value()));
+    cloneChildNodes(clone.get());
+    return clone.release();
 }
 
 // DOM Section 1.1.1
 bool Attr::childTypeAllowed(NodeType type) const
 {
-    return type == TEXT_NODE;
+    switch (type) {
+        case TEXT_NODE:
+        case ENTITY_REFERENCE_NODE:
+            return true;
+        default:
+            return false;
+    }
 }
 
 void Attr::childrenChanged(const ChildChange&)

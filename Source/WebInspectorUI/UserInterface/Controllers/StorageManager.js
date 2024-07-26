@@ -38,7 +38,14 @@ WebInspector.StorageManager = class StorageManager extends WebInspector.Object
             IndexedDBAgent.enable();
 
         WebInspector.Frame.addEventListener(WebInspector.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
-        WebInspector.Frame.addEventListener(WebInspector.Frame.Event.SecurityOriginDidChange, this._securityOriginDidChange, this);
+
+        WebInspector.notifications.addEventListener(WebInspector.Notification.ExtraDomainsActivated, this._extraDomainsActivated, this);
+
+        // COMPATIBILITY (iOS 6): DOMStorage was discovered via a DOMStorageObserver event. Now DOM Storage
+        // is added whenever a new securityOrigin is discovered. Check for DOMStorageAgent.getDOMStorageItems,
+        // which was renamed at the same time the change to start using securityOrigin was made.
+        if (window.DOMStorageAgent && DOMStorageAgent.getDOMStorageItems)
+            WebInspector.Frame.addEventListener(WebInspector.Frame.Event.SecurityOriginDidChange, this._securityOriginDidChange, this);
 
         this.initialize();
     }
@@ -92,32 +99,29 @@ WebInspector.StorageManager = class StorageManager extends WebInspector.Object
         this.dispatchEventToListeners(WebInspector.StorageManager.Event.DatabaseWasAdded, {database});
     }
 
+    domStorageWasUpdated(id)
+    {
+        this.dispatchEventToListeners(WebInspector.StorageManager.Event.DOMStorageWasUpdated, id);
+    }
+
     itemsCleared(storageId)
     {
-        let domStorage = this._domStorageForIdentifier(storageId);
-        if (domStorage)
-            domStorage.itemsCleared(storageId);
+        this._domStorageForIdentifier(storageId).itemsCleared(storageId);
     }
 
     itemRemoved(storageId, key)
     {
-        let domStorage = this._domStorageForIdentifier(storageId);
-        if (domStorage)
-            domStorage.itemRemoved(key);
+        this._domStorageForIdentifier(storageId).itemRemoved(key);
     }
 
     itemAdded(storageId, key, value)
     {
-        let domStorage = this._domStorageForIdentifier(storageId);
-        if (domStorage)
-            domStorage.itemAdded(key, value);
+        this._domStorageForIdentifier(storageId).itemAdded(key, value);
     }
 
     itemUpdated(storageId, key, oldValue, value)
     {
-        let domStorage = this._domStorageForIdentifier(storageId);
-        if (domStorage)
-            domStorage.itemUpdated(key, oldValue, value);
+        this._domStorageForIdentifier(storageId).itemUpdated(key, oldValue, value);
     }
 
     inspectDatabase(id)
@@ -184,6 +188,7 @@ WebInspector.StorageManager = class StorageManager extends WebInspector.Object
     {
         for (var storageObject of this._domStorageObjects) {
             // The id is an object, so we need to compare the properties using Object.shallowEqual.
+            // COMPATIBILITY (iOS 6): The id was a string. Object.shallowEqual works for both.
             if (Object.shallowEqual(storageObject.id, id))
                 return storageObject;
         }
@@ -218,9 +223,6 @@ WebInspector.StorageManager = class StorageManager extends WebInspector.Object
 
     _addDOMStorageIfNeeded(frame)
     {
-        if (!window.DOMStorageAgent)
-            return;
-
         // Don't show storage if we don't have a security origin (about:blank).
         if (!frame.securityOrigin || frame.securityOrigin === "://")
             return;
@@ -315,6 +317,12 @@ WebInspector.StorageManager = class StorageManager extends WebInspector.Object
         }
 
         return null;
+    }
+
+    _extraDomainsActivated(event)
+    {
+        if (event.data.domains.includes("DOMStorage") && window.DOMStorageAgent && DOMStorageAgent.getDOMStorageItems)
+            WebInspector.Frame.addEventListener(WebInspector.Frame.Event.SecurityOriginDidChange, this._securityOriginDidChange, this);
     }
 };
 

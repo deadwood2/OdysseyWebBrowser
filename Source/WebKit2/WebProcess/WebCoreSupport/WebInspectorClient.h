@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2010 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,6 +27,7 @@
 #define WebInspectorClient_h
 
 #include <WebCore/InspectorClient.h>
+#include <WebCore/InspectorForwarding.h>
 #include <WebCore/PageOverlay.h>
 #include <wtf/HashSet.h>
 
@@ -50,9 +51,10 @@ public:
 
 private:
     // WebCore::InspectorClient
-    void inspectedPageDestroyed() override;
+    void inspectorDestroyed() override;
 
-    Inspector::FrontendChannel* openLocalFrontend(WebCore::InspectorController*) override;
+    WebCore::InspectorFrontendChannel* openInspectorFrontend(WebCore::InspectorController*) override;
+    void closeInspectorFrontend() override;
     void bringFrontendToFront() override;
     void didResizeMainFrame(WebCore::Frame*) override;
 

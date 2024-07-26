@@ -26,9 +26,6 @@
 #ifndef TestInvocation_h
 #define TestInvocation_h
 
-#include "JSWrappable.h"
-#include "TestOptions.h"
-#include "UIScriptContext.h"
 #include <WebKit/WKRetainPtr.h>
 #include <string>
 #include <wtf/Noncopyable.h>
@@ -36,16 +33,14 @@
 
 namespace WTR {
 
-class TestInvocation : public UIScriptContextDelegate {
+class TestInvocation {
     WTF_MAKE_NONCOPYABLE(TestInvocation);
 public:
-    explicit TestInvocation(WKURLRef, const TestOptions&);
+    explicit TestInvocation(const std::string& pathOrURL);
     ~TestInvocation();
 
     WKURLRef url() const;
     bool urlContains(const char*) const;
-    
-    const TestOptions& options() const { return m_options; }
 
     void setIsPixelTest(const std::string& expectedPixelHash);
 
@@ -59,62 +54,38 @@ public:
     void dumpWebProcessUnresponsiveness();
     static void dumpWebProcessUnresponsiveness(const char* errorMessage);
     void outputText(const WTF::String&);
-
-    void didBeginSwipe();
-    void willEndSwipe();
-    void didEndSwipe();
-    void didRemoveSwipeSnapshot();
-
 private:
     void dumpResults();
     static void dump(const char* textToStdout, const char* textToStderr = 0, bool seenError = false);
-    enum class SnapshotResultType { WebView, WebContents };
-    void dumpPixelsAndCompareWithExpected(WKImageRef, WKArrayRef repaintRects, SnapshotResultType);
+    void dumpPixelsAndCompareWithExpected(WKImageRef, WKArrayRef repaintRects);
     void dumpAudio(WKDataRef);
     bool compareActualHashToExpectedAndDumpResults(const char[33]);
 
     static void forceRepaintDoneCallback(WKErrorRef, void* context);
-    
-    struct UIScriptInvocationData {
-        unsigned callbackID;
-        WebKit::WKRetainPtr<WKStringRef> scriptString;
-        TestInvocation* testInvocation;
-    };
-    static void runUISideScriptAfterUpdateCallback(WKErrorRef, void* context);
 
-    bool shouldLogFrameLoadDelegates() const;
-    bool shouldLogHistoryClientCallbacks() const;
+    bool shouldLogFrameLoadDelegates();
+    bool shouldLogHistoryClientCallbacks();
 
-    void runUISideScript(WKStringRef, unsigned callbackID);
-    // UIScriptContextDelegate
-    void uiScriptDidComplete(WKStringRef result, unsigned callbackID) override;
-
-    const TestOptions m_options;
-    
     WKRetainPtr<WKURLRef> m_url;
     WTF::String m_urlString;
 
+    bool m_dumpPixels;
     std::string m_expectedPixelHash;
 
-    int m_timeout { 0 };
+    int m_timeout;
 
     // Invocation state
-    bool m_gotInitialResponse { false };
-    bool m_gotFinalMessage { false };
-    bool m_gotRepaint { false };
-    bool m_error { false };
-
-    bool m_dumpPixels { false };
-    bool m_pixelResultIsPending { false };
-    bool m_webProcessIsUnresponsive { false };
+    bool m_gotInitialResponse;
+    bool m_gotFinalMessage;
+    bool m_gotRepaint;
+    bool m_error;
 
     StringBuilder m_textOutput;
     WKRetainPtr<WKDataRef> m_audioResult;
     WKRetainPtr<WKImageRef> m_pixelResult;
     WKRetainPtr<WKArrayRef> m_repaintRects;
     std::string m_errorMessage;
-    
-    std::unique_ptr<UIScriptContext> m_UIScriptContext;
+    bool m_webProcessIsUnresponsive;
 
 };
 

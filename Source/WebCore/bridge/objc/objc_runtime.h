@@ -76,7 +76,7 @@ private:
 
 class ObjcArray : public Array {
 public:
-    ObjcArray(ObjectStructPtr, RefPtr<RootObject>&&);
+    ObjcArray(ObjectStructPtr, PassRefPtr<RootObject>);
 
     virtual void setValueAt(ExecState *exec, unsigned int index, JSValue aValue) const;
     virtual JSValue valueAt(ExecState *exec, unsigned int index) const;

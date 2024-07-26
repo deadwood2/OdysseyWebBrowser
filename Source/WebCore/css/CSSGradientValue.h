@@ -62,7 +62,7 @@ struct CSSGradientColorStop {
 
 class CSSGradientValue : public CSSImageGeneratorValue {
 public:
-    RefPtr<Image> image(RenderElement*, const FloatSize&);
+    PassRefPtr<Image> image(RenderElement*, const FloatSize&);
 
     void setFirstX(PassRefPtr<CSSPrimitiveValue> val) { m_firstX = val; }
     void setFirstY(PassRefPtr<CSSPrimitiveValue> val) { m_firstY = val; }
@@ -86,7 +86,7 @@ public:
     bool knownToBeOpaque(const RenderElement*) const;
 
     void loadSubimages(CachedResourceLoader&, const ResourceLoaderOptions&) { }
-    RefPtr<CSSGradientValue> gradientWithStylesResolved(StyleResolver*);
+    PassRefPtr<CSSGradientValue> gradientWithStylesResolved(StyleResolver*);
 
 protected:
     CSSGradientValue(ClassType classType, CSSGradientRepeat repeat, CSSGradientType gradientType)
@@ -144,7 +144,7 @@ public:
     String customCSSText() const;
 
     // Create the gradient for a given size.
-    Ref<Gradient> createGradient(RenderElement&, const FloatSize&);
+    PassRefPtr<Gradient> createGradient(RenderElement&, const FloatSize&);
 
     Ref<CSSLinearGradientValue> clone() const
     {
@@ -192,7 +192,7 @@ public:
     void setEndVerticalSize(PassRefPtr<CSSPrimitiveValue> val) { m_endVerticalSize = val; }
 
     // Create the gradient for a given size.
-    Ref<Gradient> createGradient(RenderElement&, const FloatSize&);
+    PassRefPtr<Gradient> createGradient(RenderElement&, const FloatSize&);
 
     bool equals(const CSSRadialGradientValue&) const;
 

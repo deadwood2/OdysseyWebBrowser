@@ -27,7 +27,6 @@
 #include "ProfilerOriginStack.h"
 
 #include "CodeOrigin.h"
-#include "InlineCallFrame.h"
 #include "JSGlobalObject.h"
 #include "JSCInlines.h"
 #include "ProfilerDatabase.h"

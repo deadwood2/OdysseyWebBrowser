@@ -47,7 +47,7 @@
 
 #if ENABLE(MEDIA_SESSION)
 namespace WebCore {
-class MediaSessionMetadata;
+struct MediaSessionMetadata;
 }
 #endif
 
@@ -281,7 +281,6 @@ public:
         
     virtual void elementDidFocus(const Node*) { };
     virtual void elementDidBlur(const Node*) { };
-    virtual void elementDidRefocus(const Node*) { };
     
     virtual bool shouldPaintEntireContents() const { return false; }
     virtual bool hasStablePageScaleFactor() const { return true; }
@@ -421,12 +420,11 @@ public:
 
     virtual bool shouldUseTiledBackingForFrameView(const FrameView*) const { return false; }
 
-    virtual void isPlayingMediaDidChange(MediaProducer::MediaStateFlags, uint64_t) { }
+    virtual void isPlayingMediaDidChange(MediaProducer::MediaStateFlags) { }
 
 #if ENABLE(MEDIA_SESSION)
     virtual void hasMediaSessionWithActiveMediaElementsDidChange(bool) { }
     virtual void mediaSessionMetadataDidChange(const WebCore::MediaSessionMetadata&) { }
-    virtual void focusedContentMediaElementDidChange(uint64_t) { }
 #endif
 
     virtual void setPageActivityState(PageActivityState::Flags) { }
@@ -455,13 +453,12 @@ public:
     virtual void playbackTargetPickerClientStateDidChange(uint64_t /*contextId*/, MediaProducer::MediaStateFlags) { }
 #endif
 
-    virtual void imageOrMediaDocumentSizeChanged(const WebCore::IntSize&) { }
-
-#if ENABLE(VIDEO) && USE(GSTREAMER)
-    virtual void requestInstallMissingMediaPlugins(const String& /*details*/, const String& /*description*/, MediaPlayerRequestInstallMissingPluginsCallback&) { }
+#if ENABLE(VIDEO)
+    virtual void mediaDocumentNaturalSizeChanged(const WebCore::IntSize&) { }
+#if USE(GSTREAMER)
+    virtual void requestInstallMissingMediaPlugins(const String& /*details*/, MediaPlayerRequestInstallMissingPluginsCallback&) { };
 #endif
-
-    virtual void didInvalidateDocumentMarkerRects() { }
+#endif
 
 protected:
     virtual ~ChromeClient() { }

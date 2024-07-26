@@ -18,7 +18,7 @@
 
 CodeMirror.defineMode("clojure", function (options) {
     var BUILTIN = "builtin", COMMENT = "comment", STRING = "string", CHARACTER = "string-2",
-        ATOM = "atom", NUMBER = "number", BRACKET = "bracket", KEYWORD = "keyword", VAR = "variable";
+        ATOM = "atom", NUMBER = "number", BRACKET = "bracket", KEYWORD = "keyword";
     var INDENT_WORD_SKIP = options.indentUnit || 2;
     var NORMAL_INDENT_UNIT = options.indentUnit || 2;
 
@@ -59,7 +59,7 @@ CodeMirror.defineMode("clojure", function (options) {
         sign: /[+-]/,
         exponent: /e/i,
         keyword_char: /[^\s\(\[\;\)\]]/,
-        symbol: /[\w*+!\-\._?:<>\/\xa1-\uffff]/
+        symbol: /[\w*+!\-\._?:<>\/]/
     };
 
     function stateStack(indent, type, prev) { // represents a state stack object
@@ -114,7 +114,7 @@ CodeMirror.defineMode("clojure", function (options) {
         var first = stream.next();
         // Read special literals: backspace, newline, space, return.
         // Just read all lowercase letters.
-        if (first && first.match(/[a-z]/) && stream.match(/[a-z]+/, true)) {
+        if (first.match(/[a-z]/) && stream.match(/[a-z]+/, true)) {
             return;
         }
         // Read unicode character: \u1000 \uA0a1
@@ -220,9 +220,7 @@ CodeMirror.defineMode("clojure", function (options) {
                             returnType = BUILTIN;
                         } else if (atoms && atoms.propertyIsEnumerable(stream.current())) {
                             returnType = ATOM;
-                        } else {
-                          returnType = VAR;
-                        }
+                        } else returnType = null;
                     }
             }
 
@@ -234,7 +232,6 @@ CodeMirror.defineMode("clojure", function (options) {
             return state.indentStack.indent;
         },
 
-        closeBrackets: {pairs: "()[]{}\"\""},
         lineComment: ";;"
     };
 });

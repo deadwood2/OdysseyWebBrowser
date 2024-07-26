@@ -31,7 +31,6 @@
 #define Interpreter_h
 
 #include "ArgList.h"
-#include "JSArrowFunction.h"
 #include "JSCJSValue.h"
 #include "JSCell.h"
 #include "JSObject.h"
@@ -51,14 +50,10 @@ namespace JSC {
     class ExecutableBase;
     class FunctionExecutable;
     class VM;
-    class JSArrowFunction;
     class JSFunction;
     class JSGlobalObject;
-    class JSModuleEnvironment;
-    class JSModuleRecord;
     class LLIntOffsetsExtractor;
     class ProgramExecutable;
-    class ModuleProgramExecutable;
     class Register;
     class JSScope;
     class SamplingTool;
@@ -66,8 +61,6 @@ namespace JSC {
     struct HandlerInfo;
     struct Instruction;
     struct ProtoCallFrame;
-
-    enum UnwindStart { UnwindFromCurrentFrame, UnwindFromCallerFrame };
 
     enum DebugHookID {
         WillExecuteProgram,
@@ -81,7 +74,6 @@ namespace JSC {
     enum StackFrameCodeType {
         StackFrameGlobalCode,
         StackFrameEvalCode,
-        StackFrameModuleCode,
         StackFrameFunctionCode,
         StackFrameNativeCode
     };
@@ -116,7 +108,7 @@ namespace JSC {
         }
         ~SuspendExceptionScope()
         {
-            m_vm->restorePreviousException(oldException);
+            m_vm->setException(oldException);
         }
     private:
         Exception* oldException;
@@ -147,7 +139,6 @@ namespace JSC {
         {
             ASSERT(vm);
             ASSERT(callFrame);
-            ASSERT(callFrame < vm->topVMEntryFrame);
             vm->topCallFrame = callFrame;
         }
     };
@@ -188,7 +179,7 @@ namespace JSC {
         Interpreter(VM &);
         ~Interpreter();
         
-        void initialize();
+        void initialize(bool canUseJIT);
 
         JSStack& stack() { return m_stack; }
         
@@ -219,14 +210,12 @@ namespace JSC {
         JSValue executeCall(CallFrame*, JSObject* function, CallType, const CallData&, JSValue thisValue, const ArgList&);
         JSObject* executeConstruct(CallFrame*, JSObject* function, ConstructType, const ConstructData&, const ArgList&, JSValue newTarget);
         JSValue execute(EvalExecutable*, CallFrame*, JSValue thisValue, JSScope*);
-        JSValue execute(ModuleProgramExecutable*, CallFrame*, JSModuleEnvironment*);
 
         void getArgumentsData(CallFrame*, JSFunction*&, ptrdiff_t& firstParameterIndex, Register*& argv, int& argc);
         
         SamplingTool* sampler() { return m_sampler.get(); }
 
-        NEVER_INLINE HandlerInfo* unwind(VM&, CallFrame*&, Exception*, UnwindStart);
-        void notifyDebuggerOfExceptionToBeThrown(CallFrame*, Exception*);
+        NEVER_INLINE HandlerInfo* unwind(VMEntryFrame*&, CallFrame*&, Exception*);
         NEVER_INLINE void debug(CallFrame*, DebugHookID);
         JSString* stackTraceAsString(ExecState*, Vector<StackFrame>);
 
@@ -254,7 +243,7 @@ namespace JSC {
 
         void dumpRegisters(CallFrame*);
         
-        bool isCallBytecode(Opcode opcode) { return opcode == getOpcode(op_call) || opcode == getOpcode(op_construct) || opcode == getOpcode(op_call_eval) || opcode == getOpcode(op_tail_call); }
+        bool isCallBytecode(Opcode opcode) { return opcode == getOpcode(op_call) || opcode == getOpcode(op_construct) || opcode == getOpcode(op_call_eval); }
 
         void enableSampler();
         int m_sampleEntryDepth;
@@ -278,15 +267,6 @@ namespace JSC {
 
     inline CallFrame* calleeFrameForVarargs(CallFrame* callFrame, unsigned numUsedStackSlots, unsigned argumentCountIncludingThis)
     {
-#if 1
-        // We want the new frame to be allocated on a stack aligned offset with a stack
-        // aligned size. Align the size here.
-        argumentCountIncludingThis = WTF::roundUpToMultipleOf(
-            stackAlignmentRegisters(),
-            argumentCountIncludingThis + JSStack::CallFrameHeaderSize) - JSStack::CallFrameHeaderSize;
-
-        // Align the frame offset here.
-#endif
         unsigned paddedCalleeFrameOffset = WTF::roundUpToMultipleOf(
             stackAlignmentRegisters(),
             numUsedStackSlots + argumentCountIncludingThis + JSStack::CallFrameHeaderSize);

@@ -21,7 +21,6 @@
 #include "TestController.h"
 
 #include "PlatformWebView.h"
-#include "TestInvocation.h"
 #include <Ecore.h>
 #include <Evas.h>
 #include <stdio.h>
@@ -60,12 +59,11 @@ void TestController::platformInitialize()
     }
 }
 
-WKPreferencesRef TestController::platformPreferences()
+void TestController::platformDestroy()
 {
-    return WKPageGroupGetPreferences(m_pageGroup.get());
 }
 
-void TestController::platformDestroy()
+void TestController::platformWillRunTest(const TestInvocation&)
 {
 }
 
@@ -132,34 +130,6 @@ void TestController::runModal(PlatformWebView*)
 const char* TestController::platformLibraryPathForTesting()
 {
     return 0;
-}
-
-static bool pathContains(const std::string& pathOrURL, const char* substring)
-{
-    String path(pathOrURL.c_str());
-    return path.contains(substring); // Case-insensitive.
-}
-
-static bool shouldUseFixedLayout(const std::string& pathOrURL)
-{
-#if USE(COORDINATED_GRAPHICS)
-    if (pathContains(pathOrURL, "sticky/") || pathContains(pathOrURL, "sticky\\"))
-        return true;
-#endif
-    return false;
-}
-
-void TestController::updatePlatformSpecificTestOptionsForTest(TestOptions& testOptions, const std::string& pathOrURL) const
-{
-    testOptions.useFixedLayout = shouldUseFixedLayout(pathOrURL);
-}
-
-void TestController::platformConfigureViewForTest(const TestInvocation&)
-{
-}
-
-void TestController::platformResetPreferencesToConsistentValues()
-{
 }
 
 } // namespace WTR

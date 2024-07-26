@@ -75,7 +75,9 @@ public:
 
     bool was(T*) const;
 
-    explicit operator bool() const;
+    // This conversion operator allows implicit conversion to bool but not to other integer types.
+    typedef void* (Weak::*UnspecifiedBoolType);
+    operator UnspecifiedBoolType*() const;
 
     WeakImpl* leakImpl() WARN_UNUSED_RETURN;
     void clear()

@@ -39,7 +39,7 @@ public:
 private:
     explicit TextDocumentParser(HTMLDocument&);
 
-    virtual void append(RefPtr<StringImpl>&&) override;
+    virtual void append(PassRefPtr<StringImpl>) override;
 
     void insertFakePreElement();
 

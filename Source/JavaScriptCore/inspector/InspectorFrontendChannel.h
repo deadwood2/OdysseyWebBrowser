@@ -32,14 +32,7 @@ namespace Inspector {
 
 class FrontendChannel {
 public:
-
-    enum class ConnectionType {
-        Remote,
-        Local
-    };
-
     virtual ~FrontendChannel() { }
-    virtual ConnectionType connectionType() const = 0;
     virtual bool sendMessageToFrontend(const String& message) = 0;
 };
 

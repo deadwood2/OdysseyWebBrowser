@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,8 +27,9 @@
 #define GetByIdVariant_h
 
 #include "CallLinkStatus.h"
+#include "ConstantStructureCheck.h"
+#include "IntendedStructureChain.h"
 #include "JSCJSValue.h"
-#include "ObjectPropertyConditionSet.h"
 #include "PropertyOffset.h"
 #include "StructureSet.h"
 
@@ -42,7 +43,7 @@ class GetByIdVariant {
 public:
     GetByIdVariant(
         const StructureSet& structureSet = StructureSet(), PropertyOffset offset = invalidOffset,
-        const ObjectPropertyConditionSet& = ObjectPropertyConditionSet(),
+        const IntendedStructureChain* chain = nullptr,
         std::unique_ptr<CallLinkStatus> callLinkStatus = nullptr);
     
     ~GetByIdVariant();
@@ -54,10 +55,9 @@ public:
     bool operator!() const { return !isSet(); }
     const StructureSet& structureSet() const { return m_structureSet; }
     StructureSet& structureSet() { return m_structureSet; }
-
-    // A non-empty condition set means that this is a prototype load.
-    const ObjectPropertyConditionSet& conditionSet() const { return m_conditionSet; }
-    
+    const ConstantStructureCheckVector& constantChecks() const { return m_constantChecks; }
+    JSObject* alternateBase() const { return m_alternateBase; }
+    StructureSet baseStructure() const;
     PropertyOffset offset() const { return m_offset; }
     CallLinkStatus* callLinkStatus() const { return m_callLinkStatus.get(); }
     
@@ -70,7 +70,8 @@ private:
     friend class GetByIdStatus;
     
     StructureSet m_structureSet;
-    ObjectPropertyConditionSet m_conditionSet;
+    ConstantStructureCheckVector m_constantChecks;
+    JSObject* m_alternateBase;
     PropertyOffset m_offset;
     std::unique_ptr<CallLinkStatus> m_callLinkStatus;
 };

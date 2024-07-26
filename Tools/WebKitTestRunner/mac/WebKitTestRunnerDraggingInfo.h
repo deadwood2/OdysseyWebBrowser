@@ -23,8 +23,6 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#if PLATFORM(MAC)
-
 @interface WebKitTestRunnerDraggingInfo : NSObject <NSDraggingInfo> {
 @private
     NSSize _offset;
@@ -46,6 +44,9 @@
 
 - (void)slideDraggedImageTo:(NSPoint)screenPoint;
 - (NSArray *)namesOfPromisedFilesDroppedAtDestination:(NSURL *)dropDestination;
-@end
 
-#endif // PLATFORM(MAC)
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100
+@property (readonly) NSSpringLoadingHighlight springLoadingHighlight;
+- (void)resetSpringLoading;
+#endif
+@end

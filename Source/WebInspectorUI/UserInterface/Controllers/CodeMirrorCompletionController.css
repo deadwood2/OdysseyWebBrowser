@@ -24,6 +24,5 @@
  */
 
 .CodeMirror .CodeMirror-lines .completion-hint {
-    text-decoration: none !important;
     opacity: 0.4;
 }

@@ -1,6 +1,5 @@
 /*
 * Copyright (C) 2011 Google Inc. All rights reserved.
-* Copyright (C) 2015 Apple Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -41,7 +40,8 @@ namespace WebCore {
 
 inline void InspectorInstrumentation::addMessageToConsole(Page& page, std::unique_ptr<Inspector::ConsoleMessage> message)
 {
-    addMessageToConsoleImpl(instrumentingAgentsForPage(page), WTF::move(message));
+    if (InstrumentingAgents* instrumentingAgents = instrumentingAgentsForPage(page))
+        addMessageToConsoleImpl(*instrumentingAgents, WTF::move(message));
 }
 
 inline void InspectorInstrumentation::addMessageToConsole(WorkerGlobalScope* workerGlobalScope, std::unique_ptr<Inspector::ConsoleMessage> message)
@@ -52,7 +52,8 @@ inline void InspectorInstrumentation::addMessageToConsole(WorkerGlobalScope* wor
 
 inline void InspectorInstrumentation::consoleCount(Page& page, JSC::ExecState* state, RefPtr<Inspector::ScriptArguments>&& arguments)
 {
-    consoleCountImpl(instrumentingAgentsForPage(page), state, WTF::move(arguments));
+    if (InstrumentingAgents* instrumentingAgents = instrumentingAgentsForPage(page))
+        consoleCountImpl(*instrumentingAgents, state, WTF::move(arguments));
 }
 
 inline void InspectorInstrumentation::startConsoleTiming(Frame& frame, const String& title)
@@ -76,12 +77,15 @@ inline void InspectorInstrumentation::consoleTimeStamp(Frame& frame, RefPtr<Insp
 
 inline void InspectorInstrumentation::startProfiling(Page& page, JSC::ExecState* exec, const String &title)
 {
-    startProfilingImpl(instrumentingAgentsForPage(page), exec, title);
+    if (InstrumentingAgents* instrumentingAgents = instrumentingAgentsForPage(page))
+        startProfilingImpl(*instrumentingAgents, exec, title);
 }
 
 inline RefPtr<JSC::Profile> InspectorInstrumentation::stopProfiling(Page& page, JSC::ExecState* exec, const String &title)
 {
-    return stopProfilingImpl(instrumentingAgentsForPage(page), exec, title);
+    if (InstrumentingAgents* instrumentingAgents = instrumentingAgentsForPage(page))
+        return stopProfilingImpl(*instrumentingAgents, exec, title);
+    return nullptr;
 }
 
 } // namespace WebCore

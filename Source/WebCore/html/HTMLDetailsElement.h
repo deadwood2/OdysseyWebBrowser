@@ -41,7 +41,6 @@ private:
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) override;
 
     virtual void didAddUserAgentShadowRoot(ShadowRoot*) override;
-    virtual bool canHaveUserAgentShadowRoot() const override final { return true; }
 
     bool m_isOpen;
 };

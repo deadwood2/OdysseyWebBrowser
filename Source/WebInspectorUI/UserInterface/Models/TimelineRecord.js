@@ -122,19 +122,6 @@ WebInspector.TimelineRecord = class TimelineRecord extends WebInspector.Object
         return this._sourceCodeLocation;
     }
 
-    get parent()
-    {
-        return this._parent;
-    }
-
-    set parent(x)
-    {
-        if (this._parent === x)
-            return;
-
-        this._parent = x;
-    }
-
     get children()
     {
         return this._children;

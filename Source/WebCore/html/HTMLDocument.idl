@@ -22,7 +22,6 @@
     CustomGetOwnPropertySlot,
     CustomNamedGetter,
     NewImpurePropertyFiresWatchpoints,
-    OverrideBuiltins,
 ] interface HTMLDocument : Document {
     [Custom, ForwardDeclareInHeader] void open();
     void close();

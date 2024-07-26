@@ -38,6 +38,7 @@
 #include "Dictionary.h"
 #include "Document.h"
 #include "Event.h"
+#include "EventException.h"
 #include "ExceptionCode.h"
 #include "Frame.h"
 #include "HTTPHeaderNames.h"
@@ -63,7 +64,7 @@ inline EventSource::EventSource(ScriptExecutionContext& context, const URL& url,
     , m_withCredentials(false)
     , m_state(CONNECTING)
     , m_decoder(TextResourceDecoder::create("text/plain", "UTF-8"))
-    , m_connectTimer(*this, &EventSource::connect)
+    , m_connectTimer(*this, &EventSource::connectTimerFired)
     , m_discardTrailingNewline(false)
     , m_requestInFlight(false)
     , m_reconnectDelay(defaultReconnectDelay)
@@ -166,6 +167,11 @@ void EventSource::scheduleReconnect()
     m_state = CONNECTING;
     m_connectTimer.startOneShot(m_reconnectDelay / 1000.0);
     dispatchEvent(Event::create(eventNames().errorEvent, false, false));
+}
+
+void EventSource::connectTimerFired()
+{
+    connect();
 }
 
 String EventSource::url() const

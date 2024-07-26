@@ -90,7 +90,6 @@ void OSREntryData::dump(PrintStream& out) const
     dumpInContext(out, nullptr);
 }
 
-SUPPRESS_ASAN
 void* prepareOSREntry(ExecState* exec, CodeBlock* codeBlock, unsigned bytecodeIndex)
 {
     ASSERT(JITCode::isOptimizingJIT(codeBlock->jitType()));
@@ -112,7 +111,7 @@ void* prepareOSREntry(ExecState* exec, CodeBlock* codeBlock, unsigned bytecodeIn
     sanitizeStackForVM(vm);
     
     if (bytecodeIndex)
-        codeBlock->ownerScriptExecutable()->setDidTryToEnterInLoop(true);
+        codeBlock->ownerExecutable()->setDidTryToEnterInLoop(true);
     
     if (codeBlock->jitType() != JITCode::DFGJIT) {
         RELEASE_ASSERT(codeBlock->jitType() == JITCode::FTLJIT);
@@ -203,33 +202,33 @@ void* prepareOSREntry(ExecState* exec, CodeBlock* codeBlock, unsigned bytecodeIn
     for (size_t local = 0; local < entry->m_expectedValues.numberOfLocals(); ++local) {
         int localOffset = virtualRegisterForLocal(local).offset();
         if (entry->m_localsForcedDouble.get(local)) {
-            if (!exec->registers()[localOffset].asanUnsafeJSValue().isNumber()) {
+            if (!exec->registers()[localOffset].jsValue().isNumber()) {
                 if (Options::verboseOSR()) {
                     dataLog(
                         "    OSR failed because variable ", localOffset, " is ",
-                        exec->registers()[localOffset].asanUnsafeJSValue(), ", expected number.\n");
+                        exec->registers()[localOffset].jsValue(), ", expected number.\n");
                 }
                 return 0;
             }
             continue;
         }
         if (entry->m_localsForcedMachineInt.get(local)) {
-            if (!exec->registers()[localOffset].asanUnsafeJSValue().isMachineInt()) {
+            if (!exec->registers()[localOffset].jsValue().isMachineInt()) {
                 if (Options::verboseOSR()) {
                     dataLog(
                         "    OSR failed because variable ", localOffset, " is ",
-                        exec->registers()[localOffset].asanUnsafeJSValue(), ", expected ",
+                        exec->registers()[localOffset].jsValue(), ", expected ",
                         "machine int.\n");
                 }
                 return 0;
             }
             continue;
         }
-        if (!entry->m_expectedValues.local(local).validate(exec->registers()[localOffset].asanUnsafeJSValue())) {
+        if (!entry->m_expectedValues.local(local).validate(exec->registers()[localOffset].jsValue())) {
             if (Options::verboseOSR()) {
                 dataLog(
                     "    OSR failed because variable ", localOffset, " is ",
-                    exec->registers()[localOffset].asanUnsafeJSValue(), ", expected ",
+                    exec->registers()[localOffset].jsValue(), ", expected ",
                     entry->m_expectedValues.local(local), ".\n");
             }
             return 0;
@@ -281,23 +280,23 @@ void* prepareOSREntry(ExecState* exec, CodeBlock* codeBlock, unsigned bytecodeIn
         
         if (reg.isLocal()) {
             if (entry->m_localsForcedDouble.get(reg.toLocal())) {
-                *bitwise_cast<double*>(pivot + index) = exec->registers()[reg.offset()].asanUnsafeJSValue().asNumber();
+                *bitwise_cast<double*>(pivot + index) = exec->registers()[reg.offset()].jsValue().asNumber();
                 continue;
             }
             
             if (entry->m_localsForcedMachineInt.get(reg.toLocal())) {
-                *bitwise_cast<int64_t*>(pivot + index) = exec->registers()[reg.offset()].asanUnsafeJSValue().asMachineInt() << JSValue::int52ShiftAmount;
+                *bitwise_cast<int64_t*>(pivot + index) = exec->registers()[reg.offset()].jsValue().asMachineInt() << JSValue::int52ShiftAmount;
                 continue;
             }
         }
         
-        pivot[index] = exec->registers()[reg.offset()].asanUnsafeJSValue();
+        pivot[index] = exec->registers()[reg.offset()].jsValue();
     }
     
     // 4) Reshuffle those registers that need reshuffling.
     Vector<JSValue> temporaryLocals(entry->m_reshufflings.size());
     for (unsigned i = entry->m_reshufflings.size(); i--;)
-        temporaryLocals[i] = pivot[VirtualRegister(entry->m_reshufflings[i].fromOffset).toLocal()].asanUnsafeJSValue();
+        temporaryLocals[i] = pivot[VirtualRegister(entry->m_reshufflings[i].fromOffset).toLocal()].jsValue();
     for (unsigned i = entry->m_reshufflings.size(); i--;)
         pivot[VirtualRegister(entry->m_reshufflings[i].toOffset).toLocal()] = temporaryLocals[i];
     
@@ -308,25 +307,8 @@ void* prepareOSREntry(ExecState* exec, CodeBlock* codeBlock, unsigned bytecodeIn
             continue;
         pivot[i] = JSValue();
     }
-
-    // 6) Copy our callee saves to buffer.
-#if NUMBER_OF_CALLEE_SAVES_REGISTERS > 0
-    RegisterAtOffsetList* registerSaveLocations = codeBlock->calleeSaveRegisters();
-    RegisterAtOffsetList* allCalleeSaves = vm->getAllCalleeSaveRegisterOffsets();
-    RegisterSet dontSaveRegisters = RegisterSet(RegisterSet::stackRegisters(), RegisterSet::allFPRs());
-
-    unsigned registerCount = registerSaveLocations->size();
-    for (unsigned i = 0; i < registerCount; i++) {
-        RegisterAtOffset currentEntry = registerSaveLocations->at(i);
-        if (dontSaveRegisters.get(currentEntry.reg()))
-            continue;
-        RegisterAtOffset* vmCalleeSavesEntry = allCalleeSaves->find(currentEntry.reg());
-        
-        *(bitwise_cast<intptr_t*>(pivot - 1) - currentEntry.offsetAsIndex()) = vm->calleeSaveRegistersBuffer[vmCalleeSavesEntry->offsetAsIndex()];
-    }
-#endif
     
-    // 7) Fix the call frame to have the right code block.
+    // 6) Fix the call frame to have the right code block.
     
     *bitwise_cast<CodeBlock**>(pivot - 1 - JSStack::CodeBlock) = codeBlock;
     

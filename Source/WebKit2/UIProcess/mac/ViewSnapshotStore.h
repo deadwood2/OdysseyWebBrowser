@@ -41,6 +41,14 @@ typedef struct objc_object *id;
 
 OBJC_CLASS CAContext;
 
+#if PLATFORM(MAC)
+#define USE_IOSURFACE_VIEW_SNAPSHOTS 1
+#define USE_RENDER_SERVER_VIEW_SNAPSHOTS 0
+#else
+#define USE_IOSURFACE_VIEW_SNAPSHOTS 0
+#define USE_RENDER_SERVER_VIEW_SNAPSHOTS 1
+#endif
+
 namespace WebCore {
 class IOSurface;
 }
@@ -53,9 +61,9 @@ class WebPageProxy;
 
 class ViewSnapshot : public RefCounted<ViewSnapshot> {
 public:
-#if USE(IOSURFACE)
+#if USE_IOSURFACE_VIEW_SNAPSHOTS
     static Ref<ViewSnapshot> create(std::unique_ptr<WebCore::IOSurface>);
-#else
+#elif USE_RENDER_SERVER_VIEW_SNAPSHOTS
     static Ref<ViewSnapshot> create(uint32_t slotID, WebCore::IntSize, size_t imageSizeInBytes);
 #endif
 
@@ -74,33 +82,29 @@ public:
     void setDeviceScaleFactor(float deviceScaleFactor) { m_deviceScaleFactor = deviceScaleFactor; }
     float deviceScaleFactor() const { return m_deviceScaleFactor; }
 
-#if USE(IOSURFACE)
-    WebCore::IOSurface* surface() const { return m_surface.get(); }
-
-    size_t imageSizeInBytes() const { return m_surface ? m_surface->totalBytes() : 0; }
-    WebCore::IntSize size() const { return m_surface ? m_surface->size() : WebCore::IntSize(); }
-
-    void setSurface(std::unique_ptr<WebCore::IOSurface>);
-#else
-    WebCore::IntSize size() const { return m_size; }
     size_t imageSizeInBytes() const { return m_imageSizeInBytes; }
+#if USE_IOSURFACE_VIEW_SNAPSHOTS
+    WebCore::IOSurface* surface() const { return m_surface.get(); }
 #endif
+    WebCore::IntSize size() const { return m_size; }
 
 private:
-#if USE(IOSURFACE)
+#if USE_IOSURFACE_VIEW_SNAPSHOTS
     explicit ViewSnapshot(std::unique_ptr<WebCore::IOSurface>);
-
-    std::unique_ptr<WebCore::IOSurface> m_surface;
-#else
+#elif USE_RENDER_SERVER_VIEW_SNAPSHOTS
     explicit ViewSnapshot(uint32_t slotID, WebCore::IntSize, size_t imageSizeInBytes);
-
-    uint32_t m_slotID;
-    size_t m_imageSizeInBytes;
-    WebCore::IntSize m_size;
 #endif
 
+#if USE_IOSURFACE_VIEW_SNAPSHOTS
+    std::unique_ptr<WebCore::IOSurface> m_surface;
+#elif USE_RENDER_SERVER_VIEW_SNAPSHOTS
+    uint32_t m_slotID;
+#endif
+
+    size_t m_imageSizeInBytes;
     uint64_t m_renderTreeSize;
     float m_deviceScaleFactor;
+    WebCore::IntSize m_size;
     WebCore::Color m_backgroundColor;
 };
 
@@ -117,7 +121,7 @@ public:
 
     void discardSnapshotImages();
 
-#if !USE(IOSURFACE)
+#if USE_RENDER_SERVER_VIEW_SNAPSHOTS
     static CAContext *snapshottingContext();
 #endif
 

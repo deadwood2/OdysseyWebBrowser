@@ -28,45 +28,16 @@
 
 #if ENABLE(MEDIA_SESSION)
 
-#include "MediaSession.h"
-
 namespace WebCore {
 
-MediaRemoteControls::MediaRemoteControls(ScriptExecutionContext& context, MediaSession* session)
+MediaRemoteControls::MediaRemoteControls(ScriptExecutionContext& context)
     : m_scriptExecutionContext(context)
-    , m_session(session)
 {
-}
-
-void MediaRemoteControls::clearSession()
-{
-    m_session = nullptr;
 }
 
 MediaRemoteControls::~MediaRemoteControls()
 {
-}
-
-void MediaRemoteControls::setPreviousTrackEnabled(bool isEnabled)
-{
-    if (m_previousTrackEnabled == isEnabled)
-        return;
-
-    m_previousTrackEnabled = isEnabled;
-
-    if (m_session)
-        m_session->controlIsEnabledDidChange();
-}
-
-void MediaRemoteControls::setNextTrackEnabled(bool isEnabled)
-{
-    if (m_nextTrackEnabled == isEnabled)
-        return;
-
-    m_nextTrackEnabled = isEnabled;
-
-    if (m_session)
-        m_session->controlIsEnabledDidChange();
+    
 }
 
 }

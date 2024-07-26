@@ -70,7 +70,6 @@ namespace WebCore {
     class Page;
     class ResourceLoader;
     class SharedBuffer;
-    class SubresourceLoader;
     class SubstituteResource;
 
 #if ENABLE(CONTENT_FILTERING)
@@ -95,7 +94,7 @@ namespace WebCore {
         WEBCORE_EXPORT virtual void detachFromFrame();
 
         WEBCORE_EXPORT FrameLoader* frameLoader() const;
-        WEBCORE_EXPORT SubresourceLoader* mainResourceLoader() const;
+        WEBCORE_EXPORT ResourceLoader* mainResourceLoader() const;
         WEBCORE_EXPORT PassRefPtr<SharedBuffer> mainResourceData() const;
         
         DocumentWriter& writer() const { return m_writer; }
@@ -338,10 +337,9 @@ namespace WebCore {
         void clearMainResource();
 
         void cancelPolicyCheckIfNeeded();
-        void becomeMainResourceClient();
 
 #if ENABLE(CONTENT_FILTERING)
-        friend class ContentFilter;
+        void becomeMainResourceClientIfFilterAllows();
         void installContentFilterUnblockHandler(ContentFilter&);
         void contentFilterDidDecide();
 #endif

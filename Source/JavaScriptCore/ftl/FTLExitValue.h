@@ -125,7 +125,7 @@ public:
         return result;
     }
     
-    static ExitValue recovery(RecoveryOpcode opcode, unsigned leftArgument, unsigned rightArgument, DataFormat format)
+    static ExitValue recovery(RecoveryOpcode opcode, unsigned leftArgument, unsigned rightArgument, ValueFormat format)
     {
         ExitValue result;
         result.m_kind = ExitValueRecovery;
@@ -176,10 +176,10 @@ public:
         return u.recovery.rightArgument;
     }
     
-    DataFormat recoveryFormat() const
+    ValueFormat recoveryFormat() const
     {
         ASSERT(isRecovery());
-        return static_cast<DataFormat>(u.recovery.format);
+        return static_cast<ValueFormat>(u.recovery.format);
     }
     
     RecoveryOpcode recoveryOpcode() const
@@ -221,7 +221,7 @@ public:
     // that is compatible with exitArgument().format(). If it's a constant or it's dead, it
     // will claim to be a JSValue. If it's an argument then it will tell you the argument's
     // format.
-    DataFormat dataFormat() const;
+    ValueFormat valueFormat() const;
 
     void dump(PrintStream&) const;
     void dumpInContext(PrintStream&, DumpContext*) const;

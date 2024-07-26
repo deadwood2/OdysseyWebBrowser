@@ -1,6 +1,6 @@
 /*
 * Copyright (C) 2011 Google Inc. All rights reserved.
-* Copyright (C) 2014, 2015 Apple Inc. All rights reserved.
+* Copyright (C) 2014 Apple Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -112,7 +112,7 @@ void InspectorInstrumentation::didClearWindowObjectInWorldImpl(InstrumentingAgen
     if (pageAgent)
         pageAgent->didClearWindowObjectInWorld(&frame, world);
     if (PageDebuggerAgent* debuggerAgent = instrumentingAgents.pageDebuggerAgent()) {
-        if (pageAgent && &world == &mainThreadNormalWorld() && &frame == &pageAgent->mainFrame())
+        if (pageAgent && &world == &mainThreadNormalWorld() && &frame == pageAgent->mainFrame())
             debuggerAgent->didClearMainFrameWindowObject();
     }
     if (PageRuntimeAgent* pageRuntimeAgent = instrumentingAgents.pageRuntimeAgent()) {
@@ -184,12 +184,6 @@ void InspectorInstrumentation::didInvalidateStyleAttrImpl(InstrumentingAgents& i
         domDebuggerAgent->didInvalidateStyleAttr(node);
 }
 
-void InspectorInstrumentation::documentDetachedImpl(InstrumentingAgents& instrumentingAgents, Document& document)
-{
-    if (InspectorCSSAgent* cssAgent = instrumentingAgents.inspectorCSSAgent())
-        cssAgent->documentDetached(document);
-}
-
 void InspectorInstrumentation::frameWindowDiscardedImpl(InstrumentingAgents& instrumentingAgents, DOMWindow* window)
 {
     if (WebConsoleAgent* consoleAgent = instrumentingAgents.webConsoleAgent())
@@ -200,12 +194,6 @@ void InspectorInstrumentation::mediaQueryResultChangedImpl(InstrumentingAgents& 
 {
     if (InspectorCSSAgent* cssAgent = instrumentingAgents.inspectorCSSAgent())
         cssAgent->mediaQueryResultChanged();
-}
-
-void InspectorInstrumentation::activeStyleSheetsUpdatedImpl(InstrumentingAgents& instrumentingAgents, Document& document)
-{
-    if (InspectorCSSAgent* cssAgent = instrumentingAgents.inspectorCSSAgent())
-        cssAgent->activeStyleSheetsUpdated(document);
 }
 
 void InspectorInstrumentation::didPushShadowRootImpl(InstrumentingAgents& instrumentingAgents, Element& host, ShadowRoot& root)
@@ -798,9 +786,6 @@ void InspectorInstrumentation::didCommitLoadImpl(InstrumentingAgents& instrument
 
         if (InspectorLayerTreeAgent* layerTreeAgent = instrumentingAgents.inspectorLayerTreeAgent())
             layerTreeAgent->reset();
-
-        if (PageDebuggerAgent* pageDebuggerAgent = instrumentingAgents.pageDebuggerAgent())
-            pageDebuggerAgent->mainFrameNavigated();
     }
 
     if (InspectorDOMAgent* domAgent = instrumentingAgents.inspectorDOMAgent())
@@ -831,22 +816,12 @@ void InspectorInstrumentation::loaderDetachedFromFrameImpl(InstrumentingAgents& 
 
 void InspectorInstrumentation::frameStartedLoadingImpl(InstrumentingAgents& instrumentingAgents, Frame& frame)
 {
-    if (frame.isMainFrame()) {
-        if (PageDebuggerAgent* pageDebuggerAgent = instrumentingAgents.pageDebuggerAgent())
-            pageDebuggerAgent->mainFrameStartedLoading();
-    }
-
     if (InspectorPageAgent* inspectorPageAgent = instrumentingAgents.inspectorPageAgent())
         inspectorPageAgent->frameStartedLoading(frame);
 }
 
 void InspectorInstrumentation::frameStoppedLoadingImpl(InstrumentingAgents& instrumentingAgents, Frame& frame)
 {
-    if (frame.isMainFrame()) {
-        if (PageDebuggerAgent* pageDebuggerAgent = instrumentingAgents.pageDebuggerAgent())
-            pageDebuggerAgent->mainFrameStoppedLoading();
-    }
-
     if (InspectorPageAgent* inspectorPageAgent = instrumentingAgents.inspectorPageAgent())
         inspectorPageAgent->frameStoppedLoading(frame);
 }
@@ -973,7 +948,7 @@ void InspectorInstrumentation::didOpenDatabaseImpl(InstrumentingAgents& instrume
     if (!instrumentingAgents.inspectorEnvironment().developerExtrasEnabled())
         return;
     if (InspectorDatabaseAgent* dbAgent = instrumentingAgents.inspectorDatabaseAgent())
-        dbAgent->didOpenDatabase(WTF::move(database), domain, name, version);
+        dbAgent->didOpenDatabase(database, domain, name, version);
 }
 
 void InspectorInstrumentation::didDispatchDOMStorageEventImpl(InstrumentingAgents& instrumentingAgents, const String& key, const String& oldValue, const String& newValue, StorageType storageType, SecurityOrigin* securityOrigin, Page* page)
@@ -1274,10 +1249,10 @@ InspectorTimelineAgent* InspectorInstrumentation::retrieveTimelineAgent(const In
 
 InstrumentingAgents* InspectorInstrumentation::instrumentingAgentsForPage(Page* page)
 {
-    return page ? &instrumentingAgentsForPage(*page) : nullptr;
+    return page ? instrumentingAgentsForPage(*page) : nullptr;
 }
 
-InstrumentingAgents& InspectorInstrumentation::instrumentingAgentsForPage(Page& page)
+InstrumentingAgents* InspectorInstrumentation::instrumentingAgentsForPage(Page& page)
 {
     ASSERT(isMainThread());
     return page.inspectorController().m_instrumentingAgents.get();
@@ -1290,7 +1265,7 @@ InstrumentingAgents* InspectorInstrumentation::instrumentingAgentsForRenderer(Re
 
 InstrumentingAgents* InspectorInstrumentation::instrumentingAgentsForWorkerGlobalScope(WorkerGlobalScope* workerGlobalScope)
 {
-    return workerGlobalScope ? &workerGlobalScope->workerInspectorController().m_instrumentingAgents.get() : nullptr;
+    return workerGlobalScope ? workerGlobalScope->workerInspectorController().m_instrumentingAgents.get() : nullptr;
 }
 
 InstrumentingAgents* InspectorInstrumentation::instrumentingAgentsForNonDocumentContext(ScriptExecutionContext* context)

@@ -35,9 +35,9 @@ using namespace JSC;
 
 namespace WebCore {
 
-JSValue JSCryptoKey::algorithm(JSC::ExecState& state) const
+JSValue JSCryptoKey::algorithm(JSC::ExecState* exec) const
 {
-    JSCryptoAlgorithmBuilder builder(&state);
+    JSCryptoAlgorithmBuilder builder(exec);
     impl().buildAlgorithmDescription(builder);
     return builder.result();
 }

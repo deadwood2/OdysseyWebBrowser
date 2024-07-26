@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2009 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,6 +30,7 @@
 using namespace WebCore;
 
 WebSerializedJSValue::WebSerializedJSValue()
+    : m_refCount(0)
 {
     ++gClassCount;
     gClassNameCount().add("WebSerializedJSValue");
@@ -59,11 +60,11 @@ ULONG WebSerializedJSValue::Release()
     return newRefCount;
 }
 
-HRESULT WebSerializedJSValue::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT WebSerializedJSValue::QueryInterface(REFIID riid, void** ppvObject)
 {
     if (!ppvObject)
         return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
 
     if (IsEqualIID(riid, __uuidof(WebSerializedJSValue)))
         *ppvObject = this;
@@ -99,7 +100,7 @@ HRESULT WebSerializedJSValue::deserialize(JSContextRef destinationContext, JSVal
         return E_POINTER;
 
     if (!m_value)
-        *outValue = nullptr;
+        *outValue = 0;
     else
         *outValue = m_value->deserialize(destinationContext, 0);
 

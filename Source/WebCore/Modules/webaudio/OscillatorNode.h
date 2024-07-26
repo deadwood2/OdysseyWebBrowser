@@ -28,7 +28,7 @@
 #include "AudioBus.h"
 #include "AudioParam.h"
 #include "AudioScheduledSourceNode.h"
-#include <wtf/Lock.h>
+#include <mutex>
 #include <wtf/PassRefPtr.h>
 #include <wtf/RefPtr.h>
 
@@ -96,7 +96,7 @@ private:
     double m_virtualReadIndex;
 
     // This synchronizes process().
-    mutable Lock m_processMutex;
+    mutable std::mutex m_processMutex;
 
     // Stores sample-accurate values calculated according to frequency and detune.
     AudioFloatArray m_phaseIncrements;

@@ -153,14 +153,11 @@ if ($wksi) {
             "libWebKitSystemInterfaceIOSSimulator8.3.a",
             "libWebKitSystemInterfaceIOSDevice8.4.a",
             "libWebKitSystemInterfaceIOSSimulator8.4.a",
-            "libWebKitSystemInterfaceIOSDevice9.0.a",
-            "libWebKitSystemInterfaceIOSSimulator9.0.a",
         ));
     } else {
         push(@librariesToCopy, (
             "libWebKitSystemInterfaceMavericks.a",
-            "libWebKitSystemInterfaceYosemite.a",
-            "libWebKitSystemInterfaceElCapitan.a"
+            "libWebKitSystemInterfaceYosemite.a"
         ));
     }
 
@@ -212,9 +209,6 @@ if ($llvm) {
     } elsif ($osxVersion eq "10.10") {
         $llvmLibraryPackage = "WebKitLibraries/LLVMLibrariesYosemite.tar.bz2";
         $llvmIncludePackage = "WebKitLibraries/LLVMIncludesYosemite.tar.bz2";
-    } elsif ($osxVersion eq "10.11") {
-        $llvmLibraryPackage = "WebKitLibraries/LLVMLibrariesElCapitan.tar.bz2";
-        $llvmIncludePackage = "WebKitLibraries/LLVMIncludesElCapitan.tar.bz2";
     } else {
         print "Don't know where to find LLVM!\n";
         print "\n";

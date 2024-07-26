@@ -27,6 +27,8 @@
 #include "JSExceptionBase.h"
 
 #include "JSDOMCoreException.h"
+#include "JSEventException.h"
+#include "JSRangeException.h"
 #include "JSSQLException.h"
 #include "JSSVGException.h"
 #include "JSXMLHttpRequestException.h"
@@ -39,6 +41,10 @@ ExceptionBase* toExceptionBase(JSC::JSValue value)
 {
     if (DOMCoreException* domException = JSDOMCoreException::toWrapped(value))
         return reinterpret_cast<ExceptionBase*>(domException);
+    if (RangeException* rangeException = JSRangeException::toWrapped(value))
+        return reinterpret_cast<ExceptionBase*>(rangeException);
+    if (EventException* eventException = JSEventException::toWrapped(value))
+        return reinterpret_cast<ExceptionBase*>(eventException);
     if (XMLHttpRequestException* xmlHttpException = JSXMLHttpRequestException::toWrapped(value))
         return reinterpret_cast<ExceptionBase*>(xmlHttpException);
     if (SVGException* svgException = JSSVGException::toWrapped(value))

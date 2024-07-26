@@ -85,10 +85,12 @@ void GraphicsContext::drawFocusRing(const Path& path, int /* width */, int /* of
 }
 
 #if PLATFORM(MAC)
-void GraphicsContext::drawFocusRing(const Vector<IntRect>& rects, int, int offset, double timeOffset, bool& needsRedraw)
+void GraphicsContext::drawFocusRing(const Vector<IntRect>& rects, int width, int offset, double timeOffset, bool& needsRedraw)
 {
     if (paintingDisabled())
         return;
+
+    offset += (width - 1) / 2;
 
     RetainPtr<CGMutablePathRef> focusRingPath = adoptCF(CGPathCreateMutable());
     for (auto& rect : rects)
@@ -98,11 +100,13 @@ void GraphicsContext::drawFocusRing(const Vector<IntRect>& rects, int, int offse
 }
 #endif
 
-void GraphicsContext::drawFocusRing(const Vector<IntRect>& rects, int, int offset, const Color&)
+void GraphicsContext::drawFocusRing(const Vector<IntRect>& rects, int width, int offset, const Color&)
 {
 #if !PLATFORM(IOS)
     if (paintingDisabled())
         return;
+
+    offset += (width - 1) / 2;
 
     RetainPtr<CGMutablePathRef> focusRingPath = adoptCF(CGPathCreateMutable());
     for (auto& rect : rects)
@@ -111,6 +115,7 @@ void GraphicsContext::drawFocusRing(const Vector<IntRect>& rects, int, int offse
     drawFocusRingToContext(platformContext(), focusRingPath.get());
 #else
     UNUSED_PARAM(rects);
+    UNUSED_PARAM(width);
     UNUSED_PARAM(offset);
 #endif
 }
@@ -179,6 +184,7 @@ void GraphicsContext::drawLineForDocumentMarker(const FloatPoint& point, float w
 #if !PLATFORM(IOS)
             if (!spellingPatternColor)
                 spellingPatternColor = [makePatternColor(@"NSSpellingDot", @"SpellingDot", [NSColor redColor], usingDotForSpelling) retain];
+            usingDot = usingDotForSpelling;
             patternColor = spellingPatternColor;
 #else
             static CGPatternRef spellingPattern = createDotPattern(usingDotForSpelling, "SpellingDot").leakRef();
@@ -256,7 +262,7 @@ void GraphicsContext::drawLineForDocumentMarker(const FloatPoint& point, float w
 
     // Draw underline.
 #if !PLATFORM(IOS)
-    LocalCurrentGraphicsContext localContext(*this);
+    LocalCurrentGraphicsContext localContext(this);
     NSGraphicsContext *currentContext = [NSGraphicsContext currentContext];
     CGContextRef context = (CGContextRef)[currentContext graphicsPort];
 #else

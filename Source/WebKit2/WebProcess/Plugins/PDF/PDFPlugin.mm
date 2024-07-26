@@ -29,7 +29,9 @@
 #if ENABLE(PDFKIT_PLUGIN)
 
 #import "ArgumentCoders.h"
+#import "AttributedString.h"
 #import "DataReference.h"
+#import "DictionaryPopupInfo.h"
 #import "PDFAnnotationTextWidgetDetails.h"
 #import "PDFKitImports.h"
 #import "PDFLayerControllerDetails.h"
@@ -525,11 +527,11 @@ PDFPlugin::PDFPlugin(WebFrame* frame)
         m_annotationContainer = document->createElement(divTag, false);
         m_annotationContainer->setAttribute(idAttr, "annotationContainer");
 
-        Ref<Element> annotationStyleElement = document->createElement(styleTag, false);
-        annotationStyleElement->setTextContent(annotationStyle, ASSERT_NO_EXCEPTION);
+        RefPtr<Element> m_annotationStyle = document->createElement(styleTag, false);
+        m_annotationStyle->setTextContent(annotationStyle, ASSERT_NO_EXCEPTION);
 
-        m_annotationContainer->appendChild(WTF::move(annotationStyleElement));
-        document->bodyOrFrameset()->appendChild(*m_annotationContainer);
+        m_annotationContainer->appendChild(m_annotationStyle.get());
+        document->bodyOrFrameset()->appendChild(m_annotationContainer.get());
     }
 
     m_accessibilityObject = adoptNS([[WKPDFPluginAccessibilityObject alloc] initWithPDFPlugin:this]);
@@ -1111,9 +1113,9 @@ void PDFPlugin::destroy()
     [m_contentLayer removeFromSuperlayer];
 }
 
-void PDFPlugin::updateControlTints(GraphicsContext& graphicsContext)
+void PDFPlugin::updateControlTints(GraphicsContext* graphicsContext)
 {
-    ASSERT(graphicsContext.updatingControlTints());
+    ASSERT(graphicsContext->updatingControlTints());
 
     if (m_horizontalScrollbar)
         m_horizontalScrollbar->invalidate();
@@ -1132,7 +1134,7 @@ void PDFPlugin::paintControlForLayerInContext(CALayer *layer, CGContextRef conte
     if (layer == m_scrollCornerLayer) {
         IntRect scrollCornerRect = this->scrollCornerRect();
         graphicsContext.translate(-scrollCornerRect.x(), -scrollCornerRect.y());
-        ScrollbarTheme::theme().paintScrollCorner(nullptr, graphicsContext, scrollCornerRect);
+        ScrollbarTheme::theme()->paintScrollCorner(0, &graphicsContext, scrollCornerRect);
         return;
     }
     
@@ -1147,7 +1149,7 @@ void PDFPlugin::paintControlForLayerInContext(CALayer *layer, CGContextRef conte
         return;
     
     graphicsContext.translate(-scrollbar->x(), -scrollbar->y());
-    scrollbar->paint(graphicsContext, scrollbar->frameRect());
+    scrollbar->paint(&graphicsContext, scrollbar->frameRect());
 }
 
 RefPtr<ShareableBitmap> PDFPlugin::snapshot()
@@ -1718,7 +1720,7 @@ void PDFPlugin::showDefinitionForAttributedString(NSAttributedString *string, CG
 {
     DictionaryPopupInfo dictionaryPopupInfo;
     dictionaryPopupInfo.origin = convertFromPDFViewToRootView(IntPoint(point));
-    dictionaryPopupInfo.attributedString = string;
+    dictionaryPopupInfo.attributedString.string = string;
 
     webFrame()->page()->send(Messages::WebPageProxy::DidPerformDictionaryLookup(dictionaryPopupInfo));
 }
@@ -1935,7 +1937,7 @@ String PDFPlugin::lookupTextAtLocation(const WebCore::FloatPoint& locationInView
         return selection.string;
     }
     
-    NSString *lookupText = DictionaryLookup::stringForPDFSelection(selection, options);
+    NSString *lookupText = dictionaryLookupForPDFSelection(selection, options);
     if (!lookupText || !lookupText.length)
         return @"";
 

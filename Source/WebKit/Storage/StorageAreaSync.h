@@ -28,7 +28,6 @@
 
 #include <WebCore/SQLiteDatabase.h>
 #include <WebCore/Timer.h>
-#include <wtf/Condition.h>
 #include <wtf/HashMap.h>
 #include <wtf/text/StringHash.h>
 
@@ -86,7 +85,7 @@ private:
 
     const String m_databaseIdentifier;
 
-    Lock m_syncLock;
+    Mutex m_syncLock;
     HashMap<String, String> m_itemsPendingSync;
     bool m_clearItemsWhileSyncing;
     bool m_syncScheduled;
@@ -95,8 +94,8 @@ private:
 
     bool m_syncCloseDatabase;
 
-    mutable Lock m_importLock;
-    Condition m_importCondition;
+    mutable Mutex m_importLock;
+    ThreadCondition m_importCondition;
     bool m_importComplete;
     void markImported();
     void migrateItemTableIfNeeded();

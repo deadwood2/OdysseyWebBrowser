@@ -56,10 +56,10 @@ unsigned DOMPlugin::length() const
     return m_pluginInfo.mimes.size();
 }
 
-RefPtr<DOMMimeType> DOMPlugin::item(unsigned index)
+PassRefPtr<DOMMimeType> DOMPlugin::item(unsigned index)
 {
     if (index >= m_pluginInfo.mimes.size())
-        return nullptr;
+        return 0;
 
     MimeClassInfo mime = m_pluginInfo.mimes[index];
 
@@ -71,10 +71,22 @@ RefPtr<DOMMimeType> DOMPlugin::item(unsigned index)
         if (mimes[i] == mime && plugins[mimePluginIndices[i]] == m_pluginInfo)
             return DOMMimeType::create(m_pluginData.get(), m_frame, i);
     }
-    return nullptr;
+    return 0;
 }
 
-RefPtr<DOMMimeType> DOMPlugin::namedItem(const AtomicString& propertyName)
+bool DOMPlugin::canGetItemsForName(const AtomicString& propertyName)
+{
+    Vector<MimeClassInfo> mimes;
+    Vector<size_t> mimePluginIndices;
+    m_pluginData->getWebVisibleMimesAndPluginIndices(mimes, mimePluginIndices);
+    for (auto& mime : mimes) {
+        if (mime.type == propertyName)
+            return true;
+    }
+    return false;
+}
+
+PassRefPtr<DOMMimeType> DOMPlugin::namedItem(const AtomicString& propertyName)
 {
     Vector<MimeClassInfo> mimes;
     Vector<size_t> mimePluginIndices;
@@ -82,13 +94,7 @@ RefPtr<DOMMimeType> DOMPlugin::namedItem(const AtomicString& propertyName)
     for (unsigned i = 0; i < mimes.size(); ++i)
         if (mimes[i].type == propertyName)
             return DOMMimeType::create(m_pluginData.get(), m_frame, i);
-    return nullptr;
-}
-
-Vector<AtomicString> DOMPlugin::supportedPropertyNames()
-{
-    // FIXME: Should be implemented.
-    return Vector<AtomicString>();
+    return 0;
 }
 
 } // namespace WebCore

@@ -50,7 +50,7 @@
 
 .new-tab.tab.content-view > .tab-item.disabled {
     opacity: 0.5;
-    filter: brightness(90%);
+    -webkit-filter: brightness(90%);
 }
 
 .new-tab.tab.content-view > .tab-item > .box {
@@ -66,12 +66,8 @@
     display: block;
 }
 
-.new-tab.tab.content-view > .tab-item:not(.disabled):hover > .box {
-    filter: brightness(90%);
-}
-
 .new-tab.tab.content-view > .tab-item:not(.disabled):active > .box {
-    filter: brightness(75%);
+    -webkit-filter: brightness(90%);
 }
 
 .new-tab.tab.content-view > .tab-item > .box > img {

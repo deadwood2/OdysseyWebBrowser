@@ -36,11 +36,11 @@ TextDocumentParser::TextDocumentParser(HTMLDocument& document)
 {
 }
 
-void TextDocumentParser::append(RefPtr<StringImpl>&& text)
+void TextDocumentParser::append(PassRefPtr<StringImpl> text)
 {
     if (!m_haveInsertedFakePreElement)
         insertFakePreElement();
-    HTMLDocumentParser::append(WTF::move(text));
+    HTMLDocumentParser::append(text);
 }
 
 void TextDocumentParser::insertFakePreElement()

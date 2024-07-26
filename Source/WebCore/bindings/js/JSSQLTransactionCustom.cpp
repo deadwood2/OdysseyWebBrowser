@@ -35,42 +35,41 @@
 #include "JSSQLStatementErrorCallback.h"
 #include "JSDOMWindowCustom.h"
 #include "SQLTransaction.h"
-#include "SQLValue.h"
 
 using namespace JSC;
 
 namespace WebCore {
 
-JSValue JSSQLTransaction::executeSql(ExecState& state)
+JSValue JSSQLTransaction::executeSql(ExecState* exec)
 {
-    if (!state.argumentCount()) {
-        setDOMException(&state, SYNTAX_ERR);
+    if (!exec->argumentCount()) {
+        setDOMException(exec, SYNTAX_ERR);
         return jsUndefined();
     }
 
-    String sqlStatement = state.argument(0).toString(&state)->value(&state);
-    if (state.hadException())
+    String sqlStatement = exec->argument(0).toString(exec)->value(exec);
+    if (exec->hadException())
         return jsUndefined();
 
     // Now assemble the list of SQL arguments
     Vector<SQLValue> sqlValues;
-    if (!state.argument(1).isUndefinedOrNull()) {
-        JSObject* object = state.argument(1).getObject();
+    if (!exec->argument(1).isUndefinedOrNull()) {
+        JSObject* object = exec->argument(1).getObject();
         if (!object) {
-            setDOMException(&state, TYPE_MISMATCH_ERR);
+            setDOMException(exec, TYPE_MISMATCH_ERR);
             return jsUndefined();
         }
 
-        JSValue lengthValue = object->get(&state, state.propertyNames().length);
-        if (state.hadException())
+        JSValue lengthValue = object->get(exec, exec->propertyNames().length);
+        if (exec->hadException())
             return jsUndefined();
-        unsigned length = lengthValue.toUInt32(&state);
-        if (state.hadException())
+        unsigned length = lengthValue.toUInt32(exec);
+        if (exec->hadException())
             return jsUndefined();
 
         for (unsigned i = 0 ; i < length; ++i) {
-            JSValue value = object->get(&state, i);
-            if (state.hadException())
+            JSValue value = object->get(exec, i);
+            if (exec->hadException())
                 return jsUndefined();
 
             if (value.isUndefinedOrNull())
@@ -79,18 +78,18 @@ JSValue JSSQLTransaction::executeSql(ExecState& state)
                 sqlValues.append(value.asNumber());
             else {
                 // Convert the argument to a string and append it
-                sqlValues.append(value.toString(&state)->value(&state));
-                if (state.hadException())
+                sqlValues.append(value.toString(exec)->value(exec));
+                if (exec->hadException())
                     return jsUndefined();
             }
         }
     }
 
     RefPtr<SQLStatementCallback> callback;
-    if (!state.argument(2).isUndefinedOrNull()) {
-        JSObject* object = state.argument(2).getObject();
+    if (!exec->argument(2).isUndefinedOrNull()) {
+        JSObject* object = exec->argument(2).getObject();
         if (!object) {
-            setDOMException(&state, TYPE_MISMATCH_ERR);
+            setDOMException(exec, TYPE_MISMATCH_ERR);
             return jsUndefined();
         }
 
@@ -98,10 +97,10 @@ JSValue JSSQLTransaction::executeSql(ExecState& state)
     }
 
     RefPtr<SQLStatementErrorCallback> errorCallback;
-    if (!state.argument(3).isUndefinedOrNull()) {
-        JSObject* object = state.argument(3).getObject();
+    if (!exec->argument(3).isUndefinedOrNull()) {
+        JSObject* object = exec->argument(3).getObject();
         if (!object) {
-            setDOMException(&state, TYPE_MISMATCH_ERR);
+            setDOMException(exec, TYPE_MISMATCH_ERR);
             return jsUndefined();
         }
 
@@ -110,7 +109,7 @@ JSValue JSSQLTransaction::executeSql(ExecState& state)
 
     ExceptionCode ec = 0;
     m_impl->executeSQL(sqlStatement, sqlValues, callback.release(), errorCallback.release(), ec);
-    setDOMException(&state, ec);
+    setDOMException(exec, ec);
 
     return jsUndefined();
 }

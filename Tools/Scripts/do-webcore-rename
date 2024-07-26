@@ -103,6 +103,8 @@ my %renames = (
 
 my %renamesContemplatedForTheFuture = (
     "PassRefPtr" => "DeprecatedPassRefPtr",
+    "OwnPtr" => "DeprecatedOwnPtr",
+    "PassOwnPtr" => "DeprecatedPassOwnPtr",
 
     "HTMLPlugInImageElement" => "HTMLEmbeddedObjectElement",
     "isPlugInImageElement" => "isEmbeddedObjectElement",

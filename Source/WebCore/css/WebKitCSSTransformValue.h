@@ -70,7 +70,7 @@ public:
 
     TransformOperationType operationType() const { return m_type; }
     
-    Ref<WebKitCSSTransformValue> cloneForCSSOM() const;
+    PassRefPtr<WebKitCSSTransformValue> cloneForCSSOM() const;
 
 private:
     WebKitCSSTransformValue(TransformOperationType);

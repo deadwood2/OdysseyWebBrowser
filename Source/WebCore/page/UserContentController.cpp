@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2014, 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,14 +28,11 @@
 
 #include "DOMWrapperWorld.h"
 #include "Document.h"
-#include "ExtensionStyleSheets.h"
 #include "MainFrame.h"
 #include "Page.h"
 #include "ResourceLoadInfo.h"
 #include "UserScript.h"
 #include "UserStyleSheet.h"
-#include <runtime/JSCellInlines.h>
-#include <runtime/StructureInlines.h>
 
 #if ENABLE(USER_MESSAGE_HANDLERS)
 #include "UserMessageHandlerDescriptor.h"
@@ -244,7 +241,7 @@ void UserContentController::invalidateInjectedStyleSheetCacheInAllFrames()
 {
     for (auto& page : m_pages) {
         for (Frame* frame = &page->mainFrame(); frame; frame = frame->tree().traverseNext()) {
-            frame->document()->extensionStyleSheets().invalidateInjectedStyleSheetCache();
+            frame->document()->styleSheetCollection().invalidateInjectedStyleSheetCache();
             frame->document()->styleResolverChanged(DeferRecalcStyle);
         }
     }

@@ -40,8 +40,6 @@ class SlowPathGenerator {
 public:
     SlowPathGenerator(SpeculativeJIT* jit)
         : m_currentNode(jit->m_currentNode)
-        , m_streamIndex(jit->m_stream->size())
-        , m_origin(jit->m_origin) 
     {
     }
     virtual ~SlowPathGenerator() { }
@@ -49,10 +47,7 @@ public:
     {
         m_label = jit->m_jit.label();
         jit->m_currentNode = m_currentNode;
-        jit->m_outOfLineStreamIndex = m_streamIndex;
-        jit->m_origin = m_origin;
         generateInternal(jit);
-        jit->m_outOfLineStreamIndex = UINT_MAX;
         if (!ASSERT_DISABLED)
             jit->m_jit.abortWithReason(DFGSlowPathGeneratorFellThrough);
     }
@@ -66,8 +61,6 @@ protected:
     virtual void generateInternal(SpeculativeJIT*) = 0;
     MacroAssembler::Label m_label;
     Node* m_currentNode;
-    unsigned m_streamIndex;
-    NodeOrigin m_origin;
 };
 
 template<typename JumpType>
@@ -95,21 +88,15 @@ protected:
     MacroAssembler::Label m_to;
 };
 
-enum class ExceptionCheckRequirement {
-    CheckNeeded,
-    CheckNotNeeded
-};
-
 template<typename JumpType, typename FunctionType, typename ResultType>
 class CallSlowPathGenerator : public JumpingSlowPathGenerator<JumpType> {
 public:
     CallSlowPathGenerator(
         JumpType from, SpeculativeJIT* jit, FunctionType function,
-        SpillRegistersMode spillMode, ExceptionCheckRequirement requirement, ResultType result)
+        SpillRegistersMode spillMode, ResultType result)
         : JumpingSlowPathGenerator<JumpType>(from, jit)
         , m_function(function)
         , m_spillMode(spillMode)
-        , m_exceptionCheckRequirement(requirement)
         , m_result(result)
     {
         if (m_spillMode == NeedToSpill)
@@ -143,14 +130,11 @@ protected:
             for (unsigned i = m_plans.size(); i--;)
                 jit->silentFill(m_plans[i], canTrample);
         }
-        if (m_exceptionCheckRequirement == ExceptionCheckRequirement::CheckNeeded)
-            jit->m_jit.exceptionCheck();
         this->jumpTo(jit);
     }
 
     FunctionType m_function;
     SpillRegistersMode m_spillMode;
-    ExceptionCheckRequirement m_exceptionCheckRequirement;
     ResultType m_result;
     MacroAssembler::Call m_call;
     Vector<SilentRegisterSavePlan, 2> m_plans;
@@ -162,9 +146,9 @@ class CallResultAndNoArgumentsSlowPathGenerator
 public:
     CallResultAndNoArgumentsSlowPathGenerator(
         JumpType from, SpeculativeJIT* jit, FunctionType function,
-        SpillRegistersMode spillMode, ExceptionCheckRequirement requirement, ResultType result)
+        SpillRegistersMode spillMode, ResultType result)
         : CallSlowPathGenerator<JumpType, FunctionType, ResultType>(
-            from, jit, function, spillMode, requirement, result)
+            from, jit, function, spillMode, result)
     {
     }
     
@@ -185,9 +169,9 @@ class CallResultAndOneArgumentSlowPathGenerator
 public:
     CallResultAndOneArgumentSlowPathGenerator(
         JumpType from, SpeculativeJIT* jit, FunctionType function,
-        SpillRegistersMode spillMode, ExceptionCheckRequirement requirement, ResultType result, ArgumentType1 argument1)
+        SpillRegistersMode spillMode, ResultType result, ArgumentType1 argument1)
         : CallSlowPathGenerator<JumpType, FunctionType, ResultType>(
-            from, jit, function, spillMode, requirement, result)
+            from, jit, function, spillMode, result)
         , m_argument1(argument1)
     {
     }
@@ -211,10 +195,10 @@ class CallResultAndTwoArgumentsSlowPathGenerator
 public:
     CallResultAndTwoArgumentsSlowPathGenerator(
         JumpType from, SpeculativeJIT* jit, FunctionType function,
-        SpillRegistersMode spillMode, ExceptionCheckRequirement requirement, ResultType result, ArgumentType1 argument1,
+        SpillRegistersMode spillMode, ResultType result, ArgumentType1 argument1,
         ArgumentType2 argument2)
         : CallSlowPathGenerator<JumpType, FunctionType, ResultType>(
-            from, jit, function, spillMode, requirement, result)
+            from, jit, function, spillMode, result)
         , m_argument1(argument1)
         , m_argument2(argument2)
     {
@@ -240,10 +224,10 @@ class CallResultAndThreeArgumentsSlowPathGenerator
 public:
     CallResultAndThreeArgumentsSlowPathGenerator(
         JumpType from, SpeculativeJIT* jit, FunctionType function,
-        SpillRegistersMode spillMode, ExceptionCheckRequirement requirement, ResultType result, ArgumentType1 argument1,
+        SpillRegistersMode spillMode, ResultType result, ArgumentType1 argument1,
         ArgumentType2 argument2, ArgumentType3 argument3)
         : CallSlowPathGenerator<JumpType, FunctionType, ResultType>(
-            from, jit, function, spillMode, requirement, result)
+            from, jit, function, spillMode, result)
         , m_argument1(argument1)
         , m_argument2(argument2)
         , m_argument3(argument3)
@@ -275,10 +259,10 @@ class CallResultAndFourArgumentsSlowPathGenerator
 public:
     CallResultAndFourArgumentsSlowPathGenerator(
         JumpType from, SpeculativeJIT* jit, FunctionType function,
-        SpillRegistersMode spillMode, ExceptionCheckRequirement requirement, ResultType result, ArgumentType1 argument1,
+        SpillRegistersMode spillMode, ResultType result, ArgumentType1 argument1,
         ArgumentType2 argument2, ArgumentType3 argument3, ArgumentType4 argument4)
         : CallSlowPathGenerator<JumpType, FunctionType, ResultType>(
-            from, jit, function, spillMode, requirement, result)
+            from, jit, function, spillMode, result)
         , m_argument1(argument1)
         , m_argument2(argument2)
         , m_argument3(argument3)
@@ -312,11 +296,11 @@ class CallResultAndFiveArgumentsSlowPathGenerator
 public:
     CallResultAndFiveArgumentsSlowPathGenerator(
         JumpType from, SpeculativeJIT* jit, FunctionType function,
-        SpillRegistersMode spillMode, ExceptionCheckRequirement requirement, ResultType result, ArgumentType1 argument1,
+        SpillRegistersMode spillMode, ResultType result, ArgumentType1 argument1,
         ArgumentType2 argument2, ArgumentType3 argument3, ArgumentType4 argument4,
         ArgumentType5 argument5)
         : CallSlowPathGenerator<JumpType, FunctionType, ResultType>(
-            from, jit, function, spillMode, requirement, result)
+            from, jit, function, spillMode, result)
         , m_argument1(argument1)
         , m_argument2(argument2)
         , m_argument3(argument3)
@@ -346,10 +330,10 @@ protected:
 template<typename JumpType, typename FunctionType, typename ResultType>
 inline std::unique_ptr<SlowPathGenerator> slowPathCall(
     JumpType from, SpeculativeJIT* jit, FunctionType function,
-    ResultType result, SpillRegistersMode spillMode = NeedToSpill, ExceptionCheckRequirement requirement = ExceptionCheckRequirement::CheckNeeded)
+    ResultType result, SpillRegistersMode spillMode = NeedToSpill)
 {
     return std::make_unique<CallResultAndNoArgumentsSlowPathGenerator<JumpType, FunctionType, ResultType>>(
-        from, jit, function, spillMode, requirement, result);
+        from, jit, function, spillMode, result);
 }
 
 template<
@@ -358,10 +342,10 @@ template<
 inline std::unique_ptr<SlowPathGenerator> slowPathCall(
     JumpType from, SpeculativeJIT* jit, FunctionType function,
     ResultType result, ArgumentType1 argument1,
-    SpillRegistersMode spillMode = NeedToSpill, ExceptionCheckRequirement requirement = ExceptionCheckRequirement::CheckNeeded)
+    SpillRegistersMode spillMode = NeedToSpill)
 {
     return std::make_unique<CallResultAndOneArgumentSlowPathGenerator<JumpType, FunctionType, ResultType, ArgumentType1>>(
-        from, jit, function, spillMode, requirement, result, argument1);
+        from, jit, function, spillMode, result, argument1);
 }
 
 template<
@@ -370,10 +354,10 @@ template<
 inline std::unique_ptr<SlowPathGenerator> slowPathCall(
     JumpType from, SpeculativeJIT* jit, FunctionType function,
     ResultType result, ArgumentType1 argument1, ArgumentType2 argument2,
-    SpillRegistersMode spillMode = NeedToSpill, ExceptionCheckRequirement requirement = ExceptionCheckRequirement::CheckNeeded)
+    SpillRegistersMode spillMode = NeedToSpill)
 {
     return std::make_unique<CallResultAndTwoArgumentsSlowPathGenerator<JumpType, FunctionType, ResultType, ArgumentType1, ArgumentType2>>(
-        from, jit, function, spillMode, requirement, result, argument1, argument2);
+        from, jit, function, spillMode, result, argument1, argument2);
 }
 
 template<
@@ -382,10 +366,10 @@ template<
 inline std::unique_ptr<SlowPathGenerator> slowPathCall(
     JumpType from, SpeculativeJIT* jit, FunctionType function,
     ResultType result, ArgumentType1 argument1, ArgumentType2 argument2,
-    ArgumentType3 argument3, SpillRegistersMode spillMode = NeedToSpill, ExceptionCheckRequirement requirement = ExceptionCheckRequirement::CheckNeeded)
+    ArgumentType3 argument3, SpillRegistersMode spillMode = NeedToSpill)
 {
     return std::make_unique<CallResultAndThreeArgumentsSlowPathGenerator<JumpType, FunctionType, ResultType, ArgumentType1, ArgumentType2,
-        ArgumentType3>>(from, jit, function, spillMode, requirement, result, argument1, argument2, argument3);
+        ArgumentType3>>(from, jit, function, spillMode, result, argument1, argument2, argument3);
 }
 
 template<
@@ -396,10 +380,10 @@ inline std::unique_ptr<SlowPathGenerator> slowPathCall(
     JumpType from, SpeculativeJIT* jit, FunctionType function,
     ResultType result, ArgumentType1 argument1, ArgumentType2 argument2,
     ArgumentType3 argument3, ArgumentType4 argument4,
-    SpillRegistersMode spillMode = NeedToSpill, ExceptionCheckRequirement requirement = ExceptionCheckRequirement::CheckNeeded)
+    SpillRegistersMode spillMode = NeedToSpill)
 {
     return std::make_unique<CallResultAndFourArgumentsSlowPathGenerator<JumpType, FunctionType, ResultType, ArgumentType1, ArgumentType2,
-        ArgumentType3, ArgumentType4>>(from, jit, function, spillMode, requirement, result, argument1, argument2, argument3, argument4);
+        ArgumentType3, ArgumentType4>>(from, jit, function, spillMode, result, argument1, argument2, argument3, argument4);
 }
 
 template<
@@ -410,10 +394,10 @@ inline std::unique_ptr<SlowPathGenerator> slowPathCall(
     JumpType from, SpeculativeJIT* jit, FunctionType function,
     ResultType result, ArgumentType1 argument1, ArgumentType2 argument2,
     ArgumentType3 argument3, ArgumentType4 argument4, ArgumentType5 argument5,
-    SpillRegistersMode spillMode = NeedToSpill, ExceptionCheckRequirement requirement = ExceptionCheckRequirement::CheckNeeded)
+    SpillRegistersMode spillMode = NeedToSpill)
 {
     return std::make_unique<CallResultAndFiveArgumentsSlowPathGenerator<JumpType, FunctionType, ResultType, ArgumentType1, ArgumentType2,
-        ArgumentType3, ArgumentType4, ArgumentType5>>(from, jit, function, spillMode, requirement, result, argument1, argument2, argument3,
+        ArgumentType3, ArgumentType4, ArgumentType5>>(from, jit, function, spillMode, result, argument1, argument2, argument3,
         argument4, argument5);
 }
 

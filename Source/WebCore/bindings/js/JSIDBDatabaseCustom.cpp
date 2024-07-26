@@ -44,40 +44,40 @@ using namespace JSC;
 
 namespace WebCore {
 
-JSValue JSIDBDatabase::createObjectStore(ExecState& state)
+JSValue JSIDBDatabase::createObjectStore(ExecState* exec)
 {
-    if (state.argumentCount() < 1)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+    if (exec->argumentCount() < 1)
+        return exec->vm().throwException(exec, createNotEnoughArgumentsError(exec));
 
-    String name = state.argument(0).toString(&state)->value(&state);
-    if (state.hadException())
+    String name = exec->argument(0).toString(exec)->value(exec);
+    if (exec->hadException())
         return jsUndefined();
 
-    JSValue optionsValue = state.argument(1);
+    JSValue optionsValue = exec->argument(1);
     if (!optionsValue.isUndefinedOrNull() && !optionsValue.isObject())
-        return throwTypeError(&state, "Not an object.");
+        return throwTypeError(exec, "Not an object.");
 
     IDBKeyPath keyPath;
     bool autoIncrement = false;
     if (!optionsValue.isUndefinedOrNull()) {
-        JSValue keyPathValue = optionsValue.get(&state, Identifier::fromString(&state, "keyPath"));
-        if (state.hadException())
+        JSValue keyPathValue = optionsValue.get(exec, Identifier::fromString(exec, "keyPath"));
+        if (exec->hadException())
             return jsUndefined();
 
         if (!keyPathValue.isUndefinedOrNull()) {
-            keyPath = idbKeyPathFromValue(&state, keyPathValue);
-            if (state.hadException())
+            keyPath = idbKeyPathFromValue(exec, keyPathValue);
+            if (exec->hadException())
                 return jsUndefined();
         }
 
-        autoIncrement = optionsValue.get(&state, Identifier::fromString(&state, "autoIncrement")).toBoolean(&state);
-        if (state.hadException())
+        autoIncrement = optionsValue.get(exec, Identifier::fromString(exec, "autoIncrement")).toBoolean(exec);
+        if (exec->hadException())
             return jsUndefined();
     }
 
     ExceptionCode ec = 0;
-    JSValue result = toJS(&state, globalObject(), impl().createObjectStore(name, keyPath, autoIncrement, ec).get());
-    setDOMException(&state, ec);
+    JSValue result = toJS(exec, globalObject(), impl().createObjectStore(name, keyPath, autoIncrement, ec).get());
+    setDOMException(exec, ec);
     return result;
 }
 

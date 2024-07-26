@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2011, 2014-2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006, 2007, 2008, 2009, 2010, 2011, 2014 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -120,6 +120,10 @@ WebPreferences* WebPreferences::sharedStandardPreferences()
 }
 
 WebPreferences::WebPreferences()
+    : m_refCount(0)
+    , m_autoSaves(0)
+    , m_automaticallyDetectsCacheModel(true)
+    , m_numWebViews(0)
 {
     gClassCount++;
     gClassNameCount().add("WebPreferences");
@@ -288,8 +292,6 @@ void WebPreferences::initializeDefaultSettings()
     CFDictionaryAddValue(defaults, CFSTR(WebKitFullScreenEnabledPreferenceKey), kCFBooleanFalse);
 
     CFDictionaryAddValue(defaults, CFSTR(WebKitRequestAnimationFrameEnabledPreferenceKey), kCFBooleanFalse);
-
-    CFDictionaryAddValue(defaults, CFSTR(WebKitAllowDisplayAndRunningOfInsecureContentPreferenceKey), kCFBooleanTrue);
 
     defaultSettings = defaults;
 }
@@ -519,11 +521,9 @@ void WebPreferences::copyWebKitPreferencesToCFPreferences(CFDictionaryRef dict)
 
 // IUnknown -------------------------------------------------------------------
 
-HRESULT WebPreferences::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE WebPreferences::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<IWebPreferences*>(this);
     else if (IsEqualGUID(riid, IID_IWebPreferences))
@@ -532,8 +532,6 @@ HRESULT WebPreferences::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppv
         *ppvObject = static_cast<IWebPreferencesPrivate*>(this);
     else if (IsEqualGUID(riid, IID_IWebPreferencesPrivate2))
         *ppvObject = static_cast<IWebPreferencesPrivate2*>(this);
-    else if (IsEqualGUID(riid, IID_IWebPreferencesPrivate3))
-        *ppvObject = static_cast<IWebPreferencesPrivate3*>(this);
     else if (IsEqualGUID(riid, CLSID_WebPreferences))
         *ppvObject = this;
     else
@@ -543,12 +541,12 @@ HRESULT WebPreferences::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppv
     return S_OK;
 }
 
-ULONG WebPreferences::AddRef()
+ULONG STDMETHODCALLTYPE WebPreferences::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG WebPreferences::Release()
+ULONG STDMETHODCALLTYPE WebPreferences::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -559,7 +557,8 @@ ULONG WebPreferences::Release()
 
 // IWebPreferences ------------------------------------------------------------
 
-HRESULT WebPreferences::standardPreferences(_COM_Outptr_opt_ IWebPreferences** standardPreferences)
+HRESULT STDMETHODCALLTYPE WebPreferences::standardPreferences( 
+    /* [retval][out] */ IWebPreferences** standardPreferences)
 {
     if (!standardPreferences)
         return E_POINTER;
@@ -568,7 +567,9 @@ HRESULT WebPreferences::standardPreferences(_COM_Outptr_opt_ IWebPreferences** s
     return S_OK;
 }
 
-HRESULT WebPreferences::initWithIdentifier(_In_ BSTR anIdentifier, _COM_Outptr_opt_ IWebPreferences** preferences)
+HRESULT STDMETHODCALLTYPE WebPreferences::initWithIdentifier( 
+        /* [in] */ BSTR anIdentifier,
+        /* [retval][out] */ IWebPreferences** preferences)
 {
     WebPreferences *instance = getInstanceForIdentifier(anIdentifier);
     if (instance) {
@@ -592,561 +593,562 @@ HRESULT WebPreferences::initWithIdentifier(_In_ BSTR anIdentifier, _COM_Outptr_o
     return S_OK;
 }
 
-HRESULT WebPreferences::identifier(__deref_opt_out BSTR* ident)
+HRESULT STDMETHODCALLTYPE WebPreferences::identifier( 
+    /* [retval][out] */ BSTR* ident)
 {
     if (!ident)
         return E_POINTER;
-    *ident = m_identifier ? SysAllocString(m_identifier) : nullptr;
+    *ident = m_identifier ? SysAllocString(m_identifier) : 0;
     return S_OK;
 }
 
-HRESULT WebPreferences::standardFontFamily(__deref_opt_out BSTR* family)
+HRESULT STDMETHODCALLTYPE WebPreferences::standardFontFamily( 
+    /* [retval][out] */ BSTR* family)
 {
-    if (!family)
-        return E_POINTER;
     *family = stringValueForKey(WebKitStandardFontPreferenceKey);
     return (*family) ? S_OK : E_FAIL;
 }
 
-HRESULT WebPreferences::setStandardFontFamily(_In_ BSTR family)
+HRESULT STDMETHODCALLTYPE WebPreferences::setStandardFontFamily( 
+    /* [in] */ BSTR family)
 {
     setStringValue(WebKitStandardFontPreferenceKey, family);
     return S_OK;
 }
 
-HRESULT WebPreferences::fixedFontFamily(__deref_opt_out BSTR* family)
+HRESULT STDMETHODCALLTYPE WebPreferences::fixedFontFamily( 
+    /* [retval][out] */ BSTR* family)
 {
-    if (!family)
-        return E_POINTER;
     *family = stringValueForKey(WebKitFixedFontPreferenceKey);
     return (*family) ? S_OK : E_FAIL;
 }
 
-HRESULT WebPreferences::setFixedFontFamily(_In_ BSTR family)
+HRESULT STDMETHODCALLTYPE WebPreferences::setFixedFontFamily( 
+    /* [in] */ BSTR family)
 {
     setStringValue(WebKitFixedFontPreferenceKey, family);
     return S_OK;
 }
 
-HRESULT WebPreferences::serifFontFamily(__deref_opt_out BSTR* fontFamily)
+HRESULT STDMETHODCALLTYPE WebPreferences::serifFontFamily( 
+    /* [retval][out] */ BSTR* fontFamily)
 {
-    if (!fontFamily)
-        return E_POINTER;
     *fontFamily = stringValueForKey(WebKitSerifFontPreferenceKey);
     return (*fontFamily) ? S_OK : E_FAIL;
 }
 
-HRESULT WebPreferences::setSerifFontFamily(_In_ BSTR family)
+HRESULT STDMETHODCALLTYPE WebPreferences::setSerifFontFamily( 
+    /* [in] */ BSTR family)
 {
     setStringValue(WebKitSerifFontPreferenceKey, family);
     return S_OK;
 }
 
-HRESULT WebPreferences::sansSerifFontFamily(__deref_opt_out BSTR* family)
+HRESULT STDMETHODCALLTYPE WebPreferences::sansSerifFontFamily( 
+    /* [retval][out] */ BSTR* family)
 {
-    if (!family)
-        return E_POINTER;
     *family = stringValueForKey(WebKitSansSerifFontPreferenceKey);
     return (*family) ? S_OK : E_FAIL;
 }
 
-HRESULT WebPreferences::setSansSerifFontFamily(_In_ BSTR family)
+HRESULT STDMETHODCALLTYPE WebPreferences::setSansSerifFontFamily( 
+    /* [in] */ BSTR family)
 {
     setStringValue(WebKitSansSerifFontPreferenceKey, family);
     return S_OK;
 }
 
-HRESULT WebPreferences::cursiveFontFamily(__deref_opt_out BSTR* family)
+HRESULT STDMETHODCALLTYPE WebPreferences::cursiveFontFamily( 
+    /* [retval][out] */ BSTR* family)
 {
-    if (!family)
-        return E_POINTER;
     *family = stringValueForKey(WebKitCursiveFontPreferenceKey);
     return (*family) ? S_OK : E_FAIL;
 }
 
-HRESULT WebPreferences::setCursiveFontFamily(_In_ BSTR family)
+HRESULT STDMETHODCALLTYPE WebPreferences::setCursiveFontFamily( 
+    /* [in] */ BSTR family)
 {
     setStringValue(WebKitCursiveFontPreferenceKey, family);
     return S_OK;
 }
 
-HRESULT WebPreferences::fantasyFontFamily(__deref_opt_out BSTR* family)
+HRESULT STDMETHODCALLTYPE WebPreferences::fantasyFontFamily( 
+    /* [retval][out] */ BSTR* family)
 {
-    if (!family)
-        return E_POINTER;
     *family = stringValueForKey(WebKitFantasyFontPreferenceKey);
     return (*family) ? S_OK : E_FAIL;
 }
 
-HRESULT WebPreferences::setFantasyFontFamily(_In_ BSTR family)
+HRESULT STDMETHODCALLTYPE WebPreferences::setFantasyFontFamily( 
+    /* [in] */ BSTR family)
 {
     setStringValue(WebKitFantasyFontPreferenceKey, family);
     return S_OK;
 }
 
-HRESULT WebPreferences::pictographFontFamily(__deref_opt_out BSTR* family)
+HRESULT STDMETHODCALLTYPE WebPreferences::pictographFontFamily( 
+    /* [retval][out] */ BSTR* family)
 {
-    if (!family)
-        return E_POINTER;
     *family = stringValueForKey(WebKitPictographFontPreferenceKey);
     return (*family) ? S_OK : E_FAIL;
 }
 
-HRESULT WebPreferences::setPictographFontFamily(_In_ BSTR family)
+HRESULT STDMETHODCALLTYPE WebPreferences::setPictographFontFamily( 
+    /* [in] */ BSTR family)
 {
     setStringValue(WebKitPictographFontPreferenceKey, family);
     return S_OK;
 }
 
-HRESULT WebPreferences::defaultFontSize(_Out_  int* fontSize)
+HRESULT STDMETHODCALLTYPE WebPreferences::defaultFontSize( 
+    /* [retval][out] */ int* fontSize)
 {
-    if (!fontSize)
-        return E_POINTER;
     *fontSize = integerValueForKey(WebKitDefaultFontSizePreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setDefaultFontSize(int fontSize)
+HRESULT STDMETHODCALLTYPE WebPreferences::setDefaultFontSize( 
+    /* [in] */ int fontSize)
 {
     setIntegerValue(WebKitDefaultFontSizePreferenceKey, fontSize);
     return S_OK;
 }
 
-HRESULT WebPreferences::defaultFixedFontSize(_Out_ int* fontSize)
+HRESULT STDMETHODCALLTYPE WebPreferences::defaultFixedFontSize( 
+    /* [retval][out] */ int* fontSize)
 {
-    if (!fontSize)
-        return E_POINTER;
     *fontSize = integerValueForKey(WebKitDefaultFixedFontSizePreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setDefaultFixedFontSize(int fontSize)
+HRESULT STDMETHODCALLTYPE WebPreferences::setDefaultFixedFontSize( 
+    /* [in] */ int fontSize)
 {
     setIntegerValue(WebKitDefaultFixedFontSizePreferenceKey, fontSize);
     return S_OK;
 }
 
-HRESULT WebPreferences::minimumFontSize(_Out_ int* fontSize)
+HRESULT STDMETHODCALLTYPE WebPreferences::minimumFontSize( 
+    /* [retval][out] */ int* fontSize)
 {
-    if (!fontSize)
-        return E_POINTER;
     *fontSize = integerValueForKey(WebKitMinimumFontSizePreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setMinimumFontSize(int fontSize)
+HRESULT STDMETHODCALLTYPE WebPreferences::setMinimumFontSize( 
+    /* [in] */ int fontSize)
 {
     setIntegerValue(WebKitMinimumFontSizePreferenceKey, fontSize);
     return S_OK;
 }
 
-HRESULT WebPreferences::minimumLogicalFontSize(_Out_ int* fontSize)
+HRESULT STDMETHODCALLTYPE WebPreferences::minimumLogicalFontSize( 
+    /* [retval][out] */ int* fontSize)
 {
-    if (!fontSize)
-        return E_POINTER;
     *fontSize = integerValueForKey(WebKitMinimumLogicalFontSizePreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setMinimumLogicalFontSize(int fontSize)
+HRESULT STDMETHODCALLTYPE WebPreferences::setMinimumLogicalFontSize( 
+    /* [in] */ int fontSize)
 {
     setIntegerValue(WebKitMinimumLogicalFontSizePreferenceKey, fontSize);
     return S_OK;
 }
 
-HRESULT WebPreferences::defaultTextEncodingName(__deref_opt_out BSTR* name)
+HRESULT STDMETHODCALLTYPE WebPreferences::defaultTextEncodingName( 
+    /* [retval][out] */ BSTR* name)
 {
-    if (!name)
-        return E_POINTER;
     *name = stringValueForKey(WebKitDefaultTextEncodingNamePreferenceKey);
     return (*name) ? S_OK : E_FAIL;
 }
 
-HRESULT WebPreferences::setDefaultTextEncodingName(_In_ BSTR name)
+HRESULT STDMETHODCALLTYPE WebPreferences::setDefaultTextEncodingName( 
+    /* [in] */ BSTR name)
 {
     setStringValue(WebKitDefaultTextEncodingNamePreferenceKey, name);
     return S_OK;
 }
 
-HRESULT WebPreferences::userStyleSheetEnabled(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::userStyleSheetEnabled( 
+    /* [retval][out] */ BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitUserStyleSheetEnabledPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setUserStyleSheetEnabled(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setUserStyleSheetEnabled( 
+    /* [in] */ BOOL enabled)
 {
     setBoolValue(WebKitUserStyleSheetEnabledPreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::userStyleSheetLocation(__deref_opt_out BSTR* location)
+HRESULT STDMETHODCALLTYPE WebPreferences::userStyleSheetLocation( 
+    /* [retval][out] */ BSTR* location)
 {
-    if (!location)
-        return E_POINTER;
     *location = stringValueForKey(WebKitUserStyleSheetLocationPreferenceKey);
     return (*location) ? S_OK : E_FAIL;
 }
 
-HRESULT WebPreferences::setUserStyleSheetLocation(_In_ BSTR location)
+HRESULT STDMETHODCALLTYPE WebPreferences::setUserStyleSheetLocation( 
+    /* [in] */ BSTR location)
 {
     setStringValue(WebKitUserStyleSheetLocationPreferenceKey, location);
     return S_OK;
 }
 
-HRESULT WebPreferences::isJavaEnabled(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::isJavaEnabled( 
+    /* [retval][out] */ BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitJavaEnabledPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setJavaEnabled(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setJavaEnabled( 
+    /* [in] */ BOOL enabled)
 {
     setBoolValue(WebKitJavaEnabledPreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::isJavaScriptEnabled(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::isJavaScriptEnabled( 
+    /* [retval][out] */ BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitJavaScriptEnabledPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setJavaScriptEnabled(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setJavaScriptEnabled( 
+    /* [in] */ BOOL enabled)
 {
     setBoolValue(WebKitJavaScriptEnabledPreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::javaScriptRuntimeFlags(_Out_ unsigned* flags)
+HRESULT STDMETHODCALLTYPE WebPreferences::javaScriptRuntimeFlags(
+    /* [retval][out] */ unsigned* flags)
 {
-    if (!flags)
-        return E_POINTER;
     *flags = static_cast<unsigned>(integerValueForKey(WebKitJavaScriptRuntimeFlagsPreferenceKey));
     return S_OK;
 }
 
-HRESULT WebPreferences::setJavaScriptRuntimeFlags(unsigned flags)
+HRESULT STDMETHODCALLTYPE WebPreferences::setJavaScriptRuntimeFlags(
+    /* [in] */ unsigned flags)
 {
     setIntegerValue(WebKitJavaScriptRuntimeFlagsPreferenceKey, static_cast<int>(flags));
     return S_OK;
 }
 
-HRESULT WebPreferences::isWebSecurityEnabled(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::isWebSecurityEnabled(
+    /* [retval][out] */ BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitWebSecurityEnabledPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setWebSecurityEnabled(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setWebSecurityEnabled( 
+    /* [in] */ BOOL enabled)
 {
     setBoolValue(WebKitWebSecurityEnabledPreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::allowUniversalAccessFromFileURLs(_Out_ BOOL* allowAccess)
+HRESULT STDMETHODCALLTYPE WebPreferences::allowUniversalAccessFromFileURLs(
+    /* [retval][out] */ BOOL* allowAccess)
 {
-    if (!allowAccess)
-        return E_POINTER;
     *allowAccess = boolValueForKey(WebKitAllowUniversalAccessFromFileURLsPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setAllowUniversalAccessFromFileURLs(BOOL allowAccess)
+HRESULT STDMETHODCALLTYPE WebPreferences::setAllowUniversalAccessFromFileURLs(
+    /* [in] */ BOOL allowAccess)
 {
     setBoolValue(WebKitAllowUniversalAccessFromFileURLsPreferenceKey, allowAccess);
     return S_OK;
 }
 
-HRESULT WebPreferences::allowFileAccessFromFileURLs(_Out_ BOOL* allowAccess)
+HRESULT STDMETHODCALLTYPE WebPreferences::allowFileAccessFromFileURLs(
+    /* [retval][out] */ BOOL* allowAccess)
 {
-    if (!allowAccess)
-        return E_POINTER;
     *allowAccess = boolValueForKey(WebKitAllowFileAccessFromFileURLsPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setAllowFileAccessFromFileURLs(BOOL allowAccess)
+HRESULT STDMETHODCALLTYPE WebPreferences::setAllowFileAccessFromFileURLs(
+    /* [in] */ BOOL allowAccess)
 {
     setBoolValue(WebKitAllowFileAccessFromFileURLsPreferenceKey, allowAccess);
     return S_OK;
 }
 
-HRESULT WebPreferences::javaScriptCanAccessClipboard(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::javaScriptCanAccessClipboard(
+    /* [retval][out] */ BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitJavaScriptCanAccessClipboardPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setJavaScriptCanAccessClipboard(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setJavaScriptCanAccessClipboard(
+    /* [in] */ BOOL enabled)
 {
     setBoolValue(WebKitJavaScriptCanAccessClipboardPreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::isXSSAuditorEnabled(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::isXSSAuditorEnabled(
+    /* [retval][out] */ BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitXSSAuditorEnabledPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setXSSAuditorEnabled(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setXSSAuditorEnabled(
+    /* [in] */ BOOL enabled)
 {
     setBoolValue(WebKitXSSAuditorEnabledPreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::isFrameFlatteningEnabled(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::isFrameFlatteningEnabled(
+    /* [retval][out] */ BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitFrameFlatteningEnabledPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setFrameFlatteningEnabled(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setFrameFlatteningEnabled(
+    /* [in] */ BOOL enabled)
 {
     setBoolValue(WebKitFrameFlatteningEnabledPreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::javaScriptCanOpenWindowsAutomatically(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::javaScriptCanOpenWindowsAutomatically( 
+    /* [retval][out] */ BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitJavaScriptCanOpenWindowsAutomaticallyPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setJavaScriptCanOpenWindowsAutomatically(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setJavaScriptCanOpenWindowsAutomatically( 
+    /* [in] */ BOOL enabled)
 {
     setBoolValue(WebKitJavaScriptCanOpenWindowsAutomaticallyPreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::arePlugInsEnabled(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::arePlugInsEnabled( 
+    /* [retval][out] */ BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitPluginsEnabledPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setPlugInsEnabled(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setPlugInsEnabled( 
+    /* [in] */ BOOL enabled)
 {
     setBoolValue(WebKitPluginsEnabledPreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::isCSSRegionsEnabled(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::isCSSRegionsEnabled(
+    /* [retval][out] */ BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitCSSRegionsEnabledPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setCSSRegionsEnabled(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setCSSRegionsEnabled(
+    /* [in] */ BOOL enabled)
 {
     setBoolValue(WebKitCSSRegionsEnabledPreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::allowsAnimatedImages(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::allowsAnimatedImages( 
+    /* [retval][out] */ BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitAllowAnimatedImagesPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setAllowsAnimatedImages(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setAllowsAnimatedImages( 
+    /* [in] */ BOOL enabled)
 {
     setBoolValue(WebKitAllowAnimatedImagesPreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::allowAnimatedImageLooping(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::allowAnimatedImageLooping( 
+    /* [retval][out] */ BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitAllowAnimatedImageLoopingPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setAllowAnimatedImageLooping(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setAllowAnimatedImageLooping( 
+    /* [in] */ BOOL enabled)
 {
     setBoolValue(WebKitAllowAnimatedImageLoopingPreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::setLoadsImagesAutomatically(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setLoadsImagesAutomatically( 
+    /* [in] */ BOOL enabled)
 {
     setBoolValue(WebKitDisplayImagesKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::loadsImagesAutomatically(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::loadsImagesAutomatically( 
+    /* [retval][out] */ BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitDisplayImagesKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setLoadsSiteIconsIgnoringImageLoadingPreference(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setLoadsSiteIconsIgnoringImageLoadingPreference(
+    /* [in] */ BOOL enabled)
 {
     setBoolValue(WebKitLoadSiteIconsKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::loadsSiteIconsIgnoringImageLoadingPreference(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::loadsSiteIconsIgnoringImageLoadingPreference(
+    /* [retval][out] */ BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitLoadSiteIconsKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setHixie76WebSocketProtocolEnabled(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setHixie76WebSocketProtocolEnabled(
+    /* [in] */ BOOL enabled)
 {
     return S_OK;
 }
 
-HRESULT WebPreferences::hixie76WebSocketProtocolEnabled(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::hixie76WebSocketProtocolEnabled(
+    /* [retval][out] */ BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = false;
     return S_OK;
 }
 
-HRESULT WebPreferences::setMediaPlaybackRequiresUserGesture(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setMediaPlaybackRequiresUserGesture(
+    /* [in] */ BOOL enabled)
 {
     setBoolValue(WebKitMediaPlaybackRequiresUserGesturePreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::mediaPlaybackRequiresUserGesture(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::mediaPlaybackRequiresUserGesture(
+    /* [retval][out] */ BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitMediaPlaybackRequiresUserGesturePreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setMediaPlaybackAllowsInline(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setMediaPlaybackAllowsInline(
+    /* [in] */ BOOL enabled)
 {
     setBoolValue(WebKitMediaPlaybackAllowsInlinePreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::mediaPlaybackAllowsInline(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::mediaPlaybackAllowsInline(
+    /* [retval][out] */ BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitMediaPlaybackAllowsInlinePreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setAutosaves(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setAutosaves( 
+    /* [in] */ BOOL enabled)
 {
     m_autoSaves = !!enabled;
     return S_OK;
 }
 
-HRESULT WebPreferences::autosaves(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::autosaves( 
+    /* [retval][out] */ BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = m_autoSaves ? TRUE : FALSE;
     return S_OK;
 }
 
-HRESULT WebPreferences::setShouldPrintBackgrounds(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setShouldPrintBackgrounds( 
+    /* [in] */ BOOL enabled)
 {
     setBoolValue(WebKitShouldPrintBackgroundsPreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::shouldPrintBackgrounds(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::shouldPrintBackgrounds( 
+    /* [retval][out] */ BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitShouldPrintBackgroundsPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setPrivateBrowsingEnabled(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setPrivateBrowsingEnabled( 
+    /* [in] */ BOOL enabled)
 {
     setBoolValue(WebKitPrivateBrowsingEnabledPreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::privateBrowsingEnabled(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::privateBrowsingEnabled( 
+    /* [retval][out] */ BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitPrivateBrowsingEnabledPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setTabsToLinks(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setTabsToLinks( 
+    /* [in] */ BOOL enabled)
 {
     setBoolValue(WebKitTabToLinksPreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::tabsToLinks(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::tabsToLinks( 
+    /* [retval][out] */ BOOL* enabled)
 {
     *enabled = boolValueForKey(WebKitTabToLinksPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setUsesPageCache(BOOL usesPageCache)
+HRESULT STDMETHODCALLTYPE WebPreferences::setUsesPageCache( 
+        /* [in] */ BOOL usesPageCache)
 {
     setBoolValue(WebKitUsesPageCachePreferenceKey, usesPageCache);
     return S_OK;
 }
 
-HRESULT WebPreferences::usesPageCache(_Out_ BOOL* usesPageCache)
+HRESULT STDMETHODCALLTYPE WebPreferences::usesPageCache( 
+    /* [retval][out] */ BOOL* usesPageCache)
 {
-    if (!usesPageCache)
-        return E_POINTER;
     *usesPageCache = boolValueForKey(WebKitUsesPageCachePreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::textAreasAreResizable(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::textAreasAreResizable( 
+    /* [retval][out] */ BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitTextAreasAreResizablePreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setTextAreasAreResizable(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setTextAreasAreResizable( 
+    /* [in] */ BOOL enabled)
 {
     setBoolValue(WebKitTextAreasAreResizablePreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::historyItemLimit(_Out_ int* limit)
+HRESULT WebPreferences::historyItemLimit(int* limit)
 {
-    if (!limit)
-        return E_POINTER;
     *limit = integerValueForKey(WebKitHistoryItemLimitKey);
     return S_OK;
 }
@@ -1157,10 +1159,8 @@ HRESULT WebPreferences::setHistoryItemLimit(int limit)
     return S_OK;
 }
 
-HRESULT WebPreferences::historyAgeInDaysLimit(_Out_ int* limit)
+HRESULT WebPreferences::historyAgeInDaysLimit(int* limit)
 {
-    if (!limit)
-        return E_POINTER;
     *limit = integerValueForKey(WebKitHistoryAgeInDaysLimitKey);
     return S_OK;
 }
@@ -1183,43 +1183,41 @@ HRESULT WebPreferences::unused2()
     return E_FAIL;
 }
 
-HRESULT WebPreferences::iconDatabaseLocation(__deref_opt_out BSTR* location)
+HRESULT WebPreferences::iconDatabaseLocation(
+    /* [out] */ BSTR* location)
 {
-    if (!location)
-        return E_POINTER;
     *location = stringValueForKey(WebKitIconDatabaseLocationKey);
     return (*location) ? S_OK : E_FAIL;
 }
 
-HRESULT WebPreferences::setIconDatabaseLocation(_In_ BSTR location)
+HRESULT WebPreferences::setIconDatabaseLocation(
+    /* [in] */ BSTR location)
 {
     setStringValue(WebKitIconDatabaseLocationKey, location);
     return S_OK;
 }
 
-HRESULT WebPreferences::iconDatabaseEnabled(_Out_ BOOL* enabled)
+HRESULT WebPreferences::iconDatabaseEnabled(BOOL* enabled)//location)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitIconDatabaseEnabledPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setIconDatabaseEnabled(BOOL enabled)
+HRESULT WebPreferences::setIconDatabaseEnabled(BOOL enabled )//location)
 {
     setBoolValue(WebKitIconDatabaseEnabledPreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::fontSmoothing(_Out_ FontSmoothingType* smoothingType)
+HRESULT STDMETHODCALLTYPE WebPreferences::fontSmoothing( 
+    /* [retval][out] */ FontSmoothingType* smoothingType)
 {
-    if (!smoothingType)
-        return E_POINTER;
     *smoothingType = static_cast<FontSmoothingType>(integerValueForKey(WebKitFontSmoothingTypePreferenceKey));
     return S_OK;
 }
 
-HRESULT WebPreferences::setFontSmoothing(FontSmoothingType smoothingType)
+HRESULT STDMETHODCALLTYPE WebPreferences::setFontSmoothing( 
+    /* [in] */ FontSmoothingType smoothingType)
 {
     setIntegerValue(WebKitFontSmoothingTypePreferenceKey, smoothingType);
     if (smoothingType == FontSmoothingTypeWindows)
@@ -1230,15 +1228,15 @@ HRESULT WebPreferences::setFontSmoothing(FontSmoothingType smoothingType)
     return S_OK;
 }
 
-HRESULT WebPreferences::fontSmoothingContrast(_Out_ float* contrast)
+HRESULT STDMETHODCALLTYPE WebPreferences::fontSmoothingContrast( 
+    /* [retval][out] */ float* contrast)
 {
-    if (!contrast)
-        return E_POINTER;
     *contrast = floatValueForKey(WebKitFontSmoothingContrastPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setFontSmoothingContrast(float contrast)
+HRESULT STDMETHODCALLTYPE WebPreferences::setFontSmoothingContrast( 
+    /* [in] */ float contrast)
 {
     setFloatValue(WebKitFontSmoothingContrastPreferenceKey, contrast);
 #if USE(CG)
@@ -1247,10 +1245,9 @@ HRESULT WebPreferences::setFontSmoothingContrast(float contrast)
     return S_OK;
 }
 
-HRESULT WebPreferences::editableLinkBehavior(_Out_ WebKitEditableLinkBehavior* editableLinkBehavior)
+HRESULT STDMETHODCALLTYPE WebPreferences::editableLinkBehavior(
+    /* [out, retval] */ WebKitEditableLinkBehavior* editableLinkBehavior)
 {
-    if (!editableLinkBehavior)
-        return E_POINTER;
     WebKitEditableLinkBehavior value = static_cast<WebKitEditableLinkBehavior>(integerValueForKey(WebKitEditableLinkBehaviorPreferenceKey));
     switch (value) {
         case WebKitEditableLinkDefaultBehavior:
@@ -1267,7 +1264,8 @@ HRESULT WebPreferences::editableLinkBehavior(_Out_ WebKitEditableLinkBehavior* e
     return S_OK;
 }
 
-HRESULT WebPreferences::setEditableLinkBehavior(WebKitEditableLinkBehavior behavior)
+HRESULT STDMETHODCALLTYPE WebPreferences::setEditableLinkBehavior(
+    /* [in] */ WebKitEditableLinkBehavior behavior)
 {
     setIntegerValue(WebKitEditableLinkBehaviorPreferenceKey, behavior);
     return S_OK;
@@ -1285,10 +1283,8 @@ HRESULT WebPreferences::unused6()
     return E_FAIL;
 }
 
-HRESULT WebPreferences::mockScrollbarsEnabled(_Out_ BOOL* enabled)
+HRESULT WebPreferences::mockScrollbarsEnabled(BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitMockScrollbarsEnabledPreferenceKey);
     return S_OK;
 }
@@ -1301,11 +1297,8 @@ HRESULT WebPreferences::setMockScrollbarsEnabled(BOOL enabled)
 
 // These two methods are no-ops, and only retained to keep
 // the Interface consistent. DO NOT USE THEM.
-HRESULT WebPreferences::screenFontSubstitutionEnabled(_Out_ BOOL* enabled)
+HRESULT WebPreferences::screenFontSubstitutionEnabled(BOOL*)
 {
-    if (!enabled)
-        return E_POINTER;
-    enabled = false;
     return S_OK;
 }
 
@@ -1314,21 +1307,22 @@ HRESULT WebPreferences::setScreenFontSubstitutionEnabled(BOOL)
     return S_OK;
 }
 
-HRESULT WebPreferences::hyperlinkAuditingEnabled(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::hyperlinkAuditingEnabled(
+    /* [in] */ BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitHyperlinkAuditingEnabledPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setHyperlinkAuditingEnabled(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setHyperlinkAuditingEnabled(
+    /* [retval][out] */ BOOL enabled)
 {
     setBoolValue(WebKitHyperlinkAuditingEnabledPreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::cookieStorageAcceptPolicy(_Out_ WebKitCookieStorageAcceptPolicy* acceptPolicy)
+HRESULT STDMETHODCALLTYPE WebPreferences::cookieStorageAcceptPolicy( 
+        /* [retval][out] */ WebKitCookieStorageAcceptPolicy *acceptPolicy )
 {
     if (!acceptPolicy)
         return E_POINTER;
@@ -1337,17 +1331,16 @@ HRESULT WebPreferences::cookieStorageAcceptPolicy(_Out_ WebKitCookieStorageAccep
     return S_OK;
 }
 
-HRESULT WebPreferences::setCookieStorageAcceptPolicy(WebKitCookieStorageAcceptPolicy acceptPolicy)
+HRESULT STDMETHODCALLTYPE WebPreferences::setCookieStorageAcceptPolicy( 
+        /* [in] */ WebKitCookieStorageAcceptPolicy acceptPolicy)
 {
     setIntegerValue(WebKitCookieStorageAcceptPolicyPreferenceKey, acceptPolicy);
     return S_OK;
 }
 
 
-HRESULT WebPreferences::continuousSpellCheckingEnabled(_Out_ BOOL* enabled)
+HRESULT WebPreferences::continuousSpellCheckingEnabled(BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebContinuousSpellCheckingEnabledPreferenceKey);
     return S_OK;
 }
@@ -1358,10 +1351,8 @@ HRESULT WebPreferences::setContinuousSpellCheckingEnabled(BOOL enabled)
     return S_OK;
 }
 
-HRESULT WebPreferences::grammarCheckingEnabled(_Out_ BOOL* enabled)
+HRESULT WebPreferences::grammarCheckingEnabled(BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebGrammarCheckingEnabledPreferenceKey);
     return S_OK;
 }
@@ -1372,10 +1363,8 @@ HRESULT WebPreferences::setGrammarCheckingEnabled(BOOL enabled)
     return S_OK;
 }
 
-HRESULT WebPreferences::allowContinuousSpellChecking(_Out_ BOOL* enabled)
+HRESULT WebPreferences::allowContinuousSpellChecking(BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(AllowContinuousSpellCheckingPreferenceKey);
     return S_OK;
 }
@@ -1398,10 +1387,8 @@ HRESULT WebPreferences::unused8()
     return E_FAIL;
 }
 
-HRESULT WebPreferences::isDOMPasteAllowed(_Out_ BOOL* enabled)
+HRESULT WebPreferences::isDOMPasteAllowed(BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitDOMPasteAllowedPreferenceKey);
     return S_OK;
 }
@@ -1412,7 +1399,7 @@ HRESULT WebPreferences::setDOMPasteAllowed(BOOL enabled)
     return S_OK;
 }
 
-HRESULT WebPreferences::cacheModel(_Out_ WebCacheModel* cacheModel)
+HRESULT WebPreferences::cacheModel(WebCacheModel* cacheModel)
 {
     if (!cacheModel)
         return E_POINTER;
@@ -1441,11 +1428,8 @@ HRESULT WebPreferences::unused4()
 
 // These two methods are no-ops, and only retained to keep
 // the Interface consistent. DO NOT USE THEM.
-HRESULT WebPreferences::shouldPaintNativeControls(_Out_ BOOL* enable)
+HRESULT WebPreferences::shouldPaintNativeControls(BOOL*)
 {
-    if (!enable)
-        return E_POINTER;
-    *enable = FALSE;
     return S_OK;
 }
 
@@ -1460,7 +1444,7 @@ HRESULT WebPreferences::setDeveloperExtrasEnabled(BOOL enabled)
     return S_OK;
 }
 
-HRESULT WebPreferences::developerExtrasEnabled(_Out_ BOOL* enabled)
+HRESULT WebPreferences::developerExtrasEnabled(BOOL* enabled)
 {
     if (!enabled)
         return E_POINTER;
@@ -1480,7 +1464,7 @@ HRESULT WebPreferences::setAutomaticallyDetectsCacheModel(BOOL automaticallyDete
     return S_OK;
 }
 
-HRESULT WebPreferences::automaticallyDetectsCacheModel(_Out_ BOOL* automaticallyDetectsCacheModel)
+HRESULT WebPreferences::automaticallyDetectsCacheModel(BOOL* automaticallyDetectsCacheModel)
 {
     if (!automaticallyDetectsCacheModel)
         return E_POINTER;
@@ -1489,13 +1473,13 @@ HRESULT WebPreferences::automaticallyDetectsCacheModel(_Out_ BOOL* automatically
     return S_OK;
 }
 
-HRESULT WebPreferences::setAuthorAndUserStylesEnabled(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setAuthorAndUserStylesEnabled(BOOL enabled)
 {
     setBoolValue(WebKitAuthorAndUserStylesEnabledPreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::authorAndUserStylesEnabled(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::authorAndUserStylesEnabled(BOOL* enabled)
 {
     if (!enabled)
         return E_POINTER;
@@ -1506,11 +1490,8 @@ HRESULT WebPreferences::authorAndUserStylesEnabled(_Out_ BOOL* enabled)
 
 // These two methods are no-ops, and only retained to keep
 // the Interface consistent. DO NOT USE THEM.
-HRESULT WebPreferences::inApplicationChromeMode(_Out_ BOOL* enabled)
+HRESULT WebPreferences::inApplicationChromeMode(BOOL*)
 {
-    if (!enabled)
-        return E_POINTER;
-    *enabled = FALSE;
     return S_OK;
 }
 
@@ -1519,72 +1500,62 @@ HRESULT WebPreferences::setApplicationChromeMode(BOOL)
     return S_OK;
 }
 
-HRESULT WebPreferences::setOfflineWebApplicationCacheEnabled(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setOfflineWebApplicationCacheEnabled(BOOL enabled)
 {
     setBoolValue(WebKitOfflineWebApplicationCacheEnabledPreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::offlineWebApplicationCacheEnabled(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::offlineWebApplicationCacheEnabled(BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitOfflineWebApplicationCacheEnabledPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setDatabasesEnabled(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setDatabasesEnabled(BOOL enabled)
 {
     setBoolValue(WebKitDatabasesEnabledPreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::databasesEnabled(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::databasesEnabled(BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitDatabasesEnabledPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setLocalStorageEnabled(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setLocalStorageEnabled(BOOL enabled)
 {
     setBoolValue(WebKitLocalStorageEnabledPreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::localStorageEnabled(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::localStorageEnabled(BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitLocalStorageEnabledPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::localStorageDatabasePath(__deref_opt_out BSTR* location)
+HRESULT STDMETHODCALLTYPE WebPreferences::localStorageDatabasePath(BSTR* location)
 {
-    if (!location)
-        return E_POINTER;
     *location = stringValueForKey(WebKitLocalStorageDatabasePathPreferenceKey);
     return (*location) ? S_OK : E_FAIL;
 }
 
-HRESULT WebPreferences::setLocalStorageDatabasePath(_In_ BSTR location)
+HRESULT STDMETHODCALLTYPE WebPreferences::setLocalStorageDatabasePath(BSTR location)
 {
     setStringValue(WebKitLocalStorageDatabasePathPreferenceKey, location);
     return S_OK;
 }
 
-HRESULT WebPreferences::setExperimentalNotificationsEnabled(BOOL enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::setExperimentalNotificationsEnabled(BOOL enabled)
 {
     setBoolValue(WebKitExperimentalNotificationsEnabledPreferenceKey, enabled);
     return S_OK;
 }
 
-HRESULT WebPreferences::experimentalNotificationsEnabled(_Out_ BOOL* enabled)
+HRESULT STDMETHODCALLTYPE WebPreferences::experimentalNotificationsEnabled(BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitExperimentalNotificationsEnabledPreferenceKey);
     return S_OK;
 }
@@ -1595,29 +1566,25 @@ HRESULT WebPreferences::setZoomsTextOnly(BOOL zoomsTextOnly)
     return S_OK;
 }
 
-HRESULT WebPreferences::zoomsTextOnly(_Out_ BOOL* zoomsTextOnly)
+HRESULT WebPreferences::zoomsTextOnly(BOOL* zoomsTextOnly)
 {
-    if (!zoomsTextOnly)
-        return E_POINTER;
     *zoomsTextOnly = boolValueForKey(WebKitZoomsTextOnlyPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setShouldUseHighResolutionTimers(BOOL useHighResolutionTimers)
+HRESULT STDMETHODCALLTYPE WebPreferences::setShouldUseHighResolutionTimers(BOOL useHighResolutionTimers)
 {
     setBoolValue(WebKitUseHighResolutionTimersPreferenceKey, useHighResolutionTimers);
     return S_OK;
 }
 
-HRESULT WebPreferences::shouldUseHighResolutionTimers(_Out_ BOOL* useHighResolutionTimers)
+HRESULT STDMETHODCALLTYPE WebPreferences::shouldUseHighResolutionTimers(BOOL* useHighResolutionTimers)
 {
-    if (!useHighResolutionTimers)
-        return E_POINTER;
     *useHighResolutionTimers = boolValueForKey(WebKitUseHighResolutionTimersPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::setPreferenceForTest(_In_ BSTR key, _In_ BSTR value)
+HRESULT WebPreferences::setPreferenceForTest(BSTR key, BSTR value)
 {
     if (!SysStringLen(key) || !SysStringLen(value))
         return E_FAIL;
@@ -1634,10 +1601,8 @@ HRESULT WebPreferences::setAcceleratedCompositingEnabled(BOOL enabled)
     return S_OK;
 }
 
-HRESULT WebPreferences::acceleratedCompositingEnabled(_Out_ BOOL* enabled)
+HRESULT WebPreferences::acceleratedCompositingEnabled(BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
 #if USE(CA)
     *enabled = CACFLayerTreeHost::acceleratedCompositingAvailable() && boolValueForKey(WebKitAcceleratedCompositingEnabledPreferenceKey);
 #else
@@ -1647,10 +1612,8 @@ HRESULT WebPreferences::acceleratedCompositingEnabled(_Out_ BOOL* enabled)
     return S_OK;
 }
 
-HRESULT WebPreferences::showDebugBorders(_Out_ BOOL* enabled)
+HRESULT WebPreferences::showDebugBorders(BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitShowDebugBordersPreferenceKey);
     return S_OK;
 }
@@ -1661,10 +1624,8 @@ HRESULT WebPreferences::setShowDebugBorders(BOOL enabled)
     return S_OK;
 }
 
-HRESULT WebPreferences::showRepaintCounter(_Out_ BOOL* enabled)
+HRESULT WebPreferences::showRepaintCounter(BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitShowRepaintCounterPreferenceKey);
     return S_OK;
 }
@@ -1681,10 +1642,8 @@ HRESULT WebPreferences::setCustomDragCursorsEnabled(BOOL enabled)
     return S_OK;
 }
 
-HRESULT WebPreferences::customDragCursorsEnabled(_Out_ BOOL* enabled)
+HRESULT WebPreferences::customDragCursorsEnabled(BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitCustomDragCursorsEnabledPreferenceKey);
     return S_OK;
 }
@@ -1695,15 +1654,13 @@ HRESULT WebPreferences::setDNSPrefetchingEnabled(BOOL enabled)
     return S_OK;
 }
 
-HRESULT WebPreferences::isDNSPrefetchingEnabled(_Out_ BOOL* enabled)
+HRESULT WebPreferences::isDNSPrefetchingEnabled(BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitDNSPrefetchingEnabledPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::isFullScreenEnabled(_Out_ BOOL* enabled)
+HRESULT WebPreferences::isFullScreenEnabled(BOOL* enabled)
 {
 #if ENABLE(FULLSCREEN_API)
     if (!enabled)
@@ -1726,7 +1683,7 @@ HRESULT WebPreferences::setFullScreenEnabled(BOOL enabled)
 #endif
 }
 
-HRESULT WebPreferences::avFoundationEnabled(_Out_ BOOL* enabled)
+HRESULT WebPreferences::avFoundationEnabled(BOOL* enabled)
 {
 #if USE(AVFOUNDATION)
     if (!enabled)
@@ -1749,7 +1706,7 @@ HRESULT WebPreferences::setAVFoundationEnabled(BOOL enabled)
 #endif
 }
 
-HRESULT WebPreferences::showsToolTipOverTruncatedText(_Out_ BOOL* showsToolTip)
+HRESULT WebPreferences::showsToolTipOverTruncatedText(BOOL* showsToolTip)
 {
     if (!showsToolTip)
         return E_POINTER;
@@ -1764,7 +1721,7 @@ HRESULT WebPreferences::setShowsToolTipOverTruncatedText(BOOL showsToolTip)
     return S_OK;
 }
 
-HRESULT WebPreferences::shouldInvertColors(_Out_ BOOL* shouldInvertColors)
+HRESULT WebPreferences::shouldInvertColors(BOOL* shouldInvertColors)
 {
     if (!shouldInvertColors)
         return E_POINTER;
@@ -1793,7 +1750,7 @@ void WebPreferences::didRemoveFromWebView()
     }
 }
 
-HRESULT WebPreferences::shouldDisplaySubtitles(_Out_ BOOL* enabled)
+HRESULT WebPreferences::shouldDisplaySubtitles(BOOL* enabled)
 {
 #if ENABLE(VIDEO_TRACK)
     if (!enabled)
@@ -1816,7 +1773,7 @@ HRESULT WebPreferences::setShouldDisplaySubtitles(BOOL enabled)
 #endif
 }
 
-HRESULT WebPreferences::shouldDisplayCaptions(_Out_ BOOL* enabled)
+HRESULT WebPreferences::shouldDisplayCaptions(BOOL* enabled)
 {
 #if ENABLE(VIDEO_TRACK)
     if (!enabled)
@@ -1839,7 +1796,7 @@ HRESULT WebPreferences::setShouldDisplayCaptions(BOOL enabled)
 #endif
 }
 
-HRESULT WebPreferences::shouldDisplayTextDescriptions(_Out_ BOOL* enabled)
+HRESULT WebPreferences::shouldDisplayTextDescriptions(BOOL* enabled)
 {
 #if ENABLE(VIDEO_TRACK)
     if (!enabled)
@@ -1868,18 +1825,14 @@ HRESULT WebPreferences::setRequestAnimationFrameEnabled(BOOL enabled)
     return S_OK;
 }
 
-HRESULT WebPreferences::requestAnimationFrameEnabled(_Out_ BOOL* enabled)
+HRESULT WebPreferences::requestAnimationFrameEnabled(BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitRequestAnimationFrameEnabledPreferenceKey);
     return S_OK;
 }
 
-HRESULT WebPreferences::isInheritURIQueryComponentEnabled(_Out_ BOOL* enabled)
+HRESULT WebPreferences::isInheritURIQueryComponentEnabled(BOOL* enabled)
 {
-    if (!enabled)
-        return E_POINTER;
     *enabled = boolValueForKey(WebKitEnableInheritURIQueryComponentPreferenceKey);
     return S_OK;
 }
@@ -1887,33 +1840,5 @@ HRESULT WebPreferences::isInheritURIQueryComponentEnabled(_Out_ BOOL* enabled)
 HRESULT WebPreferences::setEnableInheritURIQueryComponent(BOOL enabled)
 {
     setBoolValue(WebKitEnableInheritURIQueryComponentPreferenceKey, enabled);
-    return S_OK;
-}
-
-HRESULT WebPreferences::allowDisplayAndRunningOfInsecureContent(_Out_ BOOL* enabled)
-{
-    if (!enabled)
-        return E_POINTER;
-    *enabled = boolValueForKey(WebKitAllowDisplayAndRunningOfInsecureContentPreferenceKey);
-    return S_OK;
-}
-
-HRESULT WebPreferences::setAllowDisplayAndRunningOfInsecureContent(BOOL enabled)
-{
-    setBoolValue(WebKitAllowDisplayAndRunningOfInsecureContentPreferenceKey, enabled);
-    return S_OK;
-}
-
-HRESULT WebPreferences::showTiledScrollingIndicator(_Out_ BOOL* enabled)
-{
-    if (!enabled)
-        return E_POINTER;
-    *enabled = boolValueForKey(WebKitShowTiledScrollingIndicatorPreferenceKey);
-    return S_OK;
-}
-
-HRESULT WebPreferences::setShowTiledScrollingIndicator(BOOL enabled)
-{
-    setBoolValue(WebKitShowTiledScrollingIndicatorPreferenceKey, enabled);
     return S_OK;
 }

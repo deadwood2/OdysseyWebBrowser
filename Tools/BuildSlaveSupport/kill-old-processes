@@ -63,13 +63,10 @@ def main():
         "gcc-4.2",
         "httpd",
         "i686-apple-darwin10-gcc-4.2.1",
-        "ImageDiff",
         "jsc",
-        "LayoutTestHelper",
         "make",
         "pboard", # FIXME: https://bugs.webkit.org/show_bug.cgi?id=81012
-        "perl5.12",
-        "perl5.16",
+        "per5.12",
         "perl",
         "Problem Reporter",
         "ruby",
@@ -88,7 +85,6 @@ def main():
         "WebKitTestRunner",
         "WebProcess",
         "xcodebuild",
-        "Simulator"  # FIXME: Consider moving iOS-specific tasks to their own list.
     ]
 
     taskToKillUnix = [

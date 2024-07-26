@@ -30,7 +30,6 @@ CodeMirror.defineMode("htmlmixed", function(config, parserConfig) {
 
   function html(stream, state) {
     var tagName = state.htmlState.tagName;
-    if (tagName) tagName = tagName.toLowerCase();
     var style = htmlMode.token(stream, state.htmlState);
     if (tagName == "script" && /\btag\b/.test(style) && stream.current() == ">") {
       // Script block: mode to change to depends on type attribute
@@ -57,9 +56,9 @@ CodeMirror.defineMode("htmlmixed", function(config, parserConfig) {
   }
   function maybeBackup(stream, pat, style) {
     var cur = stream.current();
-    var close = cur.search(pat);
+    var close = cur.search(pat), m;
     if (close > -1) stream.backUp(cur.length - close);
-    else if (cur.match(/<\/?$/)) {
+    else if (m = cur.match(/<\/?$/)) {
       stream.backUp(cur.length);
       if (!stream.match(pat, false)) stream.match(cur);
     }
@@ -69,7 +68,7 @@ CodeMirror.defineMode("htmlmixed", function(config, parserConfig) {
     if (stream.match(/^<\/\s*script\s*>/i, false)) {
       state.token = html;
       state.localState = state.localMode = null;
-      return null;
+      return html(stream, state);
     }
     return maybeBackup(stream, /<\/\s*script\s*>/,
                        state.localMode.token(stream, state.localState));
@@ -78,7 +77,7 @@ CodeMirror.defineMode("htmlmixed", function(config, parserConfig) {
     if (stream.match(/^<\/\s*style\s*>/i, false)) {
       state.token = html;
       state.localState = state.localMode = null;
-      return null;
+      return html(stream, state);
     }
     return maybeBackup(stream, /<\/\s*style\s*>/,
                        cssMode.token(stream, state.localState));

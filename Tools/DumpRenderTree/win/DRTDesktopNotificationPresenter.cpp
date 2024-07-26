@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2009 Google Inc. All rights reserved.
- * Copyright (C) 2014-2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2014 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -40,14 +40,11 @@
 #include <comutil.h>
 
 DRTDesktopNotificationPresenter::DRTDesktopNotificationPresenter()
-{
-} 
+    : m_refCount(1) {} 
 
-HRESULT DRTDesktopNotificationPresenter::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT DRTDesktopNotificationPresenter::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<DRTDesktopNotificationPresenter*>(this);
     else if (IsEqualGUID(riid, IID_IWebDesktopNotificationsDelegate))
@@ -73,7 +70,7 @@ ULONG DRTDesktopNotificationPresenter::Release()
     return newRef;
 }
 
-HRESULT DRTDesktopNotificationPresenter::showDesktopNotification(_In_opt_ IWebDesktopNotification* notification)
+HRESULT DRTDesktopNotificationPresenter::showDesktopNotification(IWebDesktopNotification* notification)
 {
     _bstr_t title, text, url;
     BOOL html;
@@ -95,7 +92,7 @@ HRESULT DRTDesktopNotificationPresenter::showDesktopNotification(_In_opt_ IWebDe
     return S_OK;
 }
 
-HRESULT DRTDesktopNotificationPresenter::cancelDesktopNotification(_In_opt_ IWebDesktopNotification* notification)
+HRESULT DRTDesktopNotificationPresenter::cancelDesktopNotification(IWebDesktopNotification* notification)
 {
     _bstr_t identifier;
     BOOL html;
@@ -111,20 +108,15 @@ HRESULT DRTDesktopNotificationPresenter::cancelDesktopNotification(_In_opt_ IWeb
     return S_OK;
 }
 
-HRESULT DRTDesktopNotificationPresenter::notificationDestroyed(_In_opt_ IWebDesktopNotification* /*notification*/)
+HRESULT DRTDesktopNotificationPresenter::notificationDestroyed(IWebDesktopNotification* /*notification*/)
 {
     // Since in these tests events happen immediately, we don't hold on to
     // Notification pointers.  So there's no cleanup to do.
     return S_OK;
 }
 
-HRESULT DRTDesktopNotificationPresenter::checkNotificationPermission(_In_ BSTR /*origin*/, _Out_ int* result)
+HRESULT DRTDesktopNotificationPresenter::checkNotificationPermission(BSTR /*origin*/, int* /*result*/)
 {
-    if (!result)
-        return E_POINTER;
-
-    *result = 0;
-
 #if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
     JSStringRef jsOrigin = JSStringCreateWithBSTR(origin);
     bool allowed = ::gTestRunner->checkDesktopNotificationPermission(jsOrigin);
@@ -139,7 +131,7 @@ HRESULT DRTDesktopNotificationPresenter::checkNotificationPermission(_In_ BSTR /
     return S_OK;
 }
 
-HRESULT DRTDesktopNotificationPresenter::requestNotificationPermission(_In_ BSTR origin)
+HRESULT DRTDesktopNotificationPresenter::requestNotificationPermission(BSTR origin)
 {
     printf("DESKTOP NOTIFICATION PERMISSION REQUESTED: %S\n", origin ? origin : L"");
     return S_OK;

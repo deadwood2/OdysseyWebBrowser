@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011, 2014-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2011 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,7 +35,6 @@ typedef struct CGContext *CGContextRef;
 
 namespace WebCore {
 
-class Color;
 class FloatRect;
 class PlatformCALayer;
 class TileController;
@@ -48,9 +47,9 @@ public:
     PlatformCALayerWinInternal(PlatformCALayer*);
     ~PlatformCALayerWinInternal();
 
-    virtual void displayCallback(CACFLayerRef, CGContextRef);
-    virtual void setNeedsDisplayInRect(const FloatRect&);
-    virtual void setNeedsDisplay();
+    void displayCallback(CACFLayerRef, CGContextRef);
+    void setNeedsDisplayInRect(const FloatRect&);
+    void setNeedsDisplay();
     PlatformCALayer* owner() const { return m_owner; }
 
     void setSublayers(const PlatformCALayerList&);
@@ -60,26 +59,32 @@ public:
     size_t sublayerCount() const;
     int indexOfSublayer(const PlatformCALayer* reference);
 
-    virtual bool isOpaque() const;
-    virtual void setOpaque(bool);
-
-    virtual void setBounds(const FloatRect&);
+    void setBounds(const FloatRect&);
     void setFrame(const FloatRect&);
 
-    virtual float contentsScale() const;
-    virtual void setContentsScale(float);
-
-    virtual void setBorderWidth(float);
-
-    virtual void setBorderColor(const Color&);
-
-    void drawRepaintCounters(CACFLayerRef, CGContextRef, CGRect layerBounds, int drawCount);
+    TileController* createTileController(PlatformCALayer* rootLayer);
+    TiledBacking* tiledBacking();
 
 private:
     void internalSetNeedsDisplay(const FloatRect*);
     PlatformCALayer* sublayerAtIndex(int) const;
 
+    static void tileDisplayCallback(CACFLayerRef, CGContextRef);
+
+    void drawTile(CACFLayerRef, CGContextRef);
+    CGSize constrainedSize(const CGSize&) const;
+    void addTile();
+    void removeTile();
+    CACFLayerRef tileAtIndex(int);
+    int tileCount() const;
+    void updateTiles();
+
     PlatformCALayer* m_owner;
+
+    CGSize m_tileSize;
+    CGSize m_constrainedSize;
+    RetainPtr<CACFLayerRef> m_tileParent;
+    std::unique_ptr<TileController> m_tileController;
 };
 
 }

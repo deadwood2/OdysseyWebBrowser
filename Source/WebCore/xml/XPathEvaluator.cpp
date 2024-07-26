@@ -37,19 +37,19 @@ namespace WebCore {
 
 using namespace XPath;
 
-RefPtr<XPathExpression> XPathEvaluator::createExpression(const String& expression,
+PassRefPtr<XPathExpression> XPathEvaluator::createExpression(const String& expression,
                                                              XPathNSResolver* resolver,
                                                              ExceptionCode& ec)
 {
     return XPathExpression::createExpression(expression, resolver, ec);
 }
 
-Ref<XPathNSResolver> XPathEvaluator::createNSResolver(Node* nodeResolver)
+PassRefPtr<XPathNSResolver> XPathEvaluator::createNSResolver(Node* nodeResolver)
 {
     return NativeXPathNSResolver::create(nodeResolver);
 }
 
-RefPtr<XPathResult> XPathEvaluator::evaluate(const String& expression,
+PassRefPtr<XPathResult> XPathEvaluator::evaluate(const String& expression,
                                                  Node* contextNode,
                                                  XPathNSResolver* resolver,
                                                  unsigned short type,
@@ -58,13 +58,13 @@ RefPtr<XPathResult> XPathEvaluator::evaluate(const String& expression,
 {
     if (!isValidContextNode(contextNode)) {
         ec = NOT_SUPPORTED_ERR;
-        return nullptr;
+        return 0;
     }
 
     ec = 0;
     RefPtr<XPathExpression> expr = createExpression(expression, resolver, ec);
     if (ec)
-        return nullptr;
+        return 0;
     
     return expr->evaluate(contextNode, type, result, ec);
 }

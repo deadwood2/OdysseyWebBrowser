@@ -108,7 +108,7 @@ private:
                 m_state.operand(node->unlinkedLocal()) = Epoch();
             }
             
-            if (mayExit(m_graph, node) != DoesNotExit)
+            if (mayExit(m_graph, node))
                 currentEpoch.bump();
             
             if (nodeIndex) {

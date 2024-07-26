@@ -33,6 +33,33 @@
 
 namespace JSC {
 
+class Keywords {
+    WTF_MAKE_FAST_ALLOCATED;
+public:
+    bool isKeyword(const Identifier& ident) const
+    {
+        return m_keywordTable.entry(ident);
+    }
+    
+    const HashTableValue* getKeyword(const Identifier& ident) const
+    {
+        return m_keywordTable.entry(ident);
+    }
+
+    explicit Keywords(VM&);
+
+    ~Keywords()
+    {
+        m_keywordTable.deleteTable();
+    }
+    
+private:
+    friend class VM;
+    
+    VM& m_vm;
+    const HashTable m_keywordTable;
+};
+
 enum LexerFlags {
     LexerFlagsIgnoreReservedWords = 1, 
     LexerFlagsDontBuildStrings = 2,
@@ -40,8 +67,6 @@ enum LexerFlags {
 };
 
 struct ParsedUnicodeEscapeValue;
-
-bool isLexerKeyword(const Identifier&);
 
 template <typename T>
 class Lexer {

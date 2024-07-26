@@ -35,7 +35,7 @@
 
 #import "PlatformUtilities.h"
 
-#if WK_API_ENABLED && PLATFORM(MAC)
+#if WK_API_ENABLED
 
 namespace {
 

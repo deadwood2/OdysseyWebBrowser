@@ -88,6 +88,15 @@ namespace StringWrapperCFAllocator {
         return header + 1;
     }
 
+    static void deallocateOnMainThread(void* headerPointer)
+    {
+        StringImpl** header = static_cast<StringImpl**>(headerPointer);
+        StringImpl* underlyingString = *header;
+        ASSERT(underlyingString);
+        underlyingString->deref(); // Balanced by call to ref in allocate above.
+        fastFree(header);
+    }
+
     static void deallocate(void* pointer, void*)
     {
         StringImpl** header = static_cast<StringImpl**>(pointer) - 1;
@@ -95,18 +104,12 @@ namespace StringWrapperCFAllocator {
         if (!underlyingString)
             fastFree(header);
         else {
-            if (isMainThread()) {
+            if (!isMainThread())
+                callOnMainThread(deallocateOnMainThread, header);
+            else {
                 underlyingString->deref(); // Balanced by call to ref in allocate above.
                 fastFree(header);
-                return;
             }
-
-            callOnMainThread([header] {
-                StringImpl* underlyingString = *header;
-                ASSERT(underlyingString);
-                underlyingString->deref(); // Balanced by call to ref in allocate above.
-                fastFree(header);
-            });
         }
     }
 

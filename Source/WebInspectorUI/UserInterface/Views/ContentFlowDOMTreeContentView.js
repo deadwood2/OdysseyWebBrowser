@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2013 Adobe Systems Incorporated. All rights reserved.
- * Copyright (C) 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,39 +27,41 @@
  * SUCH DAMAGE.
  */
 
-WebInspector.ContentFlowDOMTreeContentView = class ContentFlowDOMTreeContentView extends WebInspector.DOMTreeContentView
+WebInspector.ContentFlowDOMTreeContentView = function(contentFlow)
 {
-    constructor(contentFlow)
-    {
-        console.assert(contentFlow instanceof WebInspector.ContentFlow, contentFlow);
+    console.assert(contentFlow);
 
-        super(contentFlow);
+    WebInspector.DOMTreeContentView.call(this, contentFlow);
 
-        contentFlow.addEventListener(WebInspector.ContentFlow.Event.ContentNodeWasAdded, this._contentNodeWasAdded, this);
-        contentFlow.addEventListener(WebInspector.ContentFlow.Event.ContentNodeWasRemoved, this._contentNodeWasRemoved, this);
+    contentFlow.addEventListener(WebInspector.ContentFlow.Event.ContentNodeWasAdded, this._contentNodeWasAdded, this);
+    contentFlow.addEventListener(WebInspector.ContentFlow.Event.ContentNodeWasRemoved, this._contentNodeWasRemoved, this);
 
-        this._createContentTrees();
-    }
+    this._createContentTrees();
+};
+
+WebInspector.ContentFlowDOMTreeContentView.prototype = {
+    constructor: WebInspector.ContentFlowDOMTreeContentView,
+    __proto__: WebInspector.DOMTreeContentView.prototype,
 
     // Public
 
-    closed()
+    closed: function()
     {
         this.representedObject.removeEventListener(null, null, this);
 
-        super.closed();
-    }
+        WebInspector.DOMTreeContentView.prototype.closed.call(this);
+    },
 
-    getSearchContextNodes(callback)
+    getSearchContextNodes: function(callback)
     {
         callback(this.domTreeOutline.children.map(function(treeOutline) {
             return treeOutline.representedObject.id;
         }));
-    }
+    },
 
     // Private
 
-    _createContentTrees()
+    _createContentTrees: function()
     {
         var contentNodes = this.representedObject.contentNodes;
         for (var contentNode of contentNodes)
@@ -68,9 +69,9 @@ WebInspector.ContentFlowDOMTreeContentView = class ContentFlowDOMTreeContentView
 
         var documentURL = contentNodes.length ? contentNodes[0].ownerDocument.documentURL : null;
         this._restoreSelectedNodeAfterUpdate(documentURL, contentNodes[0]);
-    }
+    },
 
-    _contentNodeWasAdded(event)
+    _contentNodeWasAdded: function(event)
     {
         var treeElement = new WebInspector.DOMTreeElement(event.data.node);
         if (!event.data.before) {
@@ -85,9 +86,9 @@ WebInspector.ContentFlowDOMTreeContentView = class ContentFlowDOMTreeContentView
         console.assert(index !== -1);
 
         this.domTreeOutline.insertChild(treeElement, index);
-    }
+    },
 
-    _contentNodeWasRemoved(event)
+    _contentNodeWasRemoved: function(event)
     {
         var treeElement = this.domTreeOutline.findTreeElement(event.data.node);
         console.assert(treeElement);

@@ -45,6 +45,8 @@ public:
     iterator begin() { return m_frames.begin(); }
     iterator end() { return m_frames.end(); }
 
+    void visitAggregate(SlotVisitor&);
+    
 private:
     Bag<InlineCallFrame> m_frames;
 };

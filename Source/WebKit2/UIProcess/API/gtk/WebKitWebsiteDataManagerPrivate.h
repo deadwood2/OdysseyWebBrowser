@@ -20,11 +20,10 @@
 #ifndef WebKitWebsiteDataManagerPrivate_h
 #define WebKitWebsiteDataManagerPrivate_h
 
-#include "APIWebsiteDataStore.h"
 #include "WebKitPrivate.h"
 #include "WebsiteDataStore.h"
 
 WebKitWebsiteDataManager* webkitWebsiteDataManagerCreate(WebKit::WebsiteDataStore::Configuration&&);
-API::WebsiteDataStore& webkitWebsiteDataManagerGetDataStore(WebKitWebsiteDataManager*);
+WebKit::WebsiteDataStore& webkitWebsiteDataManagerGetDataStore(WebKitWebsiteDataManager*);
 
 #endif // WebKitWebsiteDataManagerPrivate_h

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,49 +23,87 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.Toolbar = class Toolbar extends WebInspector.NavigationBar
-{
-    constructor(element, navigationItems, dontAllowModeChanges)
-    {
-        super(element, navigationItems, "toolbar");
+WebInspector.Toolbar = function(element, navigationItems, dontAllowModeChanges) {
+    WebInspector.NavigationBar.call(this, element, navigationItems, "toolbar");
 
-        this.displayMode = WebInspector.Toolbar.DisplayMode.IconAndLabelVertical;
-        this.sizeMode = WebInspector.Toolbar.SizeMode.Normal;
+    this.displayMode = WebInspector.Toolbar.DisplayMode.IconAndLabelVertical;
+    this.sizeMode = WebInspector.Toolbar.SizeMode.Normal;
 
-        this._controlSectionElement = document.createElement("div");
-        this._controlSectionElement.className = WebInspector.Toolbar.ControlSectionStyleClassName;
-        this._element.appendChild(this._controlSectionElement);
+    this._controlSectionElement = document.createElement("div");
+    this._controlSectionElement.className = WebInspector.Toolbar.ControlSectionStyleClassName;
+    this._element.appendChild(this._controlSectionElement);
 
-        this._leftSectionElement = document.createElement("div");
-        this._leftSectionElement.className = WebInspector.Toolbar.ItemSectionStyleClassName + " " + WebInspector.Toolbar.LeftItemSectionStyleClassName;
-        this._element.appendChild(this._leftSectionElement);
+    this._leftSectionElement = document.createElement("div");
+    this._leftSectionElement.className = WebInspector.Toolbar.ItemSectionStyleClassName + " " + WebInspector.Toolbar.LeftItemSectionStyleClassName;
+    this._element.appendChild(this._leftSectionElement);
 
-        this._centerLeftSectionElement = document.createElement("div");
-        this._centerLeftSectionElement.className = WebInspector.Toolbar.ItemSectionStyleClassName + " " + WebInspector.Toolbar.CenterLeftItemSectionStyleClassName;
-        this._element.appendChild(this._centerLeftSectionElement);
+    this._centerLeftSectionElement = document.createElement("div");
+    this._centerLeftSectionElement.className = WebInspector.Toolbar.ItemSectionStyleClassName + " " + WebInspector.Toolbar.CenterLeftItemSectionStyleClassName;
+    this._element.appendChild(this._centerLeftSectionElement);
 
-        this._centerSectionElement = document.createElement("div");
-        this._centerSectionElement.className = WebInspector.Toolbar.ItemSectionStyleClassName + " " + WebInspector.Toolbar.CenterItemSectionStyleClassName;
-        this._element.appendChild(this._centerSectionElement);
+    this._centerSectionElement = document.createElement("div");
+    this._centerSectionElement.className = WebInspector.Toolbar.ItemSectionStyleClassName + " " + WebInspector.Toolbar.CenterItemSectionStyleClassName;
+    this._element.appendChild(this._centerSectionElement);
 
-        this._centerRightSectionElement = document.createElement("div");
-        this._centerRightSectionElement.className = WebInspector.Toolbar.ItemSectionStyleClassName + " " + WebInspector.Toolbar.CenterRightItemSectionStyleClassName;
-        this._element.appendChild(this._centerRightSectionElement);
+    this._centerRightSectionElement = document.createElement("div");
+    this._centerRightSectionElement.className = WebInspector.Toolbar.ItemSectionStyleClassName + " " + WebInspector.Toolbar.CenterRightItemSectionStyleClassName;
+    this._element.appendChild(this._centerRightSectionElement);
 
-        this._rightSectionElement = document.createElement("div");
-        this._rightSectionElement.className = WebInspector.Toolbar.ItemSectionStyleClassName + " " + WebInspector.Toolbar.RightItemSectionStyleClassName;
-        this._element.appendChild(this._rightSectionElement);
+    this._rightSectionElement = document.createElement("div");
+    this._rightSectionElement.className = WebInspector.Toolbar.ItemSectionStyleClassName + " " + WebInspector.Toolbar.RightItemSectionStyleClassName;
+    this._element.appendChild(this._rightSectionElement);
 
-        if (!dontAllowModeChanges)
-            this._element.addEventListener("contextmenu", this._handleContextMenuEvent.bind(this), false);
-    }
+    if (!dontAllowModeChanges)
+        this._element.addEventListener("contextmenu", this._handleContextMenuEvent.bind(this), false);
+};
+
+// FIXME: Move to a WebInspector.Object subclass and we can remove this.
+WebInspector.Object.deprecatedAddConstructorFunctions(WebInspector.Toolbar);
+
+WebInspector.Toolbar.StyleClassName = "toolbar";
+WebInspector.Toolbar.ControlSectionStyleClassName = "control-section";
+WebInspector.Toolbar.ItemSectionStyleClassName = "item-section";
+WebInspector.Toolbar.LeftItemSectionStyleClassName = "left";
+WebInspector.Toolbar.CenterLeftItemSectionStyleClassName = "center-left";
+WebInspector.Toolbar.CenterItemSectionStyleClassName = "center";
+WebInspector.Toolbar.CenterRightItemSectionStyleClassName = "center-right";
+WebInspector.Toolbar.RightItemSectionStyleClassName = "right";
+
+WebInspector.Toolbar.Event = {
+    DisplayModeDidChange: "toolbar-display-mode-did-change",
+    SizeModeDidChange: "toolbar-size-mode-did-change"
+};
+
+WebInspector.Toolbar.Section = {
+    Control: "control",
+    Left: "left",
+    CenterLeft: "center-left",
+    Center: "center",
+    CenterRight: "center-right",
+    Right: "right"
+};
+
+WebInspector.Toolbar.DisplayMode = {
+    IconAndLabelVertical: "icon-and-label-vertical",
+    IconAndLabelHorizontal: "icon-and-label-horizontal",
+    IconOnly: "icon-only",
+    LabelOnly: "label-only"
+};
+
+WebInspector.Toolbar.SizeMode = {
+    Normal: "normal-size",
+    Small: "small-size"
+};
+
+WebInspector.Toolbar.prototype = {
+    constructor: WebInspector.Toolbar,
 
     // Public
 
     get displayMode()
     {
         return this._displayMode;
-    }
+    },
 
     set displayMode(mode)
     {
@@ -86,12 +124,12 @@ WebInspector.Toolbar = class Toolbar extends WebInspector.NavigationBar
         this.updateLayout();
 
         this.dispatchEventToListeners(WebInspector.Toolbar.Event.DisplayModeDidChange);
-    }
+    },
 
     get sizeMode()
     {
         return this._sizeMode;
-    }
+    },
 
     set sizeMode(mode)
     {
@@ -108,9 +146,9 @@ WebInspector.Toolbar = class Toolbar extends WebInspector.NavigationBar
         this.updateLayout();
 
         this.dispatchEventToListeners(WebInspector.Toolbar.Event.SizeModeDidChange);
-    }
+    },
 
-    customUpdateLayout()
+    customUpdateLayout: function()
     {
         // Bail early if our sections are not created yet. This means we are being called during construction.
         if (!this._leftSectionElement || !this._centerSectionElement || !this._rightSectionElement)
@@ -155,9 +193,9 @@ WebInspector.Toolbar = class Toolbar extends WebInspector.NavigationBar
             return;
 
         this._element.classList.add(WebInspector.NavigationBar.CollapsedStyleClassName);
-    }
+    },
 
-    addToolbarItem(toolbarItem, sectionIdentifier)
+    addToolbarItem: function(toolbarItem, sectionIdentifier)
     {
         var sectionElement;
 
@@ -191,11 +229,11 @@ WebInspector.Toolbar = class Toolbar extends WebInspector.NavigationBar
         console.assert(sectionElement);
 
         this.addNavigationItem(toolbarItem, sectionElement);
-    }
+    },
 
     // Private
 
-    _handleContextMenuEvent(event)
+    _handleContextMenuEvent: function(event)
     {
         var contextMenu = new WebInspector.ContextMenu(event);
 
@@ -210,50 +248,17 @@ WebInspector.Toolbar = class Toolbar extends WebInspector.NavigationBar
         }
 
         contextMenu.show();
-    }
+    },
 
-    _changeDisplayMode(displayMode)
+    _changeDisplayMode: function(displayMode)
     {
         this.displayMode = displayMode;
-    }
+    },
 
-    _toggleSmallIcons()
+    _toggleSmallIcons: function()
     {
         this.sizeMode = this._sizeMode === WebInspector.Toolbar.SizeMode.Normal ? WebInspector.Toolbar.SizeMode.Small : WebInspector.Toolbar.SizeMode.Normal;
     }
 };
 
-WebInspector.Toolbar.StyleClassName = "toolbar";
-WebInspector.Toolbar.ControlSectionStyleClassName = "control-section";
-WebInspector.Toolbar.ItemSectionStyleClassName = "item-section";
-WebInspector.Toolbar.LeftItemSectionStyleClassName = "left";
-WebInspector.Toolbar.CenterLeftItemSectionStyleClassName = "center-left";
-WebInspector.Toolbar.CenterItemSectionStyleClassName = "center";
-WebInspector.Toolbar.CenterRightItemSectionStyleClassName = "center-right";
-WebInspector.Toolbar.RightItemSectionStyleClassName = "right";
-
-WebInspector.Toolbar.Event = {
-    DisplayModeDidChange: "toolbar-display-mode-did-change",
-    SizeModeDidChange: "toolbar-size-mode-did-change"
-};
-
-WebInspector.Toolbar.Section = {
-    Control: "control",
-    Left: "left",
-    CenterLeft: "center-left",
-    Center: "center",
-    CenterRight: "center-right",
-    Right: "right"
-};
-
-WebInspector.Toolbar.DisplayMode = {
-    IconAndLabelVertical: "icon-and-label-vertical",
-    IconAndLabelHorizontal: "icon-and-label-horizontal",
-    IconOnly: "icon-only",
-    LabelOnly: "label-only"
-};
-
-WebInspector.Toolbar.SizeMode = {
-    Normal: "normal-size",
-    Small: "small-size"
-};
+WebInspector.Toolbar.prototype.__proto__ = WebInspector.NavigationBar.prototype;

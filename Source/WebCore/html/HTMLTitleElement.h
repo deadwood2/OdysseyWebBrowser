@@ -34,7 +34,7 @@ public:
     String text() const;
     void setText(const String&);
 
-    const StringWithDirection& textWithDirection() const { return m_title; }
+    StringWithDirection textWithDirection();
 
 private:
     HTMLTitleElement(const QualifiedName&, Document&);
@@ -42,8 +42,6 @@ private:
     virtual InsertionNotificationRequest insertedInto(ContainerNode&) override;
     virtual void removedFrom(ContainerNode&) override;
     virtual void childrenChanged(const ChildChange&) override;
-
-    StringWithDirection computedTextWithDirection();
 
     StringWithDirection m_title;
 };

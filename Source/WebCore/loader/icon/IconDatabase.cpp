@@ -186,26 +186,28 @@ void IconDatabase::removeAllIcons()
     
     // Clear the in-memory record of every IconRecord, anything waiting to be read from disk, and anything waiting to be written to disk
     {
-        LockHolder locker(m_urlAndIconLock);
+        MutexLocker locker(m_urlAndIconLock);
         
         // Clear the IconRecords for every page URL - RefCounting will cause the IconRecords themselves to be deleted
         // We don't delete the actual PageRecords because we have the "retain icon for url" count to keep track of
-        for (auto& pageURL : m_pageURLToRecordMap.values())
-            pageURL->setIconRecord(nullptr);
-
+        HashMap<String, PageURLRecord*>::iterator iter = m_pageURLToRecordMap.begin();
+        HashMap<String, PageURLRecord*>::iterator end = m_pageURLToRecordMap.end();
+        for (; iter != end; ++iter)
+            (*iter).value->setIconRecord(0);
+            
         // Clear the iconURL -> IconRecord map
         m_iconURLToRecordMap.clear();
                     
         // Clear all in-memory records of things that need to be synced out to disk
         {
-            LockHolder locker(m_pendingSyncLock);
+            MutexLocker locker(m_pendingSyncLock);
             m_pageURLsPendingSync.clear();
             m_iconsPendingSync.clear();
         }
         
         // Clear all in-memory records of things that need to be read in from disk
         {
-            LockHolder locker(m_pendingReadingLock);
+            MutexLocker locker(m_pendingReadingLock);
             m_pageURLsPendingImport.clear();
             m_pageURLsInterestedInIcons.clear();
             m_iconsPendingReading.clear();
@@ -227,7 +229,7 @@ Image* IconDatabase::synchronousIconForPageURL(const String& pageURLOriginal, co
     if (!isOpen() || !documentCanHaveIcon(pageURLOriginal))
         return 0;
 
-    LockHolder locker(m_urlAndIconLock);
+    MutexLocker locker(m_urlAndIconLock);
 
     performPendingRetainAndReleaseOperations();
     
@@ -243,7 +245,7 @@ Image* IconDatabase::synchronousIconForPageURL(const String& pageURLOriginal, co
     // 1 - The initial url import is incomplete and this pageURL was marked to be notified once it is complete if an iconURL exists
     // 2 - The initial url import IS complete and this pageURL has no icon
     if (!pageRecord) {
-        LockHolder locker(m_pendingReadingLock);
+        MutexLocker locker(m_pendingReadingLock);
         
         // Import is ongoing, there might be an icon.  In this case, register to be notified when the icon comes in
         // If we ever reach this condition, we know we've already made the pageURL copy
@@ -274,7 +276,7 @@ Image* IconDatabase::synchronousIconForPageURL(const String& pageURLOriginal, co
         if (pageURLCopy.isNull())
             pageURLCopy = pageURLOriginal.isolatedCopy();
     
-        LockHolder locker(m_pendingReadingLock);
+        MutexLocker locker(m_pendingReadingLock);
         m_pageURLsInterestedInIcons.add(pageURLCopy);
         m_iconsPendingReading.add(iconRecord);
         wakeSyncThread();
@@ -305,7 +307,7 @@ PassNativeImagePtr IconDatabase::synchronousNativeIconForPageURL(const String& p
     if (!icon)
         return 0;
 
-    LockHolder locker(m_urlAndIconLock);
+    MutexLocker locker(m_urlAndIconLock);
     return icon->nativeImageForCurrentFrame();
 }
 
@@ -327,7 +329,7 @@ String IconDatabase::synchronousIconURLForPageURL(const String& pageURLOriginal)
     if (!isOpen() || !documentCanHaveIcon(pageURLOriginal))
         return String();
         
-    LockHolder locker(m_urlAndIconLock);
+    MutexLocker locker(m_urlAndIconLock);
     
     PageURLRecord* pageRecord = m_pageURLToRecordMap.get(pageURLOriginal);
     if (!pageRecord)
@@ -415,7 +417,7 @@ void IconDatabase::retainIconForPageURL(const String& pageURL)
         return;
 
     {
-        LockHolder locker(m_urlsToRetainOrReleaseLock);
+        MutexLocker locker(m_urlsToRetainOrReleaseLock);
         m_urlsToRetain.add(pageURL.isolatedCopy());
         m_retainOrReleaseIconRequested = true;
     }
@@ -448,7 +450,7 @@ void IconDatabase::performRetainIconForPageURL(const String& pageURLOriginal, in
         if (!m_iconURLImportComplete)
             return;
 
-        LockHolder locker(m_pendingSyncLock);
+        MutexLocker locker(m_pendingSyncLock);
         // If this pageURL waiting to be sync'ed, update the sync record
         // This saves us in the case where a page was ready to be deleted from the database but was just retained - so theres no need to delete it!
         if (!m_privateBrowsingEnabled && m_pageURLsPendingSync.contains(pageURL)) {
@@ -468,7 +470,7 @@ void IconDatabase::releaseIconForPageURL(const String& pageURL)
         return;
 
     {
-        LockHolder locker(m_urlsToRetainOrReleaseLock);
+        MutexLocker locker(m_urlsToRetainOrReleaseLock);
         m_urlsToRelease.add(pageURL.isolatedCopy());
         m_retainOrReleaseIconRequested = true;
     }
@@ -504,7 +506,7 @@ void IconDatabase::performReleaseIconForPageURL(const String& pageURLOriginal, i
     ASSERT(!iconRecord || (iconRecord && m_iconURLToRecordMap.get(iconRecord->iconURL()) == iconRecord));
 
     {
-        LockHolder locker(m_pendingReadingLock);
+        MutexLocker locker(m_pendingReadingLock);
         
         // Since this pageURL is going away, there's no reason anyone would ever be interested in its read results    
         if (!m_iconURLImportComplete)
@@ -520,7 +522,7 @@ void IconDatabase::performReleaseIconForPageURL(const String& pageURLOriginal, i
     
     // Mark stuff for deletion from the database only if we're not in private browsing
     if (!m_privateBrowsingEnabled) {
-        LockHolder locker(m_pendingSyncLock);
+        MutexLocker locker(m_pendingSyncLock);
         m_pageURLsPendingSync.set(pageURLOriginal.isolatedCopy(), pageRecord->snapshot(true));
     
         // If this page is the last page to refer to a particular IconRecord, that IconRecord needs to
@@ -546,12 +548,12 @@ void IconDatabase::setIconDataForIconURL(PassRefPtr<SharedBuffer> dataOriginal, 
     
     Vector<String> pageURLs;
     {
-        LockHolder locker(m_urlAndIconLock);
+        MutexLocker locker(m_urlAndIconLock);
     
         // If this icon was pending a read, remove it from that set because this new data should override what is on disk
         RefPtr<IconRecord> icon = m_iconURLToRecordMap.get(iconURL);
         if (icon) {
-            LockHolder locker(m_pendingReadingLock);
+            MutexLocker locker(m_pendingReadingLock);
             m_iconsPendingReading.remove(icon.get());
         } else
             icon = getOrCreateIconRecord(iconURL);
@@ -565,7 +567,7 @@ void IconDatabase::setIconDataForIconURL(PassRefPtr<SharedBuffer> dataOriginal, 
         
         // Mark the IconRecord as requiring an update to the database only if private browsing is disabled
         if (!m_privateBrowsingEnabled) {
-            LockHolder locker(m_pendingSyncLock);
+            MutexLocker locker(m_pendingSyncLock);
             m_iconsPendingSync.set(iconURL, icon->snapshot());
         }
 
@@ -583,11 +585,11 @@ void IconDatabase::setIconDataForIconURL(PassRefPtr<SharedBuffer> dataOriginal, 
         // Start the timer to commit this change - or further delay the timer if it was already started
         scheduleOrDeferSyncTimer();
 
-        for (auto& pageURL : pageURLs) {
+        for (unsigned i = 0; i < pageURLs.size(); ++i) {
             AutodrainedPool pool;
 
-            LOG(IconDatabase, "Dispatching notification that retaining pageURL %s has a new icon", urlForLogging(pageURL).ascii().data());
-            m_client->didChangeIconForPageURL(pageURL);
+            LOG(IconDatabase, "Dispatching notification that retaining pageURL %s has a new icon", urlForLogging(pageURLs[i]).ascii().data());
+            m_client->didChangeIconForPageURL(pageURLs[i]);
         }
     }
 }
@@ -606,7 +608,7 @@ void IconDatabase::setIconURLForPageURL(const String& iconURLOriginal, const Str
     String iconURL, pageURL;
     
     {
-        LockHolder locker(m_urlAndIconLock);
+        MutexLocker locker(m_urlAndIconLock);
 
         PageURLRecord* pageRecord = m_pageURLToRecordMap.get(pageURLOriginal);
         
@@ -634,13 +636,13 @@ void IconDatabase::setIconURLForPageURL(const String& iconURLOriginal, const Str
             ASSERT(iconRecord->retainingPageURLs().size() == 0);
             LOG(IconDatabase, "Icon for icon url %s is about to be destroyed - removing mapping for it", urlForLogging(iconRecord->iconURL()).ascii().data());
             m_iconURLToRecordMap.remove(iconRecord->iconURL());
-            LockHolder locker(m_pendingReadingLock);
+            MutexLocker locker(m_pendingReadingLock);
             m_iconsPendingReading.remove(iconRecord.get());
         }
         
         // And mark this mapping to be added to the database
         if (!m_privateBrowsingEnabled) {
-            LockHolder locker(m_pendingSyncLock);
+            MutexLocker locker(m_pendingSyncLock);
             m_pageURLsPendingSync.set(pageURL, pageRecord->snapshot());
             
             // If the icon is on its last ref, mark it for deletion
@@ -672,7 +674,7 @@ IconLoadDecision IconDatabase::synchronousLoadDecisionForIconURL(const String& i
     // 1 - When we read the icon urls from disk, getting the timeStamp at the same time
     // 2 - When we get a new icon from the loader, in which case the timestamp is set at that time
     {
-        LockHolder locker(m_urlAndIconLock);
+        MutexLocker locker(m_urlAndIconLock);
         if (IconRecord* icon = m_iconURLToRecordMap.get(iconURL)) {
             LOG(IconDatabase, "Found expiration time on a present icon based on existing IconRecord");
             return static_cast<int>(currentTime()) - static_cast<int>(icon->getTimestamp()) > iconExpirationTime ? IconLoadYes : IconLoadNo;
@@ -680,7 +682,7 @@ IconLoadDecision IconDatabase::synchronousLoadDecisionForIconURL(const String& i
     }
     
     // If we don't have a record for it, but we *have* imported all iconURLs from disk, then we should load it now
-    LockHolder readingLocker(m_pendingReadingLock);
+    MutexLocker readingLocker(m_pendingReadingLock);
     if (m_iconURLImportComplete)
         return IconLoadYes;
         
@@ -697,7 +699,7 @@ bool IconDatabase::synchronousIconDataKnownForIconURL(const String& iconURL)
 {
     ASSERT_NOT_SYNC_THREAD();
     
-    LockHolder locker(m_urlAndIconLock);
+    MutexLocker locker(m_urlAndIconLock);
     if (IconRecord* icon = m_iconURLToRecordMap.get(iconURL))
         return icon->imageDataStatus() != ImageDataStatusUnknown;
 
@@ -752,31 +754,34 @@ void IconDatabase::checkIntegrityBeforeOpening()
 
 size_t IconDatabase::pageURLMappingCount()
 {
-    LockHolder locker(m_urlAndIconLock);
+    MutexLocker locker(m_urlAndIconLock);
     return m_pageURLToRecordMap.size();
 }
 
 size_t IconDatabase::retainedPageURLCount()
 {
-    LockHolder locker(m_urlAndIconLock);
+    MutexLocker locker(m_urlAndIconLock);
     performPendingRetainAndReleaseOperations();
     return m_retainedPageURLs.size();
 }
 
 size_t IconDatabase::iconRecordCount()
 {
-    LockHolder locker(m_urlAndIconLock);
+    MutexLocker locker(m_urlAndIconLock);
     return m_iconURLToRecordMap.size();
 }
 
 size_t IconDatabase::iconRecordCountWithData()
 {
-    LockHolder locker(m_urlAndIconLock);
+    MutexLocker locker(m_urlAndIconLock);
     size_t result = 0;
-
-    for (auto& iconRecord : m_iconURLToRecordMap.values())
-        result += (iconRecord->imageDataStatus() == ImageDataStatusPresent);
-
+    
+    HashMap<String, IconRecord*>::iterator i = m_iconURLToRecordMap.begin();
+    HashMap<String, IconRecord*>::iterator end = m_iconURLToRecordMap.end();
+    
+    for (; i != end; ++i)
+        result += ((*i).value->imageDataStatus() == ImageDataStatusPresent);
+            
     return result;
 }
 
@@ -811,24 +816,26 @@ void IconDatabase::notifyPendingLoadDecisions()
     // This method should only be called upon completion of the initial url import from the database
     ASSERT(m_iconURLImportComplete);
     LOG(IconDatabase, "Notifying all DocumentLoaders that were waiting on a load decision for their icons");
-        
-    for (auto& loader : m_loadersPendingDecision) {
-        if (loader->refCount() > 1)
-            loader->iconLoadDecisionAvailable();
-    }
-
+    
+    HashSet<RefPtr<DocumentLoader>>::iterator i = m_loadersPendingDecision.begin();
+    HashSet<RefPtr<DocumentLoader>>::iterator end = m_loadersPendingDecision.end();
+    
+    for (; i != end; ++i)
+        if ((*i)->refCount() > 1)
+            (*i)->iconLoadDecisionAvailable();
+            
     m_loadersPendingDecision.clear();
 }
 
 void IconDatabase::wakeSyncThread()
 {
-    LockHolder locker(m_syncLock);
+    MutexLocker locker(m_syncLock);
 
     if (!m_disableSuddenTerminationWhileSyncThreadHasWorkToDo)
         m_disableSuddenTerminationWhileSyncThreadHasWorkToDo = std::make_unique<SuddenTerminationDisabler>();
 
     m_syncThreadHasWorkToDo = true;
-    m_syncCondition.notifyOne();
+    m_syncCondition.signal();
 }
 
 void IconDatabase::scheduleOrDeferSyncTimer()
@@ -867,13 +874,13 @@ bool IconDatabase::isOpen() const
 
 bool IconDatabase::isOpenBesidesMainThreadCallbacks() const
 {
-    LockHolder locker(m_syncLock);
+    MutexLocker locker(m_syncLock);
     return m_syncThreadRunning || m_syncDB.isOpen();
 }
 
 String IconDatabase::databasePath() const
 {
-    LockHolder locker(m_syncLock);
+    MutexLocker locker(m_syncLock);
     return m_completeDatabasePath.isolatedCopy();
 }
 
@@ -909,7 +916,7 @@ PageURLRecord* IconDatabase::getOrCreatePageURLRecord(const String& pageURL)
 
     PageURLRecord* pageRecord = m_pageURLToRecordMap.get(pageURL);
     
-    LockHolder locker(m_pendingReadingLock);
+    MutexLocker locker(m_pendingReadingLock);
     if (!m_iconURLImportComplete) {
         // If the initial import of all URLs hasn't completed and we have no page record, we assume we *might* know about this later and create a record for it
         if (!pageRecord) {
@@ -978,7 +985,7 @@ void IconDatabase::iconDatabaseSyncThread()
     }
     
     {
-        LockHolder locker(m_syncLock);
+        MutexLocker locker(m_syncLock);
         if (!m_syncDB.open(m_completeDatabasePath)) {
             LOG_ERROR("Unable to open icon database at path %s - %s", m_completeDatabasePath.ascii().data(), m_syncDB.lastErrorMsg());
             return;
@@ -1106,7 +1113,7 @@ void IconDatabase::performOpenInitialization()
             m_syncDB.close();
             
             {
-                LockHolder locker(m_syncLock);
+                MutexLocker locker(m_syncLock);
                 // Should've been consumed by SQLite, delete just to make sure we don't see it again in the future;
                 deleteFile(m_completeDatabasePath + "-journal");
                 deleteFile(m_completeDatabasePath);
@@ -1208,7 +1215,7 @@ void IconDatabase::performURLImport()
         String iconURL = query.getColumnText(1);
 
         {
-            LockHolder locker(m_urlAndIconLock);
+            MutexLocker locker(m_urlAndIconLock);
 
             PageURLRecord* pageRecord = m_pageURLToRecordMap.get(pageURL);
             
@@ -1241,7 +1248,7 @@ void IconDatabase::performURLImport()
         // one for the URL and one for the Image itself
         // Note that WebIconDatabase is not neccessarily API so we might be able to make this change
         {
-            LockHolder locker(m_pendingReadingLock);
+            MutexLocker locker(m_pendingReadingLock);
             if (m_pageURLsPendingImport.contains(pageURL)) {
                 dispatchDidImportIconURLForPageURLOnMainThread(pageURL);
                 m_pageURLsPendingImport.remove(pageURL);
@@ -1264,7 +1271,7 @@ void IconDatabase::performURLImport()
     // but after m_iconURLImportComplete is set to true, we don't care about this set anymore
     Vector<String> urls;
     {
-        LockHolder locker(m_pendingReadingLock);
+        MutexLocker locker(m_pendingReadingLock);
 
         urls.appendRange(m_pageURLsPendingImport.begin(), m_pageURLsPendingImport.end());
         m_pageURLsPendingImport.clear();        
@@ -1277,15 +1284,15 @@ void IconDatabase::performURLImport()
     // Remove unretained ones if database cleanup is allowed
     // Keep a set of ones that are retained and pending notification
     {
-        LockHolder locker(m_urlAndIconLock);
+        MutexLocker locker(m_urlAndIconLock);
 
         performPendingRetainAndReleaseOperations();
 
-        for (auto& url : urls) {
-            if (!m_retainedPageURLs.contains(url)) {
-                PageURLRecord* record = m_pageURLToRecordMap.get(url);
+        for (unsigned i = 0; i < urls.size(); ++i) {
+            if (!m_retainedPageURLs.contains(urls[i])) {
+                PageURLRecord* record = m_pageURLToRecordMap.get(urls[i]);
                 if (record && !databaseCleanupCounter) {
-                    m_pageURLToRecordMap.remove(url);
+                    m_pageURLToRecordMap.remove(urls[i]);
                     IconRecord* iconRecord = record->iconRecord();
                     
                     // If this page is the only remaining retainer of its icon, mark that icon for deletion and don't bother
@@ -1294,12 +1301,12 @@ void IconDatabase::performURLImport()
                         m_iconURLToRecordMap.remove(iconRecord->iconURL());
                         
                         {
-                            LockHolder locker(m_pendingReadingLock);
-                            m_pageURLsInterestedInIcons.remove(url);
+                            MutexLocker locker(m_pendingReadingLock);
+                            m_pageURLsInterestedInIcons.remove(urls[i]);
                             m_iconsPendingReading.remove(iconRecord);
                         }
                         {
-                            LockHolder locker(m_pendingSyncLock);
+                            MutexLocker locker(m_pendingSyncLock);
                             m_iconsPendingSync.set(iconRecord->iconURL(), iconRecord->snapshot(true));                    
                         }
                     }
@@ -1307,18 +1314,18 @@ void IconDatabase::performURLImport()
                     delete record;
                 }
             } else {
-                urlsToNotify.append(url);
+                urlsToNotify.append(urls[i]);
             }
         }
     }
 
     LOG(IconDatabase, "Notifying %lu interested page URLs that their icon URL is known due to the import", static_cast<unsigned long>(urlsToNotify.size()));
     // Now that we don't hold any locks, perform the actual notifications
-    for (auto& url : urlsToNotify) {
+    for (unsigned i = 0; i < urlsToNotify.size(); ++i) {
         AutodrainedPool pool;
 
-        LOG(IconDatabase, "Notifying icon info known for pageURL %s", url.ascii().data());
-        dispatchDidImportIconURLForPageURLOnMainThread(url);
+        LOG(IconDatabase, "Notifying icon info known for pageURL %s", urlsToNotify[i].ascii().data());
+        dispatchDidImportIconURLForPageURLOnMainThread(urlsToNotify[i]);
         if (shouldStopThreadActivity())
             return;
     }
@@ -1360,13 +1367,11 @@ void IconDatabase::syncThreadMainLoop()
         }
         
         // Then, if the thread should be quitting, quit now!
-        if (m_threadTerminationRequested) {
-            cleanupSyncThread();
-            return;
-        }
+        if (m_threadTerminationRequested)
+            break;
 
         {
-            LockHolder locker(m_urlAndIconLock);
+            MutexLocker locker(m_urlAndIconLock);
             performPendingRetainAndReleaseOperations();
         }
         
@@ -1446,7 +1451,7 @@ void IconDatabase::performPendingRetainAndReleaseOperations()
     HashCountedSet<String> toRelease;
 
     {
-        LockHolder pendingWorkLocker(m_urlsToRetainOrReleaseLock);
+        MutexLocker pendingWorkLocker(m_urlsToRetainOrReleaseLock);
         if (!m_retainOrReleaseIconRequested)
             return;
 
@@ -1458,14 +1463,14 @@ void IconDatabase::performPendingRetainAndReleaseOperations()
         m_retainOrReleaseIconRequested = false;
     }
 
-    for (auto& entry : toRetain) {
-        ASSERT(!entry.key.impl() || entry.key.impl()->hasOneRef());
-        performRetainIconForPageURL(entry.key, entry.value);
+    for (HashCountedSet<String>::const_iterator it = toRetain.begin(), end = toRetain.end(); it != end; ++it) {
+        ASSERT(!it->key.impl() || it->key.impl()->hasOneRef());
+        performRetainIconForPageURL(it->key, it->value);
     }
 
-    for (auto& entry : toRelease) {
-        ASSERT(!entry.key.impl() || entry.key.impl()->hasOneRef());
-        performReleaseIconForPageURL(entry.key, entry.value);
+    for (HashCountedSet<String>::const_iterator it = toRelease.begin(), end = toRelease.end(); it != end; ++it) {
+        ASSERT(!it->key.impl() || it->key.impl()->hasOneRef());
+        performReleaseIconForPageURL(it->key, it->value);
     }
 }
 
@@ -1483,7 +1488,7 @@ bool IconDatabase::readFromDatabase()
     // This way we won't hold the lock for a long period of time
     Vector<IconRecord*> icons;
     {
-        LockHolder locker(m_pendingReadingLock);
+        MutexLocker locker(m_pendingReadingLock);
         icons.appendRange(m_iconsPendingReading.begin(), m_iconsPendingReading.end());
     }
     
@@ -1496,9 +1501,9 @@ bool IconDatabase::readFromDatabase()
 
         // Verify this icon still wants to be read from disk
         {
-            LockHolder urlLocker(m_urlAndIconLock);
+            MutexLocker urlLocker(m_urlAndIconLock);
             {
-                LockHolder readLocker(m_pendingReadingLock);
+                MutexLocker readLocker(m_pendingReadingLock);
                 
                 if (m_iconsPendingReading.contains(icons[i])) {
                     // Set the new data
@@ -1521,10 +1526,12 @@ bool IconDatabase::readFromDatabase()
                         outerHash = &(icons[i]->retainingPageURLs());
                     }
                     
-                    for (auto& outer : *outerHash) {
-                        if (innerHash->contains(outer)) {
-                            LOG(IconDatabase, "%s is interested in the icon we just read. Adding it to the notification list and removing it from the interested set", urlForLogging(outer).ascii().data());
-                            urlsToNotify.add(outer);
+                    HashSet<String>::const_iterator iter = outerHash->begin();
+                    HashSet<String>::const_iterator end = outerHash->end();
+                    for (; iter != end; ++iter) {
+                        if (innerHash->contains(*iter)) {
+                            LOG(IconDatabase, "%s is interested in the icon we just read. Adding it to the notification list and removing it from the interested set", urlForLogging(*iter).ascii().data());
+                            urlsToNotify.add(*iter);
                         }
                         
                         // If we ever get to the point were we've seen every url interested in this icon, break early
@@ -1536,8 +1543,10 @@ bool IconDatabase::readFromDatabase()
                     if (urlsToNotify.size() == m_pageURLsInterestedInIcons.size())
                         m_pageURLsInterestedInIcons.clear();
                     else {
-                        for (auto& url : urlsToNotify)
-                            m_pageURLsInterestedInIcons.remove(url);
+                        iter = urlsToNotify.begin();
+                        end = urlsToNotify.end();
+                        for (; iter != end; ++iter)
+                            m_pageURLsInterestedInIcons.remove(*iter);
                     }
                 }
             }
@@ -1582,11 +1591,11 @@ bool IconDatabase::writeToDatabase()
     // we'll pick it up on the next pass.  This greatly simplifies the locking strategy for this method and remains cohesive with changes
     // asked for by the database on the main thread
     {
-        LockHolder locker(m_urlAndIconLock);
+        MutexLocker locker(m_urlAndIconLock);
         Vector<IconSnapshot> iconSnapshots;
         Vector<PageURLSnapshot> pageSnapshots;
         {
-            LockHolder locker(m_pendingSyncLock);
+            MutexLocker locker(m_pendingSyncLock);
 
             iconSnapshots.appendRange(m_iconsPendingSync.begin().values(), m_iconsPendingSync.end().values());
             m_iconsPendingSync.clear();
@@ -1601,19 +1610,19 @@ bool IconDatabase::writeToDatabase()
         SQLiteTransaction syncTransaction(m_syncDB);
         syncTransaction.begin();
 
-        for (auto& snapshot : iconSnapshots) {
-            writeIconSnapshotToSQLDatabase(snapshot);
-            LOG(IconDatabase, "Wrote IconRecord for IconURL %s with timeStamp of %i to the DB", urlForLogging(snapshot.iconURL()).ascii().data(), snapshot.timestamp());
+        for (unsigned i = 0; i < iconSnapshots.size(); ++i) {
+            writeIconSnapshotToSQLDatabase(iconSnapshots[i]);
+            LOG(IconDatabase, "Wrote IconRecord for IconURL %s with timeStamp of %i to the DB", urlForLogging(iconSnapshots[i].iconURL()).ascii().data(), iconSnapshots[i].timestamp());
         }
 
-        for (auto& snapshot : pageSnapshots) {
+        for (unsigned i = 0; i < pageSnapshots.size(); ++i) {
             // If the icon URL is empty, this page is meant to be deleted
             // ASSERTs are sanity checks to make sure the mappings exist if they should and don't if they shouldn't
-            if (snapshot.iconURL().isEmpty())
-                removePageURLFromSQLDatabase(snapshot.pageURL());
+            if (pageSnapshots[i].iconURL().isEmpty())
+                removePageURLFromSQLDatabase(pageSnapshots[i].pageURL());
             else
-                setIconURLForPageURLInSQLDatabase(snapshot.iconURL(), snapshot.pageURL());
-            LOG(IconDatabase, "Committed IconURL for PageURL %s to database", urlForLogging(snapshot.pageURL()).ascii().data());
+                setIconURLForPageURLInSQLDatabase(pageSnapshots[i].iconURL(), pageSnapshots[i].pageURL());
+            LOG(IconDatabase, "Committed IconURL for PageURL %s to database", urlForLogging(pageSnapshots[i].pageURL()).ascii().data());
         }
 
         syncTransaction.commit();
@@ -1649,7 +1658,7 @@ void IconDatabase::pruneUnretainedIcons()
     
     int result;
     while ((result = pageSQL.step()) == SQLITE_ROW) {
-        LockHolder locker(m_urlAndIconLock);
+        MutexLocker locker(m_urlAndIconLock);
         if (!m_pageURLToRecordMap.contains(pageSQL.getColumnText(1)))
             pageIDsToDelete.append(pageSQL.getColumnInt64(0));
     }
@@ -1782,7 +1791,7 @@ void* IconDatabase::cleanupSyncThread()
     writeToDatabase();
     
     // Close the database
-    LockHolder locker(m_syncLock);
+    MutexLocker locker(m_syncLock);
     
     m_databaseDirectory = String();
     m_completeDatabasePath = String();

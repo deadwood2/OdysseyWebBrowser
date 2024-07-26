@@ -1098,7 +1098,33 @@ ALWAYS_INLINE String CSSPrimitiveValue::formatNumberForCustomCSSText() const
         RGBA32 rgbColor = m_value.rgbcolor;
         if (m_primitiveUnitType == CSS_PARSER_HEXCOLOR)
             Color::parseHexColor(m_value.string, rgbColor);
-        return Color(rgbColor).cssText();
+        Color color(rgbColor);
+
+        Vector<LChar> result;
+        result.reserveInitialCapacity(32);
+        bool colorHasAlpha = color.hasAlpha();
+        if (colorHasAlpha)
+            result.append("rgba(", 5);
+        else
+            result.append("rgb(", 4);
+
+        appendNumber(result, static_cast<unsigned char>(color.red()));
+        result.append(", ", 2);
+
+        appendNumber(result, static_cast<unsigned char>(color.green()));
+        result.append(", ", 2);
+
+        appendNumber(result, static_cast<unsigned char>(color.blue()));
+        if (colorHasAlpha) {
+            result.append(", ", 2);
+
+            NumberToStringBuffer buffer;
+            const char* alphaString = numberToFixedPrecisionString(color.alpha() / 255.0f, 6, buffer, true);
+            result.append(alphaString, strlen(alphaString));
+        }
+
+        result.append(')');
+        return String::adopt(result);
     }
     case CSS_PAIR:
         return getPairValue()->cssText();
@@ -1186,7 +1212,7 @@ void CSSPrimitiveValue::addSubresourceStyleURLs(ListHashSet<URL>& urls, const St
         addSubresourceURL(urls, styleSheet->completeURL(m_value.string));
 }
 
-RefPtr<CSSPrimitiveValue> CSSPrimitiveValue::cloneForCSSOM() const
+PassRefPtr<CSSPrimitiveValue> CSSPrimitiveValue::cloneForCSSOM() const
 {
     RefPtr<CSSPrimitiveValue> result;
 

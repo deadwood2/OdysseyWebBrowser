@@ -41,7 +41,6 @@
 #include "DFGNodeAllocator.h"
 #include "DFGPlan.h"
 #include "DFGPrePostNumbering.h"
-#include "DFGPropertyTypeKey.h"
 #include "DFGScannable.h"
 #include "FullBytecodeLiveness.h"
 #include "JSStack.h"
@@ -211,7 +210,7 @@ public:
 
     // Dump the code origin of the given node as a diff from the code origin of the
     // preceding node. Returns true if anything was printed.
-    bool dumpCodeOrigin(PrintStream&, const char* prefix, Node*& previousNode, Node* currentNode, DumpContext*);
+    bool dumpCodeOrigin(PrintStream&, const char* prefix, Node* previousNode, Node* currentNode, DumpContext*);
 
     AddSpeculationMode addSpeculationMode(Node* add, bool leftShouldSpeculateInt32, bool rightShouldSpeculateInt32, PredictionPass pass)
     {
@@ -326,8 +325,6 @@ public:
     
     StructureSet* addStructureSet(const StructureSet& structureSet)
     {
-        for (Structure* structure : structureSet)
-            registerStructure(structure);
         m_structureSet.append(structureSet);
         return &m_structureSet.last();
     }
@@ -346,7 +343,7 @@ public:
     ScriptExecutable* executableFor(InlineCallFrame* inlineCallFrame)
     {
         if (!inlineCallFrame)
-            return m_codeBlock->ownerScriptExecutable();
+            return m_codeBlock->ownerExecutable();
         
         return inlineCallFrame->executable.get();
     }
@@ -668,36 +665,6 @@ public:
     DesiredIdentifiers& identifiers() { return m_plan.identifiers; }
     DesiredWatchpoints& watchpoints() { return m_plan.watchpoints; }
     
-    // Returns false if the key is already invalid or unwatchable. If this is a Presence condition,
-    // this also makes it cheap to query if the condition holds. Also makes sure that the GC knows
-    // what's going on.
-    bool watchCondition(const ObjectPropertyCondition&);
-
-    // Checks if it's known that loading from the given object at the given offset is fine. This is
-    // computed by tracking which conditions we track with watchCondition().
-    bool isSafeToLoad(JSObject* base, PropertyOffset);
-
-    void registerInferredType(const InferredType::Descriptor& type)
-    {
-        if (type.structure())
-            registerStructure(type.structure());
-    }
-
-    // Tells us what inferred type we are able to prove the property to have now and in the future.
-    InferredType::Descriptor inferredTypeFor(const PropertyTypeKey&);
-    InferredType::Descriptor inferredTypeForProperty(Structure* structure, UniquedStringImpl* uid)
-    {
-        return inferredTypeFor(PropertyTypeKey(structure, uid));
-    }
-
-    AbstractValue inferredValueForProperty(
-        const StructureSet& base, UniquedStringImpl* uid, StructureClobberState = StructuresAreWatched);
-
-    // This uses either constant property inference or property type inference to derive a good abstract
-    // value for some property accessed with the given abstract value base.
-    AbstractValue inferredValueForProperty(
-        const AbstractValue& base, UniquedStringImpl* uid, PropertyOffset, StructureClobberState);
-    
     FullBytecodeLiveness& livenessFor(CodeBlock*);
     FullBytecodeLiveness& livenessFor(InlineCallFrame*);
     
@@ -717,11 +684,9 @@ public:
         // call, both callee and caller will see the variables live.
         VirtualRegister exclusionStart;
         VirtualRegister exclusionEnd;
-
-        CodeOrigin* codeOriginPtr = &codeOrigin;
         
         for (;;) {
-            InlineCallFrame* inlineCallFrame = codeOriginPtr->inlineCallFrame;
+            InlineCallFrame* inlineCallFrame = codeOrigin.inlineCallFrame;
             VirtualRegister stackOffset(inlineCallFrame ? inlineCallFrame->stackOffset : 0);
             
             if (inlineCallFrame) {
@@ -733,7 +698,7 @@ public:
             
             CodeBlock* codeBlock = baselineCodeBlockFor(inlineCallFrame);
             FullBytecodeLiveness& fullLiveness = livenessFor(codeBlock);
-            const FastBitVector& liveness = fullLiveness.getLiveness(codeOriginPtr->bytecodeIndex);
+            const FastBitVector& liveness = fullLiveness.getLiveness(codeOrigin.bytecodeIndex);
             for (unsigned relativeLocal = codeBlock->m_numCalleeRegisters; relativeLocal--;) {
                 VirtualRegister reg = stackOffset + virtualRegisterForLocal(relativeLocal);
                 
@@ -760,11 +725,7 @@ public:
             for (VirtualRegister reg = exclusionStart; reg < exclusionEnd; reg += 1)
                 functor(reg);
             
-            codeOriginPtr = inlineCallFrame->getCallerSkippingDeadFrames();
-
-            // The first inline call frame could be an inline tail call
-            if (!codeOriginPtr)
-                break;
+            codeOrigin = inlineCallFrame->caller;
         }
     }
     
@@ -883,8 +844,6 @@ public:
     Vector<InlineVariableData, 4> m_inlineVariableData;
     HashMap<CodeBlock*, std::unique_ptr<FullBytecodeLiveness>> m_bytecodeLiveness;
     HashMap<CodeBlock*, std::unique_ptr<BytecodeKills>> m_bytecodeKills;
-    HashSet<std::pair<JSObject*, PropertyOffset>> m_safeToLoad;
-    HashMap<PropertyTypeKey, InferredType::Descriptor> m_inferredTypes;
     Dominators m_dominators;
     PrePostNumbering m_prePostNumbering;
     NaturalLoops m_naturalLoops;
@@ -904,7 +863,6 @@ public:
     PlanStage m_planStage { PlanStage::Initial };
     RefCountState m_refCountState;
     bool m_hasDebuggerEnabled;
-    bool m_hasExceptionHandlers { false };
 private:
     
     void handleSuccessor(Vector<BasicBlock*, 16>& worklist, BasicBlock*, BasicBlock* successor);

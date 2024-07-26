@@ -35,7 +35,6 @@
 
 #include <mutex>
 #include <unicode/ucol.h>
-#include <wtf/Lock.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/StringExtras.h>
 #include <wtf/text/StringView.h>
@@ -51,7 +50,17 @@ static UCollator* cachedCollator;
 static char* cachedCollatorLocale;
 static bool cachedCollatorShouldSortLowercaseFirst;
 
-static StaticLock cachedCollatorMutex;
+static std::mutex& cachedCollatorMutex()
+{
+    static std::once_flag onceFlag;
+
+    static LazyNeverDestroyed<std::mutex> mutex;
+    std::call_once(onceFlag, []{
+        mutex.construct();
+    });
+
+    return mutex;
+}
 
 #if !(OS(DARWIN) && USE(CF))
 
@@ -108,7 +117,7 @@ Collator::Collator(const char* locale, bool shouldSortLowercaseFirst)
     UErrorCode status = U_ZERO_ERROR;
 
     {
-        std::lock_guard<StaticLock> lock(cachedCollatorMutex);
+        std::lock_guard<std::mutex> lock(cachedCollatorMutex());
         if (cachedCollator && localesMatch(cachedCollatorLocale, locale) && cachedCollatorShouldSortLowercaseFirst == shouldSortLowercaseFirst) {
             m_collator = cachedCollator;
             m_locale = cachedCollatorLocale;
@@ -138,7 +147,7 @@ Collator::Collator(const char* locale, bool shouldSortLowercaseFirst)
 
 Collator::~Collator()
 {
-    std::lock_guard<StaticLock> lock(cachedCollatorMutex);
+    std::lock_guard<std::mutex> lock(cachedCollatorMutex());
     if (cachedCollator) {
         ucol_close(cachedCollator);
         fastFree(cachedCollatorLocale);

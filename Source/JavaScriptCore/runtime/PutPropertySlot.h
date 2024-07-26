@@ -1,5 +1,6 @@
+// -*- mode: c++; c-basic-offset: 4 -*-
 /*
- * Copyright (C) 2008-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2008 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -42,13 +43,11 @@ public:
     enum Context { UnknownContext, PutById, PutByIdEval };
     typedef void (*PutValueFunc)(ExecState*, JSObject* base, EncodedJSValue thisObject, EncodedJSValue value);
 
-    PutPropertySlot(JSValue thisValue, bool isStrictMode = false, Context context = UnknownContext, bool isInitialization = false)
+    PutPropertySlot(JSValue thisValue, bool isStrictMode = false, Context context = UnknownContext)
         : m_type(Uncachable)
         , m_base(0)
         , m_thisValue(thisValue)
-        , m_offset(invalidOffset)
         , m_isStrictMode(isStrictMode)
-        , m_isInitialization(isInitialization)
         , m_context(context)
         , m_putFunction(nullptr)
     {
@@ -99,7 +98,6 @@ public:
     bool isCacheablePut() const { return m_type == NewProperty || m_type == ExistingProperty; }
     bool isCacheableSetter() const { return m_type == SetterProperty; }
     bool isCacheableCustom() const { return m_type == CustomProperty; }
-    bool isInitialization() const { return m_isInitialization; }
 
     PropertyOffset cachedOffset() const
     {
@@ -112,7 +110,6 @@ private:
     JSValue m_thisValue;
     PropertyOffset m_offset;
     bool m_isStrictMode;
-    bool m_isInitialization;
     uint8_t m_context;
     PutValueFunc m_putFunction;
 };

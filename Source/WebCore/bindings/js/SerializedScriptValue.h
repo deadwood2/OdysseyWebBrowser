@@ -33,6 +33,7 @@
 #include <runtime/ArrayBuffer.h>
 #include <runtime/JSCJSValue.h>
 #include <wtf/Forward.h>
+#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/text/WTFString.h>
 
@@ -83,7 +84,7 @@ public:
     String toString();
 
     // API implementation helpers. These don't expose special behavior for ArrayBuffers or MessagePorts.
-    WEBCORE_EXPORT static RefPtr<SerializedScriptValue> create(JSContextRef, JSValueRef, JSValueRef* exception);
+    WEBCORE_EXPORT static PassRefPtr<SerializedScriptValue> create(JSContextRef, JSValueRef, JSValueRef* exception);
     WEBCORE_EXPORT JSValueRef deserialize(JSContextRef, JSValueRef* exception);
 
     const Vector<uint8_t>& data() const { return m_data; }

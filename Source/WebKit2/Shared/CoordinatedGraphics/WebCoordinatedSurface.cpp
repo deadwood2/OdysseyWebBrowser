@@ -187,7 +187,7 @@ void WebCoordinatedSurface::paintToSurface(const IntRect& rect, CoordinatedSurfa
     ASSERT(client);
 
     auto context = createGraphicsContext(rect);
-    client->paintToSurfaceContext(*context);
+    client->paintToSurfaceContext(context.get());
 }
 
 #if USE(TEXTURE_MAPPER)

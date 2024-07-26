@@ -179,7 +179,7 @@ WebInspector.SourceCodeLocation = class SourceCodeLocation extends WebInspector.
 
         if (sourceCode === this._sourceCode && lineNumber === this._lineNumber && columnNumber === this._columnNumber)
             return;
-        if (this._mappedResource && sourceCode === this._mappedResource && lineNumber === this._mappedLineNumber && columnNumber === this._mappedColumnNumber)
+        else if (this._mappedResource && sourceCode === this._mappedResource && lineNumber === this._mappedLineNumber && columnNumber === this._mappedColumnNumber)
             return;
 
         var newSourceCodeLocation = sourceCode.createSourceCodeLocation(lineNumber, columnNumber);
@@ -333,9 +333,8 @@ WebInspector.SourceCodeLocation = class SourceCodeLocation extends WebInspector.
 
         case WebInspector.SourceCodeLocation.NameStyle.Short:
         case WebInspector.SourceCodeLocation.NameStyle.Full:
-            const displayURL = sourceCode.displayURL;
-            const lineSuffix = displayURL ? ":" + lineString : WebInspector.UIString(" (line %s)").format(lineString);
-            return prefix + (nameStyle === WebInspector.SourceCodeLocation.NameStyle.Full && displayURL ? displayURL : sourceCode.displayName) + lineSuffix;
+            var lineSuffix = sourceCode.url ? ":" + lineString : WebInspector.UIString(" (line %s)").format(lineString);
+            return prefix + (nameStyle === WebInspector.SourceCodeLocation.NameStyle.Full && sourceCode.url ? sourceCode.url : sourceCode.displayName) + lineSuffix;
 
         default:
             console.error("Unknown nameStyle: " + nameStyle);

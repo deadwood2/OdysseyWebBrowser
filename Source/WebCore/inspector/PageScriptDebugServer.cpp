@@ -52,7 +52,7 @@ using namespace Inspector;
 namespace WebCore {
 
 PageScriptDebugServer::PageScriptDebugServer(Page& page)
-    : ScriptDebugServer(WebCore::JSDOMWindowBase::commonVM(), false)
+    : ScriptDebugServer(false)
     , m_page(page)
 {
 }
@@ -87,8 +87,8 @@ void PageScriptDebugServer::removeListener(ScriptDebugListener* listener, bool i
 
 void PageScriptDebugServer::recompileAllJSFunctions()
 {
-    JSLockHolder lock(vm());
-    Debugger::recompileAllJSFunctions();
+    JSLockHolder lock(JSDOMWindow::commonVM());
+    Debugger::recompileAllJSFunctions(&JSDOMWindow::commonVM());
 }
 
 void PageScriptDebugServer::didPause(JSGlobalObject*)
@@ -109,7 +109,7 @@ void PageScriptDebugServer::runEventLoopWhilePaused()
     // we need to gracefully handle releasing and reacquiring the lock.
     if (WebThreadIsEnabled()) {
         ASSERT(WebThreadIsLockedOrDisabled());
-        JSC::JSLock::DropAllLocks dropAllLocks(vm());
+        JSC::JSLock::DropAllLocks dropAllLocks(WebCore::JSDOMWindowBase::commonVM());
         WebRunLoopEnableNested();
 
         runEventLoopWhilePausedInternal();
@@ -146,8 +146,11 @@ void PageScriptDebugServer::setJavaScriptPaused(const PageGroup& pageGroup, bool
 {
     setMainThreadCallbacksPaused(paused);
 
-    for (auto& page : pageGroup.pages())
-        setJavaScriptPaused(page, paused);
+    const HashSet<Page*>& pages = pageGroup.pages();
+
+    HashSet<Page*>::const_iterator end = pages.end();
+    for (HashSet<Page*>::const_iterator it = pages.begin(); it != end; ++it)
+        setJavaScriptPaused(*it, paused);
 }
 
 void PageScriptDebugServer::setJavaScriptPaused(Page* page, bool paused)

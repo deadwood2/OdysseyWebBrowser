@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,36 +23,41 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.SourceCodeTimelineTimelineDataGridNode = class SourceCodeTimelineTimelineDataGridNode extends WebInspector.TimelineDataGridNode
+WebInspector.SourceCodeTimelineTimelineDataGridNode = function(sourceCodeTimeline, graphDataSource)
 {
-    constructor(sourceCodeTimeline, graphDataSource)
-    {
-        super(true, graphDataSource);
+    WebInspector.TimelineDataGridNode.call(this, true, graphDataSource);
 
-        this._sourceCodeTimeline = sourceCodeTimeline;
-        this._sourceCodeTimeline.addEventListener(WebInspector.Timeline.Event.RecordAdded, this._timelineRecordAdded, this);
-    }
+    this._sourceCodeTimeline = sourceCodeTimeline;
+    this._sourceCodeTimeline.addEventListener(WebInspector.Timeline.Event.RecordAdded, this._timelineRecordAdded, this);
+};
+
+// FIXME: Move to a WebInspector.Object subclass and we can remove this.
+WebInspector.Object.deprecatedAddConstructorFunctions(WebInspector.SourceCodeTimelineTimelineDataGridNode);
+
+WebInspector.SourceCodeTimelineTimelineDataGridNode.prototype = {
+    constructor: WebInspector.SourceCodeTimelineTimelineDataGridNode,
+    __proto__: WebInspector.TimelineDataGridNode.prototype,
 
     // Public
 
     get records()
     {
         return this._sourceCodeTimeline.records;
-    }
+    },
 
     get sourceCodeTimeline()
     {
         return this._sourceCodeTimeline;
-    }
+    },
 
     get data()
     {
         return {graph: this._sourceCodeTimeline.startTime};
-    }
+    },
 
     // Private
 
-    _timelineRecordAdded(event)
+    _timelineRecordAdded: function(event)
     {
         if (this.isRecordVisible(event.data.record))
             this.needsGraphRefresh();

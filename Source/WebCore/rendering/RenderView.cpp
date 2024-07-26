@@ -121,6 +121,8 @@ RenderView::RenderView(Document& document, Ref<RenderStyle>&& style)
     , m_selectionUnsplitEnd(nullptr)
     , m_selectionUnsplitStartPos(-1)
     , m_selectionUnsplitEndPos(-1)
+    , m_rendererCount(0)
+    , m_maximalOutlineSize(0)
     , m_lazyRepaintTimer(*this, &RenderView::lazyRepaintTimerFired)
     , m_pageLogicalHeight(0)
     , m_pageLogicalHeightChanged(false)
@@ -517,7 +519,7 @@ void RenderView::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
 
     // This avoids painting garbage between columns if there is a column gap.
     if (frameView().pagination().mode != Pagination::Unpaginated && paintInfo.shouldPaintWithinRoot(*this))
-        paintInfo.context().fillRect(paintInfo.rect, frameView().baseBackgroundColor(), ColorSpaceDeviceRGB);
+        paintInfo.context->fillRect(paintInfo.rect, frameView().baseBackgroundColor(), ColorSpaceDeviceRGB);
 
     paintObject(paintInfo, paintOffset);
 }
@@ -613,12 +615,12 @@ void RenderView::paintBoxDecorations(PaintInfo& paintInfo, const LayoutPoint&)
         Color documentBackgroundColor = frameView().documentBackgroundColor();
         Color backgroundColor = (backgroundShouldExtendBeyondPage && documentBackgroundColor.isValid()) ? documentBackgroundColor : frameView().baseBackgroundColor();
         if (backgroundColor.alpha()) {
-            CompositeOperator previousOperator = paintInfo.context().compositeOperation();
-            paintInfo.context().setCompositeOperation(CompositeCopy);
-            paintInfo.context().fillRect(paintInfo.rect, backgroundColor, style().colorSpace());
-            paintInfo.context().setCompositeOperation(previousOperator);
+            CompositeOperator previousOperator = paintInfo.context->compositeOperation();
+            paintInfo.context->setCompositeOperation(CompositeCopy);
+            paintInfo.context->fillRect(paintInfo.rect, backgroundColor, style().colorSpace());
+            paintInfo.context->setCompositeOperation(previousOperator);
         } else
-            paintInfo.context().clearRect(paintInfo.rect);
+            paintInfo.context->clearRect(paintInfo.rect);
     }
 }
 
@@ -852,15 +854,14 @@ void RenderView::repaintSubtreeSelection(const SelectionSubtreeRoot& root) const
 // Compositing layer dimensions take outline size into account, so we have to recompute layer
 // bounds when it changes.
 // FIXME: This is ugly; it would be nice to have a better way to do this.
-void RenderView::setMaximalOutlineSize(int outlineSize)
+void RenderView::setMaximalOutlineSize(int o)
 {
-    if (outlineSize == m_maximalOutlineSize)
-        return;
-    
-    m_maximalOutlineSize = outlineSize;
-    // maximalOutlineSize affects compositing layer dimensions.
-    // FIXME: this really just needs to be a geometry update.
-    compositor().setCompositingLayersNeedRebuild();
+    if (o != m_maximalOutlineSize) {
+        m_maximalOutlineSize = o;
+
+        // maximalOutlineSize affects compositing layer dimensions.
+        compositor().setCompositingLayersNeedRebuild();    // FIXME: this really just needs to be a geometry update.
+    }
 }
 
 void RenderView::setSelection(RenderObject* start, int startPos, RenderObject* end, int endPos, SelectionRepaintMode blockRepaintMode)
@@ -1161,19 +1162,19 @@ bool RenderView::rootBackgroundIsEntirelyFixed() const
     return rootObject->rendererForRootBackground().hasEntirelyFixedBackground();
 }
     
-LayoutRect RenderView::unextendedBackgroundRect() const
+LayoutRect RenderView::unextendedBackgroundRect(RenderBox*) const
 {
     // FIXME: What is this? Need to patch for new columns?
     return unscaledDocumentRect();
 }
     
-LayoutRect RenderView::backgroundRect() const
+LayoutRect RenderView::backgroundRect(RenderBox* backgroundRenderer) const
 {
     // FIXME: New columns care about this?
     if (frameView().hasExtendedBackgroundRectForPainting())
         return frameView().extendedBackgroundRectForPainting();
 
-    return unextendedBackgroundRect();
+    return unextendedBackgroundRect(backgroundRenderer);
 }
 
 IntRect RenderView::documentRect() const

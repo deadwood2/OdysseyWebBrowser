@@ -59,7 +59,6 @@
 #include "Settings.h"
 #include "StyleProperties.h"
 #include "TextIterator.h"
-#include "TypedElementDescendantIterator.h"
 #include "VisibleSelection.h"
 #include "VisibleUnits.h"
 #include "htmlediting.h"
@@ -272,9 +271,9 @@ String StyledMarkupAccumulator::renderedText(const Node& node, const Range* rang
     unsigned endOffset = textNode.length();
 
     TextIteratorBehavior behavior = TextIteratorDefaultBehavior;
-    if (range && &node == &range->startContainer())
+    if (range && &node == range->startContainer())
         startOffset = range->startOffset();
-    if (range && &node == &range->endContainer())
+    if (range && &node == range->endContainer())
         endOffset = range->endOffset();
     else if (range)
         behavior = TextIteratorBehavesAsIfNodesFollowing;
@@ -290,9 +289,9 @@ String StyledMarkupAccumulator::stringValueForRange(const Node& node, const Rang
         return node.nodeValue();
 
     String nodeValue = node.nodeValue();
-    if (&node == &range->endContainer())
+    if (&node == range->endContainer())
         nodeValue.truncate(range->endOffset());
-    if (&node == &range->startContainer())
+    if (&node == range->startContainer())
         nodeValue.remove(0, range->startOffset());
     return nodeValue;
 }
@@ -530,9 +529,9 @@ static bool isElementPresentational(const Node* node)
 
 static Node* highestAncestorToWrapMarkup(const Range* range, EAnnotateForInterchange shouldAnnotate)
 {
-    Node* commonAncestor = range->commonAncestorContainer();
+    Node* commonAncestor = range->commonAncestorContainer(IGNORE_EXCEPTION);
     ASSERT(commonAncestor);
-    Node* specialCommonAncestor = nullptr;
+    Node* specialCommonAncestor = 0;
     if (shouldAnnotate == AnnotateForInterchange) {
         // Include ancestors that aren't completely inside the range but are required to retain 
         // the structure and appearance of the copied markup.
@@ -580,10 +579,10 @@ static String createMarkupInternal(Document& document, const Range& range, Vecto
 {
     DEPRECATED_DEFINE_STATIC_LOCAL(const String, interchangeNewlineString, (ASCIILiteral("<br class=\"" AppleInterchangeNewline "\">")));
 
-    bool collapsed = range.collapsed();
+    bool collapsed = range.collapsed(ASSERT_NO_EXCEPTION);
     if (collapsed)
         return emptyString();
-    Node* commonAncestor = range.commonAncestorContainer();
+    Node* commonAncestor = range.commonAncestorContainer(ASSERT_NO_EXCEPTION);
     if (!commonAncestor)
         return emptyString();
 
@@ -673,29 +672,29 @@ String createMarkup(const Range& range, Vector<Node*>* nodes, EAnnotateForInterc
     return createMarkupInternal(range.ownerDocument(), range, nodes, shouldAnnotate, convertBlocksToInlines, shouldResolveURLs);
 }
 
-Ref<DocumentFragment> createFragmentFromMarkup(Document& document, const String& markup, const String& baseURL, ParserContentPolicy parserContentPolicy)
+PassRefPtr<DocumentFragment> createFragmentFromMarkup(Document& document, const String& markup, const String& baseURL, ParserContentPolicy parserContentPolicy)
 {
     // We use a fake body element here to trick the HTML parser to using the InBody insertion mode.
-    auto fakeBody = HTMLBodyElement::create(document);
-    auto fragment = DocumentFragment::create(document);
+    RefPtr<HTMLBodyElement> fakeBody = HTMLBodyElement::create(document);
+    RefPtr<DocumentFragment> fragment = DocumentFragment::create(document);
 
-    fragment->parseHTML(markup, fakeBody.ptr(), parserContentPolicy);
+    fragment->parseHTML(markup, fakeBody.get(), parserContentPolicy);
 
 #if ENABLE(ATTACHMENT_ELEMENT)
     // When creating a fragment we must strip the webkit-attachment-path attribute after restoring the File object.
-    Vector<Ref<HTMLAttachmentElement>> attachments;
-    for (auto& attachment : descendantsOfType<HTMLAttachmentElement>(fragment))
-        attachments.append(attachment);
-
-    for (auto& attachment : attachments) {
-        attachment->setFile(File::create(attachment->fastGetAttribute(webkitattachmentpathAttr)).ptr());
-        attachment->removeAttribute(webkitattachmentpathAttr);
+    RefPtr<NodeList> nodes = fragment->getElementsByTagName("attachment");
+    for (size_t i = 0; i < nodes->length(); ++i) {
+        if (!is<HTMLAttachmentElement>(*nodes->item(i)))
+            continue;
+        HTMLAttachmentElement& element = downcast<HTMLAttachmentElement>(*nodes->item(i));
+        element.setFile(File::create(element.fastGetAttribute(webkitattachmentpathAttr)).ptr());
+        element.removeAttribute(webkitattachmentpathAttr);
     }
 #endif
     if (!baseURL.isEmpty() && baseURL != blankURL() && baseURL != document.baseURL())
-        completeURLs(fragment.ptr(), baseURL);
+        completeURLs(fragment.get(), baseURL);
 
-    return fragment;
+    return fragment.release();
 }
 
 String createMarkup(const Node& node, EChildrenOnly childrenOnly, Vector<Node*>* nodes, EAbsoluteURLs shouldResolveURLs, Vector<QualifiedName>* tagNamesToSkip, EFragmentSerialization fragmentSerialization)
@@ -704,12 +703,12 @@ String createMarkup(const Node& node, EChildrenOnly childrenOnly, Vector<Node*>*
     return accumulator.serializeNodes(const_cast<Node&>(node), childrenOnly, tagNamesToSkip);
 }
 
-static void fillContainerFromString(ContainerNode& paragraph, const String& string)
+static void fillContainerFromString(ContainerNode* paragraph, const String& string)
 {
-    Document& document = paragraph.document();
+    Document& document = paragraph->document();
 
     if (string.isEmpty()) {
-        paragraph.appendChild(createBlockPlaceholderElement(document), ASSERT_NO_EXCEPTION);
+        paragraph->appendChild(createBlockPlaceholderElement(document), ASSERT_NO_EXCEPTION);
         return;
     }
 
@@ -726,11 +725,11 @@ static void fillContainerFromString(ContainerNode& paragraph, const String& stri
         // append the non-tab textual part
         if (!s.isEmpty()) {
             if (!tabText.isEmpty()) {
-                paragraph.appendChild(createTabSpanElement(document, tabText), ASSERT_NO_EXCEPTION);
+                paragraph->appendChild(createTabSpanElement(document, tabText), ASSERT_NO_EXCEPTION);
                 tabText = emptyString();
             }
-            Ref<Node> textNode = document.createTextNode(stringWithRebalancedWhitespace(s, first, i + 1 == numEntries));
-            paragraph.appendChild(WTF::move(textNode), ASSERT_NO_EXCEPTION);
+            RefPtr<Node> textNode = document.createTextNode(stringWithRebalancedWhitespace(s, first, i + 1 == numEntries));
+            paragraph->appendChild(textNode.release(), ASSERT_NO_EXCEPTION);
         }
 
         // there is a tab after every entry, except the last entry
@@ -738,7 +737,7 @@ static void fillContainerFromString(ContainerNode& paragraph, const String& stri
         if (i + 1 != numEntries)
             tabText.append('\t');
         else if (!tabText.isEmpty())
-            paragraph.appendChild(createTabSpanElement(document, tabText), ASSERT_NO_EXCEPTION);
+            paragraph->appendChild(createTabSpanElement(document, tabText), ASSERT_NO_EXCEPTION);
 
         first = false;
     }
@@ -778,13 +777,13 @@ static bool contextPreservesNewline(const Range& context)
     return container->renderer()->style().preserveNewline();
 }
 
-Ref<DocumentFragment> createFragmentFromText(Range& context, const String& text)
+PassRefPtr<DocumentFragment> createFragmentFromText(Range& context, const String& text)
 {
     Document& document = context.ownerDocument();
-    Ref<DocumentFragment> fragment = document.createDocumentFragment();
+    RefPtr<DocumentFragment> fragment = document.createDocumentFragment();
     
     if (text.isEmpty())
-        return fragment;
+        return fragment.release();
 
     String string = text;
     string.replace("\r\n", "\n");
@@ -793,17 +792,17 @@ Ref<DocumentFragment> createFragmentFromText(Range& context, const String& text)
     if (contextPreservesNewline(context)) {
         fragment->appendChild(document.createTextNode(string), ASSERT_NO_EXCEPTION);
         if (string.endsWith('\n')) {
-            Ref<Element> element = createBreakElement(document);
+            RefPtr<Element> element = createBreakElement(document);
             element->setAttribute(classAttr, AppleInterchangeNewline);            
-            fragment->appendChild(WTF::move(element), ASSERT_NO_EXCEPTION);
+            fragment->appendChild(element.release(), ASSERT_NO_EXCEPTION);
         }
-        return fragment;
+        return fragment.release();
     }
 
     // A string with no newlines gets added inline, rather than being put into a paragraph.
     if (string.find('\n') == notFound) {
-        fillContainerFromString(fragment, string);
-        return fragment;
+        fillContainerFromString(fragment.get(), string);
+        return fragment.release();
     }
 
     // Break string into paragraphs. Extra line breaks turn into empty paragraphs.
@@ -829,17 +828,17 @@ Ref<DocumentFragment> createFragmentFromText(Range& context, const String& text)
             element->setAttribute(classAttr, AppleInterchangeNewline);
         } else if (useLineBreak) {
             element = createBreakElement(document);
-            fillContainerFromString(fragment, s);
+            fillContainerFromString(fragment.get(), s);
         } else {
             if (useClonesOfEnclosingBlock)
                 element = block->cloneElementWithoutChildren(document);
             else
                 element = createDefaultParagraphElement(document);
-            fillContainerFromString(*element, s);
+            fillContainerFromString(element.get(), s);
         }
-        fragment->appendChild(element.releaseNonNull(), ASSERT_NO_EXCEPTION);
+        fragment->appendChild(element.release(), ASSERT_NO_EXCEPTION);
     }
-    return fragment;
+    return fragment.release();
 }
 
 String documentTypeString(const Document& document)
@@ -864,8 +863,12 @@ String createFullMarkup(const Node& node)
 
 String createFullMarkup(const Range& range)
 {
+    Node* node = range.startContainer();
+    if (!node)
+        return String();
+
     // FIXME: This is always "for interchange". Is that right?
-    return documentTypeString(range.startContainer().document()) + createMarkup(range, 0, AnnotateForInterchange);
+    return documentTypeString(node->document()) + createMarkup(range, 0, AnnotateForInterchange);
 }
 
 String urlToMarkup(const URL& url, const String& title)
@@ -945,10 +948,10 @@ static void removeElementFromFragmentPreservingChildren(DocumentFragment& fragme
     RefPtr<Node> nextChild;
     for (RefPtr<Node> child = element.firstChild(); child; child = nextChild) {
         nextChild = child->nextSibling();
-        element.removeChild(*child, ASSERT_NO_EXCEPTION);
-        fragment.insertBefore(*child, &element, ASSERT_NO_EXCEPTION);
+        element.removeChild(child.get(), ASSERT_NO_EXCEPTION);
+        fragment.insertBefore(child, &element, ASSERT_NO_EXCEPTION);
     }
-    fragment.removeChild(element, ASSERT_NO_EXCEPTION);
+    fragment.removeChild(&element, ASSERT_NO_EXCEPTION);
 }
 
 PassRefPtr<DocumentFragment> createContextualFragment(const String& markup, HTMLElement* element, ParserContentPolicy parserContentPolicy, ExceptionCode& ec)
@@ -990,7 +993,7 @@ static inline bool hasOneTextChild(ContainerNode& node)
     return hasOneChild(node) && node.firstChild()->isTextNode();
 }
 
-void replaceChildrenWithFragment(ContainerNode& container, Ref<DocumentFragment>&& fragment, ExceptionCode& ec)
+void replaceChildrenWithFragment(ContainerNode& container, PassRefPtr<DocumentFragment> fragment, ExceptionCode& ec)
 {
     Ref<ContainerNode> containerNode(container);
     ChildListMutationScope mutation(containerNode);
@@ -1000,18 +1003,18 @@ void replaceChildrenWithFragment(ContainerNode& container, Ref<DocumentFragment>
         return;
     }
 
-    if (hasOneTextChild(containerNode) && hasOneTextChild(fragment)) {
+    if (hasOneTextChild(containerNode) && hasOneTextChild(*fragment)) {
         downcast<Text>(*containerNode->firstChild()).setData(downcast<Text>(*fragment->firstChild()).data(), ec);
         return;
     }
 
     if (hasOneChild(containerNode)) {
-        containerNode->replaceChild(WTF::move(fragment), *containerNode->firstChild(), ec);
+        containerNode->replaceChild(fragment, containerNode->firstChild(), ec);
         return;
     }
 
     containerNode->removeChildren();
-    containerNode->appendChild(WTF::move(fragment), ec);
+    containerNode->appendChild(fragment, ec);
 }
 
 void replaceChildrenWithText(ContainerNode& container, const String& text, ExceptionCode& ec)
@@ -1027,7 +1030,7 @@ void replaceChildrenWithText(ContainerNode& container, const String& text, Excep
     Ref<Text> textNode = Text::create(containerNode->document(), text);
 
     if (hasOneChild(containerNode)) {
-        containerNode->replaceChild(WTF::move(textNode), *containerNode->firstChild(), ec);
+        containerNode->replaceChild(WTF::move(textNode), containerNode->firstChild(), ec);
         return;
     }
 

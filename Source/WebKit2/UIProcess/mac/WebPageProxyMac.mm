@@ -32,6 +32,7 @@
 #import "AttributedString.h"
 #import "ColorSpaceData.h"
 #import "DataReference.h"
+#import "DictionaryPopupInfo.h"
 #import "EditingRange.h"
 #import "EditorState.h"
 #import "MenuUtilities.h"
@@ -47,7 +48,6 @@
 #import "WebPageMessages.h"
 #import "WebProcessProxy.h"
 #import <WebCore/DictationAlternative.h>
-#import <WebCore/DictionaryLookup.h>
 #import <WebCore/GraphicsLayer.h>
 #import <WebCore/RuntimeApplicationChecks.h>
 #import <WebCore/SharedBuffer.h>
@@ -748,25 +748,9 @@ void WebPageProxy::editorStateChanged(const EditorState& editorState)
 #endif
 }
 
-#if ENABLE(SERVICE_CONTROLS)
-ContextMenuItem WebPageProxy::platformInitializeShareMenuItem(const ContextMenuContextData& contextMenuContextData)
+void WebPageProxy::platformInitializeShareMenuItem(ContextMenuItem& item)
 {
-    const WebHitTestResult::Data& hitTestData = contextMenuContextData.webHitTestResultData();
-
-    URL absoluteLinkURL;
-    if (!hitTestData.absoluteLinkURL.isEmpty())
-        absoluteLinkURL = URL(ParsedURLString, hitTestData.absoluteLinkURL);
-
-    URL downloadableMediaURL;
-    if (!hitTestData.absoluteMediaURL.isEmpty() && hitTestData.isDownloadableMedia)
-        downloadableMediaURL = URL(ParsedURLString, hitTestData.absoluteMediaURL);
-
-    RetainPtr<NSImage> image;
-    if (hitTestData.imageSharedMemory && hitTestData.imageSize)
-        image = adoptNS([[NSImage alloc] initWithData:[NSData dataWithBytes:(unsigned char*)hitTestData.imageSharedMemory->data() length:hitTestData.imageSize]]);
-
-    ContextMenuItem item = ContextMenuItem::shareMenuItem(absoluteLinkURL, downloadableMediaURL, image.get(), contextMenuContextData.selectedText());
-
+#if ENABLE(SERVICE_CONTROLS)
     NSMenuItem *nsItem = item.platformDescription();
 
     NSSharingServicePicker *sharingServicePicker = [nsItem representedObject];
@@ -778,11 +762,9 @@ ContextMenuItem WebPageProxy::platformInitializeShareMenuItem(const ContextMenuC
 
     // Setting the picker lets the delegate retain it to keep it alive, but this picker is kept alive by the menu item.
     [[WKSharingServicePickerDelegate sharedSharingServicePickerDelegate] setPicker:nil];
-
-    return item;
-}
 #endif
-
+}
+    
 } // namespace WebKit
 
 #endif // PLATFORM(MAC)

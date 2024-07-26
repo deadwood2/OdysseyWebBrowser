@@ -469,76 +469,76 @@ bool JSDOMWindow::defineOwnProperty(JSC::JSObject* object, JSC::ExecState* exec,
 
 // Custom Attributes
 
-void JSDOMWindow::setLocation(ExecState& state, JSValue value)
+void JSDOMWindow::setLocation(ExecState* exec, JSValue value)
 {
 #if ENABLE(DASHBOARD_SUPPORT)
     // To avoid breaking old widgets, make "var location =" in a top-level frame create
     // a property named "location" instead of performing a navigation (<rdar://problem/5688039>).
-    if (Frame* activeFrame = activeDOMWindow(&state).frame()) {
+    if (Frame* activeFrame = activeDOMWindow(exec).frame()) {
         if (activeFrame->settings().usesDashboardBackwardCompatibilityMode() && !activeFrame->tree().parent()) {
-            if (BindingSecurity::shouldAllowAccessToDOMWindow(&state, impl()))
-                putDirect(state.vm(), Identifier::fromString(&state, "location"), value);
+            if (BindingSecurity::shouldAllowAccessToDOMWindow(exec, impl()))
+                putDirect(exec->vm(), Identifier::fromString(exec, "location"), value);
             return;
         }
     }
 #endif
 
-    String locationString = value.toString(&state)->value(&state);
-    if (state.hadException())
+    String locationString = value.toString(exec)->value(exec);
+    if (exec->hadException())
         return;
 
     if (Location* location = impl().location())
-        location->setHref(activeDOMWindow(&state), firstDOMWindow(&state), locationString);
+        location->setHref(locationString, activeDOMWindow(exec), firstDOMWindow(exec));
 }
 
-JSValue JSDOMWindow::event(ExecState& state) const
+JSValue JSDOMWindow::event(ExecState* exec) const
 {
     Event* event = currentEvent();
     if (!event)
         return jsUndefined();
-    return toJS(&state, const_cast<JSDOMWindow*>(this), event);
+    return toJS(exec, const_cast<JSDOMWindow*>(this), event);
 }
 
-JSValue JSDOMWindow::image(ExecState& state) const
+JSValue JSDOMWindow::image(ExecState* exec) const
 {
-    return getDOMConstructor<JSImageConstructor>(state.vm(), this);
+    return getDOMConstructor<JSImageConstructor>(exec->vm(), this);
 }
 
 #if ENABLE(IOS_TOUCH_EVENTS)
-JSValue JSDOMWindow::touch(ExecState& state) const
+JSValue JSDOMWindow::touch(ExecState* exec) const
 {
-    return getDOMConstructor<JSTouchConstructor>(state.vm(), this);
+    return getDOMConstructor<JSTouchConstructor>(exec->vm(), this);
 }
 
-JSValue JSDOMWindow::touchList(ExecState& state) const
+JSValue JSDOMWindow::touchList(ExecState* exec) const
 {
-    return getDOMConstructor<JSTouchListConstructor>(state.vm(), this);
+    return getDOMConstructor<JSTouchListConstructor>(exec->vm(), this);
 }
 #endif
 
 // Custom functions
 
-JSValue JSDOMWindow::open(ExecState& state)
+JSValue JSDOMWindow::open(ExecState* exec)
 {
-    String urlString = valueToStringWithUndefinedOrNullCheck(&state, state.argument(0));
-    if (state.hadException())
+    String urlString = valueToStringWithUndefinedOrNullCheck(exec, exec->argument(0));
+    if (exec->hadException())
         return jsUndefined();
-    AtomicString frameName = state.argument(1).isUndefinedOrNull() ? "_blank" : state.argument(1).toString(&state)->value(&state);
-    if (state.hadException())
+    AtomicString frameName = exec->argument(1).isUndefinedOrNull() ? "_blank" : exec->argument(1).toString(exec)->value(exec);
+    if (exec->hadException())
         return jsUndefined();
-    String windowFeaturesString = valueToStringWithUndefinedOrNullCheck(&state, state.argument(2));
-    if (state.hadException())
+    String windowFeaturesString = valueToStringWithUndefinedOrNullCheck(exec, exec->argument(2));
+    if (exec->hadException())
         return jsUndefined();
 
-    RefPtr<DOMWindow> openedWindow = impl().open(urlString, frameName, windowFeaturesString, activeDOMWindow(&state), firstDOMWindow(&state));
+    RefPtr<DOMWindow> openedWindow = impl().open(urlString, frameName, windowFeaturesString, activeDOMWindow(exec), firstDOMWindow(exec));
     if (!openedWindow)
         return jsUndefined();
-    return toJS(&state, openedWindow.get());
+    return toJS(exec, openedWindow.get());
 }
 
 class DialogHandler {
 public:
-    explicit DialogHandler(ExecState& exec)
+    explicit DialogHandler(ExecState* exec)
         : m_exec(exec)
     {
     }
@@ -547,7 +547,7 @@ public:
     JSValue returnValue() const;
 
 private:
-    ExecState& m_exec;
+    ExecState* m_exec;
     RefPtr<Frame> m_frame;
 };
 
@@ -557,42 +557,42 @@ inline void DialogHandler::dialogCreated(DOMWindow& dialog)
     
     // FIXME: This looks like a leak between the normal world and an isolated
     //        world if dialogArguments comes from an isolated world.
-    JSDOMWindow* globalObject = toJSDOMWindow(m_frame.get(), normalWorld(m_exec.vm()));
-    if (JSValue dialogArguments = m_exec.argument(1))
-        globalObject->putDirect(m_exec.vm(), Identifier::fromString(&m_exec, "dialogArguments"), dialogArguments);
+    JSDOMWindow* globalObject = toJSDOMWindow(m_frame.get(), normalWorld(m_exec->vm()));
+    if (JSValue dialogArguments = m_exec->argument(1))
+        globalObject->putDirect(m_exec->vm(), Identifier::fromString(m_exec, "dialogArguments"), dialogArguments);
 }
 
 inline JSValue DialogHandler::returnValue() const
 {
-    JSDOMWindow* globalObject = toJSDOMWindow(m_frame.get(), normalWorld(m_exec.vm()));
+    JSDOMWindow* globalObject = toJSDOMWindow(m_frame.get(), normalWorld(m_exec->vm()));
     if (!globalObject)
         return jsUndefined();
-    Identifier identifier = Identifier::fromString(&m_exec, "returnValue");
+    Identifier identifier = Identifier::fromString(m_exec, "returnValue");
     PropertySlot slot(globalObject);
-    if (!JSGlobalObject::getOwnPropertySlot(globalObject, &m_exec, identifier, slot))
+    if (!JSGlobalObject::getOwnPropertySlot(globalObject, m_exec, identifier, slot))
         return jsUndefined();
-    return slot.getValue(&m_exec, identifier);
+    return slot.getValue(m_exec, identifier);
 }
 
-JSValue JSDOMWindow::showModalDialog(ExecState& state)
+JSValue JSDOMWindow::showModalDialog(ExecState* exec)
 {
-    String urlString = valueToStringWithUndefinedOrNullCheck(&state, state.argument(0));
-    if (state.hadException())
+    String urlString = valueToStringWithUndefinedOrNullCheck(exec, exec->argument(0));
+    if (exec->hadException())
         return jsUndefined();
-    String dialogFeaturesString = valueToStringWithUndefinedOrNullCheck(&state, state.argument(2));
-    if (state.hadException())
+    String dialogFeaturesString = valueToStringWithUndefinedOrNullCheck(exec, exec->argument(2));
+    if (exec->hadException())
         return jsUndefined();
 
-    DialogHandler handler(state);
+    DialogHandler handler(exec);
 
-    impl().showModalDialog(urlString, dialogFeaturesString, activeDOMWindow(&state), firstDOMWindow(&state), [&handler](DOMWindow& dialog) {
+    impl().showModalDialog(urlString, dialogFeaturesString, activeDOMWindow(exec), firstDOMWindow(exec), [&handler](DOMWindow& dialog) {
         handler.dialogCreated(dialog);
     });
 
     return handler.returnValue();
 }
 
-static JSValue handlePostMessage(DOMWindow& impl, ExecState& state)
+static JSValue handlePostMessage(DOMWindow* impl, ExecState* exec)
 {
     MessagePortArray messagePorts;
     ArrayBufferArray arrayBuffers;
@@ -604,102 +604,102 @@ static JSValue handlePostMessage(DOMWindow& impl, ExecState& state)
     // Legacy non-standard implementations in webkit allowed:
     //   postMessage(message, {sequence of transferrables}, targetOrigin);
     int targetOriginArgIndex = 1;
-    if (state.argumentCount() > 2) {
+    if (exec->argumentCount() > 2) {
         int transferablesArgIndex = 2;
-        if (state.argument(2).isString()) {
+        if (exec->argument(2).isString()) {
             targetOriginArgIndex = 2;
             transferablesArgIndex = 1;
         }
-        fillMessagePortArray(state, state.argument(transferablesArgIndex), messagePorts, arrayBuffers);
+        fillMessagePortArray(exec, exec->argument(transferablesArgIndex), messagePorts, arrayBuffers);
     }
-    if (state.hadException())
+    if (exec->hadException())
         return jsUndefined();
 
-    RefPtr<SerializedScriptValue> message = SerializedScriptValue::create(&state, state.argument(0),
+    RefPtr<SerializedScriptValue> message = SerializedScriptValue::create(exec, exec->argument(0),
                                                                          &messagePorts,
                                                                          &arrayBuffers);
 
-    if (state.hadException())
+    if (exec->hadException())
         return jsUndefined();
 
-    String targetOrigin = valueToStringWithUndefinedOrNullCheck(&state, state.argument(targetOriginArgIndex));
-    if (state.hadException())
+    String targetOrigin = valueToStringWithUndefinedOrNullCheck(exec, exec->argument(targetOriginArgIndex));
+    if (exec->hadException())
         return jsUndefined();
 
     ExceptionCode ec = 0;
-    impl.postMessage(message.release(), &messagePorts, targetOrigin, activeDOMWindow(&state), ec);
-    setDOMException(&state, ec);
+    impl->postMessage(message.release(), &messagePorts, targetOrigin, activeDOMWindow(exec), ec);
+    setDOMException(exec, ec);
 
     return jsUndefined();
 }
 
-JSValue JSDOMWindow::postMessage(ExecState& state)
+JSValue JSDOMWindow::postMessage(ExecState* exec)
 {
-    return handlePostMessage(impl(), state);
+    return handlePostMessage(&impl(), exec);
 }
 
-JSValue JSDOMWindow::setTimeout(ExecState& state)
+JSValue JSDOMWindow::setTimeout(ExecState* exec)
 {
-    ContentSecurityPolicy* contentSecurityPolicy = impl().document() ? impl().document()->contentSecurityPolicy() : nullptr;
-    std::unique_ptr<ScheduledAction> action = ScheduledAction::create(&state, globalObject()->world(), contentSecurityPolicy);
-    if (state.hadException())
+    ContentSecurityPolicy* contentSecurityPolicy = impl().document() ? impl().document()->contentSecurityPolicy() : 0;
+    std::unique_ptr<ScheduledAction> action = ScheduledAction::create(exec, globalObject()->world(), contentSecurityPolicy);
+    if (exec->hadException())
         return jsUndefined();
 
     if (!action)
         return jsNumber(0);
 
-    int delay = state.argument(1).toInt32(&state);
+    int delay = exec->argument(1).toInt32(exec);
 
     ExceptionCode ec = 0;
     int result = impl().setTimeout(WTF::move(action), delay, ec);
-    setDOMException(&state, ec);
+    setDOMException(exec, ec);
 
     return jsNumber(result);
 }
 
-JSValue JSDOMWindow::setInterval(ExecState& state)
+JSValue JSDOMWindow::setInterval(ExecState* exec)
 {
-    ContentSecurityPolicy* contentSecurityPolicy = impl().document() ? impl().document()->contentSecurityPolicy() : nullptr;
-    std::unique_ptr<ScheduledAction> action = ScheduledAction::create(&state, globalObject()->world(), contentSecurityPolicy);
-    if (state.hadException())
+    ContentSecurityPolicy* contentSecurityPolicy = impl().document() ? impl().document()->contentSecurityPolicy() : 0;
+    std::unique_ptr<ScheduledAction> action = ScheduledAction::create(exec, globalObject()->world(), contentSecurityPolicy);
+    if (exec->hadException())
         return jsUndefined();
-    int delay = state.argument(1).toInt32(&state);
+    int delay = exec->argument(1).toInt32(exec);
 
     if (!action)
         return jsNumber(0);
 
     ExceptionCode ec = 0;
     int result = impl().setInterval(WTF::move(action), delay, ec);
-    setDOMException(&state, ec);
+    setDOMException(exec, ec);
 
     return jsNumber(result);
 }
 
-JSValue JSDOMWindow::addEventListener(ExecState& state)
+JSValue JSDOMWindow::addEventListener(ExecState* exec)
 {
     Frame* frame = impl().frame();
     if (!frame)
         return jsUndefined();
 
-    JSValue listener = state.argument(1);
+    JSValue listener = exec->argument(1);
     if (!listener.isObject())
         return jsUndefined();
 
-    impl().addEventListener(state.argument(0).toString(&state)->toAtomicString(&state), JSEventListener::create(asObject(listener), this, false, globalObject()->world()), state.argument(2).toBoolean(&state));
+    impl().addEventListener(exec->argument(0).toString(exec)->toAtomicString(exec), JSEventListener::create(asObject(listener), this, false, globalObject()->world()), exec->argument(2).toBoolean(exec));
     return jsUndefined();
 }
 
-JSValue JSDOMWindow::removeEventListener(ExecState& state)
+JSValue JSDOMWindow::removeEventListener(ExecState* exec)
 {
     Frame* frame = impl().frame();
     if (!frame)
         return jsUndefined();
 
-    JSValue listener = state.argument(1);
+    JSValue listener = exec->argument(1);
     if (!listener.isObject())
         return jsUndefined();
 
-    impl().removeEventListener(state.argument(0).toString(&state)->toAtomicString(&state), JSEventListener::create(asObject(listener), this, false, globalObject()->world()).ptr(), state.argument(2).toBoolean(&state));
+    impl().removeEventListener(exec->argument(0).toString(exec)->toAtomicString(exec), JSEventListener::create(asObject(listener), this, false, globalObject()->world()).ptr(), exec->argument(2).toBoolean(exec));
     return jsUndefined();
 }
 

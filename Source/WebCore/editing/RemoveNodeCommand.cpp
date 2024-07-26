@@ -34,11 +34,12 @@
 
 namespace WebCore {
 
-RemoveNodeCommand::RemoveNodeCommand(Ref<Node>&& node, ShouldAssumeContentIsAlwaysEditable shouldAssumeContentIsAlwaysEditable)
+RemoveNodeCommand::RemoveNodeCommand(PassRefPtr<Node> node, ShouldAssumeContentIsAlwaysEditable shouldAssumeContentIsAlwaysEditable)
     : SimpleEditCommand(node->document())
-    , m_node(WTF::move(node))
+    , m_node(node)
     , m_shouldAssumeContentIsAlwaysEditable(shouldAssumeContentIsAlwaysEditable)
 {
+    ASSERT(m_node);
     ASSERT(m_node->parentNode());
 }
 
@@ -63,7 +64,7 @@ void RemoveNodeCommand::doUnapply()
     if (!parent || !parent->hasEditableStyle())
         return;
 
-    parent->insertBefore(m_node.copyRef(), refChild.get(), IGNORE_EXCEPTION);
+    parent->insertBefore(m_node.get(), refChild.get(), IGNORE_EXCEPTION);
 }
 
 #ifndef NDEBUG
@@ -71,7 +72,7 @@ void RemoveNodeCommand::getNodesInCommand(HashSet<Node*>& nodes)
 {
     addNodeAndDescendants(m_parent.get(), nodes);
     addNodeAndDescendants(m_refChild.get(), nodes);
-    addNodeAndDescendants(m_node.ptr(), nodes);
+    addNodeAndDescendants(m_node.get(), nodes);
 }
 #endif
 

@@ -485,6 +485,13 @@ bool RemoteLayerTreeTransaction::LayerProperties::decode(IPC::ArgumentDecoder& d
 }
 
 RemoteLayerTreeTransaction::RemoteLayerTreeTransaction()
+    : m_pageScaleFactor(1)
+    , m_minimumScaleFactor(1)
+    , m_maximumScaleFactor(1)
+    , m_renderTreeSize(0)
+    , m_transactionID(0)
+    , m_scaleWasSetByUIProcess(false)
+    , m_allowsUserScaling(false)
 {
 }
 
@@ -520,8 +527,6 @@ void RemoteLayerTreeTransaction::encode(IPC::ArgumentEncoder& encoder) const
 
     encoder << m_renderTreeSize;
     encoder << m_transactionID;
-
-    encoder << m_newlyReachedLayoutMilestones;
 
     encoder << m_scaleWasSetByUIProcess;
     encoder << m_allowsUserScaling;
@@ -601,9 +606,6 @@ bool RemoteLayerTreeTransaction::decode(IPC::ArgumentDecoder& decoder, RemoteLay
         return false;
 
     if (!decoder.decode(result.m_transactionID))
-        return false;
-
-    if (!decoder.decode(result.m_newlyReachedLayoutMilestones))
         return false;
 
     if (!decoder.decode(result.m_scaleWasSetByUIProcess))

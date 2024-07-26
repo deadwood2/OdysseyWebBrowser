@@ -67,7 +67,6 @@ public:
     bool isShowingOverlay() const { return m_isShowingFindIndicator && m_findPageOverlay; }
 
     void deviceScaleFactorDidChange();
-    void didInvalidateDocumentMarkerRects();
 
     void redraw();
 
@@ -79,13 +78,12 @@ private:
     virtual bool mouseEvent(WebCore::PageOverlay&, const WebCore::PlatformMouseEvent&);
     virtual void drawRect(WebCore::PageOverlay&, WebCore::GraphicsContext&, const WebCore::IntRect& dirtyRect);
 
-    Vector<WebCore::IntRect> rectsForTextMatchesInRect(WebCore::IntRect clipRect);
+    Vector<WebCore::IntRect> rectsForTextMatches();
     bool updateFindIndicator(WebCore::Frame& selectedFrame, bool isShowingOverlay, bool shouldAnimate = true);
 
     void updateFindUIAfterPageScroll(bool found, const String&, FindOptions, unsigned maxMatchCount);
 
     void willFindString();
-    void didFindString();
     void didFailToFindString();
     void didHideFindIndicator();
 

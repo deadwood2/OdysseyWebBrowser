@@ -29,7 +29,6 @@
 #if ENABLE(VIDEO) && USE(GSTREAMER) && ENABLE(VIDEO_TRACK)
 
 #include "GRefPtrGStreamer.h"
-#include <wtf/Lock.h>
 #include <wtf/ThreadingPrimitives.h>
 #include <wtf/glib/GThreadSafeMainLoopSource.h>
 #include <wtf/text/WTFString.h>
@@ -74,7 +73,7 @@ private:
     GThreadSafeMainLoopSource m_activeTimerHandler;
     GThreadSafeMainLoopSource m_tagTimerHandler;
 
-    Lock m_tagMutex;
+    Mutex m_tagMutex;
     GRefPtr<GstTagList> m_tags;
 };
 

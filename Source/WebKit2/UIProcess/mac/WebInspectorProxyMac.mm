@@ -29,6 +29,8 @@
 #if PLATFORM(MAC) && WK_API_ENABLED
 
 #import "WKAPICast.h"
+#import "WKArray.h"
+#import "WKContextMenuItem.h"
 #import "WKInspectorPrivateMac.h"
 #import "WKMutableArray.h"
 #import "WKOpenPanelParameters.h"
@@ -40,15 +42,21 @@
 #import "WKViewInternal.h"
 #import "WKWebViewConfigurationPrivate.h"
 #import "WKWebViewInternal.h"
+#import "WebInspectorMessages.h"
 #import "WebInspectorUIMessages.h"
 #import "WebPageGroup.h"
 #import "WebPageProxy.h"
 #import "WebPreferences.h"
 #import "WebProcessProxy.h"
+#import <QuartzCore/CoreAnimation.h>
 #import <WebCore/InspectorFrontendClientLocal.h>
 #import <WebCore/LocalizedStrings.h>
 #import <WebCore/SoftLinking.h>
+#import <WebKitSystemInterface.h>
+#import <algorithm>
+#import <mach-o/dyld.h>
 #import <wtf/text/Base64.h>
+#import <wtf/text/WTFString.h>
 
 SOFT_LINK_STAGED_FRAMEWORK(WebInspectorUI, PrivateFrameworks, A)
 
@@ -98,6 +106,16 @@ static const unsigned webViewCloseTimeout = 60;
     _inspectorProxy = static_cast<void*>(inspectorProxy); // Not retained to prevent cycles
 
     return self;
+}
+
+- (IBAction)attachRight:(id)sender
+{
+    static_cast<WebInspectorProxy*>(_inspectorProxy)->attach(AttachmentSide::Right);
+}
+
+- (IBAction)attachBottom:(id)sender
+{
+    static_cast<WebInspectorProxy*>(_inspectorProxy)->attach(AttachmentSide::Bottom);
 }
 
 - (void)close
@@ -231,6 +249,30 @@ static void runOpenPanel(WKPageRef page, WKFrameRef frame, WKOpenPanelParameters
         [openPanel beginSheetModalForWindow:webInspectorProxy->inspectorWindow() completionHandler:completionHandler];
     else
         completionHandler([openPanel runModal]);
+}
+
+static void getContextMenuFromProposedMenu(WKPageRef pageRef, WKArrayRef proposedMenuRef, WKArrayRef* newMenuRef, WKHitTestResultRef, WKTypeRef, const void*)
+{
+    WKMutableArrayRef menuItems = WKMutableArrayCreate();
+
+    size_t count = WKArrayGetSize(proposedMenuRef);
+    for (size_t i = 0; i < count; ++i) {
+        WKContextMenuItemRef contextMenuItem = static_cast<WKContextMenuItemRef>(WKArrayGetItemAtIndex(proposedMenuRef, i));
+        switch (WKContextMenuItemGetTag(contextMenuItem)) {
+        case kWKContextMenuItemTagOpenLinkInNewWindow:
+        case kWKContextMenuItemTagOpenImageInNewWindow:
+        case kWKContextMenuItemTagOpenFrameInNewWindow:
+        case kWKContextMenuItemTagOpenMediaInNewWindow:
+        case kWKContextMenuItemTagDownloadLinkToDisk:
+        case kWKContextMenuItemTagDownloadImageToDisk:
+            break;
+        default:
+            WKArrayAppendItem(menuItems, contextMenuItem);
+            break;
+        }
+    }
+
+    *newMenuRef = menuItems;
 }
 
 void WebInspectorProxy::attachmentViewDidChange(NSView *oldView, NSView *newView)
@@ -378,10 +420,8 @@ WebPageProxy* WebInspectorProxy::platformCreateInspectorPage()
 #endif
     preferences._allowFileAccessFromFileURLs = YES;
     preferences._javaScriptRuntimeFlags = 0;
-    if (isUnderTest()) {
+    if (isUnderTest())
         preferences._hiddenPageDOMTimerThrottlingEnabled = NO;
-        preferences._pageVisibilityBasedProcessSuppressionEnabled = NO;
-    }
 
     [configuration setProcessPool: ::WebKit::wrapper(inspectorProcessPool())];
     [configuration _setGroupIdentifier:inspectorPageGroupIdentifier()];
@@ -459,6 +499,18 @@ WebPageProxy* WebInspectorProxy::platformCreateInspectorPage()
 
     WKPageSetPageUIClient(toAPI(inspectorPage), &uiClient.base);
 
+    WKPageContextMenuClientV3 contextMenuClient = {
+        { 3, this },
+        0, // getContextMenuFromProposedMenu_deprecatedForUseWithV0
+        0, // customContextMenuItemSelected
+        0, // contextMenuDismissed
+        getContextMenuFromProposedMenu,
+        0, // showContextMenu
+        0, // hideContextMenu
+    };
+
+    WKPageSetPageContextMenuClient(toAPI(inspectorPage), &contextMenuClient.base);
+
     return inspectorPage;
 }
 
@@ -495,7 +547,7 @@ void WebInspectorProxy::platformDidClose()
 {
     if (m_inspectorWindow) {
         [m_inspectorWindow setDelegate:nil];
-        [m_inspectorWindow close];
+        [m_inspectorWindow orderOut:nil];
         m_inspectorWindow = nil;
     }
 
@@ -518,7 +570,7 @@ void WebInspectorProxy::platformHide()
 
     if (m_inspectorWindow) {
         [m_inspectorWindow setDelegate:nil];
-        [m_inspectorWindow close];
+        [m_inspectorWindow orderOut:nil];
         m_inspectorWindow = nil;
     }
 }
@@ -535,7 +587,7 @@ void WebInspectorProxy::platformBringToFront()
 
     // FIXME <rdar://problem/10937688>: this will not bring a background tab in Safari to the front, only its window.
     [m_inspectorView.get().window makeKeyAndOrderFront:nil];
-    [m_inspectorView.get().window makeFirstResponder:m_inspectorView.get()];
+    [m_inspectorView.get().window makeFirstResponder:m_inspectorView->_page->wkView()];
 }
 
 bool WebInspectorProxy::platformIsFront()
@@ -736,7 +788,7 @@ void WebInspectorProxy::platformAttach()
 
     if (m_inspectorWindow) {
         [m_inspectorWindow setDelegate:nil];
-        [m_inspectorWindow close];
+        [m_inspectorWindow orderOut:nil];
         m_inspectorWindow = nil;
     }
 
@@ -758,7 +810,7 @@ void WebInspectorProxy::platformAttach()
     inspectedViewFrameDidChange(currentDimension);
 
     [[inspectedView superview] addSubview:m_inspectorView.get() positioned:NSWindowBelow relativeTo:inspectedView];
-    [m_inspectorView.get().window makeFirstResponder:m_inspectorView.get()];
+    [m_inspectorView.get().window makeFirstResponder:m_inspectorView->_page->wkView()];
 }
 
 void WebInspectorProxy::platformDetach()
@@ -812,7 +864,7 @@ void WebInspectorProxy::platformStartWindowDrag()
 #endif
 }
 
-String WebInspectorProxy::inspectorPageURL()
+String WebInspectorProxy::inspectorPageURL() const
 {
     // Call the soft link framework function to dlopen it, then [NSBundle bundleWithIdentifier:] will work.
     WebInspectorUILibrary();
@@ -823,7 +875,7 @@ String WebInspectorProxy::inspectorPageURL()
     return [[NSURL fileURLWithPath:path] absoluteString];
 }
 
-String WebInspectorProxy::inspectorTestPageURL()
+String WebInspectorProxy::inspectorTestPageURL() const
 {
     // Call the soft link framework function to dlopen it, then [NSBundle bundleWithIdentifier:] will work.
     WebInspectorUILibrary();
@@ -837,7 +889,7 @@ String WebInspectorProxy::inspectorTestPageURL()
     return [[NSURL fileURLWithPath:path] absoluteString];
 }
 
-String WebInspectorProxy::inspectorBaseURL()
+String WebInspectorProxy::inspectorBaseURL() const
 {
     // Call the soft link framework function to dlopen it, then [NSBundle bundleWithIdentifier:] will work.
     WebInspectorUILibrary();

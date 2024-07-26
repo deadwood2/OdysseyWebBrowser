@@ -79,7 +79,9 @@
 
 - (void)collapse:(BOOL)toStart
 {
-    _impl->collapse(toStart);
+    // FIXME: Do something about the exception.
+    WebCore::ExceptionCode ec = 0;
+    _impl->collapse(toStart, ec);
 }
 
 - (void)selectNode:(WKDOMNode *)node
@@ -98,22 +100,30 @@
 
 - (WKDOMNode *)startContainer
 {
-    return WebKit::toWKDOMNode(&_impl->startContainer());
+    // FIXME: Do something about the exception.
+    WebCore::ExceptionCode ec = 0;
+    return WebKit::toWKDOMNode(_impl->startContainer(ec));
 }
 
 - (NSInteger)startOffset
 {
-    return _impl->startOffset();
+    // FIXME: Do something about the exception.
+    WebCore::ExceptionCode ec = 0;
+    return _impl->startOffset(ec);
 }
 
 - (WKDOMNode *)endContainer
 {
-    return WebKit::toWKDOMNode(&_impl->endContainer());
+    // FIXME: Do something about the exception.
+    WebCore::ExceptionCode ec = 0;
+    return WebKit::toWKDOMNode(_impl->endContainer(ec));
 }
 
 - (NSInteger)endOffset
 {
-    return _impl->endOffset();
+    // FIXME: Do something about the exception.
+    WebCore::ExceptionCode ec = 0;
+    return _impl->endOffset(ec);
 }
 
 - (NSString *)text
@@ -123,14 +133,16 @@
 
 - (BOOL)isCollapsed
 {
-    return _impl->collapsed();
+    // FIXME: Do something about the exception.
+    WebCore::ExceptionCode ec = 0;
+    return _impl->collapsed(ec);
 }
 
 - (NSArray *)textRects
 {
     _impl->ownerDocument().updateLayoutIgnorePendingStylesheets();
     Vector<WebCore::IntRect> rects;
-    _impl->absoluteTextRects(rects);
+    _impl->textRects(rects);
     return WebKit::toNSArray(rects);
 }
 

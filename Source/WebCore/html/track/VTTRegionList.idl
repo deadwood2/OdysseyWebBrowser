@@ -25,7 +25,7 @@
 
 [
     NoInterfaceObject,
-    Conditional=VIDEO_TRACK,
+    Conditional=VIDEO_TRACK & WEBVTT_REGIONS,
     ImplementationLacksVTable,
 ] interface VTTRegionList {
     readonly attribute unsigned long length;

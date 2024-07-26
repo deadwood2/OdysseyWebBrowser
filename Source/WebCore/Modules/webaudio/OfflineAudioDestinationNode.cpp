@@ -140,10 +140,18 @@ void OfflineAudioDestinationNode::offlineRender()
     }
     
     // Our work is done. Let the AudioContext know.
-    callOnMainThread([this] {
-        notifyComplete();
-        deref();
-    });
+    callOnMainThread(notifyCompleteDispatch, this);
+}
+
+void OfflineAudioDestinationNode::notifyCompleteDispatch(void* userData)
+{
+    OfflineAudioDestinationNode* destinationNode = static_cast<OfflineAudioDestinationNode*>(userData);
+    ASSERT(destinationNode);
+    if (!destinationNode)
+        return;
+
+    destinationNode->notifyComplete();
+    destinationNode->deref();
 }
 
 void OfflineAudioDestinationNode::notifyComplete()

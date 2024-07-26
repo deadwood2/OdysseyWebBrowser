@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,23 +23,26 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ImageResourceContentView = class ImageResourceContentView extends WebInspector.ResourceContentView
+WebInspector.ImageResourceContentView = function(resource)
 {
-    constructor(resource)
-    {
-        super(resource, "image");
+    WebInspector.ResourceContentView.call(this, resource, WebInspector.ImageResourceContentView.StyleClassName);
 
-        this._imageElement = null;
-    }
+    this._imageElement = null;
+};
+
+WebInspector.ImageResourceContentView.StyleClassName = "image";
+
+WebInspector.ImageResourceContentView.prototype = {
+    constructor: WebInspector.ImageResourceContentView,
 
     // Public
 
     get imageElement()
     {
         return this._imageElement;
-    }
+    },
 
-    contentAvailable(content, base64Encoded)
+    contentAvailable: function(content, base64Encoded)
     {
         this.element.removeChildren();
 
@@ -51,3 +54,5 @@ WebInspector.ImageResourceContentView = class ImageResourceContentView extends W
         this.element.appendChild(this._imageElement);
     }
 };
+
+WebInspector.ImageResourceContentView.prototype.__proto__ = WebInspector.ResourceContentView.prototype;

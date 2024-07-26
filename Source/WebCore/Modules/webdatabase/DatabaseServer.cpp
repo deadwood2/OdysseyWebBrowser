@@ -27,6 +27,7 @@
 #include "DatabaseServer.h"
 
 #include "Database.h"
+#include "DatabaseBackend.h"
 #include "DatabaseContext.h"
 #include "DatabaseTracker.h"
 
@@ -112,10 +113,15 @@ void DatabaseServer::closeAllDatabases()
     DatabaseTracker::tracker().closeAllDatabases();
 }
 
-RefPtr<Database> DatabaseServer::openDatabase(RefPtr<DatabaseContext>& backendContext, const String& name, const String& expectedVersion, const String& displayName, unsigned long estimatedSize, bool setVersionInNewDatabase, DatabaseError &error, String& errorMessage,
+void DatabaseServer::interruptAllDatabasesForContext(const DatabaseContext* context)
+{
+    DatabaseTracker::tracker().interruptAllDatabasesForContext(context);
+}
+
+RefPtr<DatabaseBackendBase> DatabaseServer::openDatabase(RefPtr<DatabaseContext>& backendContext, const String& name, const String& expectedVersion, const String& displayName, unsigned long estimatedSize, bool setVersionInNewDatabase, DatabaseError &error, String& errorMessage,
     OpenAttempt attempt)
 {
-    RefPtr<Database> database;
+    RefPtr<DatabaseBackendBase> database;
     bool success = false; // Make some older compilers happy.
     
     switch (attempt) {
@@ -131,7 +137,7 @@ RefPtr<Database> DatabaseServer::openDatabase(RefPtr<DatabaseContext>& backendCo
     return database;
 }
 
-RefPtr<Database> DatabaseServer::createDatabase(RefPtr<DatabaseContext>& backendContext, const String& name, const String& expectedVersion, const String& displayName, unsigned long estimatedSize, bool setVersionInNewDatabase, DatabaseError& error, String& errorMessage)
+RefPtr<DatabaseBackendBase> DatabaseServer::createDatabase(RefPtr<DatabaseContext>& backendContext, const String& name, const String& expectedVersion, const String& displayName, unsigned long estimatedSize, bool setVersionInNewDatabase, DatabaseError& error, String& errorMessage)
 {
     RefPtr<Database> database = adoptRef(new Database(backendContext, name, expectedVersion, displayName, estimatedSize));
 

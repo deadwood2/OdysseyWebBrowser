@@ -285,9 +285,6 @@ public:
 
     void setOverrideCachePolicyForTesting(ResourceRequestCachePolicy policy) { m_overrideCachePolicyForTesting = policy; }
     void setOverrideResourceLoadPriorityForTesting(ResourceLoadPriority priority) { m_overrideResourceLoadPriorityForTesting = priority; }
-    void setStrictRawResourceValidationPolicyDisabledForTesting(bool disabled) { m_isStrictRawResourceValidationPolicyDisabledForTesting = disabled; }
-    bool isStrictRawResourceValidationPolicyDisabledForTesting() { return m_isStrictRawResourceValidationPolicyDisabledForTesting; }
-
     WEBCORE_EXPORT void clearTestingOverrides();
 
     const URL& provisionalLoadErrorBeingHandledURL() const { return m_provisionalLoadErrorBeingHandledURL; }
@@ -445,7 +442,6 @@ private:
 
     Optional<ResourceRequestCachePolicy> m_overrideCachePolicyForTesting;
     Optional<ResourceLoadPriority> m_overrideResourceLoadPriorityForTesting;
-    bool m_isStrictRawResourceValidationPolicyDisabledForTesting { false };
 
     URL m_previousURL;
     RefPtr<HistoryItem> m_requestedHistoryItem;

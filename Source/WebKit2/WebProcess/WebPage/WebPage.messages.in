@@ -38,7 +38,10 @@ messages -> WebPage LegacyReceiver {
     ViewWillEndLiveResize()
 
     KeyEvent(WebKit::WebKeyboardEvent event)
+    KeyEventSyncForTesting(WebKit::WebKeyboardEvent event) -> (bool handled)
     MouseEvent(WebKit::WebMouseEvent event)
+    MouseEventSyncForTesting(WebKit::WebMouseEvent event) -> (bool handled)
+    WheelEventSyncForTesting(WebKit::WebWheelEvent event) -> (bool handled)
 #if PLATFORM(IOS)
     SetViewportConfigurationMinimumLayoutSize(WebCore::FloatSize size)
     SetMaximumUnobscuredSize(WebCore::FloatSize size)
@@ -104,6 +107,7 @@ messages -> WebPage LegacyReceiver {
 #endif
 #if !ENABLE(IOS_TOUCH_EVENTS) && ENABLE(TOUCH_EVENTS)
     TouchEvent(WebKit::WebTouchEvent event)
+    TouchEventSyncForTesting(WebKit::WebTouchEvent event) -> (bool handled)
 #endif
 
 #if ENABLE(INPUT_TYPE_COLOR)
@@ -198,6 +202,9 @@ messages -> WebPage LegacyReceiver {
     ScalePage(double scale, WebCore::IntPoint origin)
     ScalePageInViewCoordinates(double scale, WebCore::IntPoint centerInViewCoordinates)
     ScaleView(double scale)
+#if PLATFORM(COCOA)
+    ScaleViewAndUpdateGeometryFenced(double scale, WebCore::IntSize viewSize, uint64_t callbackID)
+#endif
 
     SetUseFixedLayout(bool fixed)
     SetFixedLayoutSize(WebCore::IntSize size)
@@ -281,7 +288,7 @@ messages -> WebPage LegacyReceiver {
 
 #if ENABLE(MEDIA_STREAM)
     # MediaSteam
-    DidReceiveUserMediaPermissionDecision(uint64_t userMediaID, bool allowed, String audioDeviceUID, String videoDeviceUID)
+    DidReceiveUserMediaPermissionDecision(uint64_t userMediaID, bool allowed, String deviceUIDVideo, String deviceUIDAudio)
 #endif
 
     # Notification
@@ -309,7 +316,6 @@ messages -> WebPage LegacyReceiver {
 
 #if ENABLE(MEDIA_SESSION)
     HandleMediaEvent(uint32_t eventType)
-    SetVolumeOfMediaElement(double volume, uint64_t elementID)
 #endif
 
     // FIXME: This a dummy message, to avoid breaking the build for platforms that don't require

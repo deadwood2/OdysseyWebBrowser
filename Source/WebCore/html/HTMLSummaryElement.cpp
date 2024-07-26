@@ -55,7 +55,7 @@ Ref<SummaryContentElement> SummaryContentElement::create(Document& document)
 Ref<HTMLSummaryElement> HTMLSummaryElement::create(const QualifiedName& tagName, Document& document)
 {
     Ref<HTMLSummaryElement> summary = adoptRef(*new HTMLSummaryElement(tagName, document));
-    summary->addShadowRoot(ShadowRootWithInsertionPoints::create(document));
+    summary->ensureUserAgentShadowRoot();
     return summary;
 }
 

@@ -212,22 +212,24 @@ static void layerPath(CAShapeLayer *layer, const FloatQuad& outerQuad)
     CGPathRelease(path);
 }
 
-- (void)_layoutForNodeHighlight:(const Highlight&)highlight offset:(unsigned)offset
+- (void)_layoutForNodeHighlight:(const Highlight&)highlight
 {
-    ASSERT([_layers count] >= offset + 4);
-    ASSERT(highlight.quads.size() >= offset + 4);
-    if ([_layers count] < offset + 4 || highlight.quads.size() < offset + 4)
+    if (!highlight.quads.size()) {
+        [self _removeAllLayers];
         return;
+    }
 
-    CAShapeLayer *marginLayer = [_layers objectAtIndex:offset];
-    CAShapeLayer *borderLayer = [_layers objectAtIndex:offset + 1];
-    CAShapeLayer *paddingLayer = [_layers objectAtIndex:offset + 2];
-    CAShapeLayer *contentLayer = [_layers objectAtIndex:offset + 3];
+    [self _createLayers:4];
 
-    FloatQuad marginQuad = highlight.quads[offset];
-    FloatQuad borderQuad = highlight.quads[offset + 1];
-    FloatQuad paddingQuad = highlight.quads[offset + 2];
-    FloatQuad contentQuad = highlight.quads[offset + 3];
+    CAShapeLayer *marginLayer = [_layers objectAtIndex:0];
+    CAShapeLayer *borderLayer = [_layers objectAtIndex:1];
+    CAShapeLayer *paddingLayer = [_layers objectAtIndex:2];
+    CAShapeLayer *contentLayer = [_layers objectAtIndex:3];
+
+    FloatQuad marginQuad = highlight.quads[0];
+    FloatQuad borderQuad = highlight.quads[1];
+    FloatQuad paddingQuad = highlight.quads[2];
+    FloatQuad contentQuad = highlight.quads[3];
 
     marginLayer.fillColor = cachedCGColor(highlight.marginColor, ColorSpaceDeviceRGB);
     borderLayer.fillColor = cachedCGColor(highlight.borderColor, ColorSpaceDeviceRGB);
@@ -238,20 +240,6 @@ static void layerPath(CAShapeLayer *layer, const FloatQuad& outerQuad)
     layerPathWithHole(borderLayer, borderQuad, paddingQuad);
     layerPathWithHole(paddingLayer, paddingQuad, contentQuad);
     layerPath(contentLayer, contentQuad);
-}
-
-- (void)_layoutForNodeListHighlight:(const Highlight&)highlight
-{
-    if (!highlight.quads.size()) {
-        [self _removeAllLayers];
-        return;
-    }
-
-    unsigned nodeCount = highlight.quads.size() / 4;
-    [self _createLayers:nodeCount * 4];
-
-    for (unsigned i = 0; i < nodeCount; ++i)
-        [self _layoutForNodeHighlight:highlight offset:i * 4];
 }
 
 - (void)_layoutForRectsHighlight:(const Highlight&)highlight
@@ -274,8 +262,8 @@ static void layerPath(CAShapeLayer *layer, const FloatQuad& outerQuad)
 
 - (void)update:(const Highlight&)highlight
 {
-    if (highlight.type == HighlightType::Node || highlight.type == HighlightType::NodeList)
-        [self _layoutForNodeListHighlight:highlight];
+    if (highlight.type == HighlightType::Node)
+        [self _layoutForNodeHighlight:highlight];
     else if (highlight.type == HighlightType::Rects)
         [self _layoutForRectsHighlight:highlight];
 }

@@ -28,6 +28,10 @@
 
 namespace WTF {
 
+class Mutex;
+
+extern Mutex* s_dtoaP5Mutex;
+
 typedef char DtoaBuffer[80];
 
 WTF_EXPORT_PRIVATE void dtoa(DtoaBuffer result, double dd, bool& sign, int& exponent, unsigned& precision);

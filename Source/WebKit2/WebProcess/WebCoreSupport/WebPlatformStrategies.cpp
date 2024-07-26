@@ -301,7 +301,7 @@ void WebPlatformStrategies::getPluginInfo(const WebCore::Page* page, Vector<WebC
     ASSERT_ARG(page, page);
     populatePluginCache(*page);
 
-    if (page->mainFrame().loader().subframeLoader().allowPlugins()) {
+    if (page->mainFrame().loader().subframeLoader().allowPlugins(NotAboutToInstantiatePlugin)) {
         plugins = m_cachedPlugins;
         return;
     }

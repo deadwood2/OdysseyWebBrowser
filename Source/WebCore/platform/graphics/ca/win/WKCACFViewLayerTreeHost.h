@@ -49,8 +49,8 @@ private:
     virtual void destroyRenderer();
     virtual void flushContext();
     virtual void contextDidChange();
-    void paint(HDC = nullptr) override;
-    void render(const Vector<CGRect>& dirtyRects = Vector<CGRect>(), HDC dc = nullptr) override;
+    virtual void paint();
+    virtual void render(const Vector<CGRect>& dirtyRects = Vector<CGRect>());
     virtual CFTimeInterval lastCommitTime() const;
     virtual void setShouldInvertColors(bool);
 #if USE(AVFOUNDATION)

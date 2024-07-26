@@ -25,26 +25,21 @@
 
 BuildbotCombinedQueueView = function(queue)
 {
-    console.assert(queue.branches === undefined);
-    var indicesOfFirstQueueWithRepository = {};
-    var combinedQueues = queue.combinedQueues;
-    var buildbot = combinedQueues[0].buildbot;
-    for (var i = 0; i < combinedQueues.length; ++i) {
-        var subQueue = combinedQueues[i];
-        console.assert(buildbot === subQueue.buildbot);
-        var branches = subQueue.branches;
-        for (var j = 0; j < branches.length; ++j) {
-            var branch = branches[j];
-            var repositoryName = branch.repository.name;
-            var expected = indicesOfFirstQueueWithRepository[repositoryName];
-            if (expected === undefined) {
-                indicesOfFirstQueueWithRepository[repositoryName] = { queueIndex: i, branchIndex: j };
+    console.assert(queue.branch === undefined);
+    var indexOfFirstQueueWithRepository = {};
+    for (var i = 0, end = queue.combinedQueues.length; i < end; ++i) {
+        console.assert(queue.combinedQueues[0].buildbot === queue.combinedQueues[i].buildbot);
+        var branches = queue.combinedQueues[i].branch;
+        for (var repository in branches) {
+            var indexOfFirstQueue = indexOfFirstQueueWithRepository[repository];
+            if (indexOfFirstQueue === undefined) {
+                indexOfFirstQueueWithRepository[repository] = i;
                 continue;
             }
-            var expectedBranch = combinedQueues[expected.queueIndex].branches[expected.branchIndex];
-            var message = queue.id + ": " + branch.name + " === combinedQueues[" + i + "].branch[" + j + "] ";
-            message += "=== combinedQueues[" + expected.queueIndex + "].branch[" + expected.branchIndex + "] === " + expectedBranch.name;
-            console.assert(branch.name === expectedBranch.name, message);
+            var message = queue.id + ": combinedQueues[" + i + "].branch[" + repository + "]";
+            message += " === combinedQueues[" + indexOfFirstQueue + "].branch[" + repository + "]";
+            console.assert(queue.combinedQueues[i].branch[repository]
+                === queue.combinedQueues[indexOfFirstQueue].branch[repository], message);
         }
     }
 
@@ -87,8 +82,7 @@ BuildbotCombinedQueueView.prototype = {
             this._appendPendingRevisionCount(slowestQueue);
 
             var message = this.revisionContentForIteration(slowestQueue.mostRecentSuccessfulIteration);
-            var statusMessagePassed = "all " + (queue.builder ? "builds succeeded" : "tests passed");
-            var status = new StatusLineView(message, StatusLineView.Status.Good, statusMessagePassed, null, null);
+            var status = new StatusLineView(message, StatusLineView.Status.Good, "all tests passed", null, null);
             new PopoverTracker(status.statusBubbleElement, this._presentPopoverForCombinedGreenBubble.bind(this));
             this.element.appendChild(status.element);
         } else {
@@ -107,15 +101,14 @@ BuildbotCombinedQueueView.prototype = {
                 if (firstRecentUnsuccessfulIteration && firstRecentUnsuccessfulIteration.loaded && mostRecentFinishedIteration && mostRecentFinishedIteration.loaded) {
                     console.assert(!mostRecentFinishedIteration.successful);
                     var message = this.revisionContentForIteration(mostRecentFinishedIteration, mostRecentFinishedIteration.productive ? mostRecentSuccessfulIteration : null);
-                    if (!mostRecentFinishedIteration.productive)
-                        var status = StatusLineView.Status.Danger;
-                    else {
+                    if (mostRecentFinishedIteration.failed) {
                         // Direct links to some common logs.
                         var url = mostRecentFinishedIteration.failureLogURL("build log");
                         if (!url)
                             url = mostRecentFinishedIteration.failureLogURL("stdio");
                         var status = StatusLineView.Status.Bad;
-                    }
+                    } else
+                        var status = StatusLineView.Status.Danger;
 
                     // Show a popover when the URL is not a main build page one, because there are usually multiple logs, and it's good to provide a choice.
                     var needsPopover = !url;

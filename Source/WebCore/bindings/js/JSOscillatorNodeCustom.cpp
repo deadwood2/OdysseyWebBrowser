@@ -37,28 +37,28 @@ using namespace JSC;
 
 namespace WebCore {
 
-void JSOscillatorNode::setType(ExecState& state, JSValue value)
+void JSOscillatorNode::setType(ExecState* exec, JSValue value)
 {
     OscillatorNode& imp = impl();
 
 #if ENABLE(LEGACY_WEB_AUDIO)
     if (value.isNumber()) {
-        uint32_t type = value.toUInt32(&state);
+        uint32_t type = value.toUInt32(exec);
         if (!imp.setType(type))
-            state.vm().throwException(&state, createTypeError(&state, "Illegal OscillatorNode type"));
+            exec->vm().throwException(exec, createTypeError(exec, "Illegal OscillatorNode type"));
         return;
     }
 #endif
 
     if (value.isString()) {
-        String type = value.toString(&state)->value(&state);
+        String type = value.toString(exec)->value(exec);
         if (type == "sine" || type == "square" || type == "sawtooth" || type == "triangle") {
             imp.setType(type);
             return;
         }
     }
     
-    state.vm().throwException(&state, createTypeError(&state, "Illegal OscillatorNode type"));
+    exec->vm().throwException(exec, createTypeError(exec, "Illegal OscillatorNode type"));
 }
 
 } // namespace WebCore

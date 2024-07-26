@@ -33,71 +33,71 @@ using namespace JSC;
 
 namespace WebCore {
 
-JSValue JSHTMLInputElement::selectionStart(ExecState& state) const
+JSValue JSHTMLInputElement::selectionStart(ExecState* exec) const
 {
     HTMLInputElement& input = impl();
     if (!input.canHaveSelection())
-        return throwTypeError(&state);
+        return throwTypeError(exec);
 
     return jsNumber(input.selectionStart());
 }
 
-void JSHTMLInputElement::setSelectionStart(ExecState& state, JSValue value)
+void JSHTMLInputElement::setSelectionStart(ExecState* exec, JSValue value)
 {
     HTMLInputElement& input = impl();
     if (!input.canHaveSelection())
-        throwTypeError(&state);
+        throwTypeError(exec);
 
-    input.setSelectionStart(value.toInt32(&state));
+    input.setSelectionStart(value.toInt32(exec));
 }
 
-JSValue JSHTMLInputElement::selectionEnd(ExecState& state) const
+JSValue JSHTMLInputElement::selectionEnd(ExecState* exec) const
 {
     HTMLInputElement& input = impl();
     if (!input.canHaveSelection())
-        return throwTypeError(&state);
+        return throwTypeError(exec);
 
     return jsNumber(input.selectionEnd());
 }
 
-void JSHTMLInputElement::setSelectionEnd(ExecState& state, JSValue value)
+void JSHTMLInputElement::setSelectionEnd(ExecState* exec, JSValue value)
 {
     HTMLInputElement& input = impl();
     if (!input.canHaveSelection())
-        throwTypeError(&state);
+        throwTypeError(exec);
 
-    input.setSelectionEnd(value.toInt32(&state));
+    input.setSelectionEnd(value.toInt32(exec));
 }
 
-JSValue JSHTMLInputElement::selectionDirection(ExecState& state) const
+JSValue JSHTMLInputElement::selectionDirection(ExecState* exec) const
 {
     HTMLInputElement& input = impl();
     if (!input.canHaveSelection())
-        return throwTypeError(&state);
+        return throwTypeError(exec);
 
-    return jsStringWithCache(&state, input.selectionDirection());
+    return jsStringWithCache(exec, input.selectionDirection());
 }
 
-void JSHTMLInputElement::setSelectionDirection(ExecState& state, JSValue value)
+void JSHTMLInputElement::setSelectionDirection(ExecState* exec, JSValue value)
 {
     HTMLInputElement& input = impl();
     if (!input.canHaveSelection()) {
-        throwTypeError(&state);
+        throwTypeError(exec);
         return;
     }
 
-    input.setSelectionDirection(value.toString(&state)->value(&state));
+    input.setSelectionDirection(value.toString(exec)->value(exec));
 }
 
-JSValue JSHTMLInputElement::setSelectionRange(ExecState& state)
+JSValue JSHTMLInputElement::setSelectionRange(ExecState* exec)
 {
     HTMLInputElement& input = impl();
     if (!input.canHaveSelection())
-        return throwTypeError(&state);
+        return throwTypeError(exec);
 
-    int start = state.argument(0).toInt32(&state);
-    int end = state.argument(1).toInt32(&state);
-    String direction = state.argument(2).toString(&state)->value(&state);
+    int start = exec->argument(0).toInt32(exec);
+    int end = exec->argument(1).toInt32(exec);
+    String direction = exec->argument(2).toString(exec)->value(exec);
 
     input.setSelectionRange(start, end, direction);
     return jsUndefined();

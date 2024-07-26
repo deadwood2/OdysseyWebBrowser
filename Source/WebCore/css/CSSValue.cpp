@@ -36,7 +36,6 @@
 #include "CSSContentDistributionValue.h"
 #include "CSSCrossfadeValue.h"
 #include "CSSCursorImageValue.h"
-#include "CSSCustomPropertyValue.h"
 #include "CSSFilterImageValue.h"
 #include "CSSFontFaceSrcValue.h"
 #include "CSSFontFeatureValue.h"
@@ -237,9 +236,6 @@ bool CSSValue::equals(const CSSValue& other) const
 #endif
         case CSSContentDistributionClass:
             return compareCSSValues<CSSContentDistributionValue>(*this, other);
-        case CustomPropertyClass:
-            return compareCSSValues<CSSCustomPropertyValue>(*this, other);
-        
         default:
             ASSERT_NOT_REACHED();
             return false;
@@ -334,10 +330,7 @@ String CSSValue::cssText() const
 #endif
     case CSSContentDistributionClass:
         return downcast<CSSContentDistributionValue>(*this).customCSSText();
-    case CustomPropertyClass:
-        return downcast<CSSCustomPropertyValue>(*this).customCSSText();
     }
-
     ASSERT_NOT_REACHED();
     return String();
 }
@@ -460,14 +453,11 @@ void CSSValue::destroy()
     case CSSContentDistributionClass:
         delete downcast<CSSContentDistributionValue>(this);
         return;
-    case CustomPropertyClass:
-        delete downcast<CSSCustomPropertyValue>(this);
-        return;
     }
     ASSERT_NOT_REACHED();
 }
 
-RefPtr<CSSValue> CSSValue::cloneForCSSOM() const
+PassRefPtr<CSSValue> CSSValue::cloneForCSSOM() const
 {
     switch (classType()) {
     case PrimitiveClass:

@@ -26,35 +26,16 @@
 #include "config.h"
 #include "CallLinkInfo.h"
 
-#include "CallFrameShuffleData.h"
 #include "DFGOperations.h"
 #include "DFGThunks.h"
 #include "JSCInlines.h"
 #include "Repatch.h"
+#include "RepatchBuffer.h"
 #include <wtf/ListDump.h>
 #include <wtf/NeverDestroyed.h>
 
 #if ENABLE(JIT)
 namespace JSC {
-
-CallLinkInfo::CallLinkInfo()
-    : m_hasSeenShouldRepatch(false)
-    , m_hasSeenClosure(false)
-    , m_clearedByGC(false)
-    , m_allowStubs(true)
-    , m_callType(None)
-    , m_maxNumArguments(0)
-    , m_slowPathCount(0)
-{
-}
-
-CallLinkInfo::~CallLinkInfo()
-{
-    clearStub();
-    
-    if (isOnList())
-        remove();
-}
 
 void CallLinkInfo::clearStub()
 {
@@ -65,7 +46,7 @@ void CallLinkInfo::clearStub()
     m_stub = nullptr;
 }
 
-void CallLinkInfo::unlink(VM& vm)
+void CallLinkInfo::unlink(RepatchBuffer& repatchBuffer)
 {
     if (!isLinked()) {
         // We could be called even if we're not linked anymore because of how polymorphic calls
@@ -74,14 +55,14 @@ void CallLinkInfo::unlink(VM& vm)
         return;
     }
     
-    unlinkFor(vm, *this);
+    unlinkFor(repatchBuffer, *this);
 
     // It will be on a list if the callee has a code block.
     if (isOnList())
         remove();
 }
 
-void CallLinkInfo::visitWeak(VM& vm)
+void CallLinkInfo::visitWeak(RepatchBuffer& repatchBuffer)
 {
     auto handleSpecificCallee = [&] (JSFunction* callee) {
         if (Heap::isMarked(callee->executable()))
@@ -92,37 +73,32 @@ void CallLinkInfo::visitWeak(VM& vm)
     
     if (isLinked()) {
         if (stub()) {
-            if (!stub()->visitWeak(vm)) {
+            if (!stub()->visitWeak(repatchBuffer)) {
                 if (Options::verboseOSR()) {
                     dataLog(
-                        "Clearing closure call to ",
+                        "Clearing closure call from ", *repatchBuffer.codeBlock(), " to ",
                         listDump(stub()->variants()), ", stub routine ", RawPointer(stub()),
                         ".\n");
                 }
-                unlink(vm);
+                unlink(repatchBuffer);
                 m_clearedByGC = true;
             }
         } else if (!Heap::isMarked(m_callee.get())) {
             if (Options::verboseOSR()) {
                 dataLog(
-                    "Clearing call to ",
+                    "Clearing call from ", *repatchBuffer.codeBlock(), " to ",
                     RawPointer(m_callee.get()), " (",
                     m_callee.get()->executable()->hashFor(specializationKind()),
                     ").\n");
             }
             handleSpecificCallee(m_callee.get());
-            unlink(vm);
+            unlink(repatchBuffer);
         }
     }
     if (haveLastSeenCallee() && !Heap::isMarked(lastSeenCallee())) {
         handleSpecificCallee(lastSeenCallee());
         clearLastSeenCallee();
     }
-}
-
-void CallLinkInfo::setFrameShuffleData(const CallFrameShuffleData& shuffleData)
-{
-    m_frameShuffleData = std::make_unique<CallFrameShuffleData>(shuffleData);
 }
 
 } // namespace JSC

@@ -37,7 +37,7 @@
 #import <WebKit/WKViewPrivate.h>
 #import <WebKit/WebKit2.h>
 
-#if WK_API_ENABLED && PLATFORM(MAC)
+#if WK_API_ENABLED
 
 static bool testFinished = false;
 static NSString *htmlString = @"<body style='background-color: red'>";

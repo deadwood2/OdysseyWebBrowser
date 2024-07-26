@@ -30,9 +30,8 @@
 #include "Instruction.h"
 #include "JITStubRoutine.h"
 #include "MacroAssembler.h"
-#include "ObjectPropertyConditionSet.h"
 #include "Opcode.h"
-#include "PolymorphicAccess.h"
+#include "PolymorphicAccessStructureList.h"
 #include "RegisterSet.h"
 #include "SpillRegistersMode.h"
 #include "Structure.h"
@@ -42,64 +41,129 @@ namespace JSC {
 
 #if ENABLE(JIT)
 
-class PolymorphicAccess;
+class PolymorphicGetByIdList;
+class PolymorphicPutByIdList;
 
-enum class AccessType : int8_t {
-    Get,
-    Put,
-    In
+enum AccessType {
+    access_get_by_id_self,
+    access_get_by_id_list,
+    access_put_by_id_transition_normal,
+    access_put_by_id_transition_direct,
+    access_put_by_id_replace,
+    access_put_by_id_list,
+    access_unset,
+    access_in_list
 };
 
-enum class CacheType : int8_t {
-    Unset,
-    GetByIdSelf,
-    PutByIdReplace,
-    Stub
-};
+inline bool isGetByIdAccess(AccessType accessType)
+{
+    switch (accessType) {
+    case access_get_by_id_self:
+    case access_get_by_id_list:
+        return true;
+    default:
+        return false;
+    }
+}
+    
+inline bool isPutByIdAccess(AccessType accessType)
+{
+    switch (accessType) {
+    case access_put_by_id_transition_normal:
+    case access_put_by_id_transition_direct:
+    case access_put_by_id_replace:
+    case access_put_by_id_list:
+        return true;
+    default:
+        return false;
+    }
+}
+
+inline bool isInAccess(AccessType accessType)
+{
+    switch (accessType) {
+    case access_in_list:
+        return true;
+    default:
+        return false;
+    }
+}
 
 struct StructureStubInfo {
-    StructureStubInfo(AccessType accessType)
-        : accessType(accessType)
-        , cacheType(CacheType::Unset)
+    StructureStubInfo()
+        : accessType(access_unset)
         , seen(false)
         , resetByGC(false)
         , tookSlowPath(false)
-        , callSiteIndex(UINT_MAX)
     {
     }
 
-    void initGetByIdSelf(VM& vm, JSCell* owner, Structure* baseObjectStructure, PropertyOffset offset)
+    void initGetByIdSelf(VM& vm, JSCell* owner, Structure* baseObjectStructure)
     {
-        cacheType = CacheType::GetByIdSelf;
+        accessType = access_get_by_id_self;
 
-        u.byIdSelf.baseObjectStructure.set(vm, owner, baseObjectStructure);
-        u.byIdSelf.offset = offset;
+        u.getByIdSelf.baseObjectStructure.set(vm, owner, baseObjectStructure);
     }
 
-    void initPutByIdReplace(VM& vm, JSCell* owner, Structure* baseObjectStructure, PropertyOffset offset)
+    void initGetByIdList(PolymorphicGetByIdList* list)
     {
-        cacheType = CacheType::PutByIdReplace;
-
-        u.byIdSelf.baseObjectStructure.set(vm, owner, baseObjectStructure);
-        u.byIdSelf.offset = offset;
+        accessType = access_get_by_id_list;
+        u.getByIdList.list = list;
     }
 
-    void initStub(std::unique_ptr<PolymorphicAccess> stub)
+    // PutById*
+
+    void initPutByIdTransition(VM& vm, JSCell* owner, Structure* previousStructure, Structure* structure, StructureChain* chain, bool isDirect)
     {
-        cacheType = CacheType::Stub;
-        u.stub = stub.release();
+        if (isDirect)
+            accessType = access_put_by_id_transition_direct;
+        else
+            accessType = access_put_by_id_transition_normal;
+
+        u.putByIdTransition.previousStructure.set(vm, owner, previousStructure);
+        u.putByIdTransition.structure.set(vm, owner, structure);
+        u.putByIdTransition.chain.set(vm, owner, chain);
     }
 
-    MacroAssemblerCodePtr addAccessCase(
-        VM&, CodeBlock*, const Identifier&, std::unique_ptr<AccessCase>);
-
-    void reset(CodeBlock*);
+    void initPutByIdReplace(VM& vm, JSCell* owner, Structure* baseObjectStructure)
+    {
+        accessType = access_put_by_id_replace;
+    
+        u.putByIdReplace.baseObjectStructure.set(vm, owner, baseObjectStructure);
+    }
+        
+    void initPutByIdList(PolymorphicPutByIdList* list)
+    {
+        accessType = access_put_by_id_list;
+        u.putByIdList.list = list;
+    }
+    
+    void initInList(PolymorphicAccessStructureList* list, int listSize)
+    {
+        accessType = access_in_list;
+        u.inList.structureList = list;
+        u.inList.listSize = listSize;
+    }
+        
+    void reset()
+    {
+        deref();
+        accessType = access_unset;
+        stubRoutine = nullptr;
+        watchpoints = nullptr;
+    }
 
     void deref();
 
-    // Check if the stub has weak references that are dead. If it does, then it resets itself,
-    // either entirely or just enough to ensure that those dead pointers don't get used anymore.
-    void visitWeakReferences(CodeBlock*);
+    // Check if the stub has weak references that are dead. If there are dead ones that imply
+    // that the stub should be entirely reset, this should return false. If there are dead ones
+    // that can be handled internally by the stub and don't require a full reset, then this
+    // should reset them and return true. If there are no dead weak references, return true.
+    // If this method returns true it means that it has left the stub in a state where all
+    // outgoing GC pointers are known to point to currently marked objects; this method is
+    // allowed to accomplish this by either clearing those pointers somehow or by proving that
+    // they have already been marked. It is not allowed to mark new objects.
+    bool visitWeakReferences(RepatchBuffer&);
         
     bool seenOnce()
     {
@@ -111,14 +175,18 @@ struct StructureStubInfo {
         seen = true;
     }
         
-    AccessType accessType;
-    CacheType cacheType;
-    bool seen;
+    StructureStubClearingWatchpoint* addWatchpoint(CodeBlock* codeBlock)
+    {
+        return WatchpointsOnStructureStubInfo::ensureReferenceAndAddWatchpoint(
+            watchpoints, codeBlock, this);
+    }
+    
+    int8_t accessType;
+    bool seen : 1;
     bool resetByGC : 1;
     bool tookSlowPath : 1;
 
     CodeOrigin codeOrigin;
-    CallSiteIndex callSiteIndex;
 
     struct {
         unsigned spillMode : 8;
@@ -143,13 +211,45 @@ struct StructureStubInfo {
 
     union {
         struct {
+            // It would be unwise to put anything here, as it will surely be overwritten.
+        } unset;
+        struct {
             WriteBarrierBase<Structure> baseObjectStructure;
-            PropertyOffset offset;
-        } byIdSelf;
-        PolymorphicAccess* stub;
+        } getByIdSelf;
+        struct {
+            WriteBarrierBase<Structure> baseObjectStructure;
+            WriteBarrierBase<Structure> prototypeStructure;
+            bool isDirect;
+        } getByIdProto;
+        struct {
+            WriteBarrierBase<Structure> baseObjectStructure;
+            WriteBarrierBase<StructureChain> chain;
+            unsigned count : 31;
+            bool isDirect : 1;
+        } getByIdChain;
+        struct {
+            PolymorphicGetByIdList* list;
+        } getByIdList;
+        struct {
+            WriteBarrierBase<Structure> previousStructure;
+            WriteBarrierBase<Structure> structure;
+            WriteBarrierBase<StructureChain> chain;
+        } putByIdTransition;
+        struct {
+            WriteBarrierBase<Structure> baseObjectStructure;
+        } putByIdReplace;
+        struct {
+            PolymorphicPutByIdList* list;
+        } putByIdList;
+        struct {
+            PolymorphicAccessStructureList* structureList;
+            int listSize;
+        } inList;
     } u;
 
+    RefPtr<JITStubRoutine> stubRoutine;
     CodeLocationCall callReturnLocation;
+    RefPtr<WatchpointsOnStructureStubInfo> watchpoints;
 };
 
 inline CodeOrigin getStructureStubInfoCodeOrigin(StructureStubInfo& structureStubInfo)

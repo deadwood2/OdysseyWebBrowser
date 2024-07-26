@@ -208,10 +208,14 @@ void MarkedBlock::stopAllocating(const FreeList& freeList)
 
 void MarkedBlock::clearMarks()
 {
+#if ENABLE(GGC)
     if (heap()->operationInProgress() == JSC::EdenCollection)
         this->clearMarksWithCollectionType<EdenCollection>();
     else
         this->clearMarksWithCollectionType<FullCollection>();
+#else
+    this->clearMarksWithCollectionType<FullCollection>();
+#endif
 }
 
 template <HeapOperation collectionType>

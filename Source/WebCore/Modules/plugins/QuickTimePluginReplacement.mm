@@ -366,7 +366,7 @@ static JSValue *jsValueWithAVMetadataItemInContext(AVMetadataItemType *item, JSC
 }
 #endif
 
-JSC::JSValue JSQuickTimePluginReplacement::timedMetaData(JSC::ExecState& state) const
+JSC::JSValue JSQuickTimePluginReplacement::timedMetaData(JSC::ExecState* exec) const
 {
 #if PLATFORM(IOS)
     HTMLVideoElement* parent = impl().parentElement();
@@ -384,14 +384,14 @@ JSC::JSValue JSQuickTimePluginReplacement::timedMetaData(JSC::ExecState& state) 
     JSContext *jsContext = frame->script().javaScriptContext();
     JSValue *metaDataValue = jsValueWithValueInContext(metaData, jsContext);
     
-    return toJS(&state, [metaDataValue JSValueRef]);
+    return toJS(exec, [metaDataValue JSValueRef]);
 #else
-    UNUSED_PARAM(state);
+    UNUSED_PARAM(exec);
     return JSC::jsNull();
 #endif
 }
 
-JSC::JSValue JSQuickTimePluginReplacement::accessLog(JSC::ExecState& state) const
+JSC::JSValue JSQuickTimePluginReplacement::accessLog(JSC::ExecState* exec) const
 {
 #if PLATFORM(IOS)
     HTMLVideoElement* parent = impl().parentElement();
@@ -406,14 +406,14 @@ JSC::JSValue JSQuickTimePluginReplacement::accessLog(JSC::ExecState& state) cons
     String accessLogString = parent->player()->accessLog();
     [dictionary setValue:static_cast<NSString *>(accessLogString) forProperty:(NSString *)CFSTR("extendedLog")];
 
-    return toJS(&state, [dictionary JSValueRef]);
+    return toJS(exec, [dictionary JSValueRef]);
 #else
-    UNUSED_PARAM(state);
+    UNUSED_PARAM(exec);
     return JSC::jsNull();
 #endif
 }
 
-JSC::JSValue JSQuickTimePluginReplacement::errorLog(JSC::ExecState& state) const
+JSC::JSValue JSQuickTimePluginReplacement::errorLog(JSC::ExecState* exec) const
 {
 #if PLATFORM(IOS)
     HTMLVideoElement* parent = impl().parentElement();
@@ -428,9 +428,9 @@ JSC::JSValue JSQuickTimePluginReplacement::errorLog(JSC::ExecState& state) const
     String errorLogString = parent->player()->errorLog();
     [dictionary setValue:static_cast<NSString *>(errorLogString) forProperty:(NSString *)CFSTR("extendedLog")];
 
-    return toJS(&state, [dictionary JSValueRef]);
+    return toJS(exec, [dictionary JSValueRef]);
 #else
-    UNUSED_PARAM(state);
+    UNUSED_PARAM(exec);
     return JSC::jsNull();
 #endif
 }

@@ -26,9 +26,8 @@
 #ifndef BlockingResponseMap_h
 #define BlockingResponseMap_h
 
-#include <wtf/Condition.h>
+#include <condition_variable>
 #include <wtf/HashMap.h>
-#include <wtf/Lock.h>
 #include <wtf/Noncopyable.h>
 
 template<typename T>
@@ -41,7 +40,7 @@ public:
     std::unique_ptr<T> waitForResponse(uint64_t requestID)
     {
         while (true) {
-            std::unique_lock<Lock> lock(m_mutex);
+            std::unique_lock<std::mutex> lock(m_mutex);
 
             if (m_canceled)
                 return nullptr;
@@ -57,26 +56,26 @@ public:
 
     void didReceiveResponse(uint64_t requestID, std::unique_ptr<T> response)
     {
-        std::lock_guard<Lock> lock(m_mutex);
+        std::lock_guard<std::mutex> lock(m_mutex);
         ASSERT(!m_responses.contains(requestID));
 
         m_responses.set(requestID, WTF::move(response));
 
-        // FIXME: Could get a slight speed-up from using notifyOne().
-        m_condition.notifyAll();
+        // FIXME: Waking up all threads is quite inefficient.
+        m_condition.notify_all();
     }
 
     void cancel()
     {
         m_canceled = true;
 
-        // FIXME: Could get a slight speed-up from using notifyOne().
-        m_condition.notifyAll();
+        // FIXME: Waking up all threads is quite inefficient.
+        m_condition.notify_all();
     }
 
 private:
-    Lock m_mutex;
-    Condition m_condition;
+    std::mutex m_mutex;
+    std::condition_variable m_condition;
 
     HashMap<uint64_t, std::unique_ptr<T>> m_responses;
     bool m_canceled;

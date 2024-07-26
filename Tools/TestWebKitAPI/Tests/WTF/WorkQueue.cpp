@@ -26,8 +26,6 @@
 #include "config.h"
 
 #include "Test.h"
-#include <wtf/Condition.h>
-#include <wtf/Lock.h>
 #include <wtf/Vector.h>
 #include <wtf/WorkQueue.h>
 #include <string>
@@ -42,8 +40,8 @@ static const char* dispatchAfterLabel = "dispatchAfter";
     
 TEST(WTF_WorkQueue, Simple)
 {
-    Lock m_lock;
-    Condition m_testCompleted;
+    Mutex m_lock;
+    ThreadCondition m_testCompleted;
     Vector<std::string> m_functionCallOrder;
 
     bool calledSimpleTest = false;
@@ -58,7 +56,7 @@ TEST(WTF_WorkQueue, Simple)
     int initialRefCount = queue->refCount();
     EXPECT_EQ(1, initialRefCount);
 
-    LockHolder locker(m_lock);
+    MutexLocker locker(m_lock);
     queue->dispatch([&](void) {
         m_functionCallOrder.append(simpleTestLabel);
         calledSimpleTest = true;
@@ -71,7 +69,7 @@ TEST(WTF_WorkQueue, Simple)
     });
 
     queue->dispatch([&](void) {
-        LockHolder locker(m_lock);
+        MutexLocker locker(m_lock);
         m_functionCallOrder.append(thirdTestLabel);
         calledThirdTest = true;
 
@@ -79,7 +77,7 @@ TEST(WTF_WorkQueue, Simple)
         EXPECT_TRUE(calledLongTest);
         EXPECT_TRUE(calledThirdTest);
         
-        m_testCompleted.notifyOne();
+        m_testCompleted.signal();
     });
 
     EXPECT_GT(queue->refCount(), 1);
@@ -98,8 +96,8 @@ TEST(WTF_WorkQueue, Simple)
 
 TEST(WTF_WorkQueue, TwoQueues)
 {
-    Lock m_lock;
-    Condition m_testQueue1Completed, m_testQueue2Completed;
+    Mutex m_lock;
+    ThreadCondition m_testQueue1Completed, m_testQueue2Completed;
     Vector<std::string> m_functionCallOrder;
 
     bool calledSimpleTest = false;
@@ -112,7 +110,7 @@ TEST(WTF_WorkQueue, TwoQueues)
     EXPECT_EQ(1, queue1->refCount());
     EXPECT_EQ(1, queue2->refCount());
 
-    LockHolder locker(m_lock);
+    MutexLocker locker(m_lock);
     
     queue1->dispatch([&](void) {
         m_functionCallOrder.append(simpleTestLabel);
@@ -122,22 +120,22 @@ TEST(WTF_WorkQueue, TwoQueues)
     queue2->dispatch([&](void) {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-        LockHolder locker(m_lock);
+        MutexLocker locker(m_lock);
 
         // Will fail if queue2 took the mutex before queue1.
         EXPECT_TRUE(calledThirdTest);
 
         m_functionCallOrder.append(longTestLabel);
         calledLongTest = true;
-        m_testQueue2Completed.notifyOne();
+        m_testQueue2Completed.signal();
     });
 
     queue1->dispatch([&](void) {
-        LockHolder locker(m_lock);
+        MutexLocker locker(m_lock);
         m_functionCallOrder.append(thirdTestLabel);
         calledThirdTest = true;
         
-        m_testQueue1Completed.notifyOne();
+        m_testQueue1Completed.signal();
     });
 
     m_testQueue1Completed.wait(m_lock);
@@ -160,8 +158,8 @@ TEST(WTF_WorkQueue, TwoQueues)
 
 TEST(WTF_WorkQueue, DispatchAfter)
 {
-    Lock m_lock;
-    Condition m_testCompleted, m_dispatchAfterTestCompleted;
+    Mutex m_lock;
+    ThreadCondition m_testCompleted, m_dispatchAfterTestCompleted;
     Vector<std::string> m_functionCallOrder;
 
     bool calledSimpleTest = false;
@@ -169,20 +167,20 @@ TEST(WTF_WorkQueue, DispatchAfter)
 
     auto queue = WorkQueue::create("com.apple.WebKit.Test.dispatchAfter");
 
-    LockHolder locker(m_lock);
+    MutexLocker locker(m_lock);
 
     queue->dispatch([&](void) {
-        LockHolder locker(m_lock);
+        MutexLocker locker(m_lock);
         m_functionCallOrder.append(simpleTestLabel);
         calledSimpleTest = true;
-        m_testCompleted.notifyOne();
+        m_testCompleted.signal();
     });
 
     queue->dispatchAfter(std::chrono::milliseconds(500), [&](void) {
-        LockHolder locker(m_lock);
+        MutexLocker locker(m_lock);
         m_functionCallOrder.append(dispatchAfterLabel);
         calledDispatchAfterTest = true;
-        m_dispatchAfterTestCompleted.notifyOne();
+        m_dispatchAfterTestCompleted.signal();
     });
 
     m_testCompleted.wait(m_lock);

@@ -26,7 +26,6 @@
 #if HAVE(SAFARI_SERVICES_FRAMEWORK) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000
 
 #import <WebCore/SoftLinking.h>
-#import <SafariServices/SFSafariViewController.h>
 
 @class _WKActivatedElementInfo;
 @class _WKElementAction;

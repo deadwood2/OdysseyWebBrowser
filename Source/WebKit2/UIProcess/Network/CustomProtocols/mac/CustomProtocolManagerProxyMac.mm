@@ -110,10 +110,6 @@ using namespace WebKit;
 
 - (NSURLRequest *)connection:(NSURLConnection *)connection willSendRequest:(NSURLRequest *)request redirectResponse:(NSURLResponse *)redirectResponse
 {
-    if (redirectResponse) {
-        _connection->send(Messages::CustomProtocolManager::WasRedirectedToRequest(_customProtocolID, request, redirectResponse), 0);
-        return nil;
-    }
     return request;
 }
 

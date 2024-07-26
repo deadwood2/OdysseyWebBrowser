@@ -33,7 +33,7 @@ namespace WebCore {
 
 class CSSStyleRule;
 class CSSStyleSheet;
-class ExtensionStyleSheets;
+class DocumentStyleSheetCollection;
 class InspectorCSSOMWrappers;
 class MediaQueryEvaluator;
 class RuleSet;
@@ -49,9 +49,9 @@ public:
     RuleSet* sibling() const { return m_siblingRuleSet.get(); }
     RuleSet* uncommonAttribute() const { return m_uncommonAttributeRuleSet.get(); }
 
-    void initUserStyle(ExtensionStyleSheets&, const MediaQueryEvaluator&, StyleResolver&);
+    void initUserStyle(DocumentStyleSheetCollection&, const MediaQueryEvaluator&, StyleResolver&);
     void resetAuthorStyle();
-    void appendAuthorStyleSheets(const Vector<RefPtr<CSSStyleSheet>>&, MediaQueryEvaluator*, InspectorCSSOMWrappers&, StyleResolver*);
+    void appendAuthorStyleSheets(unsigned firstNew, const Vector<RefPtr<CSSStyleSheet>>&, MediaQueryEvaluator*, InspectorCSSOMWrappers&, StyleResolver*);
 
     void collectFeatures();
 

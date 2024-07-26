@@ -31,11 +31,8 @@
 #import <wtf/RetainPtr.h>
 
 @class WKContentView;
+@class WKView;
 @class WKWebView;
-
-namespace API {
-class PageConfiguration;
-}
 
 namespace WebCore {
 struct Highlight;
@@ -48,6 +45,7 @@ class RemoteLayerTreeTransaction;
 class WebFrameProxy;
 class WebPageProxy;
 class WebProcessPool;
+struct WebPageConfiguration;
 }
 
 @interface WKContentView : UIView {
@@ -63,7 +61,8 @@ class WebProcessPool;
 @property (nonatomic, getter=isShowingInspectorIndication) BOOL showingInspectorIndication;
 @property (nonatomic, readonly) BOOL isBackground;
 
-- (instancetype)initWithFrame:(CGRect)frame processPool:(WebKit::WebProcessPool&)processPool configuration:(Ref<API::PageConfiguration>&&)configuration webView:(WKWebView *)webView;
+- (instancetype)initWithFrame:(CGRect)frame processPool:(WebKit::WebProcessPool&)processPool configuration:(WebKit::WebPageConfiguration)webPageConfiguration webView:(WKWebView *)webView;
+- (instancetype)initWithFrame:(CGRect)frame processPool:(WebKit::WebProcessPool&)processPool configuration:(WebKit::WebPageConfiguration)webPageConfiguration wkView:(WKView *)webView;
 
 - (void)didUpdateVisibleRect:(CGRect)visibleRect unobscuredRect:(CGRect)unobscuredRect
     unobscuredRectInScrollViewCoordinates:(CGRect)unobscuredRectInScrollViewCoordinates

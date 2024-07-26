@@ -40,7 +40,6 @@
 #include "StyleResolver.h"
 #include "StyleScrollSnapPoints.h"
 #include "StyleSelfAlignmentData.h"
-#include "WillChangeData.h"
 #include <wtf/MathExtras.h>
 #include <wtf/StdLibExtras.h>
 #include <algorithm>
@@ -196,7 +195,7 @@ ItemPosition RenderStyle::resolveAlignment(const RenderStyle& parentStyle, const
 
 OverflowAlignment RenderStyle::resolveAlignmentOverflow(const RenderStyle& parentStyle, const RenderStyle& childStyle)
 {
-    return resolveAlignmentData(parentStyle, childStyle, ItemPositionStretch).overflow();
+    return resolveJustificationData(parentStyle, childStyle, ItemPositionStretch).overflow();
 }
 
 ItemPosition RenderStyle::resolveJustification(const RenderStyle& parentStyle, const RenderStyle& childStyle, ItemPosition resolvedAutoPositionForRenderer)
@@ -524,9 +523,7 @@ bool RenderStyle::changeRequiresLayout(const RenderStyle& other, unsigned& chang
             || rareNonInheritedData->m_alignContent != other.rareNonInheritedData->m_alignContent
             || rareNonInheritedData->m_alignItems != other.rareNonInheritedData->m_alignItems
             || rareNonInheritedData->m_alignSelf != other.rareNonInheritedData->m_alignSelf
-            || rareNonInheritedData->m_justifyContent != other.rareNonInheritedData->m_justifyContent
-            || rareNonInheritedData->m_justifyItems != other.rareNonInheritedData->m_justifyItems
-            || rareNonInheritedData->m_justifySelf != other.rareNonInheritedData->m_justifySelf)
+            || rareNonInheritedData->m_justifyContent != other.rareNonInheritedData->m_justifyContent)
             return true;
 
         if (!rareNonInheritedData->reflectionDataEquivalent(*other.rareNonInheritedData.get()))
@@ -556,11 +553,6 @@ bool RenderStyle::changeRequiresLayout(const RenderStyle& other, unsigned& chang
         if (rareNonInheritedData->m_dashboardRegions != other.rareNonInheritedData->m_dashboardRegions)
             return true;
 #endif
-
-        if (!rareNonInheritedData->willChangeDataEquivalent(*other.rareNonInheritedData.get())) {
-            changedContextSensitiveProperties |= ContextSensitivePropertyWillChange;
-            // Don't return; keep looking for another change
-        }
     }
 
     if (rareInheritedData.get() != other.rareInheritedData.get()) {
@@ -931,15 +923,6 @@ void RenderStyle::setQuotes(PassRefPtr<QuotesData> q)
         return;
 
     rareInheritedData.access()->quotes = q;
-}
-
-void RenderStyle::setWillChange(PassRefPtr<WillChangeData> willChangeData)
-{
-    if (rareNonInheritedData->m_willChange == willChangeData
-        || (rareNonInheritedData->m_willChange && willChangeData && *rareNonInheritedData->m_willChange == *willChangeData))
-        return;
-
-    rareNonInheritedData.access()->m_willChange = WTF::move(willChangeData);
 }
 
 void RenderStyle::clearCursorList()
@@ -1403,7 +1386,7 @@ const Animation* RenderStyle::transitionForProperty(CSSPropertyID property) cons
 
 const FontCascade& RenderStyle::fontCascade() const { return inherited->fontCascade; }
 const FontMetrics& RenderStyle::fontMetrics() const { return inherited->fontCascade.fontMetrics(); }
-const FontCascadeDescription& RenderStyle::fontDescription() const { return inherited->fontCascade.fontDescription(); }
+const FontDescription& RenderStyle::fontDescription() const { return inherited->fontCascade.fontDescription(); }
 float RenderStyle::specifiedFontSize() const { return fontDescription().specifiedSize(); }
 float RenderStyle::computedFontSize() const { return fontDescription().computedSize(); }
 int RenderStyle::fontSize() const { return inherited->fontCascade.pixelSize(); }
@@ -1411,7 +1394,7 @@ int RenderStyle::fontSize() const { return inherited->fontCascade.pixelSize(); }
 const Length& RenderStyle::wordSpacing() const { return rareInheritedData->wordSpacing; }
 float RenderStyle::letterSpacing() const { return inherited->fontCascade.letterSpacing(); }
 
-bool RenderStyle::setFontDescription(const FontCascadeDescription& v)
+bool RenderStyle::setFontDescription(const FontDescription& v)
 {
     if (inherited->fontCascade.fontDescription() != v) {
         inherited.access()->fontCascade = FontCascade(v, inherited->fontCascade.letterSpacing(), inherited->fontCascade.wordSpacing());
@@ -1496,19 +1479,19 @@ void RenderStyle::setFontSize(float size)
         size = std::min(maximumAllowedFontSize, size);
 
     FontSelector* currentFontSelector = fontCascade().fontSelector();
-    auto description = fontDescription();
-    description.setSpecifiedSize(size);
-    description.setComputedSize(size);
+    FontDescription desc(fontDescription());
+    desc.setSpecifiedSize(size);
+    desc.setComputedSize(size);
 
 #if ENABLE(TEXT_AUTOSIZING)
     float multiplier = textAutosizingMultiplier();
     if (multiplier > 1) {
         float autosizedFontSize = TextAutosizer::computeAutosizedFontSize(size, multiplier);
-        description.setComputedSize(min(maximumAllowedFontSize, autosizedFontSize));
+        desc.setComputedSize(min(maximumAllowedFontSize, autosizedFontSize));
     }
 #endif
 
-    setFontDescription(description);
+    setFontDescription(desc);
     fontCascade().update(currentFontSelector);
 }
 

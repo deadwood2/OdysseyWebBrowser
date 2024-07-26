@@ -36,6 +36,7 @@
 #include "LayerTreeHost.h"
 #include "NavigationActionData.h"
 #include "PageBanner.h"
+#include "SecurityOriginData.h"
 #include "UserData.h"
 #include "WebColorChooser.h"
 #include "WebCoreArgumentCoders.h"
@@ -72,7 +73,6 @@
 #include <WebCore/Page.h>
 #include <WebCore/ScriptController.h>
 #include <WebCore/SecurityOrigin.h>
-#include <WebCore/SecurityOriginData.h>
 #include <WebCore/Settings.h>
 
 #if PLATFORM(IOS)
@@ -1057,9 +1057,9 @@ bool WebChromeClient::shouldUseTiledBackingForFrameView(const FrameView* frameVi
     return m_page->drawingArea()->shouldUseTiledBackingForFrameView(frameView);
 }
 
-void WebChromeClient::isPlayingMediaDidChange(WebCore::MediaProducer::MediaStateFlags state, uint64_t sourceElementID)
+void WebChromeClient::isPlayingMediaDidChange(WebCore::MediaProducer::MediaStateFlags state)
 {
-    m_page->send(Messages::WebPageProxy::IsPlayingMediaDidChange(state, sourceElementID));
+    m_page->send(Messages::WebPageProxy::IsPlayingMediaDidChange(state));
 }
 
 #if ENABLE(MEDIA_SESSION)
@@ -1071,11 +1071,6 @@ void WebChromeClient::hasMediaSessionWithActiveMediaElementsDidChange(bool state
 void WebChromeClient::mediaSessionMetadataDidChange(const WebCore::MediaSessionMetadata& metadata)
 {
     m_page->send(Messages::WebPageProxy::MediaSessionMetadataDidChange(metadata));
-}
-
-void WebChromeClient::focusedContentMediaElementDidChange(uint64_t elementID)
-{
-    m_page->send(Messages::WebPageProxy::FocusedContentMediaElementDidChange(elementID));
 }
 #endif
 
@@ -1163,23 +1158,18 @@ void WebChromeClient::playbackTargetPickerClientStateDidChange(uint64_t contextI
 }
 #endif
 
-void WebChromeClient::imageOrMediaDocumentSizeChanged(const WebCore::IntSize& newSize)
+#if ENABLE(VIDEO)
+void WebChromeClient::mediaDocumentNaturalSizeChanged(const WebCore::IntSize& newSize)
 {
-    m_page->imageOrMediaDocumentSizeChanged(newSize);
+    m_page->mediaDocumentNaturalSizeChanged(newSize);
 }
 
-#if ENABLE(VIDEO)
 #if USE(GSTREAMER)
-void WebChromeClient::requestInstallMissingMediaPlugins(const String& details, const String& description, WebCore::MediaPlayerRequestInstallMissingPluginsCallback& callback)
+void WebChromeClient::requestInstallMissingMediaPlugins(const String& details, WebCore::MediaPlayerRequestInstallMissingPluginsCallback& callback)
 {
-    m_page->requestInstallMissingMediaPlugins(details, description, callback);
+    m_page->requestInstallMissingMediaPlugins(details, callback);
 }
 #endif
 #endif // ENABLE(VIDEO)
-
-void WebChromeClient::didInvalidateDocumentMarkerRects()
-{
-    m_page->findController().didInvalidateDocumentMarkerRects();
-}
 
 } // namespace WebKit

@@ -62,11 +62,6 @@ URLRegistrable* MediaStreamRegistry::lookup(const String& url) const
     return m_mediaStreams.get(url);
 }
 
-MediaStreamRegistry::MediaStreamRegistry()
-{
-    MediaStream::setRegistry(*this);
-}
-
 } // namespace WebCore
 
 #endif // ENABLE(MEDIA_STREAM)

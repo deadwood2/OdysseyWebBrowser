@@ -119,14 +119,14 @@ WebInspector.TabBarItem = class TabBarItem extends WebInspector.Object
         this._element.classList.toggle("disabled", disabled);
     }
 
-    get isDefaultTab()
+    get hideCloseButton()
     {
-        return this._element.classList.contains("default-tab");
+        return this._element.classList.contains("hide-close-button");
     }
 
-    set isDefaultTab(isDefaultTab)
+    set hideCloseButton(hide)
     {
-        this._element.classList.toggle("default-tab", isDefaultTab);
+        this._element.classList.toggle("hide-close-button", hide);
     }
 
     get pinned()

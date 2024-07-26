@@ -29,9 +29,7 @@
 #if ENABLE(REMOTE_INSPECTOR)
 
 #import <Foundation/Foundation.h>
-#import <mutex>
 #import <wtf/Assertions.h>
-#import <wtf/Lock.h>
 #import <wtf/Ref.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/spi/darwin/XPCSPI.h>
@@ -81,7 +79,7 @@ RemoteInspectorXPCConnection::~RemoteInspectorXPCConnection()
 
 void RemoteInspectorXPCConnection::close()
 {
-    std::lock_guard<Lock> lock(m_mutex);
+    std::lock_guard<std::mutex> lock(m_mutex);
     closeFromMessage();
 }
 
@@ -91,7 +89,7 @@ void RemoteInspectorXPCConnection::closeFromMessage()
     m_client = nullptr;
 
     dispatch_async(m_queue, ^{
-        std::lock_guard<Lock> lock(m_mutex);
+        std::lock_guard<std::mutex> lock(m_mutex);
         // This will trigger one last XPC_ERROR_CONNECTION_INVALID event on the queue and deref us.
         closeOnQueue();
     });
@@ -118,7 +116,7 @@ NSDictionary *RemoteInspectorXPCConnection::deserializeMessage(xpc_object_t obje
 
     xpc_object_t xpcDictionary = xpc_dictionary_get_value(object, RemoteInspectorXPCConnectionSerializedMessageKey);
     if (!xpcDictionary || xpc_get_type(xpcDictionary) != XPC_TYPE_DICTIONARY) {
-        std::lock_guard<Lock> lock(m_mutex);
+        std::lock_guard<std::mutex> lock(m_mutex);
         if (m_client)
             m_client->xpcConnectionUnhandledMessage(this, object);
         return nil;
@@ -133,7 +131,7 @@ void RemoteInspectorXPCConnection::handleEvent(xpc_object_t object)
 {
     if (xpc_get_type(object) == XPC_TYPE_ERROR) {
         {
-            std::lock_guard<Lock> lock(m_mutex);
+            std::lock_guard<std::mutex> lock(m_mutex);
             if (m_client)
                 m_client->xpcConnectionFailed(this);
 
@@ -156,7 +154,7 @@ void RemoteInspectorXPCConnection::handleEvent(xpc_object_t object)
 
     NSString *message = [dataDictionary objectForKey:RemoteInspectorXPCConnectionMessageNameKey];
     NSDictionary *userInfo = [dataDictionary objectForKey:RemoteInspectorXPCConnectionUserInfoKey];
-    std::lock_guard<Lock> lock(m_mutex);
+    std::lock_guard<std::mutex> lock(m_mutex);
     if (m_client)
         m_client->xpcConnectionReceivedMessage(this, message, userInfo);
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2007 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -42,7 +42,8 @@ using namespace WebCore;
 // WebError ---------------------------------------------------------------------
 
 WebError::WebError(const ResourceError& error, IPropertyBag* userInfo)
-    : m_error(error)
+    : m_refCount(0)
+    , m_error(error)
     , m_userInfo(userInfo)
 {
     gClassCount++;
@@ -69,11 +70,9 @@ WebError* WebError::createInstance()
 
 // IUnknown -------------------------------------------------------------------
 
-HRESULT WebError::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE WebError::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<IWebError*>(this);
     else if (IsEqualGUID(riid, CLSID_WebError))
@@ -89,12 +88,12 @@ HRESULT WebError::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject
     return S_OK;
 }
 
-ULONG WebError::AddRef()
+ULONG STDMETHODCALLTYPE WebError::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG WebError::Release()
+ULONG STDMETHODCALLTYPE WebError::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -105,21 +104,24 @@ ULONG WebError::Release()
 
 // IWebError ------------------------------------------------------------------
 
-HRESULT WebError::init(_In_ BSTR domain, int code, _In_ BSTR url)
+HRESULT STDMETHODCALLTYPE WebError::init( 
+    /* [in] */ BSTR domain,
+    /* [in] */ int code,
+    /* [in] */ BSTR url)
 {
     m_error = ResourceError(String(domain, SysStringLen(domain)), code, String(url, SysStringLen(url)), String());
     return S_OK;
 }
   
-HRESULT WebError::code(_Out_ int* result)
+HRESULT STDMETHODCALLTYPE WebError::code( 
+    /* [retval][out] */ int* result)
 {
-    if (!result)
-        return E_POINTER;
     *result = m_error.errorCode();
     return S_OK;
 }
         
-HRESULT WebError::domain(__deref_opt_out BSTR* result)
+HRESULT STDMETHODCALLTYPE WebError::domain( 
+    /* [retval][out] */ BSTR* result)
 {
     if (!result)
         return E_POINTER;
@@ -128,7 +130,8 @@ HRESULT WebError::domain(__deref_opt_out BSTR* result)
     return S_OK;
 }
                
-HRESULT WebError::localizedDescription(__deref_opt_out BSTR* result)
+HRESULT STDMETHODCALLTYPE WebError::localizedDescription( 
+    /* [retval][out] */ BSTR* result)
 {
     if (!result)
         return E_POINTER;
@@ -146,47 +149,40 @@ HRESULT WebError::localizedDescription(__deref_opt_out BSTR* result)
 }
 
         
-HRESULT WebError::localizedFailureReason(__deref_opt_out BSTR* result)
+HRESULT STDMETHODCALLTYPE WebError::localizedFailureReason( 
+    /* [retval][out] */ BSTR* /*result*/)
 {
     ASSERT_NOT_REACHED();
-    if (!result)
-        return E_POINTER;
-    *result = nullptr;
     return E_NOTIMPL;
 }
         
-HRESULT WebError::localizedRecoveryOptions(__deref_opt_out IEnumVARIANT** result)
+HRESULT STDMETHODCALLTYPE WebError::localizedRecoveryOptions( 
+    /* [retval][out] */ IEnumVARIANT** /*result*/)
 {
     ASSERT_NOT_REACHED();
-    if (!result)
-        return E_POINTER;
-    *result = nullptr;
     return E_NOTIMPL;
 }
         
-HRESULT WebError::localizedRecoverySuggestion(__deref_opt_out BSTR* result)
+HRESULT STDMETHODCALLTYPE WebError::localizedRecoverySuggestion( 
+    /* [retval][out] */ BSTR* /*result*/)
 {
     ASSERT_NOT_REACHED();
-    if (!result)
-        return E_POINTER;
-    *result = nullptr;
     return E_NOTIMPL;
 }
        
-HRESULT WebError::recoverAttempter(__deref_opt_out IUnknown** result)
+HRESULT STDMETHODCALLTYPE WebError::recoverAttempter( 
+    /* [retval][out] */ IUnknown** /*result*/)
 {
     ASSERT_NOT_REACHED();
-    if (!result)
-        return E_POINTER;
-    *result = nullptr;
     return E_NOTIMPL;
 }
         
-HRESULT WebError::userInfo(_COM_Outptr_opt_ IPropertyBag** result)
+HRESULT STDMETHODCALLTYPE WebError::userInfo( 
+    /* [retval][out] */ IPropertyBag** result)
 {
     if (!result)
         return E_POINTER;
-    *result = nullptr;
+    *result = 0;
 
     if (!m_userInfo)
         return E_FAIL;
@@ -194,7 +190,8 @@ HRESULT WebError::userInfo(_COM_Outptr_opt_ IPropertyBag** result)
     return m_userInfo.copyRefTo(result);
 }
 
-HRESULT WebError::failingURL(__deref_opt_out BSTR* result)
+HRESULT STDMETHODCALLTYPE WebError::failingURL( 
+    /* [retval][out] */ BSTR* result)
 {
     if (!result)
         return E_POINTER;
@@ -203,7 +200,8 @@ HRESULT WebError::failingURL(__deref_opt_out BSTR* result)
     return S_OK;
 }
 
-HRESULT WebError::isPolicyChangeError(_Out_ BOOL* result)
+HRESULT STDMETHODCALLTYPE WebError::isPolicyChangeError( 
+    /* [retval][out] */ BOOL *result)
 {
     if (!result)
         return E_POINTER;
@@ -213,7 +211,7 @@ HRESULT WebError::isPolicyChangeError(_Out_ BOOL* result)
     return S_OK;
 }
 
-HRESULT WebError::sslPeerCertificate(_Out_ ULONG_PTR* result)
+HRESULT WebError::sslPeerCertificate(/* [retval][out] */ ULONG_PTR* result)
 {
     if (!result)
         return E_POINTER;

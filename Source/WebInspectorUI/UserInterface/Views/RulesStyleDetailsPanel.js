@@ -27,7 +27,7 @@ WebInspector.RulesStyleDetailsPanel = class RulesStyleDetailsPanel extends WebIn
 {
     constructor(delegate)
     {
-        super(delegate, "rules", "rules", WebInspector.UIString("Styles \u2014 Rules"));
+        super(delegate, "rules", "rules", WebInspector.UIString("Rules"));
 
         this._sections = [];
         this._previousFocusedSection = null;
@@ -41,8 +41,6 @@ WebInspector.RulesStyleDetailsPanel = class RulesStyleDetailsPanel extends WebIn
         this._emptyFilterResultsMessage.classList.add("no-filter-results-message");
         this._emptyFilterResultsMessage.textContent = WebInspector.UIString("No Results Found");
         this._emptyFilterResultsElement.appendChild(this._emptyFilterResultsMessage);
-
-        this._boundRemoveSectionWithActiveEditor = this._removeSectionWithActiveEditor.bind(this);
     }
 
     // Public
@@ -54,22 +52,6 @@ WebInspector.RulesStyleDetailsPanel = class RulesStyleDetailsPanel extends WebIn
         if (!significantChange) {
             super.refresh();
             return;
-        }
-
-        if (!this._forceSignificantChange) {
-            this._sectionWithActiveEditor = null;
-            for (var section of this._sections) {
-                if (!section.editorActive)
-                    continue;
-
-                this._sectionWithActiveEditor = section;
-                break;
-            }
-
-            if (this._sectionWithActiveEditor) {
-                this._sectionWithActiveEditor.addEventListener(WebInspector.CSSStyleDeclarationSection.Event.Blurred, this._boundRemoveSectionWithActiveEditor);
-                return;
-            }
         }
 
         var newSections = [];
@@ -116,6 +98,17 @@ WebInspector.RulesStyleDetailsPanel = class RulesStyleDetailsPanel extends WebIn
             return true;
         }
 
+        function filteredMediaList(mediaList)
+        {
+            if (!mediaList)
+                return [];
+
+            // Exclude the basic "screen" query since it's very common and just clutters things.
+            return mediaList.filter(function(media) {
+                return media.text !== "screen";
+            });
+        }
+
         function uniqueOrderedStyles(orderedStyles)
         {
             var uniqueStyles = [];
@@ -153,7 +146,7 @@ WebInspector.RulesStyleDetailsPanel = class RulesStyleDetailsPanel extends WebIn
             } else
                 section.refresh();
 
-            if (this._focusNextNewInspectorRule && style.ownerRule && style.ownerRule.type === WebInspector.CSSStyleSheet.Type.Inspector) {
+            if (this._focusNextNewInspectorRule && style.ownerRule && style.ownerRule.type === WebInspector.CSSRule.Type.Inspector) {
                 this._previousFocusedSection = section;
                 delete this._focusNextNewInspectorRule;
             }
@@ -167,12 +160,30 @@ WebInspector.RulesStyleDetailsPanel = class RulesStyleDetailsPanel extends WebIn
             previousSection = section;
         }
 
-        function insertMediaOrInheritanceLabel(style)
+        function addNewRuleButton()
         {
-            if (previousSection && previousSection.style.type === WebInspector.CSSStyleDeclaration.Type.Inline)
+            if (previousSection)
                 previousSection.lastInGroup = true;
 
+            if (!this.nodeStyles.node.isInShadowTree()) {
+                var newRuleButton = document.createElement("div");
+                newRuleButton.className = "new-rule";
+                newRuleButton.addEventListener("click", this._newRuleClicked.bind(this));
+
+                newRuleButton.append(document.createElement("img"), WebInspector.UIString("New Rule"));
+
+                newDOMFragment.appendChild(newRuleButton);
+            }
+
+            addedNewRuleButton = true;
+        }
+
+        function insertMediaOrInheritanceLabel(style)
+        {
             var hasMediaOrInherited = [];
+
+            if (style.type === WebInspector.CSSStyleDeclaration.Type.Rule && !addedNewRuleButton)
+                addNewRuleButton.call(this);
 
             if (previousSection && previousSection.style.node !== style.node) {
                 previousSection.lastInGroup = true;
@@ -190,7 +201,7 @@ WebInspector.RulesStyleDetailsPanel = class RulesStyleDetailsPanel extends WebIn
             }
 
             // Only include the media list if it is different from the previous media list shown.
-            var currentMediaList = (style.ownerRule && style.ownerRule.mediaList) || [];
+            var currentMediaList = filteredMediaList(style.ownerRule && style.ownerRule.mediaList);
             if (!mediaListsEqual(previousMediaList, currentMediaList)) {
                 previousMediaList = currentMediaList;
 
@@ -268,10 +279,12 @@ WebInspector.RulesStyleDetailsPanel = class RulesStyleDetailsPanel extends WebIn
             }
         }
 
+        var addedNewRuleButton = false;
         this._ruleMediaAndInherticanceList = [];
+
         var orderedStyles = uniqueOrderedStyles(this.nodeStyles.orderedStyles);
         for (var style of orderedStyles) {
-            var isUserAgentStyle = style.ownerRule && style.ownerRule.type === WebInspector.CSSStyleSheet.Type.UserAgent;
+            var isUserAgentStyle = style.ownerRule && style.ownerRule.type === WebInspector.CSSRule.Type.UserAgent;
             insertAllMatchingPseudoStyles.call(this, isUserAgentStyle || style.inerhited);
 
             insertMediaOrInheritanceLabel.call(this, style);
@@ -280,6 +293,9 @@ WebInspector.RulesStyleDetailsPanel = class RulesStyleDetailsPanel extends WebIn
 
         // Just in case there are any pseudo-selectors left that haven't been added.
         insertAllMatchingPseudoStyles.call(this, true);
+
+        if (!addedNewRuleButton)
+            addNewRuleButton.call(this);
 
         if (previousSection)
             previousSection.lastInGroup = true;
@@ -377,20 +393,6 @@ WebInspector.RulesStyleDetailsPanel = class RulesStyleDetailsPanel extends WebIn
         this.element.classList.toggle("filter-non-matching", !matchFound);
     }
 
-    cssStyleDeclarationSectionFocusNextNewInspectorRule()
-    {
-        this._focusNextNewInspectorRule = true;
-    }
-
-    newRuleButtonClicked()
-    {
-        if (this.nodeStyles.node.isInShadowTree())
-            return;
-
-        this._focusNextNewInspectorRule = true;
-        this.nodeStyles.addEmptyRule();
-    }
-
     // Protected
 
     shown()
@@ -439,9 +441,9 @@ WebInspector.RulesStyleDetailsPanel = class RulesStyleDetailsPanel extends WebIn
 
     // Private
 
-    _removeSectionWithActiveEditor(event)
+    _newRuleClicked(event)
     {
-        this._sectionWithActiveEditor.removeEventListener(WebInspector.CSSStyleDeclarationSection.Event.Blurred, this._boundRemoveSectionWithActiveEditor);
-        this.refresh(true);
+        this._focusNextNewInspectorRule = true;
+        this.nodeStyles.addEmptyRule();
     }
 };

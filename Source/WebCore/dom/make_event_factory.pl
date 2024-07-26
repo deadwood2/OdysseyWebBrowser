@@ -86,7 +86,6 @@ sub generateImplementation()
     print F "#include \"${namespace}Factory.h\"\n";
     print F "\n";
     print F "#include \"${namespace}Headers.h\"\n";
-    print F "#include <runtime/StructureInlines.h>\n";
     print F "\n";
     print F "namespace WebCore {\n";
     print F "\n";
@@ -100,7 +99,7 @@ sub generateImplementation()
 
         print F "#if ENABLE($conditional)\n" if $conditional;
         # FIXEME JSC should support RuntimeEnabledFeatures
-        print F "    if (equalIgnoringASCIICase(type, \"$eventName\"))\n";
+        print F "    if (type == \"$eventName\")\n";
         print F "        return ${interfaceName}::create();\n";
         print F "#endif\n" if $conditional;
     }

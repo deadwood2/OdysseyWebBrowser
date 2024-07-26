@@ -36,9 +36,13 @@
 namespace WTF {
 
 typedef uint32_t ThreadIdentifier;
+typedef void MainThreadFunction(void*);
 
 // Must be called from the main thread.
 WTF_EXPORT_PRIVATE void initializeMainThread();
+
+WTF_EXPORT_PRIVATE void callOnMainThread(MainThreadFunction*, void* context);
+WTF_EXPORT_PRIVATE void cancelCallOnMainThread(MainThreadFunction*, void* context);
 
 WTF_EXPORT_PRIVATE void callOnMainThread(std::function<void ()>);
 
@@ -66,8 +70,14 @@ inline bool isUIThread() { return isMainThread(); }
 
 void initializeGCThreads();
 
-WTF_EXPORT_PRIVATE void registerGCThread();
+#if ENABLE(PARALLEL_GC)
+void registerGCThread();
 WTF_EXPORT_PRIVATE bool isMainThreadOrGCThread();
+#elif OS(DARWIN) && !PLATFORM(EFL) && !PLATFORM(GTK)
+WTF_EXPORT_PRIVATE bool isMainThreadOrGCThread();
+#else
+inline bool isMainThreadOrGCThread() { return isMainThread(); }
+#endif
 
 // NOTE: these functions are internal to the callOnMainThread implementation.
 void initializeMainThreadPlatform();
@@ -84,18 +94,10 @@ WTF_EXPORT_PRIVATE void initializeMainThreadToProcessMainThread();
 void initializeMainThreadToProcessMainThreadPlatform();
 #endif
 
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED == 1090
-WTF_EXPORT_PRIVATE void callOnMainThread(void (*function)(void*), void* context);
-WTF_EXPORT_PRIVATE void cancelCallOnMainThread(void (*function)(void*), void* context);
-#endif
-
 } // namespace WTF
 
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED == 1090
-using WTF::cancelCallOnMainThread;
-#endif
-
 using WTF::callOnMainThread;
+using WTF::cancelCallOnMainThread;
 #if PLATFORM(COCOA)
 using WTF::callOnWebThreadOrDispatchAsyncOnMainThread;
 #endif

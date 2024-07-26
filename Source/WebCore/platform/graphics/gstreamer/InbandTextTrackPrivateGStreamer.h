@@ -31,7 +31,6 @@
 #include "GRefPtrGStreamer.h"
 #include "InbandTextTrackPrivate.h"
 #include "TrackPrivateBaseGStreamer.h"
-#include <wtf/Lock.h>
 #include <wtf/glib/GThreadSafeMainLoopSource.h>
 
 namespace WebCore {
@@ -68,7 +67,7 @@ private:
     gulong m_eventProbe;
     Vector<GRefPtr<GstSample> > m_pendingSamples;
     String m_streamId;
-    Lock m_sampleMutex;
+    Mutex m_sampleMutex;
 };
 
 } // namespace WebCore

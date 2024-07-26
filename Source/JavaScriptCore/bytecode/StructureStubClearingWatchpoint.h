@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2012 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,13 +26,14 @@
 #ifndef StructureStubClearingWatchpoint_h
 #define StructureStubClearingWatchpoint_h
 
-#include "ObjectPropertyCondition.h"
 #include "Watchpoint.h"
 
 #if ENABLE(JIT)
 
 #include <wtf/FastMalloc.h>
 #include <wtf/Noncopyable.h>
+#include <wtf/RefCounted.h>
+#include <wtf/RefPtr.h>
 
 namespace JSC {
 
@@ -45,11 +46,15 @@ class StructureStubClearingWatchpoint : public Watchpoint {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     StructureStubClearingWatchpoint(
-        const ObjectPropertyCondition& key,
+        WatchpointsOnStructureStubInfo& holder)
+        : m_holder(holder)
+    {
+    }
+    
+    StructureStubClearingWatchpoint(
         WatchpointsOnStructureStubInfo& holder,
         std::unique_ptr<StructureStubClearingWatchpoint> next)
-        : m_key(key)
-        , m_holder(holder)
+        : m_holder(holder)
         , m_next(WTF::move(next))
     {
     }
@@ -57,7 +62,6 @@ public:
     virtual ~StructureStubClearingWatchpoint();
     
     static StructureStubClearingWatchpoint* push(
-        const ObjectPropertyCondition& key,
         WatchpointsOnStructureStubInfo& holder,
         std::unique_ptr<StructureStubClearingWatchpoint>& head);
 
@@ -65,14 +69,11 @@ protected:
     virtual void fireInternal(const FireDetail&) override;
 
 private:
-    ObjectPropertyCondition m_key;
     WatchpointsOnStructureStubInfo& m_holder;
     std::unique_ptr<StructureStubClearingWatchpoint> m_next;
 };
 
-class WatchpointsOnStructureStubInfo {
-    WTF_MAKE_NONCOPYABLE(WatchpointsOnStructureStubInfo);
-    WTF_MAKE_FAST_ALLOCATED;
+class WatchpointsOnStructureStubInfo : public RefCounted<WatchpointsOnStructureStubInfo> {
 public:
     WatchpointsOnStructureStubInfo(CodeBlock* codeBlock, StructureStubInfo* stubInfo)
         : m_codeBlock(codeBlock)
@@ -82,11 +83,11 @@ public:
     
     ~WatchpointsOnStructureStubInfo();
     
-    StructureStubClearingWatchpoint* addWatchpoint(const ObjectPropertyCondition& key);
+    StructureStubClearingWatchpoint* addWatchpoint();
     
     static StructureStubClearingWatchpoint* ensureReferenceAndAddWatchpoint(
-        std::unique_ptr<WatchpointsOnStructureStubInfo>& holderRef,
-        CodeBlock*, StructureStubInfo*, const ObjectPropertyCondition& key);
+        RefPtr<WatchpointsOnStructureStubInfo>& holderRef,
+        CodeBlock*, StructureStubInfo*);
     
     CodeBlock* codeBlock() const { return m_codeBlock; }
     StructureStubInfo* stubInfo() const { return m_stubInfo; }

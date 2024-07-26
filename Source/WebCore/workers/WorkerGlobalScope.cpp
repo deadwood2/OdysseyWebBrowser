@@ -35,6 +35,7 @@
 #include "DOMWindow.h"
 #include "ErrorEvent.h"
 #include "Event.h"
+#include "EventException.h"
 #include "ExceptionCode.h"
 #include "InspectorConsoleInstrumentation.h"
 #include "MessagePort.h"

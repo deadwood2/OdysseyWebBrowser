@@ -29,7 +29,6 @@
 #include "CallLinkInfo.h"
 #include "CodeBlock.h"
 #include "DFGJITCode.h"
-#include "InlineCallFrame.h"
 #include "LLIntCallLinkInfo.h"
 #include "JSCInlines.h"
 #include <wtf/CommaPrinter.h>
@@ -69,7 +68,7 @@ CallLinkStatus CallLinkStatus::computeFromLLInt(const ConcurrentJITLocker& locke
     
     Instruction* instruction = profiledBlock->instructions().begin() + bytecodeIndex;
     OpcodeID op = vm.interpreter->getOpcodeID(instruction[0].u.opcode);
-    if (op != op_call && op != op_construct && op != op_tail_call)
+    if (op != op_call && op != op_construct)
         return CallLinkStatus();
     
     LLIntCallLinkInfo* callLinkInfo = instruction[5].u.callLinkInfo;

@@ -163,7 +163,3 @@
 #define WebKitMockScrollbarsEnabledPreferenceKey "WebKitMockScrollbarsEnabled"
 
 #define WebKitEnableInheritURIQueryComponentPreferenceKey "WebKitEnableInheritURIQueryComponent"
-
-#define WebKitAllowDisplayAndRunningOfInsecureContentPreferenceKey "WebKitAllowDisplayAndRunningOfInsecureContent"
-
-#define WebKitShowTiledScrollingIndicatorPreferenceKey "WebKitShowTiledScrollingIndicator"

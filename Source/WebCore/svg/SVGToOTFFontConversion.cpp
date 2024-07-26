@@ -1312,6 +1312,8 @@ bool SVGToOTFFontConverter::compareCodepointsLexicographically(const GlyphData& 
     auto codePoints2 = StringView(data2.codepoints).codePoints();
     auto iterator1 = codePoints1.begin();
     auto iterator2 = codePoints2.begin();
+    unsigned length1 = data1.codepoints.length();
+    unsigned length2 = data2.codepoints.length();
     while (iterator1 != codePoints1.end() && iterator2 != codePoints2.end()) {
         UChar32 codepoint1, codepoint2;
         codepoint1 = *iterator1;
@@ -1326,12 +1328,10 @@ bool SVGToOTFFontConverter::compareCodepointsLexicographically(const GlyphData& 
         ++iterator2;
     }
 
-    if (iterator1 == codePoints1.end() && iterator2 == codePoints2.end()) {
-        bool firstIsIsolated = data1.glyphElement && equalIgnoringCase(data1.glyphElement->fastGetAttribute(SVGNames::arabic_formAttr), "isolated");
-        bool secondIsIsolated = data2.glyphElement && equalIgnoringCase(data2.glyphElement->fastGetAttribute(SVGNames::arabic_formAttr), "isolated");
-        return firstIsIsolated && !secondIsIsolated;
-    }
-    return iterator1 == codePoints1.end();
+    if (length1 == length2 && data1.glyphElement
+        && equalIgnoringCase(data1.glyphElement->fastGetAttribute(SVGNames::arabic_formAttr), "isolated"))
+        return true;
+    return length1 < length2;
 }
 
 static void populateEmptyGlyphCharString(Vector<char, 17>& o, unsigned unitsPerEm)

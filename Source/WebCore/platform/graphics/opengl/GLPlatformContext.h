@@ -73,12 +73,14 @@ public:
 
     virtual PlatformContext handle() const;
 
-    virtual bool isCurrentContext() const = 0;
+    virtual bool isCurrentContext() const;
 
     bool isValid() const;
 
     // Destroys any GL resources associated with this context.
     virtual void destroy();
+
+    static GLPlatformContext* getCurrent();
 
 protected:
     GLPlatformContext();

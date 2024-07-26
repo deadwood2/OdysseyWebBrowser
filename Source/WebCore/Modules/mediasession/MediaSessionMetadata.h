@@ -32,8 +32,7 @@
 
 namespace WebCore {
 
-class MediaSessionMetadata final {
-public:
+struct MediaSessionMetadata {
     MediaSessionMetadata() = default;
 
     MediaSessionMetadata(const String& title, const String& artist, const String& album, const URL& artworkURL)

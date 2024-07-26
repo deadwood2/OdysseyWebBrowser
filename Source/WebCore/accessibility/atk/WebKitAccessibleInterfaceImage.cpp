@@ -71,7 +71,7 @@ static void webkitAccessibleImageGetImageSize(AtkImage* image, gint* width, gint
     g_return_if_fail(ATK_IMAGE(image));
     returnIfWebKitAccessibleIsInvalid(WEBKIT_ACCESSIBLE(image));
 
-    IntSize size = snappedIntRect(core(image)->elementRect()).size();
+    IntSize size = core(image)->elementRect().pixelSnappedSize();
 
     if (width)
         *width = size.width();

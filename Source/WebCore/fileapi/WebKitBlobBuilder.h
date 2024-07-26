@@ -49,7 +49,7 @@ public:
     void append(Blob*);
     void append(const String& text, const String& ending);
     void append(JSC::ArrayBuffer*);
-    void append(RefPtr<JSC::ArrayBufferView>&&);
+    void append(PassRefPtr<JSC::ArrayBufferView>);
 
     Vector<BlobPart> finalize();
 

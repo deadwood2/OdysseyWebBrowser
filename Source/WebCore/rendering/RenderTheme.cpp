@@ -262,26 +262,26 @@ void RenderTheme::adjustStyle(StyleResolver& styleResolver, RenderStyle& style, 
     }
 }
 
-bool RenderTheme::paint(const RenderBox& box, ControlStates& controlStates, const PaintInfo& paintInfo, const LayoutRect& rect)
+bool RenderTheme::paint(const RenderObject& o, ControlStates* controlStates, const PaintInfo& paintInfo, const LayoutRect& r)
 {
     // If painting is disabled, but we aren't updating control tints, then just bail.
     // If we are updating control tints, just schedule a repaint if the theme supports tinting
     // for that control.
-    if (paintInfo.context().updatingControlTints()) {
-        if (controlSupportsTints(box))
-            box.repaint();
+    if (paintInfo.context->updatingControlTints()) {
+        if (controlSupportsTints(o))
+            o.repaint();
         return false;
     }
-    if (paintInfo.context().paintingDisabled())
+    if (paintInfo.context->paintingDisabled())
         return false;
 
-    ControlPart part = box.style().appearance();
-    IntRect integralSnappedRect = snappedIntRect(rect);
-    float deviceScaleFactor = box.document().deviceScaleFactor();
-    FloatRect devicePixelSnappedRect = snapRectToDevicePixels(rect, deviceScaleFactor);
+    ControlPart part = o.style().appearance();
+    IntRect integralSnappedRect = snappedIntRect(r);
+    float deviceScaleFactor = o.document().deviceScaleFactor();
+    FloatRect devicePixelSnappedRect = snapRectToDevicePixels(r, deviceScaleFactor);
 
 #if USE(NEW_THEME)
-    float pageScaleFactor = box.document().page() ? box.document().page()->pageScaleFactor() : 1.0f;
+    float pageScaleFactor = o.document().page() ? o.document().page()->pageScaleFactor() : 1.0f;
     
     switch (part) {
     case CheckboxPart:
@@ -291,8 +291,8 @@ bool RenderTheme::paint(const RenderBox& box, ControlStates& controlStates, cons
     case DefaultButtonPart:
     case ButtonPart:
     case InnerSpinButtonPart:
-        updateControlStatesForRenderer(box, controlStates);
-        m_theme->paint(part, controlStates, paintInfo.context(), devicePixelSnappedRect, box.style().effectiveZoom(), &box.view().frameView(), deviceScaleFactor, pageScaleFactor);
+        updateControlStatesForRenderer(o, controlStates);
+        m_theme->paint(part, controlStates, const_cast<GraphicsContext*>(paintInfo.context), devicePixelSnappedRect, o.style().effectiveZoom(), &o.view().frameView(), deviceScaleFactor, pageScaleFactor);
         return false;
     default:
         break;
@@ -305,102 +305,102 @@ bool RenderTheme::paint(const RenderBox& box, ControlStates& controlStates, cons
     switch (part) {
 #if !USE(NEW_THEME)
     case CheckboxPart:
-        return paintCheckbox(box, paintInfo, integralSnappedRect);
+        return paintCheckbox(o, paintInfo, integralSnappedRect);
     case RadioPart:
-        return paintRadio(box, paintInfo, integralSnappedRect);
+        return paintRadio(o, paintInfo, integralSnappedRect);
     case PushButtonPart:
     case SquareButtonPart:
     case DefaultButtonPart:
     case ButtonPart:
-        return paintButton(box, paintInfo, integralSnappedRect);
+        return paintButton(o, paintInfo, integralSnappedRect);
     case InnerSpinButtonPart:
-        return paintInnerSpinButton(box, paintInfo, integralSnappedRect);
+        return paintInnerSpinButton(o, paintInfo, integralSnappedRect);
 #endif
     case MenulistPart:
-        return paintMenuList(box, paintInfo, devicePixelSnappedRect);
+        return paintMenuList(o, paintInfo, devicePixelSnappedRect);
 #if ENABLE(METER_ELEMENT)
     case MeterPart:
     case RelevancyLevelIndicatorPart:
     case ContinuousCapacityLevelIndicatorPart:
     case DiscreteCapacityLevelIndicatorPart:
     case RatingLevelIndicatorPart:
-        return paintMeter(box, paintInfo, integralSnappedRect);
+        return paintMeter(o, paintInfo, integralSnappedRect);
 #endif
     case ProgressBarPart:
-        return paintProgressBar(box, paintInfo, integralSnappedRect);
+        return paintProgressBar(o, paintInfo, integralSnappedRect);
     case SliderHorizontalPart:
     case SliderVerticalPart:
-        return paintSliderTrack(box, paintInfo, integralSnappedRect);
+        return paintSliderTrack(o, paintInfo, integralSnappedRect);
     case SliderThumbHorizontalPart:
     case SliderThumbVerticalPart:
-        return paintSliderThumb(box, paintInfo, integralSnappedRect);
+        return paintSliderThumb(o, paintInfo, integralSnappedRect);
     case MediaEnterFullscreenButtonPart:
     case MediaExitFullscreenButtonPart:
-        return paintMediaFullscreenButton(box, paintInfo, integralSnappedRect);
+        return paintMediaFullscreenButton(o, paintInfo, integralSnappedRect);
     case MediaPlayButtonPart:
-        return paintMediaPlayButton(box, paintInfo, integralSnappedRect);
+        return paintMediaPlayButton(o, paintInfo, integralSnappedRect);
     case MediaOverlayPlayButtonPart:
-        return paintMediaOverlayPlayButton(box, paintInfo, integralSnappedRect);
+        return paintMediaOverlayPlayButton(o, paintInfo, integralSnappedRect);
     case MediaMuteButtonPart:
-        return paintMediaMuteButton(box, paintInfo, integralSnappedRect);
+        return paintMediaMuteButton(o, paintInfo, integralSnappedRect);
     case MediaSeekBackButtonPart:
-        return paintMediaSeekBackButton(box, paintInfo, integralSnappedRect);
+        return paintMediaSeekBackButton(o, paintInfo, integralSnappedRect);
     case MediaSeekForwardButtonPart:
-        return paintMediaSeekForwardButton(box, paintInfo, integralSnappedRect);
+        return paintMediaSeekForwardButton(o, paintInfo, integralSnappedRect);
     case MediaRewindButtonPart:
-        return paintMediaRewindButton(box, paintInfo, integralSnappedRect);
+        return paintMediaRewindButton(o, paintInfo, integralSnappedRect);
     case MediaReturnToRealtimeButtonPart:
-        return paintMediaReturnToRealtimeButton(box, paintInfo, integralSnappedRect);
+        return paintMediaReturnToRealtimeButton(o, paintInfo, integralSnappedRect);
     case MediaToggleClosedCaptionsButtonPart:
-        return paintMediaToggleClosedCaptionsButton(box, paintInfo, integralSnappedRect);
+        return paintMediaToggleClosedCaptionsButton(o, paintInfo, integralSnappedRect);
     case MediaSliderPart:
-        return paintMediaSliderTrack(box, paintInfo, integralSnappedRect);
+        return paintMediaSliderTrack(o, paintInfo, integralSnappedRect);
     case MediaSliderThumbPart:
-        return paintMediaSliderThumb(box, paintInfo, integralSnappedRect);
+        return paintMediaSliderThumb(o, paintInfo, integralSnappedRect);
     case MediaVolumeSliderMuteButtonPart:
-        return paintMediaMuteButton(box, paintInfo, integralSnappedRect);
+        return paintMediaMuteButton(o, paintInfo, integralSnappedRect);
     case MediaVolumeSliderContainerPart:
-        return paintMediaVolumeSliderContainer(box, paintInfo, integralSnappedRect);
+        return paintMediaVolumeSliderContainer(o, paintInfo, integralSnappedRect);
     case MediaVolumeSliderPart:
-        return paintMediaVolumeSliderTrack(box, paintInfo, integralSnappedRect);
+        return paintMediaVolumeSliderTrack(o, paintInfo, integralSnappedRect);
     case MediaVolumeSliderThumbPart:
-        return paintMediaVolumeSliderThumb(box, paintInfo, integralSnappedRect);
+        return paintMediaVolumeSliderThumb(o, paintInfo, integralSnappedRect);
     case MediaFullScreenVolumeSliderPart:
-        return paintMediaFullScreenVolumeSliderTrack(box, paintInfo, integralSnappedRect);
+        return paintMediaFullScreenVolumeSliderTrack(o, paintInfo, integralSnappedRect);
     case MediaFullScreenVolumeSliderThumbPart:
-        return paintMediaFullScreenVolumeSliderThumb(box, paintInfo, integralSnappedRect);
+        return paintMediaFullScreenVolumeSliderThumb(o, paintInfo, integralSnappedRect);
     case MediaTimeRemainingPart:
-        return paintMediaTimeRemaining(box, paintInfo, integralSnappedRect);
+        return paintMediaTimeRemaining(o, paintInfo, integralSnappedRect);
     case MediaCurrentTimePart:
-        return paintMediaCurrentTime(box, paintInfo, integralSnappedRect);
+        return paintMediaCurrentTime(o, paintInfo, integralSnappedRect);
     case MediaControlsBackgroundPart:
-        return paintMediaControlsBackground(box, paintInfo, integralSnappedRect);
+        return paintMediaControlsBackground(o, paintInfo, integralSnappedRect);
     case MenulistButtonPart:
     case TextFieldPart:
     case TextAreaPart:
     case ListboxPart:
         return true;
     case SearchFieldPart:
-        return paintSearchField(box, paintInfo, integralSnappedRect);
+        return paintSearchField(o, paintInfo, integralSnappedRect);
     case SearchFieldCancelButtonPart:
-        return paintSearchFieldCancelButton(box, paintInfo, integralSnappedRect);
+        return paintSearchFieldCancelButton(o, paintInfo, integralSnappedRect);
     case SearchFieldDecorationPart:
-        return paintSearchFieldDecorationPart(box, paintInfo, integralSnappedRect);
+        return paintSearchFieldDecorationPart(o, paintInfo, integralSnappedRect);
     case SearchFieldResultsDecorationPart:
-        return paintSearchFieldResultsDecorationPart(box, paintInfo, integralSnappedRect);
+        return paintSearchFieldResultsDecorationPart(o, paintInfo, integralSnappedRect);
     case SearchFieldResultsButtonPart:
-        return paintSearchFieldResultsButton(box, paintInfo, integralSnappedRect);
+        return paintSearchFieldResultsButton(o, paintInfo, integralSnappedRect);
     case SnapshottedPluginOverlayPart:
-        return paintSnapshottedPluginOverlay(box, paintInfo, integralSnappedRect);
+        return paintSnapshottedPluginOverlay(o, paintInfo, integralSnappedRect);
 #if ENABLE(SERVICE_CONTROLS)
     case ImageControlsButtonPart:
-        return paintImageControlsButton(box, paintInfo, integralSnappedRect);
+        return paintImageControlsButton(o, paintInfo, integralSnappedRect);
 #endif
     case CapsLockIndicatorPart:
-        return paintCapsLockIndicator(box, paintInfo, integralSnappedRect);
+        return paintCapsLockIndicator(o, paintInfo, integralSnappedRect);
 #if ENABLE(ATTACHMENT_ELEMENT)
     case AttachmentPart:
-        return paintAttachment(box, paintInfo, integralSnappedRect);
+        return paintAttachment(o, paintInfo, integralSnappedRect);
 #endif
     default:
         break;
@@ -411,7 +411,7 @@ bool RenderTheme::paint(const RenderBox& box, ControlStates& controlStates, cons
 
 bool RenderTheme::paintBorderOnly(const RenderBox& box, const PaintInfo& paintInfo, const LayoutRect& rect)
 {
-    if (paintInfo.context().paintingDisabled())
+    if (paintInfo.context->paintingDisabled())
         return false;
 
 #if PLATFORM(IOS)
@@ -465,7 +465,7 @@ bool RenderTheme::paintBorderOnly(const RenderBox& box, const PaintInfo& paintIn
 
 bool RenderTheme::paintDecorations(const RenderBox& box, const PaintInfo& paintInfo, const LayoutRect& rect)
 {
-    if (paintInfo.context().paintingDisabled())
+    if (paintInfo.context->paintingDisabled())
         return false;
 
     IntRect integralSnappedRect = snappedIntRect(rect);
@@ -552,13 +552,13 @@ String RenderTheme::formatMediaControlsRemainingTime(float currentTime, float du
     return formatMediaControlsTime(currentTime - duration);
 }
 
-LayoutPoint RenderTheme::volumeSliderOffsetFromMuteButton(const RenderBox& muteButtonBox, const LayoutSize& size) const
+IntPoint RenderTheme::volumeSliderOffsetFromMuteButton(RenderBox* muteButtonBox, const IntSize& size) const
 {
-    LayoutUnit y = -size.height();
-    FloatPoint absPoint = muteButtonBox.localToAbsolute(FloatPoint(muteButtonBox.offsetLeft(), y), IsFixed | UseTransforms);
+    int y = -size.height();
+    FloatPoint absPoint = muteButtonBox->localToAbsolute(FloatPoint(muteButtonBox->pixelSnappedOffsetLeft(), y), IsFixed | UseTransforms);
     if (absPoint.y() < 0)
-        y = muteButtonBox.height();
-    return LayoutPoint(0, y);
+        y = muteButtonBox->height();
+    return IntPoint(0, y);
 }
 
 #endif
@@ -664,10 +664,15 @@ Color RenderTheme::platformInactiveListBoxSelectionForegroundColor() const
     return platformInactiveSelectionForegroundColor();
 }
 
-int RenderTheme::baselinePosition(const RenderBox& box) const
+int RenderTheme::baselinePosition(const RenderObject& renderer) const
 {
+    if (!is<RenderBox>(renderer))
+        return 0;
+
+    const auto& box = downcast<RenderBox>(renderer);
+
 #if USE(NEW_THEME)
-    return box.height() + box.marginTop() + m_theme->baselinePositionAdjustment(box.style().appearance()) * box.style().effectiveZoom();
+    return box.height() + box.marginTop() + m_theme->baselinePositionAdjustment(renderer.style().appearance()) * renderer.style().effectiveZoom();
 #else
     return box.height() + box.marginTop();
 #endif
@@ -711,7 +716,7 @@ void RenderTheme::adjustRepaintRect(const RenderObject& renderer, FloatRect& rec
 {
 #if USE(NEW_THEME)
     ControlStates states(extractControlStatesForRenderer(renderer));
-    m_theme->inflateControlPaintRect(renderer.style().appearance(), states, rect, renderer.style().effectiveZoom());
+    m_theme->inflateControlPaintRect(renderer.style().appearance(), &states, rect, renderer.style().effectiveZoom());
 #else
     UNUSED_PARAM(renderer);
     UNUSED_PARAM(rect);
@@ -738,12 +743,12 @@ bool RenderTheme::stateChanged(const RenderObject& o, ControlStates::States stat
     return true;
 }
 
-void RenderTheme::updateControlStatesForRenderer(const RenderBox& box, ControlStates& controlStates) const
+void RenderTheme::updateControlStatesForRenderer(const RenderObject& o, ControlStates* controlStates) const
 {
-    ControlStates newStates = extractControlStatesForRenderer(box);
-    controlStates.setStates(newStates.states());
-    if (isFocused(box))
-        controlStates.setTimeSinceControlWasFocused(box.document().page()->focusController().timeSinceFocusWasSet());
+    ControlStates newStates = extractControlStatesForRenderer(o);
+    controlStates->setStates(newStates.states());
+    if (isFocused(o))
+        controlStates->setTimeSinceControlWasFocused(o.document().page()->focusController().timeSinceFocusWasSet());
 }
 
 ControlStates::States RenderTheme::extractControlStatesForRenderer(const RenderObject& o) const
@@ -776,7 +781,15 @@ ControlStates::States RenderTheme::extractControlStatesForRenderer(const RenderO
 
 bool RenderTheme::isActive(const RenderObject& o) const
 {
-    Page* page = o.document().page();
+    Node* node = o.node();
+    if (!node)
+        return false;
+
+    Frame* frame = node->document().frame();
+    if (!frame)
+        return false;
+
+    Page* page = frame->page();
     if (!page)
         return false;
 
@@ -1053,8 +1066,8 @@ void RenderTheme::paintSliderTicks(const RenderObject& o, const PaintInfo& paint
         tickRegionWidth = trackBounds.height() - thumbSize.width();
     }
     Ref<HTMLCollection> options = dataList->options();
-    GraphicsContextStateSaver stateSaver(paintInfo.context());
-    paintInfo.context().setFillColor(o.style().visitedDependentColor(CSSPropertyColor), ColorSpaceDeviceRGB);
+    GraphicsContextStateSaver stateSaver(*paintInfo.context);
+    paintInfo.context->setFillColor(o.style().visitedDependentColor(CSSPropertyColor), ColorSpaceDeviceRGB);
     for (unsigned i = 0; Node* node = options->item(i); i++) {
         ASSERT(is<HTMLOptionElement>(*node));
         HTMLOptionElement& optionElement = downcast<HTMLOptionElement>(*node);
@@ -1069,7 +1082,7 @@ void RenderTheme::paintSliderTicks(const RenderObject& o, const PaintInfo& paint
             tickRect.setX(tickPosition);
         else
             tickRect.setY(tickPosition);
-        paintInfo.context().fillRect(tickRect);
+        paintInfo.context->fillRect(tickRect);
     }
 }
 #endif
@@ -1159,18 +1172,18 @@ void RenderTheme::platformColorsDidChange()
     Page::updateStyleForAllPagesAfterGlobalChangeInEnvironment();
 }
 
-FontCascadeDescription& RenderTheme::cachedSystemFontDescription(CSSValueID systemFontID) const
+FontDescription& RenderTheme::cachedSystemFontDescription(CSSValueID systemFontID) const
 {
-    static NeverDestroyed<FontCascadeDescription> caption;
-    static NeverDestroyed<FontCascadeDescription> icon;
-    static NeverDestroyed<FontCascadeDescription> menu;
-    static NeverDestroyed<FontCascadeDescription> messageBox;
-    static NeverDestroyed<FontCascadeDescription> smallCaption;
-    static NeverDestroyed<FontCascadeDescription> statusBar;
-    static NeverDestroyed<FontCascadeDescription> webkitMiniControl;
-    static NeverDestroyed<FontCascadeDescription> webkitSmallControl;
-    static NeverDestroyed<FontCascadeDescription> webkitControl;
-    static NeverDestroyed<FontCascadeDescription> defaultDescription;
+    static NeverDestroyed<FontDescription> caption;
+    static NeverDestroyed<FontDescription> icon;
+    static NeverDestroyed<FontDescription> menu;
+    static NeverDestroyed<FontDescription> messageBox;
+    static NeverDestroyed<FontDescription> smallCaption;
+    static NeverDestroyed<FontDescription> statusBar;
+    static NeverDestroyed<FontDescription> webkitMiniControl;
+    static NeverDestroyed<FontDescription> webkitSmallControl;
+    static NeverDestroyed<FontDescription> webkitControl;
+    static NeverDestroyed<FontDescription> defaultDescription;
 
     switch (systemFontID) {
     case CSSValueCaption:
@@ -1199,7 +1212,7 @@ FontCascadeDescription& RenderTheme::cachedSystemFontDescription(CSSValueID syst
     }
 }
 
-void RenderTheme::systemFont(CSSValueID systemFontID, FontCascadeDescription& fontDescription) const
+void RenderTheme::systemFont(CSSValueID systemFontID, FontDescription& fontDescription) const
 {
     fontDescription = cachedSystemFontDescription(systemFontID);
     if (fontDescription.isAbsoluteSize())

@@ -81,7 +81,9 @@ private:
     virtual void parseWebVTTFileHeader(InbandTextTrackPrivate*, String) override;
 
     virtual void newCuesParsed() override;
+#if ENABLE(WEBVTT_REGIONS)
     virtual void newRegionsParsed() override;
+#endif
     virtual void fileFailedToParse() override;
 
     GenericTextTrackCueMap m_cueMap;

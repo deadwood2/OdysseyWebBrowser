@@ -47,9 +47,8 @@ static NSPanel *updateAlertPanel(id updateItem, id host)
 {
     NSString *hostName = objc_msgSend(host, @selector(name));
     NSPanel *panel = NSGetInformationalAlertPanel([NSString stringWithFormat:@"Would you like to download and install %@ %@ now?", hostName, objc_msgSend(updateItem, @selector(displayVersionString))],
-                                                  @"%@",
-                                                  @"Install Update", @"Skip This Version", @"Remind Me Later",
-                                                  [NSString stringWithFormat:@"You are currently running %@ %@.", hostName, objc_msgSend(host, @selector(displayVersion))]);
+                                                  [NSString stringWithFormat:@"You are currently running %@ %@.", hostName, objc_msgSend(host, @selector(displayVersion))],
+                                                  @"Install Update", @"Skip This Version", @"Remind Me Later");
     NSArray *subviews = [[panel contentView] subviews];
     NSEnumerator *e = [subviews objectEnumerator];
     NSView *view;

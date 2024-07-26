@@ -21,7 +21,6 @@
 #include "config.h"
 #include "CSSStyleSheet.h"
 
-#include "AuthorStyleSheets.h"
 #include "CSSCharsetRule.h"
 #include "CSSFontFaceRule.h"
 #include "CSSImportRule.h"
@@ -31,8 +30,8 @@
 #include "CSSStyleRule.h"
 #include "CachedCSSStyleSheet.h"
 #include "Document.h"
+#include "DocumentStyleSheetCollection.h"
 #include "ExceptionCode.h"
-#include "ExtensionStyleSheets.h"
 #include "HTMLNames.h"
 #include "HTMLStyleElement.h"
 #include "MediaList.h"
@@ -83,13 +82,13 @@ Ref<CSSStyleSheet> CSSStyleSheet::create(Ref<StyleSheetContents>&& sheet, CSSImp
 
 Ref<CSSStyleSheet> CSSStyleSheet::create(Ref<StyleSheetContents>&& sheet, Node* ownerNode)
 { 
-    return adoptRef(*new CSSStyleSheet(WTF::move(sheet), ownerNode, TextPosition::minimumPosition(), false));
+    return adoptRef(*new CSSStyleSheet(WTF::move(sheet), ownerNode, false));
 }
 
-Ref<CSSStyleSheet> CSSStyleSheet::createInline(Node& ownerNode, const URL& baseURL, const TextPosition& startPosition, const String& encoding)
+Ref<CSSStyleSheet> CSSStyleSheet::createInline(Node& ownerNode, const URL& baseURL, const String& encoding)
 {
     CSSParserContext parserContext(ownerNode.document(), baseURL, encoding);
-    return adoptRef(*new CSSStyleSheet(StyleSheetContents::create(baseURL.string(), parserContext), &ownerNode, startPosition, true));
+    return adoptRef(*new CSSStyleSheet(StyleSheetContents::create(baseURL.string(), parserContext), &ownerNode, true));
 }
 
 CSSStyleSheet::CSSStyleSheet(Ref<StyleSheetContents>&& contents, CSSImportRule* ownerRule)
@@ -99,19 +98,17 @@ CSSStyleSheet::CSSStyleSheet(Ref<StyleSheetContents>&& contents, CSSImportRule* 
     , m_mutatedRules(false)
     , m_ownerNode(0)
     , m_ownerRule(ownerRule)
-    , m_startPosition()
 {
     m_contents->registerClient(this);
 }
 
-CSSStyleSheet::CSSStyleSheet(Ref<StyleSheetContents>&& contents, Node* ownerNode, const TextPosition& startPosition, bool isInlineStylesheet)
+CSSStyleSheet::CSSStyleSheet(Ref<StyleSheetContents>&& contents, Node* ownerNode, bool isInlineStylesheet)
     : m_contents(WTF::move(contents))
     , m_isInlineStylesheet(isInlineStylesheet)
     , m_isDisabled(false)
     , m_mutatedRules(false)
     , m_ownerNode(ownerNode)
     , m_ownerRule(0)
-    , m_startPosition(startPosition)
 {
     ASSERT(isAcceptableCSSStyleSheetParent(ownerNode));
     m_contents->registerClient(this);
@@ -171,7 +168,7 @@ void CSSStyleSheet::didMutateRules(RuleMutationType mutationType, WhetherContent
     if (!owner)
         return;
 
-    if (mutationType == RuleInsertion && !contentsWereClonedForMutation && !owner->authorStyleSheets().activeStyleSheetsContains(this)) {
+    if (mutationType == RuleInsertion && !contentsWereClonedForMutation && !owner->styleSheetCollection().activeStyleSheetsContains(this)) {
         if (insertedKeyframesRule) {
             if (StyleResolver* resolver = owner->styleResolverIfExists())
                 resolver->addKeyframeStyle(insertedKeyframesRule);
@@ -274,10 +271,10 @@ bool CSSStyleSheet::canAccessRules() const
     return false;
 }
 
-RefPtr<CSSRuleList> CSSStyleSheet::rules()
+PassRefPtr<CSSRuleList> CSSStyleSheet::rules()
 {
     if (!canAccessRules())
-        return nullptr;
+        return 0;
     // IE behavior.
     RefPtr<StaticCSSRuleList> nonCharsetRules = StaticCSSRuleList::create();
     unsigned ruleCount = length();
@@ -287,7 +284,7 @@ RefPtr<CSSRuleList> CSSStyleSheet::rules()
             continue;
         nonCharsetRules->rules().append(rule);
     }
-    return nonCharsetRules;
+    return nonCharsetRules.release();
 }
 
 unsigned CSSStyleSheet::insertRule(const String& ruleString, unsigned index, ExceptionCode& ec)
@@ -361,10 +358,10 @@ int CSSStyleSheet::addRule(const String& selector, const String& style, Exceptio
 }
 
 
-RefPtr<CSSRuleList> CSSStyleSheet::cssRules()
+PassRefPtr<CSSRuleList> CSSStyleSheet::cssRules()
 {
     if (!canAccessRules())
-        return nullptr;
+        return 0;
     if (!m_ruleListCSSOMWrapper)
         m_ruleListCSSOMWrapper = std::make_unique<StyleSheetCSSRuleList>(this);
     return m_ruleListCSSOMWrapper.get();

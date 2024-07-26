@@ -76,6 +76,8 @@ public:
 
     WEBCORE_EXPORT void closeAllDatabases();
 
+    void interruptAllDatabasesForContext(const DatabaseContext*);
+
 private:
     explicit DatabaseTracker(const String& databasePath);
 
@@ -107,10 +109,12 @@ public:
     // MobileSafari will grab this mutex on the main thread before dispatching the task to 
     // clean up zero byte database files.  Any operations to open new database will have to
     // wait for that task to finish by waiting on this mutex.
-    static Lock& openDatabaseMutex();
+    static Mutex& openDatabaseMutex();
     
     WEBCORE_EXPORT static void emptyDatabaseFilesRemovalTaskWillBeScheduled();
     WEBCORE_EXPORT static void emptyDatabaseFilesRemovalTaskDidFinish();
+    
+    WEBCORE_EXPORT void setDatabasesPaused(bool);
 #endif
     
     void setClient(DatabaseManagerClient*);
@@ -150,11 +154,11 @@ private:
     typedef HashMap<String, DatabaseSet*> DatabaseNameMap;
     typedef HashMap<RefPtr<SecurityOrigin>, DatabaseNameMap*> DatabaseOriginMap;
 
-    Lock m_openDatabaseMapGuard;
+    Mutex m_openDatabaseMapGuard;
     mutable std::unique_ptr<DatabaseOriginMap> m_openDatabaseMap;
 
     // This lock protects m_database, m_originLockMap, m_databaseDirectoryPath, m_originsBeingDeleted, m_beingCreated, and m_beingDeleted.
-    Lock m_databaseGuard;
+    Mutex m_databaseGuard;
     SQLiteDatabase m_database;
 
     typedef HashMap<String, RefPtr<OriginLock>> OriginLockMap;
@@ -184,7 +188,7 @@ private:
     void doneDeletingOrigin(SecurityOrigin*);
 
     static void scheduleForNotification();
-    static void notifyDatabasesChanged();
+    static void notifyDatabasesChanged(void*);
 };
 
 } // namespace WebCore

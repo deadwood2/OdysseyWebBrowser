@@ -43,7 +43,7 @@
 
 namespace WebCore {
 
-RefPtr<Image> CSSGradientValue::image(RenderElement* renderer, const FloatSize& size)
+PassRefPtr<Image> CSSGradientValue::image(RenderElement* renderer, const FloatSize& size)
 {
     if (size.isEmpty())
         return nullptr;
@@ -69,7 +69,7 @@ RefPtr<Image> CSSGradientValue::image(RenderElement* renderer, const FloatSize& 
     if (cacheable)
         saveCachedImageForSize(size, newImage);
 
-    return newImage;
+    return newImage.release();
 }
 
 // Should only ever be called for deprecated gradients.
@@ -104,7 +104,7 @@ struct GradientStop {
     { }
 };
 
-RefPtr<CSSGradientValue> CSSGradientValue::gradientWithStylesResolved(StyleResolver* styleResolver)
+PassRefPtr<CSSGradientValue> CSSGradientValue::gradientWithStylesResolved(StyleResolver* styleResolver)
 {
     bool derived = false;
     for (auto& stop : m_stops) {
@@ -132,7 +132,7 @@ RefPtr<CSSGradientValue> CSSGradientValue::gradientWithStylesResolved(StyleResol
             stop.m_resolvedColor = styleResolver->colorFromPrimitiveValue(*stop.m_color);
     }
 
-    return result;
+    return result.release();
 }
 
 static inline int interpolate(int min, int max, float position)
@@ -745,7 +745,7 @@ static void endPointsFromAngle(float angleDeg, const FloatSize& size, FloatPoint
     firstPoint.set(halfWidth - endX, halfHeight + endY);
 }
 
-Ref<Gradient> CSSLinearGradientValue::createGradient(RenderElement& renderer, const FloatSize& size)
+PassRefPtr<Gradient> CSSLinearGradientValue::createGradient(RenderElement& renderer, const FloatSize& size)
 {
     ASSERT(!size.isEmpty());
 
@@ -803,12 +803,12 @@ Ref<Gradient> CSSLinearGradientValue::createGradient(RenderElement& renderer, co
 
     }
 
-    Ref<Gradient> gradient = Gradient::create(firstPoint, secondPoint);
+    RefPtr<Gradient> gradient = Gradient::create(firstPoint, secondPoint);
 
     // Now add the stops.
-    addStops(gradient, conversionData, 1);
+    addStops(*gradient, conversionData, 1);
 
-    return gradient;
+    return gradient.release();
 }
 
 bool CSSLinearGradientValue::equals(const CSSLinearGradientValue& other) const
@@ -1085,7 +1085,7 @@ static inline float horizontalEllipseRadius(const FloatSize& p, float aspectRati
 }
 
 // FIXME: share code with the linear version
-Ref<Gradient> CSSRadialGradientValue::createGradient(RenderElement& renderer, const FloatSize& size)
+PassRefPtr<Gradient> CSSRadialGradientValue::createGradient(RenderElement& renderer, const FloatSize& size)
 {
     ASSERT(!size.isEmpty());
 
@@ -1212,7 +1212,7 @@ Ref<Gradient> CSSRadialGradientValue::createGradient(RenderElement& renderer, co
         }
     }
 
-    Ref<Gradient> gradient = Gradient::create(firstPoint, firstRadius, secondPoint, secondRadius, aspectRatio);
+    RefPtr<Gradient> gradient = Gradient::create(firstPoint, firstRadius, secondPoint, secondRadius, aspectRatio);
 
     // addStops() only uses maxExtent for repeating gradients.
     float maxExtent = 0;
@@ -1222,9 +1222,9 @@ Ref<Gradient> CSSRadialGradientValue::createGradient(RenderElement& renderer, co
     }
 
     // Now add the stops.
-    addStops(gradient, conversionData, maxExtent);
+    addStops(*gradient, conversionData, maxExtent);
 
-    return gradient;
+    return gradient.release();
 }
 
 bool CSSRadialGradientValue::equals(const CSSRadialGradientValue& other) const

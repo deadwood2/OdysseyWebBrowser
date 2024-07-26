@@ -954,7 +954,7 @@ void EventHandler::platformPrepareForWheelEvents(const PlatformWheelEvent& wheel
                 latchingState->setScrollableContainer(scrollableContainer);
                 latchingState->setWidgetIsLatched(result.isOverWidget());
                 isOverWidget = latchingState->widgetIsLatched();
-                m_frame.mainFrame().wheelEventDeltaFilter()->beginFilteringDeltas();
+                m_frame.mainFrame().wheelEventDeltaTracker()->beginTrackingDeltas();
             }
         }
     } else if (wheelEvent.shouldResetLatching())
@@ -982,15 +982,16 @@ void EventHandler::platformRecordWheelEvent(const PlatformWheelEvent& wheelEvent
 {
     switch (wheelEvent.phase()) {
         case PlatformWheelEventPhaseBegan:
-            m_frame.mainFrame().wheelEventDeltaFilter()->beginFilteringDeltas();
+            m_frame.mainFrame().wheelEventDeltaTracker()->beginTrackingDeltas();
             break;
         case PlatformWheelEventPhaseEnded:
-            m_frame.mainFrame().wheelEventDeltaFilter()->endFilteringDeltas();
+            m_frame.mainFrame().wheelEventDeltaTracker()->endTrackingDeltas();
             break;
         default:
             break;
     }
-    m_frame.mainFrame().wheelEventDeltaFilter()->updateFromDelta(FloatSize(wheelEvent.deltaX(), wheelEvent.deltaY()));
+
+    m_frame.mainFrame().wheelEventDeltaTracker()->recordWheelEventDelta(wheelEvent);
 }
 
 static FrameView* frameViewForLatchingState(Frame& frame, ScrollLatchingState* latchingState)
@@ -1008,7 +1009,7 @@ bool EventHandler::platformCompleteWheelEvent(const PlatformWheelEvent& wheelEve
     FrameView* view = m_frame.view();
 
     ScrollLatchingState* latchingState = m_frame.mainFrame().latchingState();
-    if (wheelEvent.useLatchedEventElement() && !latchingIsLockedToAncestorOfThisFrame(m_frame) && latchingState && latchingState->scrollableContainer()) {
+    if (wheelEvent.useLatchedEventElement() && latchingState && latchingState->scrollableContainer()) {
 
         m_isHandlingWheelEvent = false;
 
@@ -1079,7 +1080,7 @@ VisibleSelection EventHandler::selectClosestWordFromHitTestResultBasedOnLookup(c
         return VisibleSelection();
 
     NSDictionary *options = nil;
-    if (RefPtr<Range> range = DictionaryLookup::rangeAtHitTestResult(result, &options))
+    if (RefPtr<Range> range = rangeForDictionaryLookupAtHitTestResult(result, &options))
         return VisibleSelection(*range);
 
     return VisibleSelection();

@@ -30,7 +30,6 @@
 #include "PlatformWebView.h"
 #include <gtk/gtk.h>
 #include <wtf/Platform.h>
-#include <wtf/RunLoop.h>
 #include <wtf/glib/GMainLoopSource.h>
 #include <wtf/glib/GUniquePtr.h>
 #include <wtf/text/WTFString.h>
@@ -41,20 +40,19 @@ static GMainLoopSource timeoutSource;
 
 void TestController::notifyDone()
 {
+    gtk_main_quit();
     timeoutSource.cancel();
-    RunLoop::main().stop();
 }
 
 void TestController::platformInitialize()
 {
 }
 
-WKPreferencesRef TestController::platformPreferences()
+void TestController::platformDestroy()
 {
-    return WKPageGroupGetPreferences(m_pageGroup.get());
 }
 
-void TestController::platformDestroy()
+void TestController::platformWillRunTest(const TestInvocation&)
 {
 }
 
@@ -63,11 +61,11 @@ void TestController::platformRunUntil(bool&, double timeout)
     if (timeout > 0) {
         timeoutSource.scheduleAfterDelay("[WTR] Test timeout source", [] {
             fprintf(stderr, "FAIL: TestControllerRunLoop timed out.\n");
-            RunLoop::main().stop();
+            gtk_main_quit();
         }, std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::duration<double>(timeout)));
     } else
         timeoutSource.cancel();
-    RunLoop::main().run();
+    gtk_main();
 }
 
 static char* getEnvironmentVariableAsUTF8String(const char* variableName)
@@ -126,10 +124,6 @@ void TestController::platformResetPreferencesToConsistentValues()
     if (!m_mainWebView)
         return;
     m_mainWebView->dismissAllPopupMenus();
-}
-
-void TestController::updatePlatformSpecificTestOptionsForTest(TestOptions&, const std::string&) const
-{
 }
 
 } // namespace WTR

@@ -27,7 +27,6 @@
 
 #include "CachedImage.h"
 #include "Chrome.h"
-#include "ChromeClient.h"
 #include "DocumentLoader.h"
 #include "EventListener.h"
 #include "EventNames.h"
@@ -92,7 +91,7 @@ private:
 
 class ImageDocumentElement final : public HTMLImageElement {
 public:
-    static Ref<ImageDocumentElement> create(ImageDocument&);
+    static RefPtr<ImageDocumentElement> create(ImageDocument&);
 
 private:
     ImageDocumentElement(ImageDocument& document)
@@ -107,9 +106,9 @@ private:
     ImageDocument* m_imageDocument;
 };
 
-inline Ref<ImageDocumentElement> ImageDocumentElement::create(ImageDocument& document)
+inline RefPtr<ImageDocumentElement> ImageDocumentElement::create(ImageDocument& document)
 {
-    return adoptRef(*new ImageDocumentElement(document));
+    return adoptRef(new ImageDocumentElement(document));
 }
 
 // --------
@@ -210,19 +209,19 @@ Ref<DocumentParser> ImageDocument::createParser()
 
 void ImageDocument::createDocumentStructure()
 {
-    Ref<Element> rootElement = Document::createElement(htmlTag, false);
-    appendChild(rootElement.copyRef());
-    downcast<HTMLHtmlElement>(rootElement.get()).insertedByParser();
+    RefPtr<Element> rootElement = Document::createElement(htmlTag, false);
+    appendChild(rootElement);
+    downcast<HTMLHtmlElement>(*rootElement).insertedByParser();
 
     frame()->injectUserScripts(InjectAtDocumentStart);
 
-    Ref<Element> body = Document::createElement(bodyTag, false);
+    RefPtr<Element> body = Document::createElement(bodyTag, false);
     body->setAttribute(styleAttr, "margin: 0px");
     if (MIMETypeRegistry::isPDFMIMEType(document().loader()->responseMIMEType()))
-        downcast<HTMLBodyElement>(body.get()).setInlineStyleProperty(CSSPropertyBackgroundColor, "white", CSSPrimitiveValue::CSS_IDENT);
-    rootElement->appendChild(body.copyRef());
+        downcast<HTMLBodyElement>(*body).setInlineStyleProperty(CSSPropertyBackgroundColor, "white", CSSPrimitiveValue::CSS_IDENT);
+    rootElement->appendChild(body);
     
-    Ref<ImageDocumentElement> imageElement = ImageDocumentElement::create(*this);
+    RefPtr<ImageDocumentElement> imageElement = ImageDocumentElement::create(*this);
     if (m_shouldShrinkImage)
         imageElement->setAttribute(styleAttr, "-webkit-user-select:none; display:block; margin:auto;");
     else
@@ -230,7 +229,7 @@ void ImageDocument::createDocumentStructure()
     imageElement->setLoadManually(true);
     imageElement->setSrc(url().string());
     imageElement->cachedImage()->setResponse(loader()->response());
-    body->appendChild(imageElement.copyRef());
+    body->appendChild(imageElement);
     
     if (m_shouldShrinkImage) {
 #if PLATFORM(IOS)
@@ -239,12 +238,12 @@ void ImageDocument::createDocumentStructure()
 #else
         RefPtr<EventListener> listener = ImageEventListener::create(*this);
         if (DOMWindow* window = this->domWindow())
-            window->addEventListener("resize", listener.copyRef(), false);
-        imageElement->addEventListener("click", WTF::move(listener), false);
+            window->addEventListener("resize", listener, false);
+        imageElement->addEventListener("click", listener.release(), false);
 #endif
     }
 
-    m_imageElement = imageElement.ptr();
+    m_imageElement = imageElement.get();
 }
 
 void ImageDocument::imageUpdated()
@@ -265,8 +264,6 @@ void ImageDocument::imageUpdated()
         FloatSize screenSize = page()->chrome().screenSize();
         if (imageSize.width() > screenSize.width())
             processViewport(String::format("width=%u", static_cast<unsigned>(imageSize.width().toInt())), ViewportArguments::ImageDocument);
-        if (page())
-            page()->chrome().client().imageOrMediaDocumentSizeChanged(IntSize(imageSize.width(), imageSize.height()));
 #else
         // Call windowSizeChanged for its side effect of sizing the image.
         windowSizeChanged();
@@ -403,7 +400,7 @@ void ImageEventListener::handleEvent(ScriptExecutionContext*, Event* event)
         m_document.windowSizeChanged();
     else if (event->type() == eventNames().clickEvent && is<MouseEvent>(*event)) {
         MouseEvent& mouseEvent = downcast<MouseEvent>(*event);
-        m_document.imageClicked(mouseEvent.offsetX(), mouseEvent.offsetY());
+        m_document.imageClicked(mouseEvent.x(), mouseEvent.y());
     }
 }
 

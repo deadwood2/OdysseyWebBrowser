@@ -32,9 +32,6 @@ namespace WebCore {
 class CSSValue;
 class QualifiedName;
 
-// This can't be a StringView for 2 reasons:
-// 1. lower() clobbers the data we point to.
-// 2. We are an element of a union (in CSSParserValue) so we need to have a trivial destructor.
 struct CSSParserString {
     void init(LChar* characters, unsigned length)
     {
@@ -168,8 +165,6 @@ public:
     CSSParserValue* valueAt(unsigned i) { return i < m_values.size() ? &m_values[i] : 0; }
 
     void clear() { m_values.clear(); }
-    
-    String toString();
 
 private:
     unsigned m_current;

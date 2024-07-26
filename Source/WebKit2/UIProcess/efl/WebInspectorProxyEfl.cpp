@@ -170,28 +170,27 @@ void WebInspectorProxy::platformInspectedURLChanged(const String& url)
     ecore_evas_title_set(m_inspectorWindow, title.utf8().data());
 }
 
-String WebInspectorProxy::inspectorPageURL()
+String WebInspectorProxy::inspectorPageURL() const
 {
     StringBuilder builder;
-    builder.append(WebInspectorProxy::inspectorBaseURL());
+    builder.append(inspectorBaseURL());
     builder.appendLiteral("/Main.html");
+
     return builder.toString();
 }
 
-String WebInspectorProxy::inspectorTestPageURL()
+String WebInspectorProxy::inspectorTestPageURL() const
 {
     StringBuilder builder;
-    builder.append(WebInspectorProxy::inspectorBaseURL());
+    builder.append(inspectorBaseURL());
     builder.appendLiteral("/Test.html");
+
     return builder.toString();
 }
 
-String WebInspectorProxy::inspectorBaseURL()
+String WebInspectorProxy::inspectorBaseURL() const
 {
-    StringBuilder builder;
-    builder.appendLiteral("file://");
-    builder.append(WebCore::inspectorResourcePath());
-    return builder.toString();
+    return "file://" + WebCore::inspectorResourcePath();
 }
 
 unsigned WebInspectorProxy::platformInspectedWindowHeight()

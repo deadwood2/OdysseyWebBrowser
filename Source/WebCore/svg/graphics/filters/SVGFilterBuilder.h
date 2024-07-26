@@ -25,6 +25,7 @@
 
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
+#include <wtf/PassRefPtr.h>
 #include <wtf/text/AtomicStringHash.h>
 #include <wtf/text/WTFString.h>
 
@@ -43,7 +44,7 @@ public:
     FilterEffect* getEffectById(const AtomicString& id) const;
     FilterEffect* lastEffect() const { return m_lastEffect.get(); }
 
-    void appendEffectToEffectReferences(RefPtr<FilterEffect>&&, RenderObject*);
+    void appendEffectToEffectReferences(PassRefPtr<FilterEffect>, RenderObject*);
 
     inline FilterEffectSet& effectReferences(FilterEffect* effect)
     {

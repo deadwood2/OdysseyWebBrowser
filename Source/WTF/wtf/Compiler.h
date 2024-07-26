@@ -56,33 +56,42 @@
 #define WTF_COMPILER_SUPPORTS_FALLTHROUGH_WARNINGS __has_feature(cxx_attributes) && __has_warning("-Wimplicit-fallthrough")
 #endif
 
-/* COMPILER(GCC_OR_CLANG) - GNU Compiler Collection or Clang */
-#if defined(__GNUC__)
-#define WTF_COMPILER_GCC_OR_CLANG 1
-#endif
-
 /* COMPILER(GCC) - GNU Compiler Collection */
-/* Note: This section must come after the Clang section since we check !COMPILER(CLANG) here. */
-#if COMPILER(GCC_OR_CLANG) && !COMPILER(CLANG)
-#define WTF_COMPILER_GCC 1
-#define WTF_COMPILER_SUPPORTS_CXX_CONSTEXPR 1
-#define WTF_COMPILER_SUPPORTS_CXX_USER_LITERALS 1
-#define WTF_COMPILER_SUPPORTS_CXX_REFERENCE_QUALIFIED_FUNCTIONS 1
 
+/* Note: This section must come after the Clang section since we check !COMPILER(CLANG) here. */
+
+#if defined(__GNUC__)
+#define WTF_COMPILER_GCC 1
 #define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
 #define GCC_VERSION_AT_LEAST(major, minor, patch) (GCC_VERSION >= (major * 10000 + minor * 100 + patch))
-
-#if !GCC_VERSION_AT_LEAST(4, 9, 0)
-#error "Please use a newer version of GCC. WebKit requires GCC 4.9.0 or newer to compile."
 #endif
 
-#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+/* Define GCC_VERSION_AT_LEAST for all compilers, so we can write things like GCC_VERSION_AT_LEAST(4, 1, 0). */
+/* FIXME: Doesn't seem all that valuable. Can we remove this? */
+#if !defined(GCC_VERSION_AT_LEAST)
+#define GCC_VERSION_AT_LEAST(major, minor, patch) 0
+#endif
+
+#if COMPILER(GCC) && !COMPILER(CLANG) && !GCC_VERSION_AT_LEAST(4, 7, 0)
+#error "Please use a newer version of GCC. WebKit requires GCC 4.7.0 or newer to compile."
+#endif
+
+#if COMPILER(GCC) && !COMPILER(CLANG)
+#define WTF_COMPILER_SUPPORTS_CXX_CONSTEXPR 1
+#define WTF_COMPILER_SUPPORTS_CXX_USER_LITERALS 1
+#endif
+
+#if COMPILER(GCC) && !COMPILER(CLANG) && defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 #define WTF_COMPILER_SUPPORTS_C_STATIC_ASSERT 1
 #endif
 
+#if COMPILER(GCC) && !COMPILER(CLANG) && GCC_VERSION_AT_LEAST(4, 8, 0)
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
 
-#endif /* COMPILER(GCC) */
+#if COMPILER(GCC) && !COMPILER(CLANG) && (defined(__GXX_EXPERIMENTAL_CXX0X__) || (defined(__cplusplus) && __cplusplus >= 201103L))
+#pragma GCC diagnostic ignored "-Wunused-local-typedefs"
+#endif
 
 /* COMPILER(MINGW) - MinGW GCC */
 
@@ -133,17 +142,11 @@
 #define ASAN_ENABLED 0
 #endif
 
-#if ASAN_ENABLED
-#define SUPPRESS_ASAN __attribute__((no_sanitize_address))
-#else
-#define SUPPRESS_ASAN
-#endif
-
 /* ==== Compiler-independent macros for various compiler features, in alphabetical order ==== */
 
 /* ALWAYS_INLINE */
 
-#if !defined(ALWAYS_INLINE) && COMPILER(GCC_OR_CLANG) && defined(NDEBUG) && !COMPILER(MINGW)
+#if !defined(ALWAYS_INLINE) && COMPILER(GCC) && defined(NDEBUG) && !COMPILER(MINGW)
 #define ALWAYS_INLINE inline __attribute__((__always_inline__))
 #endif
 
@@ -194,7 +197,7 @@
 
 /* LIKELY */
 
-#if !defined(LIKELY) && COMPILER(GCC_OR_CLANG)
+#if !defined(LIKELY) && COMPILER(GCC)
 #define LIKELY(x) __builtin_expect(!!(x), 1)
 #endif
 
@@ -204,7 +207,7 @@
 
 /* NEVER_INLINE */
 
-#if !defined(NEVER_INLINE) && COMPILER(GCC_OR_CLANG)
+#if !defined(NEVER_INLINE) && COMPILER(GCC)
 #define NEVER_INLINE __attribute__((__noinline__))
 #endif
 
@@ -218,7 +221,7 @@
 
 /* NO_RETURN */
 
-#if !defined(NO_RETURN) && COMPILER(GCC_OR_CLANG)
+#if !defined(NO_RETURN) && COMPILER(GCC)
 #define NO_RETURN __attribute((__noreturn__))
 #endif
 
@@ -252,7 +255,7 @@
 
 /* PURE_FUNCTION */
 
-#if !defined(PURE_FUNCTION) && COMPILER(GCC_OR_CLANG)
+#if !defined(PURE_FUNCTION) && COMPILER(GCC)
 #define PURE_FUNCTION __attribute__((__pure__))
 #endif
 
@@ -262,7 +265,7 @@
 
 /* REFERENCED_FROM_ASM */
 
-#if !defined(REFERENCED_FROM_ASM) && COMPILER(GCC_OR_CLANG)
+#if !defined(REFERENCED_FROM_ASM) && COMPILER(GCC)
 #define REFERENCED_FROM_ASM __attribute__((__used__))
 #endif
 
@@ -272,7 +275,7 @@
 
 /* UNLIKELY */
 
-#if !defined(UNLIKELY) && COMPILER(GCC_OR_CLANG)
+#if !defined(UNLIKELY) && COMPILER(GCC)
 #define UNLIKELY(x) __builtin_expect(!!(x), 0)
 #endif
 
@@ -305,7 +308,7 @@
 
 /* WARN_UNUSED_RETURN */
 
-#if !defined(WARN_UNUSED_RETURN) && COMPILER(GCC_OR_CLANG)
+#if !defined(WARN_UNUSED_RETURN) && COMPILER(GCC)
 #define WARN_UNUSED_RETURN __attribute__((__warn_unused_result__))
 #endif
 

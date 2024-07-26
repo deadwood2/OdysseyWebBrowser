@@ -44,7 +44,7 @@ public:
     static NotificationCOMWrapper* create(Notification* inner) { return new NotificationCOMWrapper(inner); }
    
     // IUnknown
-    virtual HRESULT STDMETHODCALLTYPE QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject);
+    virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject);
     virtual ULONG STDMETHODCALLTYPE AddRef();
     virtual ULONG STDMETHODCALLTYPE Release();
 
@@ -65,11 +65,9 @@ private:
     Notification* m_inner;
 };
 
-HRESULT NotificationCOMWrapper::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE NotificationCOMWrapper::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<NotificationCOMWrapper*>(this);
     else if (IsEqualGUID(riid, IID_IWebDesktopNotification))
@@ -81,12 +79,12 @@ HRESULT NotificationCOMWrapper::QueryInterface(_In_ REFIID riid, _COM_Outptr_ vo
     return S_OK;
 }
 
-ULONG NotificationCOMWrapper::AddRef()
+ULONG STDMETHODCALLTYPE NotificationCOMWrapper::AddRef()
 { 
     return ++m_refCount; 
 }
 
-ULONG NotificationCOMWrapper::Release()
+ULONG STDMETHODCALLTYPE NotificationCOMWrapper::Release()
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -94,49 +92,49 @@ ULONG NotificationCOMWrapper::Release()
     return newRef;
 }
 
-HRESULT NotificationCOMWrapper::isHTML(BOOL* result)
+HRESULT STDMETHODCALLTYPE NotificationCOMWrapper::isHTML(BOOL* result)
 {
     *result = m_inner->isHTML();
     return S_OK;
 }
 
-HRESULT NotificationCOMWrapper::contentsURL(BSTR* result)
+HRESULT STDMETHODCALLTYPE NotificationCOMWrapper::contentsURL(BSTR* result)
 {
     *result = BString(m_inner->url()).release();
     return S_OK;
 }
 
-HRESULT NotificationCOMWrapper::iconURL(BSTR* result)
+HRESULT STDMETHODCALLTYPE NotificationCOMWrapper::iconURL(BSTR* result)
 {
     *result = BString(m_inner->contents().icon()).release();
     return S_OK;
 }
 
-HRESULT NotificationCOMWrapper::title(BSTR* result)
+HRESULT STDMETHODCALLTYPE NotificationCOMWrapper::title(BSTR* result)
 {
     *result = BString(m_inner->contents().title()).release();
     return S_OK;
 }
 
-HRESULT NotificationCOMWrapper::text(BSTR* result)
+HRESULT STDMETHODCALLTYPE NotificationCOMWrapper::text(BSTR* result)
 {
     *result = BString(m_inner->contents().body()).release();
     return S_OK;
 }
 
-HRESULT NotificationCOMWrapper::notifyDisplay()
+HRESULT STDMETHODCALLTYPE NotificationCOMWrapper::notifyDisplay()
 {
     m_inner->dispatchDisplayEvent();
     return S_OK;
 }
 
-HRESULT NotificationCOMWrapper::notifyError()
+HRESULT STDMETHODCALLTYPE NotificationCOMWrapper::notifyError()
 {
     m_inner->dispatchErrorEvent();
     return S_OK;
 }
 
-HRESULT NotificationCOMWrapper::notifyClose(BOOL xplicit)
+HRESULT STDMETHODCALLTYPE NotificationCOMWrapper::notifyClose(BOOL xplicit)
 {
     m_inner->dispatchCloseEvent();
     return S_OK;

@@ -31,6 +31,10 @@ GPRS =
      "t3",
      "t4",
      "t5",
+     "t6",
+     "t7",
+     "t8",
+     "t9",
      "cfr",
      "a0",
      "a1",
@@ -42,16 +46,8 @@ GPRS =
      "lr",
      "pc",
      # 64-bit only registers:
-     "csr0",
-     "csr1",
-     "csr2",
-     "csr3",
-     "csr4",
-     "csr5",
-     "csr6",
-     "csr7",
-     "csr8",
-     "csr9"
+     "csr1",  # tag type number register
+     "csr2"   # tag mask register
     ]
 
 FPRS =
@@ -66,14 +62,6 @@ FPRS =
      "fa1",
      "fa2",
      "fa3",
-     "csfr0",
-     "csfr1",
-     "csfr2",
-     "csfr3",
-     "csfr4",
-     "csfr5",
-     "csfr6",
-     "csfr7",
      "fr"
     ]
 

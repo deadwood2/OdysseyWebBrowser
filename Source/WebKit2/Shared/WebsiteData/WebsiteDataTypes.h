@@ -42,9 +42,6 @@ enum WebsiteDataTypes {
 #if ENABLE(NETSCAPE_PLUGIN_API)
     WebsiteDataTypePlugInData = 1 << 10,
 #endif
-#if ENABLE(MEDIA_STREAM)
-    WebsiteDataTypeMediaDeviceIdentifier = 1 << 11,
-#endif
 };
 
 };

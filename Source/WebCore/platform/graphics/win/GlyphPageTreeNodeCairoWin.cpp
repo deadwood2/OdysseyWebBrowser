@@ -34,11 +34,11 @@
 
 namespace WebCore {
 
-bool GlyphPage::fill(UChar* buffer, unsigned bufferLength, const Font* fontData)
+bool GlyphPage::fill(unsigned offset, unsigned length, UChar* buffer, unsigned bufferLength, const Font* fontData)
 {
     // bufferLength will be greater than the requested number of glyphs if the buffer contains surrogate pairs.
     // We won't support this for now.
-    if (bufferLength > GlyphPage::size)
+    if (bufferLength > length)
         return false;
 
     bool haveGlyphs = false;
@@ -51,12 +51,12 @@ bool GlyphPage::fill(UChar* buffer, unsigned bufferLength, const Font* fontData)
     DWORD result = GetGlyphIndices(dc, buffer, bufferLength, localGlyphBuffer, GGI_MARK_NONEXISTING_GLYPHS);
     bool success = result != GDI_ERROR && static_cast<unsigned>(result) == bufferLength;
     if (success) {
-        for (unsigned i = 0; i < GlyphPage::size; i++) {
+        for (unsigned i = 0; i < length; i++) {
             Glyph glyph = localGlyphBuffer[i];
             if (glyph == 0xffff)
-                setGlyphForIndex(i, 0);
+                setGlyphDataForIndex(offset + i, 0, 0);
             else {
-                setGlyphForIndex(i, glyph);
+                setGlyphDataForIndex(offset + i, glyph, fontData);
                 haveGlyphs = true;
             }
         }

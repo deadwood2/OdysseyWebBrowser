@@ -94,7 +94,7 @@ public:
                     HashMap<FrozenValue*, Node*>& values = valuesFor(node->op());
                     auto result = values.add(node->constant(), node);
                     if (result.isNewEntry)
-                        node->origin = m_graph.block(0)->at(0)->origin;
+                        node->origin = NodeOrigin();
                     else {
                         node->setReplacement(result.iterator->value);
                         toFree.append(node);

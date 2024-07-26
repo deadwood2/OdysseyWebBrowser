@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2009, 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2006, 2007, 2008, 2009, 2013-2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -49,6 +49,8 @@ using namespace WTF;
 WebIconDatabase* WebIconDatabase::m_sharedWebIconDatabase = 0;
 
 WebIconDatabase::WebIconDatabase()
+    : m_refCount(0)
+    , m_deliveryRequested(false)
 {
     gClassCount++;
     gClassNameCount().add("WebIconDatabase");
@@ -121,11 +123,9 @@ WebIconDatabase* WebIconDatabase::sharedWebIconDatabase()
 
 // IUnknown -------------------------------------------------------------------
 
-HRESULT WebIconDatabase::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE WebIconDatabase::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<IWebIconDatabase*>(this);
     else if (IsEqualGUID(riid, IID_IWebIconDatabase))
@@ -137,12 +137,12 @@ HRESULT WebIconDatabase::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** pp
     return S_OK;
 }
 
-ULONG WebIconDatabase::AddRef()
+ULONG STDMETHODCALLTYPE WebIconDatabase::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG WebIconDatabase::Release()
+ULONG STDMETHODCALLTYPE WebIconDatabase::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -153,22 +153,21 @@ ULONG WebIconDatabase::Release()
 
 // IWebIconDatabase --------------------------------------------------------------------
 
-HRESULT WebIconDatabase::sharedIconDatabase(_COM_Outptr_opt_ IWebIconDatabase** result)
+HRESULT STDMETHODCALLTYPE WebIconDatabase::sharedIconDatabase(
+        /* [retval][out] */ IWebIconDatabase** result)
 {
-    if (!result)
-        return E_POINTER;
     *result = sharedWebIconDatabase();
     return S_OK;
 }
 
-HRESULT WebIconDatabase::iconForURL(_In_ BSTR url, _In_ LPSIZE size, BOOL /*cache*/, __deref_opt_out HBITMAP* bitmap)
+HRESULT WebIconDatabase::iconForURL(BSTR url, LPSIZE size, BOOL /*cache*/, HBITMAP* bitmap)
 {
-    if (!size || !bitmap)
+    if (!size)
         return E_POINTER;
 
     IntSize intSize(*size);
 
-    Image* icon = nullptr;
+    Image* icon = 0;
     if (url)
         icon = iconDatabase().synchronousIconForPageURL(String(url, SysStringLen(url)), intSize);
 
@@ -186,9 +185,9 @@ HRESULT WebIconDatabase::iconForURL(_In_ BSTR url, _In_ LPSIZE size, BOOL /*cach
     return defaultIconWithSize(size, bitmap);
 }
 
-HRESULT WebIconDatabase::defaultIconWithSize(_In_ LPSIZE size, __deref_opt_out HBITMAP* result)
+HRESULT WebIconDatabase::defaultIconWithSize(LPSIZE size, HBITMAP* result)
 {
-    if (!size || !result)
+    if (!size)
         return E_POINTER;
 
     IntSize intSize(*size);
@@ -197,37 +196,41 @@ HRESULT WebIconDatabase::defaultIconWithSize(_In_ LPSIZE size, __deref_opt_out H
     return S_OK;
 }
 
-HRESULT WebIconDatabase::retainIconForURL(_In_ BSTR url)
+HRESULT STDMETHODCALLTYPE WebIconDatabase::retainIconForURL(
+        /* [in] */ BSTR url)
 {
     iconDatabase().retainIconForPageURL(String(url, SysStringLen(url)));
     return S_OK;
 }
 
-HRESULT WebIconDatabase::releaseIconForURL(_In_ BSTR url)
+HRESULT STDMETHODCALLTYPE WebIconDatabase::releaseIconForURL(
+        /* [in] */ BSTR url)
 {
     iconDatabase().releaseIconForPageURL(String(url, SysStringLen(url)));
     return S_OK;
 }
 
-HRESULT WebIconDatabase::removeAllIcons()
+HRESULT STDMETHODCALLTYPE WebIconDatabase::removeAllIcons(void)
 {
     iconDatabase().removeAllIcons();
     return S_OK;
 }
 
-HRESULT WebIconDatabase::delayDatabaseCleanup()
+HRESULT STDMETHODCALLTYPE WebIconDatabase::delayDatabaseCleanup(void)
 {
     IconDatabase::delayDatabaseCleanup();
     return S_OK;
 }
 
-HRESULT WebIconDatabase::allowDatabaseCleanup()
+HRESULT STDMETHODCALLTYPE WebIconDatabase::allowDatabaseCleanup(void)
 {
     IconDatabase::allowDatabaseCleanup();
     return S_OK;
 }
 
-HRESULT WebIconDatabase::iconURLForURL(_In_ BSTR url, __deref_opt_out BSTR* iconURL)
+HRESULT STDMETHODCALLTYPE WebIconDatabase::iconURLForURL( 
+        /* [in] */ BSTR url,
+        /* [retval][out] */ BSTR* iconURL)
 {
     if (!url || !iconURL)
         return E_POINTER;
@@ -236,15 +239,15 @@ HRESULT WebIconDatabase::iconURLForURL(_In_ BSTR url, __deref_opt_out BSTR* icon
     return S_OK;
 }
 
-HRESULT WebIconDatabase::isEnabled(_Out_ BOOL* result)
+HRESULT STDMETHODCALLTYPE WebIconDatabase::isEnabled( 
+        /* [retval][out] */ BOOL *result)
 {
-    if (!result)
-        return E_POINTER;
     *result = iconDatabase().isEnabled();
     return S_OK;
 }
 
-HRESULT WebIconDatabase::setEnabled(BOOL flag)
+HRESULT STDMETHODCALLTYPE WebIconDatabase::setEnabled( 
+        /* [in] */ BOOL flag)
 {
     BOOL currentlyEnabled;
     isEnabled(&currentlyEnabled);
@@ -258,7 +261,9 @@ HRESULT WebIconDatabase::setEnabled(BOOL flag)
     return S_OK;
 }
 
-HRESULT WebIconDatabase::hasIconForURL(_In_ BSTR url, _Out_ BOOL* result)
+HRESULT STDMETHODCALLTYPE WebIconDatabase::hasIconForURL(
+        /* [in] */ BSTR url,
+        /* [out][retval] */ BOOL* result)
 {
     if (!url || !result)
         return E_POINTER;
@@ -315,14 +320,14 @@ HBITMAP WebIconDatabase::getOrCreateDefaultIconBitmap(const IntSize& size)
 void WebIconDatabase::didRemoveAllIcons()
 {
     // Queueing the empty string is a special way of saying "this queued notification is the didRemoveAllIcons notification"
-    LockHolder locker(m_notificationMutex);
+    MutexLocker locker(m_notificationMutex);
     m_notificationQueue.append(String());
     scheduleNotificationDelivery();
 }
 
 void WebIconDatabase::didImportIconURLForPageURL(const WTF::String& pageURL)
 {
-    LockHolder locker(m_notificationMutex);
+    MutexLocker locker(m_notificationMutex);
     m_notificationQueue.append(pageURL.isolatedCopy());
     scheduleNotificationDelivery();
 }
@@ -350,9 +355,7 @@ void WebIconDatabase::scheduleNotificationDelivery()
 
     if (!m_deliveryRequested) {
         m_deliveryRequested = true;
-        callOnMainThread([] {
-            deliverNotifications(0);
-        });
+        callOnMainThread(deliverNotifications, 0);
     }
 }
 
@@ -400,7 +403,7 @@ void WebIconDatabase::deliverNotifications(void*)
 
     Vector<String> queue;
     {
-        LockHolder locker(m_sharedWebIconDatabase->m_notificationMutex);
+        MutexLocker locker(m_sharedWebIconDatabase->m_notificationMutex);
         queue.swap(m_sharedWebIconDatabase->m_notificationQueue);
         m_sharedWebIconDatabase->m_deliveryRequested = false;
     }

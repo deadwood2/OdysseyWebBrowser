@@ -41,12 +41,12 @@ using namespace JSC;
 
 namespace WebCore {
 
-JSValue JSFileReader::result(ExecState& state) const
+JSValue JSFileReader::result(ExecState* exec) const
 {
     FileReader& imp = impl();
     if (imp.readType() == FileReaderLoader::ReadAsArrayBuffer)
-        return toJS(&state, globalObject(), WTF::getPtr(imp.arrayBufferResult()));
-    return jsOwnedStringOrNull(&state, imp.stringResult());
+        return toJS(exec, globalObject(), WTF::getPtr(imp.arrayBufferResult()));
+    return jsOwnedStringOrNull(exec, imp.stringResult());
 }
 
 } // namespace WebCore

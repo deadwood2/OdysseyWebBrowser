@@ -27,7 +27,6 @@
 #include "Language.h"
 
 #include <wtf/HashMap.h>
-#include <wtf/NeverDestroyed.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/text/WTFString.h>
 
@@ -40,8 +39,8 @@ namespace WebCore {
 typedef HashMap<void*, LanguageChangeObserverFunction> ObserverMap;
 static ObserverMap& observerMap()
 {
-    static NeverDestroyed<ObserverMap> map;
-    return map.get();
+    DEPRECATED_DEFINE_STATIC_LOCAL(ObserverMap, map, ());
+    return map;
 }
 
 void addLanguageChangeObserver(void* context, LanguageChangeObserverFunction customObserver)
@@ -85,7 +84,6 @@ Vector<String> userPreferredLanguagesOverride()
 void overrideUserPreferredLanguages(const Vector<String>& override)
 {
     preferredLanguagesOverride() = override;
-    languageDidChange();
 }
     
 Vector<String> userPreferredLanguages()

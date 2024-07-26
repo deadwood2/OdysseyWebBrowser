@@ -30,6 +30,7 @@
 #include "HTMLCollection.h"
 #include "HTMLFrameElement.h"
 #include "HTMLFrameSetElement.h"
+#include "HTMLNames.h"
 #include "JSDOMWindow.h"
 #include "JSDOMWindowShell.h"
 #include "JSDOMBinding.h"
@@ -38,19 +39,23 @@ using namespace JSC;
 
 namespace WebCore {
 
-bool JSHTMLFrameSetElement::nameGetter(ExecState* exec, PropertyName propertyName, JSValue& value)
-{
-    auto* frameElement = impl().children()->namedItem(propertyNameToAtomicString(propertyName));
-    if (!is<HTMLFrameElement>(frameElement))
-        return false;
+using namespace HTMLNames;
 
-    if (auto* document = downcast<HTMLFrameElement>(*frameElement).contentDocument()) {
-        if (JSDOMWindowShell* window = toJSDOMWindowShell(document->frame(), currentWorld(exec))) {
-            value = window;
-            return true;
-        }
+bool JSHTMLFrameSetElement::canGetItemsForName(ExecState*, HTMLFrameSetElement* frameSet, PropertyName propertyName)
+{
+    Node* frame = frameSet->children()->namedItem(propertyNameToAtomicString(propertyName));
+    return frame && frame->hasTagName(frameTag);
+}
+
+EncodedJSValue JSHTMLFrameSetElement::nameGetter(ExecState* exec, JSObject* slotBase, EncodedJSValue, PropertyName propertyName)
+{
+    HTMLElement& element = jsCast<JSHTMLElement*>(slotBase)->impl();
+    Node* frameElement = element.children()->namedItem(propertyNameToAtomicString(propertyName));
+    if (Document* document = downcast<HTMLFrameElement>(frameElement)->contentDocument()) {
+        if (JSDOMWindowShell* window = toJSDOMWindowShell(document->frame(), currentWorld(exec)))
+            return JSValue::encode(window);
     }
-    return false;
+    return JSValue::encode(jsUndefined());
 }
 
 } // namespace WebCore

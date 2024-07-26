@@ -44,7 +44,7 @@ public:
 
     static bool isValidAESAlgorithm(CryptoAlgorithmIdentifier);
 
-    static RefPtr<CryptoKeyAES> generate(CryptoAlgorithmIdentifier, size_t lengthBits, bool extractable, CryptoKeyUsage);
+    static PassRefPtr<CryptoKeyAES> generate(CryptoAlgorithmIdentifier, size_t lengthBits, bool extractable, CryptoKeyUsage);
 
     virtual CryptoKeyClass keyClass() const override { return CryptoKeyClass::AES; }
 

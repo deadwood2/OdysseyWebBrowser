@@ -33,6 +33,7 @@
 #endif
 
 WebKitMessageLoop::WebKitMessageLoop()
+    : m_refCount(0)
 {
     gClassCount++;
     gClassNameCount().add("WebKitMessageLoop");
@@ -51,11 +52,9 @@ WebKitMessageLoop* WebKitMessageLoop::createInstance()
     return instance;
 }
 
-HRESULT WebKitMessageLoop::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT WebKitMessageLoop::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<IWebKitMessageLoop*>(this);
     else if (IsEqualGUID(riid, CLSID_WebKitMessageLoop))
@@ -83,7 +82,7 @@ ULONG WebKitMessageLoop::Release()
     return newRef;
 }
 
-HRESULT WebKitMessageLoop::run(_In_ HACCEL hAccelTable)
+HRESULT WebKitMessageLoop::run(HACCEL hAccelTable)
 {
     MSG msg = { 0 };
 

@@ -696,7 +696,7 @@ void RenderNamedFlowThread::getRanges(Vector<RefPtr<Range>>& rangeObjects, const
                     if (!startsAboveRegion) {
                         if (range->intersectsNode(node, IGNORE_EXCEPTION))
                             range->setEndBefore(node, IGNORE_EXCEPTION);
-                        rangeObjects.append(range->cloneRange());
+                        rangeObjects.append(range->cloneRange(IGNORE_EXCEPTION));
                         range = Range::create(contentElement->document());
                         startsAboveRegion = true;
                     } else

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2014, 2015 Apple Inc. All rights reserved.
+# Copyright (c) 2014 Apple Inc. All rights reserved.
 # Copyright (c) 2014 University of Washington. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -50,6 +50,7 @@ class ObjCFrontendDispatcherImplementationGenerator(Generator):
     def generate_output(self):
         secondary_headers = [
             '"%sEnumConversionHelpers.h"' % ObjCGenerator.OBJC_PREFIX,
+            '<JavaScriptCore/InspectorFrontendChannel.h>',
             '<JavaScriptCore/InspectorValues.h>',
         ]
 
@@ -97,7 +98,9 @@ class ObjCFrontendDispatcherImplementationGenerator(Generator):
         lines = []
         lines.append(self._generate_event_signature(domain, event))
         lines.append('{')
-        lines.append('    const FrontendRouter& router = _controller->frontendRouter();')
+        lines.append('    FrontendChannel* frontendChannel = _controller->frontendChannel();')
+        lines.append('    if (!frontendChannel)')
+        lines.append('        return;')
         lines.append('')
 
         required_pointer_parameters = filter(lambda parameter: not parameter.is_optional and ObjCGenerator.is_type_objc_pointer_type(parameter.type), event.event_parameters)
@@ -123,7 +126,7 @@ class ObjCFrontendDispatcherImplementationGenerator(Generator):
         lines.append('    jsonMessage->setString(ASCIILiteral("method"), ASCIILiteral("%s.%s"));' % (domain.domain_name, event.event_name))
         if event.event_parameters:
             lines.extend(self._generate_event_out_parameters(domain, event))
-        lines.append('    router.sendEvent(jsonMessage->toJSONString());')
+        lines.append('    frontendChannel->sendMessageToFrontend(jsonMessage->toJSONString());')
         lines.append('}')
         return '\n'.join(lines)
 

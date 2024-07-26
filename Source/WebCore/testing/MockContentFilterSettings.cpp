@@ -30,7 +30,6 @@
 
 #include "ContentFilter.h"
 #include "ContentFilterUnblockHandler.h"
-#include "MockContentFilter.h"
 #include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
@@ -44,12 +43,6 @@ MockContentFilterSettings& MockContentFilterSettings::singleton()
 void MockContentFilterSettings::reset()
 {
     singleton() = MockContentFilterSettings();
-}
-
-void MockContentFilterSettings::setEnabled(bool enabled)
-{
-    MockContentFilter::ensureInstalled();
-    m_enabled = enabled;
 }
 
 const String& MockContentFilterSettings::unblockRequestURL() const

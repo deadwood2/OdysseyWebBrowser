@@ -59,9 +59,9 @@ namespace WebCore {
 #if ENABLE(CONTEXT_MENUS)
 class FrontendMenuProvider : public ContextMenuProvider {
 public:
-    static Ref<FrontendMenuProvider> create(InspectorFrontendHost* frontendHost, Deprecated::ScriptObject frontendApiObject, const Vector<ContextMenuItem>& items)
+    static PassRefPtr<FrontendMenuProvider> create(InspectorFrontendHost* frontendHost, Deprecated::ScriptObject frontendApiObject, const Vector<ContextMenuItem>& items)
     {
-        return adoptRef(*new FrontendMenuProvider(frontendHost, frontendApiObject, items));
+        return adoptRef(new FrontendMenuProvider(frontendHost, frontendApiObject, items));
     }
     
     void disconnect()
@@ -85,8 +85,8 @@ private:
     
     virtual void populateContextMenu(ContextMenu* menu) override
     {
-        for (auto& item : m_items)
-            menu->appendItem(item);
+        for (size_t i = 0; i < m_items.size(); ++i)
+            menu->appendItem(m_items[i]);
     }
     
     virtual void contextMenuItemSelected(ContextMenuItem* item) override
@@ -225,36 +225,6 @@ String InspectorFrontendHost::debuggableType()
     return ASCIILiteral("web");
 }
 
-String InspectorFrontendHost::platform()
-{
-#if PLATFORM(MAC) || PLATFORM(IOS)
-    return ASCIILiteral("mac");
-#elif OS(WINDOWS)
-    return ASCIILiteral("windows");
-#elif OS(LINUX)
-    return ASCIILiteral("linux");
-#elif OS(FREEBSD)
-    return ASCIILiteral("freebsd");
-#elif OS(OPENBSD)
-    return ASCIILiteral("openbsd");
-#elif OS(SOLARIS)
-    return ASCIILiteral("solaris");
-#else
-    return ASCIILiteral("unknown");
-#endif
-}
-
-String InspectorFrontendHost::port()
-{
-#if PLATFORM(GTK)
-    return ASCIILiteral("gtk");
-#elif PLATFORM(EFL)
-    return ASCIILiteral("efl");
-#else
-    return ASCIILiteral("unknown");
-#endif
-}
-
 void InspectorFrontendHost::copyText(const String& text)
 {
     Pasteboard::createForCopyAndPaste()->writePlainText(text, Pasteboard::CannotSmartReplace);
@@ -338,12 +308,22 @@ bool InspectorFrontendHost::isUnderTest()
 void InspectorFrontendHost::unbufferedLog(const String& message)
 {
     // This is used only for debugging inspector tests.
-    WTFLogAlways("%s", message.utf8().data());
+    WTFLogAlways("InspectorTest: %s", message.utf8().data());
 }
 
 void InspectorFrontendHost::beep()
 {
     systemBeep();
+}
+
+bool InspectorFrontendHost::canSaveAs()
+{
+    return false;
+}
+
+bool InspectorFrontendHost::canInspectWorkers()
+{
+    return false;
 }
 
 } // namespace WebCore

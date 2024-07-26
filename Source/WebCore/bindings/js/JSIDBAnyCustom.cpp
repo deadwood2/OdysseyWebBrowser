@@ -77,33 +77,33 @@ JSValue toJS(ExecState* exec, JSDOMGlobalObject* globalObject, IDBAny* idbAny)
         return jsNull();
 
     switch (idbAny->type()) {
-    case IDBAny::Type::Undefined:
+    case IDBAny::UndefinedType:
         return jsUndefined();
-    case IDBAny::Type::Null:
+    case IDBAny::NullType:
         return jsNull();
-    case IDBAny::Type::DOMStringList:
+    case IDBAny::DOMStringListType:
         return toJS(exec, globalObject, idbAny->domStringList());
-    case IDBAny::Type::IDBCursor:
+    case IDBAny::IDBCursorType:
         return toJS(exec, globalObject, idbAny->idbCursor());
-    case IDBAny::Type::IDBCursorWithValue:
+    case IDBAny::IDBCursorWithValueType:
         return wrap<JSIDBCursorWithValue>(globalObject, idbAny->idbCursorWithValue().get());
-    case IDBAny::Type::IDBDatabase:
+    case IDBAny::IDBDatabaseType:
         return toJS(exec, globalObject, idbAny->idbDatabase());
-    case IDBAny::Type::IDBFactory:
+    case IDBAny::IDBFactoryType:
         return toJS(exec, globalObject, idbAny->idbFactory());
-    case IDBAny::Type::IDBIndex:
+    case IDBAny::IDBIndexType:
         return toJS(exec, globalObject, idbAny->idbIndex());
-    case IDBAny::Type::IDBObjectStore:
+    case IDBAny::IDBObjectStoreType:
         return toJS(exec, globalObject, idbAny->idbObjectStore());
-    case IDBAny::Type::IDBTransaction:
+    case IDBAny::IDBTransactionType:
         return toJS(exec, globalObject, idbAny->idbTransaction());
-    case IDBAny::Type::ScriptValue:
+    case IDBAny::ScriptValueType:
         return idbAny->scriptValue().jsValue();
-    case IDBAny::Type::String:
+    case IDBAny::StringType:
         return jsStringWithCache(exec, idbAny->string());
-    case IDBAny::Type::Integer:
+    case IDBAny::IntegerType:
         return jsNumber(idbAny->integer());
-    case IDBAny::Type::KeyPath:
+    case IDBAny::KeyPathType:
         return toJS(exec, globalObject, idbAny->keyPath());
     }
 

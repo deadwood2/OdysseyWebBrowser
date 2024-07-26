@@ -184,16 +184,17 @@ static Frame* targetFrameForEditing(WebPage* page)
 
     Editor& editor = frame.editor();
     if (!editor.canEdit())
-        return nullptr;
+        return 0;
 
     if (editor.hasComposition()) {
         // We should verify the parent node of this IME composition node are
         // editable because JavaScript may delete a parent node of the composition
         // node. In this case, WebKit crashes while deleting texts from the parent
         // node, which doesn't exist any longer.
-        if (auto range = editor.compositionRange()) {
-            if (!range->startContainer().isContentEditable())
-                return nullptr;
+        if (PassRefPtr<Range> range = editor.compositionRange()) {
+            Node* node = range->startContainer();
+            if (!node || !node->isContentEditable())
+                return 0;
         }
     }
 

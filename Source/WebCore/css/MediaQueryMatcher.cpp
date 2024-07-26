@@ -99,10 +99,10 @@ bool MediaQueryMatcher::evaluate(const MediaQuerySet* media)
     return evaluator && evaluator->eval(media);
 }
 
-RefPtr<MediaQueryList> MediaQueryMatcher::matchMedia(const String& query)
+PassRefPtr<MediaQueryList> MediaQueryMatcher::matchMedia(const String& query)
 {
     if (!m_document)
-        return nullptr;
+        return 0;
 
     RefPtr<MediaQuerySet> media = MediaQuerySet::create(query);
 #if ENABLE(RESOLUTION_MEDIA_QUERY)

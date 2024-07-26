@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2007, 2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006, 2007 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,8 +32,10 @@
 // WebNotification ------------------------------------------------------------
 
 WebNotification::WebNotification(BSTR name, IUnknown* anObject, IPropertyBag* userInfo)
-    : m_anObject(anObject)
-    , m_userInfo(userInfo)
+: m_refCount(0)
+, m_name(0)
+, m_anObject(anObject)
+, m_userInfo(userInfo)
 {
     if (name)
         m_name = SysAllocString(name);
@@ -68,11 +70,9 @@ WebNotification* WebNotification::createInstance(BSTR name /*=0*/, IUnknown* anO
 
 // IUnknown -------------------------------------------------------------------
 
-HRESULT WebNotification::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE WebNotification::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<IWebNotification*>(this);
     else if (IsEqualGUID(riid, IID_IWebNotification))
@@ -84,12 +84,12 @@ HRESULT WebNotification::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** pp
     return S_OK;
 }
 
-ULONG WebNotification::AddRef()
+ULONG STDMETHODCALLTYPE WebNotification::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG WebNotification::Release()
+ULONG STDMETHODCALLTYPE WebNotification::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -100,18 +100,19 @@ ULONG WebNotification::Release()
 
 // IWebNotification -----------------------------------------------------------
 
-HRESULT WebNotification::notificationWithName(_In_ BSTR /*aName*/, _In_opt_ IUnknown* /*anObject*/, _In_opt_ IPropertyBag* /*userInfo*/)
+HRESULT STDMETHODCALLTYPE WebNotification::notificationWithName( 
+    /* [in] */ BSTR /*aName*/,
+    /* [in] */ IUnknown* /*anObject*/,
+    /* [optional][in] */ IPropertyBag* /*userInfo*/)
 {
     ASSERT_NOT_REACHED();
     return E_NOTIMPL;
 }
 
-HRESULT WebNotification::name(__deref_out_opt BSTR* result)
+HRESULT STDMETHODCALLTYPE WebNotification::name( 
+    /* [retval][out] */ BSTR* result)
 {
-    if (!result)
-        return E_POINTER;
-
-    *result = nullptr;
+    *result = 0;
     if (m_name) {
         *result = SysAllocString(m_name);
         if (!*result)
@@ -121,11 +122,9 @@ HRESULT WebNotification::name(__deref_out_opt BSTR* result)
     return S_OK;
 }
 
-HRESULT WebNotification::getObject(_COM_Outptr_opt_ IUnknown** result)
+HRESULT STDMETHODCALLTYPE WebNotification::getObject( 
+    /* [retval][out] */ IUnknown** result)
 {
-    if (!result)
-        return E_POINTER;
-
     *result = m_anObject;
 
     if (*result)
@@ -134,11 +133,9 @@ HRESULT WebNotification::getObject(_COM_Outptr_opt_ IUnknown** result)
     return S_OK;
 }
 
-HRESULT WebNotification::userInfo(_COM_Outptr_opt_ IPropertyBag** result)
+HRESULT STDMETHODCALLTYPE WebNotification::userInfo( 
+    /* [retval][out] */ IPropertyBag** result)
 {
-    if (!result)
-        return E_POINTER;
-
     *result = m_userInfo;
 
     if (*result)

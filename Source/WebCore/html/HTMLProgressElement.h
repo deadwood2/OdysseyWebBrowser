@@ -62,7 +62,6 @@ private:
 
     void didElementStateChange();
     virtual void didAddUserAgentShadowRoot(ShadowRoot*) override;
-    virtual bool canHaveUserAgentShadowRoot() const override final { return true; }
     bool isDeterminate() const;
 
     ProgressValueElement* m_value;

@@ -29,6 +29,7 @@
 #include "LLIntThunks.h"
 #include "JSCInlines.h"
 #include "ProtoCallFrame.h"
+#include "RegisterPreservationWrapperGenerator.h"
 #include <wtf/PrintStream.h>
 
 namespace JSC {
@@ -76,7 +77,7 @@ JSValue JITCode::execute(VM* vm, ProtoCallFrame* protoCallFrame)
         ASSERT(!protoCallFrame->needArityCheck());
         entryAddress = executableAddress();
     } else
-        entryAddress = addressForCall(MustCheckArity).executableAddress();
+        entryAddress = addressForCall(*vm, function->executable(), MustCheckArity, RegisterPreservationNotRequired).executableAddress();
     JSValue result = JSValue::decode(vmEntryToJavaScript(entryAddress, vm, protoCallFrame));
     return vm->exception() ? jsNull() : result;
 }
@@ -178,15 +179,50 @@ void DirectJITCode::initializeCodeRef(JITCode::CodeRef ref, JITCode::CodePtr wit
     m_withArityCheck = withArityCheck;
 }
 
-JITCode::CodePtr DirectJITCode::addressForCall(ArityCheckMode arity)
+DirectJITCode::RegisterPreservationWrappers* DirectJITCode::ensureWrappers()
+{
+    if (!m_wrappers)
+        m_wrappers = std::make_unique<RegisterPreservationWrappers>();
+    return m_wrappers.get();
+}
+
+JITCode::CodePtr DirectJITCode::addressForCall(
+    VM& vm, ExecutableBase* executable, ArityCheckMode arity,
+    RegisterPreservationMode registers)
 {
     switch (arity) {
     case ArityCheckNotRequired:
-        RELEASE_ASSERT(m_ref);
-        return m_ref.code();
+        switch (registers) {
+        case RegisterPreservationNotRequired:
+            RELEASE_ASSERT(m_ref);
+            return m_ref.code();
+        case MustPreserveRegisters: {
+#if ENABLE(JIT)
+            RegisterPreservationWrappers* wrappers = ensureWrappers();
+            if (!wrappers->withoutArityCheck)
+                wrappers->withoutArityCheck = generateRegisterPreservationWrapper(vm, executable, m_ref.code());
+            return wrappers->withoutArityCheck.code();
+#else
+            UNUSED_PARAM(vm);
+            UNUSED_PARAM(executable);
+            RELEASE_ASSERT_NOT_REACHED();
+#endif
+        } }
     case MustCheckArity:
-        RELEASE_ASSERT(m_withArityCheck);
-        return m_withArityCheck;
+        switch (registers) {
+        case RegisterPreservationNotRequired:
+            RELEASE_ASSERT(m_withArityCheck);
+            return m_withArityCheck;
+        case MustPreserveRegisters: {
+#if ENABLE(JIT)
+            RegisterPreservationWrappers* wrappers = ensureWrappers();
+            if (!wrappers->withArityCheck)
+                wrappers->withArityCheck = generateRegisterPreservationWrapper(vm, executable, m_withArityCheck);
+            return wrappers->withArityCheck.code();
+#else
+            RELEASE_ASSERT_NOT_REACHED();
+#endif
+        } }
     }
     RELEASE_ASSERT_NOT_REACHED();
     return CodePtr();
@@ -212,7 +248,8 @@ void NativeJITCode::initializeCodeRef(CodeRef ref)
     m_ref = ref;
 }
 
-JITCode::CodePtr NativeJITCode::addressForCall(ArityCheckMode)
+JITCode::CodePtr NativeJITCode::addressForCall(
+    VM&, ExecutableBase*, ArityCheckMode, RegisterPreservationMode)
 {
     RELEASE_ASSERT(!!m_ref);
     return m_ref.code();

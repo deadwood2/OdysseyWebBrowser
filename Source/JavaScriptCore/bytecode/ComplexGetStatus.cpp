@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,7 +31,8 @@
 namespace JSC {
 
 ComplexGetStatus ComplexGetStatus::computeFor(
-    Structure* headStructure, const ObjectPropertyConditionSet& conditionSet, UniquedStringImpl* uid)
+    CodeBlock* profiledBlock, Structure* headStructure, StructureChain* chain,
+    unsigned chainCount, UniquedStringImpl* uid)
 {
     // FIXME: We should assert that we never see a structure that
     // hasImpureGetOwnPropertySlot() but for which we don't
@@ -39,34 +40,32 @@ ComplexGetStatus ComplexGetStatus::computeFor(
     // that, yet.
     // https://bugs.webkit.org/show_bug.cgi?id=131810
     
-    ASSERT(conditionSet.isValid());
-    
     if (headStructure->takesSlowPathInDFGForImpureProperty())
         return takesSlowPath();
     
     ComplexGetStatus result;
     result.m_kind = Inlineable;
     
-    if (!conditionSet.isEmpty()) {
-        result.m_conditionSet = conditionSet;
+    if (chain && chainCount) {
+        result.m_chain = adoptRef(new IntendedStructureChain(
+            profiledBlock, headStructure, chain, chainCount));
         
-        if (!result.m_conditionSet.structuresEnsureValidity())
+        if (!result.m_chain->isStillValid())
             return skip();
-
-        unsigned numberOfSlotBases =
-            result.m_conditionSet.numberOfConditionsWithKind(PropertyCondition::Presence);
-        RELEASE_ASSERT(numberOfSlotBases <= 1);
-        if (!numberOfSlotBases) {
-            // Currently we don't support misses. That's a bummer.
-            // FIXME: https://bugs.webkit.org/show_bug.cgi?id=133052
-            return takesSlowPath();
-        }
-        ObjectPropertyCondition base = result.m_conditionSet.slotBaseCondition();
-        ASSERT(base.kind() == PropertyCondition::Presence);
         
-        result.m_offset = base.offset();
-    } else
-        result.m_offset = headStructure->getConcurrently(uid);
+        if (headStructure->takesSlowPathInDFGForImpureProperty()
+            || result.m_chain->takesSlowPathInDFGForImpureProperty())
+            return takesSlowPath();
+        
+        JSObject* currentObject = result.m_chain->terminalPrototype();
+        Structure* currentStructure = result.m_chain->last();
+        
+        ASSERT_UNUSED(currentObject, currentObject);
+        
+        result.m_offset = currentStructure->getConcurrently(uid, result.m_attributes);
+    } else {
+        result.m_offset = headStructure->getConcurrently(uid, result.m_attributes);
+    }
     
     if (!isValidOffset(result.m_offset))
         return takesSlowPath();

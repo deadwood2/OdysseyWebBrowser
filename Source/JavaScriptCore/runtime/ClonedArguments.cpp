@@ -27,7 +27,6 @@
 #include "ClonedArguments.h"
 
 #include "GetterSetter.h"
-#include "InlineCallFrame.h"
 #include "JSCInlines.h"
 
 namespace JSC {

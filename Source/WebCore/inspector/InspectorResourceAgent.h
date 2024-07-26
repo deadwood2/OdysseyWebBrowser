@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2010 Google Inc. All rights reserved.
- * Copyright (C) 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -53,7 +52,9 @@ class DocumentLoader;
 class FormData;
 class Frame;
 class HTTPHeaderMap;
+class InspectorClient;
 class InspectorPageAgent;
+class InstrumentingAgents;
 class NetworkResourcesData;
 class Page;
 class ResourceError;
@@ -74,10 +75,10 @@ typedef String ErrorString;
 class InspectorResourceAgent final : public InspectorAgentBase, public Inspector::NetworkBackendDispatcherHandler {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    InspectorResourceAgent(WebAgentContext&, InspectorPageAgent*);
+    InspectorResourceAgent(InstrumentingAgents*, InspectorPageAgent*, InspectorClient*);
     virtual ~InspectorResourceAgent();
 
-    virtual void didCreateFrontendAndBackend(Inspector::FrontendRouter*, Inspector::BackendDispatcher*) override;
+    virtual void didCreateFrontendAndBackend(Inspector::FrontendChannel*, Inspector::BackendDispatcher*) override;
     virtual void willDestroyFrontendAndBackend(Inspector::DisconnectReason) override;
 
     // InspectorInstrumentation callbacks.
@@ -118,6 +119,10 @@ public:
     virtual void disable(ErrorString&) override;
     virtual void setExtraHTTPHeaders(ErrorString&, const Inspector::InspectorObject& headers) override;
     virtual void getResponseBody(ErrorString&, const String& requestId, String* content, bool* base64Encoded) override;
+    virtual void canClearBrowserCache(ErrorString&, bool*) override;
+    virtual void clearBrowserCache(ErrorString&) override;
+    virtual void canClearBrowserCookies(ErrorString&, bool*) override;
+    virtual void clearBrowserCookies(ErrorString&) override;
     virtual void setCacheDisabled(ErrorString&, bool cacheDisabled) override;
     virtual void loadResource(ErrorString&, const String& frameId, const String& url, Ref<LoadResourceCallback>&&) override;
 
@@ -126,19 +131,21 @@ private:
 
     double timestamp();
 
+    InspectorPageAgent* m_pageAgent;
+    InspectorClient* m_client;
     std::unique_ptr<Inspector::NetworkFrontendDispatcher> m_frontendDispatcher;
     RefPtr<Inspector::NetworkBackendDispatcher> m_backendDispatcher;
-    InspectorPageAgent* m_pageAgent { nullptr };
-
     std::unique_ptr<NetworkResourcesData> m_resourcesData;
-    bool m_enabled { false };
-    bool m_cacheDisabled { false };
-    bool m_loadingXHRSynchronously { false };
+    bool m_enabled;
+    bool m_cacheDisabled;
+    bool m_loadingXHRSynchronously;
     HashMap<String, String> m_extraRequestHeaders;
+
     HashSet<unsigned long> m_hiddenRequestIdentifiers;
+
     // FIXME: InspectorResourceAgent should now be aware of style recalculation.
     RefPtr<Inspector::Protocol::Network::Initiator> m_styleRecalculationInitiator;
-    bool m_isRecalculatingStyle { false };
+    bool m_isRecalculatingStyle;
 };
 
 } // namespace WebCore

@@ -32,7 +32,6 @@
 #include "JSSQLError.h"
 #include "JSSQLTransaction.h"
 #include "ScriptExecutionContext.h"
-#include <runtime/Exception.h>
 #include <runtime/JSLock.h>
 #include <wtf/Ref.h>
 
@@ -54,11 +53,9 @@ bool JSSQLStatementErrorCallback::handleEvent(SQLTransaction* transaction, SQLEr
     args.append(toJS(exec, m_data->globalObject(), transaction));
     args.append(toJS(exec, m_data->globalObject(), error));
 
-    NakedPtr<Exception> returnedException;
-    JSValue result = m_data->invokeCallback(args, JSCallbackData::CallbackType::Function, Identifier(), returnedException);
-    if (returnedException) {
-        reportException(exec, returnedException);
-
+    bool raisedException = false;
+    JSValue result = m_data->invokeCallback(args, &raisedException);
+    if (raisedException) {
         // The spec says:
         // "If the error callback returns false, then move on to the next statement..."
         // "Otherwise, the error callback did not return false, or there was no error callback"

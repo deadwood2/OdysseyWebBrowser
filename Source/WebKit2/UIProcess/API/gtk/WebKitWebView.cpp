@@ -42,7 +42,6 @@
 #include "WebKitFormClient.h"
 #include "WebKitFullscreenClient.h"
 #include "WebKitHitTestResultPrivate.h"
-#include "WebKitInstallMissingMediaPluginsPermissionRequestPrivate.h"
 #include "WebKitJavascriptResultPrivate.h"
 #include "WebKitLoaderClient.h"
 #include "WebKitMarshal.h"
@@ -1352,10 +1351,9 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      * request has not been handled, webkit_permission_request_deny()
      * will be the default action.
      *
-     * If the signal is not handled, the @request will be completed automatically
-     * by the specific #WebKitPermissionRequest that could allow or deny it. Check the
-     * documentation of classes implementing #WebKitPermissionRequest interface to know
-     * their default action.
+     * By default, if the signal is not handled,
+     * webkit_permission_request_deny() will be called over the
+     * #WebKitPermissionRequest.
      *
      * Returns: %TRUE to stop other handlers from being invoked for the event.
      *   %FALSE to propagate the event further.
@@ -2145,16 +2143,6 @@ void webkitWebViewSelectionDidChange(WebKitWebView* webView)
         return;
 
     webkitEditorStateChanged(webView->priv->editorState.get(), getPage(webView)->editorState());
-}
-
-void webkitWebViewRequestInstallMissingMediaPlugins(WebKitWebView* webView, InstallMissingMediaPluginsPermissionRequest& request)
-{
-#if ENABLE(VIDEO)
-    GRefPtr<WebKitInstallMissingMediaPluginsPermissionRequest> installMediaPluginsPermissionRequest = adoptGRef(webkitInstallMissingMediaPluginsPermissionRequestCreate(request));
-    webkitWebViewMakePermissionRequest(webView, WEBKIT_PERMISSION_REQUEST(installMediaPluginsPermissionRequest.get()));
-#else
-    ASSERT_NOT_REACHED();
-#endif
 }
 
 /**

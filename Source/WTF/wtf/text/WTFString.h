@@ -192,8 +192,7 @@ public:
     WTF_EXPORT_STRING_API CString ascii() const;
     WTF_EXPORT_STRING_API CString latin1() const;
 
-    WTF_EXPORT_STRING_API CString utf8(ConversionMode) const;
-    WTF_EXPORT_STRING_API CString utf8() const;
+    WTF_EXPORT_STRING_API CString utf8(ConversionMode = LenientConversion) const;
 
     UChar at(unsigned index) const
     {

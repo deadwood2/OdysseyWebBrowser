@@ -75,6 +75,7 @@ COMPILE_ASSERT(None < FirstInternalAttribute, None_is_below_FirstInternalAttribu
 COMPILE_ASSERT(ReadOnly < FirstInternalAttribute, ReadOnly_is_below_FirstInternalAttribute);
 COMPILE_ASSERT(DontEnum < FirstInternalAttribute, DontEnum_is_below_FirstInternalAttribute);
 COMPILE_ASSERT(DontDelete < FirstInternalAttribute, DontDelete_is_below_FirstInternalAttribute);
+COMPILE_ASSERT(Function < FirstInternalAttribute, Function_is_below_FirstInternalAttribute);
 COMPILE_ASSERT(Accessor < FirstInternalAttribute, Accessor_is_below_FirstInternalAttribute);
 
 class JSFinalObject;
@@ -221,7 +222,7 @@ public:
         }
     }
         
-    JSValue tryGetIndexQuickly(unsigned i) const
+    JSValue tryGetIndexQuickly(unsigned i)
     {
         switch (indexingType()) {
         case ALL_BLANK_INDEXING_TYPES:
@@ -267,7 +268,7 @@ public:
         return JSValue();
     }
         
-    JSValue getIndex(ExecState* exec, unsigned i) const
+    JSValue getIndex(ExecState* exec, unsigned i)
     {
         if (JSValue result = tryGetIndexQuickly(i))
             return result;
@@ -466,8 +467,8 @@ public:
     void putDirectAccessor(ExecState*, PropertyName, JSValue, unsigned attributes);
     JS_EXPORT_PRIVATE void putDirectCustomAccessor(VM&, PropertyName, JSValue, unsigned attributes);
 
-    void putGetter(ExecState*, PropertyName, JSValue, unsigned attributes);
-    void putSetter(ExecState*, PropertyName, JSValue, unsigned attributes);
+    void putGetter(ExecState*, PropertyName, JSValue);
+    void putSetter(ExecState*, PropertyName, JSValue);
 
     JS_EXPORT_PRIVATE bool hasProperty(ExecState*, PropertyName) const;
     JS_EXPORT_PRIVATE bool hasProperty(ExecState*, unsigned propertyName) const;
@@ -597,6 +598,11 @@ public:
     JS_EXPORT_PRIVATE static bool defineOwnProperty(JSObject*, ExecState*, PropertyName, const PropertyDescriptor&, bool shouldThrow);
 
     bool isGlobalObject() const;
+    bool isVariableObject() const;
+    bool isStaticScopeObject() const;
+    bool isNameScopeObject() const;
+    bool isFunctionNameScopeObject() const;
+    bool isActivationObject() const;
     bool isErrorInstance() const;
     bool isWithScope() const;
 
@@ -623,7 +629,10 @@ public:
     void setStructureAndReallocateStorageIfNecessary(VM&, unsigned oldCapacity, Structure*);
     void setStructureAndReallocateStorageIfNecessary(VM&, Structure*);
 
-    JS_EXPORT_PRIVATE void convertToDictionary(VM&);
+    void convertToDictionary(VM& vm)
+    {
+        setStructure(vm, Structure::toCacheableDictionaryTransition(vm, structure(vm)));
+    }
 
     void flattenDictionaryObject(VM& vm)
     {
@@ -1008,6 +1017,27 @@ inline bool JSObject::isGlobalObject() const
     return type() == GlobalObjectType;
 }
 
+inline bool JSObject::isVariableObject() const
+{
+    return type() == GlobalObjectType || type() == ActivationObjectType;
+}
+
+inline bool JSObject::isStaticScopeObject() const
+{
+    JSType type = this->type();
+    return type == NameScopeObjectType || type == ActivationObjectType;
+}
+
+inline bool JSObject::isNameScopeObject() const
+{
+    return type() == NameScopeObjectType;
+}
+
+inline bool JSObject::isActivationObject() const
+{
+    return type() == ActivationObjectType;
+}
+
 inline bool JSObject::isErrorInstance() const
 {
     return type() == ErrorInstanceType;
@@ -1189,8 +1219,6 @@ inline bool JSObject::putDirectInternal(VM& vm, PropertyName propertyName, JSVal
 
     Structure* structure = this->structure(vm);
     if (structure->isDictionary()) {
-        ASSERT(!structure->hasInferredTypes());
-        
         unsigned currentAttributes;
         PropertyOffset offset = structure->get(vm, propertyName, currentAttributes);
         if (offset != invalidOffset) {
@@ -1229,40 +1257,29 @@ inline bool JSObject::putDirectInternal(VM& vm, PropertyName propertyName, JSVal
 
     PropertyOffset offset;
     size_t currentCapacity = this->structure()->outOfLineCapacity();
-    Structure* newStructure = Structure::addPropertyTransitionToExistingStructure(
-        structure, propertyName, attributes, offset);
-    if (newStructure) {
-        newStructure->willStoreValueForTransition(
-            vm, propertyName, value, slot.context() == PutPropertySlot::PutById);
-        
+    if (Structure* structure = Structure::addPropertyTransitionToExistingStructure(this->structure(), propertyName, attributes, offset)) {
         DeferGC deferGC(vm.heap);
         Butterfly* newButterfly = butterfly();
-        if (currentCapacity != newStructure->outOfLineCapacity()) {
-            ASSERT(newStructure != this->structure());
-            newButterfly = growOutOfLineStorage(vm, currentCapacity, newStructure->outOfLineCapacity());
+        if (currentCapacity != structure->outOfLineCapacity()) {
+            ASSERT(structure != this->structure());
+            newButterfly = growOutOfLineStorage(vm, currentCapacity, structure->outOfLineCapacity());
         }
 
         validateOffset(offset);
-        ASSERT(newStructure->isValidOffset(offset));
-        setStructureAndButterfly(vm, newStructure, newButterfly);
+        ASSERT(structure->isValidOffset(offset));
+        setStructureAndButterfly(vm, structure, newButterfly);
         putDirect(vm, offset, value);
         slot.setNewProperty(this, offset);
         return true;
     }
 
     unsigned currentAttributes;
-    bool hasInferredType;
-    offset = structure->get(vm, propertyName, currentAttributes, hasInferredType);
+    offset = structure->get(vm, propertyName, currentAttributes);
     if (offset != invalidOffset) {
         if ((mode == PutModePut) && currentAttributes & ReadOnly)
             return false;
 
         structure->didReplaceProperty(offset);
-        if (UNLIKELY(hasInferredType)) {
-            structure->willStoreValueForReplace(
-                vm, propertyName, value, slot.context() == PutPropertySlot::PutById);
-        }
-
         slot.setExistingProperty(this, offset);
         putDirect(vm, offset, value);
 
@@ -1281,19 +1298,16 @@ inline bool JSObject::putDirectInternal(VM& vm, PropertyName propertyName, JSVal
     // we want.
     DeferredStructureTransitionWatchpointFire deferredWatchpointFire;
     
-    newStructure = Structure::addPropertyTransition(
-        vm, structure, propertyName, attributes, offset, slot.context(), &deferredWatchpointFire);
-    newStructure->willStoreValueForTransition(
-        vm, propertyName, value, slot.context() == PutPropertySlot::PutById);
+    structure = Structure::addPropertyTransition(vm, structure, propertyName, attributes, offset, slot.context(), &deferredWatchpointFire);
     
     validateOffset(offset);
-    ASSERT(newStructure->isValidOffset(offset));
-    setStructureAndReallocateStorageIfNecessary(vm, newStructure);
+    ASSERT(structure->isValidOffset(offset));
+    setStructureAndReallocateStorageIfNecessary(vm, structure);
 
     putDirect(vm, offset, value);
     slot.setNewProperty(this, offset);
     if (attributes & ReadOnly)
-        newStructure->setContainsReadOnlyProperties();
+        structure->setContainsReadOnlyProperties();
     return true;
 }
 
@@ -1351,11 +1365,8 @@ inline void JSObject::putDirectWithoutTransition(VM& vm, PropertyName propertyNa
     Butterfly* newButterfly = m_butterfly.get();
     if (structure()->putWillGrowOutOfLineStorage())
         newButterfly = growOutOfLineStorage(vm, structure()->outOfLineCapacity(), structure()->suggestedNewOutOfLineStorageCapacity());
-    Structure* structure = this->structure();
-    PropertyOffset offset = structure->addPropertyWithoutTransition(vm, propertyName, attributes);
-    bool shouldOptimize = false;
-    structure->willStoreValueForTransition(vm, propertyName, value, shouldOptimize);
-    setStructureAndButterfly(vm, structure, newButterfly);
+    PropertyOffset offset = structure()->addPropertyWithoutTransition(vm, propertyName, attributes);
+    setStructureAndButterfly(vm, structure(), newButterfly);
     putDirect(vm, offset, value);
 }
 
@@ -1474,16 +1485,6 @@ ALWAYS_INLINE Identifier makeIdentifier(VM&, const Identifier& name)
 #define JSC_BUILTIN_FUNCTION(jsName, generatorName, attributes) \
     putDirectBuiltinFunction(\
         vm, globalObject, makeIdentifier(vm, (jsName)), (generatorName)(vm), (attributes))
-
-// Helper for defining native getters on properties.
-#define JSC_NATIVE_GETTER(jsName, cppName, attributes, length) do { \
-        Identifier ident = makeIdentifier(vm, (jsName)); \
-        GetterSetter* accessor = GetterSetter::create(vm, globalObject); \
-        JSFunction* function = JSFunction::create(vm, globalObject, (length), ident.string(), (cppName)); \
-        accessor->setGetter(vm, globalObject, function); \
-        putDirectNonIndexAccessor(vm, ident, accessor, (attributes) | Accessor); \
-    } while (false)
-
 
 } // namespace JSC
 

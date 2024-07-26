@@ -504,19 +504,6 @@ WebInspector.TreeOutline = class TreeOutline extends WebInspector.Object
     {
         // this is the root, do nothing
     }
-
-    get selectedTreeElementIndex()
-    {
-        if (!this.hasChildren || !this.selectedTreeElement)
-            return;
-
-        for (var i = 0; i < this.children.length; ++i) {
-            if (this.children[i] === this.selectedTreeElement)
-                return i;
-        }
-
-        return false;
-    }
 };
 
 WebInspector.TreeOutline._knownTreeElementNextIdentifier = 1;

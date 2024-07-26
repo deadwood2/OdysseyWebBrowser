@@ -34,12 +34,10 @@ class RenderBoxModelObject;
 class RenderText;
 
 struct BidiRun;
-struct BidiIsolatedRun;
 
 template <class Iterator, class Run> class BidiResolver;
-template <class Iterator, class Run, class IsolateRun> class BidiResolverWithIsolate;
 template <class Iterator> class MidpointState;
-typedef BidiResolverWithIsolate<InlineIterator, BidiRun, BidiIsolatedRun> InlineBidiResolver;
+typedef BidiResolver<InlineIterator, BidiRun> InlineBidiResolver;
 typedef MidpointState<InlineIterator> LineMidpointState;
 
 class TrailingObjects {

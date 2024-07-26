@@ -49,7 +49,7 @@ public:
     void reset();
 
 private:
-    WKRetainPtr<WKNotificationManagerRef> m_currentNotificationManager;
+    WKRetainPtr<WKNotificationManagerRef> m_notificationManager;
     HashSet<uint64_t> m_shownNotifications;
 };
 

@@ -60,11 +60,11 @@ using namespace JSC::Bindings;
 
 namespace WebCore {
 
-RefPtr<JSC::Bindings::Instance> ScriptController::createScriptInstanceForWidget(Widget* widget)
+PassRefPtr<JSC::Bindings::Instance> ScriptController::createScriptInstanceForWidget(Widget* widget)
 {
     NSView* widgetView = widget->platformWidget();
     if (!widgetView)
-        return nullptr;
+        return 0;
 
     RefPtr<RootObject> rootObject = createRootObject(widgetView);
 
@@ -74,25 +74,25 @@ RefPtr<JSC::Bindings::Instance> ScriptController::createScriptInstanceForWidget(
     if ([widgetView respondsToSelector:@selector(objectForWebScript)]) {
         id objectForWebScript = [widgetView objectForWebScript];
         if (!objectForWebScript)
-            return nullptr;
+            return 0;
         return JSC::Bindings::ObjcInstance::create(objectForWebScript, rootObject.release());
     }
 
     if ([widgetView respondsToSelector:@selector(createPluginScriptableObject)]) {
 #if !ENABLE(NETSCAPE_PLUGIN_API)
-        return nullptr;
+        return 0;
 #else
         NPObject* npObject = [widgetView createPluginScriptableObject];
         if (!npObject)
-            return nullptr;
+            return 0;
         RefPtr<Instance> instance = JSC::Bindings::CInstance::create(npObject, rootObject.release());
         // -createPluginScriptableObject returns a retained NPObject.  The caller is expected to release it.
         _NPN_ReleaseObject(npObject);
-        return instance;
+        return instance.release();
 #endif
     }
 
-    return nullptr;
+    return 0;
 }
 
 WebScriptObject* ScriptController::windowScriptObject()

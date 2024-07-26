@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2007 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,7 +38,8 @@ using namespace WebCore;
 // WebURLAuthenticationChallengeSender ----------------------------------------------------------------
 
 WebURLAuthenticationChallengeSender::WebURLAuthenticationChallengeSender(PassRefPtr<AuthenticationClient> client)
-    : m_client(client)
+    : m_refCount(0)
+    , m_client(client)
 {
     ASSERT(m_client);
     gClassCount++;
@@ -60,11 +61,9 @@ WebURLAuthenticationChallengeSender* WebURLAuthenticationChallengeSender::create
 
 // IUnknown -------------------------------------------------------------------
 
-HRESULT WebURLAuthenticationChallengeSender::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE WebURLAuthenticationChallengeSender::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<IUnknown*>(this);
     else if (IsEqualGUID(riid, __uuidof(this)))
@@ -78,12 +77,12 @@ HRESULT WebURLAuthenticationChallengeSender::QueryInterface(_In_ REFIID riid, _C
     return S_OK;
 }
 
-ULONG WebURLAuthenticationChallengeSender::AddRef()
+ULONG STDMETHODCALLTYPE WebURLAuthenticationChallengeSender::AddRef(void)
 {
     return ++m_refCount;
 }
 
-ULONG WebURLAuthenticationChallengeSender::Release()
+ULONG STDMETHODCALLTYPE WebURLAuthenticationChallengeSender::Release(void)
 {
     ULONG newRef = --m_refCount;
     if (!newRef)

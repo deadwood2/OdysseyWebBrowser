@@ -54,7 +54,6 @@ bool doesGC(Graph& graph, Node* node)
     case SetLocal:
     case MovHint:
     case ZombieHint:
-    case ExitOK:
     case Phantom:
     case Upsilon:
     case Phi:
@@ -100,17 +99,14 @@ bool doesGC(Graph& graph, Node* node)
     case GetButterfly:
     case CheckArray:
     case GetScope:
-    case LoadArrowFunctionThis:
     case SkipScope:
     case GetClosureVar:
     case PutClosureVar:
     case GetGlobalVar:
-    case GetGlobalLexicalVariable:
-    case PutGlobalVariable:
+    case PutGlobalVar:
     case VarInjectionWatchpoint:
     case CheckCell:
     case CheckNotEmpty:
-    case CheckIdent:
     case RegExpExec:
     case RegExpTest:
     case CompareLess:
@@ -118,18 +114,15 @@ bool doesGC(Graph& graph, Node* node)
     case CompareGreater:
     case CompareGreaterEq:
     case CompareEq:
+    case CompareEqConstant:
     case CompareStrictEq:
     case Call:
-    case TailCallInlinedCaller:
     case Construct:
     case CallVarargs:
-    case TailCallVarargsInlinedCaller:
     case ConstructVarargs:
     case LoadVarargs:
     case CallForwardVarargs:
     case ConstructForwardVarargs:
-    case TailCallForwardVarargs:
-    case TailCallForwardVarargsInlinedCaller:
     case Breakpoint:
     case ProfileWillCall:
     case ProfileDidCall:
@@ -154,8 +147,6 @@ bool doesGC(Graph& graph, Node* node)
     case Branch:
     case Switch:
     case Return:
-    case TailCall:
-    case TailCallVarargs:
     case Throw:
     case CountExecution:
     case ForceOSRExit:
@@ -237,7 +228,6 @@ bool doesGC(Graph& graph, Node* node)
     case NewRegexp:
     case NewStringObject:
     case MakeRope:
-    case NewArrowFunction:
     case NewFunction:
     case NewTypedArray:
     case ThrowReferenceError:
@@ -247,7 +237,6 @@ bool doesGC(Graph& graph, Node* node)
     case ToIndexString:
     case MaterializeNewObject:
     case MaterializeCreateActivation:
-    case StrCat:
         return true;
         
     case MultiPutByOffset:

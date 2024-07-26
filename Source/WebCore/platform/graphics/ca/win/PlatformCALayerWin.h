@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2010, 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,7 +27,6 @@
 #define PlatformCALayerWin_h
 
 #include "PlatformCALayer.h"
-#include <wtf/HashMap.h>
 
 namespace WebCore {
 
@@ -84,8 +83,7 @@ public:
     virtual void setBackingStoreAttached(bool) override;
     virtual bool backingStoreAttached() const override;
 
-    bool geometryFlipped() const override;
-    void setGeometryFlipped(bool) override;
+    virtual void setGeometryFlipped(bool) override;
 
     virtual bool isDoubleSided() const override;
     virtual void setDoubleSided(bool) override;
@@ -149,9 +147,10 @@ public:
     virtual PlatformCALayer* rootLayer() const override;
     virtual void setNeedsLayout() override;
     virtual void setNeedsCommit() override;
-    virtual void drawTextAtPoint(CGContextRef, CGFloat x, CGFloat y, CGSize scale, CGFloat fontSize, const char* text, size_t length) const override;
 
-    virtual String layerTreeAsString() const override;
+#ifndef NDEBUG
+    virtual void printTree() const override;
+#endif
 
     virtual PassRefPtr<PlatformCALayer> clone(PlatformCALayerClient* owner) const override;
 

@@ -29,9 +29,9 @@
 #if ENABLE(FTL_JIT)
 
 #include "DFGNode.h"
-#include "DataFormat.h"
 #include "FTLAbbreviatedTypes.h"
 #include "FTLRecoveryOpcode.h"
+#include "FTLValueFormat.h"
 
 namespace JSC { namespace FTL {
 
@@ -39,14 +39,14 @@ class AvailableRecovery {
 public:
     AvailableRecovery()
         : m_node(0)
-        , m_format(DataFormatNone)
+        , m_format(InvalidValueFormat)
         , m_opcode(AddRecovery)
         , m_left(0)
         , m_right(0)
     {
     }
     
-    AvailableRecovery(DFG::Node* node, RecoveryOpcode opcode, LValue left, LValue right, DataFormat format)
+    AvailableRecovery(DFG::Node* node, RecoveryOpcode opcode, LValue left, LValue right, ValueFormat format)
         : m_node(node)
         , m_format(format)
         , m_opcode(opcode)
@@ -56,7 +56,7 @@ public:
     }
     
     DFG::Node* node() const { return m_node; }
-    DataFormat format() const { return m_format; }
+    ValueFormat format() const { return m_format; }
     RecoveryOpcode opcode() const { return m_opcode; }
     LValue left() const { return m_left; }
     LValue right() const { return m_right; }
@@ -65,7 +65,7 @@ public:
     
 private:
     DFG::Node* m_node;
-    DataFormat m_format;
+    ValueFormat m_format;
     RecoveryOpcode m_opcode;
     LValue m_left;
     LValue m_right;

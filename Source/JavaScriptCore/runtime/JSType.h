@@ -41,13 +41,10 @@ enum JSType : uint8_t {
 
     EvalExecutableType,
     ProgramExecutableType,
-    ModuleProgramExecutableType,
     FunctionExecutableType,
-    WebAssemblyExecutableType,
 
     UnlinkedFunctionExecutableType,
     UnlinkedProgramCodeBlockType,
-    UnlinkedModuleProgramCodeBlockType,
     UnlinkedEvalCodeBlockType,
     UnlinkedFunctionCodeBlockType,
 
@@ -75,10 +72,12 @@ enum JSType : uint8_t {
     Float64ArrayType,
     DataViewType,
 
-    GlobalObjectType,
-    ClosureObjectType,
+    NameScopeObjectType,
 
-    LastJSCObjectType = ClosureObjectType,
+    GlobalObjectType,
+    ActivationObjectType,
+
+    LastJSCObjectType = ActivationObjectType,
 };
 
 COMPILE_ASSERT(sizeof(JSType) == sizeof(uint8_t), sizeof_jstype_is_one_byte);

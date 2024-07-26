@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2007, 2015 Apple, Inc.  All rights reserved.
+ * Copyright (C) 2006, 2007 Apple, Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -39,6 +39,8 @@ using namespace WebCore;
 // WebHTMLRepresentation ------------------------------------------------------
 
 WebHTMLRepresentation::WebHTMLRepresentation()
+    : m_refCount(0)
+    , m_frame(0)
 {
     WebHTMLRepresentationCount++;
     gClassCount++;
@@ -49,7 +51,7 @@ WebHTMLRepresentation::~WebHTMLRepresentation()
 {
     if (m_frame) {
         m_frame->Release();
-        m_frame = nullptr;
+        m_frame = 0;
     }
 
     WebHTMLRepresentationCount--;
@@ -68,11 +70,9 @@ WebHTMLRepresentation* WebHTMLRepresentation::createInstance(WebFrame* frame)
 
 // IUnknown -------------------------------------------------------------------
 
-HRESULT WebHTMLRepresentation::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+HRESULT STDMETHODCALLTYPE WebHTMLRepresentation::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualGUID(riid, IID_IUnknown))
         *ppvObject = static_cast<IWebHTMLRepresentation*>(this);
     else if (IsEqualGUID(riid, IID_IWebHTMLRepresentation))
@@ -86,12 +86,12 @@ HRESULT WebHTMLRepresentation::QueryInterface(_In_ REFIID riid, _COM_Outptr_ voi
     return S_OK;
 }
 
-ULONG WebHTMLRepresentation::AddRef()
+ULONG STDMETHODCALLTYPE WebHTMLRepresentation::AddRef()
 {
     return ++m_refCount;
 }
 
-ULONG WebHTMLRepresentation::Release()
+ULONG STDMETHODCALLTYPE WebHTMLRepresentation::Release()
 {
     ULONG newRef = --m_refCount;
     if (!newRef)
@@ -102,137 +102,156 @@ ULONG WebHTMLRepresentation::Release()
 
 // IWebHTMLRepresentation --------------------------------------------------------------------
 
-HRESULT WebHTMLRepresentation::supportedMIMETypes(__deref_opt_inout BSTR* /*types*/, _Inout_ int* /*cTypes*/)
+HRESULT STDMETHODCALLTYPE WebHTMLRepresentation::supportedMIMETypes(
+        /* [out][in] */ BSTR* /*types*/,
+        /* [out][in] */ int* /*cTypes*/)
 {
     ASSERT_NOT_REACHED();
     return E_NOTIMPL;
 }
     
-HRESULT WebHTMLRepresentation::supportedNonImageMIMETypes(__deref_opt_inout BSTR* /*types*/, _Inout_ int* /*cTypes*/)
+HRESULT STDMETHODCALLTYPE WebHTMLRepresentation::supportedNonImageMIMETypes(
+        /* [out][in] */ BSTR* /*types*/,
+        /* [out][in] */ int* /*cTypes*/)
 {
     ASSERT_NOT_REACHED();
     return E_NOTIMPL;
 }
     
-HRESULT WebHTMLRepresentation::supportedImageMIMETypes(__deref_opt_inout BSTR* /*types*/, _Inout_ int* /*cTypes*/)
+HRESULT STDMETHODCALLTYPE WebHTMLRepresentation::supportedImageMIMETypes(
+        /* [out][in] */ BSTR* /*types*/,
+        /* [out][in] */ int* /*cTypes*/)
 {
     ASSERT_NOT_REACHED();
     return E_NOTIMPL;
 }
     
-HRESULT WebHTMLRepresentation::attributedStringFromDOMNodes(_In_opt_ IDOMNode* /*startNode*/,
-    int /*startOffset*/, _In_opt_ IDOMNode* /*endNode*/, int /*endOffset*/, _COM_Outptr_opt_ IDataObject** attributedString)
+HRESULT STDMETHODCALLTYPE WebHTMLRepresentation::attributedStringFromDOMNodes(
+        /* [in] */ IDOMNode* /*startNode*/,
+        /* [in] */ int /*startOffset*/,
+        /* [in] */ IDOMNode* /*endNode*/,
+        /* [in] */ int /*endOffset*/,
+        /* [retval][out] */ IDataObject** /*attributedString*/)
 {
     ASSERT_NOT_REACHED();
-    if (!attributedString)
-        return E_POINTER;
-    *attributedString = nullptr;
     return E_NOTIMPL;
 }
     
-HRESULT WebHTMLRepresentation::elementWithName(_In_ BSTR name, _In_opt_ IDOMElement* form, _COM_Outptr_opt_ IDOMElement** element)
+HRESULT STDMETHODCALLTYPE WebHTMLRepresentation::elementWithName(
+        /* [in] */ BSTR name,
+        /* [in] */ IDOMElement* form,
+        /* [retval][out] */ IDOMElement** element)
 {
-    if (!element)
-        return E_POINTER;
-    *element = nullptr;
     if (!m_frame)
         return E_FAIL;
 
     return m_frame->elementWithName(name, form, element);
 }
     
-HRESULT WebHTMLRepresentation::elementDoesAutoComplete(_In_opt_ IDOMElement* element, _Out_ BOOL* result)
+HRESULT STDMETHODCALLTYPE WebHTMLRepresentation::elementDoesAutoComplete(
+        /* [in] */ IDOMElement* element,
+        /* [retval][out] */ BOOL* result)
 {
-    if (!result)
-        return E_POINTER;
     BOOL doesAutoComplete;
     HRESULT hr = m_frame->elementDoesAutoComplete(element, &doesAutoComplete);
     *result = doesAutoComplete ? TRUE : FALSE;
     return hr;
 }
     
-HRESULT WebHTMLRepresentation::elementIsPassword(_In_opt_ IDOMElement* element, _Out_ BOOL* result)
+HRESULT STDMETHODCALLTYPE WebHTMLRepresentation::elementIsPassword(
+        /* [in] */ IDOMElement* element,
+        /* [retval][out] */ BOOL* result)
 {
-    if (!result)
-        return E_POINTER;
     bool isPassword;
     HRESULT hr = m_frame->elementIsPassword(element, &isPassword);
     *result = isPassword ?  TRUE : FALSE;
     return hr;
 }
     
-HRESULT WebHTMLRepresentation::formForElement(_In_opt_ IDOMElement* element, _COM_Outptr_opt_ IDOMElement** form)
+HRESULT STDMETHODCALLTYPE WebHTMLRepresentation::formForElement(
+        /* [in] */ IDOMElement* element,
+        /* [retval][out] */ IDOMElement** form)
 {
-    if (!form)
-        return E_POINTER;
-    *form = nullptr;
     if (!m_frame)
         return E_FAIL;
 
     return m_frame->formForElement(element, form);
 }
     
-HRESULT WebHTMLRepresentation::currentForm(_COM_Outptr_opt_ IDOMElement** form)
+HRESULT STDMETHODCALLTYPE WebHTMLRepresentation::currentForm(
+        /* [retval][out] */ IDOMElement** form)
 {
-    if (!form)
-        return E_POINTER;
-    *form = nullptr;
     if (!m_frame)
         return E_FAIL;
 
     return m_frame->currentForm(form);
 }
     
-HRESULT WebHTMLRepresentation::controlsInForm(_In_opt_ IDOMElement* form, __deref_inout_opt IDOMElement** controls, _Out_ int* cControls)
+HRESULT STDMETHODCALLTYPE WebHTMLRepresentation::controlsInForm(
+        /* [in] */ IDOMElement* form,
+        /* [out][in] */ IDOMElement** controls,
+        /* [out][in] */ int* cControls)
 {
     return m_frame->controlsInForm(form, controls, cControls);
 }
     
-HRESULT WebHTMLRepresentation::deprecatedSearchForLabels(__inout_ecount_full(cLabels) BSTR* labels, int cLabels,
-    _In_opt_ IDOMElement* beforeElement, __deref_opt_out BSTR* result)
+HRESULT STDMETHODCALLTYPE WebHTMLRepresentation::deprecatedSearchForLabels(
+        /* [size_is][in] */ BSTR* labels,
+        /* [in] */ int cLabels,
+        /* [in] */ IDOMElement* beforeElement,
+        /* [retval][out] */ BSTR* result)
 {
     return m_frame->searchForLabelsBeforeElement(labels, cLabels, beforeElement, 0, 0, result);
 }
     
-HRESULT WebHTMLRepresentation::matchLabels(__inout_ecount_full(cLabels) BSTR* labels, int cLabels, _In_opt_ IDOMElement* againstElement,
-    __deref_opt_out BSTR* result)
+HRESULT STDMETHODCALLTYPE WebHTMLRepresentation::matchLabels(
+        /* [size_is][in] */ BSTR* labels,
+        /* [in] */ int cLabels,
+        /* [in] */ IDOMElement* againstElement,
+        /* [retval][out] */ BSTR* result)
 {
     return m_frame->matchLabelsAgainstElement(labels, cLabels, againstElement, result);
 }
 
-HRESULT WebHTMLRepresentation::searchForLabels(__inout_ecount_full(cLabels) BSTR* labels, unsigned cLabels, _In_opt_ IDOMElement* beforeElement,
-    _Out_ unsigned* resultDistance, _Out_ BOOL* resultIsInCellAbove, __deref_opt_out BSTR* result)
+HRESULT WebHTMLRepresentation::searchForLabels(BSTR* labels, unsigned cLabels, IDOMElement* beforeElement, unsigned* resultDistance, BOOL* resultIsInCellAbove, BSTR* result)
 {
     return m_frame->searchForLabelsBeforeElement(labels, cLabels, beforeElement, resultDistance, resultIsInCellAbove, result);
 }
 
 // IWebDocumentRepresentation ----------------------------------------------------------------
 
-HRESULT WebHTMLRepresentation::setDataSource(_In_opt_ IWebDataSource* /*dataSource*/)
+HRESULT STDMETHODCALLTYPE WebHTMLRepresentation::setDataSource(
+        /* [in] */ IWebDataSource* /*dataSource*/)
 {
     ASSERT_NOT_REACHED();
     return E_NOTIMPL;
 }
     
-HRESULT WebHTMLRepresentation::receivedData(_In_opt_ IStream* /*data*/, _In_opt_ IWebDataSource* /*dataSource*/)
+HRESULT STDMETHODCALLTYPE WebHTMLRepresentation::receivedData(
+        /* [in] */ IStream* /*data*/,
+        /* [in] */ IWebDataSource* /*dataSource*/)
 {
     ASSERT_NOT_REACHED();
     return E_NOTIMPL;
 }
     
-HRESULT WebHTMLRepresentation::receivedError(_In_opt_ IWebError* /*error*/, _In_opt_ IWebDataSource* /*dataSource*/)
+HRESULT STDMETHODCALLTYPE WebHTMLRepresentation::receivedError(
+        /* [in] */ IWebError* /*error*/,
+        /* [in] */ IWebDataSource* /*dataSource*/)
 {
     ASSERT_NOT_REACHED();
     return E_NOTIMPL;
 }
     
-HRESULT WebHTMLRepresentation::finishedLoadingWithDataSource(_In_opt_ IWebDataSource* /*dataSource*/)
+HRESULT STDMETHODCALLTYPE WebHTMLRepresentation::finishedLoadingWithDataSource(
+        /* [in] */ IWebDataSource* /*dataSource*/)
 {
     ASSERT_NOT_REACHED();
     return E_NOTIMPL;
 }
     
-HRESULT WebHTMLRepresentation::canProvideDocumentSource(_Out_ BOOL* result)
+HRESULT STDMETHODCALLTYPE WebHTMLRepresentation::canProvideDocumentSource(
+        /* [retval][out] */ BOOL* result)
 {
     bool canProvideSource;
     HRESULT hr = this->m_frame->canProvideDocumentSource(&canProvideSource);
@@ -240,12 +259,13 @@ HRESULT WebHTMLRepresentation::canProvideDocumentSource(_Out_ BOOL* result)
     return hr;
 }
     
-HRESULT WebHTMLRepresentation::documentSource(__deref_opt_out BSTR* source)
+HRESULT STDMETHODCALLTYPE WebHTMLRepresentation::documentSource(
+        /* [retval][out] */ BSTR* source)
 {
     if (!source)
         return E_FAIL;
 
-    *source = nullptr;
+    *source = 0;
 
     HRESULT hr = S_OK;
 
@@ -290,7 +310,8 @@ HRESULT WebHTMLRepresentation::documentSource(__deref_opt_out BSTR* source)
     return S_OK;
 }
     
-HRESULT WebHTMLRepresentation::title(__deref_opt_out BSTR* /*docTitle*/)
+HRESULT STDMETHODCALLTYPE WebHTMLRepresentation::title(
+        /* [retval][out] */ BSTR* /*docTitle*/)
 {
     ASSERT_NOT_REACHED();
     return E_NOTIMPL;

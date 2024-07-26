@@ -35,10 +35,10 @@ using namespace JSC;
 
 namespace WebCore {
 
-JSValue JSDataTransfer::types(ExecState& state) const
+JSValue JSDataTransfer::types(ExecState* exec) const
 {
     Vector<String> types = impl().types();
-    return types.isEmpty() ? jsNull() : jsArray(&state, globalObject(), types);
+    return types.isEmpty() ? jsNull() : jsArray(exec, globalObject(), types);
 }
 
 } // namespace WebCore

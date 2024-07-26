@@ -50,7 +50,7 @@
 (allow mach-lookup
        (global-name "com.apple.PowerManagement.control"))
 
-(network-client (remote tcp) (remote udp))
+(network-client (remote tcp))
 
 ;; Security framework
 (allow mach-lookup

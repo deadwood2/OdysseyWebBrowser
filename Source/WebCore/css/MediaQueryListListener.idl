@@ -19,7 +19,6 @@
 
 [
     CallbackNeedsOperatorEqual,
-    Callback=FunctionOnly,
 ] callback interface MediaQueryListListener {
     boolean queryChanged([Default=Undefined] optional MediaQueryList list);
 };

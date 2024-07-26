@@ -43,8 +43,4 @@
 #define BOS_DARWIN 1
 #endif
 
-#ifdef __unix
-#define BOS_UNIX 1
-#endif
-
 #endif // BPlatform_h

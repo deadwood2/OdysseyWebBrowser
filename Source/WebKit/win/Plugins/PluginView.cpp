@@ -127,9 +127,7 @@ IntRect PluginView::windowClipRect() const
     
     // Take our element and get the clip rect from the enclosing layer and frame view.
     FrameView* parentView = m_element->document().view();
-    IntRect windowClipRect = parentView->windowClipRectForFrameOwner(m_element, true);
-    windowClipRect.scale(deviceScaleFactor());
-    clipRect.intersect(windowClipRect);
+    clipRect.intersect(parentView->windowClipRectForFrameOwner(m_element, true));
 
     return clipRect;
 }
@@ -672,18 +670,18 @@ NPObject* PluginView::npObject()
 }
 #endif
 
-RefPtr<JSC::Bindings::Instance> PluginView::bindingInstance()
+PassRefPtr<JSC::Bindings::Instance> PluginView::bindingInstance()
 {
 #if ENABLE(NETSCAPE_PLUGIN_API)
     NPObject* object = npObject();
     if (!object)
-        return nullptr;
+        return 0;
 
     if (hasOneRef()) {
         // The renderer for the PluginView was destroyed during the above call, and
         // the PluginView will be destroyed when this function returns, so we
         // return null.
-        return nullptr;
+        return 0;
     }
 
     RefPtr<JSC::Bindings::RootObject> root = m_parentFrame->script().createRootObject(this);
@@ -691,9 +689,9 @@ RefPtr<JSC::Bindings::Instance> PluginView::bindingInstance()
 
     _NPN_ReleaseObject(object);
 
-    return instance;
+    return instance.release();
 #else
-    return nullptr;
+    return 0;
 #endif
 }
 
@@ -1104,7 +1102,7 @@ void PluginView::invalidateWindowlessPluginRect(const IntRect& rect)
     renderer.repaintRectangle(dirtyRect);
 }
 
-void PluginView::paintMissingPluginIcon(GraphicsContext& context, const IntRect& rect)
+void PluginView::paintMissingPluginIcon(GraphicsContext* context, const IntRect& rect)
 {
     static RefPtr<Image> nullPluginImage;
     if (!nullPluginImage)
@@ -1120,10 +1118,10 @@ void PluginView::paintMissingPluginIcon(GraphicsContext& context, const IntRect&
     if (!rect.intersects(imageRect))
         return;
 
-    context.save();
-    context.clip(windowClipRect());
-    context.drawImage(nullPluginImage.get(), ColorSpaceDeviceRGB, imageRect.location());
-    context.restore();
+    context->save();
+    context->clip(windowClipRect());
+    context->drawImage(nullPluginImage.get(), ColorSpaceDeviceRGB, imageRect.location());
+    context->restore();
 }
 
 static const char* MozillaUserAgent = "Mozilla/5.0 ("

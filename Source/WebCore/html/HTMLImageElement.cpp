@@ -296,10 +296,7 @@ int HTMLImageElement::width(bool ignorePendingStylesheets)
         document().updateLayout();
 
     RenderBox* box = renderBox();
-    if (!box)
-        return 0;
-    LayoutRect contentRect = box->contentBoxRect();
-    return adjustForAbsoluteZoom(snappedIntRect(contentRect).width(), *box);
+    return box ? adjustForAbsoluteZoom(box->contentBoxRect().pixelSnappedSize().width(), *box) : 0;
 }
 
 int HTMLImageElement::height(bool ignorePendingStylesheets)
@@ -322,10 +319,7 @@ int HTMLImageElement::height(bool ignorePendingStylesheets)
         document().updateLayout();
 
     RenderBox* box = renderBox();
-    if (!box)
-        return 0;
-    LayoutRect contentRect = box->contentBoxRect();
-    return adjustForAbsoluteZoom(snappedIntRect(contentRect).height(), *box);
+    return box ? adjustForAbsoluteZoom(box->contentBoxRect().pixelSnappedSize().height(), *box) : 0;
 }
 
 int HTMLImageElement::naturalWidth() const
@@ -504,7 +498,7 @@ void HTMLImageElement::createImageControls()
     if (!imageControls)
         return;
 
-    ensureUserAgentShadowRoot().appendChild(imageControls.releaseNonNull());
+    ensureUserAgentShadowRoot().appendChild(imageControls);
 
     auto* renderObject = renderer();
     if (!renderObject)
@@ -521,7 +515,7 @@ void HTMLImageElement::destroyImageControls()
 
     if (Node* node = shadowRoot->firstChild()) {
         ASSERT_WITH_SECURITY_IMPLICATION(node->isImageControlsRootElement());
-        shadowRoot->removeChild(*node);
+        shadowRoot->removeChild(node);
     }
 
     auto* renderObject = renderer();

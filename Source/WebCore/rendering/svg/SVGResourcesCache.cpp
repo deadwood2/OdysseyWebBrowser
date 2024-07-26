@@ -39,9 +39,11 @@ void SVGResourcesCache::addResourcesFromRenderer(RenderElement& renderer, const 
 {
     ASSERT(!m_cache.contains(&renderer));
 
+    const SVGRenderStyle& svgStyle = style.svgStyle();
+
     // Build a list of all resources associated with the passed RenderObject
     auto newResources = std::make_unique<SVGResources>();
-    if (!newResources->buildCachedResources(renderer, style))
+    if (!newResources->buildCachedResources(renderer, svgStyle))
         return;
 
     // Put object in cache.

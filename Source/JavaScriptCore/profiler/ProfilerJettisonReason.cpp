@@ -65,9 +65,6 @@ void printInternal(PrintStream& out, JettisonReason reason)
     case JettisonDueToUnprofiledWatchpoint:
         out.print("UnprofiledWatchpoint");
         return;
-    case JettisonDueToOldAge:
-        out.print("JettisonDueToOldAge");
-        return;
     }
     RELEASE_ASSERT_NOT_REACHED();
 }

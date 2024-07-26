@@ -534,14 +534,14 @@ Ref<MutableStyleProperties> EditingStyle::styleWithResolvedTextDecorations() con
 
     Ref<CSSValueList> valueList = CSSValueList::createSpaceSeparated();
     if (underlineChange() == TextDecorationChange::Add)
-        valueList->append(CSSValuePool::singleton().createIdentifierValue(CSSValueUnderline));
+        valueList->append(cssValuePool().createIdentifierValue(CSSValueUnderline));
     if (strikeThroughChange() == TextDecorationChange::Add)
-        valueList->append(CSSValuePool::singleton().createIdentifierValue(CSSValueLineThrough));
+        valueList->append(cssValuePool().createIdentifierValue(CSSValueLineThrough));
 
     if (valueList->length())
         style->setProperty(CSSPropertyTextDecoration, valueList.ptr());
     else
-        style->setProperty(CSSPropertyTextDecoration, CSSValuePool::singleton().createIdentifierValue(CSSValueNone));
+        style->setProperty(CSSPropertyTextDecoration, cssValuePool().createIdentifierValue(CSSValueNone));
 
     return style;
 }
@@ -618,9 +618,8 @@ void EditingStyle::overrideTypingStyleAt(const EditingStyle& style, const Positi
     if (!m_mutableStyle)
         m_mutableStyle = MutableStyleProperties::create();
 
-    auto& cssValuePool = CSSValuePool::singleton();
-    Ref<CSSPrimitiveValue> underline = cssValuePool.createIdentifierValue(CSSValueUnderline);
-    Ref<CSSPrimitiveValue> lineThrough = cssValuePool.createIdentifierValue(CSSValueLineThrough);
+    Ref<CSSPrimitiveValue> underline = cssValuePool().createIdentifierValue(CSSValueUnderline);
+    Ref<CSSPrimitiveValue> lineThrough = cssValuePool().createIdentifierValue(CSSValueLineThrough);
     RefPtr<CSSValue> value = m_mutableStyle->getPropertyCSSValue(CSSPropertyWebkitTextDecorationsInEffect);
     RefPtr<CSSValueList> valueList;
     if (value && value->isValueList()) {
@@ -827,7 +826,7 @@ bool EditingStyle::conflictsWithInlineStyleOfElement(StyledElement* element, Ref
             RefPtr<CSSValueList> newValueList = valueList->copy();
             RefPtr<CSSValueList> extractedValueList = CSSValueList::createSpaceSeparated();
 
-            Ref<CSSPrimitiveValue> underline = CSSValuePool::singleton().createIdentifierValue(CSSValueUnderline);
+            Ref<CSSPrimitiveValue> underline = cssValuePool().createIdentifierValue(CSSValueUnderline);
             if (shouldRemoveUnderline && valueList->hasValue(underline.ptr())) {
                 if (!newInlineStyle)
                     return true;
@@ -835,7 +834,7 @@ bool EditingStyle::conflictsWithInlineStyleOfElement(StyledElement* element, Ref
                 extractedValueList->append(WTF::move(underline));
             }
 
-            Ref<CSSPrimitiveValue> lineThrough = CSSValuePool::singleton().createIdentifierValue(CSSValueLineThrough);
+            Ref<CSSPrimitiveValue> lineThrough = cssValuePool().createIdentifierValue(CSSValueLineThrough);
             if (shouldRemoveStrikeThrough && valueList->hasValue(lineThrough.ptr())) {
                 if (!newInlineStyle)
                     return true;
@@ -1014,10 +1013,9 @@ bool EditingStyle::styleIsPresentInComputedStyleOfNode(Node* node) const
         bool hasLineThrough = false;
         if (RefPtr<CSSValue> value = computedStyle.propertyValue(CSSPropertyTextDecoration)) {
             if (value->isValueList()) {
-                auto& cssValuePool = CSSValuePool::singleton();
                 const CSSValueList& valueList = downcast<CSSValueList>(*value);
-                hasUnderline = valueList.hasValue(cssValuePool.createIdentifierValue(CSSValueUnderline).ptr());
-                hasLineThrough = valueList.hasValue(cssValuePool.createIdentifierValue(CSSValueLineThrough).ptr());
+                hasUnderline = valueList.hasValue(&cssValuePool().createIdentifierValue(CSSValueUnderline).get());
+                hasLineThrough = valueList.hasValue(&cssValuePool().createIdentifierValue(CSSValueLineThrough).get());
             }
         }
         if ((shouldAddUnderline && !hasUnderline) || (shouldAddLineThrough && !hasLineThrough))
@@ -1227,9 +1225,8 @@ PassRefPtr<EditingStyle> EditingStyle::wrappingStyleForSerialization(Node* conte
 
 static void mergeTextDecorationValues(CSSValueList& mergedValue, const CSSValueList& valueToMerge)
 {
-    auto& cssValuePool = CSSValuePool::singleton();
-    Ref<CSSPrimitiveValue> underline = cssValuePool.createIdentifierValue(CSSValueUnderline);
-    Ref<CSSPrimitiveValue> lineThrough = cssValuePool.createIdentifierValue(CSSValueLineThrough);
+    Ref<CSSPrimitiveValue> underline = cssValuePool().createIdentifierValue(CSSValueUnderline);
+    Ref<CSSPrimitiveValue> lineThrough = cssValuePool().createIdentifierValue(CSSValueLineThrough);
 
     if (valueToMerge.hasValue(underline.ptr()) && !mergedValue.hasValue(underline.ptr()))
         mergedValue.append(WTF::move(underline));
@@ -1277,7 +1274,7 @@ void EditingStyle::mergeStyle(const StyleProperties* style, CSSPropertyOverrideM
 static PassRefPtr<MutableStyleProperties> styleFromMatchedRulesForElement(Element* element, unsigned rulesToInclude)
 {
     RefPtr<MutableStyleProperties> style = MutableStyleProperties::create();
-    auto matchedRules = element->styleResolver().styleRulesForElement(element, rulesToInclude);
+    auto matchedRules = element->document().ensureStyleResolver().styleRulesForElement(element, rulesToInclude);
     for (unsigned i = 0; i < matchedRules.size(); ++i) {
         if (matchedRules[i]->isStyleRule())
             style->mergeAndOverrideOnConflict(static_pointer_cast<StyleRule>(matchedRules[i])->properties());
@@ -1402,18 +1399,17 @@ bool EditingStyle::convertPositionStyle()
     if (!m_mutableStyle)
         return false;
 
-    auto& cssValuePool = CSSValuePool::singleton();
-    RefPtr<CSSPrimitiveValue> sticky = cssValuePool.createIdentifierValue(CSSValueWebkitSticky);
+    RefPtr<CSSPrimitiveValue> sticky = cssValuePool().createIdentifierValue(CSSValueWebkitSticky);
     if (m_mutableStyle->propertyMatches(CSSPropertyPosition, sticky.get())) {
-        m_mutableStyle->setProperty(CSSPropertyPosition, cssValuePool.createIdentifierValue(CSSValueStatic), m_mutableStyle->propertyIsImportant(CSSPropertyPosition));
+        m_mutableStyle->setProperty(CSSPropertyPosition, cssValuePool().createIdentifierValue(CSSValueStatic), m_mutableStyle->propertyIsImportant(CSSPropertyPosition));
         return false;
     }
-    RefPtr<CSSPrimitiveValue> fixed = cssValuePool.createIdentifierValue(CSSValueFixed);
+    RefPtr<CSSPrimitiveValue> fixed = cssValuePool().createIdentifierValue(CSSValueFixed);
     if (m_mutableStyle->propertyMatches(CSSPropertyPosition, fixed.get())) {
-        m_mutableStyle->setProperty(CSSPropertyPosition, cssValuePool.createIdentifierValue(CSSValueAbsolute), m_mutableStyle->propertyIsImportant(CSSPropertyPosition));
+        m_mutableStyle->setProperty(CSSPropertyPosition, cssValuePool().createIdentifierValue(CSSValueAbsolute), m_mutableStyle->propertyIsImportant(CSSPropertyPosition));
         return true;
     }
-    RefPtr<CSSPrimitiveValue> absolute = cssValuePool.createIdentifierValue(CSSValueAbsolute);
+    RefPtr<CSSPrimitiveValue> absolute = cssValuePool().createIdentifierValue(CSSValueAbsolute);
     if (m_mutableStyle->propertyMatches(CSSPropertyPosition, absolute.get()))
         return true;
     return false;
@@ -1422,7 +1418,7 @@ bool EditingStyle::convertPositionStyle()
 bool EditingStyle::isFloating()
 {
     RefPtr<CSSValue> v = m_mutableStyle->getPropertyCSSValue(CSSPropertyFloat);
-    RefPtr<CSSPrimitiveValue> noneValue = CSSValuePool::singleton().createIdentifierValue(CSSValueNone);
+    RefPtr<CSSPrimitiveValue> noneValue = cssValuePool().createIdentifierValue(CSSValueNone);
     return v && !v->equals(*noneValue);
 }
 
@@ -1462,7 +1458,7 @@ PassRefPtr<EditingStyle> EditingStyle::styleAtSelectionStart(const VisibleSelect
     // and find the background color of the common ancestor.
     if (shouldUseBackgroundColorInEffect && (selection.isRange() || hasTransparentBackgroundColor(style->m_mutableStyle.get()))) {
         RefPtr<Range> range(selection.toNormalizedRange());
-        if (auto value = backgroundColorInEffect(range->commonAncestorContainer()))
+        if (PassRefPtr<CSSValue> value = backgroundColorInEffect(range->commonAncestorContainer(IGNORE_EXCEPTION)))
             style->setProperty(CSSPropertyBackgroundColor, value->cssText());
     }
 
@@ -1608,11 +1604,10 @@ StyleChange::StyleChange(EditingStyle* style, const Position& position)
         if (is<CSSValueList>(value.get()))
             valueList = downcast<CSSValueList>(value.get());
 
-        auto& cssValuePool = CSSValuePool::singleton();
-        Ref<CSSValue> underline = cssValuePool.createIdentifierValue(CSSValueUnderline);
+        Ref<CSSValue> underline = cssValuePool().createIdentifierValue(CSSValueUnderline);
         bool hasUnderline = valueList && valueList->hasValue(underline.ptr());
 
-        Ref<CSSValue> lineThrough = cssValuePool.createIdentifierValue(CSSValueLineThrough);
+        Ref<CSSValue> lineThrough = cssValuePool().createIdentifierValue(CSSValueLineThrough);
         bool hasLineThrough = valueList && valueList->hasValue(lineThrough.ptr());
 
         if (shouldStyleWithCSS) {
@@ -1685,9 +1680,8 @@ void StyleChange::extractTextStyles(Document* document, MutableStyleProperties& 
     // Furthermore, text-decoration: none has been trimmed so that text-decoration property is always a CSSValueList.
     RefPtr<CSSValue> textDecoration = style.getPropertyCSSValue(CSSPropertyTextDecoration);
     if (is<CSSValueList>(textDecoration.get())) {
-        auto& cssValuePool = CSSValuePool::singleton();
-        RefPtr<CSSPrimitiveValue> underline = cssValuePool.createIdentifierValue(CSSValueUnderline);
-        RefPtr<CSSPrimitiveValue> lineThrough = cssValuePool.createIdentifierValue(CSSValueLineThrough);
+        RefPtr<CSSPrimitiveValue> underline = cssValuePool().createIdentifierValue(CSSValueUnderline);
+        RefPtr<CSSPrimitiveValue> lineThrough = cssValuePool().createIdentifierValue(CSSValueLineThrough);
 
         RefPtr<CSSValueList> newTextDecoration = downcast<CSSValueList>(*textDecoration).copy();
         if (newTextDecoration->removeAll(underline.get()))

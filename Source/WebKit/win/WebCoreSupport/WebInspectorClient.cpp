@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2010, 2014, 2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006, 2007, 2008, 2009, 2010, 2014 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -72,12 +72,13 @@ WebInspectorClient::~WebInspectorClient()
 {
 }
 
-void WebInspectorClient::inspectedPageDestroyed()
+void WebInspectorClient::inspectorDestroyed()
 {
+    closeInspectorFrontend();
     delete this;
 }
 
-Inspector::FrontendChannel* WebInspectorClient::openLocalFrontend(InspectorController* inspectorController)
+WebCore::InspectorFrontendChannel* WebInspectorClient::openInspectorFrontend(InspectorController* inspectorController)
 {
     registerWindowClass();
 
@@ -170,6 +171,12 @@ Inspector::FrontendChannel* WebInspectorClient::openLocalFrontend(InspectorContr
     return this;
 }
 
+void WebInspectorClient::closeInspectorFrontend()
+{
+    if (m_frontendClient)
+        m_frontendClient->destroyInspectorView(false);
+}
+
 void WebInspectorClient::bringFrontendToFront()
 {
     m_frontendClient->bringToFront();
@@ -230,7 +237,7 @@ WebInspectorFrontendClient::WebInspectorFrontendClient(WebView* inspectedWebView
 
 WebInspectorFrontendClient::~WebInspectorFrontendClient()
 {
-    destroyInspectorView();
+    destroyInspectorView(true);
 }
 
 void WebInspectorFrontendClient::frontendLoaded()
@@ -262,7 +269,7 @@ void WebInspectorFrontendClient::bringToFront()
 
 void WebInspectorFrontendClient::closeWindow()
 {
-    destroyInspectorView();
+    destroyInspectorView(true);
 }
 
 void WebInspectorFrontendClient::attachWindow(DockSide)
@@ -414,23 +421,20 @@ void WebInspectorFrontendClient::showWindowWithoutNotifications()
     m_inspectorClient->updateHighlight();
 }
 
-void WebInspectorFrontendClient::destroyInspectorView()
+void WebInspectorFrontendClient::destroyInspectorView(bool notifyInspectorController)
 {
+    m_inspectorClient->releaseFrontend();
+
     if (m_destroyingInspectorView)
         return;
     m_destroyingInspectorView = true;
 
-    if (Page* frontendPage = this->frontendPage())
-        frontendPage->inspectorController().setInspectorFrontendClient(nullptr);
-    if (Page* inspectedPage = m_inspectedWebView->page())
-        inspectedPage->inspectorController().disconnectFrontend(m_inspectorClient);
-
-    m_inspectorClient->releaseFrontend();
-
     closeWindowWithoutNotifications();
 
-    m_inspectorClient->updateHighlight();
-
+    if (notifyInspectorController) {
+        m_inspectedWebView->page()->inspectorController().disconnectFrontend(Inspector::DisconnectReason::InspectorDestroyed);
+        m_inspectorClient->updateHighlight();
+    }
     ::DestroyWindow(m_frontendHwnd);
 }
 
@@ -462,7 +466,7 @@ LRESULT WebInspectorFrontendClient::onSize(WPARAM, LPARAM)
 LRESULT WebInspectorFrontendClient::onClose(WPARAM, LPARAM)
 {
     ::ShowWindow(m_frontendHwnd, SW_HIDE);
-    closeWindow();
+    m_inspectedWebView->page()->inspectorController().close();
 
     return 0;
 }

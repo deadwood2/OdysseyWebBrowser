@@ -107,13 +107,12 @@ private:
     void shrink();
 
     struct ReadOperation;
-    void dispatchReadOperation(std::unique_ptr<ReadOperation>);
+    void dispatchReadOperation(ReadOperation&);
     void dispatchPendingReadOperations();
     void finishReadOperation(ReadOperation&);
-    void cancelAllReadOperations();
 
     struct WriteOperation;
-    void dispatchWriteOperation(std::unique_ptr<WriteOperation>);
+    void dispatchWriteOperation(WriteOperation&);
     void dispatchPendingWriteOperations();
     void finishWriteOperation(WriteOperation&);
 
@@ -122,7 +121,6 @@ private:
     void readRecord(ReadOperation&, const Data&);
 
     void updateFileModificationTime(const String& path);
-    bool removeFromPendingWriteOperations(const Key&);
 
     WorkQueue& ioQueue() { return m_ioQueue.get(); }
     WorkQueue& backgroundIOQueue() { return m_backgroundIOQueue.get(); }
@@ -152,7 +150,6 @@ private:
     static const int maximumRetrievePriority = 4;
     Deque<std::unique_ptr<ReadOperation>> m_pendingReadOperationsByPriority[maximumRetrievePriority + 1];
     HashSet<std::unique_ptr<ReadOperation>> m_activeReadOperations;
-    WebCore::Timer m_readOperationTimeoutTimer;
 
     Deque<std::unique_ptr<WriteOperation>> m_pendingWriteOperations;
     HashSet<std::unique_ptr<WriteOperation>> m_activeWriteOperations;

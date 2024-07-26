@@ -53,9 +53,12 @@ RealtimeMediaSource::RealtimeMediaSource(const String& id, Type type, const Stri
 {
     // FIXME(147205): Need to implement fitness score for constraints
 
-    if (m_id.isEmpty())
-        m_id = createCanonicalUUIDString();
-    m_persistentID = m_id;
+    if (!m_id.isEmpty())
+        return;
+    
+    m_id = createCanonicalUUIDString();
+
+    startProducingData();
 }
 
 void RealtimeMediaSource::reset()
@@ -93,12 +96,6 @@ void RealtimeMediaSource::setMuted(bool muted)
 
     for (auto& observer : m_observers)
         observer->sourceMutedChanged();
-}
-
-void RealtimeMediaSource::statesDidChanged()
-{
-    for (auto& observer : m_observers)
-        observer->sourceStatesChanged();
 }
 
 bool RealtimeMediaSource::readonly() const

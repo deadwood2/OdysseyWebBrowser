@@ -76,32 +76,58 @@ WebInspector.DatabaseObject = class DatabaseObject extends WebInspector.Object
 
     executeSQL(query, successCallback, errorCallback)
     {
-        function queryCallback(error, columnNames, values, sqlError)
+        function queryCallback(columnNames, values, sqlError)
         {
-            if (error) {
-                errorCallback(WebInspector.UIString("An unexpected error occurred."));
-                return;
-            }
-
             if (sqlError) {
+                var message;
+
                 switch (sqlError.code) {
                 case SQLException.VERSION_ERR:
-                    errorCallback(WebInspector.UIString("Database no longer has expected version."));
+                    message = WebInspector.UIString("Database no longer has expected version.");
                     break;
                 case SQLException.TOO_LARGE_ERR:
-                    errorCallback(WebInspector.UIString("Data returned from the database is too large."));
+                    message = WebInspector.UIString("Data returned from the database is too large.");
                     break;
                 default:
-                    errorCallback(WebInspector.UIString("An unexpected error occurred."));
+                    message = WebInspector.UIString("An unexpected error occurred.");
                     break;
                 }
+
+                errorCallback(message);
                 return;
             }
 
             successCallback(columnNames, values);
         }
 
-        DatabaseAgent.executeSQL(this._id, query, queryCallback);
+        function callback(error, result)
+        {
+            if (error) {
+                errorCallback(WebInspector.UIString("An unexpected error occurred."));
+                return;
+            }
+
+            // COMPATIBILITY (iOS 6): Newer versions of DatabaseAgent.executeSQL can delay before
+            // sending the results. The version on iOS 6 instead returned a transactionId that
+            // would be used later in the sqlTransactionSucceeded or sqlTransactionFailed events.
+            if ("transactionId" in result) {
+                if (!result.success) {
+                    errorCallback(WebInspector.UIString("An unexpected error occurred."));
+                    return;
+                }
+
+                WebInspector.DatabaseObserver._callbacks[result.transactionId] = queryCallback;
+                return;
+            }
+
+            queryCallback(result.columnNames, result.values, result.sqlError);
+        }
+
+        // COMPATIBILITY (iOS 6): Since the parameters of the DatabaseAgent.executeSQL callback differ
+        // we need the result object to lookup parameters by name.
+        callback.expectsResultObject = true;
+
+        DatabaseAgent.executeSQL(this._id, query, callback);
     }
 };
 

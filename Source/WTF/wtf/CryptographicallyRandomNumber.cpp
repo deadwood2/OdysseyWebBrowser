@@ -33,7 +33,6 @@
 #include "NeverDestroyed.h"
 #include "OSRandomSource.h"
 #include <mutex>
-#include <wtf/Lock.h>
 
 namespace WTF {
 
@@ -65,7 +64,7 @@ private:
 
     ARC4Stream m_stream;
     int m_count;
-    Lock m_mutex;
+    std::mutex m_mutex;
 };
 
 ARC4Stream::ARC4Stream()
@@ -137,7 +136,7 @@ uint32_t ARC4RandomNumberGenerator::getWord()
 
 uint32_t ARC4RandomNumberGenerator::randomNumber()
 {
-    std::lock_guard<Lock> lock(m_mutex);
+    std::lock_guard<std::mutex> lock(m_mutex);
 
     m_count -= 4;
     stirIfNeeded();
@@ -146,7 +145,7 @@ uint32_t ARC4RandomNumberGenerator::randomNumber()
 
 void ARC4RandomNumberGenerator::randomValues(void* buffer, size_t length)
 {
-    std::lock_guard<Lock> lock(m_mutex);
+    std::lock_guard<std::mutex> lock(m_mutex);
 
     unsigned char* result = reinterpret_cast<unsigned char*>(buffer);
     stirIfNeeded();

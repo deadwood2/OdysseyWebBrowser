@@ -54,7 +54,7 @@ class TimeRanges;
 
 class MediaStreamPrivateAVFObjC final : public MediaStreamPrivate {
 public:
-    static RefPtr<MediaStreamPrivateAVFObjC> create(MediaPlayerPrivateMediaStreamAVFObjC&, MediaStreamPrivate&);
+    static RefPtr<MediaStreamPrivateAVFObjC> create(MediaPlayerPrivateMediaStreamAVFObjC&, MediaStreamPrivateClient&);
     virtual ~MediaStreamPrivateAVFObjC();
 
     MediaPlayerPrivateMediaStreamAVFObjC* player() const { return m_player; }
@@ -74,7 +74,7 @@ public:
     MediaPlayer::ReadyState readyState() const;
 
 private:
-    MediaStreamPrivateAVFObjC(MediaPlayerPrivateMediaStreamAVFObjC&, MediaStreamPrivate&);
+    MediaStreamPrivateAVFObjC(MediaPlayerPrivateMediaStreamAVFObjC&, MediaStreamPrivateClient&);
 
     MediaPlayerPrivateMediaStreamAVFObjC* m_player;
     RefPtr<MediaStreamPrivateClient> m_client;

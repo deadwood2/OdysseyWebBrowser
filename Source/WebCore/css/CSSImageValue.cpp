@@ -113,12 +113,12 @@ String CSSImageValue::customCSSText() const
     return "url(" + quoteCSSURLIfNeeded(m_url) + ')';
 }
 
-Ref<CSSValue> CSSImageValue::cloneForCSSOM() const
+PassRefPtr<CSSValue> CSSImageValue::cloneForCSSOM() const
 {
     // NOTE: We expose CSSImageValues as URI primitive values in CSSOM to maintain old behavior.
-    Ref<CSSPrimitiveValue> uriValue = CSSPrimitiveValue::create(m_url, CSSPrimitiveValue::CSS_URI);
+    RefPtr<CSSPrimitiveValue> uriValue = CSSPrimitiveValue::create(m_url, CSSPrimitiveValue::CSS_URI);
     uriValue->setCSSOMSafe();
-    return WTF::move(uriValue);
+    return uriValue.release();
 }
 
 bool CSSImageValue::knownToBeOpaque(const RenderElement* renderer) const

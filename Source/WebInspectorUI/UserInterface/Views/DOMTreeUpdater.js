@@ -55,7 +55,7 @@ WebInspector.DOMTreeUpdater.prototype = {
 
     _attributesUpdated: function(event)
     {
-        this._recentlyModifiedNodes.push({node: event.data.node, updated: true, attribute: event.data.name});
+        this._recentlyModifiedNodes.push({node: event.data.node, updated: true});
         if (this._treeOutline._visible)
             this._updateModifiedNodesSoon();
     },
@@ -99,32 +99,26 @@ WebInspector.DOMTreeUpdater.prototype = {
     {
         if (this._updateModifiedNodesTimeout) {
             clearTimeout(this._updateModifiedNodesTimeout);
-            this._updateModifiedNodesTimeout = null;
+            delete this._updateModifiedNodesTimeout;
         }
 
-        let updatedParentTreeElements = [];
-        for (let recentlyModifiedNode of this._recentlyModifiedNodes) {
-            let parent = recentlyModifiedNode.parent;
-            let node = recentlyModifiedNode.node;
-            let changeInfo = null;
-            if (recentlyModifiedNode.attribute)
-                changeInfo = {type: WebInspector.DOMTreeElement.ChangeType.Attribute, attribute: recentlyModifiedNode.attribute};
+        var updatedParentTreeElements = [];
 
-            if (recentlyModifiedNode.updated) {
-                let nodeTreeElement = this._treeOutline.findTreeElement(node);
-                if (!nodeTreeElement)
-                    continue;
+        for (var i = 0; i < this._recentlyModifiedNodes.length; ++i) {
+            var parent = this._recentlyModifiedNodes[i].parent;
+            var node = this._recentlyModifiedNodes[i].node;
 
-                if (changeInfo)
-                    nodeTreeElement.nodeStateChanged(changeInfo);
-
-                nodeTreeElement.updateTitle();
+            if (this._recentlyModifiedNodes[i].updated) {
+                var nodeItem = this._treeOutline.findTreeElement(node);
+                if (nodeItem)
+                    nodeItem.updateTitle();
+                continue;
             }
 
             if (!parent)
                 continue;
 
-            let parentNodeItem = this._treeOutline.findTreeElement(parent);
+            var parentNodeItem = this._treeOutline.findTreeElement(parent);
             if (parentNodeItem && !parentNodeItem.alreadyUpdatedChildren) {
                 parentNodeItem.updateTitle();
                 parentNodeItem.updateChildren();
@@ -133,8 +127,8 @@ WebInspector.DOMTreeUpdater.prototype = {
             }
         }
 
-        for (let i = 0; i < updatedParentTreeElements.length; ++i)
-            updatedParentTreeElements[i].alreadyUpdatedChildren = null;
+        for (var i = 0; i < updatedParentTreeElements.length; ++i)
+            delete updatedParentTreeElements[i].alreadyUpdatedChildren;
 
         this._recentlyModifiedNodes = [];
     },

@@ -23,46 +23,48 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.SearchTabContentView = class SearchTabContentView extends WebInspector.ContentBrowserTabContentView
+WebInspector.SearchTabContentView = function(identifier)
 {
-    constructor(identifier)
-    {
-        var tabBarItem = new WebInspector.TabBarItem("Images/SearchResults.svg", WebInspector.UIString("Search"));
-        var detailsSidebarPanels = [WebInspector.resourceDetailsSidebarPanel, WebInspector.probeDetailsSidebarPanel,
-            WebInspector.domNodeDetailsSidebarPanel, WebInspector.cssStyleDetailsSidebarPanel];
+    var tabBarItem = new WebInspector.TabBarItem("Images/SearchResults.svg", WebInspector.UIString("Search"));
+    var detailsSidebarPanels = [WebInspector.resourceDetailsSidebarPanel, WebInspector.probeDetailsSidebarPanel,
+        WebInspector.domNodeDetailsSidebarPanel, WebInspector.cssStyleDetailsSidebarPanel];
 
-        if (WebInspector.layerTreeDetailsSidebarPanel)
-            detailsSidebarPanels.push(WebInspector.layerTreeDetailsSidebarPanel);
+    if (WebInspector.layerTreeDetailsSidebarPanel)
+        detailsSidebarPanels.push(WebInspector.layerTreeDetailsSidebarPanel);
 
-        super(identifier || "search", "search", tabBarItem, WebInspector.SearchSidebarPanel, detailsSidebarPanels);
-    }
+    WebInspector.ContentBrowserTabContentView.call(this, identifier || "search", "search", tabBarItem, WebInspector.SearchSidebarPanel, detailsSidebarPanels);
+};
+
+WebInspector.SearchTabContentView.prototype = {
+    constructor: WebInspector.SearchTabContentView,
+    __proto__: WebInspector.ContentBrowserTabContentView.prototype,
 
     // Public
 
     get type()
     {
         return WebInspector.SearchTabContentView.Type;
-    }
+    },
 
-    shown()
+    shown: function()
     {
-        super.shown();
+        WebInspector.ContentBrowserTabContentView.prototype.shown.call(this);
 
         // Perform on a delay because the field might not be visible yet.
         setTimeout(this.focusSearchField.bind(this));
-    }
+    },
 
-    canShowRepresentedObject(representedObject)
+    canShowRepresentedObject: function(representedObject)
     {
         return representedObject instanceof WebInspector.Resource || representedObject instanceof WebInspector.Script || representedObject instanceof WebInspector.DOMTree;
-    }
+    },
 
-    focusSearchField()
+    focusSearchField: function()
     {
         this.navigationSidebarPanel.focusSearchField();
-    }
+    },
 
-    performSearch(searchQuery)
+    performSearch: function(searchQuery)
     {
         this.navigationSidebarPanel.performSearch(searchQuery);
     }

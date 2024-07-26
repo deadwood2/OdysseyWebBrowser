@@ -45,7 +45,7 @@ STATIC_ASSERT_IS_TRIVIALLY_DESTRUCTIBLE(JSPromisePrototype);
 
 namespace JSC {
 
-const ClassInfo JSPromisePrototype::s_info = { "PromisePrototype", &Base::s_info, &promisePrototypeTable, CREATE_METHOD_TABLE(JSPromisePrototype) };
+const ClassInfo JSPromisePrototype::s_info = { "PromisePrototype", &JSNonFinalObject::s_info, &promisePrototypeTable, CREATE_METHOD_TABLE(JSPromisePrototype) };
 
 /* Source for JSPromisePrototype.lut.h
 @begin promisePrototypeTable
@@ -54,9 +54,10 @@ const ClassInfo JSPromisePrototype::s_info = { "PromisePrototype", &Base::s_info
 @end
 */
 
-JSPromisePrototype* JSPromisePrototype::create(VM& vm, JSGlobalObject*, Structure* structure)
+JSPromisePrototype* JSPromisePrototype::create(ExecState* exec, JSGlobalObject*, Structure* structure)
 {
-    JSPromisePrototype* object = new (NotNull, allocateCell<JSPromisePrototype>(vm.heap)) JSPromisePrototype(vm, structure);
+    VM& vm = exec->vm();
+    JSPromisePrototype* object = new (NotNull, allocateCell<JSPromisePrototype>(vm.heap)) JSPromisePrototype(exec, structure);
     object->finishCreation(vm, structure);
     return object;
 }
@@ -66,8 +67,8 @@ Structure* JSPromisePrototype::createStructure(VM& vm, JSGlobalObject* globalObj
     return Structure::create(vm, globalObject, prototype, TypeInfo(ObjectType, StructureFlags), info());
 }
 
-JSPromisePrototype::JSPromisePrototype(VM& vm, Structure* structure)
-    : JSNonFinalObject(vm, structure)
+JSPromisePrototype::JSPromisePrototype(ExecState* exec, Structure* structure)
+    : JSNonFinalObject(exec->vm(), structure)
 {
 }
 
@@ -78,7 +79,7 @@ void JSPromisePrototype::finishCreation(VM& vm, Structure*)
 
 bool JSPromisePrototype::getOwnPropertySlot(JSObject* object, ExecState* exec, PropertyName propertyName, PropertySlot& slot)
 {
-    return getStaticFunctionSlot<Base>(exec, promisePrototypeTable, jsCast<JSPromisePrototype*>(object), propertyName, slot);
+    return getStaticFunctionSlot<JSObject>(exec, promisePrototypeTable, jsCast<JSPromisePrototype*>(object), propertyName, slot);
 }
 
 } // namespace JSC

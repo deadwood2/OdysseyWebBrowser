@@ -32,7 +32,7 @@
 #include "config.h"
 #include "EventTarget.h"
 
-#include "ExceptionCode.h"
+#include "EventException.h"
 #include "InspectorInstrumentation.h"
 #include "ScriptController.h"
 #include "WebKitAnimationEvent.h"
@@ -74,9 +74,9 @@ bool EventTarget::isMessagePort() const
     return false;
 }
 
-bool EventTarget::addEventListener(const AtomicString& eventType, RefPtr<EventListener>&& listener, bool useCapture)
+bool EventTarget::addEventListener(const AtomicString& eventType, PassRefPtr<EventListener> listener, bool useCapture)
 {
-    return ensureEventTargetData().eventListenerMap.add(eventType, WTF::move(listener), useCapture);
+    return ensureEventTargetData().eventListenerMap.add(eventType, listener, useCapture);
 }
 
 bool EventTarget::removeEventListener(const AtomicString& eventType, EventListener* listener, bool useCapture)
@@ -138,13 +138,13 @@ bool EventTarget::clearAttributeEventListener(const AtomicString& eventType)
 
 bool EventTarget::dispatchEvent(PassRefPtr<Event> event, ExceptionCode& ec)
 {
-    if (!event) {
-        ec = TypeError;
+    if (!event || event->type().isEmpty()) {
+        ec = EventException::UNSPECIFIED_EVENT_TYPE_ERR;
         return false;
     }
 
-    if (!event->isInitialized() || event->isBeingDispatched()) {
-        ec = INVALID_STATE_ERR;
+    if (event->isBeingDispatched()) {
+        ec = EventException::DISPATCH_REQUEST_ERR;
         return false;
     }
 
@@ -191,7 +191,7 @@ static const AtomicString& legacyType(const Event* event)
 bool EventTarget::fireEventListeners(Event* event)
 {
     ASSERT_WITH_SECURITY_IMPLICATION(!NoEventDispatchAssertion::isEventDispatchForbidden());
-    ASSERT(event && event->isInitialized());
+    ASSERT(event && !event->type().isEmpty());
 
     EventTargetData* d = eventTargetData();
     if (!d)

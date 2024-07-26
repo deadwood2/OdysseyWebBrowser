@@ -49,7 +49,6 @@ private:
 
     // HTMLFormControlElement always creates one, but buttons don't need it.
     virtual bool alwaysCreateUserAgentShadowRoot() const override { return false; }
-    virtual bool canHaveUserAgentShadowRoot() const override final { return true; }
 
     virtual void parseAttribute(const QualifiedName&, const AtomicString&) override;
     virtual bool isPresentationAttribute(const QualifiedName&) const override;

@@ -95,7 +95,11 @@ inline void Heap::setMarked(const void* cell)
 
 inline bool Heap::isWriteBarrierEnabled()
 {
+#if ENABLE(WRITE_BARRIER_PROFILING) || ENABLE(GGC)
     return true;
+#else
+    return false;
+#endif
 }
 
 inline void Heap::writeBarrier(const JSCell* from, JSValue to)
@@ -103,9 +107,14 @@ inline void Heap::writeBarrier(const JSCell* from, JSValue to)
 #if ENABLE(WRITE_BARRIER_PROFILING)
     WriteBarrierCounters::countWriteBarrier();
 #endif
+#if ENABLE(GGC)
     if (!to.isCell())
         return;
     writeBarrier(from, to.asCell());
+#else
+    UNUSED_PARAM(from);
+    UNUSED_PARAM(to);
+#endif
 }
 
 inline void Heap::writeBarrier(const JSCell* from, JSCell* to)
@@ -113,6 +122,7 @@ inline void Heap::writeBarrier(const JSCell* from, JSCell* to)
 #if ENABLE(WRITE_BARRIER_PROFILING)
     WriteBarrierCounters::countWriteBarrier();
 #endif
+#if ENABLE(GGC)
     if (!from || !from->isMarked()) {
         ASSERT(!from || !isMarked(from));
         return;
@@ -122,10 +132,15 @@ inline void Heap::writeBarrier(const JSCell* from, JSCell* to)
         return;
     }
     addToRememberedSet(from);
+#else
+    UNUSED_PARAM(from);
+    UNUSED_PARAM(to);
+#endif
 }
 
 inline void Heap::writeBarrier(const JSCell* from)
 {
+#if ENABLE(GGC)
     ASSERT_GC_OBJECT_LOOKS_VALID(const_cast<JSCell*>(from));
     if (!from || !from->isMarked()) {
         ASSERT(!from || !isMarked(from));
@@ -133,6 +148,9 @@ inline void Heap::writeBarrier(const JSCell* from)
     }
     ASSERT(isMarked(from));
     addToRememberedSet(from);
+#else
+    UNUSED_PARAM(from);
+#endif
 }
 
 inline void Heap::reportExtraMemoryAllocated(size_t size)
@@ -143,31 +161,31 @@ inline void Heap::reportExtraMemoryAllocated(size_t size)
 
 inline void Heap::reportExtraMemoryVisited(JSCell* owner, size_t size)
 {
+#if ENABLE(GGC)
     // We don't want to double-count the extra memory that was reported in previous collections.
     if (operationInProgress() == EdenCollection && Heap::isRemembered(owner))
         return;
+#else
+    UNUSED_PARAM(owner);
+#endif
 
     size_t* counter = &m_extraMemorySize;
     
+#if ENABLE(COMPARE_AND_SWAP)
     for (;;) {
         size_t oldSize = *counter;
-        if (WTF::weakCompareAndSwap(counter, oldSize, oldSize + size))
+        if (WTF::weakCompareAndSwapSize(counter, oldSize, oldSize + size))
             return;
     }
+#else
+    (*counter) += size;
+#endif
 }
 
 inline void Heap::deprecatedReportExtraMemory(size_t size)
 {
     if (size > minExtraMemory) 
         deprecatedReportExtraMemorySlowCase(size);
-}
-
-template<typename Functor> inline void Heap::forEachCodeBlock(Functor& functor)
-{
-    // We don't know the full set of CodeBlocks until compilation has terminated.
-    completeAllDFGPlans();
-
-    return m_codeBlocks.iterate<Functor>(functor);
 }
 
 template<typename Functor> inline typename Functor::ReturnType Heap::forEachProtectedCell(Functor& functor)
@@ -183,6 +201,11 @@ template<typename Functor> inline typename Functor::ReturnType Heap::forEachProt
 {
     Functor functor;
     return forEachProtectedCell(functor);
+}
+
+template<typename Functor> inline void Heap::forEachCodeBlock(Functor& functor)
+{
+    return m_codeBlocks.iterate<Functor>(functor);
 }
 
 inline void* Heap::allocateWithDestructor(size_t bytes)

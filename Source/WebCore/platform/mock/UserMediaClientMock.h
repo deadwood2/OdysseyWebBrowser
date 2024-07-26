@@ -44,17 +44,10 @@ public:
 
     void fire() override
     {
-        if (!m_requestSuccess) {
+        if (m_requestSuccess)
+            m_request->userMediaAccessGranted();
+        else
             m_request->userMediaAccessDenied();
-            return;
-        }
-
-        auto audioDeviceUIDs = m_request->audioDeviceUIDs();
-        auto videoDeviceUIDs  = m_request->videoDeviceUIDs();
-        String allowedAudioUID = audioDeviceUIDs.size() ? audioDeviceUIDs.at(0) : emptyString();
-        String videoAudioUID = videoDeviceUIDs.size() ? videoDeviceUIDs.at(0) : emptyString();
-
-        m_request->userMediaAccessGranted(allowedAudioUID, videoAudioUID);
     }
 
 private:
@@ -65,10 +58,7 @@ private:
 class UserMediaClientMock final : public UserMediaClient, public TimerEventBasedMock {
 public:
     public:
-    virtual void pageDestroyed() override
-    {
-        delete this;
-    }
+    virtual void pageDestroyed() override { }
 
     virtual void requestPermission(Ref<UserMediaRequest>&& request) override
     {

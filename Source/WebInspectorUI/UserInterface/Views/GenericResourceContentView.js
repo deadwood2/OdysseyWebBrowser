@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,10 +23,15 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.GenericResourceContentView = class GenericResourceContentView extends WebInspector.ResourceContentView
+WebInspector.GenericResourceContentView = function(resource)
 {
-    constructor(resource)
-    {
-        super(resource, "generic");
-    }
+    WebInspector.ResourceContentView.call(this, resource, WebInspector.GenericResourceContentView.StyleClassName);
 };
+
+WebInspector.GenericResourceContentView.StyleClassName = "generic";
+
+WebInspector.GenericResourceContentView.prototype = {
+    constructor: WebInspector.GenericResourceContentView
+};
+
+WebInspector.GenericResourceContentView.prototype.__proto__ = WebInspector.ResourceContentView.prototype;

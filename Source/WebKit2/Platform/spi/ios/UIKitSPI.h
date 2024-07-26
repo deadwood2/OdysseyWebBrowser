@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -74,6 +74,8 @@
 #import <UIKit/_UINavigationInteractiveTransition.h>
 #import <UIKit/_UINavigationParallaxTransition.h>
 
+#import <WebKitAdditions/LinkPreviewDefines.h>
+
 #if HAVE(LINK_PREVIEW)
 #import <UIKit/UIPreviewItemController.h>
 #endif
@@ -88,42 +90,6 @@
 #endif
 
 #else
-
-#if HAVE(LINK_PREVIEW)
-typedef NS_ENUM(NSInteger, UIPreviewItemType) {
-    UIPreviewItemTypeNone,
-    UIPreviewItemTypeClientCustom,
-    UIPreviewItemTypeLink,
-    UIPreviewItemTypeImage,
-    UIPreviewItemTypeText,
-};
-
-@class UIPreviewItemController;
-
-@protocol UIPreviewItemDelegate <NSObject>
-- (NSDictionary *)_dataForPreviewItemController:(UIPreviewItemController *)controller atPosition:(CGPoint)position type:(UIPreviewItemType *)type;
-@optional
-- (BOOL)_interactionShouldBeginFromPreviewItemController:(UIPreviewItemController *)controller forPosition:(CGPoint)position;
-- (void)_interactionStartedFromPreviewItemController:(UIPreviewItemController *)controller;
-- (void)_interactionStoppedFromPreviewItemController:(UIPreviewItemController *)controller;
-- (UIViewController *)_presentedViewControllerForPreviewItemController:(UIPreviewItemController *)controller;
-- (void)_previewItemController:(UIPreviewItemController *)controller didDismissPreview:(UIViewController *)viewController committing:(BOOL)committing;
-- (void)_previewItemController:(UIPreviewItemController *)controller commitPreview:(UIViewController *)viewController;
-- (void)_previewItemControllerDidCancelPreview:(UIPreviewItemController *)controller;
-- (UIImage *)_presentationSnapshotForPreviewItemController:(UIPreviewItemController *)controller;
-- (NSArray *)_presentationRectsForPreviewItemController:(UIPreviewItemController *)controller;
-- (CGRect)_presentationRectForPreviewItemController:(UIPreviewItemController *)controller;
-@end
-
-@interface UIPreviewItemController : NSObject
-- (instancetype)initWithView:(UIView *)view;
-@property (assign, nonatomic) id<UIPreviewItemDelegate> delegate;
-@property (assign, nonatomic, readonly) UIPreviewItemType type;
-@property (strong, nonatomic, readonly) NSDictionary *previewData;
-@property (strong, nonatomic, readonly) UIGestureRecognizer *presentationGestureRecognizer;
-@property (strong, nonatomic, readonly) UIGestureRecognizer *presentationSecondaryGestureRecognizer;
-@end
-#endif
 
 @interface UIAlertController ()
 - (void)_addActionWithTitle:(NSString *)title style:(UIAlertActionStyle)style handler:(void (^)(void))handler;
@@ -245,7 +211,6 @@ typedef enum {
 @interface UILongPressGestureRecognizer ()
 @property (nonatomic) CFTimeInterval delay;
 @property (nonatomic, readonly) CGPoint startPoint;
-@property (nonatomic, assign, setter=_setRequiresQuietImpulse:) BOOL _requiresQuietImpulse;
 @end
 
 @interface _UIWebHighlightLongPressGestureRecognizer : UILongPressGestureRecognizer
@@ -595,9 +560,6 @@ typedef enum {
 
 @property (nonatomic, assign, getter=isNextEnabled) BOOL nextEnabled;
 @property (nonatomic, assign, getter=isPreviousEnabled) BOOL previousEnabled;
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000
-- (id)initWithInputAssistantItem:(UITextInputAssistantItem *)inputAssistantItem;
-#endif
 @end
 
 @protocol UIWebFormAccessoryDelegate
@@ -796,13 +758,6 @@ typedef enum {
 
 @end
 
-@interface UIViewControllerPreviewAction : NSObject <NSCopying>
-@end
-
-@interface UIViewControllerPreviewAction ()
-+ (instancetype)actionWithTitle:(NSString *)title handler:(void (^)(UIViewControllerPreviewAction *action, UIViewController *previewViewController))handler;
-@end
-
 #endif // USE(APPLE_INTERNAL_SDK)
 
 @interface UIView (IPI)
@@ -843,7 +798,5 @@ extern const float UIWebViewStandardViewportWidth;
 
 extern NSString *const UIKeyInputPageUp;
 extern NSString *const UIKeyInputPageDown;
-
-extern const NSString *UIPreviewDataLink;
 
 WTF_EXTERN_C_END

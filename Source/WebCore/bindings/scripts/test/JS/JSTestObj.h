@@ -21,6 +21,7 @@
 #ifndef JSTestObj_h
 #define JSTestObj_h
 
+#include "JSDOMPromise.h"
 #include "JSDOMWrapper.h"
 #include "TestObj.h"
 #include <wtf/NeverDestroyed.h>
@@ -54,17 +55,19 @@ public:
     static JSC::JSValue getConstructor(JSC::VM&, JSC::JSGlobalObject*);
     JSC::WriteBarrier<JSC::Unknown> m_cachedAttribute1;
     JSC::WriteBarrier<JSC::Unknown> m_cachedAttribute2;
+    JSC::Strong<JSC::JSPromiseDeferred> m_testPromiseAttrPromiseDeferred;
     static void visitChildren(JSCell*, JSC::SlotVisitor&);
 
 
     // Custom attributes
-    JSC::JSValue customAttr(JSC::ExecState&) const;
-    void setCustomAttr(JSC::ExecState&, JSC::JSValue);
+    JSC::JSValue customAttr(JSC::ExecState*) const;
+    void setCustomAttr(JSC::ExecState*, JSC::JSValue);
+    JSC::JSValue testPromiseAttr(JSC::ExecState*) const;
 
     // Custom functions
-    JSC::JSValue customMethod(JSC::ExecState&);
-    JSC::JSValue customMethodWithArgs(JSC::ExecState&);
-    static JSC::JSValue classMethod2(JSC::ExecState&);
+    JSC::JSValue customMethod(JSC::ExecState*);
+    JSC::JSValue customMethodWithArgs(JSC::ExecState*);
+    static JSC::JSValue classMethod2(JSC::ExecState*);
     TestObj& impl() const { return *m_impl; }
     void releaseImpl() { std::exchange(m_impl, nullptr)->deref(); }
 
@@ -96,13 +99,7 @@ inline JSC::WeakHandleOwner* wrapperOwner(DOMWrapperWorld&, TestObj*)
 }
 
 JSC::JSValue toJS(JSC::ExecState*, JSDOMGlobalObject*, TestObj*);
-inline JSC::JSValue toJS(JSC::ExecState* state, JSDOMGlobalObject* globalObject, TestObj& impl) { return toJS(state, globalObject, &impl); }
-JSC::JSValue toJSNewlyCreated(JSC::ExecState*, JSDOMGlobalObject*, TestObj*);
-
-// Functions
-
-JSC::EncodedJSValue JSC_HOST_CALL jsTestObjPrototypeFunctionCustomBindingMethod(JSC::ExecState*);
-JSC::EncodedJSValue JSC_HOST_CALL jsTestObjPrototypeFunctionCustomBindingMethodWithArgs(JSC::ExecState*);
+inline JSC::JSValue toJS(JSC::ExecState* exec, JSDOMGlobalObject* globalObject, TestObj& impl) { return toJS(exec, globalObject, &impl); }
 
 
 } // namespace WebCore

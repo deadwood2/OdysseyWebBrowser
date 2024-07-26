@@ -128,8 +128,8 @@ private:
 
     void setSize(const IntSize&) override;
 
-    void paint(GraphicsContext&, const FloatRect&) override;
-    void paintCurrentFrameInContext(GraphicsContext&, const FloatRect&) override;
+    void paint(GraphicsContext*, const FloatRect&) override;
+    void paintCurrentFrameInContext(GraphicsContext*, const FloatRect&) override;
 
     bool supportsAcceleratedRendering() const override;
 
@@ -145,8 +145,6 @@ private:
 
     bool shouldBePlaying() const;
 
-    RetainPtr<CGImageRef> createImageFromSampleBuffer(CMSampleBufferRef);
-
     friend class MediaStreamPrivateAVFObjC;
 
     MediaPlayer* m_player;
@@ -156,7 +154,7 @@ private:
     RetainPtr<AVCaptureVideoPreviewLayer> m_previewLayer;
     RetainPtr<AVSampleBufferDisplayLayer> m_sampleBufferDisplayLayer;
     Vector<RetainPtr<AVSampleBufferAudioRenderer>> m_sampleBufferAudioRenderers;
-    RetainPtr<CGImageRef> m_lastImage;
+    RetainPtr<AVSampleBufferRenderSynchronizer> m_synchronizer;
     RetainPtr<id> m_timeJumpedObserver;
     RetainPtr<id> m_durationObserver;
     RetainPtr<AVStreamSession> m_streamSession;

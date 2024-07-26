@@ -33,7 +33,7 @@
 
 namespace WebCore {
 
-MediaStream* HTMLMediaElementMediaStream::srcObject(HTMLMediaElement* mediaElement)
+MediaStream* HTMLMediaElementMediaStream::srcObject(HTMLMediaElement* mediaElement, bool& /* isNull */)
 {
     ASSERT(mediaElement);
     return mediaElement->srcObject();

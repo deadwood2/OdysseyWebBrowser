@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2012 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -46,10 +46,8 @@ using namespace Inspector;
 
 namespace WebCore {
 
-InspectorLayerTreeAgent::InspectorLayerTreeAgent(WebAgentContext& context)
-    : InspectorAgentBase(ASCIILiteral("LayerTree"), context)
-    , m_frontendDispatcher(std::make_unique<Inspector::LayerTreeFrontendDispatcher>(context.frontendRouter))
-    , m_backendDispatcher(Inspector::LayerTreeBackendDispatcher::create(context.backendDispatcher, this))
+InspectorLayerTreeAgent::InspectorLayerTreeAgent(InstrumentingAgents* instrumentingAgents)
+    : InspectorAgentBase(ASCIILiteral("LayerTree"), instrumentingAgents)
 {
 }
 
@@ -58,12 +56,17 @@ InspectorLayerTreeAgent::~InspectorLayerTreeAgent()
     reset();
 }
 
-void InspectorLayerTreeAgent::didCreateFrontendAndBackend(Inspector::FrontendRouter*, Inspector::BackendDispatcher*)
+void InspectorLayerTreeAgent::didCreateFrontendAndBackend(Inspector::FrontendChannel* frontendChannel, Inspector::BackendDispatcher* backendDispatcher)
 {
+    m_frontendDispatcher = std::make_unique<Inspector::LayerTreeFrontendDispatcher>(frontendChannel);
+    m_backendDispatcher = Inspector::LayerTreeBackendDispatcher::create(backendDispatcher, this);
 }
 
 void InspectorLayerTreeAgent::willDestroyFrontendAndBackend(Inspector::DisconnectReason)
 {
+    m_frontendDispatcher = nullptr;
+    m_backendDispatcher = nullptr;
+
     ErrorString unused;
     disable(unused);
 }
@@ -78,12 +81,12 @@ void InspectorLayerTreeAgent::reset()
 
 void InspectorLayerTreeAgent::enable(ErrorString&)
 {
-    m_instrumentingAgents.setInspectorLayerTreeAgent(this);
+    m_instrumentingAgents->setInspectorLayerTreeAgent(this);
 }
 
 void InspectorLayerTreeAgent::disable(ErrorString&)
 {
-    m_instrumentingAgents.setInspectorLayerTreeAgent(nullptr);
+    m_instrumentingAgents->setInspectorLayerTreeAgent(nullptr);
 }
 
 void InspectorLayerTreeAgent::layerTreeDidChange()
@@ -105,7 +108,7 @@ void InspectorLayerTreeAgent::layersForNode(ErrorString& errorString, int nodeId
 {
     layers = Inspector::Protocol::Array<Inspector::Protocol::LayerTree::Layer>::create();
 
-    Node* node = m_instrumentingAgents.inspectorDOMAgent()->nodeForId(nodeId);
+    Node* node = m_instrumentingAgents->inspectorDOMAgent()->nodeForId(nodeId);
     if (!node) {
         errorString = ASCIILiteral("Provided node id doesn't match any known node");
         return;
@@ -204,7 +207,7 @@ int InspectorLayerTreeAgent::idForNode(ErrorString& errorString, Node* node)
     if (!node)
         return 0;
 
-    InspectorDOMAgent* domAgent = m_instrumentingAgents.inspectorDOMAgent();
+    InspectorDOMAgent* domAgent = m_instrumentingAgents->inspectorDOMAgent();
     
     int nodeId = domAgent->boundNodeId(node);
     if (!nodeId)
@@ -303,9 +306,6 @@ void InspectorLayerTreeAgent::reasonsForCompositingLayer(ErrorString& errorStrin
 
     if (reasonsBitmask & CompositingReasonPreserve3D)
         compositingReasons->setPreserve3D(true);
-
-    if (reasonsBitmask & CompositingReasonWillChange)
-        compositingReasons->setWillChange(true);
 
     if (reasonsBitmask & CompositingReasonRoot)
         compositingReasons->setRoot(true);

@@ -118,7 +118,7 @@ WebInspector.Script = class Script extends WebInspector.SourceCode
             return Promise.reject(new Error("There is no identifier to request content with."));
         }
 
-        return DebuggerAgent.getScriptSource(this._id);
+        return DebuggerAgent.getScriptSource.promise(this._id);
     }
 
     saveIdentityToCookie(cookie)
@@ -149,7 +149,7 @@ WebInspector.Script = class Script extends WebInspector.SourceCode
         }
 
         this.requestContent().then(function(parameters) {
-            makeSyntaxTreeAndCallCallback(parameters.sourceCode.content);
+            makeSyntaxTreeAndCallCallback(parameters.content);
         }).catch(function(error) {
             makeSyntaxTreeAndCallCallback(null);
         });

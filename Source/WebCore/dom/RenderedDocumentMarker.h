@@ -28,52 +28,39 @@
 #define RenderedDocumentMarker_h
 
 #include "DocumentMarker.h"
-#include <wtf/Vector.h>
 
 namespace WebCore {
 
 class RenderedDocumentMarker : public DocumentMarker {
 public:
+
     explicit RenderedDocumentMarker(const DocumentMarker& marker)
-        : DocumentMarker(marker)
+        : DocumentMarker(marker), m_renderedRect(invalidMarkerRect())
     {
     }
 
-    bool contains(const FloatPoint& point) const
-    {
-        ASSERT(m_isValid);
-        for (const auto& rect : m_rects) {
-            if (rect.contains(point))
-                return true;
-        }
-        return false;
-    }
-
-    void setUnclippedAbsoluteRects(Vector<FloatRect>& rects)
-    {
-        m_isValid = true;
-        m_rects = rects;
-    }
-
-    const Vector<FloatRect, 1>& unclippedAbsoluteRects() const
-    {
-        ASSERT(m_isValid);
-        return m_rects;
-    }
-
-    void invalidate()
-    {
-        m_isValid = false;
-        m_rects.clear();
-    }
-
-    bool isValid() const { return m_isValid; }
+    bool isRendered() const { return invalidMarkerRect() != m_renderedRect; }
+    bool contains(const LayoutPoint& point) const { return isRendered() && m_renderedRect.contains(point); }
+    void setRenderedRect(const LayoutRect& r) { m_renderedRect = r; }
+    const LayoutRect& renderedRect() const { return m_renderedRect; }
+    void invalidate(const LayoutRect&);
+    void invalidate() { m_renderedRect = invalidMarkerRect(); }
 
 private:
-    Vector<FloatRect, 1> m_rects;
-    bool m_isValid { false };
+    static const LayoutRect& invalidMarkerRect()
+    {
+        static const LayoutRect rect = LayoutRect(-1, -1, -1, -1);
+        return rect;
+    }
+
+    LayoutRect m_renderedRect;
 };
 
+inline void RenderedDocumentMarker::invalidate(const LayoutRect& r)
+{
+    if (m_renderedRect.intersects(r))
+        invalidate();
+}
 
 } // namespace
 

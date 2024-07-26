@@ -23,37 +23,39 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ElementsTabContentView = class ElementsTabContentView extends WebInspector.ContentBrowserTabContentView
+WebInspector.ElementsTabContentView = function(identifier)
 {
-    constructor(identifier)
-    {
-        var tabBarItem = new WebInspector.TabBarItem("Images/Elements.svg", WebInspector.UIString("Elements"));
-        var detailsSidebarPanels = [WebInspector.domNodeDetailsSidebarPanel, WebInspector.cssStyleDetailsSidebarPanel];
+    var tabBarItem = new WebInspector.TabBarItem("Images/Elements.svg", WebInspector.UIString("Elements"));
+    var detailsSidebarPanels = [WebInspector.domNodeDetailsSidebarPanel, WebInspector.cssStyleDetailsSidebarPanel];
 
-        if (WebInspector.layerTreeDetailsSidebarPanel)
-            detailsSidebarPanels.push(WebInspector.layerTreeDetailsSidebarPanel);
+    if (WebInspector.layerTreeDetailsSidebarPanel)
+        detailsSidebarPanels.push(WebInspector.layerTreeDetailsSidebarPanel);
 
-        super(identifier || "elements", "elements", tabBarItem, null, detailsSidebarPanels, true);
+    WebInspector.ContentBrowserTabContentView.call(this, identifier || "elements", "elements", tabBarItem, null, detailsSidebarPanels, true);
 
-        WebInspector.frameResourceManager.addEventListener(WebInspector.FrameResourceManager.Event.MainFrameDidChange, this._mainFrameDidChange, this);
-        WebInspector.Frame.addEventListener(WebInspector.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
+    WebInspector.frameResourceManager.addEventListener(WebInspector.FrameResourceManager.Event.MainFrameDidChange, this._mainFrameDidChange, this);
+    WebInspector.Frame.addEventListener(WebInspector.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
 
-        this._showDOMTreeContentView();
-    }
+    this._showDOMTreeContentView();
+};
+
+WebInspector.ElementsTabContentView.prototype = {
+    constructor: WebInspector.ElementsTabContentView,
+    __proto__: WebInspector.ContentBrowserTabContentView.prototype,
 
     // Public
 
     get type()
     {
         return WebInspector.ElementsTabContentView.Type;
-    }
+    },
 
-    canShowRepresentedObject(representedObject)
+    canShowRepresentedObject: function(representedObject)
     {
         return representedObject instanceof WebInspector.DOMTree;
-    }
+    },
 
-    showRepresentedObject(representedObject, cookie)
+    showRepresentedObject: function(representedObject, cookie)
     {
         var domTreeContentView = this.contentBrowser.currentContentView;
         console.assert(!domTreeContentView || domTreeContentView instanceof WebInspector.DOMTreeContentView);
@@ -70,33 +72,33 @@ WebInspector.ElementsTabContentView = class ElementsTabContentView extends WebIn
         // Because nodeToSelect is ephemeral, we don't want to keep
         // it around in the back-forward history entries.
         cookie.nodeToSelect = undefined;
-    }
+    },
 
-    closed()
+    closed: function()
     {
-        super.closed();
+        WebInspector.ContentBrowserTabContentView.prototype.closed.call(this);
 
         WebInspector.frameResourceManager.removeEventListener(null, null, this);
         WebInspector.Frame.removeEventListener(null, null, this);
-    }
+    },
 
     // Private
 
-    _showDOMTreeContentView()
+    _showDOMTreeContentView: function()
     {
         this.contentBrowser.contentViewContainer.closeAllContentViews();
 
         var mainFrame = WebInspector.frameResourceManager.mainFrame;
         if (mainFrame)
             this.contentBrowser.showContentViewForRepresentedObject(mainFrame.domTree);
-    }
+    },
 
-    _mainFrameDidChange(event)
+    _mainFrameDidChange: function(event)
     {
         this._showDOMTreeContentView();
-    }
+    },
 
-    _mainResourceDidChange(event)
+    _mainResourceDidChange: function(event)
     {
         if (!event.target.isMainFrame())
             return;

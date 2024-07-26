@@ -63,7 +63,7 @@ void UserMediaPermissionRequestManager::startRequest(UserMediaRequest& request)
     ASSERT(webFrame);
 
     SecurityOrigin* origin = request.securityOrigin();
-    m_page.send(Messages::WebPageProxy::RequestUserMediaPermissionForFrame(requestID, webFrame->frameID(), origin->databaseIdentifier(), request.audioDeviceUIDs(), request.videoDeviceUIDs()));
+    m_page.send(Messages::WebPageProxy::RequestUserMediaPermissionForFrame(requestID, webFrame->frameID(), origin->databaseIdentifier(), request.requiresAudio(), request.requiresVideo(), request.videoDeviceUIDs(), request.audioDeviceUIDs()));
 }
 
 void UserMediaPermissionRequestManager::cancelRequest(UserMediaRequest& request)
@@ -74,7 +74,7 @@ void UserMediaPermissionRequestManager::cancelRequest(UserMediaRequest& request)
     m_idToRequestMap.remove(requestID);
 }
 
-void UserMediaPermissionRequestManager::didReceiveUserMediaPermissionDecision(uint64_t requestID, bool allowed, const String& audioDeviceUID, const String& videoDeviceUID)
+void UserMediaPermissionRequestManager::didReceiveUserMediaPermissionDecision(uint64_t requestID, bool allowed, const String& deviceUIDVideo, const String& deviceUIDAudio)
 {
     RefPtr<UserMediaRequest> request = m_idToRequestMap.take(requestID);
     if (!request)
@@ -82,7 +82,7 @@ void UserMediaPermissionRequestManager::didReceiveUserMediaPermissionDecision(ui
     m_requestToIDMap.remove(request);
 
     if (allowed)
-        request->userMediaAccessGranted(audioDeviceUID, videoDeviceUID);
+        request->userMediaAccessGranted();
     else
         request->userMediaAccessDenied();
 }

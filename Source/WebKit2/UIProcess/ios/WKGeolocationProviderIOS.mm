@@ -141,8 +141,9 @@ static void setEnableHighAccuracy(WKGeolocationManagerRef geolocationManager, bo
     if (!self)
         return nil;
     _geolocationManager = processPool.supplement<WebGeolocationManagerProxy>();
-    WKGeolocationProviderV1 providerCallback = {
-        { 1, self },
+    WKGeolocationProvider providerCallback = {
+        kWKGeolocationProviderCurrentVersion,
+        self,
         startUpdatingCallback,
         stopUpdatingCallback,
         setEnableHighAccuracy

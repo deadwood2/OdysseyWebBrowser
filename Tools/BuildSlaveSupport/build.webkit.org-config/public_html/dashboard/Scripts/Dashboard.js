@@ -35,21 +35,5 @@ Dashboard = {
         LinuxGTK: { name : "linux-gtk", readableName: "Linux GTK", order: 90 },
         LinuxEFL: { name: "linux-efl", readableName: "Linux EFL", order : 100 }
     },
-    Branch: {},
-    Repository: {
-        OpenSource: { name: "openSource", isSVN: true, order: 0 },
-        Internal: { name: "internal", isSVN: true, order: 1 },
-    },
-    get sortedPlatforms()
-    {
-        if (!this._sortedPlatforms)
-            this._sortedPlatforms = sortDictionariesByOrder(Dashboard.Platform);
-        return this._sortedPlatforms;
-    },
-    get sortedRepositories()
-    {
-        if (!this._sortedRepositories)
-            this._sortedRepositories = sortDictionariesByOrder(Dashboard.Repository);
-        return this._sortedRepositories;
-    },
+    Branch: {}
 };

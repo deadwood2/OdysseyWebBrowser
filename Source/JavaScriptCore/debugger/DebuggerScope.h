@@ -89,8 +89,7 @@ public:
     bool isFunctionNameScope() const;
     bool isWithScope() const;
     bool isGlobalScope() const;
-    bool isClosureScope() const;
-    bool isGlobalLexicalEnvironment() const;
+    bool isFunctionOrEvalScope() const;
 
     JSValue caughtValue(ExecState*) const;
 

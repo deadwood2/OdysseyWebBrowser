@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,66 +23,65 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ScriptContentView = class ScriptContentView extends WebInspector.ContentView
+WebInspector.ScriptContentView = function(script)
 {
-    constructor(script)
-    {
-        console.assert(script instanceof WebInspector.Script, script);
+    WebInspector.ContentView.call(this, script);
 
-        super(script);
+    this.element.classList.add("script");
 
-        this.element.classList.add("script");
+    // Append a spinner while waiting for _contentWillPopulate.
+    var spinner = new WebInspector.IndeterminateProgressSpinner;
+    this.element.appendChild(spinner.element);
 
-        // Append a spinner while waiting for _contentWillPopulate.
-        var spinner = new WebInspector.IndeterminateProgressSpinner;
-        this.element.appendChild(spinner.element);
+    this._script = script;
 
-        this._script = script;
+    // This view is only for standalone Scripts with no corresponding Resource. All other Scripts
+    // should be handled by TextResourceContentView via the Resource.
+    console.assert(!script.resource);
+    console.assert(script.range.startLine === 0);
+    console.assert(script.range.startColumn === 0);
 
-        // This view is only for standalone Scripts with no corresponding Resource. All other Scripts
-        // should be handled by TextResourceContentView via the Resource.
-        console.assert(!script.resource);
-        console.assert(script.range.startLine === 0);
-        console.assert(script.range.startColumn === 0);
+    this._textEditor = new WebInspector.SourceCodeTextEditor(script);
+    this._textEditor.addEventListener(WebInspector.TextEditor.Event.ExecutionLineNumberDidChange, this._executionLineNumberDidChange, this);
+    this._textEditor.addEventListener(WebInspector.TextEditor.Event.NumberOfSearchResultsDidChange, this._numberOfSearchResultsDidChange, this);
+    this._textEditor.addEventListener(WebInspector.TextEditor.Event.FormattingDidChange, this._textEditorFormattingDidChange, this);
+    this._textEditor.addEventListener(WebInspector.SourceCodeTextEditor.Event.ContentWillPopulate, this._contentWillPopulate, this);
+    this._textEditor.addEventListener(WebInspector.SourceCodeTextEditor.Event.ContentDidPopulate, this._contentDidPopulate, this);
 
-        this._textEditor = new WebInspector.SourceCodeTextEditor(script);
-        this._textEditor.addEventListener(WebInspector.TextEditor.Event.ExecutionLineNumberDidChange, this._executionLineNumberDidChange, this);
-        this._textEditor.addEventListener(WebInspector.TextEditor.Event.NumberOfSearchResultsDidChange, this._numberOfSearchResultsDidChange, this);
-        this._textEditor.addEventListener(WebInspector.TextEditor.Event.FormattingDidChange, this._textEditorFormattingDidChange, this);
-        this._textEditor.addEventListener(WebInspector.SourceCodeTextEditor.Event.ContentWillPopulate, this._contentWillPopulate, this);
-        this._textEditor.addEventListener(WebInspector.SourceCodeTextEditor.Event.ContentDidPopulate, this._contentDidPopulate, this);
+    var toolTip = WebInspector.UIString("Pretty print");
+    var activatedToolTip = WebInspector.UIString("Original formatting");
+    this._prettyPrintButtonNavigationItem = new WebInspector.ActivateButtonNavigationItem("pretty-print", toolTip, activatedToolTip, "Images/NavigationItemCurleyBraces.svg", 13, 13);
+    this._prettyPrintButtonNavigationItem.addEventListener(WebInspector.ButtonNavigationItem.Event.Clicked, this._togglePrettyPrint, this);
+    this._prettyPrintButtonNavigationItem.enabled = false; // Enabled when the text editor is populated with content.
 
-        var toolTip = WebInspector.UIString("Pretty print");
-        var activatedToolTip = WebInspector.UIString("Original formatting");
-        this._prettyPrintButtonNavigationItem = new WebInspector.ActivateButtonNavigationItem("pretty-print", toolTip, activatedToolTip, "Images/NavigationItemCurleyBraces.svg", 13, 13);
-        this._prettyPrintButtonNavigationItem.addEventListener(WebInspector.ButtonNavigationItem.Event.Clicked, this._togglePrettyPrint, this);
-        this._prettyPrintButtonNavigationItem.enabled = false; // Enabled when the text editor is populated with content.
+    var toolTipTypes = WebInspector.UIString("Show type information");
+    var activatedToolTipTypes = WebInspector.UIString("Hide type information");
+    this._showTypesButtonNavigationItem = new WebInspector.ActivateButtonNavigationItem("show-types", toolTipTypes, activatedToolTipTypes, "Images/NavigationItemTypes.svg", 13, 14);
+    this._showTypesButtonNavigationItem.addEventListener(WebInspector.ButtonNavigationItem.Event.Clicked, this._toggleTypeAnnotations, this);
+    this._showTypesButtonNavigationItem.enabled = false;
 
-        var toolTipTypes = WebInspector.UIString("Show type information");
-        var activatedToolTipTypes = WebInspector.UIString("Hide type information");
-        this._showTypesButtonNavigationItem = new WebInspector.ActivateButtonNavigationItem("show-types", toolTipTypes, activatedToolTipTypes, "Images/NavigationItemTypes.svg", 13, 14);
-        this._showTypesButtonNavigationItem.addEventListener(WebInspector.ButtonNavigationItem.Event.Clicked, this._toggleTypeAnnotations, this);
-        this._showTypesButtonNavigationItem.enabled = false;
+    WebInspector.showJavaScriptTypeInformationSetting.addEventListener(WebInspector.Setting.Event.Changed, this._showJavaScriptTypeInformationSettingChanged, this);
+};
 
-        WebInspector.showJavaScriptTypeInformationSetting.addEventListener(WebInspector.Setting.Event.Changed, this._showJavaScriptTypeInformationSettingChanged, this);
-    }
+WebInspector.ScriptContentView.prototype = {
+    constructor: WebInspector.ScriptContentView,
 
     // Public
 
     get navigationItems()
     {
         return [this._prettyPrintButtonNavigationItem, this._showTypesButtonNavigationItem];
-    }
+    },
 
     get script()
     {
         return this._script;
-    }
+    },
 
     get textEditor()
     {
         return this._textEditor;
-    }
+    },
 
     get supplementalRepresentedObjects()
     {
@@ -92,106 +91,106 @@ WebInspector.ScriptContentView = class ScriptContentView extends WebInspector.Co
         // If the SourceCodeTextEditor has an executionLineNumber, we can assume
         // it is always the active call frame.
         return [WebInspector.debuggerManager.activeCallFrame];
-    }
+    },
 
-    revealPosition(position, textRangeToSelect, forceUnformatted)
+    revealPosition: function(position, textRangeToSelect, forceUnformatted)
     {
         this._textEditor.revealPosition(position, textRangeToSelect, forceUnformatted);
-    }
+    },
 
-    shown()
+    shown: function()
     {
         this._textEditor.shown();
-    }
+    },
 
-    hidden()
+    hidden: function()
     {
         this._textEditor.hidden();
-    }
+    },
 
-    closed()
+    closed: function()
     {
         WebInspector.showJavaScriptTypeInformationSetting.removeEventListener(null, null, this);
 
         this._textEditor.close();
-    }
+    },
 
-    saveToCookie(cookie)
+    saveToCookie: function(cookie)
     {
         cookie.type = WebInspector.ContentViewCookieType.Resource;
         cookie.url = this.representedObject.url;
-    }
+    },
 
-    restoreFromCookie(cookie)
+    restoreFromCookie: function(cookie)
     {
         if ("lineNumber" in cookie && "columnNumber" in cookie)
             this.revealPosition(new WebInspector.SourceCodePosition(cookie.lineNumber, cookie.columnNumber));
-    }
+    },
 
     get supportsSave()
     {
         return true;
-    }
+    },
 
     get saveData()
     {
         var url = this._script.url || "web-inspector:///" + encodeURI(this._script.displayName) + ".js";
         return {url, content: this._textEditor.string};
-    }
+    },
 
     get supportsSearch()
     {
         return true;
-    }
+    },
 
     get numberOfSearchResults()
     {
         return this._textEditor.numberOfSearchResults;
-    }
+    },
 
     get hasPerformedSearch()
     {
         return this._textEditor.currentSearchQuery !== null;
-    }
+    },
 
     set automaticallyRevealFirstSearchResult(reveal)
     {
         this._textEditor.automaticallyRevealFirstSearchResult = reveal;
-    }
+    },
 
-    performSearch(query)
+    performSearch: function(query)
     {
         this._textEditor.performSearch(query);
-    }
+    },
 
-    searchCleared()
+    searchCleared: function()
     {
         this._textEditor.searchCleared();
-    }
+    },
 
-    searchQueryWithSelection()
+    searchQueryWithSelection: function()
     {
         return this._textEditor.searchQueryWithSelection();
-    }
+    },
 
-    revealPreviousSearchResult(changeFocus)
+    revealPreviousSearchResult: function(changeFocus)
     {
         this._textEditor.revealPreviousSearchResult(changeFocus);
-    }
+    },
 
-    revealNextSearchResult(changeFocus)
+    revealNextSearchResult: function(changeFocus)
     {
         this._textEditor.revealNextSearchResult(changeFocus);
-    }
+    },
 
-    updateLayout()
+    updateLayout: function()
     {
         this._textEditor.updateLayout();
-    }
+    },
 
     // Private
 
-    _contentWillPopulate(event)
+    _contentWillPopulate: function(event)
     {
         if (this._textEditor.element.parentNode === this.element)
             return;
@@ -202,43 +201,45 @@ WebInspector.ScriptContentView = class ScriptContentView extends WebInspector.Co
 
         this.element.removeChildren();
         this.element.appendChild(this._textEditor.element);
-    }
+    },
 
-    _contentDidPopulate(event)
+    _contentDidPopulate: function(event)
     {
         this._prettyPrintButtonNavigationItem.enabled = this._textEditor.canBeFormatted();
         this._showTypesButtonNavigationItem.enabled = this._textEditor.canShowTypeAnnotations();
         this._showTypesButtonNavigationItem.activated = WebInspector.showJavaScriptTypeInformationSetting.value;
-    }
+    },
 
-    _togglePrettyPrint(event)
+    _togglePrettyPrint: function(event)
     {
         var activated = !this._prettyPrintButtonNavigationItem.activated;
         this._textEditor.formatted = activated;
-    }
+    },
 
-    _toggleTypeAnnotations(event)
+    _toggleTypeAnnotations: function(event)
     {
         this._textEditor.toggleTypeAnnotations();
-    }
+    },
 
-    _showJavaScriptTypeInformationSettingChanged(event)
+    _showJavaScriptTypeInformationSettingChanged: function(event)
     {
         this._showTypesButtonNavigationItem.activated = WebInspector.showJavaScriptTypeInformationSetting.value;
-    }
+    },
 
-    _textEditorFormattingDidChange(event)
+    _textEditorFormattingDidChange: function(event)
     {
         this._prettyPrintButtonNavigationItem.activated = this._textEditor.formatted;
-    }
+    },
 
-    _executionLineNumberDidChange(event)
+    _executionLineNumberDidChange: function(event)
     {
         this.dispatchEventToListeners(WebInspector.ContentView.Event.SupplementalRepresentedObjectsDidChange);
-    }
+    },
 
-    _numberOfSearchResultsDidChange(event)
+    _numberOfSearchResultsDidChange: function(event)
     {
         this.dispatchEventToListeners(WebInspector.ContentView.Event.NumberOfSearchResultsDidChange);
     }
 };
+
+WebInspector.ScriptContentView.prototype.__proto__ = WebInspector.ContentView.prototype;

@@ -52,22 +52,18 @@ def main():
         return 1
 
     genericPlatform = options.platform.split('-', 1)[0]
-    if not determineWebKitBuildDirectory(genericPlatform, options.platform, options.configuration):
+    if not determineWebKitBuildDirectory(genericPlatform, options.configuration):
         print >> sys.stderr, "Could not determine build directory"
         return 1
 
     if action == 'archive':
-        return archiveBuiltProduct(options.configuration, genericPlatform)
+        return archiveBuiltProduct(options.configuration, genericPlatform, options.platform)
     else:
         return extractBuiltProduct(options.configuration, genericPlatform)
 
 
-def determineWebKitBuildDirectory(platform, fullPlatform, configuration):
+def determineWebKitBuildDirectory(platform, configuration):
     global _buildDirectory
-    if fullPlatform.startswith('ios-simulator'):
-        platform = 'ios-simulator'
-    elif platform == 'ios':
-        platform = 'device'
     _buildDirectory = subprocess.Popen(['perl', os.path.join(os.path.dirname(__file__), "..", "Scripts", "webkit-build-directory"),
         "--" + platform, "--" + configuration, '--top-level'], stdout=subprocess.PIPE).communicate()[0].strip()
     return _buildDirectory
@@ -93,7 +89,7 @@ def createZipManually(directoryToZip, archiveFile):
     archiveZip.close()
 
 
-def createZip(directoryToZip, configuration):
+def createZip(directoryToZip, configuration, archiveConfigurationOnMac=False):
     archiveDir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "WebKitBuild"))
     archiveFile = os.path.join(archiveDir, configuration + ".zip")
 
@@ -104,7 +100,9 @@ def createZip(directoryToZip, configuration):
             raise
 
     if sys.platform == 'darwin':
-        return subprocess.call(["ditto", "-c", "-k", "--keepParent", "--sequesterRsrc", directoryToZip, archiveFile])
+        if archiveConfigurationOnMac:
+            return subprocess.call(["ditto", "-c", "-k", "--keepParent", "--sequesterRsrc", directoryToZip, archiveFile])
+        return subprocess.call(["ditto", "-c", "-k", "--sequesterRsrc", directoryToZip, archiveFile])
     elif sys.platform == 'cygwin':
         return subprocess.call(["zip", "-r", archiveFile, "bin32"], cwd=directoryToZip)
     elif sys.platform == 'win32':
@@ -114,13 +112,13 @@ def createZip(directoryToZip, configuration):
         return subprocess.call(["zip", "-y", "-r", archiveFile, "."], cwd=directoryToZip)
 
 
-def archiveBuiltProduct(configuration, platform):
-    assert platform in ('mac', 'win', 'gtk', 'efl', 'ios')
+def archiveBuiltProduct(configuration, platform, fullPlatform):
+    assert platform in ('mac', 'win', 'gtk', 'efl')
 
     configurationBuildDirectory = os.path.join(_buildDirectory, configuration.title())
 
-    if platform in ('mac', 'ios'):
-        return createZip(configurationBuildDirectory, configuration)
+    if platform == 'mac':
+        return createZip(configurationBuildDirectory, configuration, archiveConfigurationOnMac=True)
     elif platform == 'win':
         binDirectory = os.path.join(configurationBuildDirectory, "bin32")
         thinDirectory = os.path.join(configurationBuildDirectory, "thin")
@@ -183,7 +181,7 @@ def unzipArchive(directoryToExtractTo, configuration):
 
 
 def extractBuiltProduct(configuration, platform):
-    assert platform in ('mac', 'win', 'gtk', 'efl', 'ios')
+    assert platform in ('mac', 'win', 'gtk', 'efl')
 
     archiveFile = os.path.join(_buildDirectory, configuration + ".zip")
     configurationBuildDirectory = os.path.join(_buildDirectory, configuration.title())
@@ -191,7 +189,7 @@ def extractBuiltProduct(configuration, platform):
     removeDirectoryIfExists(configurationBuildDirectory)
     os.makedirs(configurationBuildDirectory)
 
-    if platform in ('mac', 'ios'):
+    if platform == 'mac':
         return unzipArchive(_buildDirectory, configuration)
     elif platform == 'win' or platform == 'gtk' or platform == 'efl':
         print "Extracting", configurationBuildDirectory

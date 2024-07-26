@@ -79,21 +79,7 @@
 
 namespace WebCore {
 
-static ThreadSpecific<ShaderNameHash*>& getCurrentNameHashMapForShader()
-{
-    static std::once_flag onceFlag;
-    static ThreadSpecific<ShaderNameHash*>* sharedNameHash;
-    std::call_once(onceFlag, [] {
-        sharedNameHash = new ThreadSpecific<ShaderNameHash*>;
-    });
-
-    return *sharedNameHash;
-}
-
-static void setCurrentNameHashMapForShader(ShaderNameHash* shaderNameHash)
-{
-    *getCurrentNameHashMapForShader() = shaderNameHash;
-}
+static ShaderNameHash* currentNameHashMapForShader = nullptr;
 
 // Hash function used by the ANGLE translator/compiler to do
 // symbol name mangling. Since this is a static method, before
@@ -108,10 +94,11 @@ static uint64_t nameHashForShader(const char* name, size_t length)
     CString nameAsCString = CString(name);
 
     // Look up name in our local map.
-    ShaderNameHash*& currentNameHashMapForShader = *getCurrentNameHashMapForShader();
-    ShaderNameHash::iterator findResult = currentNameHashMapForShader->find(nameAsCString);
-    if (findResult != currentNameHashMapForShader->end())
-        return findResult->value;
+    if (currentNameHashMapForShader) {
+        ShaderNameHash::iterator result = currentNameHashMapForShader->find(nameAsCString);
+        if (result != currentNameHashMapForShader->end())
+            return result->value;
+    }
 
     unsigned hashValue = nameAsCString.hash();
 
@@ -146,7 +133,7 @@ void GraphicsContext3D::validateDepthStencil(const char* packedDepthStencilExten
             m_attrs.stencil = false;
     }
     if (m_attrs.antialias) {
-        if (!extensions->supports("GL_ANGLE_framebuffer_multisample") || isGLES2Compliant())
+        if (!extensions->maySupportMultisampling() || !extensions->supports("GL_ANGLE_framebuffer_multisample") || isGLES2Compliant())
             m_attrs.antialias = false;
         else
             extensions->ensureEnabled("GL_ANGLE_framebuffer_multisample");
@@ -182,7 +169,8 @@ void GraphicsContext3D::paintRenderingResultsToCanvas(ImageBuffer* imageBuffer)
     paintToCanvas(pixels.get(), m_currentWidth, m_currentHeight,
                   imageBuffer->internalSize().width(), imageBuffer->internalSize().height(), imageBuffer->context());
 #else
-    paintToCanvas(pixels.get(), m_currentWidth, m_currentHeight, imageBuffer->internalSize().width(), imageBuffer->internalSize().height(), imageBuffer->context().platformContext());
+    paintToCanvas(pixels.get(), m_currentWidth, m_currentHeight,
+                  imageBuffer->internalSize().width(), imageBuffer->internalSize().height(), imageBuffer->context()->platformContext());
 #endif
 
 #if PLATFORM(IOS)
@@ -581,14 +569,14 @@ void GraphicsContext3D::compileShader(Platform3DObject shader)
 
     if (!nameHashMapForShaders)
         nameHashMapForShaders = std::make_unique<ShaderNameHash>();
-    setCurrentNameHashMapForShader(nameHashMapForShaders.get());
+    currentNameHashMapForShader = nameHashMapForShaders.get();
     m_compiler.setResources(ANGLEResources);
 
     String translatedShaderSource = m_extensions->getTranslatedShaderSourceANGLE(shader);
 
     ANGLEResources.HashFunction = previousHashFunction;
     m_compiler.setResources(ANGLEResources);
-    setCurrentNameHashMapForShader(nullptr);
+    currentNameHashMapForShader = nullptr;
 
     if (!translatedShaderSource.length())
         return;
@@ -890,11 +878,11 @@ String GraphicsContext3D::mappedSymbolName(Platform3DObject program, ANGLEShader
         // and aren't even required to be used in any shader program.
         if (!nameHashMapForShaders)
             nameHashMapForShaders = std::make_unique<ShaderNameHash>();
-        setCurrentNameHashMapForShader(nameHashMapForShaders.get());
+        currentNameHashMapForShader = nameHashMapForShaders.get();
 
         String generatedName = generateHashedName(name);
 
-        setCurrentNameHashMapForShader(nullptr);
+        currentNameHashMapForShader = nullptr;
 
         m_possiblyUnusedAttributeMap.set(generatedName, name);
 

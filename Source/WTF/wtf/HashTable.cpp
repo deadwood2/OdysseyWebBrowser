@@ -36,11 +36,20 @@ unsigned HashTableStats::numCollisions;
 unsigned HashTableStats::collisionGraph[4096];
 unsigned HashTableStats::maxCollisions;
 
-static StaticLock hashTableStatsMutex;
+static std::mutex& hashTableStatsMutex()
+{
+    static std::once_flag onceFlag;
+    static std::mutex* mutex;
+    std::call_once(onceFlag, []{
+        mutex = std::make_unique<std::mutex>().release();
+    });
+
+    return *mutex;
+}
 
 void HashTableStats::recordCollisionAtCount(unsigned count)
 {
-    std::lock_guard<StaticLock> lock(hashTableStatsMutex);
+    std::lock_guard<std::mutex> lock(hashTableStatsMutex());
 
     if (count > maxCollisions)
         maxCollisions = count;
@@ -50,7 +59,7 @@ void HashTableStats::recordCollisionAtCount(unsigned count)
 
 void HashTableStats::dumpStats()
 {
-    std::lock_guard<StaticLock> lock(hashTableStatsMutex);
+    std::lock_guard<std::mutex> lock(hashTableStatsMutex());
 
     dataLogF("\nWTF::HashTable statistics\n\n");
     dataLogF("%u accesses\n", numAccesses.load());

@@ -55,7 +55,7 @@ MediaController::MediaController(ScriptExecutionContext& context)
     , m_closedCaptionsVisible(false)
     , m_clock(Clock::create())
     , m_scriptExecutionContext(context)
-    , m_timeupdateTimer(*this, &MediaController::scheduleTimeupdateEvent)
+    , m_timeupdateTimer(*this, &MediaController::timeupdateTimerFired)
     , m_previousTimeupdateTime(0)
 {
 }
@@ -174,7 +174,6 @@ void MediaController::setCurrentTime(double time)
         m_mediaElements[index]->seek(MediaTime::createWithDouble(time));
 
     scheduleTimeupdateEvent();
-    m_resetCurrentTimeInNextPlay = false;
 }
 
 void MediaController::unpause()
@@ -446,15 +445,11 @@ void MediaController::updatePlaybackState()
         break;
     case ENDED:
         eventName = eventNames().endedEvent;
-        m_resetCurrentTimeInNextPlay = true;
         m_clock->stop();
+        m_clock->setCurrentTime(0);
         m_timeupdateTimer.stop();
         break;
     case PLAYING:
-        if (m_resetCurrentTimeInNextPlay) {
-            m_resetCurrentTimeInNextPlay = false;
-            m_clock->setCurrentTime(0);
-        }
         eventName = eventNames().playingEvent;
         m_clock->start();
         startTimeupdateTimer();
@@ -675,6 +670,11 @@ void MediaController::startTimeupdateTimer()
         return;
 
     m_timeupdateTimer.startRepeating(maxTimeupdateEventFrequency);
+}
+
+void MediaController::timeupdateTimerFired()
+{
+    scheduleTimeupdateEvent();
 }
 
 void MediaController::scheduleTimeupdateEvent()

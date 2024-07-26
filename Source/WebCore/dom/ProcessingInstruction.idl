@@ -19,9 +19,7 @@
  * Boston, MA 02110-1301, USA.
  */
 
-[
-    JSGenerateToJSObject
-] interface ProcessingInstruction : CharacterData {
+interface ProcessingInstruction : CharacterData {
 
     // DOM Level 1
 

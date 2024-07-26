@@ -34,7 +34,6 @@
 #include "DFABytecodeInterpreter.h"
 #include "Document.h"
 #include "DocumentLoader.h"
-#include "ExtensionStyleSheets.h"
 #include "Frame.h"
 #include "MainFrame.h"
 #include "ResourceLoadInfo.h"
@@ -177,7 +176,7 @@ void ContentExtensionsBackend::processContentExtensionRulesForLoad(ResourceReque
             if (resourceType == ResourceType::Document)
                 initiatingDocumentLoader.addPendingContentExtensionDisplayNoneSelector(action.extensionIdentifier(), action.stringArgument(), action.actionID());
             else if (currentDocument)
-                currentDocument->extensionStyleSheets().addDisplayNoneSelector(action.extensionIdentifier(), action.stringArgument(), action.actionID());
+                currentDocument->styleSheetCollection().addDisplayNoneSelector(action.extensionIdentifier(), action.stringArgument(), action.actionID());
             break;
         case ContentExtensions::ActionType::CSSDisplayNoneStyleSheet: {
             StyleSheetContents* styleSheetContents = globalDisplayNoneStyleSheet(action.stringArgument());
@@ -185,7 +184,7 @@ void ContentExtensionsBackend::processContentExtensionRulesForLoad(ResourceReque
                 if (resourceType == ResourceType::Document)
                     initiatingDocumentLoader.addPendingContentExtensionSheet(action.stringArgument(), *styleSheetContents);
                 else if (currentDocument)
-                    currentDocument->extensionStyleSheets().maybeAddContentExtensionSheet(action.stringArgument(), *styleSheetContents);
+                    currentDocument->styleSheetCollection().maybeAddContentExtensionSheet(action.stringArgument(), *styleSheetContents);
             }
             break;
         }

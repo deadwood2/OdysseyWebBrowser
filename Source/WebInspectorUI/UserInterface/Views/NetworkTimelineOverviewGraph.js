@@ -1,6 +1,6 @@
 
 /*
- * Copyright (C) 2014, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,25 +24,33 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.NetworkTimelineOverviewGraph = class NetworkTimelineOverviewGraph extends WebInspector.TimelineOverviewGraph
+WebInspector.NetworkTimelineOverviewGraph = function(timeline, timelineOverview)
 {
-    constructor(timeline, timelineOverview)
-    {
-        super(timelineOverview);
+    WebInspector.TimelineOverviewGraph.call(this, timeline, timelineOverview);
 
-        this.element.classList.add("network");
+    this.element.classList.add("network");
 
-        timeline.addEventListener(WebInspector.Timeline.Event.RecordAdded, this._networkTimelineRecordAdded, this);
-        timeline.addEventListener(WebInspector.Timeline.Event.TimesUpdated, this.needsLayout, this);
+    timeline.addEventListener(WebInspector.Timeline.Event.RecordAdded, this._networkTimelineRecordAdded, this);
+    timeline.addEventListener(WebInspector.Timeline.Event.TimesUpdated, this.needsLayout, this);
 
-        this.reset();
-    }
+    this.reset();
+};
+
+WebInspector.NetworkTimelineOverviewGraph.GraphRowStyleClassName = "graph-row";
+WebInspector.NetworkTimelineOverviewGraph.BarStyleClassName = "bar";
+WebInspector.NetworkTimelineOverviewGraph.InactiveBarStyleClassName = "inactive";
+WebInspector.NetworkTimelineOverviewGraph.UnfinishedStyleClassName = "unfinished";
+WebInspector.NetworkTimelineOverviewGraph.MaximumRowCount = 6;
+
+WebInspector.NetworkTimelineOverviewGraph.prototype = {
+    constructor: WebInspector.NetworkTimelineOverviewGraph,
+    __proto__: WebInspector.TimelineOverviewGraph.prototype,
 
     // Public
 
-    reset()
+    reset: function()
     {
-        super.reset();
+        WebInspector.TimelineOverviewGraph.prototype.reset.call(this);
 
         this._nextDumpRow = 0;
         this._timelineRecordGridRows = [];
@@ -54,16 +62,16 @@ WebInspector.NetworkTimelineOverviewGraph = class NetworkTimelineOverviewGraph e
 
         for (var rowRecords of this._timelineRecordGridRows) {
             rowRecords.__element = document.createElement("div");
-            rowRecords.__element.classList.add("graph-row");
+            rowRecords.__element.className = WebInspector.NetworkTimelineOverviewGraph.GraphRowStyleClassName;
             this.element.appendChild(rowRecords.__element);
 
             rowRecords.__recordBars = [];
         }
-    }
+    },
 
-    updateLayout()
+    updateLayout: function()
     {
-        super.updateLayout();
+        WebInspector.TimelineOverviewGraph.prototype.updateLayout.call(this);
 
         var secondsPerPixel = this.timelineOverview.secondsPerPixel;
 
@@ -98,11 +106,11 @@ WebInspector.NetworkTimelineOverviewGraph = class NetworkTimelineOverviewGraph e
                 rowRecordBars[recordBarIndex].element.remove();
             }
         }
-    }
+    },
 
     // Private
 
-    _networkTimelineRecordAdded(event)
+    _networkTimelineRecordAdded: function(event)
     {
         var resourceTimelineRecord = event.data.record;
         console.assert(resourceTimelineRecord instanceof WebInspector.ResourceTimelineRecord);
@@ -152,5 +160,3 @@ WebInspector.NetworkTimelineOverviewGraph = class NetworkTimelineOverviewGraph e
         this.needsLayout();
     }
 };
-
-WebInspector.NetworkTimelineOverviewGraph.MaximumRowCount = 6;

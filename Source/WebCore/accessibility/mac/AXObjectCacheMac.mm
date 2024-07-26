@@ -34,6 +34,8 @@
 #import "WebAccessibilityObjectWrapperMac.h"
 #import "WebCoreSystemInterface.h"
 
+#import <wtf/PassRefPtr.h>
+
 #ifndef NSAccessibilityLiveRegionChangedNotification
 #define NSAccessibilityLiveRegionChangedNotification @"AXLiveRegionChanged"
 #endif

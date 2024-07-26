@@ -50,7 +50,6 @@
 #include "ShadowRoot.h"
 #include "StyleResolver.h"
 #include "SubframeLoader.h"
-#include "TypedElementDescendantIterator.h"
 #include <JavaScriptCore/APICast.h>
 #include <JavaScriptCore/JSBase.h>
 #include <wtf/HashMap.h>
@@ -60,7 +59,7 @@ namespace WebCore {
 
 using namespace HTMLNames;
 
-typedef Vector<Ref<HTMLPlugInImageElement>> HTMLPlugInImageElementList;
+typedef Vector<RefPtr<HTMLPlugInImageElement>> HTMLPlugInImageElementList;
 typedef HashMap<String, String> MimeTypeToLocalizedStringMap;
 
 static const int sizingTinyDimensionThreshold = 40;
@@ -425,6 +424,20 @@ void HTMLPlugInImageElement::removeSnapshotTimerFired()
         renderer()->repaint();
 }
 
+static void addPlugInsFromNodeListMatchingPlugInOrigin(HTMLPlugInImageElementList& plugInList, PassRefPtr<NodeList> collection, const String& plugInOrigin, const String& mimeType)
+{
+    for (unsigned i = 0, length = collection->length(); i < length; i++) {
+        Node* node = collection->item(i);
+        if (is<HTMLPlugInImageElement>(*node)) {
+            HTMLPlugInImageElement& plugInImageElement = downcast<HTMLPlugInImageElement>(*node);
+            const URL& loadedURL = plugInImageElement.loadedUrl();
+            String otherMimeType = plugInImageElement.loadedMimeType();
+            if (plugInOrigin == loadedURL.host() && mimeType == otherMimeType)
+                plugInList.append(&plugInImageElement);
+        }
+    }
+}
+
 void HTMLPlugInImageElement::restartSimilarPlugIns()
 {
     // Restart any other snapshotted plugins in the page with the same origin. Note that they
@@ -444,15 +457,19 @@ void HTMLPlugInImageElement::restartSimilarPlugIns()
         if (!frame->document())
             continue;
 
-        for (auto& element : descendantsOfType<HTMLPlugInImageElement>(*frame->document())) {
-            if (plugInOrigin == element.loadedUrl().host() && mimeType == element.loadedMimeType())
-                similarPlugins.append(element);
-        }
+        RefPtr<NodeList> plugIns = frame->document()->getElementsByTagName(embedTag.localName());
+        if (plugIns)
+            addPlugInsFromNodeListMatchingPlugInOrigin(similarPlugins, plugIns, plugInOrigin, mimeType);
+
+        plugIns = frame->document()->getElementsByTagName(objectTag.localName());
+        if (plugIns)
+            addPlugInsFromNodeListMatchingPlugInOrigin(similarPlugins, plugIns, plugInOrigin, mimeType);
     }
 
-    for (auto& plugInToRestart : similarPlugins) {
+    for (size_t i = 0, length = similarPlugins.size(); i < length; ++i) {
+        HTMLPlugInImageElement* plugInToRestart = similarPlugins[i].get();
         if (plugInToRestart->displayState() <= HTMLPlugInElement::DisplayingSnapshot) {
-            LOG(Plugins, "%p Plug-in looks similar to a restarted plug-in. Restart.", plugInToRestart.ptr());
+            LOG(Plugins, "%p Plug-in looks similar to a restarted plug-in. Restart.", plugInToRestart);
             plugInToRestart->restartSnapshottedPlugIn();
         }
         plugInToRestart->m_snapshotDecision = NeverSnapshot;

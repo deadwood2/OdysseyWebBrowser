@@ -142,7 +142,9 @@ void MarkedSpace::resetAllocators()
     m_normalSpace.largeAllocator.reset();
     m_destructorSpace.largeAllocator.reset();
 
+#if ENABLE(GGC)
     m_blocksWithNewObjects.clear();
+#endif
 }
 
 void MarkedSpace::visitWeakSets(HeapRootVisitor& heapRootVisitor)

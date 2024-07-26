@@ -133,8 +133,10 @@ RetainPtr<CFDictionaryRef> LegacyWebArchive::createPropertyListRepresentation(Ar
     CFDictionarySetValue(propertyList.get(), LegacyWebArchiveMainResourceKey, mainResourceDict.get());
 
     RetainPtr<CFMutableArrayRef> subresourcesArray = adoptCF(CFArrayCreateMutable(0, archive->subresources().size(), &kCFTypeArrayCallBacks));
-    for (auto& resource : archive->subresources()) {
-        if (RetainPtr<CFDictionaryRef> subresource = createPropertyListRepresentation(resource.get(), Subresource))
+    const Vector<RefPtr<ArchiveResource>>& subresources(archive->subresources());
+    for (unsigned i = 0; i < subresources.size(); ++i) {
+        RetainPtr<CFDictionaryRef> subresource = createPropertyListRepresentation(subresources[i].get(), Subresource);
+        if (subresource)
             CFArrayAppendValue(subresourcesArray.get(), subresource.get());
         else
             LOG(Archives, "LegacyWebArchive - Failed to create property list for subresource");
@@ -143,8 +145,10 @@ RetainPtr<CFDictionaryRef> LegacyWebArchive::createPropertyListRepresentation(Ar
         CFDictionarySetValue(propertyList.get(), LegacyWebArchiveSubresourcesKey, subresourcesArray.get());
 
     RetainPtr<CFMutableArrayRef> subframesArray = adoptCF(CFArrayCreateMutable(0, archive->subframeArchives().size(), &kCFTypeArrayCallBacks));
-    for (auto& subframe : archive->subframeArchives()) {
-        if (RetainPtr<CFDictionaryRef> subframeArchive = createPropertyListRepresentation(subframe.get()))
+    const Vector<RefPtr<Archive>>& subframeArchives(archive->subframeArchives());
+    for (unsigned i = 0; i < subframeArchives.size(); ++i) {
+        RetainPtr<CFDictionaryRef> subframeArchive = createPropertyListRepresentation(subframeArchives[i].get());
+        if (subframeArchive)
             CFArrayAppendValue(subframesArray.get(), subframeArchive.get());
         else
             LOG(Archives, "LegacyWebArchive - Failed to create property list for subframe archive");
@@ -242,12 +246,12 @@ PassRefPtr<LegacyWebArchive> LegacyWebArchive::create(PassRefPtr<ArchiveResource
     RefPtr<LegacyWebArchive> archive = create();
     archive->setMainResource(mainResource);
     
-    for (auto& subresource : subresources)
-        archive->addSubresource(WTF::move(subresource));
-
-    for (auto& subframeArchive : subframeArchives)
-        archive->addSubframeArchive(WTF::move(subframeArchive));
-
+    for (unsigned i = 0; i < subresources.size(); ++i)
+        archive->addSubresource(WTF::move(subresources[i]));
+    
+    for (unsigned i = 0; i < subframeArchives.size(); ++i)
+        archive->addSubframeArchive(WTF::move(subframeArchives[i]));
+        
     return archive.release();
 }
 
@@ -472,8 +476,12 @@ PassRefPtr<LegacyWebArchive> LegacyWebArchive::create(Range* range)
 {
     if (!range)
         return nullptr;
+    
+    Node* startContainer = range->startContainer();
+    if (!startContainer)
+        return nullptr;
         
-    Document& document = range->startContainer().document();
+    Document& document = startContainer->document();
 
     Frame* frame = document.frame();
     if (!frame)

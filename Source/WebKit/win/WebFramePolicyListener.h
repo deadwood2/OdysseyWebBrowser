@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2007 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -45,24 +45,23 @@ protected:
 
 public:
     // IUnknown
-    virtual HRESULT STDMETHODCALLTYPE QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject);
-    virtual ULONG STDMETHODCALLTYPE AddRef();
-    virtual ULONG STDMETHODCALLTYPE Release();
+    virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject);
+    virtual ULONG STDMETHODCALLTYPE AddRef(void);
+    virtual ULONG STDMETHODCALLTYPE Release(void);
 
     // IWebPolicyDecisionListener
-    virtual HRESULT STDMETHODCALLTYPE use();
-    virtual HRESULT STDMETHODCALLTYPE download();
-    virtual HRESULT STDMETHODCALLTYPE ignore();
+    virtual HRESULT STDMETHODCALLTYPE use(void);
+    virtual HRESULT STDMETHODCALLTYPE download(void);
+    virtual HRESULT STDMETHODCALLTYPE ignore(void);
 
     // IWebFormSubmissionListener
-    virtual HRESULT STDMETHODCALLTYPE continueSubmit();
+    virtual HRESULT STDMETHODCALLTYPE continueSubmit(void);
 
     // WebFramePolicyListener
     void receivedPolicyDecision(WebCore::PolicyAction);
     void invalidate();
-
 private:
-    ULONG m_refCount { 0 };
+    ULONG m_refCount;
     RefPtr<WebCore::Frame> m_frame;
 };
 

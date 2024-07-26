@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
- * Copyright (C) 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -37,7 +36,7 @@
 #include <inspector/InjectedScript.h>
 #include <inspector/InjectedScriptManager.h>
 #include <inspector/ScriptDebugServer.h>
-#include <wtf/Lock.h>
+#include <mutex>
 #include <wtf/MessageQueue.h>
 #include <wtf/NeverDestroyed.h>
 
@@ -47,7 +46,17 @@ namespace WebCore {
 
 namespace {
 
-StaticLock workerDebuggerAgentsMutex;
+std::mutex& workerDebuggerAgentsMutex()
+{
+    static std::once_flag onceFlag;
+    static LazyNeverDestroyed<std::mutex> mutex;
+
+    std::call_once(onceFlag, []{
+        mutex.construct();
+    });
+
+    return mutex;
+}
 
 typedef HashMap<WorkerThread*, WorkerDebuggerAgent*> WorkerDebuggerAgents;
 
@@ -81,29 +90,29 @@ private:
 
 const char* WorkerDebuggerAgent::debuggerTaskMode = "debugger";
 
-WorkerDebuggerAgent::WorkerDebuggerAgent(WorkerAgentContext& context)
-    : WebDebuggerAgent(context)
-    , m_scriptDebugServer(context.workerGlobalScope, WorkerDebuggerAgent::debuggerTaskMode)
-    , m_inspectedWorkerGlobalScope(context.workerGlobalScope)
+WorkerDebuggerAgent::WorkerDebuggerAgent(InjectedScriptManager* injectedScriptManager, InstrumentingAgents* instrumentingAgents, WorkerGlobalScope* inspectedWorkerGlobalScope)
+    : WebDebuggerAgent(injectedScriptManager, instrumentingAgents)
+    , m_scriptDebugServer(inspectedWorkerGlobalScope, WorkerDebuggerAgent::debuggerTaskMode)
+    , m_inspectedWorkerGlobalScope(inspectedWorkerGlobalScope)
 {
-    std::lock_guard<StaticLock> lock(workerDebuggerAgentsMutex);
-    workerDebuggerAgents().set(&context.workerGlobalScope.thread(), this);
+    std::lock_guard<std::mutex> lock(workerDebuggerAgentsMutex());
+    workerDebuggerAgents().set(&inspectedWorkerGlobalScope->thread(), this);
 }
 
 WorkerDebuggerAgent::~WorkerDebuggerAgent()
 {
-    std::lock_guard<StaticLock> lock(workerDebuggerAgentsMutex);
+    std::lock_guard<std::mutex> lock(workerDebuggerAgentsMutex());
 
-    ASSERT(workerDebuggerAgents().contains(&m_inspectedWorkerGlobalScope.thread()));
-    workerDebuggerAgents().remove(&m_inspectedWorkerGlobalScope.thread());
+    ASSERT(workerDebuggerAgents().contains(&m_inspectedWorkerGlobalScope->thread()));
+    workerDebuggerAgents().remove(&m_inspectedWorkerGlobalScope->thread());
 }
 
 void WorkerDebuggerAgent::interruptAndDispatchInspectorCommands(WorkerThread* thread)
 {
-    std::lock_guard<StaticLock> lock(workerDebuggerAgentsMutex);
+    std::lock_guard<std::mutex> lock(workerDebuggerAgentsMutex());
 
     if (WorkerDebuggerAgent* agent = workerDebuggerAgents().get(thread))
-        agent->m_scriptDebugServer.interruptAndRunTask(std::make_unique<RunInspectorCommandsTask>(thread, &agent->m_inspectedWorkerGlobalScope));
+        agent->m_scriptDebugServer.interruptAndRunTask(std::make_unique<RunInspectorCommandsTask>(thread, agent->m_inspectedWorkerGlobalScope));
 }
 
 void WorkerDebuggerAgent::startListeningScriptDebugServer()
@@ -118,7 +127,7 @@ void WorkerDebuggerAgent::stopListeningScriptDebugServer(bool isBeingDestroyed)
 
 void WorkerDebuggerAgent::breakpointActionLog(JSC::ExecState*, const String& message)
 {
-    m_inspectedWorkerGlobalScope.addConsoleMessage(MessageSource::JS, MessageLevel::Log, message);
+    m_inspectedWorkerGlobalScope->addConsoleMessage(MessageSource::JS, MessageLevel::Log, message);
 }
 
 WorkerScriptDebugServer& WorkerDebuggerAgent::scriptDebugServer()
@@ -133,8 +142,8 @@ InjectedScript WorkerDebuggerAgent::injectedScriptForEval(ErrorString& error, co
         return InjectedScript();
     }
 
-    JSC::ExecState* scriptState = execStateFromWorkerGlobalScope(&m_inspectedWorkerGlobalScope);
-    return injectedScriptManager().injectedScriptFor(scriptState);
+    JSC::ExecState* scriptState = execStateFromWorkerGlobalScope(m_inspectedWorkerGlobalScope);
+    return injectedScriptManager()->injectedScriptFor(scriptState);
 }
 
 void WorkerDebuggerAgent::muteConsole()

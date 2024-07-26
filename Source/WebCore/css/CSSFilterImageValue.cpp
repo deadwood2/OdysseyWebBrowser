@@ -50,7 +50,7 @@ CSSFilterImageValue::~CSSFilterImageValue()
 String CSSFilterImageValue::customCSSText() const
 {
     StringBuilder result;
-    result.appendLiteral("filter(");
+    result.appendLiteral("-webkit-filter(");
     result.append(m_imageValue->cssText());
     result.appendLiteral(", ");
     result.append(m_filterValue->cssText());
@@ -99,7 +99,7 @@ void CSSFilterImageValue::loadSubimages(CachedResourceLoader& cachedResourceLoad
     m_filterSubimageObserver.setReady(true);
 }
 
-RefPtr<Image> CSSFilterImageValue::image(RenderElement* renderer, const FloatSize& size)
+PassRefPtr<Image> CSSFilterImageValue::image(RenderElement* renderer, const FloatSize& size)
 {
     if (size.isEmpty())
         return nullptr;
@@ -120,17 +120,15 @@ RefPtr<Image> CSSFilterImageValue::image(RenderElement* renderer, const FloatSiz
         return Image::nullImage();
 
     // Transform Image into ImageBuffer.
-    // FIXME (149424): This buffer should not be unconditionally unaccelerated.
-    std::unique_ptr<ImageBuffer> texture = ImageBuffer::create(size, Unaccelerated);
+    std::unique_ptr<ImageBuffer> texture = ImageBuffer::create(size);
     if (!texture)
         return Image::nullImage();
-    FloatRect imageRect = FloatRect(FloatPoint(), size);
-    texture->context().drawImage(image, ColorSpaceDeviceRGB, imageRect);
+    texture->context()->drawImage(image, ColorSpaceDeviceRGB, IntPoint());
 
     RefPtr<FilterEffectRenderer> filterRenderer = FilterEffectRenderer::create();
     filterRenderer->setSourceImage(WTF::move(texture));
-    filterRenderer->setSourceImageRect(imageRect);
-    filterRenderer->setFilterRegion(imageRect);
+    filterRenderer->setSourceImageRect(FloatRect(FloatPoint(), size));
+    filterRenderer->setFilterRegion(FloatRect(FloatPoint(), size));
     if (!filterRenderer->build(renderer, m_filterOperations, FilterFunction))
         return Image::nullImage();
     filterRenderer->apply();

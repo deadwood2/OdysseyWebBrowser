@@ -30,7 +30,7 @@
 ] interface CSSStyleDeclaration {
     [TreatReturnedNullStringAs=Null, TreatNullAs=NullString, SetterRaisesException] attribute DOMString cssText;
 
-    DOMString getPropertyValue([Default=Undefined] DOMString propertyName);
+    [TreatReturnedNullStringAs=Null] DOMString          getPropertyValue([Default=Undefined] optional DOMString propertyName);
     [Custom] CSSValue           getPropertyCSSValue([Default=Undefined] optional DOMString propertyName);
     [TreatReturnedNullStringAs=Null, RaisesException] DOMString          removeProperty([Default=Undefined] optional DOMString propertyName);
     [TreatReturnedNullStringAs=Null] DOMString          getPropertyPriority([Default=Undefined] optional DOMString propertyName);

@@ -110,7 +110,7 @@ private:
     JSValue toJSON(JSValue, const PropertyNameForFunctionCall&);
     JSValue toJSONImpl(JSValue, const PropertyNameForFunctionCall&);
 
-    enum StringifyResult { StringifyFailed, StringifySucceeded, StringifyFailedDueToUndefinedOrSymbolValue };
+    enum StringifyResult { StringifyFailed, StringifySucceeded, StringifyFailedDueToUndefinedValue };
     StringifyResult appendStringifiedValue(StringBuilder&, JSValue, JSObject* holder, const PropertyNameForFunctionCall&);
 
     bool willIndent() const;
@@ -144,9 +144,6 @@ static inline JSValue unwrapBoxedPrimitive(ExecState* exec, JSValue value)
         return object->toString(exec);
     if (object->inherits(BooleanObject::info()))
         return object->toPrimitive(exec);
-
-    // Do not unwrap SymbolObject to Symbol. It is not performed in the spec.
-    // http://www.ecma-international.org/ecma-262/6.0/#sec-serializejsonproperty
     return value;
 }
 
@@ -302,8 +299,8 @@ Stringifier::StringifyResult Stringifier::appendStringifiedValue(StringBuilder& 
             return StringifyFailed;
     }
 
-    if ((value.isUndefined() || value.isSymbol()) && !holder->inherits(JSArray::info()))
-        return StringifyFailedDueToUndefinedOrSymbolValue;
+    if (value.isUndefined() && !holder->inherits(JSArray::info()))
+        return StringifyFailedDueToUndefinedValue;
 
     if (value.isNull()) {
         builder.appendLiteral("null");
@@ -352,7 +349,7 @@ Stringifier::StringifyResult Stringifier::appendStringifiedValue(StringBuilder& 
             builder.appendLiteral("null");
             return StringifySucceeded;
         }
-        return StringifyFailedDueToUndefinedOrSymbolValue;
+        return StringifyFailedDueToUndefinedValue;
     }
 
     // Handle cycle detection, and put the holder on the stack.
@@ -517,10 +514,10 @@ bool Stringifier::Holder::appendNextProperty(Stringifier& stringifier, StringBui
             break;
         case StringifySucceeded:
             break;
-        case StringifyFailedDueToUndefinedOrSymbolValue:
-            // This only occurs when get an undefined value or a symbol value for
-            // an object property. In this case we don't want the separator and
-            // property name that we already appended, so roll back.
+        case StringifyFailedDueToUndefinedValue:
+            // This only occurs when get an undefined value for an object property.
+            // In this case we don't want the separator and property name that we
+            // already appended, so roll back.
             builder.resize(rollBackPoint);
             break;
     }

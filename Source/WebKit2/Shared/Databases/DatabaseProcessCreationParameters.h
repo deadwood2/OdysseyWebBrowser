@@ -30,7 +30,7 @@
 #include "SandboxExtension.h"
 #include <wtf/text/WTFString.h>
 
-#if ENABLE(DATABASE_PROCESS)
+#if ENABLE(INDEXED_DATABASE) && ENABLE(DATABASE_PROCESS)
 
 namespace IPC {
 class ArgumentDecoder;
@@ -45,13 +45,11 @@ struct DatabaseProcessCreationParameters {
     void encode(IPC::ArgumentEncoder&) const;
     static bool decode(IPC::ArgumentDecoder&, DatabaseProcessCreationParameters&);
 
-#if ENABLE(INDEXED_DATABASE)
     String indexedDatabaseDirectory;
     SandboxExtension::Handle indexedDatabaseDirectoryExtensionHandle;
-#endif
 };
 
 } // namespace WebKit
 
-#endif // ENABLE(DATABASE_PROCESS)
+#endif // ENABLE(INDEXED_DATABASE) && ENABLE(DATABASE_PROCESS)
 #endif // DatabaseProcessCreationParameters_h

@@ -177,12 +177,8 @@ WebInspector.ObjectPreviewView = class ObjectPreviewView extends WebInspector.Ob
             overflow = true;
         }
 
-        if (overflow) {
-            if (limit > 0)
-                element.append(", ");
-            element.append("\u2026");
-        }
-
+        if (overflow)
+            element.append(", \u2026");
         element.append(isIterator ? "]" : "}");
 
         return lossless;
@@ -242,12 +238,8 @@ WebInspector.ObjectPreviewView = class ObjectPreviewView extends WebInspector.Ob
             overflow = true;
         }
 
-        if (overflow) {
-            if (limit > 0)
-                element.append(", ");
-            element.append("\u2026");
-        }
-
+        if (overflow)
+            element.append(", \u2026");
         element.append(isArray ? "]" : "}");
 
         return lossless;

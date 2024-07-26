@@ -39,7 +39,7 @@ public:
 protected:
     SQLTransactionStateMachine();
 
-    typedef void (T::*StateFunction)();
+    typedef SQLTransactionState (T::* StateFunction)();
     virtual StateFunction stateFunctionFor(SQLTransactionState) = 0;
 
     void setStateToRequestedState();
@@ -90,22 +90,17 @@ template<typename T>
 void SQLTransactionStateMachine<T>::runStateMachine()
 {
     ASSERT(SQLTransactionState::End < SQLTransactionState::Idle);
-
-    if (m_nextState <= SQLTransactionState::Idle)
-        return;
-
-    ASSERT(m_nextState < SQLTransactionState::NumberOfStates);
-
-    StateFunction stateFunction = stateFunctionFor(m_nextState);
-    ASSERT(stateFunction);
+    while (m_nextState > SQLTransactionState::Idle) {
+        ASSERT(m_nextState < SQLTransactionState::NumberOfStates);
+        StateFunction stateFunction = stateFunctionFor(m_nextState);
+        ASSERT(stateFunction);
 
 #ifndef NDEBUG
-    m_stateAuditTrail[m_nextStateAuditEntry] = m_nextState;
-    m_nextStateAuditEntry = (m_nextStateAuditEntry + 1) % s_sizeOfStateAuditTrail;
+        m_stateAuditTrail[m_nextStateAuditEntry] = m_nextState;
+        m_nextStateAuditEntry = (m_nextStateAuditEntry + 1) % s_sizeOfStateAuditTrail;
 #endif
-
-    (static_cast<T*>(this)->*stateFunction)();
-    m_nextState = SQLTransactionState::Idle;
+        m_nextState = (static_cast<T*>(this)->*stateFunction)();
+    }
 }
 
 } // namespace WebCore

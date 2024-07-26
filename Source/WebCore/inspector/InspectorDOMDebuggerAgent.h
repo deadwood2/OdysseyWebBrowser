@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
- * Copyright (C) 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -47,6 +46,7 @@ namespace WebCore {
 
 class Element;
 class InspectorDOMAgent;
+class InstrumentingAgents;
 class Node;
 
 typedef String ErrorString;
@@ -55,7 +55,7 @@ class InspectorDOMDebuggerAgent final : public InspectorAgentBase, public Inspec
     WTF_MAKE_NONCOPYABLE(InspectorDOMDebuggerAgent);
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    InspectorDOMDebuggerAgent(WebAgentContext&, InspectorDOMAgent*, Inspector::InspectorDebuggerAgent*);
+    InspectorDOMDebuggerAgent(InstrumentingAgents*, InspectorDOMAgent*, Inspector::InspectorDebuggerAgent*);
     virtual ~InspectorDOMDebuggerAgent();
 
     // DOMDebugger API
@@ -78,7 +78,7 @@ public:
     void willSendXMLHttpRequest(const String& url);
     void pauseOnNativeEventIfNeeded(bool isDOMEvent, const String& eventName, bool synchronous);
 
-    virtual void didCreateFrontendAndBackend(Inspector::FrontendRouter*, Inspector::BackendDispatcher*) override;
+    virtual void didCreateFrontendAndBackend(Inspector::FrontendChannel*, Inspector::BackendDispatcher*) override;
     virtual void willDestroyFrontendAndBackend(Inspector::DisconnectReason) override;
     virtual void discardAgent() override;
 
@@ -99,15 +99,14 @@ private:
 
     void clear();
 
+    InspectorDOMAgent* m_domAgent;
+    Inspector::InspectorDebuggerAgent* m_debuggerAgent;
     RefPtr<Inspector::DOMDebuggerBackendDispatcher> m_backendDispatcher;
-    InspectorDOMAgent* m_domAgent { nullptr };
-    Inspector::InspectorDebuggerAgent* m_debuggerAgent { nullptr };
-
     HashMap<Node*, uint32_t> m_domBreakpoints;
     HashSet<String> m_eventListenerBreakpoints;
     HashSet<String> m_xhrBreakpoints;
-    bool m_pauseInNextEventListener { false };
-    bool m_pauseOnAllXHRsEnabled { false };
+    bool m_pauseInNextEventListener;
+    bool m_pauseOnAllXHRsEnabled;
 };
 
 } // namespace WebCore

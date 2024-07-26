@@ -340,7 +340,7 @@ bool CSSParser::parseSVGValue(CSSPropertyID propId, bool important)
     return true;
 }
 
-RefPtr<CSSValue> CSSParser::parseSVGStrokeDasharray()
+PassRefPtr<CSSValue> CSSParser::parseSVGStrokeDasharray()
 {
     RefPtr<CSSValueList> ret = CSSValueList::createCommaSeparated();
     CSSParserValue* value = m_valueList->current();
@@ -361,10 +361,10 @@ RefPtr<CSSValue> CSSParser::parseSVGStrokeDasharray()
     }
     if (!valid_primitive)
         return nullptr;
-    return ret;
+    return ret.release();
 }
 
-RefPtr<CSSValue> CSSParser::parseSVGPaint()
+PassRefPtr<CSSValue> CSSParser::parseSVGPaint()
 {
     RGBA32 c = Color::transparent;
     if (!parseColorFromValue(*m_valueList->current(), c))
@@ -372,15 +372,15 @@ RefPtr<CSSValue> CSSParser::parseSVGPaint()
     return SVGPaint::createColor(Color(c));
 }
 
-RefPtr<CSSValue> CSSParser::parseSVGColor()
+PassRefPtr<CSSValue> CSSParser::parseSVGColor()
 {
     RGBA32 c = Color::transparent;
     if (!parseColorFromValue(*m_valueList->current(), c))
-        return nullptr;
+        return 0;
     return SVGColor::createFromColor(Color(c));
 }
 
-RefPtr<CSSValue> CSSParser::parsePaintOrder()
+PassRefPtr<CSSValue> CSSParser::parsePaintOrder()
 {
     CSSParserValue* value = m_valueList->current();
 
@@ -426,7 +426,7 @@ RefPtr<CSSValue> CSSParser::parsePaintOrder()
     default:
         ASSERT_NOT_REACHED();
     }
-    return paintOrderList;
+    return paintOrderList.release();
 }
 
 }

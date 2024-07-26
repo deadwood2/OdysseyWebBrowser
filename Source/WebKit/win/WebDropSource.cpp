@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2015 Apple Inc.  All rights reserved.
+ * Copyright (C) 2007 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -51,7 +51,9 @@ HRESULT WebDropSource::createInstance(WebView* webView, IDropSource** result)
 }
 
 WebDropSource::WebDropSource(WebView* webView)
-    : m_webView(webView)
+: m_ref(1)
+, m_dropped(false) 
+, m_webView(webView)
 {
     gClassCount++;
     gClassNameCount().add("WebDropSource");
@@ -63,11 +65,9 @@ WebDropSource::~WebDropSource()
     gClassNameCount().remove("WebDropSource");
 }
 
-STDMETHODIMP WebDropSource::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void** ppvObject)
+STDMETHODIMP WebDropSource::QueryInterface(REFIID riid, void** ppvObject)
 {
-    if (!ppvObject)
-        return E_POINTER;
-    *ppvObject = nullptr;
+    *ppvObject = 0;
     if (IsEqualIID(riid, IID_IUnknown) || 
         IsEqualIID(riid, IID_IDropSource)) {
         *ppvObject = this;
@@ -79,12 +79,12 @@ STDMETHODIMP WebDropSource::QueryInterface(_In_ REFIID riid, _COM_Outptr_ void**
     return E_NOINTERFACE;
 }
 
-STDMETHODIMP_(ULONG) WebDropSource::AddRef()
+STDMETHODIMP_(ULONG) WebDropSource::AddRef(void)
 {
     return InterlockedIncrement(&m_ref);
 }
 
-STDMETHODIMP_(ULONG) WebDropSource::Release()
+STDMETHODIMP_(ULONG) WebDropSource::Release(void)
 {
     long c = InterlockedDecrement(&m_ref);
     if (c == 0)
@@ -104,7 +104,7 @@ PlatformMouseEvent generateMouseEvent(WebView* webView, bool isDrag)
         isDrag ? LeftButton : NoButton, PlatformEvent::MouseMoved, 0, false, false, false, false, currentTime(), 0);
 }
 
-STDMETHODIMP WebDropSource::QueryContinueDrag(_In_ BOOL fEscapePressed, _In_ DWORD grfKeyState)
+STDMETHODIMP WebDropSource::QueryContinueDrag(BOOL fEscapePressed, DWORD grfKeyState)
 {
     if (fEscapePressed || !(grfKeyState & (MK_LBUTTON|MK_RBUTTON))) {
         m_dropped = !fEscapePressed;
@@ -114,7 +114,7 @@ STDMETHODIMP WebDropSource::QueryContinueDrag(_In_ BOOL fEscapePressed, _In_ DWO
     return S_OK;
 }
 
-STDMETHODIMP WebDropSource::GiveFeedback(_In_ DWORD dwEffect)
+STDMETHODIMP WebDropSource::GiveFeedback(DWORD dwEffect)
 {
     BOOL showCustomCursors;
     if (FAILED(WebPreferences::sharedStandardPreferences()->customDragCursorsEnabled(&showCustomCursors)))

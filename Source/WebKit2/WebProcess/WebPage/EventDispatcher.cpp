@@ -54,7 +54,7 @@ Ref<EventDispatcher> EventDispatcher::create()
 
 EventDispatcher::EventDispatcher()
     : m_queue(WorkQueue::create("com.apple.WebKit.EventDispatcher", WorkQueue::Type::Serial, WorkQueue::QOS::UserInteractive))
-    , m_recentWheelEventDeltaFilter(WheelEventDeltaFilter::create())
+    , m_recentWheelEventDeltaTracker(std::make_unique<WheelEventDeltaTracker>())
 {
 }
 
@@ -65,7 +65,7 @@ EventDispatcher::~EventDispatcher()
 #if ENABLE(ASYNC_SCROLLING)
 void EventDispatcher::addScrollingTreeForPage(WebPage* webPage)
 {
-    LockHolder locker(m_scrollingTreesMutex);
+    MutexLocker locker(m_scrollingTreesMutex);
 
     ASSERT(webPage->corePage()->scrollingCoordinator());
     ASSERT(!m_scrollingTrees.contains(webPage->pageID()));
@@ -76,7 +76,7 @@ void EventDispatcher::addScrollingTreeForPage(WebPage* webPage)
 
 void EventDispatcher::removeScrollingTreeForPage(WebPage* webPage)
 {
-    LockHolder locker(m_scrollingTreesMutex);
+    MutexLocker locker(m_scrollingTreesMutex);
     ASSERT(m_scrollingTrees.contains(webPage->pageID()));
 
     m_scrollingTrees.remove(webPage->pageID());
@@ -88,6 +88,19 @@ void EventDispatcher::initializeConnection(IPC::Connection* connection)
     connection->addWorkQueueMessageReceiver(Messages::EventDispatcher::messageReceiverName(), &m_queue.get(), this);
 }
 
+#if ENABLE(CSS_SCROLL_SNAP) || ENABLE(RUBBER_BANDING)
+static void updateWheelEventTestTriggersIfNeeded(uint64_t pageID)
+{
+    WebPage* webPage = WebProcess::singleton().webPage(pageID);
+    Page* page = webPage ? webPage->corePage() : nullptr;
+
+    if (!page || !page->expectsWheelEventTriggers())
+        return;
+
+    page->testTrigger()->deferTestsForReason(reinterpret_cast<WheelEventTestTrigger::ScrollableAreaIdentifier>(page), WheelEventTestTrigger::ScrollingThreadSyncNeeded);
+}
+#endif
+
 void EventDispatcher::wheelEvent(uint64_t pageID, const WebWheelEvent& wheelEvent, bool canRubberBandAtLeft, bool canRubberBandAtRight, bool canRubberBandAtTop, bool canRubberBandAtBottom)
 {
     PlatformWheelEvent platformWheelEvent = platform(wheelEvent);
@@ -95,24 +108,31 @@ void EventDispatcher::wheelEvent(uint64_t pageID, const WebWheelEvent& wheelEven
 #if PLATFORM(COCOA)
     switch (wheelEvent.phase()) {
     case PlatformWheelEventPhaseBegan:
-        m_recentWheelEventDeltaFilter->beginFilteringDeltas();
+        m_recentWheelEventDeltaTracker->beginTrackingDeltas();
         break;
     case PlatformWheelEventPhaseEnded:
-        m_recentWheelEventDeltaFilter->endFilteringDeltas();
+        m_recentWheelEventDeltaTracker->endTrackingDeltas();
         break;
     default:
         break;
     }
 
-    if (m_recentWheelEventDeltaFilter->isFilteringDeltas()) {
-        m_recentWheelEventDeltaFilter->updateFromDelta(FloatSize(platformWheelEvent.deltaX(), platformWheelEvent.deltaY()));
-        FloatSize filteredDelta = m_recentWheelEventDeltaFilter->filteredDelta();
-        platformWheelEvent = platformWheelEvent.copyWithDeltas(filteredDelta.width(), filteredDelta.height());
+    if (m_recentWheelEventDeltaTracker->isTrackingDeltas()) {
+        m_recentWheelEventDeltaTracker->recordWheelEventDelta(platformWheelEvent);
+
+        DominantScrollGestureDirection dominantDirection = DominantScrollGestureDirection::None;
+        dominantDirection = m_recentWheelEventDeltaTracker->dominantScrollGestureDirection();
+
+        // Workaround for scrolling issues <rdar://problem/14758615>.
+        if (dominantDirection == DominantScrollGestureDirection::Vertical && platformWheelEvent.deltaX())
+            platformWheelEvent = platformWheelEvent.copyIgnoringHorizontalDelta();
+        else if (dominantDirection == DominantScrollGestureDirection::Horizontal && platformWheelEvent.deltaY())
+            platformWheelEvent = platformWheelEvent.copyIgnoringVerticalDelta();
     }
 #endif
 
 #if ENABLE(ASYNC_SCROLLING)
-    LockHolder locker(m_scrollingTreesMutex);
+    MutexLocker locker(m_scrollingTreesMutex);
     if (RefPtr<ThreadedScrollingTree> scrollingTree = m_scrollingTrees.get(pageID)) {
         // FIXME: It's pretty horrible that we're updating the back/forward state here.
         // WebCore should always know the current state and know when it changes so the
@@ -125,6 +145,11 @@ void EventDispatcher::wheelEvent(uint64_t pageID, const WebWheelEvent& wheelEven
         }
 
         ScrollingTree::EventResult result = scrollingTree->tryToHandleWheelEvent(platformWheelEvent);
+
+#if ENABLE(CSS_SCROLL_SNAP) || ENABLE(RUBBER_BANDING)
+        if (result == ScrollingTree::DidHandleEvent)
+            updateWheelEventTestTriggersIfNeeded(pageID);
+#endif
 
         if (result == ScrollingTree::DidHandleEvent || result == ScrollingTree::DidNotHandleEvent) {
             sendDidReceiveEvent(pageID, wheelEvent, result == ScrollingTree::DidHandleEvent);
@@ -147,13 +172,13 @@ void EventDispatcher::wheelEvent(uint64_t pageID, const WebWheelEvent& wheelEven
 #if ENABLE(IOS_TOUCH_EVENTS)
 void EventDispatcher::clearQueuedTouchEventsForPage(const WebPage& webPage)
 {
-    LockHolder locker(&m_touchEventsLock);
+    SpinLockHolder locker(&m_touchEventsLock);
     m_touchEvents.remove(webPage.pageID());
 }
 
 void EventDispatcher::getQueuedTouchEventsForPage(const WebPage& webPage, TouchEventQueue& destinationQueue)
 {
-    LockHolder locker(&m_touchEventsLock);
+    SpinLockHolder locker(&m_touchEventsLock);
     destinationQueue = m_touchEvents.take(webPage.pageID());
 }
 
@@ -161,7 +186,7 @@ void EventDispatcher::touchEvent(uint64_t pageID, const WebKit::WebTouchEvent& t
 {
     bool updateListWasEmpty;
     {
-        LockHolder locker(&m_touchEventsLock);
+        SpinLockHolder locker(&m_touchEventsLock);
         updateListWasEmpty = m_touchEvents.isEmpty();
         auto addResult = m_touchEvents.add(pageID, TouchEventQueue());
         if (addResult.isNewEntry)
@@ -192,7 +217,7 @@ void EventDispatcher::dispatchTouchEvents()
 {
     HashMap<uint64_t, TouchEventQueue> localCopy;
     {
-        LockHolder locker(&m_touchEventsLock);
+        SpinLockHolder locker(&m_touchEventsLock);
         localCopy.swap(m_touchEvents);
     }
 

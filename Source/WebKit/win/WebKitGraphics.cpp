@@ -52,7 +52,7 @@ static FontCascade makeFont(const WebFontDescription& description)
 
     String fontFamilyString(description.family, description.familyLength);
 
-    FontCascadeDescription f;
+    FontDescription f;
     f.setOneFamily(fontFamilyString);
     f.setSpecifiedSize(description.size);
     f.setComputedSize(description.size);

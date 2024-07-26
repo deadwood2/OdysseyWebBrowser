@@ -43,6 +43,10 @@ void InjectedBundlePage::platformDidStartProvisionalLoadForFrame(WKBundleFrameRe
         return;
 
     setCrashReportApplicationSpecificInformationToURL(InjectedBundle::singleton().testRunner()->testURL());
+
+#if PLATFORM(IOS)
+    WKBundlePageSetUseTestingViewportConfiguration(page(), true);
+#endif
 }
 
 String InjectedBundlePage::platformResponseMimeType(WKURLResponseRef response)

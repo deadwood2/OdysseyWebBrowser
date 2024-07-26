@@ -46,7 +46,7 @@
 .source-code.text-editor > .CodeMirror .issue-widget.inline {
     position: relative;
     top: -13px;
-    height: 13px;
+
     padding: 0px 5px 0 3px;
     border-bottom-left-radius: 0;
 }
@@ -117,10 +117,14 @@
 
 .source-code.text-editor > .CodeMirror .issue-widget.inline > .text {
     display: inline-block;
+
     max-width: 300px;
-    vertical-align: baseline;
+    height: 12px;
+    padding-top: 1px;
+
     text-overflow: ellipsis;
     white-space: nowrap;
+    overflow: hidden;
 }
 
 .popover .debugger-popover-content {
@@ -176,7 +180,8 @@
     width: 16px;
     height: 16px;
     content: -webkit-image-set(url(../Images/ColorIcon.png) 1x, url(../Images/ColorIcon@2x.png) 2x);
-    transform: translateY(0.5px);
+
+    -webkit-transform: translateY(1px);
 }
 
 @media (-webkit-min-device-pixel-ratio: 2) {

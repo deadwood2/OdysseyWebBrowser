@@ -66,7 +66,7 @@ public:
     
     String mediaText() const;
 
-    Ref<MediaQuerySet> copy() const { return adoptRef(*new MediaQuerySet(*this)); }
+    PassRefPtr<MediaQuerySet> copy() const { return adoptRef(new MediaQuerySet(*this)); }
 
 private:
     MediaQuerySet();

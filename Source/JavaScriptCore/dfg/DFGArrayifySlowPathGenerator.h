@@ -113,7 +113,6 @@ protected:
         }
         for (unsigned i = m_plans.size(); i--;)
             jit->silentFill(m_plans[i], GPRInfo::regT0);
-        jit->m_jit.exceptionCheck();
         
         if (m_op == ArrayifyToStructure) {
             ASSERT(m_structure);

@@ -27,7 +27,7 @@ WebInspector.ComputedStyleDetailsPanel = class ComputedStyleDetailsPanel extends
 {
     constructor(delegate)
     {
-        super(delegate, WebInspector.ComputedStyleDetailsPanel.StyleClassName, "computed", WebInspector.UIString("Styles \u2014 Computed"));
+        super(delegate, WebInspector.ComputedStyleDetailsPanel.StyleClassName, "computed", WebInspector.UIString("Computed"));
 
         this._computedStyleShowAllSetting = new WebInspector.Setting("computed-style-show-all", false);
 
@@ -88,13 +88,6 @@ WebInspector.ComputedStyleDetailsPanel = class ComputedStyleDetailsPanel extends
         this.element.appendChild(this._containerRegionsFlowSection.element);
 
         this._resetFlowDetails();
-
-        this._boxModelDiagramRow = new WebInspector.BoxModelDetailsSectionRow;
-
-        var boxModelGroup = new WebInspector.DetailsSectionGroup([this._boxModelDiagramRow]);
-        var boxModelSection = new WebInspector.DetailsSection("style-box-model", WebInspector.UIString("Box Model"), [boxModelGroup]);
-
-        this.element.appendChild(boxModelSection.element);
         
         this.cssStyleDeclarationTextEditorShouldAddPropertyGoToArrows = true;
     }
@@ -154,18 +147,10 @@ WebInspector.ComputedStyleDetailsPanel = class ComputedStyleDetailsPanel extends
             this._delegate.computedStyleDetailsPanelShowProperty(property);
     }
 
-    refresh(significantChange)
+    refresh()
     {
-        // We only need to do a rebuild on significant changes. Other changes are handled
-        // by the sections and text editors themselves.
-        if (!significantChange) {
-            super.refresh();
-            return;
-        }
-
         this._propertiesTextEditor.style = this.nodeStyles.computedStyle;
         this._refreshFlowDetails(this.nodeStyles.node);
-        this._boxModelDiagramRow.nodeStyles = this.nodeStyles;
 
         super.refresh();
     }

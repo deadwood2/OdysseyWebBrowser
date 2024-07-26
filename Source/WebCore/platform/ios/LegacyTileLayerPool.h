@@ -33,7 +33,6 @@
 #include "Timer.h"
 #include <wtf/Deque.h>
 #include <wtf/HashMap.h>
-#include <wtf/Lock.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/Threading.h>
@@ -76,7 +75,7 @@ private:
     Vector<IntSize> m_sizesInPruneOrder;
     unsigned m_totalBytes;
     unsigned m_capacity;
-    Lock m_layerPoolMutex;
+    Mutex m_layerPoolMutex;
 
     double m_lastAddTime;
     bool m_needsPrune;

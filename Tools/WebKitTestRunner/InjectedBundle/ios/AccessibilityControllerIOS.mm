@@ -33,7 +33,6 @@
 #import <JavaScriptCore/JSRetainPtr.h>
 #import <JavaScriptCore/JSStringRef.h>
 #import <JavaScriptCore/JSStringRefCF.h>
-#import <UIKit/UIAccessibility.h>
 #import <WebKit/WKBundle.h>
 #import <WebKit/WKBundlePage.h>
 #import <WebKit/WKBundlePagePrivate.h>
@@ -50,8 +49,8 @@ bool AccessibilityController::addNotificationListener(JSValueRef functionCallbac
     if (m_globalNotificationHandler)
         return false;
     m_globalNotificationHandler = [[AccessibilityNotificationHandler alloc] init];
-    [m_globalNotificationHandler setCallback:functionCallback];
-    [m_globalNotificationHandler startObserving];
+    [m_globalNotificationHandler.get() setCallback:functionCallback];
+    [m_globalNotificationHandler.get() startObserving];
     
     return true;
 }

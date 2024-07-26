@@ -41,12 +41,12 @@ namespace JSC { namespace FTL {
 using namespace DFG;
 
 OSRExit::OSRExit(
-    ExitKind exitKind, DataFormat profileDataFormat,
+    ExitKind exitKind, ValueFormat profileValueFormat,
     MethodOfGettingAValueProfile valueProfile, CodeOrigin codeOrigin,
     CodeOrigin originForProfile, unsigned numberOfArguments,
     unsigned numberOfLocals)
     : OSRExitBase(exitKind, codeOrigin, originForProfile)
-    , m_profileDataFormat(profileDataFormat)
+    , m_profileValueFormat(profileValueFormat)
     , m_valueProfile(valueProfile)
     , m_patchableCodeOffset(0)
     , m_values(numberOfArguments, numberOfLocals)

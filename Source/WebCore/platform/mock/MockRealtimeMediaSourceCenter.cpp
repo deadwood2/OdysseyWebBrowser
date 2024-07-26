@@ -127,45 +127,29 @@ void MockRealtimeMediaSourceCenter::registerMockRealtimeMediaSourceCenter()
     }
 }
 
-void MockRealtimeMediaSourceCenter::validateRequestConstraints(MediaStreamCreationClient* client, RefPtr<MediaConstraints>& audioConstraints, RefPtr<MediaConstraints>& videoConstraints)
+void MockRealtimeMediaSourceCenter::validateRequestConstraints(PassRefPtr<MediaStreamCreationClient> prpQueryClient, PassRefPtr<MediaConstraints> audioConstraints, PassRefPtr<MediaConstraints> videoConstraints)
 {
+    RefPtr<MediaStreamCreationClient> client = prpQueryClient;
+    
     ASSERT(client);
-
-    Vector<RefPtr<RealtimeMediaSource>> audioSources;
-    Vector<RefPtr<RealtimeMediaSource>> videoSources;
-    MockSourceMap& map = mockSourceMap();
-
+    
     if (audioConstraints) {
         String invalidQuery = MediaConstraintsMock::verifyConstraints(audioConstraints);
         if (!invalidQuery.isEmpty()) {
             client->constraintsInvalid(invalidQuery);
             return;
         }
-
-        MockSourceMap::iterator it = map.find(mockAudioSourceID());
-        ASSERT(it != map.end());
-
-        RefPtr<RealtimeMediaSource> audioSource = it->value;
-        audioSource->reset();
-        audioSources.append(audioSource.release());
     }
-
+    
     if (videoConstraints) {
         String invalidQuery = MediaConstraintsMock::verifyConstraints(videoConstraints);
         if (!invalidQuery.isEmpty()) {
             client->constraintsInvalid(invalidQuery);
             return;
         }
-
-        MockSourceMap::iterator it = map.find(mockVideoSourceID());
-        ASSERT(it != map.end());
-
-        RefPtr<RealtimeMediaSource> videoSource = it->value;
-        videoSource->reset();
-        videoSources.append(videoSource.release());
     }
 
-    client->constraintsValidated(audioSources, videoSources);
+    client->constraintsValidated(Vector<RefPtr<RealtimeMediaSource>>(), Vector<RefPtr<RealtimeMediaSource>>());
 }
 
 void MockRealtimeMediaSourceCenter::createMediaStream(PassRefPtr<MediaStreamCreationClient> prpQueryClient, PassRefPtr<MediaConstraints> audioConstraints, PassRefPtr<MediaConstraints> videoConstraints)
@@ -211,37 +195,10 @@ void MockRealtimeMediaSourceCenter::createMediaStream(PassRefPtr<MediaStreamCrea
     client->didCreateStream(MediaStreamPrivate::create(audioSources, videoSources));
 }
 
-void MockRealtimeMediaSourceCenter::createMediaStream(MediaStreamCreationClient* client, const String& audioDeviceID, const String& videoDeviceID)
-{
-    ASSERT(client);
-    Vector<RefPtr<RealtimeMediaSource>> audioSources;
-    Vector<RefPtr<RealtimeMediaSource>> videoSources;
-    MockSourceMap& map = mockSourceMap();
-
-    if (!audioDeviceID.isEmpty()) {
-        MockSourceMap::iterator it = map.find(mockAudioSourceID());
-        ASSERT(it != map.end());
-
-        RefPtr<RealtimeMediaSource> audioSource = it->value;
-        audioSource->reset();
-        audioSources.append(audioSource.release());
-    }
-    if (!videoDeviceID.isEmpty()) {
-        MockSourceMap::iterator it = map.find(mockVideoSourceID());
-        ASSERT(it != map.end());
-
-        RefPtr<RealtimeMediaSource> videoSource = it->value;
-        videoSource->reset();
-        videoSources.append(videoSource.release());
-    }
-
-    client->didCreateStream(MediaStreamPrivate::create(audioSources, videoSources));
-}
-
 bool MockRealtimeMediaSourceCenter::getMediaStreamTrackSources(PassRefPtr<MediaStreamTrackSourcesRequestClient> prpClient)
 {
     RefPtr<MediaStreamTrackSourcesRequestClient> requestClient = prpClient;
-    TrackSourceInfoVector sources;
+    Vector<RefPtr<TrackSourceInfo>> sources;
 
     MockSourceMap& map = mockSourceMap();
     MockSourceMap::iterator end = map.end();

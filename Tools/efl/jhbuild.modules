@@ -65,10 +65,10 @@
       <dep package="fontconfig"/>
       <dep package="pixman"/>
     </dependencies>
-    <branch module="releases/cairo-1.14.2.tar.xz" version="1.14.2"
+    <branch module="releases/cairo-1.12.4.tar.xz" version="1.12.4"
             repo="cairographics.org"
-            hash="sha256:c919d999ddb1bbbecd4bbe65299ca2abd2079c7e13d224577895afa7005ecceb"
-            md5sum="e1cdfaf1c6c995c4d4c54e07215b0118">
+            hash="sha256:a467b2e1f04bfd3f848370ce5e82cfe0a7f712bac05a04d133bc34c94f677a28"
+            md5sum="a64bb8774a1e476e5cdd69e635794dfb">
     </branch>
   </autotools>
 
@@ -216,9 +216,9 @@
       <dep package="gstreamer"/>
       <dep package="gst-plugins-base"/>
     </dependencies>
-    <branch module="rel/libs/efl/efl-1.15.0.tar.gz" version="1.15.0"
+    <branch module="rel/libs/efl/efl-1.14.0.tar.gz" version="1.14.0"
             repo="download.enlightenment.org"
-            hash="sha256:2552e364e83b8b747ba6f6fcca699a025751a65407055faa9a2afce29d12b6f4">
+            hash="sha256:30a8a239449e0d068a39787b5a4769dd26ddf0476f58f094c85e65b108086269">
       <patch file="ecore_remove_warnings.patch" strip="1"/>
     </branch>
   </autotools>
@@ -226,9 +226,9 @@
   <autotools id="elementary"
              autogen-sh="configure"
              autogenargs="--disable-emap --disable-eweather --with-elementary-web-backend=none">
-    <branch module="rel/libs/elementary/elementary-1.15.0.tar.gz" version="1.15.0"
+    <branch module="rel/libs/elementary/elementary-1.14.0.tar.gz" version="1.14.0"
             repo="download.enlightenment.org"
-            hash="sha256:62b4b7d506cf9ca82f9890328ec01b82d0f84a8d4acd787cec68c3367817ba20">
+            hash="sha256:aa06ca1b332b3cd29ffd136c1f10edf08a06906b3532785ce7e390c1cad6090e">
     </branch>
     <dependencies>
         <dep package="efl"/>

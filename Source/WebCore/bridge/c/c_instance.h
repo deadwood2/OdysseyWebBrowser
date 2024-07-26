@@ -30,6 +30,7 @@
 
 #include "BridgeJSC.h"
 #include "runtime_root.h"
+#include <wtf/PassRefPtr.h>
 #include <wtf/text/WTFString.h>
 
 typedef struct NPObject NPObject;
@@ -42,9 +43,9 @@ class CClass;
 
 class CInstance : public Instance {
 public:
-    static Ref<CInstance> create(NPObject* object, RefPtr<RootObject>&& rootObject)
+    static Ref<CInstance> create(NPObject* object, PassRefPtr<RootObject> rootObject)
     {
-        return adoptRef(*new CInstance(object, WTF::move(rootObject)));
+        return adoptRef(*new CInstance(object, rootObject));
     }
 
     static void setGlobalException(String);
@@ -74,7 +75,7 @@ public:
     NPObject *getObject() const { return _object; }
 
 private:
-    CInstance(NPObject*, RefPtr<RootObject>&&);
+    CInstance(NPObject*, PassRefPtr<RootObject>);
 
     virtual RuntimeObject* newRuntimeObject(ExecState*) override;
     bool toJSPrimitive(ExecState*, const char*, JSValue&) const;

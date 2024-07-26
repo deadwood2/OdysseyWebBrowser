@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013, 2014 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,7 +29,6 @@
 #include "Debugger.h"
 #include "Options.h"
 #include "VM.h"
-#include "Watchdog.h"
 #include <wtf/StackBounds.h>
 
 namespace JSC {
@@ -40,22 +39,23 @@ VMEntryScope::VMEntryScope(VM& vm, JSGlobalObject* globalObject)
 {
     ASSERT(wtfThreadData().stack().isGrowingDownward());
     if (!vm.entryScope) {
+#if ENABLE(ASSEMBLER)
+        if (ExecutableAllocator::underMemoryPressure())
+            vm.heap.deleteAllCompiledCode();
+#endif
         vm.entryScope = this;
 
         // Reset the date cache between JS invocations to force the VM to
         // observe time xone changes.
         vm.resetDateCache();
-
-        if (vm.watchdog)
-            vm.watchdog->enteredVM();
     }
 
     vm.clearLastException();
 }
 
-void VMEntryScope::addDidPopListener(std::function<void ()> listener)
+void VMEntryScope::setEntryScopeDidPopListener(void* key, EntryScopeDidPopListener listener)
 {
-    m_didPopListeners.append(listener);
+    m_allEntryScopeDidPopListeners.set(key, listener);
 }
 
 VMEntryScope::~VMEntryScope()
@@ -63,13 +63,10 @@ VMEntryScope::~VMEntryScope()
     if (m_vm.entryScope != this)
         return;
 
-    if (m_vm.watchdog)
-        m_vm.watchdog->exitedVM();
-
     m_vm.entryScope = nullptr;
 
-    for (auto& listener : m_didPopListeners)
-        listener();
+    for (auto& listener : m_allEntryScopeDidPopListeners.values())
+        listener(m_vm, m_globalObject);
 }
 
 } // namespace JSC

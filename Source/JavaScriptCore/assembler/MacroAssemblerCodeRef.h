@@ -327,10 +327,6 @@ public:
 
     void dumpWithName(const char* name, PrintStream& out) const
     {
-        if (!m_value) {
-            out.print(name, "(null)");
-            return;
-        }
         if (executableAddress() == dataLocation()) {
             out.print(name, "(", RawPointer(executableAddress()), ")");
             return;

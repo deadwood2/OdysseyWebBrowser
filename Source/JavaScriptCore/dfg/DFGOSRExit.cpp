@@ -30,28 +30,20 @@
 
 #include "AssemblyHelpers.h"
 #include "DFGGraph.h"
-#include "DFGMayExit.h"
 #include "DFGSpeculativeJIT.h"
 #include "JSCInlines.h"
 
 namespace JSC { namespace DFG {
 
 OSRExit::OSRExit(ExitKind kind, JSValueSource jsValueSource, MethodOfGettingAValueProfile valueProfile, SpeculativeJIT* jit, unsigned streamIndex, unsigned recoveryIndex)
-    : OSRExitBase(kind, jit->m_origin.forExit, jit->m_origin.semantic)
+    : OSRExitBase(kind, jit->m_codeOriginForExitTarget, jit->m_codeOriginForExitProfile)
     , m_jsValueSource(jsValueSource)
     , m_valueProfile(valueProfile)
     , m_patchableCodeOffset(0)
     , m_recoveryIndex(recoveryIndex)
     , m_streamIndex(streamIndex)
-    , m_willArriveAtOSRExitFromGenericUnwind(false)
-    , m_isExceptionHandler(false)
 {
-    bool canExit = jit->m_origin.exitOK;
-    if (!canExit && jit->m_currentNode) {
-        ExitMode exitMode = mayExit(jit->m_jit.graph(), jit->m_currentNode);
-        canExit = exitMode == ExitMode::Exits || exitMode == ExitMode::ExitsForExceptions;
-    }
-    DFG_ASSERT(jit->m_jit.graph(), jit->m_currentNode, canExit);
+    ASSERT(m_codeOrigin.isSet());
 }
 
 void OSRExit::setPatchableCodeOffset(MacroAssembler::PatchableJump check)

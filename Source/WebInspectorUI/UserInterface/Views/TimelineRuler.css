@@ -61,7 +61,7 @@ body.window-inactive .timeline-ruler > .header {
     width: 1px;
     top: 0;
     bottom: 0;
-    transform: translateX(-1px);
+    -webkit-transform: translateX(-1px);
     background-image: linear-gradient(to bottom, hsla(0, 0%, 70%, 0), hsla(0, 0%, 70%, 2) 85%);
 }
 
@@ -92,7 +92,7 @@ body.window-inactive .timeline-ruler > .header > .divider {
     width: 1px;
     top: 1px;
     bottom: 0;
-    transform: translateX(-1px);
+    -webkit-transform: translateX(-1px);
     background-color: hsla(0, 0%, 0%, 0.05);
 }
 
@@ -101,7 +101,7 @@ body.window-inactive .timeline-ruler > .header > .divider {
     top: 0;
     bottom: 0;
 
-    transform: translateX(-1px);
+    -webkit-transform: translateX(-1px);
 
     border-left-width: 1px;
     border-left-style: dashed;
@@ -164,25 +164,12 @@ body.window-inactive .timeline-ruler > .header > .divider {
     z-index: 15;
 }
 
-.timeline-ruler > .selection-handle.clamped {
-    border: 1px solid hsl(0, 0%, 64%);
-    background-color: white;
-}
-
-.timeline-ruler.both-handles-clamped > .selection-handle {
-    z-index: 14;
-}
-
-.timeline-ruler > .selection-handle.clamped.hidden {
-    display: none;
-}
-
 .timeline-ruler > .selection-handle.left {
-    transform: translateX(-4px);
+    -webkit-transform: translateX(-4px);
 }
 
 .timeline-ruler > .selection-handle.right {
-    transform: translateX(4px);
+    -webkit-transform: translateX(4px);
 }
 
 .timeline-ruler > .shaded-area {

@@ -62,15 +62,14 @@ void AsyncScrollingCoordinator::scrollingStateTreePropertiesChanged()
     scheduleTreeStateCommit();
 }
 
-static inline void setStateScrollingNodeSnapOffsetsAsFloat(ScrollingStateScrollingNode& node, ScrollEventAxis axis, const Vector<LayoutUnit>* snapOffsets, float deviceScaleFactor)
+static inline void setStateScrollingNodeSnapOffsetsAsFloat(ScrollingStateScrollingNode& node, ScrollEventAxis axis, const Vector<LayoutUnit>& snapOffsets, float deviceScaleFactor)
 {
     // FIXME: Incorporate current page scale factor in snapping to device pixel. Perhaps we should just convert to float here and let UI process do the pixel snapping?
     Vector<float> snapOffsetsAsFloat;
-    if (snapOffsets) {
-        snapOffsetsAsFloat.reserveInitialCapacity(snapOffsets->size());
-        for (auto& offset : *snapOffsets)
-            snapOffsetsAsFloat.uncheckedAppend(roundToDevicePixel(offset, deviceScaleFactor, false));
-    }
+    snapOffsetsAsFloat.reserveInitialCapacity(snapOffsets.size());
+    for (auto& offset : snapOffsets)
+        snapOffsetsAsFloat.append(roundToDevicePixel(offset, deviceScaleFactor, false));
+
     if (axis == ScrollEventAxis::Horizontal)
         node.setHorizontalSnapOffsets(snapOffsetsAsFloat);
     else
@@ -142,7 +141,14 @@ void AsyncScrollingCoordinator::frameViewLayoutUpdated(FrameView& frameView)
 
 #if ENABLE(CSS_SCROLL_SNAP)
     frameView.updateSnapOffsets();
-    updateScrollSnapPropertiesWithFrameView(frameView);
+    if (const Vector<LayoutUnit>* horizontalSnapOffsets = frameView.horizontalSnapOffsets())
+        setStateScrollingNodeSnapOffsetsAsFloat(*node, ScrollEventAxis::Horizontal, *horizontalSnapOffsets, m_page->deviceScaleFactor());
+
+    if (const Vector<LayoutUnit>* verticalSnapOffsets = frameView.verticalSnapOffsets())
+        setStateScrollingNodeSnapOffsetsAsFloat(*node, ScrollEventAxis::Vertical, *verticalSnapOffsets, m_page->deviceScaleFactor());
+
+    node->setCurrentHorizontalSnapPointIndex(frameView.currentHorizontalSnapPointIndex());
+    node->setCurrentVerticalSnapPointIndex(frameView.currentVerticalSnapPointIndex());
 #endif
 
 #if PLATFORM(COCOA)
@@ -479,8 +485,8 @@ void AsyncScrollingCoordinator::updateOverflowScrollingNode(ScrollingNodeID node
         node->setReachableContentsSize(scrollingGeometry->reachableContentSize);
         node->setScrollableAreaSize(scrollingGeometry->scrollableAreaSize);
 #if ENABLE(CSS_SCROLL_SNAP)
-        setStateScrollingNodeSnapOffsetsAsFloat(*node, ScrollEventAxis::Horizontal, &scrollingGeometry->horizontalSnapOffsets, m_page->deviceScaleFactor());
-        setStateScrollingNodeSnapOffsetsAsFloat(*node, ScrollEventAxis::Vertical, &scrollingGeometry->verticalSnapOffsets, m_page->deviceScaleFactor());
+        setStateScrollingNodeSnapOffsetsAsFloat(*node, ScrollEventAxis::Horizontal, scrollingGeometry->horizontalSnapOffsets, m_page->deviceScaleFactor());
+        setStateScrollingNodeSnapOffsetsAsFloat(*node, ScrollEventAxis::Vertical, scrollingGeometry->verticalSnapOffsets, m_page->deviceScaleFactor());
         node->setCurrentHorizontalSnapPointIndex(scrollingGeometry->currentHorizontalSnapPointIndex);
         node->setCurrentVerticalSnapPointIndex(scrollingGeometry->currentVerticalSnapPointIndex);
 #endif
@@ -614,16 +620,6 @@ void AsyncScrollingCoordinator::removeTestDeferralForReason(WheelEventTestTrigge
 bool AsyncScrollingCoordinator::isScrollSnapInProgress() const
 {
     return scrollingTree()->isScrollSnapInProgress();
-}
-
-void AsyncScrollingCoordinator::updateScrollSnapPropertiesWithFrameView(const FrameView& frameView)
-{
-    if (auto node = downcast<ScrollingStateFrameScrollingNode>(m_scrollingStateTree->stateNodeForID(frameView.scrollLayerID()))) {
-        setStateScrollingNodeSnapOffsetsAsFloat(*node, ScrollEventAxis::Horizontal, frameView.horizontalSnapOffsets(), m_page->deviceScaleFactor());
-        setStateScrollingNodeSnapOffsetsAsFloat(*node, ScrollEventAxis::Vertical, frameView.verticalSnapOffsets(), m_page->deviceScaleFactor());
-        node->setCurrentHorizontalSnapPointIndex(frameView.currentHorizontalSnapPointIndex());
-        node->setCurrentVerticalSnapPointIndex(frameView.currentVerticalSnapPointIndex());
-    }
 }
 #endif
     

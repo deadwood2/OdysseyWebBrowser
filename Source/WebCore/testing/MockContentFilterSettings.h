@@ -40,8 +40,7 @@ public:
         AfterRedirect,
         AfterResponse,
         AfterAddData,
-        AfterFinishedAddingData,
-        Never
+        AfterFinishedAddingData
     };
 
     enum class Decision {
@@ -49,7 +48,7 @@ public:
         Block
     };
 
-    WTF_EXPORT_PRIVATE static MockContentFilterSettings& singleton();
+    static MockContentFilterSettings& singleton();
     static void reset();
     static const char* unblockURLHost() { return "mock-unblock"; }
 
@@ -58,7 +57,7 @@ public:
     void deref() { }
 
     bool enabled() const { return m_enabled; }
-    WTF_EXPORT_PRIVATE void setEnabled(bool);
+    void setEnabled(bool enabled) { m_enabled = enabled; }
 
     const String& blockedString() const { return m_blockedString; }
     void setBlockedString(const String& blockedString) { m_blockedString = blockedString; }

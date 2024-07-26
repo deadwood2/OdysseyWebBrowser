@@ -67,43 +67,43 @@ bool JSWorkerGlobalScope::getOwnPropertySlotDelegate(ExecState* exec, PropertyNa
     return false;
 }
 
-JSValue JSWorkerGlobalScope::importScripts(ExecState& state)
+JSValue JSWorkerGlobalScope::importScripts(ExecState* exec)
 {
-    if (!state.argumentCount())
+    if (!exec->argumentCount())
         return jsUndefined();
 
     Vector<String> urls;
-    for (unsigned i = 0; i < state.argumentCount(); ++i) {
-        urls.append(state.uncheckedArgument(i).toString(&state)->value(&state));
-        if (state.hadException())
+    for (unsigned i = 0; i < exec->argumentCount(); i++) {
+        urls.append(exec->uncheckedArgument(i).toString(exec)->value(exec));
+        if (exec->hadException())
             return jsUndefined();
     }
     ExceptionCode ec = 0;
 
     impl().importScripts(urls, ec);
-    setDOMException(&state, ec);
+    setDOMException(exec, ec);
     return jsUndefined();
 }
 
-JSValue JSWorkerGlobalScope::setTimeout(ExecState& state)
+JSValue JSWorkerGlobalScope::setTimeout(ExecState* exec)
 {
-    std::unique_ptr<ScheduledAction> action = ScheduledAction::create(&state, globalObject()->world(), impl().contentSecurityPolicy());
-    if (state.hadException())
+    std::unique_ptr<ScheduledAction> action = ScheduledAction::create(exec, globalObject()->world(), impl().contentSecurityPolicy());
+    if (exec->hadException())
         return jsUndefined();
     if (!action)
         return jsNumber(0);
-    int delay = state.argument(1).toInt32(&state);
+    int delay = exec->argument(1).toInt32(exec);
     return jsNumber(impl().setTimeout(WTF::move(action), delay));
 }
 
-JSValue JSWorkerGlobalScope::setInterval(ExecState& state)
+JSValue JSWorkerGlobalScope::setInterval(ExecState* exec)
 {
-    std::unique_ptr<ScheduledAction> action = ScheduledAction::create(&state, globalObject()->world(), impl().contentSecurityPolicy());
-    if (state.hadException())
+    std::unique_ptr<ScheduledAction> action = ScheduledAction::create(exec, globalObject()->world(), impl().contentSecurityPolicy());
+    if (exec->hadException())
         return jsUndefined();
     if (!action)
         return jsNumber(0);
-    int delay = state.argument(1).toInt32(&state);
+    int delay = exec->argument(1).toInt32(exec);
     return jsNumber(impl().setInterval(WTF::move(action), delay));
 }
 

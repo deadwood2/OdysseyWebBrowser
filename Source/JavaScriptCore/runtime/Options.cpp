@@ -33,24 +33,19 @@
 #include <mutex>
 #include <stdlib.h>
 #include <string.h>
-#include <wtf/ASCIICType.h>
 #include <wtf/DataLog.h>
 #include <wtf/NumberOfCores.h>
 #include <wtf/PageBlock.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/StringExtras.h>
-#include <wtf/text/StringBuilder.h>
 
-#if OS(DARWIN)
+#if OS(DARWIN) && ENABLE(PARALLEL_GC)
 #include <sys/sysctl.h>
 #endif
 
 #if OS(WINDOWS)
 #include "MacroAssemblerX86.h"
 #endif
-
-#define USE_OPTIONS_FILE 0
-#define OPTIONS_FILENAME "/tmp/jsc.options"
 
 namespace JSC {
 
@@ -89,8 +84,6 @@ static bool parse(const char* string, OptionRange& value)
 
 static bool parse(const char* string, const char*& value)
 {
-    if (!strlen(string))
-        string = nullptr;
     value = string;
     return true;
 }
@@ -148,10 +141,13 @@ static int32_t computePriorityDeltaOfWorkerThreads(int32_t twoCorePriorityDelta,
 
 static unsigned computeNumberOfGCMarkers(unsigned maxNumberOfGCMarkers)
 {
+#if ENABLE(PARALLEL_GC)
     return computeNumberOfWorkerThreads(maxNumberOfGCMarkers);
+#else
+    UNUSED_PARAM(maxNumberOfGCMarkers);
+    return 1;
+#endif
 }
-
-const char* const OptionRange::s_nullRangeStr = "<null>";
 
 bool OptionRange::init(const char* rangeString)
 {
@@ -160,16 +156,14 @@ bool OptionRange::init(const char* rangeString)
 
     bool invert = false;
 
+    if (m_state > Uninitialized)
+        return true;
+
     if (!rangeString) {
         m_state = InitError;
         return false;
     }
 
-    if (!strcmp(rangeString, s_nullRangeStr)) {
-        m_state = Uninitialized;
-        return true;
-    }
-    
     m_rangeString = rangeString;
 
     if (*rangeString == '!') {
@@ -314,10 +308,6 @@ static void recomputeDependentOptions()
         Options::maximumEvalCacheableSourceLength() = 150000;
         Options::enableConcurrentJIT() = false;
     }
-    if (Options::enableMaximalFlushInsertionPhase()) {
-        Options::enableOSREntryToDFG() = false;
-        Options::enableOSREntryToFTL() = false;
-    }
 
     // Compute the maximum value of the reoptimization retry counter. This is simply
     // the largest value at which we don't overflow the execute counter, when using it
@@ -365,138 +355,35 @@ void Options::initialize()
     
             recomputeDependentOptions();
 
-#if USE(OPTIONS_FILE)
-            {
-                const char* filename = OPTIONS_FILENAME;
-                FILE* optionsFile = fopen(filename, "r");
-                if (!optionsFile) {
-                    dataLogF("Failed to open file %s. Did you add the file-read-data entitlement to WebProcess.sb?\n", filename);
-                    return;
-                }
-                
-                StringBuilder builder;
-                char* line;
-                char buffer[BUFSIZ];
-                while ((line = fgets(buffer, sizeof(buffer), optionsFile)))
-                    builder.append(buffer);
-                
-                const char* optionsStr = builder.toString().utf8().data();
-                dataLogF("Setting options: %s\n", optionsStr);
-                setOptions(optionsStr);
-                
-                int result = fclose(optionsFile);
-                if (result)
-                    dataLogF("Failed to close file %s: %s\n", filename, strerror(errno));
-            }
-#endif
-
             // Do range checks where needed and make corrections to the options:
             ASSERT(Options::thresholdForOptimizeAfterLongWarmUp() >= Options::thresholdForOptimizeAfterWarmUp());
             ASSERT(Options::thresholdForOptimizeAfterWarmUp() >= Options::thresholdForOptimizeSoon());
             ASSERT(Options::thresholdForOptimizeAfterWarmUp() >= 0);
 
-            dumpOptionsIfNeeded();
+            if (Options::showOptions()) {
+                DumpLevel level = static_cast<DumpLevel>(Options::showOptions());
+                if (level > DumpLevel::Verbose)
+                    level = DumpLevel::Verbose;
+
+                const char* title = nullptr;
+                switch (level) {
+                case DumpLevel::None:
+                    break;
+                case DumpLevel::Overridden:
+                    title = "Overridden JSC options:";
+                    break;
+                case DumpLevel::All:
+                    title = "All JSC options:";
+                    break;
+                case DumpLevel::Verbose:
+                    title = "All JSC options with descriptions:";
+                    break;
+                }
+                dumpAllOptions(level, title);
+            }
+
             ensureOptionsAreCoherent();
         });
-}
-
-void Options::dumpOptionsIfNeeded()
-{
-    if (Options::showOptions()) {
-        DumpLevel level = static_cast<DumpLevel>(Options::showOptions());
-        if (level > DumpLevel::Verbose)
-            level = DumpLevel::Verbose;
-            
-        const char* title = nullptr;
-        switch (level) {
-        case DumpLevel::None:
-            break;
-        case DumpLevel::Overridden:
-            title = "Overridden JSC options:";
-            break;
-        case DumpLevel::All:
-            title = "All JSC options:";
-            break;
-        case DumpLevel::Verbose:
-            title = "All JSC options with descriptions:";
-            break;
-        }
-
-        StringBuilder builder;
-        dumpAllOptions(builder, level, title, nullptr, "   ", "\n", ShowDefaults);
-        dataLog(builder.toString());
-    }
-}
-
-bool Options::setOptions(const char* optionsStr)
-{
-    Vector<char*> options;
-
-    size_t length = strlen(optionsStr);
-    char* optionsStrCopy = WTF::fastStrDup(optionsStr);
-    char* end = optionsStrCopy + length;
-    char* p = optionsStrCopy;
-
-    while (p < end) {
-        // Skip white space.
-        while (p < end && isASCIISpace(*p))
-            p++;
-        if (p == end)
-            break;
-
-        char* optionStart = p;
-        p = strstr(p, "=");
-        if (!p) {
-            dataLogF("'=' not found in option string: %p\n", optionStart);
-            return false;
-        }
-        p++;
-
-        char* valueBegin = p;
-        bool hasStringValue = false;
-        const int minStringLength = 2; // The min is an empty string i.e. 2 double quotes.
-        if ((p + minStringLength < end) && (*p == '"')) {
-            p = strstr(p + 1, "\"");
-            if (!p) {
-                dataLogF("Missing trailing '\"' in option string: %p\n", optionStart);
-                return false; // End of string not found.
-            }
-            hasStringValue = true;
-        }
-
-        // Find next white space.
-        while (p < end && !isASCIISpace(*p))
-            p++;
-        if (!p)
-            p = end; // No more " " separator. Hence, this is the last arg.
-
-        // If we have a well-formed string value, strip the quotes.
-        if (hasStringValue) {
-            char* valueEnd = p;
-            ASSERT((*valueBegin == '"') && ((valueEnd - valueBegin) >= minStringLength) && (valueEnd[-1] == '"'));
-            memmove(valueBegin, valueBegin + 1, valueEnd - valueBegin - minStringLength);
-            valueEnd[-minStringLength] = '\0';
-        }
-
-        // Strip leading -- if present.
-        if ((p -  optionStart > 2) && optionStart[0] == '-' && optionStart[1] == '-')
-            optionStart += 2;
-
-        *p++ = '\0';
-        options.append(optionStart);
-    }
-
-    bool success = true;
-    for (auto& option : options) {
-        bool optionSuccess = setOption(option);
-        if (!optionSuccess) {
-            dataLogF("Failed to set option : %s\n", option);
-            success = false;
-        }
-    }
-
-    dumpOptionsIfNeeded();
-    return success;
 }
 
 // Parses a single command line option in the format "<optionName>=<value>"
@@ -533,35 +420,15 @@ bool Options::setOption(const char* arg)
     return false; // No option matched.
 }
 
-void Options::dumpAllOptions(StringBuilder& builder, DumpLevel level, const char* title,
-    const char* separator, const char* optionHeader, const char* optionFooter, ShowDefaultsOption showDefaultsOption)
+void Options::dumpAllOptions(DumpLevel level, const char* title, FILE* stream)
 {
-    if (title) {
-        builder.append(title);
-        builder.append('\n');
-    }
-
-    for (int id = 0; id < numberOfOptions; id++) {
-        if (separator && id)
-            builder.append(separator);
-        dumpOption(builder, level, static_cast<OptionID>(id), optionHeader, optionFooter, showDefaultsOption);
-    }
+    if (title)
+        fprintf(stream, "%s\n", title);
+    for (int id = 0; id < numberOfOptions; id++)
+        dumpOption(level, static_cast<OptionID>(id), stream, "   ", "\n");
 }
 
-void Options::dumpAllOptionsInALine(StringBuilder& builder)
-{
-    dumpAllOptions(builder, DumpLevel::All, nullptr, " ", nullptr, nullptr, DontShowDefaults);
-}
-
-void Options::dumpAllOptions(FILE* stream, DumpLevel level, const char* title)
-{
-    StringBuilder builder;
-    dumpAllOptions(builder, level, title, nullptr, "   ", "\n", ShowDefaults);
-    fprintf(stream, "%s", builder.toString().ascii().data());
-}
-
-void Options::dumpOption(StringBuilder& builder, DumpLevel level, OptionID id,
-    const char* header, const char* footer, ShowDefaultsOption showDefaultsOption)
+void Options::dumpOption(DumpLevel level, OptionID id, FILE* stream, const char* header, const char* footer)
 {
     if (id >= numberOfOptions)
         return; // Illegal option.
@@ -573,24 +440,19 @@ void Options::dumpOption(StringBuilder& builder, DumpLevel level, OptionID id,
     if (level == DumpLevel::Overridden && !wasOverridden)
         return;
 
-    if (header)
-        builder.append(header);
-    builder.append(option.name());
-    builder.append('=');
-    option.dump(builder);
+    fprintf(stream, "%s%s: ", header, option.name());
+    option.dump(stream);
 
-    if (wasOverridden && (showDefaultsOption == ShowDefaults)) {
-        builder.append(" (default: ");
-        option.defaultOption().dump(builder);
-        builder.append(")");
+    if (wasOverridden) {
+        fprintf(stream, " (default: ");
+        option.defaultOption().dump(stream);
+        fprintf(stream, ")");
     }
 
-    if (needsDescription) {
-        builder.append("   ... ");
-        builder.append(option.description());
-    }
+    if (needsDescription)
+        fprintf(stream, "   ... %s", option.description());
 
-    builder.append(footer);
+    fprintf(stream, "%s", footer);
 }
 
 void Options::ensureOptionsAreCoherent()
@@ -604,35 +466,33 @@ void Options::ensureOptionsAreCoherent()
         CRASH();
 }
 
-void Option::dump(StringBuilder& builder) const
+void Option::dump(FILE* stream) const
 {
     switch (type()) {
     case Options::Type::boolType:
-        builder.append(m_entry.boolVal ? "true" : "false");
+        fprintf(stream, "%s", m_entry.boolVal ? "true" : "false");
         break;
     case Options::Type::unsignedType:
-        builder.appendNumber(m_entry.unsignedVal);
+        fprintf(stream, "%u", m_entry.unsignedVal);
         break;
     case Options::Type::doubleType:
-        builder.appendNumber(m_entry.doubleVal);
+        fprintf(stream, "%lf", m_entry.doubleVal);
         break;
     case Options::Type::int32Type:
-        builder.appendNumber(m_entry.int32Val);
+        fprintf(stream, "%d", m_entry.int32Val);
         break;
     case Options::Type::optionRangeType:
-        builder.append(m_entry.optionRangeVal.rangeString());
+        fprintf(stream, "%s", m_entry.optionRangeVal.rangeString());
         break;
     case Options::Type::optionStringType: {
         const char* option = m_entry.optionStringVal;
         if (!option)
             option = "";
-        builder.append('"');
-        builder.append(option);
-        builder.append('"');
+        fprintf(stream, "%s", option);
         break;
     }
     case Options::Type::gcLogLevelType: {
-        builder.append(GCLogging::levelAsString(m_entry.gcLogLevelVal));
+        fprintf(stream, "%s", GCLogging::levelAsString(m_entry.gcLogLevelVal));
         break;
     }
     }

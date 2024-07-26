@@ -30,7 +30,7 @@
 
 namespace WebCore {
 
-class DatabaseServer final: public AbstractDatabaseServer {
+class DatabaseServer: public AbstractDatabaseServer {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     DatabaseServer() { };
@@ -44,7 +44,7 @@ public:
 
     String fullPathForDatabase(SecurityOrigin*, const String& name, bool createIfDoesNotExist) override;
 
-    RefPtr<Database> openDatabase(RefPtr<DatabaseContext>&, const String& name, const String& expectedVersion, const String& displayName, unsigned long estimatedSize, bool setVersionInNewDatabase, DatabaseError&, String& errorMessage, OpenAttempt) override;
+    RefPtr<DatabaseBackendBase> openDatabase(RefPtr<DatabaseContext>&, const String& name, const String& expectedVersion, const String& displayName, unsigned long estimatedSize, bool setVersionInNewDatabase, DatabaseError&, String& errorMessage, OpenAttempt) override;
 
     void closeAllDatabases() override;
 
@@ -62,8 +62,10 @@ public:
     bool deleteOrigin(SecurityOrigin*) override;
     bool deleteDatabase(SecurityOrigin*, const String& name) override;
 
+    void interruptAllDatabasesForContext(const DatabaseContext*) override;
+
 protected:
-    RefPtr<Database> createDatabase(RefPtr<DatabaseContext>&, const String& name, const String& expectedVersion, const String& displayName, unsigned long estimatedSize, bool setVersionInNewDatabase, DatabaseError&, String& errorMessage);
+    virtual RefPtr<DatabaseBackendBase> createDatabase(RefPtr<DatabaseContext>&, const String& name, const String& expectedVersion, const String& displayName, unsigned long estimatedSize, bool setVersionInNewDatabase, DatabaseError&, String& errorMessage);
 };
 
 } // namespace WebCore

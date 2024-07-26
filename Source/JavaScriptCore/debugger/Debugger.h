@@ -44,10 +44,8 @@ typedef ExecState CallFrame;
 
 class JS_EXPORT_PRIVATE Debugger {
 public:
-    Debugger(VM&, bool isInWorkerThread = false);
+    Debugger(bool isInWorkerThread = false);
     virtual ~Debugger();
-
-    VM& vm() { return m_vm; }
 
     JSC::DebuggerCallFrame* currentDebuggerCallFrame() const;
     bool hasHandlerForExceptionCallback() const
@@ -110,9 +108,6 @@ public:
     bool isPaused() const { return m_isPaused; }
     bool isStepping() const { return m_steppingMode == SteppingModeEnabled; }
 
-    bool suppressAllPauses() const { return m_suppressAllPauses; }
-    void setSuppressAllPauses(bool suppress) { m_suppressAllPauses = suppress; }
-
     virtual void sourceParsed(ExecState*, SourceProvider*, int errorLineNumber, const WTF::String& errorMessage) = 0;
 
     void exception(CallFrame*, JSValue exceptionValue, bool hasCatchHandler);
@@ -123,7 +118,7 @@ public:
     void didExecuteProgram(CallFrame*);
     void didReachBreakpoint(CallFrame*);
 
-    virtual void recompileAllJSFunctions();
+    void recompileAllJSFunctions(VM*);
 
     void registerCodeBlock(CodeBlock*);
 
@@ -190,7 +185,9 @@ private:
 
     void clearDebuggerRequests(JSGlobalObject*);
 
-    VM& m_vm;
+    template<typename Functor> inline void forEachCodeBlock(Functor&);
+
+    VM* m_vm;
     HashSet<JSGlobalObject*> m_globalObjects;
 
     PauseOnExceptionsState m_pauseOnExceptionsState;
@@ -199,7 +196,6 @@ private:
     bool m_breakpointsActivated : 1;
     bool m_hasHandlerForExceptionCallback : 1;
     bool m_isInWorkerThread : 1;
-    bool m_suppressAllPauses : 1;
     unsigned m_steppingMode : 1; // SteppingMode
 
     ReasonForPause m_reasonForPause;

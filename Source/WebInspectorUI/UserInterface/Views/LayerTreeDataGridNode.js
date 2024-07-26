@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,38 +23,40 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.LayerTreeDataGridNode = class LayerTreeDataGridNode extends WebInspector.DataGridNode
+WebInspector.LayerTreeDataGridNode = function(layer)
 {
-    constructor(layer)
-    {
-        super();
+    WebInspector.DataGridNode.call(this);
 
-        this._outlets = {};
-        this.layer = layer;
-    }
+    this._outlets = {};
+
+    this.layer = layer;
+};
+
+WebInspector.LayerTreeDataGridNode.prototype = {
+    constructor: WebInspector.DataGridNode,
 
     // DataGridNode Overrides.
 
-    createCells()
+    createCells: function()
     {
-        super.createCells();
+        WebInspector.DataGridNode.prototype.createCells.call(this);
 
         this._cellsWereCreated = true;
-    }
+    },
 
-    createCellContent(columnIdentifier, cell)
+    createCellContent: function(columnIdentifier, cell)
     {
         var cell = columnIdentifier === "name" ? this._makeNameCell() : this._makeOutlet(columnIdentifier, document.createTextNode());
         this._updateCell(columnIdentifier);
         return cell;
-    }
+    },
 
     // Public
 
     get layer()
     {
         return this._layer;
-    }
+    },
 
     set layer(layer)
     {
@@ -67,12 +69,12 @@ WebInspector.LayerTreeDataGridNode = class LayerTreeDataGridNode extends WebInsp
             paintCount: layer.paintCount || "\u2014",
             memory: Number.bytesToString(layer.memory || 0)
         };
-    }
+    },
 
     get data()
     {
         return this._data;
-    }
+    },
 
     set data(data)
     {
@@ -84,17 +86,17 @@ WebInspector.LayerTreeDataGridNode = class LayerTreeDataGridNode extends WebInsp
             if (this._cellsWereCreated)
                 this._updateCell(columnIdentifier);
         }, this);
-    }
+    },
 
     // Private
 
-    _makeOutlet(name, element)
+    _makeOutlet: function(name, element)
     {
         this._outlets[name] = element;
         return element;
-    }
+    },
 
-    _makeNameCell()
+    _makeNameCell: function()
     {
         var fragment = document.createDocumentFragment();
 
@@ -117,18 +119,18 @@ WebInspector.LayerTreeDataGridNode = class LayerTreeDataGridNode extends WebInsp
         reflectionLabel.textContent = " \u2014 " + WebInspector.UIString("Reflection");
 
         return fragment;
-    }
+    },
 
-    _updateCell(columnIdentifier)
+    _updateCell: function(columnIdentifier)
     {
         var data = this._data[columnIdentifier];
         if (columnIdentifier === "name")
             this._updateNameCellData(data);
         else
             this._outlets[columnIdentifier].textContent = data;
-    }
+    },
 
-    _updateNameCellData(data)
+    _updateNameCellData: function(data)
     {
         var layer = this._layer;
         var label = this._outlets.label;
@@ -155,11 +157,13 @@ WebInspector.LayerTreeDataGridNode = class LayerTreeDataGridNode extends WebInsp
             element.classList.add("reflection");
         else if (layer.pseudoElement)
             element.classList.add("pseudo-element");
-    }
+    },
 
-    _goToArrowWasClicked()
+    _goToArrowWasClicked: function()
     {
         var domNode = WebInspector.domTreeManager.nodeForId(this._layer.nodeId);
         WebInspector.showMainFrameDOMTree(domNode);
     }
 };
+
+WebInspector.LayerTreeDataGridNode.prototype.__proto__ = WebInspector.DataGridNode.prototype;
