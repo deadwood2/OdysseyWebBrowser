@@ -567,6 +567,12 @@ EncodedJSValue JSC_HOST_CALL globalFuncEval(ExecState* exec)
     if (!x.isString())
         return JSValue::encode(x);
 
+    JSGlobalObject* globalObject = exec->lexicalGlobalObject();
+    if (!globalObject->evalEnabled()) {
+        exec->vm().throwException(exec, createEvalError(exec, globalObject->evalDisabledErrorMessage()));
+        return JSValue::encode(jsUndefined());
+    }
+
     String s = x.toString(exec)->value(exec);
 
     if (s.is8Bit()) {
@@ -872,6 +878,9 @@ EncodedJSValue JSC_HOST_CALL globalFuncProtoSetter(ExecState* exec)
 
     // Setting __proto__ to a non-object, non-null value is silently ignored to match Mozilla.
     if (!value.isObject() && !value.isNull())
+        return JSValue::encode(jsUndefined());
+
+    if (thisObject->prototype() == value)
         return JSValue::encode(jsUndefined());
 
     if (!thisObject->isExtensible())

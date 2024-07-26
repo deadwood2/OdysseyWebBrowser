@@ -27,7 +27,7 @@
 
 #include "AudioNode.h"
 #include <memory>
-#include <mutex>
+#include <wtf/Lock.h>
 #include <wtf/RefPtr.h>
 
 namespace WebCore {
@@ -51,7 +51,7 @@ public:
     virtual void uninitialize() override;
 
     // Impulse responses
-    void setBuffer(AudioBuffer*);
+    void setBuffer(AudioBuffer*, ExceptionCode&);
     AudioBuffer* buffer();
 
     bool normalize() const { return m_normalize; }
@@ -67,7 +67,7 @@ private:
     RefPtr<AudioBuffer> m_buffer;
 
     // This synchronizes dynamic changes to the convolution impulse response with process().
-    mutable std::mutex m_processMutex;
+    mutable Lock m_processMutex;
 
     // Normalize the impulse response or not. Must default to true.
     bool m_normalize;

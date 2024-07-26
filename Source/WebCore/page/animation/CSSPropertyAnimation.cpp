@@ -80,7 +80,7 @@ static inline Color blendFunc(const AnimationBase*, const Color& from, const Col
 
 static inline Length blendFunc(const AnimationBase*, const Length& from, const Length& to, double progress)
 {
-    return to.blend(from, narrowPrecisionToFloat(progress));
+    return to.blend(from, progress);
 }
 
 static inline LengthSize blendFunc(const AnimationBase* anim, const LengthSize& from, const LengthSize& to, double progress)
@@ -255,6 +255,7 @@ static inline SVGLength blendFunc(const AnimationBase*, const SVGLength& from, c
 {
     return to.blend(from, narrowPrecisionToFloat(progress));
 }
+
 static inline Vector<SVGLength> blendFunc(const AnimationBase*, const Vector<SVGLength>& from, const Vector<SVGLength>& to, double progress)
 {
     size_t fromLength = from.size();
@@ -477,6 +478,24 @@ public:
         : RefCountedPropertyWrapper<ClipPathOperation>(prop, getter, setter)
     {
     }
+
+    virtual bool equals(const RenderStyle* a, const RenderStyle* b) const
+    {
+        // If the style pointers are the same, don't bother doing the test.
+        // If either is null, return false. If both are null, return true.
+        if (a == b)
+            return true;
+        if (!a || !b)
+            return false;
+
+        ClipPathOperation* clipPathA = (a->*m_getter)();
+        ClipPathOperation* clipPathB = (b->*m_getter)();
+        if (clipPathA == clipPathB)
+            return true;
+        if (!clipPathA || !clipPathB)
+            return false;
+        return *clipPathA == *clipPathB;
+    }
 };
 
 #if ENABLE(CSS_SHAPES)
@@ -486,6 +505,24 @@ public:
     PropertyWrapperShape(CSSPropertyID prop, ShapeValue* (RenderStyle::*getter)() const, void (RenderStyle::*setter)(PassRefPtr<ShapeValue>))
         : RefCountedPropertyWrapper<ShapeValue>(prop, getter, setter)
     {
+    }
+
+    virtual bool equals(const RenderStyle* a, const RenderStyle* b) const
+    {
+        // If the style pointers are the same, don't bother doing the test.
+        // If either is null, return false. If both are null, return true.
+        if (a == b)
+            return true;
+        if (!a || !b)
+            return false;
+
+        ShapeValue* shapeA = (a->*m_getter)();
+        ShapeValue* shapeB = (b->*m_getter)();
+        if (shapeA == shapeB)
+            return true;
+        if (!shapeA || !shapeB)
+            return false;
+        return *shapeA == *shapeB;
     }
 };
 #endif
@@ -1417,7 +1454,6 @@ bool CSSPropertyAnimation::blendProperties(const AnimationBase* anim, CSSPropert
         wrapper->blend(anim, dst, a, b, progress);
         return !wrapper->animationIsAccelerated() || !anim->isAccelerated();
     }
-
     return false;
 }
 

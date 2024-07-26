@@ -733,6 +733,64 @@ namespace JSC {
     {
     }
 
+    inline ModuleDeclarationNode::ModuleDeclarationNode(const JSTokenLocation& location)
+        : StatementNode(location)
+    {
+    }
+
+    inline ModuleNameNode::ModuleNameNode(const JSTokenLocation& location, const Identifier& moduleName)
+        : Node(location)
+        , m_moduleName(moduleName)
+    {
+    }
+
+    inline ImportSpecifierNode::ImportSpecifierNode(const JSTokenLocation& location, const Identifier& importedName, const Identifier& localName)
+        : Node(location)
+        , m_importedName(importedName)
+        , m_localName(localName)
+    {
+    }
+
+    inline ImportDeclarationNode::ImportDeclarationNode(const JSTokenLocation& location, ImportSpecifierListNode* importSpecifierList, ModuleNameNode* moduleName)
+        : ModuleDeclarationNode(location)
+        , m_specifierList(importSpecifierList)
+        , m_moduleName(moduleName)
+    {
+    }
+
+    inline ExportAllDeclarationNode::ExportAllDeclarationNode(const JSTokenLocation& location, ModuleNameNode* moduleName)
+        : ModuleDeclarationNode(location)
+        , m_moduleName(moduleName)
+    {
+    }
+
+    inline ExportDefaultDeclarationNode::ExportDefaultDeclarationNode(const JSTokenLocation& location, StatementNode* declaration, const Identifier& localName)
+        : ModuleDeclarationNode(location)
+        , m_declaration(declaration)
+        , m_localName(localName)
+    {
+    }
+
+    inline ExportLocalDeclarationNode::ExportLocalDeclarationNode(const JSTokenLocation& location, StatementNode* declaration)
+        : ModuleDeclarationNode(location)
+        , m_declaration(declaration)
+    {
+    }
+
+    inline ExportNamedDeclarationNode::ExportNamedDeclarationNode(const JSTokenLocation& location, ExportSpecifierListNode* exportSpecifierList, ModuleNameNode* moduleName)
+        : ModuleDeclarationNode(location)
+        , m_specifierList(exportSpecifierList)
+        , m_moduleName(moduleName)
+    {
+    }
+
+    inline ExportSpecifierNode::ExportSpecifierNode(const JSTokenLocation& location, const Identifier& localName, const Identifier& exportedName)
+        : Node(location)
+        , m_localName(localName)
+        , m_exportedName(exportedName)
+    {
+    }
+
     inline EmptyVarExpression::EmptyVarExpression(const JSTokenLocation& location, const Identifier& ident)
         : ExpressionNode(location)
         , m_ident(ident)
@@ -832,18 +890,18 @@ namespace JSC {
     {
     }
 
-    inline FuncExprNode::FuncExprNode(const JSTokenLocation& location, const Identifier& ident, FunctionBodyNode* body, const SourceCode& source)
+    inline FuncExprNode::FuncExprNode(const JSTokenLocation& location, const Identifier& ident, FunctionMetadataNode* m_metadata, const SourceCode& source)
         : ExpressionNode(location)
-        , m_body(body)
+        , m_metadata(m_metadata)
     {
-        m_body->finishParsing(source, ident, FunctionExpression);
+        m_metadata->finishParsing(source, ident, FunctionExpression);
     }
 
-    inline FuncDeclNode::FuncDeclNode(const JSTokenLocation& location, const Identifier& ident, FunctionBodyNode* body, const SourceCode& source)
+    inline FuncDeclNode::FuncDeclNode(const JSTokenLocation& location, const Identifier& ident, FunctionMetadataNode* m_metadata, const SourceCode& source)
         : StatementNode(location)
-        , m_body(body)
+        , m_metadata(m_metadata)
     {
-        m_body->finishParsing(source, ident, FunctionDeclaration);
+        m_metadata->finishParsing(source, ident, FunctionDeclaration);
     }
 
 #if ENABLE(ES6_CLASS_SYNTAX)

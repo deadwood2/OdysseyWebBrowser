@@ -1,4 +1,195 @@
 =================
+WebKitGTK+ 2.10.9
+=================
+
+What's new in WebKitGTK+ 2.10.9?
+
+  - Revert the patch to limit the number of tiles according to the visible area introduced in 2.10.8,
+    because it caused rendering issues in several popular websites.
+  - Fix the build with musl libc library.
+  - Fix the build with clang-3.8.
+
+=================
+WebKitGTK+ 2.10.8
+=================
+
+What's new in WebKitGTK+ 2.10.8?
+
+  - Limit the number of tiles according to the visible area. This was causing a huge memory
+    consumption with some websites.
+  - Fix flickering and rendering artifacts when entering accelerated compositing mode
+    before the web view is realized.
+  - Fix rendering of form controls and scrollbars with GTK+ >= 3.19.
+  - Fix HTTP authentication dialog rendering when accelerated compositing mode is enabled.
+  - Fix rendering artifacts when using a web view background color.
+  - Fix a crash when creating a WebKitWebView without providing a WebKitWebContext.
+  - Fix several crashes and rendering issues.
+  - Security fixes: CVE-2016-1726.
+
+=================
+WebKitGTK+ 2.10.7
+=================
+
+What's new in WebKitGTK+ 2.10.6?
+
+  - Fix the build with GTK+ < 3.16.
+
+=================
+WebKitGTK+ 2.10.6
+=================
+
+What's new in WebKitGTK+ 2.10.6?
+
+  - Fix a deadlock in the Web Process when JavaScript garbage collector was running for a web worker
+    thread that made google maps to hang.
+  - Fix media controls displaying without controls attribute.
+  - Fix a Web Process crash when quickly attempting many DnD operations.
+
+=================
+WebKitGTK+ 2.10.5
+=================
+
+What's new in WebKitGTK+ 2.10.5?
+
+  - Disable DNS prefetch when a proxy is configured.
+  - Reduce the maximum simultaneous network connections to match other browsers.
+  - Make WebKitWebView always propagate motion-notify-event signal.
+  - Add a way to force accelerating compositing mode at runtime using an environment variable.
+  - Fix input elements and scrollbars rendering with GTK+ 3.19.
+  - Fix rendering of lines when using solid colors.
+  - Fix UI process crashes related to not having a main resource response when the load is
+    committed for pages restored from the history cache.
+  - Fix a WebProcess crash when loading large contents with custom URI schemes API.
+  - Fix a crash in the UI process when the WebView is destroyed while the screensaver DBus proxy
+    is being created.
+  - Fix WebProcess crashes due to BadDrawable X errors in accelerated compositing mode.
+  - Fix crashes on PPC64 due to mprotect() on address not aligned to the page size.
+  - Fix std::bad_function_call exception raised in dispatchDecidePolicyForNavigationAction.
+  - Fix downloads of data URLs.
+  - Fix runtime critical warnings when closing a page containing windowed plugins.
+  - Fix several crashes and rendering issues.
+  - Translation updates: French, German, Italian, Turkish.
+  - Security fixes: CVE-2015-7096, CVE-2015-7098.
+
+=================
+WebKitGTK+ 2.10.4
+=================
+
+What's new in WebKitGTK+ 2.10.4?
+
+  - Fixed dashed and dotted border painting.
+  - Properly cancel navigation policy checks.
+  - Several crashes fixed when running editor commands.
+  - Fix several crashes due to assertions in Debug builds.
+  - Fix the build on Mac OSX and bring back the Quartz target.
+  - Fix the build on glibc-based BSD systems.
+
+=================
+WebKitGTK+ 2.10.3
+=================
+
+What's new in WebKitGTK+ 2.10.3?
+
+  - Fix graphics artifacts when entering/leaving Accelerated Compositing mode.
+  - Honour 'forwards' fill-mode in Multiple-keyframe and delayed instantaneous
+    animations.
+  - Fix runtime warning when the inspector is closed.
+  - Fix the build with GTK+2 plugin process disabled.
+  - Gracefully handle errors when sending/receiving IPC messages data on connection
+    close.
+  - Fix several crashes and rendering issues.
+
+=================
+WebKitGTK+ 2.10.2
+=================
+
+What's new in WebKitGTK+ 2.10.2?
+
+  - Fix a regression introduced in 2.10.1 that disabled accelerated compositing.
+  - Fix build with cmake 3.4.
+
+=================
+WebKitGTK+ 2.10.1
+=================
+
+What's new in WebKitGTK+ 2.10.1?
+
+  - Fix rendering of accelerated content in HiDPI screens.
+  - Fix several media controls rendering issues.
+  - Fix rendering of progress element with recent versions of GTK+.
+  - Add and update some web inspector icons.
+  - Correctly handle websites sending an invalid auth header.
+  - Fix a crash when creating the UI process backing store in Wayland.
+  - Fix the build with spellchecker disabled.
+  - Fix the build with touch events disabled.
+  - Fix the build with OpenGL disabled.
+  - Several build fixes on Mac OSX.
+  - Fix several crashes and rendering issues.
+
+=================
+WebKitGTK+ 2.10.0
+=================
+
+What's new in WebKitGTK+ 2.10.0?
+
+  - Disable ACCELERATED_2D_CANVAS by default.
+  - Fix a crash in debug build due to an invalid assert.
+  - Do not try to use the primary clipboard in Wayland.
+
+=================
+WebKitGTK+ 2.9.92
+=================
+
+What's new in WebKitGTK+ 2.9.92?
+
+  - Data URLs are now decoded in the Web Process instead of the Network Process.
+  - Fix Web Process crash recovery.
+  - Fix a crash when sqlite3_initialize() is called from multiple threads.
+  - Fix the volume bar in media controls.
+  - Fix JavaScriptCore build with GCC 5.
+  - Fix the build when accelerated 2D canvas is enabled but cairo was built without GLX.
+  - Fix everal memory leaks.
+  - Translation updates: Bulgarian, Gujarati, Polish, Slovenian, Spanish, Tamil, Turkish.
+
+=================
+WebKitGTK+ 2.9.91
+=================
+
+What's new in WebKitGTK+ 2.9.91?
+
+  - Fix performance regression introduced in previous release when scaling images.
+  - Fix runtime critical warning when there are missing media plugins.
+  - Fix the build on systems with GTK+ compiled with an old version of wayland.
+
+=================
+WebKitGTK+ 2.9.90
+=================
+
+What's new in WebKitGTK+ 2.9.90?
+
+  - Add API to request permission before showing PackageKit codec installation notifications.
+  - Fix a crash closing a page when a context menu is open.
+  - Fix DNS prefetch when using the network process.
+  - Improve image quality when using newer versions of cairo/pixman.
+  - Fix a crash when the web view is destroyed while the screensaver DBus proxy is being created.
+
+=================
+WebKitGTK+  2.9.5
+=================
+
+What's new in WebKitGTK+ 2.9.5?
+
+  - Add API to set the maximum number of web processes per WebKitWebContext.
+  - Add API to allow executing editing commands that require an argument.
+  - Prevent clipboard contents from being lost when web process finishes.
+  - Always allow font matching for strong aliases
+  - Move GStreamer missing plugins installer to the UI process.
+  - Fix empty space in popup menus when first item is selected.
+  - Fix a crash when SoupSession is destroyed in exit handler.
+  - Disable NPAPI plugins when running on Wayland.
+  - Translation updates: Swedish.
+
+=================
 WebKitGTK+  2.9.4
 =================
 

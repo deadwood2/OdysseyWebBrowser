@@ -416,13 +416,8 @@ bool RenderThemeIOS::paintCheckboxDecorations(const RenderObject& box, const Pai
     return false;
 }
 
-int RenderThemeIOS::baselinePosition(const RenderObject& renderer) const
+int RenderThemeIOS::baselinePosition(const RenderBox& box) const
 {
-    if (!is<RenderBox>(renderer))
-        return 0;
-
-    const auto& box = downcast<RenderBox>(renderer);
-
     if (box.style().appearance() == CheckboxPart || box.style().appearance() == RadioPart)
         return box.marginTop() + box.height() - 2; // The baseline is 2px up from the bottom of the checkbox/radio in AppKit.
     if (box.style().appearance() == MenulistPart)
@@ -618,7 +613,7 @@ void RenderThemeIOS::adjustMenuListButtonStyle(StyleResolver&, RenderStyle& styl
         adjustInputElementButtonStyle(style, static_cast<HTMLInputElement&>(*element));
 }
 
-bool RenderThemeIOS::paintMenuListButtonDecorations(const RenderObject& box, const PaintInfo& paintInfo, const FloatRect& rect)
+bool RenderThemeIOS::paintMenuListButtonDecorations(const RenderBox& box, const PaintInfo& paintInfo, const FloatRect& rect)
 {
     RenderStyle& style = box.style();
     float borderTopWidth = style.borderTopWidth();
@@ -648,7 +643,7 @@ bool RenderThemeIOS::paintMenuListButtonDecorations(const RenderObject& box, con
 
     float separator = clip.maxX() - MenuListButtonPaddingRight;
 
-    box.drawLineForBoxSide(paintInfo.context, separator - borderTopWidth, clip.y(), separator, clip.maxY(), BSRight, style.visitedDependentColor(CSSPropertyBorderTopColor), style.borderTopStyle(), 0, 0);
+    box.drawLineForBoxSide(*paintInfo.context, FloatRect(FloatPoint(separator - borderTopWidth, clip.y()), FloatPoint(separator, clip.maxY())), BSRight, style.visitedDependentColor(CSSPropertyBorderTopColor), style.borderTopStyle(), 0, 0);
 
     FloatRect buttonClip(separator - adjustTop, clip.y() - adjustTop, MenuListButtonPaddingRight + adjustTop + adjustRight, clip.height() + adjustTop + adjustBottom);
 
@@ -667,7 +662,7 @@ bool RenderThemeIOS::paintMenuListButtonDecorations(const RenderObject& box, con
 
     // Paint Indicators.
 
-    if (box.isMenuList() && downcast<HTMLSelectElement>(box.node())->multiple()) {
+    if (box.isMenuList() && downcast<HTMLSelectElement>(box.element())->multiple()) {
         int size = 2;
         int count = 3;
         int padding = 3;
@@ -1266,6 +1261,7 @@ void RenderThemeIOS::updateCachedSystemFontDescription(CSSValueID valueID, FontD
 
     ASSERT(fontDescriptor);
     RetainPtr<CTFontRef> font = adoptCF(CTFontCreateWithFontDescriptor(fontDescriptor.get(), 0, nullptr));
+    font = applyFontFeatureSettings(font.get(), fontDescription.featureSettings());
     fontDescription.setIsAbsoluteSize(true);
     fontDescription.setOneFamily(textStyle);
     fontDescription.setSpecifiedSize(CTFontGetSize(font.get()));

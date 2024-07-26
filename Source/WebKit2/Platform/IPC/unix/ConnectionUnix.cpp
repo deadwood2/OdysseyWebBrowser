@@ -43,7 +43,7 @@
 #include <glib.h>
 #endif
 
-#ifdef SOCK_SEQPACKET
+#if defined(SOCK_SEQPACKET)
 #define SOCKET_TYPE SOCK_SEQPACKET
 #else
 #if PLATFORM(GTK)
@@ -255,9 +255,8 @@ bool Connection::processMessage()
 
     if (attachmentFileDescriptorCount) {
         if (m_fileDescriptorsSize > attachmentFileDescriptorCount) {
-            size_t fileDescriptorsLength = attachmentFileDescriptorCount * sizeof(int);
-            memmove(m_fileDescriptors.data(), m_fileDescriptors.data() + fileDescriptorsLength, m_fileDescriptorsSize - fileDescriptorsLength);
-            m_fileDescriptorsSize -= fileDescriptorsLength;
+            memmove(m_fileDescriptors.data(), m_fileDescriptors.data() + attachmentFileDescriptorCount, (m_fileDescriptorsSize - attachmentFileDescriptorCount) * sizeof(int));
+            m_fileDescriptorsSize -= attachmentFileDescriptorCount;
         } else
             m_fileDescriptorsSize = 0;
     }
@@ -338,8 +337,10 @@ void Connection::readyReadHandler()
             if (errno == EAGAIN || errno == EWOULDBLOCK)
                 return;
 
-            WTFLogAlways("Error receiving IPC message on socket %d in process %d: %s", m_socketDescriptor, getpid(), strerror(errno));
-            connectionDidClose();
+            if (m_isConnected) {
+                WTFLogAlways("Error receiving IPC message on socket %d in process %d: %s", m_socketDescriptor, getpid(), strerror(errno));
+                connectionDidClose();
+            }
             return;
         }
 
@@ -513,7 +514,8 @@ bool Connection::sendOutgoingMessage(std::unique_ptr<MessageEncoder> encoder)
             continue;
         }
 
-        WTFLogAlways("Error sending IPC message: %s", strerror(errno));
+        if (m_isConnected)
+            WTFLogAlways("Error sending IPC message: %s", strerror(errno));
         return false;
     }
     return true;

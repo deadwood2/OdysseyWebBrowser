@@ -80,10 +80,12 @@ LayerTreeHostGtk::LayerTreeHostGtk(WebPage* webPage)
 
 bool LayerTreeHostGtk::makeContextCurrent()
 {
-    if (!m_context) {
-        if (!m_layerTreeContext.contextID)
-            return false;
+    if (!m_layerTreeContext.contextID) {
+        m_context = nullptr;
+        return false;
+    }
 
+    if (!m_context) {
         m_context = GLContext::createContextForWindow(reinterpret_cast<GLNativeWindowType>(m_layerTreeContext.contextID), GLContext::sharingContext());
         if (!m_context)
             return false;
@@ -97,6 +99,11 @@ void LayerTreeHostGtk::initialize()
     m_rootLayer = GraphicsLayer::create(graphicsLayerFactory(), *this);
     m_rootLayer->setDrawsContent(false);
     m_rootLayer->setSize(m_webPage->size());
+
+    m_scaleMatrix.makeIdentity();
+    m_scaleMatrix.scale(m_webPage->deviceScaleFactor() * m_webPage->pageScaleFactor());
+    downcast<GraphicsLayerTextureMapper>(*m_rootLayer).layer().setAnchorPoint(FloatPoint3D());
+    downcast<GraphicsLayerTextureMapper>(*m_rootLayer).layer().setTransform(m_scaleMatrix);
 
     // The non-composited contents are a child of the root layer.
     m_nonCompositedContentLayer = GraphicsLayer::create(graphicsLayerFactory(), *this);
@@ -205,6 +212,10 @@ void LayerTreeHostGtk::deviceOrPageScaleFactorChanged()
 {
     // Other layers learn of the scale factor change via WebPage::setDeviceScaleFactor.
     m_nonCompositedContentLayer->deviceOrPageScaleFactorChanged();
+
+    m_scaleMatrix.makeIdentity();
+    m_scaleMatrix.scale(m_webPage->deviceScaleFactor() * m_webPage->pageScaleFactor());
+    downcast<GraphicsLayerTextureMapper>(*m_rootLayer).layer().setTransform(m_scaleMatrix);
 }
 
 void LayerTreeHostGtk::forceRepaint()
@@ -216,6 +227,16 @@ void LayerTreeHostGtk::paintContents(const GraphicsLayer* graphicsLayer, Graphic
 {
     if (graphicsLayer == m_nonCompositedContentLayer.get())
         m_webPage->drawRect(graphicsContext, enclosingIntRect(clipRect));
+}
+
+float LayerTreeHostGtk::deviceScaleFactor() const
+{
+    return m_webPage->deviceScaleFactor();
+}
+
+float LayerTreeHostGtk::pageScaleFactor() const
+{
+    return m_webPage->pageScaleFactor();
 }
 
 static inline bool shouldSkipNextFrameBecauseOfContinousImmediateFlushes(double current, double lastImmediateFlushTime)
@@ -368,6 +389,7 @@ void LayerTreeHostGtk::setViewOverlayRootLayer(WebCore::GraphicsLayer* viewOverl
 
 void LayerTreeHostGtk::setNativeSurfaceHandleForCompositing(uint64_t handle)
 {
+    cancelPendingLayerFlush();
     m_layerTreeContext.contextID = handle;
 
     // The creation of the TextureMapper needs an active OpenGL context.

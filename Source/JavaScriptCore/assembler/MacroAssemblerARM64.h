@@ -2276,14 +2276,14 @@ public:
 
     void test32(ResultCondition cond, Address address, TrustedImm32 mask, RegisterID dest)
     {
-        load32(address, getCachedDataTempRegisterIDAndInvalidate());
-        test32(cond, dataTempRegister, mask, dest);
+        load32(address, getCachedMemoryTempRegisterIDAndInvalidate());
+        test32(cond, memoryTempRegister, mask, dest);
     }
 
     void test8(ResultCondition cond, Address address, TrustedImm32 mask, RegisterID dest)
     {
-        load8(address, getCachedDataTempRegisterIDAndInvalidate());
-        test32(cond, dataTempRegister, mask, dest);
+        load8(address, getCachedMemoryTempRegisterIDAndInvalidate());
+        test32(cond, memoryTempRegister, mask, dest);
     }
 
     void test64(ResultCondition cond, RegisterID op1, RegisterID op2, RegisterID dest)
@@ -2341,10 +2341,10 @@ public:
         return branch32(cond, left, dataTempRegister);
     }
 
-    PatchableJump patchableBranchPtr(RelationalCondition cond, Address left, TrustedImmPtr right = TrustedImmPtr(0))
+    PatchableJump patchableBranchPtr(RelationalCondition cond, Address left, TrustedImmPtr right)
     {
         m_makeJumpPatchable = true;
-        Jump result = branch32(cond, left, TrustedImm32(right));
+        Jump result = branch64(cond, left, TrustedImm64(right));
         m_makeJumpPatchable = false;
         return PatchableJump(result);
     }
@@ -2361,6 +2361,22 @@ public:
     {
         m_makeJumpPatchable = true;
         Jump result = branch32(cond, reg, imm);
+        m_makeJumpPatchable = false;
+        return PatchableJump(result);
+    }
+
+    PatchableJump patchableBranch64(RelationalCondition cond, RegisterID reg, TrustedImm64 imm)
+    {
+        m_makeJumpPatchable = true;
+        Jump result = branch64(cond, reg, imm);
+        m_makeJumpPatchable = false;
+        return PatchableJump(result);
+    }
+
+    PatchableJump patchableBranch64(RelationalCondition cond, RegisterID left, RegisterID right)
+    {
+        m_makeJumpPatchable = true;
+        Jump result = branch64(cond, left, right);
         m_makeJumpPatchable = false;
         return PatchableJump(result);
     }

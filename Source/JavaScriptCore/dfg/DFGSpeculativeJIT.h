@@ -2191,6 +2191,8 @@ public:
     void compileSkipScope(Node*);
 
     void compileGetArrayLength(Node*);
+
+    void compileCheckIdent(Node*);
     
     void compileValueRep(Node*);
     void compileDoubleRep(Node*);
@@ -2406,6 +2408,8 @@ public:
     void speculateStringObject(Edge, GPRReg);
     void speculateStringObject(Edge);
     void speculateStringOrStringObject(Edge);
+    void speculateSymbol(Edge, GPRReg cell);
+    void speculateSymbol(Edge);
     void speculateNotCell(Edge);
     void speculateOther(Edge);
     void speculateMisc(Edge, JSValueRegs);
@@ -3222,7 +3226,7 @@ public:
         , m_gprOrInvalid(InvalidGPRReg)
     {
         ASSERT(m_jit);
-        ASSERT_UNUSED(mode, mode == ManualOperandSpeculation || edge.useKind() == BooleanUse);
+        ASSERT_UNUSED(mode, mode == ManualOperandSpeculation || edge.useKind() == BooleanUse || edge.useKind() == KnownBooleanUse);
         if (jit->isFilled(node()))
             gpr();
     }

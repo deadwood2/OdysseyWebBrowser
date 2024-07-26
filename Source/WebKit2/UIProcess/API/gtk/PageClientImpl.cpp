@@ -44,13 +44,8 @@
 #include <WebCore/Cursor.h>
 #include <WebCore/EventNames.h>
 #include <WebCore/GtkUtilities.h>
-#include <WebCore/PlatformDisplay.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
-
-#if PLATFORM(X11)
-#include <gdk/gdkx.h>
-#endif
 
 using namespace WebCore;
 
@@ -253,6 +248,11 @@ void PageClientImpl::exitAcceleratedCompositingMode()
     webkitWebViewBaseExitAcceleratedCompositingMode(WEBKIT_WEB_VIEW_BASE(m_viewWidget));
 }
 
+void PageClientImpl::willEnterAcceleratedCompositingMode()
+{
+    webkitWebViewBaseWillEnterAcceleratedCompositingMode(WEBKIT_WEB_VIEW_BASE(m_viewWidget));
+}
+
 void PageClientImpl::updateAcceleratedCompositingMode(const LayerTreeContext&)
 {
     notImplemented();
@@ -342,6 +342,7 @@ void PageClientImpl::beganExitFullScreen(const IntRect& /* initialFrame */, cons
 
 #endif // ENABLE(FULLSCREEN_API)
 
+#if ENABLE(TOUCH_EVENTS)
 void PageClientImpl::doneWithTouchEvent(const NativeWebTouchEvent& event, bool wasEventHandled)
 {
     if (wasEventHandled)
@@ -397,6 +398,7 @@ void PageClientImpl::doneWithTouchEvent(const NativeWebTouchEvent& event, bool w
 
     gtk_widget_event(m_viewWidget, pointerEvent.get());
 }
+#endif // ENABLE(TOUCH_EVENTS)
 
 void PageClientImpl::didFinishLoadingDataForCustomContentProvider(const String&, const IPC::DataReference&)
 {
@@ -448,17 +450,15 @@ void PageClientImpl::derefView()
     g_object_unref(m_viewWidget);
 }
 
-GUniquePtr<GstInstallPluginsContext> PageClientImpl::createGstInstallPluginsContext()
+#if ENABLE(VIDEO) && USE(GSTREAMER)
+bool PageClientImpl::decidePolicyForInstallMissingMediaPluginsPermissionRequest(InstallMissingMediaPluginsPermissionRequest& request)
 {
-#if PLATFORM(X11)
-    if (PlatformDisplay::sharedDisplay().type() == PlatformDisplay::Type::X11) {
-        GUniquePtr<GstInstallPluginsContext> context(gst_install_plugins_context_new());
-        gst_install_plugins_context_set_xid(context.get(), GDK_WINDOW_XID(gtk_widget_get_window(m_viewWidget)));
-        return context;
-    }
-#endif
+    if (!WEBKIT_IS_WEB_VIEW(m_viewWidget))
+        return false;
 
-    return nullptr;
+    webkitWebViewRequestInstallMissingMediaPlugins(WEBKIT_WEB_VIEW(m_viewWidget), request);
+    return true;
 }
+#endif
 
 } // namespace WebKit

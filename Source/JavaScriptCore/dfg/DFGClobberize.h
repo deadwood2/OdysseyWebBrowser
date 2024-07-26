@@ -268,6 +268,10 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         def(PureValue(CheckNotEmpty, AdjacencyList(AdjacencyList::Fixed, node->child1())));
         return;
 
+    case CheckIdent:
+        def(PureValue(CheckIdent, AdjacencyList(AdjacencyList::Fixed, node->child1()), node->uidOperand()));
+        return;
+
     case ConstantStoragePointer:
         def(PureValue(node, node->storagePointer()));
         return;
@@ -463,7 +467,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         switch (mode.type()) {
         case Array::SelectUsingPredictions:
         case Array::Unprofiled:
-        case Array::Undecided:
+        case Array::SelectUsingArguments:
             // Assume the worst since we don't have profiling yet.
             read(World);
             write(Heap);
@@ -530,6 +534,10 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
             read(World);
             write(Heap);
             return;
+
+        case Array::Undecided:
+            def(PureValue(node));
+            return;
             
         case Array::ArrayStorage:
         case Array::SlowPutArrayStorage:
@@ -576,6 +584,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         Node* value = graph.varArgChild(node, 2).node();
         switch (mode.modeForPut().type()) {
         case Array::SelectUsingPredictions:
+        case Array::SelectUsingArguments:
         case Array::Unprofiled:
         case Array::Undecided:
             // Assume the worst since we don't have profiling yet.
@@ -886,6 +895,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
                 if (operandIdx >= numElements)
                     continue;
                 Edge use = graph.m_varArgChildren[node->firstChild() + operandIdx];
+                // operandIdx comes from graph.m_uint32ValuesInUse and thus is guaranteed to be already frozen
                 def(HeapLocation(IndexedPropertyLoc, heap, node, LazyNode(graph.freeze(jsNumber(operandIdx)))),
                     LazyNode(use.node()));
             }
@@ -928,9 +938,13 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
                     LazyNode(graph.freeze(data[index]), op));
             }
         } else {
+            Vector<uint32_t> possibleIndices;
             for (uint32_t index : graph.m_uint32ValuesInUse) {
                 if (index >= numElements)
                     continue;
+                possibleIndices.append(index);
+            }
+            for (uint32_t index : possibleIndices) {
                 def(HeapLocation(IndexedPropertyLoc, heap, node, LazyNode(graph.freeze(jsNumber(index)))),
                     LazyNode(graph.freeze(data[index]), op));
             }

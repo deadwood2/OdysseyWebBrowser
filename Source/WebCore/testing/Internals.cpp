@@ -31,6 +31,7 @@
 #include "AnimationController.h"
 #include "ApplicationCacheStorage.h"
 #include "BackForwardController.h"
+#include "BitmapImage.h"
 #include "CachedImage.h"
 #include "CachedResourceLoader.h"
 #include "Chrome.h"
@@ -446,6 +447,10 @@ String Internals::xhrResponseSource(XMLHttpRequest* xhr)
         return "Disk cache";
     case ResourceResponse::Source::DiskCacheAfterValidation:
         return "Disk cache after validation";
+    case ResourceResponse::Source::MemoryCache:
+        return "Memory cache";
+    case ResourceResponse::Source::MemoryCacheAfterValidation:
+        return "Memory cache after validation";
     }
     ASSERT_NOT_REACHED();
     return "Error";
@@ -524,6 +529,21 @@ void Internals::pruneMemoryCacheToSize(unsigned size)
 unsigned Internals::memoryCacheSize() const
 {
     return MemoryCache::singleton().size();
+}
+
+size_t Internals::imageFrameIndex(Element* element, ExceptionCode& ec)
+{
+    if (!is<HTMLImageElement>(element)) {
+        ec = TypeError;
+        return 0;
+    }
+
+    auto* cachedImage = downcast<HTMLImageElement>(*element).cachedImage();
+    if (!cachedImage)
+        return 0;
+
+    auto* image = cachedImage->image();
+    return is<BitmapImage>(image) ? downcast<BitmapImage>(*image).currentFrame() : 0;
 }
 
 void Internals::clearPageCache()
@@ -1179,7 +1199,7 @@ void Internals::scrollElementToRect(Element* element, long x, long y, long w, lo
         return;
     }
     FrameView* frameView = element->document().view();
-    frameView->scrollElementToRect(element, IntRect(x, y, w, h));
+    frameView->scrollElementToRect(*element, IntRect(x, y, w, h));
 }
 
 void Internals::paintControlTints(ExceptionCode& ec)
@@ -2395,6 +2415,14 @@ void Internals::forceReload(bool endToEnd)
     frame()->loader().reload(endToEnd);
 }
 
+void Internals::enableAutoSizeMode(bool enabled, int minimumWidth, int minimumHeight, int maximumWidth, int maximumHeight)
+{
+    Document* document = contextDocument();
+    if (!document || !document->view())
+        return;
+    document->view()->enableAutoSizeMode(enabled, IntSize(minimumWidth, minimumHeight), IntSize(maximumWidth, maximumHeight));
+}
+
 #if ENABLE(ENCRYPTED_MEDIA_V2)
 void Internals::initializeMockCDM()
 {
@@ -2792,6 +2820,7 @@ static MediaSessionInterruptingCategory interruptingCategoryFromString(const Str
     if (interruptingCategoryString == "transient-solo")
         return MediaSessionInterruptingCategory::TransientSolo;
     ASSERT_NOT_REACHED();
+    return MediaSessionInterruptingCategory::Content;
 }
 
 void Internals::sendMediaSessionStartOfInterruptionNotification(const String& interruptingCategoryString)

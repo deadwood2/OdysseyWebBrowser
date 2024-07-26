@@ -43,7 +43,6 @@
 #include "JSCInlines.h"
 #include "JSCJSValue.h"
 #include "JSGlobalObjectFunctions.h"
-#include "JSNameScope.h"
 #include "JSStackInlines.h"
 #include "JSString.h"
 #include "JSWithScope.h"
@@ -54,6 +53,7 @@
 #include "ObjectConstructor.h"
 #include "ProtoCallFrame.h"
 #include "StructureRareDataInlines.h"
+#include "VMInlines.h"
 #include <wtf/StringPrintStream.h>
 
 namespace JSC { namespace LLInt {
@@ -1264,33 +1264,6 @@ LLINT_SLOW_PATH_DECL(slow_path_to_primitive)
     LLINT_RETURN(LLINT_OP_C(2).jsValue().toPrimitive(exec));
 }
 
-LLINT_SLOW_PATH_DECL(slow_path_push_with_scope)
-{
-    LLINT_BEGIN();
-    JSValue v = LLINT_OP_C(2).jsValue();
-    JSObject* o = v.toObject(exec);
-    LLINT_CHECK_EXCEPTION();
-
-    int scopeReg = pc[1].u.operand;
-    JSScope* currentScope = exec->uncheckedR(scopeReg).Register::scope();
-    exec->uncheckedR(scopeReg) = JSWithScope::create(exec, o, currentScope);
-    
-    LLINT_END();
-}
-
-LLINT_SLOW_PATH_DECL(slow_path_push_name_scope)
-{
-    LLINT_BEGIN();
-    int scopeReg = pc[1].u.operand;
-    JSScope* currentScope = exec->uncheckedR(scopeReg).Register::scope();
-    JSValue value = LLINT_OP_C(2).jsValue();
-    SymbolTable* symbolTable = jsCast<SymbolTable*>(LLINT_OP_C(3).jsValue());
-    JSNameScope::Type type = static_cast<JSNameScope::Type>(pc[4].u.operand);
-    JSNameScope* scope = JSNameScope::create(vm, exec->lexicalGlobalObject(), currentScope, symbolTable, value, type);
-    exec->uncheckedR(scopeReg) = scope;
-    LLINT_END();
-}
-
 LLINT_SLOW_PATH_DECL(slow_path_throw)
 {
     LLINT_BEGIN();
@@ -1313,7 +1286,7 @@ LLINT_SLOW_PATH_DECL(slow_path_handle_watchdog_timer)
 {
     LLINT_BEGIN_NO_SET_PC();
     ASSERT(vm.watchdog);
-    if (UNLIKELY(vm.watchdog->didFire(exec)))
+    if (UNLIKELY(vm.shouldTriggerTermination(exec)))
         LLINT_THROW(createTerminatedExecutionException(&vm));
     LLINT_RETURN_TWO(0, exec);
 }

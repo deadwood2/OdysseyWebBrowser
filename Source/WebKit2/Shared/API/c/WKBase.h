@@ -42,7 +42,7 @@
 #include <WebKit/WKBaseEfl.h>
 #endif
 
-#if defined(__APPLE__)
+#if defined(__APPLE__) && !defined(BUILDING_GTK__)
 #include <WebKit/WKBaseMac.h>
 #endif
 
@@ -112,6 +112,7 @@ typedef const struct OpaqueWKIconDatabase* WKIconDatabaseRef;
 typedef const struct OpaqueWKInspector* WKInspectorRef;
 typedef const struct OpaqueWKKeyValueStorageManager* WKKeyValueStorageManagerRef;
 typedef const struct OpaqueWKMediaCacheManager* WKMediaCacheManagerRef;
+typedef const struct OpaqueWKMediaSessionFocusManager* WKMediaSessionFocusManagerRef;
 typedef const struct OpaqueWKMediaSessionMetadata* WKMediaSessionMetadataRef;
 typedef const struct OpaqueWKNavigationAction* WKNavigationActionRef;
 typedef const struct OpaqueWKNavigationData* WKNavigationDataRef;

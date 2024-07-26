@@ -50,7 +50,6 @@
 #include "ThunkGenerators.h"
 #include "TypedArrayController.h"
 #include "VMEntryRecord.h"
-#include "Watchdog.h"
 #include "Watchpoint.h"
 #include "WeakRandom.h"
 #include <wtf/Bag.h>
@@ -87,7 +86,6 @@ class Identifier;
 class Interpreter;
 class JSGlobalObject;
 class JSObject;
-class Keywords;
 class LLIntOffsetsExtractor;
 class LegacyProfiler;
 class NativeExecutable;
@@ -107,6 +105,7 @@ class UnlinkedFunctionExecutable;
 class UnlinkedProgramCodeBlock;
 class VirtualRegister;
 class VMEntryScope;
+class Watchdog;
 class Watchpoint;
 class WatchpointSet;
 
@@ -237,6 +236,8 @@ public:
     static Ref<VM> createContextGroup(HeapType = SmallHeap);
     JS_EXPORT_PRIVATE ~VM();
 
+    JS_EXPORT_PRIVATE Watchdog& ensureWatchdog();
+
 private:
     RefPtr<JSLock> m_apiLock;
 
@@ -259,7 +260,7 @@ public:
     ClientData* clientData;
     VMEntryFrame* topVMEntryFrame;
     ExecState* topCallFrame;
-    std::unique_ptr<Watchdog> watchdog;
+    RefPtr<Watchdog> watchdog;
 
     Strong<Structure> structureStructure;
     Strong<Structure> structureRareDataStructure;
@@ -346,7 +347,6 @@ public:
 
     typedef HashMap<RefPtr<SourceProvider>, RefPtr<SourceProviderCache>> SourceProviderCacheMap;
     SourceProviderCacheMap sourceProviderCacheMap;
-    std::unique_ptr<Keywords> keywords;
     Interpreter* interpreter;
 #if ENABLE(JIT)
     std::unique_ptr<JITThunks> jitStubs;
@@ -367,16 +367,6 @@ public:
     static ptrdiff_t exceptionOffset()
     {
         return OBJECT_OFFSETOF(VM, m_exception);
-    }
-
-    static ptrdiff_t vmEntryFrameForThrowOffset()
-    {
-        return OBJECT_OFFSETOF(VM, vmEntryFrameForThrow);
-    }
-
-    static ptrdiff_t topVMEntryFrameOffset()
-    {
-        return OBJECT_OFFSETOF(VM, topVMEntryFrame);
     }
 
     static ptrdiff_t callFrameForThrowOffset()
@@ -408,6 +398,14 @@ public:
     JS_EXPORT_PRIVATE JSValue throwException(ExecState*, JSValue);
     JS_EXPORT_PRIVATE JSObject* throwException(ExecState*, JSObject*);
 
+    void setFailNextNewCodeBlock() { m_failNextNewCodeBlock = true; }
+    bool getAndClearFailNextNewCodeBlock()
+    {
+        bool result = m_failNextNewCodeBlock;
+        m_failNextNewCodeBlock = false;
+        return result;
+    }
+    
     void* stackPointerAtVMEntry() const { return m_stackPointerAtVMEntry; }
     void setStackPointerAtVMEntry(void*);
 
@@ -443,7 +441,6 @@ public:
     JSValue hostCallReturnValue;
     unsigned varargsLength;
     ExecState* newCallFrameReturnValue;
-    VMEntryFrame* vmEntryFrameForThrow;
     ExecState* callFrameForThrow;
     void* targetMachinePCForThrow;
     Instruction* targetInterpreterPCForThrow;
@@ -512,7 +509,6 @@ public:
     JS_EXPORT_PRIVATE void dumpRegExpTrace();
 
     bool isCollectorBusy() { return heap.isBusy(); }
-    JS_EXPORT_PRIVATE void releaseExecutableMemory();
 
 #if ENABLE(GC_VALIDATION)
     bool isInitializingObject() const; 
@@ -531,11 +527,12 @@ public:
     JSLock& apiLock() { return *m_apiLock; }
     CodeCache* codeCache() { return m_codeCache.get(); }
 
-    void prepareToDiscardCode();
+    void prepareToDeleteCode();
         
-    JS_EXPORT_PRIVATE void discardAllCode();
+    JS_EXPORT_PRIVATE void deleteAllCode();
 
     void registerWatchpointForImpureProperty(const Identifier&, Watchpoint*);
+    
     // FIXME: Use AtomicString once it got merged with Identifier.
     JS_EXPORT_PRIVATE void addImpureProperty(const String&);
 
@@ -555,6 +552,8 @@ public:
 
     JS_EXPORT_PRIVATE void queueMicrotask(JSGlobalObject*, PassRefPtr<Microtask>);
     JS_EXPORT_PRIVATE void drainMicrotasks();
+
+    inline bool shouldTriggerTermination(ExecState*);
 
 private:
     friend class LLIntOffsetsExtractor;
@@ -599,6 +598,7 @@ private:
     void* m_lastStackTop;
     Exception* m_exception { nullptr };
     Exception* m_lastException { nullptr };
+    bool m_failNextNewCodeBlock { false };
     bool m_inDefineOwnProperty;
     std::unique_ptr<CodeCache> m_codeCache;
     LegacyProfiler* m_enabledProfiler;

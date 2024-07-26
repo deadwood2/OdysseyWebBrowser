@@ -138,7 +138,6 @@ DocumentLoader::DocumentLoader(const ResourceRequest& req, const SubstituteData&
     , m_timeOfLastDataReceived(0.0)
     , m_identifierForLoadWithoutResourceLoader(0)
     , m_dataLoadTimer(*this, &DocumentLoader::handleSubstituteDataLoadNow)
-    , m_waitingForContentPolicy(false)
     , m_subresourceLoadersArePageCacheAcceptable(false)
     , m_applicationCacheHost(std::make_unique<ApplicationCacheHost>(*this))
 #if ENABLE(CONTENT_FILTERING)
@@ -163,6 +162,7 @@ DocumentLoader::~DocumentLoader()
 {
     ASSERT(!m_frame || frameLoader()->activeDocumentLoader() != this || !isLoading());
     ASSERT_WITH_MESSAGE(!m_waitingForContentPolicy, "The content policy callback should never outlive its DocumentLoader.");
+    ASSERT_WITH_MESSAGE(!m_waitingForNavigationPolicy, "The navigation policy callback should never outlive its DocumentLoader.");
     if (m_iconLoadDecisionCallback)
         m_iconLoadDecisionCallback->invalidate();
     if (m_iconDataCallback)
@@ -489,6 +489,14 @@ void DocumentLoader::redirectReceived(CachedResource* resource, ResourceRequest&
     willSendRequest(request, redirectResponse);
 }
 
+void DocumentLoader::syntheticRedirectReceived(CachedResource* resource, ResourceRequest& request, const ResourceResponse& redirectResponse, bool& shouldContinue)
+{
+    redirectReceived(resource, request, redirectResponse);
+
+    // If we will soon remove our reference to the CachedRawResource in favor of a SubstituteData load, we don't want to continue receiving synthetic CachedRawResource callbacks.
+    shouldContinue = !m_substituteData.isValid();
+}
+
 void DocumentLoader::willSendRequest(ResourceRequest& newRequest, const ResourceResponse& redirectResponse)
 {
     // Note that there are no asserts here as there are for the other callbacks. This is due to the
@@ -510,6 +518,11 @@ void DocumentLoader::willSendRequest(ResourceRequest& newRequest, const Resource
         if (!redirectingOrigin.get().canDisplay(newRequest.url())) {
             FrameLoader::reportLocalLoadFailed(m_frame, newRequest.url().string());
             cancelMainResourceLoad(frameLoader()->cancelledError(newRequest));
+            return;
+        }
+        if (!portAllowed(newRequest.url())) {
+            FrameLoader::reportBlockedPortFailed(m_frame, newRequest.url().string());
+            cancelMainResourceLoad(frameLoader()->blockedError(newRequest));
             return;
         }
         timing().addRedirect(redirectResponse.url(), newRequest.url());
@@ -552,7 +565,8 @@ void DocumentLoader::willSendRequest(ResourceRequest& newRequest, const Resource
         m_applicationCacheHost->maybeLoadMainResourceForRedirect(newRequest, m_substituteData);
         if (m_substituteData.isValid()) {
             RELEASE_ASSERT(m_mainResource);
-            m_identifierForLoadWithoutResourceLoader = m_mainResource->identifierForLoadWithoutResourceLoader();
+            ResourceLoader* loader = m_mainResource->loader();
+            m_identifierForLoadWithoutResourceLoader = loader ? loader->identifier() : m_mainResource->identifierForLoadWithoutResourceLoader();
         }
     }
 
@@ -563,6 +577,8 @@ void DocumentLoader::willSendRequest(ResourceRequest& newRequest, const Resource
     if (redirectResponse.isNull())
         return;
 
+    ASSERT(!m_waitingForNavigationPolicy);
+    m_waitingForNavigationPolicy = true;
     frameLoader()->policyChecker().checkNavigationPolicy(newRequest, [this](const ResourceRequest& request, PassRefPtr<FormState>, bool shouldContinue) {
         continueAfterNavigationPolicy(request, shouldContinue);
     });
@@ -570,6 +586,8 @@ void DocumentLoader::willSendRequest(ResourceRequest& newRequest, const Resource
 
 void DocumentLoader::continueAfterNavigationPolicy(const ResourceRequest&, bool shouldContinue)
 {
+    ASSERT(m_waitingForNavigationPolicy);
+    m_waitingForNavigationPolicy = false;
     if (!shouldContinue)
         stopLoadingForPolicyChange();
     else if (m_substituteData.isValid()) {
@@ -647,6 +665,10 @@ void DocumentLoader::responseReceived(CachedResource* resource, const ResourceRe
     m_response = response;
 
     if (m_identifierForLoadWithoutResourceLoader) {
+        if (m_mainResource && m_mainResource->wasRedirected()) {
+            ASSERT(m_mainResource->status() == CachedResource::Status::Cached);
+            frameLoader()->client().dispatchDidReceiveServerRedirectForProvisionalLoad();
+        }
         addResponse(m_response);
         frameLoader()->notifier().dispatchDidReceiveResponse(this, m_identifierForLoadWithoutResourceLoader, m_response, 0);
     }
@@ -716,7 +738,12 @@ void DocumentLoader::continueAfterContentPolicy(PolicyAction policy)
         // When starting the request, we didn't know that it would result in download and not navigation. Now we know that main document URL didn't change.
         // Download may use this knowledge for purposes unrelated to cookies, notably for setting file quarantine data.
         frameLoader()->setOriginalURLForDownloadRequest(m_request);
-        frameLoader()->client().convertMainResourceLoadToDownload(this, m_request, m_response);
+
+        if (m_request.url().protocolIsData()) {
+            // We decode data URL internally, there is no resource load to convert.
+            frameLoader()->client().startDownload(m_request);
+        } else
+            frameLoader()->client().convertMainResourceLoadToDownload(this, m_request, m_response);
 
         // It might have gone missing
         if (mainResourceLoader())
@@ -1433,7 +1460,7 @@ void DocumentLoader::startLoadingMainResource()
     // If this is a reload the cache layer might have made the previous request conditional. DocumentLoader can't handle 304 responses itself.
     request.makeUnconditional();
 
-    static NeverDestroyed<ResourceLoaderOptions> mainResourceLoadOptions(SendCallbacks, SniffContent, BufferData, AllowStoredCredentials, AskClientForAllCredentials, SkipSecurityCheck, UseDefaultOriginRestrictionsForType, IncludeCertificateInfo, ContentSecurityPolicyImposition::DoPolicyCheck);
+    static NeverDestroyed<ResourceLoaderOptions> mainResourceLoadOptions(SendCallbacks, SniffContent, BufferData, AllowStoredCredentials, AskClientForAllCredentials, ClientRequestedCredentials, SkipSecurityCheck, UseDefaultOriginRestrictionsForType, IncludeCertificateInfo, ContentSecurityPolicyImposition::DoPolicyCheck);
     CachedResourceRequest cachedResourceRequest(request, mainResourceLoadOptions);
     cachedResourceRequest.setInitiator(*this);
     m_mainResource = m_cachedResourceLoader->requestMainResource(cachedResourceRequest);
@@ -1473,9 +1500,10 @@ void DocumentLoader::cancelPolicyCheckIfNeeded()
 {
     RELEASE_ASSERT(frameLoader());
 
-    if (m_waitingForContentPolicy) {
+    if (m_waitingForContentPolicy || m_waitingForNavigationPolicy) {
         frameLoader()->policyChecker().cancelCheck();
         m_waitingForContentPolicy = false;
+        m_waitingForNavigationPolicy = false;
     }
 }
 

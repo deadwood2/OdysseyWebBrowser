@@ -99,7 +99,7 @@ void CSSFilterImageValue::loadSubimages(CachedResourceLoader& cachedResourceLoad
     m_filterSubimageObserver.setReady(true);
 }
 
-PassRefPtr<Image> CSSFilterImageValue::image(RenderElement* renderer, const FloatSize& size)
+RefPtr<Image> CSSFilterImageValue::image(RenderElement* renderer, const FloatSize& size)
 {
     if (size.isEmpty())
         return nullptr;
@@ -120,7 +120,8 @@ PassRefPtr<Image> CSSFilterImageValue::image(RenderElement* renderer, const Floa
         return Image::nullImage();
 
     // Transform Image into ImageBuffer.
-    std::unique_ptr<ImageBuffer> texture = ImageBuffer::create(size);
+    // FIXME (149424): This buffer should not be unconditionally unaccelerated.
+    std::unique_ptr<ImageBuffer> texture = ImageBuffer::create(size, Unaccelerated);
     if (!texture)
         return Image::nullImage();
     texture->context()->drawImage(image, ColorSpaceDeviceRGB, IntPoint());

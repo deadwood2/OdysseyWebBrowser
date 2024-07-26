@@ -774,9 +774,9 @@ void HTMLTreeBuilder::processStartTagForInBody(AtomicHTMLToken& token)
         return;
     }
     if (token.name() == inputTag) {
-        Attribute* typeAttribute = findAttribute(token.attributes(), typeAttr);
         m_tree.reconstructTheActiveFormattingElements();
         m_tree.insertSelfClosingHTMLElement(&token);
+        Attribute* typeAttribute = findAttribute(token.attributes(), typeAttr);
         if (!typeAttribute || !equalIgnoringCase(typeAttribute->value(), "hidden"))
             m_framesetOk = false;
         return;
@@ -2336,10 +2336,9 @@ void HTMLTreeBuilder::linkifyPhoneNumbers(const String& string)
 }
 
 // Looks at the ancestors of the element to determine whether we're inside an element which disallows parsing phone numbers.
-static inline bool disallowTelephoneNumberParsing(const Node& node)
+static inline bool disallowTelephoneNumberParsing(const ContainerNode& node)
 {
     return node.isLink()
-        || node.nodeType() == Node::COMMENT_NODE
         || node.hasTagName(scriptTag)
         || is<HTMLFormControlElement>(node)
         || node.hasTagName(styleTag)
@@ -2350,12 +2349,10 @@ static inline bool disallowTelephoneNumberParsing(const Node& node)
 
 static inline bool shouldParseTelephoneNumbersInNode(const ContainerNode& node)
 {
-    const ContainerNode* currentNode = &node;
-    do {
-        if (currentNode->isElementNode() && disallowTelephoneNumberParsing(*currentNode))
+    for (const ContainerNode* ancestor = &node; ancestor; ancestor = ancestor->parentNode()) {
+        if (disallowTelephoneNumberParsing(*ancestor))
             return false;
-        currentNode = currentNode->parentNode();
-    } while (currentNode);
+    }
     return true;
 }
 

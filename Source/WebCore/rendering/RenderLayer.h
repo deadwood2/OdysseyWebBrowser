@@ -404,7 +404,7 @@ public:
     RenderLayer* enclosingAncestorForPosition(EPosition) const;
 
     // Returns the nearest enclosing layer that is scrollable.
-    RenderLayer* enclosingScrollableLayer(LayoutRect* = nullptr) const;
+    RenderLayer* enclosingScrollableLayer() const;
 
     // The layer relative to which clipping rects for this layer are computed.
     RenderLayer* clippingRootForPainting() const;
@@ -432,7 +432,7 @@ public:
     enum ColumnOffsetAdjustment { DontAdjustForColumns, AdjustForColumns };
     void convertToPixelSnappedLayerCoords(const RenderLayer* ancestorLayer, IntPoint& location, ColumnOffsetAdjustment adjustForColumns = DontAdjustForColumns) const;
     LayoutPoint convertToLayerCoords(const RenderLayer* ancestorLayer, const LayoutPoint&, ColumnOffsetAdjustment adjustForColumns = DontAdjustForColumns) const;
-    LayoutSize offsetFromAncestor(const RenderLayer*) const;
+    LayoutSize offsetFromAncestor(const RenderLayer*, ColumnOffsetAdjustment = DontAdjustForColumns) const;
 
     int zIndex() const { return renderer().style().zIndex(); }
 
@@ -536,6 +536,7 @@ public:
     LayoutRect repaintRectIncludingNonCompositingDescendants() const;
 
     void setRepaintStatus(RepaintStatus status) { m_repaintStatus = status; }
+    RepaintStatus repaintStatus() const { return static_cast<RepaintStatus>(m_repaintStatus); }
 
     LayoutUnit staticInlinePosition() const { return m_staticInlinePosition; }
     LayoutUnit staticBlockPosition() const { return m_staticBlockPosition; }
@@ -896,6 +897,8 @@ private:
     IntSize scrollbarOffset(const Scrollbar*) const;
     
     void updateScrollableAreaSet(bool hasOverflow);
+    
+    bool allowsCurrentScroll() const;
 
     void dirtyAncestorChainVisibleDescendantStatus();
     void setAncestorChainHasVisibleDescendant();
@@ -1032,6 +1035,7 @@ private:
     bool m_hasVisibleContent : 1;
     bool m_visibleDescendantStatusDirty : 1;
     bool m_hasVisibleDescendant : 1;
+    bool m_registeredScrollableArea : 1;
 
     bool m_3DTransformedDescendantStatusDirty : 1;
     bool m_has3DTransformedDescendant : 1;  // Set on a stacking context layer that has 3D descendants anywhere

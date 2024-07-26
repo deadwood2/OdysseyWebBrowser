@@ -53,7 +53,6 @@
 #include "RenderInline.h"
 #include "RenderIterator.h"
 #include "RenderLayer.h"
-#include "RenderLayerBacking.h"
 #include "RenderLayerCompositor.h"
 #include "RenderNamedFlowFragment.h"
 #include "RenderNamedFlowThread.h"
@@ -110,20 +109,9 @@ static bool skipBodyBackground(const RenderBox* bodyElementRenderer)
     // The <body> only paints its background if the root element has defined a background independent of the body,
     // or if the <body>'s parent is not the document element's renderer (e.g. inside SVG foreignObject).
     auto documentElementRenderer = bodyElementRenderer->document().documentElement()->renderer();
-
-    if (!documentElementRenderer)
-        return false;
-
-    if (documentElementRenderer->hasBackground())
-        return false;
-
-    if (documentElementRenderer != bodyElementRenderer->parent())
-        return false;
-
-    if (bodyElementRenderer->isComposited() && documentElementRenderer->isComposited())
-        return downcast<RenderLayerModelObject>(documentElementRenderer)->layer()->backing()->graphicsLayer()->drawsContent();
-
-    return true;
+    return documentElementRenderer
+        && !documentElementRenderer->hasBackground()
+        && (documentElementRenderer == bodyElementRenderer->parent());
 }
 
 RenderBox::RenderBox(Element& element, Ref<RenderStyle>&& style, unsigned baseTypeFlags)
@@ -324,6 +312,15 @@ void RenderBox::styleWillChange(StyleDifference diff, const RenderStyle& newStyl
     } else if (isBody())
         view().repaintRootContents();
 
+#if ENABLE(CSS_SCROLL_SNAP)
+    if (!newStyle.scrollSnapCoordinates().isEmpty() || (oldStyle && !oldStyle->scrollSnapCoordinates().isEmpty())) {
+        if (newStyle.scrollSnapCoordinates().isEmpty())
+            view().unregisterBoxWithScrollSnapCoordinates(*this);
+        else
+            view().registerBoxWithScrollSnapCoordinates(*this);
+    }
+#endif
+
     RenderBoxModelObject::styleWillChange(diff, newStyle);
 }
 
@@ -354,7 +351,7 @@ void RenderBox::styleDidChange(StyleDifference diff, const RenderStyle* oldStyle
 
     // If our zoom factor changes and we have a defined scrollLeft/Top, we need to adjust that value into the
     // new zoomed coordinate space.
-    if (hasOverflowClip() && oldStyle && oldStyle->effectiveZoom() != newStyle.effectiveZoom()) {
+    if (hasOverflowClip() && layer() && oldStyle && oldStyle->effectiveZoom() != newStyle.effectiveZoom()) {
         if (int left = layer()->scrollXOffset()) {
             left = (left / oldStyle->effectiveZoom()) * newStyle.effectiveZoom();
             layer()->scrollToXOffset(left);
@@ -440,6 +437,17 @@ void RenderBox::styleDidChange(StyleDifference diff, const RenderStyle* oldStyle
     updateGridAlignmentAfterStyleChange(oldStyle);
 #endif
 }
+
+void RenderBox::willBeRemovedFromTree()
+{
+#if ENABLE(CSS_SCROLL_SNAP)
+    if (hasInitializedStyle() && !style().scrollSnapCoordinates().isEmpty())
+        view().unregisterBoxWithScrollSnapCoordinates(*this);
+#endif
+    
+    RenderBoxModelObject::willBeRemovedFromTree();
+}
+    
 
 #if ENABLE(CSS_SHAPES)
 void RenderBox::updateShapeOutsideInfoAfterStyleChange(const RenderStyle& style, const RenderStyle* oldStyle)
@@ -589,7 +597,7 @@ int RenderBox::pixelSnappedOffsetHeight() const
 
 int RenderBox::scrollWidth() const
 {
-    if (hasOverflowClip())
+    if (hasOverflowClip() && layer())
         return layer()->scrollWidth();
     // For objects with visible overflow, this matches IE.
     // FIXME: Need to work right with writing modes.
@@ -602,7 +610,7 @@ int RenderBox::scrollWidth() const
 
 int RenderBox::scrollHeight() const
 {
-    if (hasOverflowClip())
+    if (hasOverflowClip() && layer())
         return layer()->scrollHeight();
     // For objects with visible overflow, this matches IE.
     // FIXME: Need to work right with writing modes.
@@ -612,12 +620,12 @@ int RenderBox::scrollHeight() const
 
 int RenderBox::scrollLeft() const
 {
-    return hasOverflowClip() ? layer()->scrollXOffset() : 0;
+    return hasOverflowClip() && layer() ? layer()->scrollXOffset() : 0;
 }
 
 int RenderBox::scrollTop() const
 {
-    return hasOverflowClip() ? layer()->scrollYOffset() : 0;
+    return hasOverflowClip() && layer() ? layer()->scrollYOffset() : 0;
 }
 
 static void setupWheelEventTestTrigger(RenderLayer& layer, Frame* frame)
@@ -634,18 +642,18 @@ static void setupWheelEventTestTrigger(RenderLayer& layer, Frame* frame)
 
 void RenderBox::setScrollLeft(int newLeft)
 {
-    if (hasOverflowClip()) {
-        setupWheelEventTestTrigger(*layer(), document().frame());
-        layer()->scrollToXOffset(newLeft, RenderLayer::ScrollOffsetClamped);
-    }
+    if (!hasOverflowClip() || !layer())
+        return;
+    setupWheelEventTestTrigger(*layer(), document().frame());
+    layer()->scrollToXOffset(newLeft, RenderLayer::ScrollOffsetClamped);
 }
 
 void RenderBox::setScrollTop(int newTop)
 {
-    if (hasOverflowClip()) {
-        setupWheelEventTestTrigger(*layer(), document().frame());
-        layer()->scrollToYOffset(newTop, RenderLayer::ScrollOffsetClamped);
-    }
+    if (!hasOverflowClip() || !layer())
+        return;
+    setupWheelEventTestTrigger(*layer(), document().frame());
+    layer()->scrollToYOffset(newTop, RenderLayer::ScrollOffsetClamped);
 }
 
 void RenderBox::absoluteRects(Vector<IntRect>& rects, const LayoutPoint& accumulatedOffset) const
@@ -796,13 +804,13 @@ bool RenderBox::fixedElementLaysOutRelativeToFrame(const FrameView& frameView) c
 
 bool RenderBox::includeVerticalScrollbarSize() const
 {
-    return hasOverflowClip() && !layer()->hasOverlayScrollbars()
+    return hasOverflowClip() && layer() && !layer()->hasOverlayScrollbars()
         && (style().overflowY() == OSCROLL || style().overflowY() == OAUTO);
 }
 
 bool RenderBox::includeHorizontalScrollbarSize() const
 {
-    return hasOverflowClip() && !layer()->hasOverlayScrollbars()
+    return hasOverflowClip() && layer() && !layer()->hasOverlayScrollbars()
         && (style().overflowX() == OSCROLL || style().overflowX() == OAUTO);
 }
 
@@ -822,12 +830,12 @@ int RenderBox::intrinsicScrollbarLogicalWidth() const
         return 0;
 
     if (isHorizontalWritingMode() && (style().overflowY() == OSCROLL && !hasVerticalScrollbarWithAutoBehavior())) {
-        ASSERT(layer()->hasVerticalScrollbar());
+        ASSERT(layer() && layer()->hasVerticalScrollbar());
         return verticalScrollbarWidth();
     }
 
     if (!isHorizontalWritingMode() && (style().overflowX() == OSCROLL && !hasHorizontalScrollbarWithAutoBehavior())) {
-        ASSERT(layer()->hasHorizontalScrollbar());
+        ASSERT(layer() && layer()->hasHorizontalScrollbar());
         return horizontalScrollbarHeight();
     }
 
@@ -899,7 +907,7 @@ bool RenderBox::logicalScroll(ScrollLogicalDirection direction, ScrollGranularit
 
 bool RenderBox::canBeScrolledAndHasScrollableArea() const
 {
-    return canBeProgramaticallyScrolled() && (scrollHeight() != roundToInt(clientHeight()) || scrollWidth() != roundToInt(clientWidth()));
+    return canBeProgramaticallyScrolled() && (hasHorizontalOverflow() || hasVerticalOverflow());
 }
 
 bool RenderBox::isScrollableOrRubberbandableBox() const
@@ -907,6 +915,7 @@ bool RenderBox::isScrollableOrRubberbandableBox() const
     return canBeScrolledAndHasScrollableArea();
 }
 
+// FIXME: This is badly named. overflow:hidden can be programmatically scrolled, yet this returns false in that case.
 bool RenderBox::canBeProgramaticallyScrolled() const
 {
     if (isRenderView())
@@ -915,8 +924,7 @@ bool RenderBox::canBeProgramaticallyScrolled() const
     if (!hasOverflowClip())
         return false;
 
-    bool hasScrollableOverflow = hasScrollableOverflowX() || hasScrollableOverflowY();
-    if (scrollsOverflow() && hasScrollableOverflow)
+    if (hasScrollableOverflowX() || hasScrollableOverflowY())
         return true;
 
     return element() && element()->hasEditableStyle();
@@ -1249,7 +1257,7 @@ void RenderBox::paintRootBoxFillLayers(const PaintInfo& paintInfo)
     const FillLayer* bgLayer = rootBackgroundRenderer.style().backgroundLayers();
     Color bgColor = rootBackgroundRenderer.style().visitedDependentColor(CSSPropertyBackgroundColor);
 
-    paintFillLayers(paintInfo, bgColor, bgLayer, view().backgroundRect(this), BackgroundBleedNone, CompositeSourceOver, &rootBackgroundRenderer);
+    paintFillLayers(paintInfo, bgColor, bgLayer, view().backgroundRect(), BackgroundBleedNone, CompositeSourceOver, &rootBackgroundRenderer);
 }
 
 BackgroundBleedAvoidance RenderBox::determineBackgroundBleedAvoidance(GraphicsContext* context) const
@@ -1323,6 +1331,7 @@ void RenderBox::paintBoxDecorations(PaintInfo& paintInfo, const LayoutPoint& pai
     // If we have a native theme appearance, paint that before painting our background.
     // The theme will tell us whether or not we should also paint the CSS background.
     ControlStates* controlStates = nullptr;
+    bool borderOrBackgroundPaintingIsNeeded = true;
     if (style().hasAppearance()) {
         if (hasControlStatesForRenderer(this))
             controlStates = controlStatesForRenderer(this);
@@ -1330,14 +1339,12 @@ void RenderBox::paintBoxDecorations(PaintInfo& paintInfo, const LayoutPoint& pai
             controlStates = new ControlStates();
             addControlStatesForRenderer(this, controlStates);
         }
+        borderOrBackgroundPaintingIsNeeded = theme().paint(*this, *controlStates, paintInfo, paintRect);
+        if (controlStates->needsRepaint())
+            view().scheduleLazyRepaint(*this);
     }
 
-    bool themePainted = style().hasAppearance() && !theme().paint(*this, controlStates, paintInfo, paintRect);
-
-    if (controlStates && controlStates->needsRepaint())
-        view().scheduleLazyRepaint(*this);
-
-    if (!themePainted) {
+    if (borderOrBackgroundPaintingIsNeeded) {
         if (bleedAvoidance == BackgroundBleedBackgroundOverBorder)
             paintBorder(paintInfo, paintRect, style(), bleedAvoidance);
 
@@ -1349,7 +1356,7 @@ void RenderBox::paintBoxDecorations(PaintInfo& paintInfo, const LayoutPoint& pai
     paintBoxShadow(paintInfo, paintRect, style(), Inset);
 
     // The theme will tell us whether or not we should also paint the CSS border.
-    if (bleedAvoidance != BackgroundBleedBackgroundOverBorder && (!style().hasAppearance() || (!themePainted && theme().paintBorderOnly(*this, paintInfo, paintRect))) && style().hasBorderDecoration())
+    if (bleedAvoidance != BackgroundBleedBackgroundOverBorder && (!style().hasAppearance() || (borderOrBackgroundPaintingIsNeeded && theme().paintBorderOnly(*this, paintInfo, paintRect))) && style().hasBorderDecoration())
         paintBorder(paintInfo, paintRect, style(), bleedAvoidance);
 
     if (bleedAvoidance == BackgroundBleedUseTransparencyLayer)
@@ -2256,12 +2263,15 @@ void RenderBox::computeRectForRepaint(const RenderLayerModelObject* repaintConta
 
     LayoutSize locationOffset = this->locationOffset();
     // FIXME: This is needed as long as RenderWidget snaps to integral size/position.
-    if (isRenderReplaced() && isWidget())
-        locationOffset = toIntSize(flooredIntPoint(locationOffset));
+    if (isRenderReplaced() && isWidget()) {
+        LayoutSize flooredLocationOffset = toIntSize(flooredIntPoint(locationOffset));
+        rect.expand(locationOffset - flooredLocationOffset);
+        locationOffset = flooredLocationOffset;
+    }
     LayoutPoint topLeft = rect.location();
     topLeft.move(locationOffset);
 
-    // We are now in our parent container's coordinate space.  Apply our transform to obtain a bounding box
+    // We are now in our parent container's coordinate space. Apply our transform to obtain a bounding box
     // in the parent's coordinate space that encloses us.
     if (hasLayer() && layer()->transform()) {
         fixed = position == FixedPosition;
@@ -2348,7 +2358,7 @@ void RenderBox::computeLogicalWidthInRegion(LogicalExtentComputedValues& compute
     }
 
     // If layout is limited to a subtree, the subtree root's logical width does not change.
-    if (element() && view().frameView().layoutRoot(true) == this)
+    if (element() && !view().frameView().layoutPending() && view().frameView().layoutRoot() == this)
         return;
 
     // The parent box is flexing us, so it has increased or decreased our
@@ -3281,26 +3291,33 @@ static void computeInlineStaticDistance(Length& logicalLeft, Length& logicalRigh
     // FIXME: The static distance computation has not been patched for mixed writing modes yet.
     if (child->parent()->style().direction() == LTR) {
         LayoutUnit staticPosition = child->layer()->staticInlinePosition() - containerBlock->borderLogicalLeft();
-        for (auto current = child->parent(); current && current != containerBlock; current = current->container()) {
-            if (is<RenderBox>(*current)) {
-                staticPosition += downcast<RenderBox>(*current).logicalLeft();
-                if (region && is<RenderBlock>(*current)) {
-                    const RenderBlock& currentBlock = downcast<RenderBlock>(*current);
-                    region = currentBlock.clampToStartAndEndRegions(region);
-                    RenderBoxRegionInfo* boxInfo = currentBlock.renderBoxRegionInfo(region);
-                    if (boxInfo)
-                        staticPosition += boxInfo->logicalLeft();
-                }
+        for (auto* current = child->parent(); current && current != containerBlock; current = current->container()) {
+            if (!is<RenderBox>(*current))
+                continue;
+            const auto& renderBox = downcast<RenderBox>(*current);
+            staticPosition += renderBox.logicalLeft();
+            if (renderBox.isInFlowPositioned())
+                staticPosition += renderBox.isHorizontalWritingMode() ? renderBox.offsetForInFlowPosition().width() : renderBox.offsetForInFlowPosition().height();
+            if (region && is<RenderBlock>(*current)) {
+                const RenderBlock& currentBlock = downcast<RenderBlock>(*current);
+                region = currentBlock.clampToStartAndEndRegions(region);
+                RenderBoxRegionInfo* boxInfo = currentBlock.renderBoxRegionInfo(region);
+                if (boxInfo)
+                    staticPosition += boxInfo->logicalLeft();
             }
         }
         logicalLeft.setValue(Fixed, staticPosition);
     } else {
-        RenderBox& enclosingBox = child->parent()->enclosingBox();
+        const RenderBox& enclosingBox = child->parent()->enclosingBox();
         LayoutUnit staticPosition = child->layer()->staticInlinePosition() + containerLogicalWidth + containerBlock->borderLogicalLeft();
-        for (RenderElement* current = &enclosingBox; current; current = current->container()) {
+        for (const RenderElement* current = &enclosingBox; current; current = current->container()) {
             if (is<RenderBox>(*current)) {
-                if (current != containerBlock)
-                    staticPosition -= downcast<RenderBox>(*current).logicalLeft();
+                if (current != containerBlock) {
+                    const auto& renderBox = downcast<RenderBox>(*current);
+                    staticPosition -= renderBox.logicalLeft();
+                    if (renderBox.isInFlowPositioned())
+                        staticPosition -= renderBox.isHorizontalWritingMode() ? renderBox.offsetForInFlowPosition().width() : renderBox.offsetForInFlowPosition().height();
+                }
                 if (current == &enclosingBox)
                     staticPosition -= enclosingBox.logicalWidth();
                 if (region && is<RenderBlock>(*current)) {
@@ -3656,8 +3673,13 @@ static void computeBlockStaticDistance(Length& logicalTop, Length& logicalBottom
     // FIXME: The static distance computation has not been patched for mixed writing modes.
     LayoutUnit staticLogicalTop = child->layer()->staticBlockPosition() - containerBlock->borderBefore();
     for (RenderElement* container = child->parent(); container && container != containerBlock; container = container->container()) {
-        if (is<RenderBox>(*container) && !is<RenderTableRow>(*container))
-            staticLogicalTop += downcast<RenderBox>(*container).logicalTop();
+        if (!is<RenderBox>(*container))
+            continue;
+        const auto& renderBox = downcast<RenderBox>(*container);
+        if (!is<RenderTableRow>(renderBox))
+            staticLogicalTop += renderBox.logicalTop();
+        if (renderBox.isInFlowPositioned())
+            staticLogicalTop += renderBox.isHorizontalWritingMode() ? renderBox.offsetForInFlowPosition().height() : renderBox.offsetForInFlowPosition().width();
     }
     logicalTop.setValue(Fixed, staticLogicalTop);
 }

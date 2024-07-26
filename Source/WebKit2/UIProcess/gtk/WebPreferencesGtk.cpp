@@ -43,6 +43,14 @@ void WebPreferences::platformInitializeStore()
         setPluginsEnabled(false);
     }
 #endif
+#if !ENABLE(OPENGL)
+    setAcceleratedCompositingEnabled(false);
+#else
+    if (getenv("WEBKIT_FORCE_COMPOSITING_MODE"))
+        setForceCompositingMode(true);
+    if (getenv("WEBKIT_DISABLE_COMPOSITING_MODE"))
+        setAcceleratedCompositingEnabled(false);
+#endif
 }
 
 void WebPreferences::platformUpdateStringValueForKey(const String&, const String&)

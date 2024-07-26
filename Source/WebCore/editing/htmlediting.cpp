@@ -285,8 +285,11 @@ Position previousVisuallyDistinctCandidate(const Position& position)
     return Position();
 }
 
-VisiblePosition firstEditablePositionAfterPositionInRoot(const Position& position, Node* highestRoot)
+Position firstEditablePositionAfterPositionInRoot(const Position& position, Node* highestRoot)
 {
+    if (!highestRoot)
+        return Position();
+
     // position falls before highestRoot.
     if (comparePositions(position, firstPositionInNode(highestRoot)) == -1 && highestRoot->hasEditableStyle())
         return firstPositionInNode(highestRoot);
@@ -296,7 +299,7 @@ VisiblePosition firstEditablePositionAfterPositionInRoot(const Position& positio
     if (&position.deprecatedNode()->treeScope() != &highestRoot->treeScope()) {
         Node* shadowAncestor = highestRoot->treeScope().ancestorInThisScope(p.deprecatedNode());
         if (!shadowAncestor)
-            return VisiblePosition();
+            return Position();
 
         p = positionAfterNode(shadowAncestor);
     }
@@ -305,13 +308,16 @@ VisiblePosition firstEditablePositionAfterPositionInRoot(const Position& positio
         p = isAtomicNode(p.deprecatedNode()) ? positionInParentAfterNode(p.deprecatedNode()) : nextVisuallyDistinctCandidate(p);
     
     if (p.deprecatedNode() && p.deprecatedNode() != highestRoot && !p.deprecatedNode()->isDescendantOf(highestRoot))
-        return VisiblePosition();
+        return Position();
     
-    return VisiblePosition(p);
+    return p;
 }
 
-VisiblePosition lastEditablePositionBeforePositionInRoot(const Position& position, Node* highestRoot)
+Position lastEditablePositionBeforePositionInRoot(const Position& position, Node* highestRoot)
 {
+    if (!highestRoot)
+        return Position();
+
     // When position falls after highestRoot, the result is easy to compute.
     if (comparePositions(position, lastPositionInNode(highestRoot)) == 1)
         return lastPositionInNode(highestRoot);
@@ -321,7 +327,7 @@ VisiblePosition lastEditablePositionBeforePositionInRoot(const Position& positio
     if (&position.deprecatedNode()->treeScope() != &highestRoot->treeScope()) {
         Node* shadowAncestor = highestRoot->treeScope().ancestorInThisScope(p.deprecatedNode());
         if (!shadowAncestor)
-            return VisiblePosition();
+            return Position();
 
         p = firstPositionInOrBeforeNode(shadowAncestor);
     }
@@ -330,9 +336,9 @@ VisiblePosition lastEditablePositionBeforePositionInRoot(const Position& positio
         p = isAtomicNode(p.deprecatedNode()) ? positionInParentBeforeNode(p.deprecatedNode()) : previousVisuallyDistinctCandidate(p);
     
     if (p.deprecatedNode() && p.deprecatedNode() != highestRoot && !p.deprecatedNode()->isDescendantOf(highestRoot))
-        return VisiblePosition();
+        return Position();
     
-    return VisiblePosition(p);
+    return p;
 }
 
 // FIXME: The method name, comment, and code say three different things here!

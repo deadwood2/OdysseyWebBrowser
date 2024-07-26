@@ -226,6 +226,8 @@ struct TextAutoSizingTraits : WTF::GenericHashTraits<TextAutoSizingKey> {
 class MediaSession;
 #endif
 
+const uint64_t HTMLMediaElementInvalidID = 0;
+
 enum PageshowEventPersistence {
     PageshowEventNotPersisted = 0,
     PageshowEventPersisted = 1
@@ -268,6 +270,16 @@ enum class DocumentCompatibilityMode : unsigned char {
 };
 
 enum DimensionsCheck { WidthDimensionsCheck = 1 << 0, HeightDimensionsCheck = 1 << 1, AllDimensionsCheck = 1 << 2 };
+
+enum class SelectionRestorationMode {
+    Restore,
+    SetDefault,
+};
+
+enum class SelectionRevealMode {
+    Reveal,
+    DoNotReveal
+};
 
 enum class HttpEquivPolicy {
     Enabled,
@@ -374,7 +386,7 @@ public:
     RefPtr<Attr> createAttribute(const String& name, ExceptionCode&);
     RefPtr<Attr> createAttributeNS(const String& namespaceURI, const String& qualifiedName, ExceptionCode&, bool shouldIgnoreNamespaceChecks = false);
     RefPtr<EntityReference> createEntityReference(const String& name, ExceptionCode&);
-    RefPtr<Node> importNode(Node* importedNode, ExceptionCode& ec) { return importNode(importedNode, true, ec); }
+    RefPtr<Node> importNode(Node* importedNode, ExceptionCode& ec) { return importNode(importedNode, false, ec); }
     RefPtr<Node> importNode(Node* importedNode, bool deep, ExceptionCode&);
     WEBCORE_EXPORT RefPtr<Element> createElementNS(const String& namespaceURI, const String& qualifiedName, ExceptionCode&);
     WEBCORE_EXPORT Ref<Element> createElement(const QualifiedName&, bool createdByParser);
@@ -431,8 +443,6 @@ public:
 
     String documentURI() const { return m_documentURI; }
     void setDocumentURI(const String&);
-
-    virtual URL baseURI() const override final;
 
 #if ENABLE(WEB_REPLAY)
     JSC::InputCursor& inputCursor() const { return *m_inputCursor; }
@@ -725,7 +735,6 @@ public:
     void unscheduleStyleRecalc();
     bool hasPendingStyleRecalc() const;
     bool hasPendingForcedStyleRecalc() const;
-    void styleRecalcTimerFired();
     void optimizedStyleSheetUpdateTimerFired();
 
     void registerNodeListForInvalidation(LiveNodeList&);
@@ -837,8 +846,9 @@ public:
     String title() const { return m_title.string(); }
     void setTitle(const String&);
 
-    void setTitleElement(const StringWithDirection&, Element* titleElement);
-    void removeTitle(Element* titleElement);
+    void titleElementAdded(Element& titleElement);
+    void titleElementRemoved(Element& titleElement);
+    void titleElementTextChanged(Element& titleElement);
 
     String cookie(ExceptionCode&);
     void setCookie(const String&, ExceptionCode&);
@@ -951,7 +961,7 @@ public:
     bool hasNodesWithPlaceholderStyle() const { return m_hasNodesWithPlaceholderStyle; }
     void setHasNodesWithPlaceholderStyle() { m_hasNodesWithPlaceholderStyle = true; }
 
-    void updateFocusAppearanceSoon(bool restorePreviousSelection);
+    void updateFocusAppearanceSoon(SelectionRestorationMode);
     void cancelFocusAppearanceUpdate();
 
     // Extension for manipulating canvas drawing contexts for use in CSS
@@ -1261,7 +1271,7 @@ public:
     WEBCORE_EXPORT void addAudioProducer(MediaProducer*);
     WEBCORE_EXPORT void removeAudioProducer(MediaProducer*);
     MediaProducer::MediaStateFlags mediaState() const { return m_mediaState; }
-    WEBCORE_EXPORT void updateIsPlayingMedia();
+    WEBCORE_EXPORT void updateIsPlayingMedia(uint64_t = HTMLMediaElementInvalidID);
     void pageMutedStateDidChange();
     WeakPtr<Document> createWeakPtr() { return m_weakFactory.createWeakPtr(); }
 
@@ -1278,6 +1288,7 @@ public:
 
     ShouldOpenExternalURLsPolicy shouldOpenExternalURLsPolicyToPropagate() const;
     bool shouldEnforceContentDispositionAttachmentSandbox() const;
+    void applyContentDispositionAttachmentSandbox();
 
 protected:
     enum ConstructionFlags { Synthesized = 1, NonRenderedPlaceholder = 1 << 1 };
@@ -1291,6 +1302,8 @@ private:
     friend class Node;
     friend class IgnoreDestructiveWriteCountIncrementer;
 
+    void updateTitleElement(Element* newTitleElement);
+
     void commonTeardown();
 
     RenderObject* renderer() const = delete;
@@ -1303,7 +1316,7 @@ private:
     void processArguments(const String& features, void* data, ArgumentsCallback);
 
     // FontSelectorClient
-    virtual void fontsNeedUpdate(FontSelector*) override final;
+    virtual void fontsNeedUpdate(FontSelector&) override final;
 
     virtual bool isDocument() const override final { return true; }
 
@@ -1324,6 +1337,7 @@ private:
 
     virtual double timerAlignmentInterval(bool hasReachedMaxNestingLevel) const override final;
 
+    void updateTitleFromTitleElement();
     void updateTitle(const StringWithDirection&);
     void updateFocusAppearanceTimerFired();
     void updateBaseURL();
@@ -1370,7 +1384,6 @@ private:
     void setCachedDOMCookies(const String&);
     bool isDOMCookieCacheValid() const { return m_cookieCacheExpiryTimer.isActive(); }
     void invalidateDOMCookieCache();
-    void domCookieCacheExpiryTimerFired();
     virtual void didLoadResourceSynchronously(const ResourceRequest&) override final;
 
     unsigned m_referencingNodeCount;
@@ -1471,7 +1484,7 @@ private:
     bool m_isDNSPrefetchEnabled;
     bool m_haveExplicitlyDisabledDNSPrefetch;
     bool m_frameElementsShouldIgnoreScrolling;
-    bool m_updateFocusAppearanceRestoresSelection;
+    SelectionRestorationMode m_updateFocusAppearanceRestoresSelection;
 
     // http://www.whatwg.org/specs/web-apps/current-work/#ignore-destructive-writes-counter
     unsigned m_ignoreDestructiveWriteCount;
@@ -1480,7 +1493,6 @@ private:
 
     StringWithDirection m_title;
     StringWithDirection m_rawTitle;
-    bool m_titleSetExplicitly;
     RefPtr<Element> m_titleElement;
 
     std::unique_ptr<AXObjectCache> m_axObjectCache;

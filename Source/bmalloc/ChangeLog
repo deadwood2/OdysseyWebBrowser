@@ -1,3 +1,181 @@
+2016-02-12  Michael Saboff  <msaboff@apple.com>
+
+        BASSERTs added in r196421 are causing debug test failures
+        https://bugs.webkit.org/show_bug.cgi?id=154113
+
+        Reviewed by Geoffrey Garen.
+
+        In VMHeap::deallocateLargeObject(), we drop the lock to deallocate the physical pages.
+        If the scavenger thread is running at the same time a synchronous call to scavenge()
+        comes in, we could call VMHeap::deallocateLargeObject() for an adjacent object while the
+        lock in the other thread is dropped.  We fix this by checking for adjacent objects we
+        can merge with and loop if we have one.
+
+        * bmalloc/FreeList.h:
+        (bmalloc::FreeList::push): Added BASSERT to catch adding unmerged free objects
+        * bmalloc/Heap.cpp:
+        (bmalloc::Heap::allocateLarge): Changed to use nextCanMerge().
+        * bmalloc/LargeObject.h:
+        (bmalloc::LargeObject::prevCanMerge): Repurposed prevIsAllocated.
+        (bmalloc::LargeObject::nextCanMerge): Repurposed nextIsAllocated.
+        (bmalloc::LargeObject::prevIsAllocated): Deleted.
+        (bmalloc::LargeObject::nextIsAllocated): Deleted.
+        * bmalloc/VMHeap.h:
+        (bmalloc::VMHeap::allocateLargeObject): Moved adding the extra object back to the free list
+        to after we set the object we'll return as being allocated.
+        (bmalloc::VMHeap::deallocateLargeObject):
+
+2016-02-11  Michael Saboff  <msaboff@apple.com>
+
+        Unreviewed build fix after r196421.
+
+        Removed BASSERTs that are firing to eliminate Debug build crashes.  I'll debug locally and
+        enable or alter after the issue is understood.
+
+        * bmalloc/LargeObject.h:
+        (bmalloc::LargeObject::merge): Removed BASSERTs that are firing.
+
+2016-02-11  Michael Saboff  <msaboff@apple.com>
+
+        bmalloc: large aligned allocations will put 1 or 2 free object on free list without merging with free neighbors
+        https://bugs.webkit.org/show_bug.cgi?id=154091
+
+        Reviewed by Geoffrey Garen.
+
+        If we split off any unused free object in the aligned version of Heap::allocateLarge(), we merge them with
+        free neighbors before putting them back on the free list.  Added helpers to verify that when we
+        add LargeObjects to the free list their neighbors are allocated.
+
+        * bmalloc/Heap.cpp:
+        (bmalloc::Heap::allocateLarge): Deleted private helper version and rolled it into the two the
+        two public versions of allocateLarge().
+        * bmalloc/Heap.h:
+        * bmalloc/LargeObject.h:
+        (bmalloc::LargeObject::prevIsAllocated): New helper.
+        (bmalloc::LargeObject::nextIsAllocated): New helper.
+        (bmalloc::LargeObject::merge): Check that the merge object has allocated neighbors.
+
+2015-12-03  Michael Saboff  <msaboff@apple.com>
+
+        bmalloc: extra large allocations could be more efficient
+        https://bugs.webkit.org/show_bug.cgi?id=151817
+
+        Reviewed by Geoffrey Garen.
+
+        Reduced the super chunk size from 4MB to 2MB.
+
+        Added path to reallocate() of an extra large object to see if we can extend the allocation.
+
+        * bmalloc/Allocator.cpp:
+        (bmalloc::Allocator::reallocate):
+        * bmalloc/SegregatedFreeList.h:
+        * bmalloc/Sizes.h:
+        * bmalloc/VMAllocate.h:
+        (bmalloc::tryVMAllocate):
+        (bmalloc::tryVMExtend):
+        (bmalloc::vmAllocate):
+
+2015-11-01  Philip Chimento  <philip.chimento@gmail.com>
+
+        [GTK] Fix combinations of PLATFORM(GTK) and OS(DARWIN)
+        https://bugs.webkit.org/show_bug.cgi?id=144560
+
+        Reviewed by Darin Adler.
+
+        * PlatformGTK.cmake: Added. This adds Zone.cpp to the PlatformGTK
+        build, on Darwin only. Since there was previously nothing for the
+        build system to do that was specific to the GTK platform in
+        bmalloc, we need to create this file.
+
+2015-10-29  Geoffrey Garen  <ggaren@apple.com>
+
+        bmalloc: AsyncTask should handle destruction
+        https://bugs.webkit.org/show_bug.cgi?id=150648
+
+        Reviewed by Mark Lam.
+
+        So we can use it in more places.
+
+        * bmalloc/AsyncTask.h: Use std::thread instead of pthread because it
+        should be more portable.
+
+        (bmalloc::Function>::AsyncTask): Renamed Signaled to RunRequested for
+        clarity. Added an ExitRequested state.
+
+        (bmalloc::Function>::~AsyncTask): Wait for our child thread to exit
+        before destroying ourselves because our child thread will modify our
+        data (and might modify our client's data). Note that we only need to
+        wait for the last child thread since any prior child thread, having
+        reached the Exited condition, is guaranteed not to read or write any
+        data.
+
+        (bmalloc::Function>::run):
+        (bmalloc::Function>::runSlowCase): Updated for interface changes. Also
+        changed to use our WebKit style for condition signal: Hold the lock
+        during the signal and always notify all. Technically, neither is necessary,
+        but it is easier to understand the code this way, and harder to make
+        mistakes.
+
+        (bmalloc::Function>::threadEntryPoint):
+        (bmalloc::Function>::threadRunLoop): Handle the new ExitRequested state.
+        Technically, this state has no meaningful difference from the Exited
+        state, but it is nice to be explicit.
+
+        (bmalloc::Function>::join): Deleted.
+        (bmalloc::Function>::pthreadEntryPoint): Deleted.
+        (bmalloc::Function>::entryPoint): Deleted.
+
+2015-10-15  Geoffrey Garen  <ggaren@apple.com>
+
+        bmalloc: per-thread cache data structure should be smaller
+        https://bugs.webkit.org/show_bug.cgi?id=150218
+
+        Reviewed by Andreas Kling.
+
+        Reduce the number of entries in the range cache because it's really
+        big, and the bigness only helps in cases of serious fragmentation, and
+        it only saves us a little bit of lock acquisition time.
+
+        * bmalloc/Allocator.cpp:
+        (bmalloc::Allocator::scavenge):
+        (bmalloc::Allocator::refillAllocatorSlowCase):
+        (bmalloc::Allocator::refillAllocator):
+        (bmalloc::Allocator::allocateLarge):
+        (bmalloc::Allocator::allocateSlowCase):
+        (bmalloc::Allocator::allocateBumpRangeSlowCase): Deleted.
+        (bmalloc::Allocator::allocateBumpRange): Deleted.
+        * bmalloc/Allocator.h: Pass through the empty allocator and the range
+        cache when refilling, and refill both. Otherwise, we always immediately
+        pop the last item in the range cache, wasting that slot of capacity.
+
+        * bmalloc/Heap.cpp:
+        (bmalloc::Heap::allocateSmallBumpRanges):
+        (bmalloc::Heap::allocateMediumBumpRanges): Account for the fact that
+        the range cache is no longer big enough to guarantee that it can hold
+        all the ranges in a page.
+
+        (bmalloc::Heap::refillSmallBumpRangeCache): Deleted.
+        (bmalloc::Heap::refillMediumBumpRangeCache): Deleted.
+
+        * bmalloc/Heap.h: Move VMHeap to the end of the object because it
+        contains a lot of unused / wasted space, and we want to pack our data
+        together in memory.
+
+        * bmalloc/Sizes.h: Make the range cache smaller.
+
+2015-10-13  Chris Dumez  <cdumez@apple.com>
+
+        Avoid useless copies in range-loops that are using 'auto'
+        https://bugs.webkit.org/show_bug.cgi?id=150091
+
+        Reviewed by Sam Weinig.
+
+        Avoid useless copies in range-loops that are using 'auto'. Also use
+        'auto*' instead of 'auto' when range values are pointers for clarity.
+
+        * bmalloc/Deallocator.cpp:
+        (bmalloc::Deallocator::processObjectLog):
+
 2015-07-24  Geoffrey Garen  <ggaren@apple.com>
 
         vmmap crash at JavaScriptCore: 0x31cd12f6 (the JavaScript malloc zone enumerator)

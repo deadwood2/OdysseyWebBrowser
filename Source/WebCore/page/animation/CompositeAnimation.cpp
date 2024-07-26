@@ -293,7 +293,7 @@ void CompositeAnimation::updateKeyframeAnimations(RenderElement* renderer, Rende
     }
     
     // Now remove the animations from the list.
-    for (auto nameForRemoval : animsToBeRemoved)
+    for (auto* nameForRemoval : animsToBeRemoved)
         m_keyframeAnimations.remove(nameForRemoval);
 }
 
@@ -518,13 +518,8 @@ bool CompositeAnimation::pauseAnimationAtTime(const AtomicString& name, double t
     if (!keyframeAnim || !keyframeAnim->running())
         return false;
 
-    double count = keyframeAnim->m_animation->iterationCount();
-    if ((t >= 0.0) && ((count == Animation::IterationCountInfinite) || (t <= count * keyframeAnim->duration()))) {
-        keyframeAnim->freezeAtTime(t);
-        return true;
-    }
-
-    return false;
+    keyframeAnim->freezeAtTime(t);
+    return true;
 }
 
 bool CompositeAnimation::pauseTransitionAtTime(CSSPropertyID property, double t)

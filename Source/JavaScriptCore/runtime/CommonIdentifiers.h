@@ -72,6 +72,7 @@
     macro(additionalJettisonReason) \
     macro(anonymous) \
     macro(arguments) \
+    macro(as) \
     macro(assign) \
     macro(back) \
     macro(bind) \
@@ -112,6 +113,7 @@
     macro(focus) \
     macro(forEach) \
     macro(forward) \
+    macro(from) \
     macro(fromCharCode) \
     macro(get) \
     macro(global) \
@@ -299,6 +301,7 @@
     macro(promiseRejectReactions) \
     macro(promiseResult) \
     macro(capabilities) \
+    macro(starDefault) \
 
 
 namespace JSC {
@@ -319,6 +322,7 @@ namespace JSC {
         const Identifier underscoreProto;
         const Identifier thisIdentifier;
         const Identifier useStrictIdentifier;
+        const Identifier timesIdentifier;
     private:
         std::unique_ptr<BuiltinNames> m_builtinNames;
 

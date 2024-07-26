@@ -69,13 +69,12 @@ public:
 
     virtual IntSize size() const = 0;
     virtual void updateContents(Image*, const IntRect&, const IntPoint& offset, UpdateContentsFlag) = 0;
-    virtual void updateContents(TextureMapper*, GraphicsLayer*, const IntRect& target, const IntPoint& offset, UpdateContentsFlag);
+    virtual void updateContents(TextureMapper*, GraphicsLayer*, const IntRect& target, const IntPoint& offset, UpdateContentsFlag, float scale = 1);
     virtual void updateContents(const void*, const IntRect& target, const IntPoint& offset, int bytesPerLine, UpdateContentsFlag) = 0;
     virtual bool isValid() const = 0;
     inline Flags flags() const { return m_flags; }
 
     virtual int bpp() const { return 32; }
-    virtual bool canReuseWith(const IntSize& /* contentsSize */, Flags = 0) { return false; }
     void reset(const IntSize& size, Flags flags = 0)
     {
         m_flags = flags;

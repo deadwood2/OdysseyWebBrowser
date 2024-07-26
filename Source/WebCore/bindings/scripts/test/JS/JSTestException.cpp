@@ -96,7 +96,7 @@ static const HashTableValue JSTestExceptionTableValues[] =
     { "name", DontDelete | ReadOnly | CustomAccessor, NoIntrinsic, (intptr_t)static_cast<PropertySlot::GetValueFunc>(jsTestExceptionName), (intptr_t) static_cast<PutPropertySlot::PutValueFunc>(0) },
 };
 
-static const HashTable JSTestExceptionTable = { 1, 1, true, JSTestExceptionTableValues, 0, JSTestExceptionTableIndex };
+static const HashTable JSTestExceptionTable = { 1, 1, true, JSTestExceptionTableValues, JSTestExceptionTableIndex };
 const ClassInfo JSTestExceptionConstructor::s_info = { "TestExceptionConstructor", &Base::s_info, 0, CREATE_METHOD_TABLE(JSTestExceptionConstructor) };
 
 JSTestExceptionConstructor::JSTestExceptionConstructor(Structure* structure, JSDOMGlobalObject* globalObject)
@@ -108,8 +108,9 @@ void JSTestExceptionConstructor::finishCreation(VM& vm, JSDOMGlobalObject* globa
 {
     Base::finishCreation(vm);
     ASSERT(inherits(info()));
-    putDirect(vm, vm.propertyNames->prototype, JSTestException::getPrototype(vm, globalObject), DontDelete | ReadOnly);
-    putDirect(vm, vm.propertyNames->length, jsNumber(0), ReadOnly | DontDelete | DontEnum);
+    putDirect(vm, vm.propertyNames->prototype, JSTestException::getPrototype(vm, globalObject), DontDelete | ReadOnly | DontEnum);
+    putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String(ASCIILiteral("TestException"))), ReadOnly | DontEnum);
+    putDirect(vm, vm.propertyNames->length, jsNumber(0), ReadOnly | DontEnum);
 }
 
 /* Hash table for prototype */

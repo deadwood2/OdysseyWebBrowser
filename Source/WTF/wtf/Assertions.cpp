@@ -68,7 +68,7 @@
 #include <unistd.h>
 #endif
 
-#if OS(DARWIN) || (OS(LINUX) && !defined(__UCLIBC__))
+#if OS(DARWIN) || (OS(LINUX) && defined(__GLIBC__) && !defined(__UCLIBC__))
 #include <cxxabi.h>
 #include <dlfcn.h>
 #include <execinfo.h>
@@ -140,7 +140,7 @@ static void vprintf_stderr_common(const char* format, va_list args)
     vfprintf(stderr, format, args);
 }
 
-#if COMPILER(CLANG) || COMPILER(GCC)
+#if COMPILER(GCC_OR_CLANG)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-nonliteral"
 #endif
@@ -173,7 +173,7 @@ static void vprintf_stderr_with_trailing_newline(const char* format, va_list arg
     vprintf_stderr_common(formatWithNewline.get(), args);
 }
 
-#if COMPILER(CLANG) || COMPILER(GCC)
+#if COMPILER(GCC_OR_CLANG)
 #pragma GCC diagnostic pop
 #endif
 
@@ -225,7 +225,7 @@ void WTFReportArgumentAssertionFailure(const char* file, int line, const char* f
 
 void WTFGetBacktrace(void** stack, int* size)
 {
-#if OS(DARWIN) || (OS(LINUX) && !defined(__UCLIBC__))
+#if OS(DARWIN) || (OS(LINUX) && defined(__GLIBC__) && !defined(__UCLIBC__))
     *size = backtrace(stack, *size);
 #elif OS(WINDOWS)
     // The CaptureStackBackTrace function is available in XP, but it is not defined
@@ -320,7 +320,7 @@ void WTFCrash()
     WTFReportBacktrace();
     *(int *)(uintptr_t)0xbbadbeef = 0;
     // More reliable, but doesn't say BBADBEEF.
-#if COMPILER(CLANG) || COMPILER(GCC)
+#if COMPILER(GCC_OR_CLANG)
     __builtin_trap();
 #else
     ((void(*)())0)();
@@ -334,7 +334,7 @@ void WTFCrashWithSecurityImplication()
     WTFReportBacktrace();
     *(int *)(uintptr_t)0xfbadbeef = 0;
     // More reliable, but doesn't say fbadbeef.
-#if COMPILER(CLANG) || COMPILER(GCC)
+#if COMPILER(GCC_OR_CLANG)
     __builtin_trap();
 #else
     ((void(*)())0)();

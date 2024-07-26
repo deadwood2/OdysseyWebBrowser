@@ -29,11 +29,13 @@
 #include "GraphicsContext.h"
 #include "GraphicsLayer.h"
 #include "HostWindow.h"
+#include "Logging.h"
 #include "PlatformMouseEvent.h"
 #include "PlatformWheelEvent.h"
 #include "ScrollAnimator.h"
 #include "Scrollbar.h"
 #include "ScrollbarTheme.h"
+#include "TextStream.h"
 #include <wtf/StdLibExtras.h>
 
 namespace WebCore {
@@ -877,6 +879,26 @@ IntRect ScrollView::contentsToView(IntRect rect) const
     return rect;
 }
 
+IntPoint ScrollView::contentsToContainingViewContents(const IntPoint& point) const
+{
+    if (const ScrollView* parentScrollView = parent()) {
+        IntPoint pointInContainingView = convertToContainingView(contentsToView(point));
+        return parentScrollView->viewToContents(pointInContainingView);
+    }
+
+    return contentsToView(point);
+}
+
+IntRect ScrollView::contentsToContainingViewContents(IntRect rect) const
+{
+    if (const ScrollView* parentScrollView = parent()) {
+        IntRect rectInContainingView = convertToContainingView(contentsToView(rect));
+        return parentScrollView->viewToContents(rectInContainingView);
+    }
+
+    return contentsToView(rect);
+}
+
 IntPoint ScrollView::rootViewToContents(const IntPoint& rootViewPoint) const
 {
     if (delegatesScrolling())
@@ -996,10 +1018,12 @@ Scrollbar* ScrollView::scrollbarAtPoint(const IntPoint& windowPoint)
     if (platformWidget())
         return 0;
 
-    IntPoint viewPoint = convertFromContainingWindow(windowPoint);
-    if (m_horizontalScrollbar && m_horizontalScrollbar->shouldParticipateInHitTesting() && m_horizontalScrollbar->frameRect().contains(viewPoint))
+    // convertFromContainingWindow doesn't do what it sounds like it does. We need it here just to get this
+    // point into the right coordinates if this is the ScrollView of a sub-frame.
+    IntPoint convertedPoint = convertFromContainingWindow(windowPoint);
+    if (m_horizontalScrollbar && m_horizontalScrollbar->shouldParticipateInHitTesting() && m_horizontalScrollbar->frameRect().contains(convertedPoint))
         return m_horizontalScrollbar.get();
-    if (m_verticalScrollbar && m_verticalScrollbar->shouldParticipateInHitTesting() && m_verticalScrollbar->frameRect().contains(viewPoint))
+    if (m_verticalScrollbar && m_verticalScrollbar->shouldParticipateInHitTesting() && m_verticalScrollbar->frameRect().contains(convertedPoint))
         return m_verticalScrollbar.get();
     return 0;
 }

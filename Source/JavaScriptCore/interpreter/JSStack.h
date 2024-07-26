@@ -67,7 +67,6 @@ namespace JSC {
             FirstArgument,
         };
 
-        static const size_t commitSize = 16 * 1024;
         // Allow 8k of excess registers before we start trying to reap the stack
         static const ptrdiff_t maxExcessCapacity = 8 * 1024;
 
@@ -82,7 +81,6 @@ namespace JSC {
         void gatherConservativeRoots(ConservativeRoots&) { }
         void gatherConservativeRoots(ConservativeRoots&, JITStubRoutineSet&, CodeBlockSet&) { }
         void sanitizeStack() { }
-        static void initializeThreading() { }
 #else
         ~JSStack();
 
@@ -96,8 +94,6 @@ namespace JSC {
         }
 
         size_t size() const { return highAddress() - lowAddress(); }
-
-        static void initializeThreading();
 
         void setReservedZoneSize(size_t);
 

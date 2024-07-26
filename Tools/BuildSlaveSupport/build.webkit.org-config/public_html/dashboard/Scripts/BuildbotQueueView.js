@@ -38,9 +38,9 @@ BuildbotQueueView = function(queues)
         queue.addEventListener(BuildbotQueue.Event.UnauthorizedAccess, this._unauthorizedAccess, this);
     }.bind(this));
 
-    webkitTrac.addEventListener(Trac.Event.CommitsUpdated, this._newCommitsRecorded, this);
-    if (typeof internalTrac != "undefined")
-        internalTrac.addEventListener(Trac.Event.CommitsUpdated, this._newCommitsRecorded, this);
+    Dashboard.Repository.OpenSource.trac.addEventListener(Trac.Event.CommitsUpdated, this._newCommitsRecorded, this);
+    if (typeof Dashboard.Repository.Internal.trac != "undefined")
+        Dashboard.Repository.Internal.trac.addEventListener(Trac.Event.CommitsUpdated, this._newCommitsRecorded, this);
 };
 
 BaseObject.addConstructorFunctions(BuildbotQueueView);
@@ -76,24 +76,26 @@ BuildbotQueueView.prototype = {
         if (!latestProductiveIteration)
             return;
 
+        var webkitTrac = Dashboard.Repository.OpenSource.trac;
+        var internalTrac = Dashboard.Repository.Internal.trac;
         var latestRecordedOpenSourceRevisionNumber = webkitTrac.latestRecordedRevisionNumber;
-        if (!latestRecordedOpenSourceRevisionNumber || webkitTrac.oldestRecordedRevisionNumber > latestProductiveIteration.openSourceRevision) {
+        if (!latestRecordedOpenSourceRevisionNumber || webkitTrac.oldestRecordedRevisionNumber > latestProductiveIteration.revision[Dashboard.Repository.OpenSource.name]) {
             webkitTrac.loadMoreHistoricalData();
             return;
         }
 
         // FIXME: To be 100% correct, we should also filter out changes that are ignored by
         // the queue, see _should_file_trigger_build in wkbuild.py.
-        var totalRevisionsBehind = webkitTrac.commitsOnBranch(queue.branch.openSource, function(commit) { return commit.revisionNumber > latestProductiveIteration.openSourceRevision; }).length;
+        var totalRevisionsBehind = webkitTrac.commitsOnBranch(queue.branch.openSource, function(commit) { return commit.revisionNumber > latestProductiveIteration.revision[Dashboard.Repository.OpenSource.name]; }).length;
 
-        if (latestProductiveIteration.internalRevision) {
+        if (latestProductiveIteration.revision[Dashboard.Repository.Internal.name]) {
             var latestRecordedInternalRevisionNumber = internalTrac.latestRecordedRevisionNumber;
-            if (!latestRecordedInternalRevisionNumber || internalTrac.oldestRecordedRevisionNumber > latestProductiveIteration.internalRevision) {
+            if (!latestRecordedInternalRevisionNumber || internalTrac.oldestRecordedRevisionNumber > latestProductiveIteration.revision[Dashboard.Repository.Internal.name]) {
                 internalTrac.loadMoreHistoricalData();
                 return;
             }
 
-            totalRevisionsBehind += internalTrac.commitsOnBranch(queue.branch.internal, function(commit) { return commit.revisionNumber > latestProductiveIteration.internalRevision; }).length;
+            totalRevisionsBehind += internalTrac.commitsOnBranch(queue.branch.internal, function(commit) { return commit.revisionNumber > latestProductiveIteration.revision[Dashboard.Repository.Internal.name]; }).length;
         }
 
         if (!totalRevisionsBehind)
@@ -153,13 +155,15 @@ BuildbotQueueView.prototype = {
         var content = document.createElement("div");
         content.className = "commit-history-popover";
 
-        var linesForOpenSource = this._popoverLinesForCommitRange(webkitTrac, queue.branch.openSource, latestProductiveIteration.openSourceRevision + 1, webkitTrac.latestRecordedRevisionNumber);
+        var webkitTrac = Dashboard.Repository.OpenSource.trac;
+        var internalTrac = Dashboard.Repository.Internal.trac;
+        var linesForOpenSource = this._popoverLinesForCommitRange(webkitTrac, queue.branch.openSource, latestProductiveIteration.revision[Dashboard.Repository.OpenSource.name] + 1, webkitTrac.latestRecordedRevisionNumber);
         for (var i = 0; i != linesForOpenSource.length; ++i)
             content.appendChild(linesForOpenSource[i]);
 
         var linesForInternal = [];
-        if (latestProductiveIteration.internalRevision && internalTrac.latestRecordedRevisionNumber)
-            var linesForInternal = this._popoverLinesForCommitRange(internalTrac, queue.branch.internal, latestProductiveIteration.internalRevision + 1, internalTrac.latestRecordedRevisionNumber);
+        if (latestProductiveIteration.revision[Dashboard.Repository.Internal.name] && internalTrac.latestRecordedRevisionNumber)
+            var linesForInternal = this._popoverLinesForCommitRange(internalTrac, queue.branch.internal, latestProductiveIteration.revision[Dashboard.Repository.Internal.name] + 1, internalTrac.latestRecordedRevisionNumber);
 
         if (linesForOpenSource.length && linesForInternal.length)
             this._addDividerToPopover(content);
@@ -204,18 +208,21 @@ BuildbotQueueView.prototype = {
         return true;
     },
 
-    _revisionContentWithPopoverForIteration: function(iteration, previousIteration, internal)
+    _revisionContentWithPopoverForIteration: function(iteration, previousIteration, repository)
     {
+        var repositoryName = repository.name;
+        console.assert(iteration.revision[repositoryName]);
         var content = document.createElement("span");
-        content.textContent = "r" + (internal ? iteration.internalRevision : iteration.openSourceRevision);
+        content.textContent = "r" + iteration.revision[repositoryName];
         content.classList.add("revision-number");
 
         if (previousIteration) {
+            console.assert(previousIteration.revision[repositoryName]);
             var context = {
-                trac: internal ? internalTrac : webkitTrac,
-                branch: internal ? iteration.queue.branch.internal : iteration.queue.branch.openSource,
-                firstRevision: (internal ? previousIteration.internalRevision : previousIteration.openSourceRevision) + 1,
-                lastRevision: internal ? iteration.internalRevision : iteration.openSourceRevision
+                trac: repository.trac,
+                branch: iteration.queue.branch[repositoryName],
+                firstRevision: previousIteration.revision[repositoryName] + 1,
+                lastRevision: iteration.revision[repositoryName]
             };
             if (context.firstRevision <= context.lastRevision)
                 new PopoverTracker(content, this._presentPopoverForRevisionRange.bind(this), context);
@@ -260,19 +267,20 @@ BuildbotQueueView.prototype = {
 
     revisionContentForIteration: function(iteration, previousDisplayedIteration)
     {
-        console.assert(iteration.openSourceRevision);
-
-        var openSourceContent = this._revisionContentWithPopoverForIteration(iteration, previousDisplayedIteration);
-
-        if (!iteration.internalRevision)
-            return openSourceContent;
-
-        var internalContent = this._revisionContentWithPopoverForIteration(iteration, previousDisplayedIteration, true);
-
         var fragment = document.createDocumentFragment();
-        fragment.appendChild(openSourceContent);
-        fragment.appendChild(document.createTextNode(" \uff0b "));
-        fragment.appendChild(internalContent);
+        var shouldAddPlusSign = false;
+        var sortedRepositories = Dashboard.sortedRepositories;
+        for (var i = 0; i < sortedRepositories.length; ++i) {
+            var repository = sortedRepositories[i];
+            if (!iteration.revision[repository.name])
+                continue;
+            var content = this._revisionContentWithPopoverForIteration(iteration, previousDisplayedIteration, repository);
+            if (shouldAddPlusSign)
+                fragment.appendChild(document.createTextNode(" \uff0b "));
+            fragment.appendChild(content);
+            shouldAddPlusSign = true;
+        }
+        console.assert(fragment.childNodes.length);
         return fragment;
     },
 

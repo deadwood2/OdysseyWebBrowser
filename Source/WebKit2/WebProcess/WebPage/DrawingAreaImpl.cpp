@@ -50,7 +50,11 @@ DrawingAreaImpl::~DrawingAreaImpl()
 }
 
 DrawingAreaImpl::DrawingAreaImpl(WebPage& webPage, const WebPageCreationParameters& parameters)
+#if USE(COORDINATED_GRAPHICS_MULTIPROCESS)
+    : DrawingArea(DrawingAreaTypeCoordinated, webPage)
+#else
     : DrawingArea(DrawingAreaTypeImpl, webPage)
+#endif
     , m_backingStoreStateID(0)
     , m_isPaintingEnabled(true)
     , m_inUpdateBackingStoreState(false)
@@ -193,6 +197,12 @@ void DrawingAreaImpl::setLayerTreeStateIsFrozen(bool isFrozen)
 
 void DrawingAreaImpl::forceRepaint()
 {
+    if (m_inUpdateBackingStoreState) {
+        m_forceRepaintAfterBackingStoreStateUpdate = true;
+        return;
+    }
+
+    m_forceRepaintAfterBackingStoreStateUpdate = false;
     setNeedsDisplay();
 
     m_webPage.layoutIfNeeded();
@@ -371,6 +381,8 @@ void DrawingAreaImpl::updateBackingStoreState(uint64_t stateID, bool respondImme
     }
 
     m_inUpdateBackingStoreState = false;
+    if (m_forceRepaintAfterBackingStoreStateUpdate)
+        forceRepaint();
 }
 
 void DrawingAreaImpl::sendDidUpdateBackingStoreState()
@@ -453,10 +465,12 @@ void DrawingAreaImpl::enterAcceleratedCompositingMode(GraphicsLayer* graphicsLay
     m_exitCompositingTimer.stop();
     m_wantsToExitAcceleratedCompositingMode = false;
 
+    m_webPage.send(Messages::DrawingAreaProxy::WillEnterAcceleratedCompositingMode(m_backingStoreStateID));
+
     ASSERT(!m_layerTreeHost);
 
     m_layerTreeHost = LayerTreeHost::create(&m_webPage);
-#if USE(TEXTURE_MAPPER_GL) && PLATFORM(GTK)
+#if USE(TEXTURE_MAPPER) && PLATFORM(GTK)
     if (m_nativeSurfaceHandleForCompositing)
         m_layerTreeHost->setNativeSurfaceHandleForCompositing(m_nativeSurfaceHandleForCompositing);
 #endif
@@ -620,7 +634,8 @@ void DrawingAreaImpl::display(UpdateInfo& updateInfo)
     updateInfo.viewSize = m_webPage.size();
     updateInfo.deviceScaleFactor = m_webPage.corePage()->deviceScaleFactor();
 
-    IntRect bounds = m_dirtyRegion.bounds();
+    // Always render the whole page when we don't render the background.
+    IntRect bounds = m_webPage.drawsBackground() ? m_dirtyRegion.bounds() : m_webPage.bounds();
     ASSERT(m_webPage.bounds().contains(bounds));
 
     IntSize bitmapSize = bounds.size();
@@ -633,12 +648,16 @@ void DrawingAreaImpl::display(UpdateInfo& updateInfo)
     if (!bitmap->createHandle(updateInfo.bitmapHandle))
         return;
 
-    Vector<IntRect> rects = m_dirtyRegion.rects();
+    Vector<IntRect> rects;
+    if (m_webPage.drawsBackground()) {
+        rects = m_dirtyRegion.rects();
 
-    if (shouldPaintBoundsRect(bounds, rects)) {
-        rects.clear();
+        if (shouldPaintBoundsRect(bounds, rects)) {
+            rects.clear();
+            rects.append(bounds);
+        }
+    } else
         rects.append(bounds);
-    }
 
     updateInfo.scrollRect = m_scrollRect;
     updateInfo.scrollOffset = m_scrollOffset;
@@ -675,14 +694,21 @@ void DrawingAreaImpl::attachViewOverlayGraphicsLayer(WebCore::Frame* frame, WebC
     m_layerTreeHost->setViewOverlayRootLayer(viewOverlayRootLayer);
 }
 
-#if USE(TEXTURE_MAPPER_GL) && PLATFORM(GTK)
+#if USE(TEXTURE_MAPPER) && PLATFORM(GTK)
 void DrawingAreaImpl::setNativeSurfaceHandleForCompositing(uint64_t handle)
 {
     m_nativeSurfaceHandleForCompositing = handle;
-    m_webPage.corePage()->settings().setAcceleratedCompositingEnabled(true);
 
-    if (m_layerTreeHost)
+    if (m_layerTreeHost) {
+        m_webPage.corePage()->settings().setAcceleratedCompositingEnabled(true);
         m_layerTreeHost->setNativeSurfaceHandleForCompositing(handle);
+    }
+}
+
+void DrawingAreaImpl::destroyNativeSurfaceHandleForCompositing(bool& handled)
+{
+    handled = true;
+    setNativeSurfaceHandleForCompositing(0);
 }
 #endif
 

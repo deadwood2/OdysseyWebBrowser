@@ -98,6 +98,7 @@ private:
     virtual void enterAcceleratedCompositingMode(const LayerTreeContext&) override;
     virtual void exitAcceleratedCompositingMode() override;
     virtual void updateAcceleratedCompositingMode(const LayerTreeContext&) override;
+    void willEnterAcceleratedCompositingMode() override;
 
     virtual void handleDownloadRequest(DownloadProxy*) override;
     virtual void didChangeContentSize(const WebCore::IntSize&) override { }
@@ -131,7 +132,9 @@ private:
     virtual void didFinishLoadForMainFrame() override;
     virtual void didSameDocumentNavigationForMainFrame(SameDocumentNavigationType) override;
 
+#if ENABLE(TOUCH_EVENTS)
     virtual void doneWithTouchEvent(const NativeWebTouchEvent&, bool wasEventHandled) override;
+#endif
 
     virtual void didChangeBackgroundColor() override;
 
@@ -142,7 +145,9 @@ private:
     virtual void refView() override;
     virtual void derefView() override;
 
-    virtual GUniquePtr<GstInstallPluginsContext> createGstInstallPluginsContext() override;
+#if ENABLE(VIDEO) && USE(GSTREAMER)
+    virtual bool decidePolicyForInstallMissingMediaPluginsPermissionRequest(InstallMissingMediaPluginsPermissionRequest&) override;
+#endif
 
     // Members of PageClientImpl class
     GtkWidget* m_viewWidget;

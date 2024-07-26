@@ -34,6 +34,7 @@
 #include <runtime/ExceptionHelpers.h>
 #include <runtime/JSLock.h>
 #include <runtime/VMEntryScope.h>
+#include <runtime/Watchdog.h>
 #include <wtf/Ref.h>
 #include <wtf/RefCountedLeakCounter.h>
 
@@ -134,9 +135,10 @@ void JSEventListener::handleEvent(ScriptExecutionContext* scriptExecutionContext
         globalObject->setCurrentEvent(savedEvent);
 
         if (is<WorkerGlobalScope>(*scriptExecutionContext)) {
+            auto scriptController = downcast<WorkerGlobalScope>(*scriptExecutionContext).script();
             bool terminatorCausedException = (exec->hadException() && isTerminatedExecutionException(exec->exception()));
-            if (terminatorCausedException || (vm.watchdog && vm.watchdog->didFire()))
-                downcast<WorkerGlobalScope>(*scriptExecutionContext).script()->forbidExecution();
+            if (terminatorCausedException || scriptController->isTerminatingExecution())
+                scriptController->forbidExecution();
         }
 
         if (exception) {

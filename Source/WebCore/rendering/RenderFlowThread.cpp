@@ -106,7 +106,7 @@ void RenderFlowThread::removeRegionFromThread(RenderRegion* renderRegion)
     m_regionList.remove(renderRegion);
 }
 
-void RenderFlowThread::invalidateRegions()
+void RenderFlowThread::invalidateRegions(MarkingBehavior markingParents)
 {
     ASSERT(!inFinalLayoutPhase());
 
@@ -125,7 +125,7 @@ void RenderFlowThread::invalidateRegions()
     if (m_lineToRegionMap)
         m_lineToRegionMap->clear();
     m_layersToRegionMappingsDirty = true;
-    setNeedsLayout();
+    setNeedsLayout(markingParents);
 
     m_regionsInvalidated = true;
 }
@@ -383,7 +383,7 @@ void RenderFlowThread::repaintRectangleInRegions(const LayoutRect& repaintRect) 
     if (!shouldRepaint(repaintRect) || !hasValidRegionInfo())
         return;
 
-    LayoutStateDisabler layoutStateDisabler(&view()); // We can't use layout state to repaint, since the regions are somewhere else.
+    LayoutStateDisabler layoutStateDisabler(view()); // We can't use layout state to repaint, since the regions are somewhere else.
 
     for (auto& region : m_regionList)
         region->repaintFlowThreadContent(repaintRect);

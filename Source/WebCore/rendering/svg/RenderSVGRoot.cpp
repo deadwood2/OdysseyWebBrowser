@@ -165,7 +165,7 @@ void RenderSVGRoot::layout()
     m_resourcesNeedingToInvalidateClients.clear();
 
     // Arbitrary affine transforms are incompatible with LayoutState.
-    LayoutStateDisabler layoutStateDisabler(&view());
+    LayoutStateDisabler layoutStateDisabler(view());
 
     bool needsLayout = selfNeedsLayout();
     LayoutRepainter repainter(*this, checkForRepaintDuringLayout() && needsLayout);
@@ -180,9 +180,10 @@ void RenderSVGRoot::layout()
 
     if (!m_resourcesNeedingToInvalidateClients.isEmpty()) {
         // Invalidate resource clients, which may mark some nodes for layout.
-        HashSet<RenderSVGResourceContainer*>::iterator end = m_resourcesNeedingToInvalidateClients.end();
-        for (HashSet<RenderSVGResourceContainer*>::iterator it = m_resourcesNeedingToInvalidateClients.begin(); it != end; ++it)
-            (*it)->removeAllClientsFromCache();
+        for (auto& resource :  m_resourcesNeedingToInvalidateClients) {
+            resource->removeAllClientsFromCache();
+            SVGResourcesCache::clientStyleChanged(*resource, StyleDifferenceLayout, resource->style());
+        }
 
         m_isLayoutSizeChanged = false;
         SVGRenderSupport::layoutChildren(*this, false);
@@ -195,6 +196,7 @@ void RenderSVGRoot::layout()
         m_needsBoundariesOrTransformUpdate = false;
     }
 
+    clearOverflow();
     if (!shouldApplyViewportClip()) {
         FloatRect contentRepaintRect = repaintRectInLocalCoordinates();
         contentRepaintRect = m_localToBorderBoxTransform.mapRect(contentRepaintRect);
@@ -441,12 +443,10 @@ bool RenderSVGRoot::hasRelativeDimensions() const
 
 void RenderSVGRoot::addResourceForClientInvalidation(RenderSVGResourceContainer* resource)
 {
-    RenderElement* svgRoot = resource->parent();
-    while (svgRoot && !is<RenderSVGRoot>(*svgRoot))
-        svgRoot = svgRoot->parent();
+    RenderSVGRoot* svgRoot = SVGRenderSupport::findTreeRootObject(*resource);
     if (!svgRoot)
         return;
-    downcast<RenderSVGRoot>(*svgRoot).m_resourcesNeedingToInvalidateClients.add(resource);
+    svgRoot->m_resourcesNeedingToInvalidateClients.add(resource);
 }
 
 }

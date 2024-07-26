@@ -37,6 +37,7 @@
 #include "TextCheckerState.h"
 #include "ViewUpdateDispatcher.h"
 #include "VisitedLinkTable.h"
+#include <WebCore/HysteresisActivity.h>
 #include <WebCore/SessionID.h>
 #include <WebCore/Timer.h>
 #include <wtf/Forward.h>
@@ -214,6 +215,8 @@ public:
     bool hasRichContentServices() const { return m_hasRichContentServices; }
 #endif
 
+    void prefetchDNS(const String&);
+
 private:
     WebProcess();
     ~WebProcess();
@@ -268,6 +271,8 @@ private:
     void getWebCoreStatistics(uint64_t callbackID);
     void garbageCollectJavaScriptObjects();
     void setJavaScriptGarbageCollectorTimerEnabled(bool flag);
+
+    void mainThreadPing();
 
     void releasePageCache();
 
@@ -359,6 +364,8 @@ private:
     RefPtr<NetworkProcessConnection> m_networkProcessConnection;
     bool m_usesNetworkProcess;
     WebResourceLoadScheduler* m_webResourceLoadScheduler;
+    HashSet<String> m_dnsPrefetchedHosts;
+    WebCore::HysteresisActivity m_dnsPrefetchHystereris;
 #endif
 
 #if ENABLE(DATABASE_PROCESS)

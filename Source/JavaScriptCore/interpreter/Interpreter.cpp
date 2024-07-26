@@ -48,7 +48,6 @@
 #include "JSBoundFunction.h"
 #include "JSCInlines.h"
 #include "JSLexicalEnvironment.h"
-#include "JSNameScope.h"
 #include "JSNotAnObject.h"
 #include "JSStackInlines.h"
 #include "JSString.h"
@@ -71,6 +70,7 @@
 #include "StrongInlines.h"
 #include "Symbol.h"
 #include "VMEntryScope.h"
+#include "VMInlines.h"
 #include "VirtualRegister.h"
 
 #include <limits.h>
@@ -139,8 +139,13 @@ JSValue eval(CallFrame* callFrame)
     JSValue program = callFrame->argument(0);
     if (!program.isString())
         return program;
-    
+
     TopCallFrameSetter topCallFrame(callFrame->vm(), callFrame);
+    JSGlobalObject* globalObject = callFrame->lexicalGlobalObject();
+    if (!globalObject->evalEnabled()) {
+        callFrame->vm().throwException(callFrame, createEvalError(callFrame, globalObject->evalDisabledErrorMessage()));
+        return jsUndefined();
+    }
     String programSource = asString(program)->value(callFrame);
     if (callFrame->hadException())
         return JSValue();
@@ -613,9 +618,8 @@ private:
 
 class UnwindFunctor {
 public:
-    UnwindFunctor(VMEntryFrame*& vmEntryFrame, CallFrame*& callFrame, bool isTermination, CodeBlock*& codeBlock, HandlerInfo*& handler)
-        : m_vmEntryFrame(vmEntryFrame)
-        , m_callFrame(callFrame)
+    UnwindFunctor(CallFrame*& callFrame, bool isTermination, CodeBlock*& codeBlock, HandlerInfo*& handler)
+        : m_callFrame(callFrame)
         , m_isTermination(isTermination)
         , m_codeBlock(codeBlock)
         , m_handler(handler)
@@ -625,7 +629,6 @@ public:
     StackVisitor::Status operator()(StackVisitor& visitor)
     {
         VM& vm = m_callFrame->vm();
-        m_vmEntryFrame = visitor->vmEntryFrame();
         m_callFrame = visitor->callFrame();
         m_codeBlock = visitor->codeBlock();
         unsigned bytecodeOffset = visitor->bytecodeOffset();
@@ -643,15 +646,22 @@ public:
     }
 
 private:
-    VMEntryFrame*& m_vmEntryFrame;
     CallFrame*& m_callFrame;
     bool m_isTermination;
     CodeBlock*& m_codeBlock;
     HandlerInfo*& m_handler;
 };
 
-NEVER_INLINE HandlerInfo* Interpreter::unwind(VMEntryFrame*& vmEntryFrame, CallFrame*& callFrame, Exception* exception)
+NEVER_INLINE HandlerInfo* Interpreter::unwind(VM& vm, CallFrame*& callFrame, Exception* exception, UnwindStart unwindStart)
 {
+    if (unwindStart == UnwindFromCallerFrame) {
+        if (callFrame->callerFrameOrVMEntryFrame() == vm.topVMEntryFrame)
+            return nullptr;
+
+        callFrame = callFrame->callerFrame();
+        vm.topCallFrame = callFrame;
+    }
+
     CodeBlock* codeBlock = callFrame->codeBlock();
     bool isTermination = false;
 
@@ -666,13 +676,13 @@ NEVER_INLINE HandlerInfo* Interpreter::unwind(VMEntryFrame*& vmEntryFrame, CallF
     if (exceptionValue.isObject())
         isTermination = isTerminatedExecutionException(exception);
 
-    ASSERT(callFrame->vm().exception() && callFrame->vm().exception()->stack().size());
+    ASSERT(vm.exception() && vm.exception()->stack().size());
 
     Debugger* debugger = callFrame->vmEntryGlobalObject()->debugger();
     if (debugger && debugger->needsExceptionCallbacks() && !exception->didNotifyInspectorOfThrow()) {
         // We need to clear the exception here in order to see if a new exception happens.
         // Afterwards, the values are put back to continue processing this error.
-        SuspendExceptionScope scope(&callFrame->vm());
+        SuspendExceptionScope scope(&vm);
         // This code assumes that if the debugger is enabled then there is no inlining.
         // If that assumption turns out to be false then we'll ignore the inlined call
         // frames.
@@ -695,31 +705,14 @@ NEVER_INLINE HandlerInfo* Interpreter::unwind(VMEntryFrame*& vmEntryFrame, CallF
     exception->setDidNotifyInspectorOfThrow();
 
     // Calculate an exception handler vPC, unwinding call frames as necessary.
-    HandlerInfo* handler = 0;
-    VM& vm = callFrame->vm();
-    ASSERT(callFrame == vm.topCallFrame);
-    UnwindFunctor functor(vmEntryFrame, callFrame, isTermination, codeBlock, handler);
+    HandlerInfo* handler = nullptr;
+    UnwindFunctor functor(callFrame, isTermination, codeBlock, handler);
     callFrame->iterate(functor);
     if (!handler)
-        return 0;
+        return nullptr;
 
     if (LegacyProfiler* profiler = vm.enabledProfiler())
         profiler->exceptionUnwind(callFrame);
-
-    // Unwind the scope chain within the exception handler's call frame.
-    int targetScopeDepth = handler->scopeDepth;
-    if (codeBlock->needsActivation() && callFrame->hasActivation())
-        ++targetScopeDepth;
-
-    int scopeRegisterOffset = codeBlock->scopeRegister().offset();
-    JSScope* scope = callFrame->scope(scopeRegisterOffset);
-    int scopeDelta = scope->depth() - targetScopeDepth;
-    RELEASE_ASSERT(scopeDelta >= 0);
-
-    while (scopeDelta--)
-        scope = scope->next();
-
-    callFrame->setScope(scopeRegisterOffset, scope);
 
     return handler;
 }
@@ -881,7 +874,7 @@ failedJSONP:
 
     ProgramCodeBlock* codeBlock = program->codeBlock();
 
-    if (UNLIKELY(vm.watchdog && vm.watchdog->didFire(callFrame)))
+    if (UNLIKELY(vm.shouldTriggerTermination(callFrame)))
         return throwTerminatedExecutionException(callFrame);
 
     ASSERT(codeBlock->numParameters() == 1); // 1 parameter for 'this'.
@@ -896,8 +889,6 @@ failedJSONP:
     JSValue result;
     {
         SamplingTool::CallRecord callRecord(m_sampler.get());
-        Watchdog::Scope watchdogScope(vm.watchdog.get());
-
         result = program->generatedJITCode()->execute(&vm, &protoCallFrame);
     }
 
@@ -946,7 +937,7 @@ JSValue Interpreter::executeCall(CallFrame* callFrame, JSObject* function, CallT
     } else
         newCodeBlock = 0;
 
-    if (UNLIKELY(vm.watchdog && vm.watchdog->didFire(callFrame)))
+    if (UNLIKELY(vm.shouldTriggerTermination(callFrame)))
         return throwTerminatedExecutionException(callFrame);
 
     ProtoCallFrame protoCallFrame;
@@ -958,7 +949,6 @@ JSValue Interpreter::executeCall(CallFrame* callFrame, JSObject* function, CallT
     JSValue result;
     {
         SamplingTool::CallRecord callRecord(m_sampler.get(), !isJSCall);
-        Watchdog::Scope watchdogScope(vm.watchdog.get());
 
         // Execute the code:
         if (isJSCall)
@@ -1017,7 +1007,7 @@ JSObject* Interpreter::executeConstruct(CallFrame* callFrame, JSObject* construc
     } else
         newCodeBlock = 0;
 
-    if (UNLIKELY(vm.watchdog && vm.watchdog->didFire(callFrame)))
+    if (UNLIKELY(vm.shouldTriggerTermination(callFrame)))
         return throwTerminatedExecutionException(callFrame);
 
     ProtoCallFrame protoCallFrame;
@@ -1029,7 +1019,6 @@ JSObject* Interpreter::executeConstruct(CallFrame* callFrame, JSObject* construc
     JSValue result;
     {
         SamplingTool::CallRecord callRecord(m_sampler.get(), !isJSConstruct);
-        Watchdog::Scope watchdogScope(vm.watchdog.get());
 
         // Execute the code.
         if (isJSConstruct)
@@ -1091,15 +1080,13 @@ JSValue Interpreter::execute(CallFrameClosure& closure)
     if (LegacyProfiler* profiler = vm.enabledProfiler())
         profiler->willExecute(closure.oldCallFrame, closure.function);
 
-    if (UNLIKELY(vm.watchdog && vm.watchdog->didFire(closure.oldCallFrame)))
+    if (UNLIKELY(vm.shouldTriggerTermination(closure.oldCallFrame)))
         return throwTerminatedExecutionException(closure.oldCallFrame);
 
     // Execute the code:
     JSValue result;
     {
         SamplingTool::CallRecord callRecord(m_sampler.get());
-        Watchdog::Scope watchdogScope(vm.watchdog.get());
-
         result = closure.functionExecutable->generatedJITCodeForCall()->execute(&vm, closure.protoCallFrame);
     }
 
@@ -1174,7 +1161,7 @@ JSValue Interpreter::execute(EvalExecutable* eval, CallFrame* callFrame, JSValue
         }
     }
 
-    if (UNLIKELY(vm.watchdog && vm.watchdog->didFire(callFrame)))
+    if (UNLIKELY(vm.shouldTriggerTermination(callFrame)))
         return throwTerminatedExecutionException(callFrame);
 
     ASSERT(codeBlock->numParameters() == 1); // 1 parameter for 'this'.
@@ -1189,8 +1176,6 @@ JSValue Interpreter::execute(EvalExecutable* eval, CallFrame* callFrame, JSValue
     JSValue result;
     {
         SamplingTool::CallRecord callRecord(m_sampler.get());
-        Watchdog::Scope watchdogScope(vm.watchdog.get());
-
         result = eval->generatedJITCode()->execute(&vm, &protoCallFrame);
     }
 

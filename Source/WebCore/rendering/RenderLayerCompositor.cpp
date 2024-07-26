@@ -861,12 +861,32 @@ void RenderLayerCompositor::logLayerInfo(const RenderLayer& layer, int depth)
     logString.append(logReasonsForCompositing(layer));
     logString.appendLiteral(") ");
 
-    if (backing->graphicsLayer()->contentsOpaque() || backing->paintsIntoCompositedAncestor()) {
+    if (backing->graphicsLayer()->contentsOpaque() || backing->paintsIntoCompositedAncestor() || backing->foregroundLayer() || backing->backgroundLayer()) {
         logString.append('[');
-        if (backing->graphicsLayer()->contentsOpaque())
+        bool prependSpace = false;
+        if (backing->graphicsLayer()->contentsOpaque()) {
             logString.appendLiteral("opaque");
-        if (backing->paintsIntoCompositedAncestor())
+            prependSpace = true;
+        }
+
+        if (backing->paintsIntoCompositedAncestor()) {
+            if (prependSpace)
+                logString.appendLiteral(", ");
             logString.appendLiteral("paints into ancestor");
+            prependSpace = true;
+        }
+
+        if (backing->foregroundLayer() || backing->backgroundLayer()) {
+            if (prependSpace)
+                logString.appendLiteral(", ");
+            if (backing->foregroundLayer() && backing->backgroundLayer())
+                logString.appendLiteral("foreground+background");
+            else if (backing->foregroundLayer())
+                logString.appendLiteral("foreground");
+            else
+                logString.appendLiteral("background");
+        }
+
         logString.appendLiteral("] ");
     }
 
@@ -2137,9 +2157,8 @@ void RenderLayerCompositor::clearBackingForAllLayers()
 void RenderLayerCompositor::updateRootLayerPosition()
 {
     if (m_rootContentLayer) {
-        const IntRect& documentRect = m_renderView.documentRect();
-        m_rootContentLayer->setSize(documentRect.size());        
-        m_rootContentLayer->setPosition(FloatPoint(documentRect.x(), documentRect.y() + m_renderView.frameView().yPositionForRootContentLayer()));
+        m_rootContentLayer->setSize(m_renderView.frameView().contentsSize());
+        m_rootContentLayer->setPosition(m_renderView.frameView().positionForRootContentLayer());
         m_rootContentLayer->setAnchorPoint(FloatPoint3D());
     }
     if (m_clipLayer) {
@@ -2574,7 +2593,7 @@ bool RenderLayerCompositor::requiresCompositingForPlugin(RenderLayerModelObject&
     RenderWidget& pluginRenderer = downcast<RenderWidget>(renderer);
     // If we can't reliably know the size of the plugin yet, don't change compositing state.
     if (pluginRenderer.needsLayout())
-        return pluginRenderer.hasLayer() && pluginRenderer.layer()->isComposited();
+        return pluginRenderer.isComposited();
 
     // Don't go into compositing mode if height or width are zero, or size is 1x1.
     IntRect contentBox = snappedIntRect(pluginRenderer.contentBoxRect());
@@ -2594,7 +2613,7 @@ bool RenderLayerCompositor::requiresCompositingForFrame(RenderLayerModelObject& 
 
     // If we can't reliably know the size of the iframe yet, don't change compositing state.
     if (!frameRenderer.parent() || frameRenderer.needsLayout())
-        return frameRenderer.hasLayer() && frameRenderer.layer()->isComposited();
+        return frameRenderer.isComposited();
     
     // Don't go into compositing mode if height or width are zero.
     return !snappedIntRect(frameRenderer.contentBoxRect()).isEmpty();

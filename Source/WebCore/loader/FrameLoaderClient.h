@@ -338,8 +338,6 @@ namespace WebCore {
         // FIXME (bug 116233): We need to get rid of EmptyFrameLoaderClient completely, then this will no longer be needed.
         virtual bool isEmptyFrameLoaderClient() { return false; }
 
-        virtual FrameLoader* dataProtocolLoader() const { return nullptr; }
-
 #if USE(QUICK_LOOK)
         virtual void didCreateQuickLookHandle(QuickLookHandle&) { }
 #endif
@@ -347,6 +345,8 @@ namespace WebCore {
 #if ENABLE(CONTENT_FILTERING)
         virtual void contentFilterDidBlockLoad(ContentFilterUnblockHandler) { }
 #endif
+
+        virtual void prefetchDNS(const String&) = 0;
     };
 
 } // namespace WebCore

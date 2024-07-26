@@ -130,6 +130,7 @@
 #include "SVGElement.h"
 #include "SVGElementFactory.h"
 #include "SVGNames.h"
+#include "SVGTitleElement.h"
 #include "SchemeRegistry.h"
 #include "ScopedEventQueue.h"
 #include "ScriptController.h"
@@ -161,6 +162,7 @@
 #include "XPathResult.h"
 #include "htmlediting.h"
 #include <JavaScriptCore/Profile.h>
+#include <ctime>
 #include <inspector/ScriptCallStack.h>
 #include <wtf/CurrentTime.h>
 #include <wtf/TemporaryChange.h>
@@ -444,15 +446,14 @@ Document::Document(Frame* frame, const URL& url, unsigned documentClasses, unsig
     , m_readyState(Complete)
     , m_bParsing(false)
     , m_optimizedStyleSheetUpdateTimer(*this, &Document::optimizedStyleSheetUpdateTimerFired)
-    , m_styleRecalcTimer(*this, &Document::styleRecalcTimerFired)
+    , m_styleRecalcTimer(*this, &Document::updateStyleIfNeeded)
     , m_pendingStyleRecalcShouldForce(false)
     , m_inStyleRecalc(false)
     , m_closeAfterStyleRecalc(false)
     , m_gotoAnchorNeededAfterStylesheetsLoad(false)
     , m_frameElementsShouldIgnoreScrolling(false)
-    , m_updateFocusAppearanceRestoresSelection(false)
+    , m_updateFocusAppearanceRestoresSelection(SelectionRestorationMode::SetDefault)
     , m_ignoreDestructiveWriteCount(0)
-    , m_titleSetExplicitly(false)
     , m_markers(std::make_unique<DocumentMarkerController>())
     , m_updateFocusAppearanceTimer(*this, &Document::updateFocusAppearanceTimerFired)
     , m_cssTarget(nullptr)
@@ -522,7 +523,7 @@ Document::Document(Frame* frame, const URL& url, unsigned documentClasses, unsig
     , m_inputCursor(EmptyInputCursor::create())
 #endif
     , m_didAssociateFormControlsTimer(*this, &Document::didAssociateFormControlsTimerFired)
-    , m_cookieCacheExpiryTimer(*this, &Document::domCookieCacheExpiryTimerFired)
+    , m_cookieCacheExpiryTimer(*this, &Document::invalidateDOMCookieCache)
     , m_disabledFieldsetElementsCount(0)
     , m_hasInjectedPlugInsScript(false)
     , m_renderTreeBeingDestroyed(false)
@@ -1309,11 +1310,6 @@ void Document::setDocumentURI(const String& uri)
     updateBaseURL();
 }
 
-URL Document::baseURI() const
-{
-    return m_baseURL;
-}
-
 void Document::setContent(const String& content)
 {
     open();
@@ -1526,17 +1522,31 @@ void Document::updateTitle(const StringWithDirection& title)
         loader->setTitle(m_title);
 }
 
+void Document::updateTitleFromTitleElement()
+{
+    if (!m_titleElement) {
+        updateTitle(StringWithDirection());
+        return;
+    }
+
+    if (is<HTMLTitleElement>(*m_titleElement))
+        updateTitle(downcast<HTMLTitleElement>(*m_titleElement).textWithDirection());
+    else if (is<SVGTitleElement>(*m_titleElement)) {
+        // FIXME: does SVG have a title text direction?
+        updateTitle(StringWithDirection(downcast<SVGTitleElement>(*m_titleElement).textContent(), LTR));
+    }
+}
+
 void Document::setTitle(const String& title)
 {
-    // Title set by JavaScript -- overrides any title elements.
-    m_titleSetExplicitly = true;
     if (!isHTMLDocument() && !isXHTMLDocument())
         m_titleElement = nullptr;
     else if (!m_titleElement) {
-        if (HTMLElement* headElement = head()) {
-            m_titleElement = createElement(titleTag, false);
-            headElement->appendChild(m_titleElement, ASSERT_NO_EXCEPTION);
-        }
+        auto* headElement = head();
+        if (!headElement)
+            return;
+        m_titleElement = createElement(titleTag, false);
+        headElement->appendChild(m_titleElement, ASSERT_NO_EXCEPTION);
     }
 
     // The DOM API has no method of specifying direction, so assume LTR.
@@ -1546,35 +1556,42 @@ void Document::setTitle(const String& title)
         downcast<HTMLTitleElement>(*m_titleElement).setText(title);
 }
 
-void Document::setTitleElement(const StringWithDirection& title, Element* titleElement)
+void Document::updateTitleElement(Element* newTitleElement)
 {
-    if (titleElement != m_titleElement) {
-        if (m_titleElement || m_titleSetExplicitly) {
-            // Only allow the first title element to change the title -- others have no effect.
-            return;
-        }
-        m_titleElement = titleElement;
-    }
+    // Only allow the first title element in tree order to change the title -- others have no effect.
+    if (m_titleElement) {
+        if (isHTMLDocument() || isXHTMLDocument())
+            m_titleElement = descendantsOfType<HTMLTitleElement>(*this).first();
+        else if (isSVGDocument())
+            m_titleElement = descendantsOfType<SVGTitleElement>(*this).first();
+    } else
+        m_titleElement = newTitleElement;
 
-    updateTitle(title);
+    updateTitleFromTitleElement();
 }
 
-void Document::removeTitle(Element* titleElement)
+void Document::titleElementAdded(Element& titleElement)
 {
-    if (m_titleElement != titleElement)
+    if (m_titleElement == &titleElement)
         return;
 
-    m_titleElement = nullptr;
-    m_titleSetExplicitly = false;
+    updateTitleElement(&titleElement);
+}
 
-    // Update title based on first title element in the head, if one exists.
-    if (HTMLElement* headElement = head()) {
-        if (auto firstTitle = childrenOfType<HTMLTitleElement>(*headElement).first())
-            setTitleElement(firstTitle->textWithDirection(), firstTitle);
-    }
+void Document::titleElementRemoved(Element& titleElement)
+{
+    if (m_titleElement != &titleElement)
+        return;
 
-    if (!m_titleElement)
-        updateTitle(StringWithDirection());
+    updateTitleElement(nullptr);
+}
+
+void Document::titleElementTextChanged(Element& titleElement)
+{
+    if (m_titleElement != &titleElement)
+        return;
+
+    updateTitleFromTitleElement();
 }
 
 void Document::registerForVisibilityStateChangedCallbacks(Element* element)
@@ -1751,11 +1768,6 @@ bool Document::hasPendingStyleRecalc() const
 bool Document::hasPendingForcedStyleRecalc() const
 {
     return m_styleRecalcTimer.isActive() && m_pendingStyleRecalcShouldForce;
-}
-
-void Document::styleRecalcTimerFired()
-{
-    updateStyleIfNeeded();
 }
 
 void Document::recalcStyle(Style::Change change)
@@ -2094,7 +2106,7 @@ void Document::createStyleResolver()
     m_styleSheetCollection.combineCSSFeatureFlags();
 }
 
-void Document::fontsNeedUpdate(FontSelector*)
+void Document::fontsNeedUpdate(FontSelector&)
 {
     if (m_styleResolver)
         m_styleResolver->invalidateMatchedPropertiesCache();
@@ -2107,7 +2119,7 @@ CSSFontSelector& Document::fontSelector()
 {
     if (!m_fontSelector) {
         m_fontSelector = CSSFontSelector::create(*this);
-        m_fontSelector->registerForInvalidationCallbacks(this);
+        m_fontSelector->registerForInvalidationCallbacks(*this);
     }
     return *m_fontSelector;
 }
@@ -2119,7 +2131,7 @@ void Document::clearStyleResolver()
     // FIXME: It would be better if the FontSelector could survive this operation.
     if (m_fontSelector) {
         m_fontSelector->clearDocument();
-        m_fontSelector->unregisterForInvalidationCallbacks(this);
+        m_fontSelector->unregisterForInvalidationCallbacks(*this);
         m_fontSelector = nullptr;
     }
 }
@@ -2290,7 +2302,7 @@ void Document::prepareForDestruction()
     if (!m_clientToIDMap.isEmpty() && page()) {
         Vector<WebCore::MediaPlaybackTargetClient*> clients;
         copyKeysToVector(m_clientToIDMap, clients);
-        for (auto client : clients)
+        for (auto* client : clients)
             removePlaybackTargetPickerClient(*client);
     }
 #endif
@@ -2488,13 +2500,15 @@ HTMLBodyElement* Document::body() const
 
 HTMLElement* Document::bodyOrFrameset() const
 {
-    // If the document element contains both a frameset and a body, the frameset wins.
+    // Return the first body or frameset child of the html element.
     auto* element = documentElement();
     if (!element)
         return nullptr;
-    if (auto* frameset = childrenOfType<HTMLFrameSetElement>(*element).first())
-        return frameset;
-    return childrenOfType<HTMLBodyElement>(*element).first();
+    for (auto& child : childrenOfType<HTMLElement>(*element)) {
+        if (is<HTMLBodyElement>(child) || is<HTMLFrameSetElement>(child))
+            return &child;
+    }
+    return nullptr;
 }
 
 void Document::setBodyOrFrameset(PassRefPtr<HTMLElement> prpNewBody, ExceptionCode& ec)
@@ -2614,7 +2628,8 @@ void Document::implicitClose()
 
     dispatchWindowLoadEvent();
     enqueuePageshowEvent(PageshowEventNotPersisted);
-    enqueuePopstateEvent(m_pendingStateObject ? m_pendingStateObject.release() : SerializedScriptValue::nullValue());
+    if (m_pendingStateObject)
+        enqueuePopstateEvent(m_pendingStateObject.release());
     
     if (f)
         f->loader().handledOnloadEvents();
@@ -3268,6 +3283,11 @@ void Document::processReferrerPolicy(const String& policy)
 {
     ASSERT(!policy.isNull());
 
+    // Documents in a Content-Disposition: attachment sandbox should never send a Referer header,
+    // even if the document has a meta tag saying otherwise.
+    if (shouldEnforceContentDispositionAttachmentSandbox())
+        return;
+
     // Note that we're supporting both the standard and legacy keywords for referrer
     // policies, as defined by http://www.w3.org/TR/referrer-policy/#referrer-policy-delivery-meta
     if (equalIgnoringCase(policy, "no-referrer") || equalIgnoringCase(policy, "never"))
@@ -3511,11 +3531,28 @@ void Document::removeAudioProducer(MediaProducer* audioProducer)
     updateIsPlayingMedia();
 }
 
-void Document::updateIsPlayingMedia()
+void Document::updateIsPlayingMedia(uint64_t sourceElementID)
 {
     MediaProducer::MediaStateFlags state = MediaProducer::IsNotPlaying;
-    for (auto audioProducer : m_audioProducers)
+    for (auto* audioProducer : m_audioProducers)
         state |= audioProducer->mediaState();
+
+#if ENABLE(MEDIA_SESSION)
+    if (HTMLMediaElement* sourceElement = HTMLMediaElement::elementWithID(sourceElementID)) {
+        if (sourceElement->isPlaying())
+            state |= MediaProducer::IsSourceElementPlaying;
+
+        if (MediaSession* session = sourceElement->session()) {
+            bool isNull;
+            if (MediaRemoteControls* controls = session->controls(isNull)) {
+                if (controls->previousTrackEnabled())
+                    state |= MediaProducer::IsPreviousTrackControlEnabled;
+                if (controls->nextTrackEnabled())
+                    state |= MediaProducer::IsNextTrackControlEnabled;
+            }
+        }
+    }
+#endif
 
     if (state == m_mediaState)
         return;
@@ -3523,12 +3560,12 @@ void Document::updateIsPlayingMedia()
     m_mediaState = state;
 
     if (page())
-        page()->updateIsPlayingMedia();
+        page()->updateIsPlayingMedia(sourceElementID);
 }
 
 void Document::pageMutedStateDidChange()
 {
-    for (auto audioProducer : m_audioProducers)
+    for (auto* audioProducer : m_audioProducers)
         audioProducer->pageMutedStateDidChange();
 }
 
@@ -4229,34 +4266,30 @@ void Document::setDomain(const String& newDomain, ExceptionCode& ec)
 // http://www.whatwg.org/specs/web-apps/current-work/#dom-document-lastmodified
 String Document::lastModified() const
 {
-    DateComponents date;
-    bool foundDate = false;
-    if (m_frame) {
-        auto lastModifiedDate = loader() ? loader()->response().lastModified() : Nullopt;
-        if (lastModifiedDate) {
-            using namespace std::chrono;
-            date.setMillisecondsSinceEpochForDateTime(duration_cast<milliseconds>(lastModifiedDate.value().time_since_epoch()).count());
-            foundDate = true;
-        }
-    }
+    using namespace std::chrono;
+    Optional<system_clock::time_point> dateTime;
+    if (m_frame && loader())
+        dateTime = loader()->response().lastModified();
+
     // FIXME: If this document came from the file system, the HTML5
-    // specificiation tells us to read the last modification date from the file
+    // specification tells us to read the last modification date from the file
     // system.
-    if (!foundDate) {
-        double fallbackDate = currentTimeMS();
+    if (!dateTime) {
+        dateTime = system_clock::now();
 #if ENABLE(WEB_REPLAY)
         InputCursor& cursor = inputCursor();
         if (cursor.isCapturing())
-            cursor.appendInput<DocumentLastModifiedDate>(fallbackDate);
+            cursor.appendInput<DocumentLastModifiedDate>(duration_cast<milliseconds>(dateTime.value().time_since_epoch()).count());
         else if (cursor.isReplaying()) {
             if (DocumentLastModifiedDate* input = cursor.fetchInput<DocumentLastModifiedDate>())
-                fallbackDate = input->fallbackValue();
+                dateTime = system_clock::time_point(milliseconds(static_cast<long long>(input->fallbackValue())));
         }
 #endif
-        date.setMillisecondsSinceEpochForDateTime(fallbackDate);
     }
 
-    return String::format("%02d/%02d/%04d %02d:%02d:%02d", date.month() + 1, date.monthDay(), date.fullYear(), date.hour(), date.minute(), date.second());
+    auto ctime = system_clock::to_time_t(dateTime.value());
+    auto localDateTime = std::localtime(&ctime);
+    return String::format("%02d/%02d/%04d %02d:%02d:%02d", localDateTime->tm_mon + 1, localDateTime->tm_mday, 1900 + localDateTime->tm_year, localDateTime->tm_hour, localDateTime->tm_min, localDateTime->tm_sec);
 }
 
 void Document::setCookieURL(const URL& url)
@@ -4610,6 +4643,7 @@ static Editor::Command command(Document* document, const String& commandName, bo
 
 bool Document::execCommand(const String& commandName, bool userInterface, const String& value)
 {
+    EventQueueScope eventQueueScope;
     return command(this, commandName, userInterface).execute(value);
 }
 
@@ -4934,7 +4968,7 @@ void Document::initSecurityContext()
     enforceSandboxFlags(m_frame->loader().effectiveSandboxFlags());
 
     if (shouldEnforceContentDispositionAttachmentSandbox())
-        enforceSandboxFlags(SandboxAll);
+        applyContentDispositionAttachmentSandbox();
 
     setSecurityOriginPolicy(SecurityOriginPolicy::create(isSandboxed(SandboxOrigin) ? SecurityOrigin::createUnique() : SecurityOrigin::create(m_url)));
     setContentSecurityPolicy(std::make_unique<ContentSecurityPolicy>(this));
@@ -5034,9 +5068,9 @@ void Document::statePopped(PassRefPtr<SerializedScriptValue> stateObject)
         m_pendingStateObject = stateObject;
 }
 
-void Document::updateFocusAppearanceSoon(bool restorePreviousSelection)
+void Document::updateFocusAppearanceSoon(SelectionRestorationMode mode)
 {
-    m_updateFocusAppearanceRestoresSelection = restorePreviousSelection;
+    m_updateFocusAppearanceRestoresSelection = mode;
     if (!m_updateFocusAppearanceTimer.isActive())
         m_updateFocusAppearanceTimer.startOneShot(0);
 }
@@ -5329,7 +5363,6 @@ void Document::enqueueHashchangeEvent(const String& oldURL, const String& newURL
 
 void Document::enqueuePopstateEvent(PassRefPtr<SerializedScriptValue> stateObject)
 {
-    // FIXME: https://bugs.webkit.org/show_bug.cgi?id=36202 Popstate event needs to fire asynchronously
     dispatchWindowEvent(PopStateEvent::create(stateObject, m_domWindow ? m_domWindow->history() : nullptr));
 }
 
@@ -6193,7 +6226,12 @@ Document::RegionFixedPair Document::absoluteRegionForEventTargets(const EventTar
                 rootRelativeBounds = element->absoluteEventHandlerBounds(insideFixedPosition);
         } else if (is<Element>(keyValuePair.key)) {
             Element* element = downcast<Element>(keyValuePair.key);
-            rootRelativeBounds = element->absoluteEventHandlerBounds(insideFixedPosition);
+            if (is<HTMLBodyElement>(element)) {
+                // For the body, just use the document bounds.
+                // The body may not cover this whole area, but it's OK for this region to be an overestimate.
+                rootRelativeBounds = absoluteEventHandlerBounds(insideFixedPosition);
+            } else
+                rootRelativeBounds = element->absoluteEventHandlerBounds(insideFixedPosition);
         }
         
         if (!rootRelativeBounds.isEmpty())
@@ -6533,11 +6571,6 @@ void Document::invalidateDOMCookieCache()
     m_cachedDOMCookies = String();
 }
 
-void Document::domCookieCacheExpiryTimerFired()
-{
-    invalidateDOMCookieCache();
-}
-
 void Document::didLoadResourceSynchronously(const ResourceRequest&)
 {
     // Synchronous resources loading can set cookies so we invalidate the cookies cache
@@ -6726,6 +6759,17 @@ bool Document::shouldEnforceContentDispositionAttachmentSandbox() const
         responseIsAttachment = documentLoader->response().isAttachment();
 
     return contentDispositionAttachmentSandboxEnabled && responseIsAttachment;
+}
+
+void Document::applyContentDispositionAttachmentSandbox()
+{
+    ASSERT(shouldEnforceContentDispositionAttachmentSandbox());
+
+    setReferrerPolicy(ReferrerPolicyNever);
+    if (!isMediaDocument())
+        enforceSandboxFlags(SandboxAll);
+    else
+        enforceSandboxFlags(SandboxOrigin);
 }
 
 } // namespace WebCore

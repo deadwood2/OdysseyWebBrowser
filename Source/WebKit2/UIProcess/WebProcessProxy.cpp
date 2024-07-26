@@ -206,10 +206,10 @@ WebPageProxy* WebProcessProxy::webPage(uint64_t pageID)
     return globalPageMap().get(pageID);
 }
 
-Ref<WebPageProxy> WebProcessProxy::createWebPage(PageClient& pageClient, const WebPageConfiguration& configuration)
+Ref<WebPageProxy> WebProcessProxy::createWebPage(PageClient& pageClient, Ref<API::PageConfiguration>&& pageConfiguration)
 {
     uint64_t pageID = generatePageID();
-    Ref<WebPageProxy> webPage = WebPageProxy::create(pageClient, *this, pageID, configuration);
+    Ref<WebPageProxy> webPage = WebPageProxy::create(pageClient, *this, pageID, WTF::move(pageConfiguration));
 
     m_pageMap.set(pageID, webPage.ptr());
     globalPageMap().set(pageID, webPage.ptr());
@@ -464,10 +464,10 @@ void WebProcessProxy::releaseRemainingIconsForPageURLs()
     if (!iconDatabase)
         return;
 
-    for (auto iter : m_pageURLRetainCountMap) {
-        uint64_t count = iter.value;
+    for (auto& entry : m_pageURLRetainCountMap) {
+        uint64_t count = entry.value;
         for (uint64_t i = 0; i < count; ++i)
-            iconDatabase->releaseIconForPageURL(iter.key);
+            iconDatabase->releaseIconForPageURL(entry.key);
     }
 
     m_pageURLRetainCountMap.clear();
@@ -893,8 +893,7 @@ void WebProcessProxy::sendProcessWillSuspendImminently()
         return;
 
     bool handled = false;
-    sendSync(Messages::WebProcess::ProcessWillSuspendImminently(), Messages::WebProcess::ProcessWillSuspendImminently::Reply(handled),
-        0, std::chrono::seconds(1), IPC::InterruptWaitingIfSyncMessageArrives);
+    sendSync(Messages::WebProcess::ProcessWillSuspendImminently(), Messages::WebProcess::ProcessWillSuspendImminently::Reply(handled), 0, std::chrono::seconds(1));
 }
 
 void WebProcessProxy::sendPrepareToSuspend()
@@ -984,6 +983,17 @@ void WebProcessProxy::setIsHoldingLockedFiles(bool isHoldingLockedFiles)
     }
     if (!m_tokenForHoldingLockedFiles)
         m_tokenForHoldingLockedFiles = m_throttler.backgroundActivityToken();
+}
+
+void WebProcessProxy::sendMainThreadPing()
+{
+    responsivenessTimer()->start();
+    send(Messages::WebProcess::MainThreadPing(), 0);
+}
+
+void WebProcessProxy::didReceiveMainThreadPing()
+{
+    responsivenessTimer()->stop();
 }
 
 } // namespace WebKit

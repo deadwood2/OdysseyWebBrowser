@@ -120,9 +120,6 @@ XMLHttpRequest::XMLHttpRequest(ScriptExecutionContext& context)
     : ActiveDOMObject(&context)
     , m_async(true)
     , m_includeCredentials(false)
-#if ENABLE(XHR_TIMEOUT)
-    , m_timeoutMilliseconds(0)
-#endif
     , m_state(UNSENT)
     , m_createdDocument(false)
     , m_error(false)
@@ -138,6 +135,10 @@ XMLHttpRequest::XMLHttpRequest(ScriptExecutionContext& context)
     , m_responseCacheIsValid(false)
     , m_resumeTimer(*this, &XMLHttpRequest::resumeTimerFired)
     , m_dispatchErrorOnResuming(false)
+    , m_networkErrorTimer(*this, &XMLHttpRequest::networkErrorTimerFired)
+#if ENABLE(XHR_TIMEOUT)
+    , m_timeoutTimer(*this, &XMLHttpRequest::didTimeout)
+#endif
 {
 #ifndef NDEBUG
     xmlHttpRequestCounter.increment();
@@ -272,16 +273,22 @@ ArrayBuffer* XMLHttpRequest::responseArrayBuffer()
 }
 
 #if ENABLE(XHR_TIMEOUT)
-void XMLHttpRequest::setTimeout(unsigned long timeout, ExceptionCode& ec)
+void XMLHttpRequest::setTimeout(unsigned timeout, ExceptionCode& ec)
 {
-    // FIXME: Need to trigger or update the timeout Timer here, if needed. http://webkit.org/b/98156
-    // XHR2 spec, 4.7.3. "This implies that the timeout attribute can be set while fetching is in progress. If that occurs it will still be measured relative to the start of fetching."
     if (scriptExecutionContext()->isDocument() && !m_async) {
         logConsoleError(scriptExecutionContext(), "XMLHttpRequest.timeout cannot be set for synchronous HTTP(S) requests made from the window context.");
         ec = INVALID_ACCESS_ERR;
         return;
     }
     m_timeoutMilliseconds = timeout;
+    if (!m_timeoutTimer.isActive())
+        return;
+    if (!m_timeoutMilliseconds) {
+        m_timeoutTimer.stop();
+        return;
+    }
+    std::chrono::duration<double> interval = std::chrono::milliseconds { m_timeoutMilliseconds } - (std::chrono::steady_clock::now() - m_sendingTime);
+    m_timeoutTimer.startOneShot(std::max(0.0, interval.count()));
 }
 #endif
 
@@ -498,12 +505,7 @@ void XMLHttpRequest::open(const String& method, const URL& url, bool async, Exce
     }
 
     // FIXME: Convert this to check the isolated world's Content Security Policy once webkit.org/b/104520 is solved.
-    bool shouldBypassMainWorldContentSecurityPolicy = false;
-    if (is<Document>(*scriptExecutionContext())) {
-        Document& document = downcast<Document>(*scriptExecutionContext());
-        if (document.frame())
-            shouldBypassMainWorldContentSecurityPolicy = document.frame()->script().shouldBypassMainWorldContentSecurityPolicy();
-    }
+    bool shouldBypassMainWorldContentSecurityPolicy = ContentSecurityPolicy::shouldBypassMainWorldContentSecurityPolicy(*scriptExecutionContext());
     if (!scriptExecutionContext()->contentSecurityPolicy()->allowConnectToSource(url, shouldBypassMainWorldContentSecurityPolicy)) {
         // FIXME: Should this be throwing an exception?
         ec = SECURITY_ERR;
@@ -762,13 +764,20 @@ void XMLHttpRequest::createRequest(ExceptionCode& ec)
     options.setSniffContent(DoNotSniffContent);
     options.preflightPolicy = uploadEvents ? ForcePreflight : ConsiderPreflight;
     options.setAllowCredentials((m_sameOriginRequest || m_includeCredentials) ? AllowStoredCredentials : DoNotAllowStoredCredentials);
+    options.setCredentialRequest(m_includeCredentials ? ClientRequestedCredentials : ClientDidNotRequestCredentials);
     options.crossOriginRequestPolicy = UseAccessControl;
     options.securityOrigin = securityOrigin();
     options.initiator = cachedResourceRequestInitiators().xmlhttprequest;
 
 #if ENABLE(XHR_TIMEOUT)
-    if (m_timeoutMilliseconds)
-        request.setTimeoutInterval(m_timeoutMilliseconds / 1000.0);
+    if (m_timeoutMilliseconds) {
+        if (!m_async)
+            request.setTimeoutInterval(m_timeoutMilliseconds / 1000.0);
+        else {
+            m_sendingTime = std::chrono::steady_clock::now();
+            m_timeoutTimer.startOneShot(std::chrono::milliseconds { m_timeoutMilliseconds });
+        }
+    }
 #endif
 
     m_exceptionCode = 0;
@@ -778,16 +787,18 @@ void XMLHttpRequest::createRequest(ExceptionCode& ec)
         if (m_upload)
             request.setReportUploadProgress(true);
 
-        // ThreadableLoader::create can return null here, for example if we're no longer attached to a page.
+        // ThreadableLoader::create can return null here, for example if we're no longer attached to a page or if a content blocker blocks the load.
         // This is true while running onunload handlers.
         // FIXME: Maybe we need to be able to send XMLHttpRequests from onunload, <http://bugs.webkit.org/show_bug.cgi?id=10904>.
-        // FIXME: Maybe create() can return null for other reasons too?
         m_loader = ThreadableLoader::create(scriptExecutionContext(), this, request, options);
-        if (m_loader) {
-            // Neither this object nor the JavaScript wrapper should be deleted while
-            // a request is in progress because we need to keep the listeners alive,
-            // and they are referenced by the JavaScript wrapper.
-            setPendingActivity(this);
+
+        // Neither this object nor the JavaScript wrapper should be deleted while
+        // a request is in progress because we need to keep the listeners alive,
+        // and they are referenced by the JavaScript wrapper.
+        setPendingActivity(this);
+        if (!m_loader) {
+            m_timeoutTimer.stop();
+            m_networkErrorTimer.startOneShot(0);
         }
     } else {
         InspectorInstrumentation::willLoadXHRSynchronously(scriptExecutionContext());
@@ -834,6 +845,10 @@ bool XMLHttpRequest::internalAbort()
     m_receivedLength = 0;
 
     m_decoder = nullptr;
+
+#if ENABLE(XHR_TIMEOUT)
+    m_timeoutTimer.stop();
+#endif
 
     if (!m_loader)
         return true;
@@ -895,6 +910,12 @@ void XMLHttpRequest::networkError()
     internalAbort();
 }
 
+void XMLHttpRequest::networkErrorTimerFired()
+{
+    networkError();
+    dropProtection();
+}
+    
 void XMLHttpRequest::abortError()
 {
     genericError();
@@ -940,7 +961,8 @@ void XMLHttpRequest::setRequestHeader(const String& name, const String& value, E
         return;
     }
 
-    if (!isValidHTTPToken(name) || !isValidHTTPHeaderValue(value)) {
+    String normalizedValue = stripLeadingAndTrailingHTTPSpaces(value);
+    if (!isValidHTTPToken(name) || !isValidHTTPHeaderValue(normalizedValue)) {
         ec = SYNTAX_ERR;
         return;
     }
@@ -951,7 +973,7 @@ void XMLHttpRequest::setRequestHeader(const String& name, const String& value, E
         return;
     }
 
-    setRequestHeaderInternal(name, value);
+    setRequestHeaderInternal(name, normalizedValue);
 }
 
 void XMLHttpRequest::setRequestHeaderInternal(const String& name, const String& value)
@@ -1077,6 +1099,7 @@ void XMLHttpRequest::didFail(const ResourceError& error)
     }
 
 #if ENABLE(XHR_TIMEOUT)
+    // In case of worker sync timeouts.
     if (error.isTimeout()) {
         didTimeout();
         return;
@@ -1117,6 +1140,10 @@ void XMLHttpRequest::didFinishLoading(unsigned long identifier, double)
     changeState(DONE);
     m_responseEncoding = String();
     m_decoder = nullptr;
+
+#if ENABLE(XHR_TIMEOUT)
+    m_timeoutTimer.stop();
+#endif
 
     if (hadLoader)
         dropProtection();

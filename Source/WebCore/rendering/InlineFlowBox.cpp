@@ -69,6 +69,11 @@ void InlineFlowBox::setHasBadChildList()
 
 #endif
 
+RenderBlockFlow* InlineFlowBox::anonymousInlineBlock() const
+{
+    return m_hasAnonymousInlineBlock ? &downcast<RenderBlockFlow>(firstChild()->renderer()) : nullptr;
+}
+
 LayoutUnit InlineFlowBox::getFlowSpacingLogicalWidth()
 {
     LayoutUnit totalWidth = marginBorderPaddingLogicalLeft() + marginBorderPaddingLogicalRight();
@@ -1151,7 +1156,7 @@ void InlineFlowBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset, 
                         containingBlockPaintsContinuationOutline = false;
                     else {
                         containingBlock = enclosingAnonymousBlock->containingBlock();
-                        for (auto box = &renderer(); box != containingBlock; box = &box->parent()->enclosingBoxModelObject()) {
+                        for (auto* box = &renderer(); box != containingBlock; box = &box->parent()->enclosingBoxModelObject()) {
                             if (box->hasSelfPaintingLayer()) {
                                 containingBlockPaintsContinuationOutline = false;
                                 break;

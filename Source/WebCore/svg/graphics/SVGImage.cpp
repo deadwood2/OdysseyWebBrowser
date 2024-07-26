@@ -173,7 +173,8 @@ PassNativeImagePtr SVGImage::nativeImageForCurrentFrame()
     if (!m_page)
         return 0;
 
-    std::unique_ptr<ImageBuffer> buffer = ImageBuffer::create(size(), 1);
+    // Cairo does not use the accelerated drawing flag, so it's OK to make an unconditionally unaccelerated buffer.
+    std::unique_ptr<ImageBuffer> buffer = ImageBuffer::create(size(), Unaccelerated);
     if (!buffer) // failed to allocate image
         return 0;
 
@@ -350,8 +351,6 @@ bool SVGImage::dataChanged(bool allDataReceived)
         fillWithEmptyClients(pageConfiguration);
         m_chromeClient = std::make_unique<SVGImageChromeClient>(this);
         pageConfiguration.chromeClient = m_chromeClient.get();
-        m_loaderClient = std::make_unique<SVGFrameLoaderClient>(m_dataProtocolLoader);
-        pageConfiguration.loaderClientForMainFrame = m_loaderClient.get();
 
         // FIXME: If this SVG ends up loading itself, we might leak the world.
         // The Cache code does not know about CachedImages holding Frames and

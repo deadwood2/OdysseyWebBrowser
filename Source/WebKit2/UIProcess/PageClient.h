@@ -34,10 +34,6 @@
 #include <WebCore/EditorClient.h>
 #include <wtf/Forward.h>
 
-#if USE(GSTREAMER)
-#include <WebCore/GUniquePtrGStreamer.h>
-#endif
-
 #if PLATFORM(COCOA)
 #include "PluginComplexTextInputState.h"
 
@@ -77,6 +73,10 @@ class WebColorPicker;
 
 #if ENABLE(FULLSCREEN_API)
 class WebFullScreenManagerProxyClient;
+#endif
+
+#if USE(GSTREAMER)
+class InstallMissingMediaPluginsPermissionRequest;
 #endif
 
 #if PLATFORM(COCOA)
@@ -231,6 +231,7 @@ public:
     virtual void enterAcceleratedCompositingMode(const LayerTreeContext&) = 0;
     virtual void exitAcceleratedCompositingMode() = 0;
     virtual void updateAcceleratedCompositingMode(const LayerTreeContext&) = 0;
+    virtual void willEnterAcceleratedCompositingMode() = 0;
 
 #if PLATFORM(MAC)
     virtual void pluginFocusOrWindowFocusChanged(uint64_t pluginComplexTextInputIdentifier, bool pluginHasFocusAndWindowHasFocus) = 0;
@@ -340,8 +341,8 @@ public:
     virtual void refView() = 0;
     virtual void derefView() = 0;
 
-#if USE(GSTREAMER)
-    virtual GUniquePtr<GstInstallPluginsContext> createGstInstallPluginsContext() = 0;
+#if ENABLE(VIDEO) && USE(GSTREAMER)
+    virtual bool decidePolicyForInstallMissingMediaPluginsPermissionRequest(InstallMissingMediaPluginsPermissionRequest&) = 0;
 #endif
 };
 

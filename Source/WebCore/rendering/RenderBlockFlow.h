@@ -255,6 +255,8 @@ public:
     void handleAfterSideOfBlock(LayoutUnit top, LayoutUnit bottom, MarginInfo&);
     void setCollapsedBottomMargin(const MarginInfo&);
 
+    virtual bool childrenPreventSelfCollapsing() const override final;
+
     bool shouldBreakAtLineToAvoidWidow() const { return hasRareBlockFlowData() && rareBlockFlowData()->m_lineBreakToAvoidWidow >= 0; }
     void clearShouldBreakAtLineToAvoidWidow() const;
     int lineBreakToAvoidWidow() const { return hasRareBlockFlowData() ? rareBlockFlowData()->m_lineBreakToAvoidWidow : -1; }
@@ -273,7 +275,7 @@ public:
     }
     void layoutLineGridBox();
 
-    virtual bool canCollapseAnonymousBlockChild() const override { return !renderNamedFlowFragment(); }
+    virtual bool canDropAnonymousBlockChild() const override { return !renderNamedFlowFragment(); }
     RenderNamedFlowFragment* renderNamedFlowFragment() const { return hasRareBlockFlowData() ? rareBlockFlowData()->m_renderNamedFlowFragment : nullptr; }
     void setRenderNamedFlowFragment(RenderNamedFlowFragment*);
 
@@ -578,7 +580,7 @@ private:
     void checkLinesForTextOverflow();
     // Positions new floats and also adjust all floats encountered on the line if any of them
     // have to move to the next page/column.
-    bool positionNewFloatOnLine(FloatingObject* newFloat, FloatingObject* lastFloatFromPreviousLine, LineInfo&, LineWidth&);
+    bool positionNewFloatOnLine(const FloatingObject& newFloat, FloatingObject* lastFloatFromPreviousLine, LineInfo&, LineWidth&);
     // This function is called to test a line box that has moved in the block direction to see if it has ended up in a new
     // region/page/column that has a different available line width than the old one. Used to know when you have to dirty a
     // line, i.e., that it can't be re-used.

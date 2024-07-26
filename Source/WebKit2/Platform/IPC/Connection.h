@@ -34,14 +34,15 @@
 #include "MessageReceiver.h"
 #include "ProcessType.h"
 #include <atomic>
-#include <condition_variable>
+#include <wtf/Condition.h>
 #include <wtf/Deque.h>
 #include <wtf/Forward.h>
 #include <wtf/HashMap.h>
+#include <wtf/Lock.h>
 #include <wtf/WorkQueue.h>
 #include <wtf/text/CString.h>
 
-#if OS(DARWIN)
+#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
 #include <mach/mach_port.h>
 #include <wtf/OSObjectPtr.h>
 #include <wtf/spi/darwin/XPCSPI.h>
@@ -98,7 +99,22 @@ public:
     class WorkQueueMessageReceiver : public MessageReceiver, public ThreadSafeRefCounted<WorkQueueMessageReceiver> {
     };
 
-#if OS(DARWIN)
+#if USE(UNIX_DOMAIN_SOCKETS)
+    typedef int Identifier;
+    static bool identifierIsNull(Identifier identifier) { return identifier == -1; }
+
+    struct SocketPair {
+        int client;
+        int server;
+    };
+
+    enum ConnectionOptions {
+        SetCloexecOnClient = 1 << 0,
+        SetCloexecOnServer = 1 << 1,
+    };
+
+    static Connection::SocketPair createPlatformConnection(unsigned options = SetCloexecOnClient | SetCloexecOnServer);
+#elif OS(DARWIN)
     struct Identifier {
         Identifier()
             : port(MACH_PORT_NULL)
@@ -123,21 +139,6 @@ public:
     xpc_connection_t xpcConnection() const { return m_xpcConnection.get(); }
     bool getAuditToken(audit_token_t&);
     pid_t remoteProcessID() const;
-#elif USE(UNIX_DOMAIN_SOCKETS)
-    typedef int Identifier;
-    static bool identifierIsNull(Identifier identifier) { return identifier == -1; }
-
-    struct SocketPair {
-        int client;
-        int server;
-    };
-
-    enum ConnectionOptions {
-        SetCloexecOnClient = 1 << 0,
-        SetCloexecOnServer = 1 << 1,
-    };
-
-    static Connection::SocketPair createPlatformConnection(unsigned options = SetCloexecOnClient | SetCloexecOnServer);
 #endif
 
     static Ref<Connection> createServerConnection(Identifier, Client&);
@@ -258,15 +259,15 @@ private:
     bool m_didReceiveInvalidMessage;
 
     // Incoming messages.
-    std::mutex m_incomingMessagesMutex;
+    Lock m_incomingMessagesMutex;
     Deque<std::unique_ptr<MessageDecoder>> m_incomingMessages;
 
     // Outgoing messages.
-    std::mutex m_outgoingMessagesMutex;
+    Lock m_outgoingMessagesMutex;
     Deque<std::unique_ptr<MessageEncoder>> m_outgoingMessages;
     
-    std::condition_variable m_waitForMessageCondition;
-    std::mutex m_waitForMessageMutex;
+    Condition m_waitForMessageCondition;
+    Lock m_waitForMessageMutex;
 
     WaitForMessageState* m_waitingForMessage;
 
@@ -298,7 +299,7 @@ private:
     class SyncMessageState;
     friend class SyncMessageState;
 
-    Mutex m_syncReplyStateMutex;
+    Lock m_syncReplyStateMutex;
     bool m_shouldWaitForSyncReplies;
     Vector<PendingSyncReply> m_pendingSyncReplies;
 
@@ -306,7 +307,7 @@ private:
     typedef HashMap<uint64_t, SecondaryThreadPendingSyncReply*> SecondaryThreadPendingSyncReplyMap;
     SecondaryThreadPendingSyncReplyMap m_secondaryThreadPendingSyncReplyMap;
 
-    std::mutex m_incomingSyncMessageCallbackMutex;
+    Lock m_incomingSyncMessageCallbackMutex;
     HashMap<uint64_t, std::function<void ()>> m_incomingSyncMessageCallbacks;
     RefPtr<WorkQueue> m_incomingSyncMessageCallbackQueue;
     uint64_t m_nextIncomingSyncMessageCallbackID { 0 };
@@ -316,7 +317,17 @@ private:
     bool m_shouldBoostMainThreadOnSyncMessage { false };
 #endif
 
-#if OS(DARWIN)
+#if USE(UNIX_DOMAIN_SOCKETS)
+    // Called on the connection queue.
+    void readyReadHandler();
+    bool processMessage();
+
+    Vector<uint8_t> m_readBuffer;
+    size_t m_readBufferSize;
+    Vector<int> m_fileDescriptors;
+    size_t m_fileDescriptorsSize;
+    int m_socketDescriptor;
+#elif OS(DARWIN)
     // Called on the connection queue.
     void receiveSourceEventHandler();
     void initializeDeadNameSource();
@@ -337,17 +348,6 @@ private:
 #endif
 
     OSObjectPtr<xpc_connection_t> m_xpcConnection;
-
-#elif USE(UNIX_DOMAIN_SOCKETS)
-    // Called on the connection queue.
-    void readyReadHandler();
-    bool processMessage();
-
-    Vector<uint8_t> m_readBuffer;
-    size_t m_readBufferSize;
-    Vector<int> m_fileDescriptors;
-    size_t m_fileDescriptorsSize;
-    int m_socketDescriptor;
 #endif
 };
 

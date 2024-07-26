@@ -1376,7 +1376,7 @@ static void WebKitInitializeGamepadProviderIfNecessary()
 {
     ASSERT(WebThreadIsCurrent());
     WebKit::MemoryMeasure measurer("Memory warning: Discarding JIT'ed code.");
-    GCController::singleton().discardAllCompiledCode();
+    GCController::singleton().deleteAllCode();
 }
 
 + (BOOL)isCharacterSmartReplaceExempt:(unichar)character isPreviousCharacter:(BOOL)b
@@ -3632,7 +3632,7 @@ static inline IMP getMethod(id o, SEL s)
 
     IntRect newRect;
     {
-        MutexLocker locker(_private->pendingFixedPositionLayoutRectMutex);
+        LockHolder locker(_private->pendingFixedPositionLayoutRectMutex);
         if (CGRectIsNull(_private->pendingFixedPositionLayoutRect))
             return;
         newRect = enclosingIntRect(_private->pendingFixedPositionLayoutRect);
@@ -3646,7 +3646,7 @@ static inline IMP getMethod(id o, SEL s)
 - (void)_setCustomFixedPositionLayoutRectInWebThread:(CGRect)rect synchronize:(BOOL)synchronize
 {
     {
-        MutexLocker locker(_private->pendingFixedPositionLayoutRectMutex);
+        LockHolder locker(_private->pendingFixedPositionLayoutRectMutex);
         _private->pendingFixedPositionLayoutRect = rect;
     }
     if (!synchronize)
@@ -3660,7 +3660,7 @@ static inline IMP getMethod(id o, SEL s)
 {
     ASSERT(WebThreadIsLocked());
     {
-        MutexLocker locker(_private->pendingFixedPositionLayoutRectMutex);
+        LockHolder locker(_private->pendingFixedPositionLayoutRectMutex);
         _private->pendingFixedPositionLayoutRect = rect;
     }
     [self _synchronizeCustomFixedPositionLayoutRect];
@@ -3668,7 +3668,7 @@ static inline IMP getMethod(id o, SEL s)
 
 - (BOOL)_fetchCustomFixedPositionLayoutRect:(NSRect*)rect
 {
-    MutexLocker locker(_private->pendingFixedPositionLayoutRectMutex);
+    LockHolder locker(_private->pendingFixedPositionLayoutRectMutex);
     if (CGRectIsNull(_private->pendingFixedPositionLayoutRect))
         return false;
 
@@ -7838,25 +7838,15 @@ static WebFrameView *containingFrameView(NSView *view)
     }
     case WebCacheModelPrimaryWebBrowser: {
         // Page cache capacity (in pages)
-        // (Research indicates that value / page drops substantially after 3 pages.)
-        if (memSize >= 2048)
-            pageCacheSize = 5;
-        else if (memSize >= 1024)
-            pageCacheSize = 4;
-        else if (memSize >= 512)
+        // Research indicates that value / page drops substantially after 3 pages.
+        if (memSize >= 1024)
             pageCacheSize = 3;
-        else if (memSize >= 256)
+        else if (memSize >= 512)
             pageCacheSize = 2;
-        else
+        else if (memSize >= 256)
             pageCacheSize = 1;
-
-#if PLATFORM(IOS)
-        // Cache page less aggressively in iOS to reduce the chance of being jettisoned.
-        // FIXME (<rdar://problem/11779846>): Avoiding jettisoning should not have to require reducing the page cache capacity.
-        // Reducing the capacity by 1 reduces overall back-forward performance.
-        if (pageCacheSize > 0)
-            pageCacheSize -= 1;
-#endif
+        else
+            pageCacheSize = 0;
 
         // Object cache capacities (in bytes)
         // (Testing indicates that value / MB depends heavily on content and

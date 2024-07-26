@@ -62,8 +62,6 @@ list(APPEND WebKit2_SOURCES
 
     Shared/cairo/ShareableBitmapCairo.cpp
 
-    Shared/glib/KeyedDecoder.cpp
-    Shared/glib/KeyedEncoder.cpp
     Shared/gtk/ArgumentCodersGtk.cpp
     Shared/gtk/NativeContextMenuItemGtk.cpp
     Shared/gtk/NativeWebKeyboardEventGtk.cpp
@@ -169,6 +167,9 @@ list(APPEND WebKit2_SOURCES
     UIProcess/API/gtk/WebKitHitTestResultPrivate.h
     UIProcess/API/gtk/WebKitInjectedBundleClient.cpp
     UIProcess/API/gtk/WebKitInjectedBundleClient.h
+    UIProcess/API/gtk/WebKitInstallMissingMediaPluginsPermissionRequest.cpp
+    UIProcess/API/gtk/WebKitInstallMissingMediaPluginsPermissionRequest.h
+    UIProcess/API/gtk/WebKitInstallMissingMediaPluginsPermissionRequestPrivate.h
     UIProcess/API/gtk/WebKitJavascriptResult.cpp
     UIProcess/API/gtk/WebKitJavascriptResult.h
     UIProcess/API/gtk/WebKitJavascriptResultPrivate.h
@@ -290,6 +291,7 @@ list(APPEND WebKit2_SOURCES
 
     UIProcess/cairo/BackingStoreCairo.cpp
 
+    UIProcess/gstreamer/InstallMissingMediaPluginsPermissionRequest.cpp
     UIProcess/gstreamer/WebPageProxyGStreamer.cpp
 
     UIProcess/gtk/DragAndDropHandler.cpp
@@ -393,6 +395,7 @@ set(WebKit2GTK_INSTALLED_HEADERS
     ${WEBKIT2_DIR}/UIProcess/API/gtk/WebKitForwardDeclarations.h
     ${WEBKIT2_DIR}/UIProcess/API/gtk/WebKitGeolocationPermissionRequest.h
     ${WEBKIT2_DIR}/UIProcess/API/gtk/WebKitHitTestResult.h
+    ${WEBKIT2_DIR}/UIProcess/API/gtk/WebKitInstallMissingMediaPluginsPermissionRequest.h
     ${WEBKIT2_DIR}/UIProcess/API/gtk/WebKitJavascriptResult.h
     ${WEBKIT2_DIR}/UIProcess/API/gtk/WebKitMimeInfo.h
     ${WEBKIT2_DIR}/UIProcess/API/gtk/WebKitNavigationAction.h
@@ -500,6 +503,7 @@ list(APPEND WebKit2_INCLUDE_DIRECTORIES
     "${WEBKIT2_DIR}/UIProcess/API/gtk"
     "${WEBKIT2_DIR}/UIProcess/Network/CustomProtocols/soup"
     "${WEBKIT2_DIR}/UIProcess/Plugins/gtk"
+    "${WEBKIT2_DIR}/UIProcess/gstreamer"
     "${WEBKIT2_DIR}/UIProcess/gtk"
     "${WEBKIT2_DIR}/UIProcess/soup"
     "${WEBKIT2_DIR}/WebProcess/InjectedBundle/API/gtk"
@@ -858,6 +862,7 @@ include_directories(
 add_library(webkit2gtkinjectedbundle MODULE "${WEBKIT2_DIR}/WebProcess/gtk/WebGtkInjectedBundleMain.cpp")
 add_dependencies(webkit2gtkinjectedbundle GObjectDOMBindings)
 add_webkit2_prefix_header(webkit2gtkinjectedbundle)
+target_link_libraries(webkit2gtkinjectedbundle WebKit2)
 
 # Add ${CMAKE_LIBRARY_OUTPUT_DIRECTORY} to LD_LIBRARY_PATH
 string(COMPARE EQUAL "$ENV{LD_LIBRARY_PATH}" "" ld_library_path_not_exist)
@@ -873,7 +878,7 @@ endif ()
 
 # Add required -L flags from ${CMAKE_SHARED_LINKER_FLAGS} for g-ir-scanner
 string(REGEX MATCHALL "-L[^ ]*"
-    INTROSPECTION_ADDITIONAL_LINKER_FLAGS ${CMAKE_SHARED_LINKER_FLAGS})
+    INTROSPECTION_ADDITIONAL_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS}")
 
 add_custom_command(
     OUTPUT ${CMAKE_BINARY_DIR}/WebKit2-${WEBKITGTK_API_VERSION}.gir
@@ -915,11 +920,18 @@ add_custom_command(
         ${WEBKIT2_DIR}/UIProcess/API/gtk/*.cpp
 )
 
+# Manually add some libraries on OSX because we don't have the --whole-archive flag
+if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
+    set(INTROSPECTION_ADDITIONAL_LIBRARIES --library=c++)
+    set(INTROSPECTION_ADDITIONAL_LDFLAGS -lGObjectDOMBindings)
+endif ()
+
 add_custom_command(
     OUTPUT ${CMAKE_BINARY_DIR}/WebKit2WebExtension-${WEBKITGTK_API_VERSION}.gir
     DEPENDS ${CMAKE_BINARY_DIR}/JavaScriptCore-${WEBKITGTK_API_VERSION}.gir
     DEPENDS ${CMAKE_BINARY_DIR}/WebKit2-${WEBKITGTK_API_VERSION}.gir
-    COMMAND CC=${CMAKE_C_COMPILER} CFLAGS=-Wno-deprecated-declarations LDFLAGS=
+    COMMAND CC=${CMAKE_C_COMPILER} CFLAGS=-Wno-deprecated-declarations
+        LDFLAGS="${INTROSPECTION_ADDITIONAL_LDFLAGS}"
         LD_LIBRARY_PATH="${INTROSPECTION_ADDITIONAL_LIBRARY_PATH}"
         ${INTROSPECTION_SCANNER}
         --quiet
@@ -934,6 +946,7 @@ add_custom_command(
         --include-uninstalled=${CMAKE_BINARY_DIR}/JavaScriptCore-${WEBKITGTK_API_VERSION}.gir
         --library=webkit2gtk-${WEBKITGTK_API_VERSION}
         --library=javascriptcoregtk-${WEBKITGTK_API_VERSION}
+        ${INTROSPECTION_ADDITIONAL_LIBRARIES}
         -L${CMAKE_LIBRARY_OUTPUT_DIRECTORY}
         ${INTROSPECTION_ADDITIONAL_LINKER_FLAGS}
         --no-libtool
@@ -957,8 +970,10 @@ add_custom_command(
         ${GObjectDOMBindings_GIR_HEADERS}
         ${WebKit2WebExtension_INSTALLED_HEADERS}
         ${WEBKIT2_DIR}/UIProcess/API/gtk/WebKitContextMenu.h
+        ${WEBKIT2_DIR}/UIProcess/API/gtk/WebKitContextMenu.cpp
         ${WEBKIT2_DIR}/UIProcess/API/gtk/WebKitContextMenuActions.h
         ${WEBKIT2_DIR}/UIProcess/API/gtk/WebKitContextMenuItem.h
+        ${WEBKIT2_DIR}/UIProcess/API/gtk/WebKitContextMenuItem.cpp
         ${WEBKIT2_DIR}/UIProcess/API/gtk/WebKitHitTestResult.h
         ${WEBKIT2_DIR}/UIProcess/API/gtk/WebKitURIRequest.h
         ${WEBKIT2_DIR}/UIProcess/API/gtk/WebKitURIResponse.h

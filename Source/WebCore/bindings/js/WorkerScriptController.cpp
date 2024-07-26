@@ -44,6 +44,7 @@
 #include <runtime/ExceptionHelpers.h>
 #include <runtime/Error.h>
 #include <runtime/JSLock.h>
+#include <runtime/Watchdog.h>
 
 using namespace JSC;
 
@@ -55,6 +56,7 @@ WorkerScriptController::WorkerScriptController(WorkerGlobalScope* workerGlobalSc
     , m_workerGlobalScopeWrapper(*m_vm)
     , m_executionForbidden(false)
 {
+    m_vm->ensureWatchdog();
     initNormalWorldClientData(m_vm.get());
 }
 
@@ -120,8 +122,7 @@ void WorkerScriptController::evaluate(const ScriptSourceCode& sourceCode, NakedP
     JSC::evaluate(exec, sourceCode.jsSourceCode(), m_workerGlobalScopeWrapper->globalThis(), returnedException);
 
     VM& vm = exec->vm();
-    if ((returnedException && isTerminatedExecutionException(returnedException))
-        || (vm.watchdog && vm.watchdog->didFire())) {
+    if ((returnedException && isTerminatedExecutionException(returnedException)) || isTerminatingExecution()) {
         forbidExecution();
         return;
     }
@@ -148,20 +149,20 @@ void WorkerScriptController::setException(JSC::Exception* exception)
 void WorkerScriptController::scheduleExecutionTermination()
 {
     // The mutex provides a memory barrier to ensure that once
-    // termination is scheduled, isExecutionTerminating will
+    // termination is scheduled, isTerminatingExecution() will
     // accurately reflect that state when called from another thread.
-    MutexLocker locker(m_scheduledTerminationMutex);
-    if (m_vm->watchdog)
-        m_vm->watchdog->fire();
+    LockHolder locker(m_scheduledTerminationMutex);
+    m_isTerminatingExecution = true;
+
+    ASSERT(m_vm->watchdog);
+    m_vm->watchdog->terminateSoon();
 }
 
-bool WorkerScriptController::isExecutionTerminating() const
+bool WorkerScriptController::isTerminatingExecution() const
 {
     // See comments in scheduleExecutionTermination regarding mutex usage.
-    MutexLocker locker(m_scheduledTerminationMutex);
-    if (m_vm->watchdog)
-        return m_vm->watchdog->didFire();
-    return false;
+    LockHolder locker(m_scheduledTerminationMutex);
+    return m_isTerminatingExecution;
 }
 
 void WorkerScriptController::forbidExecution()

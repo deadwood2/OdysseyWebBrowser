@@ -639,7 +639,7 @@ void SVGToOTFFontConverter::appendCFFTable()
     m_result.append(familyNameKey);
     if (hasWeight) {
         m_result.append(operand32Bit);
-        append32(userDefinedStringStartIndex + 1);
+        append32(userDefinedStringStartIndex + 2);
         m_result.append(weightKey);
     }
     m_result.append(operand32Bit);
@@ -667,17 +667,21 @@ void SVGToOTFFontConverter::appendCFFTable()
     ASSERT(m_result.size() == topDictStart + sizeOfTopIndex);
 
     // String INDEX
-    append16(1 + (hasWeight ? 1 : 0)); // Number of elements in INDEX
+    String unknownCharacter = ASCIILiteral("UnknownChar");
+    append16(2 + (hasWeight ? 1 : 0)); // Number of elements in INDEX
     m_result.append(4); // Offsets in this INDEX are 4 bytes long
     uint32_t offset = 1;
     append32(offset);
     offset += fontName.length();
+    append32(offset);
+    offset += unknownCharacter.length();
     append32(offset);
     if (hasWeight) {
         offset += weight.length();
         append32(offset);
     }
     appendValidCFFString(fontName);
+    appendValidCFFString(unknownCharacter);
     appendValidCFFString(weight);
 
     append16(0); // Empty subroutine INDEX
@@ -686,7 +690,7 @@ void SVGToOTFFontConverter::appendCFFTable()
     overwrite32(charsetOffsetLocation, m_result.size() - startingOffset);
     m_result.append(0);
     for (Glyph i = 1; i < m_glyphs.size(); ++i)
-        append16(i);
+        append16(userDefinedStringStartIndex + 1);
 
     // CharStrings INDEX
     overwrite32(charstringsOffsetLocation, m_result.size() - startingOffset);
@@ -1079,10 +1083,10 @@ size_t SVGToOTFFontConverter::finishAppendingKERNSubtable(Vector<KerningData> ke
     append16((kerningData.size() - roundedNumKerningPairs) * 6); // rangeShift: "The value of nPairs minus the largest power of two less than or equal to nPairs,
                                                                         // and then multiplied by the size in bytes of an entry in the table."
 
-    for (auto& kerningData : kerningData) {
-        append16(kerningData.glyph1);
-        append16(kerningData.glyph2);
-        append16(kerningData.adjustment);
+    for (auto& kerningDataElement : kerningData) {
+        append16(kerningDataElement.glyph1);
+        append16(kerningDataElement.glyph2);
+        append16(kerningDataElement.adjustment);
     }
 
     return sizeOfKerningDataTable;
@@ -1312,8 +1316,6 @@ bool SVGToOTFFontConverter::compareCodepointsLexicographically(const GlyphData& 
     auto codePoints2 = StringView(data2.codepoints).codePoints();
     auto iterator1 = codePoints1.begin();
     auto iterator2 = codePoints2.begin();
-    unsigned length1 = data1.codepoints.length();
-    unsigned length2 = data2.codepoints.length();
     while (iterator1 != codePoints1.end() && iterator2 != codePoints2.end()) {
         UChar32 codepoint1, codepoint2;
         codepoint1 = *iterator1;
@@ -1328,10 +1330,12 @@ bool SVGToOTFFontConverter::compareCodepointsLexicographically(const GlyphData& 
         ++iterator2;
     }
 
-    if (length1 == length2 && data1.glyphElement
-        && equalIgnoringCase(data1.glyphElement->fastGetAttribute(SVGNames::arabic_formAttr), "isolated"))
-        return true;
-    return length1 < length2;
+    if (iterator1 == codePoints1.end() && iterator2 == codePoints2.end()) {
+        bool firstIsIsolated = data1.glyphElement && equalIgnoringCase(data1.glyphElement->fastGetAttribute(SVGNames::arabic_formAttr), "isolated");
+        bool secondIsIsolated = data2.glyphElement && equalIgnoringCase(data2.glyphElement->fastGetAttribute(SVGNames::arabic_formAttr), "isolated");
+        return firstIsIsolated && !secondIsIsolated;
+    }
+    return iterator1 == codePoints1.end();
 }
 
 static void populateEmptyGlyphCharString(Vector<char, 17>& o, unsigned unitsPerEm)

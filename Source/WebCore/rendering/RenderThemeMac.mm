@@ -230,7 +230,7 @@ RenderThemeMac::~RenderThemeMac()
 NSView* RenderThemeMac::documentViewFor(const RenderObject& o) const
 {
     ControlStates states(extractControlStatesForRenderer(o));
-    return ThemeMac::ensuredView(&o.view().frameView(), &states);
+    return ThemeMac::ensuredView(&o.view().frameView(), states);
 }
 
 #if ENABLE(VIDEO)
@@ -1285,7 +1285,7 @@ void RenderThemeMac::paintMenuListButtonGradients(const RenderObject& o, const P
     }
 }
 
-bool RenderThemeMac::paintMenuListButtonDecorations(const RenderObject& renderer, const PaintInfo& paintInfo, const FloatRect& rect)
+bool RenderThemeMac::paintMenuListButtonDecorations(const RenderBox& renderer, const PaintInfo& paintInfo, const FloatRect& rect)
 {
     IntRect bounds = IntRect(rect.x() + renderer.style().borderLeftWidth(),
         rect.y() + renderer.style().borderTopWidth(),
@@ -1688,6 +1688,8 @@ void RenderThemeMac::adjustSearchFieldStyle(StyleResolver& styleResolver, Render
 
 bool RenderThemeMac::paintSearchFieldCancelButton(const RenderObject& o, const PaintInfo& paintInfo, const IntRect& r)
 {
+    if (!o.node())
+        return false;
     Element* input = o.node()->shadowHost();
     if (!input)
         input = downcast<Element>(o.node());
@@ -1770,6 +1772,8 @@ void RenderThemeMac::adjustSearchFieldResultsDecorationPartStyle(StyleResolver&,
 
 bool RenderThemeMac::paintSearchFieldResultsDecorationPart(const RenderObject& o, const PaintInfo& paintInfo, const IntRect& r)
 {
+    if (!o.node())
+        return false;
     Node* input = o.node()->shadowHost();
     if (!input)
         input = o.node();
@@ -1896,7 +1900,7 @@ bool RenderThemeMac::paintSnapshottedPluginOverlay(const RenderObject& renderer,
     // We could draw the snapshot with that coordinates, but we need to make sure there
     // isn't a composited layer between us and the plugInRenderer.
     for (auto* renderBox = &downcast<RenderBox>(renderer); renderBox != &plugInRenderer; renderBox = renderBox->parentBox()) {
-        if (renderBox->hasLayer() && renderBox->layer() && renderBox->layer()->isComposited()) {
+        if (renderBox->isComposited()) {
             snapshotAbsPos = -renderBox->location();
             break;
         }

@@ -64,7 +64,7 @@ inline EventSource::EventSource(ScriptExecutionContext& context, const URL& url,
     , m_withCredentials(false)
     , m_state(CONNECTING)
     , m_decoder(TextResourceDecoder::create("text/plain", "UTF-8"))
-    , m_connectTimer(*this, &EventSource::connectTimerFired)
+    , m_connectTimer(*this, &EventSource::connect)
     , m_discardTrailingNewline(false)
     , m_requestInFlight(false)
     , m_reconnectDelay(defaultReconnectDelay)
@@ -86,11 +86,7 @@ RefPtr<EventSource> EventSource::create(ScriptExecutionContext& context, const S
     }
 
     // FIXME: Convert this to check the isolated world's Content Security Policy once webkit.org/b/104520 is solved.
-    bool shouldBypassMainWorldContentSecurityPolicy = false;
-    if (is<Document>(context)) {
-        Document& document = downcast<Document>(context);
-        shouldBypassMainWorldContentSecurityPolicy = document.frame()->script().shouldBypassMainWorldContentSecurityPolicy();
-    }
+    bool shouldBypassMainWorldContentSecurityPolicy = ContentSecurityPolicy::shouldBypassMainWorldContentSecurityPolicy(context);
     if (!context.contentSecurityPolicy()->allowConnectToSource(fullURL, shouldBypassMainWorldContentSecurityPolicy)) {
         // FIXME: Should this be throwing an exception?
         ec = SECURITY_ERR;
@@ -130,6 +126,7 @@ void EventSource::connect()
     options.setSendLoadCallbacks(SendCallbacks);
     options.setSniffContent(DoNotSniffContent);
     options.setAllowCredentials((origin->canRequest(m_url) || m_withCredentials) ? AllowStoredCredentials : DoNotAllowStoredCredentials);
+    options.setCredentialRequest(m_withCredentials ? ClientRequestedCredentials : ClientDidNotRequestCredentials);
     options.preflightPolicy = PreventPreflight;
     options.crossOriginRequestPolicy = UseAccessControl;
     options.setDataBufferingPolicy(DoNotBufferData);
@@ -167,11 +164,6 @@ void EventSource::scheduleReconnect()
     m_state = CONNECTING;
     m_connectTimer.startOneShot(m_reconnectDelay / 1000.0);
     dispatchEvent(Event::create(eventNames().errorEvent, false, false));
-}
-
-void EventSource::connectTimerFired()
-{
-    connect();
 }
 
 String EventSource::url() const

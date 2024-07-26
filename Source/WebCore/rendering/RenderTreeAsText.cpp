@@ -484,7 +484,7 @@ static void writeTextRun(TextStream& ts, const RenderText& o, const InlineTextBo
     ts << "\n";
 }
 
-static void writeSimpleLine(TextStream& ts, const RenderText& o, const LayoutRect& rect, StringView text)
+static void writeSimpleLine(TextStream& ts, const RenderText& o, const FloatRect& rect, StringView text)
 {
     int x = rect.x();
     int y = rect.y();
@@ -549,7 +549,7 @@ void write(TextStream& ts, const RenderObject& o, int indent, RenderAsTextBehavi
                 writeSimpleLine(ts, text, run.rect(), run.text());
             }
         } else {
-            for (auto box = text.firstTextBox(); box; box = box->nextTextBox()) {
+            for (auto* box = text.firstTextBox(); box; box = box->nextTextBox()) {
                 writeIndent(ts, indent + 1);
                 writeTextRun(ts, text, *box);
             }

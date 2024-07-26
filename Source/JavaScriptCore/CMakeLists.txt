@@ -84,7 +84,6 @@ set(JavaScriptCore_SOURCES
     bytecode/CodeOrigin.cpp
     bytecode/CodeType.cpp
     bytecode/ComplexGetStatus.cpp
-    bytecode/ConstantStructureCheck.cpp
     bytecode/DFGExitProfile.cpp
     bytecode/DeferredCompilationCallback.cpp
     bytecode/DeferredSourceDump.cpp
@@ -97,10 +96,13 @@ set(JavaScriptCore_SOURCES
     bytecode/JumpTable.cpp
     bytecode/LazyOperandValueProfile.cpp
     bytecode/MethodOfGettingAValueProfile.cpp
+    bytecode/ObjectPropertyCondition.cpp
+    bytecode/ObjectPropertyConditionSet.cpp
     bytecode/Opcode.cpp
     bytecode/PolymorphicGetByIdList.cpp
     bytecode/PolymorphicPutByIdList.cpp
     bytecode/PreciseJumpTargets.cpp
+    bytecode/PropertyCondition.cpp
     bytecode/PutByIdStatus.cpp
     bytecode/PutByIdVariant.cpp
     bytecode/ReduceWhitespace.cpp
@@ -113,6 +115,7 @@ set(JavaScriptCore_SOURCES
     bytecode/ToThisStatus.cpp
     bytecode/TrackedReferences.cpp
     bytecode/UnlinkedCodeBlock.cpp
+    bytecode/UnlinkedFunctionExecutable.cpp
     bytecode/UnlinkedInstructionStream.cpp
     bytecode/ValueRecovery.cpp
     bytecode/VariableWriteFireDetail.cpp
@@ -128,6 +131,8 @@ set(JavaScriptCore_SOURCES
 
     dfg/DFGAbstractHeap.cpp
     dfg/DFGAbstractValue.cpp
+    dfg/DFGAdaptiveInferredPropertyValueWatchpoint.cpp
+    dfg/DFGAdaptiveStructureWatchpoint.cpp
     dfg/DFGArgumentsEliminationPhase.cpp
     dfg/DFGArgumentsUtilities.cpp
     dfg/DFGArithMode.cpp
@@ -196,6 +201,7 @@ set(JavaScriptCore_SOURCES
     dfg/DFGMinifiedGraph.cpp
     dfg/DFGMinifiedNode.cpp
     dfg/DFGMovHintRemovalPhase.cpp
+    dfg/DFGMultiGetByOffsetData.cpp
     dfg/DFGNaiveDominators.cpp
     dfg/DFGNaturalLoops.cpp
     dfg/DFGNode.cpp
@@ -286,6 +292,7 @@ set(JavaScriptCore_SOURCES
     heap/HeapVerifier.cpp
     heap/IncrementalSweeper.cpp
     heap/JITStubRoutineSet.cpp
+    heap/LiveObjectList.cpp
     heap/MachineStackMarker.cpp
     heap/MarkStack.cpp
     heap/MarkedAllocator.cpp
@@ -378,7 +385,10 @@ set(JavaScriptCore_SOURCES
     jit/ThunkGenerators.cpp
 
     parser/Lexer.cpp
+    parser/ModuleAnalyzer.cpp
+    parser/ModuleRecord.cpp
     parser/Nodes.cpp
+    parser/NodesAnalyzeModule.cpp
     parser/Parser.cpp
     parser/ParserArena.cpp
     parser/SourceCode.cpp
@@ -476,7 +486,6 @@ set(JavaScriptCore_RUNTIME_SOURCES
     runtime/IndexingType.cpp
     runtime/InferredValue.cpp
     runtime/InitializeThreading.cpp
-    runtime/IntendedStructureChain.cpp
     runtime/InternalFunction.cpp
     runtime/IntlCollator.cpp
     runtime/IntlCollatorConstructor.cpp
@@ -507,7 +516,6 @@ set(JavaScriptCore_RUNTIME_SOURCES
     runtime/JSDateMath.cpp
     runtime/JSEnvironmentRecord.cpp
     runtime/JSFunction.cpp
-    runtime/JSFunctionNameScope.cpp
     runtime/JSGlobalObject.cpp
     runtime/JSGlobalObjectDebuggable.cpp
     runtime/JSGlobalObjectFunctions.cpp
@@ -516,7 +524,6 @@ set(JavaScriptCore_RUNTIME_SOURCES
     runtime/JSLock.cpp
     runtime/JSMap.cpp
     runtime/JSMapIterator.cpp
-    runtime/JSNameScope.cpp
     runtime/JSNotAnObject.cpp
     runtime/JSONObject.cpp
     runtime/JSObject.cpp
@@ -613,7 +620,6 @@ set(JavaScriptCore_RUNTIME_SOURCES
     runtime/VMEntryScope.cpp
     runtime/VarOffset.cpp
     runtime/Watchdog.cpp
-    runtime/WatchdogNone.cpp
     runtime/WeakMapConstructor.cpp
     runtime/WeakMapData.cpp
     runtime/WeakMapPrototype.cpp
