@@ -2,9 +2,10 @@
 
 Notes about branches:
 
-master  - always going to be empty
-webkit  - branch that contains original webkit codes at certain revisions
-odyssey - branch that contains Odyssey Web Browser rebased onto certain version of webkit branch
+* webkit  - branch that only contains original WebKit codes at certain revisions/releases. Source changes between versions/releases are squashed into in (most cases) one commit.
+* master  - branch that contains commits from webkit branch combined with Odyssey Web Browser source codes which don't conflict with codes from webkit branch. Check master-editable file for details.
+* odyssey - branch that contains remaining Odyssey Web Browser source changes rebased onto certain version of master branch.
 
-In order to build/develop the Odyssey Web Browser, checkout branch odyssey.
+In order to build/develop the Odyssey Web Browser, checkout branch **odyssey**.
+
 
