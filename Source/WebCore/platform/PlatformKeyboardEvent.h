@@ -46,6 +46,10 @@ typedef struct _GdkEventKey GdkEventKey;
 #include "CompositionResults.h"
 #endif
 
+#if PLATFORM(MUI)
+#include "BALBase.h"
+#endif
+
 #if PLATFORM(EFL)
 typedef struct _Evas_Event_Key_Down Evas_Event_Key_Down;
 typedef struct _Evas_Event_Key_Up Evas_Event_Key_Up;
@@ -69,6 +73,9 @@ namespace WebCore {
             , m_isSystemKey(false)
 #if PLATFORM(GTK)
             , m_gdkEventKey(0)
+#endif
+#if PLATFORM(MUI)
+            , m_balEventKey(0)
 #endif
         {
         }
@@ -154,6 +161,11 @@ namespace WebCore {
         static String singleCharacterString(unsigned);
 #endif
 
+#if PLATFORM(MUI)
+        PlatformKeyboardEvent(BalEventKey*);
+        BalEventKey* balEventKey() const;
+#endif
+
 #if PLATFORM(EFL)
         explicit PlatformKeyboardEvent(const Evas_Event_Key_Down*);
         explicit PlatformKeyboardEvent(const Evas_Event_Key_Up*);
@@ -188,6 +200,9 @@ namespace WebCore {
 #if PLATFORM(GTK)
         GdkEventKey* m_gdkEventKey;
         CompositionResults m_compositionResults;
+#endif
+#if PLATFORM(MUI)
+        BalEventKey* m_balEventKey;
 #endif
     };
     

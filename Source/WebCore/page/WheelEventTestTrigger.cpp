@@ -39,7 +39,9 @@
 namespace WebCore {
 
 WheelEventTestTrigger::WheelEventTestTrigger()
+#if !PLATFORM(MUI)
     : m_testTriggerTimer(RunLoop::current(), this, &WheelEventTestTrigger::triggerTestTimerFired)
+#endif
 {
 }
 
@@ -48,7 +50,9 @@ void WheelEventTestTrigger::clearAllTestDeferrals()
     std::lock_guard<Lock> lock(m_testTriggerMutex);
     m_deferTestTriggerReasons.clear();
     m_testNotificationCallback = std::function<void()>();
+#if !PLATFORM(MUI)
     m_testTriggerTimer.stop();
+#endif
     LOG(WheelEventTestTriggers, "      (=) WheelEventTestTrigger::clearAllTestDeferrals: cleared all test state.");
 }
 
@@ -59,8 +63,10 @@ void WheelEventTestTrigger::setTestCallbackAndStartNotificationTimer(std::functi
         m_testNotificationCallback = WTF::move(functionCallback);
     }
     
+#if !PLATFORM(MUI)
     if (!m_testTriggerTimer.isActive())
         m_testTriggerTimer.startRepeating(1.0 / 60.0);
+#endif
 }
 
 void WheelEventTestTrigger::deferTestsForReason(ScrollableAreaIdentifier identifier, DeferTestTriggerReason reason)
@@ -123,7 +129,9 @@ void WheelEventTestTrigger::triggerTestTimerFired()
         m_testNotificationCallback = std::function<void()>();
     }
 
+#if !PLATFORM(MUI)
     m_testTriggerTimer.stop();
+#endif
 
     LOG(WheelEventTestTriggers, "  WheelEventTestTrigger::triggerTestTimerFired: FIRING TEST");
     if (functionCallback)

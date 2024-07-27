@@ -2,7 +2,7 @@ include(CMakeParseArguments)
 # Sets extra compile flags for a target, depending on the compiler being used.
 # Currently, only GCC is supported.
 macro(WEBKIT_SET_EXTRA_COMPILER_FLAGS _target)
-    set(options ENABLE_WERROR IGNORECXX_WARNINGS)
+    set(options ENABLE_WERROR IGNORECXX_WARNINGS MUI_DISABLE_WARNINGS)
     CMAKE_PARSE_ARGUMENTS("OPTION" "${options}" "" "" ${ARGN})
     if (CMAKE_COMPILER_IS_GNUCXX OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
         get_target_property(OLD_COMPILE_FLAGS ${_target} COMPILE_FLAGS)
@@ -10,19 +10,26 @@ macro(WEBKIT_SET_EXTRA_COMPILER_FLAGS _target)
             set(OLD_COMPILE_FLAGS "")
         endif ()
 
-        get_target_property(TARGET_TYPE ${_target} TYPE)
-        if (${TARGET_TYPE} STREQUAL "STATIC_LIBRARY") # -fPIC is automatically added to shared libraries
-            set(OLD_COMPILE_FLAGS "-fPIC ${OLD_COMPILE_FLAGS}")
-        endif ()
+#        get_target_property(TARGET_TYPE ${_target} TYPE)
+#        if (${TARGET_TYPE} STREQUAL "STATIC_LIBRARY") # -fPIC is automatically added to shared libraries
+#            set(OLD_COMPILE_FLAGS "-fPIC ${OLD_COMPILE_FLAGS}")
+#        endif ()
 
         # Suppress -Wparentheses-equality warning of Clang
         if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
             set(OLD_COMPILE_FLAGS "-Wno-parentheses-equality ${OLD_COMPILE_FLAGS}")
         endif ()
 
+		set(OLD_COMPILE_FLAGS "-march=i686 ${OLD_COMPILE_FLAGS}")
+
         # Enable warnings by default
         if (NOT ${OPTION_IGNORECXX_WARNINGS})
             set(OLD_COMPILE_FLAGS "-Wall -Wextra -Wcast-align -Wformat-security -Wmissing-format-attribute -Wpointer-arith -Wundef -Wwrite-strings ${OLD_COMPILE_FLAGS}")
+        endif ()
+
+        # Disable unused-parameter warning
+        if (OPTION_MUI_DISABLE_WARNINGS)
+            set(OLD_COMPILE_FLAGS "${OLD_COMPILE_FLAGS} -Wno-unused-parameter -Wno-write-strings -Werror")
         endif ()
 
         # Enable errors on warning

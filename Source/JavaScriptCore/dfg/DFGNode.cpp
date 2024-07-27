@@ -224,7 +224,7 @@ void printInternal(PrintStream& out, SwitchKind kind)
     RELEASE_ASSERT_NOT_REACHED();
 }
 
-void printInternal(PrintStream& out, Node* node)
+void printInternal(PrintStream& out, JSC::DFG::Node* node)
 {
     if (!node) {
         out.print("-");

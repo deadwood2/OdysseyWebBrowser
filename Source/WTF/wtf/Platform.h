@@ -424,6 +424,14 @@
 #define WTF_OS_UNIX 1
 #endif
 
+#if defined(__AROS__)
+#define WTF_OS_AROS 1
+#endif
+
+#if defined(__MORPHOS__)
+#define WTF_OS_MORPHOS 1
+#endif
+
 /* Operating environments */
 
 /* FIXME: these are all mixes of OS, operating environment and policy choices. */
@@ -446,6 +454,8 @@
 #endif
 #elif OS(WINDOWS)
 #define WTF_PLATFORM_WIN 1
+#elif OS(AROS)
+#define WTF_PLATFORM_MUI 1
 #endif
 
 /* PLATFORM(COCOA) */
@@ -500,6 +510,15 @@
 
 #if USE(SOUP)
 #define SOUP_VERSION_MIN_REQUIRED SOUP_VERSION_2_42
+#endif
+
+#if PLATFORM(MUI)
+#define USE_CAIRO 1
+#define USE_FREETYPE 1
+#define USE_CURL 1
+#define USE_CURL_OPENSSL 1
+#define USE_TEXTURE_MAPPER 1
+#define USE_TEXTURE_MAPPER_GL 0
 #endif
 
 /* On Windows, use QueryPerformanceCounter by default */
@@ -604,7 +623,7 @@
 #endif
 
 #if !defined(HAVE_VASPRINTF)
-#if !COMPILER(MSVC) && !COMPILER(MINGW)
+#if !COMPILER(MSVC) && !COMPILER(MINGW) && !(COMPILER(GCC) && OS(AROS))
 #define HAVE_VASPRINTF 1
 #endif
 #endif
@@ -619,7 +638,7 @@
 #define HAVE_STAT_BIRTHTIME 1
 #endif
 
-#if !OS(WINDOWS) && !OS(SOLARIS)
+#if !OS(WINDOWS) && !OS(SOLARIS) && !OS(AROS) && !OS(MORPHOS)
 #define HAVE_TM_GMTOFF 1
 #define HAVE_TM_ZONE 1
 #define HAVE_TIMEGM 1
@@ -665,7 +684,7 @@
 /* Include feature macros */
 #include <wtf/FeatureDefines.h>
 
-#if OS(WINDOWS)
+#if OS(WINDOWS) || OS(AROS) || OS(MORPHOS)
 #define USE_SYSTEM_MALLOC 1
 #endif
 
@@ -757,7 +776,7 @@
 
 #if !defined(ENABLE_DFG_JIT) && ENABLE(JIT)
 /* Enable the DFG JIT on X86 and X86_64. */
-#if (CPU(X86) || CPU(X86_64)) && (OS(DARWIN) || OS(LINUX) || OS(FREEBSD) || OS(WINDOWS) || OS(HURD))
+#if (CPU(X86) || CPU(X86_64)) && (OS(DARWIN) || OS(LINUX) || OS(FREEBSD) || OS(WINDOWS) || OS(HURD) || OS(AROS))
 #define ENABLE_DFG_JIT 1
 #endif
 /* Enable the DFG JIT on ARMv7.  Only tested on iOS and Qt/GTK+ Linux. */
@@ -977,7 +996,7 @@
 #define USE_IMLANG_FONT_LINK2 1
 #endif
 
-#if !defined(ENABLE_COMPARE_AND_SWAP) && (OS(WINDOWS) || (COMPILER(GCC_OR_CLANG) && (CPU(X86) || CPU(X86_64) || CPU(ARM_THUMB2) || CPU(ARM64))))
+#if !defined(ENABLE_COMPARE_AND_SWAP) && !OS(AROS) && (OS(WINDOWS) || (COMPILER(GCC_OR_CLANG) && (CPU(X86) || CPU(X86_64) || CPU(ARM_THUMB2) || CPU(ARM64))))
 #define ENABLE_COMPARE_AND_SWAP 1
 #endif
 

@@ -32,6 +32,8 @@
 #define DateTimeChooserClient_h
 
 #if ENABLE(DATE_AND_TIME_INPUT_TYPES)
+#include <wtf/text/WTFString.h>
+
 namespace WebCore {
 
 class DateTimeChooserClient {

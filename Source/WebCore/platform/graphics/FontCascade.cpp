@@ -1181,11 +1181,15 @@ GlyphToPathTranslator::GlyphUnderlineType computeUnderlineType(const TextRun& te
     case UBLOCK_CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B:
     case UBLOCK_CJK_COMPATIBILITY_IDEOGRAPHS_SUPPLEMENT:
     case UBLOCK_CJK_STROKES:
+#if !OS(AROS)
     case UBLOCK_CJK_UNIFIED_IDEOGRAPHS_EXTENSION_C:
     case UBLOCK_CJK_UNIFIED_IDEOGRAPHS_EXTENSION_D:
+#endif
     case UBLOCK_IDEOGRAPHIC_DESCRIPTION_CHARACTERS:
     case UBLOCK_LINEAR_B_IDEOGRAMS:
+#if !OS(AROS)
     case UBLOCK_ENCLOSED_IDEOGRAPHIC_SUPPLEMENT:
+#endif
     case UBLOCK_HIRAGANA:
     case UBLOCK_KATAKANA:
     case UBLOCK_BOPOMOFO:
@@ -1193,8 +1197,10 @@ GlyphToPathTranslator::GlyphUnderlineType computeUnderlineType(const TextRun& te
     case UBLOCK_HANGUL_JAMO:
     case UBLOCK_HANGUL_COMPATIBILITY_JAMO:
     case UBLOCK_HANGUL_SYLLABLES:
+#if !OS(AROS)
     case UBLOCK_HANGUL_JAMO_EXTENDED_A:
     case UBLOCK_HANGUL_JAMO_EXTENDED_B:
+#endif
         return GlyphToPathTranslator::GlyphUnderlineType::DrawOverGlyph;
     default:
         return GlyphToPathTranslator::GlyphUnderlineType::SkipDescenders;

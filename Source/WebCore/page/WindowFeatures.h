@@ -35,6 +35,15 @@
 #include <wtf/Vector.h>
 #include <wtf/text/StringHash.h>
 
+#if PLATFORM(MUI)
+typedef enum
+  {
+    NEWPAGE_POLICY_IGNORE,
+    NEWPAGE_POLICY_WINDOW,
+    NEWPAGE_POLICY_TAB
+  } NewPagePolicy;
+#endif
+
 namespace WebCore {
 
 class FloatRect;
@@ -49,6 +58,10 @@ struct WindowFeatures {
         , resizable(true)
         , fullscreen(false)
         , dialog(false)
+#if PLATFORM(MUI)
+        , donotactivate(false)
+        , newPagePolicy(NEWPAGE_POLICY_IGNORE)
+#endif
     {
     }
     explicit WindowFeatures(const String& windowFeaturesString);
@@ -70,6 +83,11 @@ struct WindowFeatures {
     bool dialog;
 
     Vector<String> additionalFeatures;
+
+#if PLATFORM(MUI)
+    bool donotactivate;
+    NewPagePolicy newPagePolicy;
+#endif
 
 private:
     static HashMap<String, String> parseDialogFeatures(const String&);

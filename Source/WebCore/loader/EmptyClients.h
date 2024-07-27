@@ -383,6 +383,10 @@ public:
 
     virtual void registerForIconNotification(bool) override { }
 
+#if USE(CURL_OPENSSL)
+        virtual void didReceiveSSLSecurityExtension(const ResourceRequest&, const char*) { };
+#endif
+
 #if PLATFORM(COCOA)
     virtual RemoteAXObjectRef accessibilityRemoteObject() override { return 0; }
     virtual NSCachedURLResponse* willCacheResponse(DocumentLoader*, unsigned long, NSCachedURLResponse* response) const override { return response; }

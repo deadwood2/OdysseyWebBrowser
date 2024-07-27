@@ -127,6 +127,9 @@ static inline void getLocalTime(const time_t* localTime, struct tm* localTM)
     *localTM = *localtime(localTime);
 #elif COMPILER(MSVC)
     localtime_s(localTM, localTime);
+#elif PLATFORM(MUI)
+    time_t tmp = *localTime - get_GMT_offset() - get_DST_offset();
+    localtime_r(&tmp, localTM);
 #else
     localtime_r(localTime, localTM);
 #endif
@@ -433,6 +436,8 @@ static int32_t calculateUTCOffset()
 
 #if HAVE(TIMEGM)
     time_t utcOffset = timegm(&localt) - mktime(&localt);
+#elif PLATFORM(MUI)
+    time_t utcOffset = - get_GMT_offset();
 #else
     // Using a canned date of 01/01/2009 on platforms with weaker date-handling foo.
     localt.tm_year = 109;

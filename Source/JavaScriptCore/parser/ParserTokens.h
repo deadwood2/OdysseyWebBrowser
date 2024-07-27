@@ -76,7 +76,7 @@ enum JSTokenType {
     FINALLY,
     DEBUGGER,
     ELSE,
-    IMPORT,
+    IMPORT_IMPORT,
     EXPORT,
 #if ENABLE(ES6_CLASS_SYNTAX)
     CLASSTOKEN,
