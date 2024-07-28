@@ -328,7 +328,7 @@ bool RenderThemeBal::paintSearchField(const RenderObject& object, const PaintInf
     return paintTextFieldOrTextAreaOrSearchField(object, info, rect);
 }
 
-bool RenderThemeBal::paintSearchFieldCancelButton(const RenderObject& object, const PaintInfo& paintInfo, const IntRect& rect)
+bool RenderThemeBal::paintSearchFieldCancelButton(const RenderBox& object, const PaintInfo& paintInfo, const IntRect& rect)
 {
     ASSERT(object->parent());
     if (!object.parent() || !object.parent()->isBox())
@@ -643,7 +643,7 @@ bool RenderThemeBal::paintMenuList(const RenderObject& o, const PaintInfo& paint
     return false;
 }
 
-bool RenderThemeBal::paintMenuListButtonDecorations(const RenderObject& o, const PaintInfo& paintInfo, const FloatRect& r)
+bool RenderThemeBal::paintMenuListButtonDecorations(const RenderBox& o, const PaintInfo& paintInfo, const FloatRect& r)
 {
     // Note, this method is only called if the menu list explicitly specifies either a border or background color.
     // Otherwise, RenderThemeBal::paintMenuList is called. We need to fit the arrow button with the border box
@@ -934,8 +934,8 @@ bool RenderThemeBal::paintMediaPlayButton(const RenderObject& object, const Pain
 #if ENABLE(VIDEO)
     HTMLMediaElement* mediaElement = parentMediaElement(object);
 
-    if (!mediaElement)
-        return false;
+	if (!mediaElement)
+		return false;
 
 	static Image* mediaPlay = Image::loadPlatformResource("MediaTheme/Play").leakRef();
 	static Image* mediaPause = Image::loadPlatformResource("MediaTheme/Pause").leakRef();
@@ -963,8 +963,8 @@ bool RenderThemeBal::paintMediaMuteButton(const RenderObject& object, const Pain
 #if ENABLE(VIDEO)
     HTMLMediaElement* mediaElement = parentMediaElement(object);
 
-    if (!mediaElement)
-        return false;
+	if (!mediaElement)
+		return false;
 
 	static Image* mediaMute = Image::loadPlatformResource("MediaTheme/SoundMute").leakRef();
 	static Image* mediaUnmute = Image::loadPlatformResource("MediaTheme/SoundUnmute").leakRef();
@@ -991,8 +991,8 @@ bool RenderThemeBal::paintMediaFullscreenButton(const RenderObject& object, cons
 {
 #if ENABLE(VIDEO)
     HTMLMediaElement* mediaElement = parentMediaElement(object);
-    if (!mediaElement)
-        return false;
+	if (!mediaElement)
+		return false;
 
 	static Image* mediaEnterFullscreen = Image::loadPlatformResource("MediaTheme/FullScreen").leakRef();
 	static Image* mediaEnterFullscreenHovered = Image::loadPlatformResource("MediaTheme/FullScreenHovered").leakRef();

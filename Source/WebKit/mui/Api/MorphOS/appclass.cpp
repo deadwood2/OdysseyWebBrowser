@@ -1937,17 +1937,17 @@ DEFSMETHOD(OWBApp_AddWindow)
 			set(window, MA_OWBWindow_ShowAddressBarGroup, features->locationBarVisible);
 			set(window, MA_OWBWindow_ShowStatusGroup, features->statusBarVisible);
 
-			if((features->xSet || features->ySet || features->widthSet || features->heightSet))
+			if((features->x || features->y || features->width || features->height))
 			{
 				ULONG id = getv(window, MUIA_Window_ID);
 
 				set(window, MUIA_Window_ID, 0);
 
 				SetAttrs(window,
-						 features->xSet      ? MUIA_Window_LeftEdge : TAG_IGNORE, (LONG) features->x,
-						 features->ySet      ? MUIA_Window_TopEdge  : TAG_IGNORE, (LONG) features->y,
-						 features->widthSet  ? MUIA_Window_Width    : TAG_IGNORE, (LONG) features->width,
-						 features->heightSet ? MUIA_Window_Height   : TAG_IGNORE, (LONG) features->height,
+						 features->x      ? MUIA_Window_LeftEdge : TAG_IGNORE, (LONG) *features->x,
+						 features->y      ? MUIA_Window_TopEdge  : TAG_IGNORE, (LONG) *features->y,
+						 features->width  ? MUIA_Window_Width    : TAG_IGNORE, (LONG) *features->width,
+						 features->height ? MUIA_Window_Height   : TAG_IGNORE, (LONG) *features->height,
 						 TAG_DONE);
 
 				set(window, MUIA_Window_ID, id);

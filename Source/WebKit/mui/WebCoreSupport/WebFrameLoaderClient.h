@@ -214,6 +214,8 @@ public:
 
     virtual bool allowPlugins(bool enabledPerSettings);
 
+    void prefetchDNS(const String&) override;
+
 private:
     PassRefPtr<WebCore::Frame> createFrame(const WebCore::URL&, const WTF::String& name, WebCore::HTMLFrameOwnerElement*, const WTF::String& referrer);
     WebHistory* webHistory() const;

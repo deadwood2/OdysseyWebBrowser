@@ -1170,7 +1170,7 @@ bool WebView::canShowMIMEType(const char* mimeType)
 {
     String type = String(mimeType).lower();
     Frame* coreFrame = core(m_mainFrame);
-    bool allowPlugins = coreFrame && coreFrame->loader().subframeLoader().allowPlugins(NotAboutToInstantiatePlugin);
+    bool allowPlugins = coreFrame && coreFrame->loader().subframeLoader().allowPlugins();
     
 	bool canShow = type.isEmpty()
 	|| MIMETypeRegistry::isSupportedImageMIMEType(type)

@@ -59,6 +59,7 @@
 #include "WebView.h"
 
 #include <CachedFrame.h>
+#include <DNS.h>
 #include <CredentialStorage.h>
 #include <DocumentLoader.h>
 #include <FormState.h>
@@ -1220,5 +1221,10 @@ bool WebFrameLoaderClient::allowPlugins(bool enabledPerSettings)
 PassRefPtr<FrameNetworkingContext> WebFrameLoaderClient::createNetworkingContext()
 {
     return WebFrameNetworkingContext::create(core(m_webFrame), userAgent(core(m_webFrame)->document()->url()));
+}
+
+void WebFrameLoaderClient::prefetchDNS(const String& hostname)
+{
+    WebCore::prefetchDNS(hostname);
 }
 

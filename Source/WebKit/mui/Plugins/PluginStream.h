@@ -75,6 +75,7 @@ namespace WebCore {
         static NPP ownerForStream(NPStream*);
 
         // NetscapePlugInStreamLoaderClient
+        virtual void willSendRequest(NetscapePlugInStreamLoader*, ResourceRequest&&, const ResourceResponse& redirectResponse, std::function<void (ResourceRequest&&)>&&);
         virtual void didReceiveResponse(NetscapePlugInStreamLoader*, const ResourceResponse&);
         virtual void didReceiveData(NetscapePlugInStreamLoader*, const char*, int);
         virtual void didFail(NetscapePlugInStreamLoader*, const ResourceError&);
