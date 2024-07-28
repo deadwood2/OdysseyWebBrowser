@@ -26,6 +26,7 @@ VPATH = \
     $(WebKit2)/DatabaseProcess/IndexedDB \
     $(WebKit2)/DatabaseProcess/mac \
     $(WebKit2)/NetworkProcess \
+    $(WebKit2)/NetworkProcess/CustomProtocols \
     $(WebKit2)/NetworkProcess/mac \
     $(WebKit2)/PluginProcess \
     $(WebKit2)/PluginProcess/mac \
@@ -33,7 +34,6 @@ VPATH = \
     $(WebKit2)/Shared \
     $(WebKit2)/Shared/API/Cocoa \
     $(WebKit2)/Shared/Authentication \
-    $(WebKit2)/Shared/Network/CustomProtocols \
     $(WebKit2)/Shared/mac \
     $(WebKit2)/WebProcess/ApplicationCache \
     $(WebKit2)/WebProcess/Cookies \
@@ -52,9 +52,11 @@ VPATH = \
     $(WebKit2)/WebProcess/UserContent \
     $(WebKit2)/WebProcess/WebCoreSupport \
     $(WebKit2)/WebProcess/WebPage \
+    $(WebKit2)/WebProcess/cocoa \
     $(WebKit2)/WebProcess/ios \
     $(WebKit2)/WebProcess \
     $(WebKit2)/UIProcess \
+    $(WebKit2)/UIProcess/Cocoa \
     $(WebKit2)/UIProcess/Databases \
     $(WebKit2)/UIProcess/Downloads \
     $(WebKit2)/UIProcess/Network \
@@ -65,6 +67,7 @@ VPATH = \
     $(WebKit2)/UIProcess/UserContent \
     $(WebKit2)/UIProcess/mac \
     $(WebKit2)/UIProcess/ios \
+    $(WEBKITADDITIONS_HEADER_SEARCH_PATHS) \
 #
 
 MESSAGE_RECEIVERS = \
@@ -73,7 +76,6 @@ MESSAGE_RECEIVERS = \
     CustomProtocolManager \
     CustomProtocolManagerProxy \
     DatabaseProcess \
-    DatabaseProcessIDBConnection \
     DatabaseProcessProxy \
     DatabaseToWebProcessConnection \
     DownloadProxy \
@@ -103,25 +105,22 @@ MESSAGE_RECEIVERS = \
     ViewGestureController \
     ViewGestureGeometryCollector \
     ViewUpdateDispatcher \
-    VisitedLinkProvider \
+    VisitedLinkStore \
     VisitedLinkTableController \
     WebConnection \
     WebCookieManager \
     WebCookieManagerProxy \
-    WebDatabaseManager \
-    WebDatabaseManagerProxy \
     WebFullScreenManager \
     WebFullScreenManagerProxy \
     WebGeolocationManager \
     WebGeolocationManagerProxy \
-    WebIDBServerConnection \
+    WebIDBConnectionToClient \
+    WebIDBConnectionToServer \
     WebIconDatabase \
     WebIconDatabaseProxy \
     WebInspector \
     WebInspectorProxy \
     WebInspectorUI \
-    WebMediaCacheManager \
-    WebMediaCacheManagerProxy \
     WebNotificationManager \
     WebPage \
     WebPageGroupProxy \
@@ -147,6 +146,11 @@ SCRIPTS = \
     $(WebKit2)/Scripts/webkit/parser.py \
 #
 
+FRAMEWORK_FLAGS = $(shell echo $(BUILT_PRODUCTS_DIR) $(FRAMEWORK_SEARCH_PATHS) | perl -e 'print "-F " . join(" -F ", split(" ", <>));')
+HEADER_FLAGS = $(shell echo $(BUILT_PRODUCTS_DIR) $(HEADER_SEARCH_PATHS) | perl -e 'print "-I" . join(" -I", split(" ", <>));')
+
+-include WebKitDerivedSourcesAdditions.make
+
 .PHONY : all
 
 all : \
@@ -162,9 +166,6 @@ all : \
 	@echo Generating message receiver for $*...
 	@python $(WebKit2)/Scripts/generate-messages-header.py $< > $@
 
-
-FRAMEWORK_FLAGS = $(shell echo $(BUILT_PRODUCTS_DIR) $(FRAMEWORK_SEARCH_PATHS) | perl -e 'print "-F " . join(" -F ", split(" ", <>));')
-HEADER_FLAGS = $(shell echo $(BUILT_PRODUCTS_DIR) $(HEADER_SEARCH_PATHS) | perl -e 'print "-I" . join(" -I", split(" ", <>));')
 
 # Some versions of clang incorrectly strip out // comments in c89 code.
 # Use -traditional as a workaround, but only when needed since that causes
@@ -189,4 +190,3 @@ all: $(SANDBOX_PROFILES)
 %.sb : %.sb.in
 	@echo Pre-processing $* sandbox profile...
 	$(CC) $(SDK_FLAGS) $(TEXT_PREPROCESSOR_FLAGS) $(FRAMEWORK_FLAGS) $(HEADER_FLAGS) -include "wtf/Platform.h" $< > $@
-

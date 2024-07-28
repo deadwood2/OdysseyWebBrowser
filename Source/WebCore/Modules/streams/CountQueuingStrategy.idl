@@ -28,8 +28,10 @@
  */
 
 [
-    CustomConstructor(any properties),
+    JSBuiltin,
+    Constructor,
     Conditional=STREAMS_API,
+    GlobalContext=DOMWindow&WorkerGlobalScope,
 ] interface CountQueuingStrategy {
-    [CustomBinding] double size();
+    double size();
 };

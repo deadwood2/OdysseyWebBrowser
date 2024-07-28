@@ -90,7 +90,7 @@ private:
     // ActiveDOMObject API.
     void stop() override;
     const char* activeDOMObjectName() const override;
-    bool canSuspendForPageCache() const override;
+    bool canSuspendForDocumentSuspension() const override;
 
     void connect();
     void networkRequestEnded();
@@ -99,7 +99,7 @@ private:
     void abortConnectionAttempt();
     void parseEventStream();
     void parseEventStreamLine(unsigned pos, int fieldLength, int lineLength);
-    PassRefPtr<MessageEvent> createMessageEvent();
+    Ref<MessageEvent> createMessageEvent();
 
     URL m_url;
     bool m_withCredentials;

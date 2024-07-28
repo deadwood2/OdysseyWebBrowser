@@ -29,6 +29,7 @@
 #if ENABLE(SUBTLE_CRYPTO)
 
 #include "CryptoAlgorithmRsaKeyGenParams.h"
+#include "CryptoAlgorithmRsaKeyParamsWithHash.h"
 #include "CryptoKeyDataRSAComponents.h"
 #include "CryptoKeyRSA.h"
 #include "ExceptionCode.h"
@@ -71,7 +72,7 @@ void CryptoAlgorithmRSAES_PKCS1_v1_5::encrypt(const CryptoAlgorithmParameters&, 
         return;
     }
 
-    platformEncrypt(downcast<CryptoKeyRSA>(key), data, WTF::move(callback), WTF::move(failureCallback), ec);
+    platformEncrypt(downcast<CryptoKeyRSA>(key), data, WTFMove(callback), WTFMove(failureCallback), ec);
 }
 
 void CryptoAlgorithmRSAES_PKCS1_v1_5::decrypt(const CryptoAlgorithmParameters&, const CryptoKey& key, const CryptoOperationData& data, VectorCallback&& callback, VoidCallback&& failureCallback, ExceptionCode& ec)
@@ -81,7 +82,7 @@ void CryptoAlgorithmRSAES_PKCS1_v1_5::decrypt(const CryptoAlgorithmParameters&, 
         return;
     }
 
-    platformDecrypt(downcast<CryptoKeyRSA>(key), data, WTF::move(callback), WTF::move(failureCallback), ec);
+    platformDecrypt(downcast<CryptoKeyRSA>(key), data, WTFMove(callback), WTFMove(failureCallback), ec);
 }
 
 void CryptoAlgorithmRSAES_PKCS1_v1_5::generateKey(const CryptoAlgorithmParameters& parameters, bool extractable, CryptoKeyUsage usages, KeyOrKeyPairCallback&& callback, VoidCallback&& failureCallback, ExceptionCode&)
@@ -92,14 +93,15 @@ void CryptoAlgorithmRSAES_PKCS1_v1_5::generateKey(const CryptoAlgorithmParameter
         callback(nullptr, &pair);
     };
 
-    CryptoKeyRSA::generatePair(CryptoAlgorithmIdentifier::RSAES_PKCS1_v1_5, rsaParameters.modulusLength, rsaParameters.publicExponent, extractable, usages, WTF::move(keyPairCallback), WTF::move(failureCallback));
+    CryptoKeyRSA::generatePair(CryptoAlgorithmIdentifier::RSAES_PKCS1_v1_5, rsaParameters.hash, rsaParameters.hasHash, rsaParameters.modulusLength, rsaParameters.publicExponent, extractable, usages, WTFMove(keyPairCallback), WTFMove(failureCallback));
 }
 
-void CryptoAlgorithmRSAES_PKCS1_v1_5::importKey(const CryptoAlgorithmParameters&, const CryptoKeyData& keyData, bool extractable, CryptoKeyUsage usage, KeyCallback&& callback, VoidCallback&& failureCallback, ExceptionCode&)
+void CryptoAlgorithmRSAES_PKCS1_v1_5::importKey(const CryptoAlgorithmParameters& parameters, const CryptoKeyData& keyData, bool extractable, CryptoKeyUsage usage, KeyCallback&& callback, VoidCallback&& failureCallback, ExceptionCode&)
 {
+    const CryptoAlgorithmRsaKeyParamsWithHash& rsaParameters = downcast<CryptoAlgorithmRsaKeyParamsWithHash>(parameters);
     const CryptoKeyDataRSAComponents& rsaComponents = downcast<CryptoKeyDataRSAComponents>(keyData);
 
-    RefPtr<CryptoKeyRSA> result = CryptoKeyRSA::create(CryptoAlgorithmIdentifier::RSAES_PKCS1_v1_5, rsaComponents, extractable, usage);
+    RefPtr<CryptoKeyRSA> result = CryptoKeyRSA::create(CryptoAlgorithmIdentifier::RSAES_PKCS1_v1_5, rsaParameters.hash, rsaParameters.hasHash, rsaComponents, extractable, usage);
     if (!result) {
         failureCallback();
         return;

@@ -26,8 +26,6 @@
 #ifndef NetworkBlobRegistry_h
 #define NetworkBlobRegistry_h
 
-#if ENABLE(NETWORK_PROCESS)
-
 #include <WebCore/URLHash.h>
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
@@ -48,7 +46,7 @@ public:
     NetworkBlobRegistry();
     static NetworkBlobRegistry& singleton();
 
-    void registerFileBlobURL(NetworkConnectionToWebProcess*, const WebCore::URL&, const String& path, PassRefPtr<SandboxExtension>, const String& contentType);
+    void registerFileBlobURL(NetworkConnectionToWebProcess*, const WebCore::URL&, const String& path, RefPtr<SandboxExtension>&&, const String& contentType);
     void registerBlobURL(NetworkConnectionToWebProcess*, const WebCore::URL&, Vector<WebCore::BlobPart>, const String& contentType);
     void registerBlobURL(NetworkConnectionToWebProcess*, const WebCore::URL&, const WebCore::URL& srcURL);
     void registerBlobURLForSlice(NetworkConnectionToWebProcess*, const WebCore::URL&, const WebCore::URL& srcURL, int64_t start, int64_t end);
@@ -57,7 +55,7 @@ public:
 
     void connectionToWebProcessDidClose(NetworkConnectionToWebProcess*);
 
-    Vector<RefPtr<WebCore::BlobDataFileReference>> filesInBlob(NetworkConnectionToWebProcess*, const WebCore::URL&);
+    Vector<RefPtr<WebCore::BlobDataFileReference>> filesInBlob(NetworkConnectionToWebProcess&, const WebCore::URL&);
 
 private:
     ~NetworkBlobRegistry();
@@ -67,7 +65,5 @@ private:
 };
 
 }
-
-#endif // ENABLE(NETWORK_PROCESS)
 
 #endif // NetworkBlobRegistry_h

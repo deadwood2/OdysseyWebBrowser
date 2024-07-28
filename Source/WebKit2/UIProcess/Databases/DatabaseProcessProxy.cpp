@@ -66,8 +66,8 @@ DatabaseProcessProxy::~DatabaseProcessProxy()
 
 void DatabaseProcessProxy::getLaunchOptions(ProcessLauncher::LaunchOptions& launchOptions)
 {
-    launchOptions.processType = ProcessLauncher::DatabaseProcess;
-    platformGetLaunchOptions(launchOptions);
+    launchOptions.processType = ProcessLauncher::ProcessType::Database;
+    ChildProcessProxy::getLaunchOptions(launchOptions);
 }
 
 void DatabaseProcessProxy::processWillShutDown(IPC::Connection& connection)
@@ -88,7 +88,7 @@ void DatabaseProcessProxy::fetchWebsiteData(SessionID sessionID, WebsiteDataType
     ASSERT(canSendMessage());
 
     uint64_t callbackID = generateCallbackID();
-    m_pendingFetchWebsiteDataCallbacks.add(callbackID, WTF::move(completionHandler));
+    m_pendingFetchWebsiteDataCallbacks.add(callbackID, WTFMove(completionHandler));
 
     send(Messages::DatabaseProcess::FetchWebsiteData(sessionID, dataTypes, callbackID), 0);
 }
@@ -97,7 +97,7 @@ void DatabaseProcessProxy::deleteWebsiteData(WebCore::SessionID sessionID, Websi
 {
     auto callbackID = generateCallbackID();
 
-    m_pendingDeleteWebsiteDataCallbacks.add(callbackID, WTF::move(completionHandler));
+    m_pendingDeleteWebsiteDataCallbacks.add(callbackID, WTFMove(completionHandler));
     send(Messages::DatabaseProcess::DeleteWebsiteData(sessionID, dataTypes, modifiedSince, callbackID), 0);
 }
 
@@ -106,7 +106,7 @@ void DatabaseProcessProxy::deleteWebsiteDataForOrigins(SessionID sessionID, Webs
     ASSERT(canSendMessage());
 
     uint64_t callbackID = generateCallbackID();
-    m_pendingDeleteWebsiteDataForOriginsCallbacks.add(callbackID, WTF::move(completionHandler));
+    m_pendingDeleteWebsiteDataForOriginsCallbacks.add(callbackID, WTFMove(completionHandler));
 
     Vector<SecurityOriginData> originData;
     for (auto& origin : origins)

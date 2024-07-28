@@ -23,7 +23,6 @@
 
 #include <JavaScriptCore/JSRetainPtr.h>
 #include <WebCore/GUniquePtrGtk.h>
-#include <wtf/glib/GMainLoopSource.h>
 
 WebViewTest::WebViewTest(WebKitUserContentManager* userContentManager)
     : m_webView(WEBKIT_WEB_VIEW(g_object_ref_sink(g_object_new(WEBKIT_TYPE_WEB_VIEW, "web-context", m_webContext.get(), "user-content-manager", userContentManager, nullptr))))
@@ -83,12 +82,8 @@ void WebViewTest::loadPlainText(const char* plainText)
 {
     m_activeURI = "about:blank";
     webkit_web_view_load_plain_text(m_webView, plainText);
-#if 0
-    // FIXME: Pending API request URL no set when loading plain text.
-    // See https://bugs.webkit.org/show_bug.cgi?id=136916.
     g_assert(webkit_web_view_is_loading(m_webView));
     g_assert_cmpstr(webkit_web_view_get_uri(m_webView), ==, m_activeURI.data());
-#endif
 }
 
 void WebViewTest::loadBytes(GBytes* bytes, const char* mimeType, const char* encoding, const char* baseURI)
@@ -98,12 +93,8 @@ void WebViewTest::loadBytes(GBytes* bytes, const char* mimeType, const char* enc
     else
         m_activeURI = baseURI;
     webkit_web_view_load_bytes(m_webView, bytes, mimeType, encoding, baseURI);
-#if 0
-    // FIXME: Pending API request URL no set when loading data.
-    // See https://bugs.webkit.org/show_bug.cgi?id=136916.
     g_assert(webkit_web_view_is_loading(m_webView));
     g_assert_cmpstr(webkit_web_view_get_uri(m_webView), ==, m_activeURI.data());
-#endif
 }
 
 void WebViewTest::loadRequest(WebKitURIRequest* request)
@@ -118,11 +109,7 @@ void WebViewTest::loadAlternateHTML(const char* html, const char* contentURI, co
 {
     m_activeURI = contentURI;
     webkit_web_view_load_alternate_html(m_webView, html, contentURI, baseURI);
-#if 0
-    // FIXME: Pending API request URL no set when loading Alternate HTML.
-    // See https://bugs.webkit.org/show_bug.cgi?id=136916.
     g_assert(webkit_web_view_is_loading(m_webView));
-#endif
     g_assert_cmpstr(webkit_web_view_get_uri(m_webView), ==, m_activeURI.data());
 }
 
@@ -182,8 +169,10 @@ void WebViewTest::quitMainLoopAfterProcessingPendingEvents()
 
 void WebViewTest::wait(double seconds)
 {
-    GMainLoopSource::scheduleAfterDelayAndDeleteOnDestroy("WebViewTest wait", [this] { quitMainLoop(); },
-        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::duration<double>(seconds)));
+    g_timeout_add(seconds * 1000, [](gpointer userData) -> gboolean {
+        static_cast<WebViewTest*>(userData)->quitMainLoop();
+        return G_SOURCE_REMOVE;
+    }, this);
     g_main_loop_run(m_mainLoop);
 }
 

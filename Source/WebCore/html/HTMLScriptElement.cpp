@@ -83,7 +83,7 @@ void HTMLScriptElement::setText(const String &value)
     Ref<HTMLScriptElement> protectFromMutationEvents(*this);
 
     if (hasOneChild() && is<Text>(*firstChild())) {
-        downcast<Text>(*firstChild()).setData(value, IGNORE_EXCEPTION);
+        downcast<Text>(*firstChild()).setData(value);
         return;
     }
 
@@ -169,9 +169,9 @@ void HTMLScriptElement::dispatchLoadEvent()
     dispatchEvent(Event::create(eventNames().loadEvent, false, false));
 }
 
-RefPtr<Element> HTMLScriptElement::cloneElementWithoutAttributesAndChildren(Document& targetDocument)
+Ref<Element> HTMLScriptElement::cloneElementWithoutAttributesAndChildren(Document& targetDocument)
 {
-    return adoptRef(new HTMLScriptElement(tagQName(), targetDocument, false, alreadyStarted()));
+    return adoptRef(*new HTMLScriptElement(tagQName(), targetDocument, false, alreadyStarted()));
 }
 
 }

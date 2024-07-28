@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2007, 2010, 2011 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2007, 2010-2011, 2016 Apple Inc. All rights reserved.
  *           (C) 2007 Graham Dennis (graham.dennis@gmail.com)
  *
  * Redistribution and use in source and binary forms, with or without
@@ -47,7 +47,6 @@
 #include "ProgressTracker.h"
 #include "ResourceError.h"
 #include "ResourceHandle.h"
-#include "ResourceLoadScheduler.h"
 #include "SecurityOrigin.h"
 #include "Settings.h"
 #include "SharedBuffer.h"
@@ -67,7 +66,7 @@ ResourceLoader::ResourceLoader(Frame* frame, ResourceLoaderOptions options)
     , m_reachedTerminalState(false)
     , m_notifiedLoadComplete(false)
     , m_cancellationStatus(NotCancelled)
-    , m_defersLoading(frame->page()->defersLoading())
+    , m_defersLoading(options.defersLoadingPolicy() == DefersLoadingPolicy::AllowDefersLoading && frame->page()->defersLoading())
     , m_options(options)
     , m_isQuickLookResource(false)
 #if ENABLE(CONTENT_EXTENSIONS)
@@ -83,7 +82,7 @@ ResourceLoader::~ResourceLoader()
 
 void ResourceLoader::finishNetworkLoad()
 {
-    platformStrategies()->loaderStrategy()->resourceLoadScheduler()->remove(this);
+    platformStrategies()->loaderStrategy()->remove(this);
 
     if (m_handle) {
         ASSERT(m_handle->client() == this);
@@ -135,7 +134,8 @@ bool ResourceLoader::init(const ResourceRequest& r)
     }
 #endif
     
-    m_defersLoading = m_frame->page()->defersLoading();
+    m_defersLoading = m_options.defersLoadingPolicy() == DefersLoadingPolicy::AllowDefersLoading && m_frame->page()->defersLoading();
+
     if (m_options.securityCheck() == DoSecurityCheck && !m_frame->document()->securityOrigin()->canDisplay(clientRequest.url())) {
         FrameLoader::reportLocalLoadFailed(m_frame.get(), clientRequest.url().string());
         releaseResources();
@@ -220,6 +220,9 @@ void ResourceLoader::start()
 
 void ResourceLoader::setDefersLoading(bool defers)
 {
+    if (m_options.defersLoadingPolicy() == DefersLoadingPolicy::DisallowDefersLoading)
+        return;
+
     m_defersLoading = defers;
     if (m_handle)
         m_handle->setDefersLoading(defers);
@@ -229,7 +232,7 @@ void ResourceLoader::setDefersLoading(bool defers)
         start();
     }
 
-    platformStrategies()->loaderStrategy()->resourceLoadScheduler()->setDefersLoading(this, defers);
+    platformStrategies()->loaderStrategy()->setDefersLoading(this, defers);
 }
 
 FrameLoader* ResourceLoader::frameLoader() const
@@ -245,11 +248,16 @@ void ResourceLoader::loadDataURL()
     ASSERT(url.protocolIsData());
 
     RefPtr<ResourceLoader> loader(this);
-    DataURLDecoder::decode(url, [loader, url] (Optional<DataURLDecoder::Result> decodeResult) {
+    DataURLDecoder::ScheduleContext scheduleContext;
+#if HAVE(RUNLOOP_TIMER)
+    if (auto* scheduledPairs = m_frame->page()->scheduledRunLoopPairs())
+        scheduleContext.scheduledPairs = *scheduledPairs;
+#endif
+    DataURLDecoder::decode(url, scheduleContext, [loader, url] (Optional<DataURLDecoder::Result> decodeResult) {
         if (loader->reachedTerminalState())
             return;
         if (!decodeResult) {
-            loader->didFail(ResourceError(errorDomainWebKitInternal, 0, url.string(), "Data URL decoding failed"));
+            loader->didFail(ResourceError(errorDomainWebKitInternal, 0, url, "Data URL decoding failed"));
             return;
         }
         if (loader->wasCancelled())
@@ -280,7 +288,7 @@ void ResourceLoader::setDataBufferingPolicy(DataBufferingPolicy dataBufferingPol
 void ResourceLoader::willSwitchToSubstituteResource()
 {
     ASSERT(!m_documentLoader->isSubstituteLoadPending(this));
-    platformStrategies()->loaderStrategy()->resourceLoadScheduler()->remove(this);
+    platformStrategies()->loaderStrategy()->remove(this);
     if (m_handle)
         m_handle->cancel();
 }
@@ -339,8 +347,8 @@ void ResourceLoader::willSendRequestInternal(ResourceRequest& request, const Res
         Page* page = frameLoader()->frame().page();
         if (page && m_documentLoader) {
             auto* userContentController = page->userContentController();
-            if (userContentController)
-                userContentController->processContentExtensionRulesForLoad(*page, request, m_resourceType, *m_documentLoader);
+            if (userContentController && userContentController->processContentExtensionRulesForLoad(request, m_resourceType, *m_documentLoader) == ContentExtensions::BlockedStatus::Blocked)
+                request = { };
         }
     }
 #endif
@@ -367,7 +375,7 @@ void ResourceLoader::willSendRequestInternal(ResourceRequest& request, const Res
 
     bool isRedirect = !redirectResponse.isNull();
     if (isRedirect)
-        platformStrategies()->loaderStrategy()->resourceLoadScheduler()->crossOriginRedirectReceived(this, request.url());
+        platformStrategies()->loaderStrategy()->crossOriginRedirectReceived(this, request.url());
 
     m_request = request;
 
@@ -387,7 +395,7 @@ void ResourceLoader::willSendRequestInternal(ResourceRequest& request, const Res
 void ResourceLoader::willSendRequest(ResourceRequest&& request, const ResourceResponse& redirectResponse, std::function<void(ResourceRequest&&)>&& callback)
 {
     willSendRequestInternal(request, redirectResponse);
-    callback(WTF::move(request));
+    callback(WTFMove(request));
 }
 
 void ResourceLoader::didSendData(unsigned long long, unsigned long long)
@@ -430,6 +438,12 @@ void ResourceLoader::didReceiveResponse(const ResourceResponse& r)
     logResourceResponseSource(m_frame.get(), r.source());
 
     m_response = r;
+
+    if (m_response.isHttpVersion0_9()) {
+        String message = "Sandboxing '" + m_response.url().string() + "' because it is using HTTP/0.9.";
+        m_frame->document()->addConsoleMessage(MessageSource::Security, MessageLevel::Error, message, m_identifier);
+        frameLoader()->forceSandboxFlags(SandboxScripts | SandboxPlugins);
+    }
 
     if (FormData* data = m_request.httpBody())
         data->removeGeneratedFilesIfNeeded();
@@ -716,7 +730,7 @@ void ResourceLoader::receivedCancellation(const AuthenticationChallenge&)
     cancel();
 }
 
-#if PLATFORM(MAC)
+#if PLATFORM(COCOA) && !USE(CFNETWORK)
 
 void ResourceLoader::schedule(SchedulePair& pair)
 {

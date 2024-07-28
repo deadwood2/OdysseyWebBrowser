@@ -28,6 +28,7 @@
 
 #include "MessageReceiver.h"
 #include "NetworkProcessSupplement.h"
+#include "NetworkSession.h"
 #include "WebProcessSupplement.h"
 #include <WebCore/AuthenticationChallenge.h>
 #include <wtf/Forward.h>
@@ -43,6 +44,8 @@ namespace WebKit {
 
 class ChildProcess;
 class Download;
+class DownloadID;
+class PendingDownload;
 class WebFrame;
 
 class AuthenticationManager : public WebProcessSupplement, public NetworkProcessSupplement, public IPC::MessageReceiver {
@@ -53,15 +56,17 @@ public:
     static const char* supplementName();
 
 #if USE(NETWORK_SESSION)
-    typedef std::function<void(AuthenticationChallengeDisposition, const WebCore::Credential&)> ChallengeCompletionHandler;
     void didReceiveAuthenticationChallenge(uint64_t pageID, uint64_t frameID, const WebCore::AuthenticationChallenge&, ChallengeCompletionHandler);
+    void didReceiveAuthenticationChallenge(PendingDownload&, const WebCore::AuthenticationChallenge&, ChallengeCompletionHandler);
+    void continueCanAuthenticateAgainstProtectionSpace(DownloadID, bool canAuthenticate);
 #endif
     // Called for resources in the WebProcess (NetworkProcess disabled)
     void didReceiveAuthenticationChallenge(WebFrame*, const WebCore::AuthenticationChallenge&);
     // Called for resources in the NetworkProcess (NetworkProcess enabled)
     void didReceiveAuthenticationChallenge(uint64_t pageID, uint64_t frameID, const WebCore::AuthenticationChallenge&);
-    // Called for downloads with or without the NetworkProcess
-    void didReceiveAuthenticationChallenge(Download*, const WebCore::AuthenticationChallenge&);
+#if !USE(NETWORK_SESSION)
+    void didReceiveAuthenticationChallenge(Download&, const WebCore::AuthenticationChallenge&);
+#endif
 
     void useCredentialForChallenge(uint64_t challengeID, const WebCore::Credential&, const WebCore::CertificateInfo&);
     void continueWithoutCredentialForChallenge(uint64_t challengeID);
@@ -70,6 +75,12 @@ public:
     void rejectProtectionSpaceAndContinue(uint64_t challengeID);
 
     uint64_t outstandingAuthenticationChallengeCount() const { return m_challenges.size(); }
+
+    static void receivedCredential(const WebCore::AuthenticationChallenge&, const WebCore::Credential&);
+    static void receivedRequestToContinueWithoutCredential(const WebCore::AuthenticationChallenge&);
+    static void receivedCancellation(const WebCore::AuthenticationChallenge&);
+    static void receivedRequestToPerformDefaultHandling(const WebCore::AuthenticationChallenge&);
+    static void receivedChallengeRejection(const WebCore::AuthenticationChallenge&);
 
 private:
     struct Challenge {

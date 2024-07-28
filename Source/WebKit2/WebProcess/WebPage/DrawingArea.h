@@ -32,6 +32,7 @@
 #include <WebCore/FloatRect.h>
 #include <WebCore/IntRect.h>
 #include <WebCore/LayerFlushThrottleState.h>
+#include <WebCore/LayoutMilestones.h>
 #include <WebCore/PlatformScreen.h>
 #include <WebCore/ViewState.h>
 #include <functional>
@@ -129,11 +130,11 @@ public:
 
     virtual void setShouldScaleViewToFitDocument(bool) { }
 
+    virtual bool dispatchDidLayout(WebCore::LayoutMilestones) { return false; }
+
 #if PLATFORM(COCOA)
     // Used by TiledCoreAnimationDrawingArea.
     virtual void updateGeometry(const WebCore::IntSize& viewSize, const WebCore::IntSize& layerPosition, bool flushSynchronously, const WebCore::MachSendRight& fencePort) { }
-
-    virtual void replyWithFenceAfterNextFlush(uint64_t callbackID) { ASSERT_NOT_REACHED(); }
 #endif
 
 protected:

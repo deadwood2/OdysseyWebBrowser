@@ -25,7 +25,7 @@
 
 WebInspector.TimelineMarker = class TimelineMarker extends WebInspector.Object
 {
-    constructor(time, type)
+    constructor(time, type, details)
     {
         super();
 
@@ -33,6 +33,7 @@ WebInspector.TimelineMarker = class TimelineMarker extends WebInspector.Object
 
         this._time = time || 0;
         this._type = type;
+        this._details = details || null;
     }
 
     // Public
@@ -44,10 +45,14 @@ WebInspector.TimelineMarker = class TimelineMarker extends WebInspector.Object
 
     set time(x)
     {
+        console.assert(typeof x === "number", "Time should be a number.");
+
+        x = x || 0;
+
         if (this._time === x)
             return;
 
-        this._time = x || 0;
+        this._time = x;
 
         this.dispatchEventToListeners(WebInspector.TimelineMarker.Event.TimeChanged);
     }
@@ -55,6 +60,11 @@ WebInspector.TimelineMarker = class TimelineMarker extends WebInspector.Object
     get type()
     {
         return this._type;
+    }
+
+    get details()
+    {
+        return this._details;
     }
 };
 

@@ -28,6 +28,7 @@
 
 #if ENABLE(DFG_JIT)
 
+#include "CodeBlock.h"
 #include "JSCInlines.h"
 
 namespace JSC { namespace DFG {
@@ -56,7 +57,7 @@ void AdaptiveStructureWatchpoint::fireInternal(const FireDetail& detail)
         return;
     }
     
-    if (DFG::shouldShowDisassembly()) {
+    if (DFG::shouldDumpDisassembly()) {
         dataLog(
             "Firing watchpoint ", RawPointer(this), " (", m_key, ") on ", *m_codeBlock, "\n");
     }

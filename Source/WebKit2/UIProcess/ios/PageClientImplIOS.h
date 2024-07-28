@@ -33,7 +33,6 @@
 #import <wtf/RetainPtr.h>
 
 OBJC_CLASS WKContentView;
-OBJC_CLASS WKView;
 OBJC_CLASS WKWebView;
 OBJC_CLASS WKEditorUndoTargetObjC;
 
@@ -46,7 +45,6 @@ class PageClientImpl : public PageClient
     {
 public:
     PageClientImpl(WKContentView *, WKWebView *);
-    PageClientImpl(WKContentView *, WKView *);
     virtual ~PageClientImpl();
     
 private:
@@ -97,10 +95,12 @@ private:
 #if ENABLE(TOUCH_EVENTS)
     virtual void doneWithTouchEvent(const NativeWebTouchEvent&, bool wasEventHandled) override;
 #endif
-    virtual RefPtr<WebPopupMenuProxy> createPopupMenuProxy(WebPageProxy*) override;
-    virtual RefPtr<WebContextMenuProxy> createContextMenuProxy(WebPageProxy*) override;
-    virtual void setTextIndicator(Ref<WebCore::TextIndicator>, WebCore::TextIndicatorLifetime = WebCore::TextIndicatorLifetime::Permanent) override;
-    virtual void clearTextIndicator(WebCore::TextIndicatorDismissalAnimation = WebCore::TextIndicatorDismissalAnimation::FadeOut) override;
+    virtual RefPtr<WebPopupMenuProxy> createPopupMenuProxy(WebPageProxy&) override;
+#if ENABLE(CONTEXT_MENUS)
+    virtual std::unique_ptr<WebContextMenuProxy> createContextMenuProxy(WebPageProxy&, const ContextMenuContextData&, const UserData&) override;
+#endif
+    virtual void setTextIndicator(Ref<WebCore::TextIndicator>, WebCore::TextIndicatorWindowLifetime) override;
+    virtual void clearTextIndicator(WebCore::TextIndicatorWindowDismissalAnimation) override;
     virtual void setTextIndicatorAnimationProgress(float) override;
 
     virtual void enterAcceleratedCompositingMode(const LayerTreeContext&) override;
@@ -134,7 +134,7 @@ private:
     virtual void showPlaybackTargetPicker(bool hasVideo, const WebCore::IntRect& elementRect) override;
 
     virtual bool handleRunOpenPanel(WebPageProxy*, WebFrameProxy*, WebOpenPanelParameters*, WebOpenPanelResultListenerProxy*) override;
-    virtual void didChangeViewportMetaTagWidth(float) override;
+    virtual void disableDoubleTapGesturesDuringTapIfNecessary(uint64_t requestID) override;
     virtual double minimumZoomScale() const override;
     virtual WebCore::FloatRect documentRect() const override;
 
@@ -179,24 +179,23 @@ private:
     virtual void navigationGestureDidEnd(bool willNavigate, WebBackForwardListItem&) override;
     virtual void navigationGestureDidEnd() override;
     virtual void willRecordNavigationSnapshot(WebBackForwardListItem&) override;
+    virtual void didRemoveNavigationGestureSnapshot() override;
 
     virtual void didFirstVisuallyNonEmptyLayoutForMainFrame() override;
     virtual void didFinishLoadForMainFrame() override;
     virtual void didFailLoadForMainFrame() override;
     virtual void didSameDocumentNavigationForMainFrame(SameDocumentNavigationType) override;
+    virtual void didNotHandleTapAsClick(const WebCore::IntPoint&) override;
 
     virtual void didChangeBackgroundColor() override;
-
-#if ENABLE(VIDEO)
-    virtual void mediaDocumentNaturalSizeChanged(const WebCore::IntSize&) override;
-#endif
 
     virtual void refView() override;
     virtual void derefView() override;
 
+    virtual void didRestoreScrollPosition() override;
+
     WKContentView *m_contentView;
     WKWebView *m_webView;
-    WKView *m_wkView;
     RetainPtr<WKEditorUndoTargetObjC> m_undoTarget;
 };
 } // namespace WebKit

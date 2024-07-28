@@ -41,15 +41,14 @@
 
 namespace WebCore {
 
-KeyframeAnimation::KeyframeAnimation(Animation& animation, RenderElement* renderer, int index, CompositeAnimation* compositeAnimation, RenderStyle* unanimatedStyle)
+KeyframeAnimation::KeyframeAnimation(Animation& animation, RenderElement* renderer, CompositeAnimation* compositeAnimation, RenderStyle* unanimatedStyle)
     : AnimationBase(animation, renderer, compositeAnimation)
     , m_keyframes(animation.name())
     , m_unanimatedStyle(unanimatedStyle)
-    , m_index(index)
 {
     // Get the keyframe RenderStyles
     if (m_object && m_object->element())
-        m_object->document().ensureStyleResolver().keyframeStylesForAnimation(m_object->element(), unanimatedStyle, m_keyframes);
+        m_object->element()->styleResolver().keyframeStylesForAnimation(*m_object->element(), unanimatedStyle, m_keyframes);
 
     // Update the m_transformFunctionListValid flag based on whether the function lists in the keyframes match.
     validateTransformFunctionList();
@@ -68,23 +67,21 @@ KeyframeAnimation::~KeyframeAnimation()
 
 void KeyframeAnimation::fetchIntervalEndpointsForProperty(CSSPropertyID property, const RenderStyle*& fromStyle, const RenderStyle*& toStyle, double& prog) const
 {
+    size_t numKeyframes = m_keyframes.size();
+    if (!numKeyframes)
+        return;
+
     // Find the first key
     double elapsedTime = getElapsedTime();
     if (m_animation->duration() && m_animation->iterationCount() != Animation::IterationCountInfinite)
         elapsedTime = std::min(elapsedTime, m_animation->duration() * m_animation->iterationCount());
 
     const double fractionalTime = this->fractionalTime(1, elapsedTime, 0);
-
-    size_t numKeyframes = m_keyframes.size();
-    if (!numKeyframes)
-        return;
-    
     ASSERT(!m_keyframes[0].key());
     ASSERT(m_keyframes[m_keyframes.size() - 1].key() == 1);
-    
+
     int prevIndex = -1;
     int nextIndex = -1;
-    
     // FIXME: with a lot of keys, this linear search will be slow. We could binary search.
     for (size_t i = 0; i < numKeyframes; ++i) {
         const KeyframeValue& currKeyFrame = m_keyframes[i];
@@ -96,31 +93,22 @@ void KeyframeAnimation::fetchIntervalEndpointsForProperty(CSSPropertyID property
             nextIndex = i;
             break;
         }
-        
         prevIndex = i;
     }
 
     if (prevIndex == -1)
         prevIndex = 0;
-
-    if (nextIndex == -1) {
-        int lastIndex = m_keyframes.size() - 1;
-        if (prevIndex == lastIndex)
-            nextIndex = 0;
-        else
-            nextIndex = lastIndex;
-    }
-
-    ASSERT(prevIndex != nextIndex);
+    if (nextIndex == -1)
+        nextIndex = m_keyframes.size() - 1;
 
     const KeyframeValue& prevKeyframe = m_keyframes[prevIndex];
     const KeyframeValue& nextKeyframe = m_keyframes[nextIndex];
 
     fromStyle = prevKeyframe.style();
     toStyle = nextKeyframe.style();
-    
+
     double offset = prevKeyframe.key();
-    double scale = 1.0 / (nextKeyframe.key() - prevKeyframe.key());
+    double scale = 1.0 / (nextIndex == prevIndex ?  1 : (nextKeyframe.key() - prevKeyframe.key()));
 
     prog = progress(scale, offset, prevKeyframe.timingFunction(name()));
 }
@@ -131,8 +119,12 @@ bool KeyframeAnimation::animate(CompositeAnimation* compositeAnimation, RenderEl
     fireAnimationEventsIfNeeded();
     
     // If we have not yet started, we will not have a valid start time, so just start the animation if needed.
-    if (isNew() && m_animation->playState() == AnimPlayStatePlaying && !compositeAnimation->isSuspended())
-        updateStateMachine(AnimationStateInput::StartAnimation, -1);
+    if (isNew()) {
+        if (m_animation->playState() == AnimPlayStatePlaying && !compositeAnimation->isSuspended())
+            updateStateMachine(AnimationStateInput::StartAnimation, -1);
+        else if (m_animation->playState() == AnimPlayStatePaused)
+            updateStateMachine(AnimationStateInput::PlayStatePaused, -1);
+    }
 
     // If we get this far and the animation is done, it means we are cleaning up a just finished animation.
     // If so, we need to send back the targetStyle.
@@ -186,9 +178,8 @@ bool KeyframeAnimation::animate(CompositeAnimation* compositeAnimation, RenderEl
 
 void KeyframeAnimation::getAnimatedStyle(RefPtr<RenderStyle>& animatedStyle)
 {
-    // If we're in the delay phase and we're not backwards filling, tell the caller
-    // to use the current style.
-    if (waitingToStart() && m_animation->delay() > 0 && !m_animation->fillsBackwards())
+    // If we're done, or in the delay phase and we're not backwards filling, tell the caller to use the current style.
+    if (postActive() || (waitingToStart() && m_animation->delay() > 0 && !m_animation->fillsBackwards()))
         return;
 
     if (!m_keyframes.size())
@@ -403,7 +394,7 @@ void KeyframeAnimation::checkForMatchingFilterFunctionLists()
 {
     m_filterFunctionListsMatch = false;
 
-    if (m_keyframes.size() < 2 || !m_keyframes.containsProperty(CSSPropertyWebkitFilter))
+    if (m_keyframes.size() < 2 || !m_keyframes.containsProperty(CSSPropertyFilter))
         return;
 
     // Empty filters match anything, so find the first non-empty entry as the reference

@@ -44,41 +44,80 @@ namespace WebCore {
 const unsigned kGridMaxTracks = 1000000;
 
 // A span in a single direction (either rows or columns). Note that |resolvedInitialPosition|
-// and |resolvedFinalPosition| are grid areas' indexes, NOT grid lines'. Iterating over the
-// span should include both |resolvedInitialPosition| and |resolvedFinalPosition| to be correct.
+// and |resolvedFinalPosition| are grid lines' indexes.
+// Iterating over the span shouldn't include |resolvedFinalPosition| to be correct.
 class GridSpan {
 public:
-    GridSpan(const GridResolvedPosition& resolvedInitialPosition, const GridResolvedPosition& resolvedFinalPosition)
-        : resolvedInitialPosition(std::min(resolvedInitialPosition.toInt(), kGridMaxTracks - 1))
-        , resolvedFinalPosition(std::min(resolvedFinalPosition.toInt(), kGridMaxTracks))
+
+    static GridSpan definiteGridSpan(const GridResolvedPosition& resolvedInitialPosition, const GridResolvedPosition& resolvedFinalPosition)
     {
-        ASSERT(resolvedInitialPosition <= resolvedFinalPosition);
+        return GridSpan(resolvedInitialPosition, resolvedFinalPosition, Definite);
+    }
+
+    static GridSpan indefiniteGridSpan()
+    {
+        return GridSpan(0, 1, Indefinite);
     }
 
     bool operator==(const GridSpan& o) const
     {
-        return resolvedInitialPosition == o.resolvedInitialPosition && resolvedFinalPosition == o.resolvedFinalPosition;
+        return m_type == o.m_type && m_resolvedInitialPosition == o.m_resolvedInitialPosition && m_resolvedFinalPosition == o.m_resolvedFinalPosition;
     }
 
     unsigned integerSpan() const
     {
-        return resolvedFinalPosition.toInt() - resolvedInitialPosition.toInt() + 1;
+        ASSERT(isDefinite());
+        return m_resolvedFinalPosition.toInt() - m_resolvedInitialPosition.toInt();
     }
 
-    GridResolvedPosition resolvedInitialPosition;
-    GridResolvedPosition resolvedFinalPosition;
+    const GridResolvedPosition& resolvedInitialPosition() const
+    {
+        ASSERT(isDefinite());
+        return m_resolvedInitialPosition;
+    }
+
+    const GridResolvedPosition& resolvedFinalPosition() const
+    {
+        ASSERT(isDefinite());
+        return m_resolvedFinalPosition;
+    }
 
     typedef GridResolvedPosition iterator;
 
     iterator begin() const
     {
-        return resolvedInitialPosition;
+        ASSERT(isDefinite());
+        return m_resolvedInitialPosition;
     }
 
     iterator end() const
     {
-        return resolvedFinalPosition.next();
+        ASSERT(isDefinite());
+        return m_resolvedFinalPosition;
     }
+
+    bool isDefinite() const
+    {
+        return m_type == Definite;
+    }
+
+private:
+
+    enum GridSpanType {Definite, Indefinite};
+
+    GridSpan(const GridResolvedPosition& resolvedInitialPosition, const GridResolvedPosition& resolvedFinalPosition, GridSpanType type)
+        : m_resolvedInitialPosition(std::min(resolvedInitialPosition.toInt(), kGridMaxTracks - 1))
+        , m_resolvedFinalPosition(std::min(resolvedFinalPosition.toInt(), kGridMaxTracks))
+        , m_type(type)
+    {
+        ASSERT(resolvedInitialPosition < resolvedFinalPosition);
+    }
+
+    GridResolvedPosition m_resolvedInitialPosition;
+    GridResolvedPosition m_resolvedFinalPosition;
+    GridSpanType m_type;
+
+
 };
 
 // This represents a grid area that spans in both rows' and columns' direction.
@@ -86,8 +125,8 @@ class GridCoordinate {
 public:
     // HashMap requires a default constuctor.
     GridCoordinate()
-        : columns(0, 0)
-        , rows(0, 0)
+        : columns(GridSpan::indefiniteGridSpan())
+        , rows(GridSpan::indefiniteGridSpan())
     {
     }
 

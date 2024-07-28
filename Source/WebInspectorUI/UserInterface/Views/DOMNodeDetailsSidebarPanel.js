@@ -55,10 +55,10 @@ WebInspector.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel exten
         this._eventListenersSectionGroup = new WebInspector.DetailsSectionGroup;
         var eventListenersSection = new WebInspector.DetailsSection("dom-node-event-listeners", WebInspector.UIString("Event Listeners"), [this._eventListenersSectionGroup]);
 
-        this.contentElement.appendChild(identitySection.element);
-        this.contentElement.appendChild(attributesSection.element);
-        this.contentElement.appendChild(propertiesSection.element);
-        this.contentElement.appendChild(eventListenersSection.element);
+        this.contentView.element.appendChild(identitySection.element);
+        this.contentView.element.appendChild(attributesSection.element);
+        this.contentView.element.appendChild(propertiesSection.element);
+        this.contentView.element.appendChild(eventListenersSection.element);
 
         if (this._accessibilitySupported()) {
             this._accessibilityEmptyRow = new WebInspector.DetailsSectionRow(WebInspector.UIString("No Accessibility Information"));
@@ -67,6 +67,7 @@ WebInspector.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel exten
             this._accessibilityNodeCheckedRow = new WebInspector.DetailsSectionSimpleRow(WebInspector.UIString("Checked"));
             this._accessibilityNodeChildrenRow = new WebInspector.DetailsSectionSimpleRow(WebInspector.UIString("Children"));
             this._accessibilityNodeControlsRow = new WebInspector.DetailsSectionSimpleRow(WebInspector.UIString("Controls"));
+            this._accessibilityNodeCurrentRow = new WebInspector.DetailsSectionSimpleRow(WebInspector.UIString("Current"));
             this._accessibilityNodeDisabledRow = new WebInspector.DetailsSectionSimpleRow(WebInspector.UIString("Disabled"));
             this._accessibilityNodeExpandedRow = new WebInspector.DetailsSectionSimpleRow(WebInspector.UIString("Expanded"));
             this._accessibilityNodeFlowsRow = new WebInspector.DetailsSectionSimpleRow(WebInspector.UIString("Flows"));
@@ -88,9 +89,9 @@ WebInspector.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel exten
             this._accessibilityGroup = new WebInspector.DetailsSectionGroup([this._accessibilityEmptyRow]);
             var accessibilitySection = new WebInspector.DetailsSection("dom-node-accessibility", WebInspector.UIString("Accessibility"), [this._accessibilityGroup]);
 
-            this.contentElement.appendChild(accessibilitySection.element);
+            this.contentView.element.appendChild(accessibilitySection.element);
         }
-        }
+    }
 
     // Public
 
@@ -299,25 +300,43 @@ WebInspector.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel exten
         }
 
         function linkListForNodeIds(nodeIds) {
-            var hasLinks = false;
-            var linkList = null;
-            if (nodeIds !== undefined) {
-                linkList = document.createElement("ul");
-                linkList.className = "node-link-list";    
-                for (var nodeId of nodeIds) {
-                    var node = WebInspector.domTreeManager.nodeForId(nodeId);
-                    if (node) {
-                        var link = WebInspector.linkifyAccessibilityNodeReference(node);
-                        if (link) {
-                            hasLinks = true;
-                            var listitem = document.createElement("li");
-                            listitem.appendChild(link);
-                            linkList.appendChild(listitem);
-                        }
-                    }
-                }
+            if (!nodeIds) 
+                return null;
+
+            const itemsToShow = 5;
+            let hasLinks = false;
+            let listItemCount = 0;
+            let container = document.createElement("div");
+            container.classList.add("list-container")
+            let linkList = container.createChild("ul", "node-link-list");            
+            let initiallyHiddenItems = [];
+            for (let nodeId of nodeIds) {
+                let node = WebInspector.domTreeManager.nodeForId(nodeId);
+                if (!node)
+                    continue;
+                let link = WebInspector.linkifyAccessibilityNodeReference(node);
+                hasLinks = true;
+                let li = linkList.createChild("li");
+                li.appendChild(link);
+                if (listItemCount >= itemsToShow) {  
+                    li.hidden = true;
+                    initiallyHiddenItems.push(li);
+                } 
+                listItemCount++;
             }
-            return hasLinks ? linkList : null;
+            container.appendChild(linkList);
+            if (listItemCount > itemsToShow) {
+                let moreNodesButton = container.createChild("button", "expand-list-button");
+                moreNodesButton.textContent = WebInspector.UIString("%d More\u2026").format(listItemCount - itemsToShow);
+                moreNodesButton.addEventListener("click", () => {
+                    initiallyHiddenItems.forEach((element) => element.hidden = false);
+                    moreNodesButton.remove();
+                });
+            }
+            if (hasLinks) 
+                return container;
+
+            return null;
         }
 
         function accessibilityPropertiesCallback(accessibilityProperties) {
@@ -346,6 +365,31 @@ WebInspector.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel exten
                 var childNodeLinkList = linkListForNodeIds(accessibilityProperties.childNodeIds);
                 
                 var controlledNodeLinkList = linkListForNodeIds(accessibilityProperties.controlledNodeIds);
+                
+                var current = "";
+                switch (accessibilityProperties.current) {
+                case DOMAgent.AccessibilityPropertiesCurrent.True:
+                    current = WebInspector.UIString("True");
+                    break;
+                case DOMAgent.AccessibilityPropertiesCurrent.Page:
+                    current = WebInspector.UIString("Page");
+                    break;
+                case DOMAgent.AccessibilityPropertiesCurrent.Location:
+                    current = WebInspector.UIString("Location");
+                    break;
+                case DOMAgent.AccessibilityPropertiesCurrent.Step:
+                    current = WebInspector.UIString("Step");
+                    break;
+                case DOMAgent.AccessibilityPropertiesCurrent.Date:
+                    current = WebInspector.UIString("Date");
+                    break;
+                case DOMAgent.AccessibilityPropertiesCurrent.Time:
+                    current = WebInspector.UIString("Time");
+                    break;
+                default:
+                    current = "";
+                }
+                
                 var disabled = booleanValueToLocalizedStringIfTrue("disabled");
                 var expanded = booleanValueToLocalizedStringIfPropertyDefined("expanded");
                 var flowedNodeLinkList = linkListForNodeIds(accessibilityProperties.flowedNodeIds);
@@ -462,6 +506,7 @@ WebInspector.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel exten
                 this._accessibilityNodeCheckedRow.value = checked;
                 this._accessibilityNodeChildrenRow.value = childNodeLinkList || "";
                 this._accessibilityNodeControlsRow.value = controlledNodeLinkList || "";
+                this._accessibilityNodeCurrentRow.value = current;
                 this._accessibilityNodeDisabledRow.value = disabled;
                 this._accessibilityNodeExpandedRow.value = expanded;
                 this._accessibilityNodeFlowsRow.value = flowedNodeLinkList || "";
@@ -505,6 +550,7 @@ WebInspector.DOMNodeDetailsSidebarPanel = class DOMNodeDetailsSidebarPanel exten
                     this._accessibilityNodeFocusedRow,
                     this._accessibilityNodeBusyRow,
                     this._accessibilityNodeLiveRegionStatusRow,
+                    this._accessibilityNodeCurrentRow,
 
                     // Properties exposed for all input-type elements.
                     this._accessibilityNodeDisabledRow,

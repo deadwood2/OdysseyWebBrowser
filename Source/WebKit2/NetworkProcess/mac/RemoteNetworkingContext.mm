@@ -26,7 +26,9 @@
 #import "config.h"
 #import "RemoteNetworkingContext.h"
 
+#import "CustomProtocolManager.h"
 #import "NetworkProcess.h"
+#import "NetworkSession.h"
 #import "SessionTracker.h"
 #import "WebErrors.h"
 #import <WebCore/ResourceError.h>
@@ -55,7 +57,7 @@ bool RemoteNetworkingContext::localFileContentSniffingEnabled() const
 
 NetworkStorageSession& RemoteNetworkingContext::storageSession() const
 {
-    NetworkStorageSession* session = SessionTracker::session(m_sessionID);
+    NetworkStorageSession* session = SessionTracker::storageSession(m_sessionID);
     if (session)
         return *session;
     // Some requests may still be coming shortly after NetworkProcess was told to destroy its session.
@@ -89,11 +91,20 @@ void RemoteNetworkingContext::ensurePrivateBrowsingSession(SessionID sessionID)
 {
     ASSERT(sessionID.isEphemeral());
 
-    if (SessionTracker::session(sessionID))
+    if (SessionTracker::storageSession(sessionID))
         return;
 
-    ASSERT(!SessionTracker::getIdentifierBase().isNull());
-    SessionTracker::setSession(sessionID, NetworkStorageSession::createPrivateBrowsingSession(SessionTracker::getIdentifierBase() + '.' + String::number(sessionID.sessionID())));
+    String base;
+    if (SessionTracker::getIdentifierBase().isNull())
+        base = [[NSBundle mainBundle] bundleIdentifier];
+    else
+        base = SessionTracker::getIdentifierBase();
+
+    SessionTracker::setSession(sessionID, NetworkStorageSession::createPrivateBrowsingSession(base + '.' + String::number(sessionID.sessionID()))
+#if USE(NETWORK_SESSION)
+        , std::make_unique<NetworkSession>(NetworkSession::Type::Ephemeral, sessionID, NetworkProcess::singleton().supplement<CustomProtocolManager>())
+#endif
+    );
 }
 
 }

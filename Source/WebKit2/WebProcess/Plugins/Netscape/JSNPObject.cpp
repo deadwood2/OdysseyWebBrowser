@@ -107,7 +107,7 @@ NPObject* JSNPObject::leakNPObject()
 
 JSValue JSNPObject::callMethod(ExecState* exec, NPIdentifier methodName)
 {
-    ASSERT_GC_OBJECT_INHERITS(this, info());
+    ASSERT_THIS_GC_OBJECT_INHERITS(info());
     if (!m_npObject)
         return throwInvalidAccessError(exec);
 
@@ -151,7 +151,7 @@ JSValue JSNPObject::callMethod(ExecState* exec, NPIdentifier methodName)
 
 JSC::JSValue JSNPObject::callObject(JSC::ExecState* exec)
 {
-    ASSERT_GC_OBJECT_INHERITS(this, info());
+    ASSERT_THIS_GC_OBJECT_INHERITS(info());
     if (!m_npObject)
         return throwInvalidAccessError(exec);
 
@@ -191,7 +191,7 @@ JSC::JSValue JSNPObject::callObject(JSC::ExecState* exec)
 
 JSValue JSNPObject::callConstructor(ExecState* exec)
 {
-    ASSERT_GC_OBJECT_INHERITS(this, info());
+    ASSERT_THIS_GC_OBJECT_INHERITS(info());
     if (!m_npObject)
         return throwInvalidAccessError(exec);
 
@@ -351,7 +351,7 @@ bool JSNPObject::deletePropertyByIndex(JSCell* cell, ExecState* exec, unsigned p
 
 bool JSNPObject::deleteProperty(ExecState* exec, NPIdentifier propertyName)
 {
-    ASSERT_GC_OBJECT_INHERITS(this, info());
+    ASSERT_THIS_GC_OBJECT_INHERITS(info());
 
     // If the propertyName is symbol.
     if (!propertyName)
@@ -433,9 +433,9 @@ void JSNPObject::getOwnPropertyNames(JSObject* object, ExecState* exec, Property
     npnMemFree(identifiers);
 }
 
-EncodedJSValue JSNPObject::propertyGetter(ExecState* exec, JSObject* slotBase, EncodedJSValue, PropertyName propertyName)
+EncodedJSValue JSNPObject::propertyGetter(ExecState* exec, EncodedJSValue thisValue, PropertyName propertyName)
 {
-    JSNPObject* thisObj = jsCast<JSNPObject*>(slotBase);
+    JSNPObject* thisObj = jsCast<JSNPObject*>(JSValue::decode(thisValue));
     ASSERT_GC_OBJECT_INHERITS(thisObj, info());
     
     if (!thisObj->m_npObject)
@@ -473,9 +473,9 @@ EncodedJSValue JSNPObject::propertyGetter(ExecState* exec, JSObject* slotBase, E
     return JSValue::encode(propertyValue);
 }
 
-EncodedJSValue JSNPObject::methodGetter(ExecState* exec, JSObject* slotBase, EncodedJSValue, PropertyName propertyName)
+EncodedJSValue JSNPObject::methodGetter(ExecState* exec, EncodedJSValue thisValue, PropertyName propertyName)
 {
-    JSNPObject* thisObj = jsCast<JSNPObject*>(slotBase);
+    JSNPObject* thisObj = jsCast<JSNPObject*>(JSValue::decode(thisValue));
     ASSERT_GC_OBJECT_INHERITS(thisObj, info());
     
     if (!thisObj->m_npObject)

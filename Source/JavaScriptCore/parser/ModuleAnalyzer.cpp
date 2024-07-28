@@ -27,16 +27,18 @@
 #include "ModuleAnalyzer.h"
 
 #include "IdentifierInlines.h"
-#include "ModuleRecord.h"
+#include "JSCJSValueInlines.h"
+#include "JSCellInlines.h"
+#include "JSGlobalObject.h"
+#include "JSModuleRecord.h"
+#include "StrongInlines.h"
 
 namespace JSC {
 
 
-ModuleAnalyzer::ModuleAnalyzer(VM& vm, const VariableEnvironment& declaredVariables, const VariableEnvironment& lexicalVariables)
-    : m_vm(&vm)
-    , m_moduleRecord(ModuleRecord::create())
-    , m_declaredVariables(declaredVariables)
-    , m_lexicalVariables(lexicalVariables)
+ModuleAnalyzer::ModuleAnalyzer(ExecState* exec, const Identifier& moduleKey, const SourceCode& sourceCode, const VariableEnvironment& declaredVariables, const VariableEnvironment& lexicalVariables)
+    : m_vm(&exec->vm())
+    , m_moduleRecord(exec->vm(), JSModuleRecord::create(exec->vm(), exec->lexicalGlobalObject()->moduleRecordStructure(), moduleKey, sourceCode, declaredVariables, lexicalVariables))
 {
 }
 
@@ -76,28 +78,30 @@ void ModuleAnalyzer::exportVariable(const RefPtr<UniquedStringImpl>& localName, 
 
     // Exported module local variable.
     if (!variable.isImported()) {
-        moduleRecord().addExportEntry(ModuleRecord::ExportEntry::createLocal(exportName, Identifier::fromUid(m_vm, localName.get()), variable));
+        moduleRecord()->addExportEntry(JSModuleRecord::ExportEntry::createLocal(exportName, Identifier::fromUid(m_vm, localName.get()), variable));
         return;
     }
 
-    const auto& importEntry = moduleRecord().lookUpImportEntry(localName);
-    if (importEntry.isNamespace(vm())) {
+    Optional<JSModuleRecord::ImportEntry> optionalImportEntry = moduleRecord()->tryGetImportEntry(localName.get());
+    ASSERT(optionalImportEntry);
+    const JSModuleRecord::ImportEntry& importEntry = *optionalImportEntry;
+    if (variable.isImportedNamespace()) {
         // Exported namespace binding.
         // import * as namespace from "mod"
         // export { namespace }
-        moduleRecord().addExportEntry(ModuleRecord::ExportEntry::createNamespace(exportName, importEntry.moduleRequest));
+        moduleRecord()->addExportEntry(JSModuleRecord::ExportEntry::createNamespace(exportName, importEntry.moduleRequest));
         return;
     }
 
     // Indirectly exported binding.
     // import a from "mod"
     // export { a }
-    moduleRecord().addExportEntry(ModuleRecord::ExportEntry::createIndirect(exportName, importEntry.importName, importEntry.moduleRequest));
+    moduleRecord()->addExportEntry(JSModuleRecord::ExportEntry::createIndirect(exportName, importEntry.importName, importEntry.moduleRequest));
 }
 
 
 
-Ref<ModuleRecord> ModuleAnalyzer::analyze(ModuleProgramNode& moduleProgramNode)
+JSModuleRecord* ModuleAnalyzer::analyze(ModuleProgramNode& moduleProgramNode)
 {
     // Traverse the module AST and collect
     // * Import entries
@@ -140,16 +144,16 @@ Ref<ModuleRecord> ModuleAnalyzer::analyze(ModuleProgramNode& moduleProgramNode)
     //     This exports all the names from the specified external module as the current module's name.
     //
     //     export * from "mod"
-    for (const auto& pair : m_declaredVariables)
+    for (const auto& pair : m_moduleRecord->declaredVariables())
         exportVariable(pair.key, pair.value);
 
-    for (const auto& pair : m_lexicalVariables)
+    for (const auto& pair : m_moduleRecord->lexicalVariables())
         exportVariable(pair.key, pair.value);
 
     if (Options::dumpModuleRecord())
         m_moduleRecord->dump();
 
-    return *m_moduleRecord;
+    return m_moduleRecord.get();
 }
 
 } // namespace JSC

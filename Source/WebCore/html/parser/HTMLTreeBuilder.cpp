@@ -121,7 +121,7 @@ static bool isNonAnchorFormattingTag(const AtomicString& tagName)
 }
 
 // https://html.spec.whatwg.org/multipage/syntax.html#formatting
-static bool isFormattingTag(const AtomicString& tagName)
+bool HTMLConstructionSite::isFormattingTag(const AtomicString& tagName)
 {
     return tagName == aTag || isNonAnchorFormattingTag(tagName);
 }
@@ -324,7 +324,7 @@ RefPtr<Element> HTMLTreeBuilder::takeScriptToProcess(TextPosition& scriptStartPo
     // We pause the parser to exit the tree builder, and then resume before running scripts.
     scriptStartPosition = m_scriptToProcessStartPosition;
     m_scriptToProcessStartPosition = uninitializedPositionValue1();
-    return WTF::move(m_scriptToProcess);
+    return WTFMove(m_scriptToProcess);
 }
 
 void HTMLTreeBuilder::constructTree(AtomicHTMLToken& token)
@@ -407,7 +407,7 @@ void HTMLTreeBuilder::processDoctypeToken(AtomicHTMLToken& token)
 void HTMLTreeBuilder::processFakeStartTag(const QualifiedName& tagName, Vector<Attribute>&& attributes)
 {
     // FIXME: We'll need a fancier conversion than just "localName" for SVG/MathML tags.
-    AtomicHTMLToken fakeToken(HTMLToken::StartTag, tagName.localName(), WTF::move(attributes));
+    AtomicHTMLToken fakeToken(HTMLToken::StartTag, tagName.localName(), WTFMove(attributes));
     processStartTag(fakeToken);
 }
 
@@ -511,7 +511,7 @@ template <typename TableQualifiedName> static HashMap<AtomicString, QualifiedNam
     for (unsigned i = 0; i < length; ++i) {
         const QualifiedName& name = *names[i];
         const AtomicString& localName = name.localName();
-        AtomicString loweredLocalName = localName.lower();
+        AtomicString loweredLocalName = localName.convertToASCIILowercase();
         if (loweredLocalName != localName)
             map.add(loweredLocalName, name);
     }
@@ -777,7 +777,7 @@ void HTMLTreeBuilder::processStartTagForInBody(AtomicHTMLToken& token)
         m_tree.reconstructTheActiveFormattingElements();
         m_tree.insertSelfClosingHTMLElement(&token);
         Attribute* typeAttribute = findAttribute(token.attributes(), typeAttr);
-        if (!typeAttribute || !equalIgnoringCase(typeAttribute->value(), "hidden"))
+        if (!typeAttribute || !equalLettersIgnoringASCIICase(typeAttribute->value(), "hidden"))
             m_framesetOk = false;
         return;
     }
@@ -1019,7 +1019,7 @@ void HTMLTreeBuilder::processStartTagForInTable(AtomicHTMLToken& token)
     }
     if (token.name() == inputTag) {
         Attribute* typeAttribute = findAttribute(token.attributes(), typeAttr);
-        if (typeAttribute && equalIgnoringCase(typeAttribute->value(), "hidden")) {
+        if (typeAttribute && equalLettersIgnoringASCIICase(typeAttribute->value(), "hidden")) {
             parseError(token);
             m_tree.insertSelfClosingHTMLElement(&token);
             return;
@@ -1883,7 +1883,7 @@ void HTMLTreeBuilder::processEndTagForInBody(AtomicHTMLToken& token)
         m_tree.openElements().popUntilNumberedHeaderElementPopped();
         return;
     }
-    if (isFormattingTag(token.name())) {
+    if (HTMLConstructionSite::isFormattingTag(token.name())) {
         callTheAdoptionAgency(token);
         return;
     }
@@ -2282,7 +2282,7 @@ void HTMLTreeBuilder::insertPhoneNumberLink(const String& string)
     attributes.append(Attribute(HTMLNames::hrefAttr, ASCIILiteral("tel:") + string));
 
     const AtomicString& aTagLocalName = aTag.localName();
-    AtomicHTMLToken aStartToken(HTMLToken::StartTag, aTagLocalName, WTF::move(attributes));
+    AtomicHTMLToken aStartToken(HTMLToken::StartTag, aTagLocalName, WTFMove(attributes));
     AtomicHTMLToken aEndToken(HTMLToken::EndTag, aTagLocalName);
 
     processStartTag(aStartToken);

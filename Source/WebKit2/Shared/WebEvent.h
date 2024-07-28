@@ -78,6 +78,12 @@ public:
         TouchEnd,
         TouchCancel,
 #endif
+
+#if ENABLE(MAC_GESTURE_EVENTS)
+        GestureStart,
+        GestureChange,
+        GestureEnd,
+#endif
     };
 
     enum Modifiers {
@@ -310,7 +316,8 @@ public:
     TouchPointState state() const { return phase(); }
 
 #if ENABLE(IOS_TOUCH_EVENTS)
-#include <WebKitAdditions/WebEventIOS.h>
+    void setForce(double force) { m_force = force; }
+    double force() const { return m_force; }
 #endif
 
     void encode(IPC::ArgumentEncoder&) const;
@@ -320,6 +327,9 @@ private:
     unsigned m_identifier;
     WebCore::IntPoint m_location;
     uint32_t m_phase;
+#if ENABLE(IOS_TOUCH_EVENTS)
+    double m_force { 0 };
+#endif
 };
 
 class WebTouchEvent : public WebEvent {

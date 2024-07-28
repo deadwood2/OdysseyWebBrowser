@@ -98,6 +98,7 @@ add_executable(TestWebKit2
     ${TESTWEBKITAPI_DIR}/Tests/WebKit2/PageLoadBasic.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WebKit2/PageLoadDidChangeLocationWithinPageForFrame.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WebKit2/ParentFrame.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WebKit2/PendingAPIRequestURL.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WebKit2/PreventEmptyUserAgent.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WebKit2/PrivateBrowsingPushStateNoHistoryCallback.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WebKit2/ReloadPageAfterCrash.cpp
@@ -108,8 +109,10 @@ add_executable(TestWebKit2
     ${TESTWEBKITAPI_DIR}/Tests/WebKit2/UserMedia.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WebKit2/UserMessage.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WebKit2/WillSendSubmitEvent.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WebKit2/WKPageCopySessionStateWithFiltering.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WebKit2/WKPageGetScaleFactorNotZero.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WebKit2/WKPreferences.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WebKit2/WKRetainPtr.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WebKit2/WKString.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WebKit2/WKStringJSString.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WebKit2/WKURL.cpp
@@ -158,7 +161,6 @@ set_tests_properties(TestWebCore PROPERTIES TIMEOUT 60)
 set_target_properties(TestWebCore PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${TESTWEBKITAPI_RUNTIME_OUTPUT_DIRECTORY}/WebCore)
 
 list(APPEND TestWTF_SOURCES
-    ${TESTWEBKITAPI_DIR}/Tests/WTF/glib/GMainLoopSource.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/glib/GUniquePtr.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/glib/WorkQueueGLib.cpp
 )

@@ -31,10 +31,22 @@
     bottom: 0;
 }
 
-.timeline-view.script > .data-grid .eventType-column {
-    border-right: none;
+.sidebar > .panel.navigation.timeline.timeline-recording-content-view-showing .tree-outline.script .item .subtitle {
+    display: none;
 }
 
-.sidebar > .panel.navigation.timeline.timeline-recording-content-view-showing .navigation-sidebar-panel-content-tree-outline.script .item .subtitle {
+.sidebar > .panel.navigation.timeline:not(.timeline-recording-content-view-showing) .tree-outline.script .item .alternate-subtitle {
     display: none;
+}
+
+.tree-outline .item .alternate-subtitle {
+    color: hsla(0, 0%, 0%, 0.7);
+}
+
+.tree-outline:matches(:focus, .force-focus) .item.selected .alternate-subtitle {
+    color: hsla(0, 0%, 100%, 0.9);
+}
+
+.tree-outline .item.small:not(.two-line) .alternate-subtitle::before {
+    content: " — ";
 }

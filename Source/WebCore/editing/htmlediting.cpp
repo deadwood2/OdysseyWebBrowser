@@ -428,7 +428,7 @@ bool isTableStructureNode(const Node *node)
 
 const String& nonBreakingSpaceString()
 {
-    DEPRECATED_DEFINE_STATIC_LOCAL(String, nonBreakingSpaceString, (&noBreakSpace, 1));
+    static NeverDestroyed<String> nonBreakingSpaceString(&noBreakSpace, 1);
     return nonBreakingSpaceString;
 }
 
@@ -629,7 +629,7 @@ Node* enclosingNodeOfType(const Position& p, bool (*nodeIsOfType)(const Node*), 
 
 Node* highestEnclosingNodeOfType(const Position& p, bool (*nodeIsOfType)(const Node*), EditingBoundaryCrossingRule rule, Node* stayWithin)
 {
-    Node* highest = 0;
+    Node* highest = nullptr;
     Node* root = rule == CannotCrossEditingBoundary ? highestEditableRoot(p) : 0;
     for (Node* n = p.containerNode(); n && n != stayWithin; n = n->parentNode()) {
         if (root && !n->hasEditableStyle())
@@ -659,7 +659,7 @@ static bool hasARenderedDescendant(Node* node, Node* excludedNode)
 
 Node* highestNodeToRemoveInPruning(Node* node)
 {
-    Node* previousNode = 0;
+    Node* previousNode = nullptr;
     Node* rootEditableElement = node ? node->rootEditableElement() : 0;
     for (; node; node = node->parentNode()) {
         if (RenderObject* renderer = node->renderer()) {
@@ -905,20 +905,18 @@ bool isEmptyTableCell(const Node* node)
     return !childRenderer->nextSibling();
 }
 
-PassRefPtr<HTMLElement> createDefaultParagraphElement(Document& document)
+Ref<HTMLElement> createDefaultParagraphElement(Document& document)
 {
     switch (document.frame()->editor().defaultParagraphSeparator()) {
     case EditorParagraphSeparatorIsDiv:
         return HTMLDivElement::create(document);
     case EditorParagraphSeparatorIsP:
-        return HTMLParagraphElement::create(document);
+        break;
     }
-
-    ASSERT_NOT_REACHED();
-    return 0;
+    return HTMLParagraphElement::create(document);
 }
 
-PassRefPtr<HTMLElement> createBreakElement(Document& document)
+Ref<HTMLElement> createBreakElement(Document& document)
 {
     return HTMLBRElement::create(document);
 }
@@ -977,7 +975,7 @@ Position positionOutsideTabSpan(const Position& pos)
     return positionInParentBeforeNode(node);
 }
 
-PassRefPtr<Element> createTabSpanElement(Document& document, PassRefPtr<Node> prpTabTextNode)
+Ref<Element> createTabSpanElement(Document& document, PassRefPtr<Node> prpTabTextNode)
 {
     RefPtr<Node> tabTextNode = prpTabTextNode;
 
@@ -990,17 +988,17 @@ PassRefPtr<Element> createTabSpanElement(Document& document, PassRefPtr<Node> pr
     if (!tabTextNode)
         tabTextNode = document.createEditingTextNode("\t");
 
-    spanElement->appendChild(tabTextNode.release(), ASSERT_NO_EXCEPTION);
+    spanElement->appendChild(tabTextNode.releaseNonNull(), ASSERT_NO_EXCEPTION);
 
-    return spanElement.release();
+    return spanElement.releaseNonNull();
 }
 
-PassRefPtr<Element> createTabSpanElement(Document& document, const String& tabText)
+Ref<Element> createTabSpanElement(Document& document, const String& tabText)
 {
     return createTabSpanElement(document, document.createTextNode(tabText));
 }
 
-PassRefPtr<Element> createTabSpanElement(Document& document)
+Ref<Element> createTabSpanElement(Document& document)
 {
     return createTabSpanElement(document, PassRefPtr<Node>());
 }

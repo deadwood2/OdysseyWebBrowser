@@ -28,7 +28,9 @@
 
 #include "AXTextStateChangeIntent.h"
 #include "AccessibilityObject.h"
+#include "Range.h"
 #include "Timer.h"
+#include "VisibleUnits.h"
 #include <limits.h>
 #include <wtf/Forward.h>
 #include <wtf/HashMap.h>
@@ -51,7 +53,33 @@ struct TextMarkerData {
     AXID axID;
     Node* node;
     int offset;
+    int characterStartIndex;
+    int characterOffset;
+    bool ignored;
     EAffinity affinity;
+};
+
+struct CharacterOffset {
+    Node* node;
+    int startIndex;
+    int offset;
+    int remainingOffset;
+    
+    CharacterOffset(Node* n = nullptr, int startIndex = 0, int offset = 0, int remaining = 0)
+        : node(n)
+        , startIndex(startIndex)
+        , offset(offset)
+        , remainingOffset(remaining)
+    { }
+    
+    int remaining() const { return remainingOffset; }
+    bool isNull() const { return !node; }
+    bool isEqual(CharacterOffset& other) const
+    {
+        if (isNull() || other.isNull())
+            return false;
+        return node == other.node && startIndex == other.startIndex && offset == other.offset;
+    }
 };
 
 class AXComputedObjectAttributeCache {
@@ -128,6 +156,9 @@ public:
     void handleScrolledToAnchor(const Node* anchorNode);
     void handleAriaExpandedChange(Node*);
     void handleScrollbarUpdate(ScrollView*);
+    
+    void handleAriaModalChange(Node*);
+    Node* ariaModalNode();
 
     void handleAttributeChanged(const QualifiedName& attrName, Element*);
     void recomputeIsIgnored(RenderObject* renderer);
@@ -160,7 +191,34 @@ public:
 
     // Text marker utilities.
     void textMarkerDataForVisiblePosition(TextMarkerData&, const VisiblePosition&);
+    void textMarkerDataForCharacterOffset(TextMarkerData&, const CharacterOffset&);
+    void textMarkerDataForNextCharacterOffset(TextMarkerData&, const CharacterOffset&);
+    void textMarkerDataForPreviousCharacterOffset(TextMarkerData&, const CharacterOffset&);
     VisiblePosition visiblePositionForTextMarkerData(TextMarkerData&);
+    CharacterOffset characterOffsetForTextMarkerData(TextMarkerData&);
+    CharacterOffset nextCharacterOffset(const CharacterOffset&, bool ignoreStart = true);
+    CharacterOffset previousCharacterOffset(const CharacterOffset&, bool ignoreStart = true);
+    void startOrEndTextMarkerDataForRange(TextMarkerData&, RefPtr<Range>, bool);
+    AccessibilityObject* accessibilityObjectForTextMarkerData(TextMarkerData&);
+    RefPtr<Range> rangeForUnorderedCharacterOffsets(const CharacterOffset&, const CharacterOffset&);
+    static RefPtr<Range> rangeForNodeContents(Node*);
+    static int lengthForRange(Range*);
+    
+    // Word boundary
+    CharacterOffset nextWordEndCharacterOffset(const CharacterOffset&);
+    CharacterOffset previousWordStartCharacterOffset(const CharacterOffset&);
+    RefPtr<Range> leftWordRange(const CharacterOffset&);
+    RefPtr<Range> rightWordRange(const CharacterOffset&);
+    
+    // Paragraph
+    RefPtr<Range> paragraphForCharacterOffset(const CharacterOffset&);
+    CharacterOffset nextParagraphEndCharacterOffset(const CharacterOffset&);
+    CharacterOffset previousParagraphStartCharacterOffset(const CharacterOffset&);
+    
+    // Sentence
+    RefPtr<Range> sentenceForCharacterOffset(const CharacterOffset&);
+    CharacterOffset nextSentenceEndCharacterOffset(const CharacterOffset&);
+    CharacterOffset previousSentenceStartCharacterOffset(const CharacterOffset&);
 
     enum AXNotification {
         AXActiveDescendantChanged,
@@ -251,6 +309,27 @@ protected:
     void setNodeInUse(Node* n) { m_textMarkerNodes.add(n); }
     void removeNodeForUse(Node* n) { m_textMarkerNodes.remove(n); }
     bool isNodeInUse(Node* n) { return m_textMarkerNodes.contains(n); }
+    
+    // CharacterOffset functions.
+    enum TraverseOption { TraverseOptionDefault = 1 << 0, TraverseOptionToNodeEnd = 1 << 1, TraverseOptionIncludeStart = 1 << 2 };
+    Node* nextNode(Node*) const;
+    Node* previousNode(Node*) const;
+    CharacterOffset traverseToOffsetInRange(RefPtr<Range>, int, bool, bool stayWithinRange = false);
+    VisiblePosition visiblePositionFromCharacterOffset(const CharacterOffset&);
+    CharacterOffset characterOffsetFromVisiblePosition(const VisiblePosition&);
+    void setTextMarkerDataWithCharacterOffset(TextMarkerData&, const CharacterOffset&);
+    UChar32 characterAfter(const CharacterOffset&);
+    UChar32 characterBefore(const CharacterOffset&);
+    CharacterOffset startOrEndCharacterOffsetForRange(RefPtr<Range>, bool);
+    CharacterOffset characterOffsetForNodeAndOffset(Node&, int, TraverseOption = TraverseOptionDefault);
+    CharacterOffset previousBoundary(const CharacterOffset&, BoundarySearchFunction);
+    CharacterOffset nextBoundary(const CharacterOffset&, BoundarySearchFunction);
+    CharacterOffset startCharacterOffsetOfWord(const CharacterOffset&, EWordSide = RightWordIfOnBoundary);
+    CharacterOffset endCharacterOffsetOfWord(const CharacterOffset&, EWordSide = RightWordIfOnBoundary);
+    CharacterOffset startCharacterOffsetOfParagraph(const CharacterOffset&, EditingBoundaryCrossingRule = CannotCrossEditingBoundary);
+    CharacterOffset endCharacterOffsetOfParagraph(const CharacterOffset&, EditingBoundaryCrossingRule = CannotCrossEditingBoundary);
+    CharacterOffset startCharacterOffsetOfSentence(const CharacterOffset&);
+    CharacterOffset endCharacterOffsetOfSentence(const CharacterOffset&);
 
 private:
     AccessibilityObject* rootWebArea();
@@ -271,6 +350,11 @@ private:
     void handleMenuOpened(Node*);
     void handleLiveRegionCreated(Node*);
     void handleMenuItemSelected(Node*);
+    
+    // aria-modal related
+    void findAriaModalNodes();
+    void updateCurrentAriaModalNode();
+    bool isNodeVisible(Node*) const;
 
     Document& m_document;
     HashMap<AXID, RefPtr<AccessibilityObject>> m_objects;
@@ -293,6 +377,9 @@ private:
     
     Timer m_liveRegionChangedPostTimer;
     ListHashSet<RefPtr<AccessibilityObject>> m_liveRegionObjectsSet;
+    
+    Node* m_currentAriaModalNode;
+    ListHashSet<Node*> m_ariaModalNodesSet;
 
     AXTextStateChangeIntent m_textSelectionIntent;
     bool m_isSynchronizingSelection { false };
@@ -303,11 +390,13 @@ class AXAttributeCacheEnabler
 public:
     explicit AXAttributeCacheEnabler(AXObjectCache *cache);
     ~AXAttributeCacheEnabler();
-    
+
+#if HAVE(ACCESSIBILITY)
 private:
     AXObjectCache* m_cache;
+#endif
 };
-    
+
 bool nodeHasRole(Node*, const String& role);
 // This will let you know if aria-hidden was explicitly set to false.
 bool isNodeAriaVisible(Node*);
@@ -332,6 +421,7 @@ inline void AXObjectCache::startCachingComputedObjectAttributesUntilTreeMutates(
 inline void AXObjectCache::stopCachingComputedObjectAttributes() { }
 inline bool isNodeAriaVisible(Node*) { return true; }
 inline const Element* AXObjectCache::rootAXEditableElement(const Node*) { return nullptr; }
+inline Node* AXObjectCache::ariaModalNode() { return nullptr; }
 inline void AXObjectCache::attachWrapper(AccessibilityObject*) { }
 inline void AXObjectCache::checkedStateChanged(Node*) { }
 inline void AXObjectCache::childrenChanged(RenderObject*, RenderObject*) { }
@@ -347,6 +437,7 @@ inline void AXObjectCache::frameLoadingEventPlatformNotification(AccessibilityOb
 inline void AXObjectCache::handleActiveDescendantChanged(Node*) { }
 inline void AXObjectCache::handleAriaExpandedChange(Node*) { }
 inline void AXObjectCache::handleAriaRoleChanged(Node*) { }
+inline void AXObjectCache::handleAriaModalChange(Node*) { }
 inline void AXObjectCache::handleFocusedUIElementChanged(Node*, Node*) { }
 inline void AXObjectCache::handleScrollbarUpdate(ScrollView*) { }
 inline void AXObjectCache::handleAttributeChanged(const QualifiedName&, Element*) { }
@@ -359,12 +450,16 @@ inline void AXObjectCache::postNotification(AccessibilityObject*, Document*, AXN
 inline void AXObjectCache::postNotification(RenderObject*, AXNotification, PostTarget, PostType) { }
 inline void AXObjectCache::postNotification(Node*, AXNotification, PostTarget, PostType) { }
 inline void AXObjectCache::postPlatformNotification(AccessibilityObject*, AXNotification) { }
+inline void AXObjectCache::postLiveRegionChangeNotification(AccessibilityObject*) { }
+inline RefPtr<Range> AXObjectCache::rangeForNodeContents(Node*) { return nullptr; }
 inline void AXObjectCache::remove(AXID) { }
 inline void AXObjectCache::remove(RenderObject*) { }
 inline void AXObjectCache::remove(Node*) { }
 inline void AXObjectCache::remove(Widget*) { }
 inline void AXObjectCache::selectedChildrenChanged(RenderObject*) { }
 inline void AXObjectCache::selectedChildrenChanged(Node*) { }
+inline void AXObjectCache::setIsSynchronizingSelection(bool) { }
+inline void AXObjectCache::setTextSelectionIntent(const AXTextStateChangeIntent&) { }
 #if PLATFORM(COCOA)
 inline void AXObjectCache::postTextStateChangePlatformNotification(AccessibilityObject*, const AXTextStateChangeIntent&, const VisibleSelection&) { }
 inline void AXObjectCache::postTextStateChangePlatformNotification(AccessibilityObject*, AXTextEditType, const String&, const VisiblePosition&) { }
@@ -373,6 +468,10 @@ inline void AXObjectCache::postTextReplacementPlatformNotification(Accessibility
 inline AXTextChange AXObjectCache::textChangeForEditType(AXTextEditType) { return AXTextInserted; }
 inline void AXObjectCache::nodeTextChangePlatformNotification(AccessibilityObject*, AXTextChange, unsigned, const String&) { }
 #endif
+
+inline AXAttributeCacheEnabler::AXAttributeCacheEnabler(AXObjectCache*) { }
+inline AXAttributeCacheEnabler::~AXAttributeCacheEnabler() { }
+
 #endif
 
 }

@@ -38,14 +38,6 @@
 #include <wtf/text/CString.h>
 #include <wtf/text/StringHash.h>
 
-#if PLATFORM(COCOA)
-#include "WebHitTestResult.h"
-#endif
-
-#if PLUGIN_ARCHITECTURE(X11)
-#include <WebCore/XUniqueResource.h>
-#endif
-
 namespace WebCore {
 class MachSendRight;
 class HTTPHeaderMap;
@@ -53,12 +45,11 @@ class ProtectionSpace;
 class SharedBuffer;
 }
 
-OBJC_CLASS WKNPAPIPlugInContainer;
-
 namespace WebKit {
 
 class NetscapePluginStream;
-    
+class NetscapePluginUnix;
+
 class NetscapePlugin : public Plugin {
 public:
     static RefPtr<NetscapePlugin> create(PassRefPtr<NetscapePluginModule>);
@@ -81,12 +72,9 @@ public:
     bool hasHandledAKeyDownEvent() const { return m_hasHandledAKeyDownEvent; }
 
     const WebCore::MachSendRight& compositingRenderServerPort();
-    void openPluginPreferencePane();
 
     // Computes an affine transform from the given coordinate space to the screen coordinate space.
     bool getScreenTransform(NPCoordinateSpace sourceSpace, WebCore::AffineTransform&);
-
-    WKNPAPIPlugInContainer* plugInContainer();
 
 #ifndef NP_NO_CARBON
     WindowRef windowRef() const;
@@ -98,6 +86,12 @@ public:
 #endif
 
 #endif
+
+#if PLUGIN_ARCHITECTURE(X11)
+    const WebCore::IntRect& frameRectInWindowCoordinates() const { return m_frameRectInWindowCoordinates; }
+#endif
+    const WebCore::IntRect& clipRect() const { return m_clipRect; }
+    const WebCore::IntSize& size() const { return m_pluginSize; }
 
     PluginQuirks quirks() const { return m_pluginModule->pluginQuirks(); }
 
@@ -113,6 +107,8 @@ public:
     bool evaluate(NPObject*, const String&scriptString, NPVariant* result);
     bool isPrivateBrowsingEnabled();
     bool isMuted() const;
+    bool isWindowed() const { return m_isWindowed; }
+    bool isVisible() const { return m_isVisible; }
 
     static void setSetExceptionFunction(void (*)(const String&));
 
@@ -159,6 +155,9 @@ public:
     NPError NPP_GetValue(NPPVariable, void *value);
     NPError NPP_SetValue(NPNVariable, void *value);
 
+    // Convert the given point from plug-in coordinates to root view coordinates.
+    virtual WebCore::IntPoint convertToRootView(const WebCore::IntPoint&) const override;
+
 private:
     NetscapePlugin(PassRefPtr<NetscapePluginModule> pluginModule);
 
@@ -177,7 +176,7 @@ private:
     bool platformInvalidate(const WebCore::IntRect&);
     void platformGeometryDidChange();
     void platformVisibilityDidChange();
-    void platformPaint(WebCore::GraphicsContext*, const WebCore::IntRect& dirtyRect, bool isSnapshot = false);
+    void platformPaint(WebCore::GraphicsContext&, const WebCore::IntRect& dirtyRect, bool isSnapshot = false);
 
     bool platformHandleMouseEvent(const WebMouseEvent&);
     bool platformHandleWheelEvent(const WebWheelEvent&);
@@ -191,7 +190,7 @@ private:
     // Plugin
     virtual bool initialize(const Parameters&) override;
     virtual void destroy() override;
-    virtual void paint(WebCore::GraphicsContext*, const WebCore::IntRect& dirtyRect) override;
+    virtual void paint(WebCore::GraphicsContext&, const WebCore::IntRect& dirtyRect) override;
     virtual RefPtr<ShareableBitmap> snapshot() override;
 #if PLATFORM(COCOA)
     virtual PlatformLayer* pluginLayer() override;
@@ -229,7 +228,7 @@ private:
     virtual bool shouldAllowScripting() override;
     virtual bool shouldAllowNavigationFromDrags() override;
     
-    virtual bool handlesPageScaleFactor() override;
+    virtual bool handlesPageScaleFactor() const override;
 
     virtual NPObject* pluginScriptableNPObject() override;
     
@@ -262,9 +261,6 @@ private:
 
     virtual bool supportsSnapshotting() const override;
 
-    // Convert the given point from plug-in coordinates to root view coordinates.
-    virtual WebCore::IntPoint convertToRootView(const WebCore::IntPoint&) const override;
-
     // Convert the given point from root view coordinates to plug-in coordinates. Returns false if the point can't be
     // converted (if the transformation matrix isn't invertible).
     bool convertFromRootView(const WebCore::IntPoint& pointInRootViewCoordinates, WebCore::IntPoint& pointInPluginCoordinates);
@@ -280,11 +276,6 @@ private:
     virtual void mutedStateChanged(bool) override;
 
     void updateNPNPrivateMode();
-
-#if PLUGIN_ARCHITECTURE(X11)
-    bool platformPostInitializeWindowed(bool needsXEmbed, uint64_t windowID);
-    bool platformPostInitializeWindowless();
-#endif
 
     uint64_t m_nextRequestID;
 
@@ -381,13 +372,11 @@ private:
     // if we can tell the plug-in that we support the updated Cocoa text input specification.
     bool m_hasHandledAKeyDownEvent;
 
-    // The number of NPCocoaEventKeyUp events that  should be ignored.
+    // The number of NPCocoaEventKeyUp events that should be ignored.
     unsigned m_ignoreNextKeyUpEventCounter;
 
     WebCore::IntRect m_windowFrameInScreenCoordinates;
     WebCore::IntRect m_viewFrameInWindowCoordinates;
-
-    RetainPtr<WKNPAPIPlugInContainer> m_plugInContainer;
 
 #ifndef NP_NO_CARBON
     void nullEventTimerFired();
@@ -398,14 +387,7 @@ private:
     NP_CGContext m_npCGContext;
 #endif
 #elif PLUGIN_ARCHITECTURE(X11)
-    WebCore::XUniquePixmap m_drawable;
-    Display* m_pluginDisplay;
-#if PLATFORM(GTK)
-    GtkWidget* m_platformPluginWidget;
-#endif
-
-public: // Need to call it in the NPN_GetValue browser callback.
-    static Display* x11HostDisplay();
+    std::unique_ptr<NetscapePluginUnix> m_impl;
 #endif
 };
 

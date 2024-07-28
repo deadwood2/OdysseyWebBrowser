@@ -28,6 +28,7 @@
 #if WK_API_ENABLED
 
 #import "SameDocumentNavigationType.h"
+#import "WKWebViewConfiguration.h"
 #import <wtf/RefPtr.h>
 #import <wtf/RetainPtr.h>
 
@@ -54,6 +55,7 @@ class WebPageProxy;
 struct PrintInfo;
 }
 
+@class WKWebViewContentProviderRegistry;
 @class _WKFrameHandle;
 
 @interface WKWebView () WK_WEB_VIEW_PROTOCOLS {
@@ -83,14 +85,14 @@ struct PrintInfo;
 
 - (void)_scrollToContentOffset:(WebCore::FloatPoint)contentOffset scrollOrigin:(WebCore::IntPoint)scrollOrigin;
 - (BOOL)_scrollToRect:(WebCore::FloatRect)targetRect origin:(WebCore::FloatPoint)origin minimumScrollDistance:(float)minimumScrollDistance;
-- (void)_scrollByOffset:(WebCore::FloatPoint)offset;
+- (void)_scrollByContentOffset:(WebCore::FloatPoint)offset;
 - (void)_zoomToFocusRect:(WebCore::FloatRect)focusedElementRect selectionRect:(WebCore::FloatRect)selectionRectInDocumentCoordinates fontSize:(float)fontSize minimumScale:(double)minimumScale maximumScale:(double)maximumScale allowScaling:(BOOL)allowScaling forceScroll:(BOOL)forceScroll;
 - (BOOL)_zoomToRect:(WebCore::FloatRect)targetRect withOrigin:(WebCore::FloatPoint)origin fitEntireRect:(BOOL)fitEntireRect minimumScale:(double)minimumScale maximumScale:(double)maximumScale minimumScrollDistance:(float)minimumScrollDistance;
 - (void)_zoomOutWithOrigin:(WebCore::FloatPoint)origin animated:(BOOL)animated;
+- (void)_zoomToInitialScaleWithOrigin:(WebCore::FloatPoint)origin animated:(BOOL)animated;
 
 - (void)_setHasCustomContentView:(BOOL)hasCustomContentView loadedMIMEType:(const WTF::String&)mimeType;
 - (void)_didFinishLoadingDataForCustomContentProviderWithSuggestedFilename:(const WTF::String&)suggestedFilename data:(NSData *)data;
-- (void)_setViewportMetaTagWidth:(float)newWidth;
 
 - (void)_willInvokeUIScrollViewDelegateCallback;
 - (void)_didInvokeUIScrollViewDelegateCallback;
@@ -109,16 +111,17 @@ struct PrintInfo;
 - (void)_navigationGestureDidBegin;
 - (void)_navigationGestureDidEnd;
 
+@property (nonatomic, readonly) BOOL _isBackground;
+
+@property (nonatomic, readonly) WKWebViewContentProviderRegistry *_contentProviderRegistry;
+
+@property (nonatomic, readonly) WKSelectionGranularity _selectionGranularity;
+
+@property (nonatomic, readonly) BOOL _allowsDoubleTapGestures;
 @property (nonatomic, readonly) UIEdgeInsets _computedContentInset;
-#else
-@property (nonatomic, setter=_setIgnoresNonWheelEvents:) BOOL _ignoresNonWheelEvents;
 #endif
 
 - (WKPageRef)_pageForTesting;
-
-#if ENABLE(VIDEO)
-- (void)_mediaDocumentNaturalSizeChanged:(CGSize)newSize;
-#endif
 
 @end
 

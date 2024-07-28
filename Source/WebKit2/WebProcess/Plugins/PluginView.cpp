@@ -31,6 +31,7 @@
 #include "ShareableBitmap.h"
 #include "WebCoreArgumentCoders.h"
 #include "WebEvent.h"
+#include "WebLoaderStrategy.h"
 #include "WebPage.h"
 #include "WebPageProxyMessages.h"
 #include "WebProcess.h"
@@ -62,7 +63,6 @@
 #include <WebCore/ProtectionSpace.h>
 #include <WebCore/ProxyServer.h>
 #include <WebCore/RenderEmbeddedObject.h>
-#include <WebCore/ResourceLoadScheduler.h>
 #include <WebCore/ScriptController.h>
 #include <WebCore/ScrollView.h>
 #include <WebCore/SecurityOrigin.h>
@@ -160,7 +160,7 @@ void PluginView::Stream::start()
     Frame* frame = m_pluginView->m_pluginElement->document().frame();
     ASSERT(frame);
 
-    m_loader = resourceLoadScheduler()->schedulePluginStreamLoad(frame, this, m_request);
+    m_loader = WebProcess::singleton().webLoaderStrategy().schedulePluginStreamLoad(frame, this, m_request);
 }
 
 void PluginView::Stream::cancel()
@@ -521,6 +521,14 @@ bool PluginView::handlesPageScaleFactor() const
     return m_plugin->handlesPageScaleFactor();
 }
 
+bool PluginView::requiresUnifiedScaleFactor() const
+{
+    if (!m_plugin || !m_isInitialized)
+        return false;
+
+    return m_plugin->requiresUnifiedScaleFactor();
+}
+
 void PluginView::webPageDestroyed()
 {
     m_webPage = 0;
@@ -792,13 +800,13 @@ void PluginView::setFrameRect(const WebCore::IntRect& rect)
     viewGeometryDidChange();
 }
 
-void PluginView::paint(GraphicsContext* context, const IntRect& /*dirtyRect*/)
+void PluginView::paint(GraphicsContext& context, const IntRect& /*dirtyRect*/)
 {
     if (!m_plugin || !m_isInitialized || m_pluginElement->displayState() < HTMLPlugInElement::Restarting)
         return;
 
-    if (context->paintingDisabled()) {
-        if (context->updatingControlTints())
+    if (context.paintingDisabled()) {
+        if (context.updatingControlTints())
             m_plugin->updateControlTints(context);
         return;
     }
@@ -810,14 +818,14 @@ void PluginView::paint(GraphicsContext* context, const IntRect& /*dirtyRect*/)
         return;
 
     if (m_transientPaintingSnapshot) {
-        m_transientPaintingSnapshot->paint(*context, contentsScaleFactor(), frameRect().location(), m_transientPaintingSnapshot->bounds());
+        m_transientPaintingSnapshot->paint(context, contentsScaleFactor(), frameRect().location(), m_transientPaintingSnapshot->bounds());
         return;
     }
     
-    GraphicsContextStateSaver stateSaver(*context);
+    GraphicsContextStateSaver stateSaver(context);
 
     // Translate the coordinate system so that the origin is in the top-left corner of the plug-in.
-    context->translate(frameRect().location().x(), frameRect().location().y());
+    context.translate(frameRect().location().x(), frameRect().location().y());
 
     m_plugin->paint(context, paintRect);
 }
@@ -997,6 +1005,14 @@ bool PluginView::shouldNotAddLayer() const
     return m_pluginElement->displayState() < HTMLPlugInElement::Restarting && !m_plugin->supportsSnapshotting();
 }
 
+void PluginView::willDetatchRenderer()
+{
+    if (!m_isInitialized || !m_plugin)
+        return;
+
+    m_plugin->willDetatchRenderer();
+}
+
 PassRefPtr<SharedBuffer> PluginView::liveResourceData() const
 {
     if (!m_isInitialized || !m_plugin)
@@ -1143,7 +1159,7 @@ void PluginView::focusPluginElement()
     if (Page* page = frame()->page())
         page->focusController().setFocusedElement(m_pluginElement.get(), frame());
     else
-        frame()->document()->setFocusedElement(m_pluginElement);
+        frame()->document()->setFocusedElement(m_pluginElement.get());
 }
 
 void PluginView::pendingURLRequestsTimerFired()
@@ -1567,11 +1583,6 @@ const MachSendRight& PluginView::compositingRenderServerPort()
     return WebProcess::singleton().compositingRenderServerPort();
 }
 
-void PluginView::openPluginPreferencePane()
-{
-    ASSERT_NOT_REACHED();
-}
-
 #endif
 
 float PluginView::contentsScaleFactor()
@@ -1862,6 +1873,9 @@ bool PluginView::shouldCreateTransientPaintingSnapshot() const
             return false;
         }
     }
+
+    if (!m_plugin->canCreateTransientPaintingSnapshot())
+        return false;
 
     return true;
 }

@@ -646,11 +646,15 @@ public:
     RefPtr<TypeSet> globalTypeSetForOffset(const ConcurrentJITLocker&, VarOffset, VM&);
     RefPtr<TypeSet> globalTypeSetForVariable(const ConcurrentJITLocker&, UniquedStringImpl* key, VM&);
 
-    bool usesNonStrictEval() { return m_usesNonStrictEval; }
+    bool usesNonStrictEval() const { return m_usesNonStrictEval; }
     void setUsesNonStrictEval(bool usesNonStrictEval) { m_usesNonStrictEval = usesNonStrictEval; }
+
+    bool isNestedLexicalScope() const { return m_nestedLexicalScope; }
+    void markIsNestedLexicalScope() { ASSERT(scopeType() == LexicalScope); m_nestedLexicalScope = true; }
 
     enum ScopeType {
         VarScope,
+        GlobalLexicalScope,
         LexicalScope,
         CatchScope,
         FunctionNameScope
@@ -685,7 +689,8 @@ private:
     std::unique_ptr<TypeProfilingRareData> m_typeProfilingRareData;
 
     bool m_usesNonStrictEval : 1;
-    unsigned m_scopeType : 2; // ScopeType
+    bool m_nestedLexicalScope : 1; // Non-function LexicalScope.
+    unsigned m_scopeType : 3; // ScopeType
     
     WriteBarrier<ScopedArgumentsTable> m_arguments;
     WriteBarrier<InferredValue> m_singletonScope;

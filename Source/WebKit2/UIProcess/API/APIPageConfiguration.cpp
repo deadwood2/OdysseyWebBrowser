@@ -60,7 +60,7 @@ Ref<PageConfiguration> PageConfiguration::copy() const
     copy->m_preferences = this->m_preferences;
     copy->m_preferenceValues = this->m_preferenceValues;
     copy->m_relatedPage = this->m_relatedPage;
-    copy->m_visitedLinkProvider = this->m_visitedLinkProvider;
+    copy->m_visitedLinkStore = this->m_visitedLinkStore;
     copy->m_websiteDataStore = this->m_websiteDataStore;
     copy->m_sessionID = this->m_sessionID;
     copy->m_treatsSHA1SignedCertificatesAsInsecure = this->m_treatsSHA1SignedCertificatesAsInsecure;
@@ -123,14 +123,14 @@ void PageConfiguration::setRelatedPage(WebPageProxy* relatedPage)
 }
 
 
-VisitedLinkProvider* PageConfiguration::visitedLinkProvider()
+VisitedLinkStore* PageConfiguration::visitedLinkStore()
 {
-    return m_visitedLinkProvider.get();
+    return m_visitedLinkStore.get();
 }
 
-void PageConfiguration::setVisitedLinkProvider(VisitedLinkProvider* visitedLinkProvider)
+void PageConfiguration::setVisitedLinkStore(VisitedLinkStore* visitedLinkStore)
 {
-    m_visitedLinkProvider = visitedLinkProvider;
+    m_visitedLinkStore = visitedLinkStore;
 }
 
 API::WebsiteDataStore* PageConfiguration::websiteDataStore()
@@ -141,6 +141,11 @@ API::WebsiteDataStore* PageConfiguration::websiteDataStore()
 void PageConfiguration::setWebsiteDataStore(API::WebsiteDataStore* websiteDataStore)
 {
     m_websiteDataStore = websiteDataStore;
+
+    if (m_websiteDataStore)
+        m_sessionID = m_websiteDataStore->websiteDataStore().sessionID();
+    else
+        m_sessionID = WebCore::SessionID();
 }
 
 WebCore::SessionID PageConfiguration::sessionID()

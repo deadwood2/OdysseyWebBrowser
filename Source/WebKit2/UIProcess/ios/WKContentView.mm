@@ -29,6 +29,7 @@
 #if PLATFORM(IOS)
 
 #import "APIPageConfiguration.h"
+#import "AccessibilityIOS.h"
 #import "ApplicationStateTracker.h"
 #import "PageClientImplIOS.h"
 #import "RemoteLayerTreeDrawingAreaProxy.h"
@@ -44,7 +45,6 @@
 #import "WKWebViewInternal.h"
 #import "WebFrameProxy.h"
 #import "WebKit2Initialize.h"
-#import "WebKitSystemInterfaceIOS.h"
 #import "WebPageGroup.h"
 #import "WebProcessPool.h"
 #import "WebSystemInterface.h"
@@ -53,6 +53,7 @@
 #import <WebCore/FrameView.h>
 #import <WebCore/InspectorOverlay.h>
 #import <WebCore/NotImplemented.h>
+#import <WebCore/PlatformScreen.h>
 #import <WebCore/QuartzCoreSPI.h>
 #import <wtf/CurrentTime.h>
 #import <wtf/RetainPtr.h>
@@ -186,9 +187,9 @@ private:
 {
     ASSERT(_pageClient);
 
-    _page = processPool.createWebPage(*_pageClient, WTF::move(configuration));
+    _page = processPool.createWebPage(*_pageClient, WTFMove(configuration));
     _page->initializeWebPage();
-    _page->setIntrinsicDeviceScaleFactor(WKGetScaleFactorForScreen([UIScreen mainScreen]));
+    _page->setIntrinsicDeviceScaleFactor(screenScaleFactor([UIScreen mainScreen]));
     _page->setUseFixedLayout(true);
     _page->setDelegatesScrolling(true);
 
@@ -229,19 +230,7 @@ private:
     _pageClient = std::make_unique<PageClientImpl>(self, webView);
     _webView = webView;
 
-    return [self _commonInitializationWithProcessPool:processPool configuration:WTF::move(configuration)];
-}
-
-- (instancetype)initWithFrame:(CGRect)frame processPool:(WebKit::WebProcessPool&)processPool configuration:(Ref<API::PageConfiguration>&&)configuration wkView:(WKView *)wkView
-{
-    if (!(self = [super initWithFrame:frame]))
-        return nil;
-
-    InitializeWebKit2();
-
-    _pageClient = std::make_unique<PageClientImpl>(self, wkView);
-
-    return [self _commonInitializationWithProcessPool:processPool configuration:WTF::move(configuration)];
+    return [self _commonInitializationWithProcessPool:processPool configuration:WTFMove(configuration)];
 }
 
 - (void)dealloc
@@ -378,7 +367,7 @@ private:
 
     FloatRect fixedPositionRectForLayout = _page->computeCustomFixedPositionRect(unobscuredRect, zoomScale, WebPageProxy::UnobscuredRectConstraint::ConstrainedToDocumentRect);
     _page->updateVisibleContentRects(visibleRect, unobscuredRect, unobscuredRectInScrollViewCoordinates, fixedPositionRectForLayout,
-        zoomScale, isStableState, isChangingObscuredInsetsInteractively, timestamp, velocityData.horizontalVelocity, velocityData.verticalVelocity, velocityData.scaleChangeRate);
+        zoomScale, isStableState, isChangingObscuredInsetsInteractively, _webView._allowsViewportShrinkToFit, timestamp, velocityData.horizontalVelocity, velocityData.verticalVelocity, velocityData.scaleChangeRate);
 
     RemoteScrollingCoordinatorProxy* scrollingCoordinator = _page->scrollingCoordinatorProxy();
     FloatRect fixedPositionRect = _page->computeCustomFixedPositionRect(_page->unobscuredContentRect(), zoomScale);
@@ -431,7 +420,7 @@ private:
 - (void)_updateForScreen:(UIScreen *)screen
 {
     ASSERT(screen);
-    _page->setIntrinsicDeviceScaleFactor(WKGetScaleFactorForScreen(screen));
+    _page->setIntrinsicDeviceScaleFactor(screenScaleFactor(screen));
     [self _accessibilityRegisterUIProcessTokens];
 }
 
@@ -441,19 +430,32 @@ private:
     [self _accessibilityRegisterUIProcessTokens];
 }
 
+static void storeAccessibilityRemoteConnectionInformation(id element, pid_t pid, mach_port_t sendPort, NSUUID *uuid)
+{
+    // The accessibility bundle needs to know the uuid, pid and mach_port that this object will refer to.
+    objc_setAssociatedObject(element, (void*)[@"ax-uuid" hash], uuid, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(element, (void*)[@"ax-pid" hash], @(pid), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(element, (void*)[@"ax-machport" hash], @(sendPort), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
 - (void)_accessibilityRegisterUIProcessTokens
 {
-    RetainPtr<CFUUIDRef> uuid = adoptCF(CFUUIDCreate(kCFAllocatorDefault));
-    NSData *remoteElementToken = WKAXRemoteToken(uuid.get());
+    auto uuid = [NSUUID UUID];
+    NSData *remoteElementToken = newAccessibilityRemoteToken(uuid);
 
     // Store information about the WebProcess that can later be retrieved by the iOS Accessibility runtime.
     if (_page->process().state() == WebProcessProxy::State::Running) {
         IPC::Connection* connection = _page->process().connection();
-        WKAXStoreRemoteConnectionInformation(self, _page->process().processIdentifier(), connection->identifier().port, uuid.get());
+        storeAccessibilityRemoteConnectionInformation(self, _page->process().processIdentifier(), connection->identifier().port, uuid);
 
         IPC::DataReference elementToken = IPC::DataReference(reinterpret_cast<const uint8_t*>([remoteElementToken bytes]), [remoteElementToken length]);
         _page->registerUIProcessAccessibilityTokens(elementToken, elementToken);
     }
+}
+
+- (void)_webViewDestroyed
+{
+    _webView = nil;
 }
 
 #pragma mark PageClientImpl methods
@@ -550,6 +552,11 @@ private:
 - (void)_zoomOutWithOrigin:(CGPoint)origin
 {
     return [_webView _zoomOutWithOrigin:origin animated:YES];
+}
+
+- (void)_zoomToInitialScaleWithOrigin:(CGPoint)origin
+{
+    return [_webView _zoomToInitialScaleWithOrigin:origin animated:YES];
 }
 
 - (void)_applicationWillResignActive:(NSNotification*)notification

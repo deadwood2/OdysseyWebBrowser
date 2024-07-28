@@ -96,16 +96,9 @@ struct WebProcessCreationParameters {
     Vector<String> urlSchemesRegisteredAsNoAccess;
     Vector<String> urlSchemesRegisteredAsDisplayIsolated;
     Vector<String> urlSchemesRegisteredAsCORSEnabled;
+    Vector<String> urlSchemesRegisteredAsAlwaysRevalidated;
 #if ENABLE(CACHE_PARTITIONING)
     Vector<String> urlSchemesRegisteredAsCachePartitioned;
-#endif
-    Vector<String> urlSchemesRegisteredForCustomProtocols;
-#if USE(SOUP)
-    String diskCacheDirectory;
-    String cookiePersistentStoragePath;
-    uint32_t cookiePersistentStorageType;
-    HTTPCookieAcceptPolicy cookieAcceptPolicy;
-    bool ignoreTLSErrors;
 #endif
 
     CacheModel cacheModel;
@@ -117,6 +110,7 @@ struct WebProcessCreationParameters {
     Vector<String> fontWhitelist;
 
     bool iconDatabaseEnabled;
+    bool shouldRewriteConstAsVar { false };
 
     double terminationTimeout;
 
@@ -142,7 +136,6 @@ struct WebProcessCreationParameters {
     String uiProcessBundleResourcePath;
     SandboxExtension::Handle uiProcessBundleResourcePathExtensionHandle;
 
-    bool shouldEnableKerningAndLigaturesByDefault;
     bool shouldEnableJIT;
     bool shouldEnableFTLJIT;
     
@@ -150,12 +143,12 @@ struct WebProcessCreationParameters {
 
 #endif // PLATFORM(COCOA)
 
-#if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
-    HashMap<String, bool> notificationPermissions;
+#if PLATFORM(MAC)
+    bool shouldEnableTabSuspension;
 #endif
 
-#if ENABLE(NETWORK_PROCESS)
-    bool usesNetworkProcess;
+#if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
+    HashMap<String, bool> notificationPermissions;
 #endif
 
     HashMap<WebCore::SessionID, HashMap<unsigned, double>> plugInAutoStartOriginHashes;
@@ -173,7 +166,7 @@ struct WebProcessCreationParameters {
     HashMap<String, HashMap<String, HashMap<String, uint8_t>>> pluginLoadClientPolicies;
 #endif
 
-#if (TARGET_OS_IPHONE && __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
+#if TARGET_OS_IPHONE || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
     RetainPtr<CFDataRef> networkATSContext;
 #endif
 };

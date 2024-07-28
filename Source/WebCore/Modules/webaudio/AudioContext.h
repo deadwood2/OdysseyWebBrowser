@@ -308,7 +308,7 @@ private:
 
     // ActiveDOMObject API.
     void stop() override;
-    bool canSuspendForPageCache() const override;
+    bool canSuspendForDocumentSuspension() const override;
     const char* activeDOMObjectName() const override;
 
     // When the context goes away, there might still be some sources which haven't finished playing.
@@ -316,13 +316,13 @@ private:
     void derefUnfinishedSourceNodes();
 
     // PlatformMediaSessionClient
-    virtual PlatformMediaSession::MediaType mediaType() const override { return PlatformMediaSession::WebAudio; }
-    virtual PlatformMediaSession::MediaType presentationType() const override { return PlatformMediaSession::WebAudio; }
-    virtual void mayResumePlayback(bool shouldResume) override;
-    virtual void suspendPlayback() override;
-    virtual bool canReceiveRemoteControlCommands() const override { return false; }
-    virtual void didReceiveRemoteControlCommand(PlatformMediaSession::RemoteControlCommandType) override { }
-    virtual bool overrideBackgroundPlaybackRestriction() const override { return false; }
+    PlatformMediaSession::MediaType mediaType() const override { return PlatformMediaSession::WebAudio; }
+    PlatformMediaSession::MediaType presentationType() const override { return PlatformMediaSession::WebAudio; }
+    void mayResumePlayback(bool shouldResume) override;
+    void suspendPlayback() override;
+    bool canReceiveRemoteControlCommands() const override { return false; }
+    void didReceiveRemoteControlCommand(PlatformMediaSession::RemoteControlCommandType) override { }
+    bool shouldOverrideBackgroundPlaybackRestriction(PlatformMediaSession::InterruptionType) const override { return false; }
 
     // EventTarget
     virtual void refEventTarget() override { ref(); }
@@ -397,6 +397,14 @@ private:
 
     State m_state { State::Suspended };
 };
+
+inline bool operator==(const AudioContext& lhs, const AudioContext& rhs) {
+    return &lhs == &rhs;
+}
+
+inline bool operator!=(const AudioContext& lhs, const AudioContext& rhs) {
+    return &lhs != &rhs;
+}
 
 } // WebCore
 

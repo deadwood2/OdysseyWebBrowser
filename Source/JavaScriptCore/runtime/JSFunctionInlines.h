@@ -35,15 +35,24 @@ inline JSFunction* JSFunction::createWithInvalidatedReallocationWatchpoint(
     VM& vm, FunctionExecutable* executable, JSScope* scope)
 {
     ASSERT(executable->singletonFunction()->hasBeenInvalidated());
-    return createImpl(vm, executable, scope);
+    return createImpl(vm, executable, scope, scope->globalObject()->functionStructure());
 }
 
-inline JSFunction::JSFunction(VM& vm, FunctionExecutable* executable, JSScope* scope)
+inline JSFunction::JSFunction(VM& vm, FunctionExecutable* executable, JSScope* scope, Structure* structure)
+    : Base(vm, scope, structure)
+    , m_executable(vm, this, executable)
+    , m_rareData()
+{
+}
+
+#if ENABLE(WEBASSEMBLY)
+inline JSFunction::JSFunction(VM& vm, WebAssemblyExecutable* executable, JSScope* scope)
     : Base(vm, scope, scope->globalObject()->functionStructure())
     , m_executable(vm, this, executable)
     , m_rareData()
 {
 }
+#endif
 
 inline FunctionExecutable* JSFunction::jsExecutable() const
 {
@@ -57,8 +66,17 @@ inline bool JSFunction::isHostFunction() const
     return m_executable->isHostFunction();
 }
 
+inline Intrinsic JSFunction::intrinsic() const
+{
+    return executable()->intrinsic();
+}
+
 inline bool JSFunction::isBuiltinFunction() const
 {
+#if ENABLE(WEBASSEMBLY)
+    if (m_executable->isWebAssemblyExecutable())
+        return false;
+#endif
     return !isHostFunction() && jsExecutable()->isBuiltinFunction();
 }
 

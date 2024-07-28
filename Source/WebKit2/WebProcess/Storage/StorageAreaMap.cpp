@@ -26,7 +26,6 @@
 #include "config.h"
 #include "StorageAreaMap.h"
 
-#include "SecurityOriginData.h"
 #include "StorageAreaImpl.h"
 #include "StorageAreaMapMessages.h"
 #include "StorageManagerMessages.h"
@@ -39,6 +38,7 @@
 #include <WebCore/MainFrame.h>
 #include <WebCore/Page.h>
 #include <WebCore/PageGroup.h>
+#include <WebCore/SecurityOriginData.h>
 #include <WebCore/Storage.h>
 #include <WebCore/StorageEventDispatcher.h>
 #include <WebCore/StorageMap.h>
@@ -55,7 +55,7 @@ static uint64_t generateStorageMapID()
 
 Ref<StorageAreaMap> StorageAreaMap::create(StorageNamespaceImpl* storageNamespace, Ref<WebCore::SecurityOrigin>&& securityOrigin)
 {
-    return adoptRef(*new StorageAreaMap(storageNamespace, WTF::move(securityOrigin)));
+    return adoptRef(*new StorageAreaMap(storageNamespace, WTFMove(securityOrigin)));
 }
 
 StorageAreaMap::StorageAreaMap(StorageNamespaceImpl* storageNamespace, Ref<WebCore::SecurityOrigin>&& securityOrigin)
@@ -64,7 +64,7 @@ StorageAreaMap::StorageAreaMap(StorageNamespaceImpl* storageNamespace, Ref<WebCo
     , m_storageType(storageNamespace->storageType())
     , m_storageNamespaceID(storageNamespace->storageNamespaceID())
     , m_quotaInBytes(storageNamespace->quotaInBytes())
-    , m_securityOrigin(WTF::move(securityOrigin))
+    , m_securityOrigin(WTFMove(securityOrigin))
     , m_currentSeed(0)
     , m_hasPendingClear(false)
     , m_hasPendingGetValues(false)

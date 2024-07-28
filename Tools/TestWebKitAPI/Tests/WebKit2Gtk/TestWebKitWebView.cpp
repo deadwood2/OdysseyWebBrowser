@@ -96,7 +96,8 @@ static void testWebViewWebContextLifetime(WebViewTest* test, gconstpointer)
 
 static void testWebViewCustomCharset(WebViewTest* test, gconstpointer)
 {
-    test->loadHtml("<html><body>WebKitGTK+ custom encoding test</body></html>", nullptr);
+    test->loadURI(gServer->getURIForPath("/").data());
+    test->waitUntilLoadFinished();
     g_assert(!webkit_web_view_get_custom_charset(test->m_webView));
     webkit_web_view_set_custom_charset(test->m_webView, "utf8");
     // Changing the charset reloads the page, so wait until reloaded.
@@ -637,6 +638,8 @@ public:
         None,
         Permission,
         Shown,
+        Clicked,
+        OnClicked,
         Closed,
         OnClosed,
     };
@@ -665,19 +668,33 @@ public:
         return TRUE;
     }
 
+    static gboolean notificationClickedCallback(WebKitNotification* notification, NotificationWebViewTest* test)
+    {
+        g_assert(test->m_notification == notification);
+        test->m_event = Clicked;
+        return TRUE;
+    }
+
     static gboolean showNotificationCallback(WebKitWebView*, WebKitNotification* notification, NotificationWebViewTest* test)
     {
         test->assertObjectIsDeletedWhenTestFinishes(G_OBJECT(notification));
         test->m_notification = notification;
         g_signal_connect(notification, "closed", G_CALLBACK(notificationClosedCallback), test);
+        g_signal_connect(notification, "clicked", G_CALLBACK(notificationClickedCallback), test);
         test->m_event = Shown;
         g_main_loop_quit(test->m_mainLoop);
         return TRUE;
     }
 
-    static void notificationsMessageReceivedCallback(WebKitUserContentManager* userContentManager, WebKitJavascriptResult*, NotificationWebViewTest* test)
+    static void notificationsMessageReceivedCallback(WebKitUserContentManager* userContentManager, WebKitJavascriptResult* javascriptResult, NotificationWebViewTest* test)
     {
-        test->m_event = OnClosed;
+        GUniquePtr<char> valueString(WebViewTest::javascriptResultToCString(javascriptResult));
+
+        if (g_str_equal(valueString.get(), "clicked"))
+            test->m_event = OnClicked;
+        else if (g_str_equal(valueString.get(), "closed"))
+            test->m_event = OnClosed;
+
         g_main_loop_quit(test->m_mainLoop);
     }
 
@@ -715,6 +732,15 @@ public:
         GUniquePtr<char> jscode(g_strdup_printf("n = new Notification('%s', { body: '%s'});", title, body));
         webkit_web_view_run_javascript(m_webView, jscode.get(), nullptr, nullptr, nullptr);
 
+        g_main_loop_run(m_mainLoop);
+    }
+
+    void clickNotificationAndWaitUntilClicked()
+    {
+        m_event = None;
+        runJavaScriptAndWaitUntilFinished("n.onclick = function() { window.webkit.messageHandlers.notifications.postMessage('clicked'); }", nullptr);
+        webkit_notification_clicked(m_notification);
+        g_assert(m_event == Clicked);
         g_main_loop_run(m_mainLoop);
     }
 
@@ -756,6 +782,9 @@ static void testWebViewNotification(NotificationWebViewTest* test, gconstpointer
     g_assert(test->m_notification);
     g_assert_cmpstr(webkit_notification_get_title(test->m_notification), ==, title);
     g_assert_cmpstr(webkit_notification_get_body(test->m_notification), ==, body);
+
+    test->clickNotificationAndWaitUntilClicked();
+    g_assert(test->m_event == NotificationWebViewTest::OnClicked);
 
     test->closeNotificationAndWaitUntilClosed();
     g_assert(test->m_event == NotificationWebViewTest::Closed);

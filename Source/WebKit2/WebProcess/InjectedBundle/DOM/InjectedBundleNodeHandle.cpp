@@ -161,7 +161,7 @@ static PassRefPtr<WebImage> imageForRect(FrameView* frameView, const IntRect& re
 
     PaintBehavior oldPaintBehavior = frameView->paintBehavior();
     frameView->setPaintBehavior(paintBehavior);
-    frameView->paintContentsForSnapshot(graphicsContext.get(), rect, shouldPaintSelection, FrameView::DocumentCoordinates);
+    frameView->paintContentsForSnapshot(*graphicsContext.get(), rect, shouldPaintSelection, FrameView::DocumentCoordinates);
     frameView->setPaintBehavior(oldPaintBehavior);
 
     return snapshot.release();
@@ -231,15 +231,15 @@ bool InjectedBundleNodeHandle::isHTMLInputElementAutoFillButtonEnabled() const
     if (!is<HTMLInputElement>(m_node))
         return false;
     
-    return downcast<HTMLInputElement>(m_node.get()).showAutoFillButton();
+    return downcast<HTMLInputElement>(m_node.get()).autoFillButtonType() != AutoFillButtonType::None;
 }
 
-void InjectedBundleNodeHandle::setHTMLInputElementAutoFillButtonEnabled(bool filled)
+void InjectedBundleNodeHandle::setHTMLInputElementAutoFillButtonEnabled(AutoFillButtonType autoFillButtonType)
 {
     if (!is<HTMLInputElement>(m_node))
         return;
 
-    downcast<HTMLInputElement>(m_node.get()).setShowAutoFillButton(filled);
+    downcast<HTMLInputElement>(m_node.get()).setShowAutoFillButton(autoFillButtonType);
 }
 
 IntRect InjectedBundleNodeHandle::htmlInputElementAutoFillButtonBounds()

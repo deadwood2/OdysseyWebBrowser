@@ -29,18 +29,32 @@
     <!--
     These resources should match the order and groups used in Main.html.
     -->
+    <script src="External/CodeMirror/codemirror.js"></script>
+    <script src="External/CodeMirror/css.js"></script>
+    <script src="External/CodeMirror/htmlmixed.js"></script>
+    <script src="External/CodeMirror/javascript.js"></script>
+    <script src="External/Esprima/esprima.js"></script>
+
     <script src="Base/WebInspector.js"></script>
+    <script src="Base/LinkedList.js"></script>
+    <script src="Base/ListMultimap.js"></script>
     <script src="Base/Object.js"></script>
 
-    <script src="Base/Test.js"></script>
+    <script src="Test/TestHarness.js"></script>
+    <script src="Test/FrontendTestHarness.js"></script>
+    <script src="Test/TestSuite.js"></script>
+
+    <script src="Test/Test.js"></script>
 
     <script src="Base/DOMUtilities.js"></script>
     <script src="Base/EventListener.js"></script>
     <script src="Base/EventListenerSet.js"></script>
     <script src="Base/URLUtilities.js"></script>
     <script src="Base/Utilities.js"></script>
+    <script src="Base/Setting.js"></script>
 
-    <script src="External/Esprima/esprima.js"></script>
+    <script src="Protocol/ProtocolTracer.js"></script>
+    <script src="Protocol/LoggingProtocolTracer.js"></script>
 
     <script src="Protocol/InspectorBackend.js"></script>
     <script src="Protocol/InspectorFrontendAPI.js"></script>
@@ -54,6 +68,7 @@
     <script src="Protocol/DOMObserver.js"></script>
     <script src="Protocol/DOMStorageObserver.js"></script>
     <script src="Protocol/DebuggerObserver.js"></script>
+    <script src="Protocol/HeapObserver.js"></script>
     <script src="Protocol/NetworkObserver.js"></script>
     <script src="Protocol/PageObserver.js"></script>
     <script src="Protocol/RemoteObject.js"></script>
@@ -63,6 +78,7 @@
 
     <script src="Models/BreakpointAction.js"></script>
     <script src="Models/ConsoleMessage.js"></script>
+    <script src="Models/Instrument.js"></script>
     <script src="Models/SourceCode.js"></script>
     <script src="Models/SourceCodeLocation.js"></script>
     <script src="Models/Timeline.js"></script>
@@ -71,6 +87,7 @@
     <script src="Models/Breakpoint.js"></script>
     <script src="Models/CSSCompletions.js"></script>
     <script src="Models/CSSKeywordCompletions.js"></script>
+    <script src="Models/CSSMedia.js"></script>
     <script src="Models/CSSProperty.js"></script>
     <script src="Models/CSSRule.js"></script>
     <script src="Models/CSSSelector.js"></script>
@@ -79,6 +96,7 @@
     <script src="Models/CallFrame.js"></script>
     <script src="Models/CollectionEntry.js"></script>
     <script src="Models/Color.js"></script>
+    <script src="Models/CookieStorageObject.js"></script>
     <script src="Models/ConsoleCommandResultMessage.js"></script>
     <script src="Models/ContentFlow.js"></script>
     <script src="Models/DOMNode.js"></script>
@@ -89,13 +107,17 @@
     <script src="Models/ExecutionContext.js"></script>
     <script src="Models/ExecutionContextList.js"></script>
     <script src="Models/Frame.js"></script>
+    <script src="Models/FPSInstrument.js"></script>
+    <script src="Models/GarbageCollection.js"></script>
     <script src="Models/Geometry.js"></script>
     <script src="Models/IndexedDatabase.js"></script>
     <script src="Models/IndexedDatabaseObjectStore.js"></script>
     <script src="Models/IndexedDatabaseObjectStoreIndex.js"></script>
     <script src="Models/IssueMessage.js"></script>
+    <script src="Models/LayoutInstrument.js"></script>
     <script src="Models/LayoutTimelineRecord.js"></script>
     <script src="Models/LazySourceCodeLocation.js"></script>
+    <script src="Models/NetworkInstrument.js"></script>
     <script src="Models/NetworkTimeline.js"></script>
     <script src="Models/ObjectPreview.js"></script>
     <script src="Models/Probe.js"></script>
@@ -116,9 +138,9 @@
     <script src="Models/Revision.js"></script>
     <script src="Models/ScopeChainNode.js"></script>
     <script src="Models/Script.js"></script>
+    <script src="Models/ScriptInstrument.js"></script>
     <script src="Models/ScriptSyntaxTree.js"></script>
     <script src="Models/ScriptTimelineRecord.js"></script>
-    <script src="Models/Setting.js"></script>
     <script src="Models/SourceCodeLocation.js"></script>
     <script src="Models/SourceCodeRevision.js"></script>
     <script src="Models/SourceCodeTimeline.js"></script>
@@ -132,6 +154,7 @@
     <script src="Controllers/DOMTreeManager.js"></script>
     <script src="Controllers/DebuggerManager.js"></script>
     <script src="Controllers/FrameResourceManager.js"></script>
+    <script src="Controllers/HeapManager.js"></script>
     <script src="Controllers/IssueManager.js"></script>
     <script src="Controllers/LogManager.js"></script>
     <script src="Controllers/ProbeManager.js"></script>
@@ -140,8 +163,22 @@
     <script src="Controllers/StorageManager.js"></script>
     <script src="Controllers/TimelineManager.js"></script>
 
+    <script src="Controllers/Formatter.js"></script>
+    <script src="Controllers/FormatterContentBuilder.js"></script>
+    <script src="Views/CodeMirrorAdditions.js"></script>
+    <script src="Views/CodeMirrorFormatters.js"></script>
+
     <script type="text/javascript">
         WebInspector.loaded();
+
+        // Debug logging is synchronous on the test page.
+        InspectorTest.forceDebugLogging = false;
+
+        // Tee all TestHarness commands to stderr from within the Inspector.
+        InspectorTest.dumpActivityToSystemConsole = false;
+
+        // Best used in combination with dumpActivityToSystemConsole.
+        InspectorBackend.dumpInspectorProtocolMessages = false;
     </script>
 </head>
 <body>

@@ -48,8 +48,8 @@
 #include <wtf/spi/darwin/XPCSPI.h>
 #endif
 
-#if PLATFORM(GTK) || PLATFORM(EFL)
-#include "PlatformProcessIdentifier.h"
+#if PLATFORM(GTK)
+#include "GSocketMonitor.h"
 #endif
 
 namespace IPC {
@@ -65,9 +65,7 @@ enum MessageSendFlags {
 enum SyncMessageSendFlags {
     // Use this to inform that this sync call will suspend this process until the user responds with input.
     InformPlatformProcessWillSuspend = 1 << 0,
-    // Some platform accessibility clients can't suspend gracefully and need to spin the run loop so WebProcess doesn't hang.
-    // FIXME (126021): Remove when no platforms need to support this.
-    SpinRunLoopWhileWaitingForReply = 1 << 1,
+    UseFullySynchronousModeForTesting = 1 << 1,
 };
 
 enum WaitForMessageFlags {
@@ -128,7 +126,7 @@ public:
 
         Identifier(mach_port_t port, OSObjectPtr<xpc_connection_t> xpcConnection)
             : port(port)
-            , xpcConnection(WTF::move(xpcConnection))
+            , xpcConnection(WTFMove(xpcConnection))
         {
         }
 
@@ -205,6 +203,8 @@ public:
     void uninstallIncomingSyncMessageCallback(uint64_t);
     bool hasIncomingSyncMessage();
 
+    void allowFullySynchronousModeForTesting() { m_fullySynchronousModeIsAllowedForTesting = true; }
+
 private:
     Connection(Identifier, bool isServer, Client&);
     void platformInitialize(Identifier);
@@ -256,6 +256,8 @@ private:
     unsigned m_inSendSyncCount;
     unsigned m_inDispatchMessageCount;
     unsigned m_inDispatchMessageMarkedDispatchWhenWaitingForSyncReplyCount;
+    unsigned m_inDispatchMessageMarkedToUseFullySynchronousModeForTesting { 0 };
+    bool m_fullySynchronousModeIsAllowedForTesting { false };
     bool m_didReceiveInvalidMessage;
 
     // Incoming messages.
@@ -323,10 +325,11 @@ private:
     bool processMessage();
 
     Vector<uint8_t> m_readBuffer;
-    size_t m_readBufferSize;
     Vector<int> m_fileDescriptors;
-    size_t m_fileDescriptorsSize;
     int m_socketDescriptor;
+#if PLATFORM(GTK)
+    GSocketMonitor m_socketMonitor;
+#endif
 #elif OS(DARWIN)
     // Called on the connection queue.
     void receiveSourceEventHandler();
@@ -358,7 +361,7 @@ template<typename T> bool Connection::send(T&& message, uint64_t destinationID, 
     auto encoder = std::make_unique<MessageEncoder>(T::receiverName(), T::name(), destinationID);
     encoder->encode(message.arguments());
     
-    return sendMessage(WTF::move(encoder), messageSendFlags);
+    return sendMessage(WTFMove(encoder), messageSendFlags);
 }
 
 template<typename T> bool Connection::sendSync(T&& message, typename T::Reply&& reply, uint64_t destinationID, std::chrono::milliseconds timeout, unsigned syncSendFlags)
@@ -367,12 +370,17 @@ template<typename T> bool Connection::sendSync(T&& message, typename T::Reply&& 
 
     uint64_t syncRequestID = 0;
     std::unique_ptr<MessageEncoder> encoder = createSyncMessageEncoder(T::receiverName(), T::name(), destinationID, syncRequestID);
-    
+
+    if (syncSendFlags & SyncMessageSendFlags::UseFullySynchronousModeForTesting) {
+        encoder->setFullySynchronousModeForTesting();
+        m_fullySynchronousModeIsAllowedForTesting = true;
+    }
+
     // Encode the rest of the input arguments.
     encoder->encode(message.arguments());
 
     // Now send the message and wait for a reply.
-    std::unique_ptr<MessageDecoder> replyDecoder = sendSyncMessage(syncRequestID, WTF::move(encoder), timeout, syncSendFlags);
+    std::unique_ptr<MessageDecoder> replyDecoder = sendSyncMessage(syncRequestID, WTFMove(encoder), timeout, syncSendFlags);
     if (!replyDecoder)
         return false;
 

@@ -68,6 +68,7 @@ const ClassInfo ObjectConstructor::s_info = { "Function", &InternalFunction::s_i
   getPrototypeOf            objectConstructorGetPrototypeOf             DontEnum|Function 1
   setPrototypeOf            objectConstructorSetPrototypeOf             DontEnum|Function 2
   getOwnPropertyDescriptor  objectConstructorGetOwnPropertyDescriptor   DontEnum|Function 2
+  getOwnPropertyDescriptors objectConstructorGetOwnPropertyDescriptors  DontEnum|Function 1
   getOwnPropertyNames       objectConstructorGetOwnPropertyNames        DontEnum|Function 1
   keys                      objectConstructorKeys                       DontEnum|Function 1
   defineProperty            objectConstructorDefineProperty             DontEnum|Function 3
@@ -80,7 +81,7 @@ const ClassInfo ObjectConstructor::s_info = { "Function", &InternalFunction::s_i
   isFrozen                  objectConstructorIsFrozen                   DontEnum|Function 1
   isExtensible              objectConstructorIsExtensible               DontEnum|Function 1
   is                        objectConstructorIs                         DontEnum|Function 2
-  assign                    objectConstructorAssign                     DontEnum|Function 2
+  assign                    JSBuiltin                                   DontEnum|Function 2
 @end
 */
 
@@ -97,9 +98,9 @@ void ObjectConstructor::finishCreation(VM& vm, JSGlobalObject* globalObject, Obj
     // no. of arguments for constructor
     putDirectWithoutTransition(vm, vm.propertyNames->length, jsNumber(1), ReadOnly | DontEnum | DontDelete);
 
-    JSC_NATIVE_FUNCTION("getOwnPropertySymbols", objectConstructorGetOwnPropertySymbols, DontEnum, 1);
-    JSC_NATIVE_FUNCTION(vm.propertyNames->getPrototypeOfPrivateName, objectConstructorGetPrototypeOf, DontEnum, 1);
-    JSC_NATIVE_FUNCTION(vm.propertyNames->getOwnPropertyNamesPrivateName, objectConstructorGetOwnPropertyNames, DontEnum, 1);
+    JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION("getOwnPropertySymbols", objectConstructorGetOwnPropertySymbols, DontEnum, 1);
+    JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION(vm.propertyNames->getPrototypeOfPrivateName, objectConstructorGetPrototypeOf, DontEnum, 1);
+    JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION(vm.propertyNames->getOwnPropertyNamesPrivateName, objectConstructorGetOwnPropertyNames, DontEnum, 1);
 }
 
 JSFunction* ObjectConstructor::addDefineProperty(ExecState* exec, JSGlobalObject* globalObject)
@@ -222,19 +223,13 @@ EncodedJSValue JSC_HOST_CALL objectConstructorSetPrototypeOf(ExecState* exec)
     return JSValue::encode(objectValue);
 }
 
-EncodedJSValue JSC_HOST_CALL objectConstructorGetOwnPropertyDescriptor(ExecState* exec)
+JSValue objectConstructorGetOwnPropertyDescriptor(ExecState* exec, JSObject* object, const Identifier& propertyName)
 {
-    JSObject* object = exec->argument(0).toObject(exec);
-    if (exec->hadException())
-        return JSValue::encode(jsNull());
-    auto propertyName = exec->argument(1).toPropertyKey(exec);
-    if (exec->hadException())
-        return JSValue::encode(jsNull());
     PropertyDescriptor descriptor;
     if (!object->getOwnPropertyDescriptor(exec, propertyName, descriptor))
-        return JSValue::encode(jsUndefined());
+        return jsUndefined();
     if (exec->hadException())
-        return JSValue::encode(jsUndefined());
+        return jsUndefined();
 
     JSObject* description = constructEmptyObject(exec);
     if (!descriptor.isAccessorDescriptor()) {
@@ -250,7 +245,46 @@ EncodedJSValue JSC_HOST_CALL objectConstructorGetOwnPropertyDescriptor(ExecState
     description->putDirect(exec->vm(), exec->propertyNames().enumerable, jsBoolean(descriptor.enumerable()), 0);
     description->putDirect(exec->vm(), exec->propertyNames().configurable, jsBoolean(descriptor.configurable()), 0);
 
-    return JSValue::encode(description);
+    return description;
+}
+
+JSValue objectConstructorGetOwnPropertyDescriptors(ExecState* exec, JSObject* object)
+{
+    PropertyNameArray properties(exec, PropertyNameMode::StringsAndSymbols);
+    object->methodTable(exec->vm())->getOwnPropertyNames(object, exec, properties, EnumerationMode(DontEnumPropertiesMode::Include));
+    if (exec->hadException())
+        return jsUndefined();
+
+    JSObject* descriptors = constructEmptyObject(exec);
+
+    for (auto& propertyName : properties) {
+        JSValue fromDescriptor = objectConstructorGetOwnPropertyDescriptor(exec, object, propertyName);
+        if (exec->hadException())
+            return jsUndefined();
+
+        descriptors->putDirect(exec->vm(), propertyName, fromDescriptor, 0);
+    }
+
+    return descriptors;
+}
+
+EncodedJSValue JSC_HOST_CALL objectConstructorGetOwnPropertyDescriptor(ExecState* exec)
+{
+    JSObject* object = exec->argument(0).toObject(exec);
+    if (exec->hadException())
+        return JSValue::encode(jsUndefined());
+    auto propertyName = exec->argument(1).toPropertyKey(exec);
+    if (exec->hadException())
+        return JSValue::encode(jsUndefined());
+    return JSValue::encode(objectConstructorGetOwnPropertyDescriptor(exec, object, propertyName));
+}
+
+EncodedJSValue JSC_HOST_CALL objectConstructorGetOwnPropertyDescriptors(ExecState* exec)
+{
+    JSObject* object = exec->argument(0).toObject(exec);
+    if (exec->hadException())
+        return JSValue::encode(jsUndefined());
+    return JSValue::encode(objectConstructorGetOwnPropertyDescriptors(exec, object));
 }
 
 // FIXME: Use the enumeration cache.
@@ -297,14 +331,14 @@ bool toPropertyDescriptor(ExecState* exec, JSValue in, PropertyDescriptor& desc)
     }
     JSObject* description = asObject(in);
 
-    PropertySlot enumerableSlot(description);
+    PropertySlot enumerableSlot(description, PropertySlot::InternalMethodType::HasProperty);
     if (description->getPropertySlot(exec, exec->propertyNames().enumerable, enumerableSlot)) {
         desc.setEnumerable(enumerableSlot.getValue(exec, exec->propertyNames().enumerable).toBoolean(exec));
         if (exec->hadException())
             return false;
     }
 
-    PropertySlot configurableSlot(description);
+    PropertySlot configurableSlot(description, PropertySlot::InternalMethodType::HasProperty);
     if (description->getPropertySlot(exec, exec->propertyNames().configurable, configurableSlot)) {
         desc.setConfigurable(configurableSlot.getValue(exec, exec->propertyNames().configurable).toBoolean(exec));
         if (exec->hadException())
@@ -312,21 +346,21 @@ bool toPropertyDescriptor(ExecState* exec, JSValue in, PropertyDescriptor& desc)
     }
 
     JSValue value;
-    PropertySlot valueSlot(description);
+    PropertySlot valueSlot(description, PropertySlot::InternalMethodType::HasProperty);
     if (description->getPropertySlot(exec, exec->propertyNames().value, valueSlot)) {
         desc.setValue(valueSlot.getValue(exec, exec->propertyNames().value));
         if (exec->hadException())
             return false;
     }
 
-    PropertySlot writableSlot(description);
+    PropertySlot writableSlot(description, PropertySlot::InternalMethodType::HasProperty);
     if (description->getPropertySlot(exec, exec->propertyNames().writable, writableSlot)) {
         desc.setWritable(writableSlot.getValue(exec, exec->propertyNames().writable).toBoolean(exec));
         if (exec->hadException())
             return false;
     }
 
-    PropertySlot getSlot(description);
+    PropertySlot getSlot(description, PropertySlot::InternalMethodType::HasProperty);
     if (description->getPropertySlot(exec, exec->propertyNames().get, getSlot)) {
         JSValue get = getSlot.getValue(exec, exec->propertyNames().get);
         if (exec->hadException())
@@ -341,7 +375,7 @@ bool toPropertyDescriptor(ExecState* exec, JSValue in, PropertyDescriptor& desc)
         desc.setGetter(get);
     }
 
-    PropertySlot setSlot(description);
+    PropertySlot setSlot(description, PropertySlot::InternalMethodType::HasProperty);
     if (description->getPropertySlot(exec, exec->propertyNames().set, setSlot)) {
         JSValue set = setSlot.getValue(exec, exec->propertyNames().set);
         if (exec->hadException())

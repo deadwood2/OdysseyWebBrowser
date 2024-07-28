@@ -167,6 +167,8 @@ WebInspector.DefaultDashboard = class DefaultDashboard extends WebInspector.Obje
 
     _resourceSizeDidChange(event)
     {
+        if (event.target.urlComponents.scheme === "data")
+            return;
         this.resourcesSize += event.target.size - event.data.previousSize;
     }
 
@@ -239,6 +241,8 @@ WebInspector.DefaultDashboard = class DefaultDashboard extends WebInspector.Obje
     {
         switch (type) {
         case WebInspector.ConsoleMessage.MessageLevel.Log:
+        case WebInspector.ConsoleMessage.MessageLevel.Info:
+        case WebInspector.ConsoleMessage.MessageLevel.Debug:
             this.logs += increment;
             break;
         case WebInspector.ConsoleMessage.MessageLevel.Warning:

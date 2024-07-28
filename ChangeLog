@@ -1,38 +1,795 @@
-2016-03-17  Carlos Garcia Campos  <cgarcia@igalia.com>
+2016-09-05  Carlos Garcia Campos  <cgarcia@igalia.com>
 
-        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.10.9 release.
-
-        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
-
-2016-03-11  Carlos Garcia Campos  <cgarcia@igalia.com>
-
-        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.10.8 release.
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.12.5 release.
 
         * Source/cmake/OptionsGTK.cmake: Bump version numbers.
 
-2016-01-29  Carlos Garcia Campos  <cgarcia@igalia.com>
+2016-08-24  Carlos Garcia Campos  <cgarcia@igalia.com>
 
-        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.10.7 release.
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.12.4 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2016-07-20  Csaba Osztrogonác  <ossy@webkit.org>
+
+        JSC JIT Broken on ARMv7 Traditional (without Thumb2)
+        https://bugs.webkit.org/show_bug.cgi?id=159880
+
+        Reviewed by Carlos Garcia Campos.
+
+        * Source/cmake/OptionsCommon.cmake: Use the BFD linker on ARM traditional because of a gold linker bug.
+
+2016-05-24  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.12.3 release.
 
         * Source/cmake/OptionsGTK.cmake: Bump version numbers.
 
-2016-01-27  Carlos Garcia Campos  <cgarcia@igalia.com>
+2016-03-09  Konstantin Tokarev  <annulen@yandex.ru>
 
-        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.10.6 release.
+        [cmake] Fixed All-in-One build.
+        https://bugs.webkit.org/show_bug.cgi?id=155241
+
+        Reviewed by Csaba Osztrogonác.
+
+        * Source/cmake/WebKitMacros.cmake: Last item of WebCore_SOURCES was
+        not removed in PROCESS_ALLINONE_FILE.
+
+2016-04-28  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.12.2 release.
 
         * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2016-04-18  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        [GTK] Menu list button doesn't use the text color from the theme
+        https://bugs.webkit.org/show_bug.cgi?id=118234
+
+        Reviewed by Darin Adler.
+
+        * ManualTests/gtk/theme.html: Add a disabled combo test.
+
+2016-04-14  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.12.1 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2016-04-07  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        [GTK] Rework the theming code for GTK+ 3.20
+        https://bugs.webkit.org/show_bug.cgi?id=156333
+
+        Reviewed by Michael Catanzaro.
+
+        Add a manual test to check how themed elements are rendered.
+
+        * ManualTests/gtk/theme.html: Added.
+
+2016-03-22  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.12.0 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2016-03-16  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.11.92 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2016-03-12  Jeremy Huddleston Sequoia  <jeremyhu@apple.com>
+
+        [GTK][Mac] Don't force ENABLE_INTROSPECTION=OFF on Mac
+        https://bugs.webkit.org/show_bug.cgi?id=152650
+
+        Reviewed by Carlos Garcia Campos.
+
+        * Source/cmake/OptionsGTK.cmake:
+
+2016-03-01  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.11.91 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2016-02-19  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.11.90 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2016-02-18  Philippe Normand  <pnormand@igalia.com>
+
+        [GStreamer] Bump internal jhbuild versions to 1.6.3
+        https://bugs.webkit.org/show_bug.cgi?id=149594
+
+        Reviewed by Michael Catanzaro.
+
+        * Source/cmake/FindGStreamer.cmake: Check gst-gl version for the latest stable release of GStreamer.
+
+2016-02-18  Anders Carlsson  <andersca@apple.com>
+
+        Get rid of the "All Source (target WebProcess)" scheme.
+
+        Rubber-stamped by Dan Bernstein.
+
+        * WebKit.xcworkspace/xcshareddata/xcschemes/All Source (target WebProcess).xcscheme: Removed.
+
+2016-02-18  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        [CMake] Remove LLVM support
+        https://bugs.webkit.org/show_bug.cgi?id=154370
+
+        Reviewed by Csaba Osztrogonác.
+
+        After switching all CMake ports to B3, this was only needed for the LLVM disassembler, which
+        has been removed from JSC. Feel free to bring this back if restoring the LLVM disassembler,
+        but for the time being this is dead code.
+
+        * Source/cmake/FindLLVM.cmake: Removed.
+        * Source/cmake/OptionsCommon.cmake:
+
+2016-02-18  Joonghun Park  <jh718.park@samsung.com>
+
+        [CMake] Remove meaningless conditional statements in CMakeLists.txt
+        https://bugs.webkit.org/show_bug.cgi?id=153778
+
+        Reviewed by Csaba Osztrogonác.
+
+        * CMakeLists.txt:
+        Use CMAKE_FOO_OUTPUT_DIRECTORY located in CMakeLists.txt as default value.
+        And remove conditional statements which has enclosed these one
+        because they don't have meaning anymore.
+
+2016-02-15  Alex Christensen  <achristensen@webkit.org>
+
+        Re-enable INTL on WinCairo
+        https://bugs.webkit.org/show_bug.cgi?id=154256
+
+        Reviewed by Michael Catanzaro.
+
+        * Source/cmake/OptionsWin.cmake:
+        Peavo updated icu and it works, so let's re-enable INTL on WinCairo to catch Windows build failures.
+
+2016-02-12  Csaba Osztrogonác  <ossy@webkit.org>
+
+        [EFL][GTK] Fix ENABLE(SVG_OTF_CONVERTER) build
+        https://bugs.webkit.org/show_bug.cgi?id=154165
+
+        Reviewed by Alex Christensen.
+
+        * Source/cmake/OptionsEfl.cmake:
+        * Source/cmake/OptionsGTK.cmake:
+
+2016-02-11  Konstantin Tokarev  <annulen@yandex.ru>
+
+        [cmake] Consolidate TextureMapper file and include dir lists.
+        https://bugs.webkit.org/show_bug.cgi?id=154106
+
+        Reviewed by Michael Catanzaro.
+
+        * Source/cmake/OptionsEfl.cmake: Expose USE_TEXTURE_MAPPER_GL to
+        CMake code.
+        * Source/cmake/OptionsWinCairo.cmake: Ditto.
+
+2016-02-09  Csaba Osztrogonác  <ossy@webkit.org>
+
+        [GTK][EFL] Fix several build configuration related to SamplingProfiler after r196245
+        https://bugs.webkit.org/show_bug.cgi?id=154033
+
+        Reviewed by Michael Catanzaro.
+
+        * Source/cmake/WebKitFeatures.cmake:
+
+2016-02-09  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.11.5 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2016-02-07  Yusuke Suzuki  <utatane.tea@gmail.com>
+
+        [GTK][EFL] Enable SamplingProfiler
+        https://bugs.webkit.org/show_bug.cgi?id=153638
+
+        Reviewed by Michael Catanzaro.
+
+        Enable SamplingProfiler in GTK and EFL.
+        And added option to CMake to switch this from the build command.
+
+        * Source/cmake/OptionsEfl.cmake:
+        * Source/cmake/OptionsGTK.cmake:
+        * Source/cmake/WebKitFeatures.cmake:
+
+2016-02-07  Konstantin Tokarev  <annulen@yandex.ru>
+
+        [cmake] Move LLVM detection for LLVMDisassembler to OptionsCommon.cmake
+        https://bugs.webkit.org/show_bug.cgi?id=153961
+
+        Reviewed by Michael Catanzaro.
+
+        * Source/cmake/OptionsCommon.cmake:
+        * Source/cmake/OptionsEfl.cmake:
+        * Source/cmake/OptionsGTK.cmake:
+
+2016-02-04  Csaba Osztrogonác  <ossy@webkit.org>
+
+        Unreviewed non X86_64 buildfix after r196077.
+
+        * Source/cmake/OptionsEfl.cmake:
+        * Source/cmake/OptionsGTK.cmake:
+
+2016-02-03  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        [GTK][EFL] Switch FTL to B3
+        https://bugs.webkit.org/show_bug.cgi?id=153478
+
+        Reviewed by Csaba Osztrogonác.
+
+        * Source/cmake/OptionsEfl.cmake:
+        * Source/cmake/OptionsGTK.cmake:
+
+2016-02-02  Joseph Pecoraro  <pecoraro@apple.com>
+
+        Unreviewed attempt to fix Mac CMake build after r195999.
+
+        * Source/cmake/OptionsMac.cmake:
+        * Source/cmake/WebKitFeatures.cmake:
+        Add ENABLE_RESOURCE_USAGE to CMake builds.
+
+2016-02-02  Alejandro G. Castro  <alex@igalia.com>
+
+        [GTK][EFL] Upgrade OpenWebRTC dependency
+        https://bugs.webkit.org/show_bug.cgi?id=153489
+
+        Reviewed by Philippe Normand.
+
+        * Source/cmake/FindOpenWebRTC.cmake: Bump OpenWebRTC dependency,
+        required to make the mediastream work.
+
+2016-02-01  Alex Christensen  <achristensen@webkit.org>
+
+        [Win] WTFHeaderDetection.h no longer needed
+        https://bugs.webkit.org/show_bug.cgi?id=153753
+        rdar://problem/24434627
+
+        Reviewed by Darin Adler.
+
+        * Source/cmake/WebKitFS.cmake:
+
+2016-01-31  Joonghun Park  <jh718.park@samsung.com>
+
+        [EFL] All API tests are broken on 15.10
+        https://bugs.webkit.org/show_bug.cgi?id=153528
+
+        Reviewed by Gyuyoung Kim.
+
+        * CMakeLists.txt: Having include(WebKitCommon) statement follow
+        CMAKE_FOO_OUTPUT_DIRECTORY otherwise all the API tests gets blocked.
+
+2016-01-30  Yusuke Suzuki  <utatane.tea@gmail.com>
+
+        Enable SamplingProfiler on POSIX environment
+        https://bugs.webkit.org/show_bug.cgi?id=153584
+
+        Reviewed by Michael Saboff.
+
+        Add features.h header check. It will define __GLIBC__.
+
+        * Source/cmake/OptionsCommon.cmake:
+
+2016-01-27  Alexey Proskuryakov  <ap@apple.com>
+
+        Remove ENABLE_CURRENTSRC
+        https://bugs.webkit.org/show_bug.cgi?id=153545
+
+        Reviewed by Simon Fraser.
+
+        * Source/cmake/OptionsEfl.cmake:
+        * Source/cmake/OptionsGTK.cmake:
+        * Source/cmake/OptionsMac.cmake:
+        * Source/cmake/OptionsWin.cmake:
+        * Source/cmake/WebKitFeatures.cmake:
+        * Source/cmake/tools/vsprops/FeatureDefines.props:
+        * Source/cmake/tools/vsprops/FeatureDefinesCairo.props:
+
+2016-01-25  Alex Christensen  <achristensen@webkit.org>
+
+        Fix internal Windows build
+        https://bugs.webkit.org/show_bug.cgi?id=153469
+
+        Reviewed by Brent Fulgham.
+
+        * Source/cmake/WebKitMacros.cmake:
+        Pass the GPERF_EXECUTABLE that we found to make-hash-tools.pl.
+
+2016-01-23  Aaron Chu  <arona.chu@gmail.com>
+
+        Web Inspector: AXI: node-link-list should be collapsible
+        https://bugs.webkit.org/show_bug.cgi?id=130911
+        
+        Added a manual test to test the node list in the Accessibility Inspector
+
+        Reviewed by Timothy Hatcher.
+
+        * ManualTests/accessibility/collapsible-node-link-list.html: Added.
+
+2016-01-22  Alex Christensen  <achristensen@webkit.org>
+
+        Fix internal Windows build
+        https://bugs.webkit.org/show_bug.cgi?id=153385
+        rdar://problem/24310408
+
+        Reviewed by Brian Weinstein.
+
+        * Source/cmake/WinTools.make:
+        * Source/cmake/tools/vsprops: Copied from WebKitLibraries/win/tools/vsprops.
+        These property sheets are needed for some projects that are not in this repository
+        and don't use CMake in the official build.  We want to leave them unchanged for now.
+
+2016-01-22  Alex Christensen  <achristensen@webkit.org>
+
+        Only set CMake output directories if they aren't already set
+        https://bugs.webkit.org/show_bug.cgi?id=153373
+
+        Reviewed by Michael Catanzaro.
+
+        * CMakeLists.txt:
+        r195242 caused Windows builds to copy files to bin instead of bin64.
+        CMAKE_RUNTIME_OUTPUT_DIRECTORY is being set in OptionsWin.cmake, and this was now resetting it.
+        This also makes it so you can set these variables by command line.
 
 2016-01-20  Carlos Garcia Campos  <cgarcia@igalia.com>
 
-        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.10.5 release.
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.11.4 release.
 
         * Source/cmake/OptionsGTK.cmake: Bump version numbers.
 
-2015-11-11  Carlos Garcia Campos  <cgarcia@igalia.com>
+2016-01-18  Michael Catanzaro  <mcatanzaro@igalia.com>
 
-        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.10.4 release.
+        [CMake] Duplicate attempts to find software during cmake stage
+        https://bugs.webkit.org/show_bug.cgi?id=153211
+
+        Reviewed by Martin Robinson.
+
+        * CMakeLists.txt: Remove duplication of commands in WebKitCommon.cmake.
+        * Source/cmake/WebKitCommon.cmake: Guard the entire file so it runs only once.
+
+2016-01-17  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        [CMake] Do not build bmalloc when USE_SYSTEM_MALLOC is ON
+        https://bugs.webkit.org/show_bug.cgi?id=153190
+
+        Reviewed by Csaba Osztrogonác.
+
+        Build bmalloc when NOT USE_SYSTEM_MALLOC rather than when NOT WIN32.
+
+        * Source/CMakeLists.txt:
+        * Source/cmake/OptionsWin.cmake:
+
+2016-01-16  Jeremy Huddleston Sequoia  <jeremyhu@apple.com>
+
+        [GTK] Use -Wl,-all_load on darwin to include contents of all static archives
+
+        https://bugs.webkit.org/show_bug.cgi?id=153117
+
+        Reviewed by Michael Catanzaro.
+
+        * Source/cmake/OptionsGTK.cmake:
+
+2016-01-13  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        [CMake] Do not use LLVM static libraries for FTL JIT
+        https://bugs.webkit.org/show_bug.cgi?id=151559
+
+        Reviewed by Michael Catanzaro.
+
+        Also export LLVM_LIBRARIES variable that can be used to prefer
+        linking to the llvm dynamic libraries.
+
+        * Source/cmake/FindLLVM.cmake:
+
+2016-01-13  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        [GTK] Add comments above options declarations in OptionsGTK.cmake
+        https://bugs.webkit.org/show_bug.cgi?id=153074
+
+        Reviewed by Martin Robinson.
+
+        * Source/cmake/OptionsGTK.cmake:
+
+2016-01-12  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.11.3 release.
 
         * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2016-01-12  Ryosuke Niwa  <rniwa@webkit.org>
+
+        Add a build flag for custom element
+        https://bugs.webkit.org/show_bug.cgi?id=153005
+
+        Reviewed by Alex Christensen.
+
+        * Source/cmake/OptionsEfl.cmake:
+        * Source/cmake/OptionsWin.cmake:
+        * Source/cmake/WebKitFeatures.cmake:
+
+2016-01-08  Alex Christensen  <achristensen@webkit.org>
+
+        Fix internal Windows build
+        https://bugs.webkit.org/show_bug.cgi?id=152937
+
+        Reviewed by Brent Fulgham.
+
+        * Source/cmake/WebKitCommon.cmake:
+        Try looking in the default cygwin installation directory for executables like bison, flex, gperf, and ruby.
+        This is needed on Windows builds that are not driven by cygwin, but need to use the cygwin installations of these tools.
+        This is the effective equivalent of this line in WebKitLibraries/win/tools/vsprops/common.props in the old build system:
+        set PATH=%SystemDrive%\cygwin\bin;%PATH%
+
+2016-01-06  Gyuyoung Kim  <gyuyoung.kim@webkit.org>
+
+        [EFL] Set WebKit2 process output name
+        https://bugs.webkit.org/show_bug.cgi?id=152773
+
+        Reviewed by Benjamin Poulain.
+
+        If we add *WebKit* prefix to each WK2 process, it is more clear when checking what process is running.
+        So this patch sets wk2 process output name.
+
+        * Source/cmake/OptionsEfl.cmake:
+
+2016-01-05  Zan Dobersek  <zdobersek@igalia.com>
+
+        [CMake] Remove USE_UDIS86 variable
+        https://bugs.webkit.org/show_bug.cgi?id=152731
+
+        Reviewed by Gyuyoung Kim.
+
+        Remove the USE_UDIS86 variable in CMake files. The specific build guard
+        is now enabled by default in Source/WTF/wtf/Platform.h, so the handling
+        in CMake isn't required anymore. The Udis86-specific files have to be
+        built unconditionally now, though.
+
+        * Source/cmake/OptionsEfl.cmake:
+        * Source/cmake/OptionsGTK.cmake:
+        * Source/cmake/OptionsMac.cmake:
+
+2016-01-04  Alex Christensen  <achristensen@webkit.org>
+
+        Fix Mac CMake build after r194454.
+
+        * Source/cmake/OptionsMac.cmake:
+        _macosx, _iphoneos, and _iphonesimulator are used in FeatureDefines.xcconfig but won't be used in CMake.
+        If we actually switch to CMake, we will need to verify that all the feature enabling is equivalent, and it isn't right now.
+
+2015-12-31  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        [GTK][CMake] Do not override default values of build options with the default value
+        https://bugs.webkit.org/show_bug.cgi?id=152615
+
+        Reviewed by Martin Robinson.
+
+        Override the default value of build options only when the default value for the GTK+ port
+        is actually different than the default value in WebKitFeatures.cmake. This way we don't
+        accidentally override changes to default values in WebKitFeatures.cmake. We should use the
+        values in WebKitFeatures.cmake except when we make an active choice to do otherwise.
+
+        * Source/cmake/OptionsGTK.cmake:
+
+2015-12-31  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        [CMake] Add error checking to WEBKIT_OPTION_DEFAULT_PORT_VALUE et. al.
+        https://bugs.webkit.org/show_bug.cgi?id=144069
+
+        Reviewed by Martin Robinson.
+
+        * Source/cmake/OptionsWin.cmake:
+        Do not set options that no longer exist.
+        * Source/cmake/WebKitFeatures.cmake:
+        Add error checking to ensure that option names passed to WEBKIT_OPTION_DEFAULT_PORT_VALUE,
+        WEBKIT_OPTION_CONFLICT, and WEBKIT_OPTION_DEPEND are actually valid options that have been
+        previously-defined. Also, add ENABLE_SVG_OTF_CONVERTER build option, defaulted to off since
+        no CMake port was using it.
+
+2015-12-31  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        [CMake] Add error checking to catch option manipulation after WEBKIT_OPTION_END
+        https://bugs.webkit.org/show_bug.cgi?id=152611
+
+        Reviewed by Martin Robinson.
+
+        If WEBKIT_OPTION_DEFINE is called after WEBKIT_OPTION_END, the option never makes its way
+        into FEATURE_DEFINES and so will be inconsistently set (available to most of the build, but
+        not to the DOM bindings generator, for example).
+
+        If WEBKIT_OPTION_DEFAULT_PORT_VALUE, WEBKIT_OPTION_CONFLICT, or WEBKIT_OPTION_DEPEND are
+        called after WEBKIT_OPTION_END, they don't do anything.
+
+        Add error checking to catch these bugs.
+
+        * Source/cmake/WebKitFeatures.cmake:
+
+2015-12-30  Philippe Normand  <pnormand@igalia.com>
+
+        [GTK][Mac] Disable gtk-doc
+        https://bugs.webkit.org/show_bug.cgi?id=150798
+
+        Reviewed by Michael Catanzaro.
+
+        * Source/PlatformGTK.cmake: gtkdoc-scangobj fails due to a clang
+        link error on Mac, so for now disable gtk-doc support on that
+        platform.
+        * Source/cmake/OptionsGTK.cmake: Ditto.
+
+2015-12-23  Andy VanWagoner  <andy@instructure.com>
+
+        [INTL] Implement Intl.DateTimeFormat.prototype.resolvedOptions ()
+        https://bugs.webkit.org/show_bug.cgi?id=147603
+
+        Reviewed by Benjamin Poulain.
+
+        * Source/cmake/OptionsWin.cmake: Disable INTL on Windows for now
+
+2015-12-16  Youenn Fablet  <youenn.fablet@crf.canon.fr>
+
+        [Fetch API] Add fetch API compile time flag
+        https://bugs.webkit.org/show_bug.cgi?id=152254
+
+        Reviewed by Darin Adler.
+
+        * Source/cmake/OptionsWin.cmake:
+        * Source/cmake/WebKitFeatures.cmake:
+
+2015-12-10  Brent Fulgham  <bfulgham@apple.com>
+
+        [Win] Support building under Cygwin or native Perl
+        https://bugs.webkit.org/show_bug.cgi?id=152145
+        <rdar://problem/23839868>
+
+        Reviewed by David Kilzer.
+
+        * Source/cmake/tools/scripts/auto-version.pl: Correct handling of mixed DOS filenames when used in a
+        Cygwin context.
+        
+
+2015-12-09  Daniel Bates  <dabates@apple.com>
+
+        [iOS] Suspend and resume device motion and device orientation updates when page is hidden and visible, respectively
+        https://bugs.webkit.org/show_bug.cgi?id=151840
+        <rdar://problem/23753931>
+
+        Reviewed by Simon Fraser.
+
+        Add a manual test that can be used to verify that we suspend dispatching device motion and
+        device orientation events when the page is hidden.
+
+        * ManualTests/ios/resources/suspend-orientation-and-motion-events-when-page-becomes-hidden.js: Added.
+        (resetTest):
+        (checkEvent):
+        (handleVisibilityChange):
+        * ManualTests/ios/suspend-orientation-and-motion-events-when-page-becomes-hidden.html: Added.
+
+2015-12-07  Alex Christensen  <achristensen@webkit.org>
+
+        Fix internal Windows build
+        https://bugs.webkit.org/show_bug.cgi?id=151950
+
+        Reviewed by Brent Fulgham.
+
+        * Source/cmake/tools/scripts/auto-version.pl:
+
+2015-12-01  Yusuke Suzuki  <utatane.tea@gmail.com>
+
+        [ES6] Implement LLInt/Baseline Support for ES6 Generators and enable this feature
+        https://bugs.webkit.org/show_bug.cgi?id=150792
+
+        Reviewed by Saam Barati.
+
+        * Source/cmake/OptionsWin.cmake:
+        * Source/cmake/WebKitFeatures.cmake:
+
+2015-12-01  Commit Queue  <commit-queue@webkit.org>
+
+        Unreviewed, rolling out r192914.
+        https://bugs.webkit.org/show_bug.cgi?id=151734
+
+        JSC tests for this change are failing on 32 and 64-bit bots
+        (Requested by ryanhaddad on #webkit).
+
+        Reverted changeset:
+
+        "[ES6] Implement LLInt/Baseline Support for ES6 Generators and
+        enable this feature"
+        https://bugs.webkit.org/show_bug.cgi?id=150792
+        http://trac.webkit.org/changeset/192914
+
+2015-12-01  Yusuke Suzuki  <utatane.tea@gmail.com>
+
+        [ES6] Implement LLInt/Baseline Support for ES6 Generators and enable this feature
+        https://bugs.webkit.org/show_bug.cgi?id=150792
+
+        Reviewed by Saam Barati.
+
+        * Source/cmake/OptionsWin.cmake:
+        * Source/cmake/WebKitFeatures.cmake:
+
+2015-11-23  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.11.2 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
+2015-11-20  Alex Christensen  <achristensen@webkit.org>
+
+        Remove NETWORK_PROCESS compile flag
+        https://bugs.webkit.org/show_bug.cgi?id=151512
+
+        Reviewed by Tim Horton.
+
+        * Source/cmake/OptionsEfl.cmake:
+        * Source/cmake/OptionsGTK.cmake:
+        * Source/cmake/OptionsMac.cmake:
+        * Source/cmake/WebKitFeatures.cmake:
+
+2015-11-20  Csaba Osztrogonác  <ossy@webkit.org>
+
+        [EFL] Enable FTL JIT by default on X86_64
+        https://bugs.webkit.org/show_bug.cgi?id=143822
+
+        Reviewed by Carlos Garcia Campos.
+
+        * Source/cmake/OptionsEfl.cmake:
+
+2015-11-19  Commit Queue  <commit-queue@webkit.org>
+
+        Unreviewed, rolling out r192667 and r192668.
+        https://bugs.webkit.org/show_bug.cgi?id=151476
+
+        broke api tests (Requested by alexchristensen on #webkit).
+
+        Reverted changesets:
+
+        "Remove the non-NetworkProcess configurations"
+        https://bugs.webkit.org/show_bug.cgi?id=151418
+        http://trac.webkit.org/changeset/192667
+
+        "Fix GTK Build after r192667."
+        http://trac.webkit.org/changeset/192668
+
+2015-11-19  Alex Christensen  <achristensen@webkit.org>
+
+        Remove the non-NetworkProcess configurations
+        https://bugs.webkit.org/show_bug.cgi?id=151418
+
+        Reviewed by Geoffrey Garen.
+
+        * Source/cmake/OptionsEfl.cmake:
+        * Source/cmake/OptionsGTK.cmake:
+        * Source/cmake/OptionsMac.cmake:
+        * Source/cmake/WebKitFeatures.cmake:
+
+2015-11-17  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        REGRESSION(r192459): [GTK] User agent string is broken after r192459
+        https://bugs.webkit.org/show_bug.cgi?id=151347
+
+        Reviewed by Žan Doberšek.
+
+        Pass UA version numbers as strings to the build.
+
+        * Source/cmake/OptionsGTK.cmake:
+
+2015-11-16  Alex Christensen  <achristensen@webkit.org>
+
+        Fix CMake build and make PluginProcess executable
+        https://bugs.webkit.org/show_bug.cgi?id=151332
+
+        Reviewed by Tim Horton.
+
+        * Source/cmake/OptionsMac.cmake:
+
+2015-11-16  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        [GTK] Use FTL by default when LLVM 3.7 is available
+        https://bugs.webkit.org/show_bug.cgi?id=142128
+
+        Reviewed by Csaba Osztrogonác.
+
+        Enable FTL by default when architecture is X86_64. It requires
+        LLVM 3.7, but can be disabled manually as a cmake configure
+        argument.
+
+        * Source/cmake/FindLLVM.cmake: In debian llvm-config is only
+        available if the metapackage is installed and it points to
+        llvm-config-3.5. So, here we check first if the llvm-config is
+        from a recent enough version, and if not we check several
+        llvm-config-<version> programs, so this should work on any distro.
+        * Source/cmake/OptionsGTK.cmake: Enable FTL by default when
+        target architecture is X86_64, and check the LLVM is at least
+        3.7. The option is now public, since we want people to be able to
+        disable it manually.
+
+2015-11-11  Anders Carlsson  <andersca@apple.com>
+
+        Enable cross-platform context menus by default
+        https://bugs.webkit.org/show_bug.cgi?id=151173
+
+        Reviewed by Tim Horton.
+
+        * Source/cmake/OptionsEfl.cmake:
+
+2015-11-12  Csaba Osztrogonác  <ossy@webkit.org>
+
+        Remove ENABLE(SATURATED_LAYOUT_ARITHMETIC) guards
+        https://bugs.webkit.org/show_bug.cgi?id=150972
+
+        Reviewed by Darin Adler.
+
+        * Source/cmake/OptionsMac.cmake:
+        * Source/cmake/WebKitFeatures.cmake:
+
+2015-11-11  Philippe Normand  <pnormand@igalia.com>
+
+        [GTK][Mac] don't install .frameworks
+        https://bugs.webkit.org/show_bug.cgi?id=151136
+
+        Reviewed by Alex Christensen.
+
+        * Source/cmake/WebKitMacros.cmake: Don't install framework files when building the GTK port on Mac.
+
+2015-11-10  Pranjal Jumde  <pjumde@apple.com>
+
+        Fixed crash loading Mozilla layout test editor/libeditor/crashtests/431086-1.xhtml.
+        https://bugs.webkit.org/show_bug.cgi?id=150252
+        <rdar://problem/23149470>
+
+        Reviewed by Brent Fulgham.
+
+
+        * Source/WebCore/editing/ios/EditorIOS.mm
+        * Source/WebCore/editing/mac/EditorMac.mm
+          In Editor::fontForSelection moved the node removal code, so that the
+          node is only removed if style is not NULL.
+        * Source/WebCore/editing/cocoa/EditorCocoa.mm
+          In Editor::styleForSelectionStart checking if the parentNode can 
+          accept the styleElement node.
+        * LayoutTests/editing/execCommand/150252.xhtml
+        * LayoutTests/editing/execCommand/150252_minimal.xhtml
+        * LayoutTests/editing/execCommand/150252-expected.txt
+        * LayoutTests/editing/execCommand/150252_minimal-expected.txt
+
+2015-11-09  Pranjal Jumde  <pjumde@apple.com>
+
+        Fixed crash loading Mozilla layout test editor/libeditor/crashtests/431086-1.xhtml.
+        https://bugs.webkit.org/show_bug.cgi?id=150252
+        <rdar://problem/23149470>
+
+        Reviewed by Brent Fulgham.
+
+        * Source/WebCore/editing/ios/EditorIOS.mm
+        * Source/WebCore/editing/mac/EditorMac.mm
+          In Editor::fontForSelection moved the node removal code, so that the
+          node is only removed if style is not NULL.
+        * LayoutTests/editing/execCommand/150252.xhtml
+        * LayoutTests/editing/execCommand/150252_minimal.xhtml
+        * LayoutTests/editing/execCommand/150252-expected.txt
+        * LayoutTests/editing/execCommand/150252_minimal-expected.txt
+
+2015-11-06  Daniel Bates  <dabates@apple.com>
+
+        Teach Makefile to build LayoutTestRelay when building for iOS Simulator
+        https://bugs.webkit.org/show_bug.cgi?id=150849
+
+        Reviewed by Alexey Proskuryakov.
+
+        Add support for overriding the user-provided arguments SDKROOT and ARCHS
+        on a per Makefile basis.
+
+        * Makefile.shared:
 
 2015-11-06  Philippe Normand  <pnormand@igalia.com>
 
@@ -53,6 +810,33 @@
         ENABLE_QUARTZ_TARGET option to the CMake build, for building the
         GTK+ Quartz backend on OS X.
 
+2015-11-05  Nikos Andronikos  <nikos.andronikos-webkit@cisra.canon.com.au>
+
+        Add runtime and compile time flags for enabling Web Animations API and model.
+        https://bugs.webkit.org/show_bug.cgi?id=150914
+
+        Reviewed by Benjamin Poulain.
+
+        Add ENABLE_WEB_ANIMATIONS compile time flag, runtime flag webAnimationsEnabled and Expose WK2 preference for runtime flag.
+
+        * Source/cmake/OptionsWin.cmake:
+        * Source/cmake/WebKitFeatures.cmake:
+
+2015-11-03  Brent Fulgham  <bfulgham@apple.com>
+
+        [Win] CMake build update.
+
+        Rubberstamped by Tim Horton.
+
+        * Source/PlatformWin.cmake: Add internal tool to build
+        rules for internal use.
+
+2015-11-03  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.11.1 release.
+
+        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+
 2015-11-02  Philippe Normand  <pnormand@igalia.com>
 
         [Mac][GTK] Disable Ninja response file support
@@ -63,11 +847,92 @@
         * Source/cmake/OptionsCommon.cmake: The OSX toolchain doesn't
         support response files, so instruct Ninja to not generate those.
 
-2015-10-26  Carlos Garcia Campos  <cgarcia@igalia.com>
+2015-11-02  Csaba Osztrogonác  <ossy@webkit.org>
 
-        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.10.3 release.
+        Fix the FTL JIT build with system LLVM on Linux
+        https://bugs.webkit.org/show_bug.cgi?id=150795
 
-        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+        Reviewed by Filip Pizlo.
+
+        * Source/cmake/FindLLVM.cmake:
+
+2015-11-02  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        Unreviewed. Bump GTK+ versions numbers.
+
+        * Source/cmake/OptionsGTK.cmake:
+
+2015-11-01  Yusuke Suzuki  <utatane.tea@gmail.com>
+
+        [ES6] Support Generator Syntax
+        https://bugs.webkit.org/show_bug.cgi?id=150769
+
+        Reviewed by Geoffrey Garen.
+
+        Added ENABLE_ES6_GENERATORS flag.
+
+        * Source/cmake/OptionsWin.cmake:
+        * Source/cmake/WebKitFeatures.cmake:
+
+2015-10-30  Gyuyoung Kim  <gyuyoung.kim@webkit.org>
+
+        [EFL] Add Shadow DOM feature
+        https://bugs.webkit.org/show_bug.cgi?id=150611
+
+        Reviewed by Csaba Osztrogonác.
+
+        * Source/cmake/OptionsEfl.cmake:
+        * Source/cmake/WebKitFeatures.cmake: Add ENABLE_SHADOW_DOM cmake variable.
+
+2015-10-29  Alex Christensen  <achristensen@webkit.org>
+
+        Fix Mac CMake build
+        https://bugs.webkit.org/show_bug.cgi?id=150686
+
+        Reviewed by Filip Pizlo.
+
+        * Source/cmake/WebKitMacros.cmake:
+
+2015-10-28  Alex Christensen  <achristensen@webkit.org>
+
+        Compile and link with CMake on Mac
+        https://bugs.webkit.org/show_bug.cgi?id=150632
+
+        Reviewed by Tim Horton.
+
+        * Source/cmake/OptionsMac.cmake:
+
+2015-10-26  Dana Burkart  <dburkart@apple.com>
+
+        `make analyze` should build using the debug configuration
+        https://bugs.webkit.org/show_bug.cgi?id=150571
+
+        Reviewed by Lucas Forschler.
+
+        * Makefile.shared:
+
+2015-10-26  Philippe Normand  <pnormand@igalia.com>
+
+        Unreviewed, rolling out r191576.
+
+        broke the http/tests/media tests
+
+        Reverted changeset:
+
+        "[GStreamer] Bump internal jhbuild versions to 1.6.0"
+        https://bugs.webkit.org/show_bug.cgi?id=149594
+        http://trac.webkit.org/changeset/191576
+
+2015-10-26  ChangSeok Oh  <changseok.oh@collabora.com>
+
+        [GStreamer] Bump internal jhbuild versions to 1.6.0
+        https://bugs.webkit.org/show_bug.cgi?id=149594
+
+        Reviewed by Philippe Normand.
+
+        Bump up the minimum reqirement version of gstreamer-gl to 1.6.0.
+
+        * Source/cmake/FindGStreamer.cmake:
 
 2015-10-22  Philippe Normand  <pnormand@igalia.com>
 
@@ -78,11 +943,18 @@
 
         * Source/cmake/FindICU.cmake: Use pkg-config to hint at icu-i18n's library location.
 
-2015-10-15  Carlos Garcia Campos  <cgarcia@igalia.com>
+2015-10-20  Yoav Weiss  <yoav@yoav.ws>
 
-        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.10.2 release.
+        Rename the PICTURE_SIZES flag to CURRENTSRC
+        https://bugs.webkit.org/show_bug.cgi?id=150275
 
-        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+        Reviewed by Dean Jackson.
+
+        * Source/cmake/OptionsEfl.cmake:
+        * Source/cmake/OptionsGTK.cmake:
+        * Source/cmake/OptionsMac.cmake:
+        * Source/cmake/OptionsWin.cmake:
+        * Source/cmake/WebKitFeatures.cmake:
 
 2015-10-14  Tomas Popela  <tpopela@redhat.com>
 
@@ -98,11 +970,19 @@
         * Source/cmake/FindWebP.cmake:
         * Source/cmake/OptionsEfl.cmake:
 
-2015-10-14  Carlos Garcia Campos  <cgarcia@igalia.com>
+2015-10-13  Dean Jackson  <dino@apple.com>
 
-        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.10.1 release.
+        Device motion and orientation should only be visible from the main frame's security origin
+        https://bugs.webkit.org/show_bug.cgi?id=150072
+        <rdar://problem/23082036>
 
-        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+        Reviewed by Brent Fulgham.
+
+        Add a manual test for cross-origin device orientation events, while
+        we're waiting on the mock client to be supported everywhere.
+
+        * ManualTests/deviceorientation-child-frame.html: Added.
+        * ManualTests/deviceorientation-main-frame-only.html: Added.
 
 2015-10-12  Philip Chimento  <philip.chimento@gmail.com>
 
@@ -125,6 +1005,20 @@
         * Source/cmake/OptionsGTK.cmake: Don't add --version-script
         option on Darwin (whose linker doesn't support it.)
 
+2015-10-09  Gyuyoung Kim  <gyuyoung.kim@webkit.org>
+
+        [CMake] Remove ENABLE_SUBPIXEL_LAYOUT macro
+        https://bugs.webkit.org/show_bug.cgi?id=149947
+
+        Reviewed by Csaba Osztrogonác.
+
+        ENABLE(SUBPIXEL_LAYOUT) was removed though, it is still alive in .cmake.
+        Removed it.
+
+        * Source/cmake/OptionsMac.cmake:
+        * Source/cmake/OptionsWin.cmake:
+        * Source/cmake/WebKitFeatures.cmake:
+
 2015-10-06  Emanuele Aina  <emanuele.aina@collabora.com>
 
         Fix ENABLE_OPENGL=OFF builds
@@ -135,11 +1029,313 @@
         * Source/cmake/OptionsGTK.cmake: Make ENABLE_WAYLAND_TARGET depend on
         ENABLE_OPENGL due to EGL usage.
 
-2015-09-21  Carlos Garcia Campos  <cgarcia@igalia.com>
+2015-10-01  Wenson Hsieh  <wenson_hsieh@apple.com>
 
-        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.10.0 release.
+        Convert focused-input-should-assist-on-touch.html into an automated test
+        https://bugs.webkit.org/show_bug.cgi?id=149724
 
-        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+        Reviewed by Simon Fraser.
+
+        Remove a manual test that can now be rewritten as an automated test.
+
+        * ManualTests/ios/focused-input-should-assist-on-touch.html: Removed.
+
+2015-10-01  Brent Fulgham  <bfulgham@apple.com>
+
+        [Win] Unreviewed CMake build fix.
+
+        * Source/cmake/OptionsWin.cmake: Clean up options setttings,
+        and make sure exception handling is turned off.
+
+2015-09-30  Brent Fulgham  <bfulgham@apple.com>
+
+        [Win] Unreviewed build fix after CMake conversion.
+
+        * Source/cmake/OptionsWin.cmake: Correct some Windows build flags.
+
+2015-09-29  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        [GTK][CMake] Warning about CMP0058
+        https://bugs.webkit.org/show_bug.cgi?id=149627
+
+        Reviewed by Martin Robinson.
+
+        Opt-in to the new behavior for CMP0058.
+
+        * CMakeLists.txt:
+
+2015-09-28  Brent Fulgham  <bfulgham@apple.com>
+
+        [Win] Unreviewed build fix for internal systems.
+
+        * Source/cmake/OptionsWin.cmake: Preferentially use the build target
+        location for include and link libraries, rather than the system locations.
+
+2015-09-28  Alex Christensen  <achristensen@webkit.org>
+
+        Build WK1 with CMake on Mac
+        https://bugs.webkit.org/show_bug.cgi?id=149604
+
+        Reviewed by Chris Dumez.
+
+        * Source/cmake/OptionsMac.cmake:
+        * Source/cmake/WebKitMacros.cmake:
+        ObjC bindings now have their own list of IDL files, but some of them still don't generate a .mm file.
+
+2015-09-25  Alex Christensen  <achristensen@webkit.org>
+
+        Clean up CMake build on Mac
+        https://bugs.webkit.org/show_bug.cgi?id=149573
+
+        Reviewed by Chris Dumez.
+
+        * Source/cmake/OptionsMac.cmake:
+
+2015-09-25  Alex Christensen  <achristensen@webkit.org>
+
+        [Win] Switch to CMake
+        https://bugs.webkit.org/show_bug.cgi?id=148111
+
+        Reviewed by Brent Fulgham.
+
+        * Source/cmake/WinTools.make: Added.
+        * Source/cmake/tools: Added.
+        * Source/cmake/tools/scripts: Copied from WebKitLibraries/win/tools/scripts.
+        * Source/cmake/tools/scripts/auto-version.pl: Copied from WebKitLibraries/win/tools/scripts/auto-version.pl.
+
+2015-09-25  Alex Christensen  <achristensen@webkit.org>
+
+        Prepare internal AppleWin build for CMake
+        https://bugs.webkit.org/show_bug.cgi?id=149570
+
+        Reviewed by Brent Fulgham.
+
+        * Source/PlatformWin.cmake:
+        Include internal CMake files if they exist.
+
+2015-09-22  Gyuyoung Kim  <gyuyoung.kim@webkit.org>
+
+        Add a file of pointer-lock to cmake ports
+        https://bugs.webkit.org/show_bug.cgi?id=149453
+
+        Reviewed by Csaba Osztrogonác.
+
+        * Source/cmake/OptionsEfl.cmake: Add a ENABLE_POINTER_LOCK.
+
+2015-09-22  Carlos Alberto Lopez Perez  <clopez@igalia.com>
+
+        [CMake] Allow to enable OpenMP support.
+        https://bugs.webkit.org/show_bug.cgi?id=149457
+
+        Reviewed by Csaba Osztrogonác.
+
+        * Source/cmake/OptionsCommon.cmake: Add the option USE_OPENMP that
+        will enable the support for OpenMP. Currently this is only used as
+        an alternative implementation to native threads for the parallelization
+        of the SVG filters. But name the option with a generic name (USE_OPENMP)
+        as it could be also used to enable future features that depend on OpenMP.
+
+2015-09-22  Ryuan Choi  <ryuan.choi@navercorp.com>
+
+        [EFL] Build break when DEVELOPER_MODE is OFF
+        https://bugs.webkit.org/show_bug.cgi?id=149448
+
+        Reviewed by Gyuyoung Kim.
+
+        Since r187191, DatabaseProcessMainUnix is missing in symbol filter.
+
+        * Source/cmake/eflsymbols.filter:
+
+2015-09-21  Alex Christensen  <achristensen@webkit.org>
+
+        Disable PICTURE_SIZES in Windows CMake build like r189745.
+        https://bugs.webkit.org/show_bug.cgi?id=149125
+
+        * Source/cmake/OptionsWin.cmake:
+        Do the same thing as r189745.
+
+2015-09-20  Youenn Fablet  <youenn.fablet@crf.canon.fr>
+
+        Removing XHR_TIMEOUT guard
+
+        Remove XHR_TIMEOUT compilation guard
+        https://bugs.webkit.org/show_bug.cgi?id=149260
+
+        Reviewed by Benjamin Poulain.
+
+        * Source/cmake/OptionsEfl.cmake:
+        * Source/cmake/OptionsGTK.cmake:
+        * Source/cmake/OptionsMac.cmake:
+        * Source/cmake/OptionsWin.cmake:
+        * Source/cmake/WebKitFeatures.cmake:
+
+2015-09-18  Alex Christensen  <achristensen@webkit.org>
+
+        Fix tests on Windows after switching to CMake.
+        https://bugs.webkit.org/show_bug.cgi?id=149339
+
+        Reviewed by Brent Fulgham.
+
+        * Source/PlatformWin.cmake: Added to copy WebInspectorUI.
+
+2015-09-17  Alex Christensen  <achristensen@webkit.org>
+
+        Fix Windows EWS build after r189934.
+
+        * Source/cmake/OptionsWin.cmake:
+        Use WEBKIT_LIBRARIES environment variable if it exists.
+        We have the WebKitLibraries directory separate from the repository copy on the EWS bots.
+
+2015-09-15  Ryosuke Niwa  <rniwa@webkit.org>
+
+        Add ShadowRoot interface and Element.prototype.attachShadow
+        https://bugs.webkit.org/show_bug.cgi?id=149187
+
+        Reviewed by Antti Koivisto.
+
+        * Source/cmake/OptionsGTK.cmake:
+
+2015-09-15  Csaba Osztrogonác  <ossy@webkit.org>
+
+        [cmake] Enable debug fission only if it is supported
+        https://bugs.webkit.org/show_bug.cgi?id=149161
+
+        Reviewed by Martin Robinson.
+
+        * Source/cmake/OptionsCommon.cmake:
+
+2015-09-14  Alex Christensen  <achristensen@webkit.org>
+
+        Progress towards CMake on Mac.
+        https://bugs.webkit.org/show_bug.cgi?id=149123
+
+        Reviewed by Chris Dumez.
+
+        * Source/cmake/OptionsMac.cmake:
+        * Source/cmake/WebKitFeatures.cmake:
+        Defined and enabled some more features needed on Mac.
+        * Source/cmake/WebKitMacros.cmake:
+        Objective C bindings need special changes when generating:
+        Some of the bindings do not generate a .mm file but the header is needed.
+        Some of the bindings do generate a .mm file that doesn't compile but the header is needed.
+        In order to handle these cases, it is necessary to change the GENERATE_BINDINGS macro just for ObjC.
+
+2015-09-08  Daniel Bates  <dabates@apple.com>
+
+        Convert manual test added in http://trac.webkit.org/changeset/70321 to an automated test
+        https://bugs.webkit.org/show_bug.cgi?id=74729
+        <rdar://problem/22550195>
+
+        Reviewed by Jon Honeycutt.
+
+        * ManualTests/compositing/resources/composited-subframe.html: Removed.
+        * ManualTests/compositing/show-composited-iframe-on-back-button.html: Removed.
+
+2015-09-06  Andy Estes  <aestes@apple.com>
+
+        WebKit.xcworkspace should be be able to build iOS platforms
+        https://bugs.webkit.org/show_bug.cgi?id=148881
+
+        Reviewed by Daniel Bates.
+
+        Since we don't want to create platform-specific schemes, all projects in the workspace's schemes need to build
+        for all supported platforms.
+
+        * WebKit.xcworkspace/xcshareddata/xcschemes/All Tools.xcscheme: Removed the DumpRenderTree target since its All
+        target was already included. Removed the WebKitTestRunner target and replaced it with its All target.
+
+2015-09-04  Jon Honeycutt  <jhoneycutt@apple.com>
+
+        [iOS] Need a test for bug #145539: Uploading an animated GIF from the
+        photo library uploads a JPEG
+        https://bugs.webkit.org/show_bug.cgi?id=148849
+
+        Reviewed by Daniel Bates.
+
+        * ManualTests/ios/image-file-uploads-as-original-type.html: Added.
+        On the Mac, file upload tests use EventSender::beginDragWithFiles. This
+        functionality doesn't exist on iOS, so we'll add a manual test.
+        This tests that the first few bytes of the selected file are "GIF".
+
+2015-09-04  Carlos Alberto Lopez Perez  <clopez@igalia.com>
+
+        Follow-up patch for r189343.
+        https://bugs.webkit.org/show_bug.cgi?id=148795
+
+        Rubber-stamped by Csaba Osztrogonác.
+
+        * Source/cmake/WebKitCommon.cmake: Relax the Ruby version requirement
+        to 1.9, since this seems to be enough to fix the build failure.
+        And 2.0 may cause problems for developers using some distributions like Ubuntu.
+
+2015-09-04  Emanuele Aina  <emanuele.aina@collabora.com>
+
+        [CMake] Trigger the memory-reduction tricks on armhf too
+        https://bugs.webkit.org/show_bug.cgi?id=146640
+
+        Reviewed by Csaba Osztrogonác.
+
+        * Source/cmake/OptionsCommon.cmake:
+        Activate --no-keep-memory even on armhf to reduce the amount of memory
+        needed during linking, to avoid out-of-memory failures as much as
+        possible.
+
+2015-09-04  Carlos Alberto Lopez Perez  <clopez@igalia.com>
+
+        REGRESSION(r189293): JavaScriptCore/offlineasm/x86.rb -- Build failure with ruby < 2.0
+        https://bugs.webkit.org/show_bug.cgi?id=148795
+
+        Rubber-stamped by Carlos Garcia Campos.
+
+        * Source/cmake/WebKitCommon.cmake: Require now at least Ruby 2.0
+
+2015-09-02  Alex Christensen  <achristensen@webkit.org>
+
+        Make bison grammar compatible with bison 2.1
+        https://bugs.webkit.org/show_bug.cgi?id=148731
+
+        Reviewed by Tim Horton.
+
+        * Source/cmake/WebKitCommon.cmake:
+        Support bison 2.1.
+
+2015-08-31  Carlos Alberto Lopez Perez  <clopez@igalia.com>
+
+        [CMake] Build with Debug Fission on by default on Debug builds.
+        https://bugs.webkit.org/show_bug.cgi?id=148639
+
+        Reviewed by Martin Robinson.
+
+        * Source/cmake/OptionsCommon.cmake:
+
+2015-08-29  Alex Christensen  <achristensen@webkit.org>
+
+        Unreviewed build fix after r179923.
+
+        * Source/CMakeLists.txt:
+        bmalloc isn't ported to Windows yet.
+
+2015-08-27  Alex Christensen  <achristensen@webkit.org>
+
+        Isolate Source directories in CMake build
+        https://bugs.webkit.org/show_bug.cgi?id=148389
+
+        Reviewed by Brent Fulgham.
+
+        * CMakeLists.txt:
+        * Source/cmake/WebKitCommon.cmake:
+        Move package finding to WebKitCommon.
+
+2015-08-26  Per Arne Vollan  <peavo@outlook.com>
+
+        [Win] Build does not generate debug info.
+        https://bugs.webkit.org/show_bug.cgi?id=148431
+
+        Reviewed by Alex Christensen.
+
+        Generate debug info for Windows builds.
+
+        * Source/cmake/OptionsWin.cmake:
 
 2015-08-26  Michael Catanzaro  <mcatanzaro@igalia.com>
 
@@ -160,17 +1356,18 @@
 
         * Source/cmake/OptionsGTK.cmake:
 
-2015-09-16  Carlos Garcia Campos  <cgarcia@igalia.com>
+2015-08-25  Commit Queue  <commit-queue@webkit.org>
 
-        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.9.92 release.
+        Unreviewed, rolling out r188919.
+        https://bugs.webkit.org/show_bug.cgi?id=148452
 
-        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+        broke build (Requested by alexchristensen on #webkit).
 
-2015-08-26  Carlos Garcia Campos  <cgarcia@igalia.com>
+        Reverted changeset:
 
-        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.9.91 release.
-
-        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+        "[Win] Build does not generate debug info."
+        https://bugs.webkit.org/show_bug.cgi?id=148431
+        http://trac.webkit.org/changeset/188919
 
 2015-08-25  Michael Catanzaro  <mcatanzaro@igalia.com>
 
@@ -182,11 +1379,137 @@
         * Source/cmake/FindGTK3.cmake: Always define GTK3_SUPPORTS_X11 and GTK3_SUPPORTS_WAYLAND.
         * Source/cmake/OptionsGTK.cmake: Autodetect support for X11 and Wayland backends.
 
-2015-08-14  Carlos Garcia Campos  <cgarcia@igalia.com>
+2015-08-25  Per Arne Vollan  <peavo@outlook.com>
 
-        Unreviewed. Update OptionsGTK.cmake and NEWS for 2.9.90 release.
+        [Win] Build does not generate debug info.
+        https://bugs.webkit.org/show_bug.cgi?id=148431
 
-        * Source/cmake/OptionsGTK.cmake: Bump version numbers.
+        Reviewed by Brent Fulgham.
+
+        Generate debug info for Windows builds.
+
+        * Source/cmake/OptionsWin.cmake:
+
+2015-08-20  Gustavo Noronha Silva  <gustavo.noronha@collabora.co.uk>
+
+        [GTK] Auto-detection of cairo-gl fails
+        https://bugs.webkit.org/show_bug.cgi?id=148189
+
+        Reviewed by Žan Doberšek.
+
+        * Source/cmake/FindCairoGL.cmake: only check for components if the main package has
+        been found. Otherwise, if either GLX or EGL are available, cairo-gl will also be
+        deemed available, which might not be the case.
+        * Source/cmake/OptionsGTK.cmake: fix the usage of the CAIROGL_FOUND variable.
+
+2015-08-19  Alex Christensen  <achristensen@webkit.org>
+
+        CMake Windows build should not include files directly from other Source directories
+        https://bugs.webkit.org/show_bug.cgi?id=148198
+
+        Reviewed by Brent Fulgham.
+
+        * Source/cmake/WebKitMacros.cmake:
+
+2015-08-19  Alex Christensen  <achristensen@webkit.org>
+
+        Build TestWTF on Mac with CMake.
+        https://bugs.webkit.org/show_bug.cgi?id=147972
+
+        Reviewed by Tim Horton.
+
+        * Source/cmake/OptionsMac.cmake:
+        Enable API tests in Mac's CMake build.
+
+2015-08-18  Alex Christensen  <achristensen@webkit.org>
+
+        [CMake] REGRESSION(r188540): WebKitTestRunner is not longer built and all the tests (layout and perf) fail.
+        https://bugs.webkit.org/show_bug.cgi?id=148127
+
+        Reviewed by Martin Robinson.
+
+        * CMakeLists.txt:
+        TOOLS_DIR hasn't been set yet since its defining has been moved to WebKitFS. 
+
+2015-08-17  Alex Christensen  <achristensen@webkit.org>
+
+        [Win CMake] Allow WebKitLibraries directory to be set from the command line
+        https://bugs.webkit.org/show_bug.cgi?id=148112
+
+        Reviewed by Brent Fulgham.
+
+        * Source/cmake/OptionsWin.cmake:
+        Don't use an environment variable for WEBKIT_LIBRARIES_DIR.  
+        Instead, use the default location if nothing is passed in from the command line.
+        This way we can set it from the command line for the AppleInternal build.
+        Also, set the output directories to be consistent between the old and new build systems (and ninja).
+
+2015-08-17  Alex Christensen  <achristensen@webkit.org>
+
+        Build Debug Suffix on Windows with CMake
+        https://bugs.webkit.org/show_bug.cgi?id=148083
+
+        Reviewed by Brent Fulgham.
+
+        * Source/cmake/OptionsWin.cmake:
+        Use debug libraries in debug suffix builds.
+
+2015-08-17  Alex Christensen  <achristensen@webkit.org>
+
+        Move some commands from ./CMakeLists.txt to Source/cmake
+        https://bugs.webkit.org/show_bug.cgi?id=148003
+
+        Reviewed by Brent Fulgham.
+
+        * CMakeLists.txt:
+        Moved functionality to WebKitCommon.cmake and WebKitFS.cmake and made conditional 
+        so we can change directory structure from command line parameters.
+        * Source/cmake/OptionsAppleWin.cmake:
+        * Source/cmake/OptionsWin.cmake: Copied from Source/cmake/OptionsWindows.cmake.
+        * Source/cmake/OptionsWinCairo.cmake:
+        * Source/cmake/OptionsWindows.cmake: Removed.
+        * Source/cmake/WebKitCommon.cmake: Added.
+        * Source/cmake/WebKitFS.cmake:
+
+2015-08-13  Commit Queue  <commit-queue@webkit.org>
+
+        Unreviewed, rolling out r188428.
+        https://bugs.webkit.org/show_bug.cgi?id=148015
+
+        broke cmake build (Requested by alexchristensen on #webkit).
+
+        Reverted changeset:
+
+        "Move some commands from ./CMakeLists.txt to Source/cmake"
+        https://bugs.webkit.org/show_bug.cgi?id=148003
+        http://trac.webkit.org/changeset/188428
+
+2015-08-13  Alex Christensen  <achristensen@webkit.org>
+
+        Move some commands from ./CMakeLists.txt to Source/cmake
+        https://bugs.webkit.org/show_bug.cgi?id=148003
+
+        Reviewed by Brent Fulgham.
+
+        * CMakeLists.txt:
+        Moved functionality to WebKitCommon.cmake and WebKitFS.cmake and made conditional 
+        so we can change directory structure from command line parameters.
+        * Source/cmake/WebKitCommon.cmake: Added.
+        * Source/cmake/WebKitFS.cmake:
+
+2015-08-13  Wenson Hsieh  <wenson_hsieh@apple.com>
+
+        A focused node should not be assisted when handling touch events synchronously
+        https://bugs.webkit.org/show_bug.cgi?id=147836
+
+        Reviewed by Enrica Casucci.
+
+        Added manual tests for keyboard assistance behavior due to receiving touch events on iOS.
+
+        * ManualTests/ios/focused-input-should-assist-on-touch.html: Checks that a currently focused
+                input can still be assisted due to a touch event.
+        * ManualTests/ios/keyboard-should-not-show-on-touch-event.html: Checks that handling a touch
+                event does not automatically cause us to assist the currently focused node.
 
 2015-08-12  Alex Christensen  <achristensen@webkit.org>
 

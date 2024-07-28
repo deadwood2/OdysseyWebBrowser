@@ -40,12 +40,11 @@ WebProcessCreationParameters::WebProcessCreationParameters()
     , shouldUseFontSmoothing(true)
     , defaultRequestTimeoutInterval(INT_MAX)
 #if PLATFORM(COCOA)
-    , shouldEnableKerningAndLigaturesByDefault(false)
     , shouldEnableJIT(false)
     , shouldEnableFTLJIT(false)
 #endif
-#if ENABLE(NETWORK_PROCESS)
-    , usesNetworkProcess(false)
+#if PLATFORM(MAC)
+    , shouldEnableTabSuspension(false)
 #endif
     , memoryCacheDisabled(false)
 #if ENABLE(SERVICE_CONTROLS)
@@ -91,16 +90,9 @@ void WebProcessCreationParameters::encode(IPC::ArgumentEncoder& encoder) const
     encoder << urlSchemesRegisteredAsNoAccess;
     encoder << urlSchemesRegisteredAsDisplayIsolated;
     encoder << urlSchemesRegisteredAsCORSEnabled;
+    encoder << urlSchemesRegisteredAsAlwaysRevalidated;
 #if ENABLE(CACHE_PARTITIONING)
     encoder << urlSchemesRegisteredAsCachePartitioned;
-#endif
-    encoder << urlSchemesRegisteredForCustomProtocols;
-#if USE(SOUP)
-    encoder << diskCacheDirectory;
-    encoder << cookiePersistentStoragePath;
-    encoder << cookiePersistentStorageType;
-    encoder.encodeEnum(cookieAcceptPolicy);
-    encoder << ignoreTLSErrors;
 #endif
     encoder.encodeEnum(cacheModel);
     encoder << shouldAlwaysUseComplexTextCodePath;
@@ -108,6 +100,7 @@ void WebProcessCreationParameters::encode(IPC::ArgumentEncoder& encoder) const
     encoder << shouldUseFontSmoothing;
     encoder << fontWhitelist;
     encoder << iconDatabaseEnabled;
+    encoder << shouldRewriteConstAsVar;
     encoder << terminationTimeout;
     encoder << languages;
     encoder << textCheckerState;
@@ -122,7 +115,6 @@ void WebProcessCreationParameters::encode(IPC::ArgumentEncoder& encoder) const
     encoder << acceleratedCompositingPort;
     encoder << uiProcessBundleResourcePath;
     encoder << uiProcessBundleResourcePathExtensionHandle;
-    encoder << shouldEnableKerningAndLigaturesByDefault;
     encoder << shouldEnableJIT;
     encoder << shouldEnableFTLJIT;
     encoder << !!bundleParameterData;
@@ -130,12 +122,12 @@ void WebProcessCreationParameters::encode(IPC::ArgumentEncoder& encoder) const
         encoder << bundleParameterData->dataReference();
 #endif
 
-#if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
-    encoder << notificationPermissions;
+#if PLATFORM(MAC)
+    encoder << shouldEnableTabSuspension;
 #endif
 
-#if ENABLE(NETWORK_PROCESS)
-    encoder << usesNetworkProcess;
+#if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
+    encoder << notificationPermissions;
 #endif
 
     encoder << plugInAutoStartOriginHashes;
@@ -152,7 +144,7 @@ void WebProcessCreationParameters::encode(IPC::ArgumentEncoder& encoder) const
     encoder << pluginLoadClientPolicies;
 #endif
 
-#if (TARGET_OS_IPHONE && __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
+#if TARGET_OS_IPHONE || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
     IPC::encode(encoder, networkATSContext.get());
 #endif
 }
@@ -211,22 +203,10 @@ bool WebProcessCreationParameters::decode(IPC::ArgumentDecoder& decoder, WebProc
         return false;
     if (!decoder.decode(parameters.urlSchemesRegisteredAsCORSEnabled))
         return false;
+    if (!decoder.decode(parameters.urlSchemesRegisteredAsAlwaysRevalidated))
+        return false;
 #if ENABLE(CACHE_PARTITIONING)
     if (!decoder.decode(parameters.urlSchemesRegisteredAsCachePartitioned))
-        return false;
-#endif
-    if (!decoder.decode(parameters.urlSchemesRegisteredForCustomProtocols))
-        return false;
-#if USE(SOUP)
-    if (!decoder.decode(parameters.diskCacheDirectory))
-        return false;
-    if (!decoder.decode(parameters.cookiePersistentStoragePath))
-        return false;
-    if (!decoder.decode(parameters.cookiePersistentStorageType))
-        return false;
-    if (!decoder.decodeEnum(parameters.cookieAcceptPolicy))
-        return false;
-    if (!decoder.decode(parameters.ignoreTLSErrors))
         return false;
 #endif
     if (!decoder.decodeEnum(parameters.cacheModel))
@@ -240,6 +220,8 @@ bool WebProcessCreationParameters::decode(IPC::ArgumentDecoder& decoder, WebProc
     if (!decoder.decode(parameters.fontWhitelist))
         return false;
     if (!decoder.decode(parameters.iconDatabaseEnabled))
+        return false;
+    if (!decoder.decode(parameters.shouldRewriteConstAsVar))
         return false;
     if (!decoder.decode(parameters.terminationTimeout))
         return false;
@@ -267,8 +249,6 @@ bool WebProcessCreationParameters::decode(IPC::ArgumentDecoder& decoder, WebProc
         return false;
     if (!decoder.decode(parameters.uiProcessBundleResourcePathExtensionHandle))
         return false;
-    if (!decoder.decode(parameters.shouldEnableKerningAndLigaturesByDefault))
-        return false;
     if (!decoder.decode(parameters.shouldEnableJIT))
         return false;
     if (!decoder.decode(parameters.shouldEnableFTLJIT))
@@ -287,13 +267,13 @@ bool WebProcessCreationParameters::decode(IPC::ArgumentDecoder& decoder, WebProc
     }
 #endif
 
-#if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
-    if (!decoder.decode(parameters.notificationPermissions))
+#if PLATFORM(MAC)
+    if (!decoder.decode(parameters.shouldEnableTabSuspension))
         return false;
 #endif
 
-#if ENABLE(NETWORK_PROCESS)
-    if (!decoder.decode(parameters.usesNetworkProcess))
+#if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
+    if (!decoder.decode(parameters.notificationPermissions))
         return false;
 #endif
 
@@ -318,7 +298,7 @@ bool WebProcessCreationParameters::decode(IPC::ArgumentDecoder& decoder, WebProc
         return false;
 #endif
 
-#if (TARGET_OS_IPHONE && __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
+#if TARGET_OS_IPHONE || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
     if (!IPC::decode(decoder, parameters.networkATSContext))
         return false;
 #endif

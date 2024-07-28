@@ -27,13 +27,22 @@
 
 #if WK_API_ENABLED
 
+@class WKUserScript;
 @class _WKUserContentFilter;
+@class _WKUserStyleSheet;
 
 @interface WKUserContentController (WKPrivate)
 
-- (void)_addUserContentFilter:(_WKUserContentFilter *)userContentFilter WK_AVAILABLE(WK_MAC_TBA, WK_IOS_TBA);
-- (void)_removeUserContentFilter:(NSString *)userContentFilterName WK_AVAILABLE(WK_MAC_TBA, WK_IOS_TBA);
-- (void)_removeAllUserContentFilters WK_AVAILABLE(WK_MAC_TBA, WK_IOS_TBA);
+- (void)_removeUserScript:(WKUserScript *)userScript WK_AVAILABLE(WK_MAC_TBA, WK_IOS_TBA);
+
+- (void)_addUserContentFilter:(_WKUserContentFilter *)userContentFilter WK_AVAILABLE(10_11, 9_0);
+- (void)_removeUserContentFilter:(NSString *)userContentFilterName WK_AVAILABLE(10_11, 9_0);
+- (void)_removeAllUserContentFilters WK_AVAILABLE(10_11, 9_0);
+
+@property (nonatomic, readonly, copy) WK_ARRAY(_WKUserStyleSheet *) *_userStyleSheets WK_AVAILABLE(WK_MAC_TBA, WK_IOS_TBA);
+- (void)_addUserStyleSheet:(_WKUserStyleSheet *)userStyleSheet WK_AVAILABLE(WK_MAC_TBA, WK_IOS_TBA);
+- (void)_removeUserStyleSheet:(_WKUserStyleSheet *)userStyleSheet WK_AVAILABLE(WK_MAC_TBA, WK_IOS_TBA);
+- (void)_removeAllUserStyleSheets WK_AVAILABLE(WK_MAC_TBA, WK_IOS_TBA);
 
 @end
 

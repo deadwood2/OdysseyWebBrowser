@@ -23,37 +23,67 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#include "LargeObject.h"
-#include "Line.h"
 #include "PerProcess.h"
-#include "SuperChunk.h"
 #include "VMHeap.h"
 #include <thread>
 
 namespace bmalloc {
 
-VMHeap::VMHeap()
-    : m_largeObjects(Owner::VMHeap)
+XLargeRange VMHeap::tryAllocateLargeChunk(std::lock_guard<StaticMutex>& lock, size_t alignment, size_t size)
 {
-}
+    // We allocate VM in aligned multiples to increase the chances that
+    // the OS will provide contiguous ranges that we can merge.
+    size_t roundedAlignment = roundUpToMultipleOf<chunkSize>(alignment);
+    if (roundedAlignment < alignment) // Check for overflow
+        return XLargeRange();
+    alignment = roundedAlignment;
 
-void VMHeap::grow()
-{
-    SuperChunk* superChunk = SuperChunk::create();
+    size_t roundedSize = roundUpToMultipleOf<chunkSize>(size);
+    if (roundedSize < size) // Check for overflow
+        return XLargeRange();
+    size = roundedSize;
+
+    void* memory = tryVMAllocate(alignment, size);
+    if (!memory)
+        return XLargeRange();
+
+    Chunk* chunk = new (memory) Chunk(lock);
+    
 #if BOS(DARWIN)
-    m_zone.addSuperChunk(superChunk);
+    m_zone.addChunk(chunk);
 #endif
 
-    SmallChunk* smallChunk = superChunk->smallChunk();
-    for (auto* it = smallChunk->begin(); it != smallChunk->end(); ++it)
-        m_smallPages.push(it);
+    return XLargeRange(chunk->bytes(), size, 0);
+}
 
-    MediumChunk* mediumChunk = superChunk->mediumChunk();
-    for (auto* it = mediumChunk->begin(); it != mediumChunk->end(); ++it)
-        m_mediumPages.push(it);
+void VMHeap::allocateSmallChunk(std::lock_guard<StaticMutex>& lock, size_t pageClass)
+{
+    Chunk* chunk =
+        new (vmAllocate(chunkSize, chunkSize)) Chunk(lock);
 
-    LargeChunk* largeChunk = superChunk->largeChunk();
-    m_largeObjects.insert(LargeObject(LargeObject::init(largeChunk).begin()));
+#if BOS(DARWIN)
+    m_zone.addChunk(chunk);
+#endif
+
+    size_t pageSize = bmalloc::pageSize(pageClass);
+    size_t smallPageCount = pageSize / smallPageSize;
+
+    // We align to our page size in order to guarantee that we can service
+    // aligned allocation requests at equal and smaller powers of two.
+    size_t metadataSize = divideRoundingUp(sizeof(Chunk), pageSize) * pageSize;
+
+    Object begin(chunk, metadataSize);
+    Object end(chunk, chunkSize);
+
+    for (Object it = begin; it + pageSize <= end; it = it + pageSize) {
+        SmallPage* page = it.page();
+        new (page) SmallPage;
+
+        for (size_t i = 0; i < smallPageCount; ++i)
+            page[i].setSlide(i);
+
+        m_smallPages[pageClass].push(page);
+    }
 }
 
 } // namespace bmalloc

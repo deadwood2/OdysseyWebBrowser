@@ -57,6 +57,7 @@ class CSSValueList;
 class CSSBasicShape;
 class CSSBasicShapeInset;
 class CSSGridLineNamesValue;
+class CSSVariableDependentValue;
 class Document;
 class Element;
 class ImmutableStyleProperties;
@@ -119,6 +120,7 @@ public:
     bool parseSupportsCondition(const String&);
 
     static ParseResult parseValue(MutableStyleProperties*, CSSPropertyID, const String&, bool important, CSSParserMode, StyleSheetContents*);
+    static ParseResult parseCustomPropertyValue(MutableStyleProperties*, const AtomicString& propertyName, const String&, bool important, CSSParserMode, StyleSheetContents* contextStyleSheet);
 
     static bool parseColor(RGBA32& color, const String&, bool strict = false);
     static bool isValidSystemColorValue(CSSValueID);
@@ -143,6 +145,8 @@ public:
     bool parseQuotes(CSSPropertyID, bool important);
     bool parseAlt(CSSPropertyID, bool important);
     
+    bool parseCustomPropertyDeclaration(bool important, CSSValueID);
+    
     RefPtr<CSSValue> parseAttr(CSSParserValueList& args);
 
     RefPtr<CSSValue> parseBackgroundColor();
@@ -162,13 +166,13 @@ public:
     enum FillPositionFlag { InvalidFillPosition = 0, AmbiguousFillPosition = 1, XFillPosition = 2, YFillPosition = 4 };
     enum FillPositionParsingMode { ResolveValuesAsPercent = 0, ResolveValuesAsKeyword = 1 };
     RefPtr<CSSPrimitiveValue> parseFillPositionComponent(CSSParserValueList&, unsigned& cumulativeFlags, FillPositionFlag& individualFlag, FillPositionParsingMode = ResolveValuesAsPercent);
-    RefPtr<CSSValue> parsePositionX(CSSParserValueList&);
-    RefPtr<CSSValue> parsePositionY(CSSParserValueList&);
-    void parse2ValuesFillPosition(CSSParserValueList&, RefPtr<CSSValue>&, RefPtr<CSSValue>&);
+    RefPtr<CSSPrimitiveValue> parsePositionX(CSSParserValueList&);
+    RefPtr<CSSPrimitiveValue> parsePositionY(CSSParserValueList&);
+    void parse2ValuesFillPosition(CSSParserValueList&, RefPtr<CSSPrimitiveValue>&, RefPtr<CSSPrimitiveValue>&);
     bool isPotentialPositionValue(CSSParserValue&);
-    void parseFillPosition(CSSParserValueList&, RefPtr<CSSValue>&, RefPtr<CSSValue>&);
-    void parse3ValuesFillPosition(CSSParserValueList&, RefPtr<CSSValue>&, RefPtr<CSSValue>&, RefPtr<CSSPrimitiveValue>&&, RefPtr<CSSPrimitiveValue>&&);
-    void parse4ValuesFillPosition(CSSParserValueList&, RefPtr<CSSValue>&, RefPtr<CSSValue>&, RefPtr<CSSPrimitiveValue>&&, RefPtr<CSSPrimitiveValue>&&);
+    void parseFillPosition(CSSParserValueList&, RefPtr<CSSPrimitiveValue>&, RefPtr<CSSPrimitiveValue>&);
+    void parse3ValuesFillPosition(CSSParserValueList&, RefPtr<CSSPrimitiveValue>&, RefPtr<CSSPrimitiveValue>&, RefPtr<CSSPrimitiveValue>&&, RefPtr<CSSPrimitiveValue>&&);
+    void parse4ValuesFillPosition(CSSParserValueList&, RefPtr<CSSPrimitiveValue>&, RefPtr<CSSPrimitiveValue>&, RefPtr<CSSPrimitiveValue>&&, RefPtr<CSSPrimitiveValue>&&);
 
     void parseFillRepeat(RefPtr<CSSValue>&, RefPtr<CSSValue>&);
     RefPtr<CSSValue> parseFillSize(CSSPropertyID, bool &allowComma);
@@ -193,7 +197,7 @@ public:
 #endif
     static Vector<double> parseKeyframeSelector(const String&);
 
-    bool parseTransformOriginShorthand(RefPtr<CSSValue>&, RefPtr<CSSValue>&, RefPtr<CSSValue>&);
+    bool parseTransformOriginShorthand(RefPtr<CSSPrimitiveValue>&, RefPtr<CSSPrimitiveValue>&, RefPtr<CSSValue>&);
     bool parseCubicBezierTimingFunctionValue(CSSParserValueList& args, double& result);
     bool parseAnimationProperty(CSSPropertyID, RefPtr<CSSValue>&, AnimationParseContext&);
     bool parseTransitionShorthand(CSSPropertyID, bool important);
@@ -210,6 +214,7 @@ public:
     bool parseGridTemplateShorthand(bool important);
     bool parseGridShorthand(bool important);
     bool parseGridAreaShorthand(bool important);
+    bool parseGridGapShorthand(bool important);
     bool parseSingleGridAreaLonghand(RefPtr<CSSValue>&);
     RefPtr<CSSValue> parseGridTrackList();
     bool parseGridTrackRepeatFunction(CSSValueList&);
@@ -239,6 +244,7 @@ public:
     RefPtr<CSSBasicShape> parseBasicShapeCircle(CSSParserValueList&);
     RefPtr<CSSBasicShape> parseBasicShapeEllipse(CSSParserValueList&);
     RefPtr<CSSBasicShape> parseBasicShapePolygon(CSSParserValueList&);
+    RefPtr<CSSBasicShape> parseBasicShapePath(CSSParserValueList&);
     RefPtr<CSSBasicShape> parseBasicShapeInset(CSSParserValueList&);
 
     bool parseFont(bool important);
@@ -259,7 +265,6 @@ public:
 
     bool parseLineHeight(bool important);
     bool parseFontSize(bool important);
-    bool parseFontVariant(bool important);
     bool parseFontWeight(bool important);
     bool parseFontSynthesis(bool important);
     bool parseFontFaceSrc();
@@ -319,8 +324,8 @@ public:
 
     RefPtr<CSSValueList> parseTransform();
     RefPtr<CSSValue> parseTransformValue(CSSParserValue&);
-    bool parseTransformOrigin(CSSPropertyID propId, CSSPropertyID& propId1, CSSPropertyID& propId2, CSSPropertyID& propId3, RefPtr<CSSValue>&, RefPtr<CSSValue>&, RefPtr<CSSValue>&);
-    bool parsePerspectiveOrigin(CSSPropertyID propId, CSSPropertyID& propId1, CSSPropertyID& propId2,  RefPtr<CSSValue>&, RefPtr<CSSValue>&);
+    bool parseTransformOrigin(CSSPropertyID propId, CSSPropertyID& propId1, CSSPropertyID& propId2, CSSPropertyID& propId3, RefPtr<CSSPrimitiveValue>&, RefPtr<CSSPrimitiveValue>&, RefPtr<CSSValue>&);
+    bool parsePerspectiveOrigin(CSSPropertyID propId, CSSPropertyID& propId1, CSSPropertyID& propId2,  RefPtr<CSSPrimitiveValue>&, RefPtr<CSSPrimitiveValue>&);
 
     bool parseTextEmphasisStyle(bool important);
     bool parseTextEmphasisPosition(bool important);
@@ -332,6 +337,8 @@ public:
 
     RefPtr<CSSValue> parseTextIndent();
     
+    bool parseHangingPunctuation(bool important);
+
     bool parseLineBoxContain(bool important);
     RefPtr<CSSCalcValue> parseCalculation(CSSParserValue&, CalculationPermittedValueRange);
 
@@ -343,7 +350,12 @@ public:
     bool parseFlowThread(CSSPropertyID, bool important);
     bool parseRegionThread(CSSPropertyID, bool important);
 
-    bool parseFontVariantLigatures(bool important);
+    bool parseFontVariantLigatures(bool important, bool unknownIsFailure, bool implicit);
+    bool parseFontVariantNumeric(bool important, bool unknownIsFailure, bool implicit);
+    bool parseFontVariantEastAsian(bool important, bool unknownIsFailure, bool implicit);
+    bool parseFontVariant(bool important);
+
+    bool parseWillChange(bool important);
 
     // Faster than doing a new/delete each time since it keeps one vector.
     std::unique_ptr<Vector<std::unique_ptr<CSSParserSelector>>> createSelectorVector();
@@ -389,6 +401,7 @@ public:
 
     bool m_important;
     CSSPropertyID m_id;
+    AtomicString m_customPropertyName;
     StyleSheetContents* m_styleSheet;
     RefPtr<StyleRuleBase> m_rule;
     RefPtr<StyleKeyframe> m_keyframe;
@@ -406,7 +419,6 @@ public:
     CSSPropertyID m_currentShorthand;
     bool m_implicitShorthand;
 
-    bool m_hasFontFaceOnlyValues;
     bool m_hadSyntacticallyValidCSSRule;
     bool m_logErrors;
     bool m_ignoreErrorsInDeclaration;
@@ -459,6 +471,10 @@ public:
 
     Location currentLocation();
     static bool isCalculation(CSSParserValue&);
+
+    void setCustomPropertyName(const AtomicString& propertyName) { m_customPropertyName = propertyName; }
+
+    RefPtr<CSSValue> parseVariableDependentValue(CSSPropertyID, const CSSVariableDependentValue&, const CustomPropertyValueMap& customProperties);
 
 private:
     bool is8BitSource() { return m_is8BitSource; }
@@ -549,8 +565,6 @@ private:
     bool inShorthand() const { return m_inParseShorthand; }
 
     bool isValidSize(ValueWithCalculation&);
-
-    void deleteFontFaceOnlyValues();
 
     bool isGeneratedImageValue(CSSParserValue&) const;
     bool parseGeneratedImage(CSSParserValueList&, RefPtr<CSSValue>&);
@@ -749,6 +763,11 @@ inline UChar CSSParser::tokenStartChar()
     if (is8BitSource())
         return *m_tokenStart.ptr8;
     return *m_tokenStart.ptr16;
+}
+
+inline bool isCustomPropertyName(const String& propertyName)
+{
+    return propertyName.length() > 2 && propertyName.characterAt(0) == '-' && propertyName.characterAt(1) == '-';
 }
 
 inline int cssyylex(void* yylval, CSSParser* parser)

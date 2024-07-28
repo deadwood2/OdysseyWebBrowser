@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -96,8 +96,10 @@ RefPtr<Uint8ClampedArray> ImageBufferData::getData(const IntRect& rect, const In
         return nullptr;
 
     RefPtr<Uint8ClampedArray> result = Uint8ClampedArray::createUninitialized(area.unsafeGet());
-    unsigned char* resultData = result->data();
-    
+    unsigned char* resultData = result ? result->data() : nullptr;
+    if (!resultData)
+        return nullptr;
+
     Checked<int> endx = rect.maxX();
     endx *= ceilf(resolutionScale);
     Checked<int> endy = rect.maxY();

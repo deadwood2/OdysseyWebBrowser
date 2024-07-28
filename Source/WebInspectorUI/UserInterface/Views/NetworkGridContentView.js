@@ -35,7 +35,7 @@ WebInspector.NetworkGridContentView = class NetworkGridContentView extends WebIn
         this._networkSidebarPanel = extraArguments.networkSidebarPanel;
 
         this._contentTreeOutline = this._networkSidebarPanel.contentTreeOutline;
-        this._contentTreeOutline.onselect = this._treeElementSelected.bind(this);
+        this._contentTreeOutline.addEventListener(WebInspector.TreeOutline.Event.SelectionDidChange, this._treeSelectionDidChange, this);
 
         var columns = {domain: {}, type: {}, method: {}, scheme: {}, statusCode: {}, cached: {}, size: {}, transferSize: {}, requestSent: {}, latency: {}, duration: {}};
 
@@ -61,7 +61,7 @@ WebInspector.NetworkGridContentView = class NetworkGridContentView extends WebIn
         columns.size.width = "8%";
         columns.size.aligned = "right";
 
-        columns.transferSize.title = WebInspector.UIString("Transfered");
+        columns.transferSize.title = WebInspector.UIString("Transferred");
         columns.transferSize.width = "8%";
         columns.transferSize.aligned = "right";
 
@@ -82,15 +82,18 @@ WebInspector.NetworkGridContentView = class NetworkGridContentView extends WebIn
 
         this._dataGrid = new WebInspector.TimelineDataGrid(this._contentTreeOutline, columns);
         this._dataGrid.addEventListener(WebInspector.DataGrid.Event.SelectedNodeChanged, this._dataGridNodeSelected, this);
-        this._dataGrid.sortColumnIdentifier = "requestSent";
-        this._dataGrid.sortOrder = WebInspector.DataGrid.SortOrder.Ascending;
+        this._dataGrid.sortColumnIdentifierSetting = new WebInspector.Setting("network-grid-content-view-sort", "requestSent");
+        this._dataGrid.sortOrderSetting = new WebInspector.Setting("network-grid-content-view-sort-order", WebInspector.DataGrid.SortOrder.Ascending);
 
         this.element.classList.add("network-grid");
-        this.element.appendChild(this._dataGrid.element);
+        this.addSubview(this._dataGrid);
 
         var networkTimeline = WebInspector.timelineManager.persistentNetworkTimeline;
         networkTimeline.addEventListener(WebInspector.Timeline.Event.RecordAdded, this._networkTimelineRecordAdded, this);
         networkTimeline.addEventListener(WebInspector.Timeline.Event.Reset, this._networkTimelineReset, this);
+
+        this._clearNetworkItemsNavigationItem = new WebInspector.ButtonNavigationItem("clear-network-items", WebInspector.UIString("Clear Network Items"), "Images/NavigationItemTrash.svg", 15, 15);
+        this._clearNetworkItemsNavigationItem.addEventListener(WebInspector.ButtonNavigationItem.Event.Clicked, this._clearNetworkItems, this);
 
         this._pendingRecords = [];
     }
@@ -117,6 +120,11 @@ WebInspector.NetworkGridContentView = class NetworkGridContentView extends WebIn
         return WebInspector.timelineManager.persistentNetworkTimeline.startTime;
     }
 
+    get navigationItems()
+    {
+        return [this._clearNetworkItemsNavigationItem];
+    }
+
     shown()
     {
         super.shown();
@@ -136,33 +144,17 @@ WebInspector.NetworkGridContentView = class NetworkGridContentView extends WebIn
         this._dataGrid.closed();
     }
 
-    updateLayout()
-    {
-        if (this._scheduledLayoutUpdateIdentifier) {
-            cancelAnimationFrame(this._scheduledLayoutUpdateIdentifier);
-            delete this._scheduledLayoutUpdateIdentifier;
-        }
-
-        this._dataGrid.updateLayout();
-
-        this._processPendingRecords();
-    }
-
-    needsLayout()
-    {
-        if (!this._networkSidebarPanel.visible)
-            return;
-
-        if (this._scheduledLayoutUpdateIdentifier)
-            return;
-
-        this._scheduledLayoutUpdateIdentifier = requestAnimationFrame(this.updateLayout.bind(this));
-    }
-
     reset()
     {
         this._contentTreeOutline.removeChildren();
         this._dataGrid.reset();
+    }
+
+    // Protected
+
+    layout()
+    {
+        this._processPendingRecords();
     }
 
     // Private
@@ -210,13 +202,14 @@ WebInspector.NetworkGridContentView = class NetworkGridContentView extends WebIn
         dataGridNode.revealAndSelect();
     }
 
-    _treeElementSelected(treeElement, selectedByUser)
+    _treeSelectionDidChange(event)
     {
         this.dispatchEventToListeners(WebInspector.ContentView.Event.SelectionPathComponentsDidChange);
 
         if (!this._networkSidebarPanel.canShowDifferentContentView())
             return;
 
+        let treeElement = event.data.selectedElement;
         if (treeElement instanceof WebInspector.ResourceTreeElement) {
             WebInspector.showRepresentedObject(treeElement.representedObject);
             return;
@@ -228,5 +221,9 @@ WebInspector.NetworkGridContentView = class NetworkGridContentView extends WebIn
     _dataGridNodeSelected(event)
     {
         this.dispatchEventToListeners(WebInspector.ContentView.Event.SelectionPathComponentsDidChange);
+    }
+
+    _clearNetworkItems(event) {
+        this.reset();
     }
 };

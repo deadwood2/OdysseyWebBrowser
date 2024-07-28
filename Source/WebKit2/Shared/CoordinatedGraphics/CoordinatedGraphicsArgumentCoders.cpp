@@ -448,7 +448,7 @@ void ArgumentCoder<TextureMapperAnimation>::encode(ArgumentEncoder& encoder, con
         case AnimatedPropertyTransform:
             encoder << static_cast<const TransformAnimationValue&>(value).value();
             break;
-        case AnimatedPropertyWebkitFilter:
+        case AnimatedPropertyFilter:
             encoder << static_cast<const FilterAnimationValue&>(value).value();
             break;
         default:
@@ -460,7 +460,7 @@ void ArgumentCoder<TextureMapperAnimation>::encode(ArgumentEncoder& encoder, con
 bool ArgumentCoder<TextureMapperAnimation>::decode(ArgumentDecoder& decoder, TextureMapperAnimation& animation)
 {
     String name;
-    IntSize boxSize;
+    FloatSize boxSize;
     TextureMapperAnimation::AnimationState state;
     double startTime;
     double pauseTime;
@@ -534,7 +534,7 @@ bool ArgumentCoder<TextureMapperAnimation>::decode(ArgumentDecoder& decoder, Tex
             keyframes.insert(std::make_unique<TransformAnimationValue>(keyTime, transform, timingFunction.get()));
             break;
         }
-        case AnimatedPropertyWebkitFilter: {
+        case AnimatedPropertyFilter: {
             FilterOperations filter;
             if (!decoder.decode(filter))
                 return false;
@@ -546,9 +546,7 @@ bool ArgumentCoder<TextureMapperAnimation>::decode(ArgumentDecoder& decoder, Tex
         }
     }
 
-    animation = TextureMapperAnimation(name, keyframes, boxSize, animationObject.get(), startTime, listsMatch);
-    animation.setState(state, pauseTime);
-
+    animation = TextureMapperAnimation(name, keyframes, boxSize, *animationObject, listsMatch, startTime, pauseTime, state);
     return true;
 }
 

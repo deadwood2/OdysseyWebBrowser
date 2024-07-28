@@ -51,14 +51,14 @@
 namespace WebCore {
 
 ApplicationCacheGroup::ApplicationCacheGroup(Ref<ApplicationCacheStorage>&& storage, const URL& manifestURL)
-    : m_storage(WTF::move(storage))
+    : m_storage(WTFMove(storage))
     , m_manifestURL(manifestURL)
     , m_origin(SecurityOrigin::create(manifestURL))
     , m_updateStatus(Idle)
     , m_downloadingPendingMasterResourceLoadersCount(0)
     , m_progressTotal(0)
     , m_progressDone(0)
-    , m_frame(0)
+    , m_frame(nullptr)
     , m_storageID(0)
     , m_isObsolete(false)
     , m_completionType(None)
@@ -104,7 +104,7 @@ ApplicationCache* ApplicationCacheGroup::cacheForMainRequest(const ResourceReque
 ApplicationCache* ApplicationCacheGroup::fallbackCacheForMainRequest(const ResourceRequest& request, DocumentLoader* documentLoader)
 {
     if (!ApplicationCache::requestIsHTTPOrHTTPSGet(request))
-        return 0;
+        return nullptr;
 
     URL url(request.url());
     if (url.hasFragmentIdentifier())
@@ -121,7 +121,7 @@ ApplicationCache* ApplicationCacheGroup::fallbackCacheForMainRequest(const Resou
         return group->newestCache();
     }
     
-    return 0;
+    return nullptr;
 }
 
 void ApplicationCacheGroup::selectCache(Frame* frame, const URL& passedManifestURL)
@@ -250,7 +250,7 @@ void ApplicationCacheGroup::finishedLoadingMainResource(DocumentLoader* loader)
         // Cache update has been a failure, so there is no reason to keep the document associated with the incomplete cache
         // (its main resource was not cached yet, so it is likely that the application changed significantly server-side).
         ASSERT(!m_cacheBeingUpdated); // Already cleared out by stopLoading().
-        loader->applicationCacheHost()->setApplicationCache(0); // Will unset candidate, too.
+        loader->applicationCacheHost()->setApplicationCache(nullptr); // Will unset candidate, too.
         m_associatedDocumentLoaders.remove(loader);
         postListenerTask(ApplicationCacheHost::ERROR_EVENT, loader);
         break;
@@ -295,7 +295,7 @@ void ApplicationCacheGroup::failedLoadingMainResource(DocumentLoader* loader)
         ASSERT(!m_cacheBeingUpdated); // Already cleared out by stopLoading().
         ASSERT(!loader->applicationCacheHost()->applicationCache() || loader->applicationCacheHost()->applicationCache()->group() == this);
 
-        loader->applicationCacheHost()->setApplicationCache(0); // Will unset candidate, too.
+        loader->applicationCacheHost()->setApplicationCache(nullptr); // Will unset candidate, too.
         m_associatedDocumentLoaders.remove(loader);
         postListenerTask(ApplicationCacheHost::ERROR_EVENT, loader);
         break;
@@ -306,7 +306,7 @@ void ApplicationCacheGroup::failedLoadingMainResource(DocumentLoader* loader)
         ASSERT(loader->applicationCacheHost()->applicationCache() == m_cacheBeingUpdated);
         ASSERT(!loader->applicationCacheHost()->candidateApplicationCacheGroup());
         m_associatedDocumentLoaders.remove(loader);
-        loader->applicationCacheHost()->setApplicationCache(0);
+        loader->applicationCacheHost()->setApplicationCache(nullptr);
 
         postListenerTask(ApplicationCacheHost::ERROR_EVENT, loader);
 
@@ -729,9 +729,8 @@ void ApplicationCacheGroup::didFinishLoadingManifest()
     m_cacheBeingUpdated = ApplicationCache::create();
     m_cacheBeingUpdated->setGroup(this);
 
-    HashSet<DocumentLoader*>::const_iterator masterEnd = m_pendingMasterResourceLoaders.end();
-    for (HashSet<DocumentLoader*>::const_iterator iter = m_pendingMasterResourceLoaders.begin(); iter != masterEnd; ++iter)
-        associateDocumentLoaderWithCache(*iter, m_cacheBeingUpdated.get());
+    for (auto& loader : m_pendingMasterResourceLoaders)
+        associateDocumentLoaderWithCache(loader, m_cacheBeingUpdated.get());
 
     // We have the manifest, now download the resources.
     setUpdateStatus(Downloading);
@@ -751,9 +750,8 @@ void ApplicationCacheGroup::didFinishLoadingManifest()
     for (const auto& explicitURL : manifest.explicitURLs)
         addEntry(explicitURL, ApplicationCacheResource::Explicit);
 
-    size_t fallbackCount = manifest.fallbackURLs.size();
-    for (size_t i = 0; i  < fallbackCount; ++i)
-        addEntry(manifest.fallbackURLs[i].second, ApplicationCacheResource::Fallback);
+    for (auto& fallbackURL : manifest.fallbackURLs)
+        addEntry(fallbackURL.second, ApplicationCacheResource::Fallback);
     
     m_cacheBeingUpdated->setOnlineWhitelist(manifest.onlineWhitelistedURLs);
     m_cacheBeingUpdated->setFallbackURLs(manifest.fallbackURLs);
@@ -818,13 +816,13 @@ void ApplicationCacheGroup::manifestNotFound()
         
         ASSERT((*it)->applicationCacheHost()->candidateApplicationCacheGroup() == this);
         ASSERT(!(*it)->applicationCacheHost()->applicationCache());
-        (*it)->applicationCacheHost()->setCandidateApplicationCacheGroup(0);
+        (*it)->applicationCacheHost()->setCandidateApplicationCacheGroup(nullptr);
         m_pendingMasterResourceLoaders.remove(it);
     }
 
     m_downloadingPendingMasterResourceLoadersCount = 0;
     setUpdateStatus(Idle);    
-    m_frame = 0;
+    m_frame = nullptr;
     
     if (m_caches.isEmpty()) {
         ASSERT(m_associatedDocumentLoaders.isEmpty());
@@ -941,9 +939,8 @@ void ApplicationCacheGroup::checkIfLoadIsComplete()
             // Need to copy loaders, because the cache group may be destroyed at the end of iteration.
             Vector<DocumentLoader*> loaders;
             copyToVector(m_pendingMasterResourceLoaders, loaders);
-            size_t count = loaders.size();
-            for (size_t i = 0; i != count; ++i)
-                disassociateDocumentLoader(loaders[i]); // This can delete this group.
+            for (auto& loader : loaders)
+                disassociateDocumentLoader(loader); // This can delete this group.
 
             // Reinstate the oldNewestCache, if there was one.
             if (oldNewestCache) {
@@ -962,7 +959,7 @@ void ApplicationCacheGroup::checkIfLoadIsComplete()
     m_pendingMasterResourceLoaders.clear();
     m_completionType = None;
     setUpdateStatus(Idle);
-    m_frame = 0;
+    m_frame = nullptr;
     m_availableSpaceInQuota = ApplicationCacheStorage::unknownQuota();
     m_calledReachedMaxAppCacheSize = false;
 }
@@ -1079,9 +1076,8 @@ void ApplicationCacheGroup::scheduleReachedMaxAppCacheSizeCallback()
 
 void ApplicationCacheGroup::postListenerTask(ApplicationCacheHost::EventID eventID, int progressTotal, int progressDone, const HashSet<DocumentLoader*>& loaderSet)
 {
-    HashSet<DocumentLoader*>::const_iterator loaderSetEnd = loaderSet.end();
-    for (HashSet<DocumentLoader*>::const_iterator iter = loaderSet.begin(); iter != loaderSetEnd; ++iter)
-        postListenerTask(eventID, progressTotal, progressDone, *iter);
+    for (auto& loader : loaderSet)
+        postListenerTask(eventID, progressTotal, progressDone, loader);
 }
 
 void ApplicationCacheGroup::postListenerTask(ApplicationCacheHost::EventID eventID, int progressTotal, int progressDone, DocumentLoader* loader)

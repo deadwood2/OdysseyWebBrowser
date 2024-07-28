@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,6 +32,7 @@
 #import <UIKit/UIBarButtonItem_Private.h>
 #import <UIKit/UIDatePicker_Private.h>
 #import <UIKit/UIDevice_Private.h>
+#import <UIKit/UIDocumentMenuViewController_Private.h>
 #import <UIKit/UIDocumentPasswordView.h>
 #import <UIKit/UIFont_Private.h>
 #import <UIKit/UIGeometry_Private.h>
@@ -74,22 +75,47 @@
 #import <UIKit/_UINavigationInteractiveTransition.h>
 #import <UIKit/_UINavigationParallaxTransition.h>
 
-#import <WebKitAdditions/LinkPreviewDefines.h>
-
 #if HAVE(LINK_PREVIEW)
 #import <UIKit/UIPreviewItemController.h>
 #endif
 
-// FIXME: Unconditionally include this file when a new SDK is available. <rdar://problem/20150072>
-#if defined(__has_include) && __has_include(<UIKit/UIDocumentMenuViewController_Private.h>)
-#import <UIKit/UIDocumentMenuViewController_Private.h>
 #else
-@interface UIDocumentMenuViewController ()
-@property (nonatomic, assign, setter = _setIgnoreApplicationEntitlementForImport:, getter = _ignoreApplicationEntitlementForImport) BOOL _ignoreApplicationEntitlementForImport;
+
+#if HAVE(LINK_PREVIEW)
+typedef NS_ENUM(NSInteger, UIPreviewItemType) {
+    UIPreviewItemTypeNone,
+    UIPreviewItemTypeClientCustom,
+    UIPreviewItemTypeLink,
+    UIPreviewItemTypeImage,
+    UIPreviewItemTypeText,
+};
+
+@class UIPreviewItemController;
+
+@protocol UIPreviewItemDelegate <NSObject>
+- (NSDictionary *)_dataForPreviewItemController:(UIPreviewItemController *)controller atPosition:(CGPoint)position type:(UIPreviewItemType *)type;
+@optional
+- (BOOL)_interactionShouldBeginFromPreviewItemController:(UIPreviewItemController *)controller forPosition:(CGPoint)position;
+- (void)_interactionStartedFromPreviewItemController:(UIPreviewItemController *)controller;
+- (void)_interactionStoppedFromPreviewItemController:(UIPreviewItemController *)controller;
+- (UIViewController *)_presentedViewControllerForPreviewItemController:(UIPreviewItemController *)controller;
+- (void)_previewItemController:(UIPreviewItemController *)controller didDismissPreview:(UIViewController *)viewController committing:(BOOL)committing;
+- (void)_previewItemController:(UIPreviewItemController *)controller commitPreview:(UIViewController *)viewController;
+- (void)_previewItemControllerDidCancelPreview:(UIPreviewItemController *)controller;
+- (UIImage *)_presentationSnapshotForPreviewItemController:(UIPreviewItemController *)controller;
+- (NSArray *)_presentationRectsForPreviewItemController:(UIPreviewItemController *)controller;
+- (CGRect)_presentationRectForPreviewItemController:(UIPreviewItemController *)controller;
+@end
+
+@interface UIPreviewItemController : NSObject
+- (instancetype)initWithView:(UIView *)view;
+@property (assign, nonatomic) id<UIPreviewItemDelegate> delegate;
+@property (assign, nonatomic, readonly) UIPreviewItemType type;
+@property (strong, nonatomic, readonly) NSDictionary *previewData;
+@property (strong, nonatomic, readonly) UIGestureRecognizer *presentationGestureRecognizer;
+@property (strong, nonatomic, readonly) UIGestureRecognizer *presentationSecondaryGestureRecognizer;
 @end
 #endif
-
-#else
 
 @interface UIAlertController ()
 - (void)_addActionWithTitle:(NSString *)title style:(UIAlertActionStyle)style handler:(void (^)(void))handler;
@@ -206,11 +232,15 @@ typedef enum {
 
 @interface UIGestureRecognizer ()
 - (void)requireOtherGestureToFail:(UIGestureRecognizer *)gestureRecognizer;
+#if __IPHONE_OS_VERSION_MAX_ALLOWED < 90200
+@property(nonatomic, copy) NSArray<NSNumber *> *allowedTouchTypes;
+#endif
 @end
 
 @interface UILongPressGestureRecognizer ()
 @property (nonatomic) CFTimeInterval delay;
 @property (nonatomic, readonly) CGPoint startPoint;
+@property (nonatomic, assign, setter=_setRequiresQuietImpulse:) BOOL _requiresQuietImpulse;
 @end
 
 @interface _UIWebHighlightLongPressGestureRecognizer : UILongPressGestureRecognizer
@@ -257,6 +287,16 @@ typedef enum {
 @interface UIScreen ()
 - (CADisplay *)_display;
 @end
+
+#if __IPHONE_OS_VERSION_MAX_ALLOWED < 90100
+typedef enum {
+    UITouchTypeDirect
+} UITouchType;
+
+@interface UITouch ()
+@property(nonatomic,readonly) UITouchType type;
+@end
+#endif
 
 @interface UIScrollView ()
 - (void)_stopScrollingAndZoomingAnimations;
@@ -459,6 +499,7 @@ typedef NS_ENUM(NSInteger, UIWKGestureType) {
 - (void)selectionChangedWithTouchAt:(CGPoint)point withSelectionTouch:(UIWKSelectionTouch)touch withFlags:(UIWKSelectionFlags)flags;
 - (void)selectionChangedWithTouchAt:(CGPoint)point withSelectionTouch:(UIWKSelectionTouch)touch;
 - (void)showDictionaryFor:(NSString *)selectedTerm fromRect:(CGRect)presentationRect;
+- (void)showShareSheetFor:(NSString *)selectedTerm fromRect:(CGRect)presentationRect;
 @property (nonatomic, readonly) UILongPressGestureRecognizer *selectionLongPressRecognizer;
 @end
 
@@ -560,6 +601,7 @@ typedef enum {
 
 @property (nonatomic, assign, getter=isNextEnabled) BOOL nextEnabled;
 @property (nonatomic, assign, getter=isPreviousEnabled) BOOL previousEnabled;
+- (id)initWithInputAssistantItem:(UITextInputAssistantItem *)inputAssistantItem;
 @end
 
 @protocol UIWebFormAccessoryDelegate
@@ -605,9 +647,7 @@ struct _UIWebTouchEvent {
     struct _UIWebTouchPoint* touchPoints;
     unsigned touchPointCount;
 
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000
     bool isPotentialTap;
-#endif
 };
 
 @protocol UIWebTouchEventsGestureRecognizerDelegate
@@ -728,7 +768,7 @@ typedef enum {
 @end
 
 @interface UIDocumentMenuViewController ()
-@property (nonatomic, assign, setter = _setIgnoreApplicationEntitlementForImport:, getter = _ignoreApplicationEntitlementForImport) BOOL _ignoreApplicationEntitlementForImport;
+- (instancetype)_initIgnoringApplicationEntitlementForImportOfTypes:(NSArray *)types;
 @end
 
 @protocol UIDocumentPasswordViewDelegate;
@@ -756,6 +796,13 @@ typedef enum {
 - (void)didBeginEditingPassword:(UITextField *)passwordField inView:(UIDocumentPasswordView *)passwordView;
 - (void)didEndEditingPassword:(UITextField *)passwordField inView:(UIDocumentPasswordView *)passwordView;
 
+@end
+
+@interface UIViewControllerPreviewAction : NSObject <NSCopying>
+@end
+
+@interface UIViewControllerPreviewAction ()
++ (instancetype)actionWithTitle:(NSString *)title handler:(void (^)(UIViewControllerPreviewAction *action, UIViewController *previewViewController))handler;
 @end
 
 #endif // USE(APPLE_INTERNAL_SDK)
@@ -798,5 +845,9 @@ extern const float UIWebViewStandardViewportWidth;
 
 extern NSString *const UIKeyInputPageUp;
 extern NSString *const UIKeyInputPageDown;
+
+extern const NSString *UIPreviewDataLink;
+extern const NSString *UIPreviewDataDDResult;
+extern const NSString *UIPreviewDataDDContext;
 
 WTF_EXTERN_C_END

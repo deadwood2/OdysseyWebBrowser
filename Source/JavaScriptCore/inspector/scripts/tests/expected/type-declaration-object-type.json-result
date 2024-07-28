@@ -35,13 +35,14 @@
 #if ENABLE(INSPECTOR_ALTERNATE_DISPATCHERS)
 
 #include "InspectorProtocolTypes.h"
+#include <inspector/InspectorFrontendRouter.h>
 #include <JavaScriptCore/InspectorBackendDispatcher.h>
 
 namespace Inspector {
 
 class AlternateBackendDispatcher {
 public:
-    void setBackendDispatcher(RefPtr<BackendDispatcher>&& dispatcher) { m_backendDispatcher = WTF::move(dispatcher); }
+    void setBackendDispatcher(RefPtr<BackendDispatcher>&& dispatcher) { m_backendDispatcher = WTFMove(dispatcher); }
     BackendDispatcher* backendDispatcher() const { return m_backendDispatcher.get(); }
 private:
     RefPtr<BackendDispatcher> m_backendDispatcher;
@@ -172,8 +173,9 @@ typedef String ErrorString;
 #include "config.h"
 #include "InspectorBackendDispatchers.h"
 
-#include <inspector/InspectorFrontendChannel.h>
+#include <inspector/InspectorFrontendRouter.h>
 #include <inspector/InspectorValues.h>
+#include <wtf/NeverDestroyed.h>
 #include <wtf/text/CString.h>
 
 #if ENABLE(INSPECTOR_ALTERNATE_DISPATCHERS)
@@ -223,13 +225,12 @@ namespace Inspector {
 #define InspectorFrontendDispatchers_h
 
 #include "InspectorProtocolObjects.h"
-#include <inspector/InspectorFrontendChannel.h>
 #include <inspector/InspectorValues.h>
 #include <wtf/text/WTFString.h>
 
 namespace Inspector {
 
-
+class FrontendRouter;
 
 } // namespace Inspector
 
@@ -270,6 +271,7 @@ namespace Inspector {
 #include "config.h"
 #include "InspectorFrontendDispatchers.h"
 
+#include "InspectorFrontendRouter.h"
 #include <wtf/text/CString.h>
 
 namespace Inspector {
@@ -371,7 +373,7 @@ public:
         }
 
         Builder(Ref</*Error*/InspectorObject>&& object)
-            : m_result(WTF::move(object))
+            : m_result(WTFMove(object))
         {
             COMPILE_ASSERT(STATE == NoFieldsSet, builder_created_in_non_init_state);
         }
@@ -398,7 +400,7 @@ public:
             COMPILE_ASSERT(sizeof(Error) == sizeof(InspectorObject), cannot_cast);
 
             Ref<InspectorObject> result = m_result.releaseNonNull();
-            return WTF::move(*reinterpret_cast<Ref<Error>*>(&result));
+            return WTFMove(*reinterpret_cast<Ref<Error>*>(&result));
         }
     };
 
@@ -433,7 +435,7 @@ public:
         }
 
         Builder(Ref</*OptionalParameterBundle*/InspectorObject>&& object)
-            : m_result(WTF::move(object))
+            : m_result(WTFMove(object))
         {
             COMPILE_ASSERT(STATE == NoFieldsSet, builder_created_in_non_init_state);
         }
@@ -446,7 +448,7 @@ public:
             COMPILE_ASSERT(sizeof(OptionalParameterBundle) == sizeof(InspectorObject), cannot_cast);
 
             Ref<InspectorObject> result = m_result.releaseNonNull();
-            return WTF::move(*reinterpret_cast<Ref<OptionalParameterBundle>*>(&result));
+            return WTFMove(*reinterpret_cast<Ref<OptionalParameterBundle>*>(&result));
         }
     };
 
@@ -462,7 +464,7 @@ public:
 
     void setColumnNames(RefPtr<Inspector::Protocol::Array<String>> value)
     {
-        InspectorObjectBase::setArray(ASCIILiteral("columnNames"), WTF::move(value));
+        InspectorObjectBase::setArray(ASCIILiteral("columnNames"), WTFMove(value));
     }
 
     void setNotes(const String& value)
@@ -477,22 +479,22 @@ public:
 
     void setValues(RefPtr<Inspector::InspectorObject> value)
     {
-        InspectorObjectBase::setObject(ASCIILiteral("values"), WTF::move(value));
+        InspectorObjectBase::setObject(ASCIILiteral("values"), WTFMove(value));
     }
 
     void setPayload(RefPtr<Inspector::InspectorValue> value)
     {
-        InspectorObjectBase::setValue(ASCIILiteral("payload"), WTF::move(value));
+        InspectorObjectBase::setValue(ASCIILiteral("payload"), WTFMove(value));
     }
 
     void setError(RefPtr<Inspector::Protocol::Database::Error> value)
     {
-        InspectorObjectBase::setObject(ASCIILiteral("error"), WTF::move(value));
+        InspectorObjectBase::setObject(ASCIILiteral("error"), WTFMove(value));
     }
 
     void setErrorList(RefPtr<Inspector::Protocol::Database::ErrorList> value)
     {
-        InspectorObjectBase::setArray(ASCIILiteral("errorList"), WTF::move(value));
+        InspectorObjectBase::setArray(ASCIILiteral("errorList"), WTFMove(value));
     }
 };
 
@@ -521,7 +523,7 @@ public:
         }
 
         Builder(Ref</*ParameterBundle*/InspectorObject>&& object)
-            : m_result(WTF::move(object))
+            : m_result(WTFMove(object))
         {
             COMPILE_ASSERT(STATE == NoFieldsSet, builder_created_in_non_init_state);
         }
@@ -583,7 +585,7 @@ public:
             COMPILE_ASSERT(sizeof(ParameterBundle) == sizeof(InspectorObject), cannot_cast);
 
             Ref<InspectorObject> result = m_result.releaseNonNull();
-            return WTF::move(*reinterpret_cast<Ref<ParameterBundle>*>(&result));
+            return WTFMove(*reinterpret_cast<Ref<ParameterBundle>*>(&result));
         }
     };
 
@@ -629,7 +631,7 @@ public:
         }
 
         Builder(Ref</*ObjectWithPropertyNameConflicts*/InspectorObject>&& object)
-            : m_result(WTF::move(object))
+            : m_result(WTFMove(object))
         {
             COMPILE_ASSERT(STATE == NoFieldsSet, builder_created_in_non_init_state);
         }
@@ -677,7 +679,7 @@ public:
             COMPILE_ASSERT(sizeof(ObjectWithPropertyNameConflicts) == sizeof(InspectorObject), cannot_cast);
 
             Ref<InspectorObject> result = m_result.releaseNonNull();
-            return WTF::move(*reinterpret_cast<Ref<ObjectWithPropertyNameConflicts>*>(&result));
+            return WTFMove(*reinterpret_cast<Ref<ObjectWithPropertyNameConflicts>*>(&result));
         }
     };
 
@@ -724,7 +726,7 @@ public:
         }
 
         Builder(Ref</*ParameterBundle*/InspectorObject>&& object)
-            : m_result(WTF::move(object))
+            : m_result(WTFMove(object))
         {
             COMPILE_ASSERT(STATE == NoFieldsSet, builder_created_in_non_init_state);
         }
@@ -779,7 +781,7 @@ public:
             COMPILE_ASSERT(sizeof(ParameterBundle) == sizeof(InspectorObject), cannot_cast);
 
             Ref<InspectorObject> result = m_result.releaseNonNull();
-            return WTF::move(*reinterpret_cast<Ref<ParameterBundle>*>(&result));
+            return WTFMove(*reinterpret_cast<Ref<ParameterBundle>*>(&result));
         }
     };
 
@@ -1012,7 +1014,7 @@ using namespace Inspector;
 // DO NOT EDIT THIS FILE. It is automatically generated from type-declaration-object-type.json
 // by the script: Source/JavaScriptCore/inspector/scripts/generate-inspector-protocol-bindings.py
 
-#import "RWIProtocol.h"
+#import <WebInspector/RWIProtocol.h>
 
 __attribute__((visibility ("default")))
 @interface RWIProtocolConfiguration : NSObject
@@ -1057,7 +1059,6 @@ __attribute__((visibility ("default")))
 
 #include "RWIProtocolInternal.h"
 #include "RWIProtocolEnumConversionHelpers.h"
-#include <JavaScriptCore/InspectorFrontendChannel.h>
 #include <JavaScriptCore/InspectorValues.h>
 
 namespace Inspector {
@@ -1151,7 +1152,6 @@ ObjCEnumType fromProtocolString(const String& value);
 #import "RWIProtocolInternal.h"
 
 #import "RWIProtocolEnumConversionHelpers.h"
-#import <JavaScriptCore/InspectorFrontendChannel.h>
 #import <JavaScriptCore/InspectorValues.h>
 
 using namespace Inspector;

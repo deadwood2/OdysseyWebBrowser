@@ -22,6 +22,7 @@
 #include "config.h"
 #include "PropertySetCSSStyleDeclaration.h"
 
+#include "CSSCustomPropertyValue.h"
 #include "CSSParser.h"
 #include "CSSStyleSheet.h"
 #include "HTMLNames.h"
@@ -144,24 +145,29 @@ String PropertySetCSSStyleDeclaration::cssText() const
 {
     return m_propertySet->asText();
 }
-    
-void PropertySetCSSStyleDeclaration::setCssText(const String& text, ExceptionCode& ec)
+
+void PropertySetCSSStyleDeclaration::setCssText(const String& text, ExceptionCode&)
 {
     StyleAttributeMutationScope mutationScope(this);
     if (!willMutate())
         return;
 
-    ec = 0;
-    // FIXME: Detect syntax errors and set ec.
-    m_propertySet->parseDeclaration(text, contextStyleSheet());
+    bool changed = m_propertySet->parseDeclaration(text, contextStyleSheet());
 
-    didMutate(PropertyChanged);
+    didMutate(changed ? PropertyChanged : NoChanges);
 
     mutationScope.enqueueMutationRecord();    
 }
 
 RefPtr<CSSValue> PropertySetCSSStyleDeclaration::getPropertyCSSValue(const String& propertyName)
 {
+    if (isCustomPropertyName(propertyName)) {
+        RefPtr<CSSValue> value = m_propertySet->getCustomPropertyCSSValue(propertyName);
+        if (!value)
+            return nullptr;
+        return cloneAndCacheForCSSOM(value.get());
+    }
+    
     CSSPropertyID propertyID = cssPropertyID(propertyName);
     if (!propertyID)
         return nullptr;
@@ -170,6 +176,9 @@ RefPtr<CSSValue> PropertySetCSSStyleDeclaration::getPropertyCSSValue(const Strin
 
 String PropertySetCSSStyleDeclaration::getPropertyValue(const String& propertyName)
 {
+    if (isCustomPropertyName(propertyName))
+        return m_propertySet->getCustomPropertyValue(propertyName);
+
     CSSPropertyID propertyID = cssPropertyID(propertyName);
     if (!propertyID)
         return String();
@@ -178,6 +187,9 @@ String PropertySetCSSStyleDeclaration::getPropertyValue(const String& propertyNa
 
 String PropertySetCSSStyleDeclaration::getPropertyPriority(const String& propertyName)
 {
+    if (isCustomPropertyName(propertyName))
+        return m_propertySet->customPropertyIsImportant(propertyName) ? "important" : "";
+
     CSSPropertyID propertyID = cssPropertyID(propertyName);
     if (!propertyID)
         return String();
@@ -203,7 +215,10 @@ bool PropertySetCSSStyleDeclaration::isPropertyImplicit(const String& propertyNa
 void PropertySetCSSStyleDeclaration::setProperty(const String& propertyName, const String& value, const String& priority, ExceptionCode& ec)
 {
     StyleAttributeMutationScope mutationScope(this);
+    
     CSSPropertyID propertyID = cssPropertyID(propertyName);
+    if (isCustomPropertyName(propertyName))
+        propertyID = CSSPropertyCustom;
     if (!propertyID)
         return;
 
@@ -213,7 +228,7 @@ void PropertySetCSSStyleDeclaration::setProperty(const String& propertyName, con
     bool important = priority.find("important", 0, false) != notFound;
 
     ec = 0;
-    bool changed = m_propertySet->setProperty(propertyID, value, important, contextStyleSheet());
+    bool changed = propertyID != CSSPropertyCustom ? m_propertySet->setProperty(propertyID, value, important, contextStyleSheet()) : m_propertySet->setCustomProperty(propertyName, value, important, contextStyleSheet());
 
     didMutate(changed ? PropertyChanged : NoChanges);
 
@@ -228,6 +243,8 @@ String PropertySetCSSStyleDeclaration::removeProperty(const String& propertyName
 {
     StyleAttributeMutationScope mutationScope(this);
     CSSPropertyID propertyID = cssPropertyID(propertyName);
+    if (isCustomPropertyName(propertyName))
+        propertyID = CSSPropertyCustom;
     if (!propertyID)
         return String();
 
@@ -236,7 +253,7 @@ String PropertySetCSSStyleDeclaration::removeProperty(const String& propertyName
 
     ec = 0;
     String result;
-    bool changed = m_propertySet->removeProperty(propertyID, &result);
+    bool changed = propertyID != CSSPropertyCustom ? m_propertySet->removeProperty(propertyID, &result) : m_propertySet->removeCustomProperty(propertyName, &result);
 
     didMutate(changed ? PropertyChanged : NoChanges);
 
@@ -365,7 +382,6 @@ void InlineCSSStyleDeclaration::didMutate(MutationType type)
     if (!m_parentElement)
         return;
 
-    m_parentElement->setNeedsStyleRecalc(InlineStyleChange);
     m_parentElement->invalidateStyleAttribute();
     StyleAttributeMutationScope(this).didInvalidateStyleAttr();
 }

@@ -39,7 +39,11 @@ RenderCombineText::RenderCombineText(Text& textNode, const String& string)
 void RenderCombineText::styleDidChange(StyleDifference diff, const RenderStyle* oldStyle)
 {
     // FIXME: This is pretty hackish.
-    m_combineFontStyle = RenderStyle::clone(&style());
+    // Only cache a new font style if our old one actually changed. We do this to avoid
+    // clobbering width variants and shrink-to-fit changes, since we won't recombine when
+    // the font doesn't change.
+    if (!oldStyle || oldStyle->fontCascade() != style().fontCascade())
+        m_combineFontStyle = RenderStyle::clone(&style());
 
     RenderText::styleDidChange(diff, oldStyle);
 
@@ -67,10 +71,17 @@ float RenderCombineText::width(unsigned from, unsigned length, const FontCascade
     return RenderText::width(from, length, font, xPosition, fallbackFonts, glyphOverflow);
 }
 
-void RenderCombineText::adjustTextOrigin(FloatPoint& textOrigin, const FloatRect& boxRect) const
+Optional<FloatPoint> RenderCombineText::computeTextOrigin(const FloatRect& boxRect) const
 {
-    if (m_isCombined)
-        textOrigin.move(boxRect.height() / 2 - ceilf(m_combinedTextSize.width()) / 2, boxRect.width() + (boxRect.width() - m_combinedTextSize.height()) / 2);
+    if (!m_isCombined)
+        return Nullopt;
+
+    // Visually center m_combinedTextWidth/Ascent/Descent within boxRect
+    FloatPoint result = boxRect.minXMaxYCorner();
+    FloatSize combinedTextSize(m_combinedTextWidth, m_combinedTextAscent + m_combinedTextDescent);
+    result.move((boxRect.size().transposedSize() - combinedTextSize) / 2);
+    result.move(0, m_combinedTextAscent);
+    return result;
 }
 
 void RenderCombineText::getStringToRender(int start, String& string, int& length) const
@@ -102,20 +113,26 @@ void RenderCombineText::combineText()
     if (style().isHorizontalWritingMode())
         return;
 
-    FontDescription description = originalFont().fontDescription();
+    auto description = originalFont().fontDescription();
     float emWidth = description.computedSize() * textCombineMargin;
     bool shouldUpdateFont = false;
 
+    FontSelector* fontSelector = style().fontCascade().fontSelector();
+
     description.setOrientation(Horizontal); // We are going to draw combined text horizontally.
+
+    FontCascade horizontalFont(description, style().fontCascade().letterSpacing(), style().fontCascade().wordSpacing());
+    horizontalFont.update(fontSelector);
     
     GlyphOverflow glyphOverflow;
     glyphOverflow.computeBounds = true;
-    
-    float combinedTextWidth = width(0, textLength(), originalFont(), 0, nullptr, &glyphOverflow);
+    float combinedTextWidth = width(0, textLength(), horizontalFont, 0, nullptr, &glyphOverflow);
+
+    float bestFitDelta = combinedTextWidth - emWidth;
+    auto bestFitDescription = description;
+
     m_isCombined = combinedTextWidth <= emWidth;
     
-    FontSelector* fontSelector = style().fontCascade().fontSelector();
-
     if (m_isCombined)
         shouldUpdateFont = m_combineFontStyle->setFontDescription(description); // Need to change font orientation to horizontal.
     else {
@@ -127,6 +144,7 @@ void RenderCombineText::combineText()
             FontCascade compressedFont(description, style().fontCascade().letterSpacing(), style().fontCascade().wordSpacing());
             compressedFont.update(fontSelector);
             
+            glyphOverflow.left = glyphOverflow.top = glyphOverflow.right = glyphOverflow.bottom = 0;
             float runWidth = RenderText::width(0, textLength(), compressedFont, 0, nullptr, &glyphOverflow);
             if (runWidth <= emWidth) {
                 combinedTextWidth = runWidth;
@@ -136,11 +154,36 @@ void RenderCombineText::combineText()
                 shouldUpdateFont = m_combineFontStyle->setFontDescription(description);
                 break;
             }
+            
+            float widthDelta = runWidth - emWidth;
+            if (widthDelta < bestFitDelta) {
+                bestFitDelta = widthDelta;
+                bestFitDescription = description;
+            }
         }
     }
 
-    if (!m_isCombined)
-        shouldUpdateFont = m_combineFontStyle->setFontDescription(originalFont().fontDescription());
+    if (!m_isCombined) {
+        float scaleFactor = std::max(0.4f, emWidth / (emWidth + bestFitDelta));
+        float originalSize = bestFitDescription.computedSize();
+        do {
+            float computedSize = originalSize * scaleFactor;
+            bestFitDescription.setComputedSize(computedSize);
+            shouldUpdateFont = m_combineFontStyle->setFontDescription(bestFitDescription);
+        
+            FontCascade compressedFont(bestFitDescription, style().fontCascade().letterSpacing(), style().fontCascade().wordSpacing());
+            compressedFont.update(fontSelector);
+            
+            glyphOverflow.left = glyphOverflow.top = glyphOverflow.right = glyphOverflow.bottom = 0;
+            float runWidth = RenderText::width(0, textLength(), compressedFont, 0, nullptr, &glyphOverflow);
+            if (runWidth <= emWidth) {
+                combinedTextWidth = runWidth;
+                m_isCombined = true;
+                break;
+            }
+            scaleFactor -= 0.05f;
+        } while (scaleFactor >= 0.4f);
+    }
 
     if (shouldUpdateFont)
         m_combineFontStyle->fontCascade().update(fontSelector);
@@ -148,7 +191,9 @@ void RenderCombineText::combineText()
     if (m_isCombined) {
         static NeverDestroyed<String> objectReplacementCharacterString(&objectReplacementCharacter, 1);
         RenderText::setRenderedText(objectReplacementCharacterString.get());
-        m_combinedTextSize = FloatSize(combinedTextWidth, glyphOverflow.bottom + glyphOverflow.top);
+        m_combinedTextWidth = combinedTextWidth;
+        m_combinedTextAscent = glyphOverflow.top;
+        m_combinedTextDescent = glyphOverflow.bottom;
     }
 }
 

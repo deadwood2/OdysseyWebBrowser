@@ -187,8 +187,6 @@ void TextFieldInputType::forwardEvent(Event* event)
     }
 
     if (event->isMouseEvent()
-        || event->isDragEvent()
-        || event->eventInterface() == WheelEventInterfaceType
         || event->type() == eventNames().blurEvent
         || event->type() == eventNames().focusEvent)
     {
@@ -199,7 +197,7 @@ void TextFieldInputType::forwardEvent(Event* event)
             if (event->type() == eventNames().blurEvent) {
                 if (RenderTextControlInnerBlock* innerTextRenderer = innerTextElement()->renderer()) {
                     if (RenderLayer* innerLayer = innerTextRenderer->layer()) {
-                        IntSize scrollOffset(!renderTextControl.style().isLeftToRightDirection() ? innerLayer->scrollWidth() : 0, 0);
+                        ScrollOffset scrollOffset(!renderTextControl.style().isLeftToRightDirection() ? innerLayer->scrollWidth() : 0, 0);
                         innerLayer->scrollToOffset(scrollOffset, RenderLayer::ScrollOffsetClamped);
                     }
                 }
@@ -234,7 +232,7 @@ bool TextFieldInputType::shouldSubmitImplicitly(Event* event)
 
 RenderPtr<RenderElement> TextFieldInputType::createInputRenderer(Ref<RenderStyle>&& style)
 {
-    return createRenderer<RenderTextControlSingleLine>(element(), WTF::move(style));
+    return createRenderer<RenderTextControlSingleLine>(element(), WTFMove(style));
 }
 
 bool TextFieldInputType::needsContainer() const
@@ -274,7 +272,7 @@ void TextFieldInputType::createShadowSubtree()
     m_innerText = TextControlInnerTextElement::create(document);
 
     if (!createsContainer) {
-        element().userAgentShadowRoot()->appendChild(m_innerText, IGNORE_EXCEPTION);
+        element().userAgentShadowRoot()->appendChild(*m_innerText, IGNORE_EXCEPTION);
         updatePlaceholderText();
         return;
     }
@@ -284,7 +282,7 @@ void TextFieldInputType::createShadowSubtree()
 
     if (shouldHaveSpinButton) {
         m_innerSpinButton = SpinButtonElement::create(document, *this);
-        m_container->appendChild(m_innerSpinButton, IGNORE_EXCEPTION);
+        m_container->appendChild(*m_innerSpinButton, IGNORE_EXCEPTION);
     }
 
     if (shouldHaveCapsLockIndicator) {
@@ -294,7 +292,7 @@ void TextFieldInputType::createShadowSubtree()
         bool shouldDrawCapsLockIndicator = this->shouldDrawCapsLockIndicator();
         m_capsLockIndicator->setInlineStyleProperty(CSSPropertyDisplay, shouldDrawCapsLockIndicator ? CSSValueBlock : CSSValueNone, true);
 
-        m_container->appendChild(m_capsLockIndicator, IGNORE_EXCEPTION);
+        m_container->appendChild(*m_capsLockIndicator, IGNORE_EXCEPTION);
     }
 
     updateAutoFillButton();
@@ -401,6 +399,35 @@ static String limitLength(const String& string, int maxLength)
     return string.left(newLength);
 }
 
+static AtomicString autoFillButtonTypeToAutoFillButtonPseudoClassName(AutoFillButtonType autoFillButtonType)
+{
+    AtomicString pseudoClassName;
+    switch (autoFillButtonType) {
+    case AutoFillButtonType::Contacts:
+        pseudoClassName = AtomicString("-webkit-contacts-auto-fill-button", AtomicString::ConstructFromLiteral);
+        break;
+    case AutoFillButtonType::Credentials:
+        pseudoClassName = AtomicString("-webkit-credentials-auto-fill-button", AtomicString::ConstructFromLiteral);
+        break;
+    case AutoFillButtonType::None:
+        ASSERT_NOT_REACHED();
+        break;
+    }
+
+    return pseudoClassName;
+}
+
+static bool isAutoFillButtonTypeChanged(const AtomicString& attribute, AutoFillButtonType autoFillButtonType)
+{
+    if (attribute == "-webkit-contacts-auto-fill-button" && autoFillButtonType != AutoFillButtonType::Contacts)
+        return true;
+
+    if (attribute == "-webkit-credentials-auto-fill-button" && autoFillButtonType != AutoFillButtonType::Credentials)
+        return true;
+
+    return false;
+}
+
 String TextFieldInputType::sanitizeValue(const String& proposedValue) const
 {
     return limitLength(proposedValue.removeCharacters(isASCIILineBreak), HTMLInputElement::maximumLength);
@@ -461,7 +488,7 @@ void TextFieldInputType::updatePlaceholderText()
     String placeholderText = element().strippedPlaceholder();
     if (placeholderText.isEmpty()) {
         if (m_placeholder) {
-            m_placeholder->parentNode()->removeChild(m_placeholder.get(), ASSERT_NO_EXCEPTION);
+            m_placeholder->parentNode()->removeChild(*m_placeholder, ASSERT_NO_EXCEPTION);
             m_placeholder = nullptr;
         }
         return;
@@ -470,7 +497,7 @@ void TextFieldInputType::updatePlaceholderText()
         m_placeholder = HTMLDivElement::create(element().document());
         m_placeholder->setPseudo(AtomicString("-webkit-input-placeholder", AtomicString::ConstructFromLiteral));
         m_placeholder->setInlineStyleProperty(CSSPropertyDisplay, element().isPlaceholderVisible() ? CSSValueBlock : CSSValueNone, true);
-        element().userAgentShadowRoot()->insertBefore(m_placeholder, m_container ? m_container.get() : innerTextElement(), ASSERT_NO_EXCEPTION);
+        element().userAgentShadowRoot()->insertBefore(*m_placeholder, m_container ? m_container.get() : innerTextElement(), ASSERT_NO_EXCEPTION);
         
     }
     m_placeholder->setInnerText(placeholderText, ASSERT_NO_EXCEPTION);
@@ -589,7 +616,7 @@ void TextFieldInputType::capsLockStateMayHaveChanged()
 
 bool TextFieldInputType::shouldDrawAutoFillButton() const
 {
-    return !element().isDisabledOrReadOnly() && element().showAutoFillButton();
+    return !element().isDisabledOrReadOnly() && element().autoFillButtonType() != AutoFillButtonType::None;
 }
 
 void TextFieldInputType::autoFillButtonElementWasClicked()
@@ -609,19 +636,22 @@ void TextFieldInputType::createContainer()
     m_container->setPseudo(AtomicString("-webkit-textfield-decoration-container", AtomicString::ConstructFromLiteral));
 
     m_innerBlock = TextControlInnerElement::create(element().document());
-    m_innerBlock->appendChild(m_innerText, IGNORE_EXCEPTION);
-    m_container->appendChild(m_innerBlock, IGNORE_EXCEPTION);
+    m_innerBlock->appendChild(*m_innerText, IGNORE_EXCEPTION);
+    m_container->appendChild(*m_innerBlock, IGNORE_EXCEPTION);
 
-    element().userAgentShadowRoot()->appendChild(m_container, IGNORE_EXCEPTION);
+    element().userAgentShadowRoot()->appendChild(*m_container, IGNORE_EXCEPTION);
 }
 
-void TextFieldInputType::createAutoFillButton()
+void TextFieldInputType::createAutoFillButton(AutoFillButtonType autoFillButtonType)
 {
     ASSERT(!m_autoFillButton);
 
+    if (autoFillButtonType == AutoFillButtonType::None)
+        return;
+
     m_autoFillButton = AutoFillButtonElement::create(element().document(), *this);
-    m_autoFillButton->setPseudo(AtomicString("-webkit-auto-fill-button", AtomicString::ConstructFromLiteral));
-    m_container->appendChild(m_autoFillButton, IGNORE_EXCEPTION);
+    m_autoFillButton->setPseudo(autoFillButtonTypeToAutoFillButtonPseudoClassName(autoFillButtonType));
+    m_container->appendChild(*m_autoFillButton, IGNORE_EXCEPTION);
 }
 
 void TextFieldInputType::updateAutoFillButton()
@@ -631,7 +661,12 @@ void TextFieldInputType::updateAutoFillButton()
             createContainer();
 
         if (!m_autoFillButton)
-            createAutoFillButton();
+            createAutoFillButton(element().autoFillButtonType());
+
+        const AtomicString& attribute = m_autoFillButton->fastGetAttribute(pseudoAttr);
+        bool shouldUpdateAutoFillButtonType = isAutoFillButtonTypeChanged(attribute, element().autoFillButtonType());
+        if (shouldUpdateAutoFillButtonType)
+            m_autoFillButton->setPseudo(autoFillButtonTypeToAutoFillButtonPseudoClassName(element().autoFillButtonType()));
 
         m_autoFillButton->setInlineStyleProperty(CSSPropertyDisplay, CSSValueBlock, true);
         return;

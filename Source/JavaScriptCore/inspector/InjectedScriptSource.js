@@ -54,6 +54,14 @@ function isUInt32(obj)
     return "" + (obj >>> 0) === obj;
 }
 
+function endsWith(str, suffix)
+{
+    var position = str.length - suffix.length;
+    if (position < 0)
+        return false;
+    return str.indexOf(suffix, position) === position;
+}
+
 function isSymbol(obj)
 {
     return typeof obj === "symbol";
@@ -487,7 +495,7 @@ InjectedScript.prototype = {
             var expressionFunction = evalFunction.call(object, boundExpressionFunctionString);
             var result = expressionFunction.apply(null, parameters);
 
-            if (objectGroup === "console" && saveResult)
+            if (saveResult)
                 this._saveResult(result);
 
             return result;
@@ -507,7 +515,7 @@ InjectedScript.prototype = {
 
             var result = evalFunction.call(inspectedGlobalObject, expression);
 
-            if (objectGroup === "console" && saveResult)
+            if (saveResult)
                 this._saveResult(result);
 
             return result;
@@ -680,8 +688,10 @@ InjectedScript.prototype = {
                     continue;
                 }
 
-                if (descriptor.hasOwnProperty("get") && descriptor.hasOwnProperty("set") && !descriptor.get && !descriptor.set) {
-                    // FIXME: <https://webkit.org/b/140575> Web Inspector: Native Bindings Descriptors are Incomplete
+                if (endsWith(String(descriptor.get), "[native code]\n}") ||
+                     (!descriptor.get && descriptor.hasOwnProperty("get") && !descriptor.set && descriptor.hasOwnProperty("set"))) {
+                    // FIXME: Some Native Bindings Descriptors are Incomplete
+                    // <https://webkit.org/b/141585> Some IDL attributes appear on the instances instead of on prototypes
                     // Developers may create such a descriptors, so we should be resilient:
                     // var x = {}; Object.defineProperty(x, "p", {get:undefined}); Object.getOwnPropertyDescriptor(x, "p")
                     var fakeDescriptor = createFakeValueDescriptor(name, symbol, descriptor, isOwnProperty, true);
@@ -811,7 +821,7 @@ InjectedScript.prototype = {
             if (node.id)
                 return "<" + nodeName + " id=\"" + node.id + "\">";
             if (node.classList.length)
-                return "<" + nodeName + " class=\"" + node.classList.toString() + "\">";
+                return "<" + nodeName + " class=\"" + node.classList.toString().replace(/\s+/, " ") + "\">";
             if (nodeName === "input" && node.type)
                 return "<" + nodeName + " type=\"" + node.type + "\">";
             return "<" + nodeName + ">";
@@ -1069,11 +1079,6 @@ InjectedScript.RemoteObject.prototype = {
     _generatePreview: function(object, firstLevelKeys, secondLevelKeys)
     {
         var preview = this._initialPreview();
-
-        // Primitives just have a value.
-        if (this.type !== "object")
-            return;
-
         var isTableRowsRequest = secondLevelKeys === null || secondLevelKeys;
         var firstLevelKeysCount = firstLevelKeys ? firstLevelKeys.length : 0;
 
@@ -1185,7 +1190,7 @@ InjectedScript.RemoteObject.prototype = {
                     preview.lossless = false;
                 }
                 this._appendPropertyPreview(preview, internal, {name, type, value: symbolString}, propertiesThreshold);
-                return;
+                continue;
             }
 
             // Object.
@@ -1344,7 +1349,7 @@ InjectedScript.RemoteObject.prototype = {
 InjectedScript.CallFrameProxy = function(ordinal, callFrame)
 {
     this.callFrameId = "{\"ordinal\":" + ordinal + ",\"injectedScriptId\":" + injectedScriptId + "}";
-    this.functionName = (callFrame.type === "function" ? callFrame.functionName : "");
+    this.functionName = callFrame.functionName;
     this.location = {scriptId: String(callFrame.sourceID), lineNumber: callFrame.line, columnNumber: callFrame.column};
     this.scopeChain = this._wrapScopeChain(callFrame);
     this.this = injectedScript._wrapObject(callFrame.thisObject, "backtrace");
@@ -1363,11 +1368,12 @@ InjectedScript.CallFrameProxy.prototype = {
 
 InjectedScript.CallFrameProxy._scopeTypeNames = {
     0: "global", // GLOBAL_SCOPE
-    1: "local", // LOCAL_SCOPE
-    2: "with", // WITH_SCOPE
-    3: "closure", // CLOSURE_SCOPE
-    4: "catch", // CATCH_SCOPE
-    5: "functionName", // FUNCTION_NAME_SCOPE
+    1: "with", // WITH_SCOPE
+    2: "closure", // CLOSURE_SCOPE
+    3: "catch", // CATCH_SCOPE
+    4: "functionName", // FUNCTION_NAME_SCOPE
+    5: "globalLexicalEnvironment", // GLOBAL_LEXICAL_ENVIRONMENT_SCOPE
+    6: "nestedLexical", // NESTED_LEXICAL_SCOPE
 }
 
 InjectedScript.CallFrameProxy._createScopeJson = function(scopeTypeCode, scopeObject, groupId)

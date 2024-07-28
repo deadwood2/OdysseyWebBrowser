@@ -31,7 +31,6 @@
 #import <wtf/RetainPtr.h>
 
 @class WKContentView;
-@class WKView;
 @class WKWebView;
 
 namespace API {
@@ -63,9 +62,9 @@ class WebProcessPool;
 @property (nonatomic, readonly) BOOL isAssistingNode;
 @property (nonatomic, getter=isShowingInspectorIndication) BOOL showingInspectorIndication;
 @property (nonatomic, readonly) BOOL isBackground;
+@property (nonatomic, readonly, getter=isResigningFirstResponder) BOOL resigningFirstResponder;
 
 - (instancetype)initWithFrame:(CGRect)frame processPool:(WebKit::WebProcessPool&)processPool configuration:(Ref<API::PageConfiguration>&&)configuration webView:(WKWebView *)webView;
-- (instancetype)initWithFrame:(CGRect)frame processPool:(WebKit::WebProcessPool&)processPool configuration:(Ref<API::PageConfiguration>&&)configuration wkView:(WKView *)webView;
 
 - (void)didUpdateVisibleRect:(CGRect)visibleRect unobscuredRect:(CGRect)unobscuredRect
     unobscuredRectInScrollViewCoordinates:(CGRect)unobscuredRectInScrollViewCoordinates
@@ -76,6 +75,8 @@ class WebProcessPool;
 - (void)didInterruptScrolling;
 - (void)didZoomToScale:(CGFloat)scale;
 - (void)willStartZoomOrScroll;
+
+- (void)_webViewDestroyed;
 
 - (std::unique_ptr<WebKit::DrawingAreaProxy>)_createDrawingAreaProxy;
 - (void)_processDidExit;
@@ -94,5 +95,6 @@ class WebProcessPool;
 - (void)_zoomToFocusRect:(CGRect)rectToFocus selectionRect:(CGRect)selectionRect fontSize:(float)fontSize minimumScale:(double)minimumScale maximumScale:(double)maximumScale allowScaling:(BOOL)allowScaling forceScroll:(BOOL)forceScroll;
 - (BOOL)_zoomToRect:(CGRect)targetRect withOrigin:(CGPoint)origin fitEntireRect:(BOOL)fitEntireRect minimumScale:(double)minimumScale maximumScale:(double)maximumScale minimumScrollDistance:(CGFloat)minimumScrollDistance;
 - (void)_zoomOutWithOrigin:(CGPoint)origin;
+- (void)_zoomToInitialScaleWithOrigin:(CGPoint)origin;
 
 @end

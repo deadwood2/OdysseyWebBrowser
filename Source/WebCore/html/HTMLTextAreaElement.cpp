@@ -40,6 +40,7 @@
 #include "Frame.h"
 #include "FrameSelection.h"
 #include "HTMLNames.h"
+#include "HTMLParserIdioms.h"
 #include "LocalizedStrings.h"
 #include "RenderTextControlMultiLine.h"
 #include "ShadowRoot.h"
@@ -115,7 +116,7 @@ void HTMLTextAreaElement::didAddUserAgentShadowRoot(ShadowRoot* root)
 
 const AtomicString& HTMLTextAreaElement::formControlType() const
 {
-    DEPRECATED_DEFINE_STATIC_LOCAL(const AtomicString, textarea, ("textarea", AtomicString::ConstructFromLiteral));
+    static NeverDestroyed<const AtomicString> textarea("textarea", AtomicString::ConstructFromLiteral);
     return textarea;
 }
 
@@ -169,18 +170,14 @@ void HTMLTextAreaElement::collectStyleForPresentationAttribute(const QualifiedNa
 void HTMLTextAreaElement::parseAttribute(const QualifiedName& name, const AtomicString& value)
 {
     if (name == rowsAttr) {
-        int rows = value.toInt();
-        if (rows <= 0)
-            rows = defaultRows;
+        unsigned rows = limitToOnlyNonNegativeNumbersGreaterThanZero(value.string().toUInt(), defaultRows);
         if (m_rows != rows) {
             m_rows = rows;
             if (renderer())
                 renderer()->setNeedsLayoutAndPrefWidthsRecalc();
         }
     } else if (name == colsAttr) {
-        int cols = value.toInt();
-        if (cols <= 0)
-            cols = defaultCols;
+        unsigned cols = limitToOnlyNonNegativeNumbersGreaterThanZero(value.string().toUInt(), defaultCols);
         if (m_cols != cols) {
             m_cols = cols;
             if (renderer())
@@ -190,9 +187,9 @@ void HTMLTextAreaElement::parseAttribute(const QualifiedName& name, const Atomic
         // The virtual/physical values were a Netscape extension of HTML 3.0, now deprecated.
         // The soft/hard /off values are a recommendation for HTML 4 extension by IE and NS 4.
         WrapMethod wrap;
-        if (equalIgnoringCase(value, "physical") || equalIgnoringCase(value, "hard") || equalIgnoringCase(value, "on"))
+        if (equalLettersIgnoringASCIICase(value, "physical") || equalLettersIgnoringASCIICase(value, "hard") || equalLettersIgnoringASCIICase(value, "on"))
             wrap = HardWrap;
-        else if (equalIgnoringCase(value, "off"))
+        else if (equalLettersIgnoringASCIICase(value, "off"))
             wrap = NoWrap;
         else
             wrap = SoftWrap;
@@ -211,7 +208,7 @@ void HTMLTextAreaElement::parseAttribute(const QualifiedName& name, const Atomic
 
 RenderPtr<RenderElement> HTMLTextAreaElement::createElementRenderer(Ref<RenderStyle>&& style, const RenderTreePosition&)
 {
-    return createRenderer<RenderTextControlMultiLine>(*this, WTF::move(style));
+    return createRenderer<RenderTextControlMultiLine>(*this, WTFMove(style));
 }
 
 bool HTMLTextAreaElement::appendFormData(FormDataList& encoding, bool)
@@ -267,7 +264,7 @@ void HTMLTextAreaElement::updateFocusAppearance(SelectionRestorationMode restora
 
 void HTMLTextAreaElement::defaultEventHandler(Event* event)
 {
-    if (renderer() && (event->isMouseEvent() || event->isDragEvent() || event->eventInterface() == WheelEventInterfaceType || event->type() == eventNames().blurEvent))
+    if (renderer() && (event->isMouseEvent() || event->type() == eventNames().blurEvent))
         forwardEvent(event);
     else if (renderer() && is<BeforeTextInsertedEvent>(*event))
         handleBeforeTextInsertedEvent(downcast<BeforeTextInsertedEvent>(event));
@@ -406,13 +403,12 @@ void HTMLTextAreaElement::setDefaultValue(const String& defaultValue)
     Ref<HTMLTextAreaElement> protectFromMutationEvents(*this);
 
     // To preserve comments, remove only the text nodes, then add a single text node.
-    Vector<RefPtr<Text>> textNodes;
+    Vector<Ref<Text>> textNodes;
     for (Text* textNode = TextNodeTraversal::firstChild(*this); textNode; textNode = TextNodeTraversal::nextSibling(*textNode))
-        textNodes.append(textNode);
+        textNodes.append(*textNode);
 
-    size_t size = textNodes.size();
-    for (size_t i = 0; i < size; ++i)
-        removeChild(textNodes[i].get(), IGNORE_EXCEPTION);
+    for (auto& textNode : textNodes)
+        removeChild(textNode.get(), IGNORE_EXCEPTION);
 
     // Normalize line endings.
     String value = defaultValue;
@@ -493,14 +489,14 @@ void HTMLTextAreaElement::accessKeyAction(bool)
     focus();
 }
 
-void HTMLTextAreaElement::setCols(int cols)
+void HTMLTextAreaElement::setCols(unsigned cols)
 {
-    setIntegralAttribute(colsAttr, cols);
+    setUnsignedIntegralAttribute(colsAttr, limitToOnlyNonNegativeNumbersGreaterThanZero(cols, defaultCols));
 }
 
-void HTMLTextAreaElement::setRows(int rows)
+void HTMLTextAreaElement::setRows(unsigned rows)
 {
-    setIntegralAttribute(rowsAttr, rows);
+    setUnsignedIntegralAttribute(rowsAttr, limitToOnlyNonNegativeNumbersGreaterThanZero(rows, defaultRows));
 }
 
 bool HTMLTextAreaElement::shouldUseInputMethod()
@@ -523,8 +519,8 @@ void HTMLTextAreaElement::updatePlaceholderText()
     String placeholderText = strippedPlaceholder();
     if (placeholderText.isEmpty()) {
         if (m_placeholder) {
-            userAgentShadowRoot()->removeChild(m_placeholder, ASSERT_NO_EXCEPTION);
-            m_placeholder = 0;
+            userAgentShadowRoot()->removeChild(*m_placeholder, ASSERT_NO_EXCEPTION);
+            m_placeholder = nullptr;
         }
         return;
     }
@@ -533,7 +529,7 @@ void HTMLTextAreaElement::updatePlaceholderText()
         m_placeholder = placeholder.get();
         m_placeholder->setPseudo(AtomicString("-webkit-input-placeholder", AtomicString::ConstructFromLiteral));
         m_placeholder->setInlineStyleProperty(CSSPropertyDisplay, isPlaceholderVisible() ? CSSValueBlock : CSSValueNone, true);
-        userAgentShadowRoot()->insertBefore(m_placeholder, innerTextElement()->nextSibling());
+        userAgentShadowRoot()->insertBefore(*m_placeholder, innerTextElement()->nextSibling());
     }
     m_placeholder->setInnerText(placeholderText, ASSERT_NO_EXCEPTION);
 }

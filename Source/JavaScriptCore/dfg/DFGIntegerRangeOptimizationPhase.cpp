@@ -29,6 +29,7 @@
 #if ENABLE(DFG_JIT)
 
 #include "DFGBlockMapInlines.h"
+#include "DFGBlockSet.h"
 #include "DFGGraph.h"
 #include "DFGInsertionSet.h"
 #include "DFGPhase.h"
@@ -999,7 +1000,7 @@ public:
             }
         }
         if (!m_zero) {
-            m_zero = m_insertionSet.insertConstant(0, NodeOrigin(), jsNumber(0));
+            m_zero = m_insertionSet.insertConstant(0, m_graph.block(0)->at(0)->origin, jsNumber(0));
             m_insertionSet.execute(m_graph.block(0));
         }
         
@@ -1202,6 +1203,43 @@ public:
                 // optimize by using the relationships before the operation, but we need to
                 // call executeNode() before we optimize.
                 switch (node->op()) {
+                case ArithAbs: {
+                    if (node->child1().useKind() != Int32Use)
+                        break;
+
+                    auto iter = m_relationships.find(node->child1().node());
+                    if (iter == m_relationships.end())
+                        break;
+
+                    int minValue = std::numeric_limits<int>::min();
+                    int maxValue = std::numeric_limits<int>::max();
+                    for (Relationship relationship : iter->value) {
+                        minValue = std::max(minValue, relationship.minValueOfLeft());
+                        maxValue = std::min(maxValue, relationship.maxValueOfLeft());
+                    }
+
+                    executeNode(block->at(nodeIndex));
+
+                    if (minValue >= 0) {
+                        node->convertToIdentityOn(node->child1().node());
+                        changed = true;
+                        break;
+                    }
+                    if (maxValue <= 0) {
+                        node->convertToArithNegate();
+                        if (minValue > std::numeric_limits<int>::min())
+                            node->setArithMode(Arith::Unchecked);
+                        changed = true;
+                        break;
+                    }
+                    if (minValue > std::numeric_limits<int>::min()) {
+                        node->setArithMode(Arith::Unchecked);
+                        changed = true;
+                        break;
+                    }
+
+                    break;
+                }
                 case ArithAdd: {
                     if (!node->isBinaryUseKind(Int32Use))
                         break;
@@ -1220,10 +1258,16 @@ public:
                         minValue = std::max(minValue, relationship.minValueOfLeft());
                         maxValue = std::min(maxValue, relationship.maxValueOfLeft());
                     }
+
+                    if (verbose)
+                        dataLog("    minValue = ", minValue, ", maxValue = ", maxValue, "\n");
                     
                     if (sumOverflows<int>(minValue, node->child2()->asInt32()) ||
                         sumOverflows<int>(maxValue, node->child2()->asInt32()))
                         break;
+
+                    if (verbose)
+                        dataLog("    It's in bounds.\n");
                     
                     executeNode(block->at(nodeIndex));
                     node->setArithMode(Arith::Unchecked);
@@ -1300,6 +1344,13 @@ private:
         case CheckInBounds: {
             setRelationship(Relationship::safeCreate(node->child1().node(), node->child2().node(), Relationship::LessThan));
             setRelationship(Relationship::safeCreate(node->child1().node(), m_zero, Relationship::GreaterThan, -1));
+            break;
+        }
+
+        case ArithAbs: {
+            if (node->child1().useKind() != Int32Use)
+                break;
+            setRelationship(Relationship(node, m_zero, Relationship::GreaterThan, -1));
             break;
         }
             

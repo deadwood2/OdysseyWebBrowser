@@ -31,15 +31,13 @@
 #include "AuthenticationChallengeProxy.h"
 #include "DataReference.h"
 #include "DownloadProxyMap.h"
-#include "WebProcessMessages.h"
-#include "WebProcessPool.h"
-#include <wtf/text/CString.h>
-#include <wtf/text/WTFString.h>
-
-#if ENABLE(NETWORK_PROCESS)
 #include "NetworkProcessMessages.h"
 #include "NetworkProcessProxy.h"
-#endif
+#include "WebProcessMessages.h"
+#include "WebProcessPool.h"
+#include "WebProtectionSpace.h"
+#include <wtf/text/CString.h>
+#include <wtf/text/WTFString.h>
 
 using namespace WebCore;
 
@@ -74,15 +72,8 @@ void DownloadProxy::cancel()
     if (!m_processPool)
         return;
 
-#if ENABLE(NETWORK_PROCESS)
-    if (m_processPool->usesNetworkProcess()) {
-        if (NetworkProcessProxy* networkProcess = m_processPool->networkProcess())
-            networkProcess->connection()->send(Messages::NetworkProcess::CancelDownload(m_downloadID), 0);
-        return;
-    }
-#endif
-
-    m_processPool->sendToAllProcesses(Messages::WebProcess::CancelDownload(m_downloadID));
+    if (NetworkProcessProxy* networkProcess = m_processPool->networkProcess())
+        networkProcess->connection()->send(Messages::NetworkProcess::CancelDownload(m_downloadID), 0);
 }
 
 void DownloadProxy::invalidate()
@@ -118,6 +109,40 @@ void DownloadProxy::didReceiveAuthenticationChallenge(const AuthenticationChalle
 
     m_processPool->downloadClient().didReceiveAuthenticationChallenge(m_processPool.get(), this, authenticationChallengeProxy.get());
 }
+
+#if USE(NETWORK_SESSION)
+void DownloadProxy::canAuthenticateAgainstProtectionSpace(const ProtectionSpace& protectionSpace)
+{
+    if (!m_processPool)
+        return;
+    
+    auto* networkProcessProxy = m_processPool->networkProcess();
+    if (!networkProcessProxy)
+        return;
+
+    bool result = m_processPool->downloadClient().canAuthenticateAgainstProtectionSpace(getPtr(WebProtectionSpace::create(protectionSpace)));
+    
+    networkProcessProxy->connection()->send(Messages::NetworkProcess::ContinueCanAuthenticateAgainstProtectionSpace(m_downloadID, result), 0);
+}
+
+void DownloadProxy::willSendRequest(const ResourceRequest& proposedRequest, const ResourceResponse& redirectResponse)
+{
+    if (!m_processPool)
+        return;
+
+    RefPtr<DownloadProxy> protectedThis(this);
+    m_processPool->downloadClient().willSendRequest(proposedRequest, redirectResponse, [protectedThis](const ResourceRequest& newRequest) {
+        if (!protectedThis->m_processPool)
+            return;
+        
+        auto* networkProcessProxy = protectedThis->m_processPool->networkProcess();
+        if (!networkProcessProxy)
+            return;
+        
+        networkProcessProxy->connection()->send(Messages::NetworkProcess::ContinueWillSendRequest(protectedThis->m_downloadID, newRequest), 0);
+    });
+}
+#endif
 
 void DownloadProxy::didReceiveResponse(const ResourceResponse& response)
 {

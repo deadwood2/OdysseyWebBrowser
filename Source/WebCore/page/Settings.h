@@ -42,6 +42,10 @@
 #include <wtf/text/AtomicString.h>
 #include <wtf/text/AtomicStringHash.h>
 
+#if ENABLE(DATA_DETECTION)
+#include "DataDetection.h"
+#endif
+
 namespace WebCore {
 
 class FontGenericFamilies;
@@ -142,21 +146,6 @@ public:
     WEBCORE_EXPORT void setPluginsEnabled(bool);
     bool arePluginsEnabled() const { return m_arePluginsEnabled; }
 
-    // When this option is set, WebCore will avoid storing any record of browsing activity
-    // that may persist on disk or remain displayed when the option is reset.
-    // This option does not affect the storage of such information in RAM.
-    // The following functions respect this setting:
-    //  - HTML5/DOM Storage
-    //  - Icon Database
-    //  - Console Messages
-    //  - MemoryCache
-    //  - Application Cache
-    //  - Back/Forward Page History
-    //  - Page Search Results
-    //  - HTTP Cookies
-    //  - Plug-ins (that support NPNVprivateModeBool)
-    void setPrivateBrowsingEnabled(bool);
-
     WEBCORE_EXPORT void setDNSPrefetchingEnabled(bool);
     bool dnsPrefetchingEnabled() const { return m_dnsPrefetchingEnabled; }
 
@@ -168,9 +157,6 @@ public:
 
     WEBCORE_EXPORT void setMinimumDOMTimerInterval(double); // Initialized to DOMTimer::defaultMinimumInterval().
     double minimumDOMTimerInterval() const { return m_minimumDOMTimerInterval; }
-
-    void setDOMTimerAlignmentInterval(double);
-    double domTimerAlignmentInterval() const { return m_domTimerAlignmentInterval; }
 
     WEBCORE_EXPORT void setLayoutInterval(std::chrono::milliseconds);
     std::chrono::milliseconds layoutInterval() const { return m_layoutInterval; }
@@ -189,10 +175,18 @@ public:
     WEBCORE_EXPORT void setShowTiledScrollingIndicator(bool);
     bool showTiledScrollingIndicator() const { return m_showTiledScrollingIndicator; }
 
+#if ENABLE(RESOURCE_USAGE)
+    bool resourceUsageOverlayVisible() const { return m_resourceUsageOverlayVisible; }
+    WEBCORE_EXPORT void setResourceUsageOverlayVisible(bool);
+#endif
+
 #if PLATFORM(WIN)
     static void setShouldUseHighResolutionTimers(bool);
     static bool shouldUseHighResolutionTimers() { return gShouldUseHighResolutionTimers; }
 #endif
+
+    static bool shouldRewriteConstAsVar() { return gShouldRewriteConstAsVar; }
+    static void setShouldRewriteConstAsVar(bool shouldRewriteConstAsVar) { gShouldRewriteConstAsVar = shouldRewriteConstAsVar; }
 
     WEBCORE_EXPORT void setBackgroundShouldExtendBeyondPage(bool);
     bool backgroundShouldExtendBeyondPage() const { return m_backgroundShouldExtendBeyondPage; }
@@ -200,6 +194,8 @@ public:
 #if USE(AVFOUNDATION)
     WEBCORE_EXPORT static void setAVFoundationEnabled(bool flag);
     static bool isAVFoundationEnabled() { return gAVFoundationEnabled; }
+    WEBCORE_EXPORT static void setAVFoundationNSURLSessionEnabled(bool flag);
+    static bool isAVFoundationNSURLSessionEnabled() { return gAVFoundationNSURLSessionEnabled; }
 #endif
 
 #if PLATFORM(COCOA)
@@ -210,12 +206,16 @@ public:
 #endif
 
     static const unsigned defaultMaximumHTMLParserDOMTreeDepth = 512;
+    static const unsigned defaultMaximumRenderTreeDepth = 512;
 
     WEBCORE_EXPORT static void setMockScrollbarsEnabled(bool flag);
     WEBCORE_EXPORT static bool mockScrollbarsEnabled();
 
     WEBCORE_EXPORT static void setUsesOverlayScrollbars(bool flag);
     static bool usesOverlayScrollbars();
+
+    WEBCORE_EXPORT static void setUsesMockScrollAnimator(bool);
+    static bool usesMockScrollAnimator();
 
 #if ENABLE(TOUCH_EVENTS)
     void setTouchEventEmulationEnabled(bool enabled) { m_touchEventEmulationEnabled = enabled; }
@@ -242,6 +242,9 @@ public:
 
     static bool lowPowerVideoAudioBufferSizeEnabled() { return gLowPowerVideoAudioBufferSizeEnabled; }
     WEBCORE_EXPORT static void setLowPowerVideoAudioBufferSizeEnabled(bool);
+
+    static bool resourceLoadStatisticsEnabled() { return gResourceLoadStatisticsEnabledEnabled; }
+    WEBCORE_EXPORT static void setResourceLoadStatisticsEnabled(bool);
 
 #if PLATFORM(IOS)
     WEBCORE_EXPORT static void setAudioSessionCategoryOverride(unsigned);
@@ -273,10 +276,17 @@ public:
 #if ENABLE(MEDIA_STREAM)
     void setMediaDeviceIdentifierStorageDirectory(const String& directory) { m_mediaDeviceIdentifierStorageDirectory = directory; }
     const String& mediaDeviceIdentifierStorageDirectory() const { return m_mediaDeviceIdentifierStorageDirectory; }
+
+    static bool mockCaptureDevicesEnabled();
+    WEBCORE_EXPORT static void setMockCaptureDevicesEnabled(bool);
 #endif
 
     WEBCORE_EXPORT void setForcePendingWebGLPolicy(bool);
     bool isForcePendingWebGLPolicy() const { return m_forcePendingWebGLPolicy; }
+    
+#if PLATFORM(IOS)
+    WEBCORE_EXPORT static float defaultMinimumZoomFontSize();
+#endif
 
 private:
     explicit Settings(Page*);
@@ -291,7 +301,6 @@ private:
     SecurityOrigin::StorageBlockingPolicy m_storageBlockingPolicy;
     std::chrono::milliseconds m_layoutInterval;
     double m_minimumDOMTimerInterval;
-    double m_domTimerAlignmentInterval;
 
 #if ENABLE(TEXT_AUTOSIZING)
     float m_textAutosizingFontScaleFactor;
@@ -333,20 +342,27 @@ private:
 
     bool m_forcePendingWebGLPolicy : 1;
 
+#if ENABLE(RESOURCE_USAGE)
+    bool m_resourceUsageOverlayVisible { false };
+#endif
+
 #if USE(AVFOUNDATION)
     WEBCORE_EXPORT static bool gAVFoundationEnabled;
+    WEBCORE_EXPORT static bool gAVFoundationNSURLSessionEnabled;
 #endif
 
 #if PLATFORM(COCOA)
     WEBCORE_EXPORT static bool gQTKitEnabled;
 #endif
-        
+
     static bool gMockScrollbarsEnabled;
     static bool gUsesOverlayScrollbars;
+    static bool gMockScrollAnimatorEnabled;
 
 #if PLATFORM(WIN)
     static bool gShouldUseHighResolutionTimers;
 #endif
+    WEBCORE_EXPORT static bool gShouldRewriteConstAsVar;
     static bool gShouldRespectPriorityInCSSAttributeSetters;
 #if PLATFORM(IOS)
     static bool gNetworkDataUsageTrackingEnabled;
@@ -361,9 +377,11 @@ private:
     
 #if ENABLE(MEDIA_STREAM)
     String m_mediaDeviceIdentifierStorageDirectory;
+    static bool gMockCaptureDevicesEnabled;
 #endif
 
     static bool gLowPowerVideoAudioBufferSizeEnabled;
+    static bool gResourceLoadStatisticsEnabledEnabled;
 };
 
 } // namespace WebCore

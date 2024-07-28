@@ -41,6 +41,7 @@ namespace API {
 class Array;
 class UserContentExtension;
 class UserScript;
+class UserStyleSheet;
 }
 
 namespace IPC {
@@ -48,15 +49,13 @@ class DataReference;
 }
 
 namespace WebCore {
-class UserScript;
-class UserStyleSheet;
+struct SecurityOriginData;
 }
 
 namespace WebKit {
 
 class WebProcessProxy;
 class WebScriptMessageHandler;
-struct SecurityOriginData;
 
 class WebUserContentControllerProxy : public API::ObjectImpl<API::Object::Type::UserContentController>, private IPC::MessageReceiver {
 public:
@@ -74,9 +73,12 @@ public:
 
     API::Array& userScripts() { return m_userScripts.get(); }
     void addUserScript(API::UserScript&);
+    void removeUserScript(const API::UserScript&);
     void removeAllUserScripts();
 
-    void addUserStyleSheet(WebCore::UserStyleSheet);
+    API::Array& userStyleSheets() { return m_userStyleSheets.get(); }
+    void addUserStyleSheet(API::UserStyleSheet&);
+    void removeUserStyleSheet(const API::UserStyleSheet&);
     void removeAllUserStyleSheets();
 
     // Returns false if there was a name conflict.
@@ -93,12 +95,12 @@ private:
     // IPC::MessageReceiver.
     virtual void didReceiveMessage(IPC::Connection&, IPC::MessageDecoder&) override;
 
-    void didPostMessage(IPC::Connection&, uint64_t pageID, uint64_t frameID, const SecurityOriginData&, uint64_t messageHandlerID, const IPC::DataReference&);
+    void didPostMessage(IPC::Connection&, uint64_t pageID, uint64_t frameID, const WebCore::SecurityOriginData&, uint64_t messageHandlerID, const IPC::DataReference&);
 
     uint64_t m_identifier;
     HashSet<WebProcessProxy*> m_processes;    
     Ref<API::Array> m_userScripts;
-    Vector<WebCore::UserStyleSheet> m_userStyleSheets;
+    Ref<API::Array> m_userStyleSheets;
     HashMap<uint64_t, RefPtr<WebScriptMessageHandler>> m_scriptMessageHandlers;
 
 #if ENABLE(CONTENT_EXTENSIONS)

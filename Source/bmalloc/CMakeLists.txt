@@ -7,13 +7,17 @@ set(bmalloc_SOURCES
     bmalloc/Cache.cpp
     bmalloc/Deallocator.cpp
     bmalloc/Environment.cpp
-    bmalloc/FreeList.cpp
     bmalloc/Heap.cpp
+    bmalloc/Logging.cpp
     bmalloc/ObjectType.cpp
-    bmalloc/SegregatedFreeList.cpp
     bmalloc/StaticMutex.cpp
     bmalloc/VMHeap.cpp
+    bmalloc/XLargeMap.cpp
     bmalloc/mbmalloc.cpp
+)
+
+set(bmalloc_LIBRARIES
+    ${CMAKE_DL_LIBS}
 )
 
 WEBKIT_INCLUDE_CONFIG_FILES_IF_EXISTS()

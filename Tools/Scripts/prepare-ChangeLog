@@ -3,7 +3,7 @@
 
 #
 #  Copyright (C) 2000, 2001 Eazel, Inc.
-#  Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 Apple Inc.  All rights reserved.
+#  Copyright (C) 2002-2007, 2015 Apple Inc.  All rights reserved.
 #  Copyright (C) 2009 Torch Mobile, Inc.
 #  Copyright (C) 2009 Cameron McCormack <cam@mcc.id.au>
 #
@@ -64,6 +64,7 @@ use List::Util qw/max/;
 use POSIX qw(strftime);
 use VCSUtils;
 
+sub attributeCommand($$);
 sub changeLogDate($);
 sub changeLogEmailAddressFromArgs($$);
 sub changeLogNameFromArgs($$);
@@ -75,13 +76,15 @@ sub diffFromToString($$$);
 sub diffHeaderFormat();
 sub extractLineRangeAfterChange($);
 sub extractLineRangeBeforeChange($);
-sub fetchBugDescriptionFromURL($$);
+sub fetchBugXMLData($$);
+sub fetchBugDescriptionFromBugXMLData($$$);
+sub fetchRadarURLFromBugXMLData($$);
 sub findChangeLogs($$);
 sub findOriginalFileFromSvn($);
 sub generateFileList(\%$$$);
 sub generateFunctionLists($$$$$);
 sub generateFunctionListsByRanges($$$$);
-sub generateNewChangeLogs($$$$$$$$$$$$);
+sub generateNewChangeLogs($$$$$$$$$$$$$$);
 sub getLatestChangeLogs($);
 sub get_function_line_ranges($$);
 sub get_function_line_ranges_for_cpp($$);
@@ -91,6 +94,8 @@ sub get_function_line_ranges_for_java($$);
 sub get_function_line_ranges_for_javascript($$);
 sub get_function_line_ranges_for_perl($$);
 sub get_selector_line_ranges_for_css($$);
+sub get_function_line_ranges_for_swift($$);
+sub parseSwiftFunctionArgs($);
 sub isAddedStatus($);
 sub isConflictStatus($$$);
 sub isModifiedStatus($);
@@ -104,10 +109,12 @@ sub pluralizeAndList($$@);
 sub printDiff($$$$);
 sub processPaths(\@);
 sub propertyChangeDescription($);
+sub resolveChangeLogsPath($@);
 sub resolveConflictedChangeLogs($);
 sub reviewerAndDescriptionForGitCommit($$);
 sub statusCommand($$$$);
 sub statusDescription($$$$);
+sub svnUpdateCommand(@);
 sub testListForChangeLog(@);
 
 ### Constant variables.
@@ -117,11 +124,14 @@ use constant SVN => "svn";
 use constant GIT => "git";
 use constant SupportedTestExtensions => {map { $_ => 1 } qw(html shtml svg xml xhtml pl php)};
 
+my %attributeCache;
+
 exit(main());
 
 sub main()
 {
     my $bugDescription;
+    my $bugRadarURL;
     my $bugNumber;
     my $name;
     my $emailAddress;
@@ -184,7 +194,7 @@ sub main()
     my %paths = processPaths(@ARGV);
 
     # Find the list of modified files
-    my ($changedFiles, $conflictFiles, $functionLists, $addedRegressionTests) = generateFileList(%paths, $gitCommit, $gitIndex, $mergeBase);
+    my ($changedFiles, $conflictFiles, $functionLists, $addedRegressionTests, $requiresTests) = generateFileList(%paths, $gitCommit, $gitIndex, $mergeBase);
 
     if (!@$changedFiles && !@$conflictFiles && !keys %$functionLists) {
         print STDERR "  No changes found.\n";
@@ -214,7 +224,9 @@ sub main()
     }
 
     if ($bugNumber && !$bugDescription) {
-        $bugDescription = fetchBugDescriptionFromURL($bugURL, $bugNumber);
+        my $bugXMLData = fetchBugXMLData($bugURL, $bugNumber);
+        $bugDescription = fetchBugDescriptionFromBugXMLData($bugURL, $bugNumber, $bugXMLData);
+        $bugRadarURL = fetchRadarURLFromBugXMLData($bugNumber, $bugXMLData);
     }
 
     my ($filesInChangeLog, $prefixes) = findChangeLogs($functionLists, $writeChangeLogs);
@@ -226,7 +238,7 @@ sub main()
         resolveConflictedChangeLogs($changeLogs);
     }
 
-    generateNewChangeLogs($prefixes, $filesInChangeLog, $addedRegressionTests, $functionLists, $bugURL, $bugDescription, $name, $emailAddress, $gitReviewer, $gitCommit, $writeChangeLogs, $delimiters);
+    generateNewChangeLogs($prefixes, $filesInChangeLog, $addedRegressionTests, $requiresTests, $functionLists, $bugURL, $bugDescription, $bugRadarURL, $name, $emailAddress, $gitReviewer, $gitCommit, $writeChangeLogs, $delimiters);
 
     if ($writeChangeLogs) {
         print STDERR "-- Please remember to include a detailed description in your ChangeLog entry. --\n-- See <http://webkit.org/coding/contributing.html> for more info --\n";
@@ -278,7 +290,7 @@ sub generateFunctionLists($$$$$)
         my $file;
         open DIFF, "-|", diffCommand($changedFiles, $gitCommit, $gitIndex, $mergeBase) or die "The diff failed: $!.\n";
         while (<DIFF>) {
-            $file = makeFilePathRelative($1) if $_ =~ diffHeaderFormat();
+            $file = normalizePath(makeFilePathRelative($1)) if $_ =~ diffHeaderFormat();
             if (defined $file) {
                 my ($before_start, $before_end) = extractLineRangeBeforeChange($_);
                 if ($before_start >= 1 && $before_end >= 1) {
@@ -301,10 +313,14 @@ sub generateFunctionLists($$$$$)
     print STDERR "  Extracting affected function names from source files.\n";
     my %filesToExamine = map { $_ => 1 } (keys(%line_ranges_before_changed), keys(%line_ranges_after_changed));
     foreach my $file (keys %filesToExamine) {
+        # Escape whitespace in filenames rather than adding quotes, since many functions can open files
+        # and other code doesn't expect to see a trailing " character when sniffing a file extension.
+        chomp $file;
+        $file =~ s/ /\\ /g;
         my %saw_function;
         # Find all the functions in the file.
         if ($line_ranges_after_changed{$file}) {
-            open SOURCE, $file or next;
+            open(SOURCE, "<", $file) or next;
             my @function_ranges = get_function_line_ranges(\*SOURCE, $file);
             close SOURCE;
 
@@ -411,7 +427,7 @@ sub changeLogEmailAddressFromArgs($$)
     return $emailAddressFromArgs || changeLogEmailAddress();
 }
 
-sub fetchBugDescriptionFromURL($$)
+sub fetchBugXMLData($$)
 {
     my ($bugURL, $bugNumber) = @_;
 
@@ -419,23 +435,44 @@ sub fetchBugDescriptionFromURL($$)
     # Perl has no built in XML processing, so we'll fetch and parse with curl and grep
     # Pass --insecure because some cygwin installs have no certs we don't
     # care about validating that bugs.webkit.org is who it says it is here.
-    my $descriptionLine = `curl --insecure --silent "$bugXMLURL" | grep short_desc`;
-    if ($descriptionLine !~ /<short_desc>(.*)<\/short_desc>/) {
+    my $xmlData = `curl --insecure --silent "$bugXMLURL"`;
+    if ($xmlData !~ /<\?xml/) {
         # Maybe the reason the above did not work is because the curl that is installed doesn't
         # support ssl at all.
         if (`curl --version | grep ^Protocols` !~ /\bhttps\b/) {
             print STDERR "  Could not get description for bug $bugNumber.\n";
             print STDERR "  It looks like your version of curl does not support ssl.\n";
             print STDERR "  If you are using macports, this can be fixed with sudo port install curl +ssl.\n";
-        } else {
-            print STDERR "  Bug $bugNumber has no bug description. Maybe you set wrong bug ID?\n";
-            print STDERR "  The bug URL: $bugXMLURL\n";
         }
         exit 1;
     }
+    return $xmlData;
+}
+
+sub fetchBugDescriptionFromBugXMLData($$$)
+{
+    my ($bugURL, $bugNumber, $bugXMLData) = @_;
+
+    if ($bugXMLData !~ /<short_desc>(.*)<\/short_desc>/) {
+        print STDERR "  Bug $bugNumber has no bug description. Maybe you set wrong bug ID?\n";
+        print STDERR "  The bug URL: $bugURL\n";
+        exit 1;
+    }
+
     my $bugDescription = decodeEntities($1);
     print STDERR "  Description from bug $bugNumber:\n    \"$bugDescription\".\n";
     return $bugDescription;
+}
+
+sub fetchRadarURLFromBugXMLData($$)
+{
+    my ($bugNumber, $bugXMLData) = @_;
+
+    return "" if $bugXMLData !~ m|<thetext>\s*(&lt;rdar://problem/\d+&gt;)|;
+
+    my $bugRadarURL = decodeEntities($1);
+    print STDERR "  Radar URL from bug $bugNumber:\n    \"$bugRadarURL\".\n";
+    return $bugRadarURL;
 }
 
 sub findChangeLogs($$)
@@ -503,12 +540,34 @@ sub getLatestChangeLogs($)
     return \@changeLogs;
 }
 
+sub svnUpdateCommand(@)
+{
+    my @changeLogs = shift;
+
+    my @escapedChangeLogPaths = map(escapeSubversionPath($_), @changeLogs);
+    my $escapedChangeLogPathsString = qq(") . join(qq(" "), @escapedChangeLogPaths) . qq(");
+    my $command = SVN . " update $escapedChangeLogPathsString";
+
+    return $command;
+}
+
+sub resolveChangeLogsPath($@)
+{
+    my ($resolveChangeLogsPath, @conflictedChangeLogs) = @_;
+
+    my @escapedConflictedChangeLogs = map(escapeSubversionPath($_), @conflictedChangeLogs);
+    my $escapedConflictedChangeLogsString = qq(") . join(qq(" "), @escapedConflictedChangeLogs) . qq(");
+    my $command = "$resolveChangeLogsPath --no-warnings $escapedConflictedChangeLogsString";
+
+    return $command;
+}
+
 sub resolveConflictedChangeLogs($)
 {
     my ($changeLogs) = @_;
 
     print STDERR "  Running 'svn update' to update ChangeLog files.\n";
-    open ERRORS, "-|", SVN, "update", @$changeLogs
+    open ERRORS, "-|", svnUpdateCommand(@$changeLogs)
         or die "The svn update of ChangeLog files failed: $!.\n";
     my @conflictedChangeLogs;
     while (my $line = <ERRORS>) {
@@ -521,15 +580,15 @@ sub resolveConflictedChangeLogs($)
 
     print STDERR "  Attempting to merge conflicted ChangeLogs.\n";
     my $resolveChangeLogsPath = File::Spec->catfile(dirname($0), "resolve-ChangeLogs");
-    open RESOLVE, "-|", $resolveChangeLogsPath, "--no-warnings", @conflictedChangeLogs
+    open RESOLVE, "-|", resolveChangeLogsPath($resolveChangeLogsPath, @conflictedChangeLogs)
         or die "Could not open resolve-ChangeLogs script: $!.\n";
     print STDERR "    $_" while <RESOLVE>;
     close RESOLVE;
 }
 
-sub generateNewChangeLogs($$$$$$$$$$$$)
+sub generateNewChangeLogs($$$$$$$$$$$$$$)
 {
-    my ($prefixes, $filesInChangeLog, $addedRegressionTests, $functionLists, $bugURL, $bugDescription, $name, $emailAddress, $gitReviewer, $gitCommit, $writeChangeLogs, $delimiters) = @_;
+    my ($prefixes, $filesInChangeLog, $addedRegressionTests, $requiresTests, $functionLists, $bugURL, $bugDescription, $bugRadarURL, $name, $emailAddress, $gitReviewer, $gitCommit, $writeChangeLogs, $delimiters) = @_;
 
     # Generate new ChangeLog entries and (optionally) write out new ChangeLog files.
     foreach my $prefix (@$prefixes) {
@@ -566,11 +625,12 @@ sub generateNewChangeLogs($$$$$$$$$$$$)
         $bugDescription = "Need a short description (OOPS!).\n        Need the bug URL (OOPS!)." unless $bugDescription;
         print CHANGE_LOG normalizeLineEndings("        $bugDescription\n", $endl) if $bugDescription;
         print CHANGE_LOG normalizeLineEndings("        $bugURL\n", $endl) if $bugURL;
+        print CHANGE_LOG normalizeLineEndings("        $bugRadarURL\n", $endl) if $bugRadarURL;
         print CHANGE_LOG normalizeLineEndings("\n", $endl);
 
         print CHANGE_LOG normalizeLineEndings("        Reviewed by $reviewer.\n\n", $endl);
 
-        if ($prefix =~ m/WebCore/ || `pwd` =~ m/WebCore/) {
+        if ($prefix =~ m/WebCore/ || `pwd` =~ m/WebCore/ || @$requiresTests) {
             if (@$addedRegressionTests) {
                 print CHANGE_LOG normalizeLineEndings(testListForChangeLog(sort @$addedRegressionTests), $endl);
             } else {
@@ -580,6 +640,7 @@ sub generateNewChangeLogs($$$$$$$$$$$$)
 
         foreach my $file (sort @{$filesInChangeLog->{$prefix}}) {
             my $file_stem = substr $file, length $prefix;
+            $file_stem = unixPath($file_stem);
             print CHANGE_LOG normalizeLineEndings("        * $file_stem:$functionLists->{$file}\n", $endl);
         }
 
@@ -636,6 +697,7 @@ sub get_function_line_ranges($$)
     return get_selector_line_ranges_for_css($file_handle, $file_name) if $file_name =~ /\.css$/;
     return get_function_line_ranges_for_perl($file_handle, $file_name) if $file_name =~ /\.p[lm]$/;
     return get_function_line_ranges_for_python($file_handle, $file_name) if $file_name =~ /\.py$/ or $file_name =~ /master\.cfg$/;
+    return get_function_line_ranges_for_swift($file_handle, $file_name) if $file_name =~ /\.swift$/;
 
     # Try to determine the source language based on the script interpreter.
 
@@ -1280,8 +1342,7 @@ sub get_function_line_ranges_for_java($$)
 #    }
 #
 # A method name is the word immediately before parenthesis, with an open
-# curly brace immediately following closing parenthesis. For simplification
-# we only parse for methods inside of a class. And for a class expression
+# curly brace immediately following closing parenthesis. For a class expression
 # we take the assignment identifier instead of the class name for namespacing.
 #
 #    namespace.Foo = class DoesNotMatter extends Bar {
@@ -1294,6 +1355,13 @@ sub get_function_line_ranges_for_java($$)
 #        constructor() {} // (ClassName)
 #        method() {} // (ClassName.prototype.method)
 #    }
+#
+# Methods may exist in object literals, outside of classes.
+#
+#   Foo.prototype = {
+#       method() {}, // (Foo.prototype.method)
+#       otherMethod() {} // (Foo.prototype.otherMethod)
+#   }
 #
 # Comment handling is simple-minded but will work for all but pathological cases.
 #
@@ -1316,7 +1384,9 @@ sub get_function_line_ranges_for_javascript($$)
     my $inQuotedText = "";
     my $inExtends = 0;
     my $inMethod = 0;
+    my $inAnonymousFunctionParameters = 0;
     my $parenthesesDepth = 0;
+    my $globalParenthesesDepth = 0;
     my $bracesDepth = 0;
 
     my $classJustSeen = 0;
@@ -1327,6 +1397,8 @@ sub get_function_line_ranges_for_javascript($$)
     my $assignmentJustSeen = 0;
     my $staticOrContructorSeen = 0;
 
+    my $currentToken = "";
+    my $lastToken = "";
     my $possibleMethodName = "";
     my $word = "";
 
@@ -1364,23 +1436,32 @@ sub get_function_line_ranges_for_javascript($$)
         }
 
         # Find function names.
-        while (m-(\w+|[(){}=:;,])-g) {
+        while (m-(\w+|[(){}=:;,.])-g) {
             # Skip everything until "{" after extends.
             if ($inExtends) {
                 next if $1 ne '{';
                 $inExtends = 0;
             }
 
+            $lastToken = $currentToken;
+            $currentToken = $1;
+
             # Open parenthesis.
             if ($1 eq '(') {
                 $parenthesesDepth++;
+                $globalParenthesesDepth++ if $currentParsingMode[$#currentParsingMode] eq "global";
                 $possibleMethodName = join('.', @currentIdentifiers);
+                $inAnonymousFunctionParameters = 1 if $functionJustSeen;
+                $functionJustSeen = 0;
                 next;
             }
 
             # Close parenthesis.
             if ($1 eq ')') {
                 $parenthesesDepth--;
+                $globalParenthesesDepth-- if $currentParsingMode[$#currentParsingMode] eq "global";
+                @currentIdentifiers = () if $inAnonymousFunctionParameters;
+                $inAnonymousFunctionParameters = 0;
                 $parenthesisJustSeen = 1;
                 next;
             }
@@ -1388,10 +1469,16 @@ sub get_function_line_ranges_for_javascript($$)
             # Open brace.
             if ($1 eq '{') {
                 my $methodName = "";
+                my $mode = $currentParsingMode[$#currentParsingMode];
 
                 # Method.
-                if ($currentParsingMode[$#currentParsingMode] eq 'class' and $parenthesisJustSeen and ($staticOrContructorSeen or $possibleMethodName)) {
-                    $methodName = join('.', $staticOrContructorSeen ? "" : "prototype", $possibleMethodName);
+                if (($mode eq 'class' or $mode eq 'global') and $parenthesisJustSeen and ($staticOrContructorSeen or $possibleMethodName)) {
+                    if ($mode eq 'class') {
+                        $methodName = join('.', $staticOrContructorSeen ? "" : "prototype", $possibleMethodName);
+                    } else {
+                        $methodName = $possibleMethodName;
+                    }
+
                     $methodName =~ s/\.{2,}/\./g; # Removes consecutive periods.
                     $methodName =~ s/\.$//; # Remove trailing period.
 
@@ -1427,12 +1514,19 @@ sub get_function_line_ranges_for_javascript($$)
                     my $currentName = pop(@currentFunctionNames);
                     my $start = pop(@currentFunctionStartLines);
 
+                    $currentName =~ s/^\.//g; # Removes leading periods.
+
                     push(@ranges, [$start, $., $currentName]);
                 }
 
                 pop(@currentScopes);
                 @currentIdentifiers = ();
 
+                next;
+            }
+
+            # Dot.
+            if ($1 eq '.') {
                 next;
             }
 
@@ -1473,12 +1567,14 @@ sub get_function_line_ranges_for_javascript($$)
 
             # Getter prefix.
             if ($1 eq 'get') {
+                next if $lastToken eq '.'; # Avoid map.get(...).
                 $getterJustSeen = 1;
                 next;
             }
 
             # Setter prefix.
             if ($1 eq 'set') {
+                next if $lastToken eq '.'; # Avoid map.set(...).
                 $setterJustSeen = 1;
                 next;
             }
@@ -1495,7 +1591,7 @@ sub get_function_line_ranges_for_javascript($$)
                 next;
             }
 
-            next if $parenthesesDepth;
+            next if $parenthesesDepth > $globalParenthesesDepth;
 
             # Word.
             $word = $1;
@@ -1717,6 +1813,80 @@ sub get_selector_line_ranges_for_css($$)
     return @ranges;
 }
 
+# Read a file and get all the line ranges of the things that look like Swift classes, methods,
+# or functions.
+#
+# Result is a list of triples: [ start_line, end_line, function ].
+
+sub get_function_line_ranges_for_swift($$)
+{
+    my ($fileHandle, $fileName) = @_;
+
+    my @ranges;
+
+    my $currentFunction = "";
+    my $currentClass = "";
+    my $functionStart = 0;
+    my $classStart = 0;
+    my $functionScopeDepth = 0;
+    my $classScopeDepth = 0;
+    my $scopeDepth = 0;
+
+    while (<$fileHandle>) {
+        chomp;
+        next if (/^\s*\/\/.*/);
+        if (/func\s+([\w_][\w\d_]*)\((.*)\)/ || /var\s+([\w_][\w\d_]*):\s+/) {
+            $functionScopeDepth = $scopeDepth;
+            $currentFunction = $1;
+            if ($2) {
+                $currentFunction = "$currentFunction(". parseSwiftFunctionArgs($2) . ")";
+            }
+            if ($currentClass) {
+                $currentFunction = "$currentClass.$currentFunction";
+            }
+            $functionStart = $.;
+        } elsif (/class\s+([\w_][\w\d_]*)/) {
+            $classScopeDepth = $scopeDepth;
+            $currentClass = $1;
+            $classStart = $.;
+        }
+        if (index($_, "{") > -1) {
+            $scopeDepth++;
+        }
+        if (index($_, "}") > -1) {
+            $scopeDepth--;
+        }
+        if ($scopeDepth == $functionScopeDepth) {
+            next unless $functionStart;
+            push(@ranges, [$functionStart, $., $currentFunction]);
+            $currentFunction = "";
+            $functionStart = 0;
+        } elsif ($scopeDepth == $classScopeDepth) {
+            next unless $classStart;
+            $currentClass = "";
+            $classStart = 0;
+        }
+    }
+
+    return @ranges;
+}
+
+sub parseSwiftFunctionArgs($)
+{
+    my ($functionArgs) = @_;
+    my @words = split /, /, $functionArgs;
+    my $argCount = scalar(@words);
+    if ($argCount == 0) {
+        return "";
+    } elsif ($argCount > 0) {
+        # If the first argument is unnamed, give it the name "_"
+        $words[0] =~ s/^(\w+: .*)/_ $1/;
+        return join("", map { $_ =~ s/^(\w+).*/$1/; "$_:" } @words);
+    } else {
+        warn "Unknown argument count.\n";
+    }
+}
+
 sub processPaths(\@)
 {
     my ($paths) = @_;
@@ -1772,7 +1942,7 @@ sub diffCommand($$$$)
     my $command;
     if (isSVN()) {
         my @escapedPaths = map(escapeSubversionPath($_), @$paths);
-        my $escapedPathsString = "'" . join("' '", @escapedPaths) . "'";
+        my $escapedPathsString = qq(") . join(qq(" "), @escapedPaths) . qq(");
         $command = SVN . " diff --diff-cmd diff -x -u $escapedPathsString";
     } elsif (isGit()) {
         my $pathsString = "'" . join("' '", @$paths) . "'"; 
@@ -1790,7 +1960,7 @@ sub statusCommand($$$$)
     my $command;
     if (isSVN()) {
         my @escapedFiles = map(escapeSubversionPath($_), keys %$paths);
-        my $escapedFilesString = "'" . join("' '", @escapedFiles) . "'";
+        my $escapedFilesString = qq(") . join(qq(" "), @escapedFiles) . qq(");
         $command = SVN . " stat $escapedFilesString";
     } elsif (isGit()) {
         my $filesString = '"' . join('" "', keys %$paths) . '"';
@@ -1799,6 +1969,46 @@ sub statusCommand($$$$)
     }
 
     return "$command 2>&1";
+}
+
+sub attributeCommand($$)
+{
+    my ($file, $attr) = @_;
+
+    my $result;
+    if (isSVN()) {
+        my $foundAttribute = 0;
+        my $subPath = ".";
+        my (@directoryParts) = File::Spec->splitdir($file);
+        foreach my $part (@directoryParts) {
+            if ($part eq ".") {
+                next;
+            }
+            $subPath = File::Spec->join($subPath, $part);
+            $subPath =~ s/^\.\///;
+            if ($foundAttribute || exists $attributeCache{$attr}{$subPath} && $attributeCache{$attr}{$subPath} eq "1") {
+                $attributeCache{$attr}{$subPath} = "1";
+                $foundAttribute = 1;
+                next;
+            }
+            my $command = SVN . " propget $attr '$subPath'";
+            my $attrib = $attributeCache{$attr}{$subPath} || `$command`;
+            chomp $attrib;
+            if ($attrib eq "1") {
+                $foundAttribute = 1;
+            }
+            $attributeCache{$attr}{$subPath} = $attrib || "0";
+        }
+        $result = $attributeCache{$attr}{$file};
+    } elsif (isGit()) {
+        my $command = GIT . " check-attr $attr -- $file";
+        $result = `$command`;
+        chomp $result;
+        $result =~ s/.*\W(\w)/$1/;
+    }
+
+    $result =~ s/\D//g;
+    return int($result || 0);
 }
 
 sub createPatchCommand($$$$)
@@ -1925,6 +2135,7 @@ sub generateFileList(\%$$$)
     my @conflictFiles;
     my %functionLists;
     my @addedRegressionTests;
+    my @requiresTests;
     print STDERR "  Running status to find changed, added, or removed files.\n";
     open STAT, "-|", statusCommand($paths, $gitCommit, $gitIndex, $mergeBase) or die "The status failed: $!.\n";
     while (<STAT>) {
@@ -1984,6 +2195,10 @@ sub generateFileList(\%$$$)
                        && $file !~ /-expected(-mismatch)?\.html$/
                        && !scalar(grep(/^resources$/i, @components))
                        && !scalar(grep(/^script-tests$/i, @components));
+            } elsif (attributeCommand($file, "test")) {
+                push @addedRegressionTests, $file;
+            } elsif (attributeCommand($file, "requiresTests")) {
+                push @requiresTests, $file
             }
             push @changedFiles, $file if $components[$#components] ne "ChangeLog";
         } elsif (isConflictStatus($status, $gitCommit, $gitIndex) || isConflictStatus($propertyStatus, $gitCommit, $gitIndex)) {
@@ -1995,7 +2210,7 @@ sub generateFileList(\%$$$)
         }
     }
     close STAT;
-    return (\@changedFiles, \@conflictFiles, \%functionLists, \@addedRegressionTests);
+    return (\@changedFiles, \@conflictFiles, \%functionLists, \@addedRegressionTests, \@requiresTests);
 }
 
 sub isUnmodifiedStatus($)

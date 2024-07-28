@@ -47,16 +47,16 @@ static_assert(sizeof(UnlinkedFunctionExecutable) <= 256, "UnlinkedFunctionExecut
 
 const ClassInfo UnlinkedFunctionExecutable::s_info = { "UnlinkedFunctionExecutable", 0, 0, CREATE_METHOD_TABLE(UnlinkedFunctionExecutable) };
 
-static UnlinkedFunctionCodeBlock* generateFunctionCodeBlock(
+static UnlinkedFunctionCodeBlock* generateUnlinkedFunctionCodeBlock(
     VM& vm, UnlinkedFunctionExecutable* executable, const SourceCode& source,
     CodeSpecializationKind kind, DebuggerMode debuggerMode, ProfilerMode profilerMode,
-    UnlinkedFunctionKind functionKind, ParserError& error)
+    UnlinkedFunctionKind functionKind, ParserError& error, SourceParseMode parseMode)
 {
     JSParserBuiltinMode builtinMode = executable->isBuiltinFunction() ? JSParserBuiltinMode::Builtin : JSParserBuiltinMode::NotBuiltin;
     JSParserStrictMode strictMode = executable->isInStrictContext() ? JSParserStrictMode::Strict : JSParserStrictMode::NotStrict;
     ASSERT(isFunctionParseMode(executable->parseMode()));
     std::unique_ptr<FunctionNode> function = parse<FunctionNode>(
-        &vm, source, executable->name(), builtinMode, strictMode, executable->parseMode(), error, nullptr);
+        &vm, source, executable->name(), builtinMode, strictMode, executable->parseMode(), executable->superBinding(), error, nullptr);
 
     if (!function) {
         ASSERT(error.isValid());
@@ -65,9 +65,12 @@ static UnlinkedFunctionCodeBlock* generateFunctionCodeBlock(
 
     function->finishParsing(executable->name(), executable->functionMode());
     executable->recordParse(function->features(), function->hasCapturedVariables());
-    
+
+    bool isClassContext = executable->superBinding() == SuperBinding::Needed;
+
     UnlinkedFunctionCodeBlock* result = UnlinkedFunctionCodeBlock::create(&vm, FunctionCode,
-        ExecutableInfo(function->needsActivation(), function->usesEval(), function->isStrictMode(), kind == CodeForConstruct, functionKind == UnlinkedBuiltinFunction, executable->constructorKind()));
+        ExecutableInfo(function->usesEval(), function->isStrictMode(), kind == CodeForConstruct, functionKind == UnlinkedBuiltinFunction, executable->constructorKind(), executable->superBinding(), parseMode, executable->derivedContextType(), false, isClassContext));
+
     auto generator(std::make_unique<BytecodeGenerator>(vm, function.get(), result, debuggerMode, profilerMode, executable->parentScopeTDZVariables()));
     error = generator->generate();
     if (error.isValid())
@@ -75,11 +78,8 @@ static UnlinkedFunctionCodeBlock* generateFunctionCodeBlock(
     return result;
 }
 
-UnlinkedFunctionExecutable::UnlinkedFunctionExecutable(VM* vm, Structure* structure, const SourceCode& source, RefPtr<SourceProvider>&& sourceOverride, FunctionMetadataNode* node, UnlinkedFunctionKind kind, ConstructAbility constructAbility, VariableEnvironment& parentScopeTDZVariables)
+UnlinkedFunctionExecutable::UnlinkedFunctionExecutable(VM* vm, Structure* structure, const SourceCode& source, RefPtr<SourceProvider>&& sourceOverride, FunctionMetadataNode* node, UnlinkedFunctionKind kind, ConstructAbility constructAbility, VariableEnvironment& parentScopeTDZVariables, DerivedContextType derivedContextType)
     : Base(*vm, structure)
-    , m_name(node->ident())
-    , m_inferredName(node->inferredName())
-    , m_sourceOverride(WTF::move(sourceOverride))
     , m_firstLineOffset(node->firstLine() - source.firstLine())
     , m_lineCount(node->lastLine() - node->firstLine())
     , m_unlinkedFunctionNameStart(node->functionNameStart() - source.startOffset())
@@ -91,7 +91,6 @@ UnlinkedFunctionExecutable::UnlinkedFunctionExecutable(VM* vm, Structure* struct
     , m_typeProfilingStartOffset(node->functionKeywordStart())
     , m_typeProfilingEndOffset(node->startStartOffset() + node->source().length() - 1)
     , m_parameterCount(node->parameterCount())
-    , m_parseMode(node->parseMode())
     , m_features(0)
     , m_isInStrictContext(node->isInStrictContext())
     , m_hasCapturedVariables(false)
@@ -99,6 +98,12 @@ UnlinkedFunctionExecutable::UnlinkedFunctionExecutable(VM* vm, Structure* struct
     , m_constructAbility(static_cast<unsigned>(constructAbility))
     , m_constructorKind(static_cast<unsigned>(node->constructorKind()))
     , m_functionMode(node->functionMode())
+    , m_superBinding(static_cast<unsigned>(node->superBinding()))
+    , m_derivedContextType(static_cast<unsigned>(derivedContextType))
+    , m_sourceParseMode(static_cast<unsigned>(node->parseMode()))
+    , m_name(node->ident())
+    , m_inferredName(node->inferredName())
+    , m_sourceOverride(WTFMove(sourceOverride))
 {
     ASSERT(m_constructorKind == static_cast<unsigned>(node->constructorKind()));
     m_parentScopeTDZVariables.swap(parentScopeTDZVariables);
@@ -109,8 +114,8 @@ void UnlinkedFunctionExecutable::visitChildren(JSCell* cell, SlotVisitor& visito
     UnlinkedFunctionExecutable* thisObject = jsCast<UnlinkedFunctionExecutable*>(cell);
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
     Base::visitChildren(thisObject, visitor);
-    visitor.append(&thisObject->m_codeBlockForCall);
-    visitor.append(&thisObject->m_codeBlockForConstruct);
+    visitor.append(&thisObject->m_unlinkedCodeBlockForCall);
+    visitor.append(&thisObject->m_unlinkedCodeBlockForConstruct);
     visitor.append(&thisObject->m_nameValue);
 }
 
@@ -177,38 +182,44 @@ UnlinkedFunctionExecutable* UnlinkedFunctionExecutable::fromGlobalCode(
     return executable;
 }
 
-UnlinkedFunctionCodeBlock* UnlinkedFunctionExecutable::codeBlockFor(
+UnlinkedFunctionCodeBlock* UnlinkedFunctionExecutable::unlinkedCodeBlockFor(
     VM& vm, const SourceCode& source, CodeSpecializationKind specializationKind, 
-    DebuggerMode debuggerMode, ProfilerMode profilerMode, ParserError& error)
+    DebuggerMode debuggerMode, ProfilerMode profilerMode, ParserError& error, SourceParseMode parseMode)
 {
     switch (specializationKind) {
     case CodeForCall:
-        if (UnlinkedFunctionCodeBlock* codeBlock = m_codeBlockForCall.get())
+        if (UnlinkedFunctionCodeBlock* codeBlock = m_unlinkedCodeBlockForCall.get())
             return codeBlock;
         break;
     case CodeForConstruct:
-        if (UnlinkedFunctionCodeBlock* codeBlock = m_codeBlockForConstruct.get())
+        if (UnlinkedFunctionCodeBlock* codeBlock = m_unlinkedCodeBlockForConstruct.get())
             return codeBlock;
         break;
     }
 
-    UnlinkedFunctionCodeBlock* result = generateFunctionCodeBlock(
+    UnlinkedFunctionCodeBlock* result = generateUnlinkedFunctionCodeBlock(
         vm, this, source, specializationKind, debuggerMode, profilerMode, 
         isBuiltinFunction() ? UnlinkedBuiltinFunction : UnlinkedNormalFunction, 
-        error);
+        error, parseMode);
     
     if (error.isValid())
         return nullptr;
 
     switch (specializationKind) {
     case CodeForCall:
-        m_codeBlockForCall.set(vm, this, result);
+        m_unlinkedCodeBlockForCall.set(vm, this, result);
         break;
     case CodeForConstruct:
-        m_codeBlockForConstruct.set(vm, this, result);
+        m_unlinkedCodeBlockForConstruct.set(vm, this, result);
         break;
     }
     return result;
+}
+
+void UnlinkedFunctionExecutable::setInvalidTypeProfilingOffsets()
+{
+    m_typeProfilingStartOffset = std::numeric_limits<unsigned>::max();
+    m_typeProfilingEndOffset = std::numeric_limits<unsigned>::max();
 }
 
 } // namespace JSC

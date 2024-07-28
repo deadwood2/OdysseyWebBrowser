@@ -23,29 +23,6 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-.details-section.watch-expressions .options > * {
-    float: right;
-    margin-top: 1px;
-    margin-left: 5px;
-    height: 13px;
-}
-
-.details-section.watch-expressions .options > *:active {
-    opacity: 0.7;
-}
-
-.details-section.watch-expressions .options > .watch-expression-add {
-    content: url(../Images/Plus.svg);
-}
-
-.details-section.watch-expressions .options > .watch-expression-clear {
-    content: url(../Images/NavigationItemTrash.svg);
-}
-
-.details-section.watch-expressions .options > .watch-expression-refresh {
-    content: url(../Images/ReloadFull.svg);
-}
-
 .popover .watch-expression {
     padding: 5px;
     margin: 2px;
@@ -68,4 +45,16 @@
 .watch-expression-editor > .CodeMirror-scroll {
     width: calc(100% - 2px);
     overflow: hidden;
+}
+
+.scope-chain .details-section > .content > .group > .row.properties:not(.empty) {
+    padding-top: 0px;
+    padding-bottom: 0px;
+}
+
+.scope-chain .details-section > .content > .group > .row.properties:not(.empty):last-child {
+    position: relative;
+    top: -2px;
+
+    padding-bottom: 2px;
 }

@@ -31,9 +31,9 @@
 #include "CanvasRenderingContext.h"
 #include "CanvasStyle.h"
 #include "Color.h"
-#include "ColorSpace.h"
 #include "FloatSize.h"
 #include "FontCascade.h"
+#include "GraphicsContext.h"
 #include "GraphicsTypes.h"
 #include "ImageBuffer.h"
 #include "Path.h"
@@ -62,10 +62,10 @@ public:
     CanvasRenderingContext2D(HTMLCanvasElement*, bool usesCSSCompatibilityParseMode, bool usesDashboardCompatibilityMode);
     virtual ~CanvasRenderingContext2D();
 
-    const CanvasStyle& strokeStyle() const { return state().m_strokeStyle; }
+    const CanvasStyle& strokeStyle() const { return state().strokeStyle; }
     void setStrokeStyle(CanvasStyle);
 
-    const CanvasStyle& fillStyle() const { return state().m_fillStyle; }
+    const CanvasStyle& fillStyle() const { return state().fillStyle; }
     void setFillStyle(CanvasStyle);
 
     float lineWidth() const;
@@ -222,11 +222,29 @@ public:
     void strokeText(const String& text, float x, float y, float maxWidth);
     Ref<TextMetrics> measureText(const String& text);
 
-    LineCap getLineCap() const { return state().m_lineCap; }
-    LineJoin getLineJoin() const { return state().m_lineJoin; }
+    LineCap getLineCap() const { return state().lineCap; }
+    LineJoin getLineJoin() const { return state().lineJoin; }
 
     bool imageSmoothingEnabled() const;
     void setImageSmoothingEnabled(bool);
+
+    String imageSmoothingQuality() const;
+    void setImageSmoothingQuality(const String&);
+
+    enum class SmoothingQuality {
+        Low,
+        Medium,
+        High
+    };
+
+    bool usesDisplayListDrawing() const { return m_usesDisplayListDrawing; };
+    void setUsesDisplayListDrawing(bool flag) { m_usesDisplayListDrawing = flag; };
+
+    bool tracksDisplayListReplay() const { return m_tracksDisplayListReplay; }
+    void setTracksDisplayListReplay(bool);
+
+    String displayListAsText(DisplayList::AsTextFlags) const;
+    String replayDisplayListAsText(DisplayList::AsTextFlags) const;
 
 private:
     enum class Direction {
@@ -245,7 +263,7 @@ private:
         bool realized() const { return m_font.fontSelector(); }
         void initialize(FontSelector&, RenderStyle&);
         FontMetrics fontMetrics() const;
-        const FontDescription& fontDescription() const;
+        const FontCascadeDescription& fontDescription() const;
         float width(const TextRun&) const;
         void drawBidiText(GraphicsContext&, const TextRun&, const FloatPoint&, FontCascade::CustomFontNotReadyAction) const;
 
@@ -262,33 +280,34 @@ private:
         State(const State&);
         State& operator=(const State&);
 
-        String m_unparsedStrokeColor;
-        String m_unparsedFillColor;
-        CanvasStyle m_strokeStyle;
-        CanvasStyle m_fillStyle;
-        float m_lineWidth;
-        LineCap m_lineCap;
-        LineJoin m_lineJoin;
-        float m_miterLimit;
-        FloatSize m_shadowOffset;
-        float m_shadowBlur;
-        RGBA32 m_shadowColor;
-        float m_globalAlpha;
-        CompositeOperator m_globalComposite;
-        BlendMode m_globalBlend;
-        AffineTransform m_transform;
-        bool m_hasInvertibleTransform;
-        Vector<float> m_lineDash;
-        float m_lineDashOffset;
-        bool m_imageSmoothingEnabled;
+        String unparsedStrokeColor;
+        String unparsedFillColor;
+        CanvasStyle strokeStyle;
+        CanvasStyle fillStyle;
+        float lineWidth;
+        LineCap lineCap;
+        LineJoin lineJoin;
+        float miterLimit;
+        FloatSize shadowOffset;
+        float shadowBlur;
+        RGBA32 shadowColor;
+        float globalAlpha;
+        CompositeOperator globalComposite;
+        BlendMode globalBlend;
+        AffineTransform transform;
+        bool hasInvertibleTransform;
+        Vector<float> lineDash;
+        float lineDashOffset;
+        bool imageSmoothingEnabled;
+        SmoothingQuality imageSmoothingQuality;
 
         // Text state.
-        TextAlign m_textAlign;
-        TextBaseline m_textBaseline;
-        Direction m_direction;
+        TextAlign textAlign;
+        TextBaseline textBaseline;
+        Direction direction;
 
-        String m_unparsedFont;
-        FontProxy m_font;
+        String unparsedFont;
+        FontProxy font;
     };
 
     enum CanvasDidDrawOption {
@@ -299,7 +318,7 @@ private:
         CanvasDidDrawApplyAll = 0xffffffff
     };
 
-    State& modifiableState() { ASSERT(!m_unrealizedSaveCount); return m_stateStack.last(); }
+    State& modifiableState() { ASSERT(!m_unrealizedSaveCount || m_stateStack.size() >= MaxSaveCount); return m_stateStack.last(); }
     const State& state() const { return m_stateStack.last(); }
 
     void applyLineDash() const;
@@ -310,14 +329,12 @@ private:
     void didDraw(const FloatRect&, unsigned options = CanvasDidDrawApplyAll);
     void didDrawEntireCanvas();
 
+    void paintRenderingResultsToCanvas() override;
+
     GraphicsContext* drawingContext() const;
 
     void unwindStateStack();
-    void realizeSaves()
-    {
-        if (m_unrealizedSaveCount)
-            realizeSavesLoop();
-    }
+    void realizeSaves();
     void realizeSavesLoop();
 
     void applyStrokePattern();
@@ -352,11 +369,11 @@ private:
 
     template<class T> IntRect calculateCompositingBufferRect(const T&, IntSize*);
     std::unique_ptr<ImageBuffer> createCompositingBuffer(const IntRect&);
-    void compositeBuffer(ImageBuffer*, const IntRect&, CompositeOperator);
+    void compositeBuffer(ImageBuffer&, const IntRect&, CompositeOperator);
 
     void inflateStrokeRect(FloatRect&) const;
 
-    template<class T> void fullCanvasCompositedDrawImage(T*, ColorSpace, const FloatRect&, const FloatRect&, CompositeOperator);
+    template<class T> void fullCanvasCompositedDrawImage(T&, const FloatRect&, const FloatRect&, CompositeOperator);
 
     void prepareGradientForDashboard(CanvasGradient& gradient) const;
 
@@ -366,21 +383,28 @@ private:
     virtual bool is2d() const override { return true; }
     virtual bool isAccelerated() const override;
 
-    virtual bool hasInvertibleTransform() const override { return state().m_hasInvertibleTransform; }
+    virtual bool hasInvertibleTransform() const override { return state().hasInvertibleTransform; }
     TextDirection toTextDirection(Direction, RenderStyle** computedStyle = nullptr) const;
 
 #if ENABLE(ACCELERATED_2D_CANVAS)
     virtual PlatformLayer* platformLayer() const override;
 #endif
 
+    static const unsigned MaxSaveCount = 1024 * 16;
     Vector<State, 1> m_stateStack;
-    unsigned m_unrealizedSaveCount;
+    unsigned m_unrealizedSaveCount { 0 };
     bool m_usesCSSCompatibilityParseMode;
 #if ENABLE(DASHBOARD_SUPPORT)
     bool m_usesDashboardCompatibilityMode;
 #endif
+
+    bool m_usesDisplayListDrawing { false };
+    bool m_tracksDisplayListReplay { false };
+    mutable std::unique_ptr<struct DisplayListDrawingContext> m_recordingContext;
 };
 
 } // namespace WebCore
+
+SPECIALIZE_TYPE_TRAITS_CANVASRENDERINGCONTEXT(WebCore::CanvasRenderingContext2D, is2d())
 
 #endif

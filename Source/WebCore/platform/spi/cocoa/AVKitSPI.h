@@ -74,7 +74,7 @@ typedef NS_ENUM(NSInteger, AVPlayerControllerExternalPlaybackType) {
 - (void)stopRoutingVideoToPictureInPicturePlayerLayerView;
 @end
 
-@protocol AVPlayerViewControllerDelegate <NSObject>
+@protocol AVPlayerViewControllerDelegate_WebKitOnly <AVPlayerViewControllerDelegate>
 @optional
 typedef NS_ENUM(NSInteger, AVPlayerViewControllerExitFullScreenReason) {
     AVPlayerViewControllerExitFullScreenReasonDoneButtonTapped,
@@ -84,7 +84,6 @@ typedef NS_ENUM(NSInteger, AVPlayerViewControllerExitFullScreenReason) {
     AVPlayerViewControllerExitFullScreenReasonPictureInPictureStarted
 };
 - (BOOL)playerViewController:(AVPlayerViewController *)playerViewController shouldExitFullScreenWithReason:(AVPlayerViewControllerExitFullScreenReason)reason;
-- (void)playerViewController:(AVPlayerViewController *)playerViewController restoreUserInterfaceForPictureInPictureStopWithCompletionHandler:(void (^)(BOOL restored))completionHandler;
 @end
 
 @interface AVPlayerViewController ()
@@ -96,18 +95,12 @@ typedef NS_ENUM(NSInteger, AVPlayerViewControllerExitFullScreenReason) {
 - (void)startPictureInPicture;
 - (void)stopPictureInPicture;
 
-@property (nonatomic) BOOL allowsPictureInPicturePlayback;
 @property (nonatomic, strong) AVPlayerController *playerController;
-@property (nonatomic, weak) id <AVPlayerViewControllerDelegate> delegate;
+@property (nonatomic, readonly, getter=isPictureInPictureActive) BOOL pictureInPictureActive;
+@property (nonatomic, readonly) BOOL pictureInPictureWasStartedWhenEnteringBackground;
 @end
 
 #endif // USE(APPLE_INTERNAL_SDK)
-
-#if USE(APPLE_INTERNAL_SDK) && __IPHONE_OS_VERSION_MIN_REQUIRED < 90000
-
-#import <AVKit/AVValueTiming.h>
-
-#else
 
 @interface AVValueTiming : NSObject <NSCoding, NSCopying, NSMutableCopying>
 @end
@@ -116,8 +109,6 @@ typedef NS_ENUM(NSInteger, AVPlayerViewControllerExitFullScreenReason) {
 + (AVValueTiming *)valueTimingWithAnchorValue:(double)anchorValue anchorTimeStamp:(NSTimeInterval)timeStamp rate:(double)rate;
 @property (NS_NONATOMIC_IOSONLY, readonly) double currentValue;
 @end
-
-#endif
 
 #endif // PLATFORM(IOS)
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2007, 2008, 2009, 2014-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -50,6 +50,7 @@
 #include "Range.h"
 #include "RenderLayer.h"
 #include "RenderListBox.h"
+#include "RenderView.h"
 #include "RenderWidget.h"
 #include "RuntimeApplicationChecks.h"
 #include "ScrollAnimator.h"
@@ -63,6 +64,10 @@
 #include <wtf/MainThread.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/ObjcRuntimeExtras.h>
+
+#if ENABLE(MAC_GESTURE_EVENTS)
+#import <WebKitAdditions/EventHandlerMacGesture.cpp>
+#endif
 
 namespace WebCore {
 
@@ -572,7 +577,7 @@ void EventHandler::sendFakeEventsAfterWidgetTracking(NSEvent *initiatingEvent)
                                       modifierFlags:[initiatingEvent modifierFlags]
                                           timestamp:[initiatingEvent timestamp]
                                        windowNumber:[initiatingEvent windowNumber]
-                                            context:[initiatingEvent context]
+                                            context:nullptr
                                         eventNumber:[initiatingEvent eventNumber]
                                          clickCount:[initiatingEvent clickCount]
                                            pressure:[initiatingEvent pressure]];
@@ -584,7 +589,7 @@ void EventHandler::sendFakeEventsAfterWidgetTracking(NSEvent *initiatingEvent)
                                     modifierFlags:[initiatingEvent modifierFlags]
                                         timestamp:[initiatingEvent timestamp]
                                      windowNumber:[initiatingEvent windowNumber]
-                                          context:[initiatingEvent context]
+                                          context:nullptr
                                        characters:[initiatingEvent characters] 
                       charactersIgnoringModifiers:[initiatingEvent charactersIgnoringModifiers] 
                                         isARepeat:[initiatingEvent isARepeat] 
@@ -601,7 +606,7 @@ void EventHandler::sendFakeEventsAfterWidgetTracking(NSEvent *initiatingEvent)
                                   modifierFlags:[initiatingEvent modifierFlags]
                                       timestamp:[initiatingEvent timestamp]
                                    windowNumber:[initiatingEvent windowNumber]
-                                        context:[initiatingEvent context]
+                                        context:nullptr
                                     eventNumber:0
                                      clickCount:0
                                        pressure:0];
@@ -927,7 +932,7 @@ void EventHandler::platformPrepareForWheelEvents(const PlatformWheelEvent& wheel
             scrollableArea = scrollViewForEventTarget(wheelEventTarget.get());
         } else {
             scrollableContainer = findEnclosingScrollableContainer(wheelEventTarget.get(), wheelEvent.deltaX(), wheelEvent.deltaY());
-            if (scrollableContainer)
+            if (scrollableContainer && !is<HTMLIFrameElement>(wheelEventTarget.get()))
                 scrollableArea = scrollableAreaForContainerNode(*scrollableContainer);
             else {
                 scrollableContainer = view->frame().document()->bodyOrFrameset();
@@ -954,7 +959,7 @@ void EventHandler::platformPrepareForWheelEvents(const PlatformWheelEvent& wheel
                 latchingState->setScrollableContainer(scrollableContainer);
                 latchingState->setWidgetIsLatched(result.isOverWidget());
                 isOverWidget = latchingState->widgetIsLatched();
-                m_frame.mainFrame().wheelEventDeltaTracker()->beginTrackingDeltas();
+                m_frame.mainFrame().wheelEventDeltaFilter()->beginFilteringDeltas();
             }
         }
     } else if (wheelEvent.shouldResetLatching())
@@ -982,16 +987,15 @@ void EventHandler::platformRecordWheelEvent(const PlatformWheelEvent& wheelEvent
 {
     switch (wheelEvent.phase()) {
         case PlatformWheelEventPhaseBegan:
-            m_frame.mainFrame().wheelEventDeltaTracker()->beginTrackingDeltas();
+            m_frame.mainFrame().wheelEventDeltaFilter()->beginFilteringDeltas();
             break;
         case PlatformWheelEventPhaseEnded:
-            m_frame.mainFrame().wheelEventDeltaTracker()->endTrackingDeltas();
+            m_frame.mainFrame().wheelEventDeltaFilter()->endFilteringDeltas();
             break;
         default:
             break;
     }
-
-    m_frame.mainFrame().wheelEventDeltaTracker()->recordWheelEventDelta(wheelEvent);
+    m_frame.mainFrame().wheelEventDeltaFilter()->updateFromDelta(FloatSize(wheelEvent.deltaX(), wheelEvent.deltaY()));
 }
 
 static FrameView* frameViewForLatchingState(Frame& frame, ScrollLatchingState* latchingState)
@@ -1004,9 +1008,10 @@ static FrameView* frameViewForLatchingState(Frame& frame, ScrollLatchingState* l
 
 bool EventHandler::platformCompleteWheelEvent(const PlatformWheelEvent& wheelEvent, ContainerNode* scrollableContainer, ScrollableArea* scrollableArea)
 {
-    // We do another check on the frame view because the event handler can run JS which results in the frame getting destroyed.
-    ASSERT(m_frame.view());
     FrameView* view = m_frame.view();
+    // We do another check on the frame view because the event handler can run JS which results in the frame getting destroyed.
+    if (!view)
+        return false;
 
     ScrollLatchingState* latchingState = m_frame.mainFrame().latchingState();
     if (wheelEvent.useLatchedEventElement() && !latchingIsLockedToAncestorOfThisFrame(m_frame) && latchingState && latchingState->scrollableContainer()) {
@@ -1069,8 +1074,11 @@ void EventHandler::platformNotifyIfEndGesture(const PlatformWheelEvent& wheelEve
         return;
 
 #if ENABLE(CSS_SCROLL_SNAP)
-    if (ScrollAnimator* scrollAnimator = scrollableArea->existingScrollAnimator())
+    if (ScrollAnimator* scrollAnimator = scrollableArea->existingScrollAnimator()) {
         scrollAnimator->processWheelEventForScrollSnap(wheelEvent);
+        if (scrollAnimator->isScrollSnapInProgress())
+            clearLatchedState();
+    }
 #endif
 }
 
@@ -1080,7 +1088,7 @@ VisibleSelection EventHandler::selectClosestWordFromHitTestResultBasedOnLookup(c
         return VisibleSelection();
 
     NSDictionary *options = nil;
-    if (RefPtr<Range> range = rangeForDictionaryLookupAtHitTestResult(result, &options))
+    if (RefPtr<Range> range = DictionaryLookup::rangeAtHitTestResult(result, &options))
         return VisibleSelection(*range);
 
     return VisibleSelection();

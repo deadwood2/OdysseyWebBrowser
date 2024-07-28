@@ -23,14 +23,17 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// FIXME: Convert to class?
-WebInspector.Gradient = {
-    Types: {
-        Linear: "linear-gradient",
-        Radial: "radial-gradient"
-    },
+WebInspector.Gradient = class Gradient
+{
+    constructor(type, stops)
+    {
+        this.type = type;
+        this.stops = stops;
+    }
 
-    fromString(cssString)
+    // Static
+
+    static fromString(cssString)
     {
         var type;
         var openingParenthesisIndex = cssString.indexOf("(");
@@ -39,10 +42,8 @@ WebInspector.Gradient = {
             type = WebInspector.Gradient.Types.Linear;
         else if (typeString.indexOf(WebInspector.Gradient.Types.Radial) !== -1)
             type = WebInspector.Gradient.Types.Radial;
-        else {
-            console.error("Couldn't parse angle \"" + typeString + "\"");
+        else
             return null;
-        }
 
         var components = [];
         var currentParams = [];
@@ -86,17 +87,17 @@ WebInspector.Gradient = {
 
         var gradient;
         if (type === WebInspector.Gradient.Types.Linear)
-            gradient = WebInspector.LinearGradient.linearGradientWithComponents(components);
+            gradient = WebInspector.LinearGradient.fromComponents(components);
         else
-            gradient = WebInspector.RadialGradient.radialGradientWithComponents(components);
+            gradient = WebInspector.RadialGradient.fromComponents(components);
 
         if (gradient)
             gradient.repeats = typeString.startsWith("repeating");
 
         return gradient;
-    },
+    }
 
-    stopsWithComponents(components)
+    static stopsWithComponents(components)
     {
         // FIXME: handle lengths.
         var stops = components.map(function(component) {
@@ -112,10 +113,8 @@ WebInspector.Gradient = {
             }
         });
 
-        if (!stops.length) {
-            console.error("Couldn't parse any stops");
+        if (!stops.length)
             return null;
-        }
 
         for (var i = 0, count = stops.length; i < count; ++i) {
             var stop = stops[i];
@@ -130,7 +129,9 @@ WebInspector.Gradient = {
         }
 
         return stops;
-    },
+    }
+
+    // Public
 
     stringFromStops(stops)
     {
@@ -142,20 +143,36 @@ WebInspector.Gradient = {
             return str;
         }).join(", ");
     }
+
+    // Public
+
+    copy()
+    {
+        // Implemented by subclasses.
+    }
+
+    toString()
+    {
+        // Implemented by subclasses.
+    }
 };
 
-WebInspector.LinearGradient = class LinearGradient
+WebInspector.Gradient.Types = {
+    Linear: "linear-gradient",
+    Radial: "radial-gradient"
+};
+
+WebInspector.LinearGradient = class LinearGradient extends WebInspector.Gradient
 {
     constructor(angle, stops)
     {
-        this.type = WebInspector.Gradient.Types.Linear;
+        super(WebInspector.Gradient.Types.Linear, stops);
         this.angle = angle;
-        this.stops = stops;
     }
 
     // Static
 
-    static linearGradientWithComponents(components)
+    static fromComponents(components)
     {
         var angle = 180;
 
@@ -190,7 +207,6 @@ WebInspector.LinearGradient = class LinearGradient
                 angle = 315;
                 break;
             default:
-                console.error("Couldn't parse angle \"to " + components[0].join(" ") + "\"");
                 return null;
             }
             components.shift();
@@ -238,24 +254,23 @@ WebInspector.LinearGradient = class LinearGradient
         if (str !== "")
             str += ", ";
 
-        str += WebInspector.Gradient.stringFromStops(this.stops);
+        str += this.stringFromStops(this.stops);
 
         return (this.repeats ? "repeating-" : "") + this.type + "(" + str + ")";
     }
 };
 
-WebInspector.RadialGradient = class RadialGradient
+WebInspector.RadialGradient = class RadialGradient extends WebInspector.Gradient
 {
     constructor(sizing, stops)
     {
-        this.type = WebInspector.Gradient.Types.Radial;
+        super(WebInspector.Gradient.Types.Radial, stops);
         this.sizing = sizing;
-        this.stops = stops;
     }
 
     // Static
 
-    static radialGradientWithComponents(components)
+    static fromComponents(components)
     {
         var sizing = !WebInspector.Color.fromString(components[0].join(" ")) ? components.shift().join(" ") : "";
 
@@ -280,7 +295,7 @@ WebInspector.RadialGradient = class RadialGradient
         if (str !== "")
             str += ", ";
 
-        str += WebInspector.Gradient.stringFromStops(this.stops);
+        str += this.stringFromStops(this.stops);
 
         return (this.repeats ? "repeating-" : "") + this.type + "(" + str + ")";
     }

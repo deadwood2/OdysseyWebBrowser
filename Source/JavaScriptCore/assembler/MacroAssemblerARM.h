@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008, 2013, 2014 Apple Inc.
+ * Copyright (C) 2008, 2013-2015 Apple Inc.
  * Copyright (C) 2009, 2010 University of Szeged
  * All rights reserved.
  *
@@ -228,13 +228,24 @@ public:
         store32(ARMRegisters::S1, ARMRegisters::S0);
     }
 
+    void or32(TrustedImm32 imm, AbsoluteAddress dest)
+    {
+        move(TrustedImmPtr(dest.m_ptr), ARMRegisters::S0);
+        load32(Address(ARMRegisters::S0), ARMRegisters::S1);
+        or32(imm, ARMRegisters::S1); // It uses S0 as temporary register, we need to reload the address.
+        move(TrustedImmPtr(dest.m_ptr), ARMRegisters::S0);
+        store32(ARMRegisters::S1, ARMRegisters::S0);
+    }
+
     void or32(TrustedImm32 imm, RegisterID dest)
     {
+        ASSERT(dest != ARMRegisters::S0);
         m_assembler.orrs(dest, dest, m_assembler.getImm(imm.m_value, ARMRegisters::S0));
     }
 
     void or32(TrustedImm32 imm, RegisterID src, RegisterID dest)
     {
+        ASSERT(src != ARMRegisters::S0);
         m_assembler.orrs(dest, src, m_assembler.getImm(imm.m_value, ARMRegisters::S0));
     }
 
@@ -693,14 +704,14 @@ public:
 
     Jump branchTest32(ResultCondition cond, RegisterID reg, RegisterID mask)
     {
-        ASSERT((cond == Zero) || (cond == NonZero));
+        ASSERT(cond == Zero || cond == NonZero || cond == Signed || cond == PositiveOrZero);
         m_assembler.tst(reg, mask);
         return Jump(m_assembler.jmp(ARMCondition(cond)));
     }
 
     Jump branchTest32(ResultCondition cond, RegisterID reg, TrustedImm32 mask = TrustedImm32(-1))
     {
-        ASSERT((cond == Zero) || (cond == NonZero));
+        ASSERT(cond == Zero || cond == NonZero || cond == Signed || cond == PositiveOrZero);
         ARMWord w = m_assembler.getImm(mask.m_value, ARMRegisters::S0, true);
         if (w & ARMAssembler::Op2InvertedImmediate)
             m_assembler.bics(ARMRegisters::S0, reg, w & ~ARMAssembler::Op2InvertedImmediate);
@@ -831,7 +842,7 @@ public:
         return branchMul32(cond, src, dest, dest);
     }
 
-    Jump branchMul32(ResultCondition cond, TrustedImm32 imm, RegisterID src, RegisterID dest)
+    Jump branchMul32(ResultCondition cond, RegisterID src, TrustedImm32 imm, RegisterID dest)
     {
         ASSERT((cond == Overflow) || (cond == Signed) || (cond == Zero) || (cond == NonZero));
         if (cond == Overflow) {
@@ -908,6 +919,11 @@ public:
     {
         m_assembler.loadBranchTarget(ARMRegisters::S1, ARMAssembler::AL, true);
         return Call(m_assembler.blx(ARMRegisters::S1), Call::LinkableNear);
+    }
+
+    Call nearTailCall()
+    {
+        return Call(m_assembler.jmp(), Call::LinkableNearTail);
     }
 
     Call call(RegisterID target)
@@ -1123,6 +1139,7 @@ public:
         return s_isVFPPresent;
     }
     static bool supportsFloatingPointAbs() { return false; }
+    static bool supportsFloatingPointRounding() { return false; }
 
     void loadFloat(BaseIndex address, FPRegisterID dest)
     {
@@ -1143,6 +1160,18 @@ public:
     {
         move(TrustedImm32(reinterpret_cast<ARMWord>(address.m_value)), ARMRegisters::S0);
         m_assembler.doubleDtrUp(ARMAssembler::LoadDouble, dest, ARMRegisters::S0, 0);
+    }
+
+    NO_RETURN_DUE_TO_CRASH void ceilDouble(FPRegisterID, FPRegisterID)
+    {
+        ASSERT(!supportsFloatingPointRounding());
+        CRASH();
+    }
+
+    NO_RETURN_DUE_TO_CRASH void floorDouble(FPRegisterID, FPRegisterID)
+    {
+        ASSERT(!supportsFloatingPointRounding());
+        CRASH();
     }
 
     void storeFloat(FPRegisterID src, BaseIndex address)
@@ -1170,6 +1199,12 @@ public:
     {
         if (src != dest)
             m_assembler.vmov_f64(dest, src);
+    }
+
+    void moveZeroToDouble(FPRegisterID reg)
+    {
+        static double zeroConstant = 0.;
+        loadDouble(TrustedImmPtr(&zeroConstant), reg);
     }
 
     void addDouble(FPRegisterID src, FPRegisterID dest)
@@ -1438,13 +1473,18 @@ public:
         UNREACHABLE_FOR_PLATFORM();
     }
 
+    static void repatchCall(CodeLocationCall call, CodeLocationLabel destination)
+    {
+        ARMAssembler::relinkCall(call.dataLocation(), destination.executableAddress());
+    }
+
+    static void repatchCall(CodeLocationCall call, FunctionPtr destination)
+    {
+        ARMAssembler::relinkCall(call.dataLocation(), destination.executableAddress());
+    }
+
 #if ENABLE(MASM_PROBE)
-    // Methods required by the MASM_PROBE mechanism as defined in
-    // AbstractMacroAssembler.h. 
-    static void printCPURegisters(CPUState&, int indentation = 0);
-    static void printRegister(CPUState&, RegisterID);
-    static void printRegister(CPUState&, FPRegisterID);
-    void probe(ProbeFunction, void* arg1 = 0, void* arg2 = 0);
+    void probe(ProbeFunction, void* arg1, void* arg2);
 #endif // ENABLE(MASM_PROBE)
 
 protected:
@@ -1476,7 +1516,6 @@ protected:
 
 private:
     friend class LinkBuffer;
-    friend class RepatchBuffer;
 
     void internalCompare32(RegisterID left, TrustedImm32 right)
     {
@@ -1489,18 +1528,12 @@ private:
 
     static void linkCall(void* code, Call call, FunctionPtr function)
     {
-        ARMAssembler::linkCall(code, call.m_label, function.value());
+        if (call.isFlagSet(Call::Tail))
+            ARMAssembler::linkJump(code, call.m_label, function.value());
+        else
+            ARMAssembler::linkCall(code, call.m_label, function.value());
     }
 
-    static void repatchCall(CodeLocationCall call, CodeLocationLabel destination)
-    {
-        ARMAssembler::relinkCall(call.dataLocation(), destination.executableAddress());
-    }
-
-    static void repatchCall(CodeLocationCall call, FunctionPtr destination)
-    {
-        ARMAssembler::relinkCall(call.dataLocation(), destination.executableAddress());
-    }
 
 #if ENABLE(MASM_PROBE)
     inline TrustedImm32 trustedImm32FromPtr(void* ptr)

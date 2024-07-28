@@ -91,10 +91,10 @@ void JSEventListener::handleEvent(ScriptExecutionContext* scriptExecutionContext
 
     if (scriptExecutionContext->isDocument()) {
         JSDOMWindow* window = jsCast<JSDOMWindow*>(globalObject);
-        if (!window->impl().isCurrentlyDisplayedInFrame())
+        if (!window->wrapped().isCurrentlyDisplayedInFrame())
             return;
         // FIXME: Is this check needed for other contexts?
-        ScriptController& script = window->impl().frame()->script();
+        ScriptController& script = window->wrapped().frame()->script();
         if (!script.canExecuteScripts(AboutToExecuteScript) || script.isPaused())
             return;
     }
@@ -127,8 +127,8 @@ void JSEventListener::handleEvent(ScriptExecutionContext* scriptExecutionContext
         JSValue thisValue = handleEventFunction == jsFunction ? toJS(exec, globalObject, event->currentTarget()) : jsFunction;
         NakedPtr<Exception> exception;
         JSValue retval = scriptExecutionContext->isDocument()
-            ? JSMainThreadExecState::call(exec, handleEventFunction, callType, callData, thisValue, args, exception)
-            : JSC::call(exec, handleEventFunction, callType, callData, thisValue, args, exception);
+            ? JSMainThreadExecState::profiledCall(exec, JSC::ProfilingReason::Other, handleEventFunction, callType, callData, thisValue, args, exception)
+            : JSC::profiledCall(exec, JSC::ProfilingReason::Other, handleEventFunction, callType, callData, thisValue, args, exception);
 
         InspectorInstrumentation::didCallFunction(cookie, scriptExecutionContext);
 

@@ -69,11 +69,11 @@ void CachedFont::load(CachedResourceLoader&, const ResourceLoaderOptions& option
     m_options = options;
 }
 
-void CachedFont::didAddClient(CachedResourceClient* c)
+void CachedFont::didAddClient(CachedResourceClient* client)
 {
-    ASSERT(c->resourceClientType() == CachedFontClient::expectedType());
+    ASSERT(client->resourceClientType() == CachedFontClient::expectedType());
     if (!isLoading())
-        static_cast<CachedFontClient*>(c)->fontLoaded(this);
+        static_cast<CachedFontClient*>(client)->fontLoaded(*this);
 }
 
 void CachedFont::finishLoading(SharedBuffer* data)
@@ -92,7 +92,7 @@ void CachedFont::beginLoadIfNeeded(CachedResourceLoader& loader)
     }
 }
 
-bool CachedFont::ensureCustomFontData(bool, const AtomicString&)
+bool CachedFont::ensureCustomFontData(const AtomicString&)
 {
     return ensureCustomFontData(m_data.get());
 }
@@ -102,7 +102,7 @@ bool CachedFont::ensureCustomFontData(SharedBuffer* data)
     if (!m_fontCustomPlatformData && !errorOccurred() && !isLoading() && data) {
         RefPtr<SharedBuffer> buffer(data);
 
-#if (!PLATFORM(MAC) || __MAC_OS_X_VERSION_MIN_REQUIRED <= 1090) && (!PLATFORM(IOS) || __IPHONE_OS_VERSION_MIN_REQUIRED < 80000)
+#if !PLATFORM(COCOA)
         if (isWOFF(buffer.get())) {
             Vector<char> convertedFont;
             if (!convertWOFFToSfnt(buffer.get(), convertedFont))
@@ -121,15 +121,21 @@ bool CachedFont::ensureCustomFontData(SharedBuffer* data)
     return m_fontCustomPlatformData.get();
 }
 
-RefPtr<Font> CachedFont::createFont(const FontDescription& fontDescription, const AtomicString&, bool syntheticBold, bool syntheticItalic, bool)
+RefPtr<Font> CachedFont::createFont(const FontDescription& fontDescription, const AtomicString&, bool syntheticBold, bool syntheticItalic, const FontFeatureSettings& fontFaceFeatures, const FontVariantSettings& fontFaceVariantSettings)
 {
-    return Font::create(platformDataFromCustomData(fontDescription, syntheticBold, syntheticItalic), true, false);
+    return Font::create(platformDataFromCustomData(fontDescription, syntheticBold, syntheticItalic, fontFaceFeatures, fontFaceVariantSettings), true, false);
 }
 
-FontPlatformData CachedFont::platformDataFromCustomData(const FontDescription& fontDescription, bool bold, bool italic)
+FontPlatformData CachedFont::platformDataFromCustomData(const FontDescription& fontDescription, bool bold, bool italic, const FontFeatureSettings& fontFaceFeatures, const FontVariantSettings& fontFaceVariantSettings)
 {
     ASSERT(m_fontCustomPlatformData);
+#if PLATFORM(COCOA)
+    return m_fontCustomPlatformData->fontPlatformData(fontDescription, bold, italic, fontFaceFeatures, fontFaceVariantSettings);
+#else
+    UNUSED_PARAM(fontFaceFeatures);
+    UNUSED_PARAM(fontFaceVariantSettings);
     return m_fontCustomPlatformData->fontPlatformData(fontDescription, bold, italic);
+#endif
 }
 
 void CachedFont::allClientsRemoved()
@@ -142,9 +148,9 @@ void CachedFont::checkNotify()
     if (isLoading())
         return;
     
-    CachedResourceClientWalker<CachedFontClient> w(m_clients);
-    while (CachedFontClient* c = w.next())
-         c->fontLoaded(this);
+    CachedResourceClientWalker<CachedFontClient> walker(m_clients);
+    while (CachedFontClient* client = walker.next())
+        client->fontLoaded(*this);
 }
 
 bool CachedFont::mayTryReplaceEncodedData() const

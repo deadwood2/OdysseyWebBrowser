@@ -32,14 +32,17 @@
 #include <WebKit/WKRetainPtr.h>
 #include <string>
 #include <vector>
+#include <wtf/HashMap.h>
 #include <wtf/Vector.h>
+
+OBJC_CLASS WKWebViewConfiguration;
 
 namespace WTR {
 
 class TestInvocation;
 class PlatformWebView;
 class EventSenderProxy;
-struct ViewOptions;
+struct TestOptions;
 
 // FIXME: Rename this TestRunner?
 class TestController {
@@ -60,15 +63,14 @@ public:
 
     bool verbose() const { return m_verbose; }
 
-    WKStringRef injectedBundlePath() { return m_injectedBundlePath.get(); }
-    WKStringRef testPluginDirectory() { return m_testPluginDirectory.get(); }
+    WKStringRef injectedBundlePath() const { return m_injectedBundlePath.get(); }
+    WKStringRef testPluginDirectory() const { return m_testPluginDirectory.get(); }
 
     PlatformWebView* mainWebView() { return m_mainWebView.get(); }
     WKContextRef context() { return m_context.get(); }
 
     EventSenderProxy* eventSenderProxy() { return m_eventSenderProxy.get(); }
 
-    void ensureViewSupportsOptions(const ViewOptions&);
     bool shouldUseRemoteLayerTree() const { return m_shouldUseRemoteLayerTree; }
     
     // Runs the run loop until `done` is true or the timeout elapses.
@@ -94,7 +96,9 @@ public:
 
     // MediaStream.
     void setUserMediaPermission(bool);
-    void handleUserMediaPermissionRequest(WKUserMediaPermissionRequestRef);
+    void setUserMediaPermissionForOrigin(bool permission, WKStringRef url);
+    void handleUserMediaPermissionRequest(WKSecurityOriginRef, WKUserMediaPermissionRequestRef);
+    void handleCheckOfUserMediaPermissionForOrigin(WKSecurityOriginRef, const WKUserMediaPermissionCheckRef&);
 
     // Policy delegate.
     void setCustomPolicyDelegate(bool enabled, bool permissive);
@@ -123,9 +127,15 @@ public:
 
     bool isCurrentInvocation(TestInvocation* invocation) const { return invocation == m_currentInvocation.get(); }
 
+    void setShouldDecideNavigationPolicyAfterDelay(bool value) { m_shouldDecideNavigationPolicyAfterDelay = value; }
+
+    void setNavigationGesturesEnabled(bool value);
+
 private:
+    WKRetainPtr<WKPageConfigurationRef> generatePageConfiguration(WKContextConfigurationRef);
+    WKRetainPtr<WKContextConfigurationRef> generateContextConfiguration() const;
     void initialize(int argc, const char* argv[]);
-    void createWebViewWithOptions(const ViewOptions&);
+    void createWebViewWithOptions(const TestOptions&);
     void run();
 
     void runTestingServerLoop();
@@ -133,18 +143,29 @@ private:
 
     void platformInitialize();
     void platformDestroy();
+    WKContextRef platformAdjustContext(WKContextRef, WKContextConfigurationRef);
     void platformInitializeContext();
+    void platformCreateWebView(WKPageConfigurationRef, const TestOptions&);
+    static PlatformWebView* platformCreateOtherPage(PlatformWebView* parentView, WKPageConfigurationRef, const TestOptions&);
     void platformResetPreferencesToConsistentValues();
+    void platformResetStateToConsistentValues();
+#if PLATFORM(COCOA)
+    void cocoaResetStateToConsistentValues();
+#endif
     void platformConfigureViewForTest(const TestInvocation&);
     void platformWillRunTest(const TestInvocation&);
     void platformRunUntil(bool& done, double timeout);
     void platformDidCommitLoadForFrame(WKPageRef, WKFrameRef);
+    WKPreferencesRef platformPreferences();
     void initializeInjectedBundlePath();
     void initializeTestPluginDirectory();
 
+    void ensureViewSupportsOptionsForTest(const TestInvocation&);
+    TestOptions testOptionsForTest(const std::string& pathOrURL) const;
+    void updatePlatformSpecificTestOptionsForTest(TestOptions&, const std::string& pathOrURL) const;
+
     void updateWebViewSizeForTest(const TestInvocation&);
     void updateWindowScaleForTest(PlatformWebView*, const TestInvocation&);
-    void updateLayoutTypeForTest(const TestInvocation&);
 
     void decidePolicyForGeolocationPermissionRequestIfPossible();
     void decidePolicyForUserMediaPermissionRequestIfPossible();
@@ -174,6 +195,15 @@ private:
 
     static void processDidCrash(WKPageRef, const void* clientInfo);
     void processDidCrash();
+
+    static void didBeginNavigationGesture(WKPageRef, const void*);
+    static void willEndNavigationGesture(WKPageRef, WKBackForwardListItemRef, const void*);
+    static void didEndNavigationGesture(WKPageRef, WKBackForwardListItemRef, const void*);
+    static void didRemoveNavigationGestureSnapshot(WKPageRef, const void*);
+    void didBeginNavigationGesture(WKPageRef);
+    void willEndNavigationGesture(WKPageRef, WKBackForwardListItemRef);
+    void didEndNavigationGesture(WKPageRef, WKBackForwardListItemRef);
+    void didRemoveNavigationGestureSnapshot(WKPageRef);
 
     static WKPluginLoadPolicy decidePolicyForPluginLoad(WKPageRef, WKPluginLoadPolicy currentPluginLoadPolicy, WKDictionaryRef pluginInformation, WKStringRef* unavailabilityDescription, const void* clientInfo);
     WKPluginLoadPolicy decidePolicyForPluginLoad(WKPageRef, WKPluginLoadPolicy currentPluginLoadPolicy, WKDictionaryRef pluginInformation, WKStringRef* unavailabilityDescription);
@@ -208,7 +238,7 @@ private:
     static void didUpdateHistoryTitle(WKContextRef, WKPageRef, WKStringRef title, WKURLRef, WKFrameRef, const void*);
     void didUpdateHistoryTitle(WKStringRef title, WKURLRef, WKFrameRef);
 
-    static WKPageRef createOtherPage(WKPageRef oldPage, WKURLRequestRef, WKDictionaryRef, WKEventModifiers, WKEventMouseButton, const void*);
+    static WKPageRef createOtherPage(WKPageRef, WKPageConfigurationRef, WKNavigationActionRef, WKWindowFeaturesRef, const void*);
 
     static void runModal(WKPageRef, const void* clientInfo);
     static void runModal(PlatformWebView*);
@@ -255,7 +285,11 @@ private:
     bool m_isGeolocationPermissionSet;
     bool m_isGeolocationPermissionAllowed;
 
-    Vector<WKRetainPtr<WKUserMediaPermissionRequestRef>> m_userMediaPermissionRequests;
+    WKRetainPtr<WKMutableDictionaryRef> m_userMediaOriginPermissions;
+
+    typedef Vector<std::pair<WKRetainPtr<WKSecurityOriginRef>, WKRetainPtr<WKUserMediaPermissionRequestRef>>> PermissionRequestList;
+    PermissionRequestList m_userMediaPermissionRequests;
+
     bool m_isUserMediaPermissionSet;
     bool m_isUserMediaPermissionAllowed;
 
@@ -274,6 +308,8 @@ private:
 
     bool m_shouldLogHistoryClientCallbacks;
     bool m_shouldShowWebView;
+
+    bool m_shouldDecideNavigationPolicyAfterDelay { false };
 
     std::unique_ptr<EventSenderProxy> m_eventSenderProxy;
 

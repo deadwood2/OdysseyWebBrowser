@@ -172,6 +172,15 @@ bool PropertyCondition::isStillValidAssumingImpurePropertyWatchpoint(
         // https://bugs.webkit.org/show_bug.cgi?id=134641
         
         PropertyOffset currentOffset = structure->getConcurrently(uid());
+        if (currentOffset == invalidOffset) {
+            if (verbose) {
+                dataLog(
+                    "Invalid because the base no long appears to have ", uid(), " on its structure: ",
+                        RawPointer(base), "\n");
+            }
+            return false;
+        }
+
         JSValue currentValue = base->getDirect(currentOffset);
         if (currentValue != requiredValue()) {
             if (verbose) {
@@ -213,10 +222,13 @@ bool PropertyCondition::isStillValid(Structure* structure, JSObject* base) const
     // "shadow" an existing JS property on the same object. Hence it affects both presence and
     // absence. It doesn't affect AbsenceOfSetter because impure properties aren't ever setters.
     switch (m_kind) {
-    case Presence:
     case Absence:
+        if (structure->typeInfo().getOwnPropertySlotIsImpure() || structure->typeInfo().getOwnPropertySlotIsImpureForPropertyAbsence())
+            return false;
+        break;
+    case Presence:
     case Equivalence:
-        if (structure->typeInfo().hasImpureGetOwnPropertySlot())
+        if (structure->typeInfo().getOwnPropertySlotIsImpure())
             return false;
         break;
     default:

@@ -31,6 +31,7 @@
 
 #include "Executable.h"
 #include "JSGlobalObject.h"
+#include "JSScope.h"
 #include "Options.h"
 #include "SourceCode.h"
 #include <wtf/HashMap.h>
@@ -43,23 +44,74 @@ namespace JSC {
 
     class EvalCodeCache {
     public:
-        EvalExecutable* tryGet(bool inStrictContext, const String& evalSource, JSScope* scope)
+        class CacheKey {
+        public:
+            CacheKey(const String& source, bool isArrowFunctionContext)
+                : m_source(source.impl())
+                , m_isArrowFunctionContext(isArrowFunctionContext)
+            {
+            }
+
+            CacheKey(WTF::HashTableDeletedValueType)
+                : m_source(WTF::HashTableDeletedValue)
+            {
+            }
+
+            CacheKey() = default;
+
+            unsigned hash() const { return m_source->hash(); }
+
+            bool isEmptyValue() const { return !m_source; }
+
+            bool operator==(const CacheKey& other) const
+            {
+                return m_source == other.m_source && m_isArrowFunctionContext == other.m_isArrowFunctionContext;
+            }
+
+            bool isHashTableDeletedValue() const { return m_source.isHashTableDeletedValue(); }
+
+            struct Hash {
+                static unsigned hash(const CacheKey& key)
+                {
+                    return key.hash();
+                }
+                static bool equal(const CacheKey& lhs, const CacheKey& rhs)
+                {
+                    return StringHash::equal(lhs.m_source, rhs.m_source) && lhs.m_isArrowFunctionContext == rhs.m_isArrowFunctionContext;
+                }
+                static const bool safeToCompareToEmptyOrDeleted = false;
+            };
+
+            typedef SimpleClassHashTraits<CacheKey> HashTraits;
+
+        private:
+            RefPtr<StringImpl> m_source;
+            bool m_isArrowFunctionContext { false };
+        };
+
+        EvalExecutable* tryGet(bool inStrictContext, const String& evalSource, bool isArrowFunctionContext, JSScope* scope)
         {
-            if (isCacheable(inStrictContext, evalSource, scope))
-                return m_cacheMap.get(evalSource.impl()).get();
-            return 0;
+            if (isCacheable(inStrictContext, evalSource, scope)) {
+                ASSERT(!inStrictContext);
+                return m_cacheMap.fastGet(CacheKey(evalSource, isArrowFunctionContext)).get();
+            }
+            return nullptr;
         }
         
-        EvalExecutable* getSlow(ExecState* exec, ScriptExecutable* owner, bool inStrictContext, ThisTDZMode thisTDZMode, const String& evalSource, JSScope* scope)
+        EvalExecutable* getSlow(ExecState* exec, JSCell* owner, bool inStrictContext, ThisTDZMode thisTDZMode, DerivedContextType derivedContextType, bool isArrowFunctionContext, const String& evalSource, JSScope* scope)
         {
             VariableEnvironment variablesUnderTDZ;
             JSScope::collectVariablesUnderTDZ(scope, variablesUnderTDZ);
-            EvalExecutable* evalExecutable = EvalExecutable::create(exec, makeSource(evalSource), inStrictContext, thisTDZMode, &variablesUnderTDZ);
+            EvalExecutable* evalExecutable = EvalExecutable::create(exec, makeSource(evalSource), inStrictContext, thisTDZMode, derivedContextType, isArrowFunctionContext, &variablesUnderTDZ);
             if (!evalExecutable)
-                return 0;
+                return nullptr;
 
-            if (isCacheable(inStrictContext, evalSource, scope) && m_cacheMap.size() < maxCacheEntries)
-                m_cacheMap.set(evalSource.impl(), WriteBarrier<EvalExecutable>(exec->vm(), owner, evalExecutable));
+            if (isCacheable(inStrictContext, evalSource, scope) && m_cacheMap.size() < maxCacheEntries) {
+                ASSERT(!inStrictContext);
+                ASSERT_WITH_MESSAGE(thisTDZMode == ThisTDZMode::CheckIfNeeded, "Always CheckIfNeeded because the caching is enabled only in the sloppy mode.");
+                ASSERT_WITH_MESSAGE(derivedContextType == DerivedContextType::None, "derivedContextType is always None because class methods and class constructors are always evaluated as the strict code.");
+                m_cacheMap.set(CacheKey(evalSource, isArrowFunctionContext), WriteBarrier<EvalExecutable>(exec->vm(), owner, evalExecutable));
+            }
             
             return evalExecutable;
         }
@@ -74,19 +126,22 @@ namespace JSC {
         }
 
     private:
-        ALWAYS_INLINE bool isCacheable(bool inStrictContext, const String& evalSource, JSScope* scope) const
+        ALWAYS_INLINE bool isCacheableScope(JSScope* scope)
+        {
+            return scope->isGlobalLexicalEnvironment() || scope->isFunctionNameScopeObject() || scope->isVarScope();
+        }
+
+        ALWAYS_INLINE bool isCacheable(bool inStrictContext, const String& evalSource, JSScope* scope)
         {
             // If eval() is called and it has access to a lexical scope, we can't soundly cache it.
             // If the eval() only has access to the "var" scope, then we can cache it.
             return !inStrictContext 
-                && evalSource.length() < Options::maximumEvalCacheableSourceLength() 
-                && scope->begin()->isVariableObject()
-                && !scope->isLexicalScope()
-                && !scope->isCatchScope();
+                && static_cast<size_t>(evalSource.length()) < Options::maximumEvalCacheableSourceLength()
+                && isCacheableScope(scope);
         }
         static const int maxCacheEntries = 64;
 
-        typedef HashMap<RefPtr<StringImpl>, WriteBarrier<EvalExecutable>> EvalCacheMap;
+        typedef HashMap<CacheKey, WriteBarrier<EvalExecutable>, CacheKey::Hash, CacheKey::HashTraits> EvalCacheMap;
         EvalCacheMap m_cacheMap;
     };
 

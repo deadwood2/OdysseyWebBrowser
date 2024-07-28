@@ -40,6 +40,7 @@
 #include "SecurityOriginPolicy.h"
 #include "Text.h"
 #include "TextResourceDecoder.h"
+#include "XMLDocument.h"
 #include "markup.h"
 
 #include <wtf/Assertions.h>
@@ -77,7 +78,7 @@ Ref<Document> XSLTProcessor::createDocumentFromSource(const String& sourceString
 
     RefPtr<Document> result;
     if (sourceMIMEType == "text/plain") {
-        result = Document::createXHTML(frame, sourceIsDocument ? ownerDocument->url() : URL());
+        result = XMLDocument::createXHTML(frame, sourceIsDocument ? ownerDocument->url() : URL());
         transformTextStringToXHTMLDocumentString(documentSource);
     } else
         result = DOMImplementation::createDocument(sourceMIMEType, frame, sourceIsDocument ? ownerDocument->url() : URL());
@@ -102,30 +103,30 @@ Ref<Document> XSLTProcessor::createDocumentFromSource(const String& sourceString
 
     RefPtr<TextResourceDecoder> decoder = TextResourceDecoder::create(sourceMIMEType);
     decoder->setEncoding(sourceEncoding.isEmpty() ? UTF8Encoding() : TextEncoding(sourceEncoding), TextResourceDecoder::EncodingFromXMLHeader);
-    result->setDecoder(decoder.release());
+    result->setDecoder(WTFMove(decoder));
 
     result->setContent(documentSource);
 
     return result.releaseNonNull();
 }
 
-PassRefPtr<Document> XSLTProcessor::transformToDocument(Node* sourceNode)
+RefPtr<Document> XSLTProcessor::transformToDocument(Node* sourceNode)
 {
     if (!sourceNode)
-        return 0;
+        return nullptr;
 
     String resultMIMEType;
     String resultString;
     String resultEncoding;
     if (!transformToString(*sourceNode, resultMIMEType, resultString, resultEncoding))
-        return 0;
+        return nullptr;
     return createDocumentFromSource(resultString, resultEncoding, resultMIMEType, sourceNode, 0);
 }
 
-PassRefPtr<DocumentFragment> XSLTProcessor::transformToFragment(Node* sourceNode, Document* outputDoc)
+RefPtr<DocumentFragment> XSLTProcessor::transformToFragment(Node* sourceNode, Document* outputDoc)
 {
     if (!sourceNode || !outputDoc)
-        return 0;
+        return nullptr;
 
     String resultMIMEType;
     String resultString;
@@ -136,7 +137,7 @@ PassRefPtr<DocumentFragment> XSLTProcessor::transformToFragment(Node* sourceNode
         resultMIMEType = "text/html";
 
     if (!transformToString(*sourceNode, resultMIMEType, resultString, resultEncoding))
-        return 0;
+        return nullptr;
     return createFragmentForTransformToFragment(resultString, resultMIMEType, outputDoc);
 }
 

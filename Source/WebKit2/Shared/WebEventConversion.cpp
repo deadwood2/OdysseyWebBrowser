@@ -28,6 +28,10 @@
 
 #include "WebEvent.h"
 
+#if ENABLE(MAC_GESTURE_EVENTS)
+#include "WebGestureEvent.h"
+#endif
+
 namespace WebKit {
 
 class WebKit2PlatformMouseEvent : public WebCore::PlatformMouseEvent {
@@ -222,6 +226,7 @@ WebCore::PlatformKeyboardEvent platform(const WebKeyboardEvent& webEvent)
 #if ENABLE(TOUCH_EVENTS)
 
 #if PLATFORM(IOS)
+
 static WebCore::PlatformTouchPoint::TouchPhaseType touchEventType(const WebPlatformTouchPoint& webTouchPoint)
 {
     switch (webTouchPoint.phase()) {
@@ -238,17 +243,17 @@ static WebCore::PlatformTouchPoint::TouchPhaseType touchEventType(const WebPlatf
     }
 }
 
-#if ENABLE(IOS_TOUCH_EVENTS)
-#include <WebKitAdditions/WebEventConversionIOS.cpp>
-#else
 class WebKit2PlatformTouchPoint : public WebCore::PlatformTouchPoint {
 public:
 WebKit2PlatformTouchPoint(const WebPlatformTouchPoint& webTouchPoint)
-    : PlatformTouchPoint(webTouchPoint.identifier(), webTouchPoint.location(), touchEventType(webTouchPoint))
+    : PlatformTouchPoint(webTouchPoint.identifier(), webTouchPoint.location(), touchEventType(webTouchPoint)
+#if ENABLE(IOS_TOUCH_EVENTS)
+    , webTouchPoint.force()
+#endif
+    )
 {
 }
 };
-#endif // ENABLE(IOS_TOUCH_EVENTS)
 
 #else
 
@@ -346,6 +351,50 @@ public:
 WebCore::PlatformTouchEvent platform(const WebTouchEvent& webEvent)
 {
     return WebKit2PlatformTouchEvent(webEvent);
+}
+#endif
+
+#if ENABLE(MAC_GESTURE_EVENTS)
+class WebKit2PlatformGestureEvent : public WebCore::PlatformGestureEvent {
+public:
+    WebKit2PlatformGestureEvent(const WebGestureEvent& webEvent)
+    {
+        switch (webEvent.type()) {
+        case WebEvent::GestureStart:
+            m_type = WebCore::PlatformEvent::GestureStart;
+            break;
+        case WebEvent::GestureChange:
+            m_type = WebCore::PlatformEvent::GestureChange;
+            break;
+        case WebEvent::GestureEnd:
+            m_type = WebCore::PlatformEvent::GestureEnd;
+            break;
+        default:
+            ASSERT_NOT_REACHED();
+        }
+
+        m_modifiers = 0;
+        if (webEvent.shiftKey())
+            m_modifiers |= ShiftKey;
+        if (webEvent.controlKey())
+            m_modifiers |= CtrlKey;
+        if (webEvent.altKey())
+            m_modifiers |= AltKey;
+        if (webEvent.metaKey())
+            m_modifiers |= MetaKey;
+
+        m_timestamp = webEvent.timestamp();
+
+        m_gestureScale = webEvent.gestureScale();
+        m_gestureRotation = webEvent.gestureRotation();
+        m_position = webEvent.position();
+        m_globalPosition = webEvent.position();
+    }
+};
+
+WebCore::PlatformGestureEvent platform(const WebGestureEvent& webEvent)
+{
+    return WebKit2PlatformGestureEvent(webEvent);
 }
 #endif
 

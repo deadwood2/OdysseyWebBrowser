@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011 Apple Inc. All rights reserved.
+ * Copyright (C) 2011, 2015 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,7 +29,6 @@
 #include "CopyWorkList.h"
 #include "JSCJSValue.h"
 #include "Options.h"
-#include <wtf/Atomics.h>
 #include <wtf/DoublyLinkedList.h>
 #include <wtf/Lock.h>
 
@@ -42,9 +41,9 @@ class CopiedBlock : public DoublyLinkedListNode<CopiedBlock> {
     friend class CopiedSpace;
     friend class CopiedAllocator;
 public:
-    static CopiedBlock* create(size_t = blockSize);
-    static CopiedBlock* createNoZeroFill(size_t = blockSize);
-    static void destroy(CopiedBlock*);
+    static CopiedBlock* create(Heap&, size_t = blockSize);
+    static CopiedBlock* createNoZeroFill(Heap&, size_t = blockSize);
+    static void destroy(Heap&, CopiedBlock*);
 
     void pin();
     bool isPinned();
@@ -54,7 +53,6 @@ public:
     void didPromote();
 
     unsigned liveBytes();
-    bool shouldReportLiveBytes(LockHolder&, JSCell* owner);
     void reportLiveBytes(LockHolder&, JSCell*, CopyToken, unsigned);
     void reportLiveBytesDuringCopying(unsigned);
     void didSurviveGC();
@@ -109,50 +107,6 @@ private:
     unsigned m_liveObjects;
 #endif
 };
-
-inline CopiedBlock* CopiedBlock::createNoZeroFill(size_t capacity)
-{
-    return new(NotNull, fastAlignedMalloc(CopiedBlock::blockSize, capacity)) CopiedBlock(capacity);
-}
-
-inline void CopiedBlock::destroy(CopiedBlock* copiedBlock)
-{
-    copiedBlock->~CopiedBlock();
-    fastAlignedFree(copiedBlock);
-}
-
-inline CopiedBlock* CopiedBlock::create(size_t capacity)
-{
-    CopiedBlock* newBlock = createNoZeroFill(capacity);
-    newBlock->zeroFillWilderness();
-    return newBlock;
-}
-
-inline void CopiedBlock::zeroFillWilderness()
-{
-#if USE(JSVALUE64)
-    memset(wilderness(), 0, wildernessSize());
-#else
-    JSValue emptyValue;
-    JSValue* limit = reinterpret_cast_ptr<JSValue*>(wildernessEnd());
-    for (JSValue* currentValue = reinterpret_cast_ptr<JSValue*>(wilderness()); currentValue < limit; currentValue++)
-        *currentValue = emptyValue;
-#endif
-}
-
-inline CopiedBlock::CopiedBlock(size_t capacity)
-    : DoublyLinkedListNode<CopiedBlock>()
-    , m_capacity(capacity)
-    , m_remaining(payloadCapacity())
-    , m_isPinned(false)
-    , m_isOld(false)
-    , m_liveBytes(0)
-#ifndef NDEBUG
-    , m_liveObjects(0)
-#endif
-{
-    ASSERT(is8ByteAligned(reinterpret_cast<void*>(m_remaining)));
-}
 
 inline void CopiedBlock::didSurviveGC()
 {

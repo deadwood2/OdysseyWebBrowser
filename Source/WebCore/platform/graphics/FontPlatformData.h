@@ -81,14 +81,14 @@ public:
     FontPlatformData();
     FontPlatformData(const FontPlatformData&);
     FontPlatformData(const FontDescription&, const AtomicString& family);
-    FontPlatformData(float size, bool syntheticBold, bool syntheticOblique, FontOrientation = Horizontal, FontWidthVariant = RegularWidth);
+    FontPlatformData(float size, bool syntheticBold, bool syntheticOblique, FontOrientation = Horizontal, FontWidthVariant = RegularWidth, TextRenderingMode = AutoTextRendering);
 
 #if PLATFORM(COCOA)
-    WEBCORE_EXPORT FontPlatformData(CTFontRef, float size, bool syntheticBold = false, bool syntheticOblique = false, FontOrientation = Horizontal, FontWidthVariant = RegularWidth);
+    WEBCORE_EXPORT FontPlatformData(CTFontRef, float size, bool syntheticBold = false, bool syntheticOblique = false, FontOrientation = Horizontal, FontWidthVariant = RegularWidth, TextRenderingMode = AutoTextRendering);
 #endif
 
 #if USE(CG)
-    FontPlatformData(CGFontRef, float size, bool syntheticBold, bool syntheticOblique, FontOrientation, FontWidthVariant);
+    FontPlatformData(CGFontRef, float size, bool syntheticBold, bool syntheticOblique, FontOrientation, FontWidthVariant, TextRenderingMode);
 #endif
 
 #if PLATFORM(WIN)
@@ -115,13 +115,18 @@ public:
     static RetainPtr<CFTypeRef> objectForEqualityCheck(CTFontRef);
     RetainPtr<CFTypeRef> objectForEqualityCheck() const;
 
-    bool allowsLigatures() const;
+    bool hasCustomTracking() const { return isSystemFont(); }
 
 #if USE(APPKIT)
     // FIXME: Remove this when all NSFont usage is removed.
     NSFont *nsFont() const { return (NSFont *)m_font.get(); }
     void setNSFont(NSFont *font) { setFont(reinterpret_cast<CTFontRef>(font)); }
 #endif
+#endif
+
+#if PLATFORM(WIN) || PLATFORM(COCOA)
+    bool isSystemFont() const { return m_isSystemFont; }
+    void setIsSystemFont(bool isSystemFont) { m_isSystemFont = isSystemFont; }
 #endif
 
 #if USE(CG)
@@ -134,9 +139,9 @@ public:
     bool syntheticBold() const { return m_syntheticBold; }
     bool syntheticOblique() const { return m_syntheticOblique; }
     bool isColorBitmapFont() const { return m_isColorBitmapFont; }
-    bool isCompositeFontReference() const { return m_isCompositeFontReference; }
     FontOrientation orientation() const { return m_orientation; }
     FontWidthVariant widthVariant() const { return m_widthVariant; }
+    TextRenderingMode textRenderingMode() const { return m_textRenderingMode; }
     bool isForTextCombine() const { return widthVariant() != RegularWidth; } // Keep in sync with callers of FontDescription::setWidthVariant().
 
     void setOrientation(FontOrientation orientation) { m_orientation = orientation; }
@@ -151,8 +156,7 @@ public:
 #if PLATFORM(WIN) && !USE(CAIRO)
         return m_font ? m_font->hash() : 0;
 #elif OS(DARWIN)
-        ASSERT(m_font || !m_cgFont || isEmoji());
-        uintptr_t flags = static_cast<uintptr_t>(m_isHashTableDeletedValue << 4 | isEmoji() << 3 | m_orientation << 2 | m_syntheticBold << 1 | m_syntheticOblique);
+        uintptr_t flags = static_cast<uintptr_t>(m_isHashTableDeletedValue << 5 | m_textRenderingMode << 3 | m_orientation << 2 | m_syntheticBold << 1 | m_syntheticOblique);
 #if USE(APPKIT)
         uintptr_t fontHash = (uintptr_t)m_font.get();
 #else
@@ -175,14 +179,23 @@ public:
             && m_syntheticBold == other.m_syntheticBold
             && m_syntheticOblique == other.m_syntheticOblique
             && m_isColorBitmapFont == other.m_isColorBitmapFont
-            && m_isCompositeFontReference == other.m_isCompositeFontReference
             && m_orientation == other.m_orientation
-            && m_widthVariant == other.m_widthVariant;
+            && m_widthVariant == other.m_widthVariant
+            && m_textRenderingMode == other.m_textRenderingMode;
     }
 
     bool isHashTableDeletedValue() const
     {
         return m_isHashTableDeletedValue;
+    }
+
+    bool isEmoji() const
+    {
+#if PLATFORM(IOS)
+        return m_isEmoji;
+#else
+        return false;
+#endif
     }
 
 #if PLATFORM(COCOA) || PLATFORM(WIN)
@@ -191,14 +204,6 @@ public:
 
 #ifndef NDEBUG
     String description() const;
-#endif
-
-#if PLATFORM(IOS)
-    bool isEmoji() const { return m_isEmoji; }
-    void setIsEmoji(bool isEmoji) { m_isEmoji = isEmoji; }
-#elif PLATFORM(MAC)
-    bool isEmoji() const { return false; }
-    void setIsEmoji(bool) { }
 #endif
 
 private:
@@ -218,6 +223,7 @@ public:
     FontOrientation m_orientation { Horizontal };
     float m_size { 0 };
     FontWidthVariant m_widthVariant { RegularWidth };
+    TextRenderingMode m_textRenderingMode { AutoTextRendering };
 
 private:
 #if PLATFORM(COCOA)
@@ -236,16 +242,28 @@ private:
 #endif
 
     bool m_isColorBitmapFont { false };
-    bool m_isCompositeFontReference { false };
     bool m_isHashTableDeletedValue { false };
+    bool m_isSystemFont { false };
 #if PLATFORM(IOS)
     bool m_isEmoji { false };
 #endif
-
 #if PLATFORM(WIN)
     bool m_useGDI { false };
 #endif
 };
+
+#if USE(APPKIT)
+// NSFonts and CTFontRefs are toll-free-bridged.
+inline CTFontRef toCTFont(NSFont *font)
+{
+    return (CTFontRef)font;
+}
+
+inline NSFont *toNSFont(CTFontRef font)
+{
+    return (NSFont *)font;
+}
+#endif
 
 } // namespace WebCore
 

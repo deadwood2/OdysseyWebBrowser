@@ -259,10 +259,13 @@
     [[WebPreferences standardPreferences] setSimpleLineLayoutDebugBordersEnabled:settings.simpleLineLayoutDebugBordersEnabled];
     [[WebPreferences standardPreferences] setShowRepaintCounter:settings.layerBordersVisible];
     [[WebPreferences standardPreferences] setSuppressesIncrementalRendering:settings.incrementalRenderingSuppressed];
+    [[WebPreferences standardPreferences] setAcceleratedDrawingEnabled:settings.acceleratedDrawingEnabled];
+    [[WebPreferences standardPreferences] setResourceLoadStatisticsEnabled:settings.resourceLoadStatisticsEnabled];
 
     BOOL useTransparentWindows = settings.useTransparentWindows;
     if (useTransparentWindows != !self.window.isOpaque) {
         [self.window setOpaque:!useTransparentWindows];
+        [self.window setBackgroundColor:[NSColor clearColor]];
         [self.window setHasShadow:!useTransparentWindows];
 
         [_webView setBackgroundColor:useTransparentWindows ? [NSColor clearColor] : [NSColor whiteColor]];
@@ -279,6 +282,11 @@
         } else
             [_webView _setPaginationMode:WebPaginationModeUnpaginated];
     }
+}
+
+- (IBAction)printWebView:(id)sender
+{
+    [[[[_webView mainFrame] frameView] printOperationWithPrintInfo:[NSPrintInfo sharedPrintInfo]] runOperationModalForWindow:self.window delegate:nil didRunSelector:nil contextInfo:nil];
 }
 
 - (void)webView:(WebView *)sender didLayout:(WebLayoutMilestones)milestones
@@ -338,6 +346,11 @@
         return;
 
     [self updateTitle:title];
+}
+
+- (NSArray *)webView:(WebView *)sender contextMenuItemsForElement:(NSDictionary *)element defaultMenuItems:(NSArray *)defaultMenuItems
+{
+    return defaultMenuItems;
 }
 
 - (void)webView:(WebView *)sender runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WebFrame *)frame

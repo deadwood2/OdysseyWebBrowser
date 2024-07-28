@@ -42,9 +42,7 @@ static size_t committedBytesCount = 0;
 
 static size_t commitSize()
 {
-    static size_t size = 0;
-    if (!size)
-        size = std::max(16 * 1024, getpagesize());
+    static size_t size = std::max<size_t>(16 * 1024, pageSize());
     return size;
 }
 
@@ -108,11 +106,6 @@ bool JSStack::growSlowCase(Register* newTopOfStack)
     m_commitTop = newCommitTop;
     setStackLimit(newTopOfStack);
     return true;
-}
-
-void JSStack::gatherConservativeRoots(ConservativeRoots& conservativeRoots)
-{
-    conservativeRoots.add(topOfStack() + 1, highAddress());
 }
 
 void JSStack::gatherConservativeRoots(ConservativeRoots& conservativeRoots, JITStubRoutineSet& jitStubRoutines, CodeBlockSet& codeBlocks)

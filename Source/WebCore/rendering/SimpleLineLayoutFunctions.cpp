@@ -35,13 +35,20 @@
 #include "InlineTextBox.h"
 #include "PaintInfo.h"
 #include "RenderBlockFlow.h"
+#include "RenderIterator.h"
 #include "RenderStyle.h"
 #include "RenderText.h"
 #include "RenderView.h"
 #include "Settings.h"
 #include "SimpleLineLayoutResolver.h"
 #include "Text.h"
+#include "TextDecorationPainter.h"
 #include "TextPaintStyle.h"
+#include "TextPainter.h"
+
+#if ENABLE(TREE_DEBUGGING)
+#include <stdio.h>
+#endif
 
 namespace WebCore {
 namespace SimpleLineLayout {
@@ -53,9 +60,23 @@ static void paintDebugBorders(GraphicsContext& context, LayoutRect borderRect, c
     if (snappedRect.isEmpty())
         return;
     GraphicsContextStateSaver stateSaver(context);
-    context.setStrokeColor(Color(0, 255, 0), ColorSpaceDeviceRGB);
-    context.setFillColor(Color::transparent, ColorSpaceDeviceRGB);
+    context.setStrokeColor(Color(0, 255, 0));
+    context.setFillColor(Color::transparent);
     context.drawRect(snappedRect);
+}
+
+static FloatRect computeOverflow(const RenderBlockFlow& flow, const FloatRect& layoutRect)
+{
+    auto overflowRect = layoutRect;
+    auto strokeOverflow = std::ceil(flow.style().textStrokeWidth());
+    overflowRect.inflate(strokeOverflow);
+
+    auto letterSpacing = flow.style().fontCascade().letterSpacing();
+    if (letterSpacing >= 0)
+        return overflowRect;
+    // Last letter's negative spacing shrinks layout rect. Push it to visual overflow.
+    overflowRect.expand(-letterSpacing, 0);
+    return overflowRect;
 }
 
 void paintFlow(const RenderBlockFlow& flow, const Layout& layout, PaintInfo& paintInfo, const LayoutPoint& paintOffset)
@@ -69,25 +90,31 @@ void paintFlow(const RenderBlockFlow& flow, const Layout& layout, PaintInfo& pai
 
     bool debugBordersEnabled = flow.frame().settings().simpleLineLayoutDebugBordersEnabled();
 
-    GraphicsContext& context = *paintInfo.context;
-    const FontCascade& font = style.fontCascade();
-    TextPaintStyle textPaintStyle = computeTextPaintStyle(flow.frame(), style, paintInfo);
-    GraphicsContextStateSaver stateSaver(context, textPaintStyle.strokeWidth > 0);
+    TextPainter textPainter(paintInfo.context());
+    textPainter.setFont(style.fontCascade());
+    textPainter.setTextPaintStyle(computeTextPaintStyle(flow.frame(), style, paintInfo));
 
-    updateGraphicsContext(context, textPaintStyle);
+    Optional<TextDecorationPainter> textDecorationPainter;
+    if (style.textDecorationsInEffect() != TextDecorationNone) {
+        const RenderText* textRenderer = childrenOfType<RenderText>(flow).first();
+        if (textRenderer) {
+            textDecorationPainter = TextDecorationPainter(paintInfo.context(), style.textDecorationsInEffect(), *textRenderer, false);
+            textDecorationPainter->setFont(style.fontCascade());
+            textDecorationPainter->setBaseline(style.fontMetrics().ascent());
+        }
+    }
+
     LayoutRect paintRect = paintInfo.rect;
     paintRect.moveBy(-paintOffset);
 
     auto resolver = runResolver(flow, layout);
-    float strokeOverflow = ceilf(flow.style().textStrokeWidth());
     float deviceScaleFactor = flow.document().deviceScaleFactor();
-    for (const auto& run : resolver.rangeForRect(paintRect)) {
+    for (auto run : resolver.rangeForRect(paintRect)) {
         if (run.start() == run.end())
             continue;
 
         FloatRect rect = run.rect();
-        FloatRect visualOverflowRect = rect;
-        visualOverflowRect.inflate(strokeOverflow);
+        FloatRect visualOverflowRect = computeOverflow(flow, rect);
         if (paintRect.y() > visualOverflowRect.maxY() || paintRect.maxY() < visualOverflowRect.y())
             continue;
 
@@ -96,9 +123,13 @@ void paintFlow(const RenderBlockFlow& flow, const Layout& layout, PaintInfo& pai
         // x position indicates the line offset from the rootbox. It's always 0 in case of simple line layout.
         textRun.setXPos(0);
         FloatPoint textOrigin = FloatPoint(rect.x() + paintOffset.x(), roundToDevicePixel(run.baselinePosition() + paintOffset.y(), deviceScaleFactor));
-        context.drawText(font, textRun, textOrigin);
+        textPainter.paintText(textRun, textRun.length(), rect, textOrigin);
+        if (textDecorationPainter) {
+            textDecorationPainter->setWidth(rect.width());
+            textDecorationPainter->paintTextDecoration(textRun, textOrigin, rect.location() + paintOffset);
+        }
         if (debugBordersEnabled)
-            paintDebugBorders(context, LayoutRect(run.rect()), paintOffset);
+            paintDebugBorders(paintInfo.context(), LayoutRect(run.rect()), paintOffset);
     }
 }
 
@@ -119,9 +150,7 @@ bool hitTestFlow(const RenderBlockFlow& flow, const Layout& layout, const HitTes
     rangeRect.moveBy(-accumulatedOffset);
 
     auto resolver = lineResolver(flow, layout);
-    auto range = resolver.rangeForRect(rangeRect);
-    for (auto it = range.begin(), end = range.end(); it != end; ++it) {
-        auto lineRect = *it;
+    for (FloatRect lineRect : resolver.rangeForRect(rangeRect)) {
         lineRect.moveBy(accumulatedOffset);
         if (!locationInContainer.intersects(lineRect))
             continue;
@@ -135,13 +164,10 @@ bool hitTestFlow(const RenderBlockFlow& flow, const Layout& layout, const HitTes
 
 void collectFlowOverflow(RenderBlockFlow& flow, const Layout& layout)
 {
-    auto resolver = lineResolver(flow, layout);
-    float strokeOverflow = ceilf(flow.style().textStrokeWidth());
-    for (auto it = resolver.begin(), end = resolver.end(); it != end; ++it) {
-        auto rect = LayoutRect(*it);
-        rect.inflate(strokeOverflow);
-        flow.addLayoutOverflow(rect);
-        flow.addVisualOverflow(rect);
+    for (auto lineRect : lineResolver(flow, layout)) {
+        LayoutRect visualOverflowRect = LayoutRect(computeOverflow(flow, lineRect));
+        flow.addLayoutOverflow(LayoutRect(lineRect));
+        flow.addVisualOverflow(visualOverflowRect);
     }
 }
 
@@ -149,7 +175,7 @@ IntRect computeBoundingBox(const RenderObject& renderer, const Layout& layout)
 {
     auto resolver = runResolver(downcast<RenderBlockFlow>(*renderer.parent()), layout);
     FloatRect boundingBoxRect;
-    for (const auto& run : resolver.rangeForRenderer(renderer)) {
+    for (auto run : resolver.rangeForRenderer(renderer)) {
         FloatRect rect = run.rect();
         if (boundingBoxRect == FloatRect())
             boundingBoxRect = rect;
@@ -162,11 +188,10 @@ IntRect computeBoundingBox(const RenderObject& renderer, const Layout& layout)
 IntPoint computeFirstRunLocation(const RenderObject& renderer, const Layout& layout)
 {
     auto resolver = runResolver(downcast<RenderBlockFlow>(*renderer.parent()), layout);
-    const auto& it = resolver.rangeForRenderer(renderer);
-    auto begin = it.begin();
-    if (begin == it.end())
+    auto range = resolver.rangeForRenderer(renderer);
+    auto begin = range.begin();
+    if (begin == range.end())
         return IntPoint(0, 0);
-
     return flooredIntPoint((*begin).rect().location());
 }
 
@@ -174,7 +199,7 @@ Vector<IntRect> collectAbsoluteRects(const RenderObject& renderer, const Layout&
 {
     Vector<IntRect> rects;
     auto resolver = runResolver(downcast<RenderBlockFlow>(*renderer.parent()), layout);
-    for (const auto& run : resolver.rangeForRenderer(renderer)) {
+    for (auto run : resolver.rangeForRenderer(renderer)) {
         FloatRect rect = run.rect();
         rects.append(enclosingIntRect(FloatRect(accumulatedOffset + rect.location(), rect.size())));
     }
@@ -185,7 +210,7 @@ Vector<FloatQuad> collectAbsoluteQuads(const RenderObject& renderer, const Layou
 {
     Vector<FloatQuad> quads;
     auto resolver = runResolver(downcast<RenderBlockFlow>(*renderer.parent()), layout);
-    for (const auto& run : resolver.rangeForRenderer(renderer))
+    for (auto run : resolver.rangeForRenderer(renderer))
         quads.append(renderer.localToAbsoluteQuad(FloatQuad(run.rect()), UseTransforms, wasFixed));
     return quads;
 }
@@ -207,9 +232,7 @@ void showLineLayoutForFlow(const RenderBlockFlow& flow, const Layout& layout, in
     fprintf(stderr, "SimpleLineLayout (%u lines, %u runs) (%p)\n", layout.lineCount(), layout.runCount(), &layout);
     ++depth;
 
-    auto resolver = runResolver(flow, layout);
-    for (auto it = resolver.begin(), end = resolver.end(); it != end; ++it) {
-        const auto& run = *it;
+    for (auto run : runResolver(flow, layout)) {
         FloatRect rect = run.rect();
         printPrefix(printedCharacters, depth);
         if (run.start() < run.end()) {

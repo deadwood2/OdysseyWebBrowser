@@ -75,6 +75,8 @@ interface TestRunner {
     void setCacheModel(int model);
     void setAsynchronousSpellCheckingEnabled(boolean value);
     void setPrinting();
+    void setShouldDecideNavigationPolicyAfterDelay(boolean value);
+    void setNavigationGesturesEnabled(boolean value);
 
     // Special DOM functions.
     void clearBackForwardList();
@@ -125,6 +127,7 @@ interface TestRunner {
     void showWebInspector();
     void closeWebInspector();
     void evaluateInWebInspector(DOMString script);
+    readonly attribute DOMString inspectorTestStubURL;
 
     void setPOSIXLocale(DOMString locale);
 
@@ -132,6 +135,7 @@ interface TestRunner {
 
     void setWillSendRequestReturnsNull(boolean flag);
     void setWillSendRequestReturnsNullOnRedirect(boolean flag);
+    void setWillSendRequestAddsHTTPBody(DOMString body);
     
     void setShouldStayOnPageAfterHandlingBeforeUnload(boolean flag);
 
@@ -142,6 +146,8 @@ interface TestRunner {
     void addChromeInputField(object callback);
     void removeChromeInputField(object callback);
     void focusWebView(object callback);
+
+    void clearTestRunnerCallbacks();
 
     void setBackingScaleFactor(double backingScaleFactor, object callback);
 
@@ -173,6 +179,7 @@ interface TestRunner {
 
     // MediaStream
     void setUserMediaPermission(boolean value);
+    void setUserMediaPermissionForOrigin(boolean permission, DOMString url);
 
     // Audio testing.
     [PassContext] void setAudioResult(object data);
@@ -203,5 +210,14 @@ interface TestRunner {
     object failNextNewCodeBlock();
     object numberOfDFGCompiles(object function);
     object neverInlineFunction(object function);
+
+    // Swipe gestures
+    void installDidBeginSwipeCallback(object callback);
+    void installWillEndSwipeCallback(object callback);
+    void installDidEndSwipeCallback(object callback);
+    void installDidRemoveSwipeSnapshotCallback(object callback);
+
+    // UI Process Testing
+    void runUIScript(DOMString script, object callback);
 };
 

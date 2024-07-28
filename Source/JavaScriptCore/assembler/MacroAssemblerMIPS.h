@@ -55,9 +55,9 @@ public:
     // For storing data loaded from the memory
     static const RegisterID dataTempRegister = MIPSRegisters::t1;
     // For storing address base
-    static const RegisterID addrTempRegister = MIPSRegisters::t2;
+    static const RegisterID addrTempRegister = MIPSRegisters::t7;
     // For storing compare result
-    static const RegisterID cmpTempRegister = MIPSRegisters::t3;
+    static const RegisterID cmpTempRegister = MIPSRegisters::t8;
 
     // FP temp register
     static const FPRegisterID fpTempRegister = MIPSRegisters::f16;
@@ -385,6 +385,17 @@ public:
         m_assembler.orInsn(dest, op1, op2);
     }
 
+    void or32(TrustedImm32 imm, AbsoluteAddress dest)
+    {
+        if (!imm.m_value && !m_fixedWidth)
+            return;
+
+        // TODO: Swap dataTempRegister and immTempRegister usage
+        load32(dest.m_ptr, immTempRegister);
+        or32(imm, immTempRegister);
+        store32(immTempRegister, dest.m_ptr);
+    }
+
     void or32(TrustedImm32 imm, RegisterID dest)
     {
         if (!imm.m_value && !m_fixedWidth)
@@ -634,6 +645,18 @@ public:
     void absDouble(FPRegisterID, FPRegisterID)
     {
         RELEASE_ASSERT_NOT_REACHED();
+    }
+
+    NO_RETURN_DUE_TO_CRASH void ceilDouble(FPRegisterID, FPRegisterID)
+    {
+        ASSERT(!supportsFloatingPointRounding());
+        CRASH();
+    }
+
+    NO_RETURN_DUE_TO_CRASH void floorDouble(FPRegisterID, FPRegisterID)
+    {
+        ASSERT(!supportsFloatingPointRounding());
+        CRASH();
     }
 
     ConvertibleLoadLabel convertibleLoadPtr(Address address, RegisterID dest)
@@ -1220,6 +1243,7 @@ public:
 #endif
     }
     static bool supportsFloatingPointAbs() { return false; }
+    static bool supportsFloatingPointRounding() { return false; }
 
     // Stack manipulation operations:
     //
@@ -1850,7 +1874,7 @@ public:
         return Jump();
     }
 
-    Jump branchMul32(ResultCondition cond, TrustedImm32 imm, RegisterID src, RegisterID dest)
+    Jump branchMul32(ResultCondition cond, RegisterID src, TrustedImm32 imm, RegisterID dest)
     {
         move(imm, immTempRegister);
         return branchMul32(cond, immTempRegister, src, dest);
@@ -2004,6 +2028,16 @@ public:
         m_assembler.jal();
         m_assembler.nop();
         return Call(m_assembler.label(), Call::LinkableNear);
+    }
+
+    Call nearTailCall()
+    {
+        m_assembler.nop();
+        m_assembler.nop();
+        m_assembler.beq(MIPSRegisters::zero, MIPSRegisters::zero, 0);
+        m_assembler.nop();
+        insertRelaxationWords();
+        return Call(m_assembler.label(), Call::LinkableNearTail);
     }
 
     Call call()
@@ -2860,11 +2894,13 @@ private:
     bool m_fixedWidth;
 
     friend class LinkBuffer;
-    friend class RepatchBuffer;
 
     static void linkCall(void* code, Call call, FunctionPtr function)
     {
-        MIPSAssembler::linkCall(code, call.m_label, function.value());
+        if (call.isFlagSet(Call::Tail))
+            MIPSAssembler::linkJump(code, call.m_label, function.value());
+        else
+            MIPSAssembler::linkCall(code, call.m_label, function.value());
     }
 
 };

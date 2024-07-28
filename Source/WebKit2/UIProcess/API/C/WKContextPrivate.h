@@ -77,10 +77,13 @@ WK_EXPORT void WKContextWarmInitialProcess(WKContextRef context);
 
 // FIXME: This function is temporary and useful during the development of the NetworkProcess feature.
 // At some point it should be removed.
-WK_EXPORT void WKContextSetUsesNetworkProcess(WKContextRef context, bool usesNetworkProcess);
+WK_EXPORT void WKContextSetUsesNetworkProcess(WKContextRef, bool);
 
 // Test only. Should be called before any secondary processes are started.
 WK_EXPORT void WKContextUseTestingNetworkSession(WKContextRef context);
+
+// Test only. Should be called before running a test.
+WK_EXPORT void WKContextClearCachedCredentials(WKContextRef context);
 
 typedef void (*WKContextInvalidMessageFunction)(WKStringRef messageName);
 WK_EXPORT void WKContextSetInvalidMessageFunction(WKContextInvalidMessageFunction invalidMessageFunction);

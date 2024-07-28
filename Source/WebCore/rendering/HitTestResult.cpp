@@ -246,7 +246,7 @@ String HitTestResult::title(TextDirection& dir) const
     dir = LTR;
     // Find the title in the nearest enclosing DOM node.
     // For <area> tags in image maps, walk the tree for the <area>, not the <img> using it.
-    for (Node* titleNode = m_innerNode.get(); titleNode; titleNode = titleNode->parentNode()) {
+    for (Node* titleNode = m_innerNode.get(); titleNode; titleNode = titleNode->parentInComposedTree()) {
         if (is<Element>(*titleNode)) {
             Element& titleElement = downcast<Element>(*titleNode);
             String title = titleElement.title();
@@ -262,7 +262,7 @@ String HitTestResult::title(TextDirection& dir) const
 
 String HitTestResult::innerTextIfTruncated(TextDirection& dir) const
 {
-    for (Node* truncatedNode = m_innerNode.get(); truncatedNode; truncatedNode = truncatedNode->parentNode()) {
+    for (Node* truncatedNode = m_innerNode.get(); truncatedNode; truncatedNode = truncatedNode->parentInComposedTree()) {
         if (!is<Element>(*truncatedNode))
             continue;
 
@@ -406,7 +406,7 @@ bool HitTestResult::mediaSupportsFullscreen() const
 {
 #if ENABLE(VIDEO)
     HTMLMediaElement* mediaElt(mediaElement());
-    return is<HTMLVideoElement>(mediaElt) && mediaElt->supportsFullscreen();
+    return is<HTMLVideoElement>(mediaElt) && mediaElt->supportsFullscreen(HTMLMediaElementEnums::VideoFullscreenModeStandard);
 #else
     return false;
 #endif
@@ -456,7 +456,7 @@ void HitTestResult::toggleMediaFullscreenState() const
 {
 #if ENABLE(VIDEO)
     if (HTMLMediaElement* mediaElement = this->mediaElement()) {
-        if (mediaElement->isVideo() && mediaElement->supportsFullscreen()) {
+        if (mediaElement->isVideo() && mediaElement->supportsFullscreen(HTMLMediaElementEnums::VideoFullscreenModeStandard)) {
             UserGestureIndicator indicator(DefinitelyProcessingUserGesture, &mediaElement->document());
             mediaElement->toggleFullscreenState();
         }
@@ -470,7 +470,7 @@ void HitTestResult::enterFullscreenForVideo() const
     HTMLMediaElement* mediaElement(this->mediaElement());
     if (is<HTMLVideoElement>(mediaElement)) {
         HTMLVideoElement& videoElement = downcast<HTMLVideoElement>(*mediaElement);
-        if (!videoElement.isFullscreen() && mediaElement->supportsFullscreen()) {
+        if (!videoElement.isFullscreen() && mediaElement->supportsFullscreen(HTMLMediaElementEnums::VideoFullscreenModeStandard)) {
             UserGestureIndicator indicator(DefinitelyProcessingUserGesture, &mediaElement->document());
             videoElement.enterFullscreen();
         }

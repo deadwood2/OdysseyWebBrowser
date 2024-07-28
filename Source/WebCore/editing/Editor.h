@@ -204,19 +204,19 @@ public:
         WEBCORE_EXPORT Command();
         Command(const EditorInternalCommand*, EditorCommandSource, PassRefPtr<Frame>);
 
-        WEBCORE_EXPORT bool execute(const String& parameter = String(), Event* triggeringEvent = 0) const;
+        WEBCORE_EXPORT bool execute(const String& parameter = String(), Event* triggeringEvent = nullptr) const;
         WEBCORE_EXPORT bool execute(Event* triggeringEvent) const;
 
         WEBCORE_EXPORT bool isSupported() const;
-        WEBCORE_EXPORT bool isEnabled(Event* triggeringEvent = 0) const;
+        WEBCORE_EXPORT bool isEnabled(Event* triggeringEvent = nullptr) const;
 
-        WEBCORE_EXPORT TriState state(Event* triggeringEvent = 0) const;
-        String value(Event* triggeringEvent = 0) const;
+        WEBCORE_EXPORT TriState state(Event* triggeringEvent = nullptr) const;
+        String value(Event* triggeringEvent = nullptr) const;
 
         WEBCORE_EXPORT bool isTextInsertion() const;
 
     private:
-        const EditorInternalCommand* m_command;
+        const EditorInternalCommand* m_command { nullptr };
         EditorCommandSource m_source;
         RefPtr<Frame> m_frame;
     };
@@ -346,7 +346,7 @@ public:
     WEBCORE_EXPORT void handleAlternativeTextUIResult(const String& correction);
     void dismissCorrectionPanelAsIgnored();
 
-    WEBCORE_EXPORT void pasteAsFragment(PassRefPtr<DocumentFragment>, bool smartReplace, bool matchStyle, MailBlockquoteHandling = MailBlockquoteHandling::RespectBlockquote);
+    WEBCORE_EXPORT void pasteAsFragment(Ref<DocumentFragment>&&, bool smartReplace, bool matchStyle, MailBlockquoteHandling = MailBlockquoteHandling::RespectBlockquote);
     WEBCORE_EXPORT void pasteAsPlainText(const String&, bool smartReplace);
 
     // This is only called on the mac where paste is implemented primarily at the WebKit level.
@@ -455,6 +455,10 @@ public:
     const Vector<RefPtr<Range>>& detectedTelephoneNumberRanges() const { return m_detectedTelephoneNumberRanges; }
 #endif
 
+    WEBCORE_EXPORT String stringForCandidateRequest() const;
+    WEBCORE_EXPORT void handleAcceptedCandidate(TextCheckingResult);
+    bool isHandlingAcceptedCandidate() const { return m_isHandlingAcceptedCandidate; }
+
 private:
     class WebContentReader;
 
@@ -516,6 +520,7 @@ private:
     Timer m_editorUIUpdateTimer;
     bool m_editorUIUpdateTimerShouldCheckSpellingAndGrammar;
     bool m_editorUIUpdateTimerWasTriggeredByDictation;
+    bool m_isHandlingAcceptedCandidate { false };
 
 #if ENABLE(TELEPHONE_NUMBER_DETECTION) && !PLATFORM(IOS)
     bool shouldDetectTelephoneNumbers();

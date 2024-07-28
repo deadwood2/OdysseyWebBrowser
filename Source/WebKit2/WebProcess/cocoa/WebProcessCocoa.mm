@@ -50,7 +50,9 @@
 #import <WebCore/LocalizedStrings.h>
 #import <WebCore/MemoryCache.h>
 #import <WebCore/MemoryPressureHandler.h>
+#import <WebCore/NSAccessibilitySPI.h>
 #import <WebCore/PageCache.h>
+#import <WebCore/pthreadSPI.h>
 #import <WebCore/VNodeTracker.h>
 #import <WebCore/WebCoreNSURLExtras.h>
 #import <WebKitSystemInterface.h>
@@ -59,6 +61,10 @@
 #import <objc/runtime.h>
 #import <stdio.h>
 #import <wtf/RAMSize.h>
+
+#if PLATFORM(IOS)
+#import <WebCore/GraphicsServicesSPI.h>
+#endif
 
 using namespace WebCore;
 
@@ -139,11 +145,11 @@ void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters&& par
 
 #if PLATFORM(MAC)
     WebCore::FontCache::setFontWhitelist(parameters.fontWhitelist);
+    Page::setTabSuspensionEnabled(parameters.shouldEnableTabSuspension);
 #endif
 
-    m_compositingRenderServerPort = WTF::move(parameters.acceleratedCompositingPort);
+    m_compositingRenderServerPort = WTFMove(parameters.acceleratedCompositingPort);
     m_presenterApplicationPid = parameters.presenterApplicationPid;
-    FontCascade::setDefaultTypesettingFeatures(parameters.shouldEnableKerningAndLigaturesByDefault ? Kerning | Ligatures : 0);
 
     MemoryPressureHandler::ReliefLogger::setLoggingEnabled(parameters.shouldEnableMemoryPressureReliefLogging);
 
@@ -166,11 +172,11 @@ void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters&& par
     Method methodToPatch = class_getInstanceMethod([NSApplication class], @selector(accessibilityFocusedUIElement));
     method_setImplementation(methodToPatch, (IMP)NSApplicationAccessibilityFocusedUIElement);
 #endif
-#if (TARGET_OS_IPHONE && __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
+#if TARGET_OS_IPHONE || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
     _CFNetworkSetATSContext(parameters.networkATSContext.get());
 #endif
 
-#if TARGET_OS_IPHONE && __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000
+#if TARGET_OS_IPHONE
     // Priority decay on iOS 9 is impacting page load time so we fix the priority of the WebProcess' main thread (rdar://problem/22003112).
     pthread_set_fixedpriority_self();
 #endif
@@ -188,9 +194,22 @@ void WebProcess::initializeProcessName(const ChildProcessInitializationParameter
 #endif
 }
 
+static void registerWithAccessibility()
+{
+#if USE(APPKIT)
+    [NSAccessibilityRemoteUIElement setRemoteUIApp:YES];
+#endif
+#if PLATFORM(IOS)
+    NSString *accessibilityBundlePath = [(NSString *)GSSystemRootDirectory() stringByAppendingString:@"/System/Library/AccessibilityBundles/WebProcessLoader.axbundle"];
+    NSError *error = nil;
+    if (![[NSBundle bundleWithPath:accessibilityBundlePath] loadAndReturnError:&error])
+        LOG_ERROR("Failed to load accessibility bundle at %@: %@", accessibilityBundlePath, error);
+#endif
+}
+
 void WebProcess::platformInitializeProcess(const ChildProcessInitializationParameters&)
 {
-    WKAXRegisterRemoteApp();
+    registerWithAccessibility();
 
 #if ENABLE(SEC_ITEM_SHIM)
     SecItemShim::singleton().initialize(this);
@@ -213,11 +232,15 @@ void WebProcess::initializeSandbox(const ChildProcessInitializationParameters& p
 #if ENABLE(WEB_PROCESS_SANDBOX)
 #if ENABLE(MANUAL_SANDBOXING)
     // Need to override the default, because service has a different bundle ID.
-    NSBundle *webkit2Bundle = [NSBundle bundleForClass:NSClassFromString(@"WKView")];
-#if PLATFORM(IOS)
-    sandboxParameters.setOverrideSandboxProfilePath([webkit2Bundle pathForResource:@"com.apple.WebKit.WebContent" ofType:@"sb"]);
+#if WK_API_ENABLED
+    NSBundle *webKit2Bundle = [NSBundle bundleForClass:NSClassFromString(@"WKWebView")];
 #else
-    sandboxParameters.setOverrideSandboxProfilePath([webkit2Bundle pathForResource:@"com.apple.WebProcess" ofType:@"sb"]);
+    NSBundle *webKit2Bundle = [NSBundle bundleForClass:NSClassFromString(@"WKView")];
+#endif
+#if PLATFORM(IOS)
+    sandboxParameters.setOverrideSandboxProfilePath([webKit2Bundle pathForResource:@"com.apple.WebKit.WebContent" ofType:@"sb"]);
+#else
+    sandboxParameters.setOverrideSandboxProfilePath([webKit2Bundle pathForResource:@"com.apple.WebProcess" ofType:@"sb"]);
 #endif
     ChildProcess::initializeSandbox(parameters, sandboxParameters);
 #endif
@@ -255,13 +278,18 @@ static NSURL *origin(WebPage& page)
 void WebProcess::updateActivePages()
 {
 #if PLATFORM(MAC)
-    RetainPtr<CFMutableArrayRef> activePageURLs = adoptCF(CFArrayCreateMutable(0, 0, &kCFTypeArrayCallBacks));
+    auto activePageURLs = adoptNS([[NSMutableArray alloc] init]);
+
     for (auto& page : m_pageMap.values()) {
+        if (page->usesEphemeralSession())
+            continue;
+
         if (NSURL *originAsURL = origin(*page))
-            CFArrayAppendValue(activePageURLs.get(), userVisibleString(originAsURL));
+            [activePageURLs addObject:userVisibleString(originAsURL)];
     }
+
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), [activePageURLs] {
-        WKSetApplicationInformationItem(CFSTR("LSActivePageUserVisibleOriginsKey"), activePageURLs.get());
+        WKSetApplicationInformationItem(CFSTR("LSActivePageUserVisibleOriginsKey"), (__bridge CFArrayRef)activePageURLs.get());
     });
 #endif
 }

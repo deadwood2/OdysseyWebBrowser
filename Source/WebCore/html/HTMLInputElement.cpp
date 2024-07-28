@@ -49,7 +49,6 @@
 #include "HTMLOptionElement.h"
 #include "HTMLParserIdioms.h"
 #include "IdTargetObserver.h"
-#include "InsertionPoint.h"
 #include "KeyboardEvent.h"
 #include "Language.h"
 #include "LocalizedStrings.h"
@@ -64,10 +63,6 @@
 #include "TextBreakIterator.h"
 #include <wtf/MathExtras.h>
 #include <wtf/Ref.h>
-
-#if ENABLE(INPUT_TYPE_COLOR)
-#include "ColorInputType.h"
-#endif
 
 #if ENABLE(TOUCH_EVENTS)
 #include "TouchEvent.h"
@@ -110,7 +105,7 @@ HTMLInputElement::HTMLInputElement(const QualifiedName& tagName, Document& docum
     , m_isActivatedSubmit(false)
     , m_autocomplete(Uninitialized)
     , m_isAutoFilled(false)
-    , m_showAutoFillButton(false)
+    , m_autoFillButtonType(static_cast<uint8_t>(AutoFillButtonType::None))
 #if ENABLE(DATALIST_ELEMENT)
     , m_hasNonEmptyList(false)
 #endif
@@ -155,7 +150,7 @@ void HTMLInputElement::didAddUserAgentShadowRoot(ShadowRoot*)
 HTMLInputElement::~HTMLInputElement()
 {
     if (needsSuspensionCallback())
-        document().unregisterForPageCacheSuspensionCallbacks(this);
+        document().unregisterForDocumentSuspensionCallbacks(this);
 
     // Need to remove form association while this is still an HTMLInputElement
     // so that virtual functions are called correctly.
@@ -347,7 +342,7 @@ StepRange HTMLInputElement::createStepRange(AnyStepHandling anyStepHandling) con
 }
 
 #if ENABLE(DATALIST_ELEMENT)
-Decimal HTMLInputElement::findClosestTickMarkValue(const Decimal& value)
+Optional<Decimal> HTMLInputElement::findClosestTickMarkValue(const Decimal& value)
 {
     return m_inputType->findClosestTickMarkValue(value);
 }
@@ -469,7 +464,7 @@ void HTMLInputElement::updateType()
 
     m_inputType->destroyShadowSubtree();
 
-    m_inputType = WTF::move(newType);
+    m_inputType = WTFMove(newType);
     m_inputType->createShadowSubtree();
     updateInnerTextElementEditability();
 
@@ -530,9 +525,6 @@ inline void HTMLInputElement::runPostTypeUpdateTasks()
 
     if (document().focusedElement() == this)
         updateFocusAppearance(SelectionRestorationMode::Restore, SelectionRevealMode::Reveal);
-
-    if (ShadowRoot* shadowRoot = shadowRootOfParentForDistribution(this))
-        shadowRoot->invalidateDistribution();
 
     setChangedSinceLastFormControlChangeEvent(false);
 
@@ -649,7 +641,7 @@ void HTMLInputElement::parseAttribute(const QualifiedName& name, const AtomicStr
         addToRadioButtonGroup();
         HTMLTextFormControlElement::parseAttribute(name, value);
     } else if (name == autocompleteAttr) {
-        if (equalIgnoringCase(value, "off")) {
+        if (equalLettersIgnoringASCIICase(value, "off")) {
             m_autocomplete = Off;
             registerForSuspensionCallbackIfNeeded();
         } else {
@@ -693,8 +685,7 @@ void HTMLInputElement::parseAttribute(const QualifiedName& name, const AtomicStr
         parseMaxLengthAttribute(value);
     else if (name == sizeAttr) {
         int oldSize = m_size;
-        int valueAsInteger = value.toInt();
-        m_size = valueAsInteger > 0 ? valueAsInteger : defaultSize;
+        m_size = limitToOnlyNonNegativeNumbersGreaterThanZero(value.string().toUInt(), defaultSize);
         if (m_size != oldSize && renderer())
             renderer()->setNeedsLayoutAndPrefWidthsRecalc();
     } else if (name == altAttr)
@@ -773,7 +764,7 @@ bool HTMLInputElement::rendererIsNeeded(const RenderStyle& style)
 
 RenderPtr<RenderElement> HTMLInputElement::createElementRenderer(Ref<RenderStyle>&& style, const RenderTreePosition&)
 {
-    return m_inputType->createInputRenderer(WTF::move(style));
+    return m_inputType->createInputRenderer(WTFMove(style));
 }
 
 void HTMLInputElement::willAttachRenderers()
@@ -932,6 +923,7 @@ void HTMLInputElement::copyNonAttributePropertiesFromElement(const Element& sour
 
     HTMLTextFormControlElement::copyNonAttributePropertiesFromElement(source);
 
+    updateValidity();
     setFormControlValueMatchesRenderer(false);
     m_inputType->updateInnerTextValue();
 }
@@ -991,7 +983,7 @@ void HTMLInputElement::setValue(const String& value, ExceptionCode& ec, TextFiel
         ec = INVALID_STATE_ERR;
         return;
     }
-    setValue(value, eventBehavior);
+    setValue(value.isNull() ? emptyString() : value, eventBehavior);
 }
 
 void HTMLInputElement::setValue(const String& value, TextFieldEventBehavior eventBehavior)
@@ -1231,13 +1223,13 @@ static Vector<String> parseAcceptAttribute(const String& acceptString, bool (*pr
 
     Vector<String> splitTypes;
     acceptString.split(',', false, splitTypes);
-    for (size_t i = 0; i < splitTypes.size(); ++i) {
-        String trimmedType = stripLeadingAndTrailingHTMLSpaces(splitTypes[i]);
+    for (auto& splitType : splitTypes) {
+        String trimmedType = stripLeadingAndTrailingHTMLSpaces(splitType);
         if (trimmedType.isEmpty())
             continue;
         if (!predicate(trimmedType))
             continue;
-        types.append(trimmedType.lower());
+        types.append(trimmedType.convertToASCIILowercase());
     }
 
     return types;
@@ -1283,7 +1275,7 @@ bool HTMLInputElement::multiple() const
 
 void HTMLInputElement::setSize(unsigned size)
 {
-    setUnsignedIntegralAttribute(sizeAttr, size);
+    setUnsignedIntegralAttribute(sizeAttr, limitToOnlyNonNegativeNumbersGreaterThanZero(size, defaultSize));
 }
 
 void HTMLInputElement::setSize(unsigned size, ExceptionCode& ec)
@@ -1308,12 +1300,12 @@ void HTMLInputElement::setAutoFilled(bool autoFilled)
     setNeedsStyleRecalc();
 }
 
-void HTMLInputElement::setShowAutoFillButton(bool showAutoFillButton)
+void HTMLInputElement::setShowAutoFillButton(AutoFillButtonType autoFillButtonType)
 {
-    if (showAutoFillButton == m_showAutoFillButton)
+    if (static_cast<uint8_t>(autoFillButtonType) == m_autoFillButtonType)
         return;
 
-    m_showAutoFillButton = showAutoFillButton;
+    m_autoFillButtonType = static_cast<uint8_t>(autoFillButtonType);
     m_inputType->updateAutoFillButton();
 }
 
@@ -1407,13 +1399,13 @@ bool HTMLInputElement::needsSuspensionCallback()
 void HTMLInputElement::registerForSuspensionCallbackIfNeeded()
 {
     if (needsSuspensionCallback())
-        document().registerForPageCacheSuspensionCallbacks(this);
+        document().registerForDocumentSuspensionCallbacks(this);
 }
 
 void HTMLInputElement::unregisterForSuspensionCallbackIfNeeded()
 {
     if (!needsSuspensionCallback())
-        document().unregisterForPageCacheSuspensionCallbacks(this);
+        document().unregisterForDocumentSuspensionCallbacks(this);
 }
 
 bool HTMLInputElement::isRequiredFormControl() const
@@ -1439,12 +1431,12 @@ void HTMLInputElement::onSearch()
     dispatchEvent(Event::create(eventNames().searchEvent, true, false));
 }
 
-void HTMLInputElement::documentDidResumeFromPageCache()
+void HTMLInputElement::resumeFromDocumentSuspension()
 {
     ASSERT(needsSuspensionCallback());
 
 #if ENABLE(INPUT_TYPE_COLOR)
-    // <input type=color> uses documentWillSuspendForPageCache to detach the color picker UI,
+    // <input type=color> uses prepareForDocumentSuspension to detach the color picker UI,
     // so it should not be reset when being loaded from page cache.
     if (isColorControl()) 
         return;
@@ -1453,7 +1445,7 @@ void HTMLInputElement::documentDidResumeFromPageCache()
 }
 
 #if ENABLE(INPUT_TYPE_COLOR)
-void HTMLInputElement::documentWillSuspendForPageCache()
+void HTMLInputElement::prepareForDocumentSuspension()
 {
     if (!isColorControl())
         return;
@@ -1510,7 +1502,7 @@ void HTMLInputElement::didMoveToNewDocument(Document* oldDocument)
     if (oldDocument) {
         // Always unregister for cache callbacks when leaving a document, even if we would otherwise like to be registered
         if (needsSuspensionCallback)
-            oldDocument->unregisterForPageCacheSuspensionCallbacks(this);
+            oldDocument->unregisterForDocumentSuspensionCallbacks(this);
         if (isRadioButton())
             oldDocument->formController().checkedRadioButtons().removeButton(this);
 #if ENABLE(TOUCH_EVENTS)
@@ -1520,7 +1512,7 @@ void HTMLInputElement::didMoveToNewDocument(Document* oldDocument)
     }
 
     if (needsSuspensionCallback)
-        document().registerForPageCacheSuspensionCallbacks(this);
+        document().registerForDocumentSuspensionCallbacks(this);
 
 #if ENABLE(TOUCH_EVENTS)
     if (m_hasTouchEventHandler)
@@ -1550,15 +1542,16 @@ void HTMLInputElement::requiredAttributeChanged()
     m_inputType->requiredAttributeChanged();
 }
 
-#if ENABLE(INPUT_TYPE_COLOR)
-void HTMLInputElement::selectColorInColorChooser(const Color& color)
+Color HTMLInputElement::valueAsColor() const
 {
-    if (!m_inputType->isColorControl())
-        return;
-    static_cast<ColorInputType*>(m_inputType.get())->didChooseColor(color);
+    return m_inputType->valueAsColor();
 }
-#endif
-    
+
+void HTMLInputElement::selectColor(const Color& color)
+{
+    m_inputType->selectColor(color);
+}
+
 #if ENABLE(DATALIST_ELEMENT)
 HTMLElement* HTMLInputElement::list() const
 {

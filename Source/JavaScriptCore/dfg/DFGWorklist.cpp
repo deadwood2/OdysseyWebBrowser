@@ -64,7 +64,7 @@ void Worklist::finishCreation(unsigned numberOfThreads, int relativePriority)
         data->m_identifier = createThread(threadFunction, data.get(), m_threadName.data());
         if (relativePriority)
             changeThreadPriority(data->m_identifier, relativePriority);
-        m_threads.append(WTF::move(data));
+        m_threads.append(WTFMove(data));
     }
 }
 
@@ -207,6 +207,17 @@ void Worklist::completeAllPlansForVM(VM& vm)
     completeAllReadyPlansForVM(vm);
 }
 
+void Worklist::rememberCodeBlocks(VM& vm)
+{
+    LockHolder locker(m_lock);
+    for (PlanMap::iterator iter = m_plans.begin(); iter != m_plans.end(); ++iter) {
+        Plan* plan = iter->value.get();
+        if (&plan->vm != &vm)
+            continue;
+        plan->rememberCodeBlocks();
+    }
+}
+
 void Worklist::suspendAllThreads()
 {
     m_suspensionLock.lock();
@@ -221,7 +232,7 @@ void Worklist::resumeAllThreads()
     m_suspensionLock.unlock();
 }
 
-void Worklist::visitWeakReferences(SlotVisitor& visitor, CodeBlockSet& codeBlocks)
+void Worklist::visitWeakReferences(SlotVisitor& visitor)
 {
     VM* vm = visitor.heap()->vm();
     {
@@ -230,7 +241,7 @@ void Worklist::visitWeakReferences(SlotVisitor& visitor, CodeBlockSet& codeBlock
             Plan* plan = iter->value.get();
             if (&plan->vm != vm)
                 continue;
-            iter->value->checkLivenessAndVisitChildren(visitor, codeBlocks);
+            plan->checkLivenessAndVisitChildren(visitor);
         }
     }
     // This loop doesn't need locking because:
@@ -356,7 +367,7 @@ void Worklist::runThread(ThreadData* data)
         
             RELEASE_ASSERT(!plan->vm.heap.isCollecting());
             plan->compileInThread(longLivedState, data);
-            RELEASE_ASSERT(!plan->vm.heap.isCollecting());
+            RELEASE_ASSERT(plan->stage == Plan::Cancelled || !plan->vm.heap.isCollecting());
             
             {
                 LockHolder locker(m_lock);
@@ -446,6 +457,22 @@ Worklist* ensureGlobalWorklistFor(CompilationMode mode)
     }
     RELEASE_ASSERT_NOT_REACHED();
     return 0;
+}
+
+void completeAllPlansForVM(VM& vm)
+{
+    for (unsigned i = DFG::numberOfWorklists(); i--;) {
+        if (DFG::Worklist* worklist = DFG::worklistForIndexOrNull(i))
+            worklist->completeAllPlansForVM(vm);
+    }
+}
+
+void rememberCodeBlocks(VM& vm)
+{
+    for (unsigned i = DFG::numberOfWorklists(); i--;) {
+        if (DFG::Worklist* worklist = DFG::worklistForIndexOrNull(i))
+            worklist->rememberCodeBlocks(vm);
+    }
 }
 
 } } // namespace JSC::DFG

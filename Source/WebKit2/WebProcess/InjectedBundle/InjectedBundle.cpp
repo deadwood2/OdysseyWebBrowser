@@ -38,7 +38,6 @@
 #include "WebConnectionToUIProcess.h"
 #include "WebCookieManager.h"
 #include "WebCoreArgumentCoders.h"
-#include "WebDatabaseManager.h"
 #include "WebFrame.h"
 #include "WebFrameNetworkingContext.h"
 #include "WebPage.h"
@@ -66,7 +65,6 @@
 #include <WebCore/PageGroup.h>
 #include <WebCore/PrintContext.h>
 #include <WebCore/ResourceHandle.h>
-#include <WebCore/ResourceLoadScheduler.h>
 #include <WebCore/ScriptController.h>
 #include <WebCore/SecurityOrigin.h>
 #include <WebCore/SecurityPolicy.h>
@@ -176,6 +174,11 @@ void InjectedBundle::overrideBoolPreferenceForTestRunner(WebPageGroupProxy* page
 #if ENABLE(CSS_ANIMATIONS_LEVEL_2)
     if (preference == "WebKitCSSAnimationTriggersEnabled")
         RuntimeEnabledFeatures::sharedFeatures().setAnimationTriggersEnabled(enabled);
+#endif
+
+#if ENABLE(WEB_ANIMATIONS)
+    if (preference == "WebKitWebAnimationsEnabled")
+        RuntimeEnabledFeatures::sharedFeatures().setWebAnimationsEnabled(enabled);
 #endif
 
 #if ENABLE(CSS_REGIONS)
@@ -338,65 +341,6 @@ void InjectedBundle::setAsynchronousSpellCheckingEnabled(WebPageGroupProxy* page
         (*iter)->settings().setAsynchronousSpellCheckingEnabled(enabled);
 }
 
-void InjectedBundle::clearAllDatabases()
-{
-    WebProcess::singleton().supplement<WebDatabaseManager>()->deleteAllDatabases();
-}
-
-void InjectedBundle::setDatabaseQuota(uint64_t quota)
-{
-    // Historically, we've used the following (somewhat non-sensical) string
-    // for the databaseIdentifier of local files.
-    WebProcess::singleton().supplement<WebDatabaseManager>()->setQuotaForOrigin("file__0", quota);
-}
-
-void InjectedBundle::clearApplicationCache()
-{
-    ApplicationCacheStorage::singleton().deleteAllEntries();
-}
-
-void InjectedBundle::clearApplicationCacheForOrigin(const String& originString)
-{
-    ApplicationCacheStorage::singleton().deleteCacheForOrigin(SecurityOrigin::createFromString(originString));
-}
-
-void InjectedBundle::setAppCacheMaximumSize(uint64_t size)
-{
-    ApplicationCacheStorage::singleton().setMaximumSize(size);
-}
-
-uint64_t InjectedBundle::appCacheUsageForOrigin(const String& originString)
-{
-    return ApplicationCacheStorage::singleton().diskUsageForOrigin(SecurityOrigin::createFromString(originString));
-}
-
-void InjectedBundle::setApplicationCacheOriginQuota(const String& originString, uint64_t bytes)
-{
-    Ref<SecurityOrigin> origin = SecurityOrigin::createFromString(originString);
-    ApplicationCacheStorage::singleton().storeUpdatedQuotaForOrigin(origin.ptr(), bytes);
-}
-
-void InjectedBundle::resetApplicationCacheOriginQuota(const String& originString)
-{
-    Ref<SecurityOrigin> origin = SecurityOrigin::createFromString(originString);
-    auto& cacheStorage = ApplicationCacheStorage::singleton();
-    cacheStorage.storeUpdatedQuotaForOrigin(origin.ptr(), cacheStorage.defaultOriginQuota());
-}
-
-PassRefPtr<API::Array> InjectedBundle::originsWithApplicationCache()
-{
-    HashSet<RefPtr<SecurityOrigin>> origins;
-    ApplicationCacheStorage::singleton().getOriginsWithCache(origins);
-
-    Vector<RefPtr<API::Object>> originIdentifiers;
-    originIdentifiers.reserveInitialCapacity(origins.size());
-
-    for (const auto& origin : origins)
-        originIdentifiers.uncheckedAppend(API::String::create(origin->databaseIdentifier()));
-
-    return API::Array::create(WTF::move(originIdentifiers));
-}
-
 int InjectedBundle::numberOfPages(WebFrame* frame, double pageWidthInPixels, double pageHeightInPixels)
 {
     Frame* coreFrame = frame ? frame->coreFrame() : 0;
@@ -407,7 +351,7 @@ int InjectedBundle::numberOfPages(WebFrame* frame, double pageWidthInPixels, dou
     if (!pageHeightInPixels)
         pageHeightInPixels = coreFrame->view()->height();
 
-    return PrintContext::numberOfPages(coreFrame, FloatSize(pageWidthInPixels, pageHeightInPixels));
+    return PrintContext::numberOfPages(*coreFrame, FloatSize(pageWidthInPixels, pageHeightInPixels));
 }
 
 int InjectedBundle::pageNumberForElementById(WebFrame* frame, const String& id, double pageWidthInPixels, double pageHeightInPixels)
@@ -456,7 +400,7 @@ void InjectedBundle::addUserScript(WebPageGroupProxy* pageGroup, InjectedBundleS
     // url is not from URL::string(), i.e. it has not already been parsed by URL, so we have to use the relative URL constructor for URL instead of the ParsedURLStringTag version.
     auto userScript = std::make_unique<UserScript>(source, URL(URL(), url), whitelist ? whitelist->toStringVector() : Vector<String>(), blacklist ? blacklist->toStringVector() : Vector<String>(), injectionTime, injectedFrames);
 
-    pageGroup->userContentController().addUserScript(scriptWorld->coreWorld(), WTF::move(userScript));
+    pageGroup->userContentController().addUserScript(scriptWorld->coreWorld(), WTFMove(userScript));
 }
 
 void InjectedBundle::addUserStyleSheet(WebPageGroupProxy* pageGroup, InjectedBundleScriptWorld* scriptWorld, const String& source, const String& url, API::Array* whitelist, API::Array* blacklist, WebCore::UserContentInjectedFrames injectedFrames)
@@ -464,7 +408,7 @@ void InjectedBundle::addUserStyleSheet(WebPageGroupProxy* pageGroup, InjectedBun
     // url is not from URL::string(), i.e. it has not already been parsed by URL, so we have to use the relative URL constructor for URL instead of the ParsedURLStringTag version.
     auto userStyleSheet = std::make_unique<UserStyleSheet>(source, URL(URL(), url), whitelist ? whitelist->toStringVector() : Vector<String>(), blacklist ? blacklist->toStringVector() : Vector<String>(), injectedFrames, UserStyleUserLevel);
 
-    pageGroup->userContentController().addUserStyleSheet(scriptWorld->coreWorld(), WTF::move(userStyleSheet), InjectInExistingDocuments);
+    pageGroup->userContentController().addUserStyleSheet(scriptWorld->coreWorld(), WTFMove(userStyleSheet), InjectInExistingDocuments);
 }
 
 void InjectedBundle::removeUserScript(WebPageGroupProxy* pageGroup, InjectedBundleScriptWorld* scriptWorld, const String& url)
@@ -608,6 +552,15 @@ void InjectedBundle::setCSSAnimationTriggersEnabled(bool enabled)
 {
 #if ENABLE(CSS_ANIMATIONS_LEVEL_2)
     RuntimeEnabledFeatures::sharedFeatures().setAnimationTriggersEnabled(enabled);
+#else
+    UNUSED_PARAM(enabled);
+#endif
+}
+
+void InjectedBundle::setWebAnimationsEnabled(bool enabled)
+{
+#if ENABLE(WEB_ANIMATIONS)
+    RuntimeEnabledFeatures::sharedFeatures().setWebAnimationsEnabled(enabled);
 #else
     UNUSED_PARAM(enabled);
 #endif

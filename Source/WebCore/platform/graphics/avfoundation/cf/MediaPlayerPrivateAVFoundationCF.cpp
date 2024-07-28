@@ -44,6 +44,7 @@
 #include "MediaTimeAVFoundation.h"
 #include "URL.h"
 #include "Logging.h"
+#include "PlatformCALayerClient.h"
 #include "PlatformCALayerWin.h"
 #include "TimeRanges.h"
 #include "WebCoreAVCFResourceLoader.h"
@@ -831,10 +832,10 @@ MediaPlayerPrivateAVFoundation::AssetStatus MediaPlayerPrivateAVFoundationCF::as
     return MediaPlayerAVAssetStatusLoaded;
 }
 
-void MediaPlayerPrivateAVFoundationCF::paintCurrentFrameInContext(GraphicsContext* context, const FloatRect& rect)
+void MediaPlayerPrivateAVFoundationCF::paintCurrentFrameInContext(GraphicsContext& context, const FloatRect& rect)
 {
     ASSERT(isMainThread());
-    if (!metaDataAvailable() || context->paintingDisabled())
+    if (!metaDataAvailable() || context.paintingDisabled())
         return;
 
     if (currentRenderingMode() == MediaRenderingToLayer && !imageGenerator(m_avfWrapper)) {
@@ -846,10 +847,10 @@ void MediaPlayerPrivateAVFoundationCF::paintCurrentFrameInContext(GraphicsContex
     paint(context, rect);
 }
 
-void MediaPlayerPrivateAVFoundationCF::paint(GraphicsContext* context, const FloatRect& rect)
+void MediaPlayerPrivateAVFoundationCF::paint(GraphicsContext& context, const FloatRect& rect)
 {
     ASSERT(isMainThread());
-    if (!metaDataAvailable() || context->paintingDisabled() || !imageGenerator(m_avfWrapper))
+    if (!metaDataAvailable() || context.paintingDisabled() || !imageGenerator(m_avfWrapper))
         return;
 
     LOG(Media, "MediaPlayerPrivateAVFoundationCF::paint(%p)", this);
@@ -857,13 +858,13 @@ void MediaPlayerPrivateAVFoundationCF::paint(GraphicsContext* context, const Flo
     setDelayCallbacks(true);
     RetainPtr<CGImageRef> image = m_avfWrapper->createImageForTimeInRect(currentMediaTime(), rect);
     if (image) {
-        context->save();
-        context->translate(rect.x(), rect.y() + rect.height());
-        context->scale(FloatSize(1.0f, -1.0f));
-        context->setImageInterpolationQuality(InterpolationLow);
+        context.save();
+        context.translate(rect.x(), rect.y() + rect.height());
+        context.scale(FloatSize(1.0f, -1.0f));
+        context.setImageInterpolationQuality(InterpolationLow);
         FloatRect paintRect(FloatPoint(), rect.size());
-        CGContextDrawImage(context->platformContext(), CGRectMake(0, 0, paintRect.width(), paintRect.height()), image.get());
-        context->restore();
+        CGContextDrawImage(context.platformContext(), CGRectMake(0, 0, paintRect.width(), paintRect.height()), image.get());
+        context.restore();
         image = 0;
     }
     setDelayCallbacks(false);
@@ -871,58 +872,33 @@ void MediaPlayerPrivateAVFoundationCF::paint(GraphicsContext* context, const Flo
     m_videoFrameHasDrawn = true;
 }
 
-static const HashSet<String>& mimeTypeCache()
-{
-    static NeverDestroyed<HashSet<String>> cache;
-    static bool typeListInitialized = false;
-
-    if (typeListInitialized)
-        return cache;
-    typeListInitialized = true;
-
-    RetainPtr<CFArrayRef> supportedTypes = adoptCF(AVCFURLAssetCopyAudiovisualMIMETypes());
-    
-    ASSERT(supportedTypes);
-    if (!supportedTypes)
-        return cache;
-
-    CFIndex typeCount = CFArrayGetCount(supportedTypes.get());
-    for (CFIndex i = 0; i < typeCount; i++)
-        cache.get().add(static_cast<CFStringRef>(CFArrayGetValueAtIndex(supportedTypes.get(), i)));
-
-    return cache;
-} 
-
-void MediaPlayerPrivateAVFoundationCF::getSupportedTypes(HashSet<String>& supportedTypes)
-{
-    supportedTypes = mimeTypeCache();
-} 
-
 #if HAVE(AVFOUNDATION_LOADER_DELEGATE) && ENABLE(ENCRYPTED_MEDIA_V2)
+
 static bool keySystemIsSupported(const String& keySystem)
 {
-    if (equalIgnoringCase(keySystem, "com.apple.fps") || equalIgnoringCase(keySystem, "com.apple.fps.1_0"))
-        return true;
-    return false;
+    return equalLettersIgnoringASCIICase(keySystem, "com.apple.fps")
+        || equalLettersIgnoringASCIICase(keySystem, "com.apple.fps.1_0");
 }
+
 #endif
 
-static const HashSet<String>& avfMIMETypes()
+static const HashSet<String, ASCIICaseInsensitiveHash>& avfMIMETypes()
 {
-    static NeverDestroyed<HashSet<String>> cache = []() {
-        HashSet<String> types;
-        RetainPtr<CFArrayRef> avTypes = AVCFURLAssetCopyAudiovisualMIMETypes();
-
+    static NeverDestroyed<HashSet<String, ASCIICaseInsensitiveHash>> cache = []() {
+        HashSet<String, ASCIICaseInsensitiveHash> types;
+        RetainPtr<CFArrayRef> avTypes = adoptCF(AVCFURLAssetCopyAudiovisualMIMETypes());
         CFIndex typeCount = CFArrayGetCount(avTypes.get());
-        for (CFIndex i = 0; i < typeCount; ++i) {
-            String mimeType = (CFStringRef)(CFArrayGetValueAtIndex(avTypes.get(), i));
-            types.add(mimeType.lower());
-        }
-
+        for (CFIndex i = 0; i < typeCount; ++i)
+            types.add((CFStringRef)CFArrayGetValueAtIndex(avTypes.get(), i));
         return types;
     }();
 
     return cache;
+}
+
+void MediaPlayerPrivateAVFoundationCF::getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>& supportedTypes)
+{
+    supportedTypes = avfMIMETypes();
 }
 
 MediaPlayer::SupportsType MediaPlayerPrivateAVFoundationCF::supportsType(const MediaEngineSupportParameters& parameters)
@@ -942,7 +918,7 @@ MediaPlayer::SupportsType MediaPlayerPrivateAVFoundationCF::supportsType(const M
     String typeString = parameters.type + "; codecs=\"" + parameters.codecs + "\"";
     return AVCFURLAssetIsPlayableExtendedMIMEType(typeString.createCFString().get()) ? MediaPlayer::IsSupported : MediaPlayer::MayBeSupported;
 #else
-    if (mimeTypeCache().contains(parameters.type))
+    if (avfMIMETypes().contains(parameters.type))
         return parameters.codecs.isEmpty() ? MediaPlayer::MayBeSupported : MediaPlayer::IsSupported;
     return MediaPlayer::IsNotSupported;
 #endif
@@ -957,7 +933,7 @@ bool MediaPlayerPrivateAVFoundationCF::supportsKeySystem(const String& keySystem
     if (!keySystemIsSupported(keySystem))
         return false;
 
-    if (!mimeType.isEmpty() && !mimeTypeCache().contains(mimeType))
+    if (!mimeType.isEmpty() && !avfMIMETypes().contains(mimeType))
         return false;
 
     return true;
@@ -1145,15 +1121,15 @@ RetainPtr<AVCFAssetResourceLoadingRequestRef> MediaPlayerPrivateAVFoundationCF::
     return m_avfWrapper->takeRequestForKeyURI(keyURI);
 }
 
-std::unique_ptr<CDMSession> MediaPlayerPrivateAVFoundationCF::createSession(const String& keySystem)
+std::unique_ptr<CDMSession> MediaPlayerPrivateAVFoundationCF::createSession(const String& keySystem, CDMSessionClient* client)
 {
     if (!keySystemIsSupported(keySystem))
         return nullptr;
 
-    return std::make_unique<CDMSessionAVFoundationCF>(this);
+    return std::make_unique<CDMSessionAVFoundationCF>(this, client);
 }
 #elif ENABLE(ENCRYPTED_MEDIA_V2)
-std::unique_ptr<CDMSession> MediaPlayerPrivateAVFoundationCF::createSession(const String& keySystem)
+std::unique_ptr<CDMSession> MediaPlayerPrivateAVFoundationCF::createSession(const String& keySystem, , CDMSessionClient*)
 {
     return nullptr;
 }

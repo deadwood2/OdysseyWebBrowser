@@ -26,6 +26,7 @@
 #include "config.h"
 #include "SimpleLineLayoutResolver.h"
 
+#include "InlineTextBoxStyle.h"
 #include "RenderBlockFlow.h"
 #include "RenderObject.h"
 #include "SimpleLineLayoutFunctions.h"
@@ -54,7 +55,7 @@ FloatRect RunResolver::Run::rect() const
     auto& resolver = m_iterator.resolver();
     float baseline = computeBaselinePosition();
     FloatPoint position = linePosition(run.logicalLeft, baseline - resolver.m_ascent);
-    FloatSize size = lineSize(run.logicalLeft, run.logicalRight, resolver.m_ascent + resolver.m_descent);
+    FloatSize size = lineSize(run.logicalLeft, run.logicalRight, resolver.m_ascent + resolver.m_descent + resolver.m_visualOverflowOffset);
     bool moveLineBreakToBaseline = false;
     if (run.start == run.end && m_iterator != resolver.begin() && m_iterator.inQuirksMode()) {
         auto previousRun = m_iterator;
@@ -68,15 +69,12 @@ FloatRect RunResolver::Run::rect() const
 
 StringView RunResolver::Run::text() const
 {
-    auto& resolver = m_iterator.resolver();
     auto& run = m_iterator.simpleRun();
     ASSERT(run.start < run.end);
-    auto& segment = resolver.m_flowContents.segmentForRun(run.start, run.end);
+    auto& segment = m_iterator.resolver().m_flowContents.segmentForRun(run.start, run.end);
     // We currently split runs on segment boundaries (different RenderObject).
     ASSERT(run.end <= segment.end);
-    if (segment.text.is8Bit())
-        return StringView(segment.text.characters8(), segment.text.length()).substring(run.start - segment.start, run.end - run.start);
-    return StringView(segment.text.characters16(), segment.text.length()).substring(run.start - segment.start, run.end - run.start);
+    return StringView(segment.text).substring(run.start - segment.start, run.end - run.start);
 }
 
 RunResolver::Iterator::Iterator(const RunResolver& resolver, unsigned runIndex, unsigned lineIndex)
@@ -118,6 +116,7 @@ RunResolver::RunResolver(const RenderBlockFlow& flow, const Layout& layout)
     , m_borderAndPaddingBefore(flow.borderAndPaddingBefore())
     , m_ascent(flow.style().fontCascade().fontMetrics().ascent())
     , m_descent(flow.style().fontCascade().fontMetrics().descent())
+    , m_visualOverflowOffset(visualOverflowForDecorations(flow.style(), nullptr).bottom)
     , m_inQuirksMode(flow.document().inQuirksMode())
 {
 }

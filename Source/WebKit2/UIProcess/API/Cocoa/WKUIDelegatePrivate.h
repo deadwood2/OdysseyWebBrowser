@@ -30,11 +30,14 @@
 #import <WebKit/WKSecurityOrigin.h>
 #import <WebKit/_WKActivatedElementInfo.h>
 
+@class UIPreviewActionItem;
 @class UIScrollView;
 @class UIViewController;
+@class _WKContextMenuElementInfo;
 @class _WKActivatedElementInfo;
 @class _WKElementAction;
 @class _WKFrameHandle;
+@class _WKPreviewElementInfo;
 
 @protocol WKUIDelegatePrivate <WKUIDelegate>
 
@@ -52,24 +55,39 @@ struct UIEdgeInsets;
 
 - (void)_webViewClose:(WKWebView *)webView;
 - (void)_webViewFullscreenMayReturnToInline:(WKWebView *)webView;
-- (void)_webViewDidEnterFullscreen:(WKWebView *)webView WK_AVAILABLE(WK_MAC_TBA, 8_3);
-- (void)_webViewDidExitFullscreen:(WKWebView *)webView WK_AVAILABLE(WK_MAC_TBA, 8_3);
-- (void)_webView:(WKWebView *)webView mediaDocumentNaturalSizeChanged:(CGSize)size;
+- (void)_webViewDidEnterFullscreen:(WKWebView *)webView WK_AVAILABLE(10_11, 8_3);
+- (void)_webViewDidExitFullscreen:(WKWebView *)webView WK_AVAILABLE(10_11, 8_3);
 
+- (void)_webView:(WKWebView *)webView imageOrMediaDocumentSizeChanged:(CGSize)size WK_AVAILABLE(WK_MAC_TBA, WK_IOS_TBA);
+- (NSDictionary *)_dataDetectionContextForWebView:(WKWebView *)webView WK_AVAILABLE(WK_MAC_TBA, WK_IOS_TBA);
 #if TARGET_OS_IPHONE
-- (BOOL)_webView:(WKWebView *)webView shouldIncludeAppLinkActionsForElement:(_WKActivatedElementInfo *)element WK_AVAILABLE(NA, WK_IOS_TBA);
+- (BOOL)_webView:(WKWebView *)webView shouldIncludeAppLinkActionsForElement:(_WKActivatedElementInfo *)element WK_AVAILABLE(NA, 9_0);
 - (NSArray *)_webView:(WKWebView *)webView actionsForElement:(_WKActivatedElementInfo *)element defaultActions:(WK_ARRAY(_WKElementAction *) *)defaultActions;
 - (void)_webView:(WKWebView *)webView didNotHandleTapAsClickAtPoint:(CGPoint)point;
 - (BOOL)_webView:(WKWebView *)webView shouldRequestGeolocationAuthorizationForURL:(NSURL *)url isMainFrame:(BOOL)isMainFrame mainFrameURL:(NSURL *)mainFrameURL;
-- (UIViewController *)_webView:(WKWebView *)webView previewViewControllerForURL:(NSURL *)url WK_AVAILABLE(NA, WK_IOS_TBA);
-- (void)_webView:(WKWebView *)webView commitPreviewedViewController:(UIViewController *)previewedViewController WK_AVAILABLE(NA, WK_IOS_TBA);
-- (void)_webView:(WKWebView *)webView willPreviewImageWithURL:(NSURL *)imageURL WK_AVAILABLE(NA, WK_IOS_TBA);
-- (void)_webView:(WKWebView *)webView commitPreviewedImageWithURL:(NSURL *)imageURL WK_AVAILABLE(NA, WK_IOS_TBA);
-- (void)_webView:(WKWebView *)webView didDismissPreviewViewController:(UIViewController *)previewedViewController committing:(BOOL)committing WK_AVAILABLE(NA, WK_IOS_TBA);
-- (void)_webView:(WKWebView *)webView didDismissPreviewViewController:(UIViewController *)previewedViewController WK_AVAILABLE(NA, WK_IOS_TBA);
-- (UIEdgeInsets)_webView:(WKWebView *)webView finalObscuredInsetsForScrollView:(UIScrollView *)scrollView withVelocity:(CGPoint)velocity targetContentOffset:(inout CGPoint *)targetContentOffset WK_AVAILABLE(NA, WK_IOS_TBA);
-- (UIViewController *)_webView:(WKWebView *)webView previewViewControllerForURL:(NSURL *)url defaultActions:(WK_ARRAY(_WKElementAction *) *)actions elementInfo:(_WKActivatedElementInfo *)elementInfo WK_AVAILABLE(NA, WK_IOS_TBA);
-- (UIViewController *)_webView:(WKWebView *)webView previewViewControllerForAnimatedImageAtURL:(NSURL *)url defaultActions:(WK_ARRAY(_WKElementAction *) *)actions elementInfo:(_WKActivatedElementInfo *)elementInfo imageSize:(CGSize)imageSize WK_AVAILABLE(NA, WK_IOS_TBA);
+- (UIViewController *)_webView:(WKWebView *)webView previewViewControllerForURL:(NSURL *)url WK_AVAILABLE(NA, 9_0);
+- (void)_webView:(WKWebView *)webView commitPreviewedViewController:(UIViewController *)previewedViewController WK_AVAILABLE(NA, 9_0);
+- (void)_webView:(WKWebView *)webView willPreviewImageWithURL:(NSURL *)imageURL WK_AVAILABLE(NA, 9_0);
+- (void)_webView:(WKWebView *)webView commitPreviewedImageWithURL:(NSURL *)imageURL WK_AVAILABLE(NA, 9_0);
+- (void)_webView:(WKWebView *)webView didDismissPreviewViewController:(UIViewController *)previewedViewController committing:(BOOL)committing WK_AVAILABLE(NA, 9_0);
+- (void)_webView:(WKWebView *)webView didDismissPreviewViewController:(UIViewController *)previewedViewController WK_AVAILABLE(NA, 9_0);
+- (UIEdgeInsets)_webView:(WKWebView *)webView finalObscuredInsetsForScrollView:(UIScrollView *)scrollView withVelocity:(CGPoint)velocity targetContentOffset:(inout CGPoint *)targetContentOffset WK_AVAILABLE(NA, 9_0);
+- (UIViewController *)_webView:(WKWebView *)webView previewViewControllerForURL:(NSURL *)url defaultActions:(WK_ARRAY(_WKElementAction *) *)actions elementInfo:(_WKActivatedElementInfo *)elementInfo WK_AVAILABLE(NA, 9_0);
+- (UIViewController *)_webView:(WKWebView *)webView previewViewControllerForAnimatedImageAtURL:(NSURL *)url defaultActions:(WK_ARRAY(_WKElementAction *) *)actions elementInfo:(_WKActivatedElementInfo *)elementInfo imageSize:(CGSize)imageSize WK_AVAILABLE(NA, 9_0);
+
+// If a client wants to disable previews entirely for the given element, they should return NO in
+// shouldPreviewElement. Returning NO in shouldPreviewElement will prevent the other methods from being invoked.
+// The client can provide a custom preview by returning their own UIViewController from
+// previewingViewControllerForElement:defaultActions:. Returning nil will result in the default preview behavior
+// for that element.
+- (BOOL)_webView:(WKWebView *)webView shouldPreviewElement:(_WKPreviewElementInfo *)elementInfo;
+- (UIViewController *)_webView:(WKWebView *)webView previewingViewControllerForElement:(_WKPreviewElementInfo *)elementInfo defaultActions:(NSArray<UIPreviewActionItem *> *)previewActions WK_AVAILABLE(NA, WK_IOS_TBA);
+- (void)_webView:(WKWebView *)webView commitPreviewingViewController:(UIViewController *)previewingViewController WK_AVAILABLE(NA, WK_IOS_TBA);
+
+- (UIViewController *)_presentingViewControllerForWebView:(WKWebView *)webView WK_AVAILABLE(NA, WK_IOS_TBA);
+#else
+- (NSMenu *)_webView:(WKWebView *)webView contextMenu:(NSMenu *)menu forElement:(_WKContextMenuElementInfo *)element WK_AVAILABLE(WK_MAC_TBA, NA);
+- (NSMenu *)_webView:(WKWebView *)webView contextMenu:(NSMenu *)menu forElement:(_WKContextMenuElementInfo *)element userInfo:(id <NSSecureCoding>)userInfo WK_AVAILABLE(WK_MAC_TBA, NA);
 #endif
 
 @end

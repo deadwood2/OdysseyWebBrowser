@@ -109,7 +109,7 @@ function parseRevisionProperty(property, key, fallbackKey)
     // ["got_revision","2468","Source"]
     if (isMultiCodebaseGotRevisionProperty(property))
         value = (key in value) ? value[key] : value[fallbackKey];
-    return parseInt(value);
+    return value;
 }
 
 BuildbotIteration.prototype = {
@@ -193,30 +193,35 @@ BuildbotIteration.prototype = {
         console.assert(!this.id || this.id === data.number);
         this.id = data.number;
 
+        this.revision = {};
         var revisionProperty = data.properties.findFirst(function(property) {
             return property[0] === "got_revision";
         });
-        for (repository in this.queue.branch) {
+        var branches = this.queue.branches;
+        for (var i = 0; i < branches.length; ++i) {
+            var repository = branches[i].repository;
+            var repositoryName = repository.name;
             var key;
             var fallbackKey;
-            if (repository === Dashboard.Repository.OpenSource.name) {
+            if (repository === Dashboard.Repository.OpenSource) {
                 key = "WebKit";
                 fallbackKey = "opensource";
-            } else if (repository === Dashboard.Repository.Internal.name) {
+            } else if (repository === Dashboard.Repository.Internal) {
                 key = "Internal";
                 fallbackKey = "internal";
             } else {
-                key = repository;
+                key = repositoryName;
                 fallbackKey = null;
             }
-            this.revision[repository] = parseRevisionProperty(revisionProperty, key, fallbackKey);
+            var revision = parseRevisionProperty(revisionProperty, key, fallbackKey);
+            this.revision[repositoryName] = revision;
         }
 
         function sourceStampChanges(sourceStamp) {
             var result = [];
             var changes = sourceStamp.changes;
             for (var i = 0; i < changes.length; ++i) {
-                var change = { revisionNumber: parseInt(changes[i].revision, 10) }
+                var change = { revisionNumber: changes[i].revision }
                 if (changes[i].repository)
                     change.repository = changes[i].repository;
                 if (changes[i].branch)
@@ -240,7 +245,7 @@ BuildbotIteration.prototype = {
 
         this.failedTestSteps = [];
         data.steps.forEach(function(step) {
-            if (!step.isFinished || !(step.name in BuildbotIteration.TestSteps))
+            if (!step.isFinished || step.hidden || !(step.name in BuildbotIteration.TestSteps))
                 return;
             var results = new BuildbotTestResults(step);
             if (step.name === "layout-test")
@@ -260,7 +265,7 @@ BuildbotIteration.prototype = {
 
         this.loaded = true;
 
-        this._firstFailedStep = data.steps.findFirst(function(step) { return step.results[0] === BuildbotIteration.FAILURE; });
+        this._firstFailedStep = data.steps.findFirst(function(step) { return !step.hidden && step.results[0] === BuildbotIteration.FAILURE; });
 
         console.assert(data.results === null || typeof data.results === "number");
         this._result = data.results;

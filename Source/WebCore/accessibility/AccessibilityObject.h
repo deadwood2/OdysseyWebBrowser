@@ -179,6 +179,7 @@ enum AccessibilityRole {
     RadioGroupRole,
     RowHeaderRole,
     RowRole,
+    RowGroupRole,
     RubyBaseRole,
     RubyBlockRole,
     RubyInlineRole,
@@ -247,7 +248,7 @@ struct AccessibilityText {
     AccessibilityText(const String& t, const AccessibilityTextSource& s, Vector<RefPtr<AccessibilityObject>> elements)
     : text(t)
     , textSource(s)
-    , textElements(WTF::move(elements))
+    , textElements(WTFMove(elements))
     { }
 
     AccessibilityText(const String& t, const AccessibilityTextSource& s, const RefPtr<AccessibilityObject> element)
@@ -279,6 +280,7 @@ struct AccessibilityTextUnderElementMode {
 enum AccessibilityOrientation {
     AccessibilityOrientationVertical,
     AccessibilityOrientationHorizontal,
+    AccessibilityOrientationUndefined,
 };
     
 enum AccessibilityObjectInclusion {
@@ -436,6 +438,8 @@ struct AccessibilitySelectTextCriteria {
 enum AccessibilityMathScriptObjectType { Subscript, Superscript };
 enum AccessibilityMathMultiscriptObjectType { PreSubscript, PreSuperscript, PostSubscript, PostSuperscript };
 
+enum AccessibilityARIACurrentState { ARIACurrentFalse, ARIACurrentTrue, ARIACurrentPage, ARIACurrentStep, ARIACurrentLocation, ARIACurrentDate, ARIACurrentTime };
+
 class AccessibilityObject : public RefCounted<AccessibilityObject> {
 protected:
     AccessibilityObject();
@@ -516,6 +520,7 @@ public:
     bool isToggleButton() const { return roleValue() == ToggleButtonRole; }
     bool isTextControl() const;
     bool isARIATextControl() const;
+    bool isNonNativeTextControl() const;
     bool isTabList() const { return roleValue() == TabListRole; }
     bool isTabItem() const { return roleValue() == TabRole; }
     bool isRadioGroup() const { return roleValue() == RadioGroupRole; }
@@ -534,7 +539,10 @@ public:
     bool isColorWell() const { return roleValue() == ColorWellRole; }
     bool isRangeControl() const;
     bool isMeter() const;
-
+    bool isSplitter() const { return roleValue() == SplitterRole; }
+    bool isToolbar() const { return roleValue() == ToolbarRole; }
+    bool isStyleFormatGroup() const;
+    
     virtual bool isChecked() const { return false; }
     virtual bool isEnabled() const { return false; }
     virtual bool isSelected() const { return false; }
@@ -545,7 +553,6 @@ public:
     virtual bool isMultiSelectable() const { return false; }
     virtual bool isOffScreen() const { return false; }
     virtual bool isPressed() const { return false; }
-    virtual bool isReadOnly() const { return false; }
     virtual bool isUnvisited() const { return false; }
     virtual bool isVisited() const { return false; }
     virtual bool isRequired() const { return false; }
@@ -623,6 +630,11 @@ public:
     String identifierAttribute() const;
     void classList(Vector<String>&) const;
     const AtomicString& roleDescription() const;
+    AccessibilityARIACurrentState ariaCurrentState() const;
+    
+    // This function checks if the object should be ignored when there's a modal dialog displayed.
+    bool ignoredFromARIAModalPresence() const;
+    bool isAriaModalDescendant(Node*) const;
     
     bool supportsARIASetSize() const;
     bool supportsARIAPosInSet() const;
@@ -657,8 +669,8 @@ public:
     virtual bool isDescendantOfBarrenParent() const { return false; }
     
     // Text selection
-    PassRefPtr<Range> rangeOfStringClosestToRangeInDirection(Range*, AccessibilitySearchDirection, Vector<String>&) const;
-    PassRefPtr<Range> selectionRange() const;
+    RefPtr<Range> rangeOfStringClosestToRangeInDirection(Range*, AccessibilitySearchDirection, Vector<String>&) const;
+    RefPtr<Range> selectionRange() const;
     String selectText(AccessibilitySelectTextCriteria*);
     
     virtual AccessibilityObject* observableObject() const { return nullptr; }
@@ -806,6 +818,9 @@ public:
     virtual VisiblePositionRange visiblePositionRange() const { return VisiblePositionRange(); }
     virtual VisiblePositionRange visiblePositionRangeForLine(unsigned) const { return VisiblePositionRange(); }
     
+    RefPtr<Range> elementRange() const;
+    static bool replacedNodeNeedsCharacter(Node* replacedNode);
+    
     VisiblePositionRange visiblePositionRangeForUnorderedPositions(const VisiblePosition&, const VisiblePosition&) const;
     VisiblePositionRange positionOfLeftWord(const VisiblePosition&) const;
     VisiblePositionRange positionOfRightWord(const VisiblePosition&) const;
@@ -818,6 +833,7 @@ public:
     VisiblePositionRange lineRangeForPosition(const VisiblePosition&) const;
 
     String stringForVisiblePositionRange(const VisiblePositionRange&) const;
+    String stringForRange(RefPtr<Range>) const;
     virtual IntRect boundsForVisiblePositionRange(const VisiblePositionRange&) const { return IntRect(); }
     int lengthForVisiblePositionRange(const VisiblePositionRange&) const;
     virtual void setSelectedVisiblePositionRange(const VisiblePositionRange&) const { }
@@ -885,6 +901,9 @@ public:
     static bool liveRegionStatusIsEnabled(const AtomicString&);
     static bool contentEditableAttributeIsEnabled(Element*);
     bool hasContentEditableAttributeSet() const;
+
+    bool supportsARIAReadOnly() const;
+    String ariaReadOnlyValue() const;
     
     bool supportsARIAAttributes() const;
     

@@ -37,14 +37,6 @@ namespace WebCore {
 
 LineWidth::LineWidth(RenderBlockFlow& block, bool isFirstLine, IndentTextOrNot shouldIndentText)
     : m_block(block)
-    , m_uncommittedWidth(0)
-    , m_committedWidth(0)
-    , m_overhangWidth(0)
-    , m_trailingWhitespaceWidth(0)
-    , m_trailingCollapsedWhitespaceWidth(0)
-    , m_left(0)
-    , m_right(0)
-    , m_availableWidth(0)
     , m_isFirstLine(isFirstLine)
     , m_shouldIndentText(shouldIndentText)
 {
@@ -79,7 +71,7 @@ void LineWidth::updateAvailableWidth(LayoutUnit replacedHeight)
 static bool newFloatShrinksLine(const FloatingObject& newFloat, const RenderBlockFlow& block, bool isFirstLine)
 {
     LayoutUnit blockOffset = block.logicalHeight();
-    if (blockOffset >= block.logicalTopForFloat(&newFloat) && blockOffset < block.logicalBottomForFloat(&newFloat))
+    if (blockOffset >= block.logicalTopForFloat(newFloat) && blockOffset < block.logicalBottomForFloat(newFloat))
         return true;
 
     // initial-letter float always shrinks the first line.
@@ -102,8 +94,8 @@ void LineWidth::shrinkAvailableWidthForNewFloatIfNeeded(const FloatingObject& ne
 #endif
 
     if (newFloat.type() == FloatingObject::FloatLeft) {
-        float newLeft = m_block.logicalRightForFloat(&newFloat);
-        if (shouldIndentText() && m_block.style().isLeftToRightDirection())
+        float newLeft = m_block.logicalRightForFloat(newFloat);
+        if (shouldIndentText() == IndentText && m_block.style().isLeftToRightDirection())
             newLeft += floorToInt(m_block.textIndentOffset());
 #if ENABLE(CSS_SHAPES)
         if (shapeDeltas.isValid()) {
@@ -115,8 +107,8 @@ void LineWidth::shrinkAvailableWidthForNewFloatIfNeeded(const FloatingObject& ne
 #endif
         m_left = std::max<float>(m_left, newLeft);
     } else {
-        float newRight = m_block.logicalLeftForFloat(&newFloat);
-        if (shouldIndentText() && !m_block.style().isLeftToRightDirection())
+        float newRight = m_block.logicalLeftForFloat(newFloat);
+        if (shouldIndentText() == IndentText && !m_block.style().isLeftToRightDirection())
             newRight -= floorToInt(m_block.textIndentOffset());
 #if ENABLE(CSS_SHAPES)
         if (shapeDeltas.isValid()) {
@@ -136,10 +128,7 @@ void LineWidth::commit()
 {
     m_committedWidth += m_uncommittedWidth;
     m_uncommittedWidth = 0;
-    if (m_hasUncommittedReplaced) {
-        m_hasCommittedReplaced = true;
-        m_hasUncommittedReplaced = false;
-    }
+    m_hasCommitted = true;
 }
 
 void LineWidth::applyOverhang(RenderRubyRun* rubyRun, RenderObject* startRenderer, RenderObject* endRenderer)
@@ -156,7 +145,8 @@ void LineWidth::applyOverhang(RenderRubyRun* rubyRun, RenderObject* startRendere
     m_overhangWidth += startOverhang + endOverhang;
 }
 
-inline static float availableWidthAtOffset(const RenderBlockFlow& block, const LayoutUnit& offset, bool shouldIndentText, float& newLineLeft, float& newLineRight, const LayoutUnit& lineHeight = 0)
+inline static float availableWidthAtOffset(const RenderBlockFlow& block, const LayoutUnit& offset, IndentTextOrNot shouldIndentText,
+    float& newLineLeft, float& newLineRight, const LayoutUnit& lineHeight = 0)
 {
     newLineLeft = block.logicalLeftOffsetForLine(offset, shouldIndentText, lineHeight);
     newLineRight = block.logicalRightOffsetForLine(offset, shouldIndentText, lineHeight);

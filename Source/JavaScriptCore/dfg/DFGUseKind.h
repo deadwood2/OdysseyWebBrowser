@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -51,13 +51,17 @@ enum UseKind {
     KnownBooleanUse,
     CellUse,
     KnownCellUse,
+    CellOrOtherUse,
     ObjectUse,
     FunctionUse,
     FinalObjectUse,
+    RegExpObjectUse,
     ObjectOrOtherUse,
     StringIdentUse,
     StringUse,
+    StringOrOtherUse,
     KnownStringUse,
+    KnownPrimitiveUse, // This bizarre type arises for op_strcat, which has a bytecode guarantee that it will only see primitives (i.e. not objects).
     SymbolUse,
     StringObjectUse,
     StringOrStringObjectUse,
@@ -107,12 +111,16 @@ inline SpeculatedType typeFilterFor(UseKind useKind)
     case CellUse:
     case KnownCellUse:
         return SpecCell;
+    case CellOrOtherUse:
+        return SpecCell | SpecOther;
     case ObjectUse:
         return SpecObject;
     case FunctionUse:
         return SpecFunction;
     case FinalObjectUse:
         return SpecFinalObject;
+    case RegExpObjectUse:
+        return SpecRegExpObject;
     case ObjectOrOtherUse:
         return SpecObject | SpecOther;
     case StringIdentUse:
@@ -120,6 +128,10 @@ inline SpeculatedType typeFilterFor(UseKind useKind)
     case StringUse:
     case KnownStringUse:
         return SpecString;
+    case StringOrOtherUse:
+        return SpecString | SpecOther;
+    case KnownPrimitiveUse:
+        return SpecHeapTop & ~SpecObject;
     case SymbolUse:
         return SpecSymbol;
     case StringObjectUse:
@@ -147,6 +159,7 @@ inline bool shouldNotHaveTypeCheck(UseKind kind)
     case KnownInt32Use:
     case KnownCellUse:
     case KnownStringUse:
+    case KnownPrimitiveUse:
     case KnownBooleanUse:
     case Int52RepUse:
     case DoubleRepUse:
@@ -191,6 +204,8 @@ inline bool isDouble(UseKind kind)
     }
 }
 
+// Returns true if the use kind only admits cells, and is therefore appropriate for
+// SpeculateCellOperand in the DFG or lowCell() in the FTL.
 inline bool isCell(UseKind kind)
 {
     switch (kind) {
@@ -199,6 +214,7 @@ inline bool isCell(UseKind kind)
     case ObjectUse:
     case FunctionUse:
     case FinalObjectUse:
+    case RegExpObjectUse:
     case StringIdentUse:
     case StringUse:
     case KnownStringUse:

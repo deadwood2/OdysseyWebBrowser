@@ -31,6 +31,7 @@
 #include "CCallHelpers.h"
 #include "CallVariant.h"
 #include "JITOperations.h"
+#include "PutKind.h"
 
 namespace JSC {
 
@@ -42,27 +43,12 @@ void buildPutByIdList(ExecState*, JSValue, Structure*, const Identifier&, const 
 void repatchIn(ExecState*, JSCell*, const Identifier&, bool wasFound, const PropertySlot&, StructureStubInfo&);
 void linkFor(ExecState*, CallLinkInfo&, CodeBlock*, JSFunction* callee, MacroAssemblerCodePtr);
 void linkSlowFor(ExecState*, CallLinkInfo&);
-void unlinkFor(RepatchBuffer&, CallLinkInfo&);
+void unlinkFor(VM&, CallLinkInfo&);
 void linkVirtualFor(ExecState*, CallLinkInfo&);
 void linkPolymorphicCall(ExecState*, CallLinkInfo&, CallVariant);
-void resetGetByID(RepatchBuffer&, StructureStubInfo&);
-void resetPutByID(RepatchBuffer&, StructureStubInfo&);
-void resetIn(RepatchBuffer&, StructureStubInfo&);
-
-} // namespace JSC
-
-#else // ENABLE(JIT)
-
-#include <wtf/Assertions.h>
-
-namespace JSC {
-
-class RepatchBuffer;
-struct StructureStubInfo;
-
-inline NO_RETURN_DUE_TO_CRASH void resetGetByID(RepatchBuffer&, StructureStubInfo&) { RELEASE_ASSERT_NOT_REACHED(); }
-inline NO_RETURN_DUE_TO_CRASH void resetPutByID(RepatchBuffer&, StructureStubInfo&) { RELEASE_ASSERT_NOT_REACHED(); }
-inline NO_RETURN void resetIn(RepatchBuffer&, StructureStubInfo&) { RELEASE_ASSERT_NOT_REACHED(); }
+void resetGetByID(CodeBlock*, StructureStubInfo&);
+void resetPutByID(CodeBlock*, StructureStubInfo&);
+void resetIn(CodeBlock*, StructureStubInfo&);
 
 } // namespace JSC
 

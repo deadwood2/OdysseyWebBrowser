@@ -144,7 +144,10 @@ void Statistics::bootstrapFromNetworkCache(const String& networkCachePath)
     LOG(NetworkCache, "(NetworkProcess) Bootstrapping the network cache statistics database from the network cache...");
 
     Vector<StringCapture> hashes;
-    traverseRecordsFiles(networkCachePath, [&hashes](const String& hashString, const String&) {
+    traverseRecordsFiles(networkCachePath, ASCIILiteral("resource"), [&hashes](const String& fileName, const String& hashString, const String& type, bool isBodyBlob, const String& recordDirectoryPath) {
+        if (isBodyBlob)
+            return;
+
         Key::HashType hash;
         if (!Key::stringToHash(hashString, hash))
             return;
@@ -277,6 +280,7 @@ static String cachedEntryReuseFailureToDiagnosticKey(UseDecision decision)
     case UseDecision::NoDueToMissingValidatorFields:
         return WebCore::DiagnosticLoggingKeys::missingValidatorFieldsKey();
     case UseDecision::NoDueToDecodeFailure:
+    case UseDecision::NoDueToExpiredRedirect:
         return WebCore::DiagnosticLoggingKeys::otherKey();
     case UseDecision::Use:
     case UseDecision::Validate:
@@ -370,7 +374,7 @@ void Statistics::queryWasEverRequested(const String& hash, NeedUncachedReason ne
     // Query the database.
     auto everRequestedQuery = std::make_unique<EverRequestedQuery>(EverRequestedQuery { hash, needUncachedReason == NeedUncachedReason::Yes, completionHandler });
     auto& query = *everRequestedQuery;
-    m_activeQueries.add(WTF::move(everRequestedQuery));
+    m_activeQueries.add(WTFMove(everRequestedQuery));
     serialBackgroundIOQueue().dispatch([this, wasAlreadyRequested, &query] () mutable {
         WebCore::SQLiteTransactionInProgressAutoCounter transactionCounter;
         Optional<StoreDecision> storeDecision;

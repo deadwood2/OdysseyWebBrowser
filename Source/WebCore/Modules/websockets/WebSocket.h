@@ -88,7 +88,7 @@ public:
     String extensions() const;
 
     String binaryType() const;
-    void setBinaryType(const String&);
+    void setBinaryType(const String&, ExceptionCode&);
 
     // EventTarget functions.
     virtual EventTargetInterface eventTargetInterface() const override;
@@ -100,7 +100,7 @@ public:
     // WebSocketChannelClient functions.
     virtual void didConnect() override;
     virtual void didReceiveMessage(const String& message) override;
-    virtual void didReceiveBinaryData(Vector<char>&&) override;
+    void didReceiveBinaryData(Vector<uint8_t>&&) override;
     virtual void didReceiveMessageError() override;
     virtual void didUpdateBufferedAmount(unsigned long bufferedAmount) override;
     virtual void didStartClosingHandshake() override;
@@ -115,7 +115,7 @@ private:
 
     // ActiveDOMObject API.
     void contextDestroyed() override;
-    bool canSuspendForPageCache() const override;
+    bool canSuspendForDocumentSuspension() const override;
     void suspend(ReasonForSuspension) override;
     void resume() override;
     void stop() override;

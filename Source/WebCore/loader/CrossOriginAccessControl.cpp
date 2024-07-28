@@ -31,6 +31,7 @@
 #include "HTTPParsers.h"
 #include "ResourceRequest.h"
 #include "ResourceResponse.h"
+#include "SchemeRegistry.h"
 #include "SecurityOrigin.h"
 #include <mutex>
 #include <wtf/NeverDestroyed.h>
@@ -56,9 +57,9 @@ bool isOnAccessControlSimpleRequestHeaderWhitelist(HTTPHeaderName name, const St
     case HTTPHeaderName::ContentType: {
         // Preflight is required for MIME types that can not be sent via form submission.
         String mimeType = extractMIMETypeFromMediaType(value);
-        return equalIgnoringCase(mimeType, "application/x-www-form-urlencoded")
-            || equalIgnoringCase(mimeType, "multipart/form-data")
-            || equalIgnoringCase(mimeType, "text/plain");
+        return equalIgnoringASCIICase(mimeType, "application/x-www-form-urlencoded")
+            || equalIgnoringASCIICase(mimeType, "multipart/form-data")
+            || equalIgnoringASCIICase(mimeType, "text/plain");
     }
     default:
         return false;
@@ -127,10 +128,28 @@ ResourceRequest createAccessControlPreflightRequest(const ResourceRequest& reque
             headerBuffer.append(headerField.key);
         }
 
-        preflightRequest.setHTTPHeaderField(HTTPHeaderName::AccessControlRequestHeaders, headerBuffer.toString().lower());
+        preflightRequest.setHTTPHeaderField(HTTPHeaderName::AccessControlRequestHeaders, headerBuffer.toString().convertToASCIILowercase());
     }
 
     return preflightRequest;
+}
+
+bool isValidCrossOriginRedirectionURL(const URL& redirectURL)
+{
+    return SchemeRegistry::shouldTreatURLSchemeAsCORSEnabled(redirectURL.protocol())
+        && redirectURL.user().isEmpty()
+        && redirectURL.pass().isEmpty();
+}
+
+void cleanRedirectedRequestForAccessControl(ResourceRequest& request)
+{
+    // Remove headers that may have been added by the network layer that cause access control to fail.
+    request.clearHTTPContentType();
+    request.clearHTTPReferrer();
+    request.clearHTTPOrigin();
+    request.clearHTTPUserAgent();
+    request.clearHTTPAccept();
+    request.clearHTTPAcceptEncoding();
 }
 
 bool passesAccessControlCheck(const ResourceResponse& response, StoredCredentials includeCredentials, SecurityOrigin* securityOrigin, String& errorDescription)
@@ -165,8 +184,8 @@ void parseAccessControlExposeHeadersAllowList(const String& headerValue, HTTPHea
 {
     Vector<String> headers;
     headerValue.split(',', false, headers);
-    for (unsigned headerCount = 0; headerCount < headers.size(); headerCount++) {
-        String strippedHeader = headers[headerCount].stripWhiteSpace();
+    for (auto& header : headers) {
+        String strippedHeader = header.stripWhiteSpace();
         if (!strippedHeader.isEmpty())
             headerSet.add(strippedHeader);
     }

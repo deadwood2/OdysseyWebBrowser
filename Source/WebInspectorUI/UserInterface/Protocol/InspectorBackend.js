@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
- * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013, 2015, 2016 Apple Inc. All rights reserved.
  * Copyright (C) 2014 University of Washington.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -39,13 +39,80 @@ InspectorBackendClass = class InspectorBackendClass
         this._agents = {};
         this._deferredScripts = [];
 
-        this.dumpInspectorTimeStats = false;
-        this.dumpInspectorProtocolMessages = false;
-        this.warnForLongMessageHandling = false;
-        this.longMessageHandlingThreshold = 10; // milliseconds.
+        this._customTracer = null;
+        this._defaultTracer = new WebInspector.LoggingProtocolTracer;
+        this._activeTracers = [this._defaultTracer];
+
+        this._dumpInspectorTimeStats = false;
+
+        let setting = WebInspector.autoLogProtocolMessagesSetting = new WebInspector.Setting("auto-collect-protocol-messages", false);
+        setting.addEventListener(WebInspector.Setting.Event.Changed, this._startOrStopAutomaticTracing.bind(this))
+        this._startOrStopAutomaticTracing();
     }
 
     // Public
+
+    // It's still possible to set this flag on InspectorBackend to just
+    // dump protocol traffic as it happens. For more complex uses of
+    // protocol data, install a subclass of WebInspector.ProtocolTracer.
+    set dumpInspectorProtocolMessages(value)
+    {
+        // Implicitly cause automatic logging to start if it's allowed.
+        let setting = WebInspector.autoLogProtocolMessagesSetting;
+        setting.value = value;
+
+        this._defaultTracer.dumpMessagesToConsole = value;
+    }
+
+    get dumpInspectorProtocolMessages()
+    {
+        return WebInspector.autoLogProtocolMessagesSetting.value;
+    }
+
+    set dumpInspectorTimeStats(value)
+    {
+        if (!this.dumpInspectorProtocolMessages)
+            this.dumpInspectorProtocolMessages = true;
+
+        this._defaultTracer.dumpTimingDataToConsole = value;
+    }
+
+    get dumpInspectorTimeStats()
+    {
+        return this._dumpInspectorTimeStats;
+    }
+
+    set customTracer(tracer)
+    {
+        console.assert(!tracer || tracer instanceof WebInspector.ProtocolTracer, tracer);
+        console.assert(!tracer || tracer !== this._defaultTracer, tracer);
+
+        // Bail early if no state change is to be made.
+        if (!tracer && !this._customTracer)
+            return;
+
+        if (tracer === this._customTracer)
+            return;
+
+        if (tracer === this._defaultTracer)
+            return;
+
+        if (this._customTracer)
+            this._customTracer.logFinished();
+
+        this._customTracer = tracer;
+        this._activeTracers = [this._defaultTracer];
+
+        if (this._customTracer) {
+            this._customTracer.logStarted();
+            this._activeTracers.push(this._customTracer);
+        }
+    }
+
+    get activeTracers()
+    {
+        return this._activeTracers;
+    }
 
     registerCommand(qualifiedName, callSignature, replySignature)
     {
@@ -76,10 +143,7 @@ InspectorBackendClass = class InspectorBackendClass
 
     dispatch(message)
     {
-        if (this.dumpInspectorProtocolMessages)
-            console.log("backend: " + ((typeof message === "string") ? message : JSON.stringify(message)));
-
-        var messageObject = (typeof message === "string") ? JSON.parse(message) : message;
+        let messageObject = (typeof message === "string") ? JSON.parse(message) : message;
 
         if ("id" in messageObject)
             this._dispatchResponse(messageObject);
@@ -111,6 +175,12 @@ InspectorBackendClass = class InspectorBackendClass
 
     // Private
 
+    _startOrStopAutomaticTracing()
+    {
+        this._defaultTracer.dumpMessagesToConsole = this.dumpInspectorProtocolMessages;
+        this._defaultTracer.dumpTimingDataToConsole = this.dumpTimingDataToConsole;
+    }
+
     _agentForDomain(domainName)
     {
         if (this._agents[domainName])
@@ -135,9 +205,8 @@ InspectorBackendClass = class InspectorBackendClass
 
         let responseData = {command, callback};
 
-        // FIXME: <https://webkit.org/b/135467> use performance.now() where available.
-        if (this.dumpInspectorTimeStats)
-            responseData.sendRequestTime = Date.now();
+        if (this.activeTracer)
+            responseData.sendRequestTimestamp = timestamp();
 
         this._pendingResponses.set(sequenceId, responseData);
         this._sendMessageToBackend(messageObject);
@@ -157,9 +226,8 @@ InspectorBackendClass = class InspectorBackendClass
 
         let responseData = {command};
 
-        // FIXME: <https://webkit.org/b/135467> use performance.now() where available.
-        if (this.dumpInspectorTimeStats)
-            responseData.sendRequestTime = Date.now();
+        if (this.activeTracer)
+            responseData.sendRequestTimestamp = timestamp();
 
         let responsePromise = new Promise(function(resolve, reject) {
             responseData.promise = {resolve, reject};
@@ -173,11 +241,10 @@ InspectorBackendClass = class InspectorBackendClass
 
     _sendMessageToBackend(messageObject)
     {
-        let stringifiedMessage = JSON.stringify(messageObject);
-        if (this.dumpInspectorProtocolMessages)
-            console.log("frontend: " + stringifiedMessage);
+        for (let tracer of this.activeTracers)
+            tracer.logFrontendRequest(messageObject);
 
-        InspectorFrontendHost.sendMessageToBackend(stringifiedMessage);
+        InspectorFrontendHost.sendMessageToBackend(JSON.stringify(messageObject));
     }
 
     _dispatchResponse(messageObject)
@@ -192,12 +259,12 @@ InspectorBackendClass = class InspectorBackendClass
         let sequenceId = messageObject["id"];
         console.assert(this._pendingResponses.has(sequenceId), sequenceId, this._pendingResponses);
 
-        let responseData = this._pendingResponses.take(sequenceId);
+        let responseData = this._pendingResponses.take(sequenceId) || {};
         let {command, callback, promise} = responseData;
 
-        var processingStartTime;
-        if (this.dumpInspectorTimeStats)
-            processingStartTime = Date.now();
+        let processingStartTimestamp = timestamp();
+        for (let tracer of this.activeTracers)
+            tracer.logWillHandleResponse(messageObject);
 
         if (typeof callback === "function")
             this._dispatchResponseToCallback(command, messageObject, callback);
@@ -206,12 +273,11 @@ InspectorBackendClass = class InspectorBackendClass
         else
             console.error("Received a command response without a corresponding callback or promise.", messageObject, command);
 
-        var processingDuration = Date.now() - processingStartTime;
-        if (this.warnForLongMessageHandling && processingDuration > this.longMessageHandlingThreshold)
-            console.warn("InspectorBackend: took " + processingDuration + "ms to handle response for command: " + command.qualifiedName);
+        let processingTime = (timestamp() - processingStartTimestamp).toFixed(3);
+        let roundTripTime = (processingStartTimestamp - responseData.sendRequestTimestamp).toFixed(3);
 
-        if (this.dumpInspectorTimeStats)
-            console.log("time-stats: Handling: " + processingDuration + "ms; RTT: " + (processingStartTime - responseData.sendRequestTime) + "ms; (command " + command.qualifiedName + ")");
+        for (let tracer of this.activeTracers)
+            tracer.logDidHandleResponse(messageObject, {rtt: roundTripTime, dispatch: processingTime});
 
         if (this._deferredScripts.length && !this._pendingResponses.size)
             this._flushPendingScripts();
@@ -230,7 +296,7 @@ InspectorBackendClass = class InspectorBackendClass
         try {
             callback.apply(null, callbackArguments);
         } catch (e) {
-            console.error("Uncaught exception in inspector page while dispatching callback for command " + command.qualifiedName + ": ", e, e.stack);
+            console.error("Uncaught exception in inspector page while dispatching callback for command " + command.qualifiedName, e);
         }
     }
 
@@ -245,48 +311,44 @@ InspectorBackendClass = class InspectorBackendClass
 
     _dispatchEvent(messageObject)
     {
-        var qualifiedName = messageObject["method"];
-        var [domainName, eventName] = qualifiedName.split(".");
+        let qualifiedName = messageObject["method"];
+        let [domainName, eventName] = qualifiedName.split(".");
         if (!(domainName in this._agents)) {
             console.error("Protocol Error: Attempted to dispatch method '" + eventName + "' for non-existing domain '" + domainName + "'");
             return;
         }
 
-        var agent = this._agentForDomain(domainName);
+        let agent = this._agentForDomain(domainName);
         if (!agent.active) {
             console.error("Protocol Error: Attempted to dispatch method for domain '" + domainName + "' which exists but is not active.");
             return;
         }
 
-        var event = agent.getEvent(eventName);
+        let event = agent.getEvent(eventName);
         if (!event) {
             console.error("Protocol Error: Attempted to dispatch an unspecified method '" + qualifiedName + "'");
             return;
         }
 
-        var eventArguments = [];
-        if (messageObject["params"]) {
-            var parameterNames = event.parameterNames;
-            for (var i = 0; i < parameterNames.length; ++i)
-                eventArguments.push(messageObject["params"][parameterNames[i]]);
-        }
+        let eventArguments = [];
+        if (messageObject["params"])
+            eventArguments = event.parameterNames.map((name) => messageObject["params"][name]);
 
-        var processingStartTime;
-        if (this.dumpInspectorTimeStats)
-            processingStartTime = Date.now();
+        let processingStartTimestamp = timestamp();
+        for (let tracer of this.activeTracers)
+            tracer.logWillHandleEvent(messageObject);
 
         try {
             agent.dispatchEvent(eventName, eventArguments);
         } catch (e) {
-            console.error("Uncaught exception in inspector page while handling event " + qualifiedName + ": ", e, e.stack);
+            console.error("Uncaught exception in inspector page while handling event " + qualifiedName, e);
+            for (let tracer of this.activeTracers)
+                tracer.logFrontendException(messageObject, e);
         }
 
-        var processingDuration = Date.now() - processingStartTime;
-        if (this.warnForLongMessageHandling && processingDuration > this.longMessageHandlingThreshold)
-            console.warn("InspectorBackend: took " + processingDuration + "ms to handle event: " + messageObject["method"]);
-
-        if (this.dumpInspectorTimeStats)
-            console.log("time-stats: Handling: " + processingDuration + "ms (event " + messageObject["method"] + ")");
+        let processingDuration = (timestamp() - processingStartTimestamp).toFixed(3);
+        for (let tracer of this.activeTracers)
+            tracer.logDidHandleEvent(messageObject, {dispatch: processingDuration});
     }
 
     _reportProtocolError(messageObject)
@@ -298,9 +360,9 @@ InspectorBackendClass = class InspectorBackendClass
     {
         console.assert(this._pendingResponses.size === 0);
 
-        var scriptsToRun = this._deferredScripts;
+        let scriptsToRun = this._deferredScripts;
         this._deferredScripts = [];
-        for (var script of scriptsToRun)
+        for (let script of scriptsToRun)
             script.call(this);
     }
 };
@@ -473,35 +535,35 @@ InspectorBackend.Command.prototype = {
         let commandArguments = Array.from(arguments);
         let callback = typeof commandArguments.lastValue === "function" ? commandArguments.pop() : null;
 
+        function deliverFailure(message) {
+            console.error(`Protocol Error: ${message}`);
+            if (callback)
+                setTimeout(callback.bind(null, message), 0);
+            else
+                return Promise.reject(new Error(message));
+        }
+
         let parameters = {};
         for (let parameter of instance.callSignature) {
             let parameterName = parameter["name"];
             let typeName = parameter["type"];
             let optionalFlag = parameter["optional"];
 
-            if (!commandArguments.length && !optionalFlag) {
-                console.error("Protocol Error: Invalid number of arguments for method '" + instance.qualifiedName + "' call. It must have the following arguments '" + JSON.stringify(instance.callSignature) + "'.");
-                return;
-            }
+            if (!commandArguments.length && !optionalFlag)
+                return deliverFailure(`Invalid number of arguments for command '${instance.qualifiedName}'.`);
 
             let value = commandArguments.shift();
             if (optionalFlag && value === undefined)
                 continue;
 
-            if (typeof value !== typeName) {
-                console.error("Protocol Error: Invalid type of argument '" + parameterName + "' for method '" + instance.qualifiedName + "' call. It must be '" + typeName + "' but it is '" + typeof value + "'.");
-                return;
-            }
+            if (typeof value !== typeName)
+                return deliverFailure(`Invalid type of argument '${parameterName}' for command '${instance.qualifiedName}' call. It must be '${typeName}' but it is '${typeof value}'.`);
 
             parameters[parameterName] = value;
         }
 
-        if (commandArguments.length === 1 && !callback) {
-            if (commandArguments[0] !== undefined) {
-                console.error("Protocol Error: Optional callback argument for method '" + instance.qualifiedName + "' call must be a function but its type is '" + typeof args[0] + "'.");
-                return;
-            }
-        }
+        if (!callback && commandArguments.length === 1 && commandArguments[0] !== undefined)
+            return deliverFailure(`Protocol Error: Optional callback argument for command '${instance.qualifiedName}' call must be a function but its type is '${typeof args[0]}'.`);
 
         if (callback)
             instance._backend._sendCommandToBackendWithCallback(instance, parameters, callback);

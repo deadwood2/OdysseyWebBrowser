@@ -49,6 +49,7 @@
 #include <wtf/NeverDestroyed.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/text/CString.h>
+#include <wtf/text/StringBuilder.h>
 
 #if PLATFORM(IOS)
 #include "WebCoreThread.h"
@@ -666,7 +667,7 @@ RefPtr<OriginLock> DatabaseTracker::originLockFor(SecurityOrigin* origin)
     ASSERT(lock);
     addResult.iterator->value = lock;
 
-    return WTF::move(lock);
+    return lock;
 }
 
 void DatabaseTracker::deleteOriginLockFor(SecurityOrigin* origin)
@@ -1358,12 +1359,14 @@ void DatabaseTracker::scheduleForNotification()
     ASSERT(!notificationMutex().tryLock());
 
     if (!notificationScheduled) {
-        callOnMainThread(DatabaseTracker::notifyDatabasesChanged, 0);
+        callOnMainThread([] {
+            notifyDatabasesChanged();
+        });
         notificationScheduled = true;
     }
 }
 
-void DatabaseTracker::notifyDatabasesChanged(void*)
+void DatabaseTracker::notifyDatabasesChanged()
 {
     // Note that if DatabaseTracker ever becomes non-singleton, we'll have to amend this notification
     // mechanism to include which tracker the notification goes out on as well.

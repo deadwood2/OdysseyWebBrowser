@@ -26,6 +26,7 @@
 
 #define __WEBKIT_WEB_EXTENSION_H_INSIDE__
 
+#include <webkit2/WebKitConsoleMessage.h>
 #include <webkit2/WebKitContextMenu.h>
 #include <webkit2/WebKitContextMenuActions.h>
 #include <webkit2/WebKitContextMenuItem.h>
@@ -38,6 +39,8 @@
 #include <webkit2/WebKitWebExtension.h>
 #include <webkit2/WebKitWebHitTestResult.h>
 #include <webkit2/WebKitWebPage.h>
+
+#include <webkit2/WebKitWebExtensionAutocleanups.h>
 
 #undef __WEBKIT_WEB_EXTENSION_H_INSIDE__
 

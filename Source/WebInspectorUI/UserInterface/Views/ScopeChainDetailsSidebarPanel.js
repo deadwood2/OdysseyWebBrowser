@@ -32,31 +32,31 @@ WebInspector.ScopeChainDetailsSidebarPanel = class ScopeChainDetailsSidebarPanel
         this._callFrame = null;
 
         this._watchExpressionsSetting = new WebInspector.Setting("watch-expressions", []);
+        this._watchExpressionsSetting.addEventListener(WebInspector.Setting.Event.Changed, this._updateWatchExpressionsNavigationBar, this);
 
         this._watchExpressionOptionsElement = document.createElement("div");
         this._watchExpressionOptionsElement.classList.add("options");
 
-        let refreshAllWatchExpressionButton = this._watchExpressionOptionsElement.appendChild(document.createElement("img"));
-        refreshAllWatchExpressionButton.classList.add("watch-expression-refresh");
-        refreshAllWatchExpressionButton.setAttribute("role", "button");
-        refreshAllWatchExpressionButton.title = WebInspector.UIString("Refresh All Watch Expressions");
-        refreshAllWatchExpressionButton.addEventListener("click", this._refreshAllWatchExpressionsButtonClicked.bind(this));
+        this._navigationBar = new WebInspector.NavigationBar;
+        this._watchExpressionOptionsElement.appendChild(this._navigationBar.element);
 
-        let clearAllWatchExpressionButton = this._watchExpressionOptionsElement.appendChild(document.createElement("img"));
-        clearAllWatchExpressionButton.classList.add("watch-expression-clear");
-        clearAllWatchExpressionButton.setAttribute("role", "button");
-        clearAllWatchExpressionButton.title = WebInspector.UIString("Clear All Watch Expressions");
-        clearAllWatchExpressionButton.addEventListener("click", this._clearAllWatchExpressionsButtonClicked.bind(this));
+        let addWatchExpressionButton = new WebInspector.ButtonNavigationItem("add-watch-expression", WebInspector.UIString("Add watch expression"), "Images/Plus13.svg", 13, 13);
+        addWatchExpressionButton.addEventListener(WebInspector.ButtonNavigationItem.Event.Clicked, this._addWatchExpressionButtonClicked, this);
+        this._navigationBar.addNavigationItem(addWatchExpressionButton);
 
-        let addWatchExpressionButton = this._watchExpressionOptionsElement.appendChild(document.createElement("img"));
-        addWatchExpressionButton.classList.add("watch-expression-add");
-        addWatchExpressionButton.title = WebInspector.UIString("Add Watch Expression");
-        addWatchExpressionButton.setAttribute("role", "button");
-        addWatchExpressionButton.addEventListener("click", this._addWatchExpressionButtonClicked.bind(this));
+        this._clearAllWatchExpressionButton = new WebInspector.ButtonNavigationItem("clear-watch-expressions", WebInspector.UIString("Clear watch expressions"), "Images/NavigationItemTrash.svg", 14, 14);
+        this._clearAllWatchExpressionButton.addEventListener(WebInspector.ButtonNavigationItem.Event.Clicked, this._clearAllWatchExpressionsButtonClicked, this);
+        this._navigationBar.addNavigationItem(this._clearAllWatchExpressionButton);
+
+        this._refreshAllWatchExpressionButton = new WebInspector.ButtonNavigationItem("refresh-watch-expressions", WebInspector.UIString("Refresh watch expressions"), "Images/ReloadFull.svg", 13, 13);
+        this._refreshAllWatchExpressionButton.addEventListener(WebInspector.ButtonNavigationItem.Event.Clicked, this._refreshAllWatchExpressionsButtonClicked, this);
+        this._navigationBar.addNavigationItem(this._refreshAllWatchExpressionButton);
 
         this._watchExpressionsSectionGroup = new WebInspector.DetailsSectionGroup;
         this._watchExpressionsSection = new WebInspector.DetailsSection("watch-expressions", WebInspector.UIString("Watch Expressions"), [this._watchExpressionsSectionGroup], this._watchExpressionOptionsElement);
-        this.contentElement.appendChild(this._watchExpressionsSection.element);
+        this.contentView.element.appendChild(this._watchExpressionsSection.element);
+
+        this._updateWatchExpressionsNavigationBar();
 
         this.needsRefresh();
 
@@ -125,8 +125,8 @@ WebInspector.ScopeChainDetailsSidebarPanel = class ScopeChainDetailsSidebarPanel
                     emptyRow.showEmptyMessage();
                 }
 
-                this.contentElement.removeChildren();
-                this.contentElement.appendChild(this._watchExpressionsSection.element);
+                this.contentView.element.removeChildren();
+                this.contentView.element.appendChild(this._watchExpressionsSection.element);
 
                 // Bail if the call frame changed while we were waiting for the async response.
                 if (this._callFrame !== callFrame)
@@ -136,7 +136,7 @@ WebInspector.ScopeChainDetailsSidebarPanel = class ScopeChainDetailsSidebarPanel
                     return;
 
                 for (let callFrameSection of callFrameSections)
-                    this.contentElement.appendChild(callFrameSection.element);
+                    this.contentView.element.appendChild(callFrameSection.element);
             }
 
             // We need a timeout in place in case there are long running, pending backend dispatches. This can happen
@@ -160,73 +160,163 @@ WebInspector.ScopeChainDetailsSidebarPanel = class ScopeChainDetailsSidebarPanel
         let detailsSections = [];
         let foundLocalScope = false;
 
-        let sectionCountByType = {};
-        for (var type in WebInspector.ScopeChainNode.Type)
-            sectionCountByType[WebInspector.ScopeChainNode.Type[type]] = 0;
+        let sectionCountByType = new Map;
+        for (let type in WebInspector.ScopeChainNode.Type)
+            sectionCountByType.set(WebInspector.ScopeChainNode.Type[type], 0);
 
+        // Scopes list goes from top/local (1) to bottom/global (5)
+        // Call frames list goes from top/local (1) to bottom/global (2)
+        //   [scope1, scope2, scope3, scope4, scope5]
+        //   [CallFrame1, CallFrame2]
         let scopeChain = callFrame.scopeChain;
-        for (let scope of scopeChain) {
-            let title = null;
-            let extraPropertyDescriptor = null;
-            let collapsedByDefault = false;
+        let callFrames = WebInspector.debuggerManager.callFrames;
 
-            ++sectionCountByType[scope.type];
-
-            switch (scope.type) {
-                case WebInspector.ScopeChainNode.Type.Local:
-                    foundLocalScope = true;
-                    collapsedByDefault = false;
-
-                    title = WebInspector.UIString("Local Variables");
-
-                    if (callFrame.thisObject)
-                        extraPropertyDescriptor = new WebInspector.PropertyDescriptor({name: "this", value: callFrame.thisObject});
-                    break;
-
-                case WebInspector.ScopeChainNode.Type.Closure:
-                    title = WebInspector.UIString("Closure Variables");
-                    collapsedByDefault = false;
-                    break;
-
-                case WebInspector.ScopeChainNode.Type.Catch:
-                    title = WebInspector.UIString("Catch Variables");
-                    collapsedByDefault = false;
-                    break;
-
-                case WebInspector.ScopeChainNode.Type.FunctionName:
-                    title = WebInspector.UIString("Function Name Variable");
-                    collapsedByDefault = true;
-                    break;
-
-                case WebInspector.ScopeChainNode.Type.With:
-                    title = WebInspector.UIString("With Object Properties");
-                    collapsedByDefault = foundLocalScope;
-                    break;
-
-                case WebInspector.ScopeChainNode.Type.Global:
-                    title = WebInspector.UIString("Global Variables");
-                    collapsedByDefault = true;
-                    break;
+        // Group scopes with the call frame containing them.
+        // Creating a map that looks like:
+        //   CallFrame2 => [scope5, scope4]
+        //   CallFrame1 => [scope3, scope2, scope1]
+        let reversedScopeChain = scopeChain.slice().reverse();
+        let callFrameScopes = new Map;
+        let lastLength = 0;
+        for (let i = callFrames.length - 1; i >= 0; --i) {
+            let nextCallFrame = callFrames[i];
+            console.assert(nextCallFrame.scopeChain.length > lastLength);
+            callFrameScopes.set(nextCallFrame, reversedScopeChain.slice(lastLength, nextCallFrame.scopeChain.length));
+            lastLength = nextCallFrame.scopeChain.length;
+            if (nextCallFrame === callFrame) {
+                console.assert(lastLength === scopeChain.length);
+                break;
             }
+        }
 
-            let detailsSectionIdentifier = scope.type + "-" + sectionCountByType[scope.type];
+        // Now that we have this map we can merge some of the scopes within an individual
+        // call frame. In particular, function call frames may have multiple top level
+        // closure scopes (one for `var`s one for `let`s) that can be combined to a
+        // single scope of variables.
+        // This modifies the Map, resulting in:
+        //   CallFrame2 => [scope4, scope5]
+        //   CallFrame1 => [scope1, scope2&3]
+        for (let [currentCallFrame, scopes] of callFrameScopes) {
+            let firstClosureScope = null;
+            for (let scope of scopes) {
+                // Reached a non-closure scope. Bail.
+                let isClosureScope = scope.type === WebInspector.ScopeChainNode.Type.Closure;
+                if (!isClosureScope && firstClosureScope)
+                    break;
 
-            let scopePropertyPath = WebInspector.PropertyPath.emptyPropertyPathForScope(scope.object);
-            let objectTree = new WebInspector.ObjectTreeView(scope.object, WebInspector.ObjectTreeView.Mode.Properties, scopePropertyPath);
+                // Found first closure scope. Mark it so we can provide the function name later in the UI.
+                if (isClosureScope && !firstClosureScope) {
+                    firstClosureScope = scope;
+                    firstClosureScope[WebInspector.ScopeChainDetailsSidebarPanel.CallFrameBaseClosureScopeSymbol] = true;
+                    continue;
+                }
 
-            objectTree.showOnlyProperties();
+                // Found 2 sequential top level closure scopes. Merge and mark it so we can provide the function name later in the UI.
+                if (isClosureScope && firstClosureScope) {
+                    let type = currentCallFrame === callFrame ? WebInspector.ScopeChainNode.Type.Local : WebInspector.ScopeChainNode.Type.Closure;
+                    let objects = firstClosureScope.objects.concat(scope.objects);
+                    let merged = new WebInspector.ScopeChainNode(type, objects);
+                    merged[WebInspector.ScopeChainDetailsSidebarPanel.CallFrameBaseClosureScopeSymbol] = true;
+                    console.assert(objects.length === 2);
 
-            if (extraPropertyDescriptor)
-                objectTree.appendExtraPropertyDescriptor(extraPropertyDescriptor);
+                    let index = scopes.indexOf(firstClosureScope);
+                    scopes.splice(index, 1); // Remove one of them.
+                    scopes[index] = merged; // Replace the remaining with the merged.
+                    break;
+                }
+            }
+            scopes.reverse();
+        }
 
-            let treeOutline = objectTree.treeOutline;
-            treeOutline.onadd = this._objectTreeAddHandler.bind(this, detailsSectionIdentifier);
-            treeOutline.onexpand = this._objectTreeExpandHandler.bind(this, detailsSectionIdentifier);
-            treeOutline.oncollapse = this._objectTreeCollapseHandler.bind(this, detailsSectionIdentifier);
+        // Now we can walk the list of call frames and their scopes.
+        // We walk in top -> down order:
+        //   CallFrame1 => [scope1, scope2&3]
+        //   CallFrame2 => [scope5, scope4]
+        for (let [call, scopes] of [...callFrameScopes.entries()].reverse()) {
+            for (let scope of scopes) {
+                let title = null;
+                let extraPropertyDescriptor = null;
+                let collapsedByDefault = false;
 
-            let detailsSection = new WebInspector.DetailsSection(detailsSectionIdentifier, title, null, null, collapsedByDefault);
-            detailsSection.groups[0].rows = [new WebInspector.DetailsSectionPropertiesRow(objectTree)];
-            detailsSections.push(detailsSection);
+                let count = sectionCountByType.get(scope.type);
+                sectionCountByType.set(scope.type, ++count);
+
+                switch (scope.type) {
+                    case WebInspector.ScopeChainNode.Type.Local:
+                        foundLocalScope = true;
+                        collapsedByDefault = false;
+                        title = WebInspector.UIString("Local Variables");
+                        if (call.thisObject)
+                            extraPropertyDescriptor = new WebInspector.PropertyDescriptor({name: "this", value: call.thisObject});
+                        break;
+
+                    case WebInspector.ScopeChainNode.Type.Closure:
+                        if (scope[WebInspector.ScopeChainDetailsSidebarPanel.CallFrameBaseClosureScopeSymbol] && call.functionName)
+                            title = WebInspector.UIString("Closure Variables (%s)").format(call.functionName);
+                        else
+                            title = WebInspector.UIString("Closure Variables");
+                        collapsedByDefault = false;
+                        break;
+
+                    case WebInspector.ScopeChainNode.Type.Block:
+                        title = WebInspector.UIString("Block Variables");
+                        collapsedByDefault = false;
+                        break;
+
+                    case WebInspector.ScopeChainNode.Type.Catch:
+                        title = WebInspector.UIString("Catch Variables");
+                        collapsedByDefault = false;
+                        break;
+
+                    case WebInspector.ScopeChainNode.Type.FunctionName:
+                        title = WebInspector.UIString("Function Name Variable");
+                        collapsedByDefault = true;
+                        break;
+
+                    case WebInspector.ScopeChainNode.Type.With:
+                        title = WebInspector.UIString("With Object Properties");
+                        collapsedByDefault = foundLocalScope;
+                        break;
+
+                    case WebInspector.ScopeChainNode.Type.Global:
+                        title = WebInspector.UIString("Global Variables");
+                        collapsedByDefault = true;
+                        break;
+
+                    case WebInspector.ScopeChainNode.Type.GlobalLexicalEnvironment:
+                        title = WebInspector.UIString("Global Lexical Environment");
+                        collapsedByDefault = true;
+                        break;
+                }
+
+                let detailsSectionIdentifier = scope.type + "-" + sectionCountByType.get(scope.type);
+
+                // FIXME: This just puts two ObjectTreeViews next to eachother, but that means
+                // that properties are not nicely sorted between the two separate lists.
+
+                let rows = [];
+                for (let object of scope.objects) {
+                    let scopePropertyPath = WebInspector.PropertyPath.emptyPropertyPathForScope(object);
+                    let objectTree = new WebInspector.ObjectTreeView(object, WebInspector.ObjectTreeView.Mode.Properties, scopePropertyPath);
+
+                    objectTree.showOnlyProperties();
+
+                    if (extraPropertyDescriptor) {
+                        objectTree.appendExtraPropertyDescriptor(extraPropertyDescriptor);
+                        extraPropertyDescriptor = null;
+                    }
+
+                    let treeOutline = objectTree.treeOutline;
+                    treeOutline.addEventListener(WebInspector.TreeOutline.Event.ElementAdded, this._treeElementAdded.bind(this, detailsSectionIdentifier), this);
+                    treeOutline.addEventListener(WebInspector.TreeOutline.Event.ElementDisclosureDidChanged, this._treeElementDisclosureDidChange.bind(this, detailsSectionIdentifier), this);
+
+                    rows.push(new WebInspector.DetailsSectionPropertiesRow(objectTree));
+                }
+
+                let detailsSection = new WebInspector.DetailsSection(detailsSectionIdentifier, title, null, null, collapsedByDefault);
+                detailsSection.groups[0].rows = rows;
+                detailsSections.push(detailsSection);
+            }
         }
 
         return Promise.resolve(detailsSections);
@@ -253,9 +343,8 @@ WebInspector.ScopeChainDetailsSidebarPanel = class ScopeChainDetailsSidebarPanel
 
         let treeOutline = objectTree.treeOutline;
         const watchExpressionSectionIdentifier = "watch-expressions";
-        treeOutline.onadd = this._objectTreeAddHandler.bind(this, watchExpressionSectionIdentifier);
-        treeOutline.onexpand = this._objectTreeExpandHandler.bind(this, watchExpressionSectionIdentifier);
-        treeOutline.oncollapse = this._objectTreeCollapseHandler.bind(this, watchExpressionSectionIdentifier);
+        treeOutline.addEventListener(WebInspector.TreeOutline.Event.ElementAdded, this._treeElementAdded.bind(this, watchExpressionSectionIdentifier), this);
+        treeOutline.addEventListener(WebInspector.TreeOutline.Event.ElementDisclosureDidChanged, this._treeElementDisclosureDidChange.bind(this, watchExpressionSectionIdentifier), this);
         treeOutline.objectTreeElementAddContextMenuItems = this._objectTreeElementAddContextMenuItems.bind(this);
 
         let promises = [];
@@ -303,7 +392,7 @@ WebInspector.ScopeChainDetailsSidebarPanel = class ScopeChainDetailsSidebarPanel
     {
         function presentPopoverOverTargetElement()
         {
-            let target = WebInspector.Rect.rectFromClientRect(event.target.getBoundingClientRect());
+            let target = WebInspector.Rect.rectFromClientRect(event.target.element.getBoundingClientRect());
             popover.present(target, [WebInspector.RectEdge.MAX_Y, WebInspector.RectEdge.MIN_Y, WebInspector.RectEdge.MAX_X]);
         }
 
@@ -315,7 +404,7 @@ WebInspector.ScopeChainDetailsSidebarPanel = class ScopeChainDetailsSidebarPanel
         let editorElement = content.appendChild(document.createElement("div"));
         editorElement.classList.add("watch-expression-editor", WebInspector.SyntaxHighlightedStyleClassName);
 
-        this._codeMirror = CodeMirror(editorElement, {
+        this._codeMirror = WebInspector.CodeMirrorEditor.create(editorElement, {
             lineWrapping: true,
             mode: "text/javascript",
             indentWithTabs: true,
@@ -421,8 +510,9 @@ WebInspector.ScopeChainDetailsSidebarPanel = class ScopeChainDetailsSidebarPanel
         return identifier + "-" + propertyPath.fullPath;
     }
 
-    _objectTreeAddHandler(identifier, treeElement)
+    _treeElementAdded(identifier, event)
     {
+        let treeElement = event.data.element;
         let propertyPathIdentifier = this._propertyPathIdentifierForTreeElement(identifier, treeElement);
         if (!propertyPathIdentifier)
             return;
@@ -431,24 +521,27 @@ WebInspector.ScopeChainDetailsSidebarPanel = class ScopeChainDetailsSidebarPanel
             treeElement.expand();
     }
 
-    _objectTreeExpandHandler(identifier, treeElement)
+    _treeElementDisclosureDidChange(identifier, event)
     {
+        let treeElement = event.data.element;
         let propertyPathIdentifier = this._propertyPathIdentifierForTreeElement(identifier, treeElement);
         if (!propertyPathIdentifier)
             return;
 
-        WebInspector.ScopeChainDetailsSidebarPanel._autoExpandProperties.add(propertyPathIdentifier);
+        if (treeElement.expanded)
+            WebInspector.ScopeChainDetailsSidebarPanel._autoExpandProperties.add(propertyPathIdentifier);
+        else
+            WebInspector.ScopeChainDetailsSidebarPanel._autoExpandProperties.delete(propertyPathIdentifier);
     }
 
-    _objectTreeCollapseHandler(identifier, treeElement)
+    _updateWatchExpressionsNavigationBar()
     {
-        let propertyPathIdentifier = this._propertyPathIdentifierForTreeElement(identifier, treeElement);
-        if (!propertyPathIdentifier)
-            return;
-
-        WebInspector.ScopeChainDetailsSidebarPanel._autoExpandProperties.delete(propertyPathIdentifier);
+        let enabled = this._watchExpressionsSetting.value.length;
+        this._refreshAllWatchExpressionButton.enabled = enabled;
+        this._clearAllWatchExpressionButton.enabled = enabled;
     }
 };
 
 WebInspector.ScopeChainDetailsSidebarPanel._autoExpandProperties = new Set;
 WebInspector.ScopeChainDetailsSidebarPanel.WatchExpressionsObjectGroupName = "watch-expressions";
+WebInspector.ScopeChainDetailsSidebarPanel.CallFrameBaseClosureScopeSymbol = Symbol("scope-chain-call-frame-base-closure-scope");

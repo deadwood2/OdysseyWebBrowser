@@ -73,6 +73,8 @@ WEBCORE_EXPORT @interface DOMTestObj : DOMObject
 @property unsigned long long unsignedLongLongAttr;
 @property (copy) NSString *stringAttr;
 @property (strong) DOMTestObj *testObjAttr;
+@property (strong) DOMTestObj *lenientTestObjAttr;
+@property (readonly, copy) NSString *unforgeableAttr;
 @property (strong) DOMTestObj *XMLObjAttr;
 @property BOOL create;
 @property (copy) NSString *reflectedStringAttr;
@@ -85,11 +87,17 @@ WEBCORE_EXPORT @interface DOMTestObj : DOMObject
 @property BOOL reflectedCustomBooleanAttr;
 @property (copy) NSString *reflectedCustomURLAttr;
 @property int attrWithGetterException;
+@property int attrWithGetterExceptionWithMessage;
 @property int attrWithSetterException;
+@property int attrWithSetterExceptionWithMessage;
 @property (copy) NSString *stringAttrWithGetterException;
 @property (copy) NSString *stringAttrWithSetterException;
+@property (strong) DOMTestObj *strictTypeCheckingAttribute;
 @property int customAttr;
+@property (strong) DOMTestObj *jsBuiltinAttribute;
+@property (readonly, strong) DOMTestObj *jsBuiltinReadOnlyAttribute;
 @property int withScriptStateAttribute;
+@property int withCallWithAndSetterCallWithAttribute;
 @property (strong) DOMTestObj *withScriptExecutionContextAttribute;
 @property (strong) DOMTestObj *withScriptStateAttributeRaises;
 @property (strong) DOMTestObj *withScriptExecutionContextAttributeRaises;
@@ -120,6 +128,8 @@ WEBCORE_EXPORT @interface DOMTestObj : DOMObject
 @property int nullableLongSettableAttribute;
 @property int nullableStringValue;
 @property (readonly, copy) NSString *attribute;
+@property (readonly, strong) DOMTestNode *putForwardsAttribute;
+@property (readonly, strong) DOMTestNode *putForwardsNullableAttribute;
 
 - (void)voidMethod;
 - (void)voidMethodWithArgs:(int)longArg strArg:(NSString *)strArg objArg:(DOMTestObj *)objArg;
@@ -131,11 +141,14 @@ WEBCORE_EXPORT @interface DOMTestObj : DOMObject
 - (int)longMethodWithArgs:(int)longArg strArg:(NSString *)strArg objArg:(DOMTestObj *)objArg;
 - (DOMTestObj *)objMethod;
 - (DOMTestObj *)objMethodWithArgs:(int)longArg strArg:(NSString *)strArg objArg:(DOMTestObj *)objArg;
+- (int)unforgeableMethod;
 - (void)methodWithEnumArg:(DOMTestEnumType *)enumArg;
+- (void)methodWithOptionalEnumArgAndDefaultValue:(DOMTestEnumType *)enumArg;
 - (DOMTestObj *)methodThatRequiresAllArgsAndThrows:(NSString *)strArg objArg:(DOMTestObj *)objArg;
 - (void)serializedValue:(NSString *)serializedArg;
 - (void)optionsObject:(DOMDictionary *)oo ooo:(DOMDictionary *)ooo;
 - (void)methodWithException;
+- (void)methodWithExceptionWithMessage;
 - (void)customMethod;
 - (void)customMethodWithArgs:(int)longArg strArg:(NSString *)strArg objArg:(DOMTestObj *)objArg;
 - (void)addEventListener:(NSString *)type listener:(id <DOMEventListener>)listener useCapture:(BOOL)useCapture;
@@ -150,9 +163,11 @@ WEBCORE_EXPORT @interface DOMTestObj : DOMObject
 - (DOMTestObj *)withScriptExecutionContextAndScriptStateWithSpaces;
 - (void)withScriptArgumentsAndCallStack;
 - (void)methodWithOptionalArg:(int)opt;
+- (void)methodWithOptionalArgAndDefaultValue:(int)opt;
 - (void)methodWithNonOptionalArgAndOptionalArg:(int)nonOpt opt:(int)opt;
 - (void)methodWithNonOptionalArgAndTwoOptionalArgs:(int)nonOpt opt1:(int)opt1 opt2:(int)opt2;
 - (void)methodWithOptionalString:(NSString *)str;
+- (void)methodWithOptionalStringAndDefaultValue:(NSString *)str;
 - (void)methodWithOptionalStringIsUndefined:(NSString *)str;
 - (void)methodWithOptionalStringIsNullString:(NSString *)str;
 - (void)classMethod;

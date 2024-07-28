@@ -28,10 +28,12 @@
 
 #if ENABLE(WEBASSEMBLY)
 
+#include "JSArrayBuffer.h"
 #include "JSCInlines.h"
 #include "JSWASMModule.h"
 #include "StrongInlines.h"
-#include "WASMMagicNumber.h"
+#include "WASMConstants.h"
+#include "WASMFunctionParser.h"
 #include <wtf/MathExtras.h>
 
 #define FAIL_WITH_MESSAGE(errorMessage) do { m_errorMessage = errorMessage; return; } while (0)
@@ -48,15 +50,19 @@
 
 namespace JSC {
 
-WASMModuleParser::WASMModuleParser(const SourceCode& source)
-    : m_reader(static_cast<WebAssemblySourceProvider*>(source.provider())->data())
+WASMModuleParser::WASMModuleParser(VM& vm, JSGlobalObject* globalObject, const SourceCode& source, JSObject* imports, JSArrayBuffer* arrayBuffer)
+    : m_vm(vm)
+    , m_globalObject(vm, globalObject)
+    , m_source(source)
+    , m_imports(vm, imports)
+    , m_reader(static_cast<WebAssemblySourceProvider*>(source.provider())->data())
+    , m_module(vm, JSWASMModule::create(vm, globalObject->wasmModuleStructure(), arrayBuffer))
 {
 }
 
-JSWASMModule* WASMModuleParser::parse(VM& vm, JSGlobalObject* globalObject, String& errorMessage)
+JSWASMModule* WASMModuleParser::parse(ExecState* exec, String& errorMessage)
 {
-    m_module.set(vm, JSWASMModule::create(vm, globalObject->wasmModuleStructure()));
-    parseModule();
+    parseModule(exec);
     if (!m_errorMessage.isNull()) {
         errorMessage = m_errorMessage;
         return nullptr;
@@ -64,7 +70,7 @@ JSWASMModule* WASMModuleParser::parse(VM& vm, JSGlobalObject* globalObject, Stri
     return m_module.get();
 }
 
-void WASMModuleParser::parseModule()
+void WASMModuleParser::parseModule(ExecState* exec)
 {
     uint32_t magicNumber;
     READ_UINT32_OR_FAIL(magicNumber, "Cannot read the magic number.");
@@ -77,9 +83,9 @@ void WASMModuleParser::parseModule()
     PROPAGATE_ERROR();
     parseSignatureSection();
     PROPAGATE_ERROR();
-    parseFunctionImportSection();
+    parseFunctionImportSection(exec);
     PROPAGATE_ERROR();
-    parseGlobalSection();
+    parseGlobalSection(exec);
     PROPAGATE_ERROR();
     parseFunctionDeclarationSection();
     PROPAGATE_ERROR();
@@ -88,6 +94,9 @@ void WASMModuleParser::parseModule()
     parseFunctionDefinitionSection();
     PROPAGATE_ERROR();
     parseExportSection();
+    PROPAGATE_ERROR();
+
+    FAIL_IF_FALSE(!m_module->arrayBuffer() || m_module->arrayBuffer()->impl()->byteLength() < (1u << 31), "The ArrayBuffer's length must be less than 2^31.");
 }
 
 void WASMModuleParser::parseConstantPoolSection()
@@ -139,7 +148,7 @@ void WASMModuleParser::parseSignatureSection()
     }
 }
 
-void WASMModuleParser::parseFunctionImportSection()
+void WASMModuleParser::parseFunctionImportSection(ExecState* exec)
 {
     uint32_t numberOfFunctionImports;
     uint32_t numberOfFunctionImportSignatures;
@@ -147,6 +156,7 @@ void WASMModuleParser::parseFunctionImportSection()
     READ_COMPACT_UINT32_OR_FAIL(numberOfFunctionImportSignatures, "Cannot read the number of function import signatures.");
     m_module->functionImports().reserveInitialCapacity(numberOfFunctionImports);
     m_module->functionImportSignatures().reserveInitialCapacity(numberOfFunctionImportSignatures);
+    m_module->importedFunctions().reserveInitialCapacity(numberOfFunctionImports);
 
     for (uint32_t functionImportIndex = 0; functionImportIndex < numberOfFunctionImports; ++functionImportIndex) {
         WASMFunctionImport functionImport;
@@ -164,11 +174,18 @@ void WASMModuleParser::parseFunctionImportSection()
             functionImportSignature.functionImportIndex = functionImportIndex;
             m_module->functionImportSignatures().uncheckedAppend(functionImportSignature);
         }
+
+        JSValue value;
+        getImportedValue(exec, functionImport.functionName, value);
+        PROPAGATE_ERROR();
+        FAIL_IF_FALSE(value.isFunction(), "\"" + functionImport.functionName + "\" is not a function.");
+        JSFunction* function = jsCast<JSFunction*>(value.asCell());
+        m_module->importedFunctions().uncheckedAppend(WriteBarrier<JSFunction>(m_vm, m_module.get(), function));
     }
     FAIL_IF_FALSE(m_module->functionImportSignatures().size() == numberOfFunctionImportSignatures, "The number of function import signatures is incorrect.");
 }
 
-void WASMModuleParser::parseGlobalSection()
+void WASMModuleParser::parseGlobalSection(ExecState* exec)
 {
     uint32_t numberOfInternalI32GlobalVariables;
     uint32_t numberOfInternalF32GlobalVariables;
@@ -187,26 +204,49 @@ void WASMModuleParser::parseGlobalSection()
 
     Vector<WASMType>& globalVariableTypes = m_module->globalVariableTypes();
     globalVariableTypes.reserveInitialCapacity(numberOfGlobalVariables);
-    for (uint32_t i = 0; i < numberOfInternalI32GlobalVariables; ++i)
+    Vector<JSWASMModule::GlobalVariable>& globalVariables = m_module->globalVariables();
+    globalVariables.reserveInitialCapacity(numberOfGlobalVariables);
+    for (uint32_t i = 0; i < numberOfInternalI32GlobalVariables; ++i) {
         globalVariableTypes.uncheckedAppend(WASMType::I32);
-    for (uint32_t i = 0; i < numberOfInternalF32GlobalVariables; ++i)
+        globalVariables.uncheckedAppend(JSWASMModule::GlobalVariable(0));
+    }
+    for (uint32_t i = 0; i < numberOfInternalF32GlobalVariables; ++i) {
         globalVariableTypes.uncheckedAppend(WASMType::F32);
-    for (uint32_t i = 0; i < numberOfInternalF64GlobalVariables; ++i)
+        globalVariables.uncheckedAppend(JSWASMModule::GlobalVariable(0.0f));
+    }
+    for (uint32_t i = 0; i < numberOfInternalF64GlobalVariables; ++i) {
         globalVariableTypes.uncheckedAppend(WASMType::F64);
+        globalVariables.uncheckedAppend(JSWASMModule::GlobalVariable(0.0));
+    }
     for (uint32_t i = 0; i < numberOfImportedI32GlobalVariables; ++i) {
         String importName;
         READ_STRING_OR_FAIL(importName, "Cannot read the import name of an int32 global variable.");
         globalVariableTypes.uncheckedAppend(WASMType::I32);
+        JSValue value;
+        getImportedValue(exec, importName, value);
+        PROPAGATE_ERROR();
+        FAIL_IF_FALSE(value.isPrimitive() && !value.isSymbol(), "\"" + importName + "\" is not a primitive or is a Symbol.");
+        globalVariables.uncheckedAppend(JSWASMModule::GlobalVariable(value.toInt32(exec)));
     }
     for (uint32_t i = 0; i < numberOfImportedF32GlobalVariables; ++i) {
         String importName;
         READ_STRING_OR_FAIL(importName, "Cannot read the import name of a float32 global variable.");
         globalVariableTypes.uncheckedAppend(WASMType::F32);
+        JSValue value;
+        getImportedValue(exec, importName, value);
+        PROPAGATE_ERROR();
+        FAIL_IF_FALSE(value.isPrimitive() && !value.isSymbol(), "\"" + importName + "\" is not a primitive or is a Symbol.");
+        globalVariables.uncheckedAppend(JSWASMModule::GlobalVariable(static_cast<float>(value.toNumber(exec))));
     }
     for (uint32_t i = 0; i < numberOfImportedF64GlobalVariables; ++i) {
         String importName;
         READ_STRING_OR_FAIL(importName, "Cannot read the import name of a float64 global variable.");
         globalVariableTypes.uncheckedAppend(WASMType::F64);
+        JSValue value;
+        getImportedValue(exec, importName, value);
+        PROPAGATE_ERROR();
+        FAIL_IF_FALSE(value.isPrimitive() && !value.isSymbol(), "\"" + importName + "\" is not a primitive or is a Symbol.");
+        globalVariables.uncheckedAppend(JSWASMModule::GlobalVariable(value.toNumber(exec)));
     }
 }
 
@@ -215,6 +255,9 @@ void WASMModuleParser::parseFunctionDeclarationSection()
     uint32_t numberOfFunctionDeclarations;
     READ_COMPACT_UINT32_OR_FAIL(numberOfFunctionDeclarations, "Cannot read the number of function declarations.");
     m_module->functionDeclarations().reserveInitialCapacity(numberOfFunctionDeclarations);
+    m_module->functions().reserveInitialCapacity(numberOfFunctionDeclarations);
+    m_module->functionStartOffsetsInSource().reserveInitialCapacity(numberOfFunctionDeclarations);
+    m_module->functionStackHeights().reserveInitialCapacity(numberOfFunctionDeclarations);
     for (uint32_t i = 0; i < numberOfFunctionDeclarations; ++i) {
         WASMFunctionDeclaration functionDeclaration;
         READ_COMPACT_UINT32_OR_FAIL(functionDeclaration.signatureIndex, "Cannot read the signature index.");
@@ -232,14 +275,17 @@ void WASMModuleParser::parseFunctionPointerTableSection()
         WASMFunctionPointerTable functionPointerTable;
         READ_COMPACT_UINT32_OR_FAIL(functionPointerTable.signatureIndex, "Cannot read the signature index.");
         FAIL_IF_FALSE(functionPointerTable.signatureIndex < m_module->signatures().size(), "The signature index is incorrect.");
-        uint32_t numberOfElements;
-        READ_COMPACT_UINT32_OR_FAIL(numberOfElements, "Cannot read the number of elements of a function pointer table.");
-        FAIL_IF_FALSE(hasOneBitSet(numberOfElements), "The number of elements must be a power of two.");
-        functionPointerTable.elements.reserveInitialCapacity(numberOfElements);
-        for (uint32_t j = 0; j < numberOfElements; ++j) {
-            uint32_t element;
-            READ_COMPACT_UINT32_OR_FAIL(element, "Cannot read an element of a function pointer table.");
-            functionPointerTable.elements.uncheckedAppend(element);
+        uint32_t numberOfFunctions;
+        READ_COMPACT_UINT32_OR_FAIL(numberOfFunctions, "Cannot read the number of functions of a function pointer table.");
+        FAIL_IF_FALSE(hasOneBitSet(numberOfFunctions), "The number of functions must be a power of two.");
+        functionPointerTable.functionIndices.reserveInitialCapacity(numberOfFunctions);
+        functionPointerTable.functions.reserveInitialCapacity(numberOfFunctions);
+        for (uint32_t j = 0; j < numberOfFunctions; ++j) {
+            uint32_t functionIndex;
+            READ_COMPACT_UINT32_OR_FAIL(functionIndex, "Cannot read a function index of a function pointer table.");
+            FAIL_IF_FALSE(functionIndex < m_module->functionDeclarations().size(), "The function index is incorrect.");
+            FAIL_IF_FALSE(m_module->functionDeclarations()[functionIndex].signatureIndex == functionPointerTable.signatureIndex, "The signature of the function doesn't match that of the function pointer table.");
+            functionPointerTable.functionIndices.uncheckedAppend(functionIndex);
         }
         m_module->functionPointerTables().uncheckedAppend(functionPointerTable);
     }
@@ -247,25 +293,34 @@ void WASMModuleParser::parseFunctionPointerTableSection()
 
 void WASMModuleParser::parseFunctionDefinitionSection()
 {
-    for (size_t i = 0; i < m_module->functionDeclarations().size(); ++i) {
-        parseFunctionDefinition();
+    for (size_t functionIndex = 0; functionIndex < m_module->functionDeclarations().size(); ++functionIndex) {
+        parseFunctionDefinition(functionIndex);
         PROPAGATE_ERROR();
+    }
+
+    for (WASMFunctionPointerTable& functionPointerTable : m_module->functionPointerTables()) {
+        for (size_t i = 0; i < functionPointerTable.functionIndices.size(); ++i)
+            functionPointerTable.functions.uncheckedAppend(m_module->functions()[functionPointerTable.functionIndices[i]].get());
     }
 }
 
-void WASMModuleParser::parseFunctionDefinition()
+void WASMModuleParser::parseFunctionDefinition(size_t functionIndex)
 {
-    // FIXME: Support any functions. https://bugs.webkit.org/show_bug.cgi?id=147738
-    // Currently, we only support functions that have "return 0;" as their only statement.
-    // These functions consist of exactly 4 bytes, i.e.
-    // 1. The number of local variables (0) [0x80]
-    // 2. The number of statements (1) [0x01]
-    // 3. The return statement [0x0f]
-    // 4. The immediate expression (0) [0xa0]
-    uint32_t functionDefinitionBytes;
-    READ_UINT32_OR_FAIL(functionDefinitionBytes, "Cannot read the function definition.");
-    FAIL_IF_FALSE(functionDefinitionBytes == 0xa00f0180, "Only functions that have \"return 0;\" "
-        "as their only statement are supported at the moment.");
+    unsigned startOffsetInSource = m_reader.offset();
+    unsigned endOffsetInSource;
+    unsigned stackHeight;
+    String errorMessage;
+    if (!WASMFunctionParser::checkSyntax(m_module.get(), m_source, functionIndex, startOffsetInSource, endOffsetInSource, stackHeight, errorMessage)) {
+        m_errorMessage = errorMessage;
+        return;
+    }
+    m_reader.setOffset(endOffsetInSource);
+
+    WebAssemblyExecutable* webAssemblyExecutable = WebAssemblyExecutable::create(m_vm, m_source, m_module.get(), functionIndex);
+    JSFunction* function = JSFunction::create(m_vm, webAssemblyExecutable, m_globalObject.get());
+    m_module->functions().uncheckedAppend(WriteBarrier<JSFunction>(m_vm, m_module.get(), function));
+    m_module->functionStartOffsetsInSource().uncheckedAppend(startOffsetInSource);
+    m_module->functionStackHeights().uncheckedAppend(stackHeight);
 }
 
 void WASMModuleParser::parseExportSection()
@@ -286,11 +341,11 @@ void WASMModuleParser::parseExportSection()
         for (uint32_t exportIndex = 0; exportIndex < numberOfExports; ++exportIndex) {
             String exportName;
             READ_STRING_OR_FAIL(exportName, "Cannot read the function export name.");
-            // FIXME: Check that exportName is legal.
             uint32_t functionIndex;
             READ_COMPACT_UINT32_OR_FAIL(functionIndex, "Cannot read the function index.");
             FAIL_IF_FALSE(functionIndex < m_module->functionDeclarations().size(), "The function index is incorrect.");
-            // FIXME: Export the function.
+            Identifier identifier = Identifier::fromString(&m_vm, exportName);
+            m_module->putDirect(m_vm, identifier, m_module->functions()[functionIndex].get());
         }
         break;
     }
@@ -299,10 +354,22 @@ void WASMModuleParser::parseExportSection()
     }
 }
 
-JSWASMModule* parseWebAssembly(ExecState* exec, const SourceCode& source, String& errorMessage)
+void WASMModuleParser::getImportedValue(ExecState* exec, const String& importName, JSValue& value)
 {
-    WASMModuleParser WASMModuleParser(source);
-    return WASMModuleParser.parse(exec->vm(), exec->lexicalGlobalObject(), errorMessage);
+    FAIL_IF_FALSE(m_imports, "Accessing property of non-object.");
+    Identifier identifier = Identifier::fromString(&m_vm, importName);
+    PropertySlot slot(m_imports.get(), PropertySlot::InternalMethodType::Get);
+    if (!m_imports->getPropertySlot(exec, identifier, slot))
+        FAIL_WITH_MESSAGE("Can't find a property named \"" + importName + '"');
+    FAIL_IF_FALSE(slot.isValue(), "\"" + importName + "\" is not a data property.");
+    // We only retrieve data properties. So, this does not cause any user-observable effect.
+    value = slot.getValue(exec, identifier);
+}
+
+JSWASMModule* parseWebAssembly(ExecState* exec, const SourceCode& source, JSObject* imports, JSArrayBuffer* arrayBuffer, String& errorMessage)
+{
+    WASMModuleParser moduleParser(exec->vm(), exec->lexicalGlobalObject(), source, imports, arrayBuffer);
+    return moduleParser.parse(exec, errorMessage);
 }
 
 } // namespace JSC

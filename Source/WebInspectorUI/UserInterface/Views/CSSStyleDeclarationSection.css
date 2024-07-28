@@ -72,8 +72,12 @@
     height: 16px;
 }
 
-.style-declaration-section:not(.invalid-selector) > .header > .icon.toggle-able:hover {
-    -webkit-filter: brightness(0.9);
+.style-declaration-section > .header > .icon.toggle-able:hover {
+    filter: brightness(0.9);
+}
+
+.style-declaration-section > .header > .icon.toggle-able:active {
+    filter: brightness(0.8);
 }
 
 .style-declaration-section:not(.invalid-selector).rule-disabled > .header > .icon {
@@ -121,7 +125,7 @@
     width: 8px;
     height: 10px;
 
-    background-image: -webkit-canvas(style-lock-normal);
+    background-image: url(../Images/Locked.svg);
     background-repeat: no-repeat;
     background-position: center;
     background-size: 8px 10px;

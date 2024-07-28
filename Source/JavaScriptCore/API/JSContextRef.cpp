@@ -108,8 +108,8 @@ void JSContextGroupClearExecutionTimeLimit(JSContextGroupRef group)
 {
     VM& vm = *toJS(group);
     JSLockHolder locker(&vm);
-    if (vm.watchdog)
-        vm.watchdog->setTimeLimit(Watchdog::noTimeLimit);
+    if (vm.watchdog())
+        vm.watchdog()->setTimeLimit(Watchdog::noTimeLimit);
 }
 
 // From the API's perspective, a global context remains alive iff it has been JSGlobalContextRetained.
@@ -389,7 +389,7 @@ CFRunLoopRef JSGlobalContextGetDebuggerRunLoop(JSGlobalContextRef ctx)
     ExecState* exec = toJS(ctx);
     JSLockHolder lock(exec);
 
-    return exec->vmEntryGlobalObject()->inspectorDebuggable().debuggerRunLoop();
+    return exec->vmEntryGlobalObject()->inspectorDebuggable().targetRunLoop();
 #else
     UNUSED_PARAM(ctx);
     return nullptr;
@@ -407,7 +407,7 @@ void JSGlobalContextSetDebuggerRunLoop(JSGlobalContextRef ctx, CFRunLoopRef runL
     ExecState* exec = toJS(ctx);
     JSLockHolder lock(exec);
 
-    exec->vmEntryGlobalObject()->inspectorDebuggable().setDebuggerRunLoop(runLoop);
+    exec->vmEntryGlobalObject()->inspectorDebuggable().setTargetRunLoop(runLoop);
 #else
     UNUSED_PARAM(ctx);
     UNUSED_PARAM(runLoop);

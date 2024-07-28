@@ -30,9 +30,10 @@
 
 #include "DFGAbstractInterpreterInlines.h"
 #include "DFGArgumentsUtilities.h"
-#include "DFGBasicBlock.h"
+#include "DFGBasicBlockInlines.h"
 #include "DFGGraph.h"
 #include "DFGInPlaceAbstractState.h"
+#include "DFGInferredTypeCheck.h"
 #include "DFGInsertionSet.h"
 #include "DFGPhase.h"
 #include "GetByIdStatus.h"
@@ -54,22 +55,50 @@ public:
     bool run()
     {
         bool changed = false;
-        
-        for (BlockIndex blockIndex = 0; blockIndex < m_graph.numBlocks(); ++blockIndex) {
-            BasicBlock* block = m_graph.block(blockIndex);
-            if (!block)
-                continue;
+
+        for (BasicBlock* block : m_graph.blocksInNaturalOrder()) {
             if (block->cfaFoundConstants)
                 changed |= foldConstants(block);
         }
         
         if (changed && m_graph.m_form == SSA) {
             // It's now possible that we have Upsilons pointed at JSConstants. Fix that.
-            for (BlockIndex blockIndex = m_graph.numBlocks(); blockIndex--;) {
-                BasicBlock* block = m_graph.block(blockIndex);
-                if (!block)
-                    continue;
+            for (BasicBlock* block : m_graph.blocksInNaturalOrder())
                 fixUpsilons(block);
+        }
+
+        if (m_graph.m_form == SSA) {
+            // It's now possible to simplify basic blocks by placing an Unreachable terminator right
+            // after anything that invalidates AI.
+            bool didClipBlock = false;
+            for (BasicBlock* block : m_graph.blocksInNaturalOrder()) {
+                m_state.beginBasicBlock(block);
+                for (unsigned nodeIndex = 0; nodeIndex < block->size(); ++nodeIndex) {
+                    if (block->at(nodeIndex)->isTerminal()) {
+                        // It's possible that we have something after the terminal. It could be a
+                        // no-op Check node, for example. We don't want the logic below to turn that
+                        // node into Unreachable, since then we'd have two terminators.
+                        break;
+                    }
+                    if (!m_state.isValid()) {
+                        NodeOrigin origin = block->at(nodeIndex)->origin;
+                        for (unsigned killIndex = nodeIndex; killIndex < block->size(); ++killIndex)
+                            m_graph.m_allocator.free(block->at(killIndex));
+                        block->resize(nodeIndex);
+                        block->appendNode(m_graph, SpecNone, Unreachable, origin);
+                        didClipBlock = true;
+                        break;
+                    }
+                    m_interpreter.execute(nodeIndex);
+                }
+                m_state.reset();
+            }
+
+            if (didClipBlock) {
+                changed = true;
+                m_graph.invalidateCFG();
+                m_graph.resetReachability();
+                m_graph.killUnreachableBlocks();
             }
         }
          
@@ -95,6 +124,14 @@ private:
                 if (node->child1().useKind() == UntypedUse
                     && !m_interpreter.needsTypeCheck(node->child1(), SpecBoolean))
                     node->child1().setUseKind(BooleanUse);
+                break;
+            }
+
+            case CompareEq: {
+                if (!m_interpreter.needsTypeCheck(node->child1(), SpecOther))
+                    node->child1().setUseKind(OtherUse);
+                if (!m_interpreter.needsTypeCheck(node->child2(), SpecOther))
+                    node->child2().setUseKind(OtherUse);
                 break;
             }
                 
@@ -368,7 +405,8 @@ private:
                         && variant.oldStructure().onlyStructure() == variant.newStructure()) {
                         variant = PutByIdVariant::replace(
                             variant.oldStructure(),
-                            variant.offset());
+                            variant.offset(),
+                            variant.requiredType());
                         changed = true;
                     }
                 }
@@ -443,6 +481,7 @@ private:
                 ASSERT(childEdge.useKind() == CellUse);
                 
                 AbstractValue baseValue = m_state.forNode(child);
+                AbstractValue valueValue = m_state.forNode(node->child2());
 
                 m_interpreter.execute(indexInBlock); // Push CFA over this node after we get the state before.
                 alreadyHandled = true; // Don't allow the default constant folder to do things to this.
@@ -458,7 +497,7 @@ private:
                 
                 if (!status.isSimple())
                     break;
-                
+
                 ASSERT(status.numVariants());
                 
                 if (status.numVariants() > 1 && !isFTL(m_graph.m_plan.mode))
@@ -513,7 +552,7 @@ private:
                 changed = true;
                 break;
             }
-                
+
             case Check: {
                 alreadyHandled = true;
                 m_interpreter.execute(indexInBlock);
@@ -635,7 +674,9 @@ private:
         emitGetByOffset(indexInBlock, node, childEdge, identifierNumber, variant.offset());
     }
     
-    void emitGetByOffset(unsigned indexInBlock, Node* node, Edge childEdge, unsigned identifierNumber, PropertyOffset offset)
+    void emitGetByOffset(
+        unsigned indexInBlock, Node* node, Edge childEdge, unsigned identifierNumber,
+        PropertyOffset offset, const InferredType::Descriptor& inferredType = InferredType::Top)
     {
         childEdge.setUseKind(KnownCellUse);
         
@@ -651,6 +692,7 @@ private:
         StorageAccessData& data = *m_graph.m_storageAccessData.add();
         data.offset = offset;
         data.identifierNumber = identifierNumber;
+        data.inferredType = inferredType;
         
         node->convertToGetByOffset(data, propertyStorage);
     }
@@ -659,9 +701,12 @@ private:
     {
         NodeOrigin origin = node->origin;
         Edge childEdge = node->child1();
-        
-        addBaseCheck(indexInBlock, node, baseValue, variant.oldStructure());
 
+        addBaseCheck(indexInBlock, node, baseValue, variant.oldStructure());
+        insertInferredTypeCheck(
+            m_insertionSet, indexInBlock, origin, node->child2().node(), variant.requiredType());
+
+        node->child1().setUseKind(KnownCellUse);
         childEdge.setUseKind(KnownCellUse);
 
         Transition* transition = 0;
@@ -671,6 +716,9 @@ private:
         }
 
         Edge propertyStorage;
+
+        DFG_ASSERT(m_graph, node, origin.exitOK);
+        bool canExit = true;
 
         if (isInlineOffset(variant.offset()))
             propertyStorage = childEdge;
@@ -682,7 +730,7 @@ private:
             ASSERT(!isInlineOffset(variant.offset()));
             Node* allocatePropertyStorage = m_insertionSet.insertNode(
                 indexInBlock, SpecNone, AllocatePropertyStorage,
-                origin, OpInfo(transition), childEdge);
+                origin.takeValidExit(canExit), OpInfo(transition), childEdge);
             propertyStorage = Edge(allocatePropertyStorage);
         } else {
             ASSERT(variant.oldStructureForTransition()->outOfLineCapacity());
@@ -690,7 +738,7 @@ private:
             ASSERT(!isInlineOffset(variant.offset()));
 
             Node* reallocatePropertyStorage = m_insertionSet.insertNode(
-                indexInBlock, SpecNone, ReallocatePropertyStorage, origin,
+                indexInBlock, SpecNone, ReallocatePropertyStorage, origin.takeValidExit(canExit),
                 OpInfo(transition), childEdge,
                 Edge(m_insertionSet.insertNode(
                     indexInBlock, SpecNone, GetButterfly, origin, childEdge)));
@@ -702,13 +750,15 @@ private:
         data.identifierNumber = identifierNumber;
         
         node->convertToPutByOffset(data, propertyStorage);
+        node->origin.exitOK = canExit;
 
         if (variant.kind() == PutByIdVariant::Transition) {
             // FIXME: PutStructure goes last until we fix either
             // https://bugs.webkit.org/show_bug.cgi?id=142921 or
             // https://bugs.webkit.org/show_bug.cgi?id=142924.
             m_insertionSet.insertNode(
-                indexInBlock + 1, SpecNone, PutStructure, origin, OpInfo(transition), childEdge);
+                indexInBlock + 1, SpecNone, PutStructure, origin.withInvalidExit(), OpInfo(transition),
+                childEdge);
         }
     }
     
@@ -719,6 +769,7 @@ private:
             // Arises when we prune MultiGetByOffset. We could have a
             // MultiGetByOffset with a single variant that checks for structure S,
             // and the input has structures S and T, for example.
+            ASSERT(node->child1());
             m_insertionSet.insertNode(
                 indexInBlock, SpecNone, CheckStructure, node->origin,
                 OpInfo(m_graph.addStructureSet(set)), node->child1());

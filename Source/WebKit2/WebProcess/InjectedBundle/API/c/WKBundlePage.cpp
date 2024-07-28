@@ -54,6 +54,7 @@
 #include "WebRenderObject.h"
 #include <WebCore/AXObjectCache.h>
 #include <WebCore/AccessibilityObject.h>
+#include <WebCore/ApplicationCacheStorage.h>
 #include <WebCore/MainFrame.h>
 #include <WebCore/Page.h>
 #include <WebCore/PageOverlay.h>
@@ -173,7 +174,7 @@ WKBundleFrameRef WKBundlePageGetMainFrame(WKBundlePageRef pageRef)
 void WKBundlePageClickMenuItem(WKBundlePageRef pageRef, WKContextMenuItemRef item)
 {
 #if ENABLE(CONTEXT_MENUS)
-    toImpl(pageRef)->contextMenu()->itemSelected(*toImpl(item)->data());
+    toImpl(pageRef)->contextMenu()->itemSelected(toImpl(item)->data());
 #else
     UNUSED_PARAM(pageRef);
     UNUSED_PARAM(item);
@@ -191,7 +192,7 @@ static PassRefPtr<API::Array> contextMenuItems(const WebContextMenu& contextMenu
     for (const auto& item : items)
         menuItems.uncheckedAppend(WebContextMenuItem::create(item));
 
-    return API::Array::create(WTF::move(menuItems));
+    return API::Array::create(WTFMove(menuItems));
 }
 #endif
 
@@ -605,11 +606,77 @@ void WKBundlePagePostMessage(WKBundlePageRef pageRef, WKStringRef messageNameRef
     toImpl(pageRef)->postMessage(toWTFString(messageNameRef), toImpl(messageBodyRef));
 }
 
-void WKBundlePagePostSynchronousMessage(WKBundlePageRef pageRef, WKStringRef messageNameRef, WKTypeRef messageBodyRef, WKTypeRef* returnDataRef)
+void WKBundlePagePostSynchronousMessageForTesting(WKBundlePageRef pageRef, WKStringRef messageNameRef, WKTypeRef messageBodyRef, WKTypeRef* returnDataRef)
 {
+    WebPage* page = toImpl(pageRef);
+    page->layoutIfNeeded();
+
     RefPtr<API::Object> returnData;
-    toImpl(pageRef)->postSynchronousMessage(toWTFString(messageNameRef), toImpl(messageBodyRef), returnData);
+    page->postSynchronousMessageForTesting(toWTFString(messageNameRef), toImpl(messageBodyRef), returnData);
     if (returnDataRef)
         *returnDataRef = toAPI(returnData.release().leakRef());
 }
 
+void WKBundlePageAddUserScript(WKBundlePageRef pageRef, WKStringRef source, _WKUserScriptInjectionTime injectionTime, WKUserContentInjectedFrames injectedFrames)
+{
+    toImpl(pageRef)->addUserScript(toWTFString(source), toUserContentInjectedFrames(injectedFrames), toUserScriptInjectionTime(injectionTime));
+}
+
+void WKBundlePageAddUserStyleSheet(WKBundlePageRef pageRef, WKStringRef source, WKUserContentInjectedFrames injectedFrames)
+{
+    toImpl(pageRef)->addUserStyleSheet(toWTFString(source), toUserContentInjectedFrames(injectedFrames));
+}
+
+void WKBundlePageRemoveAllUserContent(WKBundlePageRef pageRef)
+{
+    toImpl(pageRef)->removeAllUserContent();
+}
+
+WKStringRef WKBundlePageCopyGroupIdentifier(WKBundlePageRef pageRef)
+{
+    return toCopiedAPI(toImpl(pageRef)->pageGroup()->identifier());
+}
+
+void WKBundlePageClearApplicationCache(WKBundlePageRef page)
+{
+    toImpl(page)->corePage()->applicationCacheStorage().deleteAllEntries();
+}
+
+void WKBundlePageClearApplicationCacheForOrigin(WKBundlePageRef page, WKStringRef origin)
+{
+    toImpl(page)->corePage()->applicationCacheStorage().deleteCacheForOrigin(WebCore::SecurityOrigin::createFromString(toImpl(origin)->string()));
+}
+
+void WKBundlePageSetAppCacheMaximumSize(WKBundlePageRef page, uint64_t size)
+{
+    toImpl(page)->corePage()->applicationCacheStorage().setMaximumSize(size);
+}
+
+uint64_t WKBundlePageGetAppCacheUsageForOrigin(WKBundlePageRef page, WKStringRef origin)
+{
+    return toImpl(page)->corePage()->applicationCacheStorage().diskUsageForOrigin(WebCore::SecurityOrigin::createFromString(toImpl(origin)->string()));
+}
+
+void WKBundlePageSetApplicationCacheOriginQuota(WKBundlePageRef page, WKStringRef origin, uint64_t bytes)
+{
+    toImpl(page)->corePage()->applicationCacheStorage().storeUpdatedQuotaForOrigin(WebCore::SecurityOrigin::createFromString(toImpl(origin)->string()).ptr(), bytes);
+}
+
+void WKBundlePageResetApplicationCacheOriginQuota(WKBundlePageRef page, WKStringRef origin)
+{
+    toImpl(page)->corePage()->applicationCacheStorage().storeUpdatedQuotaForOrigin(WebCore::SecurityOrigin::createFromString(toImpl(origin)->string()).ptr(), toImpl(page)->corePage()->applicationCacheStorage().defaultOriginQuota());
+}
+
+WKArrayRef WKBundlePageCopyOriginsWithApplicationCache(WKBundlePageRef page)
+{
+    HashSet<RefPtr<WebCore::SecurityOrigin>> origins;
+    toImpl(page)->corePage()->applicationCacheStorage().getOriginsWithCache(origins);
+
+    Vector<RefPtr<API::Object>> originIdentifiers;
+    originIdentifiers.reserveInitialCapacity(origins.size());
+
+    for (const auto& origin : origins)
+        originIdentifiers.uncheckedAppend(API::String::create(origin->databaseIdentifier()));
+
+    return toAPI(&API::Array::create(WTFMove(originIdentifiers)).leakRef());
+}

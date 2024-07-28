@@ -38,7 +38,7 @@
 namespace WebCore {
 
 RenderTextControl::RenderTextControl(HTMLTextFormControlElement& element, Ref<RenderStyle>&& style)
-    : RenderBlockFlow(element, WTF::move(style))
+    : RenderBlockFlow(element, WTFMove(style))
 {
 }
 
@@ -138,7 +138,7 @@ int RenderTextControl::textBlockLogicalWidth() const
 int RenderTextControl::scrollbarThickness() const
 {
     // FIXME: We should get the size of the scrollbar from the RenderTheme instead.
-    return ScrollbarTheme::theme()->scrollbarThickness();
+    return ScrollbarTheme::theme().scrollbarThickness();
 }
 
 void RenderTextControl::computeLogicalHeight(LayoutUnit logicalHeight, LayoutUnit logicalTop, LogicalExtentComputedValues& computedValues) const
@@ -181,7 +181,6 @@ float RenderTextControl::getAverageCharWidth()
     const String str = String(&ch, 1);
     const FontCascade& font = style().fontCascade();
     TextRun textRun = constructTextRun(this, font, str, style(), AllowTrailingExpansion);
-    textRun.disableRoundingHacks();
     return font.width(textRun);
 }
 
@@ -232,10 +231,10 @@ void RenderTextControl::computePreferredLogicalWidths()
     setPreferredLogicalWidthsDirty(false);
 }
 
-void RenderTextControl::addFocusRingRects(Vector<IntRect>& rects, const LayoutPoint& additionalOffset, const RenderLayerModelObject*)
+void RenderTextControl::addFocusRingRects(Vector<LayoutRect>& rects, const LayoutPoint& additionalOffset, const RenderLayerModelObject*)
 {
     if (!size().isEmpty())
-        rects.append(snappedIntRect(additionalOffset, size()));
+        rects.append(LayoutRect(additionalOffset, size()));
 }
 
 RenderObject* RenderTextControl::layoutSpecialExcludedChild(bool relayoutChildren)

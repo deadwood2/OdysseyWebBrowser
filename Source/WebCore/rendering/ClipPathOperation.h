@@ -98,17 +98,12 @@ class ShapeClipPathOperation final : public ClipPathOperation {
 public:
     static Ref<ShapeClipPathOperation> create(Ref<BasicShape>&& shape)
     {
-        return adoptRef(*new ShapeClipPathOperation(WTF::move(shape)));
+        return adoptRef(*new ShapeClipPathOperation(WTFMove(shape)));
     }
 
     const BasicShape& basicShape() const { return m_shape; }
     WindRule windRule() const { return m_shape.get().windRule(); }
-    const Path pathForReferenceRect(const FloatRect& boundingRect)
-    {
-        Path path;
-        m_shape.get().path(path, boundingRect);
-        return path;
-    }
+    const Path& pathForReferenceRect(const FloatRect& boundingRect) { return m_shape.get().path(boundingRect); }
 
     void setReferenceBox(CSSBoxType referenceBox) { m_referenceBox = referenceBox; }
     CSSBoxType referenceBox() const { return m_referenceBox; }
@@ -125,7 +120,7 @@ private:
 
     explicit ShapeClipPathOperation(Ref<BasicShape>&& shape)
         : ClipPathOperation(Shape)
-        , m_shape(WTF::move(shape))
+        , m_shape(WTFMove(shape))
         , m_referenceBox(BoxMissing)
     {
     }

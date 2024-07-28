@@ -32,6 +32,7 @@
 namespace WebCore {
 class FloatPoint;
 class FloatRect;
+class Node;
 }
 
 namespace WebKit {
@@ -60,12 +61,12 @@ private:
 #endif
 
     void dispatchDidCollectGeometryForSmartMagnificationGesture(WebCore::FloatPoint origin, WebCore::FloatRect targetRect, WebCore::FloatRect visibleContentRect, bool isReplacedElement, double viewportMinimumScale, double viewportMaximumScale);
+    void computeZoomInformationForNode(WebCore::Node&, WebCore::FloatPoint& origin, WebCore::FloatRect& renderRect, bool& isReplaced, double& viewportMinimumScale, double& viewportMaximumScale);
 
     WebPage& m_webPage;
 
 #if PLATFORM(MAC)
     uint64_t m_renderTreeSizeNotificationThreshold;
-    RunLoop::Timer<ViewGestureGeometryCollector> m_renderTreeSizeNotificationTimer;
 #endif
 };
 

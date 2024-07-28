@@ -33,6 +33,29 @@
 extern "C" {
 #endif
 
+#ifdef __OBJC__
+
+@class _WKRemoteObjectRegistry;
+
+@protocol _WKObservablePageState
+
+@property (nonatomic, readonly, copy) NSString *title;
+@property (nonatomic, readonly, copy) NSURL *URL;
+@property (nonatomic, readonly, getter=isLoading) BOOL loading;
+@property (nonatomic, readonly) double estimatedProgress;
+@property (nonatomic, readonly) BOOL hasOnlySecureContent;
+@property (nonatomic, readonly) BOOL _webProcessIsResponsive;
+
+// Not KVO compliant.
+@property (nonatomic, readonly) NSURL *unreachableURL;
+
+@end
+
+WK_EXPORT id <_WKObservablePageState> WKPageCreateObservableState(WKPageRef page) NS_RETURNS_RETAINED;
+WK_EXPORT _WKRemoteObjectRegistry *WKPageGetObjectRegistry(WKPageRef page);
+
+#endif
+
 WK_EXPORT pid_t WKPageGetProcessIdentifier(WKPageRef page);
 WK_EXPORT bool WKPageIsURLKnownHSTSHost(WKPageRef page, WKURLRef url);
 

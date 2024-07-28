@@ -79,7 +79,10 @@ public:
     { }
     
     void notifyCompilingStructureTransition(Plan&, CodeBlock*, Node*);
-    unsigned addCodeOrigin(CodeOrigin);
+    CallSiteIndex addCodeOrigin(CodeOrigin);
+    CallSiteIndex addUniqueCallSiteIndex(CodeOrigin);
+    CallSiteIndex lastCallSite() const;
+    void removeCallSiteIndex(CallSiteIndex);
     
     void shrinkToFit();
     
@@ -91,6 +94,8 @@ public:
     }
     
     void validateReferences(const TrackedReferences&);
+
+    static ptrdiff_t frameRegisterCountOffset() { return OBJECT_OFFSETOF(CommonData, frameRegisterCount); }
 
     RefPtr<InlineCallFrameSet> inlineCallFrames;
     Vector<CodeOrigin, 0, UnsafeVectorOverflow> codeOrigins;
@@ -115,6 +120,10 @@ public:
     
     unsigned frameRegisterCount;
     unsigned requiredRegisterCountForExit;
+
+private:
+    HashSet<unsigned, WTF::IntHash<unsigned>, WTF::UnsignedWithZeroKeyHashTraits<unsigned>> callSiteIndexFreeList;
+
 };
 
 } } // namespace JSC::DFG

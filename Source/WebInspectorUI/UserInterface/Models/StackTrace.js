@@ -48,6 +48,31 @@ WebInspector.StackTrace = class StackTrace extends WebInspector.Object
         return WebInspector.StackTrace.fromPayload(payload);
     }
 
+    // May produce false negatives; must not produce any false positives.
+    // It may return false on a valid stack trace, but it will never return true on an invalid stack trace.
+    static isLikelyStackTrace(stack)
+    {
+        // This function runs for every logged string. It penalizes the performance.
+        // As most logged strings are not stack traces, exit as early as possible.
+        const smallestPossibleStackTraceLength = "http://a.bc/:9:1".length;
+        if (stack.length < smallestPossibleStackTraceLength.length * 2)
+            return false;
+
+        const approximateStackLengthOf50Items = 5000;
+        if (stack.length > approximateStackLengthOf50Items)
+            return false;
+
+        if (/^[^a-z$_]/i.test(stack[0]))
+            return false;
+
+        const reasonablyLongLineLength = 500;
+        const reasonablyLongNativeMethodLength = 120;
+        const stackTraceLine = `(.{1,${reasonablyLongLineLength}}:\\d+:\\d+|eval code|.{1,${reasonablyLongNativeMethodLength}}@\\[native code\\])`;
+        const stackTrace = new RegExp(`^${stackTraceLine}(\\n${stackTraceLine})*$`, "g");
+
+        return stackTrace.test(stack);
+    }
+
     static _parseStackTrace(stack)
     {
         var lines = stack.split(/\n/g);
@@ -58,28 +83,38 @@ WebInspector.StackTrace = class StackTrace extends WebInspector.Object
             var url = "";
             var lineNumber = 0;
             var columnNumber = 0;
+            var atIndex = line.indexOf("@");
 
-            var index = line.indexOf("@");
-            if (index !== -1) {
-                functionName = line.slice(0, index);
-                url = line.slice(index + 1);
-
-                var columnIndex = url.lastIndexOf(":");
-                if (columnIndex !== -1) {
-                    columnNumber = url.slice(columnIndex + 1);
-
-                    url = url.slice(0, columnIndex);
-                    var lineIndex = url.lastIndexOf(":", columnIndex);
-                    if (lineIndex !== -1) {
-                        lineNumber = url.slice(lineIndex + 1, columnIndex);
-                        url = url.slice(0, lineIndex);
-                    }
-                }
-            } else
+            if (atIndex !== -1) {
+                functionName = line.slice(0, atIndex);
+                ({url, lineNumber, columnNumber} = WebInspector.StackTrace._parseLocation(line.slice(atIndex + 1)));
+            } else if (line.includes("/"))
+                ({url, lineNumber, columnNumber} = WebInspector.StackTrace._parseLocation(line));
+            else
                 functionName = line;
 
             result.push({functionName, url, lineNumber, columnNumber});
         }
+
+        return result;
+    }
+
+    static _parseLocation(locationString)
+    {
+        var result = {url: "", lineNumber: 0, columnNumber: 0};
+        var locationRegEx = /(.+?)(?::(\d+)(?::(\d+))?)?$/;
+        var matched = locationString.match(locationRegEx);
+
+        if (!matched)
+            return result;
+
+        result.url = matched[1];
+
+        if (matched[2])
+            result.lineNumber = parseInt(matched[2]);
+
+        if (matched[3])
+            result.columnNumber = parseInt(matched[3]);
 
         return result;
     }

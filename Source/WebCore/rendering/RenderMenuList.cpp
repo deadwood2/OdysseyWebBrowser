@@ -71,7 +71,7 @@ static size_t selectedOptionCount(const RenderMenuList& renderMenuList)
 #endif
 
 RenderMenuList::RenderMenuList(HTMLSelectElement& element, Ref<RenderStyle>&& style)
-    : RenderFlexibleBox(element, WTF::move(style))
+    : RenderFlexibleBox(element, WTFMove(style))
     , m_buttonText(nullptr)
     , m_innerBlock(nullptr)
     , m_needsOptionsWidthUpdate(true)
@@ -113,7 +113,6 @@ void RenderMenuList::adjustInnerStyle()
     innerStyle.setFlexGrow(1);
     innerStyle.setFlexShrink(1);
     // min-width: 0; is needed for correct shrinking.
-    // FIXME: Remove this line when https://bugs.webkit.org/show_bug.cgi?id=111790 is fixed.
     innerStyle.setMinWidth(Length(0, Fixed));
     // Use margin:auto instead of align-items:center to get safe centering, i.e.
     // when the content overflows, treat it the same as align-items: flex-start.
@@ -124,10 +123,7 @@ void RenderMenuList::adjustInnerStyle()
         innerStyle.setAlignSelfPosition(ItemPositionFlexStart);
     }
 
-    innerStyle.setPaddingLeft(Length(theme().popupInternalPaddingLeft(style()), Fixed));
-    innerStyle.setPaddingRight(Length(theme().popupInternalPaddingRight(style()), Fixed));
-    innerStyle.setPaddingTop(Length(theme().popupInternalPaddingTop(style()), Fixed));
-    innerStyle.setPaddingBottom(Length(theme().popupInternalPaddingBottom(style()), Fixed));
+    innerStyle.setPaddingBox(theme().popupInternalPaddingBox(style()));
 
     if (document().page()->chrome().selectItemWritingDirectionIsNatural()) {
         // Items in the popup will not respect the CSS text-align and direction properties,

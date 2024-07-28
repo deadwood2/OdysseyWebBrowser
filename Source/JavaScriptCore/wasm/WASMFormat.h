@@ -50,6 +50,8 @@
 
 namespace JSC {
 
+class JSFunction;
+
 enum class WASMType : uint8_t {
     I32,
     F32,
@@ -63,12 +65,6 @@ enum class WASMExpressionType : uint8_t {
     F64,
     Void,
     NumberOfExpressionTypes
-};
-
-enum class WASMExportFormat : uint8_t {
-    Default,
-    Record,
-    NumberOfExportFormats
 };
 
 struct WASMSignature {
@@ -91,7 +87,8 @@ struct WASMFunctionDeclaration {
 
 struct WASMFunctionPointerTable {
     uint32_t signatureIndex;
-    Vector<uint32_t> elements;
+    Vector<uint32_t> functionIndices;
+    Vector<JSFunction*> functions;
 };
 
 } // namespace JSC

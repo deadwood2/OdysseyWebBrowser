@@ -219,6 +219,7 @@ public:
     // Querying the type.
     bool isEmpty() const;
     bool isFunction() const;
+    bool isConstructor() const;
     bool isUndefined() const;
     bool isNull() const;
     bool isUndefinedOrNull() const;
@@ -251,7 +252,8 @@ public:
     // toNumber conversion is expected to be side effect free if an exception has
     // been set in the ExecState already.
     double toNumber(ExecState*) const;
-    JSString* toString(ExecState*) const;
+    JSString* toString(ExecState*) const; // On exception, this returns the empty string.
+    JSString* toStringOrNull(ExecState*) const; // On exception, this returns null, to make exception checks faster.
     Identifier toPropertyKey(ExecState*) const;
     WTF::String toWTFString(ExecState*) const;
     JSObject* toObject(ExecState*) const;
@@ -262,6 +264,7 @@ public:
     JS_EXPORT_PRIVATE double toIntegerPreserveNaN(ExecState*) const;
     int32_t toInt32(ExecState*) const;
     uint32_t toUInt32(ExecState*) const;
+    double toLength(ExecState*) const;
 
     // Floating point conversions (this is a convenience function for WebCore;
     // single precision float is not a representation used in JS or JSC).
@@ -276,6 +279,7 @@ public:
     bool getPropertySlot(ExecState*, PropertyName, PropertySlot&) const;
 
     void put(ExecState*, PropertyName, JSValue, PutPropertySlot&);
+    void putInline(ExecState*, PropertyName, JSValue, PutPropertySlot&);
     JS_EXPORT_PRIVATE void putToPrimitive(ExecState*, PropertyName, JSValue, PutPropertySlot&);
     JS_EXPORT_PRIVATE void putToPrimitiveByIndex(ExecState*, unsigned propertyName, JSValue, bool shouldThrow);
     void putByIndex(ExecState*, unsigned propertyName, JSValue, bool shouldThrow);
@@ -433,7 +437,7 @@ private:
 
     inline const JSValue asValue() const { return *this; }
     JS_EXPORT_PRIVATE double toNumberSlowCase(ExecState*) const;
-    JS_EXPORT_PRIVATE JSString* toStringSlowCase(ExecState*) const;
+    JS_EXPORT_PRIVATE JSString* toStringSlowCase(ExecState*, bool returnEmptyStringOnError) const;
     JS_EXPORT_PRIVATE WTF::String toWTFStringSlowCase(ExecState*) const;
     JS_EXPORT_PRIVATE JSObject* toObjectSlowCase(ExecState*, JSGlobalObject*) const;
     JS_EXPORT_PRIVATE JSValue toThisSlowCase(ExecState*, ECMAMode) const;

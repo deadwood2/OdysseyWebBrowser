@@ -1,7 +1,12 @@
+add_definitions(-DQUARTZCORE_DLL -DDISABLE_COREIMAGE -DDISABLE_FRONTEND -DDISABLE_IOSURFACE -DDISABLE_RENDERSERVER
+    -DDISABLE_3D_TRANSFORMS -DWEBCORE_CONTEXT_MENUS -DPSAPI_VERSION=1)
+
 list(APPEND WebCore_INCLUDE_DIRECTORIES
-    "$ENV{WEBKIT_LIBRARIES}/include"
-    "$ENV{WEBKIT_LIBRARIES}/include/zlib"
+    "${WEBKIT_LIBRARIES_DIR}/include"
+    "${WEBKIT_LIBRARIES_DIR}/include/zlib"
     "${WEBCORE_DIR}/loader/archive/cf"
+    "${WEBCORE_DIR}/platform/graphics/avfoundation"
+    "${WEBCORE_DIR}/platform/graphics/avfoundation/cf"
     "${WEBCORE_DIR}/platform/graphics/ca"
     "${WEBCORE_DIR}/platform/graphics/ca/win"
     "${WEBCORE_DIR}/platform/graphics/cg"
@@ -15,10 +20,26 @@ list(APPEND WebCore_SOURCES
 
     loader/cf/ResourceLoaderCFNet.cpp
 
+    page/CaptionUserPreferencesMediaAF.cpp
+
     page/win/FrameCGWin.cpp
 
     platform/cf/CFURLExtras.cpp
+    platform/cf/CoreMediaSoftLink.cpp
+    platform/cf/MediaAccessibilitySoftLink.cpp
     platform/cf/URLCF.cpp
+
+    platform/graphics/avfoundation/InbandMetadataTextTrackPrivateAVF.cpp
+    platform/graphics/avfoundation/InbandTextTrackPrivateAVF.cpp
+    platform/graphics/avfoundation/MediaPlayerPrivateAVFoundation.cpp
+    platform/graphics/avfoundation/MediaTimeAVFoundation.cpp
+    platform/graphics/avfoundation/WebMediaSessionManagerMac.cpp
+
+    platform/graphics/avfoundation/cf/CDMSessionAVFoundationCF.cpp
+    platform/graphics/avfoundation/cf/InbandTextTrackPrivateLegacyAVCF.cpp
+    platform/graphics/avfoundation/cf/InbandTextTrackPrivateAVCF.cpp
+    platform/graphics/avfoundation/cf/MediaPlayerPrivateAVFoundationCF.cpp
+    platform/graphics/avfoundation/cf/WebCoreAVCFResourceLoader.cpp
 
     platform/graphics/ca/GraphicsLayerCA.cpp
     platform/graphics/ca/LayerFlushScheduler.cpp
@@ -35,6 +56,7 @@ list(APPEND WebCore_SOURCES
     platform/graphics/ca/win/PlatformCAFiltersWin.cpp
     platform/graphics/ca/win/PlatformCALayerWin.cpp
     platform/graphics/ca/win/PlatformCALayerWinInternal.cpp
+    platform/graphics/ca/win/WebTiledBackingLayerWin.cpp
     platform/graphics/ca/win/WKCACFViewLayerTreeHost.cpp
 
     platform/graphics/cg/BitmapImageCG.cpp
@@ -59,6 +81,8 @@ list(APPEND WebCore_SOURCES
     platform/graphics/cg/PatternCG.cpp
     platform/graphics/cg/SubimageCacheWithTimer.cpp
     platform/graphics/cg/TransformationMatrixCG.cpp
+
+    platform/graphics/opentype/OpenTypeCG.cpp
 
     platform/graphics/win/FontCGWin.cpp
     platform/graphics/win/FontCustomPlatformData.cpp
@@ -100,31 +124,4 @@ list(APPEND WebCore_FORWARDING_HEADERS_DIRECTORIES
 
     platform/spi/cf
     platform/spi/cg
-)
-
-list(APPEND WebCore_LIBRARIES
-    ASL
-    AVFoundationCF
-    CFNetwork
-    CoreAudioToolbox
-    CoreFoundation
-    CoreGraphics
-    CoreMedia
-    CoreText
-    CoreVideo
-    MediaAccessibility
-    MediaToolbox
-    QuartzCore
-    SQLite3
-    SafariTheme
-    WebKitQuartzCoreAdditions
-    icuin
-    icuuc
-    libdispatch
-    libexslt
-    libicuin
-    libicuuc
-    libxml2
-    libxslt
-    zdll
 )

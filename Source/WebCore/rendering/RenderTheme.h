@@ -23,12 +23,15 @@
 #ifndef RenderTheme_h
 #define RenderTheme_h
 
+#include "BorderData.h"
 #include "ControlStates.h"
+#include "FillLayer.h"
 #if USE(NEW_THEME)
 #include "Theme.h"
 #else
 #include "ThemeTypes.h"
 #endif
+#include "PaintInfo.h"
 #include "PopupMenuStyle.h"
 #include "RenderObject.h"
 #include "ScrollTypes.h"
@@ -163,7 +166,8 @@ public:
     static Color focusRingColor();
     virtual Color platformFocusRingColor() const { return Color(0, 0, 0); }
     static void setCustomFocusRingColor(const Color&);
-    virtual int platformFocusRingMaxWidth() const { return 3; }
+    static float platformFocusRingWidth() { return 3; }
+    static float platformFocusRingOffset(float outlineWidth) { return std::max<float>(outlineWidth - platformFocusRingWidth(), 0); }
 #if ENABLE(TOUCH_EVENTS)
     static Color tapHighlightColor();
     virtual Color platformTapHighlightColor() const { return RenderTheme::defaultTapHighlightColor; }
@@ -173,17 +177,14 @@ public:
     virtual double caretBlinkInterval() const { return 0.5; }
 
     // System fonts and colors for CSS.
-    void systemFont(CSSValueID, FontDescription&) const;
+    void systemFont(CSSValueID, FontCascadeDescription&) const;
     virtual Color systemColor(CSSValueID) const;
 
-    virtual int minimumMenuListSize(RenderStyle&) const { return 0; }
+    virtual int minimumMenuListSize(const RenderStyle&) const { return 0; }
 
     virtual void adjustSliderThumbSize(RenderStyle&, Element*) const;
 
-    virtual int popupInternalPaddingLeft(RenderStyle&) const { return 0; }
-    virtual int popupInternalPaddingRight(RenderStyle&) const { return 0; }
-    virtual int popupInternalPaddingTop(RenderStyle&) const { return 0; }
-    virtual int popupInternalPaddingBottom(RenderStyle&) const { return 0; }
+    virtual LengthBox popupInternalPaddingBox(const RenderStyle&) const { return { 0, 0, 0, 0 }; }
     virtual bool popupOptionSupportsTextIndent() const { return false; }
     virtual PopupMenuStyle::PopupMenuSize popupMenuSize(const RenderStyle&, IntRect&) const { return PopupMenuStyle::PopupMenuSizeNormal; }
 
@@ -209,7 +210,7 @@ public:
     virtual String formatMediaControlsRemainingTime(float currentTime, float duration) const;
     
     // Returns the media volume slider container's offset from the mute button.
-    virtual IntPoint volumeSliderOffsetFromMuteButton(const RenderBox&, const IntSize&) const;
+    virtual LayoutPoint volumeSliderOffsetFromMuteButton(const RenderBox&, const LayoutSize&) const;
 #endif
 
 #if ENABLE(METER_ELEMENT)
@@ -247,16 +248,17 @@ public:
     virtual IntSize imageControlsButtonPositionOffset() const { return IntSize(); }
 #endif
 
-    virtual bool defaultButtonHasAnimation() const { return false; }
-
 #if ENABLE(ATTACHMENT_ELEMENT)
     virtual LayoutSize attachmentIntrinsicSize(const RenderAttachment&) const { return LayoutSize(); }
     virtual int attachmentBaseline(const RenderAttachment&) const { return -1; }
 #endif
 
+    enum class InnerSpinButtonLayout { Vertical, HorizontalUpLeft, HorizontalUpRight };
+    virtual InnerSpinButtonLayout innerSpinButtonLayout(const RenderObject&) const { return InnerSpinButtonLayout::Vertical; }
+
 protected:
-    virtual FontDescription& cachedSystemFontDescription(CSSValueID systemFontID) const;
-    virtual void updateCachedSystemFontDescription(CSSValueID systemFontID, FontDescription&) const = 0;
+    virtual FontCascadeDescription& cachedSystemFontDescription(CSSValueID systemFontID) const;
+    virtual void updateCachedSystemFontDescription(CSSValueID systemFontID, FontCascadeDescription&) const = 0;
 
     // The platform selection color.
     virtual Color platformActiveSelectionBackgroundColor() const;

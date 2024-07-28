@@ -49,7 +49,7 @@ RenderSVGText& SVGRootInlineBox::renderSVGText()
 void SVGRootInlineBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset, LayoutUnit, LayoutUnit)
 {
     ASSERT(paintInfo.phase == PaintPhaseForeground || paintInfo.phase == PaintPhaseSelection);
-    ASSERT(!paintInfo.context->paintingDisabled());
+    ASSERT(!paintInfo.context().paintingDisabled());
 
     bool isPrinting = renderSVGText().document().printing();
     bool hasSelection = !isPrinting && selectionState() != RenderObject::SelectionNone;
@@ -66,12 +66,8 @@ void SVGRootInlineBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffse
 
     SVGRenderingContext renderingContext(renderSVGText(), paintInfo, SVGRenderingContext::SaveGraphicsContext);
     if (renderingContext.isRenderingPrepared()) {
-        for (InlineBox* child = firstChild(); child; child = child->nextOnLine()) {
-            if (is<SVGInlineTextBox>(*child))
-                SVGInlineFlowBox::computeTextMatchMarkerRectForRenderer(&downcast<SVGInlineTextBox>(*child).renderer());
-
+        for (InlineBox* child = firstChild(); child; child = child->nextOnLine())
             child->paint(paintInfo, paintOffset, 0, 0);
-        }
     }
 }
 

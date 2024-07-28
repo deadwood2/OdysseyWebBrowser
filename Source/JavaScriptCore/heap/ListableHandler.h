@@ -28,8 +28,7 @@
 
 namespace JSC {
 
-class MarkStack;
-class MarkStackThreadSharedData;
+class Heap;
 class SlotVisitor;
 
 template<typename T>
@@ -51,8 +50,7 @@ protected:
 
 private:
     // Allow these classes to use ListableHandler::List.
-    friend class MarkStack;
-    friend class GCThreadSharedData;
+    friend class Heap;
     friend class SlotVisitor;
     
     class List {

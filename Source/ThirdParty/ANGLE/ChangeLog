@@ -1,3 +1,10 @@
+2016-03-22  Alberto Garcia  <berto@igalia.com>
+
+        Unreviewed typo fix.
+
+        * src/compiler/translator/InfoSink.cpp:
+        (TInfoSinkBase::prefix): "UNKOWN" => "UNKOWN".
+
 2016-01-08  Brent Fulgham  <bfulgham@apple.com>
 
         [ANGLE] Correct UNREACHABLE runtime assertion for void constructors
@@ -19,6 +26,77 @@
 
         * src/compiler/translator/Types.cpp:
         (TType::buildMangledName): Don't assert with UNREACHABLE here.
+
+2015-12-28  Joonghun Park  <jh718.park@samsung.com>
+
+        [ANGLE][EFL][GTK] Remove 'template<class> class std::auto_ptr is deprecated' compile warning
+        https://bugs.webkit.org/show_bug.cgi?id=152567
+
+        Reviewed by Alex Christensen.
+
+        Because auto_ptr is deprecated as of C++11, we should use unique_ptr instead.
+
+        * src/compiler/preprocessor/MacroExpander.h:
+
+2015-12-19  Dan Bernstein  <mitz@apple.com>
+
+        [Mac] WebKit contains dead source code for OS X Mavericks and earlier
+        https://bugs.webkit.org/show_bug.cgi?id=152462
+
+        Reviewed by Alexey Proskuryakov.
+
+        * Configurations/DebugRelease.xcconfig: Removed definitions of MACOSX_DEPLOYMENT_TARGET for
+          OS X 10.8 and 10.9.
+
+2015-12-03  Anders Carlsson  <andersca@apple.com>
+
+        Remove Objective-C GC support
+        https://bugs.webkit.org/show_bug.cgi?id=151819
+        rdar://problem/23746991
+
+        Reviewed by Dan Bernstein.
+
+        * Configurations/Base.xcconfig:
+
+2015-11-30  Dana Burkart  <dburkart@apple.com>
+
+        Remove Mountain Lion support from ANGLE
+        https://bugs.webkit.org/show_bug.cgi?id=151679
+
+        Reviewed by Darin Adler.
+
+        * Configurations/Base.xcconfig:
+
+2015-11-02  Andy Estes  <aestes@apple.com>
+
+        [Cocoa] Add tvOS and watchOS to SUPPORTED_PLATFORMS
+        https://bugs.webkit.org/show_bug.cgi?id=150819
+
+        Reviewed by Dan Bernstein.
+
+        This tells Xcode to include these platforms in its Devices dropdown, making it possible to build in the IDE.
+
+        * Configurations/Base.xcconfig:
+
+2015-10-10  Dan Bernstein  <mitz@apple.com>
+
+        [iOS] Remove project support for iOS 8
+        https://bugs.webkit.org/show_bug.cgi?id=149993
+
+        Reviewed by Alexey Proskuryakov.
+
+        * Configurations/ANGLE.xcconfig:
+        * Configurations/Base.xcconfig:
+
+2015-08-20  Alex Christensen  <achristensen@webkit.org>
+
+        Clean up CMake build after r188673
+        https://bugs.webkit.org/show_bug.cgi?id=148234
+
+        Reviewed by Tim Horton.
+
+        * CMakeLists.txt:
+        Copy headers to forwarding headers.
 
 2015-08-11  Brent Fulgham  <bfulgham@apple.com>
 

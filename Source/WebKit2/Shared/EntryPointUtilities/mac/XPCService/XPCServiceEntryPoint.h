@@ -32,7 +32,7 @@
 #import <wtf/spi/darwin/XPCSPI.h>
 
 #if HAVE(VOUCHERS)
-#if __has_include(<os/voucher_private.h>)
+#if USE(APPLE_INTERNAL_SDK)
 #include <os/voucher_private.h>
 #else
 extern "C" OS_NOTHROW void voucher_replace_default_voucher(void);
@@ -44,7 +44,7 @@ namespace WebKit {
 class XPCServiceInitializerDelegate {
 public:
     XPCServiceInitializerDelegate(OSObjectPtr<xpc_connection_t> connection, xpc_object_t initializerMessage)
-        : m_connection(WTF::move(connection))
+        : m_connection(WTFMove(connection))
         , m_initializerMessage(initializerMessage)
     {
     }
@@ -69,7 +69,7 @@ protected:
 template<typename XPCServiceType, typename XPCServiceInitializerDelegateType>
 void XPCServiceInitializer(OSObjectPtr<xpc_connection_t> connection, xpc_object_t initializerMessage)
 {
-    XPCServiceInitializerDelegateType delegate(WTF::move(connection), initializerMessage);
+    XPCServiceInitializerDelegateType delegate(WTFMove(connection), initializerMessage);
 
     // We don't want XPC to be in charge of whether the process should be terminated or not,
     // so ensure that we have an outstanding transaction here.

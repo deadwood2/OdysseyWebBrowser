@@ -910,7 +910,7 @@ void WebChromeClient::scheduleCompositingLayerFlush()
 
 #if ENABLE(VIDEO)
 
-bool WebChromeClient::supportsVideoFullscreen()
+bool WebChromeClient::supportsVideoFullscreen(HTMLMediaElementEnums::VideoFullscreenMode)
 {
 #if PLATFORM(IOS)
     if (!Settings::avKitEnabled())
@@ -1041,4 +1041,15 @@ void WebChromeClient::playbackTargetPickerClientStateDidChange(uint64_t contextI
 {
     [m_webView _playbackTargetPickerClientStateDidChange:contextId state:state];
 }
+
+void WebChromeClient::setMockMediaPlaybackTargetPickerEnabled(bool enabled)
+{
+    [m_webView _setMockMediaPlaybackTargetPickerEnabled:enabled];
+}
+
+void WebChromeClient::setMockMediaPlaybackTargetPickerState(const String& name, MediaPlaybackTargetContext::State state)
+{
+    [m_webView _setMockMediaPlaybackTargetPickerName:name state:state];
+}
+
 #endif

@@ -18,13 +18,13 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef CSSParserValues_h
-#define CSSParserValues_h
+#pragma once
 
 #include "CSSSelector.h"
 #include "CSSValueKeywords.h"
 #include "CSSValueList.h"
 #include <wtf/text/AtomicString.h>
+#include <wtf/text/AtomicStringHash.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
@@ -32,9 +32,7 @@ namespace WebCore {
 class CSSValue;
 class QualifiedName;
 
-// This can't be a StringView for 2 reasons:
-// 1. lower() clobbers the data we point to.
-// 2. We are an element of a union (in CSSParserValue) so we need to have a trivial destructor.
+// This should be a StringView but currently it can't because it's used as an element of a union in CSSParserValue.
 struct CSSParserString {
     void init(LChar* characters, unsigned length)
     {
@@ -72,13 +70,12 @@ struct CSSParserString {
     bool is8Bit() const { return m_is8Bit; }
     LChar* characters8() const { ASSERT(is8Bit()); return m_data.characters8; }
     UChar* characters16() const { ASSERT(!is8Bit()); return m_data.characters16; }
-    template <typename CharacterType>
-    CharacterType* characters() const;
+    template<typename CharacterType> CharacterType* characters() const;
 
     unsigned length() const { return m_length; }
     void setLength(unsigned length) { m_length = length; }
 
-    void lower();
+    void convertToASCIILowercaseInPlace();
 
     UChar operator[](unsigned i) const
     {
@@ -86,13 +83,6 @@ struct CSSParserString {
         if (is8Bit())
             return m_data.characters8[i];
         return m_data.characters16[i];
-    }
-
-    bool equalIgnoringCase(const char* str) const
-    {
-        if (is8Bit())
-            return WTF::equalIgnoringCase(str, characters8(), length());
-        return WTF::equalIgnoringCase(str, characters16(), length());
     }
 
     operator String() const { return is8Bit() ? String(m_data.characters8, m_length) : String(m_data.characters16, m_length); }
@@ -106,7 +96,10 @@ struct CSSParserString {
     bool m_is8Bit;
 };
 
+template<unsigned length> bool equalLettersIgnoringASCIICase(const CSSParserString&, const char (&lowercaseLetters)[length]);
+
 struct CSSParserFunction;
+struct CSSParserVariable;
 
 struct CSSParserValue {
     CSSValueID id;
@@ -116,6 +109,7 @@ struct CSSParserValue {
         int iValue;
         CSSParserString string;
         CSSParserFunction* function;
+        CSSParserVariable* variable;
         CSSParserValueList* valueList;
     };
     enum {
@@ -123,6 +117,7 @@ struct CSSParserValue {
         Function  = 0x100001,
         ValueList = 0x100002,
         Q_EMS     = 0x100003,
+        Variable  = 0x100004
     };
     int unit;
 
@@ -144,7 +139,6 @@ public:
 
     void addValue(const CSSParserValue&);
     void insertValueAt(unsigned, const CSSParserValue&);
-    void deleteValueAt(unsigned);
     void extend(CSSParserValueList&);
 
     unsigned size() const { return m_values.size(); }
@@ -168,6 +162,10 @@ public:
     CSSParserValue* valueAt(unsigned i) { return i < m_values.size() ? &m_values[i] : 0; }
 
     void clear() { m_values.clear(); }
+    
+    String toString();
+    
+    bool containsVariables() const;
 
 private:
     unsigned m_current;
@@ -179,6 +177,13 @@ struct CSSParserFunction {
 public:
     CSSParserString name;
     std::unique_ptr<CSSParserValueList> args;
+};
+
+struct CSSParserVariable {
+    WTF_MAKE_FAST_ALLOCATED;
+public:
+    CSSParserString name; // The custom property name
+    std::unique_ptr<CSSParserValueList> args; // The fallback args
 };
 
 enum class CSSParserSelectorCombinator {
@@ -203,7 +208,7 @@ public:
     explicit CSSParserSelector(const QualifiedName&);
     ~CSSParserSelector();
 
-    std::unique_ptr<CSSSelector> releaseSelector() { return WTF::move(m_selector); }
+    std::unique_ptr<CSSSelector> releaseSelector() { return WTFMove(m_selector); }
 
     void setValue(const AtomicString& value) { m_selector->setValue(value); }
     void setAttribute(const QualifiedName& value, bool isCaseInsensitive) { m_selector->setAttribute(value, isCaseInsensitive); }
@@ -233,7 +238,7 @@ public:
     bool matchesPseudoElement() const;
 
     CSSParserSelector* tagHistory() const { return m_tagHistory.get(); }
-    void setTagHistory(std::unique_ptr<CSSParserSelector> selector) { m_tagHistory = WTF::move(selector); }
+    void setTagHistory(std::unique_ptr<CSSParserSelector> selector) { m_tagHistory = WTFMove(selector); }
     void clearTagHistory() { m_tagHistory.reset(); }
     void insertTagHistory(CSSSelector::Relation before, std::unique_ptr<CSSParserSelector>, CSSSelector::Relation after);
     void appendTagHistory(CSSSelector::Relation, std::unique_ptr<CSSParserSelector>);
@@ -260,6 +265,10 @@ inline void CSSParserValue::setFromValueList(std::unique_ptr<CSSParserValueList>
     this->valueList = valueList.release();
     unit = ValueList;
 }
+
+template<unsigned length> inline bool equalLettersIgnoringASCIICase(const CSSParserString& string, const char (&lowercaseLetters)[length])
+{
+    return WTF::equalLettersIgnoringASCIICaseCommon(string, lowercaseLetters);
 }
 
-#endif
+}

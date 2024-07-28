@@ -43,6 +43,7 @@
 #include "XLinkNames.h"
 #include <wtf/ASCIICType.h>
 #include <wtf/MainThread.h>
+#include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
 
@@ -146,7 +147,7 @@ static bool isNameOfInlineEventHandler(const Vector<UChar, 32>& name)
 static bool isDangerousHTTPEquiv(const String& value)
 {
     String equiv = value.stripWhiteSpace();
-    return equalIgnoringCase(equiv, "refresh") || equalIgnoringCase(equiv, "set-cookie");
+    return equalLettersIgnoringASCIICase(equiv, "refresh") || equalLettersIgnoringASCIICase(equiv, "set-cookie");
 }
 
 static inline String decode16BitUnicodeEscapeSequences(const String& string)
@@ -244,8 +245,8 @@ static bool semicolonSeparatedValueContainsJavaScriptURL(const String& value)
 {
     Vector<String> valueList;
     value.split(';', valueList);
-    for (size_t i = 0; i < valueList.size(); ++i) {
-        if (protocolIsJavaScript(valueList[i]))
+    for (auto& value : valueList) {
+        if (protocolIsJavaScript(value))
             return true;
     }
     return false;
@@ -320,7 +321,7 @@ void XSSAuditor::init(Document* document, XSSAuditorDelegate* auditorDelegate)
 
     String httpBodyAsString;
     if (DocumentLoader* documentLoader = document->frame()->loader().documentLoader()) {
-        DEPRECATED_DEFINE_STATIC_LOCAL(String, XSSProtectionHeader, (ASCIILiteral("X-XSS-Protection")));
+        static NeverDestroyed<String> XSSProtectionHeader(ASCIILiteral("X-XSS-Protection"));
         String headerValue = documentLoader->response().httpHeaderField(XSSProtectionHeader);
         String errorDetails;
         unsigned errorPosition = 0;
@@ -570,7 +571,7 @@ bool XSSAuditor::filterButtonToken(const FilterTokenRequest& request)
 
 bool XSSAuditor::eraseDangerousAttributesIfInjected(const FilterTokenRequest& request)
 {
-    DEPRECATED_DEFINE_STATIC_LOCAL(String, safeJavaScriptURL, (ASCIILiteral("javascript:void(0)")));
+    static NeverDestroyed<String> safeJavaScriptURL(ASCIILiteral("javascript:void(0)"));
 
     bool didBlockScript = false;
     for (size_t i = 0; i < request.token.attributes().size(); ++i) {
@@ -585,7 +586,7 @@ bool XSSAuditor::eraseDangerousAttributesIfInjected(const FilterTokenRequest& re
             continue;
         request.token.eraseValueOfAttribute(i);
         if (valueContainsJavaScriptURL)
-            request.token.appendToAttributeValue(i, safeJavaScriptURL);
+            request.token.appendToAttributeValue(i, safeJavaScriptURL.get());
         didBlockScript = true;
     }
     return didBlockScript;
@@ -694,7 +695,7 @@ String XSSAuditor::canonicalizedSnippetForJavaScript(const FilterTokenRequest& r
                 break;
 
             if (lastNonSpacePosition != notFound && startsOpeningScriptTagAt(string, foundPosition)) {
-                foundPosition = lastNonSpacePosition;
+                foundPosition = lastNonSpacePosition + 1;
                 break;
             }
             if (foundPosition > startPosition + kMaximumFragmentLengthTarget) {

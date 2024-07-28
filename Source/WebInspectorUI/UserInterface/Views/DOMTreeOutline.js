@@ -32,20 +32,18 @@ WebInspector.DOMTreeOutline = class DOMTreeOutline extends WebInspector.TreeOutl
 {
     constructor(omitRootDOMNode, selectEnabled, excludeRevealElementContextMenu)
     {
-        var element = document.createElement("ol");
+        super();
 
-        super(element);
+        this.element.addEventListener("mousedown", this._onmousedown.bind(this), false);
+        this.element.addEventListener("mousemove", this._onmousemove.bind(this), false);
+        this.element.addEventListener("mouseout", this._onmouseout.bind(this), false);
+        this.element.addEventListener("dragstart", this._ondragstart.bind(this), false);
+        this.element.addEventListener("dragover", this._ondragover.bind(this), false);
+        this.element.addEventListener("dragleave", this._ondragleave.bind(this), false);
+        this.element.addEventListener("drop", this._ondrop.bind(this), false);
+        this.element.addEventListener("dragend", this._ondragend.bind(this), false);
 
-        element.addEventListener("mousedown", this._onmousedown.bind(this), false);
-        element.addEventListener("mousemove", this._onmousemove.bind(this), false);
-        element.addEventListener("mouseout", this._onmouseout.bind(this), false);
-        element.addEventListener("dragstart", this._ondragstart.bind(this), false);
-        element.addEventListener("dragover", this._ondragover.bind(this), false);
-        element.addEventListener("dragleave", this._ondragleave.bind(this), false);
-        element.addEventListener("drop", this._ondrop.bind(this), false);
-        element.addEventListener("dragend", this._ondragend.bind(this), false);
-
-        element.classList.add("dom-tree-outline", WebInspector.SyntaxHighlightedStyleClassName);
+        this.element.classList.add("dom", WebInspector.SyntaxHighlightedStyleClassName);
 
         this._includeRootDOMNode = !omitRootDOMNode;
         this._selectEnabled = selectEnabled;
@@ -485,13 +483,12 @@ WebInspector.DOMTreeOutline = class DOMTreeOutline extends WebInspector.TreeOutl
 
     _contextMenuEventFired(event)
     {
-        var treeElement = this._treeElementFromEvent(event);
+        let treeElement = this._treeElementFromEvent(event);
         if (!treeElement)
             return;
 
-        var contextMenu = new WebInspector.ContextMenu(event);
+        let contextMenu = WebInspector.ContextMenu.createFromEvent(event);
         this.populateContextMenu(contextMenu, event, treeElement);
-        contextMenu.show();
     }
 
     _updateModifiedNodes()
@@ -509,10 +506,10 @@ WebInspector.DOMTreeOutline = class DOMTreeOutline extends WebInspector.TreeOutl
 
         function logElement()
         {
-            WebInspector.RemoteObject.resolveNode(domNode, "console", function(remoteObject) {
+            WebInspector.RemoteObject.resolveNode(domNode, WebInspector.RuntimeManager.ConsoleObjectGroup, function(remoteObject) {
                 if (!remoteObject)
                     return;
-                var text = WebInspector.UIString("Selected Element");
+                let text = WebInspector.UIString("Selected Element");
                 WebInspector.consoleLogViewController.appendImmediateExecutionWithResult(text, remoteObject, true);
             });
         }

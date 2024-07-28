@@ -29,6 +29,7 @@
 #if PLATFORM(IOS)
 
 #import "LegacyTileCache.h"
+#import "PlatformScreen.h"
 #import "WAKViewInternal.h"
 #import "WebCoreSystemInterface.h"
 #import "WebCoreThreadRun.h"
@@ -44,11 +45,7 @@ WEBCORE_EXPORT NSString * const WAKWindowVisibilityDidChangeNotification = @"WAK
 using namespace WebCore;
 
 @protocol OrientationProvider
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 60000
 - (BOOL)hasLandscapeOrientation;
-#else
-- (int)orientation;
-#endif
 @end
 
 static WAKWindow *_WAKKeyWindow = nil;        // weak
@@ -71,7 +68,7 @@ static id<OrientationProvider> gOrientationProvider;
     _hostLayer = [layer retain];
 
     _frame = [_hostLayer frame];
-    _screenScale = wkGetScreenScaleFactor();
+    _screenScale = screenScaleFactor();
     
     _tileCache = new LegacyTileCache(self);
 
@@ -90,7 +87,7 @@ static id<OrientationProvider> gOrientationProvider;
         return nil;
 
     _frame = frame;
-    _screenScale = wkGetScreenScaleFactor();
+    _screenScale = screenScaleFactor();
 
     _exposedScrollViewRect = CGRectNull;
 
@@ -158,6 +155,24 @@ static id<OrientationProvider> gOrientationProvider;
         rootLayer = rootLayer.superlayer;
     
     return [_hostLayer convertPoint:aPoint fromLayer:rootLayer];
+}
+
+- (NSRect)convertRectToScreen:(NSRect)windowRect
+{
+    CALayer* rootLayer = _hostLayer;
+    while (rootLayer.superlayer)
+        rootLayer = rootLayer.superlayer;
+
+    return [_hostLayer convertRect:windowRect toLayer:rootLayer];
+}
+
+- (NSRect)convertRectFromScreen:(NSRect)screenRect
+{
+    CALayer* rootLayer = _hostLayer;
+    while (rootLayer.superlayer)
+        rootLayer = rootLayer.superlayer;
+
+    return [_hostLayer convertRect:screenRect fromLayer:rootLayer];
 }
 
 - (BOOL)isKeyWindow
@@ -621,12 +636,7 @@ static id<OrientationProvider> gOrientationProvider;
 + (BOOL)hasLandscapeOrientation
 {
     // this should be perfectly thread safe
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 60000
     return [gOrientationProvider hasLandscapeOrientation];
-#else
-    int orientation = [gOrientationProvider orientation];
-    return orientation == 90 || orientation == -90;
-#endif
 }
 
 - (CALayer*)hostLayer

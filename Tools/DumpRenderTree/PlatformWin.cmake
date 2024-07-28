@@ -44,6 +44,10 @@ list(APPEND TestNetscapePlugin_SOURCES
     TestNetscapePlugin/win/WindowedPluginTest.cpp
 )
 
+if (${WTF_PLATFORM_WIN_CAIRO})
+    add_definitions(-DWIN_CAIRO)
+endif ()
+
 list(APPEND TestNetscapePlugin_LIBRARIES
     Msimg32
     Shlwapi
@@ -83,7 +87,7 @@ set(DumpRenderTreeLib_LIBRARIES
 if (${WTF_PLATFORM_WIN_CAIRO})
     list(APPEND DumpRenderTree_INCLUDE_DIRECTORIES
         cairo
-        "$ENV{WEBKIT_LIBRARIES}/include/cairo"
+        "${WEBKIT_LIBRARIES_DIR}/include/cairo"
     )
     list(APPEND DumpRenderTreeLib_SOURCES
         cairo/PixelDumpSupportCairo.cpp
@@ -120,7 +124,6 @@ add_definitions(-DUSE_CONSOLE_ENTRY_POINT)
 
 add_library(DumpRenderTreeLib SHARED ${DumpRenderTreeLib_SOURCES})
 set_target_properties(DumpRenderTreeLib PROPERTIES FOLDER "Tools")
-set_target_properties(DumpRenderTreeLib PROPERTIES OUTPUT_NAME "DumpRenderTree")
 target_link_libraries(DumpRenderTreeLib ${DumpRenderTreeLib_LIBRARIES})
 
 add_executable(ImageDiff ${TOOLS_DIR}/win/DLLLauncher/DLLLauncherMain.cpp)
@@ -130,7 +133,8 @@ set_target_properties(ImageDiff PROPERTIES OUTPUT_NAME "ImageDiff")
 
 add_library(ImageDiffLib SHARED ${ImageDiff_SOURCES})
 set_target_properties(ImageDiffLib PROPERTIES FOLDER "Tools")
-set_target_properties(ImageDiffLib PROPERTIES OUTPUT_NAME "ImageDiff")
 target_link_libraries(ImageDiffLib ${ImageDiff_LIBRARIES})
+
+add_dependencies(ImageDiff ImageDiffLib)
 
 add_definitions(-D_UNICODE)

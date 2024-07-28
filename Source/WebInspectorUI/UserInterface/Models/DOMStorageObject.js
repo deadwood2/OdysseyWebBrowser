@@ -70,20 +70,17 @@ WebInspector.DOMStorageObject = class DOMStorageObject extends WebInspector.Obje
             if (error)
                 return;
 
-            for (var entry of entries) {
-                if (!entry[0] || !entry[1])
+            for (let [key, value] of entries) {
+                if (!key || !value)
                     continue;
-                this._entries.set(entry[0], entry[1]);
+
+                this._entries.set(key, value);
             }
 
             callback(error, entries);
         }
 
-        // COMPATIBILITY (iOS 6): The getDOMStorageItems function was later renamed to getDOMStorageItems.
-        if (DOMStorageAgent.getDOMStorageEntries)
-            DOMStorageAgent.getDOMStorageEntries(this._id, innerCallback.bind(this));
-        else
-            DOMStorageAgent.getDOMStorageItems(this._id, innerCallback.bind(this));
+        DOMStorageAgent.getDOMStorageItems(this._id, innerCallback.bind(this));
     }
 
     removeItem(key)
@@ -117,8 +114,7 @@ WebInspector.DOMStorageObject = class DOMStorageObject extends WebInspector.Obje
     itemUpdated(key, oldValue, value)
     {
         this._entries.set(key, value);
-        var data = {key, oldValue, value};
-        this.dispatchEventToListeners(WebInspector.DOMStorageObject.Event.ItemUpdated, data);
+        this.dispatchEventToListeners(WebInspector.DOMStorageObject.Event.ItemUpdated, {key, oldValue, value});
     }
 };
 

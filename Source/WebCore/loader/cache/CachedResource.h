@@ -50,6 +50,7 @@ class InspectorResource;
 class SecurityOrigin;
 class SharedBuffer;
 class SubresourceLoader;
+class TextResourceDecoder;
 
 // A resource that is held in the cache. Classes who want to use this object should derive
 // from CachedResourceClient, to get the function calls in case the requested data has arrived.
@@ -98,6 +99,7 @@ public:
 
     virtual void setEncoding(const String&) { }
     virtual String encoding() const { return String(); }
+    virtual const TextResourceDecoder* textResourceDecoder() const { return nullptr; }
     virtual void addDataBuffer(SharedBuffer&);
     virtual void addData(const char* data, unsigned length);
     virtual void finishLoading(SharedBuffer*);
@@ -147,8 +149,6 @@ public:
     unsigned encodedSize() const { return m_encodedSize; }
     unsigned decodedSize() const { return m_decodedSize; }
     unsigned overheadSize() const;
-
-    virtual bool decodedDataIsPurgeable() const { return false; }
     
     bool isLoaded() const { return !m_loading; } // FIXME. Method name is inaccurate. Loading might not have started yet.
 
@@ -218,6 +218,8 @@ public:
 
     bool shouldSendResourceLoadCallbacks() const { return m_options.sendLoadCallbacks() == SendCallbacks; }
     DataBufferingPolicy dataBufferingPolicy() const { return m_options.dataBufferingPolicy(); }
+
+    bool allowsCaching() const { return m_options.cachingPolicy() == CachingPolicy::AllowCaching; }
     
     virtual void destroyDecodedData() { }
 
@@ -252,8 +254,6 @@ public:
     void setLoadFinishTime(double finishTime) { m_loadFinishTime = finishTime; }
     double loadFinishTime() const { return m_loadFinishTime; }
 
-    virtual bool canReuse(const ResourceRequest&) const { return true; }
-
 #if USE(FOUNDATION) || USE(SOUP)
     WEBCORE_EXPORT void tryReplaceEncodedData(SharedBuffer&);
 #endif
@@ -268,6 +268,8 @@ protected:
     void setEncodedSize(unsigned);
     void setDecodedSize(unsigned);
     void didAccessDecodedData(double timeStamp);
+
+    virtual void didReplaceSharedBufferContents() { }
 
     // FIXME: Make the rest of these data members private and use functions in derived classes instead.
     HashCountedSet<CachedResourceClient*> m_clients;

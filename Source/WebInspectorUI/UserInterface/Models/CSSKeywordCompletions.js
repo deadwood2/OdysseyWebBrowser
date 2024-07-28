@@ -33,8 +33,8 @@ WebInspector.CSSKeywordCompletions = {};
 
 WebInspector.CSSKeywordCompletions.forProperty = function(propertyName)
 {
-    var acceptedKeywords = ["initial"];
-    var isNotPrefixed = propertyName.charAt(0) !== "-";
+    let acceptedKeywords = ["initial", "unset", "revert"];
+    let isNotPrefixed = propertyName.charAt(0) !== "-";
 
     if (propertyName in WebInspector.CSSKeywordCompletions._propertyKeywordMap)
         acceptedKeywords = acceptedKeywords.concat(WebInspector.CSSKeywordCompletions._propertyKeywordMap[propertyName]);
@@ -54,7 +54,7 @@ WebInspector.CSSKeywordCompletions.forProperty = function(propertyName)
     else if (isNotPrefixed && ("-webkit-" + propertyName) in WebInspector.CSSKeywordCompletions.InheritedProperties)
         acceptedKeywords.push("inherit");
 
-    if (acceptedKeywords.includes(WebInspector.CSSKeywordCompletions.AllPropertyNamesPlaceholder)) {
+    if (acceptedKeywords.includes(WebInspector.CSSKeywordCompletions.AllPropertyNamesPlaceholder) && WebInspector.CSSCompletions.cssNameCompletions) {
         acceptedKeywords.remove(WebInspector.CSSKeywordCompletions.AllPropertyNamesPlaceholder);
         acceptedKeywords = acceptedKeywords.concat(WebInspector.CSSCompletions.cssNameCompletions.values);
     }
@@ -64,10 +64,6 @@ WebInspector.CSSKeywordCompletions.forProperty = function(propertyName)
 
 WebInspector.CSSKeywordCompletions.addCustomCompletions = function(properties)
 {
-    // COMPATIBILITY (iOS 6): This used to be an array of strings. They won't have custom values.
-    if (properties.length && typeof properties[0] === "string")
-        return;
-
     for (var property of properties) {
         if (property.values)
             WebInspector.CSSKeywordCompletions.addPropertyCompletionValues(property.name, property.values);
@@ -97,7 +93,7 @@ WebInspector.CSSKeywordCompletions.InheritedProperties = [
     "azimuth", "border-collapse", "border-spacing", "caption-side", "clip-rule", "color", "color-interpolation",
     "color-interpolation-filters", "color-rendering", "cursor", "direction", "elevation", "empty-cells", "fill",
     "fill-opacity", "fill-rule", "font", "font-family", "font-size", "font-style", "font-variant", "font-weight",
-    "glyph-orientation-horizontal", "glyph-orientation-vertical", "image-rendering", "kerning", "letter-spacing",
+    "glyph-orientation-horizontal", "glyph-orientation-vertical", "hanging-punctuation", "image-rendering", "kerning", "letter-spacing",
     "line-height", "list-style", "list-style-image", "list-style-position", "list-style-type", "marker", "marker-end",
     "marker-mid", "marker-start", "orphans", "pitch", "pitch-range", "pointer-events", "quotes", "resize", "richness",
     "shape-rendering", "speak", "speak-header", "speak-numeral", "speak-punctuation", "speech-rate", "stress", "stroke",
@@ -105,7 +101,7 @@ WebInspector.CSSKeywordCompletions.InheritedProperties = [
     "stroke-width", "tab-size", "text-align", "text-anchor", "text-decoration", "text-indent", "text-rendering",
     "text-shadow", "text-transform", "visibility", "voice-family", "volume", "white-space", "widows", "word-break",
     "word-spacing", "word-wrap", "writing-mode", "-webkit-aspect-ratio", "-webkit-border-horizontal-spacing",
-    "-webkit-border-vertical-spacing", "-webkit-box-direction", "-webkit-color-correction", "-webkit-font-feature-settings",
+    "-webkit-border-vertical-spacing", "-webkit-box-direction", "-webkit-color-correction", "font-feature-settings",
     "-webkit-font-kerning", "-webkit-font-smoothing", "-webkit-font-variant-ligatures",
     "-webkit-hyphenate-character", "-webkit-hyphenate-limit-after", "-webkit-hyphenate-limit-before",
     "-webkit-hyphenate-limit-lines", "-webkit-hyphens", "-webkit-line-align", "-webkit-line-box-contain",
@@ -287,6 +283,9 @@ WebInspector.CSSKeywordCompletions._propertyKeywordMap = {
     "float": [
         "none", "left", "right"
     ],
+    "hanging-punctuation": [
+        "none", "first", "last", "allow-end", "force-end"
+    ],
     "overflow-x": [
         "hidden", "auto", "visible", "overlay", "scroll", "marquee"
     ],
@@ -396,7 +395,7 @@ WebInspector.CSSKeywordCompletions._propertyKeywordMap = {
         "flex", "inline-flex", "-webkit-grid", "-webkit-inline-grid"
     ],
     "image-rendering": [
-        "auto", "optimizeSpeed", "optimizeQuality", "-webkit-crisp-edges", "-webkit-optimize-contrast"
+        "auto", "optimizeSpeed", "optimizeQuality", "-webkit-crisp-edges", "-webkit-optimize-contrast", "crisp-edges", "pixelated"
     ],
     "alignment-baseline": [
         "baseline", "middle", "auto", "before-edge", "after-edge", "central", "text-before-edge", "text-after-edge",
@@ -443,6 +442,15 @@ WebInspector.CSSKeywordCompletions._propertyKeywordMap = {
     ],
     "margin-after-collapse": [
         "collapse", "separate", "discard"
+    ],
+    "break-after": [
+         "left", "right", "recto", "verso", "auto", "avoid", "page", "column", "region", "avoid-page", "avoid-column", "avoid-region"
+    ],
+    "break-before": [
+          "left", "right", "recto", "verso", "auto", "avoid", "page", "column", "region", "avoid-page", "avoid-column", "avoid-region"
+    ],
+    "break-inside": [
+          "auto", "avoid", "avoid-page", "avoid-column", "avoid-region"
     ],
     "page-break-after": [
         "left", "right", "auto", "always", "avoid"
@@ -960,9 +968,9 @@ WebInspector.CSSKeywordCompletions._propertyKeywordMap = {
         "sideways", "sideways-right", "vertical-right", "upright"
     ],
     "-webkit-line-box-contain": [
-        "block", "inline", "font", "glyphs", "replaced", "inline-box", "none", "initial"
+        "block", "inline", "font", "glyphs", "replaced", "inline-box", "none"
     ],
-    "-webkit-font-feature-settings": [
+    "font-feature-settings": [
         "normal"
     ],
     "-webkit-font-variant-ligatures": [

@@ -104,7 +104,7 @@ void WebSocketChannel::connect(const URL& url, const String& protocol)
     if (m_deflateFramer.canDeflate())
         m_handshake->addExtensionProcessor(m_deflateFramer.createExtensionProcessor());
     if (m_identifier)
-        InspectorInstrumentation::didCreateWebSocket(m_document, m_identifier, url, m_document->url(), protocol);
+        InspectorInstrumentation::didCreateWebSocket(m_document, m_identifier, url);
 
     if (Frame* frame = m_document->frame()) {
         if (NetworkingContext* networkingContext = frame->loader().networkingContext()) {
@@ -586,7 +586,7 @@ bool WebSocketChannel::processFrame()
             // so we should pretend that we have finished to read this frame and
             // make sure that the member variables are in a consistent state before
             // the handler is invoked.
-            Vector<char> continuousFrameData = WTF::move(m_continuousFrameData);
+            Vector<uint8_t> continuousFrameData = WTFMove(m_continuousFrameData);
             m_hasContinuousFrame = false;
             if (m_continuousFrameOpCode == WebSocketFrame::OpCodeText) {
                 String message;
@@ -599,7 +599,7 @@ bool WebSocketChannel::processFrame()
                 else
                     m_client->didReceiveMessage(message);
             } else if (m_continuousFrameOpCode == WebSocketFrame::OpCodeBinary)
-                m_client->didReceiveBinaryData(WTF::move(continuousFrameData));
+                m_client->didReceiveBinaryData(WTFMove(continuousFrameData));
         }
         break;
 
@@ -626,10 +626,10 @@ bool WebSocketChannel::processFrame()
 
     case WebSocketFrame::OpCodeBinary:
         if (frame.final) {
-            Vector<char> binaryData(frame.payloadLength);
+            Vector<uint8_t> binaryData(frame.payloadLength);
             memcpy(binaryData.data(), frame.payload, frame.payloadLength);
             skipBuffer(frameEnd - m_buffer.data());
-            m_client->didReceiveBinaryData(WTF::move(binaryData));
+            m_client->didReceiveBinaryData(WTFMove(binaryData));
         } else {
             m_hasContinuousFrame = true;
             m_continuousFrameOpCode = WebSocketFrame::OpCodeBinary;

@@ -40,28 +40,28 @@ static Ref<CSSValue> paintOrder(PaintOrder paintOrder)
     case PaintOrderNormal:
         return CSSPrimitiveValue::createIdentifier(CSSValueNormal);
     case PaintOrderFill:
-        paintOrderList->append(WTF::move(fill));
+        paintOrderList->append(WTFMove(fill));
         break;
     case PaintOrderFillMarkers:
-        paintOrderList->append(WTF::move(fill));
-        paintOrderList->append(WTF::move(markers));
+        paintOrderList->append(WTFMove(fill));
+        paintOrderList->append(WTFMove(markers));
         break;
     case PaintOrderStroke:
-        paintOrderList->append(WTF::move(stroke));
+        paintOrderList->append(WTFMove(stroke));
         break;
     case PaintOrderStrokeMarkers:
-        paintOrderList->append(WTF::move(stroke));
-        paintOrderList->append(WTF::move(markers));
+        paintOrderList->append(WTFMove(stroke));
+        paintOrderList->append(WTFMove(markers));
         break;
     case PaintOrderMarkers:
-        paintOrderList->append(WTF::move(markers));
+        paintOrderList->append(WTFMove(markers));
         break;
     case PaintOrderMarkersStroke:
-        paintOrderList->append(WTF::move(markers));
-        paintOrderList->append(WTF::move(stroke));
+        paintOrderList->append(WTFMove(markers));
+        paintOrderList->append(WTFMove(stroke));
         break;
     }
-    return WTF::move(paintOrderList);
+    return WTFMove(paintOrderList);
 }
 
 static RefPtr<CSSPrimitiveValue> glyphOrientationToCSSPrimitiveValue(EGlyphOrientation orientation)
@@ -159,10 +159,6 @@ RefPtr<CSSValue> ComputedStyleExtractor::svgPropertyValue(CSSPropertyID property
         case CSSPropertyMask:
             if (!svgStyle.maskerResource().isEmpty())
                 return CSSPrimitiveValue::create(svgStyle.maskerResource(), CSSPrimitiveValue::CSS_URI);
-            return CSSPrimitiveValue::createIdentifier(CSSValueNone);
-        case CSSPropertyFilter:
-            if (!svgStyle.filterResource().isEmpty())
-                return CSSPrimitiveValue::create(svgStyle.filterResource(), CSSPrimitiveValue::CSS_URI);
             return CSSPrimitiveValue::createIdentifier(CSSValueNone);
         case CSSPropertyFloodColor:
             return currentColorOrValidColor(style, svgStyle.floodColor());

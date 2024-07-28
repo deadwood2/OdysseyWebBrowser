@@ -71,12 +71,11 @@ public:
     // FIXME: We should consider removing didFirstVisuallyNonEmptyLayoutForFrame since it is replaced by didLayout.
     virtual void didFirstVisuallyNonEmptyLayoutForFrame(WebKit::WebPageProxy&, WebKit::WebFrameProxy&, API::Object*) { }
 
-    virtual void didRemoveFrameFromHierarchy(WebKit::WebPageProxy&, WebKit::WebFrameProxy&, API::Object*) { }
     virtual void didDisplayInsecureContentForFrame(WebKit::WebPageProxy&, WebKit::WebFrameProxy&, API::Object*) { }
     virtual void didRunInsecureContentForFrame(WebKit::WebPageProxy&, WebKit::WebFrameProxy&, API::Object*) { }
     virtual void didDetectXSSForFrame(WebKit::WebPageProxy&, WebKit::WebFrameProxy&, API::Object*) { }
 
-    virtual void didLayout(WebKit::WebPageProxy&, WebCore::LayoutMilestones, API::Object*) { }
+    virtual void didLayout(WebKit::WebPageProxy&, WebCore::LayoutMilestones) { }
     
     virtual bool canAuthenticateAgainstProtectionSpaceInFrame(WebKit::WebPageProxy&, WebKit::WebFrameProxy&, WebKit::WebProtectionSpace*) { return false; }
     virtual void didReceiveAuthenticationChallengeInFrame(WebKit::WebPageProxy&, WebKit::WebFrameProxy&, WebKit::AuthenticationChallengeProxy*) { }
@@ -85,9 +84,8 @@ public:
     virtual void didChangeProgress(WebKit::WebPageProxy&) { }
     virtual void didFinishProgress(WebKit::WebPageProxy&) { }
 
-    // FIXME: These four functions should not be part of this client.
+    // FIXME: These functions should not be part of this client.
     virtual void processDidBecomeUnresponsive(WebKit::WebPageProxy&) { }
-    virtual void interactionOccurredWhileProcessUnresponsive(WebKit::WebPageProxy&) { }
     virtual void processDidBecomeResponsive(WebKit::WebPageProxy&) { }
     virtual void processDidCrash(WebKit::WebPageProxy&) { }
 

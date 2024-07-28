@@ -139,7 +139,7 @@ static bool advanceCurrentStream(FormStreamFields* form)
         size_t size = nextInput.m_data.size();
         MallocPtr<char> data = nextInput.m_data.releaseBuffer();
         form->currentStream = CFReadStreamCreateWithBytesNoCopy(0, reinterpret_cast<const UInt8*>(data.get()), size, kCFAllocatorNull);
-        form->currentData = WTF::move(data);
+        form->currentData = WTFMove(data);
     } else {
         // Check if the file has been changed or not if required.
         if (isValidFileTime(nextInput.m_expectedFileModificationTime)) {
@@ -207,20 +207,15 @@ static void* formCreate(CFReadStreamRef stream, void* context)
     return newInfo;
 }
 
-static void formFinishFinalizationOnMainThread(void* context)
-{
-    auto* form = static_cast<FormStreamFields*>(context);
-
-    closeCurrentStream(form);
-    delete form;
-}
-
 static void formFinalize(CFReadStreamRef stream, void* context)
 {
     FormStreamFields* form = static_cast<FormStreamFields*>(context);
     ASSERT_UNUSED(stream, form->formStream == stream);
 
-    callOnMainThread(formFinishFinalizationOnMainThread, form);
+    callOnMainThread([form] {
+        closeCurrentStream(form);
+        delete form;
+    });
 }
 
 static Boolean formOpen(CFReadStreamRef, CFStreamError* error, Boolean* openComplete, void* context)
@@ -353,10 +348,8 @@ static void formEventCallback(CFReadStreamRef stream, CFStreamEventType type, vo
     }
 }
 
-void setHTTPBody(CFMutableURLRequestRef request, PassRefPtr<FormData> prpFormData)
+void setHTTPBody(CFMutableURLRequestRef request, FormData* formData)
 {
-    RefPtr<FormData> formData = prpFormData;
-
     if (!formData)
         return;
         
@@ -372,13 +365,14 @@ void setHTTPBody(CFMutableURLRequestRef request, PassRefPtr<FormData> prpFormDat
         }
     }
 
-    formData = formData->resolveBlobReferences();
-    count = formData->elements().size();
+
+    Ref<FormData> newFormData = formData->resolveBlobReferences();
+    count = newFormData->elements().size();
 
     // Precompute the content length so NSURLConnection doesn't use chunked mode.
     unsigned long long length = 0;
     for (size_t i = 0; i < count; ++i) {
-        const FormDataElement& element = formData->elements()[i];
+        const FormDataElement& element = newFormData->elements()[i];
         if (element.m_type == FormDataElement::Type::Data)
             length += element.m_data.size();
         else {
@@ -396,7 +390,7 @@ void setHTTPBody(CFMutableURLRequestRef request, PassRefPtr<FormData> prpFormDat
     // Create and set the stream.
 
     // Pass the length along with the formData so it does not have to be recomputed.
-    FormCreationContext formContext = { formData.release(), length };
+    FormCreationContext formContext = {WTFMove(newFormData), length};
 
     CFReadStreamCallBacksV1 callBacks = { 1, formCreate, formFinalize, 0, formOpen, 0, formRead, 0, formCanRead, formClose, formCopyProperty, 0, 0, formSchedule, formUnschedule
     };

@@ -134,11 +134,12 @@ Ref<Font> FontCache::lastResortFallbackFont(const FontDescription& fontDescripti
     // We want to return a fallback font here, otherwise the logic preventing FontConfig
     // matches for non-fallback fonts might return 0. See isFallbackFontAllowed.
     static AtomicString timesStr("serif");
-    return *fontForFamily(fontDescription, timesStr, false);
+    return *fontForFamily(fontDescription, timesStr);
 }
 
-void FontCache::getTraitsInFamily(const AtomicString&, Vector<unsigned>&)
+Vector<FontTraitsMask> FontCache::getTraitsInFamily(const AtomicString&)
 {
+    return { };
 }
 
 static String getFamilyNameStringFromFamily(const AtomicString& family)
@@ -315,7 +316,17 @@ static bool areStronglyAliased(const String& familyA, const String& familyB)
     return false;
 }
 
-std::unique_ptr<FontPlatformData> FontCache::createFontPlatformData(const FontDescription& fontDescription, const AtomicString& family)
+static inline bool isCommonlyUsedGenericFamily(const String& familyNameString)
+{
+    return equalLettersIgnoringASCIICase(familyNameString, "sans")
+        || equalLettersIgnoringASCIICase(familyNameString, "sans-serif")
+        || equalLettersIgnoringASCIICase(familyNameString, "serif")
+        || equalLettersIgnoringASCIICase(familyNameString, "monospace")
+        || equalLettersIgnoringASCIICase(familyNameString, "fantasy")
+        || equalLettersIgnoringASCIICase(familyNameString, "cursive");
+}
+
+std::unique_ptr<FontPlatformData> FontCache::createFontPlatformData(const FontDescription& fontDescription, const AtomicString& family, const FontFeatureSettings*, const FontVariantSettings*)
 {
     // The CSS font matching algorithm (http://www.w3.org/TR/css3-fonts/#font-matching-algorithm)
     // says that we must find an exact match for font family, slant (italic or oblique can be used)
@@ -367,11 +378,7 @@ std::unique_ptr<FontPlatformData> FontCache::createFontPlatformData(const FontDe
     // and allow WebCore to give us the next font on the CSS fallback list. The exceptions are if
     // this family name is a commonly-used generic family, or if the families are strongly-aliased.
     // Checking for a strong alias comes last, since it is slow.
-    if (!equalIgnoringCase(familyNameAfterConfiguration, familyNameAfterMatching)
-        && !(equalIgnoringCase(familyNameString, "sans") || equalIgnoringCase(familyNameString, "sans-serif")
-          || equalIgnoringCase(familyNameString, "serif") || equalIgnoringCase(familyNameString, "monospace")
-          || equalIgnoringCase(familyNameString, "fantasy") || equalIgnoringCase(familyNameString, "cursive"))
-        && !areStronglyAliased(familyNameAfterConfiguration, familyNameAfterMatching))
+    if (!equalIgnoringASCIICase(familyNameAfterConfiguration, familyNameAfterMatching) && !isCommonlyUsedGenericFamily(familyNameString) && !areStronglyAliased(familyNameAfterConfiguration, familyNameAfterMatching))
         return nullptr;
 
     // Verify that this font has an encoding compatible with Fontconfig. Fontconfig currently

@@ -81,11 +81,6 @@ WebInspector.DOMTreeContentView = class DOMTreeContentView extends WebInspector.
         return [this.element];
     }
 
-    updateLayout()
-    {
-        this._domTreeOutline.updateSelection();
-    }
-
     shown()
     {
         this._domTreeOutline.setVisible(true, WebInspector.isConsoleFocused());
@@ -284,6 +279,13 @@ WebInspector.DOMTreeContentView = class DOMTreeContentView extends WebInspector.
         this._revealSearchResult(this._currentSearchResultIndex, changeFocus);
     }
 
+    // Protected
+
+    layout()
+    {
+        this._domTreeOutline.updateSelection();
+    }
+
     // Private
 
     _revealSearchResult(index, changeFocus)
@@ -440,9 +442,6 @@ WebInspector.DOMTreeContentView = class DOMTreeContentView extends WebInspector.
 
     _updateCompositingBordersButtonToMatchPageSettings()
     {
-        if (!PageAgent.getCompositingBordersVisible)
-            return;
-
         var button = this._compositingBordersButtonNavigationItem;
 
         // We need to sync with the page settings since these can be controlled

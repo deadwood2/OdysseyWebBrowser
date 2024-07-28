@@ -116,17 +116,6 @@ WebInspector.RulesStyleDetailsPanel = class RulesStyleDetailsPanel extends WebIn
             return true;
         }
 
-        function filteredMediaList(mediaList)
-        {
-            if (!mediaList)
-                return [];
-
-            // Exclude the basic "screen" query since it's very common and just clutters things.
-            return mediaList.filter(function(media) {
-                return media.text !== "screen";
-            });
-        }
-
         function uniqueOrderedStyles(orderedStyles)
         {
             var uniqueStyles = [];
@@ -164,9 +153,9 @@ WebInspector.RulesStyleDetailsPanel = class RulesStyleDetailsPanel extends WebIn
             } else
                 section.refresh();
 
-            if (this._focusNextNewInspectorRule && style.ownerRule && style.ownerRule.type === WebInspector.CSSRule.Type.Inspector) {
+            if (style.isInspectorRule() && this._newInspectorRuleSelector === style.selectorText && !style.hasProperties()) {
                 this._previousFocusedSection = section;
-                delete this._focusNextNewInspectorRule;
+                this._newInspectorRuleSelector = null;
             }
 
             // Reset lastInGroup in case the order/grouping changed.
@@ -201,7 +190,7 @@ WebInspector.RulesStyleDetailsPanel = class RulesStyleDetailsPanel extends WebIn
             }
 
             // Only include the media list if it is different from the previous media list shown.
-            var currentMediaList = filteredMediaList(style.ownerRule && style.ownerRule.mediaList);
+            var currentMediaList = (style.ownerRule && style.ownerRule.mediaList) || [];
             if (!mediaListsEqual(previousMediaList, currentMediaList)) {
                 previousMediaList = currentMediaList;
 
@@ -282,8 +271,8 @@ WebInspector.RulesStyleDetailsPanel = class RulesStyleDetailsPanel extends WebIn
         this._ruleMediaAndInherticanceList = [];
         var orderedStyles = uniqueOrderedStyles(this.nodeStyles.orderedStyles);
         for (var style of orderedStyles) {
-            var isUserAgentStyle = style.ownerRule && style.ownerRule.type === WebInspector.CSSRule.Type.UserAgent;
-            insertAllMatchingPseudoStyles.call(this, isUserAgentStyle || style.inerhited);
+            var isUserAgentStyle = style.ownerRule && style.ownerRule.type === WebInspector.CSSStyleSheet.Type.UserAgent;
+            insertAllMatchingPseudoStyles.call(this, isUserAgentStyle || style.inherited);
 
             insertMediaOrInheritanceLabel.call(this, style);
             appendStyleSection.call(this, style);
@@ -322,12 +311,18 @@ WebInspector.RulesStyleDetailsPanel = class RulesStyleDetailsPanel extends WebIn
         return false;
     }
 
-    cssStyleDeclarationSectionEditorFocused(ignoredSection)
+    cssStyleDeclarationSectionEditorFocused(focusedSection)
     {
-        for (var section of this._sections) {
-            if (section !== ignoredSection)
+        for (let section of this._sections) {
+            if (section !== focusedSection)
                 section.clearSelection();
         }
+        this._previousFocusedSection = focusedSection;
+    }
+
+    cssStyleDeclarationSectionBlurActiveEditor()
+    {
+        this._previousFocusedSection = null;
     }
 
     cssStyleDeclarationSectionEditorNextRule(currentSection)
@@ -388,9 +383,9 @@ WebInspector.RulesStyleDetailsPanel = class RulesStyleDetailsPanel extends WebIn
         this.element.classList.toggle("filter-non-matching", !matchFound);
     }
 
-    cssStyleDeclarationSectionFocusNextNewInspectorRule()
+    cssStyleDeclarationSectionFocusNewInspectorRuleWithSelector(selector)
     {
-        this._focusNextNewInspectorRule = true;
+        this._newInspectorRuleSelector = selector;
     }
 
     newRuleButtonClicked()
@@ -398,8 +393,38 @@ WebInspector.RulesStyleDetailsPanel = class RulesStyleDetailsPanel extends WebIn
         if (this.nodeStyles.node.isInShadowTree())
             return;
 
-        this._focusNextNewInspectorRule = true;
-        this.nodeStyles.addEmptyRule();
+        for (let existingRule of this.nodeStyles.rulesForSelector()) {
+            if (this.focusEmptySectionWithStyle(existingRule.style))
+                return;
+        }
+
+        this._newInspectorRuleSelector = this.nodeStyles.node.appropriateSelectorFor(true);
+        this.nodeStyles.addRule(this._newInspectorRuleSelector);
+    }
+
+    sectionForStyle(style)
+    {
+        if (style.__rulesSection)
+            return style.__rulesSection;
+
+        for (let section of this._sections) {
+            if (section.style === style)
+                return section;
+        }
+        return null;
+    }
+
+    focusEmptySectionWithStyle(style)
+    {
+        if (style.hasProperties())
+            return false;
+
+        let section = this.sectionForStyle(style);
+        if (!section)
+            return false;
+
+        section.focus();
+        return true;
     }
 
     // Protected
@@ -442,10 +467,8 @@ WebInspector.RulesStyleDetailsPanel = class RulesStyleDetailsPanel extends WebIn
             this._propertyToSelectAndHighlight = null;
         }
 
-        if (this._previousFocusedSection && this._visible) {
+        if (this._previousFocusedSection && this._visible)
             this._previousFocusedSection.focus();
-            this._previousFocusedSection = null;
-        }
     }
 
     // Private

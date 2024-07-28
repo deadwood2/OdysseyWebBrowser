@@ -35,13 +35,14 @@
 #if ENABLE(INSPECTOR_ALTERNATE_DISPATCHERS)
 
 #include "InspectorProtocolTypes.h"
+#include <inspector/InspectorFrontendRouter.h>
 #include <JavaScriptCore/InspectorBackendDispatcher.h>
 
 namespace Inspector {
 
 class AlternateBackendDispatcher {
 public:
-    void setBackendDispatcher(RefPtr<BackendDispatcher>&& dispatcher) { m_backendDispatcher = WTF::move(dispatcher); }
+    void setBackendDispatcher(RefPtr<BackendDispatcher>&& dispatcher) { m_backendDispatcher = WTFMove(dispatcher); }
     BackendDispatcher* backendDispatcher() const { return m_backendDispatcher.get(); }
 private:
     RefPtr<BackendDispatcher> m_backendDispatcher;
@@ -186,13 +187,13 @@ protected:
 
 class DatabaseBackendDispatcher final : public SupplementalBackendDispatcher {
 public:
-    static Ref<DatabaseBackendDispatcher> create(BackendDispatcher*, DatabaseBackendDispatcherHandler*);
-    virtual void dispatch(long callId, const String& method, Ref<InspectorObject>&& message) override;
+    static Ref<DatabaseBackendDispatcher> create(BackendDispatcher&, DatabaseBackendDispatcherHandler*);
+    virtual void dispatch(long requestId, const String& method, Ref<InspectorObject>&& message) override;
 private:
-    void executeSQLSyncOptionalReturnValues(long callId, const InspectorObject& message);
-    void executeSQLAsyncOptionalReturnValues(long callId, const InspectorObject& message);
-    void executeSQLSync(long callId, const InspectorObject& message);
-    void executeSQLAsync(long callId, const InspectorObject& message);
+    void executeSQLSyncOptionalReturnValues(long requestId, RefPtr<InspectorObject>&& parameters);
+    void executeSQLAsyncOptionalReturnValues(long requestId, RefPtr<InspectorObject>&& parameters);
+    void executeSQLSync(long requestId, RefPtr<InspectorObject>&& parameters);
+    void executeSQLAsync(long requestId, RefPtr<InspectorObject>&& parameters);
 private:
     DatabaseBackendDispatcher(BackendDispatcher&, DatabaseBackendDispatcherHandler*);
     DatabaseBackendDispatcherHandler* m_agent;
@@ -243,8 +244,9 @@ private:
 #include "config.h"
 #include "InspectorBackendDispatchers.h"
 
-#include <inspector/InspectorFrontendChannel.h>
+#include <inspector/InspectorFrontendRouter.h>
 #include <inspector/InspectorValues.h>
+#include <wtf/NeverDestroyed.h>
 #include <wtf/text/CString.h>
 
 #if ENABLE(INSPECTOR_ALTERNATE_DISPATCHERS)
@@ -255,9 +257,9 @@ namespace Inspector {
 
 DatabaseBackendDispatcherHandler::~DatabaseBackendDispatcherHandler() { }
 
-Ref<DatabaseBackendDispatcher> DatabaseBackendDispatcher::create(BackendDispatcher* backendDispatcher, DatabaseBackendDispatcherHandler* agent)
+Ref<DatabaseBackendDispatcher> DatabaseBackendDispatcher::create(BackendDispatcher& backendDispatcher, DatabaseBackendDispatcherHandler* agent)
 {
-    return adoptRef(*new DatabaseBackendDispatcher(*backendDispatcher, agent));
+    return adoptRef(*new DatabaseBackendDispatcher(backendDispatcher, agent));
 }
 
 DatabaseBackendDispatcher::DatabaseBackendDispatcher(BackendDispatcher& backendDispatcher, DatabaseBackendDispatcherHandler* agent)
@@ -270,38 +272,37 @@ DatabaseBackendDispatcher::DatabaseBackendDispatcher(BackendDispatcher& backendD
     m_backendDispatcher->registerDispatcherForDomain(ASCIILiteral("Database"), this);
 }
 
-void DatabaseBackendDispatcher::dispatch(long callId, const String& method, Ref<InspectorObject>&& message)
+void DatabaseBackendDispatcher::dispatch(long requestId, const String& method, Ref<InspectorObject>&& message)
 {
     Ref<DatabaseBackendDispatcher> protect(*this);
 
+    RefPtr<InspectorObject> parameters;
+    message->getObject(ASCIILiteral("params"), parameters);
+
     if (method == "executeSQLSyncOptionalReturnValues")
-        executeSQLSyncOptionalReturnValues(callId, message);
+        executeSQLSyncOptionalReturnValues(requestId, WTFMove(parameters));
     else if (method == "executeSQLAsyncOptionalReturnValues")
-        executeSQLAsyncOptionalReturnValues(callId, message);
+        executeSQLAsyncOptionalReturnValues(requestId, WTFMove(parameters));
     else if (method == "executeSQLSync")
-        executeSQLSync(callId, message);
+        executeSQLSync(requestId, WTFMove(parameters));
     else if (method == "executeSQLAsync")
-        executeSQLAsync(callId, message);
+        executeSQLAsync(requestId, WTFMove(parameters));
     else
-        m_backendDispatcher->reportProtocolError(&callId, BackendDispatcher::MethodNotFound, makeString('\'', "Database", '.', method, "' was not found"));
+        m_backendDispatcher->reportProtocolError(BackendDispatcher::MethodNotFound, makeString('\'', "Database", '.', method, "' was not found"));
 }
 
-void DatabaseBackendDispatcher::executeSQLSyncOptionalReturnValues(long callId, const InspectorObject& message)
+void DatabaseBackendDispatcher::executeSQLSyncOptionalReturnValues(long requestId, RefPtr<InspectorObject>&& parameters)
 {
-    auto protocolErrors = Inspector::Protocol::Array<String>::create();
-    RefPtr<InspectorObject> paramsContainer;
-    message.getObject(ASCIILiteral("params"), paramsContainer);
-    int in_databaseId = BackendDispatcher::getInteger(paramsContainer.get(), ASCIILiteral("databaseId"), nullptr, protocolErrors.get());
-    String in_query = BackendDispatcher::getString(paramsContainer.get(), ASCIILiteral("query"), nullptr, protocolErrors.get());
-    if (protocolErrors->length()) {
-        String errorMessage = String::format("Some arguments of method '%s' can't be processed", "Database.executeSQLSyncOptionalReturnValues");
-        m_backendDispatcher->reportProtocolError(&callId, BackendDispatcher::InvalidParams, errorMessage, WTF::move(protocolErrors));
+    int in_databaseId = m_backendDispatcher->getInteger(parameters.get(), ASCIILiteral("databaseId"), nullptr);
+    String in_query = m_backendDispatcher->getString(parameters.get(), ASCIILiteral("query"), nullptr);
+    if (m_backendDispatcher->hasProtocolErrors()) {
+        m_backendDispatcher->reportProtocolError(BackendDispatcher::InvalidParams, String::format("Some arguments of method '%s' can't be processed", "Database.executeSQLSyncOptionalReturnValues"));
         return;
     }
 
 #if ENABLE(INSPECTOR_ALTERNATE_DISPATCHERS)
     if (m_alternateDispatcher) {
-        m_alternateDispatcher->executeSQLSyncOptionalReturnValues(callId, in_databaseId, in_query);
+        m_alternateDispatcher->executeSQLSyncOptionalReturnValues(requestId, in_databaseId, in_query);
         return;
     }
 #endif
@@ -342,10 +343,13 @@ void DatabaseBackendDispatcher::executeSQLSyncOptionalReturnValues(long callId, 
         if (out_printColor.isAssigned())
             result->setString(ASCIILiteral("printColor"), out_printColor.getValue());
     }
-    m_backendDispatcher->sendResponse(callId, WTF::move(result), error);
+    if (!error.length())
+        m_backendDispatcher->sendResponse(requestId, WTFMove(result));
+    else
+        m_backendDispatcher->reportProtocolError(BackendDispatcher::ServerError, WTFMove(error));
 }
 
-DatabaseBackendDispatcherHandler::ExecuteSQLAsyncOptionalReturnValuesCallback::ExecuteSQLAsyncOptionalReturnValuesCallback(Ref<BackendDispatcher>&& backendDispatcher, int id) : BackendDispatcher::CallbackBase(WTF::move(backendDispatcher), id) { }
+DatabaseBackendDispatcherHandler::ExecuteSQLAsyncOptionalReturnValuesCallback::ExecuteSQLAsyncOptionalReturnValuesCallback(Ref<BackendDispatcher>&& backendDispatcher, int id) : BackendDispatcher::CallbackBase(WTFMove(backendDispatcher), id) { }
 
 void DatabaseBackendDispatcherHandler::ExecuteSQLAsyncOptionalReturnValuesCallback::sendSuccess(RefPtr<Inspector::Protocol::Array<String>>&& columnNames, Inspector::Protocol::OptOutput<String>* notes, Inspector::Protocol::OptOutput<double>* timestamp, Inspector::Protocol::OptOutput<Inspector::InspectorObject>* values, Inspector::Protocol::OptOutput<Inspector::InspectorValue>* payload, Inspector::Protocol::OptOutput<int>* databaseId, RefPtr<Inspector::Protocol::Database::Error>&& sqlError, Inspector::Protocol::OptOutput<String>* screenColor, RefPtr<Inspector::Protocol::Database::ColorList>&& alternateColors, Inspector::Protocol::OptOutput<String>* printColor)
 {
@@ -370,57 +374,49 @@ void DatabaseBackendDispatcherHandler::ExecuteSQLAsyncOptionalReturnValuesCallba
         jsonMessage->setArray(ASCIILiteral("alternateColors"), alternateColors);
     if (printColor.isAssigned())
         jsonMessage->setString(ASCIILiteral("printColor"), printColor.getValue());
-    sendIfActive(WTF::move(jsonMessage), ErrorString());
+    CallbackBase::sendSuccess(WTFMove(jsonMessage));
 }
 
-void DatabaseBackendDispatcher::executeSQLAsyncOptionalReturnValues(long callId, const InspectorObject& message)
+void DatabaseBackendDispatcher::executeSQLAsyncOptionalReturnValues(long requestId, RefPtr<InspectorObject>&& parameters)
 {
-    auto protocolErrors = Inspector::Protocol::Array<String>::create();
-    RefPtr<InspectorObject> paramsContainer;
-    message.getObject(ASCIILiteral("params"), paramsContainer);
-    int in_databaseId = BackendDispatcher::getInteger(paramsContainer.get(), ASCIILiteral("databaseId"), nullptr, protocolErrors.get());
-    String in_query = BackendDispatcher::getString(paramsContainer.get(), ASCIILiteral("query"), nullptr, protocolErrors.get());
-    if (protocolErrors->length()) {
-        String errorMessage = String::format("Some arguments of method '%s' can't be processed", "Database.executeSQLAsyncOptionalReturnValues");
-        m_backendDispatcher->reportProtocolError(&callId, BackendDispatcher::InvalidParams, errorMessage, WTF::move(protocolErrors));
+    int in_databaseId = m_backendDispatcher->getInteger(parameters.get(), ASCIILiteral("databaseId"), nullptr);
+    String in_query = m_backendDispatcher->getString(parameters.get(), ASCIILiteral("query"), nullptr);
+    if (m_backendDispatcher->hasProtocolErrors()) {
+        m_backendDispatcher->reportProtocolError(BackendDispatcher::InvalidParams, String::format("Some arguments of method '%s' can't be processed", "Database.executeSQLAsyncOptionalReturnValues"));
         return;
     }
 
 #if ENABLE(INSPECTOR_ALTERNATE_DISPATCHERS)
     if (m_alternateDispatcher) {
-        m_alternateDispatcher->executeSQLAsyncOptionalReturnValues(callId, in_databaseId, in_query);
+        m_alternateDispatcher->executeSQLAsyncOptionalReturnValues(requestId, in_databaseId, in_query);
         return;
     }
 #endif
 
     ErrorString error;
     Ref<InspectorObject> result = InspectorObject::create();
-    Ref<DatabaseBackendDispatcherHandler::ExecuteSQLAsyncOptionalReturnValuesCallback> callback = adoptRef(*new DatabaseBackendDispatcherHandler::ExecuteSQLAsyncOptionalReturnValuesCallback(m_backendDispatcher.copyRef(), callId));
+    Ref<DatabaseBackendDispatcherHandler::ExecuteSQLAsyncOptionalReturnValuesCallback> callback = adoptRef(*new DatabaseBackendDispatcherHandler::ExecuteSQLAsyncOptionalReturnValuesCallback(m_backendDispatcher.copyRef(), requestId));
     m_agent->executeSQLAsyncOptionalReturnValues(error, in_databaseId, in_query, callback.copyRef());
 
     if (error.length()) {
         callback->disable();
-        m_backendDispatcher->reportProtocolError(&callId, BackendDispatcher::ServerError, error);
+        m_backendDispatcher->reportProtocolError(BackendDispatcher::ServerError, error);
         return;
     }
 }
 
-void DatabaseBackendDispatcher::executeSQLSync(long callId, const InspectorObject& message)
+void DatabaseBackendDispatcher::executeSQLSync(long requestId, RefPtr<InspectorObject>&& parameters)
 {
-    auto protocolErrors = Inspector::Protocol::Array<String>::create();
-    RefPtr<InspectorObject> paramsContainer;
-    message.getObject(ASCIILiteral("params"), paramsContainer);
-    int in_databaseId = BackendDispatcher::getInteger(paramsContainer.get(), ASCIILiteral("databaseId"), nullptr, protocolErrors.get());
-    String in_query = BackendDispatcher::getString(paramsContainer.get(), ASCIILiteral("query"), nullptr, protocolErrors.get());
-    if (protocolErrors->length()) {
-        String errorMessage = String::format("Some arguments of method '%s' can't be processed", "Database.executeSQLSync");
-        m_backendDispatcher->reportProtocolError(&callId, BackendDispatcher::InvalidParams, errorMessage, WTF::move(protocolErrors));
+    int in_databaseId = m_backendDispatcher->getInteger(parameters.get(), ASCIILiteral("databaseId"), nullptr);
+    String in_query = m_backendDispatcher->getString(parameters.get(), ASCIILiteral("query"), nullptr);
+    if (m_backendDispatcher->hasProtocolErrors()) {
+        m_backendDispatcher->reportProtocolError(BackendDispatcher::InvalidParams, String::format("Some arguments of method '%s' can't be processed", "Database.executeSQLSync"));
         return;
     }
 
 #if ENABLE(INSPECTOR_ALTERNATE_DISPATCHERS)
     if (m_alternateDispatcher) {
-        m_alternateDispatcher->executeSQLSync(callId, in_databaseId, in_query);
+        m_alternateDispatcher->executeSQLSync(requestId, in_databaseId, in_query);
         return;
     }
 #endif
@@ -451,10 +447,13 @@ void DatabaseBackendDispatcher::executeSQLSync(long callId, const InspectorObjec
         result->setString(ASCIILiteral("screenColor"), Inspector::Protocol::getEnumConstantValue(out_screenColor));
         result->setString(ASCIILiteral("printColor"), Inspector::Protocol::getEnumConstantValue(out_printColor));
     }
-    m_backendDispatcher->sendResponse(callId, WTF::move(result), error);
+    if (!error.length())
+        m_backendDispatcher->sendResponse(requestId, WTFMove(result));
+    else
+        m_backendDispatcher->reportProtocolError(BackendDispatcher::ServerError, WTFMove(error));
 }
 
-DatabaseBackendDispatcherHandler::ExecuteSQLAsyncCallback::ExecuteSQLAsyncCallback(Ref<BackendDispatcher>&& backendDispatcher, int id) : BackendDispatcher::CallbackBase(WTF::move(backendDispatcher), id) { }
+DatabaseBackendDispatcherHandler::ExecuteSQLAsyncCallback::ExecuteSQLAsyncCallback(Ref<BackendDispatcher>&& backendDispatcher, int id) : BackendDispatcher::CallbackBase(WTFMove(backendDispatcher), id) { }
 
 void DatabaseBackendDispatcherHandler::ExecuteSQLAsyncCallback::sendSuccess(RefPtr<Inspector::Protocol::Array<String>>&& columnNames, const String& notes, double timestamp, Inspector::InspectorObject values, Inspector::InspectorValue payload, int databaseId, RefPtr<Inspector::Protocol::Database::Error>&& sqlError, const String& screenColor, RefPtr<Inspector::Protocol::Database::ColorList>&& alternateColors, const String& printColor)
 {
@@ -469,37 +468,33 @@ void DatabaseBackendDispatcherHandler::ExecuteSQLAsyncCallback::sendSuccess(RefP
     jsonMessage->setString(ASCIILiteral("screenColor"), Inspector::Protocol::getEnumConstantValue(screenColor));
     jsonMessage->setArray(ASCIILiteral("alternateColors"), alternateColors);
     jsonMessage->setString(ASCIILiteral("printColor"), Inspector::Protocol::getEnumConstantValue(printColor));
-    sendIfActive(WTF::move(jsonMessage), ErrorString());
+    CallbackBase::sendSuccess(WTFMove(jsonMessage));
 }
 
-void DatabaseBackendDispatcher::executeSQLAsync(long callId, const InspectorObject& message)
+void DatabaseBackendDispatcher::executeSQLAsync(long requestId, RefPtr<InspectorObject>&& parameters)
 {
-    auto protocolErrors = Inspector::Protocol::Array<String>::create();
-    RefPtr<InspectorObject> paramsContainer;
-    message.getObject(ASCIILiteral("params"), paramsContainer);
-    int in_databaseId = BackendDispatcher::getInteger(paramsContainer.get(), ASCIILiteral("databaseId"), nullptr, protocolErrors.get());
-    String in_query = BackendDispatcher::getString(paramsContainer.get(), ASCIILiteral("query"), nullptr, protocolErrors.get());
-    if (protocolErrors->length()) {
-        String errorMessage = String::format("Some arguments of method '%s' can't be processed", "Database.executeSQLAsync");
-        m_backendDispatcher->reportProtocolError(&callId, BackendDispatcher::InvalidParams, errorMessage, WTF::move(protocolErrors));
+    int in_databaseId = m_backendDispatcher->getInteger(parameters.get(), ASCIILiteral("databaseId"), nullptr);
+    String in_query = m_backendDispatcher->getString(parameters.get(), ASCIILiteral("query"), nullptr);
+    if (m_backendDispatcher->hasProtocolErrors()) {
+        m_backendDispatcher->reportProtocolError(BackendDispatcher::InvalidParams, String::format("Some arguments of method '%s' can't be processed", "Database.executeSQLAsync"));
         return;
     }
 
 #if ENABLE(INSPECTOR_ALTERNATE_DISPATCHERS)
     if (m_alternateDispatcher) {
-        m_alternateDispatcher->executeSQLAsync(callId, in_databaseId, in_query);
+        m_alternateDispatcher->executeSQLAsync(requestId, in_databaseId, in_query);
         return;
     }
 #endif
 
     ErrorString error;
     Ref<InspectorObject> result = InspectorObject::create();
-    Ref<DatabaseBackendDispatcherHandler::ExecuteSQLAsyncCallback> callback = adoptRef(*new DatabaseBackendDispatcherHandler::ExecuteSQLAsyncCallback(m_backendDispatcher.copyRef(), callId));
+    Ref<DatabaseBackendDispatcherHandler::ExecuteSQLAsyncCallback> callback = adoptRef(*new DatabaseBackendDispatcherHandler::ExecuteSQLAsyncCallback(m_backendDispatcher.copyRef(), requestId));
     m_agent->executeSQLAsync(error, in_databaseId, in_query, callback.copyRef());
 
     if (error.length()) {
         callback->disable();
-        m_backendDispatcher->reportProtocolError(&callId, BackendDispatcher::ServerError, error);
+        m_backendDispatcher->reportProtocolError(BackendDispatcher::ServerError, error);
         return;
     }
 }
@@ -543,13 +538,12 @@ void DatabaseBackendDispatcher::executeSQLAsync(long callId, const InspectorObje
 #define InspectorFrontendDispatchers_h
 
 #include "InspectorProtocolObjects.h"
-#include <inspector/InspectorFrontendChannel.h>
 #include <inspector/InspectorValues.h>
 #include <wtf/text/WTFString.h>
 
 namespace Inspector {
 
-
+class FrontendRouter;
 
 } // namespace Inspector
 
@@ -590,6 +584,7 @@ namespace Inspector {
 #include "config.h"
 #include "InspectorFrontendDispatchers.h"
 
+#include "InspectorFrontendRouter.h"
 #include <wtf/text/CString.h>
 
 namespace Inspector {
@@ -692,7 +687,7 @@ public:
         }
 
         Builder(Ref</*Error*/InspectorObject>&& object)
-            : m_result(WTF::move(object))
+            : m_result(WTFMove(object))
         {
             COMPILE_ASSERT(STATE == NoFieldsSet, builder_created_in_non_init_state);
         }
@@ -719,7 +714,7 @@ public:
             COMPILE_ASSERT(sizeof(Error) == sizeof(InspectorObject), cannot_cast);
 
             Ref<InspectorObject> result = m_result.releaseNonNull();
-            return WTF::move(*reinterpret_cast<Ref<Error>*>(&result));
+            return WTFMove(*reinterpret_cast<Ref<Error>*>(&result));
         }
     };
 
@@ -851,10 +846,10 @@ namespace Inspector {
 class ObjCInspectorDatabaseBackendDispatcher final : public AlternateDatabaseBackendDispatcher {
 public:
     ObjCInspectorDatabaseBackendDispatcher(id<RWIProtocolDatabaseDomainHandler> handler) { m_delegate = handler; }
-    virtual void executeSQLSyncOptionalReturnValues(long callId, int in_databaseId, const String& in_query) override;
-    virtual void executeSQLAsyncOptionalReturnValues(long callId, int in_databaseId, const String& in_query) override;
-    virtual void executeSQLSync(long callId, int in_databaseId, const String& in_query) override;
-    virtual void executeSQLAsync(long callId, int in_databaseId, const String& in_query) override;
+    virtual void executeSQLSyncOptionalReturnValues(long requestId, int in_databaseId, const String& in_query) override;
+    virtual void executeSQLAsyncOptionalReturnValues(long requestId, int in_databaseId, const String& in_query) override;
+    virtual void executeSQLSync(long requestId, int in_databaseId, const String& in_query) override;
+    virtual void executeSQLAsync(long requestId, int in_databaseId, const String& in_query) override;
 private:
     RetainPtr<id<RWIProtocolDatabaseDomainHandler>> m_delegate;
 };
@@ -937,8 +932,8 @@ using namespace Inspector;
     _databaseHandler = [handler retain];
 
     auto alternateDispatcher = std::make_unique<ObjCInspectorDatabaseBackendDispatcher>(handler);
-    auto alternateAgent = std::make_unique<AlternateDispatchableAgent<DatabaseBackendDispatcher, AlternateDatabaseBackendDispatcher>>(ASCIILiteral("Database"), WTF::move(alternateDispatcher));
-    _controller->appendExtraAgent(WTF::move(alternateAgent));
+    auto alternateAgent = std::make_unique<AlternateDispatchableAgent<DatabaseBackendDispatcher, AlternateDatabaseBackendDispatcher>>(ASCIILiteral("Database"), *_controller, WTFMove(alternateDispatcher));
+    _controller->appendExtraAgent(WTFMove(alternateAgent));
 }
 
 - (id<RWIProtocolDatabaseDomainHandler>)databaseHandler
@@ -982,7 +977,7 @@ using namespace Inspector;
 // DO NOT EDIT THIS FILE. It is automatically generated from commands-with-async-attribute.json
 // by the script: Source/JavaScriptCore/inspector/scripts/generate-inspector-protocol-bindings.py
 
-#import "RWIProtocol.h"
+#import <WebInspector/RWIProtocol.h>
 
 __attribute__((visibility ("default")))
 @interface RWIProtocolConfiguration : NSObject
@@ -1028,15 +1023,15 @@ __attribute__((visibility ("default")))
 
 #include "RWIProtocolInternal.h"
 #include "RWIProtocolEnumConversionHelpers.h"
-#include <JavaScriptCore/InspectorFrontendChannel.h>
 #include <JavaScriptCore/InspectorValues.h>
 
 namespace Inspector {
 
-void ObjCInspectorDatabaseBackendDispatcher::executeSQLSyncOptionalReturnValues(long callId, int in_databaseId, const String& in_query)
+void ObjCInspectorDatabaseBackendDispatcher::executeSQLSyncOptionalReturnValues(long requestId, int in_databaseId, const String& in_query)
 {
     id errorCallback = ^(NSString *error) {
-        backendDispatcher()->sendResponse(callId, InspectorObject::create(), error);
+        backendDispatcher()->reportProtocolError(requestId, BackendDispatcher::ServerError, error);
+        backendDispatcher()->sendPendingErrors();
     };
 
     id successCallback = ^(NSArray/*<NSString>*/ **columnNames, NSString **notes, double *timestamp, RWIProtocolJSONObject **values, RWIProtocolJSONObject **payload, int *databaseId, RWIProtocolDatabaseError **sqlError, RWIProtocolDatabasePrimaryColors *screenColor, NSArray/*<NSString>*/ **alternateColors, RWIProtocolDatabaseExecuteSQLSyncOptionalReturnValuesPrintColor *printColor) {
@@ -1067,7 +1062,7 @@ void ObjCInspectorDatabaseBackendDispatcher::executeSQLSyncOptionalReturnValues(
             resultObject->setArray(ASCIILiteral("alternateColors"), inspectorStringArray(*alternateColors));
         if (printColor)
             resultObject->setString(ASCIILiteral("printColor"), toProtocolString(*printColor));
-        backendDispatcher()->sendResponse(callId, WTF::move(resultObject), String());
+        backendDispatcher()->sendResponse(requestId, WTFMove(resultObject));
     };
 
     int o_in_databaseId = in_databaseId;
@@ -1076,10 +1071,11 @@ void ObjCInspectorDatabaseBackendDispatcher::executeSQLSyncOptionalReturnValues(
     [m_delegate executeSQLSyncOptionalReturnValuesWithErrorCallback:errorCallback successCallback:successCallback databaseId:o_in_databaseId query:o_in_query];
 }
 
-void ObjCInspectorDatabaseBackendDispatcher::executeSQLAsyncOptionalReturnValues(long callId, int in_databaseId, const String& in_query)
+void ObjCInspectorDatabaseBackendDispatcher::executeSQLAsyncOptionalReturnValues(long requestId, int in_databaseId, const String& in_query)
 {
     id errorCallback = ^(NSString *error) {
-        backendDispatcher()->sendResponse(callId, InspectorObject::create(), error);
+        backendDispatcher()->reportProtocolError(requestId, BackendDispatcher::ServerError, error);
+        backendDispatcher()->sendPendingErrors();
     };
 
     id successCallback = ^(NSArray/*<NSString>*/ **columnNames, NSString **notes, double *timestamp, RWIProtocolJSONObject **values, RWIProtocolJSONObject **payload, int *databaseId, RWIProtocolDatabaseError **sqlError, RWIProtocolDatabasePrimaryColors *screenColor, NSArray/*<NSString>*/ **alternateColors, RWIProtocolDatabaseExecuteSQLAsyncOptionalReturnValuesPrintColor *printColor) {
@@ -1110,7 +1106,7 @@ void ObjCInspectorDatabaseBackendDispatcher::executeSQLAsyncOptionalReturnValues
             resultObject->setArray(ASCIILiteral("alternateColors"), inspectorStringArray(*alternateColors));
         if (printColor)
             resultObject->setString(ASCIILiteral("printColor"), toProtocolString(*printColor));
-        backendDispatcher()->sendResponse(callId, WTF::move(resultObject), String());
+        backendDispatcher()->sendResponse(requestId, WTFMove(resultObject));
     };
 
     int o_in_databaseId = in_databaseId;
@@ -1119,10 +1115,11 @@ void ObjCInspectorDatabaseBackendDispatcher::executeSQLAsyncOptionalReturnValues
     [m_delegate executeSQLAsyncOptionalReturnValuesWithErrorCallback:errorCallback successCallback:successCallback databaseId:o_in_databaseId query:o_in_query];
 }
 
-void ObjCInspectorDatabaseBackendDispatcher::executeSQLSync(long callId, int in_databaseId, const String& in_query)
+void ObjCInspectorDatabaseBackendDispatcher::executeSQLSync(long requestId, int in_databaseId, const String& in_query)
 {
     id errorCallback = ^(NSString *error) {
-        backendDispatcher()->sendResponse(callId, InspectorObject::create(), error);
+        backendDispatcher()->reportProtocolError(requestId, BackendDispatcher::ServerError, error);
+        backendDispatcher()->sendPendingErrors();
     };
 
     id successCallback = ^(NSArray/*<NSString>*/ *columnNames, NSString *notes, double timestamp, RWIProtocolJSONObject *values, RWIProtocolJSONObject *payload, int databaseId, RWIProtocolDatabaseError *sqlError, NSArray/*<NSString>*/ *alternateColors, RWIProtocolDatabasePrimaryColors screenColor, RWIProtocolDatabaseExecuteSQLSyncPrintColor printColor) {
@@ -1143,7 +1140,7 @@ void ObjCInspectorDatabaseBackendDispatcher::executeSQLSync(long callId, int in_
         resultObject->setArray(ASCIILiteral("alternateColors"), inspectorStringArray(alternateColors));
         resultObject->setString(ASCIILiteral("screenColor"), toProtocolString(screenColor));
         resultObject->setString(ASCIILiteral("printColor"), toProtocolString(printColor));
-        backendDispatcher()->sendResponse(callId, WTF::move(resultObject), String());
+        backendDispatcher()->sendResponse(requestId, WTFMove(resultObject));
     };
 
     int o_in_databaseId = in_databaseId;
@@ -1152,10 +1149,11 @@ void ObjCInspectorDatabaseBackendDispatcher::executeSQLSync(long callId, int in_
     [m_delegate executeSQLSyncWithErrorCallback:errorCallback successCallback:successCallback databaseId:o_in_databaseId query:o_in_query];
 }
 
-void ObjCInspectorDatabaseBackendDispatcher::executeSQLAsync(long callId, int in_databaseId, const String& in_query)
+void ObjCInspectorDatabaseBackendDispatcher::executeSQLAsync(long requestId, int in_databaseId, const String& in_query)
 {
     id errorCallback = ^(NSString *error) {
-        backendDispatcher()->sendResponse(callId, InspectorObject::create(), error);
+        backendDispatcher()->reportProtocolError(requestId, BackendDispatcher::ServerError, error);
+        backendDispatcher()->sendPendingErrors();
     };
 
     id successCallback = ^(NSArray/*<NSString>*/ *columnNames, NSString *notes, double timestamp, RWIProtocolJSONObject *values, RWIProtocolJSONObject *payload, int databaseId, RWIProtocolDatabaseError *sqlError, RWIProtocolDatabasePrimaryColors screenColor, NSArray/*<NSString>*/ *alternateColors, RWIProtocolDatabaseExecuteSQLAsyncPrintColor printColor) {
@@ -1176,7 +1174,7 @@ void ObjCInspectorDatabaseBackendDispatcher::executeSQLAsync(long callId, int in
         resultObject->setString(ASCIILiteral("screenColor"), toProtocolString(screenColor));
         resultObject->setArray(ASCIILiteral("alternateColors"), inspectorStringArray(alternateColors));
         resultObject->setString(ASCIILiteral("printColor"), toProtocolString(printColor));
-        backendDispatcher()->sendResponse(callId, WTF::move(resultObject), String());
+        backendDispatcher()->sendResponse(requestId, WTFMove(resultObject));
     };
 
     int o_in_databaseId = in_databaseId;
@@ -1409,7 +1407,6 @@ inline RWIProtocolDatabaseExecuteSQLAsyncPrintColor fromProtocolString(const Str
 #import "RWIProtocolInternal.h"
 
 #import "RWIProtocolEnumConversionHelpers.h"
-#import <JavaScriptCore/InspectorFrontendChannel.h>
 #import <JavaScriptCore/InspectorValues.h>
 
 using namespace Inspector;

@@ -22,11 +22,11 @@
 #if USE(GSTREAMER)
 #include "GStreamerUtilities.h"
 
+#include "GRefPtrGStreamer.h"
 #include "IntSize.h"
 
 #include <gst/audio/audio-info.h>
 #include <gst/gst.h>
-#include <gst/video/video-info.h>
 #include <wtf/MathExtras.h>
 #include <wtf/glib/GUniquePtr.h>
 
@@ -70,6 +70,22 @@ bool getVideoSizeAndFormatFromCaps(GstCaps* caps, WebCore::IntSize& size, GstVid
     pixelAspectRatioNumerator = GST_VIDEO_INFO_PAR_N(&info);
     pixelAspectRatioDenominator = GST_VIDEO_INFO_PAR_D(&info);
     stride = GST_VIDEO_INFO_PLANE_STRIDE(&info, 0);
+
+    return true;
+}
+
+bool getSampleVideoInfo(GstSample* sample, GstVideoInfo& videoInfo)
+{
+    if (!GST_IS_SAMPLE(sample))
+        return false;
+
+    GstCaps* caps = gst_sample_get_caps(sample);
+    if (!caps)
+        return false;
+
+    gst_video_info_init(&videoInfo);
+    if (!gst_video_info_from_caps(&videoInfo, caps))
+        return false;
 
     return true;
 }
@@ -168,6 +184,16 @@ GstClockTime toGstClockTime(float time)
     timeValue.tv_sec = static_cast<glong>(seconds);
     timeValue.tv_usec = static_cast<glong>(roundf(microSeconds / 10000) * 10000);
     return GST_TIMEVAL_TO_TIME(timeValue);
+}
+
+bool gstRegistryHasElementForMediaType(GList* elementFactories, const char* capsString)
+{
+    GRefPtr<GstCaps> caps = adoptGRef(gst_caps_from_string(capsString));
+    GList* candidates = gst_element_factory_list_filter(elementFactories, caps.get(), GST_PAD_SINK, false);
+    bool result = candidates;
+
+    gst_plugin_feature_list_free(candidates);
+    return result;
 }
 
 }
