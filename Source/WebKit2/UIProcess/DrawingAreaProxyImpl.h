@@ -53,13 +53,15 @@ public:
     void destroyNativeSurfaceHandleForCompositing();
 #endif
 
+    virtual void dispatchAfterEnsuringDrawing(std::function<void (CallbackBase::Error)>) override;
+
 private:
     // DrawingAreaProxy
-    virtual void sizeDidChange();
-    virtual void deviceScaleFactorDidChange();
+    virtual void sizeDidChange() override;
+    virtual void deviceScaleFactorDidChange() override;
 
-    virtual void setBackingStoreIsDiscardable(bool);
-    virtual void waitForBackingStoreUpdateOnNextPaint();
+    virtual void setBackingStoreIsDiscardable(bool) override;
+    virtual void waitForBackingStoreUpdateOnNextPaint() override;
 
     // IPC message handlers
     virtual void update(uint64_t backingStoreStateID, const UpdateInfo&) override;

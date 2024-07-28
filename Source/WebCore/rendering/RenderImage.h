@@ -77,11 +77,11 @@ protected:
     virtual void computeIntrinsicRatioInformation(FloatSize& intrinsicSize, double& intrinsicRatio) const override final;
     virtual bool foregroundIsKnownToBeOpaqueInRect(const LayoutRect& localRect, unsigned maxDepthToTest) const override;
 
-    virtual void styleDidChange(StyleDifference, const RenderStyle*) override final;
+    virtual void styleDidChange(StyleDifference, const RenderStyle*) override;
 
     virtual void imageChanged(WrappedImagePtr, const IntRect* = nullptr) override;
 
-    void paintIntoRect(GraphicsContext*, const FloatRect&);
+    void paintIntoRect(GraphicsContext&, const FloatRect&);
     virtual void paint(PaintInfo&, const LayoutPoint&) override final;
     virtual void layout() override;
 
@@ -124,11 +124,11 @@ private:
     // Text to display as long as the image isn't available.
     String m_altText;
     std::unique_ptr<RenderImageResource> m_imageResource;
-    bool m_needsToSetSizeForAltText;
-    bool m_didIncrementVisuallyNonEmptyPixelCount;
-    bool m_isGeneratedContent;
-    bool m_hasShadowControls;
-    float m_imageDevicePixelRatio;
+    bool m_needsToSetSizeForAltText { false };
+    bool m_didIncrementVisuallyNonEmptyPixelCount { false };
+    bool m_isGeneratedContent { false };
+    bool m_hasShadowControls { false };
+    float m_imageDevicePixelRatio { 1 };
 
     friend class RenderImageScaleObserver;
 };

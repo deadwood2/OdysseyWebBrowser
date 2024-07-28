@@ -120,6 +120,13 @@ void FEComposite::correctFilterResultIfNeeded()
 
     forceValidPreMultipliedPixels();
 }
+    
+static unsigned char clampByte(int c)
+{
+    unsigned char buff[] = { static_cast<unsigned char>(c), 255, 0 };
+    unsigned uc = static_cast<unsigned>(c);
+    return buff[!!(uc & ~0xff) + !!(uc & ~(~0u >> 1))];
+}
 
 template <int b1, int b4>
 static inline void computeArithmeticPixels(unsigned char* source, unsigned char* destination, int pixelArrayLength,
@@ -141,12 +148,7 @@ static inline void computeArithmeticPixels(unsigned char* source, unsigned char*
         if (b4)
             result += scaledK4;
 
-        if (result <= 0)
-            *destination = 0;
-        else if (result >= 255)
-            *destination = 255;
-        else
-            *destination = result;
+        *destination = clampByte(result);
         ++source;
         ++destination;
     }
@@ -272,17 +274,17 @@ void FEComposite::platformApplySoftware()
     ImageBuffer* resultImage = createImageBufferResult();
     if (!resultImage)
         return;
-    GraphicsContext* filterContext = resultImage->context();
+    GraphicsContext& filterContext = resultImage->context();
 
     ImageBuffer* imageBuffer = in->asImageBuffer();
     ImageBuffer* imageBuffer2 = in2->asImageBuffer();
-    ASSERT(imageBuffer);
-    ASSERT(imageBuffer2);
+    if (!imageBuffer || !imageBuffer2)
+        return;
 
     switch (m_type) {
     case FECOMPOSITE_OPERATOR_OVER:
-        filterContext->drawImageBuffer(imageBuffer2, ColorSpaceDeviceRGB, drawingRegionOfInputImage(in2->absolutePaintRect()));
-        filterContext->drawImageBuffer(imageBuffer, ColorSpaceDeviceRGB, drawingRegionOfInputImage(in->absolutePaintRect()));
+        filterContext.drawImageBuffer(*imageBuffer2, drawingRegionOfInputImage(in2->absolutePaintRect()));
+        filterContext.drawImageBuffer(*imageBuffer, drawingRegionOfInputImage(in->absolutePaintRect()));
         break;
     case FECOMPOSITE_OPERATOR_IN: {
         // Applies only to the intersected region.
@@ -294,21 +296,25 @@ void FEComposite::platformApplySoftware()
         IntRect adjustedDestinationRect = destinationRect - absolutePaintRect().location();
         IntRect sourceRect = destinationRect - in->absolutePaintRect().location();
         IntRect source2Rect = destinationRect - in2->absolutePaintRect().location();
-        filterContext->drawImageBuffer(imageBuffer2, ColorSpaceDeviceRGB, adjustedDestinationRect, source2Rect);
-        filterContext->drawImageBuffer(imageBuffer, ColorSpaceDeviceRGB, adjustedDestinationRect, sourceRect, CompositeSourceIn);
+        filterContext.drawImageBuffer(*imageBuffer2, adjustedDestinationRect, source2Rect);
+        filterContext.drawImageBuffer(*imageBuffer, adjustedDestinationRect, sourceRect, CompositeSourceIn);
         break;
     }
     case FECOMPOSITE_OPERATOR_OUT:
-        filterContext->drawImageBuffer(imageBuffer, ColorSpaceDeviceRGB, drawingRegionOfInputImage(in->absolutePaintRect()));
-        filterContext->drawImageBuffer(imageBuffer2, ColorSpaceDeviceRGB, drawingRegionOfInputImage(in2->absolutePaintRect()), IntRect(IntPoint(), imageBuffer2->logicalSize()), CompositeDestinationOut);
+        filterContext.drawImageBuffer(*imageBuffer, drawingRegionOfInputImage(in->absolutePaintRect()));
+        filterContext.drawImageBuffer(*imageBuffer2, drawingRegionOfInputImage(in2->absolutePaintRect()), IntRect(IntPoint(), imageBuffer2->logicalSize()), CompositeDestinationOut);
         break;
     case FECOMPOSITE_OPERATOR_ATOP:
-        filterContext->drawImageBuffer(imageBuffer2, ColorSpaceDeviceRGB, drawingRegionOfInputImage(in2->absolutePaintRect()));
-        filterContext->drawImageBuffer(imageBuffer, ColorSpaceDeviceRGB, drawingRegionOfInputImage(in->absolutePaintRect()), IntRect(IntPoint(), imageBuffer->logicalSize()), CompositeSourceAtop);
+        filterContext.drawImageBuffer(*imageBuffer2, drawingRegionOfInputImage(in2->absolutePaintRect()));
+        filterContext.drawImageBuffer(*imageBuffer, drawingRegionOfInputImage(in->absolutePaintRect()), IntRect(IntPoint(), imageBuffer->logicalSize()), CompositeSourceAtop);
         break;
     case FECOMPOSITE_OPERATOR_XOR:
-        filterContext->drawImageBuffer(imageBuffer2, ColorSpaceDeviceRGB, drawingRegionOfInputImage(in2->absolutePaintRect()));
-        filterContext->drawImageBuffer(imageBuffer, ColorSpaceDeviceRGB, drawingRegionOfInputImage(in->absolutePaintRect()), IntRect(IntPoint(), imageBuffer->logicalSize()), CompositeXOR);
+        filterContext.drawImageBuffer(*imageBuffer2, drawingRegionOfInputImage(in2->absolutePaintRect()));
+        filterContext.drawImageBuffer(*imageBuffer, drawingRegionOfInputImage(in->absolutePaintRect()), IntRect(IntPoint(), imageBuffer->logicalSize()), CompositeXOR);
+        break;
+    case FECOMPOSITE_OPERATOR_LIGHTER:
+        filterContext.drawImageBuffer(*imageBuffer2, drawingRegionOfInputImage(in2->absolutePaintRect()));
+        filterContext.drawImageBuffer(*imageBuffer, drawingRegionOfInputImage(in->absolutePaintRect()), IntRect(IntPoint(), imageBuffer->logicalSize()), CompositePlusLighter);
         break;
     default:
         break;
@@ -342,6 +348,9 @@ static TextStream& operator<<(TextStream& ts, const CompositeOperationType& type
         break;
     case FECOMPOSITE_OPERATOR_ARITHMETIC:
         ts << "ARITHMETIC";
+        break;
+    case FECOMPOSITE_OPERATOR_LIGHTER:
+        ts << "LIGHTER";
         break;
     }
     return ts;

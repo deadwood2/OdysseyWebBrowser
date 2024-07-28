@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011, 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2011, 2012, 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -90,6 +90,8 @@ SparseArrayValueMap::AddResult SparseArrayValueMap::add(JSObject* array, unsigne
 
 void SparseArrayValueMap::putEntry(ExecState* exec, JSObject* array, unsigned i, JSValue value, bool shouldThrow)
 {
+    ASSERT(value);
+    
     AddResult result = add(array, i);
     SparseArrayEntry& entry = result.iterator->value;
 
@@ -108,6 +110,8 @@ void SparseArrayValueMap::putEntry(ExecState* exec, JSObject* array, unsigned i,
 
 bool SparseArrayValueMap::putDirect(ExecState* exec, JSObject* array, unsigned i, JSValue value, unsigned attributes, PutDirectIndexMode mode)
 {
+    ASSERT(value);
+    
     AddResult result = add(array, i);
     SparseArrayEntry& entry = result.iterator->value;
 
@@ -140,17 +144,6 @@ void SparseArrayEntry::get(JSObject* thisObject, PropertySlot& slot) const
 void SparseArrayEntry::get(PropertyDescriptor& descriptor) const
 {
     descriptor.setDescriptor(Base::get(), attributes);
-}
-
-JSValue SparseArrayEntry::get(ExecState* exec, JSObject* array) const
-{
-    JSValue value = Base::get();
-    ASSERT(value);
-
-    if (LIKELY(!value.isGetterSetter()))
-        return value;
-
-    return callGetter(exec, array, jsCast<GetterSetter*>(value));
 }
 
 void SparseArrayEntry::put(ExecState* exec, JSValue thisValue, SparseArrayValueMap* map, JSValue value, bool shouldThrow)

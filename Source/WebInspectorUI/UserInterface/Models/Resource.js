@@ -35,7 +35,9 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
             type = WebInspector.Resource.Type[type];
 
         this._url = url;
+        this._urlComponents = null;
         this._mimeType = mimeType;
+        this._mimeTypeComponents = null;
         this._type = type || WebInspector.Resource.typeFromMIMEType(mimeType);
         this._loaderIdentifier = loaderIdentifier || null;
         this._requestIdentifier = requestIdentifier || null;
@@ -45,15 +47,20 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
         this._responseHeaders = {};
         this._parentFrame = null;
         this._initiatorSourceCodeLocation = initiatorSourceCodeLocation || null;
+        this._initiatedResources = [];
         this._originalRequestWillBeSentTimestamp = originalRequestWillBeSentTimestamp || null;
         this._requestSentTimestamp = requestSentTimestamp || NaN;
         this._responseReceivedTimestamp = NaN;
         this._lastRedirectReceivedTimestamp = NaN;
         this._lastDataReceivedTimestamp = NaN;
         this._finishedOrFailedTimestamp = NaN;
+        this._finishThenRequestContentPromise = null;
         this._size = NaN;
         this._transferSize = NaN;
         this._cached = false;
+
+        if (this._initiatorSourceCodeLocation && this._initiatorSourceCodeLocation.sourceCode instanceof WebInspector.Resource)
+            this._initiatorSourceCodeLocation.sourceCode.addInitiatedResource(this);
     }
 
     // Static
@@ -135,9 +142,21 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
         return WebInspector.displayNameForURL(this._url, this.urlComponents);
     }
 
+    get displayURL()
+    {
+        const isMultiLine = true;
+        const dataURIMaxSize = 64;
+        return WebInspector.truncateURL(this._url, isMultiLine, dataURIMaxSize);
+    }
+
     get initiatorSourceCodeLocation()
     {
         return this._initiatorSourceCodeLocation;
+    }
+
+    get initiatedResources()
+    {
+        return this._initiatedResources;
     }
 
     get originalRequestWillBeSentTimestamp()
@@ -203,6 +222,16 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
     isMainResource()
     {
         return this._parentFrame ? this._parentFrame.mainResource === this : false;
+    }
+
+    addInitiatedResource(resource)
+    {
+        if (!(resource instanceof WebInspector.Resource))
+            return;
+
+        this._initiatedResources.push(resource);
+
+        this.dispatchEventToListeners(WebInspector.Resource.Event.InitiatedResourcesDidChange);
     }
 
     get parentFrame()
@@ -408,7 +437,7 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
 
         if (oldURL !== url) {
             // Delete the URL components so the URL is re-parsed the next time it is requested.
-            delete this._urlComponents;
+            this._urlComponents = null;
 
             this.dispatchEventToListeners(WebInspector.Resource.Event.URLDidChange, {oldURL});
         }
@@ -447,14 +476,14 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
 
         if (oldURL !== url) {
             // Delete the URL components so the URL is re-parsed the next time it is requested.
-            delete this._urlComponents;
+            this._urlComponents = null;
 
             this.dispatchEventToListeners(WebInspector.Resource.Event.URLDidChange, {oldURL});
         }
 
         if (oldMIMEType !== mimeType) {
             // Delete the MIME-type components so the MIME-type is re-parsed the next time it is requested.
-            delete this._mimeTypeComponents;
+            this._mimeTypeComponents = null;
 
             this.dispatchEventToListeners(WebInspector.Resource.Event.MIMETypeDidChange, {oldMIMEType});
         }
@@ -544,7 +573,7 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
         this._finishedOrFailedTimestamp = elapsedTime || NaN;
 
         if (this._finishThenRequestContentPromise)
-            delete this._finishThenRequestContentPromise;
+            this._finishThenRequestContentPromise = null;
 
         this.dispatchEventToListeners(WebInspector.Resource.Event.LoadingDidFinish);
         this.dispatchEventToListeners(WebInspector.Resource.Event.TimestampsDidChange);
@@ -637,8 +666,6 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
 
         this._scripts.push(script);
 
-        // COMPATIBILITY (iOS 6): Resources did not know their type until a response
-        // was received. We can set the Resource type to be Script here.
         if (this._type === WebInspector.Resource.Type.Other) {
             var oldType = this._type;
             this._type = WebInspector.Resource.Type.Script;
@@ -668,7 +695,8 @@ WebInspector.Resource.Event = {
     TimestampsDidChange: "resource-timestamps-did-change",
     SizeDidChange: "resource-size-did-change",
     TransferSizeDidChange: "resource-transfer-size-did-change",
-    CacheStatusDidChange: "resource-cached-did-change"
+    CacheStatusDidChange: "resource-cached-did-change",
+    InitiatedResourcesDidChange: "resource-initiated-resources-did-change",
 };
 
 // Keep these in sync with the "ResourceType" enum defined by the "Page" domain.

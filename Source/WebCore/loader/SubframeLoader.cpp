@@ -84,6 +84,9 @@ bool SubframeLoader::requestFrame(HTMLFrameOwnerElement& ownerElement, const Str
     } else
         url = completeURL(urlString);
 
+    if (!url.isValid())
+        url = blankURL();
+
     Frame* frame = loadOrRedirectSubframe(ownerElement, url, frameName, lockHistory, lockBackForwardList);
     if (!frame)
         return false;
@@ -94,14 +97,28 @@ bool SubframeLoader::requestFrame(HTMLFrameOwnerElement& ownerElement, const Str
     return true;
 }
     
-bool SubframeLoader::resourceWillUsePlugin(const String& url, const String& mimeType, bool shouldPreferPlugInsForImages)
+bool SubframeLoader::resourceWillUsePlugin(const String& url, const String& mimeType)
 {
     URL completedURL;
     if (!url.isEmpty())
         completedURL = completeURL(url);
 
     bool useFallback;
-    return shouldUsePlugin(completedURL, mimeType, shouldPreferPlugInsForImages, false, useFallback);
+    return shouldUsePlugin(completedURL, mimeType, false, useFallback);
+}
+
+bool SubframeLoader::isPluginContentAllowedByContentSecurityPolicy(HTMLPlugInImageElement& pluginElement, const URL& url, const String& mimeType) const
+{
+    if (!document())
+        return true;
+
+    ASSERT(document()->contentSecurityPolicy());
+    const ContentSecurityPolicy& contentSecurityPolicy = *document()->contentSecurityPolicy();
+
+    String declaredMimeType = document()->isPluginDocument() && document()->ownerElement() ?
+        document()->ownerElement()->fastGetAttribute(HTMLNames::typeAttr) : pluginElement.fastGetAttribute(HTMLNames::typeAttr);
+    bool isInUserAgentShadowTree = pluginElement.isInUserAgentShadowTree();
+    return contentSecurityPolicy.allowObjectFromSource(url, isInUserAgentShadowTree) && contentSecurityPolicy.allowPluginType(mimeType, declaredMimeType, url, isInUserAgentShadowTree);
 }
 
 bool SubframeLoader::pluginIsLoadable(HTMLPlugInImageElement& pluginElement, const URL& url, const String& mimeType)
@@ -122,12 +139,7 @@ bool SubframeLoader::pluginIsLoadable(HTMLPlugInImageElement& pluginElement, con
             return false;
         }
 
-        String declaredMimeType = document()->isPluginDocument() && document()->ownerElement() ?
-            document()->ownerElement()->fastGetAttribute(HTMLNames::typeAttr) :
-            pluginElement.fastGetAttribute(HTMLNames::typeAttr);
-        bool isInUserAgentShadowTree = pluginElement.isInUserAgentShadowTree();
-        if (!document()->contentSecurityPolicy()->allowObjectFromSource(url, isInUserAgentShadowTree)
-            || !document()->contentSecurityPolicy()->allowPluginType(mimeType, declaredMimeType, url, isInUserAgentShadowTree)) {
+        if (!isPluginContentAllowedByContentSecurityPolicy(pluginElement, url, mimeType)) {
             RenderEmbeddedObject* renderer = pluginElement.renderEmbeddedObject();
             renderer->setPluginUnavailabilityReason(RenderEmbeddedObject::PluginBlockedByContentSecurityPolicy);
             return false;
@@ -171,11 +183,10 @@ static String findPluginMIMETypeFromURL(Page* page, const String& url)
     Vector<MimeClassInfo> mimes;
     Vector<size_t> mimePluginIndices;
     pluginData.getWebVisibleMimesAndPluginIndices(mimes, mimePluginIndices);
-    for (size_t i = 0; i < mimes.size(); ++i) {
-        const MimeClassInfo& mimeClassInfo = mimes[i];
-        for (size_t j = 0; j < mimeClassInfo.extensions.size(); ++j) {
-            if (equalIgnoringCase(extension, mimeClassInfo.extensions[j]))
-                return mimeClassInfo.type;
+    for (auto& mime : mimes) {
+        for (auto& mimeExtension : mime.extensions) {
+            if (equalIgnoringASCIICase(extension, mimeExtension))
+                return mime.type;
         }
     }
 
@@ -222,10 +233,16 @@ bool SubframeLoader::requestObject(HTMLPlugInImageElement& ownerElement, const S
     bool hasFallbackContent = is<HTMLObjectElement>(ownerElement) && downcast<HTMLObjectElement>(ownerElement).hasFallbackContent();
 
     bool useFallback;
-    if (shouldUsePlugin(completedURL, mimeType, ownerElement.shouldPreferPlugInsForImages(), hasFallbackContent, useFallback)) {
+    if (shouldUsePlugin(completedURL, mimeType, hasFallbackContent, useFallback)) {
         bool success = requestPlugin(ownerElement, completedURL, mimeType, paramNames, paramValues, useFallback);
         logPluginRequest(document()->page(), mimeType, completedURL, success);
         return success;
+    }
+
+    if (!isPluginContentAllowedByContentSecurityPolicy(ownerElement, completedURL, mimeType)) {
+        RenderEmbeddedObject* renderer = ownerElement.renderEmbeddedObject();
+        renderer->setPluginUnavailabilityReason(RenderEmbeddedObject::PluginBlockedByContentSecurityPolicy);
+        return false;
     }
 
     // If the plug-in element already contains a subframe, loadOrRedirectSubframe will re-use it. Otherwise,
@@ -240,9 +257,9 @@ PassRefPtr<Widget> SubframeLoader::createJavaAppletWidget(const IntSize& size, H
     String codeBaseURLString;
 
     for (size_t i = 0; i < paramNames.size(); ++i) {
-        if (equalIgnoringCase(paramNames[i], "baseurl"))
+        if (equalLettersIgnoringASCIICase(paramNames[i], "baseurl"))
             baseURLString = paramValues[i];
-        else if (equalIgnoringCase(paramNames[i], "codebase"))
+        else if (equalLettersIgnoringASCIICase(paramNames[i], "codebase"))
             codeBaseURLString = paramValues[i];
     }
 
@@ -368,25 +385,18 @@ bool SubframeLoader::allowPlugins()
     return m_frame.settings().arePluginsEnabled();
 }
 
-bool SubframeLoader::shouldUsePlugin(const URL& url, const String& mimeType, bool shouldPreferPlugInsForImages, bool hasFallback, bool& useFallback)
+bool SubframeLoader::shouldUsePlugin(const URL& url, const String& mimeType, bool hasFallback, bool& useFallback)
 {
     if (m_frame.loader().client().shouldAlwaysUsePluginDocument(mimeType)) {
         useFallback = false;
         return true;
     }
 
-    // Allow other plug-ins to win over QuickTime because if the user has installed a plug-in that
-    // can handle TIFF (which QuickTime can also handle) they probably intended to override QT.
-    if (m_frame.page() && (mimeType == "image/tiff" || mimeType == "image/tif" || mimeType == "image/x-tiff")) {
-        String pluginName = m_frame.page()->pluginData().pluginNameForWebVisibleMimeType(mimeType);
-        if (!pluginName.isEmpty() && !pluginName.contains("QuickTime", false)) 
-            return true;
-    }
-        
-    ObjectContentType objectType = m_frame.loader().client().objectContentType(url, mimeType, shouldPreferPlugInsForImages);
+    ObjectContentType objectType = m_frame.loader().client().objectContentType(url, mimeType);
     // If an object's content can't be handled and it has no fallback, let
     // it be handled as a plugin to show the broken plugin icon.
     useFallback = objectType == ObjectContentNone && hasFallback;
+
     return objectType == ObjectContentNone || objectType == ObjectContentNetscapePlugin || objectType == ObjectContentOtherPlugin;
 }
 

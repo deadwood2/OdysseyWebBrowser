@@ -28,10 +28,10 @@
 
 #include "APIArray.h"
 #include "APISecurityOrigin.h"
-#include "SecurityOriginData.h"
 #include "WebCookieManagerMessages.h"
 #include "WebCookieManagerProxyMessages.h"
 #include "WebProcessPool.h"
+#include <WebCore/SecurityOriginData.h>
 
 namespace WebKit {
 
@@ -83,12 +83,6 @@ void WebCookieManagerProxy::processDidClose(NetworkProcessProxy*)
     invalidateCallbackMap(m_httpCookieAcceptPolicyCallbacks, CallbackBase::Error::ProcessExited);
 }
 
-bool WebCookieManagerProxy::shouldTerminate(WebProcessProxy*) const
-{
-    return processPool()->processModel() != ProcessModelSharedSecondaryProcess
-        || (m_arrayCallbacks.isEmpty() && m_httpCookieAcceptPolicyCallbacks.isEmpty());
-}
-
 void WebCookieManagerProxy::refWebContextSupplement()
 {
     API::Object::ref();
@@ -101,7 +95,7 @@ void WebCookieManagerProxy::derefWebContextSupplement()
 
 void WebCookieManagerProxy::getHostnamesWithCookies(std::function<void (API::Array*, CallbackBase::Error)> callbackFunction)
 {
-    RefPtr<ArrayCallback> callback = ArrayCallback::create(WTF::move(callbackFunction));
+    RefPtr<ArrayCallback> callback = ArrayCallback::create(WTFMove(callbackFunction));
     uint64_t callbackID = callback->callbackID();
     m_arrayCallbacks.set(callbackID, callback.release());
 
@@ -163,15 +157,12 @@ void WebCookieManagerProxy::setHTTPCookieAcceptPolicy(HTTPCookieAcceptPolicy pol
     // - When testing, we only have one WebProcess and one NetworkProcess, and WebKitTestRunner never restarts them;
     // - When not testing, Cocoa has the policy persisted, and thus new processes use it (even for ephemeral sessions).
     processPool()->sendToAllProcesses(Messages::WebCookieManager::SetHTTPCookieAcceptPolicy(policy));
-#if ENABLE(NETWORK_PROCESS)
-    if (processPool()->usesNetworkProcess())
-        processPool()->sendToNetworkingProcess(Messages::WebCookieManager::SetHTTPCookieAcceptPolicy(policy));
-#endif
+    processPool()->sendToNetworkingProcess(Messages::WebCookieManager::SetHTTPCookieAcceptPolicy(policy));
 }
 
 void WebCookieManagerProxy::getHTTPCookieAcceptPolicy(std::function<void (HTTPCookieAcceptPolicy, CallbackBase::Error)> callbackFunction)
 {
-    RefPtr<HTTPCookieAcceptPolicyCallback> callback = HTTPCookieAcceptPolicyCallback::create(WTF::move(callbackFunction));
+    RefPtr<HTTPCookieAcceptPolicyCallback> callback = HTTPCookieAcceptPolicyCallback::create(WTFMove(callbackFunction));
 
     uint64_t callbackID = callback->callbackID();
     m_httpCookieAcceptPolicyCallbacks.set(callbackID, callback.release());

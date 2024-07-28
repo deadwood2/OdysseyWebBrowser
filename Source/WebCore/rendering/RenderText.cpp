@@ -230,7 +230,7 @@ bool RenderText::isTextFragment() const
 bool RenderText::computeUseBackslashAsYenSymbol() const
 {
     const RenderStyle& style = this->style();
-    const FontDescription& fontDescription = style.fontCascade().fontDescription();
+    const auto& fontDescription = style.fontDescription();
     if (style.fontCascade().useBackslashAsYenSymbol())
         return true;
     if (fontDescription.isSpecifiedFont())
@@ -460,7 +460,7 @@ ALWAYS_INLINE float RenderText::widthFromCache(const FontCascade& f, int start, 
             return combineText.combinedTextWidth(f);
     }
 
-    if (f.isFixedPitch() && !f.isSmallCaps() && m_isAllASCII && (!glyphOverflow || !glyphOverflow->computeBounds)) {
+    if (f.isFixedPitch() && f.fontDescription().variantSettings().isAllNormal() && m_isAllASCII && (!glyphOverflow || !glyphOverflow->computeBounds)) {
         float monospaceCharacterWidth = f.spaceWidth();
         float w = 0;
         bool isSpace;
@@ -737,6 +737,10 @@ void RenderText::computePreferredLogicalWidths(float leadWidth, HashSet<const Fo
     Optional<int> firstGlyphLeftOverflow;
 
     bool breakNBSP = style.autoWrap() && style.nbspMode() == SPACE;
+    
+    // Note the deliberate omission of word-wrap and overflow-wrap from this breakAll check. Those
+    // do not affect minimum preferred sizes. Note that break-word is a non-standard value for
+    // word-break, but we support it as though it means break-all.
     bool breakAll = (style.wordBreak() == BreakAllWordBreak || style.wordBreak() == BreakWordBreak) && style.autoWrap();
     bool keepAllWords = style.wordBreak() == KeepAllWordBreak;
     bool isLooseCJKMode = breakIterator.isLooseCJKMode();
@@ -1031,10 +1035,10 @@ void applyTextTransform(const RenderStyle& style, String& text, UChar previousCh
         makeCapitalized(&text, previousCharacter);
         break;
     case UPPERCASE:
-        text = text.upper(style.locale());
+        text = text.convertToUppercaseWithLocale(style.locale());
         break;
     case LOWERCASE:
-        text = text.lower(style.locale());
+        text = text.convertToLowercaseWithLocale(style.locale());
         break;
     }
 }
@@ -1176,15 +1180,8 @@ std::unique_ptr<InlineTextBox> RenderText::createTextBox()
 
 void RenderText::positionLineBox(InlineTextBox& textBox)
 {
-    // FIXME: should not be needed!!!
-    if (!textBox.len()) {
-        // We want the box to be destroyed.
-        textBox.removeFromParent();
-        m_lineBoxes.remove(textBox);
-        delete &textBox;
+    if (!textBox.len())
         return;
-    }
-
     m_containsReversedText |= !textBox.isLeftToRightDirection();
 }
 
@@ -1321,11 +1318,8 @@ LayoutRect RenderText::collectSelectionRectsForLineBoxes(const RenderLayerModelO
     }
 
     if (clipToVisibleContent)
-        computeRectForRepaint(repaintContainer, resultRect);
-    else
-        resultRect = localToContainerQuad(FloatRect(resultRect), repaintContainer).enclosingBoundingBox();
-
-    return resultRect;
+        return computeRectForRepaint(resultRect, repaintContainer);
+    return localToContainerQuad(FloatRect(resultRect), repaintContainer).enclosingBoundingBox();
 }
 
 LayoutRect RenderText::collectSelectionRectsForLineBoxes(const RenderLayerModelObject* repaintContainer, bool clipToVisibleContent, Vector<LayoutRect>& rects)

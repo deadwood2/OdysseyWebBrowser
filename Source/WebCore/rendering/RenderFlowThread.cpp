@@ -53,7 +53,7 @@
 namespace WebCore {
 
 RenderFlowThread::RenderFlowThread(Document& document, Ref<RenderStyle>&& style)
-    : RenderBlockFlow(document, WTF::move(style))
+    : RenderBlockFlow(document, WTFMove(style))
     , m_previousRegionCount(0)
     , m_autoLogicalHeightRegionsCount(0)
     , m_currentRegionMaintainer(nullptr)
@@ -443,7 +443,7 @@ LayoutPoint RenderFlowThread::adjustedPositionRelativeToOffsetParent(const Rende
         // and if so, drop the object's top position (which was computed relative to its containing block
         // and is no longer valid) and recompute it using the region in which it flows as reference.
         bool wasComputedRelativeToOtherRegion = false;
-        while (objContainingBlock && !objContainingBlock->isRenderNamedFlowThread()) {
+        while (objContainingBlock && !is<RenderView>(*objContainingBlock) && !objContainingBlock->isRenderNamedFlowThread()) {
             // Check if this object is in a different region.
             RenderRegion* parentStartRegion = nullptr;
             RenderRegion* parentEndRegion = nullptr;
@@ -1094,7 +1094,7 @@ bool RenderFlowThread::addForcedRegionBreak(const RenderBlock* block, LayoutUnit
         hasComputedAutoHeight = true;
 
         // Compute the region height pretending that the offsetBreakInCurrentRegion is the logicalHeight for the auto-height region.
-        LayoutUnit regionComputedAutoHeight = namedFlowFragment.constrainContentBoxLogicalHeightByMinMax(offsetBreakInCurrentRegion, -1);
+        LayoutUnit regionComputedAutoHeight = namedFlowFragment.constrainContentBoxLogicalHeightByMinMax(offsetBreakInCurrentRegion, Nullopt);
 
         // The new height of this region needs to be smaller than the initial value, the max height. A forced break is the only way to change the initial
         // height of an auto-height region besides content ending.
@@ -1225,7 +1225,7 @@ LayoutUnit RenderFlowThread::offsetFromLogicalTopOfFirstRegion(const RenderBlock
 
     // As a last resort, take the slow path.
     LayoutRect blockRect(0, 0, currentBlock->width(), currentBlock->height());
-    while (currentBlock && !currentBlock->isRenderFlowThread()) {
+    while (currentBlock && !is<RenderView>(*currentBlock) && !currentBlock->isRenderFlowThread()) {
         RenderBlock* containerBlock = currentBlock->containingBlock();
         ASSERT(containerBlock);
         if (!containerBlock)

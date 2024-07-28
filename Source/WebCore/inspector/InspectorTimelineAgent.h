@@ -1,6 +1,7 @@
 /*
 * Copyright (C) 2012 Google Inc. All rights reserved.
 * Copyright (C) 2014 University of Washington.
+* Copyright (C) 2015 Apple Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -38,9 +39,7 @@
 #include <inspector/InspectorFrontendDispatchers.h>
 #include <inspector/InspectorValues.h>
 #include <inspector/ScriptDebugListener.h>
-#include <wtf/Stopwatch.h>
 #include <wtf/Vector.h>
-#include <wtf/WeakPtr.h>
 
 namespace JSC {
 class Profile;
@@ -51,16 +50,8 @@ namespace WebCore {
 class Event;
 class FloatQuad;
 class Frame;
-class InspectorClient;
 class InspectorPageAgent;
-class InstrumentingAgents;
-class IntRect;
-class URL;
-class Page;
-class PageScriptDebugServer;
 class RenderObject;
-class ResourceRequest;
-class ResourceResponse;
 class RunLoopObserver;
 
 typedef String ErrorString;
@@ -74,9 +65,6 @@ enum class TimelineRecordType {
     Paint,
     Composite,
     RenderingFrame,
-    ScrollLayer,
-
-    ParseHTML,
 
     TimerInstall,
     TimerRemove,
@@ -84,15 +72,9 @@ enum class TimelineRecordType {
 
     EvaluateScript,
 
-    MarkLoad,
-    MarkDOMContent,
-
     TimeStamp,
     Time,
     TimeEnd,
-
-    XHRReadyStateChange,
-    XHRLoad,
 
     FunctionCall,
     ProbeSample,
@@ -101,11 +83,6 @@ enum class TimelineRecordType {
     RequestAnimationFrame,
     CancelAnimationFrame,
     FireAnimationFrame,
-
-    WebSocketCreate,
-    WebSocketSendHandshakeRequest,
-    WebSocketReceiveHandshakeResponse,
-    WebSocketDestroy
 };
 
 class InspectorTimelineAgent final
@@ -115,12 +92,10 @@ class InspectorTimelineAgent final
     WTF_MAKE_NONCOPYABLE(InspectorTimelineAgent);
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    enum InspectorType { PageInspector, WorkerInspector };
-
-    InspectorTimelineAgent(InstrumentingAgents*, InspectorPageAgent*, InspectorType, InspectorClient*);
+    InspectorTimelineAgent(WebAgentContext&, InspectorPageAgent*);
     virtual ~InspectorTimelineAgent();
 
-    virtual void didCreateFrontendAndBackend(Inspector::FrontendChannel*, Inspector::BackendDispatcher*) override;
+    virtual void didCreateFrontendAndBackend(Inspector::FrontendRouter*, Inspector::BackendDispatcher*) override;
     virtual void willDestroyFrontendAndBackend(Inspector::DisconnectReason) override;
 
     virtual void start(ErrorString&, const int* maxCallStackDepth = nullptr) override;
@@ -128,13 +103,11 @@ public:
 
     int id() const { return m_id; }
 
-    void setPageScriptDebugServer(PageScriptDebugServer*);
-
     void didCommitLoad();
 
     // Methods called from WebCore.
     void startFromConsole(JSC::ExecState*, const String &title);
-    PassRefPtr<JSC::Profile> stopFromConsole(JSC::ExecState*, const String& title);
+    RefPtr<JSC::Profile> stopFromConsole(JSC::ExecState*, const String& title);
 
     // InspectorInstrumentation callbacks.
     void didInstallTimer(int timerId, int timeout, bool singleShot, Frame*);
@@ -143,8 +116,6 @@ public:
     void didFireTimer();
     void willCallFunction(const String& scriptName, int scriptLine, Frame*);
     void didCallFunction(Frame*);
-    void willDispatchXHRReadyStateChangeEvent(const String&, int, Frame*);
-    void didDispatchXHRReadyStateChangeEvent();
     void willDispatchEvent(const Event&, Frame*);
     void didDispatchEvent();
     void willEvaluateScript(const String&, int, Frame&);
@@ -152,10 +123,6 @@ public:
     void didInvalidateLayout(Frame&);
     void willLayout(Frame&);
     void didLayout(RenderObject*);
-    void willScroll(Frame&);
-    void didScroll();
-    void willDispatchXHRLoadEvent(const String&, Frame*);
-    void didDispatchXHRLoadEvent();
     void willComposite(Frame&);
     void didComposite();
     void willPaint(Frame&);
@@ -163,23 +130,13 @@ public:
     void willRecalculateStyle(Frame*);
     void didRecalculateStyle();
     void didScheduleStyleRecalculation(Frame*);
-    void willWriteHTML(unsigned startLine, Frame*);
-    void didWriteHTML(unsigned endLine);
     void didTimeStamp(Frame&, const String&);
-    void didMarkDOMContentEvent(Frame&);
-    void didMarkLoadEvent(Frame&);
     void didRequestAnimationFrame(int callbackId, Frame*);
     void didCancelAnimationFrame(int callbackId, Frame*);
     void willFireAnimationFrame(int callbackId, Frame*);
     void didFireAnimationFrame();
     void time(Frame&, const String&);
     void timeEnd(Frame&, const String&);
-#if ENABLE(WEB_SOCKETS)
-    void didCreateWebSocket(unsigned long identifier, const URL&, const String& protocol, Frame*);
-    void willSendWebSocketHandshakeRequest(unsigned long identifier, Frame*);
-    void didReceiveWebSocketHandshakeResponse(unsigned long identifier, Frame*);
-    void didDestroyWebSocket(unsigned long identifier, Frame*);
-#endif
 
 protected:
     // ScriptDebugListener
@@ -198,8 +155,11 @@ private:
     struct TimelineRecordEntry {
         TimelineRecordEntry()
             : type(TimelineRecordType::EventDispatch) { }
-        TimelineRecordEntry(PassRefPtr<Inspector::InspectorObject> record, PassRefPtr<Inspector::InspectorObject> data, PassRefPtr<Inspector::InspectorArray> children, TimelineRecordType type)
-            : record(record), data(data), children(children), type(type)
+        TimelineRecordEntry(RefPtr<Inspector::InspectorObject>&& record, RefPtr<Inspector::InspectorObject>&& data, RefPtr<Inspector::InspectorArray>&& children, TimelineRecordType type)
+            : record(WTFMove(record))
+            , data(WTFMove(data))
+            , children(WTFMove(children))
+            , type(type)
         {
         }
 
@@ -229,21 +189,14 @@ private:
     void clearRecordStack();
 
     void localToPageQuad(const RenderObject&, const LayoutRect&, FloatQuad*);
-    Page* page();
-
-    InspectorPageAgent* m_pageAgent;
-    PageScriptDebugServer* m_scriptDebugServer { nullptr };
 
     std::unique_ptr<Inspector::TimelineFrontendDispatcher> m_frontendDispatcher;
     RefPtr<Inspector::TimelineBackendDispatcher> m_backendDispatcher;
+    InspectorPageAgent* m_pageAgent;
 
     Vector<TimelineRecordEntry> m_recordStack;
-
     int m_id { 1 };
-    int m_callStackDepth { 0 };
     int m_maxCallStackDepth { 5 };
-    InspectorType m_inspectorType;
-    InspectorClient* m_client;
 
     Vector<TimelineRecordEntry> m_pendingConsoleProfileRecords;
 

@@ -217,6 +217,16 @@ static _WKStorageBlockingPolicy toAPI(WebCore::SecurityOrigin::StorageBlockingPo
     _preferences->setTiledScrollingIndicatorVisible(tiledScrollingIndicatorVisible);
 }
 
+- (BOOL)_resourceUsageOverlayVisible
+{
+    return _preferences->resourceUsageOverlayVisible();
+}
+
+- (void)_setResourceUsageOverlayVisible:(BOOL)resourceUsageOverlayVisible
+{
+    _preferences->setResourceUsageOverlayVisible(resourceUsageOverlayVisible);
+}
+
 - (_WKDebugOverlayRegions)_visibleDebugOverlayRegions
 {
     return _preferences->visibleDebugOverlayRegions();
@@ -235,6 +245,26 @@ static _WKStorageBlockingPolicy toAPI(WebCore::SecurityOrigin::StorageBlockingPo
 - (void)_setSimpleLineLayoutDebugBordersEnabled:(BOOL)simpleLineLayoutDebugBordersEnabled
 {
     _preferences->setSimpleLineLayoutDebugBordersEnabled(simpleLineLayoutDebugBordersEnabled);
+}
+
+- (BOOL)_acceleratedDrawingEnabled
+{
+    return _preferences->acceleratedDrawingEnabled();
+}
+
+- (void)_setAcceleratedDrawingEnabled:(BOOL)acceleratedDrawingEnabled
+{
+    _preferences->setAcceleratedDrawingEnabled(acceleratedDrawingEnabled);
+}
+
+- (BOOL)_displayListDrawingEnabled
+{
+    return _preferences->displayListDrawingEnabled();
+}
+
+- (void)_setDisplayListDrawingEnabled:(BOOL)displayListDrawingEnabled
+{
+    _preferences->setDisplayListDrawingEnabled(displayListDrawingEnabled);
 }
 
 - (BOOL)_developerExtrasEnabled
@@ -265,6 +295,16 @@ static _WKStorageBlockingPolicy toAPI(WebCore::SecurityOrigin::StorageBlockingPo
 - (void)_setHiddenPageDOMTimerThrottlingEnabled:(BOOL)hiddenPageDOMTimerThrottlingEnabled
 {
     _preferences->setHiddenPageDOMTimerThrottlingEnabled(hiddenPageDOMTimerThrottlingEnabled);
+}
+
+- (BOOL)_pageVisibilityBasedProcessSuppressionEnabled
+{
+    return _preferences->pageVisibilityBasedProcessSuppressionEnabled();
+}
+
+- (void)_setPageVisibilityBasedProcessSuppressionEnabled:(BOOL)pageVisibilityBasedProcessSuppressionEnabled
+{
+    _preferences->setPageVisibilityBasedProcessSuppressionEnabled(pageVisibilityBasedProcessSuppressionEnabled);
 }
 
 - (BOOL)_allowFileAccessFromFileURLs
@@ -315,6 +355,46 @@ static _WKStorageBlockingPolicy toAPI(WebCore::SecurityOrigin::StorageBlockingPo
 - (void)_setAntialiasedFontDilationEnabled:(BOOL)antialiasedFontDilationEnabled
 {
     _preferences->setAntialiasedFontDilationEnabled(antialiasedFontDilationEnabled);
+}
+
+- (NSUInteger)_defaultFontSize
+{
+    return _preferences->defaultFontSize();
+}
+
+- (void)_setDefaultFontSize:(NSUInteger)defaultFontSize
+{
+    _preferences->setDefaultFontSize(defaultFontSize);
+}
+
+- (NSUInteger)_defaultFixedPitchFontSize
+{
+    return _preferences->defaultFixedFontSize();
+}
+
+- (void)_setDefaultFixedPitchFontSize:(NSUInteger)defaultFixedPitchFontSize
+{
+    _preferences->setDefaultFixedFontSize(defaultFixedPitchFontSize);
+}
+
+- (NSString *)_fixedPitchFontFamily
+{
+    return _preferences->fixedFontFamily();
+}
+
+- (void)_setFixedPitchFontFamily:(NSString *)fixedPitchFontFamily
+{
+    _preferences->setFixedFontFamily(fixedPitchFontFamily);
+}
+
+- (BOOL)_mockCaptureDevicesEnabled
+{
+    return _preferences->mockCaptureDevicesEnabled();
+}
+
+- (void)_setMockCaptureDevicesEnabled:(BOOL)mockCaptureDevicesEnabled
+{
+    _preferences->setMockCaptureDevicesEnabled(mockCaptureDevicesEnabled);
 }
 
 @end

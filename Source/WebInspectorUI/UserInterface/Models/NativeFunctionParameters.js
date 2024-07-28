@@ -345,6 +345,36 @@ WebInspector.NativePrototypeFunctionParameters = {
         __proto__: null,
     },
 
+    Generator: {
+        next: "value",
+        return: "value",
+        throw: "exception",
+        __proto__: null,
+    },
+
+    Console: {
+        assert: "condition, [message], [...values]",
+        count: "[label]",
+        debug: "message, [...values]",
+        dir: "object",
+        dirxml: "object",
+        error: "message, [...values]",
+        group: "[name]",
+        groupCollapsed: "[name]",
+        groupEnd: "[name]",
+        info: "message, [...values]",
+        log: "message, [...values]",
+        profile: "name",
+        profileEnd: "name",
+        table: "data, [columns]",
+        time: "name",
+        timeEnd: "name",
+        timeStamp: "[label]",
+        trace: "message, [...values]",
+        warn: "message, [...values]",
+        __proto__: null,
+    },
+
     // Curated DOM Interfaces.
 
     Element: {
@@ -1101,7 +1131,7 @@ WebInspector.NativePrototypeFunctionParameters = {
     },
 
     Navigator: {
-        webkitGetUserMedia: "options, successCallback, [errorCallback]",
+        webkitGetUserMedia: "options, successCallback, errorCallback",
         __proto__: null,
     },
 
@@ -1259,6 +1289,13 @@ WebInspector.NativePrototypeFunctionParameters = {
         cancel: "reason",
         pipeThrough: "dest, options",
         pipeTo: "streams, options",
+        __proto__: null,
+    },
+
+    WritableStream: {
+        abort: "reason",
+        close: "",
+        write: "chunk",
         __proto__: null,
     },
 

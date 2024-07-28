@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004, 2007, 2008, 2011, 2012, 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2004, 2007, 2008, 2011, 2012, 2013, 2015-2016 Apple Inc. All rights reserved.
  * Copyright (C) 2012 Research In Motion Limited. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -35,6 +35,7 @@
 #include <unicode/uidna.h>
 #include <wtf/HashMap.h>
 #include <wtf/HexNumber.h>
+#include <wtf/NeverDestroyed.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
@@ -103,15 +104,19 @@ enum URLCharacterClasses {
     PathSegmentEndChar = 1 << 5,
 
     // not allowed in path
-    BadChar = 1 << 6
+    BadChar = 1 << 6,
+
+    // "\t" | "\n" | "\r"
+    TabNewline = 1 << 7
 };
 
 static const unsigned char characterClassTable[256] = {
     /* 0 nul */ PathSegmentEndChar,    /* 1 soh */ BadChar,
     /* 2 stx */ BadChar,    /* 3 etx */ BadChar,
     /* 4 eot */ BadChar,    /* 5 enq */ BadChar,    /* 6 ack */ BadChar,    /* 7 bel */ BadChar,
-    /* 8 bs */ BadChar,     /* 9 ht */ BadChar,     /* 10 nl */ BadChar,    /* 11 vt */ BadChar,
-    /* 12 np */ BadChar,    /* 13 cr */ BadChar,    /* 14 so */ BadChar,    /* 15 si */ BadChar,
+    /* 8 bs */ BadChar,     /* 9 ht */ BadChar | TabNewline,                /* 10 nl */ BadChar | TabNewline,
+    /* 11 vt */ BadChar,    /* 12 np */ BadChar,    /* 13 cr */ BadChar | TabNewline,
+    /* 14 so */ BadChar,    /* 15 si */ BadChar,
     /* 16 dle */ BadChar,   /* 17 dc1 */ BadChar,   /* 18 dc2 */ BadChar,   /* 19 dc3 */ BadChar,
     /* 20 dc4 */ BadChar,   /* 21 nak */ BadChar,   /* 22 syn */ BadChar,   /* 23 etb */ BadChar,
     /* 24 can */ BadChar,   /* 25 em */ BadChar,    /* 26 sub */ BadChar,   /* 27 esc */ BadChar,
@@ -336,7 +341,7 @@ static const unsigned char percentEncodeClassTable[256] = {
 };
 
 static int copyPathRemovingDots(char* dst, const char* src, int srcStart, int srcEnd);
-static void encodeRelativeString(const String& rel, const TextEncoding&, CharBuffer& ouput);
+static bool encodeRelativeString(const String& rel, const TextEncoding&, CharBuffer& ouput);
 static String substituteBackslashes(const String&);
 
 static inline bool isSchemeFirstChar(char c) { return characterClassTable[static_cast<unsigned char>(c)] & SchemeFirstChar; }
@@ -349,6 +354,7 @@ static inline bool isIPv6Char(unsigned char c) { return characterClassTable[c] &
 static inline bool isPathSegmentEndChar(char c) { return characterClassTable[static_cast<unsigned char>(c)] & PathSegmentEndChar; }
 static inline bool isPathSegmentEndChar(UChar c) { return c <= 0xff && (characterClassTable[c] & PathSegmentEndChar); }
 static inline bool isBadChar(unsigned char c) { return characterClassTable[c] & BadChar; }
+static inline bool isTabNewline(UChar c) { return c <= 0xff && (characterClassTable[c] & TabNewline); }
 
 static inline bool isSchemeCharacterMatchIgnoringCase(char character, char schemeCharacter)
 {
@@ -432,7 +438,12 @@ void URL::invalidate()
 URL::URL(ParsedURLStringTag, const String& url)
 {
     parse(url);
+#if OS(WINDOWS)
+    // FIXME(148598): Work around Windows local file handling bug in CFNetwork
+    ASSERT(isLocalFile() || url == m_string);
+#else
     ASSERT(url == m_string);
+#endif
 }
 
 URL::URL(const URL& base, const String& relative)
@@ -449,7 +460,7 @@ URL::URL(const URL& base, const String& relative, const TextEncoding& encoding)
     init(base, relative, encoding.encodingForFormSubmission());
 }
 
-static bool shouldTrimFromURL(unsigned char c)
+static bool shouldTrimFromURL(UChar c)
 {
     // Browsers ignore leading/trailing whitespace and control
     // characters from URLs.  Note that c is an *unsigned* char here
@@ -467,9 +478,14 @@ void URL::init(const URL& base, const String& relative, const TextEncoding& enco
         return;
     }
 
+    // Get rid of leading and trailing whitespace and control characters.
+    String rel = relative.stripWhiteSpace(shouldTrimFromURL);
+
+    // Get rid of any tabs and newlines.
+    rel = rel.removeCharacters(isTabNewline);
+
     // For compatibility with Win IE, treat backslashes as if they were slashes,
     // as long as we're not dealing with javascript: or data: URLs.
-    String rel = relative;
     if (rel.contains('\\') && !(protocolIsJavaScript(rel) || protocolIs(rel, "data")))
         rel = substituteBackslashes(rel);
 
@@ -484,20 +500,15 @@ void URL::init(const URL& base, const String& relative, const TextEncoding& enco
         strBuffer[len] = 0;
         str = strBuffer.data();
     } else {
-        encodeRelativeString(rel, encoding, strBuffer);
+        if (!encodeRelativeString(rel, encoding, strBuffer)) {
+            m_string = blankURL();
+            invalidate();
+            return;
+        }
+
         str = strBuffer.data();
         len = strlen(str);
     }
-
-    // Get rid of leading whitespace and control characters.
-    while (len && shouldTrimFromURL(*str)) {
-        str++;
-        --len;
-    }
-
-    // Get rid of trailing whitespace and control characters.
-    while (len && shouldTrimFromURL(str[len - 1]))
-        str[--len] = '\0';
 
     // According to the RFC, the reference should be interpreted as an
     // absolute URI if possible, using the "leftmost, longest"
@@ -512,7 +523,7 @@ void URL::init(const URL& base, const String& relative, const TextEncoding& enco
             ++p;
         }
         if (*p == ':') {
-            if (p[1] != '/' && equalIgnoringCase(base.protocol(), String(str, p - str)) && base.isHierarchical())
+            if (p[1] != '/' && equalIgnoringASCIICase(base.protocol(), StringView(reinterpret_cast<LChar*>(str), p - str)) && base.isHierarchical())
                 str = p + 1;
             else
                 absolute = true;
@@ -781,7 +792,7 @@ bool URL::protocolIs(const char* protocol) const
 
     // JavaScript URLs are "valid" and should be executed even if URL decides they are invalid.
     // The free function protocolIsJavaScript() should be used instead. 
-    ASSERT(!equalIgnoringCase(protocol, String("javascript")));
+    ASSERT(!equalLettersIgnoringASCIICase(StringView(protocol), "javascript"));
 
     if (!m_isValid)
         return false;
@@ -1592,6 +1603,23 @@ bool protocolHostAndPortAreEqual(const URL& a, const URL& b)
     return true;
 }
 
+bool hostsAreEqual(const URL& a, const URL& b)
+{
+    int hostStartA = a.hostStart();
+    int hostLengthA = a.hostEnd() - hostStartA;
+    int hostStartB = b.hostStart();
+    int hostLengthB = b.hostEnd() - hostStartB;
+    if (hostLengthA != hostLengthB)
+        return false;
+
+    for (int i = 0; i < hostLengthA; ++i) {
+        if (a.string()[hostStartA + i] != b.string()[hostStartB + i])
+            return false;
+    }
+
+    return true;
+}
+
 String encodeWithURLEscapeSequences(const String& notEncodedString, PercentEncodeCharacterClass whatToEncode)
 {
     CString asUTF8 = notEncodedString.utf8();
@@ -1658,7 +1686,8 @@ static bool protocolIs(StringView stringURL, const char* protocol)
 
 // Appends the punycoded hostname identified by the given string and length to
 // the output buffer. The result will not be null terminated.
-static void appendEncodedHostname(UCharBuffer& buffer, StringView string)
+// Return value of false means error in encoding.
+static bool appendEncodedHostname(UCharBuffer& buffer, StringView string)
 {
     // Needs to be big enough to hold an IDN-encoded name.
     // For host names bigger than this, we won't do IDN encoding, which is almost certainly OK.
@@ -1666,15 +1695,27 @@ static void appendEncodedHostname(UCharBuffer& buffer, StringView string)
 
     if (string.length() > hostnameBufferLength || containsOnlyASCII(string)) {
         append(buffer, string);
-        return;
+        return true;
     }
 
     UChar hostnameBuffer[hostnameBufferLength];
     UErrorCode error = U_ZERO_ERROR;
+
+#if COMPILER(GCC_OR_CLANG)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
     int32_t numCharactersConverted = uidna_IDNToASCII(string.upconvertedCharacters(), string.length(), hostnameBuffer,
         hostnameBufferLength, UIDNA_ALLOW_UNASSIGNED, 0, &error);
-    if (error == U_ZERO_ERROR)
+#if COMPILER(GCC_OR_CLANG)
+#pragma GCC diagnostic pop
+#endif
+
+    if (error == U_ZERO_ERROR) {
         buffer.append(hostnameBuffer, numCharactersConverted);
+        return true;
+    }
+    return false;
 }
 
 static void findHostnamesInMailToURL(StringView string, Vector<std::pair<int, int>>& nameRanges)
@@ -1787,7 +1828,8 @@ static bool findHostnameInHierarchicalURL(StringView string, int& startOffset, i
 
 // Converts all hostnames found in the given input to punycode, preserving the
 // rest of the URL unchanged. The output will NOT be null-terminated.
-static void encodeHostnames(StringView string, UCharBuffer& buffer)
+// Return value of false means error in encoding.
+static bool encodeHostnames(StringView string, UCharBuffer& buffer)
 {
     buffer.clear();
 
@@ -1799,7 +1841,8 @@ static void encodeHostnames(StringView string, UCharBuffer& buffer)
         for (int i = 0; i < n; ++i) {
             const std::pair<int, int>& r = hostnameRanges[i];
             append(buffer, string.substring(p, r.first - p));
-            appendEncodedHostname(buffer, string.substring(r.first, r.second - r.first));
+            if (!appendEncodedHostname(buffer, string.substring(r.first, r.second - r.first)))
+                return false;
             p = r.second;
         }
         // This will copy either everything after the last hostname, or the
@@ -1809,19 +1852,24 @@ static void encodeHostnames(StringView string, UCharBuffer& buffer)
         int hostStart, hostEnd;
         if (findHostnameInHierarchicalURL(string, hostStart, hostEnd)) {
             append(buffer, string.substring(0, hostStart)); // Before hostname.
-            appendEncodedHostname(buffer, string.substring(hostStart, hostEnd - hostStart));
+            if (!appendEncodedHostname(buffer, string.substring(hostStart, hostEnd - hostStart)))
+                return false;
             append(buffer, string.substring(hostEnd)); // After hostname.
         } else {
             // No hostname to encode, return the input.
             append(buffer, string);
         }
     }
+
+    return true;
 }
 
-static void encodeRelativeString(const String& rel, const TextEncoding& encoding, CharBuffer& output)
+// Return value of false means error in encoding.
+static bool encodeRelativeString(const String& rel, const TextEncoding& encoding, CharBuffer& output)
 {
     UCharBuffer s;
-    encodeHostnames(rel, s);
+    if (!encodeHostnames(rel, s))
+        return false;
 
     TextEncoding pathEncoding(UTF8Encoding()); // Path is always encoded as UTF-8; other parts may depend on the scheme.
 
@@ -1846,6 +1894,8 @@ static void encodeRelativeString(const String& rel, const TextEncoding& encoding
         memcpy(output.data() + pathDecoded.length(), otherDecoded.data(), otherDecoded.length());
     }
     output.append('\0'); // null-terminate the output.
+
+    return true;
 }
 
 static String substituteBackslashes(const String& string)
@@ -1884,12 +1934,26 @@ bool protocolIs(const String& url, const char* protocol)
 {
     // Do the comparison without making a new string object.
     assertProtocolIsGood(protocol);
-    for (int i = 0; ; ++i) {
-        if (!protocol[i])
+    bool isLeading = true;
+    for (int i = 0, j = 0; url[i]; ++i) {
+        // skip leading whitespace and control characters.
+        if (isLeading && shouldTrimFromURL(url[i]))
+            continue;
+        isLeading = false;
+
+        // skip any tabs and newlines.
+        if (isTabNewline(url[i]))
+            continue;
+
+        if (!protocol[j])
             return url[i] == ':';
-        if (!isLetterMatchIgnoringCase(url[i], protocol[i]))
+        if (!isLetterMatchIgnoringCase(url[i], protocol[j]))
             return false;
+
+        ++j;
     }
+
+    return false;
 }
 
 bool isValidProtocol(const String& protocol)
@@ -1949,7 +2013,7 @@ bool protocolIsInHTTPFamily(const String& url)
 
 const URL& blankURL()
 {
-    DEPRECATED_DEFINE_STATIC_LOCAL(URL, staticBlankURL, (ParsedURLString, "about:blank"));
+    static NeverDestroyed<URL> staticBlankURL(ParsedURLString, "about:blank");
     return staticBlankURL;
 }
 
@@ -1958,20 +2022,28 @@ bool URL::isBlankURL() const
     return protocolIs("about");
 }
 
+typedef HashMap<String, unsigned short, ASCIICaseInsensitiveHash> DefaultPortsMap;
+static const DefaultPortsMap& defaultPortsMap()
+{
+    static NeverDestroyed<const DefaultPortsMap> defaultPortsMap(DefaultPortsMap({
+        { "http", 80 },
+        { "https", 443 },
+        { "ftp", 21 },
+        { "ftps", 990 }
+    }));
+    return defaultPortsMap.get();
+}
+unsigned short defaultPortForProtocol(const String& protocol)
+{
+    return defaultPortsMap().get(protocol);
+}
+
 bool isDefaultPortForProtocol(unsigned short port, const String& protocol)
 {
     if (protocol.isEmpty())
         return false;
 
-    typedef HashMap<String, unsigned, CaseFoldingHash> DefaultPortsMap;
-    DEPRECATED_DEFINE_STATIC_LOCAL(DefaultPortsMap, defaultPorts, ());
-    if (defaultPorts.isEmpty()) {
-        defaultPorts.set("http", 80);
-        defaultPorts.set("https", 443);
-        defaultPorts.set("ftp", 21);
-        defaultPorts.set("ftps", 990);
-    }
-    return defaultPorts.get(protocol) == port;
+    return defaultPortForProtocol(protocol) == port;
 }
 
 bool portAllowed(const URL& url)
@@ -2043,6 +2115,7 @@ bool portAllowed(const URL& url)
         2049, // NFS
         3659, // apple-sasl / PasswordServer [Apple addition]
         4045, // lockd
+        4190, // ManageSieve [Apple addition]
         6000, // X11
         6665, // Alternate IRC [Apple addition]
         6666, // Alternate IRC [Apple addition]
@@ -2081,15 +2154,21 @@ bool portAllowed(const URL& url)
 String mimeTypeFromDataURL(const String& url)
 {
     ASSERT(protocolIs(url, "data"));
-    size_t index = url.find(';');
+
+    // FIXME: What's the right behavior when the URL has a comma first, but a semicolon later?
+    // Currently this code will break at the semicolon in that case. Not sure that's correct.
+    auto index = url.find(';', 5);
     if (index == notFound)
-        index = url.find(',');
-    if (index != notFound) {
-        if (index > 5)
-            return url.substring(5, index - 5).lower();
-        return "text/plain"; // Data URLs with no MIME type are considered text/plain.
+        index = url.find(',', 5);
+    if (index == notFound) {
+        // FIXME: There was an old comment here that made it sound like this should be returning text/plain.
+        // But we have been returning empty string here for some time, so not changing its behavior at this time.
+        return emptyString();
     }
-    return "";
+    if (index == 5)
+        return ASCIILiteral("text/plain");
+    ASSERT(index >= 5);
+    return url.substring(5, index - 5).convertToASCIILowercase();
 }
 
 String mimeTypeFromURL(const URL& url)

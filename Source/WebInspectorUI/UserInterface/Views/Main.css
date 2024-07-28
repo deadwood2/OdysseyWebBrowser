@@ -34,8 +34,6 @@ body {
     font-family: -apple-system, sans-serif;
     font-size: 11px;
 
-    background-color: white;
-
     position: absolute;
     top: 0;
     left: 0;
@@ -57,26 +55,22 @@ body {
     tab-size: 4; /* FIXME: This should be controlled by a setting. <rdar://problem/10593948> */
 }
 
+body:not(.mavericks) {
+    background-color: white;
+}
+
 body.docked.bottom {
-    border-top: 1px solid hsl(0, 0%, 78%);
+    border-top: 1px solid var(--border-color);
 }
 
 body.docked.right {
-    border-left: 1px solid hsl(0, 0%, 70%);
-}
-
-body.window-inactive.docked.bottom {
-    border-top-color: hsl(0, 0%, 85%);
-}
-
-body.window-inactive.docked.right {
-    border-left-color: hsl(0, 0%, 85%);
+    border-left: 1px solid var(--border-color);
 }
 
 #docked-resizer {
     display: none;
 
-    z-index: 100;
+    z-index: var(--z-index-resizer);
 }
 
 body.docked #docked-resizer {
@@ -111,9 +105,22 @@ body.docked.bottom #toolbar .item:not(.flexible-space) {
     cursor: default;
 }
 
+input[type=range] {
+    -webkit-appearance: none;
+}
+
+input[type=range]::-webkit-slider-runnable-track::before {
+    content: "";
+    display: block;
+    background: hsl(212, 92%, 54%);
+    height: 1px;
+    margin: 8px 2px -8px 2px;
+}
+
 #main {
     display: flex;
     flex: 1;
+    min-height: 0;
 
     background-color: white;
 
@@ -141,17 +148,13 @@ body.docked.right #navigation-sidebar.collapsed > .resizer {
 }
 
 #split-content-browser {
-    border-top: 1px solid hsl(0, 0%, 70%);
-}
-
-body.window-inactive #split-content-browser {
-    border-top-color: hsl(0, 0%, 85%);
+    border-top: 1px solid var(--border-color);
 }
 
 #split-content-browser > .navigation-bar {
     cursor: row-resize;
 
-    background-color: hsl(0, 0%, 94%);
+    background-color: var(--panel-background-color);
 }
 
 #split-content-browser > .navigation-bar .item:not(.flexible-space) {
@@ -172,11 +175,11 @@ body.window-inactive #split-content-browser {
     display: none;
 }
 
-#split-content-browser > .navigation-bar > :matches(.hierarchical-path, .log-search-bar, .log-scope-bar) {
+#split-content-browser > .navigation-bar > :matches(.hierarchical-path, .log-scope-bar) {
     pointer-events: none;
 }
 
-#split-content-browser > .navigation-bar > :matches(.log-search-bar, .log-scope-bar) > :matches(li, input) {
+#split-content-browser > .navigation-bar > .log-scope-bar > li {
     pointer-events: all;
 }
 
@@ -186,7 +189,7 @@ body.window-inactive #split-content-browser {
 
 .message-text-view {
     display: flex;
-    z-index: 1000;
+    z-index: var(--z-index-popover);
 
     position: absolute;
     top: 0;
@@ -228,6 +231,15 @@ body.window-inactive #split-content-browser {
     content: "";
 }
 
+.resource-link {
+    display: block;
+}
+
+.resource-link + .resource-link {
+    margin-top: 2px;
+}
+
+.resource-link,
 .go-to-link {
     color: hsl(0, 0%, 33%);
     text-decoration: underline;
@@ -251,7 +263,7 @@ body.window-inactive #split-content-browser {
     border: none;
 
     background-color: transparent;
-    background-image: -webkit-canvas(go-to-arrow-normal);
+    background-image: url(../Images/GoToArrow.svg#normal);
     background-repeat: no-repeat;
     background-position: center;
     background-size: 10px 10px;
@@ -266,19 +278,30 @@ body.window-inactive #split-content-browser {
 }
 
 .go-to-arrow:active {
-    background-image: -webkit-canvas(go-to-arrow-normal-active);
+    background-image: url(../Images/GoToArrow.svg#active);
 }
 
 :matches(:focus, .force-focus) .selected .go-to-arrow {
-    background-image: -webkit-canvas(go-to-arrow-selected);
+    background-image: url(../Images/GoToArrow.svg#selected);
 }
 
 :matches(:focus, .force-focus) .selected .go-to-arrow:active {
-    background-image: -webkit-canvas(go-to-arrow-selected-active);
+    background-image: url(../Images/GoToArrow.svg#selected-active);
 }
 
 .hidden {
     display: none !important;
+}
+
+.expand-list-button {
+    -webkit-appearance: none;
+    text-decoration: underline;
+    background-color: transparent;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    cursor: pointer;
+    color: black;
 }
 
 .node-link {
@@ -286,7 +309,7 @@ body.window-inactive #split-content-browser {
     cursor: pointer;
 }
 
-.node-link-list, .node-link-list li {
+.node-link-list, .node-link-list li:not([hidden]) {
     display: block;
     margin: 0;
     padding: 0;
@@ -307,7 +330,7 @@ body.window-inactive #split-content-browser {
 
 .bouncy-highlight {
     position: absolute;
-    z-index: 100;
+    z-index: var(--z-index-highlight);
 
     box-shadow: inset hsl(50, 91%, 76%) 0 -1px 0, hsl(52, 56%, 60%) 0 1px 1px, hsla(0, 0%, 0%, 0.33) 0 1px 2px 1px;
     text-shadow: white 0 0 2px;
@@ -322,25 +345,25 @@ body.window-inactive #split-content-browser {
     -webkit-user-select: none;
     pointer-events: none;
 
-    -webkit-animation-name: bouncy-highlight-animation;
-    -webkit-animation-duration: 750ms;
-    -webkit-animation-timing-function: ease-in-out;
+    animation-name: bouncy-highlight-animation;
+    animation-duration: 750ms;
+    animation-timing-function: ease-in-out;
 
     opacity: 0;
 }
 
-@-webkit-keyframes bouncy-highlight-animation {
+@keyframes bouncy-highlight-animation {
     0% {
-        -webkit-transform: scale(1);
+        transform: scale(1);
         opacity: 1;
     }
 
     12.5% {
-        -webkit-transform: scale(1.25);
+        transform: scale(1.25);
     }
 
     25% {
-        -webkit-transform: scale(1);
+        transform: scale(1);
     }
 
     62.5% {

@@ -26,7 +26,9 @@
 #define StyleRareInheritedData_h
 
 #include "Color.h"
+#include "DataRef.h"
 #include "Length.h"
+#include "StyleCustomPropertyData.h"
 #include <wtf/RefCounted.h>
 #include <wtf/PassRefPtr.h>
 #include <wtf/text/AtomicString.h>
@@ -56,7 +58,6 @@ public:
     {
         return !(*this == o);
     }
-    bool shadowDataEquivalent(const StyleRareInheritedData&) const;
 
     RefPtr<StyleImage> listStyleImage;
 
@@ -77,6 +78,8 @@ public:
     
     Length wordSpacing;
 
+    DataRef<StyleCustomPropertyData> m_customProperties;
+
     // Paged media properties.
     short widows;
     short orphans;
@@ -89,7 +92,6 @@ public:
     unsigned overflowWrap : 1; // EOverflowWrap
     unsigned nbspMode : 1; // ENBSPMode
     unsigned lineBreak : 3; // LineBreak
-    unsigned resize : 2; // EResize
     unsigned userSelect : 2; // EUserSelect
     unsigned colorSpace : 1; // ColorSpace
     unsigned speak : 3; // ESpeak
@@ -107,7 +109,7 @@ public:
 #if ENABLE(CSS_IMAGE_ORIENTATION)
     unsigned m_imageOrientation : 4; // ImageOrientationEnum
 #endif
-    unsigned m_imageRendering : 2; // EImageRendering
+    unsigned m_imageRendering : 3; // EImageRendering
     unsigned m_lineSnap : 2; // LineSnap
     unsigned m_lineAlign : 1; // LineAlign
 #if ENABLE(ACCELERATED_OVERFLOW_SCROLLING)
@@ -133,6 +135,8 @@ public:
 #if ENABLE(CSS_TRAILING_WORD)
     unsigned trailingWord : 1;
 #endif
+
+    unsigned m_hangingPunctuation : 4;
 
     AtomicString hyphenationString;
     short hyphenationLimitBefore;

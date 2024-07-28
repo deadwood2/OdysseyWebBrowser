@@ -38,9 +38,12 @@ BuildbotQueueView = function(queues)
         queue.addEventListener(BuildbotQueue.Event.UnauthorizedAccess, this._unauthorizedAccess, this);
     }.bind(this));
 
-    Dashboard.Repository.OpenSource.trac.addEventListener(Trac.Event.CommitsUpdated, this._newCommitsRecorded, this);
-    if (typeof Dashboard.Repository.Internal.trac != "undefined")
-        Dashboard.Repository.Internal.trac.addEventListener(Trac.Event.CommitsUpdated, this._newCommitsRecorded, this);
+    var sortedRepositories = Dashboard.sortedRepositories;
+    for (var i = 0; i < sortedRepositories.length; i++) {
+        var trac = sortedRepositories[i].trac;
+        if (trac)
+            trac.addEventListener(Trac.Event.CommitsUpdated, this._newCommitsRecorded, this);
+    }
 };
 
 BaseObject.addConstructorFunctions(BuildbotQueueView);
@@ -76,26 +79,27 @@ BuildbotQueueView.prototype = {
         if (!latestProductiveIteration)
             return;
 
-        var webkitTrac = Dashboard.Repository.OpenSource.trac;
-        var internalTrac = Dashboard.Repository.Internal.trac;
-        var latestRecordedOpenSourceRevisionNumber = webkitTrac.latestRecordedRevisionNumber;
-        if (!latestRecordedOpenSourceRevisionNumber || webkitTrac.oldestRecordedRevisionNumber > latestProductiveIteration.revision[Dashboard.Repository.OpenSource.name]) {
-            webkitTrac.loadMoreHistoricalData();
-            return;
-        }
+        var totalRevisionsBehind = 0;
 
         // FIXME: To be 100% correct, we should also filter out changes that are ignored by
         // the queue, see _should_file_trigger_build in wkbuild.py.
-        var totalRevisionsBehind = webkitTrac.commitsOnBranch(queue.branch.openSource, function(commit) { return commit.revisionNumber > latestProductiveIteration.revision[Dashboard.Repository.OpenSource.name]; }).length;
-
-        if (latestProductiveIteration.revision[Dashboard.Repository.Internal.name]) {
-            var latestRecordedInternalRevisionNumber = internalTrac.latestRecordedRevisionNumber;
-            if (!latestRecordedInternalRevisionNumber || internalTrac.oldestRecordedRevisionNumber > latestProductiveIteration.revision[Dashboard.Repository.Internal.name]) {
-                internalTrac.loadMoreHistoricalData();
+        var branches = queue.branches;
+        for (var i = 0; i < branches.length; ++i) {
+            var branch = branches[i];
+            var repository = branch.repository;
+            var repositoryName = repository.name;
+            var trac = repository.trac;
+            var latestProductiveRevisionNumber = latestProductiveIteration.revision[repositoryName];
+            if (!latestProductiveRevisionNumber)
+                continue;
+            if (!trac)
+                continue;
+            if (!trac.latestRecordedRevisionNumber || trac.indexOfRevision(trac.oldestRecordedRevisionNumber) > trac.indexOfRevision(latestProductiveRevisionNumber)) {
+                trac.loadMoreHistoricalData();
                 return;
             }
 
-            totalRevisionsBehind += internalTrac.commitsOnBranch(queue.branch.internal, function(commit) { return commit.revisionNumber > latestProductiveIteration.revision[Dashboard.Repository.Internal.name]; }).length;
+            totalRevisionsBehind += trac.commitsOnBranchLaterThanRevision(branch.name, latestProductiveRevisionNumber).length;
         }
 
         if (!totalRevisionsBehind)
@@ -120,7 +124,7 @@ BuildbotQueueView.prototype = {
             linkElement.className = "revision";
             linkElement.href = trac.revisionURL(commit.revisionNumber);
             linkElement.target = "_blank";
-            linkElement.textContent = "r" + commit.revisionNumber;
+            linkElement.textContent = this._formatRevisionForDisplay(commit.revisionNumber, branch.repository);
             result.appendChild(linkElement);
 
             var authorElement = document.createElement("span");
@@ -136,13 +140,13 @@ BuildbotQueueView.prototype = {
             return result;
         }
 
-        console.assert(trac.oldestRecordedRevisionNumber <= firstRevisionNumber);
+        console.assert(trac.indexOfRevision(trac.oldestRecordedRevisionNumber) <= trac.indexOfRevision(firstRevisionNumber));
 
         // FIXME: To be 100% correct, we should also filter out changes that are ignored by
         // the queue, see _should_file_trigger_build in wkbuild.py.
-        var commits = trac.commitsOnBranch(branch, function(commit) { return commit.revisionNumber >= firstRevisionNumber && commit.revisionNumber <= lastRevisionNumber; });
+        var commits = trac.commitsOnBranchInRevisionRange(branch.name, firstRevisionNumber, lastRevisionNumber);
         return commits.map(function(commit) {
-            return lineForCommit(trac, commit);
+            return lineForCommit.call(this, trac, commit);
         }, this).reverse();
     },
 
@@ -155,21 +159,27 @@ BuildbotQueueView.prototype = {
         var content = document.createElement("div");
         content.className = "commit-history-popover";
 
-        var webkitTrac = Dashboard.Repository.OpenSource.trac;
-        var internalTrac = Dashboard.Repository.Internal.trac;
-        var linesForOpenSource = this._popoverLinesForCommitRange(webkitTrac, queue.branch.openSource, latestProductiveIteration.revision[Dashboard.Repository.OpenSource.name] + 1, webkitTrac.latestRecordedRevisionNumber);
-        for (var i = 0; i != linesForOpenSource.length; ++i)
-            content.appendChild(linesForOpenSource[i]);
-
-        var linesForInternal = [];
-        if (latestProductiveIteration.revision[Dashboard.Repository.Internal.name] && internalTrac.latestRecordedRevisionNumber)
-            var linesForInternal = this._popoverLinesForCommitRange(internalTrac, queue.branch.internal, latestProductiveIteration.revision[Dashboard.Repository.Internal.name] + 1, internalTrac.latestRecordedRevisionNumber);
-
-        if (linesForOpenSource.length && linesForInternal.length)
-            this._addDividerToPopover(content);
-
-        for (var i = 0; i != linesForInternal.length; ++i)
-            content.appendChild(linesForInternal[i]);
+        var shouldAddDivider = false;
+        var branches = queue.branches;
+        for (var i = 0; i < branches.length; ++i) {
+            var branch = branches[i];
+            var repository = branch.repository;
+            var repositoryName = repository.name;
+            var trac = repository.trac;
+            var latestProductiveRevisionNumber = latestProductiveIteration.revision[repositoryName];
+            if (!latestProductiveRevisionNumber || !trac.latestRecordedRevisionNumber)
+                continue;
+            var nextRevision = trac.nextRevision(branch.name, latestProductiveRevisionNumber);
+            if (nextRevision === Trac.NO_MORE_REVISIONS)
+                continue;
+            var lines = this._popoverLinesForCommitRange(trac, branch, nextRevision, trac.latestRecordedRevisionNumber);
+            var length = lines.length;
+            if (length && shouldAddDivider)
+                this._addDividerToPopover(content);
+            for (var j = 0; j < length; ++j)
+                content.appendChild(lines[j]);
+            shouldAddDivider = shouldAddDivider || length > 0;
+        }
 
         var rect = Dashboard.Rect.rectFromClientRect(element.getBoundingClientRect());
         popover.content = content;
@@ -194,7 +204,7 @@ BuildbotQueueView.prototype = {
             content.appendChild(line);
             this._addDividerToPopover(content);
         } else {
-            line.textContent = "no commits to " + context.branch + " since previous result";
+            line.textContent = "no commits to " + context.branch.name + " since previous result";
             content.appendChild(line);
         }
 
@@ -208,25 +218,46 @@ BuildbotQueueView.prototype = {
         return true;
     },
 
-    _revisionContentWithPopoverForIteration: function(iteration, previousIteration, repository)
+    _revisionContentWithPopoverForIteration: function(iteration, previousIteration, branch)
     {
+        var repository = branch.repository;
         var repositoryName = repository.name;
         console.assert(iteration.revision[repositoryName]);
+        var trac = repository.trac;
         var content = document.createElement("span");
-        content.textContent = "r" + iteration.revision[repositoryName];
+        content.textContent = this._formatRevisionForDisplay(iteration.revision[repositoryName], repository);
         content.classList.add("revision-number");
 
-        if (previousIteration) {
-            console.assert(previousIteration.revision[repositoryName]);
-            var context = {
-                trac: repository.trac,
-                branch: iteration.queue.branch[repositoryName],
-                firstRevision: previousIteration.revision[repositoryName] + 1,
-                lastRevision: iteration.revision[repositoryName]
-            };
-            if (context.firstRevision <= context.lastRevision)
-                new PopoverTracker(content, this._presentPopoverForRevisionRange.bind(this), context);
-        }
+        if (!previousIteration)
+            return content;
+
+        var previousIterationRevision = previousIteration.revision[repositoryName];
+        console.assert(previousIterationRevision);
+        var previousIterationRevisionIndex = trac.indexOfRevision(previousIterationRevision);
+        if (previousIterationRevisionIndex === -1)
+            return content;
+
+        var firstRevision = trac.nextRevision(branch.name, previousIterationRevision);
+        if (firstRevision === Trac.NO_MORE_REVISIONS)
+            return content;
+        var firstRevisionIndex = trac.indexOfRevision(firstRevision);
+        console.assert(firstRevisionIndex !== -1);
+
+        var lastRevision = iteration.revision[repositoryName];
+        var lastRevisionIndex = trac.indexOfRevision(lastRevision);
+        if (lastRevisionIndex === -1)
+            return content;
+
+        if (firstRevisionIndex > lastRevisionIndex)
+            return content;
+
+        var context = {
+            trac: trac,
+            branch: branch,
+            firstRevision: firstRevision,
+            lastRevision: lastRevision,
+        };
+        new PopoverTracker(content, this._presentPopoverForRevisionRange.bind(this), context);
 
         return content;
     },
@@ -269,18 +300,17 @@ BuildbotQueueView.prototype = {
     {
         var fragment = document.createDocumentFragment();
         var shouldAddPlusSign = false;
-        var sortedRepositories = Dashboard.sortedRepositories;
-        for (var i = 0; i < sortedRepositories.length; ++i) {
-            var repository = sortedRepositories[i];
-            if (!iteration.revision[repository.name])
+        var branches = iteration.queue.branches;
+        for (var i = 0; i < branches.length; ++i) {
+            var branch = branches[i];
+            if (!iteration.revision[branch.repository.name])
                 continue;
-            var content = this._revisionContentWithPopoverForIteration(iteration, previousDisplayedIteration, repository);
+            var content = this._revisionContentWithPopoverForIteration(iteration, previousDisplayedIteration, branch);
             if (shouldAddPlusSign)
                 fragment.appendChild(document.createTextNode(" \uff0b "));
             fragment.appendChild(content);
             shouldAddPlusSign = true;
         }
-        console.assert(fragment.childNodes.length);
         return fragment;
     },
 
@@ -326,6 +356,14 @@ BuildbotQueueView.prototype = {
     _unauthorizedAccess: function(event)
     {
         this.updateSoon();
-    }
+    },
 
+    _formatRevisionForDisplay: function(revision, repository)
+    {
+        console.assert(repository.isSVN || repository.isGit, "Should not get here; " + repository.name + " did not specify a known VCS type.");
+        if (repository.isSVN)
+            return "r" + revision;
+        // Truncating for display. Git traditionally uses seven characters for a short hash.
+        return revision.substr(0, 7);
+    }
 };

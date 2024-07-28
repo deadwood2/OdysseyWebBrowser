@@ -127,31 +127,31 @@ bool RegExpObject::defineOwnProperty(JSObject* object, ExecState* exec, Property
                 return reject(exec, shouldThrow, "Attempting to change value of a readonly property.");
             return true;
         }
-        if (descriptor.writablePresent() && !descriptor.writable())
-            regExp->m_lastIndexIsWritable = false;
         if (descriptor.value())
             regExp->setLastIndex(exec, descriptor.value(), false);
+        if (descriptor.writablePresent() && !descriptor.writable())
+            regExp->m_lastIndexIsWritable = false;
         return true;
     }
 
     return Base::defineOwnProperty(object, exec, propertyName, descriptor, shouldThrow);
 }
 
-static void regExpObjectSetLastIndexStrict(ExecState* exec, JSObject* slotBase, EncodedJSValue, EncodedJSValue value)
+static void regExpObjectSetLastIndexStrict(ExecState* exec, EncodedJSValue thisValue, EncodedJSValue value)
 {
-    asRegExpObject(slotBase)->setLastIndex(exec, JSValue::decode(value), true);
+    asRegExpObject(JSValue::decode(thisValue))->setLastIndex(exec, JSValue::decode(value), true);
 }
 
-static void regExpObjectSetLastIndexNonStrict(ExecState* exec, JSObject* slotBase, EncodedJSValue, EncodedJSValue value)
+static void regExpObjectSetLastIndexNonStrict(ExecState* exec, EncodedJSValue thisValue, EncodedJSValue value)
 {
-    asRegExpObject(slotBase)->setLastIndex(exec, JSValue::decode(value), false);
+    asRegExpObject(JSValue::decode(thisValue))->setLastIndex(exec, JSValue::decode(value), false);
 }
 
 void RegExpObject::put(JSCell* cell, ExecState* exec, PropertyName propertyName, JSValue value, PutPropertySlot& slot)
 {
     if (propertyName == exec->propertyNames().lastIndex) {
         asRegExpObject(cell)->setLastIndex(exec, value, slot.isStrictMode());
-        slot.setCustomProperty(asRegExpObject(cell), slot.isStrictMode()
+        slot.setCustomValue(asRegExpObject(cell), slot.isStrictMode()
             ? regExpObjectSetLastIndexStrict
             : regExpObjectSetLastIndexNonStrict);
         return;

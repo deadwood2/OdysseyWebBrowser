@@ -48,14 +48,14 @@ public:
         return adoptRef(*new Blob);
     }
 
-    static Ref<Blob> create(Vector<char> data, const String& contentType)
+    static Ref<Blob> create(Vector<uint8_t> data, const String& contentType)
     {
-        return adoptRef(*new Blob(WTF::move(data), contentType));
+        return adoptRef(*new Blob(WTFMove(data), contentType));
     }
 
     static Ref<Blob> create(Vector<BlobPart> blobParts, const String& contentType)
     {
-        return adoptRef(*new Blob(WTF::move(blobParts), contentType));
+        return adoptRef(*new Blob(WTFMove(blobParts), contentType));
     }
 
     static Ref<Blob> deserialize(const URL& srcURL, const String& type, long long size)
@@ -76,9 +76,10 @@ public:
     static bool isValidContentType(const String&);
     // The normalization procedure described in the File API spec.
     static String normalizedContentType(const String&);
-    // Intended for use in ASSERT statements.
+#if !ASSERT_DISABLED
     static bool isNormalizedContentType(const String&);
     static bool isNormalizedContentType(const CString&);
+#endif
 
     // URLRegistrable
     virtual URLRegistry& registry() const override;
@@ -90,7 +91,7 @@ public:
 
 protected:
     Blob();
-    Blob(Vector<char>, const String& contentType);
+    Blob(Vector<uint8_t>, const String& contentType);
     Blob(Vector<BlobPart>, const String& contentType);
 
     enum UninitializedContructor { uninitializedContructor };

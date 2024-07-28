@@ -3,8 +3,9 @@ set(WebKit2_INCLUDE_DIRECTORIES
     "${WEBKIT2_DIR}"
     "${WEBKIT2_DIR}/DatabaseProcess"
     "${WEBKIT2_DIR}/DatabaseProcess/IndexedDB"
-    "${WEBKIT2_DIR}/DatabaseProcess/IndexedDB/sqlite"
     "${WEBKIT2_DIR}/NetworkProcess"
+    "${WEBKIT2_DIR}/NetworkProcess/CustomProtocols"
+    "${WEBKIT2_DIR}/NetworkProcess/Downloads"
     "${WEBKIT2_DIR}/NetworkProcess/FileAPI"
     "${WEBKIT2_DIR}/NetworkProcess/cache"
     "${WEBKIT2_DIR}/Platform"
@@ -17,10 +18,7 @@ set(WebKit2_INCLUDE_DIRECTORIES
     "${WEBKIT2_DIR}/Shared/CoreIPCSupport"
     "${WEBKIT2_DIR}/Shared/Databases"
     "${WEBKIT2_DIR}/Shared/Databases/IndexedDB"
-    "${WEBKIT2_DIR}/Shared/Downloads"
     "${WEBKIT2_DIR}/Shared/FileAPI"
-    "${WEBKIT2_DIR}/Shared/Network"
-    "${WEBKIT2_DIR}/Shared/Network/CustomProtocols"
     "${WEBKIT2_DIR}/Shared/Plugins"
     "${WEBKIT2_DIR}/Shared/Plugins/Netscape"
     "${WEBKIT2_DIR}/Shared/Plugins/Netscape/x11"
@@ -70,6 +68,10 @@ set(WebKit2_INCLUDE_DIRECTORIES
     "${WEBKIT2_DIR}/WebProcess/WebPage"
     "${WEBCORE_DIR}"
     "${WEBCORE_DIR}/Modules/battery"
+    "${WEBCORE_DIR}/Modules/indexeddb"
+    "${WEBCORE_DIR}/Modules/indexeddb/client"
+    "${WEBCORE_DIR}/Modules/indexeddb/server"
+    "${WEBCORE_DIR}/Modules/indexeddb/shared"
     "${WEBCORE_DIR}/Modules/mediastream"
     "${WEBCORE_DIR}/Modules/networkinfo"
     "${WEBCORE_DIR}/Modules/notifications"
@@ -81,6 +83,7 @@ set(WebKit2_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/bindings"
     "${WEBCORE_DIR}/bridge"
     "${WEBCORE_DIR}/bridge/jsc"
+    "${WEBCORE_DIR}/contentextensions"
     "${WEBCORE_DIR}/css"
     "${WEBCORE_DIR}/dom"
     "${WEBCORE_DIR}/dom/default"
@@ -97,6 +100,7 @@ set(WebKit2_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/loader/cache"
     "${WEBCORE_DIR}/page"
     "${WEBCORE_DIR}/page/animation"
+    "${WEBCORE_DIR}/page/csp"
     "${WEBCORE_DIR}/page/scrolling"
     "${WEBCORE_DIR}/platform"
     "${WEBCORE_DIR}/platform/animation"
@@ -110,6 +114,7 @@ set(WebKit2_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/graphics/transforms"
     "${WEBCORE_DIR}/platform/mediastream"
     "${WEBCORE_DIR}/platform/network"
+    "${WEBCORE_DIR}/platform/spi/cf"
     "${WEBCORE_DIR}/platform/sql"
     "${WEBCORE_DIR}/platform/text"
     "${WEBCORE_DIR}/plugins"
@@ -145,6 +150,7 @@ set(WebKit2_INCLUDE_DIRECTORIES
     "${DERIVED_SOURCES_WEBKIT2_DIR}/include"
     "${CMAKE_BINARY_DIR}"
     "${CMAKE_SOURCE_DIR}/Source"
+    "${CMAKE_SOURCE_DIR}/WebKitLibraries"
 )
 
 set(WebKit2_SYSTEM_INCLUDE_DIRECTORIES "")
@@ -158,6 +164,8 @@ endif ()
 
 set(NetworkProcess_COMMON_SOURCES
     NetworkProcess/NetworkConnectionToWebProcess.cpp
+    NetworkProcess/NetworkLoad.cpp
+    NetworkProcess/NetworkLoadParameters.cpp
     NetworkProcess/NetworkProcess.cpp
     NetworkProcess/NetworkProcessPlatformStrategies.cpp
     NetworkProcess/NetworkResourceLoader.cpp
@@ -173,6 +181,9 @@ set(NetworkProcess_COMMON_SOURCES
     NetworkProcess/cache/NetworkCacheEntry.cpp
     NetworkProcess/cache/NetworkCacheFileSystem.cpp
     NetworkProcess/cache/NetworkCacheKey.cpp
+    NetworkProcess/cache/NetworkCacheSpeculativeLoad.cpp
+    NetworkProcess/cache/NetworkCacheSpeculativeLoadManager.cpp
+    NetworkProcess/cache/NetworkCacheSubresourcesEntry.cpp
     NetworkProcess/cache/NetworkCacheStatistics.cpp
     NetworkProcess/cache/NetworkCacheStorage.cpp
 )
@@ -181,14 +192,14 @@ set(WebKit2_SOURCES
     DatabaseProcess/DatabaseProcess.cpp
     DatabaseProcess/DatabaseToWebProcessConnection.cpp
 
-    DatabaseProcess/IndexedDB/DatabaseProcessIDBConnection.cpp
-    DatabaseProcess/IndexedDB/IDBSerialization.cpp
-    DatabaseProcess/IndexedDB/UniqueIDBDatabase.cpp
-    DatabaseProcess/IndexedDB/UniqueIDBDatabaseIdentifier.cpp
+    DatabaseProcess/IndexedDB/WebIDBConnectionToClient.cpp
 
-    DatabaseProcess/IndexedDB/sqlite/SQLiteIDBCursor.cpp
-    DatabaseProcess/IndexedDB/sqlite/SQLiteIDBTransaction.cpp
-    DatabaseProcess/IndexedDB/sqlite/UniqueIDBDatabaseBackingStoreSQLite.cpp
+    NetworkProcess/NetworkProcessCreationParameters.cpp
+    NetworkProcess/NetworkResourceLoadParameters.cpp
+
+    NetworkProcess/Downloads/Download.cpp
+    NetworkProcess/Downloads/DownloadAuthenticationClient.cpp
+    NetworkProcess/Downloads/DownloadManager.cpp
 
     Platform/Logging.cpp
     Platform/Module.cpp
@@ -215,9 +226,7 @@ set(WebKit2_SOURCES
     Shared/BlobDataFileReferenceWithSandboxExtension.cpp
     Shared/CacheModel.cpp
     Shared/ChildProcess.cpp
-    Shared/ChildProcessProxy.cpp
     Shared/ContextMenuContextData.cpp
-    Shared/DictionaryPopupInfo.cpp
     Shared/EditorState.cpp
     Shared/FontInfo.cpp
     Shared/LayerTreeContext.cpp
@@ -225,7 +234,6 @@ set(WebKit2_SOURCES
     Shared/OriginAndDatabases.cpp
     Shared/PlatformPopupMenuData.cpp
     Shared/PrintInfo.cpp
-    Shared/SecurityOriginData.cpp
     Shared/SessionState.cpp
     Shared/SessionTracker.cpp
     Shared/ShareableBitmap.cpp
@@ -247,7 +255,7 @@ set(WebKit2_SOURCES
     Shared/WebEvent.cpp
     Shared/WebEventConversion.cpp
     Shared/WebGeolocationPosition.cpp
-    Shared/WebHitTestResult.cpp
+    Shared/WebHitTestResultData.cpp
     Shared/WebImage.cpp
     Shared/WebKeyboardEvent.cpp
     Shared/WebKit2Initialize.cpp
@@ -310,13 +318,6 @@ set(WebKit2_SOURCES
 
     Shared/Databases/IndexedDB/IDBUtilities.cpp
 
-    Shared/Downloads/Download.cpp
-    Shared/Downloads/DownloadAuthenticationClient.cpp
-    Shared/Downloads/DownloadManager.cpp
-
-    Shared/Network/NetworkProcessCreationParameters.cpp
-    Shared/Network/NetworkResourceLoadParameters.cpp
-
     Shared/Plugins/NPIdentifierData.cpp
     Shared/Plugins/NPObjectMessageReceiver.cpp
     Shared/Plugins/NPObjectProxy.cpp
@@ -330,20 +331,21 @@ set(WebKit2_SOURCES
 
     Shared/WebsiteData/WebsiteData.cpp
 
+    UIProcess/ChildProcessProxy.cpp
     UIProcess/DrawingAreaProxy.cpp
     UIProcess/FrameLoadState.cpp
     UIProcess/GeolocationPermissionRequestManagerProxy.cpp
     UIProcess/GeolocationPermissionRequestProxy.cpp
-    UIProcess/LegacySessionStateCodingNone.cpp
     UIProcess/PageLoadState.cpp
     UIProcess/ProcessAssertion.cpp
     UIProcess/ProcessThrottler.cpp
     UIProcess/ResponsivenessTimer.cpp
     UIProcess/StatisticsRequest.cpp
     UIProcess/TextCheckerCompletion.cpp
+    UIProcess/UserMediaPermissionCheckProxy.cpp
     UIProcess/UserMediaPermissionRequestManagerProxy.cpp
     UIProcess/UserMediaPermissionRequestProxy.cpp
-    UIProcess/VisitedLinkProvider.cpp
+    UIProcess/VisitedLinkStore.cpp
     UIProcess/WebBackForwardList.cpp
     UIProcess/WebBatteryManagerProxy.cpp
     UIProcess/WebBatteryProvider.cpp
@@ -355,10 +357,7 @@ set(WebKit2_SOURCES
     UIProcess/WebContextMenuProxy.cpp
     UIProcess/WebCookieManagerProxy.cpp
     UIProcess/WebCookieManagerProxyClient.cpp
-    UIProcess/WebDatabaseManagerProxy.cpp
-    UIProcess/WebDatabaseManagerProxyClient.cpp
     UIProcess/WebEditCommandProxy.cpp
-    UIProcess/WebFindClient.cpp
     UIProcess/WebFormClient.cpp
     UIProcess/WebFormSubmissionListenerProxy.cpp
     UIProcess/WebFrameListenerProxy.cpp
@@ -371,7 +370,6 @@ set(WebKit2_SOURCES
     UIProcess/WebIconDatabase.cpp
     UIProcess/WebIconDatabaseClient.cpp
     UIProcess/WebInspectorProxy.cpp
-    UIProcess/WebMediaCacheManagerProxy.cpp
     UIProcess/WebNavigationState.cpp
     UIProcess/WebOpenPanelResultListenerProxy.cpp
     UIProcess/WebPageDiagnosticLoggingClient.cpp
@@ -391,6 +389,7 @@ set(WebKit2_SOURCES
     UIProcess/WebViewportAttributes.cpp
 
     UIProcess/API/APIFrameInfo.cpp
+    UIProcess/API/APIHitTestResult.cpp
     UIProcess/API/APINavigation.cpp
     UIProcess/API/APINavigationData.cpp
     UIProcess/API/APIPageConfiguration.cpp
@@ -400,6 +399,7 @@ set(WebKit2_SOURCES
     UIProcess/API/APIUserContentExtension.cpp
     UIProcess/API/APIUserContentExtensionStore.cpp
     UIProcess/API/APIWebsiteDataStore.cpp
+    UIProcess/API/APIWindowFeatures.cpp
 
     UIProcess/API/C/WKApplicationCacheManager.cpp
     UIProcess/API/C/WKAuthenticationChallenge.cpp
@@ -412,7 +412,6 @@ set(WebKit2_SOURCES
     UIProcess/API/C/WKContextConfigurationRef.cpp
     UIProcess/API/C/WKCookieManager.cpp
     UIProcess/API/C/WKCredential.cpp
-    UIProcess/API/C/WKDatabaseManager.cpp
     UIProcess/API/C/WKDownload.cpp
     UIProcess/API/C/WKFormSubmissionListener.cpp
     UIProcess/API/C/WKFrame.cpp
@@ -426,7 +425,6 @@ set(WebKit2_SOURCES
     UIProcess/API/C/WKIconDatabase.cpp
     UIProcess/API/C/WKInspector.cpp
     UIProcess/API/C/WKKeyValueStorageManager.cpp
-    UIProcess/API/C/WKMediaCacheManager.cpp
     UIProcess/API/C/WKMediaSessionMetadata.cpp
     UIProcess/API/C/WKNavigationActionRef.cpp
     UIProcess/API/C/WKNavigationDataRef.cpp
@@ -437,8 +435,8 @@ set(WebKit2_SOURCES
     UIProcess/API/C/WKNotificationPermissionRequest.cpp
     UIProcess/API/C/WKOpenPanelParameters.cpp
     UIProcess/API/C/WKOpenPanelResultListener.cpp
-    UIProcess/API/C/WKOriginDataManager.cpp
     UIProcess/API/C/WKPage.cpp
+    UIProcess/API/C/WKPageConfigurationRef.cpp
     UIProcess/API/C/WKPageGroup.cpp
     UIProcess/API/C/WKPluginSiteDataManager.cpp
     UIProcess/API/C/WKPreferences.cpp
@@ -446,9 +444,12 @@ set(WebKit2_SOURCES
     UIProcess/API/C/WKResourceCacheManager.cpp
     UIProcess/API/C/WKSessionStateRef.cpp
     UIProcess/API/C/WKTextChecker.cpp
+    UIProcess/API/C/WKUserContentControllerRef.cpp
+    UIProcess/API/C/WKUserMediaPermissionCheck.cpp
     UIProcess/API/C/WKUserMediaPermissionRequest.cpp
     UIProcess/API/C/WKVibration.cpp
     UIProcess/API/C/WKViewportAttributes.cpp
+    UIProcess/API/C/WKWindowFeaturesRef.cpp
 
     UIProcess/Authentication/AuthenticationChallengeProxy.cpp
     UIProcess/Authentication/AuthenticationDecisionListener.cpp
@@ -489,8 +490,6 @@ set(WebKit2_SOURCES
     UIProcess/WebsiteData/WebsiteDataRecord.cpp
     UIProcess/WebsiteData/WebsiteDataStore.cpp
 
-    UIProcess/WebsiteData/unix/WebsiteDataStoreUnix.cpp
-
     WebProcess/WebConnectionToUIProcess.cpp
     WebProcess/WebProcess.cpp
 
@@ -501,8 +500,7 @@ set(WebKit2_SOURCES
     WebProcess/Databases/WebDatabaseProvider.cpp
     WebProcess/Databases/WebToDatabaseProcessConnection.cpp
 
-    WebProcess/Databases/IndexedDB/WebIDBFactoryBackend.cpp
-    WebProcess/Databases/IndexedDB/WebIDBServerConnection.cpp
+    WebProcess/Databases/IndexedDB/WebIDBConnectionToServer.cpp
 
     WebProcess/FileAPI/BlobRegistryProxy.cpp
 
@@ -551,12 +549,10 @@ set(WebKit2_SOURCES
     WebProcess/InjectedBundle/DOM/InjectedBundleNodeHandle.cpp
     WebProcess/InjectedBundle/DOM/InjectedBundleRangeHandle.cpp
 
-    WebProcess/MediaCache/WebMediaCacheManager.cpp
-
     WebProcess/MediaStream/UserMediaPermissionRequestManager.cpp
 
     WebProcess/Network/NetworkProcessConnection.cpp
-    WebProcess/Network/WebResourceLoadScheduler.cpp
+    WebProcess/Network/WebLoaderStrategy.cpp
     WebProcess/Network/WebResourceLoader.cpp
 
     WebProcess/Notifications/NotificationPermissionRequestManager.cpp
@@ -590,7 +586,6 @@ set(WebKit2_SOURCES
     WebProcess/WebCoreSupport/WebChromeClient.cpp
     WebProcess/WebCoreSupport/WebColorChooser.cpp
     WebProcess/WebCoreSupport/WebContextMenuClient.cpp
-    WebProcess/WebCoreSupport/WebDatabaseManager.cpp
     WebProcess/WebCoreSupport/WebDeviceProximityClient.cpp
     WebProcess/WebCoreSupport/WebDiagnosticLoggingClient.cpp
     WebProcess/WebCoreSupport/WebDragClient.cpp
@@ -618,6 +613,7 @@ set(WebKit2_SOURCES
     WebProcess/WebPage/WebDocumentLoader.cpp
     WebProcess/WebPage/WebFrame.cpp
     WebProcess/WebPage/WebInspector.cpp
+    WebProcess/WebPage/WebInspectorFrontendAPIDispatcher.cpp
     WebProcess/WebPage/WebInspectorUI.cpp
     WebProcess/WebPage/WebOpenPanelResultListener.cpp
     WebProcess/WebPage/WebPage.cpp
@@ -634,7 +630,9 @@ set(WebKit2_MESSAGES_IN_FILES
     DatabaseProcess/DatabaseProcess.messages.in
     DatabaseProcess/DatabaseToWebProcessConnection.messages.in
 
-    DatabaseProcess/IndexedDB/DatabaseProcessIDBConnection.messages.in
+    DatabaseProcess/IndexedDB/WebIDBConnectionToClient.messages.in
+
+    NetworkProcess/CustomProtocols/CustomProtocolManager.messages.in
 
     NetworkProcess/NetworkConnectionToWebProcess.messages.in
     NetworkProcess/NetworkProcess.messages.in
@@ -649,20 +647,16 @@ set(WebKit2_MESSAGES_IN_FILES
 
     Shared/Authentication/AuthenticationManager.messages.in
 
-    Shared/Network/CustomProtocols/CustomProtocolManager.messages.in
-
     Shared/Plugins/NPObjectMessageReceiver.messages.in
 
     UIProcess/DrawingAreaProxy.messages.in
-    UIProcess/VisitedLinkProvider.messages.in
+    UIProcess/VisitedLinkStore.messages.in
     UIProcess/WebBatteryManagerProxy.messages.in
     UIProcess/WebCookieManagerProxy.messages.in
-    UIProcess/WebDatabaseManagerProxy.messages.in
     UIProcess/WebFullScreenManagerProxy.messages.in
     UIProcess/WebGeolocationManagerProxy.messages.in
     UIProcess/WebIconDatabase.messages.in
     UIProcess/WebInspectorProxy.messages.in
-    UIProcess/WebMediaCacheManagerProxy.messages.in
     UIProcess/WebPageProxy.messages.in
     UIProcess/WebPasteboardProxy.messages.in
     UIProcess/WebProcessPool.messages.in
@@ -689,15 +683,13 @@ set(WebKit2_MESSAGES_IN_FILES
 
     WebProcess/Cookies/WebCookieManager.messages.in
 
-    WebProcess/Databases/IndexedDB/WebIDBServerConnection.messages.in
+    WebProcess/Databases/IndexedDB/WebIDBConnectionToServer.messages.in
 
     WebProcess/FullScreen/WebFullScreenManager.messages.in
 
     WebProcess/Geolocation/WebGeolocationManager.messages.in
 
     WebProcess/IconDatabase/WebIconDatabaseProxy.messages.in
-
-    WebProcess/MediaCache/WebMediaCacheManager.messages.in
 
     WebProcess/Network/NetworkProcessConnection.messages.in
     WebProcess/Network/WebResourceLoader.messages.in
@@ -711,8 +703,6 @@ set(WebKit2_MESSAGES_IN_FILES
     WebProcess/Storage/StorageAreaMap.messages.in
 
     WebProcess/UserContent/WebUserContentController.messages.in
-
-    WebProcess/WebCoreSupport/WebDatabaseManager.messages.in
 
     WebProcess/WebPage/DrawingArea.messages.in
     WebProcess/WebPage/EventDispatcher.messages.in
@@ -794,16 +784,13 @@ if (WebKit2_WebProcess_OUTPUT_NAME)
     set_target_properties(WebProcess PROPERTIES OUTPUT_NAME ${WebKit2_WebProcess_OUTPUT_NAME})
 endif ()
 
-if (ENABLE_NETWORK_PROCESS)
-    add_executable(NetworkProcess ${NetworkProcess_SOURCES})
-    add_webkit2_prefix_header(NetworkProcess)
-    target_link_libraries(NetworkProcess ${NetworkProcess_LIBRARIES})
-    set_target_properties(NetworkProcess PROPERTIES FOLDER "WebKit")
-    install(TARGETS NetworkProcess DESTINATION "${LIBEXEC_INSTALL_DIR}")
+add_executable(NetworkProcess ${NetworkProcess_SOURCES})
+add_webkit2_prefix_header(NetworkProcess)
+target_link_libraries(NetworkProcess ${NetworkProcess_LIBRARIES})
+set_target_properties(NetworkProcess PROPERTIES FOLDER "WebKit")
 
-    if (WebKit2_NetworkProcess_OUTPUT_NAME)
-        set_target_properties(NetworkProcess PROPERTIES OUTPUT_NAME ${WebKit2_NetworkProcess_OUTPUT_NAME})
-    endif ()
+if (WebKit2_NetworkProcess_OUTPUT_NAME)
+    set_target_properties(NetworkProcess PROPERTIES OUTPUT_NAME ${WebKit2_NetworkProcess_OUTPUT_NAME})
 endif ()
 
 if (ENABLE_PLUGIN_PROCESS)
@@ -835,7 +822,11 @@ endif ()
 POPULATE_LIBRARY_VERSION(WEBKIT2)
 set_target_properties(WebKit2 PROPERTIES VERSION ${WEBKIT2_VERSION} SOVERSION ${WEBKIT2_VERSION_MAJOR})
 
-install(TARGETS WebKit2 WebProcess
+if (PORT STREQUAL "Mac")
+    WEBKIT_FRAMEWORK(WebKit2)
+else ()
+    install(TARGETS WebKit2 WebProcess NetworkProcess
         LIBRARY DESTINATION "${LIB_INSTALL_DIR}"
         RUNTIME DESTINATION "${LIBEXEC_INSTALL_DIR}"
-)
+    )
+endif ()

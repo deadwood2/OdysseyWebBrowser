@@ -54,7 +54,7 @@ namespace WebCore {
 using namespace HTMLNames;
 
 RenderTextControlSingleLine::RenderTextControlSingleLine(HTMLInputElement& element, Ref<RenderStyle>&& style)
-    : RenderTextControl(element, WTF::move(style))
+    : RenderTextControl(element, WTFMove(style))
     , m_desiredInnerTextLogicalHeight(-1)
 {
 }
@@ -355,7 +355,6 @@ Ref<RenderStyle> RenderTextControlSingleLine::createInnerBlockStyle(const Render
 
     innerBlockStyle.get().setFlexGrow(1);
     // min-width: 0; is needed for correct shrinking.
-    // FIXME: Remove this line when https://bugs.webkit.org/show_bug.cgi?id=111790 is fixed.
     innerBlockStyle.get().setMinWidth(Length(0, Fixed));
     innerBlockStyle.get().setDisplay(BLOCK);
     innerBlockStyle.get().setDirection(LTR);

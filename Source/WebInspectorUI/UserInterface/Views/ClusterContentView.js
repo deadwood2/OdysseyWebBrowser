@@ -31,9 +31,9 @@ WebInspector.ClusterContentView = class ClusterContentView extends WebInspector.
 
         this.element.classList.add("cluster");
 
-        this._contentViewContainer = new WebInspector.ContentViewContainer();
+        this._contentViewContainer = new WebInspector.ContentViewContainer;
         this._contentViewContainer.addEventListener(WebInspector.ContentViewContainer.Event.CurrentContentViewDidChange, this._currentContentViewDidChange, this);
-        this.element.appendChild(this._contentViewContainer.element);
+        this.addSubview(this._contentViewContainer);
 
         WebInspector.ContentView.addEventListener(WebInspector.ContentView.Event.SelectionPathComponentsDidChange, this._contentViewSelectionPathComponentDidChange, this);
         WebInspector.ContentView.addEventListener(WebInspector.ContentView.Event.SupplementalRepresentedObjectsDidChange, this._contentViewSupplementalRepresentedObjectsDidChange, this);
@@ -58,13 +58,6 @@ WebInspector.ClusterContentView = class ClusterContentView extends WebInspector.
         if (this._contentViewContainer.currentContentView)
             return this._contentViewContainer.currentContentView.supportsSplitContentBrowser;
         return true;
-    }
-
-    updateLayout()
-    {
-        var currentContentView = this._contentViewContainer.currentContentView;
-        if (currentContentView)
-            currentContentView.updateLayout();
     }
 
     shown()

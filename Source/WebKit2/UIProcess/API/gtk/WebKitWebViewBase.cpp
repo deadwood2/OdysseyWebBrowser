@@ -151,6 +151,9 @@ typedef HashMap<uint32_t, GUniquePtr<GdkEvent>> TouchEventsMap;
 struct _WebKitWebViewBasePrivate {
     _WebKitWebViewBasePrivate()
         : updateViewStateTimer(RunLoop::main(), this, &_WebKitWebViewBasePrivate::updateViewStateTimerFired)
+#if USE(REDIRECTED_XCOMPOSITE_WINDOW)
+        , clearRedirectedWindowSoonTimer(RunLoop::main(), this, &_WebKitWebViewBasePrivate::clearRedirectedWindowSoonTimerFired)
+#endif
     {
     }
 
@@ -161,6 +164,14 @@ struct _WebKitWebViewBasePrivate {
         pageProxy->viewStateDidChange(viewStateFlagsToUpdate);
         viewStateFlagsToUpdate = ViewState::NoFlags;
     }
+
+#if USE(REDIRECTED_XCOMPOSITE_WINDOW)
+    void clearRedirectedWindowSoonTimerFired()
+    {
+        if (redirectedWindow)
+            redirectedWindow->resize(IntSize());
+    }
+#endif
 
     WebKitWebViewChildrenMap children;
     std::unique_ptr<PageClientImpl> pageClient;
@@ -203,7 +214,7 @@ struct _WebKitWebViewBasePrivate {
 
 #if USE(REDIRECTED_XCOMPOSITE_WINDOW)
     std::unique_ptr<RedirectedXCompositeWindow> redirectedWindow;
-    GMainLoopSource clearRedirectedWindowSoon;
+    RunLoop::Timer<WebKitWebViewBasePrivate> clearRedirectedWindowSoonTimer;
 #endif
 
 #if ENABLE(DRAG_SUPPORT)
@@ -855,8 +866,10 @@ static gboolean webkitWebViewBaseMotionNotifyEvent(GtkWidget* widget, GdkEventMo
     WebKitWebViewBase* webViewBase = WEBKIT_WEB_VIEW_BASE(widget);
     WebKitWebViewBasePrivate* priv = webViewBase->priv;
 
-    if (priv->authenticationDialog)
-        return GTK_WIDGET_CLASS(webkit_web_view_base_parent_class)->motion_notify_event(widget, event);
+    if (priv->authenticationDialog) {
+        auto* widgetClass = GTK_WIDGET_CLASS(webkit_web_view_base_parent_class);
+        return widgetClass->motion_notify_event ? widgetClass->motion_notify_event(widget, event) : FALSE;
+    }
 
     priv->pageProxy->handleMouseEvent(NativeWebMouseEvent(reinterpret_cast<GdkEvent*>(event), 0 /* currentClickCount */));
 
@@ -956,6 +969,7 @@ static gboolean webkitWebViewBaseTouchEvent(GtkWidget* widget, GdkEventTouch* ev
         return TRUE;
 
     GdkEvent* touchEvent = reinterpret_cast<GdkEvent*>(event);
+    uint32_t sequence = GPOINTER_TO_UINT(gdk_event_get_event_sequence(touchEvent));
 
 #if HAVE(GTK_GESTURES)
     GestureController& gestureController = webkitWebViewBaseGestureController(webViewBase);
@@ -963,16 +977,19 @@ static gboolean webkitWebViewBaseTouchEvent(GtkWidget* widget, GdkEventTouch* ev
         // If we are already processing gestures is because the WebProcess didn't handle the
         // BEGIN touch event, so pass subsequent events to the GestureController.
         gestureController.handleEvent(touchEvent);
+        // Remove the gesture event sequence from the handled touch events
+        // list to avoid the gesure sequence and a touch sequence of same
+        // ID to conflict.
+        priv->touchEvents.remove(sequence);
         return TRUE;
     }
 #endif
 
-    uint32_t sequence = GPOINTER_TO_UINT(gdk_event_get_event_sequence(touchEvent));
     switch (touchEvent->type) {
     case GDK_TOUCH_BEGIN: {
         ASSERT(!priv->touchEvents.contains(sequence));
         GUniquePtr<GdkEvent> event(gdk_event_copy(touchEvent));
-        priv->touchEvents.add(sequence, WTF::move(event));
+        priv->touchEvents.add(sequence, WTFMove(event));
         break;
     }
     case GDK_TOUCH_UPDATE: {
@@ -991,7 +1008,7 @@ static gboolean webkitWebViewBaseTouchEvent(GtkWidget* widget, GdkEventTouch* ev
 
     Vector<WebPlatformTouchPoint> touchPoints;
     webkitWebViewBaseGetTouchPointsForEvent(webViewBase, touchEvent, touchPoints);
-    priv->pageProxy->handleTouchEvent(NativeWebTouchEvent(reinterpret_cast<GdkEvent*>(event), WTF::move(touchPoints)));
+    priv->pageProxy->handleTouchEvent(NativeWebTouchEvent(reinterpret_cast<GdkEvent*>(event), WTFMove(touchPoints)));
 
     return TRUE;
 }
@@ -1190,16 +1207,10 @@ static void webkit_web_view_base_class_init(WebKitWebViewBaseClass* webkitWebVie
     WebKit::InitializeWebKit2();
 }
 
-WebKitWebViewBase* webkitWebViewBaseCreate(WebProcessPool* context, WebPreferences* preferences, WebPageGroup* pageGroup, WebUserContentControllerProxy* userContentController, WebPageProxy* relatedPage)
+WebKitWebViewBase* webkitWebViewBaseCreate(const API::PageConfiguration& configuration)
 {
     WebKitWebViewBase* webkitWebViewBase = WEBKIT_WEB_VIEW_BASE(g_object_new(WEBKIT_TYPE_WEB_VIEW_BASE, nullptr));
-
-    auto pageConfiguration = API::PageConfiguration::create();
-    pageConfiguration->setPreferences(preferences);
-    pageConfiguration->setPageGroup(pageGroup);
-    pageConfiguration->setRelatedPage(relatedPage);
-    pageConfiguration->setUserContentController(userContentController);
-    webkitWebViewBaseCreateWebPage(webkitWebViewBase, context, WTF::move(pageConfiguration));
+    webkitWebViewBaseCreateWebPage(webkitWebViewBase, configuration.copy());
     return webkitWebViewBase;
 }
 
@@ -1224,10 +1235,11 @@ static void deviceScaleFactorChanged(WebKitWebViewBase* webkitWebViewBase)
 }
 #endif // HAVE(GTK_SCALE_FACTOR)
 
-void webkitWebViewBaseCreateWebPage(WebKitWebViewBase* webkitWebViewBase, WebProcessPool* context, Ref<API::PageConfiguration>&& configuration)
+void webkitWebViewBaseCreateWebPage(WebKitWebViewBase* webkitWebViewBase, Ref<API::PageConfiguration>&& configuration)
 {
     WebKitWebViewBasePrivate* priv = webkitWebViewBase->priv;
-    priv->pageProxy = context->createWebPage(*priv->pageClient, WTF::move(configuration));
+    WebProcessPool* context = configuration->processPool();
+    priv->pageProxy = context->createWebPage(*priv->pageClient, WTFMove(configuration));
     priv->pageProxy->initializeWebPage();
 
     priv->inputMethodFilter.setPage(priv->pageProxy.get());
@@ -1400,9 +1412,16 @@ void webkitWebViewBaseSetInspectorViewSize(WebKitWebViewBase* webkitWebViewBase,
         gtk_widget_queue_resize_no_redraw(GTK_WIDGET(webkitWebViewBase));
 }
 
+static void activeContextMenuUnmapped(GtkMenu* menu, WebKitWebViewBase* webViewBase)
+{
+    if (webViewBase->priv->activeContextMenuProxy && webViewBase->priv->activeContextMenuProxy->gtkMenu() == menu)
+        webViewBase->priv->activeContextMenuProxy = nullptr;
+}
+
 void webkitWebViewBaseSetActiveContextMenuProxy(WebKitWebViewBase* webkitWebViewBase, WebContextMenuProxyGtk* contextMenuProxy)
 {
     webkitWebViewBase->priv->activeContextMenuProxy = contextMenuProxy;
+    g_signal_connect_object(contextMenuProxy->gtkMenu(), "unmap", G_CALLBACK(activeContextMenuUnmapped), webkitWebViewBase, static_cast<GConnectFlags>(0));
 }
 
 WebContextMenuProxyGtk* webkitWebViewBaseGetActiveContextMenuProxy(WebKitWebViewBase* webkitWebViewBase)
@@ -1491,12 +1510,8 @@ void webkitWebViewBaseResetClickCounter(WebKitWebViewBase* webkitWebViewBase)
 #if USE(REDIRECTED_XCOMPOSITE_WINDOW)
 static void webkitWebViewBaseClearRedirectedWindowSoon(WebKitWebViewBase* webkitWebViewBase)
 {
-    WebKitWebViewBasePrivate* priv = webkitWebViewBase->priv;
-    static const std::chrono::seconds clearRedirectedWindowSoonDelay = 2_s;
-    priv->clearRedirectedWindowSoon.scheduleAfterDelay("[WebKit] Clear RedirectedWindow soon", [priv]() {
-        if (priv->redirectedWindow)
-            priv->redirectedWindow->resize(IntSize());
-    }, clearRedirectedWindowSoonDelay);
+    static const double clearRedirectedWindowSoonDelay = 2;
+    webkitWebViewBase->priv->clearRedirectedWindowSoonTimer.startOneShot(clearRedirectedWindowSoonDelay);
 }
 #endif
 
@@ -1523,7 +1538,7 @@ void webkitWebViewBaseWillEnterAcceleratedCompositingMode(WebKitWebViewBase* web
 void webkitWebViewBaseEnterAcceleratedCompositingMode(WebKitWebViewBase* webkitWebViewBase)
 {
 #if USE(REDIRECTED_XCOMPOSITE_WINDOW)
-    webkitWebViewBase->priv->clearRedirectedWindowSoon.cancel();
+    webkitWebViewBase->priv->clearRedirectedWindowSoonTimer.stop();
 #else
     UNUSED_PARAM(webkitWebViewBase);
 #endif

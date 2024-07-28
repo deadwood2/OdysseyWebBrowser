@@ -60,7 +60,11 @@ public:
     virtual bool platformCALayerShouldAggressivelyRetainTiles(PlatformCALayer*) const { return false; }
     virtual bool platformCALayerShouldTemporarilyRetainTileCohorts(PlatformCALayer*) const { return true; }
 
+    virtual IntSize platformCALayerTileSize() const { return defaultTileSize(); }
+
     virtual bool isCommittingChanges() const { return false; }
+
+    virtual bool isUsingDisplayListDrawing(PlatformCALayer*) const { return false; }
 
 protected:
     virtual ~PlatformCALayerClient() {}

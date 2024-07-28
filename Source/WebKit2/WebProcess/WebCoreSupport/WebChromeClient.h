@@ -128,10 +128,6 @@ private:
     virtual void scrollbarsModeDidChange() const override;
     virtual void mouseDidMoveOverElement(const WebCore::HitTestResult&, unsigned modifierFlags) override;
 
-    virtual void didBeginTrackingPotentialLongMousePress(const WebCore::IntPoint& mouseDownPosition, const WebCore::HitTestResult&) override;
-    virtual void didRecognizeLongMousePress() override;
-    virtual void didCancelTrackingPotentialLongMousePress() override;
-
     virtual void setToolTip(const String&, WebCore::TextDirection) override;
     
     virtual void print(WebCore::Frame*) override;
@@ -243,10 +239,11 @@ private:
 #if PLATFORM(IOS)
     virtual void elementDidFocus(const WebCore::Node*) override;
     virtual void elementDidBlur(const WebCore::Node*) override;
+    virtual void elementDidRefocus(const WebCore::Node*) override;
 #endif
 
-#if PLATFORM(IOS)
-    virtual bool supportsVideoFullscreen() override;
+#if PLATFORM(IOS) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))
+    virtual bool supportsVideoFullscreen(WebCore::HTMLMediaElementEnums::VideoFullscreenMode) override;
     virtual void enterVideoFullscreenForVideoElement(WebCore::HTMLVideoElement&, WebCore::HTMLMediaElementEnums::VideoFullscreenMode) override;
     virtual void exitVideoFullscreenForVideoElement(WebCore::HTMLVideoElement&) override;
 #endif
@@ -318,18 +315,22 @@ private:
     virtual void handleAutoFillButtonClick(WebCore::HTMLInputElement&) override;
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET) && !PLATFORM(IOS)
-    virtual void addPlaybackTargetPickerClient(uint64_t /*contextId*/) override;
-    virtual void removePlaybackTargetPickerClient(uint64_t /*contextId*/) override;
-    virtual void showPlaybackTargetPicker(uint64_t contextId, const WebCore::IntPoint&, bool) override;
-    virtual void playbackTargetPickerClientStateDidChange(uint64_t, WebCore::MediaProducer::MediaStateFlags) override;
+    void addPlaybackTargetPickerClient(uint64_t /*contextId*/) override;
+    void removePlaybackTargetPickerClient(uint64_t /*contextId*/) override;
+    void showPlaybackTargetPicker(uint64_t contextId, const WebCore::IntPoint&, bool) override;
+    void playbackTargetPickerClientStateDidChange(uint64_t, WebCore::MediaProducer::MediaStateFlags) override;
+    void setMockMediaPlaybackTargetPickerEnabled(bool) override;
+    void setMockMediaPlaybackTargetPickerState(const String&, WebCore::MediaPlaybackTargetContext::State) override;
 #endif
 
+    virtual void imageOrMediaDocumentSizeChanged(const WebCore::IntSize&) override;
 #if ENABLE(VIDEO)
-    virtual void mediaDocumentNaturalSizeChanged(const WebCore::IntSize&) override;
 #if USE(GSTREAMER)
     virtual void requestInstallMissingMediaPlugins(const String& /*details*/, const String& /*description*/, WebCore::MediaPlayerRequestInstallMissingPluginsCallback&) override;
 #endif
 #endif
+
+    virtual void didInvalidateDocumentMarkerRects() override;
 
     String m_cachedToolTip;
     mutable RefPtr<WebFrame> m_cachedFrameSetLargestFrame;

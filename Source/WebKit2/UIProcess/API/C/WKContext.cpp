@@ -46,9 +46,7 @@
 
 // Supplements
 #include "WebCookieManagerProxy.h"
-#include "WebDatabaseManagerProxy.h"
 #include "WebGeolocationManagerProxy.h"
-#include "WebMediaCacheManagerProxy.h"
 #include "WebNotificationManagerProxy.h"
 #if ENABLE(BATTERY_STATUS)
 #include "WebBatteryManagerProxy.h"
@@ -311,12 +309,12 @@ void WKContextAddVisitedLink(WKContextRef contextRef, WKStringRef visitedURL)
     if (visitedURLString.isEmpty())
         return;
 
-    toImpl(contextRef)->visitedLinkProvider().addVisitedLinkHash(visitedLinkHash(visitedURLString));
+    toImpl(contextRef)->visitedLinkStore().addVisitedLinkHash(visitedLinkHash(visitedURLString));
 }
 
 void WKContextClearVisitedLinks(WKContextRef contextRef)
 {
-    toImpl(contextRef)->visitedLinkProvider().removeAll();
+    toImpl(contextRef)->visitedLinkStore().removeAll();
 }
 
 void WKContextSetCacheModel(WKContextRef contextRef, WKCacheModel cacheModel)
@@ -327,16 +325,6 @@ void WKContextSetCacheModel(WKContextRef contextRef, WKCacheModel cacheModel)
 WKCacheModel WKContextGetCacheModel(WKContextRef contextRef)
 {
     return toAPI(toImpl(contextRef)->cacheModel());
-}
-
-void WKContextSetProcessModel(WKContextRef contextRef, WKProcessModel processModel)
-{
-    toImpl(contextRef)->setProcessModel(toProcessModel(processModel));
-}
-
-WKProcessModel WKContextGetProcessModel(WKContextRef contextRef)
-{
-    return toAPI(toImpl(contextRef)->processModel());
 }
 
 void WKContextSetMaximumNumberOfProcesses(WKContextRef contextRef, unsigned numberOfProcesses)
@@ -429,11 +417,6 @@ WKBatteryManagerRef WKContextGetBatteryManager(WKContextRef contextRef)
 #endif
 }
 
-WKDatabaseManagerRef WKContextGetDatabaseManager(WKContextRef contextRef)
-{
-    return toAPI(toImpl(contextRef)->supplement<WebDatabaseManagerProxy>());
-}
-
 WKGeolocationManagerRef WKContextGetGeolocationManager(WKContextRef contextRef)
 {
     return toAPI(toImpl(contextRef)->supplement<WebGeolocationManagerProxy>());
@@ -447,11 +430,6 @@ WKIconDatabaseRef WKContextGetIconDatabase(WKContextRef contextRef)
 WKKeyValueStorageManagerRef WKContextGetKeyValueStorageManager(WKContextRef context)
 {
     return reinterpret_cast<WKKeyValueStorageManagerRef>(WKContextGetWebsiteDataStore(context));
-}
-
-WKMediaCacheManagerRef WKContextGetMediaCacheManager(WKContextRef contextRef)
-{
-    return toAPI(toImpl(contextRef)->supplement<WebMediaCacheManagerProxy>());
 }
 
 WKMediaSessionFocusManagerRef WKContextGetMediaSessionFocusManager(WKContextRef context)
@@ -482,11 +460,6 @@ WKPluginSiteDataManagerRef WKContextGetPluginSiteDataManager(WKContextRef contex
 WKResourceCacheManagerRef WKContextGetResourceCacheManager(WKContextRef context)
 {
     return reinterpret_cast<WKResourceCacheManagerRef>(WKContextGetWebsiteDataStore(context));
-}
-
-WKOriginDataManagerRef WKContextGetOriginDataManager(WKContextRef context)
-{
-    return reinterpret_cast<WKOriginDataManagerRef>(toAPI(toImpl(context)->websiteDataStore()));
 }
 
 void WKContextStartMemorySampler(WKContextRef contextRef, WKDoubleRef interval)
@@ -554,14 +527,14 @@ void WKContextSetJavaScriptGarbageCollectorTimerEnabled(WKContextRef contextRef,
     toImpl(contextRef)->setJavaScriptGarbageCollectorTimerEnabled(enable);
 }
 
-void WKContextSetUsesNetworkProcess(WKContextRef contextRef, bool usesNetworkProcess)
-{
-    toImpl(contextRef)->setUsesNetworkProcess(usesNetworkProcess);
-}
-
 void WKContextUseTestingNetworkSession(WKContextRef context)
 {
     toImpl(context)->useTestingNetworkSession();
+}
+
+void WKContextClearCachedCredentials(WKContextRef context)
+{
+    toImpl(context)->clearCachedCredentials();
 }
 
 WKDictionaryRef WKContextCopyPlugInAutoStartOriginHashes(WKContextRef contextRef)

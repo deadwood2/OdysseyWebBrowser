@@ -522,6 +522,11 @@ void PlatformCALayerRemote::setGeometryFlipped(bool value)
     m_properties.notePropertiesChanged(RemoteLayerTreeTransaction::GeometryFlippedChanged);
 }
 
+bool PlatformCALayerRemote::geometryFlipped() const
+{
+    return m_properties.geometryFlipped;
+}
+
 bool PlatformCALayerRemote::isDoubleSided() const
 {
     return m_properties.doubleSided;
@@ -775,6 +780,14 @@ uint32_t PlatformCALayerRemote::hostingContextID()
 {
     ASSERT_NOT_REACHED();
     return 0;
+}
+
+unsigned PlatformCALayerRemote::backingStoreBytesPerPixel() const
+{
+    if (!m_properties.backingStore)
+        return 4;
+
+    return m_properties.backingStore->bytesPerPixel();
 }
 
 LayerPool& PlatformCALayerRemote::layerPool()

@@ -26,13 +26,12 @@
 #import "config.h"
 #import "NetworkResourceLoader.h"
 
-#if ENABLE(NETWORK_PROCESS)
-
 #import "NetworkDiskCacheMonitor.h"
 #import "ShareableResource.h"
 #import <WebCore/CFNetworkSPI.h>
 #import <WebCore/ResourceHandle.h>
 #import <WebCore/SharedBuffer.h>
+#import <wtf/MainThread.h>
 
 using namespace WebCore;
 
@@ -82,33 +81,10 @@ size_t NetworkResourceLoader::fileBackedResourceMinimumSize()
     return SharedMemory::systemPageSize();
 }
 
-#if USE(CFNETWORK)
-
-void NetworkResourceLoader::willCacheResponseAsync(ResourceHandle* handle, CFCachedURLResponseRef cfResponse)
+void NetworkResourceLoader::willCacheResponseAsync(CFCachedURLResponseRef cfResponse)
 {
-    ASSERT_UNUSED(handle, handle == m_handle);
-
     if (m_bytesReceived >= fileBackedResourceMinimumSize())
         NetworkDiskCacheMonitor::monitorFileBackingStoreCreation(cfResponse, this);
-
-    m_handle->continueWillCacheResponse(cfResponse);
 }
-
-#else
-
-void NetworkResourceLoader::willCacheResponseAsync(ResourceHandle* handle, NSCachedURLResponse *nsResponse)
-{
-    ASSERT_UNUSED(handle, handle == m_handle);
-
-    if (m_bytesReceived >= fileBackedResourceMinimumSize())
-        NetworkDiskCacheMonitor::monitorFileBackingStoreCreation([nsResponse _CFCachedURLResponse], this);
-
-    m_handle->continueWillCacheResponse(nsResponse);
-}
-
-#endif // !USE(CFNETWORK)
 
 } // namespace WebKit
-
-#endif // ENABLE(NETWORK_PROCESS)
-

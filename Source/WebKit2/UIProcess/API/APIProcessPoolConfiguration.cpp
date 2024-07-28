@@ -41,8 +41,7 @@ Ref<ProcessPoolConfiguration> ProcessPoolConfiguration::createWithLegacyOptions(
     auto configuration = ProcessPoolConfiguration::create();
 
     configuration->m_shouldHaveLegacyDataStore = true;
-    configuration->m_processModel = WebKit::ProcessModelSharedSecondaryProcess;
-    configuration->m_useNetworkProcess = false;
+    configuration->m_maximumProcessCount = 1;
     configuration->m_cacheModel = WebKit::CacheModelDocumentViewer;
 
     configuration->m_applicationCacheDirectory = WebKit::WebProcessPool::legacyPlatformDefaultApplicationCacheDirectory();
@@ -74,8 +73,6 @@ Ref<ProcessPoolConfiguration> ProcessPoolConfiguration::copy()
     auto copy = this->create();
 
     copy->m_shouldHaveLegacyDataStore = this->m_shouldHaveLegacyDataStore;
-    copy->m_processModel = this->m_processModel;
-    copy->m_useNetworkProcess = this->m_useNetworkProcess;
     copy->m_maximumProcessCount = this->m_maximumProcessCount;
     copy->m_cacheModel = this->m_cacheModel;
     copy->m_diskCacheSizeOverride = this->m_diskCacheSizeOverride;
@@ -87,6 +84,9 @@ Ref<ProcessPoolConfiguration> ProcessPoolConfiguration::copy()
     copy->m_mediaKeysStorageDirectory = this->m_mediaKeysStorageDirectory;
     copy->m_webSQLDatabaseDirectory = this->m_webSQLDatabaseDirectory;
     copy->m_cachePartitionedURLSchemes = this->m_cachePartitionedURLSchemes;
+    copy->m_alwaysRevalidatedURLSchemes = this->m_alwaysRevalidatedURLSchemes;
+    copy->m_fullySynchronousModeIsAllowedForTesting = this->m_fullySynchronousModeIsAllowedForTesting;
+    copy->m_overrideLanguages = this->m_overrideLanguages;
     
     return copy;
 }

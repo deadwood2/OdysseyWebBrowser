@@ -45,19 +45,8 @@ struct MatchedRule {
 
 class ElementRuleCollector {
 public:
-    ElementRuleCollector(Element& element, RenderStyle* style, const DocumentRuleSets& ruleSets, const SelectorFilter& selectorFilter)
-        : m_element(element)
-        , m_style(style)
-        , m_ruleSets(ruleSets)
-        , m_selectorFilter(selectorFilter)
-        , m_isPrintStyle(false)
-        , m_regionForStyling(nullptr)
-        , m_pseudoStyleRequest(NOPSEUDO)
-        , m_sameOriginOnly(false)
-        , m_mode(SelectorChecker::Mode::ResolvingStyle)
-        , m_canUseFastReject(m_selectorFilter.parentStackIsConsistent(element.parentNode()))
-    {
-    }
+    ElementRuleCollector(Element&, RenderStyle*, const DocumentRuleSets&, const SelectorFilter*);
+    ElementRuleCollector(Element&, const RuleSet& authorStyle, const SelectorFilter*);
 
     void matchAllRules(bool matchAuthorAndUserStyles, bool includeSMILProperties);
     void matchUARules();
@@ -70,7 +59,7 @@ public:
     void setRegionForStyling(const RenderRegion* regionForStyling) { m_regionForStyling = regionForStyling; }
     void setMedium(const MediaQueryEvaluator* medium) { m_isPrintStyle = medium->mediaTypeMatchSpecific("print"); }
 
-    bool hasAnyMatchingRules(RuleSet*);
+    bool hasAnyMatchingRules(const RuleSet*);
 
     StyleResolver::MatchResult& matchedResult();
     const Vector<RefPtr<StyleRule>>& matchedRuleList() const;
@@ -82,6 +71,9 @@ private:
     void addElementStyleProperties(const StyleProperties*, bool isCacheable = true);
 
     void matchUARules(RuleSet*);
+#if ENABLE(SHADOW_DOM)
+    void matchHostPseudoClassRules(bool includeEmptyRules);
+#endif
 
     void collectMatchingRules(const MatchRequest&, StyleResolver::RuleRange&);
     void collectMatchingRulesForRegion(const MatchRequest&, StyleResolver::RuleRange&);
@@ -93,17 +85,19 @@ private:
 
     void addMatchedRule(const MatchedRule&);
 
-    Element& m_element;
-    RenderStyle* m_style;
-    const DocumentRuleSets& m_ruleSets;
-    const SelectorFilter& m_selectorFilter;
+    void commitStyleRelations(const SelectorChecker::StyleRelations&);
 
-    bool m_isPrintStyle;
-    const RenderRegion* m_regionForStyling;
-    PseudoStyleRequest m_pseudoStyleRequest;
-    bool m_sameOriginOnly;
-    SelectorChecker::Mode m_mode;
-    bool m_canUseFastReject;
+    Element& m_element;
+    RenderStyle* m_style { nullptr };
+    const RuleSet& m_authorStyle;
+    const RuleSet* m_userStyle { nullptr };
+    const SelectorFilter* m_selectorFilter { nullptr };
+
+    bool m_isPrintStyle { false };
+    const RenderRegion* m_regionForStyling { nullptr };
+    PseudoStyleRequest m_pseudoStyleRequest { NOPSEUDO };
+    bool m_sameOriginOnly { false };
+    SelectorChecker::Mode m_mode { SelectorChecker::Mode::ResolvingStyle };
 
     Vector<MatchedRule, 64> m_matchedRules;
 

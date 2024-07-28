@@ -35,13 +35,14 @@
 #if ENABLE(INSPECTOR_ALTERNATE_DISPATCHERS)
 
 #include "InspectorProtocolTypes.h"
+#include <inspector/InspectorFrontendRouter.h>
 #include <JavaScriptCore/InspectorBackendDispatcher.h>
 
 namespace Inspector {
 
 class AlternateBackendDispatcher {
 public:
-    void setBackendDispatcher(RefPtr<BackendDispatcher>&& dispatcher) { m_backendDispatcher = WTF::move(dispatcher); }
+    void setBackendDispatcher(RefPtr<BackendDispatcher>&& dispatcher) { m_backendDispatcher = WTFMove(dispatcher); }
     BackendDispatcher* backendDispatcher() const { return m_backendDispatcher.get(); }
 private:
     RefPtr<BackendDispatcher> m_backendDispatcher;
@@ -168,10 +169,10 @@ protected:
 
 class CommandDomainBackendDispatcher final : public SupplementalBackendDispatcher {
 public:
-    static Ref<CommandDomainBackendDispatcher> create(BackendDispatcher*, CommandDomainBackendDispatcherHandler*);
-    virtual void dispatch(long callId, const String& method, Ref<InspectorObject>&& message) override;
+    static Ref<CommandDomainBackendDispatcher> create(BackendDispatcher&, CommandDomainBackendDispatcherHandler*);
+    virtual void dispatch(long requestId, const String& method, Ref<InspectorObject>&& message) override;
 private:
-    void commandWithEnumReturnValue(long callId, const InspectorObject& message);
+    void commandWithEnumReturnValue(long requestId, RefPtr<InspectorObject>&& parameters);
 private:
     CommandDomainBackendDispatcher(BackendDispatcher&, CommandDomainBackendDispatcherHandler*);
     CommandDomainBackendDispatcherHandler* m_agent;
@@ -222,8 +223,9 @@ private:
 #include "config.h"
 #include "InspectorBackendDispatchers.h"
 
-#include <inspector/InspectorFrontendChannel.h>
+#include <inspector/InspectorFrontendRouter.h>
 #include <inspector/InspectorValues.h>
+#include <wtf/NeverDestroyed.h>
 #include <wtf/text/CString.h>
 
 #if ENABLE(INSPECTOR_ALTERNATE_DISPATCHERS)
@@ -234,9 +236,9 @@ namespace Inspector {
 
 CommandDomainBackendDispatcherHandler::~CommandDomainBackendDispatcherHandler() { }
 
-Ref<CommandDomainBackendDispatcher> CommandDomainBackendDispatcher::create(BackendDispatcher* backendDispatcher, CommandDomainBackendDispatcherHandler* agent)
+Ref<CommandDomainBackendDispatcher> CommandDomainBackendDispatcher::create(BackendDispatcher& backendDispatcher, CommandDomainBackendDispatcherHandler* agent)
 {
-    return adoptRef(*new CommandDomainBackendDispatcher(*backendDispatcher, agent));
+    return adoptRef(*new CommandDomainBackendDispatcher(backendDispatcher, agent));
 }
 
 CommandDomainBackendDispatcher::CommandDomainBackendDispatcher(BackendDispatcher& backendDispatcher, CommandDomainBackendDispatcherHandler* agent)
@@ -249,21 +251,24 @@ CommandDomainBackendDispatcher::CommandDomainBackendDispatcher(BackendDispatcher
     m_backendDispatcher->registerDispatcherForDomain(ASCIILiteral("CommandDomain"), this);
 }
 
-void CommandDomainBackendDispatcher::dispatch(long callId, const String& method, Ref<InspectorObject>&& message)
+void CommandDomainBackendDispatcher::dispatch(long requestId, const String& method, Ref<InspectorObject>&& message)
 {
     Ref<CommandDomainBackendDispatcher> protect(*this);
 
+    RefPtr<InspectorObject> parameters;
+    message->getObject(ASCIILiteral("params"), parameters);
+
     if (method == "commandWithEnumReturnValue")
-        commandWithEnumReturnValue(callId, message);
+        commandWithEnumReturnValue(requestId, WTFMove(parameters));
     else
-        m_backendDispatcher->reportProtocolError(&callId, BackendDispatcher::MethodNotFound, makeString('\'', "CommandDomain", '.', method, "' was not found"));
+        m_backendDispatcher->reportProtocolError(BackendDispatcher::MethodNotFound, makeString('\'', "CommandDomain", '.', method, "' was not found"));
 }
 
-void CommandDomainBackendDispatcher::commandWithEnumReturnValue(long callId, const InspectorObject&)
+void CommandDomainBackendDispatcher::commandWithEnumReturnValue(long requestId, RefPtr<InspectorObject>&&)
 {
 #if ENABLE(INSPECTOR_ALTERNATE_DISPATCHERS)
     if (m_alternateDispatcher) {
-        m_alternateDispatcher->commandWithEnumReturnValue(callId);
+        m_alternateDispatcher->commandWithEnumReturnValue(requestId);
         return;
     }
 #endif
@@ -276,7 +281,10 @@ void CommandDomainBackendDispatcher::commandWithEnumReturnValue(long callId, con
     if (!error.length())
         result->setString(ASCIILiteral("returnValue"), Inspector::Protocol::getEnumConstantValue(out_returnValue));
 
-    m_backendDispatcher->sendResponse(callId, WTF::move(result), error);
+    if (!error.length())
+        m_backendDispatcher->sendResponse(requestId, WTFMove(result));
+    else
+        m_backendDispatcher->reportProtocolError(BackendDispatcher::ServerError, WTFMove(error));
 }
 
 } // namespace Inspector
@@ -318,17 +326,16 @@ void CommandDomainBackendDispatcher::commandWithEnumReturnValue(long callId, con
 #define InspectorFrontendDispatchers_h
 
 #include "InspectorProtocolObjects.h"
-#include <inspector/InspectorFrontendChannel.h>
 #include <inspector/InspectorValues.h>
 #include <wtf/text/WTFString.h>
 
 namespace Inspector {
 
-
+class FrontendRouter;
 
 class EventDomainFrontendDispatcher {
 public:
-    EventDomainFrontendDispatcher(FrontendChannel* frontendChannel) : m_frontendChannel(frontendChannel) { }
+    EventDomainFrontendDispatcher(FrontendRouter& frontendRouter) : m_frontendRouter(frontendRouter) { }
         // Named after parameter 'parameter' while generating command/event eventWithEnumParameter.
         enum class Parameter {
             Shared = 0,
@@ -337,7 +344,7 @@ public:
         }; // enum class Parameter
     void eventWithEnumParameter(Parameter parameter);
 private:
-    FrontendChannel* m_frontendChannel;
+    FrontendRouter& m_frontendRouter;
 };
 
 } // namespace Inspector
@@ -379,6 +386,7 @@ private:
 #include "config.h"
 #include "InspectorFrontendDispatchers.h"
 
+#include "InspectorFrontendRouter.h"
 #include <wtf/text/CString.h>
 
 namespace Inspector {
@@ -389,9 +397,9 @@ void EventDomainFrontendDispatcher::eventWithEnumParameter(Parameter parameter)
     jsonMessage->setString(ASCIILiteral("method"), ASCIILiteral("EventDomain.eventWithEnumParameter"));
     Ref<InspectorObject> paramsObject = InspectorObject::create();
     paramsObject->setString(ASCIILiteral("parameter"), Inspector::Protocol::getEnumConstantValue(parameter));
-    jsonMessage->setObject(ASCIILiteral("params"), WTF::move(paramsObject));
+    jsonMessage->setObject(ASCIILiteral("params"), WTFMove(paramsObject));
 
-    m_frontendChannel->sendMessageToFrontend(jsonMessage->toJSONString());
+    m_frontendRouter.sendEvent(jsonMessage->toJSONString());
 }
 
 } // namespace Inspector
@@ -584,7 +592,7 @@ namespace Inspector {
 class ObjCInspectorCommandDomainBackendDispatcher final : public AlternateCommandDomainBackendDispatcher {
 public:
     ObjCInspectorCommandDomainBackendDispatcher(id<RWIProtocolCommandDomainDomainHandler> handler) { m_delegate = handler; }
-    virtual void commandWithEnumReturnValue(long callId) override;
+    virtual void commandWithEnumReturnValue(long requestId) override;
 private:
     RetainPtr<id<RWIProtocolCommandDomainDomainHandler>> m_delegate;
 };
@@ -671,8 +679,8 @@ using namespace Inspector;
     _commandDomainHandler = [handler retain];
 
     auto alternateDispatcher = std::make_unique<ObjCInspectorCommandDomainBackendDispatcher>(handler);
-    auto alternateAgent = std::make_unique<AlternateDispatchableAgent<CommandDomainBackendDispatcher, AlternateCommandDomainBackendDispatcher>>(ASCIILiteral("CommandDomain"), WTF::move(alternateDispatcher));
-    _controller->appendExtraAgent(WTF::move(alternateAgent));
+    auto alternateAgent = std::make_unique<AlternateDispatchableAgent<CommandDomainBackendDispatcher, AlternateCommandDomainBackendDispatcher>>(ASCIILiteral("CommandDomain"), *_controller, WTFMove(alternateDispatcher));
+    _controller->appendExtraAgent(WTFMove(alternateAgent));
 }
 
 - (id<RWIProtocolCommandDomainDomainHandler>)commandDomainHandler
@@ -723,7 +731,7 @@ using namespace Inspector;
 // DO NOT EDIT THIS FILE. It is automatically generated from enum-values.json
 // by the script: Source/JavaScriptCore/inspector/scripts/generate-inspector-protocol-bindings.py
 
-#import "RWIProtocol.h"
+#import <WebInspector/RWIProtocol.h>
 
 __attribute__((visibility ("default")))
 @interface RWIProtocolConfiguration : NSObject
@@ -770,23 +778,23 @@ __attribute__((visibility ("default")))
 
 #include "RWIProtocolInternal.h"
 #include "RWIProtocolEnumConversionHelpers.h"
-#include <JavaScriptCore/InspectorFrontendChannel.h>
 #include <JavaScriptCore/InspectorValues.h>
 
 namespace Inspector {
 
 
 
-void ObjCInspectorCommandDomainBackendDispatcher::commandWithEnumReturnValue(long callId)
+void ObjCInspectorCommandDomainBackendDispatcher::commandWithEnumReturnValue(long requestId)
 {
     id errorCallback = ^(NSString *error) {
-        backendDispatcher()->sendResponse(callId, InspectorObject::create(), error);
+        backendDispatcher()->reportProtocolError(requestId, BackendDispatcher::ServerError, error);
+        backendDispatcher()->sendPendingErrors();
     };
 
     id successCallback = ^(RWIProtocolCommandDomainCommandWithEnumReturnValueReturnValue returnValue) {
         Ref<InspectorObject> resultObject = InspectorObject::create();
         resultObject->setString(ASCIILiteral("returnValue"), toProtocolString(returnValue));
-        backendDispatcher()->sendResponse(callId, WTF::move(resultObject), String());
+        backendDispatcher()->sendResponse(requestId, WTFMove(resultObject));
     };
 
     [m_delegate commandWithEnumReturnValueWithErrorCallback:errorCallback successCallback:successCallback];
@@ -962,7 +970,6 @@ inline RWIProtocolEventDomainEventWithEnumParameterParameter fromProtocolString(
 #import "RWIProtocolInternal.h"
 
 #import "RWIProtocolEnumConversionHelpers.h"
-#import <JavaScriptCore/InspectorFrontendChannel.h>
 #import <JavaScriptCore/InspectorValues.h>
 
 using namespace Inspector;
@@ -988,16 +995,14 @@ using namespace Inspector;
 
 - (void)eventWithEnumParameterWithParameter:(RWIProtocolEventDomainEventWithEnumParameterParameter)parameter
 {
-    FrontendChannel* frontendChannel = _controller->frontendChannel();
-    if (!frontendChannel)
-        return;
+    const FrontendRouter& router = _controller->frontendRouter();
 
     Ref<InspectorObject> jsonMessage = InspectorObject::create();
     jsonMessage->setString(ASCIILiteral("method"), ASCIILiteral("EventDomain.eventWithEnumParameter"));
     Ref<InspectorObject> paramsObject = InspectorObject::create();
     paramsObject->setString(ASCIILiteral("parameter"), toProtocolString(parameter));
-    jsonMessage->setObject(ASCIILiteral("params"), WTF::move(paramsObject));
-    frontendChannel->sendMessageToFrontend(jsonMessage->toJSONString());
+    jsonMessage->setObject(ASCIILiteral("params"), WTFMove(paramsObject));
+    router.sendEvent(jsonMessage->toJSONString());
 }
 
 @end

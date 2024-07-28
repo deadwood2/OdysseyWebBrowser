@@ -34,7 +34,7 @@ WebInspector.ResourceSidebarPanel = class ResourceSidebarPanel extends WebInspec
         this.filterBar.placeholder = WebInspector.UIString("Filter Resource List");
 
         this._navigationBar = new WebInspector.NavigationBar;
-        this.element.appendChild(this._navigationBar.element);
+        this.addSubview(this._navigationBar);
 
         var scopeItemPrefix = "resource-sidebar-";
         var scopeBarItems = [];
@@ -44,7 +44,7 @@ WebInspector.ResourceSidebarPanel = class ResourceSidebarPanel extends WebInspec
         for (var key in WebInspector.Resource.Type) {
             var value = WebInspector.Resource.Type[key];
             var scopeBarItem = new WebInspector.ScopeBarItem(scopeItemPrefix + value, WebInspector.Resource.displayNameForType(value, true));
-            scopeBarItem.__resourceType = value;
+            scopeBarItem[WebInspector.ResourceSidebarPanel.ResourceTypeSymbol] = value;
             scopeBarItems.push(scopeBarItem);
         }
 
@@ -58,21 +58,29 @@ WebInspector.ResourceSidebarPanel = class ResourceSidebarPanel extends WebInspec
         WebInspector.frameResourceManager.addEventListener(WebInspector.FrameResourceManager.Event.MainFrameDidChange, this._mainFrameDidChange, this);
 
         WebInspector.debuggerManager.addEventListener(WebInspector.DebuggerManager.Event.ScriptAdded, this._scriptWasAdded, this);
+        WebInspector.debuggerManager.addEventListener(WebInspector.DebuggerManager.Event.ScriptRemoved, this._scriptWasRemoved, this);
         WebInspector.debuggerManager.addEventListener(WebInspector.DebuggerManager.Event.ScriptsCleared, this._scriptsCleared, this);
 
         WebInspector.notifications.addEventListener(WebInspector.Notification.ExtraDomainsActivated, this._extraDomainsActivated, this);
 
-        this.contentTreeOutline.onselect = this._treeElementSelected.bind(this);
+        this.contentTreeOutline.addEventListener(WebInspector.TreeOutline.Event.SelectionDidChange, this._treeSelectionDidChange, this);
         this.contentTreeOutline.includeSourceMapResourceChildren = true;
 
-        if (WebInspector.debuggableType === WebInspector.DebuggableType.JavaScript)
-            this.contentTreeOutline.element.classList.add(WebInspector.NavigationSidebarPanel.HideDisclosureButtonsStyleClassName);
+        if (WebInspector.debuggableType === WebInspector.DebuggableType.JavaScript) {
+            this.contentTreeOutline.disclosureButtons = false;
+            WebInspector.SourceCode.addEventListener(WebInspector.SourceCode.Event.SourceMapAdded, () => { this.contentTreeOutline.disclosureButtons = true }, this);
+        }
 
         if (WebInspector.frameResourceManager.mainFrame)
             this._mainFrameMainResourceDidChange(WebInspector.frameResourceManager.mainFrame);
     }
 
     // Public
+
+    get minimumWidth()
+    {
+        return this._navigationBar.minimumWidth;
+    }
 
     closed()
     {
@@ -197,16 +205,16 @@ WebInspector.ResourceSidebarPanel = class ResourceSidebarPanel extends WebInspec
         function match()
         {
             if (treeElement instanceof WebInspector.FrameTreeElement)
-                return selectedScopeBarItem.__resourceType === WebInspector.Resource.Type.Document;
+                return selectedScopeBarItem[WebInspector.ResourceSidebarPanel.ResourceTypeSymbol] === WebInspector.Resource.Type.Document;
 
             if (treeElement instanceof WebInspector.ScriptTreeElement)
-                return selectedScopeBarItem.__resourceType === WebInspector.Resource.Type.Script;
+                return selectedScopeBarItem[WebInspector.ResourceSidebarPanel.ResourceTypeSymbol] === WebInspector.Resource.Type.Script;
 
             console.assert(treeElement instanceof WebInspector.ResourceTreeElement, "Unknown treeElement", treeElement);
             if (!(treeElement instanceof WebInspector.ResourceTreeElement))
                 return false;
 
-            return treeElement.resource.type === selectedScopeBarItem.__resourceType;
+            return treeElement.resource.type === selectedScopeBarItem[WebInspector.ResourceSidebarPanel.ResourceTypeSymbol];
         }
 
         var matched = match();
@@ -270,10 +278,6 @@ WebInspector.ResourceSidebarPanel = class ResourceSidebarPanel extends WebInspec
         if (!script.url)
             return;
 
-        // Exclude inspector scripts.
-        if (script.url.startsWith("__WebInspector"))
-            return;
-
         // If the script URL matches a resource we can assume it is part of that resource and does not need added.
         if (script.resource)
             return;
@@ -309,30 +313,44 @@ WebInspector.ResourceSidebarPanel = class ResourceSidebarPanel extends WebInspec
         }
     }
 
+    _scriptWasRemoved(event)
+    {
+        let script = event.data.script;
+        let scriptTreeElement = this.contentTreeOutline.getCachedTreeElement(script);
+        if (!scriptTreeElement)
+            return;
+
+        scriptTreeElement.parent.removeChild(scriptTreeElement);
+    }
+
     _scriptsCleared(event)
     {
+        const suppressOnDeselect = true;
+        const suppressSelectSibling = true;
+        
         if (this._extensionScriptsFolderTreeElement) {
             if (this._extensionScriptsFolderTreeElement.parent)
-                this._extensionScriptsFolderTreeElement.parent.removeChild(this._extensionScriptsFolderTreeElement);
+                this._extensionScriptsFolderTreeElement.parent.removeChild(this._extensionScriptsFolderTreeElement, suppressOnDeselect, suppressSelectSibling);
             this._extensionScriptsFolderTreeElement = null;
         }
 
         if (this._extraScriptsFolderTreeElement) {
             if (this._extraScriptsFolderTreeElement.parent)
-                this._extraScriptsFolderTreeElement.parent.removeChild(this._extraScriptsFolderTreeElement);
+                this._extraScriptsFolderTreeElement.parent.removeChild(this._extraScriptsFolderTreeElement, suppressOnDeselect, suppressSelectSibling);
             this._extraScriptsFolderTreeElement = null;
         }
 
         if (this._anonymousScriptsFolderTreeElement) {
             if (this._anonymousScriptsFolderTreeElement.parent)
-                this._anonymousScriptsFolderTreeElement.parent.removeChild(this._anonymousScriptsFolderTreeElement);
+                this._anonymousScriptsFolderTreeElement.parent.removeChild(this._anonymousScriptsFolderTreeElement, suppressOnDeselect, suppressSelectSibling);
             this._anonymousScriptsFolderTreeElement = null;
         }
     }
 
-    _treeElementSelected(treeElement, selectedByUser)
+    _treeSelectionDidChange(event)
     {
-        if (treeElement instanceof WebInspector.FolderTreeElement)
+        let treeElement = event.data.selectedElement;
+        if (!treeElement || treeElement instanceof WebInspector.FolderTreeElement)
             return;
 
         if (treeElement instanceof WebInspector.ResourceTreeElement
@@ -362,7 +380,7 @@ WebInspector.ResourceSidebarPanel = class ResourceSidebarPanel extends WebInspec
     _extraDomainsActivated()
     {
         if (WebInspector.debuggableType === WebInspector.DebuggableType.JavaScript)
-            this.contentTreeOutline.element.classList.remove(WebInspector.NavigationSidebarPanel.HideDisclosureButtonsStyleClassName);
+            this.contentTreeOutline.disclosureButtons = true;
     }
 
     _scopeBarSelectionDidChange(event)
@@ -370,3 +388,5 @@ WebInspector.ResourceSidebarPanel = class ResourceSidebarPanel extends WebInspec
         this.updateFilter();
     }
 };
+
+WebInspector.ResourceSidebarPanel.ResourceTypeSymbol = Symbol("resource-type");

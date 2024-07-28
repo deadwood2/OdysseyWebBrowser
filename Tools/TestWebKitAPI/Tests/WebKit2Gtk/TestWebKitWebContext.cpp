@@ -392,9 +392,6 @@ static void testWebContextURIScheme(URISchemeTest* test, gconstpointer)
     g_assert_error(test->m_error.get(), g_quark_from_string(errorDomain), errorCode);
     g_assert_cmpstr(test->m_error->message, ==, beforeReceiveResponseErrorMessage);
 
-#if 0
-    // This test works in trunk but not in 2.10. I think it's because 2.10 still uses the web process.
-    // In any case I think the fix is correct, so let's merge it and disable this particular test.
     test->m_loadEvents.clear();
     test->loadURI("error:after-first-chunk");
     test->finishOnCommittedAndWaitUntilLoadFinished();
@@ -403,7 +400,6 @@ static void testWebContextURIScheme(URISchemeTest* test, gconstpointer)
     g_assert(test->m_loadFailed);
     g_assert_error(test->m_error.get(), g_quark_from_string(errorDomain), errorCode);
     g_assert_cmpstr(test->m_error->message, ==, afterInitialChunkErrorMessage);
-#endif
 
     test->registerURISchemeHandler("closed", 0, 0, 0);
     test->m_loadEvents.clear();

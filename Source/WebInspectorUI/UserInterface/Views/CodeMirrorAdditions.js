@@ -65,8 +65,48 @@
         delete state._linkTokenize;
         delete state._linkQuoteCharacter;
         delete state._linkBaseStyle;
+        delete state._srcSetTokenizeState;
 
         return style;
+    }
+
+    function tokenizeSrcSetString(stream, state)
+    {
+        console.assert(state._linkQuoteCharacter !== undefined);
+
+        if (state._srcSetTokenizeState === "link") {
+            // Eat the string until a space, comma, or ending quote.
+            // If this is unquoted, then eat until whitespace or common parse errors.
+            if (state._linkQuoteCharacter)
+                stream.eatWhile(new RegExp("[^\\s," + state._linkQuoteCharacter + "]"));
+            else
+                stream.eatWhile(/[^\s,\u00a0=<>\"\']/);
+        } else {
+            // Eat the string until a comma, or ending quote.
+            // If this is unquoted, then eat until whitespace or common parse errors.
+            stream.eatSpace();
+            if (state._linkQuoteCharacter)
+                stream.eatWhile(new RegExp("[^," + state._linkQuoteCharacter + "]"));
+            else
+                stream.eatWhile(/[^\s\u00a0=<>\"\']/);
+            stream.eatWhile(/[\s,]/);
+        }
+
+        // If the stream isn't at the end of line and we found the end quote
+        // change _linkTokenize to parse the end of the link next. Otherwise
+        // _linkTokenize will stay as-is to parse more of the srcset.
+        if (stream.eol() || (!state._linkQuoteCharacter || stream.peek() === state._linkQuoteCharacter))
+            state._linkTokenize = tokenizeEndOfLinkString;
+
+        // Link portion.
+        if (state._srcSetTokenizeState === "link") {
+            state._srcSetTokenizeState = "descriptor";
+            return "link";
+        }
+
+        // Descriptor portion.
+        state._srcSetTokenizeState = "link";
+        return state._linkBaseStyle;
     }
 
     function extendedXMLToken(stream, state)
@@ -84,10 +124,14 @@
             // Look for "href" or "src" attributes. If found then we should
             // expect a string later that should get the "link" style instead.
             var text = stream.current().toLowerCase();
-            if (text === "href" || text === "src")
+            if (text === "src" || /\bhref\b/.test(text))
                 state._expectLink = true;
-            else
+            else if (text === "srcset")
+                state._expectSrcSet = true;
+            else {
                 delete state._expectLink;
+                delete state._expectSrcSet;
+            }
         } else if (state._expectLink && style === "string") {
             var current = stream.current();
 
@@ -113,11 +157,38 @@
                 if (state._linkQuoteCharacter)
                     stream.eat(state._linkQuoteCharacter);
             }
+        } else if (state._expectSrcSet && style === "string") {
+            var current = stream.current();
+
+            // Unless current token is empty quotes, consume quote character
+            // and tokenize link next.
+            if (current !== "\"\"" && current !== "''") {
+                delete state._expectSrcSet;
+
+                // This is a link, so setup the state to process it next.
+                state._srcSetTokenizeState = "link";
+                state._linkTokenize = tokenizeSrcSetString;
+                state._linkBaseStyle = style;
+
+                // The attribute may or may not be quoted.
+                var quote = current[0];
+
+                state._linkQuoteCharacter = quote === "'" || quote === "\"" ? quote : null;
+
+                // Rewind the stream to the start of this token.
+                stream.pos = startPosition;
+
+                // Eat the open quote of the string so the string style
+                // will be used for the quote character.
+                if (state._linkQuoteCharacter)
+                    stream.eat(state._linkQuoteCharacter);
+            }
         } else if (style) {
             // We don't expect other tokens between attribute and string since
             // spaces and the equal character are not tokenized. So if we get
             // another token before a string then we stop expecting a link.
             delete state._expectLink;
+            delete state._expectSrcSet;
         }
 
         return style && (style + " m-" + this.name);
@@ -182,7 +253,7 @@
 
     function extendedCSSToken(stream, state)
     {
-        var hexColorRegex = /#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/g;
+        var hexColorRegex = /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\b/g;
 
         if (state._urlTokenize) {
             // Call the link tokenizer instead.
@@ -413,12 +484,17 @@
             var newLength = alteredNumberString.length;
 
             // Fix up the selection so it follows the increase or decrease in the replacement length.
-            if (previousLength !== newLength) {
-                if (selectionStart.line === from.line && selectionStart.ch > from.ch)
-                    selectionStart.ch += newLength - previousLength;
-
-                if (selectionEnd.line === from.line && selectionEnd.ch > from.ch)
-                    selectionEnd.ch += newLength - previousLength;
+            // selectionStart/End may the same object if there is no selection. If that is the case
+            // make only one modification to prevent a double adjustment, and keep it a single object
+            // to avoid CodeMirror inadvertently creating an actual selection range.
+            let diff = (newLength - previousLength);
+            if (selectionStart === selectionEnd)
+                selectionStart.ch += diff;
+            else {
+                if (selectionStart.ch > from.ch)
+                    selectionStart.ch += diff;
+                if (selectionEnd.ch > from.ch)
+                    selectionEnd.ch += diff;
             }
 
             this.setSelection(selectionStart, selectionEnd);
@@ -552,3 +628,32 @@ WebInspector.compareCodeMirrorPositions = function(a, b)
     var bColumn = "ch" in b ? b.ch : Number.MAX_VALUE;
     return aColumn - bColumn;
 };
+
+WebInspector.walkTokens = function(cm, mode, initialPosition, callback)
+{
+    let state = CodeMirror.copyState(mode, cm.getTokenAt(initialPosition).state);
+    if (state.localState)
+        state = state.localState;
+
+    let lineCount = cm.lineCount();
+    let abort = false;
+    for (lineNumber = initialPosition.line; !abort && lineNumber < lineCount; ++lineNumber) {
+        let line = cm.getLine(lineNumber);
+        let stream = new CodeMirror.StringStream(line);
+        if (lineNumber === initialPosition.line)
+            stream.start = stream.pos = initialPosition.ch;
+
+        while (!stream.eol()) {
+            let innerMode = CodeMirror.innerMode(mode, state);
+            let tokenType = mode.token(stream, state);
+            if (!callback(tokenType, stream.current())) {
+                abort = true;
+                break;
+            }
+            stream.start = stream.pos;
+        }
+    }
+
+    if (!abort)
+        callback(null);
+}

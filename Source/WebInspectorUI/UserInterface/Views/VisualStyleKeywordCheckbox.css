@@ -29,13 +29,5 @@
 }
 
 .visual-style-property-container.keyword-checkbox > .visual-style-property-value-container > input {
-    order: 1;
-    position: absolute;
-    top: 4px;
     width: auto;
-}
-
-.visual-style-property-container.keyword-checkbox > .visual-style-property-value-container > div {
-    width: 18px;
-    margin: 0 2px;
 }

@@ -66,8 +66,6 @@ public:
     static Ref<HTMLInputElement> create(const QualifiedName&, Document&, HTMLFormElement*, bool createdByParser);
     virtual ~HTMLInputElement();
 
-    virtual HTMLInputElement* toInputElement() override final { return this; }
-
     WEBCORE_EXPORT virtual bool shouldAutocomplete() const override final;
 
     // For ValidityState
@@ -92,7 +90,7 @@ public:
     StepRange createStepRange(AnyStepHandling) const;
 
 #if ENABLE(DATALIST_ELEMENT)
-    Decimal findClosestTickMarkValue(const Decimal&);
+    Optional<Decimal> findClosestTickMarkValue(const Decimal&);
 #endif
 
     // Implementations of HTMLInputElement::stepUp() and stepDown().
@@ -239,8 +237,8 @@ public:
     bool isAutoFilled() const { return m_isAutoFilled; }
     WEBCORE_EXPORT void setAutoFilled(bool = true);
 
-    bool showAutoFillButton() const { return m_showAutoFillButton; }
-    WEBCORE_EXPORT void setShowAutoFillButton(bool);
+    AutoFillButtonType autoFillButtonType() const { return (AutoFillButtonType)m_autoFillButtonType; }
+    WEBCORE_EXPORT void setShowAutoFillButton(AutoFillButtonType);
 
     FileList* files();
     void setFiles(PassRefPtr<FileList>);
@@ -282,10 +280,8 @@ public:
 
     void cacheSelectionInResponseToSetValue(int caretOffset) { cacheSelection(caretOffset, caretOffset, SelectionHasNoDirection); }
 
-#if ENABLE(INPUT_TYPE_COLOR)
-    // For test purposes.
-    WEBCORE_EXPORT void selectColorInColorChooser(const Color&);
-#endif
+    Color valueAsColor() const; // Returns transparent color if not type=color.
+    WEBCORE_EXPORT void selectColor(const Color&); // Does nothing if not type=color. Simulates user selection of color; intended for testing.
 
     String defaultToolTip() const;
 
@@ -331,6 +327,7 @@ private:
     enum AutoCompleteSetting { Uninitialized, On, Off };
 
     virtual void didAddUserAgentShadowRoot(ShadowRoot*) override final;
+    virtual bool canHaveUserAgentShadowRoot() const override final { return true; }
 
     virtual void willChangeForm() override final;
     virtual void didChangeForm() override final;
@@ -379,9 +376,9 @@ private:
     virtual bool isInRange() const override final;
     virtual bool isOutOfRange() const override final;
 
-    virtual void documentDidResumeFromPageCache() override final;
+    virtual void resumeFromDocumentSuspension() override final;
 #if ENABLE(INPUT_TYPE_COLOR)
-    virtual void documentWillSuspendForPageCache() override final;
+    virtual void prepareForDocumentSuspension() override final;
 #endif
 
     virtual void addSubresourceAttributeURLs(ListHashSet<URL>&) const override final;
@@ -434,7 +431,7 @@ private:
     bool m_isActivatedSubmit : 1;
     unsigned m_autocomplete : 2; // AutoCompleteSetting
     bool m_isAutoFilled : 1;
-    bool m_showAutoFillButton : 1;
+    unsigned m_autoFillButtonType : 2; // AutoFillButtonType;
 #if ENABLE(DATALIST_ELEMENT)
     bool m_hasNonEmptyList : 1;
 #endif

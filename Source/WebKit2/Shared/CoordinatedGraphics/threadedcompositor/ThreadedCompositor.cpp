@@ -55,7 +55,7 @@ public:
     CompositingRunLoop(std::function<void()> updateFunction)
         : m_runLoop(RunLoop::current())
         , m_updateTimer(m_runLoop, this, &CompositingRunLoop::updateTimerFired)
-        , m_updateFunction(WTF::move(updateFunction))
+        , m_updateFunction(WTFMove(updateFunction))
         , m_lastUpdateTime(0)
     {
     }
@@ -67,7 +67,7 @@ public:
             return;
         }
 
-        m_runLoop.dispatch(WTF::move(function));
+        m_runLoop.dispatch(WTFMove(function));
     }
 
     void setUpdateTimer(UpdateTiming timing = Immediate)
@@ -116,6 +116,7 @@ Ref<ThreadedCompositor> ThreadedCompositor::create(Client* client)
 
 ThreadedCompositor::ThreadedCompositor(Client* client)
     : m_client(client)
+    , m_deviceScaleFactor(1)
     , m_threadIdentifier(0)
 {
     createCompositingThread();
@@ -143,6 +144,14 @@ void ThreadedCompositor::setNativeSurfaceHandleForCompositing(uint64_t handle)
     });
 }
 
+void ThreadedCompositor::setDeviceScaleFactor(float scale)
+{
+    RefPtr<ThreadedCompositor> protector(this);
+    callOnCompositingThread([=] {
+        protector->m_deviceScaleFactor = scale;
+        protector->scheduleDisplayImmediately();
+    });
+}
 
 void ThreadedCompositor::didChangeViewportSize(const IntSize& newSize)
 {
@@ -262,7 +271,7 @@ void ThreadedCompositor::renderLayerTree()
 
     TransformationMatrix viewportTransform;
     FloatPoint scrollPostion = viewportController()->visibleContentsRect().location();
-    viewportTransform.scale(viewportController()->pageScaleFactor());
+    viewportTransform.scale(viewportController()->pageScaleFactor() * m_deviceScaleFactor);
     viewportTransform.translate(-scrollPostion.x(), -scrollPostion.y());
 
     m_scene->paintToCurrentGLContext(viewportTransform, 1, clipRect, Color::white, false, scrollPostion);
@@ -282,7 +291,7 @@ void ThreadedCompositor::updateSceneState(const CoordinatedGraphicsState& state)
 
 void ThreadedCompositor::callOnCompositingThread(std::function<void()> function)
 {
-    m_compositingRunLoop->callOnCompositingRunLoop(WTF::move(function));
+    m_compositingRunLoop->callOnCompositingRunLoop(WTFMove(function));
 }
 
 void ThreadedCompositor::compositingThreadEntry(void* coordinatedCompositor)

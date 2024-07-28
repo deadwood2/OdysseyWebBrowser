@@ -180,13 +180,13 @@ void ThreadableWebSocketChannelClientWrapper::didReceiveMessage(const String& me
         processPendingTasks();
 }
 
-void ThreadableWebSocketChannelClientWrapper::didReceiveBinaryData(Vector<char>&& binaryData)
+void ThreadableWebSocketChannelClientWrapper::didReceiveBinaryData(Vector<uint8_t>&& binaryData)
 {
     ref();
-    Vector<char>* capturedData = new Vector<char>(WTF::move(binaryData));
+    Vector<uint8_t>* capturedData = new Vector<uint8_t>(WTFMove(binaryData));
     m_pendingTasks.append(std::make_unique<ScriptExecutionContext::Task>([this, capturedData] (ScriptExecutionContext&) {
         if (m_client)
-            m_client->didReceiveBinaryData(WTF::move(*capturedData));
+            m_client->didReceiveBinaryData(WTFMove(*capturedData));
         delete capturedData;
         deref();
     }));
@@ -276,7 +276,7 @@ void ThreadableWebSocketChannelClientWrapper::processPendingTasks()
         return;
     }
 
-    Vector<std::unique_ptr<ScriptExecutionContext::Task>> pendingTasks = WTF::move(m_pendingTasks);
+    Vector<std::unique_ptr<ScriptExecutionContext::Task>> pendingTasks = WTFMove(m_pendingTasks);
     for (auto& task : pendingTasks)
         task->performTask(*m_context);
 }

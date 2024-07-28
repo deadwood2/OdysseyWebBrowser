@@ -273,26 +273,8 @@ static inline bool compositingLogEnabled()
 RenderLayerCompositor::RenderLayerCompositor(RenderView& renderView)
     : m_renderView(renderView)
     , m_updateCompositingLayersTimer(*this, &RenderLayerCompositor::updateCompositingLayersTimerFired)
-    , m_hasAcceleratedCompositing(true)
-    , m_compositingTriggers(static_cast<ChromeClient::CompositingTriggerFlags>(ChromeClient::AllTriggers))
-    , m_showDebugBorders(false)
-    , m_showRepaintCounter(false)
-    , m_acceleratedDrawingEnabled(false)
-    , m_reevaluateCompositingAfterLayout(false)
-    , m_compositing(false)
-    , m_compositingLayersNeedRebuild(false)
-    , m_flushingLayers(false)
-    , m_shouldFlushOnReattach(false)
-    , m_forceCompositingMode(false)
-    , m_inPostLayoutUpdate(false)
-    , m_subframeScrollLayersNeedReattach(false)
-    , m_isTrackingRepaints(false)
-    , m_rootLayerAttachment(RootLayerUnattached)
-    , m_layerFlushTimer(*this, &RenderLayerCompositor::layerFlushTimerFired)
-    , m_layerFlushThrottlingEnabled(false)
-    , m_layerFlushThrottlingTemporarilyDisabledForInteraction(false)
-    , m_hasPendingLayerFlush(false)
     , m_paintRelatedMilestonesTimer(*this, &RenderLayerCompositor::paintRelatedMilestonesTimerFired)
+    , m_layerFlushTimer(*this, &RenderLayerCompositor::layerFlushTimerFired)
 {
 }
 
@@ -324,6 +306,7 @@ void RenderLayerCompositor::cacheAcceleratedCompositingFlags()
     bool showRepaintCounter = false;
     bool forceCompositingMode = false;
     bool acceleratedDrawingEnabled = false;
+    bool displayListDrawingEnabled = false;
 
     const Settings& settings = m_renderView.frameView().frame().settings();
     hasAcceleratedCompositing = settings.acceleratedCompositingEnabled();
@@ -345,7 +328,8 @@ void RenderLayerCompositor::cacheAcceleratedCompositingFlags()
         forceCompositingMode = requiresCompositingForScrollableFrame();
 
     acceleratedDrawingEnabled = settings.acceleratedDrawingEnabled();
-
+    displayListDrawingEnabled = settings.displayListDrawingEnabled();
+    
     if (hasAcceleratedCompositing != m_hasAcceleratedCompositing || showDebugBorders != m_showDebugBorders || showRepaintCounter != m_showRepaintCounter || forceCompositingMode != m_forceCompositingMode)
         setCompositingLayersNeedRebuild();
 
@@ -355,6 +339,7 @@ void RenderLayerCompositor::cacheAcceleratedCompositingFlags()
     m_showRepaintCounter = showRepaintCounter;
     m_forceCompositingMode = forceCompositingMode;
     m_acceleratedDrawingEnabled = acceleratedDrawingEnabled;
+    m_displayListDrawingEnabled = displayListDrawingEnabled;
     
     if (debugBordersChanged) {
         if (m_layerForHorizontalScrollbar)
@@ -685,7 +670,7 @@ bool RenderLayerCompositor::updateCompositingLayers(CompositingUpdateType update
     if (m_renderView.needsLayout())
         return false;
 
-    if ((m_forceCompositingMode || m_renderView.frame().mainFrame().pageOverlayController().overlayCount()) && !m_compositing)
+    if (!m_compositing && (m_forceCompositingMode || (isMainFrameCompositor() && m_renderView.frame().mainFrame().pageOverlayController().overlayCount())))
         enableCompositingMode(true);
 
     if (!m_reevaluateCompositingAfterLayout && !m_compositing)
@@ -1185,14 +1170,6 @@ RenderLayer* RenderLayerCompositor::enclosingNonStackingClippingLayer(const Rend
     return nullptr;
 }
 
-#if PLATFORM(IOS)
-// FIXME: Share with RenderView.
-static inline LayoutSize fixedPositionOffset(const FrameView& frameView)
-{
-    return frameView.useCustomFixedPositionLayoutRect() ? (frameView.customFixedPositionLayoutRect().location() - LayoutPoint()) : frameView.scrollOffset();
-}
-#endif
-
 void RenderLayerCompositor::computeExtent(const OverlapMap& overlapMap, const RenderLayer& layer, OverlapExtent& extent) const
 {
     if (extent.extentComputed)
@@ -1224,20 +1201,7 @@ void RenderLayerCompositor::computeExtent(const OverlapMap& overlapMap, const Re
         else
             viewportRect = m_renderView.frameView().viewportConstrainedVisibleContentRect();
 
-#if PLATFORM(IOS)
-        LayoutSize scrollPosition = fixedPositionOffset(m_renderView.frameView());
-#else
-        LayoutSize scrollPosition = m_renderView.frameView().scrollOffsetForFixedPosition();
-#endif
-
-        LayoutPoint minimumScrollPosition = m_renderView.frameView().minimumScrollPosition();
-        LayoutPoint maximumScrollPosition = m_renderView.frameView().maximumScrollPosition();
-        
-        LayoutSize topLeftExpansion = scrollPosition - toLayoutSize(minimumScrollPosition);
-        LayoutSize bottomRightExpansion = toLayoutSize(maximumScrollPosition) - scrollPosition;
-
-        extent.bounds.setLocation(extent.bounds.location() - topLeftExpansion);
-        extent.bounds.setSize(extent.bounds.size() + topLeftExpansion + bottomRightExpansion);
+        extent.bounds = m_renderView.frameView().fixedScrollableAreaBoundsInflatedForScrolling(extent.bounds);
     }
 
     extent.extentComputed = true;
@@ -1790,7 +1754,7 @@ void RenderLayerCompositor::updateScrollLayerPosition()
     m_scrollLayer->setPosition(FloatPoint(-scrollPosition.x(), -scrollPosition.y()));
 
     if (GraphicsLayer* fixedBackgroundLayer = fixedRootBackgroundLayer())
-        fixedBackgroundLayer->setPosition(toLayoutPoint(frameView.scrollOffsetForFixedPosition()));
+        fixedBackgroundLayer->setPosition(frameView.scrollPositionForFixedPosition());
 }
 
 FloatPoint RenderLayerCompositor::positionForClipLayer() const
@@ -2209,6 +2173,7 @@ bool RenderLayerCompositor::requiresCompositingLayer(const RenderLayer& layer, R
         || clipsCompositingDescendants(*renderer.layer())
         || requiresCompositingForAnimation(renderer)
         || requiresCompositingForFilters(renderer)
+        || requiresCompositingForWillChange(renderer)
         || requiresCompositingForPosition(renderer, *renderer.layer(), viewportConstrainedNotCompositedReason)
 #if PLATFORM(IOS)
         || requiresCompositingForScrolling(*renderer.layer())
@@ -2251,6 +2216,7 @@ bool RenderLayerCompositor::requiresOwnBackingStore(const RenderLayer& layer, co
         || requiresCompositingForBackfaceVisibility(renderer)
         || requiresCompositingForAnimation(renderer)
         || requiresCompositingForFilters(renderer)
+        || requiresCompositingForWillChange(renderer)
         || requiresCompositingForPosition(renderer, layer)
         || requiresCompositingForOverflowScrolling(layer)
         || renderer.isTransparent()
@@ -2311,6 +2277,9 @@ CompositingReasons RenderLayerCompositor::reasonsForCompositing(const RenderLaye
 
     if (requiresCompositingForFilters(renderer))
         reasons |= CompositingReasonFilters;
+
+    if (requiresCompositingForWillChange(renderer))
+        reasons |= CompositingReasonWillChange;
 
     if (requiresCompositingForPosition(renderer, *renderer.layer()))
         reasons |= renderer.style().position() == FixedPosition ? CompositingReasonPositionFixed : CompositingReasonPositionSticky;
@@ -2628,7 +2597,7 @@ bool RenderLayerCompositor::requiresCompositingForAnimation(RenderLayerModelObje
     AnimationController& animController = renderer.animation();
     return (animController.isRunningAnimationOnRenderer(renderer, CSSPropertyOpacity, activeAnimationState)
             && (inCompositingMode() || (m_compositingTriggers & ChromeClient::AnimatedOpacityTrigger)))
-            || animController.isRunningAnimationOnRenderer(renderer, CSSPropertyWebkitFilter, activeAnimationState)
+            || animController.isRunningAnimationOnRenderer(renderer, CSSPropertyFilter, activeAnimationState)
 #if ENABLE(FILTERS_LEVEL_2)
             || animController.isRunningAnimationOnRenderer(renderer, CSSPropertyWebkitBackdropFilter, activeAnimationState)
 #endif
@@ -2675,6 +2644,17 @@ bool RenderLayerCompositor::requiresCompositingForFilters(RenderLayerModelObject
         return false;
 
     return renderer.hasFilter();
+}
+
+bool RenderLayerCompositor::requiresCompositingForWillChange(RenderLayerModelObject& renderer) const
+{
+    if (!renderer.style().willChange() || !renderer.style().willChange()->canTriggerCompositing())
+        return false;
+
+    if (is<RenderBox>(renderer))
+        return true;
+
+    return renderer.style().willChange()->canTriggerCompositingOnInline();
 }
 
 bool RenderLayerCompositor::isAsyncScrollableStickyLayer(const RenderLayer& layer, const RenderLayer** enclosingAcceleratedOverflowLayer) const
@@ -2869,7 +2849,7 @@ void paintScrollbar(Scrollbar* scrollbar, GraphicsContext& context, const IntRec
     context.translate(-scrollbarRect.x(), -scrollbarRect.y());
     IntRect transformedClip = clip;
     transformedClip.moveBy(scrollbarRect.location());
-    scrollbar->paint(&context, transformedClip);
+    scrollbar->paint(context, transformedClip);
     context.restore();
 }
 
@@ -2886,7 +2866,7 @@ void RenderLayerCompositor::paintContents(const GraphicsLayer* graphicsLayer, Gr
         context.translate(-scrollCorner.x(), -scrollCorner.y());
         IntRect transformedClip = pixelSnappedRectForIntegralPositionedItems;
         transformedClip.moveBy(scrollCorner.location());
-        m_renderView.frameView().paintScrollCorner(&context, transformedClip);
+        m_renderView.frameView().paintScrollCorner(context, transformedClip);
         context.restore();
     }
 }
@@ -4049,7 +4029,7 @@ void RenderLayerCompositor::registerAllViewportConstrainedLayers()
         else
             continue;
 
-        layerMap.add(layer->backing()->graphicsLayer()->platformLayer(), WTF::move(constraints));
+        layerMap.add(layer->backing()->graphicsLayer()->platformLayer(), WTFMove(constraints));
     }
     
     if (ChromeClient* client = this->chromeClient())
@@ -4266,5 +4246,13 @@ unsigned RenderLayerCompositor::compositingUpdateCount() const
 {
     return m_compositingUpdateCount;
 }
+
+#if ENABLE(CSS_SCROLL_SNAP)
+void RenderLayerCompositor::updateScrollSnapPropertiesWithFrameView(const FrameView& frameView)
+{
+    if (ScrollingCoordinator* coordinator = scrollingCoordinator())
+        coordinator->updateScrollSnapPropertiesWithFrameView(frameView);
+}
+#endif
 
 } // namespace WebCore

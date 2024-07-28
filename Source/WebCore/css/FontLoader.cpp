@@ -161,14 +161,14 @@ const char* FontLoader::activeDOMObjectName() const
     return "FontLoader";
 }
 
-bool FontLoader::canSuspendForPageCache() const
+bool FontLoader::canSuspendForDocumentSuspension() const
 {
     return !m_numLoadingFromCSS && !m_numLoadingFromJS;
 }
 
-void FontLoader::scheduleEvent(PassRefPtr<Event> event)
+void FontLoader::scheduleEvent(Ref<Event>&& event)
 {
-    m_pendingEvents.append(event);
+    m_pendingEvents.append(WTFMove(event));
     if (!m_pendingEventsTimer.isActive())
         m_pendingEventsTimer.startOneShot(0);
 }
@@ -178,17 +178,17 @@ void FontLoader::firePendingEvents()
     if (m_pendingEvents.isEmpty() && !m_loadingDoneEvent && !m_callbacks.isEmpty())
         return;
 
-    Vector<RefPtr<Event>> pendingEvents;
+    Vector<Ref<Event>> pendingEvents;
     m_pendingEvents.swap(pendingEvents);
 
     bool loadingDone = false;
     if (m_loadingDoneEvent) {
-        pendingEvents.append(m_loadingDoneEvent.release());
+        pendingEvents.append(m_loadingDoneEvent.releaseNonNull());
         loadingDone = true;
     }
 
     for (size_t index = 0; index < pendingEvents.size(); ++index)
-        dispatchEvent(pendingEvents[index].release());
+        dispatchEvent(pendingEvents[index]);
 
     if (loadingDone && !m_callbacks.isEmpty()) {
         Vector<RefPtr<VoidCallback>> callbacks;
@@ -300,7 +300,7 @@ bool FontLoader::resolveFontStyle(const String& fontString, FontCascade& font)
         return false;
     
     String fontValue = parsedStyle->getPropertyValue(CSSPropertyFont);
-    if (fontValue == "inherit" || fontValue == "initial")
+    if (fontValue == "inherit" || fontValue == "initial" || fontValue == "unset" || fontValue == "revert")
         return false;
 
     RefPtr<RenderStyle> style = RenderStyle::create();

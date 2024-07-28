@@ -149,6 +149,7 @@ private:
     virtual void willSetInputMethodState() override;
     virtual void setInputMethodState(bool enabled) override;
     virtual void requestCheckingOfString(WTF::PassRefPtr<WebCore::TextCheckingRequest>) override;
+
 #if PLATFORM(GTK)
     virtual bool shouldShowUnicodeMenu() override;
 #endif

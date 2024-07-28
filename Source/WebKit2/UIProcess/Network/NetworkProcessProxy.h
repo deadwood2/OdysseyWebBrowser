@@ -26,8 +26,6 @@
 #ifndef NetworkProcessProxy_h
 #define NetworkProcessProxy_h
 
-#if ENABLE(NETWORK_PROCESS)
-
 #include "ChildProcessProxy.h"
 #include "CustomProtocolManagerProxy.h"
 #include "ProcessLauncher.h"
@@ -83,7 +81,6 @@ private:
     virtual void connectionWillOpen(IPC::Connection&) override;
     virtual void processWillShutDown(IPC::Connection&) override;
 
-    void platformGetLaunchOptions(ProcessLauncher::LaunchOptions&);
     void networkProcessCrashedOrFailedToLaunch();
 
     // ProcessThrottlerClient
@@ -131,7 +128,5 @@ private:
 };
 
 } // namespace WebKit
-
-#endif // ENABLE(NETWORK_PROCESS)
 
 #endif // NetworkProcessProxy_h

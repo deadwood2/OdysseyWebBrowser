@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -121,12 +121,6 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case CheckStructureImmediate:
         return;
         
-    case BitAnd:
-    case BitOr:
-    case BitXor:
-    case BitLShift:
-    case BitRShift:
-    case BitURShift:
     case ArithIMul:
     case ArithAbs:
     case ArithClz32:
@@ -141,8 +135,6 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case GetScope:
     case SkipScope:
     case StringCharCodeAt:
-    case StringFromCharCode:
-    case CompareEqConstant:
     case CompareStrictEq:
     case IsUndefined:
     case IsBoolean:
@@ -157,11 +149,31 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case BooleanToNumber:
     case FiatInt52:
     case MakeRope:
+    case StrCat:
     case ValueToInt32:
     case GetExecutable:
     case BottomValue:
     case TypeOf:
         def(PureValue(node));
+        return;
+
+    case BitAnd:
+    case BitOr:
+    case BitXor:
+    case BitLShift:
+    case BitRShift:
+    case BitURShift:
+        if (node->child1().useKind() == UntypedUse || node->child2().useKind() == UntypedUse) {
+            read(World);
+            write(Heap);
+            return;
+        }
+        def(PureValue(node));
+        return;
+
+    case ArithRandom:
+        read(MathDotRandomState);
+        write(MathDotRandomState);
         return;
         
     case HasGenericProperty:
@@ -245,18 +257,48 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         return;
     }
 
+    case StringFromCharCode:
+        switch (node->child1().useKind()) {
+        case Int32Use:
+            def(PureValue(node));
+            return;
+        case UntypedUse:
+            read(World);
+            write(Heap);
+            return;
+        default:
+            DFG_CRASH(graph, node, "Bad use kind");
+        }
+        return;
+
     case ArithAdd:
-    case ArithSub:
     case ArithNegate:
-    case ArithMul:
-    case ArithDiv:
     case ArithMod:
     case DoubleAsInt32:
     case UInt32ToNumber:
         def(PureValue(node, node->arithMode()));
         return;
 
+    case ArithDiv:
+    case ArithMul:
+    case ArithSub:
+        switch (node->binaryUseKind()) {
+        case Int32Use:
+        case Int52RepUse:
+        case DoubleRepUse:
+            def(PureValue(node, node->arithMode()));
+            return;
+        case UntypedUse:
+            read(World);
+            write(Heap);
+            return;
+        default:
+            DFG_CRASH(graph, node, "Bad use kind");
+        }
+
     case ArithRound:
+    case ArithFloor:
+    case ArithCeil:
         def(PureValue(node, static_cast<uintptr_t>(node->arithRoundingMode())));
         return;
 
@@ -278,6 +320,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
          
     case MovHint:
     case ZombieHint:
+    case ExitOK:
     case KillStack:
     case Upsilon:
     case Phi:
@@ -377,12 +420,20 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case PutById:
     case PutByIdFlush:
     case PutByIdDirect:
+    case PutGetterById:
+    case PutSetterById:
+    case PutGetterSetterById:
+    case PutGetterByVal:
+    case PutSetterByVal:
     case ArrayPush:
     case ArrayPop:
     case Call:
+    case TailCallInlinedCaller:
     case Construct:
     case CallVarargs:
     case CallForwardVarargs:
+    case TailCallVarargsInlinedCaller:
+    case TailCallForwardVarargsInlinedCaller:
     case ConstructVarargs:
     case ConstructForwardVarargs:
     case ToPrimitive:
@@ -390,6 +441,13 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case ValueAdd:
         read(World);
         write(Heap);
+        return;
+
+    case TailCall:
+    case TailCallVarargs:
+    case TailCallForwardVarargs:
+        read(World);
+        write(SideState);
         return;
         
     case GetGetter:
@@ -410,6 +468,10 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case GetArgumentCount:
         read(AbstractHeap(Stack, JSStack::ArgumentCount));
         def(HeapLocation(StackPayloadLoc, AbstractHeap(Stack, JSStack::ArgumentCount)), LazyNode(node));
+        return;
+
+    case GetRestLength:
+        read(Stack);
         return;
         
     case GetLocal:
@@ -563,6 +625,11 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
             read(MiscFields);
             def(HeapLocation(IndexedPropertyLoc, TypedArrayProperties, node->child1(), node->child2()), LazyNode(node));
             return;
+        // We should not get an AnyTypedArray in a GetByVal as AnyTypedArray is only created from intrinsics, which
+        // are only added from Inline Caching a GetById.
+        case Array::AnyTypedArray:
+            DFG_CRASH(graph, node, "impossible array mode for get");
+            return;
         }
         RELEASE_ASSERT_NOT_REACHED();
         return;
@@ -667,6 +734,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
             // FIXME: We can't def() anything here because these operations truncate their inputs.
             // https://bugs.webkit.org/show_bug.cgi?id=134737
             return;
+        case Array::AnyTypedArray:
         case Array::String:
         case Array::DirectArguments:
         case Array::ScopedArguments:
@@ -687,14 +755,24 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         read(JSCell_structureID);
         return;
 
-    case CheckHasInstance:
+    case CheckTypeInfoFlags:
         read(JSCell_typeInfoFlags);
-        def(HeapLocation(CheckHasInstanceLoc, JSCell_typeInfoFlags, node->child1()), LazyNode(node));
+        def(HeapLocation(CheckTypeInfoFlagsLoc, JSCell_typeInfoFlags, node->child1()), LazyNode(node));
+        return;
+
+    case OverridesHasInstance:
+        read(JSCell_typeInfoFlags);
+        def(HeapLocation(OverridesHasInstanceLoc, JSCell_typeInfoFlags, node->child1()), LazyNode(node));
         return;
 
     case InstanceOf:
         read(JSCell_structureID);
         def(HeapLocation(InstanceOfLoc, JSCell_structureID, node->child1(), node->child2()), LazyNode(node));
+        return;
+
+    case InstanceOfCustom:
+        read(World);
+        write(Heap);
         return;
 
     case PutStructure:
@@ -718,6 +796,13 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case GetButterfly:
         read(JSObject_butterfly);
         def(HeapLocation(ButterflyLoc, JSObject_butterfly, node->child1()), LazyNode(node));
+        return;
+
+    case GetButterflyReadOnly:
+        // This rule is separate to prevent CSE of GetButterfly with GetButterflyReadOnly. But in reality,
+        // this works because we don't introduce GetButterflyReadOnly until the bitter end of compilation.
+        read(JSObject_butterfly);
+        def(HeapLocation(ButterflyReadOnlyLoc, JSObject_butterfly, node->child1()), LazyNode(node));
         return;
         
     case Arrayify:
@@ -799,15 +884,15 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         case Array::String:
             def(PureValue(node, mode.asWord()));
             return;
-            
+
         case Array::DirectArguments:
         case Array::ScopedArguments:
             read(MiscFields);
             def(HeapLocation(ArrayLengthLoc, MiscFields, node->child1()), LazyNode(node));
             return;
-            
+
         default:
-            ASSERT(mode.typedArrayType() != NotTypedArray);
+            ASSERT(mode.isSomeTypedArrayView());
             read(MiscFields);
             def(HeapLocation(ArrayLengthLoc, MiscFields, node->child1()), LazyNode(node));
             return;
@@ -839,11 +924,12 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     }
         
     case GetGlobalVar:
+    case GetGlobalLexicalVariable:
         read(AbstractHeap(Absolute, node->variablePointer()));
         def(HeapLocation(GlobalVariableLoc, AbstractHeap(Absolute, node->variablePointer())), LazyNode(node));
         return;
         
-    case PutGlobalVar:
+    case PutGlobalVariable:
         write(AbstractHeap(Absolute, node->variablePointer()));
         def(HeapLocation(GlobalVariableLoc, AbstractHeap(Absolute, node->variablePointer())), LazyNode(node->child2().node()));
         return;
@@ -952,19 +1038,28 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         return;
     }
 
+    case CopyRest: {
+        read(Stack);
+        write(Heap);
+        return;
+    }
+
     case NewObject:
     case NewRegexp:
     case NewStringObject:
     case PhantomNewObject:
     case MaterializeNewObject:
     case PhantomNewFunction:
+    case PhantomNewGeneratorFunction:
     case PhantomCreateActivation:
     case MaterializeCreateActivation:
         read(HeapObjectCount);
         write(HeapObjectCount);
         return;
-        
+    
+    case NewArrowFunction:
     case NewFunction:
+    case NewGeneratorFunction:
         if (node->castOperand<FunctionExecutable*>()->singletonFunction()->isStillValid())
             write(Watchpoint_fire);
         read(HeapObjectCount);
@@ -975,6 +1070,18 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case RegExpTest:
         read(RegExpState);
         write(RegExpState);
+        return;
+
+    case StringReplace:
+        if (node->child1().useKind() == StringUse
+            && node->child2().useKind() == RegExpObjectUse
+            && node->child3().useKind() == StringUse) {
+            read(RegExpState);
+            write(RegExpState);
+            return;
+        }
+        read(World);
+        write(Heap);
         return;
 
     case StringCharAt:
@@ -1021,8 +1128,6 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         
     case ThrowReferenceError:
         write(SideState);
-        read(HeapObjectCount);
-        write(HeapObjectCount);
         return;
         
     case CountExecution:

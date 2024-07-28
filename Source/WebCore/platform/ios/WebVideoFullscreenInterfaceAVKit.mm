@@ -26,9 +26,11 @@
 
 #import "config.h"
 
-#if PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED > 80200 && HAVE(AVKIT)
+#if PLATFORM(IOS)
 
 #import "WebVideoFullscreenInterfaceAVKit.h"
+
+#if HAVE(AVKIT)
 
 #import "AVKitSPI.h"
 #import "GeometryUtilities.h"
@@ -36,6 +38,7 @@
 #import "RuntimeApplicationChecksIOS.h"
 #import "TimeRanges.h"
 #import "WebCoreSystemInterface.h"
+#import "WebVideoFullscreenChangeObserver.h"
 #import "WebVideoFullscreenModel.h"
 #import <AVFoundation/AVTime.h>
 #import <UIKit/UIKit.h>
@@ -57,6 +60,7 @@ SOFT_LINK_CONSTANT(AVFoundation, AVLayerVideoGravityResizeAspect, NSString *)
 SOFT_LINK_CONSTANT(AVFoundation, AVLayerVideoGravityResizeAspectFill, NSString *)
 
 SOFT_LINK_FRAMEWORK(AVKit)
+SOFT_LINK_CLASS(AVKit, AVPictureInPictureController)
 SOFT_LINK_CLASS(AVKit, AVPlayerController)
 SOFT_LINK_CLASS(AVKit, AVPlayerViewController)
 SOFT_LINK_CLASS(AVKit, AVValueTiming)
@@ -77,11 +81,37 @@ static const char* boolString(bool val)
 }
 #endif
 
+#if USE(APPLE_INTERNAL_SDK)
+#import <WebKitAdditions/WebFullScreenVideoRootViewController.m>
+#else
+@interface WebFullScreenVideoRootViewController : UIViewController
+- (instancetype)initWithSourceWindow:(UIWindow *)sourceWindow;
+@end
+
+static Class createFullScreenVideoRootViewControllerClass()
+{
+    Class newClass = objc_allocateClassPair(getUIViewControllerClass(), "WebFullScreenVideoRootViewController", 0);
+
+    class_addMethod(newClass, @selector(initWithSourceWindow:), imp_implementationWithBlock(^(id self, UIWindow*){
+        return [self init];
+    }), "@@:@");
+
+    objc_registerClassPair(newClass);
+    return newClass;
+}
+
+static WebFullScreenVideoRootViewController *allocWebFullScreenVideoRootViewControllerInstance()
+{
+    static Class fullScreenVideoRootViewControllerClass = createFullScreenVideoRootViewControllerClass();
+    return [fullScreenVideoRootViewControllerClass alloc];
+}
+#endif
+
 static const double DefaultWatchdogTimerInterval = 1;
 
 @class WebAVMediaSelectionOption;
 
-@interface WebAVPlayerController : NSObject <AVPlayerViewControllerDelegate> {
+@interface WebAVPlayerController : NSObject <AVPlayerViewControllerDelegate_WebKitOnly> {
     WebAVMediaSelectionOption *_currentAudioMediaSelectionOption;
     WebAVMediaSelectionOption *_currentLegibleMediaSelectionOption;
     BOOL _pictureInPictureInterrupted;
@@ -125,6 +155,7 @@ static const double DefaultWatchdogTimerInterval = 1;
 @property (retain) WebAVMediaSelectionOption *currentLegibleMediaSelectionOption;
 
 @property (readonly, getter=isPlayingOnExternalScreen) BOOL playingOnExternalScreen;
+@property (readonly, getter=isPlayingOnSecondScreen) BOOL playingOnSecondScreen;
 @property (getter=isExternalPlaybackActive) BOOL externalPlaybackActive;
 @property AVPlayerControllerExternalPlaybackType externalPlaybackType;
 @property (retain) NSString *externalPlaybackAirPlayDeviceLocalizedName;
@@ -331,6 +362,21 @@ static WebVideoFullscreenInterfaceAVKit::ExitFullScreenReason convertToExitFullS
     if (!self.delegate)
         return;
     self.delegate->fastSeek(time);
+}
+
+- (NSTimeInterval)currentTimeWithinEndTimes
+{
+    return self.timing.currentValue;
+}
+
+- (void)setCurrentTimeWithinEndTimes:(NSTimeInterval)currentTimeWithinEndTimes
+{
+    [self seekToTime:currentTimeWithinEndTimes];
+}
+
++ (NSSet *)keyPathsForValuesAffectingCurrentTimeWithinEndTimes
+{
+    return [NSSet setWithObject:@"timing"];
 }
 
 - (BOOL)hasLiveStreamingContent
@@ -558,12 +604,12 @@ static WebVideoFullscreenInterfaceAVKit::ExitFullScreenReason convertToExitFullS
 
 - (BOOL)isPlayingOnExternalScreen
 {
-    return [self isExternalPlaybackActive];
+    return [self isExternalPlaybackActive] || [self isPlayingOnSecondScreen];
 }
 
 + (NSSet *)keyPathsForValuesAffectingPlayingOnExternalScreen
 {
-    return [NSSet setWithObjects:@"externalPlaybackActive", nil];
+    return [NSSet setWithObjects:@"externalPlaybackActive", @"playingOnSecondScreen", nil];
 }
 
 - (BOOL)isPictureInPicturePossible
@@ -647,19 +693,17 @@ static WebVideoFullscreenInterfaceAVKit::ExitFullScreenReason convertToExitFullS
     return _videoSublayer.get();
 }
 
-- (void)setBounds:(CGRect)bounds
+- (void)layoutSublayers
 {
-    if (CGRectEqualToRect(bounds, self.bounds))
-        return;
-    
-    [super setBounds:bounds];
-    
     if ([_videoSublayer superlayer] != self)
         return;
 
-    [_videoSublayer setPosition:CGPointMake(CGRectGetMidX(bounds), CGRectGetMidY(bounds))];
-    
     if (![_avPlayerController delegate])
+        return;
+
+    [_videoSublayer setPosition:CGPointMake(CGRectGetMidX(self.bounds), CGRectGetMidY(self.bounds))];
+
+    if (self.videoDimensions.height <= 0 || self.videoDimensions.width <= 0)
         return;
 
     FloatRect sourceVideoFrame;
@@ -686,7 +730,7 @@ static WebVideoFullscreenInterfaceAVKit::ExitFullScreenReason convertToExitFullS
     
     [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(resolveBounds) object:nil];
     
-    if (!CGAffineTransformEqualToTransform(CGAffineTransformIdentity, transform))
+    if (!CGAffineTransformIsIdentity(transform))
         [self performSelector:@selector(resolveBounds) withObject:nil afterDelay:[CATransaction animationDuration] + 0.1];
 }
 
@@ -737,8 +781,11 @@ static WebVideoFullscreenInterfaceAVKit::ExitFullScreenReason convertToExitFullS
 
 - (CGRect)videoRect
 {
-    float videoAspectRatio = self.videoDimensions.width / self.videoDimensions.height;
+    if (self.videoDimensions.width <= 0 || self.videoDimensions.height <= 0)
+        return self.bounds;
     
+    float videoAspectRatio = self.videoDimensions.width / self.videoDimensions.height;
+
     if ([getAVLayerVideoGravityResizeAspect() isEqualToString:self.videoGravity])
         return largestRectWithAspectRatioInsideRect(videoAspectRatio, self.bounds);
     if ([getAVLayerVideoGravityResizeAspectFill() isEqualToString:self.videoGravity])
@@ -837,6 +884,10 @@ static void WebAVPlayerLayerView_stopRoutingVideoToPictureInPicturePlayerLayerVi
 {
     WebAVPlayerLayerView *playerLayerView = aSelf;
     [playerLayerView addSubview:playerLayerView.videoView];
+    WebAVPictureInPicturePlayerLayerView *pipView = (WebAVPictureInPicturePlayerLayerView *)[playerLayerView pictureInPicturePlayerLayerView];
+    WebAVPlayerLayer *playerLayer = (WebAVPlayerLayer *)[playerLayerView playerLayer];
+    WebAVPlayerLayer *pipPlayerLayer = (WebAVPlayerLayer *)[pipView layer];
+    [playerLayer setModelVideoLayerFrame:pipPlayerLayer.modelVideoLayerFrame];
 }
 
 static WebAVPictureInPicturePlayerLayerView *WebAVPlayerLayerView_pictureInPicturePlayerLayerView(id aSelf, SEL)
@@ -946,6 +997,7 @@ void WebVideoFullscreenInterfaceAVKit::setCurrentTime(double currentTime, double
     NSTimeInterval anchorTimeStamp = ![m_playerController rate] ? NAN : anchorTime;
     AVValueTiming *timing = [getAVValueTimingClass() valueTimingWithAnchorValue:currentTime
         anchorTimeStamp:anchorTimeStamp rate:0];
+    
     [m_playerController setTiming:timing];
 }
 
@@ -973,6 +1025,12 @@ void WebVideoFullscreenInterfaceAVKit::setVideoDimensions(bool hasVideo, float w
     [playerLayer setVideoDimensions:CGSizeMake(width, height)];
     [m_playerController setHasEnabledVideo:hasVideo];
     [m_playerController setContentDimensions:CGSizeMake(width, height)];
+    [m_playerLayerView setNeedsLayout];
+
+    WebAVPictureInPicturePlayerLayerView *pipView = (WebAVPictureInPicturePlayerLayerView *)[m_playerLayerView pictureInPicturePlayerLayerView];
+    WebAVPlayerLayer *pipPlayerLayer = (WebAVPlayerLayer *)[pipView layer];
+    [pipPlayerLayer setVideoDimensions:playerLayer.videoDimensions];
+    [pipView setNeedsLayout];    
 }
 
 void WebVideoFullscreenInterfaceAVKit::setSeekableRanges(const TimeRanges& timeRanges)
@@ -1048,6 +1106,25 @@ bool WebVideoFullscreenInterfaceAVKit::wirelessVideoPlaybackDisabled() const
     return [m_playerController allowsExternalPlayback];
 }
 
+void WebVideoFullscreenInterfaceAVKit::applicationDidBecomeActive()
+{
+    LOG(Fullscreen, "WebVideoFullscreenInterfaceAVKit::applicationDidBecomeActive(%p)", this);
+    if (m_shouldReturnToFullscreenAfterEnteringForeground && m_videoFullscreenModel && m_videoFullscreenModel->isVisible()) {
+        [m_playerViewController stopPictureInPicture];
+        return;
+    }
+
+    // If we are both in PiP and in Fullscreen (i.e., via auto-PiP), and we did not stop fullscreen upon returning, it must be
+    // because the originating view is not visible, so hide the fullscreen window.
+    if (isMode(HTMLMediaElementEnums::VideoFullscreenModeStandard | HTMLMediaElementEnums::VideoFullscreenModePictureInPicture)) {
+        RefPtr<WebVideoFullscreenInterfaceAVKit> strongThis(this);
+        [m_playerViewController exitFullScreenAnimated:NO completionHandler:[strongThis, this] (BOOL, NSError*) {
+            [m_window setHidden:YES];
+            [[m_playerViewController view] setHidden:YES];
+        }];
+    }
+}
+
 @interface UIWindow ()
 - (BOOL)_isHostedInAnotherProcess;
 @end
@@ -1065,33 +1142,40 @@ void WebVideoFullscreenInterfaceAVKit::setupFullscreen(UIView& videoView, const 
 
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
+    bool isInPictureInPictureMode = hasMode(HTMLMediaElementEnums::VideoFullscreenModePictureInPicture);
     m_mode = mode;
     m_parentView = parentView;
     m_parentWindow = parentView.window;
 
     if (![[parentView window] _isHostedInAnotherProcess]) {
-        m_window = adoptNS([allocUIWindowInstance() initWithFrame:[[getUIScreenClass() mainScreen] bounds]]);
+        if (!m_window)
+            m_window = adoptNS([allocUIWindowInstance() initWithFrame:[[getUIScreenClass() mainScreen] bounds]]);
         [m_window setBackgroundColor:[getUIColorClass() clearColor]];
-        m_viewController = adoptNS([allocUIViewControllerInstance() init]);
+        if (!m_viewController)
+            m_viewController = adoptNS([allocWebFullScreenVideoRootViewControllerInstance() initWithSourceWindow:[parentView window]]);
         [[m_viewController view] setFrame:[m_window bounds]];
         [m_viewController _setIgnoreAppSupportedOrientations:YES];
         [m_window setRootViewController:m_viewController.get()];
         [m_window makeKeyAndVisible];
     }
 
-    m_playerLayerView = adoptNS([[getWebAVPlayerLayerViewClass() alloc] init]);
+    if (!m_playerLayerView)
+        m_playerLayerView = adoptNS([[getWebAVPlayerLayerViewClass() alloc] init]);
     [m_playerLayerView setHidden:[m_playerController isExternalPlaybackActive]];
     [m_playerLayerView setBackgroundColor:[getUIColorClass() clearColor]];
-    
-    [m_playerLayerView setVideoView:&videoView];
-    [m_playerLayerView addSubview:&videoView];
+
+    if (!isInPictureInPictureMode) {
+        [m_playerLayerView setVideoView:&videoView];
+        [m_playerLayerView addSubview:&videoView];
+    }
 
     WebAVPlayerLayer *playerLayer = (WebAVPlayerLayer *)[m_playerLayerView playerLayer];
 
     [playerLayer setModelVideoLayerFrame:CGRectMake(0, 0, initialRect.width(), initialRect.height())];
     [playerLayer setVideoDimensions:[m_playerController contentDimensions]];
 
-    m_playerViewController = adoptNS([allocAVPlayerViewControllerInstance() initWithPlayerLayerView:m_playerLayerView.get()]);
+    if (!m_playerViewController)
+        m_playerViewController = adoptNS([allocAVPlayerViewControllerInstance() initWithPlayerLayerView:m_playerLayerView.get()]);
 
     [m_playerViewController setShowsPlaybackControls:NO];
     [m_playerViewController setPlayerController:(AVPlayerController *)m_playerController.get()];
@@ -1152,6 +1236,15 @@ void WebVideoFullscreenInterfaceAVKit::enterFullscreenStandard()
 {
     LOG(Fullscreen, "WebVideoFullscreenInterfaceAVKit::enterFullscreenStandard(%p)", this);
     RefPtr<WebVideoFullscreenInterfaceAVKit> strongThis(this);
+
+    if ([m_playerViewController isPictureInPictureActive]) {
+        // NOTE: The fullscreen mode will be restored in prepareForPictureInPictureStopWithCompletionHandler().
+        m_shouldReturnToFullscreenWhenStoppingPiP = true;
+        [m_playerViewController stopPictureInPicture];
+        return;
+    }
+
+    [m_playerLayerView setBackgroundColor:[getUIColorClass() blackColor]];
     [m_playerViewController enterFullScreenAnimated:YES completionHandler:[this, strongThis] (BOOL succeeded, NSError*) {
         UNUSED_PARAM(succeeded);
         LOG(Fullscreen, "WebVideoFullscreenInterfaceAVKit::enterFullscreenStandard - lambda(%p) - succeeded(%s)", this, boolString(succeeded));
@@ -1284,7 +1377,7 @@ void WebVideoFullscreenInterfaceAVKit::requestHideAndExitFullscreen()
 
     if (m_videoFullscreenModel && !m_exitRequested) {
         m_videoFullscreenModel->pause();
-        m_videoFullscreenModel->requestExitFullscreen();
+        m_videoFullscreenModel->requestFullscreenMode(HTMLMediaElementEnums::VideoFullscreenModeNone);
     }
 }
 
@@ -1295,14 +1388,14 @@ void WebVideoFullscreenInterfaceAVKit::preparedToReturnToInline(bool visible, co
         
         [m_playerViewController view].frame = [m_parentView convertRect:inlineRect toView:[m_playerViewController view].superview];
 
-        std::function<void(bool)> callback = WTF::move(m_prepareToInlineCallback);
+        std::function<void(bool)> callback = WTFMove(m_prepareToInlineCallback);
         callback(visible);
     }
 }
 
 bool WebVideoFullscreenInterfaceAVKit::mayAutomaticallyShowVideoPictureInPicture() const
 {
-    return [m_playerController isPlaying] && m_mode == HTMLMediaElementEnums::VideoFullscreenModeStandard && wkIsOptimizedFullscreenSupported();
+    return [m_playerController isPlaying] && m_mode == HTMLMediaElementEnums::VideoFullscreenModeStandard && supportsPictureInPicture();
 }
 
 void WebVideoFullscreenInterfaceAVKit::fullscreenMayReturnToInline(std::function<void(bool)> callback)
@@ -1321,9 +1414,21 @@ void WebVideoFullscreenInterfaceAVKit::willStartPictureInPicture()
 void WebVideoFullscreenInterfaceAVKit::didStartPictureInPicture()
 {
     LOG(Fullscreen, "WebVideoFullscreenInterfaceAVKit::didStartPictureInPicture(%p)", this);
+    m_shouldReturnToFullscreenAfterEnteringForeground = [m_playerViewController pictureInPictureWasStartedWhenEnteringBackground];
     [m_playerViewController setShowsPlaybackControls:YES];
-    [m_window setHidden:YES];
-    [[m_playerViewController view] setHidden:YES];
+
+    if (m_mode & HTMLMediaElementEnums::VideoFullscreenModeStandard) {
+        if (![m_playerViewController pictureInPictureWasStartedWhenEnteringBackground]) {
+            RefPtr<WebVideoFullscreenInterfaceAVKit> strongThis(this);
+            [m_playerViewController exitFullScreenAnimated:YES completionHandler:[strongThis, this] (BOOL, NSError*) {
+                [m_window setHidden:YES];
+                [[m_playerViewController view] setHidden:YES];
+            }];
+        }
+    } else {
+        [m_window setHidden:YES];
+        [[m_playerViewController view] setHidden:YES];
+    }
 
     if (m_fullscreenChangeObserver)
         m_fullscreenChangeObserver->didEnterFullscreen();
@@ -1343,24 +1448,34 @@ void WebVideoFullscreenInterfaceAVKit::failedToStartPictureInPicture()
         m_fullscreenChangeObserver->didEnterFullscreen();
 
     if (m_videoFullscreenModel)
-        m_videoFullscreenModel->requestExitFullscreen();
+        m_videoFullscreenModel->requestFullscreenMode(HTMLMediaElementEnums::VideoFullscreenModeNone);
 }
 
 void WebVideoFullscreenInterfaceAVKit::willStopPictureInPicture()
 {
     LOG(Fullscreen, "WebVideoFullscreenInterfaceAVKit::willStopPictureInPicture(%p)", this);
+    if (hasMode(HTMLMediaElementEnums::VideoFullscreenModeStandard))
+        return;
+
     [m_window setHidden:NO];
     [[m_playerViewController view] setHidden:NO];
 
     if (m_videoFullscreenModel)
-        m_videoFullscreenModel->requestExitFullscreen();
+        m_videoFullscreenModel->requestFullscreenMode(HTMLMediaElementEnums::VideoFullscreenModeNone);
 }
 
 void WebVideoFullscreenInterfaceAVKit::didStopPictureInPicture()
 {
     LOG(Fullscreen, "WebVideoFullscreenInterfaceAVKit::didStopPictureInPicture(%p)", this);
-    if (hasMode(HTMLMediaElementEnums::VideoFullscreenModeStandard))
+    if (hasMode(HTMLMediaElementEnums::VideoFullscreenModeStandard)) {
+        // ASSUMPTION: we are exiting pip because we are entering fullscreen
+        clearMode(HTMLMediaElementEnums::VideoFullscreenModePictureInPicture);
+        [m_playerViewController setShowsPlaybackControls:YES];
+
+        if (m_fullscreenChangeObserver)
+            m_fullscreenChangeObserver->didEnterFullscreen();
         return;
+    }
 
     m_exitCompleted = true;
 
@@ -1378,6 +1493,21 @@ void WebVideoFullscreenInterfaceAVKit::didStopPictureInPicture()
 void WebVideoFullscreenInterfaceAVKit::prepareForPictureInPictureStopWithCompletionHandler(void (^completionHandler)(BOOL restored))
 {
     LOG(Fullscreen, "WebVideoFullscreenInterfaceAVKit::prepareForPictureInPictureStopWithCompletionHandler(%p)", this);
+    if (m_shouldReturnToFullscreenWhenStoppingPiP || m_shouldReturnToFullscreenAfterEnteringForeground) {
+        m_shouldReturnToFullscreenWhenStoppingPiP = false;
+        m_shouldReturnToFullscreenAfterEnteringForeground = false;
+
+        // ASSUMPTION: we are exiting pip because we are entering fullscreen
+        [m_window setHidden:NO];
+        [[m_playerViewController view] setHidden:NO];
+
+        [m_playerViewController enterFullScreenAnimated:YES completionHandler:^(BOOL success, NSError*) {
+            setMode(HTMLMediaElementEnums::VideoFullscreenModeStandard);
+            completionHandler(success);
+        }];
+        return;
+    }
+
     RefPtr<WebVideoFullscreenInterfaceAVKit> strongThis(this);
     RetainPtr<id> strongCompletionHandler = adoptNS([completionHandler copy]);
     fullscreenMayReturnToInline([strongThis, strongCompletionHandler](bool restored)  {
@@ -1393,6 +1523,10 @@ bool WebVideoFullscreenInterfaceAVKit::shouldExitFullscreenWithReason(WebVideoFu
         return true;
 
     if (reason == ExitFullScreenReason::PictureInPictureStarted) {
+        if ([m_playerViewController pictureInPictureWasStartedWhenEnteringBackground])
+            return false;
+
+        m_shouldReturnToFullscreenWhenStoppingPiP = hasMode(HTMLMediaElementEnums::VideoFullscreenModeStandard);
         clearMode(HTMLMediaElementEnums::VideoFullscreenModeStandard);
         return true;
     }
@@ -1401,7 +1535,7 @@ bool WebVideoFullscreenInterfaceAVKit::shouldExitFullscreenWithReason(WebVideoFu
         m_videoFullscreenModel->pause();
     
 
-    m_videoFullscreenModel->requestExitFullscreen();
+    m_videoFullscreenModel->requestFullscreenMode(HTMLMediaElementEnums::VideoFullscreenModeNone);
 
     if (!m_watchdogTimer.isActive())
         m_watchdogTimer.startOneShot(DefaultWatchdogTimerInterval);
@@ -1438,4 +1572,15 @@ void WebVideoFullscreenInterfaceAVKit::clearMode(HTMLMediaElementEnums::VideoFul
         m_videoFullscreenModel->fullscreenModeChanged(m_mode);
 }
 
+#endif // HAVE(AVKIT)
+
+bool WebCore::supportsPictureInPicture()
+{
+#if PLATFORM(IOS) && HAVE(AVKIT)
+    return [getAVPictureInPictureControllerClass() isPictureInPictureSupported];
+#else
+    return false;
 #endif
+}
+
+#endif // PLATFORM(IOS)

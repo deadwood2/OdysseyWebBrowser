@@ -43,7 +43,7 @@ namespace WebCore {
 // FIXME: Skip Content Security Policy check when associated plugin element is in a user agent shadow tree.
 // See <https://bugs.webkit.org/show_bug.cgi?id=146663>.
 NetscapePlugInStreamLoader::NetscapePlugInStreamLoader(Frame* frame, NetscapePlugInStreamLoaderClient* client)
-    : ResourceLoader(frame, ResourceLoaderOptions(SendCallbacks, SniffContent, DoNotBufferData, AllowStoredCredentials, AskClientForAllCredentials, ClientRequestedCredentials, SkipSecurityCheck, UseDefaultOriginRestrictionsForType, DoNotIncludeCertificateInfo, ContentSecurityPolicyImposition::DoPolicyCheck))
+    : ResourceLoader(frame, ResourceLoaderOptions(SendCallbacks, SniffContent, DoNotBufferData, AllowStoredCredentials, AskClientForAllCredentials, ClientRequestedCredentials, SkipSecurityCheck, UseDefaultOriginRestrictionsForType, DoNotIncludeCertificateInfo, ContentSecurityPolicyImposition::DoPolicyCheck, DefersLoadingPolicy::AllowDefersLoading, CachingPolicy::AllowCaching))
     , m_client(client)
 {
 #if ENABLE(CONTENT_EXTENSIONS)
@@ -71,7 +71,7 @@ bool NetscapePlugInStreamLoader::isDone() const
 
 void NetscapePlugInStreamLoader::releaseResources()
 {
-    m_client = 0;
+    m_client = nullptr;
     ResourceLoader::releaseResources();
 }
 
@@ -92,11 +92,11 @@ void NetscapePlugInStreamLoader::willSendRequest(ResourceRequest&& request, cons
 {
     RefPtr<NetscapePlugInStreamLoader> protect(this);
 
-    m_client->willSendRequest(this, WTF::move(request), redirectResponse, [protect, redirectResponse, callback](ResourceRequest request) {
+    m_client->willSendRequest(this, WTFMove(request), redirectResponse, [protect, redirectResponse, callback](ResourceRequest request) {
         if (!request.isNull())
             protect->willSendRequestInternal(request, redirectResponse);
 
-        callback(WTF::move(request));
+        callback(WTFMove(request));
     });
 }
 

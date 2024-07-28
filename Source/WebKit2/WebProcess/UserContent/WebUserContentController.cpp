@@ -27,7 +27,6 @@
 #include "WebUserContentController.h"
 
 #include "DataReference.h"
-#include "SecurityOriginData.h"
 #include "WebCompiledContentExtension.h"
 #include "WebFrame.h"
 #include "WebPage.h"
@@ -36,6 +35,7 @@
 #include "WebUserContentControllerProxyMessages.h"
 #include <WebCore/DOMWrapperWorld.h>
 #include <WebCore/ScriptController.h>
+#include <WebCore/SecurityOriginData.h>
 #include <WebCore/SerializedScriptValue.h>
 #include <WebCore/UserStyleSheet.h>
 #include <wtf/NeverDestroyed.h>
@@ -90,6 +90,11 @@ void WebUserContentController::addUserScripts(const Vector<WebCore::UserScript>&
         m_userContentController->addUserScript(mainThreadNormalWorld(), std::make_unique<WebCore::UserScript>(userScript));
 }
 
+void WebUserContentController::removeUserScript(const String& urlString)
+{
+    m_userContentController->removeUserScript(mainThreadNormalWorld(), URL(URL(), urlString));
+}
+
 void WebUserContentController::removeAllUserScripts()
 {
     m_userContentController->removeUserScripts(mainThreadNormalWorld());
@@ -101,6 +106,11 @@ void WebUserContentController::addUserStyleSheets(const Vector<WebCore::UserStyl
         m_userContentController->addUserStyleSheet(mainThreadNormalWorld(),
             std::make_unique<WebCore::UserStyleSheet>(userStyleSheet), InjectInExistingDocuments);
     }
+}
+
+void WebUserContentController::removeUserStyleSheet(const String& urlString)
+{
+    m_userContentController->removeUserStyleSheet(mainThreadNormalWorld(), URL(URL(), urlString));
 }
 
 void WebUserContentController::removeAllUserStyleSheets()
@@ -136,7 +146,7 @@ public:
         if (!webPage)
             return;
 
-        WebProcess::singleton().parentProcessConnection()->send(Messages::WebUserContentControllerProxy::DidPostMessage(webPage->pageID(), webFrame->frameID(), SecurityOriginData::fromFrame(webFrame), m_identifier, IPC::DataReference(value->data())), m_controller->identifier());
+        WebProcess::singleton().parentProcessConnection()->send(Messages::WebUserContentControllerProxy::DidPostMessage(webPage->pageID(), webFrame->frameID(), SecurityOriginData::fromFrame(frame), m_identifier, IPC::DataReference(value->data())), m_controller->identifier());
     }
 
     WebCore::UserMessageHandlerDescriptor& descriptor() { return *m_descriptor; }
@@ -188,7 +198,7 @@ void WebUserContentController::addUserContentExtensions(const Vector<std::pair<S
 {
     for (const auto& userContentExtension : userContentExtensions) {
         WebCompiledContentExtensionData contentExtensionData = userContentExtension.second;
-        RefPtr<WebCompiledContentExtension> compiledContentExtension = WebCompiledContentExtension::create(WTF::move(contentExtensionData));
+        RefPtr<WebCompiledContentExtension> compiledContentExtension = WebCompiledContentExtension::create(WTFMove(contentExtensionData));
         m_userContentController->addUserContentExtension(userContentExtension.first, compiledContentExtension);
     }
 }

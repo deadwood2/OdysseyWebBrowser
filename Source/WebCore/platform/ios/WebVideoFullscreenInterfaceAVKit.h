@@ -27,7 +27,7 @@
 #ifndef WebVideoFullscreenInterfaceAVKit_h
 #define WebVideoFullscreenInterfaceAVKit_h
 
-#if PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 80000
+#if PLATFORM(IOS)
 
 #include <WebCore/EventListener.h>
 #include <WebCore/HTMLMediaElementEnums.h>
@@ -56,17 +56,8 @@ class String;
 namespace WebCore {
 class IntRect;
 class WebVideoFullscreenModel;
+class WebVideoFullscreenChangeObserver;
     
-class WebVideoFullscreenChangeObserver {
-public:
-    virtual ~WebVideoFullscreenChangeObserver() { };
-    virtual void didSetupFullscreen() = 0;
-    virtual void didEnterFullscreen() = 0;
-    virtual void didExitFullscreen() = 0;
-    virtual void didCleanupFullscreen() = 0;
-    virtual void fullscreenMayReturnToInline() = 0;
-};
-
 class WEBCORE_EXPORT WebVideoFullscreenInterfaceAVKit
     : public WebVideoFullscreenInterface
     , public RefCounted<WebVideoFullscreenInterfaceAVKit> {
@@ -115,6 +106,7 @@ public:
     WEBCORE_EXPORT bool mayAutomaticallyShowVideoPictureInPicture() const;
     void fullscreenMayReturnToInline(std::function<void(bool)> callback);
     bool wirelessVideoPlaybackDisabled() const;
+    void applicationDidBecomeActive();
 
     void willStartPictureInPicture();
     void didStartPictureInPicture();
@@ -154,6 +146,8 @@ protected:
     bool m_exitCompleted { false };
     bool m_enterRequested { false };
     bool m_wirelessVideoPlaybackDisabled { true };
+    bool m_shouldReturnToFullscreenWhenStoppingPiP { false };
+    bool m_shouldReturnToFullscreenAfterEnteringForeground { false };
 
     void doEnterFullscreen();
 };

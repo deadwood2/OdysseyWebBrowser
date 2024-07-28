@@ -49,7 +49,7 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
 
         this._delegate = delegate || null;
 
-        this._codeMirror = CodeMirror(this.element, {
+        this._codeMirror = WebInspector.CodeMirrorEditor.create(this.element, {
             readOnly: true,
             lineWrapping: true,
             mode: "css-rule",
@@ -338,7 +338,7 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
 
     commentAllProperties()
     {
-        if (!this._style.properties.length)
+        if (!this._style.hasProperties())
             return false;
 
         for (var property of this._style.properties) {
@@ -388,8 +388,6 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
 
     didDismissPopover(popover)
     {
-        if (popover === this._colorPickerPopover)
-            this._colorPickerPopover = null;
         if (popover === this._cubicBezierEditorPopover)
             this._cubicBezierEditorPopover = null;
     }
@@ -560,29 +558,28 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
             return CodeMirror.Pass;
         }
 
-        var cursor = codeMirror.getCursor();
-        var line = codeMirror.getLine(cursor.line);
-        var previousLine = codeMirror.getLine(cursor.line - 1);
+        let cursor = codeMirror.getCursor();
+        let line = codeMirror.getLine(cursor.line);
+        let previousLine = codeMirror.getLine(cursor.line - 1);
 
         if (!line && !previousLine && !cursor.line)
             return switchRule.call(this);
 
-        var trimmedPreviousLine = previousLine ? previousLine.trimRight() : "";
-        var previousAnchor;
-        var previousHead;
-        var isComment = this._textAtCursorIsComment(codeMirror, cursor);
+        let trimmedPreviousLine = previousLine ? previousLine.trimRight() : "";
+        let previousAnchor = 0;
+        let previousHead = line.length;
+        let isComment = this._textAtCursorIsComment(codeMirror, cursor);
 
         if (cursor.ch === line.indexOf(":") || line.indexOf(":") < 0 || isComment) {
             if (previousLine) {
                 --cursor.line;
+                previousHead = trimmedPreviousLine.length;
 
-                if (this._textAtCursorIsComment(codeMirror, cursor)) {
-                    previousAnchor = 0;
-                    previousHead = trimmedPreviousLine.length;
-                } else {
-                    var colon = /(?::\s*)/.exec(previousLine);
+                if (!this._textAtCursorIsComment(codeMirror, cursor)) {
+                    let colon = /(?::\s*)/.exec(previousLine);
                     previousAnchor = colon ? colon.index + colon[0].length : 0;
-                    previousHead = trimmedPreviousLine.length - trimmedPreviousLine.endsWith(";");
+                    if (trimmedPreviousLine.includes(";"))
+                        previousHead = trimmedPreviousLine.lastIndexOf(";");
                 }
                 
                 codeMirror.setSelection({line: cursor.line, ch: previousAnchor}, {line: cursor.line, ch: previousHead});
@@ -597,11 +594,8 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
             return switchRule.call(this);
         }
 
-        if (isComment) {
-            previousAnchor = 0;
-            previousHead = line.length;
-        } else {
-            var match = /(?:[^:;\s]\s*)+/.exec(line);
+        if (!isComment) {
+            let match = /(?:[^:;\s]\s*)+/.exec(line);
             previousAnchor = match.index;
             previousHead = previousAnchor + match[0].length;
         }
@@ -620,12 +614,12 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
             return CodeMirror.Pass;
         }
 
-        var cursor = codeMirror.getCursor();
-        var line = codeMirror.getLine(cursor.line);
-        var trimmedLine = line.trimRight();
-        var lastLine = cursor.line === codeMirror.lineCount() - 1;
-        var nextLine = codeMirror.getLine(cursor.line + 1);
-        var trimmedNextLine = nextLine ? nextLine.trimRight() : "";
+        let cursor = codeMirror.getCursor();
+        let line = codeMirror.getLine(cursor.line);
+        let trimmedLine = line.trimRight();
+        let lastLine = cursor.line === codeMirror.lineCount() - 1;
+        let nextLine = codeMirror.getLine(cursor.line + 1);
+        let trimmedNextLine = nextLine ? nextLine.trimRight() : "";
 
         if (!trimmedLine.trimLeft().length) {
             if (lastLine)
@@ -647,16 +641,17 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
             return;
         }
 
-        var hasEndingSemicolon = trimmedLine.endsWith(";");
+        let hasEndingSemicolon = trimmedLine.endsWith(";");
+        let pastLastSemicolon = line.includes(";") && cursor.ch >= line.lastIndexOf(";");
 
-        if (cursor.ch >= line.trimRight().length - hasEndingSemicolon) {
+        if (cursor.ch >= line.trimRight().length - hasEndingSemicolon || pastLastSemicolon) {
             this._completionController.completeAtCurrentPositionIfNeeded().then(function(result) {
                 if (result !== WebInspector.CodeMirrorCompletionController.UpdatePromise.NoCompletionsFound)
                     return;
 
-                var replacement = "";
+                let replacement = "";
 
-                if (!hasEndingSemicolon && !this._textAtCursorIsComment(codeMirror, cursor))
+                if (!hasEndingSemicolon && !pastLastSemicolon && !this._textAtCursorIsComment(codeMirror, cursor))
                     replacement += ";";
 
                 if (lastLine)
@@ -726,7 +721,9 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
         // Add the suffix whitespace we stripped.
         content += this._suffixWhitespace;
 
-        return content;
+        // This regular expression replacement removes extra newlines
+        // in between properties while preserving leading whitespace
+        return content.replace(/\s*\n\s*\n(\s*)/g, "\n$1");
     }
 
     _commitChanges()
@@ -772,10 +769,8 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
         // When the change is a completion change, create color swatches now since the changes
         // will not go through _propertiesChanged until completionControllerCompletionsHidden happens.
         // This way any auto completed colors get swatches right away.
-        if (this._completionController.isCompletionChange(change)) {
-            this._createColorSwatches(false, change.from.line);
-            this._createBezierEditors(false, change.from.line);
-        }
+        if (this._completionController.isCompletionChange(change))
+            this._createInlineSwatches(false, change.from.line);
 
         // Use a short delay for user input to coalesce more changes before committing. Other actions like
         // undo, redo and paste are atomic and work better with a zero delay. CodeMirror identifies changes that
@@ -825,9 +820,8 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
                 }.bind(this));
             }
 
-            // Look for colors and make swatches.
-            this._createColorSwatches(true);
-            this._createBezierEditors(true);
+            // Look for swatchable values and make inline swatches.
+            this._createInlineSwatches(true);
 
             this._markLinesWithCheckboxPlaceholder();
         }
@@ -873,56 +867,42 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
         }
     }
 
-    _createColorSwatches(nonatomic, lineNumber)
+    _createInlineSwatches(nonatomic, lineNumber)
     {
-        function update()
+        function createSwatch(swatch, marker, valueObject, valueString)
         {
-            var range = typeof lineNumber === "number" ? new WebInspector.TextRange(lineNumber, 0, lineNumber + 1, 0) : null;
+            swatch.addEventListener(WebInspector.InlineSwatch.Event.BeforeClicked, this._inlineSwatchBeforeClicked, this);
+            swatch.addEventListener(WebInspector.InlineSwatch.Event.ValueChanged, this._inlineSwatchValueChanged, this);
 
-            // Look for color strings and add swatches in front of them.
-            createCodeMirrorColorTextMarkers(this._codeMirror, range, function(marker, color, colorString) {
-                var swatchElement = document.createElement("span");
-                swatchElement.title = WebInspector.UIString("Click to select a color. Shift-click to switch color formats.");
-                swatchElement.className = WebInspector.CSSStyleDeclarationTextEditor.ColorSwatchElementStyleClassName;
-                swatchElement.addEventListener("click", this._colorSwatchClicked.bind(this));
+            let codeMirrorTextMarker = marker.codeMirrorTextMarker;
+            let codeMirrorTextMarkerRange = codeMirrorTextMarker.find();
+            this._codeMirror.setUniqueBookmark(codeMirrorTextMarkerRange.from, swatch.element);
 
-                var swatchInnerElement = document.createElement("span");
-                swatchInnerElement.style.backgroundColor = colorString;
-                swatchElement.appendChild(swatchInnerElement);
-
-                var codeMirrorTextMarker = marker.codeMirrorTextMarker;
-                this._codeMirror.setUniqueBookmark(codeMirrorTextMarker.find().from, swatchElement);
-
-                swatchInnerElement.__colorTextMarker = codeMirrorTextMarker;
-                swatchInnerElement.__color = color;
-            }.bind(this));
+            swatch.__textMarker = codeMirrorTextMarker;
+            swatch.__textMarkerRange = codeMirrorTextMarkerRange;
         }
 
-        if (nonatomic)
-            update.call(this);
-        else
-            this._codeMirror.operation(update.bind(this));
-    }
-
-    _createBezierEditors(nonatomic, lineNumber)
-    {
         function update()
         {
-            var range = typeof lineNumber === "number" ? new WebInspector.TextRange(lineNumber, 0, lineNumber + 1, 0) : null;
+            let range = typeof lineNumber === "number" ? new WebInspector.TextRange(lineNumber, 0, lineNumber + 1, 0) : null;
 
-            // Look for cubic-bezier and timing functions and add cubic-bezier icons in front of them.
-            createCodeMirrorCubicBezierTextMarkers(this._codeMirror, range, function(marker, cubicBezier) {
-                var bezierMarker = document.createElement("span");
-                bezierMarker.title = WebInspector.UIString("Click to open a cubic-bezier editor");
-                bezierMarker.className = WebInspector.CSSStyleDeclarationTextEditor.BezierEditorClassName;
-                bezierMarker.addEventListener("click", this._cubicBezierMarkerClicked.bind(this));
+            // Look for color strings and add swatches in front of them.
+            createCodeMirrorColorTextMarkers(this._codeMirror, range, (marker, color, colorString) => {
+                let swatch = new WebInspector.InlineSwatch(WebInspector.InlineSwatch.Type.Color, color, this._codeMirror.getOption("readOnly"));
+                createSwatch.call(this, swatch, marker, color, colorString);
+            });
 
-                var codeMirrorTextMarker = marker.codeMirrorTextMarker;
-                this._codeMirror.setUniqueBookmark(codeMirrorTextMarker.find().from, bezierMarker);
+            // Look for gradient strings and add swatches in front of them.
+            createCodeMirrorGradientTextMarkers(this._codeMirror, range, (marker, gradient, gradientString) => {
+                let swatch = new WebInspector.InlineSwatch(WebInspector.InlineSwatch.Type.Gradient, gradient, this._codeMirror.getOption("readOnly"));
+                createSwatch.call(this, swatch, marker, gradient, gradientString);
+            });
 
-                bezierMarker.__textMarker = codeMirrorTextMarker;
-                bezierMarker.__bezier = cubicBezier;
-            }.bind(this));
+            // Look for cubic-bezier strings and add swatches in front of them.
+            createCodeMirrorCubicBezierTextMarkers(this._codeMirror, range, (marker, bezier, bezierString) => {
+                let swatch = new WebInspector.InlineSwatch(WebInspector.InlineSwatch.Type.Bezier, bezier, this._codeMirror.getOption("readOnly"));
+                createSwatch.call(this, swatch, marker, bezier, bezierString);
+            });
         }
 
         if (nonatomic)
@@ -964,11 +944,12 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
         } else if (this._delegate.cssStyleDeclarationTextEditorShouldAddPropertyGoToArrows
                 && !property.implicit && typeof this._delegate.cssStyleDeclarationTextEditorShowProperty === "function") {
 
-            var arrowElement = WebInspector.createGoToArrowButton();
+            let arrowElement = WebInspector.createGoToArrowButton();
+            arrowElement.title = WebInspector.UIString("Option-click to show source");
 
-            var delegate = this._delegate;
-            arrowElement.addEventListener("click", function() {
-                delegate.cssStyleDeclarationTextEditorShowProperty(property);
+            let delegate = this._delegate;
+            arrowElement.addEventListener("click", function(event) {
+                delegate.cssStyleDeclarationTextEditorShowProperty(property, event.altKey);
             });
 
             this._codeMirror.setUniqueBookmark(to, arrowElement);
@@ -1045,7 +1026,7 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
             }
         }
 
-        if (property.hasOtherVendorNameOrKeyword() || property.text.trim().endsWith(":"))
+        if (this._codeMirror.getOption("readOnly") || property.hasOtherVendorNameOrKeyword() || property.text.trim().endsWith(":"))
             return;
 
         var propertyHasUnnecessaryPrefix = property.name.startsWith("-webkit-") && WebInspector.CSSCompletions.cssNameCompletions.isValidPropertyName(property.canonicalName);
@@ -1093,14 +1074,14 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
             // This property has a prefix and is valid without the prefix and the rule containing this property does not have the unprefixed version of the property.
             generateInvalidMarker.call(this, {
                 position: from,
-                title: WebInspector.UIString("The 'webkit' prefix is not necessary.\nClick to insert a duplicate without the prefix."),
+                title: WebInspector.UIString("The “webkit” prefix is not necessary.\nClick to insert a duplicate without the prefix."),
                 correction: property.text + "\n" + property.text.replace("-webkit-", ""),
                 autocomplete: false
             });
         } else if (instances > 1) {
             invalidMarkerInfo = {
                 position: from,
-                title: WebInspector.UIString("Duplicate property '%s'.\nClick to delete this property.").format(property.name),
+                title: WebInspector.UIString("Duplicate property “%s”.\nClick to delete this property.").format(property.name),
                 correction: "",
                 autocomplete: false
             };
@@ -1124,12 +1105,12 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
             if (/^(?:\d+)$/.test(property.value)) {
                 invalidMarkerInfo = {
                     position: start,
-                    title: WebInspector.UIString("The value '%s' needs units.\nClick to add 'px' to the value.").format(property.value),
+                    title: WebInspector.UIString("The value “%s” needs units.\nClick to add “px” to the value.").format(property.value),
                     correction: property.name + ": " + property.value + "px;",
                     autocomplete: false
                 };
             } else {
-                var valueReplacement = property.value.length ? WebInspector.UIString("The value '%s' is not supported for this property.\nClick to delete and open autocomplete.").format(property.value) : WebInspector.UIString("This property needs a value.\nClick to open autocomplete.");
+                var valueReplacement = property.value.length ? WebInspector.UIString("The value “%s” is not supported for this property.\nClick to delete and open autocomplete.").format(property.value) : WebInspector.UIString("This property needs a value.\nClick to open autocomplete.");
 
                 invalidMarkerInfo = {
                     position: start,
@@ -1142,7 +1123,7 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
             // The property is valid and exists in the rule while its prefixed version does not.
             invalidMarkerInfo = {
                 position: from,
-                title: WebInspector.UIString("The 'webkit' prefix is needed for this property.\nClick to insert a duplicate with the prefix."),
+                title: WebInspector.UIString("The “webkit” prefix is needed for this property.\nClick to insert a duplicate with the prefix."),
                 correction: "-webkit-" + property.text + "\n" + property.text,
                 autocomplete: false
             };
@@ -1154,7 +1135,7 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
                 // The property name has less than 3 other properties that have the same Levenshtein distance.
                 invalidMarkerInfo = {
                     position: from,
-                    title: WebInspector.UIString("Did you mean '%s'?\nClick to replace.").format(closestPropertyName),
+                    title: WebInspector.UIString("Did you mean “%s”?\nClick to replace.").format(closestPropertyName),
                     correction: property.text.replace(property.name, closestPropertyName),
                     autocomplete: true
                 };
@@ -1162,7 +1143,7 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
                 // The unprefixed property name has less than 3 other properties that have the same Levenshtein distance.
                 invalidMarkerInfo = {
                     position: from,
-                    title: WebInspector.UIString("Did you mean '%s'?\nClick to replace.").format("-webkit-" + closestPropertyName),
+                    title: WebInspector.UIString("Did you mean “%s”?\nClick to replace.").format("-webkit-" + closestPropertyName),
                     correction: property.text.replace(property.canonicalName, closestPropertyName),
                     autocomplete: true
                 };
@@ -1170,7 +1151,7 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
                 // The property name is so vague or nonsensical that there are more than 3 other properties that have the same Levenshtein value.
                 invalidMarkerInfo = {
                     position: from,
-                    title: WebInspector.UIString("The property '%s' is not supported.").format(property.name),
+                    title: WebInspector.UIString("The property “%s” is not supported.").format(property.name),
                     correction: false,
                     autocomplete: false
                 };
@@ -1276,9 +1257,8 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
             // Replace the text with a commented version.
             this._codeMirror.replaceRange("/* " + text + " */", range.from, range.to);
 
-            // Update the line for any color swatches or cubic-beziers that got removed.
-            this._createColorSwatches(true, range.from.line);
-            this._createBezierEditors(true, range.from.line);
+            // Update the line for any inline swatches that got removed.
+            this._createInlineSwatches(true, range.from.line);
         }
 
         this._codeMirror.operation(update.bind(this));
@@ -1316,202 +1296,80 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
             this._codeMirror.addLineClass(range.from.line, "wrap", WebInspector.CSSStyleDeclarationTextEditor.EditingLineStyleClassName);
             this._codeMirror.replaceRange(text, range.from, range.to);
 
-            // Update the line for any color swatches or cubic-beziers that got removed.
-            this._createColorSwatches(true, range.from.line);
-            this._createBezierEditors(true, range.from.line);
+            // Update the line for any inline swatches that got removed.
+            this._createInlineSwatches(true, range.from.line);
         }
 
         this._codeMirror.operation(update.bind(this));
     }
 
-    _colorSwatchClicked(event)
+    _inlineSwatchBeforeClicked(event)
     {
-        if (this._colorPickerPopover)
-            return;
-
-        var swatch = event.target;
-
-        var color = swatch.__color;
-        console.assert(color);
-        if (!color)
-            return;
-
-        var colorTextMarker = swatch.__colorTextMarker;
-        console.assert(colorTextMarker);
-        if (!colorTextMarker)
-            return;
-
-        var range = colorTextMarker.find();
-        console.assert(range);
-        if (!range)
-            return;
-
-        function updateCodeMirror(newColorText)
-        {
-            function update()
-            {
-                // The original text marker might have been cleared by a style update,
-                // in this case we need to find the new color text marker so we know
-                // the right range for the new style color text.
-                if (!colorTextMarker || !colorTextMarker.find()) {
-                    colorTextMarker = null;
-
-                    var marks = this._codeMirror.findMarksAt(range.from);
-                    if (!marks.length)
-                        return;
-
-                    for (var i = 0; i < marks.length; ++i) {
-                        var mark = marks[i];
-                        if (WebInspector.TextMarker.textMarkerForCodeMirrorTextMarker(mark).type !== WebInspector.TextMarker.Type.Color)
-                            continue;
-                        colorTextMarker = mark;
-                        break;
-                    }
-                }
-
-                if (!colorTextMarker)
-                    return;
-
-                // Sometimes we still might find a stale text marker with findMarksAt.
-                var newRange = colorTextMarker.find();
-                if (!newRange)
-                    return;
-
-                range = newRange;
-
-                colorTextMarker.clear();
-
-                this._codeMirror.replaceRange(newColorText, range.from, range.to);
-
-                // The color's text format could have changed, so we need to update the "range"
-                // variable to anticipate a different "range.to" property.
-                range.to.ch = range.from.ch + newColorText.length;
-
-                colorTextMarker = this._codeMirror.markText(range.from, range.to);
-
-                swatch.__colorTextMarker = colorTextMarker;
-            }
-
-            this._codeMirror.operation(update.bind(this));
-        }
-
-        if (event.shiftKey || this._codeMirror.getOption("readOnly")) {
-            var nextFormat = color.nextFormat();
-            console.assert(nextFormat);
-            if (!nextFormat)
-                return;
-            color.format = nextFormat;
-
-            var newColorText = color.toString();
-
-            // Ignore the change so we don't commit the format change. However, any future user
-            // edits will commit the color format.
-            this._ignoreCodeMirrorContentDidChangeEvent = true;
-            updateCodeMirror.call(this, newColorText);
-            delete this._ignoreCodeMirrorContentDidChangeEvent;
-        } else {
-            this._colorPickerPopover = new WebInspector.Popover(this);
-
-            var colorPicker = new WebInspector.ColorPicker;
-
-            colorPicker.addEventListener(WebInspector.ColorPicker.Event.ColorChanged, function(event) {
-                updateCodeMirror.call(this, event.data.color.toString());
-            }.bind(this));
-
-            var bounds = WebInspector.Rect.rectFromClientRect(swatch.getBoundingClientRect());
-
-            this._colorPickerPopover.content = colorPicker.element;
-            this._colorPickerPopover.present(bounds.pad(2), [WebInspector.RectEdge.MIN_X]);
-
-            colorPicker.color = color;
-        }
+        if (this._delegate && typeof this._delegate.cssStyleDeclarationTextEditorBlurActiveEditor === "function")
+            this._delegate.cssStyleDeclarationTextEditorBlurActiveEditor();
     }
 
-    _cubicBezierMarkerClicked(event)
+    _inlineSwatchValueChanged(event)
     {
-        if (this._cubicBezierEditorPopover)
+        let swatch = event && event.target;
+        console.assert(swatch);
+        if (!swatch)
             return;
 
-        var bezierMarker = event.target;
-
-        var bezier = bezierMarker.__bezier;
-        console.assert(bezier);
-        if (!bezier)
+        let value = event.data && event.data.value && event.data.value.toString();
+        console.assert(value);
+        if (!value)
             return;
 
-        var bezierTextMarker = bezierMarker.__textMarker;
-        console.assert(bezierTextMarker);
-        if (!bezierTextMarker)
-            return;
-
-        var range = bezierTextMarker.find();
+        let textMarker = swatch.__textMarker;
+        let range = swatch.__textMarkerRange;
         console.assert(range);
         if (!range)
             return;
 
-        function updateCodeMirror(newCubicBezierText)
+        function update()
         {
-            function update()
-            {
-                // The original text marker might have been cleared by a style update,
-                // in this case we need to find the new bezier text marker so we know
-                // the right range for the new style bezier text.
-                if (!bezierTextMarker || !bezierTextMarker.find()) {
-                    bezierTextMarker = null;
+            // The original text marker might have been cleared by a style update,
+            // in this case we need to find the new text marker so we know the
+            // right range for the new style text.
+            if (!textMarker || !textMarker.find()) {
+                textMarker = null;
 
-                    var marks = this._codeMirror.findMarksAt(range.from);
-                    if (!marks.length)
-                        return;
+                let marks = this._codeMirror.findMarksAt(range.from);
+                if (!marks.length)
+                    return;
 
-                    for (var i = 0; i < marks.length; ++i) {
-                        var mark = marks[i];
-                        if (WebInspector.TextMarker.textMarkerForCodeMirrorTextMarker(mark).type !== WebInspector.TextMarker.Type.CubicBezier)
-                            continue;
-                        bezierTextMarker = mark;
-                        break;
-                    }
+                for (let mark of marks) {
+                    let type = WebInspector.TextMarker.textMarkerForCodeMirrorTextMarker(mark).type;
+                    if (type !== WebInspector.TextMarker.Type.Color && type !== WebInspector.TextMarker.Type.Gradient && type !== WebInspector.TextMarker.Type.CubicBezier)
+                        continue;
+                    textMarker = mark;
+                    break;
                 }
-
-                if (!bezierTextMarker)
-                    return;
-
-                // Sometimes we still might find a stale text marker with findMarksAt.
-                var newRange = bezierTextMarker.find();
-                if (!newRange)
-                    return;
-
-                range = newRange;
-
-                bezierTextMarker.clear();
-
-                this._codeMirror.replaceRange(newCubicBezierText, range.from, range.to);
-
-                // The bezier's text format could have changed, so we need to update the "range"
-                // variable to anticipate a different "range.to" property.
-                range.to.ch = range.from.ch + newCubicBezierText.length;
-
-                bezierTextMarker = this._codeMirror.markText(range.from, range.to);
-
-                bezierMarker.__textMarker = bezierTextMarker;
             }
 
-            this._codeMirror.operation(update.bind(this));
+            if (!textMarker)
+                return;
+
+            // Sometimes we still might find a stale text marker with findMarksAt.
+            range = textMarker.find();
+            if (!range)
+                return;
+
+            textMarker.clear();
+
+            this._codeMirror.replaceRange(value, range.from, range.to);
+
+            // The value's text could have changed, so we need to update the "range"
+            // variable to anticipate a different "range.to" property.
+            range.to.ch = range.from.ch + value.length;
+
+            textMarker = this._codeMirror.markText(range.from, range.to);
+
+            swatch.__textMarker = textMarker;
         }
 
-        this._cubicBezierEditorPopover = new WebInspector.Popover(this);
-
-        var bezierEditor = new WebInspector.BezierEditor;
-
-        bezierEditor.addEventListener(WebInspector.BezierEditor.Event.BezierChanged, function(event) {
-            updateCodeMirror.call(this, event.data.bezier.toString());
-        }.bind(this));
-
-        var bounds = WebInspector.Rect.rectFromClientRect(bezierMarker.getBoundingClientRect());
-
-        this._cubicBezierEditorPopover.content = bezierEditor.element;
-        this._cubicBezierEditorPopover.present(bounds.pad(2), [WebInspector.RectEdge.MIN_X]);
-
-        bezierEditor.bezier = bezier;
+        this._codeMirror.operation(update.bind(this));
     }
 
     _propertyOverriddenStatusChanged(event)
@@ -1725,9 +1583,8 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
                 }
             }.bind(this));
 
-            // Look for colors and make swatches.
-            this._createColorSwatches(true);
-            this._createBezierEditors(true);
+            // Look for swatchable values and make inline swatches.
+            this._createInlineSwatches(true);
 
             // Restore the cursor position/selection.
             this._codeMirror.setSelection(selectionAnchor, selectionHead);
@@ -1772,34 +1629,50 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
 
     tokenTrackingControllerHighlightedRangeWasClicked(tokenTrackingController)
     {
-        console.assert(this._style.ownerRule.sourceCodeLocation);
-        if (!this._style.ownerRule.sourceCodeLocation)
+        let sourceCodeLocation = this._style.ownerRule.sourceCodeLocation;
+        console.assert(sourceCodeLocation);
+        if (!sourceCodeLocation)
             return;
 
+        let candidate = tokenTrackingController.candidate;
+        console.assert(candidate);
+        if (!candidate)
+            return;
+
+        let token = candidate.hoveredToken;
+
         // Special case command clicking url(...) links.
-        var token = this._tokenTrackingController.candidate.hoveredToken;
-        if (/\blink\b/.test(token.type)) {
-            var url = token.string;
-            var baseURL = this._style.ownerRule.sourceCodeLocation.sourceCode.url;
+        if (token && /\blink\b/.test(token.type)) {
+            let url = token.string;
+            let baseURL = sourceCodeLocation.sourceCode.url;
             WebInspector.openURL(absoluteURL(url, baseURL));
             return;
         }
 
-        // Jump to the rule if we can't find a property.
-        // Find a better source code location from the property that was clicked.
-        var sourceCodeLocation = this._style.ownerRule.sourceCodeLocation;
-        var marks = this._codeMirror.findMarksAt(this._tokenTrackingController.candidate.hoveredTokenRange.start);
-        for (var i = 0; i < marks.length; ++i) {
-            var mark = marks[i];
-            var property = mark.__cssProperty;
-            if (property) {
-                var sourceCode = sourceCodeLocation.sourceCode;
-                var styleSheetTextRange = property.styleSheetTextRange;
-                sourceCodeLocation = sourceCode.createSourceCodeLocation(styleSheetTextRange.startLine, styleSheetTextRange.startColumn);
-            }
+        function showRangeInSourceCode(sourceCode, range)
+        {
+            if (!sourceCode || !range)
+                return false;
+
+            WebInspector.showSourceCodeLocation(sourceCode.createSourceCodeLocation(range.startLine, range.startColumn));
+            return true;
         }
 
-        WebInspector.showSourceCodeLocation(sourceCodeLocation);
+        // Special case option clicking CSS variables.
+        if (token && /\bvariable-2\b/.test(token.type)) {
+            let property = this._style.nodeStyles.effectivePropertyForName(token.string);
+            if (property && showRangeInSourceCode(property.ownerStyle.ownerRule.sourceCodeLocation.sourceCode, property.styleSheetTextRange))
+                return;
+        }
+
+        // Jump to the rule if we can't find a property.
+        // Find a better source code location from the property that was clicked.
+        let marks = this._codeMirror.findMarksAt(candidate.hoveredTokenRange.start);
+        for (let mark of marks) {
+            let property = mark.__cssProperty;
+            if (property && showRangeInSourceCode(sourceCodeLocation.sourceCode, property.styleSheetTextRange))
+                return;
+        }
     }
 
     tokenTrackingControllerNewHighlightCandidate(tokenTrackingController, candidate)
@@ -1815,8 +1688,6 @@ WebInspector.CSSStyleDeclarationTextEditor.Event = {
 
 WebInspector.CSSStyleDeclarationTextEditor.StyleClassName = "css-style-text-editor";
 WebInspector.CSSStyleDeclarationTextEditor.ReadOnlyStyleClassName = "read-only";
-WebInspector.CSSStyleDeclarationTextEditor.ColorSwatchElementStyleClassName = "color-swatch";
-WebInspector.CSSStyleDeclarationTextEditor.BezierEditorClassName = "cubic-bezier-marker";
 WebInspector.CSSStyleDeclarationTextEditor.CheckboxPlaceholderElementStyleClassName = "checkbox-placeholder";
 WebInspector.CSSStyleDeclarationTextEditor.EditingLineStyleClassName = "editing-line";
 WebInspector.CSSStyleDeclarationTextEditor.CommitCoalesceDelay = 250;

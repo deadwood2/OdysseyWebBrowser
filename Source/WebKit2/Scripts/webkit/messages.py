@@ -352,6 +352,7 @@ def headers_for_type(type):
     special_cases = {
         'String': ['<wtf/text/WTFString.h>'],
         'WebCore::CompositionUnderline': ['<WebCore/Editor.h>'],
+        'WebCore::ExceptionDetails': ['<WebCore/JSDOMBinding.h>'],
         'WebCore::GrammarDetail': ['<WebCore/TextCheckerClient.h>'],
         'WebCore::TextureMapperAnimations': ['<WebCore/TextureMapperAnimation.h>'],
         'WebCore::KeyframeValueList': ['<WebCore/GraphicsLayer.h>'],
@@ -361,6 +362,7 @@ def headers_for_type(type):
         'WebCore::PluginInfo': ['<WebCore/PluginData.h>'],
         'WebCore::PasteboardImage': ['<WebCore/Pasteboard.h>'],
         'WebCore::PasteboardWebContent': ['<WebCore/Pasteboard.h>'],
+        'WebCore::RecentSearch': ['<WebCore/SearchPopupMenu.h>'],
         'WebCore::TextCheckingRequestData': ['<WebCore/TextChecking.h>'],
         'WebCore::TextCheckingResult': ['<WebCore/TextCheckerClient.h>'],
         'WebCore::TextIndicatorData': ['<WebCore/TextIndicator.h>'],
@@ -486,7 +488,7 @@ def generate_message_handler(file):
 
             result.append('%s::DelayedReply::DelayedReply(PassRefPtr<IPC::Connection> connection, std::unique_ptr<IPC::MessageEncoder> encoder)\n' % message.name)
             result.append('    : m_connection(connection)\n')
-            result.append('    , m_encoder(WTF::move(encoder))\n')
+            result.append('    , m_encoder(WTFMove(encoder))\n')
             result.append('{\n')
             result.append('}\n')
             result.append('\n')
@@ -499,7 +501,7 @@ def generate_message_handler(file):
             result.append('{\n')
             result.append('    ASSERT(m_encoder);\n')
             result += ['    *m_encoder << %s;\n' % x.name for x in message.reply_parameters]
-            result.append('    bool _result = m_connection->sendSyncReply(WTF::move(m_encoder));\n')
+            result.append('    bool _result = m_connection->sendSyncReply(WTFMove(m_encoder));\n')
             result.append('    m_connection = nullptr;\n')
             result.append('    return _result;\n')
             result.append('}\n')

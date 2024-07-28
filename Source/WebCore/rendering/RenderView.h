@@ -76,7 +76,7 @@ public:
     FrameView& frameView() const { return m_frameView; }
 
     virtual LayoutRect visualOverflowRect() const override;
-    virtual void computeRectForRepaint(const RenderLayerModelObject* repaintContainer, LayoutRect&, bool fixed = false) const override;
+    virtual LayoutRect computeRectForRepaint(const LayoutRect&, const RenderLayerModelObject* repaintContainer, bool fixed = false) const override;
     void repaintRootContents();
     void repaintViewRectangle(const LayoutRect&) const;
     void repaintViewAndCompositedLayers();
@@ -98,9 +98,6 @@ public:
     virtual void absoluteRects(Vector<IntRect>&, const LayoutPoint& accumulatedOffset) const override;
     virtual void absoluteQuads(Vector<FloatQuad>&, bool* wasFixed) const override;
 
-    void setMaximalOutlineSize(int o);
-    int maximalOutlineSize() const { return m_maximalOutlineSize; }
-
     LayoutRect viewRect() const;
 
     // layoutDelta is used transiently during layout to store how far an object has moved from its
@@ -114,23 +111,19 @@ public:
     {
         if (m_layoutState) {
             m_layoutState->m_layoutDelta += delta;
-#if !ASSERT_DISABLED && ENABLE(SATURATED_LAYOUT_ARITHMETIC)
+#if !ASSERT_DISABLED
             m_layoutState->m_layoutDeltaXSaturated |= m_layoutState->m_layoutDelta.width() == LayoutUnit::max() || m_layoutState->m_layoutDelta.width() == LayoutUnit::min();
             m_layoutState->m_layoutDeltaYSaturated |= m_layoutState->m_layoutDelta.height() == LayoutUnit::max() || m_layoutState->m_layoutDelta.height() == LayoutUnit::min();
 #endif
         }
     }
-    
+
 #if !ASSERT_DISABLED
     bool layoutDeltaMatches(const LayoutSize& delta)
     {
         if (!m_layoutState)
             return false;
-#if ENABLE(SATURATED_LAYOUT_ARITHMETIC)
         return (delta.width() == m_layoutState->m_layoutDelta.width() || m_layoutState->m_layoutDeltaXSaturated) && (delta.height() == m_layoutState->m_layoutDelta.height() || m_layoutState->m_layoutDeltaYSaturated);
-#else
-        return delta == m_layoutState->m_layoutDelta;
-#endif
     }
 #endif
 
@@ -187,6 +180,11 @@ public:
     WEBCORE_EXPORT RenderLayerCompositor& compositor();
     WEBCORE_EXPORT bool usesCompositing() const;
 
+    bool usesFirstLineRules() const { return m_usesFirstLineRules; }
+    bool usesFirstLetterRules() const { return m_usesFirstLetterRules; }
+    void setUsesFirstLineRules(bool value) { m_usesFirstLineRules = value; }
+    void setUsesFirstLetterRules(bool value) { m_usesFirstLetterRules = value; }
+
     WEBCORE_EXPORT IntRect unscaledDocumentRect() const;
     LayoutRect unextendedBackgroundRect() const;
     LayoutRect backgroundRect() const;
@@ -224,6 +222,9 @@ public:
     void didCreateRenderer() { ++m_rendererCount; }
     void didDestroyRenderer() { --m_rendererCount; }
 
+    void updateVisibleViewportRect(const IntRect&);
+    void registerForVisibleInViewportCallback(RenderElement&);
+    void unregisterForVisibleInViewportCallback(RenderElement&);
     void resumePausedImageAnimationsIfNeeded(IntRect visibleRect);
     void addRendererWithPausedImageAnimations(RenderElement&);
     void removeRendererWithPausedImageAnimations(RenderElement&);
@@ -271,7 +272,7 @@ private:
         // We push LayoutState even if layoutState is disabled because it stores layoutDelta too.
         if (!doingFullRepaint() || m_layoutState->isPaginated() || renderer.flowThreadContainingBlock()
             || m_layoutState->lineGrid() || (renderer.style().lineGrid() != RenderStyle::initialLineGrid() && renderer.isRenderBlockFlow())) {
-            m_layoutState = std::make_unique<LayoutState>(WTF::move(m_layoutState), &renderer, offset, pageHeight, pageHeightChanged);
+            m_layoutState = std::make_unique<LayoutState>(WTFMove(m_layoutState), &renderer, offset, pageHeight, pageHeightChanged);
             pushLayoutStateForCurrentFlowThread(renderer);
             return true;
         }
@@ -281,7 +282,7 @@ private:
     void popLayoutState()
     {
         popLayoutStateForCurrentFlowThread();
-        m_layoutState = WTF::move(m_layoutState->m_next);
+        m_layoutState = WTFMove(m_layoutState->m_next);
     }
 
     // Suspends the LayoutState optimization. Used under transforms that cannot be represented by
@@ -346,8 +347,6 @@ private:
     LegacyPrinting m_legacyPrinting;
     // End deprecated members.
 
-    int m_maximalOutlineSize; // Used to apply a fudge factor to dirty-rect checks on blocks/tables.
-
     bool shouldUsePrintingLayout() const;
 
     void lazyRepaintTimerFired();
@@ -368,8 +367,11 @@ private:
 
     bool m_selectionWasCaret;
     bool m_hasSoftwareFilters;
+    bool m_usesFirstLineRules { false };
+    bool m_usesFirstLetterRules { false };
 
     HashSet<RenderElement*> m_renderersWithPausedImageAnimation;
+    HashSet<RenderElement*> m_visibleInViewportRenderers;
     Vector<RefPtr<RenderWidget>> m_protectedRenderWidgets;
 
 #if ENABLE(SERVICE_CONTROLS)
@@ -388,9 +390,6 @@ public:
     explicit LayoutStateMaintainer(RenderView& view, RenderBox& root, LayoutSize offset, bool disableState = false, LayoutUnit pageHeight = 0, bool pageHeightChanged = false)
         : m_view(view)
         , m_disabled(disableState)
-        , m_didStart(false)
-        , m_didEnd(false)
-        , m_didCreateLayoutState(false)
     {
         push(root, offset, pageHeight, pageHeightChanged);
     }
@@ -398,50 +397,47 @@ public:
     // Constructor to maybe push later.
     explicit LayoutStateMaintainer(RenderView& view)
         : m_view(view)
-        , m_disabled(false)
-        , m_didStart(false)
-        , m_didEnd(false)
-        , m_didCreateLayoutState(false)
     {
     }
 
     ~LayoutStateMaintainer()
     {
-        ASSERT(m_didStart == m_didEnd);   // if this fires, it means that someone did a push(), but forgot to pop().
+        ASSERT(!m_didCallPush || m_didCallPush == m_didCallPop);
     }
 
     void push(RenderBox& root, LayoutSize offset, LayoutUnit pageHeight = 0, bool pageHeightChanged = false)
     {
-        ASSERT(!m_didStart);
+        ASSERT(!m_didCallPush);
+        m_didCallPush = true;
         // We push state even if disabled, because we still need to store layoutDelta
-        m_didCreateLayoutState = m_view.pushLayoutState(root, offset, pageHeight, pageHeightChanged);
-        if (m_disabled && m_didCreateLayoutState)
+        m_didPushLayoutState = m_view.pushLayoutState(root, offset, pageHeight, pageHeightChanged);
+        if (!m_didPushLayoutState)
+            return;
+        if (m_disabled)
             m_view.disableLayoutState();
-        m_didStart = true;
     }
 
     void pop()
     {
-        if (m_didStart) {
-            ASSERT(!m_didEnd);
-            if (m_didCreateLayoutState) {
-                m_view.popLayoutState();
-                if (m_disabled)
-                    m_view.enableLayoutState();
-            }
-            
-            m_didEnd = true;
-        }
+        ASSERT(!m_didCallPop);
+        m_didCallPop = true;
+        if (!m_didCallPush)
+            return;
+        if (!m_didPushLayoutState)
+            return;
+        m_view.popLayoutState();
+        if (m_disabled)
+            m_view.enableLayoutState();
     }
 
-    bool didPush() const { return m_didStart; }
+    bool didPush() const { return m_didCallPush; }
 
 private:
     RenderView& m_view;
-    bool m_disabled : 1;        // true if the offset and clip part of layoutState is disabled
-    bool m_didStart : 1;        // true if we did a push or disable
-    bool m_didEnd : 1;          // true if we popped or re-enabled
-    bool m_didCreateLayoutState : 1; // true if we actually made a layout state.
+    bool m_disabled { false };
+    bool m_didCallPush { false };
+    bool m_didCallPop { false };
+    bool m_didPushLayoutState { false };
 };
 
 class LayoutStateDisabler {

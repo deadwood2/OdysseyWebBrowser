@@ -111,7 +111,7 @@ public:
     Frame* frame() const; // Can be null
     Document* document() const { return m_document; } // Can be null
     void setDocument(Document* document) { m_document = document; }
-    void clearDocumentLoader() { m_documentLoader = 0; }
+    void clearDocumentLoader() { m_documentLoader = nullptr; }
     SessionID sessionID() const;
 
     void removeCachedResource(CachedResource&);
@@ -157,6 +157,8 @@ private:
 
     bool clientDefersImage(const URL&) const;
     void reloadImagesIfNotDeferred();
+
+    bool canRequestInContentDispositionAttachmentSandbox(CachedResource::Type, const URL&) const;
     
     HashSet<String> m_validatedURLs;
     mutable DocumentResourceMap m_documentResources;

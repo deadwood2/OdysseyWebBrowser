@@ -166,7 +166,6 @@ MachSendRight TiledCoreAnimationDrawingAreaProxy::createFenceForGeometryUpdate()
         return MachSendRight();
 
     MachSendRight fencePort = MachSendRight::adopt([rootLayerContext createFencePort]);
-    [rootLayerContext setFencePort:fencePort.sendRight()];
 
     // Invalidate the fence if a synchronous message arrives while it's installed,
     // because we won't be able to reply during the fence-wait.
@@ -204,6 +203,14 @@ void TiledCoreAnimationDrawingAreaProxy::adjustTransientZoom(double scale, Float
 void TiledCoreAnimationDrawingAreaProxy::commitTransientZoom(double scale, FloatPoint origin)
 {
     m_webPageProxy.process().send(Messages::DrawingArea::CommitTransientZoom(scale, origin), m_webPageProxy.pageID());
+}
+
+void TiledCoreAnimationDrawingAreaProxy::dispatchAfterEnsuringDrawing(std::function<void (CallbackBase::Error)> callback)
+{
+    // This callback is primarily used for testing in RemoteLayerTreeDrawingArea. We could in theory wait for a CA commit here.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        callback(CallbackBase::Error::None);
+    });
 }
 
 } // namespace WebKit

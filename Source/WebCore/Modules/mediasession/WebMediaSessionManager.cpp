@@ -30,7 +30,7 @@
 
 #include "FloatRect.h"
 #include "Logging.h"
-#include "MediaPlaybackTargetPickerMac.h"
+#include "MediaPlaybackTargetPickerMock.h"
 #include "WebMediaSessionManagerClient.h"
 #include <wtf/text/StringBuilder.h>
 
@@ -74,10 +74,16 @@ static String mediaProducerStateString(MediaProducer::MediaStateFlags flags)
         string.append("IsPlayingVideo + ");
     if (flags & MediaProducer::IsPlayingToExternalDevice)
         string.append("IsPlayingToExternalDevice + ");
+    if (flags & MediaProducer::HasPlaybackTargetAvailabilityListener)
+        string.append("HasPlaybackTargetAvailabilityListener + ");
     if (flags & MediaProducer::RequiresPlaybackTargetMonitoring)
         string.append("RequiresPlaybackTargetMonitoring + ");
     if (flags & MediaProducer::ExternalDeviceAutoPlayCandidate)
         string.append("ExternalDeviceAutoPlayCandidate + ");
+    if (flags & MediaProducer::DidPlayToEnd)
+        string.append("DidPlayToEnd + ");
+    if (flags & MediaProducer::HasAudioOrVideo)
+        string.append("HasAudioOrVideo + ");
     if (string.isEmpty())
         string.append("IsNotPlaying");
     else
@@ -86,6 +92,39 @@ static String mediaProducerStateString(MediaProducer::MediaStateFlags flags)
     return string.toString();
 }
 #endif
+
+void WebMediaSessionManager::setMockMediaPlaybackTargetPickerEnabled(bool enabled)
+{
+    LOG(Media, "WebMediaSessionManager::setMockMediaPlaybackTargetPickerEnabled - enabled = %i", (int)enabled);
+
+    if (m_mockPickerEnabled == enabled)
+        return;
+
+    m_mockPickerEnabled = enabled;
+}
+
+void WebMediaSessionManager::setMockMediaPlaybackTargetPickerState(const String& name, MediaPlaybackTargetContext::State state)
+{
+    LOG(Media, "WebMediaSessionManager::setMockMediaPlaybackTargetPickerState - name = %s, state = %i", name.utf8().data(), (int)state);
+
+    mockPicker().setState(name, state);
+}
+
+MediaPlaybackTargetPickerMock& WebMediaSessionManager::mockPicker()
+{
+    if (!m_pickerOverride)
+        m_pickerOverride = std::make_unique<MediaPlaybackTargetPickerMock>(*this);
+
+    return *m_pickerOverride.get();
+}
+
+WebCore::MediaPlaybackTargetPicker& WebMediaSessionManager::targetPicker()
+{
+    if (m_mockPickerEnabled)
+        return mockPicker();
+
+    return platformPicker();
+}
 
 WebMediaSessionManager::WebMediaSessionManager()
     : m_taskTimer(RunLoop::current(), this, &WebMediaSessionManager::taskTimerFired)
@@ -174,7 +213,9 @@ void WebMediaSessionManager::clientStateDidChange(WebMediaSessionManagerClient& 
     LOG(Media, "WebMediaSessionManager::clientStateDidChange(%p + %llu) - new flags = %s, old flags = %s", &client, contextId, mediaProducerStateString(newFlags).utf8().data(), mediaProducerStateString(oldFlags).utf8().data());
 
     changedClientState->flags = newFlags;
-    if (!flagsAreSet(oldFlags, MediaProducer::RequiresPlaybackTargetMonitoring) && flagsAreSet(newFlags, MediaProducer::RequiresPlaybackTargetMonitoring))
+
+    MediaProducer::MediaStateFlags updateConfigurationFlags = MediaProducer::RequiresPlaybackTargetMonitoring | MediaProducer::HasPlaybackTargetAvailabilityListener | MediaProducer::HasAudioOrVideo;
+    if ((oldFlags & updateConfigurationFlags) != (newFlags & updateConfigurationFlags))
         scheduleDelayedTask(TargetMonitoringConfigurationTask);
 
     MediaProducer::MediaStateFlags playingToTargetFlags = MediaProducer::IsPlayingToExternalDevice | MediaProducer::IsPlayingVideo;
@@ -196,7 +237,7 @@ void WebMediaSessionManager::clientStateDidChange(WebMediaSessionManagerClient& 
             return;
     }
 
-    // Do not take begin playing to the device unless playback has just started.
+    // Do not begin playing to the device unless playback has just started.
     if (!flagsAreSet(newFlags, MediaProducer::IsPlayingVideo) || flagsAreSet(oldFlags, MediaProducer::IsPlayingVideo))
         return;
 
@@ -214,7 +255,7 @@ void WebMediaSessionManager::clientStateDidChange(WebMediaSessionManagerClient& 
 
 void WebMediaSessionManager::setPlaybackTarget(Ref<MediaPlaybackTarget>&& target)
 {
-    m_playbackTarget = WTF::move(target);
+    m_playbackTarget = WTFMove(target);
     m_targetChanged = true;
     scheduleDelayedTask(TargetClientsConfigurationTask);
 }
@@ -304,16 +345,22 @@ void WebMediaSessionManager::configurePlaybackTargetClients()
 void WebMediaSessionManager::configurePlaybackTargetMonitoring()
 {
     bool monitoringRequired = false;
+    bool hasAvailabilityListener = false;
+    bool haveClientWithMedia = false;
     for (auto& state : m_clientState) {
         if (state->flags & MediaProducer::RequiresPlaybackTargetMonitoring) {
             monitoringRequired = true;
             break;
         }
+        if (state->flags & MediaProducer::HasPlaybackTargetAvailabilityListener)
+            hasAvailabilityListener = true;
+        if (state->flags & MediaProducer::HasAudioOrVideo)
+            haveClientWithMedia = true;
     }
 
-    LOG(Media, "WebMediaSessionManager::configurePlaybackTargetMonitoring - monitoringRequired = %i", (int)monitoringRequired);
+    LOG(Media, "WebMediaSessionManager::configurePlaybackTargetMonitoring - monitoringRequired = %i", static_cast<int>(monitoringRequired || (hasAvailabilityListener && haveClientWithMedia)));
 
-    if (monitoringRequired)
+    if (monitoringRequired || (hasAvailabilityListener && haveClientWithMedia))
         targetPicker().startingMonitoringPlaybackTargets();
     else
         targetPicker().stopMonitoringPlaybackTargets();

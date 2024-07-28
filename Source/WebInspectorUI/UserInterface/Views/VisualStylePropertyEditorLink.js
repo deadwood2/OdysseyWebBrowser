@@ -50,16 +50,12 @@ WebInspector.VisualStylePropertyEditorLink = class VisualStylePropertyEditorLink
         this._iconElement.addEventListener("mouseout", this._iconMouseout.bind(this));
         this._iconElement.addEventListener("click", this._iconClicked.bind(this));
 
-        wrappedSVGDocument("Images/VisualStylePropertyUnlinked.svg", "unlinked-icon", null, function(wrapper) {
-            this._iconElement.appendChild(wrapper);
-            this._unlinkedIcon = wrapper;
-        }.bind(this));
+        this._unlinkedIcon = useSVGSymbol("Images/VisualStylePropertyUnlinked.svg", "unlinked-icon");
+        this._iconElement.appendChild(this._unlinkedIcon);
 
-        wrappedSVGDocument("Images/VisualStylePropertyLinked.svg", "linked-icon", null, function(wrapper) {
-            this._iconElement.appendChild(wrapper);
-            this._linkedIcon = wrapper;
-            this._linkedIcon.hidden = true;
-        }.bind(this));
+        this._linkedIcon = useSVGSymbol("Images/VisualStylePropertyLinked.svg", "linked-icon");
+        this._linkedIcon.hidden = true;
+        this._iconElement.appendChild(this._linkedIcon);
 
         this._element.appendChild(this._iconElement);
 
@@ -76,6 +72,23 @@ WebInspector.VisualStylePropertyEditorLink = class VisualStylePropertyEditorLink
     get element()
     {
         return this._element;
+    }
+
+    set linked(flag)
+    {
+        this._linked = flag;
+        this._element.classList.toggle("linked", this._linked);
+
+        if (this._linkedIcon)
+            this._linkedIcon.hidden = !this._linked;
+
+        if (this._unlinkedIcon)
+            this._unlinkedIcon.hidden = this._linked;
+
+        this._iconElement.title = this._linked ? WebInspector.UIString("Click to remove link") : WebInspector.UIString("Click to link property values");
+
+        for (let linkToHide of this._linksToHideWhenLinked)
+            linkToHide.disabled = this._linked;
     }
 
     set disabled(flag)
@@ -128,15 +141,7 @@ WebInspector.VisualStylePropertyEditorLink = class VisualStylePropertyEditorLink
 
     _iconClicked()
     {
-        this._linked = !this._linked;
-        this._element.classList.toggle("linked", this._linked);
-        this._linkedIcon.hidden = !this._linked;
-        this._unlinkedIcon.hidden = this._linked;
-
-        this._iconElement.title = this._linked ? WebInspector.UIString("Click to remove link") : WebInspector.UIString("Click to link property values");
-
+        this.linked = !this._linked;
         this._updateLinkedEditors(this._lastPropertyEdited || this._linkedProperties[0]);
-        for (let linkToHide of this._linksToHideWhenLinked)
-            linkToHide.disabled = this._linked;
     }
 };

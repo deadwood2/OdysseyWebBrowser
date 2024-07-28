@@ -194,7 +194,7 @@ WebInspector.TimelineDataGrid = class TimelineDataGrid extends WebInspector.Data
     {
         if (this._scheduledDataGridNodeRefreshIdentifier) {
             cancelAnimationFrame(this._scheduledDataGridNodeRefreshIdentifier);
-            delete this._scheduledDataGridNodeRefreshIdentifier;
+            this._scheduledDataGridNodeRefreshIdentifier = undefined;
         }
 
         if (!this._dirtyDataGridNodes)
@@ -236,13 +236,13 @@ WebInspector.TimelineDataGrid = class TimelineDataGrid extends WebInspector.Data
 
             if (dataGridNode === selectedNode) {
                 selectedNode.revealAndSelect();
-                delete this._ignoreSelectionEvent;
+                this._ignoreSelectionEvent = false;
             }
         }
 
         this._treeOutlineDataGridSynchronizer.enabled = true;
 
-        delete this._dirtyDataGridNodes;
+        this._dirtyDataGridNodes = null;
     }
 
     _sort()
@@ -300,7 +300,7 @@ WebInspector.TimelineDataGrid = class TimelineDataGrid extends WebInspector.Data
         if (selectedNode)
             selectedNode.revealAndSelect();
 
-        delete this._ignoreSelectionEvent;
+        this._ignoreSelectionEvent = false;
     }
 
     _sortComparator(node1, node2)
@@ -403,7 +403,7 @@ WebInspector.TimelineDataGrid = class TimelineDataGrid extends WebInspector.Data
     {
         if (this._showPopoverTimeout) {
             clearTimeout(this._showPopoverTimeout);
-            delete this._showPopoverTimeout;
+            this._showPopoverTimeout = undefined;
         }
 
         if (this._popover)
@@ -438,7 +438,7 @@ WebInspector.TimelineDataGrid = class TimelineDataGrid extends WebInspector.Data
 
         if (this._hidePopoverContentClearTimeout) {
             clearTimeout(this._hidePopoverContentClearTimeout);
-            delete this._hidePopoverContentClearTimeout;
+            this._hidePopoverContentClearTimeout = undefined;
         }
 
         if (updateContent)
@@ -450,10 +450,10 @@ WebInspector.TimelineDataGrid = class TimelineDataGrid extends WebInspector.Data
     _createPopoverContent()
     {
         if (!this._popoverCallStackTreeOutline) {
-            var contentElement = document.createElement("ol");
-            contentElement.classList.add("timeline-data-grid-tree-outline");
-            this._popoverCallStackTreeOutline = new WebInspector.TreeOutline(contentElement);
-            this._popoverCallStackTreeOutline.onselect = this._popoverCallStackTreeElementSelected.bind(this);
+            this._popoverCallStackTreeOutline = new WebInspector.TreeOutline;
+            this._popoverCallStackTreeOutline.disclosureButtons = false;
+            this._popoverCallStackTreeOutline.element.classList.add("timeline-data-grid");
+            this._popoverCallStackTreeOutline.addEventListener(WebInspector.TreeOutline.Event.SelectionDidChange, this._popoverCallStackTreeSelectionDidChange, this);
         } else
             this._popoverCallStackTreeOutline.removeChildren();
 
@@ -469,8 +469,12 @@ WebInspector.TimelineDataGrid = class TimelineDataGrid extends WebInspector.Data
         return content;
     }
 
-    _popoverCallStackTreeElementSelected(treeElement, selectedByUser)
+    _popoverCallStackTreeSelectionDidChange(event)
     {
+        let treeElement = event.data.selectedElement;
+        if (!treeElement)
+            return;
+
         this._popover.dismiss();
 
         console.assert(treeElement instanceof WebInspector.CallFrameTreeElement, "TreeElements in TimelineDataGrid popover should always be CallFrameTreeElements");

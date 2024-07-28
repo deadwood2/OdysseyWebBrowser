@@ -186,7 +186,14 @@ WebInspector.CSSStyleDeclaration = class CSSStyleDeclaration extends WebInspecto
         if (this._text === text)
             return;
 
-        var modified = text !== this._initialText;
+        let trimmedText = text.trim();
+        if (this._text === trimmedText)
+            return;
+
+        if (!trimmedText.length || this._type === WebInspector.CSSStyleDeclaration.Type.Inline)
+            text = trimmedText;
+
+        let modified = text !== this._initialText;
         if (modified !== this._hasModifiedInitialText) {
             this._hasModifiedInitialText = modified;
             this.dispatchEventToListeners(WebInspector.CSSStyleDeclaration.Event.InitialTextModified);
@@ -230,6 +237,20 @@ WebInspector.CSSStyleDeclaration = class CSSStyleDeclaration extends WebInspecto
     get styleSheetTextRange()
     {
         return this._styleSheetTextRange;
+    }
+
+    get mediaList()
+    {
+        if (this._ownerRule)
+            return this._ownerRule.mediaList;
+        return [];
+    }
+
+    get selectorText()
+    {
+        if (this._ownerRule)
+            return this._ownerRule.selectorText;
+        return this._node.appropriateSelectorFor(true);
     }
 
     propertyForName(name, dontCreateIfMissing)
@@ -281,26 +302,21 @@ WebInspector.CSSStyleDeclaration = class CSSStyleDeclaration extends WebInspecto
 
     generateCSSRuleString()
     {
-        if (!this._ownerRule)
-            return;
-
+        // FIXME: <rdar://problem/10593948> Provide a way to change the tab width in the Web Inspector
+        const indentation = "    ";
         let styleText = "";
-        let mediaQueriesCount = 0;
-        let mediaList = this._ownerRule.mediaList;
-        if (mediaList.length) {
-            mediaQueriesCount = mediaList.length;
+        let mediaList = this.mediaList;
+        let mediaQueriesCount = mediaList.length;
+        for (let i = mediaQueriesCount - 1; i >= 0; --i)
+            styleText += indentation.repeat(mediaQueriesCount - i - 1) + "@media " + mediaList[i].text + " {\n";
 
-            for (let i = mediaQueriesCount - 1; i >= 0; --i)
-                styleText += "    ".repeat(mediaQueriesCount - i - 1) + "@media " + mediaList[i].text + " {\n";
-        }
-
-        styleText += "    ".repeat(mediaQueriesCount) + this._ownerRule.selectorText + " {\n";
+        styleText += indentation.repeat(mediaQueriesCount) + this.selectorText + " {\n";
 
         for (let property of this._properties) {
             if (property.anonymous)
                 continue;
 
-            styleText += "    ".repeat(mediaQueriesCount + 1) + property.text.trim();
+            styleText += indentation.repeat(mediaQueriesCount + 1) + property.text.trim();
 
             if (!styleText.endsWith(";"))
                 styleText += ";";
@@ -309,11 +325,21 @@ WebInspector.CSSStyleDeclaration = class CSSStyleDeclaration extends WebInspecto
         }
 
         for (let i = mediaQueriesCount; i > 0; --i)
-            styleText += "    ".repeat(i) + "}\n";
+            styleText += indentation.repeat(i) + "}\n";
 
         styleText += "}";
 
         return styleText;
+    }
+
+    isInspectorRule()
+    {
+        return this._ownerRule && this._ownerRule.type === WebInspector.CSSStyleSheet.Type.Inspector;
+    }
+
+    hasProperties()
+    {
+        return !!this._properties.length;
     }
 
     // Protected

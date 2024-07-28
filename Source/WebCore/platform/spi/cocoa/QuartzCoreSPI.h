@@ -70,12 +70,10 @@ extern "C" {
 - (uint32_t)createImageSlot:(CGSize)size hasAlpha:(BOOL)flag;
 - (void)deleteSlot:(uint32_t)name;
 - (void)invalidate;
-#if PLATFORM(IOS) || __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
 - (mach_port_t)createFencePort;
 - (void)setFencePort:(mach_port_t)port;
 - (void)setFencePort:(mach_port_t)port commitHandler:(void(^)(void))block;
-#endif
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100
+#if PLATFORM(MAC)
 @property BOOL colorMatchUntaggedContent;
 #endif
 @property (readonly) uint32_t contextId;
@@ -111,12 +109,6 @@ extern "C" {
 @end
 #endif
 
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100
-@interface CAOpenGLLayer ()
-@property CGColorSpaceRef colorspace;
-@end
-#endif
-
 struct CAColorMatrix {
     float m11, m12, m13, m14, m15;
     float m21, m22, m23, m24, m25;
@@ -137,7 +129,7 @@ typedef struct CAColorMatrix CAColorMatrix;
 @property (copy) NSString *name;
 @end
 
-#if (TARGET_OS_IPHONE && __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
+#if TARGET_OS_IPHONE || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
 typedef enum {
     kCATransactionPhasePreLayout,
     kCATransactionPhasePreCommit,
@@ -169,7 +161,7 @@ EXTERN_C void CARenderServerRenderDisplayLayerWithTransformAndTimeOffset(mach_po
 
 // FIXME: Move this into the APPLE_INTERNAL_SDK block once it's in an SDK.
 @interface CAContext (AdditionalDetails)
-#if (PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
+#if PLATFORM(IOS) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
 - (void)invalidateFences;
 #endif
 @end
@@ -201,3 +193,14 @@ EXTERN_C NSString * const kCAFilterExclusionBlendMode;
 EXTERN_C NSString * const kCAContextDisplayName;
 EXTERN_C NSString * const kCAContextDisplayId;
 EXTERN_C NSString * const kCAContextIgnoresHitTest;
+
+#if (PLATFORM(APPLETV) && __TV_OS_VERSION_MIN_REQUIRED < 100000) \
+    || (PLATFORM(WATCHOS) && __WATCH_OS_VERSION_MIN_REQUIRED < 30000) \
+    || (PLATFORM(IOS) && TARGET_OS_IOS && __IPHONE_OS_VERSION_MIN_REQUIRED < 100000) \
+    || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 101200)
+@protocol CALayerDelegate <NSObject>
+@end
+
+@protocol CAAnimationDelegate <NSObject>
+@end
+#endif

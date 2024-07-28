@@ -419,7 +419,7 @@ bool TiledCoreAnimationDrawingArea::flushLayers()
         if (m_viewOverlayRootLayer)
             m_viewOverlayRootLayer->flushCompositingState(visibleRect, m_webPage.mainFrameView()->viewportIsStable());
 
-#if (TARGET_OS_IPHONE && __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
+#if TARGET_OS_IPHONE || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
         RefPtr<WebPage> retainedPage = &m_webPage;
         [CATransaction addCommitHandler:[retainedPage] {
             if (Page* corePage = retainedPage->corePage()) {
@@ -439,16 +439,6 @@ bool TiledCoreAnimationDrawingArea::flushLayers()
         // that WebCore makes to the relevant layers, so re-apply our changes after flushing.
         if (m_transientZoomScale != 1)
             applyTransientZoomToLayers(m_transientZoomScale, m_transientZoomOrigin);
-
-        if (!m_fenceCallbacksForAfterNextFlush.isEmpty()) {
-            MachSendRight fencePort = m_layerHostingContext->createFencePort();
-
-            for (auto callbackID : m_fenceCallbacksForAfterNextFlush)
-                m_webPage.send(Messages::WebPageProxy::MachSendRightCallback(fencePort, callbackID));
-            m_fenceCallbacksForAfterNextFlush.clear();
-
-            m_layerHostingContext->setFencePort(fencePort.sendRight());
-        }
 
         return returnValue;
     }
@@ -522,8 +512,8 @@ void TiledCoreAnimationDrawingArea::updateScrolledExposedRect()
 
 #if !PLATFORM(IOS)
     if (!m_exposedRect.isInfinite()) {
-        IntPoint scrollPositionWithOrigin = frameView->scrollPosition() + toIntSize(frameView->scrollOrigin());
-        m_scrolledExposedRect.moveBy(scrollPositionWithOrigin);
+        ScrollOffset scrollOffset = frameView->scrollOffsetFromPosition(frameView->scrollPosition());
+        m_scrolledExposedRect.moveBy(scrollOffset);
     }
 #endif
 
@@ -873,11 +863,6 @@ void TiledCoreAnimationDrawingArea::applyTransientZoomToPage(double scale, Float
 void TiledCoreAnimationDrawingArea::addFence(const MachSendRight& fencePort)
 {
     m_layerHostingContext->setFencePort(fencePort.sendRight());
-}
-
-void TiledCoreAnimationDrawingArea::replyWithFenceAfterNextFlush(uint64_t callbackID)
-{
-    m_fenceCallbacksForAfterNextFlush.append(callbackID);
 }
 
 } // namespace WebKit

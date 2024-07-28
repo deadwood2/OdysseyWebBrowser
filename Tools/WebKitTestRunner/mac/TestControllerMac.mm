@@ -26,15 +26,21 @@
 #import "config.h"
 #import "TestController.h"
 
-#import "CrashReporterInfo.h"
 #import "PlatformWebView.h"
 #import "PoseAsClass.h"
 #import "TestInvocation.h"
+#import "TestRunnerWKWebView.h"
 #import "WebKitTestRunnerPasteboard.h"
 #import <WebKit/WKContextPrivate.h>
 #import <WebKit/WKPageGroup.h>
+#import <WebKit/WKProcessPoolPrivate.h>
 #import <WebKit/WKStringCF.h>
 #import <WebKit/WKURLCF.h>
+#import <WebKit/WKUserContentControllerPrivate.h>
+#import <WebKit/WKWebView.h>
+#import <WebKit/WKWebViewConfiguration.h>
+#import <WebKit/WKWebViewConfigurationPrivate.h>
+#import <WebKit/WKWebViewPrivate.h>
 #import <WebKit/_WKUserContentExtensionStore.h>
 #import <WebKit/_WKUserContentExtensionStorePrivate.h>
 #import <mach-o/dyld.h>
@@ -73,39 +79,28 @@ void TestController::initializeTestPluginDirectory()
     m_testPluginDirectory.adopt(WKStringCreateWithCFString((CFStringRef)[[NSBundle mainBundle] bundlePath]));
 }
 
-void TestController::platformWillRunTest(const TestInvocation& testInvocation)
-{
-    setCrashReportApplicationSpecificInformationToURL(testInvocation.url());
-}
-
-static bool shouldUseThreadedScrolling(const TestInvocation& test)
-{
-    return test.urlContains("tiled-drawing/");
-}
-
 void TestController::platformResetPreferencesToConsistentValues()
 {
-#if WK_API_ENABLED
-    __block bool doneRemoving = false;
-    [[_WKUserContentExtensionStore defaultStore] removeContentExtensionForIdentifier:@"TestContentExtensions" completionHandler:^(NSError *error)
-    {
-        doneRemoving = true;
-    }];
-    platformRunUntil(doneRemoving, 0);
-    [[_WKUserContentExtensionStore defaultStore] _removeAllContentExtensions];
-#endif
+}
+
+void TestController::platformResetStateToConsistentValues()
+{
+    cocoaResetStateToConsistentValues();
+
+    while ([NSApp nextEventMatchingMask:NSEventMaskGesture | NSScrollWheelMask untilDate:nil inMode:NSDefaultRunLoopMode dequeue:YES]) {
+        // Clear out (and ignore) any pending gesture and scroll wheel events.
+    }
+}
+
+void TestController::updatePlatformSpecificTestOptionsForTest(TestOptions& options, const std::string&) const
+{
+    options.useThreadedScrolling = true;
+    options.useRemoteLayerTree = shouldUseRemoteLayerTree();
+    options.shouldShowWebView = shouldShowWebView();
 }
 
 void TestController::platformConfigureViewForTest(const TestInvocation& test)
 {
-    ViewOptions viewOptions;
-
-    viewOptions.useThreadedScrolling = shouldUseThreadedScrolling(test);
-    viewOptions.useRemoteLayerTree = shouldUseRemoteLayerTree();
-    viewOptions.shouldShowWebView = shouldShowWebView();
-
-    ensureViewSupportsOptions(viewOptions);
-
 #if WK_API_ENABLED
     if (!test.urlContains("contentextensions/"))
         return;
@@ -122,21 +117,13 @@ void TestController::platformConfigureViewForTest(const TestInvocation& test)
     [[_WKUserContentExtensionStore defaultStore] compileContentExtensionForIdentifier:@"TestContentExtensions" encodedContentExtension:contentExtensionString completionHandler:^(_WKUserContentFilter *filter, NSError *error)
     {
         if (!error)
-            WKPageGroupAddUserContentFilter(WKPageGetPageGroup(TestController::singleton().mainWebView()->page()), (__bridge WKUserContentFilterRef)filter);
+            [mainWebView()->platformView().configuration.userContentController _addUserContentFilter:filter];
         else
             NSLog(@"%@", [error helpAnchor]);
         doneCompiling = true;
     }];
     platformRunUntil(doneCompiling, 0);
 #endif
-}
-
-void TestController::platformRunUntil(bool& done, double timeout)
-{
-    NSDate *endDate = (timeout > 0) ? [NSDate dateWithTimeIntervalSinceNow:timeout] : [NSDate distantFuture];
-
-    while (!done && [endDate compare:[NSDate date]] == NSOrderedDescending)
-        [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:endDate];
 }
 
 #if ENABLE(PLATFORM_FONT_LOOKUP)
@@ -203,7 +190,6 @@ static NSSet *allowedFontFamilySet()
         @"Hiragino Kaku Gothic ProN",
         @"Hiragino Kaku Gothic Std",
         @"Hiragino Kaku Gothic StdN",
-        @"Hiragino Maru Gothic Monospaced",
         @"Hiragino Maru Gothic Pro",
         @"Hiragino Maru Gothic ProN",
         @"Hiragino Mincho Pro",
@@ -246,7 +232,6 @@ static NSSet *allowedFontFamilySet()
         @"STKaiti",
         @"STSong",
         @"Symbol",
-        @"System Font",
         @"Tahoma",
         @"Thonburi",
         @"Times New Roman",
@@ -255,6 +240,8 @@ static NSSet *allowedFontFamilySet()
         @"Verdana",
         @"Webdings",
         @"WebKit WeightWatcher",
+        @"FontWithFeaturesOTF",
+        @"FontWithFeaturesTTF",
         @"Wingdings 2",
         @"Wingdings 3",
         @"Wingdings",
@@ -289,7 +276,7 @@ static WKRetainPtr<WKArrayRef> generateWhitelist()
     }
 
     for (NSString *hiddenFontFamily in systemHiddenFontFamilySet())
-        WKArrayAppendItem(result, WKStringCreateWithUTF8CString([hiddenFontFamily UTF8String]));
+        WKArrayAppendItem(result, adoptWK(WKStringCreateWithUTF8CString([hiddenFontFamily UTF8String])).get());
 
     return adoptWK(result);
 }

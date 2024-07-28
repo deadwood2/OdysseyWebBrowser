@@ -30,8 +30,7 @@
 
 #include "NetworkCacheFileSystem.h"
 #include <wtf/MainThread.h>
-#include <wtf/glib/GMainLoopSource.h>
-#include <wtf/glib/GMutexLocker.h>
+#include <wtf/RunLoop.h>
 #include <wtf/glib/GUniquePtr.h>
 
 namespace WebKit {
@@ -78,7 +77,7 @@ static inline void runTaskInQueue(std::function<void ()> task, WorkQueue* queue)
     }
 
     // Using nullptr as queue submits the result to the main context.
-    GMainLoopSource::scheduleAndDeleteOnDestroy("[WebKit] IOChannel task", WTF::move(task));
+    RunLoop::main().dispatch(WTFMove(task));
 }
 
 static void fillDataFromReadBuffer(SoupBuffer* readBuffer, size_t size, Data& data)
@@ -94,7 +93,7 @@ static void fillDataFromReadBuffer(SoupBuffer* readBuffer, size_t size, Data& da
         // First chunk, we need to force the data to be copied.
         data = { reinterpret_cast<const uint8_t*>(buffer->data), size };
     } else {
-        Data dataRead(WTF::move(buffer));
+        Data dataRead(WTFMove(buffer));
         // Concatenate will copy the data.
         data = concatenate(data, dataRead);
     }
@@ -185,7 +184,7 @@ void IOChannel::readSyncInThread(size_t offset, size_t size, WorkQueue* queue, s
     ASSERT(!isMainThread());
 
     RefPtr<IOChannel> channel(this);
-    createThread("IOChannel::readSync", [channel, size, queue, completionHandler] {
+    detachThread(createThread("IOChannel::readSync", [channel, size, queue, completionHandler] {
         size_t bufferSize = std::min(size, gDefaultReadBufferSize);
         uint8_t* bufferData = static_cast<uint8_t*>(fastMalloc(bufferSize));
         GRefPtr<SoupBuffer> readBuffer = adoptGRef(soup_buffer_new_with_owner(bufferData, bufferSize, bufferData, fastFree));
@@ -216,10 +215,10 @@ void IOChannel::readSyncInThread(size_t offset, size_t size, WorkQueue* queue, s
         GRefPtr<SoupBuffer> bufferCapture = data.soupBuffer();
         runTaskInQueue([channel, bufferCapture, completionHandler] {
             GRefPtr<SoupBuffer> buffer = bufferCapture;
-            Data data = { WTF::move(buffer) };
+            Data data = { WTFMove(buffer) };
             completionHandler(data, 0);
         }, queue);
-    });
+    }));
 }
 
 struct WriteAsyncData {

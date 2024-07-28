@@ -85,7 +85,11 @@ GraphicsContext3D::GraphicsContext3D(GraphicsContext3D::Attributes attributes, H
     , m_texture(0)
     , m_compositorTexture(0)
     , m_fbo(0)
+#if USE(COORDINATED_GRAPHICS_THREADED)
+    , m_compositorFBO(0)
+#endif
     , m_depthStencilBuffer(0)
+    , m_layerComposited(false)
     , m_multisampleFBO(0)
     , m_multisampleDepthStencilBuffer(0)
     , m_multisampleColorBuffer(0)
@@ -108,6 +112,17 @@ GraphicsContext3D::GraphicsContext3D(GraphicsContext3D::Attributes attributes, H
         // Create an FBO.
         ::glGenFramebuffers(1, &m_fbo);
         ::glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
+
+#if USE(COORDINATED_GRAPHICS_THREADED)
+        ::glGenFramebuffers(1, &m_compositorFBO);
+        ::glGenTextures(1, &m_compositorTexture);
+        ::glBindTexture(GL_TEXTURE_2D, m_compositorTexture);
+        ::glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        ::glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        ::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        ::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        ::glBindTexture(GL_TEXTURE_2D, 0);
+#endif
 
         m_state.boundFBO = m_fbo;
         if (!m_attrs.antialias && (m_attrs.stencil || m_attrs.depth))
@@ -174,6 +189,9 @@ GraphicsContext3D::~GraphicsContext3D()
             ::glDeleteRenderbuffers(1, &m_depthStencilBuffer);
     }
     ::glDeleteFramebuffers(1, &m_fbo);
+#if USE(COORDINATED_GRAPHICS_THREADED)
+    ::glDeleteFramebuffers(1, &m_compositorFBO);
+#endif
 }
 
 GraphicsContext3D::ImageExtractor::~ImageExtractor()
@@ -209,9 +227,10 @@ bool GraphicsContext3D::ImageExtractor::extractImage(bool premultiplyAlpha, bool
 
         // if m_imageSurface is not an image, extract a copy of the surface
         if (m_imageSurface && cairo_surface_get_type(m_imageSurface.get()) != CAIRO_SURFACE_TYPE_IMAGE) {
-            RefPtr<cairo_surface_t> tmpSurface = adoptRef(cairo_image_surface_create(CAIRO_FORMAT_ARGB32, m_imageWidth, m_imageHeight));
-            copyRectFromOneSurfaceToAnother(m_imageSurface.get(), tmpSurface.get(), IntSize(), IntRect(0, 0, m_imageWidth, m_imageHeight), IntSize(), CAIRO_OPERATOR_SOURCE);
-            m_imageSurface = tmpSurface.release();
+            IntSize surfaceSize = cairoSurfaceSize(m_imageSurface.get());
+            auto tmpSurface = adoptRef(cairo_image_surface_create(CAIRO_FORMAT_ARGB32, surfaceSize.width(), surfaceSize.height()));
+            copyRectFromOneSurfaceToAnother(m_imageSurface.get(), tmpSurface.get(), IntSize(), IntRect(IntPoint(), surfaceSize), IntSize(), CAIRO_OPERATOR_SOURCE);
+            m_imageSurface = WTFMove(tmpSurface);
         }
     }
 

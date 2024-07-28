@@ -30,7 +30,6 @@
 #include "ChildProcessProxy.h"
 #include "CustomProtocolManagerProxy.h"
 #include "MessageReceiverMap.h"
-#include "PlatformProcessIdentifier.h"
 #include "PluginInfoStore.h"
 #include "ProcessLauncher.h"
 #include "ProcessThrottlerClient.h"
@@ -58,7 +57,6 @@ struct PluginInfo;
 
 namespace WebKit {
 
-class DownloadProxyMap;
 class NetworkProcessProxy;
 class WebBackForwardListItem;
 class WebPageGroup;
@@ -91,14 +89,14 @@ public:
     WTF::IteratorRange<WebPageProxyMap::const_iterator::Values> pages() const { return m_pageMap.values(); }
     unsigned pageCount() const { return m_pageMap.size(); }
 
-    void addVisitedLinkProvider(VisitedLinkProvider&);
+    void addVisitedLinkStore(VisitedLinkStore&);
     void addWebUserContentControllerProxy(WebUserContentControllerProxy&);
-    void didDestroyVisitedLinkProvider(VisitedLinkProvider&);
+    void didDestroyVisitedLinkStore(VisitedLinkStore&);
     void didDestroyWebUserContentControllerProxy(WebUserContentControllerProxy&);
 
     WebBackForwardListItem* webBackForwardItem(uint64_t itemID) const;
 
-    ResponsivenessTimer* responsivenessTimer() { return &m_responsivenessTimer; }
+    ResponsivenessTimer& responsivenessTimer() { return m_responsivenessTimer; }
 
     WebFrameProxy* webFrame(uint64_t) const;
     bool canCreateFrame(uint64_t frameID) const;
@@ -119,8 +117,6 @@ public:
     bool checkURLReceivedFromWebProcess(const WebCore::URL&);
 
     static bool fullKeyboardAccessEnabled();
-
-    DownloadProxy* createDownloadProxy(const WebCore::ResourceRequest&);
 
     void didSaveToPageCache();
     void releasePageCache();
@@ -152,11 +148,9 @@ public:
 
     ProcessThrottler& throttler() { return m_throttler; }
 
-#if ENABLE(NETWORK_PROCESS)
     void reinstateNetworkProcessAssertionState(NetworkProcessProxy&);
-#endif
 
-    void sendMainThreadPing();
+    void isResponsive(std::function<void(bool isWebProcessResponsive)>);
     void didReceiveMainThreadPing();
 
 private:
@@ -164,7 +158,6 @@ private:
 
     // From ChildProcessProxy
     virtual void getLaunchOptions(ProcessLauncher::LaunchOptions&) override;
-    void platformGetLaunchOptions(ProcessLauncher::LaunchOptions&);
     virtual void connectionWillOpen(IPC::Connection&) override;
     virtual void processWillShutDown(IPC::Connection&) override;
 
@@ -189,9 +182,7 @@ private:
 #if ENABLE(NETSCAPE_PLUGIN_API)
     void getPluginProcessConnection(uint64_t pluginProcessToken, PassRefPtr<Messages::WebProcessProxy::GetPluginProcessConnection::DelayedReply>);
 #endif
-#if ENABLE(NETWORK_PROCESS)
     void getNetworkProcessConnection(PassRefPtr<Messages::WebProcessProxy::GetNetworkProcessConnection::DelayedReply>);
-#endif
 #if ENABLE(DATABASE_PROCESS)
     void getDatabaseProcessConnection(PassRefPtr<Messages::WebProcessProxy::GetDatabaseProcessConnection::DelayedReply>);
 #endif
@@ -210,9 +201,10 @@ private:
     virtual IPC::ProcessType remoteProcessType() override { return IPC::ProcessType::Web; }
 
     // ResponsivenessTimer::Client
-    void didBecomeUnresponsive(ResponsivenessTimer*) override;
-    void interactionOccurredWhileUnresponsive(ResponsivenessTimer*) override;
-    void didBecomeResponsive(ResponsivenessTimer*) override;
+    void didBecomeUnresponsive() override;
+    void didBecomeResponsive() override;
+    virtual void willChangeIsResponsive() override;
+    virtual void didChangeIsResponsive() override;
 
     // ProcessThrottlerClient
     void sendProcessWillSuspendImminently() override;
@@ -242,10 +234,9 @@ private:
     WebFrameProxyMap m_frameMap;
     WebBackForwardListItemMap m_backForwardListItemMap;
 
-    HashSet<VisitedLinkProvider*> m_visitedLinkProviders;
+    HashSet<VisitedLinkStore*> m_visitedLinkStores;
     HashSet<WebUserContentControllerProxy*> m_webUserContentControllerProxies;
 
-    std::unique_ptr<DownloadProxyMap> m_downloadProxyMap;
     CustomProtocolManagerProxy m_customProtocolManagerProxy;
 
     HashMap<uint64_t, std::function<void (WebsiteData)>> m_pendingFetchWebsiteDataCallbacks;
@@ -255,12 +246,15 @@ private:
     int m_numberOfTimesSuddenTerminationWasDisabled;
     ProcessThrottler m_throttler;
     ProcessThrottler::BackgroundActivityToken m_tokenForHoldingLockedFiles;
-#if PLATFORM(IOS) && ENABLE(NETWORK_PROCESS)
+#if PLATFORM(IOS)
     ProcessThrottler::ForegroundActivityToken m_foregroundTokenForNetworkProcess;
     ProcessThrottler::BackgroundActivityToken m_backgroundTokenForNetworkProcess;
 #endif
 
     HashMap<String, uint64_t> m_pageURLRetainCountMap;
+
+    enum class NoOrMaybe { No, Maybe } m_isResponsive;
+    Vector<std::function<void(bool webProcessIsResponsive)>> m_isResponsiveCallbacks;
 };
 
 } // namespace WebKit

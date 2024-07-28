@@ -61,6 +61,7 @@ public:
         // watchable and so we will assert if they aren't watched.
         registerStructure(m_graph.m_vm.structureStructure.get());
         registerStructure(m_graph.m_vm.stringStructure.get());
+        registerStructure(m_graph.m_vm.symbolStructure.get());
         registerStructure(m_graph.m_vm.getterSetterStructure.get());
         
         for (FrozenValue* value : m_graph.m_frozenValues)
@@ -108,8 +109,12 @@ public:
                     
                 case NewArray:
                 case NewArrayBuffer:
-                    registerStructure(m_graph.globalObjectFor(node->origin.semantic)->arrayStructureForIndexingTypeDuringAllocation(node->indexingType()));
+                case NewArrayWithSize: {
+                    JSGlobalObject* globalObject = m_graph.globalObjectFor(node->origin.semantic);
+                    registerStructure(globalObject->arrayStructureForIndexingTypeDuringAllocation(node->indexingType()));
+                    registerStructure(globalObject->originalArrayStructureForIndexingType(ArrayWithSlowPutArrayStorage));
                     break;
+                }
                     
                 case NewTypedArray:
                     registerStructure(m_graph.globalObjectFor(node->origin.semantic)->typedArrayStructure(node->typedArrayType()));
@@ -135,9 +140,14 @@ public:
                 case NewRegexp:
                     registerStructure(m_graph.globalObjectFor(node->origin.semantic)->regExpStructure());
                     break;
-                    
+                case NewArrowFunction:
+                    registerStructure(m_graph.globalObjectFor(node->origin.semantic)->functionStructure());
+                    break;
                 case NewFunction:
                     registerStructure(m_graph.globalObjectFor(node->origin.semantic)->functionStructure());
+                    break;
+                case NewGeneratorFunction:
+                    registerStructure(m_graph.globalObjectFor(node->origin.semantic)->generatorFunctionStructure());
                     break;
                     
                 default:

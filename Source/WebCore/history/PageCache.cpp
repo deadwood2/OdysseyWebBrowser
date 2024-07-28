@@ -37,10 +37,12 @@
 #include "DiagnosticLoggingKeys.h"
 #include "Document.h"
 #include "DocumentLoader.h"
+#include "FocusController.h"
 #include "FrameLoader.h"
 #include "FrameLoaderClient.h"
 #include "FrameView.h"
 #include "HistoryController.h"
+#include "IgnoreOpensDuringUnloadCountIncrementer.h"
 #include "Logging.h"
 #include "MainFrame.h"
 #include "MemoryPressureHandler.h"
@@ -122,7 +124,7 @@ static bool canCacheFrame(Frame& frame, DiagnosticLoggingClient& diagnosticLoggi
         logPageCacheFailureDiagnosticMessage(diagnosticLoggingClient, DiagnosticLoggingKeys::hasPluginsKey());
         isCacheable = false;
     }
-    if (frame.isMainFrame() && frame.document()->url().protocolIs("https") && documentLoader->response().cacheControlContainsNoStore()) {
+    if (frame.isMainFrame() && frame.document() && frame.document()->url().protocolIs("https") && documentLoader->response().cacheControlContainsNoStore()) {
         PCLOG("   -Frame is HTTPS, and cache control prohibits storing");
         logPageCacheFailureDiagnosticMessage(diagnosticLoggingClient, DiagnosticLoggingKeys::httpsNoStoreKey());
         isCacheable = false;
@@ -149,7 +151,7 @@ static bool canCacheFrame(Frame& frame, DiagnosticLoggingClient& diagnosticLoggi
     }
 
     Vector<ActiveDOMObject*> unsuspendableObjects;
-    if (!frame.document()->canSuspendActiveDOMObjectsForPageCache(&unsuspendableObjects)) {
+    if (frame.document() && !frame.document()->canSuspendActiveDOMObjectsForDocumentSuspension(&unsuspendableObjects)) {
         PCLOG("   -The document cannot suspend its active DOM Objects");
         for (auto* activeDOMObject : unsuspendableObjects) {
             PCLOG("    - Unsuspendable: ", activeDOMObject->activeDOMObjectName());
@@ -198,12 +200,12 @@ static bool canCachePage(Page& page)
         isCacheable = false;
     }
 #if ENABLE(DEVICE_ORIENTATION) && !PLATFORM(IOS)
-    if (DeviceMotionController::isActiveAt(page)) {
+    if (DeviceMotionController::isActiveAt(&page)) {
         PCLOG("   -Page is using DeviceMotion");
         logPageCacheFailureDiagnosticMessage(diagnosticLoggingClient, DiagnosticLoggingKeys::deviceMotionKey());
         isCacheable = false;
     }
-    if (DeviceOrientationController::isActiveAt(page)) {
+    if (DeviceOrientationController::isActiveAt(&page)) {
         PCLOG("   -Page is using DeviceOrientation");
         logPageCacheFailureDiagnosticMessage(diagnosticLoggingClient, DiagnosticLoggingKeys::deviceOrientationKey());
         isCacheable = false;
@@ -262,7 +264,7 @@ static bool canCachePage(Page& page)
     else
         PCLOG(" Page CANNOT be cached\n--------");
 
-    diagnosticLoggingClient.logDiagnosticMessageWithResult(DiagnosticLoggingKeys::pageCacheKey(), emptyString(), isCacheable ? DiagnosticLoggingResultPass : DiagnosticLoggingResultFail, ShouldSample::Yes);
+    diagnosticLoggingClient.logDiagnosticMessageWithResult(DiagnosticLoggingKeys::pageCacheKey(), DiagnosticLoggingKeys::canCacheKey(), isCacheable ? DiagnosticLoggingResultPass : DiagnosticLoggingResultFail, ShouldSample::Yes);
     return isCacheable;
 }
 
@@ -272,22 +274,19 @@ PageCache& PageCache::singleton()
     return globalPageCache;
 }
     
-bool PageCache::canCache(Page* page) const
+bool PageCache::canCache(Page& page) const
 {
-    if (!page)
-        return false;
-
     if (!m_maxSize) {
-        logPageCacheFailureDiagnosticMessage(page, DiagnosticLoggingKeys::isDisabledKey());
+        logPageCacheFailureDiagnosticMessage(&page, DiagnosticLoggingKeys::isDisabledKey());
         return false;
     }
 
     if (MemoryPressureHandler::singleton().isUnderMemoryPressure()) {
-        logPageCacheFailureDiagnosticMessage(page, DiagnosticLoggingKeys::underMemoryPressureKey());
+        logPageCacheFailureDiagnosticMessage(&page, DiagnosticLoggingKeys::underMemoryPressureKey());
         return false;
     }
     
-    return canCachePage(*page);
+    return canCachePage(page);
 }
 
 void PageCache::pruneToSizeNow(unsigned size, PruningReason pruningReason)
@@ -311,23 +310,6 @@ unsigned PageCache::frameCount() const
     }
     
     return frameCount;
-}
-
-void PageCache::markPagesForVisitedLinkStyleRecalc()
-{
-    for (auto& item : m_items) {
-        ASSERT(item->m_cachedPage);
-        item->m_cachedPage->markForVisitedLinkStyleRecalc();
-    }
-}
-
-void PageCache::markPagesForFullStyleRecalc(Page& page)
-{
-    for (auto& item : m_items) {
-        CachedPage& cachedPage = *item->m_cachedPage;
-        if (&page.mainFrame() == &cachedPage.cachedMainFrame()->view()->frame())
-            cachedPage.markForFullStyleRecalc();
-    }
 }
 
 void PageCache::markPagesForDeviceOrPageScaleChanged(Page& page)
@@ -374,14 +356,62 @@ static String pruningReasonToDiagnosticLoggingKey(PruningReason pruningReason)
     return emptyString();
 }
 
-void PageCache::add(HistoryItem& item, Page& page)
+static void setInPageCache(Page& page, bool isInPageCache)
 {
-    ASSERT(canCache(&page));
+    for (Frame* frame = &page.mainFrame(); frame; frame = frame->tree().traverseNext()) {
+        if (auto* document = frame->document())
+            document->setInPageCache(isInPageCache);
+    }
+}
 
-    // Remove stale cache entry if necessary.
-    remove(item);
+static void firePageHideEventRecursively(Frame& frame)
+{
+    auto* document = frame.document();
+    if (!document)
+        return;
 
-    item.m_cachedPage = std::make_unique<CachedPage>(page);
+    // stopLoading() will fire the pagehide event in each subframe and the HTML specification states
+    // that the parent document's ignore-opens-during-unload counter should be incremented while the
+    // pagehide event is being fired in its subframes:
+    // https://html.spec.whatwg.org/multipage/browsers.html#unload-a-document
+    IgnoreOpensDuringUnloadCountIncrementer ignoreOpensDuringUnloadCountIncrementer(document);
+
+    frame.loader().stopLoading(UnloadEventPolicyUnloadAndPageHide);
+
+    for (RefPtr<Frame> child = frame.tree().firstChild(); child; child = child->tree().nextSibling())
+        firePageHideEventRecursively(*child);
+}
+
+void PageCache::addIfCacheable(HistoryItem& item, Page* page)
+{
+    if (item.isInPageCache())
+        return;
+
+    if (!page || !canCache(*page))
+        return;
+
+    // Make sure all the documents know they are being added to the PageCache.
+    setInPageCache(*page, true);
+
+    // Focus the main frame, defocusing a focused subframe (if we have one). We do this here,
+    // before the page enters the page cache, while we still can dispatch DOM blur/focus events.
+    if (page->focusController().focusedFrame())
+        page->focusController().setFocusedFrame(&page->mainFrame());
+
+    // Fire the pagehide event in all frames.
+    firePageHideEventRecursively(page->mainFrame());
+
+    // Check that the page is still page-cacheable after firing the pagehide event. The JS event handlers
+    // could have altered the page in a way that could prevent caching.
+    if (!canCache(*page)) {
+        setInPageCache(*page, false);
+        return;
+    }
+
+    // Make sure we no longer fire any JS events past this point.
+    NoEventDispatchAssertion assertNoEventDispatch;
+
+    item.m_cachedPage = std::make_unique<CachedPage>(*page);
     item.m_pruningReason = PruningReason::None;
     m_items.add(&item);
     
@@ -397,7 +427,7 @@ std::unique_ptr<CachedPage> PageCache::take(HistoryItem& item, Page* page)
     }
 
     m_items.remove(&item);
-    std::unique_ptr<CachedPage> cachedPage = WTF::move(item.m_cachedPage);
+    std::unique_ptr<CachedPage> cachedPage = WTFMove(item.m_cachedPage);
 
     if (cachedPage->hasExpired()) {
         LOG(PageCache, "Not restoring page for %s from back/forward cache because cache entry has expired", item.url().string().ascii().data());

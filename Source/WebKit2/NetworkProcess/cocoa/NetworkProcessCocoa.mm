@@ -26,18 +26,16 @@
 #import "config.h"
 #import "NetworkProcess.h"
 
-#if ENABLE(NETWORK_PROCESS)
-
 #import "NetworkCache.h"
 #import "NetworkProcessCreationParameters.h"
 #import "NetworkResourceLoader.h"
 #import "SandboxExtension.h"
-#import "SecurityOriginData.h"
 #import <WebCore/CFNetworkSPI.h>
 #import <WebCore/NetworkStorageSession.h>
 #import <WebCore/PublicSuffix.h>
 #import <WebCore/ResourceRequestCFNet.h>
 #import <WebCore/SecurityOrigin.h>
+#import <WebCore/SecurityOriginData.h>
 #import <WebKitSystemInterface.h>
 #import <wtf/RAMSize.h>
 
@@ -53,7 +51,7 @@ static void initializeNetworkSettings()
 {
     static const unsigned preferredConnectionCount = 6;
 
-    WKInitializeMaximumHTTPConnectionCountPerHost(preferredConnectionCount);
+    _CFNetworkHTTPConnectionCacheSetLimit(kHTTPLoadWidth, preferredConnectionCount);
 
     Boolean keyExistsAndHasValidFormat = false;
     Boolean prefValue = CFPreferencesGetAppBooleanValue(CFSTR("WebKitEnableHTTPPipelining"), kCFPreferencesCurrentApplication, &keyExistsAndHasValidFormat);
@@ -61,8 +59,10 @@ static void initializeNetworkSettings()
         WebCore::ResourceRequest::setHTTPPipeliningEnabled(prefValue);
 
     if (WebCore::ResourceRequest::resourcePrioritiesEnabled()) {
-        WKSetHTTPRequestMaximumPriority(toPlatformRequestPriority(WebCore::ResourceLoadPriority::Highest));
-        WKSetHTTPRequestMinimumFastLanePriority(toPlatformRequestPriority(WebCore::ResourceLoadPriority::Medium));
+        _CFNetworkHTTPConnectionCacheSetLimit(kHTTPPriorityNumLevels, toPlatformRequestPriority(WebCore::ResourceLoadPriority::Highest));
+#if PLATFORM(IOS)
+        _CFNetworkHTTPConnectionCacheSetLimit(kHTTPMinimumFastLanePriority, toPlatformRequestPriority(WebCore::ResourceLoadPriority::Medium));
+#endif
     }
 }
 
@@ -75,7 +75,7 @@ void NetworkProcess::platformInitializeNetworkProcessCocoa(const NetworkProcessC
 #endif
     m_diskCacheDirectory = parameters.diskCacheDirectory;
 
-#if (PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
+#if PLATFORM(IOS) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
     _CFNetworkSetATSContext(parameters.networkATSContext.get());
 #endif
 
@@ -95,10 +95,18 @@ void NetworkProcess::platformInitializeNetworkProcessCocoa(const NetworkProcessC
     if (!m_diskCacheDirectory.isNull()) {
         SandboxExtension::consumePermanently(parameters.diskCacheDirectoryExtensionHandle);
 #if ENABLE(NETWORK_CACHE)
-        if (parameters.shouldEnableNetworkCache && NetworkCache::singleton().initialize(m_diskCacheDirectory, parameters.shouldEnableNetworkCacheEfficacyLogging)) {
-            RetainPtr<NSURLCache> urlCache(adoptNS([[NSURLCache alloc] initWithMemoryCapacity:0 diskCapacity:0 diskPath:nil]));
-            [NSURLCache setSharedURLCache:urlCache.get()];
-            return;
+        if (parameters.shouldEnableNetworkCache) {
+            NetworkCache::Cache::Parameters cacheParameters = {
+                parameters.shouldEnableNetworkCacheEfficacyLogging
+#if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
+                , parameters.shouldEnableNetworkCacheSpeculativeRevalidation
+#endif
+            };
+            if (NetworkCache::singleton().initialize(m_diskCacheDirectory, cacheParameters)) {
+                auto urlCache(adoptNS([[NSURLCache alloc] initWithMemoryCapacity:0 diskCapacity:0 diskPath:nil]));
+                [NSURLCache setSharedURLCache:urlCache.get()];
+                return;
+            }
         }
 #endif
         String nsURLCacheDirectory = m_diskCacheDirectory;
@@ -197,7 +205,7 @@ Vector<Ref<WebCore::SecurityOrigin>> NetworkProcess::cfURLCacheOrigins()
     return result;
 }
 
-void NetworkProcess::clearCFURLCacheForOrigins(const Vector<SecurityOriginData>& origins)
+void NetworkProcess::clearCFURLCacheForOrigins(const Vector<WebCore::SecurityOriginData>& origins)
 {
     auto hostNames = adoptCF(CFArrayCreateMutable(kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks));
     for (auto& origin : origins)
@@ -214,12 +222,10 @@ void NetworkProcess::clearCFURLCacheForOrigins(const Vector<SecurityOriginData>&
 
 void NetworkProcess::clearHSTSCache(WebCore::NetworkStorageSession& session, std::chrono::system_clock::time_point modifiedSince)
 {
-#if PLATFORM(IOS) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000)
     NSTimeInterval timeInterval = std::chrono::duration_cast<std::chrono::duration<double>>(modifiedSince.time_since_epoch()).count();
     NSDate *date = [NSDate dateWithTimeIntervalSince1970:timeInterval];
 
     _CFNetworkResetHSTSHostsSinceDate(session.platformSession(), (__bridge CFDateRef)date);
-#endif
 }
 
 static void clearNSURLCache(dispatch_group_t group, std::chrono::system_clock::time_point modifiedSince, const std::function<void ()>& completionHandler)
@@ -227,13 +233,10 @@ static void clearNSURLCache(dispatch_group_t group, std::chrono::system_clock::t
     dispatch_group_async(group, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), [modifiedSince, completionHandler] {
         NSURLCache *cache = [NSURLCache sharedURLCache];
 
-#if PLATFORM(IOS) || __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
         NSTimeInterval timeInterval = std::chrono::duration_cast<std::chrono::duration<double>>(modifiedSince.time_since_epoch()).count();
         NSDate *date = [NSDate dateWithTimeIntervalSince1970:timeInterval];
         [cache removeCachedResponsesSinceDate:date];
-#else
-        [cache removeAllCachedResponses];
-#endif
+
         dispatch_async(dispatch_get_main_queue(), [completionHandler] {
             completionHandler();
         });
@@ -259,5 +262,3 @@ void NetworkProcess::clearDiskCache(std::chrono::system_clock::time_point modifi
 }
 
 }
-
-#endif

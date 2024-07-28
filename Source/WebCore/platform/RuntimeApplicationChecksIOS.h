@@ -36,14 +36,11 @@ bool applicationIsMobileStore();
 WEBCORE_EXPORT bool applicationIsWebApp();
 WEBCORE_EXPORT bool applicationIsOkCupid();
 WEBCORE_EXPORT bool applicationIsFacebook();
-bool applicationIsEpicurious();
 WEBCORE_EXPORT bool applicationIsDaijisenDictionary();
 bool applicationIsNASAHD();
-bool applicationIsMASH();
 WEBCORE_EXPORT bool applicationIsTheEconomistOnIPhone();
-bool applicationIsWebProcess();
+WEBCORE_EXPORT bool applicationIsWebProcess();
 bool applicationIsIBooksOnIOS();
-WEBCORE_EXPORT bool applicationIsGmailAddAccountOnIOS();
 
 } // namespace WebCore
 

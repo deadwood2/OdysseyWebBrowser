@@ -27,9 +27,18 @@ WebInspector.ConsoleTabContentView = class ConsoleTabContentView extends WebInsp
 {
     constructor(identifier)
     {
-        var tabBarItem = new WebInspector.TabBarItem("Images/Console.svg", WebInspector.UIString("Console"));
+        let {image, title} = WebInspector.ConsoleTabContentView.tabInfo();
+        let tabBarItem = new WebInspector.TabBarItem(image, title);
 
         super(identifier || "console", "console", tabBarItem, null, null, true);
+    }
+
+    static tabInfo()
+    {
+        return {
+            image: "Images/Console.svg",
+            title: WebInspector.UIString("Console"),
+        };
     }
 
     // Public
@@ -42,6 +51,8 @@ WebInspector.ConsoleTabContentView = class ConsoleTabContentView extends WebInsp
     shown()
     {
         super.shown();
+
+        WebInspector.consoleContentView.prompt.focus();
 
         if (this.contentBrowser.currentContentView === WebInspector.consoleContentView)
             return;

@@ -55,13 +55,13 @@ using namespace WebCore;
 
 namespace WebKit {
 
-Ref<WebView> WebView::create(WebProcessPool* processPool, WebPageGroup* pageGroup)
+Ref<WebView> WebView::create(WebProcessPool* processPool, API::PageConfiguration& pageConfiuration)
 {
-    return adoptRef(*new WebViewEfl(processPool, pageGroup));
+    return adoptRef(*new WebViewEfl(processPool, pageConfiuration));
 }
 
-WebViewEfl::WebViewEfl(WebProcessPool* processPool, WebPageGroup* pageGroup)
-    : WebView(processPool, pageGroup)
+WebViewEfl::WebViewEfl(WebProcessPool* processPool, API::PageConfiguration& pageConfiuration)
+    : WebView(processPool, pageConfiuration)
     , m_ewkView(0)
     , m_hasRequestedFullScreen(false)
 {
@@ -88,15 +88,15 @@ void WebViewEfl::paintToCairoSurface(cairo_surface_t* surface)
     scene->paintToGraphicsContext(&context, m_page->pageExtendedBackgroundColor(), m_page->drawsBackground());
 }
 
-RefPtr<WebPopupMenuProxy> WebViewEfl::createPopupMenuProxy(WebPageProxy* page)
+RefPtr<WebPopupMenuProxy> WebViewEfl::createPopupMenuProxy(WebPageProxy& page)
 {
-    return WebPopupMenuListenerEfl::create(page);
+    return WebPopupMenuListenerEfl::create(&page);
 }
 
 #if ENABLE(CONTEXT_MENUS)
-RefPtr<WebContextMenuProxy> WebViewEfl::createContextMenuProxy(WebPageProxy* page)
+std::unique_ptr<WebContextMenuProxy> WebViewEfl::createContextMenuProxy(WebPageProxy& page, const ContextMenuContextData& context, const UserData& userData)
 {
-    return WebContextMenuProxyEfl::create(m_ewkView, page);
+    return std::make_unique<WebContextMenuProxyEfl>(m_ewkView, page, context, userData);
 }
 #endif
 

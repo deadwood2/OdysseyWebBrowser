@@ -24,6 +24,7 @@
 #if USE(TEXTURE_MAPPER_GL)
 
 #include "BitmapTexture.h"
+#include "ClipStack.h"
 #include "FilterOperation.h"
 #include "GraphicsContext3D.h"
 #include "IntSize.h"
@@ -37,7 +38,7 @@ class FilterOperation;
 
 class BitmapTextureGL : public BitmapTexture {
 public:
-    BitmapTextureGL(PassRefPtr<GraphicsContext3D>);
+    BitmapTextureGL(PassRefPtr<GraphicsContext3D>, const Flags = NoFlag);
     virtual ~BitmapTextureGL();
 
     virtual IntSize size() const override;
@@ -54,7 +55,7 @@ public:
     void updateContentsNoSwizzle(const void*, const IntRect& target, const IntPoint& sourceOffset, int bytesPerLine, unsigned bytesPerPixel = 4, Platform3DObject glFormat = GraphicsContext3D::RGBA);
     virtual bool isBackedByOpenGL() const override { return true; }
 
-    virtual PassRefPtr<BitmapTexture> applyFilters(TextureMapper*, const FilterOperations&) override;
+    virtual PassRefPtr<BitmapTexture> applyFilters(TextureMapper&, const FilterOperations&) override;
     struct FilterInfo {
         RefPtr<FilterOperation> filter;
         unsigned pass;
@@ -67,7 +68,9 @@ public:
             { }
     };
     const FilterInfo* filterInfo() const { return &m_filterInfo; }
-    TextureMapperGL::ClipStack& clipStack() { return m_clipStack; }
+    ClipStack& clipStack() { return m_clipStack; }
+
+    GC3Dint internalFormat() const { return m_internalFormat; }
 
 private:
 
@@ -78,7 +81,7 @@ private:
     Platform3DObject m_rbo;
     Platform3DObject m_depthBufferObject;
     bool m_shouldClear;
-    TextureMapperGL::ClipStack m_clipStack;
+    ClipStack m_clipStack;
     RefPtr<GraphicsContext3D> m_context3D;
 
     BitmapTextureGL();

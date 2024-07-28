@@ -103,6 +103,16 @@ String DiagnosticLoggingKeys::engineFailedToLoadKey()
     return ASCIILiteral("engineFailedToLoad");
 }
 
+String DiagnosticLoggingKeys::entryRightlyNotWarmedUpKey()
+{
+    return ASCIILiteral("entryRightlyNotWarmedUp");
+}
+
+String DiagnosticLoggingKeys::entryWronglyNotWarmedUpKey()
+{
+    return ASCIILiteral("entryWronglyNotWarmedUp");
+}
+
 String DiagnosticLoggingKeys::navigationKey()
 {
     return ASCIILiteral("navigation");
@@ -298,6 +308,11 @@ String DiagnosticLoggingKeys::backNavigationKey()
     return ASCIILiteral("backNavigation");
 }
 
+String DiagnosticLoggingKeys::canCacheKey()
+{
+    return ASCIILiteral("canCache");
+}
+
 String DiagnosticLoggingKeys::cacheControlNoStoreKey()
 {
     return ASCIILiteral("cacheControlNoStore");
@@ -413,6 +428,16 @@ String DiagnosticLoggingKeys::styleSheetKey()
     return ASCIILiteral("styleSheet");
 }
 
+String DiagnosticLoggingKeys::successfulSpeculativeWarmupWithRevalidationKey()
+{
+    return ASCIILiteral("successfulSpeculativeWarmupWithRevalidation");
+}
+
+String DiagnosticLoggingKeys::successfulSpeculativeWarmupWithoutRevalidationKey()
+{
+    return ASCIILiteral("successfulSpeculativeWarmupWithoutRevalidation");
+}
+
 String DiagnosticLoggingKeys::svgDocumentKey()
 {
     return ASCIILiteral("svgDocument");
@@ -426,6 +451,11 @@ String DiagnosticLoggingKeys::uncacheableStatusCodeKey()
 String DiagnosticLoggingKeys::underMemoryPressureKey()
 {
     return ASCIILiteral("underMemoryPressure");
+}
+
+String DiagnosticLoggingKeys::unknownEntryRequestKey()
+{
+    return ASCIILiteral("unknownEntryRequest");
 }
 
 String DiagnosticLoggingKeys::unlikelyToReuseKey()
@@ -506,6 +536,16 @@ String DiagnosticLoggingKeys::varyingHeaderMismatchKey()
 String DiagnosticLoggingKeys::videoKey()
 {
     return ASCIILiteral("video");
+}
+
+String DiagnosticLoggingKeys::wastedSpeculativeWarmupWithRevalidationKey()
+{
+    return ASCIILiteral("wastedSpeculativeWarmupWithRevalidation");
+}
+
+String DiagnosticLoggingKeys::wastedSpeculativeWarmupWithoutRevalidationKey()
+{
+    return ASCIILiteral("wastedSpeculativeWarmupWithoutRevalidation");
 }
 
 String DiagnosticLoggingKeys::webViewKey()

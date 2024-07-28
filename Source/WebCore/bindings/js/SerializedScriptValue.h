@@ -59,19 +59,14 @@ enum SerializationErrorMode { NonThrowing, Throwing };
 
 class SharedBuffer;
 
-class SerializedScriptValue :
-#if ENABLE(INDEXED_DATABASE)
-    public ThreadSafeRefCounted<SerializedScriptValue> {
-#else
-    public RefCounted<SerializedScriptValue> {
-#endif
+class SerializedScriptValue : public ThreadSafeRefCounted<SerializedScriptValue> {
 public:
     WEBCORE_EXPORT static RefPtr<SerializedScriptValue> create(JSC::ExecState*, JSC::JSValue, MessagePortArray*, ArrayBufferArray*, SerializationErrorMode = Throwing);
 
     WEBCORE_EXPORT static RefPtr<SerializedScriptValue> create(const String&);
-    static Ref<SerializedScriptValue> adopt(Vector<uint8_t>& buffer)
+    static Ref<SerializedScriptValue> adopt(Vector<uint8_t>&& buffer)
     {
-        return adoptRef(*new SerializedScriptValue(buffer));
+        return adoptRef(*new SerializedScriptValue(WTFMove(buffer)));
     }
 
     static Ref<SerializedScriptValue> nullValue();
@@ -90,15 +85,9 @@ public:
     bool hasBlobURLs() const { return !m_blobURLs.isEmpty(); }
     void blobURLs(Vector<String>&) const;
 
-#if ENABLE(INDEXED_DATABASE)
-    // FIXME: Get rid of these. The only caller immediately deserializes the result, so it's a very roundabout way to create a JSValue.
-    static Ref<SerializedScriptValue> numberValue(double value);
-    static Ref<SerializedScriptValue> undefinedValue();
-#endif
-
-    static Ref<SerializedScriptValue> createFromWireBytes(const Vector<uint8_t>& data)
+    static Ref<SerializedScriptValue> createFromWireBytes(Vector<uint8_t>&& data)
     {
-        return adoptRef(*new SerializedScriptValue(data));
+        return adoptRef(*new SerializedScriptValue(WTFMove(data)));
     }
     const Vector<uint8_t>& toWireBytes() const { return m_data; }
 
@@ -111,10 +100,9 @@ private:
     static std::unique_ptr<ArrayBufferContentsArray> transferArrayBuffers(JSC::ExecState*, ArrayBufferArray&, SerializationReturnCode&);
     void addBlobURL(const String&);
 
-    SerializedScriptValue(const Vector<unsigned char>&);
-    WEBCORE_EXPORT SerializedScriptValue(Vector<unsigned char>&);
-    SerializedScriptValue(Vector<unsigned char>&, Vector<String>& blobURLs);
-    SerializedScriptValue(Vector<unsigned char>&, Vector<String>& blobURLs, std::unique_ptr<ArrayBufferContentsArray>);
+    WEBCORE_EXPORT SerializedScriptValue(Vector<unsigned char>&&);
+    SerializedScriptValue(Vector<unsigned char>&&, const Vector<String>& blobURLs);
+    SerializedScriptValue(Vector<unsigned char>&&, const Vector<String>& blobURLs, std::unique_ptr<ArrayBufferContentsArray>&&);
 
     Vector<unsigned char> m_data;
     std::unique_ptr<ArrayBufferContentsArray> m_arrayBufferContentsArray;

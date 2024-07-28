@@ -25,7 +25,11 @@ interface HTMLAnchorElement : HTMLElement {
     [Reflect, URL] attribute DOMString href;
     [Reflect] attribute DOMString hreflang;
     [Reflect] attribute DOMString name;
+
+    // FIXME: This is supposed to be:
+    // [PutForwards=value] readonly attribute DOMTokenList ping;
     [Reflect] attribute DOMString ping;
+
     [Reflect] attribute DOMString rel;
     [Reflect] attribute DOMString rev;
     [Reflect] attribute DOMString shape;
@@ -66,6 +70,6 @@ interface HTMLAnchorElement : HTMLElement {
     readonly attribute URL absoluteLinkURL;
 #endif
 
-    readonly attribute DOMTokenList relList;
+    [PutForwards=value] readonly attribute DOMTokenList relList;
 };
 

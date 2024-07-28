@@ -25,19 +25,42 @@
 
 WebInspector.TimelineRecording = class TimelineRecording extends WebInspector.Object
 {
-    constructor(identifier, displayName)
+    constructor(identifier, displayName, instruments)
     {
         super();
 
         this._identifier = identifier;
         this._timelines = new Map;
         this._displayName = displayName;
-        this._isWritable = true;
+        this._capturing = false;
+        this._readonly = false;
+        this._instruments = instruments || [];
+
+        let timelines = [
+            WebInspector.TimelineRecord.Type.Network,
+            WebInspector.TimelineRecord.Type.Layout,
+            WebInspector.TimelineRecord.Type.Script,
+            WebInspector.TimelineRecord.Type.RenderingFrame,
+            WebInspector.TimelineRecord.Type.Memory,
+        ];
+
+        for (let type of timelines) {
+            let timeline = WebInspector.Timeline.create(type);
+            this._timelines.set(type, timeline);
+            timeline.addEventListener(WebInspector.Timeline.Event.TimesUpdated, this._timelineTimesUpdated, this);
+        }
 
         // For legacy backends, we compute the elapsed time of records relative to this timestamp.
         this._legacyFirstRecordedTimestamp = NaN;
 
         this.reset(true);
+    }
+
+    // Static
+
+    static sourceCodeTimelinesSupported()
+    {
+        return WebInspector.debuggableType === WebInspector.DebuggableType.Web;
     }
 
     // Public
@@ -57,6 +80,16 @@ WebInspector.TimelineRecording = class TimelineRecording extends WebInspector.Ob
         return this._timelines;
     }
 
+    get instruments()
+    {
+        return this._instruments;
+    }
+
+    get readonly()
+    {
+        return this._readonly;
+    }
+
     get startTime()
     {
         return this._startTime;
@@ -67,15 +100,32 @@ WebInspector.TimelineRecording = class TimelineRecording extends WebInspector.Ob
         return this._endTime;
     }
 
+    start()
+    {
+        console.assert(!this._capturing, "Attempted to start an already started session.");
+        console.assert(!this._readonly, "Attempted to start a readonly session.");
+
+        this._capturing = true;
+
+        for (let instrument of this._instruments)
+            instrument.startInstrumentation();
+    }
+
+    stop()
+    {
+        console.assert(this._capturing, "Attempted to stop an already stopped session.");
+        console.assert(!this._readonly, "Attempted to stop a readonly session.");
+
+        this._capturing = false;
+
+        for (let instrument of this._instruments)
+            instrument.stopInstrumentation();
+    }
+
     saveIdentityToCookie()
     {
         // Do nothing. Timeline recordings are not persisted when the inspector is
         // re-opened, so do not attempt to restore by identifier or display name.
-    }
-
-    isWritable()
-    {
-        return this._isWritable;
     }
 
     isEmpty()
@@ -92,14 +142,14 @@ WebInspector.TimelineRecording = class TimelineRecording extends WebInspector.Ob
     {
         console.assert(!this.isEmpty(), "Shouldn't unload an empty recording; it should be reused instead.");
 
-        this._isWritable = false;
+        this._readonly = true;
 
         this.dispatchEventToListeners(WebInspector.TimelineRecording.Event.Unloaded);
     }
 
     reset(suppressEvents)
     {
-        console.assert(this._isWritable, "Can't reset a read-only recording.");
+        console.assert(!this._readonly, "Can't reset a read-only recording.");
 
         this._sourceCodeTimelinesMap = new Map;
         this._eventMarkers = [];
@@ -125,32 +175,44 @@ WebInspector.TimelineRecording = class TimelineRecording extends WebInspector.Ob
         return [...timelines.values()];
     }
 
-    addTimeline(timeline)
+    timelineForInstrument(instrument)
     {
-        console.assert(timeline instanceof WebInspector.Timeline, timeline);
-        console.assert(!this._timelines.has(timeline), this._timelines, timeline);
-
-        this._timelines.set(timeline.type, timeline);
-
-        timeline.addEventListener(WebInspector.Timeline.Event.TimesUpdated, this._timelineTimesUpdated, this);
-        this.dispatchEventToListeners(WebInspector.TimelineRecording.Event.TimelineAdded, {timeline});
+        return this._timelines.get(instrument.timelineRecordType);
     }
 
-    removeTimeline(timeline)
+    timelineForRecordType(recordType)
     {
-        console.assert(timeline instanceof WebInspector.Timeline, timeline);
-        console.assert(this._timelines.has(timeline.type), this._timelines, timeline);
-        console.assert(this._timelines.get(timeline.type) === timeline, this._timelines, timeline);
-
-        this._timelines.delete(timeline.type);
-
-        timeline.removeEventListener(WebInspector.Timeline.Event.TimesUpdated, this._timelineTimesUpdated, this);
-        this.dispatchEventToListeners(WebInspector.TimelineRecording.Event.TimelineRemoved, {timeline});
+        return this._timelines.get(recordType);
     }
 
-    addEventMarker(eventMarker)
+    addInstrument(instrument)
     {
-        this._eventMarkers.push(eventMarker);
+        console.assert(instrument instanceof WebInspector.Instrument, instrument);
+        console.assert(!this._instruments.contains(instrument), this._instruments, instrument);
+
+        this._instruments.push(instrument);
+
+        this.dispatchEventToListeners(WebInspector.TimelineRecording.Event.InstrumentAdded, {instrument});
+    }
+
+    removeInstrument(instrument)
+    {
+        console.assert(instrument instanceof WebInspector.Instrument, instrument);
+        console.assert(this._instruments.contains(instrument), this._instruments, instrument);
+
+        this._instruments.remove(instrument);
+
+        this.dispatchEventToListeners(WebInspector.TimelineRecording.Event.InstrumentRemoved, {instrument});
+    }
+
+    addEventMarker(marker)
+    {
+        if (!this._capturing)
+            return;
+
+        this._eventMarkers.push(marker);
+
+        this.dispatchEventToListeners(WebInspector.TimelineRecording.Event.MarkerAdded, {marker});
     }
 
     addRecord(record)
@@ -163,8 +225,13 @@ WebInspector.TimelineRecording = class TimelineRecording extends WebInspector.Ob
         // Add the record to the global timeline by type.
         timeline.addRecord(record);
 
-        // Network and RenderingFrame records don't have source code timelines.
-        if (record.type === WebInspector.TimelineRecord.Type.Network || record.type === WebInspector.TimelineRecord.Type.RenderingFrame)
+        // Some records don't have source code timelines.
+        if (record.type === WebInspector.TimelineRecord.Type.Network
+            || record.type === WebInspector.TimelineRecord.Type.RenderingFrame
+            || record.type === WebInspector.TimelineRecord.Type.Memory)
+            return;
+
+        if (!WebInspector.TimelineRecording.sourceCodeTimelinesSupported())
             return;
 
         // Add the record to the source code timelines.
@@ -197,7 +264,7 @@ WebInspector.TimelineRecording = class TimelineRecording extends WebInspector.Ob
         if (!timestamp || isNaN(timestamp))
             return NaN;
 
-        // COMPATIBILITY (iOS8): old backends send timestamps (seconds or milliseconds since the epoch),
+        // COMPATIBILITY (iOS 8): old backends send timestamps (seconds or milliseconds since the epoch),
         // rather than seconds elapsed since timeline capturing started. We approximate the latter by
         // subtracting the start timestamp, as old versions did not use monotonic times.
         if (WebInspector.TimelineRecording.isLegacy === undefined)
@@ -226,6 +293,18 @@ WebInspector.TimelineRecording = class TimelineRecording extends WebInspector.Ob
             timestamp *= 1000;
 
         this._legacyFirstRecordedTimestamp = timestamp;
+    }
+
+    initializeTimeBoundsIfNecessary(timestamp)
+    {
+        if (isNaN(this._startTime)) {
+            console.assert(isNaN(this._endTime));
+
+            this._startTime = timestamp;
+            this._endTime = timestamp;
+
+            this.dispatchEventToListeners(WebInspector.TimelineRecording.Event.TimesUpdated);
+        }
     }
 
     // Private
@@ -266,9 +345,10 @@ WebInspector.TimelineRecording.Event = {
     Reset: "timeline-recording-reset",
     Unloaded: "timeline-recording-unloaded",
     SourceCodeTimelineAdded: "timeline-recording-source-code-timeline-added",
-    TimelineAdded: "timeline-recording-timeline-added",
-    TimelineRemoved: "timeline-recording-timeline-removed",
-    TimesUpdated: "timeline-recording-times-updated"
+    InstrumentAdded: "timeline-recording-instrument-added",
+    InstrumentRemoved: "timeline-recording-instrument-removed",
+    TimesUpdated: "timeline-recording-times-updated",
+    MarkerAdded: "timeline-recording-marker-added",
 };
 
 WebInspector.TimelineRecording.isLegacy = undefined;

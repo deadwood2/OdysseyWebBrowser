@@ -26,15 +26,13 @@
 #ifndef BlobRegistryProxy_h
 #define BlobRegistryProxy_h
 
-#if ENABLE(NETWORK_PROCESS)
-
 #include <WebCore/BlobRegistry.h>
 
 namespace WebKit {
 
 class BlobRegistryProxy final : public WebCore::BlobRegistry {
 public:
-    virtual void registerFileBlobURL(const WebCore::URL&, PassRefPtr<WebCore::BlobDataFileReference>, const String& contentType) override;
+    virtual void registerFileBlobURL(const WebCore::URL&, RefPtr<WebCore::BlobDataFileReference>&&, const String& contentType) override;
     virtual void registerBlobURL(const WebCore::URL&, Vector<WebCore::BlobPart>, const String& contentType) override;
     virtual void registerBlobURL(const WebCore::URL&, const WebCore::URL& srcURL) override;
     virtual void unregisterBlobURL(const WebCore::URL&) override;
@@ -43,7 +41,5 @@ public:
 };
 
 }
-
-#endif // ENABLE(NETWORK_PROCESS)
 
 #endif // BlobRegistryProxy_h

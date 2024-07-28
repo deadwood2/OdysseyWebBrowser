@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2007, 2009 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2007, 2009, 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,6 +30,7 @@
 #include "SubresourceLoader.h"
 
 #include "CachedResourceLoader.h"
+#include "CrossOriginAccessControl.h"
 #include "DiagnosticLoggingClient.h"
 #include "DiagnosticLoggingKeys.h"
 #include "Document.h"
@@ -40,10 +41,12 @@
 #include "MainFrame.h"
 #include "MemoryCache.h"
 #include "Page.h"
+#include "ResourceLoadObserver.h"
 #include "Settings.h"
 #include <wtf/Ref.h>
 #include <wtf/RefCountedLeakCounter.h>
 #include <wtf/StdLibExtras.h>
+#include <wtf/TemporaryChange.h>
 #include <wtf/text/CString.h>
 
 #if PLATFORM(IOS)
@@ -144,6 +147,13 @@ bool SubresourceLoader::init(const ResourceRequest& request)
     ASSERT(!reachedTerminalState());
     m_state = Initialized;
     m_documentLoader->addSubresourceLoader(this);
+
+    // FIXME: https://bugs.webkit.org/show_bug.cgi?id=155633.
+    // SubresourceLoader could use the document origin as a default and set PotentiallyCrossOriginEnabled requests accordingly.
+    // This would simplify resource loader users as they would only need to set the policy to PotentiallyCrossOriginEnabled.
+    if (options().requestOriginPolicy() == PotentiallyCrossOriginEnabled)
+        m_origin = SecurityOrigin::createFromString(request.httpOrigin());
+
     return true;
 }
 
@@ -157,6 +167,11 @@ void SubresourceLoader::willSendRequestInternal(ResourceRequest& newRequest, con
     // Store the previous URL because the call to ResourceLoader::willSendRequest will modify it.
     URL previousURL = request().url();
     Ref<SubresourceLoader> protect(*this);
+
+    if (!newRequest.url().isValid()) {
+        cancel(cannotShowURLError());
+        return;
+    }
 
     ASSERT(!newRequest.isNull());
     if (!redirectResponse.isNull()) {
@@ -175,6 +190,12 @@ void SubresourceLoader::willSendRequestInternal(ResourceRequest& newRequest, con
             cancel();
             return;
         }
+
+        if (options().requestOriginPolicy() == PotentiallyCrossOriginEnabled && !checkCrossOriginAccessControl(request(), redirectResponse, newRequest)) {
+            cancel();
+            return;
+        }
+
         if (m_resource->isImage() && m_documentLoader->cachedResourceLoader().shouldDeferImageLoad(newRequest.url())) {
             cancel();
             return;
@@ -188,6 +209,9 @@ void SubresourceLoader::willSendRequestInternal(ResourceRequest& newRequest, con
     ResourceLoader::willSendRequestInternal(newRequest, redirectResponse);
     if (newRequest.isNull())
         cancel();
+
+    if (Settings::resourceLoadStatisticsEnabled())
+        ResourceLoadObserver::sharedObserver().logSubresourceLoading(!redirectResponse.isNull(), redirectResponse.url(), newRequest.url(), m_frame ? m_frame->mainFrame().document()->url() : URL());
 }
 
 void SubresourceLoader::didSendData(unsigned long long bytesSent, unsigned long long totalBytesToBeSent)
@@ -208,6 +232,14 @@ void SubresourceLoader::didReceiveResponse(const ResourceResponse& response)
 
     if (shouldIncludeCertificateInfo())
         response.includeCertificateInfo();
+
+    if (response.isHttpVersion0_9()) {
+        if (m_frame) {
+            String message = "Sandboxing '" + response.url().string() + "' because it is using HTTP/0.9.";
+            m_frame->document()->addConsoleMessage(MessageSource::Security, MessageLevel::Error, message, identifier());
+            frameLoader()->forceSandboxFlags(SandboxScripts | SandboxPlugins);
+        }
+    }
 
     if (m_resource->resourceToRevalidate()) {
         if (response.httpStatusCode() == 304) {
@@ -352,6 +384,31 @@ static void logResourceLoaded(Frame* frame, CachedResource::Type type)
     frame->mainFrame().diagnosticLoggingClient().logDiagnosticMessageWithValue(DiagnosticLoggingKeys::resourceKey(), DiagnosticLoggingKeys::loadedKey(), resourceType, ShouldSample::Yes);
 }
 
+bool SubresourceLoader::checkCrossOriginAccessControl(const ResourceRequest& previousRequest, const ResourceResponse& redirectResponse, ResourceRequest& newRequest)
+{
+    if (m_origin->canRequest(newRequest.url()))
+        return true;
+
+    String errorDescription;
+    bool responsePassesCORS = m_origin->canRequest(previousRequest.url())
+        || passesAccessControlCheck(redirectResponse, options().allowCredentials(), m_origin.get(), errorDescription);
+    if (!responsePassesCORS || !isValidCrossOriginRedirectionURL(newRequest.url())) {
+        if (m_frame && m_frame->document()) {
+            String errorMessage = "Cross-origin redirection denied by Cross-Origin Resource Sharing policy: " +
+                (!responsePassesCORS ? errorDescription : "Redirected to either a non-HTTP URL or a URL that contains credentials.");
+            m_frame->document()->addConsoleMessage(MessageSource::Security, MessageLevel::Error, errorMessage);
+        }
+        return false;
+    }
+
+    // If the request URL origin is not the same as the original origin, the request origin should be set to a globally unique identifier.
+    m_origin = SecurityOrigin::createUnique();
+    cleanRedirectedRequestForAccessControl(newRequest);
+    updateRequestForAccessControl(newRequest, m_origin.get(), options().allowCredentials());
+
+    return true;
+}
+
 void SubresourceLoader::didFinishLoading(double finishTime)
 {
     if (m_state != Initialized)
@@ -465,7 +522,7 @@ void SubresourceLoader::releaseResources()
     if (m_state != Uninitialized)
 #endif
         m_resource->clearLoader();
-    m_resource = 0;
+    m_resource = nullptr;
     ResourceLoader::releaseResources();
 }
 

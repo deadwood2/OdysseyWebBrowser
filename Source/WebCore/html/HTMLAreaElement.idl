@@ -23,7 +23,11 @@ interface HTMLAreaElement : HTMLElement {
     [Reflect] attribute DOMString coords;
     [Reflect, URL] attribute DOMString href;
     [Reflect] attribute boolean noHref;
+
+    // FIXME: This is supposed to be:
+    // [PutForwards=value] readonly attribute DOMTokenList ping;
     [Reflect] attribute DOMString ping;
+
     [Reflect] attribute DOMString rel;
     [Reflect] attribute DOMString shape;
     [Reflect] attribute DOMString target;
@@ -45,6 +49,6 @@ interface HTMLAreaElement : HTMLElement {
     readonly attribute URL absoluteLinkURL;
 #endif
 
-    readonly attribute DOMTokenList relList;
+    [PutForwards=value] readonly attribute DOMTokenList relList;
 };
 

@@ -345,6 +345,16 @@ WebInspector.RemoteObject = class RemoteObject
         }
     }
 
+    isUndefined()
+    {
+        return this._type === "undefined";
+    }
+
+    isNode()
+    {
+        return this._subtype === "node";
+    }
+
     isArray()
     {
         return this._subtype === "array";
@@ -381,7 +391,7 @@ WebInspector.RemoteObject = class RemoteObject
         var objectGroup = this.isWeakCollection() ? this._weakCollectionObjectGroup() : "";
 
         RuntimeAgent.getCollectionEntries(this._objectId, objectGroup, start, numberToFetch, function(error, entries) {
-            entries = entries.map(function(entry) { return WebInspector.CollectionEntry.fromPayload(entry); });
+            entries = entries.map(WebInspector.CollectionEntry.fromPayload);
             callback(entries);
         });
     }
@@ -406,13 +416,15 @@ WebInspector.RemoteObject = class RemoteObject
         function mycallback(error, result, wasThrown)
         {
             result = result ? WebInspector.RemoteObject.fromPayload(result) : null;
-            callback(error, result, wasThrown);
+
+            if (callback && typeof callback === "function")
+                callback(error, result, wasThrown);
         }
 
         if (args)
             args = args.map(WebInspector.RemoteObject.createCallArgument);
 
-        RuntimeAgent.callFunctionOn(this._objectId, appendWebInspectorSourceURL(functionDeclaration.toString()), args, true, undefined, generatePreview, mycallback);
+        RuntimeAgent.callFunctionOn(this._objectId, appendWebInspectorSourceURL(functionDeclaration.toString()), args, true, undefined, !!generatePreview, mycallback);
     }
 
     callFunctionJSON(functionDeclaration, args, callback)
@@ -501,7 +513,7 @@ WebInspector.RemoteObject = class RemoteObject
             var location = response.location;
             var sourceCode = WebInspector.debuggerManager.scriptForIdentifier(location.scriptId);
 
-            if (!sourceCode || sourceCode.url.startsWith("__WebInspector")) {
+            if (!sourceCode || (!WebInspector.isDebugUIEnabled() && isWebInspectorDebugScript(sourceCode.url))) {
                 result.resolve(WebInspector.RemoteObject.SourceCodeLocationPromise.NoSourceFound);
                 return;
             }

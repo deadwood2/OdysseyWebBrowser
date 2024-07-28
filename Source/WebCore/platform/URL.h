@@ -114,6 +114,9 @@ public:
     WEBCORE_EXPORT String fragmentIdentifier() const;
     WEBCORE_EXPORT bool hasFragmentIdentifier() const;
 
+    bool hasUsername() const;
+    bool hasPassword() const;
+
     // Unlike user() and pass(), these functions don't decode escape sequences.
     // This is necessary for accurate round-tripping, because encoding doesn't encode '%' characters.
     String encodedUser() const;
@@ -126,6 +129,7 @@ public:
     // Returns true if the current URL's protocol is the same as the null-
     // terminated ASCII argument. The argument must be lower-case.
     WEBCORE_EXPORT bool protocolIs(const char*) const;
+    bool protocolIsBlob() const { return protocolIs("blob"); }
     bool protocolIsData() const { return protocolIs("data"); }
     bool protocolIsInHTTPFamily() const;
     WEBCORE_EXPORT bool isLocalFile() const;
@@ -233,6 +237,7 @@ bool operator!=(const String&, const URL&);
 
 WEBCORE_EXPORT bool equalIgnoringFragmentIdentifier(const URL&, const URL&);
 WEBCORE_EXPORT bool protocolHostAndPortAreEqual(const URL&, const URL&);
+WEBCORE_EXPORT bool hostsAreEqual(const URL&, const URL&);
 
 WEBCORE_EXPORT const URL& blankURL();
 
@@ -245,8 +250,9 @@ WEBCORE_EXPORT bool protocolIs(const String& url, const char* protocol);
 WEBCORE_EXPORT bool protocolIsJavaScript(const String& url);
 WEBCORE_EXPORT bool protocolIsInHTTPFamily(const String& url);
 
+unsigned short defaultPortForProtocol(const String& protocol);
 bool isDefaultPortForProtocol(unsigned short port, const String& protocol);
-bool portAllowed(const URL&); // Blacklist ports that should never be used for Web resources.
+WEBCORE_EXPORT bool portAllowed(const URL&); // Blacklist ports that should never be used for Web resources.
 
 bool isValidProtocol(const String&);
 
@@ -340,6 +346,16 @@ inline bool URL::hasPort() const
     return m_hostEnd < m_portEnd;
 }
 
+inline bool URL::hasUsername() const
+{
+    return m_userEnd > m_userStart;
+}
+
+inline bool URL::hasPassword() const
+{
+    return m_passwordEnd > (m_userEnd + 1);
+}
+
 inline bool URL::protocolIsInHTTPFamily() const
 {
     return m_protocolIsInHTTPFamily;
@@ -392,7 +408,7 @@ inline const URL& URLCapture::url() const
 
 inline URL URLCapture::releaseURL()
 {
-    return WTF::move(m_URL);
+    return WTFMove(m_URL);
 }
 
 } // namespace WebCore

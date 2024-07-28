@@ -41,7 +41,7 @@
 #include "ProcessAssertion.h"
 #include <UIKit/UIAccessibility.h>
 
-#if __has_include(<AXRuntime/AXNotificationConstants.h>)
+#if USE(APPLE_INTERNAL_SDK)
 #include <AXRuntime/AXDefines.h>
 #include <AXRuntime/AXNotificationConstants.h>
 #else
@@ -50,7 +50,9 @@
 
 #endif
 
-#if __has_include(<HIServices/AccessibilityPriv.h>)
+#if PLATFORM(MAC)
+
+#if USE(APPLE_INTERNAL_SDK)
 #include <HIServices/AccessibilityPriv.h>
 #else
 typedef enum {
@@ -59,9 +61,9 @@ typedef enum {
 } AXSuspendStatus;
 #endif
 
-#if !TARGET_OS_IPHONE && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
 extern "C" AXError _AXUIElementNotifyProcessSuspendStatus(AXSuspendStatus);
-#endif
+
+#endif // PLATFORM(MAC)
 
 namespace IPC {
 
@@ -193,10 +195,8 @@ bool Connection::open()
         // Create the receive port.
         mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &m_receivePort);
 
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
+#if PLATFORM(MAC)
         mach_port_set_attributes(mach_task_self(), m_receivePort, MACH_PORT_DENAP_RECEIVER, (mach_port_info_t)0, 0);
-#elif PLATFORM(MAC)
-        mach_port_set_attributes(mach_task_self(), m_receivePort, MACH_PORT_IMPORTANCE_RECEIVER, (mach_port_info_t)0, 0);
 #endif
 
         m_isConnected = true;
@@ -205,7 +205,7 @@ bool Connection::open()
         auto encoder = std::make_unique<MessageEncoder>("IPC", "InitializeConnection", 0);
         encoder->encode(MachPort(m_receivePort, MACH_MSG_TYPE_MAKE_SEND));
 
-        sendMessage(WTF::move(encoder));
+        sendMessage(WTFMove(encoder));
 
         initializeDeadNameSource();
     }
@@ -228,7 +228,7 @@ bool Connection::open()
         auto encoder = std::make_unique<MessageEncoder>("IPC", "SetExceptionPort", 0);
         encoder->encode(MachPort(m_exceptionPort, MACH_MSG_TYPE_MAKE_SEND));
 
-        sendMessage(WTF::move(encoder));
+        sendMessage(WTFMove(encoder));
     }
 #endif
 
@@ -430,7 +430,7 @@ static std::unique_ptr<MessageDecoder> createMessageDecoder(mach_msg_header_t* h
         uint8_t* messageBody = static_cast<uint8_t*>(descriptor->out_of_line.address);
         size_t messageBodySize = descriptor->out_of_line.size;
 
-        auto decoder = std::make_unique<MessageDecoder>(DataReference(messageBody, messageBodySize), WTF::move(attachments));
+        auto decoder = std::make_unique<MessageDecoder>(DataReference(messageBody, messageBodySize), WTFMove(attachments));
 
         vm_deallocate(mach_task_self(), reinterpret_cast<vm_address_t>(descriptor->out_of_line.address), descriptor->out_of_line.size);
 
@@ -537,7 +537,7 @@ void Connection::receiveSourceEventHandler()
     }
 #endif
 
-    processIncomingMessage(WTF::move(decoder));
+    processIncomingMessage(WTFMove(decoder));
 }    
 
 #if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED <= 101000
@@ -611,9 +611,9 @@ bool Connection::kill()
     
 static void AccessibilityProcessSuspendedNotification(bool suspended)
 {
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
+#if PLATFORM(MAC)
     _AXUIElementNotifyProcessSuspendStatus(suspended ? AXSuspendStatusSuspended : AXSuspendStatusRunning);
-#elif PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000
+#elif PLATFORM(IOS)
     UIAccessibilityPostNotification(kAXPidStatusChangedNotification, @{ @"pid" : @(getpid()), @"suspended" : @(suspended) });
 #else
     UNUSED_PARAM(suspended);

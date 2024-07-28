@@ -39,7 +39,7 @@ namespace WebCore {
 
 PlatformMessagePortChannel::EventData::EventData(PassRefPtr<SerializedScriptValue> message, std::unique_ptr<MessagePortChannelArray> channels)
     : m_message(message)
-    , m_channels(WTF::move(channels))
+    , m_channels(WTFMove(channels))
 {
 }
 
@@ -54,8 +54,8 @@ void MessagePortChannel::createChannel(PassRefPtr<MessagePort> port1, PassRefPtr
     channel1->m_channel->m_entangledChannel = channel2->m_channel;
     channel2->m_channel->m_entangledChannel = channel1->m_channel;
 
-    port1->entangle(WTF::move(channel2));
-    port2->entangle(WTF::move(channel1));
+    port1->entangle(WTFMove(channel2));
+    port2->entangle(WTFMove(channel1));
 }
 
 MessagePortChannel::MessagePortChannel(PassRefPtr<PlatformMessagePortChannel> channel)
@@ -83,7 +83,7 @@ void MessagePortChannel::disentangle()
 {
     RefPtr<PlatformMessagePortChannel> remote = m_channel->entangledChannel();
     if (remote)
-        remote->setRemotePort(0);
+        remote->setRemotePort(nullptr);
 }
 
 void MessagePortChannel::postMessageToRemote(PassRefPtr<SerializedScriptValue> message, std::unique_ptr<MessagePortChannelArray> channels)
@@ -91,7 +91,7 @@ void MessagePortChannel::postMessageToRemote(PassRefPtr<SerializedScriptValue> m
     LockHolder lock(m_channel->m_mutex);
     if (!m_channel->m_outgoingQueue)
         return;
-    bool wasEmpty = m_channel->m_outgoingQueue->appendAndCheckEmpty(std::make_unique<PlatformMessagePortChannel::EventData>(message, WTF::move(channels)));
+    bool wasEmpty = m_channel->m_outgoingQueue->appendAndCheckEmpty(std::make_unique<PlatformMessagePortChannel::EventData>(message, WTFMove(channels)));
     if (wasEmpty && m_channel->m_remotePort)
         m_channel->m_remotePort->messageAvailable();
 }
@@ -154,7 +154,6 @@ Ref<PlatformMessagePortChannel> PlatformMessagePortChannel::create(PassRefPtr<Me
 PlatformMessagePortChannel::PlatformMessagePortChannel(PassRefPtr<MessagePortQueue> incoming, PassRefPtr<MessagePortQueue> outgoing)
     : m_incomingQueue(incoming)
     , m_outgoingQueue(outgoing)
-    , m_remotePort(0)
 {
 }
 
@@ -170,7 +169,7 @@ void PlatformMessagePortChannel::setRemotePort(MessagePort* port)
     m_remotePort = port;
 }
 
-PassRefPtr<PlatformMessagePortChannel> PlatformMessagePortChannel::entangledChannel()
+RefPtr<PlatformMessagePortChannel> PlatformMessagePortChannel::entangledChannel()
 {
     // FIXME: What guarantees that the result remains the same after we release the lock?
     // This lock only guarantees that the returned pointer will not be pointing to released memory,

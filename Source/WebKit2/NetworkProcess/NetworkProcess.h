@@ -26,8 +26,6 @@
 #ifndef NetworkProcess_h
 #define NetworkProcess_h
 
-#if ENABLE(NETWORK_PROCESS)
-
 #include "CacheModel.h"
 #include "ChildProcess.h"
 #include "DownloadManager.h"
@@ -47,6 +45,8 @@ namespace WebCore {
 class CertificateInfo;
 class NetworkStorageSession;
 class SecurityOrigin;
+class SessionID;
+struct SecurityOriginData;
 }
 
 namespace WebKit {
@@ -54,7 +54,6 @@ class AuthenticationManager;
 class NetworkConnectionToWebProcess;
 class NetworkProcessSupplement;
 struct NetworkProcessCreationParameters;
-struct SecurityOriginData;
 
 class NetworkProcess : public ChildProcess, private DownloadManager::Client {
     WTF_MAKE_NONCOPYABLE(NetworkProcess);
@@ -93,7 +92,7 @@ public:
 
 #if USE(CFURLCACHE)
     static Vector<Ref<WebCore::SecurityOrigin>> cfURLCacheOrigins();
-    static void clearCFURLCacheForOrigins(const Vector<SecurityOriginData>&);
+    static void clearCFURLCacheForOrigins(const Vector<WebCore::SecurityOriginData>&);
 #endif
 
 #if PLATFORM(COCOA)
@@ -145,14 +144,20 @@ private:
 
     void fetchWebsiteData(WebCore::SessionID, uint64_t websiteDataTypes, uint64_t callbackID);
     void deleteWebsiteData(WebCore::SessionID, uint64_t websiteDataTypes, std::chrono::system_clock::time_point modifiedSince, uint64_t callbackID);
-    void deleteWebsiteDataForOrigins(WebCore::SessionID, uint64_t websiteDataTypes, const Vector<SecurityOriginData>& origins, const Vector<String>& cookieHostNames, uint64_t callbackID);
+    void deleteWebsiteDataForOrigins(WebCore::SessionID, uint64_t websiteDataTypes, const Vector<WebCore::SecurityOriginData>& origins, const Vector<String>& cookieHostNames, uint64_t callbackID);
+
+    void clearCachedCredentials();
 
     // FIXME: This should take a session ID so we can identify which disk cache to delete.
     void clearDiskCache(std::chrono::system_clock::time_point modifiedSince, std::function<void ()> completionHandler);
 
-    void downloadRequest(uint64_t downloadID, const WebCore::ResourceRequest&);
-    void resumeDownload(uint64_t downloadID, const IPC::DataReference& resumeData, const String& path, const SandboxExtension::Handle&);
-    void cancelDownload(uint64_t downloadID);
+    void downloadRequest(WebCore::SessionID, DownloadID, const WebCore::ResourceRequest&);
+    void resumeDownload(WebCore::SessionID, DownloadID, const IPC::DataReference& resumeData, const String& path, const SandboxExtension::Handle&);
+    void cancelDownload(DownloadID);
+#if USE(NETWORK_SESSION)
+    void continueCanAuthenticateAgainstProtectionSpace(DownloadID, bool canAuthenticate);
+    void continueWillSendRequest(DownloadID, const WebCore::ResourceRequest&);
+#endif
     void setCacheModel(uint32_t);
     void allowSpecificHTTPSCertificateForHost(const WebCore::CertificateInfo&, const String& host);
     void setCanHandleHTTPSServerTrustEvaluation(bool);
@@ -195,7 +200,5 @@ private:
 };
 
 } // namespace WebKit
-
-#endif // ENABLE(NETWORK_PROCESS)
 
 #endif // NetworkProcess_h

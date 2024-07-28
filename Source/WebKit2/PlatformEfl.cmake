@@ -1,6 +1,13 @@
 list(APPEND WebKit2_SOURCES
     DatabaseProcess/efl/DatabaseProcessMainEfl.cpp
 
+    NetworkProcess/CustomProtocols/soup/CustomProtocolManagerImpl.cpp
+    NetworkProcess/CustomProtocols/soup/CustomProtocolManagerSoup.cpp
+
+    NetworkProcess/Downloads/efl/DownloadSoupErrorsEfl.cpp
+
+    NetworkProcess/Downloads/soup/DownloadSoup.cpp
+
     NetworkProcess/efl/NetworkProcessMainEfl.cpp
 
     NetworkProcess/soup/NetworkProcessSoup.cpp
@@ -22,17 +29,12 @@ list(APPEND WebKit2_SOURCES
 
     Shared/API/c/efl/WKArrayEfl.cpp
 
+    Shared/Authentication/soup/AuthenticationManagerSoup.cpp
+
     Shared/CoordinatedGraphics/CoordinatedBackingStore.cpp
     Shared/CoordinatedGraphics/CoordinatedGraphicsArgumentCoders.cpp
     Shared/CoordinatedGraphics/CoordinatedGraphicsScene.cpp
     Shared/CoordinatedGraphics/WebCoordinatedSurface.cpp
-
-    Shared/Downloads/efl/DownloadSoupErrorsEfl.cpp
-
-    Shared/Downloads/soup/DownloadSoup.cpp
-
-    Shared/Network/CustomProtocols/soup/CustomProtocolManagerImpl.cpp
-    Shared/Network/CustomProtocols/soup/CustomProtocolManagerSoup.cpp
 
     Shared/Plugins/Netscape/x11/NetscapePluginModuleX11.cpp
 
@@ -40,7 +42,6 @@ list(APPEND WebKit2_SOURCES
 
     Shared/cairo/ShareableBitmapCairo.cpp
 
-    Shared/efl/NativeContextMenuItemEfl.cpp
     Shared/efl/NativeWebKeyboardEventEfl.cpp
     Shared/efl/NativeWebTouchEventEfl.cpp
     Shared/efl/NativeWebWheelEventEfl.cpp
@@ -64,6 +65,7 @@ list(APPEND WebKit2_SOURCES
 
     UIProcess/BackingStore.cpp
     UIProcess/DefaultUndoController.cpp
+    UIProcess/LegacySessionStateCodingNone.cpp
 
     UIProcess/API/C/CoordinatedGraphics/WKView.cpp
 
@@ -83,6 +85,7 @@ list(APPEND WebKit2_SOURCES
 
     UIProcess/API/cpp/efl/WKEinaSharedString.cpp
 
+    UIProcess/API/efl/APIWebsiteDataStoreEfl.cpp
     UIProcess/API/efl/EwkView.cpp
     UIProcess/API/efl/GestureRecognizer.cpp
     UIProcess/API/efl/SnapshotImageGL.cpp
@@ -116,6 +119,7 @@ list(APPEND WebKit2_SOURCES
     UIProcess/API/efl/ewk_url_request.cpp
     UIProcess/API/efl/ewk_url_response.cpp
     UIProcess/API/efl/ewk_url_scheme_request.cpp
+    UIProcess/API/efl/ewk_view_configuration.cpp
     UIProcess/API/efl/ewk_view.cpp
     UIProcess/API/efl/ewk_window_features.cpp
 
@@ -123,8 +127,6 @@ list(APPEND WebKit2_SOURCES
     UIProcess/CoordinatedGraphics/CoordinatedLayerTreeHostProxy.cpp
     UIProcess/CoordinatedGraphics/PageViewportController.cpp
     UIProcess/CoordinatedGraphics/WebPageProxyCoordinatedGraphics.cpp
-    UIProcess/CoordinatedGraphics/WebView.cpp
-    UIProcess/CoordinatedGraphics/WebViewClient.cpp
 
     UIProcess/Databases/efl/DatabaseProcessProxyEfl.cpp
 
@@ -144,6 +146,8 @@ list(APPEND WebKit2_SOURCES
     UIProcess/Plugins/unix/PluginProcessProxyUnix.cpp
 
     UIProcess/Storage/StorageManager.cpp
+
+    UIProcess/WebsiteData/unix/WebsiteDataStoreUnix.cpp
 
     UIProcess/cairo/BackingStoreCairo.cpp
 
@@ -178,6 +182,8 @@ list(APPEND WebKit2_SOURCES
     UIProcess/efl/WebProcessPoolEfl.cpp
     UIProcess/efl/WebProcessProxyEfl.cpp
     UIProcess/efl/WebUIPopupMenuClient.cpp
+    UIProcess/efl/WebView.cpp
+    UIProcess/efl/WebViewClient.cpp
     UIProcess/efl/WebViewEfl.cpp
 
     UIProcess/gstreamer/InstallMissingMediaPluginsPermissionRequest.cpp
@@ -196,6 +202,7 @@ list(APPEND WebKit2_SOURCES
 
     WebProcess/MediaCache/WebMediaKeyStorageManager.cpp
 
+    WebProcess/Plugins/Netscape/unix/NetscapePluginUnix.cpp
     WebProcess/Plugins/Netscape/unix/PluginProxyUnix.cpp
 
     WebProcess/Plugins/Netscape/x11/NetscapePluginX11.cpp
@@ -243,13 +250,13 @@ list(APPEND WebKit2_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/network/soup"
     "${WEBCORE_DIR}/platform/text/enchant"
     "${WEBKIT2_DIR}/DatabaseProcess/unix"
+    "${WEBKIT2_DIR}/NetworkProcess/CustomProtocols/soup"
+    "${WEBKIT2_DIR}/NetworkProcess/Downloads/soup"
     "${WEBKIT2_DIR}/NetworkProcess/efl"
     "${WEBKIT2_DIR}/NetworkProcess/unix"
     "${WEBKIT2_DIR}/Platform/efl"
     "${WEBKIT2_DIR}/Shared/API/c/efl"
     "${WEBKIT2_DIR}/Shared/CoordinatedGraphics"
-    "${WEBKIT2_DIR}/Shared/Downloads/soup"
-    "${WEBKIT2_DIR}/Shared/Network/CustomProtocols/soup"
     "${WEBKIT2_DIR}/Shared/Plugins/unix"
     "${WEBKIT2_DIR}/Shared/glib"
     "${WEBKIT2_DIR}/Shared/efl"
@@ -269,6 +276,8 @@ list(APPEND WebKit2_INCLUDE_DIRECTORIES
     "${WEBKIT2_DIR}/WebProcess/soup"
     "${WEBKIT2_DIR}/WebProcess/unix"
     "${WEBKIT2_DIR}/WebProcess/InjectedBundle/API/efl"
+    "${WEBKIT2_DIR}/WebProcess/Plugins/Netscape/unix"
+    "${WEBKIT2_DIR}/WebProcess/Plugins/Netscape/x11"
     "${WEBKIT2_DIR}/WebProcess/WebCoreSupport/efl"
     "${WEBKIT2_DIR}/WebProcess/WebCoreSupport/soup"
     "${WEBKIT2_DIR}/WebProcess/WebPage/CoordinatedGraphics"
@@ -504,10 +513,10 @@ add_definitions(-DTEST_RESOURCES_DIR=\"${TEST_RESOURCES_DIR}\"
     -DLIBEXECDIR=\"${EXEC_INSTALL_DIR}\"
     -DDATADIR=\"${CMAKE_INSTALL_PREFIX}/share\"
     -DEXTENSIONMANAGERDIR=\"${CMAKE_INSTALL_PREFIX}/${EWEBKIT_EXTENSION_MANAGER_INSTALL_DIR}\"
-    -DWEBPROCESSNAME=\"WebProcess\"
-    -DPLUGINPROCESSNAME=\"PluginProcess\"
-    -DNETWORKPROCESSNAME=\"NetworkProcess\"
-    -DDATABASEPROCESSNAME=\"DatabaseProcess\"
+    -DWEBPROCESSNAME=\"WebKitWebProcess\"
+    -DPLUGINPROCESSNAME=\"WebKitPluginProcess\"
+    -DNETWORKPROCESSNAME=\"WebKitNetworkProcess\"
+    -DDATABASEPROCESSNAME=\"WebKitDatabaseProcess\"
     -DEXTENSIONMANAGERNAME=\"libewebkit_extension_manager.so\"
     -DGTEST_HAS_RTTI=0
 )
@@ -531,6 +540,7 @@ set(EWK2UnitTests_BINARIES
     test_ewk2_color_picker
     test_ewk2_context
     test_ewk2_context_history_callbacks
+    test_ewk2_context_menu
     test_ewk2_cookie_manager
     test_ewk2_database_manager
     test_ewk2_download_job
@@ -547,13 +557,13 @@ set(EWK2UnitTests_BINARIES
     test_ewk2_storage_manager
     test_ewk2_text_checker
     test_ewk2_view
+    test_ewk2_view_configuration
     test_ewk2_window_features
 )
 
 # Skipped unit tests list:
 #
 # webkit.org/b/107422: test_ewk2_auth_request
-# webkit.org/b/132980: test_ewk2_context_menu
 
 if (ENABLE_API_TESTS)
     foreach (testName ${EWK2UnitTests_BINARIES})

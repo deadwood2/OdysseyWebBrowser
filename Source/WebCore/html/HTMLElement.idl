@@ -19,6 +19,9 @@
  */
 
 [
+#if defined(ENABLE_CUSTOM_ELEMENTS) && ENABLE_CUSTOM_ELEMENTS
+    CustomConstructor(optional DOMString localName),
+#endif
     JSGenerateToNativeObject,
     JSCustomPushEventHandlerScope,
 ] interface HTMLElement : Element {
@@ -33,7 +36,11 @@
 
              attribute long              tabIndex;
              attribute boolean           draggable;
+
              [Reflect] attribute DOMString webkitdropzone;
+             // FIXME: Support the standard HTML equivalent.
+             // [PutForwards=value] readonly attribute DOMTokenList dropzone;
+
              [Reflect] attribute boolean hidden;
              [Reflect] attribute DOMString accessKey;
 

@@ -38,7 +38,7 @@ log = logging.getLogger('global')
 def ucfirst(str):
     return str[:1].upper() + str[1:]
 
-_ALWAYS_UPPERCASED_ENUM_VALUE_SUBSTRINGS = set(['API', 'CSS', 'DOM', 'HTML', 'XHR', 'XML'])
+_ALWAYS_UPPERCASED_ENUM_VALUE_SUBSTRINGS = set(['API', 'CSS', 'DOM', 'HTML', 'JIT', 'XHR', 'XML'])
 
 # These objects are built manually by creating and setting InspectorValues.
 # Before sending these over the protocol, their shapes are checked against the specification.
@@ -67,7 +67,7 @@ _TYPES_WITH_OPEN_FIELDS = set([
     "Timeline.TimelineEvent",
     # InspectorStyleSheet not only creates this property but wants to read it and modify it.
     "CSS.CSSProperty",
-    # InspectorResourceAgent needs to update mime-type.
+    # InspectorNetworkAgent needs to update mime-type.
     "Network.Response",
     # For testing purposes only.
     "Test.OpenParameterBundle"

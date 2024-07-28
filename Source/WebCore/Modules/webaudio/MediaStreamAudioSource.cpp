@@ -24,11 +24,11 @@
  */
 
 #include "config.h"
+#include "MediaStreamAudioSource.h"
 
 #if ENABLE(MEDIA_STREAM)
 
-#include "MediaStreamAudioSource.h"
-
+#include "AudioSourceProvider.h"
 #include "NotImplemented.h"
 #include "UUID.h"
 
@@ -44,7 +44,7 @@ MediaStreamAudioSource::MediaStreamAudioSource()
 {
 }
 
-RefPtr<RealtimeMediaSourceCapabilities> MediaStreamAudioSource::capabilities() const
+RefPtr<RealtimeMediaSourceCapabilities> MediaStreamAudioSource::capabilities()
 {
     // FIXME: implement this.
     // https://bugs.webkit.org/show_bug.cgi?id=122430
@@ -52,13 +52,19 @@ RefPtr<RealtimeMediaSourceCapabilities> MediaStreamAudioSource::capabilities() c
     return nullptr;
 }
 
-const RealtimeMediaSourceStates& MediaStreamAudioSource::states()
+const RealtimeMediaSourceSettings& MediaStreamAudioSource::settings()
 {
     // FIXME: implement this.
     // https://bugs.webkit.org/show_bug.cgi?id=122430
     notImplemented();
-    return m_currentStates;
-    
+    return m_currentSettings;
+}
+
+AudioSourceProvider* MediaStreamAudioSource::audioSourceProvider()
+{
+    // FIXME: implement this.
+    notImplemented();
+    return nullptr;
 }
 
 void MediaStreamAudioSource::addAudioConsumer(PassRefPtr<AudioDestinationConsumer> consumer)

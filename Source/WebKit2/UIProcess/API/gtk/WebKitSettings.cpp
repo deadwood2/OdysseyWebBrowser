@@ -58,10 +58,6 @@ struct _WebKitSettingsPrivate {
         fantasyFontFamily = preferences->fantasyFontFamily().utf8();
         pictographFontFamily = preferences->pictographFontFamily().utf8();
         defaultCharset = preferences->defaultTextEncodingName().utf8();
-
-#if USE(COORDINATED_GRAPHICS_THREADED)
-        preferences->setForceCompositingMode(true);
-#endif
     }
 
     RefPtr<WebPreferences> preferences;
@@ -1593,12 +1589,6 @@ gboolean webkit_settings_get_enable_plugins(WebKitSettings* settings)
 void webkit_settings_set_enable_plugins(WebKitSettings* settings, gboolean enabled)
 {
     g_return_if_fail(WEBKIT_IS_SETTINGS(settings));
-
-#if PLATFORM(WAYLAND)
-    // Do not allow to change this setting in Wayland, since plugins are not supported.
-    if (WebCore::PlatformDisplay::sharedDisplay().type() == WebCore::PlatformDisplay::Type::Wayland)
-        return;
-#endif
 
     WebKitSettingsPrivate* priv = settings->priv;
     bool currentValue = priv->preferences->pluginsEnabled();

@@ -47,6 +47,7 @@
 #include "ResourceRequest.h"
 #include "ScriptExecutionContext.h"
 #include "SecurityOrigin.h"
+#include <wtf/ASCIICType.h>
 #include <wtf/CryptographicallyRandomNumber.h>
 #include <wtf/MD5.h>
 #include <wtf/SHA1.h>
@@ -56,6 +57,7 @@
 #include <wtf/text/Base64.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
+#include <wtf/text/StringView.h>
 #include <wtf/text/WTFString.h>
 #include <wtf/unicode/CharacterNames.h>
 
@@ -81,7 +83,7 @@ static String hostName(const URL& url, bool secure)
 {
     ASSERT(url.protocolIs("wss") == secure);
     StringBuilder builder;
-    builder.append(url.host().lower());
+    builder.append(url.host().convertToASCIILowercase());
     if (url.port() && ((!secure && url.port() != 80) || (secure && url.port() != 443))) {
         builder.append(':');
         builder.appendNumber(url.port());
@@ -143,9 +145,10 @@ void WebSocketHandshake::setURL(const URL& url)
     m_url = url.isolatedCopy();
 }
 
+// FIXME: Return type should just be String, not const String.
 const String WebSocketHandshake::host() const
 {
-    return m_url.host().lower();
+    return m_url.host().convertToASCIILowercase();
 }
 
 const String& WebSocketHandshake::clientProtocol() const
@@ -378,7 +381,7 @@ const ResourceResponse& WebSocketHandshake::serverHandshakeResponse() const
 
 void WebSocketHandshake::addExtensionProcessor(std::unique_ptr<WebSocketExtensionProcessor> processor)
 {
-    m_extensionDispatcher.addProcessor(WTF::move(processor));
+    m_extensionDispatcher.addProcessor(WTFMove(processor));
 }
 
 URL WebSocketHandshake::httpURLForAuthenticationAndCookies() const
@@ -387,6 +390,31 @@ URL WebSocketHandshake::httpURLForAuthenticationAndCookies() const
     bool couldSetProtocol = url.setProtocol(m_secure ? "https" : "http");
     ASSERT_UNUSED(couldSetProtocol, couldSetProtocol);
     return url;
+}
+
+// https://tools.ietf.org/html/rfc6455#section-4.1
+// "The HTTP version MUST be at least 1.1."
+static inline bool headerHasValidHTTPVersion(const String& httpVersionString, const size_t headerLength)
+{
+    const size_t posOfHttp = httpVersionString.find("HTTP/");
+    if (posOfHttp == notFound)
+        return false;
+
+    // Check that there is a version number which should be three characters after "HTTP/"
+    const size_t posOfHttpVersionNumberString = posOfHttp + 5;
+    if (posOfHttpVersionNumberString + 3 >= headerLength)
+        return false;
+
+    // Check that the version number is 1.1 or above
+    bool versionNumberIsOneDotOneOrAbove = false;
+    if (httpVersionString.characterAt(posOfHttpVersionNumberString + 1) == '.') {
+        UChar majorVersion = httpVersionString.characterAt(posOfHttpVersionNumberString);
+        UChar minorVersion = httpVersionString.characterAt(posOfHttpVersionNumberString + 2);
+        if ((majorVersion == '1' && minorVersion >= '1' && minorVersion <= '9')
+            || (majorVersion > '1' && majorVersion <= '9' && minorVersion >= '0' && minorVersion <= '9'))
+            versionNumberIsOneDotOneOrAbove = true;
+    }
+    return versionNumberIsOneDotOneOrAbove;
 }
 
 // Returns the header length (including "\r\n"), or -1 if we have not received enough data yet.
@@ -418,6 +446,9 @@ int WebSocketHandshake::readStatusLine(const char* header, size_t headerLength, 
             // does, so we'll just treat this as an error.
             m_failureReason = "Status line contains embedded null";
             return p + 1 - header;
+        } else if (!isASCII(*p)) {
+            m_failureReason = "Status line contains non-ASCII character";
+            return p + 1 - header;
         } else if (*p == '\n')
             break;
     }
@@ -439,6 +470,12 @@ int WebSocketHandshake::readStatusLine(const char* header, size_t headerLength, 
 
     if (!space1 || !space2) {
         m_failureReason = "No response code found: " + trimInputSample(header, lineLength - 2);
+        return lineLength;
+    }
+
+    String httpVersionString(header, space1 - header);
+    if (!headerHasValidHTTPVersion(httpVersionString, headerLength)) {
+        m_failureReason = "Invalid HTTP version string: " + httpVersionString;
         return lineLength;
     }
 
@@ -470,34 +507,44 @@ const char* WebSocketHandshake::readHTTPHeaders(const char* start, const char* e
     for (; p < end; p++) {
         size_t consumedLength = parseHTTPHeader(p, end - p, m_failureReason, name, value);
         if (!consumedLength)
-            return 0;
+            return nullptr;
         p += consumedLength;
 
         // Stop once we consumed an empty line.
         if (name.isEmpty())
             break;
 
-        if (equalIgnoringCase("sec-websocket-extensions", name)) {
+        // https://tools.ietf.org/html/rfc7230#section-3.2.4
+        // "Newly defined header fields SHOULD limit their field values to US-ASCII octets."
+        if ((equalLettersIgnoringASCIICase(name, "sec-websocket-extensions")
+            || equalLettersIgnoringASCIICase(name, "sec-websocket-accept")
+            || equalLettersIgnoringASCIICase(name, "sec-websocket-protocol"))
+            && !value.containsOnlyASCII()) {
+            m_failureReason = name + " header value should only contain ASCII characters";
+            return nullptr;
+        }
+        
+        if (equalLettersIgnoringASCIICase(name, "sec-websocket-extensions")) {
             if (sawSecWebSocketExtensionsHeaderField) {
-                m_failureReason = "The Sec-WebSocket-Extensions header MUST NOT appear more than once in an HTTP response";
-                return 0;
+                m_failureReason = "The Sec-WebSocket-Extensions header must not appear more than once in an HTTP response";
+                return nullptr;
             }
             if (!m_extensionDispatcher.processHeaderValue(value)) {
                 m_failureReason = m_extensionDispatcher.failureReason();
-                return 0;
+                return nullptr;
             }
             sawSecWebSocketExtensionsHeaderField = true;
-        } else if (equalIgnoringCase("Sec-WebSocket-Accept", name)) {
+        } else if (equalLettersIgnoringASCIICase(name, "sec-websocket-accept")) {
             if (sawSecWebSocketAcceptHeaderField) {
-                m_failureReason = "The Sec-WebSocket-Accept header MUST NOT appear more than once in an HTTP response";
-                return 0;
+                m_failureReason = "The Sec-WebSocket-Accept header must not appear more than once in an HTTP response";
+                return nullptr;
             }
             m_serverHandshakeResponse.addHTTPHeaderField(name, value);
             sawSecWebSocketAcceptHeaderField = true;
-        } else if (equalIgnoringCase("Sec-WebSocket-Protocol", name)) {
+        } else if (equalLettersIgnoringASCIICase(name, "sec-websocket-protocol")) {
             if (sawSecWebSocketProtocolHeaderField) {
-                m_failureReason = "The Sec-WebSocket-Protocol header MUST NOT appear more than once in an HTTP response";
-                return 0;
+                m_failureReason = "The Sec-WebSocket-Protocol header must not appear more than once in an HTTP response";
+                return nullptr;
             }
             m_serverHandshakeResponse.addHTTPHeaderField(name, value);
             sawSecWebSocketProtocolHeaderField = true;
@@ -527,11 +574,11 @@ bool WebSocketHandshake::checkResponseHeaders()
         return false;
     }
 
-    if (!equalIgnoringCase(serverUpgrade, "websocket")) {
+    if (!equalLettersIgnoringASCIICase(serverUpgrade, "websocket")) {
         m_failureReason = "Error during WebSocket handshake: 'Upgrade' header value is not 'WebSocket'";
         return false;
     }
-    if (!equalIgnoringCase(serverConnection, "upgrade")) {
+    if (!equalLettersIgnoringASCIICase(serverConnection, "upgrade")) {
         m_failureReason = "Error during WebSocket handshake: 'Connection' header value is not 'Upgrade'";
         return false;
     }

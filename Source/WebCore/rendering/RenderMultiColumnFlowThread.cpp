@@ -39,7 +39,7 @@ namespace WebCore {
 bool RenderMultiColumnFlowThread::gShiftingSpanner = false;
 
 RenderMultiColumnFlowThread::RenderMultiColumnFlowThread(Document& document, Ref<RenderStyle>&& style)
-    : RenderFlowThread(document, WTF::move(style))
+    : RenderFlowThread(document, WTFMove(style))
     , m_lastSetWorkedOn(nullptr)
     , m_columnCount(1)
     , m_columnWidth(0)
@@ -255,7 +255,7 @@ static bool isValidColumnSpanner(RenderMultiColumnFlowThread* flowThread, Render
         return false;
 
     // This looks like a spanner, but if we're inside something unbreakable, it's not to be treated as one.
-    for (RenderBox* ancestor = downcast<RenderBox>(*descendant).containingBlock(); ancestor; ancestor = ancestor->containingBlock()) {
+    for (RenderBox* ancestor = downcast<RenderBox>(*descendant).containingBlock(); ancestor && !is<RenderView>(*ancestor); ancestor = ancestor->containingBlock()) {
         if (ancestor->isRenderFlowThread()) {
             // Don't allow any intervening non-multicol fragmentation contexts. The spec doesn't say
             // anything about disallowing this, but it's just going to be too complicated to

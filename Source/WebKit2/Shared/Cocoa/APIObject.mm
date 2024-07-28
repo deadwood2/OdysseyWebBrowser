@@ -60,13 +60,16 @@
 #import "WKWebProcessPlugInScriptWorldInternal.h"
 #import "WKWebsiteDataRecordInternal.h"
 #import "WKWebsiteDataStoreInternal.h"
+#import "WKWindowFeaturesInternal.h"
+#import "_WKAutomationSessionInternal.h"
 #import "_WKDownloadInternal.h"
 #import "_WKFrameHandleInternal.h"
+#import "_WKHitTestResultInternal.h"
 #import "_WKProcessPoolConfigurationInternal.h"
 #import "_WKUserContentExtensionStoreInternal.h"
 #import "_WKUserContentFilterInternal.h"
-#import "_WKVisitedLinkProviderInternal.h"
-#import <objc/objc-auto.h>
+#import "_WKUserStyleSheetInternal.h"
+#import "_WKVisitedLinkStoreInternal.h"
 
 namespace API {
 
@@ -95,6 +98,10 @@ void* Object::newObject(size_t size, Type type)
 
     case Type::AuthenticationChallenge:
         wrapper = NSAllocateObject([WKNSURLAuthenticationChallenge self], size, nullptr);
+        break;
+
+    case Type::AutomationSession:
+        wrapper = [_WKAutomationSession alloc];
         break;
 
     case Type::BackForwardList:
@@ -153,6 +160,10 @@ void* Object::newObject(size_t size, Type type)
         wrapper = [WKFrameInfo alloc];
         break;
 
+    case Type::HitTestResult:
+        wrapper = [_WKHitTestResult alloc];
+        break;
+
     case Type::Navigation:
         wrapper = [WKNavigation alloc];
         break;
@@ -205,8 +216,12 @@ void* Object::newObject(size_t size, Type type)
         wrapper = [WKUserScript alloc];
         break;
 
-    case Type::VisitedLinkProvider:
-        wrapper = [_WKVisitedLinkProvider alloc];
+    case Type::UserStyleSheet:
+        wrapper = [_WKUserStyleSheet alloc];
+        break;
+
+    case Type::VisitedLinkStore:
+        wrapper = [_WKVisitedLinkStore alloc];
         break;
 
     case Type::WebsiteDataRecord:
@@ -215,6 +230,10 @@ void* Object::newObject(size_t size, Type type)
 
     case Type::WebsiteDataStore:
         wrapper = [WKWebsiteDataStore alloc];
+        break;
+
+    case Type::WindowFeatures:
+        wrapper = [WKWindowFeatures alloc];
         break;
 
     case Type::BundleFrame:
@@ -244,11 +263,6 @@ void* Object::newObject(size_t size, Type type)
 
     Object& object = wrapper._apiObject;
     object.m_wrapper = wrapper;
-
-#if PLATFORM(MAC)
-    if (objc_collectingEnabled())
-        object.ref();
-#endif
 
     return &object;
 }

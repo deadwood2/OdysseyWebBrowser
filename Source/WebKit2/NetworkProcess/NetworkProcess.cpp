@@ -26,8 +26,6 @@
 #include "config.h"
 #include "NetworkProcess.h"
 
-#if ENABLE(NETWORK_PROCESS)
-
 #include "ArgumentCoders.h"
 #include "Attachment.h"
 #include "AuthenticationManager.h"
@@ -40,7 +38,6 @@
 #include "NetworkProcessProxyMessages.h"
 #include "NetworkResourceLoader.h"
 #include "RemoteNetworkingContext.h"
-#include "SecurityOriginData.h"
 #include "SessionTracker.h"
 #include "StatisticsData.h"
 #include "WebCookieManager.h"
@@ -51,6 +48,7 @@
 #include <WebCore/Logging.h>
 #include <WebCore/PlatformCookieJar.h>
 #include <WebCore/ResourceRequest.h>
+#include <WebCore/SecurityOriginData.h>
 #include <WebCore/SecurityOriginHash.h>
 #include <WebCore/SessionID.h>
 #include <wtf/RunLoop.h>
@@ -105,7 +103,7 @@ AuthenticationManager& NetworkProcess::authenticationManager()
 
 DownloadManager& NetworkProcess::downloadManager()
 {
-    static NeverDestroyed<DownloadManager> downloadManager(this);
+    static NeverDestroyed<DownloadManager> downloadManager(*this);
     return downloadManager;
 }
 
@@ -200,7 +198,7 @@ void NetworkProcess::initializeNetworkProcess(const NetworkProcessCreationParame
 
     setCanHandleHTTPSServerTrustEvaluation(parameters.canHandleHTTPSServerTrustEvaluation);
 
-#if PLATFORM(MAC) || USE(CFNETWORK)
+#if PLATFORM(COCOA) || USE(CFNETWORK)
     SessionTracker::setIdentifierBase(parameters.uiProcessBundleIdentifier);
 #endif
 
@@ -257,6 +255,11 @@ void NetworkProcess::createNetworkConnectionToWebProcess()
 #endif
 }
 
+void NetworkProcess::clearCachedCredentials()
+{
+    NetworkStorageSession::defaultStorageSession().credentialStorage().clearCredentials();
+}
+
 void NetworkProcess::ensurePrivateBrowsingSession(SessionID sessionID)
 {
     RemoteNetworkingContext::ensurePrivateBrowsingSession(sessionID);
@@ -273,8 +276,8 @@ static void fetchDiskCacheEntries(SessionID sessionID, std::function<void (Vecto
     if (NetworkCache::singleton().isEnabled()) {
         auto* origins = new HashSet<RefPtr<SecurityOrigin>>();
 
-        NetworkCache::singleton().traverse([completionHandler, origins](const NetworkCache::Entry *entry) {
-            if (!entry) {
+        NetworkCache::singleton().traverse([completionHandler, origins](const NetworkCache::Cache::TraversalEntry *traversalEntry) {
+            if (!traversalEntry) {
                 Vector<WebsiteData::Entry> entries;
 
                 for (auto& origin : *origins)
@@ -289,7 +292,7 @@ static void fetchDiskCacheEntries(SessionID sessionID, std::function<void (Vecto
                 return;
             }
 
-            origins->add(SecurityOrigin::create(entry->response().url()));
+            origins->add(SecurityOrigin::create(traversalEntry->entry.response().url()));
         });
 
         return;
@@ -300,7 +303,7 @@ static void fetchDiskCacheEntries(SessionID sessionID, std::function<void (Vecto
 
 #if USE(CFURLCACHE)
     for (auto& origin : NetworkProcess::cfURLCacheOrigins())
-        entries.append(WebsiteData::Entry { WTF::move(origin), WebsiteDataTypeDiskCache });
+        entries.append(WebsiteData::Entry { WTFMove(origin), WebsiteDataTypeDiskCache });
 #endif
 
     RunLoop::main().dispatch([completionHandler, entries] {
@@ -312,7 +315,7 @@ void NetworkProcess::fetchWebsiteData(SessionID sessionID, uint64_t websiteDataT
 {
     struct CallbackAggregator final : public RefCounted<CallbackAggregator> {
         explicit CallbackAggregator(std::function<void (WebsiteData)> completionHandler)
-            : m_completionHandler(WTF::move(completionHandler))
+            : m_completionHandler(WTFMove(completionHandler))
         {
         }
 
@@ -320,8 +323,8 @@ void NetworkProcess::fetchWebsiteData(SessionID sessionID, uint64_t websiteDataT
         {
             ASSERT(RunLoop::isMain());
 
-            auto completionHandler = WTF::move(m_completionHandler);
-            auto websiteData = WTF::move(m_websiteData);
+            auto completionHandler = WTFMove(m_completionHandler);
+            auto websiteData = WTFMove(m_websiteData);
 
             RunLoop::main().dispatch([completionHandler, websiteData] {
                 completionHandler(websiteData);
@@ -337,7 +340,7 @@ void NetworkProcess::fetchWebsiteData(SessionID sessionID, uint64_t websiteDataT
     }));
 
     if (websiteDataTypes & WebsiteDataTypeCookies) {
-        if (auto* networkStorageSession = SessionTracker::session(sessionID))
+        if (auto* networkStorageSession = SessionTracker::storageSession(sessionID))
             getHostnamesWithCookies(*networkStorageSession, callbackAggregator->m_websiteData.hostNamesWithCookies);
     }
 
@@ -352,13 +355,13 @@ void NetworkProcess::deleteWebsiteData(SessionID sessionID, uint64_t websiteData
 {
 #if PLATFORM(COCOA)
     if (websiteDataTypes & WebsiteDataTypeHSTSCache) {
-        if (auto* networkStorageSession = SessionTracker::session(sessionID))
+        if (auto* networkStorageSession = SessionTracker::storageSession(sessionID))
             clearHSTSCache(*networkStorageSession, modifiedSince);
     }
 #endif
 
     if (websiteDataTypes & WebsiteDataTypeCookies) {
-        if (auto* networkStorageSession = SessionTracker::session(sessionID))
+        if (auto* networkStorageSession = SessionTracker::storageSession(sessionID))
             deleteAllCookiesModifiedSince(*networkStorageSession, modifiedSince);
     }
 
@@ -367,7 +370,7 @@ void NetworkProcess::deleteWebsiteData(SessionID sessionID, uint64_t websiteData
     };
 
     if ((websiteDataTypes & WebsiteDataTypeDiskCache) && !sessionID.isEphemeral()) {
-        clearDiskCache(modifiedSince, WTF::move(completionHandler));
+        clearDiskCache(modifiedSince, WTFMove(completionHandler));
         return;
     }
 
@@ -385,11 +388,11 @@ static void clearDiskCacheEntries(const Vector<SecurityOriginData>& origins, std
 
         auto* cacheKeysToDelete = new Vector<NetworkCache::Key>;
 
-        NetworkCache::singleton().traverse([completionHandler, originsToDelete, cacheKeysToDelete](const NetworkCache::Entry *entry) {
+        NetworkCache::singleton().traverse([completionHandler, originsToDelete, cacheKeysToDelete](const NetworkCache::Cache::TraversalEntry *traversalEntry) {
 
-            if (entry) {
-                if (originsToDelete->contains(SecurityOrigin::create(entry->response().url())))
-                    cacheKeysToDelete->append(entry->key());
+            if (traversalEntry) {
+                if (originsToDelete->contains(SecurityOrigin::create(traversalEntry->entry.response().url())))
+                    cacheKeysToDelete->append(traversalEntry->entry.key());
                 return;
             }
 
@@ -412,13 +415,13 @@ static void clearDiskCacheEntries(const Vector<SecurityOriginData>& origins, std
     NetworkProcess::clearCFURLCacheForOrigins(origins);
 #endif
 
-    RunLoop::main().dispatch(WTF::move(completionHandler));
+    RunLoop::main().dispatch(WTFMove(completionHandler));
 }
 
 void NetworkProcess::deleteWebsiteDataForOrigins(SessionID sessionID, uint64_t websiteDataTypes, const Vector<SecurityOriginData>& origins, const Vector<String>& cookieHostNames, uint64_t callbackID)
 {
     if (websiteDataTypes & WebsiteDataTypeCookies) {
-        if (auto* networkStorageSession = SessionTracker::session(sessionID))
+        if (auto* networkStorageSession = SessionTracker::storageSession(sessionID))
             deleteCookiesForHostnames(*networkStorageSession, cookieHostNames);
     }
 
@@ -427,27 +430,39 @@ void NetworkProcess::deleteWebsiteDataForOrigins(SessionID sessionID, uint64_t w
     };
 
     if ((websiteDataTypes & WebsiteDataTypeDiskCache) && !sessionID.isEphemeral()) {
-        clearDiskCacheEntries(origins, WTF::move(completionHandler));
+        clearDiskCacheEntries(origins, WTFMove(completionHandler));
         return;
     }
 
     completionHandler();
 }
 
-void NetworkProcess::downloadRequest(uint64_t downloadID, const ResourceRequest& request)
+void NetworkProcess::downloadRequest(SessionID sessionID, DownloadID downloadID, const ResourceRequest& request)
 {
-    downloadManager().startDownload(downloadID, request);
+    downloadManager().startDownload(sessionID, downloadID, request);
 }
 
-void NetworkProcess::resumeDownload(uint64_t downloadID, const IPC::DataReference& resumeData, const String& path, const WebKit::SandboxExtension::Handle& sandboxExtensionHandle)
+void NetworkProcess::resumeDownload(SessionID sessionID, DownloadID downloadID, const IPC::DataReference& resumeData, const String& path, const WebKit::SandboxExtension::Handle& sandboxExtensionHandle)
 {
-    downloadManager().resumeDownload(downloadID, resumeData, path, sandboxExtensionHandle);
+    downloadManager().resumeDownload(sessionID, downloadID, resumeData, path, sandboxExtensionHandle);
 }
 
-void NetworkProcess::cancelDownload(uint64_t downloadID)
+void NetworkProcess::cancelDownload(DownloadID downloadID)
 {
     downloadManager().cancelDownload(downloadID);
 }
+    
+#if USE(NETWORK_SESSION)
+void NetworkProcess::continueCanAuthenticateAgainstProtectionSpace(DownloadID downloadID, bool canAuthenticate)
+{
+    downloadManager().continueCanAuthenticateAgainstProtectionSpace(downloadID, canAuthenticate);
+}
+
+void NetworkProcess::continueWillSendRequest(DownloadID downloadID, const WebCore::ResourceRequest& request)
+{
+    downloadManager().continueWillSendRequest(downloadID, request);
+}
+#endif
 
 void NetworkProcess::setCacheModel(uint32_t cm)
 {
@@ -476,7 +491,7 @@ void NetworkProcess::getNetworkProcessStatistics(uint64_t callbackID)
     parentProcessConnection()->send(Messages::WebProcessPool::DidGetStatistics(data, callbackID), 0);
 }
 
-void NetworkProcess::logDiagnosticMessage(uint64_t webPageID, const String& message, const String& description, WebCore::ShouldSample shouldSample)
+void NetworkProcess::logDiagnosticMessage(uint64_t webPageID, const String& message, const String& description, ShouldSample shouldSample)
 {
     if (!DiagnosticLoggingClient::shouldLogAfterSampling(shouldSample))
         return;
@@ -484,7 +499,7 @@ void NetworkProcess::logDiagnosticMessage(uint64_t webPageID, const String& mess
     parentProcessConnection()->send(Messages::NetworkProcessProxy::LogSampledDiagnosticMessage(webPageID, message, description), 0);
 }
 
-void NetworkProcess::logDiagnosticMessageWithResult(uint64_t webPageID, const String& message, const String& description, WebCore::DiagnosticLoggingResultType result, WebCore::ShouldSample shouldSample)
+void NetworkProcess::logDiagnosticMessageWithResult(uint64_t webPageID, const String& message, const String& description, DiagnosticLoggingResultType result, ShouldSample shouldSample)
 {
     if (!DiagnosticLoggingClient::shouldLogAfterSampling(shouldSample))
         return;
@@ -492,7 +507,7 @@ void NetworkProcess::logDiagnosticMessageWithResult(uint64_t webPageID, const St
     parentProcessConnection()->send(Messages::NetworkProcessProxy::LogSampledDiagnosticMessageWithResult(webPageID, message, description, result), 0);
 }
 
-void NetworkProcess::logDiagnosticMessageWithValue(uint64_t webPageID, const String& message, const String& description, const String& value, WebCore::ShouldSample shouldSample)
+void NetworkProcess::logDiagnosticMessageWithValue(uint64_t webPageID, const String& message, const String& description, const String& value, ShouldSample shouldSample)
 {
     if (!DiagnosticLoggingClient::shouldLogAfterSampling(shouldSample))
         return;
@@ -554,5 +569,3 @@ void NetworkProcess::platformLowMemoryHandler(Critical)
 #endif
 
 } // namespace WebKit
-
-#endif // ENABLE(NETWORK_PROCESS)

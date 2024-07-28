@@ -72,8 +72,8 @@ WebInspector.LayoutTimelineView = class LayoutTimelineView extends WebInspector.
         this._dataGrid.addEventListener(WebInspector.TimelineDataGrid.Event.FiltersDidChange, this._dataGridFiltersDidChange, this);
         this._dataGrid.addEventListener(WebInspector.DataGrid.Event.SelectedNodeChanged, this._dataGridNodeSelected, this);
 
-        this._dataGrid.sortColumnIdentifier = "startTime";
-        this._dataGrid.sortOrder = WebInspector.DataGrid.SortOrder.Ascending;
+        this._dataGrid.sortColumnIdentifierSetting = new WebInspector.Setting("layout-timeline-view-sort", "startTime");
+        this._dataGrid.sortOrderSetting = new WebInspector.Setting("layout-timeline-view-sort-order", WebInspector.DataGrid.SortOrder.Ascending);
 
         this._hoveredTreeElement = null;
         this._hoveredDataGridNode = null;
@@ -86,7 +86,7 @@ WebInspector.LayoutTimelineView = class LayoutTimelineView extends WebInspector.
         this.navigationSidebarTreeOutline.element.addEventListener("mouseleave", this._mouseLeaveTreeOutline.bind(this));
 
         this.element.classList.add("layout");
-        this.element.appendChild(this._dataGrid.element);
+        this.addSubview(this._dataGrid);
 
         timeline.addEventListener(WebInspector.Timeline.Event.RecordAdded, this._layoutTimelineRecordAdded, this);
 
@@ -133,15 +133,6 @@ WebInspector.LayoutTimelineView = class LayoutTimelineView extends WebInspector.
         this._updateHighlight();
     }
 
-    updateLayout()
-    {
-        super.updateLayout();
-
-        this._dataGrid.updateLayout();
-
-        this._processPendingRecords();
-    }
-
     matchTreeElementAgainstCustomFilters(treeElement)
     {
         return this._dataGrid.treeElementMatchesActiveScopeFilters(treeElement);
@@ -183,6 +174,11 @@ WebInspector.LayoutTimelineView = class LayoutTimelineView extends WebInspector.
         super.treeElementSelected(treeElement, selectedByUser);
 
         this._updateHighlight();
+    }
+
+    layout()
+    {
+        this._processPendingRecords();
     }
 
     // Private
@@ -229,7 +225,7 @@ WebInspector.LayoutTimelineView = class LayoutTimelineView extends WebInspector.
         console.assert(layoutTimelineRecord instanceof WebInspector.LayoutTimelineRecord);
 
         // Only add top-level records, to avoid processing child records multiple times.
-        if (!(layoutTimelineRecord.parent instanceof WebInspector.RenderingFrameTimelineRecord))
+        if (layoutTimelineRecord.parent instanceof WebInspector.LayoutTimelineRecord)
             return;
 
         this._pendingRecords.push(layoutTimelineRecord);
@@ -269,16 +265,8 @@ WebInspector.LayoutTimelineView = class LayoutTimelineView extends WebInspector.
         const outlineColor = {r: 255, g: 229, b: 153, a: 0.66};
 
         var quad = record.quad;
-        if (quad && DOMAgent.highlightQuad) {
+        if (quad) {
             DOMAgent.highlightQuad(quad.toProtocol(), contentColor, outlineColor);
-            this._showingHighlight = true;
-            return;
-        }
-
-        // COMPATIBILITY (iOS 6): iOS 6 included Rect information instead of Quad information. Fallback to highlighting the rect.
-        var rect = record.rect;
-        if (rect) {
-            DOMAgent.highlightRect(rect.origin.x, rect.origin.y, rect.size.width, rect.size.height, contentColor, outlineColor);
             this._showingHighlight = true;
             return;
         }

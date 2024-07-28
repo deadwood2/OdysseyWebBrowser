@@ -29,8 +29,6 @@
 #if PLATFORM(MAC) && WK_API_ENABLED
 
 #import "WKAPICast.h"
-#import "WKArray.h"
-#import "WKContextMenuItem.h"
 #import "WKInspectorPrivateMac.h"
 #import "WKMutableArray.h"
 #import "WKOpenPanelParameters.h"
@@ -42,37 +40,22 @@
 #import "WKViewInternal.h"
 #import "WKWebViewConfigurationPrivate.h"
 #import "WKWebViewInternal.h"
-#import "WebInspectorMessages.h"
 #import "WebInspectorUIMessages.h"
 #import "WebPageGroup.h"
 #import "WebPageProxy.h"
 #import "WebPreferences.h"
 #import "WebProcessProxy.h"
-#import <QuartzCore/CoreAnimation.h>
 #import <WebCore/InspectorFrontendClientLocal.h>
 #import <WebCore/LocalizedStrings.h>
 #import <WebCore/SoftLinking.h>
-#import <WebKitSystemInterface.h>
-#import <algorithm>
-#import <mach-o/dyld.h>
 #import <wtf/text/Base64.h>
-#import <wtf/text/WTFString.h>
 
 SOFT_LINK_STAGED_FRAMEWORK(WebInspectorUI, PrivateFrameworks, A)
 
 using namespace WebCore;
 using namespace WebKit;
 
-#if __MAC_OS_X_VERSION_MIN_REQUIRED <= 1090
-// The height needed to match a typical NSToolbar.
-static const CGFloat windowContentBorderThickness = 55;
-#endif
-
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
 static const NSUInteger windowStyleMask = NSTitledWindowMask | NSClosableWindowMask | NSMiniaturizableWindowMask | NSResizableWindowMask | NSFullSizeContentViewWindowMask;
-#else
-static const NSUInteger windowStyleMask = NSTitledWindowMask | NSClosableWindowMask | NSMiniaturizableWindowMask | NSResizableWindowMask | NSTexturedBackgroundWindowMask;
-#endif
 
 // The time we keep our WebView alive before closing it and its process.
 // Reusing the WebView improves start up time for people that jump in and out of the Inspector.
@@ -106,16 +89,6 @@ static const unsigned webViewCloseTimeout = 60;
     _inspectorProxy = static_cast<void*>(inspectorProxy); // Not retained to prevent cycles
 
     return self;
-}
-
-- (IBAction)attachRight:(id)sender
-{
-    static_cast<WebInspectorProxy*>(_inspectorProxy)->attach(AttachmentSide::Right);
-}
-
-- (IBAction)attachBottom:(id)sender
-{
-    static_cast<WebInspectorProxy*>(_inspectorProxy)->attach(AttachmentSide::Bottom);
 }
 
 - (void)close
@@ -251,30 +224,6 @@ static void runOpenPanel(WKPageRef page, WKFrameRef frame, WKOpenPanelParameters
         completionHandler([openPanel runModal]);
 }
 
-static void getContextMenuFromProposedMenu(WKPageRef pageRef, WKArrayRef proposedMenuRef, WKArrayRef* newMenuRef, WKHitTestResultRef, WKTypeRef, const void*)
-{
-    WKMutableArrayRef menuItems = WKMutableArrayCreate();
-
-    size_t count = WKArrayGetSize(proposedMenuRef);
-    for (size_t i = 0; i < count; ++i) {
-        WKContextMenuItemRef contextMenuItem = static_cast<WKContextMenuItemRef>(WKArrayGetItemAtIndex(proposedMenuRef, i));
-        switch (WKContextMenuItemGetTag(contextMenuItem)) {
-        case kWKContextMenuItemTagOpenLinkInNewWindow:
-        case kWKContextMenuItemTagOpenImageInNewWindow:
-        case kWKContextMenuItemTagOpenFrameInNewWindow:
-        case kWKContextMenuItemTagOpenMediaInNewWindow:
-        case kWKContextMenuItemTagDownloadLinkToDisk:
-        case kWKContextMenuItemTagDownloadImageToDisk:
-            break;
-        default:
-            WKArrayAppendItem(menuItems, contextMenuItem);
-            break;
-        }
-    }
-
-    *newMenuRef = menuItems;
-}
-
 void WebInspectorProxy::attachmentViewDidChange(NSView *oldView, NSView *newView)
 {
     [[NSNotificationCenter defaultCenter] removeObserver:m_inspectorProxyObjCAdapter.get() name:NSViewFrameDidChangeNotification object:oldView];
@@ -343,12 +292,7 @@ void WebInspectorProxy::createInspectorWindow()
     [window setCollectionBehavior:([window collectionBehavior] | NSWindowCollectionBehaviorFullScreenAllowsTiling)];
 #endif
 
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
     window.titlebarAppearsTransparent = YES;
-#else
-    [window setAutorecalculatesContentBorderThickness:NO forEdge:NSMaxYEdge];
-    [window setContentBorderThickness:windowContentBorderThickness forEdge:NSMaxYEdge];
-#endif
 
     m_inspectorWindow = adoptNS(window);
 
@@ -370,8 +314,14 @@ void WebInspectorProxy::updateInspectorWindowTitle() const
     if (!m_inspectorWindow)
         return;
 
-    NSString *title = [NSString stringWithFormat:WEB_UI_STRING("Web Inspector — %@", "Web Inspector window title"), (NSString *)m_urlString];
-    [m_inspectorWindow setTitle:title];
+    unsigned level = inspectionLevel();
+    if (level > 1) {
+        NSString *debugTitle = [NSString stringWithFormat:WEB_UI_STRING("Web Inspector [%d] — %@", "Web Inspector window title when inspecting Web Inspector"), level, (NSString *)m_urlString];
+        [m_inspectorWindow setTitle:debugTitle];
+    } else {
+        NSString *title = [NSString stringWithFormat:WEB_UI_STRING("Web Inspector — %@", "Web Inspector window title"), (NSString *)m_urlString];
+        [m_inspectorWindow setTitle:title];
+    }
 }
 
 WebPageProxy* WebInspectorProxy::platformCreateInspectorPage()
@@ -388,7 +338,7 @@ WebPageProxy* WebInspectorProxy::platformCreateInspectorPage()
     ASSERT(!m_inspectorView);
     ASSERT(!m_inspectorProxyObjCAdapter);
 
-    NSView *inspectedView = inspectedPage()->wkView()._inspectorAttachmentView;
+    NSView *inspectedView = inspectedPage()->inspectorAttachmentView();
 
     NSRect initialRect;
     if (m_isAttached) {
@@ -420,22 +370,18 @@ WebPageProxy* WebInspectorProxy::platformCreateInspectorPage()
 #endif
     preferences._allowFileAccessFromFileURLs = YES;
     preferences._javaScriptRuntimeFlags = 0;
-    if (isUnderTest())
+    if (isUnderTest()) {
         preferences._hiddenPageDOMTimerThrottlingEnabled = NO;
+        preferences._pageVisibilityBasedProcessSuppressionEnabled = NO;
+    }
 
-    [configuration setProcessPool: ::WebKit::wrapper(inspectorProcessPool())];
+    [configuration setProcessPool: ::WebKit::wrapper(inspectorProcessPool(inspectionLevel()))];
     [configuration _setGroupIdentifier:inspectorPageGroupIdentifier()];
 
     m_inspectorView = adoptNS([[WKWebInspectorWKWebView alloc] initWithFrame:initialRect configuration:configuration.get()]);
     ASSERT(m_inspectorView);
 
-#if __MAC_OS_X_VERSION_MIN_REQUIRED <= 10900
-    m_inspectorView->_page->setDrawsBackground(false);
-#endif
-
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101000
     [m_inspectorView _setAutomaticallyAdjustsContentInsets:NO];
-#endif
 
     m_inspectorProxyObjCAdapter = adoptNS([[WKWebInspectorProxyObjCAdapter alloc] initWithWebInspectorProxy:this]);
     ASSERT(m_inspectorProxyObjCAdapter);
@@ -499,18 +445,6 @@ WebPageProxy* WebInspectorProxy::platformCreateInspectorPage()
 
     WKPageSetPageUIClient(toAPI(inspectorPage), &uiClient.base);
 
-    WKPageContextMenuClientV3 contextMenuClient = {
-        { 3, this },
-        0, // getContextMenuFromProposedMenu_deprecatedForUseWithV0
-        0, // customContextMenuItemSelected
-        0, // contextMenuDismissed
-        getContextMenuFromProposedMenu,
-        0, // showContextMenu
-        0, // hideContextMenu
-    };
-
-    WKPageSetPageContextMenuClient(toAPI(inspectorPage), &contextMenuClient.base);
-
     return inspectorPage;
 }
 
@@ -519,8 +453,8 @@ bool WebInspectorProxy::platformCanAttach(bool webProcessCanAttach)
     if ([m_inspectorWindow styleMask] & NSFullScreenWindowMask)
         return false;
 
-    NSView *inspectedView = inspectedPage()->wkView()._inspectorAttachmentView;
-    if ([inspectedView isKindOfClass:[WKView class]])
+    NSView *inspectedView = inspectedPage()->inspectorAttachmentView();
+    if ([inspectedView isKindOfClass:[WKView class]] || [inspectedView isKindOfClass:[WKWebView class]])
         return webProcessCanAttach;
 
     static const float minimumAttachedHeight = 250;
@@ -547,7 +481,7 @@ void WebInspectorProxy::platformDidClose()
 {
     if (m_inspectorWindow) {
         [m_inspectorWindow setDelegate:nil];
-        [m_inspectorWindow orderOut:nil];
+        [m_inspectorWindow close];
         m_inspectorWindow = nil;
     }
 
@@ -570,7 +504,7 @@ void WebInspectorProxy::platformHide()
 
     if (m_inspectorWindow) {
         [m_inspectorWindow setDelegate:nil];
-        [m_inspectorWindow orderOut:nil];
+        [m_inspectorWindow close];
         m_inspectorWindow = nil;
     }
 }
@@ -580,7 +514,7 @@ void WebInspectorProxy::platformBringToFront()
     // If the Web Inspector is no longer in the same window as the inspected view,
     // then we need to reopen the Inspector to get it attached to the right window.
     // This can happen when dragging tabs to another window in Safari.
-    if (m_isAttached && m_inspectorView.get().window != inspectedPage()->wkView().window) {
+    if (m_isAttached && m_inspectorView.get().window != inspectedPage()->platformWindow()) {
         platformOpen();
         return;
     }
@@ -634,7 +568,7 @@ void WebInspectorProxy::platformSave(const String& suggestedURL, const String& c
 
         if (base64Encoded) {
             Vector<char> out;
-            if (!base64Decode(contentCopy, out, Base64FailOnInvalidCharacterOrExcessPadding))
+            if (!base64Decode(contentCopy, out, Base64ValidatePadding))
                 return;
             RetainPtr<NSData> dataContent = adoptNS([[NSData alloc] initWithBytes:out.data() length:out.size()]);
             [dataContent writeToURL:actualURL atomically:YES];
@@ -720,7 +654,7 @@ void WebInspectorProxy::inspectedViewFrameDidChange(CGFloat currentDimension)
         return;
     }
 
-    NSView *inspectedView = inspectedPage()->wkView()._inspectorAttachmentView;
+    NSView *inspectedView = inspectedPage()->inspectorAttachmentView();
     NSRect inspectedViewFrame = [inspectedView frame];
     NSRect inspectorFrame = NSZeroRect;
     NSRect parentBounds = [[inspectedView superview] bounds];
@@ -770,25 +704,25 @@ void WebInspectorProxy::inspectedViewFrameDidChange(CGFloat currentDimension)
 
 unsigned WebInspectorProxy::platformInspectedWindowHeight()
 {
-    NSView *inspectedView = inspectedPage()->wkView()._inspectorAttachmentView;
+    NSView *inspectedView = inspectedPage()->inspectorAttachmentView();
     NSRect inspectedViewRect = [inspectedView frame];
     return static_cast<unsigned>(inspectedViewRect.size.height);
 }
 
 unsigned WebInspectorProxy::platformInspectedWindowWidth()
 {
-    NSView *inspectedView = inspectedPage()->wkView()._inspectorAttachmentView;
+    NSView *inspectedView = inspectedPage()->inspectorAttachmentView();
     NSRect inspectedViewRect = [inspectedView frame];
     return static_cast<unsigned>(inspectedViewRect.size.width);
 }
 
 void WebInspectorProxy::platformAttach()
 {
-    NSView *inspectedView = inspectedPage()->wkView()._inspectorAttachmentView;
+    NSView *inspectedView = inspectedPage()->inspectorAttachmentView();
 
     if (m_inspectorWindow) {
         [m_inspectorWindow setDelegate:nil];
-        [m_inspectorWindow orderOut:nil];
+        [m_inspectorWindow close];
         m_inspectorWindow = nil;
     }
 
@@ -815,7 +749,7 @@ void WebInspectorProxy::platformAttach()
 
 void WebInspectorProxy::platformDetach()
 {
-    NSView *inspectedView = inspectedPage()->wkView()._inspectorAttachmentView;
+    NSView *inspectedView = inspectedPage()->inspectorAttachmentView();
 
     [m_inspectorView removeFromSuperview];
 
@@ -850,21 +784,14 @@ void WebInspectorProxy::platformSetAttachedWindowWidth(unsigned width)
     inspectedViewFrameDidChange(width);
 }
 
-void WebInspectorProxy::platformSetToolbarHeight(unsigned height)
-{
-#if __MAC_OS_X_VERSION_MIN_REQUIRED <= 1090
-    [m_inspectorWindow setContentBorderThickness:height forEdge:NSMaxYEdge];
-#endif
-}
-
 void WebInspectorProxy::platformStartWindowDrag()
 {
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100
-    [m_inspectorView->_page->wkView() _startWindowDrag];
+    m_inspectorView->_page->startWindowDrag();
 #endif
 }
 
-String WebInspectorProxy::inspectorPageURL() const
+String WebInspectorProxy::inspectorPageURL()
 {
     // Call the soft link framework function to dlopen it, then [NSBundle bundleWithIdentifier:] will work.
     WebInspectorUILibrary();
@@ -875,7 +802,7 @@ String WebInspectorProxy::inspectorPageURL() const
     return [[NSURL fileURLWithPath:path] absoluteString];
 }
 
-String WebInspectorProxy::inspectorTestPageURL() const
+String WebInspectorProxy::inspectorTestPageURL()
 {
     // Call the soft link framework function to dlopen it, then [NSBundle bundleWithIdentifier:] will work.
     WebInspectorUILibrary();
@@ -889,7 +816,7 @@ String WebInspectorProxy::inspectorTestPageURL() const
     return [[NSURL fileURLWithPath:path] absoluteString];
 }
 
-String WebInspectorProxy::inspectorBaseURL() const
+String WebInspectorProxy::inspectorBaseURL()
 {
     // Call the soft link framework function to dlopen it, then [NSBundle bundleWithIdentifier:] will work.
     WebInspectorUILibrary();

@@ -81,11 +81,6 @@ static size_t activePixelMemory = 0;
 HTMLCanvasElement::HTMLCanvasElement(const QualifiedName& tagName, Document& document)
     : HTMLElement(tagName, document)
     , m_size(DefaultWidth, DefaultHeight)
-    , m_rendererIsCanvas(false)
-    , m_ignoreReset(false)
-    , m_originClean(true)
-    , m_hasCreatedImageBuffer(false)
-    , m_didClearImageBuffer(false)
 {
     ASSERT(hasTagName(canvasTag));
 }
@@ -113,8 +108,8 @@ static void removeFromActivePixelMemory(size_t pixelsReleased)
     
 HTMLCanvasElement::~HTMLCanvasElement()
 {
-    for (auto it = m_observers.begin(), end = m_observers.end(); it != end; ++it)
-        (*it)->canvasDestroyed(*this);
+    for (auto& observer : m_observers)
+        observer->canvasDestroyed(*this);
 
     m_context = nullptr; // Ensure this goes away before the ImageBuffer.
 
@@ -133,11 +128,11 @@ RenderPtr<RenderElement> HTMLCanvasElement::createElementRenderer(Ref<RenderStyl
     Frame* frame = document().frame();
     if (frame && frame->script().canExecuteScripts(NotAboutToExecuteScript)) {
         m_rendererIsCanvas = true;
-        return createRenderer<RenderHTMLCanvas>(*this, WTF::move(style));
+        return createRenderer<RenderHTMLCanvas>(*this, WTFMove(style));
     }
 
     m_rendererIsCanvas = false;
-    return HTMLElement::createElementRenderer(WTF::move(style), insertionPosition);
+    return HTMLElement::createElementRenderer(WTFMove(style), insertionPosition);
 }
 
 bool HTMLCanvasElement::canContainRangeEndPoint() const
@@ -237,6 +232,10 @@ CanvasRenderingContext* HTMLCanvasElement::getContext(const String& type, Canvas
             }
 
             m_context = std::make_unique<CanvasRenderingContext2D>(this, document().inQuirksMode(), usesDashbardCompatibilityMode);
+
+            downcast<CanvasRenderingContext2D>(*m_context).setUsesDisplayListDrawing(m_usesDisplayListDrawing);
+            downcast<CanvasRenderingContext2D>(*m_context).setTracksDisplayListReplay(m_tracksDisplayListReplay);
+
 #if USE(IOSURFACE_CANVAS_BACKING_STORE) || ENABLE(ACCELERATED_2D_CANVAS)
             // Need to make sure a RenderLayer and compositing layer get created for the Canvas
             setNeedsStyleRecalc(SyntheticStyleChange);
@@ -306,9 +305,13 @@ void HTMLCanvasElement::didDraw(const FloatRect& rect)
 {
     clearCopiedImage();
 
+    FloatRect dirtyRect = rect;
     if (RenderBox* ro = renderBox()) {
         FloatRect destRect = ro->contentBoxRect();
-        FloatRect r = mapRect(rect, FloatRect(0, 0, size().width(), size().height()), destRect);
+        // Inflate dirty rect to cover antialiasing on image buffers.
+        if (drawingContext() && drawingContext()->shouldAntialias())
+            dirtyRect.inflate(1);
+        FloatRect r = mapRect(dirtyRect, FloatRect(0, 0, size().width(), size().height()), destRect);
         r.intersect(destRect);
         if (r.isEmpty() || m_dirtyRect.contains(r))
             return;
@@ -316,14 +319,13 @@ void HTMLCanvasElement::didDraw(const FloatRect& rect)
         m_dirtyRect.unite(r);
         ro->repaintRectangle(enclosingIntRect(m_dirtyRect));
     }
-
-    notifyObserversCanvasChanged(rect);
+    notifyObserversCanvasChanged(dirtyRect);
 }
 
 void HTMLCanvasElement::notifyObserversCanvasChanged(const FloatRect& rect)
 {
-    for (auto it = m_observers.begin(), end = m_observers.end(); it != end; ++it)
-        (*it)->canvasChanged(*this, rect);
+    for (auto& observer : m_observers)
+        observer->canvasChanged(*this, rect);
 }
 
 void HTMLCanvasElement::reset()
@@ -382,8 +384,8 @@ void HTMLCanvasElement::reset()
         }
     }
 
-    for (auto it = m_observers.begin(), end = m_observers.end(); it != end; ++it)
-        (*it)->canvasResized(*this);
+    for (auto& observer : m_observers)
+        observer->canvasResized(*this);
 }
 
 bool HTMLCanvasElement::paintsIntoCanvasBuffer() const
@@ -404,17 +406,18 @@ bool HTMLCanvasElement::paintsIntoCanvasBuffer() const
 }
 
 
-void HTMLCanvasElement::paint(GraphicsContext* context, const LayoutRect& r, bool useLowQualityScale)
+void HTMLCanvasElement::paint(GraphicsContext& context, const LayoutRect& r)
 {
     // Clear the dirty rect
     m_dirtyRect = FloatRect();
 
-    if (context->paintingDisabled())
+    if (context.paintingDisabled())
         return;
     
     if (m_context) {
         if (!paintsIntoCanvasBuffer() && !document().printing())
             return;
+
         m_context->paintRenderingResultsToCanvas();
     }
 
@@ -426,9 +429,9 @@ void HTMLCanvasElement::paint(GraphicsContext* context, const LayoutRect& r, boo
 #if ENABLE(CSS_IMAGE_ORIENTATION)
                 orientationDescription.setImageOrientationEnum(renderer()->style().imageOrientation());
 #endif 
-                context->drawImage(m_presentedImage.get(), ColorSpaceDeviceRGB, snappedIntRect(r), ImagePaintingOptions(orientationDescription, useLowQualityScale));
+                context.drawImage(*m_presentedImage, snappedIntRect(r), ImagePaintingOptions(orientationDescription));
             } else
-                context->drawImageBuffer(imageBuffer, ColorSpaceDeviceRGB, snappedIntRect(r), useLowQualityScale);
+                context.drawImageBuffer(*imageBuffer, snappedIntRect(r));
         }
     }
 
@@ -480,13 +483,9 @@ void HTMLCanvasElement::setSurfaceSize(const IntSize& size)
 
 String HTMLCanvasElement::toEncodingMimeType(const String& mimeType)
 {
-    String lowercaseMimeType = mimeType.lower();
-
-    // FIXME: Make isSupportedImageMIMETypeForEncoding threadsafe (to allow this method to be used on a worker thread).
-    if (mimeType.isNull() || !MIMETypeRegistry::isSupportedImageMIMETypeForEncoding(lowercaseMimeType))
-        lowercaseMimeType = "image/png";
-
-    return lowercaseMimeType;
+    if (!MIMETypeRegistry::isSupportedImageMIMETypeForEncoding(mimeType))
+        return ASCIILiteral("image/png");
+    return mimeType.convertToASCIILowercase();
 }
 
 String HTMLCanvasElement::toDataURL(const String& mimeType, const double* quality, ExceptionCode& ec)
@@ -497,21 +496,19 @@ String HTMLCanvasElement::toDataURL(const String& mimeType, const double* qualit
     }
 
     if (m_size.isEmpty() || !buffer())
-        return String("data:,");
+        return ASCIILiteral("data:,");
 
-    String encodingMimeType = toEncodingMimeType(mimeType);
+    String encodingMIMEType = toEncodingMimeType(mimeType);
 
 #if USE(CG)
     // Try to get ImageData first, as that may avoid lossy conversions.
-    RefPtr<ImageData> imageData = getImageData();
-
-    if (imageData)
-        return ImageDataToDataURL(*imageData, encodingMimeType, quality);
+    if (auto imageData = getImageData())
+        return ImageDataToDataURL(*imageData, encodingMIMEType, quality);
 #endif
 
     makeRenderingResultsAvailable();
 
-    return buffer()->toDataURL(encodingMimeType, quality);
+    return buffer()->toDataURL(encodingMIMEType, quality);
 }
 
 RefPtr<ImageData> HTMLCanvasElement::getImageData()
@@ -594,6 +591,44 @@ size_t HTMLCanvasElement::memoryCost() const
     return 4 * m_imageBuffer->internalSize().width() * m_imageBuffer->internalSize().height();
 }
 
+void HTMLCanvasElement::setUsesDisplayListDrawing(bool usesDisplayListDrawing)
+{
+    if (usesDisplayListDrawing == m_usesDisplayListDrawing)
+        return;
+    
+    m_usesDisplayListDrawing = usesDisplayListDrawing;
+
+    if (m_context && is<CanvasRenderingContext2D>(*m_context))
+        downcast<CanvasRenderingContext2D>(*m_context).setUsesDisplayListDrawing(m_usesDisplayListDrawing);
+}
+
+void HTMLCanvasElement::setTracksDisplayListReplay(bool tracksDisplayListReplay)
+{
+    if (tracksDisplayListReplay == m_tracksDisplayListReplay)
+        return;
+
+    m_tracksDisplayListReplay = tracksDisplayListReplay;
+
+    if (m_context && is<CanvasRenderingContext2D>(*m_context))
+        downcast<CanvasRenderingContext2D>(*m_context).setTracksDisplayListReplay(m_tracksDisplayListReplay);
+}
+
+String HTMLCanvasElement::displayListAsText(DisplayList::AsTextFlags flags) const
+{
+    if (m_context && is<CanvasRenderingContext2D>(*m_context))
+        return downcast<CanvasRenderingContext2D>(*m_context).displayListAsText(flags);
+
+    return String();
+}
+
+String HTMLCanvasElement::replayDisplayListAsText(DisplayList::AsTextFlags flags) const
+{
+    if (m_context && is<CanvasRenderingContext2D>(*m_context))
+        return downcast<CanvasRenderingContext2D>(*m_context).replayDisplayListAsText(flags);
+
+    return String();
+}
+
 void HTMLCanvasElement::createImageBuffer() const
 {
     ASSERT(!m_imageBuffer);
@@ -635,12 +670,12 @@ void HTMLCanvasElement::createImageBuffer() const
     setImageBuffer(ImageBuffer::create(size(), renderingMode));
     if (!m_imageBuffer)
         return;
-    m_imageBuffer->context()->setShadowsIgnoreTransforms(true);
-    m_imageBuffer->context()->setImageInterpolationQuality(DefaultInterpolationQuality);
+    m_imageBuffer->context().setShadowsIgnoreTransforms(true);
+    m_imageBuffer->context().setImageInterpolationQuality(DefaultInterpolationQuality);
     if (document().settings() && !document().settings()->antialiased2dCanvasEnabled())
-        m_imageBuffer->context()->setShouldAntialias(false);
-    m_imageBuffer->context()->setStrokeThickness(1);
-    m_contextStateSaver = std::make_unique<GraphicsContextStateSaver>(*m_imageBuffer->context());
+        m_imageBuffer->context().setShouldAntialias(false);
+    m_imageBuffer->context().setStrokeThickness(1);
+    m_contextStateSaver = std::make_unique<GraphicsContextStateSaver>(m_imageBuffer->context());
 
     JSC::JSLockHolder lock(scriptExecutionContext()->vm());
     scriptExecutionContext()->vm().heap.reportExtraMemoryAllocated(memoryCost());
@@ -656,14 +691,14 @@ void HTMLCanvasElement::setImageBuffer(std::unique_ptr<ImageBuffer> buffer) cons
 {
     removeFromActivePixelMemory(memoryCost());
 
-    m_imageBuffer = WTF::move(buffer);
+    m_imageBuffer = WTFMove(buffer);
 
     activePixelMemory += memoryCost();
 }
 
 GraphicsContext* HTMLCanvasElement::drawingContext() const
 {
-    return buffer() ? m_imageBuffer->context() : nullptr;
+    return buffer() ? &m_imageBuffer->context() : nullptr;
 }
 
 GraphicsContext* HTMLCanvasElement::existingDrawingContext() const

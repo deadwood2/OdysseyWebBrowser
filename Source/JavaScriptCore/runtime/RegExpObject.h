@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 1999-2000 Harri Porten (porten@kde.org)
- *  Copyright (C) 2003, 2007, 2008, 2012 Apple Inc. All Rights Reserved.
+ *  Copyright (C) 2003, 2007, 2008, 2012, 2016 Apple Inc. All Rights Reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -41,20 +41,25 @@ public:
     void setRegExp(VM& vm, RegExp* r) { m_regExp.set(vm, this, r); }
     RegExp* regExp() const { return m_regExp.get(); }
 
-    void setLastIndex(ExecState* exec, size_t lastIndex)
+    bool setLastIndex(ExecState* exec, size_t lastIndex)
     {
-        m_lastIndex.setWithoutWriteBarrier(jsNumber(lastIndex));
-        if (LIKELY(m_lastIndexIsWritable))
+        if (LIKELY(m_lastIndexIsWritable)) {
             m_lastIndex.setWithoutWriteBarrier(jsNumber(lastIndex));
-        else
-            throwTypeError(exec, StrictModeReadonlyPropertyWriteError);
+            return true;
+        }
+        throwTypeError(exec, StrictModeReadonlyPropertyWriteError);
+        return false;
     }
-    void setLastIndex(ExecState* exec, JSValue lastIndex, bool shouldThrow)
+    bool setLastIndex(ExecState* exec, JSValue lastIndex, bool shouldThrow)
     {
-        if (LIKELY(m_lastIndexIsWritable))
+        if (LIKELY(m_lastIndexIsWritable)) {
             m_lastIndex.set(exec->vm(), this, lastIndex);
-        else if (shouldThrow)
+            return true;
+        }
+
+        if (shouldThrow)
             throwTypeError(exec, StrictModeReadonlyPropertyWriteError);
+        return false;
     }
     JSValue getLastIndex() const
     {
@@ -71,7 +76,7 @@ public:
 
     static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype)
     {
-        return Structure::create(vm, globalObject, prototype, TypeInfo(ObjectType, StructureFlags), info());
+        return Structure::create(vm, globalObject, prototype, TypeInfo(RegExpObjectType, StructureFlags), info());
     }
 
 protected:

@@ -35,6 +35,7 @@
 #include "RegExpObject.h"
 #include "RegExp.h"
 #include "RegExpCache.h"
+#include "RegExpConstructor.h"
 #include "StringRecursionChecker.h"
 
 namespace JSC {
@@ -43,6 +44,7 @@ static EncodedJSValue JSC_HOST_CALL regExpProtoFuncTest(ExecState*);
 static EncodedJSValue JSC_HOST_CALL regExpProtoFuncExec(ExecState*);
 static EncodedJSValue JSC_HOST_CALL regExpProtoFuncCompile(ExecState*);
 static EncodedJSValue JSC_HOST_CALL regExpProtoFuncToString(ExecState*);
+static EncodedJSValue JSC_HOST_CALL regExpProtoFuncSearch(ExecState*);
 static EncodedJSValue JSC_HOST_CALL regExpProtoGetterGlobal(ExecState*);
 static EncodedJSValue JSC_HOST_CALL regExpProtoGetterIgnoreCase(ExecState*);
 static EncodedJSValue JSC_HOST_CALL regExpProtoGetterMultiline(ExecState*);
@@ -76,6 +78,13 @@ RegExpPrototype::RegExpPrototype(VM& vm, Structure* structure, RegExp* regExp)
 {
 }
 
+void RegExpPrototype::finishCreation(VM& vm, JSGlobalObject* globalObject)
+{
+    Base::finishCreation(vm);
+    ASSERT(inherits(info()));
+    JSC_NATIVE_FUNCTION(vm.propertyNames->searchSymbol, regExpProtoFuncSearch, DontEnum, 1);
+}
+
 bool RegExpPrototype::getOwnPropertySlot(JSObject* object, ExecState* exec, PropertyName propertyName, PropertySlot &slot)
 {
     return getStaticFunctionSlot<Base>(exec, regExpPrototypeTable, jsCast<RegExpPrototype*>(object), propertyName, slot);
@@ -88,7 +97,10 @@ EncodedJSValue JSC_HOST_CALL regExpProtoFuncTest(ExecState* exec)
     JSValue thisValue = exec->thisValue();
     if (!thisValue.inherits(RegExpObject::info()))
         return throwVMTypeError(exec);
-    return JSValue::encode(jsBoolean(asRegExpObject(thisValue)->test(exec, exec->argument(0).toString(exec))));
+    JSString* string = exec->argument(0).toStringOrNull(exec);
+    if (!string)
+        return JSValue::encode(jsUndefined());
+    return JSValue::encode(jsBoolean(asRegExpObject(thisValue)->test(exec, string)));
 }
 
 EncodedJSValue JSC_HOST_CALL regExpProtoFuncExec(ExecState* exec)
@@ -96,7 +108,10 @@ EncodedJSValue JSC_HOST_CALL regExpProtoFuncExec(ExecState* exec)
     JSValue thisValue = exec->thisValue();
     if (!thisValue.inherits(RegExpObject::info()))
         return throwVMTypeError(exec);
-    return JSValue::encode(asRegExpObject(thisValue)->exec(exec, exec->argument(0).toString(exec)));
+    JSString* string = exec->argument(0).toStringOrNull(exec);
+    if (!string)
+        return JSValue::encode(jsUndefined());
+    return JSValue::encode(asRegExpObject(thisValue)->exec(exec, string));
 }
 
 EncodedJSValue JSC_HOST_CALL regExpProtoFuncCompile(ExecState* exec)
@@ -345,6 +360,23 @@ EncodedJSValue JSC_HOST_CALL regExpProtoGetterSource(ExecState* exec)
     if (pattern.is8Bit())
         return JSValue::encode(regExpProtoGetterSourceInternal(exec, pattern, pattern.characters8(), pattern.length()));
     return JSValue::encode(regExpProtoGetterSourceInternal(exec, pattern, pattern.characters16(), pattern.length()));
+}
+
+EncodedJSValue JSC_HOST_CALL regExpProtoFuncSearch(ExecState* exec)
+{
+    JSValue thisValue = exec->thisValue();
+    if (!thisValue.inherits(RegExpObject::info()))
+        return throwVMTypeError(exec);
+    RegExp* regExp = asRegExpObject(thisValue)->regExp();
+
+    JSString* string = exec->argument(0).toString(exec);
+    String s = string->value(exec);
+    if (exec->hadException())
+        return JSValue::encode(jsUndefined());
+
+    RegExpConstructor* regExpConstructor = exec->lexicalGlobalObject()->regExpConstructor();
+    MatchResult result = regExpConstructor->performMatch(exec->vm(), regExp, string, s, 0);
+    return JSValue::encode(result ? jsNumber(result.start) : jsNumber(-1));
 }
 
 } // namespace JSC

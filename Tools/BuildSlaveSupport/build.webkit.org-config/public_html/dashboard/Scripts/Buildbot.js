@@ -103,7 +103,7 @@ Buildbot.prototype = {
     _normalizeQueueInfo: function(queueInfo)
     {
         if (!queueInfo.combinedQueues)
-            queueInfo.branch = queueInfo.branch || this.defaultBranches;
+            queueInfo.branches = queueInfo.branches || this.defaultBranches;
         queueInfo.debug = queueInfo.debug || false;
         queueInfo.builder = queueInfo.builder || false;
         queueInfo.tester = queueInfo.tester || false;
@@ -149,6 +149,19 @@ Buildbot.prototype = {
     buildPageURLForIteration: function(iteration)
     {
         return this.baseURL + "builders/" + encodeURIComponent(iteration.queue.id) + "/builds/" + iteration.id;
+    },
+
+    layoutTestResultsDirectoryURLForIteration: function(iteration)
+    {
+        var underscoreSeparatedRevisions = "r";
+        sortDictionariesByOrder(Dashboard.Repository).forEach(function(repository) {
+            if (iteration.revision[repository.name]) {
+                if (underscoreSeparatedRevisions.length > 1)
+                    underscoreSeparatedRevisions += "_";
+                underscoreSeparatedRevisions += iteration.revision[repository.name];
+            }
+        });
+        return this.baseURL + "results/" + encodeURIComponent(iteration.queue.id) + "/" + encodeURIComponent(underscoreSeparatedRevisions + " (" + iteration.id + ")");
     },
 
     layoutTestResultsURLForIteration: function(iteration)

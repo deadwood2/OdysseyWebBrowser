@@ -217,7 +217,7 @@ void ComplexTextController::collectComplexTextRunsForCharacters(const UChar* cp,
 
         RetainPtr<WebCascadeList> cascadeList = adoptNS([[WebCascadeList alloc] initWithFont:&m_font character:baseCharacter]);
 
-        stringAttributes = adoptCF(CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, font->getCFStringAttributes(m_font.typesettingFeatures(), font->platformData().orientation())));
+        stringAttributes = adoptCF(CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, font->getCFStringAttributes(m_font.enableKerning(), font->platformData().orientation())));
         static const void* attributeKeys[] = { kCTFontCascadeListAttribute };
         const void* values[] = { cascadeList.get() };
         RetainPtr<CFDictionaryRef> attributes = adoptCF(CFDictionaryCreate(kCFAllocatorDefault, attributeKeys, values, sizeof(attributeKeys) / sizeof(*attributeKeys), &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
@@ -225,7 +225,7 @@ void ComplexTextController::collectComplexTextRunsForCharacters(const UChar* cp,
         RetainPtr<CTFontRef> fontWithCascadeList = adoptCF(CTFontCreateCopyWithAttributes(font->platformData().ctFont(), m_font.pixelSize(), 0, fontDescriptor.get()));
         CFDictionarySetValue(const_cast<CFMutableDictionaryRef>(stringAttributes.get()), kCTFontAttributeName, fontWithCascadeList.get());
     } else
-        stringAttributes = font->getCFStringAttributes(m_font.typesettingFeatures(), font->platformData().orientation());
+        stringAttributes = font->getCFStringAttributes(m_font.enableKerning(), font->platformData().orientation());
 
     RetainPtr<CTLineRef> line;
 
@@ -286,7 +286,7 @@ void ComplexTextController::collectComplexTextRunsForCharacters(const UChar* cp,
                         continue;
                     }
                     auto& fontCache = FontCache::singleton();
-                    runFont = fontCache.fontForFamily(m_font.fontDescription(), fontName.get(), false).get();
+                    runFont = fontCache.fontForFamily(m_font.fontDescription(), fontName.get()).get();
                     // Core Text may have used a font that our font lookup path cannot find. In that case, fall back on
                     // using the font as returned.
                     if (!runFont) {

@@ -44,12 +44,12 @@ Ref<ThreadSafeCoordinatedSurface> ThreadSafeCoordinatedSurface::create(const Int
 
 Ref<ThreadSafeCoordinatedSurface> ThreadSafeCoordinatedSurface::create(const IntSize& size, CoordinatedSurface::Flags flags, std::unique_ptr<ImageBuffer> buffer)
 {
-    return adoptRef(*new ThreadSafeCoordinatedSurface(size, flags, WTF::move(buffer)));
+    return adoptRef(*new ThreadSafeCoordinatedSurface(size, flags, WTFMove(buffer)));
 }
 
 ThreadSafeCoordinatedSurface::ThreadSafeCoordinatedSurface(const IntSize& size, CoordinatedSurface::Flags flags, std::unique_ptr<ImageBuffer> buffer)
     : CoordinatedSurface(size, flags)
-    , m_imageBuffer(WTF::move(buffer))
+    , m_imageBuffer(WTFMove(buffer))
 {
 }
 
@@ -61,25 +61,25 @@ void ThreadSafeCoordinatedSurface::paintToSurface(const IntRect& rect, Coordinat
 {
     ASSERT(client);
 
-    GraphicsContext* context = beginPaint(rect);
+    GraphicsContext& context = beginPaint(rect);
     client->paintToSurfaceContext(context);
     endPaint();
 }
 
-GraphicsContext* ThreadSafeCoordinatedSurface::beginPaint(const IntRect& rect)
+GraphicsContext& ThreadSafeCoordinatedSurface::beginPaint(const IntRect& rect)
 {
     ASSERT(m_imageBuffer);
-    GraphicsContext* graphicsContext = m_imageBuffer->context();
-    graphicsContext->save();
-    graphicsContext->clip(rect);
-    graphicsContext->translate(rect.x(), rect.y());
+    GraphicsContext& graphicsContext = m_imageBuffer->context();
+    graphicsContext.save();
+    graphicsContext.clip(rect);
+    graphicsContext.translate(rect.x(), rect.y());
     return graphicsContext;
 }
 
 void ThreadSafeCoordinatedSurface::endPaint()
 {
     ASSERT(m_imageBuffer);
-    m_imageBuffer->context()->restore();
+    m_imageBuffer->context().restore();
 }
 
 void ThreadSafeCoordinatedSurface::copyToTexture(PassRefPtr<BitmapTexture> passTexture, const IntRect& target, const IntPoint& sourceOffset)

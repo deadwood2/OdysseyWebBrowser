@@ -51,7 +51,10 @@ public:
     bool get(const char* propertyName, Result&) const;
     template <typename Result>
     bool get(const String& propertyName, Result&) const;
-    
+
+    template <typename Result>
+    Optional<Result> get(const char* propertyName) const;
+
     template <typename T>
     RefPtr<EventListener> getEventListener(const char* propertyName, T* target) const;
     template <typename T>
@@ -62,6 +65,8 @@ public:
     bool getOwnPropertiesAsStringHashMap(HashMap<String, String>&) const;
     bool getOwnPropertyNames(Vector<String>&) const;
     bool getWithUndefinedOrNullCheck(const char* propertyName, String& value) const;
+
+    JSC::ExecState* execState() const { return m_dictionary.execState(); }
 
 private:
     template <typename T>
@@ -83,6 +88,17 @@ template <typename Result>
 bool Dictionary::get(const String& propertyName, Result& result) const
 {
     return get(propertyName.utf8().data(), result);
+}
+
+template<typename Result>
+Optional<Result> Dictionary::get(const char* propertyName) const
+{
+    Result result;
+
+    if (!get(propertyName, result))
+        return Nullopt;
+
+    return result;
 }
 
 template <typename T>

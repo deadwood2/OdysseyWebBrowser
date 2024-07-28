@@ -28,6 +28,7 @@
 
 #include "Debugger.h"
 #include "Options.h"
+#include "SamplingProfiler.h"
 #include "VM.h"
 #include "Watchdog.h"
 #include <wtf/StackBounds.h>
@@ -40,26 +41,27 @@ VMEntryScope::VMEntryScope(VM& vm, JSGlobalObject* globalObject)
 {
     ASSERT(wtfThreadData().stack().isGrowingDownward());
     if (!vm.entryScope) {
-#if ENABLE(ASSEMBLER)
-        if (ExecutableAllocator::underMemoryPressure())
-            vm.heap.deleteAllCompiledCode();
-#endif
         vm.entryScope = this;
 
         // Reset the date cache between JS invocations to force the VM to
-        // observe time xone changes.
+        // observe time zone changes.
         vm.resetDateCache();
 
-        if (vm.watchdog)
-            vm.watchdog->enteredVM();
+        if (vm.watchdog())
+            vm.watchdog()->enteredVM();
+
+#if ENABLE(SAMPLING_PROFILER)
+        if (SamplingProfiler* samplingProfiler = vm.samplingProfiler())
+            samplingProfiler->noticeVMEntry();
+#endif
     }
 
     vm.clearLastException();
 }
 
-void VMEntryScope::setEntryScopeDidPopListener(void* key, EntryScopeDidPopListener listener)
+void VMEntryScope::addDidPopListener(std::function<void ()> listener)
 {
-    m_allEntryScopeDidPopListeners.set(key, listener);
+    m_didPopListeners.append(listener);
 }
 
 VMEntryScope::~VMEntryScope()
@@ -67,13 +69,13 @@ VMEntryScope::~VMEntryScope()
     if (m_vm.entryScope != this)
         return;
 
-    if (m_vm.watchdog)
-        m_vm.watchdog->exitedVM();
+    if (m_vm.watchdog())
+        m_vm.watchdog()->exitedVM();
 
     m_vm.entryScope = nullptr;
 
-    for (auto& listener : m_allEntryScopeDidPopListeners.values())
-        listener(m_vm, m_globalObject);
+    for (auto& listener : m_didPopListeners)
+        listener();
 }
 
 } // namespace JSC

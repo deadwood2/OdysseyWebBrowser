@@ -68,7 +68,7 @@ using namespace HTMLNames;
 
 static Color& customFocusRingColor()
 {
-    DEPRECATED_DEFINE_STATIC_LOCAL(Color, color, ());
+    static NeverDestroyed<Color> color;
     return color;
 }
 
@@ -267,12 +267,12 @@ bool RenderTheme::paint(const RenderBox& box, ControlStates& controlStates, cons
     // If painting is disabled, but we aren't updating control tints, then just bail.
     // If we are updating control tints, just schedule a repaint if the theme supports tinting
     // for that control.
-    if (paintInfo.context->updatingControlTints()) {
+    if (paintInfo.context().updatingControlTints()) {
         if (controlSupportsTints(box))
             box.repaint();
         return false;
     }
-    if (paintInfo.context->paintingDisabled())
+    if (paintInfo.context().paintingDisabled())
         return false;
 
     ControlPart part = box.style().appearance();
@@ -292,7 +292,7 @@ bool RenderTheme::paint(const RenderBox& box, ControlStates& controlStates, cons
     case ButtonPart:
     case InnerSpinButtonPart:
         updateControlStatesForRenderer(box, controlStates);
-        m_theme->paint(part, controlStates, const_cast<GraphicsContext*>(paintInfo.context), devicePixelSnappedRect, box.style().effectiveZoom(), &box.view().frameView(), deviceScaleFactor, pageScaleFactor);
+        m_theme->paint(part, controlStates, paintInfo.context(), devicePixelSnappedRect, box.style().effectiveZoom(), &box.view().frameView(), deviceScaleFactor, pageScaleFactor);
         return false;
     default:
         break;
@@ -411,7 +411,7 @@ bool RenderTheme::paint(const RenderBox& box, ControlStates& controlStates, cons
 
 bool RenderTheme::paintBorderOnly(const RenderBox& box, const PaintInfo& paintInfo, const LayoutRect& rect)
 {
-    if (paintInfo.context->paintingDisabled())
+    if (paintInfo.context().paintingDisabled())
         return false;
 
 #if PLATFORM(IOS)
@@ -465,7 +465,7 @@ bool RenderTheme::paintBorderOnly(const RenderBox& box, const PaintInfo& paintIn
 
 bool RenderTheme::paintDecorations(const RenderBox& box, const PaintInfo& paintInfo, const LayoutRect& rect)
 {
-    if (paintInfo.context->paintingDisabled())
+    if (paintInfo.context().paintingDisabled())
         return false;
 
     IntRect integralSnappedRect = snappedIntRect(rect);
@@ -552,13 +552,13 @@ String RenderTheme::formatMediaControlsRemainingTime(float currentTime, float du
     return formatMediaControlsTime(currentTime - duration);
 }
 
-IntPoint RenderTheme::volumeSliderOffsetFromMuteButton(const RenderBox& muteButtonBox, const IntSize& size) const
+LayoutPoint RenderTheme::volumeSliderOffsetFromMuteButton(const RenderBox& muteButtonBox, const LayoutSize& size) const
 {
-    int y = -size.height();
-    FloatPoint absPoint = muteButtonBox.localToAbsolute(FloatPoint(muteButtonBox.pixelSnappedOffsetLeft(), y), IsFixed | UseTransforms);
+    LayoutUnit y = -size.height();
+    FloatPoint absPoint = muteButtonBox.localToAbsolute(FloatPoint(muteButtonBox.offsetLeft(), y), IsFixed | UseTransforms);
     if (absPoint.y() < 0)
         y = muteButtonBox.height();
-    return IntPoint(0, y);
+    return LayoutPoint(0, y);
 }
 
 #endif
@@ -785,26 +785,12 @@ bool RenderTheme::isActive(const RenderObject& o) const
 
 bool RenderTheme::isChecked(const RenderObject& o) const
 {
-    if (!o.node())
-        return false;
-
-    HTMLInputElement* inputElement = o.node()->toInputElement();
-    if (!inputElement)
-        return false;
-
-    return inputElement->shouldAppearChecked();
+    return is<HTMLInputElement>(o.node()) && downcast<HTMLInputElement>(*o.node()).shouldAppearChecked();
 }
 
 bool RenderTheme::isIndeterminate(const RenderObject& o) const
 {
-    if (!o.node())
-        return false;
-
-    HTMLInputElement* inputElement = o.node()->toInputElement();
-    if (!inputElement)
-        return false;
-
-    return inputElement->shouldAppearIndeterminate();
+    return is<HTMLInputElement>(o.node()) && downcast<HTMLInputElement>(*o.node()).shouldAppearIndeterminate();
 }
 
 bool RenderTheme::isEnabled(const RenderObject& renderer) const
@@ -993,20 +979,16 @@ LayoutUnit RenderTheme::sliderTickSnappingThreshold() const
 
 void RenderTheme::paintSliderTicks(const RenderObject& o, const PaintInfo& paintInfo, const IntRect& rect)
 {
-    Node* node = o.node();
-    if (!node)
+    if (!is<HTMLInputElement>(o.node()))
         return;
 
-    HTMLInputElement* input = node->toInputElement();
-    if (!input)
-        return;
-
-    HTMLDataListElement* dataList = downcast<HTMLDataListElement>(input->list());
+    auto& input = downcast<HTMLInputElement>(*o.node());
+    auto* dataList = downcast<HTMLDataListElement>(input.list());
     if (!dataList)
         return;
 
-    double min = input->minimum();
-    double max = input->maximum();
+    double min = input.minimum();
+    double max = input.maximum();
     ControlPart part = o.style().appearance();
     // We don't support ticks on alternate sliders like MediaVolumeSliders.
     if (part !=  SliderHorizontalPart && part != SliderVerticalPart)
@@ -1014,7 +996,7 @@ void RenderTheme::paintSliderTicks(const RenderObject& o, const PaintInfo& paint
     bool isHorizontal = part ==  SliderHorizontalPart;
 
     IntSize thumbSize;
-    const RenderObject* thumbRenderer = input->sliderThumbElement()->renderer();
+    const RenderObject* thumbRenderer = input.sliderThumbElement()->renderer();
     if (thumbRenderer) {
         const RenderStyle& thumbStyle = thumbRenderer->style();
         int thumbWidth = thumbStyle.width().intValue();
@@ -1029,7 +1011,7 @@ void RenderTheme::paintSliderTicks(const RenderObject& o, const PaintInfo& paint
     int tickRegionSideMargin = 0;
     int tickRegionWidth = 0;
     IntRect trackBounds;
-    RenderObject* trackRenderer = input->sliderTrackElement()->renderer();
+    RenderObject* trackRenderer = input.sliderTrackElement()->renderer();
     // We can ignoring transforms because transform is handled by the graphics context.
     if (trackRenderer)
         trackBounds = trackRenderer->absoluteBoundingBoxRectIgnoringTransforms();
@@ -1053,15 +1035,15 @@ void RenderTheme::paintSliderTicks(const RenderObject& o, const PaintInfo& paint
         tickRegionWidth = trackBounds.height() - thumbSize.width();
     }
     Ref<HTMLCollection> options = dataList->options();
-    GraphicsContextStateSaver stateSaver(*paintInfo.context);
-    paintInfo.context->setFillColor(o.style().visitedDependentColor(CSSPropertyColor), ColorSpaceDeviceRGB);
+    GraphicsContextStateSaver stateSaver(paintInfo.context());
+    paintInfo.context().setFillColor(o.style().visitedDependentColor(CSSPropertyColor));
     for (unsigned i = 0; Node* node = options->item(i); i++) {
         ASSERT(is<HTMLOptionElement>(*node));
         HTMLOptionElement& optionElement = downcast<HTMLOptionElement>(*node);
         String value = optionElement.value();
-        if (!input->isValidValue(value))
+        if (!input.isValidValue(value))
             continue;
-        double parsedValue = parseToDoubleForNumberType(input->sanitizeValue(value));
+        double parsedValue = parseToDoubleForNumberType(input.sanitizeValue(value));
         double tickFraction = (parsedValue - min) / (max - min);
         double tickRatio = isHorizontal && o.style().isLeftToRightDirection() ? tickFraction : 1.0 - tickFraction;
         double tickPosition = round(tickRegionSideMargin + tickRegionWidth * tickRatio);
@@ -1069,7 +1051,7 @@ void RenderTheme::paintSliderTicks(const RenderObject& o, const PaintInfo& paint
             tickRect.setX(tickPosition);
         else
             tickRect.setY(tickPosition);
-        paintInfo.context->fillRect(tickRect);
+        paintInfo.context().fillRect(tickRect);
     }
 }
 #endif
@@ -1159,18 +1141,18 @@ void RenderTheme::platformColorsDidChange()
     Page::updateStyleForAllPagesAfterGlobalChangeInEnvironment();
 }
 
-FontDescription& RenderTheme::cachedSystemFontDescription(CSSValueID systemFontID) const
+FontCascadeDescription& RenderTheme::cachedSystemFontDescription(CSSValueID systemFontID) const
 {
-    static NeverDestroyed<FontDescription> caption;
-    static NeverDestroyed<FontDescription> icon;
-    static NeverDestroyed<FontDescription> menu;
-    static NeverDestroyed<FontDescription> messageBox;
-    static NeverDestroyed<FontDescription> smallCaption;
-    static NeverDestroyed<FontDescription> statusBar;
-    static NeverDestroyed<FontDescription> webkitMiniControl;
-    static NeverDestroyed<FontDescription> webkitSmallControl;
-    static NeverDestroyed<FontDescription> webkitControl;
-    static NeverDestroyed<FontDescription> defaultDescription;
+    static NeverDestroyed<FontCascadeDescription> caption;
+    static NeverDestroyed<FontCascadeDescription> icon;
+    static NeverDestroyed<FontCascadeDescription> menu;
+    static NeverDestroyed<FontCascadeDescription> messageBox;
+    static NeverDestroyed<FontCascadeDescription> smallCaption;
+    static NeverDestroyed<FontCascadeDescription> statusBar;
+    static NeverDestroyed<FontCascadeDescription> webkitMiniControl;
+    static NeverDestroyed<FontCascadeDescription> webkitSmallControl;
+    static NeverDestroyed<FontCascadeDescription> webkitControl;
+    static NeverDestroyed<FontCascadeDescription> defaultDescription;
 
     switch (systemFontID) {
     case CSSValueCaption:
@@ -1199,7 +1181,7 @@ FontDescription& RenderTheme::cachedSystemFontDescription(CSSValueID systemFontI
     }
 }
 
-void RenderTheme::systemFont(CSSValueID systemFontID, FontDescription& fontDescription) const
+void RenderTheme::systemFont(CSSValueID systemFontID, FontCascadeDescription& fontDescription) const
 {
     fontDescription = cachedSystemFontDescription(systemFontID);
     if (fontDescription.isAbsoluteSize())
@@ -1346,9 +1328,9 @@ String RenderTheme::fileListNameForWidth(const FileList* fileList, const FontCas
     else if (fileList->length() == 1)
         string = fileList->item(0)->name();
     else
-        return StringTruncator::rightTruncate(multipleFileUploadText(fileList->length()), width, font, StringTruncator::EnableRoundingHacks);
+        return StringTruncator::rightTruncate(multipleFileUploadText(fileList->length()), width, font);
 
-    return StringTruncator::centerTruncate(string, width, font, StringTruncator::EnableRoundingHacks);
+    return StringTruncator::centerTruncate(string, width, font);
 }
 
 } // namespace WebCore

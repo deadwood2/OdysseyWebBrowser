@@ -49,25 +49,104 @@
 
 #if ENABLE(ACCELERATED_2D_CANVAS)
 #include "GLContext.h"
-#include "OpenGLShims.h"
 #include "TextureMapperGL.h"
 #include <cairo-gl.h>
+
+#if USE(OPENGL_ES_2)
+#include <GLES2/gl2.h>
+#else
+#include "OpenGLShims.h"
+#endif
+
+#if USE(COORDINATED_GRAPHICS_THREADED)
+#include "TextureMapperPlatformLayerBuffer.h"
+#include "TextureMapperPlatformLayerProxy.h"
+#endif
 #endif
 
 using namespace std;
 
 namespace WebCore {
 
-ImageBufferData::ImageBufferData(const IntSize& size)
+ImageBufferData::ImageBufferData(const IntSize& size, RenderingMode renderingMode)
     : m_platformContext(0)
     , m_size(size)
+    , m_renderingMode(renderingMode)
 #if ENABLE(ACCELERATED_2D_CANVAS)
+#if USE(COORDINATED_GRAPHICS_THREADED)
+    , m_platformLayerProxy(adoptRef(new TextureMapperPlatformLayerProxy))
+    , m_compositorTexture(0)
+#endif
     , m_texture(0)
 #endif
 {
 }
 
+ImageBufferData::~ImageBufferData()
+{
+    if (m_renderingMode != Accelerated)
+        return;
+
 #if ENABLE(ACCELERATED_2D_CANVAS)
+    GLContext* previousActiveContext = GLContext::getCurrent();
+    GLContext::sharingContext()->makeContextCurrent();
+
+    if (m_texture)
+        glDeleteTextures(1, &m_texture);
+
+#if USE(COORDINATED_GRAPHICS_THREADED)
+    if (m_compositorTexture)
+        glDeleteTextures(1, &m_compositorTexture);
+#endif
+
+    if (previousActiveContext)
+        previousActiveContext->makeContextCurrent();
+#endif
+}
+
+#if ENABLE(ACCELERATED_2D_CANVAS)
+#if USE(COORDINATED_GRAPHICS_THREADED)
+void ImageBufferData::createCompositorBuffer()
+{
+    GLContext::sharingContext()->makeContextCurrent();
+
+    glGenTextures(1, &m_compositorTexture);
+    glBindTexture(GL_TEXTURE_2D, m_compositorTexture);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0 , GL_RGBA, m_size.width(), m_size.height(), 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+
+    cairo_device_t* device = GLContext::sharingContext()->cairoDevice();
+    m_compositorSurface = adoptRef(cairo_gl_surface_create_for_texture(device, CAIRO_CONTENT_COLOR_ALPHA, m_compositorTexture, m_size.width(), m_size.height()));
+    m_compositorCr = adoptRef(cairo_create(m_compositorSurface.get()));
+    cairo_set_antialias(m_compositorCr.get(), CAIRO_ANTIALIAS_NONE);
+}
+
+void ImageBufferData::swapBuffersIfNeeded()
+{
+    GLContext* previousActiveContext = GLContext::getCurrent();
+
+    if (!m_compositorTexture) {
+        createCompositorBuffer();
+        LockHolder holder(m_platformLayerProxy->lock());
+        m_platformLayerProxy->pushNextBuffer(std::make_unique<TextureMapperPlatformLayerBuffer>(m_compositorTexture, m_size, TextureMapperGL::ShouldBlend));
+    }
+
+    // It would be great if we could just swap the buffers here as we do with webgl, but that breaks the cases
+    // where one frame uses the content already rendered in the previous frame. So we just copy the content
+    // into the compositor buffer.
+    cairo_set_source_surface(m_compositorCr.get(), m_surface.get(), 0, 0);
+    cairo_set_operator(m_compositorCr.get(), CAIRO_OPERATOR_SOURCE);
+    cairo_paint(m_compositorCr.get());
+
+    if (previousActiveContext)
+        previousActiveContext->makeContextCurrent();
+}
+#endif
+
 void clearSurface(cairo_surface_t* surface)
 {
     if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS)
@@ -78,22 +157,22 @@ void clearSurface(cairo_surface_t* surface)
     cairo_paint(cr.get());
 }
 
-PassRefPtr<cairo_surface_t> createCairoGLSurface(const FloatSize& size, uint32_t& texture)
+void ImageBufferData::createCairoGLSurface()
 {
     GLContext::sharingContext()->makeContextCurrent();
 
     // We must generate the texture ourselves, because there is no Cairo API for extracting it
     // from a pre-existing surface.
-    glGenTextures(1, &texture);
-    glBindTexture(GL_TEXTURE_2D, texture);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+    glGenTextures(1, &m_texture);
+    glBindTexture(GL_TEXTURE_2D, m_texture);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
-    glTexImage2D(GL_TEXTURE_2D, 0 /* level */, GL_RGBA8, size.width(), size.height(), 0 /* border */, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+    glTexImage2D(GL_TEXTURE_2D, 0 /* level */, GL_RGBA, m_size.width(), m_size.height(), 0 /* border */, GL_RGBA, GL_UNSIGNED_BYTE, 0);
 
     GLContext* context = GLContext::sharingContext();
     cairo_device_t* device = context->cairoDevice();
@@ -101,14 +180,13 @@ PassRefPtr<cairo_surface_t> createCairoGLSurface(const FloatSize& size, uint32_t
     // Thread-awareness is a huge performance hit on non-Intel drivers.
     cairo_gl_device_set_thread_aware(device, FALSE);
 
-    auto surface = adoptRef(cairo_gl_surface_create_for_texture(device, CAIRO_CONTENT_COLOR_ALPHA, texture, size.width(), size.height()));
-    clearSurface(surface.get());
-    return surface;
+    m_surface = adoptRef(cairo_gl_surface_create_for_texture(device, CAIRO_CONTENT_COLOR_ALPHA, m_texture, m_size.width(), m_size.height()));
+    clearSurface(m_surface.get());
 }
 #endif
 
 ImageBuffer::ImageBuffer(const FloatSize& size, float /* resolutionScale */, ColorSpace, RenderingMode renderingMode, bool& success)
-    : m_data(IntSize(size))
+    : m_data(IntSize(size), renderingMode)
     , m_size(size)
     , m_logicalSize(size)
 {
@@ -117,14 +195,14 @@ ImageBuffer::ImageBuffer(const FloatSize& size, float /* resolutionScale */, Col
         return;
 
 #if ENABLE(ACCELERATED_2D_CANVAS)
-    if (renderingMode == Accelerated) {
-        m_data.m_surface = createCairoGLSurface(size, m_data.m_texture);
+    if (m_data.m_renderingMode == Accelerated) {
+        m_data.createCairoGLSurface();
         if (!m_data.m_surface || cairo_surface_status(m_data.m_surface.get()) != CAIRO_STATUS_SUCCESS)
-            renderingMode = Unaccelerated; // If allocation fails, fall back to non-accelerated path.
+            m_data.m_renderingMode = Unaccelerated; // If allocation fails, fall back to non-accelerated path.
     }
-    if (renderingMode == Unaccelerated)
+    if (m_data.m_renderingMode == Unaccelerated)
 #else
-    ASSERT_UNUSED(renderingMode, renderingMode != Accelerated);
+    ASSERT(m_data.m_renderingMode != Accelerated);
 #endif
         m_data.m_surface = adoptRef(cairo_image_surface_create(CAIRO_FORMAT_ARGB32, size.width(), size.height()));
 
@@ -141,9 +219,14 @@ ImageBuffer::~ImageBuffer()
 {
 }
 
-GraphicsContext* ImageBuffer::context() const
+GraphicsContext& ImageBuffer::context() const
 {
-    return m_data.m_context.get();
+    return *m_data.m_context;
+}
+
+RefPtr<Image> ImageBuffer::sinkIntoImage(std::unique_ptr<ImageBuffer> imageBuffer, ScaleBehavior scaleBehavior)
+{
+    return imageBuffer->copyImage(DontCopyBackingStore, scaleBehavior);
 }
 
 RefPtr<Image> ImageBuffer::copyImage(BackingStoreCopy copyBehavior, ScaleBehavior) const
@@ -160,24 +243,24 @@ BackingStoreCopy ImageBuffer::fastCopyImageMode()
     return DontCopyBackingStore;
 }
 
-void ImageBuffer::clip(GraphicsContext* context, const FloatRect& maskRect) const
+void ImageBuffer::drawConsuming(std::unique_ptr<ImageBuffer> imageBuffer, GraphicsContext& destContext, const FloatRect& destRect, const FloatRect& srcRect, CompositeOperator op, BlendMode blendMode)
 {
-    context->platformContext()->pushImageMask(m_data.m_surface.get(), maskRect);
+    imageBuffer->draw(destContext, destRect, srcRect, op, blendMode);
 }
 
-void ImageBuffer::draw(GraphicsContext* destinationContext, ColorSpace styleColorSpace, const FloatRect& destRect, const FloatRect& srcRect,
-    CompositeOperator op, BlendMode blendMode, bool useLowQualityScale)
+void ImageBuffer::draw(GraphicsContext& destinationContext, const FloatRect& destRect, const FloatRect& srcRect,
+    CompositeOperator op, BlendMode blendMode)
 {
-    BackingStoreCopy copyMode = destinationContext == context() ? CopyBackingStore : DontCopyBackingStore;
+    BackingStoreCopy copyMode = &destinationContext == &context() ? CopyBackingStore : DontCopyBackingStore;
     RefPtr<Image> image = copyImage(copyMode);
-    destinationContext->drawImage(image.get(), styleColorSpace, destRect, srcRect, ImagePaintingOptions(op, blendMode, ImageOrientationDescription(), useLowQualityScale));
+    destinationContext.drawImage(*image, destRect, srcRect, ImagePaintingOptions(op, blendMode, ImageOrientationDescription()));
 }
 
-void ImageBuffer::drawPattern(GraphicsContext* context, const FloatRect& srcRect, const AffineTransform& patternTransform,
-    const FloatPoint& phase, ColorSpace styleColorSpace, CompositeOperator op, const FloatRect& destRect, BlendMode)
+void ImageBuffer::drawPattern(GraphicsContext& context, const FloatRect& srcRect, const AffineTransform& patternTransform,
+    const FloatPoint& phase, const FloatSize& spacing, CompositeOperator op, const FloatRect& destRect, BlendMode)
 {
     if (RefPtr<Image> image = copyImage(DontCopyBackingStore))
-        image->drawPattern(context, srcRect, patternTransform, phase, styleColorSpace, op, destRect);
+        image->drawPattern(context, srcRect, patternTransform, phase, spacing, op, destRect);
 }
 
 void ImageBuffer::platformTransformColorSpace(const Vector<int>& lookUpTable)
@@ -221,6 +304,8 @@ template <Multiply multiplied>
 PassRefPtr<Uint8ClampedArray> getImageData(const IntRect& rect, const ImageBufferData& data, const IntSize& size)
 {
     RefPtr<Uint8ClampedArray> result = Uint8ClampedArray::createUninitialized(rect.width() * rect.height() * 4);
+    if (!result)
+        return nullptr;
 
     if (rect.x() < 0 || rect.y() < 0 || (rect.x() + rect.width()) > size.width() || (rect.y() + rect.height()) > size.height())
         result->zeroFill();
@@ -395,7 +480,7 @@ String ImageBuffer::toDataURL(const String& mimeType, const double*, CoordinateS
 {
     ASSERT(MIMETypeRegistry::isSupportedImageMIMETypeForEncoding(mimeType));
 
-    cairo_surface_t* image = cairo_get_target(context()->platformContext()->cr());
+    cairo_surface_t* image = cairo_get_target(context().platformContext()->cr());
 
     Vector<char> encodedImage;
     if (!image || !encodeImage(image, mimeType, &encodedImage))
@@ -408,8 +493,8 @@ String ImageBuffer::toDataURL(const String& mimeType, const double*, CoordinateS
 }
 #endif
 
-#if ENABLE(ACCELERATED_2D_CANVAS)
-void ImageBufferData::paintToTextureMapper(TextureMapper* textureMapper, const FloatRect& targetRect, const TransformationMatrix& matrix, float opacity)
+#if ENABLE(ACCELERATED_2D_CANVAS) && !USE(COORDINATED_GRAPHICS_THREADED)
+void ImageBufferData::paintToTextureMapper(TextureMapper& textureMapper, const FloatRect& targetRect, const TransformationMatrix& matrix, float opacity)
 {
     ASSERT(m_texture);
 
@@ -418,7 +503,7 @@ void ImageBufferData::paintToTextureMapper(TextureMapper* textureMapper, const F
     cairo_surface_flush(m_surface.get());
     previousActiveContext->makeContextCurrent();
 
-    static_cast<TextureMapperGL*>(textureMapper)->drawTexture(m_texture, TextureMapperGL::ShouldBlend, m_size, targetRect, matrix, opacity);
+    static_cast<TextureMapperGL&>(textureMapper).drawTexture(m_texture, TextureMapperGL::ShouldBlend, m_size, targetRect, matrix, opacity);
 }
 #endif
 

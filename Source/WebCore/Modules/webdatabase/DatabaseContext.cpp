@@ -142,7 +142,7 @@ void DatabaseContext::stop()
     stopDatabases();
 }
 
-bool DatabaseContext::canSuspendForPageCache() const
+bool DatabaseContext::canSuspendForDocumentSuspension() const
 {
     if (!hasOpenDatabases() || !m_databaseThread)
         return true;
@@ -216,9 +216,6 @@ void DatabaseContext::databaseExceededQuota(const String& name, DatabaseDetails 
         return;
     }
     ASSERT(m_scriptExecutionContext->isWorkerGlobalScope());
-    // FIXME: This needs a real implementation; this is a temporary solution for testing.
-    const unsigned long long defaultQuota = 5 * 1024 * 1024;
-    DatabaseManager::singleton().setQuota(m_scriptExecutionContext->securityOrigin(), defaultQuota);
 }
 
 SecurityOrigin* DatabaseContext::securityOrigin() const

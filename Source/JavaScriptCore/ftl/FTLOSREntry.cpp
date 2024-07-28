@@ -83,7 +83,7 @@ void* prepareOSREntry(
     }
     
     RELEASE_ASSERT(
-        static_cast<int>(values.numberOfLocals()) == baseline->m_numCalleeRegisters);
+        static_cast<int>(values.numberOfLocals()) == baseline->m_numCalleeLocals);
     
     EncodedJSValue* scratch = static_cast<EncodedJSValue*>(
         entryCode->entryBuffer()->dataBuffer());
@@ -100,9 +100,7 @@ void* prepareOSREntry(
     
     exec->setCodeBlock(entryCodeBlock);
     
-    void* result = entryCode->addressForCall(
-        vm, executable, ArityCheckNotRequired,
-        RegisterPreservationNotRequired).executableAddress();
+    void* result = entryCode->addressForCall(ArityCheckNotRequired).executableAddress();
     if (Options::verboseOSR())
         dataLog("    Entry will succeed, going to address", RawPointer(result), "\n");
     

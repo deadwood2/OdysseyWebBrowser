@@ -28,6 +28,7 @@
 
 #if ENABLE(INTL)
 
+#include "JSCJSValueInlines.h"
 #include "JSObject.h"
 
 namespace JSC {
@@ -55,6 +56,18 @@ protected:
 private:
     IntlObject(VM&, Structure*);
 };
+
+String defaultLocale();
+void convertICULocaleToBCP47LanguageTag(String& locale);
+bool intlBooleanOption(ExecState&, JSValue options, PropertyName, bool& usesFallback);
+String intlStringOption(ExecState&, JSValue options, PropertyName, std::initializer_list<const char*> values, const char* notFound, const char* fallback);
+unsigned intlNumberOption(ExecState&, JSValue options, PropertyName, unsigned minimum, unsigned maximum, unsigned fallback);
+Vector<String> canonicalizeLocaleList(ExecState&, JSValue locales);
+HashMap<String, String> resolveLocale(const HashSet<String>& availableLocales, const Vector<String>& requestedLocales, const HashMap<String, String>& options, const char* const relevantExtensionKeys[], size_t relevantExtensionKeyCount, Vector<String> (*localeData)(const String&, size_t));
+JSValue supportedLocales(ExecState&, const HashSet<String>& availableLocales, const Vector<String>& requestedLocales, JSValue options);
+String removeUnicodeLocaleExtension(const String& locale);
+String bestAvailableLocale(const HashSet<String>& availableLocales, const String& requestedLocale);
+Vector<String> numberingSystemsForLocale(const String& locale);
 
 } // namespace JSC
 

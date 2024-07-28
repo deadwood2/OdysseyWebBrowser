@@ -34,6 +34,7 @@ WebInspector.TimelineRecordFrame = class TimelineRecordFrame extends WebInspecto
 
         this._graphDataSource = graphDataSource;
         this._record = record || null;
+        this._filtered = false;
     }
 
     // Public
@@ -66,6 +67,20 @@ WebInspector.TimelineRecordFrame = class TimelineRecordFrame extends WebInspecto
         this._element.classList.toggle("selected");
     }
 
+    get filtered()
+    {
+        return this._filtered;
+    }
+
+    set filtered(x)
+    {
+        if (this._filtered === x)
+            return;
+
+        this._filtered = x;
+        this._element.classList.toggle("filtered");
+    }
+
     refresh(graphDataSource)
     {
         if (!this._record)
@@ -93,7 +108,7 @@ WebInspector.TimelineRecordFrame = class TimelineRecordFrame extends WebInspecto
 
     _calculateFrameDisplayData(graphDataSource)
     {
-        var secondsPerBlock = (graphDataSource.graphHeightSeconds / graphDataSource.element.offsetHeight) * WebInspector.TimelineRecordFrame.MinimumHeightPixels;
+        var secondsPerBlock = (graphDataSource.graphHeightSeconds / graphDataSource.height) * WebInspector.TimelineRecordFrame.MinimumHeightPixels;
         var segments = [];
         var invisibleSegments = [];
         var currentSegment = null;

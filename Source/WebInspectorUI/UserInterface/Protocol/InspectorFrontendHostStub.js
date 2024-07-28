@@ -84,10 +84,6 @@ if (!window.InspectorFrontendHost) {
         {
         },
 
-        setToolbarHeight: function(width)
-        {
-        },
-
         startWindowDrag: function()
         {
         },
@@ -110,6 +106,11 @@ if (!window.InspectorFrontendHost) {
             return "web";
         },
 
+        inspectionLevel: function()
+        {
+            return 1;
+        },
+
         inspectedURLChanged: function(title)
         {
             document.title = title;
@@ -120,6 +121,10 @@ if (!window.InspectorFrontendHost) {
             this._textToCopy = text;
             if (!document.execCommand("copy"))
                 console.error("Clipboard access is denied");
+        },
+
+        killText: function(text, shouldStartNewSequence)
+        {
         },
 
         openInNewTab: function(url)
@@ -172,7 +177,7 @@ if (!window.InspectorFrontendHost) {
         }
     };
 
-    InspectorFrontendHost = new WebInspector.InspectorFrontendHostStub();
+    InspectorFrontendHost = new WebInspector.InspectorFrontendHostStub;
 
     WebInspector.dontLocalizeUserInterface = true;
 }

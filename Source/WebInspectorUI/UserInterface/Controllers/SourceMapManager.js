@@ -108,6 +108,20 @@ WebInspector.SourceMapManager = class SourceMapManager extends WebInspector.Obje
             }
         }
 
+        if (sourceMapURL.startsWith("data:")) {
+            let {mimeType, base64, data} = parseDataURL(sourceMapURL);
+            let content = base64 ? atob(data) : data;
+            sourceMapLoaded.call(this, null, content, mimeType, 0);
+            return;
+        }
+
+        // COMPATIBILITY (iOS 7): Network.loadResource did not exist.
+        // Also, JavaScript Debuggable may reach this.
+        if (!window.NetworkAgent || !NetworkAgent.loadResource) {
+            this._loadAndParseFailed(sourceMapURL);
+            return;
+        }
+
         var frameIdentifier = null;
         if (originalSourceCode instanceof WebInspector.Resource && originalSourceCode.parentFrame)
             frameIdentifier = originalSourceCode.parentFrame.id;
@@ -115,8 +129,7 @@ WebInspector.SourceMapManager = class SourceMapManager extends WebInspector.Obje
         if (!frameIdentifier)
             frameIdentifier = WebInspector.frameResourceManager.mainFrame.id;
 
-        if (NetworkAgent.loadResource)
-            NetworkAgent.loadResource(frameIdentifier, sourceMapURL, sourceMapLoaded.bind(this));
+        NetworkAgent.loadResource(frameIdentifier, sourceMapURL, sourceMapLoaded.bind(this));
     }
 
     _loadAndParseFailed(sourceMapURL)

@@ -123,11 +123,6 @@ ProgramNode::ProgramNode(ParserArena& parserArena, const JSTokenLocation& startL
 {
 }
 
-void ProgramNode::setClosedVariables(Vector<RefPtr<UniquedStringImpl>>&& closedVariables)
-{
-    m_closedVariables = WTF::move(closedVariables);
-}
-
 // ------------------------------ ModuleProgramNode -----------------------------
 
 ModuleProgramNode::ModuleProgramNode(ParserArena& parserArena, const JSTokenLocation& startLocation, const JSTokenLocation& endLocation, unsigned startColumn, unsigned endColumn, SourceElements* children, VariableEnvironment& varEnvironment, FunctionStack& funcStack, VariableEnvironment& lexicalVariables, FunctionParameters*, const SourceCode& source, CodeFeatures features, int numConstants)
@@ -151,7 +146,7 @@ FunctionMetadataNode::FunctionMetadataNode(
     ParserArena&, const JSTokenLocation& startLocation, 
     const JSTokenLocation& endLocation, unsigned startColumn, unsigned endColumn, 
     int functionKeywordStart, int functionNameStart, int parametersStart, bool isInStrictContext, 
-    ConstructorKind constructorKind, unsigned parameterCount, SourceParseMode mode)
+    ConstructorKind constructorKind, SuperBinding superBinding, unsigned parameterCount, SourceParseMode mode, bool isArrowFunctionBodyExpression)
         : Node(endLocation)
         , m_startColumn(startColumn)
         , m_endColumn(endColumn)
@@ -162,8 +157,11 @@ FunctionMetadataNode::FunctionMetadataNode(
         , m_parameterCount(parameterCount)
         , m_parseMode(mode)
         , m_isInStrictContext(isInStrictContext)
+        , m_superBinding(static_cast<unsigned>(superBinding))
         , m_constructorKind(static_cast<unsigned>(constructorKind))
+        , m_isArrowFunctionBodyExpression(isArrowFunctionBodyExpression)
 {
+    ASSERT(m_superBinding == static_cast<unsigned>(superBinding));
     ASSERT(m_constructorKind == static_cast<unsigned>(constructorKind));
 }
 

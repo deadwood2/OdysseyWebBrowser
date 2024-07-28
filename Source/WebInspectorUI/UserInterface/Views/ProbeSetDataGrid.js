@@ -43,14 +43,15 @@ WebInspector.ProbeSetDataGrid = class ProbeSetDataGrid extends WebInspector.Data
         this.element.classList.add("inline");
 
         this._frameNodes = new Map;
+        this._lastUpdatedFrame = null;
         this._nodesSinceLastNavigation = [];
 
-        this._listeners = new WebInspector.EventListenerSet(this, "ProbeSetDataGrid instance listeners");
-        this._listeners.register(probeSet, WebInspector.ProbeSet.Event.ProbeAdded, this._setupProbe);
-        this._listeners.register(probeSet, WebInspector.ProbeSet.Event.ProbeRemoved, this._teardownProbe);
-        this._listeners.register(probeSet, WebInspector.ProbeSet.Event.SamplesCleared, this._setupData);
-        this._listeners.register(WebInspector.Probe, WebInspector.Probe.Event.ExpressionChanged, this._probeExpressionChanged);
-        this._listeners.install();
+        this._listenerSet = new WebInspector.EventListenerSet(this, "ProbeSetDataGrid instance listeners");
+        this._listenerSet.register(probeSet, WebInspector.ProbeSet.Event.ProbeAdded, this._setupProbe);
+        this._listenerSet.register(probeSet, WebInspector.ProbeSet.Event.ProbeRemoved, this._teardownProbe);
+        this._listenerSet.register(probeSet, WebInspector.ProbeSet.Event.SamplesCleared, this._setupData);
+        this._listenerSet.register(WebInspector.Probe, WebInspector.Probe.Event.ExpressionChanged, this._probeExpressionChanged);
+        this._listenerSet.install();
 
         this._setupData();
     }
@@ -62,7 +63,7 @@ WebInspector.ProbeSetDataGrid = class ProbeSetDataGrid extends WebInspector.Data
         for (var probe of this.probeSet)
             this._teardownProbe(probe);
 
-        this._listeners.uninstall(true);
+        this._listenerSet.uninstall(true);
     }
 
     // Private
@@ -103,8 +104,7 @@ WebInspector.ProbeSetDataGrid = class ProbeSetDataGrid extends WebInspector.Data
         this._dataListeners.uninstall(true);
         this.removeChildren();
         this._frameNodes = new Map;
-        this._separators = new Map;
-        delete this._lastUpdatedFrame;
+        this._lastUpdatedFrame = null;
     }
 
     _updateNodeForFrame(frame)

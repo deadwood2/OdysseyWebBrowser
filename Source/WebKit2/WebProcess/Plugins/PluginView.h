@@ -47,8 +47,6 @@
 // FIXME: Eventually this should move to WebCore.
 
 #if PLATFORM(COCOA)
-#include "WebHitTestResult.h"
-
 OBJC_CLASS NSDictionary;
 OBJC_CLASS PDFSelection;
 #endif
@@ -97,6 +95,7 @@ public:
     void setPageScaleFactor(double scaleFactor, WebCore::IntPoint origin);
     double pageScaleFactor() const;
     bool handlesPageScaleFactor() const;
+    bool requiresUnifiedScaleFactor() const;
 
     void pageScaleFactorDidChange();
     void topContentInsetDidChange();
@@ -168,10 +167,11 @@ private:
     virtual void beginSnapshottingRunningPlugin() override;
     virtual bool shouldAllowNavigationFromDrags() const override;
     virtual bool shouldNotAddLayer() const override;
+    virtual void willDetatchRenderer() override;
 
     // WebCore::Widget
     virtual void setFrameRect(const WebCore::IntRect&) override;
-    virtual void paint(WebCore::GraphicsContext*, const WebCore::IntRect&) override;
+    virtual void paint(WebCore::GraphicsContext&, const WebCore::IntRect&) override;
     virtual void invalidateRect(const WebCore::IntRect&) override;
     virtual void setFocus(bool) override;
     virtual void frameRectsChanged() override;
@@ -212,7 +212,6 @@ private:
     virtual void pluginFocusOrWindowFocusChanged(bool pluginHasFocusAndWindowHasFocus) override;
     virtual void setComplexTextInputState(PluginComplexTextInputState) override;
     virtual const WebCore::MachSendRight& compositingRenderServerPort() override;
-    virtual void openPluginPreferencePane() override;
 #endif
     virtual float contentsScaleFactor() override;
     virtual String proxiesForURL(const String&) override;

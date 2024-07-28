@@ -30,13 +30,15 @@
 #include "IDBBindingUtilities.h"
 
 #include "DOMRequestState.h"
-#include "IDBIndexMetadata.h"
+#include "IDBIndexInfo.h"
 #include "IDBKey.h"
 #include "IDBKeyData.h"
 #include "IDBKeyPath.h"
+#include "IndexKey.h"
 #include "JSDOMBinding.h"
 #include "Logging.h"
 #include "SharedBuffer.h"
+#include "ThreadSafeDataBuffer.h"
 
 #include <runtime/DateInstance.h>
 #include <runtime/ObjectConstructor.h>
@@ -53,7 +55,7 @@ static bool get(ExecState* exec, JSValue object, const String& keyPathElement, J
     }
     if (!object.isObject())
         return false;
-    Identifier identifier = Identifier::fromString(&exec->vm(), keyPathElement.utf8().data());
+    Identifier identifier = Identifier::fromString(&exec->vm(), keyPathElement);
     if (!asObject(object)->hasProperty(exec, identifier))
         return false;
     result = asObject(object)->get(exec, identifier);
@@ -70,23 +72,62 @@ static bool set(ExecState* exec, JSValue& object, const String& keyPathElement, 
 {
     if (!canSet(object, keyPathElement))
         return false;
-    Identifier identifier = Identifier::fromString(&exec->vm(), keyPathElement.utf8().data());
+    Identifier identifier = Identifier::fromString(&exec->vm(), keyPathElement);
     asObject(object)->putDirect(exec->vm(), identifier, jsValue);
     return true;
 }
 
-static JSValue idbKeyToJSValue(ExecState* exec, JSDOMGlobalObject* globalObject, IDBKey* key)
+JSValue idbKeyDataToJSValue(JSC::ExecState& exec, const IDBKeyData& keyData)
 {
-    if (!key) {
+    if (keyData.isNull())
+        return jsUndefined();
+
+    Locker<JSLock> locker(exec.vm().apiLock());
+
+    switch (keyData.type()) {
+    case KeyType::Array:
+        {
+            const Vector<IDBKeyData>& inArray = keyData.array();
+            size_t size = inArray.size();
+            JSArray* outArray = constructEmptyArray(&exec, 0, exec.lexicalGlobalObject(), size);
+            for (size_t i = 0; i < size; ++i) {
+                auto& arrayKey = inArray.at(i);
+                outArray->putDirectIndex(&exec, i, idbKeyDataToJSValue(exec, arrayKey));
+            }
+            return JSValue(outArray);
+        }
+    case KeyType::String:
+        return jsStringWithCache(&exec, keyData.string());
+    case KeyType::Date:
+        return jsDateOrNull(&exec, keyData.date());
+    case KeyType::Number:
+        return jsNumber(keyData.number());
+    case KeyType::Min:
+    case KeyType::Max:
+    case KeyType::Invalid:
+        ASSERT_NOT_REACHED();
+        return jsUndefined();
+    }
+
+    ASSERT_NOT_REACHED();
+    return jsUndefined();
+
+}
+
+static JSValue idbKeyToJSValue(ExecState* exec, JSGlobalObject* globalObject, IDBKey* key)
+{
+    if (!key || !exec) {
         // This should be undefined, not null.
         // Spec: http://dvcs.w3.org/hg/IndexedDB/raw-file/tip/Overview.html#idl-def-IDBKeyRange
         return jsUndefined();
     }
 
+    Locker<JSLock> locker(exec->vm().apiLock());
+
     switch (key->type()) {
-    case IDBKey::ArrayType:
+    case KeyType::Array:
         {
-            const IDBKey::KeyArray& inArray = key->array();
+            const Vector<RefPtr<IDBKey>>& inArray = key->array();
             size_t size = inArray.size();
             JSArray* outArray = constructEmptyArray(exec, 0, globalObject, size);
             for (size_t i = 0; i < size; ++i) {
@@ -95,15 +136,15 @@ static JSValue idbKeyToJSValue(ExecState* exec, JSDOMGlobalObject* globalObject,
             }
             return JSValue(outArray);
         }
-    case IDBKey::StringType:
+    case KeyType::String:
         return jsStringWithCache(exec, key->string());
-    case IDBKey::DateType:
+    case KeyType::Date:
         return jsDateOrNull(exec, key->date());
-    case IDBKey::NumberType:
+    case KeyType::Number:
         return jsNumber(key->number());
-    case IDBKey::MinType:
-    case IDBKey::MaxType:
-    case IDBKey::InvalidType:
+    case KeyType::Min:
+    case KeyType::Max:
+    case KeyType::Invalid:
         ASSERT_NOT_REACHED();
         return jsUndefined();
     }
@@ -134,7 +175,7 @@ static RefPtr<IDBKey> createIDBKeyFromValue(ExecState* exec, JSValue value, Vect
                 return nullptr;
             stack.append(array);
 
-            IDBKey::KeyArray subkeys;
+            Vector<RefPtr<IDBKey>> subkeys;
             for (size_t i = 0; i < length; i++) {
                 JSValue item = array->getIndex(exec, i);
                 RefPtr<IDBKey> subkey = createIDBKeyFromValue(exec, item, stack);
@@ -182,14 +223,14 @@ static JSValue getNthValueOnKeyPath(ExecState* exec, JSValue rootValue, const Ve
     return currentValue;
 }
 
-static RefPtr<IDBKey> internalCreateIDBKeyFromScriptValueAndKeyPath(ExecState* exec, const Deprecated::ScriptValue& value, const String& keyPath)
+static RefPtr<IDBKey> internalCreateIDBKeyFromScriptValueAndKeyPath(ExecState* exec, const JSC::JSValue& value, const String& keyPath)
 {
     Vector<String> keyPathElements;
     IDBKeyPathParseError error;
     IDBParseKeyPath(keyPath, keyPathElements, error);
-    ASSERT(error == IDBKeyPathParseErrorNone);
+    ASSERT(error == IDBKeyPathParseError::None);
 
-    JSValue jsValue = value.jsValue();
+    JSValue jsValue = value;
     jsValue = getNthValueOnKeyPath(exec, jsValue, keyPathElements, keyPathElements.size());
     if (jsValue.isUndefined())
         return nullptr;
@@ -236,12 +277,12 @@ bool injectIDBKeyIntoScriptValue(DOMRequestState* requestState, PassRefPtr<IDBKe
 {
     LOG(StorageAPI, "injectIDBKeyIntoScriptValue");
 
-    ASSERT(keyPath.type() == IDBKeyPath::StringType);
+    ASSERT(keyPath.type() == IndexedDB::KeyPathType::String);
 
     Vector<String> keyPathElements;
     IDBKeyPathParseError error;
     IDBParseKeyPath(keyPath.string(), keyPathElements, error);
-    ASSERT(error == IDBKeyPathParseErrorNone);
+    ASSERT(error == IDBKeyPathParseError::None);
 
     if (keyPathElements.isEmpty())
         return false;
@@ -252,7 +293,35 @@ bool injectIDBKeyIntoScriptValue(DOMRequestState* requestState, PassRefPtr<IDBKe
     if (parent.isUndefined())
         return false;
 
-    if (!set(exec, parent, keyPathElements.last(), idbKeyToJSValue(exec, jsCast<JSDOMGlobalObject*>(exec->lexicalGlobalObject()), key.get())))
+    if (!set(exec, parent, keyPathElements.last(), idbKeyToJSValue(exec, exec->lexicalGlobalObject(), key.get())))
+        return false;
+
+    return true;
+}
+
+bool injectIDBKeyIntoScriptValue(JSC::ExecState& exec, const IDBKeyData& keyData, JSC::JSValue value, const IDBKeyPath& keyPath)
+{
+    LOG(IndexedDB, "injectIDBKeyIntoScriptValue");
+
+    ASSERT(keyPath.type() == IndexedDB::KeyPathType::String);
+
+    Vector<String> keyPathElements;
+    IDBKeyPathParseError error;
+    IDBParseKeyPath(keyPath.string(), keyPathElements, error);
+    ASSERT(error == IDBKeyPathParseError::None);
+
+    if (keyPathElements.isEmpty())
+        return false;
+
+    JSValue parent = ensureNthValueOnKeyPath(&exec, value, keyPathElements, keyPathElements.size() - 1);
+    if (parent.isUndefined())
+        return false;
+
+    auto key = keyData.maybeCreateIDBKey();
+    if (!key)
+        return false;
+
+    if (!set(&exec, parent, keyPathElements.last(), idbKeyToJSValue(&exec, exec.lexicalGlobalObject(), key.get())))
         return false;
 
     return true;
@@ -263,8 +332,8 @@ RefPtr<IDBKey> createIDBKeyFromScriptValueAndKeyPath(ExecState* exec, const Depr
     LOG(StorageAPI, "createIDBKeyFromScriptValueAndKeyPath");
     ASSERT(!keyPath.isNull());
 
-    if (keyPath.type() == IDBKeyPath::ArrayType) {
-        IDBKey::KeyArray result;
+    if (keyPath.type() == IndexedDB::KeyPathType::Array) {
+        Vector<RefPtr<IDBKey>> result;
         const Vector<String>& array = keyPath.array();
         for (size_t i = 0; i < array.size(); i++) {
             RefPtr<IDBKey> key = internalCreateIDBKeyFromScriptValueAndKeyPath(exec, value, array[i]);
@@ -275,25 +344,76 @@ RefPtr<IDBKey> createIDBKeyFromScriptValueAndKeyPath(ExecState* exec, const Depr
         return IDBKey::createArray(result);
     }
 
-    ASSERT(keyPath.type() == IDBKeyPath::StringType);
+    ASSERT(keyPath.type() == IndexedDB::KeyPathType::String);
     return internalCreateIDBKeyFromScriptValueAndKeyPath(exec, value, keyPath.string());
 }
 
-bool canInjectIDBKeyIntoScriptValue(DOMRequestState* requestState, const Deprecated::ScriptValue& scriptValue, const IDBKeyPath& keyPath)
+RefPtr<IDBKey> maybeCreateIDBKeyFromScriptValueAndKeyPath(ExecState& exec, const Deprecated::ScriptValue& value, const IDBKeyPath& keyPath)
+{
+    ASSERT(!keyPath.isNull());
+
+    if (keyPath.type() == IndexedDB::KeyPathType::Array) {
+        Vector<RefPtr<IDBKey>> result;
+        const Vector<String>& array = keyPath.array();
+        for (size_t i = 0; i < array.size(); i++) {
+            RefPtr<IDBKey> key = internalCreateIDBKeyFromScriptValueAndKeyPath(&exec, value, array[i]);
+            if (!key)
+                return nullptr;
+            result.append(key);
+        }
+        return IDBKey::createArray(result);
+    }
+
+    ASSERT(keyPath.type() == IndexedDB::KeyPathType::String);
+    return internalCreateIDBKeyFromScriptValueAndKeyPath(&exec, value, keyPath.string());
+}
+
+RefPtr<IDBKey> maybeCreateIDBKeyFromScriptValueAndKeyPath(ExecState& exec, const JSC::JSValue& value, const IDBKeyPath& keyPath)
+{
+    ASSERT(!keyPath.isNull());
+
+    if (keyPath.type() == IndexedDB::KeyPathType::Array) {
+        const Vector<String>& array = keyPath.array();
+        Vector<RefPtr<IDBKey>> result;
+        result.reserveInitialCapacity(array.size());
+        for (auto& string : array) {
+            RefPtr<IDBKey> key = internalCreateIDBKeyFromScriptValueAndKeyPath(&exec, value, string);
+            if (!key)
+                return nullptr;
+            result.uncheckedAppend(WTFMove(key));
+        }
+        return IDBKey::createArray(WTFMove(result));
+    }
+
+    ASSERT(keyPath.type() == IndexedDB::KeyPathType::String);
+    return internalCreateIDBKeyFromScriptValueAndKeyPath(&exec, value, keyPath.string());
+}
+
+bool canInjectIDBKeyIntoScriptValue(DOMRequestState* requestState, const JSC::JSValue& scriptValue, const IDBKeyPath& keyPath)
 {
     LOG(StorageAPI, "canInjectIDBKeyIntoScriptValue");
 
-    ASSERT(keyPath.type() == IDBKeyPath::StringType);
+    JSC::ExecState* exec = requestState->exec();
+    if (!exec)
+        return false;
+
+    return canInjectIDBKeyIntoScriptValue(*exec, scriptValue, keyPath);
+}
+
+bool canInjectIDBKeyIntoScriptValue(JSC::ExecState& execState, const JSC::JSValue& scriptValue, const IDBKeyPath& keyPath)
+{
+    LOG(StorageAPI, "canInjectIDBKeyIntoScriptValue");
+
+    ASSERT(keyPath.type() == IndexedDB::KeyPathType::String);
     Vector<String> keyPathElements;
     IDBKeyPathParseError error;
     IDBParseKeyPath(keyPath.string(), keyPathElements, error);
-    ASSERT(error == IDBKeyPathParseErrorNone);
+    ASSERT(error == IDBKeyPathParseError::None);
 
     if (!keyPathElements.size())
         return false;
 
-    JSC::ExecState* exec = requestState->exec();
-    return canInjectNthValueOnKeyPath(exec, scriptValue.jsValue(), keyPathElements, keyPathElements.size() - 1);
+    return canInjectNthValueOnKeyPath(&execState, scriptValue, keyPathElements, keyPathElements.size() - 1);
 }
 
 Deprecated::ScriptValue deserializeIDBValue(DOMRequestState* requestState, PassRefPtr<SerializedScriptValue> prpValue)
@@ -308,19 +428,60 @@ Deprecated::ScriptValue deserializeIDBValue(DOMRequestState* requestState, PassR
     return Deprecated::ScriptValue(exec->vm(), result);
 }
 
+Deprecated::ScriptValue deserializeIDBValueData(ScriptExecutionContext& context, const ThreadSafeDataBuffer& valueData)
+{
+    DOMRequestState state(&context);
+    auto* execState = state.exec();
+
+    if (!execState)
+        return Deprecated::ScriptValue();
+
+    return Deprecated::ScriptValue(execState->vm(), deserializeIDBValueDataToJSValue(*execState, valueData));
+}
+
+JSC::JSValue deserializeIDBValueDataToJSValue(JSC::ExecState& exec, const ThreadSafeDataBuffer& valueData)
+{
+    if (!valueData.data())
+        return jsUndefined();
+
+    const Vector<uint8_t>& data = *valueData.data();
+    JSValue result;
+    if (data.size()) {
+        RefPtr<SerializedScriptValue> serializedValue = SerializedScriptValue::createFromWireBytes(Vector<uint8_t>(data));
+
+        exec.vm().apiLock().lock();
+        result = serializedValue->deserialize(&exec, exec.lexicalGlobalObject(), 0, NonThrowing);
+        exec.vm().apiLock().unlock();
+    } else
+        result = jsNull();
+
+    return result;
+}
+
 Deprecated::ScriptValue deserializeIDBValueBuffer(DOMRequestState* requestState, PassRefPtr<SharedBuffer> prpBuffer, bool keyIsDefined)
 {
     if (prpBuffer) {
         Vector<uint8_t> value;
         value.append(prpBuffer->data(), prpBuffer->size());
-        return deserializeIDBValueBuffer(requestState->exec(), value, keyIsDefined);
+        return deserializeIDBValueBuffer(requestState->exec(), WTFMove(value), keyIsDefined);
     }
 
     return Deprecated::ScriptValue(requestState->exec()->vm(), jsNull());
 }
 
-Deprecated::ScriptValue deserializeIDBValueBuffer(JSC::ExecState* exec, const Vector<uint8_t>& buffer, bool keyIsDefined)
+static JSValue idbValueDataToJSValue(JSC::ExecState& exec, Vector<uint8_t>&& buffer)
 {
+    if (buffer.isEmpty())
+        return jsNull();
+
+    RefPtr<SerializedScriptValue> serializedValue = SerializedScriptValue::createFromWireBytes(WTFMove(buffer));
+    return serializedValue->deserialize(&exec, exec.lexicalGlobalObject(), 0, NonThrowing);
+}
+
+Deprecated::ScriptValue deserializeIDBValueBuffer(JSC::ExecState* exec, Vector<uint8_t>&& buffer, bool keyIsDefined)
+{
+    ASSERT(exec);
+
     // If the key doesn't exist, then the value must be undefined (as opposed to null).
     if (!keyIsDefined) {
         // We either shouldn't have a buffer or it should be of size 0.
@@ -328,51 +489,86 @@ Deprecated::ScriptValue deserializeIDBValueBuffer(JSC::ExecState* exec, const Ve
         return Deprecated::ScriptValue(exec->vm(), jsUndefined());
     }
 
-    JSValue result;
-    if (buffer.size()) {
-        RefPtr<SerializedScriptValue> serializedValue = SerializedScriptValue::createFromWireBytes(buffer);
-        result = serializedValue->deserialize(exec, exec->lexicalGlobalObject(), 0, NonThrowing);
-    } else
-        result = jsNull();
-
+    JSValue result = idbValueDataToJSValue(*exec, WTFMove(buffer));
     return Deprecated::ScriptValue(exec->vm(), result);
+}
+
+JSValue idbValueDataToJSValue(JSC::ExecState& exec, const ThreadSafeDataBuffer& valueData)
+{
+    if (!valueData.data())
+        return jsUndefined();
+
+    return idbValueDataToJSValue(exec, Vector<uint8_t>(*valueData.data()));
 }
 
 Deprecated::ScriptValue idbKeyToScriptValue(DOMRequestState* requestState, PassRefPtr<IDBKey> key)
 {
     ExecState* exec = requestState->exec();
+    if (!exec)
+        return { };
+
     return Deprecated::ScriptValue(exec->vm(), idbKeyToJSValue(exec, jsCast<JSDOMGlobalObject*>(exec->lexicalGlobalObject()), key.get()));
 }
 
-RefPtr<IDBKey> scriptValueToIDBKey(DOMRequestState* requestState, const Deprecated::ScriptValue& scriptValue)
+RefPtr<IDBKey> scriptValueToIDBKey(DOMRequestState* requestState, const JSC::JSValue& scriptValue)
 {
     ExecState* exec = requestState->exec();
-    return createIDBKeyFromValue(exec, scriptValue.jsValue());
+    return createIDBKeyFromValue(exec, scriptValue);
 }
 
-void generateIndexKeysForValue(ExecState* exec, const IDBIndexMetadata& indexMetadata, const Deprecated::ScriptValue& objectValue, Vector<IDBKeyData>& indexKeys)
+RefPtr<IDBKey> scriptValueToIDBKey(ExecState& exec, const JSC::JSValue& scriptValue)
 {
-    RefPtr<IDBKey> indexKey = createIDBKeyFromScriptValueAndKeyPath(exec, objectValue, indexMetadata.keyPath);
+    return createIDBKeyFromValue(&exec, scriptValue);
+}
 
-    if (!indexKey)
+Deprecated::ScriptValue idbKeyDataToScriptValue(ScriptExecutionContext* context, const IDBKeyData& keyData)
+{
+    RefPtr<IDBKey> key = keyData.maybeCreateIDBKey();
+    DOMRequestState requestState(context);
+    return idbKeyToScriptValue(&requestState, key.get());
+}
+
+static Vector<IDBKeyData> createKeyPathArray(ExecState& exec, JSValue value, const IDBIndexInfo& info)
+{
+    Vector<IDBKeyData> keys;
+
+    switch (info.keyPath().type()) {
+    case IndexedDB::KeyPathType::Array:
+        for (auto& entry : info.keyPath().array()) {
+            auto key = internalCreateIDBKeyFromScriptValueAndKeyPath(&exec, value, entry);
+            if (!key)
+                return { };
+            keys.append(key.get());
+        }
+        break;
+    case IndexedDB::KeyPathType::String: {
+        auto idbKey = internalCreateIDBKeyFromScriptValueAndKeyPath(&exec, value, info.keyPath().string());
+        if (!idbKey)
+            return { };
+
+        if (info.multiEntry() && idbKey->type() == IndexedDB::Array) {
+            for (auto& key : idbKey->array())
+                keys.append(key.get());
+        } else
+            keys.append(idbKey.get());
+
+        break;
+    }
+    case IndexedDB::KeyPathType::Null:
+        RELEASE_ASSERT_NOT_REACHED();
+    }
+
+    return keys;
+}
+
+void generateIndexKeyForValue(ExecState& exec, const IDBIndexInfo& info, JSValue value, IndexKey& outKey)
+{
+    auto keyDatas = createKeyPathArray(exec, value, info);
+
+    if (keyDatas.isEmpty())
         return;
 
-    if (!indexMetadata.multiEntry || indexKey->type() != IDBKey::ArrayType) {
-        if (!indexKey->isValid())
-            return;
-
-        indexKeys.append(IDBKeyData(indexKey.get()));
-    } else {
-        ASSERT(indexMetadata.multiEntry);
-        ASSERT(indexKey->type() == IDBKey::ArrayType);
-        indexKey = IDBKey::createMultiEntryArray(indexKey->array());
-
-        if (!indexKey->isValid())
-            return;
-
-        for (auto& i : indexKey->array())
-            indexKeys.append(IDBKeyData(i.get()));
-    }
+    outKey = IndexKey(WTFMove(keyDatas));
 }
 
 } // namespace WebCore

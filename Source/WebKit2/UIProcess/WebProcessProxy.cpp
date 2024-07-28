@@ -100,12 +100,13 @@ Ref<WebProcessProxy> WebProcessProxy::create(WebProcessPool& processPool)
 }
 
 WebProcessProxy::WebProcessProxy(WebProcessPool& processPool)
-    : m_responsivenessTimer(this)
+    : m_responsivenessTimer(*this)
     , m_processPool(processPool)
     , m_mayHaveUniversalFileReadSandboxExtension(false)
     , m_customProtocolManagerProxy(this, processPool)
     , m_numberOfTimesSuddenTerminationWasDisabled(0)
     , m_throttler(*this)
+    , m_isResponsive(NoOrMaybe::Maybe)
 {
     WebPasteboardProxy::singleton().addWebProcessProxy(*this);
 
@@ -128,10 +129,23 @@ WebProcessProxy::~WebProcessProxy()
 
 void WebProcessProxy::getLaunchOptions(ProcessLauncher::LaunchOptions& launchOptions)
 {
-    launchOptions.processType = ProcessLauncher::WebProcess;
+    launchOptions.processType = ProcessLauncher::ProcessType::Web;
+
+    ChildProcessProxy::getLaunchOptions(launchOptions);
+
     if (WebInspectorProxy::isInspectorProcessPool(m_processPool))
         launchOptions.extraInitializationData.add(ASCIILiteral("inspector-process"), ASCIILiteral("1"));
-    platformGetLaunchOptions(launchOptions);
+
+    auto overrideLanguages = m_processPool->configuration().overrideLanguages();
+    if (overrideLanguages.size()) {
+        StringBuilder languageString;
+        for (size_t i = 0; i < overrideLanguages.size(); ++i) {
+            if (i)
+                languageString.append(',');
+            languageString.append(overrideLanguages[i]);
+        }
+        launchOptions.extraInitializationData.add(ASCIILiteral("OverrideLanguages"), languageString.toString());
+    }
 }
 
 void WebProcessProxy::connectionWillOpen(IPC::Connection& connection)
@@ -187,12 +201,9 @@ void WebProcessProxy::shutDown()
         frames[i]->webProcessWillShutDown();
     m_frameMap.clear();
 
-    if (m_downloadProxyMap)
-        m_downloadProxyMap->processDidClose();
-
-    for (VisitedLinkProvider* visitedLinkProvider : m_visitedLinkProviders)
-        visitedLinkProvider->removeProcess(*this);
-    m_visitedLinkProviders.clear();
+    for (VisitedLinkStore* visitedLinkStore : m_visitedLinkStores)
+        visitedLinkStore->removeProcess(*this);
+    m_visitedLinkStores.clear();
 
     for (WebUserContentControllerProxy* webUserContentControllerProxy : m_webUserContentControllerProxies)
         webUserContentControllerProxy->removeProcess(*this);
@@ -209,7 +220,7 @@ WebPageProxy* WebProcessProxy::webPage(uint64_t pageID)
 Ref<WebPageProxy> WebProcessProxy::createWebPage(PageClient& pageClient, Ref<API::PageConfiguration>&& pageConfiguration)
 {
     uint64_t pageID = generatePageID();
-    Ref<WebPageProxy> webPage = WebPageProxy::create(pageClient, *this, pageID, WTF::move(pageConfiguration));
+    Ref<WebPageProxy> webPage = WebPageProxy::create(pageClient, *this, pageID, WTFMove(pageConfiguration));
 
     m_pageMap.set(pageID, webPage.ptr());
     globalPageMap().set(pageID, webPage.ptr());
@@ -241,16 +252,16 @@ void WebProcessProxy::removeWebPage(uint64_t pageID)
 
     // If this was the last WebPage open in that web process, and we have no other reason to keep it alive, let it go.
     // We only allow this when using a network process, as otherwise the WebProcess needs to preserve its session state.
-    if (!m_processPool->usesNetworkProcess() || state() == State::Terminated || !canTerminateChildProcess())
+    if (state() == State::Terminated || !canTerminateChildProcess())
         return;
 
     shutDown();
 }
 
-void WebProcessProxy::addVisitedLinkProvider(VisitedLinkProvider& provider)
+void WebProcessProxy::addVisitedLinkStore(VisitedLinkStore& store)
 {
-    m_visitedLinkProviders.add(&provider);
-    provider.addProcess(*this);
+    m_visitedLinkStores.add(&store);
+    store.addProcess(*this);
 }
 
 void WebProcessProxy::addWebUserContentControllerProxy(WebUserContentControllerProxy& proxy)
@@ -259,10 +270,10 @@ void WebProcessProxy::addWebUserContentControllerProxy(WebUserContentControllerP
     proxy.addProcess(*this);
 }
 
-void WebProcessProxy::didDestroyVisitedLinkProvider(VisitedLinkProvider& provider)
+void WebProcessProxy::didDestroyVisitedLinkStore(VisitedLinkStore& store)
 {
-    ASSERT(m_visitedLinkProviders.contains(&provider));
-    m_visitedLinkProviders.remove(&provider);
+    ASSERT(m_visitedLinkStores.contains(&store));
+    m_visitedLinkStores.remove(&store);
 }
 
 void WebProcessProxy::didDestroyWebUserContentControllerProxy(WebUserContentControllerProxy& proxy)
@@ -375,7 +386,7 @@ void WebProcessProxy::addBackForwardItem(uint64_t itemID, uint64_t pageID, const
         BackForwardListItemState backForwardListItemState;
         backForwardListItemState.identifier = itemID;
         backForwardListItemState.pageState = pageState;
-        backForwardListItem = WebBackForwardListItem::create(WTF::move(backForwardListItemState), pageID);
+        backForwardListItem = WebBackForwardListItem::create(WTFMove(backForwardListItemState), pageID);
         return;
     }
 
@@ -412,12 +423,10 @@ void WebProcessProxy::getPluginProcessConnection(uint64_t pluginProcessToken, Pa
 }
 #endif
 
-#if ENABLE(NETWORK_PROCESS)
 void WebProcessProxy::getNetworkProcessConnection(PassRefPtr<Messages::WebProcessProxy::GetNetworkProcessConnection::DelayedReply> reply)
 {
     m_processPool->getNetworkProcessConnection(reply);
 }
-#endif // ENABLE(NETWORK_PROCESS)
 
 #if ENABLE(DATABASE_PROCESS)
 void WebProcessProxy::getDatabaseProcessConnection(PassRefPtr<Messages::WebProcessProxy::GetDatabaseProcessConnection::DelayedReply> reply)
@@ -537,28 +546,47 @@ void WebProcessProxy::didReceiveInvalidMessage(IPC::Connection& connection, IPC:
     didClose(connection);
 }
 
-void WebProcessProxy::didBecomeUnresponsive(ResponsivenessTimer*)
+void WebProcessProxy::didBecomeUnresponsive()
 {
+    m_isResponsive = NoOrMaybe::No;
+
     Vector<RefPtr<WebPageProxy>> pages;
     copyValuesToVector(m_pageMap, pages);
-    for (size_t i = 0, size = pages.size(); i < size; ++i)
-        pages[i]->processDidBecomeUnresponsive();
+
+    auto isResponsiveCallbacks = WTFMove(m_isResponsiveCallbacks);
+
+    for (auto& page : pages)
+        page->processDidBecomeUnresponsive();
+
+    bool isWebProcessResponsive = false;
+    for (auto& callback : isResponsiveCallbacks)
+        callback(isWebProcessResponsive);
 }
 
-void WebProcessProxy::interactionOccurredWhileUnresponsive(ResponsivenessTimer*)
+void WebProcessProxy::didBecomeResponsive()
 {
+    m_isResponsive = NoOrMaybe::Maybe;
+
     Vector<RefPtr<WebPageProxy>> pages;
     copyValuesToVector(m_pageMap, pages);
-    for (size_t i = 0, size = pages.size(); i < size; ++i)
-        pages[i]->interactionOccurredWhileProcessUnresponsive();
+    for (auto& page : pages)
+        page->processDidBecomeResponsive();
 }
 
-void WebProcessProxy::didBecomeResponsive(ResponsivenessTimer*)
+void WebProcessProxy::willChangeIsResponsive()
 {
     Vector<RefPtr<WebPageProxy>> pages;
     copyValuesToVector(m_pageMap, pages);
-    for (size_t i = 0, size = pages.size(); i < size; ++i)
-        pages[i]->processDidBecomeResponsive();
+    for (auto& page : pages)
+        page->willChangeProcessIsResponsive();
+}
+
+void WebProcessProxy::didChangeIsResponsive()
+{
+    Vector<RefPtr<WebPageProxy>> pages;
+    copyValuesToVector(m_pageMap, pages);
+    for (auto& page : pages)
+        page->didChangeProcessIsResponsive();
 }
 
 void WebProcessProxy::didFinishLaunching(ProcessLauncher* launcher, IPC::Connection::Identifier connectionIdentifier)
@@ -634,9 +662,6 @@ bool WebProcessProxy::canTerminateChildProcess()
     if (!m_pageMap.isEmpty())
         return false;
 
-    if (m_downloadProxyMap && !m_downloadProxyMap->isEmpty())
-        return false;
-
     if (!m_pendingDeleteWebsiteDataCallbacks.isEmpty())
         return false;
 
@@ -679,18 +704,6 @@ void WebProcessProxy::updateTextCheckerState()
         send(Messages::WebProcess::SetTextCheckerState(TextChecker::state()), 0);
 }
 
-DownloadProxy* WebProcessProxy::createDownloadProxy(const ResourceRequest& request)
-{
-#if ENABLE(NETWORK_PROCESS)
-    ASSERT(!m_processPool->usesNetworkProcess());
-#endif
-
-    if (!m_downloadProxyMap)
-        m_downloadProxyMap = std::make_unique<DownloadProxyMap>(this);
-
-    return m_downloadProxyMap->createDownloadProxy(m_processPool, request);
-}
-
 void WebProcessProxy::didSaveToPageCache()
 {
     m_processPool->processDidCachePage(this);
@@ -716,7 +729,7 @@ void WebProcessProxy::fetchWebsiteData(SessionID sessionID, WebsiteDataTypes dat
     auto token = throttler().backgroundActivityToken();
 
     m_pendingFetchWebsiteDataCallbacks.add(callbackID, [token, completionHandler](WebsiteData websiteData) {
-        completionHandler(WTF::move(websiteData));
+        completionHandler(WTFMove(websiteData));
     });
 
     send(Messages::WebProcess::FetchWebsiteData(sessionID, dataTypes, callbackID), 0);
@@ -924,7 +937,6 @@ void WebProcessProxy::didCancelProcessSuspension()
     m_throttler.didCancelProcessSuspension();
 }
 
-#if ENABLE(NETWORK_PROCESS)
 void WebProcessProxy::reinstateNetworkProcessAssertionState(NetworkProcessProxy& newNetworkProcessProxy)
 {
 #if PLATFORM(IOS)
@@ -939,11 +951,10 @@ void WebProcessProxy::reinstateNetworkProcessAssertionState(NetworkProcessProxy&
     UNUSED_PARAM(newNetworkProcessProxy);
 #endif
 }
-#endif
 
 void WebProcessProxy::didSetAssertionState(AssertionState state)
 {
-#if PLATFORM(IOS) && ENABLE(NETWORK_PROCESS)
+#if PLATFORM(IOS)
     ASSERT(!m_backgroundTokenForNetworkProcess || !m_foregroundTokenForNetworkProcess);
 
     switch (state) {
@@ -955,14 +966,12 @@ void WebProcessProxy::didSetAssertionState(AssertionState state)
         break;
 
     case AssertionState::Background:
-        if (processPool().usesNetworkProcess())
-            m_backgroundTokenForNetworkProcess = processPool().ensureNetworkProcess().throttler().backgroundActivityToken();
+        m_backgroundTokenForNetworkProcess = processPool().ensureNetworkProcess().throttler().backgroundActivityToken();
         m_foregroundTokenForNetworkProcess = nullptr;
         break;
     
     case AssertionState::Foreground:
-        if (processPool().usesNetworkProcess())
-            m_foregroundTokenForNetworkProcess = processPool().ensureNetworkProcess().throttler().foregroundActivityToken();
+        m_foregroundTokenForNetworkProcess = processPool().ensureNetworkProcess().throttler().foregroundActivityToken();
         m_backgroundTokenForNetworkProcess = nullptr;
         for (auto& page : m_pageMap.values())
             page->processWillBecomeForeground();
@@ -985,15 +994,33 @@ void WebProcessProxy::setIsHoldingLockedFiles(bool isHoldingLockedFiles)
         m_tokenForHoldingLockedFiles = m_throttler.backgroundActivityToken();
 }
 
-void WebProcessProxy::sendMainThreadPing()
+void WebProcessProxy::isResponsive(std::function<void(bool isWebProcessResponsive)> callback)
 {
-    responsivenessTimer()->start();
+    if (m_isResponsive == NoOrMaybe::No) {
+        if (callback) {
+            RunLoop::main().dispatch([callback] {
+                bool isWebProcessResponsive = false;
+                callback(isWebProcessResponsive);
+            });
+        }
+        return;
+    }
+
+    if (callback)
+        m_isResponsiveCallbacks.append(callback);
+
+    responsivenessTimer().start();
     send(Messages::WebProcess::MainThreadPing(), 0);
 }
 
 void WebProcessProxy::didReceiveMainThreadPing()
 {
-    responsivenessTimer()->stop();
+    responsivenessTimer().stop();
+
+    auto isResponsiveCallbacks = WTFMove(m_isResponsiveCallbacks);
+    bool isWebProcessResponsive = true;
+    for (auto& callback : isResponsiveCallbacks)
+        callback(isWebProcessResponsive);
 }
 
 } // namespace WebKit

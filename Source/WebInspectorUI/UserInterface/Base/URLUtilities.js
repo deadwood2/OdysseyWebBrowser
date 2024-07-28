@@ -70,9 +70,31 @@ function parseSecurityOrigin(securityOrigin)
     return {scheme, host, port};
 }
 
+function parseDataURL(url)
+{
+    if (!url.startsWith("data:"))
+        return null;
+
+    // data:[<media type>][;charset=<character set>][;base64],<data>
+    let match = url.match(/^data:([^;,]*)?(?:;charset=([^;,]*?))?(;base64)?,(.*)$/);
+    if (!match)
+        return null;
+
+    let scheme = "data";
+    let mimeType = match[1] || "text/plain";
+    let charset = match[2] || "US-ASCII";
+    let base64 = !!match[3];
+    let data = decodeURIComponent(match[4]);
+
+    return {scheme, mimeType, charset, base64, data};
+}
+
 function parseURL(url)
 {
     url = url ? url.trim() : "";
+
+    if (url.startsWith("data:"))
+        return {scheme: "data", host: null, port: null, path: null, queryString: null, fragment: null, lastPathComponent: null};
 
     var match = url.match(/^([^:]+):\/\/([^\/:]*)(?::([\d]+))?(?:(\/[^#]*)(?:#(.*))?)?$/i);
     if (!match)
@@ -150,6 +172,12 @@ function absoluteURL(partialURL, baseURL)
     if (partialURL[0] === "/")
         return baseURLPrefix + resolveDotsInPath(partialURL);
 
+    // A URL that starts with "#" is just a fragment that gets applied to the base URL (replacing the base URL fragment, maintaining the query string).
+    if (partialURL[0] === "#") {
+        let queryStringComponent = baseURLComponents.queryString ? "?" + baseURLComponents.queryString : "";
+        return baseURLPrefix + baseURLComponents.path + queryStringComponent + partialURL;
+    }
+
     // Generate the base path that is used in the final case by removing everything after the last "/" from the base URL's path.
     var basePath = baseURLComponents.path.substring(0, baseURLComponents.path.lastIndexOf("/")) + "/";
     return baseURLPrefix + resolveDotsInPath(basePath + partialURL);
@@ -169,7 +197,7 @@ function parseQueryString(queryString, arrayResult)
     function decode(string)
     {
         try {
-            // Replace "+" with " " then decode precent encoded values.
+            // Replace "+" with " " then decode percent encoded values.
             return decodeURIComponent(string.replace(/\+/g, " "));
         } catch (e) {
             return string;
@@ -191,6 +219,9 @@ function parseQueryString(queryString, arrayResult)
 
 WebInspector.displayNameForURL = function(url, urlComponents)
 {
+    if (url.startsWith("data:"))
+        return WebInspector.truncateURL(url);
+
     if (!urlComponents)
         urlComponents = parseURL(url);
 
@@ -202,6 +233,27 @@ WebInspector.displayNameForURL = function(url, urlComponents)
     }
 
     return displayName || WebInspector.displayNameForHost(urlComponents.host) || url;
+};
+
+WebInspector.truncateURL = function(url, multiline = false, dataURIMaxSize = 6)
+{
+    if (!url.startsWith("data:"))
+        return url;
+
+    const dataIndex = url.indexOf(",") + 1;
+    let header = url.slice(0, dataIndex);
+    if (multiline)
+        header += "\n";
+
+    const data = url.slice(dataIndex);
+    if (data.length < dataURIMaxSize)
+        return header + data;
+
+    const firstChunk = data.slice(0, Math.ceil(dataURIMaxSize / 2));
+    const ellipsis = "\u2026";
+    const middleChunk = multiline ? `\n${ellipsis}\n` : ellipsis;
+    const lastChunk = data.slice(-Math.floor(dataURIMaxSize / 2));
+    return header + firstChunk + middleChunk + lastChunk;
 };
 
 WebInspector.displayNameForHost = function(host)

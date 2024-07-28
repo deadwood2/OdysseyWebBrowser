@@ -68,16 +68,6 @@ DrawingAreaImpl::DrawingAreaImpl(WebPage& webPage, const WebPageCreationParamete
     , m_displayTimer(RunLoop::main(), this, &DrawingAreaImpl::displayTimerFired)
     , m_exitCompositingTimer(RunLoop::main(), this, &DrawingAreaImpl::exitAcceleratedCompositingMode)
 {
-
-#if USE(COORDINATED_GRAPHICS_THREADED)
-    webPage.corePage()->settings().setForceCompositingMode(true);
-#endif
-
-    if (webPage.corePage()->settings().acceleratedDrawingEnabled() || webPage.corePage()->settings().forceCompositingMode())
-        m_alwaysUseCompositing = true;
-
-    if (m_alwaysUseCompositing)
-        enterAcceleratedCompositingMode(0);
 }
 
 void DrawingAreaImpl::setNeedsDisplay()
@@ -248,7 +238,19 @@ void DrawingAreaImpl::mainFrameContentSizeChanged(const WebCore::IntSize& newSiz
 
 void DrawingAreaImpl::updatePreferences(const WebPreferencesStore& store)
 {
-    m_webPage.corePage()->settings().setForceCompositingMode(store.getBoolValueForKey(WebPreferencesKey::forceCompositingModeKey()));
+    Settings& settings = m_webPage.corePage()->settings();
+    settings.setForceCompositingMode(store.getBoolValueForKey(WebPreferencesKey::forceCompositingModeKey()));
+
+#if USE(COORDINATED_GRAPHICS_THREADED)
+    // Fixed position elements need to be composited and create stacking contexts
+    // in order to be scrolled by the ScrollingCoordinator.
+    settings.setAcceleratedCompositingForFixedPositionEnabled(true);
+    settings.setFixedPositionCreatesStackingContext(true);
+#endif
+
+    m_alwaysUseCompositing = settings.acceleratedDrawingEnabled() && settings.forceCompositingMode();
+    if (m_alwaysUseCompositing && !m_layerTreeHost)
+        enterAcceleratedCompositingMode(nullptr);
 }
 
 void DrawingAreaImpl::layerHostDidFlushLayers()

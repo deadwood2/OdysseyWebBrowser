@@ -67,7 +67,7 @@ SQLiteDatabase::SQLiteDatabase()
         // std::call_once is used to stay on the safe side. See bug #143245.
         int ret = sqlite3_initialize();
         if (ret != SQLITE_OK) {
-#if SQLITE_VERSION_NUMBER >= 3007015
+#if PLATFORM(MAC) || SQLITE_VERSION_NUMBER >= 3007015
             WTFLogAlways("Failed to initialize SQLite: %s", sqlite3_errstr(ret));
 #else
             WTFLogAlways("Failed to initialize SQLite");
@@ -118,12 +118,12 @@ bool SQLiteDatabase::open(const String& filename, bool forWebSQLDatabase)
     SQLiteStatement walStatement(*this, ASCIILiteral("PRAGMA journal_mode=WAL;"));
     int result = walStatement.step();
     if (result != SQLITE_OK && result != SQLITE_ROW)
-        LOG_ERROR("SQLite database failed to set journal_mode to WAL, error: %s",  lastErrorMsg());
+        LOG_ERROR("SQLite database failed to set journal_mode to WAL, error: %s", lastErrorMsg());
 
 #ifndef NDEBUG
     if (result == SQLITE_ROW) {
         String mode = walStatement.getColumnText(0);
-        if (!equalIgnoringCase(mode, "wal"))
+        if (!equalLettersIgnoringASCIICase(mode, "wal"))
             LOG_ERROR("journal_mode of database should be 'wal', but is '%s'", mode.utf8().data());
     }
 #endif
@@ -375,12 +375,8 @@ const char* SQLiteDatabase::lastErrorMsg()
 #ifndef NDEBUG
 void SQLiteDatabase::disableThreadingChecks()
 {
-    // This doesn't guarantee that SQList was compiled with -DTHREADSAFE, or that you haven't turned off the mutexes.
-#if SQLITE_VERSION_NUMBER >= 3003001
+    // Note that SQLite could be compiled with -DTHREADSAFE, or you may have turned off the mutexes.
     m_sharable = true;
-#else
-    ASSERT(0); // Your SQLite doesn't support sharing handles across threads.
-#endif
 }
 #endif
 
@@ -444,7 +440,6 @@ int SQLiteDatabase::authorizerFunction(void* userData, int actionCode, const cha
             return auth->allowAlterTable(parameter1, parameter2);
         case SQLITE_REINDEX:
             return auth->allowReindex(parameter1);
-#if SQLITE_VERSION_NUMBER >= 3003013 
         case SQLITE_ANALYZE:
             return auth->allowAnalyze(parameter1);
         case SQLITE_CREATE_VTABLE:
@@ -453,7 +448,6 @@ int SQLiteDatabase::authorizerFunction(void* userData, int actionCode, const cha
             return auth->dropVTable(parameter1, parameter2);
         case SQLITE_FUNCTION:
             return auth->allowFunction(parameter2);
-#endif
         default:
             ASSERT_NOT_REACHED();
             return SQLAuthDeny;

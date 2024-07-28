@@ -26,16 +26,20 @@
 WebKitBuildbot = function()
 {
     const queueInfo = {
-        "Apple Mavericks Debug (Build)": {platform: Dashboard.Platform.MacOSXMavericks, debug: true, builder: true, architecture: Buildbot.BuildArchitecture.SixtyFourBit},
-        "Apple Mavericks Release (Build)": {platform: Dashboard.Platform.MacOSXMavericks, debug: false, builder: true, architecture: Buildbot.BuildArchitecture.SixtyFourBit},
-        "Apple Mavericks Debug WK1 (Tests)": {platform: Dashboard.Platform.MacOSXMavericks, debug: true, tester: true, testCategory: Buildbot.TestCategory.WebKit1},
-        "Apple Mavericks Debug WK2 (Tests)": {platform: Dashboard.Platform.MacOSXMavericks, debug: true, tester: true, testCategory: Buildbot.TestCategory.WebKit2},
-        "Apple Mavericks Release WK1 (Tests)": {platform: Dashboard.Platform.MacOSXMavericks, debug: false, tester: true, testCategory: Buildbot.TestCategory.WebKit1},
-        "Apple Mavericks Release WK2 (Tests)": {platform: Dashboard.Platform.MacOSXMavericks, debug: false, tester: true, testCategory: Buildbot.TestCategory.WebKit2},
-        "Apple Mavericks Release WK2 (Perf)": {platform: Dashboard.Platform.MacOSXMavericks, debug: false, performance: true, heading: "Performance"},
-        "Apple Mavericks JSC": {platform: Dashboard.Platform.MacOSXMavericks, heading: "JavaScript", combinedQueues: {
-            "Apple Mavericks 32-bit JSC (BuildAndTest)": {heading: "32-bit JSC (BuildAndTest)"},
-            "Apple Mavericks LLINT CLoop (BuildAndTest)": {heading: "LLINT CLoop (BuildAndTest)"},
+        "Apple El Capitan Debug (Build)": {platform: Dashboard.Platform.MacOSXElCapitan, debug: true, builder: true, architecture: Buildbot.BuildArchitecture.SixtyFourBit},
+        "Apple El Capitan Release (Build)": {platform: Dashboard.Platform.MacOSXElCapitan, debug: false, builder: true, architecture: Buildbot.BuildArchitecture.SixtyFourBit},
+        "Apple El Capitan Release (32-bit Build)": {platform: Dashboard.Platform.MacOSXElCapitan, builder: true, architecture: Buildbot.BuildArchitecture.ThirtyTwoBit},
+        "Apple El Capitan Debug WK1 (Tests)": {platform: Dashboard.Platform.MacOSXElCapitan, debug: true, tester: true, testCategory: Buildbot.TestCategory.WebKit1},
+        "Apple El Capitan Debug WK2 (Tests)": {platform: Dashboard.Platform.MacOSXElCapitan, debug: true, tester: true, testCategory: Buildbot.TestCategory.WebKit2},
+        "Apple El Capitan Release WK1 (Tests)": {platform: Dashboard.Platform.MacOSXElCapitan, debug: false, tester: true, testCategory: Buildbot.TestCategory.WebKit1},
+        "Apple El Capitan Release WK2 (Tests)": {platform: Dashboard.Platform.MacOSXElCapitan, debug: false, tester: true, testCategory: Buildbot.TestCategory.WebKit2},
+        "Apple El Capitan Release WK2 (Perf)": {platform: Dashboard.Platform.MacOSXElCapitan, debug: false, performance: true, heading: "Performance"},
+        "Apple El Capitan (Leaks)": {platform: Dashboard.Platform.MacOSXElCapitan, debug: false, leaks: true},
+        "Apple El Capitan JSC": {platform: Dashboard.Platform.MacOSXElCapitan, heading: "JavaScript", combinedQueues: {
+            "Apple El Capitan 32-bit JSC (BuildAndTest)": {heading: "32-bit JSC (BuildAndTest)"},
+            "Apple El Capitan LLINT CLoop (BuildAndTest)": {heading: "LLINT CLoop (BuildAndTest)"},
+            "Apple El Capitan Debug JSC (Tests)": {heading: "Debug JSC (Tests)"},
+            "Apple El Capitan Release JSC (Tests)": {heading: "Release JSC (Tests)"},
         }},
         "Apple Yosemite Debug (Build)": {platform: Dashboard.Platform.MacOSXYosemite, debug: true, builder: true, architecture: Buildbot.BuildArchitecture.SixtyFourBit},
         "Apple Yosemite Release (Build)": {platform: Dashboard.Platform.MacOSXYosemite, debug: false, builder: true, architecture: Buildbot.BuildArchitecture.SixtyFourBit},
@@ -52,6 +56,10 @@ WebKitBuildbot = function()
             "Apple Yosemite Debug JSC (Tests)": {heading: "Debug JSC (Tests)"},
             "Apple Yosemite Release JSC (Tests)": {heading: "Release JSC (Tests)"},
         }},
+        "Apple iOS 9 Release (Build)": {platform: Dashboard.Platform.iOS9Device, debug: false, builder: true, architecture: Buildbot.BuildArchitecture.Universal},
+        "Apple iOS 9 Simulator Release (Build)": {platform: Dashboard.Platform.iOS9Simulator, debug: false, builder: true, architecture: Buildbot.BuildArchitecture.SixtyFourBit},
+        "Apple iOS 9 Simulator Release WK1 (Tests)": {platform: Dashboard.Platform.iOS9Simulator, debug: false, tester: true, testCategory: Buildbot.TestCategory.WebKit1},
+        "Apple iOS 9 Simulator Release WK2 (Tests)": {platform: Dashboard.Platform.iOS9Simulator, debug: false, tester: true, testCategory: Buildbot.TestCategory.WebKit2},
         "Apple Win Debug (Build)": {platform: Dashboard.Platform.Windows7, debug: true, builder: true, architecture: Buildbot.BuildArchitecture.ThirtyTwoBit},
         "Apple Win Release (Build)": {platform: Dashboard.Platform.Windows7, builder: true, architecture: Buildbot.BuildArchitecture.ThirtyTwoBit},
         "Apple Win 7 Debug (Tests)": {platform: Dashboard.Platform.Windows7, debug: true, tester: true, testCategory: Buildbot.TestCategory.WebKit1},
@@ -77,11 +85,6 @@ WebKitBuildbot.prototype = {
 
     get defaultBranches()
     {
-        return { openSource: "trunk" };
-    },
-
-    layoutTestResultsDirectoryURLForIteration: function(iteration)
-    {
-        return this.baseURL + "results/" + encodeURIComponent(iteration.queue.id) + "/" + encodeURIComponent("r" + iteration.revision[Dashboard.Repository.OpenSource.name] + " (" + iteration.id + ")");
+        return [{ repository: Dashboard.Repository.OpenSource, name: "trunk" }];
     }
 };

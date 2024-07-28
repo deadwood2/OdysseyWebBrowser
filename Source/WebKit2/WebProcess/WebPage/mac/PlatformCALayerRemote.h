@@ -98,6 +98,7 @@ public:
     virtual bool backingStoreAttached() const override;
     virtual bool backingContributesToMemoryEstimate() const override { return backingStoreAttached(); }
 
+    virtual bool geometryFlipped() const override;
     virtual void setGeometryFlipped(bool) override;
 
     virtual bool isDoubleSided() const override;
@@ -170,6 +171,8 @@ public:
     virtual void enumerateRectsBeingDrawn(CGContextRef, void (^block)(CGRect)) override;
 
     virtual uint32_t hostingContextID();
+
+    virtual unsigned backingStoreBytesPerPixel() const override;
 
     void setClonedLayer(const PlatformCALayer*);
 

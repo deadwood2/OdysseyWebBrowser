@@ -82,7 +82,7 @@ void HTMLBodyElement::collectStyleForPresentationAttribute(const QualifiedName& 
         if (!url.isEmpty()) {
             auto imageValue = CSSImageValue::create(document().completeURL(url).string());
             imageValue.get().setInitiator(localName());
-            style.setProperty(CSSProperty(CSSPropertyBackgroundImage, WTF::move(imageValue)));
+            style.setProperty(CSSProperty(CSSPropertyBackgroundImage, WTFMove(imageValue)));
         }
     } else if (name == marginwidthAttr || name == leftmarginAttr) {
         addHTMLLengthToStyle(style, CSSPropertyMarginRight, value);
@@ -95,7 +95,7 @@ void HTMLBodyElement::collectStyleForPresentationAttribute(const QualifiedName& 
     } else if (name == textAttr) {
         addHTMLColorToStyle(style, CSSPropertyColor, value);
     } else if (name == bgpropertiesAttr) {
-        if (equalIgnoringCase(value, "fixed"))
+        if (equalLettersIgnoringASCIICase(value, "fixed"))
            addPropertyToPresentationAttributeStyle(style, CSSPropertyBackgroundAttachment, CSSValueFixed);
     } else
         HTMLElement::collectStyleForPresentationAttribute(name, value, style);
@@ -193,16 +193,21 @@ Node::InsertionNotificationRequest HTMLBodyElement::insertedInto(ContainerNode& 
     // FIXME: It's surprising this is web compatible since it means a marginwidth and marginheight attribute can
     // magically appear on the <body> of all documents embedded through <iframe> or <frame>.
     // FIXME: Perhaps this code should be in attach() instead of here.
-    HTMLFrameOwnerElement* ownerElement = document().ownerElement();
-    if (is<HTMLFrameElementBase>(ownerElement)) {
-        HTMLFrameElementBase& ownerFrameElement = downcast<HTMLFrameElementBase>(*ownerElement);
-        int marginWidth = ownerFrameElement.marginWidth();
-        if (marginWidth != -1)
-            setIntegralAttribute(marginwidthAttr, marginWidth);
-        int marginHeight = ownerFrameElement.marginHeight();
-        if (marginHeight != -1)
-            setIntegralAttribute(marginheightAttr, marginHeight);
-    }
+    auto* ownerElement = document().ownerElement();
+    if (!is<HTMLFrameElementBase>(ownerElement))
+        return InsertionDone;
+    
+    auto& ownerFrameElement = downcast<HTMLFrameElementBase>(*ownerElement);
+
+    // Read values from the owner before setting any attributes, since setting an attribute can run arbitrary
+    // JavaScript, which might delete the owner element.
+    int marginWidth = ownerFrameElement.marginWidth();
+    int marginHeight = ownerFrameElement.marginHeight();
+
+    if (marginWidth != -1)
+        setIntegralAttribute(marginwidthAttr, marginWidth);
+    if (marginHeight != -1)
+        setIntegralAttribute(marginheightAttr, marginHeight);
 
     return InsertionDone;
 }

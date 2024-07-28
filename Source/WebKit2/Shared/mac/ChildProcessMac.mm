@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2012, 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,18 +38,11 @@
 #import <pwd.h>
 #import <stdlib.h>
 #import <sysexits.h>
+#import <wtf/cf/TypeCastsCF.h>
+#import <wtf/spi/darwin/SandboxSPI.h>
 
-// We have to #undef __APPLE_API_PRIVATE to prevent sandbox.h from looking for a header file that does not exist (<rdar://problem/9679211>). 
-#undef __APPLE_API_PRIVATE
-#import <sandbox.h>
-
-#define SANDBOX_NAMED_EXTERNAL 0x0003
-extern "C" int sandbox_init_with_parameters(const char *profile, uint64_t flags, const char *const parameters[], char **errorbuf);
-
-#ifdef __has_include
-#if __has_include(<HIServices/ProcessesPriv.h>)
+#if USE(APPLE_INTERNAL_SDK)
 #include <HIServices/ProcessesPriv.h>
-#endif
 #endif
 
 typedef bool (^LSServerConnectionAllowedBlock) ( CFDictionaryRef optionsRef );
@@ -85,14 +78,59 @@ void ChildProcess::platformInitialize()
     [[NSFileManager defaultManager] changeCurrentDirectoryPath:[[NSBundle mainBundle] bundlePath]];
 }
 
+static RetainPtr<SecCodeRef> findSecCodeForProcess(pid_t pid)
+{
+    RetainPtr<CFNumberRef> pidCFNumber = adoptCF(CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &pid));
+    const void* keys[] = { kSecGuestAttributePid };
+    const void* values[] = { pidCFNumber.get() };
+    RetainPtr<CFDictionaryRef> attributes = adoptCF(CFDictionaryCreate(kCFAllocatorDefault, keys, values, WTF_ARRAY_LENGTH(keys), &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
+    SecCodeRef code = nullptr;
+    if (SecCodeCopyGuestWithAttributes(nullptr, attributes.get(), kSecCSDefaultFlags, &code))
+        return nullptr;
+    return adoptCF(code);
+}
+
 void ChildProcess::initializeSandbox(const ChildProcessInitializationParameters& parameters, SandboxInitializationParameters& sandboxParameters)
 {
     NSBundle *webkit2Bundle = [NSBundle bundleForClass:NSClassFromString(@"WKView")];
     String defaultProfilePath = [webkit2Bundle pathForResource:[[NSBundle mainBundle] bundleIdentifier] ofType:@"sb"];
 
-    if (sandboxParameters.systemDirectorySuffix().isNull()) {
-        String defaultSystemDirectorySuffix = String([[NSBundle mainBundle] bundleIdentifier]) + "+" + parameters.clientIdentifier;
-        sandboxParameters.setSystemDirectorySuffix(defaultSystemDirectorySuffix);
+    if (sandboxParameters.userDirectorySuffix().isNull()) {
+        if (const OSObjectPtr<xpc_connection_t>& xpcConnection = parameters.connectionIdentifier.xpcConnection) {
+            pid_t clientProcessID = xpc_connection_get_pid(xpcConnection.get());
+            RetainPtr<SecCodeRef> code = findSecCodeForProcess(clientProcessID);
+            RELEASE_ASSERT(code);
+
+            CFStringRef appleSignedOrMacAppStoreSignedOrAppleDeveloperSignedRequirement = CFSTR("(anchor apple) or (anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.9]) or (anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] and certificate leaf[field.1.2.840.113635.100.6.1.13])");
+            SecRequirementRef signingRequirement = nullptr;
+            OSStatus status = SecRequirementCreateWithString(appleSignedOrMacAppStoreSignedOrAppleDeveloperSignedRequirement, kSecCSDefaultFlags, &signingRequirement);
+            RELEASE_ASSERT(status == errSecSuccess);
+
+            status = SecCodeCheckValidity(code.get(), kSecCSDefaultFlags, signingRequirement);
+            if (status == errSecSuccess) {
+                String clientIdentifierToUse;
+                CFDictionaryRef signingInfo = nullptr;
+                status = SecCodeCopySigningInformation(code.get(), kSecCSDefaultFlags, &signingInfo);
+                RELEASE_ASSERT(status == errSecSuccess);
+                if (CFDictionaryRef plist = dynamic_cf_cast<CFDictionaryRef>(CFDictionaryGetValue(signingInfo, kSecCodeInfoPList)))
+                    clientIdentifierToUse = String(dynamic_cf_cast<CFStringRef>(CFDictionaryGetValue(plist, kCFBundleIdentifierKey)));
+                else
+                    clientIdentifierToUse = String(dynamic_cf_cast<CFStringRef>(CFDictionaryGetValue(signingInfo, kSecCodeInfoIdentifier)));
+                CFRelease(signingInfo);
+                RELEASE_ASSERT(!clientIdentifierToUse.isEmpty());
+                sandboxParameters.setUserDirectorySuffix(makeString(String([[NSBundle mainBundle] bundleIdentifier]), '+', clientIdentifierToUse));
+            } else {
+                // Unsigned, signed by a third party, or has an invalid/malformed signature
+                auto userDirectorySuffix = parameters.extraInitializationData.find("user-directory-suffix");
+                if (userDirectorySuffix != parameters.extraInitializationData.end())
+                    sandboxParameters.setUserDirectorySuffix([makeString(userDirectorySuffix->value, '/', String([[NSBundle mainBundle] bundleIdentifier])) fileSystemRepresentation]);
+                sandboxParameters.setUserDirectorySuffix(makeString(String([[NSBundle mainBundle] bundleIdentifier]), '+', parameters.clientIdentifier));
+            }
+            CFRelease(signingRequirement);
+        } else {
+            // Legacy client
+            sandboxParameters.setUserDirectorySuffix(makeString(String([[NSBundle mainBundle] bundleIdentifier]), '+', parameters.clientIdentifier));
+        }
     }
 
     Vector<String> osVersionParts;
@@ -106,7 +144,7 @@ void ChildProcess::initializeSandbox(const ChildProcessInitializationParameters&
     sandboxParameters.addParameter("_OS_VERSION", osVersion.utf8().data());
 
     // Use private temporary and cache directories.
-    setenv("DIRHELPER_USER_DIR_SUFFIX", fileSystemRepresentation(sandboxParameters.systemDirectorySuffix()).data(), 0);
+    setenv("DIRHELPER_USER_DIR_SUFFIX", fileSystemRepresentation(sandboxParameters.userDirectorySuffix()).data(), 1);
     char temporaryDirectory[PATH_MAX];
     if (!confstr(_CS_DARWIN_USER_TEMP_DIR, temporaryDirectory, sizeof(temporaryDirectory))) {
         WTFLogAlways("%s: couldn't retrieve private temporary directory path: %d\n", getprogname(), errno);

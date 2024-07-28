@@ -31,13 +31,9 @@
 #include "TinyBloomFilter.h"
 #include <wtf/Assertions.h>
 #include <wtf/CheckedBoolean.h>
-#include <wtf/Condition.h>
 #include <wtf/DoublyLinkedList.h>
 #include <wtf/HashSet.h>
 #include <wtf/Lock.h>
-#include <wtf/OSAllocator.h>
-#include <wtf/PageBlock.h>
-#include <wtf/StdLibExtras.h>
 
 namespace JSC {
 
@@ -46,7 +42,7 @@ class CopiedBlock;
 
 class CopiedSpace {
     friend class CopyVisitor;
-    friend class GCThreadSharedData;
+    friend class Heap;
     friend class SlotVisitor;
     friend class JIT;
 public:
@@ -63,10 +59,8 @@ public:
 
     template <HeapOperation collectionType>
     void startedCopying();
-    void startedEdenCopy();
-    void startedFullCopy();
     void doneCopying();
-    bool isInCopyPhase() { return m_inCopyingPhase; }
+    bool isInCopyPhase() const { return m_inCopyingPhase; }
 
     void pin(CopiedBlock*);
     bool isPinned(void*);
@@ -80,7 +74,7 @@ public:
     size_t capacity();
 
     bool isPagedOut(double deadline);
-    bool shouldDoCopyPhase() { return m_shouldDoCopyPhase; }
+    bool shouldDoCopyPhase() const { return m_shouldDoCopyPhase; }
 
     static CopiedBlock* blockFor(void*);
 
@@ -134,18 +128,16 @@ private:
 
     CopiedGeneration m_oldGen;
     CopiedGeneration m_newGen;
-   
+
     bool m_inCopyingPhase;
     bool m_shouldDoCopyPhase;
 
-    Lock m_loanedBlocksLock; 
-    Condition m_loanedBlocksCondition;
+    Lock m_loanedBlocksLock;
     size_t m_numberOfLoanedBlocks;
     
     size_t m_bytesRemovedFromOldSpaceDueToReallocation;
 
     static const size_t s_maxAllocationSize = CopiedBlock::blockSize / 2;
-    static const size_t s_initialBlockNum = 16;
     static const size_t s_blockMask = ~(CopiedBlock::blockSize - 1);
 };
 

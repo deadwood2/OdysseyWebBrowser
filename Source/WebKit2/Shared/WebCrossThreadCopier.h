@@ -31,13 +31,12 @@
 
 #if ENABLE(INDEXED_DATABASE)
 
-namespace WebKit {
-class IDBIdentifier;
-class UniqueIDBDatabaseIdentifier;
-
-enum class UniqueIDBDatabaseShutdownType;
-
+namespace WebCore {
 struct SecurityOriginData;
+}
+
+namespace WebKit {
+enum class LegacyUniqueIDBDatabaseShutdownType;
 }
 
 namespace WTF {
@@ -46,24 +45,15 @@ class ASCIILiteral;
 
 namespace WebCore {
 
-template<> struct CrossThreadCopierBase<false, false, WebKit::UniqueIDBDatabaseIdentifier> {
-    static WebKit::UniqueIDBDatabaseIdentifier copy(const WebKit::UniqueIDBDatabaseIdentifier&);
-};
-
-template<> struct CrossThreadCopierBase<false, false, WebKit::IDBIdentifier> {
-    static WebKit::IDBIdentifier copy(const WebKit::IDBIdentifier&);
-};
-
-
-template<> struct CrossThreadCopierBase<false, false, WebKit::UniqueIDBDatabaseShutdownType> {
-    static WebKit::UniqueIDBDatabaseShutdownType copy(const WebKit::UniqueIDBDatabaseShutdownType& type)
+template<> struct CrossThreadCopierBase<false, false, WebKit::LegacyUniqueIDBDatabaseShutdownType> {
+    static WebKit::LegacyUniqueIDBDatabaseShutdownType copy(const WebKit::LegacyUniqueIDBDatabaseShutdownType& type)
     {
         return type;
     }
 };
 
-template<> struct CrossThreadCopierBase<false, false, WebKit::SecurityOriginData> {
-    static WebKit::SecurityOriginData copy(const WebKit::SecurityOriginData& type);
+template<> struct CrossThreadCopierBase<false, false, WebCore::SecurityOriginData> {
+    static WebCore::SecurityOriginData copy(const WebCore::SecurityOriginData& type);
 };
 
 template<> struct CrossThreadCopierBase<false, false, Vector<char>> {

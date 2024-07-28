@@ -30,6 +30,8 @@
 
 #include "JSDestructibleObject.h"
 
+struct UCollator;
+
 namespace JSC {
 
 class IntlCollatorConstructor;
@@ -44,20 +46,38 @@ public:
 
     DECLARE_INFO;
 
+    void initializeCollator(ExecState&, JSValue locales, JSValue optionsValue);
+    JSValue compareStrings(ExecState&, StringView, StringView);
+    JSObject* resolvedOptions(ExecState&);
+
     JSBoundFunction* boundCompare() const { return m_boundCompare.get(); }
     void setBoundCompare(VM&, JSBoundFunction*);
 
 protected:
     IntlCollator(VM&, Structure*);
+    ~IntlCollator();
     void finishCreation(VM&);
     static void destroy(JSCell*);
     static void visitChildren(JSCell*, SlotVisitor&);
 
 private:
+    enum class Usage { Sort, Search };
+    enum class Sensitivity { Base, Accent, Case, Variant };
+
+    void createCollator(ExecState&);
+    static const char* usageString(Usage);
+    static const char* sensitivityString(Sensitivity);
+
+    Usage m_usage;
+    String m_locale;
+    String m_collation;
+    Sensitivity m_sensitivity;
     WriteBarrier<JSBoundFunction> m_boundCompare;
+    UCollator* m_collator { nullptr };
+    bool m_numeric;
+    bool m_ignorePunctuation;
+    bool m_initializedCollator { false };
 };
-    
-EncodedJSValue JSC_HOST_CALL IntlCollatorFuncCompare(ExecState*);
 
 } // namespace JSC
 

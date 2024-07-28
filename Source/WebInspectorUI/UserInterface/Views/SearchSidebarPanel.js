@@ -47,17 +47,12 @@ WebInspector.SearchSidebarPanel = class SearchSidebarPanel extends WebInspector.
 
         this.filterBar.placeholder = WebInspector.UIString("Filter Search Results");
 
-        this._lastSearchedPageSetting = new WebInspector.Setting("last-searched-page", null);
-
         this._searchQuerySetting = new WebInspector.Setting("search-sidebar-query", "");
         this._inputElement.value = this._searchQuerySetting.value;
 
         WebInspector.Frame.addEventListener(WebInspector.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
 
-        this.contentTreeOutline.onselect = this._treeElementSelected.bind(this);
-
-        if (WebInspector.debuggableType === WebInspector.DebuggableType.JavaScript)
-            this._resourcesContentTreeOutline.element.classList.add(WebInspector.NavigationSidebarPanel.HideDisclosureButtonsStyleClassName);
+        this.contentTreeOutline.addEventListener(WebInspector.TreeOutline.Event.SelectionDidChange, this._treeSelectionDidChange, this);
     }
 
     // Public
@@ -84,7 +79,6 @@ WebInspector.SearchSidebarPanel = class SearchSidebarPanel extends WebInspector.
 
         this._inputElement.value = searchQuery;
         this._searchQuerySetting.value = searchQuery;
-        this._lastSearchedPageSetting.value = searchQuery && WebInspector.frameResourceManager.mainFrame ? WebInspector.frameResourceManager.mainFrame.url.hash : null;
 
         this.hideEmptyContentPlaceholder();
 
@@ -271,12 +265,12 @@ WebInspector.SearchSidebarPanel = class SearchSidebarPanel extends WebInspector.
         }
 
         if (window.DOMAgent)
-            WebInspector.domTreeManager.requestDocument();
+            WebInspector.domTreeManager.requestDocument(function(){});
 
         if (window.PageAgent)
             PageAgent.searchInResources(searchQuery, isCaseSensitive, isRegex, resourcesCallback.bind(this));
 
-        setTimeout(searchScripts.bind(this, WebInspector.debuggerManager.knownNonResourceScripts), 0);
+        setTimeout(searchScripts.bind(this, WebInspector.debuggerManager.searchableScripts), 0);
 
         if (window.DOMAgent) {
             if (this._domSearchIdentifier) {
@@ -345,31 +339,17 @@ WebInspector.SearchSidebarPanel = class SearchSidebarPanel extends WebInspector.
             this._delayedSearchTimeout = undefined;
         }
 
+        this.contentTreeOutline.removeChildren();
         this.contentBrowser.contentViewContainer.closeAllContentViews();
 
         if (this.visible)
             this.focusSearchField();
-
-        // Only if the last page searched is the same as the current page.
-        var mainFrame = event.target;
-        if (this._lastSearchedPageSetting.value !== mainFrame.url.hash)
-            return;
-
-        function delayedWork()
-        {
-            this._delayedSearchTimeout = undefined;
-
-            // Search for whatever is in the input field. This was populated with the last used search term.
-            this.performSearch(this._inputElement.value);
-        }
-
-        // Perform the search on a delay so we have a better chance of finding subresource results.
-        this._delayedSearchTimeout = setTimeout(delayedWork.bind(this), 500);
     }
 
-    _treeElementSelected(treeElement, selectedByUser)
+    _treeSelectionDidChange(event)
     {
-        if (treeElement instanceof WebInspector.FolderTreeElement)
+        let treeElement = event.data.selectedElement;
+        if (!treeElement || treeElement instanceof WebInspector.FolderTreeElement)
             return;
 
         if (treeElement instanceof WebInspector.ResourceTreeElement || treeElement instanceof WebInspector.ScriptTreeElement) {

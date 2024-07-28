@@ -64,21 +64,32 @@ WebInspector.ScriptTimelineDataGridNode = class ScriptTimelineDataGridNode exten
 
     get data()
     {
-        var startTime = this._record.startTime;
-        var duration = this._record.startTime + this._record.duration - startTime;
-        var callFrameOrSourceCodeLocation = this._record.initiatorCallFrame || this._record.sourceCodeLocation;
+        if (!this._cachedData) {
+            var startTime = this._record.startTime;
+            var duration = this._record.startTime + this._record.duration - startTime;
+            var callFrameOrSourceCodeLocation = this._record.initiatorCallFrame || this._record.sourceCodeLocation;
 
-        // COMPATIBILITY (iOS8): Profiles included per-call information and can be finely partitioned.
-        if (this._record.profile) {
-            var oneRootNode = this._record.profile.topDownRootNodes[0];
-            if (oneRootNode && oneRootNode.calls) {
-                startTime = Math.max(this._rangeStartTime, this._record.startTime);
-                duration = Math.min(this._record.startTime + this._record.duration, this._rangeEndTime) - startTime;
+            // COMPATIBILITY (iOS 8): Profiles included per-call information and can be finely partitioned.
+            if (this._record.profile) {
+                var oneRootNode = this._record.profile.topDownRootNodes[0];
+                if (oneRootNode && oneRootNode.calls) {
+                    startTime = Math.max(this._rangeStartTime, this._record.startTime);
+                    duration = Math.min(this._record.startTime + this._record.duration, this._rangeEndTime) - startTime;
+                }
             }
+
+            this._cachedData = {
+                eventType: this._record.eventType,
+                startTime,
+                selfTime: duration,
+                totalTime: duration,
+                averageTime: duration,
+                callCount: this._record.callCountOrSamples,
+                location: callFrameOrSourceCodeLocation,
+            };
         }
 
-        return {eventType: this._record.eventType, startTime, selfTime: duration, totalTime: duration,
-            averageTime: duration, callCount: 1, location: callFrameOrSourceCodeLocation};
+        return this._cachedData;
     }
 
     updateRangeTimes(startTime, endTime)
@@ -110,7 +121,6 @@ WebInspector.ScriptTimelineDataGridNode = class ScriptTimelineDataGridNode exten
 
     createCellContent(columnIdentifier, cell)
     {
-        const emptyValuePlaceholderString = "\u2014";
         var value = this.data[columnIdentifier];
 
         switch (columnIdentifier) {
@@ -118,12 +128,15 @@ WebInspector.ScriptTimelineDataGridNode = class ScriptTimelineDataGridNode exten
             return WebInspector.ScriptTimelineRecord.EventType.displayName(value, this._record.details);
 
         case "startTime":
-            return isNaN(value) ? emptyValuePlaceholderString : Number.secondsToString(value - this._baseStartTime, true);
+            return isNaN(value) ? emDash : Number.secondsToString(value - this._baseStartTime, true);
 
         case "selfTime":
         case "totalTime":
         case "averageTime":
-            return isNaN(value) ? emptyValuePlaceholderString : Number.secondsToString(value, true);
+            return isNaN(value) ? emDash : Number.secondsToString(value, true);
+
+        case "callCount":
+            return isNaN(value) ? emDash : value;
         }
 
         return super.createCellContent(columnIdentifier, cell);

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2014, 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -66,26 +66,19 @@ SOFT_LINK_CONSTANT(Photos, PHImageRequestOptionsVersionCurrent, NSString *);
 
 #define kCMTimeZero getkCMTimeZero()
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+
 #pragma mark - Document picker icons
 
 static inline UIImage *photoLibraryIcon()
 {
-    // FIXME: Remove when a new SDK is available. <rdar://problem/20150072>
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000 && defined(HAVE_WEBKIT_DOC_PICKER_ICONS)
     return _UIImageGetWebKitPhotoLibraryIcon();
-#else
-    return nil;
-#endif
 }
 
 static inline UIImage *cameraIcon()
 {
-    // FIXME: Remove when a new SDK is available. <rdar://problem/20150072>
-#if __IPHONE_OS_VERSION_MIN_REQUIRED >= 90000 && defined(HAVE_WEBKIT_DOC_PICKER_ICONS)
     return _UIImageGetWebKitTakePhotoOrVideoIcon();
-#else
-    return nil;
-#endif
 }
 
 #pragma mark - Icon generation
@@ -139,11 +132,7 @@ static UIImage* fallbackIconForFile(NSURL *file)
     ASSERT_ARG(file, [file isFileURL]);
 
     UIDocumentInteractionController *interactionController = [UIDocumentInteractionController interactionControllerWithURL:file];
-#if __IPHONE_OS_VERSION_MIN_REQUIRED < 90000
-    return thumbnailSizedImageForImage(((UIImage *)interactionController.icons[0]).CGImage);
-#else
     return thumbnailSizedImageForImage(interactionController.icons[0].CGImage);
-#endif
 }
 
 static UIImage* iconForImageFile(NSURL *file)
@@ -348,7 +337,7 @@ static UIImage* iconForFile(NSURL *file)
     urls.reserveInitialCapacity(count);
     for (NSURL *fileURL in fileURLs)
         urls.uncheckedAppend(adoptRef(toImpl(WKURLCreateWithCFURL((CFURLRef)fileURL))));
-    Ref<API::Array> fileURLsRef = API::Array::create(WTF::move(urls));
+    Ref<API::Array> fileURLsRef = API::Array::create(WTFMove(urls));
 
     NSData *jpeg = UIImageJPEGRepresentation(iconImage, 1.0);
     RefPtr<API::Data> iconImageDataRef = adoptRef(toImpl(WKDataCreate(reinterpret_cast<const unsigned char*>([jpeg bytes]), [jpeg length])));
@@ -375,19 +364,7 @@ static UIImage* iconForFile(NSURL *file)
         [mimeTypes addObject:mimeType->string()];
     _mimeTypes = adoptNS([mimeTypes copy]);
 
-    // FIXME: Remove this check and the fallback code when a new SDK is available. <rdar://problem/20150072>
-    if ([UIDocumentMenuViewController instancesRespondToSelector:@selector(_setIgnoreApplicationEntitlementForImport:)]) {
-        [self _showDocumentPickerMenu];
-        return;
-    }
-
-    // Fall back to showing the old-style source selection sheet.
-    // If there is no camera or this is type=multiple, just show the image picker for the photo library.
-    // Otherwise, show an action sheet for the user to choose between camera or library.
-    if (_allowMultipleFiles || ![UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypeCamera])
-        [self _showPhotoPickerWithSourceType:UIImagePickerControllerSourceTypePhotoLibrary];
-    else
-        [self _showMediaSourceSelectionSheet];
+    [self _showDocumentPickerMenu];
 }
 
 - (void)dismiss
@@ -483,47 +460,10 @@ static NSArray *UTIsForMIMETypes(NSArray *mimeTypes)
     return WEB_UI_STRING_KEY("Take Photo", "Take Photo (file upload action sheet)", "File Upload alert sheet camera button string for taking only photos");
 }
 
-- (void)_showMediaSourceSelectionSheet
-{
-    NSString *existingString = [self _photoLibraryButtonLabel];
-    NSString *cameraString = [self _cameraButtonLabel];
-    NSString *cancelString = WEB_UI_STRING_KEY("Cancel", "Cancel (file upload action sheet)", "File Upload alert sheet button string to cancel");
-
-    _actionSheetController = [UIAlertController alertControllerWithTitle:nil message:nil preferredStyle:UIAlertControllerStyleActionSheet];
-
-    UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:cancelString style:UIAlertActionStyleCancel handler:^(UIAlertAction *){
-        [self _cancel];
-        // We handled cancel ourselves. Prevent the popover controller delegate from cancelling when the popover dismissed.
-        [_presentationPopover setDelegate:nil];
-    }];
-
-    UIAlertAction *cameraAction = [UIAlertAction actionWithTitle:cameraString style:UIAlertActionStyleDefault handler:^(UIAlertAction *){
-        _usingCamera = YES;
-        [self _showPhotoPickerWithSourceType:UIImagePickerControllerSourceTypeCamera];
-    }];
-
-    UIAlertAction *photoLibraryAction = [UIAlertAction actionWithTitle:existingString style:UIAlertActionStyleDefault handler:^(UIAlertAction *){
-        [self _showPhotoPickerWithSourceType:UIImagePickerControllerSourceTypePhotoLibrary];
-    }];
-
-    [_actionSheetController addAction:cancelAction];
-    [_actionSheetController addAction:cameraAction];
-    [_actionSheetController addAction:photoLibraryAction];
-
-    [self _presentForCurrentInterfaceIdiom:_actionSheetController.get()];
-}
-
 - (void)_showDocumentPickerMenu
 {
     // FIXME: Support multiple file selection when implemented. <rdar://17177981>
-    // FIXME: We call -_setIgnoreApplicationEntitlementForImport: before initialization, because the assertion we're trying
-    // to suppress is in the initializer. <rdar://problem/20137692> tracks doing this with a private initializer.
-    _documentMenuController = adoptNS([UIDocumentMenuViewController alloc]);
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    [_documentMenuController _setIgnoreApplicationEntitlementForImport:YES];
-#pragma clang diagnostic pop
-    [_documentMenuController initWithDocumentTypes:[self _documentPickerMenuMediaTypes] inMode:UIDocumentPickerModeImport];
+    _documentMenuController = adoptNS([[UIDocumentMenuViewController alloc] _initIgnoringApplicationEntitlementForImportOfTypes:[self _documentPickerMenuMediaTypes]]);
     [_documentMenuController setDelegate:self];
 
     [_documentMenuController addOptionWithTitle:[self _photoLibraryButtonLabel] image:photoLibraryIcon() order:UIDocumentMenuOrderFirst handler:^{
@@ -925,5 +865,7 @@ static NSArray *UTIsForMIMETypes(NSArray *mimeTypes)
 }
 
 @end
+
+#pragma clang diagnostic pop
 
 #endif // PLATFORM(IOS)

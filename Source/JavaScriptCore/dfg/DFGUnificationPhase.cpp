@@ -59,9 +59,10 @@ public:
                 for (unsigned childIdx = 0; childIdx < AdjacencyList::Size; ++childIdx) {
                     if (!phi->children.child(childIdx))
                         break;
-                    
-                    phi->variableAccessData()->unify(
-                        phi->children.child(childIdx)->variableAccessData());
+
+                    // FIXME: Consider reversing the order of this unification, since the other
+                    // order will reveal more bugs. https://bugs.webkit.org/show_bug.cgi?id=154368
+                    phi->variableAccessData()->unify(phi->children.child(childIdx)->variableAccessData());
                 }
             }
         }
@@ -74,6 +75,7 @@ public:
             data->find()->mergeCheckArrayHoistingFailed(data->checkArrayHoistingFailed());
             data->find()->mergeShouldNeverUnbox(data->shouldNeverUnbox());
             data->find()->mergeIsLoadedFrom(data->isLoadedFrom());
+            data->find()->mergeIsProfitableToUnbox(data->isProfitableToUnbox());
         }
         
         m_graph.m_unificationState = GloballyUnified;

@@ -34,7 +34,7 @@
     opacity: 0;
 
  /* Allows the horizontal scroll bar to be interacted with. */
-    z-index: 1000;
+    z-index: calc(var(--z-index-resizer) + 1);
 }
 
 .timeline-overview:hover > .scroll-container {
@@ -53,17 +53,25 @@
     right: 0;
 }
 
-.timeline-overview.frames > .timeline-ruler > .header > .divider {
-    -webkit-transform: translateX(0px);
+.timeline-overview > .timeline-ruler > .markers {
+    top: 28px;
+}
+
+.timeline-overview.frames > .timeline-ruler > .markers > .marker:not(.current-time) {
+    display: none;
+}
+
+.timeline-overview.frames > .timeline-ruler > .header > .divider,
+.timeline-overview.frames > .timeline-ruler > .markers > .divider {
+    transform: translateX(0px);
 }
 
 .timeline-overview.frames > .timeline-ruler:not(.both-handles-clamped) > .selection-handle.right {
-    -webkit-transform: translateX(5px);
+    transform: translateX(5px);
 }
 
-.timeline-overview.frames > .timeline-ruler > .markers > .divider,
 .timeline-overview.frames > .timeline-ruler:not(.both-handles-clamped) > .shaded-area.right {
-    -webkit-transform: translateX(1px);
+    transform: translateX(1px);
 }
 
 .timeline-overview > .graphs-container {
@@ -82,12 +90,12 @@ body.mac-platform.legacy .timeline-overview > .graphs-container {
     height: 36px;
 }
 
-.timeline-overview > .graphs-container > .timeline-overview-graph:nth-child(even) {
+.timeline-overview:not(.frames) > .graphs-container > .timeline-overview-graph:nth-child(even) {
     background-color: hsl(0, 0%, 96%);
     background-clip: padding-box;
 }
 
-.timeline-overview > .graphs-container > .timeline-overview-graph:not(:first-child) {
+.timeline-overview:not(.frames) > .graphs-container > .timeline-overview-graph:not(:first-child) {
     border-top: 1px solid hsla(0, 0%, 0%, 0.09);
 }
 

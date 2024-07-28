@@ -32,7 +32,6 @@
 #import "AttributedString.h"
 #import "ColorSpaceData.h"
 #import "DataReference.h"
-#import "DictionaryPopupInfo.h"
 #import "EditingRange.h"
 #import "EditorState.h"
 #import "MenuUtilities.h"
@@ -48,7 +47,9 @@
 #import "WebPageMessages.h"
 #import "WebProcessProxy.h"
 #import <WebCore/DictationAlternative.h>
+#import <WebCore/DictionaryLookup.h>
 #import <WebCore/GraphicsLayer.h>
+#import <WebCore/NSApplicationSPI.h>
 #import <WebCore/RuntimeApplicationChecks.h>
 #import <WebCore/SharedBuffer.h>
 #import <WebCore/TextAlternativeWithRange.h>
@@ -56,10 +57,6 @@
 #import <mach-o/dyld.h>
 #import <wtf/NeverDestroyed.h>
 #import <wtf/text/StringConcatenate.h>
-
-@interface NSApplication ()
-- (void)speakString:(NSString *)string;
-@end
 
 #define MESSAGE_CHECK(assertion) MESSAGE_CHECK_BASE(assertion, process().connection())
 #define MESSAGE_CHECK_URL(url) MESSAGE_CHECK_BASE(m_process->checkURLReceivedFromWebProcess(url), m_process->connection())
@@ -146,142 +143,6 @@ void WebPageProxy::setMainFrameIsScrollable(bool isScrollable)
     process().send(Messages::WebPage::SetMainFrameIsScrollable(isScrollable), m_pageID);
 }
 
-#if !USE(ASYNC_NSTEXTINPUTCLIENT)
-
-void WebPageProxy::setComposition(const String& text, Vector<CompositionUnderline> underlines, const EditingRange& selectionRange, const EditingRange& replacementRange)
-{
-    if (!isValid()) {
-        // If this fails, we should call -discardMarkedText on input context to notify the input method.
-        // This will happen naturally later, as part of reloading the page.
-        return;
-    }
-
-    process().sendSync(Messages::WebPage::SetComposition(text, underlines, selectionRange, replacementRange), Messages::WebPage::SetComposition::Reply(m_editorState), m_pageID);
-}
-
-void WebPageProxy::confirmComposition()
-{
-    if (!isValid())
-        return;
-
-    process().sendSync(Messages::WebPage::ConfirmComposition(), Messages::WebPage::ConfirmComposition::Reply(m_editorState), m_pageID);
-}
-
-bool WebPageProxy::insertText(const String& text, const EditingRange& replacementRange)
-{
-    if (!isValid())
-        return true;
-
-    bool handled = true;
-    process().sendSync(Messages::WebPage::InsertText(text, replacementRange), Messages::WebPage::InsertText::Reply(handled, m_editorState), m_pageID);
-#if PLATFORM(MAC) && !USE(ASYNC_NSTEXTINPUTCLIENT)
-    m_temporarilyClosedComposition = false;
-#endif
-
-    return handled;
-}
-
-bool WebPageProxy::insertDictatedText(const String& text, const EditingRange& replacementRange, const Vector<TextAlternativeWithRange>& dictationAlternativesWithRange)
-{
-#if USE(DICTATION_ALTERNATIVES)
-    if (dictationAlternativesWithRange.isEmpty())
-        return insertText(text, replacementRange);
-
-    if (!isValid())
-        return true;
-
-    Vector<DictationAlternative> dictationAlternatives;
-
-    for (size_t i = 0; i < dictationAlternativesWithRange.size(); ++i) {
-        const TextAlternativeWithRange& alternativeWithRange = dictationAlternativesWithRange[i];
-        uint64_t dictationContext = m_pageClient.addDictationAlternatives(alternativeWithRange.alternatives);
-        if (dictationContext)
-            dictationAlternatives.append(DictationAlternative(alternativeWithRange.range.location, alternativeWithRange.range.length, dictationContext));
-    }
-
-    if (dictationAlternatives.isEmpty())
-        return insertText(text, replacementRange);
-
-    bool handled = true;
-    process().sendSync(Messages::WebPage::InsertDictatedText(text, replacementRange, dictationAlternatives), Messages::WebPage::InsertDictatedText::Reply(handled, m_editorState), m_pageID);
-    return handled;
-#else
-    return insertText(text, replacementRange);
-#endif
-}
-
-void WebPageProxy::getMarkedRange(EditingRange& result)
-{
-    result = EditingRange();
-
-    if (!isValid())
-        return;
-
-    process().sendSync(Messages::WebPage::GetMarkedRange(), Messages::WebPage::GetMarkedRange::Reply(result), m_pageID);
-    MESSAGE_CHECK(result.isValid());
-}
-
-void WebPageProxy::getSelectedRange(EditingRange& result)
-{
-    result = EditingRange();
-
-    if (!isValid())
-        return;
-
-    process().sendSync(Messages::WebPage::GetSelectedRange(), Messages::WebPage::GetSelectedRange::Reply(result), m_pageID);
-    MESSAGE_CHECK(result.isValid());
-}
-
-void WebPageProxy::getAttributedSubstringFromRange(const EditingRange& range, AttributedString& result)
-{
-    if (!isValid())
-        return;
-    process().sendSync(Messages::WebPage::GetAttributedSubstringFromRange(range), Messages::WebPage::GetAttributedSubstringFromRange::Reply(result), m_pageID);
-}
-
-uint64_t WebPageProxy::characterIndexForPoint(const IntPoint point)
-{
-    if (!isValid())
-        return 0;
-
-    uint64_t result = 0;
-    process().sendSync(Messages::WebPage::CharacterIndexForPoint(point), Messages::WebPage::CharacterIndexForPoint::Reply(result), m_pageID);
-    return result;
-}
-
-IntRect WebPageProxy::firstRectForCharacterRange(const EditingRange& range)
-{
-    if (!isValid())
-        return IntRect();
-
-    IntRect resultRect;
-    process().sendSync(Messages::WebPage::FirstRectForCharacterRange(range), Messages::WebPage::FirstRectForCharacterRange::Reply(resultRect), m_pageID);
-    return resultRect;
-}
-
-bool WebPageProxy::executeKeypressCommands(const Vector<WebCore::KeypressCommand>& commands)
-{
-    if (!isValid())
-        return false;
-
-    bool result = false;
-    process().sendSync(Messages::WebPage::ExecuteKeypressCommands(commands), Messages::WebPage::ExecuteKeypressCommands::Reply(result, m_editorState), m_pageID);
-#if PLATFORM(MAC) && !USE(ASYNC_NSTEXTINPUTCLIENT)
-    m_temporarilyClosedComposition = false;
-#endif
-    return result;
-}
-
-void WebPageProxy::cancelComposition()
-{
-    if (!isValid())
-        return;
-
-    process().sendSync(Messages::WebPage::CancelComposition(), Messages::WebPage::CancelComposition::Reply(m_editorState), m_pageID);
-}
-
-#endif // !USE(ASYNC_NSTEXTINPUTCLIENT)
-
 void WebPageProxy::insertDictatedTextAsync(const String& text, const EditingRange& replacementRange, const Vector<TextAlternativeWithRange>& dictationAlternativesWithRange, bool registerUndoGroup)
 {
 #if USE(DICTATION_ALTERNATIVES)
@@ -314,7 +175,7 @@ void WebPageProxy::attributedSubstringForCharacterRangeAsync(const EditingRange&
         return;
     }
 
-    uint64_t callbackID = m_callbacks.put(WTF::move(callbackFunction), m_process->throttler().backgroundActivityToken());
+    uint64_t callbackID = m_callbacks.put(WTFMove(callbackFunction), m_process->throttler().backgroundActivityToken());
 
     process().send(Messages::WebPage::AttributedSubstringForCharacterRangeAsync(range, callbackID), m_pageID);
 }
@@ -340,7 +201,7 @@ void WebPageProxy::fontAtSelection(std::function<void (const String&, double, bo
         return;
     }
     
-    uint64_t callbackID = m_callbacks.put(WTF::move(callbackFunction), m_process->throttler().backgroundActivityToken());
+    uint64_t callbackID = m_callbacks.put(WTFMove(callbackFunction), m_process->throttler().backgroundActivityToken());
     
     process().send(Messages::WebPage::FontAtSelection(callbackID), m_pageID);
 }
@@ -558,11 +419,6 @@ bool WebPageProxy::acceptsFirstMouse(int eventNumber, const WebKit::WebMouseEven
     return result;
 }
 
-WKView* WebPageProxy::wkView() const
-{
-    return m_pageClient.wkView();
-}
-
 void WebPageProxy::intrinsicContentSizeDidChange(const IntSize& intrinsicContentSize)
 {
     m_pageClient.intrinsicContentSizeDidChange(intrinsicContentSize);
@@ -684,16 +540,6 @@ void WebPageProxy::showTelephoneNumberMenu(const String& telephoneNumber, const 
 }
 #endif
 
-#if ENABLE(SERVICE_CONTROLS)
-void WebPageProxy::showSelectionServiceMenu(const IPC::DataReference& selectionAsRTFD, const Vector<String>& telephoneNumbers, bool isEditable, const IntPoint& point)
-{
-    Vector<WebContextMenuItemData> items;
-    ContextMenuContextData contextData(selectionAsRTFD.vector(), telephoneNumbers, isEditable);
-
-    internalShowContextMenu(point, contextData, items, ContextMenuClientEligibility::NotEligibleForClient, UserData());
-}
-#endif
-
 CGRect WebPageProxy::boundsOfLayerInLayerBackedWindowCoordinates(CALayer *layer) const
 {
     return m_pageClient.boundsOfLayerInLayerBackedWindowCoordinates(layer);
@@ -715,11 +561,6 @@ void WebPageProxy::setFont(const String& fontFamily, double fontSize, uint64_t f
 void WebPageProxy::editorStateChanged(const EditorState& editorState)
 {
     bool couldChangeSecureInputState = m_editorState.isInPasswordField != editorState.isInPasswordField || m_editorState.selectionIsNone;
-#if !USE(ASYNC_NSTEXTINPUTCLIENT)
-    bool closedComposition = !editorState.shouldIgnoreCompositionSelectionChange && !editorState.hasComposition && (m_editorState.hasComposition || m_temporarilyClosedComposition);
-    m_temporarilyClosedComposition = editorState.shouldIgnoreCompositionSelectionChange && (m_temporarilyClosedComposition || m_editorState.hasComposition) && !editorState.hasComposition;
-    bool editabilityChanged = m_editorState.isContentEditable != editorState.isContentEditable;
-#endif
     
     m_editorState = editorState;
     
@@ -731,40 +572,30 @@ void WebPageProxy::editorStateChanged(const EditorState& editorState)
         return;
     
     m_pageClient.selectionDidChange();
-
-#if !USE(ASYNC_NSTEXTINPUTCLIENT)
-    if (closedComposition)
-        m_pageClient.notifyInputContextAboutDiscardedComposition();
-    if (editabilityChanged) {
-        // This is only needed in sync code path, because AppKit automatically refreshes input context for async clients (<rdar://problem/18604360>).
-        m_pageClient.notifyApplicationAboutInputContextChange();
-    }
-    if (editorState.hasComposition) {
-        // Abandon the current inline input session if selection changed for any other reason but an input method changing the composition.
-        // FIXME: This logic should be in WebCore, no need to round-trip to UI process to cancel the composition.
-        cancelComposition();
-        m_pageClient.notifyInputContextAboutDiscardedComposition();
-    }
-#endif
 }
 
-void WebPageProxy::platformInitializeShareMenuItem(ContextMenuItem& item)
+void WebPageProxy::startWindowDrag()
 {
-#if ENABLE(SERVICE_CONTROLS)
-    NSMenuItem *nsItem = item.platformDescription();
-
-    NSSharingServicePicker *sharingServicePicker = [nsItem representedObject];
-    sharingServicePicker.delegate = [WKSharingServicePickerDelegate sharedSharingServicePickerDelegate];
-    
-    [[WKSharingServicePickerDelegate sharedSharingServicePickerDelegate] setFiltersEditingServices:NO];
-    [[WKSharingServicePickerDelegate sharedSharingServicePickerDelegate] setHandlesEditingReplacement:NO];
-    [[WKSharingServicePickerDelegate sharedSharingServicePickerDelegate] setMenuProxy:static_cast<WebContextMenuProxyMac*>(m_activeContextMenu.get())];
-
-    // Setting the picker lets the delegate retain it to keep it alive, but this picker is kept alive by the menu item.
-    [[WKSharingServicePickerDelegate sharedSharingServicePickerDelegate] setPicker:nil];
-#endif
+    m_pageClient.startWindowDrag();
 }
-    
+
+NSWindow *WebPageProxy::platformWindow()
+{
+    return m_pageClient.platformWindow();
+}
+
+#if WK_API_ENABLED
+NSView *WebPageProxy::inspectorAttachmentView()
+{
+    return m_pageClient.inspectorAttachmentView();
+}
+
+_WKRemoteObjectRegistry *WebPageProxy::remoteObjectRegistry()
+{
+    return m_pageClient.remoteObjectRegistry();
+}
+#endif
+
 } // namespace WebKit
 
 #endif // PLATFORM(MAC)

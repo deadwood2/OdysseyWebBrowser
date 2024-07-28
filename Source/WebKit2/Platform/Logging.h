@@ -41,11 +41,13 @@ namespace WebKit {
     M(ContextMenu) \
     M(IDB) \
     M(IconDatabase) \
+    M(IndexedDB) \
     M(InspectorServer) \
     M(KeyHandling) \
     M(Network) \
     M(NetworkCache) \
     M(NetworkCacheStorage) \
+    M(NetworkCacheSpeculativePreloading) \
     M(NetworkScheduling) \
     M(Plugins) \
     M(Printing) \
@@ -54,6 +56,7 @@ namespace WebKit {
     M(SessionState) \
     M(StorageAPI) \
     M(TextInput) \
+    M(ViewGestures) \
 
 #define DECLARE_LOG_CHANNEL(name) \
     extern WTFLogChannel JOIN_LOG_CHANNEL_WITH_PREFIX(LOG_CHANNEL_PREFIX, name);

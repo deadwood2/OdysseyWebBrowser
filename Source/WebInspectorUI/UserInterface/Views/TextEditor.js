@@ -23,21 +23,21 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.TextEditor = class TextEditor extends WebInspector.Object
+WebInspector.TextEditor = class TextEditor extends WebInspector.View
 {
     constructor(element, mimeType, delegate)
     {
-        super();
+        super(element);
 
-        this._element = element || document.createElement("div");
-        this._element.classList.add("text-editor", WebInspector.SyntaxHighlightedStyleClassName);
+        this.element.classList.add("text-editor", WebInspector.SyntaxHighlightedStyleClassName);
 
-        this._codeMirror = CodeMirror(this.element, {
+        // FIXME: <https://webkit.org/b/149120> Web Inspector: Preferences for Text Editor behavior
+        this._codeMirror = WebInspector.CodeMirrorEditor.create(this.element, {
             readOnly: true,
             indentWithTabs: true,
             indentUnit: 4,
             lineNumbers: true,
-            lineWrapping: true,
+            lineWrapping: false,
             matchBrackets: true,
             autoCloseBrackets: true
         });
@@ -71,11 +71,6 @@ WebInspector.TextEditor = class TextEditor extends WebInspector.Object
 
     // Public
 
-    get element()
-    {
-        return this._element;
-    }
-
     get visible()
     {
         return this._visible;
@@ -95,6 +90,7 @@ WebInspector.TextEditor = class TextEditor extends WebInspector.Object
                 this._codeMirror.removeLineClass(0, "wrap");
 
             this._codeMirror.setValue(newString);
+            console.assert(this.string.length === newString.length, "A lot of our code depends on precise text offsets, so the string should remain the same.");
 
             if (this._initialStringNotSet) {
                 this._codeMirror.clearHistory();
@@ -495,22 +491,13 @@ WebInspector.TextEditor = class TextEditor extends WebInspector.Object
 
             this._codeMirror.addLineClass(lineHandle, "wrap", WebInspector.TextEditor.HighlightedStyleClassName);
 
-            // Use a timeout instead of a webkitAnimationEnd event listener because the line element might
-            // be removed if the user scrolls during the animation. In that case webkitAnimationEnd isn't
+            // Use a timeout instead of a animationEnd event listener because the line element might
+            // be removed if the user scrolls during the animation. In that case animationEnd isn't
             // fired, and the line would highlight again the next time it scrolls into view.
             setTimeout(removeStyleClass.bind(this), WebInspector.TextEditor.HighlightAnimationDuration);
         }
 
         this._codeMirror.operation(revealAndHighlightLine.bind(this));
-    }
-
-    updateLayout(force)
-    {
-        // FIXME: <https://webkit.org/b/146256> Web Inspector: Nested ContentBrowsers / ContentViewContainers cause too many ContentView updates
-        // Ideally we would not get an updateLayout call if we are not visible. We should restructure ContentView
-        // show/hide restoration to reduce duplicated work and solve this in the process.
-        if (this._visible)
-            this._codeMirror.refresh();
     }
 
     shown()
@@ -619,16 +606,12 @@ WebInspector.TextEditor = class TextEditor extends WebInspector.Object
 
     get markers()
     {
-        return this._codeMirror.getAllMarks().map(function(codeMirrorTextMarker) {
-            return WebInspector.TextMarker.textMarkerForCodeMirrorTextMarker(codeMirrorTextMarker);
-        });
+        return this._codeMirror.getAllMarks().map(WebInspector.TextMarker.textMarkerForCodeMirrorTextMarker);
     }
 
     markersAtPosition(position)
     {
-        return this._codeMirror.findMarksAt(position).map(function(codeMirrorTextMarker) {
-            return WebInspector.TextMarker.textMarkerForCodeMirrorTextMarker(codeMirrorTextMarker);
-        });
+        return this._codeMirror.findMarksAt(position).map(WebInspector.TextMarker.textMarkerForCodeMirrorTextMarker);
     }
 
     createColorMarkers(range)
@@ -726,6 +709,17 @@ WebInspector.TextEditor = class TextEditor extends WebInspector.Object
     }
 
     // Protected
+
+    layout()
+    {
+        // FIXME: <https://webkit.org/b/146256> Web Inspector: Nested ContentBrowsers / ContentViewContainers cause too many ContentView updates
+        // Ideally we would not get an updateLayout call if we are not visible. We should restructure ContentView
+        // show/hide restoration to reduce duplicated work and solve this in the process.
+
+        // FIXME: visible check can be removed once <https://webkit.org/b/150741> is fixed.
+        if (this._visible)
+            this._codeMirror.refresh();
+    }
 
     prettyPrint(pretty)
     {
@@ -940,7 +934,7 @@ WebInspector.TextEditor = class TextEditor extends WebInspector.Object
         var coordinates = this._codeMirror.cursorCoords(true, "page");
 
         // Adjust the coordinates to be based in the text editor's space.
-        var textEditorRect = this._element.getBoundingClientRect();
+        let textEditorRect = this.element.getBoundingClientRect();
         coordinates.top -= textEditorRect.top;
         coordinates.left -= textEditorRect.left;
 
@@ -948,7 +942,7 @@ WebInspector.TextEditor = class TextEditor extends WebInspector.Object
         this._bouncyHighlightElement.textContent = textContent;
         this._bouncyHighlightElement.style.top = coordinates.top + "px";
         this._bouncyHighlightElement.style.left = coordinates.left + "px";
-        this._element.appendChild(this._bouncyHighlightElement);
+        this.element.appendChild(this._bouncyHighlightElement);
 
         function animationEnded()
         {
@@ -960,7 +954,7 @@ WebInspector.TextEditor = class TextEditor extends WebInspector.Object
         }
 
         // Listen for the end of the animation so we can remove the element.
-        this._bouncyHighlightElement.addEventListener("webkitAnimationEnd", animationEnded.bind(this));
+        this._bouncyHighlightElement.addEventListener("animationend", animationEnded.bind(this));
     }
 
     _binarySearchInsertionIndexInSearchResults(object, comparator)

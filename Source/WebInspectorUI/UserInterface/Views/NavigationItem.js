@@ -60,6 +60,11 @@ WebInspector.NavigationItem = class NavigationItem extends WebInspector.Object
         return this._parentNavigationBar;
     }
 
+    get minimumWidth()
+    {
+        return this._element.realOffsetWidth;
+    }
+
     updateLayout(expandOnly)
     {
         // Implemented by subclasses.
@@ -80,7 +85,7 @@ WebInspector.NavigationItem = class NavigationItem extends WebInspector.Object
         this._element.classList.toggle("hidden", flag);
 
         if (this._parentNavigationBar)
-            this._parentNavigationBar.updateLayoutSoon();
+            this._parentNavigationBar.needsLayout();
     }
 
     // Private

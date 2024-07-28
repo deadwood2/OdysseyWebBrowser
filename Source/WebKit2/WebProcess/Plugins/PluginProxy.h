@@ -38,7 +38,6 @@
 #include <memory>
 
 #if PLATFORM(COCOA)
-#include "WebHitTestResult.h"
 #include <wtf/RetainPtr.h>
 OBJC_CLASS CALayer;
 #endif
@@ -77,7 +76,7 @@ private:
     bool initializeSynchronously();
 
     virtual void destroy() override;
-    virtual void paint(WebCore::GraphicsContext*, const WebCore::IntRect& dirtyRect) override;
+    virtual void paint(WebCore::GraphicsContext&, const WebCore::IntRect& dirtyRect) override;
     virtual bool supportsSnapshotting() const override;
     virtual RefPtr<ShareableBitmap> snapshot() override;
 #if PLATFORM(COCOA)
@@ -112,7 +111,8 @@ private:
     virtual bool shouldAllowScripting() override { return true; }
     virtual bool shouldAllowNavigationFromDrags() override { return false; }
     
-    virtual bool handlesPageScaleFactor() override;
+    virtual bool handlesPageScaleFactor() const override;
+    virtual bool requiresUnifiedScaleFactor() const override;
     
     virtual NPObject* pluginScriptableNPObject() override;
 

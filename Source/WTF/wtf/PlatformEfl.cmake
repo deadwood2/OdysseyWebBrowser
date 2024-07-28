@@ -1,12 +1,12 @@
 list(APPEND WTF_SOURCES
+    UniStdExtras.cpp
+
     efl/DispatchQueueEfl.cpp
     efl/MainThreadEfl.cpp
     efl/RunLoopEfl.cpp
     efl/WorkQueueEfl.cpp
 
-    glib/GMainLoopSource.cpp
     glib/GRefPtr.cpp
-    glib/GThreadSafeMainLoopSource.cpp
 )
 
 list(APPEND WTF_LIBRARIES

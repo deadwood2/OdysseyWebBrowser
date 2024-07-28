@@ -28,6 +28,10 @@
 #import "PlatformUtilities.h"
 #import "Test.h"
 #import <WebKit/WebKit.h>
+#import <WebKit/WKProcessPoolPrivate.h>
+#import <WebKit/WKUserContentControllerPrivate.h>
+#import <WebKit/_WKProcessPoolConfiguration.h>
+#import <WebKit/_WKUserStyleSheet.h>
 #import <wtf/RetainPtr.h>
 
 #if WK_API_ENABLED
@@ -172,6 +176,50 @@ TEST(WKUserContentController, ScriptMessageHandlerCallRemovedHandler)
     EXPECT_WK_STREQ(@"PASS", (NSString *)[lastScriptMessage body]);
 }
 
+static RetainPtr<WKWebView> webViewForScriptMessageHandlerMultipleHandlerRemovalTest(WKWebViewConfiguration *configuration)
+{
+    RetainPtr<ScriptMessageHandler> handler = adoptNS([[ScriptMessageHandler alloc] init]);
+    RetainPtr<WKWebViewConfiguration> configurationCopy = adoptNS([configuration copy]);
+    [configurationCopy setUserContentController:[[[WKUserContentController alloc] init] autorelease]];
+    [[configurationCopy userContentController] addScriptMessageHandler:handler.get() name:@"handlerToRemove"];
+    [[configurationCopy userContentController] addScriptMessageHandler:handler.get() name:@"handlerToPost"];
+    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configurationCopy.get()]);
+    RetainPtr<SimpleNavigationDelegate> delegate = adoptNS([[SimpleNavigationDelegate alloc] init]);
+    [webView setNavigationDelegate:delegate.get()];
+    NSURLRequest *request = [NSURLRequest requestWithURL:[[NSBundle mainBundle] URLForResource:@"simple" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"]];
+    [webView loadRequest:request];
+    TestWebKitAPI::Util::run(&isDoneWithNavigation);
+    isDoneWithNavigation = false;
+
+    return webView;
+}
+
+TEST(WKUserContentController, ScriptMessageHandlerMultipleHandlerRemoval)
+{
+    RetainPtr<WKWebViewConfiguration> configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    RetainPtr<_WKProcessPoolConfiguration> processPoolConfiguration = adoptNS([[_WKProcessPoolConfiguration alloc] init]);
+    [processPoolConfiguration setMaximumProcessCount:1];
+    [configuration setProcessPool:[[[WKProcessPool alloc] _initWithConfiguration:processPoolConfiguration.get()] autorelease]];
+
+    RetainPtr<WKWebView> webView = webViewForScriptMessageHandlerMultipleHandlerRemovalTest(configuration.get());
+    RetainPtr<WKWebView> webView2 = webViewForScriptMessageHandlerMultipleHandlerRemovalTest(configuration.get());
+
+    [[[webView configuration] userContentController] removeScriptMessageHandlerForName:@"handlerToRemove"];
+    [[[webView2 configuration] userContentController] removeScriptMessageHandlerForName:@"handlerToRemove"];
+
+    [webView evaluateJavaScript:
+     @"try {"
+     "    handlerToRemove.postMessage('FAIL');"
+     "} catch (e) {"
+     "    window.webkit.messageHandlers.handlerToPost.postMessage('PASS');"
+     "}" completionHandler:nil];
+
+    TestWebKitAPI::Util::run(&receivedScriptMessage);
+    receivedScriptMessage = false;
+
+    EXPECT_WK_STREQ(@"PASS", (NSString *)[lastScriptMessage body]);
+}
+
 #if !PLATFORM(IOS) // FIXME: hangs in the iOS simulator
 TEST(WKUserContentController, ScriptMessageHandlerWithNavigation)
 {
@@ -211,5 +259,148 @@ TEST(WKUserContentController, ScriptMessageHandlerWithNavigation)
     EXPECT_WK_STREQ(@"Second Message", (NSString *)[lastScriptMessage body]);    
 }
 #endif
+
+TEST(WKUserContentController, ScriptMessageHandlerReplaceWithSameName)
+{
+    RetainPtr<ScriptMessageHandler> handler = adoptNS([[ScriptMessageHandler alloc] init]);
+    RetainPtr<WKWebViewConfiguration> configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    RetainPtr<WKUserContentController> userContentController = [configuration userContentController];
+    [userContentController addScriptMessageHandler:handler.get() name:@"handlerToReplace"];
+
+    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+
+    RetainPtr<SimpleNavigationDelegate> delegate = adoptNS([[SimpleNavigationDelegate alloc] init]);
+    [webView setNavigationDelegate:delegate.get()];
+
+    NSURLRequest *request = [NSURLRequest requestWithURL:[[NSBundle mainBundle] URLForResource:@"simple" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"]];
+
+    [webView loadRequest:request];
+
+    TestWebKitAPI::Util::run(&isDoneWithNavigation);
+
+    // Test that handlerToReplace was succesfully added.
+    [webView evaluateJavaScript:@"window.webkit.messageHandlers.handlerToReplace.postMessage('PASS1');" completionHandler:nil];
+
+    TestWebKitAPI::Util::run(&receivedScriptMessage);
+    receivedScriptMessage = false;
+
+    EXPECT_WK_STREQ(@"PASS1", (NSString *)[lastScriptMessage body]);
+
+    [userContentController removeScriptMessageHandlerForName:@"handlerToReplace"];
+    [userContentController addScriptMessageHandler:handler.get() name:@"handlerToReplace"];
+
+    // Test that handlerToReplace still works.
+    [webView evaluateJavaScript:@"window.webkit.messageHandlers.handlerToReplace.postMessage('PASS2');" completionHandler:nil];
+
+    TestWebKitAPI::Util::run(&receivedScriptMessage);
+    receivedScriptMessage = false;
+
+    EXPECT_WK_STREQ(@"PASS2", (NSString *)[lastScriptMessage body]);
+}
+
+static NSString *styleSheetSource = @"body { background-color: green !important; }";
+static NSString *backgroundColorScript = @"window.getComputedStyle(document.body, null).getPropertyValue('background-color')";
+static NSString *frameBackgroundColorScript = @"window.getComputedStyle(document.getElementsByTagName('iframe')[0].contentDocument.body, null).getPropertyValue('background-color')";
+static const char* greenInRGB = "rgb(0, 128, 0)";
+static const char* redInRGB = "rgb(255, 0, 0)";
+static const char* whiteInRGB = "rgba(0, 0, 0, 0)";
+
+static void expectScriptEvaluatesToColor(WKWebView *webView, NSString *script, const char* color)
+{
+    static bool didCheckBackgroundColor;
+
+    [webView evaluateJavaScript:script completionHandler:^ (id value, NSError * error) {
+        EXPECT_TRUE([value isKindOfClass:[NSString class]]);
+        EXPECT_WK_STREQ(color, value);
+        didCheckBackgroundColor = true;
+    }];
+
+    TestWebKitAPI::Util::run(&didCheckBackgroundColor);
+    didCheckBackgroundColor = false;
+}
+
+TEST(WKUserContentController, AddUserStyleSheetBeforeCreatingView)
+{
+    RetainPtr<WKWebViewConfiguration> configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+
+    RetainPtr<_WKUserStyleSheet> styleSheet = adoptNS([[_WKUserStyleSheet alloc] initWithSource:styleSheetSource forMainFrameOnly:YES]);
+    [[configuration userContentController] _addUserStyleSheet:styleSheet.get()];
+
+    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+
+    RetainPtr<SimpleNavigationDelegate> delegate = adoptNS([[SimpleNavigationDelegate alloc] init]);
+    [webView setNavigationDelegate:delegate.get()];
+
+    [webView loadHTMLString:@"<body style='background-color: red;'></body>" baseURL:nil];
+    TestWebKitAPI::Util::run(&isDoneWithNavigation);
+    isDoneWithNavigation = false;
+
+    expectScriptEvaluatesToColor(webView.get(), backgroundColorScript, greenInRGB);
+}
+
+TEST(WKUserContentController, AddUserStyleSheetAfterCreatingView)
+{
+    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
+
+    RetainPtr<SimpleNavigationDelegate> delegate = adoptNS([[SimpleNavigationDelegate alloc] init]);
+    [webView setNavigationDelegate:delegate.get()];
+
+    [webView loadHTMLString:@"<body style='background-color: red;'></body>" baseURL:nil];
+    TestWebKitAPI::Util::run(&isDoneWithNavigation);
+    isDoneWithNavigation = false;
+
+    expectScriptEvaluatesToColor(webView.get(), backgroundColorScript, redInRGB);
+
+    RetainPtr<_WKUserStyleSheet> styleSheet = adoptNS([[_WKUserStyleSheet alloc] initWithSource:styleSheetSource forMainFrameOnly:YES]);
+    [[webView configuration].userContentController _addUserStyleSheet:styleSheet.get()];
+
+    expectScriptEvaluatesToColor(webView.get(), backgroundColorScript, greenInRGB);
+}
+
+TEST(WKUserContentController, UserStyleSheetAffectingOnlyMainFrame)
+{
+    RetainPtr<WKWebViewConfiguration> configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+
+    RetainPtr<_WKUserStyleSheet> styleSheet = adoptNS([[_WKUserStyleSheet alloc] initWithSource:styleSheetSource forMainFrameOnly:YES]);
+    [[configuration userContentController] _addUserStyleSheet:styleSheet.get()];
+
+    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+
+    RetainPtr<SimpleNavigationDelegate> delegate = adoptNS([[SimpleNavigationDelegate alloc] init]);
+    [webView setNavigationDelegate:delegate.get()];
+
+    [webView loadHTMLString:@"<body style='background-color: red;'><iframe></iframe></body>" baseURL:nil];
+    TestWebKitAPI::Util::run(&isDoneWithNavigation);
+    isDoneWithNavigation = false;
+
+    // The main frame should be affected.
+    expectScriptEvaluatesToColor(webView.get(), backgroundColorScript, greenInRGB);
+
+    // The subframe shouldn't be affected.
+    expectScriptEvaluatesToColor(webView.get(), frameBackgroundColorScript, whiteInRGB);
+}
+
+TEST(WKUserContentController, UserStyleSheetAffectingAllFrames)
+{
+    RetainPtr<WKWebViewConfiguration> configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+
+    RetainPtr<_WKUserStyleSheet> styleSheet = adoptNS([[_WKUserStyleSheet alloc] initWithSource:styleSheetSource forMainFrameOnly:NO]);
+    [[configuration userContentController] _addUserStyleSheet:styleSheet.get()];
+
+    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+
+    RetainPtr<SimpleNavigationDelegate> delegate = adoptNS([[SimpleNavigationDelegate alloc] init]);
+    [webView setNavigationDelegate:delegate.get()];
+
+    [webView loadHTMLString:@"<body style='background-color: red;'><iframe></iframe></body>" baseURL:nil];
+    TestWebKitAPI::Util::run(&isDoneWithNavigation);
+    isDoneWithNavigation = false;
+
+    // The main frame should be affected.
+    expectScriptEvaluatesToColor(webView.get(), backgroundColorScript, greenInRGB);
+
+    // The subframe should also be affected.
+    expectScriptEvaluatesToColor(webView.get(), frameBackgroundColorScript, greenInRGB);
+}
 
 #endif

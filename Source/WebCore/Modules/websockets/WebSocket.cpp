@@ -40,7 +40,6 @@
 #include "DOMWindow.h"
 #include "Document.h"
 #include "Event.h"
-#include "EventException.h"
 #include "EventListener.h"
 #include "EventNames.h"
 #include "ExceptionCode.h"
@@ -184,7 +183,7 @@ RefPtr<WebSocket> WebSocket::create(ScriptExecutionContext& context, const Strin
     if (ec)
         return nullptr;
 
-    return WTF::move(webSocket);
+    return webSocket;
 }
 
 RefPtr<WebSocket> WebSocket::create(ScriptExecutionContext& context, const String& url, const String& protocol, ExceptionCode& ec)
@@ -239,8 +238,7 @@ void WebSocket::connect(const String& url, const Vector<String>& protocols, Exce
     }
 
     // FIXME: Convert this to check the isolated world's Content Security Policy once webkit.org/b/104520 is solved.
-    bool shouldBypassMainWorldContentSecurityPolicy = ContentSecurityPolicy::shouldBypassMainWorldContentSecurityPolicy(*scriptExecutionContext());
-    if (!scriptExecutionContext()->contentSecurityPolicy()->allowConnectToSource(m_url, shouldBypassMainWorldContentSecurityPolicy)) {
+    if (!scriptExecutionContext()->contentSecurityPolicy()->allowConnectToSource(m_url, scriptExecutionContext()->shouldBypassMainWorldContentSecurityPolicy())) {
         m_state = CLOSED;
 
         // FIXME: Should this be throwing an exception?
@@ -445,7 +443,7 @@ String WebSocket::binaryType() const
     return String();
 }
 
-void WebSocket::setBinaryType(const String& binaryType)
+void WebSocket::setBinaryType(const String& binaryType, ExceptionCode& ec)
 {
     if (binaryType == "blob") {
         m_binaryType = BinaryTypeBlob;
@@ -455,6 +453,7 @@ void WebSocket::setBinaryType(const String& binaryType)
         m_binaryType = BinaryTypeArrayBuffer;
         return;
     }
+    ec = SYNTAX_ERR;
     scriptExecutionContext()->addConsoleMessage(MessageSource::JS, MessageLevel::Error, "'" + binaryType + "' is not a valid value for binaryType; binaryType remains unchanged.");
 }
 
@@ -476,7 +475,7 @@ void WebSocket::contextDestroyed()
     ActiveDOMObject::contextDestroyed();
 }
 
-bool WebSocket::canSuspendForPageCache() const
+bool WebSocket::canSuspendForDocumentSuspension() const
 {
     return true;
 }
@@ -562,13 +561,13 @@ void WebSocket::didReceiveMessage(const String& msg)
     dispatchEvent(MessageEvent::create(msg, SecurityOrigin::create(m_url)->toString()));
 }
 
-void WebSocket::didReceiveBinaryData(Vector<char>&& binaryData)
+void WebSocket::didReceiveBinaryData(Vector<uint8_t>&& binaryData)
 {
     LOG(Network, "WebSocket %p didReceiveBinaryData() %lu byte binary message", this, static_cast<unsigned long>(binaryData.size()));
     switch (m_binaryType) {
     case BinaryTypeBlob: {
         // FIXME: We just received the data from NetworkProcess, and are sending it back. This is inefficient.
-        RefPtr<Blob> blob = Blob::create(WTF::move(binaryData), emptyString());
+        RefPtr<Blob> blob = Blob::create(WTFMove(binaryData), emptyString());
         dispatchEvent(MessageEvent::create(blob.release(), SecurityOrigin::create(m_url)->toString()));
         break;
     }
@@ -647,9 +646,9 @@ void WebSocket::dispatchOrQueueErrorEvent()
 void WebSocket::dispatchOrQueueEvent(Ref<Event>&& event)
 {
     if (m_shouldDelayEventFiring)
-        m_pendingEvents.append(WTF::move(event));
+        m_pendingEvents.append(WTFMove(event));
     else
-        dispatchEvent(WTF::move(event));
+        dispatchEvent(event);
 }
 
 }  // namespace WebCore

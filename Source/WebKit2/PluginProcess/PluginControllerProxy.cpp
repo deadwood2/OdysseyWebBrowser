@@ -194,7 +194,7 @@ void PluginControllerProxy::paint()
     if (m_plugin->isTransparent())
         graphicsContext->clearRect(dirtyRect);
 
-    m_plugin->paint(graphicsContext.get(), dirtyRect);
+    m_plugin->paint(*graphicsContext, dirtyRect);
 
     m_connection->connection()->send(Messages::PluginProxy::Update(dirtyRect), m_pluginInstanceID);
 }
@@ -563,6 +563,11 @@ void PluginControllerProxy::isEditingCommandEnabled(const String& commandName, b
 void PluginControllerProxy::handlesPageScaleFactor(bool& isHandled)
 {
     isHandled = m_plugin->handlesPageScaleFactor();
+}
+
+void PluginControllerProxy::requiresUnifiedScaleFactor(bool& required)
+{
+    required = m_plugin->requiresUnifiedScaleFactor();
 }
 
 void PluginControllerProxy::paintEntirePlugin()

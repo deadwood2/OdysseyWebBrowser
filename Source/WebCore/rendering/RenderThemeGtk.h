@@ -46,7 +46,7 @@ public:
 
 private:
     // System fonts.
-    virtual void updateCachedSystemFontDescription(CSSValueID, FontDescription&) const override;
+    virtual void updateCachedSystemFontDescription(CSSValueID, FontCascadeDescription&) const override;
 
 public:
 #ifndef GTK_API_VERSION_2
@@ -105,6 +105,7 @@ public:
     virtual bool shouldHaveCapsLockIndicator(HTMLInputElement&) const override;
 
 private:
+    RenderThemeGtk();
     virtual ~RenderThemeGtk();
 
     virtual bool paintCheckbox(const RenderObject&, const PaintInfo&, const IntRect&) override;
@@ -116,13 +117,11 @@ private:
     virtual void adjustButtonStyle(StyleResolver&, RenderStyle&, Element*) const override;
     virtual bool paintButton(const RenderObject&, const PaintInfo&, const IntRect&) override;
 
-    virtual bool paintTextField(const RenderObject&, const PaintInfo&, const FloatRect&) override;
-    virtual bool paintTextArea(const RenderObject&, const PaintInfo&, const FloatRect&) override;
+    void adjustTextFieldStyle(StyleResolver&, RenderStyle&, Element*) const override;
+    bool paintTextField(const RenderObject&, const PaintInfo&, const FloatRect&) override;
+    bool paintTextArea(const RenderObject&, const PaintInfo&, const FloatRect&) override;
 
-    virtual int popupInternalPaddingLeft(RenderStyle&) const override;
-    virtual int popupInternalPaddingRight(RenderStyle&) const override;
-    virtual int popupInternalPaddingTop(RenderStyle&) const override;
-    virtual int popupInternalPaddingBottom(RenderStyle&) const override;
+    LengthBox popupInternalPaddingBox(const RenderStyle&) const override;
 
     // The Mac port differentiates between the "menu list" and the "menu list button."
     // The former is used when a menu list button has been styled. This is used to ensure
@@ -170,13 +169,15 @@ private:
 #endif
 #endif
 
-    virtual double animationRepeatIntervalForProgressBar(RenderProgress&) const override;
-    virtual double animationDurationForProgressBar(RenderProgress&) const override;
-    virtual void adjustProgressBarStyle(StyleResolver&, RenderStyle&, Element*) const override;
-    virtual bool paintProgressBar(const RenderObject&, const PaintInfo&, const IntRect&) override;
+    double animationRepeatIntervalForProgressBar(RenderProgress&) const override;
+    double animationDurationForProgressBar(RenderProgress&) const override;
+    void adjustProgressBarStyle(StyleResolver&, RenderStyle&, Element*) const override;
+    IntRect progressBarRectForBounds(const RenderObject&, const IntRect&) const override;
+    bool paintProgressBar(const RenderObject&, const PaintInfo&, const IntRect&) override;
 
-    virtual void adjustInnerSpinButtonStyle(StyleResolver&, RenderStyle&, Element*) const override;
-    virtual bool paintInnerSpinButton(const RenderObject&, const PaintInfo&, const IntRect&) override;
+    InnerSpinButtonLayout innerSpinButtonLayout(const RenderObject&) const override;
+    void adjustInnerSpinButtonStyle(StyleResolver&, RenderStyle&, Element*) const override;
+    bool paintInnerSpinButton(const RenderObject&, const PaintInfo&, const IntRect&) override;
 
     virtual String fileListNameForWidth(const FileList*, const FontCascade&, int width, bool multipleFilesAllowed) const override;
 

@@ -34,6 +34,8 @@
 #include "HTMLTokenizer.h"
 #include "InputTypeNames.h"
 #include "LinkRelAttribute.h"
+#include "MediaList.h"
+#include "MediaQueryEvaluator.h"
 #include "SourceSizeList.h"
 #include <wtf/MainThread.h>
 
@@ -60,12 +62,17 @@ TokenPreloadScanner::TagId TokenPreloadScanner::tagIdFor(const HTMLToken::DataVe
         return TagId::Template;
     if (tagName == metaTag)
         return TagId::Meta;
+    if (tagName == pictureTag)
+        return TagId::Picture;
+    if (tagName == sourceTag)
+        return TagId::Source;
     return TagId::Unknown;
 }
 
 String TokenPreloadScanner::initiatorFor(TagId tagId)
 {
     switch (tagId) {
+    case TagId::Source:
     case TagId::Img:
         return "img";
     case TagId::Input:
@@ -79,6 +86,7 @@ String TokenPreloadScanner::initiatorFor(TagId tagId)
     case TagId::Base:
     case TagId::Template:
     case TagId::Meta:
+    case TagId::Picture:
         ASSERT_NOT_REACHED();
         return "unknown";
     }
@@ -97,22 +105,30 @@ public:
     {
     }
 
-    void processAttributes(const HTMLToken::AttributeList& attributes, Document& document)
+    void processAttributes(const HTMLToken::AttributeList& attributes, Document& document, Vector<bool>& pictureState)
     {
         ASSERT(isMainThread());
         if (m_tagId >= TagId::Unknown)
             return;
-
-        for (HTMLToken::AttributeList::const_iterator iter = attributes.begin(); iter != attributes.end(); ++iter) {
-            AtomicString attributeName(iter->name);
-            String attributeValue = StringImpl::create8BitIfPossible(iter->value);
-            processAttribute(attributeName, attributeValue);
+        
+        for (auto& attribute : attributes) {
+            AtomicString attributeName(attribute.name);
+            String attributeValue = StringImpl::create8BitIfPossible(attribute.value);
+            processAttribute(attributeName, attributeValue, document, pictureState);
         }
-
+        
+        if (m_tagId == TagId::Source && !pictureState.isEmpty() && !pictureState.last() && m_mediaMatched && !m_srcSetAttribute.isEmpty()) {
+            float sourceSize = parseSizesAttribute(m_sizesAttribute, document.renderView(), document.frame());
+            ImageCandidate imageCandidate = bestFitSourceForImageAttributes(m_deviceScaleFactor, m_urlToLoad, m_srcSetAttribute, sourceSize);
+            if (!imageCandidate.isEmpty()) {
+                pictureState.last() = true;
+                setUrlToLoad(imageCandidate.string.toString(), true);
+            }
+        }
+        
         // Resolve between src and srcSet if we have them and the tag is img.
         if (m_tagId == TagId::Img && !m_srcSetAttribute.isEmpty()) {
-            float sourceSize = 0;
-            sourceSize = parseSizesAttribute(m_sizesAttribute, document.renderView(), document.frame());
+            float sourceSize = parseSizesAttribute(m_sizesAttribute, document.renderView(), document.frame());
             ImageCandidate imageCandidate = bestFitSourceForImageAttributes(m_deviceScaleFactor, m_urlToLoad, m_srcSetAttribute, sourceSize);
             setUrlToLoad(imageCandidate.string.toString(), true);
         }
@@ -150,10 +166,15 @@ private:
             m_charset = attributeValue;
     }
 
-    void processAttribute(const AtomicString& attributeName, const String& attributeValue)
+    void processAttribute(const AtomicString& attributeName, const String& attributeValue, Document& document, const Vector<bool>& pictureState)
     {
+        bool inPicture = !pictureState.isEmpty();
+        bool alreadyMatchedSource = inPicture && pictureState.last();
+
         switch (m_tagId) {
         case TagId::Img:
+            if (inPicture && alreadyMatchedSource)
+                break;
             if (match(attributeName, srcsetAttr) && m_srcSetAttribute.isNull()) {
                 m_srcSetAttribute = attributeValue;
                 break;
@@ -163,6 +184,25 @@ private:
                 break;
             }
             processImageAndScriptAttribute(attributeName, attributeValue);
+            break;
+        case TagId::Source:
+            if (inPicture && alreadyMatchedSource)
+                break;
+            if (match(attributeName, srcsetAttr) && m_srcSetAttribute.isNull()) {
+                m_srcSetAttribute = attributeValue;
+                break;
+            }
+            if (match(attributeName, sizesAttr) && m_sizesAttribute.isNull()) {
+                m_sizesAttribute = attributeValue;
+                break;
+            }
+            if (match(attributeName, mediaAttr) && m_mediaAttribute.isNull()) {
+                m_mediaAttribute = attributeValue;
+                Ref<MediaQuerySet> mediaSet = MediaQuerySet::createAllowingDescriptionSyntax(attributeValue);
+                Vector<std::unique_ptr<MediaQueryResult>> viewportDependentMediaQueryResults;
+                MediaQueryEvaluator evaluator(document.printing() ? "print" : "screen", document.frame(), document.documentElement() ? document.documentElement()->computedStyle() : nullptr);
+                m_mediaMatched = evaluator.evalCheckingViewportDependentResults(mediaSet.ptr(), viewportDependentMediaQueryResults);
+            }
             break;
         case TagId::Script:
             processImageAndScriptAttribute(attributeName, attributeValue);
@@ -181,17 +221,18 @@ private:
             if (match(attributeName, srcAttr))
                 setUrlToLoad(attributeValue);
             else if (match(attributeName, typeAttr))
-                m_inputIsImage = equalIgnoringCase(attributeValue, InputTypeNames::image());
+                m_inputIsImage = equalLettersIgnoringASCIICase(attributeValue, "image");
             break;
         case TagId::Meta:
             if (match(attributeName, contentAttr))
                 m_metaContent = attributeValue;
             else if (match(attributeName, nameAttr))
-                m_metaIsViewport = equalIgnoringCase(attributeValue, "viewport");
+                m_metaIsViewport = equalLettersIgnoringASCIICase(attributeValue, "viewport");
             break;
         case TagId::Base:
         case TagId::Style:
         case TagId::Template:
+        case TagId::Picture:
         case TagId::Unknown:
             break;
         }
@@ -222,12 +263,25 @@ private:
 
     CachedResource::Type resourceType() const
     {
-        if (m_tagId == TagId::Script)
+        switch (m_tagId) {
+        case TagId::Script:
             return CachedResource::Script;
-        if (m_tagId == TagId::Img || (m_tagId == TagId::Input && m_inputIsImage))
+        case TagId::Img:
+        case TagId::Input:
+        case TagId::Source:
+            ASSERT(m_tagId != TagId::Input || m_inputIsImage);
             return CachedResource::ImageResource;
-        if (m_tagId == TagId::Link && m_linkIsStyleSheet)
+        case TagId::Link:
+            ASSERT(m_linkIsStyleSheet);
             return CachedResource::CSSStyleSheet;
+        case TagId::Meta:
+        case TagId::Unknown:
+        case TagId::Style:
+        case TagId::Base:
+        case TagId::Template:
+        case TagId::Picture:
+            break;
+        }
         ASSERT_NOT_REACHED();
         return CachedResource::RawResource;
     }
@@ -237,7 +291,7 @@ private:
         if (m_urlToLoad.isEmpty())
             return false;
 
-        if (protocolIs(m_urlToLoad, "data"))
+        if (protocolIs(m_urlToLoad, "data") || protocolIs(m_urlToLoad, "about"))
             return false;
 
         if (m_tagId == TagId::Link && !m_linkIsStyleSheet)
@@ -251,13 +305,14 @@ private:
 
     bool crossOriginModeAllowsCookies()
     {
-        return m_crossOriginMode.isNull() || equalIgnoringCase(m_crossOriginMode, "use-credentials");
+        return m_crossOriginMode.isNull() || equalLettersIgnoringASCIICase(m_crossOriginMode, "use-credentials");
     }
 
     TagId m_tagId;
     String m_urlToLoad;
     String m_srcSetAttribute;
     String m_sizesAttribute;
+    bool m_mediaMatched { true };
     String m_charset;
     String m_crossOriginMode;
     bool m_linkIsStyleSheet;
@@ -296,7 +351,9 @@ void TokenPreloadScanner::scan(const HTMLToken& token, Vector<std::unique_ptr<Pr
             if (m_inStyle)
                 m_cssScanner.reset();
             m_inStyle = false;
-        }
+        } else if (tagId == TagId::Picture && !m_pictureSourceState.isEmpty())
+            m_pictureSourceState.removeLast();
+
         return;
     }
 
@@ -323,11 +380,15 @@ void TokenPreloadScanner::scan(const HTMLToken& token, Vector<std::unique_ptr<Pr
             updatePredictedBaseURL(token);
             return;
         }
+        if (tagId == TagId::Picture) {
+            m_pictureSourceState.append(false);
+            return;
+        }
 
         StartTagScanner scanner(tagId, m_deviceScaleFactor);
-        scanner.processAttributes(token.attributes(), document);
+        scanner.processAttributes(token.attributes(), document, m_pictureSourceState);
         if (auto request = scanner.createPreloadRequest(m_predictedBaseElementURL))
-            requests.append(WTF::move(request));
+            requests.append(WTFMove(request));
         return;
     }
 
@@ -372,7 +433,7 @@ void HTMLPreloadScanner::scan(HTMLResourcePreloader& preloader, Document& docume
         m_scanner.scan(*token, requests, document);
     }
 
-    preloader.preload(WTF::move(requests));
+    preloader.preload(WTFMove(requests));
 }
 
 bool testPreloadScannerViewportSupport(Document* document)

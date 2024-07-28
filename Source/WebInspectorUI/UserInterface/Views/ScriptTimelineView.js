@@ -38,7 +38,13 @@ WebInspector.ScriptTimelineView = class ScriptTimelineView extends WebInspector.
         columns.location.title = WebInspector.UIString("Location");
         columns.location.width = "15%";
 
-        columns.callCount.title = WebInspector.UIString("Calls");
+        let isSamplingProfiler = !!window.ScriptProfilerAgent;
+        if (isSamplingProfiler)
+            columns.callCount.title = WebInspector.UIString("Samples");
+        else {
+            // COMPATIBILITY(iOS 9): ScriptProfilerAgent did not exist yet, we had call counts, not samples.
+            columns.callCount.title = WebInspector.UIString("Calls");
+        }
         columns.callCount.width = "5%";
         columns.callCount.aligned = "right";
 
@@ -64,13 +70,14 @@ WebInspector.ScriptTimelineView = class ScriptTimelineView extends WebInspector.
         this._dataGrid = new WebInspector.ScriptTimelineDataGrid(this.navigationSidebarTreeOutline, columns, this);
         this._dataGrid.addEventListener(WebInspector.TimelineDataGrid.Event.FiltersDidChange, this._dataGridFiltersDidChange, this);
         this._dataGrid.addEventListener(WebInspector.DataGrid.Event.SelectedNodeChanged, this._dataGridNodeSelected, this);
-        this._dataGrid.sortColumnIdentifier = "startTime";
-        this._dataGrid.sortOrder = WebInspector.DataGrid.SortOrder.Ascending;
+        this._dataGrid.sortColumnIdentifierSetting = new WebInspector.Setting("script-timeline-view-sort", "startTime");
+        this._dataGrid.sortOrderSetting = new WebInspector.Setting("script-timeline-view-sort-order", WebInspector.DataGrid.SortOrder.Ascending);
 
         this.element.classList.add("script");
-        this.element.appendChild(this._dataGrid.element);
+        this.addSubview(this._dataGrid);
 
         timeline.addEventListener(WebInspector.Timeline.Event.RecordAdded, this._scriptTimelineRecordAdded, this);
+        timeline.addEventListener(WebInspector.Timeline.Event.Refreshed, this._scriptTimelineRecordRefreshed, this);
 
         this._pendingRecords = [];
     }
@@ -104,28 +111,6 @@ WebInspector.ScriptTimelineView = class ScriptTimelineView extends WebInspector.
         this._dataGrid.closed();
     }
 
-    updateLayout()
-    {
-        super.updateLayout();
-
-        this._dataGrid.updateLayout();
-
-        if (this.startTime !== this._oldStartTime || this.endTime !== this._oldEndTime) {
-            var dataGridNode = this._dataGrid.children[0];
-            while (dataGridNode) {
-                dataGridNode.updateRangeTimes(this.startTime, this.endTime);
-                if (dataGridNode.revealed)
-                    dataGridNode.refreshIfNeeded();
-                dataGridNode = dataGridNode.traverseNextNode(false, null, true);
-            }
-
-            this._oldStartTime = this.startTime;
-            this._oldEndTime = this.endTime;
-        }
-
-        this._processPendingRecords();
-    }
-
     get selectionPathComponents()
     {
         var dataGridNode = this._dataGrid.selectedNode;
@@ -150,11 +135,6 @@ WebInspector.ScriptTimelineView = class ScriptTimelineView extends WebInspector.
         }
 
         return pathComponents;
-    }
-
-    matchTreeElementAgainstCustomFilters(treeElement)
-    {
-        return this._dataGrid.treeElementMatchesActiveScopeFilters(treeElement);
     }
 
     reset()
@@ -222,12 +202,37 @@ WebInspector.ScriptTimelineView = class ScriptTimelineView extends WebInspector.
         }
     }
 
+    layout()
+    {
+        if (this.startTime !== this._oldStartTime || this.endTime !== this._oldEndTime) {
+            let dataGridNode = this._dataGrid.children[0];
+            while (dataGridNode) {
+                dataGridNode.updateRangeTimes(this.startTime, this.endTime);
+                if (dataGridNode.revealed)
+                    dataGridNode.refreshIfNeeded();
+                dataGridNode = dataGridNode.traverseNextNode(false, null, true);
+            }
+
+            this._oldStartTime = this.startTime;
+            this._oldEndTime = this.endTime;
+        }
+
+        this._processPendingRecords();
+    }
+
     // Private
 
     _processPendingRecords()
     {
+        if (WebInspector.timelineManager.scriptProfilerIsTracking())
+            return;
+
         if (!this._pendingRecords.length)
             return;
+
+        let zeroTime = this.zeroTime;
+        let startTime = this.startTime;
+        let endTime = this.endTime;
 
         for (var scriptTimelineRecord of this._pendingRecords) {
             var rootNodes = [];
@@ -236,14 +241,10 @@ WebInspector.ScriptTimelineView = class ScriptTimelineView extends WebInspector.
                 rootNodes = scriptTimelineRecord.profile.topDownRootNodes;
             }
 
-            var zeroTime = this.zeroTime;
-            var treeElement = new WebInspector.TimelineRecordTreeElement(scriptTimelineRecord, WebInspector.SourceCodeLocation.NameStyle.Short, rootNodes.length);
+            var treeElement = new WebInspector.TimelineRecordTreeElement(scriptTimelineRecord, WebInspector.SourceCodeLocation.NameStyle.Short, true);
             var dataGridNode = new WebInspector.ScriptTimelineDataGridNode(scriptTimelineRecord, zeroTime);
 
             this._dataGrid.addRowInSortOrder(treeElement, dataGridNode);
-
-            var startTime = this.startTime;
-            var endTime = this.endTime;
 
             for (var profileNode of rootNodes) {
                 var profileNodeTreeElement = new WebInspector.ProfileNodeTreeElement(profileNode, this);
@@ -262,6 +263,11 @@ WebInspector.ScriptTimelineView = class ScriptTimelineView extends WebInspector.
 
         this._pendingRecords.push(scriptTimelineRecord);
 
+        this.needsLayout();
+    }
+
+    _scriptTimelineRecordRefreshed(event)
+    {
         this.needsLayout();
     }
 

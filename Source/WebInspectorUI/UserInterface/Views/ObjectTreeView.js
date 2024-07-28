@@ -70,10 +70,11 @@ WebInspector.ObjectTreeView = class ObjectTreeView extends WebInspector.Object
             this._element.appendChild(this._titleElement);
         }
 
-        this._outlineElement = document.createElement("ol");
-        this._outlineElement.className = "object-tree-outline";
-        this._outline = new WebInspector.TreeOutline(this._outlineElement);
-        this._element.appendChild(this._outlineElement);
+        this._outline = new WebInspector.TreeOutline;
+        this._outline.compact = true;
+        this._outline.customIndent = true;
+        this._outline.element.classList.add("object");
+        this._element.appendChild(this._outline.element);
 
         // FIXME: Support editable ObjectTrees.
     }
@@ -180,6 +181,9 @@ WebInspector.ObjectTreeView = class ObjectTreeView extends WebInspector.Object
     expand()
     {
         if (this._expanded)
+            return;
+
+        if (this._hasLosslessPreview)
             return;
 
         this._expanded = true;

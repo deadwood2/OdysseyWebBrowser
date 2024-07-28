@@ -23,22 +23,26 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-.error-object::before {
+.error-object {
+    display: inline-block;
+}
+
+.error-object > .formatted-error::before {
     display: inline-block;
     vertical-align: baseline;
     margin-bottom: -2px;
     margin-right: 2px;
     width: 13px;
     height: 13px;
-    background-image: -webkit-canvas(navigation-sidebar-panel-disclosure-triangle-closed-normal);
+    background-image: url(../Images/DisclosureTriangles.svg#closed-normal);
     background-size: 13px 13px;
     background-repeat: no-repeat;
     background-position: center;
     content: "";
 }
 
-.error-object.expanded::before {
-    background-image: -webkit-canvas(navigation-sidebar-panel-disclosure-triangle-open-normal);
+.error-object.expanded > .formatted-error::before {
+    background-image: url(../Images/DisclosureTriangles.svg#open-normal);
 }
 
 .error-object-link-container {
@@ -49,10 +53,10 @@
     display: none;
 }
 
-.error-object:not(.expanded) .error-object-outline {
+.error-object:not(.expanded) .tree-outline {
     display: none;
 }
 
-.error-object-outline {
+.error-object .tree-outline {
     padding-left: 16px
 }

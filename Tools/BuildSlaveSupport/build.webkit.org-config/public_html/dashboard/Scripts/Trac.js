@@ -37,6 +37,8 @@ Trac = function(baseURL, options)
 
 BaseObject.addConstructorFunctions(Trac);
 
+Trac.NO_MORE_REVISIONS = null;
+
 Trac.NeedsAuthentication = "needsAuthentication";
 Trac.UpdateInterval = 45000; // 45 seconds
 
@@ -63,11 +65,40 @@ Trac.prototype = {
         return this.recordedCommits[this.recordedCommits.length - 1].revisionNumber;
     },
 
-    commitsOnBranch: function(branch, filter)
+    _commitsOnBranch: function(branchName, beginPosition, endPosition)
     {
-        return this.recordedCommits.filter(function(commit) {
-            return (!commit.containsBranchLocation || commit.branch === branch) && filter(commit);
-        });
+        beginPosition = beginPosition || 0;
+        if (endPosition === undefined)
+            endPosition = this.recordedCommits.length - 1;
+        var commits = [];
+        for (var i = beginPosition; i <= endPosition; ++i) {
+            var commit = this.recordedCommits[i];
+            if (!commit.containsBranchLocation || commit.branches.includes(branchName))
+                commits.push(commit);
+        }
+        return commits;
+    },
+
+    commitsOnBranchLaterThanRevision: function(branchName, revision)
+    {
+        var indexToBeLaterThan = this.indexOfRevision(revision);
+        console.assert(indexToBeLaterThan !== -1, revision + " is not in the list of recorded commits");
+        if (indexToBeLaterThan === -1)
+            return [];
+        return this._commitsOnBranch(branchName, indexToBeLaterThan + 1);
+    },
+
+    commitsOnBranchInRevisionRange: function(branchName, firstRevision, lastRevision)
+    {
+        var indexOfFirstRevision = this.indexOfRevision(firstRevision);
+        console.assert(indexOfFirstRevision !== -1, firstRevision + " is not in the list of recorded commits");
+        if (indexOfFirstRevision === -1)
+            return [];
+        var indexOfLastRevision = this.indexOfRevision(lastRevision);
+        console.assert(indexOfLastRevision !== -1, lastRevision + " is not in the list of recorded commits");
+        if (indexOfLastRevision === -1)
+            return [];
+        return this._commitsOnBranch(branchName, indexOfFirstRevision, indexOfLastRevision);
     },
 
     revisionURL: function(revision)
@@ -83,14 +114,23 @@ Trac.prototype = {
         var toDay = new Date(toDate.getFullYear(), toDate.getMonth(), toDate.getDate());
 
         return this.baseURL + "timeline?changeset=on&format=rss&max=0" +
-            "&from=" +  (toDay.getMonth() + 1) + "%2F" + toDay.getDate() + "%2F" + (toDay.getFullYear() % 100) +
+            "&from=" +  toDay.toISOString().slice(0, 10) +
             "&daysback=" + ((toDay - fromDay) / 1000 / 60 / 60 / 24);
+    },
+
+    _parseRevisionFromURL: function(url)
+    {
+        // There are multiple link formats for Trac that we support:
+        // https://trac.webkit.org/changeset/190497
+        // http://trac.foobar.com/repository/changeset/75388/project
+        // https://git.foobar.com/trac/Whatever.git/changeset/0e498db5d8e5b5a342631
+        return /changeset\/([a-f0-9]+).*$/.exec(url)[1];
     },
 
     _convertCommitInfoElementToObject: function(doc, commitElement)
     {
         var link = doc.evaluate("./link", commitElement, null, XPathResult.STRING_TYPE).stringValue;
-        var revisionNumber = parseInt(/\d+$/.exec(link))
+        var revisionNumber = this._parseRevisionFromURL(link);
 
         function tracNSResolver(prefix)
         {
@@ -133,7 +173,8 @@ Trac.prototype = {
             author: author,
             date: date,
             description: parsedDescription.innerHTML,
-            containsBranchLocation: location !== ""
+            containsBranchLocation: location !== "",
+            branches: []
         };
 
         if (result.containsBranchLocation) {
@@ -142,11 +183,11 @@ Trac.prototype = {
             if (location.startsWith("tags/"))
                 result.tag = location.substr(5, location.indexOf("/", 5) - 5);
             else if (location.startsWith("branches/"))
-                result.branch = location.substr(9, location.indexOf("/", 9) - 9);
+                result.branches.push(location.substr(9, location.indexOf("/", 9) - 9));
             else if (location.startsWith("releases/"))
                 result.release = location.substr(9, location.indexOf("/", 9) - 9);
             else if (location.startsWith("trunk/"))
-                result.branch = "trunk";
+                result.branches.push("trunk");
             else if (location.startsWith("submissions/"))
                 ; // These changes are never relevant to the dashboard.
             else {
@@ -154,6 +195,12 @@ Trac.prototype = {
                 // not match any explicitly specified branches.
                 console.assert(false);
             }
+        }
+
+        var gitBranches = doc.evaluate("./branches", commitElement, null, XPathResult.STRING_TYPE).stringValue;
+        if (gitBranches) {
+            result.containsBranchLocation = true;
+            result.branches = result.branches.concat(gitBranches.split(", "));
         }
 
         return result;
@@ -188,7 +235,7 @@ Trac.prototype = {
         }
 
         if (newCommits.length)
-            this.recordedCommits = newCommits.concat(this.recordedCommits).sort(function(a, b) { return a.revisionNumber - b.revisionNumber; });
+            this.recordedCommits = newCommits.concat(this.recordedCommits).sort(function(a, b) { return a.date - b.date; });
 
         if (newCommits.length || knownCommitsWereUpdated)
             this.dispatchEventToListeners(Trac.Event.CommitsUpdated, null);
@@ -249,5 +296,23 @@ Trac.prototype = {
             this._loadingHistoricalData = false;
             this._loaded(dataDocument);
         }.bind(this), this._needsAuthentication ? { withCredentials: true } : {});
+    },
+
+    nextRevision: function(branchName, revision)
+    {
+        var commits = this.commitsOnBranchLaterThanRevision(branchName, revision);
+        if (commits.length > 0)
+            return commits[0].revisionNumber;
+        return Trac.NO_MORE_REVISIONS;
+    },
+
+    indexOfRevision: function(revision)
+    {
+        var commits = this.recordedCommits;
+        for (var i = 0; i < commits.length; ++i) {
+            if (commits[i].revisionNumber === revision)
+                return i;
+        }
+        return -1;
     },
 };

@@ -28,7 +28,6 @@ messages -> WebPage LegacyReceiver {
     SetSessionID(WebCore::SessionID sessionID)
 
     SetDrawsBackground(bool drawsBackground)
-    SetDrawsTransparentBackground(bool drawsTransparentBackground)
 
     SetTopContentInset(float contentInset)
 
@@ -38,10 +37,7 @@ messages -> WebPage LegacyReceiver {
     ViewWillEndLiveResize()
 
     KeyEvent(WebKit::WebKeyboardEvent event)
-    KeyEventSyncForTesting(WebKit::WebKeyboardEvent event) -> (bool handled)
     MouseEvent(WebKit::WebMouseEvent event)
-    MouseEventSyncForTesting(WebKit::WebMouseEvent event) -> (bool handled)
-    WheelEventSyncForTesting(WebKit::WebWheelEvent event) -> (bool handled)
 #if PLATFORM(IOS)
     SetViewportConfigurationMinimumLayoutSize(WebCore::FloatSize size)
     SetMaximumUnobscuredSize(WebCore::FloatSize size)
@@ -57,20 +53,20 @@ messages -> WebPage LegacyReceiver {
     InspectorNodeSearchMovedToPosition(WebCore::FloatPoint point)
     InspectorNodeSearchEndedAtPosition(WebCore::FloatPoint point)
     BlurAssistedNode()
-    SelectWithGesture(WebCore::IntPoint point, uint32_t granularity, uint32_t gestureType, uint32_t gestureState, uint64_t callbackID)
+    SelectWithGesture(WebCore::IntPoint point, uint32_t granularity, uint32_t gestureType, uint32_t gestureState, bool isInteractingWithAssistedNode, uint64_t callbackID)
     UpdateSelectionWithTouches(WebCore::IntPoint point, uint32_t touches, bool baseIsStart, uint64_t callbackID)
     UpdateBlockSelectionWithTouch(WebCore::IntPoint point, uint32_t touch, uint32_t handlePosition)
     SelectWithTwoTouches(WebCore::IntPoint from, WebCore::IntPoint to, uint32_t gestureType, uint32_t gestureState, uint64_t callbackID)
     ExtendSelection(uint32_t granularity)
     SelectWordBackward()
     MoveSelectionByOffset(int32_t offset, uint64_t callbackID)
-    SelectTextWithGranularityAtPoint(WebCore::IntPoint point, uint32_t granularity, uint64_t callbackID)
-    SelectPositionAtBoundaryWithDirection(WebCore::IntPoint point, uint32_t granularity, uint32_t direction, uint64_t callbackID)
+    SelectTextWithGranularityAtPoint(WebCore::IntPoint point, uint32_t granularity, bool isInteractingWithAssistedNode, uint64_t callbackID)
+    SelectPositionAtBoundaryWithDirection(WebCore::IntPoint point, uint32_t granularity, uint32_t direction, bool isInteractingWithAssistedNode, uint64_t callbackID)
     MoveSelectionAtBoundaryWithDirection(uint32_t granularity, uint32_t direction, uint64_t callbackID)
-    SelectPositionAtPoint(WebCore::IntPoint point, uint64_t callbackID)
+    SelectPositionAtPoint(WebCore::IntPoint point, bool isInteractingWithAssistedNode, uint64_t callbackID)
     BeginSelectionInDirection(uint32_t direction, uint64_t callbackID)
-    UpdateSelectionWithExtentPoint(WebCore::IntPoint point, uint64_t callbackID)
-    UpdateSelectionWithExtentPointAndBoundary(WebCore::IntPoint point, uint32_t granularity, uint64_t callbackID)
+    UpdateSelectionWithExtentPoint(WebCore::IntPoint point, bool isInteractingWithAssistedNode, uint64_t callbackID)
+    UpdateSelectionWithExtentPointAndBoundary(WebCore::IntPoint point, uint32_t granularity, bool isInteractingWithAssistedNode, uint64_t callbackID)
     RequestDictationContext(uint64_t callbackID)
     ReplaceDictatedText(String oldText, String newText)
     ReplaceSelectedText(String oldText, String newText)
@@ -90,7 +86,7 @@ messages -> WebPage LegacyReceiver {
     SetAssistedNodeSelectedIndex(uint32_t index, bool allowMultipleSelection)
     ApplicationWillResignActive()
     ApplicationDidEnterBackground(bool isSuspendedUnderLock)
-    ApplicationWillEnterForeground()
+    ApplicationWillEnterForeground(bool isSuspendedUnderLock)
     ApplicationDidBecomeActive()
     ContentSizeCategoryDidChange(String contentSizeCategory)
     ExecuteEditCommandWithCallback(String name, uint64_t callbackID)
@@ -100,6 +96,7 @@ messages -> WebPage LegacyReceiver {
 
 #if ENABLE(REMOTE_INSPECTOR)
     SetAllowsRemoteInspection(bool allow)
+    SetRemoteInspectionNameOverride(String name)
 #endif
 
 #if ENABLE(IOS_TOUCH_EVENTS)
@@ -107,7 +104,6 @@ messages -> WebPage LegacyReceiver {
 #endif
 #if !ENABLE(IOS_TOUCH_EVENTS) && ENABLE(TOUCH_EVENTS)
     TouchEvent(WebKit::WebTouchEvent event)
-    TouchEventSyncForTesting(WebKit::WebTouchEvent event) -> (bool handled)
 #endif
 
 #if ENABLE(INPUT_TYPE_COLOR)
@@ -136,7 +132,7 @@ messages -> WebPage LegacyReceiver {
     LoadWebArchiveData(IPC::DataReference webArchiveData, WebKit::UserData userData)
     NavigateToPDFLinkWithSimulatedClick(String url, WebCore::IntPoint documentPoint, WebCore::IntPoint screenPoint)
 
-    Reload(uint64_t navigationID, bool reloadFromOrigin, WebKit::SandboxExtension::Handle sandboxExtensionHandle)
+    Reload(uint64_t navigationID, bool reloadFromOrigin, bool contentBlockersEnabled, WebKit::SandboxExtension::Handle sandboxExtensionHandle)
     StopLoading()
 
     StopLoadingFrame(uint64_t frameID)
@@ -145,7 +141,7 @@ messages -> WebPage LegacyReceiver {
 
     DidRemoveBackForwardItem(uint64_t backForwardItemID)
 
-    DidReceivePolicyDecision(uint64_t frameID, uint64_t listenerID, uint32_t policyAction, uint64_t navigationID, uint64_t downloadID)
+    DidReceivePolicyDecision(uint64_t frameID, uint64_t listenerID, uint32_t policyAction, uint64_t navigationID, WebKit::DownloadID downloadID)
 
     ClearSelection()
     RestoreSelectionInFocusedEditableElement()
@@ -153,7 +149,7 @@ messages -> WebPage LegacyReceiver {
     # Callbacks.
     GetContentsAsString(uint64_t callbackID)
 #if ENABLE(MHTML)
-    GetContentsAsMHTMLData(uint64_t callbackID, bool useBinaryEncoding)
+    GetContentsAsMHTMLData(uint64_t callbackID)
 #endif
     GetMainResourceDataOfFrame(uint64_t frameID, uint64_t callbackID)
     GetResourceDataFromFrame(uint64_t frameID, String resourceURL, uint64_t callbackID)
@@ -202,9 +198,6 @@ messages -> WebPage LegacyReceiver {
     ScalePage(double scale, WebCore::IntPoint origin)
     ScalePageInViewCoordinates(double scale, WebCore::IntPoint centerInViewCoordinates)
     ScaleView(double scale)
-#if PLATFORM(COCOA)
-    ScaleViewAndUpdateGeometryFenced(double scale, WebCore::IntSize viewSize, uint64_t callbackID)
-#endif
 
     SetUseFixedLayout(bool fixed)
     SetFixedLayoutSize(WebCore::IntSize size)
@@ -220,6 +213,7 @@ messages -> WebPage LegacyReceiver {
     SetPaginationBehavesLikeColumns(bool behavesLikeColumns)
     SetPageLength(double pageLength)
     SetGapBetweenPages(double gap)
+    SetPaginationLineGridEnabled(bool lineGridEnabled)
 
     PostInjectedBundleMessage(String messageName, WebKit::UserData messageBody)
 
@@ -288,7 +282,8 @@ messages -> WebPage LegacyReceiver {
 
 #if ENABLE(MEDIA_STREAM)
     # MediaSteam
-    DidReceiveUserMediaPermissionDecision(uint64_t userMediaID, bool allowed, String deviceUIDVideo, String deviceUIDAudio)
+    DidReceiveUserMediaPermissionDecision(uint64_t userMediaID, bool allowed, String audioDeviceUID, String videoDeviceUID)
+    DidCompleteUserMediaPermissionCheck(uint64_t userMediaID, bool allowed)
 #endif
 
     # Notification
@@ -316,6 +311,7 @@ messages -> WebPage LegacyReceiver {
 
 #if ENABLE(MEDIA_SESSION)
     HandleMediaEvent(uint32_t eventType)
+    SetVolumeOfMediaElement(double volume, uint64_t elementID)
 #endif
 
     // FIXME: This a dummy message, to avoid breaking the build for platforms that don't require
@@ -361,7 +357,7 @@ messages -> WebPage LegacyReceiver {
     ShouldDelayWindowOrderingEvent(WebKit::WebMouseEvent event) -> (bool result)
     AcceptsFirstMouse(int eventNumber, WebKit::WebMouseEvent event) -> (bool result)
 
-    InsertTextAsync(String text, struct WebKit::EditingRange replacementRange, bool registerUndoGroup)
+    InsertTextAsync(String text, struct WebKit::EditingRange replacementRange, bool registerUndoGroup, uint32_t editingRangeIsRelativeTo)
     GetMarkedRangeAsync(uint64_t callbackID)
     GetSelectedRangeAsync(uint64_t callbackID)
     CharacterIndexForPointAsync(WebCore::IntPoint point, uint64_t callbackID);
@@ -373,19 +369,6 @@ messages -> WebPage LegacyReceiver {
     InsertDictatedTextAsync(String text, struct WebKit::EditingRange replacementRange, Vector<WebCore::DictationAlternative> dictationAlternatives, bool registerUndoGroup)
     AttributedSubstringForCharacterRangeAsync(struct WebKit::EditingRange range, uint64_t callbackID);
     FontAtSelection(uint64_t callbackID);
-#endif
-#if PLATFORM(MAC) && !USE(ASYNC_NSTEXTINPUTCLIENT)
-    InsertText(String text, struct WebKit::EditingRange replacementRange) -> (bool handled, struct WebKit::EditorState newState)
-    SetComposition(String text, Vector<WebCore::CompositionUnderline> underlines, struct WebKit::EditingRange selectionRange, struct WebKit::EditingRange replacementRange) -> (struct WebKit::EditorState newState)
-    ConfirmComposition() -> (struct WebKit::EditorState newState)
-    InsertDictatedText(String text, struct WebKit::EditingRange replacementRange, Vector<WebCore::DictationAlternative> dictationAlternatives) -> (bool handled, struct WebKit::EditorState newState)
-    GetAttributedSubstringFromRange(struct WebKit::EditingRange range) -> (struct WebKit::AttributedString result)
-    GetMarkedRange() -> (struct WebKit::EditingRange range)
-    GetSelectedRange() -> (struct WebKit::EditingRange range)
-    CharacterIndexForPoint(WebCore::IntPoint point) -> (uint64_t result)
-    FirstRectForCharacterRange(struct WebKit::EditingRange range) -> (WebCore::IntRect resultRect)
-    ExecuteKeypressCommands(Vector<WebCore::KeypressCommand> savedCommands) -> (bool handled, struct WebKit::EditorState newState)
-    CancelComposition() -> (struct WebKit::EditorState newState)
 #endif
 
     SetMinimumLayoutSize(WebCore::IntSize minimumLayoutSize)
@@ -422,19 +405,19 @@ messages -> WebPage LegacyReceiver {
     DataDetectorsDidPresentUI(WebCore::PageOverlay::PageOverlayID pageOverlay)
     DataDetectorsDidChangeUI(WebCore::PageOverlay::PageOverlayID pageOverlay)
     DataDetectorsDidHideUI(WebCore::PageOverlay::PageOverlayID pageOverlay)
+    HandleAcceptedCandidate(struct WebCore::TextCheckingResult acceptedCandidate)
 #endif
 
     SetShouldDispatchFakeMouseMoveEvents(bool shouldDispatchFakeMouseMoveEvents)
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET) && !PLATFORM(IOS)
-    PlaybackTargetSelected(uint64_t contextId, struct WebCore::MediaPlaybackTargetContext target)
+    PlaybackTargetSelected(uint64_t contextId, WebCore::MediaPlaybackTargetContext target)
     PlaybackTargetAvailabilityDidChange(uint64_t contextId, bool available)
     SetShouldPlayToPlaybackTarget(uint64_t contextId, bool shouldPlay)
 #endif
 
     ClearWheelEventTestTrigger()
     SetShouldScaleViewToFitDocument(bool shouldScaleViewToFitDocument)
-    SetUserContentExtensionsEnabled(bool userContentExtensionsEnabled)
 
 #if ENABLE(VIDEO) && USE(GSTREAMER)
     DidEndRequestInstallMissingMediaPlugins(uint32_t result)

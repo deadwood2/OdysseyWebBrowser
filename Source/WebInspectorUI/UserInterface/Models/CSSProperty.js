@@ -25,14 +25,25 @@
 
 WebInspector.CSSProperty = class CSSProperty extends WebInspector.Object
 {
-    constructor(index, text, name, value, priority, enabled, overridden, implicit, anonymous, valid, styleSheetTextRange, styleDeclarationTextRange)
+    constructor(index, text, name, value, priority, enabled, overridden, implicit, anonymous, valid, styleSheetTextRange)
     {
         super();
 
         this._ownerStyle = null;
         this._index = index;
 
-        this.update(text, name, value, priority, enabled, overridden, implicit, anonymous, valid, styleSheetTextRange, styleDeclarationTextRange, true);
+        this.update(text, name, value, priority, enabled, overridden, implicit, anonymous, valid, styleSheetTextRange, true);
+    }
+
+    // Static
+
+    static isInheritedPropertyName(name)
+    {
+        console.assert(typeof name === "string");
+        if (name in WebInspector.CSSKeywordCompletions.InheritedProperties)
+            return true;
+        // Check if the name is a CSS variable.
+        return name.startsWith("--");
     }
 
     // Public
@@ -57,7 +68,7 @@ WebInspector.CSSProperty = class CSSProperty extends WebInspector.Object
         this._index = index;
     }
 
-    update(text, name, value, priority, enabled, overridden, implicit, anonymous, valid, styleSheetTextRange, styleDeclarationTextRange, dontFireEvents)
+    update(text, name, value, priority, enabled, overridden, implicit, anonymous, valid, styleSheetTextRange, dontFireEvents)
     {
         text = text || "";
         name = name || "";
@@ -90,18 +101,15 @@ WebInspector.CSSProperty = class CSSProperty extends WebInspector.Object
         this._enabled = enabled;
         this._implicit = implicit;
         this._anonymous = anonymous;
-        this._inherited = name in WebInspector.CSSKeywordCompletions.InheritedProperties;
+        this._inherited = WebInspector.CSSProperty.isInheritedPropertyName(name);
         this._valid = valid;
         this._styleSheetTextRange = styleSheetTextRange || null;
-
-        if (styleDeclarationTextRange)
-            this._styleDeclarationTextRange = styleDeclarationTextRange;
-        else
-            delete this._styleDeclarationTextRange;
 
         this._relatedShorthandProperty = null;
         this._relatedLonghandProperties = [];
 
+        // Clear computed properties.
+        delete this._styleDeclarationTextRange;
         delete this._canonicalName;
         delete this._hasOtherVendorNameOrKeyword;
 

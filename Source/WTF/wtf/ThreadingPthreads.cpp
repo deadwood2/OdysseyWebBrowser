@@ -44,6 +44,7 @@
 #include "ThreadIdentifierDataPthreads.h"
 #include "ThreadSpecific.h"
 #include <wtf/DataLog.h>
+#include <wtf/NeverDestroyed.h>
 #include <wtf/RawPointer.h>
 #include <wtf/WTFThreadData.h>
 #include <errno.h>
@@ -52,10 +53,6 @@
 #include <limits.h>
 #include <sched.h>
 #include <sys/time.h>
-#endif
-
-#if PLATFORM(MAC)
-#include <objc/objc-auto.h>
 #endif
 
 namespace WTF {
@@ -103,7 +100,7 @@ void threadWasJoined(ThreadIdentifier);
 
 static Mutex& threadMapMutex()
 {
-    DEPRECATED_DEFINE_STATIC_LOCAL(Mutex, mutex, ());
+    static NeverDestroyed<Mutex> mutex;
     return mutex;
 }
 
@@ -129,7 +126,7 @@ void initializeThreading()
 
 static ThreadMap& threadMap()
 {
-    DEPRECATED_DEFINE_STATIC_LOCAL(ThreadMap, map, ());
+    static NeverDestroyed<ThreadMap> map;
     return map;
 }
 
@@ -197,12 +194,6 @@ void initializeCurrentThreadInternal(const char* threadName)
     pthread_setname_np(threadName);
 #else
     UNUSED_PARAM(threadName);
-#endif
-
-#if PLATFORM(MAC)
-    // All threads that potentially use APIs above the BSD layer must be registered with the Objective-C
-    // garbage collector in case API implementations use garbage-collected memory.
-    objc_registerThreadWithCollector();
 #endif
 
     ThreadIdentifier id = identifierByPthreadHandle(pthread_self());

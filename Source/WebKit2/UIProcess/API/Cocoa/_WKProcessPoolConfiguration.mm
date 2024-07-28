@@ -103,7 +103,32 @@
             schemes.append(String((NSString *)urlScheme));
     }
     
-    _processPoolConfiguration->setCachePartitionedURLSchemes(WTF::move(schemes));
+    _processPoolConfiguration->setCachePartitionedURLSchemes(WTFMove(schemes));
+}
+
+- (NSArray *)alwaysRevalidatedURLSchemes
+{
+    auto& schemes = _processPoolConfiguration->alwaysRevalidatedURLSchemes();
+    if (schemes.isEmpty())
+        return @[];
+
+    NSMutableArray *array = [NSMutableArray arrayWithCapacity:schemes.size()];
+    for (auto& scheme : schemes)
+        [array addObject:(NSString *)scheme];
+
+    return array;
+}
+
+- (void)setAlwaysRevalidatedURLSchemes:(NSArray *)alwaysRevalidatedURLSchemes
+{
+    Vector<String> schemes;
+    schemes.reserveInitialCapacity(alwaysRevalidatedURLSchemes.count);
+    for (id scheme in alwaysRevalidatedURLSchemes) {
+        if ([scheme isKindOfClass:[NSString class]])
+            schemes.append((NSString *)scheme);
+    }
+
+    _processPoolConfiguration->setAlwaysRevalidatedURLSchemes(WTFMove(schemes));
 }
 
 - (NSString *)description

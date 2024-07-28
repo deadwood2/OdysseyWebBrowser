@@ -29,7 +29,7 @@
 
 #import <Foundation/Foundation.h>
 
-WK_ASSUME_NONNULL_BEGIN
+NS_ASSUME_NONNULL_BEGIN
 
 @class WKPreferences;
 @class WKProcessPool;
@@ -50,6 +50,25 @@ typedef NS_ENUM(NSInteger, WKSelectionGranularity) {
     WKSelectionGranularityCharacter,
 } WK_ENUM_AVAILABLE_IOS(8_0);
 #endif
+
+/*! @enum WKDataDetectorTypes
+ @abstract The type of data detected.
+ @constant WKDataDetectorTypeNone No detection is performed.
+ @constant WKDataDetectorTypePhoneNumber Phone numbers are detected and turned into links.
+ @constant WKDataDetectorTypeLink URLs in text are detected and turned into links.
+ @constant WKDataDetectorTypeAddress Addresses are detected and turned into links.
+ @constant WKDataDetectorTypeCalendarEvent Dates and times that are in the future are detected and turned into links.
+ @constant WKDataDetectorTypeAll All of the above data types are turned into links when detected. Choosing this value will
+ automatically include any new detection type that is added.
+ */
+typedef NS_OPTIONS(NSUInteger, WKDataDetectorTypes) {
+    WKDataDetectorTypeNone = 0,
+    WKDataDetectorTypePhoneNumber = 1 << 0,
+    WKDataDetectorTypeLink = 1 << 1,
+    WKDataDetectorTypeAddress = 1 << 2,
+    WKDataDetectorTypeCalendarEvent = 1 << 3,
+    WKDataDetectorTypeAll = NSUIntegerMax
+} WK_ENUM_AVAILABLE(WK_MAC_TBA, WK_IOS_TBA);
 
 /*! A WKWebViewConfiguration object is a collection of properties with
  which to initialize a web view.
@@ -76,7 +95,7 @@ WK_CLASS_AVAILABLE(10_10, 8_0)
 
 /*! @abstract The website data store to be used by the web view.
  */
-@property (nonatomic, strong) WKWebsiteDataStore *websiteDataStore WK_AVAILABLE(WK_MAC_TBA, WK_IOS_TBA);
+@property (nonatomic, strong) WKWebsiteDataStore *websiteDataStore WK_AVAILABLE(10_11, 9_0);
 
 /*! @abstract A Boolean value indicating whether the web view suppresses
  content rendering until it is fully loaded into memory.
@@ -86,12 +105,21 @@ WK_CLASS_AVAILABLE(10_10, 8_0)
 
 /*! @abstract The name of the application as used in the user agent string.
 */
-@property (WK_NULLABLE_PROPERTY nonatomic, copy) NSString *applicationNameForUserAgent WK_AVAILABLE(WK_MAC_TBA, WK_IOS_TBA);
+@property (nullable, nonatomic, copy) NSString *applicationNameForUserAgent WK_AVAILABLE(10_11, 9_0);
 
 /*! @abstract A Boolean value indicating whether AirPlay is allowed.
  @discussion The default value is YES.
  */
-@property (nonatomic) BOOL allowsAirPlayForMediaPlayback WK_AVAILABLE(WK_MAC_TBA, WK_IOS_TBA);
+@property (nonatomic) BOOL allowsAirPlayForMediaPlayback WK_AVAILABLE(10_11, 9_0);
+
+/*! @abstract An enum value indicating the type of data detection desired.
+ @discussion The default value is WKDataDetectorTypeNone.
+ An example of how this property may affect the content loaded in the WKWebView is that content like
+ 'Visit apple.com on July 4th or call 1 800 555-5545' will be transformed to add links around 'apple.com', 'July 4th' and '1 800 555-5545'
+ if the dataDetectorTypes property is set to WKDataDetectorTypePhoneNumber | WKDataDetectorTypeLink | WKDataDetectorTypeCalendarEvent.
+
+ */
+@property (nonatomic) WKDataDetectorTypes dataDetectorTypes WK_AVAILABLE(WK_MAC_TBA, WK_IOS_TBA);
 
 #if TARGET_OS_IPHONE
 /*! @abstract A Boolean value indicating whether HTML5 videos play inline
@@ -104,7 +132,7 @@ WK_CLASS_AVAILABLE(10_10, 8_0)
  user to start playing them (YES) or can play automatically (NO).
  @discussion The default value is YES.
  */
-@property (nonatomic) BOOL requiresUserActionForMediaPlayback WK_AVAILABLE(NA, WK_IOS_TBA);
+@property (nonatomic) BOOL requiresUserActionForMediaPlayback WK_AVAILABLE(NA, 9_0);
 
 /*! @abstract The level of granularity with which the user can interactively
  select content in the web view.
@@ -117,7 +145,7 @@ WK_CLASS_AVAILABLE(10_10, 8_0)
  picture-in-picture.
  @discussion The default value is YES.
  */
-@property (nonatomic) BOOL allowsPictureInPictureMediaPlayback WK_AVAILABLE(NA, WK_IOS_TBA);
+@property (nonatomic) BOOL allowsPictureInPictureMediaPlayback WK_AVAILABLE(NA, 9_0);
 
 #endif
 
@@ -126,12 +154,12 @@ WK_CLASS_AVAILABLE(10_10, 8_0)
 @interface WKWebViewConfiguration (WKDeprecated)
 
 #if TARGET_OS_IPHONE
-@property (nonatomic) BOOL mediaPlaybackRequiresUserAction WK_DEPRECATED(NA, NA, 8_0, WK_IOS_TBA, "Please use requiresUserActionForMediaPlayback");
-@property (nonatomic) BOOL mediaPlaybackAllowsAirPlay WK_DEPRECATED(NA, NA, 8_0, WK_IOS_TBA, "Please use allowsAirPlayForMediaPlayback");
+@property (nonatomic) BOOL mediaPlaybackRequiresUserAction WK_DEPRECATED(NA, NA, 8_0, 9_0, "Please use requiresUserActionForMediaPlayback");
+@property (nonatomic) BOOL mediaPlaybackAllowsAirPlay WK_DEPRECATED(NA, NA, 8_0, 9_0, "Please use allowsAirPlayForMediaPlayback");
 #endif
 
 @end
 
-WK_ASSUME_NONNULL_END
+NS_ASSUME_NONNULL_END
 
 #endif

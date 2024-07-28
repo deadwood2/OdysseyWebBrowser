@@ -51,7 +51,7 @@ namespace WebCore {
 using namespace HTMLNames;
 
 RenderTable::RenderTable(Element& element, Ref<RenderStyle>&& style)
-    : RenderBlock(element, WTF::move(style), 0)
+    : RenderBlock(element, WTFMove(style), 0)
     , m_head(nullptr)
     , m_foot(nullptr)
     , m_firstBody(nullptr)
@@ -75,7 +75,7 @@ RenderTable::RenderTable(Element& element, Ref<RenderStyle>&& style)
 }
 
 RenderTable::RenderTable(Document& document, Ref<RenderStyle>&& style)
-    : RenderBlock(document, WTF::move(style), 0)
+    : RenderBlock(document, WTFMove(style), 0)
     , m_head(nullptr)
     , m_foot(nullptr)
     , m_firstBody(nullptr)
@@ -299,25 +299,32 @@ void RenderTable::updateLogicalWidth()
         }
 
         // Ensure we aren't bigger than our available width.
-        setLogicalWidth(std::min<int>(availableContentLogicalWidth, maxPreferredLogicalWidth()));
+        setLogicalWidth(std::min(availableContentLogicalWidth, maxPreferredLogicalWidth()));
+        LayoutUnit maxWidth = maxPreferredLogicalWidth();
+        // scaledWidthFromPercentColumns depends on m_layoutStruct in TableLayoutAlgorithmAuto, which
+        // maxPreferredLogicalWidth fills in. So scaledWidthFromPercentColumns has to be called after
+        // maxPreferredLogicalWidth.
+        LayoutUnit scaledWidth = m_tableLayout->scaledWidthFromPercentColumns() + bordersPaddingAndSpacingInRowDirection();
+        maxWidth = std::max(scaledWidth, maxWidth);
+        setLogicalWidth(std::min(availableContentLogicalWidth, maxWidth));
     }
 
     // Ensure we aren't smaller than our min preferred width.
-    setLogicalWidth(std::max<int>(logicalWidth(), minPreferredLogicalWidth()));
+    setLogicalWidth(std::max(logicalWidth(), minPreferredLogicalWidth()));
 
     
     // Ensure we aren't bigger than our max-width style.
     Length styleMaxLogicalWidth = style().logicalMaxWidth();
     if ((styleMaxLogicalWidth.isSpecified() && !styleMaxLogicalWidth.isNegative()) || styleMaxLogicalWidth.isIntrinsic()) {
         LayoutUnit computedMaxLogicalWidth = convertStyleLogicalWidthToComputedWidth(styleMaxLogicalWidth, availableLogicalWidth);
-        setLogicalWidth(std::min<int>(logicalWidth(), computedMaxLogicalWidth));
+        setLogicalWidth(std::min(logicalWidth(), computedMaxLogicalWidth));
     }
 
     // Ensure we aren't smaller than our min-width style.
     Length styleMinLogicalWidth = style().logicalMinWidth();
     if ((styleMinLogicalWidth.isSpecified() && !styleMinLogicalWidth.isNegative()) || styleMinLogicalWidth.isIntrinsic()) {
         LayoutUnit computedMinLogicalWidth = convertStyleLogicalWidthToComputedWidth(styleMinLogicalWidth, availableLogicalWidth);
-        setLogicalWidth(std::max<int>(logicalWidth(), computedMinLogicalWidth));
+        setLogicalWidth(std::max(logicalWidth(), computedMinLogicalWidth));
     }
 
     // Finally, with our true width determined, compute our margins for real.
@@ -360,7 +367,6 @@ LayoutUnit RenderTable::convertStyleLogicalHeightToComputedHeight(const Length& 
     LayoutUnit borderAndPaddingBefore = borderBefore() + (collapseBorders() ? LayoutUnit() : paddingBefore());
     LayoutUnit borderAndPaddingAfter = borderAfter() + (collapseBorders() ? LayoutUnit() : paddingAfter());
     LayoutUnit borderAndPadding = borderAndPaddingBefore + borderAndPaddingAfter;
-    LayoutUnit computedLogicalHeight = 0;
     if (styleLogicalHeight.isFixed()) {
         // HTML tables size as though CSS height includes border/padding, CSS tables do not.
         LayoutUnit borders = LayoutUnit();
@@ -368,14 +374,14 @@ LayoutUnit RenderTable::convertStyleLogicalHeightToComputedHeight(const Length& 
         if (is<HTMLTableElement>(element()) || style().boxSizing() == BORDER_BOX) {
             borders = borderAndPadding;
         }
-        computedLogicalHeight = styleLogicalHeight.value() - borders;
+        return styleLogicalHeight.value() - borders;
     } else if (styleLogicalHeight.isPercentOrCalculated())
-        computedLogicalHeight = computePercentageLogicalHeight(styleLogicalHeight);
+        return computePercentageLogicalHeight(styleLogicalHeight).valueOr(0);
     else if (styleLogicalHeight.isIntrinsic())
-        computedLogicalHeight = computeIntrinsicLogicalContentHeightUsing(styleLogicalHeight, logicalHeight() - borderAndPadding, borderAndPadding);
+        return computeIntrinsicLogicalContentHeightUsing(styleLogicalHeight, logicalHeight() - borderAndPadding, borderAndPadding).valueOr(0);
     else
         ASSERT_NOT_REACHED();
-    return std::max<LayoutUnit>(0, computedLogicalHeight);
+    return LayoutUnit();
 }
 
 void RenderTable::layoutCaption(RenderTableCaption* caption)
@@ -398,7 +404,7 @@ void RenderTable::layoutCaption(RenderTableCaption* caption)
     setLogicalHeight(logicalHeight() + caption->logicalHeight() + caption->marginBefore() + caption->marginAfter());
 }
 
-void RenderTable::distributeExtraLogicalHeight(int extraLogicalHeight)
+void RenderTable::distributeExtraLogicalHeight(LayoutUnit extraLogicalHeight)
 {
     if (extraLogicalHeight <= 0)
         return;
@@ -520,7 +526,7 @@ void RenderTable::layout()
         computedLogicalHeight = std::max(computedLogicalHeight, computedMinLogicalHeight);
     }
 
-    distributeExtraLogicalHeight(floorToInt(computedLogicalHeight - totalSectionLogicalHeight));
+    distributeExtraLogicalHeight(computedLogicalHeight - totalSectionLogicalHeight);
 
     for (RenderTableSection* section = topSection(); section; section = sectionBelow(section))
         section->layoutRows();
@@ -591,14 +597,32 @@ void RenderTable::layout()
     clearNeedsLayout();
 }
 
-void RenderTable::invalidateCollapsedBorders()
+void RenderTable::invalidateCollapsedBorders(RenderTableCell* cellWithStyleChange)
 {
     m_collapsedBordersValid = false;
     m_collapsedBorders.clear();
-    for (auto& section : childrenOfType<RenderTableSection>(*this)) {
+
+    for (auto& section : childrenOfType<RenderTableSection>(*this))
         section.clearCachedCollapsedBorders();
-        if (!m_collapsedEmptyBorderIsPresent)
-            continue;
+
+    if (!m_collapsedEmptyBorderIsPresent)
+        return;
+
+    if (cellWithStyleChange) {
+        // It is enough to invalidate just the surrounding cells when cell border style changes.
+        cellWithStyleChange->invalidateHasEmptyCollapsedBorders();
+        if (auto* below = cellBelow(cellWithStyleChange))
+            below->invalidateHasEmptyCollapsedBorders();
+        if (auto* above = cellAbove(cellWithStyleChange))
+            above->invalidateHasEmptyCollapsedBorders();
+        if (auto* before = cellBefore(cellWithStyleChange))
+            before->invalidateHasEmptyCollapsedBorders();
+        if (auto* after = cellAfter(cellWithStyleChange))
+            after->invalidateHasEmptyCollapsedBorders();
+        return;
+    }
+
+    for (auto& section : childrenOfType<RenderTableSection>(*this)) {
         for (auto* row = section.firstRow(); row; row = row->nextRow()) {
             for (auto* cell = row->firstCell(); cell; cell = cell->nextCell()) {
                 ASSERT(cell->table() == this);
@@ -633,12 +657,12 @@ void RenderTable::addOverflowFromChildren()
     // Technically it's odd that we are incorporating the borders into layout overflow, which is only supposed to be about overflow from our
     // descendant objects, but since tables don't support overflow:auto, this works out fine.
     if (collapseBorders()) {
-        int rightBorderOverflow = width() + outerBorderRight() - borderRight();
-        int leftBorderOverflow = borderLeft() - outerBorderLeft();
-        int bottomBorderOverflow = height() + outerBorderBottom() - borderBottom();
-        int topBorderOverflow = borderTop() - outerBorderTop();
-        IntRect borderOverflowRect(leftBorderOverflow, topBorderOverflow, rightBorderOverflow - leftBorderOverflow, bottomBorderOverflow - topBorderOverflow);
-        if (borderOverflowRect != pixelSnappedBorderBoxRect()) {
+        LayoutUnit rightBorderOverflow = width() + outerBorderRight() - borderRight();
+        LayoutUnit leftBorderOverflow = borderLeft() - outerBorderLeft();
+        LayoutUnit bottomBorderOverflow = height() + outerBorderBottom() - borderBottom();
+        LayoutUnit topBorderOverflow = borderTop() - outerBorderTop();
+        LayoutRect borderOverflowRect(leftBorderOverflow, topBorderOverflow, rightBorderOverflow - leftBorderOverflow, bottomBorderOverflow - topBorderOverflow);
+        if (borderOverflowRect != borderBoxRect()) {
             addLayoutOverflow(borderOverflowRect);
             addVisualOverflow(borderOverflowRect);
         }
@@ -659,10 +683,9 @@ void RenderTable::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
 
     PaintPhase paintPhase = paintInfo.phase;
 
-    if (!isRoot()) {
+    if (!isDocumentElementRenderer()) {
         LayoutRect overflowBox = visualOverflowRect();
         flipForWritingMode(overflowBox);
-        overflowBox.inflate(maximalOutlineSize(paintInfo.phase));
         overflowBox.moveBy(adjustedPaintOffset);
         if (!overflowBox.intersects(paintInfo.rect))
             return;
@@ -750,7 +773,7 @@ void RenderTable::paintBoxDecorations(PaintInfo& paintInfo, const LayoutPoint& p
     LayoutRect rect(paintOffset, size());
     subtractCaptionRect(rect);
 
-    BackgroundBleedAvoidance bleedAvoidance = determineBackgroundBleedAvoidance(paintInfo.context);
+    BackgroundBleedAvoidance bleedAvoidance = determineBackgroundBleedAvoidance(paintInfo.context());
     if (!boxShadowShouldBeAppliedToBackground(rect.location(), bleedAvoidance))
         paintBoxShadow(paintInfo, rect, style(), Normal);
     paintBackground(paintInfo, rect, bleedAvoidance);
@@ -790,7 +813,7 @@ void RenderTable::computePreferredLogicalWidths()
 
     computeIntrinsicLogicalWidths(m_minPreferredLogicalWidth, m_maxPreferredLogicalWidth);
 
-    int bordersPaddingAndSpacing = bordersPaddingAndSpacingInRowDirection();
+    LayoutUnit bordersPaddingAndSpacing = bordersPaddingAndSpacingInRowDirection();
     m_minPreferredLogicalWidth += bordersPaddingAndSpacing;
     m_maxPreferredLogicalWidth += bordersPaddingAndSpacing;
 
@@ -930,7 +953,7 @@ LayoutUnit RenderTable::offsetLeftForColumn(const RenderTableCol& column) const
     unsigned columnIndex = effectiveIndexOfColumn(column);
     if (columnIndex >= numEffCols())
         return 0;
-    return m_columnPos[columnIndex] + m_hSpacing + borderLeft();
+    return m_columnPos[columnIndex] + LayoutUnit(m_hSpacing) + borderLeft();
 }
 
 LayoutUnit RenderTable::offsetWidthForColumn(const RenderTableCol& column) const
@@ -941,23 +964,24 @@ LayoutUnit RenderTable::offsetWidthForColumn(const RenderTableCol& column) const
         currentColumn = currentColumn->nextColumn(); // First column in column-group
     unsigned numberOfEffectiveColumns = numEffCols();
     ASSERT_WITH_SECURITY_IMPLICATION(m_columnPos.size() >= numberOfEffectiveColumns + 1);
-    unsigned width = 0;
+    LayoutUnit width = 0;
+    LayoutUnit spacing = m_hSpacing;
     while (currentColumn) {
         unsigned columnIndex = effectiveIndexOfColumn(*currentColumn);
         unsigned span = currentColumn->span();
         while (span && columnIndex < numberOfEffectiveColumns) {
-            width += m_columnPos[columnIndex + 1] - m_columnPos[columnIndex] - m_hSpacing;
+            width += m_columnPos[columnIndex + 1] - m_columnPos[columnIndex] - spacing;
             span -= m_columns[columnIndex].span;
             ++columnIndex;
             if (span)
-                width += m_hSpacing;
+                width += spacing;
         }
         if (!hasColumnChildren)
             break;
         currentColumn = currentColumn->nextColumn();
         if (!currentColumn || currentColumn->isTableColumnGroup())
             break;
-        width += m_hSpacing;
+        width += spacing;
     }
     return width;
 }
@@ -1071,7 +1095,7 @@ void RenderTable::recalcSections() const
     m_needsSectionRecalc = false;
 }
 
-int RenderTable::calcBorderStart() const
+LayoutUnit RenderTable::calcBorderStart() const
 {
     if (!collapseBorders())
         return RenderBlock::borderStart();
@@ -1122,10 +1146,10 @@ int RenderTable::calcBorderStart() const
                 borderWidth = std::max(borderWidth, firstRowAdjoiningBorder.width());
         }
     }
-    return (borderWidth + (style().isLeftToRightDirection() ? 0 : 1)) / 2;
+    return floorToInt((borderWidth + (style().isLeftToRightDirection() ? 0 : 1)) / 2);
 }
 
-int RenderTable::calcBorderEnd() const
+LayoutUnit RenderTable::calcBorderEnd() const
 {
     if (!collapseBorders())
         return RenderBlock::borderEnd();
@@ -1177,7 +1201,7 @@ int RenderTable::calcBorderEnd() const
                 borderWidth = std::max(borderWidth, firstRowAdjoiningBorder.width());
         }
     }
-    return (borderWidth + (style().isLeftToRightDirection() ? 1 : 0)) / 2;
+    return floorToInt((borderWidth + (style().isLeftToRightDirection() ? 1 : 0)) / 2);
 }
 
 void RenderTable::recalcBordersInRowDirection()
@@ -1205,11 +1229,11 @@ LayoutUnit RenderTable::borderAfter() const
     return RenderBlock::borderAfter();
 }
 
-int RenderTable::outerBorderBefore() const
+LayoutUnit RenderTable::outerBorderBefore() const
 {
     if (!collapseBorders())
         return 0;
-    int borderWidth = 0;
+    LayoutUnit borderWidth = 0;
     if (RenderTableSection* topSection = this->topSection()) {
         borderWidth = topSection->outerBorderBefore();
         if (borderWidth < 0)
@@ -1219,15 +1243,15 @@ int RenderTable::outerBorderBefore() const
     if (tb.style() == BHIDDEN)
         return 0;
     if (tb.style() > BHIDDEN)
-        borderWidth = std::max<int>(borderWidth, tb.width() / 2);
+        borderWidth = floorToInt(std::max<LayoutUnit>(borderWidth, tb.width() / 2));
     return borderWidth;
 }
 
-int RenderTable::outerBorderAfter() const
+LayoutUnit RenderTable::outerBorderAfter() const
 {
     if (!collapseBorders())
         return 0;
-    int borderWidth = 0;
+    LayoutUnit borderWidth = 0;
 
     if (RenderTableSection* section = bottomSection()) {
         borderWidth = section->outerBorderAfter();
@@ -1238,26 +1262,26 @@ int RenderTable::outerBorderAfter() const
     if (tb.style() == BHIDDEN)
         return 0;
     if (tb.style() > BHIDDEN)
-        borderWidth = std::max<int>(borderWidth, (tb.width() + 1) / 2);
+        borderWidth = floorToInt(std::max<LayoutUnit>(borderWidth, (tb.width() + 1) / 2));
     return borderWidth;
 }
 
-int RenderTable::outerBorderStart() const
+LayoutUnit RenderTable::outerBorderStart() const
 {
     if (!collapseBorders())
         return 0;
 
-    int borderWidth = 0;
+    LayoutUnit borderWidth = 0;
 
     const BorderValue& tb = style().borderStart();
     if (tb.style() == BHIDDEN)
         return 0;
     if (tb.style() > BHIDDEN)
-        borderWidth = (tb.width() + (style().isLeftToRightDirection() ? 0 : 1)) / 2;
+        borderWidth = floorToInt((tb.width() + (style().isLeftToRightDirection() ? 0 : 1)) / 2);
 
     bool allHidden = true;
     for (RenderTableSection* section = topSection(); section; section = sectionBelow(section)) {
-        int sw = section->outerBorderStart();
+        LayoutUnit sw = section->outerBorderStart();
         if (sw < 0)
             continue;
         allHidden = false;
@@ -1269,22 +1293,22 @@ int RenderTable::outerBorderStart() const
     return borderWidth;
 }
 
-int RenderTable::outerBorderEnd() const
+LayoutUnit RenderTable::outerBorderEnd() const
 {
     if (!collapseBorders())
         return 0;
 
-    int borderWidth = 0;
+    LayoutUnit borderWidth = 0;
 
     const BorderValue& tb = style().borderEnd();
     if (tb.style() == BHIDDEN)
         return 0;
     if (tb.style() > BHIDDEN)
-        borderWidth = (tb.width() + (style().isLeftToRightDirection() ? 1 : 0)) / 2;
+        borderWidth = floorToInt((tb.width() + (style().isLeftToRightDirection() ? 1 : 0)) / 2);
 
     bool allHidden = true;
     for (RenderTableSection* section = topSection(); section; section = sectionBelow(section)) {
-        int sw = section->outerBorderEnd();
+        LayoutUnit sw = section->outerBorderEnd();
         if (sw < 0)
             continue;
         allHidden = false;
