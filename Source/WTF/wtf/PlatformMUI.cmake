@@ -4,4 +4,7 @@ list(APPEND WTF_SOURCES
     OSAllocatorAROS.cpp
     ThreadingPthreads.cpp
     ThreadIdentifierDataPthreads.cpp
+
+    mui/WorkQueueGeneric.cpp
+    mui/RunLoopGeneric.cpp
 )
