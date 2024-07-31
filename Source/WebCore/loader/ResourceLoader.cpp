@@ -91,6 +91,11 @@ void ResourceLoader::finishNetworkLoad()
 
     if (m_handle) {
         ASSERT(m_handle->client() == this);
+#if PLATFORM(MUI)
+        // Clear out the ResourceHandle's client so that it doesn't try to call
+        // us back after we release it, unless it has been replaced by someone else.
+        if (m_handle->client() == this)
+#endif
         m_handle->clearClient();
         m_handle = nullptr;
     }
