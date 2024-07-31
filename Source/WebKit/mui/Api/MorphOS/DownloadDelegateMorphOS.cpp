@@ -118,6 +118,7 @@ void DownloadDelegateMorphOS::decideDestinationWithSuggestedFilename(WebDownload
 									char message[8192];
 									TEXT tmpdate[50];
 									TEXT tmptime[50];
+									STRPTR strbuttons = GSI(MSG_DOWNLOADDELEGATE_OVERWRITE_OR_RESUME_ACTIONS);
 									String truncatedURI = truncate(String(localUri), 64);
 
 									dt.dat_Stamp.ds_Days    = fib->fib_Date.ds_Days;
@@ -140,7 +141,10 @@ void DownloadDelegateMorphOS::decideDestinationWithSuggestedFilename(WebDownload
 																	   priv->totalSize,
 																	   fib->fib_Size, tmpdate, tmptime);
 
-									int ret = MUI_RequestA(app, NULL, 0, GSI(MSG_REQUESTER_NORMAL_TITLE), GSI(MSG_DOWNLOADDELEGATE_OVERWRITE_OR_RESUME_ACTIONS), message, NULL);
+									if ((ULONG)fib->fib_Size == priv->totalSize)
+										strbuttons = "*_Overwrite|_Cancel"; //TODO: localize
+
+									int ret = MUI_RequestA(app, NULL, 0, GSI(MSG_REQUESTER_NORMAL_TITLE), strbuttons, message, NULL);
 
 									switch(ret)
 									{
