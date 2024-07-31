@@ -309,7 +309,7 @@ void WebDownload::init(ResourceHandle* handle, const ResourceRequest* request, c
     m_request = WebMutableURLRequest::createInstance(*request);
     m_response = WebURLResponse::createInstance(*response);
     m_priv->resourceHandle = handle;
-    m_priv->resourceRequest = NULL;
+    m_priv->resourceRequest = new ResourceRequest(request->url());
     m_priv->requestUri = String(request->url().string());
 
     if(handle->getInternal()->m_context.get())
