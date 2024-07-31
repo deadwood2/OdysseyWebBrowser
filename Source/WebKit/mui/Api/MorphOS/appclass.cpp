@@ -473,12 +473,12 @@ static const struct EmulLibEntry RexxEmul = { TRAP_LIB, 0, (void (*)())&Rexx };
 #if OS(AROS)
 AROS_UFP3
 (
-    LONG, Rexx,
+    IPTR, Rexx,
     AROS_UFHA(struct Hook *, h, A0),
     AROS_UFHA(Object *, obj, A2),
     AROS_UFHA(IPTR *, params, A1)
 );
-#define REXXHOOK(name, param)   static const struct Hook name = { { NULL, NULL }, NULL, NULL, (APTR)(param) };
+#define REXXHOOK(name, param)   static const struct Hook name = { { NULL, NULL }, (APTR)&Rexx, NULL, (APTR)(param) };
 #endif
 REXXHOOK(RexxHookA, REXX_PRINT);
 REXXHOOK(RexxHookB, REXX_ABOUT);
@@ -541,7 +541,7 @@ static LONG Rexx(void)
 #if OS(AROS)
 AROS_UFH3
 (
-    LONG, Rexx,
+    IPTR, Rexx,
     AROS_UFHA(struct Hook *, h, A0),
     AROS_UFHA(Object *, obj, A2),
     AROS_UFHA(IPTR *, params, A1)
