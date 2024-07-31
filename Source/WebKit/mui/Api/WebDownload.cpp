@@ -139,7 +139,7 @@ void DownloadClient::didReceiveResponse(ResourceHandle*, const WebCore::Resource
 		}
 		else
 		{
-			ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, String(), String("Can't create file"));
+			ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, String(), String("Can't resume"));
 	        didFail(priv->resourceHandle.get(), resourceError);
 	        return;
 		}
