@@ -23,17 +23,19 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "config.h"
+
 #include "StorageTracker.h"
 
 #include "StorageThread.h"
 #include "StorageTrackerClient.h"
 #include "WebStorageNamespaceProvider.h"
-#include <WebCore/FileSystem.h>
-#include <WebCore/PageGroup.h>
-#include <WebCore/SQLiteDatabaseTracker.h>
-#include <WebCore/SQLiteStatement.h>
-#include <WebCore/SecurityOrigin.h>
-#include <WebCore/TextEncoding.h>
+#include "FileSystem.h"
+#include "PageGroup.h"
+#include "SQLiteDatabaseTracker.h"
+#include "SQLiteStatement.h"
+#include "SecurityOrigin.h"
+#include "TextEncoding.h"
 #include <wtf/MainThread.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/Vector.h>

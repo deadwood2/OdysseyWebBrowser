@@ -18,6 +18,7 @@ set(WebKit_INCLUDE_DIRECTORIES
 )
 
 set(WebKit_SYSTEM_INCLUDE_DIRECTORIES "")
+set(WebKit_INCLUDE_DIRECTORIES)
 
 set(WebKit_LIBRARIES
     PRIVATE JavaScriptCore${DEBUG_SUFFIX}
@@ -49,3 +50,9 @@ if (WebKit_OUTPUT_NAME)
 endif ()
 
 WEBKIT_FRAMEWORK(WebKit)
+
+if (${PORT} STREQUAL "MUI")
+    add_custom_target(builddate COMMAND date +'%e.%m.%Y' | sed 's/\\\(.*\\\)/\#define DATE \\"\\1\\"/g' > ${WEBKIT_DIR}/mui/Api/MorphOS/builddate.h)
+    add_dependencies(WebKit builddate)
+endif ()
+
