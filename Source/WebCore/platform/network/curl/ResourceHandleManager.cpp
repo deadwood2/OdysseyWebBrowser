@@ -275,9 +275,6 @@ ResourceHandleManager::ResourceHandleManager()
 	else
 	    pollTimeSeconds = 0.001;
     }
-
-    if(getenv("OWB_ENABLE_DISK_CACHE"))
-       CurlCacheManager::getInstance().setCacheDirectory("PROGDIR:conf/cache");
 #endif
 
     curl_global_init(CURL_GLOBAL_ALL);
