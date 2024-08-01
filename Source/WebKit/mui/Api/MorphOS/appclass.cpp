@@ -3334,8 +3334,20 @@ DEFSMETHOD(OWBApp_RestoreSession)
 				for(j = 0; j < windowstates[i].browserstates.size(); j++)
 				{
 					BalWidget *widget = NULL;
+					BOOL addwindow = FALSE;
 
 					if(j == 0)
+					{
+						addwindow = TRUE;
+						if (i == 0)
+						{
+							/* For first restored window, don't add it if there is already one */
+							window = (Object *) getv(app, MA_OWBApp_ActiveWindow);
+							if (window != NULL) addwindow = FALSE;
+						}
+					}
+
+					if (addwindow)
 					{
 						widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddWindow, windowstates[i].browserstates[j].url.utf8().data(), FALSE, NULL, FALSE, NULL, FALSE);
 						if(widget)
