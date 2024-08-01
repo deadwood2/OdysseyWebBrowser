@@ -1,3 +1,4 @@
+
 /*
  * Copyright (C) 2004, 2006, 2011, 2013 Apple Inc. All rights reserved.
  *
@@ -161,7 +162,7 @@ public:
     void setQuickLookHandle(std::unique_ptr<QuickLookHandle> handle) { m_quickLook = WTFMove(handle); }
 #endif
 
-#if PLATFORM(WIN) && USE(CURL)
+#if (PLATFORM(WIN) || PLATFORM(MUI)) && USE(CURL)
     static void setHostAllowsAnyHTTPSCertificate(const String&);
     static void setClientCertificateInfo(const String&, const String&, const String&);
 #endif
@@ -193,6 +194,16 @@ public:
     double m_requestTime;
 #endif
 
+#if PLATFORM(MUI)
+    bool canResume();
+    void checkAndSendCookies(URL& url);
+    bool isResuming();
+    void setCanResume(bool value);
+    void setCookies();
+    void setStartOffset(unsigned long long offset);
+    unsigned long long startOffset();
+#endif
+
     bool hasAuthenticationChallenge() const;
     void clearAuthentication();
     WEBCORE_EXPORT virtual void cancel();
@@ -200,6 +211,9 @@ public:
     // The client may be 0, in which case no callbacks will be made.
     ResourceHandleClient* client() const;
     WEBCORE_EXPORT void clearClient();
+#if PLATFORM(MUI)
+    void setClientInternal(ResourceHandleClient*);
+#endif
 
     // Called in response to ResourceHandleClient::willSendRequestAsync().
     WEBCORE_EXPORT void continueWillSendRequest(const ResourceRequest&);

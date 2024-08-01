@@ -1694,8 +1694,9 @@ public:
 
     Jump branchAdd32(ResultCondition cond, RegisterID src, Imm32 imm, RegisterID dest)
     {
-        if (src == dest)
+        if (src == dest) {
             ASSERT(haveScratchRegisterForBlinding());
+        }
 
         if (shouldBlind(imm)) {
             if (src == dest) {
@@ -1710,8 +1711,9 @@ public:
     
     Jump branchMul32(ResultCondition cond, RegisterID src, Imm32 imm, RegisterID dest)
     {
-        if (src == dest)
+        if (src == dest) {
             ASSERT(haveScratchRegisterForBlinding());
+        }
 
         if (shouldBlind(imm)) {
             if (src == dest) {

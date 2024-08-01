@@ -30,6 +30,10 @@
 #include "SharedBuffer.h"
 #include <wtf/ByteOrder.h>
 
+#if OS(AROS)
+#include <netinet/in.h>
+#endif
+
 namespace WebCore {
 
 static bool readUInt32(SharedBuffer* buffer, size_t& offset, uint32_t& value)

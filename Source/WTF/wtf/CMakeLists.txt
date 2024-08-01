@@ -238,7 +238,6 @@ set(WTF_INCLUDE_DIRECTORIES
 )
 
 set(WTF_LIBRARIES
-    ${CMAKE_DL_LIBS}
 )
 
 if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
@@ -270,15 +269,6 @@ if (WIN32)
         OSAllocatorWin.cpp
         ThreadSpecificWin.cpp
         ThreadingWin.cpp
-    )
-else ()
-    list(APPEND WTF_HEADERS
-        ThreadIdentifierDataPthreads.h
-    )
-    list(APPEND WTF_SOURCES
-        OSAllocatorPosix.cpp
-        ThreadIdentifierDataPthreads.cpp
-        ThreadingPthreads.cpp
     )
 endif ()
 

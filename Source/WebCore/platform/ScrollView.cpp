@@ -84,6 +84,11 @@ void ScrollView::removeChild(Widget& child)
 bool ScrollView::setHasHorizontalScrollbar(bool hasBar, bool* contentSizeAffected)
 {
     ASSERT(!hasBar || !avoidScrollbarCreation());
+#if PLATFORM(MUI)
+    if(!parent()) {
+        hasBar = false;
+    }
+#endif
     if (hasBar && !m_horizontalScrollbar) {
         m_horizontalScrollbar = createScrollbar(HorizontalScrollbar);
         addChild(m_horizontalScrollbar.get());
@@ -110,6 +115,11 @@ bool ScrollView::setHasHorizontalScrollbar(bool hasBar, bool* contentSizeAffecte
 bool ScrollView::setHasVerticalScrollbar(bool hasBar, bool* contentSizeAffected)
 {
     ASSERT(!hasBar || !avoidScrollbarCreation());
+#if PLATFORM(MUI)
+    if(!parent()) {
+        hasBar = false;
+    }
+#endif
     if (hasBar && !m_verticalScrollbar) {
         m_verticalScrollbar = createScrollbar(VerticalScrollbar);
         addChild(m_verticalScrollbar.get());
@@ -678,6 +688,12 @@ void ScrollView::updateScrollbars(const ScrollPosition& desiredPosition)
                 sendContentResizedNotification |= changeAffectsContentSize;
             }
         }
+
+            #if PLATFORM(MUI)
+            if(!parent()) {
+                sendContentResizedNotification = false;
+            }
+            #endif
 
         const unsigned cMaxUpdateScrollbarsPass = 2;
         if ((sendContentResizedNotification || needAnotherPass) && m_updateScrollbarsPass < cMaxUpdateScrollbarsPass) {

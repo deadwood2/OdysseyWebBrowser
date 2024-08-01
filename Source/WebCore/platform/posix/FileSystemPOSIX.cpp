@@ -30,26 +30,62 @@
 #include "FileSystem.h"
 
 #include "FileMetadata.h"
-#include <dirent.h>
 #include <errno.h>
-#include <fcntl.h>
-#include <fnmatch.h>
-#include <libgen.h>
-#include <stdio.h>
 #include <sys/stat.h>
+#if PLATFORM(MUI)
+#include <exec/exec.h>
+#include <proto/exec.h>
+#include <proto/wb.h>
+#include <clib/debug_protos.h>
+#include <sys/time.h>
+#else
+#include <libgen.h>
+#endif
+#include <fcntl.h>
+#include <stdio.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <regex.h>
+#include <dirent.h>
+#include <string>
+using namespace std;
+
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
+
+static String removeFilePrefix(const String& fileName)
+{
+    String correctedFileName(fileName);
+	if (correctedFileName.startsWith("file://"))
+        correctedFileName = correctedFileName.substring(7);
+
+    return correctedFileName;
+}
+
+char* filenameFromString(const String& string)
+{
+#warning "Really?"
+    return strdup(string.utf8().data());
+}
+
+String filenameToString(const char* filename)
+{
+#warning "Really?"
+    if (!filename)
+        return String();
+    return String::fromUTF8(filename);
+}
 
 bool fileExists(const String& path)
 {
     if (path.isNull())
         return false;
 
-    CString fsRep = fileSystemRepresentation(path);
+    String correctedPath = removeFilePrefix(path);
+
+    CString fsRep = fileSystemRepresentation(correctedPath);
 
     if (!fsRep.data() || fsRep.data()[0] == '\0')
         return false;
@@ -82,7 +118,8 @@ PlatformFileHandle openFile(const String& path, FileOpenMode mode)
     if (mode == OpenForRead)
         platformFlag |= O_RDONLY;
     else if (mode == OpenForWrite)
-        platformFlag |= (O_WRONLY | O_CREAT | O_TRUNC);
+#warning "replaced O_TRUNC, else APPEND would never work. Ok for now given this class use, but check sideeffects when updating."
+	platformFlag |= (O_WRONLY | O_CREAT | /*O_TRUNC*/ O_APPEND);
     return open(fsRep.data(), platformFlag, 0666);
 }
 
@@ -252,9 +289,15 @@ bool getFileMetadata(const String& path, FileMetadata& metadata)
 
 String pathByAppendingComponent(const String& path, const String& component)
 {
+#warning "Just use AddPart..."
     if (path.endsWith('/'))
         return path + component;
-    return path + "/" + component;
+#if PLATFORM(MUI)
+    else if(path.endsWith(":"))
+        return path + component;
+#endif
+    else
+        return path + "/" + component;
 }
 
 bool makeAllDirectories(const String& path)
@@ -283,10 +326,72 @@ bool makeAllDirectories(const String& path)
     return true;
 }
 
+#if PLATFORM(MUI)
+static char *basename(char *path)
+{
+#warning "Just use FilePart/PathPart"
+  /* Ignore all the details above for now and make a quick and simple
+     implementaion here */
+  char *s1;
+  char *s2;
+
+  s1=strrchr(path, '/');
+  s2=strrchr(path, ':');
+
+  if(s1 && s2) {
+    path = (s1 > s2? s1 : s2)+1;
+  }
+  else if(s1)
+    path = s1 + 1;
+  else if(s2)
+    path = s2 + 1;
+
+  return path;
+}
+#endif
+
 String pathGetFileName(const String& path)
 {
-    return path.substring(path.reverseFind('/') + 1);
+#if PLATFORM(MUI)
+  return String(basename((char *) path.latin1().data()));
+#else
+  return path.substring(path.reverseFind('/') + 1);
+#endif
 }
+
+#if PLATFORM(MUI)
+// XXX: totally wrong of course
+char *dirname (char *path)
+{
+#warning "Just use FilePart/PathPart"
+
+  char *newpath;
+  const char *slash;
+  int length;                   /* Length of result, not including NUL.  */
+
+  slash = strrchr (path, '/');
+  if (slash == 0)
+    {
+      /* File is in the current directory.  */
+      path = ".";
+      length = 1;
+    }
+  else
+    {
+      /* Remove any trailing slashes from the result.  */
+      while (slash > path && *slash == '/')
+        --slash;
+
+      length = slash - path + 1;
+    }
+  newpath = (char *) malloc (length + 1);
+  if (newpath == 0)
+    return 0;
+  strncpy (newpath, path, length);
+  newpath[length] = 0;
+  return newpath;
+}
+#endif
 
 String directoryName(const String& path)
 {
@@ -295,9 +400,14 @@ String directoryName(const String& path)
     if (!fsRep.data() || fsRep.data()[0] == '\0')
         return String();
 
-    return dirname(fsRep.mutableData());
+	char* cname	= dirname(fsRep.mutableData());
+	String ret = String(cname);
+	free(cname);
+
+	return ret;
 }
 
+#if !PLATFORM(EFL) && !PLATFORM(MUI)
 Vector<String> listDirectory(const String& path, const String& filter)
 {
     Vector<String> entries;
@@ -305,45 +415,104 @@ Vector<String> listDirectory(const String& path, const String& filter)
     CString cfilter = filter.utf8();
     DIR* dir = opendir(cpath.data());
     if (dir) {
-        struct dirent* dp;
-        while ((dp = readdir(dir))) {
-            const char* name = dp->d_name;
-            if (!strcmp(name, ".") || !strcmp(name, ".."))
-                continue;
-            if (fnmatch(cfilter.data(), name, 0))
-                continue;
-            char filePath[1024];
-            if (static_cast<int>(sizeof(filePath) - 1) < snprintf(filePath, sizeof(filePath), "%s/%s", cpath.data(), name))
-                continue; // buffer overflow
-            entries.append(filePath);
-        }
-        closedir(dir);
+      struct dirent* dp;
+      while ((dp = readdir(dir))) {
+	const char* name = dp->d_name;
+	if (!strcmp(name, ".") || !strcmp(name, ".."))
+	  continue;
+	if (fnmatch(cfilter.data(), name, 0))
+	  continue;
+	char filePath[1024];
+	if (static_cast<int>(sizeof(filePath) - 1) < snprintf(filePath, sizeof(filePath), "%s/%s", cpath.data(), name))
+	  continue; // buffer overflow
+	entries.append(filePath);
+      }
+      closedir(dir);
     }
     return entries;
-}
-
-#if !OS(DARWIN) || PLATFORM(EFL) || PLATFORM(GTK)
-String openTemporaryFile(const String& prefix, PlatformFileHandle& handle)
+  }
+#else
+Vector<String> listDirectory(const String& path, const String&)
 {
-    char buffer[PATH_MAX];
-    const char* tmpDir = getenv("TMPDIR");
+    Vector<String> entries;
 
-    if (!tmpDir)
-        tmpDir = "/tmp";
+    char* filename = filenameFromString(path);
+    DIR* dir = opendir(filename);
+    if (!dir)
+        return entries;
+    /*int err;
 
-    if (snprintf(buffer, PATH_MAX, "%s/%sXXXXXX", tmpDir, prefix.utf8().data()) >= PATH_MAX)
-        goto end;
+    regex_t preg;
+	char *str_regex = strdup(filter.utf8().data());
+    err = regcomp (&preg, str_regex, REG_NOSUB | REG_EXTENDED | REG_NEWLINE);
+    if (err != 0) {
+        return entries;
+    }
+	*/
+    struct dirent* file;
+    /* int match;*/
+    while ((file = readdir(dir))) {
+		/*
+        match = regexec (&preg, file->d_name, 0, NULL, 0);
+        if (match != 0)
+            continue;
+		*/
+		String s = filename;
+		s = pathByAppendingComponent(s, file->d_name);
+		entries.append(s);
+    }
+	/*
+	regfree (&preg);
+    free(str_regex);
+	*/
+    closedir(dir);
+    free(filename);
 
-    handle = mkstemp(buffer);
-    if (handle < 0)
-        goto end;
-
-    return String::fromUTF8(buffer);
-
-end:
-    handle = invalidPlatformFileHandle;
-    return String();
+    return entries;
 }
 #endif
+
+void revealFolderInOS(const String& path)
+{
+    OpenWorkbenchObjectA((char *)path.utf8().data(), NULL); 
+}
+
+CString fileSystemRepresentation(const String &file)
+{
+    return file.utf8();
+}
+
+bool unloadModule(PlatformModule module)
+{
+	CloseLibrary((struct Library *) module);
+	return true;
+}
+
+String homeDirectoryPath()
+{
+	return "PROGDIR:";
+}
+
+String openTemporaryFile(const String& prefix, PlatformFileHandle &handle)
+{
+	char tempPath[1024];
+	struct timeval tv;
+
+	gettimeofday(&tv, NULL);
+
+	snprintf(tempPath, sizeof(tempPath), "T:%s_%lu", prefix.utf8().data(), (unsigned long)(tv.tv_sec + 1000000*tv.tv_usec));
+
+	int fileDescriptor = open(tempPath, O_CREAT | O_RDWR);
+
+	if (!isHandleValid(fileDescriptor))
+	 {
+		kprintf("Can't create temporary file <%s>\n", tempPath);
+                return String();
+         }
+    String tempFilePath = tempPath;
+
+    handle = fileDescriptor;
+    return tempFilePath;
+}
 
 } // namespace WebCore

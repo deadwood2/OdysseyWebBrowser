@@ -332,6 +332,15 @@ the public iOS SDK. We will also need to update the FeatureDefines.xcconfig file
 #if PLATFORM(GTK)
 #endif /* PLATFORM(GTK) */
 
+/* --------- MUI port (MorphOS, AROS) --------- */
+#if PLATFORM(MUI)
+
+#if !defined(ENABLE_PLUGIN_PACKAGE_SIMPLE_HASH)
+#define ENABLE_PLUGIN_PACKAGE_SIMPLE_HASH 1
+#endif
+
+#endif
+
 /* ENABLE macro defaults for WebCore */
 /* Do not use PLATFORM() tests in this section ! */
 

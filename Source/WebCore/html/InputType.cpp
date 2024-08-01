@@ -107,20 +107,20 @@ static void populateInputTypeFactoryMap(InputTypeFactoryMap& map)
         { nullptr, &InputTypeNames::color, &createInputType<ColorInputType> },
 #endif
 #if ENABLE(INPUT_TYPE_DATE)
-        { &RuntimeEnabledFeatures::inputTypeDateEnabled, &InputTypeNames::date, &createInputType<DateInputType> },
+        { nullptr, &InputTypeNames::date, &createInputType<DateInputType> },
 #endif
 #if ENABLE(INPUT_TYPE_DATETIME_INCOMPLETE)
-        { &RuntimeEnabledFeatures::inputTypeDateTimeEnabled, &InputTypeNames::datetime, &createInputType<DateTimeInputType> },
+        { nullptr, &InputTypeNames::datetime, &createInputType<DateTimeInputType> },
 #endif
 #if ENABLE(INPUT_TYPE_DATETIMELOCAL)
-        { &RuntimeEnabledFeatures::inputTypeDateTimeLocalEnabled, &InputTypeNames::datetimelocal, &createInputType<DateTimeLocalInputType> },
+        { nullptr, &InputTypeNames::datetimelocal, &createInputType<DateTimeLocalInputType> },
 #endif
         { nullptr, &InputTypeNames::email, &createInputType<EmailInputType> },
         { nullptr, &InputTypeNames::file, &createInputType<FileInputType> },
         { nullptr, &InputTypeNames::hidden, &createInputType<HiddenInputType> },
         { nullptr, &InputTypeNames::image, &createInputType<ImageInputType> },
 #if ENABLE(INPUT_TYPE_MONTH)
-        { &RuntimeEnabledFeatures::inputTypeMonthEnabled, &InputTypeNames::month, &createInputType<MonthInputType> },
+        { nullptr, &InputTypeNames::month, &createInputType<MonthInputType> },
 #endif
         { nullptr, &InputTypeNames::number, &createInputType<NumberInputType> },
         { nullptr, &InputTypeNames::password, &createInputType<PasswordInputType> },
@@ -131,11 +131,11 @@ static void populateInputTypeFactoryMap(InputTypeFactoryMap& map)
         { nullptr, &InputTypeNames::submit, &createInputType<SubmitInputType> },
         { nullptr, &InputTypeNames::telephone, &createInputType<TelephoneInputType> },
 #if ENABLE(INPUT_TYPE_TIME)
-        { &RuntimeEnabledFeatures::inputTypeTimeEnabled, &InputTypeNames::time, &createInputType<TimeInputType> },
+        { nullptr, &InputTypeNames::time, &createInputType<TimeInputType> },
 #endif
         { nullptr, &InputTypeNames::url, &createInputType<URLInputType> },
 #if ENABLE(INPUT_TYPE_WEEK)
-        { &RuntimeEnabledFeatures::inputTypeWeekEnabled, &InputTypeNames::week, &createInputType<WeekInputType> },
+        { nullptr, &InputTypeNames::week, &createInputType<WeekInputType> },
 #endif
         // No need to register "text" because it is the default type.
     };

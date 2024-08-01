@@ -200,9 +200,11 @@ void JSGlobalObjectInspectorController::appendAPIBacktrace(ScriptCallStack* call
     for (int i = 0; i < size; ++i) {
         const char* mangledName = nullptr;
         char* cxaDemangled = nullptr;
+#if !PLATFORM(MUI)
         Dl_info info;
         if (dladdr(stack[i], &info) && info.dli_sname)
             mangledName = info.dli_sname;
+#endif
         if (mangledName)
             cxaDemangled = abi::__cxa_demangle(mangledName, nullptr, nullptr, nullptr);
         if (mangledName || cxaDemangled)

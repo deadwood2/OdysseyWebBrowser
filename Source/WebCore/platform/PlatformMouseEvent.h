@@ -35,6 +35,10 @@ typedef struct _GdkEventButton GdkEventButton;
 typedef struct _GdkEventMotion GdkEventMotion;
 #endif
 
+#if PLATFORM(MUI)
+#include "BALBase.h"
+#endif
+
 #if PLATFORM(EFL)
 typedef struct _Evas_Event_Mouse_Down Evas_Event_Mouse_Down;
 typedef struct _Evas_Event_Mouse_Up Evas_Event_Mouse_Up;
@@ -99,6 +103,10 @@ const double ForceAtForceClick = 2;
         explicit PlatformMouseEvent(GdkEventButton*);
         explicit PlatformMouseEvent(GdkEventMotion*);
         void setClickCount(int count) { m_clickCount = count; }
+#endif
+
+#if PLATFORM(MUI)
+        PlatformMouseEvent(BalEventButton*);
 #endif
 
 #if PLATFORM(EFL)

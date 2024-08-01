@@ -57,6 +57,10 @@
 #include "UserContentController.h"
 #endif
 
+#if PLATFORM(MUI)
+extern bool canAllocateMemory(long long size);
+#endif
+
 namespace WebCore {
 
 ResourceLoader::ResourceLoader(Frame* frame, ResourceLoaderOptions options)
@@ -86,6 +90,11 @@ void ResourceLoader::finishNetworkLoad()
 
     if (m_handle) {
         ASSERT(m_handle->client() == this);
+#if PLATFORM(MUI)
+        // Clear out the ResourceHandle's client so that it doesn't try to call
+        // us back after we release it, unless it has been replaced by someone else.
+        if (m_handle->client() == this)
+#endif
         m_handle->clearClient();
         m_handle = nullptr;
     }
@@ -297,6 +306,11 @@ void ResourceLoader::addDataOrBuffer(const char* data, unsigned length, SharedBu
 {
     if (m_options.dataBufferingPolicy() == DoNotBufferData)
         return;
+
+#if PLATFORM(MUI)
+    if (!canAllocateMemory(length + (m_resourceData ? m_resourceData->size() : 0)))
+      return;
+#endif
 
     if (dataPayloadType == DataPayloadWholeResource) {
         m_resourceData = buffer ? buffer : SharedBuffer::create(data, length);
@@ -697,6 +711,13 @@ void ResourceLoader::didReceiveAuthenticationChallenge(const AuthenticationChall
     didFail(blockedError());
 #endif
 }
+#if USE(CURL_OPENSSL)
+void ResourceLoader::didReceiveSSLSecurityExtension(const ResourceRequest& request, const char* securityExtension)
+{
+    RefPtr<ResourceLoader> protector(this);
+    frameLoader()->didReceiveSSLSecurityExtension(request, securityExtension);
+}
+#endif
 
 void ResourceLoader::didCancelAuthenticationChallenge(const AuthenticationChallenge& challenge)
 {

@@ -76,7 +76,7 @@ enum JSTokenType {
     FINALLY,
     DEBUGGER,
     ELSE,
-    IMPORT,
+    IMPORT_IMPORT,
     EXPORT,
     YIELD,
     CLASSTOKEN,

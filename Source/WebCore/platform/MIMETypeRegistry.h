@@ -100,6 +100,10 @@ public:
     // FIXME: WebKit coding style says we should not have the word "get" in the name of this function.
     // FIXME: Unclear what the concept of a normalized MIME type is; currently it's a platform-specific notion.
     static String getNormalizedMIMEType(const String&);
+
+#if PLATFORM(MUI)
+    static void reinitializeSupportedMediaMIMETypes();
+#endif
 };
 
 const String& defaultMIMEType();

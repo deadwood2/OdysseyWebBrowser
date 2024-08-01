@@ -125,7 +125,7 @@ std::chrono::microseconds computeFreshnessLifetimeForHTTPFamily(const ResourceRe
     case 301: // Moved Permanently
     case 410: // Gone
         // These are semantically permanent and so get long implicit lifetime.
-        return hours(365 * 24);
+        return microseconds((long long int)365 * 24 * 3600 * 1000000);
     default:
         // Heuristic Freshness:
         // http://tools.ietf.org/html/rfc7234#section-4.2.2

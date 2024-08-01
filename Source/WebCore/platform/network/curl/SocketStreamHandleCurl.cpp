@@ -41,6 +41,10 @@
 #include <wtf/MainThread.h>
 #include <wtf/text/CString.h>
 
+#if PLATFORM(MUI)
+#include <proto/bsdsocket.h>
+#endif
+
 namespace WebCore {
 
 SocketStreamHandle::SocketStreamHandle(const URL& url, SocketStreamHandleClient* client)
@@ -178,7 +182,7 @@ bool SocketStreamHandle::waitForAvailableData(CURL* curlHandle, std::chrono::mil
     fd_set fdread;
     FD_ZERO(&fdread);
     FD_SET(socket, &fdread);
-    int rc = ::select(0, &fdread, nullptr, nullptr, &timeout);
+    int rc = select(0, &fdread, nullptr, nullptr, &timeout);
     return rc == 1;
 }
 
@@ -202,7 +206,7 @@ void SocketStreamHandle::startThread()
 
         curl_easy_setopt(curlHandle, CURLOPT_URL, m_url.host().utf8().data());
         curl_easy_setopt(curlHandle, CURLOPT_PORT, m_url.port());
-        curl_easy_setopt(curlHandle, CURLOPT_CONNECT_ONLY);
+        curl_easy_setopt(curlHandle, CURLOPT_CONNECT_ONLY, 1);
 
         // Connect to host
         if (curl_easy_perform(curlHandle) != CURLE_OK)

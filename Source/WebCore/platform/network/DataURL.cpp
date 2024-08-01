@@ -83,12 +83,24 @@ void handleDataURL(ResourceHandle* handle)
     } else {
         TextEncoding encoding(charset);
         data = decodeURLEscapeSequences(data, encoding);
+
+#if PLATFORM(MUI) // Acid Test 97 fails with the other path
+        response.setTextEncodingName("UTF-8"); // Was UTF-16 before //
+#endif
         handle->client()->didReceiveResponse(handle, response);
 
+#if PLATFORM(MUI) // Acid Test 97 fails with the other path
+        response.setExpectedContentLength(data.utf8().length());
+        if (data.length())
+        {
+            if(handle->client()) handle->client()->didReceiveData(handle, reinterpret_cast<const char*>(data.utf8().data()), data.utf8().length(), 0);
+        }
+#else
         CString encodedData = encoding.encode(data, URLEncodedEntitiesForUnencodables);
         response.setExpectedContentLength(encodedData.length());
         if (encodedData.length())
             handle->client()->didReceiveData(handle, encodedData.data(), encodedData.length(), 0);
+#endif
     }
 
     handle->client()->didFinishLoading(handle, 0);
