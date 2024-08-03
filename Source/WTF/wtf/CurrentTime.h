@@ -35,6 +35,11 @@
 #include <chrono>
 #include <time.h>
 
+#if PLATFORM(MUI)
+extern long get_DST_offset(void);
+extern long get_GMT_offset(void);
+#endif
+
 namespace WTF {
 
 // Returns the current UTC time in seconds, counted from January 1, 1970.

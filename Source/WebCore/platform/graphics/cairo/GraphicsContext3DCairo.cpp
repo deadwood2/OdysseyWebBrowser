@@ -32,6 +32,7 @@
 #if ENABLE(GRAPHICS_CONTEXT_3D)
 #include "GraphicsContext3D.h"
 
+#include "GraphicsContext3D.h"
 #include "CairoUtilities.h"
 #include "GraphicsContext3DPrivate.h"
 #include "Image.h"

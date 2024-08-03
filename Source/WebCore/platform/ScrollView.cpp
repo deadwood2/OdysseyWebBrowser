@@ -95,6 +95,12 @@ bool ScrollView::setHasScrollbarInternal(RefPtr<Scrollbar>& scrollbar, Scrollbar
 {
     ASSERT(!hasBar || !avoidScrollbarCreation());
 
+#if PLATFORM(MUI)
+    if(!parent()) {
+        hasBar = false;
+    }
+#endif
+
     if (hasBar && !scrollbar) {
         scrollbar = createScrollbar(orientation);
         addChild(scrollbar.get());
@@ -673,6 +679,12 @@ void ScrollView::updateScrollbars(const ScrollPosition& desiredPosition)
                 sendContentResizedNotification |= changeAffectsContentSize;
             }
         }
+
+            #if PLATFORM(MUI)
+            if(!parent()) {
+                sendContentResizedNotification = false;
+            }
+            #endif
 
         const unsigned cMaxUpdateScrollbarsPass = 2;
         if ((sendContentResizedNotification || needAnotherPass) && m_updateScrollbarsPass < cMaxUpdateScrollbarsPass) {

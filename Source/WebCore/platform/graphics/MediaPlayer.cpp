@@ -64,6 +64,11 @@
 #define PlatformMediaEngineClassName MediaPlayerPrivateMediaFoundation
 #endif
 
+#if PLATFORM(MUI)
+#include "MediaPlayerPrivateMorphOS.h"
+#define PlatformMediaEngineClassName MediaPlayerPrivate
+#endif
+
 #if PLATFORM(COCOA)
 #if USE(QTKIT)
 #include "MediaPlayerPrivateQTKit.h"
@@ -331,6 +336,9 @@ MediaPlayer::MediaPlayer(MediaPlayerClient& client)
     , m_reloadTimer(*this, &MediaPlayer::reloadTimerFired)
     , m_private(std::make_unique<NullMediaPlayerPrivate>(this))
     , m_currentMediaEngine(0)
+#if PLATFORM(MUI)
+    , m_frameView(0)
+#endif
     , m_preload(Auto)
     , m_visible(false)
     , m_volume(1.0f)
@@ -1464,6 +1472,12 @@ bool MediaPlayer::getRawCookies(const URL& url, Vector<Cookie>& cookies) const
 }
 #endif
 
+#if PLATFORM(MUI)
+void MediaPlayer::setOutputPixelFormat(int pixfmt)
+{
+    m_private->setOutputPixelFormat(pixfmt);
+}
+#endif
 }
 
 #endif

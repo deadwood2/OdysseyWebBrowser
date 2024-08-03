@@ -246,7 +246,7 @@ public:
 
     static unsigned accessKeyModifiers();
     WEBCORE_EXPORT bool handleAccessKey(const PlatformKeyboardEvent&);
-    WEBCORE_EXPORT bool keyEvent(const PlatformKeyboardEvent&);
+    WEBCORE_EXPORT bool keyEvent(const PlatformKeyboardEvent&, bool* eventFlowAltered = 0);
     void defaultKeyboardEventHandler(KeyboardEvent&);
 
     bool accessibilityPreventsEventPropogation(KeyboardEvent&);

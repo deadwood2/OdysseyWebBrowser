@@ -399,6 +399,10 @@ public:
 
     void registerForIconNotification(bool) override { }
 
+#if USE(CURL_OPENSSL)
+        virtual void didReceiveSSLSecurityExtension(const ResourceRequest&, const char*) { };
+#endif
+
 #if PLATFORM(COCOA)
     RemoteAXObjectRef accessibilityRemoteObject() override { return nullptr; }
     NSCachedURLResponse* willCacheResponse(DocumentLoader*, unsigned long, NSCachedURLResponse* response) const override { return response; }

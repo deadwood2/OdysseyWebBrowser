@@ -205,6 +205,9 @@ public:
     virtual void removeAllIcons() { }
 
     virtual void setPrivateBrowsingEnabled(bool) { }
+#if PLATFORM(MUI)
+    virtual bool isPrivateBrowsingEnabled() const { return false; }
+#endif
     virtual void setClient(IconDatabaseClient*) { }
     
     virtual bool isOpen() const { return false; }

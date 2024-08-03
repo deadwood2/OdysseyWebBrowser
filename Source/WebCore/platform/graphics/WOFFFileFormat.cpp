@@ -35,6 +35,10 @@
 #include "woff2_dec.h"
 #endif
 
+#if OS(AROS)
+#include <netinet/in.h>
+#endif
+
 namespace WebCore {
 
 static bool readUInt32(SharedBuffer& buffer, size_t& offset, uint32_t& value)

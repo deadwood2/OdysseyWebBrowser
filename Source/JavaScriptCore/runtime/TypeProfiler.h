@@ -33,6 +33,9 @@
 #include <wtf/HashMap.h>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
+#if PLATFORM(MUI)
+#define INTPTR_MAX  (2147483647)
+#endif
 
 namespace Inspector { namespace Protocol  { namespace Runtime {
 class TypeDescription;

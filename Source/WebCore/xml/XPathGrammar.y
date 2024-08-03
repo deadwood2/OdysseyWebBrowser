@@ -81,7 +81,7 @@ using namespace XPath;
 %token <axis> AXISNAME
 %type <axis> AxisSpecifier
 
-%token COMMENT DOTDOT PI NODE SLASHSLASH TEXT XPATH_ERROR
+%token COMMENT DOTDOT PI NODE SLASHSLASH TeXT XPATH_ERROR
 
 %type <locationPath> LocationPath AbsoluteLocationPath RelativeLocationPath
 %destructor { delete $$; } LocationPath AbsoluteLocationPath RelativeLocationPath
@@ -245,7 +245,7 @@ NodeTest:
         $$ = new Step::NodeTest(Step::NodeTest::AnyNodeTest);
     }
     |
-    TEXT '(' ')'
+    TeXT '(' ')'
     {
         $$ = new Step::NodeTest(Step::NodeTest::TextNodeTest);
     }

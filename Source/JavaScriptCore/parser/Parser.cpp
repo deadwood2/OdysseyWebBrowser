@@ -458,7 +458,7 @@ template <class TreeBuilder> TreeSourceElements Parser<LexerType>::parseModuleSo
 
     while (true) {
         TreeStatement statement = 0;
-        if (match(IMPORT))
+        if (match(IMPORT_IMPORT))
             statement = parseImportDeclaration(context);
         else if (match(EXPORT))
             statement = parseExportDeclaration(context);
@@ -2784,7 +2784,7 @@ template <typename LexerType>
 template <class TreeBuilder> TreeStatement Parser<LexerType>::parseImportDeclaration(TreeBuilder& context)
 {
     // http://www.ecma-international.org/ecma-262/6.0/#sec-imports
-    ASSERT(match(IMPORT));
+    ASSERT(match(IMPORT_IMPORT));
     JSTokenLocation importLocation(tokenLocation());
     next();
 

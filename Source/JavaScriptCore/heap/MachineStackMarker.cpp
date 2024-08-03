@@ -34,6 +34,12 @@
 #include <stdlib.h>
 #include <wtf/StdLibExtras.h>
 
+#if PLATFORM(MUI)
+#include <proto/exec.h>
+#include <clib/debug_protos.h>
+#define D(x)
+#endif
+
 #if OS(DARWIN)
 
 #include <mach/mach_init.h>
@@ -186,6 +192,8 @@ static inline PlatformThread getCurrentPlatformThread()
     return GetCurrentThreadId();
 #elif USE(PTHREADS)
     return pthread_self();
+#elif PLATFORM(MUI)
+	return (PlatformThread) FindTask(NULL);
 #endif
 }
 
@@ -222,7 +230,7 @@ Thread* MachineThreads::Thread::createForCurrentThread()
 
 bool MachineThreads::Thread::operator==(const PlatformThread& other) const
 {
-#if OS(DARWIN) || OS(WINDOWS)
+#if OS(DARWIN) || OS(WINDOWS) || PLATFORM(MUI)
     return platformThread == other;
 #elif USE(PTHREADS)
     return !!pthread_equal(platformThread, other);
@@ -357,6 +365,7 @@ MachineThreads::Thread::~Thread()
 #endif
 }
 
+#if !OS(AROS)
 bool MachineThreads::Thread::suspend()
 {
 #if OS(DARWIN)
@@ -389,6 +398,10 @@ bool MachineThreads::Thread::suspend()
         ++suspendCount;
     }
     return true;
+#elif OS(MORPHOS)
+    Disable();
+    return true;
+    // FIXME THIS WILL NOT WORK!!!!!!!
 #else
 #error Need a way to suspend threads on this platform
 #endif
@@ -420,6 +433,8 @@ void MachineThreads::Thread::resume()
         }
         --suspendCount;
     }
+#elif OS(MORPHOS)
+    Enable();
 #else
 #error Need a way to resume threads on this platform
 #endif
@@ -477,6 +492,9 @@ size_t MachineThreads::Thread::getRegisters(Thread::Registers& registers)
 #endif
     regs.machineContext = suspendedMachineContext;
     return 0;
+#elif OS(MORPHOS)
+	PlatformThreadRegisters *registers = (PlatformThreadRegisters *) ((struct Task *)platformThread)->tc_ETask->PPCRegFrame;
+	regs = *registers;
 #else
 #error Need a way to get thread registers on this platform
 #endif
@@ -581,6 +599,8 @@ void* MachineThreads::Thread::Registers::stackPointer() const
     return static_cast<char*>(stackBase) + stackSize;
 #endif
 
+#elif OS(MORPHOS)
+	return (void *) regs.GPR[1];
 #else
 #error Need a way to get the stack pointer for another thread on this platform
 #endif
@@ -1017,11 +1037,13 @@ static void growBuffer(size_t size, void** buffer, size_t* capacity)
     *capacity = WTF::roundUpToMultipleOf(WTF::pageSize(), size * 2);
     *buffer = fastMalloc(*capacity);
 }
+#endif // !OS(AROS)
 
 void MachineThreads::gatherConservativeRoots(ConservativeRoots& conservativeRoots, JITStubRoutineSet& jitStubRoutines, CodeBlockSet& codeBlocks, void* stackOrigin, void* stackTop, RegisterState& calleeSavedRegisters)
 {
     gatherFromCurrentThread(conservativeRoots, jitStubRoutines, codeBlocks, stackOrigin, stackTop, calleeSavedRegisters);
 
+#if !OS(AROS)
     size_t size;
     size_t capacity = 0;
     void* buffer = nullptr;
@@ -1034,6 +1056,7 @@ void MachineThreads::gatherConservativeRoots(ConservativeRoots& conservativeRoot
 
     conservativeRoots.add(buffer, static_cast<char*>(buffer) + size, jitStubRoutines, codeBlocks);
     fastFree(buffer);
+#endif
 }
 
 } // namespace JSC
