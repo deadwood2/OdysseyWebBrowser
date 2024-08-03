@@ -28,6 +28,7 @@
 
 #if ENABLE(ASYNC_SCROLLING)
 
+#include "EventNames.h"
 #include "Logging.h"
 #include "PlatformWheelEvent.h"
 #include "ScrollingStateTree.h"
@@ -61,14 +62,18 @@ bool ScrollingTree::shouldHandleWheelEventSynchronously(const PlatformWheelEvent
     if (shouldSetLatch)
         m_latchedNode = 0;
     
-    if (!m_nonFastScrollableRegion.isEmpty() && m_rootNode) {
+    if (!m_eventTrackingRegions.isEmpty() && m_rootNode) {
         ScrollingTreeFrameScrollingNode& frameScrollingNode = downcast<ScrollingTreeFrameScrollingNode>(*m_rootNode);
         FloatPoint position = wheelEvent.position();
         position.move(frameScrollingNode.viewToContentsOffset(m_mainFrameScrollPosition));
 
-        LOG_WITH_STREAM(Scrolling, stream << "ScrollingTree::shouldHandleWheelEventSynchronously: wheelEvent at " << wheelEvent.position() << " mapped to content point " << position << ", in non-fast region " << m_nonFastScrollableRegion.contains(roundedIntPoint(position)));
+        const EventNames& names = eventNames();
+        IntPoint roundedPosition = roundedIntPoint(position);
+        bool isSynchronousDispatchRegion = m_eventTrackingRegions.trackingTypeForPoint(names.wheelEvent, roundedPosition) == TrackingType::Synchronous
+            || m_eventTrackingRegions.trackingTypeForPoint(names.mousewheelEvent, roundedPosition) == TrackingType::Synchronous;
+        LOG_WITH_STREAM(Scrolling, stream << "ScrollingTree::shouldHandleWheelEventSynchronously: wheelEvent at " << wheelEvent.position() << " mapped to content point " << position << ", in non-fast region " << isSynchronousDispatchRegion);
 
-        if (m_nonFastScrollableRegion.contains(roundedIntPoint(position)))
+        if (isSynchronousDispatchRegion)
             return true;
     }
     return false;
@@ -117,14 +122,14 @@ void ScrollingTree::commitNewTreeState(std::unique_ptr<ScrollingStateTree> scrol
     ScrollingStateScrollingNode* rootNode = scrollingStateTree->rootStateNode();
     if (rootNode
         && (rootStateNodeChanged
-            || rootNode->hasChangedProperty(ScrollingStateFrameScrollingNode::NonFastScrollableRegion)
+            || rootNode->hasChangedProperty(ScrollingStateFrameScrollingNode::EventTrackingRegion)
             || rootNode->hasChangedProperty(ScrollingStateNode::ScrollLayer))) {
         LockHolder lock(m_mutex);
 
         if (rootStateNodeChanged || rootNode->hasChangedProperty(ScrollingStateNode::ScrollLayer))
             m_mainFrameScrollPosition = FloatPoint();
-        if (rootStateNodeChanged || rootNode->hasChangedProperty(ScrollingStateFrameScrollingNode::NonFastScrollableRegion))
-            m_nonFastScrollableRegion = scrollingStateTree->rootStateNode()->nonFastScrollableRegion();
+        if (rootStateNodeChanged || rootNode->hasChangedProperty(ScrollingStateFrameScrollingNode::EventTrackingRegion))
+            m_eventTrackingRegions = scrollingStateTree->rootStateNode()->eventTrackingRegions();
     }
     
     bool scrollRequestIsProgammatic = rootNode ? rootNode->requestedScrollPositionRepresentsProgrammaticScroll() : false;
@@ -232,11 +237,11 @@ void ScrollingTree::setMainFrameScrollPosition(FloatPoint position)
     m_mainFrameScrollPosition = position;
 }
 
-bool ScrollingTree::isPointInNonFastScrollableRegion(IntPoint p)
+TrackingType ScrollingTree::eventTrackingTypeForPoint(const AtomicString& eventName, IntPoint p)
 {
     LockHolder lock(m_mutex);
     
-    return m_nonFastScrollableRegion.contains(p);
+    return m_eventTrackingRegions.trackingTypeForPoint(eventName, p);
 }
 
 bool ScrollingTree::isRubberBandInProgress()

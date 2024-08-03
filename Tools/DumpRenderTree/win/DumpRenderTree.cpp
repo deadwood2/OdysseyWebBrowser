@@ -810,6 +810,7 @@ static void resetWebPreferencesToConsistentValues(IWebPreferences* preferences)
     preferences->setPlugInsEnabled(TRUE);
     preferences->setTextAreasAreResizable(TRUE);
     preferences->setUsesPageCache(FALSE);
+    prefsPrivate->setAllowsPageCacheWithWindowOpener(FALSE);
 
     preferences->setPrivateBrowsingEnabled(FALSE);
     prefsPrivate->setAuthorAndUserStylesEnabled(TRUE);
@@ -846,6 +847,14 @@ static void resetWebPreferencesToConsistentValues(IWebPreferences* preferences)
     prefsPrivate->setMockScrollbarsEnabled(TRUE);
 
     preferences->setFontSmoothing(FontSmoothingTypeStandard);
+
+    COMPtr<IWebPreferencesPrivate3> prefsPrivate3(Query, preferences);
+    ASSERT(prefsPrivate3);
+    prefsPrivate3->setFetchAPIEnabled(TRUE);
+    prefsPrivate3->setShadowDOMEnabled(TRUE);
+    prefsPrivate3->setCustomElementsEnabled(TRUE);
+
+    prefsPrivate3->setDOMIteratorEnabled(TRUE);
 
     setAlwaysAcceptCookies(false);
 }
@@ -889,8 +898,12 @@ static void resetWebViewToConsistentStateBeforeTesting()
     }
 
     COMPtr<IWebViewPrivate2> webViewPrivate(Query, webView);
-    if (webViewPrivate)
+    if (webViewPrivate) {
+        POINT origin = { 0, 0 };
+        webViewPrivate->scaleWebView(1.0, origin);
+        webViewPrivate->setCustomBackingScaleFactor(0);
         webViewPrivate->setTabKeyCyclesThroughElements(TRUE);
+    }
 
     webView->setPolicyDelegate(nullptr);
     policyDelegate->setPermissive(false);
@@ -1176,10 +1189,8 @@ static void runTest(const string& inputLine)
         _bstr_t emptyURL(L"");
         emptyRequest->initWithURL(emptyURL.GetBSTR(), WebURLRequestUseProtocolCachePolicy, 60);
         emptyRequest->setHTTPMethod(methodBStr);
-        frame->loadRequest(request.get());
+        frame->loadRequest(emptyRequest.get());
     }
-
-    frame->stopLoading();
 
     // We should only have our main window left open when we're done
     ASSERT(openWindows().size() == 1);
@@ -1187,6 +1198,7 @@ static void runTest(const string& inputLine)
 
 exit:
     removeFontFallbackIfPresent(fallbackPath);
+    ::gTestRunner->cleanup();
     ::gTestRunner = nullptr;
 
     fputs("#EOF\n", stderr);
@@ -1394,15 +1406,6 @@ static void prepareConsistentTestingEnvironment(IWebPreferences* standardPrefere
 
 int main(int argc, const char* argv[])
 {
-#if defined(_M_X64) || defined(__x86_64__)
-    // The VS2013 runtime has a bug where it mis-detects AVX-capable processors
-    // if the feature has been disabled in firmware. This causes us to crash
-    // in some of the math functions. For now, we disable those optimizations
-    // because Microsoft is not going to fix the problem in VS2013.
-    // FIXME: http://webkit.org/b/141449: Remove this workaround when we switch to VS2015+.
-    _set_FMA3_enable(0);
-#endif
-
     // Cygwin calls ::SetErrorMode(SEM_FAILCRITICALERRORS), which we will inherit. This is bad for
     // testing/debugging, as it causes the post-mortem debugger not to be invoked. We reset the
     // error mode here to work around Cygwin's behavior. See <http://webkit.org/b/55222>.

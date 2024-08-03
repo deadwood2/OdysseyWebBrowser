@@ -23,23 +23,22 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-[NoInterfaceObject]
-interface URLUtils {
-    [SetterRaisesException, URL] attribute DOMString href;
-#if defined(LANGUAGE_JAVASCRIPT) && LANGUAGE_JAVASCRIPT
+[NoInterfaceObject] interface URLUtils {
+    [SetterRaisesException, URL] attribute USVString href;
+
+#if !(defined(LANGUAGE_GOBJECT) && LANGUAGE_GOBJECT)
     [NotEnumerable] DOMString toString();
 #endif
 
-    readonly attribute DOMString origin;
+    readonly attribute USVString origin;
 
-    [TreatNullAs=NullString] attribute DOMString protocol;
-    [TreatNullAs=NullString] attribute DOMString username;
-    [TreatNullAs=NullString] attribute DOMString password;
-    [TreatNullAs=NullString] attribute DOMString host;
-    [TreatNullAs=NullString] attribute DOMString hostname;
-    [TreatNullAs=NullString] attribute DOMString port;
-    [TreatNullAs=NullString] attribute DOMString pathname;
-    [TreatNullAs=NullString] attribute DOMString search;
-    //    attribute URLSearchParams? searchParams;
-    [TreatNullAs=NullString] attribute DOMString hash;
+    attribute USVString protocol;
+    attribute USVString username;
+    attribute USVString password;
+    attribute USVString host;
+    attribute USVString hostname;
+    attribute USVString port;
+    attribute USVString pathname;
+    attribute USVString hash;
+    attribute USVString search;
 };

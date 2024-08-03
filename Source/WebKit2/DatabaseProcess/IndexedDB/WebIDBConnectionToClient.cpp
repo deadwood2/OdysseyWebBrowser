@@ -32,8 +32,11 @@
 #include "DatabaseProcess.h"
 #include "WebCoreArgumentCoders.h"
 #include "WebIDBConnectionToServerMessages.h"
+#include "WebIDBResult.h"
 #include <WebCore/IDBError.h>
+#include <WebCore/IDBGetRecordData.h>
 #include <WebCore/IDBResultData.h>
+#include <WebCore/IDBValue.h>
 #include <WebCore/ThreadSafeDataBuffer.h>
 #include <WebCore/UniqueIDBDatabaseConnection.h>
 
@@ -57,16 +60,16 @@ WebIDBConnectionToClient::WebIDBConnectionToClient(DatabaseToWebProcessConnectio
 
 WebIDBConnectionToClient::~WebIDBConnectionToClient()
 {
-    DatabaseProcess::singleton().idbServer().unregisterConnection(*m_connectionToClient);
 }
 
 void WebIDBConnectionToClient::disconnectedFromWebProcess()
 {
+    DatabaseProcess::singleton().idbServer().unregisterConnection(*m_connectionToClient);
 }
 
 IPC::Connection* WebIDBConnectionToClient::messageSenderConnection()
 {
-    return m_connection->connection();
+    return &m_connection->connection();
 }
 
 WebCore::IDBServer::IDBConnectionToClient& WebIDBConnectionToClient::connectionToClient()
@@ -124,9 +127,32 @@ void WebIDBConnectionToClient::didPutOrAdd(const WebCore::IDBResultData& resultD
     send(Messages::WebIDBConnectionToServer::DidPutOrAdd(resultData));
 }
 
+template<class MessageType> void WebIDBConnectionToClient::handleGetResult(const WebCore::IDBResultData& resultData)
+{
+    if (resultData.type() == IDBResultType::Error) {
+        send(MessageType(resultData));
+        return;
+    }
+
+    auto& blobFilePaths = resultData.getResult().value().blobFilePaths();
+    if (blobFilePaths.isEmpty()) {
+        send(MessageType(resultData));
+        return;
+    }
+
+#if ENABLE(SANDBOX_EXTENSIONS)
+    RefPtr<WebIDBConnectionToClient> protector(this);
+    DatabaseProcess::singleton().getSandboxExtensionsForBlobFiles(blobFilePaths, [protector, this, resultData](SandboxExtension::HandleArray&& handles) {
+        send(MessageType({ resultData, WTFMove(handles) }));
+    });
+#else
+    send(MessageType(resultData));
+#endif
+}
+
 void WebIDBConnectionToClient::didGetRecord(const WebCore::IDBResultData& resultData)
 {
-    send(Messages::WebIDBConnectionToServer::DidGetRecord(resultData));
+    handleGetResult<Messages::WebIDBConnectionToServer::DidGetRecord>(resultData);
 }
 
 void WebIDBConnectionToClient::didGetCount(const WebCore::IDBResultData& resultData)
@@ -141,12 +167,12 @@ void WebIDBConnectionToClient::didDeleteRecord(const WebCore::IDBResultData& res
 
 void WebIDBConnectionToClient::didOpenCursor(const WebCore::IDBResultData& resultData)
 {
-    send(Messages::WebIDBConnectionToServer::DidOpenCursor(resultData));
+    handleGetResult<Messages::WebIDBConnectionToServer::DidOpenCursor>(resultData);
 }
 
 void WebIDBConnectionToClient::didIterateCursor(const WebCore::IDBResultData& resultData)
 {
-    send(Messages::WebIDBConnectionToServer::DidIterateCursor(resultData));
+    handleGetResult<Messages::WebIDBConnectionToServer::DidIterateCursor>(resultData);
 }
 
 void WebIDBConnectionToClient::fireVersionChangeEvent(WebCore::IDBServer::UniqueIDBDatabaseConnection& connection, const WebCore::IDBResourceIdentifier& requestIdentifier, uint64_t requestedVersion)
@@ -159,9 +185,19 @@ void WebIDBConnectionToClient::didStartTransaction(const WebCore::IDBResourceIde
     send(Messages::WebIDBConnectionToServer::DidStartTransaction(transactionIdentifier, error));
 }
 
+void WebIDBConnectionToClient::didCloseFromServer(WebCore::IDBServer::UniqueIDBDatabaseConnection& connection, const WebCore::IDBError& error)
+{
+    send(Messages::WebIDBConnectionToServer::DidCloseFromServer(connection.identifier(), error));
+}
+
 void WebIDBConnectionToClient::notifyOpenDBRequestBlocked(const WebCore::IDBResourceIdentifier& requestIdentifier, uint64_t oldVersion, uint64_t newVersion)
 {
     send(Messages::WebIDBConnectionToServer::NotifyOpenDBRequestBlocked(requestIdentifier, oldVersion, newVersion));
+}
+
+void WebIDBConnectionToClient::didGetAllDatabaseNames(uint64_t callbackID, const Vector<String>& databaseNames)
+{
+    send(Messages::WebIDBConnectionToServer::DidGetAllDatabaseNames(callbackID, databaseNames));
 }
 
 void WebIDBConnectionToClient::deleteDatabase(const IDBRequestData& request)
@@ -184,9 +220,9 @@ void WebIDBConnectionToClient::commitTransaction(const IDBResourceIdentifier& tr
     DatabaseProcess::singleton().idbServer().commitTransaction(transactionIdentifier);
 }
 
-void WebIDBConnectionToClient::didFinishHandlingVersionChangeTransaction(const IDBResourceIdentifier& transactionIdentifier)
+void WebIDBConnectionToClient::didFinishHandlingVersionChangeTransaction(uint64_t databaseConnectionIdentifier, const IDBResourceIdentifier& transactionIdentifier)
 {
-    DatabaseProcess::singleton().idbServer().didFinishHandlingVersionChangeTransaction(transactionIdentifier);
+    DatabaseProcess::singleton().idbServer().didFinishHandlingVersionChangeTransaction(databaseConnectionIdentifier, transactionIdentifier);
 }
 
 void WebIDBConnectionToClient::createObjectStore(const IDBRequestData& request, const IDBObjectStoreInfo& info)
@@ -214,7 +250,7 @@ void WebIDBConnectionToClient::deleteIndex(const IDBRequestData& request, uint64
     DatabaseProcess::singleton().idbServer().deleteIndex(request, objectStoreIdentifier, name);
 }
 
-void WebIDBConnectionToClient::putOrAdd(const IDBRequestData& request, const IDBKeyData& key, const IPC::DataReference& data, unsigned overwriteMode)
+void WebIDBConnectionToClient::putOrAdd(const IDBRequestData& request, const IDBKeyData& key, const IDBValue& value, unsigned overwriteMode)
 {
     if (overwriteMode != static_cast<unsigned>(IndexedDB::ObjectStoreOverwriteMode::NoOverwrite)
         && overwriteMode != static_cast<unsigned>(IndexedDB::ObjectStoreOverwriteMode::Overwrite)
@@ -225,14 +261,13 @@ void WebIDBConnectionToClient::putOrAdd(const IDBRequestData& request, const IDB
     }
 
     IndexedDB::ObjectStoreOverwriteMode mode = static_cast<IndexedDB::ObjectStoreOverwriteMode>(overwriteMode);
-    auto buffer = ThreadSafeDataBuffer::copyVector(data.vector());
 
-    DatabaseProcess::singleton().idbServer().putOrAdd(request, key, buffer, mode);
+    DatabaseProcess::singleton().idbServer().putOrAdd(request, key, value, mode);
 }
 
-void WebIDBConnectionToClient::getRecord(const IDBRequestData& request, const IDBKeyRangeData& range)
+void WebIDBConnectionToClient::getRecord(const IDBRequestData& request, const IDBGetRecordData& getRecordData)
 {
-    DatabaseProcess::singleton().idbServer().getRecord(request, range);
+    DatabaseProcess::singleton().idbServer().getRecord(request, getRecordData);
 }
 
 void WebIDBConnectionToClient::getCount(const IDBRequestData& request, const IDBKeyRangeData& range)
@@ -273,6 +308,21 @@ void WebIDBConnectionToClient::abortOpenAndUpgradeNeeded(uint64_t databaseConnec
 void WebIDBConnectionToClient::didFireVersionChangeEvent(uint64_t databaseConnectionIdentifier, const IDBResourceIdentifier& transactionIdentifier)
 {
     DatabaseProcess::singleton().idbServer().didFireVersionChangeEvent(databaseConnectionIdentifier, transactionIdentifier);
+}
+
+void WebIDBConnectionToClient::openDBRequestCancelled(const IDBRequestData& requestData)
+{
+    DatabaseProcess::singleton().idbServer().openDBRequestCancelled(requestData);
+}
+
+void WebIDBConnectionToClient::confirmDidCloseFromServer(uint64_t databaseConnectionIdentifier)
+{
+    DatabaseProcess::singleton().idbServer().confirmDidCloseFromServer(databaseConnectionIdentifier);
+}
+
+void WebIDBConnectionToClient::getAllDatabaseNames(uint64_t serverConnectionIdentifier, const WebCore::SecurityOriginData& topOrigin, const WebCore::SecurityOriginData& openingOrigin, uint64_t callbackID)
+{
+    DatabaseProcess::singleton().idbServer().getAllDatabaseNames(serverConnectionIdentifier, topOrigin, openingOrigin, callbackID);
 }
 
 } // namespace WebKit

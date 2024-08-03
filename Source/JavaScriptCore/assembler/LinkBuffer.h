@@ -82,9 +82,6 @@ class LinkBuffer {
 public:
     LinkBuffer(VM& vm, MacroAssembler& macroAssembler, void* ownerUID, JITCompilationEffort effort = JITCompilationMustSucceed)
         : m_size(0)
-#if ENABLE(BRANCH_COMPACTION)
-        , m_initialSize(0)
-#endif
         , m_didAllocate(false)
         , m_code(0)
         , m_vm(&vm)
@@ -95,19 +92,21 @@ public:
         linkCode(macroAssembler, ownerUID, effort);
     }
 
-    LinkBuffer(VM& vm, MacroAssembler& macroAssembler, void* code, size_t size)
+    LinkBuffer(MacroAssembler& macroAssembler, void* code, size_t size, JITCompilationEffort effort = JITCompilationMustSucceed, bool shouldPerformBranchCompaction = true)
         : m_size(size)
-#if ENABLE(BRANCH_COMPACTION)
-        , m_initialSize(0)
-#endif
         , m_didAllocate(false)
         , m_code(code)
-        , m_vm(&vm)
+        , m_vm(0)
 #ifndef NDEBUG
         , m_completed(false)
 #endif
     {
-        linkCode(macroAssembler, 0, JITCompilationCanFail);
+#if ENABLE(BRANCH_COMPACTION)
+        m_shouldPerformBranchCompaction = shouldPerformBranchCompaction;
+#else
+        UNUSED_PARAM(shouldPerformBranchCompaction);
+#endif
+        linkCode(macroAssembler, 0, effort);
     }
 
     ~LinkBuffer()
@@ -144,10 +143,10 @@ public:
         MacroAssembler::linkJump(code(), jump, label);
     }
 
-    void link(JumpList list, CodeLocationLabel label)
+    void link(const JumpList& list, CodeLocationLabel label)
     {
-        for (unsigned i = 0; i < list.m_jumps.size(); ++i)
-            link(list.m_jumps[i], label);
+        for (const Jump& jump : list.jumps())
+            link(jump, label);
     }
 
     void patch(DataLabelPtr label, void* value)
@@ -250,11 +249,7 @@ public:
         return m_code;
     }
 
-    // FIXME: this does not account for the AssemblerData size!
-    size_t size()
-    {
-        return m_size;
-    }
+    size_t size() const { return m_size; }
     
     bool wasAlreadyDisassembled() const { return m_alreadyDisassembled; }
     void didAlreadyDisassemble() { m_alreadyDisassembled = true; }
@@ -278,15 +273,14 @@ private:
 #endif
         return src;
     }
-    
+
     // Keep this private! - the underlying code should only be obtained externally via finalizeCode().
     void* code()
     {
         return m_code;
     }
     
-    void allocate(size_t initialSize, void* ownerUID, JITCompilationEffort);
-    void shrink(size_t newSize);
+    void allocate(MacroAssembler&, void* ownerUID, JITCompilationEffort);
 
     JS_EXPORT_PRIVATE void linkCode(MacroAssembler&, void* ownerUID, JITCompilationEffort);
 #if ENABLE(BRANCH_COMPACTION)
@@ -307,8 +301,8 @@ private:
     RefPtr<ExecutableMemoryHandle> m_executableMemory;
     size_t m_size;
 #if ENABLE(BRANCH_COMPACTION)
-    size_t m_initialSize;
     AssemblerData m_assemblerStorage;
+    bool m_shouldPerformBranchCompaction { true };
 #endif
     bool m_didAllocate;
     void* m_code;

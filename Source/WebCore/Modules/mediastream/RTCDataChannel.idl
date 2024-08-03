@@ -23,8 +23,8 @@
  */
 
 [
+    Conditional=WEB_RTC,
     NoInterfaceObject,
-    Conditional=MEDIA_STREAM,
 ] interface RTCDataChannel : EventTarget {
     readonly attribute DOMString label;
     readonly attribute boolean ordered;

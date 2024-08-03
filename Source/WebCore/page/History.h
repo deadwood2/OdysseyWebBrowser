@@ -36,8 +36,8 @@
 
 namespace WebCore {
 
+class Document;
 class Frame;
-class ScriptExecutionContext;
 struct ExceptionCodeWithMessage;
 typedef int ExceptionCode;
 
@@ -49,11 +49,11 @@ public:
     PassRefPtr<SerializedScriptValue> state();
     void back();
     void forward();
-    void go(int distance);
+    void go(int);
 
-    void back(ScriptExecutionContext*);
-    void forward(ScriptExecutionContext*);
-    void go(ScriptExecutionContext*, int distance);
+    void back(Document&);
+    void forward(Document&);
+    void go(Document&, int);
 
     bool stateChanged() const;
     bool isSameAsCurrentState(SerializedScriptValue*) const;
@@ -73,9 +73,8 @@ private:
 
     RefPtr<SerializedScriptValue> m_lastStateObjectRequested;
 
-    unsigned m_nonUserGestureObjectsAdded { 0 };
-    unsigned m_currentUserGestureObjectsAdded { 0 };
-    double m_currentUserGestureTimestamp { 0 };
+    unsigned m_currentStateObjectTimeSpanObjectsAdded { 0 };
+    double m_currentStateObjectTimeSpanStart { 0.0 };
 
     // For the main frame's History object to keep track of all state object usage.
     uint64_t m_totalStateObjectUsage { 0 };

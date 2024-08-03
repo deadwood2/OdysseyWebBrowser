@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2009 Apple Inc. All rights reserved.
+ * Copyright (C) 2007, 2009, 2016 Apple Inc. All rights reserved.
  * Copyright (C) 2012 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -35,12 +35,9 @@
 #include "ExceptionCode.h"
 #include "Frame.h"
 #include "FrameSelection.h"
-#include "Node.h"
 #include "Range.h"
 #include "TextIterator.h"
-#include "TreeScope.h"
 #include "htmlediting.h"
-#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
@@ -103,7 +100,7 @@ Node* DOMSelection::anchorNode() const
     return shadowAdjustedNode(anchorPosition(visibleSelection()));
 }
 
-int DOMSelection::anchorOffset() const
+unsigned DOMSelection::anchorOffset() const
 {
     if (!m_frame)
         return 0;
@@ -119,7 +116,7 @@ Node* DOMSelection::focusNode() const
     return shadowAdjustedNode(focusPosition(visibleSelection()));
 }
 
-int DOMSelection::focusOffset() const
+unsigned DOMSelection::focusOffset() const
 {
     if (!m_frame)
         return 0;
@@ -135,7 +132,7 @@ Node* DOMSelection::baseNode() const
     return shadowAdjustedNode(basePosition(visibleSelection()));
 }
 
-int DOMSelection::baseOffset() const
+unsigned DOMSelection::baseOffset() const
 {
     if (!m_frame)
         return 0;
@@ -151,7 +148,7 @@ Node* DOMSelection::extentNode() const
     return shadowAdjustedNode(extentPosition(visibleSelection()));
 }
 
-int DOMSelection::extentOffset() const
+unsigned DOMSelection::extentOffset() const
 {
     if (!m_frame)
         return 0;
@@ -183,27 +180,23 @@ String DOMSelection::type() const
     return "Range";
 }
 
-int DOMSelection::rangeCount() const
+unsigned DOMSelection::rangeCount() const
 {
     if (!m_frame)
         return 0;
     return m_frame->selection().isNone() ? 0 : 1;
 }
 
-void DOMSelection::collapse(Node* node, int offset, ExceptionCode& ec)
+void DOMSelection::collapse(Node* node, unsigned offset)
 {
     if (!m_frame)
         return;
-
-    if (offset < 0) {
-        ec = INDEX_SIZE_ERR;
-        return;
-    }
 
     if (!isValidForPosition(node))
         return;
 
     // FIXME: Eliminate legacy editing positions
+    Ref<Frame> protector(*m_frame);
     m_frame->selection().moveTo(createLegacyEditingPosition(node, offset), DOWNSTREAM);
 }
 
@@ -219,6 +212,7 @@ void DOMSelection::collapseToEnd(ExceptionCode& ec)
         return;
     }
 
+    Ref<Frame> protector(*m_frame);
     m_frame->selection().moveTo(selection.end(), DOWNSTREAM);
 }
 
@@ -234,6 +228,7 @@ void DOMSelection::collapseToStart(ExceptionCode& ec)
         return;
     }
 
+    Ref<Frame> protector(*m_frame);
     m_frame->selection().moveTo(selection.start(), DOWNSTREAM);
 }
 
@@ -244,36 +239,29 @@ void DOMSelection::empty()
     m_frame->selection().clear();
 }
 
-void DOMSelection::setBaseAndExtent(Node* baseNode, int baseOffset, Node* extentNode, int extentOffset, ExceptionCode& ec)
+void DOMSelection::setBaseAndExtent(Node* baseNode, unsigned baseOffset, Node* extentNode, unsigned extentOffset)
 {
     if (!m_frame)
         return;
-
-    if (baseOffset < 0 || extentOffset < 0) {
-        ec = INDEX_SIZE_ERR;
-        return;
-    }
 
     if (!isValidForPosition(baseNode) || !isValidForPosition(extentNode))
         return;
 
     // FIXME: Eliminate legacy editing positions
+    Ref<Frame> protector(*m_frame);
     m_frame->selection().moveTo(createLegacyEditingPosition(baseNode, baseOffset), createLegacyEditingPosition(extentNode, extentOffset), DOWNSTREAM);
 }
 
-void DOMSelection::setPosition(Node* node, int offset, ExceptionCode& ec)
+void DOMSelection::setPosition(Node* node, unsigned offset)
 {
     if (!m_frame)
         return;
-    if (offset < 0) {
-        ec = INDEX_SIZE_ERR;
-        return;
-    }
 
     if (!isValidForPosition(node))
         return;
 
     // FIXME: Eliminate legacy editing positions
+    Ref<Frame> protector(*m_frame);
     m_frame->selection().moveTo(createLegacyEditingPosition(node, offset), DOWNSTREAM);
 }
 
@@ -324,39 +312,36 @@ void DOMSelection::modify(const String& alterString, const String& directionStri
     else
         return;
 
+    Ref<Frame> protector(*m_frame);
     m_frame->selection().modify(alter, direction, granularity);
 }
 
-void DOMSelection::extend(Node* node, int offset, ExceptionCode& ec)
+void DOMSelection::extend(Node& node, unsigned offset, ExceptionCode& ec)
 {
     if (!m_frame)
         return;
 
-    if (!node) {
-        ec = TYPE_MISMATCH_ERR;
-        return;
-    }
-
-    if (offset < 0 || offset > (node->offsetInCharacters() ? caretMaxOffset(node) : static_cast<int>(node->countChildNodes()))) {
+    if (offset > (node.offsetInCharacters() ? caretMaxOffset(node) : node.countChildNodes())) {
         ec = INDEX_SIZE_ERR;
         return;
     }
 
-    if (!isValidForPosition(node))
+    if (!isValidForPosition(&node))
         return;
 
     // FIXME: Eliminate legacy editing positions
-    m_frame->selection().setExtent(createLegacyEditingPosition(node, offset), DOWNSTREAM);
+    Ref<Frame> protector(*m_frame);
+    m_frame->selection().setExtent(createLegacyEditingPosition(&node, offset), DOWNSTREAM);
 }
 
-PassRefPtr<Range> DOMSelection::getRangeAt(int index, ExceptionCode& ec)
+RefPtr<Range> DOMSelection::getRangeAt(unsigned index, ExceptionCode& ec)
 {
     if (!m_frame)
-        return 0;
+        return nullptr;
 
-    if (index < 0 || index >= rangeCount()) {
+    if (index >= rangeCount()) {
         ec = INDEX_SIZE_ERR;
-        return 0;
+        return nullptr;
     }
 
     // If you're hitting this, you've added broken multi-range selection support
@@ -378,42 +363,44 @@ void DOMSelection::removeAllRanges()
     m_frame->selection().clear();
 }
 
-void DOMSelection::addRange(Range* r)
+void DOMSelection::addRange(Range& range)
 {
     if (!m_frame)
         return;
-    if (!r)
-        return;
+
+    Ref<Frame> protector(*m_frame);
 
     FrameSelection& selection = m_frame->selection();
-
     if (selection.isNone()) {
-        selection.moveTo(r);
+        selection.moveTo(&range);
         return;
     }
 
-    RefPtr<Range> range = selection.selection().toNormalizedRange();
-    if (r->compareBoundaryPoints(Range::START_TO_START, range.get(), IGNORE_EXCEPTION) == -1) {
+    RefPtr<Range> normalizedRange = selection.selection().toNormalizedRange();
+    if (!normalizedRange)
+        return;
+
+    if (range.compareBoundaryPoints(Range::START_TO_START, *normalizedRange, IGNORE_EXCEPTION) == -1) {
         // We don't support discontiguous selection. We don't do anything if r and range don't intersect.
-        if (r->compareBoundaryPoints(Range::START_TO_END, range.get(), IGNORE_EXCEPTION) > -1) {
-            if (r->compareBoundaryPoints(Range::END_TO_END, range.get(), IGNORE_EXCEPTION) == -1) {
+        if (range.compareBoundaryPoints(Range::START_TO_END, *normalizedRange, IGNORE_EXCEPTION) > -1) {
+            if (range.compareBoundaryPoints(Range::END_TO_END, *normalizedRange, IGNORE_EXCEPTION) == -1) {
                 // The original range and r intersect.
-                selection.moveTo(r->startPosition(), range->endPosition(), DOWNSTREAM);
+                selection.moveTo(range.startPosition(), normalizedRange->endPosition(), DOWNSTREAM);
             } else {
                 // r contains the original range.
-                selection.moveTo(r);
+                selection.moveTo(&range);
             }
         }
     } else {
         // We don't support discontiguous selection. We don't do anything if r and range don't intersect.
         ExceptionCode ec = 0;
-        if (r->compareBoundaryPoints(Range::END_TO_START, range.get(), ec) < 1 && !ec) {
-            if (r->compareBoundaryPoints(Range::END_TO_END, range.get(), IGNORE_EXCEPTION) == -1) {
+        if (range.compareBoundaryPoints(Range::END_TO_START, *normalizedRange, ec) < 1 && !ec) {
+            if (range.compareBoundaryPoints(Range::END_TO_END, *normalizedRange, IGNORE_EXCEPTION) == -1) {
                 // The original range contains r.
-                selection.moveTo(range.get());
+                selection.moveTo(normalizedRange.get());
             } else {
                 // The original range and r intersect.
-                selection.moveTo(range->startPosition(), r->endPosition(), DOWNSTREAM);
+                selection.moveTo(normalizedRange->startPosition(), range.endPosition(), DOWNSTREAM);
             }
         }
     }
@@ -430,31 +417,32 @@ void DOMSelection::deleteFromDocument()
         return;
 
     RefPtr<Range> selectedRange = selection.selection().toNormalizedRange();
-    if (!selectedRange)
+    if (!selectedRange || selectedRange->shadowRoot())
         return;
 
+    Ref<Frame> protector(*m_frame);
     selectedRange->deleteContents(ASSERT_NO_EXCEPTION);
 
-    setBaseAndExtent(&selectedRange->startContainer(), selectedRange->startOffset(), &selectedRange->startContainer(), selectedRange->startOffset(), ASSERT_NO_EXCEPTION);
+    setBaseAndExtent(&selectedRange->startContainer(), selectedRange->startOffset(), &selectedRange->startContainer(), selectedRange->startOffset());
 }
 
-bool DOMSelection::containsNode(Node* n, bool allowPartial) const
+bool DOMSelection::containsNode(Node& node, bool allowPartial) const
 {
     if (!m_frame)
         return false;
 
     FrameSelection& selection = m_frame->selection();
 
-    if (!n || m_frame->document() != &n->document() || selection.isNone())
+    if (m_frame->document() != &node.document() || selection.isNone())
         return false;
 
-    RefPtr<Node> node = n;
+    Ref<Node> protectedNode(node);
     RefPtr<Range> selectedRange = selection.selection().toNormalizedRange();
 
-    ContainerNode* parentNode = node->parentNode();
+    ContainerNode* parentNode = node.parentNode();
     if (!parentNode || !parentNode->inDocument())
         return false;
-    unsigned nodeIndex = node->computeNodeIndex();
+    unsigned nodeIndex = node.computeNodeIndex();
 
     ExceptionCode ec = 0;
     bool nodeFullySelected = Range::compareBoundaryPoints(parentNode, nodeIndex, &selectedRange->startContainer(), selectedRange->startOffset(), ec) >= 0 && !ec
@@ -469,16 +457,13 @@ bool DOMSelection::containsNode(Node* n, bool allowPartial) const
     if (nodeFullyUnselected)
         return false;
 
-    return allowPartial || node->isTextNode();
+    return allowPartial || node.isTextNode();
 }
 
-void DOMSelection::selectAllChildren(Node* n, ExceptionCode& ec)
+void DOMSelection::selectAllChildren(Node& node)
 {
-    if (!n)
-        return;
-
     // This doesn't (and shouldn't) select text node characters.
-    setBaseAndExtent(n, 0, n, n->countChildNodes(), ec);
+    setBaseAndExtent(&node, 0, &node, node.countChildNodes());
 }
 
 String DOMSelection::toString()
@@ -506,7 +491,7 @@ Node* DOMSelection::shadowAdjustedNode(const Position& position) const
     return adjustedNode->parentNodeGuaranteedHostFree();
 }
 
-int DOMSelection::shadowAdjustedOffset(const Position& position) const
+unsigned DOMSelection::shadowAdjustedOffset(const Position& position) const
 {
     if (position.isNull())
         return 0;

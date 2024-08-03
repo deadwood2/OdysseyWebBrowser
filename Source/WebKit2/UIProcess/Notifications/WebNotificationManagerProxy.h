@@ -32,7 +32,6 @@
 #include "WebNotificationProvider.h"
 #include <WebCore/NotificationClient.h>
 #include <wtf/HashMap.h>
-#include <wtf/PassRefPtr.h>
 #include <wtf/text/StringHash.h>
 
 namespace API {
@@ -67,6 +66,8 @@ public:
     void providerDidUpdateNotificationPolicy(const API::SecurityOrigin*, bool allowed);
     void providerDidRemoveNotificationPolicies(API::Array* origins);
 
+    uint64_t notificationLocalIDForTesting(WebNotification*);
+
     using API::Object::ref;
     using API::Object::deref;
 
@@ -77,9 +78,9 @@ private:
     void clearNotifications(WebPageProxy*, const Vector<uint64_t>& pageNotificationIDs, NotificationFilterFunction);
 
     // WebContextSupplement
-    virtual void processPoolDestroyed() override;
-    virtual void refWebContextSupplement() override;
-    virtual void derefWebContextSupplement() override;
+    void processPoolDestroyed() override;
+    void refWebContextSupplement() override;
+    void derefWebContextSupplement() override;
 
     WebNotificationProvider m_provider;
     // Pair comprised of web page ID and the web process's notification ID

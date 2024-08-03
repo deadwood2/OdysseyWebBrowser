@@ -24,6 +24,7 @@
 #define RenderElement_h
 
 #include "AnimationController.h"
+#include "LengthFunctions.h"
 #include "RenderObject.h"
 #include "StyleInheritedData.h"
 
@@ -36,27 +37,28 @@ class RenderElement : public RenderObject {
 public:
     virtual ~RenderElement();
 
-    static RenderPtr<RenderElement> createFor(Element&, Ref<RenderStyle>&&);
+    static RenderPtr<RenderElement> createFor(Element&, RenderStyle&&);
 
     bool hasInitializedStyle() const { return m_hasInitializedStyle; }
 
-    RenderStyle& style() const { return const_cast<RenderStyle&>(m_style.get()); }
-    RenderStyle& firstLineStyle() const;
+    const RenderStyle& style() const { return m_style; }
+    const RenderStyle& firstLineStyle() const;
+
+    // FIXME: Style shouldn't be mutated.
+    RenderStyle& mutableStyle() { return m_style; }
 
     void initializeStyle();
 
     // Calling with minimalStyleDifference > StyleDifferenceEqual indicates that
     // out-of-band state (e.g. animations) requires that styleDidChange processing
     // continue even if the style isn't different from the current style.
-    void setStyle(Ref<RenderStyle>&&, StyleDifference minimalStyleDifference = StyleDifferenceEqual);
-
-    // Called to update a style that is allowed to trigger animations.
-    void setAnimatableStyle(Ref<RenderStyle>&&, StyleDifference minimalStyleDifference);
+    void setStyle(RenderStyle&&, StyleDifference minimalStyleDifference = StyleDifferenceEqual);
 
     // The pseudo element style can be cached or uncached.  Use the cached method if the pseudo element doesn't respect
     // any pseudo classes (and therefore has no concept of changing state).
-    RenderStyle* getCachedPseudoStyle(PseudoId, RenderStyle* parentStyle = nullptr) const;
-    PassRefPtr<RenderStyle> getUncachedPseudoStyle(const PseudoStyleRequest&, RenderStyle* parentStyle = nullptr, RenderStyle* ownStyle = nullptr) const;
+    const RenderStyle* getCachedPseudoStyle(PseudoId, const RenderStyle* parentStyle = nullptr) const;
+    RenderStyle* getMutableCachedPseudoStyle(PseudoId, const RenderStyle* parentStyle = nullptr);
+    std::unique_ptr<RenderStyle> getUncachedPseudoStyle(const PseudoStyleRequest&, const RenderStyle* parentStyle = nullptr, const RenderStyle* ownStyle = nullptr) const;
 
     // This is null for anonymous renderers.
     Element* element() const { return downcast<Element>(RenderObject::node()); }
@@ -66,13 +68,11 @@ public:
     RenderObject* firstChild() const { return m_firstChild; }
     RenderObject* lastChild() const { return m_lastChild; }
 
-    virtual bool isEmpty() const override { return !firstChild(); }
-
     bool canContainFixedPositionObjects() const;
     bool canContainAbsolutelyPositionedObjects() const;
 
     Color selectionColor(int colorProperty) const;
-    PassRefPtr<RenderStyle> selectionPseudoStyle() const;
+    std::unique_ptr<RenderStyle> selectionPseudoStyle() const;
 
     // Obtains the selection colors that should be used when painting a selection.
     Color selectionBackgroundColor() const;
@@ -135,11 +135,11 @@ public:
 
     // Used only by Element::pseudoStyleCacheIsInvalid to get a first line style based off of a
     // given new style, without accessing the cache.
-    PassRefPtr<RenderStyle> uncachedFirstLineStyle(RenderStyle*) const;
+    std::unique_ptr<RenderStyle> uncachedFirstLineStyle(RenderStyle*) const;
 
     // Updates only the local style ptr of the object. Does not update the state of the object,
     // and so only should be called when the style is known not to have changed (or from setStyle).
-    void setStyleInternal(Ref<RenderStyle>&& style) { m_style = WTFMove(style); }
+    void setStyleInternal(RenderStyle&& style) { m_style = WTFMove(style); }
 
     // Repaint only if our old bounds and new bounds are different. The caller may pass in newBounds and newOutlineBox if they are known.
     bool repaintAfterLayoutIfNeeded(const RenderLayerModelObject* repaintContainer, const LayoutRect& oldBounds, const LayoutRect& oldOutlineBox, const LayoutRect* newBoundsPtr = nullptr, const LayoutRect* newOutlineBoxPtr = nullptr);
@@ -214,6 +214,13 @@ public:
     bool childRequiresTable(const RenderObject& child) const;
     bool hasContinuation() const { return m_hasContinuation; }
 
+#if ENABLE(IOS_TEXT_AUTOSIZING)
+    void adjustComputedFontSizesOnBlocks(float size, float visibleWidth);
+    WEBCORE_EXPORT void resetTextAutosizing();
+#endif
+    RenderBlock* containingBlockForFixedPosition() const;
+    RenderBlock* containingBlockForAbsolutePosition() const;
+
 protected:
     enum BaseTypeFlag {
         RenderLayerModelObjectFlag  = 1 << 0,
@@ -226,8 +233,8 @@ protected:
     
     typedef unsigned BaseTypeFlags;
 
-    RenderElement(Element&, Ref<RenderStyle>&&, BaseTypeFlags);
-    RenderElement(Document&, Ref<RenderStyle>&&, BaseTypeFlags);
+    RenderElement(Element&, RenderStyle&&, BaseTypeFlags);
+    RenderElement(Document&, RenderStyle&&, BaseTypeFlags);
 
     bool layerCreationAllowedForSubtree() const;
 
@@ -235,7 +242,7 @@ protected:
     void propagateStyleToAnonymousChildren(StylePropagationType);
 
     LayoutUnit valueForLength(const Length&, LayoutUnit maximumValue) const;
-    LayoutUnit minimumValueForLength(const Length&, LayoutUnit maximumValue, bool roundPercentages = false) const;
+    LayoutUnit minimumValueForLength(const Length&, LayoutUnit maximumValue) const;
 
     void setFirstChild(RenderObject* child) { m_firstChild = child; }
     void setLastChild(RenderObject* child) { m_lastChild = child; }
@@ -244,46 +251,41 @@ protected:
     virtual void styleWillChange(StyleDifference, const RenderStyle& newStyle);
     virtual void styleDidChange(StyleDifference, const RenderStyle* oldStyle);
 
-    virtual void insertedIntoTree() override;
-    virtual void willBeRemovedFromTree() override;
-    virtual void willBeDestroyed() override;
+    void insertedIntoTree() override;
+    void willBeRemovedFromTree() override;
+    void willBeDestroyed() override;
 
     void setRenderInlineAlwaysCreatesLineBoxes(bool b) { m_renderInlineAlwaysCreatesLineBoxes = b; }
     bool renderInlineAlwaysCreatesLineBoxes() const { return m_renderInlineAlwaysCreatesLineBoxes; }
 
     void setHasContinuation(bool b) { m_hasContinuation = b; }
 
-    static bool hasControlStatesForRenderer(const RenderObject*);
-    static ControlStates* controlStatesForRenderer(const RenderObject*);
-    static void removeControlStatesForRenderer(const RenderObject*);
-    static void addControlStatesForRenderer(const RenderObject*, ControlStates*);
-
     void setRenderBlockHasMarginBeforeQuirk(bool b) { m_renderBlockHasMarginBeforeQuirk = b; }
     void setRenderBlockHasMarginAfterQuirk(bool b) { m_renderBlockHasMarginAfterQuirk = b; }
-    void setRenderBlockHasBorderOrPaddingLogicalWidthChanged(bool b) { m_renderBlockHasBorderOrPaddingLogicalWidthChanged = b; }
+    void setRenderBlockShouldForceRelayoutChildren(bool b) { m_renderBlockShouldForceRelayoutChildren = b; }
     bool renderBlockHasMarginBeforeQuirk() const { return m_renderBlockHasMarginBeforeQuirk; }
     bool renderBlockHasMarginAfterQuirk() const { return m_renderBlockHasMarginAfterQuirk; }
-    bool renderBlockHasBorderOrPaddingLogicalWidthChanged() const { return m_renderBlockHasBorderOrPaddingLogicalWidthChanged; }
+    bool renderBlockShouldForceRelayoutChildren() const { return m_renderBlockShouldForceRelayoutChildren; }
 
     void setRenderBlockFlowLineLayoutPath(unsigned u) { m_renderBlockFlowLineLayoutPath = u; }
     void setRenderBlockFlowHasMarkupTruncation(bool b) { m_renderBlockFlowHasMarkupTruncation = b; }
     unsigned renderBlockFlowLineLayoutPath() const { return m_renderBlockFlowLineLayoutPath; }
     bool renderBlockFlowHasMarkupTruncation() const { return m_renderBlockFlowHasMarkupTruncation; }
 
-    void paintFocusRing(PaintInfo&, const LayoutPoint&, const RenderStyle&);
+    void paintFocusRing(PaintInfo&, const RenderStyle&, const Vector<LayoutRect>& focusRingRects);
     void paintOutline(PaintInfo&, const LayoutRect&);
-    void updateOutlineAutoAncestor(bool hasOutlineAuto) const;
+    void updateOutlineAutoAncestor(bool hasOutlineAuto);
 
 private:
-    RenderElement(ContainerNode&, Ref<RenderStyle>&&, BaseTypeFlags);
+    RenderElement(ContainerNode&, RenderStyle&&, BaseTypeFlags);
     void node() const = delete;
     void nonPseudoNode() const = delete;
     void generatingNode() const = delete;
     void isText() const = delete;
     void isRenderElement() const = delete;
 
-    virtual RenderObject* firstChildSlow() const override final { return firstChild(); }
-    virtual RenderObject* lastChildSlow() const override final { return lastChild(); }
+    RenderObject* firstChildSlow() const final { return firstChild(); }
+    RenderObject* lastChildSlow() const final { return lastChild(); }
 
     // Called when an object that was floating or positioned becomes a normal flow object
     // again.  We have to make sure the render tree updates as needed to accommodate the new
@@ -301,9 +303,9 @@ private:
 #endif
 
     StyleDifference adjustStyleDifference(StyleDifference, unsigned contextSensitiveProperties) const;
-    RenderStyle* cachedFirstLineStyle() const;
+    const RenderStyle* cachedFirstLineStyle() const;
 
-    virtual void newImageAnimationFrameAvailable(CachedImage&) final override;
+    void newImageAnimationFrameAvailable(CachedImage&) final;
 
     bool getLeadingCorner(FloatPoint& output) const;
     bool getTrailingCorner(FloatPoint& output) const;
@@ -326,7 +328,7 @@ private:
 
     unsigned m_renderBlockHasMarginBeforeQuirk : 1;
     unsigned m_renderBlockHasMarginAfterQuirk : 1;
-    unsigned m_renderBlockHasBorderOrPaddingLogicalWidthChanged : 1;
+    unsigned m_renderBlockShouldForceRelayoutChildren : 1;
     unsigned m_renderBlockFlowHasMarkupTruncation : 1;
     unsigned m_renderBlockFlowLineLayoutPath : 2;
 
@@ -335,22 +337,13 @@ private:
     RenderObject* m_firstChild;
     RenderObject* m_lastChild;
 
-    Ref<RenderStyle> m_style;
+    RenderStyle m_style;
 
     // FIXME: Get rid of this hack.
     // Store state between styleWillChange and styleDidChange
     static bool s_affectsParentBlock;
     static bool s_noLongerAffectsParentBlock;
 };
-
-inline void RenderElement::setAnimatableStyle(Ref<RenderStyle>&& style, StyleDifference minimalStyleDifference)
-{
-    Ref<RenderStyle> animatedStyle = WTFMove(style);
-    if (animation().updateAnimations(*this, animatedStyle, animatedStyle))
-        minimalStyleDifference = std::max(minimalStyleDifference, StyleDifferenceRecompositeLayer);
-    
-    setStyle(WTFMove(animatedStyle), minimalStyleDifference);
-}
 
 inline void RenderElement::setAncestorLineBoxDirty(bool f)
 {
@@ -374,9 +367,9 @@ inline LayoutUnit RenderElement::valueForLength(const Length& length, LayoutUnit
     return WebCore::valueForLength(length, maximumValue);
 }
 
-inline LayoutUnit RenderElement::minimumValueForLength(const Length& length, LayoutUnit maximumValue, bool roundPercentages) const
+inline LayoutUnit RenderElement::minimumValueForLength(const Length& length, LayoutUnit maximumValue) const
 {
-    return WebCore::minimumValueForLength(length, maximumValue, roundPercentages);
+    return WebCore::minimumValueForLength(length, maximumValue);
 }
 
 inline bool RenderElement::isRenderLayerModelObject() const
@@ -462,14 +455,14 @@ inline bool RenderObject::isRenderInline() const
     return is<RenderElement>(*this) && downcast<RenderElement>(*this).isRenderInline();
 }
 
-inline RenderStyle& RenderObject::style() const
+inline const RenderStyle& RenderObject::style() const
 {
     if (isText())
         return m_parent->style();
     return downcast<RenderElement>(*this).style();
 }
 
-inline RenderStyle& RenderObject::firstLineStyle() const
+inline const RenderStyle& RenderObject::firstLineStyle() const
 {
     if (isText())
         return m_parent->firstLineStyle();
@@ -491,9 +484,6 @@ inline LayoutUnit adjustLayoutUnitForAbsoluteZoom(LayoutUnit value, const Render
     return adjustLayoutUnitForAbsoluteZoom(value, renderer.style());
 }
 
-RenderBlock* containingBlockForFixedPosition(const RenderElement*);
-RenderBlock* containingBlockForAbsolutePosition(const RenderElement*);
-RenderBlock* containingBlockForObjectInFlow(const RenderElement*);
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderElement, isRenderElement())

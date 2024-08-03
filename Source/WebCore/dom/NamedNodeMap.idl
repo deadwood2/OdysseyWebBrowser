@@ -19,30 +19,27 @@
  */
 
 [
+    ExportToWrappedFunction,
     GenerateIsReachable=ImplElementRoot,
     ImplementationLacksVTable,
 ] interface NamedNodeMap {
-
-    getter Node getNamedItem([Default=Undefined] optional DOMString name);
-
-    [RaisesException] Node setNamedItem([Default=Undefined] optional Node node);
-
-    [RaisesException] Node removeNamedItem([Default=Undefined] optional DOMString name);
-
-    getter Node item([Default=Undefined] optional unsigned long index);
-    
     readonly attribute unsigned long length;
 
-
-    // Introduced in DOM Level 2:
-
-    [ObjCLegacyUnnamedParameters] Node getNamedItemNS([TreatNullAs=NullString,Default=Undefined] optional DOMString namespaceURI, 
-                                       [Default=Undefined] optional DOMString localName);
-
-    [RaisesException] Node setNamedItemNS([Default=Undefined] optional Node node);
-
-    [ObjCLegacyUnnamedParameters, RaisesException] Node removeNamedItemNS([TreatNullAs=NullString,Default=Undefined] optional DOMString namespaceURI, 
-                                          [Default=Undefined] optional DOMString localName);
-
+#if !(defined(LANGUAGE_GOBJECT) && LANGUAGE_GOBJECT)
+    getter Attr? getNamedItem(DOMString name);
+    [RaisesException] Attr? setNamedItem(Attr attr);
+    [RaisesException] Attr removeNamedItem(DOMString name);
+    getter Attr? item(unsigned long index);
+    Attr? getNamedItemNS(DOMString? namespaceURI, DOMString localName);
+    [RaisesException, ImplementedAs=setNamedItem] Attr? setNamedItemNS(Attr attr);
+    [RaisesException] Attr removeNamedItemNS(DOMString? namespaceURI, DOMString localName);
+#else
+    getter Node? getNamedItem(DOMString name);
+    [RaisesException] Node? setNamedItem(Node node);
+    [RaisesException] Node removeNamedItem(DOMString name);
+    getter Node? item(unsigned long index);
+    Node? getNamedItemNS(DOMString? namespaceURI, DOMString localName);
+    [RaisesException, ImplementedAs=setNamedItem] Node? setNamedItemNS(Node node);
+    [RaisesException] Node removeNamedItemNS(DOMString? namespaceURI, DOMString localName);
+#endif
 };
-

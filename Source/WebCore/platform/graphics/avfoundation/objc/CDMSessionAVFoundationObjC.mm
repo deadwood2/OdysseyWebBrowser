@@ -38,6 +38,7 @@
 #import "WebCoreNSErrorExtras.h"
 #import <AVFoundation/AVFoundation.h>
 #import <objc/objc-runtime.h>
+#import <wtf/MainThread.h>
 
 SOFT_LINK_FRAMEWORK_OPTIONAL(AVFoundation)
 SOFT_LINK_CLASS(AVFoundation, AVURLAsset)
@@ -48,15 +49,25 @@ SOFT_LINK_CLASS(AVFoundation, AVAssetResourceLoadingRequest)
 namespace WebCore {
 
 CDMSessionAVFoundationObjC::CDMSessionAVFoundationObjC(MediaPlayerPrivateAVFoundationObjC* parent, CDMSessionClient* client)
-    : m_parent(parent)
+    : m_parent(parent->createWeakPtr())
     , m_client(client)
     , m_sessionId(createCanonicalUUIDString())
+    , m_weakPtrFactory(this)
+{
+}
+
+CDMSessionAVFoundationObjC::~CDMSessionAVFoundationObjC()
 {
 }
 
 RefPtr<Uint8Array> CDMSessionAVFoundationObjC::generateKeyRequest(const String& mimeType, Uint8Array* initData, String& destinationURL, unsigned short& errorCode, uint32_t& systemCode)
 {
     UNUSED_PARAM(mimeType);
+
+    if (!m_parent) {
+        errorCode = CDM::UnknownError;
+        return nullptr;
+    }
 
     String keyURI;
     String keyID;
@@ -106,6 +117,15 @@ bool CDMSessionAVFoundationObjC::update(Uint8Array* key, RefPtr<Uint8Array>& nex
     nextMessage = nullptr;
 
     return true;
+}
+
+void CDMSessionAVFoundationObjC::playerDidReceiveError(NSError *error)
+{
+    if (!m_client)
+        return;
+
+    unsigned long code = mediaKeyErrorSystemCode(error);
+    m_client->sendError(CDMSessionClient::MediaKeyErrorDomain, code);
 }
 
 }

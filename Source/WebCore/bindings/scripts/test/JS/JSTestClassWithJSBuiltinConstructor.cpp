@@ -34,7 +34,7 @@ namespace WebCore {
 // Attributes
 
 JSC::EncodedJSValue jsTestClassWithJSBuiltinConstructorConstructor(JSC::ExecState*, JSC::EncodedJSValue, JSC::PropertyName);
-void setJSTestClassWithJSBuiltinConstructorConstructor(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
+bool setJSTestClassWithJSBuiltinConstructorConstructor(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
 
 class JSTestClassWithJSBuiltinConstructorPrototype : public JSC::JSNonFinalObject {
 public:
@@ -63,11 +63,6 @@ private:
 
 typedef JSBuiltinConstructor<JSTestClassWithJSBuiltinConstructor> JSTestClassWithJSBuiltinConstructorConstructor;
 
-template<> JSC::JSObject* JSTestClassWithJSBuiltinConstructorConstructor::createJSObject()
-{
-    return JSTestClassWithJSBuiltinConstructor::create(getDOMStructure<JSTestClassWithJSBuiltinConstructor>(globalObject()->vm(), *globalObject()), globalObject(), TestClassWithJSBuiltinConstructor::create());
-}
-
 template<> JSValue JSTestClassWithJSBuiltinConstructorConstructor::prototypeForStructure(JSC::VM& vm, const JSDOMGlobalObject& globalObject)
 {
     UNUSED_PARAM(vm);
@@ -76,7 +71,7 @@ template<> JSValue JSTestClassWithJSBuiltinConstructorConstructor::prototypeForS
 
 template<> void JSTestClassWithJSBuiltinConstructorConstructor::initializeProperties(VM& vm, JSDOMGlobalObject& globalObject)
 {
-    putDirect(vm, vm.propertyNames->prototype, JSTestClassWithJSBuiltinConstructor::getPrototype(vm, &globalObject), DontDelete | ReadOnly | DontEnum);
+    putDirect(vm, vm.propertyNames->prototype, JSTestClassWithJSBuiltinConstructor::prototype(vm, &globalObject), DontDelete | ReadOnly | DontEnum);
     putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String(ASCIILiteral("TestClassWithJSBuiltinConstructor"))), ReadOnly | DontEnum);
     putDirect(vm, vm.propertyNames->length, jsNumber(0), ReadOnly | DontEnum);
 }
@@ -115,7 +110,7 @@ JSObject* JSTestClassWithJSBuiltinConstructor::createPrototype(VM& vm, JSGlobalO
     return JSTestClassWithJSBuiltinConstructorPrototype::create(vm, globalObject, JSTestClassWithJSBuiltinConstructorPrototype::createStructure(vm, globalObject, globalObject->objectPrototype()));
 }
 
-JSObject* JSTestClassWithJSBuiltinConstructor::getPrototype(VM& vm, JSGlobalObject* globalObject)
+JSObject* JSTestClassWithJSBuiltinConstructor::prototype(VM& vm, JSGlobalObject* globalObject)
 {
     return getDOMPrototype<JSTestClassWithJSBuiltinConstructor>(vm, globalObject);
 }
@@ -128,22 +123,26 @@ void JSTestClassWithJSBuiltinConstructor::destroy(JSC::JSCell* cell)
 
 EncodedJSValue jsTestClassWithJSBuiltinConstructorConstructor(ExecState* state, EncodedJSValue thisValue, PropertyName)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
     JSTestClassWithJSBuiltinConstructorPrototype* domObject = jsDynamicCast<JSTestClassWithJSBuiltinConstructorPrototype*>(JSValue::decode(thisValue));
-    if (!domObject)
-        return throwVMTypeError(state);
+    if (UNLIKELY(!domObject))
+        return throwVMTypeError(state, throwScope);
     return JSValue::encode(JSTestClassWithJSBuiltinConstructor::getConstructor(state->vm(), domObject->globalObject()));
 }
 
-void setJSTestClassWithJSBuiltinConstructorConstructor(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
+bool setJSTestClassWithJSBuiltinConstructorConstructor(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
     JSValue value = JSValue::decode(encodedValue);
     JSTestClassWithJSBuiltinConstructorPrototype* domObject = jsDynamicCast<JSTestClassWithJSBuiltinConstructorPrototype*>(JSValue::decode(thisValue));
     if (UNLIKELY(!domObject)) {
-        throwVMTypeError(state);
-        return;
+        throwVMTypeError(state, throwScope);
+        return false;
     }
     // Shadowing a built-in constructor
-    domObject->putDirect(state->vm(), state->propertyNames().constructor, value);
+    return domObject->putDirect(state->vm(), state->propertyNames().constructor, value);
 }
 
 JSValue JSTestClassWithJSBuiltinConstructor::getConstructor(VM& vm, const JSGlobalObject* globalObject)
@@ -181,22 +180,11 @@ extern "C" { extern void* _ZTVN7WebCore33TestClassWithJSBuiltinConstructorE[]; }
 #endif
 #endif
 
-JSC::JSValue toJSNewlyCreated(JSC::ExecState*, JSDOMGlobalObject* globalObject, TestClassWithJSBuiltinConstructor* impl)
+JSC::JSValue toJSNewlyCreated(JSC::ExecState*, JSDOMGlobalObject* globalObject, Ref<TestClassWithJSBuiltinConstructor>&& impl)
 {
-    if (!impl)
-        return jsNull();
-    return createNewWrapper<JSTestClassWithJSBuiltinConstructor>(globalObject, impl);
-}
-
-JSC::JSValue toJS(JSC::ExecState*, JSDOMGlobalObject* globalObject, TestClassWithJSBuiltinConstructor* impl)
-{
-    if (!impl)
-        return jsNull();
-    if (JSValue result = getExistingWrapper<JSTestClassWithJSBuiltinConstructor>(globalObject, impl))
-        return result;
 
 #if ENABLE(BINDING_INTEGRITY)
-    void* actualVTablePointer = *(reinterpret_cast<void**>(impl));
+    void* actualVTablePointer = *(reinterpret_cast<void**>(impl.ptr()));
 #if PLATFORM(WIN)
     void* expectedVTablePointer = reinterpret_cast<void*>(__identifier("??_7TestClassWithJSBuiltinConstructor@WebCore@@6B@"));
 #else
@@ -204,7 +192,7 @@ JSC::JSValue toJS(JSC::ExecState*, JSDOMGlobalObject* globalObject, TestClassWit
 #if COMPILER(CLANG)
     // If this fails TestClassWithJSBuiltinConstructor does not have a vtable, so you need to add the
     // ImplementationLacksVTable attribute to the interface definition
-    COMPILE_ASSERT(__is_polymorphic(TestClassWithJSBuiltinConstructor), TestClassWithJSBuiltinConstructor_is_not_polymorphic);
+    static_assert(__is_polymorphic(TestClassWithJSBuiltinConstructor), "TestClassWithJSBuiltinConstructor is not polymorphic");
 #endif
 #endif
     // If you hit this assertion you either have a use after free bug, or
@@ -213,7 +201,12 @@ JSC::JSValue toJS(JSC::ExecState*, JSDOMGlobalObject* globalObject, TestClassWit
     // by adding the SkipVTableValidation attribute to the interface IDL definition
     RELEASE_ASSERT(actualVTablePointer == expectedVTablePointer);
 #endif
-    return createNewWrapper<JSTestClassWithJSBuiltinConstructor>(globalObject, impl);
+    return createWrapper<JSTestClassWithJSBuiltinConstructor, TestClassWithJSBuiltinConstructor>(globalObject, WTFMove(impl));
+}
+
+JSC::JSValue toJS(JSC::ExecState* state, JSDOMGlobalObject* globalObject, TestClassWithJSBuiltinConstructor& impl)
+{
+    return wrap(state, globalObject, impl);
 }
 
 TestClassWithJSBuiltinConstructor* JSTestClassWithJSBuiltinConstructor::toWrapped(JSC::JSValue value)

@@ -38,6 +38,7 @@
 #include "DateTimeInputType.h"
 #include "DateTimeLocalInputType.h"
 #include "EmailInputType.h"
+#include "EventNames.h"
 #include "ExceptionCode.h"
 #include "ExceptionCodePlaceholder.h"
 #include "FileInputType.h"
@@ -69,7 +70,7 @@
 #include "ShadowRoot.h"
 #include "SubmitInputType.h"
 #include "TelephoneInputType.h"
-#include "TextBreakIterator.h"
+#include <wtf/text/TextBreakIterator.h>
 #include "TextInputType.h"
 #include "TimeInputType.h"
 #include "URLInputType.h"
@@ -338,24 +339,30 @@ bool InputType::isInRange(const String& value) const
     if (!isSteppable())
         return false;
 
+    StepRange stepRange(createStepRange(RejectAny));
+    if (!stepRange.hasRangeLimitations())
+        return false;
+    
     const Decimal numericValue = parseToNumberOrNaN(value);
     if (!numericValue.isFinite())
         return true;
 
-    StepRange stepRange(createStepRange(RejectAny));
     return numericValue >= stepRange.minimum() && numericValue <= stepRange.maximum();
 }
 
 bool InputType::isOutOfRange(const String& value) const
 {
-    if (!isSteppable())
+    if (!isSteppable() || value.isEmpty())
+        return false;
+
+    StepRange stepRange(createStepRange(RejectAny));
+    if (!stepRange.hasRangeLimitations())
         return false;
 
     const Decimal numericValue = parseToNumberOrNaN(value);
     if (!numericValue.isFinite())
         return true;
 
-    StepRange stepRange(createStepRange(RejectAny));
     return numericValue < stepRange.minimum() || numericValue > stepRange.maximum();
 }
 
@@ -406,7 +413,7 @@ String InputType::validationMessage() const
         return validationMessagePatternMismatchText();
 
     if (element().tooLong())
-        return validationMessageTooLongText(numGraphemeClusters(value), element().maxLength());
+        return validationMessageTooLongText(numGraphemeClusters(value), element().effectiveMaxLength());
 
     if (!isSteppable())
         return emptyString();
@@ -431,47 +438,47 @@ String InputType::validationMessage() const
     return emptyString();
 }
 
-void InputType::handleClickEvent(MouseEvent*)
+void InputType::handleClickEvent(MouseEvent&)
 {
 }
 
-void InputType::handleMouseDownEvent(MouseEvent*)
+void InputType::handleMouseDownEvent(MouseEvent&)
 {
 }
 
-void InputType::handleDOMActivateEvent(Event*)
+void InputType::handleDOMActivateEvent(Event&)
 {
 }
 
-void InputType::handleKeydownEvent(KeyboardEvent*)
+void InputType::handleKeydownEvent(KeyboardEvent&)
 {
 }
 
-void InputType::handleKeypressEvent(KeyboardEvent*)
+void InputType::handleKeypressEvent(KeyboardEvent&)
 {
 }
 
-void InputType::handleKeyupEvent(KeyboardEvent*)
+void InputType::handleKeyupEvent(KeyboardEvent&)
 {
 }
 
-void InputType::handleBeforeTextInsertedEvent(BeforeTextInsertedEvent*)
+void InputType::handleBeforeTextInsertedEvent(BeforeTextInsertedEvent&)
 {
 }
 
 #if ENABLE(TOUCH_EVENTS)
-void InputType::handleTouchEvent(TouchEvent*)
+void InputType::handleTouchEvent(TouchEvent&)
 {
 }
 #endif
 
-void InputType::forwardEvent(Event*)
+void InputType::forwardEvent(Event&)
 {
 }
 
-bool InputType::shouldSubmitImplicitly(Event* event)
+bool InputType::shouldSubmitImplicitly(Event& event)
 {
-    return is<KeyboardEvent>(*event) && event->type() == eventNames().keypressEvent && downcast<KeyboardEvent>(*event).charCode() == '\r';
+    return is<KeyboardEvent>(event) && event.type() == eventNames().keypressEvent && downcast<KeyboardEvent>(event).charCode() == '\r';
 }
 
 PassRefPtr<HTMLFormElement> InputType::formForSubmission() const
@@ -479,7 +486,7 @@ PassRefPtr<HTMLFormElement> InputType::formForSubmission() const
     return element().form();
 }
 
-RenderPtr<RenderElement> InputType::createInputRenderer(Ref<RenderStyle>&& style)
+RenderPtr<RenderElement> InputType::createInputRenderer(RenderStyle&& style)
 {
     return RenderPtr<RenderElement>(RenderElement::createFor(element(), WTFMove(style)));
 }
@@ -532,11 +539,11 @@ DateComponents::Type InputType::dateType() const
 }
 #endif
 
-void InputType::dispatchSimulatedClickIfActive(KeyboardEvent* event) const
+void InputType::dispatchSimulatedClickIfActive(KeyboardEvent& event) const
 {
     if (element().active())
-        element().dispatchSimulatedClick(event);
-    event->setDefaultHandled();
+        element().dispatchSimulatedClick(&event);
+    event.setDefaultHandled();
 }
 
 Chrome* InputType::chrome() const
@@ -556,7 +563,7 @@ bool InputType::hasCustomFocusLogic() const
     return true;
 }
 
-bool InputType::isKeyboardFocusable(KeyboardEvent* event) const
+bool InputType::isKeyboardFocusable(KeyboardEvent& event) const
 {
     return !element().isReadOnly() && element().isTextFormControlKeyboardFocusable(event);
 }
@@ -959,7 +966,12 @@ Optional<Decimal> InputType::findClosestTickMarkValue(const Decimal&)
 }
 #endif
 
-bool InputType::supportsIndeterminateAppearance() const
+bool InputType::matchesIndeterminatePseudoClass() const
+{
+    return false;
+}
+
+bool InputType::shouldAppearIndeterminate() const
 {
     return false;
 }
@@ -1006,7 +1018,7 @@ void InputType::applyStep(int count, AnyStepHandling anyStepHandling, TextFieldE
     if (newValue < stepRange.minimum())
         newValue = stepRange.minimum();
 
-    if (!equalLettersIgnoringASCIICase(element().fastGetAttribute(stepAttr), "any"))
+    if (!equalLettersIgnoringASCIICase(element().attributeWithoutSynchronization(stepAttr), "any"))
         newValue = stepRange.alignValueForStep(current, newValue);
 
     if (newValue - stepRange.maximum() > acceptableErrorValue) {

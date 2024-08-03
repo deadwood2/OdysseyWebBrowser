@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 1999-2001 Harri Porten (porten@kde.org)
- *  Copyright (C) 2004, 2005, 2006, 2007, 2008 Apple Inc. All rights reserved.
+ *  Copyright (C) 2004-2008, 2016 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -28,6 +28,7 @@
 #include "JSGlobalObject.h"
 #include "JSCInlines.h"
 #include "StringPrototype.h"
+#include <wtf/text/StringBuilder.h>
 
 namespace JSC {
 
@@ -64,21 +65,16 @@ void StringConstructor::finishCreation(VM& vm, StringPrototype* stringPrototype)
     putDirectWithoutTransition(vm, vm.propertyNames->length, jsNumber(1), ReadOnly | DontEnum | DontDelete);
 }
 
-bool StringConstructor::getOwnPropertySlot(JSObject* object, ExecState* exec, PropertyName propertyName, PropertySlot &slot)
-{
-    return getStaticFunctionSlot<InternalFunction>(exec, stringConstructorTable, jsCast<StringConstructor*>(object), propertyName, slot);
-}
-
 // ------------------------------ Functions --------------------------------
 
 static NEVER_INLINE JSValue stringFromCharCodeSlowCase(ExecState* exec)
 {
     unsigned length = exec->argumentCount();
     UChar* buf;
-    PassRefPtr<StringImpl> impl = StringImpl::createUninitialized(length, buf);
+    auto impl = StringImpl::createUninitialized(length, buf);
     for (unsigned i = 0; i < length; ++i)
         buf[i] = static_cast<UChar>(exec->uncheckedArgument(i).toUInt32(exec));
-    return jsString(exec, impl);
+    return jsString(exec, WTFMove(impl));
 }
 
 static EncodedJSValue JSC_HOST_CALL stringFromCharCode(ExecState* exec)
@@ -95,6 +91,9 @@ JSCell* JSC_HOST_CALL stringFromCharCode(ExecState* exec, int32_t arg)
 
 static EncodedJSValue JSC_HOST_CALL stringFromCodePoint(ExecState* exec)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     unsigned length = exec->argumentCount();
     StringBuilder builder;
     builder.reserveCapacity(length);
@@ -107,7 +106,7 @@ static EncodedJSValue JSC_HOST_CALL stringFromCodePoint(ExecState* exec)
         uint32_t codePoint = static_cast<uint32_t>(codePointAsDouble);
 
         if (codePoint != codePointAsDouble || codePoint > UCHAR_MAX_VALUE)
-            return throwVMError(exec, createRangeError(exec, ASCIILiteral("Arguments contain a value that is out of range of code points")));
+            return throwVMError(exec, scope, createRangeError(exec, ASCIILiteral("Arguments contain a value that is out of range of code points")));
 
         if (U_IS_BMP(codePoint))
             builder.append(static_cast<UChar>(codePoint));
@@ -125,16 +124,19 @@ static EncodedJSValue JSC_HOST_CALL constructWithStringConstructor(ExecState* ex
     JSGlobalObject* globalObject = asInternalFunction(exec->callee())->globalObject();
     VM& vm = exec->vm();
 
-    if (!exec->argumentCount())
-        return JSValue::encode(StringObject::create(vm, InternalFunction::createSubclassStructure(exec, exec->newTarget(), globalObject->stringObjectStructure())));
+    Structure* structure = InternalFunction::createSubclassStructure(exec, exec->newTarget(), globalObject->stringObjectStructure());
+    if (exec->hadException())
+        return JSValue::encode(JSValue());
 
-    return JSValue::encode(StringObject::create(vm, InternalFunction::createSubclassStructure(exec, exec->newTarget(), globalObject->stringObjectStructure()), exec->uncheckedArgument(0).toString(exec)));
+    if (!exec->argumentCount())
+        return JSValue::encode(StringObject::create(vm, structure));
+    return JSValue::encode(StringObject::create(vm, structure, exec->uncheckedArgument(0).toString(exec)));
 }
 
 ConstructType StringConstructor::getConstructData(JSCell*, ConstructData& constructData)
 {
     constructData.native.function = constructWithStringConstructor;
-    return ConstructTypeHost;
+    return ConstructType::Host;
 }
 
 JSCell* stringConstructor(ExecState* exec, JSValue argument)
@@ -154,7 +156,7 @@ static EncodedJSValue JSC_HOST_CALL callStringConstructor(ExecState* exec)
 CallType StringConstructor::getCallData(JSCell*, CallData& callData)
 {
     callData.native.function = callStringConstructor;
-    return CallTypeHost;
+    return CallType::Host;
 }
 
 } // namespace JSC

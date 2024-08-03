@@ -46,7 +46,8 @@ class GraphicsContext;
 class MockRealtimeVideoSource : public MockRealtimeMediaSource {
 public:
 
-    static RefPtr<MockRealtimeVideoSource> create();
+    static Ref<MockRealtimeVideoSource> create();
+    static Ref<MockRealtimeVideoSource> createMuted(const String& name);
 
     virtual ~MockRealtimeVideoSource() { }
 
@@ -56,10 +57,13 @@ public:
     void setFrameRate(float);
 
 protected:
-    MockRealtimeVideoSource();
+    MockRealtimeVideoSource(const String& name = ASCIILiteral("Mock video device"));
     virtual void updatePlatformLayer() const { }
+    virtual void updateSampleBuffer() { }
 
     ImageBuffer* imageBuffer() const;
+
+    double elapsedTime();
 
 private:
     void updateSettings(RealtimeMediaSourceSettings&) override;
@@ -78,8 +82,6 @@ private:
     void paintCurrentFrameInContext(GraphicsContext&, const FloatRect&) override;
 
     void generateFrame();
-
-    double elapsedTime();
 
     float m_baseFontSize { 0 };
     FontCascade m_timeFont;

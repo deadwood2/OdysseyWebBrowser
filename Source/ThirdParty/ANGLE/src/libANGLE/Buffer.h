@@ -11,11 +11,11 @@
 #ifndef LIBANGLE_BUFFER_H_
 #define LIBANGLE_BUFFER_H_
 
-#include "libANGLE/Error.h"
-#include "libANGLE/RefCountObject.h"
-#include "libANGLE/renderer/IndexRangeCache.h"
-
 #include "common/angleutils.h"
+#include "libANGLE/Debug.h"
+#include "libANGLE/Error.h"
+#include "libANGLE/IndexRangeCache.h"
+#include "libANGLE/RefCountObject.h"
 
 namespace rx
 {
@@ -25,19 +25,30 @@ class BufferImpl;
 namespace gl
 {
 
-class Buffer : public RefCountObject
+class Buffer final : public RefCountObject, public LabeledObject
 {
   public:
     Buffer(rx::BufferImpl *impl, GLuint id);
-
     virtual ~Buffer();
 
-    Error bufferData(const void *data, GLsizeiptr size, GLenum usage);
-    Error bufferSubData(const void *data, GLsizeiptr size, GLintptr offset);
+    void setLabel(const std::string &label) override;
+    const std::string &getLabel() const override;
+
+    Error bufferData(GLenum target, const void *data, GLsizeiptr size, GLenum usage);
+    Error bufferSubData(GLenum target, const void *data, GLsizeiptr size, GLintptr offset);
     Error copyBufferSubData(Buffer* source, GLintptr sourceOffset, GLintptr destOffset, GLsizeiptr size);
     Error map(GLenum access);
     Error mapRange(GLintptr offset, GLsizeiptr length, GLbitfield access);
     Error unmap(GLboolean *result);
+
+    void onTransformFeedback();
+    void onPixelUnpack();
+
+    Error getIndexRange(GLenum type,
+                        size_t offset,
+                        size_t count,
+                        bool primitiveRestartEnabled,
+                        IndexRange *outRange) const;
 
     GLenum getUsage() const { return mUsage; }
     GLbitfield getAccessFlags() const { return mAccessFlags; }
@@ -50,11 +61,10 @@ class Buffer : public RefCountObject
 
     rx::BufferImpl *getImplementation() const { return mBuffer; }
 
-    rx::IndexRangeCache *getIndexRangeCache() { return &mIndexRangeCache; }
-    const rx::IndexRangeCache *getIndexRangeCache() const { return &mIndexRangeCache; }
-
   private:
     rx::BufferImpl *mBuffer;
+
+    std::string mLabel;
 
     GLenum mUsage;
     GLint64 mSize;
@@ -65,7 +75,7 @@ class Buffer : public RefCountObject
     GLint64 mMapOffset;
     GLint64 mMapLength;
 
-    rx::IndexRangeCache mIndexRangeCache;
+    mutable IndexRangeCache mIndexRangeCache;
 };
 
 }

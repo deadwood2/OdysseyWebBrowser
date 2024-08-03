@@ -59,7 +59,7 @@ public:
     virtual PlatformLayer* platformLayer() const { return 0; }
 
 #if PLATFORM(IOS) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))
-    virtual void setVideoFullscreenLayer(PlatformLayer*) { }
+    virtual void setVideoFullscreenLayer(PlatformLayer*, std::function<void()> completionHandler) { completionHandler(); }
     virtual void setVideoFullscreenFrame(FloatRect) { }
     virtual void setVideoFullscreenGravity(MediaPlayer::VideoGravity) { }
     virtual void setVideoFullscreenMode(MediaPlayer::VideoFullscreenMode) { }
@@ -151,7 +151,7 @@ public:
 
     virtual void paintCurrentFrameInContext(GraphicsContext& c, const FloatRect& r) { paint(c, r); }
     virtual bool copyVideoTextureToPlatformTexture(GraphicsContext3D*, Platform3DObject, GC3Denum, GC3Dint, GC3Denum, GC3Denum, GC3Denum, bool, bool) { return false; }
-    virtual PassNativeImagePtr nativeImageForCurrentTime() { return nullptr; }
+    virtual NativeImagePtr nativeImageForCurrentTime() { return nullptr; }
 
     virtual void setPreload(MediaPlayer::Preload) { }
 
@@ -214,9 +214,9 @@ public:
     virtual unsigned audioDecodedByteCount() const { return 0; }
     virtual unsigned videoDecodedByteCount() const { return 0; }
 
-    void getSitesInMediaCache(Vector<String>&) { }
-    void clearMediaCache() { }
-    void clearMediaCacheForSite(const String&) { }
+    HashSet<RefPtr<SecurityOrigin>> originsInMediaCache(const String&) { return { }; }
+    void clearMediaCache(const String&, std::chrono::system_clock::time_point) { }
+    void clearMediaCacheForOrigins(const String&, const HashSet<RefPtr<SecurityOrigin>>&) { }
 
     virtual void setPrivateBrowsingMode(bool) { }
 

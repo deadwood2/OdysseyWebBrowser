@@ -25,6 +25,7 @@ else ()
         PRIVATE CFNetwork${DEBUG_SUFFIX}
         PRIVATE CoreFoundation${DEBUG_SUFFIX}
         PRIVATE CoreGraphics${DEBUG_SUFFIX}
+        PRIVATE CoreText${DEBUG_SUFFIX}
         PRIVATE SQLite3${DEBUG_SUFFIX}
         PRIVATE WebKitSystemInterface${DEBUG_SUFFIX}
         PRIVATE libdispatch${DEBUG_SUFFIX}
@@ -35,6 +36,8 @@ else ()
         PRIVATE zdll${DEBUG_SUFFIX}
     )
 endif ()
+
+list(APPEND WebKit_LIBRARIES PRIVATE WTF${DEBUG_SUFFIX})
 
 add_custom_command(
     OUTPUT ${DERIVED_SOURCES_WEBKIT_DIR}/WebKitVersion.h
@@ -48,11 +51,9 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${CMAKE_BINARY_DIR}/../include/private"
     "${CMAKE_BINARY_DIR}/../include/private/JavaScriptCore"
     "${CMAKE_BINARY_DIR}/../include/private/WebCore"
-    Storage
     win
     win/plugins
     win/WebCoreSupport
-    WebKit.vcxproj/WebKit
     "${WEBKIT_DIR}/.."
     "${DERIVED_SOURCES_WEBKIT_DIR}/include"
     "${DERIVED_SOURCES_WEBKIT_DIR}/Interfaces"
@@ -82,6 +83,7 @@ list(APPEND WebKit_INCLUDES
     win/MemoryStream.h
     win/ProgIDMacros.h
     win/WebActionPropertyBag.h
+    win/WebApplicationCache.h
     win/WebArchive.h
     win/WebBackForwardList.h
     win/WebCache.h
@@ -135,15 +137,6 @@ list(APPEND WebKit_INCLUDES
 )
 
 list(APPEND WebKit_SOURCES_Classes
-    Storage/StorageAreaImpl.cpp
-    Storage/StorageAreaSync.cpp
-    Storage/StorageNamespaceImpl.cpp
-    Storage/StorageSyncManager.cpp
-    Storage/StorageThread.cpp
-    Storage/StorageTracker.cpp
-    Storage/WebDatabaseProvider.cpp
-    Storage/WebStorageNamespaceProvider.cpp
-
     cf/WebCoreSupport/WebInspectorClientCF.cpp
 
     win/AccessibleBase.cpp
@@ -162,6 +155,7 @@ list(APPEND WebKit_SOURCES_Classes
     win/MarshallingHelpers.cpp
     win/MemoryStream.cpp
     win/WebActionPropertyBag.cpp
+    win/WebApplicationCache.cpp
     win/WebArchive.cpp
     win/WebBackForwardList.cpp
     win/WebCache.cpp
@@ -223,6 +217,8 @@ list(APPEND WebKit_SOURCES_Classes
     win/plugins/PluginView.cpp
     win/plugins/PluginViewWin.cpp
     win/plugins/npapi.cpp
+
+    win/storage/WebDatabaseProvider.cpp
 )
 
 list(APPEND WebKit_SOURCES_WebCoreSupport
@@ -251,6 +247,8 @@ list(APPEND WebKit_SOURCES_WebCoreSupport
     win/WebCoreSupport/WebInspectorDelegate.h
     win/WebCoreSupport/WebPlatformStrategies.cpp
     win/WebCoreSupport/WebPlatformStrategies.h
+    win/WebCoreSupport/WebPluginInfoProvider.cpp
+    win/WebCoreSupport/WebPluginInfoProvider.h
     win/WebCoreSupport/WebVisitedLinkStore.cpp
     win/WebCoreSupport/WebVisitedLinkStore.h
 )
@@ -376,11 +374,11 @@ set(WEBKIT_IDL_DEPENDENCIES
     win/Interfaces/Accessible2/AccessibleText.idl
     win/Interfaces/Accessible2/AccessibleText2.idl
     win/Interfaces/Accessible2/IA2CommonTypes.idl
-    "${DERIVED_SOURCES_WEBKIT_DIR}/autoversion.h"
+    "${DERIVED_SOURCES_WEBKIT_DIR}/include/autoversion.h"
 )
 
 add_custom_command(
-    OUTPUT ${DERIVED_SOURCES_WEBKIT_DIR}/autoversion.h
+    OUTPUT ${DERIVED_SOURCES_WEBKIT_DIR}/include/autoversion.h
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMAND ${PERL_EXECUTABLE} ${WEBKIT_LIBRARIES_DIR}/tools/scripts/auto-version.pl ${DERIVED_SOURCES_WEBKIT_DIR}
     VERBATIM)
@@ -417,7 +415,6 @@ add_library(WebKitGUID STATIC
     "${DERIVED_SOURCES_WEBKIT_DIR}/Interfaces/AccessibleText2_i.c"
 )
 set_target_properties(WebKitGUID PROPERTIES OUTPUT_NAME WebKitGUID${DEBUG_SUFFIX})
-set_target_properties(WebKitGUID PROPERTIES FOLDER "WebKit")
 
 list(APPEND WebKit_LIBRARIES
     PRIVATE Comctl32
@@ -431,6 +428,7 @@ list(APPEND WebKit_LIBRARIES
     PRIVATE Version
     PRIVATE Winmm
     PRIVATE WebKitGUID${DEBUG_SUFFIX}
+    PRIVATE WebCoreDerivedSources${DEBUG_SUFFIX}
 )
 
 if (ENABLE_GRAPHICS_CONTEXT_3D)
@@ -442,6 +440,22 @@ if (ENABLE_GRAPHICS_CONTEXT_3D)
 endif ()
 
 set(WebKit_LIBRARY_TYPE SHARED)
+
+# Make sure incremental linking is turned off, as it creates unacceptably long link times.
+string(REPLACE "INCREMENTAL:YES" "INCREMENTAL:NO" replace_CMAKE_SHARED_LINKER_FLAGS ${CMAKE_SHARED_LINKER_FLAGS})
+set(CMAKE_SHARED_LINKER_FLAGS "${replace_CMAKE_SHARED_LINKER_FLAGS} /INCREMENTAL:NO")
+string(REPLACE "INCREMENTAL:YES" "INCREMENTAL:NO" replace_CMAKE_EXE_LINKER_FLAGS ${CMAKE_EXE_LINKER_FLAGS})
+set(CMAKE_EXE_LINKER_FLAGS "${replace_CMAKE_EXE_LINKER_FLAGS} /INCREMENTAL:NO")
+
+string(REPLACE "INCREMENTAL:YES" "INCREMENTAL:NO" replace_CMAKE_SHARED_LINKER_FLAGS_DEBUG ${CMAKE_SHARED_LINKER_FLAGS_DEBUG})
+set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${replace_CMAKE_SHARED_LINKER_FLAGS_DEBUG} /INCREMENTAL:NO")
+string(REPLACE "INCREMENTAL:YES" "INCREMENTAL:NO" replace_CMAKE_EXE_LINKER_FLAGS_DEBUG ${CMAKE_EXE_LINKER_FLAGS_DEBUG})
+set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${replace_CMAKE_EXE_LINKER_FLAGS_DEBUG} /INCREMENTAL:NO")
+
+string(REPLACE "INCREMENTAL:YES" "INCREMENTAL:NO" replace_CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO ${CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO})
+set(CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO "${replace_CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
+string(REPLACE "INCREMENTAL:YES" "INCREMENTAL:NO" replace_CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO ${CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO})
+set(CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO "${replace_CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
 
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /SUBSYSTEM:WINDOWS")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS")

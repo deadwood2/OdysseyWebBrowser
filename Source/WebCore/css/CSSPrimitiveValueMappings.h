@@ -1379,14 +1379,17 @@ template<> inline CSSPrimitiveValue::CSSPrimitiveValue(EDisplay e)
         break;
 #if ENABLE(CSS_GRID_LAYOUT)
     case GRID:
-        m_value.valueID = CSSValueWebkitGrid;
+        m_value.valueID = CSSValueGrid;
         break;
     case INLINE_GRID:
-        m_value.valueID = CSSValueWebkitInlineGrid;
+        m_value.valueID = CSSValueInlineGrid;
         break;
 #endif
     case NONE:
         m_value.valueID = CSSValueNone;
+        break;
+    case CONTENTS:
+        m_value.valueID = CSSValueContents;
         break;
     }
 }
@@ -2180,9 +2183,6 @@ template<> inline CSSPrimitiveValue::CSSPrimitiveValue(EOverflow e)
     case OAUTO:
         m_value.valueID = CSSValueAuto;
         break;
-    case OMARQUEE:
-        m_value.valueID = CSSValueWebkitMarquee;
-        break;
     case OOVERLAY:
         m_value.valueID = CSSValueOverlay;
         break;
@@ -2208,8 +2208,6 @@ template<> inline CSSPrimitiveValue::operator EOverflow() const
         return OSCROLL;
     case CSSValueAuto:
         return OAUTO;
-    case CSSValueWebkitMarquee:
-        return OMARQUEE;
     case CSSValueOverlay:
         return OOVERLAY;
     case CSSValueWebkitPagedX:
@@ -5120,6 +5118,9 @@ template<> inline CSSPrimitiveValue::CSSPrimitiveValue(ItemPosition itemPosition
     case ItemPositionAuto:
         m_value.valueID = CSSValueAuto;
         break;
+    case ItemPositionNormal:
+        m_value.valueID = CSSValueNormal;
+        break;
     case ItemPositionStretch:
         m_value.valueID = CSSValueStretch;
         break;
@@ -5164,6 +5165,8 @@ template<> inline CSSPrimitiveValue::operator ItemPosition() const
     switch (m_value.valueID) {
     case CSSValueAuto:
         return ItemPositionAuto;
+    case CSSValueNormal:
+        return ItemPositionNormal;
     case CSSValueStretch:
         return ItemPositionStretch;
     case CSSValueBaseline:
@@ -5231,8 +5234,8 @@ template<> inline CSSPrimitiveValue::CSSPrimitiveValue(ContentPosition contentPo
 {
     m_primitiveUnitType = CSS_VALUE_ID;
     switch (contentPosition) {
-    case ContentPositionAuto:
-        m_value.valueID = CSSValueAuto;
+    case ContentPositionNormal:
+        m_value.valueID = CSSValueNormal;
         break;
     case ContentPositionBaseline:
         m_value.valueID = CSSValueBaseline;
@@ -5267,8 +5270,8 @@ template<> inline CSSPrimitiveValue::CSSPrimitiveValue(ContentPosition contentPo
 template<> inline CSSPrimitiveValue::operator ContentPosition() const
 {
     switch (m_value.valueID) {
-    case CSSValueAuto:
-        return ContentPositionAuto;
+    case CSSValueNormal:
+        return ContentPositionNormal;
     case CSSValueBaseline:
         return ContentPositionBaseline;
     case CSSValueLastBaseline:
@@ -5291,7 +5294,7 @@ template<> inline CSSPrimitiveValue::operator ContentPosition() const
         break;
     }
     ASSERT_NOT_REACHED();
-    return ContentPositionAuto;
+    return ContentPositionNormal;
 }
 
 template<> inline CSSPrimitiveValue::CSSPrimitiveValue(ContentDistributionType contentDistribution)

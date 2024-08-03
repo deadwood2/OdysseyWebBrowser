@@ -101,6 +101,7 @@ use constant {
     Efl      => "Efl",
     iOS      => "iOS",
     Mac      => "Mac",
+    JSCOnly  => "JSCOnly",
     WinCairo => "WinCairo",
     Unknown  => "Unknown"
 };
@@ -128,7 +129,6 @@ my $configurationForVisualStudio;
 my $configurationProductDir;
 my $sourceDir;
 my $currentSVNRevision;
-my $debugger;
 my $didLoadIPhoneSimulatorNotification;
 my $nmPath;
 my $osXVersion;
@@ -167,8 +167,8 @@ sub determineSourceDir
     $sourceDir =~ s|/+$||; # Remove trailing '/' as we would die later
 
     # walks up path checking each directory to see if it is the main WebKit project dir, 
-    # defined by containing Sources, WebCore, and WebKit
-    until ((-d File::Spec->catdir($sourceDir, "Source") && -d File::Spec->catdir($sourceDir, "Source", "WebCore") && -d File::Spec->catdir($sourceDir, "Source", "WebKit")) || (-d File::Spec->catdir($sourceDir, "Internal") && -d File::Spec->catdir($sourceDir, "OpenSource")))
+    # defined by containing Sources, WebCore, and JavaScriptCore.
+    until ((-d File::Spec->catdir($sourceDir, "Source") && -d File::Spec->catdir($sourceDir, "Source", "WebCore") && -d File::Spec->catdir($sourceDir, "Source", "JavaScriptCore")) || (-d File::Spec->catdir($sourceDir, "Internal") && -d File::Spec->catdir($sourceDir, "OpenSource")))
     {
         if ($sourceDir !~ s|/[^/]+$||) {
             die "Could not find top level webkit directory above source directory using FindBin.\n";
@@ -208,15 +208,11 @@ sub determineXcodeVersion
 
 sub readXcodeUserDefault($)
 {
-    my ($unprefixedKey) = @_;
+    my ($key) = @_;
 
-    determineXcodeVersion();
-
-    my $xcodeDefaultsDomain = (eval "v$xcodeVersion" lt v4) ? "com.apple.Xcode" : "com.apple.dt.Xcode";
-    my $xcodeDefaultsPrefix = (eval "v$xcodeVersion" lt v4) ? "PBX" : "IDE";
     my $devnull = File::Spec->devnull();
 
-    my $value = `defaults read $xcodeDefaultsDomain ${xcodeDefaultsPrefix}${unprefixedKey} 2> ${devnull}`;
+    my $value = `defaults read com.apple.dt.Xcode ${key} 2> ${devnull}`;
     return if $?;
 
     chomp $value;
@@ -242,24 +238,20 @@ sub determineBaseProductDir
             unlink($personalPlistFile) || die "Could not delete $personalPlistFile: $!";
         }
 
-        determineXcodeVersion();
-
-        if (eval "v$xcodeVersion" ge v4) {
-            my $buildLocationStyle = join '', readXcodeUserDefault("BuildLocationStyle");
-            if ($buildLocationStyle eq "Custom") {
-                my $buildLocationType = join '', readXcodeUserDefault("CustomBuildLocationType");
-                # FIXME: Read CustomBuildIntermediatesPath and set OBJROOT accordingly.
-                $baseProductDir = readXcodeUserDefault("CustomBuildProductsPath") if $buildLocationType eq "Absolute";
-            }
-
-            # DeterminedByTargets corresponds to a setting of "Legacy" in Xcode.
-            # It is the only build location style for which SHARED_PRECOMPS_DIR is not
-            # overridden when building from within Xcode.
-            $setSharedPrecompsDir = 1 if $buildLocationStyle ne "DeterminedByTargets";
+        my $buildLocationStyle = join '', readXcodeUserDefault("IDEBuildLocationStyle");
+        if ($buildLocationStyle eq "Custom") {
+            my $buildLocationType = join '', readXcodeUserDefault("IDECustomBuildLocationType");
+            # FIXME: Read CustomBuildIntermediatesPath and set OBJROOT accordingly.
+            $baseProductDir = readXcodeUserDefault("IDECustomBuildProductsPath") if $buildLocationType eq "Absolute";
         }
 
+        # DeterminedByTargets corresponds to a setting of "Legacy" in Xcode.
+        # It is the only build location style for which SHARED_PRECOMPS_DIR is not
+        # overridden when building from within Xcode.
+        $setSharedPrecompsDir = 1 if $buildLocationStyle ne "DeterminedByTargets";
+
         if (!defined($baseProductDir)) {
-            $baseProductDir = join '', readXcodeUserDefault("ApplicationwideBuildSettings");
+            $baseProductDir = join '', readXcodeUserDefault("IDEApplicationwideBuildSettings");
             $baseProductDir = $1 if $baseProductDir =~ /SYMROOT\s*=\s*\"(.*?)\";/s;
         }
 
@@ -342,7 +334,7 @@ sub determineArchitecture
             } elsif ($xcodeSDK =~ /^iphonesimulator/) {
                 $architecture = 'x86_64';
             } elsif ($xcodeSDK =~ /^iphoneos/) {
-                $architecture = 'armv7';
+                $architecture = 'arm64';
             }
         }
     } elsif (isCMakeBuild()) {
@@ -448,6 +440,7 @@ sub argumentsForConfiguration()
     push(@args, '--64-bit') if (isWin64());
     push(@args, '--gtk') if isGtk();
     push(@args, '--efl') if isEfl();
+    push(@args, '--jsc-only') if isJSCOnly();
     push(@args, '--wincairo') if isWinCairo();
     push(@args, '--inspector-frontend') if isInspectorFrontend();
     return @args;
@@ -644,7 +637,7 @@ sub executableProductDir
     my $productDirectory = productDir();
 
     my $binaryDirectory;
-    if (isEfl() || isGtk()) {
+    if (isEfl() || isGtk() || isJSCOnly()) {
         $binaryDirectory = "bin";
     } elsif (isAnyWindows()) {
         $binaryDirectory = isWin64() ? "bin64" : "bin32";
@@ -1045,6 +1038,7 @@ sub determinePortName()
     my %argToPortName = (
         efl => Efl,
         gtk => GTK,
+        'jsc-only' => JSCOnly,
         wincairo => WinCairo
     );
 
@@ -1075,6 +1069,7 @@ sub determinePortName()
             my $portsChoice = join "\n\t", qw(
                 --efl
                 --gtk
+                --jsc-only
             );
             die "Please specify which WebKit port to build using one of the following options:"
                 . "\n\t$portsChoice\n";
@@ -1100,6 +1095,11 @@ sub isEfl()
 sub isGtk()
 {
     return portName() eq GTK;
+}
+
+sub isJSCOnly()
+{
+    return portName() eq JSCOnly;
 }
 
 # Determine if this is debian, ubuntu, linspire, or something similar.
@@ -1257,7 +1257,7 @@ sub iOSSimulatorDevices
     my $devicesPath = iOSSimulatorDevicesPath();
     opendir(DEVICES, $devicesPath);
     my @udids = grep {
-        $_ =~ m/[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}/;
+        $_ =~ m/^[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}$/;
     } readdir(DEVICES);
     close(DEVICES);
 
@@ -1381,32 +1381,6 @@ sub isWindowsNT()
     return $ENV{'OS'} eq 'Windows_NT';
 }
 
-sub debugger
-{
-    determineDebugger();
-    return $debugger;
-}
-
-sub determineDebugger
-{
-    return if defined($debugger);
-
-    determineXcodeVersion();
-    if (eval "v$xcodeVersion" ge v4.5) {
-        $debugger = "lldb";
-    } else {
-        $debugger = "gdb";
-    }
-
-    if (checkForArgumentAndRemoveFromARGV("--use-lldb")) {
-        $debugger = "lldb";
-    }
-
-    if (checkForArgumentAndRemoveFromARGV("--use-gdb")) {
-        $debugger = "gdb";
-    }
-}
-
 sub appendToEnvironmentVariableList($$)
 {
     my ($name, $value) = @_;
@@ -1507,17 +1481,16 @@ sub checkRequiredSystemConfig
 {
     if (isDarwin()) {
         chomp(my $productVersion = `sw_vers -productVersion`);
-        if (eval "v$productVersion" lt v10.7.5) {
+        if (eval "v$productVersion" lt v10.10.5) {
             print "*************************************************************\n";
-            print "Mac OS X Version 10.7.5 or later is required to build WebKit.\n";
+            print "OS X Yosemite v10.10.5 or later is required to build WebKit.\n";
             print "You have " . $productVersion . ", thus the build will most likely fail.\n";
             print "*************************************************************\n";
         }
-        my $xcodebuildVersionOutput = `xcodebuild -version`;
-        my $xcodeVersion = ($xcodebuildVersionOutput =~ /Xcode ([0-9](\.[0-9]+)*)/) ? $1 : undef;
-        if (!$xcodeVersion || $xcodeVersion && eval "v$xcodeVersion" lt v4.6) {
+        determineXcodeVersion();
+        if (eval "v$xcodeVersion" lt v7.0) {
             print "*************************************************************\n";
-            print "Xcode Version 4.6 or later is required to build WebKit.\n";
+            print "Xcode 7.0 or later is required to build WebKit.\n";
             print "You have an earlier version of Xcode, thus the build will\n";
             print "most likely fail. The latest Xcode is available from the App Store.\n";
             print "*************************************************************\n";
@@ -1556,7 +1529,7 @@ sub windowsOutputDir()
 sub fontExists($)
 {
     my $font = shift;
-    my $cmd = "reg query \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts\\" . $font ."\" 2>&1";
+    my $cmd = "reg query \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts\" /v \"$font\" 2>&1";
     my $val = `$cmd`;
     return $? == 0;
 }
@@ -1579,8 +1552,9 @@ sub checkInstalledTools()
         }
     }
 
-    # MathML requires fonts that do not ship with Windows (at least through Windows 8). Warn the user if they are missing
-    my @fonts = qw(STIXGeneral-Regular MathJax_Main-Regular);
+    # MathML requires fonts that may not ship with Windows.
+    # Warn the user if they are missing.
+    my @fonts = ('Cambria & Cambria Math (TrueType)', 'LatinModernMath-Regular (TrueType)', 'STIXMath-Regular (TrueType)');
     my @missing = ();
     foreach my $font (@fonts) {
         push @missing, $font if not fontExists($font);
@@ -1588,11 +1562,11 @@ sub checkInstalledTools()
 
     if (scalar @missing > 0) {
         print "*************************************************************\n";
-        print "Mathematical fonts, such as STIX and MathJax, are needed to\n";
+        print "Mathematical fonts, such as Latin Modern Math are needed to\n";
         print "use the MathML feature.  You do not appear to have these fonts\n";
         print "on your system.\n\n";
         print "You can download a suitable set of fonts from the following URL:\n";
-        print "https://developer.mozilla.org/Mozilla/MathML_Projects/Fonts\n";
+        print "https://trac.webkit.org/wiki/MathML/Fonts\n";
         print "*************************************************************\n";
     }
 
@@ -1748,8 +1722,6 @@ sub buildXCodeProject($$@)
         push(@extraOptions, "clean");
     }
 
-    push(@extraOptions, ("-sdk", xcodeSDK())) if isIOSWebKit();
-
     chomp($ENV{DSYMUTIL_NUM_THREADS} = `sysctl -n hw.activecpu`);
     return system "xcodebuild", "-project", "$project.xcodeproj", @extraOptions;
 }
@@ -1833,7 +1805,7 @@ sub isCachedArgumentfileOutOfDate($@)
 
 sub wrapperPrefixIfNeeded()
 {
-    if (isAnyWindows()) {
+    if (isAnyWindows() || isJSCOnly()) {
         return ();
     }
     if (isAppleMacWebKit()) {
@@ -1895,6 +1867,13 @@ sub shouldRemoveCMakeCache(@)
     my $inspectorUserInterfaceDircetory = File::Spec->catdir(sourceDir(), "Source", "WebInspectorUI", "UserInterface");
     if ($cacheFileModifiedTime < stat($inspectorUserInterfaceDircetory)->mtime) {
         return 1;
+    }
+
+    if(isAnyWindows()) {
+        my $winConfiguration = File::Spec->catdir(sourceDir(), "Source", "cmake", "OptionsWin.cmake");
+        if ($cacheFileModifiedTime < stat($winConfiguration)->mtime) {
+            return 1;
+        }
     }
 
     return 0;
@@ -1968,7 +1947,7 @@ sub generateBuildSystemFromCMakeProject
     my @args;
     push @args, "-DPORT=\"$port\"";
     push @args, "-DCMAKE_INSTALL_PREFIX=\"$prefixPath\"" if $prefixPath;
-    push @args, "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON" if isGtk();
+    push @args, "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON";
     if ($config =~ /release/i) {
         push @args, "-DCMAKE_BUILD_TYPE=Release";
     } elsif ($config =~ /debug/i) {
@@ -1986,8 +1965,8 @@ sub generateBuildSystemFromCMakeProject
         push @args, '-G "Visual Studio 14 2015 Win64"';
     }
 
-    # GTK+ has a production mode, but build-webkit should always use developer mode.
-    push @args, "-DDEVELOPER_MODE=ON" if isEfl() || isGtk();
+    # Some ports have production mode, but build-webkit should always use developer mode.
+    push @args, "-DDEVELOPER_MODE=ON" if isEfl() || isGtk() || isJSCOnly();
 
     # Don't warn variables which aren't used by cmake ports.
     push @args, "--no-warn-unused-cli";
@@ -1999,7 +1978,7 @@ sub generateBuildSystemFromCMakeProject
     # Compiler options to keep floating point values consistent
     # between 32-bit and 64-bit architectures.
     determineArchitecture();
-    if ($architecture ne "x86_64" && !isARM() && !isCrossCompilation() && !isAnyWindows()) {
+    if ($architecture eq "i686" && !isCrossCompilation() && !isAnyWindows()) {
         $ENV{'CXXFLAGS'} = "-march=pentium4 -msse2 -mfpmath=sse " . ($ENV{'CXXFLAGS'} || "");
     }
 
@@ -2025,8 +2004,8 @@ sub buildCMakeGeneratedProject($)
     my @args = ("--build", $buildPath, "--config", $config);
     push @args, ("--", $makeArgs) if $makeArgs;
 
-    # GTK can use a build script to preserve colors and pretty-printing.
-    if (isGtk() && -e "$buildPath/build.sh") {
+    # GTK and JSCOnly can use a build script to preserve colors and pretty-printing.
+    if ((isGtk() || isJSCOnly()) && -e "$buildPath/build.sh") {
         chdir "$buildPath" or die;
         $command = "$buildPath/build.sh";
         @args = ($makeArgs);
@@ -2145,16 +2124,9 @@ sub printHelpAndExitForRunAndDebugWebKitAppIfNeeded
     print STDERR <<EOF;
 Usage: @{[basename($0)]} [options] [args ...]
   --help                            Show this help message
-  --no-saved-state                  Launch the application without state restoration (OS X 10.7 and later)
+  --no-saved-state                  Launch the application without state restoration
   -g|--guard-malloc                 Enable Guard Malloc (OS X only)
 EOF
-
-    if ($includeOptionsForDebugging) {
-        print STDERR <<EOF;
-  --use-gdb                         Use GDB (this is the default when using Xcode 4.4 or earlier)
-  --use-lldb                        Use LLDB (this is the default when using Xcode 4.5 or later)
-EOF
-    }
 
     exit(1);
 }
@@ -2245,6 +2217,7 @@ sub waitUntilIOSSimulatorDeviceIsInState($$)
 {
     my ($deviceUDID, $waitUntilState) = @_;
     my $device = iosSimulatorDeviceByUDID($deviceUDID);
+    # FIXME: We should add a maximum time limit to wait here.
     while ($device->{state} ne $waitUntilState) {
         usleep(500 * 1000); # Waiting 500ms between file system polls does not make script run-safari feel sluggish.
         $device = iosSimulatorDeviceByUDID($deviceUDID);
@@ -2271,8 +2244,9 @@ sub relaunchIOSSimulator($)
     quitIOSSimulator($simulatedDevice->{UDID});
 
     # FIXME: <rdar://problem/20916140> Switch to using CoreSimulator.framework for launching and quitting iOS Simulator
-    my $iosSimulatorBundleID = "com.apple.iphonesimulator";
-    system("open", "-b", $iosSimulatorBundleID, "--args", "-CurrentDeviceUDID", $simulatedDevice->{UDID}) == 0 or die "Failed to open $iosSimulatorBundleID: $!";
+    chomp(my $developerDirectory = $ENV{DEVELOPER_DIR} || `xcode-select --print-path`); 
+    my $iosSimulatorPath = File::Spec->catfile($developerDirectory, "Applications", "Simulator.app"); 
+    system("open", "-a", $iosSimulatorPath, "--args", "-CurrentDeviceUDID", $simulatedDevice->{UDID}) == 0 or die "Failed to open $iosSimulatorPath: $!"; 
 
     waitUntilIOSSimulatorDeviceIsInState($simulatedDevice->{UDID}, SIMULATOR_DEVICE_STATE_BOOTED);
 }
@@ -2281,7 +2255,11 @@ sub quitIOSSimulator(;$)
 {
     my ($waitForShutdownOfSimulatedDeviceUDID) = @_;
     # FIXME: <rdar://problem/20916140> Switch to using CoreSimulator.framework for launching and quitting iOS Simulator
-    exitStatus(system {"osascript"} "osascript", "-e", 'tell application id "com.apple.iphonesimulator" to quit') == 0 or die "Failed to quit iOS Simulator: $!";
+    if (exitStatus(system {"osascript"} "osascript", "-e", 'tell application id "com.apple.iphonesimulator" to quit')) {
+        # osascript returns a non-zero exit status if Simulator.app is not registered in LaunchServices.
+        return;
+    }
+
     if (!defined($waitForShutdownOfSimulatedDeviceUDID)) {
         return;
     }
@@ -2481,28 +2459,18 @@ sub runMacWebKitApp($;$)
 sub execMacWebKitAppForDebugging($)
 {
     my ($appPath) = @_;
-    my $architectureSwitch;
-    my $argumentsSeparator;
+    my $architectureSwitch = "--arch";
+    my $argumentsSeparator = "--";
 
-    if (debugger() eq "lldb") {
-        $architectureSwitch = "--arch";
-        $argumentsSeparator = "--";
-    } elsif (debugger() eq "gdb") {
-        $architectureSwitch = "-arch";
-        $argumentsSeparator = "--args";
-    } else {
-        die "Unknown debugger $debugger.\n";
-    }
-
-    my $debuggerPath = `xcrun -find $debugger`;
+    my $debuggerPath = `xcrun -find lldb`;
     chomp $debuggerPath;
-    die "Can't find the $debugger executable.\n" unless -x $debuggerPath;
+    die "Can't find the lldb executable.\n" unless -x $debuggerPath;
 
     my $productDir = productDir();
     setupMacWebKitEnvironment($productDir);
 
     my @architectureFlags = ($architectureSwitch, architecture());
-    print "Starting @{[basename($appPath)]} under $debugger with DYLD_FRAMEWORK_PATH set to point to built WebKit in $productDir.\n";
+    print "Starting @{[basename($appPath)]} under lldb with DYLD_FRAMEWORK_PATH set to point to built WebKit in $productDir.\n";
     exec { $debuggerPath } $debuggerPath, @architectureFlags, $argumentsSeparator, $appPath, argumentsForRunAndDebugMacWebKitApp() or die;
 }
 

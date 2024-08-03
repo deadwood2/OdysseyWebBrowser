@@ -29,7 +29,6 @@
 #include "Connection.h"
 #include "MessageSender.h"
 #include "ShareableResource.h"
-#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 
@@ -56,24 +55,26 @@ typedef uint64_t ResourceLoadIdentifier;
 
 class WebResourceLoader : public RefCounted<WebResourceLoader>, public IPC::MessageSender {
 public:
-    static Ref<WebResourceLoader> create(PassRefPtr<WebCore::ResourceLoader>);
+    static Ref<WebResourceLoader> create(Ref<WebCore::ResourceLoader>&&);
 
     ~WebResourceLoader();
 
-    void didReceiveWebResourceLoaderMessage(IPC::Connection&, IPC::MessageDecoder&);
+    void didReceiveWebResourceLoaderMessage(IPC::Connection&, IPC::Decoder&);
 
     WebCore::ResourceLoader* resourceLoader() const { return m_coreLoader.get(); }
 
     void detachFromCoreLoader();
 
+    bool isAlwaysOnLoggingAllowed() const;
+
 private:
-    WebResourceLoader(PassRefPtr<WebCore::ResourceLoader>);
+    WebResourceLoader(Ref<WebCore::ResourceLoader>&&);
 
     // IPC::MessageSender
-    virtual IPC::Connection* messageSenderConnection() override;
-    virtual uint64_t messageSenderDestinationID() override;
+    IPC::Connection* messageSenderConnection() override;
+    uint64_t messageSenderDestinationID() override;
 
-    void willSendRequest(const WebCore::ResourceRequest&, const WebCore::ResourceResponse& redirectResponse);
+    void willSendRequest(WebCore::ResourceRequest&&, WebCore::ResourceResponse&&);
     void didSendData(uint64_t bytesSent, uint64_t totalBytesToBeSent);
     void didReceiveResponse(const WebCore::ResourceResponse&, bool needsContinueDidReceiveResponseMessage);
     void didReceiveData(const IPC::DataReference&, int64_t encodedDataLength);
@@ -81,10 +82,6 @@ private:
     void didFailResourceLoad(const WebCore::ResourceError&);
 #if ENABLE(SHAREABLE_RESOURCE)
     void didReceiveResource(const ShareableResource::Handle&, double finishTime);
-#endif
-
-#if USE(PROTECTION_SPACE_AUTH_CALLBACK)
-    void canAuthenticateAgainstProtectionSpace(const WebCore::ProtectionSpace&);
 #endif
 
     RefPtr<WebCore::ResourceLoader> m_coreLoader;

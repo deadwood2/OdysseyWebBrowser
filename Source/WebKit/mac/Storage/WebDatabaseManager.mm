@@ -36,6 +36,10 @@
 #import <WebCore/SecurityOrigin.h>
 #import <wtf/NeverDestroyed.h>
 
+#if ENABLE(INDEXED_DATABASE)
+#import "WebDatabaseProvider.h"
+#endif
+
 #if PLATFORM(IOS)
 #import "WebDatabaseManagerInternal.h"
 #import <WebCore/DatabaseTracker.h>
@@ -133,7 +137,7 @@ static NSString *databasesDirectoryPath();
 
 - (void)deleteAllDatabases
 {
-    DatabaseManager::singleton().deleteAllDatabases();
+    DatabaseManager::singleton().deleteAllDatabasesImmediately();
 #if PLATFORM(IOS)
     // FIXME: This needs to be removed once DatabaseTrackers in multiple processes
     // are in sync: <rdar://problem/9567500> Remove Website Data pane is not kept in sync with Safari
@@ -149,6 +153,14 @@ static NSString *databasesDirectoryPath();
 - (BOOL)deleteDatabase:(NSString *)databaseIdentifier withOrigin:(WebSecurityOrigin *)origin
 {
     return DatabaseManager::singleton().deleteDatabase([origin _core], databaseIdentifier);
+}
+
+// For DumpRenderTree support only
+- (void)deleteAllIndexedDatabases
+{
+#if ENABLE(INDEXED_DATABASE)
+    WebDatabaseProvider::singleton().deleteAllDatabases();
+#endif
 }
 
 #if PLATFORM(IOS)
@@ -269,7 +281,7 @@ static WebBackgroundTaskIdentifier getTransactionBackgroundTaskIdentifier()
         return;
     
     setTransactionBackgroundTaskIdentifier(startBackgroundTask(^ {
-        DatabaseTracker::tracker().closeAllDatabases();
+        DatabaseTracker::tracker().closeAllDatabases(CurrentQueryBehavior::Interrupt);
         [WebDatabaseManager endBackgroundTask];
     }));
 }

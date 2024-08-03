@@ -26,7 +26,6 @@
 #include "WebDatabaseProvider.h"
 
 #include <WebCore/SessionID.h>
-#include <wtf/NeverDestroyed.h>
 
 WebDatabaseProvider& WebDatabaseProvider::singleton()
 {
@@ -55,5 +54,11 @@ WebCore::IDBClient::IDBConnectionToServer& WebDatabaseProvider::idbConnectionToS
     }
 
     return result.iterator->value->connectionToServer();
+}
+
+void WebDatabaseProvider::deleteAllDatabases()
+{
+    for (auto& server : m_idbServerMap.values())
+        server->idbServer().closeAndDeleteDatabasesModifiedSince(std::chrono::system_clock::time_point::min(), [] { });
 }
 #endif

@@ -28,17 +28,18 @@
 
 #if ENABLE(INDEXED_DATABASE)
 
-#include "IDBTransactionImpl.h"
+#include "IDBDatabase.h"
+#include "IDBTransaction.h"
 #include "IndexedDB.h"
 
 namespace WebCore {
 
-IDBCursorInfo IDBCursorInfo::objectStoreCursor(IDBClient::IDBTransaction& transaction, uint64_t objectStoreIdentifier, const IDBKeyRangeData& range, IndexedDB::CursorDirection direction)
+IDBCursorInfo IDBCursorInfo::objectStoreCursor(IDBTransaction& transaction, uint64_t objectStoreIdentifier, const IDBKeyRangeData& range, IndexedDB::CursorDirection direction)
 {
     return { transaction, objectStoreIdentifier, range, direction, IndexedDB::CursorType::KeyAndValue };
 }
 
-IDBCursorInfo IDBCursorInfo::indexCursor(IDBClient::IDBTransaction& transaction, uint64_t objectStoreIdentifier, uint64_t indexIdentifier, const IDBKeyRangeData& range, IndexedDB::CursorDirection direction, IndexedDB::CursorType type)
+IDBCursorInfo IDBCursorInfo::indexCursor(IDBTransaction& transaction, uint64_t objectStoreIdentifier, uint64_t indexIdentifier, const IDBKeyRangeData& range, IndexedDB::CursorDirection direction, IndexedDB::CursorType type)
 {
     return { transaction, objectStoreIdentifier, indexIdentifier, range, direction, type };
 }
@@ -47,8 +48,8 @@ IDBCursorInfo::IDBCursorInfo()
 {
 }
 
-IDBCursorInfo::IDBCursorInfo(IDBClient::IDBTransaction& transaction, uint64_t objectStoreIdentifier, const IDBKeyRangeData& range, IndexedDB::CursorDirection direction, IndexedDB::CursorType type)
-    : m_cursorIdentifier(transaction.serverConnection())
+IDBCursorInfo::IDBCursorInfo(IDBTransaction& transaction, uint64_t objectStoreIdentifier, const IDBKeyRangeData& range, IndexedDB::CursorDirection direction, IndexedDB::CursorType type)
+    : m_cursorIdentifier(transaction.database().connectionProxy())
     , m_transactionIdentifier(transaction.info().identifier())
     , m_objectStoreIdentifier(objectStoreIdentifier)
     , m_sourceIdentifier(objectStoreIdentifier)
@@ -59,8 +60,8 @@ IDBCursorInfo::IDBCursorInfo(IDBClient::IDBTransaction& transaction, uint64_t ob
 {
 }
 
-IDBCursorInfo::IDBCursorInfo(IDBClient::IDBTransaction& transaction, uint64_t objectStoreIdentifier, uint64_t indexIdentifier, const IDBKeyRangeData& range, IndexedDB::CursorDirection direction, IndexedDB::CursorType type)
-    : m_cursorIdentifier(transaction.serverConnection())
+IDBCursorInfo::IDBCursorInfo(IDBTransaction& transaction, uint64_t objectStoreIdentifier, uint64_t indexIdentifier, const IDBKeyRangeData& range, IndexedDB::CursorDirection direction, IndexedDB::CursorType type)
+    : m_cursorIdentifier(transaction.database().connectionProxy())
     , m_transactionIdentifier(transaction.info().identifier())
     , m_objectStoreIdentifier(objectStoreIdentifier)
     , m_sourceIdentifier(indexIdentifier)

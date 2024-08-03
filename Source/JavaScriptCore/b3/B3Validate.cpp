@@ -35,6 +35,7 @@
 #include "B3Procedure.h"
 #include "B3SlotBaseValue.h"
 #include "B3StackSlot.h"
+#include "B3SwitchValue.h"
 #include "B3UpsilonValue.h"
 #include "B3ValueInlines.h"
 #include "B3Variable.h"
@@ -107,8 +108,8 @@ public:
         for (BasicBlock* block : blocks) {
             VALIDATE(block->size() >= 1, ("At ", *block));
             for (unsigned i = 0; i < block->size() - 1; ++i)
-                VALIDATE(!ControlValue::accepts(block->at(i)->opcode()), ("At ", *block->at(i)));
-            VALIDATE(ControlValue::accepts(block->last()->opcode()), ("At ", *block->last()));
+                VALIDATE(!block->at(i)->effects().terminal, ("At ", *block->at(i)));
+            VALIDATE(block->last()->effects().terminal, ("At ", *block->last()));
             
             for (BasicBlock* successor : block->successorBlocks()) {
                 allPredecessors.add(successor, HashSet<BasicBlock*>()).iterator->value.add(block);
@@ -129,8 +130,6 @@ public:
                 VALIDATE(child->type() != Void, ("At ", *value, "->", *child));
             switch (value->opcode()) {
             case Nop:
-            case Jump:
-            case Oops:
                 VALIDATE(!value->numChildren(), ("At ", *value));
                 VALIDATE(value->type() == Void, ("At ", *value));
                 break;
@@ -252,6 +251,11 @@ public:
                 VALIDATE(isInt(value->child(0)->type()), ("At ", *value));
                 VALIDATE(value->type() == Double, ("At ", *value));
                 break;
+            case IToF:
+                VALIDATE(value->numChildren() == 1, ("At ", *value));
+                VALIDATE(isInt(value->child(0)->type()), ("At ", *value));
+                VALIDATE(value->type() == Float, ("At ", *value));
+                break;
             case FloatToDouble:
                 VALIDATE(value->numChildren() == 1, ("At ", *value));
                 VALIDATE(value->child(0)->type() == Float, ("At ", *value));
@@ -333,6 +337,7 @@ public:
                     switch (value->as<PatchpointValue>()->resultConstraint.kind()) {
                     case ValueRep::WarmAny:
                     case ValueRep::SomeRegister:
+                    case ValueRep::SomeEarlyRegister:
                     case ValueRep::Register:
                     case ValueRep::StackArgument:
                         break;
@@ -341,7 +346,7 @@ public:
                         break;
                     }
                     
-                    validateStackmapConstraint(value, ConstrainedValue(value, value->as<PatchpointValue>()->resultConstraint));
+                    validateStackmapConstraint(value, ConstrainedValue(value, value->as<PatchpointValue>()->resultConstraint), ConstraintRole::Def);
                 }
                 validateStackmap(value);
                 break;
@@ -372,15 +377,48 @@ public:
                 VALIDATE(!value->numChildren(), ("At ", *value));
                 VALIDATE(value->type() != Void, ("At ", *value));
                 break;
-            case Return:
-                VALIDATE(value->numChildren() == 1, ("At ", *value));
+            case Jump:
+                VALIDATE(!value->numChildren(), ("At ", *value));
                 VALIDATE(value->type() == Void, ("At ", *value));
+                VALIDATE(valueOwner.get(value)->numSuccessors() == 1, ("At ", *value));
+                break;
+            case Oops:
+                VALIDATE(!value->numChildren(), ("At ", *value));
+                VALIDATE(value->type() == Void, ("At ", *value));
+                VALIDATE(!valueOwner.get(value)->numSuccessors(), ("At ", *value));
+                break;
+            case Return:
+                VALIDATE(value->numChildren() <= 1, ("At ", *value));
+                VALIDATE(value->type() == Void, ("At ", *value));
+                VALIDATE(!valueOwner.get(value)->numSuccessors(), ("At ", *value));
                 break;
             case Branch:
-            case Switch:
                 VALIDATE(value->numChildren() == 1, ("At ", *value));
                 VALIDATE(isInt(value->child(0)->type()), ("At ", *value));
                 VALIDATE(value->type() == Void, ("At ", *value));
+                VALIDATE(valueOwner.get(value)->numSuccessors() == 2, ("At ", *value));
+                break;
+            case Switch: {
+                VALIDATE(value->numChildren() == 1, ("At ", *value));
+                VALIDATE(isInt(value->child(0)->type()), ("At ", *value));
+                VALIDATE(value->type() == Void, ("At ", *value));
+                VALIDATE(value->as<SwitchValue>()->hasFallThrough(valueOwner.get(value)), ("At ", *value));
+                // This validates the same thing as hasFallThrough, but more explicitly. We want to
+                // make sure that if anyone tries to change the definition of hasFallThrough, they
+                // will feel some pain here, since this is fundamental.
+                VALIDATE(valueOwner.get(value)->numSuccessors() == value->as<SwitchValue>()->numCaseValues() + 1, ("At ", *value));
+                
+                // Check that there are no duplicate cases.
+                Vector<int64_t> caseValues = value->as<SwitchValue>()->caseValues();
+                std::sort(caseValues.begin(), caseValues.end());
+                for (unsigned i = 1; i < caseValues.size(); ++i)
+                    VALIDATE(caseValues[i - 1] != caseValues[i], ("At ", *value, ", caseValue = ", caseValues[i]));
+                break;
+            }
+            case EntrySwitch:
+                VALIDATE(!value->numChildren(), ("At ", *value));
+                VALIDATE(value->type() == Void, ("At ", *value));
+                VALIDATE(valueOwner.get(value)->numSuccessors() == m_procedure.numEntrypoints(), ("At ", *value));
                 break;
             }
 
@@ -401,7 +439,11 @@ private:
             validateStackmapConstraint(stackmap, child);
     }
     
-    void validateStackmapConstraint(Value* context, const ConstrainedValue& value)
+    enum class ConstraintRole {
+        Use,
+        Def
+    };
+    void validateStackmapConstraint(Value* context, const ConstrainedValue& value, ConstraintRole role = ConstraintRole::Use)
     {
         switch (value.rep().kind()) {
         case ValueRep::WarmAny:
@@ -410,7 +452,11 @@ private:
         case ValueRep::SomeRegister:
         case ValueRep::StackArgument:
             break;
+        case ValueRep::SomeEarlyRegister:
+            VALIDATE(role == ConstraintRole::Def, ("At ", *context, ": ", value));
+            break;
         case ValueRep::Register:
+        case ValueRep::LateRegister:
             if (value.rep().reg().isGPR())
                 VALIDATE(isInt(value.value()->type()), ("At ", *context, ": ", value));
             else

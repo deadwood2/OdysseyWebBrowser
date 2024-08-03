@@ -32,7 +32,7 @@
 #include "GraphicsContext3DIOS.h"
 #endif
 
-#import "BlockExceptions.h"
+#import <wtf/BlockObjCExceptions.h>
 
 #include "CanvasRenderingContext.h"
 #include <CoreGraphics/CGBitmapContext.h>
@@ -64,8 +64,13 @@
 
 namespace WebCore {
 
-const int maxActiveContexts = 64;
-int GraphicsContext3D::numActiveContexts = 0;
+static Vector<GraphicsContext3D*>& activeContexts()
+{
+    static NeverDestroyed<Vector<GraphicsContext3D*>> s_activeContexts;
+    return s_activeContexts;
+}
+
+const int MaxActiveContexts = 16;
 const int GPUStatusCheckThreshold = 5;
 int GraphicsContext3D::GPUCheckCounter = 0;
 
@@ -79,7 +84,7 @@ public:
 };
 
 #if !PLATFORM(IOS)
-static void setPixelFormat(Vector<CGLPixelFormatAttribute>& attribs, int colorBits, int depthBits, bool accelerated, bool supersample, bool closest, bool antialias)
+static void setPixelFormat(Vector<CGLPixelFormatAttribute>& attribs, int colorBits, int depthBits, bool accelerated, bool supersample, bool closest, bool antialias, bool allowOffline, bool useGLES3)
 {
     attribs.clear();
     
@@ -87,7 +92,14 @@ static void setPixelFormat(Vector<CGLPixelFormatAttribute>& attribs, int colorBi
     attribs.append(static_cast<CGLPixelFormatAttribute>(colorBits));
     attribs.append(kCGLPFADepthSize);
     attribs.append(static_cast<CGLPixelFormatAttribute>(depthBits));
-    
+
+    // This attribute, while mentioning offline renderers, is actually
+    // allowing us to request the integrated graphics on a dual GPU
+    // system, and not force the discrete GPU.
+    // See https://developer.apple.com/library/mac/technotes/tn2229/_index.html
+    if (allowOffline)
+        attribs.append(kCGLPFAAllowOfflineRenderers);
+
     if (accelerated)
         attribs.append(kCGLPFAAccelerated);
     else {
@@ -108,18 +120,32 @@ static void setPixelFormat(Vector<CGLPixelFormatAttribute>& attribs, int colorBi
         attribs.append(kCGLPFASamples);
         attribs.append(static_cast<CGLPixelFormatAttribute>(4));
     }
+
+    if (useGLES3) {
+        // FIXME: Instead of backing a WebGL2 GraphicsContext3D with a OpenGL 3.2 context, we should instead back it with ANGLE.
+        // Use an OpenGL 3.2 context for now until the ANGLE backend is ready.
+        attribs.append(kCGLPFAOpenGLProfile);
+        attribs.append(static_cast<CGLPixelFormatAttribute>(kCGLOGLPVersion_3_2_Core));
+    }
         
     attribs.append(static_cast<CGLPixelFormatAttribute>(0));
 }
 #endif // !PLATFORM(IOS)
 
-PassRefPtr<GraphicsContext3D> GraphicsContext3D::create(GraphicsContext3D::Attributes attrs, HostWindow* hostWindow, GraphicsContext3D::RenderStyle renderStyle)
+RefPtr<GraphicsContext3D> GraphicsContext3D::create(GraphicsContext3D::Attributes attrs, HostWindow* hostWindow, GraphicsContext3D::RenderStyle renderStyle)
 {
     // This implementation doesn't currently support rendering directly to the HostWindow.
     if (renderStyle == RenderDirectlyToHostWindow)
         return nullptr;
 
-    if (numActiveContexts >= maxActiveContexts)
+    Vector<GraphicsContext3D*>& contexts = activeContexts();
+    
+    if (contexts.size() >= MaxActiveContexts)
+        contexts.at(0)->recycleContext();
+    
+    // Calling recycleContext() above should have lead to the graphics context being
+    // destroyed and thus removed from the active contexts list.
+    if (contexts.size() >= MaxActiveContexts)
         return nullptr;
 
     RefPtr<GraphicsContext3D> context = adoptRef(new GraphicsContext3D(attrs, hostWindow, renderStyle));
@@ -127,9 +153,9 @@ PassRefPtr<GraphicsContext3D> GraphicsContext3D::create(GraphicsContext3D::Attri
     if (!context->m_contextObj)
         return nullptr;
 
-    numActiveContexts++;
+    contexts.append(context.get());
 
-    return context.release();
+    return context;
 }
 
 GraphicsContext3D::GraphicsContext3D(GraphicsContext3D::Attributes attrs, HostWindow* hostWindow, GraphicsContext3D::RenderStyle renderStyle)
@@ -156,7 +182,8 @@ GraphicsContext3D::GraphicsContext3D(GraphicsContext3D::Attributes attrs, HostWi
     UNUSED_PARAM(renderStyle);
 
 #if PLATFORM(IOS)
-    m_contextObj = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2];
+    EAGLRenderingAPI api = m_attrs.useGLES3 ? kEAGLRenderingAPIOpenGLES3 : kEAGLRenderingAPIOpenGLES2;
+    m_contextObj = [[EAGLContext alloc] initWithAPI:api];
     makeContextCurrent();
 #else
     Vector<CGLPixelFormatAttribute> attribs;
@@ -178,22 +205,22 @@ GraphicsContext3D::GraphicsContext3D(GraphicsContext3D::Attributes attrs, HostWi
     // If none of that works, we simply fail and set m_contextObj to 0.
 
     bool useMultisampling = m_attrs.antialias;
-    
-    setPixelFormat(attribs, 32, 32, !attrs.forceSoftwareRenderer, true, false, useMultisampling);
+
+    setPixelFormat(attribs, 32, 32, !attrs.forceSoftwareRenderer, true, false, useMultisampling, attrs.preferLowPowerToHighPerformance, attrs.useGLES3);
     CGLChoosePixelFormat(attribs.data(), &pixelFormatObj, &numPixelFormats);
 
-    if (numPixelFormats == 0) {
-        setPixelFormat(attribs, 32, 32, !attrs.forceSoftwareRenderer, false, false, useMultisampling);
+    if (!numPixelFormats) {
+        setPixelFormat(attribs, 32, 32, !attrs.forceSoftwareRenderer, false, false, useMultisampling, attrs.preferLowPowerToHighPerformance, attrs.useGLES3);
         CGLChoosePixelFormat(attribs.data(), &pixelFormatObj, &numPixelFormats);
 
-        if (numPixelFormats == 0) {
-            setPixelFormat(attribs, 32, 16, !attrs.forceSoftwareRenderer, false, false, useMultisampling);
+        if (!numPixelFormats) {
+            setPixelFormat(attribs, 32, 16, !attrs.forceSoftwareRenderer, false, false, useMultisampling, attrs.preferLowPowerToHighPerformance, attrs.useGLES3);
             CGLChoosePixelFormat(attribs.data(), &pixelFormatObj, &numPixelFormats);
 
-             if (!attrs.forceSoftwareRenderer && numPixelFormats == 0) {
-                 setPixelFormat(attribs, 32, 16, false, false, true, false);
-                 CGLChoosePixelFormat(attribs.data(), &pixelFormatObj, &numPixelFormats);
-                 useMultisampling = false;
+            if (!attrs.forceSoftwareRenderer && !numPixelFormats) {
+                setPixelFormat(attribs, 32, 16, false, false, true, false, false, attrs.useGLES3);
+                CGLChoosePixelFormat(attribs.data(), &pixelFormatObj, &numPixelFormats);
+                useMultisampling = false;
             }
         }
     }
@@ -217,6 +244,8 @@ GraphicsContext3D::GraphicsContext3D(GraphicsContext3D::Attributes attrs, HostWi
         return;
     }
 
+    m_isForWebGL2 = attrs.useGLES3;
+
     // Set the current context to the one given to us.
     CGLSetCurrentContext(m_contextObj);
 
@@ -227,9 +256,6 @@ GraphicsContext3D::GraphicsContext3D(GraphicsContext3D::Attributes attrs, HostWi
     // Create the WebGLLayer
     BEGIN_BLOCK_OBJC_EXCEPTIONS
         m_webGLLayer = adoptNS([[WebGLLayer alloc] initWithGraphicsContext3D:this]);
-#if PLATFORM(IOS)
-        [m_webGLLayer setOpaque:0];
-#endif
 #ifndef NDEBUG
         [m_webGLLayer setName:@"WebGL Layer"];
 #endif
@@ -246,16 +272,16 @@ GraphicsContext3D::GraphicsContext3D(GraphicsContext3D::Attributes attrs, HostWi
     // create a texture to render into
     ::glGenTextures(1, &m_texture);
     ::glBindTexture(GL_TEXTURE_2D, m_texture);
-    ::glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    ::glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    ::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-    ::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+    ::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    ::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    ::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    ::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     ::glGenTextures(1, &m_compositorTexture);
     ::glBindTexture(GL_TEXTURE_2D, m_compositorTexture);
-    ::glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    ::glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    ::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-    ::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+    ::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    ::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    ::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    ::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     ::glBindTexture(GL_TEXTURE_2D, 0);
 #endif
 
@@ -301,7 +327,8 @@ GraphicsContext3D::GraphicsContext3D(GraphicsContext3D::Attributes attrs, HostWi
     
 #if !PLATFORM(IOS)
     ::glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
-    ::glEnable(GL_POINT_SPRITE);
+    if (!isGLES2Compliant())
+        ::glEnable(GL_POINT_SPRITE);
 #endif
 
     ::glClearColor(0, 0, 0, 0);
@@ -337,15 +364,25 @@ GraphicsContext3D::~GraphicsContext3D()
         CGLDestroyContext(m_contextObj);
 #endif
         [m_webGLLayer setContext:nullptr];
-        numActiveContexts--;
     }
+
+    ASSERT(activeContexts().contains(this));
+    activeContexts().removeFirst(this);
 }
 
 #if PLATFORM(IOS)
-bool GraphicsContext3D::setRenderbufferStorageFromDrawable(GC3Dsizei width, GC3Dsizei height)
+void GraphicsContext3D::setRenderbufferStorageFromDrawable(GC3Dsizei width, GC3Dsizei height)
 {
+    // We need to make a call to setBounds below to update the backing store size but we also
+    // do not want to clobber the bounds set during layout.
+    CGRect previousBounds = [m_webGLLayer.get() bounds];
+
     [m_webGLLayer setBounds:CGRectMake(0, 0, width, height)];
-    return [m_contextObj renderbufferStorage:GL_RENDERBUFFER fromDrawable:static_cast<NSObject<EAGLDrawable>*>(m_webGLLayer.get())];
+    [m_webGLLayer setOpaque:(m_internalColorFormat != GL_RGBA8)];
+
+    [m_contextObj renderbufferStorage:GL_RENDERBUFFER fromDrawable:static_cast<id<EAGLDrawable>>(m_webGLLayer.get())];
+
+    [m_webGLLayer setBounds:previousBounds];
 }
 #endif
 
@@ -411,7 +448,7 @@ void GraphicsContext3D::endPaint()
 
 bool GraphicsContext3D::isGLES2Compliant() const
 {
-    return false;
+    return m_isForWebGL2;
 }
 
 void GraphicsContext3D::setContextLostCallback(std::unique_ptr<ContextLostCallback>)

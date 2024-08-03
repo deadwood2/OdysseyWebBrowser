@@ -63,6 +63,12 @@ CString fileSystemRepresentation(const String& path)
 #endif
 }
 
+String stringFromFileSystemRepresentation(const char* fileSystemRepresentation)
+{
+    // FIXME: This needs to do the opposite of fileSystemRepresentation.
+    return String::fromUTF8(fileSystemRepresentation);
+}
+
 bool unloadModule(PlatformModule module)
 {
     // caution, closing handle will make memory vanish and any remaining
@@ -82,13 +88,18 @@ String homeDirectoryPath()
     return String::fromUTF8(home);
 }
 
-uint64_t getVolumeFreeSizeForPath(const char* path)
+bool getVolumeFreeSpace(const String& path, uint64_t& freeSpace)
 {
-    struct statvfs buf;
-    if (statvfs(path, &buf) < 0)
-        return 0;
+    CString fsRep = fileSystemRepresentation(path);
+    if (!fsRep.data() || fsRep.data()[0] == '\0')
+        return false;
 
-    return static_cast<uint64_t>(buf.f_bavail) * buf.f_bsize;
+    struct statvfs buf;
+    if (statvfs(fsRep.data(), &buf) < 0)
+        return false;
+
+    freeSpace = static_cast<uint64_t>(buf.f_bavail) * buf.f_bsize;
+    return true;
 }
 
 }

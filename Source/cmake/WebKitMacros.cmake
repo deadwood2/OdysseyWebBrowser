@@ -25,8 +25,9 @@ endmacro()
 
 macro(ADD_PRECOMPILED_HEADER _header _cpp _source)
     if (MSVC)
-        get_filename_component(PrecompiledBasename ${_header} NAME_WE)
-        set(PrecompiledBinary "${CMAKE_CURRENT_BINARY_DIR}/${PrecompiledBasename}.pch")
+        get_filename_component(PrecompiledBasename ${_cpp} NAME_WE)
+        file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${_source}")
+        set(PrecompiledBinary "${CMAKE_CURRENT_BINARY_DIR}/${_source}/${PrecompiledBasename}.pch")
         set(_sources ${${_source}})
 
         set_source_files_properties(${_cpp}
@@ -74,42 +75,21 @@ macro(GENERATE_BINDINGS _output_source _input_files _base_dir _idl_includes _fea
     if (EXISTS ${WEBCORE_DIR}/bindings/scripts/CodeGenerator${_generator}.pm)
         list(APPEND COMMON_GENERATOR_DEPENDENCIES ${WEBCORE_DIR}/bindings/scripts/CodeGenerator${_generator}.pm)
     endif ()
+    if (EXISTS ${_base_dir}/CodeGenerator${_generator}.pm)
+        list(APPEND common_generator_dependencies ${_base_dir}/CodeGenerator${_generator}.pm)
+    endif ()
 
     foreach (_file ${_input_files})
         get_filename_component(_name ${_file} NAME_WE)
 
-        # Not all ObjC bindings generate a .mm file, and not all .mm files generated should be compiled.
-        if (${_generator} STREQUAL "ObjC")
-            list(FIND ObjC_BINDINGS_NO_MM ${_name} _no_mm_index)
-            if (${_no_mm_index} EQUAL -1)
-                set(_no_mm 0)
-            else ()
-                set(_no_mm 1)
-            endif ()
-        else ()
-            set(_no_mm 0)
-        endif ()
-
-        if (${_no_mm})
-            add_custom_command(
-                OUTPUT ${_destination}/${_prefix}${_name}.h
-                MAIN_DEPENDENCY ${_file}
-                DEPENDS ${COMMON_GENERATOR_DEPENDENCIES}
-                COMMAND ${PERL_EXECUTABLE} -I${WEBCORE_DIR}/bindings/scripts ${BINDING_GENERATOR} --defines "${_features}" --generator ${_generator} ${_idl_includes} --outputDir "${_destination}" --preprocessor "${CODE_GENERATOR_PREPROCESSOR}" --idlAttributesFile ${_idl_attributes_file} ${_supplemental_dependency} ${_file}
-                WORKING_DIRECTORY ${_base_dir}
-                VERBATIM)
-
-            list(APPEND ${_output_source} ${_destination}/${_prefix}${_name}.h)
-        else ()
-            add_custom_command(
-                OUTPUT ${_destination}/${_prefix}${_name}.${_extension} ${_destination}/${_prefix}${_name}.h
-                MAIN_DEPENDENCY ${_file}
-                DEPENDS ${COMMON_GENERATOR_DEPENDENCIES}
-                COMMAND ${PERL_EXECUTABLE} -I${WEBCORE_DIR}/bindings/scripts ${BINDING_GENERATOR} --defines "${_features}" --generator ${_generator} ${_idl_includes} --outputDir "${_destination}" --preprocessor "${CODE_GENERATOR_PREPROCESSOR}" --idlAttributesFile ${_idl_attributes_file} ${_supplemental_dependency} ${_file}
-                WORKING_DIRECTORY ${_base_dir}
-                VERBATIM)
-            list(APPEND ${_output_source} ${_destination}/${_prefix}${_name}.${_extension})
-        endif ()
+        add_custom_command(
+            OUTPUT ${_destination}/${_prefix}${_name}.${_extension} ${_destination}/${_prefix}${_name}.h
+            MAIN_DEPENDENCY ${_file}
+            DEPENDS ${COMMON_GENERATOR_DEPENDENCIES}
+            COMMAND ${PERL_EXECUTABLE} -I${WEBCORE_DIR}/bindings/scripts -I${_base_dir} ${BINDING_GENERATOR} --defines "${_features}" --generator ${_generator} ${_idl_includes} --outputDir "${_destination}" --preprocessor "${CODE_GENERATOR_PREPROCESSOR}" --idlAttributesFile ${_idl_attributes_file} ${_supplemental_dependency} ${_file}
+            WORKING_DIRECTORY ${_base_dir}
+            VERBATIM)
+        list(APPEND ${_output_source} ${_destination}/${_prefix}${_name}.${_extension})
     endforeach ()
 endmacro()
 
@@ -243,7 +223,29 @@ macro(WEBKIT_WRAP_SOURCELIST)
 endmacro()
 
 macro(WEBKIT_FRAMEWORK _target)
-    if (APPLE AND NOT PORT STREQUAL "GTK")
+    include_directories(${${_target}_INCLUDE_DIRECTORIES})
+    include_directories(SYSTEM ${${_target}_SYSTEM_INCLUDE_DIRECTORIES})
+    add_library(${_target} ${${_target}_LIBRARY_TYPE}
+        ${${_target}_HEADERS}
+        ${${_target}_SOURCES}
+    )
+    target_link_libraries(${_target} ${${_target}_LIBRARIES})
+    set_target_properties(${_target} PROPERTIES COMPILE_DEFINITIONS "BUILDING_${_target}")
+
+    if (${_target}_OUTPUT_NAME)
+        set_target_properties(${_target} PROPERTIES OUTPUT_NAME ${${_target}_OUTPUT_NAME})
+    endif ()
+
+    if (${_target}_PRE_BUILD_COMMAND)
+        add_custom_target(_${_target}_PreBuild COMMAND ${${_target}_PRE_BUILD_COMMAND} VERBATIM)
+        add_dependencies(${_target} _${_target}_PreBuild)
+    endif ()
+
+    if (${_target}_POST_BUILD_COMMAND)
+        add_custom_command(TARGET ${_target} POST_BUILD COMMAND ${${_target}_POST_BUILD_COMMAND} VERBATIM)
+    endif ()
+
+    if (APPLE AND NOT PORT STREQUAL "GTK" AND NOT ${_target} STREQUAL "WTF")
         set_target_properties(${_target} PROPERTIES FRAMEWORK TRUE)
         install(TARGETS ${_target} FRAMEWORK DESTINATION ${LIB_INSTALL_DIR})
     endif ()
@@ -328,14 +330,32 @@ macro(GENERATE_WEBKIT2_MESSAGE_SOURCES _output_source _input_files)
     endforeach ()
 endmacro()
 
+macro(MAKE_JS_FILE_ARRAYS _output_cpp _output_h _scripts _scripts_dependencies)
+    if (WIN32)
+        set(_python_path set "PYTHONPATH=${JavaScriptCore_SCRIPTS_DIR}" COMMAND)
+    else ()
+        set(_python_path "PYTHONPATH=${JavaScriptCore_SCRIPTS_DIR}")
+    endif ()
+
+    add_custom_command(
+        OUTPUT ${_output_h} ${_output_cpp}
+        MAIN_DEPENDENCY ${WEBCORE_DIR}/Scripts/make-js-file-arrays.py
+        DEPENDS ${${_scripts}}
+        COMMAND ${_python_path} ${PYTHON_EXECUTABLE} ${WEBCORE_DIR}/Scripts/make-js-file-arrays.py ${_output_h} ${_output_cpp} ${${_scripts}}
+        VERBATIM)
+    list(APPEND WebCore_DERIVED_SOURCES ${_output_cpp})
+    ADD_SOURCE_DEPENDENCIES(${${_scripts_dependencies}} ${_output_h} ${_output_cpp})
+endmacro()
+
 # Helper macro for using all-in-one builds
 # This macro removes the sources included in the _all_in_one_file from the input _file_list.
 # _file_list is a list of source files
 # _all_in_one_file is an all-in-one cpp file includes other cpp files
 # _result_file_list is the output file list
-macro(PROCESS_ALLINONE_FILE _file_list _all_in_one_file _result_file_list)
+macro(PROCESS_ALLINONE_FILE _file_list _all_in_one_file _result_file_list _no_compile)
     file(STRINGS ${_all_in_one_file} _all_in_one_file_content)
     set(${_result_file_list} ${_file_list})
+    set(_allins "")
     foreach (_line ${_all_in_one_file_content})
         string(REGEX MATCH "^#include [\"<](.*)[\">]" _found ${_line})
         if (_found)
@@ -344,7 +364,14 @@ macro(PROCESS_ALLINONE_FILE _file_list _all_in_one_file _result_file_list)
     endforeach ()
 
     foreach (_allin ${_allins})
-        string(REGEX REPLACE ";[^;]*/${_allin};" ";" _new_result "${${_result_file_list}};")
+        if (${_no_compile})
+            # For DerivedSources.cpp, we still need the derived sources to be generated, but we do not want them to be compiled
+            # individually. We add the header to the result file list so that CMake knows to keep generating the files.
+            string(REGEX REPLACE "(.*)\\.cpp" "\\1" _allin_no_ext ${_allin})
+            string(REGEX REPLACE ";([^;]*/)${_allin_no_ext}\\.cpp;" ";\\1${_allin_no_ext}.h;" _new_result "${${_result_file_list}};")
+        else ()
+            string(REGEX REPLACE ";[^;]*/${_allin};" ";" _new_result "${${_result_file_list}};")
+        endif ()
         set(${_result_file_list} ${_new_result})
     endforeach ()
 

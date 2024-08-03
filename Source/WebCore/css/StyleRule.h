@@ -19,11 +19,9 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef StyleRule_h
-#define StyleRule_h
+#pragma once
 
 #include "CSSSelectorList.h"
-#include "MediaList.h"
 #include "StyleProperties.h"
 #include <wtf/RefPtr.h>
 #include <wtf/TypeCasts.h>
@@ -33,6 +31,7 @@ namespace WebCore {
 class CSSRule;
 class CSSStyleRule;
 class CSSStyleSheet;
+class MediaQuerySet;
 class MutableStyleProperties;
 class StyleProperties;
 
@@ -82,8 +81,8 @@ public:
     }
 
     // FIXME: There shouldn't be any need for the null parent version.
-    PassRefPtr<CSSRule> createCSSOMWrapper(CSSStyleSheet* parentSheet = 0) const;
-    PassRefPtr<CSSRule> createCSSOMWrapper(CSSRule* parentRule) const;
+    RefPtr<CSSRule> createCSSOMWrapper(CSSStyleSheet* parentSheet = nullptr) const;
+    RefPtr<CSSRule> createCSSOMWrapper(CSSRule* parentRule) const;
 
 protected:
     StyleRuleBase(Type type, signed sourceLine = 0) : m_type(type), m_sourceLine(sourceLine) { }
@@ -94,13 +93,13 @@ protected:
 private:
     void destroy();
     
-    PassRefPtr<CSSRule> createCSSOMWrapper(CSSStyleSheet* parentSheet, CSSRule* parentRule) const;
+    RefPtr<CSSRule> createCSSOMWrapper(CSSStyleSheet* parentSheet, CSSRule* parentRule) const;
 
     unsigned m_type : 5;
     signed m_sourceLine : 27;
 };
 
-class StyleRule : public StyleRuleBase {
+class StyleRule final : public StyleRuleBase {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     static Ref<StyleRule> create(int sourceLine, Ref<StyleProperties>&& properties)
@@ -134,7 +133,7 @@ private:
     CSSSelectorList m_selectorList;
 };
 
-class StyleRuleFontFace : public StyleRuleBase {
+class StyleRuleFontFace final : public StyleRuleBase {
 public:
     static Ref<StyleRuleFontFace> create(Ref<StyleProperties>&& properties) { return adoptRef(*new StyleRuleFontFace(WTFMove(properties))); }
     
@@ -153,7 +152,7 @@ private:
     Ref<StyleProperties> m_properties;
 };
 
-class StyleRulePage : public StyleRuleBase {
+class StyleRulePage final : public StyleRuleBase {
 public:
     static Ref<StyleRulePage> create(Ref<StyleProperties>&& properties) { return adoptRef(*new StyleRulePage(WTFMove(properties))); }
 
@@ -191,11 +190,11 @@ private:
     Vector<RefPtr<StyleRuleBase>> m_childRules;
 };
 
-class StyleRuleMedia : public StyleRuleGroup {
+class StyleRuleMedia final : public StyleRuleGroup {
 public:
-    static Ref<StyleRuleMedia> create(PassRefPtr<MediaQuerySet> media, Vector<RefPtr<StyleRuleBase>>& adoptRules)
+    static Ref<StyleRuleMedia> create(Ref<MediaQuerySet>&& media, Vector<RefPtr<StyleRuleBase>>& adoptRules)
     {
-        return adoptRef(*new StyleRuleMedia(media, adoptRules));
+        return adoptRef(*new StyleRuleMedia(WTFMove(media), adoptRules));
     }
 
     MediaQuerySet* mediaQueries() const { return m_mediaQueries.get(); }
@@ -203,13 +202,13 @@ public:
     Ref<StyleRuleMedia> copy() const { return adoptRef(*new StyleRuleMedia(*this)); }
 
 private:
-    StyleRuleMedia(PassRefPtr<MediaQuerySet>, Vector<RefPtr<StyleRuleBase>>& adoptRules);
+    StyleRuleMedia(Ref<MediaQuerySet>&&, Vector<RefPtr<StyleRuleBase>>& adoptRules);
     StyleRuleMedia(const StyleRuleMedia&);
 
     RefPtr<MediaQuerySet> m_mediaQueries;
 };
 
-class StyleRuleSupports : public StyleRuleGroup {
+class StyleRuleSupports final : public StyleRuleGroup {
 public:
     static Ref<StyleRuleSupports> create(const String& conditionText, bool conditionIsSupported, Vector<RefPtr<StyleRuleBase>>& adoptRules)
     {
@@ -228,7 +227,7 @@ private:
     bool m_conditionIsSupported;
 };
 
-class StyleRuleRegion : public StyleRuleGroup {
+class StyleRuleRegion final : public StyleRuleGroup {
 public:
     static Ref<StyleRuleRegion> create(Vector<std::unique_ptr<CSSParserSelector>>* selectors, Vector<RefPtr<StyleRuleBase>>& adoptRules)
     {
@@ -247,7 +246,7 @@ private:
 };
 
 #if ENABLE(CSS_DEVICE_ADAPTATION)
-class StyleRuleViewport : public StyleRuleBase {
+class StyleRuleViewport final : public StyleRuleBase {
 public:
     static Ref<StyleRuleViewport> create(Ref<StyleProperties>&& properties) { return adoptRef(*new StyleRuleViewport(WTFMove(properties))); }
 
@@ -297,5 +296,3 @@ SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::StyleRuleViewport)
     static bool isType(const WebCore::StyleRuleBase& rule) { return rule.isViewportRule(); }
 SPECIALIZE_TYPE_TRAITS_END()
 #endif // ENABLE(CSS_DEVICE_ADAPTATION)
-
-#endif // StyleRule_h

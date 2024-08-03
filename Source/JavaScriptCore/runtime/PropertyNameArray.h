@@ -69,14 +69,14 @@ public:
 
     void add(const Identifier&);
     void add(UniquedStringImpl*);
-    void addKnownUnique(UniquedStringImpl*);
+    void addUnchecked(UniquedStringImpl*);
 
     Identifier& operator[](unsigned i) { return m_data->propertyNameVector()[i]; }
     const Identifier& operator[](unsigned i) const { return m_data->propertyNameVector()[i]; }
 
     void setData(PassRefPtr<PropertyNameArrayData> data) { m_data = data; }
     PropertyNameArrayData* data() { return m_data.get(); }
-    PassRefPtr<PropertyNameArrayData> releaseData() { return m_data.release(); }
+    PassRefPtr<PropertyNameArrayData> releaseData() { return WTFMove(m_data); }
 
     // FIXME: Remove these functions.
     bool canAddKnownUniqueForStructure() const { return m_data->propertyNameVector().isEmpty(); }
@@ -103,7 +103,7 @@ ALWAYS_INLINE void PropertyNameArray::add(const Identifier& identifier)
     add(identifier.impl());
 }
 
-ALWAYS_INLINE void PropertyNameArray::addKnownUnique(UniquedStringImpl* identifier)
+ALWAYS_INLINE void PropertyNameArray::addUnchecked(UniquedStringImpl* identifier)
 {
     if (!isUidMatchedToTypeMode(identifier))
         return;
@@ -131,7 +131,7 @@ ALWAYS_INLINE void PropertyNameArray::add(UniquedStringImpl* identifier)
             return;
     }
 
-    addKnownUnique(identifier);
+    addUnchecked(identifier);
 }
 
 ALWAYS_INLINE bool PropertyNameArray::isUidMatchedToTypeMode(UniquedStringImpl* identifier)

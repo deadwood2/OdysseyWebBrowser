@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012 Michael Pruett <michael@68k.org>
+ * Copyright (C) 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -47,8 +48,11 @@ namespace WebCore {
 
 JSValue JSIDBDatabase::createObjectStore(ExecState& state)
 {
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     if (state.argumentCount() < 1)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
 
     String name = state.argument(0).toString(&state)->value(&state);
     if (state.hadException())
@@ -56,7 +60,7 @@ JSValue JSIDBDatabase::createObjectStore(ExecState& state)
 
     JSValue optionsValue = state.argument(1);
     if (!optionsValue.isUndefinedOrNull() && !optionsValue.isObject())
-        return throwTypeError(&state, "Not an object.");
+        return throwTypeError(&state, scope, "Not an object.");
 
     IDBKeyPath keyPath;
     bool autoIncrement = false;
@@ -66,7 +70,7 @@ JSValue JSIDBDatabase::createObjectStore(ExecState& state)
             return jsUndefined();
 
         if (!keyPathValue.isUndefinedOrNull()) {
-            keyPath = idbKeyPathFromValue(&state, keyPathValue);
+            keyPath = idbKeyPathFromValue(state, keyPathValue);
             if (state.hadException())
                 return jsUndefined();
         }
@@ -77,47 +81,8 @@ JSValue JSIDBDatabase::createObjectStore(ExecState& state)
     }
 
     ExceptionCodeWithMessage ec;
-    JSValue result = toJS(&state, globalObject(), wrapped().createObjectStore(name, keyPath, autoIncrement, ec).get());
+    JSValue result = toJS(&state, globalObject(), wrapped().createObjectStore(name, keyPath, autoIncrement, ec));
     setDOMException(&state, ec);
-    return result;
-}
-
-JSValue JSIDBDatabase::transaction(ExecState& exec)
-{
-    size_t argsCount = std::min<size_t>(2, exec.argumentCount());
-    if (argsCount < 1)
-        return exec.vm().throwException(&exec, createNotEnoughArgumentsError(&exec));
-
-    auto* scriptContext = jsCast<JSDOMGlobalObject*>(exec.lexicalGlobalObject())->scriptExecutionContext();
-    if (!scriptContext)
-        return jsUndefined();
-
-    Vector<String> scope;
-    JSValue scopeArg(exec.argument(0));
-    auto domStringList = JSDOMStringList::toWrapped(&exec, scopeArg);
-    if (exec.hadException())
-        return jsUndefined();
-
-    if (domStringList)
-        scope = *domStringList;
-    else {
-        scope.append(scopeArg.toString(&exec)->value(&exec));
-        if (exec.hadException())
-            return jsUndefined();
-    }
-
-    String mode;
-    if (argsCount == 2) {
-        JSValue modeArg(exec.argument(1));
-        mode = modeArg.toString(&exec)->value(&exec);
-
-        if (exec.hadException())
-            return jsUndefined();
-    }
-
-    ExceptionCodeWithMessage ec;
-    JSValue result = toJS(&exec, globalObject(), wrapped().transaction(scriptContext, scope, mode, ec).get());
-    setDOMException(&exec, ec);
     return result;
 }
 

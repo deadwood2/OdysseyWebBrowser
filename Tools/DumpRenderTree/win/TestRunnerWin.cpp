@@ -74,6 +74,11 @@ TestRunner::~TestRunner()
         editingDelegate->setAcceptsEditing(TRUE);
 }
 
+JSContextRef TestRunner::mainFrameJSContext()
+{
+    return frame->globalContext();
+}
+
 void TestRunner::addDisallowedURL(JSStringRef url)
 {
     // FIXME: Implement!
@@ -159,6 +164,12 @@ void TestRunner::clearAllDatabases()
         return;
 
     databaseManager->deleteAllDatabases();
+
+    COMPtr<IWebDatabaseManager2> databaseManager2;
+    if (FAILED(databaseManager->QueryInterface(&databaseManager2)))
+        return;
+
+    databaseManager2->deleteAllIndexedDatabases();
 }
 
 void TestRunner::setStorageDatabaseIdleInterval(double)
@@ -894,6 +905,23 @@ void TestRunner::setWindowIsKey(bool flag)
     ::SendMessage(webViewWindow, flag ? WM_SETFOCUS : WM_KILLFOCUS, (WPARAM)::GetDesktopWindow(), 0);
 }
 
+void TestRunner::setViewSize(double width, double height)
+{
+    COMPtr<IWebView> webView;
+    if (FAILED(frame->webView(&webView)))
+        return;
+
+    COMPtr<IWebViewPrivate2> viewPrivate;
+    if (FAILED(webView->QueryInterface(&viewPrivate)))
+        return;
+
+    HWND webViewWindow;
+    if (FAILED(viewPrivate->viewWindow(&webViewWindow)))
+        return;
+
+    ::SetWindowPos(webViewWindow, 0, 0, 0, width, height, SWP_NOMOVE);
+}
+
 static const CFTimeInterval waitToDumpWatchdogInterval = 30.0;
 
 static void CALLBACK waitUntilDoneWatchdogFired(HWND, UINT, UINT_PTR, DWORD)
@@ -928,11 +956,52 @@ void TestRunner::execCommand(JSStringRef name, JSStringRef value)
     viewPrivate->executeCoreCommandByName(nameBSTR, valueBSTR);
 }
 
-bool TestRunner::findString(JSContextRef /* context */, JSStringRef /* target */, JSObjectRef /* optionsArray */)
+bool TestRunner::findString(JSContextRef context, JSStringRef target, JSObjectRef optionsArray)
 {
-    // FIXME: Implement
-    printf("ERROR: TestRunner::findString(...) not implemented\n");
-    return false;
+    COMPtr<IWebView> webView;
+    if (FAILED(frame->webView(&webView)))
+        return false;
+
+    COMPtr<IWebViewPrivate3> viewPrivate;
+    if (FAILED(webView->QueryInterface(&viewPrivate)))
+        return false;
+
+    unsigned char options = 0;
+
+    JSRetainPtr<JSStringRef> lengthPropertyName(Adopt, JSStringCreateWithUTF8CString("length"));
+    JSValueRef lengthValue = JSObjectGetProperty(context, optionsArray, lengthPropertyName.get(), nullptr);
+    if (!JSValueIsNumber(context, lengthValue))
+        return false;
+
+    _bstr_t targetBSTR(JSStringCopyBSTR(target), false);
+
+    size_t length = static_cast<size_t>(JSValueToNumber(context, lengthValue, nullptr));
+    for (size_t i = 0; i < length; ++i) {
+        JSValueRef value = JSObjectGetPropertyAtIndex(context, optionsArray, i, nullptr);
+        if (!JSValueIsString(context, value))
+            continue;
+
+        JSRetainPtr<JSStringRef> optionName(Adopt, JSValueToStringCopy(context, value, nullptr));
+
+        if (JSStringIsEqualToUTF8CString(optionName.get(), "CaseInsensitive"))
+            options |= WebFindOptionsCaseInsensitive;
+        else if (JSStringIsEqualToUTF8CString(optionName.get(), "AtWordStarts"))
+            options |= WebFindOptionsAtWordStarts;
+        else if (JSStringIsEqualToUTF8CString(optionName.get(), "TreatMedialCapitalAsWordStart"))
+            options |= WebFindOptionsTreatMedialCapitalAsWordStart;
+        else if (JSStringIsEqualToUTF8CString(optionName.get(), "Backwards"))
+            options |= WebFindOptionsBackwards;
+        else if (JSStringIsEqualToUTF8CString(optionName.get(), "WrapAround"))
+            options |= WebFindOptionsWrapAround;
+        else if (JSStringIsEqualToUTF8CString(optionName.get(), "StartInSelection"))
+            options |= WebFindOptionsStartInSelection;
+    }
+
+    BOOL found = FALSE;
+    if (FAILED(viewPrivate->findString(targetBSTR, static_cast<WebFindOptions>(options), &found)))
+        return false;
+
+    return found;
 }
 
 void TestRunner::setCacheModel(int cacheModel)
@@ -1275,3 +1344,10 @@ void TestRunner::simulateLegacyWebNotificationClick(JSStringRef title)
 {
     // FIXME: Implement.
 }
+
+unsigned TestRunner::imageCountInGeneralPasteboard() const
+{
+    printf("ERROR: TestRunner::imageCountInGeneralPasteboard() not implemented\n");
+    return 0;
+}
+

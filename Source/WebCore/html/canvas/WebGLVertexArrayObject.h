@@ -32,9 +32,6 @@
 #include "WebGLContextObject.h"
 #include "WebGLVertexArrayObjectBase.h"
 
-#include <wtf/PassRefPtr.h>
-#include <wtf/RefCounted.h>
-
 namespace WebCore {
 
 class WebGL2RenderingContext;
@@ -46,7 +43,7 @@ public:
 private:
     WebGLVertexArrayObject(WebGLRenderingContextBase*, VAOType);
     bool isTransformFeedback() const { return true; }
-    virtual void deleteObjectImpl(GraphicsContext3D*, Platform3DObject) override;
+    void deleteObjectImpl(GraphicsContext3D*, Platform3DObject) override;
 };
 
 } // namespace WebCore

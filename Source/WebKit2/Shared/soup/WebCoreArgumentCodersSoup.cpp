@@ -39,7 +39,7 @@ using namespace WebCore;
 
 namespace IPC {
 
-void ArgumentCoder<ResourceRequest>::encodePlatformData(ArgumentEncoder& encoder, const ResourceRequest& resourceRequest)
+void ArgumentCoder<ResourceRequest>::encodePlatformData(Encoder& encoder, const ResourceRequest& resourceRequest)
 {
     encoder << resourceRequest.url().string();
     encoder << resourceRequest.httpMethod();
@@ -64,7 +64,7 @@ void ArgumentCoder<ResourceRequest>::encodePlatformData(ArgumentEncoder& encoder
     encoder << resourceRequest.initiatingPageID();
 }
 
-bool ArgumentCoder<ResourceRequest>::decodePlatformData(ArgumentDecoder& decoder, ResourceRequest& resourceRequest)
+bool ArgumentCoder<ResourceRequest>::decodePlatformData(Decoder& decoder, ResourceRequest& resourceRequest)
 {
     String url;
     if (!decoder.decode(url))
@@ -134,7 +134,7 @@ bool ArgumentCoder<ResourceRequest>::decodePlatformData(ArgumentDecoder& decoder
     return true;
 }
 
-void ArgumentCoder<CertificateInfo>::encode(ArgumentEncoder& encoder, const CertificateInfo& certificateInfo)
+void ArgumentCoder<CertificateInfo>::encode(Encoder& encoder, const CertificateInfo& certificateInfo)
 {
     if (!certificateInfo.certificate()) {
         encoder << false;
@@ -154,7 +154,7 @@ void ArgumentCoder<CertificateInfo>::encode(ArgumentEncoder& encoder, const Cert
     encoder << static_cast<uint32_t>(certificateInfo.tlsErrors());
 }
 
-bool ArgumentCoder<CertificateInfo>::decode(ArgumentDecoder& decoder, CertificateInfo& certificateInfo)
+bool ArgumentCoder<CertificateInfo>::decode(Decoder& decoder, CertificateInfo& certificateInfo)
 {
     bool hasCertificate;
     if (!decoder.decode(hasCertificate))
@@ -184,30 +184,27 @@ bool ArgumentCoder<CertificateInfo>::decode(ArgumentDecoder& decoder, Certificat
     return true;
 }
 
-void ArgumentCoder<ResourceError>::encodePlatformData(ArgumentEncoder& encoder, const ResourceError& resourceError)
+void ArgumentCoder<ResourceError>::encodePlatformData(Encoder& encoder, const ResourceError& resourceError)
 {
-    bool errorIsNull = resourceError.isNull();
-    encoder << errorIsNull;
-    if (errorIsNull)
+    encoder.encodeEnum(resourceError.type());
+    if (resourceError.isNull())
         return;
 
     encoder << resourceError.domain();
     encoder << resourceError.errorCode();
     encoder << resourceError.failingURL().string();
     encoder << resourceError.localizedDescription();
-    encoder << resourceError.isCancellation();
-    encoder << resourceError.isTimeout();
 
     encoder << CertificateInfo(resourceError);
 }
 
-bool ArgumentCoder<ResourceError>::decodePlatformData(ArgumentDecoder& decoder, ResourceError& resourceError)
+bool ArgumentCoder<ResourceError>::decodePlatformData(Decoder& decoder, ResourceError& resourceError)
 {
-    bool errorIsNull;
-    if (!decoder.decode(errorIsNull))
+    ResourceErrorBase::Type errorType;
+    if (!decoder.decodeEnum(errorType))
         return false;
-    if (errorIsNull) {
-        resourceError = ResourceError();
+    if (errorType == ResourceErrorBase::Type::Null) {
+        resourceError = { };
         return true;
     }
 
@@ -227,17 +224,8 @@ bool ArgumentCoder<ResourceError>::decodePlatformData(ArgumentDecoder& decoder, 
     if (!decoder.decode(localizedDescription))
         return false;
 
-    bool isCancellation;
-    if (!decoder.decode(isCancellation))
-        return false;
-
-    bool isTimeout;
-    if (!decoder.decode(isTimeout))
-        return false;
-
     resourceError = ResourceError(domain, errorCode, URL(URL(), failingURL), localizedDescription);
-    resourceError.setIsCancellation(isCancellation);
-    resourceError.setIsTimeout(isTimeout);
+    resourceError.setType(errorType);
 
     CertificateInfo certificateInfo;
     if (!decoder.decode(certificateInfo))
@@ -248,23 +236,23 @@ bool ArgumentCoder<ResourceError>::decodePlatformData(ArgumentDecoder& decoder, 
     return true;
 }
 
-void ArgumentCoder<ProtectionSpace>::encodePlatformData(ArgumentEncoder&, const ProtectionSpace&)
+void ArgumentCoder<ProtectionSpace>::encodePlatformData(Encoder&, const ProtectionSpace&)
 {
     ASSERT_NOT_REACHED();
 }
 
-bool ArgumentCoder<ProtectionSpace>::decodePlatformData(ArgumentDecoder&, ProtectionSpace&)
+bool ArgumentCoder<ProtectionSpace>::decodePlatformData(Decoder&, ProtectionSpace&)
 {
     ASSERT_NOT_REACHED();
     return false;
 }
 
-void ArgumentCoder<Credential>::encodePlatformData(ArgumentEncoder&, const Credential&)
+void ArgumentCoder<Credential>::encodePlatformData(Encoder&, const Credential&)
 {
     ASSERT_NOT_REACHED();
 }
 
-bool ArgumentCoder<Credential>::decodePlatformData(ArgumentDecoder&, Credential&)
+bool ArgumentCoder<Credential>::decodePlatformData(Decoder&, Credential&)
 {
     ASSERT_NOT_REACHED();
     return false;

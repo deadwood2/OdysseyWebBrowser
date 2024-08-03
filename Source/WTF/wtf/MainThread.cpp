@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2008, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2007, 2008, 2015-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -47,9 +47,9 @@ static ThreadIdentifier mainThreadIdentifier;
 
 static StaticLock mainThreadFunctionQueueMutex;
 
-static Deque<std::function<void ()>>& functionQueue()
+static Deque<Function<void ()>>& functionQueue()
 {
-    static NeverDestroyed<Deque<std::function<void ()>>> functionQueue;
+    static NeverDestroyed<Deque<Function<void ()>>> functionQueue;
     return functionQueue;
 }
 
@@ -120,7 +120,7 @@ void dispatchFunctionsFromMainThread()
 
     auto startTime = std::chrono::steady_clock::now();
 
-    std::function<void ()> function;
+    Function<void ()> function;
 
     while (true) {
         {
@@ -133,6 +133,9 @@ void dispatchFunctionsFromMainThread()
 
         function();
 
+        // Clearing the function can have side effects, so do so outside of the lock above.
+        function = nullptr;
+
         // If we are running accumulated functions for too long so UI may become unresponsive, we need to
         // yield so the user input can be processed. Otherwise user may not be able to even close the window.
         // This code has effect only in case the scheduleDispatchFunctionsOnMainThread() is implemented in a way that
@@ -144,7 +147,7 @@ void dispatchFunctionsFromMainThread()
     }
 }
 
-void callOnMainThread(std::function<void ()> function)
+void callOnMainThread(Function<void ()>&& function)
 {
     ASSERT(function);
 
@@ -207,10 +210,15 @@ void registerGCThread()
 
 bool isMainThreadOrGCThread()
 {
-    if (isGCThread->isSet() && **isGCThread)
+    if (mayBeGCThread())
         return true;
 
     return isMainThread();
+}
+
+bool mayBeGCThread()
+{
+    return isGCThread && isGCThread->isSet() && **isGCThread;
 }
 
 } // namespace WTF

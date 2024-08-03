@@ -4,9 +4,10 @@
 // found in the LICENSE file.
 //
 
-#include "Macro.h"
+#include "compiler/preprocessor/Macro.h"
 
-#include "Token.h"
+#include "common/angleutils.h"
+#include "compiler/preprocessor/Token.h"
 
 namespace pp
 {
@@ -17,6 +18,21 @@ bool Macro::equals(const Macro &other) const
            (name == other.name) &&
            (parameters == other.parameters) &&
            (replacements == other.replacements);
+}
+
+void PredefineMacro(MacroSet *macroSet, const char *name, int value)
+{
+    Token token;
+    token.type = Token::CONST_INT;
+    token.text = ToString(value);
+
+    Macro macro;
+    macro.predefined = true;
+    macro.type       = Macro::kTypeObj;
+    macro.name = name;
+    macro.replacements.push_back(token);
+
+    (*macroSet)[name] = macro;
 }
 
 }  // namespace pp

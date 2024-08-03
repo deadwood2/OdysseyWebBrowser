@@ -33,7 +33,7 @@ namespace WebCore {
 
 using namespace HTMLNames;
 
-RenderDetailsMarker::RenderDetailsMarker(DetailsMarkerControl& element, Ref<RenderStyle>&& style)
+RenderDetailsMarker::RenderDetailsMarker(DetailsMarkerControl& element, RenderStyle&& style)
     : RenderBlockFlow(element, WTFMove(style))
 {
 }
@@ -144,7 +144,7 @@ bool RenderDetailsMarker::isOpen() const
         if (!renderer->node())
             continue;
         if (is<HTMLDetailsElement>(*renderer->node()))
-            return !downcast<HTMLDetailsElement>(*renderer->node()).getAttribute(openAttr).isNull();
+            return !downcast<HTMLDetailsElement>(*renderer->node()).attributeWithoutSynchronization(openAttr).isNull();
         if (is<HTMLInputElement>(*renderer->node()))
             return true;
     }

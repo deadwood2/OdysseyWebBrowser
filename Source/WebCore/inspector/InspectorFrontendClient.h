@@ -28,15 +28,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef InspectorFrontendClient_h
-#define InspectorFrontendClient_h
+#pragma once
 
 #include <wtf/Forward.h>
 
 namespace WebCore {
-
-class ContextMenuItem;
-class Event;
 
 class InspectorFrontendClient {
 public:
@@ -72,11 +68,12 @@ public:
 
     virtual void inspectedURLChanged(const String&) = 0;
 
+    virtual void pagePaused() { }
+    virtual void pageUnpaused() { }
+
     WEBCORE_EXPORT virtual void sendMessageToBackend(const String&) = 0;
 
     WEBCORE_EXPORT virtual bool isUnderTest() = 0;
 };
 
 } // namespace WebCore
-
-#endif

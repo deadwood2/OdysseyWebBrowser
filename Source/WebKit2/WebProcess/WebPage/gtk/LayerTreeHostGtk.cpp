@@ -29,6 +29,7 @@
 
 #if USE(TEXTURE_MAPPER_GL)
 
+#include "AcceleratedSurface.h"
 #include "DrawingAreaImpl.h"
 #include "TextureMapperGL.h"
 #include "WebPage.h"
@@ -46,16 +47,8 @@
 #include <WebCore/MainFrame.h>
 #include <WebCore/Page.h>
 #include <WebCore/Settings.h>
-#include <wtf/CurrentTime.h>
-
 #include <gdk/gdk.h>
-#if defined(GDK_WINDOWING_X11)
-#define Region XRegion
-#define Font XFont
-#define Cursor XCursor
-#define Screen XScreen
-#include <gdk/gdkx.h>
-#endif
+#include <wtf/CurrentTime.h>
 
 using namespace WebCore;
 
@@ -126,56 +119,31 @@ void LayerTreeHostGtk::RenderFrameScheduler::renderFrame()
     nextFrame();
 }
 
-PassRefPtr<LayerTreeHostGtk> LayerTreeHostGtk::create(WebPage* webPage)
+Ref<LayerTreeHostGtk> LayerTreeHostGtk::create(WebPage& webPage)
 {
-    RefPtr<LayerTreeHostGtk> host = adoptRef(new LayerTreeHostGtk(webPage));
-    host->initialize();
-    return host.release();
+    return adoptRef(*new LayerTreeHostGtk(webPage));
 }
 
-LayerTreeHostGtk::LayerTreeHostGtk(WebPage* webPage)
+LayerTreeHostGtk::LayerTreeHostGtk(WebPage& webPage)
     : LayerTreeHost(webPage)
-    , m_isValid(true)
-    , m_notifyAfterScheduledLayerFlush(false)
-    , m_layerFlushSchedulingEnabled(true)
-    , m_viewOverlayRootLayer(nullptr)
+    , m_surface(AcceleratedSurface::create(webPage))
     , m_renderFrameScheduler(std::bind(&LayerTreeHostGtk::renderFrame, this))
-{
-}
-
-bool LayerTreeHostGtk::makeContextCurrent()
-{
-    if (!m_layerTreeContext.contextID) {
-        m_context = nullptr;
-        return false;
-    }
-
-    if (!m_context) {
-        m_context = GLContext::createContextForWindow(reinterpret_cast<GLNativeWindowType>(m_layerTreeContext.contextID), GLContext::sharingContext());
-        if (!m_context)
-            return false;
-    }
-
-    return m_context->makeContextCurrent();
-}
-
-void LayerTreeHostGtk::initialize()
 {
     m_rootLayer = GraphicsLayer::create(graphicsLayerFactory(), *this);
     m_rootLayer->setDrawsContent(false);
-    m_rootLayer->setSize(m_webPage->size());
+    m_rootLayer->setSize(m_webPage.size());
 
     m_scaleMatrix.makeIdentity();
-    m_scaleMatrix.scale(m_webPage->deviceScaleFactor() * m_webPage->pageScaleFactor());
+    m_scaleMatrix.scale(m_webPage.deviceScaleFactor() * m_webPage.pageScaleFactor());
     downcast<GraphicsLayerTextureMapper>(*m_rootLayer).layer().setAnchorPoint(FloatPoint3D());
     downcast<GraphicsLayerTextureMapper>(*m_rootLayer).layer().setTransform(m_scaleMatrix);
 
     // The non-composited contents are a child of the root layer.
     m_nonCompositedContentLayer = GraphicsLayer::create(graphicsLayerFactory(), *this);
     m_nonCompositedContentLayer->setDrawsContent(true);
-    m_nonCompositedContentLayer->setContentsOpaque(m_webPage->drawsBackground());
-    m_nonCompositedContentLayer->setSize(m_webPage->size());
-    if (m_webPage->corePage()->settings().acceleratedDrawingEnabled())
+    m_nonCompositedContentLayer->setContentsOpaque(m_webPage.drawsBackground());
+    m_nonCompositedContentLayer->setSize(m_webPage.size());
+    if (m_webPage.corePage()->settings().acceleratedDrawingEnabled())
         m_nonCompositedContentLayer->setAcceleratesDrawing(true);
 
 #ifndef NDEBUG
@@ -185,23 +153,44 @@ void LayerTreeHostGtk::initialize()
 
     m_rootLayer->addChild(m_nonCompositedContentLayer.get());
     m_nonCompositedContentLayer->setNeedsDisplay();
+
+    if (m_surface) {
+        createTextureMapper();
+        m_layerTreeContext.contextID = m_surface->surfaceID();
+    }
+}
+
+bool LayerTreeHostGtk::makeContextCurrent()
+{
+    uint64_t nativeHandle = m_surface ? m_surface->window() : m_layerTreeContext.contextID;
+    if (!nativeHandle) {
+        m_context = nullptr;
+        return false;
+    }
+
+    if (m_context)
+        return m_context->makeContextCurrent();
+
+    m_context = GLContext::createContextForWindow(reinterpret_cast<GLNativeWindowType>(nativeHandle), &PlatformDisplay::sharedDisplayForCompositing());
+    if (!m_context)
+        return false;
+
+    if (!m_context->makeContextCurrent())
+        return false;
+
+    // Do not do frame sync when rendering offscreen in the web process to ensure that SwapBuffers never blocks.
+    // Rendering to the actual screen will happen later anyway since the UI process schedules a redraw for every update,
+    // the compositor will take care of syncing to vblank.
+    if (m_surface)
+        m_context->swapInterval(0);
+
+    return true;
 }
 
 LayerTreeHostGtk::~LayerTreeHostGtk()
 {
-    ASSERT(!m_isValid);
     ASSERT(!m_rootLayer);
     cancelPendingLayerFlush();
-}
-
-const LayerTreeContext& LayerTreeHostGtk::layerTreeContext()
-{
-    return m_layerTreeContext;
-}
-
-void LayerTreeHostGtk::setShouldNotifyAfterNextScheduledLayerFlush(bool notifyAfterScheduledLayerFlush)
-{
-    m_notifyAfterScheduledLayerFlush = notifyAfterScheduledLayerFlush;
 }
 
 void LayerTreeHostGtk::setRootCompositingLayer(GraphicsLayer* graphicsLayer)
@@ -217,8 +206,6 @@ void LayerTreeHostGtk::setRootCompositingLayer(GraphicsLayer* graphicsLayer)
 
 void LayerTreeHostGtk::invalidate()
 {
-    ASSERT(m_isValid);
-
     // This can trigger destruction of GL objects so let's make sure that
     // we have the right active context
     if (m_context)
@@ -230,7 +217,9 @@ void LayerTreeHostGtk::invalidate()
     m_textureMapper = nullptr;
 
     m_context = nullptr;
-    m_isValid = false;
+    LayerTreeHost::invalidate();
+
+    m_surface = nullptr;
 }
 
 void LayerTreeHostGtk::setNonCompositedContentsNeedDisplay()
@@ -270,16 +259,22 @@ void LayerTreeHostGtk::sizeDidChange(const IntSize& newSize)
         m_nonCompositedContentLayer->setNeedsDisplayInRect(FloatRect(0, oldSize.height(), newSize.width(), newSize.height() - oldSize.height()));
     m_nonCompositedContentLayer->setNeedsDisplay();
 
+    if (m_surface && m_surface->resize(newSize))
+        m_layerTreeContext.contextID = m_surface->surfaceID();
+
     compositeLayersToContext(ForResize);
 }
 
 void LayerTreeHostGtk::deviceOrPageScaleFactorChanged()
 {
+    if (m_surface && m_surface->resize(m_webPage.size()))
+        m_layerTreeContext.contextID = m_surface->surfaceID();
+
     // Other layers learn of the scale factor change via WebPage::setDeviceScaleFactor.
     m_nonCompositedContentLayer->deviceOrPageScaleFactorChanged();
 
     m_scaleMatrix.makeIdentity();
-    m_scaleMatrix.scale(m_webPage->deviceScaleFactor() * m_webPage->pageScaleFactor());
+    m_scaleMatrix.scale(m_webPage.deviceScaleFactor() * m_webPage.pageScaleFactor());
     downcast<GraphicsLayerTextureMapper>(*m_rootLayer).layer().setTransform(m_scaleMatrix);
 }
 
@@ -291,17 +286,17 @@ void LayerTreeHostGtk::forceRepaint()
 void LayerTreeHostGtk::paintContents(const GraphicsLayer* graphicsLayer, GraphicsContext& graphicsContext, GraphicsLayerPaintingPhase, const FloatRect& clipRect)
 {
     if (graphicsLayer == m_nonCompositedContentLayer.get())
-        m_webPage->drawRect(graphicsContext, enclosingIntRect(clipRect));
+        m_webPage.drawRect(graphicsContext, enclosingIntRect(clipRect));
 }
 
 float LayerTreeHostGtk::deviceScaleFactor() const
 {
-    return m_webPage->deviceScaleFactor();
+    return m_webPage.deviceScaleFactor();
 }
 
 float LayerTreeHostGtk::pageScaleFactor() const
 {
-    return m_webPage->pageScaleFactor();
+    return m_webPage.pageScaleFactor();
 }
 
 bool LayerTreeHostGtk::renderFrame()
@@ -312,11 +307,11 @@ bool LayerTreeHostGtk::renderFrame()
 
 bool LayerTreeHostGtk::flushPendingLayerChanges()
 {
-    bool viewportIsStable = m_webPage->corePage()->mainFrame().view()->viewportIsStable();
+    bool viewportIsStable = m_webPage.corePage()->mainFrame().view()->viewportIsStable();
     m_rootLayer->flushCompositingStateForThisLayerOnly(viewportIsStable);
     m_nonCompositedContentLayer->flushCompositingStateForThisLayerOnly(viewportIsStable);
 
-    if (!m_webPage->corePage()->mainFrame().view()->flushCompositingStateIncludingSubframes())
+    if (!m_webPage.corePage()->mainFrame().view()->flushCompositingStateIncludingSubframes())
         return false;
 
     if (m_viewOverlayRootLayer)
@@ -336,14 +331,19 @@ void LayerTreeHostGtk::compositeLayersToContext(CompositePurpose purpose)
     // we set the viewport parameters directly from the window size.
     IntSize contextSize = m_context->defaultFrameBufferSize();
     glViewport(0, 0, contextSize.width(), contextSize.height());
-
-    if (purpose == ForResize) {
-        glClearColor(1, 1, 1, 0);
+    if (purpose == ForResize || !m_webPage.drawsBackground()) {
+        glClearColor(0, 0, 0, 0);
         glClear(GL_COLOR_BUFFER_BIT);
     }
 
     ASSERT(m_textureMapper);
-    m_textureMapper->beginPainting();
+
+    TextureMapper::PaintFlags paintFlags = 0;
+
+    if (m_surface && m_surface->shouldPaintMirrored())
+        paintFlags |= TextureMapper::PaintingMirrored;
+
+    m_textureMapper->beginPainting(paintFlags);
     downcast<GraphicsLayerTextureMapper>(*m_rootLayer).layer().paint();
     m_textureMapper->endPainting();
 
@@ -354,7 +354,7 @@ void LayerTreeHostGtk::flushAndRenderLayers()
 {
     {
         RefPtr<LayerTreeHostGtk> protect(this);
-        m_webPage->layoutIfNeeded();
+        m_webPage.layoutIfNeeded();
 
         if (!m_isValid)
             return;
@@ -371,7 +371,7 @@ void LayerTreeHostGtk::flushAndRenderLayers()
 
     if (m_notifyAfterScheduledLayerFlush) {
         // Let the drawing area know that we've done a flush of the layer changes.
-        static_cast<DrawingAreaImpl*>(m_webPage->drawingArea())->layerHostDidFlushLayers();
+        m_webPage.drawingArea()->layerHostDidFlushLayers();
         m_notifyAfterScheduledLayerFlush = false;
     }
 }
@@ -384,24 +384,9 @@ void LayerTreeHostGtk::scheduleLayerFlush()
     m_renderFrameScheduler.start();
 }
 
-void LayerTreeHostGtk::setLayerFlushSchedulingEnabled(bool layerFlushingEnabled)
-{
-    if (m_layerFlushSchedulingEnabled == layerFlushingEnabled)
-        return;
-
-    m_layerFlushSchedulingEnabled = layerFlushingEnabled;
-
-    if (m_layerFlushSchedulingEnabled) {
-        scheduleLayerFlush();
-        return;
-    }
-
-    cancelPendingLayerFlush();
-}
-
 void LayerTreeHostGtk::pageBackgroundTransparencyChanged()
 {
-    m_nonCompositedContentLayer->setContentsOpaque(m_webPage->drawsBackground());
+    m_nonCompositedContentLayer->setContentsOpaque(m_webPage.drawsBackground());
 }
 
 void LayerTreeHostGtk::cancelPendingLayerFlush()
@@ -409,18 +394,15 @@ void LayerTreeHostGtk::cancelPendingLayerFlush()
     m_renderFrameScheduler.stop();
 }
 
-void LayerTreeHostGtk::setViewOverlayRootLayer(WebCore::GraphicsLayer* viewOverlayRootLayer)
+void LayerTreeHostGtk::setViewOverlayRootLayer(GraphicsLayer* viewOverlayRootLayer)
 {
-    m_viewOverlayRootLayer = viewOverlayRootLayer;
+    LayerTreeHost::setViewOverlayRootLayer(viewOverlayRootLayer);
     if (m_viewOverlayRootLayer)
         m_rootLayer->addChild(m_viewOverlayRootLayer);
 }
 
-void LayerTreeHostGtk::setNativeSurfaceHandleForCompositing(uint64_t handle)
+void LayerTreeHostGtk::createTextureMapper()
 {
-    cancelPendingLayerFlush();
-    m_layerTreeContext.contextID = handle;
-
     // The creation of the TextureMapper needs an active OpenGL context.
     if (!makeContextCurrent())
         return;
@@ -430,9 +412,18 @@ void LayerTreeHostGtk::setNativeSurfaceHandleForCompositing(uint64_t handle)
     m_textureMapper = TextureMapper::create();
     static_cast<TextureMapperGL*>(m_textureMapper.get())->setEnableEdgeDistanceAntialiasing(true);
     downcast<GraphicsLayerTextureMapper>(*m_rootLayer).layer().setTextureMapper(m_textureMapper.get());
+}
 
+#if PLATFORM(X11) && !USE(REDIRECTED_XCOMPOSITE_WINDOW)
+void LayerTreeHostGtk::setNativeSurfaceHandleForCompositing(uint64_t handle)
+{
+    cancelPendingLayerFlush();
+    m_layerTreeContext.contextID = handle;
+
+    createTextureMapper();
     scheduleLayerFlush();
 }
+#endif
 
 } // namespace WebKit
 

@@ -40,7 +40,7 @@ protected:
     JSDataView(VM&, ConstructionContext&, ArrayBuffer*);
     
 public:
-    static JSDataView* create(
+    JS_EXPORT_PRIVATE static JSDataView* create(
         ExecState*, Structure*, PassRefPtr<ArrayBuffer>, unsigned byteOffset,
         unsigned byteLength);
     
@@ -48,7 +48,7 @@ public:
     // placate some template specialization we do elsewhere.
     static JSDataView* createUninitialized(ExecState*, Structure*, unsigned length);
     static JSDataView* create(ExecState*, Structure*, unsigned length);
-    bool set(ExecState*, JSObject*, unsigned offset, unsigned length);
+    bool set(ExecState*, unsigned, JSObject*, unsigned, unsigned length);
     bool setIndex(ExecState*, unsigned, JSValue);
     
     ArrayBuffer* buffer() const { return m_buffer; }
@@ -59,7 +59,7 @@ public:
 
 protected:
     static bool getOwnPropertySlot(JSObject*, ExecState*, PropertyName, PropertySlot&);
-    static void put(JSCell*, ExecState*, PropertyName, JSValue, PutPropertySlot&);
+    static bool put(JSCell*, ExecState*, PropertyName, JSValue, PutPropertySlot&);
     static bool defineOwnProperty(JSObject*, ExecState*, PropertyName, const PropertyDescriptor&, bool shouldThrow);
     static bool deleteProperty(JSCell*, ExecState*, PropertyName);
 

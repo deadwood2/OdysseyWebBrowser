@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef ResourceHandle_h
-#define ResourceHandle_h
+#pragma once
 
 #include "AuthenticationClient.h"
 #include "HTTPHeaderMap.h"
@@ -87,7 +86,7 @@ class ProtectionSpace;
 class ResourceError;
 class ResourceHandleClient;
 class ResourceHandleInternal;
-class ResourceLoadTiming;
+class NetworkLoadTiming;
 class ResourceRequest;
 class ResourceResponse;
 class SharedBuffer;
@@ -99,23 +98,23 @@ class ResourceHandle : public RefCounted<ResourceHandle>
 #endif
     {
 public:
-    WEBCORE_EXPORT static PassRefPtr<ResourceHandle> create(NetworkingContext*, const ResourceRequest&, ResourceHandleClient*, bool defersLoading, bool shouldContentSniff);
+    WEBCORE_EXPORT static RefPtr<ResourceHandle> create(NetworkingContext*, const ResourceRequest&, ResourceHandleClient*, bool defersLoading, bool shouldContentSniff);
     WEBCORE_EXPORT static void loadResourceSynchronously(NetworkingContext*, const ResourceRequest&, StoredCredentials, ResourceError&, ResourceResponse&, Vector<char>& data);
 
     WEBCORE_EXPORT virtual ~ResourceHandle();
 
 #if PLATFORM(COCOA) || USE(CFNETWORK)
-    void willSendRequest(ResourceRequest&, const ResourceResponse& redirectResponse);
+    ResourceRequest willSendRequest(ResourceRequest&&, ResourceResponse&&);
 #endif
 
 #if PLATFORM(COCOA) || USE(CFNETWORK) || USE(CURL) || USE(SOUP)
     bool shouldUseCredentialStorage();
     void didReceiveAuthenticationChallenge(const AuthenticationChallenge&);
-    virtual void receivedCredential(const AuthenticationChallenge&, const Credential&) override;
-    virtual void receivedRequestToContinueWithoutCredential(const AuthenticationChallenge&) override;
-    virtual void receivedCancellation(const AuthenticationChallenge&) override;
-    virtual void receivedRequestToPerformDefaultHandling(const AuthenticationChallenge&) override;
-    virtual void receivedChallengeRejection(const AuthenticationChallenge&) override;
+    void receivedCredential(const AuthenticationChallenge&, const Credential&) override;
+    void receivedRequestToContinueWithoutCredential(const AuthenticationChallenge&) override;
+    void receivedCancellation(const AuthenticationChallenge&) override;
+    void receivedRequestToPerformDefaultHandling(const AuthenticationChallenge&) override;
+    void receivedChallengeRejection(const AuthenticationChallenge&) override;
 #endif
 
 #if PLATFORM(COCOA) || USE(CFNETWORK)
@@ -127,7 +126,6 @@ public:
 #endif
 
 #if PLATFORM(COCOA) && !USE(CFNETWORK)
-    void didCancelAuthenticationChallenge(const AuthenticationChallenge&);
     WEBCORE_EXPORT NSURLConnection *connection() const;
     id makeDelegate(bool);
     id delegate();
@@ -136,9 +134,9 @@ public:
         
 #if PLATFORM(COCOA) && ENABLE(WEB_TIMING)
 #if USE(CFNETWORK)
-    static void getConnectionTimingData(CFURLConnectionRef, ResourceLoadTiming&);
+    static void getConnectionTimingData(CFURLConnectionRef, NetworkLoadTiming&);
 #else
-    static void getConnectionTimingData(NSURLConnection *, ResourceLoadTiming&);
+    static void getConnectionTimingData(NSURLConnection *, NetworkLoadTiming&);
 #endif
 #endif
         
@@ -198,11 +196,11 @@ public:
     WEBCORE_EXPORT virtual void cancel();
 
     // The client may be 0, in which case no callbacks will be made.
-    ResourceHandleClient* client() const;
+    WEBCORE_EXPORT ResourceHandleClient* client() const;
     WEBCORE_EXPORT void clearClient();
 
     // Called in response to ResourceHandleClient::willSendRequestAsync().
-    WEBCORE_EXPORT void continueWillSendRequest(const ResourceRequest&);
+    WEBCORE_EXPORT void continueWillSendRequest(ResourceRequest&&);
 
     // Called in response to ResourceHandleClient::didReceiveResponseAsync().
     WEBCORE_EXPORT virtual void continueDidReceiveResponse();
@@ -240,7 +238,7 @@ public:
     static CFMutableDictionaryRef createSSLPropertiesFromNSURLRequest(const ResourceRequest&);
 #endif
 
-    typedef RefPtr<ResourceHandle> (*BuiltinConstructor)(const ResourceRequest& request, ResourceHandleClient* client);
+    typedef Ref<ResourceHandle> (*BuiltinConstructor)(const ResourceRequest& request, ResourceHandleClient* client);
     static void registerBuiltinConstructor(const AtomicString& protocol, BuiltinConstructor);
 
     typedef void (*BuiltinSynchronousLoader)(NetworkingContext*, const ResourceRequest&, StoredCredentials, ResourceError&, ResourceResponse&, Vector<char>& data);
@@ -265,8 +263,8 @@ private:
     bool start();
     static void platformLoadResourceSynchronously(NetworkingContext*, const ResourceRequest&, StoredCredentials, ResourceError&, ResourceResponse&, Vector<char>& data);
 
-    virtual void refAuthenticationClient() override { ref(); }
-    virtual void derefAuthenticationClient() override { deref(); }
+    void refAuthenticationClient() override { ref(); }
+    void derefAuthenticationClient() override { deref(); }
 
 #if PLATFORM(COCOA) || USE(CFNETWORK)
     enum class SchedulingBehavior { Asynchronous, Synchronous };
@@ -297,5 +295,3 @@ private:
 };
 
 }
-
-#endif // ResourceHandle_h

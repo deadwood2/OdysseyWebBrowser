@@ -36,7 +36,7 @@
 
 namespace WebCore {
 
-RenderSVGForeignObject::RenderSVGForeignObject(SVGForeignObjectElement& element, Ref<RenderStyle>&& style)
+RenderSVGForeignObject::RenderSVGForeignObject(SVGForeignObjectElement& element, RenderStyle&& style)
     : RenderSVGBlock(element, WTFMove(style))
     , m_needsTransformUpdate(true)
 {
@@ -103,9 +103,9 @@ FloatRect RenderSVGForeignObject::computeFloatRectForRepaint(const FloatRect& re
     return SVGRenderSupport::computeFloatRectForRepaint(*this, repaintRect, repaintContainer, fixed);
 }
 
-LayoutRect RenderSVGForeignObject::computeRectForRepaint(const LayoutRect& repaintRect, const RenderLayerModelObject* repaintContainer, bool fixed) const
+LayoutRect RenderSVGForeignObject::computeRectForRepaint(const LayoutRect& repaintRect, const RenderLayerModelObject* repaintContainer, RepaintContext context) const
 {
-    return enclosingLayoutRect(computeFloatRectForRepaint(repaintRect, repaintContainer, fixed));
+    return enclosingLayoutRect(computeFloatRectForRepaint(repaintRect, repaintContainer, context.m_hasPositionFixedDescendant));
 }
 
 const AffineTransform& RenderSVGForeignObject::localToParentTransform() const

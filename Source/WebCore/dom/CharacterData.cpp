@@ -23,30 +23,42 @@
 #include "CharacterData.h"
 
 #include "ElementTraversal.h"
+#include "EventNames.h"
 #include "ExceptionCode.h"
 #include "FrameSelection.h"
 #include "InspectorInstrumentation.h"
 #include "MutationEvent.h"
 #include "MutationObserverInterestGroup.h"
 #include "MutationRecord.h"
+#include "NoEventDispatchAssertion.h"
 #include "ProcessingInstruction.h"
 #include "RenderText.h"
 #include "StyleInheritedData.h"
-#include "StyleTreeResolver.h"
-#include "TextBreakIterator.h"
 #include <wtf/Ref.h>
+#include <wtf/text/TextBreakIterator.h>
 
 namespace WebCore {
+
+static bool canUseSetDataOptimization(const CharacterData& node)
+{
+    auto& document = node.document();
+    return !document.hasListenerType(Document::DOMCHARACTERDATAMODIFIED_LISTENER) && !document.hasMutationObserversOfType(MutationObserver::CharacterData)
+        && !document.hasListenerType(Document::DOMSUBTREEMODIFIED_LISTENER);
+}
 
 void CharacterData::setData(const String& data)
 {
     const String& nonNullData = !data.isNull() ? data : emptyString();
-    if (m_data == nonNullData)
-        return;
-
-    Ref<CharacterData> protect(*this);
-
     unsigned oldLength = length();
+
+    if (m_data == nonNullData && canUseSetDataOptimization(*this)) {
+        document().textRemoved(this, 0, oldLength);
+        if (document().frame())
+            document().frame()->selection().textWasReplaced(this, 0, oldLength, oldLength);
+        return;
+    }
+
+    Ref<CharacterData> protectedThis(*this);
 
     setDataAndUpdate(nonNullData, 0, oldLength, nonNullData.length());
     document().textRemoved(this, 0, oldLength);
@@ -89,8 +101,8 @@ unsigned CharacterData::parserAppendData(const String& string, unsigned offset, 
         m_data.append(string.characters16() + offset, characterLengthLimit);
 
     ASSERT(!renderer() || is<Text>(*this));
-    if (is<Text>(*this))
-        Style::updateTextRendererAfterContentChange(downcast<Text>(*this), oldLength, 0);
+    if (is<Text>(*this) && parentNode())
+        downcast<Text>(*this).updateRendererAfterContentChange(oldLength, 0);
 
     document().incDOMTreeVersion();
     // We don't call dispatchModifiedEvent here because we don't want the
@@ -188,8 +200,8 @@ void CharacterData::setDataAndUpdate(const String& newData, unsigned offsetOfRep
     m_data = newData;
 
     ASSERT(!renderer() || is<Text>(*this));
-    if (is<Text>(*this))
-        Style::updateTextRendererAfterContentChange(downcast<Text>(*this), offsetOfReplacedData, oldLength);
+    if (is<Text>(*this) && parentNode())
+        downcast<Text>(*this).updateRendererAfterContentChange(offsetOfReplacedData, oldLength);
 
     if (is<ProcessingInstruction>(*this))
         downcast<ProcessingInstruction>(*this).checkStyleSheet();
@@ -197,6 +209,7 @@ void CharacterData::setDataAndUpdate(const String& newData, unsigned offsetOfRep
     if (document().frame())
         document().frame()->selection().textWasReplaced(this, offsetOfReplacedData, oldLength, newLength);
 
+    NoEventDispatchAssertion assertNoEventDispatch;
     document().incDOMTreeVersion();
     dispatchModifiedEvent(oldData);
 }

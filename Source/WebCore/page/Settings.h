@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2003, 2006, 2007, 2008, 2009, 2011, 2012, 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2003-2016 Apple Inc. All rights reserved.
  *           (C) 2006 Graham Dennis (graham.dennis@gmail.com)
  *
  * Redistribution and use in source and binary forms, with or without
@@ -24,16 +24,17 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef Settings_h
-#define Settings_h
+#pragma once
 
+#include "ClipboardAccessPolicy.h"
 #include "EditingBehaviorTypes.h"
 #include "IntSize.h"
-#include "URL.h"
 #include "SecurityOrigin.h"
 #include "SettingsMacros.h"
 #include "TextFlags.h"
 #include "Timer.h"
+#include "URL.h"
+#include "WritingMode.h"
 #include <chrono>
 #include <runtime/RuntimeFlags.h>
 #include <unicode/uscript.h>
@@ -70,6 +71,23 @@ enum DebugOverlayRegionFlags {
     WheelEventHandlerRegion = 1 << 1,
 };
 
+enum class UserInterfaceDirectionPolicy {
+    Content,
+    System
+};
+
+enum PDFImageCachingPolicy {
+    PDFImageCachingEnabled,
+    PDFImageCachingBelowMemoryLimit,
+    PDFImageCachingDisabled,
+    PDFImageCachingClipBoundsOnly,
+#if PLATFORM(IOS)
+    PDFImageCachingDefault = PDFImageCachingBelowMemoryLimit
+#else
+    PDFImageCachingDefault = PDFImageCachingEnabled
+#endif
+};
+
 typedef unsigned DebugOverlayRegions;
 
 class Settings : public RefCounted<Settings> {
@@ -102,19 +120,12 @@ public:
     WEBCORE_EXPORT const AtomicString& pictographFontFamily(UScriptCode = USCRIPT_COMMON) const;
 
 #if ENABLE(TEXT_AUTOSIZING)
-    void setTextAutosizingEnabled(bool);
-    bool textAutosizingEnabled() const { return m_textAutosizingEnabled; }
-
     void setTextAutosizingFontScaleFactor(float);
     float textAutosizingFontScaleFactor() const { return m_textAutosizingFontScaleFactor; }
-
-    // Only set by Layout Tests, and only used if textAutosizingEnabled() returns true.
-    void setTextAutosizingWindowSizeOverride(const IntSize&);
-    const IntSize& textAutosizingWindowSizeOverride() const { return m_textAutosizingWindowSizeOverride; }
 #endif
 
-    WEBCORE_EXPORT void setAntialiasedFontDilationEnabled(bool);
-    bool antialiasedFontDilationEnabled() const { return m_antialiasedFontDilationEnabled; }
+    WEBCORE_EXPORT static bool defaultTextAutosizingEnabled();
+    WEBCORE_EXPORT static float defaultMinimumZoomFontSize();
 
     // Only set by Layout Tests.
     WEBCORE_EXPORT void setMediaTypeOverride(const String&);
@@ -143,6 +154,9 @@ public:
     WEBCORE_EXPORT void setImagesEnabled(bool);
     bool areImagesEnabled() const { return m_areImagesEnabled; }
 
+    WEBCORE_EXPORT void setPreferMIMETypeForImages(bool);
+    bool preferMIMETypeForImages() const { return m_preferMIMETypeForImages; }
+
     WEBCORE_EXPORT void setPluginsEnabled(bool);
     bool arePluginsEnabled() const { return m_arePluginsEnabled; }
 
@@ -155,16 +169,16 @@ public:
     WEBCORE_EXPORT void setNeedsAdobeFrameReloadingQuirk(bool);
     bool needsAcrobatFrameReloadingQuirk() const { return m_needsAdobeFrameReloadingQuirk; }
 
-    WEBCORE_EXPORT void setMinimumDOMTimerInterval(double); // Initialized to DOMTimer::defaultMinimumInterval().
-    double minimumDOMTimerInterval() const { return m_minimumDOMTimerInterval; }
+    WEBCORE_EXPORT void setMinimumDOMTimerInterval(std::chrono::milliseconds); // Initialized to DOMTimer::defaultMinimumInterval().
+    std::chrono::milliseconds minimumDOMTimerInterval() const { return m_minimumDOMTimerInterval; }
 
     WEBCORE_EXPORT void setLayoutInterval(std::chrono::milliseconds);
     std::chrono::milliseconds layoutInterval() const { return m_layoutInterval; }
 
-#if ENABLE(HIDDEN_PAGE_DOM_TIMER_THROTTLING)
     bool hiddenPageDOMTimerThrottlingEnabled() const { return m_hiddenPageDOMTimerThrottlingEnabled; }
     WEBCORE_EXPORT void setHiddenPageDOMTimerThrottlingEnabled(bool);
-#endif
+    bool hiddenPageDOMTimerThrottlingAutoIncreases() const { return m_hiddenPageDOMTimerThrottlingAutoIncreases; }
+    WEBCORE_EXPORT void setHiddenPageDOMTimerThrottlingAutoIncreases(bool);
 
     WEBCORE_EXPORT void setUsesPageCache(bool);
     bool usesPageCache() const { return m_usesPageCache; }
@@ -185,8 +199,7 @@ public:
     static bool shouldUseHighResolutionTimers() { return gShouldUseHighResolutionTimers; }
 #endif
 
-    static bool shouldRewriteConstAsVar() { return gShouldRewriteConstAsVar; }
-    static void setShouldRewriteConstAsVar(bool shouldRewriteConstAsVar) { gShouldRewriteConstAsVar = shouldRewriteConstAsVar; }
+    static bool globalConstRedeclarationShouldThrow();
 
     WEBCORE_EXPORT void setBackgroundShouldExtendBeyondPage(bool);
     bool backgroundShouldExtendBeyondPage() const { return m_backgroundShouldExtendBeyondPage; }
@@ -240,6 +253,9 @@ public:
     WEBCORE_EXPORT void setFontFallbackPrefersPictographs(bool);
     bool fontFallbackPrefersPictographs() const { return m_fontFallbackPrefersPictographs; }
 
+    WEBCORE_EXPORT void setWebFontsAlwaysFallBack(bool);
+    bool webFontsAlwaysFallBack() const { return m_webFontsAlwaysFallBack; }
+
     static bool lowPowerVideoAudioBufferSizeEnabled() { return gLowPowerVideoAudioBufferSizeEnabled; }
     WEBCORE_EXPORT static void setLowPowerVideoAudioBufferSizeEnabled(bool);
 
@@ -281,12 +297,19 @@ public:
     WEBCORE_EXPORT static void setMockCaptureDevicesEnabled(bool);
 #endif
 
+#if ENABLE(APPLE_PAY)
+    bool applePayEnabled() const { return m_applePayEnabled; }
+    void setApplePayEnabled(bool applePayEnabled) { m_applePayEnabled = applePayEnabled; }
+
+    bool applePayCapabilityDisclosureAllowed() const { return m_applePayCapabilityDisclosureAllowed; }
+    void setApplePayCapabilityDisclosureAllowed(bool applePayCapabilityDisclosureAllowed) { m_applePayCapabilityDisclosureAllowed = applePayCapabilityDisclosureAllowed; }
+#endif
+
     WEBCORE_EXPORT void setForcePendingWebGLPolicy(bool);
     bool isForcePendingWebGLPolicy() const { return m_forcePendingWebGLPolicy; }
-    
-#if PLATFORM(IOS)
-    WEBCORE_EXPORT static float defaultMinimumZoomFontSize();
-#endif
+
+    WEBCORE_EXPORT static void setAllowsAnySSLCertificate(bool);
+    static bool allowsAnySSLCertificate();
 
 private:
     explicit Settings(Page*);
@@ -300,12 +323,10 @@ private:
     const std::unique_ptr<FontGenericFamilies> m_fontGenericFamilies;
     SecurityOrigin::StorageBlockingPolicy m_storageBlockingPolicy;
     std::chrono::milliseconds m_layoutInterval;
-    double m_minimumDOMTimerInterval;
+    std::chrono::milliseconds m_minimumDOMTimerInterval;
 
 #if ENABLE(TEXT_AUTOSIZING)
     float m_textAutosizingFontScaleFactor;
-    IntSize m_textAutosizingWindowSizeOverride;
-    bool m_textAutosizingEnabled : 1;
 #endif
 
     SETTINGS_MEMBER_VARIABLES
@@ -314,12 +335,12 @@ private:
     bool m_isJavaEnabledForLocalFiles : 1;
     bool m_loadsImagesAutomatically : 1;
     bool m_areImagesEnabled : 1;
+    bool m_preferMIMETypeForImages : 1;
     bool m_arePluginsEnabled : 1;
     bool m_isScriptEnabled : 1;
     bool m_needsAdobeFrameReloadingQuirk : 1;
     bool m_usesPageCache : 1;
     unsigned m_fontRenderingMode : 1;
-    bool m_antialiasedFontDilationEnabled : 1;
     bool m_showTiledScrollingIndicator : 1;
     bool m_backgroundShouldExtendBeyondPage : 1;
     bool m_dnsPrefetchingEnabled : 1;
@@ -334,17 +355,18 @@ private:
     Timer m_setImageLoadingSettingsTimer;
     void imageLoadingSettingsTimerFired();
 
-#if ENABLE(HIDDEN_PAGE_DOM_TIMER_THROTTLING)
     bool m_hiddenPageDOMTimerThrottlingEnabled : 1;
-#endif
     bool m_hiddenPageCSSAnimationSuspensionEnabled : 1;
     bool m_fontFallbackPrefersPictographs : 1;
+    bool m_webFontsAlwaysFallBack : 1;
 
     bool m_forcePendingWebGLPolicy : 1;
 
 #if ENABLE(RESOURCE_USAGE)
     bool m_resourceUsageOverlayVisible { false };
 #endif
+
+    bool m_hiddenPageDOMTimerThrottlingAutoIncreases { false };
 
 #if USE(AVFOUNDATION)
     WEBCORE_EXPORT static bool gAVFoundationEnabled;
@@ -362,7 +384,6 @@ private:
 #if PLATFORM(WIN)
     static bool gShouldUseHighResolutionTimers;
 #endif
-    WEBCORE_EXPORT static bool gShouldRewriteConstAsVar;
     static bool gShouldRespectPriorityInCSSAttributeSetters;
 #if PLATFORM(IOS)
     static bool gNetworkDataUsageTrackingEnabled;
@@ -380,10 +401,14 @@ private:
     static bool gMockCaptureDevicesEnabled;
 #endif
 
+#if ENABLE(APPLE_PAY)
+    bool m_applePayEnabled { false };
+    bool m_applePayCapabilityDisclosureAllowed { true };
+#endif
+
     static bool gLowPowerVideoAudioBufferSizeEnabled;
     static bool gResourceLoadStatisticsEnabledEnabled;
+    static bool gAllowsAnySSLCertificate;
 };
 
 } // namespace WebCore
-
-#endif

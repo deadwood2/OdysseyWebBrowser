@@ -20,10 +20,10 @@
 #ifndef MediaPlayerPrivateGStreamerOwr_h
 #define MediaPlayerPrivateGStreamerOwr_h
 
-#if ENABLE(MEDIA_STREAM) && USE(GSTREAMER) && USE(OPENWEBRTC)
+#if ENABLE(VIDEO) && ENABLE(MEDIA_STREAM) && USE(GSTREAMER) && USE(OPENWEBRTC)
 
 #include "MediaPlayerPrivateGStreamerBase.h"
-#include "RealtimeMediaSource.h"
+#include "MediaStreamTrackPrivate.h"
 
 typedef struct _OwrGstVideoRenderer OwrGstVideoRenderer;
 typedef struct _OwrGstAudioRenderer OwrGstAudioRenderer;
@@ -33,12 +33,14 @@ namespace WebCore {
 class MediaStreamPrivate;
 class RealtimeMediaSourceOwr;
 
-class MediaPlayerPrivateGStreamerOwr : public MediaPlayerPrivateGStreamerBase, private RealtimeMediaSource::Observer {
+class MediaPlayerPrivateGStreamerOwr : public MediaPlayerPrivateGStreamerBase, private MediaStreamTrackPrivate::Observer {
 public:
     explicit MediaPlayerPrivateGStreamerOwr(MediaPlayer*);
     ~MediaPlayerPrivateGStreamerOwr();
 
     static void registerMediaEngine(MediaEngineRegistrar);
+
+    void setSize(const IntSize&) override;
 
 private:
     GstElement* createVideoSink() override;
@@ -49,7 +51,7 @@ private:
 
     void load(const String&) override;
 #if ENABLE(MEDIA_SOURCE)
-    void load(const String&, MediaSourcePrivateClient*) override { }
+    void load(const String&, MediaSourcePrivateClient*) override;
 #endif
     void load(MediaStreamPrivate&) override;
     void cancelLoad() override { }
@@ -83,24 +85,23 @@ private:
     bool canLoadPoster() const override { return false; }
     void setPoster(const String&) override { }
 
-    // RealtimeMediaSource::Observer implementation.
-    void sourceStopped() override final;
-    void sourceMutedChanged() override final;
-    void sourceSettingsChanged() override final;
-    bool preventSourceFromStopping() override final;
+    // MediaStreamTrackPrivate::Observer implementation.
+    void trackEnded(MediaStreamTrackPrivate&) final;
+    void trackMutedChanged(MediaStreamTrackPrivate&) final;
+    void trackSettingsChanged(MediaStreamTrackPrivate&) final;
+    void trackEnabledChanged(MediaStreamTrackPrivate&) final;
 
     static void getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>&);
     static MediaPlayer::SupportsType supportsType(const MediaEngineSupportParameters&);
     static bool initializeGStreamerAndGStreamerDebugging();
     void createGSTAudioSinkBin();
     void loadingFailed(MediaPlayer::NetworkState error);
-    bool internalLoad();
     void stop();
+    void maybeHandleChangeMutedState(MediaStreamTrackPrivate&);
 
     bool m_paused { true };
-    bool m_stopped { true };
-    RefPtr<RealtimeMediaSourceOwr> m_videoSource;
-    RefPtr<RealtimeMediaSourceOwr> m_audioSource;
+    RefPtr<MediaStreamTrackPrivate> m_videoTrack;
+    RefPtr<MediaStreamTrackPrivate> m_audioTrack;
     GRefPtr<GstElement> m_audioSink;
     RefPtr<MediaStreamPrivate> m_streamPrivate;
     GRefPtr<OwrGstVideoRenderer> m_videoRenderer;
@@ -109,6 +110,6 @@ private:
 
 } // namespace WebCore
 
-#endif // ENABLE(MEDIA_STREAM) && USE(GSTREAMER) && USE(OPENWEBRTC)
+#endif // ENABLE(VIDEO) && ENABLE(MEDIA_STREAM) && USE(GSTREAMER) && USE(OPENWEBRTC)
 
 #endif // MediaPlayerPrivateGStreamerOwr_h

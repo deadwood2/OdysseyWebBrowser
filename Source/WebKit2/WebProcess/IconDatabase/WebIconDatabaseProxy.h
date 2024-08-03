@@ -32,7 +32,6 @@
 #include <wtf/HashMap.h>
 #include <wtf/PassRefPtr.h>
 #include <wtf/RefPtr.h>
-#include <wtf/Vector.h>
 
 namespace WebKit {
 
@@ -43,28 +42,28 @@ public:
     explicit WebIconDatabaseProxy(WebProcess*);
     virtual ~WebIconDatabaseProxy();
 
-    virtual bool isEnabled() const override;
+    bool isEnabled() const override;
     void setEnabled(bool) override;
 
-    virtual void retainIconForPageURL(const String&) override;
-    virtual void releaseIconForPageURL(const String&) override;
-    virtual void setIconURLForPageURL(const String&, const String&) override;
-    virtual void setIconDataForIconURL(PassRefPtr<WebCore::SharedBuffer>, const String&) override;
+    void retainIconForPageURL(const String&) override;
+    void releaseIconForPageURL(const String&) override;
+    void setIconURLForPageURL(const String&, const String&) override;
+    void setIconDataForIconURL(PassRefPtr<WebCore::SharedBuffer>, const String&) override;
 
-    virtual String synchronousIconURLForPageURL(const String&) override;
-    virtual bool synchronousIconDataKnownForIconURL(const String&) override;
-    virtual WebCore::IconLoadDecision synchronousLoadDecisionForIconURL(const String&, WebCore::DocumentLoader*) override;
-    virtual WebCore::Image* synchronousIconForPageURL(const String&, const WebCore::IntSize&) override;
+    String synchronousIconURLForPageURL(const String&) override;
+    bool synchronousIconDataKnownForIconURL(const String&) override;
+    WebCore::IconLoadDecision synchronousLoadDecisionForIconURL(const String&, WebCore::DocumentLoader*) override;
+    WebCore::Image* synchronousIconForPageURL(const String&, const WebCore::IntSize&) override;
     
     // Asynchronous calls we should use to replace the above when supported.
-    virtual bool supportsAsynchronousMode() override;
-    virtual void loadDecisionForIconURL(const String&, PassRefPtr<WebCore::IconLoadDecisionCallback>) override;
+    bool supportsAsynchronousMode() override;
+    void loadDecisionForIconURL(const String&, PassRefPtr<WebCore::IconLoadDecisionCallback>) override;
     void receivedIconLoadDecision(int decision, uint64_t callbackID);
-    virtual void iconDataForIconURL(const String&, PassRefPtr<WebCore::IconDataCallback>) override;
+    void iconDataForIconURL(const String&, PassRefPtr<WebCore::IconDataCallback>) override;
 
 private:
     // IPC::MessageReceiver
-    void didReceiveMessage(IPC::Connection&, IPC::MessageDecoder&) override;
+    void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
     
     // Callbacks from the UIProcess
     void urlImportFinished();

@@ -50,18 +50,18 @@ public:
     SVGFontElement* associatedFontElement() const;
     void rebuildFontFace();
     
-    const StyleRuleFontFace& fontFaceRule() const { return m_fontFaceRule.get(); }
+    StyleRuleFontFace& fontFaceRule() { return m_fontFaceRule.get(); }
 
 private:
     SVGFontFaceElement(const QualifiedName&, Document&);
 
-    virtual void parseAttribute(const QualifiedName&, const AtomicString&) override;
+    void parseAttribute(const QualifiedName&, const AtomicString&) final;
 
-    virtual void childrenChanged(const ChildChange&) override;
-    virtual InsertionNotificationRequest insertedInto(ContainerNode&) override;
-    virtual void removedFrom(ContainerNode&) override;
+    void childrenChanged(const ChildChange&) final;
+    InsertionNotificationRequest insertedInto(ContainerNode&) final;
+    void removedFrom(ContainerNode&) final;
 
-    virtual bool rendererIsNeeded(const RenderStyle&) override { return false; }
+    bool rendererIsNeeded(const RenderStyle&) final { return false; }
 
     Ref<StyleRuleFontFace> m_fontFaceRule;
     SVGFontElement* m_fontElement;

@@ -42,7 +42,6 @@
 #include "ScrollingTreeStickyNode.h"
 #include "TiledBacking.h"
 #include <wtf/MainThread.h>
-#include <wtf/PassRefPtr.h>
 
 namespace WebCore {
 
@@ -99,7 +98,7 @@ bool ScrollingCoordinatorMac::handleWheelEvent(FrameView&, const PlatformWheelEv
 
 void ScrollingCoordinatorMac::scheduleTreeStateCommit()
 {
-    ASSERT(scrollingStateTree()->hasChangedProperties() || nonFastScrollableRegionDirty());
+    ASSERT(scrollingStateTree()->hasChangedProperties() || eventTrackingRegionsDirty());
 
     if (m_scrollingStateTreeCommitterTimer.isActive())
         return;
@@ -135,7 +134,7 @@ void ScrollingCoordinatorMac::updateTiledScrollingIndicator()
         return;
 
     ScrollingModeIndication indicatorMode;
-    if (shouldUpdateScrollLayerPositionSynchronously())
+    if (shouldUpdateScrollLayerPositionSynchronously(*frameView))
         indicatorMode = SynchronousScrollingBecauseOfStyleIndication;
     else
         indicatorMode = AsyncScrollingIndication;

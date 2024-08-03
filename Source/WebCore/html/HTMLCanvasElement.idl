@@ -26,19 +26,21 @@
 
 [
     JSGenerateToNativeObject,
-    ReportExtraMemoryCost
+    ReportExtraMemoryCost,
+    ReportExternalMemoryCost,
 ] interface HTMLCanvasElement : HTMLElement {
-
+#if defined(LANGUAGE_GOBJECT) && LANGUAGE_GOBJECT
     attribute long width;
     attribute long height;
-
-    [Custom, RaisesException] DOMString toDataURL([TreatNullAs=NullString, TreatUndefinedAs=NullString,Default=Undefined] optional DOMString type);
-
-#if !defined(LANGUAGE_OBJECTIVE_C) || !LANGUAGE_OBJECTIVE_C
-    // The custom binding is needed to handle context creation attributes.
-    [Custom] any getContext([Default=Undefined] optional DOMString contextId);
-    [Custom] any probablySupportsContext([Default=Undefined] optional DOMString contextId);
+#else
+    attribute unsigned long width;
+    attribute unsigned long height;
 #endif
 
+    [Custom, RaisesException] DOMString toDataURL(optional DOMString? type);
+
+    // The custom binding is needed to handle context creation attributes.
+    [Custom] any getContext(DOMString contextId, any... arguments);
+    [Custom] boolean probablySupportsContext(DOMString contextId, any... arguments);
 };
 

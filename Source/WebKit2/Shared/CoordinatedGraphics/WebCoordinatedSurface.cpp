@@ -40,7 +40,7 @@ WebCoordinatedSurface::Handle::Handle()
 {
 }
 
-void WebCoordinatedSurface::Handle::encode(IPC::ArgumentEncoder& encoder) const
+void WebCoordinatedSurface::Handle::encode(IPC::Encoder& encoder) const
 {
     encoder << m_size << m_flags;
 #if USE(GRAPHICS_SURFACE)
@@ -51,7 +51,7 @@ void WebCoordinatedSurface::Handle::encode(IPC::ArgumentEncoder& encoder) const
     encoder << m_bitmapHandle;
 }
 
-bool WebCoordinatedSurface::Handle::decode(IPC::ArgumentDecoder& decoder, Handle& handle)
+bool WebCoordinatedSurface::Handle::decode(IPC::Decoder& decoder, Handle& handle)
 {
     if (!decoder.decode(handle.m_size))
         return false;
@@ -99,8 +99,7 @@ RefPtr<WebCoordinatedSurface> WebCoordinatedSurface::createWithSurface(const Int
     if (!surface)
         return nullptr;
 
-    ASSERT(surface);
-    return adoptRef(new WebCoordinatedSurface(size, flags, surface.release()));
+    return adoptRef(new WebCoordinatedSurface(size, flags, WTFMove(surface)));
 }
 #endif
 
@@ -118,25 +117,25 @@ std::unique_ptr<GraphicsContext> WebCoordinatedSurface::createGraphicsContext(co
     return graphicsContext;
 }
 
-Ref<WebCoordinatedSurface> WebCoordinatedSurface::create(const IntSize& size, CoordinatedSurface::Flags flags, PassRefPtr<ShareableBitmap> bitmap)
+Ref<WebCoordinatedSurface> WebCoordinatedSurface::create(const IntSize& size, CoordinatedSurface::Flags flags, RefPtr<ShareableBitmap> bitmap)
 {
     return adoptRef(*new WebCoordinatedSurface(size, flags, bitmap));
 }
 
-WebCoordinatedSurface::WebCoordinatedSurface(const IntSize& size, CoordinatedSurface::Flags flags, PassRefPtr<ShareableBitmap> bitmap)
+WebCoordinatedSurface::WebCoordinatedSurface(const IntSize& size, CoordinatedSurface::Flags flags, RefPtr<ShareableBitmap> bitmap)
     : CoordinatedSurface(size, flags)
     , m_bitmap(bitmap)
 {
 }
 
 #if USE(GRAPHICS_SURFACE)
-WebCoordinatedSurface::WebCoordinatedSurface(const WebCore::IntSize& size, CoordinatedSurface::Flags flags, PassRefPtr<WebCore::GraphicsSurface> surface)
+WebCoordinatedSurface::WebCoordinatedSurface(const WebCore::IntSize& size, CoordinatedSurface::Flags flags, RefPtr<WebCore::GraphicsSurface> surface)
     : CoordinatedSurface(size, flags)
     , m_graphicsSurface(surface)
 {
 }
 
-Ref<WebCoordinatedSurface> WebCoordinatedSurface::create(const IntSize& size, CoordinatedSurface::Flags flags, PassRefPtr<GraphicsSurface> surface)
+Ref<WebCoordinatedSurface> WebCoordinatedSurface::create(const IntSize& size, CoordinatedSurface::Flags flags, RefPtr<GraphicsSurface> surface)
 {
     return adoptRef(*new WebCoordinatedSurface(size, flags, surface));
 }
@@ -155,7 +154,7 @@ RefPtr<WebCoordinatedSurface> WebCoordinatedSurface::create(const Handle& handle
             surfaceFlags |= GraphicsSurface::SupportsAlpha;
         RefPtr<GraphicsSurface> surface = GraphicsSurface::create(handle.m_size, surfaceFlags, handle.m_graphicsSurfaceToken);
         if (surface)
-            return adoptRef(new WebCoordinatedSurface(handle.m_size, handle.m_flags, surface.release()));
+            return adoptRef(new WebCoordinatedSurface(handle.m_size, handle.m_flags, WTFMove(surface)));
     }
 #endif
 
@@ -163,7 +162,7 @@ RefPtr<WebCoordinatedSurface> WebCoordinatedSurface::create(const Handle& handle
     if (!bitmap)
         return nullptr;
 
-    return create(handle.m_size, handle.m_flags, bitmap.release());
+    return create(handle.m_size, handle.m_flags, WTFMove(bitmap));
 }
 
 bool WebCoordinatedSurface::createHandle(Handle& handle)
@@ -182,16 +181,14 @@ bool WebCoordinatedSurface::createHandle(Handle& handle)
     return true;
 }
 
-void WebCoordinatedSurface::paintToSurface(const IntRect& rect, CoordinatedSurface::Client* client)
+void WebCoordinatedSurface::paintToSurface(const IntRect& rect, CoordinatedSurface::Client& client)
 {
-    ASSERT(client);
-
     auto context = createGraphicsContext(rect);
-    client->paintToSurfaceContext(*context);
+    client.paintToSurfaceContext(*context);
 }
 
 #if USE(TEXTURE_MAPPER)
-void WebCoordinatedSurface::copyToTexture(PassRefPtr<WebCore::BitmapTexture> passTexture, const IntRect& target, const IntPoint& sourceOffset)
+void WebCoordinatedSurface::copyToTexture(RefPtr<WebCore::BitmapTexture> passTexture, const IntRect& target, const IntPoint& sourceOffset)
 {
     RefPtr<BitmapTexture> texture(passTexture);
 

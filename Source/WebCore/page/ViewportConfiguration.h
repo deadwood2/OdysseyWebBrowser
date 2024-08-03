@@ -33,6 +33,9 @@
 
 namespace WebCore {
 
+static const double forceAlwaysUserScalableMaximumScale = 5.0;
+static const double forceAlwaysUserScalableMinimumScale = 1.0;
+
 class TextStream;
 
 class ViewportConfiguration {
@@ -88,8 +91,9 @@ public:
     WEBCORE_EXPORT double initialScale() const;
     WEBCORE_EXPORT double initialScaleIgnoringContentSize() const;
     WEBCORE_EXPORT double minimumScale() const;
-    double maximumScale() const { return m_configuration.maximumScale; }
+    double maximumScale() const { return m_forceAlwaysUserScalable ? forceAlwaysUserScalableMaximumScale : m_configuration.maximumScale; }
     WEBCORE_EXPORT bool allowsUserScaling() const;
+    WEBCORE_EXPORT bool allowsUserScalingIgnoringForceAlwaysScaling() const;
     bool allowsShrinkToFit() const;
 
     WEBCORE_EXPORT static Parameters webpageParameters();
@@ -100,7 +104,7 @@ public:
     
 #ifndef NDEBUG
     WTF::CString description() const;
-    void dump() const;
+    WEBCORE_EXPORT void dump() const;
 #endif
 
 private:

@@ -72,7 +72,7 @@ WebInspector.BreakpointTreeElement = class BreakpointTreeElement extends WebInsp
 
     get filterableData()
     {
-        return {text: [this.breakpoint.url]};
+        return {text: [this.breakpoint.contentIdentifier]};
     }
 
     ondelete()
@@ -231,9 +231,9 @@ WebInspector.BreakpointTreeElement = class BreakpointTreeElement extends WebInsp
         }
 
         this.element.classList.add(WebInspector.BreakpointTreeElement.ProbeDataUpdatedStyleClassName);
-        this._removeIconAnimationTimeoutIdentifier = setTimeout(function() {
+        this._removeIconAnimationTimeoutIdentifier = setTimeout(() => {
             this.element.classList.remove(WebInspector.BreakpointTreeElement.ProbeDataUpdatedStyleClassName);
-        }.bind(this), WebInspector.BreakpointTreeElement.ProbeDataUpdatedAnimationDuration);
+        }, WebInspector.BreakpointTreeElement.ProbeDataUpdatedAnimationDuration);
     }
 
     _breakpointLocationDidChange(event)

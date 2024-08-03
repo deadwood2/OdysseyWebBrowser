@@ -27,7 +27,6 @@
 
 #include "ScriptWrappable.h"
 #include <wtf/HashMap.h>
-#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
@@ -45,9 +44,9 @@ public:
     Vector<String> names() const;
 
     // DEPRECATED
-    const PassRefPtr<RTCStatsReport> local();
+    RTCStatsReport& local();
     // DEPRECATED
-    const PassRefPtr<RTCStatsReport> remote();
+    RTCStatsReport& remote();
 
     void addStatistic(const String& name, const String& value);
 

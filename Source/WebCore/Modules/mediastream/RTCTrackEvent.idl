@@ -29,9 +29,11 @@
  */
 
 [
-    Conditional=MEDIA_STREAM,
+    Conditional=WEB_RTC,
     ConstructorTemplate=Event
 ] interface RTCTrackEvent : Event {
    [InitializedByEventConstructor] readonly attribute RTCRtpReceiver receiver;
    [InitializedByEventConstructor] readonly attribute MediaStreamTrack track;
+   [InitializedByEventConstructor] readonly attribute sequence<MediaStream> streams;
+   [InitializedByEventConstructor] readonly attribute RTCRtpTransceiver transceiver;
 };

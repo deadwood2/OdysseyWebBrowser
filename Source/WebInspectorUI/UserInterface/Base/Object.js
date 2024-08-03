@@ -54,6 +54,7 @@ WebInspector.Object = class WebInspectorObject
         }
 
         listenersTable.add(thisObject, listener);
+        return listener;
     }
 
     static singleFireEventListener(eventType, listener, thisObject)
@@ -216,4 +217,5 @@ WebInspector.Notification = {
     ExtraDomainsActivated: "extra-domains-activated",
     TabTypesChanged: "tab-types-changed",
     DebugUIEnabledDidChange: "debug-ui-enabled-did-change",
+    VisibilityStateDidChange: "visibility-state-did-change",
 };

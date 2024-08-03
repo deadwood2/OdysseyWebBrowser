@@ -28,7 +28,9 @@
 
 #if WK_API_ENABLED
 
+#import "WKSharedAPICast.h"
 #import "WebAutomationSession.h"
+#import "WebPageProxy.h"
 #import "_WKAutomationSessionDelegate.h"
 #import "_WKAutomationSessionInternal.h"
 
@@ -38,12 +40,57 @@ AutomationSessionClient::AutomationSessionClient(id <_WKAutomationSessionDelegat
     : m_delegate(delegate)
 {
     m_delegateMethods.didRequestNewWindow = [delegate respondsToSelector:@selector(_automationSessionDidRequestNewWindow:)];
+    m_delegateMethods.didDisconnectFromRemote = [delegate respondsToSelector:@selector(_automationSessionDidDisconnectFromRemote:)];
+    m_delegateMethods.isShowingJavaScriptDialogOnPage = [delegate respondsToSelector:@selector(_automationSession:isShowingJavaScriptDialogOnPage:)];
+    m_delegateMethods.dismissCurrentJavaScriptDialogOnPage = [delegate respondsToSelector:@selector(_automationSession:dismissCurrentJavaScriptDialogOnPage:)];
+    m_delegateMethods.acceptCurrentJavaScriptDialogOnPage = [delegate respondsToSelector:@selector(_automationSession:acceptCurrentJavaScriptDialogOnPage:)];
+    m_delegateMethods.messageOfCurrentJavaScriptDialogOnPage = [delegate respondsToSelector:@selector(_automationSession:messageOfCurrentJavaScriptDialogOnPage:)];
+    m_delegateMethods.setUserInputForCurrentJavaScriptPromptOnPage = [delegate respondsToSelector:@selector(_automationSession:setUserInput:forCurrentJavaScriptDialogOnPage:)];
 }
 
-void AutomationSessionClient::didRequestNewWindow(WebProcessPool*, WebAutomationSession* session)
+WebPageProxy* AutomationSessionClient::didRequestNewWindow(WebAutomationSession* session)
 {
     if (m_delegateMethods.didRequestNewWindow)
-        [m_delegate.get() _automationSessionDidRequestNewWindow:wrapper(*session)];
+        return toImpl([m_delegate.get() _automationSessionDidRequestNewWindow:wrapper(*session)]);
+    return nullptr;
+}
+
+void AutomationSessionClient::didDisconnectFromRemote(WebAutomationSession* session)
+{
+    if (m_delegateMethods.didDisconnectFromRemote)
+        [m_delegate.get() _automationSessionDidDisconnectFromRemote:wrapper(*session)];
+}
+
+bool AutomationSessionClient::isShowingJavaScriptDialogOnPage(WebAutomationSession* session, WebPageProxy* page)
+{
+    if (m_delegateMethods.isShowingJavaScriptDialogOnPage)
+        return [m_delegate.get() _automationSession:wrapper(*session) isShowingJavaScriptDialogOnPage:toAPI(page)];
+    return false;
+}
+
+void AutomationSessionClient::dismissCurrentJavaScriptDialogOnPage(WebAutomationSession* session, WebPageProxy* page)
+{
+    if (m_delegateMethods.dismissCurrentJavaScriptDialogOnPage)
+        [m_delegate.get() _automationSession:wrapper(*session) dismissCurrentJavaScriptDialogOnPage:toAPI(page)];
+}
+
+void AutomationSessionClient::acceptCurrentJavaScriptDialogOnPage(WebAutomationSession* session, WebPageProxy* page)
+{
+    if (m_delegateMethods.acceptCurrentJavaScriptDialogOnPage)
+        [m_delegate.get() _automationSession:wrapper(*session) acceptCurrentJavaScriptDialogOnPage:toAPI(page)];
+}
+
+String AutomationSessionClient::messageOfCurrentJavaScriptDialogOnPage(WebAutomationSession* session, WebPageProxy* page)
+{
+    if (m_delegateMethods.messageOfCurrentJavaScriptDialogOnPage)
+        return [m_delegate.get() _automationSession:wrapper(*session) messageOfCurrentJavaScriptDialogOnPage:toAPI(page)];
+    return String();
+}
+
+void AutomationSessionClient::setUserInputForCurrentJavaScriptPromptOnPage(WebAutomationSession* session, WebPageProxy* page, const String& value)
+{
+    if (m_delegateMethods.setUserInputForCurrentJavaScriptPromptOnPage)
+        [m_delegate.get() _automationSession:wrapper(*session) setUserInput:value forCurrentJavaScriptDialogOnPage:toAPI(page)];
 }
 
 } // namespace WebKit

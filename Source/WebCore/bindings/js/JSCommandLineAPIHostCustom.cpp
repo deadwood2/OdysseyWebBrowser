@@ -50,7 +50,6 @@
 #include <runtime/JSLock.h>
 #include <runtime/ObjectConstructor.h>
 
-
 using namespace JSC;
 
 namespace WebCore {
@@ -62,19 +61,19 @@ JSValue JSCommandLineAPIHost::inspectedObject(ExecState& state)
         return jsUndefined();
 
     JSLockHolder lock(&state);
-    Deprecated::ScriptValue scriptValue = object->get(&state);
-    if (scriptValue.hasNoValue())
-        return jsUndefined();
-
-    return scriptValue.jsValue();
+    auto scriptValue = object->get(state);
+    return scriptValue ? scriptValue : jsUndefined();
 }
 
 static JSArray* getJSListenerFunctions(ExecState& state, Document* document, const EventListenerInfo& listenerInfo)
 {
+    VM& vm = state.vm();
     JSArray* result = constructEmptyArray(&state, nullptr);
+    if (UNLIKELY(vm.exception()))
+        return nullptr;
     size_t handlersCount = listenerInfo.eventListenerVector.size();
     for (size_t i = 0, outputIndex = 0; i < handlersCount; ++i) {
-        const JSEventListener* jsListener = JSEventListener::cast(listenerInfo.eventListenerVector[i].listener.get());
+        const JSEventListener* jsListener = JSEventListener::cast(&listenerInfo.eventListenerVector[i]->callback());
         if (!jsListener) {
             ASSERT_NOT_REACHED();
             continue;
@@ -89,8 +88,8 @@ static JSArray* getJSListenerFunctions(ExecState& state, Document* document, con
             continue;
 
         JSObject* listenerEntry = constructEmptyObject(&state);
-        listenerEntry->putDirect(state.vm(), Identifier::fromString(&state, "listener"), function);
-        listenerEntry->putDirect(state.vm(), Identifier::fromString(&state, "useCapture"), jsBoolean(listenerInfo.eventListenerVector[i].useCapture));
+        listenerEntry->putDirect(vm, Identifier::fromString(&state, "listener"), function);
+        listenerEntry->putDirect(vm, Identifier::fromString(&state, "useCapture"), jsBoolean(listenerInfo.eventListenerVector[i]->useCapture()));
         result->putDirectIndex(&state, outputIndex++, JSValue(listenerEntry));
     }
     return result;
@@ -126,12 +125,10 @@ JSValue JSCommandLineAPIHost::getEventListeners(ExecState& state)
 
 JSValue JSCommandLineAPIHost::inspect(ExecState& state)
 {
-    if (state.argumentCount() >= 2) {
-        Deprecated::ScriptValue object(state.vm(), state.uncheckedArgument(0));
-        Deprecated::ScriptValue hints(state.vm(), state.uncheckedArgument(1));
-        wrapped().inspectImpl(object.toInspectorValue(&state), hints.toInspectorValue(&state));
-    }
-
+    if (state.argumentCount() < 2)
+        return jsUndefined();
+    wrapped().inspectImpl(Inspector::toInspectorValue(state, state.uncheckedArgument(0)),
+        Inspector::toInspectorValue(state, state.uncheckedArgument(1)));
     return jsUndefined();
 }
 

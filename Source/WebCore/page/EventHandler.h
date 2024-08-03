@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -151,7 +151,7 @@ public:
     void dispatchFakeMouseMoveEventSoonInQuad(const FloatQuad&);
 
     WEBCORE_EXPORT HitTestResult hitTestResultAtPoint(const LayoutPoint&,
-        HitTestRequest::HitTestRequestType hitType = HitTestRequest::ReadOnly | HitTestRequest::Active | HitTestRequest::DisallowShadowContent,
+        HitTestRequest::HitTestRequestType hitType = HitTestRequest::ReadOnly | HitTestRequest::Active | HitTestRequest::DisallowUserAgentShadowContent,
         const LayoutSize& padding = LayoutSize());
 
     bool mousePressed() const { return m_mousePressed; }
@@ -179,6 +179,8 @@ public:
     IntPoint lastKnownMouseGlobalPosition() const { return m_lastKnownMouseGlobalPosition; }
     Cursor currentMouseCursor() const { return m_currentMouseCursor; }
 
+    IntPoint effectiveMousePositionForSelectionAutoscroll() const;
+
     static Frame* subframeForTargetNode(Node*);
     static Frame* subframeForHitTestResult(const MouseEventWithHitTestResults&);
 
@@ -199,14 +201,14 @@ public:
     WEBCORE_EXPORT bool handleMouseReleaseEvent(const PlatformMouseEvent&);
     bool handleMouseForceEvent(const PlatformMouseEvent&);
     WEBCORE_EXPORT bool handleWheelEvent(const PlatformWheelEvent&);
-    void defaultWheelEventHandler(Node*, WheelEvent*);
+    void defaultWheelEventHandler(Node*, WheelEvent&);
     bool handlePasteGlobalSelection(const PlatformMouseEvent&);
 
-    void platformPrepareForWheelEvents(const PlatformWheelEvent&, const HitTestResult&, RefPtr<Element>& eventTarget, RefPtr<ContainerNode>& scrollableContainer, ScrollableArea*&, bool& isOverWidget);
+    void platformPrepareForWheelEvents(const PlatformWheelEvent&, const HitTestResult&, RefPtr<Element>& eventTarget, RefPtr<ContainerNode>& scrollableContainer, WeakPtr<ScrollableArea>&, bool& isOverWidget);
     void platformRecordWheelEvent(const PlatformWheelEvent&);
-    bool platformCompleteWheelEvent(const PlatformWheelEvent&, ContainerNode* scrollableContainer, ScrollableArea*);
+    bool platformCompleteWheelEvent(const PlatformWheelEvent&, ContainerNode* scrollableContainer, const WeakPtr<ScrollableArea>&);
     bool platformCompletePlatformWidgetWheelEvent(const PlatformWheelEvent&, const Widget&, ContainerNode* scrollableContainer);
-    void platformNotifyIfEndGesture(const PlatformWheelEvent&, ScrollableArea*);
+    void platformNotifyIfEndGesture(const PlatformWheelEvent&, const WeakPtr<ScrollableArea>&);
 
 #if ENABLE(IOS_TOUCH_EVENTS) || ENABLE(IOS_GESTURE_EVENTS)
     typedef Vector<RefPtr<Touch>> TouchArray;
@@ -245,13 +247,13 @@ public:
     static unsigned accessKeyModifiers();
     WEBCORE_EXPORT bool handleAccessKey(const PlatformKeyboardEvent&);
     WEBCORE_EXPORT bool keyEvent(const PlatformKeyboardEvent&);
-    void defaultKeyboardEventHandler(KeyboardEvent*);
+    void defaultKeyboardEventHandler(KeyboardEvent&);
 
     bool accessibilityPreventsEventPropogation(KeyboardEvent&);
-    WEBCORE_EXPORT void handleKeyboardSelectionMovementForAccessibility(KeyboardEvent*);
+    WEBCORE_EXPORT void handleKeyboardSelectionMovementForAccessibility(KeyboardEvent&);
 
     bool handleTextInputEvent(const String& text, Event* underlyingEvent = nullptr, TextEventInputType = TextEventInputKeyboard);
-    void defaultTextInputEventHandler(TextEvent*);
+    void defaultTextInputEventHandler(TextEvent&);
 
 #if ENABLE(DRAG_SUPPORT)
     WEBCORE_EXPORT bool eventMayStartDrag(const PlatformMouseEvent&) const;
@@ -315,6 +317,8 @@ public:
 
     WEBCORE_EXPORT void setImmediateActionStage(ImmediateActionStage stage);
     ImmediateActionStage immediateActionStage() const { return m_immediateActionStage; }
+
+    static Widget* widgetForEventTarget(Element* eventTarget);
 
 private:
 #if ENABLE(DRAG_SUPPORT)
@@ -413,12 +417,13 @@ private:
     bool passWidgetMouseDownEventToWidget(RenderWidget*);
 
     bool passMouseDownEventToWidget(Widget*);
-    bool passWheelEventToWidget(const PlatformWheelEvent&, Widget&);
+    bool widgetDidHandleWheelEvent(const PlatformWheelEvent&, Widget&);
+    bool completeWidgetWheelEvent(const PlatformWheelEvent&, const WeakPtr<Widget>&, const WeakPtr<ScrollableArea>&, ContainerNode*);
 
-    void defaultSpaceEventHandler(KeyboardEvent*);
-    void defaultBackspaceEventHandler(KeyboardEvent*);
-    void defaultTabEventHandler(KeyboardEvent*);
-    void defaultArrowEventHandler(FocusDirection, KeyboardEvent*);
+    void defaultSpaceEventHandler(KeyboardEvent&);
+    void defaultBackspaceEventHandler(KeyboardEvent&);
+    void defaultTabEventHandler(KeyboardEvent&);
+    void defaultArrowEventHandler(FocusDirection, KeyboardEvent&);
 
 #if ENABLE(DRAG_SUPPORT)
     DragSourceAction updateDragSourceActionsAllowed() const;
@@ -435,7 +440,8 @@ private:
     void updateSelectionForMouseDrag(const HitTestResult&);
 #endif
 
-    void updateLastScrollbarUnderMouse(Scrollbar*, bool);
+    enum class SetOrClearLastScrollbar { Clear, Set };
+    void updateLastScrollbarUnderMouse(Scrollbar*, SetOrClearLastScrollbar);
     
     void setFrameWasScrolledByUser();
 
@@ -459,6 +465,7 @@ private:
     void autoHideCursorTimerFired();
 #endif
 
+    void clearOrScheduleClearingLatchedStateIfNeeded(const PlatformWheelEvent&);
     void clearLatchedState();
 
     Frame& m_frame;
@@ -487,6 +494,9 @@ private:
     Timer m_cursorUpdateTimer;
 #endif
 
+#if PLATFORM(MAC)
+    Timer m_pendingMomentumWheelEventsTimer;
+#endif
     std::unique_ptr<AutoscrollController> m_autoscrollController;
     bool m_mouseDownMayStartAutoscroll { false };
     bool m_mouseDownWasInSubframe { false };
@@ -512,10 +522,10 @@ private:
     RefPtr<Node> m_clickNode;
 
 #if ENABLE(IOS_GESTURE_EVENTS)
+    float m_gestureInitialDiameter { GestureUnknown };
     float m_gestureInitialRotation { GestureUnknown };
 #endif
 #if ENABLE(IOS_GESTURE_EVENTS) || ENABLE(MAC_GESTURE_EVENTS)
-    float m_gestureInitialDiameter { GestureUnknown };
     float m_gestureLastDiameter { GestureUnknown };
     float m_gestureLastRotation { GestureUnknown };
     EventTargetSet m_gestureTargets;

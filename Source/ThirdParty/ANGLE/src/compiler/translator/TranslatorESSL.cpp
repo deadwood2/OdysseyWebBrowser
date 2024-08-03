@@ -6,8 +6,8 @@
 
 #include "compiler/translator/TranslatorESSL.h"
 
-#include "compiler/translator/BuiltInFunctionEmulatorGLSL.h"
 #include "compiler/translator/EmulatePrecision.h"
+#include "compiler/translator/RecordConstantPrecision.h"
 #include "compiler/translator/OutputESSL.h"
 #include "angle_gl.h"
 
@@ -16,35 +16,34 @@ TranslatorESSL::TranslatorESSL(sh::GLenum type, ShShaderSpec spec)
 {
 }
 
-void TranslatorESSL::initBuiltInFunctionEmulator(BuiltInFunctionEmulator *emu, int compileOptions)
+void TranslatorESSL::translate(TIntermNode *root, ShCompileOptions compileOptions)
 {
-    if (compileOptions & SH_EMULATE_BUILT_IN_FUNCTIONS)
-        InitBuiltInFunctionEmulatorForGLSL(emu, getShaderType());
-}
-
-void TranslatorESSL::translate(TIntermNode *root, int) {
     TInfoSinkBase& sink = getInfoSink().obj;
 
-    int shaderVersion = getShaderVersion();
-    if (shaderVersion > 100)
+    int shaderVer = getShaderVersion();
+    if (shaderVer > 100)
     {
-        sink << "#version " << shaderVersion << " es\n";
+        sink << "#version " << shaderVer << " es\n";
     }
-
-    writePragma();
 
     // Write built-in extension behaviors.
     writeExtensionBehavior();
+
+    // Write pragmas after extensions because some drivers consider pragmas
+    // like non-preprocessor tokens.
+    writePragma(compileOptions);
 
     bool precisionEmulation = getResources().WEBGL_debug_shader_precision && getPragma().debugShaderPrecision;
 
     if (precisionEmulation)
     {
-        EmulatePrecision emulatePrecision;
+        EmulatePrecision emulatePrecision(getSymbolTable(), shaderVer);
         root->traverse(&emulatePrecision);
         emulatePrecision.updateTree();
-        emulatePrecision.writeEmulationHelpers(sink, SH_ESSL_OUTPUT);
+        emulatePrecision.writeEmulationHelpers(sink, shaderVer, SH_ESSL_OUTPUT);
     }
+
+    RecordConstantPrecision(root, getTemporaryIndex());
 
     // Write emulated built-in functions if needed.
     if (!getBuiltInFunctionEmulator().IsOutputEmpty())
@@ -70,15 +69,23 @@ void TranslatorESSL::translate(TIntermNode *root, int) {
     // Write array bounds clamping emulation if needed.
     getArrayBoundsClamper().OutputClampingFunctionDefinition(sink);
 
+    if (getShaderType() == GL_COMPUTE_SHADER && isComputeShaderLocalSizeDeclared())
+    {
+        const sh::WorkGroupSize &localSize = getComputeShaderLocalSize();
+        sink << "layout (local_size_x=" << localSize[0] << ", local_size_y=" << localSize[1]
+             << ", local_size_z=" << localSize[2] << ") in;\n";
+    }
+
     // Write translated shader.
-    TOutputESSL outputESSL(sink,
-                           getArrayIndexClampingStrategy(),
-                           getHashFunction(),
-                           getNameMap(),
-                           getSymbolTable(),
-                           shaderVersion,
-                           precisionEmulation);
+    TOutputESSL outputESSL(sink, getArrayIndexClampingStrategy(), getHashFunction(), getNameMap(),
+                           getSymbolTable(), shaderVer, precisionEmulation);
     root->traverse(&outputESSL);
+}
+
+bool TranslatorESSL::shouldFlattenPragmaStdglInvariantAll()
+{
+    // Not necessary when translating to ESSL.
+    return false;
 }
 
 void TranslatorESSL::writeExtensionBehavior() {

@@ -8,7 +8,14 @@
 #include "common/debug.h"
 
 #include <stdio.h>
+
+#include <limits>
 #include <vector>
+
+namespace angle
+{
+const uintptr_t DirtyPointer = std::numeric_limits<uintptr_t>::max();
+}
 
 size_t FormatStringIntoVector(const char *fmt, va_list vararg, std::vector<char>& outBuffer)
 {
@@ -29,7 +36,10 @@ size_t FormatStringIntoVector(const char *fmt, va_list vararg, std::vector<char>
 
 std::string FormatString(const char *fmt, va_list vararg)
 {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wexit-time-destructors"
     static std::vector<char> buffer(512);
+#pragma clang diagnostic pop
 
     size_t len = FormatStringIntoVector(fmt, vararg, buffer);
     return std::string(&buffer[0], len);

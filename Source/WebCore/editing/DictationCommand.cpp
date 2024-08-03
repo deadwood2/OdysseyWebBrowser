@@ -60,7 +60,7 @@ public:
         return adoptRef(*new DictationMarkerSupplier(alternatives));
     }
 
-    virtual void addMarkersToTextNode(Text* textNode, unsigned offsetOfInsertion, const String& textToBeInserted)
+    void addMarkersToTextNode(Text* textNode, unsigned offsetOfInsertion, const String& textToBeInserted) override
     {
         DocumentMarkerController& markerController = textNode->document().markers();
         for (auto& alternative : m_alternatives) {
@@ -101,13 +101,14 @@ void DictationCommand::insertText(Document& document, const String& text, const 
         // If the text was modified before insertion, the location of dictation alternatives
         // will not be valid anymore. We will just drop the alternatives.
         cmd = DictationCommand::create(document, newText, Vector<DictationAlternative>());
-    applyTextInsertionCommand(frame.get(), cmd, selectionForInsertion, currentSelection);
+    applyTextInsertionCommand(frame.get(), *cmd, selectionForInsertion, currentSelection);
 }
 
 void DictationCommand::doApply()
 {
     DictationCommandLineOperation operation(this);
     forEachLineInString(m_textToInsert, operation);
+    postTextStateChangeNotification(AXTextEditTypeDictation, m_textToInsert);
 }
 
 void DictationCommand::insertTextRunWithoutNewlines(size_t lineStart, size_t lineLength)

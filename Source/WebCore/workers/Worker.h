@@ -36,7 +36,6 @@
 #include "WorkerScriptLoaderClient.h"
 #include <wtf/Forward.h>
 #include <wtf/Optional.h>
-#include <wtf/PassRefPtr.h>
 #include <wtf/RefPtr.h>
 #include <wtf/text/AtomicStringHash.h>
 
@@ -53,16 +52,14 @@ namespace WebCore {
         static RefPtr<Worker> create(ScriptExecutionContext&, const String& url, ExceptionCode&);
         virtual ~Worker();
 
-        virtual EventTargetInterface eventTargetInterface() const override { return WorkerEventTargetInterfaceType; }
+        EventTargetInterface eventTargetInterface() const override { return WorkerEventTargetInterfaceType; }
 
-        void postMessage(PassRefPtr<SerializedScriptValue> message, const MessagePortArray*, ExceptionCode&);
-        // Needed for Objective-C bindings (see bug 28774).
-        void postMessage(PassRefPtr<SerializedScriptValue> message, MessagePort*, ExceptionCode&);
+        void postMessage(RefPtr<SerializedScriptValue>&& message, const MessagePortArray*, ExceptionCode&);
 
         void terminate();
 
         // EventTarget API.
-        virtual ScriptExecutionContext* scriptExecutionContext() const override final { return ActiveDOMObject::scriptExecutionContext(); }
+        ScriptExecutionContext* scriptExecutionContext() const final { return ActiveDOMObject::scriptExecutionContext(); }
 
         // ActiveDOMObject API.
         bool hasPendingActivity() const override;
@@ -73,8 +70,8 @@ namespace WebCore {
         void notifyNetworkStateChange(bool isOnline);
 
         // WorkerScriptLoaderClient callbacks
-        virtual void didReceiveResponse(unsigned long identifier, const ResourceResponse&) override;
-        virtual void notifyFinished() override;
+        void didReceiveResponse(unsigned long identifier, const ResourceResponse&) override;
+        void notifyFinished() override;
 
         // ActiveDOMObject API.
         bool canSuspendForDocumentSuspension() const override;

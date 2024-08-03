@@ -54,7 +54,9 @@ void DocumentOrderedMap::add(const AtomicStringImpl& key, Element& element, cons
 
     if (!element.isInTreeScope())
         return;
-    Map::AddResult addResult = m_map.add(&key, MapEntry(&element));
+    Map::AddResult addResult = m_map.ensure(&key, [&element] {
+        return MapEntry(&element);
+    });
     MapEntry& entry = addResult.iterator->value;
 
 #if !ASSERT_DISABLED || ENABLE(SECURITY_ASSERTIONS)
@@ -165,7 +167,7 @@ HTMLImageElement* DocumentOrderedMap::getElementByCaseFoldedUsemap(const AtomicS
 HTMLLabelElement* DocumentOrderedMap::getElementByLabelForAttribute(const AtomicStringImpl& key, const TreeScope& scope) const
 {
     return downcast<HTMLLabelElement>(get(key, scope, [] (const AtomicStringImpl& key, const Element& element) {
-        return is<HTMLLabelElement>(element) && element.fastGetAttribute(forAttr).impl() == &key;
+        return is<HTMLLabelElement>(element) && element.attributeWithoutSynchronization(forAttr).impl() == &key;
     }));
 }
 

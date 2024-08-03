@@ -35,10 +35,10 @@ public:
 private:
     SVGSwitchElement(const QualifiedName&, Document&);
     
-    virtual bool isValid() const override { return SVGTests::isValid(); }
+    bool isValid() const final { return SVGTests::isValid(); }
 
-    virtual bool childShouldCreateRenderer(const Node&) const override;
-    virtual RenderPtr<RenderElement> createElementRenderer(Ref<RenderStyle>&&, const RenderTreePosition&) override;
+    bool childShouldCreateRenderer(const Node&) const final;
+    RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) final;
 
     BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGSwitchElement)
         DECLARE_ANIMATED_BOOLEAN_OVERRIDE(ExternalResourcesRequired, externalResourcesRequired)

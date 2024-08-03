@@ -25,8 +25,6 @@
 #include "ScriptWrappable.h"
 #include "Supplementable.h"
 #include <wtf/Forward.h>
-#include <wtf/HashMap.h>
-#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 
@@ -45,14 +43,10 @@ public:
     virtual ~Navigator();
 
     String appVersion() const;
-    String language() const;
     DOMPluginArray* plugins() const;
     DOMMimeTypeArray* mimeTypes() const;
     bool cookieEnabled() const;
     bool javaEnabled() const;
-#if defined(ENABLE_NAVIGATOR_HWCONCURRENCY)
-    int hardwareConcurrency() const;
-#endif
     virtual String userAgent() const;
 
 #if PLATFORM(IOS)

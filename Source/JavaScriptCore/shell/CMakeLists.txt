@@ -23,7 +23,6 @@ include_directories(./ ${JavaScriptCore_INCLUDE_DIRECTORIES})
 include_directories(SYSTEM ${JavaScriptCore_SYSTEM_INCLUDE_DIRECTORIES})
 add_executable(jsc ${JSC_SOURCES})
 target_link_libraries(jsc ${JSC_LIBRARIES})
-set_target_properties(jsc PROPERTIES FOLDER "JavaScriptCore")
 
 if (JSC_OUTPUT_NAME)
     set_target_properties(jsc PROPERTIES OUTPUT_NAME ${JSC_OUTPUT_NAME})
@@ -34,7 +33,7 @@ if (JSC_LINK_FLAGS)
 endif ()
 
 if (SHOULD_INSTALL_JS_SHELL)
-    install(TARGETS jsc DESTINATION "${EXEC_INSTALL_DIR}")
+    install(TARGETS jsc DESTINATION "${LIBEXEC_INSTALL_DIR}")
 endif ()
 
 if (WIN32)
@@ -50,10 +49,17 @@ if (NOT WIN32)
         ../b3/air/testair.cpp
     )
 
+    set(TESTWASM_SOURCES
+        ../testWASM.cpp
+    )
+
     add_executable(testb3 ${TESTB3_SOURCES})
     target_link_libraries(testb3 ${JSC_LIBRARIES})
 
     add_executable(testair ${TESTAIR_SOURCES})
     target_link_libraries(testair ${JSC_LIBRARIES})
+
+    add_executable(testWASM ${TESTWASM_SOURCES})
+    target_link_libraries(testWASM ${JSC_LIBRARIES})
 
 endif ()

@@ -20,6 +20,12 @@
             "description": "Pseudo element type."
         },
         {
+            "id": "ShadowRootType",
+            "type": "string",
+            "enum": ["user-agent", "open", "closed"],
+            "description": "Shadow root type."
+        },
+        {
             "id": "LiveRegionRelevant",
             "type": "string",
             "enum": ["additions", "removals", "text"],
@@ -41,17 +47,18 @@
                 { "name": "baseURL", "type": "string", "optional": true, "description": "Base URL that <code>Document</code> or <code>FrameOwner</code> node uses for URL completion." },
                 { "name": "publicId", "type": "string", "optional": true, "description": "<code>DocumentType</code>'s publicId." },
                 { "name": "systemId", "type": "string", "optional": true, "description": "<code>DocumentType</code>'s systemId." },
-                { "name": "internalSubset", "type": "string", "optional": true, "description": "<code>DocumentType</code>'s internalSubset." },
                 { "name": "xmlVersion", "type": "string", "optional": true, "description": "<code>Document</code>'s XML version in case of XML documents." },
                 { "name": "name", "type": "string", "optional": true, "description": "<code>Attr</code>'s name." },
                 { "name": "value", "type": "string", "optional": true, "description": "<code>Attr</code>'s value." },
                 { "name": "pseudoType", "$ref": "PseudoType", "optional": true, "description": "Pseudo element type for this node." },
+                { "name": "shadowRootType", "$ref": "ShadowRootType", "optional": true, "description": "Shadow root type." },
                 { "name": "frameId", "$ref": "Network.FrameId", "optional": true, "description": "Frame ID for frame owner elements." },
                 { "name": "contentDocument", "$ref": "Node", "optional": true, "description": "Content document for frame owner elements." },
                 { "name": "shadowRoots", "type": "array", "optional": true, "items": { "$ref": "Node" }, "description": "Shadow root list for given element host." },
                 { "name": "templateContent", "$ref": "Node", "optional": true, "description": "Content document fragment for template elements" },
                 { "name": "pseudoElements", "type": "array", "items": { "$ref": "Node" }, "optional": true, "description": "Pseudo elements associated with this node." },
-                { "name": "role", "type": "string", "optional": true, "description": "Computed value for first recognized role token, default role per element, or overridden role." }
+                { "name": "role", "type": "string", "optional": true, "description": "Computed value for first recognized role token, default role per element, or overridden role." },
+                { "name": "contentSecurityPolicyHash", "type": "string", "optional": true, "description": "Computed SHA-256 Content Security Policy hash source for given element." }
             ],
             "description": "DOM interaction is implemented in terms of mirror objects that represent the actual DOM nodes. DOMNode is a base node mirror type."
         },

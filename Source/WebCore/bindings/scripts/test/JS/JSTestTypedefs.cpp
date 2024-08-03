@@ -21,11 +21,10 @@
 #include "config.h"
 #include "JSTestTypedefs.h"
 
-#include "DOMStringList.h"
 #include "ExceptionCode.h"
 #include "JSDOMBinding.h"
 #include "JSDOMConstructor.h"
-#include "JSDOMStringList.h"
+#include "JSDOMConvert.h"
 #include "JSSVGPoint.h"
 #include "JSSerializedScriptValue.h"
 #include "JSTestCallback.h"
@@ -49,31 +48,31 @@ namespace WebCore {
 JSC::EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionFunc(JSC::ExecState*);
 JSC::EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionSetShadow(JSC::ExecState*);
 JSC::EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionMethodWithSequenceArg(JSC::ExecState*);
-JSC::EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionNullableArrayArg(JSC::ExecState*);
+JSC::EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionNullableSequenceArg(JSC::ExecState*);
 JSC::EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionFuncWithClamp(JSC::ExecState*);
 JSC::EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionImmutablePointFunction(JSC::ExecState*);
-JSC::EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionStringArrayFunction(JSC::ExecState*);
-JSC::EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionStringArrayFunction2(JSC::ExecState*);
+JSC::EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionStringSequenceFunction(JSC::ExecState*);
+JSC::EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionStringSequenceFunction2(JSC::ExecState*);
 JSC::EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionCallWithSequenceThatRequiresInclude(JSC::ExecState*);
 JSC::EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionMethodWithException(JSC::ExecState*);
 
 // Attributes
 
 JSC::EncodedJSValue jsTestTypedefsUnsignedLongLongAttr(JSC::ExecState*, JSC::EncodedJSValue, JSC::PropertyName);
-void setJSTestTypedefsUnsignedLongLongAttr(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
+bool setJSTestTypedefsUnsignedLongLongAttr(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
 JSC::EncodedJSValue jsTestTypedefsImmutableSerializedScriptValue(JSC::ExecState*, JSC::EncodedJSValue, JSC::PropertyName);
-void setJSTestTypedefsImmutableSerializedScriptValue(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
+bool setJSTestTypedefsImmutableSerializedScriptValue(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
 JSC::EncodedJSValue jsTestTypedefsConstructorTestSubObj(JSC::ExecState*, JSC::EncodedJSValue, JSC::PropertyName);
 JSC::EncodedJSValue jsTestTypedefsAttrWithGetterException(JSC::ExecState*, JSC::EncodedJSValue, JSC::PropertyName);
-void setJSTestTypedefsAttrWithGetterException(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
+bool setJSTestTypedefsAttrWithGetterException(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
 JSC::EncodedJSValue jsTestTypedefsAttrWithSetterException(JSC::ExecState*, JSC::EncodedJSValue, JSC::PropertyName);
-void setJSTestTypedefsAttrWithSetterException(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
+bool setJSTestTypedefsAttrWithSetterException(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
 JSC::EncodedJSValue jsTestTypedefsStringAttrWithGetterException(JSC::ExecState*, JSC::EncodedJSValue, JSC::PropertyName);
-void setJSTestTypedefsStringAttrWithGetterException(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
+bool setJSTestTypedefsStringAttrWithGetterException(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
 JSC::EncodedJSValue jsTestTypedefsStringAttrWithSetterException(JSC::ExecState*, JSC::EncodedJSValue, JSC::PropertyName);
-void setJSTestTypedefsStringAttrWithSetterException(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
+bool setJSTestTypedefsStringAttrWithSetterException(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
 JSC::EncodedJSValue jsTestTypedefsConstructor(JSC::ExecState*, JSC::EncodedJSValue, JSC::PropertyName);
-void setJSTestTypedefsConstructor(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
+bool setJSTestTypedefsConstructor(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
 
 class JSTestTypedefsPrototype : public JSC::JSNonFinalObject {
 public:
@@ -125,17 +124,21 @@ static const HashTableValue JSTestTypedefsConstructorTableValues[] =
 
 template<> EncodedJSValue JSC_HOST_CALL JSTestTypedefsConstructor::construct(ExecState* state)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     auto* castedThis = jsCast<JSTestTypedefsConstructor*>(state->callee());
+    ASSERT(castedThis);
     if (UNLIKELY(state->argumentCount() < 2))
-        return throwVMError(state, createNotEnoughArgumentsError(state));
-    String hello = state->argument(0).toString(state)->value(state);
+        return throwVMError(state, throwScope, createNotEnoughArgumentsError(state));
+    auto hello = state->argument(0).toWTFString(state);
     if (UNLIKELY(state->hadException()))
         return JSValue::encode(jsUndefined());
-    if (!state->argument(1).isObject())
-        return throwArgumentMustBeFunctionError(*state, 1, "testCallback", "TestTypedefs", nullptr);
-    RefPtr<TestCallback> testCallback = JSTestCallback::create(asObject(state->uncheckedArgument(1)), castedThis->globalObject());
-    RefPtr<TestTypedefs> object = TestTypedefs::create(hello, testCallback);
-    return JSValue::encode(asObject(toJS(state, castedThis->globalObject(), object.get())));
+    if (UNLIKELY(!state->argument(1).isObject()))
+        return throwArgumentMustBeFunctionError(*state, throwScope, 1, "testCallback", "TestTypedefs", nullptr);
+    auto testCallback = JSTestCallback::create(asObject(state->uncheckedArgument(1)), castedThis->globalObject());
+    auto object = TestTypedefs::create(WTFMove(hello), *testCallback);
+    return JSValue::encode(toJSNewlyCreated(state, castedThis->globalObject(), WTFMove(object)));
 }
 
 template<> JSValue JSTestTypedefsConstructor::prototypeForStructure(JSC::VM& vm, const JSDOMGlobalObject& globalObject)
@@ -146,7 +149,7 @@ template<> JSValue JSTestTypedefsConstructor::prototypeForStructure(JSC::VM& vm,
 
 template<> void JSTestTypedefsConstructor::initializeProperties(VM& vm, JSDOMGlobalObject& globalObject)
 {
-    putDirect(vm, vm.propertyNames->prototype, JSTestTypedefs::getPrototype(vm, &globalObject), DontDelete | ReadOnly | DontEnum);
+    putDirect(vm, vm.propertyNames->prototype, JSTestTypedefs::prototype(vm, &globalObject), DontDelete | ReadOnly | DontEnum);
     putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String(ASCIILiteral("TestTypedefs"))), ReadOnly | DontEnum);
     putDirect(vm, vm.propertyNames->length, jsNumber(2), ReadOnly | DontEnum);
     reifyStaticProperties(vm, JSTestTypedefsConstructorTableValues, *this);
@@ -168,11 +171,11 @@ static const HashTableValue JSTestTypedefsPrototypeTableValues[] =
     { "func", JSC::Function, NoIntrinsic, { (intptr_t)static_cast<NativeFunction>(jsTestTypedefsPrototypeFunctionFunc), (intptr_t) (0) } },
     { "setShadow", JSC::Function, NoIntrinsic, { (intptr_t)static_cast<NativeFunction>(jsTestTypedefsPrototypeFunctionSetShadow), (intptr_t) (3) } },
     { "methodWithSequenceArg", JSC::Function, NoIntrinsic, { (intptr_t)static_cast<NativeFunction>(jsTestTypedefsPrototypeFunctionMethodWithSequenceArg), (intptr_t) (1) } },
-    { "nullableArrayArg", JSC::Function, NoIntrinsic, { (intptr_t)static_cast<NativeFunction>(jsTestTypedefsPrototypeFunctionNullableArrayArg), (intptr_t) (1) } },
+    { "nullableSequenceArg", JSC::Function, NoIntrinsic, { (intptr_t)static_cast<NativeFunction>(jsTestTypedefsPrototypeFunctionNullableSequenceArg), (intptr_t) (1) } },
     { "funcWithClamp", JSC::Function, NoIntrinsic, { (intptr_t)static_cast<NativeFunction>(jsTestTypedefsPrototypeFunctionFuncWithClamp), (intptr_t) (1) } },
     { "immutablePointFunction", JSC::Function, NoIntrinsic, { (intptr_t)static_cast<NativeFunction>(jsTestTypedefsPrototypeFunctionImmutablePointFunction), (intptr_t) (0) } },
-    { "stringArrayFunction", JSC::Function, NoIntrinsic, { (intptr_t)static_cast<NativeFunction>(jsTestTypedefsPrototypeFunctionStringArrayFunction), (intptr_t) (1) } },
-    { "stringArrayFunction2", JSC::Function, NoIntrinsic, { (intptr_t)static_cast<NativeFunction>(jsTestTypedefsPrototypeFunctionStringArrayFunction2), (intptr_t) (1) } },
+    { "stringSequenceFunction", JSC::Function, NoIntrinsic, { (intptr_t)static_cast<NativeFunction>(jsTestTypedefsPrototypeFunctionStringSequenceFunction), (intptr_t) (1) } },
+    { "stringSequenceFunction2", JSC::Function, NoIntrinsic, { (intptr_t)static_cast<NativeFunction>(jsTestTypedefsPrototypeFunctionStringSequenceFunction2), (intptr_t) (1) } },
     { "callWithSequenceThatRequiresInclude", JSC::Function, NoIntrinsic, { (intptr_t)static_cast<NativeFunction>(jsTestTypedefsPrototypeFunctionCallWithSequenceThatRequiresInclude), (intptr_t) (1) } },
     { "methodWithException", JSC::Function, NoIntrinsic, { (intptr_t)static_cast<NativeFunction>(jsTestTypedefsPrototypeFunctionMethodWithException), (intptr_t) (0) } },
 };
@@ -197,7 +200,7 @@ JSObject* JSTestTypedefs::createPrototype(VM& vm, JSGlobalObject* globalObject)
     return JSTestTypedefsPrototype::create(vm, globalObject, JSTestTypedefsPrototype::createStructure(vm, globalObject, globalObject->objectPrototype()));
 }
 
-JSObject* JSTestTypedefs::getPrototype(VM& vm, JSGlobalObject* globalObject)
+JSObject* JSTestTypedefs::prototype(VM& vm, JSGlobalObject* globalObject)
 {
     return getDOMPrototype<JSTestTypedefs>(vm, globalObject);
 }
@@ -208,23 +211,16 @@ void JSTestTypedefs::destroy(JSC::JSCell* cell)
     thisObject->JSTestTypedefs::~JSTestTypedefs();
 }
 
-bool JSTestTypedefs::getOwnPropertySlot(JSObject* object, ExecState* state, PropertyName propertyName, PropertySlot& slot)
-{
-    auto* thisObject = jsCast<JSTestTypedefs*>(object);
-    ASSERT_GC_OBJECT_INHERITS(thisObject, info());
-    if (getStaticValueSlot<JSTestTypedefs, Base>(state, JSTestTypedefsTable, thisObject, propertyName, slot))
-        return true;
-    return false;
-}
-
 EncodedJSValue jsTestTypedefsUnsignedLongLongAttr(ExecState* state, EncodedJSValue thisValue, PropertyName)
 {
-    UNUSED_PARAM(state);
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     UNUSED_PARAM(thisValue);
     JSValue decodedThisValue = JSValue::decode(thisValue);
     auto* castedThis = jsDynamicCast<JSTestTypedefs*>(decodedThisValue);
     if (UNLIKELY(!castedThis)) {
-        return throwGetterTypeError(*state, "TestTypedefs", "unsignedLongLongAttr");
+        return throwGetterTypeError(*state, throwScope, "TestTypedefs", "unsignedLongLongAttr");
     }
     auto& impl = castedThis->wrapped();
     JSValue result = jsNumber(impl.unsignedLongLongAttr());
@@ -234,12 +230,14 @@ EncodedJSValue jsTestTypedefsUnsignedLongLongAttr(ExecState* state, EncodedJSVal
 
 EncodedJSValue jsTestTypedefsImmutableSerializedScriptValue(ExecState* state, EncodedJSValue thisValue, PropertyName)
 {
-    UNUSED_PARAM(state);
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     UNUSED_PARAM(thisValue);
     JSValue decodedThisValue = JSValue::decode(thisValue);
     auto* castedThis = jsDynamicCast<JSTestTypedefs*>(decodedThisValue);
     if (UNLIKELY(!castedThis)) {
-        return throwGetterTypeError(*state, "TestTypedefs", "immutableSerializedScriptValue");
+        return throwGetterTypeError(*state, throwScope, "TestTypedefs", "immutableSerializedScriptValue");
     }
     auto& impl = castedThis->wrapped();
     JSValue result = impl.immutableSerializedScriptValue() ? impl.immutableSerializedScriptValue()->deserialize(state, castedThis->globalObject(), 0) : jsNull();
@@ -249,12 +247,14 @@ EncodedJSValue jsTestTypedefsImmutableSerializedScriptValue(ExecState* state, En
 
 EncodedJSValue jsTestTypedefsConstructorTestSubObj(ExecState* state, EncodedJSValue thisValue, PropertyName)
 {
-    UNUSED_PARAM(state);
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     UNUSED_PARAM(thisValue);
     JSValue decodedThisValue = JSValue::decode(thisValue);
     auto* castedThis = jsDynamicCast<JSTestTypedefs*>(decodedThisValue);
     if (UNLIKELY(!castedThis)) {
-        return throwGetterTypeError(*state, "TestTypedefs", "TestSubObj");
+        return throwGetterTypeError(*state, throwScope, "TestTypedefs", "TestSubObj");
     }
     return JSValue::encode(JSTestSubObj::getConstructor(state->vm(), castedThis->globalObject()));
 }
@@ -262,12 +262,14 @@ EncodedJSValue jsTestTypedefsConstructorTestSubObj(ExecState* state, EncodedJSVa
 
 EncodedJSValue jsTestTypedefsAttrWithGetterException(ExecState* state, EncodedJSValue thisValue, PropertyName)
 {
-    UNUSED_PARAM(state);
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     UNUSED_PARAM(thisValue);
     JSValue decodedThisValue = JSValue::decode(thisValue);
     auto* castedThis = jsDynamicCast<JSTestTypedefs*>(decodedThisValue);
     if (UNLIKELY(!castedThis)) {
-        return throwGetterTypeError(*state, "TestTypedefs", "attrWithGetterException");
+        return throwGetterTypeError(*state, throwScope, "TestTypedefs", "attrWithGetterException");
     }
     ExceptionCode ec = 0;
     auto& impl = castedThis->wrapped();
@@ -279,12 +281,14 @@ EncodedJSValue jsTestTypedefsAttrWithGetterException(ExecState* state, EncodedJS
 
 EncodedJSValue jsTestTypedefsAttrWithSetterException(ExecState* state, EncodedJSValue thisValue, PropertyName)
 {
-    UNUSED_PARAM(state);
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     UNUSED_PARAM(thisValue);
     JSValue decodedThisValue = JSValue::decode(thisValue);
     auto* castedThis = jsDynamicCast<JSTestTypedefs*>(decodedThisValue);
     if (UNLIKELY(!castedThis)) {
-        return throwGetterTypeError(*state, "TestTypedefs", "attrWithSetterException");
+        return throwGetterTypeError(*state, throwScope, "TestTypedefs", "attrWithSetterException");
     }
     auto& impl = castedThis->wrapped();
     JSValue result = jsNumber(impl.attrWithSetterException());
@@ -294,12 +298,14 @@ EncodedJSValue jsTestTypedefsAttrWithSetterException(ExecState* state, EncodedJS
 
 EncodedJSValue jsTestTypedefsStringAttrWithGetterException(ExecState* state, EncodedJSValue thisValue, PropertyName)
 {
-    UNUSED_PARAM(state);
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     UNUSED_PARAM(thisValue);
     JSValue decodedThisValue = JSValue::decode(thisValue);
     auto* castedThis = jsDynamicCast<JSTestTypedefs*>(decodedThisValue);
     if (UNLIKELY(!castedThis)) {
-        return throwGetterTypeError(*state, "TestTypedefs", "stringAttrWithGetterException");
+        return throwGetterTypeError(*state, throwScope, "TestTypedefs", "stringAttrWithGetterException");
     }
     ExceptionCode ec = 0;
     auto& impl = castedThis->wrapped();
@@ -311,12 +317,14 @@ EncodedJSValue jsTestTypedefsStringAttrWithGetterException(ExecState* state, Enc
 
 EncodedJSValue jsTestTypedefsStringAttrWithSetterException(ExecState* state, EncodedJSValue thisValue, PropertyName)
 {
-    UNUSED_PARAM(state);
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     UNUSED_PARAM(thisValue);
     JSValue decodedThisValue = JSValue::decode(thisValue);
     auto* castedThis = jsDynamicCast<JSTestTypedefs*>(decodedThisValue);
     if (UNLIKELY(!castedThis)) {
-        return throwGetterTypeError(*state, "TestTypedefs", "stringAttrWithSetterException");
+        return throwGetterTypeError(*state, throwScope, "TestTypedefs", "stringAttrWithSetterException");
     }
     auto& impl = castedThis->wrapped();
     JSValue result = jsStringWithCache(state, impl.stringAttrWithSetterException());
@@ -326,127 +334,143 @@ EncodedJSValue jsTestTypedefsStringAttrWithSetterException(ExecState* state, Enc
 
 EncodedJSValue jsTestTypedefsConstructor(ExecState* state, EncodedJSValue thisValue, PropertyName)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
     JSTestTypedefsPrototype* domObject = jsDynamicCast<JSTestTypedefsPrototype*>(JSValue::decode(thisValue));
-    if (!domObject)
-        return throwVMTypeError(state);
+    if (UNLIKELY(!domObject))
+        return throwVMTypeError(state, throwScope);
     return JSValue::encode(JSTestTypedefs::getConstructor(state->vm(), domObject->globalObject()));
 }
 
-void setJSTestTypedefsConstructor(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
+bool setJSTestTypedefsConstructor(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
     JSValue value = JSValue::decode(encodedValue);
     JSTestTypedefsPrototype* domObject = jsDynamicCast<JSTestTypedefsPrototype*>(JSValue::decode(thisValue));
     if (UNLIKELY(!domObject)) {
-        throwVMTypeError(state);
-        return;
+        throwVMTypeError(state, throwScope);
+        return false;
     }
     // Shadowing a built-in constructor
-    domObject->putDirect(state->vm(), state->propertyNames().constructor, value);
+    return domObject->putDirect(state->vm(), state->propertyNames().constructor, value);
 }
 
-void setJSTestTypedefsUnsignedLongLongAttr(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
+bool setJSTestTypedefsUnsignedLongLongAttr(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
 {
-    JSValue value = JSValue::decode(encodedValue);
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);    JSValue value = JSValue::decode(encodedValue);
     UNUSED_PARAM(thisValue);
     JSTestTypedefs* castedThis = jsDynamicCast<JSTestTypedefs*>(JSValue::decode(thisValue));
     if (UNLIKELY(!castedThis)) {
-        throwSetterTypeError(*state, "TestTypedefs", "unsignedLongLongAttr");
-        return;
+        return throwSetterTypeError(*state, throwScope, "TestTypedefs", "unsignedLongLongAttr");
     }
     auto& impl = castedThis->wrapped();
-    unsigned long long nativeValue = toUInt64(state, value, NormalConversion);
+    auto nativeValue = convert<uint64_t>(*state, value, NormalConversion);
     if (UNLIKELY(state->hadException()))
-        return;
-    impl.setUnsignedLongLongAttr(nativeValue);
+        return false;
+    impl.setUnsignedLongLongAttr(WTFMove(nativeValue));
+    return true;
 }
 
 
-void setJSTestTypedefsImmutableSerializedScriptValue(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
+bool setJSTestTypedefsImmutableSerializedScriptValue(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
 {
-    JSValue value = JSValue::decode(encodedValue);
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);    JSValue value = JSValue::decode(encodedValue);
     UNUSED_PARAM(thisValue);
     JSTestTypedefs* castedThis = jsDynamicCast<JSTestTypedefs*>(JSValue::decode(thisValue));
     if (UNLIKELY(!castedThis)) {
-        throwSetterTypeError(*state, "TestTypedefs", "immutableSerializedScriptValue");
-        return;
+        return throwSetterTypeError(*state, throwScope, "TestTypedefs", "immutableSerializedScriptValue");
     }
     auto& impl = castedThis->wrapped();
-    RefPtr<SerializedScriptValue> nativeValue = SerializedScriptValue::create(state, value, 0, 0);
+    auto nativeValue = SerializedScriptValue::create(state, value, 0, 0);
     if (UNLIKELY(state->hadException()))
-        return;
-    impl.setImmutableSerializedScriptValue(nativeValue);
+        return false;
+    impl.setImmutableSerializedScriptValue(WTFMove(nativeValue));
+    return true;
 }
 
 
-void setJSTestTypedefsAttrWithGetterException(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
+bool setJSTestTypedefsAttrWithGetterException(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
 {
-    JSValue value = JSValue::decode(encodedValue);
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);    JSValue value = JSValue::decode(encodedValue);
     UNUSED_PARAM(thisValue);
     JSTestTypedefs* castedThis = jsDynamicCast<JSTestTypedefs*>(JSValue::decode(thisValue));
     if (UNLIKELY(!castedThis)) {
-        throwSetterTypeError(*state, "TestTypedefs", "attrWithGetterException");
-        return;
+        return throwSetterTypeError(*state, throwScope, "TestTypedefs", "attrWithGetterException");
     }
     auto& impl = castedThis->wrapped();
-    int nativeValue = toInt32(state, value, NormalConversion);
+    auto nativeValue = convert<int32_t>(*state, value, NormalConversion);
     if (UNLIKELY(state->hadException()))
-        return;
-    impl.setAttrWithGetterException(nativeValue);
+        return false;
+    impl.setAttrWithGetterException(WTFMove(nativeValue));
+    return true;
 }
 
 
-void setJSTestTypedefsAttrWithSetterException(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
+bool setJSTestTypedefsAttrWithSetterException(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
 {
-    JSValue value = JSValue::decode(encodedValue);
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);    JSValue value = JSValue::decode(encodedValue);
     UNUSED_PARAM(thisValue);
     JSTestTypedefs* castedThis = jsDynamicCast<JSTestTypedefs*>(JSValue::decode(thisValue));
     if (UNLIKELY(!castedThis)) {
-        throwSetterTypeError(*state, "TestTypedefs", "attrWithSetterException");
-        return;
-    }
-    auto& impl = castedThis->wrapped();
-    ExceptionCode ec = 0;
-    int nativeValue = toInt32(state, value, NormalConversion);
-    if (UNLIKELY(state->hadException()))
-        return;
-    impl.setAttrWithSetterException(nativeValue, ec);
-    setDOMException(state, ec);
-}
-
-
-void setJSTestTypedefsStringAttrWithGetterException(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
-{
-    JSValue value = JSValue::decode(encodedValue);
-    UNUSED_PARAM(thisValue);
-    JSTestTypedefs* castedThis = jsDynamicCast<JSTestTypedefs*>(JSValue::decode(thisValue));
-    if (UNLIKELY(!castedThis)) {
-        throwSetterTypeError(*state, "TestTypedefs", "stringAttrWithGetterException");
-        return;
-    }
-    auto& impl = castedThis->wrapped();
-    String nativeValue = value.toString(state)->value(state);
-    if (UNLIKELY(state->hadException()))
-        return;
-    impl.setStringAttrWithGetterException(nativeValue);
-}
-
-
-void setJSTestTypedefsStringAttrWithSetterException(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
-{
-    JSValue value = JSValue::decode(encodedValue);
-    UNUSED_PARAM(thisValue);
-    JSTestTypedefs* castedThis = jsDynamicCast<JSTestTypedefs*>(JSValue::decode(thisValue));
-    if (UNLIKELY(!castedThis)) {
-        throwSetterTypeError(*state, "TestTypedefs", "stringAttrWithSetterException");
-        return;
+        return throwSetterTypeError(*state, throwScope, "TestTypedefs", "attrWithSetterException");
     }
     auto& impl = castedThis->wrapped();
     ExceptionCode ec = 0;
-    String nativeValue = value.toString(state)->value(state);
+    auto nativeValue = convert<int32_t>(*state, value, NormalConversion);
     if (UNLIKELY(state->hadException()))
-        return;
-    impl.setStringAttrWithSetterException(nativeValue, ec);
+        return false;
+    impl.setAttrWithSetterException(WTFMove(nativeValue), ec);
     setDOMException(state, ec);
+    return true;
+}
+
+
+bool setJSTestTypedefsStringAttrWithGetterException(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
+{
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);    JSValue value = JSValue::decode(encodedValue);
+    UNUSED_PARAM(thisValue);
+    JSTestTypedefs* castedThis = jsDynamicCast<JSTestTypedefs*>(JSValue::decode(thisValue));
+    if (UNLIKELY(!castedThis)) {
+        return throwSetterTypeError(*state, throwScope, "TestTypedefs", "stringAttrWithGetterException");
+    }
+    auto& impl = castedThis->wrapped();
+    auto nativeValue = value.toWTFString(state);
+    if (UNLIKELY(state->hadException()))
+        return false;
+    impl.setStringAttrWithGetterException(WTFMove(nativeValue));
+    return true;
+}
+
+
+bool setJSTestTypedefsStringAttrWithSetterException(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
+{
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);    JSValue value = JSValue::decode(encodedValue);
+    UNUSED_PARAM(thisValue);
+    JSTestTypedefs* castedThis = jsDynamicCast<JSTestTypedefs*>(JSValue::decode(thisValue));
+    if (UNLIKELY(!castedThis)) {
+        return throwSetterTypeError(*state, throwScope, "TestTypedefs", "stringAttrWithSetterException");
+    }
+    auto& impl = castedThis->wrapped();
+    ExceptionCode ec = 0;
+    auto nativeValue = value.toWTFString(state);
+    if (UNLIKELY(state->hadException()))
+        return false;
+    impl.setStringAttrWithSetterException(WTFMove(nativeValue), ec);
+    setDOMException(state, ec);
+    return true;
 }
 
 
@@ -457,185 +481,173 @@ JSValue JSTestTypedefs::getConstructor(VM& vm, const JSGlobalObject* globalObjec
 
 EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionFunc(ExecState* state)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     JSValue thisValue = state->thisValue();
     auto castedThis = jsDynamicCast<JSTestTypedefs*>(thisValue);
     if (UNLIKELY(!castedThis))
-        return throwThisTypeError(*state, "TestTypedefs", "func");
+        return throwThisTypeError(*state, throwScope, "TestTypedefs", "func");
     ASSERT_GC_OBJECT_INHERITS(castedThis, JSTestTypedefs::info());
     auto& impl = castedThis->wrapped();
-
-    size_t argsCount = state->argumentCount();
-    if (argsCount <= 0) {
-        impl.func();
-        return JSValue::encode(jsUndefined());
-    }
-
-    Vector<int> x = toNativeArray<int>(state, state->argument(0));
+    auto x = state->argument(0).isUndefined() ? Vector<int32_t>() : toNativeArray<int32_t>(*state, state->uncheckedArgument(0));
     if (UNLIKELY(state->hadException()))
         return JSValue::encode(jsUndefined());
-    impl.func(x);
+    impl.func(WTFMove(x));
     return JSValue::encode(jsUndefined());
 }
 
 EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionSetShadow(ExecState* state)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     JSValue thisValue = state->thisValue();
     auto castedThis = jsDynamicCast<JSTestTypedefs*>(thisValue);
     if (UNLIKELY(!castedThis))
-        return throwThisTypeError(*state, "TestTypedefs", "setShadow");
+        return throwThisTypeError(*state, throwScope, "TestTypedefs", "setShadow");
     ASSERT_GC_OBJECT_INHERITS(castedThis, JSTestTypedefs::info());
     auto& impl = castedThis->wrapped();
     if (UNLIKELY(state->argumentCount() < 3))
-        return throwVMError(state, createNotEnoughArgumentsError(state));
-    float width = state->argument(0).toFloat(state);
+        return throwVMError(state, throwScope, createNotEnoughArgumentsError(state));
+    auto width = convert<float>(*state, state->argument(0), ShouldAllowNonFinite::Yes);
     if (UNLIKELY(state->hadException()))
         return JSValue::encode(jsUndefined());
-    float height = state->argument(1).toFloat(state);
+    auto height = convert<float>(*state, state->argument(1), ShouldAllowNonFinite::Yes);
     if (UNLIKELY(state->hadException()))
         return JSValue::encode(jsUndefined());
-    float blur = state->argument(2).toFloat(state);
+    auto blur = convert<float>(*state, state->argument(2), ShouldAllowNonFinite::Yes);
     if (UNLIKELY(state->hadException()))
         return JSValue::encode(jsUndefined());
-
-    size_t argsCount = state->argumentCount();
-    if (argsCount <= 3) {
-        impl.setShadow(width, height, blur);
-        return JSValue::encode(jsUndefined());
-    }
-
-    String color = state->argument(3).toString(state)->value(state);
+    auto color = state->argument(3).isUndefined() ? String() : state->uncheckedArgument(3).toWTFString(state);
     if (UNLIKELY(state->hadException()))
         return JSValue::encode(jsUndefined());
-    if (argsCount <= 4) {
-        impl.setShadow(width, height, blur, color);
-        return JSValue::encode(jsUndefined());
-    }
-
-    float alpha = state->argument(4).toFloat(state);
+    auto alpha = state->argument(4).isUndefined() ? Optional<float>() : convert<float>(*state, state->uncheckedArgument(4), ShouldAllowNonFinite::Yes);
     if (UNLIKELY(state->hadException()))
         return JSValue::encode(jsUndefined());
-    impl.setShadow(width, height, blur, color, alpha);
+    impl.setShadow(WTFMove(width), WTFMove(height), WTFMove(blur), WTFMove(color), WTFMove(alpha));
     return JSValue::encode(jsUndefined());
 }
 
 EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionMethodWithSequenceArg(ExecState* state)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     JSValue thisValue = state->thisValue();
     auto castedThis = jsDynamicCast<JSTestTypedefs*>(thisValue);
     if (UNLIKELY(!castedThis))
-        return throwThisTypeError(*state, "TestTypedefs", "methodWithSequenceArg");
+        return throwThisTypeError(*state, throwScope, "TestTypedefs", "methodWithSequenceArg");
     ASSERT_GC_OBJECT_INHERITS(castedThis, JSTestTypedefs::info());
     auto& impl = castedThis->wrapped();
     if (UNLIKELY(state->argumentCount() < 1))
-        return throwVMError(state, createNotEnoughArgumentsError(state));
-    Vector<RefPtr<SerializedScriptValue>> sequenceArg = (toRefPtrNativeArray<SerializedScriptValue, JSSerializedScriptValue>(state, state->argument(0), &JSSerializedScriptValue::toWrapped));
+        return throwVMError(state, throwScope, createNotEnoughArgumentsError(state));
+    auto sequenceArg = toRefPtrNativeArray<SerializedScriptValue, JSSerializedScriptValue>(*state, state->argument(0));
     if (UNLIKELY(state->hadException()))
         return JSValue::encode(jsUndefined());
-    JSValue result = jsNumber(impl.methodWithSequenceArg(sequenceArg));
+    JSValue result = jsNumber(impl.methodWithSequenceArg(WTFMove(sequenceArg)));
     return JSValue::encode(result);
 }
 
-EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionNullableArrayArg(ExecState* state)
+EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionNullableSequenceArg(ExecState* state)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     JSValue thisValue = state->thisValue();
     auto castedThis = jsDynamicCast<JSTestTypedefs*>(thisValue);
     if (UNLIKELY(!castedThis))
-        return throwThisTypeError(*state, "TestTypedefs", "nullableArrayArg");
+        return throwThisTypeError(*state, throwScope, "TestTypedefs", "nullableSequenceArg");
     ASSERT_GC_OBJECT_INHERITS(castedThis, JSTestTypedefs::info());
     auto& impl = castedThis->wrapped();
     if (UNLIKELY(state->argumentCount() < 1))
-        return throwVMError(state, createNotEnoughArgumentsError(state));
-    Vector<String> arrayArg = toNativeArray<String>(state, state->argument(0));
+        return throwVMError(state, throwScope, createNotEnoughArgumentsError(state));
+    auto sequenceArg = toNativeArray<String>(*state, state->argument(0));
     if (UNLIKELY(state->hadException()))
         return JSValue::encode(jsUndefined());
-    impl.nullableArrayArg(arrayArg);
+    impl.nullableSequenceArg(WTFMove(sequenceArg));
     return JSValue::encode(jsUndefined());
 }
 
 EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionFuncWithClamp(ExecState* state)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     JSValue thisValue = state->thisValue();
     auto castedThis = jsDynamicCast<JSTestTypedefs*>(thisValue);
     if (UNLIKELY(!castedThis))
-        return throwThisTypeError(*state, "TestTypedefs", "funcWithClamp");
+        return throwThisTypeError(*state, throwScope, "TestTypedefs", "funcWithClamp");
     ASSERT_GC_OBJECT_INHERITS(castedThis, JSTestTypedefs::info());
     auto& impl = castedThis->wrapped();
     if (UNLIKELY(state->argumentCount() < 1))
-        return throwVMError(state, createNotEnoughArgumentsError(state));
-    unsigned long long arg1 = 0;
-    double arg1NativeValue = state->argument(0).toNumber(state);
+        return throwVMError(state, throwScope, createNotEnoughArgumentsError(state));
+    auto arg1 = convert<uint64_t>(*state, state->argument(0), Clamp);
     if (UNLIKELY(state->hadException()))
         return JSValue::encode(jsUndefined());
-
-    if (!std::isnan(arg1NativeValue))
-        arg1 = clampTo<unsigned long long>(arg1NativeValue);
-
-
-    size_t argsCount = state->argumentCount();
-    if (argsCount <= 1) {
-        impl.funcWithClamp(arg1);
-        return JSValue::encode(jsUndefined());
-    }
-
-    unsigned long long arg2 = 0;
-    double arg2NativeValue = state->argument(1).toNumber(state);
+    auto arg2 = state->argument(1).isUndefined() ? Optional<uint64_t>() : convert<uint64_t>(*state, state->uncheckedArgument(1), Clamp);
     if (UNLIKELY(state->hadException()))
         return JSValue::encode(jsUndefined());
-
-    if (!std::isnan(arg2NativeValue))
-        arg2 = clampTo<unsigned long long>(arg2NativeValue);
-
-    impl.funcWithClamp(arg1, arg2);
+    impl.funcWithClamp(WTFMove(arg1), WTFMove(arg2));
     return JSValue::encode(jsUndefined());
 }
 
 EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionImmutablePointFunction(ExecState* state)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     JSValue thisValue = state->thisValue();
     auto castedThis = jsDynamicCast<JSTestTypedefs*>(thisValue);
     if (UNLIKELY(!castedThis))
-        return throwThisTypeError(*state, "TestTypedefs", "immutablePointFunction");
+        return throwThisTypeError(*state, throwScope, "TestTypedefs", "immutablePointFunction");
     ASSERT_GC_OBJECT_INHERITS(castedThis, JSTestTypedefs::info());
     auto& impl = castedThis->wrapped();
-    JSValue result = toJS(state, castedThis->globalObject(), WTF::getPtr(SVGPropertyTearOff<SVGPoint>::create(impl.immutablePointFunction())));
+    JSValue result = toJS(state, castedThis->globalObject(), SVGPropertyTearOff<SVGPoint>::create(impl.immutablePointFunction()));
     return JSValue::encode(result);
 }
 
-EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionStringArrayFunction(ExecState* state)
+EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionStringSequenceFunction(ExecState* state)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     JSValue thisValue = state->thisValue();
     auto castedThis = jsDynamicCast<JSTestTypedefs*>(thisValue);
     if (UNLIKELY(!castedThis))
-        return throwThisTypeError(*state, "TestTypedefs", "stringArrayFunction");
+        return throwThisTypeError(*state, throwScope, "TestTypedefs", "stringSequenceFunction");
     ASSERT_GC_OBJECT_INHERITS(castedThis, JSTestTypedefs::info());
     auto& impl = castedThis->wrapped();
     if (UNLIKELY(state->argumentCount() < 1))
-        return throwVMError(state, createNotEnoughArgumentsError(state));
+        return throwVMError(state, throwScope, createNotEnoughArgumentsError(state));
     ExceptionCode ec = 0;
-    Vector<String> values = toNativeArray<String>(state, state->argument(0));
+    auto values = toNativeArray<String>(*state, state->argument(0));
     if (UNLIKELY(state->hadException()))
         return JSValue::encode(jsUndefined());
-    JSValue result = jsArray(state, castedThis->globalObject(), impl.stringArrayFunction(values, ec));
+    JSValue result = jsArray(state, castedThis->globalObject(), impl.stringSequenceFunction(WTFMove(values), ec));
 
     setDOMException(state, ec);
     return JSValue::encode(result);
 }
 
-EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionStringArrayFunction2(ExecState* state)
+EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionStringSequenceFunction2(ExecState* state)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     JSValue thisValue = state->thisValue();
     auto castedThis = jsDynamicCast<JSTestTypedefs*>(thisValue);
     if (UNLIKELY(!castedThis))
-        return throwThisTypeError(*state, "TestTypedefs", "stringArrayFunction2");
+        return throwThisTypeError(*state, throwScope, "TestTypedefs", "stringSequenceFunction2");
     ASSERT_GC_OBJECT_INHERITS(castedThis, JSTestTypedefs::info());
     auto& impl = castedThis->wrapped();
     if (UNLIKELY(state->argumentCount() < 1))
-        return throwVMError(state, createNotEnoughArgumentsError(state));
+        return throwVMError(state, throwScope, createNotEnoughArgumentsError(state));
     ExceptionCode ec = 0;
-    Vector<String> values = toNativeArray<String>(state, state->argument(0));
+    auto values = toNativeArray<String>(*state, state->argument(0));
     if (UNLIKELY(state->hadException()))
         return JSValue::encode(jsUndefined());
-    JSValue result = jsArray(state, castedThis->globalObject(), impl.stringArrayFunction2(values, ec));
+    JSValue result = jsArray(state, castedThis->globalObject(), impl.stringSequenceFunction2(WTFMove(values), ec));
 
     setDOMException(state, ec);
     return JSValue::encode(result);
@@ -643,27 +655,33 @@ EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionStringArrayFunction2
 
 EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionCallWithSequenceThatRequiresInclude(ExecState* state)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     JSValue thisValue = state->thisValue();
     auto castedThis = jsDynamicCast<JSTestTypedefs*>(thisValue);
     if (UNLIKELY(!castedThis))
-        return throwThisTypeError(*state, "TestTypedefs", "callWithSequenceThatRequiresInclude");
+        return throwThisTypeError(*state, throwScope, "TestTypedefs", "callWithSequenceThatRequiresInclude");
     ASSERT_GC_OBJECT_INHERITS(castedThis, JSTestTypedefs::info());
     auto& impl = castedThis->wrapped();
     if (UNLIKELY(state->argumentCount() < 1))
-        return throwVMError(state, createNotEnoughArgumentsError(state));
-    Vector<RefPtr<TestEventTarget>> sequenceArg = (toRefPtrNativeArray<TestEventTarget, JSTestEventTarget>(state, state->argument(0), &JSTestEventTarget::toWrapped));
+        return throwVMError(state, throwScope, createNotEnoughArgumentsError(state));
+    auto sequenceArg = toRefPtrNativeArray<TestEventTarget, JSTestEventTarget>(*state, state->argument(0));
     if (UNLIKELY(state->hadException()))
         return JSValue::encode(jsUndefined());
-    JSValue result = jsBoolean(impl.callWithSequenceThatRequiresInclude(sequenceArg));
+    JSValue result = jsBoolean(impl.callWithSequenceThatRequiresInclude(WTFMove(sequenceArg)));
     return JSValue::encode(result);
 }
 
 EncodedJSValue JSC_HOST_CALL jsTestTypedefsPrototypeFunctionMethodWithException(ExecState* state)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     JSValue thisValue = state->thisValue();
     auto castedThis = jsDynamicCast<JSTestTypedefs*>(thisValue);
     if (UNLIKELY(!castedThis))
-        return throwThisTypeError(*state, "TestTypedefs", "methodWithException");
+        return throwThisTypeError(*state, throwScope, "TestTypedefs", "methodWithException");
     ASSERT_GC_OBJECT_INHERITS(castedThis, JSTestTypedefs::info());
     auto& impl = castedThis->wrapped();
     ExceptionCode ec = 0;
@@ -695,22 +713,11 @@ extern "C" { extern void* _ZTVN7WebCore12TestTypedefsE[]; }
 #endif
 #endif
 
-JSC::JSValue toJSNewlyCreated(JSC::ExecState*, JSDOMGlobalObject* globalObject, TestTypedefs* impl)
+JSC::JSValue toJSNewlyCreated(JSC::ExecState*, JSDOMGlobalObject* globalObject, Ref<TestTypedefs>&& impl)
 {
-    if (!impl)
-        return jsNull();
-    return createNewWrapper<JSTestTypedefs>(globalObject, impl);
-}
-
-JSC::JSValue toJS(JSC::ExecState*, JSDOMGlobalObject* globalObject, TestTypedefs* impl)
-{
-    if (!impl)
-        return jsNull();
-    if (JSValue result = getExistingWrapper<JSTestTypedefs>(globalObject, impl))
-        return result;
 
 #if ENABLE(BINDING_INTEGRITY)
-    void* actualVTablePointer = *(reinterpret_cast<void**>(impl));
+    void* actualVTablePointer = *(reinterpret_cast<void**>(impl.ptr()));
 #if PLATFORM(WIN)
     void* expectedVTablePointer = reinterpret_cast<void*>(__identifier("??_7TestTypedefs@WebCore@@6B@"));
 #else
@@ -718,7 +725,7 @@ JSC::JSValue toJS(JSC::ExecState*, JSDOMGlobalObject* globalObject, TestTypedefs
 #if COMPILER(CLANG)
     // If this fails TestTypedefs does not have a vtable, so you need to add the
     // ImplementationLacksVTable attribute to the interface definition
-    COMPILE_ASSERT(__is_polymorphic(TestTypedefs), TestTypedefs_is_not_polymorphic);
+    static_assert(__is_polymorphic(TestTypedefs), "TestTypedefs is not polymorphic");
 #endif
 #endif
     // If you hit this assertion you either have a use after free bug, or
@@ -727,7 +734,12 @@ JSC::JSValue toJS(JSC::ExecState*, JSDOMGlobalObject* globalObject, TestTypedefs
     // by adding the SkipVTableValidation attribute to the interface IDL definition
     RELEASE_ASSERT(actualVTablePointer == expectedVTablePointer);
 #endif
-    return createNewWrapper<JSTestTypedefs>(globalObject, impl);
+    return createWrapper<JSTestTypedefs, TestTypedefs>(globalObject, WTFMove(impl));
+}
+
+JSC::JSValue toJS(JSC::ExecState* state, JSDOMGlobalObject* globalObject, TestTypedefs& impl)
+{
+    return wrap(state, globalObject, impl);
 }
 
 TestTypedefs* JSTestTypedefs::toWrapped(JSC::JSValue value)

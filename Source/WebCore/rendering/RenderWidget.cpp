@@ -80,7 +80,7 @@ static void moveWidgetToParentSoon(Widget* child, FrameView* parent)
     WidgetHierarchyUpdatesSuspensionScope::scheduleWidgetToMove(child, parent);
 }
 
-RenderWidget::RenderWidget(HTMLFrameOwnerElement& element, Ref<RenderStyle>&& style)
+RenderWidget::RenderWidget(HTMLFrameOwnerElement& element, RenderStyle&& style)
     : RenderReplaced(element, WTFMove(style))
     , m_weakPtrFactory(this)
 {
@@ -241,7 +241,7 @@ void RenderWidget::paintContents(PaintInfo& paintInfo, const LayoutPoint& paintO
         FrameView& frameView = downcast<FrameView>(*m_widget);
         bool runOverlapTests = !frameView.useSlowRepaintsIfNotOverlapped();
         if (paintInfo.overlapTestRequests && runOverlapTests) {
-            ASSERT(!paintInfo.overlapTestRequests->contains(this));
+            ASSERT(!paintInfo.overlapTestRequests->contains(this) || (paintInfo.overlapTestRequests->get(this) == m_widget->frameRect()));
             paintInfo.overlapTestRequests->set(this, m_widget->frameRect());
         }
     }
@@ -254,7 +254,7 @@ void RenderWidget::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
 
     LayoutPoint adjustedPaintOffset = paintOffset + location();
 
-    if (hasBoxDecorations() && (paintInfo.phase == PaintPhaseForeground || paintInfo.phase == PaintPhaseSelection))
+    if (hasVisibleBoxDecorations() && (paintInfo.phase == PaintPhaseForeground || paintInfo.phase == PaintPhaseSelection))
         paintBoxDecorations(paintInfo, adjustedPaintOffset);
 
     if (paintInfo.phase == PaintPhaseMask) {

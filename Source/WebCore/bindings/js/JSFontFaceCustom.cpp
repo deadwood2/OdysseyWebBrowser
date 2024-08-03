@@ -35,10 +35,17 @@
 
 namespace WebCore {
 
-JSC::JSValue JSFontFace::loaded(JSC::ExecState&) const
+JSC::JSValue JSFontFace::loaded(JSC::ExecState& state) const
 {
-    auto& promise = wrapped().promise();
-    return promise.deferred().promise();
+    if (!m_loaded) {
+        if (!wrapped().promise()) {
+            DeferredWrapper promise(&state, globalObject(), JSC::JSPromiseDeferred::create(&state, globalObject()));
+            m_loaded.set(state.vm(), this, promise.promise());
+            wrapped().registerLoaded(WTFMove(promise));
+        } else
+            m_loaded.set(state.vm(), this, wrapped().promise().value().deferredWrapper().promise());
+    }
+    return m_loaded.get();
 }
 
 JSC::JSValue JSFontFace::load(JSC::ExecState& state)

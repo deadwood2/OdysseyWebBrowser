@@ -33,8 +33,6 @@
 #include <wtf/MetaAllocatorHandle.h>
 #include <wtf/MetaAllocator.h>
 #include <wtf/PageAllocation.h>
-#include <wtf/RefCounted.h>
-#include <wtf/Vector.h>
 
 #if OS(IOS)
 #include <libkern/OSCacheControl.h>
@@ -89,7 +87,31 @@ static const double executablePoolReservationFraction = 0.15;
 static const double executablePoolReservationFraction = 0.25;
 #endif
 
-extern uintptr_t startOfFixedExecutableMemoryPool;
+extern JS_EXPORTDATA uintptr_t startOfFixedExecutableMemoryPool;
+extern JS_EXPORTDATA uintptr_t endOfFixedExecutableMemoryPool;
+
+typedef void (*JITWriteFunction)(off_t, const void*, size_t);
+extern JS_EXPORTDATA JITWriteFunction jitWriteFunction;
+
+static inline void* performJITMemcpy(void *dst, const void *src, size_t n)
+{
+    // Use execute-only write thunk for writes inside the JIT region. This is a variant of
+    // memcpy that takes an offset into the JIT region as its destination (first) parameter.
+    if (jitWriteFunction && (uintptr_t)dst >= startOfFixedExecutableMemoryPool && (uintptr_t)dst <= endOfFixedExecutableMemoryPool) {
+        off_t offset = (off_t)((uintptr_t)dst - startOfFixedExecutableMemoryPool);
+        jitWriteFunction(offset, src, n);
+        return dst;
+    }
+
+    // Use regular memcpy for writes outside the JIT region.
+    return memcpy(dst, src, n);
+}
+
+#else // ENABLE(EXECUTABLE_ALLOCATOR_FIXED)
+static inline void* performJITMemcpy(void *dst, const void *src, size_t n)
+{
+    return memcpy(dst, src, n);
+}
 #endif
 
 class ExecutableAllocator {

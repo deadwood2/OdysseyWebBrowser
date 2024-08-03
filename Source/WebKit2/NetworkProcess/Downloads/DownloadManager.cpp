@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -44,7 +44,7 @@ DownloadManager::DownloadManager(Client& client)
 {
 }
 
-void DownloadManager::startDownload(SessionID sessionID, DownloadID downloadID, const ResourceRequest& request)
+void DownloadManager::startDownload(SessionID sessionID, DownloadID downloadID, const ResourceRequest& request, const String& suggestedName)
 {
 #if USE(NETWORK_SESSION)
     auto* networkSession = SessionTracker::networkSession(sessionID);
@@ -53,10 +53,10 @@ void DownloadManager::startDownload(SessionID sessionID, DownloadID downloadID, 
     NetworkLoadParameters parameters;
     parameters.sessionID = sessionID;
     parameters.request = request;
-    parameters.clientCredentialPolicy = AskClientForAllCredentials;
-    m_pendingDownloads.add(downloadID, std::make_unique<PendingDownload>(parameters, downloadID));
+    parameters.clientCredentialPolicy = ClientCredentialPolicy::MayAskClientForCredentials;
+    m_pendingDownloads.add(downloadID, std::make_unique<PendingDownload>(WTFMove(parameters), downloadID, *networkSession));
 #else
-    auto download = std::make_unique<Download>(*this, downloadID, request);
+    auto download = std::make_unique<Download>(*this, downloadID, request, suggestedName);
     download->start();
 
     ASSERT(!m_downloads.contains(downloadID));
@@ -65,13 +65,18 @@ void DownloadManager::startDownload(SessionID sessionID, DownloadID downloadID, 
 }
 
 #if USE(NETWORK_SESSION)
-std::unique_ptr<PendingDownload> DownloadManager::dataTaskBecameDownloadTask(DownloadID downloadID, std::unique_ptr<Download>&& download)
+std::pair<RefPtr<NetworkDataTask>, std::unique_ptr<PendingDownload>> DownloadManager::dataTaskBecameDownloadTask(DownloadID downloadID, std::unique_ptr<Download>&& download)
 {
     // This is needed for downloads started with startDownload, otherwise it will return nullptr.
     auto pendingDownload = m_pendingDownloads.take(downloadID);
 
+    // This is needed for downloads started with convertTaskToDownload, otherwise it will return nullptr.
+    auto downloadAfterLocationDecided = m_downloadsAfterDestinationDecided.take(downloadID);
+    
+    ASSERT(!!pendingDownload != !!downloadAfterLocationDecided);
+    
     m_downloads.add(downloadID, WTFMove(download));
-    return pendingDownload;
+    return std::make_pair(WTFMove(downloadAfterLocationDecided), WTFMove(pendingDownload));
 }
     
 void DownloadManager::continueCanAuthenticateAgainstProtectionSpace(DownloadID downloadID, bool canAuthenticate)
@@ -82,12 +87,40 @@ void DownloadManager::continueCanAuthenticateAgainstProtectionSpace(DownloadID d
         pendingDownload->continueCanAuthenticateAgainstProtectionSpace(canAuthenticate);
 }
 
-void DownloadManager::continueWillSendRequest(DownloadID downloadID, const WebCore::ResourceRequest& request)
+void DownloadManager::continueWillSendRequest(DownloadID downloadID, WebCore::ResourceRequest&& request)
 {
     auto* pendingDownload = m_pendingDownloads.get(downloadID);
     ASSERT(pendingDownload);
     if (pendingDownload)
-        pendingDownload->continueWillSendRequest(request);
+        pendingDownload->continueWillSendRequest(WTFMove(request));
+}
+
+void DownloadManager::willDecidePendingDownloadDestination(NetworkDataTask& networkDataTask, ResponseCompletionHandler&& completionHandler)
+{
+    auto downloadID = networkDataTask.pendingDownloadID();
+    auto pendingDownload = m_pendingDownloads.take(downloadID);
+    ASSERT(networkDataTask.pendingDownload() == pendingDownload.get());
+    auto addResult = m_downloadsWaitingForDestination.set(downloadID, std::make_pair<RefPtr<NetworkDataTask>, ResponseCompletionHandler>(&networkDataTask, WTFMove(completionHandler)));
+    ASSERT_UNUSED(addResult, addResult.isNewEntry);
+}
+
+void DownloadManager::continueDecidePendingDownloadDestination(DownloadID downloadID, String destination, const SandboxExtension::Handle& sandboxExtensionHandle, bool allowOverwrite)
+{
+    auto pair = m_downloadsWaitingForDestination.take(downloadID);
+    auto networkDataTask = WTFMove(pair.first);
+    auto completionHandler = WTFMove(pair.second);
+    if (!networkDataTask || !completionHandler)
+        return;
+
+    networkDataTask->setPendingDownloadLocation(destination, sandboxExtensionHandle);
+    
+    if (allowOverwrite && fileExists(destination))
+        deleteFile(destination);
+
+    completionHandler(PolicyDownload);
+    
+    ASSERT(!m_downloadsAfterDestinationDecided.contains(downloadID));
+    m_downloadsAfterDestinationDecided.set(downloadID, networkDataTask);
 }
 #else
 void DownloadManager::convertHandleToDownload(DownloadID downloadID, ResourceHandle* handle, const ResourceRequest& request, const ResourceResponse& response)
@@ -116,11 +149,17 @@ void DownloadManager::resumeDownload(SessionID, DownloadID downloadID, const IPC
 
 void DownloadManager::cancelDownload(DownloadID downloadID)
 {
-    Download* download = m_downloads.get(downloadID);
-    if (!download)
+    if (Download* download = m_downloads.get(downloadID)) {
+        download->cancel();
         return;
-
-    download->cancel();
+    }
+#if USE(NETWORK_SESSION)
+    if (auto completionHandler = m_downloadsWaitingForDestination.take(downloadID).second) {
+        m_client.pendingDownloadCanceled(downloadID);
+        completionHandler(PolicyIgnore);
+        return;
+    }
+#endif
 }
 
 void DownloadManager::downloadFinished(Download* download)

@@ -29,8 +29,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef PageRuntimeAgent_h
-#define PageRuntimeAgent_h
+#pragma once
 
 #include "InspectorWebAgentBase.h"
 #include <inspector/InspectorFrontendDispatchers.h>
@@ -58,18 +57,18 @@ public:
     PageRuntimeAgent(PageAgentContext&, InspectorPageAgent*);
     virtual ~PageRuntimeAgent() { }
 
-    virtual void didCreateFrontendAndBackend(Inspector::FrontendRouter*, Inspector::BackendDispatcher*) override;
-    virtual void willDestroyFrontendAndBackend(Inspector::DisconnectReason) override;
-    virtual void enable(ErrorString&) override;
-    virtual void disable(ErrorString&) override;
+    void didCreateFrontendAndBackend(Inspector::FrontendRouter*, Inspector::BackendDispatcher*) override;
+    void willDestroyFrontendAndBackend(Inspector::DisconnectReason) override;
+    void enable(ErrorString&) override;
+    void disable(ErrorString&) override;
 
     // InspectorInstrumentation callbacks.
     void didCreateMainWorldContext(Frame&);
 
 private:
-    virtual Inspector::InjectedScript injectedScriptForEval(ErrorString&, const int* executionContextId) override;
-    virtual void muteConsole() override;
-    virtual void unmuteConsole() override;
+    Inspector::InjectedScript injectedScriptForEval(ErrorString&, const int* executionContextId) override;
+    void muteConsole() override;
+    void unmuteConsole() override;
     void reportExecutionContextCreation();
     void notifyContextCreated(const String& frameId, JSC::ExecState*, SecurityOrigin*, bool isPageContext);
 
@@ -83,5 +82,3 @@ private:
 };
 
 } // namespace WebCore
-
-#endif // !defined(InspectorPagerAgent_h)

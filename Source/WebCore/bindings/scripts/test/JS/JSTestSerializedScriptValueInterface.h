@@ -18,8 +18,7 @@
     Boston, MA 02110-1301, USA.
 */
 
-#ifndef JSTestSerializedScriptValueInterface_h
-#define JSTestSerializedScriptValueInterface_h
+#pragma once
 
 #if ENABLE(Condition1) || ENABLE(Condition2)
 
@@ -39,10 +38,8 @@ public:
         return ptr;
     }
 
-    static const bool hasStaticPropertyTable = false;
-
     static JSC::JSObject* createPrototype(JSC::VM&, JSC::JSGlobalObject*);
-    static JSC::JSObject* getPrototype(JSC::VM&, JSC::JSGlobalObject*);
+    static JSC::JSObject* prototype(JSC::VM&, JSC::JSGlobalObject*);
     static TestSerializedScriptValueInterface* toWrapped(JSC::JSValue);
     static void destroy(JSC::JSCell*);
 
@@ -86,13 +83,12 @@ inline void* wrapperKey(TestSerializedScriptValueInterface* wrappableObject)
     return wrappableObject;
 }
 
-JSC::JSValue toJS(JSC::ExecState*, JSDOMGlobalObject*, TestSerializedScriptValueInterface*);
-inline JSC::JSValue toJS(JSC::ExecState* state, JSDOMGlobalObject* globalObject, TestSerializedScriptValueInterface& impl) { return toJS(state, globalObject, &impl); }
-JSC::JSValue toJSNewlyCreated(JSC::ExecState*, JSDOMGlobalObject*, TestSerializedScriptValueInterface*);
+JSC::JSValue toJS(JSC::ExecState*, JSDOMGlobalObject*, TestSerializedScriptValueInterface&);
+inline JSC::JSValue toJS(JSC::ExecState* state, JSDOMGlobalObject* globalObject, TestSerializedScriptValueInterface* impl) { return impl ? toJS(state, globalObject, *impl) : JSC::jsNull(); }
+JSC::JSValue toJSNewlyCreated(JSC::ExecState*, JSDOMGlobalObject*, Ref<TestSerializedScriptValueInterface>&&);
+inline JSC::JSValue toJSNewlyCreated(JSC::ExecState* state, JSDOMGlobalObject* globalObject, RefPtr<TestSerializedScriptValueInterface>&& impl) { return impl ? toJSNewlyCreated(state, globalObject, impl.releaseNonNull()) : JSC::jsNull(); }
 
 
 } // namespace WebCore
 
 #endif // ENABLE(Condition1) || ENABLE(Condition2)
-
-#endif

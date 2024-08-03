@@ -188,6 +188,9 @@ void printInternal(PrintStream& out, Opcode opcode)
     case IToD:
         out.print("IToD");
         return;
+    case IToF:
+        out.print("IToF");
+        return;
     case FloatToDouble:
         out.print("FloatToDouble");
         return;
@@ -286,6 +289,9 @@ void printInternal(PrintStream& out, Opcode opcode)
         return;
     case Switch:
         out.print("Switch");
+        return;
+    case EntrySwitch:
+        out.print("EntrySwitch");
         return;
     case Return:
         out.print("Return");

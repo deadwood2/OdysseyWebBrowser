@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,9 +33,14 @@
 #import <WebKit/WKProcessPoolPrivate.h>
 #import <WebKit/WKUserContentControllerPrivate.h>
 #import <WebKit/WKWebViewConfigurationPrivate.h>
+#import <WebKit/WKWebsiteDataStorePrivate.h>
 #import <WebKit/WebKit.h>
 #import <WebKit/_WKProcessPoolConfiguration.h>
 #import <WebKit/_WKUserContentExtensionStore.h>
+
+#if WK_API_ENABLED
+#import <WebKit/_WKExperimentalFeature.h>
+#endif
 
 enum {
     WebKit1NewWindowTag = 1,
@@ -80,11 +85,26 @@ static WKWebViewConfiguration *defaultConfiguration()
             configuration.processPool = [[[WKProcessPool alloc] _initWithConfiguration:singleProcessConfiguration] autorelease];
             [singleProcessConfiguration release];
         }
+
+#if WK_API_ENABLED
+        NSArray<_WKExperimentalFeature *> *features = [WKPreferences _experimentalFeatures];
+        for (_WKExperimentalFeature *feature in features) {
+            BOOL enabled = [[NSUserDefaults standardUserDefaults] boolForKey:feature.key];
+            [configuration.preferences _setEnabled:enabled forFeature:feature];
+        }
+#endif
     }
 
     configuration.suppressesIncrementalRendering = [SettingsController shared].incrementalRenderingSuppressed;
+    configuration.websiteDataStore._resourceLoadStatisticsEnabled = [SettingsController shared].resourceLoadStatisticsEnabled;
     return configuration;
 }
+
+WKPreferences *defaultPreferences()
+{
+    return defaultConfiguration().preferences;
+}
+
 #endif
 
 
@@ -209,11 +229,11 @@ static WKWebViewConfiguration *defaultConfiguration()
 - (void)_updateNewWindowKeyEquivalents
 {
     if ([[SettingsController shared] useWebKit2ByDefault]) {
-        [_newWebKit1WindowItem setKeyEquivalentModifierMask:NSCommandKeyMask | NSAlternateKeyMask];
-        [_newWebKit2WindowItem setKeyEquivalentModifierMask:NSCommandKeyMask];
+        [_newWebKit1WindowItem setKeyEquivalentModifierMask:NSEventModifierFlagCommand | NSEventModifierFlagOption];
+        [_newWebKit2WindowItem setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
     } else {
-        [_newWebKit1WindowItem setKeyEquivalentModifierMask:NSCommandKeyMask];
-        [_newWebKit2WindowItem setKeyEquivalentModifierMask:NSCommandKeyMask | NSAlternateKeyMask];
+        [_newWebKit1WindowItem setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
+        [_newWebKit2WindowItem setKeyEquivalentModifierMask:NSEventModifierFlagCommand | NSEventModifierFlagOption];
     }
 }
 

@@ -42,8 +42,8 @@
 
 class JSManagedValueHandleOwner : public JSC::WeakHandleOwner {
 public:
-    virtual void finalize(JSC::Handle<JSC::Unknown>, void* context) override;
-    virtual bool isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown>, void* context, JSC::SlotVisitor&) override;
+    void finalize(JSC::Handle<JSC::Unknown>, void* context) override;
+    bool isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown>, void* context, JSC::SlotVisitor&) override;
 };
 
 static JSManagedValueHandleOwner* managedValueHandleOwner()
@@ -213,6 +213,7 @@ private:
     m_owners = [[NSMapTable alloc] initWithKeyOptions:weakIDOptions valueOptions:integerOptions capacity:1];
 
     JSC::JSValue jsValue = toJS(exec, [value JSValueRef]);
+    dataLog("Creating managed value with value ", jsValue, "\n");
     if (jsValue.isObject())
         m_weakValue.setObject(JSC::jsCast<JSC::JSObject*>(jsValue.asCell()), self);
     else if (jsValue.isString())

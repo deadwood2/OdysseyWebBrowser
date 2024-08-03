@@ -10,9 +10,9 @@
 #ifndef GLSLANG_SHADERVARS_H_
 #define GLSLANG_SHADERVARS_H_
 
+#include <algorithm>
 #include <string>
 #include <vector>
-#include <algorithm>
 
 // Assume ShaderLang.h is included before ShaderVars.h, for sh::GLenum
 // Note: make sure to increment ANGLE_SH_VERSION when changing ShaderVars.h
@@ -110,19 +110,39 @@ struct COMPILER_EXPORT Uniform : public ShaderVariable
     bool isSameUniformAtLinkTime(const Uniform &other) const;
 };
 
-struct COMPILER_EXPORT Attribute : public ShaderVariable
+// An interface variable is a variable which passes data between the GL data structures and the
+// shader execution: either vertex shader inputs or fragment shader outputs. These variables can
+// have integer locations to pass back to the GL API.
+struct COMPILER_EXPORT InterfaceVariable : public ShaderVariable
+{
+    InterfaceVariable();
+    ~InterfaceVariable();
+    InterfaceVariable(const InterfaceVariable &other);
+    InterfaceVariable &operator=(const InterfaceVariable &other);
+    bool operator==(const InterfaceVariable &other) const;
+    bool operator!=(const InterfaceVariable &other) const { return !operator==(other); }
+
+    int location;
+};
+
+struct COMPILER_EXPORT Attribute : public InterfaceVariable
 {
     Attribute();
     ~Attribute();
     Attribute(const Attribute &other);
     Attribute &operator=(const Attribute &other);
     bool operator==(const Attribute &other) const;
-    bool operator!=(const Attribute &other) const
-    {
-        return !operator==(other);
-    }
+    bool operator!=(const Attribute &other) const { return !operator==(other); }
+};
 
-    int location;
+struct COMPILER_EXPORT OutputVariable : public InterfaceVariable
+{
+    OutputVariable();
+    ~OutputVariable();
+    OutputVariable(const OutputVariable &other);
+    OutputVariable &operator=(const OutputVariable &other);
+    bool operator==(const OutputVariable &other) const;
+    bool operator!=(const OutputVariable &other) const { return !operator==(other); }
 };
 
 struct COMPILER_EXPORT InterfaceBlockField : public ShaderVariable
@@ -161,7 +181,12 @@ struct COMPILER_EXPORT Varying : public ShaderVariable
 
     // Decide whether two varyings are the same at shader link time,
     // assuming one from vertex shader and the other from fragment shader.
-    // See GLSL ES Spec 3.00.3, sec 4.3.9.
+    // Invariance needs to match only in ESSL1. Relevant spec sections:
+    // GLSL ES 3.00.4, sections 4.6.1 and 4.3.9.
+    // GLSL ES 1.00.17, section 4.6.4.
+    bool isSameVaryingAtLinkTime(const Varying &other, int shaderVersion) const;
+
+    // Deprecated version of isSameVaryingAtLinkTime, which assumes ESSL1.
     bool isSameVaryingAtLinkTime(const Varying &other) const;
 
     InterpolationType interpolation;
@@ -175,6 +200,12 @@ struct COMPILER_EXPORT InterfaceBlock
     InterfaceBlock(const InterfaceBlock &other);
     InterfaceBlock &operator=(const InterfaceBlock &other);
 
+    // Fields from blocks with non-empty instance names are prefixed with the block name.
+    std::string fieldPrefix() const;
+
+    // Decide whether two interface blocks are the same at shader link time.
+    bool isSameInterfaceBlockAtLinkTime(const InterfaceBlock &other) const;
+
     std::string name;
     std::string mappedName;
     std::string instanceName;
@@ -185,6 +216,32 @@ struct COMPILER_EXPORT InterfaceBlock
     std::vector<InterfaceBlockField> fields;
 };
 
-}
+struct COMPILER_EXPORT WorkGroupSize
+{
+    void fill(int fillValue);
+    void setLocalSize(int localSizeX, int localSizeY, int localSizeZ);
+
+    int &operator[](size_t index);
+    int operator[](size_t index) const;
+    size_t size() const;
+
+    // Checks whether two work group size declarations match.
+    // Two work group size declarations are the same if the explicitly specified elements are the
+    // same or if one of them is specified as one and the other one is not specified
+    bool isWorkGroupSizeMatching(const WorkGroupSize &right) const;
+
+    // Checks whether any of the values are set.
+    bool isAnyValueSet() const;
+
+    // Checks whether all of the values are set.
+    bool isDeclared() const;
+
+    // Checks whether either all of the values are set, or none of them are.
+    bool isLocalSizeValid() const;
+
+    int localSizeQualifiers[3];
+};
+
+}  // namespace sh
 
 #endif // GLSLANG_SHADERVARS_H_

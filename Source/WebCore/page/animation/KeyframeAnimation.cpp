@@ -37,18 +37,17 @@
 #include "GeometryUtilities.h"
 #include "RenderBox.h"
 #include "RenderStyle.h"
+#include "StylePendingResources.h"
 #include "StyleResolver.h"
 
 namespace WebCore {
 
-KeyframeAnimation::KeyframeAnimation(Animation& animation, RenderElement* renderer, CompositeAnimation* compositeAnimation, RenderStyle* unanimatedStyle)
+KeyframeAnimation::KeyframeAnimation(const Animation& animation, RenderElement* renderer, CompositeAnimation* compositeAnimation, const RenderStyle* unanimatedStyle)
     : AnimationBase(animation, renderer, compositeAnimation)
     , m_keyframes(animation.name())
-    , m_unanimatedStyle(unanimatedStyle)
+    , m_unanimatedStyle(RenderStyle::clonePtr(*unanimatedStyle))
 {
-    // Get the keyframe RenderStyles
-    if (m_object && m_object->element())
-        m_object->element()->styleResolver().keyframeStylesForAnimation(*m_object->element(), unanimatedStyle, m_keyframes);
+    resolveKeyframeStyles();
 
     // Update the m_transformFunctionListValid flag based on whether the function lists in the keyframes match.
     validateTransformFunctionList();
@@ -113,7 +112,7 @@ void KeyframeAnimation::fetchIntervalEndpointsForProperty(CSSPropertyID property
     prog = progress(scale, offset, prevKeyframe.timingFunction(name()));
 }
 
-bool KeyframeAnimation::animate(CompositeAnimation* compositeAnimation, RenderElement*, const RenderStyle*, RenderStyle* targetStyle, RefPtr<RenderStyle>& animatedStyle)
+bool KeyframeAnimation::animate(CompositeAnimation* compositeAnimation, RenderElement*, const RenderStyle*, const RenderStyle* targetStyle, std::unique_ptr<RenderStyle>& animatedStyle)
 {
     // Fire the start timeout if needed
     fireAnimationEventsIfNeeded();
@@ -130,7 +129,7 @@ bool KeyframeAnimation::animate(CompositeAnimation* compositeAnimation, RenderEl
     // If so, we need to send back the targetStyle.
     if (postActive()) {
         if (!animatedStyle)
-            animatedStyle = const_cast<RenderStyle*>(targetStyle);
+            animatedStyle = RenderStyle::clonePtr(*targetStyle);
         return false;
     }
 
@@ -153,7 +152,7 @@ bool KeyframeAnimation::animate(CompositeAnimation* compositeAnimation, RenderEl
     // Run a cycle of animation.
     // We know we will need a new render style, so make one if needed.
     if (!animatedStyle)
-        animatedStyle = RenderStyle::clone(targetStyle);
+        animatedStyle = RenderStyle::clonePtr(*targetStyle);
 
     // FIXME: we need to be more efficient about determining which keyframes we are animating between.
     // We should cache the last pair or something.
@@ -176,7 +175,7 @@ bool KeyframeAnimation::animate(CompositeAnimation* compositeAnimation, RenderEl
     return state() != oldState;
 }
 
-void KeyframeAnimation::getAnimatedStyle(RefPtr<RenderStyle>& animatedStyle)
+void KeyframeAnimation::getAnimatedStyle(std::unique_ptr<RenderStyle>& animatedStyle)
 {
     // If we're done, or in the delay phase and we're not backwards filling, tell the caller to use the current style.
     if (postActive() || (waitingToStart() && m_animation->delay() > 0 && !m_animation->fillsBackwards()))
@@ -186,7 +185,7 @@ void KeyframeAnimation::getAnimatedStyle(RefPtr<RenderStyle>& animatedStyle)
         return;
 
     if (!animatedStyle)
-        animatedStyle = RenderStyle::clone(&m_object->style());
+        animatedStyle = RenderStyle::clonePtr(m_object->style());
 
     for (auto propertyID : m_keyframes.properties()) {
         // Get the from/to styles and progress between
@@ -348,6 +347,21 @@ void KeyframeAnimation::resumeOverriddenAnimations()
 bool KeyframeAnimation::affectsProperty(CSSPropertyID property) const
 {
     return m_keyframes.containsProperty(property);
+}
+
+void KeyframeAnimation::resolveKeyframeStyles()
+{
+    if (!m_object || !m_object->element())
+        return;
+    auto& element = *m_object->element();
+
+    element.styleResolver().keyframeStylesForAnimation(*m_object->element(), m_unanimatedStyle.get(), m_keyframes);
+
+    // Ensure resource loads for all the frames.
+    for (auto& keyframe : m_keyframes.keyframes()) {
+        if (auto* style = const_cast<RenderStyle*>(keyframe.style()))
+            Style::loadPendingResources(*style, element.document(), &element);
+    }
 }
 
 void KeyframeAnimation::validateTransformFunctionList()

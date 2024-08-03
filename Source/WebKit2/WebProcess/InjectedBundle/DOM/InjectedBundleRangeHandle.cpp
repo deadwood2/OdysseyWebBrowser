@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2010, 2015-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,7 @@
 #include "ShareableBitmap.h"
 #include "WebImage.h"
 #include <JavaScriptCore/APICast.h>
+#include <JavaScriptCore/HeapInlines.h>
 #include <WebCore/Document.h>
 #include <WebCore/FloatRect.h>
 #include <WebCore/Frame.h>
@@ -70,9 +71,9 @@ PassRefPtr<InjectedBundleRangeHandle> InjectedBundleRangeHandle::getOrCreate(Ran
     if (!result.isNewEntry)
         return PassRefPtr<InjectedBundleRangeHandle>(result.iterator->value);
 
-    RefPtr<InjectedBundleRangeHandle> rangeHandle = InjectedBundleRangeHandle::create(range);
-    result.iterator->value = rangeHandle.get();
-    return rangeHandle.release();
+    auto rangeHandle = InjectedBundleRangeHandle::create(range);
+    result.iterator->value = rangeHandle.ptr();
+    return WTFMove(rangeHandle);
 }
 
 Ref<InjectedBundleRangeHandle> InjectedBundleRangeHandle::create(Range* range)
@@ -112,6 +113,8 @@ PassRefPtr<WebImage> InjectedBundleRangeHandle::renderedImage(SnapshotOptions op
     FrameView* frameView = frame->view();
     if (!frameView)
         return nullptr;
+
+    Ref<Frame> protector(*frame);
 
     VisibleSelection oldSelection = frame->selection().selection();
     frame->selection().setSelection(VisibleSelection(*m_range));

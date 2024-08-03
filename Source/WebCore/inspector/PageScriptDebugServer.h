@@ -24,8 +24,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef PageScriptDebugServer_h
-#define PageScriptDebugServer_h
+#pragma once
 
 #include <inspector/ScriptDebugServer.h>
 
@@ -42,17 +41,17 @@ public:
     PageScriptDebugServer(Page&);
     virtual ~PageScriptDebugServer() { }
 
-    virtual void recompileAllJSFunctions() override;
+    void recompileAllJSFunctions() override;
 
 private:
-    virtual void attachDebugger() override;
-    virtual void detachDebugger(bool isBeingDestroyed) override;
+    void attachDebugger() override;
+    void detachDebugger(bool isBeingDestroyed) override;
 
-    virtual void didPause(JSC::JSGlobalObject*) override;
-    virtual void didContinue(JSC::JSGlobalObject*) override;
-    virtual void runEventLoopWhilePaused() override;
-    virtual bool isContentScript(JSC::ExecState*) const override;
-    virtual void reportException(JSC::ExecState*, JSC::Exception*) const override;
+    void didPause(JSC::JSGlobalObject*) override;
+    void didContinue(JSC::JSGlobalObject*) override;
+    void runEventLoopWhilePaused() override;
+    bool isContentScript(JSC::ExecState*) const override;
+    void reportException(JSC::ExecState*, JSC::Exception*) const override;
 
     void runEventLoopWhilePausedInternal();
 
@@ -65,5 +64,3 @@ private:
 };
 
 } // namespace WebCore
-
-#endif // PageScriptDebugServer_h

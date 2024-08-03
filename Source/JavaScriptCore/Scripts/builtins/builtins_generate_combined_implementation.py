@@ -72,6 +72,9 @@ class BuiltinsCombinedImplementationGenerator(BuiltinsGenerator):
                 ("JavaScriptCore", "builtins/BuiltinExecutables.h"),
             ),
             (["JavaScriptCore", "WebCore"],
+                ("JavaScriptCore", "heap/HeapInlines.h"),
+            ),
+            (["JavaScriptCore", "WebCore"],
                 ("JavaScriptCore", "runtime/Executable.h"),
             ),
             (["JavaScriptCore", "WebCore"],
@@ -85,6 +88,9 @@ class BuiltinsCombinedImplementationGenerator(BuiltinsGenerator):
             ),
             (["JavaScriptCore", "WebCore"],
                 ("JavaScriptCore", "runtime/VM.h"),
+            ),
+            (["JavaScriptCore", "WebCore"],
+                ("JavaScriptCore", "runtime/Intrinsic.h"),
             ),
         ]
 

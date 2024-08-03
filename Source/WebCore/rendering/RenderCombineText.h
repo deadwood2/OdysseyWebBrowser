@@ -36,7 +36,7 @@ public:
 
     void combineText();
     Optional<FloatPoint> computeTextOrigin(const FloatRect& boxRect) const;
-    void getStringToRender(int, String&, int& length) const;
+    String combinedStringForRendering() const;
     bool isCombined() const { return m_isCombined; }
     float combinedTextWidth(const FontCascade& font) const { return font.size(); }
     const FontCascade& originalFont() const { return parent()->style().fontCascade(); }
@@ -45,13 +45,13 @@ public:
 private:
     void node() const = delete;
 
-    virtual bool isCombineText() const override { return true; }
-    virtual float width(unsigned from, unsigned length, const FontCascade&, float xPosition, HashSet<const Font*>* fallbackFonts = 0, GlyphOverflow* = 0) const override;
-    virtual const char* renderName() const override { return "RenderCombineText"; }
-    virtual void styleDidChange(StyleDifference, const RenderStyle* oldStyle) override;
-    virtual void setRenderedText(const String&) override;
+    bool isCombineText() const override { return true; }
+    float width(unsigned from, unsigned length, const FontCascade&, float xPosition, HashSet<const Font*>* fallbackFonts = 0, GlyphOverflow* = 0) const override;
+    const char* renderName() const override { return "RenderCombineText"; }
+    void styleDidChange(StyleDifference, const RenderStyle* oldStyle) override;
+    void setRenderedText(const String&) override;
 
-    RefPtr<RenderStyle> m_combineFontStyle;
+    std::unique_ptr<RenderStyle> m_combineFontStyle;
     float m_combinedTextWidth { 0 };
     float m_combinedTextAscent { 0 };
     float m_combinedTextDescent { 0 };

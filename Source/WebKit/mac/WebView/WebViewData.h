@@ -48,6 +48,10 @@ class AlternativeTextUIController;
 class HistoryItem;
 class Page;
 class TextIndicatorWindow;
+#if PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE)
+class WebPlaybackSessionInterfaceMac;
+class WebPlaybackSessionModelMediaElement;
+#endif
 }
 
 @class WebImmediateActionController;
@@ -107,7 +111,7 @@ public:
     virtual ~WebViewLayerFlushScheduler() { }
 
 private:
-    virtual void layerFlushCallback() override
+    void layerFlushCallback() override
     {
         RefPtr<LayerFlushController> protector = m_flushController;
         WebCore::LayerFlushScheduler::layerFlushCallback();
@@ -210,8 +214,6 @@ private:
     WebScriptDebugDelegateImplementationCache scriptDebugDelegateImplementations;
     WebHistoryDelegateImplementationCache historyDelegateImplementations;
 
-    void *observationInfo;
-    
     BOOL closed;
 #if PLATFORM(IOS)
     BOOL closing;
@@ -289,6 +291,11 @@ private:
 
 #if ENABLE(VIDEO)
     WebVideoFullscreenController *fullscreenController;
+#endif
+
+#if PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE)
+    RefPtr<WebCore::WebPlaybackSessionModelMediaElement> playbackSessionModel;
+    RefPtr<WebCore::WebPlaybackSessionInterfaceMac> playbackSessionInterface;
 #endif
     
 #if ENABLE(FULLSCREEN_API)

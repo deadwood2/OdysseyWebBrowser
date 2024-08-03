@@ -29,8 +29,7 @@
 * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef InspectorInstrumentation_h
-#define InspectorInstrumentation_h
+#pragma once
 
 #include "CSSSelector.h"
 #include "Element.h"
@@ -38,9 +37,8 @@
 #include "Frame.h"
 #include "HitTestResult.h"
 #include "InspectorInstrumentationCookie.h"
-#include "Page.h"
+#include "MemoryPressureHandler.h"
 #include "ScriptExecutionContext.h"
-#include "ScriptState.h"
 #include "StorageArea.h"
 #include "WebSocketFrame.h"
 #include <runtime/ConsoleTypes.h>
@@ -62,10 +60,6 @@ class ScriptArguments;
 class ScriptCallStack;
 }
 
-namespace JSC {
-class Profile;
-}
-
 namespace WebCore {
 
 class CSSRule;
@@ -85,6 +79,7 @@ class InspectorInstrumentation;
 class InspectorTimelineAgent;
 class InstrumentingAgents;
 class Node;
+class Page;
 class PseudoElement;
 class RenderLayer;
 class RenderLayerBacking;
@@ -137,10 +132,10 @@ public:
     static void mouseDidMoveOverElement(Page&, const HitTestResult&, unsigned modifierFlags);
     static bool handleMousePress(Frame&);
     static bool handleTouchEvent(Frame&, Node&);
-    static bool forcePseudoState(Element&, CSSSelector::PseudoClassType);
+    static bool forcePseudoState(const Element&, CSSSelector::PseudoClassType);
 
     static void willSendXMLHttpRequest(ScriptExecutionContext*, const String& url);
-    static void didInstallTimer(ScriptExecutionContext*, int timerId, int timeout, bool singleShot);
+    static void didInstallTimer(ScriptExecutionContext*, int timerId, std::chrono::milliseconds timeout, bool singleShot);
     static void didRemoveTimer(ScriptExecutionContext*, int timerId);
 
     static InspectorInstrumentationCookie willCallFunction(ScriptExecutionContext*, const String& scriptName, int scriptLine);
@@ -181,7 +176,7 @@ public:
     static void didReceiveData(Frame*, unsigned long identifier, const char* data, int dataLength, int encodedDataLength);
     static void didFinishLoading(Frame*, DocumentLoader*, unsigned long identifier, double finishTime);
     static void didFailLoading(Frame*, DocumentLoader*, unsigned long identifier, const ResourceError&);
-    static void didFinishXHRLoading(ScriptExecutionContext*, ThreadableLoaderClient*, unsigned long identifier, const String& sourceString, const String& url, const String& sendURL, unsigned sendLineNumber, unsigned sendColumnNumber);
+    static void didFinishXHRLoading(ScriptExecutionContext*, ThreadableLoaderClient*, unsigned long identifier, Optional<String> decodedText, const String& url, const String& sendURL, unsigned sendLineNumber, unsigned sendColumnNumber);
     static void didReceiveXHRResponse(ScriptExecutionContext*, unsigned long identifier);
     static void willLoadXHRSynchronously(ScriptExecutionContext*);
     static void didLoadXHRSynchronously(ScriptExecutionContext*);
@@ -208,6 +203,7 @@ public:
     static void addMessageToConsole(WorkerGlobalScope*, std::unique_ptr<Inspector::ConsoleMessage>);
 
     static void consoleCount(Page&, JSC::ExecState*, RefPtr<Inspector::ScriptArguments>&&);
+    static void takeHeapSnapshot(Frame&, const String& title);
     static void startConsoleTiming(Frame&, const String& title);
     static void stopConsoleTiming(Frame&, const String& title, RefPtr<Inspector::ScriptCallStack>&&);
     static void consoleTimeStamp(Frame&, RefPtr<Inspector::ScriptArguments>&&);
@@ -218,7 +214,7 @@ public:
     static void didFireAnimationFrame(const InspectorInstrumentationCookie&);
 
     static void startProfiling(Page&, JSC::ExecState*, const String& title);
-    static RefPtr<JSC::Profile> stopProfiling(Page&, JSC::ExecState*, const String& title);
+    static void stopProfiling(Page&, JSC::ExecState*, const String& title);
 
     static void didOpenDatabase(ScriptExecutionContext*, RefPtr<Database>&&, const String& domain, const String& name, const String& version);
 
@@ -253,9 +249,8 @@ public:
     static void didReceiveWebSocketFrameError(Document*, unsigned long identifier, const String& errorMessage);
 #endif
 
-    static Deprecated::ScriptObject wrapCanvas2DRenderingContextForInstrumentation(Document*, const Deprecated::ScriptObject&);
-#if ENABLE(WEBGL)
-    static Deprecated::ScriptObject wrapWebGLRenderingContextForInstrumentation(Document*, const Deprecated::ScriptObject&);
+#if ENABLE(RESOURCE_USAGE)
+    static void didHandleMemoryPressure(Page&, Critical);
 #endif
 
     static void networkStateChanged(Page*);
@@ -306,10 +301,10 @@ private:
     static void mouseDidMoveOverElementImpl(InstrumentingAgents&, const HitTestResult&, unsigned modifierFlags);
     static bool handleTouchEventImpl(InstrumentingAgents&, Node&);
     static bool handleMousePressImpl(InstrumentingAgents&);
-    static bool forcePseudoStateImpl(InstrumentingAgents&, Element&, CSSSelector::PseudoClassType);
+    static bool forcePseudoStateImpl(InstrumentingAgents&, const Element&, CSSSelector::PseudoClassType);
 
     static void willSendXMLHttpRequestImpl(InstrumentingAgents&, const String& url);
-    static void didInstallTimerImpl(InstrumentingAgents&, int timerId, int timeout, bool singleShot, ScriptExecutionContext*);
+    static void didInstallTimerImpl(InstrumentingAgents&, int timerId, std::chrono::milliseconds timeout, bool singleShot, ScriptExecutionContext*);
     static void didRemoveTimerImpl(InstrumentingAgents&, int timerId, ScriptExecutionContext*);
 
     static InspectorInstrumentationCookie willCallFunctionImpl(InstrumentingAgents&, const String& scriptName, int scriptLine, ScriptExecutionContext*);
@@ -353,7 +348,7 @@ private:
     static void didFailLoadingImpl(InstrumentingAgents&, unsigned long identifier, DocumentLoader*, const ResourceError&);
     static void willLoadXHRImpl(InstrumentingAgents&, ThreadableLoaderClient*, const String&, const URL&, bool, RefPtr<FormData>&&, const HTTPHeaderMap&, bool);
     static void didFailXHRLoadingImpl(InstrumentingAgents&, ThreadableLoaderClient*);
-    static void didFinishXHRLoadingImpl(InstrumentingAgents&, ThreadableLoaderClient*, unsigned long identifier, const String& sourceString, const String& url, const String& sendURL, unsigned sendLineNumber, unsigned sendColumnNumber);
+    static void didFinishXHRLoadingImpl(InstrumentingAgents&, ThreadableLoaderClient*, unsigned long identifier, Optional<String> decodedText, const String& url, const String& sendURL, unsigned sendLineNumber, unsigned sendColumnNumber);
     static void didReceiveXHRResponseImpl(InstrumentingAgents&, unsigned long identifier);
     static void willLoadXHRSynchronouslyImpl(InstrumentingAgents&);
     static void didLoadXHRSynchronouslyImpl(InstrumentingAgents&);
@@ -377,6 +372,7 @@ private:
     static void addMessageToConsoleImpl(InstrumentingAgents&, std::unique_ptr<Inspector::ConsoleMessage>);
 
     static void consoleCountImpl(InstrumentingAgents&, JSC::ExecState*, RefPtr<Inspector::ScriptArguments>&&);
+    static void takeHeapSnapshotImpl(InstrumentingAgents&, const String& title);
     static void startConsoleTimingImpl(InstrumentingAgents&, Frame&, const String& title);
     static void stopConsoleTimingImpl(InstrumentingAgents&, Frame&, const String& title, RefPtr<Inspector::ScriptCallStack>&&);
     static void consoleTimeStampImpl(InstrumentingAgents&, Frame&, RefPtr<Inspector::ScriptArguments>&&);
@@ -387,7 +383,7 @@ private:
     static void didFireAnimationFrameImpl(const InspectorInstrumentationCookie&);
 
     static void startProfilingImpl(InstrumentingAgents&, JSC::ExecState*, const String& title);
-    static RefPtr<JSC::Profile> stopProfilingImpl(InstrumentingAgents&, JSC::ExecState*, const String& title);
+    static void stopProfilingImpl(InstrumentingAgents&, JSC::ExecState*, const String& title);
 
     static void didOpenDatabaseImpl(InstrumentingAgents&, RefPtr<Database>&&, const String& domain, const String& name, const String& version);
 
@@ -420,6 +416,10 @@ private:
     static void didReceiveWebSocketFrameImpl(InstrumentingAgents&, unsigned long identifier, const WebSocketFrame&);
     static void didSendWebSocketFrameImpl(InstrumentingAgents&, unsigned long identifier, const WebSocketFrame&);
     static void didReceiveWebSocketFrameErrorImpl(InstrumentingAgents&, unsigned long identifier, const String&);
+#endif
+
+#if ENABLE(RESOURCE_USAGE)
+    static void didHandleMemoryPressureImpl(InstrumentingAgents&, Critical);
 #endif
 
     static void networkStateChangedImpl(InstrumentingAgents&);
@@ -626,7 +626,7 @@ inline bool InspectorInstrumentation::handleMousePress(Frame& frame)
     return false;
 }
 
-inline bool InspectorInstrumentation::forcePseudoState(Element& element, CSSSelector::PseudoClassType pseudoState)
+inline bool InspectorInstrumentation::forcePseudoState(const Element& element, CSSSelector::PseudoClassType pseudoState)
 {
     FAST_RETURN_IF_NO_FRONTENDS(false);
     if (InstrumentingAgents* instrumentingAgents = instrumentingAgentsForDocument(element.document()))
@@ -648,7 +648,7 @@ inline void InspectorInstrumentation::willSendXMLHttpRequest(ScriptExecutionCont
         willSendXMLHttpRequestImpl(*instrumentingAgents, url);
 }
 
-inline void InspectorInstrumentation::didInstallTimer(ScriptExecutionContext* context, int timerId, int timeout, bool singleShot)
+inline void InspectorInstrumentation::didInstallTimer(ScriptExecutionContext* context, int timerId, std::chrono::milliseconds timeout, bool singleShot)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
     if (InstrumentingAgents* instrumentingAgents = instrumentingAgentsForContext(context))
@@ -916,10 +916,10 @@ inline void InspectorInstrumentation::didFailLoading(Frame* frame, DocumentLoade
         didFailLoadingImpl(*instrumentingAgents, identifier, loader, error);
 }
 
-inline void InspectorInstrumentation::didFinishXHRLoading(ScriptExecutionContext* context, ThreadableLoaderClient* client, unsigned long identifier, const String& sourceString, const String& url, const String& sendURL, unsigned sendLineNumber, unsigned sendColumnNumber)
+inline void InspectorInstrumentation::didFinishXHRLoading(ScriptExecutionContext* context, ThreadableLoaderClient* client, unsigned long identifier, Optional<String> decodedText, const String& url, const String& sendURL, unsigned sendLineNumber, unsigned sendColumnNumber)
 {
     if (InstrumentingAgents* instrumentingAgents = instrumentingAgentsForContext(context))
-        didFinishXHRLoadingImpl(*instrumentingAgents, client, identifier, sourceString, url, sendURL, sendLineNumber, sendColumnNumber);
+        didFinishXHRLoadingImpl(*instrumentingAgents, client, identifier, decodedText, url, sendURL, sendLineNumber, sendColumnNumber);
 }
 
 inline void InspectorInstrumentation::didReceiveXHRResponse(ScriptExecutionContext* context, unsigned long identifier)
@@ -1040,7 +1040,6 @@ inline void InspectorInstrumentation::willDestroyCachedResource(CachedResource& 
 
 inline void InspectorInstrumentation::didOpenDatabase(ScriptExecutionContext* context, RefPtr<Database>&& database, const String& domain, const String& name, const String& version)
 {
-    FAST_RETURN_IF_NO_FRONTENDS(void());
     if (InstrumentingAgents* instrumentingAgents = instrumentingAgentsForContext(context))
         didOpenDatabaseImpl(*instrumentingAgents, WTFMove(database), domain, name, version);
 }
@@ -1161,27 +1160,36 @@ inline void InspectorInstrumentation::captureStopped(Page& page)
 inline void InspectorInstrumentation::playbackStarted(Page& page)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
-        playbackStartedImpl(instrumentingAgentsForPage(page));
+    playbackStartedImpl(instrumentingAgentsForPage(page));
 }
 
 inline void InspectorInstrumentation::playbackPaused(Page& page, const ReplayPosition& position)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
-        playbackPausedImpl(instrumentingAgentsForPage(page), position);
+    playbackPausedImpl(instrumentingAgentsForPage(page), position);
 }
 
 inline void InspectorInstrumentation::playbackFinished(Page& page)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
-        playbackFinishedImpl(instrumentingAgentsForPage(page));
+    playbackFinishedImpl(instrumentingAgentsForPage(page));
 }
 
 inline void InspectorInstrumentation::playbackHitPosition(Page& page, const ReplayPosition& position)
 {
     FAST_RETURN_IF_NO_FRONTENDS(void());
-        playbackHitPositionImpl(instrumentingAgentsForPage(page), position);
+    playbackHitPositionImpl(instrumentingAgentsForPage(page), position);
 }
 #endif // ENABLE(WEB_REPLAY)
+
+#if ENABLE(RESOURCE_USAGE)
+inline void InspectorInstrumentation::didHandleMemoryPressure(Page& page, Critical critical)
+{
+    FAST_RETURN_IF_NO_FRONTENDS(void());
+    if (InstrumentingAgents* instrumentingAgents = instrumentingAgentsForPage(&page))
+        didHandleMemoryPressureImpl(*instrumentingAgents, critical);
+}
+#endif
 
 inline void InspectorInstrumentation::networkStateChanged(Page* page)
 {
@@ -1264,13 +1272,9 @@ inline InstrumentingAgents* InspectorInstrumentation::instrumentingAgentsForDocu
 inline InstrumentingAgents* InspectorInstrumentation::instrumentingAgentsForDocument(Document& document)
 {
     Page* page = document.page();
-#if ENABLE(TEMPLATE_ELEMENT)
     if (!page && document.templateDocumentHost())
         page = document.templateDocumentHost()->page();
-#endif
     return instrumentingAgentsForPage(page);
 }
 
 } // namespace WebCore
-
-#endif // !defined(InspectorInstrumentation_h)

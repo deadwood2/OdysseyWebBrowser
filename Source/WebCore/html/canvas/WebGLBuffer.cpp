@@ -69,7 +69,7 @@ bool WebGLBuffer::associateBufferDataImpl(const void* data, GC3Dsizeiptr byteLen
         m_byteLength = byteLength;
         clearCachedMaxIndices();
         if (byteLength) {
-            m_elementArrayBuffer = ArrayBuffer::create(byteLength, 1);
+            m_elementArrayBuffer = ArrayBuffer::tryCreate(byteLength, 1);
             if (!m_elementArrayBuffer) {
                 m_byteLength = 0;
                 return false;
@@ -93,7 +93,7 @@ bool WebGLBuffer::associateBufferDataImpl(const void* data, GC3Dsizeiptr byteLen
 
 bool WebGLBuffer::associateBufferData(GC3Dsizeiptr size)
 {
-    return associateBufferDataImpl(0, size);
+    return associateBufferDataImpl(nullptr, size);
 }
 
 bool WebGLBuffer::associateBufferData(ArrayBuffer* array)

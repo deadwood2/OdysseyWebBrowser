@@ -26,10 +26,9 @@
 #include "config.h"
 #include "TemplateRegistry.h"
 
-#include "JSCJSValueInlines.h"
+#include "JSCInlines.h"
 #include "JSGlobalObject.h"
 #include "ObjectConstructor.h"
-#include "StructureInlines.h"
 #include "WeakGCMapInlines.h"
 
 namespace JSC {
@@ -45,9 +44,14 @@ JSArray* TemplateRegistry::getTemplateObject(ExecState* exec, const TemplateRegi
     if (cached)
         return cached;
 
+    VM& vm = exec->vm();
     unsigned count = templateKey.cookedStrings().size();
     JSArray* templateObject = constructEmptyArray(exec, nullptr, count);
+    if (UNLIKELY(vm.exception()))
+        return nullptr;
     JSArray* rawObject = constructEmptyArray(exec, nullptr, count);
+    if (UNLIKELY(vm.exception()))
+        return nullptr;
 
     for (unsigned index = 0; index < count; ++index) {
         templateObject->putDirectIndex(exec, index, jsString(exec, templateKey.cookedStrings()[index]), ReadOnly | DontDelete, PutDirectIndexLikePutDirect);
@@ -57,7 +61,7 @@ JSArray* TemplateRegistry::getTemplateObject(ExecState* exec, const TemplateRegi
     objectConstructorFreeze(exec, rawObject);
     ASSERT(!exec->hadException());
 
-    templateObject->putDirect(exec->vm(), exec->propertyNames().raw, rawObject, ReadOnly | DontEnum | DontDelete);
+    templateObject->putDirect(vm, exec->propertyNames().raw, rawObject, ReadOnly | DontEnum | DontDelete);
 
     objectConstructorFreeze(exec, templateObject);
     ASSERT(!exec->hadException());

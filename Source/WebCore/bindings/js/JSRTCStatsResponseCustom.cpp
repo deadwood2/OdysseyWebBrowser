@@ -25,7 +25,7 @@
 
 #include "config.h"
 
-#if ENABLE(MEDIA_STREAM)
+#if ENABLE(WEB_RTC)
 #include "JSRTCStatsResponse.h"
 
 #include "JSDOMBinding.h"
@@ -42,10 +42,10 @@ bool JSRTCStatsResponse::nameGetter(ExecState* exec, PropertyName propertyName, 
     if (!item)
         return false;
 
-    value = toJS(exec, globalObject(), item);
+    value = toJS(exec, globalObject(), *item);
     return true;
 }
 
 } // namespace WebCore
 
-#endif // ENABLE(MEDIA_STREAM)
+#endif // ENABLE(WEB_RTC)

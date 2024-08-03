@@ -33,6 +33,7 @@
 #include "GraphicsTypes.h"
 #include "ImageOrientation.h"
 #include "NativeImagePtr.h"
+#include <wtf/Optional.h>
 #include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
@@ -107,13 +108,13 @@ public:
     FloatRect rect() const { return FloatRect(FloatPoint(), size()); }
     float width() const { return size().width(); }
     float height() const { return size().height(); }
-    virtual bool getHotSpot(IntPoint&) const { return false; }
+    virtual Optional<IntPoint> hotSpot() const { return Nullopt; }
 
 #if PLATFORM(IOS)
     virtual FloatSize originalSize() const { return size(); }
 #endif
 
-    WEBCORE_EXPORT bool setData(PassRefPtr<SharedBuffer> data, bool allDataReceived);
+    WEBCORE_EXPORT bool setData(RefPtr<SharedBuffer>&& data, bool allDataReceived);
     virtual bool dataChanged(bool /*allDataReceived*/) { return false; }
     
     virtual String filenameExtension() const { return String(); } // null string if unknown
@@ -121,6 +122,7 @@ public:
     virtual void destroyDecodedData(bool destroyAll = true) = 0;
 
     SharedBuffer* data() { return m_encodedImageData.get(); }
+    const SharedBuffer* data() const { return m_encodedImageData.get(); }
 
     // Animation begins whenever someone draws the image, so startAnimation() is not normally called.
     // It will automatically pause once all observers no longer want to render the image anywhere.
@@ -135,23 +137,23 @@ public:
 
     enum TileRule { StretchTile, RoundTile, SpaceTile, RepeatTile };
 
-    virtual PassNativeImagePtr nativeImageForCurrentFrame() { return 0; }
+    virtual NativeImagePtr nativeImageForCurrentFrame() { return nullptr; }
     virtual ImageOrientation orientationForCurrentFrame() { return ImageOrientation(); }
 
     // Accessors for native image formats.
 
 #if USE(APPKIT)
-    virtual NSImage* getNSImage() { return 0; }
+    virtual NSImage* getNSImage() { return nullptr; }
 #endif
 
 #if PLATFORM(COCOA)
-    virtual CFDataRef getTIFFRepresentation() { return 0; }
+    virtual CFDataRef getTIFFRepresentation() { return nullptr; }
 #endif
 
 #if USE(CG)
-    virtual CGImageRef getCGImageRef() { return 0; }
-    virtual CGImageRef getFirstCGImageRefOfSize(const IntSize&) { return 0; }
-    virtual RetainPtr<CFArrayRef> getCGImageArray() { return 0; }
+    virtual CGImageRef getCGImageRef() { return nullptr; }
+    virtual CGImageRef getFirstCGImageRefOfSize(const IntSize&) { return nullptr; }
+    virtual RetainPtr<CFArrayRef> getCGImageArray() { return nullptr; }
 #endif
 
 #if PLATFORM(WIN)
@@ -160,11 +162,11 @@ public:
 #endif
 
 #if PLATFORM(GTK)
-    virtual GdkPixbuf* getGdkPixbuf() { return 0; }
+    virtual GdkPixbuf* getGdkPixbuf() { return nullptr; }
 #endif
 
 #if PLATFORM(EFL)
-    virtual Evas_Object* getEvasObject(Evas*) { return 0; }
+    virtual Evas_Object* getEvasObject(Evas*) { return nullptr; }
 #endif
 
     virtual void drawPattern(GraphicsContext&, const FloatRect& srcRect, const AffineTransform& patternTransform,
@@ -193,8 +195,7 @@ protected:
     void drawTiled(GraphicsContext&, const FloatRect& dstRect, const FloatRect& srcRect, const FloatSize& tileScaleFactor, TileRule hRule, TileRule vRule, CompositeOperator);
 
     // Supporting tiled drawing
-    virtual bool mayFillWithSolidColor() { return false; }
-    virtual Color solidColor() const { return Color(); }
+    virtual Color singlePixelSolidColor() { return Color(); }
     
 private:
     RefPtr<SharedBuffer> m_encodedImageData;

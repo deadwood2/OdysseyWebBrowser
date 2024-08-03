@@ -30,7 +30,7 @@
 #endif
 
 #if PLATFORM(WIN) && !USE(WINGDI)
-#include <WebCore/WebCoreHeaderDetection.h>
+#include "WebCoreHeaderDetection.h"
 #endif
 
 #include <wtf/ExportMacros.h>
@@ -130,3 +130,6 @@ typedef float CGFloat;
 
 #endif
 
+#if USE(APPLE_INTERNAL_SDK)
+#include <WebKitAdditions/WebKitAdditionsDefines.h>
+#endif

@@ -33,6 +33,7 @@
 #include "Document.h"
 #include "PropertySetCSSStyleDeclaration.h"
 #include "StylePropertyShorthand.h"
+#include "StylePropertyShorthandFunctions.h"
 #include "StyleSheetContents.h"
 #include <bitset>
 #include <wtf/text/StringBuilder.h>
@@ -166,16 +167,16 @@ String StyleProperties::getPropertyValue(CSSPropertyID propertyID) const
     case CSSPropertyFlexFlow:
         return getShorthandValue(flexFlowShorthand());
 #if ENABLE(CSS_GRID_LAYOUT)
-    case CSSPropertyWebkitGridArea:
-        return getShorthandValue(webkitGridAreaShorthand());
-    case CSSPropertyWebkitGridTemplate:
-        return getShorthandValue(webkitGridTemplateShorthand());
-    case CSSPropertyWebkitGrid:
-        return getShorthandValue(webkitGridShorthand());
-    case CSSPropertyWebkitGridColumn:
-        return getShorthandValue(webkitGridColumnShorthand());
-    case CSSPropertyWebkitGridRow:
-        return getShorthandValue(webkitGridRowShorthand());
+    case CSSPropertyGridArea:
+        return getShorthandValue(gridAreaShorthand());
+    case CSSPropertyGridTemplate:
+        return getShorthandValue(gridTemplateShorthand());
+    case CSSPropertyGrid:
+        return getShorthandValue(gridShorthand());
+    case CSSPropertyGridColumn:
+        return getShorthandValue(gridColumnShorthand());
+    case CSSPropertyGridRow:
+        return getShorthandValue(gridRowShorthand());
 #endif
     case CSSPropertyFont:
         return fontValue();
@@ -382,14 +383,18 @@ String StyleProperties::getLayeredShorthandValue(const StylePropertyShorthand& s
 
     for (unsigned i = 0; i < size; ++i) {
         values[i] = getPropertyCSSValueInternal(shorthand.properties()[i]);
-        if (values[i]) {
-            if (values[i]->isVariableDependentValue())
-                return values[i]->cssText();
-            if (values[i]->isBaseValueList())
-                numLayers = std::max(downcast<CSSValueList>(*values[i]).length(), numLayers);
-            else
-                numLayers = std::max<size_t>(1U, numLayers);
+        if (!values[i]) {
+            // We don't have all longhand properties defined as required for the shorthand
+            // property and thus should not serialize to a shorthand value. See spec at
+            // http://www.w3.org/TR/cssom-1/#serialize-a-css-declaration-block.
+            return String();
         }
+        if (values[i]->isVariableDependentValue())
+            return values[i]->cssText();
+        if (values[i]->isBaseValueList())
+            numLayers = std::max(downcast<CSSValueList>(*values[i]).length(), numLayers);
+        else
+            numLayers = std::max<size_t>(1U, numLayers);
     }
 
     String commonValue;
@@ -602,9 +607,9 @@ String StyleProperties::borderPropertyValue(CommonValueMode valueMode) const
     return result.isEmpty() ? String() : result.toString();
 }
 
-PassRefPtr<CSSValue> StyleProperties::getPropertyCSSValue(CSSPropertyID propertyID) const
+RefPtr<CSSValue> StyleProperties::getPropertyCSSValue(CSSPropertyID propertyID) const
 {
-    PassRefPtr<CSSValue> value = getPropertyCSSValueInternal(propertyID);
+    RefPtr<CSSValue> value = getPropertyCSSValueInternal(propertyID);
     if (value && value->isVariableDependentValue()) {
         auto& dependentValue = downcast<CSSVariableDependentValue>(*value);
         if (dependentValue.propertyID() != propertyID)
@@ -613,7 +618,7 @@ PassRefPtr<CSSValue> StyleProperties::getPropertyCSSValue(CSSPropertyID property
     return value;
 }
 
-PassRefPtr<CSSValue> StyleProperties::getPropertyCSSValueInternal(CSSPropertyID propertyID) const
+RefPtr<CSSValue> StyleProperties::getPropertyCSSValueInternal(CSSPropertyID propertyID) const
 {
     int foundPropertyIndex = findPropertyIndex(propertyID);
     if (foundPropertyIndex == -1)
@@ -635,14 +640,15 @@ bool MutableStyleProperties::removeShorthandProperty(CSSPropertyID propertyID)
     if (!shorthand.length())
         return false;
 
-    bool ret = removePropertiesInSet(shorthand.properties(), shorthand.length());
+    bool propertiesWereRemoved = removePropertiesInSet(shorthand.properties(), shorthand.length());
 
     CSSPropertyID prefixingVariant = prefixingVariantForPropertyId(propertyID);
     if (prefixingVariant == propertyID)
-        return ret;
+        return propertiesWereRemoved;
 
     StylePropertyShorthand shorthandPrefixingVariant = shorthandForProperty(prefixingVariant);
-    return removePropertiesInSet(shorthandPrefixingVariant.properties(), shorthandPrefixingVariant.length());
+    bool prefixedVariantPropertiesWereRemoved = removePropertiesInSet(shorthandPrefixingVariant.properties(), shorthandPrefixingVariant.length());
+    return propertiesWereRemoved || prefixedVariantPropertiesWereRemoved;
 }
 
 bool MutableStyleProperties::removeProperty(CSSPropertyID propertyID, String* returnText)
@@ -650,14 +656,14 @@ bool MutableStyleProperties::removeProperty(CSSPropertyID propertyID, String* re
     if (removeShorthandProperty(propertyID)) {
         // FIXME: Return an equivalent shorthand when possible.
         if (returnText)
-            *returnText = "";
+            *returnText = emptyString();
         return true;
     }
 
     int foundPropertyIndex = findPropertyIndex(propertyID);
     if (foundPropertyIndex == -1) {
         if (returnText)
-            *returnText = "";
+            *returnText = emptyString();
         return false;
     }
 
@@ -667,8 +673,6 @@ bool MutableStyleProperties::removeProperty(CSSPropertyID propertyID, String* re
     // A more efficient removal strategy would involve marking entries as empty
     // and sweeping them when the vector grows too big.
     m_propertyVector.remove(foundPropertyIndex);
-
-    removePrefixedOrUnprefixedProperty(propertyID);
 
     return true;
 }
@@ -678,7 +682,7 @@ bool MutableStyleProperties::removeCustomProperty(const String& propertyName, St
     int foundPropertyIndex = findCustomPropertyIndex(propertyName);
     if (foundPropertyIndex == -1) {
         if (returnText)
-            *returnText = "";
+            *returnText = emptyString();
         return false;
     }
 
@@ -690,14 +694,6 @@ bool MutableStyleProperties::removeCustomProperty(const String& propertyName, St
     m_propertyVector.remove(foundPropertyIndex);
 
     return true;
-}
-
-void MutableStyleProperties::removePrefixedOrUnprefixedProperty(CSSPropertyID propertyID)
-{
-    int foundPropertyIndex = findPropertyIndex(prefixingVariantForPropertyId(propertyID));
-    if (foundPropertyIndex == -1)
-        return;
-    m_propertyVector.remove(foundPropertyIndex);
 }
 
 bool StyleProperties::propertyIsImportant(CSSPropertyID propertyID) const
@@ -750,7 +746,7 @@ bool MutableStyleProperties::setProperty(CSSPropertyID propertyID, const String&
 
     // When replacing an existing property value, this moves the property to the end of the list.
     // Firefox preserves the position, and MSIE moves the property to the beginning.
-    return CSSParser::parseValue(this, propertyID, value, important, cssParserMode(), contextStyleSheet) == CSSParser::ParseResult::Changed;
+    return CSSParser::parseValue(*this, propertyID, value, important, cssParserMode(), contextStyleSheet) == CSSParser::ParseResult::Changed;
 }
 
 bool MutableStyleProperties::setCustomProperty(const String& propertyName, const String& value, bool important, StyleSheetContents* contextStyleSheet)
@@ -762,22 +758,21 @@ bool MutableStyleProperties::setCustomProperty(const String& propertyName, const
 
     // When replacing an existing property value, this moves the property to the end of the list.
     // Firefox preserves the position, and MSIE moves the property to the beginning.
-    return CSSParser::parseCustomPropertyValue(this, propertyName, value, important, cssParserMode(), contextStyleSheet) == CSSParser::ParseResult::Changed;
+    return CSSParser::parseCustomPropertyValue(*this, propertyName, value, important, cssParserMode(), contextStyleSheet) == CSSParser::ParseResult::Changed;
 }
 
-void MutableStyleProperties::setProperty(CSSPropertyID propertyID, PassRefPtr<CSSValue> prpValue, bool important)
+void MutableStyleProperties::setProperty(CSSPropertyID propertyID, RefPtr<CSSValue>&& value, bool important)
 {
     StylePropertyShorthand shorthand = shorthandForProperty(propertyID);
     if (!shorthand.length()) {
-        setProperty(CSSProperty(propertyID, prpValue, important));
+        setProperty(CSSProperty(propertyID, WTFMove(value), important));
         return;
     }
 
     removePropertiesInSet(shorthand.properties(), shorthand.length());
 
-    RefPtr<CSSValue> value = prpValue;
     for (unsigned i = 0; i < shorthand.length(); ++i)
-        m_propertyVector.append(CSSProperty(shorthand.properties()[i], value, important));
+        m_propertyVector.append(CSSProperty(shorthand.properties()[i], value.copyRef(), important));
 }
 
 bool MutableStyleProperties::setProperty(const CSSProperty& property, CSSProperty* slot)
@@ -797,40 +792,12 @@ bool MutableStyleProperties::setProperty(const CSSProperty& property, CSSPropert
                 return false;
 
             *toReplace = property;
-            setPrefixingVariantProperty(property);
             return true;
         }
     }
 
-    return appendPrefixingVariantProperty(property);
-}
-
-static unsigned getIndexInShorthandVectorForPrefixingVariant(const CSSProperty& property, CSSPropertyID prefixingVariant)
-{
-    if (!property.isSetFromShorthand())
-        return 0;
-
-    CSSPropertyID prefixedShorthand = prefixingVariantForPropertyId(property.shorthandID());
-    return indexOfShorthandForLonghand(prefixedShorthand, matchingShorthandsForLonghand(prefixingVariant));
-}
-
-bool MutableStyleProperties::appendPrefixingVariantProperty(const CSSProperty& property)
-{
     m_propertyVector.append(property);
-    CSSPropertyID prefixingVariant = prefixingVariantForPropertyId(property.id());
-    if (prefixingVariant == property.id())
-        return true;
-
-    m_propertyVector.append(CSSProperty(prefixingVariant, property.value(), property.isImportant(), property.isSetFromShorthand(), getIndexInShorthandVectorForPrefixingVariant(property, prefixingVariant), property.metadata().m_implicit));
     return true;
-}
-
-void MutableStyleProperties::setPrefixingVariantProperty(const CSSProperty& property)
-{
-    CSSPropertyID prefixingVariant = prefixingVariantForPropertyId(property.id());
-    CSSProperty* toReplace = findCSSPropertyWithID(prefixingVariant);
-    if (toReplace && prefixingVariant != property.id())
-        *toReplace = CSSProperty(prefixingVariant, property.value(), property.isImportant(), property.isSetFromShorthand(), getIndexInShorthandVectorForPrefixingVariant(property, prefixingVariant), property.metadata().m_implicit);
 }
 
 bool MutableStyleProperties::setProperty(CSSPropertyID propertyID, CSSValueID identifier, bool important)
@@ -854,13 +821,13 @@ bool MutableStyleProperties::parseDeclaration(const String& styleDeclaration, St
         context.mode = cssParserMode();
     }
     CSSParser parser(context);
-    parser.parseDeclaration(this, styleDeclaration, 0, contextStyleSheet);
+    parser.parseDeclaration(*this, styleDeclaration, 0, contextStyleSheet);
 
     // We could do better. Just changing property order does not require style invalidation.
     return oldProperties != m_propertyVector;
 }
 
-bool MutableStyleProperties::addParsedProperties(const CSSParser::ParsedPropertyVector& properties)
+bool MutableStyleProperties::addParsedProperties(const ParsedPropertyVector& properties)
 {
     bool anyChanged = false;
     m_propertyVector.reserveCapacity(m_propertyVector.size() + properties.size());
@@ -879,12 +846,7 @@ bool MutableStyleProperties::addParsedProperty(const CSSProperty& property)
             return setProperty(property);
         return false;
     }
-    
-    // Only add properties that have no !important counterpart present
-    if (!propertyIsImportant(property.id()) || property.isImportant())
-        return setProperty(property);
-    
-    return false;
+    return setProperty(property);
 }
 
 String StyleProperties::asText() const
@@ -921,6 +883,7 @@ String StyleProperties::asText() const
             case CSSPropertyAnimationIterationCount:
             case CSSPropertyAnimationDirection:
             case CSSPropertyAnimationFillMode:
+            case CSSPropertyAnimationPlayState:
                 shorthandPropertyID = CSSPropertyAnimation;
                 break;
             case CSSPropertyBackgroundPositionX:
@@ -1020,6 +983,7 @@ String StyleProperties::asText() const
             case CSSPropertyWebkitAnimationIterationCount:
             case CSSPropertyWebkitAnimationDirection:
             case CSSPropertyWebkitAnimationFillMode:
+            case CSSPropertyWebkitAnimationPlayState:
                 shorthandPropertyID = CSSPropertyWebkitAnimation;
                 break;
             case CSSPropertyFlexDirection:
@@ -1353,9 +1317,9 @@ Ref<MutableStyleProperties> StyleProperties::copyPropertiesInSet(const CSSProper
     Vector<CSSProperty, 256> list;
     list.reserveInitialCapacity(length);
     for (unsigned i = 0; i < length; ++i) {
-        RefPtr<CSSValue> value = getPropertyCSSValueInternal(set[i]);
+        auto value = getPropertyCSSValueInternal(set[i]);
         if (value)
-            list.append(CSSProperty(set[i], value.release(), false));
+            list.append(CSSProperty(set[i], WTFMove(value), false));
     }
     return MutableStyleProperties::create(list.data(), list.size());
 }

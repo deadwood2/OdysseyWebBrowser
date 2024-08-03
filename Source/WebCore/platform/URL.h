@@ -28,7 +28,6 @@
 
 #include "PlatformExportMacros.h"
 #include <wtf/Forward.h>
-#include <wtf/HashMap.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/text/WTFString.h>
 
@@ -85,7 +84,7 @@ public:
     // Makes a deep copy. Helpful only if you need to use a URL on another
     // thread. Since the underlying StringImpl objects are immutable, there's
     // no other reason to ever prefer isolatedCopy() over plain old assignment.
-    URL isolatedCopy() const;
+    WEBCORE_EXPORT URL isolatedCopy() const;
 
     bool isNull() const;
     bool isEmpty() const;
@@ -116,6 +115,8 @@ public:
 
     bool hasUsername() const;
     bool hasPassword() const;
+    bool hasQuery() const;
+    bool hasFragment() const;
 
     // Unlike user() and pass(), these functions don't decode escape sequences.
     // This is necessary for accurate round-tripping, because encoding doesn't encode '%' characters.
@@ -190,15 +191,17 @@ public:
     operator NSString*() const { return string(); }
 #endif
 
-    const URL* innerURL() const { return 0; }
-
 #ifndef NDEBUG
     void print() const;
 #endif
 
-    bool isSafeToSendToAnotherThread() const;
+    template <class Encoder> void encode(Encoder&) const;
+    template <class Decoder> static bool decode(Decoder&, URL&);
+
+    String serialize(bool omitFragment = false) const;
 
 private:
+    friend class URLParser;
     WEBCORE_EXPORT void invalidate();
     static bool protocolIs(const String&, const char*);
     void init(const URL&, const String&, const TextEncoding&);
@@ -216,17 +219,75 @@ private:
     bool m_isValid : 1;
     bool m_protocolIsInHTTPFamily : 1;
 
-    int m_schemeEnd;
-    int m_userStart;
-    int m_userEnd;
-    int m_passwordEnd;
-    int m_hostEnd;
-    int m_portEnd;
-    int m_pathAfterLastSlash;
-    int m_pathEnd;
-    int m_queryEnd;
-    int m_fragmentEnd;
+    unsigned m_schemeEnd;
+    unsigned m_userStart;
+    unsigned m_userEnd;
+    unsigned m_passwordEnd;
+    unsigned m_hostEnd;
+    unsigned m_portEnd;
+    unsigned m_pathAfterLastSlash;
+    unsigned m_pathEnd;
+    unsigned m_queryEnd;
+    unsigned m_fragmentEnd;
 };
+
+template <class Encoder>
+void URL::encode(Encoder& encoder) const
+{
+    encoder << m_string;
+    encoder << static_cast<bool>(m_isValid);
+    if (!m_isValid)
+        return;
+    encoder << static_cast<bool>(m_protocolIsInHTTPFamily);
+    encoder << m_schemeEnd;
+    encoder << m_userStart;
+    encoder << m_userEnd;
+    encoder << m_passwordEnd;
+    encoder << m_hostEnd;
+    encoder << m_portEnd;
+    encoder << m_pathAfterLastSlash;
+    encoder << m_pathEnd;
+    encoder << m_queryEnd;
+    encoder << m_fragmentEnd;
+}
+
+template <class Decoder>
+bool URL::decode(Decoder& decoder, URL& url)
+{
+    if (!decoder.decode(url.m_string))
+        return false;
+    bool isValid;
+    if (!decoder.decode(isValid))
+        return false;
+    url.m_isValid = isValid;
+    if (!isValid)
+        return true;
+    bool protocolIsInHTTPFamily;
+    if (!decoder.decode(protocolIsInHTTPFamily))
+        return false;
+    url.m_protocolIsInHTTPFamily = protocolIsInHTTPFamily;
+    if (!decoder.decode(url.m_schemeEnd))
+        return false;
+    if (!decoder.decode(url.m_userStart))
+        return false;
+    if (!decoder.decode(url.m_userEnd))
+        return false;
+    if (!decoder.decode(url.m_passwordEnd))
+        return false;
+    if (!decoder.decode(url.m_hostEnd))
+        return false;
+    if (!decoder.decode(url.m_portEnd))
+        return false;
+    if (!decoder.decode(url.m_pathAfterLastSlash))
+        return false;
+    if (!decoder.decode(url.m_pathEnd))
+        return false;
+    if (!decoder.decode(url.m_queryEnd))
+        return false;
+    if (!decoder.decode(url.m_fragmentEnd))
+        return false;
+    return true;
+}
 
 bool operator==(const URL&, const URL&);
 bool operator==(const URL&, const String&);
@@ -251,7 +312,7 @@ WEBCORE_EXPORT bool protocolIsJavaScript(const String& url);
 WEBCORE_EXPORT bool protocolIsInHTTPFamily(const String& url);
 
 unsigned short defaultPortForProtocol(const String& protocol);
-bool isDefaultPortForProtocol(unsigned short port, const String& protocol);
+WEBCORE_EXPORT bool isDefaultPortForProtocol(unsigned short port, const String& protocol);
 WEBCORE_EXPORT bool portAllowed(const URL&); // Blacklist ports that should never be used for Web resources.
 
 bool isValidProtocol(const String&);
@@ -271,20 +332,6 @@ WEBCORE_EXPORT String encodeWithURLEscapeSequences(const String&);
 #if PLATFORM(IOS)
 WEBCORE_EXPORT void enableURLSchemeCanonicalization(bool);
 #endif
-
-// Like StringCapture, but for URLs.
-class URLCapture {
-public:
-    explicit URLCapture(const URL&);
-    explicit URLCapture(URL&&);
-    URLCapture(const URLCapture&);
-    const URL& url() const;
-    URL releaseURL();
-
-private:
-    void operator=(const URLCapture&) = delete;
-    URL m_URL;
-};
 
 // Inlines.
 
@@ -356,6 +403,16 @@ inline bool URL::hasPassword() const
     return m_passwordEnd > (m_userEnd + 1);
 }
 
+inline bool URL::hasQuery() const
+{
+    return m_queryEnd > m_pathEnd;
+}
+
+inline bool URL::hasFragment() const
+{
+    return m_fragmentEnd > m_queryEnd;
+}
+
 inline bool URL::protocolIsInHTTPFamily() const
 {
     return m_protocolIsInHTTPFamily;
@@ -384,31 +441,6 @@ inline unsigned URL::pathEnd() const
 inline unsigned URL::pathAfterLastSlash() const
 {
     return m_pathAfterLastSlash;
-}
-
-inline URLCapture::URLCapture(const URL& url)
-    : m_URL(url)
-{
-}
-
-inline URLCapture::URLCapture(URL&& url)
-    : m_URL(url)
-{
-}
-
-inline URLCapture::URLCapture(const URLCapture& other)
-    : m_URL(other.m_URL.isolatedCopy())
-{
-}
-
-inline const URL& URLCapture::url() const
-{
-    return m_URL;
-}
-
-inline URL URLCapture::releaseURL()
-{
-    return WTFMove(m_URL);
 }
 
 } // namespace WebCore

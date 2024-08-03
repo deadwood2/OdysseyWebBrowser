@@ -617,8 +617,14 @@ void MediaPlayerPrivateAVFoundation::metadataLoaded()
 void MediaPlayerPrivateAVFoundation::rateChanged()
 {
 #if ENABLE(WIRELESS_PLAYBACK_TARGET) && PLATFORM(IOS)
-    if (isCurrentPlaybackTargetWireless())
-        m_player->handlePlaybackCommand(rate() ? PlatformMediaSession::PlayCommand : PlatformMediaSession::PauseCommand);
+    LOG(Media, "MediaPlayerPrivateAVFoundation::rateChanged(%p) - rate = %f, requested rate = %f, item status = %i", this, rate(), requestedRate(), playerItemStatus());
+    if (isCurrentPlaybackTargetWireless() && playerItemStatus() >= MediaPlayerAVPlayerItemStatusPlaybackBufferFull) {
+        double rate = this->rate();
+        if (rate != requestedRate()) {
+            m_player->handlePlaybackCommand(rate ? PlatformMediaSession::PlayCommand : PlatformMediaSession::PauseCommand);
+            return;
+        }
+    }
 #endif
 
     m_player->rateChanged();
@@ -671,7 +677,7 @@ void MediaPlayerPrivateAVFoundation::didEnd()
     // Hang onto the current time and use it as duration from now on since we are definitely at
     // the end of the movie. Do this because the initial duration is sometimes an estimate.
     MediaTime now = currentMediaTime();
-    if (now > MediaTime::zeroTime())
+    if (now > MediaTime::zeroTime() && !m_seeking)
         m_cachedDuration = now;
 
     updateStates();
@@ -800,8 +806,7 @@ void MediaPlayerPrivateAVFoundation::scheduleMainThreadNotification(Notification
     if (delayDispatch && !m_mainThreadCallPending) {
         m_mainThreadCallPending = true;
 
-        auto weakThis = createWeakPtr();
-        callOnMainThread([weakThis] {
+        callOnMainThread([weakThis = createWeakPtr()] {
             if (!weakThis)
                 return;
 
@@ -838,8 +843,7 @@ void MediaPlayerPrivateAVFoundation::dispatchNotification()
         }
         
         if (!m_queuedNotifications.isEmpty() && !m_mainThreadCallPending) {
-            auto weakThis = createWeakPtr();
-            callOnMainThread([weakThis] {
+            callOnMainThread([weakThis = createWeakPtr()] {
                 if (!weakThis)
                     return;
 

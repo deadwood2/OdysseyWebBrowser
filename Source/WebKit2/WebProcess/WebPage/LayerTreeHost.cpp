@@ -41,7 +41,7 @@ using namespace WebCore;
 
 namespace WebKit {
 
-PassRefPtr<LayerTreeHost> LayerTreeHost::create(WebPage* webPage)
+RefPtr<LayerTreeHost> LayerTreeHost::create(WebPage& webPage)
 {
 #if USE(COORDINATED_GRAPHICS_THREADED)
     return ThreadedCoordinatedLayerTreeHost::create(webPage);
@@ -51,17 +51,50 @@ PassRefPtr<LayerTreeHost> LayerTreeHost::create(WebPage* webPage)
     return LayerTreeHostGtk::create(webPage);
 #else
     UNUSED_PARAM(webPage);
-    return 0;
+    return nullptr;
 #endif
 }
 
-LayerTreeHost::LayerTreeHost(WebPage* webPage)
+LayerTreeHost::LayerTreeHost(WebPage& webPage)
     : m_webPage(webPage)
 {
 }
 
 LayerTreeHost::~LayerTreeHost()
 {
+    ASSERT(!m_isValid);
+}
+
+void LayerTreeHost::setLayerFlushSchedulingEnabled(bool layerFlushingEnabled)
+{
+    if (m_layerFlushSchedulingEnabled == layerFlushingEnabled)
+        return;
+
+    m_layerFlushSchedulingEnabled = layerFlushingEnabled;
+
+    if (m_layerFlushSchedulingEnabled) {
+        scheduleLayerFlush();
+        return;
+    }
+
+    cancelPendingLayerFlush();
+}
+
+void LayerTreeHost::pauseRendering()
+{
+    m_isSuspended = true;
+}
+
+void LayerTreeHost::resumeRendering()
+{
+    m_isSuspended = false;
+    scheduleLayerFlush();
+}
+
+void LayerTreeHost::invalidate()
+{
+    ASSERT(m_isValid);
+    m_isValid = false;
 }
 
 } // namespace WebKit

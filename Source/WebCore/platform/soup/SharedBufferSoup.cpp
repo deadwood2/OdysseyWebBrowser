@@ -27,15 +27,15 @@
 namespace WebCore {
 
 SharedBuffer::SharedBuffer(SoupBuffer* soupBuffer)
-    : m_buffer(adoptRef(new DataBuffer))
+    : m_buffer(*new DataBuffer)
     , m_soupBuffer(soupBuffer)
 {
     ASSERT(soupBuffer);
 }
 
-PassRefPtr<SharedBuffer> SharedBuffer::wrapSoupBuffer(SoupBuffer* soupBuffer)
+Ref<SharedBuffer> SharedBuffer::wrapSoupBuffer(SoupBuffer* soupBuffer)
 {
-    return adoptRef(new SharedBuffer(soupBuffer));
+    return adoptRef(*new SharedBuffer(soupBuffer));
 }
 
 void SharedBuffer::clearPlatformData()
@@ -73,7 +73,7 @@ unsigned SharedBuffer::platformDataSize() const
     return m_soupBuffer->length;
 }
 
-bool SharedBuffer::maybeAppendPlatformData(SharedBuffer*)
+bool SharedBuffer::maybeAppendPlatformData(SharedBuffer&)
 {
     return false;
 }

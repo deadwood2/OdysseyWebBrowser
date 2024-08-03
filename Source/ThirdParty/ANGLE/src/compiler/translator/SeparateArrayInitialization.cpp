@@ -9,10 +9,16 @@
 // will effectively become
 //     type[n] a;
 //     a = initializer;
+//
+// Note that if the array is declared as const, the initialization may still be split, making the
+// AST technically invalid. Because of that this transformation should only be used when subsequent
+// stages don't care about const qualifiers. However, the initialization will not be split if the
+// initializer can be written as a HLSL literal.
 
 #include "compiler/translator/SeparateArrayInitialization.h"
 
 #include "compiler/translator/IntermNode.h"
+#include "compiler/translator/OutputHLSL.h"
 
 namespace
 {
@@ -47,13 +53,13 @@ bool SeparateArrayInitTraverser::visitAggregate(Visit, TIntermAggregate *node)
         if (initNode != nullptr && initNode->getOp() == EOpInitialize)
         {
             TIntermTyped *initializer = initNode->getRight();
-            if (initializer->isArray())
+            if (initializer->isArray() && !sh::OutputHLSL::canWriteAsHLSLLiteral(initializer))
             {
                 // We rely on that array declarations have been isolated to single declarations.
                 ASSERT(sequence->size() == 1);
                 TIntermTyped *symbol = initNode->getLeft();
-                TIntermAggregate *parentAgg = getParentNode()->getAsAggregate();
-                ASSERT(parentAgg != nullptr);
+                TIntermBlock *parentBlock = getParentNode()->getAsBlock();
+                ASSERT(parentBlock != nullptr);
 
                 TIntermSequence replacements;
 
@@ -63,14 +69,13 @@ bool SeparateArrayInitTraverser::visitAggregate(Visit, TIntermAggregate *node)
                 replacementDeclaration->setLine(symbol->getLine());
                 replacements.push_back(replacementDeclaration);
 
-                TIntermBinary *replacementAssignment = new TIntermBinary(EOpAssign);
-                replacementAssignment->setLeft(symbol);
-                replacementAssignment->setRight(initializer);
-                replacementAssignment->setType(initializer->getType());
+                TIntermBinary *replacementAssignment =
+                    new TIntermBinary(EOpAssign, symbol, initializer);
                 replacementAssignment->setLine(symbol->getLine());
                 replacements.push_back(replacementAssignment);
 
-                mMultiReplacements.push_back(NodeReplaceWithMultipleEntry(parentAgg, node, replacements));
+                mMultiReplacements.push_back(
+                    NodeReplaceWithMultipleEntry(parentBlock, node, replacements));
             }
         }
         return false;

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2015 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2012-2016 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef UnlinkedFunctionExecutable_h
-#define UnlinkedFunctionExecutable_h
+#pragma once
 
 #include "BytecodeConventions.h"
 #include "CodeSpecializationKind.h"
@@ -34,6 +33,7 @@
 #include "ExpressionRangeInfo.h"
 #include "HandlerInfo.h"
 #include "Identifier.h"
+#include "Intrinsic.h"
 #include "JSCell.h"
 #include "JSString.h"
 #include "ParserModes.h"
@@ -41,8 +41,6 @@
 #include "SpecialPointer.h"
 #include "VariableEnvironment.h"
 #include "VirtualRegister.h"
-#include <wtf/RefCountedArray.h>
-#include <wtf/Vector.h>
 
 namespace JSC {
 
@@ -66,20 +64,24 @@ public:
     typedef JSCell Base;
     static const unsigned StructureFlags = Base::StructureFlags | StructureIsImmortal;
 
-    static UnlinkedFunctionExecutable* create(VM* vm, const SourceCode& source, FunctionMetadataNode* node, UnlinkedFunctionKind unlinkedFunctionKind, ConstructAbility constructAbility, VariableEnvironment& parentScopeTDZVariables, DerivedContextType derivedContextType, RefPtr<SourceProvider>&& sourceOverride = nullptr)
+    static UnlinkedFunctionExecutable* create(VM* vm, const SourceCode& source, FunctionMetadataNode* node, UnlinkedFunctionKind unlinkedFunctionKind, ConstructAbility constructAbility, JSParserCommentMode commentMode, VariableEnvironment& parentScopeTDZVariables, DerivedContextType derivedContextType, RefPtr<SourceProvider>&& sourceOverride = nullptr)
     {
         UnlinkedFunctionExecutable* instance = new (NotNull, allocateCell<UnlinkedFunctionExecutable>(vm->heap))
-            UnlinkedFunctionExecutable(vm, vm->unlinkedFunctionExecutableStructure.get(), source, WTFMove(sourceOverride), node, unlinkedFunctionKind, constructAbility, parentScopeTDZVariables, derivedContextType);
+            UnlinkedFunctionExecutable(vm, vm->unlinkedFunctionExecutableStructure.get(), source, WTFMove(sourceOverride), node, unlinkedFunctionKind, constructAbility, commentMode, parentScopeTDZVariables, derivedContextType);
         instance->finishCreation(*vm);
         return instance;
     }
 
     const Identifier& name() const { return m_name; }
+    const Identifier& ecmaName() const { return m_ecmaName; }
+    void setEcmaName(const Identifier& name) { m_ecmaName = name; }
     const Identifier& inferredName() const { return m_inferredName; }
-    JSString* nameValue() const { return m_nameValue.get(); }
-    void setNameValue(VM& vm, JSString* nameValue) { m_nameValue.set(vm, this, nameValue); }
     unsigned parameterCount() const { return m_parameterCount; };
     SourceParseMode parseMode() const { return static_cast<SourceParseMode>(m_sourceParseMode); };
+
+    const SourceCode& classSource() const { return m_classSource; };
+    void setClassSource(const SourceCode& source) { m_classSource = source; };
+
     bool isInStrictContext() const { return m_isInStrictContext; }
     FunctionMode functionMode() const { return static_cast<FunctionMode>(m_functionMode); }
     ConstructorKind constructorKind() const { return static_cast<ConstructorKind>(m_constructorKind); }
@@ -96,14 +98,14 @@ public:
     void setInvalidTypeProfilingOffsets();
 
     UnlinkedFunctionCodeBlock* unlinkedCodeBlockFor(
-        VM&, const SourceCode&, CodeSpecializationKind, DebuggerMode, ProfilerMode, 
+        VM&, const SourceCode&, CodeSpecializationKind, DebuggerMode,
         ParserError&, SourceParseMode);
 
     static UnlinkedFunctionExecutable* fromGlobalCode(
         const Identifier&, ExecState&, const SourceCode&, JSObject*& exception, 
         int overrideLineNumber);
 
-    JS_EXPORT_PRIVATE FunctionExecutable* link(VM&, const SourceCode&, int overrideLineNumber = -1);
+    JS_EXPORT_PRIVATE FunctionExecutable* link(VM&, const SourceCode&, Optional<int> overrideLineNumber = Nullopt, Intrinsic = NoIntrinsic);
 
     void clearCode()
     {
@@ -125,15 +127,21 @@ public:
 
     bool isBuiltinFunction() const { return m_isBuiltinFunction; }
     ConstructAbility constructAbility() const { return static_cast<ConstructAbility>(m_constructAbility); }
+    JSParserCommentMode commentMode() const { return static_cast<JSParserCommentMode>(m_commentMode); }
     bool isClassConstructorFunction() const { return constructorKind() != ConstructorKind::None; }
     const VariableEnvironment* parentScopeTDZVariables() const { return &m_parentScopeTDZVariables; }
     
     bool isArrowFunction() const { return parseMode() == SourceParseMode::ArrowFunctionMode; }
 
     JSC::DerivedContextType derivedContextType() const {return static_cast<JSC::DerivedContextType>(m_derivedContextType); }
-    
+
+    const String& sourceURLDirective() const { return m_sourceURLDirective; }
+    const String& sourceMappingURLDirective() const { return m_sourceMappingURLDirective; }
+    void setSourceURLDirective(const String& sourceURL) { m_sourceURLDirective = sourceURL; }
+    void setSourceMappingURLDirective(const String& sourceMappingURL) { m_sourceMappingURLDirective = sourceMappingURL; }
+
 private:
-    UnlinkedFunctionExecutable(VM*, Structure*, const SourceCode&, RefPtr<SourceProvider>&& sourceOverride, FunctionMetadataNode*, UnlinkedFunctionKind, ConstructAbility, VariableEnvironment&,  JSC::DerivedContextType);
+    UnlinkedFunctionExecutable(VM*, Structure*, const SourceCode&, RefPtr<SourceProvider>&& sourceOverride, FunctionMetadataNode*, UnlinkedFunctionKind, ConstructAbility, JSParserCommentMode, VariableEnvironment&,  JSC::DerivedContextType);
 
     unsigned m_firstLineOffset;
     unsigned m_lineCount;
@@ -152,7 +160,8 @@ private:
     unsigned m_isBuiltinFunction : 1;
     unsigned m_constructAbility: 1;
     unsigned m_constructorKind : 2;
-    unsigned m_functionMode : 1; // FunctionMode
+    unsigned m_functionMode : 2; // FunctionMode
+    unsigned m_commentMode: 1; // JSParserCommentMode
     unsigned m_superBinding : 1;
     unsigned m_derivedContextType: 2;
     unsigned m_sourceParseMode : 4; // SourceParseMode
@@ -161,19 +170,17 @@ private:
     WriteBarrier<UnlinkedFunctionCodeBlock> m_unlinkedCodeBlockForConstruct;
 
     Identifier m_name;
+    Identifier m_ecmaName;
     Identifier m_inferredName;
-    WriteBarrier<JSString> m_nameValue;
     RefPtr<SourceProvider> m_sourceOverride;
+    SourceCode m_classSource;
+
+    String m_sourceURLDirective;
+    String m_sourceMappingURLDirective;
 
     VariableEnvironment m_parentScopeTDZVariables;
 
 protected:
-    void finishCreation(VM& vm)
-    {
-        Base::finishCreation(vm);
-        m_nameValue.set(vm, this, jsString(&vm, name().string()));
-    }
-
     static void visitChildren(JSCell*, SlotVisitor&);
 
 public:
@@ -186,5 +193,3 @@ public:
 };
 
 } // namespace JSC
-
-#endif // UnlinkedFunctionExecutable_h

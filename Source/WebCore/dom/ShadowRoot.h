@@ -42,25 +42,25 @@ class SlotAssignment;
 
 class ShadowRoot final : public DocumentFragment, public TreeScope {
 public:
-    enum class Type : uint8_t {
+    enum class Mode : uint8_t {
         UserAgent = 0,
         Closed,
         Open,
     };
 
-    static Ref<ShadowRoot> create(Document& document, Type type)
+    static Ref<ShadowRoot> create(Document& document, Mode type)
     {
         return adoptRef(*new ShadowRoot(document, type));
     }
 
-#if ENABLE(SHADOW_DOM) || ENABLE(DETAILS_ELEMENT)
     static Ref<ShadowRoot> create(Document& document, std::unique_ptr<SlotAssignment>&& assignment)
     {
         return adoptRef(*new ShadowRoot(document, WTFMove(assignment)));
     }
-#endif
 
     virtual ~ShadowRoot();
+
+    using TreeScope::rootNode;
 
     StyleResolver& styleResolver();
     AuthorStyleSheets& authorStyleSheets();
@@ -79,48 +79,45 @@ public:
 
     Element* activeElement() const;
 
-    Type type() const { return m_type; }
+    Mode mode() const { return m_type; }
 
-    virtual void removeAllEventListeners() override;
+    void removeAllEventListeners() override;
 
-#if ENABLE(SHADOW_DOM) || ENABLE(DETAILS_ELEMENT)
     HTMLSlotElement* findAssignedSlot(const Node&);
 
     void addSlotElementByName(const AtomicString&, HTMLSlotElement&);
     void removeSlotElementByName(const AtomicString&, HTMLSlotElement&);
 
-    void invalidateSlotAssignments();
-    void invalidateDefaultSlotAssignments();
+    void didRemoveAllChildrenOfShadowHost();
+    void didChangeDefaultSlot();
+    void hostChildElementDidChange(const Element&);
+    void hostChildElementDidChangeSlotAttribute(Element&, const AtomicString& oldValue, const AtomicString& newValue);
+    void innerSlotDidChange(const AtomicString&);
 
     const Vector<Node*>* assignedNodesForSlot(const HTMLSlotElement&);
-#endif
 
 protected:
-    ShadowRoot(Document&, Type);
+    ShadowRoot(Document&, Mode);
 
-#if ENABLE(SHADOW_DOM) || ENABLE(DETAILS_ELEMENT)
     ShadowRoot(Document&, std::unique_ptr<SlotAssignment>&&);
-#endif
 
     // FIXME: This shouldn't happen. https://bugs.webkit.org/show_bug.cgi?id=88834
     bool isOrphan() const { return !m_host; }
 
 private:
-    virtual bool childTypeAllowed(NodeType) const override;
+    bool childTypeAllowed(NodeType) const override;
 
-    virtual Ref<Node> cloneNodeInternal(Document&, CloningOperation) override;
+    Ref<Node> cloneNodeInternal(Document&, CloningOperation) override;
 
     bool m_resetStyleInheritance { false };
-    Type m_type { Type::UserAgent };
+    Mode m_type { Mode::UserAgent };
 
     Element* m_host { nullptr };
 
     std::unique_ptr<StyleResolver> m_styleResolver;
     std::unique_ptr<AuthorStyleSheets> m_authorStyleSheets;
 
-#if ENABLE(SHADOW_DOM) || ENABLE(DETAILS_ELEMENT)
     std::unique_ptr<SlotAssignment> m_slotAssignment;
-#endif
 };
 
 inline Element* ShadowRoot::activeElement() const

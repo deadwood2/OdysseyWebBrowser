@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -55,6 +55,15 @@ struct AbstractValue {
         : m_type(SpecNone)
         , m_arrayModes(0)
     {
+#if USE(JSVALUE64) && !defined(NDEBUG)
+        // The WTF Traits for AbstractValue allow the initialization of values with bzero().
+        // We verify the correctness of this assumption here.
+        static bool needsDefaultConstructorCheck = true;
+        if (needsDefaultConstructorCheck) {
+            needsDefaultConstructorCheck = false;
+            ensureCanInitializeWithZeros();
+        }
+#endif
     }
     
     void clear()
@@ -376,7 +385,7 @@ struct AbstractValue {
     // abstract value that consists of the union of the set of all non-cell values
     // and the set of cell values that have the given structure. This abstract
     // value is then the intersection of the m_structure and the set of values
-    // whose type is m_type. So, for example if m_type is SpecFinal|SpecInt32 and
+    // whose type is m_type. So, for example if m_type is SpecFinal|SpecInt32Only and
     // m_structure is [0x12345] then this abstract value corresponds to the set of
     // all integers unified with the set of all objects with structure 0x12345.
     SpeculatedType m_type;
@@ -419,12 +428,12 @@ private:
         if (isHeapTop())
             return true;
         
-        // Constant folding always represents Int52's in a double (i.e. Int52AsDouble).
-        // So speculationFromValue(value) for an Int52 value will return Int52AsDouble,
+        // Constant folding always represents Int52's in a double (i.e. AnyIntAsDouble).
+        // So speculationFromValue(value) for an Int52 value will return AnyIntAsDouble,
         // and that's fine - the type validates just fine.
         SpeculatedType type = m_type;
-        if (type & SpecInt52)
-            type |= SpecInt52AsDouble;
+        if (type & SpecInt52Only)
+            type |= SpecAnyIntAsDouble;
         
         if (mergeSpeculations(type, speculationFromValue(value)) != type)
             return false;
@@ -448,6 +457,10 @@ private:
     
     void filterValueByType();
     void filterArrayModesByType();
+
+#if USE(JSVALUE64) && !defined(NDEBUG)
+    void ensureCanInitializeWithZeros();
+#endif
     
     bool shouldBeClear() const;
     FiltrationResult normalizeClarity();
@@ -455,6 +468,20 @@ private:
 };
 
 } } // namespace JSC::DFG
+
+#if USE(JSVALUE64)
+namespace WTF {
+template <>
+struct VectorTraits<JSC::DFG::AbstractValue> : VectorTraitsBase<false, JSC::DFG::AbstractValue> {
+    static const bool canInitializeWithMemset = true;
+};
+
+template <>
+struct HashTraits<JSC::DFG::AbstractValue> : GenericHashTraits<JSC::DFG::AbstractValue> {
+    static const bool emptyValueIsZero = true;
+};
+};
+#endif // USE(JSVALUE64)
 
 #endif // ENABLE(DFG_JIT)
 

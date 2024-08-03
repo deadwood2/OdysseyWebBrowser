@@ -147,6 +147,7 @@ AddDouble U:F:64, U:F:64, D:F:64
     Tmp, Tmp, Tmp
     x86: Addr, Tmp, Tmp
     x86: Tmp, Addr, Tmp
+    x86: Index, Tmp, Tmp
 
 x86: AddDouble U:F:64, UD:F:64
     Tmp, Tmp
@@ -156,6 +157,7 @@ AddFloat U:F:32, U:F:32, D:F:32
     Tmp, Tmp, Tmp
     x86: Addr, Tmp, Tmp
     x86: Tmp, Addr, Tmp
+    x86: Index, Tmp, Tmp
 
 x86: AddFloat U:F:32, UD:F:32
     Tmp, Tmp
@@ -168,6 +170,9 @@ Sub32 U:G:32, UZD:G:32
     x86: Addr, Tmp
     x86: Tmp, Addr
 
+arm64: Sub32 U:G:32, U:G:32, D:G:32
+    Tmp, Tmp, Tmp
+
 64: Sub64 U:G:64, UD:G:64
     Tmp, Tmp
     x86: Imm, Addr
@@ -175,15 +180,22 @@ Sub32 U:G:32, UZD:G:32
     x86: Addr, Tmp
     x86: Tmp, Addr
 
-arm64: SubDouble U:F:64, U:F:64, D:F:64
+arm64: Sub64 U:G:64, U:G:64, D:G:64
     Tmp, Tmp, Tmp
+
+SubDouble U:F:64, U:F:64, D:F:64
+    arm64: Tmp, Tmp, Tmp
+    x86: Tmp, Addr, Tmp
+    x86: Tmp, Index, Tmp
 
 x86: SubDouble U:F:64, UD:F:64
     Tmp, Tmp
     Addr, Tmp
 
-arm64: SubFloat U:F:32, U:F:32, D:F:32
-    Tmp, Tmp, Tmp
+SubFloat U:F:32, U:F:32, D:F:32
+    arm64: Tmp, Tmp, Tmp
+    x86: Tmp, Addr, Tmp
+    x86: Tmp, Index, Tmp
 
 x86: SubFloat U:F:32, UD:F:32
     Tmp, Tmp
@@ -197,6 +209,9 @@ Neg32 UZD:G:32
     Tmp
 
 arm64: NegateDouble U:F:64, D:F:64
+    Tmp, Tmp
+
+arm64: NegateFloat U:F:32, D:F:32
     Tmp, Tmp
 
 Mul32 U:G:32, UZD:G:32
@@ -243,6 +258,7 @@ MulDouble U:F:64, U:F:64, D:F:64
     Tmp, Tmp, Tmp
     x86: Addr, Tmp, Tmp
     x86: Tmp, Addr, Tmp
+    x86: Index, Tmp, Tmp
 
 x86: MulDouble U:F:64, UD:F:64
     Tmp, Tmp
@@ -252,6 +268,7 @@ MulFloat U:F:32, U:F:32, D:F:32
     Tmp, Tmp, Tmp
     x86: Addr, Tmp, Tmp
     x86: Tmp, Addr, Tmp
+    x86: Index, Tmp, Tmp
 
 x86: MulFloat U:F:32, UD:F:32
     Tmp, Tmp
@@ -472,6 +489,15 @@ ConvertInt32ToDouble U:G:32, D:F:64
 
 64: ConvertInt64ToDouble U:G:64, D:F:64
     Tmp, Tmp
+    x86_64: Addr, Tmp
+
+ConvertInt32ToFloat U:G:32, D:F:32
+    Tmp, Tmp
+    x86: Addr, Tmp
+
+64: ConvertInt64ToFloat U:G:64, D:F:32
+    Tmp, Tmp
+    x86_64: Addr, Tmp
 
 CountLeadingZeros32 U:G:32, ZD:G:32
     Tmp, Tmp
@@ -658,23 +684,24 @@ Branch32 U:G:32, U:G:32, U:G:32 /branch
     x86: RelCond, Index, Tmp
 
 BranchTest8 U:G:32, U:G:8, U:G:8 /branch
-    x86: ResCond, Addr, Imm
-    x86: ResCond, Index, Imm
+    x86: ResCond, Addr, BitImm
+    x86: ResCond, Index, BitImm
 
 BranchTest32 U:G:32, U:G:32, U:G:32 /branch
     ResCond, Tmp, Tmp
     ResCond, Tmp, BitImm
-    x86: ResCond, Addr, Imm
-    x86: ResCond, Index, Imm
+    x86: ResCond, Addr, BitImm
+    x86: ResCond, Index, BitImm
 
 # Warning: forms that take an immediate will sign-extend their immediate. You probably want
 # BranchTest32 in most cases where you use an immediate.
 64: BranchTest64 U:G:32, U:G:64, U:G:64 /branch
     ResCond, Tmp, Tmp
-    ResCond, Tmp, BitImm64
-    x86: ResCond, Addr, Imm
+    arm64: ResCond, Tmp, BitImm64
+    x86: ResCond, Tmp, BitImm
+    x86: ResCond, Addr, BitImm
     x86: ResCond, Addr, Tmp
-    x86: ResCond, Index, Imm
+    x86: ResCond, Index, BitImm
 
 BranchDouble U:G:32, U:F:64, U:F:64 /branch
     DoubleCond, Tmp, Tmp
@@ -818,6 +845,8 @@ MoveDoubleConditionallyFloat U:G:32, U:F:32, U:F:32, U:F:64, U:F:64, D:F:64
 
 Jump /branch
 
+RetVoid /return
+
 Ret32 U:G:32 /return
     Tmp
 
@@ -831,6 +860,10 @@ RetDouble U:F:64 /return
     Tmp
 
 Oops /terminal
+
+# This is a terminal but we express it as a Custom because we don't want it to have a code
+# generator.
+custom EntrySwitch
 
 # A Shuffle is a multi-source, multi-destination move. It simultaneously does multiple moves at once.
 # The moves are specified as triplets of src, dst, and width. For example you can request a swap this

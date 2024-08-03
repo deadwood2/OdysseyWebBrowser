@@ -30,6 +30,7 @@
 #include "Chrome.h"
 #include "ChromeClient.h"
 #include "Cursor.h"
+#include "EventNames.h"
 #include "Filter.h"
 #include "Frame.h"
 #include "FrameLoaderClient.h"
@@ -48,7 +49,7 @@
 
 namespace WebCore {
 
-RenderSnapshottedPlugIn::RenderSnapshottedPlugIn(HTMLPlugInImageElement& element, Ref<RenderStyle>&& style)
+RenderSnapshottedPlugIn::RenderSnapshottedPlugIn(HTMLPlugInImageElement& element, RenderStyle&& style)
     : RenderEmbeddedObject(element, WTFMove(style))
     , m_snapshotResource(std::make_unique<RenderImageResource>())
     , m_isPotentialMouseActivation(false)

@@ -30,19 +30,19 @@
 
 #import "APIArray.h"
 #import "APIData.h"
+#import "APIOpenPanelParameters.h"
 #import "APIString.h"
+#import "PhotosSPI.h"
 #import "UIKitSPI.h"
 #import "WKContentViewInteraction.h"
 #import "WKData.h"
 #import "WKStringCF.h"
 #import "WKURLCF.h"
-#import "WebOpenPanelParameters.h"
 #import "WebOpenPanelResultListenerProxy.h"
 #import "WebPageProxy.h"
 #import <AVFoundation/AVFoundation.h>
 #import <CoreMedia/CoreMedia.h>
 #import <MobileCoreServices/MobileCoreServices.h>
-#import <Photos/Photos.h>
 #import <WebCore/LocalizedStrings.h>
 #import <WebCore/SoftLinking.h>
 #import <WebKit/WebNSFileManagerExtras.h>
@@ -68,6 +68,11 @@ SOFT_LINK_CONSTANT(Photos, PHImageRequestOptionsVersionCurrent, NSString *);
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+
+static inline UIImagePickerControllerCameraDevice cameraDeviceForMediaCaptureType(WebCore::MediaCaptureType mediaCaptureType)
+{
+    return mediaCaptureType == WebCore::MediaCaptureTypeUser ? UIImagePickerControllerCameraDeviceFront : UIImagePickerControllerCameraDeviceRear;
+}
 
 #pragma mark - Document picker icons
 
@@ -292,6 +297,7 @@ static UIImage* iconForFile(NSURL *file)
 #pragma clang diagnostic pop
     RetainPtr<UIDocumentMenuViewController> _documentMenuController;
     RetainPtr<UIAlertController> _actionSheetController;
+    WebCore::MediaCaptureType _mediaCaptureType;
 }
 
 - (instancetype)initWithView:(WKContentView *)view
@@ -333,24 +339,21 @@ static UIImage* iconForFile(NSURL *file)
         return;
     }
 
-    Vector<RefPtr<API::Object>> urls;
-    urls.reserveInitialCapacity(count);
+    Vector<String> filenames;
+    filenames.reserveInitialCapacity(count);
     for (NSURL *fileURL in fileURLs)
-        urls.uncheckedAppend(adoptRef(toImpl(WKURLCreateWithCFURL((CFURLRef)fileURL))));
-    Ref<API::Array> fileURLsRef = API::Array::create(WTFMove(urls));
+        filenames.uncheckedAppend(fileURL.fileSystemRepresentation);
 
     NSData *jpeg = UIImageJPEGRepresentation(iconImage, 1.0);
     RefPtr<API::Data> iconImageDataRef = adoptRef(toImpl(WKDataCreate(reinterpret_cast<const unsigned char*>([jpeg bytes]), [jpeg length])));
 
-    RefPtr<API::String> displayStringRef = adoptRef(toImpl(WKStringCreateWithCFString((CFStringRef)displayString)));
-
-    _listener->chooseFiles(fileURLsRef.ptr(), displayStringRef.get(), iconImageDataRef.get());
+    _listener->chooseFiles(filenames, displayString, iconImageDataRef.get());
     [self _dispatchDidDismiss];
 }
 
 #pragma mark - Present / Dismiss API
 
-- (void)presentWithParameters:(WebKit::WebOpenPanelParameters*)parameters resultListener:(WebKit::WebOpenPanelResultListenerProxy*)listener
+- (void)presentWithParameters:(API::OpenPanelParameters*)parameters resultListener:(WebKit::WebOpenPanelResultListenerProxy*)listener
 {
     ASSERT(!_listener);
 
@@ -363,6 +366,20 @@ static UIImage* iconForFile(NSURL *file)
     for (const auto& mimeType : acceptMimeTypes->elementsOfType<API::String>())
         [mimeTypes addObject:mimeType->string()];
     _mimeTypes = adoptNS([mimeTypes copy]);
+
+    _mediaCaptureType = WebCore::MediaCaptureTypeNone;
+#if ENABLE(MEDIA_CAPTURE)
+    _mediaCaptureType = parameters->mediaCaptureType();
+#endif
+
+    if ([self _shouldMediaCaptureOpenMediaDevice]) {
+        [self _adjustMediaCaptureType];
+
+        _usingCamera = YES;
+        [self _showPhotoPickerWithSourceType:UIImagePickerControllerSourceTypeCamera];
+
+        return;
+    }
 
     [self _showDocumentPickerMenu];
 }
@@ -470,11 +487,13 @@ static NSArray *UTIsForMIMETypes(NSArray *mimeTypes)
         [self _showPhotoPickerWithSourceType:UIImagePickerControllerSourceTypePhotoLibrary];
     }];
 
-    if (NSString *cameraString = [self _cameraButtonLabel]) {
-        [_documentMenuController addOptionWithTitle:cameraString image:cameraIcon() order:UIDocumentMenuOrderFirst handler:^{
-            _usingCamera = YES;
-            [self _showPhotoPickerWithSourceType:UIImagePickerControllerSourceTypeCamera];
-        }];
+    if ([UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypeCamera]) {
+        if (NSString *cameraString = [self _cameraButtonLabel]) {
+            [_documentMenuController addOptionWithTitle:cameraString image:cameraIcon() order:UIDocumentMenuOrderFirst handler:^{
+                _usingCamera = YES;
+                [self _showPhotoPickerWithSourceType:UIImagePickerControllerSourceTypeCamera];
+            }];
+        }
     }
 
     [self _presentForCurrentInterfaceIdiom:_documentMenuController.get()];
@@ -482,8 +501,33 @@ static NSArray *UTIsForMIMETypes(NSArray *mimeTypes)
 
 #pragma mark - Image Picker
 
+- (void)_adjustMediaCaptureType
+{
+    if ([UIImagePickerController isCameraDeviceAvailable:UIImagePickerControllerCameraDeviceFront] || [UIImagePickerController isCameraDeviceAvailable:UIImagePickerControllerCameraDeviceRear]) {
+        if (![UIImagePickerController isCameraDeviceAvailable:UIImagePickerControllerCameraDeviceFront])
+            _mediaCaptureType = WebCore::MediaCaptureTypeEnvironment;
+        
+        if (![UIImagePickerController isCameraDeviceAvailable:UIImagePickerControllerCameraDeviceRear])
+            _mediaCaptureType = WebCore::MediaCaptureTypeUser;
+        
+        return;
+    }
+    
+    _mediaCaptureType = WebCore::MediaCaptureTypeNone;
+}
+
+- (BOOL)_shouldMediaCaptureOpenMediaDevice
+{
+    if (_mediaCaptureType == WebCore::MediaCaptureTypeNone || ![UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypeCamera])
+        return NO;
+    
+    return YES;
+}
+
 - (void)_showPhotoPickerWithSourceType:(UIImagePickerControllerSourceType)sourceType
 {
+    ASSERT([UIImagePickerController isSourceTypeAvailable:sourceType]);
+    
     _imagePicker = adoptNS([[UIImagePickerController alloc] init]);
     [_imagePicker setDelegate:self];
     [_imagePicker setSourceType:sourceType];
@@ -492,6 +536,9 @@ static NSArray *UTIsForMIMETypes(NSArray *mimeTypes)
     [_imagePicker _setAllowsMultipleSelection:_allowMultipleFiles];
     [_imagePicker setMediaTypes:[self _mediaTypesForPickerSourceType:sourceType]];
 
+    if (_mediaCaptureType != WebCore::MediaCaptureTypeNone)
+        [_imagePicker setCameraDevice:cameraDeviceForMediaCaptureType(_mediaCaptureType)];
+    
     // Use a popover on the iPad if the source type is not the camera.
     // The camera will use a fullscreen, modal view controller.
     BOOL usePopover = UICurrentUserInterfaceIdiomIsPad() && sourceType != UIImagePickerControllerSourceTypeCamera;
@@ -737,22 +784,26 @@ static NSArray *UTIsForMIMETypes(NSArray *mimeTypes)
             return;
         }
 
+        PHAsset *firstAsset = result[0];
+        [firstAsset fetchPropertySetsIfNeeded];
+        NSString *originalFilename = [[firstAsset originalMetadataProperties] originalFilename];
+        ASSERT(originalFilename);
+
         RetainPtr<PHImageRequestOptions> options = adoptNS([allocPHImageRequestOptionsInstance() init]);
         [options setVersion:PHImageRequestOptionsVersionCurrent];
         [options setSynchronous:YES];
         [options setResizeMode:PHImageRequestOptionsResizeModeNone];
 
         PHImageManager *manager = (PHImageManager *)[getPHImageManagerClass() defaultManager];
-        [manager requestImageDataForAsset:result[0] options:options.get() resultHandler:^(NSData *imageData, NSString *dataUTI, UIImageOrientation, NSDictionary *info) {
+        [manager requestImageDataForAsset:firstAsset options:options.get() resultHandler:^(NSData *imageData, NSString *dataUTI, UIImageOrientation, NSDictionary *info)
+        {
             if (!imageData) {
                 LOG_ERROR("WKFileUploadPanel: Failed to request image data for asset with URL %@", assetURL);
                 [self _uploadItemForJPEGRepresentationOfImage:image successBlock:successBlock failureBlock:failureBlock];
                 return;
             }
 
-            RetainPtr<CFStringRef> extension = adoptCF(UTTypeCopyPreferredTagWithClass((CFStringRef)dataUTI, kUTTagClassFilenameExtension));
-            NSString *imageName = [@"image." stringByAppendingString:(extension ? (id)extension.get() : @"jpg")];
-            [self _uploadItemForImageData:imageData imageName:imageName successBlock:successBlock failureBlock:failureBlock];
+            [self _uploadItemForImageData:imageData imageName:originalFilename successBlock:successBlock failureBlock:failureBlock];
         }];
     });
 }

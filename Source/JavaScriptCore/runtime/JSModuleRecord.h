@@ -48,15 +48,14 @@ class JSModuleRecord : public JSDestructibleObject {
 public:
     typedef JSDestructibleObject Base;
 
+    // https://tc39.github.io/ecma262/#sec-source-text-module-records
     struct ExportEntry {
         enum class Type {
             Local,
-            Namespace,
             Indirect
         };
 
-        static ExportEntry createLocal(const Identifier& exportName, const Identifier& localName, const VariableEnvironmentEntry&);
-        static ExportEntry createNamespace(const Identifier& exportName, const Identifier& moduleName);
+        static ExportEntry createLocal(const Identifier& exportName, const Identifier& localName);
         static ExportEntry createIndirect(const Identifier& exportName, const Identifier& importName, const Identifier& moduleName);
 
         Type type;
@@ -64,7 +63,6 @@ public:
         Identifier moduleName;
         Identifier importName;
         Identifier localName;
-        VariableEnvironmentEntry variable;
     };
 
     struct ImportEntry {
@@ -89,10 +87,10 @@ public:
         return Structure::create(vm, globalObject, prototype, TypeInfo(ObjectType, StructureFlags), info());
     }
 
-    static JSModuleRecord* create(VM& vm, Structure* structure, const Identifier& moduleKey, const SourceCode& sourceCode, const VariableEnvironment& declaredVariables, const VariableEnvironment& lexicalVariables)
+    static JSModuleRecord* create(ExecState* exec, VM& vm, Structure* structure, const Identifier& moduleKey, const SourceCode& sourceCode, const VariableEnvironment& declaredVariables, const VariableEnvironment& lexicalVariables)
     {
         JSModuleRecord* instance = new (NotNull, allocateCell<JSModuleRecord>(vm.heap)) JSModuleRecord(vm, structure, moduleKey, sourceCode, declaredVariables, lexicalVariables);
-        instance->finishCreation(vm);
+        instance->finishCreation(exec, vm);
         return instance;
     }
 
@@ -154,7 +152,7 @@ private:
     {
     }
 
-    void finishCreation(VM&);
+    void finishCreation(ExecState*, VM&);
 
     JSModuleNamespaceObject* getModuleNamespace(ExecState*);
 
@@ -208,7 +206,7 @@ private:
     WriteBarrier<JSModuleEnvironment> m_moduleEnvironment;
     WriteBarrier<JSModuleNamespaceObject> m_moduleNamespaceObject;
 
-    // We assume that all the JSModuleRecord are retained by ModuleLoaderObject's registry.
+    // We assume that all the JSModuleRecord are retained by JSModuleLoader's registry.
     // So here, we don't visit each object for GC. The resolution cache map caches the once
     // looked up correctly resolved resolution, since (1) we rarely looked up the non-resolved one,
     // and (2) if we cache all the attempts the size of the map becomes infinitely large.

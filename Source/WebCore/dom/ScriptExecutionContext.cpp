@@ -34,11 +34,15 @@
 #include "Document.h"
 #include "ErrorEvent.h"
 #include "MessagePort.h"
+#include "NoEventDispatchAssertion.h"
 #include "PublicURLManager.h"
+#include "ResourceRequest.h"
+#include "ScriptState.h"
 #include "Settings.h"
 #include "WorkerGlobalScope.h"
 #include "WorkerThread.h"
 #include <inspector/ScriptCallStack.h>
+#include <runtime/Exception.h>
 #include <wtf/MainThread.h>
 #include <wtf/Ref.h>
 
@@ -53,8 +57,8 @@ using namespace Inspector;
 
 namespace WebCore {
 
-class ScriptExecutionContext::PendingException {
-    WTF_MAKE_NONCOPYABLE(PendingException);
+struct ScriptExecutionContext::PendingException {
+    WTF_MAKE_NONCOPYABLE(PendingException); WTF_MAKE_FAST_ALLOCATED;
 public:
     PendingException(const String& errorMessage, int lineNumber, int columnNumber, const String& sourceURL, PassRefPtr<ScriptCallStack> callStack)
         : m_errorMessage(errorMessage)
@@ -142,7 +146,7 @@ void ScriptExecutionContext::dispatchMessagePortEvents()
 {
     checkConsistency();
 
-    Ref<ScriptExecutionContext> protect(*this);
+    Ref<ScriptExecutionContext> protectedThis(*this);
 
     // Make a frozen copy of the ports so we can iterate while new ones might be added or destroyed.
     Vector<MessagePort*> possibleMessagePorts;
@@ -172,7 +176,7 @@ void ScriptExecutionContext::destroyedMessagePort(MessagePort& messagePort)
     m_messagePorts.remove(&messagePort);
 }
 
-void ScriptExecutionContext::didLoadResourceSynchronously(const ResourceRequest&)
+void ScriptExecutionContext::didLoadResourceSynchronously()
 {
 }
 
@@ -222,6 +226,8 @@ void ScriptExecutionContext::suspendActiveDOMObjects(ActiveDOMObject::ReasonForS
         return;
     }
 
+    m_activeDOMObjectsAreSuspended = true;
+
     m_activeDOMObjectAdditionForbidden = true;
 #if !ASSERT_DISABLED || ENABLE(SECURITY_ASSERTIONS)
     m_activeDOMObjectRemovalForbidden = true;
@@ -240,7 +246,6 @@ void ScriptExecutionContext::suspendActiveDOMObjects(ActiveDOMObject::ReasonForS
     m_activeDOMObjectRemovalForbidden = false;
 #endif
 
-    m_activeDOMObjectsAreSuspended = true;
     m_reasonForSuspendingActiveDOMObjects = why;
 }
 
@@ -345,7 +350,7 @@ void ScriptExecutionContext::willDestroyDestructionObserver(ContextDestructionOb
     m_destructionObservers.remove(&observer);
 }
 
-bool ScriptExecutionContext::sanitizeScriptError(String& errorMessage, int& lineNumber, int& columnNumber, String& sourceURL, CachedScript* cachedScript)
+bool ScriptExecutionContext::sanitizeScriptError(String& errorMessage, int& lineNumber, int& columnNumber, String& sourceURL, Deprecated::ScriptValue& error, CachedScript* cachedScript)
 {
     URL targetURL = completeURL(sourceURL);
     if (securityOrigin()->canRequest(targetURL) || (cachedScript && cachedScript->passesAccessControlCheck(*securityOrigin())))
@@ -354,10 +359,11 @@ bool ScriptExecutionContext::sanitizeScriptError(String& errorMessage, int& line
     sourceURL = String();
     lineNumber = 0;
     columnNumber = 0;
+    error = Deprecated::ScriptValue();
     return true;
 }
 
-void ScriptExecutionContext::reportException(const String& errorMessage, int lineNumber, int columnNumber, const String& sourceURL, RefPtr<ScriptCallStack>&& callStack, CachedScript* cachedScript)
+void ScriptExecutionContext::reportException(const String& errorMessage, int lineNumber, int columnNumber, const String& sourceURL, JSC::Exception* exception, RefPtr<ScriptCallStack>&& callStack, CachedScript* cachedScript)
 {
     if (m_inDispatchErrorEvent) {
         if (!m_pendingExceptions)
@@ -367,7 +373,7 @@ void ScriptExecutionContext::reportException(const String& errorMessage, int lin
     }
 
     // First report the original exception and only then all the nested ones.
-    if (!dispatchErrorEvent(errorMessage, lineNumber, columnNumber, sourceURL, cachedScript))
+    if (!dispatchErrorEvent(errorMessage, lineNumber, columnNumber, sourceURL, exception, cachedScript))
         logExceptionToConsole(errorMessage, sourceURL, lineNumber, columnNumber, callStack.copyRef());
 
     if (!m_pendingExceptions)
@@ -383,7 +389,7 @@ void ScriptExecutionContext::addConsoleMessage(MessageSource source, MessageLeve
     addMessage(source, level, message, sourceURL, lineNumber, columnNumber, 0, state, requestIdentifier);
 }
 
-bool ScriptExecutionContext::dispatchErrorEvent(const String& errorMessage, int lineNumber, int columnNumber, const String& sourceURL, CachedScript* cachedScript)
+bool ScriptExecutionContext::dispatchErrorEvent(const String& errorMessage, int lineNumber, int columnNumber, const String& sourceURL, JSC::Exception* exception, CachedScript* cachedScript)
 {
     EventTarget* target = errorEventTarget();
     if (!target)
@@ -401,11 +407,12 @@ bool ScriptExecutionContext::dispatchErrorEvent(const String& errorMessage, int 
     int line = lineNumber;
     int column = columnNumber;
     String sourceName = sourceURL;
-    sanitizeScriptError(message, line, column, sourceName, cachedScript);
+    Deprecated::ScriptValue error = exception && exception->value() ? Deprecated::ScriptValue(vm(), exception->value()) : Deprecated::ScriptValue();
+    sanitizeScriptError(message, line, column, sourceName, error, cachedScript);
 
     ASSERT(!m_inDispatchErrorEvent);
     m_inDispatchErrorEvent = true;
-    Ref<ErrorEvent> errorEvent = ErrorEvent::create(message, sourceName, line, column);
+    Ref<ErrorEvent> errorEvent = ErrorEvent::create(message, sourceName, line, column, error);
     target->dispatchEvent(errorEvent);
     m_inDispatchErrorEvent = false;
     return errorEvent->defaultPrevented();
@@ -426,7 +433,7 @@ PublicURLManager& ScriptExecutionContext::publicURLManager()
     return *m_publicURLManager;
 }
 
-void ScriptExecutionContext::adjustMinimumTimerInterval(double oldMinimumTimerInterval)
+void ScriptExecutionContext::adjustMinimumTimerInterval(std::chrono::milliseconds oldMinimumTimerInterval)
 {
     if (minimumTimerInterval() != oldMinimumTimerInterval) {
         for (auto& timer : m_timeouts.values())
@@ -434,7 +441,7 @@ void ScriptExecutionContext::adjustMinimumTimerInterval(double oldMinimumTimerIn
     }
 }
 
-double ScriptExecutionContext::minimumTimerInterval() const
+std::chrono::milliseconds ScriptExecutionContext::minimumTimerInterval() const
 {
     // The default implementation returns the DOMTimer's default
     // minimum timer interval. FIXME: to make it work with dedicated
@@ -450,7 +457,7 @@ void ScriptExecutionContext::didChangeTimerAlignmentInterval()
         timer->didChangeAlignmentInterval();
 }
 
-double ScriptExecutionContext::timerAlignmentInterval(bool) const
+std::chrono::milliseconds ScriptExecutionContext::timerAlignmentInterval(bool) const
 {
     return DOMTimer::defaultAlignmentInterval();
 }
@@ -484,6 +491,17 @@ bool ScriptExecutionContext::hasPendingActivity() const
     }
 
     return false;
+}
+
+JSC::ExecState* ScriptExecutionContext::execState()
+{
+    if (is<Document>(*this)) {
+        Document& document = downcast<Document>(*this);
+        return execStateFromPage(mainThreadNormalWorld(), document.page());
+    }
+
+    WorkerGlobalScope* workerGlobalScope = static_cast<WorkerGlobalScope*>(this);
+    return execStateFromWorkerGlobalScope(workerGlobalScope);
 }
 
 } // namespace WebCore

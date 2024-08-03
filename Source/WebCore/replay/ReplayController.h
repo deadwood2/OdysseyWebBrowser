@@ -32,7 +32,6 @@
 
 #include "EventLoopInputDispatcher.h"
 #include <wtf/Noncopyable.h>
-#include <wtf/Vector.h>
 
 // Determinism assertions are guarded by this macro. When a user-facing error reporting and
 // recovery mechanism is implemented, this guard can be removed. <https://webkit.org/b/131279>
@@ -149,9 +148,9 @@ public:
 
 private:
     // EventLoopInputDispatcherClient API
-    virtual void willDispatchInput(const EventLoopInputBase&) override;
-    virtual void didDispatchInput(const EventLoopInputBase&) override;
-    virtual void didDispatchFinalInput() override;
+    void willDispatchInput(const EventLoopInputBase&) override;
+    void didDispatchInput(const EventLoopInputBase&) override;
+    void didDispatchFinalInput() override;
 
     void createSegment();
     void completeSegment();

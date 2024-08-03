@@ -29,7 +29,7 @@
  */
 
 [
-    GlobalContext=DOMWindow&WorkerGlobalScope,
+    Exposed=(Window,Worker),
     GenerateIsReachable=Impl,
     CustomToJSObject,
     CustomConstructor,
@@ -38,8 +38,6 @@
     readonly attribute unsigned long long size;
     readonly attribute DOMString type;
 
-#if !defined(LANGUAGE_OBJECTIVE_C)
-    Blob slice(optional long long start, optional long long end, [TreatNullAs=NullString, TreatUndefinedAs=NullString] optional DOMString contentType);
-#endif
+    Blob slice(optional long long start = 0, optional long long end = 0x7FFFFFFFFFFFFFFF, optional DOMString? contentType = null);
 };
 

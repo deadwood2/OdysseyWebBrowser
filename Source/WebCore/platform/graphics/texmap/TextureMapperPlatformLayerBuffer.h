@@ -42,7 +42,7 @@ public:
 
     virtual ~TextureMapperPlatformLayerBuffer() = default;
 
-    virtual void paintToTextureMapper(TextureMapper&, const FloatRect&, const TransformationMatrix& modelViewMatrix = TransformationMatrix(), float opacity = 1.0) final;
+    void paintToTextureMapper(TextureMapper&, const FloatRect&, const TransformationMatrix& modelViewMatrix = TransformationMatrix(), float opacity = 1.0) final;
 
     bool canReuseWithoutReset(const IntSize&, GC3Dint internalFormat);
     BitmapTextureGL& textureGL() { return static_cast<BitmapTextureGL&>(*m_texture); }
@@ -60,6 +60,7 @@ public:
 
     bool hasManagedTexture() const { return m_hasManagedTexture; }
     void setUnmanagedBufferDataHolder(std::unique_ptr<UnmanagedBufferDataHolder> holder) { m_unmanagedBufferDataHolder = WTFMove(holder); }
+    void setExtraFlags(TextureMapperGL::Flags flags) { m_extraFlags = flags; }
 
 private:
 

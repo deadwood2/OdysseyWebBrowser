@@ -29,6 +29,9 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/page/efl"
     "${WEBCORE_DIR}/platform/cairo"
     "${WEBCORE_DIR}/platform/efl"
+    "${WEBCORE_DIR}/platform/gamepad"
+    "${WEBCORE_DIR}/platform/gamepad/deprecated"
+    "${WEBCORE_DIR}/platform/gamepad/efl"
     "${WEBCORE_DIR}/platform/geoclue"
     "${WEBCORE_DIR}/platform/graphics/cairo"
     "${WEBCORE_DIR}/platform/graphics/efl"
@@ -68,8 +71,6 @@ list(APPEND WebCore_SOURCES
     accessibility/atk/WebKitAccessibleUtil.cpp
     accessibility/atk/WebKitAccessibleWrapperAtk.cpp
 
-    editing/SmartReplace.cpp
-
     editing/atk/FrameSelectionAtk.cpp
 
     editing/efl/EditorEfl.cpp
@@ -88,6 +89,8 @@ list(APPEND WebCore_SOURCES
 
     platform/audio/efl/AudioBusEfl.cpp
 
+    platform/crypto/gnutls/CryptoDigestGnuTLS.cpp
+
     platform/efl/BatteryProviderEfl.cpp
     platform/efl/CursorEfl.cpp
     platform/efl/DragDataEfl.cpp
@@ -98,10 +101,7 @@ list(APPEND WebCore_SOURCES
     platform/efl/ErrorsEfl.cpp
     platform/efl/EventLoopEfl.cpp
     platform/efl/FileSystemEfl.cpp
-    platform/efl/GamepadsEfl.cpp
-    platform/efl/LanguageEfl.cpp
     platform/efl/LocalizedStringsEfl.cpp
-    platform/efl/LoggingEfl.cpp
     platform/efl/MIMETypeRegistryEfl.cpp
     platform/efl/MainThreadSharedTimerEfl.cpp
     platform/efl/PasteboardEfl.cpp
@@ -115,15 +115,15 @@ list(APPEND WebCore_SOURCES
     platform/efl/UserAgentEfl.cpp
     platform/efl/WidgetEfl.cpp
 
+    platform/gamepad/efl/GamepadsEfl.cpp
+
     platform/geoclue/GeolocationProviderGeoclue1.cpp
     platform/geoclue/GeolocationProviderGeoclue2.cpp
 
     platform/glib/KeyedDecoderGlib.cpp
     platform/glib/KeyedEncoderGlib.cpp
 
-    platform/graphics/ImageSource.cpp
     platform/graphics/PlatformDisplay.cpp
-    platform/graphics/WOFFFileFormat.cpp
 
     platform/graphics/cairo/BackingStoreBackendCairoImpl.cpp
     platform/graphics/cairo/BitmapImageCairo.cpp
@@ -181,6 +181,7 @@ list(APPEND WebCore_SOURCES
     platform/graphics/surfaces/glx/X11Helper.cpp
 
     platform/graphics/x11/PlatformDisplayX11.cpp
+    platform/graphics/x11/XErrorTrapper.cpp
     platform/graphics/x11/XUniqueResource.cpp
 
     platform/image-encoders/JPEGImageEncoder.cpp
@@ -201,7 +202,7 @@ list(APPEND WebCore_SOURCES
     platform/network/soup/ResourceHandleSoup.cpp
     platform/network/soup/ResourceRequestSoup.cpp
     platform/network/soup/ResourceResponseSoup.cpp
-    platform/network/soup/SocketStreamHandleSoup.cpp
+    platform/network/soup/SocketStreamHandleImplSoup.cpp
     platform/network/soup/SoupNetworkSession.cpp
     platform/network/soup/SynchronousLoaderClientSoup.cpp
     platform/network/soup/WebKitSoupRequestGeneric.cpp
@@ -216,17 +217,17 @@ list(APPEND WebCore_SOURCES
     platform/text/Hyphenation.cpp
     platform/text/LocaleICU.cpp
 
-    platform/text/efl/TextBreakIteratorInternalICUEfl.cpp
-
     platform/text/enchant/TextCheckerEnchant.cpp
 
     platform/text/hyphen/HyphenationLibHyphen.cpp
+
+    platform/unix/LoggingUnix.cpp
 
     rendering/RenderThemeEfl.cpp
 )
 
 if (USE_GEOCLUE2)
-    list(APPEND WebCore_SOURCES
+    list(APPEND WebCore_DERIVED_SOURCES
         ${DERIVED_SOURCES_WEBCORE_DIR}/Geoclue2Interface.c
     )
     execute_process(COMMAND pkg-config --variable dbus_interface geoclue-2.0 OUTPUT_VARIABLE GEOCLUE_DBUS_INTERFACE)
@@ -234,6 +235,8 @@ if (USE_GEOCLUE2)
          OUTPUT ${DERIVED_SOURCES_WEBCORE_DIR}/Geoclue2Interface.c ${DERIVED_SOURCES_WEBCORE_DIR}/Geoclue2Interface.h
          COMMAND gdbus-codegen --interface-prefix org.freedesktop.GeoClue2. --c-namespace Geoclue --generate-c-code ${DERIVED_SOURCES_WEBCORE_DIR}/Geoclue2Interface ${GEOCLUE_DBUS_INTERFACE}
     )
+    # Geoclue2Interface.c generates unused-parameter build warning, it causes build error when using geoclue2 library.
+    set_source_files_properties(${DERIVED_SOURCES_WEBCORE_DIR}/Geoclue2Interface.c PROPERTIES COMPILE_FLAGS -Wno-error)
 endif ()
 
 if (ENABLE_GAMEPAD_DEPRECATED)
@@ -251,14 +254,6 @@ set(WebCore_USER_AGENT_SCRIPTS
     ${WEBCORE_DIR}/English.lproj/mediaControlsLocalizedStrings.js
     ${WEBCORE_DIR}/Modules/mediacontrols/mediaControlsBase.js
 )
-
-add_custom_command(
-    OUTPUT ${DERIVED_SOURCES_WEBCORE_DIR}/WebKitVersion.h
-    MAIN_DEPENDENCY ${WEBKIT_DIR}/scripts/generate-webkitversion.pl
-    DEPENDS ${WEBKIT_DIR}/mac/Configurations/Version.xcconfig
-    COMMAND ${PERL_EXECUTABLE} ${WEBKIT_DIR}/scripts/generate-webkitversion.pl --config ${WEBKIT_DIR}/mac/Configurations/Version.xcconfig --outputDir ${DERIVED_SOURCES_WEBCORE_DIR}
-    VERBATIM)
-list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/WebKitVersion.h)
 
 set(WebCore_USER_AGENT_SCRIPTS_DEPENDENCIES ${WEBCORE_DIR}/platform/efl/RenderThemeEfl.cpp)
 
@@ -280,6 +275,7 @@ list(APPEND WebCore_LIBRARIES
     ${GLIB_GIO_LIBRARIES}
     ${GLIB_GOBJECT_LIBRARIES}
     ${GLIB_LIBRARIES}
+    ${GNUTLS_LIBRARIES}
     ${HARFBUZZ_LIBRARIES}
     ${LIBSOUP_LIBRARIES}
     ${LIBXML2_LIBRARIES}
@@ -305,6 +301,7 @@ list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
     ${FREETYPE2_INCLUDE_DIRS}
     ${GEOCLUE_INCLUDE_DIRS}
     ${GIO_UNIX_INCLUDE_DIRS}
+    ${GNUTLS_INCLUDE_DIRS}
     ${LIBXML2_INCLUDE_DIR}
     ${LIBXSLT_INCLUDE_DIR}
     ${SQLITE_INCLUDE_DIR}
@@ -315,7 +312,7 @@ list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
 )
 
 if (USE_EGL)
-    list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
+    list(APPEND WebCore_INCLUDE_DIRECTORIES
         "${WEBCORE_DIR}/platform/graphics/surfaces/egl"
     )
 endif ()
@@ -411,7 +408,7 @@ if (ENABLE_SUBTLE_CRYPTO)
         crypto/CryptoAlgorithmRegistry.cpp
         crypto/CryptoKey.cpp
         crypto/CryptoKeyPair.cpp
-        crypto/SubtleCrypto.cpp
+        crypto/WebKitSubtleCrypto.cpp
 
         crypto/algorithms/CryptoAlgorithmAES_CBC.cpp
         crypto/algorithms/CryptoAlgorithmAES_KW.cpp
@@ -432,7 +429,6 @@ if (ENABLE_SUBTLE_CRYPTO)
         crypto/gnutls/CryptoAlgorithmRSASSA_PKCS1_v1_5GnuTLS.cpp
         crypto/gnutls/CryptoAlgorithmRSA_OAEPGnuTLS.cpp
         crypto/gnutls/CryptoAlgorithmRegistryGnuTLS.cpp
-        crypto/gnutls/CryptoDigestGnuTLS.cpp
         crypto/gnutls/CryptoKeyRSAGnuTLS.cpp
         crypto/gnutls/SerializedCryptoKeyWrapGnuTLS.cpp
 
@@ -441,13 +437,6 @@ if (ENABLE_SUBTLE_CRYPTO)
         crypto/keys/CryptoKeyDataRSAComponents.cpp
         crypto/keys/CryptoKeyHMAC.cpp
         crypto/keys/CryptoKeySerializationRaw.cpp
-    )
-
-    list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
-        ${GNUTLS_INCLUDE_DIRS}
-    )
-    list(APPEND WebCore_LIBRARIES
-        ${GNUTLS_LIBRARIES}
     )
 endif ()
 

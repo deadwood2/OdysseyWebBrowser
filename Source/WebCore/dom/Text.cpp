@@ -26,12 +26,14 @@
 #include "RenderCombineText.h"
 #include "RenderSVGInlineText.h"
 #include "RenderText.h"
+#include "RenderTreeUpdater.h"
 #include "SVGElement.h"
 #include "SVGNames.h"
 #include "ScopedEventQueue.h"
 #include "ShadowRoot.h"
 #include "StyleInheritedData.h"
 #include "StyleResolver.h"
+#include "StyleUpdate.h"
 #include "TextNodeTraversal.h"
 #include <wtf/CheckedArithmetic.h>
 #include <wtf/text/CString.h>
@@ -73,12 +75,11 @@ RefPtr<Text> Text::splitText(unsigned offset, ExceptionCode& ec)
     dispatchModifiedEvent(oldStr);
 
     if (parentNode())
-        parentNode()->insertBefore(newText.copyRef(), nextSibling(), ec);
+        parentNode()->insertBefore(newText, nextSibling(), ec);
     if (ec)
         return 0;
 
-    if (parentNode())
-        document().textNodeSplit(this);
+    document().textNodeSplit(this);
 
     if (renderer())
         renderer()->setTextWithOffset(data(), 0, oldStr.length());
@@ -158,7 +159,7 @@ RefPtr<Text> Text::replaceWholeText(const String& newText, ExceptionCode&)
 
 String Text::nodeName() const
 {
-    return textAtom.string();
+    return ASCIILiteral("#text");
 }
 
 Node::NodeType Text::nodeType() const
@@ -216,6 +217,23 @@ Ref<Text> Text::createWithLengthLimit(Document& document, const String& data, un
     result->parserAppendData(data, start, lengthLimit);
     return result;
 }
+
+void Text::updateRendererAfterContentChange(unsigned offsetOfReplacedData, unsigned lengthOfReplacedData)
+{
+    ASSERT(parentNode());
+    if (styleChangeType() == ReconstructRenderTree)
+        return;
+
+    auto textUpdate = std::make_unique<Style::Update>(document());
+    textUpdate->addText(*this);
+
+    RenderTreeUpdater renderTreeUpdater(document());
+    renderTreeUpdater.commit(WTFMove(textUpdate));
+
+    if (auto* renderer = this->renderer())
+        renderer->setTextWithOffset(data(), offsetOfReplacedData, lengthOfReplacedData);
+}
+
 
 #if ENABLE(TREE_DEBUGGING)
 void Text::formatForDebugger(char* buffer, unsigned length) const

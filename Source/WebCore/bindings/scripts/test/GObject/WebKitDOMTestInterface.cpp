@@ -263,7 +263,7 @@ WebKitDOMTestObj* webkit_dom_test_interface_implements_method2(WebKitDOMTestInte
     WTF::String convertedStrArg = WTF::String::fromUTF8(strArg);
     WebCore::TestObj* convertedObjArg = WebKit::core(objArg);
     WebCore::ExceptionCode ec = 0;
-    RefPtr<WebCore::TestObj> gobjectResult = WTF::getPtr(item->implementsMethod2(convertedStrArg, convertedObjArg, ec));
+    RefPtr<WebCore::TestObj> gobjectResult = WTF::getPtr(item->implementsMethod2(convertedStrArg, *convertedObjArg, ec));
     if (ec) {
         WebCore::ExceptionCodeDescription ecdesc(ec);
         g_set_error_literal(error, g_quark_from_string("WEBKIT_DOM"), ecdesc.code, ecdesc.name);
@@ -322,7 +322,7 @@ WebKitDOMTestObj* webkit_dom_test_interface_supplemental_method2(WebKitDOMTestIn
     WTF::String convertedStrArg = WTF::String::fromUTF8(strArg);
     WebCore::TestObj* convertedObjArg = WebKit::core(objArg);
     WebCore::ExceptionCode ec = 0;
-    RefPtr<WebCore::TestObj> gobjectResult = WTF::getPtr(WebCore::TestSupplemental::supplementalMethod2(*item, convertedStrArg, convertedObjArg, ec));
+    RefPtr<WebCore::TestObj> gobjectResult = WTF::getPtr(WebCore::TestSupplemental::supplementalMethod2(*item, convertedStrArg, *convertedObjArg, ec));
     if (ec) {
         WebCore::ExceptionCodeDescription ecdesc(ec);
         g_set_error_literal(error, g_quark_from_string("WEBKIT_DOM"), ecdesc.code, ecdesc.name);
@@ -450,7 +450,7 @@ void webkit_dom_test_interface_set_implements_node(WebKitDOMTestInterface* self,
     g_return_if_fail(WEBKIT_DOM_IS_NODE(value));
     WebCore::TestInterface* item = WebKit::core(self);
     WebCore::Node* convertedValue = WebKit::core(value);
-    item->setImplementsNode(convertedValue);
+    item->setImplementsNode(*convertedValue);
 #else
     UNUSED_PARAM(self);
     UNUSED_PARAM(value);
@@ -567,7 +567,7 @@ void webkit_dom_test_interface_set_supplemental_node(WebKitDOMTestInterface* sel
     g_return_if_fail(WEBKIT_DOM_IS_NODE(value));
     WebCore::TestInterface* item = WebKit::core(self);
     WebCore::Node* convertedValue = WebKit::core(value);
-    WebCore::TestSupplemental::setSupplementalNode(*item, convertedValue);
+    WebCore::TestSupplemental::setSupplementalNode(*item, *convertedValue);
 #else
     UNUSED_PARAM(self);
     UNUSED_PARAM(value);

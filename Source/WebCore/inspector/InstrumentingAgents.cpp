@@ -57,10 +57,14 @@ void InstrumentingAgents::reset()
 #if ENABLE(WEB_REPLAY)
     m_inspectorReplayAgent = nullptr;
 #endif
+#if ENABLE(RESOURCE_USAGE)
+    m_inspectorMemoryAgent = nullptr;
+#endif
     m_inspectorDatabaseAgent = nullptr;
     m_inspectorApplicationCacheAgent = nullptr;
     m_inspectorDebuggerAgent = nullptr;
     m_pageDebuggerAgent = nullptr;
+    m_pageHeapAgent = nullptr;
     m_inspectorDOMDebuggerAgent = nullptr;
 }
 

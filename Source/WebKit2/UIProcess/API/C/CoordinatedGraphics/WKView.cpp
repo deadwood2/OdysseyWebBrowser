@@ -30,10 +30,10 @@
 using namespace WebCore;
 using namespace WebKit;
 
-WKViewRef WKViewCreate(WKContextRef context, WKPageConfigurationRef pageConfiguration)
+WKViewRef WKViewCreate(WKPageConfigurationRef pageConfiguration)
 {
-    RefPtr<WebView> webView = WebView::create(toImpl(context), *toImpl(pageConfiguration));
-    return toAPI(webView.release().leakRef());
+    auto webView = WebView::create(*toImpl(pageConfiguration));
+    return toAPI(&webView.leakRef());
 }
 
 WKSize WKViewGetSize(WKViewRef viewRef)

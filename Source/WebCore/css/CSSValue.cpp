@@ -65,6 +65,7 @@
 #include "WebKitCSSTransformValue.h"
 
 #if ENABLE(CSS_GRID_LAYOUT)
+#include "CSSGridAutoRepeatValue.h"
 #include "CSSGridLineNamesValue.h"
 #include "CSSGridTemplateAreasValue.h"
 #endif
@@ -77,7 +78,7 @@ struct SameSizeAsCSSValue : public RefCounted<SameSizeAsCSSValue> {
 
 COMPILE_ASSERT(sizeof(CSSValue) == sizeof(SameSizeAsCSSValue), CSS_value_should_stay_small);
 
-class TextCloneCSSValue : public CSSValue {
+class TextCloneCSSValue final : public CSSValue {
 public:
     static Ref<TextCloneCSSValue> create(ClassType classType, const String& text)
     {
@@ -149,10 +150,8 @@ bool CSSValue::traverseSubresources(const std::function<bool (const CachedResour
         return downcast<CSSCrossfadeValue>(*this).traverseSubresources(handler);
     if (is<CSSFilterImageValue>(*this))
         return downcast<CSSFilterImageValue>(*this).traverseSubresources(handler);
-#if ENABLE(CSS_IMAGE_SET)
     if (is<CSSImageSetValue>(*this))
         return downcast<CSSImageSetValue>(*this).traverseSubresources(handler);
-#endif
     return false;
 }
 
@@ -208,6 +207,8 @@ bool CSSValue::equals(const CSSValue& other) const
         case RevertClass:
             return compareCSSValues<CSSRevertValue>(*this, other);
 #if ENABLE(CSS_GRID_LAYOUT)
+        case GridAutoRepeatClass:
+            return compareCSSValues<CSSGridAutoRepeatValue>(*this, other);
         case GridLineNamesClass:
             return compareCSSValues<CSSGridLineNamesValue>(*this, other);
         case GridTemplateAreasClass:
@@ -223,6 +224,8 @@ bool CSSValue::equals(const CSSValue& other) const
             return compareCSSValues<CSSCubicBezierTimingFunctionValue>(*this, other);
         case StepsTimingFunctionClass:
             return compareCSSValues<CSSStepsTimingFunctionValue>(*this, other);
+        case SpringTimingFunctionClass:
+            return compareCSSValues<CSSSpringTimingFunctionValue>(*this, other);
         case UnicodeRangeClass:
             return compareCSSValues<CSSUnicodeRangeValue>(*this, other);
         case ValueListClass:
@@ -233,10 +236,8 @@ bool CSSValue::equals(const CSSValue& other) const
             return compareCSSValues<CSSLineBoxContainValue>(*this, other);
         case CalculationClass:
             return compareCSSValues<CSSCalcValue>(*this, other);
-#if ENABLE(CSS_IMAGE_SET)
         case ImageSetClass:
             return compareCSSValues<CSSImageSetValue>(*this, other);
-#endif
         case WebKitCSSFilterClass:
             return compareCSSValues<WebKitCSSFilterValue>(*this, other);
         case SVGColorClass:
@@ -312,6 +313,8 @@ String CSSValue::cssText() const
     case RevertClass:
         return downcast<CSSRevertValue>(*this).customCSSText();
 #if ENABLE(CSS_GRID_LAYOUT)
+    case GridAutoRepeatClass:
+        return downcast<CSSGridAutoRepeatValue>(*this).customCSSText();
     case GridLineNamesClass:
         return downcast<CSSGridLineNamesValue>(*this).customCSSText();
     case GridTemplateAreasClass:
@@ -327,6 +330,8 @@ String CSSValue::cssText() const
         return downcast<CSSCubicBezierTimingFunctionValue>(*this).customCSSText();
     case StepsTimingFunctionClass:
         return downcast<CSSStepsTimingFunctionValue>(*this).customCSSText();
+    case SpringTimingFunctionClass:
+        return downcast<CSSSpringTimingFunctionValue>(*this).customCSSText();
     case UnicodeRangeClass:
         return downcast<CSSUnicodeRangeValue>(*this).customCSSText();
     case ValueListClass:
@@ -337,10 +342,8 @@ String CSSValue::cssText() const
         return downcast<CSSLineBoxContainValue>(*this).customCSSText();
     case CalculationClass:
         return downcast<CSSCalcValue>(*this).customCSSText();
-#if ENABLE(CSS_IMAGE_SET)
     case ImageSetClass:
         return downcast<CSSImageSetValue>(*this).customCSSText();
-#endif
     case WebKitCSSFilterClass:
         return downcast<WebKitCSSFilterValue>(*this).customCSSText();
     case SVGColorClass:
@@ -427,6 +430,9 @@ void CSSValue::destroy()
         delete downcast<CSSRevertValue>(this);
         return;
 #if ENABLE(CSS_GRID_LAYOUT)
+    case GridAutoRepeatClass:
+        delete downcast<CSSGridAutoRepeatValue>(this);
+        return;
     case GridLineNamesClass:
         delete downcast<CSSGridLineNamesValue>(this);
         return;
@@ -449,6 +455,9 @@ void CSSValue::destroy()
     case StepsTimingFunctionClass:
         delete downcast<CSSStepsTimingFunctionValue>(this);
         return;
+    case SpringTimingFunctionClass:
+        delete downcast<CSSSpringTimingFunctionValue>(this);
+        return;
     case UnicodeRangeClass:
         delete downcast<CSSUnicodeRangeValue>(this);
         return;
@@ -464,11 +473,9 @@ void CSSValue::destroy()
     case CalculationClass:
         delete downcast<CSSCalcValue>(this);
         return;
-#if ENABLE(CSS_IMAGE_SET)
     case ImageSetClass:
         delete downcast<CSSImageSetValue>(this);
         return;
-#endif
     case FilterImageClass:
         delete downcast<CSSFilterImageValue>(this);
         return;
@@ -516,10 +523,8 @@ RefPtr<CSSValue> CSSValue::cloneForCSSOM() const
         return downcast<WebKitCSSFilterValue>(*this).cloneForCSSOM();
     case WebKitCSSTransformClass:
         return downcast<WebKitCSSTransformValue>(*this).cloneForCSSOM();
-#if ENABLE(CSS_IMAGE_SET)
     case ImageSetClass:
         return downcast<CSSImageSetValue>(*this).cloneForCSSOM();
-#endif
     case SVGColorClass:
         return downcast<SVGColor>(*this).cloneForCSSOM();
     case SVGPaintClass:

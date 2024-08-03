@@ -41,6 +41,7 @@
 #import <MediaPlayer/MPVolumeView.h>
 #import <UIKit/UIApplication.h>
 #import <objc/runtime.h>
+#import <wtf/MainThread.h>
 #import <wtf/RAMSize.h>
 #import <wtf/RetainPtr.h>
 
@@ -192,43 +193,89 @@ bool MediaSessionManageriOS::sessionWillBeginPlayback(PlatformMediaSession& sess
     if (!PlatformMediaSessionManager::sessionWillBeginPlayback(session))
         return false;
 
+    LOG(Media, "MediaSessionManageriOS::sessionWillBeginPlayback");
     updateNowPlayingInfo();
     return true;
 }
-    
+
+void MediaSessionManageriOS::removeSession(PlatformMediaSession& session)
+{
+    PlatformMediaSessionManager::removeSession(session);
+    LOG(Media, "MediaSessionManageriOS::removeSession");
+    updateNowPlayingInfo();
+}
+
 void MediaSessionManageriOS::sessionWillEndPlayback(PlatformMediaSession& session)
 {
     PlatformMediaSessionManager::sessionWillEndPlayback(session);
+    LOG(Media, "MediaSessionManageriOS::sessionWillEndPlayback");
     updateNowPlayingInfo();
 }
-    
+
+void MediaSessionManageriOS::clientCharacteristicsChanged(PlatformMediaSession&)
+{
+    LOG(Media, "MediaSessionManageriOS::clientCharacteristicsChanged");
+    updateNowPlayingInfo();
+}
+
+PlatformMediaSession* MediaSessionManageriOS::nowPlayingEligibleSession()
+{
+    for (auto session : sessions()) {
+        PlatformMediaSession::MediaType type = session->mediaType();
+        if (type != PlatformMediaSession::Video && type != PlatformMediaSession::Audio)
+            continue;
+
+        if (session->characteristics() & PlatformMediaSession::HasAudio)
+            return session;
+    }
+
+    return nullptr;
+}
+
 void MediaSessionManageriOS::updateNowPlayingInfo()
 {
-    LOG(Media, "MediaSessionManageriOS::updateNowPlayingInfo");
-
     MPNowPlayingInfoCenter *nowPlaying = (MPNowPlayingInfoCenter *)[getMPNowPlayingInfoCenterClass() defaultCenter];
-    const PlatformMediaSession* currentSession = this->currentSession();
-    
+    const PlatformMediaSession* currentSession = this->nowPlayingEligibleSession();
+
+    LOG(Media, "MediaSessionManageriOS::updateNowPlayingInfo - currentSession = %p", currentSession);
+
     if (!currentSession) {
-        [nowPlaying setNowPlayingInfo:nil];
+        if (m_nowPlayingActive) {
+            LOG(Media, "MediaSessionManageriOS::updateNowPlayingInfo - clearing now playing info");
+            [nowPlaying setNowPlayingInfo:nil];
+            m_nowPlayingActive = false;
+        }
+
         return;
     }
-    
-    RetainPtr<NSMutableDictionary> info = adoptNS([[NSMutableDictionary alloc] init]);
-    
+
     String title = currentSession->title();
-    if (!title.isEmpty())
-        [info setValue:static_cast<NSString *>(title) forKey:MPMediaItemPropertyTitle];
-    
     double duration = currentSession->duration();
+    double rate = currentSession->state() == PlatformMediaSession::Playing ? 1 : 0;
+    if (m_reportedTitle == title && m_reportedRate == rate && m_reportedDuration == duration) {
+        LOG(Media, "MediaSessionManageriOS::updateNowPlayingInfo - nothing new to show");
+        return;
+    }
+
+    m_reportedRate = rate;
+    m_reportedDuration = duration;
+    m_reportedTitle = title;
+
+    auto info = adoptNS([[NSMutableDictionary alloc] init]);
+    if (!title.isEmpty())
+        info.get()[MPMediaItemPropertyTitle] = static_cast<NSString *>(title);
     if (std::isfinite(duration) && duration != MediaPlayer::invalidTime())
-        [info setValue:@(duration) forKey:MPMediaItemPropertyPlaybackDuration];
-    
+        info.get()[MPMediaItemPropertyPlaybackDuration] = @(duration);
+    info.get()[MPNowPlayingInfoPropertyPlaybackRate] = @(rate);
+
     double currentTime = currentSession->currentTime();
     if (std::isfinite(currentTime) && currentTime != MediaPlayer::invalidTime())
-        [info setValue:@(currentTime) forKey:MPNowPlayingInfoPropertyElapsedPlaybackTime];
-    
-    [info setValue:(currentSession->state() == PlatformMediaSession::Playing ? @YES : @NO) forKey:MPNowPlayingInfoPropertyPlaybackRate];
+        info.get()[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @(currentTime);
+
+    LOG(Media, "MediaSessionManageriOS::updateNowPlayingInfo - title = \"%s\", rate = %f, duration = %f, now = %f",
+        title.utf8().data(), rate, duration, currentTime);
+
+    m_nowPlayingActive = true;
     [nowPlaying setNowPlayingInfo:info.get()];
 }
 
@@ -349,10 +396,7 @@ void MediaSessionManageriOS::applicationWillEnterForeground(bool isSuspendedUnde
     LOG(Media, "-[WebMediaSessionHelper dealloc]");
 
     if (!isMainThread()) {
-        auto volumeView = WTFMove(_volumeView);
-        auto routingController = WTFMove(_airPlayPresenceRoutingController);
-
-        callOnMainThread([volumeView, routingController] () mutable {
+        callOnMainThread([volumeView = WTFMove(_volumeView), routingController = WTFMove(_airPlayPresenceRoutingController)] () mutable {
             LOG(Media, "-[WebMediaSessionHelper dealloc] - dipatched to MainThread");
 
             volumeView.clear();
@@ -388,15 +432,14 @@ void MediaSessionManageriOS::applicationWillEnterForeground(bool isSuspendedUnde
 
     LOG(Media, "-[WebMediaSessionHelper startMonitoringAirPlayRoutes]");
 
-    RetainPtr<WebMediaSessionHelper> strongSelf = self;
-    callOnMainThread([strongSelf] () {
+    callOnMainThread([protectedSelf = RetainPtr<WebMediaSessionHelper>(self)] () {
         LOG(Media, "-[WebMediaSessionHelper startMonitoringAirPlayRoutes] - dipatched to MainThread");
 
-        if (strongSelf->_airPlayPresenceRoutingController)
+        if (protectedSelf->_airPlayPresenceRoutingController)
             return;
 
-        strongSelf->_airPlayPresenceRoutingController = adoptNS([allocMPAVRoutingControllerInstance() initWithName:@"WebCore - HTML media element checking for AirPlay route presence"]);
-        [strongSelf->_airPlayPresenceRoutingController setDiscoveryMode:MPRouteDiscoveryModePresence];
+        protectedSelf->_airPlayPresenceRoutingController = adoptNS([allocMPAVRoutingControllerInstance() initWithName:@"WebCore - HTML media element checking for AirPlay route presence"]);
+        [protectedSelf->_airPlayPresenceRoutingController setDiscoveryMode:MPRouteDiscoveryModePresence];
     });
 }
 
@@ -407,15 +450,14 @@ void MediaSessionManageriOS::applicationWillEnterForeground(bool isSuspendedUnde
 
     LOG(Media, "-[WebMediaSessionHelper stopMonitoringAirPlayRoutes]");
 
-    RetainPtr<WebMediaSessionHelper> strongSelf = self;
-    callOnMainThread([strongSelf] () {
+    callOnMainThread([protectedSelf = RetainPtr<WebMediaSessionHelper>(self)] () {
         LOG(Media, "-[WebMediaSessionHelper stopMonitoringAirPlayRoutes] - dipatched to MainThread");
 
-        if (!strongSelf->_airPlayPresenceRoutingController)
+        if (!protectedSelf->_airPlayPresenceRoutingController)
             return;
 
-        [strongSelf->_airPlayPresenceRoutingController setDiscoveryMode:MPRouteDiscoveryModeDisabled];
-        strongSelf->_airPlayPresenceRoutingController = nil;
+        [protectedSelf->_airPlayPresenceRoutingController setDiscoveryMode:MPRouteDiscoveryModeDisabled];
+        protectedSelf->_airPlayPresenceRoutingController = nil;
     });
 }
 

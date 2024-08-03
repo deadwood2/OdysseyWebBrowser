@@ -1,3 +1,5 @@
+set_property(DIRECTORY . PROPERTY FOLDER "Tools")
+
 if ("${PORT}" STREQUAL "Efl")
     if (DEVELOPER_MODE)
       add_subdirectory(WebKitTestRunner)
@@ -24,6 +26,14 @@ elseif ("${PORT}" STREQUAL "GTK")
 
     if (ENABLE_MINIBROWSER)
         add_subdirectory(MiniBrowser/gtk)
+    endif ()
+elseif ("${PORT}" STREQUAL "Mac")
+    add_subdirectory(DumpRenderTree)
+    add_subdirectory(WebKitTestRunner)
+    add_subdirectory(MiniBrowser/mac)
+elseif ("${PORT}" STREQUAL "JSCOnly")
+    if (ENABLE_API_TESTS)
+        add_subdirectory(TestWebKitAPI)
     endif ()
 endif ()
 

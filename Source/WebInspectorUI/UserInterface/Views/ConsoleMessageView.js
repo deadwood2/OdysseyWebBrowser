@@ -37,9 +37,18 @@ WebInspector.ConsoleMessageView = class ConsoleMessageView extends WebInspector.
         console.assert(message instanceof WebInspector.ConsoleMessage);
 
         this._message = message;
-
         this._expandable = false;
+        this._repeatCount = message._repeatCount || 0;
 
+        // These are the parameters unused by the messages's optional format string.
+        // Any extra parameters will be displayed as children of this message.
+        this._extraParameters = message.parameters;
+    }
+
+    // Public
+
+    render()
+    {
         this._element = document.createElement("div");
         this._element.classList.add("console-message");
 
@@ -76,10 +85,6 @@ WebInspector.ConsoleMessageView = class ConsoleMessageView extends WebInspector.
             break;
         }
 
-        // These are the parameters unused by the messages's optional format string.
-        // Any extra parameters will be displayed as children of this message.
-        this._extraParameters = this._message.parameters;
-
         // FIXME: The location link should include stack trace information.
         this._appendLocationLink();
 
@@ -92,10 +97,8 @@ WebInspector.ConsoleMessageView = class ConsoleMessageView extends WebInspector.
         this._appendExtraParameters();
         this._appendStackTrace();
 
-        this.repeatCount = this._message.repeatCount;
+        this._renderRepeatCount();
     }
-
-    // Public
 
     get element()
     {
@@ -120,6 +123,14 @@ WebInspector.ConsoleMessageView = class ConsoleMessageView extends WebInspector.
             return;
 
         this._repeatCount = count;
+
+        if (this._element)
+            this._renderRepeatCount();
+    }
+
+    _renderRepeatCount()
+    {
+        let count = this._repeatCount;
 
         if (count <= 1) {
             if (this._repeatCountElement) {
@@ -234,9 +245,10 @@ WebInspector.ConsoleMessageView = class ConsoleMessageView extends WebInspector.
             case WebInspector.ConsoleMessage.MessageType.Trace:
                 var args = [WebInspector.UIString("Trace")];
                 if (this._message.parameters) {
-                    if (this._message.parameters[0].type === "string")
-                        args = [WebInspector.UIString("Trace: %s")].concat(this._message.parameters);
-                    else
+                    if (this._message.parameters[0].type === "string") {
+                        var prefixedFormatString = WebInspector.UIString("Trace: %s").format(this._message.parameters[0].description);
+                        args = [prefixedFormatString].concat(this._message.parameters.slice(1));
+                    } else
                         args = args.concat(this._message.parameters);
                 }
                 this._appendFormattedArguments(element, args);
@@ -245,9 +257,10 @@ WebInspector.ConsoleMessageView = class ConsoleMessageView extends WebInspector.
             case WebInspector.ConsoleMessage.MessageType.Assert:
                 var args = [WebInspector.UIString("Assertion Failed")];
                 if (this._message.parameters) {
-                    if (this._message.parameters[0].type === "string")
-                        args = [WebInspector.UIString("Assertion Failed: %s")].concat(this._message.parameters);
-                    else
+                    if (this._message.parameters[0].type === "string") {
+                        var prefixedFormatString = WebInspector.UIString("Assertion Failed: %s").format(this._message.parameters[0].description);
+                        args = [prefixedFormatString].concat(this._message.parameters.slice(1));
+                    } else
                         args = args.concat(this._message.parameters);
                 }
                 this._appendFormattedArguments(element, args);
@@ -314,12 +327,12 @@ WebInspector.ConsoleMessageView = class ConsoleMessageView extends WebInspector.
             return;
         }
 
-        var firstNonNativeCallFrame = this._message.stackTrace.firstNonNativeCallFrame;
+        var firstNonNativeNonAnonymousCallFrame = this._message.stackTrace.firstNonNativeNonAnonymousCallFrame;
 
         var callFrame;
-        if (firstNonNativeCallFrame) {
+        if (firstNonNativeNonAnonymousCallFrame) {
             // JavaScript errors and console.* methods.
-            callFrame = firstNonNativeCallFrame;
+            callFrame = firstNonNativeNonAnonymousCallFrame;
         } else if (this._message.url && !this._shouldHideURL(this._message.url)) {
             // CSS warnings have no stack traces.
             callFrame = WebInspector.CallFrame.fromPayload({
@@ -335,7 +348,6 @@ WebInspector.ConsoleMessageView = class ConsoleMessageView extends WebInspector.
             var locationElement = new WebInspector.CallFrameView(callFrame, showFunctionName);
             locationElement.classList.add("console-message-location");
             this._element.appendChild(locationElement);
-
             return;
         }
 
@@ -524,6 +536,7 @@ WebInspector.ConsoleMessageView = class ConsoleMessageView extends WebInspector.
             "weakset": this._formatParameterAsObject,
             "iterator": this._formatParameterAsObject,
             "class": this._formatParameterAsObject,
+            "proxy": this._formatParameterAsObject,
             "array": this._formatParameterAsArray,
             "node": this._formatParameterAsNode,
             "string": this._formatParameterAsString,
@@ -599,18 +612,16 @@ WebInspector.ConsoleMessageView = class ConsoleMessageView extends WebInspector.
             return obj.description;
         }
 
-        function floatFormatter(obj)
+        function floatFormatter(obj, token)
         {
-            if (typeof obj.value !== "number")
-                return parseFloat(obj.description);
-            return obj.value;
+            let value = typeof obj.value === "number" ? obj.value : obj.description;
+            return String.standardFormatters.f(value, token);
         }
 
         function integerFormatter(obj)
         {
-            if (typeof obj.value !== "number")
-                return parseInt(obj.description);
-            return Math.floor(obj.value);
+            let value = typeof obj.value === "number" ? obj.value : obj.description;
+            return String.standardFormatters.d(value);
         }
 
         var currentStyle = null;
@@ -744,7 +755,7 @@ WebInspector.ConsoleMessageView = class ConsoleMessageView extends WebInspector.
             for (var i = 0; i < preview.propertyPreviews.length; ++i) {
                 var rowProperty = preview.propertyPreviews[i];
                 var rowPreview = rowProperty.valuePreview;
-                if (!rowPreview)
+                if (!rowPreview || !rowPreview.propertyPreviews)
                     continue;
 
                 var rowValue = {};
@@ -806,8 +817,12 @@ WebInspector.ConsoleMessageView = class ConsoleMessageView extends WebInspector.
         // FIXME: Should we output something extra if the preview is lossless?
 
         var dataGrid = WebInspector.DataGrid.createSortableDataGrid(columnNames, flatValues);
-        dataGrid.element.classList.add("inline");
+        dataGrid.inline = true;
+        dataGrid.variableHeightRows = true;
+
         element.appendChild(dataGrid.element);
+
+        dataGrid.updateLayoutIfNeeded();
 
         return element;
     }

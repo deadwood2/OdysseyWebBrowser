@@ -28,7 +28,10 @@
 
 #if ENABLE(INDEXED_DATABASE)
 
-#include "IDBCursorImpl.h"
+#include "JSDOMBinding.h"
+#include "JSIDBCursorWithValue.h"
+#include "JSIDBIndex.h"
+#include "JSIDBObjectStore.h"
 
 using namespace JSC;
 
@@ -36,12 +39,29 @@ namespace WebCore {
 
 void JSIDBCursor::visitAdditionalChildren(SlotVisitor& visitor)
 {
-    if (!wrapped().isModernCursor())
-        return;
-
-    auto& modernCursor = static_cast<IDBClient::IDBCursor&>(wrapped());
-    if (auto* request = modernCursor.request())
+    auto& cursor = wrapped();
+    if (auto* request = cursor.request())
         visitor.addOpaqueRoot(request);
+}
+
+JSValue JSIDBCursor::source(ExecState& state) const
+{
+    auto& cursor = wrapped();
+    if (auto* index = cursor.index())
+        return toJS(&state, globalObject(), *index);
+    return toJS(&state, globalObject(), cursor.objectStore());
+}
+
+JSValue toJSNewlyCreated(JSC::ExecState*, JSDOMGlobalObject* globalObject, Ref<IDBCursor>&& cursor)
+{
+    if (is<IDBCursorWithValue>(cursor))
+        return CREATE_DOM_WRAPPER(globalObject, IDBCursorWithValue, WTFMove(cursor));
+    return createWrapper<JSIDBCursor>(globalObject, WTFMove(cursor));
+}
+
+JSValue toJS(JSC::ExecState* state, JSDOMGlobalObject* globalObject, IDBCursor& cursor)
+{
+    return wrap(state, globalObject, cursor);
 }
 
 } // namespace WebCore

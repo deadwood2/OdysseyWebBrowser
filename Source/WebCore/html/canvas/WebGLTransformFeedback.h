@@ -28,8 +28,6 @@
 
 #include "WebGLSharedObject.h"
 
-#include <wtf/RefCounted.h>
-
 namespace WebCore {
 
 class WebGLTransformFeedback final : public WebGLSharedObject {
@@ -41,10 +39,10 @@ public:
 protected:
     WebGLTransformFeedback(WebGLRenderingContextBase*);
 
-    virtual void deleteObjectImpl(GraphicsContext3D*, Platform3DObject) override;
+    void deleteObjectImpl(GraphicsContext3D*, Platform3DObject) override;
 
 private:
-    virtual bool isTransformFeedback() const override { return true; }
+    bool isTransformFeedback() const override { return true; }
 };
 
 } // namespace WebCore

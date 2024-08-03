@@ -26,10 +26,23 @@ class DisplayGL : public DisplayImpl
     egl::Error initialize(egl::Display *display) override;
     void terminate() override;
 
-    egl::Error createContext(const egl::Config *config, const gl::Context *shareContext, const egl::AttributeMap &attribs,
-                             gl::Context **outContext) override;
+    ImageImpl *createImage(EGLenum target,
+                           egl::ImageSibling *buffer,
+                           const egl::AttributeMap &attribs) override;
+
+    ContextImpl *createContext(const gl::ContextState &state) override;
+
+    StreamProducerImpl *createStreamProducerD3DTextureNV12(
+        egl::Stream::ConsumerType consumerType,
+        const egl::AttributeMap &attribs) override;
 
     egl::Error makeCurrent(egl::Surface *drawSurface, egl::Surface *readSurface, gl::Context *context) override;
+
+    virtual egl::Error getDriverVersion(std::string *version) const = 0;
+    gl::Version getMaxSupportedESVersion() const override;
+
+  protected:
+    RendererGL *getRenderer() const { return mRenderer; };
 
   private:
     virtual const FunctionsGL *getFunctionsGL() const = 0;

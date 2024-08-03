@@ -121,14 +121,14 @@ ApplicationCacheGroup* ApplicationCacheStorage::loadCacheGroup(const URL& manife
     
     unsigned newestCacheStorageID = static_cast<unsigned>(statement.getColumnInt64(2));
 
-    RefPtr<ApplicationCache> cache = loadCache(newestCacheStorageID);
+    auto cache = loadCache(newestCacheStorageID);
     if (!cache)
         return nullptr;
         
     ApplicationCacheGroup* group = new ApplicationCacheGroup(*this, manifestURL);
       
     group->setStorageID(static_cast<unsigned>(statement.getColumnInt64(0)));
-    group->setNewestCache(cache.release());
+    group->setNewestCache(WTFMove(cache));
 
     return group;
 }    
@@ -239,7 +239,7 @@ ApplicationCacheGroup* ApplicationCacheStorage::cacheGroupForURL(const URL& url)
         // We found a cache group that matches. Now check if the newest cache has a resource with
         // a matching URL.
         unsigned newestCacheID = static_cast<unsigned>(statement.getColumnInt64(2));
-        RefPtr<ApplicationCache> cache = loadCache(newestCacheID);
+        auto cache = loadCache(newestCacheID);
         if (!cache)
             continue;
 
@@ -252,7 +252,7 @@ ApplicationCacheGroup* ApplicationCacheStorage::cacheGroupForURL(const URL& url)
         ApplicationCacheGroup* group = new ApplicationCacheGroup(*this, manifestURL);
         
         group->setStorageID(static_cast<unsigned>(statement.getColumnInt64(0)));
-        group->setNewestCache(cache.release());
+        group->setNewestCache(WTFMove(cache));
         
         m_cachesInMemory.set(group->manifestURL(), group);
         
@@ -309,7 +309,7 @@ ApplicationCacheGroup* ApplicationCacheStorage::fallbackCacheGroupForURL(const U
         // We found a cache group that matches. Now check if the newest cache has a resource with
         // a matching fallback namespace.
         unsigned newestCacheID = static_cast<unsigned>(statement.getColumnInt64(2));
-        RefPtr<ApplicationCache> cache = loadCache(newestCacheID);
+        auto cache = loadCache(newestCacheID);
 
         URL fallbackURL;
         if (cache->isURLInOnlineWhitelist(url))
@@ -322,7 +322,7 @@ ApplicationCacheGroup* ApplicationCacheStorage::fallbackCacheGroupForURL(const U
         ApplicationCacheGroup* group = new ApplicationCacheGroup(*this, manifestURL);
         
         group->setStorageID(static_cast<unsigned>(statement.getColumnInt64(0)));
-        group->setNewestCache(cache.release());
+        group->setNewestCache(WTFMove(cache));
         
         m_cachesInMemory.set(group->manifestURL(), group);
         
@@ -362,14 +362,6 @@ void ApplicationCacheStorage::cacheGroupMadeObsolete(ApplicationCacheGroup* grou
 
     m_cachesInMemory.remove(group->manifestURL());
     m_cacheHostSet.remove(urlHostHash(group->manifestURL()));
-}
-
-void ApplicationCacheStorage::setCacheDirectory(const String& cacheDirectory)
-{
-    ASSERT(m_cacheDirectory.isNull());
-    ASSERT(!cacheDirectory.isNull());
-    
-    m_cacheDirectory = cacheDirectory;
 }
 
 const String& ApplicationCacheStorage::cacheDirectory() const
@@ -818,7 +810,7 @@ bool ApplicationCacheStorage::store(ApplicationCacheResource* resource, unsigned
     else if (shouldStoreResourceAsFlatFile(resource)) {
         // First, check to see if creating the flat file would violate the maximum total quota. We don't need
         // to check the per-origin quota here, as it was already checked in storeNewestCache().
-        if (m_database.totalSize() + flatFileAreaSize() + resource->data()->size() > m_maximumSize) {
+        if (m_database.totalSize() + flatFileAreaSize() + resource->data().size() > m_maximumSize) {
             m_isMaximumSizeReached = true;
             return false;
         }
@@ -841,8 +833,8 @@ bool ApplicationCacheStorage::store(ApplicationCacheResource* resource, unsigned
         resource->setPath(fullPath);
         dataStatement.bindText(2, path);
     } else {
-        if (resource->data()->size())
-            dataStatement.bindBlob(1, resource->data()->data(), resource->data()->size());
+        if (resource->data().size())
+            dataStatement.bindBlob(1, resource->data().data(), resource->data().size());
     }
     
     if (!dataStatement.executeCommand()) {
@@ -905,7 +897,7 @@ bool ApplicationCacheStorage::store(ApplicationCacheResource* resource, unsigned
     // release the resource's data and free up a potentially large amount
     // of memory:
     if (!fullPath.isEmpty())
-        resource->data()->clear();
+        resource->data().clear();
 
     resource->setStorageID(resourceId);
     return true;
@@ -1127,7 +1119,7 @@ PassRefPtr<ApplicationCache> ApplicationCacheStorage::loadCache(unsigned storage
     
     cacheStatement.bindInt64(1, storageID);
 
-    RefPtr<ApplicationCache> cache = ApplicationCache::create();
+    auto cache = ApplicationCache::create();
 
     String flatFileDirectory = pathByAppendingComponent(m_cacheDirectory, m_flatFileSubdirectoryName);
 
@@ -1142,7 +1134,7 @@ PassRefPtr<ApplicationCache> ApplicationCacheStorage::loadCache(unsigned storage
         Vector<char> blob;
         cacheStatement.getColumnBlobAsVector(6, blob);
         
-        RefPtr<SharedBuffer> data = SharedBuffer::adoptVector(blob);
+        auto data = SharedBuffer::adoptVector(blob);
         
         String path = cacheStatement.getColumnText(7);
         long long size = 0;
@@ -1162,12 +1154,12 @@ PassRefPtr<ApplicationCache> ApplicationCacheStorage::loadCache(unsigned storage
         String headers = cacheStatement.getColumnText(5);
         parseHeaders(headers, response);
         
-        RefPtr<ApplicationCacheResource> resource = ApplicationCacheResource::create(url, response, type, data.release(), path);
+        auto resource = ApplicationCacheResource::create(url, response, type, WTFMove(data), path);
 
         if (type & ApplicationCacheResource::Manifest)
-            cache->setManifestResource(resource.release());
+            cache->setManifestResource(WTFMove(resource));
         else
-            cache->addResource(resource.release());
+            cache->addResource(WTFMove(resource));
     }
 
     if (result != SQLITE_DONE)
@@ -1225,7 +1217,7 @@ PassRefPtr<ApplicationCache> ApplicationCacheStorage::loadCache(unsigned storage
     
     cache->setStorageID(storageID);
 
-    return cache.release();
+    return WTFMove(cache);
 }    
     
 void ApplicationCacheStorage::remove(ApplicationCache* cache)
@@ -1302,7 +1294,7 @@ bool ApplicationCacheStorage::shouldStoreResourceAsFlatFile(ApplicationCacheReso
         || resource->response().mimeType().startsWith("video/", false);
 }
     
-bool ApplicationCacheStorage::writeDataToUniqueFileInDirectory(SharedBuffer* data, const String& directory, String& path, const String& fileExtension)
+bool ApplicationCacheStorage::writeDataToUniqueFileInDirectory(SharedBuffer& data, const String& directory, String& path, const String& fileExtension)
 {
     String fullPath;
     
@@ -1321,10 +1313,10 @@ bool ApplicationCacheStorage::writeDataToUniqueFileInDirectory(SharedBuffer* dat
     if (!handle)
         return false;
     
-    int64_t writtenBytes = writeToFile(handle, data->data(), data->size());
+    int64_t writtenBytes = writeToFile(handle, data.data(), data.size());
     closeFile(handle);
     
-    if (writtenBytes != static_cast<int64_t>(data->size())) {
+    if (writtenBytes != static_cast<int64_t>(data.size())) {
         deleteFile(fullPath);
         return false;
     }
@@ -1589,10 +1581,4 @@ Ref<ApplicationCacheStorage> ApplicationCacheStorage::create(const String& cache
     return adoptRef(*new ApplicationCacheStorage(cacheDirectory, flatFileSubdirectoryName));
 }
 
-ApplicationCacheStorage& ApplicationCacheStorage::singleton()
-{
-    static ApplicationCacheStorage& storage = create(String(), "ApplicationCache").leakRef();
-    return storage;
 }
-
-} // namespace WebCore

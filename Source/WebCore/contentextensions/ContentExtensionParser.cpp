@@ -35,11 +35,9 @@
 #include "ContentExtensionRule.h"
 #include "ContentExtensionsBackend.h"
 #include "ContentExtensionsDebugging.h"
-#include <JavaScriptCore/IdentifierInlines.h>
-#include <JavaScriptCore/JSCJSValueInlines.h>
+#include <JavaScriptCore/JSCInlines.h>
 #include <JavaScriptCore/JSGlobalObject.h>
 #include <JavaScriptCore/JSONObject.h>
-#include <JavaScriptCore/StructureInlines.h>
 #include <JavaScriptCore/VM.h>
 #include <wtf/CurrentTime.h>
 #include <wtf/text/WTFString.h>
@@ -90,6 +88,7 @@ static std::error_code getTypeFlags(ExecState& exec, const JSValue& typeValue, R
         return { };
 
     const JSObject* object = typeValue.toObject(&exec);
+    ASSERT(!exec.hadException());
     if (!isJSArray(object))
         return ContentExtensionError::JSONInvalidTriggerFlagsArray;
 

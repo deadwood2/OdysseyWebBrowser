@@ -30,6 +30,7 @@
 #include "CachedSVGDocument.h"
 #include "ElementIterator.h"
 #include "Event.h"
+#include "EventNames.h"
 #include "RenderSVGResource.h"
 #include "RenderSVGTransformableContainer.h"
 #include "ShadowRoot.h"
@@ -178,11 +179,12 @@ void SVGUseElement::svgAttributeChanged(const QualifiedName& attrName)
     SVGGraphicsElement::svgAttributeChanged(attrName);
 }
 
-void SVGUseElement::willAttachRenderers()
+bool SVGUseElement::willRecalcStyle(Style::Change change)
 {
+    // FIXME: Shadow tree should be updated before style recalc.
     if (m_shadowTreeNeedsUpdate)
         updateShadowTree();
-    SVGGraphicsElement::willAttachRenderers();
+    return SVGGraphicsElement::willRecalcStyle(change);
 }
 
 static HashSet<AtomicString> createAllowedElementSet()
@@ -259,10 +261,10 @@ SVGElement* SVGUseElement::targetClone() const
     auto* root = userAgentShadowRoot();
     if (!root)
         return nullptr;
-    return downcast<SVGElement>(root->firstChild());
+    return childrenOfType<SVGElement>(*root).first();
 }
 
-RenderPtr<RenderElement> SVGUseElement::createElementRenderer(Ref<RenderStyle>&& style, const RenderTreePosition&)
+RenderPtr<RenderElement> SVGUseElement::createElementRenderer(RenderStyle&& style, const RenderTreePosition&)
 {
     return createRenderer<RenderSVGTransformableContainer>(*this, WTFMove(style));
 }
@@ -429,7 +431,7 @@ void SVGUseElement::cloneTarget(ContainerNode& container, SVGElement& target) co
     removeDisallowedElementsFromSubtree(targetClone.get());
     removeSymbolElementsFromSubtree(targetClone.get());
     transferSizeAttributesToTargetClone(targetClone.get());
-    container.appendChild(WTFMove(targetClone));
+    container.appendChild(targetClone);
 }
 
 static void cloneDataAndChildren(SVGElement& replacementClone, SVGElement& originalClone)
@@ -468,7 +470,7 @@ void SVGUseElement::expandUseElementsInShadowTree() const
         if (target)
             originalClone.cloneTarget(replacementClone.get(), *target);
 
-        originalClone.parentNode()->replaceChild(replacementClone.copyRef(), originalClone);
+        originalClone.parentNode()->replaceChild(replacementClone, originalClone);
 
         // Resume iterating, starting just inside the replacement clone.
         it = descendants.from(replacementClone.get());
@@ -492,7 +494,7 @@ void SVGUseElement::expandSymbolElementsInShadowTree() const
         auto replacementClone = SVGSVGElement::create(document());
         cloneDataAndChildren(replacementClone.get(), originalClone);
 
-        originalClone.parentNode()->replaceChild(replacementClone.copyRef(), originalClone);
+        originalClone.parentNode()->replaceChild(replacementClone, originalClone);
 
         // Resume iterating, starting just inside the replacement clone.
         it = descendants.from(replacementClone.get());
@@ -567,7 +569,7 @@ void SVGUseElement::updateExternalDocument()
         m_externalDocument = nullptr;
     else {
         ResourceLoaderOptions options = CachedResourceLoader::defaultCachedResourceOptions();
-        options.setContentSecurityPolicyImposition(isInUserAgentShadowTree() ? ContentSecurityPolicyImposition::SkipPolicyCheck : ContentSecurityPolicyImposition::DoPolicyCheck);
+        options.contentSecurityPolicyImposition = isInUserAgentShadowTree() ? ContentSecurityPolicyImposition::SkipPolicyCheck : ContentSecurityPolicyImposition::DoPolicyCheck;
 
         CachedResourceRequest request { ResourceRequest { externalDocumentURL }, options };
         request.setInitiator(this);

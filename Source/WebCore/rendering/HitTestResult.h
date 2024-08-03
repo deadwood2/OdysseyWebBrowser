@@ -82,7 +82,7 @@ public:
     const LayoutPoint& localPoint() const { return m_localPoint; }
     void setLocalPoint(const LayoutPoint& p) { m_localPoint = p; }
 
-    WEBCORE_EXPORT void setToNonShadowAncestor();
+    void setToNonUserAgentShadowAncestor();
 
     const HitTestLocation& hitTestLocation() const { return m_hitTestLocation; }
 
@@ -127,6 +127,10 @@ public:
     WEBCORE_EXPORT bool mediaIsVideo() const;
     bool mediaMuted() const;
     void toggleMediaMuteState() const;
+    bool mediaSupportsEnhancedFullscreen() const;
+    bool mediaIsInEnhancedFullscreen() const;
+    void toggleEnhancedFullscreenForVideo() const;
+
     WEBCORE_EXPORT bool isDownloadableMedia() const;
     WEBCORE_EXPORT bool isOverTextInsideFormControlElement() const;
     WEBCORE_EXPORT bool allowsCopy() const;
@@ -166,7 +170,7 @@ private:
     mutable std::unique_ptr<NodeSet> m_rectBasedTestResult;
 };
 
-String displayString(const String&, const Node*);
+WEBCORE_EXPORT String displayString(const String&, const Node*);
 
 } // namespace WebCore
 

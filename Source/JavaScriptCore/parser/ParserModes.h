@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012, 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2013, 2015-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,16 +33,15 @@ namespace JSC {
 
 enum class JSParserStrictMode { NotStrict, Strict };
 enum class JSParserBuiltinMode { NotBuiltin, Builtin };
+enum class JSParserCommentMode { Classic, Module };
 enum class JSParserCodeType { Program, Function, Module };
 
-enum class ConstructorKind { None, Base, Derived };
+enum class ConstructorKind { None, Base, Extends };
 enum class SuperBinding { Needed, NotNeeded };
-enum class ThisTDZMode { AlwaysCheck, CheckIfNeeded };
 
-enum ProfilerMode { ProfilerOff, ProfilerOn };
 enum DebuggerMode { DebuggerOff, DebuggerOn };
 
-enum FunctionMode { FunctionExpression, FunctionDeclaration };
+enum class FunctionMode { FunctionExpression, FunctionDeclaration, MethodDefinition };
 
 enum class SourceParseMode : uint8_t {
     NormalFunctionMode,
@@ -125,7 +124,7 @@ inline bool functionNameIsInScope(const Identifier& name, FunctionMode functionM
     if (name.isNull())
         return false;
 
-    if (functionMode != FunctionExpression)
+    if (functionMode != FunctionMode::FunctionExpression)
         return false;
 
     return true;
@@ -154,13 +153,26 @@ const CodeFeatures WithFeature =                 1 << 2;
 const CodeFeatures ThisFeature =                 1 << 3;
 const CodeFeatures StrictModeFeature =           1 << 4;
 const CodeFeatures ShadowsArgumentsFeature =     1 << 5;
-const CodeFeatures ModifiedParameterFeature =    1 << 6;
-const CodeFeatures ModifiedArgumentsFeature =    1 << 7;
-const CodeFeatures ArrowFunctionFeature =        1 << 8;
-const CodeFeatures ArrowFunctionContextFeature = 1 << 9;
+const CodeFeatures ArrowFunctionFeature =        1 << 6;
+const CodeFeatures ArrowFunctionContextFeature = 1 << 7;
+const CodeFeatures SuperCallFeature =            1 << 8;
+const CodeFeatures SuperPropertyFeature =        1 << 9;
+const CodeFeatures NewTargetFeature =            1 << 10;
 
-const CodeFeatures AllFeatures = EvalFeature | ArgumentsFeature | WithFeature | ThisFeature | StrictModeFeature | ShadowsArgumentsFeature | ModifiedParameterFeature | ArrowFunctionFeature | ArrowFunctionContextFeature;
+const CodeFeatures AllFeatures = EvalFeature | ArgumentsFeature | WithFeature | ThisFeature | StrictModeFeature | ShadowsArgumentsFeature | ArrowFunctionFeature | ArrowFunctionContextFeature |
+    SuperCallFeature | SuperPropertyFeature | NewTargetFeature;
 
+typedef uint8_t InnerArrowFunctionCodeFeatures;
+    
+const InnerArrowFunctionCodeFeatures NoInnerArrowFunctionFeatures =                0;
+const InnerArrowFunctionCodeFeatures EvalInnerArrowFunctionFeature =          1 << 0;
+const InnerArrowFunctionCodeFeatures ArgumentsInnerArrowFunctionFeature =     1 << 1;
+const InnerArrowFunctionCodeFeatures ThisInnerArrowFunctionFeature =          1 << 2;
+const InnerArrowFunctionCodeFeatures SuperCallInnerArrowFunctionFeature =     1 << 3;
+const InnerArrowFunctionCodeFeatures SuperPropertyInnerArrowFunctionFeature = 1 << 4;
+const InnerArrowFunctionCodeFeatures NewTargetInnerArrowFunctionFeature =     1 << 5;
+    
+const InnerArrowFunctionCodeFeatures AllInnerArrowFunctionCodeFeatures = EvalInnerArrowFunctionFeature | ArgumentsInnerArrowFunctionFeature | ThisInnerArrowFunctionFeature | SuperCallInnerArrowFunctionFeature | SuperPropertyInnerArrowFunctionFeature | NewTargetInnerArrowFunctionFeature;
 } // namespace JSC
 
 #endif // ParserModes_h

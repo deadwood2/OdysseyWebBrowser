@@ -32,7 +32,7 @@ class SVGDocument final : public XMLDocument {
 public:
     static Ref<SVGDocument> create(Frame*, const URL&);
 
-    SVGSVGElement* rootElement() const;
+    static SVGSVGElement* rootElement(const Document&);
 
     bool zoomAndPanEnabled() const;
     void startPan(const FloatPoint& start);
@@ -41,7 +41,7 @@ public:
 private:
     SVGDocument(Frame*, const URL&);
 
-    virtual Ref<Document> cloneDocumentWithoutChildren() const override;
+    Ref<Document> cloneDocumentWithoutChildren() const override;
 
     FloatSize m_panningOffset;
 };

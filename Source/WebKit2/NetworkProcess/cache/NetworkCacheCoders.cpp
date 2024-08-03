@@ -28,7 +28,6 @@
 
 #if ENABLE(NETWORK_CACHE)
 
-#include "WebCoreArgumentCoders.h"
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
 
@@ -145,26 +144,6 @@ bool Coder<String>::decode(Decoder& decoder, String& result)
     return decodeStringText<UChar>(decoder, length, result);
 }
 
-void Coder<WebCore::CertificateInfo>::encode(Encoder& encoder, const WebCore::CertificateInfo& certificateInfo)
-{
-    // FIXME: Cocoa CertificateInfo is a CF object tree. Generalize CF type coding so we don't need to use ArgumentCoder here.
-    IPC::ArgumentEncoder argumentEncoder;
-    argumentEncoder << certificateInfo;
-    encoder << static_cast<uint64_t>(argumentEncoder.bufferSize());
-    encoder.encodeFixedLengthData(argumentEncoder.buffer(), argumentEncoder.bufferSize());
-}
-
-bool Coder<WebCore::CertificateInfo>::decode(Decoder& decoder, WebCore::CertificateInfo& certificateInfo)
-{
-    uint64_t certificateSize;
-    if (!decoder.decode(certificateSize))
-        return false;
-    Vector<uint8_t> data(certificateSize);
-    if (!decoder.decodeFixedLengthData(data.data(), data.size()))
-        return false;
-    IPC::ArgumentDecoder argumentDecoder(data.data(), data.size());
-    return argumentDecoder.decode(certificateInfo);
-}
 
 void Coder<SHA1::Digest>::encode(Encoder& encoder, const SHA1::Digest& digest)
 {
@@ -174,6 +153,34 @@ void Coder<SHA1::Digest>::encode(Encoder& encoder, const SHA1::Digest& digest)
 bool Coder<SHA1::Digest>::decode(Decoder& decoder, SHA1::Digest& digest)
 {
     return decoder.decodeFixedLengthData(digest.data(), sizeof(digest));
+}
+
+// Store common HTTP headers as strings instead of using their value in the HTTPHeaderName enumeration
+// so that the headers stored in the cache stays valid even after HTTPHeaderName.in gets updated.
+void Coder<WebCore::HTTPHeaderMap>::encode(Encoder& encoder, const WebCore::HTTPHeaderMap& headers)
+{
+    encoder << static_cast<uint64_t>(headers.size());
+    for (auto& keyValue : headers) {
+        encoder << keyValue.key;
+        encoder << keyValue.value;
+    }
+}
+
+bool Coder<WebCore::HTTPHeaderMap>::decode(Decoder& decoder, WebCore::HTTPHeaderMap& headers)
+{
+    uint64_t headersSize;
+    if (!decoder.decode(headersSize))
+        return false;
+    for (uint64_t i = 0; i < headersSize; ++i) {
+        String name;
+        if (!decoder.decode(name))
+            return false;
+        String value;
+        if (!decoder.decode(value))
+            return false;
+        headers.add(name, value);
+    }
+    return true;
 }
 
 }

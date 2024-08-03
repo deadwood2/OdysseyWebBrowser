@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013, 2014, 2015, 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,13 +32,14 @@
 #include "DatabaseProcessMessages.h"
 #include "DatabaseProcessProxyMessages.h"
 #include "DatabaseToWebProcessConnection.h"
-#include "WebCrossThreadCopier.h"
+#include "WebCoreArgumentCoders.h"
 #include "WebsiteData.h"
-#include <WebCore/CrossThreadTask.h>
 #include <WebCore/FileSystem.h>
+#include <WebCore/IDBKeyData.h>
 #include <WebCore/NotImplemented.h>
 #include <WebCore/SessionID.h>
 #include <WebCore/TextEncoding.h>
+#include <wtf/CrossThreadTask.h>
 #include <wtf/MainThread.h>
 
 using namespace WebCore;
@@ -75,10 +76,10 @@ bool DatabaseProcess::shouldTerminate()
 
 void DatabaseProcess::didClose(IPC::Connection&)
 {
-    RunLoop::current().stop();
+    stopRunLoop();
 }
 
-void DatabaseProcess::didReceiveMessage(IPC::Connection& connection, IPC::MessageDecoder& decoder)
+void DatabaseProcess::didReceiveMessage(IPC::Connection& connection, IPC::Decoder& decoder)
 {
     if (messageReceiverMap().dispatchMessage(connection, decoder))
         return;
@@ -91,14 +92,14 @@ void DatabaseProcess::didReceiveMessage(IPC::Connection& connection, IPC::Messag
 
 void DatabaseProcess::didReceiveInvalidMessage(IPC::Connection&, IPC::StringReference, IPC::StringReference)
 {
-    RunLoop::current().stop();
+    stopRunLoop();
 }
 
 #if ENABLE(INDEXED_DATABASE)
 IDBServer::IDBServer& DatabaseProcess::idbServer()
 {
     if (!m_idbServer)
-        m_idbServer = IDBServer::IDBServer::create(indexedDatabaseDirectory());
+        m_idbServer = IDBServer::IDBServer::create(indexedDatabaseDirectory(), DatabaseProcess::singleton());
 
     return *m_idbServer;
 }
@@ -142,7 +143,7 @@ String DatabaseProcess::absoluteIndexedDatabasePathFromDatabaseRelativePath(cons
 }
 #endif
 
-void DatabaseProcess::postDatabaseTask(std::unique_ptr<CrossThreadTask> task)
+void DatabaseProcess::postDatabaseTask(CrossThreadTask&& task)
 {
     ASSERT(RunLoop::isMain());
 
@@ -159,14 +160,14 @@ void DatabaseProcess::performNextDatabaseTask()
 {
     ASSERT(!RunLoop::isMain());
 
-    std::unique_ptr<CrossThreadTask> task;
+    CrossThreadTask task;
     {
         LockHolder locker(m_databaseTaskMutex);
         ASSERT(!m_databaseTasks.isEmpty());
         task = m_databaseTasks.takeFirst();
     }
 
-    task->performTask();
+    task.performTask();
 }
 
 void DatabaseProcess::createDatabaseToWebProcessConnection()
@@ -181,8 +182,8 @@ void DatabaseProcess::createDatabaseToWebProcessConnection()
     mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &listeningPort);
 
     // Create a listening connection.
-    RefPtr<DatabaseToWebProcessConnection> connection = DatabaseToWebProcessConnection::create(IPC::Connection::Identifier(listeningPort));
-    m_databaseToWebProcessConnections.append(connection.release());
+    auto connection = DatabaseToWebProcessConnection::create(IPC::Connection::Identifier(listeningPort));
+    m_databaseToWebProcessConnections.append(WTFMove(connection));
 
     IPC::Attachment clientPort(listeningPort, MACH_MSG_TYPE_MAKE_SEND);
     parentProcessConnection()->send(Messages::DatabaseProcessProxy::DidCreateDatabaseToWebProcessConnection(clientPort), 0);
@@ -191,121 +192,82 @@ void DatabaseProcess::createDatabaseToWebProcessConnection()
 #endif
 }
 
-void DatabaseProcess::fetchWebsiteData(SessionID, uint64_t websiteDataTypes, uint64_t callbackID)
+void DatabaseProcess::fetchWebsiteData(SessionID, OptionSet<WebsiteDataType> websiteDataTypes, uint64_t callbackID)
 {
-    struct CallbackAggregator final : public ThreadSafeRefCounted<CallbackAggregator> {
-        explicit CallbackAggregator(std::function<void (WebsiteData)> completionHandler)
-            : m_completionHandler(WTFMove(completionHandler))
-        {
-        }
+#if ENABLE(INDEXED_DATABASE)
+    auto completionHandler = [this, callbackID](const WebsiteData& websiteData) {
+        parentProcessConnection()->send(Messages::DatabaseProcessProxy::DidFetchWebsiteData(callbackID, websiteData), 0);
+    };
 
-        ~CallbackAggregator()
-        {
-            ASSERT(RunLoop::isMain());
+    if (websiteDataTypes.contains(WebsiteDataType::IndexedDBDatabases)) {
+        // FIXME: Pick the right database store based on the session ID.
+        postDatabaseTask(CrossThreadTask([this, websiteDataTypes, completionHandler = WTFMove(completionHandler)]() mutable {
+            RunLoop::main().dispatch([completionHandler = WTFMove(completionHandler), securityOrigins = indexedDatabaseOrigins()] {
+                WebsiteData websiteData;
+                for (const auto& securityOrigin : securityOrigins)
+                    websiteData.entries.append({ securityOrigin, WebsiteDataType::IndexedDBDatabases, 0 });
 
-            auto completionHandler = WTFMove(m_completionHandler);
-            auto websiteData = WTFMove(m_websiteData);
-
-            RunLoop::main().dispatch([completionHandler, websiteData] {
                 completionHandler(websiteData);
             });
-        }
-
-        std::function<void (WebsiteData)> m_completionHandler;
-        WebsiteData m_websiteData;
-    };
-
-    RefPtr<CallbackAggregator> callbackAggregator = adoptRef(new CallbackAggregator([this, callbackID](WebsiteData websiteData) {
-        parentProcessConnection()->send(Messages::DatabaseProcessProxy::DidFetchWebsiteData(callbackID, websiteData), 0);
-    }));
-
-#if ENABLE(INDEXED_DATABASE)
-    if (websiteDataTypes & WebsiteDataTypeIndexedDBDatabases) {
-        // FIXME: Pick the right database store based on the session ID.
-        postDatabaseTask(std::make_unique<CrossThreadTask>([callbackAggregator, websiteDataTypes, this] {
-
-            Vector<RefPtr<SecurityOrigin>> securityOrigins = indexedDatabaseOrigins();
-
-            RunLoop::main().dispatch([callbackAggregator, securityOrigins] {
-                for (const auto& securityOrigin : securityOrigins)
-                    callbackAggregator->m_websiteData.entries.append(WebsiteData::Entry { securityOrigin, WebsiteDataTypeIndexedDBDatabases });
-            });
         }));
     }
 #endif
 }
 
-void DatabaseProcess::deleteWebsiteData(WebCore::SessionID, uint64_t websiteDataTypes, std::chrono::system_clock::time_point modifiedSince, uint64_t callbackID)
+void DatabaseProcess::deleteWebsiteData(WebCore::SessionID, OptionSet<WebsiteDataType> websiteDataTypes, std::chrono::system_clock::time_point modifiedSince, uint64_t callbackID)
 {
-    struct CallbackAggregator final : public ThreadSafeRefCounted<CallbackAggregator> {
-        explicit CallbackAggregator(std::function<void ()> completionHandler)
-            : m_completionHandler(WTFMove(completionHandler))
-        {
-        }
-
-        ~CallbackAggregator()
-        {
-            ASSERT(RunLoop::isMain());
-
-            RunLoop::main().dispatch(WTFMove(m_completionHandler));
-        }
-
-        std::function<void ()> m_completionHandler;
-    };
-
-    RefPtr<CallbackAggregator> callbackAggregator = adoptRef(new CallbackAggregator([this, callbackID]() {
+#if ENABLE(INDEXED_DATABASE)
+    auto completionHandler = [this, callbackID]() {
         parentProcessConnection()->send(Messages::DatabaseProcessProxy::DidDeleteWebsiteData(callbackID), 0);
-    }));
-
-#if ENABLE(INDEXED_DATABASE)
-    if (websiteDataTypes & WebsiteDataTypeIndexedDBDatabases) {
-        postDatabaseTask(std::make_unique<CrossThreadTask>([this, callbackAggregator, modifiedSince] {
-
-            deleteIndexedDatabaseEntriesModifiedSince(modifiedSince);
-            RunLoop::main().dispatch([callbackAggregator] { });
-        }));
-    }
-#endif
-}
-
-void DatabaseProcess::deleteWebsiteDataForOrigins(WebCore::SessionID, uint64_t websiteDataTypes, const Vector<SecurityOriginData>& securityOriginDatas, uint64_t callbackID)
-{
-    struct CallbackAggregator final : public ThreadSafeRefCounted<CallbackAggregator> {
-        explicit CallbackAggregator(std::function<void ()> completionHandler)
-            : m_completionHandler(WTFMove(completionHandler))
-        {
-        }
-
-        ~CallbackAggregator()
-        {
-            ASSERT(RunLoop::isMain());
-
-            RunLoop::main().dispatch(WTFMove(m_completionHandler));
-        }
-
-        std::function<void ()> m_completionHandler;
     };
 
-    RefPtr<CallbackAggregator> callbackAggregator = adoptRef(new CallbackAggregator([this, callbackID]() {
-        parentProcessConnection()->send(Messages::DatabaseProcessProxy::DidDeleteWebsiteDataForOrigins(callbackID), 0);
-    }));
-
-#if ENABLE(INDEXED_DATABASE)
-    if (websiteDataTypes & WebsiteDataTypeIndexedDBDatabases) {
-        Vector<RefPtr<WebCore::SecurityOrigin>> securityOrigins;
-        for (const auto& securityOriginData : securityOriginDatas)
-            securityOrigins.append(securityOriginData.securityOrigin());
-
-        postDatabaseTask(std::make_unique<CrossThreadTask>([this, securityOrigins, callbackAggregator] {
-            deleteIndexedDatabaseEntriesForOrigins(securityOrigins);
-
-            RunLoop::main().dispatch([callbackAggregator] { });
-        }));
-    }
+    if (websiteDataTypes.contains(WebsiteDataType::IndexedDBDatabases))
+        idbServer().closeAndDeleteDatabasesModifiedSince(modifiedSince, WTFMove(completionHandler));
 #endif
 }
 
+void DatabaseProcess::deleteWebsiteDataForOrigins(WebCore::SessionID, OptionSet<WebsiteDataType> websiteDataTypes, const Vector<SecurityOriginData>& securityOriginDatas, uint64_t callbackID)
+{
 #if ENABLE(INDEXED_DATABASE)
+    auto completionHandler = [this, callbackID]() {
+        parentProcessConnection()->send(Messages::DatabaseProcessProxy::DidDeleteWebsiteDataForOrigins(callbackID), 0);
+    };
+
+    if (websiteDataTypes.contains(WebsiteDataType::IndexedDBDatabases))
+        idbServer().closeAndDeleteDatabasesForOrigins(securityOriginDatas, WTFMove(completionHandler));
+#endif
+}
+
+#if ENABLE(SANDBOX_EXTENSIONS)
+void DatabaseProcess::grantSandboxExtensionsForBlobs(const Vector<String>& paths, const SandboxExtension::HandleArray& handles)
+{
+    ASSERT(paths.size() == handles.size());
+
+    for (size_t i = 0; i < paths.size(); ++i) {
+        auto result = m_blobTemporaryFileSandboxExtensions.add(paths[i], SandboxExtension::create(handles[i]));
+        ASSERT_UNUSED(result, result.isNewEntry);
+    }
+}
+#endif
+
+#if ENABLE(INDEXED_DATABASE)
+void DatabaseProcess::prepareForAccessToTemporaryFile(const String& path)
+{
+    if (auto extension = m_blobTemporaryFileSandboxExtensions.get(path))
+        extension->consume();
+}
+
+void DatabaseProcess::accessToTemporaryFileComplete(const String& path)
+{
+    // We've either hard linked the temporary blob file to the database directory, copied it there,
+    // or the transaction is being aborted.
+    // In any of those cases, we can delete the temporary blob file now.
+    deleteFile(path);
+
+    if (auto extension = m_blobTemporaryFileSandboxExtensions.take(path))
+        extension->revoke();
+}
+
 Vector<RefPtr<WebCore::SecurityOrigin>> DatabaseProcess::indexedDatabaseOrigins()
 {
     if (m_indexedDatabaseDirectory.isEmpty())
@@ -321,61 +283,23 @@ Vector<RefPtr<WebCore::SecurityOrigin>> DatabaseProcess::indexedDatabaseOrigins(
 
     return securityOrigins;
 }
+
 #endif
 
-#if ENABLE(INDEXED_DATABASE)
-static void removeAllDatabasesForOriginPath(const String& originPath, std::chrono::system_clock::time_point modifiedSince)
+#if ENABLE(SANDBOX_EXTENSIONS)
+void DatabaseProcess::getSandboxExtensionsForBlobFiles(const Vector<String>& filenames, std::function<void (SandboxExtension::HandleArray&&)> completionHandler)
 {
-    // FIXME: We should also close/invalidate any live handles to the database files we are about to delete.
-    // Right now:
-    //     - For read-only operations, they will continue functioning as normal on the unlinked file.
-    //     - For write operations, they will start producing errors as SQLite notices the missing backing store.
-    // This is tracked by https://bugs.webkit.org/show_bug.cgi?id=135347
+    static uint64_t lastRequestID;
 
-    Vector<String> databasePaths = listDirectory(originPath, "*");
-
-    for (auto& databasePath : databasePaths) {
-        String databaseFile = pathByAppendingComponent(databasePath, "IndexedDB.sqlite3");
-
-        if (!fileExists(databaseFile))
-            continue;
-
-        if (modifiedSince > std::chrono::system_clock::time_point::min()) {
-            time_t modificationTime;
-            if (!getFileModificationTime(databaseFile, modificationTime))
-                continue;
-
-            if (std::chrono::system_clock::from_time_t(modificationTime) < modifiedSince)
-                continue;
-        }
-
-        deleteFile(databaseFile);
-        deleteEmptyDirectory(databasePath);
-    }
-
-    deleteEmptyDirectory(originPath);
+    uint64_t requestID = ++lastRequestID;
+    m_sandboxExtensionForBlobsCompletionHandlers.set(requestID, completionHandler);
+    parentProcessConnection()->send(Messages::DatabaseProcessProxy::GetSandboxExtensionsForBlobFiles(requestID, filenames), 0);
 }
 
-void DatabaseProcess::deleteIndexedDatabaseEntriesForOrigins(const Vector<RefPtr<WebCore::SecurityOrigin>>& securityOrigins)
+void DatabaseProcess::didGetSandboxExtensionsForBlobFiles(uint64_t requestID, SandboxExtension::HandleArray&& handles)
 {
-    if (m_indexedDatabaseDirectory.isEmpty())
-        return;
-
-    for (const auto& securityOrigin : securityOrigins) {
-        String originPath = pathByAppendingComponent(m_indexedDatabaseDirectory, securityOrigin->databaseIdentifier());
-
-        removeAllDatabasesForOriginPath(originPath, std::chrono::system_clock::time_point::min());
-    }
-}
-
-void DatabaseProcess::deleteIndexedDatabaseEntriesModifiedSince(std::chrono::system_clock::time_point modifiedSince)
-{
-    if (m_indexedDatabaseDirectory.isEmpty())
-        return;
-
-    Vector<String> originPaths = listDirectory(m_indexedDatabaseDirectory, "*");
-    for (auto& originPath : originPaths)
-        removeAllDatabasesForOriginPath(originPath, modifiedSince);
+    if (auto handler = m_sandboxExtensionForBlobsCompletionHandlers.take(requestID))
+        handler(WTFMove(handles));
 }
 #endif
 

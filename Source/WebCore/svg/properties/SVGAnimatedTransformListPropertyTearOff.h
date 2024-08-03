@@ -26,9 +26,9 @@
 
 namespace WebCore {
 
-class SVGAnimatedTransformListPropertyTearOff : public SVGAnimatedListPropertyTearOff<SVGTransformList> {
+class SVGAnimatedTransformListPropertyTearOff final : public SVGAnimatedListPropertyTearOff<SVGTransformList> {
 public:
-    virtual RefPtr<ListProperty> baseVal() override
+    RefPtr<ListProperty> baseVal() final
     {
         if (m_baseVal)
             return m_baseVal;
@@ -38,7 +38,7 @@ public:
         return WTFMove(property);
     }
 
-    virtual RefPtr<ListProperty> animVal() override
+    RefPtr<ListProperty> animVal() final
     {
         if (m_animVal)
             return m_animVal;

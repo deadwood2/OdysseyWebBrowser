@@ -227,7 +227,7 @@ private:
             xmlFree(attributes);
         }
 
-        virtual void call(XMLDocumentParser* parser)
+        void call(XMLDocumentParser* parser) override
         {
             parser->startElementNs(xmlLocalName, xmlPrefix, xmlURI,
                                       nb_namespaces, const_cast<const xmlChar**>(namespaces),
@@ -245,7 +245,7 @@ private:
     };
 
     struct PendingEndElementNSCallback : public PendingCallback {
-        virtual void call(XMLDocumentParser* parser)
+        void call(XMLDocumentParser* parser) override
         {
             parser->endElementNs();
         }
@@ -257,7 +257,7 @@ private:
             xmlFree(s);
         }
 
-        virtual void call(XMLDocumentParser* parser)
+        void call(XMLDocumentParser* parser) override
         {
             parser->characters(s, len);
         }
@@ -273,7 +273,7 @@ private:
             xmlFree(data);
         }
 
-        virtual void call(XMLDocumentParser* parser)
+        void call(XMLDocumentParser* parser) override
         {
             parser->processingInstruction(target, data);
         }
@@ -288,7 +288,7 @@ private:
             xmlFree(s);
         }
 
-        virtual void call(XMLDocumentParser* parser)
+        void call(XMLDocumentParser* parser) override
         {
             parser->cdataBlock(s, len);
         }
@@ -303,7 +303,7 @@ private:
             xmlFree(s);
         }
 
-        virtual void call(XMLDocumentParser* parser)
+        void call(XMLDocumentParser* parser) override
         {
             parser->comment(s);
         }
@@ -319,7 +319,7 @@ private:
             xmlFree(systemID);
         }
 
-        virtual void call(XMLDocumentParser* parser)
+        void call(XMLDocumentParser* parser) override
         {
             parser->internalSubset(name, externalID, systemID);
         }
@@ -335,7 +335,7 @@ private:
             xmlFree(message);
         }
 
-        virtual void call(XMLDocumentParser* parser)
+        void call(XMLDocumentParser* parser) override
         {
             parser->handleError(type, reinterpret_cast<char*>(message), TextPosition(lineNumber, columnNumber));
         }
@@ -463,7 +463,7 @@ static void* openFunc(const char* uri)
         // FIXME: We should restore the original global error handler as well.
 
         if (cachedResourceLoader->frame())
-            cachedResourceLoader->frame()->loader().loadResourceSynchronously(url, AllowStoredCredentials, DoNotAskClientForCrossOriginCredentials, error, response, data);
+            cachedResourceLoader->frame()->loader().loadResourceSynchronously(url, AllowStoredCredentials, ClientCredentialPolicy::MayAskClientForCredentials, error, response, data);
     }
 
     // We have to check the URL again after the load to catch redirects.
@@ -680,7 +680,7 @@ void XMLDocumentParser::doWrite(const String& parseString)
     if (parseString.length()) {
         // JavaScript may cause the parser to detach during xmlParseChunk
         // keep this alive until this function is done.
-        Ref<XMLDocumentParser> protect(*this);
+        Ref<XMLDocumentParser> protectedThis(*this);
 
         XMLDocumentParserScope scope(&document()->cachedResourceLoader());
 
@@ -761,7 +761,7 @@ static inline void handleElementAttributes(Vector<Attribute>& prefixedAttributes
         int valueLength = static_cast<int>(attributes[i].end - attributes[i].value);
         AtomicString attrValue = toAtomicString(attributes[i].value, valueLength);
         String attrPrefix = toString(attributes[i].prefix);
-        AtomicString attrURI = attrPrefix.isEmpty() ? AtomicString() : toAtomicString(attributes[i].uri);
+        AtomicString attrURI = attrPrefix.isEmpty() ? nullAtom : toAtomicString(attributes[i].uri);
         AtomicString attrQName = attrPrefix.isEmpty() ? toAtomicString(attributes[i].localname) : attrPrefix + ":" + toString(attributes[i].localname);
 
         QualifiedName parsedName = anyName;
@@ -844,18 +844,14 @@ void XMLDocumentParser::startElementNs(const xmlChar* xmlLocalName, const xmlCha
     if (scriptElement)
         m_scriptStartPosition = textPosition();
 
-    m_currentNode->parserAppendChild(newElement.copyRef());
+    m_currentNode->parserAppendChild(newElement);
     if (!m_currentNode) // Synchronous DOM events may have removed the current node.
         return;
 
-#if ENABLE(TEMPLATE_ELEMENT)
     if (is<HTMLTemplateElement>(newElement))
-        pushCurrentNode(downcast<HTMLTemplateElement>(newElement.get()).content());
+        pushCurrentNode(&downcast<HTMLTemplateElement>(newElement.get()).content());
     else
         pushCurrentNode(newElement.ptr());
-#else
-    pushCurrentNode(newElement.ptr());
-#endif
 
     if (is<HTMLHtmlElement>(newElement))
         downcast<HTMLHtmlElement>(newElement.get()).insertedByParser();
@@ -876,7 +872,7 @@ void XMLDocumentParser::endElementNs()
 
     // JavaScript can detach the parser.  Make sure this is not released
     // before the end of this method.
-    Ref<XMLDocumentParser> protect(*this);
+    Ref<XMLDocumentParser> protectedThis(*this);
 
     if (!updateLeafTextNode())
         return;
@@ -1005,7 +1001,7 @@ void XMLDocumentParser::processingInstruction(const xmlChar* target, const xmlCh
 
     pi->setCreatedByParser(true);
 
-    m_currentNode->parserAppendChild(pi.copyRef());
+    m_currentNode->parserAppendChild(pi);
 
     pi->finishParsingChildren();
 
@@ -1031,8 +1027,7 @@ void XMLDocumentParser::cdataBlock(const xmlChar* s, int len)
     if (!updateLeafTextNode())
         return;
 
-    auto newNode = CDATASection::create(m_currentNode->document(), toString(s, len));
-    m_currentNode->parserAppendChild(WTFMove(newNode));
+    m_currentNode->parserAppendChild(CDATASection::create(m_currentNode->document(), toString(s, len)));
 }
 
 void XMLDocumentParser::comment(const xmlChar* s)
@@ -1048,8 +1043,7 @@ void XMLDocumentParser::comment(const xmlChar* s)
     if (!updateLeafTextNode())
         return;
 
-    auto newNode = Comment::create(m_currentNode->document(), toString(s));
-    m_currentNode->parserAppendChild(WTFMove(newNode));
+    m_currentNode->parserAppendChild(Comment::create(m_currentNode->document(), toString(s)));
 }
 
 enum StandaloneInfo {
@@ -1216,7 +1210,7 @@ static size_t convertUTF16EntityToUTF8(const UChar* utf16Entity, size_t numberOf
         return 0;
 
     // Even though we must pass the length, libxml expects the entity string to be null terminated.
-    ASSERT(target > originalTarget + 1);
+    ASSERT(target >= originalTarget + 1);
     *target = '\0';
     return target - originalTarget;
 }
@@ -1314,6 +1308,7 @@ static void externalSubsetHandler(void* closure, const xmlChar*, const xmlChar* 
         || (extId == "-//W3C//DTD XHTML Basic 1.0//EN")
         || (extId == "-//W3C//DTD XHTML 1.1 plus MathML 2.0//EN")
         || (extId == "-//W3C//DTD XHTML 1.1 plus MathML 2.0 plus SVG 1.1//EN")
+        || (extId == "-//W3C//DTD MathML 2.0//EN")
         || (extId == "-//WAPFORUM//DTD XHTML Mobile 1.0//EN")
         || (extId == "-//WAPFORUM//DTD XHTML Mobile 1.1//EN")
         || (extId == "-//WAPFORUM//DTD XHTML Mobile 1.2//EN"))

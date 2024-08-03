@@ -27,11 +27,9 @@
 #include "JSInternalPromiseConstructor.h"
 
 #include "JSCBuiltins.h"
-#include "JSCJSValueInlines.h"
-#include "JSCellInlines.h"
+#include "JSCInlines.h"
 #include "JSInternalPromise.h"
 #include "JSInternalPromisePrototype.h"
-#include "StructureInlines.h"
 
 #include "JSInternalPromiseConstructor.lut.h"
 
@@ -76,18 +74,13 @@ static EncodedJSValue JSC_HOST_CALL constructPromise(ExecState* exec)
 ConstructType JSInternalPromiseConstructor::getConstructData(JSCell*, ConstructData& constructData)
 {
     constructData.native.function = constructPromise;
-    return ConstructTypeHost;
+    return ConstructType::Host;
 }
 
 CallType JSInternalPromiseConstructor::getCallData(JSCell*, CallData& callData)
 {
     callData.native.function = constructPromise;
-    return CallTypeHost;
-}
-
-bool JSInternalPromiseConstructor::getOwnPropertySlot(JSObject* object, ExecState* exec, PropertyName propertyName, PropertySlot& slot)
-{
-    return getStaticFunctionSlot<Base>(exec, internalPromiseConstructorTable, jsCast<JSInternalPromiseConstructor*>(object), propertyName, slot);
+    return CallType::Host;
 }
 
 } // namespace JSC

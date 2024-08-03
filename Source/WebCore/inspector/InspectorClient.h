@@ -24,12 +24,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef InspectorClient_h
-#define InspectorClient_h
+#pragma once
 
 #include <wtf/Forward.h>
-#include <wtf/HashMap.h>
-#include <wtf/HashSet.h>
 
 namespace Inspector {
 class FrontendChannel;
@@ -62,6 +59,7 @@ public:
     virtual void setShowPaintRects(bool) { }
     virtual void showPaintRect(const FloatRect&) { }
     virtual void didSetSearchingForNode(bool) { }
+    virtual void elementSelectionChanged(bool) { }
 
     virtual bool handleJavaScriptDialog(bool, const String*) { return false; }
 
@@ -69,5 +67,3 @@ public:
 };
 
 } // namespace WebCore
-
-#endif // !defined(InspectorClient_h)

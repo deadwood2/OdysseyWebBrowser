@@ -41,6 +41,7 @@
 #include "RenderBox.h"
 #include "RenderStyle.h"
 #include "RenderView.h"
+#include "SpringSolver.h"
 #include "UnitBezier.h"
 #include <algorithm>
 #include <wtf/CurrentTime.h>
@@ -70,10 +71,16 @@ static inline double solveStepsFunction(int numSteps, bool stepAtStart, double t
     return floor(numSteps * t) / numSteps;
 }
 
-AnimationBase::AnimationBase(Animation& animation, RenderElement* renderer, CompositeAnimation* compositeAnimation)
+static inline double solveSpringFunction(double mass, double stiffness, double damping, double initialVelocity, double t, double duration)
+{
+    SpringSolver solver(mass, stiffness, damping, initialVelocity);
+    return solver.solve(t * duration);
+}
+
+AnimationBase::AnimationBase(const Animation& animation, RenderElement* renderer, CompositeAnimation* compositeAnimation)
     : m_object(renderer)
     , m_compositeAnimation(compositeAnimation)
-    , m_animation(animation)
+    , m_animation(const_cast<Animation&>(animation))
 {
     // Compute the total duration
     if (m_animation->iterationCount() > 0)
@@ -476,7 +483,7 @@ void AnimationBase::fireAnimationEventsIfNeeded()
     // during an animation callback that might get called. Since the owner is a CompositeAnimation
     // and it ref counts this object, we will keep a ref to that instead. That way the AnimationBase
     // can still access the resources of its CompositeAnimation as needed.
-    Ref<AnimationBase> protect(*this);
+    Ref<AnimationBase> protectedThis(*this);
     Ref<CompositeAnimation> protectCompositeAnimation(*m_compositeAnimation);
     
     // Check for start timeout
@@ -648,12 +655,16 @@ double AnimationBase::progress(double scale, double offset, const TimingFunction
 
     switch (timingFunction->type()) {
     case TimingFunction::CubicBezierFunction: {
-        const CubicBezierTimingFunction* function = static_cast<const CubicBezierTimingFunction*>(timingFunction);
-        return solveCubicBezierFunction(function->x1(), function->y1(), function->x2(), function->y2(), fractionalTime, m_animation->duration());
+        auto& function = *static_cast<const CubicBezierTimingFunction*>(timingFunction);
+        return solveCubicBezierFunction(function.x1(), function.y1(), function.x2(), function.y2(), fractionalTime, m_animation->duration());
     }
     case TimingFunction::StepsFunction: {
-        const StepsTimingFunction* stepsTimingFunction = static_cast<const StepsTimingFunction*>(timingFunction);
-        return solveStepsFunction(stepsTimingFunction->numberOfSteps(), stepsTimingFunction->stepAtStart(), fractionalTime);
+        auto& function = *static_cast<const StepsTimingFunction*>(timingFunction);
+        return solveStepsFunction(function.numberOfSteps(), function.stepAtStart(), fractionalTime);
+    }
+    case TimingFunction::SpringFunction: {
+        auto& function = *static_cast<const SpringTimingFunction*>(timingFunction);
+        return solveSpringFunction(function.mass(), function.stiffness(), function.damping(), function.initialVelocity(), fractionalTime, m_animation->duration());
     }
     case TimingFunction::LinearFunction:
         return fractionalTime;

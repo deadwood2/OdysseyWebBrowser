@@ -43,7 +43,7 @@ BaseChooserOnlyDateAndTimeInputType::~BaseChooserOnlyDateAndTimeInputType()
     closeDateTimeChooser();
 }
 
-void BaseChooserOnlyDateAndTimeInputType::handleDOMActivateEvent(Event*)
+void BaseChooserOnlyDateAndTimeInputType::handleDOMActivateEvent(Event&)
 {
     if (element().isDisabledOrReadOnly() || !element().renderer() || !ScriptController::processingUserGesture())
         return;
@@ -61,9 +61,9 @@ void BaseChooserOnlyDateAndTimeInputType::createShadowSubtree()
 {
     static NeverDestroyed<AtomicString> valueContainerPseudo("-webkit-date-and-time-value", AtomicString::ConstructFromLiteral);
 
-    Ref<HTMLDivElement> valueContainer = HTMLDivElement::create(element().document());
+    auto valueContainer = HTMLDivElement::create(element().document());
     valueContainer->setPseudo(valueContainerPseudo);
-    element().userAgentShadowRoot()->appendChild(WTFMove(valueContainer));
+    element().userAgentShadowRoot()->appendChild(valueContainer);
     updateAppearance();
 }
 
@@ -108,17 +108,17 @@ void BaseChooserOnlyDateAndTimeInputType::closeDateTimeChooser()
         m_dateTimeChooser->endChooser();
 }
 
-void BaseChooserOnlyDateAndTimeInputType::handleKeydownEvent(KeyboardEvent* event)
+void BaseChooserOnlyDateAndTimeInputType::handleKeydownEvent(KeyboardEvent& event)
 {
     BaseClickableWithKeyInputType::handleKeydownEvent(element(), event);
 }
 
-void BaseChooserOnlyDateAndTimeInputType::handleKeypressEvent(KeyboardEvent* event)
+void BaseChooserOnlyDateAndTimeInputType::handleKeypressEvent(KeyboardEvent& event)
 {
     BaseClickableWithKeyInputType::handleKeypressEvent(element(), event);
 }
 
-void BaseChooserOnlyDateAndTimeInputType::handleKeyupEvent(KeyboardEvent* event)
+void BaseChooserOnlyDateAndTimeInputType::handleKeyupEvent(KeyboardEvent& event)
 {
     BaseClickableWithKeyInputType::handleKeyupEvent(*this, event);
 }

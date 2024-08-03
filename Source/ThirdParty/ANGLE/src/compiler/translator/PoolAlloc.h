@@ -152,7 +152,17 @@ public:
     // by calling pop(), and to not have to solve memory leak problems.
     //
 
-protected:
+    // Catch unwanted allocations.
+    // TODO(jmadill): Remove this when we remove the global allocator.
+    void lock();
+    void unlock();
+
+  private:
+    size_t alignment;  // all returned allocations will be aligned at
+                       // this granularity, which will be a power of 2
+    size_t alignmentMask;
+
+#if !defined(ANGLE_TRANSLATOR_DISABLE_POOL_ALLOC)
     friend struct tHeader;
     
     struct tHeader {
@@ -195,22 +205,24 @@ protected:
     }
 
     size_t pageSize;        // granularity of allocation from the OS
-    size_t alignment;       // all returned allocations will be aligned at 
-                            // this granularity, which will be a power of 2
-    size_t alignmentMask;
     size_t headerSkip;      // amount of memory to skip to make room for the
                             //      header (basically, size of header, rounded
                             //      up to make it aligned
     size_t currentPageOffset;  // next offset in top of inUseList to allocate from
     tHeader* freeList;      // list of popped memory
     tHeader* inUseList;     // list of all memory currently being used
-    tAllocStack stack;      // stack of where to allocate from, to partition pool
+    tAllocStack mStack;     // stack of where to allocate from, to partition pool
 
     int numCalls;           // just an interesting statistic
     size_t totalBytes;      // just an interesting statistic
-private:
+
+#else  // !defined(ANGLE_TRANSLATOR_DISABLE_POOL_ALLOC)
+    std::vector<std::vector<void *>> mStack;
+#endif
+
     TPoolAllocator& operator=(const TPoolAllocator&);  // dont allow assignment operator
     TPoolAllocator(const TPoolAllocator&);  // dont allow default copy constructor
+    bool mLocked;
 };
 
 
@@ -247,18 +259,13 @@ public:
     pointer address(reference x) const { return &x; }
     const_pointer address(const_reference x) const { return &x; }
 
-    pool_allocator() : allocator(GetGlobalPoolAllocator()) { }
-    pool_allocator(TPoolAllocator& a) : allocator(&a) { }
-    pool_allocator(const pool_allocator<T>& p) : allocator(p.allocator) { }
-
-    template <class Other>
-    pool_allocator<T>& operator=(const pool_allocator<Other>& p) {
-      allocator = p.allocator;
-      return *this;
-    }
+    pool_allocator() { }
 
     template<class Other>
-    pool_allocator(const pool_allocator<Other>& p) : allocator(&p.getAllocator()) { }
+    pool_allocator(const pool_allocator<Other>& p) { }
+
+    template <class Other>
+    pool_allocator<T>& operator=(const pool_allocator<Other>& p) { return *this; }
 
 #if defined(__SUNPRO_CC) && !defined(_RWSTD_ALLOCATOR)
     // libCStd on some platforms have a different allocate/deallocate interface.
@@ -284,17 +291,13 @@ public:
     void construct(pointer p, const T& val) { new ((void *)p) T(val); }
     void destroy(pointer p) { p->T::~T(); }
 
-    bool operator==(const pool_allocator& rhs) const { return &getAllocator() == &rhs.getAllocator(); }
-    bool operator!=(const pool_allocator& rhs) const { return &getAllocator() != &rhs.getAllocator(); }
+    bool operator==(const pool_allocator& rhs) const { return true; }
+    bool operator!=(const pool_allocator& rhs) const { return false; }
 
     size_type max_size() const { return static_cast<size_type>(-1) / sizeof(T); }
     size_type max_size(int size) const { return static_cast<size_type>(-1) / size; }
 
-    void setAllocator(TPoolAllocator* a) { allocator = a; }
-    TPoolAllocator& getAllocator() const { return *allocator; }
-
-protected:
-    TPoolAllocator* allocator;
+    TPoolAllocator& getAllocator() const { return *GetGlobalPoolAllocator(); }
 };
 
 #endif // COMPILER_TRANSLATOR_POOLALLOC_H_

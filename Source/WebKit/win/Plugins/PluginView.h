@@ -36,7 +36,6 @@
 #include "Timer.h"
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
-#include <wtf/PassRefPtr.h>
 #include <wtf/RefPtr.h>
 #include <wtf/Vector.h>
 #include <wtf/text/CString.h>
@@ -128,7 +127,7 @@ namespace WebCore {
 #if ENABLE(NETSCAPE_PLUGIN_API)
         NPObject* npObject();
 #endif
-        virtual RefPtr<JSC::Bindings::Instance> bindingInstance() override;
+        RefPtr<JSC::Bindings::Instance> bindingInstance() override;
 
         PluginStatus status() const { return m_status; }
 
@@ -180,7 +179,7 @@ namespace WebCore {
         virtual void show();
         virtual void hide();
         virtual void paint(GraphicsContext&, const IntRect&);
-        virtual void clipRectChanged() override;
+        void clipRectChanged() override;
 
         // This method is used by plugins on all platforms to obtain a clip rect that includes clips set by WebCore,
         // e.g., in overflow:auto sections.  The clip rects coordinates are in the containing window's coordinate space.
@@ -191,7 +190,7 @@ namespace WebCore {
         virtual void setParent(ScrollView*);
         virtual void setParentVisible(bool);
 
-        virtual bool isPluginView() const override { return true; }
+        bool isPluginView() const override { return true; }
 
         Frame* parentFrame() const { return m_parentFrame.get(); }
 
@@ -292,7 +291,7 @@ namespace WebCore {
         void handleMouseEvent(MouseEvent*);
 
         void paintIntoTransformedContext(HDC);
-        PassRefPtr<Image> snapshot();
+        RefPtr<Image> snapshot();
 
         float deviceScaleFactor() const;
 
@@ -310,6 +309,8 @@ namespace WebCore {
         NPP_t m_instanceStruct;
         NPWindow m_npWindow;
 #endif
+
+        NPObject* m_elementNPObject;
 
         Vector<bool, 4> m_popupStateStack;
 

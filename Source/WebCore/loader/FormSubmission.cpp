@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2010 Google Inc. All rights reserved.
+ * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -31,6 +32,7 @@
 #include "config.h"
 #include "FormSubmission.h"
 
+#include "ContentSecurityPolicy.h"
 #include "DOMFormData.h"
 #include "Document.h"
 #include "Event.h"
@@ -45,9 +47,9 @@
 #include "HTMLInputElement.h"
 #include "HTMLNames.h"
 #include "HTMLParserIdioms.h"
+#include "NoEventDispatchAssertion.h"
 #include "TextEncoding.h"
 #include <wtf/CurrentTime.h>
-#include <wtf/RandomNumber.h>
 
 namespace WebCore {
 
@@ -91,10 +93,10 @@ void FormSubmission::Attributes::parseAction(const String& action)
 String FormSubmission::Attributes::parseEncodingType(const String& type)
 {
     if (equalLettersIgnoringASCIICase(type, "multipart/form-data"))
-        return "multipart/form-data";
+        return ASCIILiteral("multipart/form-data");
     if (equalLettersIgnoringASCIICase(type, "text/plain"))
-        return "text/plain";
-    return "application/x-www-form-urlencoded";
+        return ASCIILiteral("text/plain");
+    return ASCIILiteral("application/x-www-form-urlencoded");
 }
 
 void FormSubmission::Attributes::updateEncodingType(const String& type)
@@ -172,13 +174,13 @@ Ref<FormSubmission> FormSubmission::create(HTMLFormElement* form, const Attribut
     copiedAttributes.copyFrom(attributes);
     if (submitButton) {
         AtomicString attributeValue;
-        if (!(attributeValue = submitButton->fastGetAttribute(formactionAttr)).isNull())
+        if (!(attributeValue = submitButton->attributeWithoutSynchronization(formactionAttr)).isNull())
             copiedAttributes.parseAction(attributeValue);
-        if (!(attributeValue = submitButton->fastGetAttribute(formenctypeAttr)).isNull())
+        if (!(attributeValue = submitButton->attributeWithoutSynchronization(formenctypeAttr)).isNull())
             copiedAttributes.updateEncodingType(attributeValue);
-        if (!(attributeValue = submitButton->fastGetAttribute(formmethodAttr)).isNull())
+        if (!(attributeValue = submitButton->attributeWithoutSynchronization(formmethodAttr)).isNull())
             copiedAttributes.updateMethodType(attributeValue);
-        if (!(attributeValue = submitButton->fastGetAttribute(formtargetAttr)).isNull())
+        if (!(attributeValue = submitButton->attributeWithoutSynchronization(formtargetAttr)).isNull())
             copiedAttributes.setTarget(attributeValue);
     }
     
@@ -187,6 +189,8 @@ Ref<FormSubmission> FormSubmission::create(HTMLFormElement* form, const Attribut
     bool isMailtoForm = actionURL.protocolIs("mailto");
     bool isMultiPartForm = false;
     String encodingType = copiedAttributes.encodingType();
+
+    document.contentSecurityPolicy()->upgradeInsecureRequestIfNeeded(actionURL, ContentSecurityPolicy::InsecureRequestType::FormSubmission);
 
     if (copiedAttributes.method() == PostMethod) {
         isMultiPartForm = copiedAttributes.isMultiPartForm();
@@ -201,18 +205,22 @@ Ref<FormSubmission> FormSubmission::create(HTMLFormElement* form, const Attribut
     Vector<std::pair<String, String>> formValues;
 
     bool containsPasswordData = false;
-    for (auto& control : form->associatedElements()) {
-        HTMLElement& element = control->asHTMLElement();
-        if (!element.isDisabledFormControl())
-            control->appendFormData(*domFormData, isMultiPartForm);
-        if (is<HTMLInputElement>(element)) {
-            HTMLInputElement& input = downcast<HTMLInputElement>(element);
-            if (input.isTextField()) {
-                formValues.append(std::pair<String, String>(input.name().string(), input.value()));
-                input.addSearchResult();
+    {
+        NoEventDispatchAssertion noEventDispatchAssertion;
+
+        for (auto& control : form->associatedElements()) {
+            HTMLElement& element = control->asHTMLElement();
+            if (!element.isDisabledFormControl())
+                control->appendFormData(*domFormData, isMultiPartForm);
+            if (is<HTMLInputElement>(element)) {
+                HTMLInputElement& input = downcast<HTMLInputElement>(element);
+                if (input.isTextField()) {
+                    formValues.append(std::pair<String, String>(input.name().string(), input.value()));
+                    input.addSearchResult();
+                }
+                if (input.isPasswordField() && !input.value().isEmpty())
+                    containsPasswordData = true;
             }
-            if (input.isPasswordField() && !input.value().isEmpty())
-                containsPasswordData = true;
         }
     }
 
@@ -234,8 +242,8 @@ Ref<FormSubmission> FormSubmission::create(HTMLFormElement* form, const Attribut
     formData->setIdentifier(generateFormDataIdentifier());
     formData->setContainsPasswordData(containsPasswordData);
     String targetOrBaseTarget = copiedAttributes.target().isEmpty() ? document.baseTarget() : copiedAttributes.target();
-    RefPtr<FormState> formState = FormState::create(form, formValues, &document, trigger);
-    return adoptRef(*new FormSubmission(copiedAttributes.method(), actionURL, targetOrBaseTarget, encodingType, formState.release(), formData.release(), boundary, lockHistory, event));
+    auto formState = FormState::create(form, formValues, &document, trigger);
+    return adoptRef(*new FormSubmission(copiedAttributes.method(), actionURL, targetOrBaseTarget, encodingType, WTFMove(formState), WTFMove(formData), boundary, lockHistory, event));
 }
 
 URL FormSubmission::requestURL() const
@@ -269,6 +277,7 @@ void FormSubmission::populateFrameLoadRequest(FrameLoadRequest& frameRequest)
 
     frameRequest.resourceRequest().setURL(requestURL());
     FrameLoader::addHTTPOriginIfNeeded(frameRequest.resourceRequest(), m_origin);
+    FrameLoader::addHTTPUpgradeInsecureRequestsIfNeeded(frameRequest.resourceRequest());
 }
 
 }

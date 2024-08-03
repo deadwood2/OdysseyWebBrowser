@@ -32,11 +32,6 @@
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
 
-#if PLATFORM(GTK)
-typedef struct _GtkClipboard GtkClipboard;
-#include <wtf/glib/GRefPtr.h>
-#endif
-
 #if PLATFORM(IOS)
 OBJC_CLASS NSArray;
 OBJC_CLASS NSString;
@@ -55,12 +50,12 @@ typedef struct HWND__* HWND;
 
 namespace WebCore {
 
-class DataObjectGtk;
 class DocumentFragment;
 class DragData;
 class Element;
 class Frame;
 class Range;
+class SelectionData;
 class SharedBuffer;
 
 enum ShouldSerializeSelectedTextForDataTransfer { DefaultSelectedTextType, IncludeImageAltTextForDataTransfer };
@@ -83,7 +78,6 @@ struct PasteboardWebContent {
     bool canSmartCopyOrDelete;
     String text;
     String markup;
-    GRefPtr<GClosure> callback;
 #endif
 };
 
@@ -118,12 +112,12 @@ public:
     virtual ~PasteboardWebContentReader() { }
 
 #if !(PLATFORM(EFL) || PLATFORM(GTK) || PLATFORM(WIN))
-    virtual bool readWebArchive(PassRefPtr<SharedBuffer>) = 0;
+    virtual bool readWebArchive(SharedBuffer*) = 0;
     virtual bool readFilenames(const Vector<String>&) = 0;
     virtual bool readHTML(const String&) = 0;
-    virtual bool readRTFD(PassRefPtr<SharedBuffer>) = 0;
-    virtual bool readRTF(PassRefPtr<SharedBuffer>) = 0;
-    virtual bool readImage(PassRefPtr<SharedBuffer>, const String& type) = 0;
+    virtual bool readRTFD(SharedBuffer&) = 0;
+    virtual bool readRTF(SharedBuffer&) = 0;
+    virtual bool readImage(Ref<SharedBuffer>&&, const String& type) = 0;
     virtual bool readURL(const URL&, const String& title) = 0;
 #endif
     virtual bool readPlainText(const String&) = 0;
@@ -143,8 +137,8 @@ public:
     ~Pasteboard();
 
 #if PLATFORM(GTK)
-    explicit Pasteboard(PassRefPtr<DataObjectGtk>);
-    explicit Pasteboard(GtkClipboard*);
+    explicit Pasteboard(const String& name);
+    explicit Pasteboard(SelectionData&);
 #endif
 
 #if PLATFORM(WIN)
@@ -187,13 +181,13 @@ public:
 #endif
 
 #if PLATFORM(WIN)
-    PassRefPtr<DocumentFragment> documentFragment(Frame&, Range&, bool allowPlainText, bool& chosePlainText); // FIXME: Layering violation.
+    RefPtr<DocumentFragment> documentFragment(Frame&, Range&, bool allowPlainText, bool& chosePlainText); // FIXME: Layering violation.
     void writeImage(Element&, const URL&, const String& title); // FIXME: Layering violation.
     void writeSelection(Range&, bool canSmartCopyOrDelete, Frame&, ShouldSerializeSelectedTextForDataTransfer = DefaultSelectedTextType); // FIXME: Layering violation.
 #endif
 
 #if PLATFORM(GTK)
-    PassRefPtr<DataObjectGtk> dataObject() const;
+    const SelectionData& selectionData() const;
     static std::unique_ptr<Pasteboard> createForGlobalSelection();
 #endif
 
@@ -226,8 +220,10 @@ private:
 #endif
 
 #if PLATFORM(GTK)
-    RefPtr<DataObjectGtk> m_dataObject;
-    GtkClipboard* m_gtkClipboard;
+    void writeToClipboard();
+    void readFromClipboard();
+    Ref<SelectionData> m_selectionData;
+    String m_name;
 #endif
 
 #if PLATFORM(IOS)

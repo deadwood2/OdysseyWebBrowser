@@ -29,9 +29,7 @@
 #import "WebCoreSystemInterface.h"
 #import <wtf/text/WTFString.h>
 
-#if !PLATFORM(IOS)
-#import <AppKit/NSFont.h>
-#else
+#if PLATFORM(IOS)
 #import "CoreGraphicsSPI.h"
 #import <CoreText/CoreText.h>
 #endif
@@ -52,37 +50,6 @@ FontPlatformData::FontPlatformData(CTFontRef font, float size, bool syntheticBol
 #if PLATFORM(IOS)
     m_isEmoji = CTFontIsAppleColorEmoji(m_font.get());
 #endif
-}
-
-FontPlatformData::~FontPlatformData()
-{
-}
-
-void FontPlatformData::platformDataInit(const FontPlatformData& f)
-{
-    m_font = f.m_font;
-
-    m_cgFont = f.m_cgFont;
-    m_ctFont = f.m_ctFont;
-
-#if PLATFORM(IOS)
-    m_isEmoji = f.m_isEmoji;
-#endif
-}
-
-const FontPlatformData& FontPlatformData::platformDataAssign(const FontPlatformData& f)
-{
-    m_cgFont = f.m_cgFont;
-    if (m_font && f.m_font && CFEqual(m_font.get(), f.m_font.get()))
-        return *this;
-    m_font = f.m_font;
-    m_ctFont = f.m_ctFont;
-
-#if PLATFORM(IOS)
-    m_isEmoji = f.m_isEmoji;
-#endif
-
-    return *this;
 }
 
 bool FontPlatformData::platformIsEqual(const FontPlatformData& other) const
@@ -106,28 +73,6 @@ CTFontRef FontPlatformData::registeredFont() const
     if (platformFont && adoptCF(CTFontCopyAttribute(platformFont, kCTFontURLAttribute)))
         return platformFont;
     return nullptr;
-}
-
-void FontPlatformData::setFont(CTFontRef font)
-{
-    ASSERT_ARG(font, font);
-
-    if (m_font == font)
-        return;
-
-    m_font = font;
-    m_size = CTFontGetSize(font);
-    m_cgFont = adoptCF(CTFontCopyGraphicsFont(font, nullptr));
-
-    CTFontSymbolicTraits traits = CTFontGetSymbolicTraits(m_font.get());
-    m_isColorBitmapFont = traits & kCTFontTraitColorGlyphs;
-    m_isSystemFont = CTFontDescriptorIsSystemUIFont(adoptCF(CTFontCopyFontDescriptor(m_font.get())).get());
-
-#if PLATFORM(IOS)
-    m_isEmoji = CTFontIsAppleColorEmoji(m_font.get());
-#endif
-    
-    m_ctFont = nullptr;
 }
 
 inline int mapFontWidthVariantToCTFeatureSelector(FontWidthVariant variant)
@@ -210,9 +155,9 @@ RetainPtr<CFTypeRef> FontPlatformData::objectForEqualityCheck() const
     return objectForEqualityCheck(ctFont());
 }
 
-PassRefPtr<SharedBuffer> FontPlatformData::openTypeTable(uint32_t table) const
+RefPtr<SharedBuffer> FontPlatformData::openTypeTable(uint32_t table) const
 {
-    if (RetainPtr<CFDataRef> data = adoptCF(CGFontCopyTableForTag(cgFont(), table)))
+    if (RetainPtr<CFDataRef> data = adoptCF(CTFontCopyTable(font(), table, kCTFontTableOptionNoOptions)))
         return SharedBuffer::wrapCFData(data.get());
     
     return nullptr;
@@ -221,8 +166,8 @@ PassRefPtr<SharedBuffer> FontPlatformData::openTypeTable(uint32_t table) const
 #ifndef NDEBUG
 String FontPlatformData::description() const
 {
-    RetainPtr<CFStringRef> cgFontDescription = adoptCF(CFCopyDescription(cgFont()));
-    return String(cgFontDescription.get()) + " " + String::number(m_size)
+    auto fontDescription = adoptCF(CFCopyDescription(font()));
+    return String(fontDescription.get()) + " " + String::number(m_size)
             + (m_syntheticBold ? " synthetic bold" : "") + (m_syntheticOblique ? " synthetic oblique" : "") + (m_orientation ? " vertical orientation" : "");
 }
 #endif

@@ -29,9 +29,11 @@
 #if ENABLE(INDEXED_DATABASE)
 
 #include "IDBCursorInfo.h"
+#include "IDBGetResult.h"
 #include "IDBIndexInfo.h"
 #include "IDBKeyRangeData.h"
 #include "Logging.h"
+#include "MemoryIndexCursor.h"
 #include "MemoryObjectStore.h"
 #include "MemoryObjectStoreCursor.h"
 
@@ -176,7 +178,7 @@ IDBError MemoryIDBBackingStore::clearObjectStore(const IDBResourceIdentifier& tr
 
     ASSERT_UNUSED(transactionIdentifier, m_transactions.contains(transactionIdentifier));
 
-#ifndef NDEBUG
+#if !LOG_DISABLED
     auto transaction = m_transactions.get(transactionIdentifier);
     ASSERT(transaction->isWriting());
 #endif
@@ -267,7 +269,7 @@ IDBError MemoryIDBBackingStore::deleteRange(const IDBResourceIdentifier& transac
     return IDBError();
 }
 
-IDBError MemoryIDBBackingStore::addRecord(const IDBResourceIdentifier& transactionIdentifier, const IDBObjectStoreInfo& objectStoreInfo, const IDBKeyData& keyData, const ThreadSafeDataBuffer& value)
+IDBError MemoryIDBBackingStore::addRecord(const IDBResourceIdentifier& transactionIdentifier, const IDBObjectStoreInfo& objectStoreInfo, const IDBKeyData& keyData, const IDBValue& value)
 {
     LOG(IndexedDB, "MemoryIDBBackingStore::addRecord");
 
@@ -284,7 +286,7 @@ IDBError MemoryIDBBackingStore::addRecord(const IDBResourceIdentifier& transacti
     return objectStore->addRecord(*transaction, keyData, value);
 }
 
-IDBError MemoryIDBBackingStore::getRecord(const IDBResourceIdentifier& transactionIdentifier, uint64_t objectStoreIdentifier, const IDBKeyRangeData& range, ThreadSafeDataBuffer& outValue)
+IDBError MemoryIDBBackingStore::getRecord(const IDBResourceIdentifier& transactionIdentifier, uint64_t objectStoreIdentifier, const IDBKeyRangeData& range, IDBGetResult& outValue)
 {
     LOG(IndexedDB, "MemoryIDBBackingStore::getRecord");
 

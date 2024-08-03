@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 1999-2000 Harri Porten (porten@kde.org)
- *  Copyright (C) 2003, 2007, 2008, 2009, 2012, 2015 Apple Inc. All rights reserved.
+ *  Copyright (C) 2003, 2007, 2008, 2009, 2012, 2015-2016 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -23,6 +23,7 @@
 
 #include "ArrayConventions.h"
 #include "ButterflyInlines.h"
+#include "JSCellInlines.h"
 #include "JSObject.h"
 
 namespace JSC {
@@ -59,7 +60,7 @@ public:
     // contents are known at time of creation. Clients of this interface must:
     //   - null-check the result (indicating out of memory, or otherwise unable to allocate vector).
     //   - call 'initializeIndex' for all properties in sequence, for 0 <= i < initialLength.
-    static JSArray* tryCreateUninitialized(VM&, Structure*, unsigned initialLength);
+    JS_EXPORT_PRIVATE static JSArray* tryCreateUninitialized(VM&, Structure*, unsigned initialLength);
 
     JS_EXPORT_PRIVATE static bool defineOwnProperty(JSObject*, ExecState*, PropertyName, const PropertyDescriptor&, bool throwException);
 
@@ -78,19 +79,10 @@ public:
 
     JSArray* fastSlice(ExecState&, unsigned startIndex, unsigned count);
 
-    static IndexingType fastConcatType(VM& vm, JSArray& firstArray, JSArray& secondArray)
-    {
-        IndexingType type = firstArray.indexingType();
-        if (type != secondArray.indexingType())
-            return NonArray;
-        if (type != ArrayWithDouble && type != ArrayWithInt32 && type != ArrayWithContiguous)
-            return NonArray;
-        if (firstArray.structure(vm)->holesMustForwardToPrototype(vm)
-            || secondArray.structure(vm)->holesMustForwardToPrototype(vm))
-            return NonArray;
-        return type;
-    }
-    EncodedJSValue fastConcatWith(ExecState&, JSArray&);
+    bool canFastCopy(VM&, JSArray* otherArray);
+    // This function returns NonArray if the indexing types are not compatable for copying.
+    IndexingType mergeIndexingTypeForCopying(IndexingType other);
+    bool appendMemcpy(ExecState*, VM&, unsigned startIndex, JSArray* otherArray);
 
     enum ShiftCountMode {
         // This form of shift hints that we're doing queueing. With this assumption in hand,
@@ -152,11 +144,11 @@ public:
 
     static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype, IndexingType indexingType)
     {
-        return Structure::create(vm, globalObject, prototype, TypeInfo(ObjectType, StructureFlags), info(), indexingType);
+        return Structure::create(vm, globalObject, prototype, TypeInfo(ArrayType, StructureFlags), info(), indexingType);
     }
         
 protected:
-    static void put(JSCell*, ExecState*, PropertyName, JSValue, PutPropertySlot&);
+    static bool put(JSCell*, ExecState*, PropertyName, JSValue, PutPropertySlot&);
 
     static bool deleteProperty(JSCell*, ExecState*, PropertyName);
     JS_EXPORT_PRIVATE static void getOwnNonIndexPropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode);
@@ -176,7 +168,7 @@ private:
 
     bool unshiftCountWithAnyIndexingType(ExecState*, unsigned startIndex, unsigned count);
     bool unshiftCountWithArrayStorage(ExecState*, unsigned startIndex, unsigned count, ArrayStorage*);
-    bool unshiftCountSlowCase(VM&, bool, unsigned);
+    bool unshiftCountSlowCase(VM&, DeferGC&, bool, unsigned);
 
     bool setLengthWithArrayStorage(ExecState*, unsigned newLength, bool throwException, ArrayStorage*);
     void setLengthWritable(ExecState*, bool writable);
@@ -185,7 +177,8 @@ private:
 inline Butterfly* createContiguousArrayButterfly(VM& vm, JSCell* intendedOwner, unsigned length, unsigned& vectorLength)
 {
     IndexingHeader header;
-    vectorLength = std::max(length, BASE_VECTOR_LEN);
+    vectorLength = Butterfly::optimalContiguousVectorLength(
+        intendedOwner ? intendedOwner->structure(vm) : 0, length);
     header.setVectorLength(vectorLength);
     header.setPublicLength(length);
     Butterfly* result = Butterfly::create(
@@ -196,11 +189,11 @@ inline Butterfly* createContiguousArrayButterfly(VM& vm, JSCell* intendedOwner, 
 inline Butterfly* createArrayButterfly(VM& vm, JSCell* intendedOwner, unsigned initialLength)
 {
     Butterfly* butterfly = Butterfly::create(
-        vm, intendedOwner, 0, 0, true, baseIndexingHeaderForArray(initialLength),
-        ArrayStorage::sizeFor(BASE_VECTOR_LEN));
+        vm, intendedOwner, 0, 0, true, baseIndexingHeaderForArrayStorage(initialLength),
+        ArrayStorage::sizeFor(BASE_ARRAY_STORAGE_VECTOR_LEN));
     ArrayStorage* storage = butterfly->arrayStorage();
-    storage->m_indexBias = 0;
     storage->m_sparseMap.clear();
+    storage->m_indexBias = 0;
     storage->m_numValuesInVector = 0;
     return butterfly;
 }
@@ -219,57 +212,17 @@ inline JSArray* JSArray::create(VM& vm, Structure* structure, unsigned initialLe
             || hasContiguous(structure->indexingType()));
         unsigned vectorLength;
         butterfly = createContiguousArrayButterfly(vm, 0, initialLength, vectorLength);
-        ASSERT(initialLength < MIN_ARRAY_STORAGE_CONSTRUCTION_LENGTH);
-        if (hasDouble(structure->indexingType())) {
-            for (unsigned i = 0; i < vectorLength; ++i)
-                butterfly->contiguousDouble()[i] = PNaN;
-        }
+        if (hasDouble(structure->indexingType()))
+            clearArray(butterfly->contiguousDouble().data(), vectorLength);
+        else
+            clearArray(butterfly->contiguous().data(), vectorLength);
     } else {
         ASSERT(
             structure->indexingType() == ArrayWithSlowPutArrayStorage
             || structure->indexingType() == ArrayWithArrayStorage);
         butterfly = createArrayButterfly(vm, 0, initialLength);
-    }
-
-    return createWithButterfly(vm, structure, butterfly);
-}
-
-inline JSArray* JSArray::tryCreateUninitialized(VM& vm, Structure* structure, unsigned initialLength)
-{
-    unsigned vectorLength = std::max(BASE_VECTOR_LEN, initialLength);
-    if (vectorLength > MAX_STORAGE_VECTOR_LENGTH)
-        return 0;
-
-    unsigned outOfLineStorage = structure->outOfLineCapacity();
-
-    Butterfly* butterfly;
-    if (LIKELY(!hasAnyArrayStorage(structure->indexingType()))) {
-        ASSERT(
-            hasUndecided(structure->indexingType())
-            || hasInt32(structure->indexingType())
-            || hasDouble(structure->indexingType())
-            || hasContiguous(structure->indexingType()));
-
-        void* temp;
-        if (!vm.heap.tryAllocateStorage(0, Butterfly::totalSize(0, outOfLineStorage, true, vectorLength * sizeof(EncodedJSValue)), &temp))
-            return 0;
-        butterfly = Butterfly::fromBase(temp, 0, outOfLineStorage);
-        butterfly->setVectorLength(vectorLength);
-        butterfly->setPublicLength(initialLength);
-        if (hasDouble(structure->indexingType())) {
-            for (unsigned i = initialLength; i < vectorLength; ++i)
-                butterfly->contiguousDouble()[i] = PNaN;
-        }
-    } else {
-        void* temp;
-        if (!vm.heap.tryAllocateStorage(0, Butterfly::totalSize(0, outOfLineStorage, true, ArrayStorage::sizeFor(vectorLength)), &temp))
-            return 0;
-        butterfly = Butterfly::fromBase(temp, 0, outOfLineStorage);
-        *butterfly->indexingHeader() = indexingHeaderForArray(initialLength, vectorLength);
-        ArrayStorage* storage = butterfly->arrayStorage();
-        storage->m_indexBias = 0;
-        storage->m_sparseMap.clear();
-        storage->m_numValuesInVector = initialLength;
+        for (unsigned i = 0; i < BASE_ARRAY_STORAGE_VECTOR_LEN; ++i)
+            butterfly->arrayStorage()->m_vector[i].clear();
     }
 
     return createWithButterfly(vm, structure, butterfly);
@@ -295,7 +248,12 @@ inline JSArray* asArray(JSValue value)
     return asArray(value.asCell());
 }
 
-inline bool isJSArray(JSCell* cell) { return cell->classInfo() == JSArray::info(); }
+inline bool isJSArray(JSCell* cell)
+{
+    ASSERT((cell->classInfo() == JSArray::info()) == (cell->type() == ArrayType));
+    return cell->type() == ArrayType;
+}
+
 inline bool isJSArray(JSValue v) { return v.isCell() && isJSArray(v.asCell()); }
 
 inline JSArray* constructArray(ExecState* exec, Structure* arrayStructure, const ArgList& values)

@@ -33,6 +33,8 @@
 #include "NodeRenderStyle.h"
 #include "RenderStyle.h"
 #include "SVGElement.h"
+#include "ShadowRoot.h"
+#include "StyleUpdate.h"
 #include "StyledElement.h"
 #include "VisitedLinkState.h"
 #include "WebVTTElement.h"
@@ -44,6 +46,7 @@ namespace Style {
 static const unsigned cStyleSearchThreshold = 10;
 
 struct SharingResolver::Context {
+    const Update& update;
     const StyledElement& element;
     bool elementAffectedByClassRules;
     EInsideLink elementLinkState;
@@ -67,7 +70,7 @@ static inline bool elementHasDirectionAuto(const Element& element)
     return is<HTMLElement>(element) && downcast<HTMLElement>(element).hasDirectionAuto();
 }
 
-RefPtr<RenderStyle> SharingResolver::resolve(const Element& searchElement)
+std::unique_ptr<RenderStyle> SharingResolver::resolve(const Element& searchElement, const Update& update)
 {
     if (!is<StyledElement>(searchElement))
         return nullptr;
@@ -75,7 +78,9 @@ RefPtr<RenderStyle> SharingResolver::resolve(const Element& searchElement)
     if (!element.parentElement())
         return nullptr;
     auto& parentElement = *element.parentElement();
-    if (!parentElement.renderStyle())
+    if (parentElement.shadowRoot())
+        return nullptr;
+    if (!update.elementStyle(parentElement))
         return nullptr;
     // If the element has inline style it is probably unique.
     if (element.inlineStyle())
@@ -83,7 +88,8 @@ RefPtr<RenderStyle> SharingResolver::resolve(const Element& searchElement)
     if (element.isSVGElement() && downcast<SVGElement>(element).animatedSMILStyleProperties())
         return nullptr;
     // Ids stop style sharing if they show up in the stylesheets.
-    if (element.hasID() && m_ruleSets.features().idsInRules.contains(element.idForStyleResolution().impl()))
+    auto& id = element.idForStyleResolution();
+    if (!id.isNull() && m_ruleSets.features().idsInRules.contains(id.impl()))
         return nullptr;
     if (parentElementPreventsSharing(parentElement))
         return nullptr;
@@ -91,8 +97,11 @@ RefPtr<RenderStyle> SharingResolver::resolve(const Element& searchElement)
         return nullptr;
     if (elementHasDirectionAuto(element))
         return nullptr;
+    if (element.shadowRoot() && !element.shadowRoot()->styleResolver().ruleSets().authorStyle().hostPseudoClassRules().isEmpty())
+        return nullptr;
 
     Context context {
+        update,
         element,
         element.hasClass() && classNamesAffectedByRules(element.classNames()),
         m_document.visitedLinkState().determineLinkState(element)
@@ -105,6 +114,8 @@ RefPtr<RenderStyle> SharingResolver::resolve(const Element& searchElement)
     while (cousinList) {
         shareElement = findSibling(context, cousinList, count);
         if (shareElement)
+            break;
+        if (count >= cStyleSearchThreshold)
             break;
         cousinList = locateCousinList(cousinList->parentElement());
     }
@@ -125,7 +136,7 @@ RefPtr<RenderStyle> SharingResolver::resolve(const Element& searchElement)
 
     m_elementsSharingStyle.add(&element, shareElement);
 
-    return RenderStyle::clone(shareElement->renderStyle());
+    return RenderStyle::clonePtr(*update.elementStyle(*shareElement));
 }
 
 StyledElement* SharingResolver::findSibling(const Context& context, Node* node, unsigned& count) const
@@ -135,7 +146,7 @@ StyledElement* SharingResolver::findSibling(const Context& context, Node* node, 
             continue;
         if (canShareStyleWithElement(context, downcast<StyledElement>(*node)))
             break;
-        if (count++ == cStyleSearchThreshold)
+        if (count++ >= cStyleSearchThreshold)
             return nullptr;
     }
     return downcast<StyledElement>(node);
@@ -143,8 +154,7 @@ StyledElement* SharingResolver::findSibling(const Context& context, Node* node, 
 
 Node* SharingResolver::locateCousinList(const Element* parent) const
 {
-    const unsigned maximumSearchCount = 10;
-    for (unsigned count = 0; count < maximumSearchCount; ++count) {
+    for (unsigned count = 0; count < cStyleSearchThreshold; ++count) {
         auto* elementSharingParentStyle = m_elementsSharingStyle.get(parent);
         if (!elementSharingParentStyle)
             return nullptr;
@@ -170,15 +180,10 @@ static bool canShareStyleWithControl(const HTMLFormControlElement& element, cons
         return false;
     if (thisInputElement.shouldAppearChecked() != otherInputElement.shouldAppearChecked())
         return false;
-    if (thisInputElement.shouldAppearIndeterminate() != otherInputElement.shouldAppearIndeterminate())
-        return false;
     if (thisInputElement.isRequired() != otherInputElement.isRequired())
         return false;
 
     if (formElement.isDisabledFormControl() != element.isDisabledFormControl())
-        return false;
-
-    if (formElement.isDefaultButtonForForm() != element.isDefaultButtonForForm())
         return false;
 
     if (formElement.isInRange() != element.isInRange())
@@ -193,7 +198,7 @@ static bool canShareStyleWithControl(const HTMLFormControlElement& element, cons
 bool SharingResolver::canShareStyleWithElement(const Context& context, const StyledElement& candidateElement) const
 {
     auto& element = context.element;
-    auto* style = candidateElement.renderStyle();
+    auto* style = context.update.elementStyle(candidateElement);
     if (!style)
         return false;
     if (style->unique())
@@ -226,8 +231,11 @@ bool SharingResolver::canShareStyleWithElement(const Context& context, const Sty
         return false;
     if (candidateElement.affectsNextSiblingElementStyle() || candidateElement.styleIsAffectedByPreviousSibling())
         return false;
+    if (candidateElement.styleAffectedByFocusWithin() || element.styleAffectedByFocusWithin())
+        return false;
 
-    if (candidateElement.hasID() && m_ruleSets.features().idsInRules.contains(candidateElement.idForStyleResolution().impl()))
+    auto& candidateElementId = candidateElement.idForStyleResolution();
+    if (!candidateElementId.isNull() && m_ruleSets.features().idsInRules.contains(candidateElementId.impl()))
         return false;
 
     bool isControl = is<HTMLFormControlElement>(candidateElement);
@@ -256,13 +264,13 @@ bool SharingResolver::canShareStyleWithElement(const Context& context, const Sty
         return false;
 
     if (candidateElement.elementData() != element.elementData()) {
-        if (candidateElement.fastGetAttribute(HTMLNames::readonlyAttr) != element.fastGetAttribute(HTMLNames::readonlyAttr))
+        if (candidateElement.attributeWithoutSynchronization(HTMLNames::readonlyAttr) != element.attributeWithoutSynchronization(HTMLNames::readonlyAttr))
             return false;
         if (candidateElement.isSVGElement()) {
             if (candidateElement.getAttribute(HTMLNames::typeAttr) != element.getAttribute(HTMLNames::typeAttr))
                 return false;
         } else {
-            if (candidateElement.fastGetAttribute(HTMLNames::typeAttr) != element.fastGetAttribute(HTMLNames::typeAttr))
+            if (candidateElement.attributeWithoutSynchronization(HTMLNames::typeAttr) != element.attributeWithoutSynchronization(HTMLNames::typeAttr))
                 return false;
         }
     }
@@ -273,11 +281,14 @@ bool SharingResolver::canShareStyleWithElement(const Context& context, const Sty
     if (element.matchesInvalidPseudoClass() != element.matchesValidPseudoClass())
         return false;
 
-#if ENABLE(VIDEO_TRACK)
-    // Deny sharing styles between WebVTT and non-WebVTT nodes.
-    if (is<WebVTTElement>(element))
+    if (candidateElement.matchesIndeterminatePseudoClass() != element.matchesIndeterminatePseudoClass())
         return false;
-#endif
+
+    if (candidateElement.matchesDefaultPseudoClass() != element.matchesDefaultPseudoClass())
+        return false;
+
+    if (element.shadowRoot() && !element.shadowRoot()->styleResolver().ruleSets().authorStyle().hostPseudoClassRules().isEmpty())
+        return false;
 
 #if ENABLE(FULLSCREEN_API)
     if (&element == m_document.webkitCurrentFullScreenElement() || &element == m_document.webkitCurrentFullScreenElement())
@@ -291,7 +302,7 @@ bool SharingResolver::styleSharingCandidateMatchesRuleSet(const StyledElement& e
     if (!ruleSet)
         return false;
 
-    ElementRuleCollector collector(const_cast<StyledElement&>(element), nullptr, m_ruleSets, &m_selectorFilter);
+    ElementRuleCollector collector(const_cast<StyledElement&>(element), m_ruleSets, &m_selectorFilter);
     return collector.hasAnyMatchingRules(ruleSet);
 }
 
@@ -300,9 +311,9 @@ bool SharingResolver::sharingCandidateHasIdenticalStyleAffectingAttributes(const
     auto& element = context.element;
     if (element.elementData() == sharingCandidate.elementData())
         return true;
-    if (element.fastGetAttribute(XMLNames::langAttr) != sharingCandidate.fastGetAttribute(XMLNames::langAttr))
+    if (element.attributeWithoutSynchronization(XMLNames::langAttr) != sharingCandidate.attributeWithoutSynchronization(XMLNames::langAttr))
         return false;
-    if (element.fastGetAttribute(HTMLNames::langAttr) != sharingCandidate.fastGetAttribute(HTMLNames::langAttr))
+    if (element.attributeWithoutSynchronization(HTMLNames::langAttr) != sharingCandidate.attributeWithoutSynchronization(HTMLNames::langAttr))
         return false;
 
     if (context.elementAffectedByClassRules) {
@@ -321,11 +332,6 @@ bool SharingResolver::sharingCandidateHasIdenticalStyleAffectingAttributes(const
 
     if (const_cast<StyledElement&>(element).presentationAttributeStyle() != const_cast<StyledElement&>(sharingCandidate).presentationAttributeStyle())
         return false;
-
-    if (element.hasTagName(HTMLNames::progressTag)) {
-        if (element.shouldAppearIndeterminate() != sharingCandidate.shouldAppearIndeterminate())
-            return false;
-    }
 
     return true;
 }

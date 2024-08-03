@@ -127,7 +127,8 @@ void CachedFrameBase::restore()
     m_document->enqueuePageshowEvent(PageshowEventPersisted);
 
     HistoryItem* historyItem = frame.loader().history().currentItem();
-    m_document->enqueuePopstateEvent(historyItem && historyItem->stateObject() ? historyItem->stateObject() : SerializedScriptValue::nullValue());
+    if (historyItem && historyItem->stateObject())
+        m_document->enqueuePopstateEvent(historyItem->stateObject());
 
 #if ENABLE(TOUCH_EVENTS) && !PLATFORM(IOS)
     if (m_document->hasTouchEventHandlers())
@@ -247,8 +248,8 @@ void CachedFrame::destroy()
     m_document->domWindow()->willDestroyCachedFrame();
 
     if (!m_isMainFrame) {
-        m_view->frame().detachFromPage();
         m_view->frame().loader().detachViewsAndDocumentLoader();
+        m_view->frame().detachFromPage();
     }
     
     for (int i = m_childFrames.size() - 1; i >= 0; --i)
@@ -263,7 +264,7 @@ void CachedFrame::destroy()
     // fully anyway, because the document won't be able to access its DOMWindow object (due to being frameless).
     m_document->removeAllEventListeners();
 
-    m_document->setInPageCache(false);
+    m_document->setPageCacheState(Document::NotInPageCache);
     m_document->prepareForDestruction();
 
     clear();

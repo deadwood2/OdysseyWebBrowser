@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009 Apple Inc. All rights reserved.
+ * Copyright (C) 2009, 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -43,11 +43,11 @@ static JSValue namedItems(ExecState& state, JSHTMLAllCollection* collection, Pro
     if (namedItems.isEmpty())
         return jsUndefined();
     if (namedItems.size() == 1)
-        return toJS(&state, collection->globalObject(), namedItems[0].ptr());
+        return toJS(&state, collection->globalObject(), namedItems[0]);
 
     // FIXME: HTML5 specification says this should be a HTMLCollection.
     // http://www.whatwg.org/specs/web-apps/current-work/multipage/common-dom-interfaces.html#htmlallcollection
-    return toJS(&state, collection->globalObject(), StaticElementList::adopt(namedItems).get());
+    return toJS(&state, collection->globalObject(), StaticElementList::create(WTFMove(namedItems)));
 }
 
 // HTMLAllCollections are strange objects, they support both get and call.
@@ -80,7 +80,7 @@ static EncodedJSValue JSC_HOST_CALL callHTMLAllCollection(ExecState* exec)
         return JSValue::encode(jsUndefined());
     if (Optional<uint32_t> index = parseIndex(*exec->argument(1).toWTFString(exec).impl())) {
         if (auto* item = collection.namedItemWithIndex(string, index.value()))
-            return JSValue::encode(toJS(exec, jsCollection->globalObject(), item));
+            return JSValue::encode(toJS(exec, jsCollection->globalObject(), *item));
     }
 
     return JSValue::encode(jsUndefined());
@@ -89,7 +89,7 @@ static EncodedJSValue JSC_HOST_CALL callHTMLAllCollection(ExecState* exec)
 CallType JSHTMLAllCollection::getCallData(JSCell*, CallData& callData)
 {
     callData.native.function = callHTMLAllCollection;
-    return CallTypeHost;
+    return CallType::Host;
 }
 
 bool JSHTMLAllCollection::nameGetter(ExecState* state, PropertyName propertyName, JSValue& value)
@@ -104,9 +104,16 @@ bool JSHTMLAllCollection::nameGetter(ExecState* state, PropertyName propertyName
 
 JSValue JSHTMLAllCollection::item(ExecState& state)
 {
-    if (Optional<uint32_t> index = parseIndex(*state.argument(0).toString(&state)->value(&state).impl()))
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    if (UNLIKELY(state.argumentCount() < 1))
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
+
+    String argument = state.uncheckedArgument(0).toWTFString(&state);
+    if (Optional<uint32_t> index = parseIndex(*argument.impl()))
         return toJS(&state, globalObject(), wrapped().item(index.value()));
-    return namedItems(state, this, Identifier::fromString(&state, state.argument(0).toString(&state)->value(&state)));
+    return namedItems(state, this, Identifier::fromString(&state, argument));
 }
 
 JSValue JSHTMLAllCollection::namedItem(ExecState& state)

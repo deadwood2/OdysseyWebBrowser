@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2011, 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -67,9 +67,11 @@ public:
     void dumpAsText(bool dumpPixels);
     void waitForPolicyDelegate();
     void dumpChildFramesAsText() { m_whatToDump = AllFramesText; }
+    void waitUntilDownloadFinished();
     void waitUntilDone();
     void notifyDone();
     double preciseTime();
+    double timeout() { return m_timeout; }
 
     // Other dumping.
     void dumpBackForwardList() { m_shouldDumpBackForwardListsForAllWindows = true; }
@@ -98,10 +100,16 @@ public:
     void setCanOpenWindows(bool);
     void setCloseRemainingWindowsWhenComplete(bool value) { m_shouldCloseExtraWindows = value; }
     void setXSSAuditorEnabled(bool);
+    void setShadowDOMEnabled(bool);
+    void setCustomElementsEnabled(bool);
+    void setDOMIteratorEnabled(bool);
+    void setWebGL2Enabled(bool);
+    void setFetchAPIEnabled(bool);
     void setAllowUniversalAccessFromFileURLs(bool);
     void setAllowFileAccessFromFileURLs(bool);
     void setPluginsEnabled(bool);
     void setJavaScriptCanAccessClipboard(bool);
+    void setAutomaticLinkDetectionEnabled(bool);
     void setPrivateBrowsingEnabled(bool);
     void setPopupBlockingEnabled(bool);
     void setAuthorAndUserStylesEnabled(bool);
@@ -116,6 +124,8 @@ public:
     void dispatchPendingLoadRequests();
     void setCacheModel(int);
     void setAsynchronousSpellCheckingEnabled(bool);
+    void setDownloadAttributeEnabled(bool);
+    void setAllowsAnySSLCertificate(bool);
 
     // Special DOM functions.
     void clearBackForwardList();
@@ -155,7 +165,9 @@ public:
     void setPrinting() { m_isPrinting = true; }
 
     // Authentication
+    void setRejectsProtectionSpaceAndContinueForAuthenticationChallenges(bool);
     void setHandlesAuthenticationChallenges(bool);
+    void setShouldLogCanAuthenticateAgainstProtectionSpace(bool);
     void setAuthenticationUsername(JSStringRef);
     void setAuthenticationPassword(JSStringRef);
 
@@ -193,6 +205,7 @@ public:
     bool waitToDump() const { return m_waitToDump; }
     void waitToDumpWatchdogTimerFired();
     void invalidateWaitToDumpWatchdogTimer();
+    bool shouldFinishAfterDownload() const { return m_shouldFinishAfterDownload; }
 
     bool shouldAllowEditing() const { return m_shouldAllowEditing; }
 
@@ -240,6 +253,8 @@ public:
 
     void setWindowIsKey(bool);
 
+    void setViewSize(double width, double height);
+
     void callAddChromeInputFieldCallback();
     void callRemoveChromeInputFieldCallback();
     void callFocusWebViewCallback();
@@ -255,10 +270,10 @@ public:
     bool hasCustomFullScreenBehavior() const { return m_customFullScreenBehavior; }
 
     // Web notifications.
-    void grantWebNotificationPermission(JSStringRef origin);
-    void denyWebNotificationPermission(JSStringRef origin);
-    void removeAllWebNotificationPermissions();
-    void simulateWebNotificationClick(JSValueRef notification);
+    static void grantWebNotificationPermission(JSStringRef origin);
+    static void denyWebNotificationPermission(JSStringRef origin);
+    static void removeAllWebNotificationPermissions();
+    static void simulateWebNotificationClick(JSValueRef notification);
 
     // Geolocation.
     void setGeolocationPermission(bool);
@@ -268,7 +283,7 @@ public:
 
     // MediaStream
     void setUserMediaPermission(bool);
-    void setUserMediaPermissionForOrigin(bool permission, JSStringRef url);
+    void setUserMediaPermissionForOrigin(bool permission, JSStringRef origin, JSStringRef parentOrigin);
 
     void setPageVisibility(JSStringRef state);
     void resetPageVisibility();
@@ -287,7 +302,7 @@ public:
     void queueNonLoadingScript(JSStringRef script);
 
     bool secureEventInputIsEnabled() const;
-    
+
     JSValueRef failNextNewCodeBlock();
     JSValueRef numberOfDFGCompiles(JSValueRef theFunction);
     JSValueRef neverInlineFunction(JSValueRef theFunction);
@@ -295,6 +310,7 @@ public:
     bool shouldDecideNavigationPolicyAfterDelay() const { return m_shouldDecideNavigationPolicyAfterDelay; }
     void setShouldDecideNavigationPolicyAfterDelay(bool);
     void setNavigationGesturesEnabled(bool);
+    void setIgnoresViewportScaleLimits(bool);
 
     void runUIScript(JSStringRef script, JSValueRef callback);
     void runUIScriptCallback(unsigned callbackID, JSStringRef result);
@@ -309,6 +325,17 @@ public:
     void callDidRemoveSwipeSnapshotCallback();
 
     void clearTestRunnerCallbacks();
+
+    void accummulateLogsForChannel(JSStringRef channel);
+
+    unsigned imageCountInGeneralPasteboard() const;
+
+    // Gamepads
+    void connectMockGamepad(unsigned index);
+    void disconnectMockGamepad(unsigned index);
+    void setMockGamepadDetails(unsigned index, JSStringRef gamepadID, unsigned axisCount, unsigned buttonCount);
+    void setMockGamepadAxisValue(unsigned index, unsigned axisIndex, double value);
+    void setMockGamepadButtonValue(unsigned index, unsigned buttonIndex, double value);
 
 private:
     TestRunner();
@@ -362,6 +389,7 @@ private:
     double m_databaseMaxQuota;
 
     bool m_shouldDecideNavigationPolicyAfterDelay { false };
+    bool m_shouldFinishAfterDownload { false };
 
     bool m_userStyleSheetEnabled;
     WKRetainPtr<WKStringRef> m_userStyleSheetLocation;

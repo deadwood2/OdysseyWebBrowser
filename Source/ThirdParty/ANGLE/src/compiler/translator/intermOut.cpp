@@ -4,11 +4,18 @@
 // found in the LICENSE file.
 //
 
-#include "compiler/translator/intermediate.h"
+#include "compiler/translator/Intermediate.h"
 #include "compiler/translator/SymbolTable.h"
 
 namespace
 {
+
+void OutputFunction(TInfoSinkBase &out, const char *str, TFunctionSymbolInfo *info)
+{
+    const char *internal = info->getNameObj().isInternal() ? " (internal function)" : "";
+    out << str << internal << ": " << info->getNameObj().getString() << " (symbol id "
+        << info->getId() << ")";
+}
 
 //
 // Two purposes:
@@ -27,18 +34,27 @@ class TOutputTraverser : public TIntermTraverser
 {
   public:
     TOutputTraverser(TInfoSinkBase &i)
-        : sink(i) { }
+        : TIntermTraverser(true, false, false),
+          sink(i)
+    {
+    }
     TInfoSinkBase& sink;
 
   protected:
-    void visitSymbol(TIntermSymbol *);
-    void visitConstantUnion(TIntermConstantUnion *);
-    bool visitBinary(Visit visit, TIntermBinary *);
-    bool visitUnary(Visit visit, TIntermUnary *);
-    bool visitSelection(Visit visit, TIntermSelection *);
-    bool visitAggregate(Visit visit, TIntermAggregate *);
-    bool visitLoop(Visit visit, TIntermLoop *);
-    bool visitBranch(Visit visit, TIntermBranch *);
+    void visitSymbol(TIntermSymbol *) override;
+    void visitConstantUnion(TIntermConstantUnion *) override;
+    bool visitSwizzle(Visit visit, TIntermSwizzle *node) override;
+    bool visitBinary(Visit visit, TIntermBinary *) override;
+    bool visitUnary(Visit visit, TIntermUnary *) override;
+    bool visitTernary(Visit visit, TIntermTernary *node) override;
+    bool visitIfElse(Visit visit, TIntermIfElse *node) override;
+    bool visitSwitch(Visit visit, TIntermSwitch *node) override;
+    bool visitCase(Visit visit, TIntermCase *node) override;
+    bool visitFunctionDefinition(Visit visit, TIntermFunctionDefinition *node) override;
+    bool visitAggregate(Visit visit, TIntermAggregate *) override;
+    bool visitBlock(Visit visit, TIntermBlock *) override;
+    bool visitLoop(Visit visit, TIntermLoop *) override;
+    bool visitBranch(Visit visit, TIntermBranch *) override;
 };
 
 //
@@ -55,26 +71,6 @@ void OutputTreeText(TInfoSinkBase &sink, TIntermNode *node, const int depth)
 }
 
 }  // namespace anonymous
-
-
-TString TType::getCompleteString() const
-{
-    TStringStream stream;
-
-    if (qualifier != EvqTemporary && qualifier != EvqGlobal)
-        stream << getQualifierString() << " ";
-    if (precision != EbpUndefined)
-        stream << getPrecisionString() << " ";
-    if (array)
-        stream << "array[" << getArraySize() << "] of ";
-    if (isMatrix())
-        stream << getCols() << "X" << getRows() << " matrix of ";
-    else if (isVector())
-        stream << getNominalSize() << "-component vector of ";
-
-    stream << getBasicString();
-    return stream.str();
-}
 
 //
 // The rest of the file are the traversal functions.  The last one
@@ -93,6 +89,14 @@ void TOutputTraverser::visitSymbol(TIntermSymbol *node)
     sink << "(" << node->getCompleteString() << ")\n";
 }
 
+bool TOutputTraverser::visitSwizzle(Visit visit, TIntermSwizzle *node)
+{
+    TInfoSinkBase &out = sink;
+    OutputTreeText(out, node, mDepth);
+    out << "vector swizzle";
+    return true;
+}
+
 bool TOutputTraverser::visitBinary(Visit visit, TIntermBinary *node)
 {
     TInfoSinkBase& out = sink;
@@ -101,148 +105,148 @@ bool TOutputTraverser::visitBinary(Visit visit, TIntermBinary *node)
 
     switch (node->getOp())
     {
-      case EOpAssign:
-        out << "move second child to first child";
-        break;
-      case EOpInitialize:
-        out << "initialize first child with second child";
-        break;
-      case EOpAddAssign:
-        out << "add second child into first child";
-        break;
-      case EOpSubAssign:
-        out << "subtract second child into first child";
-        break;
-      case EOpMulAssign:
-        out << "multiply second child into first child";
-        break;
-      case EOpVectorTimesMatrixAssign:
-        out << "matrix mult second child into first child";
-        break;
-      case EOpVectorTimesScalarAssign:
-        out << "vector scale second child into first child";
-        break;
-      case EOpMatrixTimesScalarAssign:
-        out << "matrix scale second child into first child";
-        break;
-      case EOpMatrixTimesMatrixAssign:
-        out << "matrix mult second child into first child";
-        break;
-      case EOpDivAssign:
-        out << "divide second child into first child";
-        break;
-      case EOpIModAssign:
-        out << "modulo second child into first child";
-        break;
-      case EOpBitShiftLeftAssign:
-        out << "bit-wise shift first child left by second child";
-        break;
-      case EOpBitShiftRightAssign:
-        out << "bit-wise shift first child right by second child";
-        break;
-      case EOpBitwiseAndAssign:
-        out << "bit-wise and second child into first child";
-        break;
-      case EOpBitwiseXorAssign:
-        out << "bit-wise xor second child into first child";
-        break;
-      case EOpBitwiseOrAssign:
-        out << "bit-wise or second child into first child";
-        break;
+        case EOpComma:
+            out << "comma";
+            break;
+        case EOpAssign:
+            out << "move second child to first child";
+            break;
+        case EOpInitialize:
+            out << "initialize first child with second child";
+            break;
+        case EOpAddAssign:
+            out << "add second child into first child";
+            break;
+        case EOpSubAssign:
+            out << "subtract second child into first child";
+            break;
+        case EOpMulAssign:
+            out << "multiply second child into first child";
+            break;
+        case EOpVectorTimesMatrixAssign:
+            out << "matrix mult second child into first child";
+            break;
+        case EOpVectorTimesScalarAssign:
+            out << "vector scale second child into first child";
+            break;
+        case EOpMatrixTimesScalarAssign:
+            out << "matrix scale second child into first child";
+            break;
+        case EOpMatrixTimesMatrixAssign:
+            out << "matrix mult second child into first child";
+            break;
+        case EOpDivAssign:
+            out << "divide second child into first child";
+            break;
+        case EOpIModAssign:
+            out << "modulo second child into first child";
+            break;
+        case EOpBitShiftLeftAssign:
+            out << "bit-wise shift first child left by second child";
+            break;
+        case EOpBitShiftRightAssign:
+            out << "bit-wise shift first child right by second child";
+            break;
+        case EOpBitwiseAndAssign:
+            out << "bit-wise and second child into first child";
+            break;
+        case EOpBitwiseXorAssign:
+            out << "bit-wise xor second child into first child";
+            break;
+        case EOpBitwiseOrAssign:
+            out << "bit-wise or second child into first child";
+            break;
 
-      case EOpIndexDirect:
-        out << "direct index";
-        break;
-      case EOpIndexIndirect:
-        out << "indirect index";
-        break;
-      case EOpIndexDirectStruct:
-        out << "direct index for structure";
-        break;
-      case EOpIndexDirectInterfaceBlock:
-        out << "direct index for interface block";
-        break;
-      case EOpVectorSwizzle:
-        out << "vector swizzle";
-        break;
+        case EOpIndexDirect:
+            out << "direct index";
+            break;
+        case EOpIndexIndirect:
+            out << "indirect index";
+            break;
+        case EOpIndexDirectStruct:
+            out << "direct index for structure";
+            break;
+        case EOpIndexDirectInterfaceBlock:
+            out << "direct index for interface block";
+            break;
 
-      case EOpAdd:
-        out << "add";
-        break;
-      case EOpSub:
-        out << "subtract";
-        break;
-      case EOpMul:
-        out << "component-wise multiply";
-        break;
-      case EOpDiv:
-        out << "divide";
-        break;
-      case EOpIMod:
-        out << "modulo";
-        break;
-      case EOpBitShiftLeft:
-        out << "bit-wise shift left";
-        break;
-      case EOpBitShiftRight:
-        out << "bit-wise shift right";
-        break;
-      case EOpBitwiseAnd:
-        out << "bit-wise and";
-        break;
-      case EOpBitwiseXor:
-        out << "bit-wise xor";
-        break;
-      case EOpBitwiseOr:
-        out << "bit-wise or";
-        break;
+        case EOpAdd:
+            out << "add";
+            break;
+        case EOpSub:
+            out << "subtract";
+            break;
+        case EOpMul:
+            out << "component-wise multiply";
+            break;
+        case EOpDiv:
+            out << "divide";
+            break;
+        case EOpIMod:
+            out << "modulo";
+            break;
+        case EOpBitShiftLeft:
+            out << "bit-wise shift left";
+            break;
+        case EOpBitShiftRight:
+            out << "bit-wise shift right";
+            break;
+        case EOpBitwiseAnd:
+            out << "bit-wise and";
+            break;
+        case EOpBitwiseXor:
+            out << "bit-wise xor";
+            break;
+        case EOpBitwiseOr:
+            out << "bit-wise or";
+            break;
 
-      case EOpEqual:
-        out << "Compare Equal";
-        break;
-      case EOpNotEqual:
-        out << "Compare Not Equal";
-        break;
-      case EOpLessThan:
-        out << "Compare Less Than";
-        break;
-      case EOpGreaterThan:
-        out << "Compare Greater Than";
-        break;
-      case EOpLessThanEqual:
-        out << "Compare Less Than or Equal";
-        break;
-      case EOpGreaterThanEqual:
-        out << "Compare Greater Than or Equal";
-        break;
+        case EOpEqual:
+            out << "Compare Equal";
+            break;
+        case EOpNotEqual:
+            out << "Compare Not Equal";
+            break;
+        case EOpLessThan:
+            out << "Compare Less Than";
+            break;
+        case EOpGreaterThan:
+            out << "Compare Greater Than";
+            break;
+        case EOpLessThanEqual:
+            out << "Compare Less Than or Equal";
+            break;
+        case EOpGreaterThanEqual:
+            out << "Compare Greater Than or Equal";
+            break;
 
-      case EOpVectorTimesScalar:
-        out << "vector-scale";
-        break;
-      case EOpVectorTimesMatrix:
-        out << "vector-times-matrix";
-        break;
-      case EOpMatrixTimesVector:
-        out << "matrix-times-vector";
-        break;
-      case EOpMatrixTimesScalar:
-        out << "matrix-scale";
-        break;
-      case EOpMatrixTimesMatrix:
-        out << "matrix-multiply";
-        break;
+        case EOpVectorTimesScalar:
+            out << "vector-scale";
+            break;
+        case EOpVectorTimesMatrix:
+            out << "vector-times-matrix";
+            break;
+        case EOpMatrixTimesVector:
+            out << "matrix-times-vector";
+            break;
+        case EOpMatrixTimesScalar:
+            out << "matrix-scale";
+            break;
+        case EOpMatrixTimesMatrix:
+            out << "matrix-multiply";
+            break;
 
-      case EOpLogicalOr:
-        out << "logical-or";
-        break;
-      case EOpLogicalXor:
-        out << "logical-xor";
-        break;
-      case EOpLogicalAnd:
-        out << "logical-and";
-        break;
-      default:
-        out << "<unknown op>";
+        case EOpLogicalOr:
+            out << "logical-or";
+            break;
+        case EOpLogicalXor:
+            out << "logical-xor";
+            break;
+        case EOpLogicalAnd:
+            out << "logical-and";
+            break;
+        default:
+            out << "<unknown op>";
     }
 
     out << " (" << node->getCompleteString() << ")";
@@ -373,27 +377,38 @@ bool TOutputTraverser::visitUnary(Visit visit, TIntermUnary *node)
     return true;
 }
 
+bool TOutputTraverser::visitFunctionDefinition(Visit visit, TIntermFunctionDefinition *node)
+{
+    TInfoSinkBase &out = sink;
+    OutputTreeText(out, node, mDepth);
+    OutputFunction(out, "Function Definition", node->getFunctionSymbolInfo());
+    out << "\n";
+    return true;
+}
+
 bool TOutputTraverser::visitAggregate(Visit visit, TIntermAggregate *node)
 {
     TInfoSinkBase &out = sink;
 
+    OutputTreeText(out, node, mDepth);
+
     if (node->getOp() == EOpNull)
     {
         out.prefix(EPrefixError);
-        out << "node is still EOpNull!";
+        out << "node is still EOpNull!\n";
         return true;
     }
 
-    OutputTreeText(out, node, mDepth);
 
     switch (node->getOp())
     {
-      case EOpSequence:      out << "Sequence\n"; return true;
-      case EOpComma:         out << "Comma\n"; return true;
-      case EOpFunction:      out << "Function Definition: " << node->getName(); break;
-      case EOpFunctionCall:  out << "Function Call: " << node->getName(); break;
+      case EOpFunctionCall:
+          OutputFunction(out, "Function Call", node->getFunctionSymbolInfo());
+          break;
       case EOpParameters:    out << "Function Parameters: ";              break;
-      case EOpPrototype:     out << "Function Prototype: " << node->getName(); break;
+      case EOpPrototype:
+          OutputFunction(out, "Function Prototype", node->getFunctionSymbolInfo());
+          break;
 
       case EOpConstructFloat: out << "Construct float"; break;
       case EOpConstructVec2:  out << "Construct vec2";  break;
@@ -412,7 +427,13 @@ bool TOutputTraverser::visitAggregate(Visit visit, TIntermAggregate *node)
       case EOpConstructUVec3: out << "Construct uvec3"; break;
       case EOpConstructUVec4: out << "Construct uvec4"; break;
       case EOpConstructMat2:  out << "Construct mat2";  break;
+      case EOpConstructMat2x3:  out << "Construct mat2x3";  break;
+      case EOpConstructMat2x4:  out << "Construct mat2x4";  break;
+      case EOpConstructMat3x2:  out << "Construct mat3x2";  break;
       case EOpConstructMat3:  out << "Construct mat3";  break;
+      case EOpConstructMat3x4:  out << "Construct mat3x4";  break;
+      case EOpConstructMat4x2:  out << "Construct mat4x2";  break;
+      case EOpConstructMat4x3:  out << "Construct mat4x3";  break;
       case EOpConstructMat4:  out << "Construct mat4";  break;
       case EOpConstructStruct:  out << "Construct structure";  break;
 
@@ -454,7 +475,7 @@ bool TOutputTraverser::visitAggregate(Visit visit, TIntermAggregate *node)
         out << "Bad aggregation op";
     }
 
-    if (node->getOp() != EOpSequence && node->getOp() != EOpParameters)
+    if (node->getOp() != EOpParameters)
         out << " (" << node->getCompleteString() << ")";
 
     out << "\n";
@@ -462,14 +483,56 @@ bool TOutputTraverser::visitAggregate(Visit visit, TIntermAggregate *node)
     return true;
 }
 
-bool TOutputTraverser::visitSelection(Visit visit, TIntermSelection *node)
+bool TOutputTraverser::visitBlock(Visit visit, TIntermBlock *node)
+{
+    TInfoSinkBase &out = sink;
+
+    OutputTreeText(out, node, mDepth);
+    out << "Code block\n";
+
+    return true;
+}
+
+bool TOutputTraverser::visitTernary(Visit visit, TIntermTernary *node)
 {
     TInfoSinkBase &out = sink;
 
     OutputTreeText(out, node, mDepth);
 
-    out << "Test condition and select";
+    out << "Ternary selection";
     out << " (" << node->getCompleteString() << ")\n";
+
+    ++mDepth;
+
+    OutputTreeText(sink, node, mDepth);
+    out << "Condition\n";
+    node->getCondition()->traverse(this);
+
+    OutputTreeText(sink, node, mDepth);
+    if (node->getTrueExpression())
+    {
+        out << "true case\n";
+        node->getTrueExpression()->traverse(this);
+    }
+    if (node->getFalseExpression())
+    {
+        OutputTreeText(sink, node, mDepth);
+        out << "false case\n";
+        node->getFalseExpression()->traverse(this);
+    }
+
+    --mDepth;
+
+    return false;
+}
+
+bool TOutputTraverser::visitIfElse(Visit visit, TIntermIfElse *node)
+{
+    TInfoSinkBase &out = sink;
+
+    OutputTreeText(out, node, mDepth);
+
+    out << "If test\n";
 
     ++mDepth;
 
@@ -498,6 +561,35 @@ bool TOutputTraverser::visitSelection(Visit visit, TIntermSelection *node)
     --mDepth;
 
     return false;
+}
+
+bool TOutputTraverser::visitSwitch(Visit visit, TIntermSwitch *node)
+{
+    TInfoSinkBase &out = sink;
+
+    OutputTreeText(out, node, mDepth);
+
+    out << "Switch\n";
+
+    return true;
+}
+
+bool TOutputTraverser::visitCase(Visit visit, TIntermCase *node)
+{
+    TInfoSinkBase &out = sink;
+
+    OutputTreeText(out, node, mDepth);
+
+    if (node->getCondition() == nullptr)
+    {
+        out << "Default\n";
+    }
+    else
+    {
+        out << "Case\n";
+    }
+
+    return true;
 }
 
 void TOutputTraverser::visitConstantUnion(TIntermConstantUnion *node)

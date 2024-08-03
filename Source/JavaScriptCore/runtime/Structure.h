@@ -49,7 +49,6 @@
 #include <wtf/CompilationThread.h>
 #include <wtf/PassRefPtr.h>
 #include <wtf/PrintStream.h>
-#include <wtf/RefCounted.h>
 
 namespace WTF {
 
@@ -110,7 +109,7 @@ public:
     {
     }
     
-    virtual void dump(PrintStream& out) const override;
+    void dump(PrintStream& out) const override;
 
 private:
     const Structure* m_structure;
@@ -168,7 +167,8 @@ public:
 
     static void dumpStatistics();
 
-    JS_EXPORT_PRIVATE static Structure* addPropertyTransition(VM&, Structure*, PropertyName, unsigned attributes, PropertyOffset&, PutPropertySlot::Context = PutPropertySlot::UnknownContext, DeferredStructureTransitionWatchpointFire* = nullptr);
+    JS_EXPORT_PRIVATE static Structure* addPropertyTransition(VM&, Structure*, PropertyName, unsigned attributes, PropertyOffset&);
+    JS_EXPORT_PRIVATE static Structure* addNewPropertyTransition(VM&, Structure*, PropertyName, unsigned attributes, PropertyOffset&, PutPropertySlot::Context = PutPropertySlot::UnknownContext, DeferredStructureTransitionWatchpointFire* = nullptr);
     static Structure* addPropertyTransitionToExistingStructureConcurrently(Structure*, UniquedStringImpl* uid, unsigned attributes, PropertyOffset&);
     JS_EXPORT_PRIVATE static Structure* addPropertyTransitionToExistingStructure(Structure*, PropertyName, unsigned attributes, PropertyOffset&);
     static Structure* removePropertyTransition(VM&, Structure*, PropertyName, PropertyOffset&);
@@ -183,7 +183,7 @@ public:
 
     JS_EXPORT_PRIVATE bool isSealed(VM&);
     JS_EXPORT_PRIVATE bool isFrozen(VM&);
-    bool isExtensible() const { return !preventExtensions(); }
+    bool isStructureExtensible() const { return !didPreventExtensions(); }
     bool putWillGrowOutOfLineStorage();
     size_t suggestedNewOutOfLineStorageCapacity(); 
 
@@ -219,6 +219,11 @@ public:
             && typeInfo().newImpurePropertyFiresWatchpoints();
     }
 
+    bool isImmutablePrototypeExoticObject()
+    {
+        return typeInfo().isImmutablePrototypeExoticObject();
+    }
+
     // We use SlowPath in GetByIdStatus for structures that may get new impure properties later to prevent
     // DFG from inlining property accesses since structures don't transition when a new impure property appears.
     bool takesSlowPathInDFGForImpureProperty()
@@ -245,6 +250,9 @@ public:
     NonPropertyTransition suggestedArrayStorageTransition() const;
         
     JSGlobalObject* globalObject() const { return m_globalObject.get(); }
+
+    // NOTE: This method should only be called during the creation of structures, since the global
+    // object of a structure is presumed to be immutable in a bunch of places.
     void setGlobalObject(VM& vm, JSGlobalObject* globalObject) { m_globalObject.set(vm, this, globalObject); }
         
     JSValue storedPrototype() const { return m_prototype.get(); }
@@ -256,16 +264,35 @@ public:
     StructureChain* prototypeChain(VM&, JSGlobalObject*) const;
     StructureChain* prototypeChain(ExecState*) const;
     static void visitChildren(JSCell*, SlotVisitor&);
+    
+    // A Structure is cheap to mark during GC if doing so would only add a small and bounded amount
+    // to our heap footprint. For example, if the structure refers to a global object that is not
+    // yet marked, then as far as we know, the decision to mark this Structure would lead to a large
+    // increase in footprint because no other object refers to that global object. This method
+    // returns true if all user-controlled (and hence unbounded in size) objects referenced from the
+    // Structure are already marked.
+    bool isCheapDuringGC();
+    
+    // Returns true if this structure is now marked.
+    bool markIfCheap(SlotVisitor&);
         
     // Will just the prototype chain intercept this property access?
     JS_EXPORT_PRIVATE bool prototypeChainMayInterceptStoreTo(VM&, PropertyName);
-        
+    
+    bool hasRareData() const
+    {
+        return isRareData(m_previousOrRareData.get());
+    }
+    
     Structure* previousID() const
     {
         ASSERT(structure()->classInfo() == info());
-        if (hasRareData())
-            return rareData()->previousID();
-        return previous();
+        // This is so written because it's used concurrently. We only load from m_previousOrRareData
+        // once, and this load is guaranteed atomic.
+        JSCell* cell = m_previousOrRareData.get();
+        if (isRareData(cell))
+            return static_cast<StructureRareData*>(cell)->previousID();
+        return static_cast<Structure*>(cell);
     }
     bool transitivelyTransitionedFrom(Structure* structureToFind);
 
@@ -377,7 +404,7 @@ public:
     void setCachedPropertyNameEnumerator(VM&, JSPropertyNameEnumerator*);
     JSPropertyNameEnumerator* cachedPropertyNameEnumerator() const;
     bool canCachePropertyNameEnumerator() const;
-    bool canAccessPropertiesQuickly() const;
+    bool canAccessPropertiesQuicklyForEnumeration() const;
 
     void getPropertyNamesFromStructure(VM&, PropertyNameArray&, EnumerationMode);
 
@@ -415,6 +442,11 @@ public:
     static ptrdiff_t indexingTypeOffset()
     {
         return OBJECT_OFFSETOF(Structure, m_blob) + StructureIDBlob::indexingTypeOffset();
+    }
+    
+    static ptrdiff_t propertyTableUnsafeOffset()
+    {
+        return OBJECT_OFFSETOF(Structure, m_propertyTableUnsafe);
     }
 
     static Structure* createStructure(VM&);
@@ -577,17 +609,16 @@ public:
     DEFINE_BITFIELD(bool, isPinnedPropertyTable, IsPinnedPropertyTable, 1, 2);
     DEFINE_BITFIELD(bool, hasGetterSetterProperties, HasGetterSetterProperties, 1, 3);
     DEFINE_BITFIELD(bool, hasReadOnlyOrGetterSetterPropertiesExcludingProto, HasReadOnlyOrGetterSetterPropertiesExcludingProto, 1, 4);
-    DEFINE_BITFIELD(bool, hasNonEnumerableProperties, HasNonEnumerableProperties, 1, 5);
+    DEFINE_BITFIELD(bool, isQuickPropertyAccessAllowedForEnumeration, IsQuickPropertyAccessAllowedForEnumeration, 1, 5);
     DEFINE_BITFIELD(unsigned, attributesInPrevious, AttributesInPrevious, 14, 6);
-    DEFINE_BITFIELD(bool, preventExtensions, PreventExtensions, 1, 20);
+    DEFINE_BITFIELD(bool, didPreventExtensions, DidPreventExtensions, 1, 20);
     DEFINE_BITFIELD(bool, didTransition, DidTransition, 1, 21);
-    DEFINE_BITFIELD(bool, staticFunctionsReified, StaticFunctionsReified, 1, 22);
-    DEFINE_BITFIELD(bool, hasRareData, HasRareData, 1, 23);
-    DEFINE_BITFIELD(bool, hasBeenFlattenedBefore, HasBeenFlattenedBefore, 1, 24);
-    DEFINE_BITFIELD(bool, hasCustomGetterSetterProperties, HasCustomGetterSetterProperties, 1, 25);
-    DEFINE_BITFIELD(bool, didWatchInternalProperties, DidWatchInternalProperties, 1, 26);
-    DEFINE_BITFIELD(bool, transitionWatchpointIsLikelyToBeFired, TransitionWatchpointIsLikelyToBeFired, 1, 27);
-    DEFINE_BITFIELD(bool, hasBeenDictionary, HasBeenDictionary, 1, 28);
+    DEFINE_BITFIELD(bool, staticPropertiesReified, StaticPropertiesReified, 1, 22);
+    DEFINE_BITFIELD(bool, hasBeenFlattenedBefore, HasBeenFlattenedBefore, 1, 23);
+    DEFINE_BITFIELD(bool, hasCustomGetterSetterProperties, HasCustomGetterSetterProperties, 1, 24);
+    DEFINE_BITFIELD(bool, didWatchInternalProperties, DidWatchInternalProperties, 1, 25);
+    DEFINE_BITFIELD(bool, transitionWatchpointIsLikelyToBeFired, TransitionWatchpointIsLikelyToBeFired, 1, 26);
+    DEFINE_BITFIELD(bool, hasBeenDictionary, HasBeenDictionary, 1, 27);
 
 private:
     friend class LLIntOffsetsExtractor;
@@ -673,11 +704,11 @@ private:
     bool isValid(ExecState*, StructureChain* cachedPrototypeChain) const;
         
     void pin();
-
-    Structure* previous() const
+    void pinForCaching();
+    
+    bool isRareData(JSCell* cell) const
     {
-        ASSERT(!hasRareData());
-        return static_cast<Structure*>(m_previousOrRareData.get());
+        return cell && cell->structureID() != structureID();
     }
 
     StructureRareData* rareData() const
@@ -716,6 +747,7 @@ private:
     StructureTransitionTable m_transitionTable;
 
     // Should be accessed through propertyTable(). During GC, it may be set to 0 by another thread.
+    // During a Heap Snapshot GC we avoid clearing the table so it is safe to use.
     WriteBarrier<PropertyTable> m_propertyTableUnsafe;
 
     WriteBarrier<InferredTypeTable> m_inferredTypeTable;

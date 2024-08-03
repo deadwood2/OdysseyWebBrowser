@@ -33,6 +33,7 @@
 #include <gtk/gtk.h>
 #include <libintl.h>
 #include <libsoup/soup.h>
+#include <wtf/CurrentTime.h>
 
 #if PLATFORM(X11)
 #include <X11/Xlib.h>
@@ -59,16 +60,7 @@ public:
         bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR);
         bind_textdomain_codeset(GETTEXT_PACKAGE, "UTF-8");
 
-        SoupNetworkSession::defaultSession().setSSLPolicy(SoupNetworkSession::SSLUseSystemCAFile);
         return true;
-    }
-
-    void platformFinalize() override
-    {
-        if (SoupCache* soupCache = SoupNetworkSession::defaultSession().cache()) {
-            soup_cache_flush(soupCache);
-            soup_cache_dump(soupCache);
-        }
     }
 };
 

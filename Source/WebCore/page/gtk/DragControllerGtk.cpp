@@ -26,16 +26,12 @@
 #include "config.h"
 #include "DragController.h"
 
-#include "DataObjectGtk.h"
 #include "DataTransfer.h"
 #include "Document.h"
-#include "DocumentFragment.h"
 #include "DragData.h"
 #include "Editor.h"
 #include "Element.h"
 #include "Frame.h"
-#include "FrameView.h"
-#include "Page.h"
 #include "Pasteboard.h"
 #include "markup.h"
 
@@ -50,9 +46,9 @@ const int DragController::DragIconBottomInset = 3;
 
 const float DragController::DragImageAlpha = 0.75f;
 
-bool DragController::isCopyKeyDown(DragData&)
+bool DragController::isCopyKeyDown(DragData& dragData)
 {
-    return false;
+    return dragData.flags() & DragApplicationIsCopyKeyDown;
 }
 
 DragOperation DragController::dragOperation(DragData& dragData)

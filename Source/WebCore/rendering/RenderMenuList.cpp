@@ -70,7 +70,7 @@ static size_t selectedOptionCount(const RenderMenuList& renderMenuList)
 }
 #endif
 
-RenderMenuList::RenderMenuList(HTMLSelectElement& element, Ref<RenderStyle>&& style)
+RenderMenuList::RenderMenuList(HTMLSelectElement& element, RenderStyle&& style)
     : RenderFlexibleBox(element, WTFMove(style))
     , m_buttonText(nullptr)
     , m_innerBlock(nullptr)
@@ -109,7 +109,7 @@ void RenderMenuList::createInnerBlock()
 
 void RenderMenuList::adjustInnerStyle()
 {
-    RenderStyle& innerStyle = m_innerBlock->style();
+    auto& innerStyle = m_innerBlock->mutableStyle();
     innerStyle.setFlexGrow(1);
     innerStyle.setFlexShrink(1);
     // min-width: 0; is needed for correct shrinking.
@@ -215,17 +215,17 @@ void RenderMenuList::updateOptionsWidth()
         if (theme().popupOptionSupportsTextIndent()) {
             // Add in the option's text indent.  We can't calculate percentage values for now.
             float optionWidth = 0;
-            if (RenderStyle* optionStyle = element->computedStyle())
+            if (auto* optionStyle = element->computedStyle())
                 optionWidth += minimumValueForLength(optionStyle->textIndent(), 0);
             if (!text.isEmpty()) {
                 const FontCascade& font = style().fontCascade();
-                TextRun run = RenderBlock::constructTextRun(this, font, text, style(), AllowTrailingExpansion | ForbidLeadingExpansion, DefaultTextRunFlags);
+                TextRun run = RenderBlock::constructTextRun(text, style());
                 optionWidth += font.width(run);
             }
             maxOptionWidth = std::max(maxOptionWidth, optionWidth);
         } else if (!text.isEmpty()) {
             const FontCascade& font = style().fontCascade();
-            TextRun run = RenderBlock::constructTextRun(this, font, text, style(), AllowTrailingExpansion | ForbidLeadingExpansion, DefaultTextRunFlags);
+            TextRun run = RenderBlock::constructTextRun(text, style());
             maxOptionWidth = std::max(maxOptionWidth, font.width(run));
         }
     }
@@ -265,7 +265,8 @@ void RenderMenuList::setTextFromOption(int optionIndex)
         Element* element = listItems[i];
         if (is<HTMLOptionElement>(*element)) {
             text = downcast<HTMLOptionElement>(*element).textIndentedToRespectGroupLabel();
-            m_optionStyle = element->computedStyle();
+            auto* style = element->computedStyle();
+            m_optionStyle = style ? RenderStyle::clonePtr(*style) : nullptr;
         }
     }
 
@@ -468,7 +469,7 @@ String RenderMenuList::itemAccessibilityText(unsigned listIndex) const
     const Vector<HTMLElement*>& listItems = selectElement().listItems();
     if (listIndex >= listItems.size())
         return String();
-    return listItems[listIndex]->fastGetAttribute(aria_labelAttr);
+    return listItems[listIndex]->attributeWithoutSynchronization(aria_labelAttr);
 }
     
 String RenderMenuList::itemToolTip(unsigned listIndex) const
@@ -518,7 +519,7 @@ PopupMenuStyle RenderMenuList::itemStyle(unsigned listIndex) const
     bool itemHasCustomBackgroundColor;
     getItemBackgroundColor(listIndex, itemBackgroundColor, itemHasCustomBackgroundColor);
 
-    RenderStyle& style = *element->computedStyle();
+    auto& style = *element->computedStyle();
     return PopupMenuStyle(style.visitedDependentColor(CSSPropertyColor), itemBackgroundColor, style.fontCascade(), style.visibility() == VISIBLE,
         style.display() == NONE, true, style.textIndent(), style.direction(), isOverride(style.unicodeBidi()),
         itemHasCustomBackgroundColor ? PopupMenuStyle::CustomBackgroundColor : PopupMenuStyle::DefaultBackgroundColor);
@@ -577,7 +578,7 @@ PassRefPtr<Scrollbar> RenderMenuList::createScrollbar(ScrollableArea& scrollable
         widget = RenderScrollbar::createCustomScrollbar(scrollableArea, orientation, &selectElement());
     else
         widget = Scrollbar::createNativeScrollbar(scrollableArea, orientation, controlSize);
-    return widget.release();
+    return WTFMove(widget);
 }
 
 int RenderMenuList::clientInsetLeft() const
@@ -590,24 +591,27 @@ int RenderMenuList::clientInsetRight() const
     return 0;
 }
 
+const int endOfLinePadding = 2;
+
 LayoutUnit RenderMenuList::clientPaddingLeft() const
 {
-    return paddingLeft() + m_innerBlock->paddingLeft();
-}
-
-const int endOfLinePadding = 2;
-LayoutUnit RenderMenuList::clientPaddingRight() const
-{
-    if (style().appearance() == MenulistPart || style().appearance() == MenulistButtonPart) {
+    if ((style().appearance() == MenulistPart || style().appearance() == MenulistButtonPart) && style().direction() == RTL) {
         // For these appearance values, the theme applies padding to leave room for the
         // drop-down button. But leaving room for the button inside the popup menu itself
         // looks strange, so we return a small default padding to avoid having a large empty
         // space appear on the side of the popup menu.
         return endOfLinePadding;
     }
-
     // If the appearance isn't MenulistPart, then the select is styled (non-native), so
     // we want to return the user specified padding.
+    return paddingLeft() + m_innerBlock->paddingLeft();
+}
+
+LayoutUnit RenderMenuList::clientPaddingRight() const
+{
+    if ((style().appearance() == MenulistPart || style().appearance() == MenulistButtonPart) && style().direction() == LTR)
+        return endOfLinePadding;
+
     return paddingRight() + m_innerBlock->paddingRight();
 }
 

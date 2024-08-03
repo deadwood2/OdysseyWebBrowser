@@ -31,6 +31,7 @@
 #include "GenericTaskQueue.h"
 #include "RealtimeMediaSource.h"
 #include "Timer.h"
+#include <wtf/Function.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/WeakPtr.h>
 
@@ -85,7 +86,7 @@ protected:
     void setVideoSampleBufferDelegate(AVCaptureVideoDataOutput*);
     void setAudioSampleBufferDelegate(AVCaptureAudioDataOutput*);
 
-    void scheduleDeferredTask(std::function<void ()>);
+    void scheduleDeferredTask(Function<void ()>&&);
 
 private:
     void setupSession();

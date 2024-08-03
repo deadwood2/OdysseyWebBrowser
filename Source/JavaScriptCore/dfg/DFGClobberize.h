@@ -107,13 +107,35 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     if (edgesUseStructure(graph, node))
         read(JSCell_structureID);
     
+    // We allow the runtime to perform a stack scan at any time. We don't model which nodes get implemented
+    // by calls into the runtime. For debugging we might replace the implementation of any node with a call
+    // to the runtime, and that call may walk stack. Therefore, each node must read() anything that a stack
+    // scan would read. That's what this does.
+    for (InlineCallFrame* inlineCallFrame = node->origin.semantic.inlineCallFrame; inlineCallFrame; inlineCallFrame = inlineCallFrame->directCaller.inlineCallFrame) {
+        if (inlineCallFrame->isClosureCall)
+            read(AbstractHeap(Stack, inlineCallFrame->stackOffset + CallFrameSlot::callee));
+        if (inlineCallFrame->isVarargs())
+            read(AbstractHeap(Stack, inlineCallFrame->stackOffset + CallFrameSlot::argumentCount));
+    }
+
+    // We don't want to specifically account which nodes can read from the scope
+    // when the debugger is enabled. It's helpful to just claim all nodes do.
+    // Specifically, if a node allocates, this may call into the debugger's machinery.
+    // The debugger's machinery is free to take a stack trace and try to read from
+    // a scope which is expected to be flushed to the stack.
+    if (graph.hasDebuggerEnabled()) {
+        ASSERT(!node->origin.semantic.inlineCallFrame);
+        read(AbstractHeap(Stack, graph.m_codeBlock->scopeRegister()));
+    }
+        
+    
     switch (node->op()) {
     case JSConstant:
     case DoubleConstant:
     case Int52Constant:
         def(PureValue(node, node->constant()));
         return;
-        
+
     case Identity:
     case Phantom:
     case Check:
@@ -121,26 +143,30 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case CheckStructureImmediate:
         return;
         
+    case LazyJSConstant:
+        // We should enable CSE of LazyJSConstant. It's a little annoying since LazyJSValue has
+        // more bits than we currently have in PureValue.
+        return;
+        
     case ArithIMul:
-    case ArithAbs:
-    case ArithClz32:
     case ArithMin:
     case ArithMax:
     case ArithPow:
-    case ArithSqrt:
-    case ArithFRound:
-    case ArithSin:
-    case ArithCos:
-    case ArithLog:
     case GetScope:
     case SkipScope:
+    case GetGlobalObject:
     case StringCharCodeAt:
     case CompareStrictEq:
+    case CompareEqPtr:
+    case IsJSArray:
+    case IsEmpty:
     case IsUndefined:
     case IsBoolean:
     case IsNumber:
     case IsString:
     case IsObject:
+    case IsRegExpObject:
+    case IsTypedArrayView:
     case LogicalNot:
     case CheckInBounds:
     case DoubleRep:
@@ -155,6 +181,37 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case BottomValue:
     case TypeOf:
         def(PureValue(node));
+        return;
+
+    case ArithCos:
+    case ArithFRound:
+    case ArithLog:
+    case ArithSin:
+    case ArithSqrt:
+        if (node->child1().useKind() == DoubleRepUse)
+            def(PureValue(node));
+        else {
+            read(World);
+            write(Heap);
+        }
+        return;
+
+    case ArithAbs:
+        if (node->child1().useKind() == Int32Use || node->child1().useKind() == DoubleRepUse)
+            def(PureValue(node));
+        else {
+            read(World);
+            write(Heap);
+        }
+        return;
+
+    case ArithClz32:
+        if (node->child1().useKind() == Int32Use || node->child1().useKind() == KnownInt32Use)
+            def(PureValue(node));
+        else {
+            read(World);
+            write(Heap);
+        }
         return;
 
     case BitAnd:
@@ -175,7 +232,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         read(MathDotRandomState);
         write(MathDotRandomState);
         return;
-        
+
     case HasGenericProperty:
     case HasStructureProperty:
     case GetEnumerableLength:
@@ -299,6 +356,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case ArithRound:
     case ArithFloor:
     case ArithCeil:
+    case ArithTrunc:
         def(PureValue(node, static_cast<uintptr_t>(node->arithRoundingMode())));
         return;
 
@@ -310,8 +368,8 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         def(PureValue(CheckNotEmpty, AdjacencyList(AdjacencyList::Fixed, node->child1())));
         return;
 
-    case CheckIdent:
-        def(PureValue(CheckIdent, AdjacencyList(AdjacencyList::Fixed, node->child1()), node->uidOperand()));
+    case CheckStringIdent:
+        def(PureValue(CheckStringIdent, AdjacencyList(AdjacencyList::Fixed, node->child1()), node->uidOperand()));
         return;
 
     case ConstantStoragePointer:
@@ -337,11 +395,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case CheckTierUpInLoop:
     case CheckTierUpAtReturn:
     case CheckTierUpAndOSREnter:
-    case CheckTierUpWithNestedTriggerAndOSREnter:
     case LoopHint:
-    case Breakpoint:
-    case ProfileWillCall:
-    case ProfileDidCall:
     case ProfileType:
     case ProfileControlFlow:
     case StoreBarrier:
@@ -393,16 +447,12 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         write(HeapObjectCount);
         return;
 
+    case CallObjectConstructor:
     case ToThis:
     case CreateThis:
         read(MiscFields);
         read(HeapObjectCount);
         write(HeapObjectCount);
-        return;
-
-    case VarInjectionWatchpoint:
-        read(MiscFields);
-        def(HeapLocation(VarInjectionWatchpointLoc, MiscFields), LazyNode(node));
         return;
 
     case IsObjectOrNull:
@@ -417,7 +467,11 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         
     case GetById:
     case GetByIdFlush:
+    case GetByIdWithThis:
+    case GetByValWithThis:
     case PutById:
+    case PutByIdWithThis:
+    case PutByValWithThis:
     case PutByIdFlush:
     case PutByIdDirect:
     case PutGetterById:
@@ -425,6 +479,8 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case PutGetterSetterById:
     case PutGetterByVal:
     case PutSetterByVal:
+    case DeleteById:
+    case DeleteByVal:
     case ArrayPush:
     case ArrayPop:
     case Call:
@@ -439,6 +495,18 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case ToPrimitive:
     case In:
     case ValueAdd:
+    case SetFunctionName:
+    case GetDynamicVar:
+    case PutDynamicVar:
+    case ResolveScope:
+        read(World);
+        write(Heap);
+        return;
+
+    case CallEval:
+        ASSERT(!node->origin.semantic.inlineCallFrame);
+        read(AbstractHeap(Stack, graph.m_codeBlock->scopeRegister()));
+        read(AbstractHeap(Stack, virtualRegisterForArgument(0)));
         read(World);
         write(Heap);
         return;
@@ -461,13 +529,13 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         return;
         
     case GetCallee:
-        read(AbstractHeap(Stack, JSStack::Callee));
-        def(HeapLocation(StackLoc, AbstractHeap(Stack, JSStack::Callee)), LazyNode(node));
+        read(AbstractHeap(Stack, CallFrameSlot::callee));
+        def(HeapLocation(StackLoc, AbstractHeap(Stack, CallFrameSlot::callee)), LazyNode(node));
         return;
         
-    case GetArgumentCount:
-        read(AbstractHeap(Stack, JSStack::ArgumentCount));
-        def(HeapLocation(StackPayloadLoc, AbstractHeap(Stack, JSStack::ArgumentCount)), LazyNode(node));
+    case GetArgumentCountIncludingThis:
+        read(AbstractHeap(Stack, CallFrameSlot::argumentCount));
+        def(HeapLocation(StackPayloadLoc, AbstractHeap(Stack, CallFrameSlot::argumentCount)), LazyNode(node));
         return;
 
     case GetRestLength:
@@ -635,7 +703,8 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         return;
     }
         
-    case GetMyArgumentByVal: {
+    case GetMyArgumentByVal:
+    case GetMyArgumentByValOutOfBounds: {
         read(Stack);
         // FIXME: It would be trivial to have a def here.
         // https://bugs.webkit.org/show_bug.cgi?id=143077
@@ -798,13 +867,6 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         def(HeapLocation(ButterflyLoc, JSObject_butterfly, node->child1()), LazyNode(node));
         return;
 
-    case GetButterflyReadOnly:
-        // This rule is separate to prevent CSE of GetButterfly with GetButterflyReadOnly. But in reality,
-        // this works because we don't introduce GetButterflyReadOnly until the bitter end of compilation.
-        read(JSObject_butterfly);
-        def(HeapLocation(ButterflyReadOnlyLoc, JSObject_butterfly, node->child1()), LazyNode(node));
-        return;
-        
     case Arrayify:
     case ArrayifyToStructure:
         read(JSCell_structureID);
@@ -838,13 +900,20 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         def(HeapLocation(NamedPropertyLoc, heap, node->child2()), LazyNode(node));
         return;
     }
-        
+
+    case TryGetById: {
+        read(Heap);
+        return;
+    }
+
     case MultiGetByOffset: {
         read(JSCell_structureID);
         read(JSObject_butterfly);
         AbstractHeap heap(NamedProperties, node->multiGetByOffsetData().identifierNumber);
         read(heap);
-        def(HeapLocation(NamedPropertyLoc, heap, node->child1()), LazyNode(node));
+        // FIXME: We cannot def() for MultiGetByOffset because CSE is not smart enough to decay it
+        // to a CheckStructure.
+        // https://bugs.webkit.org/show_bug.cgi?id=159859
         return;
     }
         
@@ -907,6 +976,20 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case PutClosureVar:
         write(AbstractHeap(ScopeProperties, node->scopeOffset().offset()));
         def(HeapLocation(ClosureVariableLoc, AbstractHeap(ScopeProperties, node->scopeOffset().offset()), node->child1()), LazyNode(node->child2().node()));
+        return;
+
+    case GetRegExpObjectLastIndex:
+        read(RegExpObject_lastIndex);
+        def(HeapLocation(RegExpObjectLastIndexLoc, RegExpObject_lastIndex, node->child1()), LazyNode(node));
+        return;
+
+    case SetRegExpObjectLastIndex:
+        write(RegExpObject_lastIndex);
+        def(HeapLocation(RegExpObjectLastIndexLoc, RegExpObject_lastIndex, node->child1()), LazyNode(node->child2().node()));
+        return;
+
+    case RecordRegExpCachedResult:
+        write(RegExpState);
         return;
         
     case GetFromArguments: {
@@ -1038,9 +1121,16 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         return;
     }
 
-    case CopyRest: {
+    case CreateRest: {
+        if (!graph.isWatchingHavingABadTimeWatchpoint(node)) {
+            // This means we're already having a bad time.
+            read(World);
+            write(Heap);
+            return;
+        }
         read(Stack);
-        write(Heap);
+        read(HeapObjectCount);
+        write(HeapObjectCount);
         return;
     }
 
@@ -1056,8 +1146,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         read(HeapObjectCount);
         write(HeapObjectCount);
         return;
-    
-    case NewArrowFunction:
+
     case NewFunction:
     case NewGeneratorFunction:
         if (node->castOperand<FunctionExecutable*>()->singletonFunction()->isStillValid())
@@ -1068,16 +1157,27 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
 
     case RegExpExec:
     case RegExpTest:
-        read(RegExpState);
-        write(RegExpState);
+        if (node->child2().useKind() == RegExpObjectUse
+            && node->child3().useKind() == StringUse) {
+            read(RegExpState);
+            read(RegExpObject_lastIndex);
+            write(RegExpState);
+            write(RegExpObject_lastIndex);
+            return;
+        }
+        read(World);
+        write(Heap);
         return;
 
     case StringReplace:
+    case StringReplaceRegExp:
         if (node->child1().useKind() == StringUse
             && node->child2().useKind() == RegExpObjectUse
             && node->child3().useKind() == StringUse) {
             read(RegExpState);
+            read(RegExpObject_lastIndex);
             write(RegExpState);
+            write(RegExpObject_lastIndex);
             return;
         }
         read(World);
@@ -1098,6 +1198,11 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case CompareLessEq:
     case CompareGreater:
     case CompareGreaterEq:
+        if (node->isBinaryUseKind(StringUse)) {
+            read(HeapObjectCount);
+            write(HeapObjectCount);
+            return;
+        }
         if (!node->isBinaryUseKind(UntypedUse)) {
             def(PureValue(node));
             return;
@@ -1105,6 +1210,12 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         read(World);
         write(Heap);
         return;
+
+    case ToNumber: {
+        read(World);
+        write(Heap);
+        return;
+    }
         
     case ToString:
     case CallStringConstructor:
@@ -1134,6 +1245,32 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case CheckWatchdogTimer:
         read(InternalState);
         write(InternalState);
+        return;
+        
+    case LogShadowChickenPrologue:
+    case LogShadowChickenTail:
+        write(SideState);
+        return;
+
+    case MapHash:
+        def(PureValue(node));
+        return;
+    case GetMapBucket: {
+        read(MiscFields);
+        Edge& mapEdge = node->child1();
+        Edge& keyEdge = node->child2();
+        def(HeapLocation(MapBucketLoc, MiscFields, mapEdge, keyEdge), LazyNode(node));
+        return;
+    }
+    case LoadFromJSMapBucket: {
+        read(MiscFields);
+        Edge& bucketEdge = node->child1();
+        def(HeapLocation(JSMapGetLoc, MiscFields, bucketEdge), LazyNode(node));
+        return;
+    }
+    case IsNonEmptyMapBucket:
+        read(MiscFields);
+        def(HeapLocation(MapHasLoc, MiscFields, node->child1()), LazyNode(node));
         return;
         
     case LastNodeType:

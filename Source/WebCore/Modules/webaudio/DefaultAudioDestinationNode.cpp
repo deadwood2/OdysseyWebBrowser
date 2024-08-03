@@ -106,30 +106,30 @@ void DefaultAudioDestinationNode::startRendering()
         m_destination->start();
 }
 
-void DefaultAudioDestinationNode::resume(std::function<void()> function)
+void DefaultAudioDestinationNode::resume(Function<void ()>&& function)
 {
     ASSERT(isInitialized());
     if (isInitialized())
         m_destination->start();
     if (auto scriptExecutionContext = context().scriptExecutionContext())
-        scriptExecutionContext->postTask(function);
+        scriptExecutionContext->postTask(WTFMove(function));
 }
 
-void DefaultAudioDestinationNode::suspend(std::function<void()> function)
+void DefaultAudioDestinationNode::suspend(Function<void ()>&& function)
 {
     ASSERT(isInitialized());
     if (isInitialized())
         m_destination->stop();
     if (auto scriptExecutionContext = context().scriptExecutionContext())
-        scriptExecutionContext->postTask(function);
+        scriptExecutionContext->postTask(WTFMove(function));
 }
 
-void DefaultAudioDestinationNode::close(std::function<void()> function)
+void DefaultAudioDestinationNode::close(Function<void()>&& function)
 {
     ASSERT(isInitialized());
     uninitialize();
     if (auto scriptExecutionContext = context().scriptExecutionContext())
-        scriptExecutionContext->postTask(function);
+        scriptExecutionContext->postTask(WTFMove(function));
 }
 
 unsigned long DefaultAudioDestinationNode::maxChannelCount() const

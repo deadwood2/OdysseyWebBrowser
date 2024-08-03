@@ -44,6 +44,7 @@ void webkitWebViewBaseCreateWebPage(WebKitWebViewBase*, Ref<API::PageConfigurati
 void webkitWebViewBaseSetTooltipText(WebKitWebViewBase*, const char*);
 void webkitWebViewBaseSetTooltipArea(WebKitWebViewBase*, const WebCore::IntRect&);
 void webkitWebViewBaseForwardNextKeyEvent(WebKitWebViewBase*);
+void webkitWebViewBaseForwardNextWheelEvent(WebKitWebViewBase*);
 void webkitWebViewBaseChildMoveResize(WebKitWebViewBase*, GtkWidget*, const WebCore::IntRect&);
 void webkitWebViewBaseEnterFullScreen(WebKitWebViewBase*);
 void webkitWebViewBaseExitFullScreen(WebKitWebViewBase*);
@@ -54,6 +55,7 @@ WebKit::WebContextMenuProxyGtk* webkitWebViewBaseGetActiveContextMenuProxy(WebKi
 GdkEvent* webkitWebViewBaseTakeContextMenuEvent(WebKitWebViewBase*);
 void webkitWebViewBaseSetInputMethodState(WebKitWebViewBase*, bool enabled);
 void webkitWebViewBaseUpdateTextInputState(WebKitWebViewBase*);
+void webkitWebViewBaseSetContentsSize(WebKitWebViewBase*, const WebCore::IntSize&);
 
 void webkitWebViewBaseSetFocus(WebKitWebViewBase*, bool focused);
 bool webkitWebViewBaseIsInWindowActive(WebKitWebViewBase*);
@@ -69,10 +71,11 @@ void webkitWebViewBaseAddAuthenticationDialog(WebKitWebViewBase*, GtkWidget* aut
 void webkitWebViewBaseCancelAuthenticationDialog(WebKitWebViewBase*);
 void webkitWebViewBaseAddWebInspector(WebKitWebViewBase*, GtkWidget* inspector, WebKit::AttachmentSide);
 void webkitWebViewBaseResetClickCounter(WebKitWebViewBase*);
-void webkitWebViewBaseWillEnterAcceleratedCompositingMode(WebKitWebViewBase*);
-void webkitWebViewBaseEnterAcceleratedCompositingMode(WebKitWebViewBase*);
+void webkitWebViewBaseEnterAcceleratedCompositingMode(WebKitWebViewBase*, const WebKit::LayerTreeContext&);
+void webkitWebViewBaseUpdateAcceleratedCompositingMode(WebKitWebViewBase*, const WebKit::LayerTreeContext&);
 void webkitWebViewBaseExitAcceleratedCompositingMode(WebKitWebViewBase*);
 void webkitWebViewBaseDidRelaunchWebProcess(WebKitWebViewBase*);
+void webkitWebViewBasePageClosed(WebKitWebViewBase*);
 
 #if ENABLE(DRAG_SUPPORT)
 WebKit::DragAndDropHandler& webkitWebViewBaseDragAndDropHandler(WebKitWebViewBase*);

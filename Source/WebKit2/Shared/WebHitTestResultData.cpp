@@ -27,6 +27,7 @@
 #include <WebCore/HitTestResult.h>
 #include <WebCore/Node.h>
 #include <WebCore/RenderObject.h>
+#include <WebCore/SharedBuffer.h>
 #include <WebCore/URL.h>
 #include <wtf/text/WTFString.h>
 
@@ -91,7 +92,7 @@ WebHitTestResultData::~WebHitTestResultData()
 {
 }
 
-void WebHitTestResultData::encode(IPC::ArgumentEncoder& encoder) const
+void WebHitTestResultData::encode(IPC::Encoder& encoder) const
 {
     encoder << absoluteImageURL;
     encoder << absolutePDFURL;
@@ -124,7 +125,7 @@ void WebHitTestResultData::encode(IPC::ArgumentEncoder& encoder) const
     platformEncode(encoder);
 }
 
-bool WebHitTestResultData::decode(IPC::ArgumentDecoder& decoder, WebHitTestResultData& hitTestResultData)
+bool WebHitTestResultData::decode(IPC::Decoder& decoder, WebHitTestResultData& hitTestResultData)
 {
     if (!decoder.decode(hitTestResultData.absoluteImageURL)
         || !decoder.decode(hitTestResultData.absolutePDFURL)
@@ -170,11 +171,11 @@ bool WebHitTestResultData::decode(IPC::ArgumentDecoder& decoder, WebHitTestResul
 }
 
 #if !PLATFORM(MAC)
-void WebHitTestResultData::platformEncode(IPC::ArgumentEncoder& encoder) const
+void WebHitTestResultData::platformEncode(IPC::Encoder& encoder) const
 {
 }
 
-bool WebHitTestResultData::platformDecode(IPC::ArgumentDecoder& decoder, WebHitTestResultData& hitTestResultData)
+bool WebHitTestResultData::platformDecode(IPC::Decoder& decoder, WebHitTestResultData& hitTestResultData)
 {
     return true;
 }

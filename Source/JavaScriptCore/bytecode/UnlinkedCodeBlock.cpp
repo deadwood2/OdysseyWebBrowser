@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012, 2013, 2015 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2012-2013, 2015-2016 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,6 +28,7 @@
 #include "UnlinkedCodeBlock.h"
 
 #include "BytecodeGenerator.h"
+#include "BytecodeRewriter.h"
 #include "ClassInfo.h"
 #include "CodeCache.h"
 #include "Executable.h"
@@ -36,6 +37,7 @@
 #include "JSString.h"
 #include "JSCInlines.h"
 #include "Parser.h"
+#include "PreciseJumpTargetsInlines.h"
 #include "SourceProvider.h"
 #include "Structure.h"
 #include "SymbolTable.h"
@@ -51,7 +53,7 @@ const ClassInfo UnlinkedModuleProgramCodeBlock::s_info = { "UnlinkedModuleProgra
 const ClassInfo UnlinkedEvalCodeBlock::s_info = { "UnlinkedEvalCodeBlock", &Base::s_info, 0, CREATE_METHOD_TABLE(UnlinkedEvalCodeBlock) };
 const ClassInfo UnlinkedFunctionCodeBlock::s_info = { "UnlinkedFunctionCodeBlock", &Base::s_info, 0, CREATE_METHOD_TABLE(UnlinkedFunctionCodeBlock) };
 
-UnlinkedCodeBlock::UnlinkedCodeBlock(VM* vm, Structure* structure, CodeType codeType, const ExecutableInfo& info)
+UnlinkedCodeBlock::UnlinkedCodeBlock(VM* vm, Structure* structure, CodeType codeType, const ExecutableInfo& info, DebuggerMode debuggerMode)
     : Base(*vm, structure)
     , m_numVars(0)
     , m_numCalleeLocals(0)
@@ -62,14 +64,18 @@ UnlinkedCodeBlock::UnlinkedCodeBlock(VM* vm, Structure* structure, CodeType code
     , m_isConstructor(info.isConstructor())
     , m_hasCapturedVariables(false)
     , m_isBuiltinFunction(info.isBuiltinFunction())
-    , m_constructorKind(static_cast<unsigned>(info.constructorKind()))
     , m_superBinding(static_cast<unsigned>(info.superBinding()))
-    , m_derivedContextType(static_cast<unsigned>(info.derivedContextType()))
+    , m_commentMode(static_cast<unsigned>(info.commentMode()))
     , m_isArrowFunctionContext(info.isArrowFunctionContext())
     , m_isClassContext(info.isClassContext())
+    , m_wasCompiledWithDebuggingOpcodes(debuggerMode == DebuggerMode::DebuggerOn || Options::forceDebuggerBytecodeGeneration())
+    , m_constructorKind(static_cast<unsigned>(info.constructorKind()))
+    , m_derivedContextType(static_cast<unsigned>(info.derivedContextType()))
+    , m_evalContextType(static_cast<unsigned>(info.evalContextType()))
     , m_firstLine(0)
     , m_lineCount(0)
     , m_endColumn(UINT_MAX)
+    , m_didOptimize(MixedTriState)
     , m_parseMode(info.parseMode())
     , m_features(0)
     , m_codeType(codeType)
@@ -82,11 +88,6 @@ UnlinkedCodeBlock::UnlinkedCodeBlock(VM* vm, Structure* structure, CodeType code
     for (auto& constantRegisterIndex : m_linkTimeConstants)
         constantRegisterIndex = 0;
     ASSERT(m_constructorKind == static_cast<unsigned>(info.constructorKind()));
-}
-
-VM* UnlinkedCodeBlock::vm() const
-{
-    return MarkedBlock::blockFor(this)->vm();
 }
 
 void UnlinkedCodeBlock::visitChildren(JSCell* cell, SlotVisitor& visitor)
@@ -126,8 +127,8 @@ int UnlinkedCodeBlock::lineNumberForBytecodeOffset(unsigned bytecodeOffset)
     return line;
 }
 
-inline void UnlinkedCodeBlock::getLineAndColumn(ExpressionRangeInfo& info,
-    unsigned& line, unsigned& column)
+inline void UnlinkedCodeBlock::getLineAndColumn(const ExpressionRangeInfo& info,
+    unsigned& line, unsigned& column) const
 {
     switch (info.mode) {
     case ExpressionRangeInfo::FatLineMode:
@@ -183,7 +184,7 @@ void UnlinkedCodeBlock::dumpExpressionRangeInfo()
 #endif
 
 void UnlinkedCodeBlock::expressionRangeForBytecodeOffset(unsigned bytecodeOffset,
-    int& divot, int& startOffset, int& endOffset, unsigned& line, unsigned& column)
+    int& divot, int& startOffset, int& endOffset, unsigned& line, unsigned& column) const
 {
     ASSERT(bytecodeOffset < instructions().count());
 
@@ -196,7 +197,7 @@ void UnlinkedCodeBlock::expressionRangeForBytecodeOffset(unsigned bytecodeOffset
         return;
     }
 
-    Vector<ExpressionRangeInfo>& expressionInfo = m_expressionInfo;
+    const Vector<ExpressionRangeInfo>& expressionInfo = m_expressionInfo;
 
     int low = 0;
     int high = expressionInfo.size();
@@ -211,7 +212,7 @@ void UnlinkedCodeBlock::expressionRangeForBytecodeOffset(unsigned bytecodeOffset
     if (!low)
         low = 1;
 
-    ExpressionRangeInfo& info = expressionInfo[low - 1];
+    const ExpressionRangeInfo& info = expressionInfo[low - 1];
     startOffset = info.startOffset;
     endOffset = info.endOffset;
     divot = info.divotPoint;
@@ -361,6 +362,68 @@ const UnlinkedInstructionStream& UnlinkedCodeBlock::instructions() const
 {
     ASSERT(m_unlinkedInstructions.get());
     return *m_unlinkedInstructions;
+}
+
+UnlinkedHandlerInfo* UnlinkedCodeBlock::handlerForBytecodeOffset(unsigned bytecodeOffset, RequiredHandler requiredHandler)
+{
+    return handlerForIndex(bytecodeOffset, requiredHandler);
+}
+
+UnlinkedHandlerInfo* UnlinkedCodeBlock::handlerForIndex(unsigned index, RequiredHandler requiredHandler)
+{
+    if (!m_rareData)
+        return nullptr;
+    return UnlinkedHandlerInfo::handlerForIndex(m_rareData->m_exceptionHandlers, index, requiredHandler);
+}
+
+void UnlinkedCodeBlock::applyModification(BytecodeRewriter& rewriter)
+{
+    // Before applying the changes, we adjust the jumps based on the original bytecode offset, the offset to the jump target, and
+    // the insertion information.
+
+    BytecodeGraph<UnlinkedCodeBlock>& graph = rewriter.graph();
+    UnlinkedInstruction* instructionsBegin = graph.instructions().begin();
+
+    for (int bytecodeOffset = 0, instructionCount = graph.instructions().size(); bytecodeOffset < instructionCount;) {
+        UnlinkedInstruction* current = instructionsBegin + bytecodeOffset;
+        OpcodeID opcodeID = current[0].u.opcode;
+        extractStoredJumpTargetsForBytecodeOffset(this, vm()->interpreter, instructionsBegin, bytecodeOffset, [&](int32_t& relativeOffset) {
+            relativeOffset = rewriter.adjustJumpTarget(bytecodeOffset, bytecodeOffset + relativeOffset);
+        });
+        bytecodeOffset += opcodeLength(opcodeID);
+    }
+
+    // Then, exception handlers should be adjusted.
+    if (m_rareData) {
+        for (UnlinkedHandlerInfo& handler : m_rareData->m_exceptionHandlers) {
+            handler.target = rewriter.adjustAbsoluteOffset(handler.target);
+            handler.start = rewriter.adjustAbsoluteOffset(handler.start);
+            handler.end = rewriter.adjustAbsoluteOffset(handler.end);
+        }
+
+        for (size_t i = 0; i < m_rareData->m_opProfileControlFlowBytecodeOffsets.size(); ++i)
+            m_rareData->m_opProfileControlFlowBytecodeOffsets[i] = rewriter.adjustAbsoluteOffset(m_rareData->m_opProfileControlFlowBytecodeOffsets[i]);
+
+        if (!m_rareData->m_typeProfilerInfoMap.isEmpty()) {
+            HashMap<unsigned, RareData::TypeProfilerExpressionRange> adjustedTypeProfilerInfoMap;
+            for (auto& entry : m_rareData->m_typeProfilerInfoMap)
+                adjustedTypeProfilerInfoMap.set(rewriter.adjustAbsoluteOffset(entry.key), entry.value);
+            m_rareData->m_typeProfilerInfoMap.swap(adjustedTypeProfilerInfoMap);
+        }
+    }
+
+    for (size_t i = 0; i < m_propertyAccessInstructions.size(); ++i)
+        m_propertyAccessInstructions[i] = rewriter.adjustAbsoluteOffset(m_propertyAccessInstructions[i]);
+
+    for (size_t i = 0; i < m_expressionInfo.size(); ++i)
+        m_expressionInfo[i].instructionOffset = rewriter.adjustAbsoluteOffset(m_expressionInfo[i].instructionOffset);
+
+    // Then, modify the unlinked instructions.
+    rewriter.applyModification();
+
+    // And recompute the jump target based on the modified unlinked instructions.
+    m_jumpTargets.clear();
+    recomputePreciseJumpTargets(this, graph.instructions().begin(), graph.instructions().size(), m_jumpTargets);
 }
 
 }

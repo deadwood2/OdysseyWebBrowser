@@ -40,9 +40,9 @@ JSC::EncodedJSValue JSC_HOST_CALL jsTestJSBuiltinConstructorPrototypeFunctionTes
 
 JSC::EncodedJSValue jsTestJSBuiltinConstructorTestAttributeCustom(JSC::ExecState*, JSC::EncodedJSValue, JSC::PropertyName);
 JSC::EncodedJSValue jsTestJSBuiltinConstructorTestAttributeRWCustom(JSC::ExecState*, JSC::EncodedJSValue, JSC::PropertyName);
-void setJSTestJSBuiltinConstructorTestAttributeRWCustom(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
+bool setJSTestJSBuiltinConstructorTestAttributeRWCustom(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
 JSC::EncodedJSValue jsTestJSBuiltinConstructorConstructor(JSC::ExecState*, JSC::EncodedJSValue, JSC::PropertyName);
-void setJSTestJSBuiltinConstructorConstructor(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
+bool setJSTestJSBuiltinConstructorConstructor(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
 
 class JSTestJSBuiltinConstructorPrototype : public JSC::JSNonFinalObject {
 public:
@@ -79,7 +79,7 @@ template<> JSValue JSTestJSBuiltinConstructorConstructor::prototypeForStructure(
 
 template<> void JSTestJSBuiltinConstructorConstructor::initializeProperties(VM& vm, JSDOMGlobalObject& globalObject)
 {
-    putDirect(vm, vm.propertyNames->prototype, JSTestJSBuiltinConstructor::getPrototype(vm, &globalObject), DontDelete | ReadOnly | DontEnum);
+    putDirect(vm, vm.propertyNames->prototype, JSTestJSBuiltinConstructor::prototype(vm, &globalObject), DontDelete | ReadOnly | DontEnum);
     putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String(ASCIILiteral("TestJSBuiltinConstructor"))), ReadOnly | DontEnum);
     putDirect(vm, vm.propertyNames->length, jsNumber(0), ReadOnly | DontEnum);
 }
@@ -121,7 +121,7 @@ JSObject* JSTestJSBuiltinConstructor::createPrototype(VM& vm, JSGlobalObject* gl
     return JSTestJSBuiltinConstructorPrototype::create(vm, globalObject, JSTestJSBuiltinConstructorPrototype::createStructure(vm, globalObject, globalObject->objectPrototype()));
 }
 
-JSObject* JSTestJSBuiltinConstructor::getPrototype(VM& vm, JSGlobalObject* globalObject)
+JSObject* JSTestJSBuiltinConstructor::prototype(VM& vm, JSGlobalObject* globalObject)
 {
     return getDOMPrototype<JSTestJSBuiltinConstructor>(vm, globalObject);
 }
@@ -134,12 +134,14 @@ void JSTestJSBuiltinConstructor::destroy(JSC::JSCell* cell)
 
 EncodedJSValue jsTestJSBuiltinConstructorTestAttributeCustom(ExecState* state, EncodedJSValue thisValue, PropertyName)
 {
-    UNUSED_PARAM(state);
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     UNUSED_PARAM(thisValue);
     JSValue decodedThisValue = JSValue::decode(thisValue);
     auto* castedThis = jsDynamicCast<JSTestJSBuiltinConstructor*>(decodedThisValue);
     if (UNLIKELY(!castedThis)) {
-        return throwGetterTypeError(*state, "TestJSBuiltinConstructor", "testAttributeCustom");
+        return throwGetterTypeError(*state, throwScope, "TestJSBuiltinConstructor", "testAttributeCustom");
     }
     return JSValue::encode(castedThis->testAttributeCustom(*state));
 }
@@ -147,12 +149,14 @@ EncodedJSValue jsTestJSBuiltinConstructorTestAttributeCustom(ExecState* state, E
 
 EncodedJSValue jsTestJSBuiltinConstructorTestAttributeRWCustom(ExecState* state, EncodedJSValue thisValue, PropertyName)
 {
-    UNUSED_PARAM(state);
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     UNUSED_PARAM(thisValue);
     JSValue decodedThisValue = JSValue::decode(thisValue);
     auto* castedThis = jsDynamicCast<JSTestJSBuiltinConstructor*>(decodedThisValue);
     if (UNLIKELY(!castedThis)) {
-        return throwGetterTypeError(*state, "TestJSBuiltinConstructor", "testAttributeRWCustom");
+        return throwGetterTypeError(*state, throwScope, "TestJSBuiltinConstructor", "testAttributeRWCustom");
     }
     return JSValue::encode(castedThis->testAttributeRWCustom(*state));
 }
@@ -160,34 +164,40 @@ EncodedJSValue jsTestJSBuiltinConstructorTestAttributeRWCustom(ExecState* state,
 
 EncodedJSValue jsTestJSBuiltinConstructorConstructor(ExecState* state, EncodedJSValue thisValue, PropertyName)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
     JSTestJSBuiltinConstructorPrototype* domObject = jsDynamicCast<JSTestJSBuiltinConstructorPrototype*>(JSValue::decode(thisValue));
-    if (!domObject)
-        return throwVMTypeError(state);
+    if (UNLIKELY(!domObject))
+        return throwVMTypeError(state, throwScope);
     return JSValue::encode(JSTestJSBuiltinConstructor::getConstructor(state->vm(), domObject->globalObject()));
 }
 
-void setJSTestJSBuiltinConstructorConstructor(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
+bool setJSTestJSBuiltinConstructorConstructor(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
     JSValue value = JSValue::decode(encodedValue);
     JSTestJSBuiltinConstructorPrototype* domObject = jsDynamicCast<JSTestJSBuiltinConstructorPrototype*>(JSValue::decode(thisValue));
     if (UNLIKELY(!domObject)) {
-        throwVMTypeError(state);
-        return;
+        throwVMTypeError(state, throwScope);
+        return false;
     }
     // Shadowing a built-in constructor
-    domObject->putDirect(state->vm(), state->propertyNames().constructor, value);
+    return domObject->putDirect(state->vm(), state->propertyNames().constructor, value);
 }
 
-void setJSTestJSBuiltinConstructorTestAttributeRWCustom(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
+bool setJSTestJSBuiltinConstructorTestAttributeRWCustom(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
 {
-    JSValue value = JSValue::decode(encodedValue);
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);    JSValue value = JSValue::decode(encodedValue);
     UNUSED_PARAM(thisValue);
     JSTestJSBuiltinConstructor* castedThis = jsDynamicCast<JSTestJSBuiltinConstructor*>(JSValue::decode(thisValue));
     if (UNLIKELY(!castedThis)) {
-        throwSetterTypeError(*state, "TestJSBuiltinConstructor", "testAttributeRWCustom");
-        return;
+        return throwSetterTypeError(*state, throwScope, "TestJSBuiltinConstructor", "testAttributeRWCustom");
     }
     castedThis->setTestAttributeRWCustom(*state, value);
+    return true;
 }
 
 
@@ -198,10 +208,13 @@ JSValue JSTestJSBuiltinConstructor::getConstructor(VM& vm, const JSGlobalObject*
 
 EncodedJSValue JSC_HOST_CALL jsTestJSBuiltinConstructorPrototypeFunctionTestCustomFunction(ExecState* state)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     JSValue thisValue = state->thisValue();
     auto castedThis = jsDynamicCast<JSTestJSBuiltinConstructor*>(thisValue);
     if (UNLIKELY(!castedThis))
-        return throwThisTypeError(*state, "TestJSBuiltinConstructor", "testCustomFunction");
+        return throwThisTypeError(*state, throwScope, "TestJSBuiltinConstructor", "testCustomFunction");
     ASSERT_GC_OBJECT_INHERITS(castedThis, JSTestJSBuiltinConstructor::info());
     return JSValue::encode(castedThis->testCustomFunction(*state));
 }

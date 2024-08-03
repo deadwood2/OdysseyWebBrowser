@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2003, 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2003, 2008, 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -62,9 +62,12 @@ void RuntimeArray::destroy(JSCell* cell)
 
 EncodedJSValue RuntimeArray::lengthGetter(ExecState* exec, EncodedJSValue thisValue, PropertyName)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     RuntimeArray* thisObject = jsDynamicCast<RuntimeArray*>(JSValue::decode(thisValue));
     if (!thisObject)
-        return throwVMTypeError(exec);
+        return throwVMTypeError(exec, scope);
     return JSValue::encode(jsNumber(thisObject->getLength()));
 }
 
@@ -111,31 +114,35 @@ bool RuntimeArray::getOwnPropertySlotByIndex(JSObject* object, ExecState *exec, 
     return JSObject::getOwnPropertySlotByIndex(thisObject, exec, index, slot);
 }
 
-void RuntimeArray::put(JSCell* cell, ExecState* exec, PropertyName propertyName, JSValue value, PutPropertySlot& slot)
+bool RuntimeArray::put(JSCell* cell, ExecState* exec, PropertyName propertyName, JSValue value, PutPropertySlot& slot)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     RuntimeArray* thisObject = jsCast<RuntimeArray*>(cell);
     if (propertyName == exec->propertyNames().length) {
-        exec->vm().throwException(exec, createRangeError(exec, "Range error"));
-        return;
+        throwException(exec, scope, createRangeError(exec, "Range error"));
+        return false;
     }
     
-    if (Optional<uint32_t> index = parseIndex(propertyName)) {
-        thisObject->getConcreteArray()->setValueAt(exec, index.value(), value);
-        return;
-    }
+    if (Optional<uint32_t> index = parseIndex(propertyName))
+        return thisObject->getConcreteArray()->setValueAt(exec, index.value(), value);
     
-    JSObject::put(thisObject, exec, propertyName, value, slot);
+    return JSObject::put(thisObject, exec, propertyName, value, slot);
 }
 
-void RuntimeArray::putByIndex(JSCell* cell, ExecState* exec, unsigned index, JSValue value, bool)
+bool RuntimeArray::putByIndex(JSCell* cell, ExecState* exec, unsigned index, JSValue value, bool)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     RuntimeArray* thisObject = jsCast<RuntimeArray*>(cell);
     if (index >= thisObject->getLength()) {
-        exec->vm().throwException(exec, createRangeError(exec, "Range error"));
-        return;
+        throwException(exec, scope, createRangeError(exec, "Range error"));
+        return false;
     }
     
-    thisObject->getConcreteArray()->setValueAt(exec, index, value);
+    return thisObject->getConcreteArray()->setValueAt(exec, index, value);
 }
 
 bool RuntimeArray::deleteProperty(JSCell*, ExecState*, PropertyName)

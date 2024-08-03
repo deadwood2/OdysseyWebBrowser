@@ -28,12 +28,20 @@
 #if WK_API_ENABLED
 
 #import <Foundation/Foundation.h>
+#import <WebKit/WKBase.h>
 
 @class _WKAutomationSession;
 
 @protocol _WKAutomationSessionDelegate <NSObject>
 @optional
-- (void)_automationSessionDidRequestNewWindow:(_WKAutomationSession *)automationSession;
+- (WKPageRef)_automationSessionDidRequestNewWindow:(_WKAutomationSession *)automationSession;
+- (void)_automationSessionDidDisconnectFromRemote:(_WKAutomationSession *)automationSession;
+
+- (BOOL)_automationSession:(_WKAutomationSession *)automationSession isShowingJavaScriptDialogOnPage:(WKPageRef)page;
+- (void)_automationSession:(_WKAutomationSession *)automationSession dismissCurrentJavaScriptDialogOnPage:(WKPageRef)page;
+- (void)_automationSession:(_WKAutomationSession *)automationSession acceptCurrentJavaScriptDialogOnPage:(WKPageRef)page;
+- (NSString *)_automationSession:(_WKAutomationSession *)automationSession messageOfCurrentJavaScriptDialogOnPage:(WKPageRef)page;
+- (void)_automationSession:(_WKAutomationSession *)automationSession setUserInput:(NSString *)value forCurrentJavaScriptDialogOnPage:(WKPageRef)page;
 @end
 
 #endif // WK_API_ENABLED

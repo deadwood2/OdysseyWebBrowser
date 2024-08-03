@@ -37,14 +37,14 @@ public:
 private:
     SVGRectElement(const QualifiedName&, Document&);
     
-    virtual bool isValid() const override { return SVGTests::isValid(); }
+    bool isValid() const final { return SVGTests::isValid(); }
 
-    virtual void parseAttribute(const QualifiedName&, const AtomicString&) override;
-    virtual void svgAttributeChanged(const QualifiedName&) override;
+    void parseAttribute(const QualifiedName&, const AtomicString&) final;
+    void svgAttributeChanged(const QualifiedName&) final;
 
-    virtual bool selfHasRelativeLengths() const override { return true; }
+    bool selfHasRelativeLengths() const final { return true; }
 
-    virtual RenderPtr<RenderElement> createElementRenderer(Ref<RenderStyle>&&, const RenderTreePosition&) override;
+    RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) final;
 
     BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGRectElement)
         DECLARE_ANIMATED_LENGTH(X, x)

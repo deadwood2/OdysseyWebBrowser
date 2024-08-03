@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2008, 2009, 2010, 2011, 2013, 2014, 2015, 2016 Apple Inc. All Rights Reserved.
  * Copyright (C) 2012 Google Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -25,18 +25,23 @@
  *
  */
 
-#ifndef ScriptExecutionContext_h
-#define ScriptExecutionContext_h
+#pragma once
 
 #include "ActiveDOMObject.h"
 #include "DOMTimer.h"
-#include "ResourceRequest.h"
 #include "SecurityContext.h"
 #include "Supplementable.h"
 #include <runtime/ConsoleTypes.h>
+#include <wtf/CrossThreadTask.h>
+#include <wtf/Function.h>
 #include <wtf/HashSet.h>
 
+namespace Deprecated {
+class ScriptValue;
+}
+
 namespace JSC {
+class Exception;
 class ExecState;
 class VM;
 }
@@ -53,10 +58,16 @@ class EventQueue;
 class EventTarget;
 class MessagePort;
 class PublicURLManager;
+class ResourceRequest;
 class SecurityOrigin;
+class SocketProvider;
 class URL;
 
-class ScriptExecutionContext : public SecurityContext, public Supplementable<ScriptExecutionContext> {
+namespace IDBClient {
+class IDBConnectionProxy;
+}
+
+class ScriptExecutionContext : public SecurityContext {
 public:
     ScriptExecutionContext();
     virtual ~ScriptExecutionContext();
@@ -74,8 +85,15 @@ public:
 
     virtual void disableEval(const String& errorMessage) = 0;
 
-    bool sanitizeScriptError(String& errorMessage, int& lineNumber, int& columnNumber, String& sourceURL, CachedScript* = nullptr);
-    void reportException(const String& errorMessage, int lineNumber, int columnNumber, const String& sourceURL, RefPtr<Inspector::ScriptCallStack>&&, CachedScript* = nullptr);
+#if ENABLE(INDEXED_DATABASE)
+    virtual IDBClient::IDBConnectionProxy* idbConnectionProxy() = 0;
+#endif
+#if ENABLE(WEB_SOCKETS)
+    virtual SocketProvider* socketProvider() = 0;
+#endif
+
+    bool sanitizeScriptError(String& errorMessage, int& lineNumber, int& columnNumber, String& sourceURL, Deprecated::ScriptValue& error, CachedScript* = nullptr);
+    void reportException(const String& errorMessage, int lineNumber, int columnNumber, const String& sourceURL, JSC::Exception*, RefPtr<Inspector::ScriptCallStack>&&, CachedScript* = nullptr);
 
     void addConsoleMessage(MessageSource, MessageLevel, const String& message, const String& sourceURL, unsigned lineNumber, unsigned columnNumber, JSC::ExecState* = nullptr, unsigned long requestIdentifier = 0);
     virtual void addConsoleMessage(MessageSource, MessageLevel, const String& message, unsigned long requestIdentifier = 0) = 0;
@@ -114,7 +132,7 @@ public:
     void createdMessagePort(MessagePort&);
     void destroyedMessagePort(MessagePort&);
 
-    virtual void didLoadResourceSynchronously(const ResourceRequest&);
+    virtual void didLoadResourceSynchronously();
 
     void ref() { refScriptExecutionContext(); }
     void deref() { derefScriptExecutionContext(); }
@@ -124,29 +142,23 @@ public:
     public:
         enum CleanupTaskTag { CleanupTask };
 
-        template<typename T, typename = typename std::enable_if<!std::is_base_of<Task, T>::value && std::is_convertible<T, std::function<void (ScriptExecutionContext&)>>::value>::type>
+        template<typename T, typename = typename std::enable_if<!std::is_base_of<Task, T>::value && std::is_convertible<T, WTF::Function<void (ScriptExecutionContext&)>>::value>::type>
         Task(T task)
             : m_task(WTFMove(task))
             , m_isCleanupTask(false)
         {
         }
 
-        Task(std::function<void()> task)
-            : m_task([task](ScriptExecutionContext&) { task(); })
+        Task(WTF::Function<void ()>&& task)
+            : m_task([task = WTFMove(task)](ScriptExecutionContext&) { task(); })
             , m_isCleanupTask(false)
         {
         }
 
-        template<typename T, typename = typename std::enable_if<std::is_convertible<T, std::function<void (ScriptExecutionContext&)>>::value>::type>
+        template<typename T, typename = typename std::enable_if<std::is_convertible<T, WTF::Function<void (ScriptExecutionContext&)>>::value>::type>
         Task(CleanupTaskTag, T task)
             : m_task(WTFMove(task))
             , m_isCleanupTask(true)
-        {
-        }
-
-        Task(Task&& other)
-            : m_task(WTFMove(other.m_task))
-            , m_isCleanupTask(other.m_isCleanupTask)
         {
         }
 
@@ -154,11 +166,19 @@ public:
         bool isCleanupTask() const { return m_isCleanupTask; }
 
     protected:
-        std::function<void (ScriptExecutionContext&)> m_task;
+        WTF::Function<void (ScriptExecutionContext&)> m_task;
         bool m_isCleanupTask;
     };
 
-    virtual void postTask(Task) = 0; // Executes the task on context's thread asynchronously.
+    virtual void postTask(Task&&) = 0; // Executes the task on context's thread asynchronously.
+
+    template<typename... Arguments>
+    void postCrossThreadTask(Arguments&&... arguments)
+    {
+        postTask([crossThreadTask = createCrossThreadTask(arguments...)](ScriptExecutionContext&) mutable {
+            crossThreadTask.performTask();
+        });
+    }
 
     // Gets the next id in a circular sequence from 1 to 2^31-1.
     int circularSequentialID();
@@ -170,11 +190,11 @@ public:
     WEBCORE_EXPORT JSC::VM& vm();
 
     // Interval is in seconds.
-    void adjustMinimumTimerInterval(double oldMinimumTimerInterval);
-    virtual double minimumTimerInterval() const;
+    void adjustMinimumTimerInterval(std::chrono::milliseconds oldMinimumTimerInterval);
+    virtual std::chrono::milliseconds minimumTimerInterval() const;
 
     void didChangeTimerAlignmentInterval();
-    virtual double timerAlignmentInterval(bool hasReachedMaxNestingLevel) const;
+    virtual std::chrono::milliseconds timerAlignmentInterval(bool hasReachedMaxNestingLevel) const;
 
     virtual EventQueue& eventQueue() const = 0;
 
@@ -188,12 +208,14 @@ public:
     int timerNestingLevel() const { return m_timerNestingLevel; }
     void setTimerNestingLevel(int timerNestingLevel) { m_timerNestingLevel = timerNestingLevel; }
 
+    JSC::ExecState* execState();
+
 protected:
     class AddConsoleMessageTask : public Task {
     public:
-        AddConsoleMessageTask(MessageSource source, MessageLevel level, const StringCapture& message)
-            : Task([source, level, message](ScriptExecutionContext& context) {
-                context.addConsoleMessage(source, level, message.string());
+        AddConsoleMessageTask(MessageSource source, MessageLevel level, const String& message)
+            : Task([source, level, message = message.isolatedCopy()](ScriptExecutionContext& context) {
+                context.addConsoleMessage(source, level, message);
             })
         {
         }
@@ -207,7 +229,7 @@ private:
     virtual void addMessage(MessageSource, MessageLevel, const String& message, const String& sourceURL, unsigned lineNumber, unsigned columnNumber, RefPtr<Inspector::ScriptCallStack>&&, JSC::ExecState* = nullptr, unsigned long requestIdentifier = 0) = 0;
     virtual EventTarget* errorEventTarget() = 0;
     virtual void logExceptionToConsole(const String& errorMessage, const String& sourceURL, int lineNumber, int columnNumber, RefPtr<Inspector::ScriptCallStack>&&) = 0;
-    bool dispatchErrorEvent(const String& errorMessage, int lineNumber, int columnNumber, const String& sourceURL, CachedScript*);
+    bool dispatchErrorEvent(const String& errorMessage, int lineNumber, int columnNumber, const String& sourceURL, JSC::Exception*, CachedScript*);
 
     virtual void refScriptExecutionContext() = 0;
     virtual void derefScriptExecutionContext() = 0;
@@ -222,7 +244,7 @@ private:
     HashMap<int, RefPtr<DOMTimer>> m_timeouts;
 
     bool m_inDispatchErrorEvent;
-    class PendingException;
+    struct PendingException;
     std::unique_ptr<Vector<std::unique_ptr<PendingException>>> m_pendingExceptions;
 
     bool m_activeDOMObjectsAreSuspended;
@@ -245,5 +267,3 @@ private:
 };
 
 } // namespace WebCore
-
-#endif // ScriptExecutionContext_h

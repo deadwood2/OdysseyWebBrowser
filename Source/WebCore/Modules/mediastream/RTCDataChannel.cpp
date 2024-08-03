@@ -24,13 +24,14 @@
 
 #include "config.h"
 
-#if ENABLE(MEDIA_STREAM)
+#if ENABLE(WEB_RTC)
 
 #include "RTCDataChannel.h"
 
 #include "Blob.h"
 #include "Dictionary.h"
 #include "Event.h"
+#include "EventNames.h"
 #include "ExceptionCode.h"
 #include "MessageEvent.h"
 #include "RTCDataChannelHandler.h"
@@ -202,20 +203,18 @@ void RTCDataChannel::send(const String& data, ExceptionCode& ec)
     }
 }
 
-void RTCDataChannel::send(PassRefPtr<ArrayBuffer> prpData, ExceptionCode& ec)
+void RTCDataChannel::send(ArrayBuffer& data, ExceptionCode& ec)
 {
     if (m_readyState != ReadyStateOpen) {
         ec = INVALID_STATE_ERR;
         return;
     }
 
-    RefPtr<ArrayBuffer> data = prpData;
-
-    size_t dataLength = data->byteLength();
+    size_t dataLength = data.byteLength();
     if (!dataLength)
         return;
 
-    const char* dataPointer = static_cast<const char*>(data->data());
+    const char* dataPointer = static_cast<const char*>(data.data());
 
     if (!m_handler->sendRawData(dataPointer, dataLength)) {
         // FIXME: Decide what the right exception here is.
@@ -223,13 +222,12 @@ void RTCDataChannel::send(PassRefPtr<ArrayBuffer> prpData, ExceptionCode& ec)
     }
 }
 
-void RTCDataChannel::send(PassRefPtr<ArrayBufferView> data, ExceptionCode& ec)
+void RTCDataChannel::send(ArrayBufferView& data, ExceptionCode& ec)
 {
-    RefPtr<ArrayBuffer> arrayBuffer(data->buffer());
-    send(arrayBuffer.release(), ec);
+    send(*data.buffer(), ec);
 }
 
-void RTCDataChannel::send(PassRefPtr<Blob>, ExceptionCode& ec)
+void RTCDataChannel::send(Blob&, ExceptionCode& ec)
 {
     // FIXME: implement
     ec = NOT_SUPPORTED_ERR;
@@ -281,8 +279,7 @@ void RTCDataChannel::didReceiveRawData(const char* data, size_t dataLength)
     }
 
     if (m_binaryType == BinaryTypeArrayBuffer) {
-        RefPtr<ArrayBuffer> buffer = ArrayBuffer::create(data, dataLength);
-        scheduleDispatchEvent(MessageEvent::create(buffer.release()));
+        scheduleDispatchEvent(MessageEvent::create(ArrayBuffer::create(data, dataLength)));
         return;
     }
     ASSERT_NOT_REACHED();
@@ -326,4 +323,4 @@ void RTCDataChannel::scheduledEventTimerFired()
 
 } // namespace WebCore
 
-#endif // ENABLE(MEDIA_STREAM)
+#endif // ENABLE(WEB_RTC)

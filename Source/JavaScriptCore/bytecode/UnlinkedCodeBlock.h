@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2015 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2012-2016 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef UnlinkedCodeBlock_h
-#define UnlinkedCodeBlock_h
+#pragma once
 
 #include "BytecodeConventions.h"
 #include "CodeSpecializationKind.h"
@@ -41,12 +40,12 @@
 #include "UnlinkedFunctionExecutable.h"
 #include "VariableEnvironment.h"
 #include "VirtualRegister.h"
-#include <wtf/FastBitVector.h>
-#include <wtf/RefCountedArray.h>
+#include <wtf/TriState.h>
 #include <wtf/Vector.h>
 
 namespace JSC {
 
+class BytecodeRewriter;
 class Debugger;
 class FunctionMetadataNode;
 class FunctionExecutable;
@@ -68,7 +67,11 @@ typedef unsigned UnlinkedObjectAllocationProfile;
 typedef unsigned UnlinkedLLIntCallLinkInfo;
 
 struct UnlinkedStringJumpTable {
-    typedef HashMap<RefPtr<StringImpl>, int32_t> StringOffsetTable;
+    struct OffsetLocation {
+        int32_t branchOffset;
+    };
+
+    typedef HashMap<RefPtr<StringImpl>, OffsetLocation> StringOffsetTable;
     StringOffsetTable offsetTable;
 
     inline int32_t offsetForValue(StringImpl* value, int32_t defaultOffset)
@@ -77,7 +80,7 @@ struct UnlinkedStringJumpTable {
         StringOffsetTable::const_iterator loc = offsetTable.find(value);
         if (loc == end)
             return defaultOffset;
-        return loc->value;
+        return loc->value.branchOffset;
     }
 
 };
@@ -105,6 +108,8 @@ struct UnlinkedInstruction {
     } u;
 };
 
+class BytecodeGeneratorification;
+
 class UnlinkedCodeBlock : public JSCell {
 public:
     typedef JSCell Base;
@@ -114,12 +119,16 @@ public:
 
     enum { CallFunction, ApplyFunction };
 
+    typedef UnlinkedInstruction Instruction;
+    typedef Vector<UnlinkedInstruction, 0, UnsafeVectorOverflow> UnpackedInstructions;
+
     bool isConstructor() const { return m_isConstructor; }
     bool isStrictMode() const { return m_isStrictMode; }
     bool usesEval() const { return m_usesEval; }
     SourceParseMode parseMode() const { return m_parseMode; }
     bool isArrowFunction() const { return m_parseMode == SourceParseMode::ArrowFunctionMode; }
     DerivedContextType derivedContextType() const { return static_cast<DerivedContextType>(m_derivedContextType); }
+    EvalContextType evalContextType() const { return static_cast<EvalContextType>(m_evalContextType); }
     bool isArrowFunctionContext() const { return m_isArrowFunctionContext; }
     bool isClassContext() const { return m_isClassContext; }
 
@@ -202,10 +211,14 @@ public:
     unsigned jumpTarget(int index) const { return m_jumpTargets[index]; }
     unsigned lastJumpTarget() const { return m_jumpTargets.last(); }
 
+    UnlinkedHandlerInfo* handlerForBytecodeOffset(unsigned bytecodeOffset, RequiredHandler = RequiredHandler::AnyHandler);
+    UnlinkedHandlerInfo* handlerForIndex(unsigned, RequiredHandler = RequiredHandler::AnyHandler);
+
     bool isBuiltinFunction() const { return m_isBuiltinFunction; }
 
     ConstructorKind constructorKind() const { return static_cast<ConstructorKind>(m_constructorKind); }
     SuperBinding superBinding() const { return static_cast<SuperBinding>(m_superBinding); }
+    JSParserCommentMode commentMode() const { return static_cast<JSParserCommentMode>(m_commentMode); }
 
     void shrinkToFit()
     {
@@ -230,6 +243,8 @@ public:
 
     void setInstructions(std::unique_ptr<UnlinkedInstructionStream>);
     const UnlinkedInstructionStream& instructions() const;
+
+    int numCalleeLocals() const { return m_numCalleeLocals; }
 
     int m_numVars;
     int m_numCapturedVars;
@@ -268,8 +283,6 @@ public:
     size_t numberOfExceptionHandlers() const { return m_rareData ? m_rareData->m_exceptionHandlers.size() : 0; }
     void addExceptionHandler(const UnlinkedHandlerInfo& handler) { createRareDataIfNecessary(); return m_rareData->m_exceptionHandlers.append(handler); }
     UnlinkedHandlerInfo& exceptionHandler(int index) { ASSERT(m_rareData); return m_rareData->m_exceptionHandlers[index]; }
-
-    VM* vm() const;
 
     UnlinkedArrayProfile addArrayProfile() { return m_arrayProfileCount++; }
     unsigned numberOfArrayProfiles() { return m_arrayProfileCount; }
@@ -324,7 +337,7 @@ public:
     int lineNumberForBytecodeOffset(unsigned bytecodeOffset);
 
     void expressionRangeForBytecodeOffset(unsigned bytecodeOffset, int& divot,
-        int& startOffset, int& endOffset, unsigned& line, unsigned& column);
+        int& startOffset, int& endOffset, unsigned& line, unsigned& column) const;
 
     bool typeProfilerExpressionInfoForBytecodeOffset(unsigned bytecodeOffset, unsigned& startDivot, unsigned& endDivot);
 
@@ -337,6 +350,11 @@ public:
         // For the UnlinkedCodeBlock, startColumn is always 0.
         m_endColumn = endColumn;
     }
+
+    const String& sourceURLDirective() const { return m_sourceURLDirective; }
+    const String& sourceMappingURLDirective() const { return m_sourceMappingURLDirective; }
+    void setSourceURLDirective(const String& sourceURL) { m_sourceURLDirective = sourceURL; }
+    void setSourceMappingURLDirective(const String& sourceMappingURL) { m_sourceMappingURLDirective = sourceMappingURL; }
 
     CodeFeatures codeFeatures() const { return m_features; }
     bool hasCapturedVariables() const { return m_hasCapturedVariables; }
@@ -362,8 +380,13 @@ public:
 
     void dumpExpressionRangeInfo(); // For debugging purpose only.
 
+    bool wasCompiledWithDebuggingOpcodes() const { return m_wasCompiledWithDebuggingOpcodes; }
+
+    TriState didOptimize() const { return m_didOptimize; }
+    void setDidOptimize(TriState didOptimize) { m_didOptimize = didOptimize; }
+
 protected:
-    UnlinkedCodeBlock(VM*, Structure*, CodeType, const ExecutableInfo&);
+    UnlinkedCodeBlock(VM*, Structure*, CodeType, const ExecutableInfo&, DebuggerMode);
     ~UnlinkedCodeBlock();
 
     void finishCreation(VM& vm)
@@ -372,6 +395,8 @@ protected:
     }
 
 private:
+    friend class BytecodeRewriter;
+    void applyModification(BytecodeRewriter&);
 
     void createRareDataIfNecessary()
     {
@@ -379,7 +404,7 @@ private:
             m_rareData = std::make_unique<RareData>();
     }
 
-    void getLineAndColumn(ExpressionRangeInfo&, unsigned& line, unsigned& column);
+    void getLineAndColumn(const ExpressionRangeInfo&, unsigned& line, unsigned& column) const;
 
     int m_numParameters;
 
@@ -389,20 +414,27 @@ private:
     VirtualRegister m_scopeRegister;
     VirtualRegister m_globalObjectRegister;
 
+    String m_sourceURLDirective;
+    String m_sourceMappingURLDirective;
+
     unsigned m_usesEval : 1;
     unsigned m_isStrictMode : 1;
     unsigned m_isConstructor : 1;
     unsigned m_hasCapturedVariables : 1;
     unsigned m_isBuiltinFunction : 1;
-    unsigned m_constructorKind : 2;
     unsigned m_superBinding : 1;
-    unsigned m_derivedContextType : 2;
+    unsigned m_commentMode: 1;
     unsigned m_isArrowFunctionContext : 1;
     unsigned m_isClassContext : 1;
+    unsigned m_wasCompiledWithDebuggingOpcodes : 1;
+    unsigned m_constructorKind : 2;
+    unsigned m_derivedContextType : 2;
+    unsigned m_evalContextType : 2;
     unsigned m_firstLine;
     unsigned m_lineCount;
     unsigned m_endColumn;
 
+    TriState m_didOptimize;
     SourceParseMode m_parseMode;
     CodeFeatures m_features;
     CodeType m_codeType;
@@ -469,8 +501,8 @@ public:
     typedef UnlinkedCodeBlock Base;
 
 protected:
-    UnlinkedGlobalCodeBlock(VM* vm, Structure* structure, CodeType codeType, const ExecutableInfo& info)
-        : Base(vm, structure, codeType, info)
+    UnlinkedGlobalCodeBlock(VM* vm, Structure* structure, CodeType codeType, const ExecutableInfo& info, DebuggerMode debuggerMode)
+        : Base(vm, structure, codeType, info, debuggerMode)
     {
     }
 
@@ -480,9 +512,9 @@ protected:
 class UnlinkedProgramCodeBlock final : public UnlinkedGlobalCodeBlock {
 private:
     friend class CodeCache;
-    static UnlinkedProgramCodeBlock* create(VM* vm, const ExecutableInfo& info)
+    static UnlinkedProgramCodeBlock* create(VM* vm, const ExecutableInfo& info, DebuggerMode debuggerMode)
     {
-        UnlinkedProgramCodeBlock* instance = new (NotNull, allocateCell<UnlinkedProgramCodeBlock>(vm->heap)) UnlinkedProgramCodeBlock(vm, vm->unlinkedProgramCodeBlockStructure.get(), info);
+        UnlinkedProgramCodeBlock* instance = new (NotNull, allocateCell<UnlinkedProgramCodeBlock>(vm->heap)) UnlinkedProgramCodeBlock(vm, vm->unlinkedProgramCodeBlockStructure.get(), info, debuggerMode);
         instance->finishCreation(*vm);
         return instance;
     }
@@ -502,8 +534,8 @@ public:
     static void visitChildren(JSCell*, SlotVisitor&);
 
 private:
-    UnlinkedProgramCodeBlock(VM* vm, Structure* structure, const ExecutableInfo& info)
-        : Base(vm, structure, GlobalCode, info)
+    UnlinkedProgramCodeBlock(VM* vm, Structure* structure, const ExecutableInfo& info, DebuggerMode debuggerMode)
+        : Base(vm, structure, GlobalCode, info, debuggerMode)
     {
     }
 
@@ -522,9 +554,9 @@ public:
 class UnlinkedModuleProgramCodeBlock final : public UnlinkedGlobalCodeBlock {
 private:
     friend class CodeCache;
-    static UnlinkedModuleProgramCodeBlock* create(VM* vm, const ExecutableInfo& info)
+    static UnlinkedModuleProgramCodeBlock* create(VM* vm, const ExecutableInfo& info, DebuggerMode debuggerMode)
     {
-        UnlinkedModuleProgramCodeBlock* instance = new (NotNull, allocateCell<UnlinkedModuleProgramCodeBlock>(vm->heap)) UnlinkedModuleProgramCodeBlock(vm, vm->unlinkedModuleProgramCodeBlockStructure.get(), info);
+        UnlinkedModuleProgramCodeBlock* instance = new (NotNull, allocateCell<UnlinkedModuleProgramCodeBlock>(vm->heap)) UnlinkedModuleProgramCodeBlock(vm, vm->unlinkedModuleProgramCodeBlockStructure.get(), info, debuggerMode);
         instance->finishCreation(*vm);
         return instance;
     }
@@ -568,8 +600,8 @@ public:
     }
 
 private:
-    UnlinkedModuleProgramCodeBlock(VM* vm, Structure* structure, const ExecutableInfo& info)
-        : Base(vm, structure, ModuleCode, info)
+    UnlinkedModuleProgramCodeBlock(VM* vm, Structure* structure, const ExecutableInfo& info, DebuggerMode debuggerMode)
+        : Base(vm, structure, ModuleCode, info, debuggerMode)
     {
     }
 
@@ -588,9 +620,9 @@ class UnlinkedEvalCodeBlock final : public UnlinkedGlobalCodeBlock {
 private:
     friend class CodeCache;
 
-    static UnlinkedEvalCodeBlock* create(VM* vm, const ExecutableInfo& info)
+    static UnlinkedEvalCodeBlock* create(VM* vm, const ExecutableInfo& info, DebuggerMode debuggerMode)
     {
-        UnlinkedEvalCodeBlock* instance = new (NotNull, allocateCell<UnlinkedEvalCodeBlock>(vm->heap)) UnlinkedEvalCodeBlock(vm, vm->unlinkedEvalCodeBlockStructure.get(), info);
+        UnlinkedEvalCodeBlock* instance = new (NotNull, allocateCell<UnlinkedEvalCodeBlock>(vm->heap)) UnlinkedEvalCodeBlock(vm, vm->unlinkedEvalCodeBlockStructure.get(), info, debuggerMode);
         instance->finishCreation(*vm);
         return instance;
     }
@@ -610,8 +642,8 @@ public:
     }
 
 private:
-    UnlinkedEvalCodeBlock(VM* vm, Structure* structure, const ExecutableInfo& info)
-        : Base(vm, structure, EvalCode, info)
+    UnlinkedEvalCodeBlock(VM* vm, Structure* structure, const ExecutableInfo& info, DebuggerMode debuggerMode)
+        : Base(vm, structure, EvalCode, info, debuggerMode)
     {
     }
 
@@ -631,9 +663,9 @@ public:
     typedef UnlinkedCodeBlock Base;
     static const unsigned StructureFlags = Base::StructureFlags | StructureIsImmortal;
 
-    static UnlinkedFunctionCodeBlock* create(VM* vm, CodeType codeType, const ExecutableInfo& info)
+    static UnlinkedFunctionCodeBlock* create(VM* vm, CodeType codeType, const ExecutableInfo& info, DebuggerMode debuggerMode)
     {
-        UnlinkedFunctionCodeBlock* instance = new (NotNull, allocateCell<UnlinkedFunctionCodeBlock>(vm->heap)) UnlinkedFunctionCodeBlock(vm, vm->unlinkedFunctionCodeBlockStructure.get(), codeType, info);
+        UnlinkedFunctionCodeBlock* instance = new (NotNull, allocateCell<UnlinkedFunctionCodeBlock>(vm->heap)) UnlinkedFunctionCodeBlock(vm, vm->unlinkedFunctionCodeBlockStructure.get(), codeType, info, debuggerMode);
         instance->finishCreation(*vm);
         return instance;
     }
@@ -641,8 +673,8 @@ public:
     static void destroy(JSCell*);
 
 private:
-    UnlinkedFunctionCodeBlock(VM* vm, Structure* structure, CodeType codeType, const ExecutableInfo& info)
-        : Base(vm, structure, codeType, info)
+    UnlinkedFunctionCodeBlock(VM* vm, Structure* structure, CodeType codeType, const ExecutableInfo& info, DebuggerMode debuggerMode)
+        : Base(vm, structure, codeType, info, debuggerMode)
     {
     }
     
@@ -656,5 +688,3 @@ public:
 };
 
 }
-
-#endif // UnlinkedCodeBlock_h

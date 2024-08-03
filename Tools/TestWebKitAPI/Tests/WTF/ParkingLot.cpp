@@ -148,7 +148,7 @@ struct SingleLatchTest {
             }
             
             // We need to wait.
-            if (ParkingLot::compareAndPark(&semaphore, newSemaphoreValue)) {
+            if (ParkingLot::compareAndPark(&semaphore, newSemaphoreValue).wasUnparked) {
                 // We did wait, and then got woken up. This means that someone who up'd the semaphore
                 // passed ownership onto us.
                 return;
@@ -254,12 +254,10 @@ TEST(WTF_ParkingLot, UnparkOneFifty)
     repeatParkingTest(1, 1, 10000, 50, 50);
 }
 
-#if !PLATFORM(IOS)
 TEST(WTF_ParkingLot, UnparkOneFiftyThenFiftyAll)
 {
     repeatParkingTest(2, 1, 10000, 100, 50);
 }
-#endif
 
 TEST(WTF_ParkingLot, HundredUnparkAllOneFast)
 {

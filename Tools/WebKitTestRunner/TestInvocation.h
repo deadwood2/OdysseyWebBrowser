@@ -65,6 +65,8 @@ public:
     void didEndSwipe();
     void didRemoveSwipeSnapshot();
 
+    void notifyDownloadDone();
+
 private:
     void dumpResults();
     static void dump(const char* textToStdout, const char* textToStderr = 0, bool seenError = false);
@@ -87,7 +89,7 @@ private:
 
     void runUISideScript(WKStringRef, unsigned callbackID);
     // UIScriptContextDelegate
-    void uiScriptDidComplete(WKStringRef result, unsigned callbackID) override;
+    void uiScriptDidComplete(const String& result, unsigned callbackID) override;
 
     const TestOptions m_options;
     

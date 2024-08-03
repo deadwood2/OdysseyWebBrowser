@@ -38,34 +38,32 @@ public:
 
     // DOM Functions
 
-    void start();
-    virtual void stop() override;
+    WEBCORE_EXPORT void start();
+    WEBCORE_EXPORT void stop() final;
     
     // Number of pixels to move on each scroll movement. Defaults to 6.
-    int scrollAmount() const;
-    void setScrollAmount(int, ExceptionCode&);
+    WEBCORE_EXPORT unsigned scrollAmount() const;
+    WEBCORE_EXPORT void setScrollAmount(unsigned);
     
     // Interval between each scroll movement, in milliseconds. Defaults to 60.
-    int scrollDelay() const;
-    void setScrollDelay(int, ExceptionCode&);
+    WEBCORE_EXPORT unsigned scrollDelay() const;
+    WEBCORE_EXPORT void setScrollDelay(unsigned);
     
     // Loop count. -1 means loop indefinitely.
-    int loop() const;
-    void setLoop(int, ExceptionCode&);
+    WEBCORE_EXPORT int loop() const;
+    WEBCORE_EXPORT void setLoop(int, ExceptionCode&);
     
 private:
     HTMLMarqueeElement(const QualifiedName&, Document&);
 
-    virtual bool isPresentationAttribute(const QualifiedName&) const override;
-    virtual void collectStyleForPresentationAttribute(const QualifiedName&, const AtomicString&, MutableStyleProperties&) override;
+    bool isPresentationAttribute(const QualifiedName&) const final;
+    void collectStyleForPresentationAttribute(const QualifiedName&, const AtomicString&, MutableStyleProperties&) final;
 
     // ActiveDOMObject
-    virtual bool canSuspendForDocumentSuspension() const override;
-    virtual void suspend(ReasonForSuspension) override;
-    virtual void resume() override;
-    virtual const char* activeDOMObjectName() const override { return "HTMLMarqueeElement"; }
-
-    virtual bool canHaveUserAgentShadowRoot() const override final { return true; }
+    bool canSuspendForDocumentSuspension() const final;
+    void suspend(ReasonForSuspension) final;
+    void resume() final;
+    const char* activeDOMObjectName() const final { return "HTMLMarqueeElement"; }
 
     RenderMarquee* renderMarquee() const;
 };

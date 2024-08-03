@@ -1,35 +1,46 @@
-add_definitions("-ObjC++ -std=c++11")
+add_definitions("-ObjC++ -std=c++14")
 link_directories(../../WebKitLibraries)
+find_library(APPLICATIONSERVICES_LIBRARY ApplicationServices)
 find_library(CARBON_LIBRARY Carbon)
 find_library(QUARTZ_LIBRARY Quartz)
+find_library(AVFOUNDATION_LIBRARY AVFoundation)
+find_library(AVFAUDIO_LIBRARY AVFAudio HINTS ${AVFOUNDATION_LIBRARY}/Versions/*/Frameworks)
 add_definitions(-iframework ${QUARTZ_LIBRARY}/Frameworks)
 add_definitions(-iframework ${CARBON_LIBRARY}/Frameworks)
+add_definitions(-iframework ${APPLICATIONSERVICES_LIBRARY}/Versions/Current/Frameworks)
 add_definitions(-DWK_XPC_SERVICE_SUFFIX=".Development")
 
 list(APPEND WebKit2_LIBRARIES
-    WebKit
+    PRIVATE WebKit
+    ${APPLICATIONSERVICES_LIBRARY}
 )
+
+if (NOT AVFAUDIO_LIBRARY-NOTFOUND)
+    list(APPEND WebKit2_LIBRARIES ${AVFAUDIO_LIBRARY})
+endif ()
 
 list(APPEND WebKit2_SOURCES
     DatabaseProcess/mac/DatabaseProcessMac.mm
 
     NetworkProcess/CustomProtocols/Cocoa/CustomProtocolManagerCocoa.mm
 
+    NetworkProcess/Downloads/PendingDownload.cpp
+
+    NetworkProcess/Downloads/cocoa/DownloadCocoa.mm
+
     NetworkProcess/Downloads/mac/DownloadMac.mm
 
+    NetworkProcess/cache/NetworkCacheCodersCocoa.cpp
     NetworkProcess/cache/NetworkCacheDataCocoa.mm
     NetworkProcess/cache/NetworkCacheIOChannelCocoa.mm
 
+    NetworkProcess/cocoa/NetworkDataTaskCocoa.mm
     NetworkProcess/cocoa/NetworkProcessCocoa.mm
     NetworkProcess/cocoa/NetworkSessionCocoa.mm
 
-    NetworkProcess/mac/NetworkDiskCacheMonitor.mm
     NetworkProcess/mac/NetworkLoadMac.mm
     NetworkProcess/mac/NetworkProcessMac.mm
-    NetworkProcess/mac/NetworkResourceLoaderMac.mm
     NetworkProcess/mac/RemoteNetworkingContext.mm
-
-    Platform/IPC/MessageRecorder.cpp
 
     Platform/IPC/mac/ConnectionMac.mm
 
@@ -87,10 +98,12 @@ list(APPEND WebKit2_SOURCES
     Shared/Cocoa/APIObject.mm
     Shared/Cocoa/CompletionHandlerCallChecker.mm
     Shared/Cocoa/DataDetectionResult.mm
+    Shared/Cocoa/LoadParametersCocoa.mm
     Shared/Cocoa/WKNSArray.mm
     Shared/Cocoa/WKNSData.mm
     Shared/Cocoa/WKNSDictionary.mm
     Shared/Cocoa/WKNSError.mm
+    Shared/Cocoa/WKNSNumber.mm
     Shared/Cocoa/WKNSString.mm
     Shared/Cocoa/WKNSURL.mm
     Shared/Cocoa/WKNSURLExtras.mm
@@ -111,6 +124,7 @@ list(APPEND WebKit2_SOURCES
     Shared/mac/ArgumentCodersMac.mm
     Shared/mac/AttributedString.mm
     Shared/mac/ChildProcessMac.mm
+    Shared/mac/CodeSigning.mm
     Shared/mac/ColorSpaceData.mm
     Shared/mac/CookieStorageShim.mm
     Shared/mac/CookieStorageShimLibrary.cpp
@@ -140,11 +154,16 @@ list(APPEND WebKit2_SOURCES
     Shared/mac/WebMemorySampler.mac.mm
 
     UIProcess/ViewGestureController.cpp
-    UIProcess/WebAutomationSession.cpp
+    UIProcess/WebResourceLoadStatisticsStore.cpp
+
+    UIProcess/Automation/WebAutomationSession.cpp
 
     UIProcess/API/APIUserScript.cpp
     UIProcess/API/APIUserStyleSheet.cpp
     UIProcess/API/APIWebsiteDataRecord.cpp
+
+    UIProcess/API/C/mac/WKContextPrivateMac.mm
+    UIProcess/API/C/mac/WKPagePrivateMac.mm
 
     UIProcess/API/Cocoa/APISerializedScriptValueCocoa.mm
     UIProcess/API/Cocoa/APIUserContentExtensionStoreCocoa.mm
@@ -163,7 +182,11 @@ list(APPEND WebKit2_SOURCES
     UIProcess/API/Cocoa/WKNavigationAction.mm
     UIProcess/API/Cocoa/WKNavigationData.mm
     UIProcess/API/Cocoa/WKNavigationResponse.mm
+    UIProcess/API/Cocoa/WKOpenPanelParameters.mm
     UIProcess/API/Cocoa/WKPreferences.mm
+    UIProcess/API/Cocoa/WKPreviewActionItem.mm
+    UIProcess/API/Cocoa/WKPreviewActionItemIdentifiers.mm
+    UIProcess/API/Cocoa/WKPreviewElementInfo.mm
     UIProcess/API/Cocoa/WKProcessGroup.mm
     UIProcess/API/Cocoa/WKProcessPool.mm
     UIProcess/API/Cocoa/WKScriptMessage.mm
@@ -181,16 +204,19 @@ list(APPEND WebKit2_SOURCES
     UIProcess/API/Cocoa/_WKContextMenuElementInfo.mm
     UIProcess/API/Cocoa/_WKDownload.mm
     UIProcess/API/Cocoa/_WKElementAction.mm
-    UIProcess/API/Cocoa/_WKElementInfo.mm
     UIProcess/API/Cocoa/_WKErrorRecoveryAttempting.mm
+    UIProcess/API/Cocoa/_WKExperimentalFeature.mm
     UIProcess/API/Cocoa/_WKProcessPoolConfiguration.mm
     UIProcess/API/Cocoa/_WKSessionState.mm
     UIProcess/API/Cocoa/_WKThumbnailView.mm
     UIProcess/API/Cocoa/_WKUserContentExtensionStore.mm
     UIProcess/API/Cocoa/_WKUserContentFilter.mm
+    UIProcess/API/Cocoa/_WKUserContentWorld.mm
+    UIProcess/API/Cocoa/_WKUserInitiatedAction.mm
     UIProcess/API/Cocoa/_WKUserStyleSheet.mm
     UIProcess/API/Cocoa/_WKVisitedLinkProvider.mm
     UIProcess/API/Cocoa/_WKVisitedLinkStore.mm
+    UIProcess/API/Cocoa/_WKWebsiteDataSize.mm
     UIProcess/API/Cocoa/_WKWebsiteDataStore.mm
 
     UIProcess/API/mac/WKView.mm
@@ -207,6 +233,7 @@ list(APPEND WebKit2_SOURCES
     UIProcess/Cocoa/VersionChecks.mm
     UIProcess/Cocoa/WKReloadFrameErrorRecoveryAttempter.mm
     UIProcess/Cocoa/WKWebViewContentProviderRegistry.mm
+    UIProcess/Cocoa/WebAutomationSessionCocoa.mm
     UIProcess/Cocoa/WebPageProxyCocoa.mm
     UIProcess/Cocoa/WebPasteboardProxyCocoa.mm
     UIProcess/Cocoa/WebProcessPoolCocoa.mm
@@ -308,6 +335,7 @@ list(APPEND WebKit2_SOURCES
     WebProcess/WebPage/ViewGestureGeometryCollector.cpp
 
     WebProcess/WebPage/Cocoa/RemoteLayerTreeDisplayRefreshMonitor.mm
+    WebProcess/WebPage/Cocoa/WebPageCocoa.mm
 
     WebProcess/WebPage/mac/GraphicsLayerCARemote.cpp
     WebProcess/WebPage/mac/PageBannerMac.mm
@@ -383,6 +411,7 @@ list(APPEND WebKit2_INCLUDE_DIRECTORIES
     "${WEBKIT2_DIR}/WebProcess/WebPage/mac"
     "${WEBKIT2_DIR}/WebProcess/WebCoreSupport/mac"
     "${DERIVED_SOURCES_DIR}/ForwardingHeaders"
+    "${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebCore"
 )
 
 # This is needed because of a naming conflict with DiagnosticLoggingClient.h.
@@ -392,10 +421,6 @@ list(REMOVE_ITEM WebKit2_INCLUDE_DIRECTORIES
 )
 list(APPEND WebKit2_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/page"
-)
-
-set(WEBKIT2_EXTRA_DEPENDENCIES
-     WebKit2-forwarding-headers
 )
 
 set(XPCService_SOURCES
@@ -422,6 +447,10 @@ list(APPEND DatabaseProcess_SOURCES
     DatabaseProcess/EntryPoint/mac/XPCService/DatabaseServiceEntryPoint.mm
     ${XPCService_SOURCES}
 )
+
+# FIXME: These should not have Development in production builds.
+set(WebKit2_WebProcess_OUTPUT_NAME com.apple.WebKit.WebContent.Development)
+set(WebKit2_NetworkProcess_OUTPUT_NAME com.apple.WebKit.Networking.Development)
 
 add_definitions("-include WebKit2Prefix.h")
 
@@ -452,6 +481,10 @@ set(WebKit2_FORWARDING_HEADERS_DIRECTORIES
     Platform
     Shared
 
+    NetworkProcess/Downloads
+
+    Platform/IPC
+
     Shared/API
     Shared/Cocoa
 
@@ -464,6 +497,8 @@ set(WebKit2_FORWARDING_HEADERS_DIRECTORIES
     UIProcess/Cocoa
 
     UIProcess/API/C
+
+    UIProcess/API/C/mac
     UIProcess/API/cpp
 
     WebProcess/WebPage
@@ -472,6 +507,8 @@ set(WebKit2_FORWARDING_HEADERS_DIRECTORIES
     WebProcess/InjectedBundle/API/c
     WebProcess/InjectedBundle/API/mac
 )
+
+WEBKIT_CREATE_FORWARDING_HEADERS(WebKit FILES ${WebKit2_FORWARDING_HEADERS_FILES} DIRECTORIES ${WebKit2_FORWARDING_HEADERS_DIRECTORIES})
 
 # This is needed right now to import ObjC headers instead of including them.
 # FIXME: Forwarding headers should be copies of actual headers.
@@ -483,16 +520,214 @@ foreach (_file ${ObjCHeaders})
     endif ()
 endforeach ()
 
-set(WebKit2_OUTPUT_NAME WebKit)
-
-add_custom_command(
-    OUTPUT ${DERIVED_SOURCES_WEBKIT2_DIR}/MessageRecorderProbes.h
-    MAIN_DEPENDENCY Platform/IPC/MessageRecorderProbes.d
-    WORKING_DIRECTORY ${DERIVED_SOURCES_WEBKIT2_DIR}
-    COMMAND dtrace -h -s ${WEBKIT2_DIR}/Platform/IPC/MessageRecorderProbes.d
-    VERBATIM)
-list(APPEND WebKit2_SOURCES
-    ${DERIVED_SOURCES_WEBKIT2_DIR}/MessageRecorderProbes.h
+# FIXME: Forwarding headers should be complete copies of the header.
+set(WebKitLegacyForwardingHeaders
+    DOM.h
+    DOMCore.h
+    DOMElement.h
+    DOMException.h
+    DOMObject.h
+    DOMPrivate.h
+    WebApplicationCache.h
+    WebCache.h
+    WebCoreStatistics.h
+    WebDOMOperations.h
+    WebDOMOperationsPrivate.h
+    WebDataSource.h
+    WebDataSourcePrivate.h
+    WebDefaultPolicyDelegate.h
+    WebDeviceOrientation.h
+    WebDeviceOrientationProviderMock.h
+    WebDocument.h
+    WebDocumentPrivate.h
+    WebDynamicScrollBarsView.h
+    WebEditingDelegate.h
+    WebFrame.h
+    WebFramePrivate.h
+    WebFrameViewPrivate.h
+    WebGeolocationPosition.h
+    WebHTMLRepresentation.h
+    WebHTMLView.h
+    WebHTMLViewPrivate.h
+    WebHistory.h
+    WebHistoryItem.h
+    WebHistoryItemPrivate.h
+    WebHistoryPrivate.h
+    WebIconDatabasePrivate.h
+    WebInspectorPrivate.h
+    WebKitNSStringExtras.h
+    WebNSURLExtras.h
+    WebNavigationData.h
+    WebNotification.h
+    WebPluginDatabase.h
+    WebPolicyDelegate.h
+    WebPolicyDelegatePrivate.h
+    WebPreferenceKeysPrivate.h
+    WebPreferences.h
+    WebPreferencesPrivate.h
+    WebQuotaManager.h
+    WebScriptWorld.h
+    WebSecurityOriginPrivate.h
+    WebTypesInternal.h
+    WebUIDelegate.h
+    WebUIDelegatePrivate.h
+    WebView.h
+    WebViewPrivate
+    WebViewPrivate.h
 )
+foreach (_file ${WebKitLegacyForwardingHeaders})
+    file(WRITE ${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebKit/${_file} "#import <WebKitLegacy/${_file}>")
+endforeach ()
 
-WEBKIT_CREATE_FORWARDING_HEADERS(WebKit FILES ${WebKit2_FORWARDING_HEADERS_FILES} DIRECTORIES ${WebKit2_FORWARDING_HEADERS_DIRECTORIES})
+set(ObjCForwardingHeaders
+    DOMAbstractView.h
+    DOMAttr.h
+    DOMBeforeLoadEvent.h
+    DOMBlob.h
+    DOMCDATASection.h
+    DOMCSSCharsetRule.h
+    DOMCSSFontFaceRule.h
+    DOMCSSImportRule.h
+    DOMCSSKeyframeRule.h
+    DOMCSSKeyframesRule.h
+    DOMCSSMediaRule.h
+    DOMCSSPageRule.h
+    DOMCSSPrimitiveValue.h
+    DOMCSSRule.h
+    DOMCSSRuleList.h
+    DOMCSSStyleDeclaration.h
+    DOMCSSStyleRule.h
+    DOMCSSStyleSheet.h
+    DOMCSSSupportsRule.h
+    DOMCSSUnknownRule.h
+    DOMCSSValue.h
+    DOMCSSValueList.h
+    DOMCharacterData.h
+    DOMComment.h
+    DOMCounter.h
+    DOMDOMImplementation.h
+    DOMDOMNamedFlowCollection.h
+    DOMDOMTokenList.h
+    DOMDocument.h
+    DOMDocumentFragment.h
+    DOMDocumentType.h
+    DOMElement.h
+    DOMEntity.h
+    DOMEntityReference.h
+    DOMEvent.h
+    DOMEventException.h
+    DOMEventListener.h
+    DOMEventTarget.h
+    DOMFile.h
+    DOMFileList.h
+    DOMHTMLAnchorElement.h
+    DOMHTMLAppletElement.h
+    DOMHTMLAreaElement.h
+    DOMHTMLBRElement.h
+    DOMHTMLBaseElement.h
+    DOMHTMLBaseFontElement.h
+    DOMHTMLBodyElement.h
+    DOMHTMLButtonElement.h
+    DOMHTMLCanvasElement.h
+    DOMHTMLCollection.h
+    DOMHTMLDListElement.h
+    DOMHTMLDirectoryElement.h
+    DOMHTMLDivElement.h
+    DOMHTMLDocument.h
+    DOMHTMLElement.h
+    DOMHTMLEmbedElement.h
+    DOMHTMLFieldSetElement.h
+    DOMHTMLFontElement.h
+    DOMHTMLFormElement.h
+    DOMHTMLFrameElement.h
+    DOMHTMLFrameSetElement.h
+    DOMHTMLHRElement.h
+    DOMHTMLHeadElement.h
+    DOMHTMLHeadingElement.h
+    DOMHTMLHtmlElement.h
+    DOMHTMLIFrameElement.h
+    DOMHTMLImageElement.h
+    DOMHTMLInputElement.h
+    DOMHTMLInputElementPrivate.h
+    DOMHTMLLIElement.h
+    DOMHTMLLabelElement.h
+    DOMHTMLLegendElement.h
+    DOMHTMLLinkElement.h
+    DOMHTMLMapElement.h
+    DOMHTMLMarqueeElement.h
+    DOMHTMLMediaElement.h
+    DOMHTMLMenuElement.h
+    DOMHTMLMetaElement.h
+    DOMHTMLModElement.h
+    DOMHTMLOListElement.h
+    DOMHTMLObjectElement.h
+    DOMHTMLOptGroupElement.h
+    DOMHTMLOptionElement.h
+    DOMHTMLOptionsCollection.h
+    DOMHTMLParagraphElement.h
+    DOMHTMLParamElement.h
+    DOMHTMLPreElement.h
+    DOMHTMLQuoteElement.h
+    DOMHTMLScriptElement.h
+    DOMHTMLSelectElement.h
+    DOMHTMLStyleElement.h
+    DOMHTMLTableCaptionElement.h
+    DOMHTMLTableCellElement.h
+    DOMHTMLTableColElement.h
+    DOMHTMLTableElement.h
+    DOMHTMLTableRowElement.h
+    DOMHTMLTableSectionElement.h
+    DOMHTMLTextAreaElement.h
+    DOMHTMLTitleElement.h
+    DOMHTMLUListElement.h
+    DOMHTMLVideoElement.h
+    DOMImplementation.h
+    DOMKeyboardEvent.h
+    DOMMediaError.h
+    DOMMediaList.h
+    DOMMessageEvent.h
+    DOMMessagePort.h
+    DOMMouseEvent.h
+    DOMMutationEvent.h
+    DOMNamedNodeMap.h
+    DOMNode.h
+    DOMNodeFilter.h
+    DOMNodeIterator.h
+    DOMNodeList.h
+    DOMOverflowEvent.h
+    DOMProcessingInstruction.h
+    DOMProgressEvent.h
+    DOMRGBColor.h
+    DOMRange.h
+    DOMRangeException.h
+    DOMRect.h
+    DOMStyleSheet.h
+    DOMStyleSheetList.h
+    DOMText.h
+    DOMTextEvent.h
+    DOMTimeRanges.h
+    DOMTreeWalker.h
+    DOMUIEvent.h
+    DOMValidityState.h
+    DOMWebKitCSSFilterValue.h
+    DOMWebKitCSSRegionRule.h
+    DOMWebKitCSSTransformValue.h
+    DOMWebKitNamedFlow.h
+    DOMWheelEvent.h
+    DOMXPathException.h
+    DOMXPathExpression.h
+    DOMXPathNSResolver.h
+    DOMXPathResult.h
+)
+foreach (_file ${ObjCForwardingHeaders})
+    file(WRITE ${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebKit/${_file} "#import <WebKitLegacy/${_file}>")
+endforeach ()
+
+# FIXME: These should not be necessary.
+file(WRITE ${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebKit/WKImageCG.h "#import <WebKit2/Shared/API/c/cg/WKImageCG.h>")
+file(WRITE ${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebKit/WebStorageManagerPrivate.h "#import <WebKit/mac/Storage/WebStorageManagerPrivate.h>")
+file(WRITE ${DERIVED_SOURCES_DIR}/ForwardingHeaders/WebKit/WebDatabaseManagerPrivate.h "#import <WebKit/mac/Storage/WebDatabaseManagerPrivate.h>")
+
+set(CMAKE_SHARED_LINKER_FLAGS ${CMAKE_SHARED_LINKER_FLAGS} "-compatibility_version 1 -current_version ${WEBKIT_MAC_VERSION}")
+
+set(WebKit2_OUTPUT_NAME WebKit)

@@ -28,8 +28,6 @@
 
 #include "WebGLContextObject.h"
 #include "WebGLSharedObject.h"
-
-#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 
 namespace WebCore {
@@ -103,7 +101,7 @@ public:
 protected:
     WebGLFramebuffer(WebGLRenderingContextBase*);
 
-    virtual void deleteObjectImpl(GraphicsContext3D*, Platform3DObject) override;
+    void deleteObjectImpl(GraphicsContext3D*, Platform3DObject) override;
 
 private:
     WebGLAttachment* getAttachment(GC3Denum) const;

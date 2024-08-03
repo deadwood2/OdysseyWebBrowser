@@ -28,10 +28,11 @@
 
 #if ENABLE(B3_JIT)
 
+#include "AirArgInlines.h"
 #include "AirCode.h"
 #include "AirInstInlines.h"
 #include "AirPhaseScope.h"
-#include "B3IndexMap.h"
+#include <wtf/IndexMap.h>
 #include <wtf/ListDump.h>
 
 namespace JSC { namespace B3 { namespace Air {

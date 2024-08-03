@@ -29,7 +29,6 @@
 #if ENABLE(VIDEO)
 
 #include "HTMLMediaElementEnums.h"
-#include <wtf/PassRefPtr.h>
 
 namespace WebCore {
 
@@ -42,9 +41,9 @@ public:
     virtual ~MediaControllerInterface() { };
     
     // MediaController IDL:
-    virtual PassRefPtr<TimeRanges> buffered() const = 0;
-    virtual PassRefPtr<TimeRanges> seekable() const = 0;
-    virtual PassRefPtr<TimeRanges> played() = 0;
+    virtual Ref<TimeRanges> buffered() const = 0;
+    virtual Ref<TimeRanges> seekable() const = 0;
+    virtual Ref<TimeRanges> played() = 0;
     
     virtual double duration() const = 0;
     virtual double currentTime() const = 0;

@@ -27,10 +27,8 @@
 #include "GeneratorPrototype.h"
 
 #include "JSCBuiltins.h"
-#include "JSCJSValueInlines.h"
-#include "JSCellInlines.h"
+#include "JSCInlines.h"
 #include "JSGlobalObject.h"
-#include "StructureInlines.h"
 
 #include "GeneratorPrototype.lut.h"
 
@@ -52,11 +50,6 @@ void GeneratorPrototype::finishCreation(VM& vm)
     ASSERT(inherits(info()));
     putDirectWithoutTransition(vm, vm.propertyNames->toStringTagSymbol, jsString(&vm, "Generator"), DontEnum | ReadOnly);
     vm.prototypeMap.addPrototype(this);
-}
-
-bool GeneratorPrototype::getOwnPropertySlot(JSObject* object, ExecState* exec, PropertyName propertyName, PropertySlot& slot)
-{
-    return getStaticFunctionSlot<Base>(exec, generatorPrototypeTable, jsCast<GeneratorPrototype*>(object), propertyName, slot);
 }
 
 } // namespace JSC

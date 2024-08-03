@@ -340,7 +340,7 @@ static void pageDidComputePageRects(const Vector<WebCore::IntRect>& pageRects, d
     ASSERT(!_expectedComputedPagesCallback);
 
     IPCCallbackContext* context = new IPCCallbackContext;
-    RefPtr<ComputedPagesCallback> callback = ComputedPagesCallback::create([context](const Vector<WebCore::IntRect>& pageRects, double totalScaleFactorForPrinting, WebKit::CallbackBase::Error) {
+    auto callback = ComputedPagesCallback::create([context](const Vector<WebCore::IntRect>& pageRects, double totalScaleFactorForPrinting, WebKit::CallbackBase::Error) {
         std::unique_ptr<IPCCallbackContext> contextDeleter(context);
         pageDidComputePageRects(pageRects, totalScaleFactorForPrinting, context);
     });
@@ -348,7 +348,7 @@ static void pageDidComputePageRects(const Vector<WebCore::IntRect>& pageRects, d
     context->view = self;
     context->callbackID = _expectedComputedPagesCallback;
 
-    _webFrame->page()->computePagesForPrinting(_webFrame.get(), PrintInfo([_printOperation printInfo]), callback.release());
+    _webFrame->page()->computePagesForPrinting(_webFrame.get(), PrintInfo([_printOperation printInfo]), WTFMove(callback));
     return YES;
 }
 
@@ -449,7 +449,10 @@ static void prepareDataForPrintingOnSecondaryThread(WKPrintingView *view)
     CGContextTranslateCTM(context, point.x, point.y);
     CGContextScaleCTM(context, _totalScaleFactorForPrinting, -_totalScaleFactorForPrinting);
     CGContextTranslateCTM(context, 0, -[pdfPage boundsForBox:kPDFDisplayBoxMediaBox].size.height);
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     [pdfPage drawWithBox:kPDFDisplayBoxMediaBox];
+#pragma clang diagnostic pop
 
     CGAffineTransform transform = CGContextGetCTM(context);
 
@@ -457,7 +460,10 @@ static void prepareDataForPrintingOnSecondaryThread(WKPrintingView *view)
         if (![annotation isKindOfClass:pdfAnnotationLinkClass()])
             continue;
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
         PDFAnnotationLink *linkAnnotation = (PDFAnnotationLink *)annotation;
+#pragma clang diagnostic pop
         NSURL *url = [linkAnnotation URL];
         if (!url)
             continue;

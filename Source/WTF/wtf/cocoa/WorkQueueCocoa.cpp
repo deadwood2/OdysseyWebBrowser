@@ -28,19 +28,23 @@
 
 namespace WTF {
 
-void WorkQueue::dispatch(std::function<void ()> function)
+void WorkQueue::dispatch(Function<void ()>&& function)
 {
     ref();
+    auto* callable = function.leakCallable();
     dispatch_async(m_dispatchQueue, ^{
+        auto function = Function<void ()>::adoptCallable(callable);
         function();
         deref();
     });
 }
 
-void WorkQueue::dispatchAfter(std::chrono::nanoseconds duration, std::function<void ()> function)
+void WorkQueue::dispatchAfter(std::chrono::nanoseconds duration, Function<void ()>&& function)
 {
     ref();
+    auto* callable = function.leakCallable();
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, duration.count()), m_dispatchQueue, ^{
+        auto function = Function<void ()>::adoptCallable(callable);
         function();
         deref();
     });

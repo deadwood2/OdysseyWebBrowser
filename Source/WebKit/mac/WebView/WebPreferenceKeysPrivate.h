@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005, 2012 Apple Inc.  All rights reserved.
+ * Copyright (C) 2005-2016 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -52,6 +52,7 @@
 #define WebKitJavaEnabledPreferenceKey @"WebKitJavaEnabled"
 #define WebKitJavaScriptEnabledPreferenceKey @"WebKitJavaScriptEnabled"
 #define WebKitJavaScriptMarkupEnabledPreferenceKey @"WebKitJavaScriptMarkupEnabled"
+#define WebKitWebAnimationsEnabledPreferenceKey @"WebKitWebAnimationsEnabled"
 #define WebKitWebSecurityEnabledPreferenceKey @"WebKitWebSecurityEnabled"
 #define WebKitAllowUniversalAccessFromFileURLsPreferenceKey @"WebKitAllowUniversalAccessFromFileURLs"
 #define WebKitAllowFileAccessFromFileURLsPreferenceKey @"WebKitAllowFileAccessFromFileURLs"
@@ -81,6 +82,7 @@
 #define WebAutomaticSpellingCorrectionEnabled @"WebAutomaticSpellingCorrectionEnabled"
 #define WebKitDOMPasteAllowedPreferenceKey @"WebKitDOMPasteAllowedPreferenceKey"
 #define WebKitUsesPageCachePreferenceKey @"WebKitUsesPageCachePreferenceKey"
+#define WebKitAllowsPageCacheWithWindowOpenerKey @"WebKitAllowsPageCacheWithWindowOpenerKey"
 #define WebKitPageCacheSupportsPluginsPreferenceKey @"WebKitPageCacheSupportsPluginsPreferenceKey"
 #define WebKitFTPDirectoryTemplatePath @"WebKitFTPDirectoryTemplatePath"
 #define WebKitForceFTPDirectoryListings @"WebKitForceFTPDirectoryListings"
@@ -102,13 +104,12 @@
 #define WebKitDisplayListDrawingEnabledPreferenceKey @"WebKitDisplayListDrawingEnabled"
 #define WebKitCanvasUsesAcceleratedDrawingPreferenceKey @"WebKitCanvasUsesAcceleratedDrawing"
 #define WebKitAcceleratedCompositingEnabledPreferenceKey @"WebKitAcceleratedCompositingEnabled"
-#define WebKitCSSRegionsEnabledPreferenceKey @"WebKitCSSRegionsEnabled"
-#define WebKitCSSCompositingEnabledPreferenceKey @"WebKitCSSCompositingEnabled"
 #define WebKitShowDebugBordersPreferenceKey @"WebKitShowDebugBorders"
 #define WebKitSimpleLineLayoutDebugBordersEnabledPreferenceKey @"WebKitSimpleLineLayoutDebugBordersEnabled"
 #define WebKitShowRepaintCounterPreferenceKey @"WebKitShowRepaintCounter"
 #define WebKitWebAudioEnabledPreferenceKey @"WebKitWebAudioEnabled"
 #define WebKitWebGLEnabledPreferenceKey @"WebKitWebGLEnabled"
+#define WebKitWebGL2EnabledPreferenceKey @"WebKitWebGL2Enabled"
 #define WebKitForceSoftwareWebGLRenderingPreferenceKey @"WebKitForceSoftwareWebGLRendering"
 #define WebKitAccelerated2dCanvasEnabledPreferenceKey @"WebKitAccelerated2dCanvasEnabled"
 #define WebKitFrameFlatteningEnabledPreferenceKey @"WebKitFrameFlatteningEnabled"
@@ -122,8 +123,11 @@
 #define WebKitAVFoundationNSURLSessionEnabledKey @"WebKitAVFoundationNSURLSessionEnabled"
 #define WebKitHixie76WebSocketProtocolEnabledKey @"WebKitHixie76WebSocketProtocolEnabled"
 #define WebKitRequiresUserGestureForMediaPlaybackPreferenceKey @"WebKitMediaPlaybackRequiresUserGesture"
+#define WebKitRequiresUserGestureForVideoPlaybackPreferenceKey @"WebKitVideoPlaybackRequiresUserGesture"
 #define WebKitRequiresUserGestureForAudioPlaybackPreferenceKey @"WebKitAudioPlaybackRequiresUserGesture"
+#define WebKitMainContentUserGestureOverrideEnabledPreferenceKey @"WebKitMainContentUserGestureOverrideEnabled"
 #define WebKitAllowsInlineMediaPlaybackPreferenceKey @"WebKitMediaPlaybackAllowsInline"
+#define WebKitAllowsInlineMediaPlaybackAfterFullscreenPreferenceKey @"WebKitAllowsInlineMediaPlaybackAfterFullscreen"
 #define WebKitInlineMediaPlaybackRequiresPlaysInlineAttributeKey @"InlineMediaPlaybackRequiresPlaysInlineAttribute"
 #define WebKitInvisibleAutoplayNotPermittedKey @"InvisibleAutoplayNotPermitted"
 #define WebKitAllowsPictureInPictureMediaPlaybackPreferenceKey @"WebKitAllowsPictureInPictureMediaPlayback"
@@ -157,6 +161,13 @@
 #define WebKitGamepadsEnabledPreferenceKey @"WebKitGamepadsEnabled"
 #define WebKitServiceControlsEnabledPreferenceKey @"WebKitServiceControlsEnabled"
 #define WebKitMediaKeysStorageDirectoryKey @"WebKitMediaKeysStorageDirectory"
+#define WebKitShadowDOMEnabledPreferenceKey @"WebKitShadowDOMEnabled"
+#define WebKitCustomElementsEnabledPreferenceKey @"WebKitCustomElementsEnabled"
+#define WebKitDOMIteratorEnabledPreferenceKey @"WebKitDOMIteratorEnabled"
+#define WebKitFetchAPIEnabledPreferenceKey @"WebKitFetchAPIEnabled"
+#define WebKitDownloadAttributeEnabledPreferenceKey @"WebKitDownloadAttributeEnabled"
+#define WebKitCSSGridLayoutEnabledPreferenceKey @"WebKitCSSGridLayoutEnabled"
+#define WebKitVisualViewportEnabledPreferenceKey @"WebKitVisualViewportEnabled"
 
 #if !TARGET_OS_IPHONE
 // These are private both because callers should be using the cover methods and because the
@@ -178,7 +189,7 @@
 #define WebKitWantsBalancedSetDefersLoadingBehaviorKey @"WebKitWantsBalancedSetDefersLoadingBehavior"
 #define WebKitDebugFullPageZoomPreferenceKey @"WebKitDebugFullPageZoomPreferenceKey"
 #define WebKitMinimumZoomFontSizePreferenceKey @"WebKitMinimumZoomFontSizePreferenceKey"
-#define WebKitAntialiasedFontDilationEnabledKey @"AntialiasedFontDilationEnabled"
+#define WebKitTextAutosizingEnabledPreferenceKey @"WebKitTextAutosizingEnabled"
 #define WebKitHTTPEquivEnabledPreferenceKey @"WebKitHTTPEquivEnabled"
 
 #if TARGET_OS_IPHONE
@@ -200,4 +211,6 @@
 #define WebKitEnableInheritURIQueryComponentPreferenceKey @"WebKitEnableInheritURIQueryComponent"
 #define WebKitMediaDataLoadsAutomaticallyPreferenceKey @"WebKitMediaDataLoadsAutomatically"
 #define WebKitMockCaptureDevicesEnabledPreferenceKey @"WebKitMockCaptureDevicesEnabled"
+
+#define WebKitAttachmentElementEnabledPreferenceKey @"WebKitAttachmentElementEnabled"
 

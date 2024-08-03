@@ -3,9 +3,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
-// The SeparateArrayDeclarations function processes declarations that contain array declarators. Each declarator in
-// such declarations gets its own declaration.
-// This is useful as an intermediate step when initialization needs to be separated from declaration.
+// The SeparateDeclarations function processes declarations, so that in the end each declaration
+// contains only one declarator.
+// This is useful as an intermediate step when initialization needs to be separated from declaration,
+// or when things need to be unfolded out of the initializer.
 // Example:
 //     int a[1] = int[1](1), b[1] = int[1](2);
 // gets transformed when run through this class into the AST equivalent of:
@@ -19,46 +20,36 @@
 namespace
 {
 
-class SeparateDeclarations : private TIntermTraverser
+class SeparateDeclarationsTraverser : private TIntermTraverser
 {
   public:
     static void apply(TIntermNode *root);
   private:
-    SeparateDeclarations();
+    SeparateDeclarationsTraverser();
     bool visitAggregate(Visit, TIntermAggregate *node) override;
 };
 
-void SeparateDeclarations::apply(TIntermNode *root)
+void SeparateDeclarationsTraverser::apply(TIntermNode *root)
 {
-    SeparateDeclarations separateDecl;
+    SeparateDeclarationsTraverser separateDecl;
     root->traverse(&separateDecl);
     separateDecl.updateTree();
 }
 
-SeparateDeclarations::SeparateDeclarations()
+SeparateDeclarationsTraverser::SeparateDeclarationsTraverser()
     : TIntermTraverser(true, false, false)
 {
 }
 
-bool SeparateDeclarations::visitAggregate(Visit, TIntermAggregate *node)
+bool SeparateDeclarationsTraverser::visitAggregate(Visit, TIntermAggregate *node)
 {
     if (node->getOp() == EOpDeclaration)
     {
         TIntermSequence *sequence = node->getSequence();
-        bool sequenceContainsArrays = false;
-        for (size_t ii = 0; ii < sequence->size(); ++ii)
+        if (sequence->size() > 1)
         {
-            TIntermTyped *typed = sequence->at(ii)->getAsTyped();
-            if (typed != nullptr && typed->isArray())
-            {
-                sequenceContainsArrays = true;
-                break;
-            }
-        }
-        if (sequence->size() > 1 && sequenceContainsArrays)
-        {
-            TIntermAggregate *parentAgg = getParentNode()->getAsAggregate();
-            ASSERT(parentAgg != nullptr);
+            TIntermBlock *parentBlock = getParentNode()->getAsBlock();
+            ASSERT(parentBlock != nullptr);
 
             TIntermSequence replacementDeclarations;
             for (size_t ii = 0; ii < sequence->size(); ++ii)
@@ -71,7 +62,8 @@ bool SeparateDeclarations::visitAggregate(Visit, TIntermAggregate *node)
                 replacementDeclarations.push_back(replacementDeclaration);
             }
 
-            mMultiReplacements.push_back(NodeReplaceWithMultipleEntry(parentAgg, node, replacementDeclarations));
+            mMultiReplacements.push_back(
+                NodeReplaceWithMultipleEntry(parentBlock, node, replacementDeclarations));
         }
         return false;
     }
@@ -80,7 +72,7 @@ bool SeparateDeclarations::visitAggregate(Visit, TIntermAggregate *node)
 
 } // namespace
 
-void SeparateArrayDeclarations(TIntermNode *root)
+void SeparateDeclarations(TIntermNode *root)
 {
-    SeparateDeclarations::apply(root);
+    SeparateDeclarationsTraverser::apply(root);
 }

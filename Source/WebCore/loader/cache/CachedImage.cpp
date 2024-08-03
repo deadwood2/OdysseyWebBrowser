@@ -45,7 +45,6 @@
 #include <wtf/CurrentTime.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/StdLibExtras.h>
-#include <wtf/Vector.h>
 
 #if PLATFORM(IOS)
 #include "SystemMemory.h"
@@ -119,7 +118,7 @@ void CachedImage::didAddClient(CachedResourceClient* client)
 {
     if (m_data && !m_image && !errorOccurred()) {
         createImage();
-        m_image->setData(m_data, true);
+        m_image->setData(m_data.copyRef(), true);
     }
     
     ASSERT(client->resourceClientType() == CachedImageClient::expectedType());
@@ -272,22 +271,14 @@ LayoutSize CachedImage::imageSizeForRenderer(const RenderObject* renderer, float
     if (!m_image)
         return LayoutSize();
 
-    LayoutSize imageSize(m_image->size());
+    LayoutSize imageSize;
 
-#if ENABLE(CSS_IMAGE_ORIENTATION)
-    if (renderer && is<BitmapImage>(*m_image)) {
-        ImageOrientationDescription orientationDescription(renderer->shouldRespectImageOrientation(), renderer->style().imageOrientation());
-        if (orientationDescription.respectImageOrientation() == RespectImageOrientation)
-            imageSize = LayoutSize(downcast<BitmapImage>(*m_image).sizeRespectingOrientation(orientationDescription));
-    }
-#else
-    if (is<BitmapImage>(*m_image) && (renderer && renderer->shouldRespectImageOrientation() == RespectImageOrientation))
+    if (is<BitmapImage>(*m_image) && renderer && renderer->shouldRespectImageOrientation() == RespectImageOrientation)
         imageSize = LayoutSize(downcast<BitmapImage>(*m_image).sizeRespectingOrientation());
-#endif // ENABLE(CSS_IMAGE_ORIENTATION)
-
-    else if (is<SVGImage>(*m_image) && sizeType == UsedSize) {
+    else if (is<SVGImage>(*m_image) && sizeType == UsedSize)
         imageSize = LayoutSize(m_svgImageCache->imageSizeForRenderer(renderer));
-    }
+    else
+        imageSize = LayoutSize(m_image->size());
 
     if (multiplier == 1.0f)
         return imageSize;
@@ -342,9 +333,9 @@ inline void CachedImage::createImage()
         m_image = PDFDocumentImage::create(this);
 #endif
     else if (m_response.mimeType() == "image/svg+xml") {
-        RefPtr<SVGImage> svgImage = SVGImage::create(*this, url());
-        m_svgImageCache = std::make_unique<SVGImageCache>(svgImage.get());
-        m_image = svgImage.release();
+        auto svgImage = SVGImage::create(*this, url());
+        m_svgImageCache = std::make_unique<SVGImageCache>(svgImage.ptr());
+        m_image = WTFMove(svgImage);
     } else {
         m_image = BitmapImage::create(this);
         downcast<BitmapImage>(*m_image).setAllowSubsampling(m_loader && m_loader->frameLoader()->frame().settings().imageSubsamplingEnabled());
@@ -409,7 +400,7 @@ void CachedImage::addDataBuffer(SharedBuffer& data)
 void CachedImage::addData(const char* data, unsigned length)
 {
     ASSERT(dataBufferingPolicy() == DoNotBufferData);
-    addIncrementalDataBuffer(*SharedBuffer::create(data, length));
+    addIncrementalDataBuffer(SharedBuffer::create(data, length));
     CachedResource::addData(data, length);
 }
 
@@ -471,12 +462,13 @@ void CachedImage::destroyDecodedData()
         m_image->destroyDecodedData();
 }
 
-void CachedImage::decodedSizeChanged(const Image* image, int delta)
+void CachedImage::decodedSizeChanged(const Image* image, long long delta)
 {
     if (!image || image != m_image)
         return;
-    
-    setDecodedSize(decodedSize() + delta);
+
+    ASSERT(delta >= 0 || decodedSize() + delta >= 0);
+    setDecodedSize(static_cast<unsigned>(decodedSize() + delta));
 }
 
 void CachedImage::didDraw(const Image* image)

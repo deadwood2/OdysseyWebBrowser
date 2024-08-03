@@ -43,6 +43,12 @@ InspectorBackendClass = class InspectorBackendClass
         this._defaultTracer = new WebInspector.LoggingProtocolTracer;
         this._activeTracers = [this._defaultTracer];
 
+        this._currentDispatchState = {
+            event: null,
+            request: null,
+            response: null,
+        };
+
         this._dumpInspectorTimeStats = false;
 
         let setting = WebInspector.autoLogProtocolMessagesSetting = new WebInspector.Setting("auto-collect-protocol-messages", false);
@@ -71,6 +77,8 @@ InspectorBackendClass = class InspectorBackendClass
 
     set dumpInspectorTimeStats(value)
     {
+        this._dumpInspectorTimeStats = !!value;
+
         if (!this.dumpInspectorProtocolMessages)
             this.dumpInspectorProtocolMessages = true;
 
@@ -200,10 +208,10 @@ InspectorBackendClass = class InspectorBackendClass
             "method": command.qualifiedName,
         };
 
-        if (Object.keys(parameters).length)
+        if (!isEmptyObject(parameters))
             messageObject["params"] = parameters;
 
-        let responseData = {command, callback};
+        let responseData = {command, request: messageObject, callback};
 
         if (this.activeTracer)
             responseData.sendRequestTimestamp = timestamp();
@@ -221,10 +229,10 @@ InspectorBackendClass = class InspectorBackendClass
             "method": command.qualifiedName,
         };
 
-        if (Object.keys(parameters).length)
+        if (!isEmptyObject(parameters))
             messageObject["params"] = parameters;
 
-        let responseData = {command};
+        let responseData = {command, request: messageObject};
 
         if (this.activeTracer)
             responseData.sendRequestTimestamp = timestamp();
@@ -253,25 +261,31 @@ InspectorBackendClass = class InspectorBackendClass
 
         if (messageObject["error"]) {
             if (messageObject["error"].code !== -32000)
-                this._reportProtocolError(messageObject);
+                console.error("Request with id = " + messageObject["id"] + " failed. " + JSON.stringify(messageObject["error"]));
         }
 
         let sequenceId = messageObject["id"];
         console.assert(this._pendingResponses.has(sequenceId), sequenceId, this._pendingResponses);
 
         let responseData = this._pendingResponses.take(sequenceId) || {};
-        let {command, callback, promise} = responseData;
+        let {request, command, callback, promise} = responseData;
 
         let processingStartTimestamp = timestamp();
         for (let tracer of this.activeTracers)
             tracer.logWillHandleResponse(messageObject);
 
+        this._currentDispatchState.request = request;
+        this._currentDispatchState.response = messageObject;
+
         if (typeof callback === "function")
-            this._dispatchResponseToCallback(command, messageObject, callback);
+            this._dispatchResponseToCallback(command, request, messageObject, callback);
         else if (typeof promise === "object")
             this._dispatchResponseToPromise(command, messageObject, promise);
         else
             console.error("Received a command response without a corresponding callback or promise.", messageObject, command);
+
+        this._currentDispatchState.request = null;
+        this._currentDispatchState.response = null;
 
         let processingTime = (timestamp() - processingStartTimestamp).toFixed(3);
         let roundTripTime = (processingStartTimestamp - responseData.sendRequestTimestamp).toFixed(3);
@@ -283,20 +297,20 @@ InspectorBackendClass = class InspectorBackendClass
             this._flushPendingScripts();
     }
 
-    _dispatchResponseToCallback(command, messageObject, callback)
+    _dispatchResponseToCallback(command, requestObject, responseObject, callback)
     {
         let callbackArguments = [];
-        callbackArguments.push(messageObject["error"] ? messageObject["error"].message : null);
+        callbackArguments.push(responseObject["error"] ? responseObject["error"].message : null);
 
-        if (messageObject["result"]) {
-            for (var parameterName of command.replySignature)
-                callbackArguments.push(messageObject["result"][parameterName]);
+        if (responseObject["result"]) {
+            for (let parameterName of command.replySignature)
+                callbackArguments.push(responseObject["result"][parameterName]);
         }
 
         try {
             callback.apply(null, callbackArguments);
         } catch (e) {
-            console.error("Uncaught exception in inspector page while dispatching callback for command " + command.qualifiedName, e);
+            WebInspector.reportInternalError(e, {"cause": `An uncaught exception was thrown while dispatching response callback for command ${command.qualifiedName}.`});
         }
     }
 
@@ -338,22 +352,22 @@ InspectorBackendClass = class InspectorBackendClass
         for (let tracer of this.activeTracers)
             tracer.logWillHandleEvent(messageObject);
 
+        this._currentDispatchState.event = messageObject;
+
         try {
             agent.dispatchEvent(eventName, eventArguments);
         } catch (e) {
-            console.error("Uncaught exception in inspector page while handling event " + qualifiedName, e);
             for (let tracer of this.activeTracers)
                 tracer.logFrontendException(messageObject, e);
+
+            WebInspector.reportInternalError(e, {"cause": `An uncaught exception was thrown while handling event: ${qualifiedName}`});
         }
+
+        this._currentDispatchState.event = null;
 
         let processingDuration = (timestamp() - processingStartTimestamp).toFixed(3);
         for (let tracer of this.activeTracers)
             tracer.logDidHandleEvent(messageObject, {dispatch: processingDuration});
-    }
-
-    _reportProtocolError(messageObject)
-    {
-        console.error("Request with id = " + messageObject["id"] + " failed. " + JSON.stringify(messageObject["error"]));
     }
 
     _flushPendingScripts()
@@ -396,6 +410,8 @@ InspectorBackend.Agent = class InspectorBackendAgent
         return this._active;
     }
 
+    get currentDispatchState() { return this._currentDispatchState; }
+
     set dispatcher(value)
     {
         this._dispatcher = value;
@@ -424,6 +440,12 @@ InspectorBackend.Agent = class InspectorBackendAgent
     hasEvent(eventName)
     {
         return eventName in this._events;
+    }
+
+    hasEventParameter(eventName, eventParameterName)
+    {
+        let event = this._events[eventName];
+        return event && event.parameterNames.includes(eventParameterName);
     }
 
     activate()
@@ -520,9 +542,7 @@ InspectorBackend.Command.prototype = {
         'use strict';
 
         var instance = this._instance;
-        return instance.callSignature.some(function(parameter) {
-            return parameter["name"] === parameterName;
-        });
+        return instance.callSignature.some((parameter) => parameter["name"] === parameterName);
     },
 
     // Private

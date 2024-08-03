@@ -29,7 +29,10 @@
 #if ENABLE(VIDEO)
 #include "MediaControls.h"
 
+#include "EventNames.h"
 #include "ExceptionCodePlaceholder.h"
+#include "Page.h"
+#include "RenderElement.h"
 #include "Settings.h"
 
 namespace WebCore {
@@ -294,11 +297,11 @@ void MediaControls::exitedFullscreen()
 #endif
 }
 
-void MediaControls::defaultEventHandler(Event* event)
+void MediaControls::defaultEventHandler(Event& event)
 {
     HTMLDivElement::defaultEventHandler(event);
 
-    if (event->type() == eventNames().mouseoverEvent) {
+    if (event.type() == eventNames().mouseoverEvent) {
         if (!containsRelatedTarget(event)) {
             m_isMouseOverControls = true;
             if (!m_mediaController->canPlay()) {
@@ -310,7 +313,7 @@ void MediaControls::defaultEventHandler(Event* event)
         return;
     }
 
-    if (event->type() == eventNames().mouseoutEvent) {
+    if (event.type() == eventNames().mouseoutEvent) {
         if (!containsRelatedTarget(event)) {
             m_isMouseOverControls = false;
             stopHideFullscreenControlsTimer();
@@ -318,7 +321,7 @@ void MediaControls::defaultEventHandler(Event* event)
         return;
     }
 
-    if (event->type() == eventNames().mousemoveEvent) {
+    if (event.type() == eventNames().mousemoveEvent) {
         if (m_isFullscreen) {
             // When we get a mouse move in fullscreen mode, show the media controls, and start a timer
             // that will hide the media controls after a 3 seconds without a mouse move.
@@ -364,11 +367,11 @@ void MediaControls::stopHideFullscreenControlsTimer()
     m_hideFullscreenControlsTimer.stop();
 }
 
-bool MediaControls::containsRelatedTarget(Event* event)
+bool MediaControls::containsRelatedTarget(Event& event)
 {
-    if (!is<MouseEvent>(*event))
+    if (!is<MouseEvent>(event))
         return false;
-    EventTarget* relatedTarget = downcast<MouseEvent>(*event).relatedTarget();
+    EventTarget* relatedTarget = downcast<MouseEvent>(event).relatedTarget();
     if (!relatedTarget)
         return false;
     return contains(relatedTarget->toNode());
@@ -380,14 +383,14 @@ void MediaControls::createTextTrackDisplay()
     if (m_textDisplayContainer)
         return;
 
-    Ref<MediaControlTextTrackContainerElement> textDisplayContainer = MediaControlTextTrackContainerElement::create(document());
+    auto textDisplayContainer = MediaControlTextTrackContainerElement::create(document());
     m_textDisplayContainer = textDisplayContainer.ptr();
 
     if (m_mediaController)
         m_textDisplayContainer->setMediaController(m_mediaController);
 
     // Insert it before the first controller element so it always displays behind the controls.
-    insertBefore(WTFMove(textDisplayContainer), m_panel, IGNORE_EXCEPTION);
+    insertBefore(textDisplayContainer, m_panel, IGNORE_EXCEPTION);
 }
 
 void MediaControls::showTextTrackDisplay()

@@ -31,8 +31,9 @@
 #ifndef RTCConfiguration_h
 #define RTCConfiguration_h
 
-#if ENABLE(MEDIA_STREAM)
+#if ENABLE(WEB_RTC)
 
+#include "PeerConnectionStates.h"
 #include "RTCIceServer.h"
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
@@ -50,8 +51,12 @@ public:
     static RefPtr<RTCConfiguration> create(const Dictionary& configuration, ExceptionCode&);
     virtual ~RTCConfiguration() { }
 
-    const String& iceTransportPolicy() const { return m_iceTransportPolicy; }
-    const String& bundlePolicy() const { return m_bundlePolicy; }
+    using IceTransportPolicy = PeerConnectionStates::IceTransportPolicy;
+    IceTransportPolicy iceTransportPolicy() const { return m_iceTransportPolicy; }
+
+    using BundlePolicy = PeerConnectionStates::BundlePolicy;
+    BundlePolicy bundlePolicy() const { return m_bundlePolicy; }
+
     Vector<RefPtr<RTCIceServer>> iceServers() const { return m_iceServers; }
 
 private:
@@ -60,12 +65,12 @@ private:
     void initialize(const Dictionary& configuration, ExceptionCode&);
 
     Vector<RefPtr<RTCIceServer>> m_iceServers;
-    String m_iceTransportPolicy;
-    String m_bundlePolicy;
+    IceTransportPolicy m_iceTransportPolicy { IceTransportPolicy::All };
+    BundlePolicy m_bundlePolicy { BundlePolicy::Balanced };
 };
 
 } // namespace WebCore
 
-#endif // ENABLE(MEDIA_STREAM)
+#endif // ENABLE(WEB_RTC)
 
 #endif // RTCConfiguration_h

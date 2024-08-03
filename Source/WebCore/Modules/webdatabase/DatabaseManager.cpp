@@ -20,7 +20,7 @@
  * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
  * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include "config.h"
@@ -201,7 +201,7 @@ static void logOpenDatabaseError(ScriptExecutionContext* context, const String& 
         context->securityOrigin()->toString().ascii().data());
 }
 
-PassRefPtr<Database> DatabaseManager::openDatabaseBackend(ScriptExecutionContext* context, const String& name, const String& expectedVersion, const String& displayName, unsigned long estimatedSize, bool setVersionInNewDatabase, DatabaseError& error, String& errorMessage)
+RefPtr<Database> DatabaseManager::openDatabaseBackend(ScriptExecutionContext* context, const String& name, const String& expectedVersion, const String& displayName, unsigned long estimatedSize, bool setVersionInNewDatabase, DatabaseError& error, String& errorMessage)
 {
     ASSERT(error == DatabaseError::None);
 
@@ -217,11 +217,11 @@ PassRefPtr<Database> DatabaseManager::openDatabaseBackend(ScriptExecutionContext
         case DatabaseError::DatabaseSizeOverflowed:
         case DatabaseError::GenericSecurityError:
             logOpenDatabaseError(context, name);
-            return 0;
+            return nullptr;
 
         case DatabaseError::InvalidDatabaseState:
             logErrorMessage(context, errorMessage);
-            return 0;
+            return nullptr;
 
         case DatabaseError::DatabaseSizeExceededQuota:
             // Notify the client that we've exceeded the database quota.
@@ -245,15 +245,15 @@ PassRefPtr<Database> DatabaseManager::openDatabaseBackend(ScriptExecutionContext
 
             if (error == DatabaseError::InvalidDatabaseState) {
                 logErrorMessage(context, errorMessage);
-                return 0;
+                return nullptr;
             }
 
             logOpenDatabaseError(context, name);
-            return 0;
+            return nullptr;
         }
     }
 
-    return backend.release();
+    return backend;
 }
 
 void DatabaseManager::addProposedDatabase(ProposedDatabase* proposedDb)
@@ -272,7 +272,7 @@ void DatabaseManager::removeProposedDatabase(ProposedDatabase* proposedDb)
 
 RefPtr<Database> DatabaseManager::openDatabase(ScriptExecutionContext* context,
     const String& name, const String& expectedVersion, const String& displayName,
-    unsigned long estimatedSize, PassRefPtr<DatabaseCallback> creationCallback,
+    unsigned long estimatedSize, RefPtr<DatabaseCallback>&& creationCallback,
     DatabaseError& error)
 {
     ScriptController::initializeThreading();
@@ -327,7 +327,7 @@ String DatabaseManager::fullPathForDatabase(SecurityOrigin* origin, const String
                 return String();
         }
     }
-    
+
     return m_server->fullPathForDatabase(origin, name, createIfDoesNotExist);
 }
 
@@ -350,16 +350,16 @@ DatabaseDetails DatabaseManager::detailsForNameAndOrigin(const String& name, Sec
 {
     {
         std::lock_guard<Lock> lock(m_mutex);
-        
+
         for (auto* proposedDatabase : m_proposedDatabases) {
             if (proposedDatabase->details().name() == name && proposedDatabase->origin()->equal(origin)) {
                 ASSERT(proposedDatabase->details().threadID() == std::this_thread::get_id() || isMainThread());
-                
+
                 return proposedDatabase->details();
             }
         }
     }
-    
+
     return m_server->detailsForNameAndOrigin(name, origin);
 }
 
@@ -378,9 +378,9 @@ void DatabaseManager::setQuota(SecurityOrigin* origin, unsigned long long quotaS
     m_server->setQuota(origin, quotaSize);
 }
 
-void DatabaseManager::deleteAllDatabases()
+void DatabaseManager::deleteAllDatabasesImmediately()
 {
-    m_server->deleteAllDatabases();
+    m_server->deleteAllDatabasesImmediately();
 }
 
 bool DatabaseManager::deleteOrigin(SecurityOrigin* origin)

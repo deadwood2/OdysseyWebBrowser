@@ -30,8 +30,8 @@
 
 #import "FloatingPointEnvironment.h"
 #import "JSDOMWindowBase.h"
+#import "RuntimeApplicationChecks.h"
 #import "ThreadGlobalData.h"
-#import "RuntimeApplicationChecksIOS.h"
 #import "WebCoreThreadInternal.h"
 #import "WebCoreThreadMessage.h"
 #import "WebCoreThreadRun.h"
@@ -709,7 +709,6 @@ static void StartWebThread()
     WTF::AtomicString::init();
 
     // register class for WebThread deallocation
-    WebCoreObjCDeallocOnWebThread([DOMObject class]);
     WebCoreObjCDeallocOnWebThread([WAKWindow class]);
     WebCoreObjCDeallocWithWebThreadLock([WAKView class]);
 
@@ -1000,7 +999,7 @@ void WebThreadSetDelegateSourceRunLoopMode(CFStringRef mode)
 
 void WebThreadEnable(void)
 {
-    RELEASE_ASSERT_WITH_MESSAGE(!WebCore::applicationIsWebProcess(), "The WebProcess should never run a Web Thread");
+    RELEASE_ASSERT_WITH_MESSAGE(!WebCore::IOSApplication::isWebProcess(), "The WebProcess should never run a Web Thread");
 
     static pthread_once_t initControl = PTHREAD_ONCE_INIT;
     pthread_once(&initControl, StartWebThread);

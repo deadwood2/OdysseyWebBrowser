@@ -191,7 +191,7 @@ enum EBoxSizing { CONTENT_BOX, BORDER_BOX };
 // Random visual rendering model attributes. Not inherited.
 
 enum EOverflow {
-    OVISIBLE, OHIDDEN, OSCROLL, OAUTO, OOVERLAY, OMARQUEE, OPAGEDX, OPAGEDY
+    OVISIBLE, OHIDDEN, OSCROLL, OAUTO, OOVERLAY, OPAGEDX, OPAGEDY
 };
 
 enum EVerticalAlign {
@@ -254,11 +254,11 @@ enum EBoxDirection { BNORMAL, BREVERSE };
 enum EAlignContent { AlignContentFlexStart, AlignContentFlexEnd, AlignContentCenter, AlignContentSpaceBetween, AlignContentSpaceAround, AlignContentStretch };
 enum EFlexDirection { FlowRow, FlowRowReverse, FlowColumn, FlowColumnReverse };
 enum EFlexWrap { FlexNoWrap, FlexWrap, FlexWrapReverse };
-enum ItemPosition {ItemPositionAuto, ItemPositionStretch, ItemPositionBaseline, ItemPositionLastBaseline, ItemPositionCenter, ItemPositionStart, ItemPositionEnd, ItemPositionSelfStart, ItemPositionSelfEnd, ItemPositionFlexStart, ItemPositionFlexEnd, ItemPositionLeft, ItemPositionRight};
-enum OverflowAlignment {OverflowAlignmentDefault, OverflowAlignmentUnsafe, OverflowAlignmentSafe};
-enum ItemPositionType {NonLegacyPosition, LegacyPosition};
-enum ContentPosition {ContentPositionAuto, ContentPositionBaseline, ContentPositionLastBaseline, ContentPositionCenter, ContentPositionStart, ContentPositionEnd, ContentPositionFlexStart, ContentPositionFlexEnd, ContentPositionLeft, ContentPositionRight};
-enum ContentDistributionType {ContentDistributionDefault, ContentDistributionSpaceBetween, ContentDistributionSpaceAround, ContentDistributionSpaceEvenly, ContentDistributionStretch};
+enum ItemPosition { ItemPositionAuto, ItemPositionNormal, ItemPositionStretch, ItemPositionBaseline, ItemPositionLastBaseline, ItemPositionCenter, ItemPositionStart, ItemPositionEnd, ItemPositionSelfStart, ItemPositionSelfEnd, ItemPositionFlexStart, ItemPositionFlexEnd, ItemPositionLeft, ItemPositionRight };
+enum OverflowAlignment { OverflowAlignmentDefault, OverflowAlignmentUnsafe, OverflowAlignmentSafe };
+enum ItemPositionType { NonLegacyPosition, LegacyPosition };
+enum ContentPosition { ContentPositionNormal, ContentPositionBaseline, ContentPositionLastBaseline, ContentPositionCenter, ContentPositionStart, ContentPositionEnd, ContentPositionFlexStart, ContentPositionFlexEnd, ContentPositionLeft, ContentPositionRight };
+enum ContentDistributionType { ContentDistributionDefault, ContentDistributionSpaceBetween, ContentDistributionSpaceAround, ContentDistributionSpaceEvenly, ContentDistributionStretch };
 
 enum ETextSecurity {
     TSNONE, TSDISC, TSCIRCLE, TSSQUARE
@@ -563,6 +563,7 @@ enum EDisplay {
     TABLE_COLUMN_GROUP, TABLE_COLUMN, TABLE_CELL,
     TABLE_CAPTION, BOX, INLINE_BOX,
     FLEX, WEBKIT_FLEX, INLINE_FLEX, WEBKIT_INLINE_FLEX,
+    CONTENTS,
 #if ENABLE(CSS_GRID_LAYOUT)
     GRID, INLINE_GRID,
 #endif
@@ -651,6 +652,12 @@ enum GridAutoFlow {
     AutoFlowColumn = InternalAutoFlowAlgorithmSparse | InternalAutoFlowDirectionColumn,
     AutoFlowRowDense = InternalAutoFlowAlgorithmDense | InternalAutoFlowDirectionRow,
     AutoFlowColumnDense = InternalAutoFlowAlgorithmDense | InternalAutoFlowDirectionColumn
+};
+
+enum AutoRepeatType {
+    NoAutoRepeat,
+    AutoFill,
+    AutoFit
 };
 #endif
 

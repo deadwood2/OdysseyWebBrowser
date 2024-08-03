@@ -27,12 +27,12 @@
 // @conditional=ENABLE(STREAMS_API)
 // @internal
 
-function privateInitializeReadableStreamReader(stream)
+function privateInitializeReadableStreamDefaultReader(stream)
 {
     "use strict";
 
     if (!@isReadableStream(stream))
-       throw new @TypeError("ReadableStreamReader needs a ReadableStream");
+       throw new @TypeError("ReadableStreamDefaultReader needs a ReadableStream");
     if (@isReadableStreamLocked(stream))
        throw new @TypeError("ReadableStream is locked");
 
@@ -53,12 +53,12 @@ function privateInitializeReadableStreamReader(stream)
     return this;
 }
 
-function privateInitializeReadableStreamController(stream)
+function privateInitializeReadableStreamDefaultController(stream)
 {
     "use strict";
 
     if (!@isReadableStream(stream))
-        throw new @TypeError("ReadableStreamController needs a ReadableStream");
+        throw new @TypeError("ReadableStreamDefaultController needs a ReadableStream");
     if (stream.@controller !== @undefined)
         throw new @TypeError("ReadableStream already has a controller");
     this.@controlledReadableStream = stream;
@@ -73,7 +73,7 @@ function teeReadableStream(stream, shouldClone)
     @assert(@isReadableStream(stream));
     @assert(typeof(shouldClone) === "boolean");
 
-    const reader = new @ReadableStreamReader(stream);
+    const reader = new @ReadableStreamDefaultReader(stream);
 
     const teeState = {
         closedOrErrored: false,
@@ -111,12 +111,26 @@ function teeReadableStream(stream, shouldClone)
     return [branch1, branch2];
 }
 
+function doStructuredClone(object)
+{
+    // FIXME: We should implement http://w3c.github.io/html/infrastructure.html#ref-for-structured-clone-4
+    // Implementation is currently limited to ArrayBuffer/ArrayBufferView to meet Fetch API needs.
+
+    if (object instanceof @ArrayBuffer)
+        return @structuredCloneArrayBuffer(object);
+
+    if (@ArrayBuffer.@isView(object))
+        return @structuredCloneArrayBufferView(object);
+
+    throw new @TypeError("structuredClone not implemented for: " + object);
+}
+
 function teeReadableStreamPullFunction(teeState, reader, shouldClone)
 {
     "use strict";
 
     return function() {
-        @Promise.prototype.@then.@call(@readFromReadableStreamReader(reader), function(result) {
+        @Promise.prototype.@then.@call(@readFromReadableStreamDefaultReader(reader), function(result) {
             @assert(@isObject(result));
             @assert(typeof result.done === "boolean");
             if (result.done && !teeState.closedOrErrored) {
@@ -126,14 +140,10 @@ function teeReadableStreamPullFunction(teeState, reader, shouldClone)
             }
             if (teeState.closedOrErrored)
                 return;
-            if (!teeState.canceled1) {
-                // FIXME: Implement cloning if shouldClone is true
-                @enqueueInReadableStream(teeState.branch1, result.value);
-            }
-            if (!teeState.canceled2) {
-                // FIXME: Implement cloning if shouldClone is true
-                @enqueueInReadableStream(teeState.branch2, result.value);
-            }
+            if (!teeState.canceled1)
+                @enqueueInReadableStream(teeState.branch1, shouldClone ? @doStructuredClone(result.value) : result.value);
+            if (!teeState.canceled2)
+                @enqueueInReadableStream(teeState.branch2, shouldClone ? @doStructuredClone(result.value) : result.value);
         });
     }
 }
@@ -177,7 +187,7 @@ function isReadableStream(stream)
     return @isObject(stream) && !!stream.@underlyingSource;
 }
 
-function isReadableStreamReader(reader)
+function isReadableStreamDefaultReader(reader)
 {
     "use strict";
 
@@ -186,7 +196,7 @@ function isReadableStreamReader(reader)
     return @isObject(reader) && reader.@ownerReadableStream !== @undefined;
 }
 
-function isReadableStreamController(controller)
+function isReadableStreamDefaultController(controller)
 {
     "use strict";
 
@@ -226,7 +236,7 @@ function requestReadableStreamPull(stream)
         return;
     if ((!@isReadableStreamLocked(stream) || !stream.@reader.@readRequests.length) && @getReadableStreamDesiredSize(stream) <= 0)
         return;
- 
+
     if (stream.@pulling) {
         stream.@pullAgain = true;
         return;
@@ -279,7 +289,7 @@ function finishClosingReadableStream(stream)
 {
     "use strict";
 
-    @assert(stream.@state ===  @streamReadable);
+    @assert(stream.@state === @streamReadable);
     stream.@state = @streamClosed;
     const reader = stream.@reader;
     if (!reader)
@@ -299,7 +309,7 @@ function closeReadableStream(stream)
     @assert(!stream.@closeRequested);
     @assert(stream.@state !== @streamErrored);
     if (stream.@state === @streamClosed)
-        return; 
+        return;
     stream.@closeRequested = true;
     if (!stream.@queue.content.length)
         @finishClosingReadableStream(stream);
@@ -335,12 +345,17 @@ function enqueueInReadableStream(stream, chunk)
     @requestReadableStreamPull(stream);
 }
 
-function readFromReadableStreamReader(reader)
+function readFromReadableStreamDefaultReader(reader)
 {
     "use strict";
 
     const stream = reader.@ownerReadableStream;
     @assert(!!stream);
+
+    // Native sources may want to start enqueueing at the time of the first read request.
+    if (!stream.@disturbed && stream.@state === @streamReadable && stream.@underlyingSource.@firstReadCallback)
+        stream.@underlyingSource.@firstReadCallback();
+
     stream.@disturbed = true;
     if (stream.@state === @streamClosed)
         return @Promise.@resolve({value: @undefined, done: true});

@@ -27,7 +27,6 @@
 
 #include "GlyphBuffer.h"
 #include <wtf/HashSet.h>
-#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/Vector.h>
@@ -49,11 +48,12 @@ enum GlyphIterationStyle { IncludePartialGlyphs, ByWholeGlyphs };
 // ComplexTextController is responsible for rendering and measuring glyphs for
 // complex scripts on OS X.
 class ComplexTextController {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     ComplexTextController(const FontCascade&, const TextRun&, bool mayUseNaturalWritingDirection = false, HashSet<const Font*>* fallbackFonts = 0, bool forTextEmphasis = false);
 
     // Advance and emit glyphs up to the specified character.
-    void advance(unsigned to, GlyphBuffer* = 0, GlyphIterationStyle = IncludePartialGlyphs, HashSet<const Font*>* fallbackFonts = 0);
+    void advance(unsigned to, GlyphBuffer* = nullptr, GlyphIterationStyle = IncludePartialGlyphs, HashSet<const Font*>* fallbackFonts = nullptr);
 
     // Compute the character offset for a given x coordinate.
     int offsetForPosition(float x, bool includePartialGlyphs);

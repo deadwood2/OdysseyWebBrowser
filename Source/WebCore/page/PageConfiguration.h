@@ -23,15 +23,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef PageConfiguration_h
-#define PageConfiguration_h
+#pragma once
 
 #include <wtf/Noncopyable.h>
 #include <wtf/RefPtr.h>
-
-#if USE(APPLE_INTERNAL_SDK)
-#include <WebKitAdditions/PageConfigurationIncludes.h>
-#endif
+#include <wtf/UniqueRef.h>
 
 namespace WebCore {
 
@@ -45,10 +41,13 @@ class DragClient;
 class EditorClient;
 class FrameLoaderClient;
 class InspectorClient;
+class PaymentCoordinatorClient;
 class PlugInClient;
+class PluginInfoProvider;
 class ProgressTrackerClient;
+class SocketProvider;
 class StorageNamespaceProvider;
-class UserContentController;
+class UserContentProvider;
 class ValidationMessageClient;
 class VisitedLinkStore;
 
@@ -59,7 +58,7 @@ class ContextMenuClient;
 class PageConfiguration {
     WTF_MAKE_NONCOPYABLE(PageConfiguration); WTF_MAKE_FAST_ALLOCATED;
 public:
-    WEBCORE_EXPORT PageConfiguration();
+    WEBCORE_EXPORT PageConfiguration(UniqueRef<EditorClient>&&, Ref<SocketProvider>&&);
     WEBCORE_EXPORT ~PageConfiguration();
 
     AlternativeTextClient* alternativeTextClient { nullptr };
@@ -67,27 +66,27 @@ public:
 #if ENABLE(CONTEXT_MENUS)
     ContextMenuClient* contextMenuClient { nullptr };
 #endif
-    EditorClient* editorClient { nullptr };
+    UniqueRef<EditorClient> editorClient;
+    Ref<SocketProvider> socketProvider;
     DragClient* dragClient { nullptr };
     InspectorClient* inspectorClient { nullptr };
+#if ENABLE(APPLE_PAY)
+    PaymentCoordinatorClient* paymentCoordinatorClient { nullptr };
+#endif
+
     PlugInClient* plugInClient { nullptr };
     ProgressTrackerClient* progressTrackerClient { nullptr };
     RefPtr<BackForwardClient> backForwardClient;
     ValidationMessageClient* validationMessageClient { nullptr };
     FrameLoaderClient* loaderClientForMainFrame { nullptr };
-    DiagnosticLoggingClient* diagnosticLoggingClient { nullptr };
-
-#if USE(APPLE_INTERNAL_SDK)
-#include <WebKitAdditions/PageConfigurationMembers.h>
-#endif
+    std::unique_ptr<DiagnosticLoggingClient> diagnosticLoggingClient { nullptr };
 
     RefPtr<ApplicationCacheStorage> applicationCacheStorage;
     RefPtr<DatabaseProvider> databaseProvider;
+    RefPtr<PluginInfoProvider> pluginInfoProvider;
     RefPtr<StorageNamespaceProvider> storageNamespaceProvider;
-    RefPtr<UserContentController> userContentController;
+    RefPtr<UserContentProvider> userContentProvider;
     RefPtr<VisitedLinkStore> visitedLinkStore;
 };
 
 }
-
-#endif

@@ -28,7 +28,6 @@
 #include <WebCore/DocumentLoader.h>
 #include <WebCore/Frame.h>
 #include <WebCore/FrameLoader.h>
-#include <WebCore/Logging.h>
 #include <WebCore/NetscapePlugInStreamLoader.h>
 #include <WebCore/PingHandle.h>
 #include <WebCore/PlatformStrategies.h>
@@ -41,7 +40,7 @@
 #include <wtf/text/CString.h>
 
 #if PLATFORM(IOS)
-#include <WebCore/RuntimeApplicationChecksIOS.h>
+#include <WebCore/RuntimeApplicationChecks.h>
 #endif
 
 #if USE(QUICK_LOOK)
@@ -92,7 +91,7 @@ WebResourceLoadScheduler::~WebResourceLoadScheduler()
 {
 }
 
-RefPtr<SubresourceLoader> WebResourceLoadScheduler::loadResource(Frame* frame, CachedResource* resource, const ResourceRequest& request, const ResourceLoaderOptions& options)
+RefPtr<SubresourceLoader> WebResourceLoadScheduler::loadResource(Frame& frame, CachedResource& resource, const ResourceRequest& request, const ResourceLoaderOptions& options)
 {
     RefPtr<SubresourceLoader> loader = SubresourceLoader::create(frame, resource, request, options);
     if (loader)
@@ -114,7 +113,7 @@ void WebResourceLoadScheduler::loadResourceSynchronously(NetworkingContext* cont
     ResourceHandle::loadResourceSynchronously(context, request, storedCredentials, error, response, data);
 }
 
-RefPtr<NetscapePlugInStreamLoader> WebResourceLoadScheduler::schedulePluginStreamLoad(Frame* frame, NetscapePlugInStreamLoaderClient* client, const ResourceRequest& request)
+RefPtr<NetscapePlugInStreamLoader> WebResourceLoadScheduler::schedulePluginStreamLoad(Frame& frame, NetscapePlugInStreamLoaderClient& client, const ResourceRequest& request)
 {
     RefPtr<NetscapePlugInStreamLoader> loader = NetscapePlugInStreamLoader::create(frame, client, request);
     if (loader)
@@ -125,8 +124,6 @@ RefPtr<NetscapePlugInStreamLoader> WebResourceLoadScheduler::schedulePluginStrea
 void WebResourceLoadScheduler::scheduleLoad(ResourceLoader* resourceLoader)
 {
     ASSERT(resourceLoader);
-
-    LOG(ResourceLoading, "WebResourceLoadScheduler::load resource %p '%s'", resourceLoader, resourceLoader->url().string().latin1().data());
 
 #if PLATFORM(IOS)
     // If there's a web archive resource for this URL, we don't need to schedule the load since it will never touch the network.
@@ -221,7 +218,6 @@ void WebResourceLoadScheduler::crossOriginRedirectReceived(ResourceLoader* resou
 
 void WebResourceLoadScheduler::servePendingRequests(ResourceLoadPriority minimumPriority)
 {
-    LOG(ResourceLoading, "WebResourceLoadScheduler::servePendingRequests. m_suspendPendingRequestsCount=%d", m_suspendPendingRequestsCount); 
     if (isSuspendingPendingRequests())
         return;
 
@@ -242,8 +238,6 @@ void WebResourceLoadScheduler::servePendingRequests(ResourceLoadPriority minimum
 
 void WebResourceLoadScheduler::servePendingRequests(HostInformation* host, ResourceLoadPriority minimumPriority)
 {
-    LOG(ResourceLoading, "WebResourceLoadScheduler::servePendingRequests HostInformation.m_name='%s'", host->name().latin1().data());
-
     auto priority = ResourceLoadPriority::Highest;
     while (true) {
         auto& requestsPending = host->requestsPending(priority);
@@ -261,7 +255,7 @@ void WebResourceLoadScheduler::servePendingRequests(HostInformation* host, Resou
             requestsPending.removeFirst();
             host->addLoadInProgress(resourceLoader.get());
 #if PLATFORM(IOS)
-            if (!applicationIsWebProcess()) {
+            if (!IOSApplication::isWebProcess()) {
                 resourceLoader->startLoading();
                 return;
             }
@@ -291,14 +285,12 @@ void WebResourceLoadScheduler::resumePendingRequests()
     
 void WebResourceLoadScheduler::scheduleServePendingRequests()
 {
-    LOG(ResourceLoading, "WebResourceLoadScheduler::scheduleServePendingRequests, m_requestTimer.isActive()=%u", m_requestTimer.isActive());
     if (!m_requestTimer.isActive())
         m_requestTimer.startOneShot(0);
 }
 
 void WebResourceLoadScheduler::requestTimerFired()
 {
-    LOG(ResourceLoading, "WebResourceLoadScheduler::requestTimerFired\n");
     servePendingRequests();
 }
 
@@ -338,7 +330,6 @@ void WebResourceLoadScheduler::HostInformation::schedule(ResourceLoader* resourc
     
 void WebResourceLoadScheduler::HostInformation::addLoadInProgress(ResourceLoader* resourceLoader)
 {
-    LOG(ResourceLoading, "HostInformation '%s' loading '%s'. Current count %d", m_name.latin1().data(), resourceLoader->url().string().latin1().data(), m_requestsLoading.size());
     m_requestsLoading.add(resourceLoader);
 }
     
@@ -375,9 +366,9 @@ bool WebResourceLoadScheduler::HostInformation::limitRequests(ResourceLoadPriori
     return m_requestsLoading.size() >= (webResourceLoadScheduler().isSerialLoadingEnabled() ? 1 : m_maxRequestsInFlight);
 }
 
-void WebResourceLoadScheduler::createPingHandle(NetworkingContext* networkingContext, ResourceRequest& request, bool shouldUseCredentialStorage)
+void WebResourceLoadScheduler::createPingHandle(NetworkingContext* networkingContext, ResourceRequest& request, bool shouldUseCredentialStorage, bool shouldFollowRedirects)
 {
     // PingHandle manages its own lifetime, deleting itself when its purpose has been fulfilled.
-    new PingHandle(networkingContext, request, shouldUseCredentialStorage, PingHandle::UsesAsyncCallbacks::No);
+    new PingHandle(networkingContext, request, shouldUseCredentialStorage, PingHandle::UsesAsyncCallbacks::No, shouldFollowRedirects);
 }
 

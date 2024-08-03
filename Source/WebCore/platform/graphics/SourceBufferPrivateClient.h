@@ -23,13 +23,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef SourceBufferPrivateClient_h
-#define SourceBufferPrivateClient_h
+#pragma once
 
 #if ENABLE(MEDIA_SOURCE)
 
 #include <wtf/MediaTime.h>
-#include <wtf/PassRefPtr.h>
 #include <wtf/Vector.h>
 
 namespace WebCore {
@@ -44,8 +42,6 @@ class MediaDescription;
 class SourceBufferPrivateClient {
 public:
     virtual ~SourceBufferPrivateClient() { }
-
-    virtual void sourceBufferPrivateDidEndStream(SourceBufferPrivate*, const WTF::AtomicString&) = 0;
 
     struct InitializationSegment {
         MediaTime duration;
@@ -69,7 +65,7 @@ public:
         Vector<TextTrackInformation> textTracks;
     };
     virtual void sourceBufferPrivateDidReceiveInitializationSegment(SourceBufferPrivate*, const InitializationSegment&) = 0;
-    virtual void sourceBufferPrivateDidReceiveSample(SourceBufferPrivate*, PassRefPtr<MediaSample>) = 0;
+    virtual void sourceBufferPrivateDidReceiveSample(SourceBufferPrivate*, MediaSample&) = 0;
     virtual bool sourceBufferPrivateHasAudio(const SourceBufferPrivate*) const = 0;
     virtual bool sourceBufferPrivateHasVideo(const SourceBufferPrivate*) const = 0;
 
@@ -90,5 +86,3 @@ public:
 }
 
 #endif // ENABLE(MEDIA_SOURCE)
-
-#endif

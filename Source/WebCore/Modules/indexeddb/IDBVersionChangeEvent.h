@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015, 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,29 +23,60 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef IDBVersionChangeEvent_h
-#define IDBVersionChangeEvent_h
+#pragma once
 
 #if ENABLE(INDEXED_DATABASE)
 
 #include "Event.h"
+#include "IDBResourceIdentifier.h"
 #include <wtf/Optional.h>
 
 namespace WebCore {
 
-class IDBVersionChangeEvent : public Event {
+struct IDBVersionChangeEventInit : public EventInit {
+    uint64_t oldVersion { 0 };
+    Optional<uint64_t> newVersion;
+};
+
+class IDBVersionChangeEvent final : public Event {
 public:
-    static Ref<IDBVersionChangeEvent> create();
+    static Ref<IDBVersionChangeEvent> create(uint64_t oldVersion, uint64_t newVersion, const AtomicString& eventType)
+    {
+        return adoptRef(*new IDBVersionChangeEvent(IDBResourceIdentifier::emptyValue(), oldVersion, newVersion, eventType));
+    }
 
-    virtual uint64_t oldVersion() const = 0;
-    virtual Optional<uint64_t> newVersion() const = 0;
+    static Ref<IDBVersionChangeEvent> create(const IDBResourceIdentifier& requestIdentifier, uint64_t oldVersion, uint64_t newVersion, const AtomicString& eventType)
+    {
+        return adoptRef(*new IDBVersionChangeEvent(requestIdentifier, oldVersion, newVersion, eventType));
+    }
 
-protected:
-    explicit IDBVersionChangeEvent(const AtomicString& type);
+    static Ref<IDBVersionChangeEvent> createForBindings(const AtomicString& type, const IDBVersionChangeEventInit& initializer)
+    {
+        return adoptRef(*new IDBVersionChangeEvent(type, initializer));
+    }
+
+    const IDBResourceIdentifier& requestIdentifier() const { return m_requestIdentifier; }
+
+    bool isVersionChangeEvent() const final { return true; }
+
+    uint64_t oldVersion() const { return m_oldVersion; }
+    Optional<uint64_t> newVersion() const { return m_newVersion; }
+
+private:
+    IDBVersionChangeEvent(const IDBResourceIdentifier& requestIdentifier, uint64_t oldVersion, uint64_t newVersion, const AtomicString& eventType);
+    IDBVersionChangeEvent(const AtomicString&, const IDBVersionChangeEventInit&);
+
+    EventInterface eventInterface() const;
+
+    IDBResourceIdentifier m_requestIdentifier;
+    uint64_t m_oldVersion;
+    Optional<uint64_t> m_newVersion;
 };
 
 } // namespace WebCore
 
-#endif // ENABLE(INDEXED_DATABASE)
+SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::IDBVersionChangeEvent)
+    static bool isType(const WebCore::Event& event) { return event.isVersionChangeEvent(); }
+SPECIALIZE_TYPE_TRAITS_END()
 
-#endif // IDBVersionChangeEvent_h
+#endif // ENABLE(INDEXED_DATABASE)

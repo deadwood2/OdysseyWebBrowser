@@ -23,8 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef UniqueIDBDatabaseTransaction_h
-#define UniqueIDBDatabaseTransaction_h
+#pragma once
 
 #if ENABLE(INDEXED_DATABASE)
 
@@ -42,8 +41,9 @@ class IDBIndexInfo;
 class IDBKeyData;
 class IDBObjectStoreInfo;
 class IDBRequestData;
-class ThreadSafeDataBuffer;
+class IDBValue;
 
+struct IDBGetRecordData;
 struct IDBKeyRangeData;
 
 namespace IDBServer {
@@ -72,15 +72,14 @@ public:
     void clearObjectStore(const IDBRequestData&, uint64_t objectStoreIdentifier);
     void createIndex(const IDBRequestData&, const IDBIndexInfo&);
     void deleteIndex(const IDBRequestData&, uint64_t objectStoreIdentifier, const String& indexName);
-    void putOrAdd(const IDBRequestData&, const IDBKeyData&, const ThreadSafeDataBuffer& valueData, IndexedDB::ObjectStoreOverwriteMode);
-    void getRecord(const IDBRequestData&, const IDBKeyRangeData&);
+    void putOrAdd(const IDBRequestData&, const IDBKeyData&, const IDBValue&, IndexedDB::ObjectStoreOverwriteMode);
+    void getRecord(const IDBRequestData&, const IDBGetRecordData&);
     void getCount(const IDBRequestData&, const IDBKeyRangeData&);
     void deleteRecord(const IDBRequestData&, const IDBKeyRangeData&);
     void openCursor(const IDBRequestData&, const IDBCursorInfo&);
     void iterateCursor(const IDBRequestData&, const IDBKeyData&, unsigned long count);
 
     void didActivateInBackingStore(const IDBError&);
-    void didFinishHandlingVersionChange();
 
     const Vector<uint64_t>& objectStoreIdentifiers();
 
@@ -99,4 +98,3 @@ private:
 } // namespace WebCore
 
 #endif // ENABLE(INDEXED_DATABASE)
-#endif // UniqueIDBDatabaseTransaction_h

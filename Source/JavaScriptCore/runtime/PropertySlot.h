@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2005, 2007, 2008, 2015 Apple Inc. All rights reserved.
+ *  Copyright (C) 2005, 2007, 2008, 2015-2016 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Library General Public
@@ -24,7 +24,6 @@
 #include "JSCJSValue.h"
 #include "PropertyName.h"
 #include "PropertyOffset.h"
-#include "Register.h"
 #include <wtf/Assertions.h>
 
 namespace JSC {
@@ -47,9 +46,18 @@ enum Attribute {
     Function          = 1 << 8,  // property is a function - only used by static hashtables
     Builtin           = 1 << 9,  // property is a builtin function - only used by static hashtables
     ConstantInteger   = 1 << 10, // property is a constant integer - only used by static hashtables
+    CellProperty      = 1 << 11, // property is a lazy property - only used by static hashtables
+    ClassStructure    = 1 << 12, // property is a lazy class structure - only used by static hashtables
+    PropertyCallback  = 1 << 13, // property that is a lazy property callback - only used by static hashtables
     BuiltinOrFunction = Builtin | Function, // helper only used by static hashtables
-    BuiltinOrFunctionOrAccessor = Builtin | Function | Accessor, // helper only used by static hashtables
-    BuiltinOrFunctionOrAccessorOrConstant = Builtin | Function | Accessor | ConstantInteger, // helper only used by static hashtables
+    BuiltinOrFunctionOrLazyProperty = Builtin | Function | CellProperty | ClassStructure | PropertyCallback, // helper only used by static hashtables
+    BuiltinOrFunctionOrAccessorOrLazyProperty = Builtin | Function | Accessor | CellProperty | ClassStructure | PropertyCallback, // helper only used by static hashtables
+    BuiltinOrFunctionOrAccessorOrLazyPropertyOrConstant = Builtin | Function | Accessor | CellProperty | ClassStructure | PropertyCallback | ConstantInteger // helper only used by static hashtables
+};
+
+enum CacheabilityType : uint8_t {
+    CachingDisallowed,
+    CachingAllowed
 };
 
 inline unsigned attributesForStructure(unsigned attributes)
@@ -64,11 +72,6 @@ class PropertySlot {
         TypeValue,
         TypeGetter,
         TypeCustom
-    };
-
-    enum CacheabilityType : uint8_t {
-        CachingDisallowed,
-        CachingAllowed
     };
 
 public:
@@ -87,13 +90,17 @@ public:
         , m_cacheability(CachingAllowed)
         , m_propertyType(TypeUnset)
         , m_internalMethodType(internalMethodType)
+        , m_isTaintedByOpaqueObject(false)
     {
     }
 
+    // FIXME: Remove this slotBase / receiver behavior difference in custom values and custom accessors.
+    // https://bugs.webkit.org/show_bug.cgi?id=158014
     typedef EncodedJSValue (*GetValueFunc)(ExecState*, EncodedJSValue thisValue, PropertyName);
 
     JSValue getValue(ExecState*, PropertyName) const;
     JSValue getValue(ExecState*, unsigned propertyName) const;
+    JSValue getPureResult() const;
 
     bool isCacheable() const { return m_cacheability == CachingAllowed && m_offset != invalidOffset; }
     bool isUnset() const { return m_propertyType == TypeUnset; }
@@ -103,6 +110,8 @@ public:
     bool isCacheableValue() const { return isCacheable() && isValue(); }
     bool isCacheableGetter() const { return isCacheable() && isAccessor(); }
     bool isCacheableCustom() const { return isCacheable() && isCustom(); }
+    void setIsTaintedByOpaqueObject() { m_isTaintedByOpaqueObject = true; }
+    bool isTaintedByOpaqueObject() const { return m_isTaintedByOpaqueObject; }
 
     InternalMethodType internalMethodType() const { return m_internalMethodType; }
 
@@ -237,6 +246,11 @@ public:
         m_offset = offset;
     }
 
+    JSValue thisValue() const
+    {
+        return m_thisValue;
+    }
+
     void setThisValue(JSValue thisValue)
     {
         m_thisValue = thisValue;
@@ -279,6 +293,7 @@ private:
     CacheabilityType m_cacheability;
     PropertyType m_propertyType;
     InternalMethodType m_internalMethodType;
+    bool m_isTaintedByOpaqueObject;
 };
 
 ALWAYS_INLINE JSValue PropertySlot::getValue(ExecState* exec, PropertyName propertyName) const

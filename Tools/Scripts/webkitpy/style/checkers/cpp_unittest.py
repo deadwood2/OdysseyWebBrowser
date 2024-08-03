@@ -44,6 +44,7 @@ import cpp as cpp_style
 from cpp import CppChecker
 from ..filter import FilterConfiguration
 
+
 # This class works as an error collector and replaces cpp_style.Error
 # function for the unit tests.  We also verify each category we see
 # is in CppChecker.categories, to help keep that list up to date.
@@ -231,6 +232,7 @@ class CppFunctionsTest(unittest.TestCase):
         self.assertEqual(error_collector.results(),
                           'The parameter name "ooF" adds no information, so it should be removed.  [readability/parameter_name] [5]')
 
+
 class CppStyleTestBase(unittest.TestCase):
     """Provides some useful helper functions for cpp_style tests.
 
@@ -242,7 +244,7 @@ class CppStyleTestBase(unittest.TestCase):
 
     # FIXME: Refactor the unit tests so the confidence level is passed
     #        explicitly, just like it is in the real code.
-    min_confidence = 1;
+    min_confidence = 1
 
     # Helper function to avoid needing to explicitly pass confidence
     # in all the unit test calls to cpp_style.process_file_data().
@@ -374,7 +376,10 @@ class FunctionDetectionTest(CppStyleTestBase):
         self.assertEqual(function_state.in_a_function, True)
         self.assertEqual(function_state.current_function, function_information['name'] + '()')
         self.assertEqual(function_state.modifiers_and_return_type(), function_information['modifiers_and_return_type'])
+        self.assertEqual(function_state.is_final, function_information['is_final'])
+        self.assertEqual(function_state.is_override, function_information['is_override'])
         self.assertEqual(function_state.is_pure, function_information['is_pure'])
+        self.assertEqual(function_state.is_virtual(), function_information['is_virtual'])
         self.assertEqual(function_state.is_declaration, function_information['is_declaration'])
         self.assert_positions_equal(function_state.function_name_start_position, function_information['function_name_start_position'])
         self.assert_positions_equal(function_state.parameter_start_position, function_information['parameter_start_position'])
@@ -403,6 +408,9 @@ class FunctionDetectionTest(CppStyleTestBase):
              'parameter_end_position': (0, 29),
              'body_start_position': (0, 30),
              'end_position': (1, 1),
+             'is_final': False,
+             'is_override': False,
+             'is_virtual': False,
              'is_pure': False,
              'is_declaration': False})
 
@@ -416,6 +424,9 @@ class FunctionDetectionTest(CppStyleTestBase):
              'parameter_end_position': (0, 23),
              'body_start_position': (0, 23),
              'end_position': (0, 24),
+             'is_final': False,
+             'is_override': False,
+             'is_virtual': False,
              'is_pure': False,
              'is_declaration': True})
 
@@ -428,6 +439,9 @@ class FunctionDetectionTest(CppStyleTestBase):
              'parameter_end_position': (0, 76),
              'body_start_position': (0, 76),
              'end_position': (0, 77),
+             'is_final': False,
+             'is_override': False,
+             'is_virtual': False,
              'is_pure': False,
              'is_declaration': True})
 
@@ -440,6 +454,9 @@ class FunctionDetectionTest(CppStyleTestBase):
              'parameter_end_position': (0, 76),
              'body_start_position': (0, 76),
              'end_position': (0, 77),
+             'is_final': False,
+             'is_override': False,
+             'is_virtual': False,
              'is_pure': False,
              'is_declaration': True})
 
@@ -452,6 +469,9 @@ class FunctionDetectionTest(CppStyleTestBase):
              'parameter_end_position': (0, 77),
              'body_start_position': (0, 77),
              'end_position': (0, 78),
+             'is_final': False,
+             'is_override': False,
+             'is_virtual': False,
              'is_pure': False,
              'is_declaration': True})
 
@@ -464,6 +484,9 @@ class FunctionDetectionTest(CppStyleTestBase):
              'parameter_end_position': (0, 76),
              'body_start_position': (0, 76),
              'end_position': (0, 77),
+             'is_final': False,
+             'is_override': False,
+             'is_virtual': False,
              'is_pure': False,
              'is_declaration': True})
 
@@ -477,6 +500,9 @@ class FunctionDetectionTest(CppStyleTestBase):
              'parameter_end_position': (0, 41),
              'body_start_position': (0, 41),
              'end_position': (0, 42),
+             'is_final': False,
+             'is_override': False,
+             'is_virtual': True,
              'is_pure': False,
              'is_declaration': True})
 
@@ -489,6 +515,9 @@ class FunctionDetectionTest(CppStyleTestBase):
              'parameter_end_position': (0, 37),
              'body_start_position': (0, 41),
              'end_position': (0, 42),
+             'is_final': False,
+             'is_override': False,
+             'is_virtual': True,
              'is_pure': True,
              'is_declaration': True})
 
@@ -504,7 +533,90 @@ class FunctionDetectionTest(CppStyleTestBase):
              'parameter_end_position': (0, 37),
              'body_start_position': (2, 3),
              'end_position': (2, 4),
+             'is_final': False,
+             'is_override': False,
+             'is_virtual': True,
              'is_pure': True,
+             'is_declaration': True})
+
+    def test_override_and_final_function_detection(self):
+        self.perform_function_detection(
+            ['void theTestFunctionName(int override, int final);'],
+            {'name': 'theTestFunctionName',
+             'modifiers_and_return_type': 'void',
+             'function_name_start_position': (0, 5),
+             'parameter_start_position': (0, 24),
+             'parameter_end_position': (0, 49),
+             'body_start_position': (0, 49),
+             'end_position': (0, 50),
+             'is_final': False,
+             'is_override': False,
+             'is_virtual': False,
+             'is_pure': False,
+             'is_declaration': True})
+
+        self.perform_function_detection(
+            ['void theTestFunctionName(int final) override;'],
+            {'name': 'theTestFunctionName',
+             'modifiers_and_return_type': 'void',
+             'function_name_start_position': (0, 5),
+             'parameter_start_position': (0, 24),
+             'parameter_end_position': (0, 35),
+             'body_start_position': (0, 44),
+             'end_position': (0, 45),
+             'is_final': False,
+             'is_override': True,
+             'is_virtual': False,
+             'is_pure': False,
+             'is_declaration': True})
+
+        self.perform_function_detection(
+            ['void theTestFunctionName(int final) const override',
+             '{',
+             '}'],
+            {'name': 'theTestFunctionName',
+             'modifiers_and_return_type': 'void',
+             'function_name_start_position': (0, 5),
+             'parameter_start_position': (0, 24),
+             'parameter_end_position': (0, 35),
+             'body_start_position': (1, 0),
+             'end_position': (2, 1),
+             'is_final': False,
+             'is_override': True,
+             'is_virtual': False,
+             'is_pure': False,
+             'is_declaration': False})
+
+        self.perform_function_detection(
+            ['virtual void theTestFunctionName(int override) final;'],
+            {'name': 'theTestFunctionName',
+             'modifiers_and_return_type': 'virtual void',
+             'function_name_start_position': (0, 13),
+             'parameter_start_position': (0, 32),
+             'parameter_end_position': (0, 46),
+             'body_start_position': (0, 52),
+             'end_position': (0, 53),
+             'is_final': True,
+             'is_override': False,
+             'is_virtual': True,
+             'is_pure': False,
+             'is_declaration': True})
+
+        self.perform_function_detection(
+            ['void theTestFunctionName()',
+             'override',
+             'final;'],
+            {'name': 'theTestFunctionName',
+             'modifiers_and_return_type': 'void',
+             'function_name_start_position': (0, 5),
+             'parameter_start_position': (0, 24),
+             'parameter_end_position': (0, 26),
+             'body_start_position': (2, 5),
+             'end_position': (2, 6),
+             'is_final': True,
+             'is_override': True,
+             'is_virtual': False,
+             'is_pure': False,
              'is_declaration': True})
 
     def test_ignore_macros(self):
@@ -525,6 +637,9 @@ class FunctionDetectionTest(CppStyleTestBase):
              'parameter_end_position': (2, 1),
              'body_start_position': (2, 1),
              'end_position': (2, 2),
+             'is_final': False,
+             'is_override': False,
+             'is_virtual': False,
              'is_pure': False,
              'is_declaration': True})
 
@@ -542,6 +657,9 @@ class FunctionDetectionTest(CppStyleTestBase):
              'parameter_end_position': (0, 19),
              'body_start_position': (0, 19),
              'end_position': (0, 20),
+             'is_final': False,
+             'is_override': False,
+             'is_virtual': False,
              'is_pure': False,
              'is_declaration': True,
              'parameter_list': ()})
@@ -556,6 +674,9 @@ class FunctionDetectionTest(CppStyleTestBase):
              'parameter_end_position': (0, 22),
              'body_start_position': (0, 22),
              'end_position': (0, 23),
+             'is_final': False,
+             'is_override': False,
+             'is_virtual': False,
              'is_pure': False,
              'is_declaration': True,
              'parameter_list':
@@ -571,6 +692,9 @@ class FunctionDetectionTest(CppStyleTestBase):
              'parameter_end_position': (0, 76),
              'body_start_position': (0, 76),
              'end_position': (0, 77),
+             'is_final': False,
+             'is_override': False,
+             'is_virtual': False,
              'is_pure': False,
              'is_declaration': True,
              'parameter_list':
@@ -589,6 +713,9 @@ class FunctionDetectionTest(CppStyleTestBase):
              'parameter_end_position': (0, 147),
              'body_start_position': (0, 147),
              'end_position': (0, 148),
+             'is_final': False,
+             'is_override': False,
+             'is_virtual': True,
              'is_pure': False,
              'is_declaration': True,
              'parameter_list':
@@ -613,6 +740,9 @@ class FunctionDetectionTest(CppStyleTestBase):
              'parameter_end_position': (5, 17),
              'body_start_position': (5, 17),
              'end_position': (5, 18),
+             'is_final': False,
+             'is_override': False,
+             'is_virtual': True,
              'is_pure': False,
              'is_declaration': True,
              'parameter_list':
@@ -629,6 +759,7 @@ class Cpp11StyleTest(CppStyleTestBase):
 
     def test_rvaule_reference_in_parameter_pack(self):
         self.assert_lint('void requestCompleted(Arguments&&... arguments)', '')
+
 
 class CppStyleTest(CppStyleTestBase):
 
@@ -1641,6 +1772,10 @@ class CppStyleTest(CppStyleTestBase):
             '}\n',
             '')
         self.assert_multi_line_lint(
+            '[]() {\n'
+            '}\n',
+            '')
+        self.assert_multi_line_lint(
             'if (condition\n'
             '    && condition2\n'
             '    && condition3) {\n'
@@ -1655,6 +1790,15 @@ class CppStyleTest(CppStyleTestBase):
             'int foo() const override\n'
             '{\n'
             '}\n',
+            '')
+        self.assert_multi_line_lint(
+            '    @try {\n'
+            '    } @catch (NSException *exception) {\n'
+            '    }\n',
+            '')
+        self.assert_multi_line_lint(
+            '    @synchronized (self) {\n'
+            '    }\n',
             '')
 
     def test_mismatching_spaces_in_parens(self):
@@ -1737,6 +1881,24 @@ class CppStyleTest(CppStyleTestBase):
         self.assert_lint('        m_taskFunction = [callee, method, arguments...] {', '')
         self.assert_lint('int main(int argc, char* agrv [])', 'Extra space before [.  [whitespace/brackets] [5]')
         self.assert_lint('    str [strLength] = \'\\0\';', 'Extra space before [.  [whitespace/brackets] [5]')
+
+    def test_cpp_lambda_functions(self):
+        self.assert_lint('        [&] (Type argument) {', '')
+        self.assert_lint('        [] {', '')
+        self.assert_lint('        [ =] (Type argument) {', 'Extra space in capture list.  [whitespace/brackets] [4]')
+        self.assert_lint('        [var, var_ref&] {', '')
+        self.assert_lint('        [var , var_ref&] {', 'Extra space in capture list.  [whitespace/brackets] [4]')
+        self.assert_lint('        [var,var_ref&] {', 'Missing space after ,  [whitespace/comma] [3]')
+
+    def test_objective_c_block(self):
+        self.assert_lint('        ^(var, var_ref) {', '', 'foo.mm')
+        self.assert_lint('        ^(var, var_ref) {', '', 'foo.m')
+        self.assert_lint('        ^(var , var_ref) {', 'Extra space in block arguments.  [whitespace/brackets] [4]', 'foo.m')
+        self.assert_lint('        ^(var,var_ref) {', 'Missing space after ,  [whitespace/comma] [3]', 'foo.m')
+        self.assert_lint('        ^(var, var_ref) {', 'Place brace on its own line for function definitions.  [whitespace/braces] [4]', 'foo.cpp')
+        self.assert_lint('        ^ {', '', 'foo.m')
+        self.assert_lint('        ^{', 'No space between ^ and block definition.  [whitespace/brackets] [4]', 'foo.m')
+        self.assert_lint('        ^ (arg1, arg2) {', 'Extra space between ^ and block arguments.  [whitespace/brackets] [4]', 'foo.m')
 
     def test_spacing_around_else(self):
         self.assert_lint('}else {', 'Missing space before else'
@@ -1936,7 +2098,7 @@ class CppStyleTest(CppStyleTestBase):
                          '  [whitespace/comments] [5]')
         self.assert_lint('printf("foo"); // Outside quotes.',
                          '')
-        self.assert_lint('int i = 0; // Having one space is fine.','')
+        self.assert_lint('int i = 0; // Having one space is fine.', '')
         self.assert_lint('int i = 0;  // Having two spaces is bad.',
                          'One space before end of line comments'
                          '  [whitespace/comments] [5]')
@@ -2109,6 +2271,7 @@ class CppStyleTest(CppStyleTestBase):
                          '(use 2 lines)  [whitespace/newline] [4]')
         self.assert_lint('    else if (blah) {', '')
         self.assert_lint('    variable_ends_in_else = true;', '')
+        self.assert_lint('    else \\', '')
 
     def test_comma(self):
         self.assert_lint('a = f(1,2);',
@@ -2572,6 +2735,7 @@ class CppStyleTest(CppStyleTestBase):
         self.assert_lint('long int a : 30;', errmsg)
         self.assert_lint('int a = 1 ? 0 : 30;', '')
         self.assert_lint('bool a : 1;', '')
+
 
 class CleansedLinesTest(unittest.TestCase):
     def test_init(self):
@@ -3448,6 +3612,22 @@ class NoNonVirtualDestructorsTest(CppStyleTestBase):
                 };''',
             ['enum members should use InterCaps with an initial capital letter or initial \'k\' for C-style enums.  [readability/enum_casing] [4]'] * 5)
 
+        # Allow all-caps enum for JSTokenType
+        self.assert_multi_line_lint(
+            '''\
+                enum JSTokenType {
+                    NULLTOKEN = KeywordTokenFlag,
+                    TRUETOKEN,
+                    FALSETOKEN,
+                    // ...
+                };''',
+            '')
+
+        self.assert_multi_line_lint(
+            '''\
+                enum JSTokenType { NULLTOKEN = KeywordTokenFlag, TRUETOKEN, FALSETOKEN };''',
+            '')
+
         self.assert_multi_line_lint(
             '''\
                 enum Foo {
@@ -4110,6 +4290,19 @@ class WebKitStyleTest(CppStyleTestBase):
         self.assert_multi_line_lint(
             'WTF_MAKE_NONCOPYABLE(ClassName); WTF_MAKE_FAST_ALLOCATED;\n',
             '')
+        self.assert_multi_line_lint(
+            '#define MyMacro(name, status) \\\n'
+            '    if (strstr(arg, #name) { \\\n'
+            '        name##_ = !status; \\\n'
+            '        continue; \\\n'
+            '    }\n',
+            '')
+        self.assert_multi_line_lint(
+            '#define MyMacro(name, status) \\\n'
+            '    if (strstr(arg, #name) \\\n'
+            '        name##_ = !status; \\\n'
+            '        continue;\n',
+            'Multi line control clauses should use braces.  [whitespace/braces] [4]')
         self.assert_multi_line_lint(
             'if (condition) {\n'
             '    doSomething();\n'
@@ -5006,12 +5199,77 @@ class WebKitStyleTest(CppStyleTestBase):
         # const_iterator is allowed as well.
         self.assert_lint('typedef VectorType::const_iterator const_iterator;', '')
 
+        # chrono_literals is allowed as well.
+        self.assert_lint('using namespace std::literals::chrono_literals;', '')
+
         # vm_throw is allowed as well.
         self.assert_lint('int vm_throw;', '')
 
         # Bitfields.
         self.assert_lint('unsigned _fillRule : 1;',
                          '_fillRule' + name_underscore_error_message)
+
+        # Valid protector RefPtr/Ref variable names.
+        self.assert_lint('RefPtr<Node> protectedThis(this);', '')
+        self.assert_lint('Ref<Node> protectedThis(*this);', '')
+        self.assert_lint('RefPtr<Node> protectedNode(node);', '')
+        self.assert_lint('RefPtr<Node> protectedNode(&node);', '')
+        self.assert_lint('RefPtr<Node> protector(node);', '')
+        self.assert_lint('RefPtr<Node> protector(&node);', '')
+        self.assert_lint('Ref<Node> protectedNode(node);', '')
+        self.assert_lint('Ref<Node> protectedNode(*node);', '')
+        self.assert_lint('Ref<Node> protector(node);', '')
+        self.assert_lint('Ref<Node> protector(*node);', '')
+        self.assert_lint('RefPtr<Node> protectedOtherNode(otherNode);', '')
+        self.assert_lint('RefPtr<Node> protectedOtherNode(&otherNode);', '')
+        self.assert_lint('Ref<Node> protectedOtherNode(otherNode);', '')
+        self.assert_lint('Ref<Node> protectedOtherNode(*otherNode);', '')
+        self.assert_lint('RefPtr<Widget> protectedWidget(m_widget);', '')
+        self.assert_lint('RefPtr<Widget> protectedWidget(&m_widget);', '')
+        self.assert_lint('Ref<Widget> protectedWidget(m_widget);', '')
+        self.assert_lint('Ref<Widget> protectedWidget(*m_widget);', '')
+        self.assert_lint('RefPtr<Widget> protector(m_widget);', '')
+        self.assert_lint('RefPtr<Widget> protector(&m_widget);', '')
+        self.assert_lint('Ref<Widget> protector(m_widget);', '')
+        self.assert_lint('Ref<Widget> protector(*m_widget);', '')
+        self.assert_lint('RefPtr<SomeNamespace::Node> protectedThis(this);', '')
+        self.assert_lint('RefPtr<SomeClass::InternalClass::Node> protectedThis(this);', '')
+        self.assert_lint('RefPtr<Node> protectedThis = this;', '')
+        self.assert_lint('Ref<Node> protectedThis = *this;', '')
+        self.assert_lint('RefPtr<Node> protectedNode = node;', '')
+        self.assert_lint('RefPtr<Node> protectedNode = &node;', '')
+        self.assert_lint('RefPtr<Node> protector = node;', '')
+        self.assert_lint('RefPtr<Node> protector = &node;', '')
+        self.assert_lint('Ref<Node> protectedNode = node;', '')
+        self.assert_lint('Ref<Node> protectedNode =*node;', '')
+        self.assert_lint('Ref<Node> protector = node;', '')
+        self.assert_lint('Ref<Node> protector = *node;', '')
+
+        # Invalid protector RefPtr/Ref variable names.
+        self.assert_lint('RefPtr<Node> protector(this);', "'protector' is incorrectly named. It should be named 'protectedThis'.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protector(*this);', "'protector' is incorrectly named. It should be named 'protectedThis'.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> protector = this;', "'protector' is incorrectly named. It should be named 'protectedThis'.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protector = *this;', "'protector' is incorrectly named. It should be named 'protectedThis'.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> self(this);', "'self' is incorrectly named. It should be named 'protectedThis'.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> self(*this);', "'self' is incorrectly named. It should be named 'protectedThis'.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> protectedThis(node);', "'protectedThis' is incorrectly named. It should be named 'protector' or 'protectedNode'.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> protectedThis(&node);', "'protectedThis' is incorrectly named. It should be named 'protector' or 'protectedNode'.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protectedThis(node);', "'protectedThis' is incorrectly named. It should be named 'protector' or 'protectedNode'.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protectedThis(*node);', "'protectedThis' is incorrectly named. It should be named 'protector' or 'protectedNode'.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> protectedNode(otherNode);', "'protectedNode' is incorrectly named. It should be named 'protector' or 'protectedOtherNode'.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> protectedNode(&otherNode);', "'protectedNode' is incorrectly named. It should be named 'protector' or 'protectedOtherNode'.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protectedNode(otherNode);', "'protectedNode' is incorrectly named. It should be named 'protector' or 'protectedOtherNode'.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protectedNode(*otherNode);', "'protectedNode' is incorrectly named. It should be named 'protector' or 'protectedOtherNode'.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> protectedNode = otherNode;', "'protectedNode' is incorrectly named. It should be named 'protector' or 'protectedOtherNode'.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> protectedNode = &otherNode;', "'protectedNode' is incorrectly named. It should be named 'protector' or 'protectedOtherNode'.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protectedNode = otherNode;', "'protectedNode' is incorrectly named. It should be named 'protector' or 'protectedOtherNode'.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> protectedNode = *otherNode;', "'protectedNode' is incorrectly named. It should be named 'protector' or 'protectedOtherNode'.  [readability/naming/protected] [4]")
+        self.assert_lint('RefPtr<Node> nodeRef(node);', "'nodeRef' is incorrectly named. It should be named 'protector' or 'protectedNode'.  [readability/naming/protected] [4]")
+        self.assert_lint('Ref<Node> nodeRef(*node);', "'nodeRef' is incorrectly named. It should be named 'protector' or 'protectedNode'.  [readability/naming/protected] [4]")
+
+        # Lines that look like a protector variable declaration but aren't.
+        self.assert_lint('static RefPtr<Widget> doSomethingWith(widget);', '')
+        self.assert_lint('RefPtr<Widget> create();', '')
 
     def test_parameter_names(self):
         # Leave meaningless variable names out of function declarations.

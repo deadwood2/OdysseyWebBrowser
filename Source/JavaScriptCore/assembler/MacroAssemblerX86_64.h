@@ -38,6 +38,9 @@ namespace JSC {
 
 class MacroAssemblerX86_64 : public MacroAssemblerX86Common {
 public:
+    static const unsigned numGPRs = 16;
+    static const unsigned numFPRs = 16;
+    
     static const Scale ScalePtr = TimesEight;
 
     using MacroAssemblerX86Common::add32;
@@ -137,8 +140,9 @@ public:
     
     void store8(TrustedImm32 imm, void* address)
     {
+        TrustedImm32 imm8(static_cast<int8_t>(imm.m_value));
         move(TrustedImmPtr(address), scratchRegister());
-        store8(imm, Address(scratchRegister()));
+        store8(imm8, Address(scratchRegister()));
     }
 
     void store8(RegisterID reg, void* address)
@@ -922,16 +926,21 @@ public:
         return branchAdd64(cond, src1, dest);
     }
 
-    Jump branchAdd64(ResultCondition cond, Address src1, RegisterID src2, RegisterID dest)
+    Jump branchAdd64(ResultCondition cond, Address op1, RegisterID op2, RegisterID dest)
     {
-        move(src2, dest);
-        return branchAdd64(cond, src1, dest);
+        if (op2 == dest)
+            return branchAdd64(cond, op1, dest);
+        if (op1.base == dest) {
+            load32(op1, dest);
+            return branchAdd64(cond, op2, dest);
+        }
+        move(op2, dest);
+        return branchAdd64(cond, op1, dest);
     }
 
     Jump branchAdd64(ResultCondition cond, RegisterID src1, Address src2, RegisterID dest)
     {
-        move(src1, dest);
-        return branchAdd64(cond, src2, dest);
+        return branchAdd64(cond, src2, src1, dest);
     }
 
     Jump branchAdd64(ResultCondition cond, RegisterID src, RegisterID dest)
@@ -1205,27 +1214,45 @@ public:
     using MacroAssemblerX86Common::branch8;
     Jump branch8(RelationalCondition cond, AbsoluteAddress left, TrustedImm32 right)
     {
+        TrustedImm32 right8(static_cast<int8_t>(right.m_value));
         MacroAssemblerX86Common::move(TrustedImmPtr(left.m_ptr), scratchRegister());
-        return MacroAssemblerX86Common::branch8(cond, Address(scratchRegister()), right);
+        return MacroAssemblerX86Common::branch8(cond, Address(scratchRegister()), right8);
     }
     
     using MacroAssemblerX86Common::branchTest8;
     Jump branchTest8(ResultCondition cond, ExtendedAddress address, TrustedImm32 mask = TrustedImm32(-1))
     {
+        TrustedImm32 mask8(static_cast<int8_t>(mask.m_value));
         TrustedImmPtr addr(reinterpret_cast<void*>(address.offset));
         MacroAssemblerX86Common::move(addr, scratchRegister());
-        return MacroAssemblerX86Common::branchTest8(cond, BaseIndex(scratchRegister(), address.base, TimesOne), mask);
+        return MacroAssemblerX86Common::branchTest8(cond, BaseIndex(scratchRegister(), address.base, TimesOne), mask8);
     }
     
     Jump branchTest8(ResultCondition cond, AbsoluteAddress address, TrustedImm32 mask = TrustedImm32(-1))
     {
+        TrustedImm32 mask8(static_cast<int8_t>(mask.m_value));
         MacroAssemblerX86Common::move(TrustedImmPtr(address.m_ptr), scratchRegister());
-        return MacroAssemblerX86Common::branchTest8(cond, Address(scratchRegister()), mask);
+        return MacroAssemblerX86Common::branchTest8(cond, Address(scratchRegister()), mask8);
     }
 
     void convertInt64ToDouble(RegisterID src, FPRegisterID dest)
     {
         m_assembler.cvtsi2sdq_rr(src, dest);
+    }
+
+    void convertInt64ToDouble(Address src, FPRegisterID dest)
+    {
+        m_assembler.cvtsi2sdq_mr(src.offset, src.base, dest);
+    }
+
+    void convertInt64ToFloat(RegisterID src, FPRegisterID dest)
+    {
+        m_assembler.cvtsi2ssq_rr(src, dest);
+    }
+
+    void convertInt64ToFloat(Address src, FPRegisterID dest)
+    {
+        m_assembler.cvtsi2ssq_mr(src.offset, src.base, dest);
     }
 
     static bool supportsFloatingPoint() { return true; }

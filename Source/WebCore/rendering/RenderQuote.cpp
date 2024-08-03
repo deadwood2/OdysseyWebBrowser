@@ -31,7 +31,7 @@ using namespace WTF::Unicode;
 
 namespace WebCore {
 
-RenderQuote::RenderQuote(Document& document, Ref<RenderStyle>&& style, QuoteType quote)
+RenderQuote::RenderQuote(Document& document, RenderStyle&& style, QuoteType quote)
     : RenderInline(document, WTFMove(style))
     , m_type(quote)
     , m_text(emptyString())
@@ -45,6 +45,12 @@ RenderQuote::~RenderQuote()
     ASSERT(!m_isAttached);
     ASSERT(!m_next);
     ASSERT(!m_previous);
+}
+
+void RenderQuote::insertedIntoTree()
+{
+    RenderInline::insertedIntoTree();
+    attachQuote();
 }
 
 void RenderQuote::willBeRemovedFromTree()

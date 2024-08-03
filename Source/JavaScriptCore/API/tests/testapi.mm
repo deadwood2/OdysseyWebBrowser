@@ -510,33 +510,6 @@ static void* multiVMThreadMain(void* okPtr)
     return nullptr;
 }
 
-// This test is flaky. Since GC marks C stack and registers as roots conservatively,
-// objects not referenced logically can be accidentally marked and alive.
-// To avoid this situation as possible as we can,
-// 1. run this test first before stack is polluted,
-// 2. extract this test as a function to suppress stack height.
-static void testWeakValue()
-{
-    @autoreleasepool {
-        JSVirtualMachine *vm = [[JSVirtualMachine alloc] init];
-        TestObject *testObject = [TestObject testObject];
-        JSManagedValue *weakValue;
-        @autoreleasepool {
-            JSContext *context = [[JSContext alloc] initWithVirtualMachine:vm];
-            context[@"testObject"] = testObject;
-            weakValue = [[JSManagedValue alloc] initWithValue:context[@"testObject"]];
-        }
-
-        @autoreleasepool {
-            JSContext *context = [[JSContext alloc] initWithVirtualMachine:vm];
-            context[@"testObject"] = testObject;
-            JSSynchronousGarbageCollectForDebugging([context JSGlobalContextRef]);
-            checkResult(@"weak value == nil", ![weakValue value]);
-            checkResult(@"root is still alive", !context[@"testObject"].isUndefined);
-        }
-    }
-}
-
 static void testObjectiveCAPIMain()
 {
     @autoreleasepool {
@@ -1334,6 +1307,7 @@ static void testObjectiveCAPIMain()
             } \
         })()"];
         checkResult(@"shouldn't be able to construct ClassC", ![canConstructClassC toBool]);
+
         JSValue *canConstructClassCPrime = [context evaluateScript:@"(function() { \
             try { \
                 (new ClassCPrime(1)); \
@@ -1343,6 +1317,19 @@ static void testObjectiveCAPIMain()
             } \
         })()"];
         checkResult(@"shouldn't be able to construct ClassCPrime", ![canConstructClassCPrime toBool]);
+    }
+
+    @autoreleasepool {
+        JSContext *context = [[JSContext alloc] init];
+        context[@"ClassA"] = [ClassA class];
+        context.exceptionHandler = ^(JSContext *context, JSValue *exception) {
+            NSLog(@"%@", [exception toString]);
+            context.exception = exception;
+        };
+
+        checkResult(@"ObjC Constructor without 'new' pre", !context.exception);
+        [context evaluateScript:@"ClassA(42)"];
+        checkResult(@"ObjC Constructor without 'new' post", context.exception);
     }
 
     @autoreleasepool {
@@ -1499,7 +1486,6 @@ void testObjectiveCAPI()
 {
     NSLog(@"Testing Objective-C API");
     checkNegativeNSIntegers();
-    testWeakValue();
     testObjectiveCAPIMain();
 }
 

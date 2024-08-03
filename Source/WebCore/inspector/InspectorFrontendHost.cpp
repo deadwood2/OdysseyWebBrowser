@@ -68,7 +68,7 @@ public:
     
     void disconnect()
     {
-        m_frontendApiObject = Deprecated::ScriptObject();
+        m_frontendApiObject = { };
         m_frontendHost = nullptr;
     }
     
@@ -85,16 +85,16 @@ private:
         contextMenuCleared();
     }
     
-    virtual void populateContextMenu(ContextMenu* menu) override
+    void populateContextMenu(ContextMenu* menu) override
     {
         for (auto& item : m_items)
             menu->appendItem(item);
     }
     
-    virtual void contextMenuItemSelected(ContextMenuAction action, const String&) override
+    void contextMenuItemSelected(ContextMenuAction action, const String&) override
     {
         if (m_frontendHost) {
-            UserGestureIndicator gestureIndicator(DefinitelyProcessingUserGesture);
+            UserGestureIndicator gestureIndicator(ProcessingUserGesture);
             int itemNumber = action - ContextMenuItemBaseCustomTag;
 
             Deprecated::ScriptFunctionCall function(m_frontendApiObject, "contextMenuItemSelected", WebCore::functionCallHandlerFromAnyThread);
@@ -103,7 +103,7 @@ private:
         }
     }
     
-    virtual void contextMenuCleared() override
+    void contextMenuCleared() override
     {
         if (m_frontendHost) {
             Deprecated::ScriptFunctionCall function(m_frontendApiObject, "contextMenuCleared", WebCore::functionCallHandlerFromAnyThread);
@@ -222,7 +222,7 @@ void InspectorFrontendHost::moveWindowBy(float x, float y) const
 
 String InspectorFrontendHost::localizedStringsURL()
 {
-    return m_client ? m_client->localizedStringsURL() : "";
+    return m_client ? m_client->localizedStringsURL() : emptyString();
 }
 
 String InspectorFrontendHost::debuggableType()
@@ -317,22 +317,24 @@ void InspectorFrontendHost::sendMessageToBackend(const String& message)
 }
 
 #if ENABLE(CONTEXT_MENUS)
+
 void InspectorFrontendHost::showContextMenu(Event* event, const Vector<ContextMenuItem>& items)
 {
     if (!event)
         return;
 
     ASSERT(m_frontendPage);
-    JSC::ExecState* frontendExecState = execStateFromPage(debuggerWorld(), m_frontendPage);
-    Deprecated::ScriptObject frontendApiObject;
-    if (!ScriptGlobalObject::get(frontendExecState, "InspectorFrontendAPI", frontendApiObject)) {
+    auto& state = *execStateFromPage(debuggerWorld(), m_frontendPage);
+    JSC::JSObject* frontendApiObject;
+    if (!ScriptGlobalObject::get(state, "InspectorFrontendAPI", frontendApiObject)) {
         ASSERT_NOT_REACHED();
         return;
     }
-    RefPtr<FrontendMenuProvider> menuProvider = FrontendMenuProvider::create(this, frontendApiObject, items);
-    m_frontendPage->contextMenuController().showContextMenu(event, menuProvider);
-    m_menuProvider = menuProvider.get();
+    auto menuProvider = FrontendMenuProvider::create(this, { &state, frontendApiObject }, items);
+    m_frontendPage->contextMenuController().showContextMenu(event, menuProvider.ptr());
+    m_menuProvider = menuProvider.ptr();
 }
+
 #endif
 
 void InspectorFrontendHost::dispatchEventAsContextMenuEvent(Event* event)

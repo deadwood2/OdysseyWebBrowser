@@ -76,6 +76,11 @@ template <class T> class WriteBarrierBase;
 enum PreferredPrimitiveType { NoPreference, PreferNumber, PreferString };
 enum ECMAMode { StrictMode, NotStrictMode };
 
+enum class CallType : unsigned;
+struct CallData;
+enum class ConstructType : unsigned;
+struct ConstructData;
+
 typedef int64_t EncodedJSValue;
     
 union EncodedValueDescriptor {
@@ -209,7 +214,7 @@ public:
 
     int32_t asInt32() const;
     uint32_t asUInt32() const;
-    int64_t asMachineInt() const;
+    int64_t asAnyInt() const;
     double asDouble() const;
     bool asBoolean() const;
     double asNumber() const;
@@ -219,12 +224,15 @@ public:
     // Querying the type.
     bool isEmpty() const;
     bool isFunction() const;
+    bool isFunction(CallType&, CallData&) const;
+    bool isCallable(CallType&, CallData&) const;
     bool isConstructor() const;
+    bool isConstructor(ConstructType&, ConstructData&) const;
     bool isUndefined() const;
     bool isNull() const;
     bool isUndefinedOrNull() const;
     bool isBoolean() const;
-    bool isMachineInt() const;
+    bool isAnyInt() const;
     bool isNumber() const;
     bool isString() const;
     bool isSymbol() const;
@@ -233,6 +241,7 @@ public:
     bool isCustomGetterSetter() const;
     bool isObject() const;
     bool inherits(const ClassInfo*) const;
+    const ClassInfo* classInfoOrNull() const;
         
     // Extracting the value.
     bool getString(ExecState*, WTF::String&) const;
@@ -252,6 +261,10 @@ public:
     // toNumber conversion is expected to be side effect free if an exception has
     // been set in the ExecState already.
     double toNumber(ExecState*) const;
+
+    // toNumber conversion if it can be done without side effects.
+    Optional<double> toNumberFromPrimitive() const;
+
     JSString* toString(ExecState*) const; // On exception, this returns the empty string.
     JSString* toStringOrNull(ExecState*) const; // On exception, this returns null, to make exception checks faster.
     Identifier toPropertyKey(ExecState*) const;
@@ -275,14 +288,17 @@ public:
     JSValue get(ExecState*, PropertyName, PropertySlot&) const;
     JSValue get(ExecState*, unsigned propertyName) const;
     JSValue get(ExecState*, unsigned propertyName, PropertySlot&) const;
+    JSValue get(ExecState*, uint64_t propertyName) const;
 
     bool getPropertySlot(ExecState*, PropertyName, PropertySlot&) const;
+    template<typename CallbackWhenNoException> typename std::result_of<CallbackWhenNoException(bool, PropertySlot&)>::type getPropertySlot(ExecState*, PropertyName, CallbackWhenNoException) const;
+    template<typename CallbackWhenNoException> typename std::result_of<CallbackWhenNoException(bool, PropertySlot&)>::type getPropertySlot(ExecState*, PropertyName, PropertySlot&, CallbackWhenNoException) const;
 
-    void put(ExecState*, PropertyName, JSValue, PutPropertySlot&);
-    void putInline(ExecState*, PropertyName, JSValue, PutPropertySlot&);
-    JS_EXPORT_PRIVATE void putToPrimitive(ExecState*, PropertyName, JSValue, PutPropertySlot&);
-    JS_EXPORT_PRIVATE void putToPrimitiveByIndex(ExecState*, unsigned propertyName, JSValue, bool shouldThrow);
-    void putByIndex(ExecState*, unsigned propertyName, JSValue, bool shouldThrow);
+    bool put(ExecState*, PropertyName, JSValue, PutPropertySlot&);
+    bool putInline(ExecState*, PropertyName, JSValue, PutPropertySlot&);
+    JS_EXPORT_PRIVATE bool putToPrimitive(ExecState*, PropertyName, JSValue, PutPropertySlot&);
+    JS_EXPORT_PRIVATE bool putToPrimitiveByIndex(ExecState*, unsigned propertyName, JSValue, bool shouldThrow);
+    bool putByIndex(ExecState*, unsigned propertyName, JSValue, bool shouldThrow);
 
     JSValue toThis(ExecState*, ECMAMode) const;
 
@@ -298,6 +314,7 @@ public:
     JSCell* asCell() const;
     JS_EXPORT_PRIVATE bool isValidCallee();
 
+    Structure* structureOrNull() const;
     JSValue structureOrUndefined() const;
 
     JS_EXPORT_PRIVATE void dump(PrintStream&) const;
@@ -570,11 +587,27 @@ ALWAYS_INLINE JSValue jsNumber(unsigned long long i)
     return JSValue(i);
 }
 
+ALWAYS_INLINE EncodedJSValue encodedJSUndefined()
+{
+    return JSValue::encode(jsUndefined());
+}
+
+ALWAYS_INLINE EncodedJSValue encodedJSValue()
+{
+    return JSValue::encode(JSValue());
+}
+
 inline bool operator==(const JSValue a, const JSCell* b) { return a == JSValue(b); }
 inline bool operator==(const JSCell* a, const JSValue b) { return JSValue(a) == b; }
 
 inline bool operator!=(const JSValue a, const JSCell* b) { return a != JSValue(b); }
 inline bool operator!=(const JSCell* a, const JSValue b) { return JSValue(a) != b; }
+
+
+bool isThisValueAltered(const PutPropertySlot&, JSObject* baseObject);
+
+// See section 7.2.9: https://tc39.github.io/ecma262/#sec-samevalue
+bool sameValue(ExecState*, JSValue a, JSValue b);
 
 } // namespace JSC
 

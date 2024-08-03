@@ -32,7 +32,6 @@
 #include "HTMLNames.h"
 #include "NodeList.h"
 #include <wtf/Forward.h>
-#include <wtf/RefPtr.h>
 
 namespace WebCore {
 
@@ -64,7 +63,7 @@ protected:
     Document& document() const { return m_ownerNode->document(); }
 
 private:
-    virtual bool isLiveNodeList() const override final { return true; }
+    bool isLiveNodeList() const final { return true; }
 
     ContainerNode& rootNode() const;
 
@@ -79,7 +78,7 @@ class CachedLiveNodeList : public LiveNodeList {
 public:
     virtual ~CachedLiveNodeList();
 
-    unsigned length() const override final { return m_indexCache.nodeCount(nodeList()); }
+    unsigned length() const final { return m_indexCache.nodeCount(nodeList()); }
     Element* item(unsigned offset) const override { return m_indexCache.nodeAt(nodeList(), offset); }
 
     // For CollectionIndexCache
@@ -91,8 +90,8 @@ public:
     bool collectionCanTraverseBackward() const { return true; }
     void willValidateIndexCache() const { document().registerNodeListForInvalidation(const_cast<CachedLiveNodeList<NodeListType>&>(*this)); }
 
-    virtual void invalidateCache(Document&) const override final;
-    virtual size_t memoryCost() const override final { return m_indexCache.memoryCost(); }
+    void invalidateCache(Document&) const final;
+    size_t memoryCost() const final { return m_indexCache.memoryCost(); }
 
 protected:
     CachedLiveNodeList(ContainerNode& rootNode, NodeListInvalidationType);

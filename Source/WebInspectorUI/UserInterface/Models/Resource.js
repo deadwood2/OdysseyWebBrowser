@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2011 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -650,10 +651,10 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
             return Promise.resolve({error: WebInspector.UIString("An error occurred trying to load the resource.")});
 
         if (!this._finishThenRequestContentPromise) {
-            this._finishThenRequestContentPromise = new Promise(function (resolve, reject) {
+            this._finishThenRequestContentPromise = new Promise((resolve, reject) => {
                 this.addEventListener(WebInspector.Resource.Event.LoadingDidFinish, resolve);
                 this.addEventListener(WebInspector.Resource.Event.LoadingDidFail, reject);
-            }.bind(this)).then(WebInspector.SourceCode.prototype.requestContent.bind(this));
+            }).then(WebInspector.SourceCode.prototype.requestContent.bind(this));
         }
 
         return this._finishThenRequestContentPromise;
@@ -677,6 +678,48 @@ WebInspector.Resource = class Resource extends WebInspector.SourceCode
     {
         cookie[WebInspector.Resource.URLCookieKey] = this.url.hash;
         cookie[WebInspector.Resource.MainResourceCookieKey] = this.isMainResource();
+    }
+
+    generateCURLCommand()
+    {
+        function escapeStringPosix(str) {
+            function escapeCharacter(x) {
+                let code = x.charCodeAt(0);
+                let hex = code.toString(16);
+                if (code < 256)
+                    return "\\x" + hex.padStart(2, "0");
+                return "\\u" + hex.padStart(4, "0");
+            }
+
+            if (/[^\x20-\x7E]|'/.test(str)) {
+                // Use ANSI-C quoting syntax.
+                return "$'" + str.replace(/\\/g, "\\\\")
+                                 .replace(/'/g, "\\'")
+                                 .replace(/\n/g, "\\n")
+                                 .replace(/\r/g, "\\r")
+                                 .replace(/[^\x20-\x7E]/g, escapeCharacter) + "'";
+            } else {
+                // Use single quote syntax.
+                return `'${str}'`;
+            }
+        }
+
+        let command = ["curl " + escapeStringPosix(this.url).replace(/[[{}\]]/g, "\\$&")];
+        command.push(`-X${this.requestMethod}`);
+
+        for (let key in this.requestHeaders)
+            command.push("-H " + escapeStringPosix(`${key}: ${this.requestHeaders[key]}`));
+
+        if (this.requestDataContentType && this.requestMethod !== "GET" && this.requestData) {
+            if (this.requestDataContentType.match(/^application\/x-www-form-urlencoded\s*(;.*)?$/i))
+                command.push("--data " + escapeStringPosix(this.requestData))
+            else
+                command.push("--data-binary " + escapeStringPosix(this.requestData))
+        }
+
+        let curlCommand = command.join(" \\\n");
+        InspectorFrontendHost.copyText(curlCommand);
+        return curlCommand;
     }
 };
 

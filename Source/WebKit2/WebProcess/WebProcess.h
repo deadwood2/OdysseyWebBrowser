@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -37,12 +37,12 @@
 #include "ViewUpdateDispatcher.h"
 #include "VisitedLinkTable.h"
 #include <WebCore/HysteresisActivity.h>
+#include <WebCore/ResourceLoadStatisticsStore.h>
 #include <WebCore/SessionID.h>
 #include <WebCore/Timer.h>
 #include <wtf/Forward.h>
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
-#include <wtf/NeverDestroyed.h>
 #include <wtf/text/AtomicString.h>
 #include <wtf/text/AtomicStringHash.h>
 
@@ -60,10 +60,12 @@ class Object;
 }
 
 namespace WebCore {
+class ApplicationCacheStorage;
 class CertificateInfo;
 class PageGroup;
 class ResourceRequest;
 class SessionID;
+class UserGestureToken;
 struct PluginInfo;
 struct SecurityOriginData;
 }
@@ -75,6 +77,7 @@ class InjectedBundle;
 class NetworkProcessConnection;
 class ObjCObjectGraph;
 class UserData;
+class WebAutomationSessionProxy;
 class WebConnectionToUIProcess;
 class WebFrame;
 class WebIconDatabaseProxy;
@@ -82,6 +85,8 @@ class WebLoaderStrategy;
 class WebPage;
 class WebPageGroupProxy;
 class WebProcessSupplement;
+enum class WebsiteDataType;
+class GamepadData;
 struct WebPageCreationParameters;
 struct WebPageGroupData;
 struct WebPreferencesStore;
@@ -136,11 +141,15 @@ public:
     WebPageGroupProxy* webPageGroup(uint64_t pageGroupID);
     WebPageGroupProxy* webPageGroup(const WebPageGroupData&);
 
+    uint64_t userGestureTokenIdentifier(RefPtr<WebCore::UserGestureToken>);
+    void userGestureTokenDestroyed(WebCore::UserGestureToken&);
+
 #if PLATFORM(COCOA)
     pid_t presenterApplicationPid() const { return m_presenterApplicationPid; }
 #endif
     
     const TextCheckerState& textCheckerState() const { return m_textCheckerState; }
+    void setTextCheckerState(const TextCheckerState&);
 
     void clearResourceCaches(ResourceCachesToClear = AllResourceCaches);
     
@@ -150,7 +159,7 @@ public:
 
     EventDispatcher& eventDispatcher() { return *m_eventDispatcher; }
 
-    NetworkProcessConnection* networkConnection();
+    NetworkProcessConnection& networkConnection();
     void networkProcessConnectionClosed(NetworkProcessConnection*);
     WebLoaderStrategy& webLoaderStrategy();
 
@@ -163,28 +172,34 @@ public:
 
     void ensurePrivateBrowsingSession(WebCore::SessionID);
     void destroyPrivateBrowsingSession(WebCore::SessionID);
+    void ensureLegacyPrivateBrowsingSessionInNetworkProcess();
 
     void pageDidEnterWindow(uint64_t pageID);
     void pageWillLeaveWindow(uint64_t pageID);
 
     void nonVisibleProcessCleanupTimerFired();
+    void statisticsChangedTimerFired();
 
 #if PLATFORM(COCOA)
+    RetainPtr<CFDataRef> sourceApplicationAuditData() const;
     void destroyRenderingResources();
 #endif
 
     void updateActivePages();
 
+    void setHiddenPageTimerThrottlingIncreaseLimit(int milliseconds);
+
     void processWillSuspendImminently(bool& handled);
     void prepareToSuspend();
     void cancelPrepareToSuspend();
-    bool markAllLayersVolatileIfPossible();
-    void setAllLayerTreeStatesFrozen(bool);
-    void processSuspensionCleanupTimerFired();
     void processDidResume();
 
 #if PLATFORM(IOS)
     void resetAllGeolocationPermissions();
+#endif
+
+#if PLATFORM(WAYLAND)
+    String waylandCompositorDisplayName() const { return m_waylandCompositorDisplayName; }
 #endif
 
     RefPtr<API::Object> transformHandlesToObjects(API::Object*);
@@ -201,7 +216,11 @@ public:
     bool hasRichContentServices() const { return m_hasRichContentServices; }
 #endif
 
+    WebCore::ApplicationCacheStorage& applicationCacheStorage() { return *m_applicationCacheStorage; }
+
     void prefetchDNS(const String&);
+
+    WebAutomationSessionProxy* automationSessionProxy() { return m_automationSessionProxy.get(); }
 
 private:
     WebProcess();
@@ -209,6 +228,15 @@ private:
 
     void initializeWebProcess(WebProcessCreationParameters&&);
     void platformInitializeWebProcess(WebProcessCreationParameters&&);
+
+#if USE(OS_STATE)
+    void registerWithStateDumper();
+#endif
+
+    void markAllLayersVolatile(std::function<void()> completionHandler);
+    void cancelMarkAllLayersVolatile();
+    void setAllLayerTreeStatesFrozen(bool);
+    void processSuspensionCleanupTimerFired();
 
     void clearCachedCredentials();
 
@@ -228,6 +256,7 @@ private:
     void setDefaultRequestTimeoutInterval(double);
     void setAlwaysUsesComplexTextCodePath(bool);
     void setShouldUseFontSmoothing(bool);
+    void setResourceLoadStatisticsEnabled(bool);
     void userPreferredLanguagesChanged(const Vector<String>&) const;
     void fullKeyboardAccessModeChanged(bool fullKeyboardAccessEnabled);
 
@@ -237,15 +266,11 @@ private:
     void resetPlugInAutoStartOriginHashes(const HashMap<WebCore::SessionID, HashMap<unsigned, double>>& hashes);
 
     void platformSetCacheModel(CacheModel);
-    void platformClearResourceCaches(ResourceCachesToClear);
-    void clearApplicationCache();
 
     void setEnhancedAccessibility(bool);
     
     void startMemorySampler(const SandboxExtension::Handle&, const String&, const double);
     void stopMemorySampler();
-
-    void setTextCheckerState(const TextCheckerState&);
     
     void getWebCoreStatistics(uint64_t callbackID);
     void garbageCollectJavaScriptObjects();
@@ -253,11 +278,17 @@ private:
 
     void mainThreadPing();
 
+#if ENABLE(GAMEPAD)
+    void setInitialGamepads(const Vector<GamepadData>&);
+    void gamepadConnected(const GamepadData&);
+    void gamepadDisconnected(unsigned index);
+#endif
+
     void releasePageCache();
 
-    void fetchWebsiteData(WebCore::SessionID, uint64_t websiteDataTypes, uint64_t callbackID);
-    void deleteWebsiteData(WebCore::SessionID, uint64_t websiteDataTypes, std::chrono::system_clock::time_point modifiedSince, uint64_t callbackID);
-    void deleteWebsiteDataForOrigins(WebCore::SessionID, uint64_t websiteDataTypes, const Vector<WebCore::SecurityOriginData>& origins, uint64_t callbackID);
+    void fetchWebsiteData(WebCore::SessionID, OptionSet<WebsiteDataType>, uint64_t callbackID);
+    void deleteWebsiteData(WebCore::SessionID, OptionSet<WebsiteDataType>, std::chrono::system_clock::time_point modifiedSince, uint64_t callbackID);
+    void deleteWebsiteDataForOrigins(WebCore::SessionID, OptionSet<WebsiteDataType>, const Vector<WebCore::SecurityOriginData>& origins, uint64_t callbackID);
 
     void setMemoryCacheDisabled(bool);
 
@@ -272,32 +303,33 @@ private:
     enum class ShouldAcknowledgeWhenReadyToSuspend { No, Yes };
     void actualPrepareToSuspend(ShouldAcknowledgeWhenReadyToSuspend);
 
+    void ensureAutomationSessionProxy(const String& sessionIdentifier);
+    void destroyAutomationSessionProxy();
+
     // ChildProcess
-    virtual void initializeProcess(const ChildProcessInitializationParameters&) override;
-    virtual void initializeProcessName(const ChildProcessInitializationParameters&) override;
-    virtual void initializeSandbox(const ChildProcessInitializationParameters&, SandboxInitializationParameters&) override;
-    virtual void initializeConnection(IPC::Connection*) override;
-    virtual bool shouldTerminate() override;
-    virtual void terminate() override;
+    void initializeProcess(const ChildProcessInitializationParameters&) override;
+    void initializeProcessName(const ChildProcessInitializationParameters&) override;
+    void initializeSandbox(const ChildProcessInitializationParameters&, SandboxInitializationParameters&) override;
+    void initializeConnection(IPC::Connection*) override;
+    bool shouldTerminate() override;
+    void terminate() override;
 
 #if USE(APPKIT)
-    virtual void stopRunLoop() override;
+    void stopRunLoop() override;
 #endif
 
     void platformInitializeProcess(const ChildProcessInitializationParameters&);
 
     // IPC::Connection::Client
     friend class WebConnectionToUIProcess;
-    virtual void didReceiveMessage(IPC::Connection&, IPC::MessageDecoder&) override;
-    virtual void didReceiveSyncMessage(IPC::Connection&, IPC::MessageDecoder&, std::unique_ptr<IPC::MessageEncoder>&) override;
-    virtual void didClose(IPC::Connection&) override;
-    virtual void didReceiveInvalidMessage(IPC::Connection&, IPC::StringReference messageReceiverName, IPC::StringReference messageName) override;
-    virtual IPC::ProcessType localProcessType() override { return IPC::ProcessType::Web; }
-    virtual IPC::ProcessType remoteProcessType() override { return IPC::ProcessType::UI; }
+    void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
+    void didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&) override;
+    void didClose(IPC::Connection&) override;
+    void didReceiveInvalidMessage(IPC::Connection&, IPC::StringReference messageReceiverName, IPC::StringReference messageName) override;
 
     // Implemented in generated WebProcessMessageReceiver.cpp
-    void didReceiveWebProcessMessage(IPC::Connection&, IPC::MessageDecoder&);
-    void didReceiveSyncWebProcessMessage(IPC::Connection&, IPC::MessageDecoder&, std::unique_ptr<IPC::MessageEncoder>&);
+    void didReceiveWebProcessMessage(IPC::Connection&, IPC::Decoder&);
+    void didReceiveSyncWebProcessMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&);
 
     RefPtr<WebConnectionToUIProcess> m_webConnection;
 
@@ -309,7 +341,6 @@ private:
 #if PLATFORM(IOS)
     RefPtr<ViewUpdateDispatcher> m_viewUpdateDispatcher;
 #endif
-    WebCore::Timer m_processSuspensionCleanupTimer;
 
     bool m_inDidClose;
 
@@ -341,6 +372,8 @@ private:
     HashSet<String> m_dnsPrefetchedHosts;
     WebCore::HysteresisActivity m_dnsPrefetchHystereris;
 
+    std::unique_ptr<WebAutomationSessionProxy> m_automationSessionProxy;
+
 #if ENABLE(DATABASE_PROCESS)
     void ensureWebToDatabaseProcessConnection();
     RefPtr<WebToDatabaseProcessConnection> m_webToDatabaseProcessConnection;
@@ -358,12 +391,24 @@ private:
 
     HashSet<uint64_t> m_pagesInWindows;
     WebCore::Timer m_nonVisibleProcessCleanupTimer;
+    WebCore::Timer m_statisticsChangedTimer;
+
+    RefPtr<WebCore::ApplicationCacheStorage> m_applicationCacheStorage;
 
 #if PLATFORM(IOS)
     WebSQLiteDatabaseTracker m_webSQLiteDatabaseTracker;
 #endif
 
-    ShouldAcknowledgeWhenReadyToSuspend m_shouldAcknowledgeWhenReadyToSuspend;
+    Ref<WebCore::ResourceLoadStatisticsStore> m_resourceLoadStatisticsStorage;
+
+    unsigned m_pagesMarkingLayersAsVolatile { 0 };
+    bool m_suppressMemoryPressureHandler { false };
+
+    HashMap<WebCore::UserGestureToken *, uint64_t> m_userGestureTokens;
+
+#if PLATFORM(WAYLAND)
+    String m_waylandCompositorDisplayName;
+#endif
 };
 
 } // namespace WebKit

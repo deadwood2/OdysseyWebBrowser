@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013, 2015-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -82,12 +82,16 @@ bool JITFinalizer::finalizeFunction()
 
 void JITFinalizer::finalizeCommon()
 {
+    // Some JIT finalizers may have added more constants. Shrink-to-fit those things now.
+    m_plan.codeBlock->constants().shrinkToFit();
+    m_plan.codeBlock->constantsSourceCodeRepresentation().shrinkToFit();
+    
 #if ENABLE(FTL_JIT)
     m_jitCode->optimizeAfterWarmUp(m_plan.codeBlock);
 #endif // ENABLE(FTL_JIT)
     
     if (m_plan.compilation)
-        m_plan.vm.m_perBytecodeProfiler->addCompilation(m_plan.compilation);
+        m_plan.vm->m_perBytecodeProfiler->addCompilation(m_plan.codeBlock, m_plan.compilation);
     
     if (!m_plan.willTryToTierUp)
         m_plan.codeBlock->baselineVersion()->m_didFailFTLCompilation = true;

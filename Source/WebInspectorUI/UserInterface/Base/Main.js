@@ -92,8 +92,7 @@ WebInspector.loaded = function()
         InspectorBackend.registerReplayDispatcher(new WebInspector.ReplayObserver);
 
     // Enable agents.
-    if (window.InspectorAgent)
-        InspectorAgent.enable();
+    InspectorAgent.enable();
 
     // Perform one-time tasks.
     WebInspector.CSSCompletions.requestCSSCompletions();
@@ -114,6 +113,7 @@ WebInspector.loaded = function()
     this.analyzerManager = new WebInspector.AnalyzerManager;
     this.runtimeManager = new WebInspector.RuntimeManager;
     this.heapManager = new WebInspector.HeapManager;
+    this.memoryManager = new WebInspector.MemoryManager;
     this.applicationCacheManager = new WebInspector.ApplicationCacheManager;
     this.timelineManager = new WebInspector.TimelineManager;
     this.debuggerManager = new WebInspector.DebuggerManager;
@@ -124,13 +124,12 @@ WebInspector.loaded = function()
     this.replayManager = new WebInspector.ReplayManager;
 
     // Enable the Console Agent after creating the singleton managers.
-    if (window.ConsoleAgent)
-        ConsoleAgent.enable();
+    ConsoleAgent.enable();
 
     // Tell the backend we are initialized after all our initialization messages have been sent.
     setTimeout(function() {
         // COMPATIBILITY (iOS 8): Inspector.initialized did not exist yet.
-        if (window.InspectorAgent && InspectorAgent.initialized)
+        if (InspectorAgent.initialized)
             InspectorAgent.initialized();
     }, 0);
 
@@ -161,18 +160,26 @@ WebInspector.loaded = function()
 
     // COMPATIBILITY (iOS 8): Page.enableTypeProfiler did not exist.
     this.showJavaScriptTypeInformationSetting = new WebInspector.Setting("show-javascript-type-information", false);
-    if (this.showJavaScriptTypeInformationSetting.value && window.RuntimeAgent && RuntimeAgent.enableTypeProfiler)
+    if (this.showJavaScriptTypeInformationSetting.value && window.RuntimeAgent && RuntimeAgent.enableTypeProfiler) {
         RuntimeAgent.enableTypeProfiler();
+        if (RuntimeAgent.enableControlFlowProfiler)
+            RuntimeAgent.enableControlFlowProfiler();
+    }
 
     // COMPATIBILITY (iOS 8): Page.setShowPaintRects did not exist.
     this.showPaintRectsSetting = new WebInspector.Setting("show-paint-rects", false);
     if (this.showPaintRectsSetting.value && window.PageAgent && PageAgent.setShowPaintRects)
         PageAgent.setShowPaintRects(true);
 
+    this._zoomFactorSetting = new WebInspector.Setting("zoom-factor", 1);
+    this._setZoomFactor(this._zoomFactorSetting.value);
+
     this.mouseCoords = {
         x: 0,
         y: 0
     };
+
+    this.visible = false;
 
     this._windowKeydownListeners = [];
 };
@@ -226,11 +233,11 @@ WebInspector.contentLoaded = function()
     this.tabBar.addEventListener(WebInspector.TabBar.Event.NewTabItemClicked, this._newTabItemClicked, this);
     this.tabBar.addEventListener(WebInspector.TabBar.Event.OpenDefaultTab, this._openDefaultTab, this);
 
-    var contentElement = document.getElementById("content");
-    contentElement.setAttribute("role", "main");
-    contentElement.setAttribute("aria-label", WebInspector.UIString("Content"));
+    this._contentElement = document.getElementById("content");
+    this._contentElement.setAttribute("role", "main");
+    this._contentElement.setAttribute("aria-label", WebInspector.UIString("Content"));
 
-    this.splitContentBrowser = new WebInspector.ContentBrowser(document.getElementById("split-content-browser"), this, true);
+    this.splitContentBrowser = new WebInspector.ContentBrowser(document.getElementById("split-content-browser"), this, true, true);
     this.splitContentBrowser.navigationBar.element.addEventListener("mousedown", this._consoleResizerMouseDown.bind(this));
 
     this.quickConsole = new WebInspector.QuickConsole(document.getElementById("quick-console"));
@@ -254,16 +261,18 @@ WebInspector.contentLoaded = function()
     this._saveKeyboardShortcut = new WebInspector.KeyboardShortcut(WebInspector.KeyboardShortcut.Modifier.CommandOrControl, "S", this._save.bind(this));
     this._saveAsKeyboardShortcut = new WebInspector.KeyboardShortcut(WebInspector.KeyboardShortcut.Modifier.Shift | WebInspector.KeyboardShortcut.Modifier.CommandOrControl, "S", this._saveAs.bind(this));
 
-    this.navigationSidebarKeyboardShortcut = new WebInspector.KeyboardShortcut(WebInspector.KeyboardShortcut.Modifier.CommandOrControl | WebInspector.KeyboardShortcut.Modifier.Option, "L", this.toggleNavigationSidebar.bind(this));
-    this.detailsSidebarKeyboardShortcut = new WebInspector.KeyboardShortcut(WebInspector.KeyboardShortcut.Modifier.CommandOrControl | WebInspector.KeyboardShortcut.Modifier.Option, "R", this.toggleDetailsSidebar.bind(this));
+    this.openResourceKeyboardShortcut = new WebInspector.KeyboardShortcut(WebInspector.KeyboardShortcut.Modifier.Command | WebInspector.KeyboardShortcut.Modifier.Shift, "O", this._showOpenResourceDialog.bind(this));
+    new WebInspector.KeyboardShortcut(WebInspector.KeyboardShortcut.Modifier.Command, "P", this._showOpenResourceDialog.bind(this));
+
+    this.navigationSidebarKeyboardShortcut = new WebInspector.KeyboardShortcut(WebInspector.KeyboardShortcut.Modifier.CommandOrControl | WebInspector.KeyboardShortcut.Modifier.Shift, "0", this.toggleNavigationSidebar.bind(this));
+    this.detailsSidebarKeyboardShortcut = new WebInspector.KeyboardShortcut(WebInspector.KeyboardShortcut.Modifier.CommandOrControl | WebInspector.KeyboardShortcut.Modifier.Option, "0", this.toggleDetailsSidebar.bind(this));
 
     this._increaseZoomKeyboardShortcut = new WebInspector.KeyboardShortcut(WebInspector.KeyboardShortcut.Modifier.CommandOrControl, WebInspector.KeyboardShortcut.Key.Plus, this._increaseZoom.bind(this));
     this._decreaseZoomKeyboardShortcut = new WebInspector.KeyboardShortcut(WebInspector.KeyboardShortcut.Modifier.CommandOrControl, WebInspector.KeyboardShortcut.Key.Minus, this._decreaseZoom.bind(this));
-    this._increaseZoomKeyboardShortcut.implicitlyPreventsDefault = this._decreaseZoomKeyboardShortcut.implicitlyPreventsDefault = false;
-
     this._resetZoomKeyboardShortcut = new WebInspector.KeyboardShortcut(WebInspector.KeyboardShortcut.Modifier.CommandOrControl, "0", this._resetZoom.bind(this));
 
-    this._showTabAtIndexKeyboardShortcuts = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => new WebInspector.KeyboardShortcut(WebInspector.KeyboardShortcut.Modifier.CommandOrControl, `${i}`, this._showTabAtIndex.bind(this, i)));
+    this._showTabAtIndexKeyboardShortcuts = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => new WebInspector.KeyboardShortcut(WebInspector.KeyboardShortcut.Modifier.CommandOrControl | WebInspector.KeyboardShortcut.Modifier.Option, `${i}`, this._showTabAtIndex.bind(this, i)));
+    this._openNewTabKeyboardShortcut = new WebInspector.KeyboardShortcut(WebInspector.KeyboardShortcut.Modifier.CommandOrControl | WebInspector.KeyboardShortcut.Modifier.Option, "T", this.showNewTabTab.bind(this));
 
     this.tabBrowser = new WebInspector.TabBrowser(document.getElementById("tab-browser"), this.tabBar, this.navigationSidebar, this.detailsSidebar);
     this.tabBrowser.addEventListener(WebInspector.TabBrowser.Event.SelectedTabContentViewDidChange, this._tabBrowserSelectedTabContentViewDidChange, this);
@@ -324,8 +333,8 @@ WebInspector.contentLoaded = function()
 
     // The toolbar button for node inspection.
     if (this.debuggableType === WebInspector.DebuggableType.Web) {
-        var toolTip = WebInspector.UIString("Enable point to inspect mode (%s)").format(WebInspector._inspectModeKeyboardShortcut.displayName);
-        var activatedToolTip = WebInspector.UIString("Disable point to inspect mode (%s)").format(WebInspector._inspectModeKeyboardShortcut.displayName);
+        var toolTip = WebInspector.UIString("Start element selection (%s)").format(WebInspector._inspectModeKeyboardShortcut.displayName);
+        var activatedToolTip = WebInspector.UIString("Stop element selection (%s)").format(WebInspector._inspectModeKeyboardShortcut.displayName);
         this._inspectModeToolbarButton = new WebInspector.ActivateButtonToolbarItem("inspect", toolTip, activatedToolTip, null, "Images/Crosshair.svg");
         this._inspectModeToolbarButton.addEventListener(WebInspector.ButtonNavigationItem.Event.Clicked, this._toggleInspectMode, this);
     }
@@ -356,6 +365,7 @@ WebInspector.contentLoaded = function()
     this.domNodeDetailsSidebarPanel = new WebInspector.DOMNodeDetailsSidebarPanel;
     this.cssStyleDetailsSidebarPanel = new WebInspector.CSSStyleDetailsSidebarPanel;
     this.applicationCacheDetailsSidebarPanel = new WebInspector.ApplicationCacheDetailsSidebarPanel;
+    this.indexedDatabaseDetailsSidebarPanel = new WebInspector.IndexedDatabaseDetailsSidebarPanel;
     this.scopeChainDetailsSidebarPanel = new WebInspector.ScopeChainDetailsSidebarPanel;
     this.probeDetailsSidebarPanel = new WebInspector.ProbeDetailsSidebarPanel;
 
@@ -464,6 +474,17 @@ WebInspector.knownTabClasses = function()
     return new Set(this._knownTabClassesByType.values());
 }
 
+WebInspector._showOpenResourceDialog = function()
+{
+    if (!this._openResourceDialog)
+        this._openResourceDialog = new WebInspector.OpenResourceDialog(this);
+
+    if (this._openResourceDialog.visible)
+        return;
+
+    this._openResourceDialog.present(this._contentElement);
+}
+
 WebInspector._createTabContentViewForType = function(tabType)
 {
     let tabClass = this._knownTabClassesByType.get(tabType);
@@ -505,14 +526,7 @@ WebInspector._rememberOpenTabs = function()
 
 WebInspector._updateNewTabButtonState = function(event)
 {
-    let allTabs = [...this._knownTabClassesByType.values()];
-    let addableTabs = allTabs.filter((tabClass) => !tabClass.isEphemeral());
-
-    // FIXME: Use arrow functions once http://webkit.org/b/152497 is resolved.
-    let canMakeNewTab = addableTabs.some(function(tabClass) {
-        return this.isNewTabWithTypeAllowed(tabClass.Type);
-    }.bind(this));
-    this.tabBar.newTabItem.disabled = !canMakeNewTab;
+    this.tabBar.newTabItem.disabled = !this.isNewTabWithTypeAllowed(WebInspector.NewTabContentView.Type);
 };
 
 WebInspector._newTabItemClicked = function(event)
@@ -551,6 +565,9 @@ WebInspector._tryToRestorePendingTabs = function()
 
 WebInspector.showNewTabTab = function(shouldAnimate)
 {
+    if (!this.isNewTabWithTypeAllowed(WebInspector.NewTabContentView.Type))
+        return;
+
     let tabContentView = this.tabBrowser.bestTabContentViewForClass(WebInspector.NewTabContentView);
     if (!tabContentView)
         tabContentView = new WebInspector.NewTabContentView;
@@ -570,6 +587,13 @@ WebInspector.isNewTabWithTypeAllowed = function(tabType)
             continue;
         if (tabContentView.constructor === tabClass)
             return false;
+    }
+
+    if (tabClass === WebInspector.NewTabContentView) {
+        let allTabs = Array.from(this.knownTabClasses());
+        let addableTabs = allTabs.filter((tabClass) => !tabClass.isEphemeral());
+        let canMakeNewTab = addableTabs.some((tabClass) => WebInspector.isNewTabWithTypeAllowed(tabClass.Type));
+        return canMakeNewTab;
     }
 
     return true;
@@ -698,6 +722,12 @@ WebInspector.updateDockedState = function(side)
     this._updateDockNavigationItems();
 };
 
+WebInspector.updateVisibilityState = function(visible)
+{
+    this.visible = visible;
+    this.notifications.dispatchEventToListeners(WebInspector.Notification.VisibilityStateDidChange);
+}
+
 WebInspector.handlePossibleLinkClick = function(event, frame, alwaysOpenExternally)
 {
     var anchorElement = event.target.enclosingNodeOrSelfWithNodeName("a");
@@ -777,11 +807,32 @@ WebInspector.saveDataToFile = function(saveData, forceSaveAs)
     }
 
     console.assert(saveData.url);
-    console.assert(typeof saveData.content === "string");
-    if (!saveData.url || typeof saveData.content !== "string")
+    console.assert(saveData.content);
+    if (!saveData.url || !saveData.content)
         return;
 
-    InspectorFrontendHost.save(saveData.url, saveData.content, false, forceSaveAs || saveData.forceSaveAs);
+    let suggestedName = parseURL(saveData.url).lastPathComponent;
+    if (!suggestedName) {
+        suggestedName = WebInspector.UIString("Untitled");
+        let dataURLTypeMatch = /^data:([^;]+)/.exec(saveData.url);
+        if (dataURLTypeMatch)
+            suggestedName += WebInspector.fileExtensionForMIMEType(dataURLTypeMatch[1]) || "";
+    }
+
+    if (typeof saveData.content === "string") {
+        const base64Encoded = false;
+        InspectorFrontendHost.save(suggestedName, saveData.content, base64Encoded, forceSaveAs || saveData.forceSaveAs);
+        return;
+    }
+
+    let fileReader = new FileReader;
+    fileReader.readAsDataURL(saveData.content);
+    fileReader.addEventListener("loadend", () => {
+        let dataURLComponents = parseDataURL(fileReader.result);
+
+        const base64Encoded = true;
+        InspectorFrontendHost.save(suggestedName, dataURLComponents.data, base64Encoded, forceSaveAs || saveData.forceSaveAs);
+    });
 };
 
 WebInspector.isConsoleFocused = function()
@@ -1624,7 +1675,7 @@ WebInspector._dockedResizerMouseDown = function(event)
         let dimension = Math.max(0, window[windowProperty] - delta);
         // If zoomed in/out, there be greater/fewer document pixels shown, but the inspector's
         // width or height should be the same in device pixels regardless of the document zoom.
-        dimension *= InspectorFrontendHost.zoomFactor();
+        dimension *= this._zoomFactor();
 
         if (this._dockSide === "bottom")
             InspectorFrontendHost.setAttachedWindowHeight(dimension);
@@ -1841,7 +1892,7 @@ WebInspector._focusedOrVisibleContentBrowser = function()
     return null;
 };
 
-WebInspector._focusedOrVisibleContentView = function()
+WebInspector.focusedOrVisibleContentView = function()
 {
     let focusedContentView = this._focusedContentView();
     if (focusedContentView)
@@ -1893,7 +1944,7 @@ WebInspector._find = function(event)
 
 WebInspector._save = function(event)
 {
-    var contentView = this._focusedOrVisibleContentView();
+    var contentView = this.focusedOrVisibleContentView();
     if (!contentView || !contentView.supportsSave)
         return;
 
@@ -1902,7 +1953,7 @@ WebInspector._save = function(event)
 
 WebInspector._saveAs = function(event)
 {
-    var contentView = this._focusedOrVisibleContentView();
+    var contentView = this.focusedOrVisibleContentView();
     if (!contentView || !contentView.supportsSave)
         return;
 
@@ -1944,32 +1995,46 @@ WebInspector._increaseZoom = function(event)
 {
     const epsilon = 0.0001;
     const maximumZoom = 2.4;
-    let currentZoom = InspectorFrontendHost.zoomFactor();
-    if (currentZoom + epsilon >= maximumZoom)
+    let currentZoom = this._zoomFactor();
+    if (currentZoom + epsilon >= maximumZoom) {
+        InspectorFrontendHost.beep();
         return;
+    }
 
     let newZoom = Math.min(maximumZoom, currentZoom + 0.2);
-    InspectorFrontendHost.setZoomFactor(newZoom);
-    event.preventDefault();
+    this._setZoomFactor(newZoom);
 };
 
 WebInspector._decreaseZoom = function(event)
 {
     const epsilon = 0.0001;
     const minimumZoom = 0.6;
-    let currentZoom = InspectorFrontendHost.zoomFactor();    
-    if (currentZoom - epsilon <= minimumZoom)
+    let currentZoom = this._zoomFactor();
+    if (currentZoom - epsilon <= minimumZoom) {
+        InspectorFrontendHost.beep();
         return;
+    }
 
     let newZoom = Math.max(minimumZoom, currentZoom - 0.2);
-    InspectorFrontendHost.setZoomFactor(newZoom);
-    event.preventDefault();
+    this._setZoomFactor(newZoom);
 };
 
 WebInspector._resetZoom = function(event)
 {
-    InspectorFrontendHost.setZoomFactor(1);
+    this._setZoomFactor(1);
 };
+
+WebInspector._zoomFactor = function()
+{
+    return this._zoomFactorSetting.value;
+}
+
+WebInspector._setZoomFactor = function(factor)
+{
+    InspectorFrontendHost.setZoomFactor(factor);
+    // Round-trip through the frontend host API in case the requested factor is not used.
+    this._zoomFactorSetting.value = InspectorFrontendHost.zoomFactor();
+}
 
 WebInspector._showTabAtIndex = function(i, event)
 {
@@ -2333,19 +2398,19 @@ WebInspector.archiveMainFrame = function()
     this._downloadingPage = true;
     this._updateDownloadToolbarButton();
 
-    PageAgent.archive(function(error, data) {
+    PageAgent.archive((error, data) => {
         this._downloadingPage = false;
         this._updateDownloadToolbarButton();
 
         if (error)
             return;
 
-        var mainFrame = WebInspector.frameResourceManager.mainFrame;
-        var archiveName = mainFrame.mainResource.urlComponents.host || mainFrame.mainResource.displayName || "Archive";
-        var url = "web-inspector:///" + encodeURI(archiveName) + ".webarchive";
+        let mainFrame = WebInspector.frameResourceManager.mainFrame;
+        let archiveName = mainFrame.mainResource.urlComponents.host || mainFrame.mainResource.displayName || "Archive";
+        let url = "web-inspector:///" + encodeURI(archiveName) + ".webarchive";
 
         InspectorFrontendHost.save(url, data, true, true);
-    }.bind(this));
+    });
 };
 
 WebInspector.canArchiveMainFrame = function()
@@ -2379,9 +2444,9 @@ WebInspector.removeWindowKeydownListener = function(listener)
 
 WebInspector._updateWindowKeydownListener = function()
 {
-    if (this._windowKeydownListeners.length > 0)
+    if (this._windowKeydownListeners.length === 1)
         window.addEventListener("keydown", WebInspector._sharedWindowKeydownListener, true);
-    else
+    else if (!this._windowKeydownListeners.length)
         window.removeEventListener("keydown", WebInspector._sharedWindowKeydownListener, true);
 };
 
@@ -2394,4 +2459,35 @@ WebInspector._sharedWindowKeydownListener = function(event)
             break;
         }
     }
+};
+
+WebInspector.reportInternalError = function(errorOrString, details={})
+{
+    // The 'details' object includes additional information from the caller as free-form string keys and values.
+    // Each key and value will be shown in the uncaught exception reporter, console error message, or in
+    // a pre-filled bug report generated for this internal error.
+
+    let error = (errorOrString instanceof Error) ? errorOrString : new Error(errorOrString);
+    error.details = details;
+
+    // The error will be displayed in the Uncaught Exception Reporter sheet if DebugUI is enabled.
+    if (WebInspector.isDebugUIEnabled()) {
+        // This assert allows us to stop the debugger at an internal exception. It doesn't re-throw
+        // exceptions because the original exception would be lost through window.onerror.
+        // This workaround can be removed once <https://webkit.org/b/158192> is fixed.
+        console.assert(false, "An internal exception was thrown.", error);
+        handleInternalException(error);
+    } else
+        console.error(error);
+};
+
+// OpenResourceDialog delegate
+
+WebInspector.dialogWasDismissed = function(dialog)
+{
+    let representedObject = dialog.representedObject;
+    if (!representedObject)
+        return;
+
+    WebInspector.showRepresentedObject(representedObject, dialog.cookie);
 };

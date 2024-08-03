@@ -1,5 +1,5 @@
 # Copyright (c) 2009, 2010, 2011 Google Inc. All rights reserved.
-# Copyright (c) 2009 Apple Inc. All rights reserved.
+# Copyright (c) 2009, 2016 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
@@ -242,10 +242,6 @@ class Git(SCM, SVNRepository):
         return self._changes_files_for_commit(commit_id)
 
     def revisions_changing_file(self, path, limit=5):
-        # raise a script error if path does not exists to match the behavior of  the svn implementation.
-        if not self._filesystem.exists(path):
-            raise ScriptError(message="Path %s does not exist." % path)
-
         # git rev-list head --remove-empty --limit=5 -- path would be equivalent.
         commit_ids = self._run_git(["log", "--remove-empty", "--pretty=format:%H", "-%s" % limit, "--", path]).splitlines()
         return filter(lambda revision: revision, map(self.svn_revision_from_git_commit, commit_ids))
@@ -480,6 +476,18 @@ class Git(SCM, SVNRepository):
         return self._run_git(['svn', 'blame', path])
 
     # Git-specific methods:
+    def origin_url(self):
+        return self._run_git(['config', '--get', 'remote.origin.url']).strip()
+
+    def init_submodules(self):
+        return self._run_git(['submodule', 'update', '--init', '--recursive'])
+
+    def submodules_status(self):
+        return self._run_git(['submodule', 'status', '--recursive'])
+
+    def deinit_submodules(self):
+        return self._run_git(['submodule', 'deinit', '-f', '.'])
+
     def _branch_ref_exists(self, branch_ref):
         return self._run_git(['show-ref', '--quiet', '--verify', branch_ref], return_exit_code=True) == 0
 

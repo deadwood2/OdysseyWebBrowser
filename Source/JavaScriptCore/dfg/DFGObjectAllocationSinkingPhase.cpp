@@ -139,7 +139,7 @@ public:
     // once it is escaped if it still has pointers to it in order to
     // replace any use of those pointers by the corresponding
     // materialization
-    enum class Kind { Escaped, Object, Activation, Function, ArrowFunction, GeneratorFunction };
+    enum class Kind { Escaped, Object, Activation, Function, GeneratorFunction };
 
     explicit Allocation(Node* identifier = nullptr, Kind kind = Kind::Escaped)
         : m_identifier(identifier)
@@ -233,7 +233,7 @@ public:
 
     bool isFunctionAllocation() const
     {
-        return m_kind == Kind::Function || m_kind == Kind::ArrowFunction || m_kind == Kind::GeneratorFunction;
+        return m_kind == Kind::Function || m_kind == Kind::GeneratorFunction;
     }
 
     bool operator==(const Allocation& other) const
@@ -267,10 +267,6 @@ public:
 
         case Kind::Function:
             out.print("Function");
-            break;
-                
-        case Kind::ArrowFunction:
-            out.print("ArrowFunction");
             break;
 
         case Kind::GeneratorFunction:
@@ -836,7 +832,6 @@ private:
             break;
 
         case NewFunction:
-        case NewArrowFunction:
         case NewGeneratorFunction: {
             if (isStillValid(node->castOperand<FunctionExecutable*>()->singletonFunction())) {
                 m_heap.escape(node->child1().node());
@@ -845,8 +840,6 @@ private:
             
             if (node->op() == NewGeneratorFunction)
                 target = &m_heap.newAllocation(node, Allocation::Kind::GeneratorFunction);
-            else if (node->op() == NewArrowFunction)
-                target = &m_heap.newAllocation(node, Allocation::Kind::ArrowFunction);
             else
                 target = &m_heap.newAllocation(node, Allocation::Kind::Function);
             writes.add(FunctionExecutablePLoc, LazyNode(node->cellOperand()));
@@ -1249,7 +1242,7 @@ private:
 
             for (const auto& field : entry.value.fields()) {
                 ASSERT(m_sinkCandidates.contains(entry.key) || !escapees.contains(field.value));
-                if (escapees.contains(field.value) && !field.key.neededForMaterialization())
+                if (escapees.contains(field.value))
                     hints.append(PromotedHeapLocation(entry.key, field.key));
             }
         }
@@ -1378,7 +1371,7 @@ private:
             // first.
             if (materialized.isEmpty()) {
                 uint64_t maxEvaluation = 0;
-                Allocation* bestAllocation;
+                Allocation* bestAllocation = nullptr;
                 for (auto& entry : escapees) {
                     if (!forMaterialization.find(entry.key)->value.isEmpty())
                         continue;
@@ -1451,13 +1444,11 @@ private:
                 OpInfo(set), OpInfo(data), 0, 0);
         }
 
-        case Allocation::Kind::ArrowFunction:
         case Allocation::Kind::GeneratorFunction:
         case Allocation::Kind::Function: {
             FrozenValue* executable = allocation.identifier()->cellOperand();
             
             NodeType nodeType =
-                allocation.kind() == Allocation::Kind::ArrowFunction ? NewArrowFunction :
                 allocation.kind() == Allocation::Kind::GeneratorFunction ? NewGeneratorFunction : NewFunction;
             
             return m_graph.addNode(
@@ -1701,6 +1692,8 @@ private:
                     m_localMapping.set(location, m_bottom);
 
                     if (m_sinkCandidates.contains(node)) {
+                        if (verbose)
+                            dataLog("For sink candidate ", node, " found location ", location, "\n");
                         m_insertionSet.insert(
                             nodeIndex + 1,
                             location.createHint(
@@ -1767,6 +1760,8 @@ private:
 
                         doLower = true;
 
+                        if (verbose)
+                            dataLog("Creating hint with value ", nodeValue, " before ", node, "\n");
                         m_insertionSet.insert(
                             nodeIndex + 1,
                             location.createHint(
@@ -1788,7 +1783,6 @@ private:
                         node->convertToPhantomNewObject();
                         break;
 
-                    case NewArrowFunction:
                     case NewFunction:
                         node->convertToPhantomNewFunction();
                         break;
@@ -1903,6 +1897,13 @@ private:
 
     void insertOSRHintsForUpdate(unsigned nodeIndex, NodeOrigin origin, bool& canExit, AvailabilityMap& availability, Node* escapee, Node* materialization)
     {
+        if (verbose) {
+            dataLog("Inserting OSR hints at ", origin, ":\n");
+            dataLog("    Escapee: ", escapee, "\n");
+            dataLog("    Materialization: ", materialization, "\n");
+            dataLog("    Availability: ", availability, "\n");
+        }
+        
         // We need to follow() the value in the heap.
         // Consider the following graph:
         //
@@ -1975,7 +1976,7 @@ private:
 
                 case NamedPropertyPLoc: {
                     ASSERT(location.base() == allocation.identifier());
-                    data.m_properties.append(PhantomPropertyValue(location.info()));
+                    data.m_properties.append(location.descriptor());
                     Node* value = resolve(block, location);
                     if (m_sinkCandidates.contains(value))
                         m_graph.m_varArgChildren.append(m_bottom);
@@ -2025,7 +2026,7 @@ private:
 
                 case ClosureVarPLoc: {
                     ASSERT(location.base() == allocation.identifier());
-                    data.m_properties.append(PhantomPropertyValue(location.info()));
+                    data.m_properties.append(location.descriptor());
                     Node* value = resolve(block, location);
                     if (m_sinkCandidates.contains(value))
                         m_graph.m_varArgChildren.append(m_bottom);
@@ -2046,7 +2047,6 @@ private:
         }
         
         case NewFunction:
-        case NewArrowFunction:
         case NewGeneratorFunction: {
             Vector<PromotedHeapLocation> locations = m_locationsForAllocation.get(escapee);
             ASSERT(locations.size() == 2);
@@ -2113,7 +2113,6 @@ private:
                 data->identifierNumber = identifierNumber;
 
                 return m_graph.addNode(
-                    SpecNone,
                     PutByOffset,
                     origin.takeValidExit(canExit),
                     OpInfo(data),
@@ -2148,7 +2147,6 @@ private:
             }
 
             return m_graph.addNode(
-                SpecNone,
                 MultiPutByOffset,
                 origin.takeValidExit(canExit),
                 OpInfo(data),
@@ -2159,7 +2157,6 @@ private:
 
         case ClosureVarPLoc: {
             return m_graph.addNode(
-                SpecNone,
                 PutClosureVar,
                 origin.takeValidExit(canExit),
                 OpInfo(location.info()),
@@ -2212,7 +2209,6 @@ private:
 
 bool performObjectAllocationSinking(Graph& graph)
 {
-    SamplingRegion samplingRegion("DFG Object Allocation Sinking Phase");
     return runPhase<ObjectAllocationSinkingPhase>(graph);
 }
 

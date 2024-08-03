@@ -42,6 +42,7 @@
 #include "DFGNodeOrigin.h"
 #include "DFGNodeType.h"
 #include "DFGObjectMaterializationData.h"
+#include "DFGOpInfo.h"
 #include "DFGTransition.h"
 #include "DFGUseKind.h"
 #include "DFGVariableAccessData.h"
@@ -53,9 +54,16 @@
 #include "StructureSet.h"
 #include "TypeLocation.h"
 #include "ValueProfile.h"
+#include <type_traits>
 #include <wtf/ListDump.h>
 
-namespace JSC { namespace DFG {
+namespace JSC {
+
+namespace Profiler {
+class ExecutionCounter;
+}
+
+namespace DFG {
 
 class Graph;
 class PromotedLocationDescriptor;
@@ -219,24 +227,11 @@ struct StackAccessData {
     FlushedAt flushedAt() { return FlushedAt(format, machineLocal); }
 };
 
-// This type used in passing an immediate argument to Node constructor;
-// distinguishes an immediate value (typically an index into a CodeBlock data structure - 
-// a constant index, argument, or identifier) from a Node*.
-struct OpInfo {
-    OpInfo() : m_value(0) { }
-    explicit OpInfo(int32_t value) : m_value(static_cast<uintptr_t>(value)) { }
-    explicit OpInfo(uint32_t value) : m_value(static_cast<uintptr_t>(value)) { }
-#if OS(DARWIN) || USE(JSVALUE64)
-    explicit OpInfo(size_t value) : m_value(static_cast<uintptr_t>(value)) { }
-#endif
-    explicit OpInfo(void* value) : m_value(reinterpret_cast<uintptr_t>(value)) { }
-    uintptr_t m_value;
-};
-
 // === Node ===
 //
 // Node represents a single operation in the data flow graph.
 struct Node {
+public:
     enum VarArgTag { VarArg };
     
     Node() { }
@@ -260,8 +255,6 @@ struct Node {
         , m_virtualRegister(VirtualRegister())
         , m_refCount(1)
         , m_prediction(SpecNone)
-        , m_opInfo(0)
-        , m_opInfo2(0)
         , owner(nullptr)
     {
         m_misc.replacement = nullptr;
@@ -276,8 +269,6 @@ struct Node {
         , m_virtualRegister(VirtualRegister())
         , m_refCount(1)
         , m_prediction(SpecNone)
-        , m_opInfo(0)
-        , m_opInfo2(0)
         , owner(nullptr)
     {
         m_misc.replacement = nullptr;
@@ -294,7 +285,6 @@ struct Node {
         , m_refCount(1)
         , m_prediction(SpecNone)
         , m_opInfo(imm.m_value)
-        , m_opInfo2(0)
         , owner(nullptr)
     {
         m_misc.replacement = nullptr;
@@ -310,7 +300,6 @@ struct Node {
         , m_refCount(1)
         , m_prediction(SpecNone)
         , m_opInfo(imm.m_value)
-        , m_opInfo2(0)
         , owner(nullptr)
     {
         m_misc.replacement = nullptr;
@@ -353,9 +342,8 @@ struct Node {
     
     NodeType op() const { return static_cast<NodeType>(m_op); }
     NodeFlags flags() const { return m_flags; }
-    
-    // This is not a fast method.
-    unsigned index() const;
+
+    unsigned index() const { return m_index; }
     
     void setOp(NodeType op)
     {
@@ -413,7 +401,7 @@ struct Node {
     void convertToCheckStructure(StructureSet* set)
     {
         setOpAndDefaultFlags(CheckStructure);
-        m_opInfo = bitwise_cast<uintptr_t>(set); 
+        m_opInfo = set; 
     }
 
     void convertToCheckStructureImmediate(Node* structure)
@@ -478,7 +466,7 @@ struct Node {
             return FrozenValue::emptySingleton();
         }
         
-        return bitwise_cast<FrozenValue*>(m_opInfo);
+        return m_opInfo.as<FrozenValue*>();
     }
     
     // Don't call this directly - use Graph::convertToConstant() instead!
@@ -491,15 +479,17 @@ struct Node {
         else
             m_op = JSConstant;
         m_flags &= ~NodeMustGenerate;
-        m_opInfo = bitwise_cast<uintptr_t>(value);
+        m_opInfo = value;
         children.reset();
     }
+
+    void convertToLazyJSConstant(Graph&, LazyJSValue);
     
     void convertToConstantStoragePointer(void* pointer)
     {
         ASSERT(op() == GetIndexedPropertyStorage);
         m_op = ConstantStoragePointer;
-        m_opInfo = bitwise_cast<uintptr_t>(pointer);
+        m_opInfo = pointer;
         children.reset();
     }
     
@@ -516,26 +506,25 @@ struct Node {
     {
         m_op = PutStack;
         m_flags |= NodeMustGenerate;
-        m_opInfo = bitwise_cast<uintptr_t>(data);
-        m_opInfo2 = 0;
+        m_opInfo = data;
+        m_opInfo2 = OpInfoWrapper();
     }
     
     void convertToGetStack(StackAccessData* data)
     {
         m_op = GetStack;
         m_flags &= ~NodeMustGenerate;
-        m_opInfo = bitwise_cast<uintptr_t>(data);
-        m_opInfo2 = 0;
+        m_opInfo = data;
+        m_opInfo2 = OpInfoWrapper();
         children.reset();
     }
     
-    void convertToGetByOffset(StorageAccessData& data, Edge storage)
+    void convertToGetByOffset(StorageAccessData& data, Edge storage, Edge base)
     {
         ASSERT(m_op == GetById || m_op == GetByIdFlush || m_op == MultiGetByOffset);
-        m_opInfo = bitwise_cast<uintptr_t>(&data);
-        children.setChild2(children.child1());
-        children.child2().setUseKind(KnownCellUse);
+        m_opInfo = &data;
         children.setChild1(storage);
+        children.setChild2(base);
         m_op = GetByOffset;
         m_flags &= ~NodeMustGenerate;
     }
@@ -543,18 +532,18 @@ struct Node {
     void convertToMultiGetByOffset(MultiGetByOffsetData* data)
     {
         ASSERT(m_op == GetById || m_op == GetByIdFlush);
-        m_opInfo = bitwise_cast<intptr_t>(data);
+        m_opInfo = data;
         child1().setUseKind(CellUse);
         m_op = MultiGetByOffset;
         ASSERT(m_flags & NodeMustGenerate);
     }
     
-    void convertToPutByOffset(StorageAccessData& data, Edge storage)
+    void convertToPutByOffset(StorageAccessData& data, Edge storage, Edge base)
     {
         ASSERT(m_op == PutById || m_op == PutByIdDirect || m_op == PutByIdFlush || m_op == MultiPutByOffset);
-        m_opInfo = bitwise_cast<uintptr_t>(&data);
+        m_opInfo = &data;
         children.setChild3(children.child2());
-        children.setChild2(children.child1());
+        children.setChild2(base);
         children.setChild1(storage);
         m_op = PutByOffset;
     }
@@ -562,7 +551,7 @@ struct Node {
     void convertToMultiPutByOffset(MultiPutByOffsetData* data)
     {
         ASSERT(m_op == PutById || m_op == PutByIdDirect || m_op == PutByIdFlush);
-        m_opInfo = bitwise_cast<intptr_t>(data);
+        m_opInfo = data;
         m_op = MultiPutByOffset;
     }
     
@@ -578,18 +567,18 @@ struct Node {
         m_op = PhantomNewObject;
         m_flags &= ~NodeHasVarArgs;
         m_flags |= NodeMustGenerate;
-        m_opInfo = 0;
-        m_opInfo2 = 0;
+        m_opInfo = OpInfoWrapper();
+        m_opInfo2 = OpInfoWrapper();
         children = AdjacencyList();
     }
 
     void convertToPhantomNewFunction()
     {
-        ASSERT(m_op == NewFunction || m_op == NewArrowFunction || m_op == NewGeneratorFunction);
+        ASSERT(m_op == NewFunction || m_op == NewGeneratorFunction);
         m_op = PhantomNewFunction;
         m_flags |= NodeMustGenerate;
-        m_opInfo = 0;
-        m_opInfo2 = 0;
+        m_opInfo = OpInfoWrapper();
+        m_opInfo2 = OpInfoWrapper();
         children = AdjacencyList();
     }
 
@@ -598,8 +587,8 @@ struct Node {
         ASSERT(m_op == NewGeneratorFunction);
         m_op = PhantomNewGeneratorFunction;
         m_flags |= NodeMustGenerate;
-        m_opInfo = 0;
-        m_opInfo2 = 0;
+        m_opInfo = OpInfoWrapper();
+        m_opInfo2 = OpInfoWrapper();
         children = AdjacencyList();
     }
 
@@ -609,8 +598,8 @@ struct Node {
         m_op = PhantomCreateActivation;
         m_flags &= ~NodeHasVarArgs;
         m_flags |= NodeMustGenerate;
-        m_opInfo = 0;
-        m_opInfo2 = 0;
+        m_opInfo = OpInfoWrapper();
+        m_opInfo2 = OpInfoWrapper();
         children = AdjacencyList();
     }
 
@@ -633,8 +622,8 @@ struct Node {
     {
         ASSERT(m_op == GetLocalUnlinked);
         m_op = GetLocal;
-        m_opInfo = bitwise_cast<uintptr_t>(variable);
-        m_opInfo2 = 0;
+        m_opInfo = variable;
+        m_opInfo2 = OpInfoWrapper();
         children.setChild1(Edge(phi));
     }
     
@@ -642,13 +631,6 @@ struct Node {
     {
         ASSERT(m_op == ToPrimitive);
         m_op = ToString;
-    }
-
-    void convertToArithSqrt()
-    {
-        ASSERT(m_op == ArithPow);
-        child2() = Edge();
-        m_op = ArithSqrt;
     }
 
     void convertToArithNegate()
@@ -692,14 +674,14 @@ struct Node {
         return asJSValue().asNumber();
     }
      
-    bool isMachineIntConstant()
+    bool isAnyIntConstant()
     {
-        return isConstant() && constant()->value().isMachineInt();
+        return isConstant() && constant()->value().isAnyInt();
     }
      
-    int64_t asMachineInt()
+    int64_t asAnyInt()
     {
-        return asJSValue().asMachineInt();
+        return asJSValue().asAnyInt();
     }
      
     bool isBooleanConstant()
@@ -743,12 +725,69 @@ struct Node {
         return result;
     }
 
+    bool hasLazyJSValue()
+    {
+        return op() == LazyJSConstant;
+    }
+
+    LazyJSValue lazyJSValue()
+    {
+        ASSERT(hasLazyJSValue());
+        return *m_opInfo.as<LazyJSValue*>();
+    }
+
+    String tryGetString(Graph&);
+
     JSValue initializationValueForActivation() const
     {
         ASSERT(op() == CreateActivation);
-        return bitwise_cast<FrozenValue*>(m_opInfo2)->value();
+        return m_opInfo2.as<FrozenValue*>()->value();
     }
-     
+
+    bool hasArgumentsChild()
+    {
+        switch (op()) {
+        case GetMyArgumentByVal:
+        case GetMyArgumentByValOutOfBounds:
+        case LoadVarargs:
+        case ForwardVarargs:
+        case CallVarargs:
+        case CallForwardVarargs:
+        case ConstructVarargs:
+        case ConstructForwardVarargs:
+        case TailCallVarargs:
+        case TailCallForwardVarargs:
+        case TailCallVarargsInlinedCaller:
+        case TailCallForwardVarargsInlinedCaller:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    Edge& argumentsChild()
+    {
+        switch (op()) {
+        case GetMyArgumentByVal:
+        case GetMyArgumentByValOutOfBounds:
+        case LoadVarargs:
+        case ForwardVarargs:
+            return child1();
+        case CallVarargs:
+        case CallForwardVarargs:
+        case ConstructVarargs:
+        case ConstructForwardVarargs:
+        case TailCallVarargs:
+        case TailCallForwardVarargs:
+        case TailCallVarargsInlinedCaller:
+        case TailCallForwardVarargsInlinedCaller:
+            return child3();
+        default:
+            RELEASE_ASSERT_NOT_REACHED();
+            return child1();
+        }
+    }
+
     bool containsMovHint()
     {
         switch (op()) {
@@ -761,7 +800,7 @@ struct Node {
     }
     
     bool hasVariableAccessData(Graph&);
-    bool hasLocal(Graph& graph)
+    bool accessesStack(Graph& graph)
     {
         return hasVariableAccessData(graph);
     }
@@ -770,7 +809,7 @@ struct Node {
     // access data doesn't have one because it hasn't been initialized yet.
     VariableAccessData* tryGetVariableAccessData()
     {
-        VariableAccessData* result = reinterpret_cast<VariableAccessData*>(m_opInfo);
+        VariableAccessData* result = m_opInfo.as<VariableAccessData*>();
         if (!result)
             return 0;
         return result->find();
@@ -778,7 +817,7 @@ struct Node {
     
     VariableAccessData* variableAccessData()
     {
-        return reinterpret_cast<VariableAccessData*>(m_opInfo)->find();
+        return m_opInfo.as<VariableAccessData*>()->find();
     }
     
     VirtualRegister local()
@@ -808,7 +847,7 @@ struct Node {
     VirtualRegister unlinkedLocal()
     {
         ASSERT(hasUnlinkedLocal());
-        return static_cast<VirtualRegister>(m_opInfo);
+        return VirtualRegister(m_opInfo.as<int32_t>());
     }
     
     bool hasUnlinkedMachineLocal()
@@ -825,7 +864,7 @@ struct Node {
     VirtualRegister unlinkedMachineLocal()
     {
         ASSERT(hasUnlinkedMachineLocal());
-        return VirtualRegister(m_opInfo2);
+        return VirtualRegister(m_opInfo2.as<int32_t>());
     }
     
     bool hasStackAccessData()
@@ -842,7 +881,7 @@ struct Node {
     StackAccessData* stackAccessData()
     {
         ASSERT(hasStackAccessData());
-        return bitwise_cast<StackAccessData*>(m_opInfo);
+        return m_opInfo.as<StackAccessData*>();
     }
     
     bool hasPhi()
@@ -853,7 +892,7 @@ struct Node {
     Node* phi()
     {
         ASSERT(hasPhi());
-        return bitwise_cast<Node*>(m_opInfo);
+        return m_opInfo.as<Node*>();
     }
 
     bool isStoreBarrier()
@@ -864,14 +903,21 @@ struct Node {
     bool hasIdentifier()
     {
         switch (op()) {
+        case TryGetById:
         case GetById:
         case GetByIdFlush:
+        case GetByIdWithThis:
         case PutById:
         case PutByIdFlush:
         case PutByIdDirect:
+        case PutByIdWithThis:
         case PutGetterById:
         case PutSetterById:
         case PutGetterSetterById:
+        case DeleteById:
+        case GetDynamicVar:
+        case PutDynamicVar:
+        case ResolveScope:
             return true;
         default:
             return false;
@@ -881,7 +927,24 @@ struct Node {
     unsigned identifierNumber()
     {
         ASSERT(hasIdentifier());
-        return m_opInfo;
+        return m_opInfo.as<unsigned>();
+    }
+
+    bool hasGetPutInfo()
+    {
+        switch (op()) {
+        case GetDynamicVar:
+        case PutDynamicVar:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    unsigned getPutInfo()
+    {
+        ASSERT(hasGetPutInfo());
+        return m_opInfo2.as<unsigned>();
     }
 
     bool hasAccessorAttributes()
@@ -905,10 +968,10 @@ struct Node {
         case PutGetterById:
         case PutSetterById:
         case PutGetterSetterById:
-            return m_opInfo2;
+            return m_opInfo2.as<int32_t>();
         case PutGetterByVal:
         case PutSetterByVal:
-            return m_opInfo;
+            return m_opInfo.as<int32_t>();
         default:
             RELEASE_ASSERT_NOT_REACHED();
             return 0;
@@ -928,7 +991,7 @@ struct Node {
     NodeFlags arithNodeFlags()
     {
         NodeFlags result = m_flags & NodeArithFlagsMask;
-        if (op() == ArithMul || op() == ArithDiv || op() == ArithMod || op() == ArithNegate || op() == ArithPow || op() == ArithRound || op() == ArithFloor || op() == ArithCeil || op() == DoubleAsInt32)
+        if (op() == ArithMul || op() == ArithDiv || op() == ArithMod || op() == ArithNegate || op() == ArithPow || op() == ArithRound || op() == ArithFloor || op() == ArithCeil || op() == ArithTrunc || op() == DoubleAsInt32)
             return result;
         return result & ~NodeBytecodeNeedsNegZero;
     }
@@ -936,6 +999,16 @@ struct Node {
     bool mayHaveNonIntResult()
     {
         return m_flags & NodeMayHaveNonIntResult;
+    }
+    
+    bool mayHaveDoubleResult()
+    {
+        return m_flags & NodeMayHaveDoubleResult;
+    }
+    
+    bool mayHaveNonNumberResult()
+    {
+        return m_flags & NodeMayHaveNonNumberResult;
     }
 
     bool hasConstantBuffer()
@@ -946,7 +1019,7 @@ struct Node {
     NewArrayBufferData* newArrayBufferData()
     {
         ASSERT(hasConstantBuffer());
-        return reinterpret_cast<NewArrayBufferData*>(m_opInfo);
+        return m_opInfo.as<NewArrayBufferData*>();
     }
     
     unsigned startConstant()
@@ -984,7 +1057,7 @@ struct Node {
         ASSERT(hasIndexingType());
         if (op() == NewArrayBuffer)
             return newArrayBufferData()->indexingType;
-        return m_opInfo;
+        return static_cast<IndexingType>(m_opInfo.as<uint32_t>());
     }
     
     bool hasTypedArrayType()
@@ -1000,7 +1073,7 @@ struct Node {
     TypedArrayType typedArrayType()
     {
         ASSERT(hasTypedArrayType());
-        TypedArrayType result = static_cast<TypedArrayType>(m_opInfo);
+        TypedArrayType result = static_cast<TypedArrayType>(m_opInfo.as<uint32_t>());
         ASSERT(isTypedView(result));
         return result;
     }
@@ -1013,27 +1086,13 @@ struct Node {
     unsigned inlineCapacity()
     {
         ASSERT(hasInlineCapacity());
-        return m_opInfo;
+        return m_opInfo.as<unsigned>();
     }
 
     void setIndexingType(IndexingType indexingType)
     {
         ASSERT(hasIndexingType());
         m_opInfo = indexingType;
-    }
-    
-    // FIXME: We really should be able to inline code that uses NewRegexp. That means
-    // using something other than the index into the CodeBlock here.
-    // https://bugs.webkit.org/show_bug.cgi?id=154808
-    bool hasRegexpIndex()
-    {
-        return op() == NewRegexp;
-    }
-    
-    unsigned regexpIndex()
-    {
-        ASSERT(hasRegexpIndex());
-        return m_opInfo;
     }
     
     bool hasScopeOffset()
@@ -1044,7 +1103,7 @@ struct Node {
     ScopeOffset scopeOffset()
     {
         ASSERT(hasScopeOffset());
-        return ScopeOffset(m_opInfo);
+        return ScopeOffset(m_opInfo.as<uint32_t>());
     }
     
     bool hasDirectArgumentsOffset()
@@ -1055,7 +1114,7 @@ struct Node {
     DirectArgumentsOffset capturedArgumentsOffset()
     {
         ASSERT(hasDirectArgumentsOffset());
-        return DirectArgumentsOffset(m_opInfo);
+        return DirectArgumentsOffset(m_opInfo.as<uint32_t>());
     }
     
     bool hasRegisterPointer()
@@ -1065,7 +1124,7 @@ struct Node {
     
     WriteBarrier<Unknown>* variablePointer()
     {
-        return bitwise_cast<WriteBarrier<Unknown>*>(m_opInfo);
+        return m_opInfo.as<WriteBarrier<Unknown>*>();
     }
     
     bool hasCallVarargsData()
@@ -1088,7 +1147,7 @@ struct Node {
     CallVarargsData* callVarargsData()
     {
         ASSERT(hasCallVarargsData());
-        return bitwise_cast<CallVarargsData*>(m_opInfo);
+        return m_opInfo.as<CallVarargsData*>();
     }
     
     bool hasLoadVarargsData()
@@ -1099,17 +1158,12 @@ struct Node {
     LoadVarargsData* loadVarargsData()
     {
         ASSERT(hasLoadVarargsData());
-        return bitwise_cast<LoadVarargsData*>(m_opInfo);
+        return m_opInfo.as<LoadVarargsData*>();
     }
     
     bool hasResult()
     {
         return !!result();
-    }
-
-    bool hasInt32Result()
-    {
-        return result() == NodeResultInt32;
     }
     
     bool hasInt52Result()
@@ -1195,25 +1249,25 @@ struct Node {
     unsigned targetBytecodeOffsetDuringParsing()
     {
         ASSERT(isJump());
-        return m_opInfo;
+        return m_opInfo.as<unsigned>();
     }
 
     BasicBlock*& targetBlock()
     {
         ASSERT(isJump());
-        return *bitwise_cast<BasicBlock**>(&m_opInfo);
+        return *bitwise_cast<BasicBlock**>(&m_opInfo.u.pointer);
     }
     
     BranchData* branchData()
     {
         ASSERT(isBranch());
-        return bitwise_cast<BranchData*>(m_opInfo);
+        return m_opInfo.as<BranchData*>();
     }
     
     SwitchData* switchData()
     {
         ASSERT(isSwitch());
-        return bitwise_cast<SwitchData*>(m_opInfo);
+        return m_opInfo.as<SwitchData*>();
     }
     
     unsigned numSuccessors()
@@ -1333,17 +1387,23 @@ struct Node {
     bool hasHeapPrediction()
     {
         switch (op()) {
+        case ArithAbs:
         case ArithRound:
         case ArithFloor:
         case ArithCeil:
+        case ArithTrunc:
         case GetDirectPname:
         case GetById:
         case GetByIdFlush:
+        case GetByIdWithThis:
+        case TryGetById:
         case GetByVal:
+        case GetByValWithThis:
         case Call:
         case TailCallInlinedCaller:
         case Construct:
         case CallVarargs:
+        case CallEval:
         case TailCallVarargsInlinedCaller:
         case ConstructVarargs:
         case CallForwardVarargs:
@@ -1359,6 +1419,9 @@ struct Node {
         case GetGlobalVar:
         case GetGlobalLexicalVariable:
         case StringReplace:
+        case StringReplaceRegExp:
+        case ToNumber:
+        case LoadFromJSMapBucket:
             return true;
         default:
             return false;
@@ -1368,7 +1431,7 @@ struct Node {
     SpeculatedType getHeapPrediction()
     {
         ASSERT(hasHeapPrediction());
-        return static_cast<SpeculatedType>(m_opInfo2);
+        return m_opInfo2.as<SpeculatedType>();
     }
 
     void setHeapPrediction(SpeculatedType prediction)
@@ -1383,10 +1446,11 @@ struct Node {
         case CheckCell:
         case OverridesHasInstance:
         case NewFunction:
-        case NewArrowFunction:
         case NewGeneratorFunction:
         case CreateActivation:
         case MaterializeCreateActivation:
+        case NewRegexp:
+        case CompareEqPtr:
             return true;
         default:
             return false;
@@ -1396,7 +1460,7 @@ struct Node {
     FrozenValue* cellOperand()
     {
         ASSERT(hasCellOperand());
-        return reinterpret_cast<FrozenValue*>(m_opInfo);
+        return m_opInfo.as<FrozenValue*>();
     }
     
     template<typename T>
@@ -1408,7 +1472,7 @@ struct Node {
     void setCellOperand(FrozenValue* value)
     {
         ASSERT(hasCellOperand());
-        m_opInfo = bitwise_cast<uintptr_t>(value);
+        m_opInfo = value;
     }
     
     bool hasWatchpointSet()
@@ -1419,7 +1483,7 @@ struct Node {
     WatchpointSet* watchpointSet()
     {
         ASSERT(hasWatchpointSet());
-        return reinterpret_cast<WatchpointSet*>(m_opInfo);
+        return m_opInfo.as<WatchpointSet*>();
     }
     
     bool hasStoragePointer()
@@ -1430,18 +1494,18 @@ struct Node {
     void* storagePointer()
     {
         ASSERT(hasStoragePointer());
-        return reinterpret_cast<void*>(m_opInfo);
+        return m_opInfo.as<void*>();
     }
 
     bool hasUidOperand()
     {
-        return op() == CheckIdent;
+        return op() == CheckStringIdent;
     }
 
     UniquedStringImpl* uidOperand()
     {
         ASSERT(hasUidOperand());
-        return reinterpret_cast<UniquedStringImpl*>(m_opInfo);
+        return m_opInfo.as<UniquedStringImpl*>();
     }
 
     bool hasTypeInfoOperand()
@@ -1451,8 +1515,8 @@ struct Node {
 
     unsigned typeInfoOperand()
     {
-        ASSERT(hasTypeInfoOperand() && m_opInfo <= UCHAR_MAX);
-        return static_cast<unsigned>(m_opInfo);
+        ASSERT(hasTypeInfoOperand() && m_opInfo.as<uint32_t>() <= static_cast<uint32_t>(UCHAR_MAX));
+        return m_opInfo.as<uint32_t>();
     }
 
     bool hasTransition()
@@ -1470,7 +1534,7 @@ struct Node {
     Transition* transition()
     {
         ASSERT(hasTransition());
-        return reinterpret_cast<Transition*>(m_opInfo);
+        return m_opInfo.as<Transition*>();
     }
     
     bool hasStructureSet()
@@ -1488,7 +1552,7 @@ struct Node {
     StructureSet& structureSet()
     {
         ASSERT(hasStructureSet());
-        return *reinterpret_cast<StructureSet*>(m_opInfo);
+        return *m_opInfo.as<StructureSet*>();
     }
     
     bool hasStructure()
@@ -1506,7 +1570,7 @@ struct Node {
     Structure* structure()
     {
         ASSERT(hasStructure());
-        return reinterpret_cast<Structure*>(m_opInfo);
+        return m_opInfo.as<Structure*>();
     }
     
     bool hasStorageAccessData()
@@ -1524,7 +1588,7 @@ struct Node {
     StorageAccessData& storageAccessData()
     {
         ASSERT(hasStorageAccessData());
-        return *bitwise_cast<StorageAccessData*>(m_opInfo);
+        return *m_opInfo.as<StorageAccessData*>();
     }
     
     bool hasMultiGetByOffsetData()
@@ -1535,7 +1599,7 @@ struct Node {
     MultiGetByOffsetData& multiGetByOffsetData()
     {
         ASSERT(hasMultiGetByOffsetData());
-        return *reinterpret_cast<MultiGetByOffsetData*>(m_opInfo);
+        return *m_opInfo.as<MultiGetByOffsetData*>();
     }
     
     bool hasMultiPutByOffsetData()
@@ -1546,7 +1610,7 @@ struct Node {
     MultiPutByOffsetData& multiPutByOffsetData()
     {
         ASSERT(hasMultiPutByOffsetData());
-        return *reinterpret_cast<MultiPutByOffsetData*>(m_opInfo);
+        return *m_opInfo.as<MultiPutByOffsetData*>();
     }
     
     bool hasObjectMaterializationData()
@@ -1564,7 +1628,7 @@ struct Node {
     ObjectMaterializationData& objectMaterializationData()
     {
         ASSERT(hasObjectMaterializationData());
-        return *reinterpret_cast<ObjectMaterializationData*>(m_opInfo2);
+        return *m_opInfo2.as<ObjectMaterializationData*>();
     }
 
     bool isObjectAllocation()
@@ -1612,7 +1676,6 @@ struct Node {
     bool isFunctionAllocation()
     {
         switch (op()) {
-        case NewArrowFunction:
         case NewFunction:
         case NewGeneratorFunction:
             return true;
@@ -1674,8 +1737,8 @@ struct Node {
     {
         ASSERT(hasArrayMode());
         if (op() == ArrayifyToStructure)
-            return ArrayMode::fromWord(m_opInfo2);
-        return ArrayMode::fromWord(m_opInfo);
+            return ArrayMode::fromWord(m_opInfo2.as<uint32_t>());
+        return ArrayMode::fromWord(m_opInfo.as<uint32_t>());
     }
     
     bool setArrayMode(ArrayMode arrayMode)
@@ -1708,7 +1771,7 @@ struct Node {
     Arith::Mode arithMode()
     {
         ASSERT(hasArithMode());
-        return static_cast<Arith::Mode>(m_opInfo);
+        return static_cast<Arith::Mode>(m_opInfo.as<uint32_t>());
     }
     
     void setArithMode(Arith::Mode mode)
@@ -1718,19 +1781,19 @@ struct Node {
 
     bool hasArithRoundingMode()
     {
-        return op() == ArithRound || op() == ArithFloor || op() == ArithCeil;
+        return op() == ArithRound || op() == ArithFloor || op() == ArithCeil || op() == ArithTrunc;
     }
 
     Arith::RoundingMode arithRoundingMode()
     {
         ASSERT(hasArithRoundingMode());
-        return static_cast<Arith::RoundingMode>(m_opInfo);
+        return static_cast<Arith::RoundingMode>(m_opInfo.as<uint32_t>());
     }
 
     void setArithRoundingMode(Arith::RoundingMode mode)
     {
         ASSERT(hasArithRoundingMode());
-        m_opInfo = static_cast<uintptr_t>(mode);
+        m_opInfo = static_cast<uint32_t>(mode);
     }
     
     bool hasVirtualRegister()
@@ -1759,7 +1822,7 @@ struct Node {
     
     Profiler::ExecutionCounter* executionCounter()
     {
-        return bitwise_cast<Profiler::ExecutionCounter*>(m_opInfo);
+        return m_opInfo.as<Profiler::ExecutionCounter*>();
     }
 
     bool shouldGenerate()
@@ -1897,9 +1960,9 @@ struct Node {
         return isInt32OrBooleanSpeculationExpectingDefined(prediction());
     }
     
-    bool shouldSpeculateMachineInt()
+    bool shouldSpeculateAnyInt()
     {
-        return isMachineIntSpeculation(prediction());
+        return isAnyIntSpeculation(prediction());
     }
     
     bool shouldSpeculateDouble()
@@ -2130,9 +2193,9 @@ struct Node {
             && op2->shouldSpeculateInt32OrBooleanExpectingDefined();
     }
     
-    static bool shouldSpeculateMachineInt(Node* op1, Node* op2)
+    static bool shouldSpeculateAnyInt(Node* op1, Node* op2)
     {
-        return op1->shouldSpeculateMachineInt() && op2->shouldSpeculateMachineInt();
+        return op1->shouldSpeculateAnyInt() && op2->shouldSpeculateAnyInt();
     }
     
     static bool shouldSpeculateNumber(Node* op1, Node* op2)
@@ -2202,7 +2265,7 @@ struct Node {
     TypeLocation* typeLocation()
     {
         ASSERT(hasTypeLocation());
-        return reinterpret_cast<TypeLocation*>(m_opInfo);
+        return m_opInfo.as<TypeLocation*>();
     }
 
     bool hasBasicBlockLocation()
@@ -2213,7 +2276,7 @@ struct Node {
     BasicBlockLocation* basicBlockLocation()
     {
         ASSERT(hasBasicBlockLocation());
-        return reinterpret_cast<BasicBlockLocation*>(m_opInfo);
+        return m_opInfo.as<BasicBlockLocation*>();
     }
     
     Node* replacement() const
@@ -2238,8 +2301,8 @@ struct Node {
 
     unsigned numberOfArgumentsToSkip()
     {
-        ASSERT(op() == CopyRest || op() == GetRestLength);
-        return static_cast<unsigned>(m_opInfo);
+        ASSERT(op() == CreateRest || op() == GetRestLength);
+        return m_opInfo.as<unsigned>();
     }
 
     void dumpChildren(PrintStream& out)
@@ -2263,23 +2326,85 @@ struct Node {
     AdjacencyList children;
 
 private:
+    friend class Graph;
+
+    unsigned m_index { std::numeric_limits<unsigned>::max() };
     unsigned m_op : 10; // real type is NodeType
-    unsigned m_flags : 22;
+    unsigned m_flags : 20;
     // The virtual register number (spill location) associated with this .
     VirtualRegister m_virtualRegister;
     // The number of uses of the result of this operation (+1 for 'must generate' nodes, which have side-effects).
     unsigned m_refCount;
     // The prediction ascribed to this node after propagation.
-    SpeculatedType m_prediction;
+    SpeculatedType m_prediction { SpecNone };
     // Immediate values, accesses type-checked via accessors above. The first one is
     // big enough to store a pointer.
-    uintptr_t m_opInfo;
-    uintptr_t m_opInfo2;
+    struct OpInfoWrapper {
+        OpInfoWrapper()
+        {
+            u.int64 = 0;
+        }
+        OpInfoWrapper(uint32_t intValue)
+        {
+            u.int64 = 0;
+            u.int32 = intValue;
+        }
+        OpInfoWrapper(uint64_t intValue)
+        {
+            u.int64 = intValue;
+        }
+        OpInfoWrapper(void* pointer)
+        {
+            u.int64 = 0;
+            u.pointer = pointer;
+        }
+        OpInfoWrapper& operator=(uint32_t int32)
+        {
+            u.int64 = 0;
+            u.int32 = int32;
+            return *this;
+        }
+        OpInfoWrapper& operator=(int32_t int32)
+        {
+            u.int64 = 0;
+            u.int32 = int32;
+            return *this;
+        }
+        OpInfoWrapper& operator=(uint64_t int64)
+        {
+            u.int64 = int64;
+            return *this;
+        }
+        OpInfoWrapper& operator=(void* pointer)
+        {
+            u.int64 = 0;
+            u.pointer = pointer;
+            return *this;
+        }
+        template <typename T>
+        ALWAYS_INLINE auto as() const -> typename std::enable_if<std::is_pointer<T>::value, T>::type
+        {
+            return static_cast<T>(u.pointer);
+        }
+        template <typename T>
+        ALWAYS_INLINE auto as() const -> typename std::enable_if<std::is_integral<T>::value && sizeof(T) == 4, T>::type
+        {
+            return u.int32;
+        }
+        template <typename T>
+        ALWAYS_INLINE auto as() const -> typename std::enable_if<std::is_integral<T>::value && sizeof(T) == 8, T>::type
+        {
+            return u.int64;
+        }
+        union {
+            uint32_t int32;
+            uint64_t int64;
+            void* pointer;
+        } u;
+    };
+    OpInfoWrapper m_opInfo;
+    OpInfoWrapper m_opInfo2;
 
-public:
-    // Fields used by various analyses.
-    AbstractValue value;
-    
     // Miscellaneous data that is usually meaningless, but can hold some analysis results
     // if you ask right. For example, if you do Graph::initializeNodeOwners(), Node::owner
     // will tell you which basic block a node belongs to. You cannot rely on this persisting
@@ -2323,6 +2448,22 @@ CString nodeMapDump(const T& nodeMap, DumpContext* context = 0)
     CommaPrinter comma;
     for(unsigned i = 0; i < keys.size(); ++i)
         out.print(comma, keys[i], "=>", inContext(nodeMap.get(keys[i]), context));
+    return out.toCString();
+}
+
+template<typename T>
+CString nodeValuePairListDump(const T& nodeValuePairList, DumpContext* context = 0)
+{
+    using V = typename T::ValueType;
+    T sortedList = nodeValuePairList;
+    std::sort(sortedList.begin(), sortedList.end(), [](const V& a, const V& b) {
+        return nodeComparator(a.node, b.node);
+    });
+
+    StringPrintStream out;
+    CommaPrinter comma;
+    for (const auto& pair : sortedList)
+        out.print(comma, pair.node, "=>", inContext(pair.value, context));
     return out.toCString();
 }
 

@@ -699,23 +699,20 @@ public:
     }
 
     NotificationWebViewTest()
-        : WebViewTest(webkit_user_content_manager_new())
-        , m_notification(nullptr)
+        : m_notification(nullptr)
         , m_event(None)
     {
         g_signal_connect(m_webView, "permission-request", G_CALLBACK(permissionRequestCallback), this);
         g_signal_connect(m_webView, "show-notification", G_CALLBACK(showNotificationCallback), this);
-        WebKitUserContentManager* manager = webkit_web_view_get_user_content_manager(m_webView);
-        webkit_user_content_manager_register_script_message_handler(manager, "notifications");
-        g_signal_connect(manager, "script-message-received::notifications", G_CALLBACK(notificationsMessageReceivedCallback), this);
+        webkit_user_content_manager_register_script_message_handler(m_userContentManager.get(), "notifications");
+        g_signal_connect(m_userContentManager.get(), "script-message-received::notifications", G_CALLBACK(notificationsMessageReceivedCallback), this);
     }
 
     ~NotificationWebViewTest()
     {
         g_signal_handlers_disconnect_matched(m_webView, G_SIGNAL_MATCH_DATA, 0, 0, 0, 0, this);
-        WebKitUserContentManager* manager = webkit_web_view_get_user_content_manager(m_webView);
-        g_signal_handlers_disconnect_matched(manager, G_SIGNAL_MATCH_DATA, 0, 0, 0, 0, this);
-        webkit_user_content_manager_unregister_script_message_handler(manager, "notifications");
+        g_signal_handlers_disconnect_matched(m_userContentManager.get(), G_SIGNAL_MATCH_DATA, 0, 0, 0, 0, this);
+        webkit_user_content_manager_unregister_script_message_handler(m_userContentManager.get(), "notifications");
     }
 
    void requestPermissionAndWaitUntilGiven()
@@ -818,13 +815,15 @@ static void testWebViewIsPlayingAudio(IsPlayingAudioWebViewTest* test, gconstpoi
     test->waitUntilLoadFinished();
     g_assert(!webkit_web_view_is_playing_audio(test->m_webView));
 
-    webkit_web_view_run_javascript(test->m_webView, "playVideo();", nullptr, nullptr, nullptr);
-    test->waitUntilIsPlayingAudioChanged();
+    test->runJavaScriptAndWaitUntilFinished("playVideo();", nullptr);
+    if (!webkit_web_view_is_playing_audio(test->m_webView))
+        test->waitUntilIsPlayingAudioChanged();
     g_assert(webkit_web_view_is_playing_audio(test->m_webView));
 
     // Pause the video, and check again.
-    webkit_web_view_run_javascript(test->m_webView, "document.getElementById('test-video').pause();", nullptr, nullptr, nullptr);
-    test->waitUntilIsPlayingAudioChanged();
+    test->runJavaScriptAndWaitUntilFinished("document.getElementById('test-video').pause();", nullptr);
+    if (webkit_web_view_is_playing_audio(test->m_webView))
+        test->waitUntilIsPlayingAudioChanged();
     g_assert(!webkit_web_view_is_playing_audio(test->m_webView));
 }
 
@@ -851,6 +850,19 @@ static void testWebViewBackgroundColor(WebViewTest* test, gconstpointer)
 
     // The actual rendering can't be tested using unit tests, use
     // MiniBrowser --bg-color="<color-value>" for manually testing this API.
+}
+
+static void testWebViewPreferredSize(WebViewTest* test, gconstpointer)
+{
+    test->loadHtml("<html style='width: 325px; height: 615px'></html>", nullptr);
+    test->waitUntilLoadFinished();
+    test->showInWindowAndWaitUntilMapped();
+    GtkRequisition minimunSize, naturalSize;
+    gtk_widget_get_preferred_size(GTK_WIDGET(test->m_webView), &minimunSize, &naturalSize);
+    g_assert_cmpint(minimunSize.width, ==, 0);
+    g_assert_cmpint(minimunSize.height, ==, 0);
+    g_assert_cmpint(naturalSize.width, ==, 325);
+    g_assert_cmpint(naturalSize.height, ==, 615);
 }
 
 static void serverCallback(SoupServer* server, SoupMessage* message, const char* path, GHashTable*, SoupClientContext*, gpointer)
@@ -887,6 +899,7 @@ void beforeAll()
     NotificationWebViewTest::add("WebKitWebView", "notification", testWebViewNotification);
     IsPlayingAudioWebViewTest::add("WebKitWebView", "is-playing-audio", testWebViewIsPlayingAudio);
     WebViewTest::add("WebKitWebView", "background-color", testWebViewBackgroundColor);
+    WebViewTest::add("WebKitWebView", "preferred-size", testWebViewPreferredSize);
 }
 
 void afterAll()

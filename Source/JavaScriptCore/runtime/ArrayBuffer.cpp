@@ -29,7 +29,6 @@
 #include "ArrayBufferNeuteringWatchpoint.h"
 #include "JSArrayBufferView.h"
 #include "JSCInlines.h"
-#include <wtf/RefPtr.h>
 
 namespace JSC {
 
@@ -42,7 +41,7 @@ bool ArrayBuffer::transfer(ArrayBufferContents& result)
         return false;
     }
 
-    bool isNeuterable = !m_pinCount;
+    bool isNeuterable = !m_pinCount && !m_locked;
 
     if (!isNeuterable) {
         m_contents.copyTo(result);

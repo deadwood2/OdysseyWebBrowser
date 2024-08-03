@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013, 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -42,11 +42,13 @@ public:
     
     ~InPlaceAbstractState();
     
+    explicit operator bool() const { return true; }
+    
     void createValueForNode(Node*) { }
     
     AbstractValue& forNode(Node* node)
     {
-        return node->value;
+        return m_abstractValues[node->index()];
     }
     
     AbstractValue& forNode(Edge edge)
@@ -125,12 +127,13 @@ public:
     void setFoundConstants(bool foundConstants) { m_foundConstants = foundConstants; }
 
 private:
-    bool mergeStateAtTail(AbstractValue& destination, AbstractValue& inVariable, Node*);
+    void mergeStateAtTail(AbstractValue& destination, AbstractValue& inVariable, Node*);
 
     static bool mergeVariableBetweenBlocks(AbstractValue& destination, AbstractValue& source, Node* destinationNode, Node* sourceNode);
     
     Graph& m_graph;
-    
+
+    Vector<AbstractValue, 0, UnsafeVectorOverflow>& m_abstractValues;
     Operands<AbstractValue> m_variables;
     BasicBlock* m_block;
     

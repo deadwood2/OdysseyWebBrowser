@@ -25,9 +25,11 @@
 #ifndef NSSpellCheckerSPI_h
 #define NSSpellCheckerSPI_h
 
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200
+#if HAVE(ADVANCED_SPELL_CHECKING)
 
 // FIXME: This header should include system headers when possible.
+
+extern NSString *NSTextCheckingInsertionPointKey;
 
 @interface NSSpellChecker ()
 - (NSInteger)requestCandidatesForSelectedRange:(NSRange)selectedRange inString:(NSString *)stringToCheck types:(NSTextCheckingTypes)checkingTypes options:(NSDictionary<NSString *, id> *)options inSpellDocumentWithTag:(NSInteger)tag completionHandler:(void (^)(NSInteger sequenceNumber, NSArray<NSTextCheckingResult *> *candidates))completionHandler;
@@ -35,6 +37,6 @@
 + (BOOL)isAutomaticTextCompletionEnabled;
 @end
 
-#endif // PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 102000
+#endif // HAVE(ADVANCED_SPELL_CHECKING)
 
 #endif // NSSpellCheckerSPI_h

@@ -28,6 +28,7 @@
 
 #if USE(NETWORK_SESSION)
 
+#include "DataReference.h"
 #include "DownloadProxyMessages.h"
 #include "NetworkLoad.h"
 #include "NetworkProcess.h"
@@ -37,21 +38,21 @@ using namespace WebCore;
 
 namespace WebKit {
 
-PendingDownload::PendingDownload(const NetworkLoadParameters& parameters, DownloadID downloadID)
-    : m_networkLoad(std::make_unique<NetworkLoad>(*this, parameters))
+PendingDownload::PendingDownload(NetworkLoadParameters&& parameters, DownloadID downloadID, NetworkSession& networkSession)
+    : m_networkLoad(std::make_unique<NetworkLoad>(*this, WTFMove(parameters), networkSession))
 {
     m_networkLoad->setPendingDownloadID(downloadID);
     m_networkLoad->setPendingDownload(*this);
 }
 
-void PendingDownload::willSendRedirectedRequest(const WebCore::ResourceRequest&, const WebCore::ResourceRequest& redirectRequest, const WebCore::ResourceResponse& redirectResponse)
+void PendingDownload::willSendRedirectedRequest(WebCore::ResourceRequest&&, WebCore::ResourceRequest&& redirectRequest, WebCore::ResourceResponse&& redirectResponse)
 {
-    send(Messages::DownloadProxy::WillSendRequest(redirectRequest, redirectResponse));
+    send(Messages::DownloadProxy::WillSendRequest(WTFMove(redirectRequest), WTFMove(redirectResponse)));
 };
     
-void PendingDownload::continueWillSendRequest(const WebCore::ResourceRequest& newRequest)
+void PendingDownload::continueWillSendRequest(WebCore::ResourceRequest&& newRequest)
 {
-    m_networkLoad->continueWillSendRequest(newRequest);
+    m_networkLoad->continueWillSendRequest(WTFMove(newRequest));
 }
 
 void PendingDownload::canAuthenticateAgainstProtectionSpaceAsync(const WebCore::ProtectionSpace& protectionSpace)
@@ -64,9 +65,14 @@ void PendingDownload::continueCanAuthenticateAgainstProtectionSpace(bool canAuth
     m_networkLoad->continueCanAuthenticateAgainstProtectionSpace(canAuthenticate);
 }
 
-void PendingDownload::didConvertToDownload()
+void PendingDownload::didBecomeDownload()
 {
     m_networkLoad = nullptr;
+}
+    
+void PendingDownload::didFailLoading(const WebCore::ResourceError& error)
+{
+    send(Messages::DownloadProxy::DidFail(error, { }));
 }
     
 IPC::Connection* PendingDownload::messageSenderConnection()

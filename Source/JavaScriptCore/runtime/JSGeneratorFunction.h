@@ -50,6 +50,21 @@ public:
         ThrowMode = 2
     };
 
+    enum class GeneratorState : int32_t {
+        Completed = -1,
+        Executing = -2,
+    };
+
+    // [this], @generator, @generatorState, @generatorValue, @generatorResumeMode, @generatorFrame.
+    enum class GeneratorArgument : int32_t {
+        ThisValue = 0,
+        Generator = 1,
+        State = 2,
+        Value = 3,
+        ResumeMode = 4,
+        Frame = 5,
+    };
+
     const static unsigned StructureFlags = Base::StructureFlags;
 
     DECLARE_EXPORT_INFO;

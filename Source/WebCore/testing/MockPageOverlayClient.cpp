@@ -30,6 +30,7 @@
 #include "GraphicsContext.h"
 #include "GraphicsLayer.h"
 #include "MainFrame.h"
+#include "Page.h"
 #include "PageOverlayController.h"
 #include "PlatformMouseEvent.h"
 #include <wtf/NeverDestroyed.h>
@@ -61,7 +62,7 @@ Ref<MockPageOverlay> MockPageOverlayClient::installOverlay(MainFrame& mainFrame,
 void MockPageOverlayClient::uninstallAllOverlays()
 {
     while (!m_overlays.isEmpty()) {
-        MockPageOverlay* mockOverlay = m_overlays.takeAny();
+        RefPtr<MockPageOverlay> mockOverlay = m_overlays.takeAny();
         PageOverlayController* overlayController = mockOverlay->overlay()->controller();
         ASSERT(overlayController);
         overlayController->uninstallPageOverlay(mockOverlay->overlay(), PageOverlay::FadeMode::DoNotFade);
@@ -71,16 +72,6 @@ void MockPageOverlayClient::uninstallAllOverlays()
 String MockPageOverlayClient::layerTreeAsText(MainFrame& mainFrame)
 {
     return "View-relative:\n" + mainFrame.pageOverlayController().viewOverlayRootLayer().layerTreeAsText(LayerTreeAsTextIncludePageOverlayLayers) + "\n\nDocument-relative:\n" + mainFrame.pageOverlayController().documentOverlayRootLayer().layerTreeAsText(LayerTreeAsTextIncludePageOverlayLayers);
-}
-
-void MockPageOverlayClient::pageOverlayDestroyed(PageOverlay& overlay)
-{
-    for (auto& mockOverlay : m_overlays) {
-        if (mockOverlay->overlay() == &overlay) {
-            m_overlays.remove(mockOverlay);
-            return;
-        }
-    }
 }
 
 void MockPageOverlayClient::willMoveToPage(PageOverlay&, Page*)

@@ -128,6 +128,7 @@ GraphicsLayer::GraphicsLayer(Type type, GraphicsLayerClient& client)
     , m_showRepaintCounter(false)
     , m_isMaskLayer(false)
     , m_isTrackingDisplayListReplay(false)
+    , m_userInteractionEnabled(true)
     , m_paintingPhase(GraphicsLayerPaintAllWithOverflowClip)
     , m_contentsOrientation(CompositingCoordinatesTopDown)
     , m_parent(nullptr)
@@ -911,7 +912,7 @@ String GraphicsLayer::layerTreeAsText(LayerTreeAsTextBehavior behavior) const
 
 } // namespace WebCore
 
-#ifndef NDEBUG
+#if ENABLE(TREE_DEBUGGING)
 void showGraphicsLayerTree(const WebCore::GraphicsLayer* layer)
 {
     if (!layer)

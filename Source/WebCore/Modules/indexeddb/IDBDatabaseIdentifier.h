@@ -30,7 +30,6 @@
 
 #include "SecurityOriginData.h"
 #include <wtf/Ref.h>
-#include <wtf/RefCounted.h>
 #include <wtf/text/StringHash.h>
 #include <wtf/text/WTFString.h>
 
@@ -93,13 +92,19 @@ public:
     const String& databaseName() const { return m_databaseName; }
 
     String databaseDirectoryRelativeToRoot(const String& rootDirectory) const;
+    static String databaseDirectoryRelativeToRoot(const SecurityOriginData& topLevelOrigin, const SecurityOriginData& openingOrigin, const String& rootDirectory);
 
     template<class Encoder> void encode(Encoder&) const;
     template<class Decoder> static bool decode(Decoder&, IDBDatabaseIdentifier&);
 
-#ifndef NDEBUG
+#if !LOG_DISABLED
     String debugString() const;
 #endif
+
+    bool isRelatedToOrigin(const SecurityOriginData& other) const
+    {
+        return m_openingOrigin == other || m_mainFrameOrigin == other;
+    }
 
 private:
     String m_databaseName;

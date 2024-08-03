@@ -28,11 +28,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef DOMPatchSupport_h
-#define DOMPatchSupport_h
+#pragma once
 
 #include "ExceptionCode.h"
-
 #include <wtf/HashMap.h>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
@@ -64,7 +62,7 @@ private:
     std::pair<ResultMap, ResultMap> diff(const Vector<std::unique_ptr<Digest>>& oldChildren, const Vector<std::unique_ptr<Digest>>& newChildren);
     bool innerPatchChildren(ContainerNode*, const Vector<std::unique_ptr<Digest>>& oldChildren, const Vector<std::unique_ptr<Digest>>& newChildren, ExceptionCode&);
     std::unique_ptr<Digest> createDigest(Node*, UnusedNodesMap*);
-    bool insertBeforeAndMarkAsUsed(ContainerNode*, Digest*, Node* anchor, ExceptionCode&);
+    bool insertBeforeAndMarkAsUsed(ContainerNode&, Digest&, Node* anchor, ExceptionCode&);
     bool removeChildAndMoveToNew(Digest*, ExceptionCode&);
     void markNodeAsUsed(Digest*);
 #ifdef DEBUG_DOM_PATCH_SUPPORT
@@ -78,5 +76,3 @@ private:
 };
 
 } // namespace WebCore
-
-#endif // !defined(DOMPatchSupport_h)

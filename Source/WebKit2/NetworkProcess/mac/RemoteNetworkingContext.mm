@@ -31,10 +31,10 @@
 #import "NetworkSession.h"
 #import "SessionTracker.h"
 #import "WebErrors.h"
+#import <WebCore/NetworkStorageSession.h>
 #import <WebCore/ResourceError.h>
 #import <WebKitSystemInterface.h>
 #import <wtf/MainThread.h>
-#import <wtf/NeverDestroyed.h>
 
 using namespace WebCore;
 
@@ -57,8 +57,7 @@ bool RemoteNetworkingContext::localFileContentSniffingEnabled() const
 
 NetworkStorageSession& RemoteNetworkingContext::storageSession() const
 {
-    NetworkStorageSession* session = SessionTracker::storageSession(m_sessionID);
-    if (session)
+    if (auto session = NetworkStorageSession::storageSession(m_sessionID))
         return *session;
     // Some requests may still be coming shortly after NetworkProcess was told to destroy its session.
     LOG_ERROR("Invalid session ID. Please file a bug unless you just disabled private browsing, in which case it's an expected race.");
@@ -67,14 +66,7 @@ NetworkStorageSession& RemoteNetworkingContext::storageSession() const
 
 RetainPtr<CFDataRef> RemoteNetworkingContext::sourceApplicationAuditData() const
 {
-#if PLATFORM(IOS)
-    audit_token_t auditToken;
-    if (!NetworkProcess::singleton().parentProcessConnection()->getAuditToken(auditToken))
-        return nullptr;
-    return adoptCF(CFDataCreate(0, (const UInt8*)&auditToken, sizeof(auditToken)));
-#else
-    return nullptr;
-#endif
+    return NetworkProcess::singleton().sourceApplicationAuditData();
 }
 
 String RemoteNetworkingContext::sourceApplicationIdentifier() const
@@ -91,7 +83,7 @@ void RemoteNetworkingContext::ensurePrivateBrowsingSession(SessionID sessionID)
 {
     ASSERT(sessionID.isEphemeral());
 
-    if (SessionTracker::storageSession(sessionID))
+    if (NetworkStorageSession::storageSession(sessionID))
         return;
 
     String base;
@@ -100,11 +92,12 @@ void RemoteNetworkingContext::ensurePrivateBrowsingSession(SessionID sessionID)
     else
         base = SessionTracker::getIdentifierBase();
 
-    SessionTracker::setSession(sessionID, NetworkStorageSession::createPrivateBrowsingSession(base + '.' + String::number(sessionID.sessionID()))
+    NetworkStorageSession::ensurePrivateBrowsingSession(sessionID, base + '.' + String::number(sessionID.sessionID()));
+
 #if USE(NETWORK_SESSION)
-        , std::make_unique<NetworkSession>(NetworkSession::Type::Ephemeral, sessionID, NetworkProcess::singleton().supplement<CustomProtocolManager>())
+    auto networkSession = NetworkSession::create(NetworkSession::Type::Ephemeral, sessionID, NetworkProcess::singleton().supplement<CustomProtocolManager>());
+    SessionTracker::setSession(sessionID, WTFMove(networkSession));
 #endif
-    );
 }
 
 }

@@ -33,9 +33,6 @@
 
 #include "Blob.h"
 #include "BlobURL.h"
-#include <wtf/PassRefPtr.h>
-#include <wtf/RefPtr.h>
-#include <wtf/Vector.h>
 
 namespace WebCore {
 
@@ -75,10 +72,10 @@ void BlobData::appendData(const ThreadSafeDataBuffer& data, long long offset, lo
     m_items.append(BlobDataItem(data, offset, length));
 }
 
-void BlobData::appendFile(PassRefPtr<BlobDataFileReference> file)
+void BlobData::appendFile(Ref<BlobDataFileReference>&& file)
 {
     file->startTrackingModifications();
-    m_items.append(BlobDataItem(file));
+    m_items.append(BlobDataItem(WTFMove(file)));
 }
 
 void BlobData::appendFile(BlobDataFileReference* file, long long offset, long long length)

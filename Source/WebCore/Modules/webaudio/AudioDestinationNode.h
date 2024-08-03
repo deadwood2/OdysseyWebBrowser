@@ -30,6 +30,7 @@
 #include "AudioIOCallback.h"
 #include "AudioNode.h"
 #include "AudioSourceProvider.h"
+#include <wtf/Function.h>
 
 namespace WebCore {
 
@@ -42,12 +43,12 @@ public:
     virtual ~AudioDestinationNode();
     
     // AudioNode   
-    virtual void process(size_t) override { }; // we're pulled by hardware so this is never called
-    virtual void reset() override { m_currentSampleFrame = 0; }
+    void process(size_t) override { }; // we're pulled by hardware so this is never called
+    void reset() override { m_currentSampleFrame = 0; }
     
     // The audio hardware calls render() to get the next render quantum of audio into destinationBus.
     // It will optionally give us local/live audio input in sourceBus (if it's not 0).
-    virtual void render(AudioBus* sourceBus, AudioBus* destinationBus, size_t numberOfFrames) override;
+    void render(AudioBus* sourceBus, AudioBus* destinationBus, size_t numberOfFrames) override;
 
     size_t currentSampleFrame() const { return m_currentSampleFrame; }
     double currentTime() const { return currentSampleFrame() / static_cast<double>(sampleRate()); }
@@ -58,18 +59,18 @@ public:
     virtual void enableInput(const String& inputDeviceId) = 0;
 
     virtual void startRendering() = 0;
-    virtual void resume(std::function<void()>) { }
-    virtual void suspend(std::function<void()>) { }
-    virtual void close(std::function<void()>) { }
+    virtual void resume(WTF::Function<void ()>&&) { }
+    virtual void suspend(WTF::Function<void ()>&&) { }
+    virtual void close(WTF::Function<void ()>&&) { }
 
     virtual bool isPlaying() { return false; }
-    virtual void isPlayingDidChange() override;
+    void isPlayingDidChange() override;
     bool isPlayingAudio() const { return m_isEffectivelyPlayingAudio; }
     void setMuted(bool muted) { m_muted = muted; }
 
 protected:
-    virtual double tailTime() const override { return 0; }
-    virtual double latencyTime() const override { return 0; }
+    double tailTime() const override { return 0; }
+    double latencyTime() const override { return 0; }
 
     void setIsSilent(bool);
     void updateIsEffectivelyPlayingAudio();

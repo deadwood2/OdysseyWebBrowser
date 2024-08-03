@@ -1,9 +1,256 @@
+2016-10-30  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        -Wpragmas warning spam from angleutils.h
+        https://bugs.webkit.org/show_bug.cgi?id=164207
+
+        Reviewed by Darin Adler.
+
+        Use #pragma clang instead of #pragma GCC since all of the warnings we need to suppress are
+        Clang-specific warnings. GCC ignores unknown pragmas and does not warn, but it does warn if
+        any GCC pragma is invalid.
+
+        Note that this might still be broken for MSVCC, as MSVCC warns when it sees unknown pragmas.
+
+        * changes.diff:
+        * src/common/angleutils.cpp:
+        (FormatString):
+        * src/common/angleutils.h:
+        (MakeStaticString):
+        * src/common/debug.cpp:
+        * src/common/mathutil.cpp:
+        * src/libANGLE/Caps.cpp:
+        (gl::TextureCapsMap::get):
+        (gl::GetExtensionInfoMap):
+        * src/libANGLE/Device.cpp:
+        (egl::GetDeviceSet):
+        * src/libANGLE/Display.cpp:
+        (egl::Display::getClientExtensionString):
+        * src/libANGLE/formatutils.cpp:
+        (gl::GetInternalFormatMap):
+        (gl::GetAllSizedInternalFormats):
+        * src/libANGLE/validationES3.cpp:
+        (gl::IsValidES3CopyTexImageCombination):
+
+2016-10-28  Alex Christensen  <achristensen@webkit.org>
+
+        Another build fix.
+
+        * CMakeLists.txt:
+
+2016-10-28  Alex Christensen  <achristensen@webkit.org>
+
+        Fix Windows WebGL build after r208036
+        https://bugs.webkit.org/show_bug.cgi?id=164101
+
+        * CMakeLists.txt:
+
+2016-10-27  Alex Christensen  <achristensen@webkit.org>
+
+        Fix Windows WebGL build after r208036
+        https://bugs.webkit.org/show_bug.cgi?id=164101
+
+        * CMakeLists.txt:
+        Add new files, remove deleted files.
+
+2016-10-27  Alex Christensen  <achristensen@webkit.org>
+
+        Update ANGLE
+        https://bugs.webkit.org/show_bug.cgi?id=164101
+
+        Reviewed by Darin Adler.
+
+        Updated to f01731530e7f754e5ebaf32d00f3e23b62376424
+        Differences between upstream ANGLE and WebKit's copy of ANGLE are in changes.diff
+
+2016-07-29  David Kilzer  <ddkilzer@apple.com>
+
+        ANGLE: Fix global constructors and exit-time destructors
+        <https://webkit.org/b/160332>
+
+        Reviewed by Darin Adler.
+
+        * Configurations/Base.xcconfig:
+        - Add warning flags.
+
+        * src/common/angleutils.cpp:
+        (FormatString):
+        * src/common/angleutils.h:
+        (MakeStaticString):
+        * src/common/debug.cpp:
+        * src/common/mathutil.cpp:
+        (gl::g_sharedexp_max):
+        (gl::convertRGBFloatsTo999E5):
+        * src/compiler/translator/ShaderLang.cpp:
+        (ShGetUniformRegisterMap):
+        * src/libANGLE/Caps.cpp:
+        (gl::TextureCapsMap::get):
+        * src/libANGLE/Device.cpp:
+        (egl::GetDeviceSet):
+        * src/libANGLE/Display.cpp:
+        (egl::Display::getClientExtensionString):
+        * src/libANGLE/formatutils.cpp:
+        (gl::BuildFormatMap):
+        (gl::BuildInternalFormatInfoMap):
+        (gl::GetInternalFormatMap):
+        (gl::BuildAllSizedInternalFormatSet):
+        (gl::GetSizedInternalFormat):
+        (gl::GetAllSizedInternalFormats):
+        * src/libANGLE/validationES3.cpp:
+        (gl::BuildES3FormatSet):
+        (gl::ValidateTexImageFormatCombination):
+        (gl::BuildSizedEffectiveInternalFormatList):
+        (gl::BuildUnsizedEffectiveInternalFormatList):
+        (gl::GetEffectiveInternalFormat):
+        (gl::BuildValidES3CopyTexImageCombinations):
+        (gl::IsValidES3CopyTexImageCombination):
+        - Fix global constructors and exit-time destructors.
+
+2016-07-13  Enrica Casucci  <enrica@apple.com>
+
+        Update supported platforms in xcconfig files to match the sdk names.
+        https://bugs.webkit.org/show_bug.cgi?id=159728
+
+        Reviewed by Tim Horton.
+
+        * Configurations/Base.xcconfig:
+
+2016-05-24  Alex Christensen  <achristensen@webkit.org>
+
+        Fix iOS WebGL after r199738
+        https://bugs.webkit.org/show_bug.cgi?id=158024
+        rdar://problem/26446679
+
+        Reviewed by Myles Maxfield.
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        iOS needs the ESSL translator.
+
+2016-05-22  Brady Eidson  <beidson@apple.com>
+
+        Move to C++14.
+        https://bugs.webkit.org/show_bug.cgi?id=157948
+
+        Reviewed by Michael Catanzaro.
+
+        * Configurations/Base.xcconfig:
+
+2016-04-26  Per Arne Vollan  <peavo@outlook.com>
+
+        [WinCairo][ANGLE] Display object is not created.
+        https://bugs.webkit.org/show_bug.cgi?id=157042
+
+        Reviewed by Alex Christensen.
+
+        The CreateDisplayFromAttribs function will not create a DisplayD3D object when the requested
+        type is EGL_PLATFORM_ANGLE_TYPE_DEFAULT_ANGLE, because ANGLE_ENABLE_OPENGL is not defined.
+        We should be able to create a DisplayD3D object without defining ANGLE_ENABLE_OPENGL.
+
+        * src/libANGLE/Display.cpp:
+
+2016-04-26  Per Arne Vollan  <peavo@outlook.com>
+
+        [WinCairo][WebGL] Enable ESSL and GLSL translators.
+        https://bugs.webkit.org/show_bug.cgi?id=157002
+
+        Reviewed by Darin Adler.
+
+        Enable support for ESSL and GLSL translators, and add missing files.
+
+        * CMakeLists.txt:
+
+2016-04-22  Joonghun Park  <jh718.park@samsung.com>
+
+        [ANGLE] Remove deprecated auto_ptr warning. Unreviewed.
+        https://bugs.webkit.org/show_bug.cgi?id=156894
+
+        * src/compiler/preprocessor/MacroExpander.h: Use std::unique_ptr instead of std::auto_ptr.
+
+2016-04-19  Alex Christensen  <achristensen@webkit.org>
+
+        Build fix after r199738
+
+        * CMakeLists.txt:
+
+2016-04-19  Alex Christensen  <achristensen@webkit.org>
+
+        Build fix after r199738
+
+        * CMakeLists.txt:
+
+2016-04-19  Alex Christensen  <achristensen@webkit.org>
+
+        Build fix.
+
+        * src/compiler/translator/Intermediate.h: Added.
+        (TIntermediate::TIntermediate):
+        * src/compiler/translator/intermediate.h: Removed.
+        Changed case of Intermediate.h file name for case sensitive file systems.
+
+2016-04-19  Alex Christensen  <achristensen@webkit.org>
+
+        Update ANGLE
+        https://bugs.webkit.org/show_bug.cgi?id=156755
+
+        Reviewed by Dean Jackson.
+
+        Huge list of changed files omitted.
+
+2016-04-12  Alex Christensen  <achristensen@webkit.org>
+
+        Remove failing assertion in ANGLE
+        https://bugs.webkit.org/show_bug.cgi?id=156485
+
+        Reviewed by Dean Jackson.
+
+        * src/compiler/translator/glslang.l:
+        * src/compiler/translator/glslang_lex.cpp:
+
+2016-04-11  Fujii Hironori  <Hironori.Fujii@jp.sony.com>
+
+        [CMake] Make FOLDER property INHERITED
+        https://bugs.webkit.org/show_bug.cgi?id=156460
+
+        Reviewed by Brent Fulgham.
+
+        * CMakeLists.txt:
+        Set FOLDER property as a directory property not a target property
+
 2016-03-22  Alberto Garcia  <berto@igalia.com>
 
         Unreviewed typo fix.
 
         * src/compiler/translator/InfoSink.cpp:
         (TInfoSinkBase::prefix): "UNKOWN" => "UNKOWN".
+
+2016-03-20  Dan Bernstein  <mitz@apple.com>
+
+        [Mac] Determine TARGET_MAC_OS_X_VERSION_MAJOR from MACOSX_DEPLOYMENT_TARGET rather than from MAC_OS_X_VERSION_MAJOR
+        https://bugs.webkit.org/show_bug.cgi?id=155707
+        <rdar://problem/24980691>
+
+        Reviewed by Darin Adler.
+
+        * Configurations/Base.xcconfig: Set TARGET_MAC_OS_X_VERSION_MAJOR based on the last
+          component of MACOSX_DEPLOYMENT_TARGET.
+        * Configurations/DebugRelease.xcconfig: For engineering builds, preserve the behavior of
+          TARGET_MAC_OS_X_VERSION_MAJOR being the host’s OS version.
+
+2016-03-20  Dan Bernstein  <mitz@apple.com>
+
+        Update build settings
+
+        Rubber-stamped by Andy Estes.
+
+        * Configurations/DebugRelease.xcconfig:
+
+2016-02-23  Dan Bernstein  <mitz@apple.com>
+
+        [Xcode] Linker errors display mangled names, but no longer should
+        https://bugs.webkit.org/show_bug.cgi?id=154632
+
+        Reviewed by Sam Weinig.
+
+        * Configurations/Base.xcconfig: Stop setting LINKER_DISPLAYS_MANGLED_NAMES to YES.
 
 2016-01-08  Brent Fulgham  <bfulgham@apple.com>
 

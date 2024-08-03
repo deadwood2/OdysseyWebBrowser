@@ -24,8 +24,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef GraphicsContext_h
-#define GraphicsContext_h
+#pragma once
 
 #include "DashArray.h"
 #include "FloatRect.h"
@@ -34,7 +33,6 @@
 #include "GraphicsTypes.h"
 #include "Image.h"
 #include "ImageOrientation.h"
-#include "Path.h"
 #include "Pattern.h"
 #include <wtf/Noncopyable.h>
 
@@ -81,6 +79,7 @@ class IntRect;
 class RoundedRect;
 class URL;
 class GraphicsContext3D;
+class Path;
 class TextRun;
 class TransformationMatrix;
 
@@ -110,7 +109,6 @@ struct GraphicsContextState {
     GraphicsContextState()
         : shouldAntialias(true)
         , shouldSmoothFonts(true)
-        , antialiasedFontDilationEnabled(true)
         , shouldSubpixelQuantizeFonts(true)
         , shadowsIgnoreTransforms(false)
 #if USE(CG)
@@ -142,10 +140,9 @@ struct GraphicsContextState {
         TextDrawingModeChange                   = 1 << 16,
         ShouldAntialiasChange                   = 1 << 17,
         ShouldSmoothFontsChange                 = 1 << 18,
-        AntialiasedFontDilationEnabledChange    = 1 << 19,
-        ShouldSubpixelQuantizeFontsChange       = 1 << 20,
-        DrawLuminanceMaskChange                 = 1 << 21,
-        ImageInterpolationQualityChange         = 1 << 22,
+        ShouldSubpixelQuantizeFontsChange       = 1 << 19,
+        DrawLuminanceMaskChange                 = 1 << 20,
+        ImageInterpolationQualityChange         = 1 << 21,
     };
     typedef uint32_t StateChangeFlags;
 
@@ -176,7 +173,6 @@ struct GraphicsContextState {
 
     bool shouldAntialias : 1;
     bool shouldSmoothFonts : 1;
-    bool antialiasedFontDilationEnabled : 1;
     bool shouldSubpixelQuantizeFonts : 1;
     bool shadowsIgnoreTransforms : 1;
 #if USE(CG)
@@ -294,9 +290,6 @@ public:
     WEBCORE_EXPORT void setShouldAntialias(bool);
     bool shouldAntialias() const { return m_state.shouldAntialias; }
 
-    WEBCORE_EXPORT void setAntialiasedFontDilationEnabled(bool);
-    bool antialiasedFontDilationEnabled() const { return m_state.antialiasedFontDilationEnabled; }
-
     WEBCORE_EXPORT void setShouldSmoothFonts(bool);
     bool shouldSmoothFonts() const { return m_state.shouldSmoothFonts; }
 
@@ -308,7 +301,7 @@ public:
     const GraphicsContextState& state() const { return m_state; }
 
 #if USE(CG) || USE(CAIRO)
-    WEBCORE_EXPORT void drawNativeImage(PassNativeImagePtr, const FloatSize& selfSize, const FloatRect& destRect, const FloatRect& srcRect, CompositeOperator = CompositeSourceOver, BlendMode = BlendModeNormal, ImageOrientation = DefaultImageOrientation);
+    WEBCORE_EXPORT void drawNativeImage(const NativeImagePtr&, const FloatSize& selfSize, const FloatRect& destRect, const FloatRect& srcRect, CompositeOperator = CompositeSourceOver, BlendMode = BlendModeNormal, ImageOrientation = ImageOrientation());
 #endif
 
 #if USE(CG)
@@ -388,9 +381,9 @@ public:
     void setTextDrawingMode(TextDrawingModeFlags);
     TextDrawingModeFlags textDrawingMode() const { return m_state.textDrawingMode; }
 
-    float drawText(const FontCascade&, const TextRun&, const FloatPoint&, int from = 0, int to = -1);
-    void drawGlyphs(const FontCascade&, const Font&, const GlyphBuffer&, int from, int numGlyphs, const FloatPoint&);
-    void drawEmphasisMarks(const FontCascade&, const TextRun& , const AtomicString& mark, const FloatPoint&, int from = 0, int to = -1);
+    float drawText(const FontCascade&, const TextRun&, const FloatPoint&, unsigned from = 0, Optional<unsigned> to = Nullopt);
+    void drawGlyphs(const FontCascade&, const Font&, const GlyphBuffer&, unsigned from, unsigned numGlyphs, const FloatPoint&);
+    void drawEmphasisMarks(const FontCascade&, const TextRun&, const AtomicString& mark, const FloatPoint&, unsigned from = 0, Optional<unsigned> to = Nullopt);
     void drawBidiText(const FontCascade&, const TextRun&, const FloatPoint&, FontCascade::CustomFontNotReadyAction = FontCascade::DoNotPaintIfFontNotReady);
 
     void applyState(const GraphicsContextState&);
@@ -402,8 +395,8 @@ public:
     FloatRect roundToDevicePixels(const FloatRect&, RoundingMode = RoundAllSides);
 
     FloatRect computeUnderlineBoundsForText(const FloatPoint&, float width, bool printing);
-    WEBCORE_EXPORT void drawLineForText(const FloatPoint&, float width, bool printing, bool doubleLines = false);
-    void drawLinesForText(const FloatPoint&, const DashArray& widths, bool printing, bool doubleLines = false);
+    WEBCORE_EXPORT void drawLineForText(const FloatPoint&, float width, bool printing, bool doubleLines = false, StrokeStyle = SolidStroke);
+    void drawLinesForText(const FloatPoint&, const DashArray& widths, bool printing, bool doubleLines = false, StrokeStyle = SolidStroke);
     enum DocumentMarkerLineStyle {
 #if PLATFORM(IOS)
         TextCheckingDictationPhraseWithAlternativesLineStyle,
@@ -439,7 +432,8 @@ public:
     void drawFocusRing(const Vector<FloatRect>&, float width, float offset, const Color&);
     void drawFocusRing(const Path&, float width, float offset, const Color&);
 #if PLATFORM(MAC)
-    void drawFocusRing(const Vector<FloatRect>&, float offset, double timeOffset, bool& needsRedraw);
+    void drawFocusRing(const Path&, double timeOffset, bool& needsRedraw);
+    void drawFocusRing(const Vector<FloatRect>&, double timeOffset, bool& needsRedraw);
 #endif
 
     void setLineCap(LineCap);
@@ -482,15 +476,12 @@ public:
     void set3DTransform(const TransformationMatrix&);
     TransformationMatrix get3DTransform() const;
 #endif
-    // Create an image buffer compatible with this context, with suitable resolution
-    // for drawing into the buffer and then into this context.
-    std::unique_ptr<ImageBuffer> createCompatibleBuffer(const FloatSize&, bool hasAlpha = true) const;
-    bool isCompatibleWithBuffer(ImageBuffer&) const;
 
     // This function applies the device scale factor to the context, making the context capable of
     // acting as a base-level context for a HiDPI environment.
     WEBCORE_EXPORT void applyDeviceScaleFactor(float);
     void platformApplyDeviceScaleFactor(float);
+    FloatSize scaleFactor() const;
 
 #if OS(WINDOWS)
     HDC getWindowsContext(const IntRect&, bool supportAlphaBlend, bool mayCreateBitmap); // The passed in rect is used to create a bitmap for compositing inside transparency layers.
@@ -680,5 +671,3 @@ private:
 };
 
 } // namespace WebCore
-
-#endif // GraphicsContext_h

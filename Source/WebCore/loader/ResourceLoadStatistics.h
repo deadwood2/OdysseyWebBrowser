@@ -27,6 +27,7 @@
 #define ResourceLoadStatistics_h
 
 #include <wtf/HashCountedSet.h>
+#include <wtf/text/StringHash.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
@@ -35,15 +36,21 @@ class KeyedDecoder;
 class KeyedEncoder;
 
 struct ResourceLoadStatistics {
-    bool checkAndSetAsPrevalentResourceIfNecessary(unsigned originsVisitedSoFar);
+    ResourceLoadStatistics(const String& primaryDomain)
+        : highLevelDomain(primaryDomain)
+    {
+    }
 
-    bool hasPrevalentRedirection() const;
-    bool hasPrevalentResourceCharacteristics() const;
+    ResourceLoadStatistics() = default;
 
-    void encode(KeyedEncoder&, const String& origin) const;
-    bool decode(KeyedDecoder&, const String& origin);
+    void encode(KeyedEncoder&) const;
+    bool decode(KeyedDecoder&);
 
     String toString() const;
+
+    void merge(const ResourceLoadStatistics&);
+
+    String highLevelDomain;
 
     // User interaction
     bool hadUserInteraction { false };

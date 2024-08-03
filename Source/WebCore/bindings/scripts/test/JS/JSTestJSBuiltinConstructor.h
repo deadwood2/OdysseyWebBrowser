@@ -18,8 +18,7 @@
     Boston, MA 02110-1301, USA.
 */
 
-#ifndef JSTestJSBuiltinConstructor_h
-#define JSTestJSBuiltinConstructor_h
+#pragma once
 
 #include "JSDOMWrapper.h"
 
@@ -35,10 +34,8 @@ public:
         return ptr;
     }
 
-    static const bool hasStaticPropertyTable = false;
-
     static JSC::JSObject* createPrototype(JSC::VM&, JSC::JSGlobalObject*);
-    static JSC::JSObject* getPrototype(JSC::VM&, JSC::JSGlobalObject*);
+    static JSC::JSObject* prototype(JSC::VM&, JSC::JSGlobalObject*);
     static void destroy(JSC::JSCell*);
 
     DECLARE_INFO;
@@ -67,5 +64,3 @@ protected:
 
 
 } // namespace WebCore
-
-#endif

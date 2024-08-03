@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2007, 2008, 2009, 2011, 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2016 Apple Inc. All rights reserved.
  * Copyright (C) 2008, 2009 Torch Mobile Inc. All rights reserved. (http://www.torchmobile.com/)
  * Copyright (C) Research In Motion Limited 2009. All rights reserved.
  * Copyright (C) 2011 Google Inc. All rights reserved.
@@ -29,22 +29,19 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef FrameLoader_h
-#define FrameLoader_h
+#pragma once
 
 #include "CachePolicy.h"
 #include "FrameLoaderStateMachine.h"
 #include "FrameLoaderTypes.h"
-#include "IconURL.h"
 #include "LayoutMilestones.h"
 #include "MixedContentChecker.h"
-#include "Page.h"
 #include "PageThrottler.h"
 #include "ResourceHandleTypes.h"
 #include "ResourceLoadNotifier.h"
+#include "ResourceLoaderOptions.h"
 #include "ResourceRequestBase.h"
 #include "SecurityContext.h"
-#include "SharedBuffer.h"
 #include "Timer.h"
 #include <wtf/Forward.h>
 #include <wtf/HashSet.h>
@@ -77,6 +74,7 @@ class ResourceRequest;
 class ResourceResponse;
 class SecurityOrigin;
 class SerializedScriptValue;
+class SharedBuffer;
 class StringWithDirection;
 class SubframeLoader;
 class SubstituteData;
@@ -120,6 +118,7 @@ public:
     unsigned long loadResourceSynchronously(const ResourceRequest&, StoredCredentials, ClientCredentialPolicy, ResourceError&, ResourceResponse&, RefPtr<SharedBuffer>& data);
 
     void changeLocation(const FrameLoadRequest&);
+    WEBCORE_EXPORT void urlSelected(const URL&, const String& target, Event*, LockHistory, LockBackForwardList, ShouldSendReferrer, ShouldOpenExternalURLsPolicy, const AtomicString& downloadAttribute);
     WEBCORE_EXPORT void urlSelected(const URL&, const String& target, Event*, LockHistory, LockBackForwardList, ShouldSendReferrer, ShouldOpenExternalURLsPolicy);
     void submitForm(PassRefPtr<FormSubmission>);
 
@@ -173,6 +172,9 @@ public:
     WEBCORE_EXPORT ResourceError cancelledError(const ResourceRequest&) const;
     WEBCORE_EXPORT ResourceError blockedByContentBlockerError(const ResourceRequest&) const;
     ResourceError blockedError(const ResourceRequest&) const;
+#if ENABLE(CONTENT_FILTERING)
+    ResourceError blockedByContentFilterError(const ResourceRequest&) const;
+#endif
 
     bool isHostedByObjectElement() const;
 
@@ -188,7 +190,7 @@ public:
 
     CachePolicy subresourceCachePolicy() const;
 
-    void didLayout(LayoutMilestones);
+    void didReachLayoutMilestone(LayoutMilestones);
     void didFirstLayout();
 
     void loadedResourceFromMemoryCache(CachedResource*, ResourceRequest& newRequest);
@@ -202,6 +204,7 @@ public:
     void addExtraFieldsToMainResourceRequest(ResourceRequest&);
     
     static void addHTTPOriginIfNeeded(ResourceRequest&, const String& origin);
+    static void addHTTPUpgradeInsecureRequestsIfNeeded(ResourceRequest&);
 
     FrameLoaderClient& client() const { return m_client; }
 
@@ -225,9 +228,9 @@ public:
     void forceSandboxFlags(SandboxFlags flags) { m_forcedSandboxFlags |= flags; }
     SandboxFlags effectiveSandboxFlags() const;
 
-    bool checkIfFormActionAllowedByCSP(const URL&) const;
+    bool checkIfFormActionAllowedByCSP(const URL&, bool didReceiveRedirectResponse) const;
 
-    Frame* opener();
+    WEBCORE_EXPORT Frame* opener();
     WEBCORE_EXPORT void setOpener(Frame*);
 
     void resetMultipleFormSubmissionProtection();
@@ -295,6 +298,8 @@ public:
 
     const URL& provisionalLoadErrorBeingHandledURL() const { return m_provisionalLoadErrorBeingHandledURL; }
     void setProvisionalLoadErrorBeingHandledURL(const URL& url) { m_provisionalLoadErrorBeingHandledURL = url; }
+
+    bool isAlwaysOnLoggingAllowed() const;
 
 private:
     enum FormSubmissionCacheLoadPolicy {
@@ -466,5 +471,3 @@ private:
 RefPtr<Frame> createWindow(Frame& openerFrame, Frame& lookupFrame, const FrameLoadRequest&, const WindowFeatures&, bool& created);
 
 } // namespace WebCore
-
-#endif // FrameLoader_h

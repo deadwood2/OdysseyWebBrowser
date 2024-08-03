@@ -27,8 +27,6 @@
 #import "RemoteLayerTreeTransaction.h"
 
 #import "ArgumentCoders.h"
-#import "MessageDecoder.h"
-#import "MessageEncoder.h"
 #import "PlatformCAAnimationRemote.h"
 #import "PlatformCALayerRemote.h"
 #import "WebCoreArgumentCoders.h"
@@ -37,7 +35,6 @@
 #import <WebCore/TextStream.h>
 #import <WebCore/TimingFunction.h>
 #import <wtf/text/CString.h>
-#import <wtf/text/StringBuilder.h>
 
 using namespace WebCore;
 
@@ -51,7 +48,7 @@ RemoteLayerTreeTransaction::LayerCreationProperties::LayerCreationProperties()
 {
 }
 
-void RemoteLayerTreeTransaction::LayerCreationProperties::encode(IPC::ArgumentEncoder& encoder) const
+void RemoteLayerTreeTransaction::LayerCreationProperties::encode(IPC::Encoder& encoder) const
 {
     encoder << layerID;
     encoder.encodeEnum(type);
@@ -59,7 +56,7 @@ void RemoteLayerTreeTransaction::LayerCreationProperties::encode(IPC::ArgumentEn
     encoder << hostingDeviceScaleFactor;
 }
 
-bool RemoteLayerTreeTransaction::LayerCreationProperties::decode(IPC::ArgumentDecoder& decoder, LayerCreationProperties& result)
+bool RemoteLayerTreeTransaction::LayerCreationProperties::decode(IPC::Decoder& decoder, LayerCreationProperties& result)
 {
     if (!decoder.decode(result.layerID))
         return false;
@@ -103,6 +100,8 @@ RemoteLayerTreeTransaction::LayerProperties::LayerProperties()
     , doubleSided(true)
     , masksToBounds(false)
     , opaque(false)
+    , contentsHidden(false)
+    , userInteractionEnabled(true)
 {
 }
 
@@ -140,6 +139,8 @@ RemoteLayerTreeTransaction::LayerProperties::LayerProperties(const LayerProperti
     , doubleSided(other.doubleSided)
     , masksToBounds(other.masksToBounds)
     , opaque(other.opaque)
+    , contentsHidden(other.contentsHidden)
+    , userInteractionEnabled(other.userInteractionEnabled)
 {
     // FIXME: LayerProperties should reference backing store by ID, so that two layers can have the same backing store (for clones).
     // FIXME: LayerProperties shouldn't be copyable; PlatformCALayerRemote::clone should copy the relevant properties.
@@ -154,7 +155,7 @@ RemoteLayerTreeTransaction::LayerProperties::LayerProperties(const LayerProperti
         filters = std::make_unique<FilterOperations>(*other.filters);
 }
 
-void RemoteLayerTreeTransaction::LayerProperties::encode(IPC::ArgumentEncoder& encoder) const
+void RemoteLayerTreeTransaction::LayerProperties::encode(IPC::Encoder& encoder) const
 {
     encoder.encodeEnum(changedProperties);
 
@@ -210,6 +211,9 @@ void RemoteLayerTreeTransaction::LayerProperties::encode(IPC::ArgumentEncoder& e
 
     if (changedProperties & OpaqueChanged)
         encoder << opaque;
+
+    if (changedProperties & ContentsHiddenChanged)
+        encoder << contentsHidden;
 
     if (changedProperties & MaskLayerChanged)
         encoder << maskLayerID;
@@ -268,9 +272,12 @@ void RemoteLayerTreeTransaction::LayerProperties::encode(IPC::ArgumentEncoder& e
 
     if (changedProperties & CustomAppearanceChanged)
         encoder.encodeEnum(customAppearance);
+
+    if (changedProperties & UserInteractionEnabledChanged)
+        encoder << userInteractionEnabled;
 }
 
-bool RemoteLayerTreeTransaction::LayerProperties::decode(IPC::ArgumentDecoder& decoder, LayerProperties& result)
+bool RemoteLayerTreeTransaction::LayerProperties::decode(IPC::Decoder& decoder, LayerProperties& result)
 {
     if (!decoder.decodeEnum(result.changedProperties))
         return false;
@@ -371,6 +378,11 @@ bool RemoteLayerTreeTransaction::LayerProperties::decode(IPC::ArgumentDecoder& d
 
     if (result.changedProperties & OpaqueChanged) {
         if (!decoder.decode(result.opaque))
+            return false;
+    }
+
+    if (result.changedProperties & ContentsHiddenChanged) {
+        if (!decoder.decode(result.contentsHidden))
             return false;
     }
 
@@ -481,6 +493,11 @@ bool RemoteLayerTreeTransaction::LayerProperties::decode(IPC::ArgumentDecoder& d
             return false;
     }
 
+    if (result.changedProperties & UserInteractionEnabledChanged) {
+        if (!decoder.decode(result.userInteractionEnabled))
+            return false;
+    }
+
     return true;
 }
 
@@ -492,7 +509,7 @@ RemoteLayerTreeTransaction::~RemoteLayerTreeTransaction()
 {
 }
 
-void RemoteLayerTreeTransaction::encode(IPC::ArgumentEncoder& encoder) const
+void RemoteLayerTreeTransaction::encode(IPC::Encoder& encoder) const
 {
     encoder << m_rootLayerID;
     encoder << m_createdLayers;
@@ -534,7 +551,7 @@ void RemoteLayerTreeTransaction::encode(IPC::ArgumentEncoder& encoder) const
     encoder << m_callbackIDs;
 }
 
-bool RemoteLayerTreeTransaction::decode(IPC::ArgumentDecoder& decoder, RemoteLayerTreeTransaction& result)
+bool RemoteLayerTreeTransaction::decode(IPC::Decoder& decoder, RemoteLayerTreeTransaction& result)
 {
     if (!decoder.decode(result.m_rootLayerID))
         return false;
@@ -742,6 +759,9 @@ static void dumpChangedLayers(TextStream& ts, const RemoteLayerTreeTransaction::
         if (layerProperties.changedProperties & RemoteLayerTreeTransaction::OpaqueChanged)
             ts.dumpProperty("opaque", layerProperties.opaque);
 
+        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::ContentsHiddenChanged)
+            ts.dumpProperty("contentsHidden", layerProperties.contentsHidden);
+
         if (layerProperties.changedProperties & RemoteLayerTreeTransaction::MaskLayerChanged)
             ts.dumpProperty("maskLayer", layerProperties.maskLayerID);
 
@@ -801,6 +821,9 @@ static void dumpChangedLayers(TextStream& ts, const RemoteLayerTreeTransaction::
 
         if (layerProperties.changedProperties & RemoteLayerTreeTransaction::CustomAppearanceChanged)
             ts.dumpProperty("customAppearance", layerProperties.customAppearance);
+
+        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::UserInteractionEnabledChanged)
+            ts.dumpProperty("userInteractionEnabled", layerProperties.userInteractionEnabled);
     }
 }
 

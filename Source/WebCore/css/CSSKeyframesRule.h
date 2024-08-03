@@ -38,22 +38,22 @@ class CSSRuleList;
 class StyleKeyframe;
 class CSSKeyframeRule;
 
-class StyleRuleKeyframes : public StyleRuleBase {
+class StyleRuleKeyframes final : public StyleRuleBase {
 public:
     static Ref<StyleRuleKeyframes> create() { return adoptRef(*new StyleRuleKeyframes()); }
     
     ~StyleRuleKeyframes();
     
-    const Vector<RefPtr<StyleKeyframe>>& keyframes() const { return m_keyframes; }
+    const Vector<Ref<StyleKeyframe>>& keyframes() const { return m_keyframes; }
     
-    void parserAppendKeyframe(PassRefPtr<StyleKeyframe>);
-    void wrapperAppendKeyframe(PassRefPtr<StyleKeyframe>);
+    void parserAppendKeyframe(RefPtr<StyleKeyframe>&&);
+    void wrapperAppendKeyframe(Ref<StyleKeyframe>&&);
     void wrapperRemoveKeyframe(unsigned);
 
-    String name() const { return m_name; }    
-    void setName(const String& name) { m_name = AtomicString(name); }
+    const AtomicString& name() const { return m_name; }
+    void setName(const AtomicString& name) { m_name = name; }
     
-    int findKeyframeIndex(const String& key) const;
+    size_t findKeyframeIndex(const String& key) const;
 
     Ref<StyleRuleKeyframes> copy() const { return adoptRef(*new StyleRuleKeyframes(*this)); }
 
@@ -61,7 +61,7 @@ private:
     StyleRuleKeyframes();
     StyleRuleKeyframes(const StyleRuleKeyframes&);
 
-    Vector<RefPtr<StyleKeyframe>> m_keyframes;
+    Vector<Ref<StyleKeyframe>> m_keyframes;
     AtomicString m_name;
 };
 
@@ -71,9 +71,9 @@ public:
 
     virtual ~CSSKeyframesRule();
 
-    virtual CSSRule::Type type() const override { return KEYFRAMES_RULE; }
-    virtual String cssText() const override;
-    virtual void reattach(StyleRuleBase&) override;
+    CSSRule::Type type() const final { return KEYFRAMES_RULE; }
+    String cssText() const final;
+    void reattach(StyleRuleBase&) final;
 
     String name() const { return m_keyframesRule->name(); }
     void setName(const String&);

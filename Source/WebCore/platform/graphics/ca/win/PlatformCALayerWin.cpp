@@ -437,10 +437,24 @@ void PlatformCALayerWin::setSublayerTransform(const TransformationMatrix& value)
     setNeedsCommit();
 }
 
+bool PlatformCALayerWin::isHidden() const
+{
+    return CACFLayerIsHidden(m_layer.get());
+}
+
 void PlatformCALayerWin::setHidden(bool value)
 {
     CACFLayerSetHidden(m_layer.get(), value);
     setNeedsCommit();
+}
+
+bool PlatformCALayerWin::contentsHidden() const
+{
+    return false;
+}
+
+void PlatformCALayerWin::setContentsHidden(bool)
+{
 }
 
 void PlatformCALayerWin::setBackingStoreAttached(bool)
@@ -450,6 +464,15 @@ void PlatformCALayerWin::setBackingStoreAttached(bool)
 bool PlatformCALayerWin::backingStoreAttached() const
 {
     return true;
+}
+
+bool PlatformCALayerWin::userInteractionEnabled() const
+{
+    return true;
+}
+ 
+void PlatformCALayerWin::setUserInteractionEnabled(bool)
+{
 }
 
 bool PlatformCALayerWin::geometryFlipped() const

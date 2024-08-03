@@ -27,7 +27,6 @@
 #define CDMPrivateMediaPlayer_h
 
 #include "CDMPrivate.h"
-#include <wtf/RetainPtr.h>
 
 #if ENABLE(ENCRYPTED_MEDIA_V2)
 
@@ -46,8 +45,8 @@ public:
 
     virtual ~CDMPrivateMediaPlayer() { }
 
-    virtual bool supportsMIMEType(const String& mimeType) override;
-    virtual std::unique_ptr<CDMSession> createSession(CDMSessionClient*) override;
+    bool supportsMIMEType(const String& mimeType) override;
+    std::unique_ptr<CDMSession> createSession(CDMSessionClient*) override;
 
     CDM* cdm() const { return m_cdm; }
 

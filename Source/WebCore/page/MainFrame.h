@@ -26,18 +26,15 @@
 #ifndef MainFrame_h
 #define MainFrame_h
 
+#include "EventHandler.h"
 #include "Frame.h"
 #include <wtf/Vector.h>
 
-#if USE(APPLE_INTERNAL_SDK)
-#include <WebKitAdditions/MainFrameIncludes.h>
-#endif
-
 namespace WebCore {
 
-class DiagnosticLoggingClient;
 class PageConfiguration;
 class PageOverlayController;
+class PaymentCoordinator;
 class ScrollLatchingState;
 class ServicesOverlayController;
 class WheelEventDeltaFilter;
@@ -66,10 +63,8 @@ public:
     void removeLatchingStateForTarget(Element&);
 #endif // PLATFORM(MAC)
 
-    WEBCORE_EXPORT DiagnosticLoggingClient& diagnosticLoggingClient() const;
-
-#if USE(APPLE_INTERNAL_SDK)
-#include <WebKitAdditions/MainFrameMembers.h>
+#if ENABLE(APPLE_PAY)
+    PaymentCoordinator& paymentCoordinator() const { return *m_paymentCoordinator; }
 #endif
 
 private:
@@ -88,7 +83,10 @@ private:
 
     std::unique_ptr<WheelEventDeltaFilter> m_recentWheelEventDeltaFilter;
     std::unique_ptr<PageOverlayController> m_pageOverlayController;
-    DiagnosticLoggingClient* m_diagnosticLoggingClient;
+
+#if ENABLE(APPLE_PAY)
+    std::unique_ptr<PaymentCoordinator> m_paymentCoordinator;
+#endif
 };
 
 inline bool Frame::isMainFrame() const

@@ -44,8 +44,8 @@ public:
     
     virtual ~DisplayRefreshMonitorMac();
 
-    void displayLinkFired(double nowSeconds, double outputTimeSeconds);
-    virtual bool requestRefreshCallback() override;
+    void displayLinkFired();
+    bool requestRefreshCallback() override;
 
 private:
     explicit DisplayRefreshMonitorMac(PlatformDisplayID);

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008, 2009 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2009, 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,7 +34,6 @@
 #include "ErrorHandlingScope.h"
 #include "Exception.h"
 #include "JSGlobalObjectFunctions.h"
-#include "JSNotAnObject.h"
 #include "Interpreter.h"
 #include "Nodes.h"
 #include "JSCInlines.h"
@@ -90,7 +89,7 @@ JSString* errorDescriptionForValue(ExecState* exec, JSValue v)
     if (v.isObject()) {
         CallData callData;
         JSObject* object = asObject(v);
-        if (object->methodTable()->getCallData(object, callData) != CallTypeNone)
+        if (object->methodTable()->getCallData(object, callData) != CallType::None)
             return exec->vm().smallStrings.functionString();
         return jsString(exec, JSObject::calculatedClassName(object));
     }
@@ -290,23 +289,23 @@ JSObject* createTDZError(ExecState* exec)
     return createReferenceError(exec, "Cannot access uninitialized variable.");
 }
 
-JSObject* throwOutOfMemoryError(ExecState* exec)
+JSObject* throwOutOfMemoryError(ExecState* exec, ThrowScope& scope)
 {
-    return exec->vm().throwException(exec, createOutOfMemoryError(exec));
+    return throwException(exec, scope, createOutOfMemoryError(exec));
 }
 
-JSObject* throwStackOverflowError(ExecState* exec)
+JSObject* throwStackOverflowError(ExecState* exec, ThrowScope& scope)
 {
     VM& vm = exec->vm();
     ErrorHandlingScope errorScope(vm);
-    return vm.throwException(exec, createStackOverflowError(exec));
+    return throwException(exec, scope, createStackOverflowError(exec));
 }
 
-JSObject* throwTerminatedExecutionException(ExecState* exec)
+JSObject* throwTerminatedExecutionException(ExecState* exec, ThrowScope& scope)
 {
     VM& vm = exec->vm();
     ErrorHandlingScope errorScope(vm);
-    return vm.throwException(exec, createTerminatedExecutionException(&vm));
+    return throwException(exec, scope, createTerminatedExecutionException(&vm));
 }
 
 } // namespace JSC

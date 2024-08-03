@@ -25,6 +25,7 @@
 
 #include "Attribute.h"
 #include "Document.h"
+#include "HTMLHeadElement.h"
 #include "HTMLNames.h"
 
 namespace WebCore {
@@ -64,10 +65,11 @@ Node::InsertionNotificationRequest HTMLMetaElement::insertedInto(ContainerNode& 
 
 void HTMLMetaElement::process()
 {
+    // Changing a meta tag while it's not in the tree shouldn't have any effect on the document.
     if (!inDocument())
         return;
 
-    const AtomicString& contentValue = fastGetAttribute(contentAttr);
+    const AtomicString& contentValue = attributeWithoutSynchronization(contentAttr);
     if (contentValue.isNull())
         return;
 
@@ -82,21 +84,19 @@ void HTMLMetaElement::process()
     else if (equalLettersIgnoringASCIICase(name(), "referrer"))
         document().processReferrerPolicy(contentValue);
 
-    // Get the document to process the tag, but only if we're actually part of DOM tree (changing a meta tag while
-    // it's not in the tree shouldn't have any effect on the document)
-    const AtomicString& httpEquivValue = fastGetAttribute(http_equivAttr);
+    const AtomicString& httpEquivValue = attributeWithoutSynchronization(http_equivAttr);
     if (!httpEquivValue.isNull())
-        document().processHttpEquiv(httpEquivValue, contentValue);
+        document().processHttpEquiv(httpEquivValue, contentValue, isDescendantOf(document().head()));
 }
 
 const AtomicString& HTMLMetaElement::content() const
 {
-    return fastGetAttribute(contentAttr);
+    return attributeWithoutSynchronization(contentAttr);
 }
 
 const AtomicString& HTMLMetaElement::httpEquiv() const
 {
-    return fastGetAttribute(http_equivAttr);
+    return attributeWithoutSynchronization(http_equivAttr);
 }
 
 const AtomicString& HTMLMetaElement::name() const

@@ -16,18 +16,14 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
 )
 
 list(APPEND WebCore_SOURCES
-    editing/SmartReplaceCF.cpp
-
     loader/cf/ResourceLoaderCFNet.cpp
 
     page/CaptionUserPreferencesMediaAF.cpp
 
     page/win/FrameCGWin.cpp
 
-    platform/cf/CFURLExtras.cpp
     platform/cf/CoreMediaSoftLink.cpp
     platform/cf/MediaAccessibilitySoftLink.cpp
-    platform/cf/URLCF.cpp
 
     platform/graphics/avfoundation/InbandMetadataTextTrackPrivateAVF.cpp
     platform/graphics/avfoundation/InbandTextTrackPrivateAVF.cpp
@@ -71,7 +67,7 @@ list(APPEND WebCore_SOURCES
     platform/graphics/cg/ImageBufferCG.cpp
     platform/graphics/cg/ImageBufferDataCG.cpp
     platform/graphics/cg/ImageCG.cpp
-    platform/graphics/cg/ImageSourceCG.cpp
+    platform/graphics/cg/ImageDecoderCG.cpp
     platform/graphics/cg/ImageSourceCGWin.cpp
     platform/graphics/cg/IntPointCG.cpp
     platform/graphics/cg/IntRectCG.cpp
@@ -107,9 +103,11 @@ list(APPEND WebCore_SOURCES
     platform/network/cf/ResourceHandleCFURLConnectionDelegate.cpp
     platform/network/cf/ResourceRequestCFNet.cpp
     platform/network/cf/ResourceResponseCFNet.cpp
-    platform/network/cf/SocketStreamHandleCFNet.cpp
+    platform/network/cf/SocketStreamHandleImplCFNet.cpp
     platform/network/cf/SynchronousLoaderClientCFNet.cpp
     platform/network/cf/SynchronousResourceHandleCFURLConnectionDelegate.cpp
+
+    platform/spi/win/CoreTextSPIWin.cpp
 
     platform/win/DragImageCGWin.cpp
 )

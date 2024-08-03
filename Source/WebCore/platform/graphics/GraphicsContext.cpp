@@ -110,7 +110,6 @@ GraphicsContextState::StateChangeFlags GraphicsContextStateChange::changesFromSt
 
     CHECK_FOR_CHANGED_PROPERTY(ShouldAntialiasChange, shouldAntialias);
     CHECK_FOR_CHANGED_PROPERTY(ShouldSmoothFontsChange, shouldSmoothFonts);
-    CHECK_FOR_CHANGED_PROPERTY(AntialiasedFontDilationEnabledChange, antialiasedFontDilationEnabled);
     CHECK_FOR_CHANGED_PROPERTY(ShouldSubpixelQuantizeFontsChange, shouldSubpixelQuantizeFonts);
     CHECK_FOR_CHANGED_PROPERTY(ShadowsIgnoreTransformsChange, shadowsIgnoreTransforms);
     CHECK_FOR_CHANGED_PROPERTY(DrawLuminanceMaskChange, drawLuminanceMask);
@@ -172,9 +171,6 @@ void GraphicsContextStateChange::accumulate(const GraphicsContextState& state, G
 
     if (flags & GraphicsContextState::ShouldSmoothFontsChange)
         m_state.shouldSmoothFonts = state.shouldSmoothFonts;
-
-    if (flags & GraphicsContextState::AntialiasedFontDilationEnabledChange)
-        m_state.antialiasedFontDilationEnabled = state.antialiasedFontDilationEnabled;
 
     if (flags & GraphicsContextState::ShouldSubpixelQuantizeFontsChange)
         m_state.shouldSubpixelQuantizeFonts = state.shouldSubpixelQuantizeFonts;
@@ -243,9 +239,6 @@ void GraphicsContextStateChange::apply(GraphicsContext& context) const
 
     if (m_changeFlags & GraphicsContextState::ShouldSmoothFontsChange)
         context.setShouldSmoothFonts(m_state.shouldSmoothFonts);
-
-    if (m_changeFlags & GraphicsContextState::AntialiasedFontDilationEnabledChange)
-        context.setAntialiasedFontDilationEnabled(m_state.antialiasedFontDilationEnabled);
 
     if (m_changeFlags & GraphicsContextState::ShouldSubpixelQuantizeFontsChange)
         context.setShouldSubpixelQuantizeFonts(m_state.shouldSubpixelQuantizeFonts);
@@ -316,9 +309,6 @@ void GraphicsContextStateChange::dump(TextStream& ts) const
 
     if (m_changeFlags & GraphicsContextState::ShouldSmoothFontsChange)
         ts.dumpProperty("should-smooth-fonts", m_state.shouldSmoothFonts);
-
-    if (m_changeFlags & GraphicsContextState::AntialiasedFontDilationEnabledChange)
-        ts.dumpProperty("antialiased-font-dilation-enabled", m_state.antialiasedFontDilationEnabled);
 
     if (m_changeFlags & GraphicsContextState::ShouldSubpixelQuantizeFontsChange)
         ts.dumpProperty("should-subpixel-quantize-fonts", m_state.shouldSubpixelQuantizeFonts);
@@ -586,13 +576,6 @@ void GraphicsContext::setImageInterpolationQuality(InterpolationQuality imageInt
     setPlatformImageInterpolationQuality(imageInterpolationQuality);
 }
 
-void GraphicsContext::setAntialiasedFontDilationEnabled(bool antialiasedFontDilationEnabled)
-{
-    m_state.antialiasedFontDilationEnabled = antialiasedFontDilationEnabled;
-    if (isRecording())
-        m_displayListRecorder->updateState(m_state, GraphicsContextState::AntialiasedFontDilationEnabledChange);
-}
-
 void GraphicsContext::setStrokePattern(Ref<Pattern>&& pattern)
 {
     m_state.strokeGradient = nullptr;
@@ -653,7 +636,7 @@ void GraphicsContext::endTransparencyLayer()
     --m_transparencyCount;
 }
 
-float GraphicsContext::drawText(const FontCascade& font, const TextRun& run, const FloatPoint& point, int from, int to)
+float GraphicsContext::drawText(const FontCascade& font, const TextRun& run, const FloatPoint& point, unsigned from, Optional<unsigned> to)
 {
     if (paintingDisabled())
         return 0;
@@ -662,7 +645,7 @@ float GraphicsContext::drawText(const FontCascade& font, const TextRun& run, con
     return font.drawText(*this, run, point, from, to);
 }
 
-void GraphicsContext::drawGlyphs(const FontCascade& fontCascade, const Font& font, const GlyphBuffer& buffer, int from, int numGlyphs, const FloatPoint& point)
+void GraphicsContext::drawGlyphs(const FontCascade& fontCascade, const Font& font, const GlyphBuffer& buffer, unsigned from, unsigned numGlyphs, const FloatPoint& point)
 {
     if (paintingDisabled())
         return;
@@ -675,7 +658,7 @@ void GraphicsContext::drawGlyphs(const FontCascade& fontCascade, const Font& fon
     fontCascade.drawGlyphs(*this, font, buffer, from, numGlyphs, point, fontCascade.fontDescription().fontSmoothing());
 }
 
-void GraphicsContext::drawEmphasisMarks(const FontCascade& font, const TextRun& run, const AtomicString& mark, const FloatPoint& point, int from, int to)
+void GraphicsContext::drawEmphasisMarks(const FontCascade& font, const TextRun& run, const AtomicString& mark, const FloatPoint& point, unsigned from, Optional<unsigned> to)
 {
     if (paintingDisabled())
         return;
@@ -708,13 +691,13 @@ void GraphicsContext::drawBidiText(const FontCascade& font, const TextRun& run, 
         subrun.setDirection(isRTL ? RTL : LTR);
         subrun.setDirectionalOverride(bidiRun->dirOverride(false));
 
-        float width = font.drawText(*this, subrun, currPoint, 0, -1, customFontNotReadyAction);
+        float width = font.drawText(*this, subrun, currPoint, 0, Nullopt, customFontNotReadyAction);
         currPoint.move(width, 0);
 
         bidiRun = bidiRun->next();
     }
 
-    bidiRuns.deleteRuns();
+    bidiRuns.clear();
 }
 
 void GraphicsContext::drawImage(Image& image, const FloatPoint& destination, const ImagePaintingOptions& imagePaintingOptions)
@@ -1029,36 +1012,6 @@ void GraphicsContext::adjustLineToPixelBoundaries(FloatPoint& p1, FloatPoint& p2
     }
 }
 
-static bool scalesMatch(AffineTransform a, AffineTransform b)
-{
-    return a.xScale() == b.xScale() && a.yScale() == b.yScale();
-}
-
-std::unique_ptr<ImageBuffer> GraphicsContext::createCompatibleBuffer(const FloatSize& size, bool hasAlpha) const
-{
-    // Make the buffer larger if the context's transform is scaling it so we need a higher
-    // resolution than one pixel per unit. Also set up a corresponding scale factor on the
-    // graphics context.
-
-    AffineTransform transform = getCTM(DefinitelyIncludeDeviceScale);
-    FloatSize scaledSize(static_cast<int>(ceil(size.width() * transform.xScale())), static_cast<int>(ceil(size.height() * transform.yScale())));
-
-    std::unique_ptr<ImageBuffer> buffer = ImageBuffer::createCompatibleBuffer(scaledSize, 1, ColorSpaceSRGB, *this, hasAlpha);
-    if (!buffer)
-        return nullptr;
-
-    buffer->context().scale(FloatSize(scaledSize.width() / size.width(), scaledSize.height() / size.height()));
-
-    return buffer;
-}
-
-bool GraphicsContext::isCompatibleWithBuffer(ImageBuffer& buffer) const
-{
-    GraphicsContext& bufferContext = buffer.context();
-
-    return scalesMatch(getCTM(), bufferContext.getCTM()) && isAcceleratedContext() == bufferContext.isAcceleratedContext();
-}
-
 #if !USE(CG)
 void GraphicsContext::platformApplyDeviceScaleFactor(float)
 {
@@ -1075,6 +1028,12 @@ void GraphicsContext::applyDeviceScaleFactor(float deviceScaleFactor)
     }
 
     platformApplyDeviceScaleFactor(deviceScaleFactor);
+}
+    
+FloatSize GraphicsContext::scaleFactor() const
+{
+    AffineTransform transform = getCTM(GraphicsContext::DefinitelyIncludeDeviceScale);
+    return FloatSize(transform.xScale(), transform.yScale());
 }
 
 void GraphicsContext::fillEllipse(const FloatRect& ellipse)

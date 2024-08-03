@@ -33,7 +33,6 @@
 
 #include "FrameLoaderTypes.h"
 #include <wtf/Forward.h>
-#include <wtf/HashMap.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
@@ -53,7 +52,7 @@ class Widget;
 
 // This is a slight misnomer. It handles the higher level logic of loading both subframes and plugins.
 class SubframeLoader {
-    WTF_MAKE_NONCOPYABLE(SubframeLoader);
+    WTF_MAKE_NONCOPYABLE(SubframeLoader); WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit SubframeLoader(Frame&);
 
@@ -77,12 +76,12 @@ private:
     Frame* loadSubframe(HTMLFrameOwnerElement&, const URL&, const String& name, const String& referrer);
     bool loadPlugin(HTMLPlugInImageElement&, const URL&, const String& mimeType, const Vector<String>& paramNames, const Vector<String>& paramValues, bool useFallback);
 
-    bool isPluginContentAllowedByContentSecurityPolicy(HTMLPlugInImageElement&, const URL&, const String& mimeType) const;
-
     bool shouldUsePlugin(const URL&, const String& mimeType, bool hasFallback, bool& useFallback);
-    bool pluginIsLoadable(HTMLPlugInImageElement&, const URL&, const String& mimeType);
+    bool pluginIsLoadable(const URL&, const String& mimeType);
 
     Document* document() const;
+
+    bool shouldConvertInvalidURLsToBlank() const;
 
     bool m_containsPlugins;
     Frame& m_frame;

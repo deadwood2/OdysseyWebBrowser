@@ -47,13 +47,7 @@ private:
     {
     }
 
-#if ENABLE(METER_ELEMENT)
-    virtual bool canHaveUserAgentShadowRoot() const override final { return false; }
-#else
-    virtual bool canHaveUserAgentShadowRoot() const override final { return localName() == "meter"; }
-#endif
-
-    virtual bool isHTMLUnknownElement() const override { return true; }
+    bool isHTMLUnknownElement() const final { return true; }
 };
 
 } // namespace

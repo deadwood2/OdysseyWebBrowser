@@ -23,10 +23,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#if ENABLE(REMOTE_INSPECTOR)
+#pragma once
 
-#ifndef RemoteInspectorXPCConnection_h
-#define RemoteInspectorXPCConnection_h
+#if ENABLE(REMOTE_INSPECTOR)
 
 #import <dispatch/dispatch.h>
 #import <wtf/Lock.h>
@@ -68,13 +67,11 @@ private:
     dispatch_queue_t m_queue;
     Client* m_client;
     bool m_closed { false };
-#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200) || (PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 100000)
+#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200)
     bool m_validated { false };
 #endif
 };
 
 } // namespace Inspector
-
-#endif // RemoteInspectorXPCConnection_h
 
 #endif // ENABLE(REMOTE_INSPECTOR)

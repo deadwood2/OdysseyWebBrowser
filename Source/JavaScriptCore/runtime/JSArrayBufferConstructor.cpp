@@ -26,6 +26,7 @@
 #include "config.h"
 #include "JSArrayBufferConstructor.h"
 
+#include "BuiltinNames.h"
 #include "Error.h"
 #include "ExceptionHelpers.h"
 #include "GetterSetter.h"
@@ -57,6 +58,7 @@ void JSArrayBufferConstructor::finishCreation(VM& vm, JSArrayBufferPrototype* pr
 
     JSGlobalObject* globalObject = this->globalObject();
     JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION(vm.propertyNames->isView, arrayBufferFuncIsView, DontEnum, 1);
+    JSC_NATIVE_FUNCTION_WITHOUT_TRANSITION(vm.propertyNames->builtinNames().isViewPrivateName(), arrayBufferFuncIsView, DontEnum, 1);
 }
 
 JSArrayBufferConstructor* JSArrayBufferConstructor::create(VM& vm, Structure* structure, JSArrayBufferPrototype* prototype, GetterSetter* speciesSymbol)
@@ -77,6 +79,9 @@ Structure* JSArrayBufferConstructor::createStructure(
 
 static EncodedJSValue JSC_HOST_CALL constructArrayBuffer(ExecState* exec)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     JSArrayBufferConstructor* constructor =
         jsCast<JSArrayBufferConstructor*>(exec->callee());
     
@@ -92,32 +97,36 @@ static EncodedJSValue JSC_HOST_CALL constructArrayBuffer(ExecState* exec)
         length = 0;
     }
     
-    RefPtr<ArrayBuffer> buffer = ArrayBuffer::create(length, 1);
+    auto buffer = ArrayBuffer::tryCreate(length, 1);
     if (!buffer)
-        return throwVMError(exec, createOutOfMemoryError(exec));
+        return JSValue::encode(throwOutOfMemoryError(exec, scope));
 
     Structure* arrayBufferStructure = InternalFunction::createSubclassStructure(exec, exec->newTarget(), constructor->globalObject()->arrayBufferStructure());
-    JSArrayBuffer* result = JSArrayBuffer::create(exec->vm(), arrayBufferStructure, buffer.release());
+    if (exec->hadException())
+        return JSValue::encode(JSValue());
+    JSArrayBuffer* result = JSArrayBuffer::create(vm, arrayBufferStructure, WTFMove(buffer));
     
     return JSValue::encode(result);
 }
 
 static EncodedJSValue JSC_HOST_CALL callArrayBuffer(ExecState* exec)
 {
-    return JSValue::encode(throwConstructorCannotBeCalledAsFunctionTypeError(exec, "ArrayBuffer"));
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    return JSValue::encode(throwConstructorCannotBeCalledAsFunctionTypeError(exec, scope, "ArrayBuffer"));
 }
 
 ConstructType JSArrayBufferConstructor::getConstructData(
     JSCell*, ConstructData& constructData)
 {
     constructData.native.function = constructArrayBuffer;
-    return ConstructTypeHost;
+    return ConstructType::Host;
 }
 
 CallType JSArrayBufferConstructor::getCallData(JSCell*, CallData& callData)
 {
     callData.native.function = callArrayBuffer;
-    return CallTypeHost;
+    return CallType::Host;
 }
 
 // ------------------------------ Functions --------------------------------

@@ -41,6 +41,7 @@
 #include "HTMLDivElement.h"
 #include "HTMLSpanElement.h"
 #include "Logging.h"
+#include "NoEventDispatchAssertion.h"
 #include "NodeTraversal.h"
 #include "RenderVTTCue.h"
 #include "Text.h"
@@ -119,10 +120,10 @@ static const String& verticalGrowingRightKeyword()
 
 // ----------------------------
 
-PassRefPtr<VTTCueBox> VTTCueBox::create(Document& document, VTTCue& cue)
+Ref<VTTCueBox> VTTCueBox::create(Document& document, VTTCue& cue)
 {
-    VTTCueBox* cueBox = new VTTCueBox(document, cue);
-    cueBox->setPseudo(VTTCueBox::vttCueBoxShadowPseudoId());
+    VTTCueBox& cueBox = *new VTTCueBox(document, cue);
+    cueBox.setPseudo(VTTCueBox::vttCueBoxShadowPseudoId());
     return adoptRef(cueBox);
 }
 
@@ -229,7 +230,7 @@ const AtomicString& VTTCueBox::vttCueBoxShadowPseudoId()
     return trackDisplayBoxShadowPseudoId;
 }
 
-RenderPtr<RenderElement> VTTCueBox::createElementRenderer(Ref<RenderStyle>&& style, const RenderTreePosition&)
+RenderPtr<RenderElement> VTTCueBox::createElementRenderer(RenderStyle&& style, const RenderTreePosition&)
 {
     return createRenderer<RenderVTTCue>(*this, WTFMove(style));
 }
@@ -268,10 +269,9 @@ VTTCue::VTTCue(ScriptExecutionContext& context, const WebVTTCueData& cueData)
 
 VTTCue::~VTTCue()
 {
-    if (!hasDisplayTree())
-        return;
-
-    displayTreeInternal()->remove(ASSERT_NO_EXCEPTION);
+    // FIXME: We should set m_cue in VTTCueBox to nullptr instead.
+    if (m_displayTree && m_displayTree->document().refCount())
+        m_displayTree->remove(ASSERT_NO_EXCEPTION);
 }
 
 void VTTCue::initialize(ScriptExecutionContext& context)
@@ -502,27 +502,30 @@ void VTTCue::copyWebVTTNodeToDOMTree(ContainerNode* webVTTNode, ContainerNode* p
     }
 }
 
-PassRefPtr<DocumentFragment> VTTCue::getCueAsHTML()
+RefPtr<DocumentFragment> VTTCue::getCueAsHTML()
 {
-    createWebVTTNodeTree();
-    if (!m_webVTTNodeTree)
-        return 0;
-
-    RefPtr<DocumentFragment> clonedFragment = DocumentFragment::create(ownerDocument());
-    copyWebVTTNodeToDOMTree(m_webVTTNodeTree.get(), clonedFragment.get());
-    return clonedFragment.release();
-}
-
-PassRefPtr<DocumentFragment> VTTCue::createCueRenderingTree()
-{
-    RefPtr<DocumentFragment> clonedFragment;
     createWebVTTNodeTree();
     if (!m_webVTTNodeTree)
         return nullptr;
 
-    clonedFragment = DocumentFragment::create(ownerDocument());
-    m_webVTTNodeTree->cloneChildNodes(*clonedFragment);
-    return clonedFragment.release();
+    auto clonedFragment = DocumentFragment::create(ownerDocument());
+    copyWebVTTNodeToDOMTree(m_webVTTNodeTree.get(), clonedFragment.ptr());
+    return WTFMove(clonedFragment);
+}
+
+RefPtr<DocumentFragment> VTTCue::createCueRenderingTree()
+{
+    createWebVTTNodeTree();
+    if (!m_webVTTNodeTree)
+        return nullptr;
+
+    auto clonedFragment = DocumentFragment::create(ownerDocument());
+
+    // The cloned fragment is never exposed to author scripts so it's safe to dispatch events here.
+    NoEventDispatchAssertion::EventAllowedScope noEventDispatchAssertionDisabledForScope(clonedFragment);
+
+    m_webVTTNodeTree->cloneChildNodes(clonedFragment);
+    return WTFMove(clonedFragment);
 }
 
 void VTTCue::setRegionId(const String& regionId)
@@ -776,6 +779,9 @@ void VTTCue::updateDisplayTree(const MediaTime& movieTime)
     if (!track()->isRendered())
         return;
 
+    // Mutating the VTT contents is safe because it's never exposed to author scripts.
+    NoEventDispatchAssertion::EventAllowedScope allowedScopeForCueHighlightBox(*m_cueHighlightBox);
+
     // Clear the contents of the set.
     m_cueHighlightBox->removeChildren();
 
@@ -784,8 +790,10 @@ void VTTCue::updateDisplayTree(const MediaTime& movieTime)
     if (!referenceTree)
         return;
 
+    NoEventDispatchAssertion::EventAllowedScope allowedScopeForReferenceTree(*referenceTree);
+
     markFutureAndPastNodes(referenceTree.get(), startMediaTime(), movieTime);
-    m_cueHighlightBox->appendChild(referenceTree.releaseNonNull());
+    m_cueHighlightBox->appendChild(*referenceTree);
 }
 
 VTTCueBox* VTTCue::getDisplayTree(const IntSize& videoSize, int fontSize)

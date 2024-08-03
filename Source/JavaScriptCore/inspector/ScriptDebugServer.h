@@ -27,8 +27,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef ScriptDebugServer_h
-#define ScriptDebugServer_h
+#pragma once
 
 #include "ScriptBreakpoint.h"
 #include "ScriptDebugListener.h"
@@ -85,21 +84,20 @@ protected:
     void dispatchFailedToParseSource(const ListenerSet& listeners, JSC::SourceProvider*, int errorLine, const String& errorMessage);
     void dispatchBreakpointActionLog(JSC::ExecState*, const String&);
     void dispatchBreakpointActionSound(JSC::ExecState*, int breakpointActionIdentifier);
-    void dispatchBreakpointActionProbe(JSC::ExecState*, const ScriptBreakpointAction&, const Deprecated::ScriptValue& sample);
+    void dispatchBreakpointActionProbe(JSC::ExecState*, const ScriptBreakpointAction&, JSC::JSValue sample);
 
     bool m_doneProcessingDebuggerEvents {true};
 
 private:
     typedef HashMap<JSC::BreakpointID, BreakpointActions> BreakpointIDToActionsMap;
 
-    virtual void sourceParsed(JSC::ExecState*, JSC::SourceProvider*, int errorLine, const String& errorMsg) override final;
-    virtual bool needPauseHandling(JSC::JSGlobalObject*) override final { return true; }
-    virtual void handleBreakpointHit(JSC::JSGlobalObject*, const JSC::Breakpoint&) override final;
-    virtual void handleExceptionInBreakpointCondition(JSC::ExecState*, JSC::Exception*) const override final;
-    virtual void handlePause(JSC::JSGlobalObject*, JSC::Debugger::ReasonForPause) override final;
-    virtual void notifyDoneProcessingDebuggerEvents() override final;
+    void sourceParsed(JSC::ExecState*, JSC::SourceProvider*, int errorLine, const String& errorMsg) final;
+    void handleBreakpointHit(JSC::JSGlobalObject*, const JSC::Breakpoint&) final;
+    void handleExceptionInBreakpointCondition(JSC::ExecState*, JSC::Exception*) const final;
+    void handlePause(JSC::JSGlobalObject*, JSC::Debugger::ReasonForPause) final;
+    void notifyDoneProcessingDebuggerEvents() final;
 
-    Deprecated::ScriptValue exceptionOrCaughtValue(JSC::ExecState*);
+    JSC::JSValue exceptionOrCaughtValue(JSC::ExecState*);
 
     BreakpointIDToActionsMap m_breakpointIDToActions;
 
@@ -111,5 +109,3 @@ private:
 };
 
 } // namespace Inspector
-
-#endif // ScriptDebugServer_h

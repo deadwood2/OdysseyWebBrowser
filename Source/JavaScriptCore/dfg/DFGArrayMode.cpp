@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -198,7 +198,8 @@ ArrayMode ArrayMode::refine(
             && !graph.hasExitSite(node->origin.semantic, OutOfBounds)) {
             graph.watchpoints().addLazily(globalObject->arrayPrototype()->structure()->transitionWatchpointSet());
             graph.watchpoints().addLazily(globalObject->objectPrototype()->structure()->transitionWatchpointSet());
-            return withSpeculation(Array::SaneChain);
+            if (globalObject->arrayPrototypeChainIsSane())
+                return withSpeculation(Array::SaneChain);
         }
         return ArrayMode(Array::Generic);
     }
@@ -322,20 +323,20 @@ Structure* ArrayMode::originalArrayStructure(Graph& graph, const CodeOrigin& cod
             return globalObject->originalArrayStructureForIndexingType(ArrayWithArrayStorage);
         default:
             CRASH();
-            return 0;
+            return nullptr;
         }
     }
         
     case Array::OriginalNonArray: {
         TypedArrayType type = typedArrayType();
         if (type == NotTypedArray)
-            return 0;
+            return nullptr;
         
-        return globalObject->typedArrayStructure(type);
+        return globalObject->typedArrayStructureConcurrently(type);
     }
         
     default:
-        return 0;
+        return nullptr;
     }
 }
 

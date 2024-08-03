@@ -26,13 +26,12 @@
 #include "config.h"
 #include "AssistedNodeInformation.h"
 
-#include "Arguments.h"
 #include "WebCoreArgumentCoders.h"
 
 namespace WebKit {
 
 #if PLATFORM(IOS)
-void OptionItem::encode(IPC::ArgumentEncoder& encoder) const
+void OptionItem::encode(IPC::Encoder& encoder) const
 {
     encoder << text;
     encoder << isGroup;
@@ -41,7 +40,7 @@ void OptionItem::encode(IPC::ArgumentEncoder& encoder) const
     encoder << parentGroupID;
 }
 
-bool OptionItem::decode(IPC::ArgumentDecoder& decoder, OptionItem& result)
+bool OptionItem::decode(IPC::Decoder& decoder, OptionItem& result)
 {
     if (!decoder.decode(result.text))
         return false;
@@ -61,7 +60,7 @@ bool OptionItem::decode(IPC::ArgumentDecoder& decoder, OptionItem& result)
     return true;
 }
 
-void AssistedNodeInformation::encode(IPC::ArgumentEncoder& encoder) const
+void AssistedNodeInformation::encode(IPC::Encoder& encoder) const
 {
     encoder << elementRect;
     encoder << selectionRect;
@@ -71,21 +70,24 @@ void AssistedNodeInformation::encode(IPC::ArgumentEncoder& encoder) const
     encoder << hasNextNode;
     encoder << hasPreviousNode;
     encoder << isAutocorrect;
-    encoder << (uint32_t)autocapitalizeType;
-    encoder << (uint32_t)elementType;
+    encoder << isRTL;
+    encoder.encodeEnum(autocapitalizeType);
+    encoder.encodeEnum(elementType);
     encoder << formAction;
     encoder << selectOptions;
     encoder << selectedIndex;
     encoder << isMultiSelect;
     encoder << isReadOnly;
     encoder << allowsUserScaling;
+    encoder << allowsUserScalingIgnoringForceAlwaysScaling;
     encoder << insideFixedPosition;
     encoder << value;
     encoder << valueAsNumber;
     encoder << title;
+    encoder.encodeEnum(autofillFieldName);
 }
 
-bool AssistedNodeInformation::decode(IPC::ArgumentDecoder& decoder, AssistedNodeInformation& result)
+bool AssistedNodeInformation::decode(IPC::Decoder& decoder, AssistedNodeInformation& result)
 {
     if (!decoder.decode(result.elementRect))
         return false;
@@ -111,10 +113,13 @@ bool AssistedNodeInformation::decode(IPC::ArgumentDecoder& decoder, AssistedNode
     if (!decoder.decode(result.isAutocorrect))
         return false;
 
-    if (!decoder.decode((uint32_t&)result.autocapitalizeType))
+    if (!decoder.decode(result.isRTL))
         return false;
 
-    if (!decoder.decode((uint32_t&)result.elementType))
+    if (!decoder.decodeEnum(result.autocapitalizeType))
+        return false;
+
+    if (!decoder.decodeEnum(result.elementType))
         return false;
 
     if (!decoder.decode(result.formAction))
@@ -134,6 +139,9 @@ bool AssistedNodeInformation::decode(IPC::ArgumentDecoder& decoder, AssistedNode
 
     if (!decoder.decode(result.allowsUserScaling))
         return false;
+    
+    if (!decoder.decode(result.allowsUserScalingIgnoringForceAlwaysScaling))
+        return false;
 
     if (!decoder.decode(result.insideFixedPosition))
         return false;
@@ -145,6 +153,9 @@ bool AssistedNodeInformation::decode(IPC::ArgumentDecoder& decoder, AssistedNode
         return false;
 
     if (!decoder.decode(result.title))
+        return false;
+
+    if (!decoder.decodeEnum(result.autofillFieldName))
         return false;
 
     return true;

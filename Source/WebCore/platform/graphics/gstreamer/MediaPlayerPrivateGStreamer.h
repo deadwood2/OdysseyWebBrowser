@@ -108,6 +108,8 @@ public:
     unsigned long long totalBytes() const override;
     float maxTimeLoaded() const override;
 
+    bool hasSingleSecurityOrigin() const override;
+
     void loadStateChanged();
     void timeChanged();
     void didEnd();
@@ -122,7 +124,7 @@ public:
     bool changePipelineState(GstState);
 
 #if ENABLE(WEB_AUDIO)
-    AudioSourceProvider* audioSourceProvider() override { return reinterpret_cast<AudioSourceProvider*>(m_audioSourceProvider.get()); }
+    AudioSourceProvider* audioSourceProvider() override;
 #endif
 
 private:
@@ -137,7 +139,6 @@ private:
 
     float playbackPosition() const;
 
-    void cacheDuration();
     void updateStates();
     void asyncStateChangeDone();
 
@@ -171,6 +172,10 @@ private:
     MediaTime totalFrameDelay() override { return MediaTime::zeroTime(); }
 #endif
 
+    void purgeOldDownloadFiles(const char*);
+    static void uriDecodeBinElementAddedCallback(GstBin*, GstElement*, MediaPlayerPrivateGStreamer*);
+    static void downloadBufferFileCreatedCallback(MediaPlayerPrivateGStreamer*);
+
     void readyTimerFired();
 
     void notifyPlayerOfVideo();
@@ -182,6 +187,7 @@ private:
     void newTextSample();
 #endif
 
+    void ensureAudioSourceProvider();
     void setAudioStreamProperties(GObject*);
 
     static void setAudioStreamPropertiesCallback(MediaPlayerPrivateGStreamer*, GObject*);
@@ -219,14 +225,13 @@ private:
     float m_playbackRate;
     float m_lastPlaybackRate;
     bool m_errorOccured;
-    mutable gfloat m_mediaDuration;
     bool m_downloadFinished;
+    float m_durationAtEOS;
     Timer m_fillTimer;
     float m_maxTimeLoaded;
     int m_bufferingPercentage;
     MediaPlayer::Preload m_preload;
     bool m_delayingLoad;
-    bool m_mediaDurationKnown;
     mutable float m_maxTimeLoadedAtLastDidLoadingProgress;
     bool m_volumeAndMuteInitialized;
     bool m_hasVideo;
@@ -240,6 +245,7 @@ private:
 #endif
     GstState m_requestedState;
     GRefPtr<GstElement> m_autoAudioSink;
+    GRefPtr<GstElement> m_downloadBuffer;
     RefPtr<MediaPlayerRequestInstallMissingPluginsCallback> m_missingPluginsCallback;
 #if ENABLE(VIDEO_TRACK)
     Vector<RefPtr<AudioTrackPrivateGStreamer>> m_audioTracks;

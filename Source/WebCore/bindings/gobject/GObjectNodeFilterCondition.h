@@ -22,7 +22,6 @@
 #include "NodeFilterCondition.h"
 
 #include "WebKitDOMNodeFilter.h"
-#include <wtf/RetainPtr.h>
 #include <wtf/glib/GRefPtr.h>
 
 namespace WebCore {
@@ -36,7 +35,7 @@ public:
         return adoptRef(*new GObjectNodeFilterCondition(filter));
     }
 
-    virtual short acceptNode(Node*) const override;
+    short acceptNode(Node*) const override;
 
 private:
     GObjectNodeFilterCondition(WebKitDOMNodeFilter* filter)

@@ -23,10 +23,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#if ENABLE(REMOTE_INSPECTOR)
+#pragma once
 
-#ifndef RemoteInspectionTarget_h
-#define RemoteInspectionTarget_h
+#if ENABLE(REMOTE_INSPECTOR)
 
 #include "RemoteControllableTarget.h"
 #include <wtf/RetainPtr.h>
@@ -57,7 +56,7 @@ public:
     virtual void unpauseForInitializedInspector();
 
     // RemoteControllableTarget overrides.
-    virtual bool remoteControlAllowed() const override;
+    bool remoteControlAllowed() const override;
 private:
     bool m_allowed {false};
     RetainPtr<CFRunLoopRef> m_runLoop;
@@ -72,7 +71,5 @@ SPECIALIZE_TYPE_TRAITS_BEGIN(Inspector::RemoteInspectionTarget) \
             || target.type() == Inspector::RemoteControllableTarget::Type::Web; \
     }
 SPECIALIZE_TYPE_TRAITS_END()
-
-#endif // RemoteInspectionTarget_h
 
 #endif // ENABLE(REMOTE_INSPECTOR)

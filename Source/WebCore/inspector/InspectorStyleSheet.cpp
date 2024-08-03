@@ -45,9 +45,11 @@
 #include "HTMLStyleElement.h"
 #include "InspectorCSSAgent.h"
 #include "InspectorPageAgent.h"
+#include "MediaList.h"
 #include "Node.h"
 #include "SVGElement.h"
 #include "SVGNames.h"
+#include "SVGStyleElement.h"
 #include "StyleProperties.h"
 #include "StyleResolver.h"
 #include "StyleRule.h"
@@ -73,7 +75,7 @@ public:
     RuleSourceDataList* sourceData() const { return m_sourceData.get(); }
     void setSourceData(std::unique_ptr<RuleSourceDataList>);
     bool hasSourceData() const { return m_sourceData != nullptr; }
-    RefPtr<WebCore::CSSRuleSourceData> ruleSourceDataAt(unsigned) const;
+    WebCore::CSSRuleSourceData* ruleSourceDataAt(unsigned) const;
 
 private:
 
@@ -94,15 +96,15 @@ void ParsedStyleSheet::setText(const String& text)
     setSourceData(nullptr);
 }
 
-static void flattenSourceData(RuleSourceDataList* dataList, RuleSourceDataList* target)
+static void flattenSourceData(RuleSourceDataList& dataList, RuleSourceDataList& target)
 {
-    for (auto& data : *dataList) {
+    for (auto& data : dataList) {
         if (data->type == CSSRuleSourceData::STYLE_RULE)
-            target->append(data);
+            target.append(data.copyRef());
         else if (data->type == CSSRuleSourceData::MEDIA_RULE)
-            flattenSourceData(&data->childRules, target);
+            flattenSourceData(data->childRules, target);
         else if (data->type == CSSRuleSourceData::SUPPORTS_RULE)
-            flattenSourceData(&data->childRules, target);
+            flattenSourceData(data->childRules, target);
     }
 }
 
@@ -118,15 +120,15 @@ void ParsedStyleSheet::setSourceData(std::unique_ptr<RuleSourceDataList> sourceD
     // FIXME: This is a temporary solution to retain the original flat sourceData structure
     // containing only style rules, even though CSSParser now provides the full rule source data tree.
     // Normally, we should just assign m_sourceData = sourceData;
-    flattenSourceData(sourceData.get(), m_sourceData.get());
+    flattenSourceData(*sourceData, *m_sourceData);
 }
 
-RefPtr<WebCore::CSSRuleSourceData> ParsedStyleSheet::ruleSourceDataAt(unsigned index) const
+WebCore::CSSRuleSourceData* ParsedStyleSheet::ruleSourceDataAt(unsigned index) const
 {
     if (!hasSourceData() || index >= m_sourceData->size())
         return nullptr;
 
-    return m_sourceData->at(index);
+    return m_sourceData->at(index).ptr();
 }
 
 using namespace Inspector;
@@ -244,7 +246,7 @@ static void fillMediaListChain(CSSRule* rule, Array<Inspector::Protocol::CSS::CS
             if (sourceURL.isEmpty())
                 sourceURL = InspectorDOMAgent::documentURLString(parentStyleSheet->ownerDocument());
         } else
-            sourceURL = "";
+            sourceURL = emptyString();
 
         if (mediaList && mediaList->length())
             mediaArray.addItem(buildMediaObject(mediaList, isMediaRule ? MediaListSourceMediaRule : MediaListSourceImportRule, sourceURL));
@@ -262,7 +264,7 @@ static void fillMediaListChain(CSSRule* rule, Array<Inspector::Protocol::CSS::CS
                     else if (!styleSheet->contents().baseURL().isEmpty())
                         sourceURL = styleSheet->contents().baseURL();
                     else
-                        sourceURL = "";
+                        sourceURL = emptyString();
                     mediaArray.addItem(buildMediaObject(mediaList, styleSheet->ownerNode() ? MediaListSourceLinkedSheet : MediaListSourceInlineSheet, sourceURL));
                 }
                 parentRule = styleSheet->ownerRule();
@@ -355,7 +357,7 @@ static String lowercasePropertyName(const String& name)
     return name.convertToASCIILowercase();
 }
 
-bool InspectorStyle::populateAllProperties(Vector<InspectorStyleProperty>* result) const
+void InspectorStyle::populateAllProperties(Vector<InspectorStyleProperty>* result) const
 {
     HashSet<String> sourcePropertyNames;
 
@@ -378,8 +380,6 @@ bool InspectorStyle::populateAllProperties(Vector<InspectorStyleProperty>* resul
         if (sourcePropertyNames.add(lowercasePropertyName(name)))
             result->append(InspectorStyleProperty(CSSPropertySourceData(name, m_style->getPropertyValue(name), !m_style->getPropertyPriority(name).isEmpty(), true, SourceRange()), false, false));
     }
-
-    return true;
 }
 
 Ref<Inspector::Protocol::CSS::CSSStyle> InspectorStyle::styleWithProperties() const
@@ -636,7 +636,7 @@ String InspectorStyleSheet::ruleSelector(const InspectorCSSId& id, ExceptionCode
     CSSStyleRule* rule = ruleForId(id);
     if (!rule) {
         ec = NOT_FOUND_ERR;
-        return "";
+        return emptyString();
     }
     return rule->selectorText();
 }
@@ -708,7 +708,7 @@ CSSStyleRule* InspectorStyleSheet::addRule(const String& selector, ExceptionCode
     StringBuilder styleSheetText;
     styleSheetText.append(text);
 
-    m_pageStyleSheet->addRule(selector, "", ec);
+    m_pageStyleSheet->addRule(selector, emptyString(), Nullopt, ec);
     if (ec)
         return nullptr;
     ASSERT(m_pageStyleSheet->length());
@@ -923,7 +923,7 @@ Ref<Inspector::Protocol::CSS::SelectorList> InspectorStyleSheet::buildObjectForS
             selectors->addItem(buildObjectForSelector(selector, element));
     }
     auto result = Inspector::Protocol::CSS::SelectorList::create()
-        .setSelectors(selectors.release())
+        .setSelectors(WTFMove(selectors))
         .setText(selectorText)
         .release();
     if (sourceData)
@@ -1365,8 +1365,8 @@ bool InspectorStyleSheetForInlineStyle::getStyleAttributeRanges(CSSRuleSourceDat
         return true;
     }
 
-    RefPtr<MutableStyleProperties> tempDeclaration = MutableStyleProperties::create();
-    createCSSParser(&m_element->document())->parseDeclaration(tempDeclaration.get(), m_styleText, result, &m_element->document().elementSheet().contents());
+    auto tempDeclaration = MutableStyleProperties::create();
+    createCSSParser(&m_element->document())->parseDeclaration(tempDeclaration, m_styleText, result, &m_element->document().elementSheet().contents());
     return true;
 }
 

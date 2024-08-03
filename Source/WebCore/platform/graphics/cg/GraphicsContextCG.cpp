@@ -34,12 +34,15 @@
 #include "GraphicsContextPlatformPrivateCG.h"
 #include "ImageBuffer.h"
 #include "ImageOrientation.h"
+#include "Logging.h"
 #include "Path.h"
 #include "Pattern.h"
 #include "ShadowBlur.h"
 #include "SubimageCacheWithTimer.h"
+#include "TextStream.h"
 #include "Timer.h"
 #include "URL.h"
+#include <wtf/CurrentTime.h>
 #include <wtf/MathExtras.h>
 #include <wtf/RetainPtr.h>
 
@@ -162,30 +165,29 @@ void GraphicsContext::restorePlatformState()
     m_data->m_userToDeviceTransformKnownToBeIdentity = false;
 }
 
-void GraphicsContext::drawNativeImage(PassNativeImagePtr imagePtr, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& srcRect, CompositeOperator op, BlendMode blendMode, ImageOrientation orientation)
+void GraphicsContext::drawNativeImage(const RetainPtr<CGImageRef>& image, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& srcRect, CompositeOperator op, BlendMode blendMode, ImageOrientation orientation)
 {
     if (paintingDisabled())
         return;
 
     if (isRecording()) {
-        m_displayListRecorder->drawNativeImage(imagePtr, imageSize, destRect, srcRect, op, blendMode, orientation);
+        m_displayListRecorder->drawNativeImage(image, imageSize, destRect, srcRect, op, blendMode, orientation);
         return;
     }
 
-    RetainPtr<CGImageRef> image(imagePtr);
+#if !LOG_DISABLED
+    double startTime = currentTime();
+#endif
+    RetainPtr<CGImageRef> subImage(image);
 
-    float currHeight = orientation.usesWidthAsHeight() ? CGImageGetWidth(image.get()) : CGImageGetHeight(image.get());
+    float currHeight = orientation.usesWidthAsHeight() ? CGImageGetWidth(subImage.get()) : CGImageGetHeight(subImage.get());
     if (currHeight <= srcRect.y())
         return;
 
     CGContextRef context = platformContext();
-    CGContextStateSaver stateSaver(context);
-
-#if PLATFORM(IOS)
-    // Anti-aliasing is on by default on the iPhone. Need to turn it off when drawing images.
-    CGContextSetShouldAntialias(context, false);
-#endif
-
+    CGAffineTransform transform = CGContextGetCTM(context);
+    CGContextStateSaver stateSaver(context, false);
+    
     bool shouldUseSubimage = false;
 
     // If the source rect is a subportion of the image, then we compute an inflated destination rect that will hold the entire image
@@ -216,21 +218,23 @@ void GraphicsContext::drawNativeImage(PassNativeImagePtr imagePtr, const FloatSi
             adjustedDestRect.setHeight(subimageRect.height() / yScale);
 
 #if CACHE_SUBIMAGES
-            image = subimageCache().getSubimage(image.get(), subimageRect);
+            subImage = subimageCache().getSubimage(subImage.get(), subimageRect);
 #else
-            image = adoptCF(CGImageCreateWithImageInRect(image.get(), subimageRect));
+            subImage = adoptCF(CGImageCreateWithImageInRect(subImage.get(), subimageRect));
 #endif
             if (currHeight < srcRect.maxY()) {
-                ASSERT(CGImageGetHeight(image.get()) == currHeight - CGRectIntegral(srcRect).origin.y);
-                adjustedDestRect.setHeight(CGImageGetHeight(image.get()) / yScale);
+                ASSERT(CGImageGetHeight(subImage.get()) == currHeight - CGRectIntegral(srcRect).origin.y);
+                adjustedDestRect.setHeight(CGImageGetHeight(subImage.get()) / yScale);
             }
         } else {
             adjustedDestRect.setLocation(FloatPoint(destRect.x() - srcRect.x() / xScale, destRect.y() - srcRect.y() / yScale));
             adjustedDestRect.setSize(FloatSize(imageSize.width() / xScale, imageSize.height() / yScale));
         }
 
-        if (!destRect.contains(adjustedDestRect))
+        if (!destRect.contains(adjustedDestRect)) {
+            stateSaver.save();
             CGContextClipToRect(context, destRect);
+        }
     }
 
     // If the image is only partially loaded, then shrink the destination rect that we're drawing into accordingly.
@@ -238,6 +242,10 @@ void GraphicsContext::drawNativeImage(PassNativeImagePtr imagePtr, const FloatSi
         adjustedDestRect.setHeight(adjustedDestRect.height() * currHeight / imageSize.height());
 
 #if PLATFORM(IOS)
+    bool wasAntialiased = CGContextGetShouldAntialias(context);
+    // Anti-aliasing is on by default on the iPhone. Need to turn it off when drawing images.
+    CGContextSetShouldAntialias(context, false);
+
     // Align to pixel boundaries
     adjustedDestRect = roundToDevicePixels(adjustedDestRect);
 #endif
@@ -262,7 +270,16 @@ void GraphicsContext::drawNativeImage(PassNativeImagePtr imagePtr, const FloatSi
     CGContextScaleCTM(context, 1, -1);
 
     // Draw the image.
-    CGContextDrawImage(context, adjustedDestRect, image.get());
+    CGContextDrawImage(context, adjustedDestRect, subImage.get());
+    
+    if (!stateSaver.didSave()) {
+        CGContextSetCTM(context, transform);
+#if PLATFORM(IOS)
+        CGContextSetShouldAntialias(context, wasAntialiased);
+#endif
+    }
+
+    LOG_WITH_STREAM(Images, stream << "GraphicsContext::drawNativeImage " << image.get() << " size " << imageSize << " into " << destRect << " took " << 1000.0 * (currentTime() - startTime) << "ms");
 }
 
 static void drawPatternCallback(void* info, CGContextRef context)
@@ -278,8 +295,7 @@ static void drawPatternCallback(void* info, CGContextRef context)
 
 static void patternReleaseCallback(void* info)
 {
-    auto image = static_cast<CGImageRef>(info);
-    callOnMainThread([image] {
+    callOnMainThread([image = static_cast<CGImageRef>(info)] {
         CGImageRelease(image);
     });
 }
@@ -311,8 +327,8 @@ void GraphicsContext::drawPattern(Image& image, const FloatRect& tileRect, const
     float adjustedX = phase.x() - destRect.x() + tileRect.x() * narrowPrecisionToFloat(patternTransform.a()); // We translated the context so that destRect.x() is the origin, so subtract it out.
     float adjustedY = destRect.height() - (phase.y() - destRect.y() + tileRect.y() * narrowPrecisionToFloat(patternTransform.d()) + scaledTileHeight);
 
-    CGImageRef tileImage = image.nativeImageForCurrentFrame();
-    float h = CGImageGetHeight(tileImage);
+    auto tileImage = image.nativeImageForCurrentFrame();
+    float h = CGImageGetHeight(tileImage.get());
 
     RetainPtr<CGImageRef> subImage;
 #if PLATFORM(IOS)
@@ -326,13 +342,13 @@ void GraphicsContext::drawPattern(Image& image, const FloatRect& tileRect, const
         // Copying a sub-image out of a partially-decoded image stops the decoding of the original image. It should never happen
         // because sub-images are only used for border-image, which only renders when the image is fully decoded.
         ASSERT(h == image.height());
-        subImage = adoptCF(CGImageCreateWithImageInRect(tileImage, tileRect));
+        subImage = adoptCF(CGImageCreateWithImageInRect(tileImage.get(), tileRect));
     }
 
     // If we need to paint gaps between tiles because we have a partially loaded image or non-zero spacing,
     // fall back to the less efficient CGPattern-based mechanism.
     float scaledTileWidth = tileRect.width() * narrowPrecisionToFloat(patternTransform.a());
-    float w = CGImageGetWidth(tileImage);
+    float w = CGImageGetWidth(tileImage.get());
     if (w == image.size().width() && h == image.size().height() && !spacing.width() && !spacing.height()) {
         // FIXME: CG seems to snap the images to integral sizes. When we care (e.g. with border-image-repeat: round),
         // we should tile all but the last, and stetch the last image to fit.
@@ -1463,15 +1479,15 @@ FloatRect GraphicsContext::roundToDevicePixels(const FloatRect& rect, RoundingMo
     return FloatRect(roundedOrigin, roundedLowerRight - roundedOrigin);
 }
 
-void GraphicsContext::drawLineForText(const FloatPoint& point, float width, bool printing, bool doubleLines)
+void GraphicsContext::drawLineForText(const FloatPoint& point, float width, bool printing, bool doubleLines, StrokeStyle strokeStyle)
 {
     DashArray widths;
     widths.append(width);
     widths.append(0);
-    drawLinesForText(point, widths, printing, doubleLines);
+    drawLinesForText(point, widths, printing, doubleLines, strokeStyle);
 }
 
-void GraphicsContext::drawLinesForText(const FloatPoint& point, const DashArray& widths, bool printing, bool doubleLines)
+void GraphicsContext::drawLinesForText(const FloatPoint& point, const DashArray& widths, bool printing, bool doubleLines, StrokeStyle strokeStyle)
 {
     if (paintingDisabled())
         return;
@@ -1492,8 +1508,32 @@ void GraphicsContext::drawLinesForText(const FloatPoint& point, const DashArray&
     Vector<CGRect, 4> dashBounds;
     ASSERT(!(widths.size() % 2));
     dashBounds.reserveInitialCapacity(dashBounds.size() / 2);
-    for (size_t i = 0; i < widths.size(); i += 2)
-        dashBounds.append(CGRectMake(bounds.x() + widths[i], bounds.y(), widths[i+1] - widths[i], bounds.height()));
+
+    float dashWidth = 0;
+    switch (strokeStyle) {
+    case DottedStroke:
+        dashWidth = bounds.height();
+        break;
+    case DashedStroke:
+        dashWidth = 2 * bounds.height();
+        break;
+    case SolidStroke:
+    default:
+        break;
+    }
+
+    for (size_t i = 0; i < widths.size(); i += 2) {
+        auto left = widths[i];
+        auto width = widths[i+1] - widths[i];
+        if (!dashWidth)
+            dashBounds.append(CGRectMake(bounds.x() + left, bounds.y(), width, bounds.height()));
+        else {
+            auto startParticle = static_cast<unsigned>(std::ceil(left / (2 * dashWidth)));
+            auto endParticle = static_cast<unsigned>((left + width) / (2 * dashWidth));
+            for (unsigned j = startParticle; j < endParticle; ++j)
+                dashBounds.append(CGRectMake(bounds.x() + j * 2 * dashWidth, bounds.y(), dashWidth, bounds.height()));
+        }
+    }
 
     if (doubleLines) {
         // The space between double underlines is equal to the height of the underline

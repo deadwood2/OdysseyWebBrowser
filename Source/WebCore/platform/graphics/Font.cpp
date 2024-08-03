@@ -51,11 +51,10 @@ unsigned GlyphPage::s_count = 0;
 const float smallCapsFontSizeMultiplier = 0.7f;
 const float emphasisMarkFontSizeMultiplier = 0.5f;
 
-Font::Font(const FontPlatformData& platformData, std::unique_ptr<SVGData>&& svgData, bool isCustomFont, bool isLoading, bool isTextOrientationFallback)
+Font::Font(const FontPlatformData& platformData, bool isCustomFont, bool isLoading, bool isTextOrientationFallback)
     : m_maxCharWidth(-1)
     , m_avgCharWidth(-1)
     , m_platformData(platformData)
-    , m_svgData(WTFMove(svgData))
     , m_mathData(nullptr)
     , m_treatAsFixedPitch(false)
     , m_isCustomFont(isCustomFont)
@@ -68,26 +67,15 @@ Font::Font(const FontPlatformData& platformData, std::unique_ptr<SVGData>&& svgD
     , m_shouldNotBeUsedForArabic(false)
 #endif
 {
-}
-
-Font::Font(const FontPlatformData& platformData, bool isCustomFont, bool isLoading, bool isTextOrientationFallback)
-    : Font(platformData, std::unique_ptr<SVGData>(), isCustomFont, isLoading, isTextOrientationFallback)
-{
     platformInit();
     platformGlyphInit();
     platformCharWidthInit();
 #if ENABLE(OPENTYPE_VERTICAL)
     if (platformData.orientation() == Vertical && !isTextOrientationFallback) {
-        m_verticalData = platformData.verticalData();
+        m_verticalData = FontCache::singleton().verticalData(platformData);
         m_hasVerticalGlyphs = m_verticalData.get() && m_verticalData->hasVerticalMetrics();
     }
 #endif
-}
-
-Font::Font(std::unique_ptr<SVGData> svgData, float fontSize, bool syntheticBold, bool syntheticItalic)
-    : Font(FontPlatformData(fontSize, syntheticBold, syntheticItalic), WTFMove(svgData), true, false, false)
-{
-    m_svgData->initializeFont(this, fontSize);
 }
 
 // Estimates of avgCharWidth and maxCharWidth for platforms that don't support accessing these values from the font.
@@ -148,14 +136,12 @@ Font::~Font()
 
 static bool fillGlyphPage(GlyphPage& pageToFill, UChar* buffer, unsigned bufferLength, const Font& font)
 {
-#if ENABLE(SVG_FONTS)
-    if (auto* svgData = font.svgData())
-        return svgData->fillSVGGlyphPage(&pageToFill, buffer, bufferLength);
-#endif
     bool hasGlyphs = pageToFill.fill(buffer, bufferLength);
 #if ENABLE(OPENTYPE_VERTICAL)
     if (hasGlyphs && font.verticalData())
         font.verticalData()->substituteWithVerticalGlyphs(&font, &pageToFill);
+#else
+    UNUSED_PARAM(font);
 #endif
     return hasGlyphs;
 }
@@ -199,9 +185,13 @@ static RefPtr<GlyphPage> createAndFillGlyphPage(unsigned pageNumber, const Font&
             buffer[rightToLeftEmbed - start] = zeroWidthSpace;
             buffer[leftToRightOverride - start] = zeroWidthSpace;
             buffer[rightToLeftOverride - start] = zeroWidthSpace;
+            buffer[leftToRightIsolate - start] = zeroWidthSpace;
+            buffer[rightToLeftIsolate - start] = zeroWidthSpace;
             buffer[zeroWidthNonJoiner - start] = zeroWidthSpace;
             buffer[zeroWidthJoiner - start] = zeroWidthSpace;
             buffer[popDirectionalFormatting - start] = zeroWidthSpace;
+            buffer[popDirectionalIsolate - start] = zeroWidthSpace;
+            buffer[firstStrongIsolate - start] = zeroWidthSpace;
         } else if (start == (objectReplacementCharacter & ~(GlyphPage::size - 1))) {
             // Object replacement character must not render at all.
             buffer[objectReplacementCharacter - start] = zeroWidthSpace;
@@ -265,10 +255,9 @@ GlyphData Font::glyphDataForCharacter(UChar32 character) const
 const Font& Font::verticalRightOrientationFont() const
 {
     if (!m_derivedFontData)
-        m_derivedFontData = std::make_unique<DerivedFontData>(isCustomFont());
+        m_derivedFontData = std::make_unique<DerivedFonts>(isCustomFont());
     if (!m_derivedFontData->verticalRightOrientation) {
-        FontPlatformData verticalRightPlatformData(m_platformData);
-        verticalRightPlatformData.setOrientation(Horizontal);
+        auto verticalRightPlatformData = FontPlatformData::cloneWithOrientation(m_platformData, Horizontal);
         m_derivedFontData->verticalRightOrientation = create(verticalRightPlatformData, isCustomFont(), false, true);
     }
     ASSERT(m_derivedFontData->verticalRightOrientation != this);
@@ -278,7 +267,7 @@ const Font& Font::verticalRightOrientationFont() const
 const Font& Font::uprightOrientationFont() const
 {
     if (!m_derivedFontData)
-        m_derivedFontData = std::make_unique<DerivedFontData>(isCustomFont());
+        m_derivedFontData = std::make_unique<DerivedFonts>(isCustomFont());
     if (!m_derivedFontData->uprightOrientation)
         m_derivedFontData->uprightOrientation = create(m_platformData, isCustomFont(), false, true);
     ASSERT(m_derivedFontData->uprightOrientation != this);
@@ -288,7 +277,7 @@ const Font& Font::uprightOrientationFont() const
 const Font* Font::smallCapsFont(const FontDescription& fontDescription) const
 {
     if (!m_derivedFontData)
-        m_derivedFontData = std::make_unique<DerivedFontData>(isCustomFont());
+        m_derivedFontData = std::make_unique<DerivedFonts>(isCustomFont());
     if (!m_derivedFontData->smallCaps)
         m_derivedFontData->smallCaps = createScaledFont(fontDescription, smallCapsFontSizeMultiplier);
     ASSERT(m_derivedFontData->smallCaps != this);
@@ -299,7 +288,7 @@ const Font* Font::smallCapsFont(const FontDescription& fontDescription) const
 const Font& Font::noSynthesizableFeaturesFont() const
 {
     if (!m_derivedFontData)
-        m_derivedFontData = std::make_unique<DerivedFontData>(isCustomFont());
+        m_derivedFontData = std::make_unique<DerivedFonts>(isCustomFont());
     if (!m_derivedFontData->noSynthesizableFeatures)
         m_derivedFontData->noSynthesizableFeatures = createFontWithoutSynthesizableFeatures();
     ASSERT(m_derivedFontData->noSynthesizableFeatures != this);
@@ -310,7 +299,7 @@ const Font& Font::noSynthesizableFeaturesFont() const
 const Font* Font::emphasisMarkFont(const FontDescription& fontDescription) const
 {
     if (!m_derivedFontData)
-        m_derivedFontData = std::make_unique<DerivedFontData>(isCustomFont());
+        m_derivedFontData = std::make_unique<DerivedFonts>(isCustomFont());
     if (!m_derivedFontData->emphasisMark)
         m_derivedFontData->emphasisMark = createScaledFont(fontDescription, emphasisMarkFontSizeMultiplier);
     ASSERT(m_derivedFontData->emphasisMark != this);
@@ -320,7 +309,7 @@ const Font* Font::emphasisMarkFont(const FontDescription& fontDescription) const
 const Font& Font::brokenIdeographFont() const
 {
     if (!m_derivedFontData)
-        m_derivedFontData = std::make_unique<DerivedFontData>(isCustomFont());
+        m_derivedFontData = std::make_unique<DerivedFonts>(isCustomFont());
     if (!m_derivedFontData->brokenIdeograph) {
         m_derivedFontData->brokenIdeograph = create(m_platformData, isCustomFont(), false);
         m_derivedFontData->brokenIdeograph->m_isBrokenIdeographFallback = true;
@@ -332,11 +321,12 @@ const Font& Font::brokenIdeographFont() const
 const Font& Font::nonSyntheticItalicFont() const
 {
     if (!m_derivedFontData)
-        m_derivedFontData = std::make_unique<DerivedFontData>(isCustomFont());
+        m_derivedFontData = std::make_unique<DerivedFonts>(isCustomFont());
     if (!m_derivedFontData->nonSyntheticItalic) {
-        FontPlatformData nonSyntheticItalicFontPlatformData(m_platformData);
 #if PLATFORM(COCOA) || USE(CAIRO)
-        nonSyntheticItalicFontPlatformData.setSyntheticOblique(false);
+        FontPlatformData nonSyntheticItalicFontPlatformData = FontPlatformData::cloneWithSyntheticOblique(m_platformData, false);
+#else
+        FontPlatformData nonSyntheticItalicFontPlatformData(m_platformData);
 #endif
         m_derivedFontData->nonSyntheticItalic = create(nonSyntheticItalicFontPlatformData, isCustomFont());
     }
@@ -347,8 +337,6 @@ const Font& Font::nonSyntheticItalicFont() const
 #ifndef NDEBUG
 String Font::description() const
 {
-    if (isSVGFont())
-        return "[SVG font]";
     if (isCustomFont())
         return "[custom font]";
 
@@ -368,22 +356,18 @@ const OpenTypeMathData* Font::mathData() const
     return m_mathData.get();
 }
 
-Font::DerivedFontData::~DerivedFontData()
+Font::DerivedFonts::~DerivedFonts()
 {
 }
 
 RefPtr<Font> Font::createScaledFont(const FontDescription& fontDescription, float scaleFactor) const
 {
-    if (isSVGFont())
-        return nullptr;
-
     return platformCreateScaledFont(fontDescription, scaleFactor);
 }
 
 bool Font::applyTransforms(GlyphBufferGlyph* glyphs, GlyphBufferAdvance* advances, size_t glyphCount, bool enableKerning, bool requiresShaping) const
 {
     // We need to handle transforms on SVG fonts internally, since they are rendered internally.
-    ASSERT(!isSVGFont());
 #if PLATFORM(COCOA)
     CTFontTransformOptions options = (enableKerning ? kCTFontTransformApplyPositioning : 0) | (requiresShaping ? kCTFontTransformApplyShaping : 0);
     return CTFontTransformGlyphs(m_platformData.ctFont(), glyphs, reinterpret_cast<CGSize*>(advances), glyphCount, options);

@@ -27,7 +27,7 @@
 #include "config.h"
 #include "ApplyBlockElementCommand.h"
 
-#include "HTMLElement.h"
+#include "HTMLBRElement.h"
 #include "HTMLNames.h"
 #include "RenderElement.h"
 #include "RenderStyle.h"
@@ -97,6 +97,11 @@ void ApplyBlockElementCommand::doApply()
     if (startScope == endScope && startIndex >= 0 && startIndex <= endIndex) {
         VisiblePosition start(visiblePositionForIndex(startIndex, startScope.get()));
         VisiblePosition end(visiblePositionForIndex(endIndex, endScope.get()));
+        // Work around the fact indexForVisiblePosition can return a larger index due to TextIterator
+        // using an extra newline to represent a large margin.
+        // FIXME: Add a new TextIteratorBehavior to suppress it.
+        if (start.isNotNull() && end.isNull())
+            end = lastPositionInNode(endScope.get());
         if (start.isNotNull() && end.isNotNull())
             setEndingSelection(VisibleSelection(start, end, endingSelection().isDirectional()));
     }
@@ -108,11 +113,11 @@ void ApplyBlockElementCommand::formatSelection(const VisiblePosition& startOfSel
     // and there's nothing to move.
     Position start = startOfSelection.deepEquivalent().downstream();
     if (isAtUnsplittableElement(start) && startOfParagraph(start) == endOfParagraph(endOfSelection)) {
-        RefPtr<Element> blockquote = createBlockElement();
-        insertNodeAt(blockquote, start);
-        RefPtr<Element> placeholder = createBreakElement(document());
-        appendNode(placeholder, blockquote);
-        setEndingSelection(VisibleSelection(positionBeforeNode(placeholder.get()), DOWNSTREAM, endingSelection().isDirectional()));
+        auto blockquote = createBlockElement();
+        insertNodeAt(blockquote.copyRef(), start);
+        auto placeholder = HTMLBRElement::create(document());
+        appendNode(placeholder.copyRef(), WTFMove(blockquote));
+        setEndingSelection(VisibleSelection(positionBeforeNode(placeholder.ptr()), DOWNSTREAM, endingSelection().isDirectional()));
         return;
     }
 
@@ -179,18 +184,18 @@ static bool isNewLineAtPosition(const Position& position)
     return textAtPosition[0] == '\n';
 }
 
-RenderStyle* ApplyBlockElementCommand::renderStyleOfEnclosingTextNode(const Position& position)
+const RenderStyle* ApplyBlockElementCommand::renderStyleOfEnclosingTextNode(const Position& position)
 {
     if (position.anchorType() != Position::PositionIsOffsetInAnchor
         || !position.containerNode()
         || !position.containerNode()->isTextNode())
-        return 0;
+        return nullptr;
 
     document().updateStyleIfNeeded();
 
     RenderObject* renderer = position.containerNode()->renderer();
     if (!renderer)
-        return 0;
+        return nullptr;
 
     return &renderer->style();
 }
@@ -201,7 +206,7 @@ void ApplyBlockElementCommand::rangeForParagraphSplittingTextNodesIfNeeded(const
     end = endOfCurrentParagraph.deepEquivalent();
 
     bool isStartAndEndOnSameNode = false;
-    if (RenderStyle* startStyle = renderStyleOfEnclosingTextNode(start)) {
+    if (auto* startStyle = renderStyleOfEnclosingTextNode(start)) {
         isStartAndEndOnSameNode = renderStyleOfEnclosingTextNode(end) && start.containerNode() == end.containerNode();
         bool isStartAndEndOfLastParagraphOnSameNode = renderStyleOfEnclosingTextNode(m_endOfLastParagraph) && start.containerNode() == m_endOfLastParagraph.containerNode();
 
@@ -226,7 +231,7 @@ void ApplyBlockElementCommand::rangeForParagraphSplittingTextNodesIfNeeded(const
         }
     }
 
-    if (RenderStyle* endStyle = renderStyleOfEnclosingTextNode(end)) {
+    if (auto* endStyle = renderStyleOfEnclosingTextNode(end)) {
         bool isEndAndEndOfLastParagraphOnSameNode = renderStyleOfEnclosingTextNode(m_endOfLastParagraph) && end.deprecatedNode() == m_endOfLastParagraph.deprecatedNode();
         // Include \n at the end of line if we're at an empty paragraph
         if (endStyle->preserveNewline() && start == end && end.offsetInContainerNode() < end.containerNode()->maxCharacterOffset()) {
@@ -258,7 +263,7 @@ VisiblePosition ApplyBlockElementCommand::endOfNextParagraphSplittingTextNodesIf
 {
     VisiblePosition endOfNextParagraph = endOfParagraph(endOfCurrentParagraph.next());
     Position position = endOfNextParagraph.deepEquivalent();
-    RenderStyle* style = renderStyleOfEnclosingTextNode(position);
+    auto* style = renderStyleOfEnclosingTextNode(position);
     if (!style)
         return endOfNextParagraph;
 
@@ -292,12 +297,12 @@ VisiblePosition ApplyBlockElementCommand::endOfNextParagraphSplittingTextNodesIf
     return Position(text.get(), position.offsetInContainerNode() - 1);
 }
 
-PassRefPtr<Element> ApplyBlockElementCommand::createBlockElement()
+Ref<HTMLElement> ApplyBlockElementCommand::createBlockElement()
 {
-    RefPtr<Element> element = createHTMLElement(document(), m_tagName);
+    auto element = createHTMLElement(document(), m_tagName);
     if (m_inlineStyle.length())
         element->setAttribute(styleAttr, m_inlineStyle);
-    return element.release();
+    return element;
 }
 
 }

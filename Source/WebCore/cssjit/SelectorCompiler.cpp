@@ -37,6 +37,7 @@
 #include "FunctionCall.h"
 #include "HTMLDocument.h"
 #include "HTMLNames.h"
+#include "HTMLOptGroupElement.h"
 #include "HTMLParserIdioms.h"
 #include "InspectorInstrumentation.h"
 #include "NodeRenderStyle.h"
@@ -47,6 +48,7 @@
 #include "SVGElement.h"
 #include "SelectorCheckerTestFunctions.h"
 #include "StackAllocator.h"
+#include "StyleRelations.h"
 #include "StyledElement.h"
 #include <JavaScriptCore/GPRInfo.h>
 #include <JavaScriptCore/LinkBuffer.h>
@@ -321,10 +323,11 @@ private:
     void generateElementIsRoot(Assembler::JumpList& failureCases);
     void generateElementIsScopeRoot(Assembler::JumpList& failureCases);
     void generateElementIsTarget(Assembler::JumpList& failureCases);
+    void generateElementHasFocusWithin(Assembler::JumpList& failureCases);
 
     // Helpers.
-    void generateAddStyleRelationIfResolvingStyle(Assembler::RegisterID element, SelectorChecker::StyleRelation::Type, Optional<Assembler::RegisterID> value = { });
-    void generateAddStyleRelation(Assembler::RegisterID checkingContext, Assembler::RegisterID element, SelectorChecker::StyleRelation::Type, Optional<Assembler::RegisterID> value = { });
+    void generateAddStyleRelationIfResolvingStyle(Assembler::RegisterID element, Style::Relation::Type, Optional<Assembler::RegisterID> value = { });
+    void generateAddStyleRelation(Assembler::RegisterID checkingContext, Assembler::RegisterID element, Style::Relation::Type, Optional<Assembler::RegisterID> value = { });
     Assembler::Jump branchOnResolvingModeWithCheckingContext(Assembler::RelationalCondition, SelectorChecker::Mode, Assembler::RegisterID checkingContext);
     Assembler::Jump branchOnResolvingMode(Assembler::RelationalCondition, SelectorChecker::Mode, Assembler::RegisterID checkingContext);
     void generateElementIsFirstLink(Assembler::JumpList& failureCases, Assembler::RegisterID element);
@@ -533,14 +536,19 @@ static inline FunctionType addPseudoClassType(const CSSSelector& selector, Selec
         fragment.unoptimizedPseudoClasses.append(JSC::FunctionPtr(isChecked));
         return FunctionType::SimpleSelectorChecker;
     case CSSSelector::PseudoClassDefault:
-        fragment.unoptimizedPseudoClasses.append(JSC::FunctionPtr(isDefaultButtonForForm));
+        fragment.unoptimizedPseudoClasses.append(JSC::FunctionPtr(matchesDefaultPseudoClass));
         return FunctionType::SimpleSelectorChecker;
     case CSSSelector::PseudoClassDisabled:
-        fragment.unoptimizedPseudoClasses.append(JSC::FunctionPtr(isDisabled));
+        fragment.unoptimizedPseudoClasses.append(JSC::FunctionPtr(matchesDisabledPseudoClass));
         return FunctionType::SimpleSelectorChecker;
     case CSSSelector::PseudoClassEnabled:
-        fragment.unoptimizedPseudoClasses.append(JSC::FunctionPtr(isEnabled));
+        fragment.unoptimizedPseudoClasses.append(JSC::FunctionPtr(matchesEnabledPseudoClass));
         return FunctionType::SimpleSelectorChecker;
+#if ENABLE(CUSTOM_ELEMENTS)
+    case CSSSelector::PseudoClassDefined:
+        fragment.unoptimizedPseudoClasses.append(JSC::FunctionPtr(isDefinedElement));
+        return FunctionType::SimpleSelectorChecker;
+#endif
     case CSSSelector::PseudoClassFocus:
         fragment.unoptimizedPseudoClasses.append(JSC::FunctionPtr(SelectorChecker::matchesFocusPseudoClass));
         return FunctionType::SimpleSelectorChecker;
@@ -551,7 +559,7 @@ static inline FunctionType addPseudoClassType(const CSSSelector& selector, Selec
         fragment.unoptimizedPseudoClasses.append(JSC::FunctionPtr(isInRange));
         return FunctionType::SimpleSelectorChecker;
     case CSSSelector::PseudoClassIndeterminate:
-        fragment.unoptimizedPseudoClasses.append(JSC::FunctionPtr(shouldAppearIndeterminate));
+        fragment.unoptimizedPseudoClasses.append(JSC::FunctionPtr(matchesIndeterminatePseudoClass));
         return FunctionType::SimpleSelectorChecker;
     case CSSSelector::PseudoClassInvalid:
         fragment.unoptimizedPseudoClasses.append(JSC::FunctionPtr(isInvalid));
@@ -667,6 +675,7 @@ static inline FunctionType addPseudoClassType(const CSSSelector& selector, Selec
     case CSSSelector::PseudoClassLastChild:
     case CSSSelector::PseudoClassOnlyChild:
     case CSSSelector::PseudoClassPlaceholderShown:
+    case CSSSelector::PseudoClassFocusWithin:
         fragment.pseudoClasses.add(type);
         if (selectorContext == SelectorContext::QuerySelector)
             return FunctionType::SimpleSelectorChecker;
@@ -819,11 +828,8 @@ static inline FunctionType addPseudoClassType(const CSSSelector& selector, Selec
 
             return functionType;
         }
-#if ENABLE(SHADOW_DOM)
     case CSSSelector::PseudoClassHost:
-        // :host matches based on context. Cases that reach selector checker don't match.
-        return FunctionType::CannotMatchAnything;
-#endif
+        return FunctionType::CannotCompile;
     case CSSSelector::PseudoClassUnknown:
         ASSERT_NOT_REACHED();
         return FunctionType::CannotMatchAnything;
@@ -1059,10 +1065,10 @@ static inline bool attributeValueTestingRequiresExtraRegister(const AttributeMat
 static const unsigned minimumRequiredRegisterCount = 5;
 // Element + ElementData + scratchRegister + attributeArrayPointer + expectedLocalName + (qualifiedNameImpl && expectedValue).
 static const unsigned minimumRequiredRegisterCountForAttributeFilter = 6;
-#if CPU(X86_64)
-// Element + SiblingCounter + SiblingCounterCopy + divisor + dividend + remainder.
+// On x86, we always need 6 registers: Element + SiblingCounter + SiblingCounterCopy + divisor + dividend + remainder.
+// On other architectures, we need 6 registers for style resolution:
+//     Element + elementCounter + previousSibling + checkingContext + lastRelation + nextSiblingElement.
 static const unsigned minimumRequiredRegisterCountForNthChildFilter = 6;
-#endif
 
 static unsigned minimumRegisterRequirements(const SelectorFragment& selectorFragment)
 {
@@ -1086,10 +1092,8 @@ static unsigned minimumRegisterRequirements(const SelectorFragment& selectorFrag
         minimum = std::max(minimum, attributeMinimum);
     }
 
-#if CPU(X86_64)
     if (!selectorFragment.nthChildFilters.isEmpty() || !selectorFragment.nthChildOfFilters.isEmpty() || !selectorFragment.nthLastChildFilters.isEmpty() || !selectorFragment.nthLastChildOfFilters.isEmpty())
         minimum = std::max(minimum, minimumRequiredRegisterCountForNthChildFilter);
-#endif
 
     // :any pseudo class filters cause some register pressure.
     for (const auto& subFragments : selectorFragment.anyFilters) {
@@ -1891,7 +1895,7 @@ void SelectorCodeGenerator::generateSelectorCheckerExcludingPseudoElements(Assem
             break;
         }
         if (shouldMarkStyleIsAffectedByPreviousSibling(fragment))
-            generateAddStyleRelationIfResolvingStyle(elementAddressRegister, SelectorChecker::StyleRelation::AffectedByPreviousSibling);
+            generateAddStyleRelationIfResolvingStyle(elementAddressRegister, Style::Relation::AffectedByPreviousSibling);
         generateBacktrackingTailsIfNeeded(failureCases, fragment);
     }
 
@@ -2135,7 +2139,7 @@ void SelectorCodeGenerator::generateWalkToPreviousAdjacent(Assembler::JumpList& 
 void SelectorCodeGenerator::generateDirectAdjacentTreeWalker(Assembler::JumpList& failureCases, const SelectorFragment& fragment)
 {
     generateWalkToPreviousAdjacent(failureCases, fragment);
-    generateAddStyleRelationIfResolvingStyle(elementAddressRegister, SelectorChecker::StyleRelation::AffectsNextSibling);
+    generateAddStyleRelationIfResolvingStyle(elementAddressRegister, Style::Relation::AffectsNextSibling);
 
     Assembler::JumpList matchingTagNameFailureCases;
     Assembler::JumpList matchingPostTagNameFailureCases;
@@ -2160,7 +2164,7 @@ void SelectorCodeGenerator::generateIndirectAdjacentTreeWalker(Assembler::JumpLi
         m_backtrackingLevels.last().indirectAdjacentTreeWalkerBacktrackingPoint = m_assembler.label();
 
     generateWalkToPreviousAdjacent(failureCases, fragment);
-    generateAddStyleRelationIfResolvingStyle(elementAddressRegister, SelectorChecker::StyleRelation::AffectsNextSibling);
+    generateAddStyleRelationIfResolvingStyle(elementAddressRegister, Style::Relation::AffectsNextSibling);
 
     if (fragment.backtrackingFlags & BacktrackingFlag::IndirectAdjacentEntryPoint)
         m_backtrackingLevels.last().indirectAdjacentEntryPoint = m_assembler.label();
@@ -2170,7 +2174,7 @@ void SelectorCodeGenerator::generateIndirectAdjacentTreeWalker(Assembler::JumpLi
     localFailureCases.linkTo(loopStart, &m_assembler);
 }
 
-void SelectorCodeGenerator::generateAddStyleRelationIfResolvingStyle(Assembler::RegisterID element, SelectorChecker::StyleRelation::Type relationType, Optional<Assembler::RegisterID> value)
+void SelectorCodeGenerator::generateAddStyleRelationIfResolvingStyle(Assembler::RegisterID element, Style::Relation::Type relationType, Optional<Assembler::RegisterID> value)
 {
     if (m_selectorContext == SelectorContext::QuerySelector)
         return;
@@ -2183,14 +2187,58 @@ void SelectorCodeGenerator::generateAddStyleRelationIfResolvingStyle(Assembler::
     notResolvingStyle.link(&m_assembler);
 }
 
-static void addStyleRelationFunction(SelectorChecker::CheckingContext* checkingContext, Element* element)
+static void addStyleRelationFunction(SelectorChecker::CheckingContext* checkingContext, const Element* element)
 {
-    checkingContext->styleRelations.append({ *element, SelectorChecker::StyleRelation::AffectedByActive, 1 });
+    checkingContext->styleRelations.append({ *element, Style::Relation::AffectedByActive, 1 });
 }
 
-void SelectorCodeGenerator::generateAddStyleRelation(Assembler::RegisterID checkingContext, Assembler::RegisterID element, SelectorChecker::StyleRelation::Type relationType, Optional<Assembler::RegisterID> value)
+void SelectorCodeGenerator::generateAddStyleRelation(Assembler::RegisterID checkingContext, Assembler::RegisterID element, Style::Relation::Type relationType, Optional<Assembler::RegisterID> value)
 {
     ASSERT(m_selectorContext != SelectorContext::QuerySelector);
+
+    Assembler::Address vectorAddress(checkingContext, OBJECT_OFFSETOF(SelectorChecker::CheckingContext, styleRelations));
+    auto dataAddress = vectorAddress.withOffset(Style::Relations::dataMemoryOffset());
+    auto sizeAddress = vectorAddress.withOffset(Style::Relations::sizeMemoryOffset());
+
+    // For AffectsNextSibling we just increment the count if the previous added relation was in the same sibling chain.
+    Assembler::JumpList mergeSuccess;
+    if (relationType == Style::Relation::AffectsNextSibling) {
+        Assembler::JumpList mergeFailure;
+
+        LocalRegister lastRelation(m_registerAllocator);
+        m_assembler.load32(sizeAddress, lastRelation);
+
+        // if (!checkingContext.styleRelations.isEmpty())
+        mergeFailure.append(m_assembler.branchTest32(Assembler::Zero, lastRelation));
+
+        // Style::Relation& lastRelation = checkingContext.styleRelations.last();
+        m_assembler.sub32(Assembler::TrustedImm32(1), lastRelation);
+        m_assembler.mul32(Assembler::TrustedImm32(sizeof(Style::Relation)), lastRelation, lastRelation);
+        m_assembler.addPtr(dataAddress, lastRelation);
+
+        // if (lastRelation.type == Style::Relation::AffectsNextSibling)
+        Assembler::Address typeAddress(lastRelation, OBJECT_OFFSETOF(Style::Relation, type));
+        mergeFailure.append(m_assembler.branch32(Assembler::NotEqual, typeAddress, Assembler::TrustedImm32(Style::Relation::AffectsNextSibling)));
+
+        Assembler::Address elementAddress(lastRelation, OBJECT_OFFSETOF(Style::Relation, element));
+        {
+            // if (element.nextSiblingElement() == lastRelation.element)
+            LocalRegister nextSiblingElement(m_registerAllocator);
+            m_assembler.move(element, nextSiblingElement);
+            generateWalkToNextAdjacentElement(mergeFailure, nextSiblingElement);
+            mergeFailure.append(m_assembler.branchPtr(Assembler::NotEqual, nextSiblingElement, elementAddress));
+        }
+
+        // ++lastRelation.value;
+        Assembler::Address valueAddress(lastRelation, OBJECT_OFFSETOF(Style::Relation, value));
+        m_assembler.add32(Assembler::TrustedImm32(1), valueAddress);
+
+        // lastRelation.element = &element;
+        m_assembler.storePtr(element, elementAddress);
+
+        mergeSuccess.append(m_assembler.jump());
+        mergeFailure.link(&m_assembler);
+    }
 
     // FIXME: Append to vector without a function call at least when there is sufficient capacity.
     FunctionCall functionCall(m_assembler, m_registerAllocator, m_stackAllocator, m_functionCalls);
@@ -2198,23 +2246,21 @@ void SelectorCodeGenerator::generateAddStyleRelation(Assembler::RegisterID check
     functionCall.setTwoArguments(checkingContext, element);
     functionCall.call();
 
-    Assembler::Address vectorAddress(checkingContext, OBJECT_OFFSETOF(SelectorChecker::CheckingContext, styleRelations));
-    auto dataAddress = vectorAddress.withOffset(SelectorChecker::StyleRelations::dataMemoryOffset());
-    auto sizeAddress = vectorAddress.withOffset(SelectorChecker::StyleRelations::sizeMemoryOffset());
-
     LocalRegister relationPointer(m_registerAllocator);
     m_assembler.load32(sizeAddress, relationPointer);
     m_assembler.sub32(Assembler::TrustedImm32(1), relationPointer);
-    m_assembler.mul32(Assembler::TrustedImm32(sizeof(SelectorChecker::StyleRelation)), relationPointer, relationPointer);
+    m_assembler.mul32(Assembler::TrustedImm32(sizeof(Style::Relation)), relationPointer, relationPointer);
     m_assembler.addPtr(dataAddress, relationPointer);
 
-    Assembler::Address typeAddress(relationPointer, OBJECT_OFFSETOF(SelectorChecker::StyleRelation, type));
+    Assembler::Address typeAddress(relationPointer, OBJECT_OFFSETOF(Style::Relation, type));
     m_assembler.store32(Assembler::TrustedImm32(relationType), typeAddress);
 
     if (value) {
-        Assembler::Address valueAddress(relationPointer, OBJECT_OFFSETOF(SelectorChecker::StyleRelation, value));
+        Assembler::Address valueAddress(relationPointer, OBJECT_OFFSETOF(Style::Relation, value));
         m_assembler.store32(*value, valueAddress);
     }
+
+    mergeSuccess.link(&m_assembler);
 }
 
 Assembler::JumpList SelectorCodeGenerator::jumpIfNoPreviousAdjacentElement()
@@ -2530,6 +2576,9 @@ void SelectorCodeGenerator::generateElementMatching(Assembler::JumpList& matchin
 
     if (fragment.pseudoClasses.contains(CSSSelector::PseudoClassTarget))
         generateElementIsTarget(matchingPostTagNameFailureCases);
+
+    if (fragment.pseudoClasses.contains(CSSSelector::PseudoClassFocusWithin))
+        generateElementHasFocusWithin(matchingPostTagNameFailureCases);
 
     for (unsigned i = 0; i < fragment.unoptimizedPseudoClasses.size(); ++i)
         generateElementFunctionCallTest(matchingPostTagNameFailureCases, fragment.unoptimizedPseudoClasses[i]);
@@ -3047,7 +3096,7 @@ void SelectorCodeGenerator::generateContextFunctionCallTest(Assembler::JumpList&
     failureCases.append(functionCall.callAndBranchOnBooleanReturnValue(Assembler::Zero));
 }
 
-static bool elementIsActive(Element* element)
+static bool elementIsActive(const Element* element)
 {
     return element->active() || InspectorInstrumentation::forcePseudoState(*element, CSSSelector::PseudoClassActive);
 }
@@ -3056,7 +3105,7 @@ void SelectorCodeGenerator::generateElementIsActive(Assembler::JumpList& failure
 {
     generateSpecialFailureInQuirksModeForActiveAndHoverIfNeeded(failureCases, fragment);
 
-    generateAddStyleRelationIfResolvingStyle(elementAddressRegister, SelectorChecker::StyleRelation::AffectedByActive);
+    generateAddStyleRelationIfResolvingStyle(elementAddressRegister, Style::Relation::AffectedByActive);
 
     FunctionCall functionCall(m_assembler, m_registerAllocator, m_stackAllocator, m_functionCalls);
     functionCall.setFunctionAddress(elementIsActive);
@@ -3105,7 +3154,7 @@ void SelectorCodeGenerator::generateElementIsEmpty(Assembler::JumpList& failureC
     m_assembler.move(Assembler::TrustedImm32(1), isEmptyResults);
     notEmpty.link(&m_assembler);
 
-    generateAddStyleRelationIfResolvingStyle(elementAddressRegister, SelectorChecker::StyleRelation::AffectedByEmpty, Assembler::RegisterID(isEmptyResults));
+    generateAddStyleRelationIfResolvingStyle(elementAddressRegister, Style::Relation::AffectedByEmpty, Assembler::RegisterID(isEmptyResults));
 
     failureCases.append(m_assembler.branchTest32(Assembler::Zero, isEmptyResults));
 }
@@ -3140,20 +3189,20 @@ void SelectorCodeGenerator::generateElementIsFirstChild(Assembler::JumpList& fai
     LocalRegister checkingContext(m_registerAllocator);
     Assembler::Jump notResolvingStyle = jumpIfNotResolvingStyle(checkingContext);
 
-    generateAddStyleRelation(checkingContext, parentElement, SelectorChecker::StyleRelation::ChildrenAffectedByFirstChildRules);
+    generateAddStyleRelation(checkingContext, parentElement, Style::Relation::ChildrenAffectedByFirstChildRules);
     m_registerAllocator.deallocateRegister(parentElement);
 
     // The parent marking is unconditional. If the matching is not a success, we can now fail.
     // Otherwise we need to apply setFirstChildState() on the RenderStyle.
     failureCases.append(m_assembler.branchTest32(Assembler::NonZero, isFirstChildRegister));
 
-    generateAddStyleRelation(checkingContext, elementAddressRegister, SelectorChecker::StyleRelation::FirstChild);
+    generateAddStyleRelation(checkingContext, elementAddressRegister, Style::Relation::FirstChild);
 
     notResolvingStyle.link(&m_assembler);
     failureCases.append(m_assembler.branchTest32(Assembler::NonZero, isFirstChildRegister));
 }
 
-static bool elementIsHovered(Element* element)
+static bool elementIsHovered(const Element* element)
 {
     return element->hovered() || InspectorInstrumentation::forcePseudoState(*element, CSSSelector::PseudoClassHover);
 }
@@ -3162,7 +3211,7 @@ void SelectorCodeGenerator::generateElementIsHovered(Assembler::JumpList& failur
 {
     generateSpecialFailureInQuirksModeForActiveAndHoverIfNeeded(failureCases, fragment);
 
-    generateAddStyleRelationIfResolvingStyle(elementAddressRegister, SelectorChecker::StyleRelation::AffectedByHover);
+    generateAddStyleRelationIfResolvingStyle(elementAddressRegister, Style::Relation::AffectedByHover);
 
     Assembler::JumpList successCases;
     if (m_selectorContext != SelectorContext::QuerySelector && fragment.relationToRightFragment != FragmentRelation::Rightmost) {
@@ -3236,14 +3285,14 @@ void SelectorCodeGenerator::generateElementIsLastChild(Assembler::JumpList& fail
     LocalRegister checkingContext(m_registerAllocator);
     Assembler::Jump notResolvingStyle = jumpIfNotResolvingStyle(checkingContext);
 
-    generateAddStyleRelation(checkingContext, parentElement, SelectorChecker::StyleRelation::ChildrenAffectedByLastChildRules);
+    generateAddStyleRelation(checkingContext, parentElement, Style::Relation::ChildrenAffectedByLastChildRules);
     m_registerAllocator.deallocateRegister(parentElement);
 
     // The parent marking is unconditional. If the matching is not a success, we can now fail.
     // Otherwise we need to apply setLastChildState() on the RenderStyle.
     failureCases.append(m_assembler.branchTest32(Assembler::NonZero, isLastChildRegister));
 
-    generateAddStyleRelation(checkingContext, elementAddressRegister, SelectorChecker::StyleRelation::LastChild);
+    generateAddStyleRelation(checkingContext, elementAddressRegister, Style::Relation::LastChild);
 
     notResolvingStyle.link(&m_assembler);
     failureCases.append(m_assembler.branchTest32(Assembler::NonZero, isLastChildRegister));
@@ -3295,8 +3344,8 @@ void SelectorCodeGenerator::generateElementIsOnlyChild(Assembler::JumpList& fail
     LocalRegister checkingContext(m_registerAllocator);
     Assembler::Jump notResolvingStyle = jumpIfNotResolvingStyle(checkingContext);
 
-    generateAddStyleRelation(checkingContext, parentElement, SelectorChecker::StyleRelation::ChildrenAffectedByFirstChildRules);
-    generateAddStyleRelation(checkingContext, parentElement, SelectorChecker::StyleRelation::ChildrenAffectedByLastChildRules);
+    generateAddStyleRelation(checkingContext, parentElement, Style::Relation::ChildrenAffectedByFirstChildRules);
+    generateAddStyleRelation(checkingContext, parentElement, Style::Relation::ChildrenAffectedByLastChildRules);
 
     m_registerAllocator.deallocateRegister(parentElement);
 
@@ -3304,24 +3353,24 @@ void SelectorCodeGenerator::generateElementIsOnlyChild(Assembler::JumpList& fail
     // Otherwise we need to apply setLastChildState() on the RenderStyle.
     failureCases.append(m_assembler.branchTest32(Assembler::NonZero, isOnlyChildRegister));
 
-    generateAddStyleRelation(checkingContext, elementAddressRegister, SelectorChecker::StyleRelation::FirstChild);
-    generateAddStyleRelation(checkingContext, elementAddressRegister, SelectorChecker::StyleRelation::LastChild);
+    generateAddStyleRelation(checkingContext, elementAddressRegister, Style::Relation::FirstChild);
+    generateAddStyleRelation(checkingContext, elementAddressRegister, Style::Relation::LastChild);
 
     notResolvingStyle.link(&m_assembler);
     failureCases.append(m_assembler.branchTest32(Assembler::NonZero, isOnlyChildRegister));
 }
 
-static bool makeContextStyleUniqueIfNecessaryAndTestIsPlaceholderShown(Element* element, SelectorChecker::CheckingContext* checkingContext)
+static bool makeContextStyleUniqueIfNecessaryAndTestIsPlaceholderShown(const Element* element, SelectorChecker::CheckingContext* checkingContext)
 {
     if (is<HTMLTextFormControlElement>(*element)) {
         if (checkingContext->resolvingMode == SelectorChecker::Mode::ResolvingStyle)
-            checkingContext->styleRelations.append({ *element, SelectorChecker::StyleRelation::Unique, 1 });
+            checkingContext->styleRelations.append({ *element, Style::Relation::Unique, 1 });
         return downcast<HTMLTextFormControlElement>(*element).isPlaceholderVisible();
     }
     return false;
 }
 
-static bool isPlaceholderShown(Element* element)
+static bool isPlaceholderShown(const Element* element)
 {
     return is<HTMLTextFormControlElement>(*element) && downcast<HTMLTextFormControlElement>(*element).isPlaceholderVisible();
 }
@@ -3469,7 +3518,7 @@ void SelectorCodeGenerator::generateElementIsNthChild(Assembler::JumpList& failu
         return;
 
     if (!isAdjacentRelation(fragment.relationToRightFragment))
-        generateAddStyleRelationIfResolvingStyle(elementAddressRegister, SelectorChecker::StyleRelation::AffectedByPreviousSibling);
+        generateAddStyleRelationIfResolvingStyle(elementAddressRegister, Style::Relation::AffectedByPreviousSibling);
 
     // Setup the counter at 1.
     LocalRegisterWithPreference elementCounter(m_registerAllocator, JSC::GPRInfo::argumentGPR1);
@@ -3487,7 +3536,7 @@ void SelectorCodeGenerator::generateElementIsNthChild(Assembler::JumpList& failu
 
         Assembler::JumpList noCachedChildIndexCases;
         generateWalkToPreviousAdjacentElement(noMoreSiblingsCases, previousSibling);
-        generateAddStyleRelationIfResolvingStyle(previousSibling, SelectorChecker::StyleRelation::AffectsNextSibling);
+        generateAddStyleRelationIfResolvingStyle(previousSibling, Style::Relation::AffectsNextSibling);
         noCachedChildIndexCases.append(m_assembler.branchTest32(Assembler::Zero, Assembler::Address(previousSibling, Node::nodeFlagsMemoryOffset()), Assembler::TrustedImm32(Node::flagHasRareData())));
         {
             LocalRegister elementRareData(m_registerAllocator);
@@ -3503,13 +3552,13 @@ void SelectorCodeGenerator::generateElementIsNthChild(Assembler::JumpList& failu
 
         Assembler::Label loopStart = m_assembler.label();
         generateWalkToPreviousAdjacentElement(noMoreSiblingsCases, previousSibling);
-        generateAddStyleRelationIfResolvingStyle(previousSibling, SelectorChecker::StyleRelation::AffectsNextSibling);
+        generateAddStyleRelationIfResolvingStyle(previousSibling, Style::Relation::AffectsNextSibling);
         m_assembler.add32(Assembler::TrustedImm32(1), elementCounter);
         m_assembler.jump().linkTo(loopStart, &m_assembler);
         noMoreSiblingsCases.link(&m_assembler);
     }
 
-    generateAddStyleRelationIfResolvingStyle(elementAddressRegister, SelectorChecker::StyleRelation::NthChildIndex, Assembler::RegisterID(elementCounter));
+    generateAddStyleRelationIfResolvingStyle(elementAddressRegister, Style::Relation::NthChildIndex, Assembler::RegisterID(elementCounter));
 
     for (const auto& slot : validSubsetFilters)
         generateNthFilterTest(failureCases, elementCounter, slot.first, slot.second);
@@ -3536,7 +3585,7 @@ void SelectorCodeGenerator::generateElementIsNthChildOf(Assembler::JumpList& fai
         return;
 
     if (!isAdjacentRelation(fragment.relationToRightFragment))
-        generateAddStyleRelationIfResolvingStyle(elementAddressRegister, SelectorChecker::StyleRelation::AffectedByPreviousSibling);
+        generateAddStyleRelationIfResolvingStyle(elementAddressRegister, Style::Relation::AffectedByPreviousSibling);
 
     for (const NthChildOfSelectorInfo* nthChildOfSelectorInfo : validSubsetFilters) {
         // Setup the counter at 1.
@@ -3553,7 +3602,7 @@ void SelectorCodeGenerator::generateElementIsNthChildOf(Assembler::JumpList& fai
             Assembler::Label loopStart = m_assembler.label();
 
             generateWalkToPreviousAdjacentElement(noMoreSiblingsCases, previousSibling);
-            generateAddStyleRelationIfResolvingStyle(previousSibling, SelectorChecker::StyleRelation::AffectsNextSibling);
+            generateAddStyleRelationIfResolvingStyle(previousSibling, Style::Relation::AffectsNextSibling);
 
             Assembler::JumpList localFailureCases;
             generateElementMatchesSelectorList(localFailureCases, previousSibling, nthChildOfSelectorInfo->selectorList);
@@ -3576,7 +3625,7 @@ void SelectorCodeGenerator::generateElementIsNthLastChild(Assembler::JumpList& f
         LocalRegister parentElement(m_registerAllocator);
         generateWalkToParentElement(failureCases, parentElement);
 
-        generateAddStyleRelationIfResolvingStyle(parentElement, SelectorChecker::StyleRelation::ChildrenAffectedByBackwardPositionalRules);
+        generateAddStyleRelationIfResolvingStyle(parentElement, Style::Relation::ChildrenAffectedByBackwardPositionalRules);
 
         failureCases.append(m_assembler.branchTest32(Assembler::Zero, Assembler::Address(parentElement, Node::nodeFlagsMemoryOffset()), Assembler::TrustedImm32(Node::flagIsParsingChildrenFinished())));
 
@@ -3619,7 +3668,7 @@ void SelectorCodeGenerator::generateElementIsNthLastChildOf(Assembler::JumpList&
         LocalRegister parentElement(m_registerAllocator);
         generateWalkToParentElement(failureCases, parentElement);
 
-        generateAddStyleRelationIfResolvingStyle(parentElement, SelectorChecker::StyleRelation::ChildrenAffectedByPropertyBasedBackwardPositionalRules);
+        generateAddStyleRelationIfResolvingStyle(parentElement, Style::Relation::ChildrenAffectedByPropertyBasedBackwardPositionalRules);
 
         failureCases.append(m_assembler.branchTest32(Assembler::Zero, Assembler::Address(parentElement, Node::nodeFlagsMemoryOffset()), Assembler::TrustedImm32(Node::flagIsParsingChildrenFinished())));
 
@@ -3754,6 +3803,12 @@ void SelectorCodeGenerator::generateElementIsTarget(Assembler::JumpList& failure
     LocalRegister document(m_registerAllocator);
     getDocument(m_assembler, elementAddressRegister, document);
     failureCases.append(m_assembler.branchPtr(Assembler::NotEqual, Assembler::Address(document, Document::cssTargetMemoryOffset()), elementAddressRegister));
+}
+
+void SelectorCodeGenerator::generateElementHasFocusWithin(Assembler::JumpList& failureCases)
+{
+    generateAddStyleRelationIfResolvingStyle(elementAddressRegister, Style::Relation::AffectedByFocusWithin);
+    failureCases.append(m_assembler.branchTest32(Assembler::Zero, Assembler::Address(elementAddressRegister, Node::nodeFlagsMemoryOffset()), Assembler::TrustedImm32(Node::flagHasFocusWithin())));
 }
 
 void SelectorCodeGenerator::generateElementIsFirstLink(Assembler::JumpList& failureCases, Assembler::RegisterID element)

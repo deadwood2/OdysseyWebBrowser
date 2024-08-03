@@ -1,7 +1,7 @@
 /*
  *  Copyright (C) 1999 Harri Porten (porten@kde.org)
  *  Copyright (C) 2001 Peter Kelly (pmk@post.com)
- *  Copyright (C) 2008 Apple Inc. All rights reserved.
+ *  Copyright (C) 2008-2016 Apple Inc. All rights reserved.
  *  Copyright (C) 2008 Eric Seidel <eric@webkit.org>
  *
  *  This library is free software; you can redistribute it and/or
@@ -79,7 +79,7 @@ public:
 
     WEBCORE_EXPORT static Ref<DOMWrapperWorld> createWorld();
 
-    JSDOMWindowShell* createWindowShell(DOMWrapperWorld&);
+    JSDOMWindowShell& createWindowShell(DOMWrapperWorld&);
     void destroyWindowShell(DOMWrapperWorld&);
 
     Vector<JSC::Strong<JSDOMWindowShell>> windowShells();
@@ -101,9 +101,9 @@ public:
 
     static void getAllWorlds(Vector<Ref<DOMWrapperWorld>>&);
 
-    Deprecated::ScriptValue executeScript(const ScriptSourceCode&, ExceptionDetails* = nullptr);
-    WEBCORE_EXPORT Deprecated::ScriptValue executeScript(const String& script, bool forceUserGesture = false, ExceptionDetails* = nullptr);
-    WEBCORE_EXPORT Deprecated::ScriptValue executeScriptInWorld(DOMWrapperWorld&, const String& script, bool forceUserGesture = false);
+    JSC::JSValue executeScript(const ScriptSourceCode&, ExceptionDetails* = nullptr);
+    WEBCORE_EXPORT JSC::JSValue executeScript(const String& script, bool forceUserGesture = false, ExceptionDetails* = nullptr);
+    WEBCORE_EXPORT JSC::JSValue executeScriptInWorld(DOMWrapperWorld&, const String& script, bool forceUserGesture = false);
 
     // Returns true if argument is a JavaScript URL.
     bool executeIfJavaScriptURL(const URL&, ShouldReplaceDocumentIfJavaScriptURL shouldReplaceDocumentIfJavaScriptURL = ReplaceDocumentIfJavaScriptURL);
@@ -112,8 +112,8 @@ public:
     // Darwin is an exception to this rule: it is OK to call this function from any thread, even reentrantly.
     static void initializeThreading();
 
-    Deprecated::ScriptValue evaluate(const ScriptSourceCode&, ExceptionDetails* = nullptr);
-    Deprecated::ScriptValue evaluateInWorld(const ScriptSourceCode&, DOMWrapperWorld&, ExceptionDetails* = nullptr);
+    JSC::JSValue evaluate(const ScriptSourceCode&, ExceptionDetails* = nullptr);
+    JSC::JSValue evaluateInWorld(const ScriptSourceCode&, DOMWrapperWorld&, ExceptionDetails* = nullptr);
 
     WTF::TextPosition eventHandlerPosition() const;
 
@@ -135,7 +135,8 @@ public:
 
     const String* sourceURL() const { return m_sourceURL; } // 0 if we are not evaluating any script
 
-    void clearWindowShell(DOMWindow* newDOMWindow, bool goingIntoPageCache);
+    void clearWindowShellsNotMatchingDOMWindow(DOMWindow*, bool goingIntoPageCache);
+    void setDOMWindowForWindowShell(DOMWindow*);
     void updateDocument();
 
     void namedItemAdded(HTMLDocument*, const AtomicString&) { }
@@ -147,7 +148,7 @@ public:
     void updatePlatformScriptObjects();
 
     RefPtr<JSC::Bindings::Instance>  createScriptInstanceForWidget(Widget*);
-    JSC::Bindings::RootObject* bindingRootObject();
+    WEBCORE_EXPORT JSC::Bindings::RootObject* bindingRootObject();
     JSC::Bindings::RootObject* cacheableBindingRootObject();
 
     WEBCORE_EXPORT RefPtr<JSC::Bindings::RootObject> createRootObject(void* nativeHandle);
@@ -162,7 +163,6 @@ public:
     WEBCORE_EXPORT JSC::JSObject* jsObjectForPluginElement(HTMLPlugInElement*);
     
 #if ENABLE(NETSCAPE_PLUGIN_API)
-    NPObject* createScriptObjectForPluginElement(HTMLPlugInElement*);
     WEBCORE_EXPORT NPObject* windowScriptNPObject();
 #endif
 

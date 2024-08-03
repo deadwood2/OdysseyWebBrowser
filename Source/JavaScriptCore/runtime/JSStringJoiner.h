@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,6 +35,7 @@ class JSStringJoiner {
 public:
     JSStringJoiner(ExecState&, LChar separator, unsigned stringCount);
     JSStringJoiner(ExecState&, StringView separator, unsigned stringCount);
+    ~JSStringJoiner();
 
     void append(ExecState&, JSValue);
     bool appendWithoutSideEffects(ExecState&, JSValue);
@@ -59,16 +60,20 @@ inline JSStringJoiner::JSStringJoiner(ExecState& state, StringView separator, un
     : m_separator(separator)
     , m_isAll8Bit(m_separator.is8Bit())
 {
-    if (!m_strings.tryReserveCapacity(stringCount))
-        throwOutOfMemoryError(&state);
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    if (UNLIKELY(!m_strings.tryReserveCapacity(stringCount)))
+        throwOutOfMemoryError(&state, scope);
 }
 
 inline JSStringJoiner::JSStringJoiner(ExecState& state, LChar separator, unsigned stringCount)
     : m_singleCharacterSeparator(separator)
     , m_separator { &m_singleCharacterSeparator, 1 }
 {
-    if (!m_strings.tryReserveCapacity(stringCount))
-        throwOutOfMemoryError(&state);
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    if (UNLIKELY(!m_strings.tryReserveCapacity(stringCount)))
+        throwOutOfMemoryError(&state, scope);
 }
 
 ALWAYS_INLINE void JSStringJoiner::append(StringViewWithUnderlyingString&& string)
@@ -108,10 +113,11 @@ ALWAYS_INLINE bool JSStringJoiner::appendWithoutSideEffects(ExecState& state, JS
     // If we might make an effectful calls, return false. Otherwise return true.
 
     if (value.isCell()) {
+        JSString* jsString;
         if (!value.asCell()->isString())
             return false;
-
-        append(asString(value)->viewWithUnderlyingString(state));
+        jsString = asString(value);
+        append(jsString->viewWithUnderlyingString(state));
         return true;
     }
 

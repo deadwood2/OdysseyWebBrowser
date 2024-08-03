@@ -25,10 +25,10 @@
 
 #if PLATFORM(IOS)
 
-#import "DataDetectorsUISPI.h"
 #import "GestureTypes.h"
 #import "WKActionSheet.h"
 #import <UIKit/UIPopoverController.h>
+#import <WebCore/DataDetectorsUISPI.h>
 #import <wtf/RetainPtr.h>
 
 namespace WebKit {
@@ -52,6 +52,7 @@ struct InteractionInformationAtPosition;
 - (RetainPtr<NSArray>)actionSheetAssistant:(WKActionSheetAssistant *)assistant decideActionsForElement:(_WKActivatedElementInfo *)element defaultActions:(RetainPtr<NSArray>)defaultActions;
 
 @optional
+- (BOOL)actionSheetAssistant:(WKActionSheetAssistant *)assistant showCustomSheetForElement:(_WKActivatedElementInfo *)element;
 - (void)updatePositionInformationForActionSheetAssistant:(WKActionSheetAssistant *)assistant;
 - (void)actionSheetAssistant:(WKActionSheetAssistant *)assistant willStartInteractionWithElement:(_WKActivatedElementInfo *)element;
 - (void)actionSheetAssistantDidStopInteraction:(WKActionSheetAssistant *)assistant;

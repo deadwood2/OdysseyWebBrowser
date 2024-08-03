@@ -31,7 +31,7 @@
 #ifndef RTCRtpSenderReceiverBase_h
 #define RTCRtpSenderReceiverBase_h
 
-#if ENABLE(MEDIA_STREAM)
+#if ENABLE(WEB_RTC)
 
 #include "MediaStreamTrack.h"
 #include "ScriptWrappable.h"
@@ -44,13 +44,15 @@ class MediaStreamTrack;
 
 class RTCRtpSenderReceiverBase : public RefCounted<RTCRtpSenderReceiverBase>, public ScriptWrappable {
 public:
-    virtual ~RTCRtpSenderReceiverBase() { }
+    virtual ~RTCRtpSenderReceiverBase() = default;
 
-    MediaStreamTrack* track() const {  return m_track.get(); }
+    MediaStreamTrack* track() { return m_track.get(); }
 
 protected:
-    RTCRtpSenderReceiverBase(RefPtr<MediaStreamTrack>&& track)
-        : m_track(track)
+    RTCRtpSenderReceiverBase() = default;
+
+    RTCRtpSenderReceiverBase(Ref<MediaStreamTrack>&& track)
+        : m_track(WTFMove(track))
     { }
 
     RefPtr<MediaStreamTrack> m_track;
@@ -58,6 +60,6 @@ protected:
 
 } // namespace WebCore
 
-#endif // ENABLE(MEDIA_STREAM)
+#endif // ENABLE(WEB_RTC)
 
 #endif // RTCRtpSenderReceiverBase_h

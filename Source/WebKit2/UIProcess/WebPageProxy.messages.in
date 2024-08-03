@@ -1,4 +1,4 @@
-# Copyright (C) 2010, 2011 Apple Inc. All rights reserved.
+# Copyright (C) 2010-2016 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -71,7 +71,7 @@ messages -> WebPageProxy {
 
     RunBeforeUnloadConfirmPanel(String message, uint64_t frameID) -> (bool shouldClose) Delayed
     PageDidScroll()
-    RunOpenPanel(uint64_t frameID, struct WebCore::FileChooserSettings parameters)
+    RunOpenPanel(uint64_t frameID, struct WebCore::SecurityOriginData frameSecurityOrigin, struct WebCore::FileChooserSettings parameters)
     PrintFrame(uint64_t frameID) -> ()
     RunModal()
     NotifyScrollerThumbIsVisibleInRect(WebCore::IntRect scrollerThumb)
@@ -126,19 +126,21 @@ messages -> WebPageProxy {
     DidReceiveServerRedirectForProvisionalLoadForFrame(uint64_t frameID, uint64_t navigationID, String url, WebKit::UserData userData)
     DidChangeProvisionalURLForFrame(uint64_t frameID, uint64_t navigationID, String url)
     DidFailProvisionalLoadForFrame(uint64_t frameID, struct WebCore::SecurityOriginData frameSecurityOrigin, uint64_t navigationID, String provisionalURL, WebCore::ResourceError error, WebKit::UserData userData)
-    DidCommitLoadForFrame(uint64_t frameID, uint64_t navigationID, String mimeType, bool hasCustomContentProvider, bool pluginHandlesPageScaleGesture, uint32_t loadType, WebCore::CertificateInfo certificateInfo, bool containsPluginDocument, WebKit::UserData userData)
+    DidCommitLoadForFrame(uint64_t frameID, uint64_t navigationID, String mimeType, bool hasCustomContentProvider, uint32_t loadType, WebCore::CertificateInfo certificateInfo, bool containsPluginDocument, WebKit::UserData userData)
     DidFailLoadForFrame(uint64_t frameID, uint64_t navigationID, WebCore::ResourceError error, WebKit::UserData userData)
     DidFinishDocumentLoadForFrame(uint64_t frameID, uint64_t navigationID, WebKit::UserData userData)
     DidFinishLoadForFrame(uint64_t frameID, uint64_t navigationID, WebKit::UserData userData)
     DidFirstLayoutForFrame(uint64_t frameID, WebKit::UserData userData)
     DidFirstVisuallyNonEmptyLayoutForFrame(uint64_t frameID, WebKit::UserData userData)
-    DidLayout(uint32_t type)
+    DidReachLayoutMilestone(uint32_t type)
     DidReceiveTitleForFrame(uint64_t frameID, String title, WebKit::UserData userData)
     DidDisplayInsecureContentForFrame(uint64_t frameID, WebKit::UserData userData)
     DidRunInsecureContentForFrame(uint64_t frameID, WebKit::UserData userData)
     DidDetectXSSForFrame(uint64_t frameID, WebKit::UserData userData)
     DidSameDocumentNavigationForFrame(uint64_t frameID, uint64_t navigationID, uint32_t type, String url, WebKit::UserData userData)
     DidDestroyNavigation(uint64_t navigationID)
+
+    MainFramePluginHandlesPageScaleGestureDidChange(bool mainFramePluginHandlesPageScaleGesture)
 
     FrameDidBecomeFrameSet(uint64_t frameID, bool value)
 
@@ -171,10 +173,10 @@ messages -> WebPageProxy {
 #endif
 #if PLATFORM(IOS)
     GestureCallback(WebCore::IntPoint point, uint32_t gestureType, uint32_t gestureState, uint32_t flags, uint64_t callbackID)
-    TouchesCallback(WebCore::IntPoint point, uint32_t touches, uint64_t callbackID)
+    TouchesCallback(WebCore::IntPoint point, uint32_t touches, uint32_t flags, uint64_t callbackID)
     AutocorrectionDataCallback(Vector<WebCore::FloatRect> textRects, String fontName, double fontSize, uint64_t traits, uint64_t callbackID)
     AutocorrectionContextCallback(String beforeText, String markedText, String selectedText, String afterText, uint64_t location, uint64_t length, uint64_t callbackID)
-    DictationContextCallback(String selectedText, String beforeText, String afterText, uint64_t callbackID)
+    SelectionContextCallback(String selectedText, String beforeText, String afterText, uint64_t callbackID)
     InterpretKeyEvent(struct WebKit::EditorState state, bool isCharEvent) -> (bool handled)
     DidReceivePositionInformation(struct WebKit::InteractionInformationAtPosition information)
     SaveImageToLibrary(WebKit::SharedMemory::Handle handle, uint64_t size)
@@ -184,7 +186,7 @@ messages -> WebPageProxy {
     CommitPotentialTapFailed()
     DidNotHandleTapAsClick(WebCore::IntPoint point)
     DisableDoubleTapGesturesDuringTapIfNecessary(uint64_t requestID)
-    DidFinishDrawingPagesToPDF(IPC::DataReference pdfData)
+    DrawToPDFCallback(IPC::DataReference pdfData, uint64_t callbackID)
 #endif
 #if ENABLE(DATA_DETECTION)
     SetDataDetectionResult(struct WebKit::DataDetectionResult dataDetectionResult)
@@ -231,6 +233,7 @@ messages -> WebPageProxy {
     # Editor notifications
     EditorStateChanged(struct WebKit::EditorState editorState)
     CompositionWasCanceled(struct WebKit::EditorState editorState)
+    SetHasHadSelectionChangesFromUserInteraction(bool hasHadUserSelectionChanges)
 
     # Find messages
     DidCountStringMatches(String string, uint32_t matchCount)
@@ -250,7 +253,6 @@ messages -> WebPageProxy {
 #endif
 
     # Authentication messages
-    CanAuthenticateAgainstProtectionSpaceInFrame(uint64_t frameID, WebCore::ProtectionSpace protectionSpace) -> (bool canAuthenticate)
     DidReceiveAuthenticationChallenge(uint64_t frameID, WebCore::AuthenticationChallenge challenge, uint64_t challengeID)
 
     # Database messages
@@ -264,8 +266,8 @@ messages -> WebPageProxy {
     
 #if ENABLE(MEDIA_STREAM)
     # MediaSteam messages
-    RequestUserMediaPermissionForFrame(uint64_t userMediaID, uint64_t frameID, String originIdentifier, Vector<String> audioDeviceUIDs, Vector<String> videoDeviceUIDs)
-    CheckUserMediaPermissionForFrame(uint64_t userMediaID, uint64_t frameID, String originIdentifier)
+    RequestUserMediaPermissionForFrame(uint64_t userMediaID, uint64_t frameID, String userMediaDocumentOriginIdentifier, String topLevelDocumentOriginIdentifier, Vector<String> audioDeviceUIDs, Vector<String> videoDeviceUIDs)
+    CheckUserMediaPermissionForFrame(uint64_t userMediaID, uint64_t frameID, String userMediaDocumentOriginIdentifier, String topLevelDocumentOriginIdentifier)
 #endif
 
     # Notification messages
@@ -277,17 +279,17 @@ messages -> WebPageProxy {
 
     # Spelling and grammar messages
 #if USE(UNIFIED_TEXT_CHECKING)  
-    CheckTextOfParagraph(String text, uint64_t checkingTypes) -> (Vector<WebCore::TextCheckingResult> results)
+    CheckTextOfParagraph(String text, uint64_t checkingTypes, int32_t insertionPoint) -> (Vector<WebCore::TextCheckingResult> results)
 #endif
     CheckSpellingOfString(String text) -> (int32_t misspellingLocation, int32_t misspellingLength)
     CheckGrammarOfString(String text) -> (Vector<WebCore::GrammarDetail> results, int32_t badGrammarLocation, int32_t badGrammarLength)
     SpellingUIIsShowing() -> (bool isShowing)
     UpdateSpellingUIWithMisspelledWord(String misspelledWord)
     UpdateSpellingUIWithGrammarString(String badGrammarPhrase, struct WebCore::GrammarDetail grammarDetail)
-    GetGuessesForWord(String word, String context) -> (Vector<String> guesses)
+    GetGuessesForWord(String word, String context, int32_t insertionPoint) -> (Vector<String> guesses)
     LearnWord(String word);
     IgnoreWord(String word);
-    RequestCheckingOfString(uint64_t requestID, WebCore::TextCheckingRequestData request)
+    RequestCheckingOfString(uint64_t requestID, WebCore::TextCheckingRequestData request, int32_t insertionPoint)
 
     # Drag and drop messages
 #if ENABLE(DRAG_SUPPORT)
@@ -301,7 +303,7 @@ messages -> WebPageProxy {
 #endif
 #endif
 #if PLATFORM(GTK) && ENABLE(DRAG_SUPPORT)
-    StartDrag(WebCore::DragData dragData, WebKit::ShareableBitmap::Handle dragImage)
+    StartDrag(struct WebKit::WebSelectionData selection, uint64_t dragOperation, WebKit::ShareableBitmap::Handle dragImage)
 #endif
 
 #if PLATFORM(COCOA)
@@ -340,6 +342,8 @@ messages -> WebPageProxy {
     DismissCorrectionPanel(int32_t reason)
     DismissCorrectionPanelSoon(int32_t reason) -> (String result)
     RecordAutocorrectionResponse(int32_t responseType, String replacedString, String replacementString);
+
+    SetEditableElementIsFocused(bool editableElementIsFocused)
 #endif
 
 #if USE(DICTATION_ALTERNATIVES)
@@ -358,7 +362,7 @@ messages -> WebPageProxy {
 #if PLATFORM(IOS)
     DynamicViewportUpdateChangedTarget(double newTargetScale, WebCore::FloatPoint newScrollPosition, uint64_t dynamicViewportSizeUpdateID)
     CouldNotRestorePageState()
-    RestorePageState(WebCore::FloatRect exposedRect, double scale)
+    RestorePageState(WebCore::FloatPoint scrollPosition, WebCore::FloatPoint scrollOrigin, WebCore::FloatSize obscuredInsetOnSave, double scale)
     RestorePageCenterAndScale(WebCore::FloatPoint unobscuredCenter, double scale)
     DidGetTapHighlightGeometries(uint64_t requestID, WebCore::Color color, Vector<WebCore::FloatQuad> geometries, WebCore::IntSize topLeftRadius, WebCore::IntSize topRightRadius, WebCore::IntSize bottomLeftRadius, WebCore::IntSize bottomRightRadius)
 

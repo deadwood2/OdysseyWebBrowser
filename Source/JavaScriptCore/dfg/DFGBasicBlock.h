@@ -37,8 +37,6 @@
 #include "DFGNodeOrigin.h"
 #include "DFGStructureClobberState.h"
 #include "Operands.h"
-#include <wtf/HashMap.h>
-#include <wtf/HashSet.h>
 #include <wtf/Vector.h>
 
 namespace JSC { namespace DFG {
@@ -239,14 +237,25 @@ struct BasicBlock : RefCounted<BasicBlock> {
     struct SSAData {
         WTF_MAKE_FAST_ALLOCATED;
     public:
+        void invalidate()
+        {
+            liveAtTail.clear();
+            liveAtHead.clear();
+            valuesAtHead.clear();
+            valuesAtTail.clear();
+        }
+
         AvailabilityMap availabilityAtHead;
         AvailabilityMap availabilityAtTail;
-        
-        bool liveAtTailIsDirty { false };
-        HashSet<Node*> liveAtTail;
-        HashSet<Node*> liveAtHead;
-        HashMap<Node*, AbstractValue> valuesAtHead;
-        HashMap<Node*, AbstractValue> valuesAtTail;
+
+        Vector<Node*> liveAtHead;
+        Vector<Node*> liveAtTail;
+        struct NodeAbstractValuePair {
+            Node* node;
+            AbstractValue value;
+        };
+        Vector<NodeAbstractValuePair> valuesAtHead;
+        Vector<NodeAbstractValuePair> valuesAtTail;
         
         SSAData(BasicBlock*);
         ~SSAData();

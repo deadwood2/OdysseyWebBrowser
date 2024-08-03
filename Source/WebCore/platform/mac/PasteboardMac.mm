@@ -169,15 +169,15 @@ void Pasteboard::write(const PasteboardWebContent& content)
 
     ASSERT(content.clientTypes.size() == content.clientData.size());
     for (size_t i = 0, size = content.clientTypes.size(); i < size; ++i)
-        m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(content.clientData[i], content.clientTypes[i], m_pasteboardName);
+        m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(content.clientData[i].get(), content.clientTypes[i], m_pasteboardName);
     if (content.canSmartCopyOrDelete)
-        m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(0, WebSmartPastePboardType, m_pasteboardName);
+        m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(nullptr, WebSmartPastePboardType, m_pasteboardName);
     if (content.dataInWebArchiveFormat)
-        m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(content.dataInWebArchiveFormat, WebArchivePboardType, m_pasteboardName);
+        m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(content.dataInWebArchiveFormat.get(), WebArchivePboardType, m_pasteboardName);
     if (content.dataInRTFDFormat)
-        m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(content.dataInRTFDFormat, NSRTFDPboardType, m_pasteboardName);
+        m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(content.dataInRTFDFormat.get(), NSRTFDPboardType, m_pasteboardName);
     if (content.dataInRTFFormat)
-        m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(content.dataInRTFFormat, NSRTFPboardType, m_pasteboardName);
+        m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(content.dataInRTFFormat.get(), NSRTFPboardType, m_pasteboardName);
     if (!content.dataInStringFormat.isNull())
         m_changeCount = platformStrategies()->pasteboardStrategy()->setStringForType(content.dataInStringFormat, NSStringPboardType, m_pasteboardName);
 }
@@ -250,7 +250,7 @@ static void writeFileWrapperAsRTFDAttachment(NSFileWrapper *wrapper, const Strin
     if (!RTFDData)
         return;
 
-    newChangeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(SharedBuffer::wrapNSData(RTFDData).get(), NSRTFDPboardType, pasteboardName);
+    newChangeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(SharedBuffer::wrapNSData(RTFDData).ptr(), NSRTFDPboardType, pasteboardName);
 }
 
 void Pasteboard::write(const PasteboardImage& pasteboardImage)
@@ -263,7 +263,7 @@ void Pasteboard::write(const PasteboardImage& pasteboardImage)
     ASSERT(MIMETypeRegistry::isSupportedImageResourceMIMEType(pasteboardImage.resourceMIMEType));
 
     m_changeCount = writeURLForTypes(writableTypesForImage(), m_pasteboardName, pasteboardImage.url);
-    m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(SharedBuffer::wrapCFData(imageData), NSTIFFPboardType, m_pasteboardName);
+    m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(SharedBuffer::wrapCFData(imageData).ptr(), NSTIFFPboardType, m_pasteboardName);
     writeFileWrapperAsRTFDAttachment(fileWrapper(pasteboardImage), m_pasteboardName, m_changeCount);
 }
 
@@ -340,7 +340,7 @@ void Pasteboard::read(PasteboardWebContentReader& reader)
 
     if (types.contains(WebArchivePboardType)) {
         if (RefPtr<SharedBuffer> buffer = strategy.bufferForType(WebArchivePboardType, m_pasteboardName)) {
-            if (reader.readWebArchive(buffer.release()))
+            if (reader.readWebArchive(buffer.get()))
                 return;
         }
     }
@@ -360,35 +360,35 @@ void Pasteboard::read(PasteboardWebContentReader& reader)
 
     if (types.contains(String(NSRTFDPboardType))) {
         if (RefPtr<SharedBuffer> buffer = strategy.bufferForType(NSRTFDPboardType, m_pasteboardName)) {
-            if (reader.readRTFD(buffer.release()))
+            if (reader.readRTFD(*buffer))
                 return;
         }
     }
 
     if (types.contains(String(NSRTFPboardType))) {
         if (RefPtr<SharedBuffer> buffer = strategy.bufferForType(NSRTFPboardType, m_pasteboardName)) {
-            if (reader.readRTF(buffer.release()))
+            if (reader.readRTF(*buffer))
                 return;
         }
     }
 
     if (types.contains(String(NSTIFFPboardType))) {
         if (RefPtr<SharedBuffer> buffer = strategy.bufferForType(NSTIFFPboardType, m_pasteboardName)) {
-            if (reader.readImage(buffer.release(), ASCIILiteral("image/tiff")))
+            if (reader.readImage(buffer.releaseNonNull(), ASCIILiteral("image/tiff")))
                 return;
         }
     }
 
     if (types.contains(String(NSPDFPboardType))) {
         if (RefPtr<SharedBuffer> buffer = strategy.bufferForType(NSPDFPboardType, m_pasteboardName)) {
-            if (reader.readImage(buffer.release(), ASCIILiteral("application/pdf")))
+            if (reader.readImage(buffer.releaseNonNull(), ASCIILiteral("application/pdf")))
                 return;
         }
     }
 
     if (types.contains(String(kUTTypePNG))) {
         if (RefPtr<SharedBuffer> buffer = strategy.bufferForType(kUTTypePNG, m_pasteboardName)) {
-            if (reader.readImage(buffer.release(), ASCIILiteral("image/png")))
+            if (reader.readImage(buffer.releaseNonNull(), ASCIILiteral("image/png")))
                 return;
         }
     }
@@ -642,8 +642,11 @@ void Pasteboard::setDragImage(DragImageRef image, const IntPoint& location)
     // Hack: We must post an event to wake up the NSDragManager, which is sitting in a nextEvent call
     // up the stack from us because the CoreFoundation drag manager does not use the run loop by itself.
     // This is the most innocuous event to use, per Kristen Forster.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     NSEvent* event = [NSEvent mouseEventWithType:NSMouseMoved location:NSZeroPoint
         modifierFlags:0 timestamp:0 windowNumber:0 context:nil eventNumber:0 clickCount:0 pressure:0];
+#pragma clang diagnostic pop
     [NSApp postEvent:event atStart:YES];
 }
 #endif

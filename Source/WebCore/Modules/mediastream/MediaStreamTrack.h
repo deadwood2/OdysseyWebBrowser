@@ -25,8 +25,7 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef MediaStreamTrack_h
-#define MediaStreamTrack_h
+#pragma once
 
 #if ENABLE(MEDIA_STREAM)
 
@@ -35,7 +34,6 @@
 #include "MediaStreamTrackPrivate.h"
 #include "RealtimeMediaSource.h"
 #include "ScriptWrappable.h"
-#include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
@@ -48,7 +46,7 @@ class MediaConstraintsImpl;
 class MediaSourceSettings;
 class MediaTrackConstraints;
 
-class MediaStreamTrack final : public RefCounted<MediaStreamTrack>, public ActiveDOMObject, public EventTargetWithInlineData, public MediaStreamTrackPrivate::Observer {
+class MediaStreamTrack final : public RefCounted<MediaStreamTrack>, public ActiveDOMObject, public EventTargetWithInlineData, private MediaStreamTrackPrivate::Observer {
 public:
     class Observer {
     public:
@@ -70,7 +68,8 @@ public:
     bool readonly() const;
     bool remote() const;
 
-    const AtomicString& readyState() const;
+    enum class State { New, Live, Ended };
+    State readyState() const;
 
     bool ended() const;
 
@@ -92,8 +91,8 @@ public:
     void removeObserver(Observer*);
 
     // EventTarget
-    virtual EventTargetInterface eventTargetInterface() const override final { return MediaStreamTrackEventTargetInterfaceType; }
-    virtual ScriptExecutionContext* scriptExecutionContext() const override final { return ActiveDOMObject::scriptExecutionContext(); }
+    EventTargetInterface eventTargetInterface() const final { return MediaStreamTrackEventTargetInterfaceType; }
+    ScriptExecutionContext* scriptExecutionContext() const final { return ActiveDOMObject::scriptExecutionContext(); }
 
     using RefCounted<MediaStreamTrack>::ref;
     using RefCounted<MediaStreamTrack>::deref;
@@ -105,13 +104,13 @@ private:
     void configureTrackRendering();
 
     // ActiveDOMObject API.
-    void stop() override final;
-    const char* activeDOMObjectName() const override final;
-    bool canSuspendForDocumentSuspension() const override final;
+    void stop() final;
+    const char* activeDOMObjectName() const final;
+    bool canSuspendForDocumentSuspension() const final;
 
     // EventTarget
-    virtual void refEventTarget() override final { ref(); }
-    virtual void derefEventTarget() override final { deref(); }
+    void refEventTarget() final { ref(); }
+    void derefEventTarget() final { deref(); }
 
     // MediaStreamTrackPrivate::Observer
     void trackEnded(MediaStreamTrackPrivate&) override;
@@ -132,5 +131,3 @@ typedef Vector<RefPtr<MediaStreamTrack>> MediaStreamTrackVector;
 } // namespace WebCore
 
 #endif // ENABLE(MEDIA_STREAM)
-
-#endif // MediaStreamTrack_h

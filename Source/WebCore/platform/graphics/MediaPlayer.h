@@ -40,6 +40,7 @@
 #include "PlatformLayer.h"
 #include "PlatformMediaResourceLoader.h"
 #include "PlatformMediaSession.h"
+#include "SecurityOriginHash.h"
 #include "Timer.h"
 #include "VideoTrackPrivate.h"
 #include <runtime/Uint8Array.h>
@@ -195,6 +196,9 @@ public:
     // availability of the platformLayer().
     virtual void mediaPlayerRenderingModeChanged(MediaPlayer*) { }
 
+    // whether accelerated compositing is enabled for video rendering
+    virtual bool mediaPlayerAcceleratedCompositingEnabled() { return false; }
+
 #if PLATFORM(WIN) && USE(AVFOUNDATION)
     virtual GraphicsDeviceAdapter* mediaPlayerGraphicsDeviceAdapter(const MediaPlayer*) const { return 0; }
 #endif
@@ -212,11 +216,6 @@ public:
     virtual bool mediaPlayerKeyNeeded(MediaPlayer*, Uint8Array*) { return false; }
     virtual String mediaPlayerMediaKeysStorageDirectory() const { return emptyString(); }
 #endif
-    
-#if ENABLE(MEDIA_STREAM)
-    virtual String mediaPlayerMediaDeviceIdentifierStorageDirectory() const { return emptyString(); }
-#endif
-
     
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
     virtual void mediaPlayerCurrentPlaybackTargetIsWirelessChanged(MediaPlayer*) { };
@@ -240,6 +239,8 @@ public:
     virtual CachedResourceLoader* mediaPlayerCachedResourceLoader() { return 0; }
     virtual RefPtr<PlatformMediaResourceLoader> mediaPlayerCreateResourceLoader() { return nullptr; }
     virtual bool doesHaveAttribute(const AtomicString&, AtomicString* = 0) const { return false; }
+    virtual bool mediaPlayerShouldUsePersistentCache() const { return true; }
+    virtual const String& mediaPlayerMediaCacheDirectory() const { return emptyString(); }
 
 #if ENABLE(VIDEO_TRACK)
     virtual void mediaPlayerDidAddAudioTrack(PassRefPtr<AudioTrackPrivate>) { }
@@ -296,9 +297,9 @@ public:
     static MediaPlayer::SupportsType supportsType(const MediaEngineSupportParameters&, const MediaPlayerSupportsTypeClient*);
     static void getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>&);
     static bool isAvailable();
-    static void getSitesInMediaCache(Vector<String>&);
-    static void clearMediaCache();
-    static void clearMediaCacheForSite(const String&);
+    static HashSet<RefPtr<SecurityOrigin>> originsInMediaCache(const String& path);
+    static void clearMediaCache(const String& path, std::chrono::system_clock::time_point modifiedSince);
+    static void clearMediaCacheForOrigins(const String& path, const HashSet<RefPtr<SecurityOrigin>>&);
     static bool supportsKeySystem(const String& keySystem, const String& mimeType);
 
     bool supportsFullscreen() const;
@@ -310,7 +311,7 @@ public:
     PlatformLayer* platformLayer() const;
 
 #if PLATFORM(IOS) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))
-    void setVideoFullscreenLayer(PlatformLayer*);
+    void setVideoFullscreenLayer(PlatformLayer*, std::function<void()> completionHandler = [] { });
     void setVideoFullscreenFrame(FloatRect);
     using MediaPlayerEnums::VideoGravity;
     void setVideoFullscreenGravity(VideoGravity);
@@ -427,7 +428,7 @@ public:
     // http://src.chromium.org/viewvc/chrome/trunk/src/gpu/command_buffer/service/gles2_cmd_copy_texture_chromium.cc via shaders.
     bool copyVideoTextureToPlatformTexture(GraphicsContext3D*, Platform3DObject texture, GC3Denum target, GC3Dint level, GC3Denum internalFormat, GC3Denum format, GC3Denum type, bool premultiplyAlpha, bool flipY);
 
-    PassNativeImagePtr nativeImageForCurrentTime();
+    NativeImagePtr nativeImageForCurrentTime();
 
     using MediaPlayerEnums::NetworkState;
     NetworkState networkState();
@@ -621,6 +622,7 @@ private:
     bool m_privateBrowsing;
     bool m_shouldPrepareToRender;
     bool m_contentMIMETypeWasInferredFromExtension;
+    bool m_initializingMediaEngine { false };
 
 #if ENABLE(MEDIA_SOURCE)
     RefPtr<MediaSourcePrivateClient> m_mediaSource;
@@ -633,13 +635,13 @@ private:
 typedef std::function<std::unique_ptr<MediaPlayerPrivateInterface> (MediaPlayer*)> CreateMediaEnginePlayer;
 typedef void (*MediaEngineSupportedTypes)(HashSet<String, ASCIICaseInsensitiveHash>& types);
 typedef MediaPlayer::SupportsType (*MediaEngineSupportsType)(const MediaEngineSupportParameters& parameters);
-typedef void (*MediaEngineGetSitesInMediaCache)(Vector<String>&);
-typedef void (*MediaEngineClearMediaCache)();
-typedef void (*MediaEngineClearMediaCacheForSite)(const String&);
+typedef HashSet<RefPtr<SecurityOrigin>> (*MediaEngineOriginsInMediaCache)(const String& path);
+typedef void (*MediaEngineClearMediaCache)(const String& path, std::chrono::system_clock::time_point modifiedSince);
+typedef void (*MediaEngineClearMediaCacheForOrigins)(const String& path, const HashSet<RefPtr<SecurityOrigin>>&);
 typedef bool (*MediaEngineSupportsKeySystem)(const String& keySystem, const String& mimeType);
 
 typedef void (*MediaEngineRegistrar)(CreateMediaEnginePlayer, MediaEngineSupportedTypes, MediaEngineSupportsType,
-    MediaEngineGetSitesInMediaCache, MediaEngineClearMediaCache, MediaEngineClearMediaCacheForSite, MediaEngineSupportsKeySystem);
+    MediaEngineOriginsInMediaCache, MediaEngineClearMediaCache, MediaEngineClearMediaCacheForOrigins, MediaEngineSupportsKeySystem);
 typedef void (*MediaEngineRegister)(MediaEngineRegistrar);
 
 class MediaPlayerFactorySupport {

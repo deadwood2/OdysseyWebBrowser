@@ -31,7 +31,7 @@
 
 #if ENABLE(FETCH_API)
 
-#include "FetchBody.h"
+#include "FetchBodyOwner.h"
 #include "FetchHeaders.h"
 #include "FetchOptions.h"
 #include "ResourceRequest.h"
@@ -43,35 +43,44 @@ class ScriptExecutionContext;
 
 typedef int ExceptionCode;
 
-class FetchRequest : public RefCounted<FetchRequest> {
+class FetchRequest final : public FetchBodyOwner {
 public:
-    static RefPtr<FetchRequest> create(ScriptExecutionContext&, FetchRequest*, const Dictionary&, ExceptionCode&);
-    static RefPtr<FetchRequest> create(ScriptExecutionContext&, const String&, const Dictionary&, ExceptionCode&);
+    static Ref<FetchRequest> create(ScriptExecutionContext& context) { return adoptRef(*new FetchRequest(context, { }, FetchHeaders::create(FetchHeaders::Guard::Request), { })); }
 
-    // Request API
+    FetchHeaders* initializeWith(FetchRequest&, const Dictionary&, ExceptionCode&);
+    FetchHeaders* initializeWith(const String&, const Dictionary&, ExceptionCode&);
+    void setBody(JSC::ExecState&, JSC::JSValue, FetchRequest*, ExceptionCode&);
+
     const String& method() const { return m_internalRequest.request.httpMethod(); }
-    const String& url() const { return m_internalRequest.request.url().string(); }
+    const String& url() const;
     FetchHeaders& headers() { return m_headers.get(); }
 
-    String type() const;
-    String destination() const;
+    using Type = FetchOptions::Type;
+    Type type() const;
+
+    using Destination = FetchOptions::Destination;
+    Destination destination() const;
+
     String referrer() const;
-    String referrerPolicy() const;
-    String mode() const;
-    String credentials() const;
-    String cache() const;
-    String redirect() const;
+
+    using ReferrerPolicy = FetchOptions::ReferrerPolicy;
+    ReferrerPolicy referrerPolicy() const;
+
+    using Mode = FetchOptions::Mode;
+    Mode mode() const;
+
+    using Credentials = FetchOptions::Credentials;
+    Credentials credentials() const;
+
+    using Cache = FetchOptions::Cache;
+    Cache cache() const;
+
+    using Redirect = FetchOptions::Redirect;
+    Redirect redirect() const;
+
     const String& integrity() const { return m_internalRequest.integrity; }
 
-    RefPtr<FetchRequest> clone(ExceptionCode&);
-
-    // Body API
-    bool isDisturbed() const { return m_body.isDisturbed(); }
-    void arrayBuffer(FetchBody::ArrayBufferPromise&& promise) { m_body.arrayBuffer(WTFMove(promise)); }
-    void formData(FetchBody::FormDataPromise&& promise) { m_body.formData(WTFMove(promise)); }
-    void blob(FetchBody::BlobPromise&& promise) { m_body.blob(WTFMove(promise)); }
-    void json(JSC::ExecState& state, FetchBody::JSONPromise&& promise) { m_body.json(state, WTFMove(promise)); }
-    void text(FetchBody::TextPromise&& promise) { m_body.text(WTFMove(promise)); }
+    RefPtr<FetchRequest> clone(ScriptExecutionContext&, ExceptionCode&);
 
     struct InternalRequest {
         ResourceRequest request;
@@ -80,21 +89,63 @@ public:
         String integrity;
     };
 
-    FetchBody& body() { return m_body; }
+    const FetchOptions& fetchOptions() const { return m_internalRequest.options; }
+    ResourceRequest internalRequest() const;
 
 private:
-    FetchRequest(FetchBody&&, Ref<FetchHeaders>&&, InternalRequest&&);
+    FetchRequest(ScriptExecutionContext&, FetchBody&&, Ref<FetchHeaders>&&, InternalRequest&&);
 
-    FetchBody m_body;
+    void initializeOptions(const Dictionary&, ExceptionCode&);
+
+    // ActiveDOMObject API.
+    const char* activeDOMObjectName() const final;
+    bool canSuspendForDocumentSuspension() const final;
+
     Ref<FetchHeaders> m_headers;
     InternalRequest m_internalRequest;
+    mutable String m_requestURL;
 };
 
-inline FetchRequest::FetchRequest(FetchBody&& body, Ref<FetchHeaders>&& headers, InternalRequest&& internalRequest)
-    : m_body(WTFMove(body))
+inline FetchRequest::FetchRequest(ScriptExecutionContext& context, FetchBody&& body, Ref<FetchHeaders>&& headers, InternalRequest&& internalRequest)
+    : FetchBodyOwner(context, WTFMove(body))
     , m_headers(WTFMove(headers))
     , m_internalRequest(WTFMove(internalRequest))
 {
+}
+
+inline auto FetchRequest::cache() const -> Cache
+{
+    return m_internalRequest.options.cache;
+}
+
+inline auto FetchRequest::credentials() const -> Credentials
+{
+    return m_internalRequest.options.credentials;
+}
+
+inline auto FetchRequest::destination() const -> Destination
+{
+    return m_internalRequest.options.destination;
+}
+
+inline auto FetchRequest::mode() const -> Mode
+{
+    return m_internalRequest.options.mode;
+}
+
+inline auto FetchRequest::redirect() const -> Redirect
+{
+    return m_internalRequest.options.redirect;
+}
+
+inline auto FetchRequest::referrerPolicy() const -> ReferrerPolicy
+{
+    return m_internalRequest.options.referrerPolicy;
+}
+
+inline auto FetchRequest::type() const -> Type
+{
+    return m_internalRequest.options.type;
 }
 
 } // namespace WebCore

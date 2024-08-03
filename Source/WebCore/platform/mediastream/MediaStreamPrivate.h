@@ -39,6 +39,7 @@
 #include "FloatSize.h"
 #include "MediaStreamTrack.h"
 #include "MediaStreamTrackPrivate.h"
+#include <wtf/Function.h>
 #include <wtf/HashMap.h>
 #include <wtf/MediaTime.h>
 #include <wtf/RefCounted.h>
@@ -91,8 +92,9 @@ public:
     RefPtr<Image> currentFrameImage();
     void paintCurrentFrameInContext(GraphicsContext&, const FloatRect&);
 
-    bool hasVideo();
-    bool hasAudio();
+    bool hasVideo() const;
+    bool hasAudio() const;
+    bool muted() const;
 
     FloatSize intrinsicSize() const;
 
@@ -110,7 +112,7 @@ private:
     void characteristicsChanged();
     void updateActiveVideoTrack();
 
-    void scheduleDeferredTask(std::function<void()>);
+    void scheduleDeferredTask(Function<void ()>&&);
 
     WeakPtrFactory<MediaStreamPrivate> m_weakPtrFactory;
     Vector<Observer*> m_observers;

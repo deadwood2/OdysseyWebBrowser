@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013, 2015-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,7 +35,7 @@ inline JSFunction* JSFunction::createWithInvalidatedReallocationWatchpoint(
     VM& vm, FunctionExecutable* executable, JSScope* scope)
 {
     ASSERT(executable->singletonFunction()->hasBeenInvalidated());
-    return createImpl(vm, executable, scope, scope->globalObject()->functionStructure());
+    return createImpl(vm, executable, scope, scope->globalObject(vm)->functionStructure());
 }
 
 inline JSFunction::JSFunction(VM& vm, FunctionExecutable* executable, JSScope* scope, Structure* structure)
@@ -47,7 +47,7 @@ inline JSFunction::JSFunction(VM& vm, FunctionExecutable* executable, JSScope* s
 
 #if ENABLE(WEBASSEMBLY)
 inline JSFunction::JSFunction(VM& vm, WebAssemblyExecutable* executable, JSScope* scope)
-    : Base(vm, scope, scope->globalObject()->functionStructure())
+    : Base(vm, scope, scope->globalObject(vm)->functionStructure())
     , m_executable(vm, this, executable)
     , m_rareData()
 {
@@ -108,6 +108,16 @@ inline bool isHostFunction(JSValue value, NativeFunction nativeFunction)
     if (!function || !function->isHostFunction())
         return false;
     return function->nativeFunction() == nativeFunction;
+}
+
+inline bool JSFunction::hasReifiedLength() const
+{
+    return m_rareData ? m_rareData->hasReifiedLength() : false;
+}
+
+inline bool JSFunction::hasReifiedName() const
+{
+    return m_rareData ? m_rareData->hasReifiedName() : false;
 }
 
 } // namespace JSC

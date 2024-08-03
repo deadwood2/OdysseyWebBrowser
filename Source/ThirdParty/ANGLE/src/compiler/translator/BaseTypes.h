@@ -7,7 +7,11 @@
 #ifndef COMPILER_TRANSLATOR_BASETYPES_H_
 #define COMPILER_TRANSLATOR_BASETYPES_H_
 
+#include <algorithm>
+#include <array>
+
 #include "common/debug.h"
+#include "GLSLANG/ShaderLang.h"
 
 //
 // Precision qualifiers
@@ -18,17 +22,20 @@ enum TPrecision
     EbpUndefined,
     EbpLow,
     EbpMedium,
-    EbpHigh
+    EbpHigh,
+
+    // end of list
+    EbpLast
 };
 
 inline const char* getPrecisionString(TPrecision p)
 {
     switch(p)
     {
-    case EbpHigh:		return "highp";		break;
-    case EbpMedium:		return "mediump";	break;
-    case EbpLow:		return "lowp";		break;
-    default:			return "mediump";   break;   // Safest fallback
+        case EbpHigh:   return "highp";
+        case EbpMedium: return "mediump";
+        case EbpLow:    return "lowp";
+        default:        return "mediump";  // Safest fallback
     }
 }
 
@@ -77,6 +84,9 @@ enum TBasicType
     EbtStruct,
     EbtInterfaceBlock,
     EbtAddress,            // should be deprecated??
+
+    // end of list
+    EbtLast
 };
 
 const char* getBasicString(TBasicType t);
@@ -284,20 +294,18 @@ inline bool SupportsPrecision(TBasicType type)
 //
 enum TQualifier
 {
-    EvqTemporary,     // For temporaries (within a function), read/write
-    EvqGlobal,        // For globals read/write
-    EvqConst,         // User defined constants and non-output parameters in functions
-    EvqAttribute,     // Readonly
-    EvqVaryingIn,     // readonly, fragment shaders only
-    EvqVaryingOut,    // vertex shaders only  read/write
-    EvqInvariantVaryingIn,     // readonly, fragment shaders only
-    EvqInvariantVaryingOut,    // vertex shaders only  read/write
-    EvqUniform,       // Readonly, vertex and fragment
+    EvqTemporary,   // For temporaries (within a function), read/write
+    EvqGlobal,      // For globals read/write
+    EvqConst,       // User defined constants and non-output parameters in functions
+    EvqAttribute,   // Readonly
+    EvqVaryingIn,   // readonly, fragment shaders only
+    EvqVaryingOut,  // vertex shaders only  read/write
+    EvqUniform,     // Readonly, vertex and fragment
 
-    EvqVertexIn,      // Vertex shader input
-    EvqFragmentOut,   // Fragment shader output
-    EvqVertexOut,     // Vertex shader output
-    EvqFragmentIn,    // Fragment shader input
+    EvqVertexIn,     // Vertex shader input
+    EvqFragmentOut,  // Fragment shader output
+    EvqVertexOut,    // Vertex shader output
+    EvqFragmentIn,   // Fragment shader input
 
     // parameters
     EvqIn,
@@ -307,6 +315,7 @@ enum TQualifier
 
     // built-ins read by vertex shader
     EvqInstanceID,
+    EvqVertexID,
 
     // built-ins written by vertex shader
     EvqPosition,
@@ -320,25 +329,45 @@ enum TQualifier
     // built-ins written by fragment shader
     EvqFragColor,
     EvqFragData,
-    EvqFragDepth,
+
+    EvqFragDepth,     // gl_FragDepth for ESSL300.
+    EvqFragDepthEXT,  // gl_FragDepthEXT for ESSL100, EXT_frag_depth.
+
+    EvqSecondaryFragColorEXT,  // EXT_blend_func_extended
+    EvqSecondaryFragDataEXT,   // EXT_blend_func_extended
 
     // built-ins written by the shader_framebuffer_fetch extension(s)
     EvqLastFragColor,
     EvqLastFragData,
 
     // GLSL ES 3.0 vertex output and fragment input
-    EvqSmooth,        // Incomplete qualifier, smooth is the default
-    EvqFlat,          // Incomplete qualifier
-    EvqSmoothOut = EvqSmooth,
-    EvqFlatOut = EvqFlat,
-    EvqCentroidOut,   // Implies smooth
+    EvqSmooth,    // Incomplete qualifier, smooth is the default
+    EvqFlat,      // Incomplete qualifier
+    EvqCentroid,  // Incomplete qualifier
+    EvqSmoothOut,
+    EvqFlatOut,
+    EvqCentroidOut,  // Implies smooth
     EvqSmoothIn,
     EvqFlatIn,
-    EvqCentroidIn,    // Implies smooth
+    EvqCentroidIn,  // Implies smooth
+
+    // GLSL ES 3.1 compute shader special variables
+    EvqComputeIn,
+    EvqNumWorkGroups,
+    EvqWorkGroupSize,
+    EvqWorkGroupID,
+    EvqLocalInvocationID,
+    EvqGlobalInvocationID,
+    EvqLocalInvocationIndex,
 
     // end of list
     EvqLast
 };
+
+inline bool IsQualifierUnspecified(TQualifier qualifier)
+{
+    return (qualifier == EvqTemporary || qualifier == EvqGlobal);
+}
 
 enum TLayoutMatrixPacking
 {
@@ -358,68 +387,122 @@ enum TLayoutBlockStorage
 struct TLayoutQualifier
 {
     int location;
+    unsigned int locationsSpecified;
     TLayoutMatrixPacking matrixPacking;
     TLayoutBlockStorage blockStorage;
+
+    // Compute shader layout qualifiers.
+    sh::WorkGroupSize localSize;
 
     static TLayoutQualifier create()
     {
         TLayoutQualifier layoutQualifier;
 
         layoutQualifier.location = -1;
+        layoutQualifier.locationsSpecified = 0;
         layoutQualifier.matrixPacking = EmpUnspecified;
         layoutQualifier.blockStorage = EbsUnspecified;
+
+        layoutQualifier.localSize.fill(-1);
 
         return layoutQualifier;
     }
 
     bool isEmpty() const
     {
-        return location == -1 && matrixPacking == EmpUnspecified && blockStorage == EbsUnspecified;
+        return location == -1 && matrixPacking == EmpUnspecified &&
+               blockStorage == EbsUnspecified && !localSize.isAnyValueSet();
+    }
+
+    bool isCombinationValid() const
+    {
+        bool workSizeSpecified = localSize.isAnyValueSet();
+        bool otherLayoutQualifiersSpecified =
+            (location != -1 || matrixPacking != EmpUnspecified || blockStorage != EbsUnspecified);
+
+        // we can have either the work group size specified, or the other layout qualifiers
+        return !(workSizeSpecified && otherLayoutQualifiersSpecified);
+    }
+
+    bool isLocalSizeEqual(const sh::WorkGroupSize &localSizeIn) const
+    {
+        return localSize.isWorkGroupSizeMatching(localSizeIn);
     }
 };
+
+inline const char *getWorkGroupSizeString(size_t dimension)
+{
+    switch (dimension)
+    {
+        case 0u:
+            return "local_size_x";
+        case 1u:
+            return "local_size_y";
+        case 2u:
+            return "local_size_z";
+        default:
+            UNREACHABLE();
+            return "dimension out of bounds";
+    }
+}
 
 //
 // This is just for debug print out, carried along with the definitions above.
 //
 inline const char* getQualifierString(TQualifier q)
 {
+    // clang-format off
     switch(q)
     {
-    case EvqTemporary:      return "Temporary";      break;
-    case EvqGlobal:         return "Global";         break;
-    case EvqConst:          return "const";          break;
-    case EvqConstReadOnly:  return "const";          break;
-    case EvqAttribute:      return "attribute";      break;
-    case EvqVaryingIn:      return "varying";        break;
-    case EvqVaryingOut:     return "varying";        break;
-    case EvqInvariantVaryingIn: return "invariant varying";	break;
-    case EvqInvariantVaryingOut:return "invariant varying";	break;
-    case EvqUniform:        return "uniform";        break;
-    case EvqVertexIn:       return "in";             break;
-    case EvqFragmentOut:    return "out";            break;
-    case EvqVertexOut:      return "out";            break;
-    case EvqFragmentIn:     return "in";             break;
-    case EvqIn:             return "in";             break;
-    case EvqOut:            return "out";            break;
-    case EvqInOut:          return "inout";          break;
-    case EvqInstanceID:     return "InstanceID";     break;
-    case EvqPosition:       return "Position";       break;
-    case EvqPointSize:      return "PointSize";      break;
-    case EvqFragCoord:      return "FragCoord";      break;
-    case EvqFrontFacing:    return "FrontFacing";    break;
-    case EvqFragColor:      return "FragColor";      break;
-    case EvqFragData:       return "FragData";       break;
-    case EvqFragDepth:      return "FragDepth";      break;
-    case EvqSmoothOut:      return "smooth out";     break;
-    case EvqCentroidOut:    return "centroid out";   break;
-    case EvqFlatOut:        return "flat out";       break;
-    case EvqSmoothIn:       return "smooth in";      break;
-    case EvqCentroidIn:     return "centroid in";    break;
-    case EvqFlatIn:         return "flat in";        break;
-    case EvqLastFragColor:  return "LastFragColor";  break;
-    case EvqLastFragData:   return "LastFragData";   break;
-    default: UNREACHABLE(); return "unknown qualifier";
+    case EvqTemporary:              return "Temporary";
+    case EvqGlobal:                 return "Global";
+    case EvqConst:                  return "const";
+    case EvqAttribute:              return "attribute";
+    case EvqVaryingIn:              return "varying";
+    case EvqVaryingOut:             return "varying";
+    case EvqUniform:                return "uniform";
+    case EvqVertexIn:               return "in";
+    case EvqFragmentOut:            return "out";
+    case EvqVertexOut:              return "out";
+    case EvqFragmentIn:             return "in";
+    case EvqIn:                     return "in";
+    case EvqOut:                    return "out";
+    case EvqInOut:                  return "inout";
+    case EvqConstReadOnly:          return "const";
+    case EvqInstanceID:             return "InstanceID";
+    case EvqVertexID:               return "VertexID";
+    case EvqPosition:               return "Position";
+    case EvqPointSize:              return "PointSize";
+    case EvqFragCoord:              return "FragCoord";
+    case EvqFrontFacing:            return "FrontFacing";
+    case EvqPointCoord:             return "PointCoord";
+    case EvqFragColor:              return "FragColor";
+    case EvqFragData:               return "FragData";
+    case EvqFragDepthEXT:           return "FragDepth";
+    case EvqFragDepth:              return "FragDepth";
+    case EvqSecondaryFragColorEXT:  return "SecondaryFragColorEXT";
+    case EvqSecondaryFragDataEXT:   return "SecondaryFragDataEXT";
+    case EvqLastFragColor:          return "LastFragColor";
+    case EvqLastFragData:           return "LastFragData";
+    case EvqSmoothOut:              return "smooth out";
+    case EvqCentroidOut:            return "smooth centroid out";
+    case EvqFlatOut:                return "flat out";
+    case EvqSmoothIn:               return "smooth in";
+    case EvqFlatIn:                 return "flat in";
+    case EvqCentroidIn:             return "smooth centroid in";
+    case EvqCentroid:               return "centroid";
+    case EvqFlat:                   return "flat";
+    case EvqSmooth:                 return "smooth";
+    case EvqComputeIn:              return "in";
+    case EvqNumWorkGroups:          return "NumWorkGroups";
+    case EvqWorkGroupSize:          return "WorkGroupSize";
+    case EvqWorkGroupID:            return "WorkGroupID";
+    case EvqLocalInvocationID:      return "LocalInvocationID";
+    case EvqGlobalInvocationID:     return "GlobalInvocationID";
+    case EvqLocalInvocationIndex:   return "LocalInvocationIndex";
+    default: UNREACHABLE();         return "unknown qualifier";
     }
+    // clang-format on
 }
 
 inline const char* getMatrixPackingString(TLayoutMatrixPacking mpq)
@@ -442,20 +525,6 @@ inline const char* getBlockStorageString(TLayoutBlockStorage bsq)
     case EbsPacked:         return "packed";
     case EbsStd140:         return "std140";
     default: UNREACHABLE(); return "unknown block storage";
-    }
-}
-
-inline const char* getInterpolationString(TQualifier q)
-{
-    switch(q)
-    {
-    case EvqSmoothOut:      return "smooth";   break;
-    case EvqCentroidOut:    return "centroid"; break;
-    case EvqFlatOut:        return "flat";     break;
-    case EvqSmoothIn:       return "smooth";   break;
-    case EvqCentroidIn:     return "centroid"; break;
-    case EvqFlatIn:         return "flat";     break;
-    default: UNREACHABLE(); return "unknown interpolation";
     }
 }
 

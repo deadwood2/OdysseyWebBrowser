@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2013, 2014, 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -46,6 +46,7 @@ BuildbotIteration = function(queue, dataOrID, finished)
     this.revision = {};
 
     this.layoutTestResults = null; // Layout test results can be needed even if all tests passed, e.g. for the leaks bot.
+    this.javaScriptCoreTestResults = null;
 
     this.failedTestSteps = [];
 
@@ -75,6 +76,7 @@ BuildbotIteration.ProductiveSteps = {
 BuildbotIteration.TestSteps = {
     "API tests": "platform api test",
     "bindings-generation-tests": "bindings tests",
+    "builtins-generator-tests": "builtins generator tests",
     "jscore-test": "javascript test",
     "layout-test": "layout test",
     "perf-test": "performance test",
@@ -250,6 +252,8 @@ BuildbotIteration.prototype = {
             var results = new BuildbotTestResults(step);
             if (step.name === "layout-test")
                 this.layoutTestResults = results;
+            else if (/(?=.*test)(?=.*jsc)/.test(step.name))
+                this.javaScriptCoreTestResults = results;
             if (results.allPassed)
                 return;
             this.failedTestSteps.push(results);
@@ -299,7 +303,7 @@ BuildbotIteration.prototype = {
         this._parseData(data);
 
         // Update the sorting since it is based on the revision numbers that just became known.
-        this.queue.sortIterations();
+        this.queue.updateIterationPosition(this);
 
         this.dispatchEventToListeners(BuildbotIteration.Event.Updated);
     },
@@ -353,5 +357,25 @@ BuildbotIteration.prototype = {
             console.log(data.error);
             callback();
         }.bind(this), {jsonpCallbackName: "ADD_RESULTS", withCredentials: this.queue.buildbot.needsAuthentication});
-    }
+    },
+
+    loadJavaScriptCoreTestResults: function(testName, callback)
+    {
+        if (this.queue.buildbot.needsAuthentication && this.queue.buildbot.authenticationStatus === Buildbot.AuthenticationStatus.InvalidCredentials)
+            return;
+
+        JSON.load(this.queue.buildbot.javaScriptCoreTestFailuresURLForIteration(this, testName), function(data) {
+            this.queue.buildbot.isAuthenticated = true;
+            this.javaScriptCoreTestResults.addJavaScriptCoreTestFailures(data);
+            callback();
+        }.bind(this),
+        function(data) {
+            if (data.errorType === JSON.LoadError && data.errorHTTPCode === 401) {
+                this.queue.buildbot.isAuthenticated = false;
+                this.dispatchEventToListeners(BuildbotIteration.Event.UnauthorizedAccess);
+            }
+            console.log(data.error);
+            callback();
+        }.bind(this), {withCredentials: this.queue.buildbot.needsAuthentication});
+    },
 };

@@ -37,6 +37,7 @@ namespace WebCore {
 
 class AudioSourceProvider;
 class GraphicsContext;
+class MediaSample;
 class MediaSourceSettings;
 class RealtimeMediaSourceCapabilities;
 
@@ -50,6 +51,7 @@ public:
         virtual void trackMutedChanged(MediaStreamTrackPrivate&) = 0;
         virtual void trackSettingsChanged(MediaStreamTrackPrivate&) = 0;
         virtual void trackEnabledChanged(MediaStreamTrackPrivate&) = 0;
+        virtual void sampleBufferUpdated(MediaStreamTrackPrivate&, MediaSample&) { };
     };
     
     static RefPtr<MediaStreamTrackPrivate> create(RefPtr<RealtimeMediaSource>&&);
@@ -100,10 +102,11 @@ private:
     MediaStreamTrackPrivate(RefPtr<RealtimeMediaSource>&&, const String& id);
 
     // RealtimeMediaSourceObserver
-    void sourceStopped() override final;
-    void sourceMutedChanged() override final;
-    void sourceSettingsChanged() override final;
-    bool preventSourceFromStopping() override final;
+    void sourceStopped() final;
+    void sourceMutedChanged() final;
+    void sourceSettingsChanged() final;
+    bool preventSourceFromStopping() final;
+    void sourceHasMoreMediaData(MediaSample&) final;
 
     Vector<Observer*> m_observers;
     RefPtr<RealtimeMediaSource> m_source;

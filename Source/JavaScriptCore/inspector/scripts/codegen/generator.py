@@ -47,6 +47,7 @@ _ALWAYS_UPPERCASED_ENUM_VALUE_SUBSTRINGS = set(['API', 'CSS', 'DOM', 'HTML', 'JI
 
 # FIXME: This should be converted into a property in JSON.
 _TYPES_NEEDING_RUNTIME_CASTS = set([
+    "Runtime.ObjectPreview",
     "Runtime.RemoteObject",
     "Runtime.PropertyDescriptor",
     "Runtime.InternalPropertyDescriptor",
@@ -78,9 +79,17 @@ class Generator:
     def __init__(self, model, input_filepath):
         self._model = model
         self._input_filepath = input_filepath
+        self._settings = {}
 
     def model(self):
         return self._model
+
+    def set_generator_setting(self, key, value):
+        self._settings[key] = value
+
+    # The goofy name is to disambiguate generator settings from framework settings.
+    def get_generator_setting(self, key, default=None):
+        return self._settings.get(key, default)
 
     def generate_license(self):
         return Template(Templates.CopyrightBlock).substitute(None, inputFilename=os.path.basename(self._input_filepath))
@@ -239,3 +248,10 @@ class Generator:
                 return 'number'
             else:
                 return _type.qualified_name()
+
+    @staticmethod
+    def string_for_file_include(filename, file_framework, target_framework):
+        if file_framework is target_framework:
+            return '"%s"' % filename
+        else:
+            return '<%s/%s>' % (file_framework.name, filename)

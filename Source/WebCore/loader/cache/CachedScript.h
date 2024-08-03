@@ -47,16 +47,16 @@ public:
 #endif
 
 private:
-    virtual bool mayTryReplaceEncodedData() const override { return true; }
+    bool mayTryReplaceEncodedData() const override { return true; }
 
-    virtual bool shouldIgnoreHTTPStatusCodeErrors() const override;
+    bool shouldIgnoreHTTPStatusCodeErrors() const override;
 
     void setEncoding(const String&) override;
     String encoding() const override;
     const TextResourceDecoder* textResourceDecoder() const override { return m_decoder.get(); }
     void finishLoading(SharedBuffer*) override;
 
-    virtual void destroyDecodedData() override;
+    void destroyDecodedData() override;
 
     String m_script;
     unsigned m_scriptHash { 0 };

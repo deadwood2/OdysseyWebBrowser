@@ -77,9 +77,9 @@ void ResourceUsageThread::waitUntilObservers()
         m_condition.wait(m_lock);
 }
 
-void ResourceUsageThread::notifyObservers(ResourceUsageData& data)
+void ResourceUsageThread::notifyObservers(ResourceUsageData&& data)
 {
-    callOnMainThread([data]() mutable {
+    callOnMainThread([data = WTFMove(data)]() mutable {
         Vector<std::function<void (const ResourceUsageData&)>> functions;
         
         {
@@ -117,10 +117,10 @@ NO_RETURN void ResourceUsageThread::threadBody()
 
         ResourceUsageData data;
         platformThreadBody(m_vm, data);
-        notifyObservers(data);
+        notifyObservers(WTFMove(data));
 
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - start);
-        auto difference = std::chrono::milliseconds(500) - duration;
+        auto duration = std::chrono::system_clock::now() - start;
+        auto difference = 500ms - duration;
         std::this_thread::sleep_for(difference);
     }
 }

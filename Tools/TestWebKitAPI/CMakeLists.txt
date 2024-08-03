@@ -41,12 +41,13 @@ set(TestWTF_SOURCES
     ${TESTWEBKITAPI_DIR}/Counters.cpp
     ${TESTWEBKITAPI_DIR}/TestsController.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/AtomicString.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/BloomFilter.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/CrossThreadTask.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/CString.cpp
-    ${TESTWEBKITAPI_DIR}/Tests/WTF/Condition.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/CheckedArithmeticOperations.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/Condition.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/DateMath.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/Deque.cpp
-    ${TESTWEBKITAPI_DIR}/Tests/WTF/Functional.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/HashCountedSet.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/HashMap.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/HashSet.cpp
@@ -62,19 +63,29 @@ set(TestWTF_SOURCES
     ${TESTWEBKITAPI_DIR}/Tests/WTF/ParkingLot.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/RedBlackTree.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/Ref.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/RefCounter.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/RefLogger.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/RefPtr.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/SHA1.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/SaturatedArithmeticOperations.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/Scope.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/ScopedLambda.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/StringBuilder.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/StringHasher.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/StringImpl.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/StringOperators.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/StringView.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/TemporaryChange.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/UniqueRef.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/Variant.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/Vector.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/WTFString.cpp
+    ${TESTWEBKITAPI_DIR}/Tests/WTF/WeakPtr.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/WorkQueue.cpp
 )
+
+# FIXME: Tests/WTF/RunLoop.cpp is missing because it doesn't work for Windows.
+# FIXME: Platform-specific sources in Tests/WTF are not included in TestWTF_SOURCES.
 
 WEBKIT_INCLUDE_CONFIG_FILES_IF_EXISTS()
 
@@ -89,9 +100,11 @@ include_directories(
     ${JAVASCRIPTCORE_DIR}/ForwardingHeaders
     ${THIRDPARTY_DIR}/gtest/include
     ${WEBCORE_DIR}/css
+    ${WEBCORE_DIR}/css/parser
     ${WEBCORE_DIR}/dom
     ${WEBCORE_DIR}/editing
     ${WEBCORE_DIR}/loader/cache
+    ${WEBCORE_DIR}/page
     ${WEBCORE_DIR}/platform
     ${WEBCORE_DIR}/platform/animation
     ${WEBCORE_DIR}/platform/graphics
@@ -134,6 +147,7 @@ if (ENABLE_WEBKIT2)
         ${TESTWEBKITAPI_DIR}/Tests/WebKit2/NewFirstVisuallyNonEmptyLayoutFrames_Bundle.cpp
         ${TESTWEBKITAPI_DIR}/Tests/WebKit2/NewFirstVisuallyNonEmptyLayout_Bundle.cpp
         ${TESTWEBKITAPI_DIR}/Tests/WebKit2/ParentFrame_Bundle.cpp
+        ${TESTWEBKITAPI_DIR}/Tests/WebKit2/ProvisionalURLAfterWillSendRequestCallback_Bundle.cpp
         ${TESTWEBKITAPI_DIR}/Tests/WebKit2/ResponsivenessTimerDoesntFireEarly_Bundle.cpp
         ${TESTWEBKITAPI_DIR}/Tests/WebKit2/ShouldGoToBackForwardListItem_Bundle.cpp
         ${TESTWEBKITAPI_DIR}/Tests/WebKit2/TextFieldDidBeginAndEndEditing_Bundle.cpp

@@ -38,7 +38,6 @@
 #include "AirTmpWidth.h"
 #include "AirUseCounts.h"
 #include <wtf/ListDump.h>
-#include <wtf/ListHashSet.h>
 
 namespace JSC { namespace B3 { namespace Air {
 
@@ -1122,7 +1121,7 @@ private:
 
             // If it's a constant, then it's not as bad to spill. We can rematerialize it in many
             // cases.
-            if (counts->numConstDefs == counts->numDefs)
+            if (counts->numConstDefs == 1 && counts->numDefs == 1)
                 uses /= 2;
 
             return degree / uses;
@@ -1419,6 +1418,11 @@ private:
         }
     }
 
+    static unsigned stackSlotMinimumWidth(Arg::Width width)
+    {
+        return width <= Arg::Width32 ? 4 : 8;
+    }
+
     template<Arg::Type type>
     void addSpillAndFill(const ColoringAllocator<type>& allocator, HashSet<unsigned>& unspillableTmps)
     {
@@ -1429,7 +1433,7 @@ private:
 
             // Allocate stack slot for each spilled value.
             StackSlot* stackSlot = m_code.addStackSlot(
-                m_tmpWidth.width(tmp) <= Arg::Width32 ? 4 : 8, StackSlotKind::Spill);
+                stackSlotMinimumWidth(m_tmpWidth.requiredWidth(tmp)), StackSlotKind::Spill);
             bool isNewTmp = stackSlots.add(tmp, stackSlot).isNewEntry;
             ASSERT_UNUSED(isNewTmp, isNewTmp);
         }
@@ -1447,30 +1451,55 @@ private:
                 // only claim to read 32 bits from the source if only 32 bits of the destination are
                 // read. Note that we only apply this logic if this turns into a load or store, since
                 // Move is the canonical way to move data between GPRs.
-                bool forceMove32IfDidSpill = false;
+                bool canUseMove32IfDidSpill = false;
                 bool didSpill = false;
                 if (type == Arg::GP && inst.opcode == Move) {
                     if ((inst.args[0].isTmp() && m_tmpWidth.width(inst.args[0].tmp()) <= Arg::Width32)
                         || (inst.args[1].isTmp() && m_tmpWidth.width(inst.args[1].tmp()) <= Arg::Width32))
-                        forceMove32IfDidSpill = true;
+                        canUseMove32IfDidSpill = true;
                 }
 
                 // Try to replace the register use by memory use when possible.
                 inst.forEachArg(
-                    [&] (Arg& arg, Arg::Role, Arg::Type argType, Arg::Width width) {
-                        if (arg.isTmp() && argType == type && !arg.isReg()) {
-                            auto stackSlotEntry = stackSlots.find(arg.tmp());
-                            if (stackSlotEntry != stackSlots.end()
-                                && inst.admitsStack(arg)) {
-                                stackSlotEntry->value->ensureSize(
-                                    forceMove32IfDidSpill ? 4 : Arg::bytes(width));
-                                arg = Arg::stack(stackSlotEntry->value);
-                                didSpill = true;
-                            }
+                    [&] (Arg& arg, Arg::Role role, Arg::Type argType, Arg::Width width) {
+                        if (!arg.isTmp())
+                            return;
+                        if (argType != type)
+                            return;
+                        if (arg.isReg())
+                            return;
+                        
+                        auto stackSlotEntry = stackSlots.find(arg.tmp());
+                        if (stackSlotEntry == stackSlots.end())
+                            return;
+                        if (!inst.admitsStack(arg))
+                            return;
+                        
+                        // If the Tmp holds a constant then we want to rematerialize its
+                        // value rather than loading it from the stack. In order for that
+                        // optimization to kick in, we need to avoid placing the Tmp's stack
+                        // address into the instruction.
+                        if (!Arg::isColdUse(role)) {
+                            const UseCounts<Tmp>::Counts* counts = m_useCounts[arg.tmp()];
+                            if (counts && counts->numConstDefs == 1 && counts->numDefs == 1)
+                                return;
                         }
+                        
+                        Arg::Width spillWidth = m_tmpWidth.requiredWidth(arg.tmp());
+                        if (Arg::isAnyDef(role) && width < spillWidth)
+                            return;
+                        ASSERT(inst.opcode == Move || !(Arg::isAnyUse(role) && width > spillWidth));
+                        
+                        if (spillWidth != Arg::Width32)
+                            canUseMove32IfDidSpill = false;
+                        
+                        stackSlotEntry->value->ensureSize(
+                            canUseMove32IfDidSpill ? 4 : Arg::bytes(width));
+                        arg = Arg::stack(stackSlotEntry->value);
+                        didSpill = true;
                     });
 
-                if (didSpill && forceMove32IfDidSpill)
+                if (didSpill && canUseMove32IfDidSpill)
                     inst.opcode = Move32;
 
                 // For every other case, add Load/Store as needed.
@@ -1488,9 +1517,9 @@ private:
                         return;
                     }
 
-                    Arg arg = Arg::stack(stackSlotEntry->value);
+                    Arg::Width spillWidth = m_tmpWidth.requiredWidth(tmp);
                     Opcode move = Oops;
-                    switch (stackSlotEntry->value->byteSize()) {
+                    switch (stackSlotMinimumWidth(spillWidth)) {
                     case 4:
                         move = type == Arg::GP ? Move32 : MoveFloat;
                         break;
@@ -1505,6 +1534,7 @@ private:
                     tmp = m_code.newTmp(type);
                     unspillableTmps.add(AbsoluteTmpMapper<type>::absoluteIndex(tmp));
 
+                    Arg arg = Arg::stack(stackSlotEntry->value);
                     if (Arg::isAnyUse(role) && role != Arg::Scratch)
                         insertionSet.insert(instIndex, move, inst.origin, arg, tmp);
                     if (Arg::isAnyDef(role))

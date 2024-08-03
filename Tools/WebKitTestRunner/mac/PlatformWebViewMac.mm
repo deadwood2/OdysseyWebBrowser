@@ -54,8 +54,35 @@ enum {
 @property (nonatomic, assign) PlatformWebView* platformWebView;
 @end
 
+static Vector<WebKitTestRunnerWindow*> allWindows;
+
 @implementation WebKitTestRunnerWindow
 @synthesize platformWebView = _platformWebView;
+
++ (NSWindow *)_WTR_keyWindow
+{
+    size_t i = allWindows.size();
+    while (i) {
+        if ([allWindows[i] isKeyWindow])
+            return allWindows[i];
+        --i;
+    }
+
+    return nil;
+}
+
+- (instancetype)initWithContentRect:(NSRect)contentRect styleMask:(NSUInteger)windowStyle backing:(NSBackingStoreType)bufferingType defer:(BOOL)deferCreation
+{
+    allWindows.append(self);
+    return [super initWithContentRect:contentRect styleMask:windowStyle backing:bufferingType defer:deferCreation];
+}
+
+- (void)dealloc
+{
+    allWindows.removeFirst(self);
+    ASSERT(!allWindows.contains(self));
+    [super dealloc];
+}
 
 - (BOOL)isKeyWindow
 {
@@ -152,6 +179,18 @@ PlatformWebView::~PlatformWebView()
     [m_view release];
 }
 
+PlatformWindow PlatformWebView::keyWindow()
+{
+    size_t i = allWindows.size();
+    while (i) {
+        --i;
+        if ([allWindows[i] isKeyWindow])
+            return allWindows[i];
+    }
+
+    return nil;
+}
+
 WKPageRef PlatformWebView::page()
 {
 #if WK_API_ENABLED
@@ -233,7 +272,7 @@ WKRetainPtr<WKImageRef> PlatformWebView::windowSnapshotImage()
 
 bool PlatformWebView::viewSupportsOptions(const TestOptions& options) const
 {
-    if (m_options.useThreadedScrolling != options.useThreadedScrolling || m_options.overrideLanguages != options.overrideLanguages)
+    if (m_options.useThreadedScrolling != options.useThreadedScrolling || m_options.overrideLanguages != options.overrideLanguages || m_options.useMockScrollbars != options.useMockScrollbars || m_options.needsSiteSpecificQuirks != options.needsSiteSpecificQuirks)
         return false;
 
     return true;

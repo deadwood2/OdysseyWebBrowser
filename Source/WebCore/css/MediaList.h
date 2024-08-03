@@ -18,26 +18,24 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef MediaList_h
-#define MediaList_h
+#pragma once
 
-#include "ExceptionCode.h"
 #include <memory>
 #include <wtf/Forward.h>
-#include <wtf/PassRefPtr.h>
-#include <wtf/RefCounted.h>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
+class CSSParser;
 class CSSRule;
 class CSSStyleSheet;
 class Document;
-class MediaList;
 class MediaQuery;
 
-class MediaQuerySet : public RefCounted<MediaQuerySet> {
+using ExceptionCode = int;
+
+class MediaQuerySet final : public RefCounted<MediaQuerySet> {
 public:
     static Ref<MediaQuerySet> create()
     {
@@ -51,34 +49,39 @@ public:
     {
         return adoptRef(*new MediaQuerySet(mediaString, true));
     }
-    ~MediaQuerySet();
-    
+    WEBCORE_EXPORT ~MediaQuerySet();
+
     bool parse(const String&);
     bool add(const String&);
     bool remove(const String&);
 
-    void addMediaQuery(std::unique_ptr<MediaQuery>);
+    void addMediaQuery(MediaQuery&&);
 
-    const Vector<std::unique_ptr<MediaQuery>>& queryVector() const { return m_queries; }
-    
+    const Vector<MediaQuery>& queryVector() const { return m_queries; }
+
     int lastLine() const { return m_lastLine; }
     void setLastLine(int lastLine) { m_lastLine = lastLine; }
-    
-    String mediaText() const;
+
+    WEBCORE_EXPORT String mediaText() const;
 
     Ref<MediaQuerySet> copy() const { return adoptRef(*new MediaQuerySet(*this)); }
 
+    void shrinkToFit();
+
 private:
     MediaQuerySet();
-    MediaQuerySet(const String& mediaQuery, bool fallbackToDescription);
+    WEBCORE_EXPORT MediaQuerySet(const String& mediaQuery, bool fallbackToDescription);
     MediaQuerySet(const MediaQuerySet&);
-    
+
+    Optional<MediaQuery> internalParse(CSSParser&, const String&);
+    Optional<MediaQuery> internalParse(const String&);
+
     unsigned m_fallbackToDescriptor : 1; // true if failed media query parsing should fallback to media description parsing.
     signed m_lastLine : 31;
-    Vector<std::unique_ptr<MediaQuery>> m_queries;
+    Vector<MediaQuery> m_queries;
 };
 
-class MediaList : public RefCounted<MediaList> {
+class MediaList final : public RefCounted<MediaList> {
 public:
     static Ref<MediaList> create(MediaQuerySet* mediaQueries, CSSStyleSheet* parentSheet)
     {
@@ -89,21 +92,20 @@ public:
         return adoptRef(*new MediaList(mediaQueries, parentRule));
     }
 
-    ~MediaList();
+    WEBCORE_EXPORT ~MediaList();
 
     unsigned length() const { return m_mediaQueries->queryVector().size(); }
-    String item(unsigned index) const;
-    void deleteMedium(const String& oldMedium, ExceptionCode&);
-    void appendMedium(const String& newMedium, ExceptionCode&);
+    WEBCORE_EXPORT String item(unsigned index) const;
+    WEBCORE_EXPORT void deleteMedium(const String& oldMedium, ExceptionCode&);
+    WEBCORE_EXPORT void appendMedium(const String& newMedium, ExceptionCode&);
 
     String mediaText() const { return m_mediaQueries->mediaText(); }
-    void setMediaText(const String&, ExceptionCode&);
+    WEBCORE_EXPORT void setMediaText(const String&, ExceptionCode&);
 
-    // Not part of CSSOM.
     CSSRule* parentRule() const { return m_parentRule; }
     CSSStyleSheet* parentStyleSheet() const { return m_parentStyleSheet; }
-    void clearParentStyleSheet() { ASSERT(m_parentStyleSheet); m_parentStyleSheet = 0; }
-    void clearParentRule() { ASSERT(m_parentRule); m_parentRule = 0; }
+    void clearParentStyleSheet() { ASSERT(m_parentStyleSheet); m_parentStyleSheet = nullptr; }
+    void clearParentRule() { ASSERT(m_parentRule); m_parentRule = nullptr; }
     const MediaQuerySet* queries() const { return m_mediaQueries.get(); }
 
     void reattach(MediaQuerySet*);
@@ -114,15 +116,20 @@ private:
     MediaList(MediaQuerySet*, CSSRule* parentRule);
 
     RefPtr<MediaQuerySet> m_mediaQueries;
-    CSSStyleSheet* m_parentStyleSheet;
-    CSSRule* m_parentRule;
+    CSSStyleSheet* m_parentStyleSheet { nullptr };
+    CSSRule* m_parentRule { nullptr };
 };
 
-#if ENABLE(RESOLUTION_MEDIA_QUERY)
 // Adds message to inspector console whenever dpi or dpcm values are used for "screen" media.
+// FIXME: Seems strange to have this here in this file, and unclear exactly who should call this and when.
 void reportMediaQueryWarningIfNeeded(Document*, const MediaQuerySet*);
+
+#if !ENABLE(RESOLUTION_MEDIA_QUERY)
+
+inline void reportMediaQueryWarningIfNeeded(Document*, const MediaQuerySet*)
+{
+}
+
 #endif
 
 } // namespace
-
-#endif

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,15 +23,16 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef StyleTreeResolver_h
-#define StyleTreeResolver_h
+#pragma once
 
 #include "RenderStyleConstants.h"
 #include "RenderTreePosition.h"
+#include "SelectorChecker.h"
 #include "SelectorFilter.h"
 #include "StyleChange.h"
 #include "StyleSharingResolver.h"
-#include <functional>
+#include "StyleUpdate.h"
+#include <wtf/Function.h>
 #include <wtf/RefPtr.h>
 
 namespace WebCore {
@@ -46,31 +47,24 @@ class Settings;
 class ShadowRoot;
 class StyleResolver;
 class Text;
+class TreeChange;
 
 namespace Style {
 
 class TreeResolver {
 public:
     TreeResolver(Document&);
+    ~TreeResolver();
 
-    void resolve(Change);
+    std::unique_ptr<Update> resolve(Change);
+
+    static ElementUpdate createAnimatedElementUpdate(std::unique_ptr<RenderStyle>, RenderElement* existingRenderer, Document&);
 
 private:
-    Ref<RenderStyle> styleForElement(Element&, RenderStyle& inheritedStyle);
+    std::unique_ptr<RenderStyle> styleForElement(Element&, const RenderStyle& inheritedStyle);
 
     void resolveComposedTree();
-    Change resolveElement(Element&);
-    void resolveBeforeOrAfterPseudoElement(Element&, Change, PseudoId, RenderTreePosition&);
-
-    void createRenderTreeRecursively(Element&, RenderStyle&, RenderTreePosition&, RefPtr<RenderStyle>&& resolvedStyle);
-    void createRenderer(Element&, RenderTreePosition&, RefPtr<RenderStyle>&& resolvedStyle);
-    void createRenderTreeForBeforeOrAfterPseudoElement(Element&, PseudoId, RenderTreePosition&);
-    void createRenderTreeForChildren(ContainerNode&, RenderStyle&, RenderTreePosition&);
-    void createRenderTreeForShadowRoot(ShadowRoot&);
-
-#if ENABLE(SHADOW_DOM) || ENABLE(DETAILS_ELEMENT)
-    void createRenderTreeForSlotAssignees(HTMLSlotElement&, RenderStyle& inheritedStyle, RenderTreePosition&);
-#endif
+    ElementUpdate resolveElement(Element&);
 
     struct Scope : RefCounted<Scope> {
         StyleResolver& styleResolver;
@@ -85,14 +79,13 @@ private:
 
     struct Parent {
         Element* element;
-        Ref<RenderStyle> style;
-        RenderTreePosition renderTreePosition;
+        const RenderStyle& style;
         Change change;
         bool didPushScope { false };
         bool elementNeedingStyleRecalcAffectsNextSiblingElementStyle { false };
 
         Parent(Document&, Change);
-        Parent(Element&, RenderStyle&, RenderTreePosition, Change);
+        Parent(Element&, const RenderStyle&, Change);
     };
 
     Scope& scope() { return m_scopeStack.last(); }
@@ -102,21 +95,20 @@ private:
     void pushEnclosingScope();
     void popScope();
 
-    void pushParent(Element&, RenderStyle&, RenderTreePosition, Change);
+    void pushParent(Element&, const RenderStyle&, Change);
     void popParent();
     void popParentsToDepth(unsigned depth);
 
     Document& m_document;
+    std::unique_ptr<RenderStyle> m_documentElementStyle;
+
     Vector<Ref<Scope>, 4> m_scopeStack;
     Vector<Parent, 32> m_parentStack;
+
+    std::unique_ptr<Update> m_update;
 };
 
-void detachRenderTree(Element&);
-void detachTextRenderer(Text&);
-
-void updateTextRendererAfterContentChange(Text&, unsigned offsetOfReplacedData, unsigned lengthOfReplacedData);
-
-void queuePostResolutionCallback(std::function<void ()>);
+void queuePostResolutionCallback(Function<void ()>&&);
 bool postResolutionCallbacksAreSuspended();
 
 bool isPlaceholderStyle(const RenderStyle&);
@@ -130,5 +122,3 @@ public:
 }
 
 }
-
-#endif

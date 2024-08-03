@@ -20,8 +20,7 @@
     Boston, MA 02110-1301, USA.
 */
 
-#ifndef CachedRawResourceClient_h
-#define CachedRawResourceClient_h
+#pragma once
 
 #include "CachedResourceClient.h"
 
@@ -35,10 +34,11 @@ class CachedRawResourceClient : public CachedResourceClient {
 public:
     virtual ~CachedRawResourceClient() { }
     static CachedResourceClientType expectedType() { return RawResourceType; }
-    virtual CachedResourceClientType resourceClientType() const override { return expectedType(); }
+    CachedResourceClientType resourceClientType() const override { return expectedType(); }
 
     virtual void dataSent(CachedResource*, unsigned long long /* bytesSent */, unsigned long long /* totalBytesToBeSent */) { }
     virtual void responseReceived(CachedResource*, const ResourceResponse&) { }
+    virtual bool shouldCacheResponse(CachedResource*, const ResourceResponse&) { return true; }
     virtual void dataReceived(CachedResource*, const char* /* data */, int /* length */) { }
     virtual void redirectReceived(CachedResource*, ResourceRequest&, const ResourceResponse&) { }
 #if USE(SOUP)
@@ -47,5 +47,3 @@ public:
 };
 
 }
-
-#endif // CachedRawResourceClient_h

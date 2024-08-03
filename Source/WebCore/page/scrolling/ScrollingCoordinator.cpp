@@ -28,6 +28,7 @@
 #include "ScrollingCoordinator.h"
 
 #include "Document.h"
+#include "EventNames.h"
 #include "FrameView.h"
 #include "GraphicsLayer.h"
 #include "IntRect.h"
@@ -96,11 +97,11 @@ bool ScrollingCoordinator::coordinatesScrollingForFrameView(const FrameView& fra
     return renderView->usesCompositing();
 }
 
-Region ScrollingCoordinator::absoluteNonFastScrollableRegionForFrame(const Frame& frame) const
+EventTrackingRegions ScrollingCoordinator::absoluteEventTrackingRegionsForFrame(const Frame& frame) const
 {
     RenderView* renderView = frame.contentRenderer();
     if (!renderView || renderView->documentBeingDestroyed())
-        return Region();
+        return EventTrackingRegions();
 
 #if ENABLE(IOS_TOUCH_EVENTS)
     // On iOS, we use nonFastScrollableRegion to represent the region covered by elements with touch event handlers.
@@ -108,22 +109,13 @@ Region ScrollingCoordinator::absoluteNonFastScrollableRegionForFrame(const Frame
 
     Document* document = frame.document();
     if (!document)
-        return Region();
-
-    Vector<IntRect> touchRects;
-    document->getTouchRects(touchRects);
-    
-    Region touchRegion;
-    for (const auto& rect : touchRects)
-        touchRegion.unite(rect);
-
-    // FIXME: use absoluteRegionForEventTargets().
-    return touchRegion;
+        return EventTrackingRegions();
+    return document->eventTrackingRegions();
 #else
     Region nonFastScrollableRegion;
     FrameView* frameView = frame.view();
     if (!frameView)
-        return nonFastScrollableRegion;
+        return EventTrackingRegions();
 
     // FIXME: should ASSERT(!frameView->needsLayout()) here, but need to fix DebugPageOverlays
     // to not ask for regions at bad times.
@@ -153,18 +145,19 @@ Region ScrollingCoordinator::absoluteNonFastScrollableRegionForFrame(const Frame
     }
     
     // FIXME: if we've already accounted for this subframe as a scrollable area, we can avoid recursing into it here.
+    EventTrackingRegions eventTrackingRegions;
     for (Frame* subframe = frame.tree().firstChild(); subframe; subframe = subframe->tree().nextSibling()) {
         FrameView* subframeView = subframe->view();
         if (!subframeView)
             continue;
 
-        Region subframeRegion = absoluteNonFastScrollableRegionForFrame(*subframe);
+        EventTrackingRegions subframeRegion = absoluteEventTrackingRegionsForFrame(*subframe);
         // Map from the frame document to our document.
         IntPoint offset = subframeView->contentsToContainingViewContents(IntPoint());
 
         // FIXME: this translation ignores non-trival transforms on the frame.
         subframeRegion.translate(toIntSize(offset));
-        nonFastScrollableRegion.unite(subframeRegion);
+        eventTrackingRegions.unite(subframeRegion);
     }
 
     Document::RegionFixedPair wheelHandlerRegion = frame.document()->absoluteRegionForEventTargets(frame.document()->wheelEventTargets());
@@ -178,13 +171,14 @@ Region ScrollingCoordinator::absoluteNonFastScrollableRegionForFrame(const Frame
     nonFastScrollableRegion.unite(wheelHandlerRegion.first);
 
     // FIXME: If this is not the main frame, we could clip the region to the frame's bounds.
-    return nonFastScrollableRegion;
+    eventTrackingRegions.uniteSynchronousRegion(eventNames().wheelEvent, nonFastScrollableRegion);
+    return eventTrackingRegions;
 #endif
 }
 
-Region ScrollingCoordinator::absoluteNonFastScrollableRegion() const
+EventTrackingRegions ScrollingCoordinator::absoluteEventTrackingRegions() const
 {
-    return absoluteNonFastScrollableRegionForFrame(m_page->mainFrame());
+    return absoluteEventTrackingRegionsForFrame(m_page->mainFrame());
 }
 
 void ScrollingCoordinator::frameViewHasSlowRepaintObjectsDidChange(FrameView& frameView)
@@ -347,7 +341,7 @@ SynchronousScrollingReasons ScrollingCoordinator::synchronousScrollingReasons(co
     return synchronousScrollingReasons;
 }
 
-void ScrollingCoordinator::updateSynchronousScrollingReasons(FrameView& frameView)
+void ScrollingCoordinator::updateSynchronousScrollingReasons(const FrameView& frameView)
 {
     // FIXME: Once we support async scrolling of iframes, we'll have to track the synchronous scrolling
     // reasons per frame (maybe on scrolling tree nodes).
@@ -367,10 +361,11 @@ void ScrollingCoordinator::setForceSynchronousScrollLayerPositionUpdates(bool fo
         updateSynchronousScrollingReasons(*frameView);
 }
 
-bool ScrollingCoordinator::shouldUpdateScrollLayerPositionSynchronously() const
+bool ScrollingCoordinator::shouldUpdateScrollLayerPositionSynchronously(const FrameView& frameView) const
 {
-    if (FrameView* frameView = m_page->mainFrame().view())
-        return synchronousScrollingReasons(*frameView);
+    if (&frameView == m_page->mainFrame().view())
+        return synchronousScrollingReasons(frameView);
+    
     return true;
 }
 

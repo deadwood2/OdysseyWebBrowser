@@ -30,6 +30,8 @@
 #include "Document.h"
 #include "EventLoop.h"
 #include "FrameView.h"
+#include "InspectorController.h"
+#include "InspectorFrontendClient.h"
 #include "JSDOMWindowCustom.h"
 #include "MainFrame.h"
 #include "Page.h"
@@ -60,7 +62,6 @@ PageScriptDebugServer::PageScriptDebugServer(Page& page)
 void PageScriptDebugServer::attachDebugger()
 {
     m_page.setDebugger(this);
-    recompileAllJSFunctions();
 }
 
 void PageScriptDebugServer::detachDebugger(bool isBeingDestroyed)
@@ -112,9 +113,13 @@ void PageScriptDebugServer::runEventLoopWhilePausedInternal()
 {
     TimerBase::fireTimersInNestedEventLoop();
 
+    m_page.incrementNestedRunLoopCount();
+
     EventLoop loop;
     while (!m_doneProcessingDebuggerEvents && !loop.ended())
         loop.cycle();
+
+    m_page.decrementNestedRunLoopCount();
 }
 
 bool PageScriptDebugServer::isContentScript(ExecState* exec) const
@@ -143,6 +148,13 @@ void PageScriptDebugServer::setJavaScriptPaused(Page* page, bool paused)
 
     for (Frame* frame = &page->mainFrame(); frame; frame = frame->tree().traverseNext())
         setJavaScriptPaused(frame, paused);
+
+    if (InspectorFrontendClient* frontendClient = page->inspectorController().inspectorFrontendClient()) {
+        if (paused)
+            frontendClient->pagePaused();
+        else
+            frontendClient->pageUnpaused();
+    }
 }
 
 void PageScriptDebugServer::setJavaScriptPaused(Frame* frame, bool paused)

@@ -11,12 +11,13 @@
 #include "compiler/preprocessor/DiagnosticsBase.h"
 
 class TInfoSink;
+struct TSourceLoc;
 
 class TDiagnostics : public pp::Diagnostics, angle::NonCopyable
 {
   public:
     TDiagnostics(TInfoSink& infoSink);
-    virtual ~TDiagnostics();
+    ~TDiagnostics() override;
 
     TInfoSink& infoSink() { return mInfoSink; }
 
@@ -29,10 +30,14 @@ class TDiagnostics : public pp::Diagnostics, angle::NonCopyable
                    const std::string& token,
                    const std::string& extra);
 
+    void error(const TSourceLoc &loc, const char *reason, const char *token, const char *extraInfo);
+    void warning(const TSourceLoc &loc,
+                 const char *reason,
+                 const char *token,
+                 const char *extraInfo);
+
   protected:
-    virtual void print(ID id,
-                       const pp::SourceLocation& loc,
-                       const std::string& text);
+    void print(ID id, const pp::SourceLocation &loc, const std::string &text) override;
 
   private:
     TInfoSink& mInfoSink;

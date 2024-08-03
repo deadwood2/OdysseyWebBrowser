@@ -36,7 +36,6 @@
 #include <wtf/CryptographicallyRandomNumber.h>
 #include <wtf/HashMap.h>
 #include <wtf/text/CString.h>
-#include <wtf/text/StringBuilder.h>
 
 #include <windows.h>
 #include <shlobj.h>
@@ -409,6 +408,11 @@ int readFromFile(PlatformFileHandle handle, char* data, int length)
     return static_cast<int>(bytesRead);
 }
 
+bool hardLinkOrCopyFile(const String& source, const String& destination)
+{
+    return !!::CopyFile(source.charactersWithNullTermination().data(), destination.charactersWithNullTermination().data(), TRUE);
+}
+
 bool unloadModule(PlatformModule module)
 {
     return ::FreeLibrary(module);
@@ -440,6 +444,12 @@ Vector<String> listDirectory(const String& directory, const String& filter)
     } while (walker.step());
 
     return entries;
+}
+
+bool getVolumeFreeSpace(const String&, uint64_t&)
+{
+    notImplemented();
+    return false;
 }
 
 } // namespace WebCore

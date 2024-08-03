@@ -1,7 +1,7 @@
 /*
  *  Copyright (C) 1999-2001 Harri Porten (porten@kde.org)
  *  Copyright (C) 2001 Peter Kelly (pmk@post.com)
- *  Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2014 Apple Inc. All rights reserved.
+ *  Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2014, 2016 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Library General Public
@@ -82,16 +82,18 @@ public:
     friend struct ThunkHelpers;
 
     typedef JSCell Base;
-    static const unsigned StructureFlags = Base::StructureFlags | OverridesGetOwnPropertySlot | InterceptsGetOwnPropertySlotByIndexEvenWhenLengthIsNotZero | StructureIsImmortal;
+    static const unsigned StructureFlags = Base::StructureFlags | OverridesGetOwnPropertySlot | InterceptsGetOwnPropertySlotByIndexEvenWhenLengthIsNotZero | StructureIsImmortal | OverridesToThis;
 
     static const bool needsDestruction = true;
     static void destroy(JSCell*);
+
+    static const unsigned MaxLength = std::numeric_limits<int32_t>::max();
 
 private:
     JSString(VM& vm, PassRefPtr<StringImpl> value)
         : JSCell(vm, vm.stringStructure.get())
         , m_flags(0)
-        , m_value(value)
+        , m_value(RefPtr<StringImpl>(value))
     {
     }
 
@@ -130,8 +132,7 @@ public:
     static JSString* create(VM& vm, PassRefPtr<StringImpl> value)
     {
         ASSERT(value);
-        int32_t length = value->length();
-        RELEASE_ASSERT(length >= 0);
+        unsigned length = value->length();
         size_t cost = value->cost();
         JSString* newString = new (NotNull, allocateCell<JSString>(vm.heap)) JSString(vm, value);
         newString->finishCreation(vm, length, cost);
@@ -154,6 +155,7 @@ public:
     SafeView view(ExecState*) const;
     StringViewWithUnderlyingString viewWithUnderlyingString(ExecState&) const;
 
+    inline bool equal(ExecState*, JSString* other) const;
     const String& value(ExecState*) const;
     const String& tryGetValue() const;
     const StringImpl* tryGetValueImpl() const;
@@ -191,6 +193,7 @@ public:
 protected:
     friend class JSValue;
 
+    JS_EXPORT_PRIVATE bool equalSlowCase(ExecState*, JSString* other) const;
     bool isRope() const { return m_value.isNull(); }
     bool isSubstring() const;
     bool is8Bit() const { return m_flags & Is8Bit; }
@@ -266,7 +269,7 @@ public:
     };
 
 private:
-    JSRopeString(VM& vm)
+    ALWAYS_INLINE JSRopeString(VM& vm)
         : JSString(vm)
     {
     }
@@ -293,29 +296,40 @@ private:
         fiber(2).set(vm, this, s3);
     }
 
-    void finishCreation(ExecState& exec, JSString& base, unsigned offset, unsigned length)
+    void finishCreation(VM& vm, ExecState* exec, JSString* base, unsigned offset, unsigned length)
     {
-        VM& vm = exec.vm();
         Base::finishCreation(vm);
-        ASSERT(!sumOverflows<int32_t>(offset, length));
-        ASSERT(offset + length <= base.length());
+        RELEASE_ASSERT(!sumOverflows<int32_t>(offset, length));
+        RELEASE_ASSERT(offset + length <= base->length());
         m_length = length;
-        setIs8Bit(base.is8Bit());
+        setIs8Bit(base->is8Bit());
         setIsSubstring(true);
-        if (base.isSubstring()) {
-            JSRopeString& baseRope = static_cast<JSRopeString&>(base);
-            substringBase().set(vm, this, baseRope.substringBase().get());
-            substringOffset() = baseRope.substringOffset() + offset;
+        if (base->isSubstring()) {
+            JSRopeString* baseRope = jsCast<JSRopeString*>(base);
+            substringBase().set(vm, this, baseRope->substringBase().get());
+            substringOffset() = baseRope->substringOffset() + offset;
         } else {
-            substringBase().set(vm, this, &base);
+            substringBase().set(vm, this, base);
             substringOffset() = offset;
 
             // For now, let's not allow substrings with a rope base.
             // Resolve non-substring rope bases so we don't have to deal with it.
             // FIXME: Evaluate if this would be worth adding more branches.
-            if (base.isRope())
-                static_cast<JSRopeString&>(base).resolveRope(&exec);
+            if (base->isRope())
+                jsCast<JSRopeString*>(base)->resolveRope(exec);
         }
+    }
+
+    ALWAYS_INLINE void finishCreationSubstringOfResolved(VM& vm, JSString* base, unsigned offset, unsigned length)
+    {
+        Base::finishCreation(vm);
+        RELEASE_ASSERT(!sumOverflows<int32_t>(offset, length));
+        RELEASE_ASSERT(offset + length <= base->length());
+        m_length = length;
+        setIs8Bit(base->is8Bit());
+        setIsSubstring(true);
+        substringBase().set(vm, this, base);
+        substringOffset() = offset;
     }
 
     void finishCreation(VM& vm)
@@ -356,10 +370,17 @@ public:
         return newString;
     }
 
-    static JSString* create(ExecState& exec, JSString& base, unsigned offset, unsigned length)
+    static JSString* create(VM& vm, ExecState* exec, JSString* base, unsigned offset, unsigned length)
     {
-        JSRopeString* newString = new (NotNull, allocateCell<JSRopeString>(exec.vm().heap)) JSRopeString(exec.vm());
-        newString->finishCreation(exec, base, offset, length);
+        JSRopeString* newString = new (NotNull, allocateCell<JSRopeString>(vm.heap)) JSRopeString(vm);
+        newString->finishCreation(vm, exec, base, offset, length);
+        return newString;
+    }
+
+    ALWAYS_INLINE static JSString* createSubstringOfResolved(VM& vm, JSString* base, unsigned offset, unsigned length)
+    {
+        JSRopeString* newString = new (NotNull, allocateCell<JSRopeString>(vm.heap)) JSRopeString(vm);
+        newString->finishCreationSubstringOfResolved(vm, base, offset, length);
         return newString;
     }
 
@@ -542,17 +563,33 @@ inline JSString* jsString(VM* vm, const String& s)
     return JSString::create(*vm, s.impl());
 }
 
-inline JSString* jsSubstring(ExecState* exec, JSString* s, unsigned offset, unsigned length)
+inline JSString* jsSubstring(VM& vm, ExecState* exec, JSString* s, unsigned offset, unsigned length)
 {
     ASSERT(offset <= static_cast<unsigned>(s->length()));
     ASSERT(length <= static_cast<unsigned>(s->length()));
     ASSERT(offset + length <= static_cast<unsigned>(s->length()));
-    VM& vm = exec->vm();
     if (!length)
         return vm.smallStrings.emptyString();
     if (!offset && length == s->length())
         return s;
-    return JSRopeString::create(*exec, *s, offset, length);
+    return JSRopeString::create(vm, exec, s, offset, length);
+}
+
+inline JSString* jsSubstringOfResolved(VM& vm, JSString* s, unsigned offset, unsigned length)
+{
+    ASSERT(offset <= static_cast<unsigned>(s->length()));
+    ASSERT(length <= static_cast<unsigned>(s->length()));
+    ASSERT(offset + length <= static_cast<unsigned>(s->length()));
+    if (!length)
+        return vm.smallStrings.emptyString();
+    if (!offset && length == s->length())
+        return s;
+    return JSRopeString::createSubstringOfResolved(vm, s, offset, length);
+}
+
+inline JSString* jsSubstring(ExecState* exec, JSString* s, unsigned offset, unsigned length)
+{
+    return jsSubstring(exec->vm(), exec, s, offset, length);
 }
 
 inline JSString* jsSubstring(VM* vm, const String& s, unsigned offset, unsigned length)
@@ -567,7 +604,7 @@ inline JSString* jsSubstring(VM* vm, const String& s, unsigned offset, unsigned 
         if (c <= maxSingleCharacterString)
             return vm->smallStrings.singleCharacterString(c);
     }
-    return JSString::createHasOtherOwner(*vm, StringImpl::createSubstringSharingImpl(s.impl(), offset, length));
+    return JSString::createHasOtherOwner(*vm, StringImpl::createSubstringSharingImpl(*s.impl(), offset, length));
 }
 
 inline JSString* jsOwnedString(VM* vm, const String& s)
@@ -615,11 +652,6 @@ ALWAYS_INLINE JSString* jsStringWithCache(ExecState* exec, const String& s)
     }
 
     return jsStringWithCacheSlowCase(vm, *stringImpl);
-}
-
-ALWAYS_INLINE JSString* jsStringWithCache(ExecState* exec, const AtomicString& s)
-{
-    return jsStringWithCache(exec, s.string());
 }
 
 ALWAYS_INLINE bool JSString::getStringPropertySlot(ExecState* exec, PropertyName propertyName, PropertySlot& slot)

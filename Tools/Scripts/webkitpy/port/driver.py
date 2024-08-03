@@ -52,6 +52,9 @@ class DriverInput(object):
         self.should_run_pixel_test = should_run_pixel_test
         self.args = args or []
 
+    def __repr__(self):
+        return "DriverInput(test_name='{}', timeout={}, image_hash={}, should_run_pixel_test={}'".format(self.test_name, self.timeout, self.image_hash, self.should_run_pixel_test)
+
 
 class DriverOutput(object):
     """Groups information about a output from driver for easy passing
@@ -115,6 +118,7 @@ class DriverOutput(object):
         for pattern in patterns:
             self.error = re.sub(pattern[0], pattern[1], self.error)
 
+
 class Driver(object):
     """object for running test(s) using DumpRenderTree/WebKitTestRunner."""
 
@@ -132,6 +136,9 @@ class Driver(object):
         self._no_timeout = no_timeout
 
         self._driver_tempdir = None
+        self._driver_user_directory_suffix = None
+        self._driver_user_cache_directory = None
+
         # WebKitTestRunner/LayoutTestRelay can report back subprocess crashes by printing
         # "#CRASHED - PROCESSNAME".  Since those can happen at any time and ServerProcess
         # won't be aware of them (since the actual tool didn't crash, just a subprocess)
@@ -147,6 +154,8 @@ class Driver(object):
         # instead scope these locally in run_test.
         self.error_from_test = str()
         self.err_seen_eof = False
+
+        self._server_name = self._port.driver_name()
         self._server_process = None
 
         self._measurements = {}
@@ -193,8 +202,8 @@ class Driver(object):
             deadline = test_begin_time + int(driver_input.timeout) / 1000.0 + 5
 
         self._server_process.write(command)
-        text, audio = self._read_first_block(deadline)  # First block is either text or audio
-        image, actual_image_hash = self._read_optional_image_block(deadline)  # The second (optional) block is image data.
+        text, audio = self._read_first_block(deadline, driver_input.test_name)  # First block is either text or audio
+        image, actual_image_hash = self._read_optional_image_block(deadline, driver_input.test_name)  # The second (optional) block is image data.
 
         crashed = self.has_crashed()
         timed_out = self._server_process.timed_out
@@ -311,14 +320,23 @@ class Driver(object):
             self._start(pixel_tests, per_test_args)
             self._run_post_start_tasks()
 
+    def _append_environment_variable_path(self, environment, variable, path):
+        if variable in environment:
+            environment[variable] = environment[variable] + os.pathsep + path
+        else:
+            environment[variable] = path
+
     def _setup_environ_for_driver(self, environment):
-        environment['DYLD_LIBRARY_PATH'] = str(self._port._build_path())
-        environment['__XPC_DYLD_LIBRARY_PATH'] = environment['DYLD_LIBRARY_PATH']
-        environment['DYLD_FRAMEWORK_PATH'] = str(self._port._build_path())
+        build_root_path = str(self._port._build_path())
+        # FIXME: DYLD_* variables should be Mac-only. Even iOS Simulator doesn't need them, as LayoutTestRelay is a host binary.
+        self._append_environment_variable_path(environment, 'DYLD_LIBRARY_PATH', build_root_path)
+        self._append_environment_variable_path(environment, '__XPC_DYLD_LIBRARY_PATH', build_root_path)
+        self._append_environment_variable_path(environment, 'DYLD_FRAMEWORK_PATH', build_root_path)
+        self._append_environment_variable_path(environment, '__XPC_DYLD_FRAMEWORK_PATH', build_root_path)
         # Use an isolated temp directory that can be deleted after testing (especially important on Mac, as
         # CoreMedia disk cache is in the temp directory).
         environment['TMPDIR'] = str(self._driver_tempdir)
-        environment['DIRHELPER_USER_DIR_SUFFIX'] = str(os.path.basename(str(self._driver_tempdir)))
+        environment['DIRHELPER_USER_DIR_SUFFIX'] = self._driver_user_directory_suffix
         # Put certain normally persistent files into the temp directory (e.g. IndexedDB storage).
         environment['DUMPRENDERTREE_TEMP'] = str(self._driver_tempdir)
         environment['LOCAL_RESOURCE_ROOT'] = str(self._port.layout_tests_dir())
@@ -330,18 +348,26 @@ class Driver(object):
             environment = self._profiler.adjusted_environment(environment)
         return environment
 
+    def _setup_environ_for_test(self):
+        environment = self._port.setup_environ_for_server(self._server_name)
+        environment = self._setup_environ_for_driver(environment)
+        return environment
+
     def _start(self, pixel_tests, per_test_args):
         self.stop()
         # Each driver process should be using individual directories under _driver_tempdir (which is deleted when stopping),
         # however some subsystems on some platforms could end up using process default ones.
         self._port._clear_global_caches_and_temporary_files()
         self._driver_tempdir = self._port._driver_tempdir()
-        server_name = self._port.driver_name()
-        environment = self._port.setup_environ_for_server(server_name)
-        environment = self._setup_environ_for_driver(environment)
+        self._driver_user_directory_suffix = os.path.basename(str(self._driver_tempdir))
+        user_cache_directory = self._port._path_to_user_cache_directory(self._driver_user_directory_suffix)
+        if user_cache_directory:
+            self._port._filesystem.maybe_make_directory(user_cache_directory)
+            self._driver_user_cache_directory = user_cache_directory
+        environment = self._setup_environ_for_test()
         self._crashed_process_name = None
         self._crashed_pid = None
-        self._server_process = self._port._server_process_constructor(self._port, server_name, self.cmd_line(pixel_tests, per_test_args), environment)
+        self._server_process = self._port._server_process_constructor(self._port, self._server_name, self.cmd_line(pixel_tests, per_test_args), environment)
         self._server_process.start()
 
     def _run_post_start_tasks(self):
@@ -362,8 +388,10 @@ class Driver(object):
 
         if self._driver_tempdir:
             self._port._filesystem.rmtree(str(self._driver_tempdir))
-            self._port.remove_cache_directory(os.path.basename(str(self._driver_tempdir)))
             self._driver_tempdir = None
+        if self._driver_user_cache_directory:
+            self._port._filesystem.rmtree(self._driver_user_cache_directory)
+            self._driver_user_cache_directory = None
 
     def cmd_line(self, pixel_tests, per_test_args):
         cmd = self._command_wrapper()
@@ -394,6 +422,15 @@ class Driver(object):
         return cmd
 
     def _check_for_driver_timeout(self, out_line):
+        if out_line.startswith("#PID UNRESPONSIVE - "):
+            match = re.match('#PID UNRESPONSIVE - (\S+)', out_line)
+            child_process_name = match.group(1) if match else 'WebProcess'
+            match = re.search('pid (\d+)', out_line)
+            child_process_pid = int(match.group(1)) if match else None
+            err_line = 'Wait on notifyDone timed out, process ' + child_process_name + ' pid = ' + str(child_process_pid)
+            self.error_from_test += err_line
+            _log.debug(err_line)
+            self._port.sample_process(child_process_name, child_process_pid)
         if out_line == "FAIL: Timed out waiting for notifyDone to be called\n":
             self._driver_timed_out = True
 
@@ -424,6 +461,7 @@ class Driver(object):
             if child_process_pid:
                 self._port.sample_process(child_process_name, child_process_pid)
             self.error_from_test += error_line
+            self._server_process.write('#SAMPLE FINISHED\n', True)  # Must be able to ignore a broken pipe here, target process may already be closed.
             return True
         return self.has_crashed()
 
@@ -449,9 +487,9 @@ class Driver(object):
             command += "'" + driver_input.image_hash
         return command + "\n"
 
-    def _read_first_block(self, deadline):
+    def _read_first_block(self, deadline, test_name):
         # returns (text_content, audio_content)
-        block = self._read_block(deadline)
+        block = self._read_block(deadline, test_name)
         if block.malloc:
             self._measurements['Malloc'] = float(block.malloc)
         if block.js_heap:
@@ -460,9 +498,9 @@ class Driver(object):
             return (None, block.decoded_content)
         return (block.decoded_content, None)
 
-    def _read_optional_image_block(self, deadline):
+    def _read_optional_image_block(self, deadline, test_name):
         # returns (image, actual_image_hash)
-        block = self._read_block(deadline, wait_for_stderr_eof=True)
+        block = self._read_block(deadline, test_name, wait_for_stderr_eof=True)
         if block.content and block.content_type == 'image/png':
             return (block.decoded_content, block.content_hash)
         return (None, block.content_hash)
@@ -493,7 +531,7 @@ class Driver(object):
             return line[:-5], True
         return line, False
 
-    def _read_block(self, deadline, wait_for_stderr_eof=False):
+    def _read_block(self, deadline, test_name, wait_for_stderr_eof=False):
         block = ContentBlock()
         out_seen_eof = False
         asan_violation_detected = False
@@ -524,7 +562,7 @@ class Driver(object):
             if out_line:
                 self._check_for_driver_timeout(out_line)
                 if out_line[-1] != "\n":
-                    _log.error("Last character read from DRT stdout line was not a newline!  This indicates either a NRWT or DRT bug.")
+                    _log.error("  %s -> Last character read from DRT stdout line was not a newline!  This indicates either a NRWT or DRT bug." % test_name)
                 content_length_before_header_check = block._content_length
                 self._process_stdout_line(block, out_line)
                 # FIXME: Unlike HTTP, DRT dumps the content right after printing a Content-Length header.
@@ -566,6 +604,7 @@ class Driver(object):
         return True
 
 
+# FIXME: this should be abstracted out via the Port subclass somehow.
 class IOSSimulatorDriver(Driver):
     def cmd_line(self, pixel_tests, per_test_args):
         cmd = super(IOSSimulatorDriver, self).cmd_line(pixel_tests, per_test_args)
@@ -574,9 +613,8 @@ class IOSSimulatorDriver(Driver):
         dump_tool_args = cmd[1:]
         product_dir = self._port._build_path()
         relay_args = [
-            '-runtime', self._port.simulator_runtime.identifier,
-            '-deviceType', self._port.simulator_device_type.identifier,
-            '-suffix', str(self._worker_number),
+            '-developerDir', self._port.developer_dir,
+            '-udid', self._port.device_id_for_worker_number(self._worker_number),
             '-productDir', product_dir,
             '-app', dump_tool,
         ]
@@ -604,6 +642,7 @@ class ContentBlock(object):
             self.decoded_content = base64.b64decode(self.content)
         else:
             self.decoded_content = self.content
+
 
 class DriverProxy(object):
     """A wrapper for managing two Driver instances, one with pixel tests and

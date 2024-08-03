@@ -56,7 +56,7 @@ RenderStyle* CSSToStyleMap::style() const
     return m_resolver->style();
 }
 
-RenderStyle* CSSToStyleMap::rootElementStyle() const
+const RenderStyle* CSSToStyleMap::rootElementStyle() const
 {
     return m_resolver->rootElementStyle();
 }
@@ -66,9 +66,9 @@ bool CSSToStyleMap::useSVGZoomRules() const
     return m_resolver->useSVGZoomRules();
 }
 
-RefPtr<StyleImage> CSSToStyleMap::styleImage(CSSPropertyID propertyId, CSSValue& value)
+RefPtr<StyleImage> CSSToStyleMap::styleImage(CSSValue& value)
 {
-    return m_resolver->styleImage(propertyId, value);
+    return m_resolver->styleImage(value);
 }
 
 void CSSToStyleMap::mapFillAttachment(CSSPropertyID propertyID, FillLayer& layer, const CSSValue& value)
@@ -155,7 +155,7 @@ void CSSToStyleMap::mapFillImage(CSSPropertyID propertyID, FillLayer& layer, CSS
         return;
     }
 
-    layer.setImage(styleImage(propertyID, value));
+    layer.setImage(styleImage(value));
 }
 
 void CSSToStyleMap::mapFillRepeatX(CSSPropertyID propertyID, FillLayer& layer, const CSSValue& value)
@@ -510,6 +510,9 @@ void CSSToStyleMap::mapAnimationTimingFunction(Animation& animation, const CSSVa
     } else if (is<CSSStepsTimingFunctionValue>(value)) {
         auto& stepsTimingFunction = downcast<CSSStepsTimingFunctionValue>(value);
         animation.setTimingFunction(StepsTimingFunction::create(stepsTimingFunction.numberOfSteps(), stepsTimingFunction.stepAtStart()));
+    } else if (is<CSSSpringTimingFunctionValue>(value)) {
+        auto& springTimingFunction = downcast<CSSSpringTimingFunctionValue>(value);
+        animation.setTimingFunction(SpringTimingFunction::create(springTimingFunction.mass(), springTimingFunction.stiffness(), springTimingFunction.damping(), springTimingFunction.initialVelocity()));
     }
 }
 
@@ -531,8 +534,8 @@ void CSSToStyleMap::mapAnimationTrigger(Animation& animation, const CSSValue& va
     if (value.isAnimationTriggerScrollValue()) {
         auto& scrollTrigger = downcast<CSSAnimationTriggerScrollValue>(value);
 
-        const CSSPrimitiveValue* startValue = downcast<CSSPrimitiveValue>(scrollTrigger.startValue());
-        Length startLength = startValue->computeLength<Length>(m_resolver->state().cssToLengthConversionData());
+        const CSSPrimitiveValue& startValue = downcast<CSSPrimitiveValue>(scrollTrigger.startValue());
+        Length startLength = startValue.computeLength<Length>(m_resolver->state().cssToLengthConversionData());
 
         Length endLength;
         if (scrollTrigger.hasEndValue()) {
@@ -554,22 +557,9 @@ void CSSToStyleMap::mapNinePieceImage(CSSPropertyID property, CSSValue* value, N
     // Retrieve the border image value.
     CSSValueList& borderImage = downcast<CSSValueList>(*value);
 
-    // Set the image (this kicks off the load).
-    CSSPropertyID imageProperty;
-    if (property == CSSPropertyWebkitBorderImage)
-        imageProperty = CSSPropertyBorderImageSource;
-    else if (property == CSSPropertyWebkitMaskBoxImage)
-        imageProperty = CSSPropertyWebkitMaskBoxImageSource;
-    else
-        imageProperty = property;
-
     for (auto& current : borderImage) {
-        if (is<CSSImageValue>(current.get()) || is<CSSImageGeneratorValue>(current.get())
-#if ENABLE(CSS_IMAGE_SET)
-            || is<CSSImageSetValue>(current.get())
-#endif
-            )
-            image.setImage(styleImage(imageProperty, current.get()));
+        if (is<CSSImageValue>(current.get()) || is<CSSImageGeneratorValue>(current.get()) || is<CSSImageSetValue>(current.get()))
+            image.setImage(styleImage(current.get()));
         else if (is<CSSBorderImageSliceValue>(current.get()))
             mapNinePieceImageSlice(current, image);
         else if (is<CSSValueList>(current.get())) {

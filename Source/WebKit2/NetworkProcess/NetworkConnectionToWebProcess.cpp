@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,22 +26,28 @@
 #include "config.h"
 #include "NetworkConnectionToWebProcess.h"
 
+#include "BlobDataFileReferenceWithSandboxExtension.h"
 #include "NetworkBlobRegistry.h"
 #include "NetworkConnectionToWebProcessMessages.h"
 #include "NetworkLoad.h"
 #include "NetworkProcess.h"
+#include "NetworkProcessConnectionMessages.h"
 #include "NetworkResourceLoadParameters.h"
 #include "NetworkResourceLoader.h"
 #include "NetworkResourceLoaderMessages.h"
 #include "RemoteNetworkingContext.h"
 #include "SessionTracker.h"
-#include <WebCore/NotImplemented.h>
+#include "WebCoreArgumentCoders.h"
+#include <WebCore/NetworkStorageSession.h>
 #include <WebCore/PingHandle.h>
 #include <WebCore/PlatformCookieJar.h>
 #include <WebCore/ResourceLoaderOptions.h>
 #include <WebCore/ResourceRequest.h>
 #include <WebCore/SessionID.h>
-#include <wtf/RunLoop.h>
+
+#if USE(NETWORK_SESSION)
+#include "PingLoad.h"
+#endif
 
 using namespace WebCore;
 
@@ -53,8 +59,8 @@ Ref<NetworkConnectionToWebProcess> NetworkConnectionToWebProcess::create(IPC::Co
 }
 
 NetworkConnectionToWebProcess::NetworkConnectionToWebProcess(IPC::Connection::Identifier connectionIdentifier)
+    : m_connection(IPC::Connection::createServerConnection(connectionIdentifier, *this))
 {
-    m_connection = IPC::Connection::createServerConnection(connectionIdentifier, *this);
     m_connection->open();
 }
 
@@ -69,7 +75,7 @@ void NetworkConnectionToWebProcess::didCleanupResourceLoader(NetworkResourceLoad
     m_networkResourceLoaders.remove(loader.identifier());
 }
     
-void NetworkConnectionToWebProcess::didReceiveMessage(IPC::Connection& connection, IPC::MessageDecoder& decoder)
+void NetworkConnectionToWebProcess::didReceiveMessage(IPC::Connection& connection, IPC::Decoder& decoder)
 {
     if (decoder.messageReceiverName() == Messages::NetworkConnectionToWebProcess::messageReceiverName()) {
         didReceiveNetworkConnectionToWebProcessMessage(connection, decoder);
@@ -86,7 +92,7 @@ void NetworkConnectionToWebProcess::didReceiveMessage(IPC::Connection& connectio
     ASSERT_NOT_REACHED();
 }
 
-void NetworkConnectionToWebProcess::didReceiveSyncMessage(IPC::Connection& connection, IPC::MessageDecoder& decoder, std::unique_ptr<IPC::MessageEncoder>& reply)
+void NetworkConnectionToWebProcess::didReceiveSyncMessage(IPC::Connection& connection, IPC::Decoder& decoder, std::unique_ptr<IPC::Encoder>& reply)
 {
     if (decoder.messageReceiverName() == Messages::NetworkConnectionToWebProcess::messageReceiverName()) {
         didReceiveSyncNetworkConnectionToWebProcessMessage(connection, decoder, reply);
@@ -130,10 +136,15 @@ void NetworkConnectionToWebProcess::performSynchronousLoad(const NetworkResource
 
 void NetworkConnectionToWebProcess::loadPing(const NetworkResourceLoadParameters& loadParameters)
 {
+#if USE(NETWORK_SESSION)
+    // PingLoad manages its own lifetime, deleting itself when its purpose has been fulfilled.
+    new PingLoad(loadParameters);
+#else
     RefPtr<NetworkingContext> context = RemoteNetworkingContext::create(loadParameters.sessionID, loadParameters.shouldClearReferrerOnHTTPSToHTTPRedirect);
 
     // PingHandle manages its own lifetime, deleting itself when its purpose has been fulfilled.
-    new PingHandle(context.get(), loadParameters.request, loadParameters.allowStoredCredentials == AllowStoredCredentials, PingHandle::UsesAsyncCallbacks::Yes);
+    new PingHandle(context.get(), loadParameters.request, loadParameters.allowStoredCredentials == AllowStoredCredentials, PingHandle::UsesAsyncCallbacks::Yes, loadParameters.shouldFollowRedirects);
+#endif
 }
 
 void NetworkConnectionToWebProcess::removeLoadIdentifier(ResourceLoadIdentifier identifier)
@@ -167,8 +178,7 @@ void NetworkConnectionToWebProcess::prefetchDNS(const String& hostname)
 static NetworkStorageSession& storageSession(SessionID sessionID)
 {
     if (sessionID.isEphemeral()) {
-        NetworkStorageSession* privateStorageSession = SessionTracker::storageSession(sessionID);
-        if (privateStorageSession)
+        if (auto* privateStorageSession = NetworkStorageSession::storageSession(sessionID))
             return *privateStorageSession;
         // Some requests with private browsing mode requested may still be coming shortly after NetworkProcess was told to destroy its session.
         // FIXME: Find a way to track private browsing sessions more rigorously.
@@ -177,9 +187,9 @@ static NetworkStorageSession& storageSession(SessionID sessionID)
     return NetworkStorageSession::defaultStorageSession();
 }
 
-void NetworkConnectionToWebProcess::startDownload(SessionID sessionID, DownloadID downloadID, const ResourceRequest& request)
+void NetworkConnectionToWebProcess::startDownload(SessionID sessionID, DownloadID downloadID, const ResourceRequest& request, const String& suggestedName)
 {
-    NetworkProcess::singleton().downloadManager().startDownload(sessionID, downloadID, request);
+    NetworkProcess::singleton().downloadManager().startDownload(sessionID, downloadID, request, suggestedName);
 }
 
 void NetworkConnectionToWebProcess::convertMainResourceLoadToDownload(SessionID sessionID, uint64_t mainResourceLoadIdentifier, DownloadID downloadID, const ResourceRequest& request, const ResourceResponse& response)
@@ -197,15 +207,15 @@ void NetworkConnectionToWebProcess::convertMainResourceLoadToDownload(SessionID 
     }
 
 #if USE(NETWORK_SESSION)
-    loader->networkLoad()->convertTaskToDownload(downloadID);
+    loader->networkLoad()->convertTaskToDownload(downloadID, request, response);
 #else
     networkProcess.downloadManager().convertHandleToDownload(downloadID, loader->networkLoad()->handle(), request, response);
 
     // Unblock the URL connection operation queue.
     loader->networkLoad()->handle()->continueDidReceiveResponse();
     
-    loader->didConvertToDownload();
 #endif
+    loader->didConvertToDownload();
 }
 
 void NetworkConnectionToWebProcess::cookiesForDOM(SessionID sessionID, const URL& firstParty, const URL& url, String& result)
@@ -238,6 +248,11 @@ void NetworkConnectionToWebProcess::deleteCookie(SessionID sessionID, const URL&
     WebCore::deleteCookie(storageSession(sessionID), url, cookieName);
 }
 
+void NetworkConnectionToWebProcess::addCookie(SessionID sessionID, const URL& url, const Cookie& cookie)
+{
+    WebCore::addCookie(storageSession(sessionID), url, cookie);
+}
+
 void NetworkConnectionToWebProcess::registerFileBlobURL(const URL& url, const String& path, const SandboxExtension::Handle& extensionHandle, const String& contentType)
 {
     RefPtr<SandboxExtension> extension = SandboxExtension::create(extensionHandle);
@@ -255,6 +270,30 @@ void NetworkConnectionToWebProcess::registerBlobURLFromURL(const URL& url, const
     NetworkBlobRegistry::singleton().registerBlobURL(this, url, srcURL);
 }
 
+void NetworkConnectionToWebProcess::preregisterSandboxExtensionsForOptionallyFileBackedBlob(const Vector<String>& filePaths, const SandboxExtension::HandleArray& handles)
+{
+#if ENABLE(SANDBOX_EXTENSIONS)
+    ASSERT(filePaths.size() == handles.size());
+
+    for (size_t i = 0; i < filePaths.size(); ++i)
+        m_blobDataFileReferences.add(filePaths[i], BlobDataFileReferenceWithSandboxExtension::create(filePaths[i], SandboxExtension::create(handles[i])));
+#else
+    for (size_t i = 0; i < filePaths.size(); ++i)
+        m_blobDataFileReferences.add(filePaths[i], BlobDataFileReferenceWithSandboxExtension::create(filePaths[i], nullptr));
+#endif
+}
+
+RefPtr<WebCore::BlobDataFileReference> NetworkConnectionToWebProcess::getBlobDataFileReferenceForPath(const String& path)
+{
+    ASSERT(m_blobDataFileReferences.contains(path));
+    return m_blobDataFileReferences.get(path);
+}
+
+void NetworkConnectionToWebProcess::registerBlobURLOptionallyFileBacked(const URL& url, const URL& srcURL, const String& fileBackedPath, const String& contentType)
+{
+    NetworkBlobRegistry::singleton().registerBlobURLOptionallyFileBacked(this, url, srcURL, fileBackedPath, contentType);
+}
+
 void NetworkConnectionToWebProcess::registerBlobURLForSlice(const URL& url, const URL& srcURL, int64_t start, int64_t end)
 {
     NetworkBlobRegistry::singleton().registerBlobURLForSlice(this, url, srcURL, start, end);
@@ -268,6 +307,33 @@ void NetworkConnectionToWebProcess::unregisterBlobURL(const URL& url)
 void NetworkConnectionToWebProcess::blobSize(const URL& url, uint64_t& resultSize)
 {
     resultSize = NetworkBlobRegistry::singleton().blobSize(this, url);
+}
+
+void NetworkConnectionToWebProcess::writeBlobsToTemporaryFiles(const Vector<String>& blobURLs, uint64_t requestIdentifier)
+{
+    Vector<RefPtr<BlobDataFileReference>> fileReferences;
+    for (auto& url : blobURLs)
+        fileReferences.appendVector(NetworkBlobRegistry::singleton().filesInBlob(*this, { ParsedURLString, url }));
+
+    for (auto& file : fileReferences)
+        file->prepareForFileAccess();
+
+    NetworkBlobRegistry::singleton().writeBlobsToTemporaryFiles(blobURLs, [this, protectedThis = makeRef(*this), requestIdentifier, fileReferences = WTFMove(fileReferences)](auto& fileNames) mutable {
+        for (auto& file : fileReferences)
+            file->revokeFileAccess();
+
+        NetworkProcess::singleton().grantSandboxExtensionsToDatabaseProcessForBlobs(fileNames, [this, protectedThis = WTFMove(protectedThis), requestIdentifier, fileNames]() {
+            if (!m_connection->isValid())
+                return;
+
+            m_connection->send(Messages::NetworkProcessConnection::DidWriteBlobsToTemporaryFiles(requestIdentifier, fileNames), 0);
+        });
+    });
+}
+
+void NetworkConnectionToWebProcess::ensureLegacyPrivateBrowsingSession()
+{
+    NetworkProcess::singleton().ensurePrivateBrowsingSession(SessionID::legacyPrivateSessionID());
 }
 
 } // namespace WebKit

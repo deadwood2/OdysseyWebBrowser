@@ -30,6 +30,7 @@
 #include "HTMLUListElement.h"
 #include "InlineElementBox.h"
 #include "PseudoElement.h"
+#include "RenderChildIterator.h"
 #include "RenderInline.h"
 #include "RenderListMarker.h"
 #include "RenderMultiColumnFlowThread.h"
@@ -38,13 +39,12 @@
 #include "StyleInheritedData.h"
 #include <wtf/StackStats.h>
 #include <wtf/StdLibExtras.h>
-#include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
 
 using namespace HTMLNames;
 
-RenderListItem::RenderListItem(Element& element, Ref<RenderStyle>&& style)
+RenderListItem::RenderListItem(Element& element, RenderStyle&& style)
     : RenderBlockFlow(element, WTFMove(style))
     , m_marker(nullptr)
     , m_hasExplicitValue(false)
@@ -78,7 +78,7 @@ void RenderListItem::styleDidChange(StyleDifference diff, const RenderStyle* old
     auto newStyle = RenderStyle::create();
     // The marker always inherits from the list item, regardless of where it might end
     // up (e.g., in some deeply nested line box). See CSS3 spec.
-    newStyle.get().inheritFrom(&style());
+    newStyle.inheritFrom(&style());
     if (!m_marker) {
         m_marker = createRenderer<RenderListMarker>(*this, WTFMove(newStyle)).leakPtr();
         m_marker->initializeStyle();
@@ -219,31 +219,26 @@ void RenderListItem::updateValueNow() const
     m_isValueUpToDate = true;
 }
 
-bool RenderListItem::isEmpty() const
-{
-    return lastChild() == m_marker;
-}
-
 static RenderBlock* getParentOfFirstLineBox(RenderBlock& current, RenderObject& marker)
 {
     bool inQuirksMode = current.document().inQuirksMode();
-    for (RenderObject* child = current.firstChild(); child; child = child->nextSibling()) {
-        if (child == &marker)
+    for (auto& child : childrenOfType<RenderObject>(current)) {
+        if (&child == &marker)
             continue;
 
-        if (child->isInline() && (!is<RenderInline>(*child) || current.generatesLineBoxesForInlineChild(child)))
+        if (child.isInline() && (!is<RenderInline>(child) || current.generatesLineBoxesForInlineChild(&child)))
             return &current;
 
-        if (child->isFloating() || child->isOutOfFlowPositioned())
+        if (child.isFloating() || child.isOutOfFlowPositioned())
             continue;
 
-        if (is<RenderTable>(*child) || !is<RenderBlock>(*child) || (is<RenderBox>(*child) && downcast<RenderBox>(*child).isWritingModeRoot()))
+        if (is<RenderTable>(child) || !is<RenderBlock>(child) || (is<RenderBox>(child) && downcast<RenderBox>(child).isWritingModeRoot()))
             break;
 
-        if (is<RenderListItem>(current) && inQuirksMode && child->node() && isHTMLListElement(*child->node()))
+        if (is<RenderListItem>(current) && inQuirksMode && child.node() && isHTMLListElement(*child.node()))
             break;
 
-        if (RenderBlock* lineBox = getParentOfFirstLineBox(downcast<RenderBlock>(*child), marker))
+        if (RenderBlock* lineBox = getParentOfFirstLineBox(downcast<RenderBlock>(child), marker))
             return lineBox;
     }
 
@@ -273,6 +268,11 @@ void RenderListItem::insertOrMoveMarkerRendererIfNeeded()
     if (!m_marker)
         return;
 
+    // FIXME: Do not even try to reposition the marker when we are not in layout
+    // until after we fixed webkit.org/b/163789.
+    if (!view().frameView().isInRenderTreeLayout())
+        return;
+
     RenderElement* currentParent = m_marker->parent();
     RenderBlock* newParent = getParentOfFirstLineBox(*this, *m_marker);
     if (!newParent) {
@@ -292,6 +292,11 @@ void RenderListItem::insertOrMoveMarkerRendererIfNeeded()
         // Removing and adding the marker can trigger repainting in
         // containers other than ourselves, so we need to disable LayoutState.
         LayoutStateDisabler layoutStateDisabler(view());
+        // Mark the parent dirty so that when the marker gets inserted into the tree
+        // and dirties ancestors, it stops at the parent.
+        newParent->setChildNeedsLayout(MarkOnlyThis);
+        m_marker->setNeedsLayout(MarkOnlyThis);
+
         m_marker->removeFromParent();
         newParent->addChild(m_marker, firstNonMarkerChild(*newParent));
         m_marker->updateMarginsAndContent();
@@ -351,8 +356,7 @@ void RenderListItem::positionListMarker()
 
         // FIXME: Need to account for relative positioning in the layout overflow.
         if (style().isLeftToRightDirection()) {
-            LayoutUnit leftLineOffset = logicalLeftOffsetForLine(blockOffset, logicalLeftOffsetForLine(blockOffset, DoNotIndentText), false);
-            markerLogicalLeft = leftLineOffset - lineOffset - paddingStart() - borderStart() + m_marker->marginStart();
+            markerLogicalLeft = m_marker->lineOffsetForListItem() - lineOffset - paddingStart() - borderStart() + m_marker->marginStart();
             m_marker->inlineBoxWrapper()->adjustLineDirectionPosition(markerLogicalLeft - markerOldLogicalLeft);
             for (InlineFlowBox* box = m_marker->inlineBoxWrapper()->parent(); box; box = box->parent()) {
                 LayoutRect newLogicalVisualOverflowRect = box->logicalVisualOverflowRect(lineTop, lineBottom);
@@ -374,8 +378,7 @@ void RenderListItem::positionListMarker()
                     hitSelfPaintingLayer = true;
             }
         } else {
-            LayoutUnit rightLineOffset = logicalRightOffsetForLine(blockOffset, logicalRightOffsetForLine(blockOffset, DoNotIndentText), false);
-            markerLogicalLeft = rightLineOffset - lineOffset + paddingStart() + borderStart() + m_marker->marginEnd();
+            markerLogicalLeft = m_marker->lineOffsetForListItem() - lineOffset + paddingStart() + borderStart() + m_marker->marginEnd();
             m_marker->inlineBoxWrapper()->adjustLineDirectionPosition(markerLogicalLeft - markerOldLogicalLeft);
             for (InlineFlowBox* box = m_marker->inlineBoxWrapper()->parent(); box; box = box->parent()) {
                 LayoutRect newLogicalVisualOverflowRect = box->logicalVisualOverflowRect(lineTop, lineBottom);

@@ -58,7 +58,6 @@
 #include <bindings/ScriptValue.h>
 #include <inspector/InspectorProtocolObjects.h>
 #include <inspector/InspectorValues.h>
-#include <wtf/text/StringBuilder.h>
 
 using namespace Inspector;
 
@@ -505,7 +504,7 @@ void InspectorOverlay::showPaintRect(const FloatRect& rect)
 
     IntRect rootRect = m_page.mainFrame().view()->contentsToRootView(enclosingIntRect(rect));
 
-    const std::chrono::milliseconds removeDelay = std::chrono::milliseconds(250);
+    const auto removeDelay = 250ms;
 
     std::chrono::steady_clock::time_point removeTime = std::chrono::steady_clock::now() + removeDelay;
     m_paintRects.append(TimeRectPair(removeTime, rootRect));
@@ -713,28 +712,27 @@ static RefPtr<Inspector::Protocol::OverlayTypes::ElementData> buildObjectForElem
         .setIdValue(element.getIdAttribute())
         .release();
 
-    StringBuilder classNames;
     if (element.hasClass() && is<StyledElement>(element)) {
+        auto classes = Inspector::Protocol::Array<String>::create();
         HashSet<AtomicString> usedClassNames;
         const SpaceSplitString& classNamesString = downcast<StyledElement>(element).classNames();
-        size_t classNameCount = classNamesString.size();
-        for (size_t i = 0; i < classNameCount; ++i) {
+        for (size_t i = 0; i < classNamesString.size(); ++i) {
             const AtomicString& className = classNamesString[i];
             if (usedClassNames.contains(className))
                 continue;
+
             usedClassNames.add(className);
-            classNames.append('.');
-            classNames.append(className);
+            classes->addItem(className);
         }
+        elementData->setClasses(WTFMove(classes));
     }
+
     if (node->isPseudoElement()) {
         if (node->pseudoId() == BEFORE)
-            classNames.appendLiteral("::before");
+            elementData->setPseudoElement("before");
         else if (node->pseudoId() == AFTER)
-            classNames.appendLiteral("::after");
+            elementData->setPseudoElement("after");
     }
-    if (!classNames.isEmpty())
-        elementData->setClassName(classNames.toString());
 
     RenderElement* renderer = element.renderer();
     if (!renderer)
@@ -864,9 +862,10 @@ Page* InspectorOverlay::overlayPage()
     if (m_overlayPage)
         return m_overlayPage.get();
 
-    PageConfiguration pageConfiguration;
+    PageConfiguration pageConfiguration(makeUniqueRef<EmptyEditorClient>(), SocketProvider::create());
     fillWithEmptyClients(pageConfiguration);
-    m_overlayPage = std::make_unique<Page>(pageConfiguration);
+    m_overlayPage = std::make_unique<Page>(WTFMove(pageConfiguration));
+    m_overlayPage->setDeviceScaleFactor(m_page.deviceScaleFactor());
 
     Settings& settings = m_page.settings();
     Settings& overlaySettings = m_overlayPage->settings();
@@ -922,11 +921,18 @@ void InspectorOverlay::reset(const IntSize& viewportSize, const IntSize& frameVi
     evaluateInOverlay("reset", WTFMove(configObject));
 }
 
+static void evaluateCommandInOverlay(Page* page, Ref<InspectorArray>&& command)
+{
+    JSC::JSValue result = page->mainFrame().script().evaluate(ScriptSourceCode(makeString("dispatch(", command->toJSONString(), ')')));
+    ASSERT_UNUSED(result, result); // There should never be exceptions when evaluating in the overlay page.
+}
+
 void InspectorOverlay::evaluateInOverlay(const String& method)
 {
     Ref<InspectorArray> command = InspectorArray::create();
     command->pushString(method);
-    overlayPage()->mainFrame().script().evaluate(ScriptSourceCode(makeString("dispatch(", command->toJSONString(), ')')));
+
+    evaluateCommandInOverlay(overlayPage(), WTFMove(command));
 }
 
 void InspectorOverlay::evaluateInOverlay(const String& method, const String& argument)
@@ -934,7 +940,8 @@ void InspectorOverlay::evaluateInOverlay(const String& method, const String& arg
     Ref<InspectorArray> command = InspectorArray::create();
     command->pushString(method);
     command->pushString(argument);
-    overlayPage()->mainFrame().script().evaluate(ScriptSourceCode(makeString("dispatch(", command->toJSONString(), ')')));
+
+    evaluateCommandInOverlay(overlayPage(), WTFMove(command));
 }
 
 void InspectorOverlay::evaluateInOverlay(const String& method, RefPtr<InspectorValue>&& argument)
@@ -942,7 +949,8 @@ void InspectorOverlay::evaluateInOverlay(const String& method, RefPtr<InspectorV
     Ref<InspectorArray> command = InspectorArray::create();
     command->pushString(method);
     command->pushValue(WTFMove(argument));
-    overlayPage()->mainFrame().script().evaluate(ScriptSourceCode(makeString("dispatch(", command->toJSONString(), ')')));
+
+    evaluateCommandInOverlay(overlayPage(), WTFMove(command));
 }
 
 void InspectorOverlay::freePage()

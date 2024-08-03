@@ -31,8 +31,10 @@
 #include "PageClientImpl.h"
 #include "WebKitWebViewBasePrivate.h"
 #include "WebPageMessages.h"
+#include "WebPasteboardProxy.h"
 #include "WebProcessProxy.h"
 #include "WebsiteDataStore.h"
+#include <WebCore/PlatformDisplay.h>
 #include <WebCore/UserAgentGtk.h>
 #include <gtk/gtkx.h>
 #include <wtf/NeverDestroyed.h>
@@ -79,6 +81,8 @@ void WebPageProxy::editorStateChanged(const EditorState& editorState)
     
     if (editorState.shouldIgnoreCompositionSelectionChange)
         return;
+    if (m_editorState.selectionIsRange)
+        WebPasteboardProxy::singleton().setPrimarySelectionOwner(focusedFrame());
     m_pageClient.selectionDidChange();
 }
 
@@ -99,6 +103,7 @@ static gboolean pluginContainerPlugRemoved(GtkSocket* socket)
 
 void WebPageProxy::createPluginContainer(uint64_t& windowID)
 {
+    RELEASE_ASSERT(WebCore::PlatformDisplay::sharedDisplay().type() == WebCore::PlatformDisplay::Type::X11);
     GtkWidget* socket = gtk_socket_new();
     g_signal_connect(socket, "plug-removed", G_CALLBACK(pluginContainerPlugRemoved), 0);
     gtk_container_add(GTK_CONTAINER(viewWidget()), socket);

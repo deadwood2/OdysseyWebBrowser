@@ -48,12 +48,15 @@
 #include "InspectorDOMStorageAgent.h"
 #include "InspectorDatabaseAgent.h"
 #include "InspectorLayerTreeAgent.h"
+#include "InspectorMemoryAgent.h"
 #include "InspectorNetworkAgent.h"
 #include "InspectorPageAgent.h"
 #include "InspectorTimelineAgent.h"
 #include "InstrumentingAgents.h"
 #include "MainFrame.h"
+#include "Page.h"
 #include "PageDebuggerAgent.h"
+#include "PageHeapAgent.h"
 #include "PageRuntimeAgent.h"
 #include "RenderObject.h"
 #include "RenderView.h"
@@ -66,7 +69,6 @@
 #include <inspector/ScriptArguments.h>
 #include <inspector/ScriptCallStack.h>
 #include <inspector/agents/InspectorDebuggerAgent.h>
-#include <profiler/Profile.h>
 #include <runtime/ConsoleTypes.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/text/CString.h>
@@ -291,7 +293,7 @@ bool InspectorInstrumentation::handleMousePressImpl(InstrumentingAgents& instrum
     return false;
 }
 
-bool InspectorInstrumentation::forcePseudoStateImpl(InstrumentingAgents& instrumentingAgents, Element& element, CSSSelector::PseudoClassType pseudoState)
+bool InspectorInstrumentation::forcePseudoStateImpl(InstrumentingAgents& instrumentingAgents, const Element& element, CSSSelector::PseudoClassType pseudoState)
 {
     if (InspectorCSSAgent* cssAgent = instrumentingAgents.inspectorCSSAgent())
         return cssAgent->forcePseudoState(element, pseudoState);
@@ -310,7 +312,7 @@ void InspectorInstrumentation::willSendXMLHttpRequestImpl(InstrumentingAgents& i
         domDebuggerAgent->willSendXMLHttpRequest(url);
 }
 
-void InspectorInstrumentation::didInstallTimerImpl(InstrumentingAgents& instrumentingAgents, int timerId, int timeout, bool singleShot, ScriptExecutionContext* context)
+void InspectorInstrumentation::didInstallTimerImpl(InstrumentingAgents& instrumentingAgents, int timerId, std::chrono::milliseconds timeout, bool singleShot, ScriptExecutionContext* context)
 {
     pauseOnNativeEventIfNeeded(instrumentingAgents, false, setTimerEventName, true);
     if (InspectorTimelineAgent* timelineAgent = instrumentingAgents.inspectorTimelineAgent())
@@ -633,12 +635,14 @@ void InspectorInstrumentation::didFailLoadingImpl(InstrumentingAgents& instrumen
         consoleAgent->didFailLoading(identifier, error); // This should come AFTER resource notification, front-end relies on this.
 }
 
-void InspectorInstrumentation::didFinishXHRLoadingImpl(InstrumentingAgents& instrumentingAgents, ThreadableLoaderClient* client, unsigned long identifier, const String& sourceString, const String& url, const String& sendURL, unsigned sendLineNumber, unsigned sendColumnNumber)
+void InspectorInstrumentation::didFinishXHRLoadingImpl(InstrumentingAgents& instrumentingAgents, ThreadableLoaderClient* client, unsigned long identifier, Optional<String> decodedText, const String& url, const String& sendURL, unsigned sendLineNumber, unsigned sendColumnNumber)
 {
     if (WebConsoleAgent* consoleAgent = instrumentingAgents.webConsoleAgent())
         consoleAgent->didFinishXHRLoading(identifier, url, sendURL, sendLineNumber, sendColumnNumber);
-    if (InspectorNetworkAgent* networkAgent = instrumentingAgents.inspectorNetworkAgent())
-        networkAgent->didFinishXHRLoading(client, identifier, sourceString);
+    if (InspectorNetworkAgent* networkAgent = instrumentingAgents.inspectorNetworkAgent()) {
+        if (decodedText)
+            networkAgent->didFinishXHRLoading(client, identifier, *decodedText);
+    }
 }
 
 void InspectorInstrumentation::didReceiveXHRResponseImpl(InstrumentingAgents& instrumentingAgents, unsigned long identifier)
@@ -741,6 +745,9 @@ void InspectorInstrumentation::didCommitLoadImpl(InstrumentingAgents& instrument
 
         if (PageDebuggerAgent* pageDebuggerAgent = instrumentingAgents.pageDebuggerAgent())
             pageDebuggerAgent->mainFrameNavigated();
+
+        if (PageHeapAgent* pageHeapAgent = instrumentingAgents.pageHeapAgent())
+            pageHeapAgent->mainFrameNavigated();
     }
 
     if (InspectorDOMAgent* domAgent = instrumentingAgents.inspectorDOMAgent())
@@ -748,6 +755,11 @@ void InspectorInstrumentation::didCommitLoadImpl(InstrumentingAgents& instrument
 
     if (InspectorPageAgent* pageAgent = instrumentingAgents.inspectorPageAgent())
         pageAgent->frameNavigated(loader);
+
+    if (loader->frame()->isMainFrame()) {
+        if (InspectorTimelineAgent* timelineAgent = instrumentingAgents.inspectorTimelineAgent())
+            timelineAgent->mainFrameNavigated();
+    }
 
 #if ENABLE(WEB_REPLAY)
     if (InspectorReplayAgent* replayAgent = instrumentingAgents.inspectorReplayAgent())
@@ -774,6 +786,8 @@ void InspectorInstrumentation::frameStartedLoadingImpl(InstrumentingAgents& inst
     if (frame.isMainFrame()) {
         if (PageDebuggerAgent* pageDebuggerAgent = instrumentingAgents.pageDebuggerAgent())
             pageDebuggerAgent->mainFrameStartedLoading();
+        if (InspectorTimelineAgent* timelineAgent = instrumentingAgents.persistentInspectorTimelineAgent())
+            timelineAgent->mainFrameStartedLoading();
     }
 
     if (InspectorPageAgent* inspectorPageAgent = instrumentingAgents.inspectorPageAgent())
@@ -854,6 +868,12 @@ void InspectorInstrumentation::consoleCountImpl(InstrumentingAgents& instrumenti
         consoleAgent->count(state, arguments);
 }
 
+void InspectorInstrumentation::takeHeapSnapshotImpl(InstrumentingAgents& instrumentingAgents, const String& title)
+{
+    if (WebConsoleAgent* consoleAgent = instrumentingAgents.webConsoleAgent())
+        consoleAgent->takeHeapSnapshot(title);
+}
+
 void InspectorInstrumentation::startConsoleTimingImpl(InstrumentingAgents& instrumentingAgents, Frame& frame, const String& title)
 {
     if (InspectorTimelineAgent* timelineAgent = instrumentingAgents.inspectorTimelineAgent())
@@ -885,11 +905,10 @@ void InspectorInstrumentation::startProfilingImpl(InstrumentingAgents& instrumen
         timelineAgent->startFromConsole(exec, title);
 }
 
-RefPtr<JSC::Profile> InspectorInstrumentation::stopProfilingImpl(InstrumentingAgents& instrumentingAgents, JSC::ExecState* exec, const String& title)
+void InspectorInstrumentation::stopProfilingImpl(InstrumentingAgents& instrumentingAgents, JSC::ExecState* exec, const String& title)
 {
     if (InspectorTimelineAgent* timelineAgent = instrumentingAgents.persistentInspectorTimelineAgent())
-        return timelineAgent->stopFromConsole(exec, title);
-    return nullptr;
+        timelineAgent->stopFromConsole(exec, title);
 }
 
 void InspectorInstrumentation::didOpenDatabaseImpl(InstrumentingAgents& instrumentingAgents, RefPtr<Database>&& database, const String& domain, const String& name, const String& version)
@@ -1030,6 +1049,14 @@ void InspectorInstrumentation::playbackFinishedImpl(InstrumentingAgents& instrum
 {
     if (InspectorReplayAgent* replayAgent = instrumentingAgents.inspectorReplayAgent())
         replayAgent->playbackFinished();
+}
+#endif
+
+#if ENABLE(RESOURCE_USAGE)
+void InspectorInstrumentation::didHandleMemoryPressureImpl(InstrumentingAgents& instrumentingAgents, Critical critical)
+{
+    if (InspectorMemoryAgent* memoryAgent = instrumentingAgents.inspectorMemoryAgent())
+        memoryAgent->didHandleMemoryPressure(critical);
 }
 #endif
 

@@ -175,14 +175,14 @@ public:
     {
     }
 
-    virtual bool perform(ExceptionCode& ec) override
+    bool perform(ExceptionCode& ec) override
     {
         if (!m_styleSheet->getText(&m_oldText))
             return false;
         return redo(ec);
     }
 
-    virtual bool undo(ExceptionCode& ec) override
+    bool undo(ExceptionCode& ec) override
     {
         if (m_styleSheet->setText(m_oldText, ec)) {
             m_styleSheet->reparseStyleSheet(m_oldText);
@@ -191,7 +191,7 @@ public:
         return false;
     }
 
-    virtual bool redo(ExceptionCode& ec) override
+    bool redo(ExceptionCode& ec) override
     {
         if (m_styleSheet->setText(m_text, ec)) {
             m_styleSheet->reparseStyleSheet(m_text);
@@ -200,12 +200,12 @@ public:
         return false;
     }
 
-    virtual String mergeId() override
+    String mergeId() override
     {
         return String::format("SetStyleSheetText %s", m_styleSheet->id().utf8().data());
     }
 
-    virtual void merge(std::unique_ptr<Action> action) override
+    void merge(std::unique_ptr<Action> action) override
     {
         ASSERT(action->mergeId() == mergeId());
 
@@ -228,28 +228,28 @@ public:
     {
     }
 
-    virtual bool perform(ExceptionCode& ec) override
+    bool perform(ExceptionCode& ec) override
     {
         return redo(ec);
     }
 
-    virtual bool undo(ExceptionCode& ec) override
+    bool undo(ExceptionCode& ec) override
     {
         return m_styleSheet->setStyleText(m_cssId, m_oldText, nullptr, ec);
     }
 
-    virtual bool redo(ExceptionCode& ec) override
+    bool redo(ExceptionCode& ec) override
     {
         return m_styleSheet->setStyleText(m_cssId, m_text, &m_oldText, ec);
     }
 
-    virtual String mergeId() override
+    String mergeId() override
     {
         ASSERT(m_styleSheet->id() == m_cssId.styleSheetId());
         return String::format("SetStyleText %s:%u", m_styleSheet->id().utf8().data(), m_cssId.ordinal());
     }
 
-    virtual void merge(std::unique_ptr<Action> action) override
+    void merge(std::unique_ptr<Action> action) override
     {
         ASSERT(action->mergeId() == mergeId());
 
@@ -273,7 +273,7 @@ public:
     {
     }
 
-    virtual bool perform(ExceptionCode& ec) override
+    bool perform(ExceptionCode& ec) override
     {
         m_oldSelector = m_styleSheet->ruleSelector(m_cssId, ec);
         if (ec)
@@ -281,12 +281,12 @@ public:
         return redo(ec);
     }
 
-    virtual bool undo(ExceptionCode& ec) override
+    bool undo(ExceptionCode& ec) override
     {
         return m_styleSheet->setRuleSelector(m_cssId, m_oldSelector, ec);
     }
 
-    virtual bool redo(ExceptionCode& ec) override
+    bool redo(ExceptionCode& ec) override
     {
         return m_styleSheet->setRuleSelector(m_cssId, m_selector, ec);
     }
@@ -306,17 +306,17 @@ public:
     {
     }
 
-    virtual bool perform(ExceptionCode& ec) override
+    bool perform(ExceptionCode& ec) override
     {
         return redo(ec);
     }
 
-    virtual bool undo(ExceptionCode& ec) override
+    bool undo(ExceptionCode& ec) override
     {
         return m_styleSheet->deleteRule(m_newId, ec);
     }
 
-    virtual bool redo(ExceptionCode& ec) override
+    bool redo(ExceptionCode& ec) override
     {
         CSSStyleRule* cssStyleRule = m_styleSheet->addRule(m_selector, ec);
         if (ec)
@@ -529,7 +529,7 @@ void InspectorCSSAgent::didUnregisterNamedFlowContentElement(Document& document,
     m_frontendDispatcher->unregisteredNamedFlowContentElement(documentNodeId, namedFlow.name().string(), contentElementNodeId);
 }
 
-bool InspectorCSSAgent::forcePseudoState(Element& element, CSSSelector::PseudoClassType pseudoClassType)
+bool InspectorCSSAgent::forcePseudoState(const Element& element, CSSSelector::PseudoClassType pseudoClassType)
 {
     if (m_nodeIdToForcedPseudoState.isEmpty())
         return false;
@@ -631,8 +631,10 @@ void InspectorCSSAgent::getInlineStylesForNode(ErrorString& errorString, int nod
         return;
 
     inlineStyle = styleSheet->buildObjectForStyle(element->cssomStyle());
-    RefPtr<Inspector::Protocol::CSS::CSSStyle> attributes = buildObjectForAttributesStyle(element);
-    attributesStyle = attributes ? attributes.release() : nullptr;
+    if (auto attributes = buildObjectForAttributesStyle(element))
+        attributesStyle = WTFMove(attributes);
+    else
+        attributesStyle = nullptr;
 }
 
 void InspectorCSSAgent::getComputedStyleForNode(ErrorString& errorString, int nodeId, RefPtr<Inspector::Protocol::Array<Inspector::Protocol::CSS::CSSComputedStyleProperty>>& style)
@@ -641,7 +643,7 @@ void InspectorCSSAgent::getComputedStyleForNode(ErrorString& errorString, int no
     if (!element)
         return;
 
-    RefPtr<CSSComputedStyleDeclaration> computedStyleInfo = CSSComputedStyleDeclaration::create(element, true);
+    RefPtr<CSSComputedStyleDeclaration> computedStyleInfo = CSSComputedStyleDeclaration::create(*element, true);
     Ref<InspectorStyle> inspectorStyle = InspectorStyle::create(InspectorCSSId(), computedStyleInfo, nullptr);
     style = inspectorStyle->buildArrayForComputedStyle();
 }
@@ -777,7 +779,7 @@ InspectorStyleSheet* InspectorCSSAgent::createInspectorStyleSheetForDocument(Doc
         return nullptr;
 
     Ref<Element> styleElement = document.createElement(HTMLNames::styleTag, false);
-    styleElement->setAttribute(HTMLNames::typeAttr, "text/css");
+    styleElement->setAttributeWithoutSynchronization(HTMLNames::typeAttr, AtomicString("text/css", AtomicString::ConstructFromLiteral));
 
     ContainerNode* targetNode;
     // HEAD is absent in ImageDocuments, for example.
@@ -794,7 +796,7 @@ InspectorStyleSheet* InspectorCSSAgent::createInspectorStyleSheetForDocument(Doc
     m_creatingViaInspectorStyleSheet = true;
     InlineStyleOverrideScope overrideScope(document);
     ExceptionCode ec = 0;
-    targetNode->appendChild(WTFMove(styleElement), ec);
+    targetNode->appendChild(styleElement, ec);
     m_creatingViaInspectorStyleSheet = false;
     if (ec)
         return nullptr;

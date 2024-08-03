@@ -87,7 +87,7 @@ Ref<Element> WebVTTElement::cloneElementWithoutAttributesAndChildren(Document& t
     return WTFMove(clone);
 }
 
-PassRefPtr<HTMLElement> WebVTTElement::createEquivalentHTMLElement(Document& document)
+Ref<HTMLElement> WebVTTElement::createEquivalentHTMLElement(Document& document)
 {
     RefPtr<HTMLElement> htmlElement;
 
@@ -96,8 +96,8 @@ PassRefPtr<HTMLElement> WebVTTElement::createEquivalentHTMLElement(Document& doc
     case WebVTTNodeTypeLanguage:
     case WebVTTNodeTypeVoice:
         htmlElement = HTMLElementFactory::createElement(HTMLNames::spanTag, document);
-        htmlElement->setAttribute(HTMLNames::titleAttr, getAttribute(voiceAttributeName()));
-        htmlElement->setAttribute(HTMLNames::langAttr, getAttribute(langAttributeName()));
+        htmlElement->setAttributeWithoutSynchronization(HTMLNames::titleAttr, attributeWithoutSynchronization(voiceAttributeName()));
+        htmlElement->setAttributeWithoutSynchronization(HTMLNames::langAttr, attributeWithoutSynchronization(langAttributeName()));
         break;
     case WebVTTNodeTypeItalic:
         htmlElement = HTMLElementFactory::createElement(HTMLNames::iTag, document);
@@ -118,8 +118,8 @@ PassRefPtr<HTMLElement> WebVTTElement::createEquivalentHTMLElement(Document& doc
 
     ASSERT(htmlElement);
     if (htmlElement)
-        htmlElement->setAttribute(HTMLNames::classAttr, fastGetAttribute(HTMLNames::classAttr));
-    return htmlElement.release();
+        htmlElement->setAttributeWithoutSynchronization(HTMLNames::classAttr, attributeWithoutSynchronization(HTMLNames::classAttr));
+    return htmlElement.releaseNonNull();
 }
 
 } // namespace WebCore

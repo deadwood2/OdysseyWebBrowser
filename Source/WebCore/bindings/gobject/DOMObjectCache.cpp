@@ -27,6 +27,7 @@
 #include <glib-object.h>
 #include <wtf/HashMap.h>
 #include <wtf/NeverDestroyed.h>
+#include <wtf/RunLoop.h>
 #include <wtf/Vector.h>
 #include <wtf/glib/GRefPtr.h>
 
@@ -130,7 +131,7 @@ private:
         WebCore::DOMWindow* domWindow() const { return m_domWindow; }
 
     private:
-        virtual void willDetachGlobalObjectFromFrame() override
+        void willDetachGlobalObjectFromFrame() override
         {
             // Clear the DOMWindowProperty first, and then notify the Frame observer.
             DOMWindowProperty::willDetachGlobalObjectFromFrame();
@@ -168,12 +169,12 @@ private:
         });
     }
 
-    virtual void willDetachPage() override
+    void willDetachPage() override
     {
         clear();
     }
 
-    virtual void frameDestroyed() override
+    void frameDestroyed() override
     {
         clear();
         WebCore::Frame* frame = m_frame;

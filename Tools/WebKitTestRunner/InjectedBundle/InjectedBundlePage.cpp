@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2011, 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -697,8 +697,11 @@ void InjectedBundlePage::didFailProvisionalLoadWithErrorForFrame(WKBundleFrameRe
 
     if (injectedBundle.testRunner()->shouldDumpFrameLoadCallbacks()) {
         dumpLoadEvent(frame, "didFailProvisionalLoadWithError");
-        if (WKErrorGetErrorCode(error) == kWKErrorCodeCannotShowURL)
+        auto code = WKErrorGetErrorCode(error);
+        if (code == kWKErrorCodeCannotShowURL)
             dumpLoadEvent(frame, "(kWKErrorCodeCannotShowURL)");
+        else if (code == kWKErrorCodeFrameLoadBlockedByContentBlocker)
+            dumpLoadEvent(frame, "(kWKErrorCodeFrameLoadBlockedByContentBlocker)");
     }
 
     frameDidChangeLocation(frame);
@@ -892,12 +895,7 @@ void InjectedBundlePage::dump()
         injectedBundle.dumpBackForwardListsForAllPages(stringBuilder);
 
     if (injectedBundle.shouldDumpPixels() && injectedBundle.testRunner()->shouldDumpPixels()) {
-#if PLATFORM(IOS)
-        // IOS doesn't implement PlatformWebView::windowSnapshotImage() yet, so we need to generate the snapshot in the web process.
-        bool shouldCreateSnapshot = true;
-#else
         bool shouldCreateSnapshot = injectedBundle.testRunner()->isPrinting();
-#endif
         if (shouldCreateSnapshot) {
             WKSnapshotOptions options = kWKSnapshotOptionsShareable;
             WKRect snapshotRect = WKBundleFrameGetVisibleContentBounds(WKBundlePageGetMainFrame(m_page));
@@ -1317,8 +1315,11 @@ WKBundlePagePolicyAction InjectedBundlePage::decidePolicyForNavigationAction(WKB
     if (injectedBundle.testRunner()->shouldDecideNavigationPolicyAfterDelay())
         return WKBundlePagePolicyActionPassThrough;
 
-    if (!injectedBundle.testRunner()->isPolicyDelegateEnabled())
-        return WKBundlePagePolicyActionUse;
+    if (!injectedBundle.testRunner()->isPolicyDelegateEnabled()) {
+        WKRetainPtr<WKStringRef> downloadAttributeRef(AdoptWK, WKBundleNavigationActionCopyDownloadAttribute(navigationAction));
+        String downloadAttribute = toWTFString(downloadAttributeRef);
+        return downloadAttribute.isNull() ? WKBundlePagePolicyActionUse : WKBundlePagePolicyActionPassThrough;
+    }
 
     WKRetainPtr<WKURLRef> url = adoptWK(WKURLRequestCopyURL(request));
     WKRetainPtr<WKStringRef> urlScheme = adoptWK(WKURLCopyScheme(url.get()));

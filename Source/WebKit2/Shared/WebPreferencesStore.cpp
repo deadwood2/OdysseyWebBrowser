@@ -45,7 +45,7 @@ static BoolOverridesMap& boolTestRunnerOverridesMap()
     return map;
 }
 
-void WebPreferencesStore::Value::encode(IPC::ArgumentEncoder& encoder) const
+void WebPreferencesStore::Value::encode(IPC::Encoder& encoder) const
 {
     encoder.encodeEnum(m_type);
     
@@ -67,7 +67,7 @@ void WebPreferencesStore::Value::encode(IPC::ArgumentEncoder& encoder) const
     }
 }
 
-bool WebPreferencesStore::Value::decode(IPC::ArgumentDecoder& decoder, Value& result)
+bool WebPreferencesStore::Value::decode(IPC::Decoder& decoder, Value& result)
 {
     Value::Type type;
     if (!decoder.decodeEnum(type))
@@ -115,13 +115,13 @@ WebPreferencesStore::WebPreferencesStore()
 {
 }
 
-void WebPreferencesStore::encode(IPC::ArgumentEncoder& encoder) const
+void WebPreferencesStore::encode(IPC::Encoder& encoder) const
 {
     encoder << m_values;
     encoder << m_overridenDefaults;
 }
 
-bool WebPreferencesStore::decode(IPC::ArgumentDecoder& decoder, WebPreferencesStore& result)
+bool WebPreferencesStore::decode(IPC::Decoder& decoder, WebPreferencesStore& result)
 {
     if (!decoder.decode(result.m_values))
         return false;
@@ -160,9 +160,10 @@ static WebPreferencesStore::ValueMap& defaults()
 {
     static NeverDestroyed<WebPreferencesStore::ValueMap> defaults;
     if (defaults.get().isEmpty()) {
-#define DEFINE_DEFAULTS(KeyUpper, KeyLower, TypeName, Type, DefaultValue) defaults.get().set(WebPreferencesKey::KeyLower##Key(), WebPreferencesStore::Value((Type)DefaultValue));
+#define DEFINE_DEFAULTS(KeyUpper, KeyLower, TypeName, Type, DefaultValue, HumanReadableName, HumanReadableDescription) defaults.get().set(WebPreferencesKey::KeyLower##Key(), WebPreferencesStore::Value((Type)DefaultValue));
         FOR_EACH_WEBKIT_PREFERENCE(DEFINE_DEFAULTS)
         FOR_EACH_WEBKIT_DEBUG_PREFERENCE(DEFINE_DEFAULTS)
+        FOR_EACH_WEBKIT_EXPERIMENTAL_FEATURE_PREFERENCE(DEFINE_DEFAULTS)
 #undef DEFINE_DEFAULTS
     }
 

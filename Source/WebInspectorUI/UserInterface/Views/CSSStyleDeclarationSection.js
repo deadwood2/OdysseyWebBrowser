@@ -42,6 +42,7 @@ WebInspector.CSSStyleDeclarationSection = class CSSStyleDeclarationSection exten
         this._element.classList.add("style-declaration-section");
 
         new WebInspector.KeyboardShortcut(WebInspector.KeyboardShortcut.Modifier.CommandOrControl, "S", this._save.bind(this), this._element);
+        new WebInspector.KeyboardShortcut(WebInspector.KeyboardShortcut.Modifier.CommandOrControl | WebInspector.KeyboardShortcut.Modifier.Shift, "S", this._save.bind(this), this._element);
 
         this._headerElement = document.createElement("div");
         this._headerElement.classList.add("header");
@@ -216,11 +217,16 @@ WebInspector.CSSStyleDeclarationSection = class CSSStyleDeclarationSection exten
             var matchedSelectorIndices = this._style.ownerRule.matchedSelectorIndices;
             var alwaysMatch = !matchedSelectorIndices.length;
             if (selectors.length) {
+                var hasMatchingPseudoElementSelector = false;
                 for (var i = 0; i < selectors.length; ++i) {
                     appendSelector.call(this, selectors[i], alwaysMatch || matchedSelectorIndices.includes(i));
                     if (i < selectors.length - 1)
                         this._selectorElement.append(", ");
+
+                    if (matchedSelectorIndices.includes(i) && selectors[i].isPseudoElementSelector())
+                        hasMatchingPseudoElementSelector = true;
                 }
+                this._element.classList.toggle(WebInspector.CSSStyleDeclarationSection.PseudoElementSelectorStyleClassName, hasMatchingPseudoElementSelector);
             } else
                 appendSelectorTextKnownToMatch.call(this, this._style.ownerRule.selectorText);
 
@@ -255,12 +261,12 @@ WebInspector.CSSStyleDeclarationSection = class CSSStyleDeclarationSection exten
             break;
 
         case WebInspector.CSSStyleDeclaration.Type.Inline:
-            appendSelectorTextKnownToMatch.call(this, WebInspector.displayNameForNode(this._style.node));
+            appendSelectorTextKnownToMatch.call(this, this._style.node.displayName);
             this._originElement.append(WebInspector.UIString("Style Attribute"));
             break;
 
         case WebInspector.CSSStyleDeclaration.Type.Attribute:
-            appendSelectorTextKnownToMatch.call(this, WebInspector.displayNameForNode(this._style.node));
+            appendSelectorTextKnownToMatch.call(this, this._style.node.displayName);
             this._originElement.append(WebInspector.UIString("HTML Attributes"));
             break;
         }
@@ -322,12 +328,6 @@ WebInspector.CSSStyleDeclarationSection = class CSSStyleDeclarationSection exten
     {
         if (typeof this._delegate.cssStyleDeclarationSectionEditorFocused === "function")
             this._delegate.cssStyleDeclarationSectionEditorFocused(this);
-    }
-
-    cssStyleDeclarationTextEditorBlurActiveEditor()
-    {
-        if (typeof this._delegate.cssStyleDeclarationSectionBlurActiveEditor === "function")
-            this._delegate.cssStyleDeclarationSectionBlurActiveEditor(this);
     }
 
     cssStyleDeclarationTextEditorSwitchRule(reverse)
@@ -458,9 +458,6 @@ WebInspector.CSSStyleDeclarationSection = class CSSStyleDeclarationSection exten
                 }
             }
 
-            if (this._delegate && typeof this._delegate.cssStyleDeclarationSectionFocusNewInspectorRuleWithSelector === "function")
-                this._delegate.cssStyleDeclarationSectionFocusNewInspectorRuleWithSelector(this._currentSelectorText);
-
             this._style.nodeStyles.addRule(this._currentSelectorText);
         });
 
@@ -485,9 +482,6 @@ WebInspector.CSSStyleDeclarationSection = class CSSStyleDeclarationSection exten
                         selector = this._style.ownerRule.selectors.map((selector) => selector.text + pseudoClassSelector).join(", ");
                     else
                         selector = this._currentSelectorText + pseudoClassSelector;
-
-                    if (this._delegate && typeof this._delegate.cssStyleDeclarationSectionFocusNewInspectorRuleWithSelector === "function")
-                        this._delegate.cssStyleDeclarationSectionFocusNewInspectorRuleWithSelector(selector);
 
                     this._style.nodeStyles.addRule(selector);
                 });
@@ -523,9 +517,6 @@ WebInspector.CSSStyleDeclarationSection = class CSSStyleDeclarationSection exten
                     selector = this._style.ownerRule.selectors.map((selector) => selector.text + pseudoElementSelector).join(", ");
                 else
                     selector = this._currentSelectorText + pseudoElementSelector;
-
-                if (this._delegate && typeof this._delegate.cssStyleDeclarationSectionFocusNewInspectorRuleWithSelector === "function")
-                    this._delegate.cssStyleDeclarationSectionFocusNewInspectorRuleWithSelector(selector);
 
                 this._style.nodeStyles.addRule(selector, styleText);
             });
@@ -684,6 +675,7 @@ WebInspector.CSSStyleDeclarationSection.LockedStyleClassName = "locked";
 WebInspector.CSSStyleDeclarationSection.SelectorLockedStyleClassName = "selector-locked";
 WebInspector.CSSStyleDeclarationSection.LastInGroupStyleClassName = "last-in-group";
 WebInspector.CSSStyleDeclarationSection.MatchedSelectorElementStyleClassName = "matched";
+WebInspector.CSSStyleDeclarationSection.PseudoElementSelectorStyleClassName = "pseudo-element-selector";
 
 WebInspector.CSSStyleDeclarationSection.AuthorStyleRuleIconStyleClassName = "author-style-rule-icon";
 WebInspector.CSSStyleDeclarationSection.UserStyleRuleIconStyleClassName = "user-style-rule-icon";

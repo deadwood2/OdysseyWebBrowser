@@ -45,6 +45,7 @@ namespace DataURLDecoder {
 struct Result {
     String mimeType;
     String charset;
+    String contentType;
     RefPtr<SharedBuffer> data;
 };
 
@@ -55,7 +56,7 @@ struct ScheduleContext {
 #endif
 };
 
-void decode(const URL&, const ScheduleContext&, DecodeCompletionHandler);
+void decode(const URL&, const ScheduleContext&, DecodeCompletionHandler&&);
 
 }
 

@@ -26,22 +26,19 @@
 #ifndef ScrollingCoordinator_h
 #define ScrollingCoordinator_h
 
+#include "EventTrackingRegions.h"
 #include "IntRect.h"
 #include "LayoutRect.h"
 #include "PlatformWheelEvent.h"
-#include "RenderObject.h"
 #include "ScrollTypes.h"
 #include <wtf/Forward.h>
+#include <wtf/ThreadSafeRefCounted.h>
 #include <wtf/TypeCasts.h>
 
 #if ENABLE(ASYNC_SCROLLING)
 #include <wtf/HashMap.h>
 #include <wtf/ThreadSafeRefCounted.h>
 #include <wtf/Threading.h>
-#endif
-
-#if PLATFORM(COCOA)
-#include <wtf/RetainPtr.h>
 #endif
 
 #if ENABLE(CSS_SCROLL_SNAP)
@@ -128,7 +125,7 @@ public:
     void frameViewFixedObjectsDidChange(FrameView&);
 
     // Called whenever the non-fast scrollable region changes for reasons other than layout.
-    virtual void frameViewNonFastScrollableRegionChanged(FrameView&) { }
+    virtual void frameViewEventTrackingRegionsChanged(FrameView&) { }
 
     // Should be called whenever the root layer for the given frame view changes.
     virtual void frameViewRootLayerDidChange(FrameView&);
@@ -195,7 +192,7 @@ public:
     };
 
     SynchronousScrollingReasons synchronousScrollingReasons(const FrameView&) const;
-    bool shouldUpdateScrollLayerPositionSynchronously() const;
+    bool shouldUpdateScrollLayerPositionSynchronously(const FrameView&) const;
 
     virtual void willDestroyScrollableArea(ScrollableArea&) { }
     virtual void scrollableAreaScrollLayerDidChange(ScrollableArea&) { }
@@ -204,7 +201,7 @@ public:
     static String synchronousScrollingReasonsAsText(SynchronousScrollingReasons);
     String synchronousScrollingReasonsAsText() const;
 
-    Region absoluteNonFastScrollableRegion() const;
+    EventTrackingRegions absoluteEventTrackingRegions() const;
 
 protected:
     explicit ScrollingCoordinator(Page*);
@@ -227,9 +224,9 @@ private:
     virtual void setSynchronousScrollingReasons(SynchronousScrollingReasons) { }
 
     virtual bool hasVisibleSlowRepaintViewportConstrainedObjects(const FrameView&) const;
-    void updateSynchronousScrollingReasons(FrameView&);
+    void updateSynchronousScrollingReasons(const FrameView&);
 
-    Region absoluteNonFastScrollableRegionForFrame(const Frame&) const;
+    EventTrackingRegions absoluteEventTrackingRegionsForFrame(const Frame&) const;
     
     bool m_forceSynchronousScrollLayerPositionUpdates { false };
 };

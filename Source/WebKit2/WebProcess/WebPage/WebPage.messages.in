@@ -1,4 +1,4 @@
-# Copyright (C) 2010, 2011 Apple Inc. All rights reserved.
+# Copyright (C) 2010-2016 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -29,6 +29,9 @@ messages -> WebPage LegacyReceiver {
 
     SetDrawsBackground(bool drawsBackground)
 
+#if PLATFORM(COCOA)
+    SetTopContentInsetFenced(float contentInset, IPC::Attachment fencePort)
+#endif
     SetTopContentInset(float contentInset)
 
     SetUnderlayColor(WebCore::Color color)
@@ -86,13 +89,18 @@ messages -> WebPage LegacyReceiver {
     SetAssistedNodeSelectedIndex(uint32_t index, bool allowMultipleSelection)
     ApplicationWillResignActive()
     ApplicationDidEnterBackground(bool isSuspendedUnderLock)
+    ApplicationDidFinishSnapshottingAfterEnteringBackground()
     ApplicationWillEnterForeground(bool isSuspendedUnderLock)
     ApplicationDidBecomeActive()
     ContentSizeCategoryDidChange(String contentSizeCategory)
     ExecuteEditCommandWithCallback(String name, uint64_t callbackID)
-    GetLookupContextAtPoint(WebCore::IntPoint point, uint64_t callbackID)
+    GetSelectionContext(uint64_t callbackID)
     SetAllowsMediaDocumentInlinePlayback(bool allows)
+    HandleTwoFingerTapAtPoint(WebCore::IntPoint point, uint64_t requestID)
+    SetForceAlwaysUserScalable(bool userScalable)
 #endif
+
+    SetControlledByAutomation(bool controlled)
 
 #if ENABLE(REMOTE_INSPECTOR)
     SetAllowsRemoteInspection(bool allow)
@@ -124,12 +132,11 @@ messages -> WebPage LegacyReceiver {
     TryRestoreScrollPosition()
 
     LoadURLInFrame(String url, uint64_t frameID)
-    LoadRequest(uint64_t navigationID, WebCore::ResourceRequest request, WebKit::SandboxExtension::Handle sandboxExtensionHandle, uint64_t shouldOpenExternalURLsPolicy, WebKit::UserData userData)
-    LoadData(uint64_t navigationID, IPC::DataReference data, String MIMEType, String encoding, String baseURL, WebKit::UserData userData)
-    LoadHTMLString(uint64_t navigationID, String htmlString, String baseURL, WebKit::UserData userData)
-    LoadAlternateHTMLString(String htmlString, String baseURL, String unreachableURL, String provisionalLoadErrorURL, WebKit::UserData userData)
-    LoadPlainTextString(String string, WebKit::UserData userData)
-    LoadWebArchiveData(IPC::DataReference webArchiveData, WebKit::UserData userData)
+    LoadRequest(struct WebKit::LoadParameters loadParameters)
+    LoadData(struct WebKit::LoadParameters loadParameters)
+    LoadString(struct WebKit::LoadParameters loadParameters)
+    LoadAlternateHTMLString(struct WebKit::LoadParameters loadParameters)
+
     NavigateToPDFLinkWithSimulatedClick(String url, WebCore::IntPoint documentPoint, WebCore::IntPoint screenPoint)
 
     Reload(uint64_t navigationID, bool reloadFromOrigin, bool contentBlockersEnabled, WebKit::SandboxExtension::Handle sandboxExtensionHandle)
@@ -229,7 +236,7 @@ messages -> WebPage LegacyReceiver {
 
     # Drag and drop.
 #if PLATFORM(GTK) && ENABLE(DRAG_SUPPORT)
-    PerformDragControllerAction(uint64_t action, WebCore::DragData dragData)
+    PerformDragControllerAction(uint64_t action, WebCore::IntPoint clientPosition, WebCore::IntPoint globalPosition, uint64_t draggingSourceOperationMask, struct WebKit::WebSelectionData selection, uint32_t flags)
 #endif
 #if !PLATFORM(GTK) && ENABLE(DRAG_SUPPORT)
     PerformDragControllerAction(uint64_t action, WebCore::IntPoint clientPosition, WebCore::IntPoint globalPosition, uint64_t draggingSourceOperationMask, String dragStorageName, uint32_t flags, WebKit::SandboxExtension::Handle sandboxExtensionHandle, WebKit::SandboxExtension::HandleArray sandboxExtensionsForUpload)
@@ -283,7 +290,7 @@ messages -> WebPage LegacyReceiver {
 #if ENABLE(MEDIA_STREAM)
     # MediaSteam
     DidReceiveUserMediaPermissionDecision(uint64_t userMediaID, bool allowed, String audioDeviceUID, String videoDeviceUID)
-    DidCompleteUserMediaPermissionCheck(uint64_t userMediaID, bool allowed)
+    DidCompleteUserMediaPermissionCheck(uint64_t userMediaID, String mediaDeviceIdentifierHashSalt, bool allowed)
 #endif
 
     # Notification
@@ -297,7 +304,7 @@ messages -> WebPage LegacyReceiver {
     DrawRectToImage(uint64_t frameID, struct WebKit::PrintInfo printInfo, WebCore::IntRect rect, WebCore::IntSize imageSize, uint64_t callbackID)
     DrawPagesToPDF(uint64_t frameID, struct WebKit::PrintInfo printInfo, uint32_t first, uint32_t count, uint64_t callbackID)
 #if PLATFORM(IOS)
-    ComputePagesForPrintingAndStartDrawingToPDF(uint64_t frameID, struct WebKit::PrintInfo printInfo, uint32_t firstPage) -> (Vector<WebCore::IntRect> pageRects, double totalScaleFactor) Delayed
+    ComputePagesForPrintingAndDrawToPDF(uint64_t frameID, struct WebKit::PrintInfo printInfo, uint64_t callbackID) -> (uint32_t pageCount) Delayed
 #endif
 #endif
 #if PLATFORM(GTK)
@@ -333,6 +340,8 @@ messages -> WebPage LegacyReceiver {
     SetComposition(String text, Vector<WebCore::CompositionUnderline> underlines, uint64_t selectionStart, uint64_t selectionEnd, uint64_t replacementRangeStart, uint64_t replacementRangeEnd)
     ConfirmComposition(String text, int64_t selectionStart, int64_t selectionLength)
     CancelComposition()
+
+    CollapseSelectionInFrame(uint64_t frameID)
 #endif
 
 #if PLATFORM (GTK) && HAVE(GTK_GESTURES)
@@ -421,5 +430,13 @@ messages -> WebPage LegacyReceiver {
 
 #if ENABLE(VIDEO) && USE(GSTREAMER)
     DidEndRequestInstallMissingMediaPlugins(uint32_t result)
+#endif
+
+    SetResourceCachingDisabled(bool disabled)
+
+    SetUserInterfaceLayoutDirection(uint32_t direction)
+
+#if ENABLE(GAMEPAD)
+    GamepadActivity(Vector<WebKit::GamepadData> gamepadDatas)
 #endif
 }

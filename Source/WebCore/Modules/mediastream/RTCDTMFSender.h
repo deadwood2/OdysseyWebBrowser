@@ -26,7 +26,7 @@
 #ifndef RTCDTMFSender_h
 #define RTCDTMFSender_h
 
-#if ENABLE(MEDIA_STREAM)
+#if ENABLE(WEB_RTC)
 
 #include "ActiveDOMObject.h"
 #include "EventTarget.h"
@@ -43,7 +43,7 @@ class RTCDTMFSenderHandler;
 
 class RTCDTMFSender final : public RefCounted<RTCDTMFSender>, public EventTargetWithInlineData, public RTCDTMFSenderHandlerClient, public ActiveDOMObject {
 public:
-    static RefPtr<RTCDTMFSender> create(ScriptExecutionContext*, RTCPeerConnectionHandler*, PassRefPtr<MediaStreamTrack>, ExceptionCode&);
+    static RefPtr<RTCDTMFSender> create(ScriptExecutionContext*, RTCPeerConnectionHandler*, RefPtr<MediaStreamTrack>&&, ExceptionCode&);
     ~RTCDTMFSender();
 
     bool canInsertDTMF() const;
@@ -52,19 +52,17 @@ public:
     long duration() const { return m_duration; }
     long interToneGap() const { return m_interToneGap; }
 
-    void insertDTMF(const String& tones, ExceptionCode&);
-    void insertDTMF(const String& tones, long duration, ExceptionCode&);
-    void insertDTMF(const String& tones, long duration, long interToneGap, ExceptionCode&);
+    void insertDTMF(const String& tones, Optional<int> duration, Optional<int> interToneGap, ExceptionCode&);
 
     // EventTarget
-    virtual EventTargetInterface eventTargetInterface() const override { return RTCDTMFSenderEventTargetInterfaceType; }
-    virtual ScriptExecutionContext* scriptExecutionContext() const override { return ActiveDOMObject::scriptExecutionContext(); }
+    EventTargetInterface eventTargetInterface() const override { return RTCDTMFSenderEventTargetInterfaceType; }
+    ScriptExecutionContext* scriptExecutionContext() const override { return ActiveDOMObject::scriptExecutionContext(); }
 
     using RefCounted<RTCDTMFSender>::ref;
     using RefCounted<RTCDTMFSender>::deref;
 
 private:
-    RTCDTMFSender(ScriptExecutionContext*, PassRefPtr<MediaStreamTrack>, std::unique_ptr<RTCDTMFSenderHandler>);
+    RTCDTMFSender(ScriptExecutionContext*, RefPtr<MediaStreamTrack>&&, std::unique_ptr<RTCDTMFSenderHandler>);
 
     // ActiveDOMObject
     void stop() override;
@@ -75,11 +73,11 @@ private:
     void scheduledEventTimerFired();
 
     // EventTarget
-    virtual void refEventTarget() override { ref(); }
-    virtual void derefEventTarget() override { deref(); }
+    void refEventTarget() override { ref(); }
+    void derefEventTarget() override { deref(); }
 
     // RTCDTMFSenderHandlerClient
-    virtual void didPlayTone(const String&) override;
+    void didPlayTone(const String&) override;
 
     RefPtr<MediaStreamTrack> m_track;
     long m_duration;
@@ -95,6 +93,6 @@ private:
 
 } // namespace WebCore
 
-#endif // ENABLE(MEDIA_STREAM)
+#endif // ENABLE(WEB_RTC)
 
 #endif // RTCDTMFSender_h

@@ -72,6 +72,10 @@
 #include <wtf/Vector.h>
 #include <wtf/unicode/CharacterNames.h>
 
+#if PLATFORM(MAC)
+#include "ScrollbarThemeMac.h"
+#endif
+
 namespace WebCore {
 
 using namespace HTMLNames;
@@ -562,10 +566,10 @@ void write(TextStream& ts, const RenderObject& o, int indent, RenderAsTextBehavi
         }
 
     } else {
-        for (RenderObject* child = downcast<RenderElement>(o).firstChild(); child; child = child->nextSibling()) {
-            if (child->hasLayer())
+        for (auto& child : childrenOfType<RenderObject>(downcast<RenderElement>(o))) {
+            if (child.hasLayer())
                 continue;
-            write(ts, *child, indent + 1, behavior);
+            write(ts, child, indent + 1, behavior);
         }
     }
 
@@ -621,6 +625,14 @@ static void write(TextStream& ts, const RenderLayer& layer, const LayoutRect& la
             ts << " scrollWidth " << layer.scrollWidth();
         if (layer.renderBox() && roundToInt(layer.renderBox()->clientHeight()) != layer.scrollHeight())
             ts << " scrollHeight " << layer.scrollHeight();
+#if PLATFORM(MAC)
+        ScrollbarTheme& scrollbarTheme = ScrollbarTheme::theme();
+        if (!scrollbarTheme.isMockTheme() && layer.hasVerticalScrollbar()) {
+            ScrollbarThemeMac& macTheme = *static_cast<ScrollbarThemeMac*>(&scrollbarTheme);
+            if (macTheme.isLayoutDirectionRTL(*layer.verticalScrollbar()))
+                ts << " scrollbarHasRTLLayoutDirection";
+        }
+#endif
     }
 
     if (paintPhase == LayerPaintPhaseBackground)
@@ -678,8 +690,9 @@ static void writeRenderRegionList(const RenderRegionList& flowThreadRegionList, 
 
             ts << " {" << tagName.toString() << "}";
 
-            if (generatingElement->hasID())
-                ts << " #" << generatingElement->idForStyleResolution();
+            auto& generatingElementId = generatingElement->idForStyleResolution();
+            if (!generatingElementId.isNull())
+                ts << " #" << generatingElementId;
 
             if (isRenderNamedFlowFragment)
                 ts << ")";

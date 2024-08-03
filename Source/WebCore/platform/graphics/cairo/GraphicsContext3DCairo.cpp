@@ -56,7 +56,7 @@
 
 namespace WebCore {
 
-PassRefPtr<GraphicsContext3D> GraphicsContext3D::create(GraphicsContext3D::Attributes attributes, HostWindow* hostWindow, GraphicsContext3D::RenderStyle renderStyle)
+RefPtr<GraphicsContext3D> GraphicsContext3D::create(GraphicsContext3D::Attributes attributes, HostWindow* hostWindow, GraphicsContext3D::RenderStyle renderStyle)
 {
     // This implementation doesn't currently support rendering directly to the HostWindow.
     if (renderStyle == RenderDirectlyToHostWindow)
@@ -73,22 +73,19 @@ PassRefPtr<GraphicsContext3D> GraphicsContext3D::create(GraphicsContext3D::Attri
     if (!success)
         return 0;
 
-    RefPtr<GraphicsContext3D> context = adoptRef(new GraphicsContext3D(attributes, hostWindow, renderStyle));
-    return context.release();
+    return adoptRef(new GraphicsContext3D(attributes, hostWindow, renderStyle));
 }
 
 GraphicsContext3D::GraphicsContext3D(GraphicsContext3D::Attributes attributes, HostWindow*, GraphicsContext3D::RenderStyle renderStyle)
     : m_currentWidth(0)
     , m_currentHeight(0)
-    , m_compiler(isGLES2Compliant() ? SH_ESSL_OUTPUT : SH_GLSL_OUTPUT)
     , m_attrs(attributes)
     , m_texture(0)
     , m_compositorTexture(0)
     , m_fbo(0)
 #if USE(COORDINATED_GRAPHICS_THREADED)
-    , m_compositorFBO(0)
+    , m_intermediateTexture(0)
 #endif
-    , m_depthStencilBuffer(0)
     , m_layerComposited(false)
     , m_multisampleFBO(0)
     , m_multisampleDepthStencilBuffer(0)
@@ -114,19 +111,23 @@ GraphicsContext3D::GraphicsContext3D(GraphicsContext3D::Attributes attributes, H
         ::glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
 
 #if USE(COORDINATED_GRAPHICS_THREADED)
-        ::glGenFramebuffers(1, &m_compositorFBO);
         ::glGenTextures(1, &m_compositorTexture);
         ::glBindTexture(GL_TEXTURE_2D, m_compositorTexture);
         ::glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         ::glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         ::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         ::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        ::glGenTextures(1, &m_intermediateTexture);
+        ::glBindTexture(GL_TEXTURE_2D, m_intermediateTexture);
+        ::glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        ::glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        ::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        ::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
         ::glBindTexture(GL_TEXTURE_2D, 0);
 #endif
 
-        m_state.boundFBO = m_fbo;
-        if (!m_attrs.antialias && (m_attrs.stencil || m_attrs.depth))
-            ::glGenRenderbuffers(1, &m_depthStencilBuffer);
 
         // Create a multisample FBO.
         if (m_attrs.antialias) {
@@ -136,8 +137,50 @@ GraphicsContext3D::GraphicsContext3D(GraphicsContext3D::Attributes attributes, H
             ::glGenRenderbuffers(1, &m_multisampleColorBuffer);
             if (m_attrs.stencil || m_attrs.depth)
                 ::glGenRenderbuffers(1, &m_multisampleDepthStencilBuffer);
+        } else {
+            // Bind canvas FBO.
+            glBindFramebuffer(GraphicsContext3D::FRAMEBUFFER, m_fbo);
+            m_state.boundFBO = m_fbo;
+#if USE(OPENGL_ES_2)
+            if (m_attrs.depth)
+                glGenRenderbuffers(1, &m_depthBuffer);
+            if (m_attrs.stencil)
+                glGenRenderbuffers(1, &m_stencilBuffer);
+#endif
+            if (m_attrs.stencil || m_attrs.depth)
+                glGenRenderbuffers(1, &m_depthStencilBuffer);
         }
     }
+
+#if !USE(OPENGL_ES_2)
+    ::glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
+
+    if (GLContext::current()->version() >= 320) {
+        m_usingCoreProfile = true;
+
+        // From version 3.2 on we use the OpenGL Core profile, so request that ouput to the shader compiler.
+        // OpenGL version 3.2 uses GLSL version 1.50.
+        m_compiler = ANGLEWebKitBridge(SH_GLSL_150_CORE_OUTPUT);
+
+        // From version 3.2 on we use the OpenGL Core profile, and we need a VAO for rendering.
+        // A VAO could be created and bound by each component using GL rendering (TextureMapper, WebGL, etc). This is
+        // a simpler solution: the first GraphicsContext3D created on a GLContext will create and bind a VAO for that context.
+        GC3Dint currentVAO = 0;
+        getIntegerv(GraphicsContext3D::VERTEX_ARRAY_BINDING, &currentVAO);
+        if (!currentVAO) {
+            m_vao = createVertexArray();
+            bindVertexArray(m_vao);
+        }
+    } else {
+        // For lower versions request the compatibility output to the shader compiler.
+        m_compiler = ANGLEWebKitBridge(SH_GLSL_COMPATIBILITY_OUTPUT);
+
+        // GL_POINT_SPRITE is needed in lower versions.
+        ::glEnable(GL_POINT_SPRITE);
+    }
+#else
+    m_compiler = ANGLEWebKitBridge(SH_ESSL_OUTPUT);
+#endif
 
     // ANGLE initialization.
     ShBuiltInResources ANGLEResources;
@@ -160,11 +203,6 @@ GraphicsContext3D::GraphicsContext3D(GraphicsContext3D::Attributes attributes, H
 
     m_compiler.setResources(ANGLEResources);
 
-#if !USE(OPENGL_ES_2)
-    ::glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
-    ::glEnable(GL_POINT_SPRITE);
-#endif
-
     ::glClearColor(0, 0, 0, 0);
 }
 
@@ -184,14 +222,24 @@ GraphicsContext3D::~GraphicsContext3D()
         if (m_attrs.stencil || m_attrs.depth)
             ::glDeleteRenderbuffers(1, &m_multisampleDepthStencilBuffer);
         ::glDeleteFramebuffers(1, &m_multisampleFBO);
-    } else {
-        if (m_attrs.stencil || m_attrs.depth)
+    } else if (m_attrs.stencil || m_attrs.depth) {
+#if USE(OPENGL_ES_2)
+        if (m_depthBuffer)
+            glDeleteRenderbuffers(1, &m_depthBuffer);
+
+        if (m_stencilBuffer)
+            glDeleteRenderbuffers(1, &m_stencilBuffer);
+#endif
+        if (m_depthStencilBuffer)
             ::glDeleteRenderbuffers(1, &m_depthStencilBuffer);
     }
     ::glDeleteFramebuffers(1, &m_fbo);
 #if USE(COORDINATED_GRAPHICS_THREADED)
-    ::glDeleteFramebuffers(1, &m_compositorFBO);
+    ::glDeleteTextures(1, &m_intermediateTexture);
 #endif
+
+    if (m_vao)
+        deleteVertexArray(m_vao);
 }
 
 GraphicsContext3D::ImageExtractor::~ImageExtractor()
@@ -215,7 +263,7 @@ bool GraphicsContext3D::ImageExtractor::extractImage(bool premultiplyAlpha, bool
         decoder.setData(m_image->data(), true);
         if (!decoder.frameCount() || !decoder.frameIsCompleteAtIndex(0))
             return false;
-        m_imageSurface = decoder.createFrameAtIndex(0);
+        m_imageSurface = decoder.createFrameImageAtIndex(0);
     } else {
         m_imageSurface = m_image->nativeImageForCurrentFrame();
         // 1. For texImage2D with HTMLVideoElment input, assume no PremultiplyAlpha had been applied and the alpha value is 0xFF for each pixel,
@@ -333,6 +381,22 @@ PlatformLayer* GraphicsContext3D::platformLayer() const
 {
     return m_private.get();
 }
+
+#if PLATFORM(GTK)
+Extensions3D* GraphicsContext3D::getExtensions()
+{
+    if (!m_extensions) {
+#if USE(OPENGL_ES_2)
+        // glGetStringi is not available on GLES2.
+        m_extensions = std::make_unique<Extensions3DOpenGLES>(this,  false);
+#else
+        // From OpenGL 3.2 on we use the Core profile, and there we must use glGetStringi.
+        m_extensions = std::make_unique<Extensions3DOpenGL>(this, GLContext::current()->version() >= 320);
+#endif
+    }
+    return m_extensions.get();
+}
+#endif
 
 } // namespace WebCore
 

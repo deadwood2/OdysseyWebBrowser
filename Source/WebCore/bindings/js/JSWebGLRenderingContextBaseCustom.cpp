@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -65,6 +65,7 @@
 #include "JSWebGLLoseContext.h"
 #include "JSWebGLProgram.h"
 #include "JSWebGLRenderbuffer.h"
+#include "JSWebGLRenderingContext.h"
 #include "JSWebGLShader.h"
 #include "JSWebGLTexture.h"
 #include "JSWebGLUniformLocation.h"
@@ -96,6 +97,7 @@
 #include "WebGLVertexArrayObject.h"
 #include "WebGLVertexArrayObjectOES.h"
 #include <runtime/Error.h>
+#include <runtime/JSObjectInlines.h>
 #include <runtime/JSTypedArrays.h>
 #include <runtime/TypedArrayInlines.h>
 #include <runtime/TypedArrays.h>
@@ -106,9 +108,27 @@
 #include "JSHTMLVideoElement.h"
 #endif
 
+#if ENABLE(WEBGL2)
+#include "JSWebGL2RenderingContext.h"
+#endif
+
 using namespace JSC;
 
 namespace WebCore {
+
+JSC::JSValue toJSNewlyCreated(JSC::ExecState*, JSDOMGlobalObject* globalObject, Ref<WebGLRenderingContextBase>&& object)
+{
+#if ENABLE(WEBGL2)
+    if (is<WebGL2RenderingContext>(object))
+        return CREATE_DOM_WRAPPER(globalObject, WebGL2RenderingContext, WTFMove(object));
+#endif
+    return CREATE_DOM_WRAPPER(globalObject, WebGLRenderingContext, WTFMove(object));
+}
+
+JSValue toJS(ExecState* state, JSDOMGlobalObject* globalObject, WebGLRenderingContextBase& object)
+{
+    return wrap(state, globalObject, object);
+}
     
 static JSValue toJS(ExecState* exec, JSDOMGlobalObject* globalObject, const WebGLGetInfo& info)
 {
@@ -170,8 +190,11 @@ enum ObjectType {
 
 static JSValue getObjectParameter(JSWebGLRenderingContextBase* obj, ExecState& state, ObjectType objectType)
 {
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     if (state.argumentCount() != 2)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
     
     ExceptionCode ec = 0;
     WebGLRenderingContextBase& context = obj->wrapped();
@@ -263,20 +286,31 @@ static JSValue toJS(ExecState* exec, JSDOMGlobalObject* globalObject, WebGLExten
     return jsNull();
 }
 
+bool JSWebGLRenderingContextBaseOwner::isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown> handle, void*, SlotVisitor& visitor)
+{
+    JSWebGLRenderingContextBase* jsWebGLRenderingContext = jsCast<JSWebGLRenderingContextBase*>(handle.slot()->asCell());
+    void* root = WebCore::root(jsWebGLRenderingContext->wrapped().canvas());
+    return visitor.containsOpaqueRoot(root);
+}
+
 void JSWebGLRenderingContextBase::visitAdditionalChildren(SlotVisitor& visitor)
 {
     visitor.addOpaqueRoot(&wrapped());
+    visitor.addOpaqueRoot(root(wrapped().canvas()));
 }
 
 JSValue JSWebGLRenderingContextBase::getAttachedShaders(ExecState& state)
 {
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     if (state.argumentCount() < 1)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
     ExceptionCode ec = 0;
     WebGLRenderingContextBase& context = wrapped();
     WebGLProgram* program = JSWebGLProgram::toWrapped(state.uncheckedArgument(0));
     if (!program && !state.uncheckedArgument(0).isUndefinedOrNull())
-        return throwTypeError(&state);
+        return throwTypeError(&state, scope);
     Vector<RefPtr<WebGLShader>> shaders;
     bool succeed = context.getAttachedShaders(program, shaders, ec);
     if (ec) {
@@ -293,8 +327,11 @@ JSValue JSWebGLRenderingContextBase::getAttachedShaders(ExecState& state)
 
 JSValue JSWebGLRenderingContextBase::getExtension(ExecState& state)
 {
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     if (state.argumentCount() < 1)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
     
     WebGLRenderingContextBase& context = wrapped();
     const String name = state.uncheckedArgument(0).toString(&state)->value(&state);
@@ -311,8 +348,11 @@ JSValue JSWebGLRenderingContextBase::getBufferParameter(ExecState& state)
 
 JSValue JSWebGLRenderingContextBase::getFramebufferAttachmentParameter(ExecState& state)
 {
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     if (state.argumentCount() != 3)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
     
     ExceptionCode ec = 0;
     WebGLRenderingContextBase& context = wrapped();
@@ -335,8 +375,11 @@ JSValue JSWebGLRenderingContextBase::getFramebufferAttachmentParameter(ExecState
 
 JSValue JSWebGLRenderingContextBase::getParameter(ExecState& state)
 {
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     if (state.argumentCount() != 1)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
     
     ExceptionCode ec = 0;
     WebGLRenderingContextBase& context = wrapped();
@@ -353,14 +396,17 @@ JSValue JSWebGLRenderingContextBase::getParameter(ExecState& state)
 
 JSValue JSWebGLRenderingContextBase::getProgramParameter(ExecState& state)
 {
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     if (state.argumentCount() != 2)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
     
     ExceptionCode ec = 0;
     WebGLRenderingContextBase& context = wrapped();
     WebGLProgram* program = JSWebGLProgram::toWrapped(state.uncheckedArgument(0));
     if (!program && !state.uncheckedArgument(0).isUndefinedOrNull())
-        return throwTypeError(&state);
+        return throwTypeError(&state, scope);
     unsigned pname = state.uncheckedArgument(1).toInt32(&state);
     if (state.hadException())
         return jsUndefined();
@@ -379,13 +425,16 @@ JSValue JSWebGLRenderingContextBase::getRenderbufferParameter(ExecState& state)
 
 JSValue JSWebGLRenderingContextBase::getShaderParameter(ExecState& state)
 {
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     if (state.argumentCount() != 2)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
     
     ExceptionCode ec = 0;
     WebGLRenderingContextBase& context = wrapped();
     if (!state.uncheckedArgument(0).isUndefinedOrNull() && !state.uncheckedArgument(0).inherits(JSWebGLShader::info()))
-        return throwTypeError(&state);
+        return throwTypeError(&state, scope);
     WebGLShader* shader = JSWebGLShader::toWrapped(state.uncheckedArgument(0));
     unsigned pname = state.uncheckedArgument(1).toInt32(&state);
     if (state.hadException())
@@ -417,17 +466,20 @@ JSValue JSWebGLRenderingContextBase::getTexParameter(ExecState& state)
 
 JSValue JSWebGLRenderingContextBase::getUniform(ExecState& state)
 {
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     if (state.argumentCount() != 2)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
     
     ExceptionCode ec = 0;
     WebGLRenderingContextBase& context = wrapped();
     WebGLProgram* program = JSWebGLProgram::toWrapped(state.uncheckedArgument(0));
     if (!program && !state.uncheckedArgument(0).isUndefinedOrNull())
-        return throwTypeError(&state);
+        return throwTypeError(&state, scope);
     WebGLUniformLocation* location = JSWebGLUniformLocation::toWrapped(state.uncheckedArgument(1));
     if (!location && !state.uncheckedArgument(1).isUndefinedOrNull())
-        return throwTypeError(&state);
+        return throwTypeError(&state, scope);
     WebGLGetInfo info = context.getUniform(program, location, ec);
     if (ec) {
         setDOMException(&state, ec);
@@ -488,8 +540,11 @@ static bool functionForUniform(DataFunctionToCall f)
 
 static JSC::JSValue dataFunctionf(DataFunctionToCall f, JSC::ExecState& state, WebGLRenderingContextBase& context)
 {
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     if (state.argumentCount() != 2)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
     
     WebGLUniformLocation* location = 0;
     long index = -1;
@@ -497,7 +552,7 @@ static JSC::JSValue dataFunctionf(DataFunctionToCall f, JSC::ExecState& state, W
     if (functionForUniform(f)) {
         location = JSWebGLUniformLocation::toWrapped(state.uncheckedArgument(0));
         if (!location && !state.uncheckedArgument(0).isUndefinedOrNull())
-            return throwTypeError(&state);
+            return throwTypeError(&state, scope);
     } else
         index = state.uncheckedArgument(0).toInt32(&state);
     
@@ -512,28 +567,28 @@ static JSC::JSValue dataFunctionf(DataFunctionToCall f, JSC::ExecState& state, W
     if (webGLArray) {
         switch (f) {
         case f_uniform1v:
-            context.uniform1fv(location, webGLArray.get(), ec);
+            context.uniform1fv(location, *webGLArray, ec);
             break;
         case f_uniform2v:
-            context.uniform2fv(location, webGLArray.get(), ec);
+            context.uniform2fv(location, *webGLArray, ec);
             break;
         case f_uniform3v:
-            context.uniform3fv(location, webGLArray.get(), ec);
+            context.uniform3fv(location, *webGLArray, ec);
             break;
         case f_uniform4v:
-            context.uniform4fv(location, webGLArray.get(), ec);
+            context.uniform4fv(location, *webGLArray, ec);
             break;
         case f_vertexAttrib1v:
-            context.vertexAttrib1fv(index, webGLArray.get());
+            context.vertexAttrib1fv(index, *webGLArray);
             break;
         case f_vertexAttrib2v:
-            context.vertexAttrib2fv(index, webGLArray.get());
+            context.vertexAttrib2fv(index, *webGLArray);
             break;
         case f_vertexAttrib3v:
-            context.vertexAttrib3fv(index, webGLArray.get());
+            context.vertexAttrib3fv(index, *webGLArray);
             break;
         case f_vertexAttrib4v:
-            context.vertexAttrib4fv(index, webGLArray.get());
+            context.vertexAttrib4fv(index, *webGLArray);
             break;
         }
         
@@ -543,7 +598,7 @@ static JSC::JSValue dataFunctionf(DataFunctionToCall f, JSC::ExecState& state, W
     
     Vector<float, 64> array;
     if (!toVector(state, state.uncheckedArgument(1), array))
-        return throwTypeError(&state);
+        return throwTypeError(&state, scope);
     
     switch (f) {
     case f_uniform1v:
@@ -578,12 +633,15 @@ static JSC::JSValue dataFunctionf(DataFunctionToCall f, JSC::ExecState& state, W
 
 static JSC::JSValue dataFunctioni(DataFunctionToCall f, JSC::ExecState& state, WebGLRenderingContextBase& context)
 {
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     if (state.argumentCount() != 2)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
     
     WebGLUniformLocation* location = JSWebGLUniformLocation::toWrapped(state.uncheckedArgument(0));
     if (!location && !state.uncheckedArgument(0).isUndefinedOrNull())
-        return throwTypeError(&state);
+        return throwTypeError(&state, scope);
     
     RefPtr<Int32Array> webGLArray = toInt32Array(state.uncheckedArgument(1));
     
@@ -591,16 +649,16 @@ static JSC::JSValue dataFunctioni(DataFunctionToCall f, JSC::ExecState& state, W
     if (webGLArray) {
         switch (f) {
         case f_uniform1v:
-            context.uniform1iv(location, webGLArray.get(), ec);
+            context.uniform1iv(location, *webGLArray, ec);
             break;
         case f_uniform2v:
-            context.uniform2iv(location, webGLArray.get(), ec);
+            context.uniform2iv(location, *webGLArray, ec);
             break;
         case f_uniform3v:
-            context.uniform3iv(location, webGLArray.get(), ec);
+            context.uniform3iv(location, *webGLArray, ec);
             break;
         case f_uniform4v:
-            context.uniform4iv(location, webGLArray.get(), ec);
+            context.uniform4iv(location, *webGLArray, ec);
             break;
         default:
             break;
@@ -613,7 +671,7 @@ static JSC::JSValue dataFunctioni(DataFunctionToCall f, JSC::ExecState& state, W
     
     Vector<int, 64> array;
     if (!toVector(state, state.uncheckedArgument(1), array))
-        return throwTypeError(&state);
+        return throwTypeError(&state, scope);
     
     switch (f) {
     case f_uniform1v:
@@ -638,12 +696,15 @@ static JSC::JSValue dataFunctioni(DataFunctionToCall f, JSC::ExecState& state, W
 
 static JSC::JSValue dataFunctionMatrix(DataFunctionMatrixToCall f, JSC::ExecState& state, WebGLRenderingContextBase& context)
 {
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     if (state.argumentCount() != 3)
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
     
     WebGLUniformLocation* location = JSWebGLUniformLocation::toWrapped(state.uncheckedArgument(0));
     if (!location && !state.uncheckedArgument(0).isUndefinedOrNull())
-        return throwTypeError(&state);
+        return throwTypeError(&state, scope);
     
     bool transpose = state.uncheckedArgument(1).toBoolean(&state);
     if (state.hadException())
@@ -655,13 +716,13 @@ static JSC::JSValue dataFunctionMatrix(DataFunctionMatrixToCall f, JSC::ExecStat
     if (webGLArray) {
         switch (f) {
         case f_uniformMatrix2fv:
-            context.uniformMatrix2fv(location, transpose, webGLArray.get(), ec);
+            context.uniformMatrix2fv(location, transpose, *webGLArray, ec);
             break;
         case f_uniformMatrix3fv:
-            context.uniformMatrix3fv(location, transpose, webGLArray.get(), ec);
+            context.uniformMatrix3fv(location, transpose, *webGLArray, ec);
             break;
         case f_uniformMatrix4fv:
-            context.uniformMatrix4fv(location, transpose, webGLArray.get(), ec);
+            context.uniformMatrix4fv(location, transpose, *webGLArray, ec);
             break;
         }
         
@@ -671,7 +732,7 @@ static JSC::JSValue dataFunctionMatrix(DataFunctionMatrixToCall f, JSC::ExecStat
     
     Vector<float, 64> array;
     if (!toVector(state, state.uncheckedArgument(2), array))
-        return throwTypeError(&state);
+        return throwTypeError(&state, scope);
     
     switch (f) {
     case f_uniformMatrix2fv:

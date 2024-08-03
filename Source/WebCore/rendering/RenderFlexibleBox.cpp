@@ -34,10 +34,13 @@
 #include "LayoutRepainter.h"
 #include "RenderLayer.h"
 #include "RenderView.h"
+#include "RuntimeEnabledFeatures.h"
 #include <limits>
 #include <wtf/MathExtras.h>
 
 namespace WebCore {
+
+static constexpr ItemPosition selfAlignmentNormalBehaviorFlexibleBox = ItemPositionStretch;
 
 struct RenderFlexibleBox::LineContext {
     LineContext(LayoutUnit crossAxisOffset, LayoutUnit crossAxisExtent, size_t numberOfChildren, LayoutUnit maxAscent)
@@ -66,7 +69,7 @@ struct RenderFlexibleBox::Violation {
 };
 
 
-RenderFlexibleBox::RenderFlexibleBox(Element& element, Ref<RenderStyle>&& style)
+RenderFlexibleBox::RenderFlexibleBox(Element& element, RenderStyle&& style)
     : RenderBlock(element, WTFMove(style), 0)
     , m_orderIterator(*this)
     , m_numberOfInFlowChildrenOnFirstLine(-1)
@@ -74,7 +77,7 @@ RenderFlexibleBox::RenderFlexibleBox(Element& element, Ref<RenderStyle>&& style)
     setChildrenInline(false); // All of our children must be block-level.
 }
 
-RenderFlexibleBox::RenderFlexibleBox(Document& document, Ref<RenderStyle>&& style)
+RenderFlexibleBox::RenderFlexibleBox(Document& document, RenderStyle&& style)
     : RenderBlock(document, WTFMove(style), 0)
     , m_orderIterator(*this)
     , m_numberOfInFlowChildrenOnFirstLine(-1)
@@ -231,12 +234,14 @@ void RenderFlexibleBox::styleDidChange(StyleDifference diff, const RenderStyle* 
 {
     RenderBlock::styleDidChange(diff, oldStyle);
 
-    if (oldStyle && (oldStyle->alignItemsPosition() == ItemPositionStretch || oldStyle->alignItemsPosition() == ItemPositionAuto) && diff == StyleDifferenceLayout) {
+    if (oldStyle && oldStyle->resolvedAlignItems(selfAlignmentNormalBehaviorFlexibleBox).position() == ItemPositionStretch && diff == StyleDifferenceLayout) {
         // Flex items that were previously stretching need to be relayed out so we can compute new available cross axis space.
         // This is only necessary for stretching since other alignment values don't change the size of the box.
+        auto& newStyle = style();
         for (RenderBox* child = firstChildBox(); child; child = child->nextSiblingBox()) {
-            ItemPosition previousAlignment = RenderStyle::resolveAlignment(*oldStyle, child->style(), ItemPositionStretch);
-            if (previousAlignment == ItemPositionStretch && previousAlignment != RenderStyle::resolveAlignment(style(), child->style(), ItemPositionStretch))
+            auto& childStyle = child->style();
+            auto previousAlignment = childStyle.resolvedAlignSelf(*oldStyle, selfAlignmentNormalBehaviorFlexibleBox).position();
+            if (previousAlignment == ItemPositionStretch && previousAlignment != childStyle.resolvedAlignSelf(newStyle, selfAlignmentNormalBehaviorFlexibleBox).position())
                 child->setChildNeedsLayout(MarkOnlyThis);
         }
     }
@@ -462,7 +467,7 @@ Optional<LayoutUnit> RenderFlexibleBox::computeMainAxisExtentForChild(const Rend
     }
     // FIXME: Figure out how this should work for regions and pass in the appropriate values.
     RenderRegion* region = nullptr;
-    return child.computeLogicalWidthInRegionUsing(sizeType, size, contentLogicalWidth(), this, region) - child.borderAndPaddingLogicalWidth();
+    return child.computeLogicalWidthInRegionUsing(sizeType, size, contentLogicalWidth(), *this, region) - child.borderAndPaddingLogicalWidth();
 }
 
 WritingMode RenderFlexibleBox::transformedWritingMode() const
@@ -1118,7 +1123,7 @@ void RenderFlexibleBox::prepareChildForPositionedLayout(RenderBox& child, Layout
 
 ItemPosition RenderFlexibleBox::alignmentForChild(RenderBox& child) const
 {
-    ItemPosition align = RenderStyle::resolveAlignment(style(), child.style(), ItemPositionStretch);
+    ItemPosition align = child.style().resolvedAlignSelf(style(), selfAlignmentNormalBehaviorFlexibleBox).position();
 
     if (align == ItemPositionBaseline && hasOrthogonalFlow(child))
         align = ItemPositionFlexStart;
@@ -1166,12 +1171,22 @@ EOverflow RenderFlexibleBox::mainAxisOverflowForChild(const RenderBox& child) co
     return child.style().overflowY();
 }
 
+static const StyleContentAlignmentData& contentAlignmentNormalBehaviorFlexibleBox()
+{
+    // The justify-content property applies along the main axis, but since flexing
+    // in the main axis is controlled by flex, stretch behaves as flex-start (ignoring
+    // the specified fallback alignment, if any).
+    // https://drafts.csswg.org/css-align/#distribution-flex
+    static const StyleContentAlignmentData normalBehavior = {ContentPositionNormal, ContentDistributionStretch};
+    return normalBehavior;
+}
+
 void RenderFlexibleBox::layoutAndPlaceChildren(LayoutUnit& crossAxisOffset, const OrderedFlexItemList& children, const Vector<LayoutUnit>& childSizes, LayoutUnit availableFreeSpace, bool relayoutChildren, Vector<LineContext>& lineContexts)
 {
     ASSERT(childSizes.size() == children.size());
 
-    ContentPosition position = style().resolvedJustifyContentPosition();
-    ContentDistributionType distribution = style().resolvedJustifyContentDistribution();
+    auto position = style().resolvedJustifyContentPosition(contentAlignmentNormalBehaviorFlexibleBox());
+    auto distribution = style().resolvedJustifyContentDistribution(contentAlignmentNormalBehaviorFlexibleBox());
 
     size_t numberOfChildrenForJustifyContent = numberOfInFlowPositionedChildren(children);
     LayoutUnit autoMarginOffset = autoMarginOffsetInMainAxis(children, availableFreeSpace);
@@ -1254,8 +1269,8 @@ void RenderFlexibleBox::layoutAndPlaceChildren(LayoutUnit& crossAxisOffset, cons
 
 void RenderFlexibleBox::layoutColumnReverse(const OrderedFlexItemList& children, LayoutUnit crossAxisOffset, LayoutUnit availableFreeSpace)
 {
-    ContentPosition position = style().resolvedJustifyContentPosition();
-    ContentDistributionType distribution = style().resolvedJustifyContentDistribution();
+    auto position = style().resolvedJustifyContentPosition(contentAlignmentNormalBehaviorFlexibleBox());
+    auto distribution = style().resolvedJustifyContentDistribution(contentAlignmentNormalBehaviorFlexibleBox());
 
     // This is similar to the logic in layoutAndPlaceChildren, except we place the children
     // starting from the end of the flexbox. We also don't need to layout anything since we're
@@ -1312,8 +1327,8 @@ static LayoutUnit alignContentSpaceBetweenChildren(LayoutUnit availableFreeSpace
 
 void RenderFlexibleBox::alignFlexLines(Vector<LineContext>& lineContexts)
 {
-    ContentPosition position = style().resolvedAlignContentPosition();
-    ContentDistributionType distribution = style().resolvedAlignContentDistribution();
+    ContentPosition position = style().resolvedAlignContentPosition(contentAlignmentNormalBehaviorFlexibleBox());
+    ContentDistributionType distribution = style().resolvedAlignContentDistribution(contentAlignmentNormalBehaviorFlexibleBox());
 
     if (!isMultiline() || position == ContentPositionFlexStart)
         return;
@@ -1375,6 +1390,7 @@ void RenderFlexibleBox::alignChildren(const Vector<LineContext>& lineContexts)
 
             switch (alignmentForChild(*child)) {
             case ItemPositionAuto:
+            case ItemPositionNormal:
                 ASSERT_NOT_REACHED();
                 break;
             case ItemPositionStart:
@@ -1382,6 +1398,8 @@ void RenderFlexibleBox::alignChildren(const Vector<LineContext>& lineContexts)
                 // yet for FlexibleBox.
                 // Defaulting to Stretch for now, as it what most of FlexBox based renders
                 // expect as default.
+                ASSERT(RuntimeEnabledFeatures::sharedFeatures().isCSSGridLayoutEnabled());
+                FALLTHROUGH;
             case ItemPositionStretch: {
                 applyStretchAlignmentToChild(*child, lineCrossAxisExtent);
                 // Since wrap-reverse flips cross start and cross end, strech children should be aligned with the cross end.
@@ -1416,6 +1434,8 @@ void RenderFlexibleBox::alignChildren(const Vector<LineContext>& lineContexts)
             case ItemPositionRight:
                 // FIXME: https://webkit.org/b/135460 - The extended grammar is not supported
                 // yet for FlexibleBox.
+                ASSERT(RuntimeEnabledFeatures::sharedFeatures().isCSSGridLayoutEnabled());
+                break;
             default:
                 ASSERT_NOT_REACHED();
                 break;
@@ -1461,7 +1481,7 @@ void RenderFlexibleBox::applyStretchAlignmentToChild(RenderBox& child, LayoutUni
         // FIXME: If the child doesn't have orthogonal flow, then it already has an override width set, so use it.
         if (hasOrthogonalFlow(child)) {
             LayoutUnit childWidth = std::max<LayoutUnit>(0, lineCrossAxisExtent - crossAxisMarginExtentForChild(child));
-            childWidth = child.constrainLogicalWidthInRegionByMinMax(childWidth, childWidth, this);
+            childWidth = child.constrainLogicalWidthInRegionByMinMax(childWidth, childWidth, *this);
 
             if (childWidth != child.logicalWidth()) {
                 child.setOverrideLogicalContentWidth(childWidth - child.borderAndPaddingLogicalWidth());

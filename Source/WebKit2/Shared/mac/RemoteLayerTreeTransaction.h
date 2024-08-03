@@ -41,8 +41,8 @@
 #include <wtf/text/WTFString.h>
 
 namespace IPC {
-class ArgumentDecoder;
-class ArgumentEncoder;
+class Decoder;
+class Encoder;
 }
 
 namespace WebKit {
@@ -69,33 +69,35 @@ public:
         DoubleSidedChanged              = 1LLU << 14,
         MasksToBoundsChanged            = 1LLU << 15,
         OpaqueChanged                   = 1LLU << 16,
-        MaskLayerChanged                = 1LLU << 17,
-        ClonedContentsChanged           = 1LLU << 18,
-        ContentsRectChanged             = 1LLU << 19,
-        ContentsScaleChanged            = 1LLU << 20,
-        CornerRadiusChanged             = 1LLU << 21,
-        ShapeRoundedRectChanged         = 1LLU << 22,
-        ShapePathChanged                = 1LLU << 23,
-        MinificationFilterChanged       = 1LLU << 24,
-        MagnificationFilterChanged      = 1LLU << 25,
-        BlendModeChanged                = 1LLU << 26,
-        WindRuleChanged                 = 1LLU << 27,
-        SpeedChanged                    = 1LLU << 28,
-        TimeOffsetChanged               = 1LLU << 29,
-        BackingStoreChanged             = 1LLU << 30,
-        BackingStoreAttachmentChanged   = 1LLU << 31,
-        FiltersChanged                  = 1LLU << 32,
-        AnimationsChanged               = 1LLU << 33,
-        EdgeAntialiasingMaskChanged     = 1LLU << 34,
-        CustomAppearanceChanged         = 1LLU << 35,
+        ContentsHiddenChanged           = 1LLU << 17,
+        MaskLayerChanged                = 1LLU << 18,
+        ClonedContentsChanged           = 1LLU << 19,
+        ContentsRectChanged             = 1LLU << 20,
+        ContentsScaleChanged            = 1LLU << 21,
+        CornerRadiusChanged             = 1LLU << 22,
+        ShapeRoundedRectChanged         = 1LLU << 23,
+        ShapePathChanged                = 1LLU << 24,
+        MinificationFilterChanged       = 1LLU << 25,
+        MagnificationFilterChanged      = 1LLU << 26,
+        BlendModeChanged                = 1LLU << 27,
+        WindRuleChanged                 = 1LLU << 28,
+        SpeedChanged                    = 1LLU << 29,
+        TimeOffsetChanged               = 1LLU << 30,
+        BackingStoreChanged             = 1LLU << 31,
+        BackingStoreAttachmentChanged   = 1LLU << 32,
+        FiltersChanged                  = 1LLU << 33,
+        AnimationsChanged               = 1LLU << 34,
+        EdgeAntialiasingMaskChanged     = 1LLU << 35,
+        CustomAppearanceChanged         = 1LLU << 36,
+        UserInteractionEnabledChanged   = 1LLU << 37,
     };
     typedef uint64_t LayerChange;
 
     struct LayerCreationProperties {
         LayerCreationProperties();
 
-        void encode(IPC::ArgumentEncoder&) const;
-        static bool decode(IPC::ArgumentDecoder&, LayerCreationProperties&);
+        void encode(IPC::Encoder&) const;
+        static bool decode(IPC::Decoder&, LayerCreationProperties&);
 
         WebCore::GraphicsLayer::PlatformLayerID layerID;
         WebCore::PlatformCALayer::LayerType type;
@@ -108,8 +110,8 @@ public:
         LayerProperties();
         LayerProperties(const LayerProperties& other);
 
-        void encode(IPC::ArgumentEncoder&) const;
-        static bool decode(IPC::ArgumentDecoder&, LayerProperties&);
+        void encode(IPC::Encoder&) const;
+        static bool decode(IPC::Decoder&, LayerProperties&);
 
         void notePropertiesChanged(LayerChange changeFlags)
         {
@@ -164,13 +166,15 @@ public:
         bool doubleSided;
         bool masksToBounds;
         bool opaque;
+        bool contentsHidden;
+        bool userInteractionEnabled;
     };
 
     explicit RemoteLayerTreeTransaction();
     ~RemoteLayerTreeTransaction();
 
-    void encode(IPC::ArgumentEncoder&) const;
-    static bool decode(IPC::ArgumentDecoder&, RemoteLayerTreeTransaction&);
+    void encode(IPC::Encoder&) const;
+    static bool decode(IPC::Decoder&, RemoteLayerTreeTransaction&);
 
     WebCore::GraphicsLayer::PlatformLayerID rootLayerID() const { return m_rootLayerID; }
     void setRootLayerID(WebCore::GraphicsLayer::PlatformLayerID);

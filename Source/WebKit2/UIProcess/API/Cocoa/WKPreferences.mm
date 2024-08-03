@@ -28,7 +28,11 @@
 
 #if WK_API_ENABLED
 
+#import "APIArray.h"
+#import "WKNSArray.h"
 #import "WebPreferences.h"
+#import "_WKExperimentalFeature.h"
+#import "_WKExperimentalFeatureInternal.h"
 #import <WebCore/SecurityOrigin.h>
 #import <wtf/RetainPtr.h>
 
@@ -39,7 +43,7 @@
     if (!(self = [super init]))
         return nil;
 
-    API::Object::constructInWrapper<WebKit::WebPreferences>(self, String(), "WebKit", "WebKit");
+    API::Object::constructInWrapper<WebKit::WebPreferences>(self, String(), "WebKit", "WebKitDebug");
     return self;
 }
 
@@ -48,6 +52,38 @@
     _preferences->~WebPreferences();
 
     [super dealloc];
+}
+
+// FIXME: We currently only encode/decode API preferences. We should consider whether we should
+// encode/decode SPI preferences as well.
+
+- (void)encodeWithCoder:(NSCoder *)coder
+{
+    [coder encodeDouble:self.minimumFontSize forKey:@"minimumFontSize"];
+    [coder encodeBool:self.javaScriptEnabled forKey:@"javaScriptEnabled"];
+    [coder encodeBool:self.javaScriptCanOpenWindowsAutomatically forKey:@"javaScriptCanOpenWindowsAutomatically"];
+
+#if PLATFORM(MAC)
+    [coder encodeBool:self.javaEnabled forKey:@"javaEnabled"];
+    [coder encodeBool:self.plugInsEnabled forKey:@"plugInsEnabled"];
+#endif
+}
+
+- (instancetype)initWithCoder:(NSCoder *)coder
+{
+    if (!(self = [self init]))
+        return nil;
+
+    self.minimumFontSize = [coder decodeDoubleForKey:@"minimumFontSize"];
+    self.javaScriptEnabled = [coder decodeBoolForKey:@"javaScriptEnabled"];
+    self.javaScriptCanOpenWindowsAutomatically = [coder decodeBoolForKey:@"javaScriptCanOpenWindowsAutomatically"];
+
+#if PLATFORM(MAC)
+    self.javaEnabled = [coder decodeBoolForKey:@"javaEnabled"];
+    self.plugInsEnabled = [coder decodeBoolForKey:@"plugInsEnabled"];
+#endif
+
+    return self;
 }
 
 - (CGFloat)minimumFontSize
@@ -267,6 +303,26 @@ static _WKStorageBlockingPolicy toAPI(WebCore::SecurityOrigin::StorageBlockingPo
     _preferences->setDisplayListDrawingEnabled(displayListDrawingEnabled);
 }
 
+- (BOOL)_visualViewportEnabled
+{
+    return _preferences->visualViewportEnabled();
+}
+
+- (void)_setVisualViewportEnabled:(BOOL)_visualViewportEnabled
+{
+    _preferences->setVisualViewportEnabled(_visualViewportEnabled);
+}
+
+- (BOOL)_textAutosizingEnabled
+{
+    return _preferences->textAutosizingEnabled();
+}
+
+- (void)_setTextAutosizingEnabled:(BOOL)enabled
+{
+    _preferences->setTextAutosizingEnabled(enabled);
+}
+
 - (BOOL)_developerExtrasEnabled
 {
     return _preferences->developerExtrasEnabled();
@@ -295,6 +351,16 @@ static _WKStorageBlockingPolicy toAPI(WebCore::SecurityOrigin::StorageBlockingPo
 - (void)_setHiddenPageDOMTimerThrottlingEnabled:(BOOL)hiddenPageDOMTimerThrottlingEnabled
 {
     _preferences->setHiddenPageDOMTimerThrottlingEnabled(hiddenPageDOMTimerThrottlingEnabled);
+}
+
+- (BOOL)_hiddenPageDOMTimerThrottlingAutoIncreases
+{
+    return _preferences->hiddenPageDOMTimerThrottlingAutoIncreases();
+}
+
+- (void)_setHiddenPageDOMTimerThrottlingAutoIncreases:(BOOL)hiddenPageDOMTimerThrottlingAutoIncreases
+{
+    _preferences->setHiddenPageDOMTimerThrottlingAutoIncreases(hiddenPageDOMTimerThrottlingAutoIncreases);
 }
 
 - (BOOL)_pageVisibilityBasedProcessSuppressionEnabled
@@ -347,16 +413,6 @@ static _WKStorageBlockingPolicy toAPI(WebCore::SecurityOrigin::StorageBlockingPo
     _preferences->setDiagnosticLoggingEnabled(diagnosticLoggingEnabled);
 }
 
-- (BOOL)_antialiasedFontDilationEnabled
-{
-    return _preferences->antialiasedFontDilationEnabled();
-}
-
-- (void)_setAntialiasedFontDilationEnabled:(BOOL)antialiasedFontDilationEnabled
-{
-    _preferences->setAntialiasedFontDilationEnabled(antialiasedFontDilationEnabled);
-}
-
 - (NSUInteger)_defaultFontSize
 {
     return _preferences->defaultFontSize();
@@ -387,14 +443,36 @@ static _WKStorageBlockingPolicy toAPI(WebCore::SecurityOrigin::StorageBlockingPo
     _preferences->setFixedFontFamily(fixedPitchFontFamily);
 }
 
-- (BOOL)_mockCaptureDevicesEnabled
++ (NSArray<_WKExperimentalFeature *> *)_experimentalFeatures
 {
-    return _preferences->mockCaptureDevicesEnabled();
+    auto features = WebKit::WebPreferences::experimentalFeatures();
+    return [wrapper(API::Array::create(WTFMove(features)).leakRef()) autorelease];
 }
 
-- (void)_setMockCaptureDevicesEnabled:(BOOL)mockCaptureDevicesEnabled
+- (BOOL)_isEnabledForFeature:(_WKExperimentalFeature *)feature
 {
-    _preferences->setMockCaptureDevicesEnabled(mockCaptureDevicesEnabled);
+    return _preferences->isEnabledForFeature(*feature->_experimentalFeature);
+}
+
+- (void)_setEnabled:(BOOL)value forFeature:(_WKExperimentalFeature *)feature
+{
+    _preferences->setEnabledForFeature(value, *feature->_experimentalFeature);
+}
+
+- (BOOL)_applePayCapabilityDisclosureAllowed
+{
+#if ENABLE(APPLE_PAY)
+    return _preferences->applePayCapabilityDisclosureAllowed();
+#else
+    return NO;
+#endif
+}
+
+- (void)_setApplePayCapabilityDisclosureAllowed:(BOOL)applePayCapabilityDisclosureAllowed
+{
+#if ENABLE(APPLE_PAY)
+    _preferences->setApplePayCapabilityDisclosureAllowed(applePayCapabilityDisclosureAllowed);
+#endif
 }
 
 @end

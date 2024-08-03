@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2010, 2015-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -69,6 +69,8 @@ RefPtr<TextIndicator> TextIndicator::createWithRange(const Range& range, TextInd
     if (!frame)
         return nullptr;
 
+    Ref<Frame> protector(*frame);
+
 #if PLATFORM(IOS)
     frame->editor().setIgnoreCompositionSelectionChange(true);
     frame->selection().setUpdateAppearanceEnabled(true);
@@ -125,7 +127,7 @@ static bool hasNonInlineOrReplacedElements(const Range& range)
         RenderObject* renderer = node->renderer();
         if (!renderer)
             continue;
-        if ((!renderer->isInline() || renderer->isReplaced()) && range.intersectsNode(node, ASSERT_NO_EXCEPTION))
+        if ((!renderer->isInline() || renderer->isReplaced()) && range.intersectsNode(*node, ASSERT_NO_EXCEPTION))
             return true;
     }
 
@@ -149,26 +151,26 @@ static SnapshotOptions snapshotOptionsForTextIndicatorOptions(TextIndicatorOptio
     return snapshotOptions;
 }
 
-static RefPtr<Image> takeSnapshot(Frame& frame, IntRect rect, SnapshotOptions options, float& scaleFactor)
+static RefPtr<Image> takeSnapshot(Frame& frame, IntRect rect, SnapshotOptions options, float& scaleFactor, Vector<FloatRect>& clipRectsInDocumentCoordinates)
 {
-    std::unique_ptr<ImageBuffer> buffer = snapshotFrameRect(frame, rect, options);
+    std::unique_ptr<ImageBuffer> buffer = snapshotFrameRectWithClip(frame, rect, clipRectsInDocumentCoordinates, options);
     if (!buffer)
         return nullptr;
     scaleFactor = buffer->resolutionScale();
     return ImageBuffer::sinkIntoImage(WTFMove(buffer), Unscaled);
 }
 
-static bool takeSnapshots(TextIndicatorData& data, Frame& frame, IntRect snapshotRect)
+static bool takeSnapshots(TextIndicatorData& data, Frame& frame, IntRect snapshotRect, Vector<FloatRect>& clipRectsInDocumentCoordinates)
 {
     SnapshotOptions snapshotOptions = snapshotOptionsForTextIndicatorOptions(data.options);
 
-    data.contentImage = takeSnapshot(frame, snapshotRect, snapshotOptions, data.contentImageScaleFactor);
+    data.contentImage = takeSnapshot(frame, snapshotRect, snapshotOptions, data.contentImageScaleFactor, clipRectsInDocumentCoordinates);
     if (!data.contentImage)
         return false;
 
     if (data.options & TextIndicatorOptionIncludeSnapshotWithSelectionHighlight) {
         float snapshotScaleFactor;
-        data.contentImageWithHighlight = takeSnapshot(frame, snapshotRect, SnapshotOptionsNone, snapshotScaleFactor);
+        data.contentImageWithHighlight = takeSnapshot(frame, snapshotRect, SnapshotOptionsNone, snapshotScaleFactor, clipRectsInDocumentCoordinates);
         ASSERT(!data.contentImageWithHighlight || data.contentImageScaleFactor == snapshotScaleFactor);
     }
     
@@ -238,7 +240,7 @@ static bool initializeIndicator(TextIndicatorData& data, Frame& frame, const Ran
     data.textBoundingRectInRootViewCoordinates = textBoundingRectInRootViewCoordinates;
     data.textRectsInBoundingRectCoordinates = textRectsInBoundingRectCoordinates;
 
-    return takeSnapshots(data, frame, enclosingIntRect(textBoundingRectInDocumentCoordinates));
+    return takeSnapshots(data, frame, enclosingIntRect(textBoundingRectInDocumentCoordinates), textRects);
 }
 
 } // namespace WebCore

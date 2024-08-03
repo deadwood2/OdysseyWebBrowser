@@ -34,17 +34,16 @@
 #import <WebCore/NetworkStorageSession.h>
 #import <WebCore/PublicSuffix.h>
 #import <WebCore/ResourceRequestCFNet.h>
+#import <WebCore/RuntimeApplicationChecks.h>
 #import <WebCore/SecurityOrigin.h>
 #import <WebCore/SecurityOriginData.h>
 #import <WebKitSystemInterface.h>
-#import <wtf/RAMSize.h>
 
 namespace WebKit {
 
 void NetworkProcess::platformLowMemoryHandler(WebCore::Critical)
 {
     CFURLConnectionInvalidateConnectionCache();
-    _CFURLCachePurgeMemoryCache(adoptCF(CFURLCacheCopySharedURLCache()).get());
 }
 
 static void initializeNetworkSettings()
@@ -68,6 +67,8 @@ static void initializeNetworkSettings()
 
 void NetworkProcess::platformInitializeNetworkProcessCocoa(const NetworkProcessCreationParameters& parameters)
 {
+    WebCore::setApplicationBundleIdentifier(parameters.uiProcessBundleIdentifier);
+
 #if PLATFORM(IOS)
     SandboxExtension::consumePermanently(parameters.cookieStorageDirectoryExtensionHandle);
     SandboxExtension::consumePermanently(parameters.containerCachesDirectoryExtensionHandle);
@@ -84,6 +85,8 @@ void NetworkProcess::platformInitializeNetworkProcessCocoa(const NetworkProcessC
 #if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100
     setSharedHTTPCookieStorage(parameters.uiProcessCookieStorageIdentifier);
 #endif
+
+    WebCore::NetworkStorageSession::setCookieStoragePartitioningEnabled(parameters.cookieStoragePartitioningEnabled);
 
     // FIXME: Most of what this function does for cache size gets immediately overridden by setCacheModel().
     // - memory cache size passed from UI process is always ignored;
@@ -120,54 +123,14 @@ void NetworkProcess::platformInitializeNetworkProcessCocoa(const NetworkProcessC
             diskCapacity:parameters.nsURLCacheDiskCapacity
             diskPath:nsURLCacheDirectory]).get()];
     }
-
-    RetainPtr<CFURLCacheRef> cache = adoptCF(CFURLCacheCopySharedURLCache());
-    if (!cache)
-        return;
-
-    _CFURLCacheSetMinSizeForVMCachedResource(cache.get(), NetworkResourceLoader::fileBackedResourceMinimumSize());
 }
 
-static uint64_t volumeFreeSize(const String& path)
+void NetworkProcess::platformSetURLCacheSize(unsigned urlCacheMemoryCapacity, uint64_t urlCacheDiskCapacity)
 {
-    NSDictionary *fileSystemAttributesDictionary = [[NSFileManager defaultManager] attributesOfFileSystemForPath:(NSString *)path error:NULL];
-    return [[fileSystemAttributesDictionary objectForKey:NSFileSystemFreeSize] unsignedLongLongValue];
-}
-
-void NetworkProcess::platformSetCacheModel(CacheModel cacheModel)
-{
-    uint64_t memSize = ramSize() / 1024 / 1024;
-
-    // As a fudge factor, use 1000 instead of 1024, in case the reported byte
-    // count doesn't align exactly to a megabyte boundary.
-    uint64_t diskFreeSize = volumeFreeSize(m_diskCacheDirectory) / 1024 / 1000;
-
-    unsigned cacheTotalCapacity = 0;
-    unsigned cacheMinDeadCapacity = 0;
-    unsigned cacheMaxDeadCapacity = 0;
-    auto deadDecodedDataDeletionInterval = std::chrono::seconds { 0 };
-    unsigned pageCacheCapacity = 0;
-    unsigned long urlCacheMemoryCapacity = 0;
-    unsigned long urlCacheDiskCapacity = 0;
-
-    calculateCacheSizes(cacheModel, memSize, diskFreeSize,
-        cacheTotalCapacity, cacheMinDeadCapacity, cacheMaxDeadCapacity, deadDecodedDataDeletionInterval,
-        pageCacheCapacity, urlCacheMemoryCapacity, urlCacheDiskCapacity);
-
-    if (m_diskCacheSizeOverride >= 0)
-        urlCacheDiskCapacity = m_diskCacheSizeOverride;
-
-#if ENABLE(NETWORK_CACHE)
-    auto& networkCache = NetworkCache::singleton();
-    if (networkCache.isEnabled()) {
-        networkCache.setCapacity(urlCacheDiskCapacity);
-        return;
-    }
-#endif
     NSURLCache *nsurlCache = [NSURLCache sharedURLCache];
     [nsurlCache setMemoryCapacity:urlCacheMemoryCapacity];
     if (!m_diskCacheIsDisabledForTesting)
-        [nsurlCache setDiskCapacity:std::max<unsigned long>(urlCacheDiskCapacity, [nsurlCache diskCapacity])]; // Don't shrink a big disk cache, since that would cause churn.
+        [nsurlCache setDiskCapacity:std::max<uint64_t>(urlCacheDiskCapacity, [nsurlCache diskCapacity])]; // Don't shrink a big disk cache, since that would cause churn.
 }
 
 static RetainPtr<CFStringRef> partitionName(CFStringRef domain)
@@ -180,6 +143,19 @@ static RetainPtr<CFStringRef> partitionName(CFStringRef domain)
     return adoptCF(CFStringCreateWithBytes(0, reinterpret_cast<const UInt8*>(utf8String.data()), utf8String.length(), kCFStringEncodingUTF8, false));
 #else
     return domain;
+#endif
+}
+
+RetainPtr<CFDataRef> NetworkProcess::sourceApplicationAuditData() const
+{
+#if PLATFORM(IOS)
+    audit_token_t auditToken;
+    ASSERT(parentProcessConnection());
+    if (!parentProcessConnection() || !parentProcessConnection()->getAuditToken(auditToken))
+        return nullptr;
+    return adoptCF(CFDataCreate(nullptr, (const UInt8*)&auditToken, sizeof(auditToken)));
+#else
+    return nullptr;
 #endif
 }
 
@@ -259,6 +235,11 @@ void NetworkProcess::clearDiskCache(std::chrono::system_clock::time_point modifi
 #else
     clearNSURLCache(m_clearCacheDispatchGroup, modifiedSince, completionHandler);
 #endif
+}
+
+void NetworkProcess::setCookieStoragePartitioningEnabled(bool enabled)
+{
+    WebCore::NetworkStorageSession::setCookieStoragePartitioningEnabled(enabled);
 }
 
 }

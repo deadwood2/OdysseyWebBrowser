@@ -64,8 +64,9 @@ AccessibilityObjectInclusion AccessibilityObject::accessibilityPlatformIncludesO
         return IncludeObject;
 
     // The object containing the text should implement AtkText itself.
+    // However, WebCore also maps ARIA's "text" role to the StaticTextRole.
     if (role == StaticTextRole)
-        return IgnoreObject;
+        return ariaRoleAttribute() != UnknownRole ? DefaultBehavior : IgnoreObject;
 
     // Include all list items, regardless they have or not inline children
     if (role == ListItemRole)
@@ -138,7 +139,7 @@ AccessibilityObjectInclusion AccessibilityObject::accessibilityPlatformIncludesO
     // we have good reasons for that (e.g. focusable or visible because of containing
     // a meaningful accessible name, maybe set through ARIA), so we can use
     // atk_component_grab_focus() to set the focus to it.
-    if (is<HTMLSpanElement>(node) && !canSetFocusAttribute() && !hasAttributesRequiredForInclusion())
+    if (is<HTMLSpanElement>(node) && !canSetFocusAttribute() && !hasAttributesRequiredForInclusion() && !supportsARIAAttributes())
         return IgnoreObject;
 
     // If we include TextControlInnerTextElement children, changes to those children

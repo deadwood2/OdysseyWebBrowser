@@ -45,11 +45,6 @@ RealtimeMediaSource::RealtimeMediaSource(const String& id, Type type, const Stri
     : m_id(id)
     , m_type(type)
     , m_name(name)
-    , m_stopped(false)
-    , m_muted(false)
-    , m_readonly(false)
-    , m_remote(false)
-    , m_fitnessScore(0)
 {
     // FIXME(147205): Need to implement fitness score for constraints
 
@@ -95,10 +90,16 @@ void RealtimeMediaSource::setMuted(bool muted)
         observer->sourceMutedChanged();
 }
 
-void RealtimeMediaSource::settingsDidChanged()
+void RealtimeMediaSource::settingsDidChange()
 {
     for (auto& observer : m_observers)
         observer->sourceSettingsChanged();
+}
+
+void RealtimeMediaSource::mediaDataUpdated(MediaSample& mediaSample)
+{
+    for (auto& observer : m_observers)
+        observer->sourceHasMoreMediaData(mediaSample);
 }
 
 bool RealtimeMediaSource::readonly() const

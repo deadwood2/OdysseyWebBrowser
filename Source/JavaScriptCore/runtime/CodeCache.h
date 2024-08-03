@@ -26,36 +26,30 @@
 #ifndef CodeCache_h
 #define CodeCache_h
 
-#include "CodeSpecializationKind.h"
+#include "ExecutableInfo.h"
 #include "ParserModes.h"
 #include "SourceCode.h"
 #include "SourceCodeKey.h"
 #include "Strong.h"
-#include "VariableEnvironment.h"
 #include <wtf/CurrentTime.h>
 #include <wtf/Forward.h>
-#include <wtf/RandomNumber.h>
-#include <wtf/WeakRandom.h>
 #include <wtf/text/WTFString.h>
 
 namespace JSC {
 
 class EvalExecutable;
-class FunctionMetadataNode;
 class Identifier;
-class JSScope;
+class ModuleProgramExecutable;
 class ParserError;
 class ProgramExecutable;
-class ModuleProgramExecutable;
+class SourceCode;
 class UnlinkedCodeBlock;
 class UnlinkedEvalCodeBlock;
-class UnlinkedModuleProgramCodeBlock;
-class UnlinkedFunctionCodeBlock;
 class UnlinkedFunctionExecutable;
+class UnlinkedModuleProgramCodeBlock;
 class UnlinkedProgramCodeBlock;
 class VM;
-class SourceCode;
-class SourceProvider;
+class VariableEnvironment;
 
 struct SourceCodeValue {
     SourceCodeValue()
@@ -74,7 +68,7 @@ struct SourceCodeValue {
 
 class CodeCacheMap {
 public:
-    typedef HashMap<SourceCodeKey, SourceCodeValue, SourceCodeKeyHash, SourceCodeKeyHashTraits> MapType;
+    typedef HashMap<SourceCodeKey, SourceCodeValue, SourceCodeKey::Hash, SourceCodeKey::HashTraits> MapType;
     typedef MapType::iterator iterator;
     typedef MapType::AddResult AddResult;
 
@@ -193,9 +187,9 @@ public:
     CodeCache();
     ~CodeCache();
 
-    UnlinkedProgramCodeBlock* getProgramCodeBlock(VM&, ProgramExecutable*, const SourceCode&, JSParserBuiltinMode, JSParserStrictMode, DebuggerMode, ProfilerMode, ParserError&);
-    UnlinkedEvalCodeBlock* getEvalCodeBlock(VM&, EvalExecutable*, const SourceCode&, JSParserBuiltinMode, JSParserStrictMode, ThisTDZMode, bool, DebuggerMode, ProfilerMode, ParserError&, const VariableEnvironment*);
-    UnlinkedModuleProgramCodeBlock* getModuleProgramCodeBlock(VM&, ModuleProgramExecutable*, const SourceCode&, JSParserBuiltinMode, DebuggerMode, ProfilerMode, ParserError&);
+    UnlinkedProgramCodeBlock* getProgramCodeBlock(VM&, ProgramExecutable*, const SourceCode&, JSParserBuiltinMode, JSParserStrictMode, DebuggerMode, ParserError&);
+    UnlinkedEvalCodeBlock* getEvalCodeBlock(VM&, EvalExecutable*, const SourceCode&, JSParserBuiltinMode, JSParserStrictMode, DebuggerMode, ParserError&, EvalContextType, const VariableEnvironment*);
+    UnlinkedModuleProgramCodeBlock* getModuleProgramCodeBlock(VM&, ModuleProgramExecutable*, const SourceCode&, JSParserBuiltinMode, DebuggerMode, ParserError&);
     UnlinkedFunctionExecutable* getFunctionExecutableFromGlobalCode(VM&, const Identifier&, const SourceCode&, ParserError&);
 
     void clear()
@@ -205,7 +199,7 @@ public:
 
 private:
     template <class UnlinkedCodeBlockType, class ExecutableType> 
-    UnlinkedCodeBlockType* getGlobalCodeBlock(VM&, ExecutableType*, const SourceCode&, JSParserBuiltinMode, JSParserStrictMode, ThisTDZMode, bool, DebuggerMode, ProfilerMode, ParserError&, const VariableEnvironment*);
+    UnlinkedCodeBlockType* getGlobalCodeBlock(VM&, ExecutableType*, const SourceCode&, JSParserBuiltinMode, JSParserStrictMode, JSParserCommentMode, DebuggerMode, ParserError&, EvalContextType, const VariableEnvironment*);
 
     CodeCacheMap m_sourceCode;
 };

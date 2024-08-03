@@ -31,7 +31,7 @@
 #ifndef PeerConnectionBackend_h
 #define PeerConnectionBackend_h
 
-#if ENABLE(MEDIA_STREAM)
+#if ENABLE(WEB_RTC)
 
 #include "JSDOMPromise.h"
 #include "PeerConnectionStates.h"
@@ -40,28 +40,34 @@ namespace WebCore {
 
 class DOMError;
 class Event;
+class MediaStream;
 class MediaStreamTrack;
 class PeerConnectionBackend;
 class RTCAnswerOptions;
 class RTCConfiguration;
 class RTCIceCandidate;
 class RTCOfferOptions;
+class RTCRtpReceiver;
 class RTCRtpSender;
+class RTCRtpSenderClient;
+class RTCRtpTransceiver;
 class RTCSessionDescription;
 class RTCStatsResponse;
 class ScriptExecutionContext;
 
 namespace PeerConnection {
-typedef DOMPromise<RefPtr<RTCSessionDescription>, RefPtr<DOMError>> SessionDescriptionPromise;
-typedef DOMPromise<std::nullptr_t, RefPtr<DOMError>> VoidPromise;
-typedef DOMPromise<RefPtr<RTCStatsResponse>, RefPtr<DOMError>> StatsPromise;
+typedef DOMPromise<RTCSessionDescription> SessionDescriptionPromise;
+typedef DOMPromise<std::nullptr_t> VoidPromise;
+typedef DOMPromise<RTCStatsResponse> StatsPromise;
 }
 
 class PeerConnectionBackendClient {
 public:
-    virtual Vector<RefPtr<RTCRtpSender>> getSenders() const = 0;
+    virtual const Vector<RefPtr<RTCRtpTransceiver>>& getTransceivers() const = 0;
+    virtual RTCRtpSenderClient& senderClient() = 0;
     virtual void fireEvent(Event&) = 0;
 
+    virtual void addTransceiver(RefPtr<RTCRtpTransceiver>&&) = 0;
     virtual void setSignalingState(PeerConnectionStates::SignalingState) = 0;
     virtual void updateIceGatheringState(PeerConnectionStates::IceGatheringState) = 0;
     virtual void updateIceConnectionState(PeerConnectionStates::IceConnectionState) = 0;
@@ -101,7 +107,10 @@ public:
 
     virtual void getStats(MediaStreamTrack*, PeerConnection::StatsPromise&&) = 0;
 
-    virtual void replaceTrack(RTCRtpSender&, MediaStreamTrack&, PeerConnection::VoidPromise&&) = 0;
+    virtual Vector<RefPtr<MediaStream>> getRemoteStreams() const = 0;
+
+    virtual RefPtr<RTCRtpReceiver> createReceiver(const String& transceiverMid, const String& trackKind, const String& trackId) = 0;
+    virtual void replaceTrack(RTCRtpSender&, RefPtr<MediaStreamTrack>&&, PeerConnection::VoidPromise&&) = 0;
 
     virtual void stop() = 0;
 
@@ -112,6 +121,6 @@ public:
 
 } // namespace WebCore
 
-#endif // ENABLE(MEDIA_STREAM)
+#endif // ENABLE(WEB_RTC)
 
 #endif // PeerConnectionBackend_h

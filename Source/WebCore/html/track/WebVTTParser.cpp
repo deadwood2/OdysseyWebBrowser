@@ -364,7 +364,7 @@ public:
     WebVTTTreeBuilder(Document& document)
         : m_document(document) { }
 
-    PassRefPtr<DocumentFragment> buildFromString(const String& cueText);
+    Ref<DocumentFragment> buildFromString(const String& cueText);
 
 private:
     void constructTreeFromToken(Document&);
@@ -375,19 +375,19 @@ private:
     Document& m_document;
 };
 
-PassRefPtr<DocumentFragment> WebVTTTreeBuilder::buildFromString(const String& cueText)
+Ref<DocumentFragment> WebVTTTreeBuilder::buildFromString(const String& cueText)
 {
     // Cue text processing based on
     // 5.4 WebVTT cue text parsing rules, and
     // 5.5 WebVTT cue text DOM construction rules.
-    RefPtr<DocumentFragment> fragment = DocumentFragment::create(m_document);
+    auto fragment = DocumentFragment::create(m_document);
 
     if (cueText.isEmpty()) {
         fragment->parserAppendChild(Text::create(m_document, emptyString()));
-        return fragment.release();
+        return fragment;
     }
 
-    m_currentNode = fragment;
+    m_currentNode = fragment.ptr();
 
     WebVTTTokenizer tokenizer(cueText);
     m_languageStack.clear();
@@ -395,10 +395,10 @@ PassRefPtr<DocumentFragment> WebVTTTreeBuilder::buildFromString(const String& cu
     while (tokenizer.nextToken(m_token))
         constructTreeFromToken(m_document);
     
-    return fragment.release();
+    return fragment;
 }
 
-PassRefPtr<DocumentFragment> WebVTTParser::createDocumentFragmentFromCueText(Document& document, const String& cueText)
+Ref<DocumentFragment> WebVTTParser::createDocumentFragmentFromCueText(Document& document, const String& cueText)
 {
     WebVTTTreeBuilder treeBuilder(document);
     return treeBuilder.buildFromString(cueText);
@@ -536,8 +536,7 @@ void WebVTTTreeBuilder::constructTreeFromToken(Document& document)
 
     switch (m_token.type()) {
     case WebVTTTokenTypes::Character: {
-        auto child = Text::create(document, m_token.characters());
-        m_currentNode->parserAppendChild(WTFMove(child));
+        m_currentNode->parserAppendChild(Text::create(document, m_token.characters()));
         break;
     }
     case WebVTTTokenTypes::StartTag: {
@@ -552,17 +551,17 @@ void WebVTTTreeBuilder::constructTreeFromToken(Document& document)
 
         auto child = WebVTTElement::create(nodeType, document);
         if (!m_token.classes().isEmpty())
-            child->setAttribute(classAttr, m_token.classes());
+            child->setAttributeWithoutSynchronization(classAttr, m_token.classes());
 
         if (nodeType == WebVTTNodeTypeVoice)
-            child->setAttribute(WebVTTElement::voiceAttributeName(), m_token.annotation());
+            child->setAttributeWithoutSynchronization(WebVTTElement::voiceAttributeName(), m_token.annotation());
         else if (nodeType == WebVTTNodeTypeLanguage) {
             m_languageStack.append(m_token.annotation());
-            child->setAttribute(WebVTTElement::langAttributeName(), m_languageStack.last());
+            child->setAttributeWithoutSynchronization(WebVTTElement::langAttributeName(), m_languageStack.last());
         }
         if (!m_languageStack.isEmpty())
             child->setLanguage(m_languageStack.last());
-        m_currentNode->parserAppendChild(child.copyRef());
+        m_currentNode->parserAppendChild(child);
         m_currentNode = WTFMove(child);
         break;
     }

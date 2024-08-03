@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2011, 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,7 @@
 #include "ActivateFonts.h"
 #include "InjectedBundlePage.h"
 #include "StringFunctions.h"
+#include "WebCoreTestSupport.h"
 #include <WebKit/WKBundle.h>
 #include <WebKit/WKBundlePage.h>
 #include <WebKit/WKBundlePagePrivate.h>
@@ -109,7 +110,7 @@ void InjectedBundle::didCreatePage(WKBundlePageRef page)
 
 void InjectedBundle::willDestroyPage(WKBundlePageRef page)
 {
-    m_pages.removeFirstMatching([page] (const std::unique_ptr<InjectedBundlePage>& current) {
+    m_pages.removeFirstMatching([page](auto& current) {
         return current->page() == page;
     });
 }
@@ -189,7 +190,7 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
         m_pixelResultIsPending = false;
 
         resetLocalSettings();
-        m_testRunner->removeAllWebNotificationPermissions();
+        TestRunner::removeAllWebNotificationPermissions();
 
         InjectedBundle::page()->resetAfterTest();
 
@@ -233,6 +234,11 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
 
     if (WKStringIsEqualToUTF8CString(messageName, "CallDidRemoveSwipeSnapshotCallback")) {
         m_testRunner->callDidRemoveSwipeSnapshotCallback();
+        return;
+    }
+
+    if (WKStringIsEqualToUTF8CString(messageName, "NotifyDownloadDone")) {
+        m_testRunner->notifyDone();
         return;
     }
 
@@ -288,6 +294,7 @@ void InjectedBundle::beginTesting(WKDictionaryRef settings)
 
     WKBundleSetAllowUniversalAccessFromFileURLs(m_bundle, m_pageGroup, true);
     WKBundleSetJavaScriptCanAccessClipboard(m_bundle, m_pageGroup, true);
+    WKBundleSetAutomaticLinkDetectionEnabled(m_bundle, m_pageGroup, false);
     WKBundleSetPrivateBrowsingEnabled(m_bundle, m_pageGroup, false);
     WKBundleSetAuthorAndUserStylesEnabled(m_bundle, m_pageGroup, true);
     WKBundleSetFrameFlatteningEnabled(m_bundle, m_pageGroup, false);
@@ -304,6 +311,18 @@ void InjectedBundle::beginTesting(WKDictionaryRef settings)
     m_testRunner->setShouldDumpFrameLoadCallbacks(booleanForKey(settings, "DumpFrameLoadDelegates"));
     m_testRunner->setUserStyleSheetEnabled(false);
     m_testRunner->setXSSAuditorEnabled(false);
+
+    m_testRunner->setShadowDOMEnabled(true);
+    m_testRunner->setCustomElementsEnabled(true);
+
+    m_testRunner->setDOMIteratorEnabled(true);
+
+    m_testRunner->setWebGL2Enabled(true);
+
+    m_testRunner->setFetchAPIEnabled(true);
+
+    m_testRunner->setDownloadAttributeEnabled(true);
+
     m_testRunner->setCloseRemainingWindowsWhenComplete(false);
     m_testRunner->setAcceptsEditing(true);
     m_testRunner->setTabKeyCyclesThroughElements(true);
@@ -429,6 +448,24 @@ void InjectedBundle::postSetWindowIsKey(bool isKey)
     WKBundlePagePostSynchronousMessageForTesting(page()->page(), messageName.get(), messageBody.get(), 0);
 }
 
+void InjectedBundle::postSetViewSize(double width, double height)
+{
+    WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("SetViewSize"));
+
+    WKRetainPtr<WKStringRef> widthKey(AdoptWK, WKStringCreateWithUTF8CString("width"));
+    WKRetainPtr<WKStringRef> heightKey(AdoptWK, WKStringCreateWithUTF8CString("height"));
+
+    WKRetainPtr<WKMutableDictionaryRef> messageBody(AdoptWK, WKMutableDictionaryCreate());
+
+    WKRetainPtr<WKDoubleRef> widthWK(AdoptWK, WKDoubleCreate(width));
+    WKDictionarySetItem(messageBody.get(), widthKey.get(), widthWK.get());
+
+    WKRetainPtr<WKDoubleRef> heightWK(AdoptWK, WKDoubleCreate(height));
+    WKDictionarySetItem(messageBody.get(), heightKey.get(), heightWK.get());
+
+    WKBundlePagePostSynchronousMessageForTesting(page()->page(), messageName.get(), messageBody.get(), 0);
+}
+
 void InjectedBundle::postSimulateWebNotificationClick(uint64_t notificationID)
 {
     WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("SimulateWebNotificationClick"));
@@ -519,6 +556,16 @@ bool InjectedBundle::isGeolocationProviderActive() const
     return WKBooleanGetValue(isActive.get());
 }
 
+unsigned InjectedBundle::imageCountInGeneralPasteboard() const
+{
+    WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("ImageCountInGeneralPasteboard"));
+    WKTypeRef resultToPass = 0;
+    WKBundlePagePostSynchronousMessageForTesting(page()->page(), messageName.get(), 0, &resultToPass);
+    WKRetainPtr<WKUInt64Ref> imageCount(AdoptWK, static_cast<WKUInt64Ref>(resultToPass));
+    
+    return static_cast<unsigned>(WKUInt64GetValue(imageCount.get()));
+}
+
 void InjectedBundle::setUserMediaPermission(bool enabled)
 {
     auto messageName = adoptWK(WKStringCreateWithUTF8CString("SetUserMediaPermission"));
@@ -526,7 +573,7 @@ void InjectedBundle::setUserMediaPermission(bool enabled)
     WKBundlePagePostMessage(page()->page(), messageName.get(), messageBody.get());
 }
 
-void InjectedBundle::setUserMediaPermissionForOrigin(bool permission, WKStringRef url)
+void InjectedBundle::setUserMediaPermissionForOrigin(bool permission, WKStringRef origin, WKStringRef parentOrigin)
 {
     auto messageName = adoptWK(WKStringCreateWithUTF8CString("SetUserMediaPermissionForOrigin"));
     WKRetainPtr<WKMutableDictionaryRef> messageBody(AdoptWK, WKMutableDictionaryCreate());
@@ -535,8 +582,11 @@ void InjectedBundle::setUserMediaPermissionForOrigin(bool permission, WKStringRe
     WKRetainPtr<WKBooleanRef> permissionWK(AdoptWK, WKBooleanCreate(permission));
     WKDictionarySetItem(messageBody.get(), permissionKeyWK.get(), permissionWK.get());
 
-    WKRetainPtr<WKStringRef> urlKeyWK(AdoptWK, WKStringCreateWithUTF8CString("url"));
-    WKDictionarySetItem(messageBody.get(), urlKeyWK.get(), url);
+    WKRetainPtr<WKStringRef> originKeyWK(AdoptWK, WKStringCreateWithUTF8CString("origin"));
+    WKDictionarySetItem(messageBody.get(), originKeyWK.get(), origin);
+
+    WKRetainPtr<WKStringRef> parentOriginKeyWK(AdoptWK, WKStringCreateWithUTF8CString("parentOrigin"));
+    WKDictionarySetItem(messageBody.get(), parentOriginKeyWK.get(), parentOrigin);
 
     WKBundlePagePostMessage(page()->page(), messageName.get(), messageBody.get());
 }
@@ -688,6 +738,11 @@ bool InjectedBundle::isAllowedHost(WKStringRef host)
     if (m_allowedHosts.isEmpty())
         return false;
     return m_allowedHosts.contains(toWTFString(host));
+}
+
+void InjectedBundle::setAllowsAnySSLCertificate(bool allowsAnySSLCertificate)
+{
+    WebCoreTestSupport::setAllowsAnySSLCertificate(allowsAnySSLCertificate);
 }
 
 } // namespace WTR

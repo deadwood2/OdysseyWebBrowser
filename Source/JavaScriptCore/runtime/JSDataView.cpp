@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -47,16 +47,18 @@ JSDataView* JSDataView::create(
     ExecState* exec, Structure* structure, PassRefPtr<ArrayBuffer> passedBuffer,
     unsigned byteOffset, unsigned byteLength)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     RefPtr<ArrayBuffer> buffer = passedBuffer;
     if (!ArrayBufferView::verifySubRangeLength(buffer, byteOffset, byteLength, sizeof(uint8_t))) {
-        throwVMError(exec, createRangeError(exec, ASCIILiteral("Length out of range of buffer")));
+        throwVMError(exec, scope, createRangeError(exec, ASCIILiteral("Length out of range of buffer")));
         return nullptr;
     }
     if (!ArrayBufferView::verifyByteOffsetAlignment(byteOffset, sizeof(uint8_t))) {
-        exec->vm().throwException(exec, createRangeError(exec, ASCIILiteral("Byte offset is not aligned")));
+        throwException(exec, scope, createRangeError(exec, ASCIILiteral("Byte offset is not aligned")));
         return nullptr;
     }
-    VM& vm = exec->vm();
     ConstructionContext context(
         structure, buffer, byteOffset, byteLength, ConstructionContext::DataView);
     ASSERT(context);
@@ -78,7 +80,7 @@ JSDataView* JSDataView::create(ExecState*, Structure*, unsigned)
     return 0;
 }
 
-bool JSDataView::set(ExecState*, JSObject*, unsigned, unsigned)
+bool JSDataView::set(ExecState*, unsigned, JSObject*, unsigned, unsigned)
 {
     UNREACHABLE_FOR_PLATFORM();
     return false;
@@ -111,18 +113,20 @@ bool JSDataView::getOwnPropertySlot(
     return Base::getOwnPropertySlot(thisObject, exec, propertyName, slot);
 }
 
-void JSDataView::put(
+bool JSDataView::put(
     JSCell* cell, ExecState* exec, PropertyName propertyName, JSValue value,
     PutPropertySlot& slot)
 {
     JSDataView* thisObject = jsCast<JSDataView*>(cell);
-    if (propertyName == exec->propertyNames().byteLength
-        || propertyName == exec->propertyNames().byteOffset) {
-        reject(exec, slot.isStrictMode(), "Attempting to write to read-only typed array property.");
-        return;
-    }
 
-    Base::put(thisObject, exec, propertyName, value, slot);
+    if (UNLIKELY(isThisValueAltered(slot, thisObject)))
+        return ordinarySetSlow(exec, thisObject, propertyName, value, slot.thisValue(), slot.isStrictMode());
+
+    if (propertyName == exec->propertyNames().byteLength
+        || propertyName == exec->propertyNames().byteOffset)
+        return reject(exec, slot.isStrictMode(), "Attempting to write to read-only typed array property.");
+
+    return Base::put(thisObject, exec, propertyName, value, slot);
 }
 
 bool JSDataView::defineOwnProperty(

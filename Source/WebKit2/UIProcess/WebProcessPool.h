@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,8 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef WebProcessPool_h
-#define WebProcessPool_h
+#pragma once
 
 #include "APIDictionary.h"
 #include "APIObject.h"
@@ -79,6 +78,7 @@ class PageConfiguration;
 namespace WebKit {
 
 class DownloadProxy;
+class UIGamepad;
 class WebAutomationSession;
 class WebContextSupplement;
 class WebIconDatabase;
@@ -98,9 +98,6 @@ int webProcessThroughputQOS();
 #endif
 
 class WebProcessPool final : public API::ObjectImpl<API::Object::Type::ProcessPool>, private IPC::MessageReceiver
-#if ENABLE(NETSCAPE_PLUGIN_API)
-    , private PluginInfoStoreClient
-#endif
     {
 public:
     static Ref<WebProcessPool> create(API::ProcessPoolConfiguration&);
@@ -126,10 +123,11 @@ public:
 
     void addMessageReceiver(IPC::StringReference messageReceiverName, IPC::MessageReceiver&);
     void addMessageReceiver(IPC::StringReference messageReceiverName, uint64_t destinationID, IPC::MessageReceiver&);
+    void removeMessageReceiver(IPC::StringReference messageReceiverName);
     void removeMessageReceiver(IPC::StringReference messageReceiverName, uint64_t destinationID);
 
-    bool dispatchMessage(IPC::Connection&, IPC::MessageDecoder&);
-    bool dispatchSyncMessage(IPC::Connection&, IPC::MessageDecoder&, std::unique_ptr<IPC::MessageEncoder>&);
+    bool dispatchMessage(IPC::Connection&, IPC::Decoder&);
+    bool dispatchSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&);
 
     void initializeClient(const WKContextClientBase*);
     void initializeInjectedBundleClient(const WKContextInjectedBundleClientBase*);
@@ -187,6 +185,7 @@ public:
 #endif
 
     pid_t networkProcessIdentifier();
+    pid_t databaseProcessIdentifier();
 
     void setAlwaysUsesComplexTextCodePath(bool);
     void setShouldUseFontSmoothing(bool);
@@ -257,6 +256,7 @@ public:
 
     void updateAutomationCapabilities() const;
     void setAutomationSession(RefPtr<WebAutomationSession>&&);
+    WebAutomationSession* automationSession() const { return m_automationSession.get(); }
 
     // Defaults to false.
     void setHTTPPipeliningEnabled(bool);
@@ -333,17 +333,24 @@ public:
     void updateProcessSuppressionState() const { }
 #endif
 
+    void updateHiddenPageThrottlingAutoIncreaseLimit();
+
     void setMemoryCacheDisabled(bool);
     void setFontWhitelist(API::Array*);
 
-    UserObservablePageToken userObservablePageCount()
+    UserObservablePageCounter::Token userObservablePageCount()
     {
-        return m_userObservablePageCounter.token<UserObservablePageTokenType>();
+        return m_userObservablePageCounter.count();
     }
 
     ProcessSuppressionDisabledToken processSuppressionDisabledForPageCount()
     {
-        return m_processSuppressionDisabledForPageCounter.token<ProcessSuppressionDisabledTokenType>();
+        return m_processSuppressionDisabledForPageCounter.count();
+    }
+
+    HiddenPageThrottlingAutoIncreasesCounter::Token hiddenPageThrottlingAutoIncreasesCount()
+    {
+        return m_hiddenPageThrottlingAutoIncreasesCounter.count();
     }
 
     // FIXME: Move these to API::WebsiteDataStore.
@@ -351,9 +358,25 @@ public:
     static String legacyPlatformDefaultIndexedDBDatabaseDirectory();
     static String legacyPlatformDefaultWebSQLDatabaseDirectory();
     static String legacyPlatformDefaultMediaKeysStorageDirectory();
+    static String legacyPlatformDefaultMediaCacheDirectory();
     static String legacyPlatformDefaultApplicationCacheDirectory();
     static String legacyPlatformDefaultNetworkCacheDirectory();
     static bool isNetworkCacheEnabled();
+
+    bool resourceLoadStatisticsEnabled() { return m_resourceLoadStatisticsEnabled; }
+    void setResourceLoadStatisticsEnabled(bool enabled) { m_resourceLoadStatisticsEnabled = enabled; }
+
+#if ENABLE(GAMEPAD)
+    void gamepadConnected(const UIGamepad&);
+    void gamepadDisconnected(const UIGamepad&);
+
+    void setInitialConnectedGamepads(const Vector<std::unique_ptr<UIGamepad>>&);
+#endif
+
+#if PLATFORM(COCOA)
+    bool cookieStoragePartitioningEnabled() const { return m_cookieStoragePartitioningEnabled; }
+    void setCookieStoragePartitioningEnabled(bool);
+#endif
 
 private:
     void platformInitialize();
@@ -373,17 +396,24 @@ private:
 
     void didGetStatistics(const StatisticsData&, uint64_t callbackID);
 
+#if ENABLE(GAMEPAD)
+    void startedUsingGamepads(IPC::Connection&);
+    void stoppedUsingGamepads(IPC::Connection&);
+
+    void processStoppedUsingGamepads(WebProcessProxy&);
+#endif
+
     // IPC::MessageReceiver.
     // Implemented in generated WebProcessPoolMessageReceiver.cpp
-    virtual void didReceiveMessage(IPC::Connection&, IPC::MessageDecoder&) override;
-    virtual void didReceiveSyncMessage(IPC::Connection&, IPC::MessageDecoder&, std::unique_ptr<IPC::MessageEncoder>&) override;
+    void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
+    void didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&) override;
 
     static void languageChanged(void* context);
     void languageChanged();
 
     String platformDefaultIconDatabasePath() const;
 
-#if PLATFORM(IOS) || ENABLE(SECCOMP_FILTERS)
+#if PLATFORM(IOS)
     String cookieStorageDirectory() const;
 #endif
 
@@ -403,11 +433,6 @@ private:
     void plugInDidReceiveUserInteraction(unsigned plugInOriginHash, WebCore::SessionID);
 
     void setAnyPageGroupMightHavePrivateBrowsingEnabled(bool);
-
-#if ENABLE(NETSCAPE_PLUGIN_API)
-    // PluginInfoStoreClient:
-    virtual void pluginInfoStoreDidLoadPlugins(PluginInfoStore*) override;
-#endif
 
     Ref<API::ProcessPoolConfiguration> m_configuration;
 
@@ -506,9 +531,12 @@ private:
 #endif
 
     bool m_memoryCacheDisabled;
+    bool m_resourceLoadStatisticsEnabled { false };
 
-    RefCounter m_userObservablePageCounter;
-    RefCounter m_processSuppressionDisabledForPageCounter;
+    UserObservablePageCounter m_userObservablePageCounter;
+    ProcessSuppressionDisabledCounter m_processSuppressionDisabledForPageCounter;
+    HiddenPageThrottlingAutoIncreasesCounter m_hiddenPageThrottlingAutoIncreasesCounter;
+    RunLoop::Timer<WebProcessPool> m_hiddenPageThrottlingTimer;
 
 #if PLATFORM(COCOA)
     RetainPtr<NSMutableDictionary> m_bundleParameters;
@@ -521,6 +549,14 @@ private:
 
 #if ENABLE(NETSCAPE_PLUGIN_API)
     HashMap<String, HashMap<String, HashMap<String, uint8_t>>> m_pluginLoadClientPolicies;
+#endif
+
+#if ENABLE(GAMEPAD)
+    HashSet<WebProcessProxy*> m_processesUsingGamepads;
+#endif
+
+#if PLATFORM(COCOA)
+    bool m_cookieStoragePartitioningEnabled { false };
 #endif
 };
 
@@ -590,5 +626,3 @@ void WebProcessPool::sendToOneProcess(T&& message)
 }
 
 } // namespace WebKit
-
-#endif // UIProcessPool_h

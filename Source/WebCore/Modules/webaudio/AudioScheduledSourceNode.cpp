@@ -31,6 +31,7 @@
 #include "AudioContext.h"
 #include "AudioUtilities.h"
 #include "Event.h"
+#include "EventNames.h"
 #include "ScriptController.h"
 #include <algorithm>
 #include <wtf/MathExtras.h>
@@ -137,11 +138,6 @@ void AudioScheduledSourceNode::updateSchedulingInfo(size_t quantumFrameSize,
     return;
 }
 
-void AudioScheduledSourceNode::start(ExceptionCode& ec)
-{
-    start(0, ec);
-}
-
 void AudioScheduledSourceNode::start(double when, ExceptionCode& ec)
 {
     ASSERT(isMainThread());
@@ -162,11 +158,6 @@ void AudioScheduledSourceNode::start(double when, ExceptionCode& ec)
     m_playbackState = SCHEDULED_STATE;
 }
 
-void AudioScheduledSourceNode::stop(ExceptionCode& ec)
-{
-    stop(0, ec);
-}
-
 void AudioScheduledSourceNode::stop(double when, ExceptionCode& ec)
 {
     ASSERT(isMainThread());
@@ -182,18 +173,6 @@ void AudioScheduledSourceNode::stop(double when, ExceptionCode& ec)
 
     m_endTime = when;
 }
-
-#if ENABLE(LEGACY_WEB_AUDIO)
-void AudioScheduledSourceNode::noteOn(double when, ExceptionCode& ec)
-{
-    start(when, ec);
-}
-
-void AudioScheduledSourceNode::noteOff(double when, ExceptionCode& ec)
-{
-    stop(when, ec);
-}
-#endif
 
 void AudioScheduledSourceNode::finish()
 {
@@ -211,17 +190,17 @@ void AudioScheduledSourceNode::finish()
     }
 }
 
-bool AudioScheduledSourceNode::addEventListener(const AtomicString& eventType, RefPtr<EventListener>&& listener, bool useCapture)
+bool AudioScheduledSourceNode::addEventListener(const AtomicString& eventType, Ref<EventListener>&& listener, const AddEventListenerOptions& options)
 {
-    bool success = AudioNode::addEventListener(eventType, WTFMove(listener), useCapture);
+    bool success = AudioNode::addEventListener(eventType, WTFMove(listener), options);
     if (success && eventType == eventNames().endedEvent)
         m_hasEndedListener = hasEventListeners(eventNames().endedEvent);
     return success;
 }
 
-bool AudioScheduledSourceNode::removeEventListener(const AtomicString& eventType, EventListener* listener, bool useCapture)
+bool AudioScheduledSourceNode::removeEventListener(const AtomicString& eventType, EventListener& listener, const ListenerOptions& options)
 {
-    bool success = AudioNode::removeEventListener(eventType, listener, useCapture);
+    bool success = AudioNode::removeEventListener(eventType, listener, options);
     if (success && eventType == eventNames().endedEvent)
         m_hasEndedListener = hasEventListeners(eventNames().endedEvent);
     return success;

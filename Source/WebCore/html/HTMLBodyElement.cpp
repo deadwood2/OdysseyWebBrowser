@@ -30,7 +30,8 @@
 #include "EventNames.h"
 #include "Frame.h"
 #include "FrameView.h"
-#include "HTMLFrameElementBase.h"
+#include "HTMLFrameElement.h"
+#include "HTMLIFrameElement.h"
 #include "HTMLNames.h"
 #include "HTMLParserIdioms.h"
 #include "Page.h"
@@ -329,7 +330,7 @@ void HTMLBodyElement::addSubresourceAttributeURLs(ListHashSet<URL>& urls) const
 {
     HTMLElement::addSubresourceAttributeURLs(urls);
 
-    addSubresourceURL(urls, document().completeURL(fastGetAttribute(backgroundAttr)));
+    addSubresourceURL(urls, document().completeURL(attributeWithoutSynchronization(backgroundAttr)));
 }
 
 } // namespace WebCore

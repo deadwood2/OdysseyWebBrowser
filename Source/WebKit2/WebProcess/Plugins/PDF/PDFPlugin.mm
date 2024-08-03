@@ -795,7 +795,7 @@ void PDFPlugin::createPasswordEntryForm()
 
     Document* document = webFrame()->coreFrame()->document();
     m_passwordContainer = document->createElement(divTag, false);
-    m_passwordContainer->setAttribute(idAttr, "passwordContainer");
+    m_passwordContainer->setAttributeWithoutSynchronization(idAttr, AtomicString("passwordContainer", AtomicString::ConstructFromLiteral));
 
     m_passwordField = PDFPluginPasswordField::create(m_pdfLayerController.get(), this);
     m_passwordField->attach(m_passwordContainer.get());
@@ -1646,10 +1646,6 @@ PDFPlugin::HUD::~HUD()
 {
     MainFrame& mainFrame = m_plugin.webFrame()->coreFrame()->mainFrame();
     mainFrame.pageOverlayController().uninstallPageOverlay(m_overlay.ptr(), PageOverlay::FadeMode::DoNotFade);
-}
-
-void PDFPlugin::HUD::pageOverlayDestroyed(PageOverlay&)
-{
 }
 
 void PDFPlugin::HUD::willMoveToPage(PageOverlay&, Page* page)

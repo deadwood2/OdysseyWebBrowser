@@ -59,14 +59,10 @@ void ArchiveResourceCollection::addAllResources(Archive* archive)
 
 // FIXME: Adding a resource directly to a DocumentLoader/ArchiveResourceCollection seems like bad design, but is API some apps rely on.
 // Can we change the design in a manner that will let us deprecate that API without reducing functionality of those apps?
-void ArchiveResourceCollection::addResource(PassRefPtr<ArchiveResource> resource)
+void ArchiveResourceCollection::addResource(Ref<ArchiveResource>&& resource)
 {
-    ASSERT(resource);
-    if (!resource)
-        return;
-
-    const URL& url = resource->url(); // get before passing PassRefPtr (which sets it to 0)
-    m_subresources.set(url, resource);
+    const URL& url = resource->url();
+    m_subresources.set(url, WTFMove(resource));
 }
 
 ArchiveResource* ArchiveResourceCollection::archiveResourceForURL(const URL& url)
@@ -80,9 +76,9 @@ ArchiveResource* ArchiveResourceCollection::archiveResourceForURL(const URL& url
 
 PassRefPtr<Archive> ArchiveResourceCollection::popSubframeArchive(const String& frameName, const URL& url)
 {
-    RefPtr<Archive> archive = m_subframes.take(frameName);
+    auto archive = m_subframes.take(frameName);
     if (archive)
-        return archive.release();
+        return WTFMove(archive);
 
     return m_subframes.take(url.string());
 }
