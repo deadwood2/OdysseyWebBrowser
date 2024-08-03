@@ -130,7 +130,7 @@ void DownloadClient::didReceiveResponse(ResourceHandle*, const WebCore::Resource
 		    // Fail if not possible to open destination file to writing
 			if(priv->outputChannel->open('a') == -1)
 		    {
-				ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, String(), String("Can't create file"));
+				ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"));
 		        didFail(priv->resourceHandle.get(), resourceError);
 		        return;
 		    }
@@ -139,7 +139,7 @@ void DownloadClient::didReceiveResponse(ResourceHandle*, const WebCore::Resource
 		}
 		else
 		{
-			ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, String(), String("Can't resume"));
+			ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't resume"));
 	        didFail(priv->resourceHandle.get(), resourceError);
 	        return;
 		}
@@ -172,7 +172,7 @@ void DownloadClient::didReceiveResponse(ResourceHandle*, const WebCore::Resource
 	    // Fail if destination file path is not set
 		if(priv->destinationPath.isEmpty())
 	    {
-			ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, String(), String("Can't create file"));
+			ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"));
 	        didFail(priv->resourceHandle.get(), resourceError);
 	        return;
 	    }
@@ -201,7 +201,7 @@ void DownloadClient::didReceiveResponse(ResourceHandle*, const WebCore::Resource
 		    // Fail if destination file already exists and can't be overwritten
 		    if(!priv->allowOverwrite && priv->outputChannel->open('r') != -1)
 		    {
-				ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, String(), String("Can't create file"));
+				ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"));
 		        didFail(priv->resourceHandle.get(), resourceError);
 		        return;
 		    }
@@ -211,7 +211,7 @@ void DownloadClient::didReceiveResponse(ResourceHandle*, const WebCore::Resource
 		    // Fail if not possible to open destination file to writing
 		    if(priv->outputChannel->open('w') == -1)
 		    {
-				ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, String(), String("Can't create file"));
+				ResourceError resourceError(String(WebKitErrorDomain), WebURLErrorCannotCreateFile, URL(), String("Can't create file"));
 		        didFail(priv->resourceHandle.get(), resourceError);
 		        return;
 		    }

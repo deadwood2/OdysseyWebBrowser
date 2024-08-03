@@ -51,7 +51,7 @@ void PluginMainThreadScheduler::scheduleCall(NPP npp, MainThreadFunction functio
     it->value.append(Call(function, userData));
 
     if (!m_callPending) {
-        callOnMainThread(mainThreadCallback, this);
+        callOnMainThread([this] { mainThreadCallback(this); });
         m_callPending = true;
     }
 }

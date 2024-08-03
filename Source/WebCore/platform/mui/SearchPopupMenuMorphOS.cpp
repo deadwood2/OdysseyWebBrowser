@@ -48,13 +48,13 @@ namespace WebCore {
     return m_popup.get();
   }
 
-  void SearchPopupMenuMorphOS::saveRecentSearches(const AtomicString& name, const Vector<String>& searchItems)
+  void SearchPopupMenuMorphOS::saveRecentSearches(const AtomicString& name, const Vector<RecentSearch>& searchItems)
   {
     UNUSED_PARAM(searchItems);
     fprintf(stderr, "SearchPopupMenu::saveRecentSearches '%s'\n", name.string().latin1().data());
   }
 
-  void SearchPopupMenuMorphOS::loadRecentSearches(const AtomicString& name, Vector<String>& searchItems)
+  void SearchPopupMenuMorphOS::loadRecentSearches(const AtomicString& name, Vector<RecentSearch>& searchItems)
   {
     UNUSED_PARAM(searchItems);
     fprintf(stderr, "SearchPopupMenu::loadRecentSearches '%s'\n", name.string().latin1().data());

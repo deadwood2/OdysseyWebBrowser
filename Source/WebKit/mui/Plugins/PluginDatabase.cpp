@@ -192,7 +192,7 @@ PluginPackage* PluginDatabase::pluginForMIMEType(const String& mimeType)
     if (mimeType.isEmpty())
         return 0;
 
-    String key = mimeType.lower();
+    String key = mimeType.convertToLowercaseWithoutLocale();
     PluginSet::const_iterator end = m_plugins.end();
     PluginPackage* preferredPlugin = m_preferredPlugins.get(key);
     if (preferredPlugin
@@ -248,7 +248,7 @@ String PluginDatabase::MIMETypeForExtension(const String& extension) const
             const Vector<String>& extensions = mime_it->value;
             bool foundMapping = false;
             for (unsigned i = 0; i < extensions.size(); i++) {
-                if (equalIgnoringCase(extensions[i], extension)) {
+                if (equalIgnoringASCIICase(extensions[i], extension)) {
                     PluginPackage* plugin = (*it).get();
 
                     if (preferredPlugin && PluginPackage::equal(*plugin, *preferredPlugin))
@@ -305,7 +305,7 @@ PluginPackage* PluginDatabase::findPlugin(const URL& url, String& mimeType)
 void PluginDatabase::setPreferredPluginForMIMEType(const String& mimeType, PluginPackage* plugin)
 {
     if (!plugin || plugin->mimeToExtensions().contains(mimeType))
-        m_preferredPlugins.set(mimeType.lower(), plugin);
+        m_preferredPlugins.set(mimeType.convertToLowercaseWithoutLocale(), plugin);
 }
 
 bool PluginDatabase::fileExistsAndIsNotDisabled(const String& filePath) const

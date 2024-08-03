@@ -67,7 +67,7 @@
 #if ENABLE(ICONDATABASE)
 #include "WebIconDatabase.h"
 #endif
-#include "WebKitVersion.h"
+
 #include "WebInspector.h"
 #include "WebInspectorClient.h"
 #include "WebMutableURLRequest.h"
@@ -1168,7 +1168,7 @@ const string& WebView::userAgentForURL(const string& url)
 
 bool WebView::canShowMIMEType(const char* mimeType)
 {
-    String type = String(mimeType).lower();
+    String type = String(mimeType).convertToLowercaseWithoutLocale();
     Frame* coreFrame = core(m_mainFrame);
     bool allowPlugins = coreFrame && coreFrame->loader().subframeLoader().allowPlugins();
     
@@ -1918,7 +1918,7 @@ BalRectangle WebView::selectionRect()
     if (frame) {
 	IntRect ir = enclosingIntRect(frame->selection().selectionBounds());
         ir = frame->view()->convertToContainingWindow(ir);
-        ir.move(-frame->view()->scrollOffset().width(), -frame->view()->scrollOffset().height());
+        ir.moveBy(-frame->view()->scrollPosition());
         return ir;
     }
 
@@ -2582,7 +2582,7 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     settings->setNeedsSiteSpecificQuirks(s_allowSiteSpecificHacks);
 
     FontSmoothingType smoothingType = preferences->fontSmoothing();
-    settings->setFontRenderingMode(smoothingType != FontSmoothingTypeWindows ? NormalRenderingMode : AlternateRenderingMode);
+    settings->setFontRenderingMode(smoothingType != FontSmoothingTypeWindows ? FontRenderingMode::Normal : FontRenderingMode::Alternate);
 
     enabled = preferences->authorAndUserStylesEnabled();
     settings->setAuthorAndUserStylesEnabled(enabled);
@@ -2681,8 +2681,7 @@ void WebView::setViewWindow(BalWidget* view)
 BalPoint WebView::scrollOffset()
 {
     if (m_page) {
-        IntSize offsetIntSize = m_page->mainFrame().view()->scrollOffset();
-        return IntPoint(offsetIntSize.width(), offsetIntSize.height());
+        return IntPoint(m_page->mainFrame().view()->scrollPosition().x(), m_page->mainFrame().view()->scrollPosition().y());
     } else
         return IntPoint();
 }
@@ -2811,7 +2810,7 @@ void WebView::loadBackForwardListFromOtherView(WebView* otherView)
         Ref<HistoryItem> newItem = otherBackForwardList->itemAtIndex(i)->copy();
         if (!i) 
             newItemToGoTo = newItem.ptr();
-        backForwardList->addItem(WTF::move(newItem));
+        backForwardList->addItem(WTFMove(newItem));
     }
     
     ASSERT(newItemToGoTo);

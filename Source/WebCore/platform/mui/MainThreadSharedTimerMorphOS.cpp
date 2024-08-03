@@ -28,7 +28,7 @@
  */
 
 #include "config.h"
-#include "SharedTimer.h"
+#include "MainThreadSharedTimer.h"
 
 #include <wtf/CurrentTime.h>
 #include <wtf/Assertions.h>
@@ -143,7 +143,7 @@ restart:
 					{
 						D(kprintf("[SharedTimer Thread] Received start signal\n"));
 
-						D(kprintf("[SharedTimer Thread] Adding timerequest for %d µs\n", Handle->Interval));
+						D(kprintf("[SharedTimer Thread] Adding timerequest for %d Âµs\n", Handle->Interval));
 
 						TimerIO.tr_node.io_Command = TR_ADDREQUEST;
 						TimerIO.tr_time.tv_secs    = Handle->Interval / 1000000;
@@ -377,4 +377,19 @@ void invalidateSharedTimer()
 {
 }
 
+void MainThreadSharedTimer::setFireInterval(double interval)
+{
+    setSharedTimerFireInterval(interval);
 }
+        
+void MainThreadSharedTimer::stop()
+{
+    stopSharedTimer();
+}
+
+void MainThreadSharedTimer::invalidate()
+{
+    invalidateSharedTimer();
+}
+
+} // namespace WebCore

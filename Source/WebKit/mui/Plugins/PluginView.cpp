@@ -464,7 +464,7 @@ void PluginView::requestTimerFired()
     ASSERT(!m_requests.isEmpty());
     ASSERT(!m_isJavaScriptPaused);
 
-    std::unique_ptr<PluginRequest> request = WTF::move(m_requests[0]);
+    std::unique_ptr<PluginRequest> request = WTFMove(m_requests[0]);
     m_requests.remove(0);
     
     // Schedule a new request before calling performRequest since the call to
@@ -477,7 +477,7 @@ void PluginView::requestTimerFired()
 
 void PluginView::scheduleRequest(std::unique_ptr<PluginRequest> request)
 {
-    m_requests.append(WTF::move(request));
+    m_requests.append(WTFMove(request));
 
     if (!m_isJavaScriptPaused)
         m_requestTimer.startOneShot(0);
@@ -680,7 +680,7 @@ NPObject* PluginView::npObject()
 }
 #endif
 
-PassRefPtr<JSC::Bindings::Instance> PluginView::bindingInstance()
+RefPtr<JSC::Bindings::Instance> PluginView::bindingInstance()
 {
 #if ENABLE(NETSCAPE_PLUGIN_API)
     NPObject* object = npObject();
@@ -723,7 +723,7 @@ void PluginView::setParameters(const Vector<String>& paramNames, const Vector<St
     m_paramValues = reinterpret_cast<char**>(fastMalloc(sizeof(char*) * size));
 
     for (unsigned i = 0; i < size; i++) {
-        if (m_plugin->quirks().contains(PluginQuirkRemoveWindowlessVideoParam) && equalIgnoringCase(paramNames[i], "windowlessvideo"))
+        if (m_plugin->quirks().contains(PluginQuirkRemoveWindowlessVideoParam) && equalIgnoringASCIICase(paramNames[i], "windowlessvideo"))
             continue;
 
         if (paramNames[i] == "pluginspage")
@@ -1097,7 +1097,7 @@ NPError PluginView::handlePost(const char* url, const char* target, uint32_t len
 
     frameLoadRequest.resourceRequest().setHTTPMethod("POST");
     frameLoadRequest.resourceRequest().setURL(makeURL(m_parentFrame->document()->baseURL(), url));
-    frameLoadRequest.resourceRequest().setHTTPHeaderFields(WTF::move(headerFields));
+    frameLoadRequest.resourceRequest().setHTTPHeaderFields(WTFMove(headerFields));
     frameLoadRequest.resourceRequest().setHTTPBody(FormData::create(postData, postDataLength));
     frameLoadRequest.setFrameName(target);
 
@@ -1136,7 +1136,7 @@ void PluginView::paintMissingPluginIcon(GraphicsContext* context, const IntRect&
 
     context->save();
     context->clip(windowClipRect());
-    context->drawImage(nullPluginImage.get(), ColorSpaceDeviceRGB, imageRect.location());
+    context->drawImage(*nullPluginImage.get(), imageRect.location());
     context->restore();
 }
 

@@ -263,7 +263,7 @@ void CookieManager::getRawCookies(Vector<ParsedCookie*> &stackOfCookies, const U
         delimitedHost.append(String(canonicalIP.c_str()));
 	else
 	*/
-	requestURL.host().lower().split(".", true, delimitedHost);
+	requestURL.host().convertToLowercaseWithoutLocale().split(".", true, delimitedHost);
 
     // Go through all the protocol trees that we need to search for
     // and get all cookies that are valid for this domain
@@ -310,7 +310,7 @@ void CookieManager::getRawCookies(Vector<ParsedCookie*> &stackOfCookies, const U
         // we should add a '/' at the end of cookie-path for comparison if the cookie-path is not end with '/'.
         String path = cookie->path();
         CookieLog("CookieManager - comparing cookie path %s (len %d) to request path %s (len %d)", path.utf8().data(), path.length(), requestURL.path().utf8().data(), path.length());
-        if (!equalIgnoringCase(path, requestURL.path()) && !path.endsWith("/", false))
+        if (!equalIgnoringASCIICase(path, requestURL.path()) && !path.endsWith("/", false))
             path = path + "/";
 
         // Only secure connections have access to secure cookies. Unless specialCaseForWebWorks is true.
@@ -590,7 +590,7 @@ void CookieManager::removeCookieWithName(const URL& url, const String& cookieNam
     // Delete the cookies that path matches the request path
     for (size_t i = 0; i < results.size(); i++) {
         ParsedCookie* cookie = results[i];
-        if (!equalIgnoringCase(cookie->name(), cookieName))
+        if (!equalIgnoringASCIICase(cookie->name(), cookieName))
             continue;
         if (url.path().startsWith(cookie->path(), false)) {
             cookie->forceExpire();

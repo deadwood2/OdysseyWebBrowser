@@ -3,6 +3,6 @@
 
 #define VERSION  "1.26"
 #define WEBKITVER xstringify(WEBKIT_MAJOR_VERSION) "." xstringify(WEBKIT_MINOR_VERSION)
-#define REVISION "WebKit " WEBKITVER " (webkitgtk-2.10.9)"
+#define REVISION "WebKit " WEBKITVER " (webkitgtk-2.12.5)"
 
 #endif /* __VERSIONINFO_H__ */

@@ -81,7 +81,7 @@ PassRefPtr<Icon> Icon::createIconForFiles(const Vector<String>& filenames)
 
 void Icon::paint(GraphicsContext& context, const FloatRect& rect)
 {
-    context.drawImage(m_icon.get(), ColorSpaceDeviceRGB, rect);
+    context.drawImage(*m_icon.get(), rect);
 }
 
 }

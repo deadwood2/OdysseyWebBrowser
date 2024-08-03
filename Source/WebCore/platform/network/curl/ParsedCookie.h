@@ -62,7 +62,7 @@ public:
     void setPath(const String& path) { m_path = path; }
 
     const String& domain() const { return m_domain; }
-    void setDomain(const String& domain, bool domainIsIPAddress = false) { m_domain = domain.lower(); m_domainIsIPAddress = domainIsIPAddress; }
+    void setDomain(const String& domain, bool domainIsIPAddress = false) { m_domain = domain.convertToLowercaseWithoutLocale(); m_domainIsIPAddress = domainIsIPAddress; }
 
     const String& protocol() const { return m_protocol; }
     void setProtocol(const String& protocol) { m_protocol = protocol; }

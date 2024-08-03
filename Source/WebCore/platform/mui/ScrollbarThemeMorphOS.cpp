@@ -63,10 +63,10 @@ bool ScrollbarThemeBal::m_loaded = false;
   RefPtr<WebCore::Image> ScrollbarThemeBal::bgh = Image::loadPlatformResource("ScrollbarTheme/bgh");          
 
 
-ScrollbarTheme* ScrollbarTheme::nativeTheme()
+ScrollbarTheme& ScrollbarTheme::nativeTheme()
 {
     static ScrollbarThemeBal theme;
-    return &theme;
+    return theme;
 }
 
 ScrollbarThemeBal::~ScrollbarThemeBal()
@@ -145,23 +145,23 @@ void ScrollbarThemeBal::paintButton(GraphicsContext& context, Scrollbar& scrollb
         IntPoint startPos(rect.location());
         if (start) {
             if (scrollbar.orientation() == HorizontalScrollbar)
-                context.drawImage(left.get(), ColorSpaceDeviceRGB, startPos);
+                context.drawImage(*left.get(), startPos);
             else {
 	      //RefPtr<WebCore::Image> up = Image::loadPlatformResource("ScrollbarTheme/up");
-                context.drawImage(up.get(), ColorSpaceDeviceRGB, startPos);
+                context.drawImage(*up.get(), startPos);
             }
         } else {
             if (scrollbar.orientation() == HorizontalScrollbar) {
 	      //RefPtr<WebCore::Image> right = Image::loadPlatformResource("ScrollbarTheme/right");
-                context.drawImage(right.get(), ColorSpaceDeviceRGB, startPos);
+                context.drawImage(*right.get(), startPos);
             } else {
 	      //RefPtr<WebCore::Image> down = Image::loadPlatformResource("ScrollbarTheme/down");
-                context.drawImage(down.get(), ColorSpaceDeviceRGB, startPos);
+                context.drawImage(*down.get(), startPos);
             }
         }
     } else {    
         context.drawRect(rect);
-		context.fillRect(IntRect(rect.x() + 1, rect.y() + 1, rect.width() - 2, rect.height() - 2), Color::gray, ColorSpaceDeviceRGB);
+		context.fillRect(IntRect(rect.x() + 1, rect.y() + 1, rect.width() - 2, rect.height() - 2), Color::gray);
 
         if (start) {
             if (scrollbar.orientation() == HorizontalScrollbar) {
@@ -196,13 +196,13 @@ void ScrollbarThemeBal::paintThumb(GraphicsContext& context, Scrollbar& scrollba
             IntPoint endPos(rect.maxX() - thumbHR->width(), rect.y());
             IntRect destRect(rect.x() + thumbHL->width() - 1, rect.y(), rect.width() - thumbHR->width() - thumbHL->width() + 1, rect.height());
 
-            context.drawImage(thumbHL.get(), ColorSpaceDeviceRGB, startPos);
-            context.drawTiledImage(thumbH.get(), ColorSpaceDeviceRGB, destRect, IntPoint(0, 0), IntSize(thumbH->width(), thumbH->height()));
-            context.drawImage(thumbHR.get(), ColorSpaceDeviceRGB, endPos);
+            context.drawImage(*thumbHL.get(), startPos);
+            context.drawTiledImage(*thumbH.get(), destRect, IntPoint(0, 0), IntSize(thumbH->width(), thumbH->height()), FloatSize(0, 0));
+            context.drawImage(*thumbHR.get(), endPos);
 
         } else {
             context.drawRect(rect);
-            context.fillRect(IntRect(rect.x() + 1, rect.y() + 1, rect.width() - 2, rect.height() - 2), Color::gray, ColorSpaceDeviceRGB);
+            context.fillRect(IntRect(rect.x() + 1, rect.y() + 1, rect.width() - 2, rect.height() - 2), Color::gray);
         }
     } else {
       //RefPtr<WebCore::Image> thumbV = Image::loadPlatformResource("ScrollbarTheme/thumbV");
@@ -213,12 +213,12 @@ void ScrollbarThemeBal::paintThumb(GraphicsContext& context, Scrollbar& scrollba
             IntPoint endPos(rect.x(), rect.maxY() - thumbVD->height());
             IntRect destRect(rect.x(), rect.y() + thumbVU->height(), rect.width(), rect.height() - thumbVU->height() - thumbVD->height());
 
-            context.drawImage(thumbVU.get(), ColorSpaceDeviceRGB, startPos);
-            context.drawTiledImage(thumbV.get(), ColorSpaceDeviceRGB, destRect, IntPoint(0, 0), IntSize(thumbV->width(), thumbV->height()));
-            context.drawImage(thumbVD.get(), ColorSpaceDeviceRGB, endPos);
+            context.drawImage(*thumbVU.get(), startPos);
+            context.drawTiledImage(*thumbV.get(), destRect, FloatPoint(0, 0), FloatSize(thumbV->width(), thumbV->height()), FloatSize(0, 0));
+            context.drawImage(*thumbVD.get(), endPos);
         } else {
             context.drawRect(rect);
-            context.fillRect(IntRect(rect.x() + 1, rect.y() + 1, rect.width() - 2, rect.height() - 2), Color::gray, ColorSpaceDeviceRGB);
+            context.fillRect(IntRect(rect.x() + 1, rect.y() + 1, rect.width() - 2, rect.height() - 2), Color::gray);
         }
     }
     context.restore();
@@ -239,11 +239,6 @@ bool ScrollbarThemeBal::invalidateOnMouseEnterExit()
 
 void ScrollbarThemeBal::themeChanged()
 {
-}
-
-bool ScrollbarThemeBal::shouldCenterOnThumb(Scrollbar&, const PlatformMouseEvent& evt)
-{
-    return evt.shiftKey() && evt.button() == LeftButton;
 }
 
 bool ScrollbarThemeBal::shouldSnapBackToDragOrigin(Scrollbar& scrollbar, const PlatformMouseEvent& evt)
@@ -273,13 +268,13 @@ void ScrollbarThemeBal::paintTrackPiece(GraphicsContext& context, Scrollbar& scr
         if (scrollbar.orientation() == HorizontalScrollbar) {
 	  //RefPtr<WebCore::Image> bgh = Image::loadPlatformResource("ScrollbarTheme/bgh");
             IntRect destRect(rect.x() - 1, rect.y(), rect.width() + 2, rect.height());
-            context.drawTiledImage(bgh.get(), ColorSpaceDeviceRGB, destRect, IntPoint(0, 0), IntSize(bgh->width(), bgh->height()));
+            context.drawTiledImage(*bgh.get(), destRect, FloatPoint(0, 0), FloatSize(bgh->width(), bgh->height()), FloatSize(0,0));
         } else {
             IntRect destRect(rect.x(), rect.y() - 1, rect.width(), rect.height() + 2 );
-			context.drawTiledImage(bg.get(), ColorSpaceDeviceRGB, destRect, IntPoint(0, 0), IntSize(bg->width(), bg->height()));
+			context.drawTiledImage(*bg.get(), destRect, FloatPoint(0, 0), FloatSize(bg->width(), bg->height()), FloatSize(0,0));
         }
     } else {
-		context.fillRect(rect, Color::white, ColorSpaceDeviceRGB);
+		context.fillRect(rect, Color::white);
         if (scrollbar.orientation() == HorizontalScrollbar)
             context.drawLine(IntPoint(rect.x(), (rect.maxY() + rect.y()) / 2), IntPoint(rect.maxX(), (rect.maxY() + rect.y()) / 2));
         else

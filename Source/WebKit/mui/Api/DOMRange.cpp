@@ -52,7 +52,7 @@ DOMNode* DOMRange::startContainer()
 {
     if (!m_range)
         return 0;
-    return DOMNode::createInstance(m_range->startContainer());
+    return DOMNode::createInstance(&m_range->startContainer());
 }
 
 int DOMRange::startOffset()
@@ -66,7 +66,7 @@ DOMNode* DOMRange::endContainer()
 {
     if (!m_range)
         return 0;
-    return DOMNode::createInstance(m_range->endContainer());
+    return DOMNode::createInstance(&m_range->endContainer());
 }
 
 int DOMRange::endOffset()
@@ -80,16 +80,16 @@ bool DOMRange::collapsed()
 {
     if (!m_range)
         return false;
-    ExceptionCode ex;
-    return m_range->collapsed(ex);
+
+    return m_range->collapsed();
 }
 
 DOMNode* DOMRange::commonAncestorContainer()
 {
     if (!m_range)
         return 0;
-    ExceptionCode ex;
-    return DOMNode::createInstance(m_range->commonAncestorContainer(ex));
+
+    return DOMNode::createInstance(m_range->commonAncestorContainer());
 }
 
 void DOMRange::setStart(DOMNode* refNode, int offset)
@@ -144,8 +144,8 @@ void DOMRange::collapse(bool toStart)
 {
     if (!m_range)
         return ;
-    ExceptionCode ex;
-    m_range->collapse(toStart, ex);
+
+    m_range->collapse(toStart);
 }
 
 void DOMRange::selectNode(DOMNode* refNode)
@@ -210,23 +210,23 @@ DOMRange* DOMRange::cloneRange()
 {
     if (!m_range)
         return 0;
-    ExceptionCode ex;
-    return DOMRange::createInstance(m_range->cloneRange(ex).get());
+
+    return DOMRange::createInstance(m_range->cloneRange().ptr());
 }
 
 const char* DOMRange::toString()
 {
     if (!m_range)
         return "";
-    ExceptionCode ex;
-    return m_range->toString(ex).utf8().data();
+
+    return m_range->toString().utf8().data();
 }
 
 void DOMRange::detach()
 {
     if (!m_range)
         return ;
-    ExceptionCode ex;
-    m_range->detach(ex);
+
+    m_range->detach();
 }
 

@@ -470,7 +470,7 @@ void WebEditorClient::textFieldDidEndEditing(Element* element)
 
 void WebEditorClient::textDidChangeInTextField(Element* element)
 {
-    if (HTMLInputElement* inputElement = element->toInputElement())
+    if (HTMLInputElement* inputElement = downcast<HTMLInputElement>(element))
 	{
 		DoMethod(m_webView->viewWindow()->browser, MM_OWBBrowser_Autofill_DidChangeInTextField, inputElement);
 	}
@@ -650,7 +650,7 @@ void WebEditorClient::learnWord(const String& word)
 #if OS(MORPHOS)
 	D(kprintf("learnWord(%s)\n", word.utf8().data()));
 
-	String wordToLearn = word.lower();
+	String wordToLearn = word.convertToLowercaseWithoutLocale();
 	STRPTR cword;
 
 	if(wordToLearn.length() <= 1)
@@ -734,7 +734,7 @@ void WebEditorClient::checkSpellingOfString(const UChar* text, int length, int* 
 		word = String(text, length);
 	}
 
-	word = word.lower();
+	word = word.convertToLowercaseWithoutLocale();
 
 	if(word.length() <= 1)
 		return;
@@ -907,7 +907,7 @@ void WebEditorClient::getGuessesForWord(const String& word, const String& contex
 		isolatedWord = word;
 	}
 
-	isolatedWord = isolatedWord.lower();
+	isolatedWord = isolatedWord.convertToLowercaseWithoutLocale();
 
 	cword = utf8_to_local(isolatedWord.utf8().data());
 

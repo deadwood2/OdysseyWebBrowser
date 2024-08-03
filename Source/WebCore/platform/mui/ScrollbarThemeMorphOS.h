@@ -48,7 +48,6 @@ public:
     virtual IntRect forwardButtonRect(Scrollbar&, ScrollbarPart, bool painting = false) override;
     virtual IntRect trackRect(Scrollbar&, bool painting = false) override;
 
-    virtual bool shouldCenterOnThumb(Scrollbar&, const PlatformMouseEvent&) override;
     virtual bool shouldSnapBackToDragOrigin(Scrollbar&, const PlatformMouseEvent&) override;
 
     virtual void paintTrackBackground(GraphicsContext&, Scrollbar&, const IntRect&) override;

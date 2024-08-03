@@ -80,9 +80,8 @@ void WebInspector::showConsole()
 
 void WebInspector::close()
 {
-    if (m_webView)
-        if (Page* page = m_webView->page())
-            page->inspectorController().close();
+    if (frontendClient())
+        frontendClient()->closeWindow();
 }
 
 void WebInspector::attach()
@@ -144,7 +143,7 @@ bool WebInspector::isJavaScriptProfilingEnabled()
     if (!page)
         return false;
 
-    return page->inspectorController().profilerEnabled();
+    return page->inspectorController().legacyProfilerEnabled();
 }
 
 void WebInspector::setJavaScriptProfilingEnabled(bool enabled)
@@ -156,7 +155,7 @@ void WebInspector::setJavaScriptProfilingEnabled(bool enabled)
     if (!page)
         return ;
 
-    page->inspectorController().setProfilerEnabled(enabled); 
+    page->inspectorController().setLegacyProfilerEnabled(enabled); 
 }
 
 bool WebInspector::isTimelineProfilingEnabled()

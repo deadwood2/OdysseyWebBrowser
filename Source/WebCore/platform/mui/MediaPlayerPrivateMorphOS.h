@@ -149,7 +149,7 @@ namespace WebCore
         void setSize(const IntSize&) override;
         virtual bool didLoadingProgress() const override;
 
-        void paint(GraphicsContext*, const FloatRect&) override;
+        void paint(GraphicsContext&, const FloatRect&) override;
         bool hasSingleSecurityOrigin() const override;
         void setOutputPixelFormat(int pixfmt) override;
         bool supportsFullscreen() const override;
@@ -194,7 +194,7 @@ namespace WebCore
         static void callReadyStateChanged(void *);
         static void callTimeChanged(void *);
 
-        static void getSupportedTypes(HashSet<String>&);
+        static void getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>&);
         static MediaPlayer::SupportsType supportsType(const MediaEngineSupportParameters&);
         static bool isAvailable() {return true;}
 

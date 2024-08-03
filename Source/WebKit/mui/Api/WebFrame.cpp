@@ -523,7 +523,7 @@ int WebFrame::numberOfPages(float pageWidthInPixels, float pageHeightInPixels)
     if (!coreFrame)
         return 0;
 
-    return PrintContext::numberOfPages(coreFrame, FloatSize(pageWidthInPixels, pageHeightInPixels));
+    return PrintContext::numberOfPages(*coreFrame, FloatSize(pageWidthInPixels, pageHeightInPixels));
 }
 
 BalPoint WebFrame::scrollOffset()
@@ -536,7 +536,7 @@ BalPoint WebFrame::scrollOffset()
     if (!view)
         return IntPoint();
 
-    IntPoint p(view->scrollOffset().width(), view->scrollOffset().height());
+    IntPoint p(view->scrollPosition());
     return p;
 }
 
@@ -1335,7 +1335,7 @@ bool WebFrame::stringByEvaluatingJavaScriptInScriptWorld(WebScriptWorld* world, 
         anyWorldGlobalObject = static_cast<JSDOMWindowShell*>(globalObjectObj)->window();
 
     // Get the frame from the global object we've settled on.
-    Frame* frame = anyWorldGlobalObject->impl().frame();
+    Frame* frame = anyWorldGlobalObject->wrapped().frame();
     ASSERT(frame->document());
     JSC::JSValue result = frame->script().executeScriptInWorld(world->world(), string, true).jsValue();
 
@@ -1408,7 +1408,7 @@ void WebFrame::dispatchEvent(const char* name)
         return;
     AtomicString type(name);
     RefPtr<Event> ev = Event::create(type, false, false);
-    coreFrame->document()->dispatchWindowEvent(ev);
+    coreFrame->document()->dispatchWindowEvent(*ev.get());
 }
 
 const char* WebFrame::layerTreeAsText()

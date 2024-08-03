@@ -164,7 +164,7 @@ static const ExtensionMap extensionMap [] = {
 
 String MIMETypeRegistry::getMIMETypeForExtension(const String &ext)
 {
-    String s = ext.lower();
+    String s = ext.convertToLowercaseWithoutLocale();
     const ExtensionMap *e = extensionMap;
     while (e->extension) {
         if (s == e->extension)
@@ -198,7 +198,7 @@ String MIMETypeRegistry::getMIMETypeForExtension(const String &ext)
 Vector<String> MIMETypeRegistry::getExtensionsForMIMEType(const String& type)
 {
     Vector<String> extensions;
-    String s = type.lower();
+    String s = type.convertToLowercaseWithoutLocale();
     const ExtensionMap *e = extensionMap;
     while (e->extension) {
 	if (s == e->mimeType)

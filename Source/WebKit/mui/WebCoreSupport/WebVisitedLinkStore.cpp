@@ -71,7 +71,6 @@ void WebVisitedLinkStore::setShouldTrackVisitedLinks(bool shouldTrackVisitedLink
 void WebVisitedLinkStore::removeAllVisitedLinks()
 {
     WebVisitedLinkStore::singleton().removeVisitedLinkHashes();
-    PageCache::singleton().markPagesForVisitedLinkStyleRecalc();
 }
 
 void WebVisitedLinkStore::addVisitedLink(const String& urlString)
@@ -123,7 +122,6 @@ void WebVisitedLinkStore::addVisitedLinkHash(LinkHash linkHash)
     m_visitedLinkHashes.add(linkHash);
 
     invalidateStylesForLink(linkHash);
-    PageCache::singleton().markPagesForVisitedLinkStyleRecalc();
 }
 
 void WebVisitedLinkStore::removeVisitedLinkHashes()

@@ -83,7 +83,8 @@
 #include <PluginView.h>
 #include <ResourceHandle.h>
 #include <ResourceHandleInternal.h>
-#include <ResourceLoader.h> 
+#include <ResourceLoader.h>
+#include <SubresourceLoader.h>
 #include <ScriptController.h>
 #include <Settings.h>
 #include <APICast.h>
@@ -601,7 +602,7 @@ Ref<DocumentLoader> WebFrameLoaderClient::createDocumentLoader(const ResourceReq
 
     WebDataSource* dataSource = WebDataSource::createInstance(loader.ptr());
     loader->setDataSource(dataSource);
-    return WTF::move(loader);
+    return WTFMove(loader);
 }
 
 void WebFrameLoaderClient::updateCachedDocumentLoader(WebCore::DocumentLoader&)
@@ -833,7 +834,7 @@ bool WebFrameLoaderClient::canHandleRequest(const ResourceRequest& request) cons
 
 bool WebFrameLoaderClient::canShowMIMEType(const String& type) const
 {
-	String ltype = type.lower();
+	String ltype = type.convertToLowercaseWithoutLocale();
 	bool show =	ltype.isEmpty() ||
 	  MIMETypeRegistry::isSupportedImageMIMEType(ltype) || 
 	  MIMETypeRegistry::isSupportedNonImageMIMEType(ltype) ||
@@ -903,39 +904,43 @@ void WebFrameLoaderClient::saveViewStateToItem(HistoryItem*)
 // FIXME: We need to have better names for the 7 next *Error methods and have a localized description for each.
 ResourceError WebFrameLoaderClient::cancelledError(const ResourceRequest& request)
 {
-    return ResourceError(String(WebURLErrorDomain), WebURLErrorCancelled, request.url().string(), String());
+    return ResourceError(String(WebURLErrorDomain), WebURLErrorCancelled, request.url(), String());
 }
 
 ResourceError WebFrameLoaderClient::blockedError(const ResourceRequest& request)
 {
-    return ResourceError(String(WebKitErrorDomain), WebKitErrorCannotUseRestrictedPort, request.url().string(), String());
+    return ResourceError(String(WebKitErrorDomain), WebKitErrorCannotUseRestrictedPort, request.url(), String());
 }
 
 ResourceError WebFrameLoaderClient::cannotShowURLError(const ResourceRequest& request)
 {
-    return ResourceError(String(WebKitCannotShowURL), WebURLErrorBadURL, request.url().string(), String());
+    return ResourceError(String(WebKitCannotShowURL), WebURLErrorBadURL, request.url(), String());
 }
 
 ResourceError WebFrameLoaderClient::interruptedForPolicyChangeError(const ResourceRequest& request)
 {
-    return ResourceError(String(WebKitErrorDomain), WebKitErrorFrameLoadInterruptedByPolicyChange, request.url().string(), String());
+    return ResourceError(String(WebKitErrorDomain), WebKitErrorFrameLoadInterruptedByPolicyChange, request.url(), String());
 }
 
 ResourceError WebFrameLoaderClient::cannotShowMIMETypeError(const ResourceResponse& response)
 {
-    return ResourceError(String(WebKitErrorMIMETypeKey), WebKitErrorCannotShowMIMEType, response.url().string(), String());
+    return ResourceError(String(WebKitErrorMIMETypeKey), WebKitErrorCannotShowMIMEType, response.url(), String());
 }
 
 ResourceError WebFrameLoaderClient::fileDoesNotExistError(const ResourceResponse& response)
 {
-    return ResourceError(String(WebKitFileDoesNotExist), WebURLErrorFileDoesNotExist, response.url().string(), String());
+    return ResourceError(String(WebKitFileDoesNotExist), WebURLErrorFileDoesNotExist, response.url(), String());
 }
 
 ResourceError WebFrameLoaderClient::pluginWillHandleLoadError(const ResourceResponse& response)
 {
-    return ResourceError(String(WebKitErrorDomain), WebKitErrorPlugInWillHandleLoad, response.url().string(), String());
+    return ResourceError(String(WebKitErrorDomain), WebKitErrorPlugInWillHandleLoad, response.url(), String());
 }
 
+ResourceError WebFrameLoaderClient::blockedByContentBlockerError(const WebCore::ResourceRequest& request)
+{
+    return ResourceError(String(WebKitErrorDomain), WebKitErrorBlockedByContentBlocker, request.url(), String());
+}
 
 bool WebFrameLoaderClient::shouldFallBack(const ResourceError& error)
 {
@@ -1033,7 +1038,7 @@ void WebFrameLoaderClient::dispatchUnableToImplementPolicy(const ResourceError& 
     delete webError;
 }
 
-void WebFrameLoaderClient::convertMainResourceLoadToDownload(DocumentLoader* documentLoader, const ResourceRequest& request, const ResourceResponse& response)
+void WebFrameLoaderClient::convertMainResourceLoadToDownload(DocumentLoader* documentLoader, WebCore::SessionID sessionID,const ResourceRequest& request, const ResourceResponse& response)
 {
     SharedPtr<WebDownloadDelegate> downloadDelegate;
     WebView* webView = m_webFrame->webView();
@@ -1058,6 +1063,11 @@ void WebFrameLoaderClient::dispatchDidFailProvisionalLoad(const ResourceError& e
         WebError* err = WebError::createInstance(error);
         webFrameLoadDelegate->didFailProvisionalLoad(m_webFrame, err);
     }
+}
+
+void WebFrameLoaderClient::dispatchDidDispatchOnloadEvents()
+{
+
 }
 
 void WebFrameLoaderClient::dispatchDidFailLoad(const ResourceError& error)
@@ -1085,7 +1095,7 @@ PassRefPtr<Widget> WebFrameLoaderClient::createJavaAppletWidget(const IntSize& p
     return pluginView;
 }
 
-ObjectContentType WebFrameLoaderClient::objectContentType(const URL& url, const String& mimeTypeIn, bool shouldPreferPlugInsForImages)
+ObjectContentType WebFrameLoaderClient::objectContentType(const URL& url, const String& mimeTypeIn)
 {
     String mimeType = mimeTypeIn;
 
@@ -1103,7 +1113,7 @@ ObjectContentType WebFrameLoaderClient::objectContentType(const URL& url, const 
     bool plugInSupportsMIMEType = PluginDatabase::installedPlugins()->isMIMETypeRegistered(mimeType);
 
     if (MIMETypeRegistry::isSupportedImageMIMEType(mimeType))
-        return shouldPreferPlugInsForImages && plugInSupportsMIMEType ? WebCore::ObjectContentNetscapePlugin : WebCore::ObjectContentImage;
+        return plugInSupportsMIMEType ? WebCore::ObjectContentNetscapePlugin : WebCore::ObjectContentImage;
 
     if (plugInSupportsMIMEType)
         return WebCore::ObjectContentNetscapePlugin;

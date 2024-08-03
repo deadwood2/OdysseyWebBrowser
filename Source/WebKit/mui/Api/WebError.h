@@ -52,6 +52,7 @@ enum {
     WebKitErrorCannotShowURL =                                  101,
     WebKitErrorFrameLoadInterruptedByPolicyChange =             102,
     WebKitErrorCannotUseRestrictedPort =                        103,
+    WebKitErrorBlockedByContentBlocker =                        104,
 };
 
 enum {

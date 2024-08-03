@@ -81,7 +81,7 @@ void Widget::hide()
 {
 }
 
-void Widget::paint(GraphicsContext* , const IntRect &)
+void Widget::paint(GraphicsContext& , const IntRect &)
 {
 }
 

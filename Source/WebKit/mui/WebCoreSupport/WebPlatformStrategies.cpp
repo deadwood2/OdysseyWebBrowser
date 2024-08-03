@@ -33,6 +33,7 @@
 #include "PlatformCookieJar.h"
 #include "PluginDatabase.h"
 #include "PluginPackage.h"
+#include "SubresourceLoader.h"
 
 using namespace WebCore;
 
@@ -65,6 +66,11 @@ PasteboardStrategy* WebPlatformStrategies::createPasteboardStrategy()
 PluginStrategy* WebPlatformStrategies::createPluginStrategy()
 {
     return this;
+}
+
+BlobRegistry* WebPlatformStrategies::createBlobRegistry()
+{
+    return nullptr;
 }
 
 // CookiesStrategy
@@ -142,3 +148,37 @@ void WebPlatformStrategies::getWebVisiblePluginInfo(const Page* page, Vector<Plu
 {
     getPluginInfo(page, outPlugins);
 }
+
+RefPtr<SubresourceLoader> WebPlatformStrategies::loadResource(Frame*, CachedResource*, const ResourceRequest&, const ResourceLoaderOptions&)
+{
+    return nullptr;
+}
+
+void  WebPlatformStrategies::loadResourceSynchronously(NetworkingContext*, unsigned long identifier, const ResourceRequest&, StoredCredentials, ClientCredentialPolicy, ResourceError&, ResourceResponse&, Vector<char>& data)
+{
+}
+
+void  WebPlatformStrategies::remove(ResourceLoader*)
+{
+}
+void  WebPlatformStrategies::setDefersLoading(ResourceLoader*, bool)
+{
+}
+void  WebPlatformStrategies::crossOriginRedirectReceived(ResourceLoader*, const URL& redirectURL)
+{
+}
+
+void  WebPlatformStrategies::servePendingRequests(ResourceLoadPriority minimumPriority)
+{
+}
+void  WebPlatformStrategies::suspendPendingRequests()
+{
+}
+void  WebPlatformStrategies::resumePendingRequests()
+{
+}
+
+void  WebPlatformStrategies::createPingHandle(NetworkingContext*, ResourceRequest&, bool shouldUseCredentialStorage)
+{
+}
+

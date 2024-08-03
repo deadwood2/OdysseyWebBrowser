@@ -478,7 +478,7 @@ DEFMMETHOD(Import)
 	char *val;
 	APTR n, m;
 
-	HashSet<String>* supportedCategories[] =
+	HashSet<String, ASCIICaseInsensitiveHash>* supportedCategories[] =
 	{
 		&(MIMETypeRegistry::getSupportedImageMIMETypes()),
 		&(MIMETypeRegistry::getSupportedNonImageMIMETypes()),
@@ -486,7 +486,7 @@ DEFMMETHOD(Import)
 		NULL,
 	};
 
-	HashSet<String>**supportedCategoriesIterator = supportedCategories;
+	HashSet<String, ASCIICaseInsensitiveHash>**supportedCategoriesIterator = supportedCategories;
 
 	DoMethod(data->lv_mimetypes, MUIM_List_Clear);
 
@@ -500,9 +500,9 @@ DEFMMETHOD(Import)
 	/* Fill builtin types */
 	while(*supportedCategoriesIterator)
 	{
-		HashSet<String> *supportedMimeTypes = *supportedCategoriesIterator;
+		HashSet<String, ASCIICaseInsensitiveHash> *supportedMimeTypes = *supportedCategoriesIterator;
 
-		for(HashSet<String>::iterator it = supportedMimeTypes->begin(); it != supportedMimeTypes->end(); ++it)
+		for(HashSet<String, ASCIICaseInsensitiveHash>::iterator it = supportedMimeTypes->begin(); it != supportedMimeTypes->end(); ++it)
 		{
 			String mimetype = *it;
 			Vector<String> extensions = MIMETypeRegistry::getExtensionsForMIMEType(mimetype);

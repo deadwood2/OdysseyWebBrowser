@@ -104,6 +104,11 @@ namespace WTF
 }
 #endif
 
+namespace WebCore
+{
+    void fireTimerIfNeeded();
+}
+
 using namespace WebCore;
 
 static const bool renderBenchmark = getenv("OWB_BENCHMARK");
@@ -438,9 +443,9 @@ void MorphOSWebFrameDelegate::didFailLoad(WebFrame* webFrame, WebError* error)
 										   error->code(),
 										   error->resourceError().localizedDescription().utf8().data());
 
-				String content = String::format(fileContent, error->resourceError().failingURL().utf8().data(), message.utf8().data());
+				String content = String::format(fileContent, error->resourceError().failingURL().string().utf8().data(), message.utf8().data());
 
-				webFrame->loadHTMLString(content.utf8().data(), error->resourceError().failingURL().utf8().data());
+				webFrame->loadHTMLString(content.utf8().data(), error->resourceError().failingURL().string().utf8().data());
 
 				delete [] fileContent;
 			}
@@ -701,7 +706,7 @@ WebViewPrivate::WebViewPrivate(WebView *webView)
 
 void WebViewPrivate::fireWebKitTimerEvents()
 {
-    fireTimerIfNeeded();
+    WebCore::fireTimerIfNeeded();
 }
 
 
@@ -753,7 +758,7 @@ BalRectangle WebViewPrivate::onExpose(BalEventExpose event)
 
 			ctx.save();
 			ctx.clip(rect);
-			frame->view()->paint(&ctx, rect);
+			frame->view()->paint(ctx, rect);
 			ctx.restore();
 
 			if(renderBenchmark)	{ paint = currentTime() - start; start = currentTime(); kprintf("Painting inspector [%d %d %d %d]\n", rect.x(), rect.y(), rect.width(), rect.height()); } //
@@ -778,7 +783,7 @@ BalRectangle WebViewPrivate::onExpose(BalEventExpose event)
 				if(renderBenchmark) { kprintf("Painting [%d %d %d %d]\n", dirtyRegions[i].x(), dirtyRegions[i].y(), dirtyRegions[i].width(), dirtyRegions[i].height()); }
 				ctx.save();
 				ctx.clip(dirtyRegions[i]);
-				frame->view()->paint(&ctx, dirtyRegions[i]);
+				frame->view()->paint(ctx, dirtyRegions[i]);
 				ctx.restore();
 /*
 				ctx.save();
@@ -850,7 +855,7 @@ bool WebViewPrivate::screenshot(int &requested_width, int& requested_height, Vec
 					
 					ctx.save();
 					ctx.scale(FloatSize(scale_ratio, scale_ratio));
-					frame->view()->paintContents(&ctx, rect);
+					frame->view()->paintContents(ctx, rect);
 					ctx.restore();
 
 					cairo_surface_write_to_png_stream(surface, writeFunction, imageData);
@@ -893,7 +898,7 @@ bool WebViewPrivate::screenshot(String& path)
 					frame->view()->updateLayoutAndStyleIfNeededRecursive();
 					
 					ctx.save();
-					frame->view()->paintContents(&ctx, rect);
+					frame->view()->paintContents(ctx, rect);
 					ctx.restore();					
 				    
 					cairo_surface_write_to_png(surface, path.utf8().data());

@@ -6,7 +6,6 @@
 #include <utility/date.h>
 #include <clib/debug_protos.h>
 
-#include "WebKitVersion.h"
 #include "classes.h"
 #include "methodstack.h"
 #include "mui.h"

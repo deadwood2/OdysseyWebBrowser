@@ -61,7 +61,7 @@ WebError* WebError::createInstance()
 
 void WebError::init(const char* domain, int code, const char* url)
 {
-    m_error = new ResourceError(domain, code, url, String());
+    m_error = new ResourceError(domain, code, URL(ParsedURLString, url), String());
 }
   
 int WebError::code()
@@ -97,7 +97,7 @@ HTTPHeaderPropertyBag* WebError::userInfo()
 
 const char* WebError::failingURL()
 {
-    return strdup(m_error->failingURL().utf8().data());
+    return strdup(m_error->failingURL().string().utf8().data());
 }
 
 bool WebError::isPolicyChangeError()

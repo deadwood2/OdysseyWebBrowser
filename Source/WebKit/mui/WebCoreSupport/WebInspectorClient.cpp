@@ -82,7 +82,7 @@ void WebInspectorClient::inspectorDestroyed()
     delete this;
 }
 
-WebCore::InspectorFrontendChannel* WebInspectorClient::openInspectorFrontend(InspectorController* inspectorController)
+Inspector::FrontendChannel* WebInspectorClient::openInspectorFrontend(InspectorController* inspectorController)
 {
     const char* inspectorURL = getenv("OWB_INSPECTOR_URL");
     if (!inspectorURL)
@@ -287,7 +287,7 @@ void WebInspectorFrontendClient::destroyInspectorView(bool notifyInspectorContro
 		D(kprintf("disconnectFrontend\n"));
 		if(m_inspectedWebView)
 		{
-			core(m_inspectedWebView)->inspectorController().disconnectFrontend(Inspector::DisconnectReason::InspectorDestroyed);
+			core(m_inspectedWebView)->inspectorController().disconnectFrontend(m_inspectorClient);
 		}
 		if(m_inspectorClient)
 		{
@@ -295,3 +295,14 @@ void WebInspectorFrontendClient::destroyInspectorView(bool notifyInspectorContro
 		}
 	}
 }
+
+Inspector::FrontendChannel* WebInspectorClient::openLocalFrontend(WebCore::InspectorController*)
+{
+    return nullptr;
+}
+
+void WebInspectorClient::inspectedPageDestroyed()
+{
+
+}
+

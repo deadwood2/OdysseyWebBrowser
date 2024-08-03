@@ -24,6 +24,7 @@
 #include "HTMLCollection.h"
 #include "HTMLFormElement.h"
 #include "HTMLInputElement.h"
+#include "HTMLFormControlsCollection.h"
 
 #include "gui.h"
 #include <clib/debug_protos.h>
@@ -68,7 +69,7 @@ void AutofillManager::saveTextFields(HTMLFormElement* form)
     RefPtr<HTMLCollection> elements = form->elements();
     size_t itemCount = elements->length();
     for (size_t i = 0; i < itemCount; ++i) {
-        HTMLInputElement* element = form->item(i)->toInputElement();
+        HTMLInputElement* element = downcast<HTMLInputElement>(form->item(i));
         if (!isAutofillable(element))
             continue;
         autofillBackingStore().add(element->getAttribute(HTMLNames::nameAttr).string(), element->value());

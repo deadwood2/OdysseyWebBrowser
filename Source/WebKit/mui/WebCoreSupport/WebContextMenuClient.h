@@ -29,7 +29,6 @@
 #include <ContextMenuClient.h>
 #include <wtf/Forward.h>
 #include <wtf/text/WTFString.h>
-#include "PlatformMenuDescription.h"
 
 class WebView;
 
@@ -40,7 +39,6 @@ public:
 
     virtual void contextMenuDestroyed();
 
-    virtual WebCore::PlatformMenuDescription getCustomMenuFromDefaultItems(WebCore::ContextMenu*);
     virtual void contextMenuItemSelected(WebCore::ContextMenuItem*, const WebCore::ContextMenu*);
 
     virtual void downloadURL(const WebCore::URL& url);

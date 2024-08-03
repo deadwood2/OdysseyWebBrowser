@@ -1834,7 +1834,7 @@ static int CALL_CONVT read_callback(void *sender, char *dst, int size)
 			if(shouldSendRequest && !requestSent)
 			{
 				D(kprintf("read_callback(): send new request\n"));
-				WTF::callOnMainThread(MediaPlayerPrivate::fetchRequest, ctx);
+				WTF::callOnMainThread([ctx] { MediaPlayerPrivate::fetchRequest(ctx); });
 				requestSent = true;
 			}
 
@@ -3004,7 +3004,7 @@ void MediaPlayerPrivate::playerLoop()
 					}
 
 					D(kprintf("[MediaPlayer Thread] Seek, calling callTimeChanged\n"));
-					WTF::callOnMainThread(MediaPlayerPrivate::callTimeChanged, m_player);
+					WTF::callOnMainThread([this] { MediaPlayerPrivate::callTimeChanged(m_player); });
 					
 					m_isSeeking = false;
 
@@ -3480,8 +3480,8 @@ bool MediaPlayerPrivate::seeking() const
 // Returns the size of the video
 FloatSize MediaPlayerPrivate::naturalSize() const
 {
-    if (!hasVideo())
-        return FloatSize();
+	if (!hasVideo())
+		return FloatSize();
 
 	int width = m_ctx->width, height = m_ctx->height;
 	/*
@@ -3605,8 +3605,8 @@ void MediaPlayerPrivate::cancelLoad()
 {
 	D(kprintf("[MediaPlayer] cancelLoad()\n"));
 
-    if (m_networkState < MediaPlayer::Loading || m_networkState == MediaPlayer::Loaded)
-        return;
+	if (m_networkState < MediaPlayer::Loading || m_networkState == MediaPlayer::Loaded)
+		return;
 
 	/* Cancel ResourceHandle */
 	cancelFetch();
@@ -3635,21 +3635,21 @@ void MediaPlayerPrivate::callTimeChanged(void *c)
 
 void MediaPlayerPrivate::updateStates(MediaPlayer::NetworkState networkState, MediaPlayer::ReadyState readyState)
 {
-    if (m_errorOccured || !m_ctx->running)
-        return;
+	if (m_errorOccured || !m_ctx->running)
+		return;
 
 	if(m_player)
 	{  
 		if(networkState != m_networkState)
 		{
 			m_networkState = networkState;
-			WTF::callOnMainThread(MediaPlayerPrivate::callNetworkStateChanged, m_player);
+			WTF::callOnMainThread([this] { MediaPlayerPrivate::callNetworkStateChanged(m_player); });
 		}
 
 		if(readyState != m_readyState)
 		{
 			m_readyState = readyState;
-			WTF::callOnMainThread(MediaPlayerPrivate::callReadyStateChanged, m_player);
+			WTF::callOnMainThread([this] { MediaPlayerPrivate::callReadyStateChanged(m_player); });
 		}
 	}
 }
@@ -3661,7 +3661,7 @@ void MediaPlayerPrivate::didEnd()
 
 	updateStates(m_networkState, MediaPlayer::HaveEnoughData);
 
-	WTF::callOnMainThread(MediaPlayerPrivate::callTimeChanged, m_player);
+	WTF::callOnMainThread([this] { MediaPlayerPrivate::callTimeChanged(m_player); });
 }
 
 void MediaPlayerPrivate::setSize(const IntSize& size)
@@ -3687,13 +3687,13 @@ void MediaPlayerPrivate::repaint()
 	}
 }
 
-void MediaPlayerPrivate::paint(GraphicsContext* context, const FloatRect& rect)
+void MediaPlayerPrivate::paint(GraphicsContext& context, const FloatRect& rect)
 {
-    if (context->paintingDisabled())
-        return;
+	if (context.paintingDisabled())
+		return;
 
-    if (!m_visible)
-        return;
+	if (!m_visible)
+		return;
 
 	Object *browser = NULL;
 	FrameView* frameView = player()->frameView();
@@ -3723,7 +3723,7 @@ void MediaPlayerPrivate::paint(GraphicsContext* context, const FloatRect& rect)
 
 	if(canDisplayFrame)
 	{
-		cairo_t* cr = context->platformContext()->cr();
+		cairo_t* cr = context.platformContext()->cr();
 	    int width = m_ctx->width, height = m_ctx->height;
 		int stride = 0;
 	    double doublePixelAspectRatioNumerator = 0;
@@ -3836,7 +3836,7 @@ void MediaPlayerPrivate::paint(GraphicsContext* context, const FloatRect& rect)
 	}
 	else
 	{
-		cairo_t* cr = context->platformContext()->cr();
+		cairo_t* cr = context.platformContext()->cr();
 
 		cairo_save(cr);
 		cairo_set_source_rgb(cr, 0, 0, 0);
@@ -3851,7 +3851,7 @@ void MediaPlayerPrivate::paint(GraphicsContext* context, const FloatRect& rect)
 	D(kprintf("[MediaPlayer] Paint %f ms\n", (WTF::currentTime() - startBenchmark)*1000));
 }
 
-void MediaPlayerPrivate::getSupportedTypes(HashSet<String>& types)
+void MediaPlayerPrivate::getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>& types)
 {
 	types.add(String("text/html"));
 
@@ -3904,7 +3904,7 @@ void MediaPlayerPrivate::getSupportedTypes(HashSet<String>& types)
 
 MediaPlayer::SupportsType MediaPlayerPrivate::supportsType(const MediaEngineSupportParameters& parameters)
 {
-    HashSet<String> types;
+    HashSet<String, ASCIICaseInsensitiveHash> types;
 
     if (parameters.type.isNull() || parameters.type.isEmpty())
         return MediaPlayer::IsNotSupported;

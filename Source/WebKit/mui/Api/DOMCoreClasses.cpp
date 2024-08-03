@@ -39,8 +39,10 @@
 #include <Document.h>
 #include <Element.h>
 #include <Font.h>
+#include <HTMLCollection.h>
 #include <HTMLFormElement.h>
 #include <HTMLInputElement.h>
+#include <HTMLCollection.h>
 #include <HTMLNames.h>
 #include <HTMLOptionElement.h>
 #include <HTMLSelectElement.h>
@@ -353,7 +355,7 @@ DOMElement* DOMDocument::createElement(const char* tagName)
         return 0;
 
     ExceptionCode ec;
-    return DOMElement::createInstance(m_document->createElement(tagName, ec).get());
+    return DOMElement::createInstance(m_document->createElementForBindings(tagName, ec).get());
 }
 
 /*DOMDocumentFragment* DOMDocument::createDocumentFragment()
@@ -395,8 +397,13 @@ DOMNodeList* DOMDocument::getElementsByTagName(const char* tagName)
 {
     if (!m_document)
         return 0;
+    
+    String tagNameString(tagName);
+    RefPtr<WebCore::NodeList> elements;
+    if (!tagNameString.isNull())
+        elements = m_document->getElementsByTagName(tagNameString);
 
-    return DOMNodeList::createInstance(m_document->getElementsByTagName(tagName).get());
+    return DOMNodeList::createInstance(elements.get());
 }
 
 DOMNode* DOMDocument::importNode(DOMNode* /*importedNode*/, bool /*deep*/)
@@ -419,7 +426,12 @@ DOMNodeList* DOMDocument::getElementsByTagNameNS(const char* namespaceURI, const
     if (!m_document)
         return 0;
 
-    return  DOMNodeList::createInstance(m_document->getElementsByTagNameNS(namespaceURI, localName).get());
+    String namespaceURIString(namespaceURI);
+    String localNameString(localName);
+    RefPtr<WebCore::NodeList> elements;
+    if (!localNameString.isNull())
+        elements = m_document->getElementsByTagNameNS(namespaceURIString, localNameString);
+    return DOMNodeList::createInstance(elements.get());
 }
 
 DOMElement* DOMDocument::getElementById(const char* elementId)
@@ -649,7 +661,7 @@ WebFontDescription* DOMElement::font()
     if (!renderer)
         return 0;
 
-    FontDescription fontDescription = renderer->style().fontCascade().fontDescription();
+    auto fontDescription = renderer->style().fontCascade().fontDescription();
     AtomicString family = fontDescription.firstFamily();
     
     WebFontDescription *webFontDescription = new WebFontDescription();
@@ -677,7 +689,7 @@ DOMCSSStyleDeclaration* DOMElement::style()
     if (!m_element)
         return 0;
 
-    WebCore::CSSStyleDeclaration* style = m_element->style();
+    WebCore::CSSStyleDeclaration* style = m_element->cssomStyle();
     if (!style)
         return 0;
 

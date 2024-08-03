@@ -85,8 +85,7 @@
 #include "WebPlatformStrategies.h"
 #include "WindowFeatures.h"
 #include <runtime/InitializeThreading.h>
-#include "JSDOMWindow.h"
-#include "JSDOMWindowBase.h"
+#include <runtime/Options.h>
 
 /* Posix */
 #include <unistd.h>
@@ -2397,7 +2396,7 @@ void prefs_update(Object *obj, struct Data *data)
     }
 
     /* Force full collection */
-    JSC::Options::alwaysDoFullCollection() = true;
+    JSC::Options::useGenerationalGC() = true;
 }
 
 DEFSMETHOD(OWBApp_PrefsLoad)
@@ -2956,7 +2955,7 @@ DEFSMETHOD(OWBApp_RequestPolicyForMimeType)
 		struct mimetypenode *mn = (struct mimetypenode *) n;
 
 		/* Exact match first, family match then */
-		if(equalIgnoringCase(mimetype, mn->mimetype))
+		if(equalIgnoringASCIICase(mimetype, mn->mimetype))
 		{
 			matching_mn = mn;
 			break;
@@ -2982,7 +2981,7 @@ DEFSMETHOD(OWBApp_RequestPolicyForMimeType)
 				struct mimetypenode *mn = (struct mimetypenode *) n;
 
 				/* Exact match or family match */
-				if(equalIgnoringCase(family, mn->mimetype))
+				if(equalIgnoringASCIICase(family, mn->mimetype))
 				{
 					matching_mn = mn;
 					break;
@@ -2994,9 +2993,9 @@ DEFSMETHOD(OWBApp_RequestPolicyForMimeType)
 	//kprintf("2 matching_mn %p <%s>\n", matching_mn, matching_mn?matching_mn->mimetype:"");
 
 	/* Extension check in text/plain case, to handle bad text/html mimetype responses */
-	if((matching_mn && (equalIgnoringCase(String(matching_mn->mimetype), "text/html") ||
-						equalIgnoringCase(String(matching_mn->mimetype), "text/plain") ||
-						equalIgnoringCase(String(matching_mn->mimetype), "application/octet-stream")
+	if((matching_mn && (equalIgnoringASCIICase(String(matching_mn->mimetype), "text/html") ||
+						equalIgnoringASCIICase(String(matching_mn->mimetype), "text/plain") ||
+						equalIgnoringASCIICase(String(matching_mn->mimetype), "application/octet-stream")
 					   )
 	   ) ||
 	   url.protocolIs("ftp") ||
@@ -3024,7 +3023,7 @@ DEFSMETHOD(OWBApp_RequestPolicyForMimeType)
 				{
 					//kprintf("checking extension %s (mimetype %s)\n", listExtensions[i].utf8().data(), mn->mimetype);
 
-					if(equalIgnoringCase(listExtensions[i], extension))
+					if(equalIgnoringASCIICase(listExtensions[i], extension))
 					{
 						//kprintf("found !\n");
 						matching_mn = mn;
