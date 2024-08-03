@@ -48,6 +48,7 @@ IPTR getv(APTR obj, ULONG attr);
 
 namespace WebCore {
 
+#if 0
 // Extract the ActionType from the menu item
 ContextMenuItem::ContextMenuItem(BalMenuItem* item)
     : m_platformDescription()
@@ -199,5 +200,6 @@ void ContextMenuItem::setEnabled(bool shouldEnable)
 {
     m_platformDescription.enabled = shouldEnable;
 }
+#endif
 
 }

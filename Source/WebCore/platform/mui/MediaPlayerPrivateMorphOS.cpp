@@ -94,10 +94,12 @@ struct Library *ffmpegSocketBase = NULL; // Not used, but defined in my ffmpeg b
 }
 
 /* Custom extensions to allow returning an id for the jobs sent to main task, allowing to cancel them later */
+#if 0
 namespace WTF {
 extern long long callOnMainThreadFab(MainThreadFunction*, void* context);
 extern void removeFromMainThreadFab(long long id);
 }
+#endif
 
 /********************************************************************************/
 
@@ -2511,11 +2513,17 @@ void MediaPlayerPrivate::videoDecoder()
 				D(kprintf("[Video Thread] [%f] Timecode: %f. Decoding took %f. Waiting for frame schedule %f\n", WTF::currentTime(), m_ctx->video->timecode, decodeTime, delay));
 
 				// Painting must be done in main thread context
+asm("int3");
+#if 0
 				long long jobid = WTF::callOnMainThreadFab(playerPaint, m_ctx);
+#endif
 
 				// Keep track of pending job so that they can be cancelled later
 				m_lock.lock();
+asm("int3");
+#if 0
 				m_pendingPaintQueue.append(jobid);
+#endif
 				m_lock.unlock();
 
 				if(delay > 0)
@@ -3301,9 +3309,12 @@ MediaPlayerPrivate::~MediaPlayerPrivate()
 {
 	D(kprintf("[MediaPlayer] ~MediaPlayerPrivate()\n"));
 
+asm("int3");
+#if 0
 	WTF::cancelCallOnMainThread(MediaPlayerPrivate::callNetworkStateChanged, m_player);
 	WTF::cancelCallOnMainThread(MediaPlayerPrivate::callReadyStateChanged, m_player);
 	WTF::cancelCallOnMainThread(MediaPlayerPrivate::callTimeChanged, m_player);
+#endif
 
 	m_player = 0; // Any further reference to m_player might result in a crash since a few webkit versions
 
@@ -3325,7 +3336,10 @@ MediaPlayerPrivate::~MediaPlayerPrivate()
 	for (Vector<long long>::const_iterator it = m_pendingPaintQueue.begin(); it != end; ++it)
 	{
 		 D(kprintf("."));
+asm("int3");
+#if 0
 		 WTF::removeFromMainThreadFab(*it);
+#endif
 	}
 	D(kprintf("\n"));
 

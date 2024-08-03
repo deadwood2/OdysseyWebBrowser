@@ -50,6 +50,7 @@ namespace WebCore {
 // TODO: ref-counting correctness checking.
 // See http://bugs.webkit.org/show_bug.cgi?id=16115
 
+#if 0
 ContextMenu::ContextMenu()
 {
 	m_platformDescription = (void *) NewObject(getmenuclass(), NULL, MUIA_Menu_Title, strdup(GSI(MSG_CONTEXTMENU_TITLE)), End;
@@ -106,5 +107,5 @@ Vector<ContextMenuItem> contextMenuItemVector(const PlatformMenuDescription menu
     Vector<ContextMenuItem> list;
     return list;
 }
-
+#endif
 }

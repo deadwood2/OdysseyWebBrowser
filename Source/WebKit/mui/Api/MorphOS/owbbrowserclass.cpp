@@ -2791,10 +2791,12 @@ DEFMMETHOD(ContextMenuBuild)
     ContextMenu* coreMenu = page->contextMenuController().contextMenu();
     if (!coreMenu)
 		return 0;
-
+asm("int3");
+#if 0
 	data->contextmenu = (Object *) MenustripObject,
 									Child, (Object *) coreMenu->platformDescription(),
 								    End;
+#endif
 
 	data->menucontroller = &page->contextMenuController();
 
@@ -2807,8 +2809,11 @@ DEFMMETHOD(ContextMenuChoice)
 
 	if (msg->item && data->menucontroller)
 	{
+asm("int3");
+#if 0
 		ContextMenuItem contextItem(msg->item);
 		data->menucontroller->contextMenuItemSelected(&contextItem);
+#endif
 	}
 
 	return 0;
