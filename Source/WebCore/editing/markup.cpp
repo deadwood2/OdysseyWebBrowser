@@ -44,9 +44,11 @@
 #include "File.h"
 #include "Frame.h"
 #include "HTMLAttachmentElement.h"
+#include "HTMLBRElement.h"
 #include "HTMLBodyElement.h"
 #include "HTMLDivElement.h"
-#include "HTMLElement.h"
+#include "HTMLHeadElement.h"
+#include "HTMLHtmlElement.h"
 #include "HTMLNames.h"
 #include "HTMLTableElement.h"
 #include "HTMLTextAreaElement.h"
@@ -79,7 +81,7 @@ public:
     {
     }
 
-    AttributeChange(PassRefPtr<Element> element, const QualifiedName& name, const String& value)
+    AttributeChange(Element* element, const QualifiedName& name, const String& value)
         : m_element(element), m_name(name), m_value(value)
     {
     }
@@ -138,10 +140,10 @@ private:
     String stringValueForRange(const Node&, const Range*);
 
     void appendElement(StringBuilder& out, const Element&, bool addDisplayInline, RangeFullySelectsNode);
-    virtual void appendCustomAttributes(StringBuilder&, const Element&, Namespaces*) override;
+    void appendCustomAttributes(StringBuilder&, const Element&, Namespaces*) override;
 
-    virtual void appendText(StringBuilder& out, const Text&) override;
-    virtual void appendElement(StringBuilder& out, const Element& element, Namespaces*) override
+    void appendText(StringBuilder& out, const Text&) override;
+    void appendElement(StringBuilder& out, const Element& element, Namespaces*) override
     {
         appendElement(out, element, false, DoesFullySelectNode);
     }
@@ -402,9 +404,10 @@ Node* StyledMarkupAccumulator::traverseNodesForSerialization(Node* startNode, No
         next = NodeTraversal::next(*n);
         bool openedTag = false;
 
-        if (isBlock(n) && canHaveChildrenForEditing(n) && next == pastEnd)
+        if (isBlock(n) && canHaveChildrenForEditing(*n) && next == pastEnd) {
             // Don't write out empty block containers that aren't fully selected.
             continue;
+        }
 
         if (!n->renderer() && !enclosingElementWithTag(firstPositionInOrBeforeNode(n), selectTag)) {
             next = NodeTraversal::nextSkippingChildren(*n);
@@ -466,7 +469,7 @@ Node* StyledMarkupAccumulator::traverseNodesForSerialization(Node* startNode, No
 static Node* ancestorToRetainStructureAndAppearanceForBlock(Node* commonAncestorBlock)
 {
     if (!commonAncestorBlock)
-        return 0;
+        return nullptr;
 
     if (commonAncestorBlock->hasTagName(tbodyTag) || commonAncestorBlock->hasTagName(trTag)) {
         ContainerNode* table = commonAncestorBlock->parentNode();
@@ -479,7 +482,7 @@ static Node* ancestorToRetainStructureAndAppearanceForBlock(Node* commonAncestor
     if (isNonTableCellHTMLBlockElement(commonAncestorBlock))
         return commonAncestorBlock;
 
-    return 0;
+    return nullptr;
 }
 
 static inline Node* ancestorToRetainStructureAndAppearance(Node* commonAncestor)
@@ -508,17 +511,17 @@ static bool needInterchangeNewlineAfter(const VisiblePosition& v)
     return isEndOfParagraph(v) && isStartOfParagraph(next) && !(upstreamNode->hasTagName(brTag) && upstreamNode == downstreamNode);
 }
 
-static PassRefPtr<EditingStyle> styleFromMatchedRulesAndInlineDecl(const Node* node)
+static RefPtr<EditingStyle> styleFromMatchedRulesAndInlineDecl(const Node* node)
 {
     if (!node->isHTMLElement())
-        return 0;
+        return nullptr;
 
     // FIXME: Having to const_cast here is ugly, but it is quite a bit of work to untangle
     // the non-const-ness of styleFromMatchedRulesForElement.
     HTMLElement* element = const_cast<HTMLElement*>(static_cast<const HTMLElement*>(node));
     RefPtr<EditingStyle> style = EditingStyle::create(element->inlineStyle());
     style->mergeStyleFromRules(element);
-    return style.release();
+    return style;
 }
 
 static bool isElementPresentational(const Node* node)
@@ -529,7 +532,7 @@ static bool isElementPresentational(const Node* node)
 
 static Node* highestAncestorToWrapMarkup(const Range* range, EAnnotateForInterchange shouldAnnotate)
 {
-    Node* commonAncestor = range->commonAncestorContainer();
+    auto* commonAncestor = range->commonAncestorContainer();
     ASSERT(commonAncestor);
     Node* specialCommonAncestor = nullptr;
     if (shouldAnnotate == AnnotateForInterchange) {
@@ -537,10 +540,10 @@ static Node* highestAncestorToWrapMarkup(const Range* range, EAnnotateForInterch
         // the structure and appearance of the copied markup.
         specialCommonAncestor = ancestorToRetainStructureAndAppearance(commonAncestor);
 
-        if (Node* parentListNode = enclosingNodeOfType(firstPositionInOrBeforeNode(range->firstNode()), isListItem)) {
-            if (!editingIgnoresContent(parentListNode) && WebCore::areRangesEqual(VisibleSelection::selectionFromContentsOfNode(parentListNode).toNormalizedRange().get(), range)) {
+        if (auto* parentListNode = enclosingNodeOfType(firstPositionInOrBeforeNode(range->firstNode()), isListItem)) {
+            if (!editingIgnoresContent(*parentListNode) && WebCore::areRangesEqual(VisibleSelection::selectionFromContentsOfNode(parentListNode).toNormalizedRange().get(), range)) {
                 specialCommonAncestor = parentListNode->parentNode();
-                while (specialCommonAncestor && !isListElement(specialCommonAncestor))
+                while (specialCommonAncestor && !isListHTMLElement(specialCommonAncestor))
                     specialCommonAncestor = specialCommonAncestor->parentNode();
             }
         }
@@ -550,7 +553,7 @@ static Node* highestAncestorToWrapMarkup(const Range* range, EAnnotateForInterch
             specialCommonAncestor = highestMailBlockquote;
     }
 
-    Node* checkAncestor = specialCommonAncestor ? specialCommonAncestor : commonAncestor;
+    auto* checkAncestor = specialCommonAncestor ? specialCommonAncestor : commonAncestor;
     if (checkAncestor->renderer() && checkAncestor->renderer()->containingBlock()) {
         Node* newSpecialCommonAncestor = highestEnclosingNodeOfType(firstPositionInNode(checkAncestor), &isElementPresentational, CanCrossEditingBoundary, checkAncestor->renderer()->containingBlock()->element());
         if (newSpecialCommonAncestor)
@@ -626,7 +629,7 @@ static String createMarkupInternal(Document& document, const Range& range, Vecto
                 // Bring the background attribute over, but not as an attribute because a background attribute on a div
                 // appears to have no effect.
                 if ((!fullySelectedRootStyle || !fullySelectedRootStyle->style() || !fullySelectedRootStyle->style()->getPropertyCSSValue(CSSPropertyBackgroundImage))
-                    && fullySelectedRoot->hasAttribute(backgroundAttr))
+                    && fullySelectedRoot->hasAttributeWithoutSynchronization(backgroundAttr))
                     fullySelectedRootStyle->style()->setProperty(CSSPropertyBackgroundImage, "url('" + fullySelectedRoot->getAttribute(backgroundAttr) + "')");
 
                 if (fullySelectedRootStyle->style()) {
@@ -687,7 +690,7 @@ Ref<DocumentFragment> createFragmentFromMarkup(Document& document, const String&
         attachments.append(attachment);
 
     for (auto& attachment : attachments) {
-        attachment->setFile(File::create(attachment->fastGetAttribute(webkitattachmentpathAttr)).ptr());
+        attachment->setFile(File::create(attachment->attributeWithoutSynchronization(webkitattachmentpathAttr)).ptr());
         attachment->removeAttribute(webkitattachmentpathAttr);
     }
 #endif
@@ -729,7 +732,7 @@ static void fillContainerFromString(ContainerNode& paragraph, const String& stri
                 tabText = emptyString();
             }
             Ref<Node> textNode = document.createTextNode(stringWithRebalancedWhitespace(s, first, i + 1 == numEntries));
-            paragraph.appendChild(WTFMove(textNode), ASSERT_NO_EXCEPTION);
+            paragraph.appendChild(textNode, ASSERT_NO_EXCEPTION);
         }
 
         // there is a tab after every entry, except the last entry
@@ -792,9 +795,9 @@ Ref<DocumentFragment> createFragmentFromText(Range& context, const String& text)
     if (contextPreservesNewline(context)) {
         fragment->appendChild(document.createTextNode(string), ASSERT_NO_EXCEPTION);
         if (string.endsWith('\n')) {
-            Ref<Element> element = createBreakElement(document);
-            element->setAttribute(classAttr, AppleInterchangeNewline);            
-            fragment->appendChild(WTFMove(element), ASSERT_NO_EXCEPTION);
+            auto element = HTMLBRElement::create(document);
+            element->setAttributeWithoutSynchronization(classAttr, AppleInterchangeNewline);
+            fragment->appendChild(element, ASSERT_NO_EXCEPTION);
         }
         return fragment;
     }
@@ -824,10 +827,10 @@ Ref<DocumentFragment> createFragmentFromText(Range& context, const String& text)
         RefPtr<Element> element;
         if (s.isEmpty() && i + 1 == numLines) {
             // For last line, use the "magic BR" rather than a P.
-            element = createBreakElement(document);
-            element->setAttribute(classAttr, AppleInterchangeNewline);
+            element = HTMLBRElement::create(document);
+            element->setAttributeWithoutSynchronization(classAttr, AppleInterchangeNewline);
         } else if (useLineBreak) {
-            element = createBreakElement(document);
+            element = HTMLBRElement::create(document);
             fillContainerFromString(fragment, s);
         } else {
             if (useClonesOfEnclosingBlock)
@@ -836,7 +839,7 @@ Ref<DocumentFragment> createFragmentFromText(Range& context, const String& text)
                 element = createDefaultParagraphElement(document);
             fillContainerFromString(*element, s);
         }
-        fragment->appendChild(element.releaseNonNull(), ASSERT_NO_EXCEPTION);
+        fragment->appendChild(*element, ASSERT_NO_EXCEPTION);
     }
     return fragment;
 }
@@ -878,50 +881,48 @@ String urlToMarkup(const URL& url, const String& title)
     return markup.toString();
 }
 
-PassRefPtr<DocumentFragment> createFragmentForInnerOuterHTML(const String& markup, Element* contextElement, ParserContentPolicy parserContentPolicy, ExceptionCode& ec)
+RefPtr<DocumentFragment> createFragmentForInnerOuterHTML(Element& contextElement, const String& markup, ParserContentPolicy parserContentPolicy, ExceptionCode& ec)
 {
-    Document* document = &contextElement->document();
-#if ENABLE(TEMPLATE_ELEMENT)
-    if (contextElement->hasTagName(templateTag))
+    Document* document = &contextElement.document();
+    if (contextElement.hasTagName(templateTag))
         document = &document->ensureTemplateDocument();
-#endif
     RefPtr<DocumentFragment> fragment = DocumentFragment::create(*document);
 
     if (document->isHTMLDocument()) {
-        fragment->parseHTML(markup, contextElement, parserContentPolicy);
+        fragment->parseHTML(markup, &contextElement, parserContentPolicy);
         return fragment;
     }
 
-    bool wasValid = fragment->parseXML(markup, contextElement, parserContentPolicy);
+    bool wasValid = fragment->parseXML(markup, &contextElement, parserContentPolicy);
     if (!wasValid) {
         ec = SYNTAX_ERR;
-        return 0;
+        return nullptr;
     }
-    return fragment.release();
+    return fragment;
 }
 
-PassRefPtr<DocumentFragment> createFragmentForTransformToFragment(const String& sourceString, const String& sourceMIMEType, Document* outputDoc)
+RefPtr<DocumentFragment> createFragmentForTransformToFragment(Document& outputDoc, const String& sourceString, const String& sourceMIMEType)
 {
-    RefPtr<DocumentFragment> fragment = outputDoc->createDocumentFragment();
+    RefPtr<DocumentFragment> fragment = outputDoc.createDocumentFragment();
     
     if (sourceMIMEType == "text/html") {
         // As far as I can tell, there isn't a spec for how transformToFragment is supposed to work.
         // Based on the documentation I can find, it looks like we want to start parsing the fragment in the InBody insertion mode.
         // Unfortunately, that's an implementation detail of the parser.
         // We achieve that effect here by passing in a fake body element as context for the fragment.
-        RefPtr<HTMLBodyElement> fakeBody = HTMLBodyElement::create(*outputDoc);
+        RefPtr<HTMLBodyElement> fakeBody = HTMLBodyElement::create(outputDoc);
         fragment->parseHTML(sourceString, fakeBody.get());
     } else if (sourceMIMEType == "text/plain")
-        fragment->parserAppendChild(Text::create(*outputDoc, sourceString));
+        fragment->parserAppendChild(Text::create(outputDoc, sourceString));
     else {
         bool successfulParse = fragment->parseXML(sourceString, 0);
         if (!successfulParse)
-            return 0;
+            return nullptr;
     }
     
     // FIXME: Do we need to mess with URLs here?
     
-    return fragment.release();
+    return fragment;
 }
 
 static Vector<Ref<HTMLElement>> collectElementsToRemoveFromFragment(ContainerNode& container)
@@ -950,21 +951,20 @@ static void removeElementFromFragmentPreservingChildren(DocumentFragment& fragme
     fragment.removeChild(element, ASSERT_NO_EXCEPTION);
 }
 
-PassRefPtr<DocumentFragment> createContextualFragment(const String& markup, HTMLElement* element, ParserContentPolicy parserContentPolicy, ExceptionCode& ec)
+RefPtr<DocumentFragment> createContextualFragment(Element& element, const String& markup, ParserContentPolicy parserContentPolicy, ExceptionCode& ec)
 {
-    ASSERT(element);
-    if (element->ieForbidsInsertHTML()) {
+    if (element.ieForbidsInsertHTML()) {
         ec = NOT_SUPPORTED_ERR;
         return nullptr;
     }
 
-    if (element->hasTagName(colTag) || element->hasTagName(colgroupTag) || element->hasTagName(framesetTag)
-        || element->hasTagName(headTag) || element->hasTagName(styleTag) || element->hasTagName(titleTag)) {
+    if (element.hasTagName(colTag) || element.hasTagName(colgroupTag) || element.hasTagName(framesetTag)
+        || element.hasTagName(headTag) || element.hasTagName(styleTag) || element.hasTagName(titleTag)) {
         ec = NOT_SUPPORTED_ERR;
         return nullptr;
     }
 
-    RefPtr<DocumentFragment> fragment = createFragmentForInnerOuterHTML(markup, element, parserContentPolicy, ec);
+    RefPtr<DocumentFragment> fragment = createFragmentForInnerOuterHTML(element, markup, parserContentPolicy, ec);
     if (!fragment)
         return nullptr;
 
@@ -975,7 +975,7 @@ PassRefPtr<DocumentFragment> createContextualFragment(const String& markup, HTML
     for (auto& element : toRemove)
         removeElementFromFragmentPreservingChildren(*fragment, element);
 
-    return fragment.release();
+    return fragment;
 }
 
 static inline bool hasOneChild(ContainerNode& node)
@@ -1023,12 +1023,12 @@ void replaceChildrenWithFragment(ContainerNode& container, Ref<DocumentFragment>
             return;
         }
 
-        containerNode->replaceChild(WTFMove(fragment), *containerChild, ec);
+        containerNode->replaceChild(fragment, *containerChild, ec);
         return;
     }
 
     containerNode->removeChildren();
-    containerNode->appendChild(WTFMove(fragment), ec);
+    containerNode->appendChild(fragment, ec);
 }
 
 void replaceChildrenWithText(ContainerNode& container, const String& text, ExceptionCode& ec)
@@ -1041,15 +1041,15 @@ void replaceChildrenWithText(ContainerNode& container, const String& text, Excep
         return;
     }
 
-    Ref<Text> textNode = Text::create(containerNode->document(), text);
+    auto textNode = Text::create(containerNode->document(), text);
 
     if (hasOneChild(containerNode)) {
-        containerNode->replaceChild(WTFMove(textNode), *containerNode->firstChild(), ec);
+        containerNode->replaceChild(textNode, *containerNode->firstChild(), ec);
         return;
     }
 
     containerNode->removeChildren();
-    containerNode->appendChild(WTFMove(textNode), ec);
+    containerNode->appendChild(textNode, ec);
 }
 
 }

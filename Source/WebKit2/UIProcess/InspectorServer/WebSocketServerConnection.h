@@ -24,8 +24,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef WebSocketServerConnection_h
-#define WebSocketServerConnection_h
+#pragma once
 
 #if ENABLE(INSPECTOR_SERVER)
 
@@ -37,6 +36,7 @@
 
 namespace WebCore {
 class HTTPHeaderMap;
+class SocketStreamError;
 class SocketStreamHandle;
 }
 
@@ -46,7 +46,7 @@ class HTTPRequest;
 class WebSocketServer;
 class WebSocketServerClient;
 
-class WebSocketServerConnection : public WebCore::SocketStreamHandleClient {
+class WebSocketServerConnection final : public WebCore::SocketStreamHandleClient {
 public:
     enum WebSocketServerMode { HTTP, WebSocket };
     WebSocketServerConnection(WebSocketServerClient*, WebSocketServer*);
@@ -54,7 +54,7 @@ public:
 
     unsigned identifier() const { return m_identifier; }
     void setIdentifier(unsigned id) { m_identifier = id; }
-    void setSocketHandle(PassRefPtr<WebCore::SocketStreamHandle>);
+    void setSocketHandle(Ref<WebCore::SocketStreamHandle>&&);
 
     // Sending data over the connection.
     void sendWebSocketMessage(const String& message);
@@ -65,13 +65,14 @@ public:
     void shutdownNow();
     void shutdownAfterSendOrNow();
 
-    // SocketStreamHandleClient implementation.
-    virtual void didCloseSocketStream(WebCore::SocketStreamHandle*);
-    virtual void didReceiveSocketStreamData(WebCore::SocketStreamHandle*, const char* data, int length);
-    virtual void didUpdateBufferedAmount(WebCore::SocketStreamHandle*, size_t bufferedAmount);
-    virtual void didFailSocketStream(WebCore::SocketStreamHandle*, const WebCore::SocketStreamError&);
-
 private:
+    // SocketStreamHandleClient implementation.
+    void didOpenSocketStream(WebCore::SocketStreamHandle&) final { }
+    void didCloseSocketStream(WebCore::SocketStreamHandle&) final;
+    void didReceiveSocketStreamData(WebCore::SocketStreamHandle&, const char* data, Optional<size_t> length) final;
+    void didUpdateBufferedAmount(WebCore::SocketStreamHandle&, size_t bufferedAmount) final;
+    void didFailSocketStream(WebCore::SocketStreamHandle&, const WebCore::SocketStreamError&) final { }
+
     // HTTP Mode.
     void readHTTPMessage();
 
@@ -80,18 +81,15 @@ private:
     void readWebSocketFrames();
     bool readWebSocketFrame();
 
-protected:
-    unsigned m_identifier;
+    unsigned m_identifier { 0 };
     Vector<char> m_bufferedData;
-    WebSocketServerMode m_mode;
+    WebSocketServerMode m_mode { HTTP };
     RefPtr<WebCore::SocketStreamHandle> m_socket;
-    WebSocketServer* m_server;
-    WebSocketServerClient* m_client;
-    bool m_shutdownAfterSend;
+    WebSocketServer* m_server { nullptr };
+    WebSocketServerClient* m_client { nullptr };
+    bool m_shutdownAfterSend { false };
 };
 
 }
 
 #endif // ENABLE(INSPECTOR_SERVER)
-
-#endif // WebSocketServerConnection_h

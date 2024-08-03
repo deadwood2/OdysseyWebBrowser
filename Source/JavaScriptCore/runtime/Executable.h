@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009, 2010, 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2009, 2010, 2013-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,7 +36,6 @@
 #include "InferredValue.h"
 #include "JITCode.h"
 #include "JSGlobalObject.h"
-#include "SamplingTool.h"
 #include "SourceCode.h"
 #include "TypeSet.h"
 #include "UnlinkedCodeBlock.h"
@@ -45,7 +44,6 @@
 namespace JSC {
 
 class CodeBlock;
-class Debugger;
 class EvalCodeBlock;
 class FunctionCodeBlock;
 class JSScope;
@@ -76,10 +74,11 @@ protected:
     static const int NUM_PARAMETERS_IS_HOST = 0;
     static const int NUM_PARAMETERS_NOT_COMPILED = -1;
 
-    ExecutableBase(VM& vm, Structure* structure, int numParameters)
+    ExecutableBase(VM& vm, Structure* structure, int numParameters, Intrinsic intrinsic)
         : JSCell(vm, structure)
         , m_numParametersForCall(numParameters)
         , m_numParametersForConstruct(numParameters)
+        , m_intrinsic(intrinsic)
     {
     }
 
@@ -232,7 +231,7 @@ public:
     }
 
     // Intrinsics are only for calls, currently.
-    Intrinsic intrinsic() const;
+    Intrinsic intrinsic() const { return m_intrinsic; }
         
     Intrinsic intrinsicFor(CodeSpecializationKind kind) const
     {
@@ -244,6 +243,7 @@ public:
     void dump(PrintStream&) const;
         
 protected:
+    Intrinsic m_intrinsic;
     RefPtr<JITCode> m_jitCodeForCall;
     RefPtr<JITCode> m_jitCodeForConstruct;
     MacroAssemblerCodePtr m_jitCodeForCallWithArityCheck;
@@ -257,13 +257,7 @@ public:
     typedef ExecutableBase Base;
     static const unsigned StructureFlags = Base::StructureFlags | StructureIsImmortal;
 
-    static NativeExecutable* create(VM& vm, PassRefPtr<JITCode> callThunk, NativeFunction function, PassRefPtr<JITCode> constructThunk, NativeFunction constructor, Intrinsic intrinsic, const String& name)
-    {
-        NativeExecutable* executable;
-        executable = new (NotNull, allocateCell<NativeExecutable>(vm.heap)) NativeExecutable(vm, function, constructor);
-        executable->finishCreation(vm, callThunk, constructThunk, intrinsic, name);
-        return executable;
-    }
+    static NativeExecutable* create(VM& vm, PassRefPtr<JITCode> callThunk, NativeFunction function, PassRefPtr<JITCode> constructThunk, NativeFunction constructor, Intrinsic intrinsic, const String& name);
 
     static void destroy(JSCell*);
 
@@ -288,38 +282,22 @@ public:
         return OBJECT_OFFSETOF(NativeExecutable, m_constructor);
     }
 
-    static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue proto) { return Structure::create(vm, globalObject, proto, TypeInfo(CellType, StructureFlags), info()); }
+    static Structure* createStructure(VM&, JSGlobalObject*, JSValue proto);
         
     DECLARE_INFO;
-
-    Intrinsic intrinsic() const;
 
     const String& name() const { return m_name; }
 
 protected:
-    void finishCreation(VM& vm, PassRefPtr<JITCode> callThunk, PassRefPtr<JITCode> constructThunk, Intrinsic intrinsic, const String& name)
-    {
-        Base::finishCreation(vm);
-        m_jitCodeForCall = callThunk;
-        m_jitCodeForConstruct = constructThunk;
-        m_intrinsic = intrinsic;
-        m_name = name;
-    }
+    void finishCreation(VM&, PassRefPtr<JITCode> callThunk, PassRefPtr<JITCode> constructThunk, const String& name);
 
 private:
     friend class ExecutableBase;
 
-    NativeExecutable(VM& vm, NativeFunction function, NativeFunction constructor)
-        : ExecutableBase(vm, vm.nativeExecutableStructure.get(), NUM_PARAMETERS_IS_HOST)
-        , m_function(function)
-        , m_constructor(constructor)
-    {
-    }
+    NativeExecutable(VM&, NativeFunction function, NativeFunction constructor, Intrinsic);
 
     NativeFunction m_function;
     NativeFunction m_constructor;
-        
-    Intrinsic m_intrinsic;
 
     String m_name;
 };
@@ -351,17 +329,22 @@ public:
     bool isArrowFunctionContext() const { return m_isArrowFunctionContext; }
     bool isStrictMode() const { return m_features & StrictModeFeature; }
     DerivedContextType derivedContextType() const { return static_cast<DerivedContextType>(m_derivedContextType); }
+    EvalContextType evalContextType() const { return static_cast<EvalContextType>(m_evalContextType); }
 
     ECMAMode ecmaMode() const { return isStrictMode() ? StrictMode : NotStrictMode; }
         
     void setNeverInline(bool value) { m_neverInline = value; }
     void setNeverOptimize(bool value) { m_neverOptimize = value; }
+    void setNeverFTLOptimize(bool value) { m_neverFTLOptimize = value; }
     void setDidTryToEnterInLoop(bool value) { m_didTryToEnterInLoop = value; }
+    void setCanUseOSRExitFuzzing(bool value) { m_canUseOSRExitFuzzing = value; }
     bool neverInline() const { return m_neverInline; }
     bool neverOptimize() const { return m_neverOptimize; }
+    bool neverFTLOptimize() const { return m_neverFTLOptimize; }
     bool didTryToEnterInLoop() const { return m_didTryToEnterInLoop; }
     bool isInliningCandidate() const { return !neverInline(); }
     bool isOkToOptimize() const { return !neverOptimize(); }
+    bool canUseOSRExitFuzzing() const { return m_canUseOSRExitFuzzing; }
     
     bool* addressOfDidTryToEnterInLoop() { return &m_didTryToEnterInLoop; }
 
@@ -385,22 +368,24 @@ public:
     void installCode(VM&, CodeBlock*, CodeType, CodeSpecializationKind);
     CodeBlock* newCodeBlockFor(CodeSpecializationKind, JSFunction*, JSScope*, JSObject*& exception);
     CodeBlock* newReplacementCodeBlockFor(CodeSpecializationKind);
-    
-    JSObject* prepareForExecution(ExecState* exec, JSFunction* function, JSScope* scope, CodeSpecializationKind kind)
-    {
-        if (hasJITCodeFor(kind))
-            return 0;
-        return prepareForExecutionImpl(exec, function, scope, kind);
-    }
+
+    // This function has an interesting GC story. Callers of this function are asking us to create a CodeBlock
+    // that is not jettisoned before this function returns. Callers are essentially asking for a strong reference
+    // to the CodeBlock. Because the Executable may be allocating the CodeBlock, we require callers to pass in
+    // their CodeBlock*& reference because it's safe for CodeBlock to be jettisoned if Executable is the only thing
+    // to point to it. This forces callers to have a CodeBlock* in a register or on the stack that will be marked
+    // by conservative GC if a GC happens after we create the CodeBlock.
+    template <typename ExecutableType>
+    JSObject* prepareForExecution(ExecState*, JSFunction*, JSScope*, CodeSpecializationKind, CodeBlock*& resultCodeBlock);
 
     template <typename Functor> void forEachCodeBlock(Functor&&);
 
 private:
     friend class ExecutableBase;
-    JSObject* prepareForExecutionImpl(ExecState*, JSFunction*, JSScope*, CodeSpecializationKind);
+    JSObject* prepareForExecutionImpl(ExecState*, JSFunction*, JSScope*, CodeSpecializationKind, CodeBlock*&);
 
 protected:
-    ScriptExecutable(Structure*, VM&, const SourceCode&, bool isInStrictContext, DerivedContextType, bool isInArrowFunctionContext);
+    ScriptExecutable(Structure*, VM&, const SourceCode&, bool isInStrictContext, DerivedContextType, bool isInArrowFunctionContext, EvalContextType, Intrinsic);
 
     void finishCreation(VM& vm)
     {
@@ -418,8 +403,11 @@ protected:
     bool m_hasCapturedVariables : 1;
     bool m_neverInline : 1;
     bool m_neverOptimize : 1;
+    bool m_neverFTLOptimize : 1;
     bool m_isArrowFunctionContext : 1;
+    bool m_canUseOSRExitFuzzing : 1;
     unsigned m_derivedContextType : 2; // DerivedContextType
+    unsigned m_evalContextType : 2; // EvalContextType
 
     int m_overrideLineNumber;
     int m_firstLine;
@@ -444,7 +432,7 @@ public:
         return m_evalCodeBlock.get();
     }
 
-    static EvalExecutable* create(ExecState*, const SourceCode&, bool isInStrictContext, ThisTDZMode, DerivedContextType, bool isArrowFunctionContext, const VariableEnvironment*);
+    static EvalExecutable* create(ExecState*, const SourceCode&, bool isInStrictContext, DerivedContextType, bool isArrowFunctionContext, EvalContextType, const VariableEnvironment*);
 
     PassRefPtr<JITCode> generatedJITCode()
     {
@@ -458,7 +446,7 @@ public:
         
     DECLARE_INFO;
 
-    ExecutableInfo executableInfo() const { return ExecutableInfo(usesEval(), isStrictMode(), false, false, ConstructorKind::None, SuperBinding::NotNeeded, SourceParseMode::ProgramMode, derivedContextType(), isArrowFunctionContext() , false); }
+    ExecutableInfo executableInfo() const { return ExecutableInfo(usesEval(), isStrictMode(), false, false, ConstructorKind::None, JSParserCommentMode::Classic, SuperBinding::NotNeeded, SourceParseMode::ProgramMode, derivedContextType(), isArrowFunctionContext(), false, evalContextType()); }
 
     unsigned numVariables() { return m_unlinkedEvalCodeBlock->numVariables(); }
     unsigned numberOfFunctionDecls() { return m_unlinkedEvalCodeBlock->numberOfFunctionDecls(); }
@@ -467,7 +455,7 @@ private:
     friend class ExecutableBase;
     friend class ScriptExecutable;
 
-    EvalExecutable(ExecState*, const SourceCode&, bool inStrictContext, DerivedContextType, bool isArrowFunctionContext);
+    EvalExecutable(ExecState*, const SourceCode&, bool inStrictContext, DerivedContextType, bool isArrowFunctionContext, EvalContextType);
 
     static void visitChildren(JSCell*, SlotVisitor&);
 
@@ -512,7 +500,7 @@ public:
         
     DECLARE_INFO;
 
-    ExecutableInfo executableInfo() const { return ExecutableInfo(usesEval(), isStrictMode(), false, false, ConstructorKind::None, SuperBinding::NotNeeded, SourceParseMode::ProgramMode, derivedContextType(), isArrowFunctionContext(), false); }
+    ExecutableInfo executableInfo() const { return ExecutableInfo(usesEval(), isStrictMode(), false, false, ConstructorKind::None, JSParserCommentMode::Classic, SuperBinding::NotNeeded, SourceParseMode::ProgramMode, derivedContextType(), isArrowFunctionContext(), false, EvalContextType::None); }
 
 private:
     friend class ExecutableBase;
@@ -553,7 +541,7 @@ public:
 
     DECLARE_INFO;
 
-    ExecutableInfo executableInfo() const { return ExecutableInfo(usesEval(), isStrictMode(), false, false, ConstructorKind::None, SuperBinding::NotNeeded, SourceParseMode::ModuleEvaluateMode, derivedContextType(), isArrowFunctionContext(), false); }
+    ExecutableInfo executableInfo() const { return ExecutableInfo(usesEval(), isStrictMode(), false, false, ConstructorKind::None, JSParserCommentMode::Module, SuperBinding::NotNeeded, SourceParseMode::ModuleEvaluateMode, derivedContextType(), isArrowFunctionContext(), false, EvalContextType::None); }
 
     UnlinkedModuleProgramCodeBlock* unlinkedModuleProgramCodeBlock() { return m_unlinkedModuleProgramCodeBlock.get(); }
 
@@ -581,9 +569,9 @@ public:
 
     static FunctionExecutable* create(
         VM& vm, const SourceCode& source, UnlinkedFunctionExecutable* unlinkedExecutable, 
-        unsigned firstLine, unsigned lastLine, unsigned startColumn, unsigned endColumn)
+        unsigned firstLine, unsigned lastLine, unsigned startColumn, unsigned endColumn, Intrinsic intrinsic)
     {
-        FunctionExecutable* executable = new (NotNull, allocateCell<FunctionExecutable>(vm.heap)) FunctionExecutable(vm, source, unlinkedExecutable, firstLine, lastLine, startColumn, endColumn);
+        FunctionExecutable* executable = new (NotNull, allocateCell<FunctionExecutable>(vm.heap)) FunctionExecutable(vm, source, unlinkedExecutable, firstLine, lastLine, startColumn, endColumn, intrinsic);
         executable->finishCreation(vm);
         return executable;
     }
@@ -662,14 +650,19 @@ public:
     FunctionMode functionMode() { return m_unlinkedExecutable->functionMode(); }
     bool isBuiltinFunction() const { return m_unlinkedExecutable->isBuiltinFunction(); }
     ConstructAbility constructAbility() const { return m_unlinkedExecutable->constructAbility(); }
+    bool isClass() const { return !classSource().isNull(); }
     bool isArrowFunction() const { return parseMode() == SourceParseMode::ArrowFunctionMode; }
+    bool isGetter() const { return parseMode() == SourceParseMode::GetterMode; }
+    bool isSetter() const { return parseMode() == SourceParseMode::SetterMode; }
     DerivedContextType derivedContextType() const { return m_unlinkedExecutable->derivedContextType(); }
     bool isClassConstructorFunction() const { return m_unlinkedExecutable->isClassConstructorFunction(); }
     const Identifier& name() { return m_unlinkedExecutable->name(); }
+    const Identifier& ecmaName() { return m_unlinkedExecutable->ecmaName(); }
     const Identifier& inferredName() { return m_unlinkedExecutable->inferredName(); }
-    JSString* nameValue() const { return m_unlinkedExecutable->nameValue(); }
     size_t parameterCount() const { return m_unlinkedExecutable->parameterCount(); } // Excluding 'this'!
     SourceParseMode parseMode() const { return m_unlinkedExecutable->parseMode(); }
+    JSParserCommentMode commentMode() const { return m_unlinkedExecutable->commentMode(); }
+    const SourceCode& classSource() const { return m_unlinkedExecutable->classSource(); }
 
     static void visitChildren(JSCell*, SlotVisitor&);
     static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue proto)
@@ -694,7 +687,7 @@ private:
     friend class ExecutableBase;
     FunctionExecutable(
         VM&, const SourceCode&, UnlinkedFunctionExecutable*, unsigned firstLine, 
-        unsigned lastLine, unsigned startColumn, unsigned endColumn);
+        unsigned lastLine, unsigned startColumn, unsigned endColumn, Intrinsic);
     
     void finishCreation(VM&);
 
@@ -750,6 +743,25 @@ private:
     WriteBarrier<WebAssemblyCodeBlock> m_codeBlockForCall;
 };
 #endif
+
+template <typename ExecutableType>
+JSObject* ScriptExecutable::prepareForExecution(ExecState* exec, JSFunction* function, JSScope* scope, CodeSpecializationKind kind, CodeBlock*& resultCodeBlock)
+{
+    if (hasJITCodeFor(kind)) {
+        if (std::is_same<ExecutableType, EvalExecutable>::value)
+            resultCodeBlock = jsCast<CodeBlock*>(jsCast<EvalExecutable*>(this)->codeBlock());
+        else if (std::is_same<ExecutableType, ProgramExecutable>::value)
+            resultCodeBlock = jsCast<CodeBlock*>(jsCast<ProgramExecutable*>(this)->codeBlock());
+        else if (std::is_same<ExecutableType, ModuleProgramExecutable>::value)
+            resultCodeBlock = jsCast<CodeBlock*>(jsCast<ModuleProgramExecutable*>(this)->codeBlock());
+        else if (std::is_same<ExecutableType, FunctionExecutable>::value)
+            resultCodeBlock = jsCast<CodeBlock*>(jsCast<FunctionExecutable*>(this)->codeBlockFor(kind));
+        else
+            RELEASE_ASSERT_NOT_REACHED();
+        return nullptr;
+    }
+    return prepareForExecutionImpl(exec, function, scope, kind, resultCodeBlock);
+}
 
 } // namespace JSC
 

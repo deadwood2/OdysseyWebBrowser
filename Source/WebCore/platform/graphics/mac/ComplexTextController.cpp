@@ -30,7 +30,7 @@
 #include "FontCascade.h"
 #include "RenderBlock.h"
 #include "RenderText.h"
-#include "TextBreakIterator.h"
+#include <wtf/text/TextBreakIterator.h>
 #include "TextRun.h"
 #include <wtf/Optional.h>
 #include <wtf/StdLibExtras.h>
@@ -51,13 +51,13 @@ class TextLayout {
 public:
     static bool isNeeded(RenderText& text, const FontCascade& font)
     {
-        TextRun run = RenderBlock::constructTextRun(&text, font, &text, text.style());
+        TextRun run = RenderBlock::constructTextRun(text, text.style());
         return font.codePath(run) == FontCascade::Complex;
     }
 
     TextLayout(RenderText& text, const FontCascade& font, float xPos)
         : m_font(font)
-        , m_run(constructTextRun(text, font, xPos))
+        , m_run(constructTextRun(text, xPos))
         , m_controller(std::make_unique<ComplexTextController>(m_font, m_run, true))
     {
     }
@@ -74,9 +74,9 @@ public:
     }
 
 private:
-    static TextRun constructTextRun(RenderText& text, const FontCascade& font, float xPos)
+    static TextRun constructTextRun(RenderText& text, float xPos)
     {
-        TextRun run = RenderBlock::constructTextRun(&text, font, &text, text.style());
+        TextRun run = RenderBlock::constructTextRun(text, text.style());
         run.setCharactersLength(text.textLength());
         ASSERT(run.charactersLength() >= run.length());
         run.setXPos(xPos);
@@ -269,7 +269,7 @@ static bool advanceByCombiningCharacterSequence(const UChar*& iterator, const UC
         bool shouldContinue = false;
         U16_NEXT(iterator, markLength, end - iterator, nextCharacter);
 
-        if (isVariationSelector(nextCharacter) || isEmojiModifier(nextCharacter))
+        if (isVariationSelector(nextCharacter) || isEmojiFitzpatrickModifier(nextCharacter))
             shouldContinue = true;
 
         if (sawJoiner && isEmojiGroupCandidate(nextCharacter))
@@ -298,10 +298,21 @@ static inline Optional<UChar32> capitalized(UChar32 baseCharacter)
         return Nullopt;
 
     UChar32 uppercaseCharacter = u_toupper(baseCharacter);
-    ASSERT(uppercaseCharacter == baseCharacter || uppercaseCharacter <= 0xFFFF);
+    ASSERT(uppercaseCharacter == baseCharacter || (U_IS_BMP(baseCharacter) == U_IS_BMP(uppercaseCharacter)));
     if (uppercaseCharacter != baseCharacter)
         return uppercaseCharacter;
     return Nullopt;
+}
+
+static bool shouldSynthesize(const Font* nextFont, UChar32 baseCharacter, Optional<UChar32> capitalizedBase, FontVariantCaps fontVariantCaps, bool engageAllSmallCapsProcessing)
+{
+    if (!nextFont || nextFont == Font::systemFallback())
+        return false;
+    if (engageAllSmallCapsProcessing && isASCIISpace(baseCharacter))
+        return false;
+    if (!engageAllSmallCapsProcessing && !capitalizedBase)
+        return false;
+    return !nextFont->variantCapsSupportsCharacterForSynthesis(fontVariantCaps, baseCharacter);
 }
 
 void ComplexTextController::collectComplexTextRuns()
@@ -346,12 +357,13 @@ void ComplexTextController::collectComplexTextRuns()
     bool nextIsSmallCaps = false;
 
     auto capitalizedBase = capitalized(baseCharacter);
-    if (nextFont && nextFont != Font::systemFallback() && (capitalizedBase || engageAllSmallCapsProcessing)
-        && !nextFont->variantCapsSupportsCharacterForSynthesis(fontVariantCaps, baseCharacter)) {
+    if (shouldSynthesize(nextFont, baseCharacter, capitalizedBase, fontVariantCaps, engageAllSmallCapsProcessing)) {
         synthesizedFont = &nextFont->noSynthesizableFeaturesFont();
         smallSynthesizedFont = synthesizedFont->smallCapsFont(m_font.fontDescription());
-        m_smallCapsBuffer[0] = capitalizedBase ? capitalizedBase.value() : cp[0];
-        for (unsigned i = 1; cp + i < curr; ++i)
+        UChar32 characterToWrite = capitalizedBase ? capitalizedBase.value() : cp[0];
+        unsigned characterIndex = 0;
+        U16_APPEND_UNSAFE(m_smallCapsBuffer, characterIndex, characterToWrite);
+        for (unsigned i = characterIndex; cp + i < curr; ++i)
             m_smallCapsBuffer[i] = cp[i];
         nextIsSmallCaps = true;
     }
@@ -366,9 +378,10 @@ void ComplexTextController::collectComplexTextRuns()
 
         if (synthesizedFont) {
             if (auto capitalizedBase = capitalized(baseCharacter)) {
-                m_smallCapsBuffer[index] = capitalizedBase.value();
+                unsigned characterIndex = index;
+                U16_APPEND_UNSAFE(m_smallCapsBuffer, characterIndex, capitalizedBase.value());
                 for (unsigned i = 0; i < markCount; ++i)
-                    m_smallCapsBuffer[index + i + 1] = cp[index + i + 1];
+                    m_smallCapsBuffer[i + characterIndex] = cp[i + characterIndex];
                 nextIsSmallCaps = true;
             } else {
                 if (engageAllSmallCapsProcessing) {
@@ -385,8 +398,7 @@ void ComplexTextController::collectComplexTextRuns()
             nextFont = m_font.fontForCombiningCharacterSequence(cp + index, curr - cp - index);
 
         capitalizedBase = capitalized(baseCharacter);
-        if (!synthesizedFont && nextFont && nextFont != Font::systemFallback() && (capitalizedBase || engageAllSmallCapsProcessing)
-            && !nextFont->variantCapsSupportsCharacterForSynthesis(fontVariantCaps, baseCharacter)) {
+        if (!synthesizedFont && shouldSynthesize(nextFont, baseCharacter, capitalizedBase, fontVariantCaps, engageAllSmallCapsProcessing)) {
             // Rather than synthesize each character individually, we should synthesize the entire "run" if any character requires synthesis.
             synthesizedFont = &nextFont->noSynthesizableFeaturesFont();
             smallSynthesizedFont = synthesizedFont->smallCapsFont(m_font.fontDescription());
@@ -444,7 +456,7 @@ void ComplexTextController::ComplexTextRun::setIsNonMonotonic()
     ASSERT(m_isMonotonic);
     m_isMonotonic = false;
 
-    Vector<bool, 64> mappedIndices(m_stringLength);
+    Vector<bool, 64> mappedIndices(m_stringLength, false);
     for (size_t i = 0; i < m_glyphCount; ++i) {
         ASSERT(indexAt(i) < static_cast<CFIndex>(m_stringLength));
         mappedIndices[indexAt(i)] = true;

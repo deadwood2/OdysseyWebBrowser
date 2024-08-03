@@ -46,6 +46,8 @@ class DatabaseManagerClient;
 class OriginLock;
 class SecurityOrigin;
 
+enum class CurrentQueryBehavior { Interrupt, RunToCompletion };
+
 class DatabaseTracker {
     WTF_MAKE_NONCOPYABLE(DatabaseTracker); WTF_MAKE_FAST_ALLOCATED;
 public:
@@ -74,7 +76,7 @@ public:
 
     unsigned long long getMaxSizeForDatabase(const Database*);
 
-    WEBCORE_EXPORT void closeAllDatabases();
+    WEBCORE_EXPORT void closeAllDatabases(CurrentQueryBehavior = CurrentQueryBehavior::RunToCompletion);
 
 private:
     explicit DatabaseTracker(const String& databasePath);
@@ -95,7 +97,7 @@ public:
     void setQuota(SecurityOrigin*, unsigned long long);
     RefPtr<OriginLock> originLockFor(SecurityOrigin*);
 
-    void deleteAllDatabases();
+    void deleteAllDatabasesImmediately();
     WEBCORE_EXPORT void deleteDatabasesModifiedSince(std::chrono::system_clock::time_point);
     WEBCORE_EXPORT bool deleteOrigin(SecurityOrigin*);
     bool deleteDatabase(SecurityOrigin*, const String& name);
@@ -142,7 +144,20 @@ private:
 
     bool addDatabase(SecurityOrigin*, const String& name, const String& path);
 
-    bool deleteDatabaseFile(SecurityOrigin*, const String& name);
+    enum class DeletionMode {
+        Immediate,
+#if PLATFORM(IOS)
+        // Deferred deletion is currently only supported on iOS
+        // (see removeDeletedOpenedDatabases etc, above).
+        Deferred,
+        Default = Deferred
+#else
+        Default = Immediate
+#endif
+    };
+
+    bool deleteOrigin(SecurityOrigin*, DeletionMode);
+    bool deleteDatabaseFile(SecurityOrigin*, const String& name, DeletionMode);
 
     void deleteOriginLockFor(SecurityOrigin*);
 

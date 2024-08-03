@@ -28,8 +28,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CSSCalculationValue_h
-#define CSSCalculationValue_h
+#pragma once
 
 #include "CSSPrimitiveValue.h"
 #include "CalculationValue.h"
@@ -86,7 +85,7 @@ private:
     bool m_isInteger;
 };
 
-class CSSCalcValue : public CSSValue {
+class CSSCalcValue final : public CSSValue {
 public:
     static RefPtr<CSSCalcValue> create(CSSParserString name, CSSParserValueList& arguments, CalculationPermittedValueRange);
     static RefPtr<CSSCalcValue> create(const CalculationValue&, const RenderStyle&);
@@ -134,5 +133,3 @@ inline void CSSCalcValue::setPermittedValueRange(CalculationPermittedValueRange 
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_CSS_VALUE(CSSCalcValue, isCalcValue())
-
-#endif // CSSCalculationValue_h

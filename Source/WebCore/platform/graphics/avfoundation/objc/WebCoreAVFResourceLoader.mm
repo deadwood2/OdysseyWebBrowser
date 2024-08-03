@@ -67,12 +67,13 @@ void WebCoreAVFResourceLoader::startLoading()
 
     NSURLRequest *nsRequest = [m_avRequest.get() request];
 
-    // ContentSecurityPolicyImposition::DoPolicyCheck is a placeholder value. It does not affect the request since Content Security Policy does not apply to raw resources.
-    CachedResourceRequest request(nsRequest, ResourceLoaderOptions(SendCallbacks, DoNotSniffContent, BufferData, DoNotAllowStoredCredentials, DoNotAskClientForCrossOriginCredentials, ClientDidNotRequestCredentials, DoSecurityCheck, UseDefaultOriginRestrictionsForType, DoNotIncludeCertificateInfo, ContentSecurityPolicyImposition::DoPolicyCheck, DefersLoadingPolicy::AllowDefersLoading, CachingPolicy::DisallowCaching));
-
+    // FIXME: Skip Content Security Policy check if the element that inititated this request
+    // is in a user-agent shadow tree. See <https://bugs.webkit.org/show_bug.cgi?id=155505>.
+    CachedResourceRequest request(nsRequest, ResourceLoaderOptions(SendCallbacks, DoNotSniffContent, BufferData, DoNotAllowStoredCredentials, ClientCredentialPolicy::CannotAskClientForCredentials, FetchOptions::Credentials::Omit, DoSecurityCheck, FetchOptions::Mode::NoCors, DoNotIncludeCertificateInfo, ContentSecurityPolicyImposition::DoPolicyCheck, DefersLoadingPolicy::AllowDefersLoading, CachingPolicy::DisallowCaching));
     request.mutableResourceRequest().setPriority(ResourceLoadPriority::Low);
-    CachedResourceLoader* loader = m_parent->player()->cachedResourceLoader();
-    m_resource = loader ? loader->requestRawResource(request) : 0;
+    if (auto* loader = m_parent->player()->cachedResourceLoader())
+        m_resource = loader->requestMedia(request);
+
     if (m_resource)
         m_resource->addClient(this);
     else {
@@ -95,8 +96,14 @@ void WebCoreAVFResourceLoader::stopLoading()
 
 void WebCoreAVFResourceLoader::invalidate()
 {
+    if (!m_parent)
+        return;
+
     m_parent = nullptr;
-    stopLoading();
+
+    callOnMainThread([protectedThis = makeRef(*this)] () mutable {
+        protectedThis->stopLoading();
+    });
 }
 
 void WebCoreAVFResourceLoader::responseReceived(CachedResource* resource, const ResourceResponse& response)

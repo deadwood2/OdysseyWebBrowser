@@ -23,13 +23,11 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef NetworkLoadClient_h
-#define NetworkLoadClient_h
+#pragma once
 
 #include <WebCore/ResourceError.h>
 #include <WebCore/ResourceRequest.h>
 #include <WebCore/ResourceResponse.h>
-#include <WebCore/SharedBuffer.h>
 #include <wtf/Forward.h>
 
 #if PLATFORM(COCOA)
@@ -38,6 +36,7 @@ typedef const struct _CFCachedURLResponse* CFCachedURLResponseRef;
 
 namespace WebCore {
 class ProtectionSpace;
+class SharedBuffer;
 }
 
 namespace WebKit {
@@ -50,20 +49,15 @@ public:
 
     virtual void didSendData(unsigned long long bytesSent, unsigned long long totalBytesToBeSent) = 0;
     virtual void canAuthenticateAgainstProtectionSpaceAsync(const WebCore::ProtectionSpace&) = 0;
-    virtual void willSendRedirectedRequest(const WebCore::ResourceRequest&, const WebCore::ResourceRequest& redirectRequest, const WebCore::ResourceResponse& redirectResponse) = 0;
+    virtual void willSendRedirectedRequest(WebCore::ResourceRequest&&, WebCore::ResourceRequest&& redirectRequest, WebCore::ResourceResponse&& redirectResponse) = 0;
     enum class ShouldContinueDidReceiveResponse { No, Yes };
-    virtual ShouldContinueDidReceiveResponse didReceiveResponse(const WebCore::ResourceResponse&) = 0;
-    virtual void didReceiveBuffer(RefPtr<WebCore::SharedBuffer>&&, int reportedEncodedDataLength) = 0;
+    virtual ShouldContinueDidReceiveResponse didReceiveResponse(WebCore::ResourceResponse&&) = 0;
+    virtual void didReceiveBuffer(Ref<WebCore::SharedBuffer>&&, int reportedEncodedDataLength) = 0;
     virtual void didFinishLoading(double finishTime) = 0;
     virtual void didFailLoading(const WebCore::ResourceError&) = 0;
-    virtual void didConvertToDownload() = 0;
-
-#if PLATFORM(COCOA)
-    virtual void willCacheResponseAsync(CFCachedURLResponseRef) = 0;
+#if USE(NETWORK_SESSION)
+    virtual void didBecomeDownload() = 0;
 #endif
 };
 
 } // namespace WebKit
-
-#endif // NetworkLoadClient_h
-

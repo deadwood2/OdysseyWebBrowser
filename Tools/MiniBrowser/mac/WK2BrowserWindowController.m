@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,12 +30,15 @@
 #import "AppDelegate.h"
 #import "SettingsController.h"
 #import <WebKit/WKFrameInfo.h>
+#import <WebKit/WKNavigationActionPrivate.h>
 #import <WebKit/WKNavigationDelegate.h>
 #import <WebKit/WKPreferencesPrivate.h>
 #import <WebKit/WKUIDelegate.h>
 #import <WebKit/WKWebViewConfigurationPrivate.h>
 #import <WebKit/WKWebViewPrivate.h>
+#import <WebKit/WKWebsiteDataStorePrivate.h>
 #import <WebKit/WebNSURLExtras.h>
+#import <WebKit/_WKUserInitiatedAction.h>
 
 static void* keyValueObservingContext = &keyValueObservingContext;
 
@@ -259,6 +262,11 @@ static CGFloat viewScaleForMenuItemTag(NSInteger tag)
     return _webView.URL;
 }
 
+- (NSView *)mainContentView
+{
+    return _webView;
+}
+
 - (BOOL)validateUserInterfaceItem:(id <NSValidatedUserInterfaceItem>)item
 {
     SEL action = item.action;
@@ -344,6 +352,9 @@ static CGFloat viewScaleForMenuItemTag(NSInteger tag)
     preferences._acceleratedDrawingEnabled = settings.acceleratedDrawingEnabled;
     preferences._resourceUsageOverlayVisible = settings.resourceUsageOverlayVisible;
     preferences._displayListDrawingEnabled = settings.displayListDrawingEnabled;
+    preferences._visualViewportEnabled = settings.visualViewportEnabled;
+
+    _webView.configuration.websiteDataStore._resourceLoadStatisticsEnabled = settings.resourceLoadStatisticsEnabled;
 
     BOOL useTransparentWindows = settings.useTransparentWindows;
     if (useTransparentWindows != !_webView._drawsBackground) {
@@ -392,6 +403,15 @@ static CGFloat viewScaleForMenuItemTag(NSInteger tag)
         [self updateTitle:_webView.title];
     else if ([keyPath isEqualToString:@"URL"])
         [self updateTextFieldFromURL:_webView.URL];
+}
+
+- (nullable WKWebView *)webView:(WKWebView *)webView createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration forNavigationAction:(WKNavigationAction *)navigationAction windowFeatures:(WKWindowFeatures *)windowFeatures
+{
+    WK2BrowserWindowController *controller = [[WK2BrowserWindowController alloc] initWithConfiguration:configuration];
+    [controller awakeFromNib];
+    [controller.window makeKeyAndOrderFront:self];
+
+    return controller->_webView;
 }
 
 - (void)webView:(WKWebView *)webView runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(void))completionHandler
@@ -445,6 +465,24 @@ static CGFloat viewScaleForMenuItemTag(NSInteger tag)
     }];
 }
 
+#if __has_feature(objc_generics)
+- (void)webView:(WKWebView *)webView runOpenPanelWithParameters:(WKOpenPanelParameters *)parameters initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(NSArray<NSURL *> * URLs))completionHandler
+#else
+- (void)webView:(WKWebView *)webView runOpenPanelWithParameters:(WKOpenPanelParameters *)parameters initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(NSArray *URLs))completionHandler
+#endif
+{
+    NSOpenPanel *openPanel = [NSOpenPanel openPanel];
+
+    openPanel.allowsMultipleSelection = parameters.allowsMultipleSelection;
+
+    [openPanel beginSheetModalForWindow:webView.window completionHandler:^(NSInteger result) {
+        if (result == NSFileHandlingPanelOKButton)
+            completionHandler(openPanel.URLs);
+        else
+            completionHandler(nil);
+    }];
+}
+
 - (void)updateTextFieldFromURL:(NSURL *)URL
 {
     if (!URL)
@@ -479,7 +517,7 @@ static NSSet *dataTypes()
 
 - (IBAction)fetchWebsiteData:(id)sender
 {
-    [_configuration.websiteDataStore fetchDataRecordsOfTypes:dataTypes() completionHandler:^(NSArray *websiteDataRecords) {
+    [_configuration.websiteDataStore _fetchDataRecordsOfTypes:dataTypes() withOptions:_WKWebsiteDataStoreFetchOptionComputeSizes completionHandler:^(NSArray *websiteDataRecords) {
         NSLog(@"did fetch website data %@.", websiteDataRecords);
     }];
 }
@@ -508,6 +546,23 @@ static NSSet *dataTypes()
 }
 
 #pragma mark WKNavigationDelegate
+
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler
+{
+    LOG(@"decidePolicyForNavigationAction");
+
+    if (navigationAction._canHandleRequest) {
+        decisionHandler(WKNavigationActionPolicyAllow);
+        return;
+    }
+
+    if (navigationAction._userInitiatedAction && !navigationAction._userInitiatedAction.isConsumed) {
+        [navigationAction._userInitiatedAction consume];
+        [[NSWorkspace sharedWorkspace] openURL:navigationAction.request.URL];
+    }
+
+    decisionHandler(WKNavigationActionPolicyCancel);
+}
 
 - (void)webView:(WKWebView *)webView decidePolicyForNavigationResponse:(WKNavigationResponse *)navigationResponse decisionHandler:(void (^)(WKNavigationResponsePolicy))decisionHandler
 {
@@ -539,6 +594,12 @@ static NSSet *dataTypes()
 - (void)webView:(WKWebView *)webView didFinishLoadingNavigation:(WKNavigation *)navigation
 {
     LOG(@"didFinishLoadingNavigation: %@", navigation);
+}
+
+- (void)webView:(WKWebView *)webView didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition disposition, NSURLCredential *__nullable credential))completionHandler
+{
+    LOG(@"didReceiveAuthenticationChallenge: %@", challenge);
+    completionHandler(NSURLSessionAuthChallengeRejectProtectionSpace, nil);
 }
 
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error

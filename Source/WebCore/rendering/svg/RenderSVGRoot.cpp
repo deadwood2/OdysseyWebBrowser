@@ -50,7 +50,7 @@
 
 namespace WebCore {
 
-RenderSVGRoot::RenderSVGRoot(SVGSVGElement& element, Ref<RenderStyle>&& style)
+RenderSVGRoot::RenderSVGRoot(SVGSVGElement& element, RenderStyle&& style)
     : RenderReplaced(element, WTFMove(style))
     , m_objectBoundingBoxValid(false)
     , m_isLayoutSizeChanged(false)
@@ -204,7 +204,7 @@ void RenderSVGRoot::layout()
     }
 
     updateLayerTransform();
-    m_hasBoxDecorations = isDocumentElementRenderer() ? hasBoxDecorationStyle() : hasBoxDecorations();
+    m_hasBoxDecorations = isDocumentElementRenderer() ? hasVisibleBoxDecorationStyle() : hasVisibleBoxDecorations();
     invalidateBackgroundObscurationStatus();
 
     repainter.repaintAfterLayout();
@@ -298,6 +298,18 @@ void RenderSVGRoot::willBeDestroyed()
     RenderReplaced::willBeDestroyed();
 }
 
+void RenderSVGRoot::insertedIntoTree()
+{
+    RenderReplaced::insertedIntoTree();
+    SVGResourcesCache::clientWasAddedToTree(*this);
+}
+
+void RenderSVGRoot::willBeRemovedFromTree()
+{
+    SVGResourcesCache::clientWillBeRemovedFromTree(*this);
+    RenderReplaced::willBeRemovedFromTree();
+}
+
 void RenderSVGRoot::styleDidChange(StyleDifference diff, const RenderStyle* oldStyle)
 {
     if (diff == StyleDifferenceLayout)
@@ -305,7 +317,7 @@ void RenderSVGRoot::styleDidChange(StyleDifference diff, const RenderStyle* oldS
 
     // Box decorations may have appeared/disappeared - recompute status.
     if (diff == StyleDifferenceRepaint)
-        m_hasBoxDecorations = hasBoxDecorationStyle();
+        m_hasBoxDecorations = hasVisibleBoxDecorationStyle();
 
     RenderReplaced::styleDidChange(diff, oldStyle);
     SVGResourcesCache::clientStyleChanged(*this, diff, style());
@@ -331,7 +343,7 @@ void RenderSVGRoot::buildLocalToBorderBoxTransform()
     SVGPoint translate = svgSVGElement().currentTranslate();
     LayoutSize borderAndPadding(borderLeft() + paddingLeft(), borderTop() + paddingTop());
     m_localToBorderBoxTransform = svgSVGElement().viewBoxToViewTransform(contentWidth() / scale, contentHeight() / scale);
-    if (borderAndPadding.isEmpty() && scale == 1 && translate == SVGPoint::zero())
+    if (borderAndPadding.isZero() && scale == 1 && translate == SVGPoint::zero())
         return;
     m_localToBorderBoxTransform = AffineTransform(scale, 0, 0, scale, borderAndPadding.width() + translate.x(), borderAndPadding.height() + translate.y()) * m_localToBorderBoxTransform;
 }
@@ -382,7 +394,7 @@ FloatRect RenderSVGRoot::computeFloatRectForRepaint(const FloatRect& repaintRect
         LayoutRect decoratedRepaintRect = unionRect(localSelectionRect(false), visualOverflowRect());
         adjustedRect.unite(decoratedRepaintRect);
     }
-    return RenderReplaced::computeRectForRepaint(enclosingIntRect(adjustedRect), repaintContainer, fixed);
+    return RenderReplaced::computeRectForRepaint(enclosingIntRect(adjustedRect), repaintContainer, {fixed, false});
 }
 
 // This method expects local CSS box coordinates.
@@ -432,7 +444,7 @@ bool RenderSVGRoot::nodeAtPoint(const HitTestRequest& request, HitTestResult& re
     }
 
     // If we didn't early exit above, we've just hit the container <svg> element. Unlike SVG 1.1, 2nd Edition allows container elements to be hit.
-    if (hitTestAction == HitTestBlockBackground && visibleToHitTesting()) {
+    if ((hitTestAction == HitTestBlockBackground || hitTestAction == HitTestChildBlockBackground) && visibleToHitTesting()) {
         // Only return true here, if the last hit testing phase 'BlockBackground' is executed. If we'd return true in the 'Foreground' phase,
         // hit testing would stop immediately. For SVG only trees this doesn't matter. Though when we have a <foreignObject> subtree we need
         // to be able to detect hits on the background of a <div> element. If we'd return true here in the 'Foreground' phase, we are not able 

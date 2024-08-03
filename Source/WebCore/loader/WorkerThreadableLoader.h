@@ -35,9 +35,6 @@
 #include "ThreadableLoaderClient.h"
 #include "ThreadableLoaderClientWrapper.h"
 
-#include <wtf/PassRefPtr.h>
-#include <wtf/RefCounted.h>
-#include <wtf/RefPtr.h>
 #include <wtf/Threading.h>
 #include <wtf/text/WTFString.h>
 
@@ -48,21 +45,19 @@ namespace WebCore {
     class ResourceRequest;
     class WorkerGlobalScope;
     class WorkerLoaderProxy;
-    struct CrossThreadResourceResponseData;
-    struct CrossThreadResourceRequestData;
 
     class WorkerThreadableLoader : public RefCounted<WorkerThreadableLoader>, public ThreadableLoader {
         WTF_MAKE_FAST_ALLOCATED;
     public:
-        static void loadResourceSynchronously(WorkerGlobalScope*, const ResourceRequest&, ThreadableLoaderClient&, const ThreadableLoaderOptions&);
-        static Ref<WorkerThreadableLoader> create(WorkerGlobalScope* workerGlobalScope, ThreadableLoaderClient* client, const String& taskMode, const ResourceRequest& request, const ThreadableLoaderOptions& options)
+        static void loadResourceSynchronously(WorkerGlobalScope&, ResourceRequest&&, ThreadableLoaderClient&, const ThreadableLoaderOptions&);
+        static Ref<WorkerThreadableLoader> create(WorkerGlobalScope& workerGlobalScope, ThreadableLoaderClient& client, const String& taskMode, ResourceRequest&& request, const ThreadableLoaderOptions& options)
         {
-            return adoptRef(*new WorkerThreadableLoader(workerGlobalScope, client, taskMode, request, options));
+            return adoptRef(*new WorkerThreadableLoader(workerGlobalScope, client, taskMode, WTFMove(request), options));
         }
 
         ~WorkerThreadableLoader();
 
-        virtual void cancel() override;
+        void cancel() override;
 
         bool done() const { return m_workerClientWrapper->done(); }
 
@@ -70,8 +65,8 @@ namespace WebCore {
         using RefCounted<WorkerThreadableLoader>::deref;
 
     protected:
-        virtual void refThreadableLoader() override { ref(); }
-        virtual void derefThreadableLoader() override { deref(); }
+        void refThreadableLoader() override { ref(); }
+        void derefThreadableLoader() override { deref(); }
 
     private:
         // Creates a loader on the main thread and bridges communication between
@@ -90,12 +85,12 @@ namespace WebCore {
         // case 2. xhr gets aborted and the worker context continues running.
         //    The ThreadableLoaderClientWrapper has the underlying client cleared, so no more calls
         //    go through it.  All tasks posted from the worker object's thread to the worker context's
-        //    thread contain the RefPtr<ThreadableLoaderClientWrapper> object, so the 
+        //    thread contain the RefPtr<ThreadableLoaderClientWrapper> object, so the
         //    ThreadableLoaderClientWrapper instance is there until all tasks are executed.
         class MainThreadBridge : public ThreadableLoaderClient {
         public:
             // All executed on the worker context's thread.
-            MainThreadBridge(PassRefPtr<ThreadableLoaderClientWrapper>, WorkerLoaderProxy&, const String& taskMode, const ResourceRequest&, const ThreadableLoaderOptions&, const String& outgoingReferrer, const SecurityOrigin*, const ContentSecurityPolicy*);
+            MainThreadBridge(ThreadableLoaderClientWrapper&, WorkerLoaderProxy&, const String& taskMode, ResourceRequest&&, const ThreadableLoaderOptions&, const String& outgoingReferrer, const SecurityOrigin*, const ContentSecurityPolicy*);
             void cancel();
             void destroy();
 
@@ -104,16 +99,15 @@ namespace WebCore {
             void clearClientWrapper();
 
             // All executed on the main thread.
-            virtual void didSendData(unsigned long long bytesSent, unsigned long long totalBytesToBeSent) override;
-            virtual void didReceiveResponse(unsigned long identifier, const ResourceResponse&) override;
-            virtual void didReceiveData(const char*, int dataLength) override;
-            virtual void didFinishLoading(unsigned long identifier, double finishTime) override;
-            virtual void didFail(const ResourceError&) override;
-            virtual void didFailAccessControlCheck(const ResourceError&) override;
-            virtual void didFailRedirectCheck() override;
+            void didSendData(unsigned long long bytesSent, unsigned long long totalBytesToBeSent) override;
+            void didReceiveResponse(unsigned long identifier, const ResourceResponse&) override;
+            void didReceiveData(const char*, int dataLength) override;
+            void didFinishLoading(unsigned long identifier, double finishTime) override;
+            void didFail(const ResourceError&) override;
 
             // Only to be used on the main thread.
             RefPtr<ThreadableLoader> m_mainThreadLoader;
+            bool m_loadingFinished { false };
 
             // ThreadableLoaderClientWrapper is to be used on the worker context thread.
             // The ref counting is done on either thread.
@@ -126,10 +120,10 @@ namespace WebCore {
             String m_taskMode;
         };
 
-        WorkerThreadableLoader(WorkerGlobalScope*, ThreadableLoaderClient*, const String& taskMode, const ResourceRequest&, const ThreadableLoaderOptions&);
+        WorkerThreadableLoader(WorkerGlobalScope&, ThreadableLoaderClient&, const String& taskMode, ResourceRequest&&, const ThreadableLoaderOptions&);
 
-        RefPtr<WorkerGlobalScope> m_workerGlobalScope;
-        RefPtr<ThreadableLoaderClientWrapper> m_workerClientWrapper;
+        Ref<WorkerGlobalScope> m_workerGlobalScope;
+        Ref<ThreadableLoaderClientWrapper> m_workerClientWrapper;
         MainThreadBridge& m_bridge;
     };
 

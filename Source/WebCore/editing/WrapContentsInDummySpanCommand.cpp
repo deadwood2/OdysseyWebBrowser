@@ -31,11 +31,10 @@
 
 namespace WebCore {
 
-WrapContentsInDummySpanCommand::WrapContentsInDummySpanCommand(PassRefPtr<Element> element)
-    : SimpleEditCommand(element->document())
+WrapContentsInDummySpanCommand::WrapContentsInDummySpanCommand(Element& element)
+    : SimpleEditCommand(element.document())
     , m_element(element)
 {
-    ASSERT(m_element);
 }
 
 void WrapContentsInDummySpanCommand::executeApply()
@@ -45,7 +44,7 @@ void WrapContentsInDummySpanCommand::executeApply()
         children.append(*child);
 
     for (auto& child : children)
-        m_dummySpan->appendChild(WTFMove(child), IGNORE_EXCEPTION);
+        m_dummySpan->appendChild(child, IGNORE_EXCEPTION);
 
     m_element->appendChild(*m_dummySpan, IGNORE_EXCEPTION);
 }
@@ -59,8 +58,6 @@ void WrapContentsInDummySpanCommand::doApply()
     
 void WrapContentsInDummySpanCommand::doUnapply()
 {
-    ASSERT(m_element);
-
     if (!m_dummySpan || !m_element->hasEditableStyle())
         return;
 
@@ -69,15 +66,13 @@ void WrapContentsInDummySpanCommand::doUnapply()
         children.append(*child);
 
     for (auto& child : children)
-        m_element->appendChild(WTFMove(child), IGNORE_EXCEPTION);
+        m_element->appendChild(child, IGNORE_EXCEPTION);
 
     m_dummySpan->remove(IGNORE_EXCEPTION);
 }
 
 void WrapContentsInDummySpanCommand::doReapply()
-{
-    ASSERT(m_element);
-    
+{    
     if (!m_dummySpan || !m_element->hasEditableStyle())
         return;
 
@@ -87,7 +82,7 @@ void WrapContentsInDummySpanCommand::doReapply()
 #ifndef NDEBUG
 void WrapContentsInDummySpanCommand::getNodesInCommand(HashSet<Node*>& nodes)
 {
-    addNodeAndDescendants(m_element.get(), nodes);
+    addNodeAndDescendants(m_element.ptr(), nodes);
     addNodeAndDescendants(m_dummySpan.get(), nodes);
 }
 #endif

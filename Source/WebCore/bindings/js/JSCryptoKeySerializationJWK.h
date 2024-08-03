@@ -28,7 +28,6 @@
 
 #include "CryptoKeySerialization.h"
 #include <heap/Strong.h>
-#include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
 
 #if ENABLE(SUBTLE_CRYPTO)
@@ -53,12 +52,12 @@ public:
     static String serialize(JSC::ExecState* exec, const CryptoKey&);
 
 private:
-    virtual bool reconcileAlgorithm(std::unique_ptr<CryptoAlgorithm>&, std::unique_ptr<CryptoAlgorithmParameters>&) const override;
+    Optional<CryptoAlgorithmPair> reconcileAlgorithm(CryptoAlgorithm*, CryptoAlgorithmParameters*) const override;
 
-    virtual void reconcileUsages(CryptoKeyUsage&) const override;
-    virtual void reconcileExtractable(bool&) const override;
+    void reconcileUsages(CryptoKeyUsage&) const override;
+    void reconcileExtractable(bool&) const override;
 
-    virtual std::unique_ptr<CryptoKeyData> keyData() const override;
+    std::unique_ptr<CryptoKeyData> keyData() const override;
 
     bool keySizeIsValid(size_t sizeInBits) const;
     std::unique_ptr<CryptoKeyData> keyDataOctetSequence() const;

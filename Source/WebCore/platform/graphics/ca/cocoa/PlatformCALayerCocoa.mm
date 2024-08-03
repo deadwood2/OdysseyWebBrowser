@@ -27,12 +27,12 @@
 #import "PlatformCALayerCocoa.h"
 
 #import "AnimationUtilities.h"
-#import "BlockExceptions.h"
 #import "GraphicsContext.h"
 #import "GraphicsLayerCA.h"
 #import "LengthFunctions.h"
 #import "PlatformCAAnimationCocoa.h"
 #import "PlatformCAFilters.h"
+#import "PlatformScreen.h"
 #import "QuartzCoreSPI.h"
 #import "ScrollbarThemeMac.h"
 #import "SoftLinking.h"
@@ -47,6 +47,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
+#import <wtf/BlockObjCExceptions.h>
 #import <wtf/CurrentTime.h>
 #import <wtf/RetainPtr.h>
 
@@ -57,22 +58,6 @@
 #import "WebCoreThread.h"
 #else
 #import "ThemeMac.h"
-#endif
-
-#if ENABLE(FILTERS_LEVEL_2)
-@interface CABackdropLayer : CALayer
-@property BOOL windowServerAware;
-@end
-#endif
-
-#if USE(APPLE_INTERNAL_SDK)
-#import <WebKitAdditions/LayerBackingStoreAdditions.mm>
-#else
-namespace WebCore {
-static void setBackingStoreFormat(CALayer *)
-{
-}
-} // namespace WebCore
 #endif
 
 SOFT_LINK_FRAMEWORK_OPTIONAL(AVFoundation)
@@ -307,8 +292,12 @@ void PlatformCALayerCocoa::commonInit()
     else
         [m_layer setDelegate:[WebActionDisablingCALayerDelegate shared]];
 
-    if (m_layerType == LayerTypeWebLayer || m_layerType == LayerTypeTiledBackingTileLayer)
-        setBackingStoreFormat(m_layer.get());
+    if (m_layerType == LayerTypeWebLayer || m_layerType == LayerTypeTiledBackingTileLayer) {
+#if PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 90300
+        if (screenSupportsExtendedColor())
+            [m_layer setContentsFormat:kCAContentsFormatRGBA10XR];
+#endif
+    }
 
     // So that the scrolling thread's performance logging code can find all the tiles, mark this as being a tile.
     if (m_layerType == LayerTypeTiledBackingTileLayer)
@@ -336,6 +325,9 @@ PassRefPtr<PlatformCALayer> PlatformCALayerCocoa::clone(PlatformCALayerClient* o
         break;
     case LayerTypeShapeLayer:
         type = LayerTypeShapeLayer;
+        break;
+    case LayerTypeBackdropLayer:
+        type = LayerTypeBackdropLayer;
         break;
     case LayerTypeLayer:
     default:
@@ -615,11 +607,34 @@ void PlatformCALayerCocoa::setSublayerTransform(const TransformationMatrix& valu
     END_BLOCK_OBJC_EXCEPTIONS
 }
 
+bool PlatformCALayerCocoa::isHidden() const
+{
+    return [m_layer isHidden];
+}
+
 void PlatformCALayerCocoa::setHidden(bool value)
 {
     BEGIN_BLOCK_OBJC_EXCEPTIONS
     [m_layer setHidden:value];
     END_BLOCK_OBJC_EXCEPTIONS
+}
+
+bool PlatformCALayerCocoa::contentsHidden() const
+{
+    return false;
+}
+
+void PlatformCALayerCocoa::setContentsHidden(bool)
+{
+}
+
+bool PlatformCALayerCocoa::userInteractionEnabled() const
+{
+    return true;
+}
+
+void PlatformCALayerCocoa::setUserInteractionEnabled(bool)
+{
 }
 
 void PlatformCALayerCocoa::setBackingStoreAttached(bool)
@@ -1059,7 +1074,6 @@ void PlatformCALayer::drawLayerContents(CGContextRef context, WebCore::PlatformC
     if (!layerContents->platformCALayerContentsOpaque()) {
         // Turn off font smoothing to improve the appearance of text rendered onto a transparent background.
         graphicsContext.setShouldSmoothFonts(false);
-        graphicsContext.setAntialiasedFontDilationEnabled(true);
     }
     
 #if PLATFORM(MAC)

@@ -35,13 +35,13 @@ public:
 private:
     SVGStopElement(const QualifiedName&, Document&);
 
-    virtual void parseAttribute(const QualifiedName&, const AtomicString&) override;
-    virtual void svgAttributeChanged(const QualifiedName&) override;
+    void parseAttribute(const QualifiedName&, const AtomicString&) final;
+    void svgAttributeChanged(const QualifiedName&) final;
 
-    virtual bool isGradientStop() const override { return true; }
+    bool isGradientStop() const final { return true; }
 
-    virtual RenderPtr<RenderElement> createElementRenderer(Ref<RenderStyle>&&, const RenderTreePosition&) override;
-    virtual bool rendererIsNeeded(const RenderStyle&) override;
+    RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) final;
+    bool rendererIsNeeded(const RenderStyle&) final;
 
     BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGStopElement)
         DECLARE_ANIMATED_NUMBER(Offset, offset)

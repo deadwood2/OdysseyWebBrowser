@@ -49,22 +49,22 @@ public:
 
     void collectPatternAttributes(PatternAttributes&) const;
 
-    virtual AffineTransform localCoordinateSpaceTransform(SVGLocatable::CTMScope) const override;
+    AffineTransform localCoordinateSpaceTransform(SVGLocatable::CTMScope) const final;
 
 private:
     SVGPatternElement(const QualifiedName&, Document&);
     
-    virtual bool isValid() const override { return SVGTests::isValid(); }
-    virtual bool needsPendingResourceHandling() const override { return false; }
+    bool isValid() const final { return SVGTests::isValid(); }
+    bool needsPendingResourceHandling() const final { return false; }
 
     static bool isSupportedAttribute(const QualifiedName&);
-    virtual void parseAttribute(const QualifiedName&, const AtomicString&) override;
-    virtual void svgAttributeChanged(const QualifiedName&) override;
-    virtual void childrenChanged(const ChildChange&) override;
+    void parseAttribute(const QualifiedName&, const AtomicString&) final;
+    void svgAttributeChanged(const QualifiedName&) final;
+    void childrenChanged(const ChildChange&) final;
 
-    virtual RenderPtr<RenderElement> createElementRenderer(Ref<RenderStyle>&&, const RenderTreePosition&) override;
+    RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) final;
 
-    virtual bool selfHasRelativeLengths() const override { return true; }
+    bool selfHasRelativeLengths() const final { return true; }
 
     BEGIN_DECLARE_ANIMATED_PROPERTIES(SVGPatternElement)
         DECLARE_ANIMATED_LENGTH(X, x)
@@ -81,9 +81,9 @@ private:
     END_DECLARE_ANIMATED_PROPERTIES
 
     // SVGTests
-    virtual void synchronizeRequiredFeatures() override { SVGTests::synchronizeRequiredFeatures(this); }
-    virtual void synchronizeRequiredExtensions() override { SVGTests::synchronizeRequiredExtensions(this); }
-    virtual void synchronizeSystemLanguage() override { SVGTests::synchronizeSystemLanguage(this); }
+    void synchronizeRequiredFeatures() final { SVGTests::synchronizeRequiredFeatures(this); }
+    void synchronizeRequiredExtensions() final { SVGTests::synchronizeRequiredExtensions(this); }
+    void synchronizeSystemLanguage() final { SVGTests::synchronizeSystemLanguage(this); }
 };
 
 } // namespace WebCore

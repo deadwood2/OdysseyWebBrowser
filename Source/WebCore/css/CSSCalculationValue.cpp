@@ -32,6 +32,7 @@
 #include "config.h"
 #include "CSSCalculationValue.h"
 
+#include "CSSParser.h"
 #include "CSSPrimitiveValueMappings.h"
 #include "StyleResolver.h"
 #include <wtf/MathExtras.h>
@@ -199,9 +200,9 @@ double CSSCalcValue::computeLengthPx(const CSSToLengthConversionData& conversion
 class CSSCalcPrimitiveValue final : public CSSCalcExpressionNode {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    static Ref<CSSCalcPrimitiveValue> create(PassRefPtr<CSSPrimitiveValue> value, bool isInteger)
+    static Ref<CSSCalcPrimitiveValue> create(Ref<CSSPrimitiveValue>&& value, bool isInteger)
     {
-        return adoptRef(*new CSSCalcPrimitiveValue(value, isInteger));
+        return adoptRef(*new CSSCalcPrimitiveValue(WTFMove(value), isInteger));
     }
 
     static RefPtr<CSSCalcPrimitiveValue> create(double value, CSSPrimitiveValue::UnitTypes type, bool isInteger)
@@ -212,17 +213,17 @@ public:
     }
 
 private:
-    virtual bool isZero() const override
+    bool isZero() const final
     {
         return !m_value->getDoubleValue();
     }
 
-    virtual String customCSSText() const override
+    String customCSSText() const final
     {
         return m_value->cssText();
     }
 
-    virtual std::unique_ptr<CalcExpressionNode> createCalcExpression(const CSSToLengthConversionData& conversionData) const override
+    std::unique_ptr<CalcExpressionNode> createCalcExpression(const CSSToLengthConversionData& conversionData) const final
     {
         switch (category()) {
         case CalcNumber:
@@ -231,9 +232,7 @@ private:
             return std::make_unique<CalcExpressionLength>(Length(m_value->computeLength<float>(conversionData), WebCore::Fixed));
         case CalcPercent:
         case CalcPercentLength: {
-            CSSPrimitiveValue* primitiveValue = m_value.get();
-            return std::make_unique<CalcExpressionLength>(primitiveValue
-                ? primitiveValue->convertToLength<FixedFloatConversion | PercentConversion>(conversionData) : Length(Undefined));
+            return std::make_unique<CalcExpressionLength>(m_value->convertToLength<FixedFloatConversion | PercentConversion>(conversionData));
         }
         // Only types that could be part of a Length expression can be converted
         // to a CalcExpressionNode. CalcPercentNumber makes no sense as a Length.
@@ -248,7 +247,7 @@ private:
         return nullptr;
     }
 
-    virtual double doubleValue() const override
+    double doubleValue() const final
     {
         if (hasDoubleValue(primitiveType()))
             return m_value->getDoubleValue();
@@ -256,7 +255,7 @@ private:
         return 0;
     }
 
-    virtual double computeLengthPx(const CSSToLengthConversionData& conversionData) const override
+    double computeLengthPx(const CSSToLengthConversionData& conversionData) const final
     {
         switch (category()) {
         case CalcLength:
@@ -277,28 +276,28 @@ private:
         return 0;
     }
 
-    virtual bool equals(const CSSCalcExpressionNode& other) const override
+    bool equals(const CSSCalcExpressionNode& other) const final
     {
         if (type() != other.type())
             return false;
 
-        return compareCSSValuePtr(m_value, static_cast<const CSSCalcPrimitiveValue&>(other).m_value);
+        return compareCSSValue(m_value, static_cast<const CSSCalcPrimitiveValue&>(other).m_value);
     }
 
-    virtual Type type() const override { return CssCalcPrimitiveValue; }
-    virtual CSSPrimitiveValue::UnitTypes primitiveType() const override
+    Type type() const final { return CssCalcPrimitiveValue; }
+    CSSPrimitiveValue::UnitTypes primitiveType() const final
     {
         return CSSPrimitiveValue::UnitTypes(m_value->primitiveType());
     }
 
 private:
-    explicit CSSCalcPrimitiveValue(PassRefPtr<CSSPrimitiveValue> value, bool isInteger)
+    explicit CSSCalcPrimitiveValue(Ref<CSSPrimitiveValue>&& value, bool isInteger)
         : CSSCalcExpressionNode(unitCategory((CSSPrimitiveValue::UnitTypes)value->primitiveType()), isInteger)
-        , m_value(value)
+        , m_value(WTFMove(value))
     {
     }
 
-    RefPtr<CSSPrimitiveValue> m_value;
+    Ref<CSSPrimitiveValue> m_value;
 };
 
 static const CalculationCategory addSubtractResult[CalcAngle][CalcAngle] = {
@@ -421,12 +420,12 @@ public:
     }
 
 private:
-    virtual bool isZero() const override
+    bool isZero() const final
     {
         return !doubleValue();
     }
 
-    virtual std::unique_ptr<CalcExpressionNode> createCalcExpression(const CSSToLengthConversionData& conversionData) const override
+    std::unique_ptr<CalcExpressionNode> createCalcExpression(const CSSToLengthConversionData& conversionData) const final
     {
         std::unique_ptr<CalcExpressionNode> left(m_leftSide->createCalcExpression(conversionData));
         if (!left)
@@ -437,12 +436,12 @@ private:
         return std::make_unique<CalcExpressionBinaryOperation>(WTFMove(left), WTFMove(right), m_operator);
     }
 
-    virtual double doubleValue() const override
+    double doubleValue() const final
     {
         return evaluate(m_leftSide->doubleValue(), m_rightSide->doubleValue());
     }
 
-    virtual double computeLengthPx(const CSSToLengthConversionData& conversionData) const override
+    double computeLengthPx(const CSSToLengthConversionData& conversionData) const final
     {
         const double leftValue = m_leftSide->computeLengthPx(conversionData);
         const double rightValue = m_rightSide->computeLengthPx(conversionData);
@@ -463,12 +462,12 @@ private:
         return result.toString();
     }
 
-    virtual String customCSSText() const override
+    String customCSSText() const final
     {
         return buildCssText(m_leftSide->customCSSText(), m_rightSide->customCSSText(), m_operator);
     }
 
-    virtual bool equals(const CSSCalcExpressionNode& exp) const override
+    bool equals(const CSSCalcExpressionNode& exp) const final
     {
         if (type() != exp.type())
             return false;
@@ -479,9 +478,9 @@ private:
             && m_operator == other.m_operator;
     }
 
-    virtual Type type() const override { return CssCalcBinaryOperation; }
+    Type type() const final { return CssCalcBinaryOperation; }
 
-    virtual CSSPrimitiveValue::UnitTypes primitiveType() const override
+    CSSPrimitiveValue::UnitTypes primitiveType() const final
     {
         switch (category()) {
         case CalcNumber:
@@ -609,8 +608,7 @@ private:
         if (!is<CSSPrimitiveValue>(value.get()))
             return false;
 
-        CSSPrimitiveValue& primitiveValue = downcast<CSSPrimitiveValue>(*value);
-        result->value = CSSCalcPrimitiveValue::create(&primitiveValue, parserValue->isInt);
+        result->value = CSSCalcPrimitiveValue::create(Ref<CSSPrimitiveValue>(downcast<CSSPrimitiveValue>(*value)), parserValue->isInt);
 
         ++*index;
         return true;

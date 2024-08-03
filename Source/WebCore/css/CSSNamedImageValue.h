@@ -34,7 +34,7 @@ namespace WebCore {
 
 class Document;
 
-class CSSNamedImageValue : public CSSImageGeneratorValue {
+class CSSNamedImageValue final : public CSSImageGeneratorValue {
 public:
     static Ref<CSSNamedImageValue> create(const String& name)
     {
@@ -58,7 +58,6 @@ private:
     }
 
     String m_name;
-    RefPtr<Image> m_generatedImage;
 };
 
 } // namespace WebCore

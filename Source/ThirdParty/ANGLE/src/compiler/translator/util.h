@@ -12,17 +12,18 @@
 #include "angle_gl.h"
 #include <GLSLANG/ShaderLang.h>
 
+#include "compiler/translator/Operator.h"
 #include "compiler/translator/Types.h"
 
-// atof_clamp is like atof but
+// strtof_clamp is like strtof but
 //   1. it forces C locale, i.e. forcing '.' as decimal point.
 //   2. it clamps the value to -FLT_MAX or FLT_MAX if overflow happens.
 // Return false if overflow happens.
-extern bool atof_clamp(const char *str, float *value);
+bool strtof_clamp(const std::string &str, float *value);
 
-// If overflow happens, clamp the value to INT_MIN or INT_MAX.
+// If overflow happens, clamp the value to UINT_MIN or UINT_MAX.
 // Return false if overflow happens.
-extern bool atoi_clamp(const char *str, int *value);
+bool atoi_clamp(const char *str, unsigned int *value);
 
 class TSymbolTable;
 
@@ -37,10 +38,17 @@ bool IsVarying(TQualifier qualifier);
 InterpolationType GetInterpolationType(TQualifier qualifier);
 TString ArrayString(const TType &type);
 
+TType GetInterfaceBlockType(const sh::InterfaceBlock &block);
+TType GetShaderVariableBasicType(const sh::ShaderVariable &var);
+TType GetShaderVariableType(const sh::ShaderVariable &var);
+
+TOperator TypeToConstructorOperator(const TType &type);
+
 class GetVariableTraverser : angle::NonCopyable
 {
   public:
     GetVariableTraverser(const TSymbolTable &symbolTable);
+    virtual ~GetVariableTraverser() {}
 
     template <typename VarT>
     void traverse(const TType &type, const TString &name, std::vector<VarT> *output);
@@ -59,6 +67,10 @@ class GetVariableTraverser : angle::NonCopyable
     const TSymbolTable &mSymbolTable;
 };
 
+bool IsBuiltinOutputVariable(TQualifier qualifier);
+bool IsBuiltinFragmentInputVariable(TQualifier qualifier);
+bool CanBeInvariantESSL1(TQualifier qualifier);
+bool CanBeInvariantESSL3OrGreater(TQualifier qualifier);
 }
 
 #endif // COMPILER_TRANSLATOR_UTIL_H_

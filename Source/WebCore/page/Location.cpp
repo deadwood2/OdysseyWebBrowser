@@ -104,7 +104,7 @@ String Location::port() const
         return String();
 
     const URL& url = this->url();
-    return url.hasPort() ? String::number(url.port()) : "";
+    return url.hasPort() ? String::number(url.port()) : emptyString();
 }
 
 String Location::pathname() const
@@ -132,14 +132,14 @@ String Location::origin() const
     return SecurityOrigin::create(url())->toString();
 }
 
-PassRefPtr<DOMStringList> Location::ancestorOrigins() const
+Vector<String> Location::ancestorOrigins() const
 {
-    RefPtr<DOMStringList> origins = DOMStringList::create();
+    Vector<String> origins;
     if (!m_frame)
-        return origins.release();
+        return origins;
     for (Frame* frame = m_frame->tree().parent(); frame; frame = frame->tree().parent())
-        origins->append(frame->document()->securityOrigin()->toString());
-    return origins.release();
+        origins.append(frame->document()->securityOrigin()->toString());
+    return origins;
 }
 
 String Location::hash() const

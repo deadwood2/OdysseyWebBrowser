@@ -37,8 +37,6 @@
 #include "ScriptController.h"
 #include "SecurityOrigin.h"
 #include "Settings.h"
-#include <wtf/HashSet.h>
-#include <wtf/NumberOfCores.h>
 #include <wtf/StdLibExtras.h>
 
 using namespace WTF;
@@ -78,11 +76,6 @@ String Navigator::appVersion() const
     return appVersion;
 }
 
-String Navigator::language() const
-{
-    return defaultLanguage();
-}
-
 String Navigator::userAgent() const
 {
     if (!m_frame)
@@ -118,7 +111,11 @@ bool Navigator::cookieEnabled() const
     if (m_frame->page() && !m_frame->page()->settings().cookieEnabled())
         return false;
 
-    return cookiesEnabled(m_frame->document());
+    auto* document = m_frame->document();
+    if (!document)
+        return false;
+    
+    return cookiesEnabled(*document);
 }
 
 bool Navigator::javaEnabled() const
@@ -133,28 +130,6 @@ bool Navigator::javaEnabled() const
 
     return true;
 }
-
-#if defined(ENABLE_NAVIGATOR_HWCONCURRENCY)
-int Navigator::hardwareConcurrency() const
-{
-    // Enforce a maximum for the number of cores reported to mitigate
-    // fingerprinting for the minority of machines with large numbers of cores.
-    // If machines with more than 8 cores become commonplace, we should bump this number.
-    // see https://bugs.webkit.org/show_bug.cgi?id=132588 for the
-    // rationale behind this decision.
-#if PLATFORM(IOS)
-    const int maxCoresToReport = 2;
-#else
-    const int maxCoresToReport = 8;
-#endif
-    int hardwareConcurrency = numberOfProcessorCores();
-
-    if (hardwareConcurrency > maxCoresToReport)
-        return maxCoresToReport;
-
-    return hardwareConcurrency;
-}
-#endif
 
 #if PLATFORM(IOS)
 bool Navigator::standalone() const

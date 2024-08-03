@@ -122,7 +122,7 @@ public:
                     }
                 }
 
-                if (node->hasVariableAccessData(m_graph))
+                if (node->accessesStack(m_graph))
                     currentBlockAccessData.operand(node->local()) = node->variableAccessData();
             }
         }
@@ -165,7 +165,6 @@ public:
 
 bool performLiveCatchVariablePreservationPhase(Graph& graph)
 {
-    SamplingRegion samplingRegion("DFG Live Catch Variables Preservation Phase");
     return runPhase<LiveCatchVariablePreservationPhase>(graph);
 }
 

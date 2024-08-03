@@ -210,7 +210,7 @@ inline bool Structure::isValid(JSGlobalObject* globalObject, StructureChain* cac
         if (asObject(prototype)->structure() != cachedStructure->get())
             return false;
         ++cachedStructure;
-        prototype = asObject(prototype)->prototype();
+        prototype = asObject(prototype)->getPrototypeDirect();
     }
     return prototype.isNull() && !*cachedStructure;
 }
@@ -242,7 +242,6 @@ inline bool Structure::putWillGrowOutOfLineStorage()
 
 ALWAYS_INLINE WriteBarrier<PropertyTable>& Structure::propertyTable()
 {
-    ASSERT(!globalObject() || !globalObject()->vm().heap.isCollecting());
     return m_propertyTableUnsafe;
 }
 
@@ -256,7 +255,7 @@ inline void Structure::didReplaceProperty(PropertyOffset offset)
     WatchpointSet* set = map->get(offset);
     if (LIKELY(!set))
         return;
-    set->fireAll("Property did get replaced");
+    set->fireAll(*vm(), "Property did get replaced");
 }
 
 inline WatchpointSet* Structure::propertyReplacementWatchpointSet(PropertyOffset offset)

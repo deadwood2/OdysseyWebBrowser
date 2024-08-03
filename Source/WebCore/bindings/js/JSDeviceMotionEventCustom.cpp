@@ -31,6 +31,8 @@
 
 #include "DeviceMotionData.h"
 #include "DeviceMotionEvent.h"
+#include <heap/HeapInlines.h>
+#include <runtime/AuxiliaryBarrierInlines.h>
 #include <runtime/IdentifierInlines.h>
 #include <runtime/JSCJSValueInlines.h>
 #include <runtime/ObjectConstructor.h>
@@ -47,6 +49,7 @@ static RefPtr<DeviceMotionData::Acceleration> readAccelerationArgument(JSValue v
 
     // Given the above test, this will always yield an object.
     JSObject* object = value.toObject(&state);
+    ASSERT(!state.hadException());
 
     JSValue xValue = object->get(&state, Identifier::fromString(&state, "x"));
     if (state.hadException())
@@ -85,6 +88,7 @@ static RefPtr<DeviceMotionData::RotationRate> readRotationRateArgument(JSValue v
 
     // Given the above test, this will always yield an object.
     JSObject* object = value.toObject(&state);
+    ASSERT(!state.hadException());
 
     JSValue alphaValue = object->get(&state, Identifier::fromString(&state, "alpha"));
     if (state.hadException())

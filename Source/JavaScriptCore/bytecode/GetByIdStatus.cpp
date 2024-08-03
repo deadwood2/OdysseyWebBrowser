@@ -33,6 +33,7 @@
 #include "LLIntData.h"
 #include "LowLevelInterpreter.h"
 #include "PolymorphicAccess.h"
+#include "StructureStubInfo.h"
 #include <wtf/ListDump.h>
 
 namespace JSC {
@@ -74,8 +75,14 @@ GetByIdStatus GetByIdStatus::computeFromLLInt(CodeBlock* profiledBlock, unsigned
     VM& vm = *profiledBlock->vm();
     
     Instruction* instruction = profiledBlock->instructions().begin() + bytecodeIndex;
-    
-    if (instruction[0].u.opcode == LLInt::getOpcode(op_get_array_length))
+
+    Opcode opcode = instruction[0].u.opcode;
+
+    ASSERT(opcode == LLInt::getOpcode(op_get_array_length) || opcode == LLInt::getOpcode(op_try_get_by_id) || opcode == LLInt::getOpcode(op_get_by_id_proto_load) || opcode == LLInt::getOpcode(op_get_by_id) || opcode == LLInt::getOpcode(op_get_by_id_unset));
+
+    // FIXME: We should not just bail if we see a try_get_by_id or a get_by_id_proto_load.
+    // https://bugs.webkit.org/show_bug.cgi?id=158039
+    if (opcode != LLInt::getOpcode(op_get_by_id))
         return GetByIdStatus(NoInformation, false);
 
     StructureID structureID = instruction[4].u.structureID;
@@ -210,7 +217,9 @@ GetByIdStatus GetByIdStatus::computeForStubInfoWithoutExitSiteFeedback(
                 JSFunction* intrinsicFunction = nullptr;
 
                 switch (access.type()) {
-                case AccessCase::Load: {
+                case AccessCase::Load:
+                case AccessCase::GetGetter:
+                case AccessCase::Miss: {
                     break;
                 }
                 case AccessCase::IntrinsicGetter: {
@@ -218,11 +227,11 @@ GetByIdStatus GetByIdStatus::computeForStubInfoWithoutExitSiteFeedback(
                     break;
                 }
                 case AccessCase::Getter: {
-                    CallLinkInfo* callLinkInfo = access.callLinkInfo();
-                    ASSERT(callLinkInfo);
-                    callLinkStatus = std::make_unique<CallLinkStatus>(
-                        CallLinkStatus::computeFor(
-                            locker, profiledBlock, *callLinkInfo, callExitSiteData));
+                    callLinkStatus = std::make_unique<CallLinkStatus>();
+                    if (CallLinkInfo* callLinkInfo = access.callLinkInfo()) {
+                        *callLinkStatus = CallLinkStatus::computeFor(
+                            locker, profiledBlock, *callLinkInfo, callExitSiteData);
+                    }
                     break;
                 }
                 default: {
@@ -230,7 +239,8 @@ GetByIdStatus GetByIdStatus::computeForStubInfoWithoutExitSiteFeedback(
                     // future. https://bugs.webkit.org/show_bug.cgi?id=133052
                     return GetByIdStatus(slowPathState, true);
                 } }
-                 
+
+                ASSERT((AccessCase::Miss == access.type()) == (access.offset() == invalidOffset));
                 GetByIdVariant variant(
                     StructureSet(structure), complexGetStatus.offset(),
                     complexGetStatus.conditionSet(), WTFMove(callLinkStatus),
@@ -348,6 +358,22 @@ bool GetByIdStatus::makesCalls() const
     RELEASE_ASSERT_NOT_REACHED();
 
     return false;
+}
+
+void GetByIdStatus::filter(const StructureSet& set)
+{
+    if (m_state != Simple)
+        return;
+    
+    // FIXME: We could also filter the variants themselves.
+    
+    m_variants.removeAllMatching(
+        [&] (GetByIdVariant& variant) -> bool {
+            return !variant.structureSet().overlaps(set);
+        });
+    
+    if (m_variants.isEmpty())
+        m_state = NoInformation;
 }
 
 void GetByIdStatus::dump(PrintStream& out) const

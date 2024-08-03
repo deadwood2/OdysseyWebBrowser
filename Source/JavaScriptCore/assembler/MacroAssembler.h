@@ -28,6 +28,8 @@
 
 #if ENABLE(ASSEMBLER)
 
+#include "JSCJSValue.h"
+
 #if CPU(ARM_THUMB2)
 #include "MacroAssemblerARMv7.h"
 namespace JSC { typedef MacroAssemblerARMv7 MacroAssemblerBase; };
@@ -271,7 +273,7 @@ public:
     }
 #endif
 
-    // Platform agnostic onvenience functions,
+    // Platform agnostic convenience functions,
     // described in terms of other macro assembly methods.
     void pop()
     {
@@ -492,6 +494,7 @@ public:
 
     // B3 has additional pseudo-opcodes for returning, when it wants to signal that the return
     // consumes some register in some way.
+    void retVoid() { ret(); }
     void ret32(RegisterID) { ret(); }
     void ret64(RegisterID) { ret(); }
     void retFloat(FPRegisterID) { ret(); }
@@ -790,7 +793,8 @@ public:
     using MacroAssemblerBase::branchTest8;
     Jump branchTest8(ResultCondition cond, ExtendedAddress address, TrustedImm32 mask = TrustedImm32(-1))
     {
-        return MacroAssemblerBase::branchTest8(cond, Address(address.base, address.offset), mask);
+        TrustedImm32 mask8(static_cast<int8_t>(mask.m_value));
+        return MacroAssemblerBase::branchTest8(cond, Address(address.base, address.offset), mask8);
     }
 
 #else // !CPU(X86_64)
@@ -1694,16 +1698,20 @@ public:
 
     Jump branchAdd32(ResultCondition cond, RegisterID src, Imm32 imm, RegisterID dest)
     {
-        if (src == dest)
-            ASSERT(haveScratchRegisterForBlinding());
-
         if (shouldBlind(imm)) {
-            if (src == dest) {
-                move(src, scratchRegisterForBlinding());
-                src = scratchRegisterForBlinding();
+            if (src != dest || haveScratchRegisterForBlinding()) {
+                if (src == dest) {
+                    move(src, scratchRegisterForBlinding());
+                    src = scratchRegisterForBlinding();
+                }
+                loadXorBlindedConstant(xorBlindConstant(imm), dest);
+                return branchAdd32(cond, src, dest);
             }
-            loadXorBlindedConstant(xorBlindConstant(imm), dest);
-            return branchAdd32(cond, src, dest);  
+            // If we don't have a scratch register available for use, we'll just
+            // place a random number of nops.
+            uint32_t nopCount = random() & 3;
+            while (nopCount--)
+                nop();
         }
         return branchAdd32(cond, src, imm.asTrustedImm32(), dest);            
     }

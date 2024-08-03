@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2009, 2010, 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2007, 2009-2010, 2013, 2015-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -97,15 +97,16 @@ bool isDraggableLink(const Element& element)
     
 static PlatformMouseEvent createMouseEvent(DragData& dragData)
 {
-    int keyState = dragData.modifierKeyState();
-    bool shiftKey = static_cast<bool>(keyState & PlatformEvent::ShiftKey);
-    bool ctrlKey = static_cast<bool>(keyState & PlatformEvent::CtrlKey);
-    bool altKey = static_cast<bool>(keyState & PlatformEvent::AltKey);
-    bool metaKey = static_cast<bool>(keyState & PlatformEvent::MetaKey);
+    bool shiftKey = false;
+    bool ctrlKey = false;
+    bool altKey = false;
+    bool metaKey = false;
+
+    PlatformKeyboardEvent::getCurrentModifierState(shiftKey, ctrlKey, altKey, metaKey);
 
     return PlatformMouseEvent(dragData.clientPosition(), dragData.globalPosition(),
                               LeftButton, PlatformEvent::MouseMoved, 0, shiftKey, ctrlKey, altKey,
-                              metaKey, currentTime(), ForceAtClick);
+                              metaKey, currentTime(), ForceAtClick, NoTap);
 }
 
 DragController::DragController(Page& page, DragClient& client)
@@ -125,20 +126,20 @@ DragController::~DragController()
     m_client.dragControllerDestroyed();
 }
 
-static PassRefPtr<DocumentFragment> documentFragmentFromDragData(DragData& dragData, Frame& frame, Range& context, bool allowPlainText, bool& chosePlainText)
+static RefPtr<DocumentFragment> documentFragmentFromDragData(DragData& dragData, Frame& frame, Range& context, bool allowPlainText, bool& chosePlainText)
 {
     chosePlainText = false;
 
     Document& document = context.ownerDocument();
     if (dragData.containsCompatibleContent()) {
-        if (PassRefPtr<DocumentFragment> fragment = frame.editor().webContentFromPasteboard(*Pasteboard::createForDragAndDrop(dragData), context, allowPlainText, chosePlainText))
+        if (auto fragment = frame.editor().webContentFromPasteboard(*Pasteboard::createForDragAndDrop(dragData), context, allowPlainText, chosePlainText))
             return fragment;
 
         if (dragData.containsURL(DragData::DoNotConvertFilenames)) {
             String title;
             String url = dragData.asURL(DragData::DoNotConvertFilenames, &title);
             if (!url.isEmpty()) {
-                Ref<HTMLAnchorElement> anchor = HTMLAnchorElement::create(document);
+                auto anchor = HTMLAnchorElement::create(document);
                 anchor->setHref(url);
                 if (title.isEmpty()) {
                     // Try the plain text first because the url might be normalized or escaped.
@@ -148,9 +149,9 @@ static PassRefPtr<DocumentFragment> documentFragmentFromDragData(DragData& dragD
                         title = url;
                 }
                 anchor->appendChild(document.createTextNode(title), IGNORE_EXCEPTION);
-                Ref<DocumentFragment> fragment = document.createDocumentFragment();
-                fragment->appendChild(WTFMove(anchor), IGNORE_EXCEPTION);
-                return fragment.ptr();
+                auto fragment = document.createDocumentFragment();
+                fragment->appendChild(anchor, IGNORE_EXCEPTION);
+                return WTFMove(fragment);
             }
         }
     }
@@ -432,6 +433,7 @@ DragOperation DragController::operationForLoad(DragData& dragData)
 
 static bool setSelectionToDragCaret(Frame* frame, VisibleSelection& dragCaret, RefPtr<Range>& range, const IntPoint& point)
 {
+    Ref<Frame> protector(*frame);
     frame->selection().setSelection(dragCaret);
     if (frame->selection().selection().isNone()) {
         dragCaret = frame->visiblePositionForPoint(point);
@@ -712,7 +714,7 @@ static Image* getImage(Element& element)
 static void selectElement(Element& element)
 {
     RefPtr<Range> range = element.document().createRange();
-    range->selectNode(&element);
+    range->selectNode(element);
     element.document().frame()->selection().setSelection(VisibleSelection(*range, DOWNSTREAM));
 }
 
@@ -752,6 +754,7 @@ bool DragController::startDrag(Frame& src, const DragState& state, DragOperation
     if (!src.view() || !src.contentRenderer() || !state.source)
         return false;
 
+    Ref<Frame> protector(src);
     HitTestResult hitTestResult = src.eventHandler().hitTestResultAtPoint(dragOrigin, HitTestRequest::ReadOnly | HitTestRequest::Active);
 
     // FIXME(136836): Investigate whether all elements should use the containsIncludingShadowDOM() path here.

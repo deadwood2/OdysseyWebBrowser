@@ -33,8 +33,8 @@
 #include <chrono>
 #include <wtf/NeverDestroyed.h>
 
-const std::chrono::milliseconds collectionInterval = 500_ms;
-const std::chrono::seconds surfaceAgeBeforeMarkingPurgeable = 2_s;
+const std::chrono::milliseconds collectionInterval = 500ms;
+const std::chrono::seconds surfaceAgeBeforeMarkingPurgeable = 2s;
 const size_t defaultMaximumBytesCached = 1024 * 1024 * 64;
 
 // We'll never allow more than 1/2 of the cache to be filled with in-use surfaces, because
@@ -64,7 +64,7 @@ IOSurfacePool& IOSurfacePool::sharedPool()
     return pool;
 }
 
-static bool surfaceMatchesParameters(IOSurface& surface, IntSize requestedSize, ColorSpace colorSpace, IOSurface::Format format)
+static bool surfaceMatchesParameters(IOSurface& surface, IntSize requestedSize, CGColorSpaceRef colorSpace, IOSurface::Format format)
 {
     if (format != surface.format())
         return false;
@@ -107,7 +107,7 @@ void IOSurfacePool::didUseSurfaceOfSize(IntSize size)
     m_sizesInPruneOrder.append(size);
 }
 
-std::unique_ptr<IOSurface> IOSurfacePool::takeSurface(IntSize size, ColorSpace colorSpace, IOSurface::Format format)
+std::unique_ptr<IOSurface> IOSurfacePool::takeSurface(IntSize size, CGColorSpaceRef colorSpace, IOSurface::Format format)
 {
     CachedSurfaceMap::iterator mapIter = m_cachedSurfaces.find(size);
 

@@ -59,6 +59,7 @@
 #include "ScrollingConstraints.h"
 #include "ScrollingCoordinator.h"
 #include "Settings.h"
+#include "TextStream.h"
 #include "TiledBacking.h"
 #include "TransformState.h"
 #include <wtf/CurrentTime.h>
@@ -458,12 +459,12 @@ void RenderLayerCompositor::flushPendingLayerChanges(bool isFlushRoot)
         rootLayer->flushCompositingState(exposedRect, frameView.viewportIsStable());
 #else
         // Having a m_clipLayer indicates that we're doing scrolling via GraphicsLayers.
-        IntRect visibleRect = m_clipLayer ? IntRect(IntPoint(), frameView.unscaledVisibleContentSizeIncludingObscuredArea()) : frameView.visibleContentRect();
-        if (!frameView.exposedRect().isInfinite())
-            visibleRect.intersect(IntRect(frameView.exposedRect()));
+        FloatRect visibleRect = m_clipLayer ? FloatRect({ 0, 0 }, frameView.unscaledVisibleContentSizeIncludingObscuredArea()) : frameView.visibleContentRect();
 
-        LOG(Compositing, "RenderLayerCompositor %p flushPendingLayerChanges(%d) %d, %d, %dx%d (stable viewport %d)", this, isFlushRoot,
-            visibleRect.x(), visibleRect.y(), visibleRect.width(), visibleRect.height(), frameView.viewportIsStable());
+        if (frameView.viewExposedRect())
+            visibleRect.intersect(frameView.viewExposedRect().value());
+
+        LOG_WITH_STREAM(Compositing,  stream << "RenderLayerCompositor " << this << " flushPendingLayerChanges(" << isFlushRoot << ") " << visibleRect << " (stable viewport " << frameView.viewportIsStable() << ")");
         rootLayer->flushCompositingState(visibleRect, frameView.viewportIsStable());
 #endif
     }
@@ -515,7 +516,7 @@ static bool scrollbarHasDisplayNone(Scrollbar* scrollbar)
     if (!scrollbar || !scrollbar->isCustomScrollbar())
         return false;
 
-    RefPtr<RenderStyle> scrollbarStyle = static_cast<RenderScrollbar*>(scrollbar)->getScrollbarPseudoStyle(ScrollbarBGPart, SCROLLBAR);
+    std::unique_ptr<RenderStyle> scrollbarStyle = static_cast<RenderScrollbar*>(scrollbar)->getScrollbarPseudoStyle(ScrollbarBGPart, SCROLLBAR);
     return scrollbarStyle && scrollbarStyle->display() == NONE;
 }
 
@@ -797,7 +798,7 @@ bool RenderLayerCompositor::updateCompositingLayers(CompositingUpdateType update
 
 void RenderLayerCompositor::appendDocumentOverlayLayers(Vector<GraphicsLayer*>& childList)
 {
-    if (!isMainFrameCompositor())
+    if (!isMainFrameCompositor() || !m_compositing)
         return;
 
     Frame& frame = m_renderView.frameView().frame();
@@ -1759,7 +1760,11 @@ void RenderLayerCompositor::updateScrollLayerPosition()
 
 FloatPoint RenderLayerCompositor::positionForClipLayer() const
 {
-    return FloatPoint(0, FrameView::yPositionForInsetClipLayer(m_renderView.frameView().scrollPosition(), m_renderView.frameView().topContentInset()));
+    FrameView& frameView = m_renderView.frameView();
+
+    return FloatPoint(
+        frameView.shouldPlaceBlockDirectionScrollbarOnLeft() ? frameView.horizontalScrollbarIntrusion() : 0,
+        FrameView::yPositionForInsetClipLayer(frameView.scrollPosition(), frameView.topContentInset()));
 }
 
 void RenderLayerCompositor::frameViewDidScroll()
@@ -1842,7 +1847,7 @@ String RenderLayerCompositor::layerTreeAsText(LayerTreeFlags flags)
     // Dump an empty layer tree only if the only composited layer is the main frame's tiled backing,
     // so that tests expecting us to drop out of accelerated compositing when there are no layers succeed.
     if (!hasAnyAdditionalCompositedLayers(rootRenderLayer()) && documentUsesTiledBacking() && !(layerTreeBehavior & LayerTreeAsTextIncludeTileCaches))
-        layerTreeText = "";
+        layerTreeText = emptyString();
 
     // The true root layer is not included in the dump, so if we want to report
     // its repaint rects, they must be included here.
@@ -2539,7 +2544,7 @@ bool RenderLayerCompositor::requiresCompositingForCanvas(RenderLayerModelObject&
         bool isCanvasLargeEnoughToForceCompositing = true;
 #else
         HTMLCanvasElement* canvas = downcast<HTMLCanvasElement>(renderer.element());
-        bool isCanvasLargeEnoughToForceCompositing = canvas->size().area() >= canvasAreaThresholdRequiringCompositing;
+        bool isCanvasLargeEnoughToForceCompositing = canvas->size().area().unsafeGet() >= canvasAreaThresholdRequiringCompositing;
 #endif
         CanvasCompositingStrategy compositingStrategy = canvasCompositingStrategy(renderer);
         return compositingStrategy == CanvasAsLayerContents || (compositingStrategy == CanvasPaintedToLayer && isCanvasLargeEnoughToForceCompositing);
@@ -3004,8 +3009,10 @@ bool RenderLayerCompositor::shouldCompositeOverflowControls() const
     if (documentUsesTiledBacking())
         return true;
 
+#if !USE(COORDINATED_GRAPHICS_THREADED)
     if (!frameView.hasOverlayScrollbars())
         return false;
+#endif
 
     return true;
 }
@@ -3488,7 +3495,7 @@ void RenderLayerCompositor::destroyRootLayer()
         if (ScrollingCoordinator* scrollingCoordinator = this->scrollingCoordinator())
             scrollingCoordinator->scrollableAreaScrollbarLayerDidChange(m_renderView.frameView(), HorizontalScrollbar);
         if (Scrollbar* horizontalScrollbar = m_renderView.frameView().verticalScrollbar())
-            m_renderView.frameView().invalidateScrollbar(horizontalScrollbar, IntRect(IntPoint(0, 0), horizontalScrollbar->frameRect().size()));
+            m_renderView.frameView().invalidateScrollbar(*horizontalScrollbar, IntRect(IntPoint(0, 0), horizontalScrollbar->frameRect().size()));
     }
 
     if (m_layerForVerticalScrollbar) {
@@ -3497,7 +3504,7 @@ void RenderLayerCompositor::destroyRootLayer()
         if (ScrollingCoordinator* scrollingCoordinator = this->scrollingCoordinator())
             scrollingCoordinator->scrollableAreaScrollbarLayerDidChange(m_renderView.frameView(), VerticalScrollbar);
         if (Scrollbar* verticalScrollbar = m_renderView.frameView().verticalScrollbar())
-            m_renderView.frameView().invalidateScrollbar(verticalScrollbar, IntRect(IntPoint(0, 0), verticalScrollbar->frameRect().size()));
+            m_renderView.frameView().invalidateScrollbar(*verticalScrollbar, IntRect(IntPoint(0, 0), verticalScrollbar->frameRect().size()));
     }
 
     if (m_layerForScrollCorner) {
@@ -3581,8 +3588,10 @@ void RenderLayerCompositor::detachRootLayer()
             return;
 
         page->chrome().client().attachRootGraphicsLayer(&frame, 0);
-        if (frame.isMainFrame())
+        if (frame.isMainFrame()) {
             page->chrome().client().attachViewOverlayGraphicsLayer(&frame, 0);
+            frame.mainFrame().pageOverlayController().willDetachRootLayer();
+        }
     }
     break;
     case RootLayerUnattached:

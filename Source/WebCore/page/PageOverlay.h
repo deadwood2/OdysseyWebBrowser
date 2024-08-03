@@ -30,7 +30,6 @@
 #include "FloatPoint.h"
 #include "IntRect.h"
 #include "Timer.h"
-#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/text/WTFString.h>
 
@@ -52,7 +51,6 @@ public:
         virtual ~Client() { }
     
     public:
-        virtual void pageOverlayDestroyed(PageOverlay&) = 0;
         virtual void willMoveToPage(PageOverlay&, Page*) = 0;
         virtual void didMoveToPage(PageOverlay&, Page*) = 0;
         virtual void drawRect(PageOverlay&, GraphicsContext&, const IntRect& dirtyRect) = 0;

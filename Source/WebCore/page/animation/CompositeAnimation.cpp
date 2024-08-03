@@ -77,7 +77,7 @@ void CompositeAnimation::clearRenderer()
     }
 }
 
-void CompositeAnimation::updateTransitions(RenderElement* renderer, RenderStyle* currentStyle, RenderStyle* targetStyle)
+void CompositeAnimation::updateTransitions(RenderElement* renderer, const RenderStyle* currentStyle, const RenderStyle* targetStyle)
 {
     // If currentStyle is null or there are no old or new transitions, just skip it
     if (!currentStyle || (!targetStyle->transitions() && m_transitions.isEmpty()))
@@ -88,12 +88,12 @@ void CompositeAnimation::updateTransitions(RenderElement* renderer, RenderStyle*
     for (auto& transition : m_transitions.values())
         transition->setActive(false);
         
-    RefPtr<RenderStyle> modifiedCurrentStyle;
+    std::unique_ptr<RenderStyle> modifiedCurrentStyle;
     
     // Check to see if we need to update the active transitions
     if (targetStyle->transitions()) {
         for (size_t i = 0; i < targetStyle->transitions()->size(); ++i) {
-            Animation& animation = targetStyle->transitions()->animation(i);
+            auto& animation = targetStyle->transitions()->animation(i);
             bool isActiveTransition = !m_suspended && (animation.duration() || animation.delay() > 0);
 
             Animation::AnimationMode mode = animation.animationMode();
@@ -122,7 +122,7 @@ void CompositeAnimation::updateTransitions(RenderElement* renderer, RenderStyle*
                 // and we have to use the unanimatedStyle from the animation. We do the test
                 // against the unanimated style here, but we "override" the transition later.
                 RefPtr<KeyframeAnimation> keyframeAnim = getAnimationForProperty(prop);
-                RenderStyle* fromStyle = keyframeAnim ? keyframeAnim->unanimatedStyle() : currentStyle;
+                auto* fromStyle = keyframeAnim ? keyframeAnim->unanimatedStyle() : currentStyle;
 
                 // See if there is a current transition for this prop
                 ImplicitAnimation* implAnim = m_transitions.get(prop);
@@ -148,7 +148,7 @@ void CompositeAnimation::updateTransitions(RenderElement* renderer, RenderStyle*
                         // of the property, so that restarted transitions use the correct starting point.
                         if (CSSPropertyAnimation::animationOfPropertyIsAccelerated(prop) && implAnim->isAccelerated()) {
                             if (!modifiedCurrentStyle)
-                                modifiedCurrentStyle = RenderStyle::clone(currentStyle);
+                                modifiedCurrentStyle = RenderStyle::clonePtr(*currentStyle);
 
                             implAnim->blendPropertyValueInStyle(prop, modifiedCurrentStyle.get());
                         }
@@ -168,9 +168,9 @@ void CompositeAnimation::updateTransitions(RenderElement* renderer, RenderStyle*
                 // <https://bugs.webkit.org/show_bug.cgi?id=24787>
                 if (!equal && isActiveTransition) {
                     // Add the new transition
-                    RefPtr<ImplicitAnimation> implicitAnimation = ImplicitAnimation::create(animation, prop, renderer, this, modifiedCurrentStyle ? modifiedCurrentStyle.get() : fromStyle);
-                    LOG(Animations, "Created ImplicitAnimation %p on renderer %p for property %s duration %.2f delay %.2f", implicitAnimation.get(), renderer, getPropertyName(prop), animation.duration(), animation.delay());
-                    m_transitions.set(prop, implicitAnimation.release());
+                    auto implicitAnimation = ImplicitAnimation::create(animation, prop, renderer, this, modifiedCurrentStyle ? modifiedCurrentStyle.get() : fromStyle);
+                    LOG(Animations, "Created ImplicitAnimation %p on renderer %p for property %s duration %.2f delay %.2f", implicitAnimation.ptr(), renderer, getPropertyName(prop), animation.duration(), animation.delay());
+                    m_transitions.set(prop, WTFMove(implicitAnimation));
                 }
                 
                 // We only need one pass for the single prop case
@@ -195,7 +195,7 @@ void CompositeAnimation::updateTransitions(RenderElement* renderer, RenderStyle*
         m_transitions.remove(propertyToRemove);
 }
 
-void CompositeAnimation::updateKeyframeAnimations(RenderElement* renderer, RenderStyle* currentStyle, RenderStyle* targetStyle)
+void CompositeAnimation::updateKeyframeAnimations(RenderElement* renderer, const RenderStyle* currentStyle, const RenderStyle* targetStyle)
 {
     // Nothing to do if we don't have any animations, and didn't have any before
     if (m_keyframeAnimations.isEmpty() && !targetStyle->hasAnimations())
@@ -221,7 +221,7 @@ void CompositeAnimation::updateKeyframeAnimations(RenderElement* renderer, Rende
     if (targetStyle->animations()) {
         int numAnims = targetStyle->animations()->size();
         for (int i = 0; i < numAnims; ++i) {
-            Animation& animation = targetStyle->animations()->animation(i);
+            auto& animation = targetStyle->animations()->animation(i);
             AtomicString animationName(animation.name());
 
             if (!animation.isValidAnimation())
@@ -284,21 +284,20 @@ void CompositeAnimation::updateKeyframeAnimations(RenderElement* renderer, Rende
     std::swap(newAnimations, m_keyframeAnimations);
 }
 
-bool CompositeAnimation::animate(RenderElement& renderer, RenderStyle* currentStyle, RenderStyle& targetStyle, Ref<RenderStyle>& blendedStyle)
+bool CompositeAnimation::animate(RenderElement& renderer, const RenderStyle* currentStyle, const RenderStyle& targetStyle, std::unique_ptr<RenderStyle>& blendedStyle)
 {
     // We don't do any transitions if we don't have a currentStyle (on startup).
     updateTransitions(&renderer, currentStyle, &targetStyle);
     updateKeyframeAnimations(&renderer, currentStyle, &targetStyle);
     m_keyframeAnimations.checkConsistency();
 
-    RefPtr<RenderStyle> animatedStyle;
     bool animationStateChanged = false;
 
     if (currentStyle) {
         // Now that we have transition objects ready, let them know about the new goal state.  We want them
         // to fill in a RenderStyle*& only if needed.
         for (auto& transition : m_transitions.values()) {
-            if (transition->animate(this, &renderer, currentStyle, &targetStyle, animatedStyle))
+            if (transition->animate(this, &renderer, currentStyle, &targetStyle, blendedStyle))
                 animationStateChanged = true;
         }
     }
@@ -307,21 +306,16 @@ bool CompositeAnimation::animate(RenderElement& renderer, RenderStyle* currentSt
     // to fill in a RenderStyle*& only if needed.
     for (auto& name : m_keyframeAnimationOrderMap) {
         RefPtr<KeyframeAnimation> keyframeAnim = m_keyframeAnimations.get(name);
-        if (keyframeAnim && keyframeAnim->animate(this, &renderer, currentStyle, &targetStyle, animatedStyle))
+        if (keyframeAnim && keyframeAnim->animate(this, &renderer, currentStyle, &targetStyle, blendedStyle))
             animationStateChanged = true;
     }
-
-    if (animatedStyle)
-        blendedStyle = animatedStyle.releaseNonNull();
-    else
-        blendedStyle = targetStyle;
 
     return animationStateChanged;
 }
 
-PassRefPtr<RenderStyle> CompositeAnimation::getAnimatedStyle() const
+std::unique_ptr<RenderStyle> CompositeAnimation::getAnimatedStyle() const
 {
-    RefPtr<RenderStyle> resultStyle;
+    std::unique_ptr<RenderStyle> resultStyle;
     for (auto& transition : m_transitions.values())
         transition->getAnimatedStyle(resultStyle);
 

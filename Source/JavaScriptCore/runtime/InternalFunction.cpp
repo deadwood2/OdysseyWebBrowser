@@ -37,6 +37,8 @@ const ClassInfo InternalFunction::s_info = { "Function", &Base::s_info, 0, CREAT
 InternalFunction::InternalFunction(VM& vm, Structure* structure)
     : JSDestructibleObject(vm, structure)
 {
+    // exec->vm() wants callees to not be large allocations.
+    RELEASE_ASSERT(!isLargeAllocation());
 }
 
 void InternalFunction::finishCreation(VM& vm, const String& name)
@@ -44,17 +46,30 @@ void InternalFunction::finishCreation(VM& vm, const String& name)
     Base::finishCreation(vm);
     ASSERT(inherits(info()));
     ASSERT(methodTable()->getCallData != InternalFunction::info()->methodTable.getCallData);
-    putDirect(vm, vm.propertyNames->name, jsString(&vm, name), DontDelete | ReadOnly | DontEnum);
+    JSString* nameString = jsString(&vm, name);
+    m_originalName.set(vm, this, nameString);
+    putDirect(vm, vm.propertyNames->name, nameString, ReadOnly | DontEnum);
 }
 
-const String& InternalFunction::name(ExecState* exec)
+void InternalFunction::visitChildren(JSCell* cell, SlotVisitor& visitor)
 {
-    return asString(getDirect(exec->vm(), exec->vm().propertyNames->name))->tryGetValue();
+    InternalFunction* thisObject = jsCast<InternalFunction*>(cell);
+    ASSERT_GC_OBJECT_INHERITS(thisObject, info());
+    Base::visitChildren(thisObject, visitor);
+    
+    visitor.append(&thisObject->m_originalName);
 }
 
-const String InternalFunction::displayName(ExecState* exec)
+const String& InternalFunction::name()
 {
-    JSValue displayName = getDirect(exec->vm(), exec->vm().propertyNames->displayName);
+    const String& name = m_originalName->tryGetValue();
+    ASSERT(name); // m_originalName was built from a String, and hence, there is no rope to resolve.
+    return name;
+}
+
+const String InternalFunction::displayName(VM& vm)
+{
+    JSValue displayName = getDirect(vm, vm.propertyNames->displayName);
     
     if (displayName && isJSString(displayName))
         return asString(displayName)->tryGetValue();
@@ -65,17 +80,17 @@ const String InternalFunction::displayName(ExecState* exec)
 CallType InternalFunction::getCallData(JSCell*, CallData&)
 {
     RELEASE_ASSERT_NOT_REACHED();
-    return CallTypeNone;
+    return CallType::None;
 }
 
-const String InternalFunction::calculatedDisplayName(ExecState* exec)
+const String InternalFunction::calculatedDisplayName(VM& vm)
 {
-    const String explicitName = displayName(exec);
+    const String explicitName = displayName(vm);
     
     if (!explicitName.isEmpty())
         return explicitName;
     
-    return name(exec);
+    return name();
 }
 
 Structure* InternalFunction::createSubclassStructure(ExecState* exec, JSValue newTarget, Structure* baseClass)
@@ -84,7 +99,7 @@ Structure* InternalFunction::createSubclassStructure(ExecState* exec, JSValue ne
     VM& vm = exec->vm();
     // We allow newTarget == JSValue() because the API needs to be able to create classes without having a real JS frame.
     // Since we don't allow subclassing in the API we just treat newTarget == JSValue() as newTarget == exec->callee()
-    ASSERT(!newTarget || newTarget.isFunction());
+    ASSERT(!newTarget || newTarget.isConstructor());
 
     if (newTarget && newTarget != exec->callee()) {
         // newTarget may be an InternalFunction if we were called from Reflect.construct.
@@ -96,12 +111,16 @@ Structure* InternalFunction::createSubclassStructure(ExecState* exec, JSValue ne
                 return structure;
 
             // Note, Reflect.construct might cause the profile to churn but we don't care.
-            JSObject* prototype = jsDynamicCast<JSObject*>(newTarget.get(exec, exec->propertyNames().prototype));
-            if (prototype)
+            JSValue prototypeValue = newTarget.get(exec, exec->propertyNames().prototype);
+            if (UNLIKELY(vm.exception()))
+                return nullptr;
+            if (JSObject* prototype = jsDynamicCast<JSObject*>(prototypeValue))
                 return targetFunction->rareData(vm)->createInternalFunctionAllocationStructureFromBase(vm, prototype, baseClass);
         } else {
-            JSObject* prototype = jsDynamicCast<JSObject*>(newTarget.get(exec, exec->propertyNames().prototype));
-            if (prototype) {
+            JSValue prototypeValue = newTarget.get(exec, exec->propertyNames().prototype);
+            if (UNLIKELY(vm.exception()))
+                return nullptr;
+            if (JSObject* prototype = jsDynamicCast<JSObject*>(prototypeValue)) {
                 // This only happens if someone Reflect.constructs our builtin constructor with another builtin constructor as the new.target.
                 // Thus, we don't care about the cost of looking up the structure from our hash table every time.
                 return vm.prototypeMap.emptyStructureForPrototypeFromBaseStructure(prototype, baseClass);

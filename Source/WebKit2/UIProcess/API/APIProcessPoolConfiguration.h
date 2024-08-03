@@ -28,6 +28,7 @@
 
 #include "APIObject.h"
 #include "CacheModel.h"
+#include "WebsiteDataStore.h"
 #include <wtf/Ref.h>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
@@ -38,7 +39,8 @@ class ProcessPoolConfiguration final : public ObjectImpl<Object::Type::ProcessPo
 public:
     static Ref<ProcessPoolConfiguration> create();
     static Ref<ProcessPoolConfiguration> createWithLegacyOptions();
-    
+    static Ref<ProcessPoolConfiguration> createWithWebsiteDataStoreConfiguration(const WebKit::WebsiteDataStore::Configuration&);
+
     explicit ProcessPoolConfiguration();
     virtual ~ProcessPoolConfiguration();
     
@@ -50,6 +52,9 @@ public:
     unsigned maximumProcessCount() const { return m_maximumProcessCount; }
     void setMaximumProcessCount(unsigned maximumProcessCount) { m_maximumProcessCount = maximumProcessCount; } 
 
+    bool diskCacheSpeculativeValidationEnabled() const { return m_diskCacheSpeculativeValidationEnabled; }
+    void setDiskCacheSpeculativeValidationEnabled(bool enabled) { m_diskCacheSpeculativeValidationEnabled = enabled; }
+
     WebKit::CacheModel cacheModel() const { return m_cacheModel; }
     void setCacheModel(WebKit::CacheModel cacheModel) { m_cacheModel = cacheModel; }
 
@@ -59,9 +64,14 @@ public:
     const WTF::String& applicationCacheDirectory() const { return m_applicationCacheDirectory; }
     void setApplicationCacheDirectory(const WTF::String& applicationCacheDirectory) { m_applicationCacheDirectory = applicationCacheDirectory; }
 
+    const WTF::String& applicationCacheFlatFileSubdirectoryName() const { return m_applicationCacheFlatFileSubdirectoryName; }
+
     const WTF::String& diskCacheDirectory() const { return m_diskCacheDirectory; }
     void setDiskCacheDirectory(const WTF::String& diskCacheDirectory) { m_diskCacheDirectory = diskCacheDirectory; }
 
+    const WTF::String& mediaCacheDirectory() const { return m_mediaCacheDirectory; }
+    void setMediaCacheDirectory(const WTF::String& mediaCacheDirectory) { m_mediaCacheDirectory = mediaCacheDirectory; }
+    
     const WTF::String& indexedDBDatabaseDirectory() const { return m_indexedDBDatabaseDirectory; }
     void setIndexedDBDatabaseDirectory(const WTF::String& indexedDBDatabaseDirectory) { m_indexedDBDatabaseDirectory = indexedDBDatabaseDirectory; }
 
@@ -86,6 +96,9 @@ public:
     bool fullySynchronousModeIsAllowedForTesting() const { return m_fullySynchronousModeIsAllowedForTesting; }
     void setFullySynchronousModeIsAllowedForTesting(bool allowed) { m_fullySynchronousModeIsAllowedForTesting = allowed; }
 
+    bool ignoreSynchronousMessagingTimeoutsForTesting() const { return m_ignoreSynchronousMessagingTimeoutsForTesting; }
+    void setIgnoreSynchronousMessagingTimeoutsForTesting(bool allowed) { m_ignoreSynchronousMessagingTimeoutsForTesting = allowed; }
+
     const Vector<WTF::String>& overrideLanguages() const { return m_overrideLanguages; }
     void setOverrideLanguages(Vector<WTF::String>&& languages) { m_overrideLanguages = WTFMove(languages); }
 
@@ -93,19 +106,24 @@ private:
     bool m_shouldHaveLegacyDataStore { false };
 
     unsigned m_maximumProcessCount { 0 };
+    bool m_diskCacheSpeculativeValidationEnabled { false };
     WebKit::CacheModel m_cacheModel { WebKit::CacheModelPrimaryWebBrowser };
     int64_t m_diskCacheSizeOverride { -1 };
 
     WTF::String m_applicationCacheDirectory;
+    WTF::String m_applicationCacheFlatFileSubdirectoryName;
     WTF::String m_diskCacheDirectory;
+    WTF::String m_mediaCacheDirectory;
     WTF::String m_indexedDBDatabaseDirectory;
     WTF::String m_injectedBundlePath;
     WTF::String m_localStorageDirectory;
     WTF::String m_webSQLDatabaseDirectory;
     WTF::String m_mediaKeysStorageDirectory;
+    WTF::String m_resourceLoadStatisticsDirectory;
     Vector<WTF::String> m_cachePartitionedURLSchemes;
     Vector<WTF::String> m_alwaysRevalidatedURLSchemes;
     bool m_fullySynchronousModeIsAllowedForTesting { false };
+    bool m_ignoreSynchronousMessagingTimeoutsForTesting { false };
     Vector<WTF::String> m_overrideLanguages;
 };
 

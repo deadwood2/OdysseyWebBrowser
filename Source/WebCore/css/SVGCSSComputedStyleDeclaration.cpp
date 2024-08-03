@@ -93,12 +93,11 @@ static RefPtr<CSSValue> strokeDashArrayToCSSValueList(const Vector<SVGLength>& d
     return list;
 }
 
-RefPtr<SVGPaint> ComputedStyleExtractor::adjustSVGPaintForCurrentColor(PassRefPtr<SVGPaint> newPaint, RenderStyle* style) const
+RefPtr<SVGPaint> ComputedStyleExtractor::adjustSVGPaintForCurrentColor(RefPtr<SVGPaint>&& paint, const RenderStyle* style) const
 {
-    RefPtr<SVGPaint> paint = newPaint;
     if (paint->paintType() == SVGPaint::SVG_PAINTTYPE_CURRENTCOLOR || paint->paintType() == SVGPaint::SVG_PAINTTYPE_URI_CURRENTCOLOR)
         paint->setColor(style->color());
-    return paint;
+    return WTFMove(paint);
 }
 
 RefPtr<CSSValue> ComputedStyleExtractor::svgPropertyValue(CSSPropertyID propertyID, EUpdateLayout updateLayout) const
@@ -111,7 +110,7 @@ RefPtr<CSSValue> ComputedStyleExtractor::svgPropertyValue(CSSPropertyID property
     if (updateLayout)
         node->document().updateLayout();
 
-    RenderStyle* style = node->computedStyle();
+    auto* style = node->computedStyle();
     if (!style)
         return nullptr;
 
@@ -206,7 +205,7 @@ RefPtr<CSSValue> ComputedStyleExtractor::svgPropertyValue(CSSPropertyID property
             return glyphOrientationToCSSPrimitiveValue(svgStyle.glyphOrientationHorizontal());
         case CSSPropertyGlyphOrientationVertical: {
             if (RefPtr<CSSPrimitiveValue> value = glyphOrientationToCSSPrimitiveValue(svgStyle.glyphOrientationVertical()))
-                return value.release();
+                return value;
 
             if (svgStyle.glyphOrientationVertical() == GO_AUTO)
                 return CSSPrimitiveValue::createIdentifier(CSSValueAuto);

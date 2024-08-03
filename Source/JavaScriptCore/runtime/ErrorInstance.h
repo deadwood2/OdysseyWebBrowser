@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 1999-2000 Harri Porten (porten@kde.org)
- *  Copyright (C) 2008 Apple Inc. All rights reserved.
+ *  Copyright (C) 2008, 2016 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -21,10 +21,9 @@
 #ifndef ErrorInstance_h
 #define ErrorInstance_h
 
-#include "Interpreter.h"
+#include "JSObject.h"
 #include "RuntimeType.h"
 #include "SourceProvider.h"
-#include <wtf/Vector.h>
 
 namespace JSC {
 
@@ -35,7 +34,7 @@ public:
     enum SourceTextWhereErrorOccurred { FoundExactSource, FoundApproximateSource };
     typedef String (*SourceAppender) (const String& originalMessage, const String& sourceText, RuntimeType, SourceTextWhereErrorOccurred);
 
-    DECLARE_INFO;
+    DECLARE_EXPORT_INFO;
 
     static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype)
     {
@@ -65,6 +64,8 @@ public:
     void setRuntimeTypeForCause(RuntimeType type) { m_runtimeTypeForCause = type; }
     RuntimeType runtimeTypeForCause() const { return m_runtimeTypeForCause; }
     void clearRuntimeTypeForCause() { m_runtimeTypeForCause = TypeNothing; }
+
+    JS_EXPORT_PRIVATE String sanitizedToString(ExecState*);
 
 protected:
     explicit ErrorInstance(VM&, Structure*);

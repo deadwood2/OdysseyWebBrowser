@@ -38,7 +38,7 @@ class ObjectPrototype;
 class ObjectConstructor : public InternalFunction {
 public:
     typedef InternalFunction Base;
-    static const unsigned StructureFlags = Base::StructureFlags | OverridesGetOwnPropertySlot;
+    static const unsigned StructureFlags = Base::StructureFlags | HasStaticPropertyTable;
 
     static ObjectConstructor* create(VM& vm, JSGlobalObject* globalObject, Structure* structure, ObjectPrototype* objectPrototype)
     {
@@ -46,8 +46,6 @@ public:
         constructor->finishCreation(vm, globalObject, objectPrototype);
         return constructor;
     }
-
-    static bool getOwnPropertySlot(JSObject*, ExecState*, PropertyName, PropertySlot&);
 
     DECLARE_INFO;
 
@@ -88,10 +86,44 @@ inline JSObject* constructEmptyObject(ExecState* exec, JSObject* prototype)
 
 inline JSObject* constructEmptyObject(ExecState* exec)
 {
-    return constructEmptyObject(exec, exec->lexicalGlobalObject()->objectPrototype());
+    return constructEmptyObject(exec, exec->lexicalGlobalObject()->objectStructureForObjectConstructor());
 }
 
-JSObject* objectConstructorFreeze(ExecState*, JSObject*);
+inline JSObject* constructObject(ExecState* exec, JSGlobalObject* globalObject, JSValue arg)
+{
+    if (arg.isUndefinedOrNull())
+        return constructEmptyObject(exec, globalObject->objectPrototype());
+    return arg.toObject(exec, globalObject);
+}
+
+// Section 6.2.4.4 of the ES6 specification.
+// https://tc39.github.io/ecma262/#sec-frompropertydescriptor
+inline JSObject* constructObjectFromPropertyDescriptor(ExecState* exec, const PropertyDescriptor& descriptor)
+{
+    VM& vm = exec->vm();
+    JSObject* description = constructEmptyObject(exec);
+    if (vm.exception())
+        return nullptr;
+
+    if (!descriptor.isAccessorDescriptor()) {
+        description->putDirect(vm, vm.propertyNames->value, descriptor.value() ? descriptor.value() : jsUndefined(), 0);
+        description->putDirect(vm, vm.propertyNames->writable, jsBoolean(descriptor.writable()), 0);
+    } else {
+        ASSERT(descriptor.getter() || descriptor.setter());
+        if (descriptor.getter())
+            description->putDirect(vm, vm.propertyNames->get, descriptor.getter(), 0);
+        if (descriptor.setter())
+            description->putDirect(vm, vm.propertyNames->set, descriptor.setter(), 0);
+    }
+    
+    description->putDirect(vm, vm.propertyNames->enumerable, jsBoolean(descriptor.enumerable()), 0);
+    description->putDirect(vm, vm.propertyNames->configurable, jsBoolean(descriptor.configurable()), 0);
+
+    return description;
+}
+
+
+JS_EXPORT_PRIVATE JSObject* objectConstructorFreeze(ExecState*, JSObject*);
 JSValue objectConstructorGetPrototypeOf(ExecState*, JSObject*);
 JSValue objectConstructorGetOwnPropertyDescriptor(ExecState*, JSObject*, const Identifier&);
 JSValue objectConstructorGetOwnPropertyDescriptors(ExecState*, JSObject*);

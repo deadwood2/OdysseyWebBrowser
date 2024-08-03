@@ -27,6 +27,7 @@
 #import "WebProcessPool.h"
 
 #import "NetworkProcessCreationParameters.h"
+#import "NetworkProcessMessages.h"
 #import "NetworkProcessProxy.h"
 #import "PluginProcessManager.h"
 #import "SandboxUtilities.h"
@@ -52,7 +53,6 @@
 #if PLATFORM(IOS)
 #import "ArgumentCodersCF.h"
 #import "WebMemoryPressureHandlerIOS.h"
-#import <WebCore/RuntimeApplicationChecksIOS.h>
 #else
 #import <QuartzCore/CARemoteLayerServer.h>
 #endif
@@ -65,6 +65,7 @@ NSString *WebStorageDirectoryDefaultsKey = @"WebKitLocalStorageDatabasePathPrefe
 NSString *WebKitJSCJITEnabledDefaultsKey = @"WebKitJSCJITEnabledDefaultsKey";
 NSString *WebKitJSCFTLJITEnabledDefaultsKey = @"WebKitJSCFTLJITEnabledDefaultsKey";
 NSString *WebKitMediaKeysStorageDirectoryDefaultsKey = @"WebKitMediaKeysStorageDirectory";
+NSString *WebKitMediaCacheDirectoryDefaultsKey = @"WebKitMediaCacheDirectory";
 
 #if !PLATFORM(IOS)
 static NSString *WebKitApplicationDidChangeAccessibilityEnhancedUserInterfaceNotification = @"NSApplicationDidChangeAccessibilityEnhancedUserInterfaceNotification";
@@ -79,14 +80,9 @@ static NSString * const WebKit2HTTPSProxyDefaultsKey = @"WebKit2HTTPSProxy";
 #if ENABLE(NETWORK_CACHE)
 static NSString * const WebKitNetworkCacheEnabledDefaultsKey = @"WebKitNetworkCacheEnabled";
 static NSString * const WebKitNetworkCacheEfficacyLoggingEnabledDefaultsKey = @"WebKitNetworkCacheEfficacyLoggingEnabled";
-#if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
-static NSString * const WebKitNetworkCacheSpeculativeRevalidationEnabledDefaultsKey = @"WebKitNetworkCacheResourceRevalidationEnabled";
-#endif
 #endif
 
-#if PLATFORM(MAC)
-NSString *WebKitTabSuspension = @"WebKitTabSuspension";
-#endif
+static NSString * const WebKitSuppressMemoryPressureHandlerDefaultsKey = @"WebKitSuppressMemoryPressureHandler";
 
 namespace WebKit {
 
@@ -105,16 +101,9 @@ static void registerUserDefaultsIfNeeded()
     [registrationDictionary setObject:[NSNumber numberWithBool:YES] forKey:WebKitJSCJITEnabledDefaultsKey];
     [registrationDictionary setObject:[NSNumber numberWithBool:YES] forKey:WebKitJSCFTLJITEnabledDefaultsKey];
 
-#if PLATFORM(MAC)
-    [registrationDictionary setObject:[NSNumber numberWithBool:YES] forKey:WebKitTabSuspension];
-#endif
-
 #if ENABLE(NETWORK_CACHE)
     [registrationDictionary setObject:[NSNumber numberWithBool:YES] forKey:WebKitNetworkCacheEnabledDefaultsKey];
     [registrationDictionary setObject:[NSNumber numberWithBool:NO] forKey:WebKitNetworkCacheEfficacyLoggingEnabledDefaultsKey];
-#if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
-    [registrationDictionary setObject:[NSNumber numberWithBool:YES] forKey:WebKitNetworkCacheSpeculativeRevalidationEnabledDefaultsKey];
-#endif
 #endif
 
     [[NSUserDefaults standardUserDefaults] registerDefaults:registrationDictionary];
@@ -178,17 +167,12 @@ void WebProcessPool::platformInitializeWebProcess(WebProcessCreationParameters& 
     parameters.accessibilityEnhancedUserInterfaceEnabled = false;
 #endif
 
-#if PLATFORM(MAC)
-    parameters.shouldEnableTabSuspension = [[NSUserDefaults standardUserDefaults] boolForKey:WebKitTabSuspension];
-#endif
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
 
-    parameters.shouldEnableJIT = [[NSUserDefaults standardUserDefaults] boolForKey:WebKitJSCJITEnabledDefaultsKey];
-    parameters.shouldEnableFTLJIT = [[NSUserDefaults standardUserDefaults] boolForKey:WebKitJSCFTLJITEnabledDefaultsKey];
-    parameters.shouldEnableMemoryPressureReliefLogging = [[NSUserDefaults standardUserDefaults] boolForKey:@"LogMemoryJetsamDetails"];
-
-#if PLATFORM(MAC)
-    parameters.shouldRewriteConstAsVar = applicationIsIBooks();
-#endif
+    parameters.shouldEnableJIT = [defaults boolForKey:WebKitJSCJITEnabledDefaultsKey];
+    parameters.shouldEnableFTLJIT = [defaults boolForKey:WebKitJSCFTLJITEnabledDefaultsKey];
+    parameters.shouldEnableMemoryPressureReliefLogging = [defaults boolForKey:@"LogMemoryJetsamDetails"];
+    parameters.shouldSuppressMemoryPressureHandler = [defaults boolForKey:WebKitSuppressMemoryPressureHandlerDefaultsKey];
 
 #if HAVE(HOSTED_CORE_ANIMATION)
 #if !PLATFORM(IOS)
@@ -255,16 +239,17 @@ void WebProcessPool::platformInitializeNetworkProcess(NetworkProcessCreationPara
 #if ENABLE(NETWORK_CACHE)
     parameters.shouldEnableNetworkCache = isNetworkCacheEnabled();
     parameters.shouldEnableNetworkCacheEfficacyLogging = [defaults boolForKey:WebKitNetworkCacheEfficacyLoggingEnabledDefaultsKey];
-#if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
-    parameters.shouldEnableNetworkCacheSpeculativeRevalidation = [defaults boolForKey:WebKitNetworkCacheSpeculativeRevalidationEnabledDefaultsKey];
 #endif
-#endif
+
+    parameters.shouldSuppressMemoryPressureHandler = [defaults boolForKey:WebKitSuppressMemoryPressureHandlerDefaultsKey];
 
 #if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100
     RetainPtr<CFDataRef> cookieStorageData = adoptCF(CFHTTPCookieStorageCreateIdentifyingData(kCFAllocatorDefault, [[NSHTTPCookieStorage sharedHTTPCookieStorage] _cookieStorage]));
     ASSERT(parameters.uiProcessCookieStorageIdentifier.isEmpty());
     parameters.uiProcessCookieStorageIdentifier.append(CFDataGetBytePtr(cookieStorageData.get()), CFDataGetLength(cookieStorageData.get()));
 #endif
+
+    parameters.cookieStoragePartitioningEnabled = cookieStoragePartitioningEnabled();
 }
 
 void WebProcessPool::platformInvalidateContext()
@@ -352,6 +337,25 @@ String WebProcessPool::legacyPlatformDefaultLocalStorageDirectory()
     return stringByResolvingSymlinksInPath([localStorageDirectory stringByStandardizingPath]);
 }
 
+String WebProcessPool::legacyPlatformDefaultMediaCacheDirectory()
+{
+    registerUserDefaultsIfNeeded();
+    
+    NSString *mediaKeysCacheDirectory = [[NSUserDefaults standardUserDefaults] objectForKey:WebKitMediaCacheDirectoryDefaultsKey];
+    if (!mediaKeysCacheDirectory || ![mediaKeysCacheDirectory isKindOfClass:[NSString class]]) {
+        mediaKeysCacheDirectory = NSTemporaryDirectory();
+        
+        if (!WebKit::processHasContainer()) {
+            NSString *bundleIdentifier = [NSBundle mainBundle].bundleIdentifier;
+            if (!bundleIdentifier)
+                bundleIdentifier = [NSProcessInfo processInfo].processName;
+            mediaKeysCacheDirectory = [mediaKeysCacheDirectory stringByAppendingPathComponent:bundleIdentifier];
+        }
+        mediaKeysCacheDirectory = [mediaKeysCacheDirectory stringByAppendingPathComponent:@"WebKit/MediaCache"];
+    }
+    return stringByResolvingSymlinksInPath([mediaKeysCacheDirectory stringByStandardizingPath]);
+}
+
 String WebProcessPool::legacyPlatformDefaultMediaKeysStorageDirectory()
 {
     registerUserDefaultsIfNeeded();
@@ -370,7 +374,7 @@ String WebProcessPool::legacyPlatformDefaultApplicationCacheDirectory()
 #if PLATFORM(IOS)
     // This quirk used to make these apps share application cache storage, but doesn't accomplish that any more.
     // Preserving it avoids the need to migrate data when upgrading.
-    if (applicationIsMobileSafari() || applicationIsWebApp())
+    if (IOSApplication::isMobileSafari() || IOSApplication::isWebApp())
         appName = @"com.apple.WebAppCache";
 #endif
 
@@ -513,6 +517,12 @@ void WebProcessPool::resetHSTSHostsAddedAfterDate(double startDateIntervalSince1
 #if PLATFORM(IOS) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
     _CFNetworkResetHSTSHostsSinceDate(privateBrowsingSession(), (__bridge CFDateRef)startDate);
 #endif
+}
+
+void WebProcessPool::setCookieStoragePartitioningEnabled(bool enabled)
+{
+    m_cookieStoragePartitioningEnabled = enabled;
+    sendToNetworkingProcess(Messages::NetworkProcess::SetCookieStoragePartitioningEnabled(enabled));
 }
 
 int networkProcessLatencyQOS()

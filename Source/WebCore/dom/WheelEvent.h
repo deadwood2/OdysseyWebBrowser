@@ -22,8 +22,7 @@
  *
  */
 
-#ifndef WheelEvent_h
-#define WheelEvent_h
+#pragma once
 
 #include "FloatPoint.h"
 #include "MouseEvent.h"
@@ -54,7 +53,7 @@ public:
         DOM_DELTA_PAGE
     };
 
-    static Ref<WheelEvent> create(const PlatformWheelEvent& event, AbstractView* view)
+    static Ref<WheelEvent> create(const PlatformWheelEvent& event, DOMWindow* view)
     {
         return adoptRef(*new WheelEvent(event, view));
     }
@@ -69,11 +68,11 @@ public:
         return adoptRef(*new WheelEvent(type, initializer));
     }
 
-    void initWheelEvent(int rawDeltaX, int rawDeltaY, AbstractView*,
+    WEBCORE_EXPORT void initWheelEvent(int rawDeltaX, int rawDeltaY, DOMWindow*,
         int screenX, int screenY, int pageX, int pageY,
         bool ctrlKey, bool altKey, bool shiftKey, bool metaKey);
 
-    void initWebKitWheelEvent(int rawDeltaX, int rawDeltaY, AbstractView*,
+    void initWebKitWheelEvent(int rawDeltaX, int rawDeltaY, DOMWindow*,
         int screenX, int screenY, int pageX, int pageY,
         bool ctrlKey, bool altKey, bool shiftKey, bool metaKey);
 
@@ -87,10 +86,8 @@ public:
     unsigned deltaMode() const { return m_deltaMode; }
 
     bool webkitDirectionInvertedFromDevice() const { return m_wheelEvent.directionInvertedFromDevice(); }
-    // Needed for Objective-C legacy support
-    bool isHorizontal() const { return m_wheelDelta.x(); }
 
-    virtual EventInterface eventInterface() const override;
+    EventInterface eventInterface() const override;
 
 #if PLATFORM(MAC)
     PlatformWheelEventPhase phase() const { return m_wheelEvent.phase(); }
@@ -100,9 +97,9 @@ public:
 private:
     WheelEvent();
     WheelEvent(const AtomicString&, const WheelEventInit&);
-    WheelEvent(const PlatformWheelEvent&, AbstractView*);
+    WheelEvent(const PlatformWheelEvent&, DOMWindow*);
 
-    virtual bool isWheelEvent() const override;
+    bool isWheelEvent() const override;
 
     IntPoint m_wheelDelta;
     double m_deltaX;
@@ -116,5 +113,3 @@ private:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_EVENT(WheelEvent)
-
-#endif // WheelEvent_h

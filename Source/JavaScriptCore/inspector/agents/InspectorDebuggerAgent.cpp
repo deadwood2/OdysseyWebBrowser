@@ -35,6 +35,7 @@
 #include "InjectedScriptManager.h"
 #include "InspectorFrontendRouter.h"
 #include "InspectorValues.h"
+#include "JSCInlines.h"
 #include "RegularExpression.h"
 #include "ScriptDebugServer.h"
 #include "ScriptObject.h"
@@ -88,7 +89,6 @@ void InspectorDebuggerAgent::enable()
     if (m_enabled)
         return;
 
-    m_scriptDebugServer.setBreakpointsActivated(true);
     m_scriptDebugServer.addListener(this);
 
     if (m_listener)
@@ -104,6 +104,9 @@ void InspectorDebuggerAgent::disable(bool isBeingDestroyed)
 
     m_scriptDebugServer.removeListener(this, isBeingDestroyed);
     clearInspectorBreakpointState();
+
+    if (!isBeingDestroyed)
+        m_scriptDebugServer.deactivateBreakpoints();
 
     ASSERT(m_javaScriptBreakpoints.isEmpty());
 
@@ -123,6 +126,11 @@ void InspectorDebuggerAgent::disable(ErrorString&)
     disable(false);
 }
 
+bool InspectorDebuggerAgent::breakpointsActive() const
+{
+    return m_scriptDebugServer.breakpointsActive();
+}
+
 void InspectorDebuggerAgent::setBreakpointsActive(ErrorString&, bool active)
 {
     if (active)
@@ -131,7 +139,7 @@ void InspectorDebuggerAgent::setBreakpointsActive(ErrorString&, bool active)
         m_scriptDebugServer.deactivateBreakpoints();
 }
 
-bool InspectorDebuggerAgent::isPaused()
+bool InspectorDebuggerAgent::isPaused() const
 {
     return m_scriptDebugServer.isPaused();
 }
@@ -170,10 +178,10 @@ RefPtr<InspectorObject> InspectorDebuggerAgent::buildBreakpointPauseReason(JSC::
     return reason->openAccessors();
 }
 
-RefPtr<InspectorObject> InspectorDebuggerAgent::buildExceptionPauseReason(const Deprecated::ScriptValue& exception, const InjectedScript& injectedScript)
+RefPtr<InspectorObject> InspectorDebuggerAgent::buildExceptionPauseReason(JSC::JSValue exception, const InjectedScript& injectedScript)
 {
-    ASSERT(!exception.hasNoValue());
-    if (exception.hasNoValue())
+    ASSERT(exception);
+    if (!exception)
         return nullptr;
 
     ASSERT(!injectedScript.hasNoValue());
@@ -217,19 +225,19 @@ static bool matches(const String& url, const String& pattern, bool isRegex)
 
 static bool breakpointActionTypeForString(const String& typeString, ScriptBreakpointActionType* output)
 {
-    if (typeString == Inspector::Protocol::getEnumConstantValue(Inspector::Protocol::Debugger::BreakpointAction::Type::Log)) {
+    if (typeString == Inspector::Protocol::InspectorHelpers::getEnumConstantValue(Inspector::Protocol::Debugger::BreakpointAction::Type::Log)) {
         *output = ScriptBreakpointActionTypeLog;
         return true;
     }
-    if (typeString == Inspector::Protocol::getEnumConstantValue(Inspector::Protocol::Debugger::BreakpointAction::Type::Evaluate)) {
+    if (typeString == Inspector::Protocol::InspectorHelpers::getEnumConstantValue(Inspector::Protocol::Debugger::BreakpointAction::Type::Evaluate)) {
         *output = ScriptBreakpointActionTypeEvaluate;
         return true;
     }
-    if (typeString == Inspector::Protocol::getEnumConstantValue(Inspector::Protocol::Debugger::BreakpointAction::Type::Sound)) {
+    if (typeString == Inspector::Protocol::InspectorHelpers::getEnumConstantValue(Inspector::Protocol::Debugger::BreakpointAction::Type::Sound)) {
         *output = ScriptBreakpointActionTypeSound;
         return true;
     }
-    if (typeString == Inspector::Protocol::getEnumConstantValue(Inspector::Protocol::Debugger::BreakpointAction::Type::Probe)) {
+    if (typeString == Inspector::Protocol::InspectorHelpers::getEnumConstantValue(Inspector::Protocol::Debugger::BreakpointAction::Type::Probe)) {
         *output = ScriptBreakpointActionTypeProbe;
         return true;
     }
@@ -318,8 +326,8 @@ void InspectorDebuggerAgent::setBreakpointByUrl(ErrorString& errorString, int li
 
     ScriptBreakpoint breakpoint(lineNumber, columnNumber, condition, breakpointActions, autoContinue, ignoreCount);
     for (ScriptsMap::iterator it = m_scripts.begin(); it != m_scripts.end(); ++it) {
-        String scriptURL = !it->value.sourceURL.isEmpty() ? it->value.sourceURL : it->value.url;
-        if (!matches(scriptURL, url, isRegex))
+        String scriptURLForBreakpoints = !it->value.sourceURL.isEmpty() ? it->value.sourceURL : it->value.url;
+        if (!matches(scriptURLForBreakpoints, url, isRegex))
             continue;
 
         RefPtr<Inspector::Protocol::Debugger::Location> location = resolveBreakpoint(breakpointIdentifier, it->key, breakpoint);
@@ -563,9 +571,14 @@ void InspectorDebuggerAgent::setPauseOnExceptions(ErrorString& errorString, cons
 
 void InspectorDebuggerAgent::evaluateOnCallFrame(ErrorString& errorString, const String& callFrameId, const String& expression, const String* const objectGroup, const bool* const includeCommandLineAPI, const bool* const doNotPauseOnExceptionsAndMuteConsole, const bool* const returnByValue, const bool* generatePreview, const bool* saveResult, RefPtr<Inspector::Protocol::Runtime::RemoteObject>& result, Inspector::Protocol::OptOutput<bool>* wasThrown, Inspector::Protocol::OptOutput<int>* savedResultIndex)
 {
+    if (m_currentCallStack.hasNoValue()) {
+        errorString = ASCIILiteral("Not paused");
+        return;
+    }
+
     InjectedScript injectedScript = m_injectedScriptManager.injectedScriptForObjectId(callFrameId);
     if (injectedScript.hasNoValue()) {
-        errorString = ASCIILiteral("Inspected frame has gone");
+        errorString = ASCIILiteral("Could not find InjectedScript for callFrameId");
         return;
     }
 
@@ -611,18 +624,21 @@ String InspectorDebuggerAgent::sourceMapURLForScript(const Script& script)
 
 void InspectorDebuggerAgent::didParseSource(JSC::SourceID sourceID, const Script& script)
 {
-    bool hasSourceURL = !script.sourceURL.isEmpty();
-    String scriptURL = hasSourceURL ? script.sourceURL : script.url;
-    bool* hasSourceURLParam = hasSourceURL ? &hasSourceURL : nullptr;
-    String sourceMappingURL = sourceMapURLForScript(script);
-    String* sourceMapURLParam = sourceMappingURL.isNull() ? nullptr : &sourceMappingURL;
-    const bool* isContentScript = script.isContentScript ? &script.isContentScript : nullptr;
     String scriptIDStr = String::number(sourceID);
-    m_frontendDispatcher->scriptParsed(scriptIDStr, scriptURL, script.startLine, script.startColumn, script.endLine, script.endColumn, isContentScript, sourceMapURLParam, hasSourceURLParam);
+    bool hasSourceURL = !script.sourceURL.isEmpty();
+    String sourceURL = script.sourceURL;
+    String sourceMappingURL = sourceMapURLForScript(script);
+
+    const bool* isContentScript = script.isContentScript ? &script.isContentScript : nullptr;
+    String* sourceURLParam = hasSourceURL ? &sourceURL : nullptr;
+    String* sourceMapURLParam = sourceMappingURL.isEmpty() ? nullptr : &sourceMappingURL;
+
+    m_frontendDispatcher->scriptParsed(scriptIDStr, script.url, script.startLine, script.startColumn, script.endLine, script.endColumn, isContentScript, sourceURLParam, sourceMapURLParam);
 
     m_scripts.set(sourceID, script);
 
-    if (scriptURL.isEmpty())
+    String scriptURLForBreakpoints = hasSourceURL ? script.sourceURL : script.url;
+    if (scriptURLForBreakpoints.isEmpty())
         return;
 
     for (auto it = m_javaScriptBreakpoints.begin(), end = m_javaScriptBreakpoints.end(); it != end; ++it) {
@@ -631,10 +647,10 @@ void InspectorDebuggerAgent::didParseSource(JSC::SourceID sourceID, const Script
             return;
 
         bool isRegex;
-        breakpointObject->getBoolean(ASCIILiteral("isRegex"), isRegex);
         String url;
+        breakpointObject->getBoolean(ASCIILiteral("isRegex"), isRegex);
         breakpointObject->getString(ASCIILiteral("url"), url);
-        if (!matches(scriptURL, url, isRegex))
+        if (!matches(scriptURLForBreakpoints, url, isRegex))
             continue;
 
         ScriptBreakpoint breakpoint;
@@ -662,13 +678,13 @@ void InspectorDebuggerAgent::failedToParseSource(const String& url, const String
     m_frontendDispatcher->scriptFailedToParse(url, data, firstLine, errorLine, errorMessage);
 }
 
-void InspectorDebuggerAgent::didPause(JSC::ExecState* scriptState, const Deprecated::ScriptValue& callFrames, const Deprecated::ScriptValue& exceptionOrCaughtValue)
+void InspectorDebuggerAgent::didPause(JSC::ExecState& scriptState, JSC::JSValue callFrames, JSC::JSValue exceptionOrCaughtValue)
 {
-    ASSERT(scriptState && !m_pausedScriptState);
-    m_pausedScriptState = scriptState;
-    m_currentCallStack = callFrames;
+    ASSERT(!m_pausedScriptState);
+    m_pausedScriptState = &scriptState;
+    m_currentCallStack = { scriptState.vm(), callFrames };
 
-    InjectedScript injectedScript = m_injectedScriptManager.injectedScriptFor(scriptState);
+    InjectedScript injectedScript = m_injectedScriptManager.injectedScriptFor(&scriptState);
 
     // If a high level pause pause reason is not already set, try to infer a reason from the debugger.
     if (m_breakReason == DebuggerFrontendDispatcher::Reason::Other) {
@@ -703,7 +719,7 @@ void InspectorDebuggerAgent::didPause(JSC::ExecState* scriptState, const Depreca
     }
 
     // Set $exception to the exception or caught value.
-    if (!exceptionOrCaughtValue.hasNoValue() && !injectedScript.hasNoValue()) {
+    if (exceptionOrCaughtValue && !injectedScript.hasNoValue()) {
         injectedScript.setExceptionValue(exceptionOrCaughtValue);
         m_hasExceptionValue = true;
     }
@@ -731,18 +747,17 @@ void InspectorDebuggerAgent::breakpointActionSound(int breakpointActionIdentifie
     m_frontendDispatcher->playBreakpointActionSound(breakpointActionIdentifier);
 }
 
-void InspectorDebuggerAgent::breakpointActionProbe(JSC::ExecState* scriptState, const ScriptBreakpointAction& action, unsigned batchId, unsigned sampleId, const Deprecated::ScriptValue& sample)
+void InspectorDebuggerAgent::breakpointActionProbe(JSC::ExecState& scriptState, const ScriptBreakpointAction& action, unsigned batchId, unsigned sampleId, JSC::JSValue sample)
 {
-    InjectedScript injectedScript = m_injectedScriptManager.injectedScriptFor(scriptState);
-    RefPtr<Protocol::Runtime::RemoteObject> payload = injectedScript.wrapObject(sample, objectGroupForBreakpointAction(action), true);
+    InjectedScript injectedScript = m_injectedScriptManager.injectedScriptFor(&scriptState);
+    auto payload = injectedScript.wrapObject(sample, objectGroupForBreakpointAction(action), true);
     auto result = Protocol::Debugger::ProbeSample::create()
         .setProbeId(action.identifier)
         .setBatchId(batchId)
         .setSampleId(sampleId)
         .setTimestamp(m_injectedScriptManager.inspectorEnvironment().executionStopwatch()->elapsedTime())
-        .setPayload(payload.release())
+        .setPayload(WTFMove(payload))
         .release();
-
     m_frontendDispatcher->didSampleProbe(WTFMove(result));
 }
 
@@ -754,7 +769,7 @@ void InspectorDebuggerAgent::didContinue()
     }
 
     m_pausedScriptState = nullptr;
-    m_currentCallStack = Deprecated::ScriptValue();
+    m_currentCallStack = { };
     m_injectedScriptManager.releaseObjectGroup(InspectorDebuggerAgent::backtraceObjectGroup);
     clearBreakDetails();
     clearExceptionValue();
@@ -787,7 +802,7 @@ void InspectorDebuggerAgent::clearDebuggerBreakpointState()
     m_scriptDebugServer.clearBreakpoints();
 
     m_pausedScriptState = nullptr;
-    m_currentCallStack = Deprecated::ScriptValue();
+    m_currentCallStack = { };
     m_scripts.clear();
     m_breakpointIdentifierToDebugServerBreakpointIDs.clear();
     m_debuggerBreakpointIdentifierToInspectorBreakpointIdentifier.clear();

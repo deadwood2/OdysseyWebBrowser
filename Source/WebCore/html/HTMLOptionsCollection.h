@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2000 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2004, 2005, 2006, 2007, 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2016 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -21,15 +21,13 @@
  *
  */
 
-#ifndef HTMLOptionsCollection_h
-#define HTMLOptionsCollection_h
+#pragma once
 
 #include "CachedHTMLCollection.h"
+#include "HTMLOptionElement.h"
 #include "HTMLSelectElement.h"
 
 namespace WebCore {
-
-class HTMLOptionElement;
 
 typedef int ExceptionCode;
 
@@ -40,18 +38,18 @@ public:
     HTMLSelectElement& selectElement() { return downcast<HTMLSelectElement>(ownerNode()); }
     const HTMLSelectElement& selectElement() const { return downcast<HTMLSelectElement>(ownerNode()); }
 
-    virtual HTMLOptionElement* item(unsigned offset) const override;
-    virtual HTMLOptionElement* namedItem(const AtomicString& name) const override;
+    HTMLOptionElement* item(unsigned offset) const final;
+    HTMLOptionElement* namedItem(const AtomicString& name) const final;
 
-    void add(HTMLElement*, HTMLElement* beforeElement, ExceptionCode&);
-    void add(HTMLElement*, int beforeIndex, ExceptionCode&);
-    void remove(int index);
-    void remove(HTMLOptionElement*);
+    WEBCORE_EXPORT void add(HTMLElement&, HTMLElement* beforeElement, ExceptionCode&);
+    WEBCORE_EXPORT void add(HTMLElement&, int beforeIndex, ExceptionCode&);
+    WEBCORE_EXPORT void remove(int index);
+    void remove(HTMLOptionElement&);
 
-    int selectedIndex() const;
-    void setSelectedIndex(int);
+    WEBCORE_EXPORT int selectedIndex() const;
+    WEBCORE_EXPORT void setSelectedIndex(int);
 
-    void setLength(unsigned, ExceptionCode&);
+    WEBCORE_EXPORT void setLength(unsigned, ExceptionCode&);
 
     // For CachedHTMLCollection.
     bool elementMatches(Element&) const;
@@ -78,5 +76,3 @@ inline bool HTMLOptionsCollection::elementMatches(Element& element) const
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_HTMLCOLLECTION(HTMLOptionsCollection, SelectOptions)
-
-#endif // HTMLOptionsCollection_h

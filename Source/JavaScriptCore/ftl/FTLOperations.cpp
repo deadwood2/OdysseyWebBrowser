@@ -41,19 +41,6 @@ namespace JSC { namespace FTL {
 
 using namespace JSC::DFG;
 
-extern "C" JSCell* JIT_OPERATION operationNewObjectWithButterfly(ExecState* exec, Structure* structure)
-{
-    VM& vm = exec->vm();
-    NativeCallFrameTracer tracer(&vm, exec);
-    
-    Butterfly* butterfly = Butterfly::create(
-        vm, nullptr, 0, structure->outOfLineCapacity(), false, IndexingHeader(), 0);
-    
-    JSObject* result = JSFinalObject::create(exec, structure, butterfly);
-    result->butterfly(); // Ensure that the butterfly is in to-space.
-    return result;
-}
-
 extern "C" void JIT_OPERATION operationPopulateObjectInOSR(
     ExecState* exec, ExitTimeObjectMaterialization* materialization,
     EncodedJSValue* encodedValue, EncodedJSValue* values)
@@ -328,7 +315,7 @@ extern "C" JSCell* JIT_OPERATION operationMaterializeObjectInOSR(
         case PhantomClonedArguments: {
             unsigned length = argumentCount - 1;
             ClonedArguments* result = ClonedArguments::createEmpty(
-                vm, codeBlock->globalObject()->outOfBandArgumentsStructure(), callee);
+                vm, codeBlock->globalObject()->clonedArgumentsStructure(), callee, length);
             
             for (unsigned i = materialization->properties().size(); i--;) {
                 const ExitPropertyValue& property = materialization->properties()[i];
@@ -338,10 +325,9 @@ extern "C" JSCell* JIT_OPERATION operationMaterializeObjectInOSR(
                 unsigned index = property.location().info();
                 if (index >= length)
                     continue;
-                result->putDirectIndex(exec, index, JSValue::decode(values[i]));
+                result->initializeIndex(vm, index, JSValue::decode(values[i]));
             }
             
-            result->putDirect(vm, vm.propertyNames->length, jsNumber(length));
             return result;
         }
         default:

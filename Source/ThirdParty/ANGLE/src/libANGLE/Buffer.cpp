@@ -10,7 +10,6 @@
 
 #include "libANGLE/Buffer.h"
 #include "libANGLE/renderer/BufferImpl.h"
-#include "libANGLE/renderer/Renderer.h"
 
 namespace gl
 {
@@ -18,6 +17,7 @@ namespace gl
 Buffer::Buffer(rx::BufferImpl *impl, GLuint id)
     : RefCountObject(id),
       mBuffer(impl),
+      mLabel(),
       mUsage(GL_STATIC_DRAW),
       mSize(0),
       mAccessFlags(0),
@@ -34,45 +34,43 @@ Buffer::~Buffer()
     SafeDelete(mBuffer);
 }
 
-Error Buffer::bufferData(const void *data, GLsizeiptr size, GLenum usage)
+void Buffer::setLabel(const std::string &label)
 {
-    gl::Error error = mBuffer->setData(data, size, usage);
-    if (error.isError())
-    {
-        return error;
-    }
+    mLabel = label;
+}
+
+const std::string &Buffer::getLabel() const
+{
+    return mLabel;
+}
+
+Error Buffer::bufferData(GLenum target, const void *data, GLsizeiptr size, GLenum usage)
+{
+    ANGLE_TRY(mBuffer->setData(target, data, size, usage));
 
     mIndexRangeCache.clear();
     mUsage = usage;
     mSize = size;
 
-    return error;
+    return NoError();
 }
 
-Error Buffer::bufferSubData(const void *data, GLsizeiptr size, GLintptr offset)
+Error Buffer::bufferSubData(GLenum target, const void *data, GLsizeiptr size, GLintptr offset)
 {
-    gl::Error error = mBuffer->setSubData(data, size, offset);
-    if (error.isError())
-    {
-        return error;
-    }
+    ANGLE_TRY(mBuffer->setSubData(target, data, size, offset));
 
     mIndexRangeCache.invalidateRange(static_cast<unsigned int>(offset), static_cast<unsigned int>(size));
 
-    return error;
+    return NoError();
 }
 
 Error Buffer::copyBufferSubData(Buffer* source, GLintptr sourceOffset, GLintptr destOffset, GLsizeiptr size)
 {
-    gl::Error error = mBuffer->copySubData(source->getImplementation(), sourceOffset, destOffset, size);
-    if (error.isError())
-    {
-        return error;
-    }
+    ANGLE_TRY(mBuffer->copySubData(source->getImplementation(), sourceOffset, destOffset, size));
 
     mIndexRangeCache.invalidateRange(static_cast<unsigned int>(destOffset), static_cast<unsigned int>(size));
 
-    return error;
+    return NoError();
 }
 
 Error Buffer::map(GLenum access)
@@ -93,8 +91,7 @@ Error Buffer::map(GLenum access)
     mMapLength = mSize;
     mAccess = access;
     mAccessFlags = GL_MAP_WRITE_BIT;
-
-    mIndexRangeCache.invalidateRange(0, static_cast<unsigned int>(mMapLength));
+    mIndexRangeCache.clear();
 
     return error;
 }
@@ -151,4 +148,32 @@ Error Buffer::unmap(GLboolean *result)
     return error;
 }
 
+void Buffer::onTransformFeedback()
+{
+    mIndexRangeCache.clear();
 }
+
+void Buffer::onPixelUnpack()
+{
+    mIndexRangeCache.clear();
+}
+
+Error Buffer::getIndexRange(GLenum type,
+                            size_t offset,
+                            size_t count,
+                            bool primitiveRestartEnabled,
+                            IndexRange *outRange) const
+{
+    if (mIndexRangeCache.findRange(type, offset, count, primitiveRestartEnabled, outRange))
+    {
+        return NoError();
+    }
+
+    ANGLE_TRY(mBuffer->getIndexRange(type, offset, count, primitiveRestartEnabled, outRange));
+
+    mIndexRangeCache.addRange(type, offset, count, primitiveRestartEnabled, *outRange);
+
+    return NoError();
+}
+
+}  // namespace gl

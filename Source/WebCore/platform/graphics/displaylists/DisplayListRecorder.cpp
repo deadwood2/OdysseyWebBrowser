@@ -100,7 +100,7 @@ void Recorder::setMiterLimit(float miterLimit)
     appendItem(SetMiterLimit::create(miterLimit));
 }
 
-void Recorder::drawGlyphs(const Font& font, const GlyphBuffer& glyphBuffer, int from, int numGlyphs, const FloatPoint& startPoint, FontSmoothingMode smoothingMode)
+void Recorder::drawGlyphs(const Font& font, const GlyphBuffer& glyphBuffer, unsigned from, unsigned numGlyphs, const FloatPoint& startPoint, FontSmoothingMode smoothingMode)
 {
     DrawingItem& newItem = downcast<DrawingItem>(appendItem(DrawGlyphs::create(font, glyphBuffer.glyphs(from), glyphBuffer.advances(from), numGlyphs, FloatPoint(), toFloatSize(startPoint), smoothingMode)));
     updateItemExtent(newItem);
@@ -119,9 +119,9 @@ void Recorder::drawTiledImage(Image& image, const FloatRect& destination, const 
 }
 
 #if USE(CG) || USE(CAIRO)
-void Recorder::drawNativeImage(PassNativeImagePtr imagePtr, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& srcRect, CompositeOperator op, BlendMode blendMode, ImageOrientation orientation)
+void Recorder::drawNativeImage(const NativeImagePtr& image, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& srcRect, CompositeOperator op, BlendMode blendMode, ImageOrientation orientation)
 {
-    DrawingItem& newItem = downcast<DrawingItem>(appendItem(DrawNativeImage::create(imagePtr, imageSize, destRect, srcRect, op, blendMode, orientation)));
+    DrawingItem& newItem = downcast<DrawingItem>(appendItem(DrawNativeImage::create(image, imageSize, destRect, srcRect, op, blendMode, orientation)));
     updateItemExtent(newItem);
 }
 #endif

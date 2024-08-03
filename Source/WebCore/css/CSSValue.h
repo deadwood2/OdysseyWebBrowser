@@ -18,11 +18,11 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef CSSValue_h
-#define CSSValue_h
+#pragma once
 
 #include "ExceptionCode.h"
 #include "URLHash.h"
+#include <wtf/HashMap.h>
 #include <wtf/ListHashSet.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
@@ -32,6 +32,7 @@ namespace WebCore {
 
 class CachedResource;
 class StyleSheetContents;
+
 enum CSSPropertyID : uint16_t;
 
 // FIXME: The current CSSValue and subclasses should be turned into internal types (StyleValue).
@@ -59,9 +60,9 @@ public:
             destroy();
     }
 
-    Type cssValueType() const;
+    WEBCORE_EXPORT Type cssValueType() const;
 
-    String cssText() const;
+    WEBCORE_EXPORT String cssText() const;
 
     void setCssText(const String&, ExceptionCode&) { } // FIXME: Not implemented.
 
@@ -87,9 +88,7 @@ public:
     bool isImageGeneratorValue() const { return m_classType >= CanvasClass && m_classType <= RadialGradientClass; }
     bool isGradientValue() const { return m_classType >= LinearGradientClass && m_classType <= RadialGradientClass; }
     bool isNamedImageValue() const { return m_classType == NamedImageClass; }
-#if ENABLE(CSS_IMAGE_SET)
     bool isImageSetValue() const { return m_classType == ImageSetClass; }
-#endif
     bool isImageValue() const { return m_classType == ImageClass; }
     bool isImplicitInitialValue() const;
     bool isInheritedValue() const { return m_classType == InheritedClass; }
@@ -104,6 +103,7 @@ public:
     bool isShadowValue() const { return m_classType == ShadowClass; }
     bool isCubicBezierTimingFunctionValue() const { return m_classType == CubicBezierTimingFunctionClass; }
     bool isStepsTimingFunctionValue() const { return m_classType == StepsTimingFunctionClass; }
+    bool isSpringTimingFunctionValue() const { return m_classType == SpringTimingFunctionClass; }
     bool isWebKitCSSTransformValue() const { return m_classType == WebKitCSSTransformClass; }
     bool isLineBoxContainValue() const { return m_classType == LineBoxContainClass; }
     bool isCalcValue() const {return m_classType == CalculationClass; }
@@ -111,6 +111,7 @@ public:
     bool isWebKitCSSFilterValue() const { return m_classType == WebKitCSSFilterClass; }
     bool isContentDistributionValue() const { return m_classType == CSSContentDistributionClass; }
 #if ENABLE(CSS_GRID_LAYOUT)
+    bool isGridAutoRepeatValue() const { return m_classType == GridAutoRepeatClass; }
     bool isGridTemplateAreasValue() const { return m_classType == GridTemplateAreasClass; }
     bool isGridLineNamesValue() const { return m_classType == GridLineNamesClass; }
 #endif
@@ -137,6 +138,7 @@ public:
     bool traverseSubresources(const std::function<bool (const CachedResource&)>& handler) const;
 
     bool equals(const CSSValue&) const;
+    bool operator==(const CSSValue& other) const { return equals(other); }
 
 protected:
 
@@ -159,6 +161,7 @@ protected:
         // Timing function classes.
         CubicBezierTimingFunctionClass,
         StepsTimingFunctionClass,
+        SpringTimingFunctionClass,
 
         // Other class types.
         AspectRatioClass,
@@ -195,13 +198,12 @@ protected:
 
         // List class types must appear after ValueListClass.
         ValueListClass,
-#if ENABLE(CSS_IMAGE_SET)
         ImageSetClass,
-#endif
         WebKitCSSFilterClass,
         WebKitCSSTransformClass,
 #if ENABLE(CSS_GRID_LAYOUT)
         GridLineNamesClass,
+        GridAutoRepeatClass,
 #endif
         // Do not append non-list class types here.
     };
@@ -254,16 +256,16 @@ friend class CSSValueList;
 };
 
 template<typename CSSValueType>
-inline bool compareCSSValueVector(const Vector<RefPtr<CSSValueType>>& firstVector, const Vector<RefPtr<CSSValueType>>& secondVector)
+inline bool compareCSSValueVector(const Vector<Ref<CSSValueType>>& firstVector, const Vector<Ref<CSSValueType>>& secondVector)
 {
     size_t size = firstVector.size();
     if (size != secondVector.size())
         return false;
 
-    for (size_t i = 0; i < size; i++) {
-        const RefPtr<CSSValueType>& firstPtr = firstVector[i];
-        const RefPtr<CSSValueType>& secondPtr = secondVector[i];
-        if (firstPtr == secondPtr || (firstPtr && secondPtr && firstPtr->equals(*secondPtr)))
+    for (size_t i = 0; i < size; ++i) {
+        auto& firstPtr = firstVector[i];
+        auto& secondPtr = secondVector[i];
+        if (firstPtr.ptr() == secondPtr.ptr() || firstPtr->equals(secondPtr))
             continue;
         return false;
     }
@@ -290,5 +292,3 @@ typedef HashMap<AtomicString, RefPtr<CSSValue>> CustomPropertyValueMap;
 SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::ToValueTypeName) \
     static bool isType(const WebCore::CSSValue& value) { return value.predicate; } \
 SPECIALIZE_TYPE_TRAITS_END()
-
-#endif // CSSValue_h

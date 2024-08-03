@@ -1,3 +1,300 @@
+2016-10-20  Mark Lam  <mark.lam@apple.com>
+
+        bmalloc api should crash on failure to allocate when !isBmallocEnabled.
+        https://bugs.webkit.org/show_bug.cgi?id=163766
+
+        Reviewed by Keith Miller and Filip Pizlo.
+
+        We want to crash in bmalloc on failure to allocate even when !isBmallocEnabled.
+        This is so that failures to allocate memory will manifest as crashes with a
+        unique signature (i.e. as a SIGTRAP on release builds, or as a write to illegal
+        address 0xbbadbeef on debug builds) and the crash will manifest inside bmalloc.
+        This distinguishes allocation failures from other crashing bugs that manifest as
+        SIGSEGVs due to random pointer dereferences in the clients of bmalloc.
+
+        * bmalloc/Allocator.cpp:
+        (bmalloc::Allocator::allocateImpl):
+        (bmalloc::Allocator::reallocate):
+        (bmalloc::Allocator::allocateSlowCase):
+
+2016-09-26  Yoshiaki Jitsukawa  <Yoshiaki.Jitsukawa@sony.com>
+
+        Avoid implicit conversion from iterator to pointer
+        https://bugs.webkit.org/show_bug.cgi?id=162482
+
+        Reviewed by Geoffrey Garen.
+
+        Not every STL supporting such conversion, we should get a pointer explicitly.
+
+        * bmalloc/Chunk.h:
+        (bmalloc::Chunk::lines):
+        (bmalloc::Chunk::pages):
+        * bmalloc/FixedVector.h:
+        (bmalloc::FixedVector::begin):
+
+2016-08-31  Filip Pizlo  <fpizlo@apple.com>
+
+        Butterflies should be allocated in Auxiliary MarkedSpace instead of CopiedSpace and we should rewrite as much of the GC as needed to make this not a regression
+        https://bugs.webkit.org/show_bug.cgi?id=160125
+
+        Reviewed by Geoffrey Garen and Keith Miller.
+        
+        I needed to tryMemalign, so I added such a thing.
+
+        * bmalloc/Allocator.cpp:
+        (bmalloc::Allocator::allocate):
+        (bmalloc::Allocator::tryAllocate):
+        (bmalloc::Allocator::allocateImpl):
+        * bmalloc/Allocator.h:
+        * bmalloc/Cache.h:
+        (bmalloc::Cache::tryAllocate):
+        * bmalloc/bmalloc.h:
+        (bmalloc::api::tryMemalign):
+
+2016-08-30  Geoffrey Garen  <ggaren@apple.com>
+
+        bmalloc: speed up the lock slow path
+        https://bugs.webkit.org/show_bug.cgi?id=161058
+
+        Unreviewed roll-in - with regression fixed.
+
+        Revert to using yield() instead of swtch() because very low priority
+        background tasks can cause priority inversion and deadlock. In the
+        network process, that happened with com.apple.WebKit.Cache.Storage.serialBackground.
+
+        Still a big speedup on MallocBench.
+
+        * bmalloc.xcodeproj/project.pbxproj:
+        * bmalloc/ScopeExit.h: Added.
+        (bmalloc::ScopeExit::ScopeExit):
+        (bmalloc::ScopeExit::~ScopeExit):
+        (bmalloc::makeScopeExit):
+        * bmalloc/StaticMutex.cpp:
+        (bmalloc::StaticMutex::lockSlowCase):
+        * bmalloc/StaticMutex.h:
+        (bmalloc::StaticMutex::init):
+
+2016-08-26  Geoffrey Garen  <ggaren@apple.com>
+
+        Unreviewed build fix.
+
+        Fix the CMake build.
+
+        * CMakeLists.txt:
+
+2016-08-26  Geoffrey Garen  <ggaren@apple.com>
+
+        Renamed XLarge* => Large*
+        https://bugs.webkit.org/show_bug.cgi?id=161261
+
+        Reviewed by Andreas Kling.
+
+        XLarge is not a thing anymore: We just have Small and Large.
+
+        * bmalloc.xcodeproj/project.pbxproj:
+        * bmalloc/Heap.cpp:
+        (bmalloc::Heap::splitAndAllocate):
+        (bmalloc::Heap::tryAllocateLarge):
+        (bmalloc::Heap::shrinkLarge):
+        (bmalloc::Heap::deallocateLarge):
+        * bmalloc/Heap.h:
+        * bmalloc/LargeMap.cpp: Copied from Source/bmalloc/bmalloc/XLargeMap.cpp.
+        (bmalloc::LargeMap::remove):
+        (bmalloc::LargeMap::add):
+        (bmalloc::XLargeMap::remove): Deleted.
+        (bmalloc::XLargeMap::add): Deleted.
+        * bmalloc/LargeMap.h: Copied from Source/bmalloc/bmalloc/XLargeMap.h.
+        (bmalloc::LargeMap::ranges):
+        (bmalloc::XLargeMap::ranges): Deleted.
+        * bmalloc/LargeRange.h: Copied from Source/bmalloc/bmalloc/XLargeRange.h.
+        (bmalloc::LargeRange::LargeRange):
+        (bmalloc::LargeRange::operator<):
+        (bmalloc::canMerge):
+        (bmalloc::merge):
+        (bmalloc::LargeRange::split):
+        (bmalloc::XLargeRange::XLargeRange): Deleted.
+        (bmalloc::XLargeRange::operator<): Deleted.
+        (bmalloc::XLargeRange::split): Deleted.
+        * bmalloc/VMHeap.cpp:
+        (bmalloc::VMHeap::tryAllocateLargeChunk):
+        * bmalloc/VMHeap.h:
+        * bmalloc/XLargeMap.cpp: Removed.
+        * bmalloc/XLargeMap.h: Removed.
+        * bmalloc/XLargeRange.h: Removed.
+
+2016-08-26  Gavin Barraclough  <barraclough@apple.com>
+
+        bmalloc: speed up the lock slow path
+        https://bugs.webkit.org/show_bug.cgi?id=161058
+
+        Unreviewed rollout - this caused regressions <rdar://problem/28026089>.
+
+        * bmalloc.xcodeproj/project.pbxproj:
+        * bmalloc/ScopeExit.h: Removed.
+        * bmalloc/StaticMutex.cpp:
+        (bmalloc::StaticMutex::lockSlowCase):
+        * bmalloc/StaticMutex.h:
+        (bmalloc::StaticMutex::init):
+        * bmalloc/ThreadSwitch.h: Removed.
+
+2016-08-24  Andreas Kling  <akling@apple.com>
+
+        Add bmalloc::api::isEnabled().
+        <https://webkit.org/b/160534>
+
+        Reviewed by Joseph Pecoraro.
+
+        * bmalloc/bmalloc.h:
+        (bmalloc::api::isEnabled):
+
+2016-08-24  Filip Pizlo  <fpizlo@apple.com>
+
+        Unreviewed, roll out r204901, r204897, r204866, r204856, r204854.
+
+        * bmalloc/Allocator.cpp:
+        (bmalloc::Allocator::allocate):
+        (bmalloc::Allocator::tryAllocate): Deleted.
+        (bmalloc::Allocator::allocateImpl): Deleted.
+        * bmalloc/Allocator.h:
+        * bmalloc/Cache.h:
+        (bmalloc::Cache::tryAllocate): Deleted.
+        * bmalloc/bmalloc.h:
+        (bmalloc::api::tryMemalign): Deleted.
+
+2016-08-12  Filip Pizlo  <fpizlo@apple.com>
+
+        Butterflies should be allocated in Auxiliary MarkedSpace instead of CopiedSpace and we should rewrite as much of the GC as needed to make this not a regression
+        https://bugs.webkit.org/show_bug.cgi?id=160125
+
+        Reviewed by Geoffrey Garen.
+        
+        I needed to tryMemalign, so I added such a thing.
+
+        * bmalloc/Allocator.cpp:
+        (bmalloc::Allocator::allocate):
+        (bmalloc::Allocator::tryAllocate):
+        (bmalloc::Allocator::allocateImpl):
+        (bmalloc::Allocator::reallocate):
+        * bmalloc/Allocator.h:
+        * bmalloc/Cache.h:
+        (bmalloc::Cache::allocate):
+        (bmalloc::Cache::tryAllocate):
+        * bmalloc/bmalloc.h:
+        (bmalloc::api::malloc):
+        (bmalloc::api::tryMemalign):
+        (bmalloc::api::memalign):
+
+2016-08-22  Yusuke Suzuki  <utatane.tea@gmail.com>
+
+        Unreviewed, build fix on GCC environment
+        https://bugs.webkit.org/show_bug.cgi?id=161058
+
+        std::forward is declared in <utility> header.
+
+        * bmalloc/ScopeExit.h:
+
+2016-08-22  Geoffrey Garen  <ggaren@apple.com>
+
+        bmalloc: speed up the lock slow path
+        https://bugs.webkit.org/show_bug.cgi?id=161058
+
+        Reviewed by Filip Pizlo.
+
+        It is generally accepted practice that a lock should yield instead of
+        spinning when a lock acquisition fails, to avoid wasting CPU and power.
+
+        There are two problems with this generally accepted practice:
+
+        (1) It's a fallacy that yielding is free. In reality, yielding itself
+        consumes CPU and power -- by performing a syscall, running the OS
+        scheduler, and possibly performing a context switch. (Instruments
+        traces of MallocBench show the cost of yielding.) Therefore, spinning a
+        little to avoid yielding can actually *save* CPU and power.
+
+        (2) std::this_thread_yield() on Darwin is way too aggressive: It not only
+        yields but also depresses your priority to absolute zero for 10ms. A
+        recent PLT trace showed a few spots where the main thread just gave up
+        on loading and rendering a page for 10ms so an unimportant background
+        task could run.
+
+        To correct these problems, this patch adds a little bit of spinning to
+        the bmalloc lock slow path.
+
+        Below are performance results on various CPUs.
+
+        Mac Pro (12 hyperthreaded cores = 24 threads):
+
+                                                            Baseline                       Patch                           Δ
+            Execution Time:
+                message_one                                    173ms                       173ms                            
+                message_many                                   953ms                       927ms              ^ 1.03x faster
+                churn --parallel                                60ms                        41ms              ^ 1.46x faster
+                list_allocate --parallel                       224ms                       143ms              ^ 1.57x faster
+                tree_allocate --parallel                     1,190ms                       758ms              ^ 1.57x faster
+                tree_churn --parallel                        1,517ms                       906ms              ^ 1.67x faster
+                facebook --parallel                          6,519ms                     4,580ms              ^ 1.42x faster
+                reddit --parallel                            5,097ms                     3,411ms              ^ 1.49x faster
+                flickr --parallel                            4,903ms                     3,501ms               ^ 1.4x faster
+                theverge --parallel                          6,641ms                     4,505ms              ^ 1.47x faster
+
+                <geometric mean>                             1,158ms                       832ms              ^ 1.39x faster
+                <arithmetic mean>                            2,728ms                     1,895ms              ^ 1.44x faster
+                <harmonic mean>                                332ms                       240ms              ^ 1.38x faster
+
+        MacBook Air (2 hyperthreaded cores = 4 threads):
+
+                                                            Baseline                       Patch                           Δ
+            Execution Time:
+                message_one                                    911ms                       907ms               ^ 1.0x faster
+                message_many                                   515ms                       513ms               ^ 1.0x faster
+                churn --parallel                               132ms                       134ms              ! 1.02x slower
+                list_allocate --parallel                       104ms                       102ms              ^ 1.02x faster
+                tree_allocate --parallel                       117ms                       111ms              ^ 1.05x faster
+                tree_churn --parallel                          154ms                       151ms              ^ 1.02x faster
+                facebook --parallel                            719ms                       687ms              ^ 1.05x faster
+                reddit --parallel                              382ms                       341ms              ^ 1.12x faster
+                flickr --parallel                              372ms                       345ms              ^ 1.08x faster
+                theverge --parallel                            489ms                       444ms               ^ 1.1x faster
+
+                <geometric mean>                               299ms                       287ms              ^ 1.04x faster
+                <arithmetic mean>                              390ms                       374ms              ^ 1.04x faster
+                <harmonic mean>                                227ms                       220ms              ^ 1.03x faster
+
+        iPad (2 cores = 2 threads):
+
+            [ Doesn't run Ruby, so no pretty subtest output. ]
+
+                                                            Baseline                       Patch                           Δ
+            Execution Time:                                 174.14ms                     171.5ms              ^ 1.02x faster
+
+        * bmalloc.xcodeproj/project.pbxproj:
+
+        * bmalloc/ScopeExit.h: Added. A barebones very wimpy version of
+        WTF::ScopeExit.
+        (bmalloc::ScopeExit::ScopeExit):
+        (bmalloc::ScopeExit::~ScopeExit):
+        (bmalloc::makeScopeExit):
+
+        * bmalloc/StaticMutex.cpp:
+        (bmalloc::StaticMutex::lockSlowCase): Spin before yielding -- that's the
+        speedup. Don't spin if another CPU is already spinning. In theory, more
+        than one spinner accomplishes nothing, and I found that there's a cutoff
+        around 8 or 16 spinners that becomes performance negative on Mac Pro.
+
+        (Note: Another way to accomplish a similar result, if you don't want to
+        use a bit of state in the lock, is to spin for a random duration between
+        0 and aLot. I tested a version of WTF::WeakRandom with unsynchronized
+        static state and it worked great. But I ultimately opted for the explicit
+        bit because I thought it was clearer.)
+
+        * bmalloc/StaticMutex.h:
+        (bmalloc::StaticMutex::init): Initialize our new bit.
+
+        * bmalloc/ThreadSwitch.h: Added.
+        (bmalloc::threadSwitch): Don't call yield() on Darwin because it's too
+        aggressive. swtch() does what we want: Go run something else, without
+        any other side-effects.
+
 2016-08-03  Geoffrey Garen  <ggaren@apple.com>
 
         [bmalloc] Merging of XLargeRanges can leak the upper range
@@ -25,6 +322,15 @@
         (bmalloc::XLargeMap::ranges): Added direct access for the sake of
         scavengeLargeObjects. (This violates our naming conventions -- I'll do
         a rename in a follow-up patch.)
+
+2016-07-13  Enrica Casucci  <enrica@apple.com>
+
+        Update supported platforms in xcconfig files to match the sdk names.
+        https://bugs.webkit.org/show_bug.cgi?id=159728
+
+        Reviewed by Tim Horton.
+
+        * Configurations/Base.xcconfig:
 
 2016-07-11  Geoffrey Garen  <ggaren@apple.com>
 
@@ -108,6 +414,34 @@
         * bmalloc/Vector.h:
         (bmalloc::Vector<T>::reallocateBuffer):
 
+2016-05-27  Konstantin Tokarev  <annulen@yandex.ru>
+
+        [cmake] Deduplicated bmalloc/Zone.cpp handling.
+        https://bugs.webkit.org/show_bug.cgi?id=158154
+
+        Reviewed by Alex Christensen.
+
+        File bmalloc/Zone.cpp is required on Darwin irrespectively from what
+        port is being built.
+
+        Also I removed WEBKIT_INCLUDE_CONFIG_FILES_IF_EXISTS() because it's
+        unlikely that bmalloc will ever need port-specific customizations (as
+        opposed to OS-specific customizations which should be done in
+        CMakeLists.txt).
+
+        * CMakeLists.txt: Added bmalloc/Zone.cpp for Darwin.
+        * PlatformGTK.cmake: Removed.
+        * PlatformMac.cmake: Removed.
+
+2016-05-22  Brady Eidson  <beidson@apple.com>
+
+        Move to C++14.
+        https://bugs.webkit.org/show_bug.cgi?id=157948
+
+        Reviewed by Michael Catanzaro.
+
+        * Configurations/Base.xcconfig:
+
 2016-05-17  Geoffrey Garen  <ggaren@apple.com>
 
         REGRESSION: JetStream crashes on some iPhones
@@ -128,6 +462,177 @@
         high water mark on JetStream, leading to jetsam crashes. Also, there
         doesn't seem to be a practical performance problem to putting objects in
         the (32kB - 64kB) range in the large allocator.
+
+2016-05-16  Geoffrey Garen  <ggaren@apple.com>
+
+        REGRESSION (200035): changes in "WebKit Malloc" VM regions are causing 'leaks' to spew "Failed to map remote region" messages
+        https://bugs.webkit.org/show_bug.cgi?id=157764
+
+        Reviewed by Gavin Barraclough.
+
+        We need to allow for guard pages and only report unguarded pages to the
+        leaks tool -- otherwise, it will try to remote map our guarded pages,
+        and crash.
+
+        * bmalloc/VMHeap.cpp:
+        (bmalloc::VMHeap::tryAllocateLargeChunk):
+        (bmalloc::VMHeap::allocateSmallChunk): Adopt the new API for reporting
+        a range instead of a Chunk*, and report the unguarded range.
+
+        This also fixes a separate bug -- very large allocations would not
+        fully participate in pointer scanning because they would only report 2MB
+        (chunkSize) in size. This could cause false-positive leak reports.
+
+        * bmalloc/Zone.cpp:
+        (bmalloc::enumerator): Updated to scan ranges instead of fixed-sized
+        Chunk pointers.
+
+        * bmalloc/Zone.h:
+        (bmalloc::Zone::ranges):
+        (bmalloc::Zone::addRange): Store ranges instead of fixed-sized Chunk 
+        pointers because our VM ranges have variable sizes -- both due to guard
+        pages and due to large allocations.
+
+        (bmalloc::Zone::chunks): Deleted.
+        (bmalloc::Zone::addChunk): Deleted.
+
+2016-05-10  David Kilzer  <ddkilzer@apple.com>
+
+        bmalloc should automatically disable itself when ThreadSanitizer is used
+        <https://webkit.org/b/157527>
+
+        Reviewed by Michael Catanzaro.
+
+        * bmalloc/Environment.cpp:
+        (bmalloc::isASanEnabled): Rename to isSanitizerEnabled.
+        (bmalloc::isSanitizerEnabled): Rename from isASanEnabled. Add
+        support for detecting ThreadSanitizer.
+        (bmalloc::Environment::computeIsBmallocEnabled): Switch from
+        isASanEnabled to isSanitizerEnabled.
+
+2016-05-03  Geoffrey Garen  <ggaren@apple.com>
+
+        Assertion failure in bmalloc::vmRevokePermissions(void*, unsigned long).
+        https://bugs.webkit.org/show_bug.cgi?id=157047
+
+        Reviewed by Filip Pizlo.
+
+        Renamed roundUpToMultipleOfSloppy => roundUpToMultipleOfNonPowerOfTwo.
+
+        * bmalloc/Algorithm.h:
+        (bmalloc::roundUpToMultipleOfNonPowerOfTwo):
+        (bmalloc::roundUpToMultipleOfSloppy): Deleted.
+        * bmalloc/VMHeap.cpp:
+        (bmalloc::VMHeap::allocateSmallChunk):
+
+2016-05-03  Geoffrey Garen  <ggaren@apple.com>
+
+        Assertion failure in bmalloc::vmRevokePermissions(void*, unsigned long).
+        https://bugs.webkit.org/show_bug.cgi?id=157047
+
+        Reviewed by Filip Pizlo.
+
+        The previous fix aligned the guard page sizes correctly but forgot to
+        align the guard page start address correctly.
+
+        * bmalloc/Algorithm.h:
+        (bmalloc::roundUpToMultipleOfSloppy): Use a new helper method to round
+        up when not working with a power of two, instead of writing out the
+        math by hand.
+
+        * bmalloc/VMHeap.cpp:
+        (bmalloc::VMHeap::allocateSmallChunk): Make sure to round up the guard
+        page start address in addition to its size. Assert at the very end to
+        try to catch more bugs.
+
+2016-04-27  Geoffrey Garen  <ggaren@apple.com>
+
+        Assertion failure in bmalloc::vmRevokePermissions(void*, unsigned long).
+        https://bugs.webkit.org/show_bug.cgi?id=157047
+
+        Reviewed by Darin Adler.
+
+        * bmalloc/Chunk.h:
+        (bmalloc::Chunk::Chunk):
+        (bmalloc::Chunk::get):
+        (bmalloc::Chunk::offset):
+        (bmalloc::Chunk::address):
+        (bmalloc::Object::Object):
+        (bmalloc::Object::address):
+        (bmalloc::Object::line):
+        (bmalloc::Chunk::object): Deleted.
+        (bmalloc::Object::begin): Deleted.
+        * bmalloc/Heap.cpp:
+        (bmalloc::Heap::allocateSmallBumpRangesByObject):
+        * bmalloc/Object.h:
+        (bmalloc::Object::chunk):
+        (bmalloc::Object::offset): Renamed begin() to address() because this is
+        not an iterator.
+
+        * bmalloc/VMHeap.cpp:
+        (bmalloc::VMHeap::allocateSmallChunk): Round up pageSize to a vmPageSize
+        multiple because pageSize might be smaller than vmPageSize, but we
+        think the VM system requires vmPageSize-aligned values.
+
+2016-04-25  Geoffrey Garen  <ggaren@apple.com>
+
+        bmalloc: vm allocations should plant guard pages
+        https://bugs.webkit.org/show_bug.cgi?id=156937
+
+        Rolling back in r199936 with a fix for the memory regression.
+
+2016-04-23  Gavin Barraclough  <barraclough@apple.com>
+
+        bmalloc: vm allocations should plant guard pages
+        https://bugs.webkit.org/show_bug.cgi?id=156937
+
+        Rolling out - looks like this is memory regression.
+
+        * bmalloc/Object.h:
+        (bmalloc::Object::operator+):
+        (bmalloc::Object::operator<=):
+        (bmalloc::Object::operator-): Deleted.
+        * bmalloc/VMAllocate.h:
+        (bmalloc::vmDeallocate):
+        (bmalloc::vmRevokePermissions): Deleted.
+        * bmalloc/VMHeap.cpp:
+        (bmalloc::VMHeap::allocateSmallChunk):
+
+2016-04-22  Geoffrey Garen  <ggaren@apple.com>
+
+        bmalloc: vm allocations should plant guard pages
+        https://bugs.webkit.org/show_bug.cgi?id=156937
+
+        Reviewed by Michael Saboff.
+
+        * bmalloc/Object.h:
+        (bmalloc::Object::operator-): Added a - helper.
+
+        * bmalloc/VMAllocate.h:
+        (bmalloc::vmRevokePermissions): Added a helper to revoke permissions on
+        a VM region. We use this for guard pages.
+
+        * bmalloc/VMHeap.cpp:
+        (bmalloc::VMHeap::allocateSmallChunk): Add guard pages to the start and
+        end of the chunk.
+
+        Note that we don't guard large chunks becuase we need to be able to merge
+        them. Otherwise, we will run out of virtual addresses.
+
+2016-04-22  Geoffrey Garen  <ggaren@apple.com>
+
+        bmalloc: Constify introspect function pointer table
+        https://bugs.webkit.org/show_bug.cgi?id=156936
+
+        Reviewed by Michael Saboff.
+
+        * bmalloc/Zone.cpp:
+        (bmalloc::Zone::Zone): Declaring this function pointer table const puts
+        it in the read-only section of the binary, providing a little hardening
+        against overwriting the function pointers at runtime. (We have to
+        const_cast when assigning because the API declares a pointer to non-const,
+        but we happen to know it will never try to write through that pointer.
+        This is not my favorite API.)
 
 2016-04-19  Geoffrey Garen  <ggaren@apple.com>
 
@@ -385,6 +890,16 @@
         (bmalloc::XLargeRange::split):
         (bmalloc::XLargeRange::vmState): Deleted.
         (bmalloc::XLargeRange::setVMState): Deleted. See VMState.h.
+
+2016-04-11  Fujii Hironori  <Hironori.Fujii@jp.sony.com>
+
+        [CMake] Make FOLDER property INHERITED
+        https://bugs.webkit.org/show_bug.cgi?id=156460
+
+        Reviewed by Brent Fulgham.
+
+        * CMakeLists.txt:
+        Set FOLDER property as a directory property not a target property
 
 2016-04-08  Geoffrey Garen  <ggaren@apple.com>
 
@@ -767,6 +1282,128 @@
         (bmalloc::tryVMAllocate): Call logVMFailure() on mmap() failure.
         * bmalloc/darwin/BSoftLinking.h: Copied from Source/WebCore/platform/mac/SoftLinking.h.
 
+2016-03-26  Geoffrey Garen  <ggaren@apple.com>
+
+        Unreviewed, rolling out r198702, r198704.
+
+        Caused a memory regression on PLUM.
+
+        Reverted changeset:
+
+        bmalloc: fix an ASSERT on iOS
+        https://bugs.webkit.org/show_bug.cgi?id=155911
+        http://trac.webkit.org/changeset/198704
+
+        bmalloc: support physical page sizes that don't match the virtual page size
+        https://bugs.webkit.org/show_bug.cgi?id=155898
+        http://trac.webkit.org/changeset/198702
+
+2016-03-25  Geoffrey Garen  <ggaren@apple.com>
+
+        bmalloc: fix an ASSERT on iOS
+        https://bugs.webkit.org/show_bug.cgi?id=155911
+
+        Reviewed by Gavin Barraclough.
+
+        * bmalloc/VMAllocate.h:
+        (bmalloc::vmValidatePhysical): Call through to vmValidatePhysical because
+        the vmValidate function validates virtual sizes rather than physical
+        sizes.
+
+2016-03-25  Geoffrey Garen  <ggaren@apple.com>
+
+        bmalloc: support physical page sizes that don't match the virtual page size
+        https://bugs.webkit.org/show_bug.cgi?id=155898
+
+        Reviewed by Gavin Barraclough.
+
+        This is a memory savings on iOS devices where the virtual page size
+        is 16kB but the physical page size is 4kB.
+
+        * bmalloc/Chunk.h:
+        (bmalloc::Chunk::Chunk): smallPageSize is now unrelated to the OS's
+        page size -- it just reflects the optimal unit of memory to recycle
+        between small objects.
+
+        We only need to round up to largeAlignment because small objects allocate
+        as subsets of large objects now.
+
+        (bmalloc::Chunk::page):
+        (bmalloc::Object::pageBegin):
+        (bmalloc::Object::line): Adopt smallPageSize.
+
+        * bmalloc/Heap.cpp:
+        (bmalloc::Heap::initializeLineMetadata):
+        (bmalloc::Heap::allocateSmallPage):
+        (bmalloc::Heap::allocateLarge): Adopt smallPageSize.
+
+        (bmalloc::Heap::splitAndAllocate):
+        (bmalloc::Heap::tryAllocateXLarge):
+        (bmalloc::Heap::shrinkXLarge): Adopt vmPageSizePhysical(). We want the
+        physical page size because that's the unit at which the hardware MMU
+        will recycle memory.
+
+        * bmalloc/Sizes.h: Adopt smallPageSize.
+
+        * bmalloc/VMAllocate.h:
+        (bmalloc::vmPageSizePhysical):
+        (bmalloc::vmPageSize): Distinguish between page size, which is the virtual
+        memory page size advertised by the OS, and physical page size, which the
+        true hardware page size.
+
+        (bmalloc::vmSize):
+        (bmalloc::vmValidate):
+        (bmalloc::vmValidatePhysical):
+        (bmalloc::tryVMAllocate):
+        (bmalloc::vmDeallocatePhysicalPages):
+        (bmalloc::vmAllocatePhysicalPages):
+        (bmalloc::vmDeallocatePhysicalPagesSloppy):
+        (bmalloc::vmAllocatePhysicalPagesSloppy): Adopt vmPageSize() and
+        vmPageSizePhyiscal().
+
+        * bmalloc/Vector.h:
+        (bmalloc::Vector::initialCapacity):
+        (bmalloc::Vector<T>::shrink):
+        (bmalloc::Vector<T>::shrinkCapacity):
+        (bmalloc::Vector<T>::growCapacity): Adopt vmPageSize(). We'd prefer to
+        use vmPageSizePhysical() but mmap() doesn't support it.
+
+        * bmalloc/XLargeMap.cpp: #include.
+
+2016-03-25  Geoffrey Garen  <ggaren@apple.com>
+
+        Unreviewed, rolling in r198679.
+
+        r198679 was just a rename. The regression was caused by r198675 and then
+        fixed in r198693.
+
+        Restored changeset:
+
+        "bmalloc: Renamed LargeChunk => Chunk"
+        https://bugs.webkit.org/show_bug.cgi?id=155894
+        http://trac.webkit.org/changeset/198679
+
+2016-03-25  Geoffrey Garen  <ggaren@apple.com>
+
+        Unreviewed, try to fix a crash seen on the bots.
+
+        * bmalloc/Allocator.cpp:
+        (bmalloc::Allocator::reallocate): We have to take the lock even if we're
+        only reading our own data becuse LargeObject contains validation code
+        that will read our neighbors' data as well.
+
+2016-03-25  Ryan Haddad  <ryanhaddad@apple.com>
+
+        Unreviewed, rolling out r198679.
+
+        This change caused flaky LayoutTest crashes
+
+        Reverted changeset:
+
+        "bmalloc: Renamed LargeChunk => Chunk"
+        https://bugs.webkit.org/show_bug.cgi?id=155894
+        http://trac.webkit.org/changeset/198679
+
 2016-03-25  Geoffrey Garen  <ggaren@apple.com>
 
         bmalloc: stress_aligned fails when allocating a zero-sized object with XLarge alignment
@@ -781,15 +1418,6 @@
         * bmalloc/Heap.cpp:
         (bmalloc::Heap::tryAllocateXLarge): Set a floor on allocation size to
         catch zero-sized allocations.
-
-2016-03-25  Geoffrey Garen  <ggaren@apple.com>
-
-        Unreviewed, try to fix a crash seen on the bots.
-
-        * bmalloc/Allocator.cpp:
-        (bmalloc::Allocator::reallocate): We have to take the lock even if we're
-        only reading our own data becuse LargeObject contains validation code
-        that will read our neighbors' data as well.
 
 2016-03-25  Geoffrey Garen  <ggaren@apple.com>
 
@@ -1192,6 +1820,105 @@
         in a free list (largeObjectMax) and the largest thing we're willing to
         allocate (largeMax).
 
+2016-03-20  Dan Bernstein  <mitz@apple.com>
+
+        [Mac] Determine TARGET_MAC_OS_X_VERSION_MAJOR from MACOSX_DEPLOYMENT_TARGET rather than from MAC_OS_X_VERSION_MAJOR
+        https://bugs.webkit.org/show_bug.cgi?id=155707
+        <rdar://problem/24980691>
+
+        Reviewed by Darin Adler.
+
+        * Configurations/Base.xcconfig: Set TARGET_MAC_OS_X_VERSION_MAJOR based on the last
+          component of MACOSX_DEPLOYMENT_TARGET.
+        * Configurations/DebugRelease.xcconfig: For engineering builds, preserve the behavior of
+          TARGET_MAC_OS_X_VERSION_MAJOR being the host’s OS version.
+
+2016-03-20  Dan Bernstein  <mitz@apple.com>
+
+        Update build settings
+
+        Rubber-stamped by Andy Estes.
+
+        * Configurations/DebugRelease.xcconfig:
+
+2016-03-14  Geoffrey Garen  <ggaren@apple.com>
+
+        Unreviewed, rolling out r197955.
+
+        I decided to go in another direction
+
+        Reverted changeset:
+
+        "bmalloc: Rename SmallPage to SmallRun"
+        https://bugs.webkit.org/show_bug.cgi?id=155320
+        http://trac.webkit.org/changeset/197955
+
+2016-03-10  Geoffrey Garen  <ggaren@apple.com>
+
+        bmalloc: Rename SmallPage to SmallRun
+        https://bugs.webkit.org/show_bug.cgi?id=155320
+
+        Reviewed by Alex Christensen.
+
+        A page is a fixed-size set of lines.
+
+        A run is an variable-sized set of lines.
+
+        We want to start using runs because:
+
+            (a) we want to support varying the hardware page size by OS;
+
+            (b) we want to support allocations larger than our current page size.
+
+        * bmalloc.xcodeproj/project.pbxproj:
+        * bmalloc/Allocator.cpp:
+        (bmalloc::Allocator::reallocate):
+        * bmalloc/Heap.cpp:
+        (bmalloc::Heap::Heap):
+        (bmalloc::Heap::initializeSmallRunMetadata):
+        (bmalloc::Heap::scavenge):
+        (bmalloc::Heap::scavengeSmallRuns):
+        (bmalloc::Heap::allocateSmallBumpRanges):
+        (bmalloc::Heap::allocateSmallRun):
+        (bmalloc::Heap::deallocateSmallLine):
+        (bmalloc::Heap::initializeLineMetadata): Deleted.
+        (bmalloc::Heap::scavengeSmallPages): Deleted.
+        (bmalloc::Heap::allocateSmallPage): Deleted.
+        * bmalloc/Heap.h:
+        * bmalloc/LineMetadata.h:
+        * bmalloc/SmallChunk.h:
+        (bmalloc::SmallChunk::begin):
+        (bmalloc::SmallChunk::end):
+        (bmalloc::SmallChunk::lines):
+        (bmalloc::SmallChunk::runs):
+        (bmalloc::SmallChunk::SmallChunk):
+        (bmalloc::SmallLine::end):
+        (bmalloc::SmallRun::get):
+        (bmalloc::SmallRun::begin):
+        (bmalloc::SmallRun::end):
+        (bmalloc::SmallChunk::pages): Deleted.
+        (bmalloc::SmallPage::get): Deleted.
+        (bmalloc::SmallPage::begin): Deleted.
+        (bmalloc::SmallPage::end): Deleted.
+        * bmalloc/SmallPage.h: Removed.
+        * bmalloc/SmallRun.h: Copied from Source/bmalloc/bmalloc/SmallPage.h.
+        (bmalloc::SmallRun::SmallRun):
+        (bmalloc::SmallRun::ref):
+        (bmalloc::SmallRun::deref):
+        (bmalloc::SmallPage::SmallPage): Deleted.
+        (bmalloc::SmallPage::ref): Deleted.
+        (bmalloc::SmallPage::deref): Deleted.
+        * bmalloc/VMHeap.cpp:
+        (bmalloc::VMHeap::allocateSmallChunk):
+        (bmalloc::VMHeap::allocateLargeChunk):
+        * bmalloc/VMHeap.h:
+        (bmalloc::VMHeap::allocateSmallRun):
+        (bmalloc::VMHeap::allocateLargeObject):
+        (bmalloc::VMHeap::deallocateSmallRun):
+        (bmalloc::VMHeap::deallocateLargeObject):
+        (bmalloc::VMHeap::allocateSmallPage): Deleted.
+        (bmalloc::VMHeap::deallocateSmallPage): Deleted.
+
 2016-03-08  Geoffrey Garen  <ggaren@apple.com>
 
         Unreviewed, rolling in r197722.
@@ -1217,6 +1944,60 @@
         https://bugs.webkit.org/show_bug.cgi?id=155150
         http://trac.webkit.org/changeset/197722
 
+2016-03-08  Commit Queue  <commit-queue@webkit.org>
+
+        Unreviewed, rolling out r197722.
+        https://bugs.webkit.org/show_bug.cgi?id=155171
+
+        This change caused 800+ JSC test failures (Requested by
+        ryanhaddad on #webkit).
+
+        Reverted changeset:
+
+        "bmalloc: Use List<T> instead of Vector<T> in some places"
+        https://bugs.webkit.org/show_bug.cgi?id=155150
+        http://trac.webkit.org/changeset/197722
+
+2016-03-07  Geoffrey Garen  <ggaren@apple.com>
+
+        bmalloc: Use List<T> instead of Vector<T> in some places
+        https://bugs.webkit.org/show_bug.cgi?id=155150
+
+        Reviewed by Andreas Kling.
+
+        Vector<T> is expensive when you want a lot of them because our minimum
+        allocation size is the system page size.
+
+        * bmalloc.xcodeproj/project.pbxproj: Added a List<T> class.
+
+        * bmalloc/Heap.cpp:
+        (bmalloc::Heap::scavengeSmallPages):
+        (bmalloc::Heap::allocateSmallPage): Use the List<T> API. No need to check
+        for stale entries anymore because List<T> supports O(1) eager removal
+        and we remove eagerly now.
+
+        (bmalloc::Heap::deallocateSmallLine): Remove eagerly. This simplifies
+        the allocation code and it is also required for correctness since we
+        only have enough metadata to be in one list at a time.
+
+        * bmalloc/Heap.h: List!
+
+        * bmalloc/SmallChunk.h: Made this assert a little more precise since this
+        patch triggered the old version in a benign way.
+
+        (bmalloc::SmallChunk::SmallChunk): This code moved to the SmallPage
+        constructor.
+
+        * bmalloc/SmallPage.h:
+        (bmalloc::SmallPage::SmallPage): Accomodate the List<T> data structure.
+        This is a net memory savings on Mac for heaps smaller than ~128MB and on
+        iOS for heaps smaller than ~512MB. The maximum memory saved is 512kB on
+        Mac and 2MB on iOS. For larger heaps, there's a memory cost of 0.4% on
+        Mac and 0.1% on iOS.
+
+        * bmalloc/VMHeap.h:
+        (bmalloc::VMHeap::allocateSmallPage): Use List<T> API.
+
 2016-03-03  Geoffrey Garen  <ggaren@apple.com>
 
         Unreviewed, rolling in r197174.
@@ -1237,6 +2018,223 @@
         "bmalloc: Added a fast XLarge allocator"
         https://bugs.webkit.org/show_bug.cgi?id=154720
         http://trac.webkit.org/changeset/197174
+
+2016-02-26  Commit Queue  <commit-queue@webkit.org>
+
+        Unreviewed, rolling out r197174.
+        https://bugs.webkit.org/show_bug.cgi?id=154762
+
+        This change caused LayoutTests to crash on iOS simulator
+        (Requested by ryanhaddad on #webkit).
+
+        Reverted changeset:
+
+        "bmalloc: Added a fast XLarge allocator"
+        https://bugs.webkit.org/show_bug.cgi?id=154720
+        http://trac.webkit.org/changeset/197174
+
+2016-02-25  Geoffrey Garen  <ggaren@apple.com>
+
+        bmalloc: Added a fast XLarge allocator
+        https://bugs.webkit.org/show_bug.cgi?id=154720
+
+        Reviewed by Andreas Kling.
+
+        This is a big speedup for XLarge allocations because it avoids mmap
+        and page fault churn. It also enables future design changes to handle
+        a smaller size range on the fast path.
+
+        * bmalloc.xcodeproj/project.pbxproj:
+
+        * bmalloc/Algorithm.h:
+        (bmalloc::roundUpToMultipleOf):
+        (bmalloc::roundDownToMultipleOf): Added a non-constant round down.
+
+        * bmalloc/Allocator.cpp:
+        (bmalloc::Allocator::tryAllocate): XLarge no longer requires the caller
+        to align things.
+
+        (bmalloc::Allocator::allocate): Tweaked the alignment calculation for
+        clarity. When alignment and largeAlignment are equal, no adjustment
+        is necessary since all allocations guarantee largeAlignment.
+
+        (bmalloc::Allocator::reallocate): Updated for interface change.
+
+        Note that the new interface fixes some concurrency bugs. The old code
+        kept an iterator into the XLarge allocator across lock drop and acquisition,
+        which is not cool.
+
+        (bmalloc::Allocator::allocateXLarge): XLarge no longer requires the caller
+        to align things.
+
+        * bmalloc/Heap.cpp:
+        (bmalloc::Heap::scavengeXLargeObjects): Added scavenging for XLarge.
+
+        (bmalloc::Heap::allocateXLarge):
+
+        (bmalloc::Heap::splitAndAllocate): Split XLarge objects to xLargeAlignment.
+
+        (bmalloc::Heap::tryAllocateXLarge):
+        (bmalloc::Heap::xLargeSize):
+        (bmalloc::Heap::shrinkXLarge):
+        (bmalloc::Heap::deallocateXLarge): Allocate from our map before going
+        to the OS.
+
+        (bmalloc::Heap::findXLarge): Deleted.
+
+        * bmalloc/Heap.h:
+
+        * bmalloc/LargeObject.h:
+        (bmalloc::LargeObject::split):
+
+        * bmalloc/ObjectType.h:
+        (bmalloc::isXLarge): Give XLarge objects an explicit alignment for clarity.
+
+        * bmalloc/Range.h:
+        (bmalloc::Range::size):
+        (bmalloc::Range::operator!):
+        (bmalloc::Range::operator bool):
+        (bmalloc::Range::operator<):
+        (bmalloc::canMerge):
+        (bmalloc::merge): Some helpers that were useful in writing this patch.
+
+        * bmalloc/Sizes.h:
+
+        * bmalloc/SortedVector.h: Added.
+        (bmalloc::SortedVector::Bucket::Bucket):
+        (bmalloc::SortedVector::Bucket::operator<):
+        (bmalloc::SortedVector::iterator::iterator):
+        (bmalloc::SortedVector::iterator::operator++):
+        (bmalloc::SortedVector::iterator::operator!=):
+        (bmalloc::SortedVector::iterator::operator*):
+        (bmalloc::SortedVector::iterator::operator->):
+        (bmalloc::SortedVector::iterator::skipDeletedBuckets):
+        (bmalloc::SortedVector::begin):
+        (bmalloc::SortedVector::end):
+        (bmalloc::SortedVector<T>::insert):
+        (bmalloc::SortedVector<T>::find):
+        (bmalloc::SortedVector<T>::get):
+        (bmalloc::SortedVector<T>::take):
+        (bmalloc::SortedVector<T>::shrinkToFit): A simple abstraction for keeping
+        a sorted vector. Insertion is average amortized log(n) because we keep
+        deleted buckets that we can reuse.
+
+        This is better than a tree because we get better locality, less memory
+        use, and simpler code. Also, trees require a node memory allocator, and
+        implementing a memory allocator in a memory allocator is no fun.
+
+        Arguably we should use a hash table instead. But that's more code, and
+        sorted vector has other nice properties that we might want to take
+        adavantage of in the future.
+
+        * bmalloc/VMAllocate.h:
+        (bmalloc::tryVMAllocate): Fixed an inaccuracy in the alignment calculation
+        here. This code was sort of trying to enforce the alignment that the
+        XLarge allocator enforces -- but it's better to enforce that alignment
+        there.
+
+        The right calculation is:
+
+            vmAlignment - vmPageSize + vmSize
+
+        because the worst case is when you are aligned to 0 + vmPageSize, and
+        you must walk forward vmAlignment - vmPageSize to reach the next
+        vmAlignment.
+
+        (bmalloc::tryVMExtend): Deleted. No need to go back to the OS for VM
+        since we manage our own.
+
+        * bmalloc/VMHeap.cpp:
+        (bmalloc::VMHeap::allocateLargeChunk): Updated for clarity. When we
+        grow the large heap we know that grown region is where the next allocation
+        will take place, so we return it directly instead of pushing it to the
+        free list.
+
+        This fixes a subtle bug where an overly conservative aligned allocation
+        algorithm can fail to allocate at all when it grows the heap.
+
+        * bmalloc/VMHeap.h:
+        (bmalloc::VMHeap::allocateLargeObject): Ditto.
+        (bmalloc::VMHeap::allocateLargeObject): Ditto.
+
+        * bmalloc/VMState.h:
+        (bmalloc::merge): Added a helper.
+
+        * bmalloc/Vector.h:
+        (bmalloc::Vector::begin):
+        (bmalloc::Vector::end):
+        (bmalloc::Vector::size):
+        (bmalloc::Vector::capacity):
+        (bmalloc::Vector::last):
+        (bmalloc::Vector::pop):
+        (bmalloc::Vector<T>::push):
+        (bmalloc::Vector<T>::pop):
+        (bmalloc::Vector<T>::shrink): Use a proper iterator API to play nice
+        with std algorithms.
+
+        (bmalloc::Vector<T>::insert): New function required by SortedVector.
+
+        (bmalloc::Vector<T>::reallocateBuffer):
+        (bmalloc::Vector<T>::shrinkCapacity): Allow for shrinking back all the way
+        to 0 because that's what shrinkToFit wants.
+        (bmalloc::Vector<T>::growCapacity):
+        (bmalloc::Vector<T>::shrinkToFit):
+
+        * bmalloc/XLargeMap.cpp: Added. Helper data structure for managing XLarge
+        objects. We have enough granularity in our metadata to represent any
+        kind of address range.
+
+        We store free ranges in a flat vector because most programs have very
+        few individual free XLarge ranges. (They usually merge.)
+
+        We store allocated ranges in a sorted vector because programs might
+        allocate lots of XLarge ranges. For example, if the XLarge minimum is
+        128kB, and you have a 1GB process, that's 8192 ranges. Linear scan would
+        examine 8192 items but binary search only 13.
+
+        Empirically, this is 1.5X faster than our current large allocator if you
+        modify MallocBench/big to allocate XLarge objects and not to initialize
+        objects and you allocate 128kB-256kB objects in a 1GB address space.
+
+        (bmalloc::XLargeMap::takeFree): Be careful about overflow in this function
+        because we support super huge pointers, alignments, and sizes.
+
+        (bmalloc::XLargeMap::addFree): Merge eagerly on free because the cost
+        of missing an XLarge opportunity is catastrophic. Also, I discovered
+        by experiment that any allocator that doesn't merge eagerly can create
+        lots of subtle opportunities for snowballing fragmentation, as
+        fragmentation in range A forces you to chop up range B, and so on.
+
+        We allocate "first fit" (allocating the lowest address) because someone
+        wrote a paper once that said that it's the best algorithm to combat
+        fragmentation (even though worst case fragmentation is unavoidable
+        regardless of algorithm).
+
+        (bmalloc::XLargeMap::addAllocated):
+        (bmalloc::XLargeMap::getAllocated):
+        (bmalloc::XLargeMap::takeAllocated):
+        (bmalloc::XLargeMap::shrinkToFit):
+        (bmalloc::XLargeMap::takePhysical):
+        (bmalloc::XLargeMap::addVirtual):
+        * bmalloc/XLargeMap.h: Added.
+        (bmalloc::XLargeMap::Allocation::operator<):
+
+        * bmalloc/XLargeRange.h: Added.
+        (bmalloc::XLargeRange::XLargeRange):
+        (bmalloc::XLargeRange::vmState):
+        (bmalloc::XLargeRange::setVMState):
+        (bmalloc::canMerge):
+        (bmalloc::merge):
+        (bmalloc::XLargeRange::split): Helper for tracking VMState in a range.
+
+2016-02-23  Dan Bernstein  <mitz@apple.com>
+
+        [Xcode] Linker errors display mangled names, but no longer should
+        https://bugs.webkit.org/show_bug.cgi?id=154632
+
+        Reviewed by Sam Weinig.
+
+        * Configurations/Base.xcconfig: Stop setting LINKER_DISPLAYS_MANGLED_NAMES to YES.
 
 2016-02-22  Konstantin Tokarev  <annulen@yandex.ru>
 

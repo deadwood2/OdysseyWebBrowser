@@ -54,7 +54,7 @@ public:
     {
     }
 
-    virtual void strokeStyle(GraphicsContext* context) override
+    void strokeStyle(GraphicsContext* context) override
     {
         SVGRenderSupport::applyStrokeStyleToContext(context, m_renderer.style(), m_renderer);
     }
@@ -63,7 +63,7 @@ private:
     const RenderSVGShape& m_renderer;
 };
 
-RenderSVGShape::RenderSVGShape(SVGGraphicsElement& element, Ref<RenderStyle>&& style)
+RenderSVGShape::RenderSVGShape(SVGGraphicsElement& element, RenderStyle&& style)
     : RenderSVGModelObject(element, WTFMove(style))
     , m_needsBoundariesUpdate(false) // Default is false, the cached rects are empty from the beginning.
     , m_needsShapeUpdate(true) // Default is true, so we grab a Path object once from SVGGraphicsElement.
@@ -482,7 +482,7 @@ void RenderSVGShape::processMarkerPositions()
 
     ASSERT(m_path);
 
-    SVGMarkerData markerData(m_markerPositions);
+    SVGMarkerData markerData(m_markerPositions, SVGResourcesCache::cachedResourcesForRenderer(*this)->markerReverseStart());
     m_path->apply([&markerData](const PathElement& pathElement) {
         SVGMarkerData::updateFromPathElement(markerData, pathElement);
     });

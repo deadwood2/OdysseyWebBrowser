@@ -5,7 +5,17 @@
 //
 
 #include "compiler/translator/Compiler.h"
+
+#include <sstream>
+
+#include "angle_gl.h"
+#include "common/utilities.h"
+#include "compiler/translator/AddAndTrueToLoopCondition.h"
+#include "compiler/translator/Cache.h"
 #include "compiler/translator/CallDAG.h"
+#include "compiler/translator/DeferGlobalInitializers.h"
+#include "compiler/translator/EmulateGLFragColorBroadcast.h"
+#include "compiler/translator/EmulatePrecision.h"
 #include "compiler/translator/ForLoopUnroll.h"
 #include "compiler/translator/Initialize.h"
 #include "compiler/translator/InitializeParseContext.h"
@@ -13,32 +23,72 @@
 #include "compiler/translator/ParseContext.h"
 #include "compiler/translator/PruneEmptyDeclarations.h"
 #include "compiler/translator/RegenerateStructNames.h"
-#include "compiler/translator/RenameFunction.h"
+#include "compiler/translator/RemovePow.h"
+#include "compiler/translator/RewriteDoWhile.h"
 #include "compiler/translator/ScalarizeVecAndMatConstructorArgs.h"
 #include "compiler/translator/UnfoldShortCircuitAST.h"
+#include "compiler/translator/UseInterfaceBlockFields.h"
 #include "compiler/translator/ValidateLimitations.h"
+#include "compiler/translator/ValidateMaxParameters.h"
 #include "compiler/translator/ValidateOutputs.h"
 #include "compiler/translator/VariablePacker.h"
-#include "compiler/translator/depgraph/DependencyGraph.h"
-#include "compiler/translator/depgraph/DependencyGraphOutput.h"
-#include "compiler/translator/timing/RestrictFragmentShaderTiming.h"
-#include "compiler/translator/timing/RestrictVertexShaderTiming.h"
 #include "third_party/compiler/ArrayBoundsClamper.h"
-#include "angle_gl.h"
-#include "common/utilities.h"
+
+namespace
+{
+
+#if defined(ANGLE_ENABLE_FUZZER_CORPUS_OUTPUT)
+void DumpFuzzerCase(char const *const *shaderStrings,
+                    size_t numStrings,
+                    uint32_t type,
+                    uint32_t spec,
+                    uint32_t output,
+                    uint64_t options)
+{
+    static int fileIndex = 0;
+
+    std::ostringstream o;
+    o << "corpus/" << fileIndex++ << ".sample";
+    std::string s = o.str();
+
+    // Must match the input format of the fuzzer
+    FILE *f = fopen(s.c_str(), "w");
+    fwrite(&type, sizeof(type), 1, f);
+    fwrite(&spec, sizeof(spec), 1, f);
+    fwrite(&output, sizeof(output), 1, f);
+    fwrite(&options, sizeof(options), 1, f);
+
+    char zero[128 - 20] = {0};
+    fwrite(&zero, 128 - 20, 1, f);
+
+    for (size_t i = 0; i < numStrings; i++)
+    {
+        fwrite(shaderStrings[i], sizeof(char), strlen(shaderStrings[i]), f);
+    }
+    fwrite(&zero, 1, 1, f);
+
+    fclose(f);
+}
+#endif  // defined(ANGLE_ENABLE_FUZZER_CORPUS_OUTPUT)
+}  // anonymous namespace
 
 bool IsWebGLBasedSpec(ShShaderSpec spec)
 {
-    return (spec == SH_WEBGL_SPEC ||
-            spec == SH_CSS_SHADERS_SPEC ||
-            spec == SH_WEBGL2_SPEC);
+    return (spec == SH_WEBGL_SPEC || spec == SH_WEBGL2_SPEC || spec == SH_WEBGL3_SPEC);
 }
 
 bool IsGLSL130OrNewer(ShShaderOutput output)
 {
     return (output == SH_GLSL_130_OUTPUT ||
+            output == SH_GLSL_140_OUTPUT ||
+            output == SH_GLSL_150_CORE_OUTPUT ||
+            output == SH_GLSL_330_CORE_OUTPUT ||
+            output == SH_GLSL_400_CORE_OUTPUT ||
             output == SH_GLSL_410_CORE_OUTPUT ||
-            output == SH_GLSL_420_CORE_OUTPUT);
+            output == SH_GLSL_420_CORE_OUTPUT ||
+            output == SH_GLSL_430_CORE_OUTPUT ||
+            output == SH_GLSL_440_CORE_OUTPUT ||
+            output == SH_GLSL_450_CORE_OUTPUT);
 }
 
 size_t GetGlobalMaxTokenSize(ShShaderSpec spec)
@@ -48,7 +98,6 @@ size_t GetGlobalMaxTokenSize(ShShaderSpec spec)
     switch (spec)
     {
       case SH_WEBGL_SPEC:
-      case SH_CSS_SHADERS_SPEC:
         return 256;
       default:
         return 1024;
@@ -99,11 +148,13 @@ int MapSpecToShaderVersion(ShShaderSpec spec)
     {
       case SH_GLES2_SPEC:
       case SH_WEBGL_SPEC:
-      case SH_CSS_SHADERS_SPEC:
         return 100;
       case SH_GLES3_SPEC:
       case SH_WEBGL2_SPEC:
         return 300;
+      case SH_GLES3_1_SPEC:
+      case SH_WEBGL3_SPEC:
+          return 310;
       default:
         UNREACHABLE();
         return 0;
@@ -125,21 +176,35 @@ TShHandleBase::~TShHandleBase()
 }
 
 TCompiler::TCompiler(sh::GLenum type, ShShaderSpec spec, ShShaderOutput output)
-    : shaderType(type),
+    : variablesCollected(false),
+      shaderType(type),
       shaderSpec(spec),
       outputType(output),
       maxUniformVectors(0),
       maxExpressionComplexity(0),
       maxCallStackDepth(0),
+      maxFunctionParameters(0),
       fragmentPrecisionHigh(false),
       clampingStrategy(SH_CLAMP_WITH_CLAMP_INTRINSIC),
       builtInFunctionEmulator(),
-      mSourcePath(NULL)
+      mSourcePath(NULL),
+      mComputeShaderLocalSizeDeclared(false),
+      mTemporaryIndex(0)
 {
+    mComputeShaderLocalSize.fill(1);
 }
 
 TCompiler::~TCompiler()
 {
+}
+
+bool TCompiler::shouldRunLoopAndIndexingValidation(ShCompileOptions compileOptions) const
+{
+    // If compiling an ESSL 1.00 shader for WebGL, or if its been requested through the API,
+    // validate loop and indexing as well (to verify that the shader only uses minimal functionality
+    // of ESSL 1.00 as in Appendix A of the spec).
+    return (IsWebGLBasedSpec(shaderSpec) && shaderVersion == 100) ||
+           (compileOptions & SH_VALIDATE_LOOP_INDEXING);
 }
 
 bool TCompiler::Init(const ShBuiltInResources& resources)
@@ -149,7 +214,8 @@ bool TCompiler::Init(const ShBuiltInResources& resources)
         resources.MaxVertexUniformVectors :
         resources.MaxFragmentUniformVectors;
     maxExpressionComplexity = resources.MaxExpressionComplexity;
-    maxCallStackDepth = resources.MaxCallStackDepth;
+    maxCallStackDepth       = resources.MaxCallStackDepth;
+    maxFunctionParameters   = resources.MaxFunctionParameters;
 
     SetGlobalPoolAllocator(&allocator);
 
@@ -167,14 +233,16 @@ bool TCompiler::Init(const ShBuiltInResources& resources)
     return true;
 }
 
-TIntermNode *TCompiler::compileTreeForTesting(const char* const shaderStrings[],
-    size_t numStrings, int compileOptions)
+TIntermBlock *TCompiler::compileTreeForTesting(const char *const shaderStrings[],
+                                               size_t numStrings,
+                                               ShCompileOptions compileOptions)
 {
     return compileTreeImpl(shaderStrings, numStrings, compileOptions);
 }
 
-TIntermNode *TCompiler::compileTreeImpl(const char* const shaderStrings[],
-    size_t numStrings, int compileOptions)
+TIntermBlock *TCompiler::compileTreeImpl(const char *const shaderStrings[],
+                                         size_t numStrings,
+                                         const ShCompileOptions compileOptions)
 {
     clearResults();
 
@@ -184,10 +252,6 @@ TIntermNode *TCompiler::compileTreeImpl(const char* const shaderStrings[],
     // Reset the extension behavior for each compilation unit.
     ResetExtensionBehavior(extensionBehavior);
 
-    // If compiling for WebGL, validate loop and indexing as well.
-    if (IsWebGLBasedSpec(shaderSpec))
-        compileOptions |= SH_VALIDATE_LOOP_INDEXING;
-
     // First string is path of source file if flag is set. The actual source follows.
     size_t firstSource = 0;
     if (compileOptions & SH_SOURCE_PATH)
@@ -196,13 +260,10 @@ TIntermNode *TCompiler::compileTreeImpl(const char* const shaderStrings[],
         ++firstSource;
     }
 
-    bool debugShaderPrecision = getResources().WEBGL_debug_shader_precision == 1;
-    TIntermediate intermediate(infoSink);
-    TParseContext parseContext(symbolTable, extensionBehavior, intermediate,
-                               shaderType, shaderSpec, compileOptions, true,
-                               infoSink, debugShaderPrecision);
+    TParseContext parseContext(symbolTable, extensionBehavior, shaderType, shaderSpec,
+                               compileOptions, true, infoSink, getResources());
 
-    parseContext.fragmentPrecisionHigh = fragmentPrecisionHigh;
+    parseContext.setFragmentPrecisionHighOnESSL1(fragmentPrecisionHigh);
     SetGlobalParseContext(&parseContext);
 
     // We preserve symbols at the built-in level from compile-to-compile.
@@ -211,8 +272,8 @@ TIntermNode *TCompiler::compileTreeImpl(const char* const shaderStrings[],
 
     // Parse shader.
     bool success =
-        (PaParseStrings(numStrings - firstSource, &shaderStrings[firstSource], NULL, &parseContext) == 0) &&
-        (parseContext.treeRoot != NULL);
+        (PaParseStrings(numStrings - firstSource, &shaderStrings[firstSource], nullptr, &parseContext) == 0) &&
+        (parseContext.getTreeRoot() != nullptr);
 
     shaderVersion = parseContext.getShaderVersion();
     if (success && MapSpecToShaderVersion(shaderSpec) < shaderVersion)
@@ -222,18 +283,20 @@ TIntermNode *TCompiler::compileTreeImpl(const char* const shaderStrings[],
         success = false;
     }
 
-    TIntermNode *root = NULL;
+    TIntermBlock *root = nullptr;
 
     if (success)
     {
         mPragma = parseContext.pragma();
-        if (mPragma.stdgl.invariantAll)
-        {
-            symbolTable.setGlobalInvariant();
-        }
+        symbolTable.setGlobalInvariant(mPragma.stdgl.invariantAll);
 
-        root = parseContext.treeRoot;
-        success = intermediate.postProcess(root);
+        mComputeShaderLocalSizeDeclared = parseContext.isComputeShaderLocalSizeDeclared();
+        mComputeShaderLocalSize         = parseContext.getComputeShaderLocalSize();
+
+        root = parseContext.getTreeRoot();
+
+        // Highp might have been auto-enabled based on shader version
+        fragmentPrecisionHigh = parseContext.getFragmentPrecisionHigh();
 
         // Disallow expressions deemed too complex.
         if (success && (compileOptions & SH_LIMIT_EXPRESSION_COMPLEXITY))
@@ -264,24 +327,32 @@ TIntermNode *TCompiler::compileTreeImpl(const char* const shaderStrings[],
         if (success && shaderVersion == 300 && shaderType == GL_FRAGMENT_SHADER)
             success = validateOutputs(root);
 
-        if (success && (compileOptions & SH_VALIDATE_LOOP_INDEXING))
+        if (success && shouldRunLoopAndIndexingValidation(compileOptions))
             success = validateLimitations(root);
 
-        if (success && (compileOptions & SH_TIMING_RESTRICTIONS))
-            success = enforceTimingRestrictions(root, (compileOptions & SH_DEPENDENCY_GRAPH) != 0);
-
-        if (success && shaderSpec == SH_CSS_SHADERS_SPEC)
-            rewriteCSSShader(root);
+        // Fail compilation if precision emulation not supported.
+        if (success && getResources().WEBGL_debug_shader_precision &&
+            getPragma().debugShaderPrecision)
+        {
+            if (!EmulatePrecision::SupportedInLanguage(outputType))
+            {
+                infoSink.info.prefix(EPrefixError);
+                infoSink.info << "Precision emulation not supported for this output type.";
+                success = false;
+            }
+        }
 
         // Unroll for-loop markup needs to happen after validateLimitations pass.
         if (success && (compileOptions & SH_UNROLL_FOR_LOOP_WITH_INTEGER_INDEX))
         {
-            ForLoopUnrollMarker marker(ForLoopUnrollMarker::kIntegerIndex);
+            ForLoopUnrollMarker marker(ForLoopUnrollMarker::kIntegerIndex,
+                                       shouldRunLoopAndIndexingValidation(compileOptions));
             root->traverse(&marker);
         }
         if (success && (compileOptions & SH_UNROLL_FOR_LOOP_WITH_SAMPLER_ARRAY_INDEX))
         {
-            ForLoopUnrollMarker marker(ForLoopUnrollMarker::kSamplerArrayIndex);
+            ForLoopUnrollMarker marker(ForLoopUnrollMarker::kSamplerArrayIndex,
+                                       shouldRunLoopAndIndexingValidation(compileOptions));
             root->traverse(&marker);
             if (marker.samplerArrayIndexIsFloatLoopIndex())
             {
@@ -294,7 +365,10 @@ TIntermNode *TCompiler::compileTreeImpl(const char* const shaderStrings[],
         // Built-in function emulation needs to happen after validateLimitations pass.
         if (success)
         {
+            // TODO(jmadill): Remove global pool allocator.
+            GetGlobalPoolAllocator()->lock();
             initBuiltInFunctionEmulator(&builtInFunctionEmulator, compileOptions);
+            GetGlobalPoolAllocator()->unlock();
             builtInFunctionEmulator.MarkBuiltInFunctionsForEmulation(root);
         }
 
@@ -302,8 +376,18 @@ TIntermNode *TCompiler::compileTreeImpl(const char* const shaderStrings[],
         if (success && (compileOptions & SH_CLAMP_INDIRECT_ARRAY_BOUNDS))
             arrayBoundsClamper.MarkIndirectArrayBoundsForClamping(root);
 
-        if (success && shaderType == GL_VERTEX_SHADER && (compileOptions & SH_INIT_GL_POSITION))
+        // gl_Position is always written in compatibility output mode
+        if (success && shaderType == GL_VERTEX_SHADER &&
+            ((compileOptions & SH_INIT_GL_POSITION) ||
+             (outputType == SH_GLSL_COMPATIBILITY_OUTPUT)))
             initializeGLPosition(root);
+
+        // This pass might emit short circuits so keep it before the short circuit unfolding
+        if (success && (compileOptions & SH_REWRITE_DO_WHILE_LOOPS))
+            RewriteDoWhile(root, getTemporaryIndex());
+
+        if (success && (compileOptions & SH_ADD_AND_TRUE_TO_LOOP_CONDITION))
+            sh::AddAndTrueToLoopCondition(root);
 
         if (success && (compileOptions & SH_UNFOLD_SHORT_CIRCUIT))
         {
@@ -312,9 +396,18 @@ TIntermNode *TCompiler::compileTreeImpl(const char* const shaderStrings[],
             unfoldShortCircuit.updateTree();
         }
 
-        if (success && (compileOptions & SH_VARIABLES))
+        if (success && (compileOptions & SH_REMOVE_POW_WITH_CONSTANT_EXPONENT))
+        {
+            RemovePow(root);
+        }
+
+        if (success && shouldCollectVariables(compileOptions))
         {
             collectVariables(root);
+            if (compileOptions & SH_USE_UNUSED_STANDARD_SHARED_BLOCKS)
+            {
+                useAllMembersInUnusedStandardAndSharedBlocks(root);
+            }
             if (compileOptions & SH_ENFORCE_PACKING_RESTRICTIONS)
             {
                 success = enforcePackingRestrictions();
@@ -324,9 +417,10 @@ TIntermNode *TCompiler::compileTreeImpl(const char* const shaderStrings[],
                     infoSink.info << "too many uniforms";
                 }
             }
-            if (success && shaderType == GL_VERTEX_SHADER &&
-                (compileOptions & SH_INIT_VARYINGS_WITHOUT_STATIC_USE))
-                initializeVaryingsWithoutStaticUse(root);
+            if (success && (compileOptions & SH_INIT_OUTPUT_VARIABLES))
+            {
+                initializeOutputVariables(root);
+            }
         }
 
         if (success && (compileOptions & SH_SCALARIZE_VEC_AND_MAT_CONSTRUCTOR_ARGS))
@@ -341,6 +435,18 @@ TIntermNode *TCompiler::compileTreeImpl(const char* const shaderStrings[],
             RegenerateStructNames gen(symbolTable, shaderVersion);
             root->traverse(&gen);
         }
+
+        if (success && shaderType == GL_FRAGMENT_SHADER && shaderVersion == 100 &&
+            compileResources.EXT_draw_buffers && compileResources.MaxDrawBuffers > 1 &&
+            IsExtensionEnabled(extensionBehavior, "GL_EXT_draw_buffers"))
+        {
+            EmulateGLFragColorBroadcast(root, compileResources.MaxDrawBuffers, &outputVariables);
+        }
+
+        if (success)
+        {
+            DeferGlobalInitializers(root);
+        }
     }
 
     SetGlobalParseContext(NULL);
@@ -350,14 +456,39 @@ TIntermNode *TCompiler::compileTreeImpl(const char* const shaderStrings[],
     return NULL;
 }
 
-bool TCompiler::compile(const char* const shaderStrings[],
-    size_t numStrings, int compileOptions)
+bool TCompiler::compile(const char *const shaderStrings[],
+                        size_t numStrings,
+                        ShCompileOptions compileOptionsIn)
 {
+#if defined(ANGLE_ENABLE_FUZZER_CORPUS_OUTPUT)
+    DumpFuzzerCase(shaderStrings, numStrings, shaderType, shaderSpec, outputType, compileOptionsIn);
+#endif  // defined(ANGLE_ENABLE_FUZZER_CORPUS_OUTPUT)
+
     if (numStrings == 0)
         return true;
 
+    ShCompileOptions compileOptions = compileOptionsIn;
+
+    // Apply key workarounds.
+    if (shouldFlattenPragmaStdglInvariantAll())
+    {
+        // This should be harmless to do in all cases, but for the moment, do it only conditionally.
+        compileOptions |= SH_FLATTEN_PRAGMA_STDGL_INVARIANT_ALL;
+    }
+
+    ShCompileOptions unrollFlags =
+        SH_UNROLL_FOR_LOOP_WITH_INTEGER_INDEX | SH_UNROLL_FOR_LOOP_WITH_SAMPLER_ARRAY_INDEX;
+    if ((compileOptions & SH_ADD_AND_TRUE_TO_LOOP_CONDITION) != 0 &&
+        (compileOptions & unrollFlags) != 0)
+    {
+        infoSink.info.prefix(EPrefixError);
+        infoSink.info
+            << "Unsupported compile flag combination: unroll & ADD_TRUE_TO_LOOP_CONDITION";
+        return false;
+    }
+
     TScopedPoolAllocator scopedAlloc(&allocator);
-    TIntermNode *root = compileTreeImpl(shaderStrings, numStrings, compileOptions);
+    TIntermBlock *root = compileTreeImpl(shaderStrings, numStrings, compileOptions);
 
     if (root)
     {
@@ -383,23 +514,17 @@ bool TCompiler::InitBuiltInSymbolTable(const ShBuiltInResources &resources)
     symbolTable.push();   // COMMON_BUILTINS
     symbolTable.push();   // ESSL1_BUILTINS
     symbolTable.push();   // ESSL3_BUILTINS
+    symbolTable.push();   // ESSL3_1_BUILTINS
 
     TPublicType integer;
-    integer.type = EbtInt;
-    integer.primarySize = 1;
-    integer.secondarySize = 1;
+    integer.setBasicType(EbtInt);
+    integer.initializeSizeForScalarTypes();
     integer.array = false;
 
     TPublicType floatingPoint;
-    floatingPoint.type = EbtFloat;
-    floatingPoint.primarySize = 1;
-    floatingPoint.secondarySize = 1;
+    floatingPoint.setBasicType(EbtFloat);
+    floatingPoint.initializeSizeForScalarTypes();
     floatingPoint.array = false;
-
-    TPublicType sampler;
-    sampler.primarySize = 1;
-    sampler.secondarySize = 1;
-    sampler.array = false;
 
     switch(shaderType)
     {
@@ -410,17 +535,22 @@ bool TCompiler::InitBuiltInSymbolTable(const ShBuiltInResources &resources)
         symbolTable.setDefaultPrecision(integer, EbpHigh);
         symbolTable.setDefaultPrecision(floatingPoint, EbpHigh);
         break;
+      case GL_COMPUTE_SHADER:
+          symbolTable.setDefaultPrecision(integer, EbpHigh);
+          symbolTable.setDefaultPrecision(floatingPoint, EbpHigh);
+          break;
       default:
         assert(false && "Language not supported");
     }
-    // We set defaults for all the sampler types, even those that are
+    // Set defaults for sampler types that have default precision, even those that are
     // only available if an extension exists.
-    for (int samplerType = EbtGuardSamplerBegin + 1;
-         samplerType < EbtGuardSamplerEnd; ++samplerType)
-    {
-        sampler.type = static_cast<TBasicType>(samplerType);
-        symbolTable.setDefaultPrecision(sampler, EbpLow);
-    }
+    // New sampler types in ESSL3 don't have default precision. ESSL1 types do.
+    initSamplerDefaultPrecision(EbtSampler2D);
+    initSamplerDefaultPrecision(EbtSamplerCube);
+    // SamplerExternalOES is specified in the extension to have default precision.
+    initSamplerDefaultPrecision(EbtSamplerExternalOES);
+    // It isn't specified whether Sampler2DRect has default precision.
+    initSamplerDefaultPrecision(EbtSampler2DRect);
 
     InsertBuiltInFunctions(shaderType, shaderSpec, resources, symbolTable);
 
@@ -429,9 +559,21 @@ bool TCompiler::InitBuiltInSymbolTable(const ShBuiltInResources &resources)
     return true;
 }
 
+void TCompiler::initSamplerDefaultPrecision(TBasicType samplerType)
+{
+    ASSERT(samplerType > EbtGuardSamplerBegin && samplerType < EbtGuardSamplerEnd);
+    TPublicType sampler;
+    sampler.initializeSizeForScalarTypes();
+    sampler.setBasicType(samplerType);
+    sampler.array         = false;
+    symbolTable.setDefaultPrecision(sampler, EbpLow);
+}
+
 void TCompiler::setResourceString()
 {
     std::ostringstream strstream;
+
+    // clang-format off
     strstream << ":MaxVertexAttribs:" << compileResources.MaxVertexAttribs
               << ":MaxVertexUniformVectors:" << compileResources.MaxVertexUniformVectors
               << ":MaxVaryingVectors:" << compileResources.MaxVaryingVectors
@@ -442,11 +584,15 @@ void TCompiler::setResourceString()
               << ":MaxDrawBuffers:" << compileResources.MaxDrawBuffers
               << ":OES_standard_derivatives:" << compileResources.OES_standard_derivatives
               << ":OES_EGL_image_external:" << compileResources.OES_EGL_image_external
+              << ":OES_EGL_image_external_essl3:" << compileResources.OES_EGL_image_external_essl3
+              << ":NV_EGL_stream_consumer_external:" << compileResources.NV_EGL_stream_consumer_external
               << ":ARB_texture_rectangle:" << compileResources.ARB_texture_rectangle
               << ":EXT_draw_buffers:" << compileResources.EXT_draw_buffers
               << ":FragmentPrecisionHigh:" << compileResources.FragmentPrecisionHigh
               << ":MaxExpressionComplexity:" << compileResources.MaxExpressionComplexity
               << ":MaxCallStackDepth:" << compileResources.MaxCallStackDepth
+              << ":MaxFunctionParameters:" << compileResources.MaxFunctionParameters
+              << ":EXT_blend_func_extended:" << compileResources.EXT_blend_func_extended
               << ":EXT_frag_depth:" << compileResources.EXT_frag_depth
               << ":EXT_shader_texture_lod:" << compileResources.EXT_shader_texture_lod
               << ":EXT_shader_framebuffer_fetch:" << compileResources.EXT_shader_framebuffer_fetch
@@ -456,8 +602,34 @@ void TCompiler::setResourceString()
               << ":MaxFragmentInputVectors:" << compileResources.MaxFragmentInputVectors
               << ":MinProgramTexelOffset:" << compileResources.MinProgramTexelOffset
               << ":MaxProgramTexelOffset:" << compileResources.MaxProgramTexelOffset
+              << ":MaxDualSourceDrawBuffers:" << compileResources.MaxDualSourceDrawBuffers
               << ":NV_draw_buffers:" << compileResources.NV_draw_buffers
-              << ":WEBGL_debug_shader_precision:" << compileResources.WEBGL_debug_shader_precision;
+              << ":WEBGL_debug_shader_precision:" << compileResources.WEBGL_debug_shader_precision
+              << ":MaxImageUnits:" << compileResources.MaxImageUnits
+              << ":MaxVertexImageUniforms:" << compileResources.MaxVertexImageUniforms
+              << ":MaxFragmentImageUniforms:" << compileResources.MaxFragmentImageUniforms
+              << ":MaxComputeImageUniforms:" << compileResources.MaxComputeImageUniforms
+              << ":MaxCombinedImageUniforms:" << compileResources.MaxCombinedImageUniforms
+              << ":MaxCombinedShaderOutputResources:" << compileResources.MaxCombinedShaderOutputResources
+              << ":MaxComputeWorkGroupCountX:" << compileResources.MaxComputeWorkGroupCount[0]
+              << ":MaxComputeWorkGroupCountY:" << compileResources.MaxComputeWorkGroupCount[1]
+              << ":MaxComputeWorkGroupCountZ:" << compileResources.MaxComputeWorkGroupCount[2]
+              << ":MaxComputeWorkGroupSizeX:" << compileResources.MaxComputeWorkGroupSize[0]
+              << ":MaxComputeWorkGroupSizeY:" << compileResources.MaxComputeWorkGroupSize[1]
+              << ":MaxComputeWorkGroupSizeZ:" << compileResources.MaxComputeWorkGroupSize[2]
+              << ":MaxComputeUniformComponents:" << compileResources.MaxComputeUniformComponents
+              << ":MaxComputeTextureImageUnits:" << compileResources.MaxComputeTextureImageUnits
+              << ":MaxComputeAtomicCounters:" << compileResources.MaxComputeAtomicCounters
+              << ":MaxComputeAtomicCounterBuffers:" << compileResources.MaxComputeAtomicCounterBuffers
+              << ":MaxVertexAtomicCounters:" << compileResources.MaxVertexAtomicCounters
+              << ":MaxFragmentAtomicCounters:" << compileResources.MaxFragmentAtomicCounters
+              << ":MaxCombinedAtomicCounters:" << compileResources.MaxCombinedAtomicCounters
+              << ":MaxAtomicCounterBindings:" << compileResources.MaxAtomicCounterBindings
+              << ":MaxVertexAtomicCounterBuffers:" << compileResources.MaxVertexAtomicCounterBuffers
+              << ":MaxFragmentAtomicCounterBuffers:" << compileResources.MaxFragmentAtomicCounterBuffers
+              << ":MaxCombinedAtomicCounterBuffers:" << compileResources.MaxCombinedAtomicCounterBuffers
+              << ":MaxAtomicCounterBufferSize:" << compileResources.MaxAtomicCounterBufferSize;
+    // clang-format on
 
     builtInResourcesString = strstream.str();
 }
@@ -475,12 +647,14 @@ void TCompiler::clearResults()
     expandedUniforms.clear();
     varyings.clear();
     interfaceBlocks.clear();
+    variablesCollected = false;
 
     builtInFunctionEmulator.Cleanup();
 
     nameMap.clear();
 
     mSourcePath = NULL;
+    mTemporaryIndex = 0;
 }
 
 bool TCompiler::initCallDag(TIntermNode *root)
@@ -528,15 +702,15 @@ bool TCompiler::checkCallDepth()
             infoSink.info << "Call stack too deep (larger than " << maxCallStackDepth
                           << ") with the following call chain: " << record.name;
 
-            signed long long currentFunction = i;
+            int currentFunction = static_cast<int>(i);
             int currentDepth = depth;
 
             while (currentFunction != -1)
             {
-                infoSink.info << " -> " << mCallDag.getRecordFromIndex(static_cast<size_t>(currentFunction)).name;
+                infoSink.info << " -> " << mCallDag.getRecordFromIndex(currentFunction).name;
 
                 int nextFunction = -1;
-                for (auto& calleeIndex : mCallDag.getRecordFromIndex(static_cast<size_t>(currentFunction)).callees)
+                for (auto& calleeIndex : mCallDag.getRecordFromIndex(currentFunction).callees)
                 {
                     if (depths[calleeIndex] == currentDepth - 1)
                     {
@@ -558,7 +732,7 @@ bool TCompiler::checkCallDepth()
 bool TCompiler::tagUsedFunctions()
 {
     // Search from main, starting from the end of the DAG as it usually is the root.
-    for (size_t i = mCallDag.size(); i--;)
+    for (size_t i = mCallDag.size(); i-- > 0;)
     {
         if (mCallDag.getRecordFromIndex(i).name == "main(")
         {
@@ -568,7 +742,7 @@ bool TCompiler::tagUsedFunctions()
     }
 
     infoSink.info.prefix(EPrefixError);
-    infoSink.info << "Missing main()";
+    infoSink.info << "Missing main()\n";
     return false;
 }
 
@@ -600,22 +774,31 @@ class TCompiler::UnusedPredicate
     bool operator ()(TIntermNode *node)
     {
         const TIntermAggregate *asAggregate = node->getAsAggregate();
+        const TIntermFunctionDefinition *asFunction = node->getAsFunctionDefinition();
 
-        if (asAggregate == nullptr)
+        const TFunctionSymbolInfo *functionInfo = nullptr;
+
+        if (asFunction)
+        {
+            functionInfo = asFunction->getFunctionSymbolInfo();
+        }
+        else if (asAggregate)
+        {
+            if (asAggregate->getOp() == EOpPrototype)
+            {
+                functionInfo = asAggregate->getFunctionSymbolInfo();
+            }
+        }
+        if (functionInfo == nullptr)
         {
             return false;
         }
 
-        if (!(asAggregate->getOp() == EOpFunction || asAggregate->getOp() == EOpPrototype))
-        {
-            return false;
-        }
-
-        size_t callDagIndex = mCallDag->findIndex(asAggregate);
+        size_t callDagIndex = mCallDag->findIndex(functionInfo);
         if (callDagIndex == CallDAG::InvalidIndex)
         {
             // This happens only for unimplemented prototypes which are thus unused
-            ASSERT(asAggregate->getOp() == EOpPrototype);
+            ASSERT(asAggregate && asAggregate->getOp() == EOpPrototype);
             return true;
         }
 
@@ -628,66 +811,31 @@ class TCompiler::UnusedPredicate
     const std::vector<FunctionMetadata> *mMetadatas;
 };
 
-bool TCompiler::pruneUnusedFunctions(TIntermNode *root)
+bool TCompiler::pruneUnusedFunctions(TIntermBlock *root)
 {
-    TIntermAggregate *rootNode = root->getAsAggregate();
-    ASSERT(rootNode != nullptr);
-
     UnusedPredicate isUnused(&mCallDag, &functionMetadata);
-    TIntermSequence *sequence = rootNode->getSequence();
-    sequence->erase(std::remove_if(sequence->begin(), sequence->end(), isUnused), sequence->end());
+    TIntermSequence *sequence = root->getSequence();
+
+    if (!sequence->empty())
+    {
+        sequence->erase(std::remove_if(sequence->begin(), sequence->end(), isUnused), sequence->end());
+    }
 
     return true;
 }
 
 bool TCompiler::validateOutputs(TIntermNode* root)
 {
-    ValidateOutputs validateOutputs(infoSink.info, compileResources.MaxDrawBuffers);
+    ValidateOutputs validateOutputs(getExtensionBehavior(), compileResources.MaxDrawBuffers);
     root->traverse(&validateOutputs);
-    return (validateOutputs.numErrors() == 0);
-}
-
-void TCompiler::rewriteCSSShader(TIntermNode* root)
-{
-    RenameFunction renamer("main(", "css_main(");
-    root->traverse(&renamer);
+    return (validateOutputs.validateAndCountErrors(infoSink.info) == 0);
 }
 
 bool TCompiler::validateLimitations(TIntermNode* root)
 {
-    ValidateLimitations validate(shaderType, infoSink.info);
+    ValidateLimitations validate(shaderType, &infoSink.info);
     root->traverse(&validate);
     return validate.numErrors() == 0;
-}
-
-bool TCompiler::enforceTimingRestrictions(TIntermNode* root, bool outputGraph)
-{
-    if (shaderSpec != SH_WEBGL_SPEC)
-    {
-        infoSink.info << "Timing restrictions must be enforced under the WebGL spec.";
-        return false;
-    }
-
-    if (shaderType == GL_FRAGMENT_SHADER)
-    {
-        TDependencyGraph graph(root);
-
-        // Output any errors first.
-        bool success = enforceFragmentShaderTimingRestrictions(graph);
-
-        // Then, output the dependency graph.
-        if (outputGraph)
-        {
-            TDependencyGraphOutput output(infoSink.info);
-            output.outputAllSpanningTrees(graph);
-        }
-
-        return success;
-    }
-    else
-    {
-        return enforceVertexShaderTimingRestrictions(root);
-    }
 }
 
 bool TCompiler::limitExpressionComplexity(TIntermNode* root)
@@ -701,47 +849,27 @@ bool TCompiler::limitExpressionComplexity(TIntermNode* root)
         return false;
     }
 
-    TDependencyGraph graph(root);
-
-    for (TFunctionCallVector::const_iterator iter = graph.beginUserDefinedFunctionCalls();
-         iter != graph.endUserDefinedFunctionCalls();
-         ++iter)
+    if (!ValidateMaxParameters::validate(root, maxFunctionParameters))
     {
-        TGraphFunctionCall* samplerSymbol = *iter;
-        TDependencyGraphTraverser graphTraverser;
-        samplerSymbol->traverse(&graphTraverser);
+        infoSink.info << "Function has too many parameters.";
+        return false;
     }
 
     return true;
 }
 
-bool TCompiler::enforceFragmentShaderTimingRestrictions(const TDependencyGraph& graph)
-{
-    RestrictFragmentShaderTiming restrictor(infoSink.info);
-    restrictor.enforceRestrictions(graph);
-    return restrictor.numErrors() == 0;
-}
-
-bool TCompiler::enforceVertexShaderTimingRestrictions(TIntermNode* root)
-{
-    RestrictVertexShaderTiming restrictor(infoSink.info);
-    restrictor.enforceRestrictions(root);
-    return restrictor.numErrors() == 0;
-}
-
 void TCompiler::collectVariables(TIntermNode* root)
 {
-    sh::CollectVariables collect(&attributes,
-                                 &outputVariables,
-                                 &uniforms,
-                                 &varyings,
-                                 &interfaceBlocks,
-                                 hashFunction,
-                                 symbolTable);
-    root->traverse(&collect);
+    if (!variablesCollected)
+    {
+        sh::CollectVariables collect(&attributes, &outputVariables, &uniforms, &varyings,
+                                     &interfaceBlocks, hashFunction, symbolTable, extensionBehavior);
+        root->traverse(&collect);
 
-    // This is for enforcePackingRestriction().
-    sh::ExpandUniforms(uniforms, &expandedUniforms);
+        // This is for enforcePackingRestriction().
+        sh::ExpandUniforms(uniforms, &expandedUniforms);
+        variablesCollected = true;
+    }
 }
 
 bool TCompiler::enforcePackingRestrictions()
@@ -752,37 +880,48 @@ bool TCompiler::enforcePackingRestrictions()
 
 void TCompiler::initializeGLPosition(TIntermNode* root)
 {
-    InitializeVariables::InitVariableInfoList variables;
-    InitializeVariables::InitVariableInfo var(
-        "gl_Position", TType(EbtFloat, EbpUndefined, EvqPosition, 4));
-    variables.push_back(var);
-    InitializeVariables initializer(variables);
-    root->traverse(&initializer);
+    InitVariableList list;
+    sh::ShaderVariable var(GL_FLOAT_VEC4, 0);
+    var.name = "gl_Position";
+    list.push_back(var);
+    InitializeVariables(root, list);
 }
 
-void TCompiler::initializeVaryingsWithoutStaticUse(TIntermNode* root)
+void TCompiler::useAllMembersInUnusedStandardAndSharedBlocks(TIntermNode *root)
 {
-    InitializeVariables::InitVariableInfoList variables;
-    for (size_t ii = 0; ii < varyings.size(); ++ii)
-    {
-        const sh::Varying& varying = varyings[ii];
-        if (varying.staticUse)
-            continue;
-        unsigned char primarySize = static_cast<unsigned char>(gl::VariableColumnCount(varying.type));
-        unsigned char secondarySize = static_cast<unsigned char>(gl::VariableRowCount(varying.type));
-        TType type(EbtFloat, EbpUndefined, EvqVaryingOut, primarySize, secondarySize, varying.isArray());
-        TString name = varying.name.c_str();
-        if (varying.isArray())
-        {
-            type.setArraySize(varying.arraySize);
-            name = name.substr(0, name.find_first_of('['));
-        }
+    sh::InterfaceBlockList list;
 
-        InitializeVariables::InitVariableInfo var(name, type);
-        variables.push_back(var);
+    for (auto block : interfaceBlocks)
+    {
+        if (!block.staticUse &&
+            (block.layout == sh::BLOCKLAYOUT_STANDARD || block.layout == sh::BLOCKLAYOUT_SHARED))
+        {
+            list.push_back(block);
+        }
     }
-    InitializeVariables initializer(variables);
-    root->traverse(&initializer);
+
+    sh::UseInterfaceBlockFields(root, list);
+}
+
+void TCompiler::initializeOutputVariables(TIntermNode *root)
+{
+    InitVariableList list;
+    if (shaderType == GL_VERTEX_SHADER)
+    {
+        for (auto var : varyings)
+        {
+            list.push_back(var);
+        }
+    }
+    else
+    {
+        ASSERT(shaderType == GL_FRAGMENT_SHADER);
+        for (auto var : outputVariables)
+        {
+            list.push_back(var);
+        }
+    }
+    InitializeVariables(root, list);
 }
 
 const TExtensionBehavior& TCompiler::getExtensionBehavior() const
@@ -815,9 +954,26 @@ const BuiltInFunctionEmulator& TCompiler::getBuiltInFunctionEmulator() const
     return builtInFunctionEmulator;
 }
 
-void TCompiler::writePragma()
+void TCompiler::writePragma(ShCompileOptions compileOptions)
 {
-    TInfoSinkBase &sink = infoSink.obj;
-    if (mPragma.stdgl.invariantAll)
-        sink << "#pragma STDGL invariant(all)\n";
+    if (!(compileOptions & SH_FLATTEN_PRAGMA_STDGL_INVARIANT_ALL))
+    {
+        TInfoSinkBase &sink = infoSink.obj;
+        if (mPragma.stdgl.invariantAll)
+            sink << "#pragma STDGL invariant(all)\n";
+    }
+}
+
+bool TCompiler::isVaryingDefined(const char *varyingName)
+{
+    ASSERT(variablesCollected);
+    for (size_t ii = 0; ii < varyings.size(); ++ii)
+    {
+        if (varyings[ii].name == varyingName)
+        {
+            return true;
+        }
+    }
+
+    return false;
 }

@@ -23,7 +23,6 @@
 #include "WebKitPrivate.h"
 #include "WebKitUserContentPrivate.h"
 #include <wtf/text/CString.h>
-#include <wtf/text/StringBuilder.h>
 
 using namespace WebCore;
 
@@ -93,7 +92,7 @@ struct _WebKitUserStyleSheet {
             String::fromUTF8(source), URL { },
             toStringVector(whitelist), toStringVector(blacklist),
             toUserContentInjectedFrames(injectedFrames),
-            toUserStyleLevel(level) })))
+            toUserStyleLevel(level) }, API::UserContentWorld::normalWorld())))
         , referenceCount(1)
     {
     }
@@ -179,7 +178,7 @@ struct _WebKitUserScript {
             String::fromUTF8(source), URL { },
             toStringVector(whitelist), toStringVector(blacklist),
             toUserScriptInjectionTime(injectionTime),
-            toUserContentInjectedFrames(injectedFrames) })))
+            toUserContentInjectedFrames(injectedFrames) }, API::UserContentWorld::normalWorld())))
         , referenceCount(1)
     {
     }

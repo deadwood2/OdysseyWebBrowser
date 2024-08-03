@@ -40,13 +40,11 @@
 #include "XSLTExtensions.h"
 #include "XSLTUnicodeSort.h"
 #include "markup.h"
-#include <JavaScriptCore/Profile.h>
 #include <libxslt/imports.h>
 #include <libxslt/security.h>
 #include <libxslt/variables.h>
 #include <libxslt/xsltutils.h>
 #include <wtf/Assertions.h>
-#include <wtf/Vector.h>
 #include <wtf/text/StringBuffer.h>
 #include <wtf/unicode/UTF8.h>
 
@@ -128,7 +126,7 @@ static xmlDocPtr docLoaderFunc(const xmlChar* uri,
 
         bool requestAllowed = globalCachedResourceLoader->frame() && globalCachedResourceLoader->document()->securityOrigin()->canRequest(url);
         if (requestAllowed) {
-            globalCachedResourceLoader->frame()->loader().loadResourceSynchronously(url, AllowStoredCredentials, DoNotAskClientForCrossOriginCredentials, error, response, data);
+            globalCachedResourceLoader->frame()->loader().loadResourceSynchronously(url, AllowStoredCredentials, ClientCredentialPolicy::MayAskClientForCredentials, error, response, data);
             if (error.isNull())
                 requestAllowed = globalCachedResourceLoader->document()->securityOrigin()->canRequest(response.url());
             else if (data)

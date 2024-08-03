@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2007, 2008, 2009 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2016 Apple Inc. All rights reserved.
  * Copyright (C) 2011 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,14 +27,13 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef DocumentLoader_h
-#define DocumentLoader_h
+#pragma once
 
 #include "CachedRawResourceClient.h"
 #include "CachedResourceHandle.h"
-#include "DocumentLoadTiming.h"
 #include "DocumentWriter.h"
 #include "IconDatabaseBase.h"
+#include "LoadTiming.h"
 #include "NavigationAction.h"
 #include "ResourceError.h"
 #include "ResourceLoaderOptions.h"
@@ -68,6 +67,7 @@ namespace WebCore {
     class ArchiveResourceCollection;
     class CachedRawResource;
     class CachedResourceLoader;
+    class ContentFilter;
     class FormState;
     class Frame;
     class FrameLoader;
@@ -77,15 +77,12 @@ namespace WebCore {
     class SubresourceLoader;
     class SubstituteResource;
 
-#if ENABLE(CONTENT_FILTERING)
-    class ContentFilter;
-#endif
-
     typedef HashMap<unsigned long, RefPtr<ResourceLoader>> ResourceLoaderMap;
     typedef Vector<ResourceResponse> ResponseVector;
 
     class DocumentLoader : public RefCounted<DocumentLoader>, private CachedRawResourceClient {
         WTF_MAKE_FAST_ALLOCATED;
+        friend class ContentFilter;
     public:
         static Ref<DocumentLoader> create(const ResourceRequest& request, const SubstituteData& data)
         {
@@ -100,7 +97,7 @@ namespace WebCore {
 
         WEBCORE_EXPORT FrameLoader* frameLoader() const;
         WEBCORE_EXPORT SubresourceLoader* mainResourceLoader() const;
-        WEBCORE_EXPORT PassRefPtr<SharedBuffer> mainResourceData() const;
+        WEBCORE_EXPORT RefPtr<SharedBuffer> mainResourceData() const;
         
         DocumentWriter& writer() const { return m_writer; }
 
@@ -156,18 +153,18 @@ namespace WebCore {
 #if ENABLE(WEB_ARCHIVE) || ENABLE(MHTML)
         void setArchive(PassRefPtr<Archive>);
         WEBCORE_EXPORT void addAllArchiveResources(Archive*);
-        WEBCORE_EXPORT void addArchiveResource(PassRefPtr<ArchiveResource>);
+        WEBCORE_EXPORT void addArchiveResource(Ref<ArchiveResource>&&);
         PassRefPtr<Archive> popArchiveForSubframe(const String& frameName, const URL&);
         WEBCORE_EXPORT SharedBuffer* parsedArchiveData() const;
 
-        WEBCORE_EXPORT bool scheduleArchiveLoad(ResourceLoader*, const ResourceRequest&);
+        WEBCORE_EXPORT bool scheduleArchiveLoad(ResourceLoader&, const ResourceRequest&);
 #endif
         void scheduleSubstituteResourceLoad(ResourceLoader&, SubstituteResource&);
 
         // Return the ArchiveResource for the URL only when loading an Archive
         WEBCORE_EXPORT ArchiveResource* archiveResourceForURL(const URL&) const;
 
-        WEBCORE_EXPORT PassRefPtr<ArchiveResource> mainResource() const;
+        WEBCORE_EXPORT RefPtr<ArchiveResource> mainResource() const;
 
         // Return an ArchiveResource for the URL, either creating from live data or
         // pulling from the ArchiveResourceCollection
@@ -216,7 +213,8 @@ namespace WebCore {
 
         void startLoadingMainResource();
         WEBCORE_EXPORT void cancelMainResourceLoad(const ResourceError&);
-        
+        void willContinueMainResourceLoadAfterRedirect(const ResourceRequest&);
+
         // Support iconDatabase in synchronous mode.
         void iconLoadDecisionAvailable();
         
@@ -258,8 +256,8 @@ namespace WebCore {
         void recordMemoryCacheLoadForFutureClientNotification(const ResourceRequest&);
         void takeMemoryCacheLoadsForClientNotification(Vector<ResourceRequest>& loads);
 
-        DocumentLoadTiming& timing() { return m_documentLoadTiming; }
-        void resetTiming() { m_documentLoadTiming = DocumentLoadTiming(); }
+        LoadTiming& timing() { return m_loadTiming; }
+        void resetTiming() { m_loadTiming = LoadTiming(); }
 
         // The WebKit layer calls this function when it's ready for the data to
         // actually be added to the document.
@@ -284,6 +282,10 @@ namespace WebCore {
 
         void setShouldOpenExternalURLsPolicy(ShouldOpenExternalURLsPolicy shouldOpenExternalURLsPolicy) { m_shouldOpenExternalURLsPolicy = shouldOpenExternalURLsPolicy; }
         ShouldOpenExternalURLsPolicy shouldOpenExternalURLsPolicyToPropagate() const;
+
+#if ENABLE(CONTENT_FILTERING)
+        ContentFilter* contentFilter() const;
+#endif
 
     protected:
         WEBCORE_EXPORT DocumentLoader(const ResourceRequest&, const SubstituteData&);
@@ -313,10 +315,10 @@ namespace WebCore {
         void willSendRequest(ResourceRequest&, const ResourceResponse&);
         void finishedLoading(double finishTime);
         void mainReceivedError(const ResourceError&);
-        WEBCORE_EXPORT virtual void redirectReceived(CachedResource*, ResourceRequest&, const ResourceResponse&) override;
-        WEBCORE_EXPORT virtual void responseReceived(CachedResource*, const ResourceResponse&) override;
-        WEBCORE_EXPORT virtual void dataReceived(CachedResource*, const char* data, int length) override;
-        WEBCORE_EXPORT virtual void notifyFinished(CachedResource*) override;
+        WEBCORE_EXPORT void redirectReceived(CachedResource*, ResourceRequest&, const ResourceResponse&) override;
+        WEBCORE_EXPORT void responseReceived(CachedResource*, const ResourceResponse&) override;
+        WEBCORE_EXPORT void dataReceived(CachedResource*, const char* data, int length) override;
+        WEBCORE_EXPORT void notifyFinished(CachedResource*) override;
 
         bool maybeLoadEmpty();
 
@@ -328,6 +330,8 @@ namespace WebCore {
 
         void stopLoadingForPolicyChange();
         ResourceError interruptedForPolicyChangeError() const;
+
+        void stopLoadingAfterXFrameOptionsOrContentSecurityPolicyDenied(unsigned long identifier, const ResourceResponse&);
 
 #if HAVE(RUNLOOP_TIMER)
         typedef RunLoopTimer<DocumentLoader> DocumentLoaderTimer;
@@ -345,12 +349,6 @@ namespace WebCore {
 
         void cancelPolicyCheckIfNeeded();
         void becomeMainResourceClient();
-
-#if ENABLE(CONTENT_FILTERING)
-        friend class ContentFilter;
-        void installContentFilterUnblockHandler(ContentFilter&);
-        void contentFilterDidBlock();
-#endif
 
         Frame* m_frame;
         Ref<CachedResourceLoader> m_cachedResourceLoader;
@@ -429,7 +427,7 @@ namespace WebCore {
         bool m_didCreateGlobalHistoryEntry;
 
         bool m_loadingMainResource;
-        DocumentLoadTiming m_documentLoadTiming;
+        LoadTiming m_loadTiming;
 
         double m_timeOfLastDataReceived;
         unsigned long m_identifierForLoadWithoutResourceLoader;
@@ -477,5 +475,3 @@ namespace WebCore {
     }
 
 }
-
-#endif // DocumentLoader_h

@@ -37,14 +37,15 @@
 #include "NotImplemented.h"
 #include "VideoSinkGStreamer.h"
 #include "WebKitWebSourceGStreamer.h"
-#include <gst/gst.h>
 #include <wtf/glib/GMutexLocker.h>
 #include <wtf/text/CString.h>
+#include <wtf/MathExtras.h>
 
 #include <gst/audio/streamvolume.h>
 #include <gst/video/gstvideometa.h>
 
 #if USE(GSTREAMER_GL)
+#include <gst/app/gstappsink.h>
 #define GST_USE_UNSTABLE_API
 #include <gst/gl/gl.h>
 #undef GST_USE_UNSTABLE_API
@@ -105,23 +106,20 @@ static int greatestCommonDivisor(int a, int b)
 #if USE(COORDINATED_GRAPHICS_THREADED) && USE(GSTREAMER_GL)
 class GstVideoFrameHolder : public TextureMapperPlatformLayerBuffer::UnmanagedBufferDataHolder {
 public:
-    explicit GstVideoFrameHolder(GstSample* sample)
+    explicit GstVideoFrameHolder(GstSample* sample, TextureMapperGL::Flags flags)
     {
         GstVideoInfo videoInfo;
         if (UNLIKELY(!getSampleVideoInfo(sample, videoInfo)))
             return;
 
         m_size = IntSize(GST_VIDEO_INFO_WIDTH(&videoInfo), GST_VIDEO_INFO_HEIGHT(&videoInfo));
-        m_flags = GST_VIDEO_INFO_HAS_ALPHA(&videoInfo) ? TextureMapperGL::ShouldBlend : 0;
+        m_flags = flags | (GST_VIDEO_INFO_HAS_ALPHA(&videoInfo) ? TextureMapperGL::ShouldBlend : 0);
 
         GstBuffer* buffer = gst_sample_get_buffer(sample);
-        m_videoFrame = new GstVideoFrame();
-        if (UNLIKELY(!gst_video_frame_map(m_videoFrame, &videoInfo, buffer, static_cast<GstMapFlags>(GST_MAP_READ | GST_MAP_GL)))) {
-            delete m_videoFrame;
+        if (UNLIKELY(!gst_video_frame_map(&m_videoFrame, &videoInfo, buffer, static_cast<GstMapFlags>(GST_MAP_READ | GST_MAP_GL))))
             return;
-        }
 
-        m_textureID = *reinterpret_cast<GLuint*>(m_videoFrame->data[0]);
+        m_textureID = *reinterpret_cast<GLuint*>(m_videoFrame.data[0]);
         m_isValid = true;
     }
 
@@ -130,21 +128,7 @@ public:
         if (UNLIKELY(!m_isValid))
             return;
 
-        GstMapInfo* info = &m_videoFrame->map[0];
-        GstGLBaseBuffer* mem = (GstGLBaseBuffer*)info->memory;
-        GstGLWindow* gstWindow = gst_gl_context_get_window(mem->context);
-
-        gst_gl_window_send_message_async(gstWindow, (GstGLWindowCB)unmapVideoFrameCallback, m_videoFrame, (GDestroyNotify)freeVideoFrameCallback);
-    }
-
-    static void unmapVideoFrameCallback(GstVideoFrame* videoFrame)
-    {
-        gst_video_frame_unmap(videoFrame);
-    }
-
-    static void freeVideoFrameCallback(GstVideoFrame* videoFrame)
-    {
-        delete videoFrame;
+        gst_video_frame_unmap(&m_videoFrame);
     }
 
     const IntSize& size() const { return m_size; }
@@ -153,7 +137,7 @@ public:
     bool isValid() const { return m_isValid; }
 
 private:
-    GstVideoFrame* m_videoFrame;
+    GstVideoFrame m_videoFrame;
     IntSize m_size;
     TextureMapperGL::Flags m_flags;
     GLuint m_textureID;
@@ -166,10 +150,13 @@ MediaPlayerPrivateGStreamerBase::MediaPlayerPrivateGStreamerBase(MediaPlayer* pl
     , m_fpsSink(0)
     , m_readyState(MediaPlayer::HaveNothing)
     , m_networkState(MediaPlayer::Empty)
-#if USE(GSTREAMER_GL)
+#if USE(GSTREAMER_GL) || USE(COORDINATED_GRAPHICS_THREADED)
     , m_drawTimer(RunLoop::main(), this, &MediaPlayerPrivateGStreamerBase::repaint)
 #endif
     , m_usingFallbackVideoSink(false)
+#if USE(TEXTURE_MAPPER_GL)
+    , m_textureMapperRotationFlag(0)
+#endif
 {
     g_mutex_init(&m_sampleMutex);
 #if USE(COORDINATED_GRAPHICS_THREADED)
@@ -181,18 +168,38 @@ MediaPlayerPrivateGStreamerBase::~MediaPlayerPrivateGStreamerBase()
 {
     m_notifier.cancelPendingNotifications();
 
-    g_signal_handlers_disconnect_matched(m_videoSink.get(), G_SIGNAL_MATCH_DATA, 0, 0, nullptr, nullptr, this);
+#if USE(GSTREAMER_GL) || USE(COORDINATED_GRAPHICS_THREADED)
+    m_drawTimer.stop();
+    {
+        LockHolder locker(m_drawMutex);
+        m_drawCondition.notifyOne();
+    }
+#endif
+
+    if (m_videoSink) {
+        g_signal_handlers_disconnect_matched(m_videoSink.get(), G_SIGNAL_MATCH_DATA, 0, 0, nullptr, nullptr, this);
+#if USE(GSTREAMER_GL)
+        if (GST_IS_BIN(m_videoSink.get())) {
+            GRefPtr<GstElement> appsink = adoptGRef(gst_bin_get_by_name(GST_BIN_CAST(m_videoSink.get()), "webkit-gl-video-sink"));
+            g_signal_handlers_disconnect_by_data(appsink.get(), this);
+        }
+#endif
+    }
 
     g_mutex_clear(&m_sampleMutex);
 
     m_player = nullptr;
 
-    g_signal_handlers_disconnect_matched(m_volumeElement.get(), G_SIGNAL_MATCH_DATA, 0, 0, nullptr, nullptr, this);
+    if (m_volumeElement)
+        g_signal_handlers_disconnect_matched(m_volumeElement.get(), G_SIGNAL_MATCH_DATA, 0, 0, nullptr, nullptr, this);
 
 #if USE(TEXTURE_MAPPER_GL) && !USE(COORDINATED_GRAPHICS)
     if (client())
         client()->platformLayerWillBeDestroyed();
 #endif
+
+    if (m_pipeline)
+        gst_element_set_state(m_pipeline.get(), GST_STATE_NULL);
 }
 
 void MediaPlayerPrivateGStreamerBase::setPipeline(GstElement* pipeline)
@@ -239,8 +246,8 @@ bool MediaPlayerPrivateGStreamerBase::ensureGstGLContext()
     if (m_glContext)
         return true;
 
+    const auto& sharedDisplay = PlatformDisplay::sharedDisplayForCompositing();
     if (!m_glDisplay) {
-        const auto& sharedDisplay = PlatformDisplay::sharedDisplay();
 #if PLATFORM(X11)
         m_glDisplay = GST_GL_DISPLAY(gst_gl_display_x11_new_with_display(downcast<PlatformDisplayX11>(sharedDisplay).native()));
 #elif PLATFORM(WAYLAND)
@@ -248,7 +255,7 @@ bool MediaPlayerPrivateGStreamerBase::ensureGstGLContext()
 #endif
     }
 
-    GLContext* webkitContext = GLContext::sharingContext();
+    GLContext* webkitContext = sharedDisplay.sharingGLContext();
     // EGL and GLX are mutually exclusive, no need for ifdefs here.
     GstGLPlatform glPlatform = webkitContext->isEGLContext() ? GST_GL_PLATFORM_EGL : GST_GL_PLATFORM_GLX;
 
@@ -301,8 +308,16 @@ FloatSize MediaPlayerPrivateGStreamerBase::naturalSize() const
     if (!getVideoSizeAndFormatFromCaps(caps, originalSize, format, pixelAspectRatioNumerator, pixelAspectRatioDenominator, stride))
         return FloatSize();
 
-    LOG_MEDIA_MESSAGE("Original video size: %dx%d", originalSize.width(), originalSize.height());
-    LOG_MEDIA_MESSAGE("Pixel aspect ratio: %d/%d", pixelAspectRatioNumerator, pixelAspectRatioDenominator);
+#if USE(TEXTURE_MAPPER_GL)
+    // When using accelerated compositing, if the video is tagged as rotated 90 or 270 degrees, swap width and height.
+    if (m_player->client().mediaPlayerRenderingCanBeAccelerated(m_player)) {
+        if (m_videoSourceOrientation.usesWidthAsHeight())
+            originalSize = originalSize.transposedSize();
+    }
+#endif
+
+    GST_DEBUG("Original video size: %dx%d", originalSize.width(), originalSize.height());
+    GST_DEBUG("Pixel aspect ratio: %d/%d", pixelAspectRatioNumerator, pixelAspectRatioDenominator);
 
     // Calculate DAR based on PAR and video size.
     int displayWidth = originalSize.width() * pixelAspectRatioNumerator;
@@ -316,20 +331,20 @@ FloatSize MediaPlayerPrivateGStreamerBase::naturalSize() const
     // Apply DAR to original video size. This is the same behavior as in xvimagesink's setcaps function.
     guint64 width = 0, height = 0;
     if (!(originalSize.height() % displayHeight)) {
-        LOG_MEDIA_MESSAGE("Keeping video original height");
+        GST_DEBUG("Keeping video original height");
         width = gst_util_uint64_scale_int(originalSize.height(), displayWidth, displayHeight);
         height = static_cast<guint64>(originalSize.height());
     } else if (!(originalSize.width() % displayWidth)) {
-        LOG_MEDIA_MESSAGE("Keeping video original width");
+        GST_DEBUG("Keeping video original width");
         height = gst_util_uint64_scale_int(originalSize.width(), displayHeight, displayWidth);
         width = static_cast<guint64>(originalSize.width());
     } else {
-        LOG_MEDIA_MESSAGE("Approximating while keeping original video height");
+        GST_DEBUG("Approximating while keeping original video height");
         width = gst_util_uint64_scale_int(originalSize.height(), displayWidth, displayHeight);
         height = static_cast<guint64>(originalSize.height());
     }
 
-    LOG_MEDIA_MESSAGE("Natural size: %" G_GUINT64_FORMAT "x%" G_GUINT64_FORMAT, width, height);
+    GST_DEBUG("Natural size: %" G_GUINT64_FORMAT "x%" G_GUINT64_FORMAT, width, height);
     m_videoSize = FloatSize(static_cast<int>(width), static_cast<int>(height));
     return m_videoSize;
 }
@@ -339,7 +354,7 @@ void MediaPlayerPrivateGStreamerBase::setVolume(float volume)
     if (!m_volumeElement)
         return;
 
-    LOG_MEDIA_MESSAGE("Setting volume: %f", volume);
+    GST_DEBUG("Setting volume: %f", volume);
     gst_stream_volume_set_volume(m_volumeElement.get(), GST_STREAM_VOLUME_FORMAT_CUBIC, static_cast<double>(volume));
 }
 
@@ -368,7 +383,7 @@ void MediaPlayerPrivateGStreamerBase::notifyPlayerOfVolumeChange()
 void MediaPlayerPrivateGStreamerBase::volumeChangedCallback(MediaPlayerPrivateGStreamerBase* player)
 {
     // This is called when m_volumeElement receives the notify::volume signal.
-    LOG_MEDIA_MESSAGE("Volume changed to: %f", player->volume());
+    GST_DEBUG("Volume changed to: %f", player->volume());
 
     player->m_notifier.notify(MainThreadNotification::VolumeChanged, [player] { player->notifyPlayerOfVolumeChange(); });
 }
@@ -484,7 +499,7 @@ void MediaPlayerPrivateGStreamerBase::pushTextureToCompositor()
         return;
 
 #if USE(GSTREAMER_GL)
-    std::unique_ptr<GstVideoFrameHolder> frameHolder = std::make_unique<GstVideoFrameHolder>(m_sample.get());
+    std::unique_ptr<GstVideoFrameHolder> frameHolder = std::make_unique<GstVideoFrameHolder>(m_sample.get(), m_textureMapperRotationFlag);
     if (UNLIKELY(!frameHolder->isValid()))
         return;
 
@@ -497,7 +512,6 @@ void MediaPlayerPrivateGStreamerBase::pushTextureToCompositor()
         return;
 
     IntSize size = IntSize(GST_VIDEO_INFO_WIDTH(&videoInfo), GST_VIDEO_INFO_HEIGHT(&videoInfo));
-
     std::unique_ptr<TextureMapperPlatformLayerBuffer> buffer = m_platformLayerProxy->getAvailableBuffer(size, GraphicsContext3D::DONT_CARE);
     if (UNLIKELY(!buffer)) {
         if (UNLIKELY(!m_context3D))
@@ -508,6 +522,7 @@ void MediaPlayerPrivateGStreamerBase::pushTextureToCompositor()
         buffer = std::make_unique<TextureMapperPlatformLayerBuffer>(WTFMove(texture));
     }
     updateTexture(buffer->textureGL(), videoInfo);
+    buffer->setExtraFlags(m_textureMapperRotationFlag | (GST_VIDEO_INFO_HAS_ALPHA(&videoInfo) ? TextureMapperGL::ShouldBlend : 0));
     m_platformLayerProxy->pushNextBuffer(WTFMove(buffer));
 #endif
 }
@@ -522,6 +537,7 @@ void MediaPlayerPrivateGStreamerBase::repaint()
     if (supportsAcceleratedRendering() && m_player->client().mediaPlayerRenderingCanBeAccelerated(m_player) && client()) {
         client()->setPlatformLayerNeedsDisplay();
 #if USE(GSTREAMER_GL)
+        LockHolder lock(m_drawMutex);
         m_drawCondition.notifyOne();
 #endif
         return;
@@ -530,7 +546,8 @@ void MediaPlayerPrivateGStreamerBase::repaint()
 
     m_player->repaint();
 
-#if USE(GSTREAMER_GL)
+#if USE(GSTREAMER_GL) || USE(COORDINATED_GRAPHICS_THREADED)
+    LockHolder lock(m_drawMutex);
     m_drawCondition.notifyOne();
 #endif
 }
@@ -545,11 +562,18 @@ void MediaPlayerPrivateGStreamerBase::triggerRepaint(GstSample* sample)
     }
 
     if (triggerResize) {
-        LOG_MEDIA_MESSAGE("First sample reached the sink, triggering video dimensions update");
-        m_player->sizeChanged();
+        GST_DEBUG("First sample reached the sink, triggering video dimensions update");
+        m_notifier.notify(MainThreadNotification::SizeChanged, [this] { m_player->sizeChanged(); });
     }
 
 #if USE(COORDINATED_GRAPHICS_THREADED)
+    if (!m_player->client().mediaPlayerAcceleratedCompositingEnabled()) {
+        LockHolder locker(m_drawMutex);
+        m_drawTimer.startOneShot(0);
+        m_drawCondition.wait(m_drawMutex);
+        return;
+    }
+
 #if USE(GSTREAMER_GL)
     pushTextureToCompositor();
 #else
@@ -582,10 +606,18 @@ void MediaPlayerPrivateGStreamerBase::repaintCallback(MediaPlayerPrivateGStreame
 }
 
 #if USE(GSTREAMER_GL)
-gboolean MediaPlayerPrivateGStreamerBase::drawCallback(MediaPlayerPrivateGStreamerBase* player, GstGLContext*, GstSample* sample)
+GstFlowReturn MediaPlayerPrivateGStreamerBase::newSampleCallback(GstElement* sink, MediaPlayerPrivateGStreamerBase* player)
 {
-    player->triggerRepaint(sample);
-    return TRUE;
+    GRefPtr<GstSample> sample = adoptGRef(gst_app_sink_pull_sample(GST_APP_SINK(sink)));
+    player->triggerRepaint(sample.get());
+    return GST_FLOW_OK;
+}
+
+GstFlowReturn MediaPlayerPrivateGStreamerBase::newPrerollCallback(GstElement* sink, MediaPlayerPrivateGStreamerBase* player)
+{
+    GRefPtr<GstSample> sample = adoptGRef(gst_app_sink_pull_preroll(GST_APP_SINK(sink)));
+    player->triggerRepaint(sample.get());
+    return GST_FLOW_OK;
 }
 #endif
 
@@ -596,14 +628,6 @@ void MediaPlayerPrivateGStreamerBase::setSize(const IntSize& size)
 
 void MediaPlayerPrivateGStreamerBase::paint(GraphicsContext& context, const FloatRect& rect)
 {
-#if USE(COORDINATED_GRAPHICS_THREADED)
-    ASSERT_NOT_REACHED();
-    return;
-#elif USE(TEXTURE_MAPPER_GL) && !USE(COORDINATED_GRAPHICS)
-    if (client())
-        return;
-#endif
-
     if (context.paintingDisabled())
         return;
 
@@ -614,12 +638,16 @@ void MediaPlayerPrivateGStreamerBase::paint(GraphicsContext& context, const Floa
     if (!GST_IS_SAMPLE(m_sample.get()))
         return;
 
+    ImagePaintingOptions paintingOptions(CompositeCopy);
+    if (m_player->client().mediaPlayerRenderingCanBeAccelerated(m_player))
+        paintingOptions.m_orientationDescription.setImageOrientationEnum(m_videoSourceOrientation);
+
     RefPtr<ImageGStreamer> gstImage = ImageGStreamer::createImage(m_sample.get());
     if (!gstImage)
         return;
 
     if (Image* image = reinterpret_cast<Image*>(gstImage->image().get()))
-        context.drawImage(*image, rect, gstImage->rect(), CompositeCopy);
+        context.drawImage(*image, rect, gstImage->rect(), paintingOptions);
 }
 
 #if USE(TEXTURE_MAPPER_GL) && !USE(COORDINATED_GRAPHICS)
@@ -630,6 +658,8 @@ void MediaPlayerPrivateGStreamerBase::paintToTextureMapper(TextureMapper& textur
 
     if (m_usingFallbackVideoSink) {
         RefPtr<BitmapTexture> texture;
+        IntSize size;
+        TextureMapperGL::Flags flags;
         {
             WTF::GMutexLocker<GMutex> lock(m_sampleMutex);
 
@@ -637,15 +667,20 @@ void MediaPlayerPrivateGStreamerBase::paintToTextureMapper(TextureMapper& textur
             if (UNLIKELY(!getSampleVideoInfo(m_sample.get(), videoInfo)))
                 return;
 
-            IntSize size = IntSize(GST_VIDEO_INFO_WIDTH(&videoInfo), GST_VIDEO_INFO_HEIGHT(&videoInfo));
+            size = IntSize(GST_VIDEO_INFO_WIDTH(&videoInfo), GST_VIDEO_INFO_HEIGHT(&videoInfo));
+            flags = m_textureMapperRotationFlag | (GST_VIDEO_INFO_HAS_ALPHA(&videoInfo) ? TextureMapperGL::ShouldBlend : 0);
             texture = textureMapper.acquireTextureFromPool(size, GST_VIDEO_INFO_HAS_ALPHA(&videoInfo) ? BitmapTexture::SupportsAlpha : BitmapTexture::NoFlag);
             updateTexture(static_cast<BitmapTextureGL&>(*texture), videoInfo);
         }
-        textureMapper.drawTexture(*texture, targetRect, matrix, opacity);
+        TextureMapperGL& texmapGL = reinterpret_cast<TextureMapperGL&>(textureMapper);
+        BitmapTextureGL* textureGL = static_cast<BitmapTextureGL*>(texture.get());
+        texmapGL.drawTexture(textureGL->id(), flags, textureGL->size(), targetRect, matrix, opacity);
         return;
     }
 
 #if USE(GSTREAMER_GL)
+    WTF::GMutexLocker<GMutex> lock(m_sampleMutex);
+
     GstVideoInfo videoInfo;
     if (!getSampleVideoInfo(m_sample.get(), videoInfo))
         return;
@@ -656,7 +691,7 @@ void MediaPlayerPrivateGStreamerBase::paintToTextureMapper(TextureMapper& textur
         return;
 
     unsigned textureID = *reinterpret_cast<unsigned*>(videoFrame.data[0]);
-    TextureMapperGL::Flags flags = GST_VIDEO_INFO_HAS_ALPHA(&videoInfo) ? TextureMapperGL::ShouldBlend : 0;
+    TextureMapperGL::Flags flags = m_textureMapperRotationFlag | (GST_VIDEO_INFO_HAS_ALPHA(&videoInfo) ? TextureMapperGL::ShouldBlend : 0);
 
     IntSize size = IntSize(GST_VIDEO_INFO_WIDTH(&videoInfo), GST_VIDEO_INFO_HEIGHT(&videoInfo));
     TextureMapperGL& textureMapperGL = reinterpret_cast<TextureMapperGL&>(textureMapper);
@@ -667,12 +702,9 @@ void MediaPlayerPrivateGStreamerBase::paintToTextureMapper(TextureMapper& textur
 #endif
 
 #if USE(GSTREAMER_GL)
-PassNativeImagePtr MediaPlayerPrivateGStreamerBase::nativeImageForCurrentTime()
+NativeImagePtr MediaPlayerPrivateGStreamerBase::nativeImageForCurrentTime()
 {
-#if !USE(CAIRO) || !ENABLE(ACCELERATED_2D_CANVAS)
-    return nullptr;
-#endif
-
+#if USE(CAIRO) && ENABLE(ACCELERATED_2D_CANVAS)
     if (m_usingFallbackVideoSink)
         return nullptr;
 
@@ -687,7 +719,7 @@ PassNativeImagePtr MediaPlayerPrivateGStreamerBase::nativeImageForCurrentTime()
     if (!gst_video_frame_map(&videoFrame, &videoInfo, buffer, static_cast<GstMapFlags>(GST_MAP_READ | GST_MAP_GL)))
         return nullptr;
 
-    GLContext* context = GLContext::sharingContext();
+    GLContext* context = PlatformDisplay::sharedDisplayForCompositing().sharingGLContext();
     context->makeContextCurrent();
     cairo_device_t* device = context->cairoDevice();
 
@@ -696,12 +728,74 @@ PassNativeImagePtr MediaPlayerPrivateGStreamerBase::nativeImageForCurrentTime()
 
     unsigned textureID = *reinterpret_cast<unsigned*>(videoFrame.data[0]);
     IntSize size = IntSize(GST_VIDEO_INFO_WIDTH(&videoInfo), GST_VIDEO_INFO_HEIGHT(&videoInfo));
-    cairo_surface_t* surface = cairo_gl_surface_create_for_texture(device, CAIRO_CONTENT_COLOR_ALPHA, textureID, size.width(), size.height());
+    RefPtr<cairo_surface_t> surface = adoptRef(cairo_gl_surface_create_for_texture(device, CAIRO_CONTENT_COLOR_ALPHA, textureID, size.width(), size.height()));
+
+    IntSize rotatedSize = m_videoSourceOrientation.usesWidthAsHeight() ? size.transposedSize() : size;
+    RefPtr<cairo_surface_t> rotatedSurface = adoptRef(cairo_gl_surface_create(device, CAIRO_CONTENT_COLOR_ALPHA, rotatedSize.width(), rotatedSize.height()));
+    RefPtr<cairo_t> cr = adoptRef(cairo_create(rotatedSurface.get()));
+
+    switch (m_videoSourceOrientation) {
+    case DefaultImageOrientation:
+        break;
+    case OriginRightTop:
+        cairo_translate(cr.get(), rotatedSize.width() * 0.5, rotatedSize.height() * 0.5);
+        cairo_rotate(cr.get(), piOverTwoDouble);
+        cairo_translate(cr.get(), -rotatedSize.height() * 0.5, -rotatedSize.width() * 0.5);
+        break;
+    case OriginBottomRight:
+        cairo_translate(cr.get(), rotatedSize.width() * 0.5, rotatedSize.height() * 0.5);
+        cairo_rotate(cr.get(), piDouble);
+        cairo_translate(cr.get(), -rotatedSize.width() * 0.5, -rotatedSize.height() * 0.5);
+        break;
+    case OriginLeftBottom:
+        cairo_translate(cr.get(), rotatedSize.width() * 0.5, rotatedSize.height() * 0.5);
+        cairo_rotate(cr.get(), 3 * piOverTwoDouble);
+        cairo_translate(cr.get(), -rotatedSize.height() * 0.5, -rotatedSize.width() * 0.5);
+        break;
+    default:
+        ASSERT_NOT_REACHED();
+        break;
+    }
+    cairo_set_source_surface(cr.get(), surface.get(), 0, 0);
+    cairo_set_operator(cr.get(), CAIRO_OPERATOR_SOURCE);
+    cairo_paint(cr.get());
+
     gst_video_frame_unmap(&videoFrame);
 
-    return adoptRef(surface);
+    return rotatedSurface;
+#else
+    return nullptr;
+#endif
 }
 #endif
+
+void MediaPlayerPrivateGStreamerBase::setVideoSourceOrientation(const ImageOrientation& orientation)
+{
+    if (m_videoSourceOrientation == orientation)
+        return;
+
+    m_videoSourceOrientation = orientation;
+
+#if USE(TEXTURE_MAPPER_GL)
+    switch (m_videoSourceOrientation) {
+    case DefaultImageOrientation:
+        m_textureMapperRotationFlag = 0;
+        break;
+    case OriginRightTop:
+        m_textureMapperRotationFlag = TextureMapperGL::ShouldRotateTexture90;
+        break;
+    case OriginBottomRight:
+        m_textureMapperRotationFlag = TextureMapperGL::ShouldRotateTexture180;
+        break;
+    case OriginLeftBottom:
+        m_textureMapperRotationFlag = TextureMapperGL::ShouldRotateTexture270;
+        break;
+    default:
+        ASSERT_NOT_REACHED();
+        break;
+    }
+#endif
+}
 
 bool MediaPlayerPrivateGStreamerBase::supportsFullscreen() const
 {
@@ -724,17 +818,75 @@ MediaPlayer::MovieLoadType MediaPlayerPrivateGStreamerBase::movieLoadType() cons
     return MediaPlayer::Download;
 }
 
+#if USE(GSTREAMER_GL)
+GstElement* MediaPlayerPrivateGStreamerBase::createGLAppSink()
+{
+    if (!webkitGstCheckVersion(1, 8, 0))
+        return nullptr;
+
+    GstElement* appsink = gst_element_factory_make("appsink", "webkit-gl-video-sink");
+    if (!appsink)
+        return nullptr;
+
+    g_object_set(appsink, "enable-last-sample", FALSE, "emit-signals", TRUE, "max-buffers", 1, nullptr);
+    g_signal_connect(appsink, "new-sample", G_CALLBACK(newSampleCallback), this);
+    g_signal_connect(appsink, "new-preroll", G_CALLBACK(newPrerollCallback), this);
+
+    return appsink;
+}
+
+GstElement* MediaPlayerPrivateGStreamerBase::createVideoSinkGL()
+{
+    // FIXME: Currently it's not possible to get the video frames and caps using this approach until
+    // the pipeline gets into playing state. Due to this, trying to grab a frame and painting it by some
+    // other mean (canvas or webgl) before playing state can result in a crash.
+    // This is being handled in https://bugs.webkit.org/show_bug.cgi?id=159460.
+    if (!webkitGstCheckVersion(1, 8, 0))
+        return nullptr;
+
+    gboolean result = TRUE;
+    GstElement* videoSink = gst_bin_new(nullptr);
+    GstElement* upload = gst_element_factory_make("glupload", nullptr);
+    GstElement* colorconvert = gst_element_factory_make("glcolorconvert", nullptr);
+    GstElement* appsink = createGLAppSink();
+
+    if (!appsink || !upload || !colorconvert) {
+        GST_WARNING("Failed to create GstGL elements");
+        gst_object_unref(videoSink);
+
+        if (upload)
+            gst_object_unref(upload);
+        if (colorconvert)
+            gst_object_unref(colorconvert);
+        if (appsink)
+            gst_object_unref(appsink);
+
+        return nullptr;
+    }
+
+    gst_bin_add_many(GST_BIN(videoSink), upload, colorconvert, appsink, nullptr);
+
+    GRefPtr<GstCaps> caps = adoptGRef(gst_caps_from_string("video/x-raw(" GST_CAPS_FEATURE_MEMORY_GL_MEMORY "), format = (string) { RGBA }"));
+
+    result &= gst_element_link_pads(upload, "src", colorconvert, "sink");
+    result &= gst_element_link_pads_filtered(colorconvert, "src", appsink, "sink", caps.get());
+
+    GRefPtr<GstPad> pad = adoptGRef(gst_element_get_static_pad(upload, "sink"));
+    gst_element_add_pad(videoSink, gst_ghost_pad_new("sink", pad.get()));
+
+    if (!result) {
+        GST_WARNING("Failed to link GstGL elements");
+        gst_object_unref(videoSink);
+        videoSink = nullptr;
+    }
+    return videoSink;
+}
+#endif
+
 GstElement* MediaPlayerPrivateGStreamerBase::createVideoSink()
 {
-    GstElement* videoSink = nullptr;
 #if USE(GSTREAMER_GL)
-    if (webkitGstCheckVersion(1, 5, 0)) {
-        m_videoSink = gst_element_factory_make("glimagesink", nullptr);
-        if (m_videoSink) {
-            g_signal_connect_swapped(m_videoSink.get(), "client-draw", G_CALLBACK(drawCallback), this);
-            videoSink = m_videoSink.get();
-        }
-    }
+    m_videoSink = createVideoSinkGL();
 #endif
 
     if (!m_videoSink) {
@@ -743,6 +895,7 @@ GstElement* MediaPlayerPrivateGStreamerBase::createVideoSink()
         g_signal_connect_swapped(m_videoSink.get(), "repaint-requested", G_CALLBACK(repaintCallback), this);
     }
 
+    GstElement* videoSink = nullptr;
     m_fpsSink = gst_element_factory_make("fpsdisplaysink", "sink");
     if (m_fpsSink) {
         g_object_set(m_fpsSink.get(), "silent", TRUE , nullptr);
@@ -778,12 +931,12 @@ void MediaPlayerPrivateGStreamerBase::setStreamVolumeElement(GstStreamVolume* vo
     // We don't set the initial volume because we trust the sink to keep it for us. See
     // https://bugs.webkit.org/show_bug.cgi?id=118974 for more information.
     if (!m_player->platformVolumeConfigurationRequired()) {
-        LOG_MEDIA_MESSAGE("Setting stream volume to %f", m_player->volume());
+        GST_DEBUG("Setting stream volume to %f", m_player->volume());
         g_object_set(m_volumeElement.get(), "volume", m_player->volume(), NULL);
     } else
-        LOG_MEDIA_MESSAGE("Not setting stream volume, trusting system one");
+        GST_DEBUG("Not setting stream volume, trusting system one");
 
-    LOG_MEDIA_MESSAGE("Setting stream muted %d",  m_player->muted());
+    GST_DEBUG("Setting stream muted %d",  m_player->muted());
     g_object_set(m_volumeElement.get(), "mute", m_player->muted(), NULL);
 
     g_signal_connect_swapped(m_volumeElement.get(), "notify::volume", G_CALLBACK(volumeChangedCallback), this);

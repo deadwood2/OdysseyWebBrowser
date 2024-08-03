@@ -92,15 +92,15 @@ CFURLRequestRef SynchronousResourceHandleCFURLConnectionDelegate::willSendReques
     LOG(Network, "CFNet - SynchronousResourceHandleCFURLConnectionDelegate::willSendRequest(handle=%p) (%s)", m_handle, m_handle->firstRequest().url().string().utf8().data());
 
     ResourceRequest request = createResourceRequest(cfRequest, redirectResponse.get());
-    m_handle->willSendRequest(request, redirectResponse.get());
+    auto newRequest = m_handle->willSendRequest(WTFMove(request), redirectResponse.get());
 
-    if (request.isNull())
-        return 0;
+    if (newRequest.isNull())
+        return nullptr;
 
-    cfRequest = request.cfURLRequest(UpdateHTTPBody);
+    auto newCFRequest = newRequest.cfURLRequest(UpdateHTTPBody);
 
-    CFRetain(cfRequest);
-    return cfRequest;
+    CFRetain(newCFRequest);
+    return newCFRequest;
 }
 
 #if !PLATFORM(COCOA)
@@ -147,8 +147,10 @@ void SynchronousResourceHandleCFURLConnectionDelegate::didReceiveResponse(CFURLC
     auto msg = CFURLResponseGetHTTPResponse(cfResponse);
     int statusCode = msg ? CFHTTPMessageGetResponseStatusCode(msg) : 0;
 
-    if (statusCode != 304)
-        adjustMIMETypeIfNecessary(cfResponse);
+    if (statusCode != 304) {
+        bool isMainResourceLoad = m_handle->firstRequest().requester() == ResourceRequest::Requester::Main;
+        adjustMIMETypeIfNecessary(cfResponse, isMainResourceLoad);
+    }
 
 #if !PLATFORM(IOS)
     if (_CFURLRequestCopyProtocolPropertyForKey(m_handle->firstRequest().cfURLRequest(DoNotUpdateHTTPBody), CFSTR("ForceHTMLMIMEType")))
@@ -173,12 +175,12 @@ void SynchronousResourceHandleCFURLConnectionDelegate::didReceiveResponse(CFURLC
     
     ResourceResponse resourceResponse(cfResponse);
 #if PLATFORM(COCOA) && ENABLE(WEB_TIMING)
-    ResourceHandle::getConnectionTimingData(connection, resourceResponse.resourceLoadTiming());
+    ResourceHandle::getConnectionTimingData(connection, resourceResponse.networkLoadTiming());
 #else
     UNUSED_PARAM(connection);
 #endif
     
-    m_handle->client()->didReceiveResponse(m_handle, resourceResponse);
+    m_handle->client()->didReceiveResponse(m_handle, WTFMove(resourceResponse));
 }
 
 void SynchronousResourceHandleCFURLConnectionDelegate::didReceiveData(CFDataRef data, CFIndex originalLength)

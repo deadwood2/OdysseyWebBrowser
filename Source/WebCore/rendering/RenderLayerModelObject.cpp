@@ -28,6 +28,7 @@
 #include "RenderLayer.h"
 #include "RenderLayerCompositor.h"
 #include "RenderView.h"
+#include "Settings.h"
 
 namespace WebCore {
 
@@ -36,12 +37,12 @@ bool RenderLayerModelObject::s_hadLayer = false;
 bool RenderLayerModelObject::s_hadTransform = false;
 bool RenderLayerModelObject::s_layerWasSelfPainting = false;
 
-RenderLayerModelObject::RenderLayerModelObject(Element& element, Ref<RenderStyle>&& style, BaseTypeFlags baseTypeFlags)
+RenderLayerModelObject::RenderLayerModelObject(Element& element, RenderStyle&& style, BaseTypeFlags baseTypeFlags)
     : RenderElement(element, WTFMove(style), baseTypeFlags | RenderLayerModelObjectFlag)
 {
 }
 
-RenderLayerModelObject::RenderLayerModelObject(Document& document, Ref<RenderStyle>&& style, BaseTypeFlags baseTypeFlags)
+RenderLayerModelObject::RenderLayerModelObject(Document& document, RenderStyle&& style, BaseTypeFlags baseTypeFlags)
     : RenderElement(document, WTFMove(style), baseTypeFlags | RenderLayerModelObjectFlag)
 {
 }
@@ -160,7 +161,7 @@ void RenderLayerModelObject::styleDidChange(StyleDifference diff, const RenderSt
         setHasTransformRelatedProperty(false); // All transform-related propeties force layers, so we know we don't have one or the object doesn't support them.
         setHasReflection(false);
         // Repaint the about to be destroyed self-painting layer when style change also triggers repaint.
-        if (layer()->isSelfPaintingLayer() && layer()->repaintStatus() == NeedsFullRepaint)
+        if (layer()->isSelfPaintingLayer() && layer()->repaintStatus() == NeedsFullRepaint && layer()->hasComputedRepaintRect())
             repaintUsingContainer(containerForRepaint(), layer()->repaintRect());
         layer()->removeOnlyThisLayer(); // calls destroyLayer() which clears m_layer
         if (s_wasFloating && isFloating())
@@ -209,6 +210,23 @@ void RenderLayerModelObject::styleDidChange(StyleDifference diff, const RenderSt
             }
         }
     }
+#endif
+}
+
+bool RenderLayerModelObject::shouldPlaceBlockDirectionScrollbarOnLeft() const
+{
+// RTL Scrollbars require some system support, and this system support does not exist on certain versions of OS X. iOS uses a separate mechanism.
+#if PLATFORM(IOS) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 101200)
+    return false;
+#else
+    switch (frame().settings().userInterfaceDirectionPolicy()) {
+    case UserInterfaceDirectionPolicy::Content:
+        return style().shouldPlaceBlockDirectionScrollbarOnLeft();
+    case UserInterfaceDirectionPolicy::System:
+        return frame().settings().systemLayoutDirection() == RTL;
+    }
+    ASSERT_NOT_REACHED();
+    return style().shouldPlaceBlockDirectionScrollbarOnLeft();
 #endif
 }
 

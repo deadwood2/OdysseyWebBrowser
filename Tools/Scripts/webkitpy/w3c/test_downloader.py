@@ -31,7 +31,6 @@
 import json
 import logging
 
-from webkitpy.common.system.executive import Executive
 from webkitpy.common.system.filesystem import FileSystem
 from webkitpy.common.webkit_finder import WebKitFinder
 from webkitpy.layout_tests.models.test_expectations import TestExpectationParser
@@ -154,46 +153,44 @@ class TestDownloader(object):
             elif self._filesystem.isdir(destination_path):
                 self._filesystem.rmtree(destination_path)
 
-    def _git_submodules_status(self, repository_directory):
-        return self.git(repository_directory)._run_git(['submodule', 'status'])
-
     def _git_submodules_description(self, test_repository):
-        submodules = []
-        repository_directory = self._filesystem.join(self.repository_directory, test_repository['name'])
-        if self._filesystem.isfile(self._filesystem.join(repository_directory, '.gitmodules')):
-            submodule = {}
-            for line in self._filesystem.read_text_file(self._filesystem.join(repository_directory, '.gitmodules')).splitlines():
-                line = line.strip()
-                if line.startswith('path = '):
-                    submodule['path'] = line[7:]
-                elif line.startswith('url = '):
-                    submodule['url'] = line[6:]
-                    if not submodule['url'].startswith('https://github.com/'):
-                        _log.warning('Submodule %s is not hosted on github' % submodule['path'])
-                        _log.warning('Please ensure that generated URL points to an archive of the module or manually edit its value after the import')
-                    submodules.append(submodule)
-                    submodule = {}
+        directory = self._filesystem.join(self.repository_directory, test_repository['name'])
 
-        submodules_status = [line[1:].split(' ') for line in self._git_submodules_status(repository_directory).splitlines()]
-        for submodule in submodules:
-            for status in submodules_status:
-                if submodule['path'] == status[1]:
-                    url = submodule['url'][:-4]
-                    version = status[0]
-                    repository_name = url.split('/').pop()
-                    submodule['url'] = url + '/archive/' + version + '.tar.gz'
-                    submodule['url_subpath'] = repository_name + '-' + version
-            if '/' in submodule['path']:
-                steps = submodule['path'].split('/')
-                submodule['name'] = steps.pop()
-                submodule['path'] = steps
-            else:
-                submodule['name'] = submodule['path']
-                submodule['path'] = ['.']
+        git = self.git(directory)
+        git.init_submodules()
+
+        submodules = []
+        submodules_status = [line.strip().split(' ') for line in git.submodules_status().splitlines()]
+        for status in submodules_status:
+            version = status[0]
+            path = status[1].split('/')
+
+            url = self.git(self._filesystem.join(directory, status[1])).origin_url()
+            if not url.startswith('https://github.com/'):
+                _log.warning('Submodule %s (%s) is not hosted on github' % (status[1], url))
+                _log.warning('Please ensure that generated URL points to an archive of the module or manually edit its value after the import')
+            url = url[:-4]  # to remove .git
+
+            submodule = {}
+            submodule['path'] = path
+            submodule['url'] = url + '/archive/' + version + '.tar.gz'
+            submodule['url_subpath'] = url.split('/').pop() + '-' + version
+            submodules.append(submodule)
+
+        git.deinit_submodules()
         return submodules
 
     def generate_git_submodules_description(self, test_repository, filepath):
         self._filesystem.write_text_file(filepath, json.dumps(self._git_submodules_description(test_repository), sort_keys=True, indent=4))
+
+    def generate_gitignore(self, test_repository, destination_directory):
+        rules = []
+        for submodule in self._git_submodules_description(test_repository):
+            path = list(submodule['path'])
+            path.insert(0, '')
+            rules.append('/'.join(path[:-1]) + '/' + path[-1] + '/')
+            rules.append('/'.join(path[:-1]) + '/.' + path[-1] + '.url')
+        self._filesystem.write_text_file(self._filesystem.join(destination_directory, test_repository['name'], '.gitignore'), '\n'.join(rules))
 
     def download_tests(self, destination_directory, test_paths=[]):
         for test_repository in self.test_repositories:

@@ -14,12 +14,14 @@ class ScalarizeVecAndMatConstructorArgs : public TIntermTraverser
   public:
     ScalarizeVecAndMatConstructorArgs(sh::GLenum shaderType,
                                       bool fragmentPrecisionHigh)
-        : mTempVarCount(0),
+        : TIntermTraverser(true, false, false),
+          mTempVarCount(0),
           mShaderType(shaderType),
           mFragmentPrecisionHigh(fragmentPrecisionHigh) {}
 
   protected:
-    virtual bool visitAggregate(Visit visit, TIntermAggregate *node);
+    bool visitAggregate(Visit visit, TIntermAggregate *node) override;
+    bool visitBlock(Visit visit, TIntermBlock *node) override;
 
   private:
     void scalarizeArgs(TIntermAggregate *aggregate,
@@ -37,7 +39,7 @@ class ScalarizeVecAndMatConstructorArgs : public TIntermTraverser
     // Return the temporary variable name.
     TString createTempVariable(TIntermTyped *original);
 
-    std::vector<TIntermSequence> mSequenceStack;
+    std::vector<TIntermSequence> mBlockStack;
     int mTempVarCount;
 
     sh::GLenum mShaderType;

@@ -48,9 +48,9 @@ namespace WebCore {
 class WorkerSharedTimer final : public SharedTimer {
 public:
     // SharedTimer interface.
-    virtual void setFiredFunction(std::function<void()>&& function) override { m_sharedTimerFunction = WTFMove(function); }
-    virtual void setFireInterval(double interval) override { m_nextFireTime = interval + currentTime(); }
-    virtual void stop() override { m_nextFireTime = 0; }
+    void setFiredFunction(std::function<void()>&& function) override { m_sharedTimerFunction = WTFMove(function); }
+    void setFireInterval(double interval) override { m_nextFireTime = interval + currentTime(); }
+    void stop() override { m_nextFireTime = 0; }
 
     bool isActive() { return m_sharedTimerFunction && m_nextFireTime; }
     double fireTime() { return m_nextFireTime; }
@@ -212,17 +212,17 @@ void WorkerRunLoop::terminate()
     m_messageQueue.kill();
 }
 
-void WorkerRunLoop::postTask(ScriptExecutionContext::Task task)
+void WorkerRunLoop::postTask(ScriptExecutionContext::Task&& task)
 {
     postTaskForMode(WTFMove(task), defaultMode());
 }
 
-void WorkerRunLoop::postTaskAndTerminate(ScriptExecutionContext::Task task)
+void WorkerRunLoop::postTaskAndTerminate(ScriptExecutionContext::Task&& task)
 {
     m_messageQueue.appendAndKill(std::make_unique<Task>(WTFMove(task), defaultMode()));
 }
 
-void WorkerRunLoop::postTaskForMode(ScriptExecutionContext::Task task, const String& mode)
+void WorkerRunLoop::postTaskForMode(ScriptExecutionContext::Task&& task, const String& mode)
 {
     m_messageQueue.append(std::make_unique<Task>(WTFMove(task), mode));
 }
@@ -233,7 +233,7 @@ void WorkerRunLoop::Task::performTask(const WorkerRunLoop& runLoop, WorkerGlobal
         m_task.performTask(*context);
 }
 
-WorkerRunLoop::Task::Task(ScriptExecutionContext::Task task, const String& mode)
+WorkerRunLoop::Task::Task(ScriptExecutionContext::Task&& task, const String& mode)
     : m_task(WTFMove(task))
     , m_mode(mode.isolatedCopy())
 {

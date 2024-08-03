@@ -23,16 +23,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef WebKitCSSTransformValue_h
-#define WebKitCSSTransformValue_h
+#pragma once
 
 #include "CSSValueList.h"
-#include <wtf/PassRefPtr.h>
-#include <wtf/RefPtr.h>
 
 namespace WebCore {
 
-class WebKitCSSTransformValue : public CSSValueList {
+class WebKitCSSTransformValue final : public CSSValueList {
 public:
     // NOTE: these have to match the values in the IDL
     enum TransformOperationType {
@@ -82,5 +79,3 @@ private:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_CSS_VALUE(WebKitCSSTransformValue, isWebKitCSSTransformValue())
-
-#endif

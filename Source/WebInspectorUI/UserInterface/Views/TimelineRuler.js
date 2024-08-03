@@ -45,7 +45,7 @@ WebInspector.TimelineRuler = class TimelineRuler extends WebInspector.View
         this._duration = NaN;
         this._secondsPerPixel = 0;
         this._selectionStartTime = 0;
-        this._selectionEndTime = Infinity;
+        this._selectionEndTime = Number.MAX_VALUE;
         this._endTimePinned = false;
         this._snapInterval = 0;
         this._allowsClippedLabels = false;
@@ -53,11 +53,26 @@ WebInspector.TimelineRuler = class TimelineRuler extends WebInspector.View
         this._minimumSelectionDuration = 0.01;
         this._formatLabelCallback = null;
         this._timeRangeSelectionChanged = false;
+        this._enabled = true;
 
         this._markerElementMap = new Map;
     }
 
     // Public
+
+    get enabled()
+    {
+        return this._enabled;
+    }
+
+    set enabled(x)
+    {
+        if (this._enabled === x)
+            return;
+
+        this._enabled = x;
+        this.element.classList.toggle(WebInspector.TreeElementStatusButton.DisabledStyleClassName, !this._enabled);
+    }
 
     get allowsClippedLabels()
     {
@@ -105,7 +120,11 @@ WebInspector.TimelineRuler = class TimelineRuler extends WebInspector.View
         this._allowsTimeRangeSelection = x;
 
         if (x) {
+            this._clickEventListener = this._handleClick.bind(this);
+            this._doubleClickEventListener = this._handleDoubleClick.bind(this);
             this._mouseDownEventListener = this._handleMouseDown.bind(this);
+            this.element.addEventListener("click", this._clickEventListener);
+            this.element.addEventListener("dblclick", this._doubleClickEventListener);
             this.element.addEventListener("mousedown", this._mouseDownEventListener);
 
             this._leftShadedAreaElement = document.createElement("div");
@@ -131,8 +150,12 @@ WebInspector.TimelineRuler = class TimelineRuler extends WebInspector.View
 
             this._needsSelectionLayout();
         } else {
+            this.element.removeEventListener("click", this._clickEventListener);
+            this.element.removeEventListener("dblclick", this._doubleClickEventListener);
             this.element.removeEventListener("mousedown", this._mouseDownEventListener);
-            delete this._mouseDownEventListener;
+            this._clickEventListener = null;
+            this._doubleClickEventListener = null;
+            this._mouseDownEventListener = null;
 
             this._leftShadedAreaElement.remove();
             this._rightShadedAreaElement.remove();
@@ -169,6 +192,9 @@ WebInspector.TimelineRuler = class TimelineRuler extends WebInspector.View
 
         if (this._zeroTime === x)
             return;
+
+        if (this.entireRangeSelected)
+            this.selectionStartTime = x;
 
         this._zeroTime = x;
 
@@ -292,6 +318,17 @@ WebInspector.TimelineRuler = class TimelineRuler extends WebInspector.View
         this._needsSelectionLayout();
     }
 
+    get entireRangeSelected()
+    {
+        return this._selectionStartTime === this._zeroTime && this._selectionEndTime === Number.MAX_VALUE;
+    }
+
+    selectEntireRange()
+    {
+        this.selectionStartTime = this._zeroTime;
+        this.selectionEndTime = Number.MAX_VALUE;
+    }
+
     addMarker(marker)
     {
         console.assert(marker instanceof WebInspector.TimelineMarker);
@@ -378,11 +415,8 @@ WebInspector.TimelineRuler = class TimelineRuler extends WebInspector.View
 
     // Protected
 
-    layout(layoutReason)
+    layout()
     {
-        if (layoutReason === WebInspector.View.LayoutReason.Resize)
-            this._cachedClientWidth = this.element.clientWidth;
-
         let visibleWidth = this._recalculate();
         if (visibleWidth <= 0)
             return;
@@ -495,6 +529,11 @@ WebInspector.TimelineRuler = class TimelineRuler extends WebInspector.View
         this._updateSelection(visibleWidth, duration);
     }
 
+    sizeDidChange()
+    {
+        this._cachedClientWidth = this.element.clientWidth;
+    }
+
     // Private
 
     _needsMarkerLayout()
@@ -565,11 +604,11 @@ WebInspector.TimelineRuler = class TimelineRuler extends WebInspector.View
         property = property || "left";
 
         newPosition *= this._endTimePinned ? 100 : visibleWidth;
-        newPosition = newPosition.toFixed(2);
 
-        var currentPosition = parseFloat(element.style[property]).toFixed(2);
-        if (currentPosition !== newPosition)
-            element.style[property] = newPosition + (this._endTimePinned ? "%" : "px");
+        let newPositionAprox = Math.round(newPosition * 100);
+        let currentPositionAprox = Math.round(parseFloat(element.style[property]) * 100);
+        if (currentPositionAprox !== newPositionAprox)
+            element.style[property] = (newPositionAprox / 100) + (this._endTimePinned ? "%" : "px");
     }
 
     _updateMarkers(visibleWidth, duration)
@@ -596,18 +635,25 @@ WebInspector.TimelineRuler = class TimelineRuler extends WebInspector.View
             this._scheduledSelectionLayoutUpdateIdentifier = undefined;
         }
 
-        this.element.classList.toggle(WebInspector.TimelineRuler.AllowsTimeRangeSelectionStyleClassName, this._allowsTimeRangeSelection);
+        this.element.classList.toggle("allows-time-range-selection", this._allowsTimeRangeSelection);
 
         if (!this._allowsTimeRangeSelection)
             return;
+
+        this.element.classList.toggle("selection-hidden", this.entireRangeSelected);
+
+        if (this.entireRangeSelected) {
+            this._dispatchTimeRangeSelectionChangedEvent();
+            return;
+        }
 
         let startTimeClamped = this._selectionStartTime < this._startTime || this._selectionStartTime > this._endTime;
         let endTimeClamped = this._selectionEndTime < this._startTime || this._selectionEndTime > this._endTime;
 
         this.element.classList.toggle("both-handles-clamped", startTimeClamped && endTimeClamped);
 
-        let formattedStartTimeText = this._formatDividerLabelText(this._selectionStartTime);
-        let formattedEndTimeText = this._formatDividerLabelText(this._selectionEndTime);
+        let formattedStartTimeText = this._formatDividerLabelText(this._selectionStartTime - this._zeroTime);
+        let formattedEndTimeText = this._formatDividerLabelText(this._selectionEndTime - this._zeroTime);
 
         let newLeftPosition = Number.constrain((this._selectionStartTime - this._startTime) / duration, 0, 1);
         this._updatePositionOfElement(this._leftShadedAreaElement, newLeftPosition, visibleWidth, "width");
@@ -669,6 +715,30 @@ WebInspector.TimelineRuler = class TimelineRuler extends WebInspector.View
         this._needsMarkerLayout();
     }
 
+    _handleClick(event)
+    {
+        if (!this._enabled)
+            return;
+
+        if (this._mouseMoved)
+            return;
+
+        this.element.style.pointerEvents = "none";
+        let newTarget = document.elementFromPoint(event.pageX, event.pageY);
+        this.element.style.pointerEvents = null;
+
+        if (newTarget && newTarget.click)
+            newTarget.click();
+    }
+
+    _handleDoubleClick(event)
+    {
+        if (this.entireRangeSelected)
+            return;
+
+        this.selectEntireRange();
+    }
+
     _handleMouseDown(event)
     {
         // Only handle left mouse clicks.
@@ -686,6 +756,8 @@ WebInspector.TimelineRuler = class TimelineRuler extends WebInspector.View
         } else
             this._mouseDownPosition = event.pageX - this._rulerBoundingClientRect.left;
 
+        this._mouseMoved = false;
+
         this._mouseMoveEventListener = this._handleMouseMove.bind(this);
         this._mouseUpEventListener = this._handleMouseUp.bind(this);
 
@@ -700,6 +772,8 @@ WebInspector.TimelineRuler = class TimelineRuler extends WebInspector.View
     _handleMouseMove(event)
     {
         console.assert(event.button === 0);
+
+        this._mouseMoved = true;
 
         let currentMousePosition;
         if (this._selectionIsMove) {
@@ -766,7 +840,7 @@ WebInspector.TimelineRuler = class TimelineRuler extends WebInspector.View
         document.removeEventListener("mousemove", this._mouseMoveEventListener);
         document.removeEventListener("mouseup", this._mouseUpEventListener);
 
-        delete this._mouseMovedEventListener;
+        delete this._mouseMoveEventListener;
         delete this._mouseUpEventListener;
         delete this._mouseDownPosition;
         delete this._lastMousePosition;
@@ -857,7 +931,6 @@ WebInspector.TimelineRuler = class TimelineRuler extends WebInspector.View
 WebInspector.TimelineRuler.MinimumLeftDividerSpacing = 48;
 WebInspector.TimelineRuler.MinimumDividerSpacing = 64;
 
-WebInspector.TimelineRuler.AllowsTimeRangeSelectionStyleClassName = "allows-time-range-selection";
 WebInspector.TimelineRuler.ResizingSelectionStyleClassName = "resizing-selection";
 WebInspector.TimelineRuler.DividerElementStyleClassName = "divider";
 WebInspector.TimelineRuler.DividerLabelElementStyleClassName = "label";

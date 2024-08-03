@@ -49,7 +49,7 @@ public:
     void stopLoading(CachedResourceHandle<CachedImage>&);
 
 private:
-    virtual void imageChanged(CachedImage*, const IntRect*) override;
+    void imageChanged(CachedImage*, const IntRect*) override;
     DataTransfer* m_dataTransfer;
 };
 
@@ -112,15 +112,10 @@ void DataTransfer::clearData(const String& type)
     if (!canWriteData())
         return;
 
-    m_pasteboard->clear(type);
-}
-
-void DataTransfer::clearData()
-{
-    if (!canWriteData())
-        return;
-
-    m_pasteboard->clear();
+    if (type.isNull())
+        m_pasteboard->clear();
+    else
+        m_pasteboard->clear(type);
 }
 
 String DataTransfer::getData(const String& type) const

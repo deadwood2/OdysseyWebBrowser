@@ -33,7 +33,7 @@
 #include <WebCore/TextureMapperFPSCounter.h>
 #include <WebCore/TextureMapperLayer.h>
 #include <WebCore/Timer.h>
-#include <functional>
+#include <wtf/Function.h>
 #include <wtf/HashSet.h>
 #include <wtf/Lock.h>
 #include <wtf/RunLoop.h>
@@ -56,7 +56,6 @@ class CoordinatedBackingStore;
 class CoordinatedGraphicsSceneClient {
 public:
     virtual ~CoordinatedGraphicsSceneClient() { }
-    virtual void purgeBackingStores() = 0;
     virtual void renderNextFrame() = 0;
     virtual void updateViewport() = 0;
     virtual void commitScrollOffset(uint32_t layerID, const WebCore::IntSize& offset) = 0;
@@ -73,11 +72,11 @@ public:
     void paintToCurrentGLContext(const WebCore::TransformationMatrix&, float, const WebCore::FloatRect&, const WebCore::Color& backgroundColor, bool drawsBackground, const WebCore::FloatPoint&, WebCore::TextureMapper::PaintFlags = 0);
     void paintToGraphicsContext(PlatformGraphicsContext*, const WebCore::Color& backgroundColor, bool drawsBackground);
     void detach();
-    void appendUpdate(std::function<void()>);
+    void appendUpdate(std::function<void()>&&);
 
     WebCore::TextureMapperLayer* findScrollableContentsLayerAt(const WebCore::FloatPoint&);
 
-    virtual void commitScrollOffset(uint32_t layerID, const WebCore::IntSize& offset);
+    void commitScrollOffset(uint32_t layerID, const WebCore::IntSize& offset) override;
 
     // The painting thread must lock the main thread to use below two methods, because two methods access members that the main thread manages. See m_client.
     // Currently, QQuickWebPage::updatePaintNode() locks the main thread before calling both methods.
@@ -131,11 +130,10 @@ private:
     void syncRemoteContent();
     void adjustPositionForFixedLayers(const WebCore::FloatPoint& contentPosition);
 
-    void dispatchOnMainThread(std::function<void()>);
-    void dispatchOnClientRunLoop(std::function<void()>);
+    void dispatchOnMainThread(Function<void()>&&);
+    void dispatchOnClientRunLoop(Function<void()>&&);
     void updateViewport();
     void renderNextFrame();
-    void purgeBackingStores();
 
     void createLayer(WebCore::CoordinatedLayerID);
     void deleteLayer(WebCore::CoordinatedLayerID);
@@ -150,10 +148,8 @@ private:
     void removeBackingStoreIfNeeded(WebCore::TextureMapperLayer*);
     void resetBackingStoreSizeToLayerSize(WebCore::TextureMapperLayer*);
 
-    void dispatchCommitScrollOffset(uint32_t layerID, const WebCore::IntSize& offset);
-
 #if USE(COORDINATED_GRAPHICS_THREADED)
-    virtual void onNewBufferAvailable() override;
+    void onNewBufferAvailable() override;
 #endif
 
     // Render queue can be accessed ony from main thread or updatePaintNode call stack!

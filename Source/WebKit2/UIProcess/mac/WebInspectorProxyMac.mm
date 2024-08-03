@@ -31,7 +31,7 @@
 #import "WKAPICast.h"
 #import "WKInspectorPrivateMac.h"
 #import "WKMutableArray.h"
-#import "WKOpenPanelParameters.h"
+#import "WKOpenPanelParametersRef.h"
 #import "WKOpenPanelResultListener.h"
 #import "WKPreferencesInternal.h"
 #import "WKProcessPoolInternal.h"
@@ -55,7 +55,10 @@ SOFT_LINK_STAGED_FRAMEWORK(WebInspectorUI, PrivateFrameworks, A)
 using namespace WebCore;
 using namespace WebKit;
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 static const NSUInteger windowStyleMask = NSTitledWindowMask | NSClosableWindowMask | NSMiniaturizableWindowMask | NSResizableWindowMask | NSFullSizeContentViewWindowMask;
+#pragma clang diagnostic pop
 
 // The time we keep our WebView alive before closing it and its process.
 // Reusing the WebView improves start up time for people that jump in and out of the Inspector.
@@ -369,6 +372,8 @@ WebPageProxy* WebInspectorProxy::platformCreateInspectorPage()
     preferences._logsPageMessagesToSystemConsoleEnabled = YES;
 #endif
     preferences._allowFileAccessFromFileURLs = YES;
+    [configuration _setAllowUniversalAccessFromFileURLs:YES];
+    preferences._storageBlockingPolicy = _WKStorageBlockingPolicyAllowAll;
     preferences._javaScriptRuntimeFlags = 0;
     if (isUnderTest()) {
         preferences._hiddenPageDOMTimerThrottlingEnabled = NO;
@@ -450,11 +455,11 @@ WebPageProxy* WebInspectorProxy::platformCreateInspectorPage()
 
 bool WebInspectorProxy::platformCanAttach(bool webProcessCanAttach)
 {
-    if ([m_inspectorWindow styleMask] & NSFullScreenWindowMask)
+    if ([m_inspectorWindow styleMask] & NSWindowStyleMaskFullScreen)
         return false;
 
     NSView *inspectedView = inspectedPage()->inspectorAttachmentView();
-    if ([inspectedView isKindOfClass:[WKView class]] || [inspectedView isKindOfClass:[WKWebView class]])
+    if ([inspectedView isKindOfClass:[WKWebInspectorWKWebView class]])
         return webProcessCanAttach;
 
     static const float minimumAttachedHeight = 250;

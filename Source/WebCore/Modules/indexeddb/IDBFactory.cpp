@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015, 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,10 +28,137 @@
 
 #if ENABLE(INDEXED_DATABASE)
 
+#include "Document.h"
+#include "ExceptionCode.h"
+#include "IDBBindingUtilities.h"
+#include "IDBConnectionProxy.h"
+#include "IDBDatabaseIdentifier.h"
+#include "IDBKey.h"
+#include "IDBOpenDBRequest.h"
+#include "Logging.h"
+#include "Page.h"
+#include "SchemeRegistry.h"
+#include "ScriptExecutionContext.h"
+#include "SecurityOrigin.h"
+
+using namespace JSC;
+
 namespace WebCore {
 
-IDBFactory::IDBFactory()
+static bool shouldThrowSecurityException(ScriptExecutionContext& context)
 {
+    ASSERT(is<Document>(context) || context.isWorkerGlobalScope());
+    if (is<Document>(context)) {
+        Document& document = downcast<Document>(context);
+        if (!document.frame())
+            return true;
+        if (!document.page())
+            return true;
+    }
+
+    if (!context.securityOrigin()->canAccessDatabase(context.topOrigin()))
+        return true;
+
+    return false;
+}
+
+Ref<IDBFactory> IDBFactory::create(IDBClient::IDBConnectionProxy& connectionProxy)
+{
+    return adoptRef(*new IDBFactory(connectionProxy));
+}
+
+IDBFactory::IDBFactory(IDBClient::IDBConnectionProxy& connectionProxy)
+    : m_connectionProxy(connectionProxy)
+{
+}
+
+IDBFactory::~IDBFactory()
+{
+}
+
+RefPtr<IDBOpenDBRequest> IDBFactory::open(ScriptExecutionContext& context, const String& name, Optional<uint64_t> version, ExceptionCodeWithMessage& ec)
+{
+    LOG(IndexedDB, "IDBFactory::open");
+    
+    if (version && !version.value()) {
+        ec.code = TypeError;
+        ec.message = ASCIILiteral("IDBFactory.open() called with a version of 0");
+        return nullptr;
+    }
+
+    return openInternal(context, name, version.valueOr(0), ec);
+}
+
+RefPtr<IDBOpenDBRequest> IDBFactory::openInternal(ScriptExecutionContext& context, const String& name, unsigned long long version, ExceptionCodeWithMessage& ec)
+{
+    if (name.isNull()) {
+        ec.code = TypeError;
+        ec.message = ASCIILiteral("IDBFactory.open() called without a database name");
+        return nullptr;
+    }
+
+    if (shouldThrowSecurityException(context)) {
+        ec.code = SECURITY_ERR;
+        ec.message = ASCIILiteral("IDBFactory.open() called in an invalid security context");
+        return nullptr;
+    }
+
+    ASSERT(context.securityOrigin());
+    ASSERT(context.topOrigin());
+    IDBDatabaseIdentifier databaseIdentifier(name, *context.securityOrigin(), *context.topOrigin());
+    if (!databaseIdentifier.isValid()) {
+        ec.code = TypeError;
+        ec.message = ASCIILiteral("IDBFactory.open() called with an invalid security origin");
+        return nullptr;
+    }
+
+    return m_connectionProxy->openDatabase(context, databaseIdentifier, version);
+}
+
+RefPtr<IDBOpenDBRequest> IDBFactory::deleteDatabase(ScriptExecutionContext& context, const String& name, ExceptionCodeWithMessage& ec)
+{
+    LOG(IndexedDB, "IDBFactory::deleteDatabase - %s", name.utf8().data());
+
+    if (name.isNull()) {
+        ec.code = TypeError;
+        ec.message = ASCIILiteral("IDBFactory.deleteDatabase() called without a database name");
+    }
+    
+    if (shouldThrowSecurityException(context)) {
+        ec.code = SECURITY_ERR;
+        ec.message = ASCIILiteral("IDBFactory.deleteDatabase() called in an invalid security context");
+        return nullptr;
+    }
+
+    ASSERT(context.securityOrigin());
+    ASSERT(context.topOrigin());
+    IDBDatabaseIdentifier databaseIdentifier(name, *context.securityOrigin(), *context.topOrigin());
+    if (!databaseIdentifier.isValid()) {
+        ec.code = TypeError;
+        ec.message = ASCIILiteral("IDBFactory.deleteDatabase() called with an invalid security origin");
+        return nullptr;
+    }
+
+    return m_connectionProxy->deleteDatabase(context, databaseIdentifier);
+}
+
+short IDBFactory::cmp(ExecState& execState, JSValue firstValue, JSValue secondValue, ExceptionCodeWithMessage& ec)
+{
+    Ref<IDBKey> first = scriptValueToIDBKey(execState, firstValue);
+    Ref<IDBKey> second = scriptValueToIDBKey(execState, secondValue);
+
+    if (!first->isValid() || !second->isValid()) {
+        ec.code = IDBDatabaseException::DataError;
+        ec.message = ASCIILiteral("Failed to execute 'cmp' on 'IDBFactory': The parameter is not a valid key.");
+        return 0;
+    }
+
+    return first->compare(second.get());
+}
+
+void IDBFactory::getAllDatabaseNames(const SecurityOrigin& mainFrameOrigin, const SecurityOrigin& openingOrigin, std::function<void (const Vector<String>&)> callback)
+{
+    m_connectionProxy->getAllDatabaseNames(mainFrameOrigin, openingOrigin, callback);
 }
 
 } // namespace WebCore

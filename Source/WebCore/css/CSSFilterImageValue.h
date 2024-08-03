@@ -43,7 +43,7 @@ class RenderElement;
 class Document;
 class StyleResolver;
 
-class CSSFilterImageValue : public CSSImageGeneratorValue {
+class CSSFilterImageValue final : public CSSImageGeneratorValue {
     friend class FilterSubimageObserverProxy;
 public:
     static Ref<CSSFilterImageValue> create(Ref<CSSValue>&& imageValue, Ref<CSSValue>&& filterValue)
@@ -80,10 +80,10 @@ public:
     CachedImage* cachedImage() const { return m_cachedImage.get(); }
 
 private:
-    CSSFilterImageValue(PassRefPtr<CSSValue> imageValue, PassRefPtr<CSSValue> filterValue)
+    CSSFilterImageValue(Ref<CSSValue>&& imageValue, Ref<CSSValue>&& filterValue)
         : CSSImageGeneratorValue(FilterImageClass)
-        , m_imageValue(imageValue)
-        , m_filterValue(filterValue)
+        , m_imageValue(WTFMove(imageValue))
+        , m_filterValue(WTFMove(filterValue))
         , m_filterSubimageObserver(this)
     {
     }
@@ -97,7 +97,7 @@ private:
         }
 
         virtual ~FilterSubimageObserverProxy() { }
-        virtual void imageChanged(CachedImage*, const IntRect* = nullptr) override;
+        void imageChanged(CachedImage*, const IntRect* = nullptr) final;
         void setReady(bool ready) { m_ready = ready; }
     private:
         CSSFilterImageValue* m_ownerValue;
@@ -106,13 +106,12 @@ private:
 
     void filterImageChanged(const IntRect&);
 
-    RefPtr<CSSValue> m_imageValue;
-    RefPtr<CSSValue> m_filterValue;
+    Ref<CSSValue> m_imageValue;
+    Ref<CSSValue> m_filterValue;
 
     FilterOperations m_filterOperations;
 
     CachedResourceHandle<CachedImage> m_cachedImage;
-    RefPtr<Image> m_generatedImage;
 
     FilterSubimageObserverProxy m_filterSubimageObserver;
 };

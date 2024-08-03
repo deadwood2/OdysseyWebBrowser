@@ -33,7 +33,7 @@
 #include "config.h"
 #include "RTCConfiguration.h"
 
-#if ENABLE(MEDIA_STREAM)
+#if ENABLE(WEB_RTC)
 
 #include "ArrayValue.h"
 #include "Dictionary.h"
@@ -105,8 +105,6 @@ RefPtr<RTCConfiguration> RTCConfiguration::create(const Dictionary& configuratio
 }
 
 RTCConfiguration::RTCConfiguration()
-    : m_iceTransportPolicy("all")
-    , m_bundlePolicy("balanced")
 {
 }
 
@@ -143,8 +141,10 @@ void RTCConfiguration::initialize(const Dictionary& configuration, ExceptionCode
 
     String iceTransportPolicy;
     if (configuration.get("iceTransportPolicy", iceTransportPolicy)) {
-        if (iceTransportPolicy == "none" || iceTransportPolicy == "relay" || iceTransportPolicy == "all")
-            m_iceTransportPolicy = iceTransportPolicy;
+        if (iceTransportPolicy == "relay")
+            m_iceTransportPolicy = IceTransportPolicy::Relay;
+        else if (iceTransportPolicy == "all")
+            m_iceTransportPolicy = IceTransportPolicy::All;
         else {
             ec = TypeError;
             return;
@@ -153,8 +153,12 @@ void RTCConfiguration::initialize(const Dictionary& configuration, ExceptionCode
 
     String bundlePolicy;
     if (configuration.get("bundlePolicy", bundlePolicy)) {
-        if (bundlePolicy == "balanced" || bundlePolicy == "max-compat" || bundlePolicy == "max-bundle")
-            m_bundlePolicy = bundlePolicy;
+        if (bundlePolicy == "balanced")
+            m_bundlePolicy = BundlePolicy::Balanced;
+        else if (bundlePolicy == "max-compat")
+            m_bundlePolicy = BundlePolicy::MaxCompat;
+        else if (bundlePolicy == "max-bundle")
+            m_bundlePolicy = BundlePolicy::MaxBundle;
         else
             ec = TypeError;
     }
@@ -162,4 +166,4 @@ void RTCConfiguration::initialize(const Dictionary& configuration, ExceptionCode
 
 } // namespace WebCore
 
-#endif // ENABLE(MEDIA_STREAM)
+#endif // ENABLE(WEB_RTC)

@@ -28,21 +28,21 @@
 #ifndef DOMPath_h
 #define DOMPath_h
 
-#include "CanvasPathMethods.h"
+#include "CanvasPath.h"
 #include "SVGMatrix.h"
 #include "SVGPathUtilities.h"
 #include <wtf/RefCounted.h>
 
 namespace WebCore {
 
-class WEBCORE_EXPORT DOMPath final : public RefCounted<DOMPath>, public CanvasPathMethods {
+class WEBCORE_EXPORT DOMPath final : public RefCounted<DOMPath>, public CanvasPath {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     virtual ~DOMPath();
 
     static Ref<DOMPath> create() { return adoptRef(*new DOMPath); }
     static Ref<DOMPath> create(const Path& path) { return adoptRef(*new DOMPath(path)); }
-    static Ref<DOMPath> create(const DOMPath* path) { return create(path->path()); }
+    static Ref<DOMPath> create(const DOMPath& path) { return create(path.path()); }
 
     static Ref<DOMPath> create(const String& pathData)
     {
@@ -65,7 +65,9 @@ public:
 
 private:
     DOMPath() { }
-    DOMPath(const Path& path) : CanvasPathMethods(path) { }
+    DOMPath(const Path& path)
+        : CanvasPath(path)
+    { }
 };
 
 }

@@ -33,8 +33,8 @@
     padding: 0 6px 1px;
     border-radius: 3px;
     border: 1px solid transparent;
-    background-color: hsl(212, 92%, 54%);
-    color: white;
+    background-color: var(--selected-background-color);
+    color: var(--selected-foreground-color);
     font: 10px -apple-system, sans-serif;
     -webkit-user-select: none;
 }
@@ -274,4 +274,12 @@
 
 .console-message .console-message-url::before {
     content: ' ';
+}
+
+.console-top-level-message .object-tree {
+    display: block;
+}
+
+.console-top-level-message .object-tree .object-tree {
+    display: inline-block;
 }

@@ -28,7 +28,6 @@
 
 #include "SharedMemory.h"
 #include <WebCore/IntRect.h>
-#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 
@@ -64,8 +63,8 @@ public:
 
         void clear();
 
-        void encode(IPC::ArgumentEncoder&) const;
-        static bool decode(IPC::ArgumentDecoder&, Handle&);
+        void encode(IPC::Encoder&) const;
+        static bool decode(IPC::Decoder&, Handle&);
 
     private:
         friend class ShareableBitmap;
@@ -76,16 +75,16 @@ public:
     };
 
     // Create a shareable bitmap that uses malloced memory.
-    static PassRefPtr<ShareableBitmap> create(const WebCore::IntSize&, Flags);
+    static RefPtr<ShareableBitmap> create(const WebCore::IntSize&, Flags);
 
     // Create a shareable bitmap whose backing memory can be shared with another process.
-    static PassRefPtr<ShareableBitmap> createShareable(const WebCore::IntSize&, Flags);
+    static RefPtr<ShareableBitmap> createShareable(const WebCore::IntSize&, Flags);
 
     // Create a shareable bitmap from an already existing shared memory block.
-    static PassRefPtr<ShareableBitmap> create(const WebCore::IntSize&, Flags, PassRefPtr<SharedMemory>);
+    static RefPtr<ShareableBitmap> create(const WebCore::IntSize&, Flags, RefPtr<SharedMemory>);
 
     // Create a shareable bitmap from a handle.
-    static PassRefPtr<ShareableBitmap> create(const Handle&, SharedMemory::Protection = SharedMemory::Protection::ReadWrite);
+    static RefPtr<ShareableBitmap> create(const Handle&, SharedMemory::Protection = SharedMemory::Protection::ReadWrite);
 
     // Create a handle.
     bool createHandle(Handle&, SharedMemory::Protection = SharedMemory::Protection::ReadWrite);
@@ -106,7 +105,7 @@ public:
 
     // This creates a bitmap image that directly references the shared bitmap data.
     // This is only safe to use when we know that the contents of the shareable bitmap won't change.
-    PassRefPtr<WebCore::Image> createImage();
+    RefPtr<WebCore::Image> createImage();
 
 #if USE(CG)
     // This creates a copied CGImageRef (most likely a copy-on-write) of the shareable bitmap.
@@ -118,17 +117,17 @@ public:
 #elif USE(CAIRO)
     // This creates a BitmapImage that directly references the shared bitmap data.
     // This is only safe to use when we know that the contents of the shareable bitmap won't change.
-    PassRefPtr<cairo_surface_t> createCairoSurface();
+    RefPtr<cairo_surface_t> createCairoSurface();
 #endif
 
 private:
     ShareableBitmap(const WebCore::IntSize&, Flags, void*);
-    ShareableBitmap(const WebCore::IntSize&, Flags, PassRefPtr<SharedMemory>);
+    ShareableBitmap(const WebCore::IntSize&, Flags, RefPtr<SharedMemory>);
 
 #if USE(CAIRO)
-    static size_t numBytesForSize(const WebCore::IntSize&);
+    static Checked<unsigned, RecordOverflow> numBytesForSize(const WebCore::IntSize&);
 #else
-    static size_t numBytesForSize(const WebCore::IntSize& size) { return size.width() * size.height() * 4; }
+    static Checked<unsigned, RecordOverflow> numBytesForSize(const WebCore::IntSize& size) { return size.area<RecordOverflow>() * 4; }
 #endif
 
 #if USE(CG)
@@ -142,7 +141,7 @@ private:
 #endif
 
     void* data() const;
-    size_t sizeInBytes() const { return numBytesForSize(m_size); }
+    size_t sizeInBytes() const { return numBytesForSize(m_size).unsafeGet(); }
 
     WebCore::IntSize m_size;
     Flags m_flags;

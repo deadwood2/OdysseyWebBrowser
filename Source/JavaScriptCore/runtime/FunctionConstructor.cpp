@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 1999-2001 Harri Porten (porten@kde.org)
- *  Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2013 Apple Inc. All rights reserved.
+ *  Copyright (C) 2003-2008, 2013, 2016 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -21,16 +21,11 @@
 #include "config.h"
 #include "FunctionConstructor.h"
 
-#include "Debugger.h"
 #include "ExceptionHelpers.h"
 #include "FunctionPrototype.h"
 #include "JSFunction.h"
 #include "JSGlobalObject.h"
-#include "JSString.h"
-#include "Lexer.h"
-#include "Nodes.h"
 #include "JSCInlines.h"
-#include "Parser.h"
 #include <wtf/text/StringBuilder.h>
 
 namespace JSC {
@@ -62,7 +57,7 @@ static EncodedJSValue JSC_HOST_CALL constructWithFunctionConstructor(ExecState* 
 ConstructType FunctionConstructor::getConstructData(JSCell*, ConstructData& constructData)
 {
     constructData.native.function = constructWithFunctionConstructor;
-    return ConstructTypeHost;
+    return ConstructType::Host;
 }
 
 static EncodedJSValue JSC_HOST_CALL callFunctionConstructor(ExecState* exec)
@@ -75,14 +70,17 @@ static EncodedJSValue JSC_HOST_CALL callFunctionConstructor(ExecState* exec)
 CallType FunctionConstructor::getCallData(JSCell*, CallData& callData)
 {
     callData.native.function = callFunctionConstructor;
-    return CallTypeHost;
+    return CallType::Host;
 }
 
 // ECMA 15.3.2 The Function Constructor
 JSObject* constructFunction(ExecState* exec, JSGlobalObject* globalObject, const ArgList& args, const Identifier& functionName, const String& sourceURL, const TextPosition& position, FunctionConstructionMode functionConstructionMode, JSValue newTarget)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     if (!globalObject->evalEnabled())
-        return exec->vm().throwException(exec, createEvalError(exec, globalObject->evalDisabledErrorMessage()));
+        return throwException(exec, scope, createEvalError(exec, globalObject->evalDisabledErrorMessage()));
     return constructFunctionSkippingEvalEnabledCheck(exec, globalObject, args, functionName, sourceURL, position, -1, functionConstructionMode, newTarget);
 }
 
@@ -91,6 +89,9 @@ JSObject* constructFunctionSkippingEvalEnabledCheck(
     const Identifier& functionName, const String& sourceURL, 
     const TextPosition& position, int overrideLineNumber, FunctionConstructionMode functionConstructionMode, JSValue newTarget)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     // How we stringify functions is sometimes important for web compatibility.
     // See https://bugs.webkit.org/show_bug.cgi?id=24350.
     String program;
@@ -121,11 +122,14 @@ JSObject* constructFunctionSkippingEvalEnabledCheck(
     FunctionExecutable* function = FunctionExecutable::fromGlobalCode(functionName, *exec, source, exception, overrideLineNumber);
     if (!function) {
         ASSERT(exception);
-        return exec->vm().throwException(exec, exception);
+        return throwException(exec, scope, exception);
     }
 
+    Structure* subclassStructure = InternalFunction::createSubclassStructure(exec, newTarget, globalObject->functionStructure());
+    if (exec->hadException())
+        return nullptr;
 
-    return JSFunction::create(exec->vm(), function, globalObject, InternalFunction::createSubclassStructure(exec, newTarget, globalObject->functionStructure()));
+    return JSFunction::create(vm, function, globalObject->globalScope(), subclassStructure);
 }
 
 // ECMA 15.3.2 The Function Constructor

@@ -27,7 +27,6 @@
 #define XSSAuditorDelegate_h
 
 #include "URL.h"
-#include <wtf/Vector.h>
 #include <wtf/text/TextPosition.h>
 #include <wtf/text/WTFString.h>
 
@@ -37,19 +36,18 @@ class Document;
 class FormData;
 
 class XSSInfo {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
-    XSSInfo(const String& originalURL, bool didBlockEntirePage, bool didSendXSSProtectionHeader, bool didSendCSPHeader)
+    XSSInfo(const String& originalURL, bool didBlockEntirePage, bool didSendXSSProtectionHeader)
         : m_originalURL(originalURL.isolatedCopy())
         , m_didBlockEntirePage(didBlockEntirePage)
         , m_didSendXSSProtectionHeader(didSendXSSProtectionHeader)
-        , m_didSendCSPHeader(didSendCSPHeader)
     {
     }
 
     String m_originalURL;
     bool m_didBlockEntirePage;
     bool m_didSendXSSProtectionHeader;
-    bool m_didSendCSPHeader;
     TextPosition m_textPosition;
 };
 

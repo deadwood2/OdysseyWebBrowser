@@ -26,9 +26,12 @@
 #ifndef JSArrayBufferView_h
 #define JSArrayBufferView_h
 
+#include "CopyBarrier.h"
 #include "JSObject.h"
 
 namespace JSC {
+
+class LLIntOffsetsExtractor;
 
 // This class serves two purposes:
 //
@@ -51,7 +54,7 @@ namespace JSC {
 // Typed array views have different modes depending on how big they are and
 // whether the user has done anything that requires a separate backing
 // buffer or the DOM-specified neutering capabilities.
-enum TypedArrayMode {
+enum TypedArrayMode : uint32_t {
     // Small and fast typed array. B is unused, V points to a vector
     // allocated in copied space, and M = FastTypedArray. V's liveness is
     // determined entirely by the view's liveness.
@@ -93,8 +96,6 @@ inline bool hasArrayBuffer(TypedArrayMode mode)
 class JSArrayBufferView : public JSNonFinalObject {
 public:
     typedef JSNonFinalObject Base;
-    static const unsigned StructureFlags = Base::StructureFlags | OverridesGetPropertyNames | OverridesGetOwnPropertySlot;
-    
     static const unsigned fastSizeLimit = 1000;
     
     static size_t sizeOf(uint32_t length, uint32_t elementSize)
@@ -146,30 +147,21 @@ protected:
     JS_EXPORT_PRIVATE JSArrayBufferView(VM&, ConstructionContext&);
     JS_EXPORT_PRIVATE void finishCreation(VM&);
     
-    static bool getOwnPropertySlot(JSObject*, ExecState*, PropertyName, PropertySlot&);
-    static void put(JSCell*, ExecState*, PropertyName, JSValue, PutPropertySlot&);
-    static bool defineOwnProperty(JSObject*, ExecState*, PropertyName, const PropertyDescriptor&, bool shouldThrow);
-    static bool deleteProperty(JSCell*, ExecState*, PropertyName);
-    
-    static void getOwnNonIndexPropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode);
+    static bool put(JSCell*, ExecState*, PropertyName, JSValue, PutPropertySlot&);
+
+    static void visitChildren(JSCell*, SlotVisitor&);
     
 public:
     TypedArrayMode mode() const { return m_mode; }
     bool hasArrayBuffer() const { return JSC::hasArrayBuffer(mode()); }
     
     ArrayBuffer* buffer();
+    JSArrayBuffer* jsBuffer(ExecState* exec) { return exec->vm().m_typedArrayController->toJS(exec, globalObject(), buffer()); }
     PassRefPtr<ArrayBufferView> impl();
     bool isNeutered() { return hasArrayBuffer() && !vector(); }
     void neuter();
     
-    void* vector()
-    {
-        return m_vector.getPredicated(
-            this,
-            [this] () -> bool {
-                return mode() == FastTypedArray;
-            });
-    }
+    void* vector() { return m_vector.get(); }
     
     unsigned byteOffset();
     unsigned length() const { return m_length; }
@@ -184,7 +176,11 @@ private:
     static void finalize(JSCell*);
 
 protected:
+    friend class LLIntOffsetsExtractor;
+
     ArrayBuffer* existingBufferInButterfly();
+
+    static String toStringName(const JSObject*, ExecState*);
 
     CopyBarrier<char> m_vector; // this is really a void*, but void would not work here.
     uint32_t m_length;

@@ -23,8 +23,7 @@
  *
  */
 
-#ifndef RenderObject_h
-#define RenderObject_h
+#pragma once
 
 #include "CachedImageClient.h"
 #include "Element.h"
@@ -32,6 +31,7 @@
 #include "Frame.h"
 #include "LayoutRect.h"
 #include "PaintPhase.h"
+#include "RenderObjectEnums.h"
 #include "RenderStyle.h"
 #include "ScrollBehavior.h"
 #include "StyleImage.h"
@@ -72,48 +72,6 @@ class SelectionRect;
 #endif
 
 struct PaintInfo;
-
-enum CursorDirective {
-    SetCursorBasedOnStyle,
-    SetCursor,
-    DoNotSetCursor
-};
-
-enum HitTestFilter {
-    HitTestAll,
-    HitTestSelf,
-    HitTestDescendants
-};
-
-enum HitTestAction {
-    HitTestBlockBackground,
-    HitTestChildBlockBackground,
-    HitTestChildBlockBackgrounds,
-    HitTestFloat,
-    HitTestForeground
-};
-
-// Sides used when drawing borders and outlines. The values should run clockwise from top.
-enum BoxSide {
-    BSTop,
-    BSRight,
-    BSBottom,
-    BSLeft
-};
-
-enum MarkingBehavior {
-    MarkOnlyThis,
-    MarkContainingBlockChain,
-};
-
-enum class ScheduleRelayout { No, Yes };
-
-enum MapCoordinatesMode {
-    IsFixed             = 1 << 0,
-    UseTransforms       = 1 << 1,
-    ApplyContainerFlip  = 1 << 2
-};
-typedef unsigned MapCoordinatesFlags;
 
 #if PLATFORM(IOS)
 const int caretWidth = 2; // This value should be kept in sync with UIKit. See <rdar://problem/15580601>.
@@ -189,24 +147,17 @@ public:
         OverflowHeight
     };
 
-    RenderObject* traverseNext(const RenderObject* stayWithin) const;
-    typedef bool (*TraverseNextInclusionFunction)(const RenderObject*);
-    typedef BlockContentHeightType (*HeightTypeTraverseNextInclusionFunction)(const RenderObject*);
-
-    RenderObject* traverseNext(const RenderObject* stayWithin, TraverseNextInclusionFunction) const;
+    typedef BlockContentHeightType (*HeightTypeTraverseNextInclusionFunction)(const RenderObject&);
     RenderObject* traverseNext(const RenderObject* stayWithin, HeightTypeTraverseNextInclusionFunction, int& currentDepth,  int& newFixedDepth) const;
-
-    void adjustComputedFontSizesOnBlocks(float size, float visibleWidth);
-    WEBCORE_EXPORT void resetTextAutosizing();
 #endif
 
     WEBCORE_EXPORT RenderLayer* enclosingLayer() const;
 
     // Scrolling is a RenderBox concept, however some code just cares about recursively scrolling our enclosing ScrollableArea(s).
-    WEBCORE_EXPORT bool scrollRectToVisible(const LayoutRect&, const ScrollAlignment& alignX = ScrollAlignment::alignCenterIfNeeded, const ScrollAlignment& alignY = ScrollAlignment::alignCenterIfNeeded);
+    WEBCORE_EXPORT bool scrollRectToVisible(SelectionRevealMode, const LayoutRect&, const ScrollAlignment& alignX = ScrollAlignment::alignCenterIfNeeded, const ScrollAlignment& alignY = ScrollAlignment::alignCenterIfNeeded);
 
     // Convenience function for getting to the nearest enclosing box of a RenderObject.
-    RenderBox& enclosingBox() const;
+    WEBCORE_EXPORT RenderBox& enclosingBox() const;
     RenderBoxModelObject& enclosingBoxModelObject() const;
 
     bool fixedPositionedWithNamedFlowContainingBlock() const;
@@ -222,9 +173,6 @@ public:
     }
 
     RenderNamedFlowFragment* currentRenderNamedFlowFragment() const;
-
-    // FIXME: The meaning of this function is unclear.
-    virtual bool isEmpty() const { return !firstChildSlow(); }
 
 #ifndef NDEBUG
     void setHasAXObject(bool flag) { m_hasAXObject = flag; }
@@ -385,17 +333,17 @@ public:
     virtual bool isRenderMathMLBlock() const { return false; }
     virtual bool isRenderMathMLTable() const { return false; }
     virtual bool isRenderMathMLOperator() const { return false; }
-    virtual bool isRenderMathMLRadicalOperator() const { return false; }
     virtual bool isRenderMathMLRow() const { return false; }
     virtual bool isRenderMathMLMath() const { return false; }
+    virtual bool isRenderMathMLMenclose() const { return false; }
     virtual bool isRenderMathMLFenced() const { return false; }
+    virtual bool isRenderMathMLFencedOperator() const { return false; }
     virtual bool isRenderMathMLFraction() const { return false; }
+    virtual bool isRenderMathMLPadded() const { return false; }
     virtual bool isRenderMathMLRoot() const { return false; }
-    virtual bool isRenderMathMLRootWrapper() const { return false; }
     virtual bool isRenderMathMLSpace() const { return false; }
     virtual bool isRenderMathMLSquareRoot() const { return false; }
     virtual bool isRenderMathMLScripts() const { return false; }
-    virtual bool isRenderMathMLScriptsWrapper() const { return false; }
     virtual bool isRenderMathMLToken() const { return false; }
     virtual bool isRenderMathMLUnderOver() const { return false; }
 #endif // ENABLE(MATHML)
@@ -413,6 +361,7 @@ public:
     virtual bool isSVGShape() const { return false; }
     virtual bool isSVGText() const { return false; }
     virtual bool isSVGTextPath() const { return false; }
+    virtual bool isSVGTSpan() const { return false; }
     virtual bool isSVGInline() const { return false; }
     virtual bool isSVGInlineText() const { return false; }
     virtual bool isSVGImage() const { return false; }
@@ -463,7 +412,7 @@ public:
         // RenderBlock::createAnonymousBlock(). This includes creating an anonymous
         // RenderBlock having a BLOCK or BOX display. Other classes such as RenderTextFragment
         // are not RenderBlocks and will return false. See https://bugs.webkit.org/show_bug.cgi?id=56709. 
-        return isAnonymous() && (style().display() == BLOCK || style().display() == BOX) && style().styleType() == NOPSEUDO && isRenderBlock() && !isListMarker() && !isRenderFlowThread() && !isRenderMultiColumnSet() && !isRenderView()
+        return isAnonymous() && (style().display() == BLOCK || style().display() == BOX) && style().styleType() == NOPSEUDO && isRenderBlock() && !isListMarker() && !isRenderFlowThread() && !isRenderNamedFlowFragment() && !isRenderMultiColumnSet() && !isRenderView()
 #if ENABLE(FULLSCREEN_API)
             && !isRenderFullScreen()
             && !isRenderFullScreenPlaceholder()
@@ -512,6 +461,7 @@ public:
     VisibleInViewportState visibleInViewportState() { return m_bitfields.hasRareData() ? rareData().visibleInViewportState() : VisibilityUnknown; }
 
     bool hasLayer() const { return m_bitfields.hasLayer(); }
+    bool hasSelfPaintingLayer() const;
 
     enum BoxDecorationState {
         NoBoxDecorations,
@@ -519,7 +469,7 @@ public:
         HasBoxDecorationsAndBackgroundIsKnownToBeObscured,
         HasBoxDecorationsAndBackgroundMayBeVisible,
     };
-    bool hasBoxDecorations() const { return m_bitfields.boxDecorationState() != NoBoxDecorations; }
+    bool hasVisibleBoxDecorations() const { return m_bitfields.boxDecorationState() != NoBoxDecorations; }
     bool backgroundIsKnownToBeObscured(const LayoutPoint& paintOffset);
     bool hasEntirelyFixedBackground() const;
 
@@ -576,7 +526,8 @@ public:
     // Returns the object containing this one. Can be different from parent for positioned elements.
     // If repaintContainer and repaintContainerSkipped are not null, on return *repaintContainerSkipped
     // is true if the renderer returned is an ancestor of repaintContainer.
-    RenderElement* container(const RenderLayerModelObject* repaintContainer = nullptr, bool* repaintContainerSkipped = nullptr) const;
+    RenderElement* container() const;
+    RenderElement* container(const RenderLayerModelObject* repaintContainer, bool& repaintContainerSkipped) const;
 
     RenderBoxModelObject* offsetParent() const;
 
@@ -602,7 +553,7 @@ public:
     void setFloating(bool b = true) { m_bitfields.setFloating(b); }
     void setInline(bool b = true) { m_bitfields.setIsInline(b); }
 
-    void setHasBoxDecorations(bool = true);
+    void setHasVisibleBoxDecorations(bool = true);
     void invalidateBackgroundObscurationStatus();
     virtual bool computeBackgroundIsKnownToBeObscured(const LayoutPoint&) { return false; }
 
@@ -647,7 +598,8 @@ public:
     VisiblePosition createVisiblePosition(const Position&) const;
 
     // returns the containing block level element for this element.
-    RenderBlock* containingBlock() const;
+    WEBCORE_EXPORT RenderBlock* containingBlock() const;
+    RenderBlock* containingBlockForObjectInFlow() const;
 
     // Convert the given local point to absolute coordinates. If MapCoordinatesFlags includes UseTransforms, take transforms into account.
     WEBCORE_EXPORT FloatPoint localToAbsolute(const FloatPoint& localPoint = FloatPoint(), MapCoordinatesFlags = 0, bool* wasFixed = nullptr) const;
@@ -695,8 +647,8 @@ public:
     virtual LayoutUnit minPreferredLogicalWidth() const { return 0; }
     virtual LayoutUnit maxPreferredLogicalWidth() const { return 0; }
 
-    RenderStyle& style() const;
-    RenderStyle& firstLineStyle() const;
+    const RenderStyle& style() const;
+    const RenderStyle& firstLineStyle() const;
 
     // Anonymous blocks that are part of of a continuation chain will return their inline continuation's outline style instead.
     // This is typically only relevant when repainting.
@@ -742,11 +694,20 @@ public:
     // that rect in view coordinates.
     LayoutRect computeAbsoluteRepaintRect(const LayoutRect& r, bool fixed = false) const
     {
-        return computeRectForRepaint(r, nullptr, fixed);
+        return computeRectForRepaint(r, nullptr, { fixed, false });
     }
     // Given a rect in the object's coordinate space, compute a rect suitable for repainting
     // that rect in the coordinate space of repaintContainer.
-    virtual LayoutRect computeRectForRepaint(const LayoutRect&, const RenderLayerModelObject* repaintContainer, bool fixed = false) const;
+    struct RepaintContext {
+        RepaintContext(bool hasPositionFixedDescendant = false, bool dirtyRectIsFlipped = false)
+            : m_hasPositionFixedDescendant(hasPositionFixedDescendant)
+            , m_dirtyRectIsFlipped(dirtyRectIsFlipped)
+            {
+            }
+        bool m_hasPositionFixedDescendant;
+        bool m_dirtyRectIsFlipped;
+    };
+    virtual LayoutRect computeRectForRepaint(const LayoutRect&, const RenderLayerModelObject* repaintContainer, RepaintContext = { }) const;
     virtual FloatRect computeFloatRectForRepaint(const FloatRect&, const RenderLayerModelObject* repaintContainer, bool fixed = false) const;
 
     virtual unsigned int length() const { return 1; }
@@ -785,7 +746,7 @@ public:
      * @param extraWidthToEndOfLine optional out arg to give extra width to end of line -
      * useful for character range rect computations
      */
-    virtual LayoutRect localCaretRect(InlineBox*, int caretOffset, LayoutUnit* extraWidthToEndOfLine = nullptr);
+    virtual LayoutRect localCaretRect(InlineBox*, unsigned caretOffset, LayoutUnit* extraWidthToEndOfLine = nullptr);
 
     // When performing a global document tear-down, the renderer of the document is cleared.  We use this
     // as a hook to detect the case of document destruction and don't waste time doing unnecessary work.
@@ -814,11 +775,11 @@ public:
     virtual int previousOffsetForBackwardDeletion(int current) const;
     virtual int nextOffset(int current) const;
 
-    virtual void imageChanged(CachedImage*, const IntRect* = nullptr) override;
+    void imageChanged(CachedImage*, const IntRect* = nullptr) override;
     virtual void imageChanged(WrappedImagePtr, const IntRect* = nullptr) { }
 
     SelectionSubtreeRoot& selectionRoot() const;
-    void selectionStartEnd(int& spos, int& epos) const;
+    void selectionStartEnd(unsigned& spos, unsigned& epos) const;
     
     void removeFromParent();
 
@@ -1123,20 +1084,20 @@ inline void RenderObject::setSelectionStateIfNeeded(SelectionState state)
     setSelectionState(state);
 }
 
-inline void RenderObject::setHasBoxDecorations(bool b)
+inline void RenderObject::setHasVisibleBoxDecorations(bool b)
 {
     if (!b) {
         m_bitfields.setBoxDecorationState(NoBoxDecorations);
         return;
     }
-    if (hasBoxDecorations())
+    if (hasVisibleBoxDecorations())
         return;
     m_bitfields.setBoxDecorationState(HasBoxDecorationsAndBackgroundObscurationStatusInvalid);
 }
 
 inline void RenderObject::invalidateBackgroundObscurationStatus()
 {
-    if (!hasBoxDecorations())
+    if (!hasVisibleBoxDecorations())
         return;
     m_bitfields.setBoxDecorationState(HasBoxDecorationsAndBackgroundObscurationStatusInvalid);
 }
@@ -1149,6 +1110,11 @@ inline bool RenderObject::backgroundIsKnownToBeObscured(const LayoutPoint& paint
     }
     return m_bitfields.boxDecorationState() == HasBoxDecorationsAndBackgroundIsKnownToBeObscured;
 }
+
+#if ENABLE(TREE_DEBUGGING)
+void printRenderTreeForLiveDocuments();
+void printLayerTreeForLiveDocuments();
+#endif
 
 } // namespace WebCore
 
@@ -1163,5 +1129,3 @@ void showNodeTree(const WebCore::RenderObject*);
 void showLineTree(const WebCore::RenderObject*);
 void showRenderTree(const WebCore::RenderObject*);
 #endif
-
-#endif // RenderObject_h

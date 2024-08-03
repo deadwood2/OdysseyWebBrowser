@@ -191,8 +191,12 @@ void PageConsoleClient::profile(JSC::ExecState* exec, const String& title)
 void PageConsoleClient::profileEnd(JSC::ExecState* exec, const String& title)
 {
     // FIXME: <https://webkit.org/b/153499> Web Inspector: console.profile should use the new Sampling Profiler
-    if (RefPtr<JSC::Profile> profile = InspectorInstrumentation::stopProfiling(m_page, exec, title))
-        m_profiles.append(WTFMove(profile));
+    InspectorInstrumentation::stopProfiling(m_page, exec, title);
+}
+
+void PageConsoleClient::takeHeapSnapshot(JSC::ExecState*, const String& title)
+{
+    InspectorInstrumentation::takeHeapSnapshot(m_page.mainFrame(), title);
 }
 
 void PageConsoleClient::time(JSC::ExecState*, const String& title)
@@ -209,11 +213,6 @@ void PageConsoleClient::timeEnd(JSC::ExecState* exec, const String& title)
 void PageConsoleClient::timeStamp(JSC::ExecState*, RefPtr<ScriptArguments>&& arguments)
 {
     InspectorInstrumentation::consoleTimeStamp(m_page.mainFrame(), WTFMove(arguments));
-}
-
-void PageConsoleClient::clearProfiles()
-{
-    m_profiles.clear();
 }
 
 } // namespace WebCore

@@ -50,7 +50,7 @@ namespace WebCore {
 
 using namespace HTMLNames;
 
-RenderSearchField::RenderSearchField(HTMLInputElement& element, Ref<RenderStyle>&& style)
+RenderSearchField::RenderSearchField(HTMLInputElement& element, RenderStyle&& style)
     : RenderTextControlSingleLine(element, WTFMove(style))
     , m_searchPopupIsVisible(false)
     , m_searchPopup(0)
@@ -178,8 +178,8 @@ void RenderSearchField::updateCancelButtonVisibility() const
     if (curStyle.visibility() == buttonVisibility)
         return;
 
-    auto cancelButtonStyle = RenderStyle::clone(&curStyle);
-    cancelButtonStyle.get().setVisibility(buttonVisibility);
+    auto cancelButtonStyle = RenderStyle::clone(curStyle);
+    cancelButtonStyle.setVisibility(buttonVisibility);
     cancelButtonRenderer->setStyle(WTFMove(cancelButtonStyle));
 }
 
@@ -190,7 +190,7 @@ EVisibility RenderSearchField::visibilityForCancelButton() const
 
 const AtomicString& RenderSearchField::autosaveName() const
 {
-    return inputElement().fastGetAttribute(autosaveAttr);
+    return inputElement().attributeWithoutSynchronization(autosaveAttr);
 }
 
 // PopupMenuClient methods
@@ -354,7 +354,7 @@ PassRefPtr<Scrollbar> RenderSearchField::createScrollbar(ScrollableArea& scrolla
         widget = RenderScrollbar::createCustomScrollbar(scrollableArea, orientation, &inputElement());
     else
         widget = Scrollbar::createNativeScrollbar(scrollableArea, orientation, controlSize);
-    return widget.release();
+    return WTFMove(widget);
 }
 
 LayoutUnit RenderSearchField::computeLogicalHeightLimit() const

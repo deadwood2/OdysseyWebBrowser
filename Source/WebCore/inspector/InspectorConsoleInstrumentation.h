@@ -29,11 +29,9 @@
 * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef InspectorConsoleInstrumentation_h
-#define InspectorConsoleInstrumentation_h
+#pragma once
 
 #include "InspectorInstrumentation.h"
-#include "ScriptProfile.h"
 #include <inspector/ScriptArguments.h>
 #include <inspector/ScriptCallStack.h>
 
@@ -52,6 +50,13 @@ inline void InspectorInstrumentation::addMessageToConsole(WorkerGlobalScope*, st
 inline void InspectorInstrumentation::consoleCount(Page& page, JSC::ExecState* state, RefPtr<Inspector::ScriptArguments>&& arguments)
 {
     consoleCountImpl(instrumentingAgentsForPage(page), state, WTFMove(arguments));
+}
+
+inline void InspectorInstrumentation::takeHeapSnapshot(Frame& frame, const String& title)
+{
+    FAST_RETURN_IF_NO_FRONTENDS(void());
+    if (InstrumentingAgents* instrumentingAgents = instrumentingAgentsForFrame(frame))
+        takeHeapSnapshotImpl(*instrumentingAgents, title);
 }
 
 inline void InspectorInstrumentation::startConsoleTiming(Frame& frame, const String& title)
@@ -78,11 +83,10 @@ inline void InspectorInstrumentation::startProfiling(Page& page, JSC::ExecState*
     startProfilingImpl(instrumentingAgentsForPage(page), exec, title);
 }
 
-inline RefPtr<JSC::Profile> InspectorInstrumentation::stopProfiling(Page& page, JSC::ExecState* exec, const String &title)
+inline void InspectorInstrumentation::stopProfiling(Page& page, JSC::ExecState* exec, const String &title)
 {
-    return stopProfilingImpl(instrumentingAgentsForPage(page), exec, title);
+    stopProfilingImpl(instrumentingAgentsForPage(page), exec, title);
 }
 
 } // namespace WebCore
 
-#endif // !defined(InspectorConsoleInstrumentation_h)

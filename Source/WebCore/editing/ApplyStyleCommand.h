@@ -71,7 +71,7 @@ private:
     ApplyStyleCommand(PassRefPtr<Element>, bool removeOnly, EditAction);
     ApplyStyleCommand(Document&, const EditingStyle*, bool (*isInlineElementToRemove)(const Element*), EditAction);
 
-    virtual void doApply() override;
+    void doApply() override;
 
     // style-removal helpers
     bool isStyledInlineElementToRemove(Element*) const;
@@ -86,8 +86,8 @@ private:
     void applyInlineStyleToPushDown(Node*, EditingStyle*);
     void pushDownInlineStyleAroundNode(EditingStyle*, Node*);
     void removeInlineStyle(EditingStyle* , const Position& start, const Position& end);
-    bool nodeFullySelected(Node*, const Position& start, const Position& end) const;
-    bool nodeFullyUnselected(Node*, const Position& start, const Position& end) const;
+    bool nodeFullySelected(Element&, const Position& start, const Position& end) const;
+    bool nodeFullyUnselected(Element&, const Position& start, const Position& end) const;
 
     // style-application helpers
     void applyBlockStyle(EditingStyle*);

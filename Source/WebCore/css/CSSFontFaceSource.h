@@ -28,6 +28,7 @@
 
 #include "CachedFontClient.h"
 #include "CachedResourceHandle.h"
+#include <runtime/ArrayBufferView.h>
 #include <wtf/text/AtomicString.h>
 
 namespace WebCore {
@@ -45,6 +46,8 @@ class SharedBuffer;
 class CSSFontFaceSource final : public CachedFontClient {
     WTF_MAKE_FAST_ALLOCATED;
 public:
+    CSSFontFaceSource(CSSFontFace& owner, const String& familyNameOrURI, CachedFont* = nullptr, SVGFontFaceElement* = nullptr, RefPtr<JSC::ArrayBufferView>&& = nullptr);
+    virtual ~CSSFontFaceSource();
 
     //                      => Success
     //                    //
@@ -57,10 +60,6 @@ public:
         Success,
         Failure
     };
-
-    CSSFontFaceSource(CSSFontFace& owner, const String& familyNameOrURI, CachedFont* = nullptr, SVGFontFaceElement* = nullptr);
-    virtual ~CSSFontFaceSource();
-
     Status status() const { return m_status; }
 
     const AtomicString& familyNameOrURI() const { return m_familyNameOrURI; }
@@ -73,7 +72,7 @@ public:
 #endif
 
 private:
-    virtual void fontLoaded(CachedFont&) override;
+    void fontLoaded(CachedFont&) override;
 
     void setStatus(Status);
 
@@ -81,14 +80,14 @@ private:
     CachedResourceHandle<CachedFont> m_font; // For remote fonts, a pointer to our cached resource.
     CSSFontFace& m_face; // Our owning font face.
 
-#if ENABLE(SVG_OTF_CONVERTER)
     RefPtr<SharedBuffer> m_generatedOTFBuffer;
-#endif
+    RefPtr<JSC::ArrayBufferView> m_immediateSource;
+    std::unique_ptr<FontCustomPlatformData> m_immediateFontCustomPlatformData;
 
-#if ENABLE(SVG_FONTS) || ENABLE(SVG_OTF_CONVERTER)
+#if ENABLE(SVG_FONTS)
     RefPtr<SVGFontFaceElement> m_svgFontFaceElement;
-    std::unique_ptr<FontCustomPlatformData> m_inDocumentCustomPlatformData;
 #endif
+    std::unique_ptr<FontCustomPlatformData> m_inDocumentCustomPlatformData;
 
     Status m_status { Status::Pending };
 };

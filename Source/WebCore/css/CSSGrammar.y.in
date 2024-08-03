@@ -37,9 +37,9 @@
     MediaQuerySet* mediaList;
     MediaQuery* mediaQuery;
     MediaQuery::Restrictor mediaQueryRestrictor;
-    MediaQueryExp* mediaQueryExp;
+    MediaQueryExpression* mediaQueryExpression;
     Vector<CSSParser::SourceSize>* sourceSizeList;
-    Vector<std::unique_ptr<MediaQueryExp>>* mediaQueryExpList;
+    Vector<MediaQueryExpression>* mediaQueryExpressionList;
     StyleKeyframe* keyframe;
     Vector<RefPtr<StyleKeyframe>>* keyframeRuleList;
     CSSPropertyID id;
@@ -271,20 +271,20 @@ static bool selectorListDoesNotMatchAnyPseudoElement(const Vector<std::unique_pt
 
 %type <mediaQueryRestrictor> maybe_media_restrictor
 
-%type <mediaQueryExp> media_query_exp base_media_query_exp
-%destructor { delete $$; } media_query_exp base_media_query_exp
+%type <mediaQueryExpression> media_query_expression base_media_query_expression
+%destructor { delete $$; } media_query_expression base_media_query_expression
 
 %type <sourceSizeList> source_size_list
 %destructor { delete $$; } source_size_list
 
-%type <mediaQueryExp> maybe_source_media_query_exp
-%destructor { delete $$; } maybe_source_media_query_exp
+%type <mediaQueryExpression> maybe_source_media_query_expression
+%destructor { delete $$; } maybe_source_media_query_expression
 
 %type <value> source_size_length
 %destructor { destroy($$); } source_size_length
 
-%type <mediaQueryExpList> media_query_exp_list maybe_and_media_query_exp_list
-%destructor { delete $$; } media_query_exp_list maybe_and_media_query_exp_list
+%type <mediaQueryExpressionList> media_query_expression_list maybe_and_media_query_expression_list
+%destructor { delete $$; } media_query_expression_list maybe_and_media_query_expression_list
 
 %type <string> keyframe_name
 
@@ -364,6 +364,11 @@ static bool selectorListDoesNotMatchAnyPseudoElement(const Vector<std::unique_pt
 %token <string> CUEFUNCTION
 
 #endif
+
+
+%token <string> SLOTTEDFUNCTION
+%token <string> HOSTFUNCTION
+
 
 %%
 
@@ -482,7 +487,7 @@ block_rule_list:
       if (RefPtr<StyleRuleBase> rule = adoptRef($2)) {
           if (!$$)
               $$ = new Vector<RefPtr<StyleRuleBase>>;
-          $$->append(rule.release());
+          $$->append(WTFMove(rule));
       }
   }
   ;
@@ -494,7 +499,7 @@ block_valid_rule_list:
       if (RefPtr<StyleRuleBase> rule = adoptRef($2)) {
           if (!$$)
               $$ = new Vector<RefPtr<StyleRuleBase>>;
-          $$->append(rule.release());
+          $$->append(WTFMove(rule));
       }
   }
   ;
@@ -569,59 +574,65 @@ webkit_source_size_list:
     ;
 
 source_size_list:
-    maybe_source_media_query_exp source_size_length {
+    maybe_source_media_query_expression source_size_length {
         $$ = new Vector<CSSParser::SourceSize>;
-        $$->append(parser->sourceSize(std::unique_ptr<MediaQueryExp>($1), $2));
+        if (auto result = parser->sourceSize(WTFMove(*$1), $2))
+            $$->append(WTFMove(result.value()));
+        delete $1;
     }
-    | source_size_list maybe_space ',' maybe_space maybe_source_media_query_exp source_size_length {
+    | source_size_list maybe_space ',' maybe_space maybe_source_media_query_expression source_size_length {
         $$ = $1;
-        $$->append(parser->sourceSize(std::unique_ptr<MediaQueryExp>($5), $6));
+        if (auto result = parser->sourceSize(WTFMove(*$5), $6))
+            $$->append(WTFMove(result.value()));
+        delete $5;
     }
     ;
 
-maybe_source_media_query_exp:
+maybe_source_media_query_expression:
     /* empty */ {
-        $$ = new MediaQueryExp;
+        $$ = new MediaQueryExpression;
     }
-    | base_media_query_exp maybe_space;
+    | base_media_query_expression maybe_space;
 
 source_size_length: unary_term | calc_function;
 
-base_media_query_exp: '(' maybe_space IDENT maybe_space maybe_media_value ')' {
+base_media_query_expression: '(' maybe_space IDENT maybe_space maybe_media_value ')' {
         std::unique_ptr<CSSParserValueList> mediaValue($5);
         $3.convertToASCIILowercaseInPlace();
-        $$ = new MediaQueryExp($3, mediaValue.get());
+        $$ = new MediaQueryExpression($3, mediaValue.get());
     }
     ;
 
-media_query_exp:
-    maybe_media_restrictor maybe_space base_media_query_exp maybe_space {
+media_query_expression:
+    maybe_media_restrictor maybe_space base_media_query_expression maybe_space {
         if ($1 != MediaQuery::None) {
             // If restrictor is specified, media query expression is invalid.
             // Create empty media query expression and continue parsing media query.
             delete $3;
-            $$ = new MediaQueryExp;
+            $$ = new MediaQueryExpression;
         } else
             $$ = $3;
     }
     ;
 
-media_query_exp_list:
-    media_query_exp {
-        $$ = new Vector<std::unique_ptr<MediaQueryExp>>;
-        $$->append(std::unique_ptr<MediaQueryExp>($1));
+media_query_expression_list:
+    media_query_expression {
+        $$ = new Vector<MediaQueryExpression>;
+        $$->append(WTFMove(*$1));
+        delete $1;
     }
-    | media_query_exp_list maybe_space MEDIA_AND maybe_space media_query_exp {
+    | media_query_expression_list maybe_space MEDIA_AND maybe_space media_query_expression {
         $$ = $1;
-        $$->append(std::unique_ptr<MediaQueryExp>($5));
+        $$->append(WTFMove(*$5));
+        delete $5;
     }
     ;
 
-maybe_and_media_query_exp_list:
+maybe_and_media_query_expression_list:
     /*empty*/ {
-        $$ = new Vector<std::unique_ptr<MediaQueryExp>>;
+        $$ = new Vector<MediaQueryExpression>;
     }
-    | MEDIA_AND maybe_space media_query_exp_list {
+    | MEDIA_AND maybe_space media_query_expression_list {
         $$ = $3;
     }
     ;
@@ -639,13 +650,15 @@ maybe_media_restrictor:
     ;
 
 media_query:
-    media_query_exp_list {
-        $$ = new MediaQuery(MediaQuery::None, "all", std::unique_ptr<Vector<std::unique_ptr<MediaQueryExp>>>($1));
+    media_query_expression_list {
+        $$ = new MediaQuery(MediaQuery::None, "all", WTFMove(*$1));
+        delete $1;
     }
     |
-    maybe_media_restrictor maybe_space IDENT maybe_space maybe_and_media_query_exp_list {
+    maybe_media_restrictor maybe_space IDENT maybe_space maybe_and_media_query_expression_list {
         $3.convertToASCIILowercaseInPlace();
-        $$ = new MediaQuery($1, $3, std::unique_ptr<Vector<std::unique_ptr<MediaQueryExp>>>($5));
+        $$ = new MediaQuery($1, $3, WTFMove(*$5));
+        delete $5;
     }
     ;
 
@@ -654,16 +667,17 @@ maybe_media_list: /* empty */ { $$ = &MediaQuerySet::create().leakRef(); } | med
 media_list:
     media_query {
         $$ = &MediaQuerySet::create().leakRef();
-        $$->addMediaQuery(std::unique_ptr<MediaQuery>($1));
-        parser->updateLastMediaLine($$);
+        $$->addMediaQuery(WTFMove(*$1));
+        delete $1;
+        parser->updateLastMediaLine(*$$);
     }
     | media_list ',' maybe_space media_query {
         $$ = $1;
-        std::unique_ptr<MediaQuery> mediaQuery($4);
         if ($$) {
-            $$->addMediaQuery(WTFMove(mediaQuery));
-            parser->updateLastMediaLine($$);
+            $$->addMediaQuery(WTFMove(*$4));
+            parser->updateLastMediaLine(*$$);
         }
+        delete $4;
     }
     | media_list error {
         $$ = nullptr;
@@ -692,10 +706,10 @@ at_rule_header_end_maybe_space:
 
 media:
     before_media_rule MEDIA_SYM maybe_space media_list at_rule_header_end '{' at_rule_body_start maybe_space block_rule_list save_block {
-        $$ = parser->createMediaRule(adoptRef($4), std::unique_ptr<Vector<RefPtr<StyleRuleBase>>>($9).get()).leakRef();
+        $$ = &parser->createMediaRule(adoptRef($4), std::unique_ptr<Vector<RefPtr<StyleRuleBase>>>($9).get()).leakRef();
     }
     | before_media_rule MEDIA_SYM at_rule_header_end_maybe_space '{' at_rule_body_start maybe_space block_rule_list save_block {
-        $$ = parser->createEmptyMediaRule(std::unique_ptr<Vector<RefPtr<StyleRuleBase>>>($7).get()).leakRef();
+        $$ = &parser->createEmptyMediaRule(std::unique_ptr<Vector<RefPtr<StyleRuleBase>>>($7).get()).leakRef();
     }
     | before_media_rule MEDIA_SYM at_rule_header_end_maybe_space ';' {
         $$ = nullptr;
@@ -705,7 +719,7 @@ media:
 
 supports:
     before_supports_rule SUPPORTS_SYM maybe_space supports_condition at_supports_rule_header_end '{' at_rule_body_start maybe_space block_rule_list save_block {
-        $$ = parser->createSupportsRule($4, std::unique_ptr<Vector<RefPtr<StyleRuleBase>>>($9).get()).leakRef();
+        $$ = &parser->createSupportsRule($4, std::unique_ptr<Vector<RefPtr<StyleRuleBase>>>($9).get()).leakRef();
     }
     | before_supports_rule SUPPORTS_SYM supports_error {
         $$ = nullptr;
@@ -799,7 +813,7 @@ before_keyframes_rule:
 
 keyframes:
     before_keyframes_rule KEYFRAMES_SYM maybe_space keyframe_name at_rule_header_end_maybe_space '{' at_rule_body_start maybe_space keyframes_rule closing_brace {
-        $$ = parser->createKeyframesRule($4, std::unique_ptr<Vector<RefPtr<StyleKeyframe>>>($9)).leakRef();
+        $$ = &parser->createKeyframesRule($4, std::unique_ptr<Vector<RefPtr<StyleKeyframe>>>($9)).leakRef();
     }
     ;
 
@@ -810,7 +824,7 @@ keyframes_rule:
     | keyframes_rule keyframe_rule maybe_space {
         $$ = $1;
         if (RefPtr<StyleKeyframe> keyframe = adoptRef($2))
-            $$->append(keyframe.release());
+            $$->append(WTFMove(keyframe));
     }
     ;
 
@@ -998,7 +1012,7 @@ before_viewport_rule:
 viewport:
     before_viewport_rule WEBKIT_VIEWPORT_RULE_SYM at_rule_header_end_maybe_space
     '{' at_rule_body_start maybe_space_before_declaration declaration_list closing_brace {
-        $$ = parser->createViewportRule().leakRef();
+        $$ = &parser->createViewportRule().leakRef();
         parser->markViewportRuleBodyEnd();
     }
     | before_viewport_rule WEBKIT_VIEWPORT_RULE_SYM error invalid_block {
@@ -1151,7 +1165,10 @@ complex_selector:
     ;
 
 namespace_selector:
-    '|' { $$.clear(); }
+    '|' {
+        static LChar emptyString = '\0';
+        $$.init(&emptyString, 0);
+    }
     | '*' '|' { static LChar star = '*'; $$.init(&star, 1); }
     | IDENT '|'
 ;
@@ -1162,8 +1179,10 @@ compound_selector:
     }
     | element_name specifier_list {
         $$ = $2;
-        if ($$)
-            parser->rewriteSpecifiersWithElementName(nullAtom, $1, *$$);
+        if ($$) {
+            QualifiedName elementName(nullAtom, $1, parser->m_defaultNamespace);
+            parser->rewriteSpecifiersWithElementName(elementName, *$$);
+        }
     }
     | specifier_list {
         $$ = $1;
@@ -1361,6 +1380,12 @@ pseudo:
         $$ = CSSParserSelector::parsePseudoElementCueFunctionSelector($3, $5);
     }
 #endif
+    | ':' ':' SLOTTEDFUNCTION maybe_space compound_selector maybe_space ')' {
+        $$ = CSSParserSelector::parsePseudoElementSlottedFunctionSelector($3, $5);
+    }
+    | ':' HOSTFUNCTION maybe_space compound_selector maybe_space ')' {
+        $$ = CSSParserSelector::parsePseudoClassHostFunctionSelector($2, $4);
+    }
     // use by :-webkit-any.
     // FIXME: should we support generic selectors here or just simple_selectors?
     // Use simple_selector_list for now to match -moz-any.
@@ -1769,7 +1794,7 @@ function:
     FUNCTION maybe_space closing_parenthesis {
         CSSParserFunction* f = new CSSParserFunction;
         f->name = $1;
-        f->args = std::unique_ptr<CSSParserValueList>(new CSSParserValueList);
+        f->args = std::make_unique<CSSParserValueList>();
         $$.id = CSSValueInvalid;
         $$.unit = CSSParserValue::Function;
         $$.function = f;
@@ -1804,7 +1829,7 @@ variable_function:
     | VARFUNCTION maybe_space CUSTOM_PROPERTY maybe_space ',' maybe_space closing_parenthesis {
         CSSParserVariable* var = new CSSParserVariable;
         var->name = $3;
-        var->args = std::unique_ptr<CSSParserValueList>(new CSSParserValueList());
+        var->args = std::make_unique<CSSParserValueList>();
         $$.id = CSSValueInvalid;
         $$.unit = CSSParserValue::Variable;
         $$.variable = var;

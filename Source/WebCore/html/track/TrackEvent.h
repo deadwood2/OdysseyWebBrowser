@@ -41,7 +41,7 @@ class TrackEvent final : public Event {
 public:
     virtual ~TrackEvent();
 
-    static Ref<TrackEvent> create(const AtomicString& type, bool canBubble, bool cancelable, RefPtr<TrackBase>&& track)
+    static Ref<TrackEvent> create(const AtomicString& type, bool canBubble, bool cancelable, Ref<TrackBase>&& track)
     {
         return adoptRef(*new TrackEvent(type, canBubble, cancelable, WTFMove(track)));
     }
@@ -51,12 +51,12 @@ public:
         return adoptRef(*new TrackEvent(type, initializer));
     }
 
-    virtual EventInterface eventInterface() const override;
+    EventInterface eventInterface() const override;
 
     TrackBase* track() const { return m_track.get(); }
 
 private:
-    TrackEvent(const AtomicString& type, bool canBubble, bool cancelable, RefPtr<TrackBase>&&);
+    TrackEvent(const AtomicString& type, bool canBubble, bool cancelable, Ref<TrackBase>&&);
     TrackEvent(const AtomicString& type, const TrackEventInit& initializer);
 
     RefPtr<TrackBase> m_track;

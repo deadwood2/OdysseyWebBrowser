@@ -28,7 +28,8 @@
 
 #if ENABLE(INDEXED_DATABASE)
 
-#include "IDBCursorImpl.h"
+#include "IDBCursor.h"
+#include <heap/HeapInlines.h>
 
 namespace WebCore {
 namespace IDBClient {

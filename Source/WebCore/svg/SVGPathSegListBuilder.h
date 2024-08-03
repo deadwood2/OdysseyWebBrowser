@@ -32,27 +32,27 @@ namespace WebCore {
 
 class SVGPathElement;
 
-class SVGPathSegListBuilder : public SVGPathConsumer {
+class SVGPathSegListBuilder final : public SVGPathConsumer {
 public:
     SVGPathSegListBuilder(SVGPathElement&, SVGPathSegList&, SVGPathSegRole);
 
 private:
-    virtual void incrementPathSegmentCount() override { }
-    virtual bool continueConsuming() override { return true; }
+    void incrementPathSegmentCount() final { }
+    bool continueConsuming() final { return true; }
 
     // Used in UnalteredParsing/NormalizedParsing modes.
-    virtual void moveTo(const FloatPoint&, bool closed, PathCoordinateMode) override;
-    virtual void lineTo(const FloatPoint&, PathCoordinateMode) override;
-    virtual void curveToCubic(const FloatPoint&, const FloatPoint&, const FloatPoint&, PathCoordinateMode) override;
-    virtual void closePath() override;
+    void moveTo(const FloatPoint&, bool closed, PathCoordinateMode) final;
+    void lineTo(const FloatPoint&, PathCoordinateMode) final;
+    void curveToCubic(const FloatPoint&, const FloatPoint&, const FloatPoint&, PathCoordinateMode) final;
+    void closePath() final;
 
     // Only used in UnalteredParsing mode.
-    virtual void lineToHorizontal(float, PathCoordinateMode) override;
-    virtual void lineToVertical(float, PathCoordinateMode) override;
-    virtual void curveToCubicSmooth(const FloatPoint&, const FloatPoint&, PathCoordinateMode) override;
-    virtual void curveToQuadratic(const FloatPoint&, const FloatPoint&, PathCoordinateMode) override;
-    virtual void curveToQuadraticSmooth(const FloatPoint&, PathCoordinateMode) override;
-    virtual void arcTo(float, float, float, bool largeArcFlag, bool sweepFlag, const FloatPoint&, PathCoordinateMode) override;
+    void lineToHorizontal(float, PathCoordinateMode) final;
+    void lineToVertical(float, PathCoordinateMode) final;
+    void curveToCubicSmooth(const FloatPoint&, const FloatPoint&, PathCoordinateMode) final;
+    void curveToQuadratic(const FloatPoint&, const FloatPoint&, PathCoordinateMode) final;
+    void curveToQuadraticSmooth(const FloatPoint&, PathCoordinateMode) final;
+    void arcTo(float, float, float, bool largeArcFlag, bool sweepFlag, const FloatPoint&, PathCoordinateMode) final;
 
     SVGPathElement& m_pathElement;
     SVGPathSegList& m_pathSegList;

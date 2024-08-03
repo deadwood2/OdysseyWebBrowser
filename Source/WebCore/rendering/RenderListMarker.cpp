@@ -1117,7 +1117,7 @@ String listMarkerText(EListStyleType type, int value)
     return builder.toString();
 }
 
-RenderListMarker::RenderListMarker(RenderListItem& listItem, Ref<RenderStyle>&& style)
+RenderListMarker::RenderListMarker(RenderListItem& listItem, RenderStyle&& style)
     : RenderBox(listItem.document(), WTFMove(style), 0)
     , m_listItem(listItem)
 {
@@ -1314,7 +1314,7 @@ void RenderListMarker::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffse
         return;
 
     const FontCascade& font = style().fontCascade();
-    TextRun textRun = RenderBlock::constructTextRun(this, font, m_text, style());
+    TextRun textRun = RenderBlock::constructTextRun(m_text, style());
 
     GraphicsContextStateSaver stateSaver(context, false);
     if (!style().isHorizontalWritingMode()) {
@@ -1370,6 +1370,14 @@ void RenderListMarker::layout()
 {
     StackStats::LayoutCheckPoint layoutCheckPoint;
     ASSERT(needsLayout());
+
+    LayoutUnit blockOffset;
+    for (auto* box = parentBox(); box && box != &m_listItem; box = box->parentBox())
+        blockOffset += box->logicalTop();
+    if (style().isLeftToRightDirection())
+        m_lineOffsetForListItem = m_listItem.logicalLeftOffsetForLine(blockOffset, DoNotIndentText, LayoutUnit());
+    else
+        m_lineOffsetForListItem = m_listItem.logicalRightOffsetForLine(blockOffset, DoNotIndentText, LayoutUnit());
  
     if (isImage()) {
         updateMarginsAndContent();
@@ -1418,7 +1426,7 @@ void RenderListMarker::updateContent()
     if (!preferredLogicalWidthsDirty())
         return;
 
-    m_text = "";
+    m_text = emptyString();
 
     if (isImage()) {
         // FIXME: This is a somewhat arbitrary width.  Generated images for markers really won't become particularly useful
@@ -1543,7 +1551,7 @@ void RenderListMarker::computePreferredLogicalWidths()
             break;
         case Asterisks:
         case Footnotes: {
-            TextRun run = RenderBlock::constructTextRun(this, font, m_text, style(), AllowTrailingExpansion | ForbidLeadingExpansion, DefaultTextRunFlags);
+            TextRun run = RenderBlock::constructTextRun(m_text, style());
             logicalWidth = font.width(run); // no suffix for these types
         }
             break;
@@ -1630,10 +1638,10 @@ void RenderListMarker::computePreferredLogicalWidths()
             if (m_text.isEmpty())
                 logicalWidth = 0;
             else {
-                TextRun run = RenderBlock::constructTextRun(this, font, m_text, style(), AllowTrailingExpansion | ForbidLeadingExpansion, DefaultTextRunFlags);
+                TextRun run = RenderBlock::constructTextRun(m_text, style());
                 LayoutUnit itemWidth = font.width(run);
                 UChar suffixSpace[2] = { listMarkerSuffix(type, m_listItem.value()), ' ' };
-                LayoutUnit suffixSpaceWidth = font.width(RenderBlock::constructTextRun(this, font, suffixSpace, 2, style()));
+                LayoutUnit suffixSpaceWidth = font.width(RenderBlock::constructTextRun(suffixSpace, 2, style()));
                 logicalWidth = itemWidth + suffixSpaceWidth;
             }
             break;
@@ -1708,8 +1716,8 @@ void RenderListMarker::updateMargins()
         
     }
 
-    style().setMarginStart(Length(marginStart, Fixed));
-    style().setMarginEnd(Length(marginEnd, Fixed));
+    mutableStyle().setMarginStart(Length(marginStart, Fixed));
+    mutableStyle().setMarginEnd(Length(marginEnd, Fixed));
 }
 
 LayoutUnit RenderListMarker::lineHeight(bool firstLine, LineDirectionMode direction, LinePositionMode linePositionMode) const
@@ -1763,7 +1771,7 @@ FloatRect RenderListMarker::getRelativeMarkerRect()
         case Asterisks:
         case Footnotes: {
             const FontCascade& font = style().fontCascade();
-            TextRun run = RenderBlock::constructTextRun(this, font, m_text, style(), AllowTrailingExpansion | ForbidLeadingExpansion, DefaultTextRunFlags);
+            TextRun run = RenderBlock::constructTextRun(m_text, style());
             relativeRect = FloatRect(0, 0, font.width(run), font.fontMetrics().height());
             break;
         }
@@ -1857,10 +1865,10 @@ FloatRect RenderListMarker::getRelativeMarkerRect()
             if (m_text.isEmpty())
                 return FloatRect();
             const FontCascade& font = style().fontCascade();
-            TextRun run = RenderBlock::constructTextRun(this, font, m_text, style(), AllowTrailingExpansion | ForbidLeadingExpansion, DefaultTextRunFlags);
+            TextRun run = RenderBlock::constructTextRun(m_text, style());
             float itemWidth = font.width(run);
             UChar suffixSpace[2] = { listMarkerSuffix(type, m_listItem.value()), ' ' };
-            float suffixSpaceWidth = font.width(RenderBlock::constructTextRun(this, font, suffixSpace, 2, style()));
+            float suffixSpaceWidth = font.width(RenderBlock::constructTextRun(suffixSpace, 2, style()));
             relativeRect = FloatRect(0, 0, itemWidth + suffixSpaceWidth, font.fontMetrics().height());
     }
 

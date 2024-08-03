@@ -68,8 +68,11 @@ class WebProcessPool;
 
 - (void)didUpdateVisibleRect:(CGRect)visibleRect unobscuredRect:(CGRect)unobscuredRect
     unobscuredRectInScrollViewCoordinates:(CGRect)unobscuredRectInScrollViewCoordinates
+    obscuredInset:(CGSize)topInset
     scale:(CGFloat)scale minimumScale:(CGFloat)minimumScale
-    inStableState:(BOOL)isStableState isChangingObscuredInsetsInteractively:(BOOL)isChangingObscuredInsetsInteractively;
+    inStableState:(BOOL)isStableState
+    isChangingObscuredInsetsInteractively:(BOOL)isChangingObscuredInsetsInteractively
+    enclosedInScrollableAncestorView:(BOOL)enclosedInScrollableAncestorView;
 
 - (void)didFinishScrolling;
 - (void)didInterruptScrolling;
@@ -88,6 +91,7 @@ class WebProcessPool;
 
 - (void)_didCommitLoadForMainFrame;
 - (void)_didCommitLayerTree:(const WebKit::RemoteLayerTreeTransaction&)layerTreeTransaction;
+- (void)_layerTreeCommitComplete;
 
 - (void)_setAccessibilityWebProcessToken:(NSData *)data;
 

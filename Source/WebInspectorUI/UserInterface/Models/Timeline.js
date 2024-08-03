@@ -41,30 +41,18 @@ WebInspector.Timeline = class Timeline extends WebInspector.Object
         if (type === WebInspector.TimelineRecord.Type.Network)
             return new WebInspector.NetworkTimeline(type);
 
+        if (type === WebInspector.TimelineRecord.Type.Memory)
+            return new WebInspector.MemoryTimeline(type);
+
         return new WebInspector.Timeline(type);
     }
 
     // Public
 
-    get type()
-    {
-        return this._type;
-    }
-
-    get startTime()
-    {
-        return this._startTime;
-    }
-
-    get endTime()
-    {
-        return this._endTime;
-    }
-
-    get records()
-    {
-        return this._records;
-    }
+    get type() { return this._type; }
+    get startTime() { return this._startTime; }
+    get endTime() { return this._endTime; }
+    get records() { return this._records; }
 
     reset(suppressEvents)
     {
@@ -98,6 +86,18 @@ WebInspector.Timeline = class Timeline extends WebInspector.Object
     refresh()
     {
         this.dispatchEventToListeners(WebInspector.Timeline.Event.Refreshed);
+    }
+
+    recordsInTimeRange(startTime, endTime, includeRecordBeforeStart)
+    {
+        let lowerIndex = this._records.lowerBound(startTime, (time, record) => time - record.timestamp);
+        let upperIndex = this._records.upperBound(endTime, (time, record) => time - record.timestamp);
+
+        // Include the record right before the start time.
+        if (includeRecordBeforeStart && lowerIndex > 0)
+            lowerIndex--;
+
+        return this._records.slice(lowerIndex, upperIndex);
     }
 
     // Private

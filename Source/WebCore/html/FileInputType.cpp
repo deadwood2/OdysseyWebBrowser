@@ -24,6 +24,7 @@
 
 #include "Chrome.h"
 #include "DragData.h"
+#include "ElementChildIterator.h"
 #include "Event.h"
 #include "File.h"
 #include "FileList.h"
@@ -39,7 +40,18 @@
 #include "RenderFileUploadControl.h"
 #include "ScriptController.h"
 #include "ShadowRoot.h"
+#include <wtf/TypeCasts.h>
 #include <wtf/text/StringBuilder.h>
+
+
+namespace WebCore {
+class UploadButtonElement;
+}
+
+SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::UploadButtonElement)
+    static bool isType(const WebCore::Element& element) { return element.isUploadButton(); }
+    static bool isType(const WebCore::Node& node) { return is<WebCore::Element>(node) && isType(downcast<WebCore::Element>(node)); }
+SPECIALIZE_TYPE_TRAITS_END()
 
 namespace WebCore {
 
@@ -51,6 +63,8 @@ public:
     static Ref<UploadButtonElement> createForMultiple(Document&);
 
 private:
+    bool isUploadButton() const override { return true; }
+    
     UploadButtonElement(Document&);
 };
 
@@ -150,12 +164,12 @@ bool FileInputType::appendFormData(FormDataList& encoding, bool multipart) const
     // If no filename at all is entered, return successful but empty.
     // Null would be more logical, but Netscape posts an empty file. Argh.
     if (!numFiles) {
-        encoding.appendBlob(element().name(), File::create(""));
+        encoding.appendBlob(element().name(), File::create(emptyString()));
         return true;
     }
 
     for (unsigned i = 0; i < numFiles; ++i)
-        encoding.appendBlob(element().name(), fileList->item(i));
+        encoding.appendBlob(element().name(), *fileList->item(i));
     return true;
 }
 
@@ -169,7 +183,7 @@ String FileInputType::valueMissingText() const
     return element().multiple() ? validationMessageValueMissingForMultipleFileText() : validationMessageValueMissingForFileText();
 }
 
-void FileInputType::handleDOMActivateEvent(Event* event)
+void FileInputType::handleDOMActivateEvent(Event& event)
 {
     if (element().isDisabledFormControl())
         return;
@@ -180,22 +194,22 @@ void FileInputType::handleDOMActivateEvent(Event* event)
     if (Chrome* chrome = this->chrome()) {
         FileChooserSettings settings;
         HTMLInputElement& input = element();
-        settings.allowsMultipleFiles = input.fastHasAttribute(multipleAttr);
+        settings.allowsMultipleFiles = input.hasAttributeWithoutSynchronization(multipleAttr);
         settings.acceptMIMETypes = input.acceptMIMETypes();
         settings.acceptFileExtensions = input.acceptFileExtensions();
         settings.selectedFiles = m_fileList->paths();
 #if ENABLE(MEDIA_CAPTURE)
-        settings.capture = input.shouldUseMediaCapture();
+        settings.mediaCaptureType = input.mediaCaptureType();
 #endif
 
         applyFileChooserSettings(settings);
         chrome->runOpenPanel(input.document().frame(), m_fileChooser);
     }
 
-    event->setDefaultHandled();
+    event.setDefaultHandled();
 }
 
-RenderPtr<RenderElement> FileInputType::createInputRenderer(Ref<RenderStyle>&& style)
+RenderPtr<RenderElement> FileInputType::createInputRenderer(RenderStyle&& style)
 {
     return createRenderer<RenderFileUploadControl>(element(), WTFMove(style));
 }
@@ -277,16 +291,24 @@ void FileInputType::createShadowSubtree()
 void FileInputType::disabledAttributeChanged()
 {
     ASSERT(element().shadowRoot());
-    UploadButtonElement* button = static_cast<UploadButtonElement*>(element().userAgentShadowRoot()->firstChild());
-    if (button)
+
+    ShadowRoot* root = element().userAgentShadowRoot();
+    if (!root)
+        return;
+    
+    if (auto* button = childrenOfType<UploadButtonElement>(*root).first())
         button->setBooleanAttribute(disabledAttr, element().isDisabledFormControl());
 }
 
 void FileInputType::multipleAttributeChanged()
 {
     ASSERT(element().shadowRoot());
-    UploadButtonElement* button = static_cast<UploadButtonElement*>(element().userAgentShadowRoot()->firstChild());
-    if (button)
+
+    ShadowRoot* root = element().userAgentShadowRoot();
+    if (!root)
+        return;
+
+    if (auto* button = childrenOfType<UploadButtonElement>(*root).first())
         button->setValue(element().multiple() ? fileButtonChooseMultipleFilesLabel() : fileButtonChooseFileLabel());
 }
 
@@ -295,8 +317,10 @@ void FileInputType::requestIcon(const Vector<String>& paths)
 #if PLATFORM(IOS)
     UNUSED_PARAM(paths);
 #else
-    if (!paths.size())
+    if (!paths.size()) {
+        updateRendering(nullptr);
         return;
+    }
 
     Chrome* chrome = this->chrome();
     if (!chrome)
@@ -402,7 +426,7 @@ bool FileInputType::receiveDroppedFiles(const DragData& dragData)
     for (auto& path : paths)
         files.append(FileChooserFileInfo(path));
 
-    if (input->fastHasAttribute(multipleAttr))
+    if (input->hasAttributeWithoutSynchronization(multipleAttr))
         filesChosen(files);
     else {
         Vector<FileChooserFileInfo> firstFileOnly;

@@ -20,10 +20,10 @@
  *
  */
 
-#ifndef HTMLOListElement_h
-#define HTMLOListElement_h
+#pragma once
 
 #include "HTMLElement.h"
+#include <wtf/Optional.h>
 
 namespace WebCore {
 
@@ -32,8 +32,8 @@ public:
     static Ref<HTMLOListElement> create(Document&);
     static Ref<HTMLOListElement> create(const QualifiedName&, Document&);
 
-    int start() const { return m_hasExplicitStart ? m_start : (m_isReversed ? itemCount() : 1); }
-    void setStart(int);
+    int start() const { return m_start ? m_start.value() : (m_isReversed ? itemCount() : 1); }
+    WEBCORE_EXPORT void setStart(int);
 
     bool isReversed() const { return m_isReversed; }
 
@@ -51,20 +51,17 @@ private:
         return m_itemCount;
     }
 
-    void recalculateItemCount();
+    WEBCORE_EXPORT void recalculateItemCount();
 
-    virtual void parseAttribute(const QualifiedName&, const AtomicString&) override;
-    virtual bool isPresentationAttribute(const QualifiedName&) const override;
-    virtual void collectStyleForPresentationAttribute(const QualifiedName&, const AtomicString&, MutableStyleProperties&) override;
+    void parseAttribute(const QualifiedName&, const AtomicString&) final;
+    bool isPresentationAttribute(const QualifiedName&) const final;
+    void collectStyleForPresentationAttribute(const QualifiedName&, const AtomicString&, MutableStyleProperties&) final;
 
-    int m_start;
+    Optional<int> m_start;
     unsigned m_itemCount;
 
-    bool m_hasExplicitStart : 1;
     bool m_isReversed : 1;
     bool m_shouldRecalculateItemCount : 1;
 };
 
 } //namespace
-
-#endif

@@ -23,31 +23,28 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef IDBCursor_h
-#define IDBCursor_h
+#pragma once
 
 #if ENABLE(INDEXED_DATABASE)
 
-#include "IDBKey.h"
-#include "IDBTransaction.h"
-#include "IndexedDB.h"
-#include "ScriptWrappable.h"
-#include <bindings/ScriptValue.h>
-#include <wtf/RefCounted.h>
-#include <wtf/RefPtr.h>
+#include "ActiveDOMObject.h"
+#include "DOMWrapperWorld.h"
+#include "IDBCursorInfo.h"
+#include <heap/Strong.h>
 
 namespace WebCore {
 
-class DOMRequestState;
-class IDBAny;
-class IDBCallbacks;
-class IDBRequest;
-class ScriptExecutionContext;
+class IDBGetResult;
+class IDBIndex;
+class IDBObjectStore;
+class IDBTransaction;
 
 struct ExceptionCodeWithMessage;
 
-class IDBCursor : public ScriptWrappable, public RefCounted<IDBCursor> {
+class IDBCursor : public ScriptWrappable, public RefCounted<IDBCursor>, public ActiveDOMObject {
 public:
+    static Ref<IDBCursor> create(IDBTransaction&, IDBIndex&, const IDBCursorInfo&);
+
     static const AtomicString& directionNext();
     static const AtomicString& directionNextUnique();
     static const AtomicString& directionPrev();
@@ -55,35 +52,84 @@ public:
 
     static IndexedDB::CursorDirection stringToDirection(const String& modeString, ExceptionCode&);
     static const AtomicString& directionToString(IndexedDB::CursorDirection mode);
+    
+    virtual ~IDBCursor();
 
-    virtual ~IDBCursor() { }
+    const String& direction() const;
+    JSC::JSValue key() const;
+    JSC::JSValue primaryKey() const;
+    JSC::JSValue value() const;
+    IDBObjectStore* objectStore() const { return m_objectStore.get(); }
+    IDBIndex* index() const { return m_index.get(); }
 
-    // Implement the IDL
-    virtual const String& direction() const = 0;
-    virtual const Deprecated::ScriptValue& key() const = 0;
-    virtual const Deprecated::ScriptValue& primaryKey() const = 0;
-    virtual const Deprecated::ScriptValue& value() const = 0;
-    virtual IDBAny* source() = 0;
+    RefPtr<IDBRequest> update(JSC::ExecState&, JSC::JSValue, ExceptionCodeWithMessage&);
+    void advance(unsigned, ExceptionCodeWithMessage&);
+    void continueFunction(JSC::ExecState&, JSC::JSValue key, ExceptionCodeWithMessage&);
+    RefPtr<IDBRequest> deleteFunction(JSC::ExecState&, ExceptionCodeWithMessage&);
 
-    virtual RefPtr<IDBRequest> update(JSC::ExecState&, Deprecated::ScriptValue&, ExceptionCodeWithMessage&) = 0;
-    virtual void advance(unsigned long, ExceptionCodeWithMessage&) = 0;
-    // FIXME: Try to modify the code generator so this overload is unneeded.
-    virtual void continueFunction(ScriptExecutionContext*, ExceptionCodeWithMessage&) = 0;
-    virtual void continueFunction(ScriptExecutionContext*, const Deprecated::ScriptValue& key, ExceptionCodeWithMessage&) = 0;
-    virtual RefPtr<IDBRequest> deleteFunction(ScriptExecutionContext*, ExceptionCodeWithMessage&) = 0;
+    void continueFunction(const IDBKeyData&, ExceptionCodeWithMessage&);
 
-    virtual bool isKeyCursor() const = 0;
+    const IDBCursorInfo& info() const { return m_info; }
 
-    virtual bool isModernCursor() const { return false; }
+    void setRequest(IDBRequest& request) { m_request = &request; }
+    void clearRequest() { m_request = nullptr; }
+    IDBRequest* request() { return m_request; }
 
-    virtual bool hasPendingActivity() const { return false; }
+    void setGetResult(IDBRequest&, const IDBGetResult&);
+
+    virtual bool isKeyCursorWithValue() const { return false; }
+
+    void decrementOutstandingRequestCount();
+
+    bool hasPendingActivity() const final;
 
 protected:
-    IDBCursor();
+    IDBCursor(IDBTransaction&, IDBObjectStore&, const IDBCursorInfo&);
+    IDBCursor(IDBTransaction&, IDBIndex&, const IDBCursorInfo&);
+
+private:
+    const char* activeDOMObjectName() const final;
+    bool canSuspendForDocumentSuspension() const final;
+
+    bool sourcesDeleted() const;
+    IDBObjectStore& effectiveObjectStore() const;
+    IDBTransaction& transaction() const;
+
+    void uncheckedIterateCursor(const IDBKeyData&, unsigned count);
+
+    // Cursors are created with an outstanding iteration request.
+    unsigned m_outstandingRequestCount { 1 };
+
+    IDBCursorInfo m_info;
+    RefPtr<IDBObjectStore> m_objectStore;
+    RefPtr<IDBIndex> m_index;
+    IDBRequest* m_request { nullptr };
+
+    bool m_gotValue { false };
+
+    IDBKeyData m_currentKeyData;
+    IDBKeyData m_currentPrimaryKeyData;
+
+    JSC::Strong<JSC::Unknown> m_currentKey;
+    JSC::Strong<JSC::Unknown> m_currentPrimaryKey;
+    JSC::Strong<JSC::Unknown> m_currentValue;
 };
+
+inline JSC::JSValue IDBCursor::key() const
+{
+    return m_currentKey.get();
+}
+
+inline JSC::JSValue IDBCursor::primaryKey() const
+{
+    return m_currentPrimaryKey.get();
+}
+
+inline JSC::JSValue IDBCursor::value() const
+{
+    return m_currentValue.get();
+}
 
 } // namespace WebCore
 
-#endif
-
-#endif // IDBCursor_h
+#endif // ENABLE(INDEXED_DATABASE)

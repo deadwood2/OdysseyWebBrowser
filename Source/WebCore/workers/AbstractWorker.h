@@ -34,7 +34,6 @@
 #include "ActiveDOMObject.h"
 #include "EventListener.h"
 #include "EventTarget.h"
-#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 #include <wtf/text/AtomicStringHash.h>
@@ -58,8 +57,8 @@ namespace WebCore {
         intptr_t asID() const { return reinterpret_cast<intptr_t>(this); }
 
     private:
-        virtual void refEventTarget() override final { ref(); }
-        virtual void derefEventTarget() override final { deref(); }
+        void refEventTarget() final { ref(); }
+        void derefEventTarget() final { deref(); }
     };
 
 } // namespace WebCore

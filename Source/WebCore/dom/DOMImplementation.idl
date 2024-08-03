@@ -19,37 +19,25 @@
  */
 
 [
+    ExportToWrappedFunction,
     GenerateIsReachable=ImplDocument,
     ImplementationLacksVTable,
 ] interface DOMImplementation {
+    // FIXME: Using "undefined" as default parameter value is wrong.
+    boolean hasFeature(optional DOMString feature = "undefined", [TreatNullAs=EmptyString] optional DOMString version = "undefined");
 
-    // DOM Level 1
+    [RaisesException, NewObject] DocumentType createDocumentType(DOMString qualifiedName, DOMString publicId, DOMString systemId);
 
-    [ObjCLegacyUnnamedParameters] boolean hasFeature([Default=Undefined] optional DOMString feature, 
-                                      [TreatNullAs=NullString, Default=Undefined] optional DOMString version);
-
-    // DOM Level 2
-
-    [ObjCLegacyUnnamedParameters, RaisesException, NewObject] DocumentType createDocumentType([TreatNullAs=NullString, TreatUndefinedAs=NullString, Default=Undefined] optional DOMString qualifiedName,
-                                                   [TreatNullAs=NullString, TreatUndefinedAs=NullString, Default=Undefined] optional DOMString publicId,
-                                                   [TreatNullAs=NullString, TreatUndefinedAs=NullString, Default=Undefined] optional DOMString systemId);
-
-#if defined(LANGUAGE_OBJECTIVE_C) && LANGUAGE_OBJECTIVE_C || defined(LANGUAGE_GOBJECT) && LANGUAGE_GOBJECT
-    [ObjCLegacyUnnamedParameters, RaisesException] Document createDocument(optional DOMString namespaceURI, optional DOMString qualifiedName,
-        optional DocumentType doctype);
+    [NewObject, RaisesException]
+#if defined(LANGUAGE_GOBJECT) && LANGUAGE_GOBJECT
+        Document
 #else
-    [RaisesException, NewObject] XMLDocument createDocument([TreatNullAs=NullString, TreatUndefinedAs=NullString, Default=Undefined] optional DOMString namespaceURI,
-        [TreatNullAs=NullString, Default=Undefined] optional DOMString qualifiedName,
-        [TreatNullAs=NullString, Default=Undefined] optional DocumentType doctype);
+        XMLDocument
 #endif
+    createDocument(DOMString? namespaceURI, [TreatNullAs=EmptyString] DOMString qualifiedName, optional DocumentType? doctype = null);
 
-    // DOMImplementationCSS interface from DOM Level 2 CSS
+    // FIXME: Using "undefined" as default parameter value is wrong.
+    [RaisesException] CSSStyleSheet createCSSStyleSheet(optional DOMString title = "undefined", optional DOMString media = "undefined");
 
-    [ObjCLegacyUnnamedParameters, RaisesException] CSSStyleSheet createCSSStyleSheet([Default=Undefined] optional DOMString title,
-                                                     [Default=Undefined] optional DOMString media);
-
-    // HTMLDOMImplementation interface from DOM Level 2 HTML
-
-    [NewObject] HTMLDocument createHTMLDocument([Default=NullString] optional DOMString title);
+    [NewObject] HTMLDocument createHTMLDocument(optional DOMString title);
 };
-

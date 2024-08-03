@@ -202,7 +202,7 @@ void StyledElement::styleAttributeChanged(const AtomicString& newStyleString, At
         if (PropertySetCSSStyleDeclaration* cssomWrapper = inlineStyleCSSOMWrapper())
             cssomWrapper->clearParentElement();
         ensureUniqueElementData().m_inlineStyle = nullptr;
-    } else if (reason == ModifiedByCloning || document().contentSecurityPolicy()->allowInlineStyle(document().url(), startLineNumber, isInUserAgentShadowTree()))
+    } else if (reason == ModifiedByCloning || document().contentSecurityPolicy()->allowInlineStyle(document().url(), startLineNumber, String(), isInUserAgentShadowTree()))
         setInlineStyleFromString(newStyleString);
 
     elementData()->setStyleAttributeIsDirty(false);
@@ -347,7 +347,7 @@ void StyledElement::rebuildPresentationAttributeStyle()
 
     std::unique_ptr<PresentationAttributeCacheEntry> newEntry = std::make_unique<PresentationAttributeCacheEntry>();
     newEntry->key = cacheKey;
-    newEntry->value = style.release();
+    newEntry->value = WTFMove(style);
 
     static const int presentationAttributeCacheMaximumSize = 4096;
     if (presentationAttributeCache().size() > presentationAttributeCacheMaximumSize) {

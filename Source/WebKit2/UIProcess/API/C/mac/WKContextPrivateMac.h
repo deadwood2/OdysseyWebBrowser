@@ -77,8 +77,6 @@ WK_EXPORT WKStringRef WKPlugInInfoIsSandboxedKey();
 WK_EXPORT bool WKContextShouldBlockWebGL();
 WK_EXPORT bool WKContextShouldSuggestBlockWebGL();
 
-WK_EXPORT pid_t WKContextGetNetworkProcessIdentifier(WKContextRef context);
-
 #ifdef __cplusplus
 }
 #endif

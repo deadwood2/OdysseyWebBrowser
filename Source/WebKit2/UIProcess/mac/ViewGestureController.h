@@ -109,6 +109,8 @@ public:
 
     bool shouldIgnorePinnedState() { return m_pendingSwipeTracker.shouldIgnorePinnedState(); }
     void setShouldIgnorePinnedState(bool ignore) { m_pendingSwipeTracker.setShouldIgnorePinnedState(ignore); }
+
+    bool isPhysicallySwipingLeft(SwipeDirection) const;
 #else
     void installSwipeHandler(UIView *gestureRecognizerView, UIView *swipingView);
     void setAlternateBackForwardListSourceView(WKWebView *);
@@ -136,7 +138,7 @@ public:
 
 private:
     // IPC::MessageReceiver.
-    virtual void didReceiveMessage(IPC::Connection&, IPC::MessageDecoder&) override;
+    void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
 
     static ViewGestureController* gestureControllerForPage(uint64_t);
 

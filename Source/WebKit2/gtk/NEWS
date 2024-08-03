@@ -1,132 +1,219 @@
 ==================
-WebKitGTK+  2.12.5
+WebKitGTK+  2.14.7
 ==================
 
-What's new in WebKitGTK+ 2.12.5?
+What's new in WebKitGTK+ 2.14.7?
 
-  - Fix a regression introduced in 2.12.4 that caused a hang in the network process after a load failure.
+  - Update user agent quirks to make Youtube and new Google login page work.
+  - Fix playing of some live streams.
+
+==================
+WebKitGTK+  2.14.6
+==================
+
+What's new in WebKitGTK+ 2.14.6?
+
+  - Fix rendering issues in long documents with transparent background.
+  - Fix no-third-party cookies policy in case of redirections.
+  - Honor GTK+ font settings.
+  - Fix rendering artifacts when resizing the window in accelerated compositing mode.
+  - Remove flickering when leaving accelerated compositing mode.
+  - Fix web process deadlocks when destroying the media player.
+  - Properly handle copy drag and drop operations.
+  - Ensure we never try to load GTK2 plugins in Wayland.
+  - Fix a hang when sending an IPC messages fails because socket read buffers are full.
   - Fix several crashes and rendering issues.
+  - Security fixes: CVE-2017-2369, CVE-2017-2460, CVE-2017-2470, CVE-2017-2475, CVE-2017-2481, CVE-2017-2476,
+    CVE-2017-2471, CVE-2017-2466, CVE-2017-2459, CVE-2017-2454, CVE-2017-2446, CVE-2017-2468, CVE-2017-2465,
+    CVE-2016-9643, CVE-2017-2377, CVE-2017-2364, CVE-2017-2367, CVE-2017-2442, CVE-2017-2419, CVE-2017-2392,
+    CVE-2017-2405, CVE-2017-2394.
 
 ==================
-WebKitGTK+  2.12.4
+WebKitGTK+  2.14.5
 ==================
 
-What's new in WebKitGTK+ 2.12.4?
+What's new in WebKitGTK+ 2.14.5?
 
-  - Fix performance in accelerated compositing mode with the modesetting intel driver and DRI3 enabled.
-  - Reduce the amount of file descriptors that the Web Process keeps open.
-  - Fix Web Process deadlocks when loading HLS videos.
-  - Make CSS and SVG animations run at 60fps.
-  - Make meter elements accessible.
-  - Improve accessibility name and description of elements to make it more compatible with W3C specs and
-    fix several bugs in which the accessible name of objects was missing or broken.
-  - Fix a crash when running windowed plugins under Wayland.
-  - Fix a crash at process exit under Wayland.
+  - Fix rendering of non-accelerated contents with HiDPI.
+  - Revert the fix for rendering issues in long documents with transparent background because it caused
+    issues in HiDPI.
+
+==================
+WebKitGTK+  2.14.4
+==================
+
+What's new in WebKitGTK+ 2.14.4?
+
+  - Make accelerating compositing mode on-demand again. By default it will only be used for websites
+    that require it, saving a lot of memory on websites that don't need it.
+  - Fix rendering issues in long documents with transparent background.
+  - Release unused UpdateAtlas and reduce the tile coverage on memory pressure.
+  - The media backend now stores preloaded media in /var/tmp instead of user cache dir.
+  - Make inspector work again when accelerated compositing support is disabled.
+  - Fix a deadlock when the media player is destroyed.
+  - Fix network process crashes when loading custom URI schemes.
+  - Fix overlay scrollbars that are over a subframe.
+  - Fix a crash in GraphicsContext3D::drawArrays when using OpenGL 3.2 core profile.
+  - Fix BadDamage X errors happening when resizing the WebView.
+  - Fix several crashes and rendering issues.
+  - Security fixes: CVE-2017-2365, CVE-2017-2366, CVE-2017-2373, CVE-2017-2363, CVE-2017-2362, CVE-2017-2350,
+    CVE-2017-2350, CVE-2017-2354, CVE-2017-2355, CVE-2017-2356, CVE-2017-2371, CVE-2017-2364, CVE-2017-2369.
+
+==================
+WebKitGTK+  2.14.3
+==================
+
+What's new in WebKitGTK+ 2.14.3?
+
+  - Create GLX OpenGL contexts using version 3.2 (core profile) when available to reduce the memory
+    consumption on Mesa based drivers.
+  - Improve memory pressure handler to reduce the CPU usage on memory pressure situations.
+  - Fix a regression in WebKitWebView title notify signal emission that caused the signal to be emitted
+    multiple times.
+  - Fix high CPU usage in the web process loading hyphenation dictionaries.
+  - More user agent string improvements to improve compatibility with several websites.
+  - Fix web process crash when closing the web view in X11.
+  - Fix the build with OpenGL ES2 enabled.
   - Fix several crashes and rendering issues.
   - Translation updates: German.
-  - Security fixes: CVE-2016-4622, CVE-2016-4624, CVE-2016-4591, CVE-2016-4590.
+  - Security fixes: CVE-2016-7656, CVE-2016-7635, CVE-2016-7654, CVE-2016-7639, CVE-2016-7645, CVE-2016-7652,
+    CVE-2016-7641, CVE-2016-7632, CVE-2016-7599, CVE-2016-7592, CVE-2016-7589, CVE-2016-7623, CVE-2016-7586.
 
 ==================
-WebKitGTK+  2.12.3
+WebKitGTK+  2.14.2
 ==================
 
-What's new in WebKitGTK+ 2.12.3?
+What's new in WebKitGTK+ 2.14.2?
 
-  - Improved the detection of supported MIME types supported by the media player.
-  - Fix web process crash when playing adaptive streaming media.
-  - Change the volume while thumb slider is dragged, not only when released.
-  - Fix leaked thread in network process.
+  - Expose WebKitDOMHTMLInputElement APIs for form autofill in unstable DOM API.
+  - Properly update WebKitWebView and WebKitWebPage URI properties when request is modified by
+    WebKitWebPage:send-request signal.
+  - Restore user agent quirk for Yahoo.
+  - Dot not leak the default WebKitWebsiteDataManager in WebKitWebContext.
+  - Use eglGetPlatformDisplay when available instead of eglGetDisplay.
+  - Avoid strstr() when checking (E)GL extensions.
   - Fix several crashes and rendering issues.
+  - Fix the build with ENABLE_OPENGL=OFF and allow to build on Wayland without OpenGL again.
   - Translation updates: Hungarian.
-  - Security fixes: CVE-2016-1857, CVE-2016-1856.
 
 ==================
-WebKitGTK+  2.12.2
+WebKitGTK+  2.14.1
 ==================
 
-What's new in WebKitGTK+ 2.12.2?
+What's new in WebKitGTK+ 2.14.1?
 
-  - Fix rendering of scrollbars with GTK themes using stepper buttons.
-  - Fix compatibility issue with 2.12.1 regarding local storage access from file URLs.
-  - Make menu list buttons use the text color from the theme.
-  - Do not show resize grip in non-resizable text fields.
-  - Fix accessibility events causing Orca to echo key presses instead of speaking the
-    inserted characters in password fields.
-  - Fix an off by one error in hyphenation.
+  - MiniBrowser and jsc binaries are now installed in pkglibexecdir instead of bindir.
+  - Improve performance when resizing a window with multiple web views in X11.
+  - Check whether GDK can use GL before using gdk_cairo_draw_from_gl() in Wayland.
+  - Updated default UserAgent string or better compatibility.
+  - Fix a crash on github.com in IntlDateTimeFormat::resolvedOptions when using the C locale.
+  - Fix BadDamage X errors when closing the web view in X11.
+  - Fix UIProcess crash when using Japanese input method.
+  - Fix build with clang due to missing header includes.
+  - Fix the build with USE_REDIRECTED_XCOMPOSITE_WINDOW disabled.
   - Fix several crashes and rendering issues.
-  - Fix the build with libjpeg v9.
-  - Translation updates: Bulgarian, Finnish, Greek, Italian, Turkish.
+  - Translation updates: German.
 
 ==================
-WebKitGTK+  2.12.1
+WebKitGTK+  2.14.0
 ==================
 
-What's new in WebKitGTK+ 2.12.1?
+What's new in WebKitGTK+ 2.14.0?
 
-  - Fix spotify player.
-  - Improve themed control elements rendering to better match GTK+ widgets.
-  - Make remote web inspector work again.
+  - Use gdk_cairo_draw_from_gl() when possible in Wayland to render directly using the GPU in the UI process.
+  - Ensure we don't send an empty referrer header after session restore.
+  - Fix a web process crash in pages using filter animations.
+  - Fix main frame scrolling jumps when scrolling acclerated subframes.
+  - Fix the size of the cairo surface created in the UI process on Wayland.
+  - Fix memory leak in JavaScriptCore.
+  - Fix the build when '.' is not in @INC by default in perl.
+  - Translation updates: Ukrainian.
+
+==================
+WebKitGTK+ 2.13.92
+==================
+
+What's new in WebKitGTK+ 2.13.92?
+
+  - Add clipboard support in Wayland.
+  - Improve rendering of scrollbars with themes setting a minimum width for the scrollbar CSS gadget.
+  - Fix another WebProcess crash when the last WebView is destroyed.
+  - Fix the build with GCC 6.
+
+==================
+WebKitGTK+ 2.13.91
+==================
+
+What's new in WebKitGTK+ 2.13.91?
+
+  - Improve the performance when resizing the WebView with the threaded compositor.
+  - Do not try to use GL_PACK_ROW_LENGTH when compiling with GLES2, since it's not available.
+  - Use a different plugins cache file in Wayland and X11.
+  - Fix UI process crash visiting sites protected with HTTP auth when using GTK+ < 3.14.
+  - Fix a WebProcess crash when the last WebView is destroyed.
+  - Fix build configure without Wayland support.
+  - Fix the build when compiling with Clang.
   - Fix several crashes and rendering issues.
-  - Fix several memory leaks.
-  - Fix the build in Linux / PowerPC.
-  - Fix detection of S390X and PPC64 architectures.
-  - Fix the build in glibc-based BSD systems
-  - Translation updates: Brazilian Portuguese.
-
-==================
-WebKitGTK+  2.12.0
-==================
-
-What's new in WebKitGTK+ 2.12.0?
-
-  - Enable GSS-Negotiate support when available in libsoup.
-  - Fix overlay scrollbar indicator position.
-  - Fix smooth scrolling behavior that was not fixed in all cases in 2.11.92.
-  - Fix the build with newer versions of GCC and clang.
-
-==================
-WebKitGTK+ 2.11.92
-==================
-
-What's new in WebKitGTK+ 2.11.92?
-
-  - Revert the patch to limit the number of tiles according to the visible area introduced in 2.11.90,
-    because it caused rendering issues in several popular websites.
-  - Fix scrollbars rendering again with GTK+ >= 3.19.11.
-  - Fix rendering of slider input elements.
-  - Fix rendering artifacts when using a web view background color.
-  - Make webkit_web_context_clear_cache() work again.
-  - Fix smooth scrolling behavior that was changed by mistake.
-  - Don't force ENABLE_INTROSPECTION=OFF on Mac.
-  - Install WebProcess and NetworkProcess on OSX when not building the Mac port.
-
-==================
-WebKitGTK+ 2.11.91
-==================
-
-What's new in WebKitGTK+ 2.11.91?
-
-  - Do not show stale contents after session restore.
-  - Fix flickering and rendering artifacts when entering accelerated compositing mode
-    before the web view is realized.
-  - Fix several rendering issues and crashes.
-  - Fix build with FTL enabled in FreeBSD.
   - Translation updates: Polish.
 
 ==================
-WebKitGTK+ 2.11.90
+WebKitGTK+ 2.13.90
 ==================
 
-What's new in WebKitGTK+ 2.11.90?
+What's new in WebKitGTK+ 2.13.90?
 
-  - Switch to use overlay scrollbars like all other GTK+ widgets and ensure the behavior
-    is consistent with GTK+ too.
-  - Limit the number of tiles according to the visible area. This was causing a huge memory
-    consumption with some websites.
-  - Fix toggle buttons rendering with GTK+ 3.19.
-  - Fix HTTP authentication dialog rendering when accelerated compositing mode is enabled.
-  - Use G_TYPE_ERROR instead of G_TYPE_POINTER for GError parameters of signals.
-  - Fix several memory leaks.
+  - Add initial implementation of accelerating compositing support under Wayland.
+  - Fix performance with the modesetting intel driver and DRI3 enabled.
+  - Improved performance when resizing the web view on X11.
+  - Fix several crashes and rendering issues.
+  - Translation updates: German, Polish.
+
+=================
+WebKitGTK+ 2.13.4
+=================
+
+What's new in WebKitGTK+ 2.13.4?
+
+  - Switched to use the threaded compositor. Accelerated compositing mode is now always enabled by default
+    and happens in a separate thread in the web process.
+  - Make web view background colors work in accelerated compositing mode.
+  - Fix several crashes and rendering issues.
+
+=================
+WebKitGTK+ 2.13.3
+=================
+
+What's new in WebKitGTK+ 2.13.3?
+
+  - Fix Web Process deadlocks when loading HLS videos.
+  - Make videos work when painted into a canvas when accelerated compositing is enabled.
+  - Fix flickering with animated GIFs.
+  - Fix a Web Process crash when video repaint is requested with GStreamer GL enabled.
+  - Reduce the amount of file descriptors that the Web Process keeps open.
+  - Make memory pressure handler work when cgroups are not available.
+  - Fix several crashes and rendering issues.
+
+=================
+WebKitGTK+ 2.13.2
+=================
+
+What's new in WebKitGTK+ 2.13.2?
+
+  - Properly redraw the web view when reparented in force compositing mode.
+  - Flip the volume control layout in media controls on RTL.
+  - Add support for video orientation to the GStreamer media backend.
+  - Fix several crashes and rendering issues.
+
+=================
+WebKitGTK+ 2.13.1
+=================
+
+What's new in WebKitGTK+ 2.13.1?
+
+  - CSS Grid Layout has been unprefixed and can be enabled as an experimental feature at runtime.
+  - The HTTP disk cache implements speculative resources revalidation.
+  - Add a new WebKitSetting to allow universal access from file URLs.
+  - Fix several crashes and rendering issues.
 
 =================
 WebKitGTK+ 2.11.5

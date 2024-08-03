@@ -22,8 +22,7 @@
  *
  */
 
-#ifndef RenderStyle_h
-#define RenderStyle_h
+#pragma once
 
 #include "AnimationList.h"
 #include "BorderValue.h"
@@ -31,19 +30,16 @@
 #include "CSSPrimitiveValue.h"
 #include "CSSPropertyNames.h"
 #include "Color.h"
-#include "ColorSpace.h"
 #include "CounterDirectives.h"
 #include "DataRef.h"
-#include "FontBaseline.h"
 #include "FontDescription.h"
 #include "GraphicsTypes.h"
 #include "Length.h"
 #include "LengthBox.h"
-#include "LengthFunctions.h"
+#include "LengthPoint.h"
 #include "LengthSize.h"
 #include "LineClampValue.h"
 #include "NinePieceImage.h"
-#include "OutlineValue.h"
 #include "Pagination.h"
 #include "RenderStyleConstants.h"
 #include "RoundedRect.h"
@@ -71,7 +67,6 @@
 #include <memory>
 #include <wtf/Forward.h>
 #include <wtf/NeverDestroyed.h>
-#include <wtf/RefCounted.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/Vector.h>
 
@@ -121,9 +116,11 @@ class TransformationMatrix;
 
 struct ScrollSnapPoints;
 
-typedef Vector<RefPtr<RenderStyle>, 4> PseudoStyleCache;
+typedef Vector<std::unique_ptr<RenderStyle>, 4> PseudoStyleCache;
 
-class RenderStyle: public RefCounted<RenderStyle> {
+class RenderStyle {
+    WTF_MAKE_FAST_ALLOCATED;
+    
     friend class CSSPropertyAnimationWrapperMap; // Used by CSS animations. We can't allow them to animate based off visited colors.
     friend class ApplyStyleCommand; // Editing has to only reveal unvisited info.
     friend class EditingStyle; // Editing has to only reveal unvisited info.
@@ -470,29 +467,48 @@ protected:
 // don't inherit
     NonInheritedFlags noninherited_flags;
 
+#if !ASSERT_DISABLED || ENABLE(SECURITY_ASSERTIONS)
+    bool m_deletionHasBegun { false };
+#endif
+
 // !END SYNC!
 private:
-    // used to create the default style.
-    ALWAYS_INLINE RenderStyle(bool);
-    ALWAYS_INLINE RenderStyle(const RenderStyle&);
+    enum CreateDefaultStyleTag { CreateDefaultStyle };
+    RenderStyle(CreateDefaultStyleTag);
+
+    static RenderStyle& defaultStyle();
 
 public:
-    static Ref<RenderStyle> create();
-    static Ref<RenderStyle> createDefaultStyle();
-    static Ref<RenderStyle> createAnonymousStyleWithDisplay(const RenderStyle* parentStyle, EDisplay);
-    static Ref<RenderStyle> clone(const RenderStyle*);
+    RenderStyle(RenderStyle&&) = default;
+    RenderStyle& operator=(RenderStyle&&) = default;
 
-    // Create a RenderStyle for generated content by inheriting from a pseudo style.
-    static Ref<RenderStyle> createStyleInheritingFromPseudoStyle(const RenderStyle& pseudoStyle);
+    // This is not a true copy constructor. It doesn't copy pseudo style caches for example.
+    enum CloneTag { Clone };
+    RenderStyle(const RenderStyle&, CloneTag);
 
-    ContentPosition resolvedAlignContentPosition() const;
-    ContentDistributionType resolvedAlignContentDistribution() const;
-    ContentPosition resolvedJustifyContentPosition() const;
-    ContentDistributionType resolvedJustifyContentDistribution() const;
-    static ItemPosition resolveAlignment(const RenderStyle& parentStyle, const RenderStyle& childStyle, ItemPosition resolvedAutoPositionForRenderer);
-    static OverflowAlignment resolveAlignmentOverflow(const RenderStyle& parentStyle, const RenderStyle& childStyle);
-    static ItemPosition resolveJustification(const RenderStyle& parentStyle, const RenderStyle& childStyle, ItemPosition resolvedAutoPositionForRenderer);
-    static OverflowAlignment resolveJustificationOverflow(const RenderStyle& parentStyle, const RenderStyle& childStyle);
+    ~RenderStyle();
+
+    static RenderStyle create();
+    static std::unique_ptr<RenderStyle> createPtr();
+
+    static RenderStyle clone(const RenderStyle&);
+    static std::unique_ptr<RenderStyle> clonePtr(const RenderStyle&);
+
+    static RenderStyle createAnonymousStyleWithDisplay(const RenderStyle& parentStyle, EDisplay);
+    static RenderStyle createStyleInheritingFromPseudoStyle(const RenderStyle& pseudoStyle);
+
+#if !ASSERT_DISABLED || ENABLE(SECURITY_ASSERTIONS)
+    bool deletionHasBegun() const { return m_deletionHasBegun; }
+#endif
+
+    ContentPosition resolvedJustifyContentPosition(const StyleContentAlignmentData& normalValueBehavior) const;
+    ContentDistributionType resolvedJustifyContentDistribution(const StyleContentAlignmentData& normalValueBehavior) const;
+    ContentPosition resolvedAlignContentPosition(const StyleContentAlignmentData& normalValueBehavior) const;
+    ContentDistributionType resolvedAlignContentDistribution(const StyleContentAlignmentData& normalValueBehavior) const;
+    StyleSelfAlignmentData resolvedAlignItems(ItemPosition normalValueBehaviour) const;
+    StyleSelfAlignmentData resolvedAlignSelf(const RenderStyle& parentStyle, ItemPosition normalValueBehaviour) const;
+    StyleSelfAlignmentData resolvedJustifyItems(ItemPosition normalValueBehaviour) const;
+    StyleSelfAlignmentData resolvedJustifySelf(const RenderStyle& parentStyle, ItemPosition normalValueBehaviour) const;
 
     enum IsAtShadowBoundary {
         AtShadowBoundary,
@@ -506,7 +522,7 @@ public:
     void setStyleType(PseudoId styleType) { noninherited_flags.setStyleType(styleType); }
 
     RenderStyle* getCachedPseudoStyle(PseudoId) const;
-    RenderStyle* addCachedPseudoStyle(PassRefPtr<RenderStyle>);
+    RenderStyle* addCachedPseudoStyle(std::unique_ptr<RenderStyle>);
     void removeCachedPseudoStyle(PseudoId);
 
     const PseudoStyleCache* cachedPseudoStyles() const { return m_cachedPseudoStyles.get(); }
@@ -535,7 +551,8 @@ public:
     bool hasMargin() const { return !surround->margin.isZero(); }
     bool hasBorder() const { return surround->border.hasBorder(); }
     bool hasBorderFill() const { return surround->border.hasFill(); }
-    bool hasBorderDecoration() const { return hasBorder() || hasBorderFill(); }
+    bool hasVisibleBorderDecoration() const { return hasVisibleBorder() || hasBorderFill(); }
+    bool hasVisibleBorder() const { return surround->border.hasVisibleBorder(); }
     bool hasPadding() const { return !surround->padding.isZero(); }
     bool hasOffset() const { return !surround->offset.isZero(); }
     bool hasMarginBeforeQuirk() const { return marginBefore().hasQuirk(); }
@@ -738,8 +755,8 @@ public:
     bool hasExplicitlySetDirection() const { return noninherited_flags.hasExplicitlySetDirection(); }
 
     const Length& specifiedLineHeight() const;
-    Length lineHeight() const;
-    int computedLineHeight() const;
+    WEBCORE_EXPORT Length lineHeight() const;
+    WEBCORE_EXPORT int computedLineHeight() const;
 
     EWhiteSpace whiteSpace() const { return static_cast<EWhiteSpace>(inherited_flags._white_space); }
     static bool autoWrap(EWhiteSpace ws)
@@ -826,8 +843,8 @@ public:
     StyleImage* maskBoxImageSource() const { return rareNonInheritedData->m_maskBoxImage.image(); }
  
     EBorderCollapse borderCollapse() const { return static_cast<EBorderCollapse>(inherited_flags._border_collapse); }
-    short horizontalBorderSpacing() const;
-    short verticalBorderSpacing() const;
+    float horizontalBorderSpacing() const;
+    float verticalBorderSpacing() const;
     EEmptyCell emptyCells() const { return static_cast<EEmptyCell>(inherited_flags._empty_cells); }
     ECaptionSide captionSide() const { return static_cast<ECaptionSide>(inherited_flags._caption_side); }
 
@@ -939,10 +956,20 @@ public:
 #if ENABLE(CSS_GRID_LAYOUT)
     const Vector<GridTrackSize>& gridColumns() const { return rareNonInheritedData->m_grid->m_gridColumns; }
     const Vector<GridTrackSize>& gridRows() const { return rareNonInheritedData->m_grid->m_gridRows; }
+    const Vector<GridTrackSize>& gridAutoRepeatColumns() const { return rareNonInheritedData->m_grid->m_gridAutoRepeatColumns; }
+    const Vector<GridTrackSize>& gridAutoRepeatRows() const { return rareNonInheritedData->m_grid->m_gridAutoRepeatRows; }
+    unsigned gridAutoRepeatColumnsInsertionPoint() const { return rareNonInheritedData->m_grid->m_autoRepeatColumnsInsertionPoint; }
+    unsigned gridAutoRepeatRowsInsertionPoint() const { return rareNonInheritedData->m_grid->m_autoRepeatRowsInsertionPoint; }
+    AutoRepeatType gridAutoRepeatColumnsType() const  { return rareNonInheritedData->m_grid->m_autoRepeatColumnsType; }
+    AutoRepeatType gridAutoRepeatRowsType() const  { return rareNonInheritedData->m_grid->m_autoRepeatRowsType; }
     const NamedGridLinesMap& namedGridColumnLines() const { return rareNonInheritedData->m_grid->m_namedGridColumnLines; }
     const NamedGridLinesMap& namedGridRowLines() const { return rareNonInheritedData->m_grid->m_namedGridRowLines; }
     const OrderedNamedGridLinesMap& orderedNamedGridColumnLines() const { return rareNonInheritedData->m_grid->m_orderedNamedGridColumnLines; }
     const OrderedNamedGridLinesMap& orderedNamedGridRowLines() const { return rareNonInheritedData->m_grid->m_orderedNamedGridRowLines; }
+    const NamedGridLinesMap& autoRepeatNamedGridColumnLines() const { return rareNonInheritedData->m_grid->m_autoRepeatNamedGridColumnLines; }
+    const NamedGridLinesMap& autoRepeatNamedGridRowLines() const { return rareNonInheritedData->m_grid->m_autoRepeatNamedGridRowLines; }
+    const OrderedNamedGridLinesMap& autoRepeatOrderedNamedGridColumnLines() const { return rareNonInheritedData->m_grid->m_autoRepeatOrderedNamedGridColumnLines; }
+    const OrderedNamedGridLinesMap& autoRepeatOrderedNamedGridRowLines() const { return rareNonInheritedData->m_grid->m_autoRepeatOrderedNamedGridRowLines; }
     const NamedGridAreaMap& namedGridArea() const { return rareNonInheritedData->m_grid->m_namedGridArea; }
     size_t namedGridAreaRowCount() const { return rareNonInheritedData->m_grid->m_namedGridAreaRowCount; }
     size_t namedGridAreaColumnCount() const { return rareNonInheritedData->m_grid->m_namedGridAreaColumnCount; }
@@ -951,8 +978,8 @@ public:
     bool isGridAutoFlowDirectionColumn() const { return (rareNonInheritedData->m_grid->m_gridAutoFlow & InternalAutoFlowDirectionColumn); }
     bool isGridAutoFlowAlgorithmSparse() const { return (rareNonInheritedData->m_grid->m_gridAutoFlow & InternalAutoFlowAlgorithmSparse); }
     bool isGridAutoFlowAlgorithmDense() const { return (rareNonInheritedData->m_grid->m_gridAutoFlow & InternalAutoFlowAlgorithmDense); }
-    const GridTrackSize& gridAutoColumns() const { return rareNonInheritedData->m_grid->m_gridAutoColumns; }
-    const GridTrackSize& gridAutoRows() const { return rareNonInheritedData->m_grid->m_gridAutoRows; }
+    const Vector<GridTrackSize>& gridAutoColumns() const { return rareNonInheritedData->m_grid->m_gridAutoColumns; }
+    const Vector<GridTrackSize>& gridAutoRows() const { return rareNonInheritedData->m_grid->m_gridAutoRows; }
     const Length& gridColumnGap() const { return rareNonInheritedData->m_grid->m_gridColumnGap; }
     const Length& gridRowGap() const { return rareNonInheritedData->m_grid->m_gridRowGap; }
 
@@ -1035,8 +1062,9 @@ public:
     TextOrientation textOrientation() const { return static_cast<TextOrientation>(rareInheritedData->m_textOrientation); }
 
     ObjectFit objectFit() const { return static_cast<ObjectFit>(rareNonInheritedData->m_objectFit); }
-    
-    // Return true if any transform related property (currently transform, transformStyle3D or perspective) 
+    LengthPoint objectPosition() const { return rareNonInheritedData->m_objectPosition; }
+
+    // Return true if any transform related property (currently transform, transformStyle3D or perspective)
     // indicates that we are transforming
     bool hasTransformRelatedProperty() const { return hasTransform() || preserves3D() || hasPerspective(); }
 
@@ -1184,12 +1212,8 @@ public:
     Isolation isolation() const { return IsolationAuto; }
     bool hasIsolation() const { return false; }
 #endif
- 
-#if USE(RTL_SCROLLBAR)
-    bool shouldPlaceBlockDirectionScrollbarOnLogicalLeft() const { return !isLeftToRightDirection() && isHorizontalWritingMode(); }
-#else
-    bool shouldPlaceBlockDirectionScrollbarOnLogicalLeft() const { return false; }
-#endif
+
+    bool shouldPlaceBlockDirectionScrollbarOnLeft() const;
 
 #if ENABLE(CSS_TRAILING_WORD)
     TrailingWord trailingWord() const { return static_cast<TrailingWord>(rareInheritedData->trailingWord); }
@@ -1428,8 +1452,8 @@ public:
     void setMaskSize(LengthSize size) { SET_VAR(rareNonInheritedData, m_mask.m_sizeLength, WTFMove(size)); }
 
     void setBorderCollapse(EBorderCollapse collapse) { inherited_flags._border_collapse = collapse; }
-    void setHorizontalBorderSpacing(short);
-    void setVerticalBorderSpacing(short);
+    void setHorizontalBorderSpacing(float);
+    void setVerticalBorderSpacing(float);
     void setEmptyCells(EEmptyCell v) { inherited_flags._empty_cells = v; }
     void setCaptionSide(ECaptionSide v) { inherited_flags._caption_side = v; }
 
@@ -1535,14 +1559,24 @@ public:
     void setJustifySelfPosition(ItemPosition position) { rareNonInheritedData.access()->m_justifySelf.setPosition(position); }
     void setJustifySelfOverflow(OverflowAlignment overflow) { rareNonInheritedData.access()->m_justifySelf.setOverflow(overflow); }
 #if ENABLE(CSS_GRID_LAYOUT)
-    void setGridAutoColumns(const GridTrackSize& length) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_gridAutoColumns, length); }
-    void setGridAutoRows(const GridTrackSize& length) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_gridAutoRows, length); }
+    void setGridAutoColumns(const Vector<GridTrackSize>& trackSizeList) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_gridAutoColumns, trackSizeList); }
+    void setGridAutoRows(const Vector<GridTrackSize>& trackSizeList) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_gridAutoRows, trackSizeList); }
     void setGridColumns(const Vector<GridTrackSize>& lengths) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_gridColumns, lengths); }
     void setGridRows(const Vector<GridTrackSize>& lengths) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_gridRows, lengths); }
+    void setGridAutoRepeatColumns(const Vector<GridTrackSize>& lengths) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_gridAutoRepeatColumns, lengths); }
+    void setGridAutoRepeatRows(const Vector<GridTrackSize>& lengths) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_gridAutoRepeatRows, lengths); }
+    void setGridAutoRepeatColumnsInsertionPoint(const unsigned insertionPoint) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_autoRepeatColumnsInsertionPoint, insertionPoint); }
+    void setGridAutoRepeatRowsInsertionPoint(const unsigned insertionPoint) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_autoRepeatRowsInsertionPoint, insertionPoint); }
+    void setGridAutoRepeatColumnsType(const AutoRepeatType autoRepeatType) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_autoRepeatColumnsType, autoRepeatType); }
+    void setGridAutoRepeatRowsType(const AutoRepeatType autoRepeatType) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_autoRepeatRowsType, autoRepeatType); }
     void setNamedGridColumnLines(const NamedGridLinesMap& namedGridColumnLines) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_namedGridColumnLines, namedGridColumnLines); }
     void setNamedGridRowLines(const NamedGridLinesMap& namedGridRowLines) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_namedGridRowLines, namedGridRowLines); }
     void setOrderedNamedGridColumnLines(const OrderedNamedGridLinesMap& orderedNamedGridColumnLines) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_orderedNamedGridColumnLines, orderedNamedGridColumnLines); }
     void setOrderedNamedGridRowLines(const OrderedNamedGridLinesMap& orderedNamedGridRowLines) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_orderedNamedGridRowLines, orderedNamedGridRowLines); }
+    void setAutoRepeatNamedGridColumnLines(const NamedGridLinesMap& namedGridColumnLines) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_autoRepeatNamedGridColumnLines, namedGridColumnLines); }
+    void setAutoRepeatNamedGridRowLines(const NamedGridLinesMap& namedGridRowLines) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_autoRepeatNamedGridRowLines, namedGridRowLines); }
+    void setAutoRepeatOrderedNamedGridColumnLines(const OrderedNamedGridLinesMap& orderedNamedGridColumnLines) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_autoRepeatOrderedNamedGridColumnLines, orderedNamedGridColumnLines); }
+    void setAutoRepeatOrderedNamedGridRowLines(const OrderedNamedGridLinesMap& orderedNamedGridRowLines) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_autoRepeatOrderedNamedGridRowLines, orderedNamedGridRowLines); }
     void setNamedGridArea(const NamedGridAreaMap& namedGridArea) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_namedGridArea, namedGridArea); }
     void setNamedGridAreaRowCount(size_t rowCount) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_namedGridAreaRowCount, rowCount); }
     void setNamedGridAreaColumnCount(size_t columnCount) { SET_NESTED_VAR(rareNonInheritedData, m_grid, m_namedGridAreaColumnCount, columnCount); }
@@ -1590,7 +1624,7 @@ public:
     void setColumnRuleWidth(unsigned short w) { SET_NESTED_VAR(rareNonInheritedData, m_multiCol, m_rule.m_width, w); }
     void resetColumnRule() { SET_NESTED_VAR(rareNonInheritedData, m_multiCol, m_rule, BorderValue()); }
     void setColumnSpan(ColumnSpan columnSpan) { SET_NESTED_VAR(rareNonInheritedData, m_multiCol, m_columnSpan, columnSpan); }
-    void inheritColumnPropertiesFrom(RenderStyle* parent) { rareNonInheritedData.access()->m_multiCol = parent->rareNonInheritedData->m_multiCol; }
+    void inheritColumnPropertiesFrom(const RenderStyle* parent) { rareNonInheritedData.access()->m_multiCol = parent->rareNonInheritedData->m_multiCol; }
     void setTransform(const TransformOperations& ops) { SET_NESTED_VAR(rareNonInheritedData, m_transform, m_operations, ops); }
     void setTransformOriginX(Length length) { SET_NESTED_VAR(rareNonInheritedData, m_transform, m_x, WTFMove(length)); }
     void setTransformOriginY(Length length) { SET_NESTED_VAR(rareNonInheritedData, m_transform, m_y, WTFMove(length)); }
@@ -1606,6 +1640,7 @@ public:
     bool setTextOrientation(TextOrientation);
 
     void setObjectFit(ObjectFit fit) { SET_VAR(rareNonInheritedData, m_objectFit, fit); }
+    void setObjectPosition(const LengthPoint& position) { SET_VAR(rareNonInheritedData, m_objectPosition, position); }
 
     void setRubyPosition(RubyPosition position) { SET_VAR(rareInheritedData, m_rubyPosition, position); }
 
@@ -1796,6 +1831,8 @@ public:
     void setContent(QuoteType, bool add = false);
     void setContentAltText(const String&);
     const String& contentAltText() const;
+    bool hasAttrContent() const { return rareNonInheritedData->m_hasAttrContent; }
+    void setHasAttrContent();
 
     const CounterDirectiveMap* counterDirectives() const;
     CounterDirectiveMap& accessCounterDirectives();
@@ -1822,7 +1859,7 @@ public:
 
 #if ENABLE(IOS_TEXT_AUTOSIZING)
     uint32_t hashForTextAutosizing() const;
-    bool equalForTextAutosizing(const RenderStyle *other) const;
+    bool equalForTextAutosizing(const RenderStyle&) const;
 #endif
 
     StyleDifference diff(const RenderStyle&, unsigned& changedContextSensitiveProperties) const;
@@ -1896,14 +1933,15 @@ public:
     static TextOrientation initialTextOrientation() { return TextOrientation::
     Mixed; }
     static ObjectFit initialObjectFit() { return ObjectFitFill; }
+    static LengthPoint initialObjectPosition() { return LengthPoint(Length(50.0f, Percent), Length(50.0f, Percent)); }
     static EEmptyCell initialEmptyCells() { return SHOW; }
     static EListStylePosition initialListStylePosition() { return OUTSIDE; }
     static EListStyleType initialListStyleType() { return Disc; }
     static ETextTransform initialTextTransform() { return TTNONE; }
     static EVisibility initialVisibility() { return VISIBLE; }
     static EWhiteSpace initialWhiteSpace() { return NORMAL; }
-    static short initialHorizontalBorderSpacing() { return 0; }
-    static short initialVerticalBorderSpacing() { return 0; }
+    static float initialHorizontalBorderSpacing() { return 0; }
+    static float initialVerticalBorderSpacing() { return 0; }
     static ECursor initialCursor() { return CursorAuto; }
 #if ENABLE(CURSOR_VISIBILITY)
     static CursorVisibility initialCursorVisibility() { return CursorVisibilityAuto; }
@@ -1963,7 +2001,8 @@ public:
     static Length initialFlexBasis() { return Length(Auto); }
     static int initialOrder() { return 0; }
     static StyleSelfAlignmentData initialSelfAlignment() { return StyleSelfAlignmentData(ItemPositionAuto, OverflowAlignmentDefault); }
-    static StyleContentAlignmentData initialContentAlignment() { return StyleContentAlignmentData(ContentPositionAuto, ContentDistributionDefault, OverflowAlignmentDefault); }
+    static StyleSelfAlignmentData initialDefaultAlignment() { return StyleSelfAlignmentData(ItemPositionNormal, OverflowAlignmentDefault); }
+    static StyleContentAlignmentData initialContentAlignment() { return StyleContentAlignmentData(ContentPositionNormal, ContentDistributionDefault, OverflowAlignmentDefault); }
     static EFlexDirection initialFlexDirection() { return FlowRow; }
     static EFlexWrap initialFlexWrap() { return FlexNoWrap; }
     static int initialMarqueeLoopCount() { return -1; }
@@ -2050,10 +2089,14 @@ public:
     static Vector<GridTrackSize> initialGridColumns() { return Vector<GridTrackSize>(); }
     static Vector<GridTrackSize> initialGridRows() { return Vector<GridTrackSize>(); }
 
+    static Vector<GridTrackSize> initialGridAutoRepeatTracks() { return Vector<GridTrackSize>(); }
+    static unsigned initialGridAutoRepeatInsertionPoint() { return 0; }
+    static AutoRepeatType initialGridAutoRepeatType() { return NoAutoRepeat; }
+
     static GridAutoFlow initialGridAutoFlow() { return AutoFlowRow; }
 
-    static GridTrackSize initialGridAutoColumns() { return GridTrackSize(Length(Auto)); }
-    static GridTrackSize initialGridAutoRows() { return GridTrackSize(Length(Auto)); }
+    static Vector<GridTrackSize> initialGridAutoColumns() { return { GridTrackSize(Length(Auto)) }; }
+    static Vector<GridTrackSize> initialGridAutoRows() { return { GridTrackSize(Length(Auto)) }; }
 
     static NamedGridAreaMap initialNamedGridArea() { return NamedGridAreaMap(); }
     static size_t initialNamedGridAreaCount() { return 0; }
@@ -2112,6 +2155,9 @@ public:
     static BlendMode initialBlendMode() { return BlendModeNormal; }
     static Isolation initialIsolation() { return IsolationAuto; }
 #endif
+
+    bool isPlaceholderStyle() const { return rareNonInheritedData->m_isPlaceholderStyle; }
+    void setIsPlaceholderStyle() { SET_VAR(rareNonInheritedData, m_isPlaceholderStyle, true); }
 
     static ptrdiff_t noninheritedFlagsMemoryOffset() { return OBJECT_OFFSETOF(RenderStyle, noninherited_flags); }
 
@@ -2302,6 +2348,9 @@ inline void RenderStyle::setHasPseudoStyles(PseudoIdSet pseudoIdSet)
     noninherited_flags.setHasPseudoStyles(pseudoIdSet);
 }
 
-} // namespace WebCore
+inline bool pseudoElementRendererIsNeeded(const RenderStyle* style)
+{
+    return style && style->display() != NONE && (style->contentData() || style->hasFlowFrom());
+}
 
-#endif // RenderStyle_h
+} // namespace WebCore

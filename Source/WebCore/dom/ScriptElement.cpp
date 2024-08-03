@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2001 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2003-2016 Apple Inc. All rights reserved.
  * Copyright (C) 2008 Nikolas Zimmermann <zimmermann@kde.org>
  *
  * This library is free software; you can redistribute it and/or
@@ -31,6 +31,7 @@
 #include "CrossOriginAccessControl.h"
 #include "CurrentScriptIncrementer.h"
 #include "Event.h"
+#include "EventNames.h"
 #include "Frame.h"
 #include "FrameLoader.h"
 #include "HTMLNames.h"
@@ -39,6 +40,7 @@
 #include "MIMETypeRegistry.h"
 #include "Page.h"
 #include "SVGNames.h"
+#include "NoEventDispatchAssertion.h"
 #include "SVGScriptElement.h"
 #include "ScriptController.h"
 #include "ScriptRunner.h"
@@ -89,9 +91,9 @@ void ScriptElement::finishedInsertingSubtree()
     prepareScript(); // FIXME: Provide a real starting line number here.
 }
 
-void ScriptElement::childrenChanged()
+void ScriptElement::childrenChanged(const ContainerNode::ChildChange& childChange)
 {
-    if (!m_parserInserted && m_element.inDocument())
+    if (!m_parserInserted && childChange.isInsertion() && m_element.inDocument())
         prepareScript(); // FIXME: Provide a real starting line number here.
 }
 
@@ -144,7 +146,7 @@ void ScriptElement::dispatchErrorEvent()
     m_element.dispatchEvent(Event::create(eventNames().errorEvent, false, false));
 }
 
-bool ScriptElement::isScriptTypeSupported(LegacyTypeSupport supportLegacyTypes) const
+Optional<ScriptElement::ScriptType> ScriptElement::determineScriptType(LegacyTypeSupport supportLegacyTypes) const
 {
     // FIXME: isLegacySupportedJavaScriptLanguage() is not valid HTML5. It is used here to maintain backwards compatibility with existing layout tests. The specific violations are:
     // - Allowing type=javascript. type= should only support MIME types, such as text/javascript.
@@ -153,18 +155,24 @@ bool ScriptElement::isScriptTypeSupported(LegacyTypeSupport supportLegacyTypes) 
     String language = languageAttributeValue();
     if (type.isEmpty()) {
         if (language.isEmpty())
-            return true; // Assume text/javascript.
+            return ScriptType::Classic; // Assume text/javascript.
         if (MIMETypeRegistry::isSupportedJavaScriptMIMEType("text/" + language))
-            return true;
+            return ScriptType::Classic;
         if (isLegacySupportedJavaScriptLanguage(language))
-            return true;
-        return false;
+            return ScriptType::Classic;
+        return Nullopt;
     }
     if (MIMETypeRegistry::isSupportedJavaScriptMIMEType(type.stripWhiteSpace()))
-        return true;
+        return ScriptType::Classic;
     if (supportLegacyTypes == AllowLegacyTypeInTypeAttribute && isLegacySupportedJavaScriptLanguage(type))
-        return true;
-    return false;
+        return ScriptType::Classic;
+#if ENABLE(ES6_MODULES)
+    // https://html.spec.whatwg.org/multipage/scripting.html#attr-script-type
+    // Setting the attribute to an ASCII case-insensitive match for the string "module" means that the script is a module script.
+    if (equalLettersIgnoringASCIICase(type, "module"))
+        return ScriptType::Module;
+#endif
+    return Nullopt;
 }
 
 // http://dev.w3.org/html5/spec/Overview.html#prepare-a-script
@@ -190,7 +198,7 @@ bool ScriptElement::prepareScript(const TextPosition& scriptStartPosition, Legac
     if (!m_element.inDocument())
         return false;
 
-    if (!isScriptTypeSupported(supportLegacyTypes))
+    if (!determineScriptType(supportLegacyTypes))
         return false;
 
     if (wasParserInserted) {
@@ -258,16 +266,20 @@ bool ScriptElement::requestScript(const String& sourceUrl)
 
     ASSERT(!m_cachedScript);
     if (!stripLeadingAndTrailingHTMLSpaces(sourceUrl).isEmpty()) {
+        bool hasKnownNonce = m_element.document().contentSecurityPolicy()->allowScriptWithNonce(m_element.attributeWithoutSynchronization(HTMLNames::nonceAttr), m_element.isInUserAgentShadowTree());
         ResourceLoaderOptions options = CachedResourceLoader::defaultCachedResourceOptions();
-        options.setContentSecurityPolicyImposition(m_element.isInUserAgentShadowTree() ? ContentSecurityPolicyImposition::SkipPolicyCheck : ContentSecurityPolicyImposition::DoPolicyCheck);
+        options.contentSecurityPolicyImposition = hasKnownNonce ? ContentSecurityPolicyImposition::SkipPolicyCheck : ContentSecurityPolicyImposition::DoPolicyCheck;
 
         CachedResourceRequest request(ResourceRequest(m_element.document().completeURL(sourceUrl)), options);
 
-        String crossOriginMode = m_element.fastGetAttribute(HTMLNames::crossoriginAttr);
+        m_element.document().contentSecurityPolicy()->upgradeInsecureRequestIfNeeded(request.mutableResourceRequest(), ContentSecurityPolicy::InsecureRequestType::Load);
+
+        String crossOriginMode = m_element.attributeWithoutSynchronization(HTMLNames::crossoriginAttr);
         if (!crossOriginMode.isNull()) {
             m_requestUsesAccessControl = true;
             StoredCredentials allowCredentials = equalLettersIgnoringASCIICase(crossOriginMode, "use-credentials") ? AllowStoredCredentials : DoNotAllowStoredCredentials;
-            updateRequestForAccessControl(request.mutableResourceRequest(), m_element.document().securityOrigin(), allowCredentials);
+            ASSERT(m_element.document().securityOrigin());
+            updateRequestForAccessControl(request.mutableResourceRequest(), *m_element.document().securityOrigin(), allowCredentials);
         }
         request.setCharset(scriptCharset());
         request.setInitiator(&element());
@@ -279,8 +291,7 @@ bool ScriptElement::requestScript(const String& sourceUrl)
     if (m_cachedScript)
         return true;
 
-    RefPtr<Element> element = &m_element;
-    callOnMainThread([this, element] {
+    callOnMainThread([this, element = Ref<Element>(m_element)] {
         dispatchErrorEvent();
     });
     return false;
@@ -288,13 +299,19 @@ bool ScriptElement::requestScript(const String& sourceUrl)
 
 void ScriptElement::executeScript(const ScriptSourceCode& sourceCode)
 {
+    ASSERT_WITH_SECURITY_IMPLICATION(NoEventDispatchAssertion::isEventAllowedInMainThread());
     ASSERT(m_alreadyStarted);
 
     if (sourceCode.isEmpty())
         return;
 
-    if (!m_isExternalScript && !m_element.document().contentSecurityPolicy()->allowInlineScript(m_element.document().url(), m_startLineNumber, m_element.isInUserAgentShadowTree()))
-        return;
+    if (!m_isExternalScript) {
+        ASSERT(m_element.document().contentSecurityPolicy());
+        const ContentSecurityPolicy& contentSecurityPolicy = *m_element.document().contentSecurityPolicy();
+        bool hasKnownNonce = contentSecurityPolicy.allowScriptWithNonce(m_element.attributeWithoutSynchronization(HTMLNames::nonceAttr), m_element.isInUserAgentShadowTree());
+        if (!contentSecurityPolicy.allowInlineScript(m_element.document().url(), m_startLineNumber, sourceCode.source().toStringWithoutCopying(), hasKnownNonce))
+            return;
+    }
 
 #if ENABLE(NOSNIFF)
     if (m_isExternalScript && m_cachedScript && !m_cachedScript->mimeTypeAllowedByNosniff()) {
@@ -306,7 +323,7 @@ void ScriptElement::executeScript(const ScriptSourceCode& sourceCode)
     Ref<Document> document(m_element.document());
     if (Frame* frame = document->frame()) {
         IgnoreDestructiveWriteCountIncrementer ignoreDesctructiveWriteCountIncrementer(m_isExternalScript ? document.ptr() : nullptr);
-        CurrentScriptIncrementer currentScriptIncrementer(document, &m_element);
+        CurrentScriptIncrementer currentScriptIncrementer(document, m_element);
 
         // Create a script from the script element node, using the script
         // block's source and the script block's type.

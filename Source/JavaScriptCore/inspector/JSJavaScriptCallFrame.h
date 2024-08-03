@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef JSJavaScriptCallFrame_h
-#define JSJavaScriptCallFrame_h
+#pragma once
 
 #include "JSDestructibleObject.h"
 #include "JavaScriptCallFrame.h"
@@ -57,8 +56,8 @@ public:
     void releaseImpl();
 
     // Functions.
-    JSC::JSValue evaluate(JSC::ExecState*);
-    JSC::JSValue scopeType(JSC::ExecState*);
+    JSC::JSValue evaluateWithScopeExtension(JSC::ExecState*);
+    JSC::JSValue scopeDescriptions(JSC::ExecState*);
 
     // Attributes.
     JSC::JSValue caller(JSC::ExecState*) const;
@@ -69,6 +68,7 @@ public:
     JSC::JSValue scopeChain(JSC::ExecState*) const;
     JSC::JSValue thisObject(JSC::ExecState*) const;
     JSC::JSValue type(JSC::ExecState*) const;
+    JSC::JSValue isTailDeleted(JSC::ExecState*) const;
 
     // Constants.
     static const unsigned short GLOBAL_SCOPE = 0;
@@ -93,5 +93,3 @@ JSC::JSValue toJS(JSC::ExecState*, JSC::JSGlobalObject*, JavaScriptCallFrame*);
 JSJavaScriptCallFrame* toJSJavaScriptCallFrame(JSC::JSValue);
 
 } // namespace Inspector
-
-#endif // !defined(JSJavaScriptCallFrame_h)

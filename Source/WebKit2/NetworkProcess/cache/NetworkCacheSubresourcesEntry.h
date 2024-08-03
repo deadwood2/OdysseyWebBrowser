@@ -31,24 +31,53 @@
 #include "NetworkCacheDecoder.h"
 #include "NetworkCacheEncoder.h"
 #include "NetworkCacheStorage.h"
+#include <WebCore/ResourceRequest.h>
+#include <WebCore/URL.h>
 #include <wtf/HashMap.h>
 
 namespace WebKit {
 namespace NetworkCache {
 
+class SubresourceInfo {
+    WTF_MAKE_FAST_ALLOCATED;
+public:
+    void encode(Encoder&) const;
+    static bool decode(Decoder&, SubresourceInfo&);
+
+    SubresourceInfo() = default;
+    SubresourceInfo(const WebCore::ResourceRequest& request, bool isTransient = false)
+        : m_isTransient(isTransient)
+        , m_firstPartyForCookies(isTransient ? WebCore::URL() : request.firstPartyForCookies())
+        , m_requestHeaders(isTransient ? WebCore::HTTPHeaderMap() : request.httpHeaderFields())
+    {
+    }
+
+    bool isTransient() const { return m_isTransient; }
+    const WebCore::URL& firstPartyForCookies() const { ASSERT(!m_isTransient); return m_firstPartyForCookies; }
+    const WebCore::HTTPHeaderMap& requestHeaders() const { ASSERT(!m_isTransient); return m_requestHeaders; }
+
+private:
+    bool m_isTransient { true };
+    WebCore::URL m_firstPartyForCookies;
+    WebCore::HTTPHeaderMap m_requestHeaders;
+};
+
+struct SubresourceLoad {
+    WTF_MAKE_NONCOPYABLE(SubresourceLoad); WTF_MAKE_FAST_ALLOCATED;
+public:
+    SubresourceLoad(const WebCore::ResourceRequest& request, const Key& key)
+        : request(request)
+        , key(key)
+    { }
+
+    WebCore::ResourceRequest request;
+    Key key;
+};
+
 class SubresourcesEntry {
     WTF_MAKE_NONCOPYABLE(SubresourcesEntry); WTF_MAKE_FAST_ALLOCATED;
 public:
-    struct SubresourceInfo {
-        void encode(Encoder& encoder) const { encoder << isTransient; }
-        static bool decode(Decoder& decoder, SubresourceInfo& info) { return decoder.decode(info.isTransient); }
-
-        SubresourceInfo() = default;
-        SubresourceInfo(bool isTransient) : isTransient(isTransient) { }
-
-        bool isTransient { false };
-    };
-    SubresourcesEntry(Key&&, const Vector<Key>& subresourceKeys);
+    SubresourcesEntry(Key&&, const Vector<std::unique_ptr<SubresourceLoad>>&);
     explicit SubresourcesEntry(const Storage::Record&);
 
     Storage::Record encodeAsStorageRecord() const;
@@ -58,7 +87,7 @@ public:
     std::chrono::system_clock::time_point timeStamp() const { return m_timeStamp; }
     const HashMap<Key, SubresourceInfo>& subresources() const { return m_subresources; }
 
-    void updateSubresourceKeys(const Vector<Key>&);
+    void updateSubresourceLoads(const Vector<std::unique_ptr<SubresourceLoad>>&);
 
 private:
     Key m_key;

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011, 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2011, 2013-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -91,6 +91,10 @@ bool mightInlineFunctionForConstruct(CodeBlock* codeBlock)
     return codeBlock->instructionCount() <= Options::maximumFunctionForConstructInlineCandidateInstructionCount()
         && isSupportedForInlining(codeBlock);
 }
+bool canUseOSRExitFuzzing(CodeBlock* codeBlock)
+{
+    return codeBlock->ownerScriptExecutable()->canUseOSRExitFuzzing();
+}
 
 inline void debugFail(CodeBlock* codeBlock, OpcodeID opcodeID, CapabilityLevel result)
 {
@@ -101,10 +105,12 @@ inline void debugFail(CodeBlock* codeBlock, OpcodeID opcodeID, CapabilityLevel r
 CapabilityLevel capabilityLevel(OpcodeID opcodeID, CodeBlock* codeBlock, Instruction* pc)
 {
     UNUSED_PARAM(codeBlock); // This function does some bytecode parsing. Ordinarily bytecode parsing requires the owning CodeBlock. It's sort of strange that we don't use it here right now.
+    UNUSED_PARAM(pc);
     
     switch (opcodeID) {
     case op_enter:
     case op_to_this:
+    case op_argument_count:
     case op_check_tdz:
     case op_create_this:
     case op_bitand:
@@ -121,20 +127,21 @@ CapabilityLevel capabilityLevel(OpcodeID opcodeID, CodeBlock* codeBlock, Instruc
     case op_negate:
     case op_mul:
     case op_mod:
+    case op_pow:
     case op_div:
     case op_debug:
-    case op_profile_will_call:
-    case op_profile_did_call:
     case op_profile_type:
     case op_profile_control_flow:
     case op_mov:
     case op_overrides_has_instance:
     case op_instanceof:
     case op_instanceof_custom:
+    case op_is_empty:
     case op_is_undefined:
     case op_is_boolean:
     case op_is_number:
     case op_is_string:
+    case op_is_jsarray:
     case op_is_object:
     case op_is_object_or_null:
     case op_is_function:
@@ -152,14 +159,23 @@ CapabilityLevel capabilityLevel(OpcodeID opcodeID, CodeBlock* codeBlock, Instruc
     case op_get_by_val:
     case op_put_by_val:
     case op_put_by_val_direct:
+    case op_try_get_by_id:
     case op_get_by_id:
+    case op_get_by_id_proto_load:
+    case op_get_by_id_unset:
+    case op_get_by_id_with_this:
+    case op_get_by_val_with_this:
     case op_get_array_length:
     case op_put_by_id:
+    case op_put_by_id_with_this:
+    case op_put_by_val_with_this:
     case op_put_getter_by_id:
     case op_put_setter_by_id:
     case op_put_getter_setter_by_id:
     case op_put_getter_by_val:
     case op_put_setter_by_val:
+    case op_del_by_id:
+    case op_del_by_val:
     case op_jmp:
     case op_jtrue:
     case op_jfalse:
@@ -190,10 +206,11 @@ CapabilityLevel capabilityLevel(OpcodeID opcodeID, CodeBlock* codeBlock, Instruc
     case op_construct:
     case op_call_varargs:
     case op_tail_call_varargs:
+    case op_tail_call_forward_arguments:
     case op_construct_varargs:
     case op_create_direct_arguments:
     case op_create_scoped_arguments:
-    case op_create_out_of_band_arguments:
+    case op_create_cloned_arguments:
     case op_get_from_arguments:
     case op_put_to_arguments:
     case op_jneq_ptr:
@@ -218,33 +235,21 @@ CapabilityLevel capabilityLevel(OpcodeID opcodeID, CodeBlock* codeBlock, Instruc
     case op_new_func_exp:
     case op_new_generator_func:
     case op_new_generator_func_exp:
-    case op_new_arrow_func_exp:
+    case op_set_function_name:
     case op_create_lexical_environment:
     case op_get_parent_scope:
     case op_catch:
-    case op_copy_rest:
+    case op_create_rest:
     case op_get_rest_length:
-        return CanCompileAndInline;
-
-    case op_put_to_scope: {
-        ResolveType resolveType = GetPutInfo(pc[4].u.operand).resolveType();
-        // If we're writing to a readonly property we emit a Dynamic put that
-        // the DFG can't currently handle.
-        if (resolveType == Dynamic)
-            return CannotCompile;
-        return CanCompileAndInline;
-    }
-
-    case op_resolve_scope: {
-        // We don't compile 'catch' or 'with', so there's no point in compiling variable resolution within them.
-        ResolveType resolveType = static_cast<ResolveType>(pc[4].u.operand);
-        if (resolveType == Dynamic)
-            return CannotCompile;
-        return CanCompileAndInline;
-    }
-
+    case op_log_shadow_chicken_prologue:
+    case op_log_shadow_chicken_tail:
+    case op_put_to_scope:
+    case op_resolve_scope:
     case op_new_regexp:
+        return CanCompileAndInline;
+
     case op_switch_string: // Don't inline because we don't want to copy string tables in the concurrent JIT.
+    case op_call_eval:
         return CanCompile;
 
     default:

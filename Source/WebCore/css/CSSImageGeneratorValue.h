@@ -67,11 +67,12 @@ protected:
     const HashCountedSet<RenderElement*>& clients() const { return m_clients; }
 
     // Helper functions for Crossfade and Filter.
-    static CachedImage* cachedImageForCSSValue(CSSValue*, CachedResourceLoader&, const ResourceLoaderOptions&);
-    static bool subimageIsPending(CSSValue*);
+    static CachedImage* cachedImageForCSSValue(CSSValue&, CachedResourceLoader&, const ResourceLoaderOptions&);
+    static bool subimageIsPending(const CSSValue&);
 
 private:
     class CachedGeneratedImage {
+        WTF_MAKE_FAST_ALLOCATED;
     public:
         CachedGeneratedImage(CSSImageGeneratorValue&, FloatSize, PassRefPtr<GeneratedImage>);
         GeneratedImage* image() { return m_image.get(); }

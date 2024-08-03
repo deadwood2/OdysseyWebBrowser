@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013, 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -52,6 +52,9 @@ namespace WebCore {
 
 static bool getJSArrayFromJSON(ExecState* exec, JSObject* json, const char* key, JSArray*& result)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     Identifier identifier = Identifier::fromString(exec, key);
     PropertySlot slot(json, PropertySlot::InternalMethodType::Get);
 
@@ -61,7 +64,7 @@ static bool getJSArrayFromJSON(ExecState* exec, JSObject* json, const char* key,
     JSValue value = slot.getValue(exec, identifier);
     ASSERT(!exec->hadException());
     if (!isJSArray(value)) {
-        throwTypeError(exec, String::format("Expected an array for \"%s\" JSON key",  key));
+        throwTypeError(exec, scope, String::format("Expected an array for \"%s\" JSON key",  key));
         return false;
     }
 
@@ -72,6 +75,9 @@ static bool getJSArrayFromJSON(ExecState* exec, JSObject* json, const char* key,
 
 static bool getStringFromJSON(ExecState* exec, JSObject* json, const char* key, String& result)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     Identifier identifier = Identifier::fromString(exec, key);
     PropertySlot slot(json, PropertySlot::InternalMethodType::Get);
 
@@ -84,7 +90,7 @@ static bool getStringFromJSON(ExecState* exec, JSObject* json, const char* key, 
         // Can get an out of memory exception.
         if (exec->hadException())
             return false;
-        throwTypeError(exec, String::format("Expected a string value for \"%s\" JSON key",  key));
+        throwTypeError(exec, scope, String::format("Expected a string value for \"%s\" JSON key",  key));
         return false;
     }
 
@@ -93,6 +99,9 @@ static bool getStringFromJSON(ExecState* exec, JSObject* json, const char* key, 
 
 static bool getBooleanFromJSON(ExecState* exec, JSObject* json, const char* key, bool& result)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     Identifier identifier = Identifier::fromString(exec, key);
     PropertySlot slot(json, PropertySlot::InternalMethodType::Get);
 
@@ -102,7 +111,7 @@ static bool getBooleanFromJSON(ExecState* exec, JSObject* json, const char* key,
     JSValue jsValue = slot.getValue(exec, identifier);
     ASSERT(!exec->hadException());
     if (!jsValue.isBoolean()) {
-        throwTypeError(exec, String::format("Expected a boolean value for \"%s\" JSON key",  key));
+        throwTypeError(exec, scope, String::format("Expected a boolean value for \"%s\" JSON key",  key));
         return false;
     }
 
@@ -112,17 +121,20 @@ static bool getBooleanFromJSON(ExecState* exec, JSObject* json, const char* key,
 
 static bool getBigIntegerVectorFromJSON(ExecState* exec, JSObject* json, const char* key, Vector<uint8_t>& result)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     String base64urlEncodedNumber;
     if (!getStringFromJSON(exec, json, key, base64urlEncodedNumber))
         return false;
 
     if (!base64URLDecode(base64urlEncodedNumber, result)) {
-        throwTypeError(exec, "Cannot decode base64url key data in JWK");
+        throwTypeError(exec, scope, ASCIILiteral("Cannot decode base64url key data in JWK"));
         return false;
     }
 
     if (result[0] == 0) {
-        throwTypeError(exec, "JWK BigInteger must utilize the minimum number of octets to represent the value");
+        throwTypeError(exec, scope, ASCIILiteral("JWK BigInteger must utilize the minimum number of octets to represent the value"));
         return false;
     }
 
@@ -132,47 +144,53 @@ static bool getBigIntegerVectorFromJSON(ExecState* exec, JSObject* json, const c
 JSCryptoKeySerializationJWK::JSCryptoKeySerializationJWK(ExecState* exec, const String& jsonString)
     : m_exec(exec)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     JSValue jsonValue = JSONParse(exec, jsonString);
     if (exec->hadException())
         return;
 
     if (!jsonValue || !jsonValue.isObject()) {
-        throwTypeError(exec, "Invalid JWK serialization");
+        throwTypeError(exec, scope, ASCIILiteral("Invalid JWK serialization"));
         return;
     }
 
-    m_json.set(m_exec->vm(), asObject(jsonValue));
+    m_json.set(vm, asObject(jsonValue));
 }
 
 JSCryptoKeySerializationJWK::~JSCryptoKeySerializationJWK()
 {
 }
 
-static std::unique_ptr<CryptoAlgorithmParameters> createHMACParameters(CryptoAlgorithmIdentifier hashFunction)
+static Ref<CryptoAlgorithmParameters> createHMACParameters(CryptoAlgorithmIdentifier hashFunction)
 {
-    std::unique_ptr<CryptoAlgorithmHmacParams> hmacParameters = std::make_unique<CryptoAlgorithmHmacParams>();
+    auto hmacParameters = adoptRef(*new CryptoAlgorithmHmacParams);
     hmacParameters->hash = hashFunction;
     return WTFMove(hmacParameters);
 }
 
-static std::unique_ptr<CryptoAlgorithmParameters> createRSAKeyParametersWithHash(CryptoAlgorithmIdentifier hashFunction)
+static Ref<CryptoAlgorithmParameters> createRSAKeyParametersWithHash(CryptoAlgorithmIdentifier hashFunction)
 {
-    std::unique_ptr<CryptoAlgorithmRsaKeyParamsWithHash> rsaKeyParameters = std::make_unique<CryptoAlgorithmRsaKeyParamsWithHash>();
+    auto rsaKeyParameters = adoptRef(*new CryptoAlgorithmRsaKeyParamsWithHash);
     rsaKeyParameters->hasHash = true;
     rsaKeyParameters->hash = hashFunction;
     return WTFMove(rsaKeyParameters);
 }
 
-bool JSCryptoKeySerializationJWK::reconcileAlgorithm(std::unique_ptr<CryptoAlgorithm>& suggestedAlgorithm, std::unique_ptr<CryptoAlgorithmParameters>& suggestedParameters) const
+Optional<CryptoAlgorithmPair> JSCryptoKeySerializationJWK::reconcileAlgorithm(CryptoAlgorithm* suggestedAlgorithm, CryptoAlgorithmParameters* suggestedParameters) const
 {
+    VM& vm = m_exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     if (!getStringFromJSON(m_exec, m_json.get(), "alg", m_jwkAlgorithmName)) {
         // Algorithm is optional in JWK.
-        return true;
+        return CryptoAlgorithmPair { suggestedAlgorithm, suggestedParameters };
     }
 
     auto& algorithmRegisty = CryptoAlgorithmRegistry::singleton();
-    std::unique_ptr<CryptoAlgorithm> algorithm;
-    std::unique_ptr<CryptoAlgorithmParameters> parameters;
+    RefPtr<CryptoAlgorithm> algorithm;
+    RefPtr<CryptoAlgorithmParameters> parameters;
     if (m_jwkAlgorithmName == "HS256") {
         algorithm = algorithmRegisty.create(CryptoAlgorithmIdentifier::HMAC);
         parameters = createHMACParameters(CryptoAlgorithmIdentifier::SHA_256);
@@ -193,67 +211,73 @@ bool JSCryptoKeySerializationJWK::reconcileAlgorithm(std::unique_ptr<CryptoAlgor
         parameters = createRSAKeyParametersWithHash(CryptoAlgorithmIdentifier::SHA_512);
     } else if (m_jwkAlgorithmName == "RSA1_5") {
         algorithm = algorithmRegisty.create(CryptoAlgorithmIdentifier::RSAES_PKCS1_v1_5);
-        parameters = std::make_unique<CryptoAlgorithmRsaKeyParamsWithHash>();
+        parameters = adoptRef(*new CryptoAlgorithmRsaKeyParamsWithHash);
     } else if (m_jwkAlgorithmName == "RSA-OAEP") {
         algorithm = algorithmRegisty.create(CryptoAlgorithmIdentifier::RSA_OAEP);
         parameters = createRSAKeyParametersWithHash(CryptoAlgorithmIdentifier::SHA_1);
     } else if (m_jwkAlgorithmName == "A128CBC") {
         algorithm = algorithmRegisty.create(CryptoAlgorithmIdentifier::AES_CBC);
-        parameters = std::make_unique<CryptoAlgorithmParameters>();
+        parameters = adoptRef(*new CryptoAlgorithmParameters);
     } else if (m_jwkAlgorithmName == "A192CBC") {
         algorithm = algorithmRegisty.create(CryptoAlgorithmIdentifier::AES_CBC);
-        parameters = std::make_unique<CryptoAlgorithmParameters>();
+        parameters = adoptRef(*new CryptoAlgorithmParameters);
     } else if (m_jwkAlgorithmName == "A256CBC") {
         algorithm = algorithmRegisty.create(CryptoAlgorithmIdentifier::AES_CBC);
-        parameters = std::make_unique<CryptoAlgorithmParameters>();
+        parameters = adoptRef(*new CryptoAlgorithmParameters);
     } else if (m_jwkAlgorithmName == "A128KW") {
         algorithm = algorithmRegisty.create(CryptoAlgorithmIdentifier::AES_KW);
-        parameters = std::make_unique<CryptoAlgorithmParameters>();
+        parameters = adoptRef(*new CryptoAlgorithmParameters);
     } else if (m_jwkAlgorithmName == "A192KW") {
         algorithm = algorithmRegisty.create(CryptoAlgorithmIdentifier::AES_KW);
-        parameters = std::make_unique<CryptoAlgorithmParameters>();
+        parameters = adoptRef(*new CryptoAlgorithmParameters);
     } else if (m_jwkAlgorithmName == "A256KW") {
         algorithm = algorithmRegisty.create(CryptoAlgorithmIdentifier::AES_KW);
-        parameters = std::make_unique<CryptoAlgorithmParameters>();
+        parameters = adoptRef(*new CryptoAlgorithmParameters);
     } else {
-        throwTypeError(m_exec, "Unsupported JWK algorithm " + m_jwkAlgorithmName);
-        return false;
+        throwTypeError(m_exec, scope, "Unsupported JWK algorithm " + m_jwkAlgorithmName);
+        return Nullopt;
     }
 
-    if (!suggestedAlgorithm) {
-        suggestedAlgorithm = WTFMove(algorithm);
-        suggestedParameters =  WTFMove(parameters);
-        return true;
-    }
+    if (!suggestedAlgorithm)
+        return CryptoAlgorithmPair { algorithm, parameters };
 
     if (!algorithm)
-        return true;
+        return CryptoAlgorithmPair { suggestedAlgorithm, suggestedParameters };
 
     if (algorithm->identifier() != suggestedAlgorithm->identifier())
-        return false;
+        return Nullopt;
 
-    if (algorithm->identifier() == CryptoAlgorithmIdentifier::HMAC)
-        return downcast<CryptoAlgorithmHmacParams>(*parameters).hash == downcast<CryptoAlgorithmHmacParams>(*suggestedParameters).hash;
+    if (algorithm->identifier() == CryptoAlgorithmIdentifier::HMAC) {
+        if (downcast<CryptoAlgorithmHmacParams>(*parameters).hash != downcast<CryptoAlgorithmHmacParams>(*suggestedParameters).hash)
+            return Nullopt;
+        return CryptoAlgorithmPair { suggestedAlgorithm, suggestedParameters };
+    }
     if (algorithm->identifier() == CryptoAlgorithmIdentifier::RSASSA_PKCS1_v1_5
         || algorithm->identifier() == CryptoAlgorithmIdentifier::RSA_OAEP) {
         CryptoAlgorithmRsaKeyParamsWithHash& rsaKeyParameters = downcast<CryptoAlgorithmRsaKeyParamsWithHash>(*parameters);
         CryptoAlgorithmRsaKeyParamsWithHash& suggestedRSAKeyParameters = downcast<CryptoAlgorithmRsaKeyParamsWithHash>(*suggestedParameters);
         ASSERT(rsaKeyParameters.hasHash);
-        if (suggestedRSAKeyParameters.hasHash)
-            return suggestedRSAKeyParameters.hash == rsaKeyParameters.hash;
+        if (suggestedRSAKeyParameters.hasHash) {
+            if (suggestedRSAKeyParameters.hash != rsaKeyParameters.hash)
+                return Nullopt;
+            return CryptoAlgorithmPair { suggestedAlgorithm, suggestedParameters };
+        }
         suggestedRSAKeyParameters.hasHash = true;
         suggestedRSAKeyParameters.hash = rsaKeyParameters.hash;
     }
 
     // Other algorithms don't have parameters.
-    return true;
+    return CryptoAlgorithmPair { suggestedAlgorithm, suggestedParameters };
 }
 
 static bool tryJWKKeyOpsValue(ExecState* exec, CryptoKeyUsage& usages, const String& operation, const String& tryOperation, CryptoKeyUsage tryUsage)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     if (operation == tryOperation) {
         if (usages & tryUsage) {
-            throwTypeError(exec, "JWK key_ops contains a duplicate operation");
+            throwTypeError(exec, scope, ASCIILiteral("JWK key_ops contains a duplicate operation"));
             return false;
         }
         usages |= tryUsage;
@@ -263,6 +287,9 @@ static bool tryJWKKeyOpsValue(ExecState* exec, CryptoKeyUsage& usages, const Str
 
 void JSCryptoKeySerializationJWK::reconcileUsages(CryptoKeyUsage& suggestedUsages) const
 {
+    VM& vm = m_exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     CryptoKeyUsage jwkUsages = 0;
 
     JSArray* keyOps;
@@ -272,7 +299,7 @@ void JSCryptoKeySerializationJWK::reconcileUsages(CryptoKeyUsage& suggestedUsage
             String operation;
             if (!jsValue.getString(m_exec, operation)) {
                 if (!m_exec->hadException())
-                    throwTypeError(m_exec, "JWK key_ops attribute could not be processed");
+                    throwTypeError(m_exec, scope, ASCIILiteral("JWK key_ops attribute could not be processed"));
                 return;
             }
             if (!tryJWKKeyOpsValue(m_exec, jwkUsages, operation, ASCIILiteral("sign"), CryptoKeyUsageSign))
@@ -307,7 +334,7 @@ void JSCryptoKeySerializationJWK::reconcileUsages(CryptoKeyUsage& suggestedUsage
         else if (jwkUseString == "sig")
             jwkUsages |= (CryptoKeyUsageSign | CryptoKeyUsageVerify);
         else {
-            throwTypeError(m_exec, "Unsupported JWK key use value \"" + jwkUseString + "\"");
+            throwTypeError(m_exec, scope, "Unsupported JWK key use value \"" + jwkUseString + "\"");
             return;
         }
     }
@@ -359,21 +386,24 @@ bool JSCryptoKeySerializationJWK::keySizeIsValid(size_t sizeInBits) const
 
 std::unique_ptr<CryptoKeyData> JSCryptoKeySerializationJWK::keyDataOctetSequence() const
 {
+    VM& vm = m_exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     String keyBase64URL;
     if (!getStringFromJSON(m_exec, m_json.get(), "k", keyBase64URL)) {
         if (!m_exec->hadException())
-            throwTypeError(m_exec, "Secret key data is not present is JWK");
+            throwTypeError(m_exec, scope, ASCIILiteral("Secret key data is not present is JWK"));
         return nullptr;
     }
 
     Vector<uint8_t> octetSequence;
     if (!base64URLDecode(keyBase64URL, octetSequence)) {
-        throwTypeError(m_exec, "Cannot decode base64url key data in JWK");
+        throwTypeError(m_exec, scope, ASCIILiteral("Cannot decode base64url key data in JWK"));
         return nullptr;
     }
 
     if (!keySizeIsValid(octetSequence.size() * 8)) {
-        throwTypeError(m_exec, "Key size is not valid for " + m_jwkAlgorithmName);
+        throwTypeError(m_exec, scope, "Key size is not valid for " + m_jwkAlgorithmName);
         return nullptr;
     }
 
@@ -382,24 +412,27 @@ std::unique_ptr<CryptoKeyData> JSCryptoKeySerializationJWK::keyDataOctetSequence
 
 std::unique_ptr<CryptoKeyData> JSCryptoKeySerializationJWK::keyDataRSAComponents() const
 {
+    VM& vm = m_exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     Vector<uint8_t> modulus;
     Vector<uint8_t> exponent;
     Vector<uint8_t> privateExponent;
 
     if (!getBigIntegerVectorFromJSON(m_exec, m_json.get(), "n", modulus)) {
         if (!m_exec->hadException())
-            throwTypeError(m_exec, "Required JWK \"n\" member is missing");
+            throwTypeError(m_exec, scope, ASCIILiteral("Required JWK \"n\" member is missing"));
         return nullptr;
     }
 
     if (!keySizeIsValid(modulus.size() * 8)) {
-        throwTypeError(m_exec, "Key size is not valid for " + m_jwkAlgorithmName);
+        throwTypeError(m_exec, scope, "Key size is not valid for " + m_jwkAlgorithmName);
         return nullptr;
     }
 
     if (!getBigIntegerVectorFromJSON(m_exec, m_json.get(), "e", exponent)) {
         if (!m_exec->hadException())
-            throwTypeError(m_exec, "Required JWK \"e\" member is missing");
+            throwTypeError(m_exec, scope, ASCIILiteral("Required JWK \"e\" member is missing"));
         return nullptr;
     }
 
@@ -455,22 +488,22 @@ std::unique_ptr<CryptoKeyData> JSCryptoKeySerializationJWK::keyDataRSAComponents
         if (m_exec->hadException())
             return nullptr;
         if (!element.isObject()) {
-            throwTypeError(m_exec, "JWK \"oth\" array member is not an object");
+            throwTypeError(m_exec, scope, ASCIILiteral("JWK \"oth\" array member is not an object"));
             return nullptr;
         }
         if (!getBigIntegerVectorFromJSON(m_exec, asObject(element), "r", info.primeFactor)) {
             if (!m_exec->hadException())
-                throwTypeError(m_exec, "Cannot get prime factor for a prime in \"oth\" dictionary");
+                throwTypeError(m_exec, scope, ASCIILiteral("Cannot get prime factor for a prime in \"oth\" dictionary"));
             return nullptr;
         }
         if (!getBigIntegerVectorFromJSON(m_exec, asObject(element), "d", info.factorCRTExponent)) {
             if (!m_exec->hadException())
-                throwTypeError(m_exec, "Cannot get factor CRT exponent for a prime in \"oth\" dictionary");
+                throwTypeError(m_exec, scope, ASCIILiteral("Cannot get factor CRT exponent for a prime in \"oth\" dictionary"));
             return nullptr;
         }
         if (!getBigIntegerVectorFromJSON(m_exec, asObject(element), "t", info.factorCRTCoefficient)) {
             if (!m_exec->hadException())
-                throwTypeError(m_exec, "Cannot get factor CRT coefficient for a prime in \"oth\" dictionary");
+                throwTypeError(m_exec, scope, ASCIILiteral("Cannot get factor CRT coefficient for a prime in \"oth\" dictionary"));
             return nullptr;
         }
         otherPrimeInfos.append(info);
@@ -481,10 +514,13 @@ std::unique_ptr<CryptoKeyData> JSCryptoKeySerializationJWK::keyDataRSAComponents
 
 std::unique_ptr<CryptoKeyData> JSCryptoKeySerializationJWK::keyData() const
 {
+    VM& vm = m_exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     String jwkKeyType;
     if (!getStringFromJSON(m_exec, m_json.get(), "kty", jwkKeyType)) {
         if (!m_exec->hadException())
-            throwTypeError(m_exec, "Required JWK \"kty\" member is missing");
+            throwTypeError(m_exec, scope, ASCIILiteral("Required JWK \"kty\" member is missing"));
         return nullptr;
     }
 
@@ -494,7 +530,7 @@ std::unique_ptr<CryptoKeyData> JSCryptoKeySerializationJWK::keyData() const
     if (jwkKeyType == "RSA")
         return keyDataRSAComponents();
 
-    throwTypeError(m_exec, "Unsupported JWK key type " + jwkKeyType);
+    throwTypeError(m_exec, scope, "Unsupported JWK key type " + jwkKeyType);
     return nullptr;
 }
 
@@ -534,7 +570,10 @@ static void buildJSONForRSAComponents(JSC::ExecState* exec, const CryptoKeyDataR
     if (data.otherPrimeInfos().isEmpty())
         return;
 
+    VM& vm = exec->vm();
     JSArray* oth = constructEmptyArray(exec, 0, exec->lexicalGlobalObject(), data.otherPrimeInfos().size());
+    if (UNLIKELY(vm.exception()))
+        return;
     for (size_t i = 0, size = data.otherPrimeInfos().size(); i < size; ++i) {
         JSObject* jsPrimeInfo = constructEmptyObject(exec);
         addToJSON(exec, jsPrimeInfo, "r", base64URLEncode(data.otherPrimeInfos()[i].primeFactor));
@@ -542,7 +581,7 @@ static void buildJSONForRSAComponents(JSC::ExecState* exec, const CryptoKeyDataR
         addToJSON(exec, jsPrimeInfo, "t", base64URLEncode(data.otherPrimeInfos()[i].factorCRTCoefficient));
         oth->putDirectIndex(exec, i, jsPrimeInfo);
     }
-    result->putDirect(exec->vm(), Identifier::fromString(exec, "oth"), oth);
+    result->putDirect(vm, Identifier::fromString(exec, "oth"), oth);
 }
 
 static void addBoolToJSON(ExecState* exec, JSObject* json, const char* key, bool value)
@@ -554,6 +593,9 @@ static void addBoolToJSON(ExecState* exec, JSObject* json, const char* key, bool
 
 static void addJWKAlgorithmToJSON(ExecState* exec, JSObject* json, const CryptoKey& key)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     String jwkAlgorithm;
     switch (key.algorithmIdentifier()) {
     case CryptoAlgorithmIdentifier::HMAC:
@@ -646,7 +688,7 @@ static void addJWKAlgorithmToJSON(ExecState* exec, JSObject* json, const CryptoK
 
     if (jwkAlgorithm.isNull()) {
         // The spec doesn't currently tell whether export should fail, or just skip "alg" (which is an optional key in JWK).
-        throwTypeError(exec, "Key algorithm and size do not map to any JWK algorithm identifier");
+        throwTypeError(exec, scope, ASCIILiteral("Key algorithm and size do not map to any JWK algorithm identifier"));
         return;
     }
 
@@ -655,7 +697,10 @@ static void addJWKAlgorithmToJSON(ExecState* exec, JSObject* json, const CryptoK
 
 static void addUsagesToJSON(ExecState* exec, JSObject* json, CryptoKeyUsage usages)
 {
+    VM& vm = exec->vm();
     JSArray* keyOps = constructEmptyArray(exec, 0, exec->lexicalGlobalObject(), 0);
+    if (UNLIKELY(vm.exception()))
+        return;
 
     unsigned index = 0;
     if (usages & CryptoKeyUsageSign)
@@ -675,15 +720,18 @@ static void addUsagesToJSON(ExecState* exec, JSObject* json, CryptoKeyUsage usag
     if (usages & CryptoKeyUsageDeriveBits)
         keyOps->putDirectIndex(exec, index++, jsNontrivialString(exec, ASCIILiteral("deriveBits")));
 
-    json->putDirect(exec->vm(), Identifier::fromString(exec, "key_ops"), keyOps);
+    json->putDirect(vm, Identifier::fromString(exec, "key_ops"), keyOps);
 }
 
 String JSCryptoKeySerializationJWK::serialize(ExecState* exec, const CryptoKey& key)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     std::unique_ptr<CryptoKeyData> keyData = key.exportData();
     if (!keyData) {
         // This generally shouldn't happen as long as all key types implement exportData(), but as underlying libraries return errors, there may be some rare failure conditions.
-        throwTypeError(exec, "Couldn't export key material");
+        throwTypeError(exec, scope, ASCIILiteral("Couldn't export key material"));
         return String();
     }
 
@@ -704,7 +752,7 @@ String JSCryptoKeySerializationJWK::serialize(ExecState* exec, const CryptoKey& 
     else if (is<CryptoKeyDataRSAComponents>(*keyData))
         buildJSONForRSAComponents(exec, downcast<CryptoKeyDataRSAComponents>(*keyData), result);
     else {
-        throwTypeError(exec, "Key doesn't support exportKey");
+        throwTypeError(exec, scope, ASCIILiteral("Key doesn't support exportKey"));
         return String();
     }
     if (exec->hadException())

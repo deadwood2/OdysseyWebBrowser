@@ -40,11 +40,11 @@
  * limitations under the License.
  */
 
-#ifndef WASMFormat_h
-#define WASMFormat_h
+#pragma once
 
 #if ENABLE(WEBASSEMBLY)
 
+#include "B3Type.h"
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
 
@@ -52,47 +52,50 @@ namespace JSC {
 
 class JSFunction;
 
-enum class WASMType : uint8_t {
-    I32,
-    F32,
-    F64,
-    NumberOfTypes
+namespace WASM {
+
+using B3::Type;
+using B3::Int32;
+using B3::Int64;
+using B3::Float;
+using B3::Double;
+
+static_assert(Int32 == 0, "WASM needs B3::Type::Int32 to have the value 0");
+static_assert(Int64 == 1, "WASM needs B3::Type::Int64 to have the value 1");
+static_assert(Float == 2, "WASM needs B3::Type::Float to have the value 2");
+static_assert(Double == 3, "WASM needs B3::Type::Double to have the value 3");
+
+struct Signature {
+    Type returnType;
+    Vector<Type> arguments;
 };
 
-enum class WASMExpressionType : uint8_t {
-    I32,
-    F32,
-    F64,
-    Void,
-    NumberOfExpressionTypes
-};
-
-struct WASMSignature {
-    WASMExpressionType returnType;
-    Vector<WASMType> arguments;
-};
-
-struct WASMFunctionImport {
+struct FunctionImport {
     String functionName;
 };
 
-struct WASMFunctionImportSignature {
+struct FunctionImportSignature {
     uint32_t signatureIndex;
     uint32_t functionImportIndex;
 };
 
-struct WASMFunctionDeclaration {
+struct FunctionDeclaration {
     uint32_t signatureIndex;
 };
 
-struct WASMFunctionPointerTable {
+struct FunctionPointerTable {
     uint32_t signatureIndex;
     Vector<uint32_t> functionIndices;
     Vector<JSFunction*> functions;
 };
 
+struct FunctionInformation {
+    size_t start;
+    size_t end;
+};
+
+} // namespace WASM
+
 } // namespace JSC
 
 #endif // ENABLE(WEBASSEMBLY)
-
-#endif // WASMFormat_h

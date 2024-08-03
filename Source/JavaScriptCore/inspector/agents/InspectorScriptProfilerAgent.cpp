@@ -53,8 +53,15 @@ void InspectorScriptProfilerAgent::didCreateFrontendAndBackend(FrontendRouter*, 
 
 void InspectorScriptProfilerAgent::willDestroyFrontendAndBackend(DisconnectReason)
 {
-    ErrorString ignored;
-    stopTracking(ignored);
+    // Stop tracking without sending results.
+    if (m_tracking) {
+        m_tracking = false;
+        m_activeEvaluateScript = false;
+        m_environment.scriptDebugServer().setProfilingClient(nullptr);
+
+        // Stop sampling without processing the samples.
+        stopSamplingWhenDisconnecting();
+    }
 }
 
 void InspectorScriptProfilerAgent::startTracking(ErrorString&, const bool* includeSamples)
@@ -67,11 +74,9 @@ void InspectorScriptProfilerAgent::startTracking(ErrorString&, const bool* inclu
 #if ENABLE(SAMPLING_PROFILER)
     if (includeSamples && *includeSamples) {
         VM& vm = m_environment.scriptDebugServer().vm();
-        vm.ensureSamplingProfiler(m_environment.executionStopwatch());
+        SamplingProfiler& samplingProfiler = vm.ensureSamplingProfiler(m_environment.executionStopwatch());
 
-        SamplingProfiler& samplingProfiler = *vm.samplingProfiler();
         LockHolder locker(samplingProfiler.getLock());
-
         samplingProfiler.setStopWatch(locker, m_environment.executionStopwatch());
         samplingProfiler.noticeCurrentThreadAsJSCExecutionThread(locker);
         samplingProfiler.start(locker);
@@ -157,7 +162,7 @@ void InspectorScriptProfilerAgent::addEvent(double startTime, double endTime, Pr
 }
 
 #if ENABLE(SAMPLING_PROFILER)
-static Ref<Protocol::ScriptProfiler::Samples> buildSamples(VM& vm, Vector<SamplingProfiler::StackTrace>&& samplingProfilerStackTraces, double totalTime)
+static Ref<Protocol::ScriptProfiler::Samples> buildSamples(VM& vm, Vector<SamplingProfiler::StackTrace>&& samplingProfilerStackTraces)
 {
     Ref<Protocol::Array<Protocol::ScriptProfiler::StackTrace>> stackTraces = Protocol::Array<Protocol::ScriptProfiler::StackTrace>::create();
     for (SamplingProfiler::StackTrace& stackTrace : samplingProfilerStackTraces) {
@@ -190,7 +195,6 @@ static Ref<Protocol::ScriptProfiler::Samples> buildSamples(VM& vm, Vector<Sampli
 
     return Protocol::ScriptProfiler::Samples::create()
         .setStackTraces(WTFMove(stackTraces))
-        .setTotalTime(totalTime)
         .release();
 }
 #endif // ENABLE(SAMPLING_PROFILER)
@@ -203,9 +207,9 @@ void InspectorScriptProfilerAgent::trackingComplete()
         SamplingProfiler* samplingProfiler = m_environment.scriptDebugServer().vm().samplingProfiler();
         RELEASE_ASSERT(samplingProfiler);
         LockHolder locker(samplingProfiler->getLock());
-        samplingProfiler->stop(locker);
+        samplingProfiler->pause(locker);
         Vector<SamplingProfiler::StackTrace> stackTraces = samplingProfiler->releaseStackTraces(locker);
-        Ref<Protocol::ScriptProfiler::Samples> samples = buildSamples(m_environment.scriptDebugServer().vm(), WTFMove(stackTraces), samplingProfiler->totalTime(locker));
+        Ref<Protocol::ScriptProfiler::Samples> samples = buildSamples(m_environment.scriptDebugServer().vm(), WTFMove(stackTraces));
 
         locker.unlockEarly();
 
@@ -217,6 +221,33 @@ void InspectorScriptProfilerAgent::trackingComplete()
 #else
     m_frontendDispatcher->trackingComplete(nullptr);
 #endif // ENABLE(SAMPLING_PROFILER)
+}
+
+void InspectorScriptProfilerAgent::stopSamplingWhenDisconnecting()
+{
+#if ENABLE(SAMPLING_PROFILER)
+    if (!m_enabledSamplingProfiler)
+        return;
+
+    JSLockHolder lock(m_environment.scriptDebugServer().vm());
+    SamplingProfiler* samplingProfiler = m_environment.scriptDebugServer().vm().samplingProfiler();
+    RELEASE_ASSERT(samplingProfiler);
+    LockHolder locker(samplingProfiler->getLock());
+    samplingProfiler->pause(locker);
+    samplingProfiler->clearData(locker);
+
+    m_enabledSamplingProfiler = false;
+#endif
+}
+
+void InspectorScriptProfilerAgent::programmaticCaptureStarted()
+{
+    m_frontendDispatcher->programmaticCaptureStarted();
+}
+
+void InspectorScriptProfilerAgent::programmaticCaptureStopped()
+{
+    m_frontendDispatcher->programmaticCaptureStopped();
 }
 
 } // namespace Inspector

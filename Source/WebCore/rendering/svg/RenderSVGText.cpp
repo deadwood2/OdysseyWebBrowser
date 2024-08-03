@@ -43,7 +43,6 @@
 #include "SVGResourcesCache.h"
 #include "SVGRootInlineBox.h"
 #include "SVGTextElement.h"
-#include "SVGTextRunRenderingContext.h"
 #include "SVGTransformList.h"
 #include "SVGURIReference.h"
 #include "TransformState.h"
@@ -52,7 +51,7 @@
 
 namespace WebCore {
 
-RenderSVGText::RenderSVGText(SVGTextElement& element, Ref<RenderStyle>&& style)
+RenderSVGText::RenderSVGText(SVGTextElement& element, RenderStyle&& style)
     : RenderSVGBlock(element, WTFMove(style))
     , m_needsReordering(false)
     , m_needsPositioningValuesUpdate(false)
@@ -91,9 +90,9 @@ LayoutRect RenderSVGText::clippedOverflowRectForRepaint(const RenderLayerModelOb
     return SVGRenderSupport::clippedOverflowRectForRepaint(*this, repaintContainer);
 }
 
-LayoutRect RenderSVGText::computeRectForRepaint(const LayoutRect& rect, const RenderLayerModelObject* repaintContainer, bool fixed) const
+LayoutRect RenderSVGText::computeRectForRepaint(const LayoutRect& rect, const RenderLayerModelObject* repaintContainer, RepaintContext context) const
 {
-    return enclosingLayoutRect(computeFloatRectForRepaint(rect, repaintContainer, fixed));
+    return enclosingLayoutRect(computeFloatRectForRepaint(rect, repaintContainer, context.m_hasPositionFixedDescendant));
 }
 
 FloatRect RenderSVGText::computeFloatRectForRepaint(const FloatRect& repaintRect, const RenderLayerModelObject* repaintContainer, bool fixed) const
@@ -119,14 +118,13 @@ static inline void collectLayoutAttributes(RenderObject* text, Vector<SVGTextLay
     }
 }
 
-static inline bool findPreviousAndNextAttributes(RenderElement* start, RenderSVGInlineText* locateElement, bool& stopAfterNext, SVGTextLayoutAttributes*& previous, SVGTextLayoutAttributes*& next)
+static inline bool findPreviousAndNextAttributes(RenderElement& start, RenderSVGInlineText* locateElement, bool& stopAfterNext, SVGTextLayoutAttributes*& previous, SVGTextLayoutAttributes*& next)
 {
-    ASSERT(start);
     ASSERT(locateElement);
     // FIXME: Make this iterative.
-    for (RenderObject* child = start->firstChild(); child; child = child->nextSibling()) {
-        if (is<RenderSVGInlineText>(*child)) {
-            RenderSVGInlineText& text = downcast<RenderSVGInlineText>(*child);
+    for (auto& child : childrenOfType<RenderObject>(start)) {
+        if (is<RenderSVGInlineText>(child)) {
+            auto& text = downcast<RenderSVGInlineText>(child);
             if (locateElement != &text) {
                 if (stopAfterNext) {
                     next = text.layoutAttributes();
@@ -141,7 +139,7 @@ static inline bool findPreviousAndNextAttributes(RenderElement* start, RenderSVG
             continue;
         }
 
-        if (!is<RenderSVGInline>(*child))
+        if (!is<RenderSVGInline>(child))
             continue;
 
         if (findPreviousAndNextAttributes(downcast<RenderElement>(child), locateElement, stopAfterNext, previous, next))
@@ -193,7 +191,7 @@ void RenderSVGText::subtreeChildWasAdded(RenderObject* child)
             SVGTextLayoutAttributes* previous = 0;
             SVGTextLayoutAttributes* next = 0;
             ASSERT_UNUSED(child, &attributes->context() == child);
-            findPreviousAndNextAttributes(this, &attributes->context(), stopAfterNext, previous, next);
+            findPreviousAndNextAttributes(*this, &attributes->context(), stopAfterNext, previous, next);
 
             if (previous)
                 m_layoutAttributesBuilder.buildLayoutAttributesForTextRenderer(previous->context());
@@ -253,7 +251,7 @@ void RenderSVGText::subtreeChildWillBeRemoved(RenderObject* child, Vector<SVGTex
     SVGTextLayoutAttributes* previous = nullptr;
     SVGTextLayoutAttributes* next = nullptr;
     if (!documentBeingDestroyed())
-        findPreviousAndNextAttributes(this, &text, stopAfterNext, previous, next);
+        findPreviousAndNextAttributes(*this, &text, stopAfterNext, previous, next);
 
     if (previous)
         affectedAttributes.append(previous);
@@ -547,7 +545,7 @@ RenderBlock* RenderSVGText::firstLineBlock() const
 
 // Fix for <rdar://problem/8048875>. We should not render :first-letter CSS Style
 // in a SVG text element context.
-void RenderSVGText::updateFirstLetter()
+void RenderSVGText::updateFirstLetter(RenderTreeMutationIsAllowed)
 {
 }
 

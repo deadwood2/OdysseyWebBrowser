@@ -28,7 +28,6 @@
 
 #include "Disassembler.h"
 #include "ExecutableAllocator.h"
-#include "LLIntData.h"
 #include <wtf/DataLog.h>
 #include <wtf/PassRefPtr.h>
 #include <wtf/PrintStream.h>
@@ -51,33 +50,9 @@
 #define ASSERT_VALID_CODE_OFFSET(offset) // Anything goes!
 #endif
 
-#if CPU(X86) && OS(WINDOWS)
-#define CALLING_CONVENTION_IS_STDCALL 1
-#ifndef CDECL
-#if COMPILER(MSVC)
-#define CDECL __cdecl
-#else
-#define CDECL __attribute__ ((__cdecl))
-#endif // COMPILER(MSVC)
-#endif // CDECL
-#else
-#define CALLING_CONVENTION_IS_STDCALL 0
-#endif
-
-#if CPU(X86)
-#define HAS_FASTCALL_CALLING_CONVENTION 1
-#ifndef FASTCALL
-#if COMPILER(MSVC)
-#define FASTCALL __fastcall
-#else
-#define FASTCALL  __attribute__ ((fastcall))
-#endif // COMPILER(MSVC)
-#endif // FASTCALL
-#else
-#define HAS_FASTCALL_CALLING_CONVENTION 0
-#endif // CPU(X86)
-
 namespace JSC {
+
+enum OpcodeID : unsigned;
 
 // FunctionPtr:
 //
@@ -178,7 +153,7 @@ public:
     }
 #endif
 
-#if HAS_FASTCALL_CALLING_CONVENTION
+#if COMPILER_SUPPORTS(FASTCALL_CALLING_CONVENTION)
 
     template<typename returnType>
     FunctionPtr(returnType (FASTCALL *value)())
@@ -299,10 +274,7 @@ public:
         return result;
     }
 
-    static MacroAssemblerCodePtr createLLIntCodePtr(OpcodeID codeId)
-    {
-        return createFromExecutableAddress(LLInt::getCodePtr(codeId));
-    }
+    static MacroAssemblerCodePtr createLLIntCodePtr(OpcodeID codeId);
 
     explicit MacroAssemblerCodePtr(ReturnAddressPtr ra)
         : m_value(ra.value())
@@ -325,23 +297,9 @@ public:
         return m_value == other.m_value;
     }
 
-    void dumpWithName(const char* name, PrintStream& out) const
-    {
-        if (!m_value) {
-            out.print(name, "(null)");
-            return;
-        }
-        if (executableAddress() == dataLocation()) {
-            out.print(name, "(", RawPointer(executableAddress()), ")");
-            return;
-        }
-        out.print(name, "(executable = ", RawPointer(executableAddress()), ", dataLocation = ", RawPointer(dataLocation()), ")");
-    }
+    void dumpWithName(const char* name, PrintStream& out) const;
     
-    void dump(PrintStream& out) const
-    {
-        dumpWithName("CodePtr", out);
-    }
+    void dump(PrintStream& out) const;
     
     enum EmptyValueTag { EmptyValue };
     enum DeletedValueTag { DeletedValue };
@@ -415,10 +373,7 @@ public:
     }
     
     // Helper for creating self-managed code refs from LLInt.
-    static MacroAssemblerCodeRef createLLIntCodeRef(OpcodeID codeId)
-    {
-        return createSelfManagedCodeRef(MacroAssemblerCodePtr::createFromExecutableAddress(LLInt::getCodePtr(codeId)));
-    }
+    static MacroAssemblerCodeRef createLLIntCodeRef(OpcodeID codeId);
 
     ExecutableMemoryHandle* executableMemory() const
     {
@@ -444,10 +399,7 @@ public:
     
     explicit operator bool() const { return !!m_codePtr; }
     
-    void dump(PrintStream& out) const
-    {
-        m_codePtr.dumpWithName("CodeRef", out);
-    }
+    void dump(PrintStream& out) const;
 
 private:
     MacroAssemblerCodePtr m_codePtr;

@@ -30,6 +30,7 @@
 #include "CodeBlock.h"
 #include "DFGJITCode.h"
 #include "InlineCallFrame.h"
+#include "Interpreter.h"
 #include "LLIntCallLinkInfo.h"
 #include "JSCInlines.h"
 #include <wtf/CommaPrinter.h>
@@ -341,6 +342,9 @@ void CallLinkStatus::dump(PrintStream& out) const
     
     if (m_couldTakeSlowPath)
         out.print(comma, "Could Take Slow Path");
+    
+    if (m_isBasedOnStub)
+        out.print(comma, "Based On Stub");
     
     if (!m_variants.isEmpty())
         out.print(comma, listDump(m_variants));

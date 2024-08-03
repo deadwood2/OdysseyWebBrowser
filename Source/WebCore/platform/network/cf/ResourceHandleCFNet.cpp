@@ -37,6 +37,7 @@
 #include "FrameLoader.h"
 #include "HTTPHeaderNames.h"
 #include "Logging.h"
+#include "NetworkStorageSession.h"
 #include "NetworkingContext.h"
 #include "ResourceError.h"
 #include "ResourceHandleClient.h"
@@ -287,7 +288,7 @@ void ResourceHandle::cancel()
     }
 }
 
-void ResourceHandle::willSendRequest(ResourceRequest& request, const ResourceResponse& redirectResponse)
+ResourceRequest ResourceHandle::willSendRequest(ResourceRequest&& request, ResourceResponse&& redirectResponse)
 {
     const URL& url = request.url();
     d->m_user = url.user();
@@ -314,19 +315,21 @@ void ResourceHandle::willSendRequest(ResourceRequest& request, const ResourceRes
         }
     }
 
-    Ref<ResourceHandle> protect(*this);
-    if (d->m_usesAsyncCallbacks)
-        client()->willSendRequestAsync(this, request, redirectResponse);
-    else {
-        client()->willSendRequest(this, request, redirectResponse);
-
-        // Client call may not preserve the session, especially if the request is sent over IPC.
-        if (!request.isNull()) {
-            request.setStorageSession(d->m_storageSession.get());
-
-            d->m_currentRequest = request;
-        }
+    Ref<ResourceHandle> protectedThis(*this);
+    if (d->m_usesAsyncCallbacks) {
+        client()->willSendRequestAsync(this, WTFMove(request), WTFMove(redirectResponse));
+        return { };
     }
+    
+    auto newRequest = client()->willSendRequest(this, WTFMove(request), WTFMove(redirectResponse));
+
+    // Client call may not preserve the session, especially if the request is sent over IPC.
+    if (!newRequest.isNull()) {
+        newRequest.setStorageSession(d->m_storageSession.get());
+
+        d->m_currentRequest = newRequest;
+    }
+    return newRequest;
 }
 
 bool ResourceHandle::shouldUseCredentialStorage()
@@ -650,12 +653,11 @@ const ResourceRequest& ResourceHandle::currentRequest() const
     return d->m_currentRequest;
 }
 
-void ResourceHandle::continueWillSendRequest(const ResourceRequest& request)
+void ResourceHandle::continueWillSendRequest(ResourceRequest&& request)
 {
-    ResourceRequest requestResult = request;
-    if (!requestResult.isNull())
-        requestResult.setStorageSession(d->m_storageSession.get());
-    d->m_connectionDelegate->continueWillSendRequest(requestResult.cfURLRequest(UpdateHTTPBody));
+    if (!request.isNull())
+        request.setStorageSession(d->m_storageSession.get());
+    d->m_connectionDelegate->continueWillSendRequest(request.cfURLRequest(UpdateHTTPBody));
 }
 
 void ResourceHandle::continueDidReceiveResponse()

@@ -174,10 +174,12 @@ WebInspector.ResourceDetailsSidebarPanel = class ResourceDetailsSidebarPanel ext
             this._resource.addEventListener(WebInspector.Resource.Event.InitiatedResourcesDidChange, this._refreshRelatedResourcesSection, this);
         }
 
-        this.needsRefresh();
+        this.needsLayout();
     }
 
-    refresh()
+    // Protected
+
+    layout()
     {
         if (!this._resource)
             return;
@@ -415,10 +417,10 @@ WebInspector.ResourceDetailsSidebarPanel = class ResourceDetailsSidebarPanel ext
         this.contentView.element.insertBefore(this._imageSizeSection.element, this._locationSection.element);
 
         // Get the metrics for this resource and fill in the metrics rows with that information.
-        resource.getImageSize(function(size) {
-            this._imageWidthRow.value = WebInspector.UIString("%fpx").format(size.width);
-            this._imageHeightRow.value = WebInspector.UIString("%fpx").format(size.height);
-        }.bind(this));
+        resource.getImageSize((size) => {
+            this._imageWidthRow.value = WebInspector.UIString("%dpx").format(size.width);
+            this._imageHeightRow.value = WebInspector.UIString("%dpx").format(size.height);
+        });
     }
 
     _goToRequestDataClicked()

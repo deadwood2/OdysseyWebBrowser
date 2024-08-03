@@ -22,6 +22,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
+
 #include "config.h"
 #include "SQLiteIDBCursor.h"
 
@@ -31,10 +32,12 @@
 #include "IDBGetResult.h"
 #include "IDBSerialization.h"
 #include "Logging.h"
+#include "SQLiteIDBBackingStore.h"
 #include "SQLiteIDBTransaction.h"
 #include "SQLiteStatement.h"
 #include "SQLiteTransaction.h"
 #include <sqlite3.h>
+#include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
 namespace IDBServer {
@@ -102,14 +105,14 @@ void SQLiteIDBCursor::currentData(IDBGetResult& result)
         return;
     }
 
-    result = { m_currentKey, m_currentPrimaryKey, ThreadSafeDataBuffer::copyVector(m_currentValueBuffer) };
+    result = { m_currentKey, m_currentPrimaryKey, m_currentValue ? *m_currentValue : IDBValue() };
 }
 
 static String buildIndexStatement(const IDBKeyRangeData& keyRange, IndexedDB::CursorDirection cursorDirection)
 {
     StringBuilder builder;
 
-    builder.appendLiteral("SELECT rowid, key, value FROM IndexRecords WHERE indexID = ? AND key ");
+    builder.appendLiteral("SELECT rowid, key, value FROM IndexRecords WHERE indexID = ? AND objectStoreID = ? AND key ");
     if (!keyRange.lowerKey.isNull() && !keyRange.lowerOpen)
         builder.appendLiteral(">=");
     else
@@ -257,19 +260,26 @@ bool SQLiteIDBCursor::bindArguments()
 {
     LOG(IndexedDB, "Cursor is binding lower key '%s' and upper key '%s'", m_currentLowerKey.loggingString().utf8().data(), m_currentUpperKey.loggingString().utf8().data());
 
-    if (m_statement->bindInt64(1, m_boundID) != SQLITE_OK) {
+    int currentBindArgument = 1;
+
+    if (m_statement->bindInt64(currentBindArgument++, m_boundID) != SQLITE_OK) {
         LOG_ERROR("Could not bind id argument (bound ID)");
         return false;
     }
 
+    if (m_indexID != IDBIndexInfo::InvalidId && m_statement->bindInt64(currentBindArgument++, m_objectStoreID) != SQLITE_OK) {
+        LOG_ERROR("Could not bind object store id argument for an index cursor");
+        return false;
+    }
+
     RefPtr<SharedBuffer> buffer = serializeIDBKeyData(m_currentLowerKey);
-    if (m_statement->bindBlob(2, buffer->data(), buffer->size()) != SQLITE_OK) {
+    if (m_statement->bindBlob(currentBindArgument++, buffer->data(), buffer->size()) != SQLITE_OK) {
         LOG_ERROR("Could not create cursor statement (lower key)");
         return false;
     }
 
     buffer = serializeIDBKeyData(m_currentUpperKey);
-    if (m_statement->bindBlob(3, buffer->data(), buffer->size()) != SQLITE_OK) {
+    if (m_statement->bindBlob(currentBindArgument++, buffer->data(), buffer->size()) != SQLITE_OK) {
         LOG_ERROR("Could not create cursor statement (upper key)");
         return false;
     }
@@ -337,6 +347,8 @@ SQLiteIDBCursor::AdvanceResult SQLiteIDBCursor::internalAdvanceOnce()
     ASSERT(m_statement);
     ASSERT(!m_completed);
 
+    m_currentValue = nullptr;
+
     int result = m_statement->step();
     if (result == SQLITE_DONE) {
         m_completed = true;
@@ -344,7 +356,7 @@ SQLiteIDBCursor::AdvanceResult SQLiteIDBCursor::internalAdvanceOnce()
         // When a cursor reaches its end, that is indicated by having undefined keys/values
         m_currentKey = IDBKeyData();
         m_currentPrimaryKey = IDBKeyData();
-        m_currentValueBuffer.clear();
+        m_currentValue = nullptr;
 
         return AdvanceResult::Success;
     }
@@ -367,12 +379,25 @@ SQLiteIDBCursor::AdvanceResult SQLiteIDBCursor::internalAdvanceOnce()
     }
 
     m_statement->getColumnBlobAsVector(2, keyData);
-    m_currentValueBuffer = keyData;
+
+    int64_t recordID = m_statement->getColumnInt64(0);
+    ASSERT(recordID);
 
     // The primaryKey of an ObjectStore cursor is the same as its key.
-    if (m_indexID == IDBIndexInfo::InvalidId)
+    if (m_indexID == IDBIndexInfo::InvalidId) {
         m_currentPrimaryKey = m_currentKey;
-    else {
+
+        Vector<String> blobURLs, blobFilePaths;
+        auto error = m_transaction->backingStore().getBlobRecordsForObjectStoreRecord(recordID, blobURLs, blobFilePaths);
+        if (!error.isNull()) {
+            LOG_ERROR("Unable to fetch blob records from database while advancing cursor");
+            m_completed = true;
+            m_errored = true;
+            return AdvanceResult::Failure;
+        }
+
+        m_currentValue = std::make_unique<IDBValue>(ThreadSafeDataBuffer::adoptVector(keyData), blobURLs, blobFilePaths);
+    } else {
         if (!deserializeIDBKeyData(keyData.data(), keyData.size(), m_currentPrimaryKey)) {
             LOG_ERROR("Unable to deserialize value data from database while advancing index cursor");
             m_completed = true;
@@ -383,7 +408,7 @@ SQLiteIDBCursor::AdvanceResult SQLiteIDBCursor::internalAdvanceOnce()
         SQLiteStatement objectStoreStatement(m_statement->database(), "SELECT value FROM Records WHERE key = CAST(? AS TEXT) and objectStoreID = ?;");
 
         if (objectStoreStatement.prepare() != SQLITE_OK
-            || objectStoreStatement.bindBlob(1, m_currentValueBuffer.data(), m_currentValueBuffer.size()) != SQLITE_OK
+            || objectStoreStatement.bindBlob(1, keyData.data(), keyData.size()) != SQLITE_OK
             || objectStoreStatement.bindInt64(2, m_objectStoreID) != SQLITE_OK) {
             LOG_ERROR("Could not create index cursor statement into object store records (%i) '%s'", m_statement->database().lastError(), m_statement->database().lastErrorMsg());
             m_completed = true;
@@ -393,9 +418,10 @@ SQLiteIDBCursor::AdvanceResult SQLiteIDBCursor::internalAdvanceOnce()
 
         int result = objectStoreStatement.step();
 
-        if (result == SQLITE_ROW)
-            objectStoreStatement.getColumnBlobAsVector(0, m_currentValueBuffer);
-        else if (result == SQLITE_DONE) {
+        if (result == SQLITE_ROW) {
+            objectStoreStatement.getColumnBlobAsVector(0, keyData);
+            m_currentValue = std::make_unique<IDBValue>(ThreadSafeDataBuffer::adoptVector(keyData));
+        } else if (result == SQLITE_DONE) {
             // This indicates that the record we're trying to retrieve has been removed from the object store.
             // Skip over it.
             return AdvanceResult::ShouldAdvanceAgain;

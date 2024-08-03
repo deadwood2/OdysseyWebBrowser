@@ -27,7 +27,6 @@
 #define AbstractMacroAssembler_h
 
 #include "AbortReason.h"
-#include "AssemblerBuffer.h"
 #include "CodeLocation.h"
 #include "MacroAssemblerCodeRef.h"
 #include "Options.h"
@@ -143,7 +142,9 @@ public:
             return TimesFour;
         return TimesEight;
     }
-
+    
+    struct BaseIndex;
+    
     // Address:
     //
     // Describes a simple base-offset address.
@@ -158,6 +159,8 @@ public:
         {
             return Address(base, offset + additionalOffset);
         }
+        
+        BaseIndex indexedBy(RegisterID index, Scale) const;
         
         RegisterID base;
         int32_t offset;
@@ -216,7 +219,7 @@ public:
             , offset(offset)
         {
         }
-
+        
         RegisterID base;
         RegisterID index;
         Scale scale;
@@ -711,8 +714,6 @@ public:
     // A JumpList is a set of Jump objects.
     // All jumps in the set will be linked to the same destination.
     class JumpList {
-        friend class LinkBuffer;
-
     public:
         typedef Vector<Jump, 2> JumpVector;
         
@@ -724,20 +725,18 @@ public:
                 append(jump);
         }
 
-        void link(AbstractMacroAssemblerType* masm)
+        void link(AbstractMacroAssemblerType* masm) const
         {
             size_t size = m_jumps.size();
             for (size_t i = 0; i < size; ++i)
                 m_jumps[i].link(masm);
-            m_jumps.clear();
         }
         
-        void linkTo(Label label, AbstractMacroAssemblerType* masm)
+        void linkTo(Label label, AbstractMacroAssemblerType* masm) const
         {
             size_t size = m_jumps.size();
             for (size_t i = 0; i < size; ++i)
                 m_jumps[i].linkTo(label, masm);
-            m_jumps.clear();
         }
         
         void append(Jump jump)
@@ -1038,18 +1037,34 @@ public:
         m_linkTasks.append(createSharedTask<void(LinkBuffer&)>(functor));
     }
 
+    void emitNops(size_t memoryToFillWithNopsInBytes)
+    {
+        AssemblerBuffer& buffer = m_assembler.buffer();
+        size_t startCodeSize = buffer.codeSize();
+        size_t targetCodeSize = startCodeSize + memoryToFillWithNopsInBytes;
+        buffer.ensureSpace(memoryToFillWithNopsInBytes);
+        bool isCopyingToExecutableMemory = false;
+        AssemblerType::fillNops(static_cast<char*>(buffer.data()) + startCodeSize, memoryToFillWithNopsInBytes, isCopyingToExecutableMemory);
+        buffer.setCodeSize(targetCodeSize);
+    }
+
 protected:
     AbstractMacroAssembler()
-        : m_randomSource(cryptographicallyRandomNumber())
+        : m_randomSource(0)
     {
         invalidateAllTempRegisters();
     }
 
     uint32_t random()
     {
+        if (!m_randomSourceIsInitialized) {
+            m_randomSourceIsInitialized = true;
+            m_randomSource.setSeed(cryptographicallyRandomNumber());
+        }
         return m_randomSource.getUint32();
     }
 
+    bool m_randomSourceIsInitialized { false };
     WeakRandom m_randomSource;
 
 #if ENABLE(DFG_REGISTER_ALLOCATION_VALIDATION)
@@ -1140,6 +1155,15 @@ protected:
 
     friend class LinkBuffer;
 }; // class AbstractMacroAssembler
+
+template <class AssemblerType, class MacroAssemblerType>
+inline typename AbstractMacroAssembler<AssemblerType, MacroAssemblerType>::BaseIndex
+AbstractMacroAssembler<AssemblerType, MacroAssemblerType>::Address::indexedBy(
+    typename AbstractMacroAssembler<AssemblerType, MacroAssemblerType>::RegisterID index,
+    typename AbstractMacroAssembler<AssemblerType, MacroAssemblerType>::Scale scale) const
+{
+    return BaseIndex(base, index, scale, offset);
+}
 
 } // namespace JSC
 

@@ -42,7 +42,7 @@ NamedImageGeneratedImage::NamedImageGeneratedImage(String name, const FloatSize&
 
 void NamedImageGeneratedImage::draw(GraphicsContext& context, const FloatRect& dstRect, const FloatRect& srcRect, CompositeOperator compositeOp, BlendMode blendMode, ImageOrientationDescription)
 {
-#if USE(NEW_THEME)
+#if USE(NEW_THEME) || PLATFORM(IOS)
     GraphicsContextStateSaver stateSaver(context);
     context.setCompositeOperation(compositeOp, blendMode);
     context.clip(dstRect);
@@ -64,7 +64,7 @@ void NamedImageGeneratedImage::draw(GraphicsContext& context, const FloatRect& d
 void NamedImageGeneratedImage::drawPattern(GraphicsContext& context, const FloatRect& srcRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, CompositeOperator compositeOp, const FloatRect& dstRect, BlendMode blendMode)
 {
 #if USE(NEW_THEME)
-    std::unique_ptr<ImageBuffer> imageBuffer = context.createCompatibleBuffer(size(), true);
+    auto imageBuffer = ImageBuffer::createCompatibleBuffer(size(), context);
     if (!imageBuffer)
         return;
 

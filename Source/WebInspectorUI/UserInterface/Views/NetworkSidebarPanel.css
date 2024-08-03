@@ -36,7 +36,7 @@
 
 .sidebar > .panel.navigation.network > .title-bar {
     position: absolute;
-    top: 29px;
+    top: var(--navigation-bar-height);
     left: 0;
     right: 0;
 
@@ -62,6 +62,7 @@
  /* This hides the scrollbar. The view shows a scrollbar, we don't need two. */
     padding-right: 16px;
     right: -16px;
+    overflow-y: overlay;
 }
 
 .sidebar > .panel.navigation.network .item:not(:hover, .selected) .status .status-button,
@@ -71,6 +72,10 @@
 
 .sidebar > .panel.navigation.network:not(.network-grid-content-view-showing) .status .go-to-arrow.status-button {
     display: none;
+}
+
+.sidebar > .panel.navigation.network .status .close.status-button {
+    padding-bottom: 1px;
 }
 
 .sidebar > .panel.navigation.network.network-grid-content-view-showing .status .close.status-button {

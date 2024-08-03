@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2011, 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -43,9 +43,6 @@ WebProcessCreationParameters::WebProcessCreationParameters()
     , shouldEnableJIT(false)
     , shouldEnableFTLJIT(false)
 #endif
-#if PLATFORM(MAC)
-    , shouldEnableTabSuspension(false)
-#endif
     , memoryCacheDisabled(false)
 #if ENABLE(SERVICE_CONTROLS)
     , hasImageServices(false)
@@ -59,18 +56,18 @@ WebProcessCreationParameters::~WebProcessCreationParameters()
 {
 }
 
-void WebProcessCreationParameters::encode(IPC::ArgumentEncoder& encoder) const
+void WebProcessCreationParameters::encode(IPC::Encoder& encoder) const
 {
     encoder << injectedBundlePath;
     encoder << injectedBundlePathExtensionHandle;
     encoder << initializationUserData;
     encoder << applicationCacheDirectory;
+    encoder << applicationCacheFlatFileSubdirectoryName;
     encoder << applicationCacheDirectoryExtensionHandle;
     encoder << webSQLDatabaseDirectory;
     encoder << webSQLDatabaseDirectoryExtensionHandle;
-#if ENABLE(SECCOMP_FILTERS)
-    encoder << cookieStorageDirectory;
-#endif
+    encoder << mediaCacheDirectory;
+    encoder << mediaCacheDirectoryExtensionHandle;
 #if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100
     encoder << uiProcessCookieStorageIdentifier;
 #endif
@@ -97,10 +94,11 @@ void WebProcessCreationParameters::encode(IPC::ArgumentEncoder& encoder) const
     encoder.encodeEnum(cacheModel);
     encoder << shouldAlwaysUseComplexTextCodePath;
     encoder << shouldEnableMemoryPressureReliefLogging;
+    encoder << shouldSuppressMemoryPressureHandler;
     encoder << shouldUseFontSmoothing;
+    encoder << resourceLoadStatisticsEnabled;
     encoder << fontWhitelist;
     encoder << iconDatabaseEnabled;
-    encoder << shouldRewriteConstAsVar;
     encoder << terminationTimeout;
     encoder << languages;
     encoder << textCheckerState;
@@ -120,10 +118,6 @@ void WebProcessCreationParameters::encode(IPC::ArgumentEncoder& encoder) const
     encoder << !!bundleParameterData;
     if (bundleParameterData)
         encoder << bundleParameterData->dataReference();
-#endif
-
-#if PLATFORM(MAC)
-    encoder << shouldEnableTabSuspension;
 #endif
 
 #if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
@@ -147,9 +141,17 @@ void WebProcessCreationParameters::encode(IPC::ArgumentEncoder& encoder) const
 #if TARGET_OS_IPHONE || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
     IPC::encode(encoder, networkATSContext.get());
 #endif
+
+#if OS(LINUX)
+    encoder << memoryPressureMonitorHandle;
+#endif
+
+#if PLATFORM(WAYLAND)
+    encoder << waylandCompositorDisplayName;
+#endif
 }
 
-bool WebProcessCreationParameters::decode(IPC::ArgumentDecoder& decoder, WebProcessCreationParameters& parameters)
+bool WebProcessCreationParameters::decode(IPC::Decoder& decoder, WebProcessCreationParameters& parameters)
 {
     if (!decoder.decode(parameters.injectedBundlePath))
         return false;
@@ -159,16 +161,18 @@ bool WebProcessCreationParameters::decode(IPC::ArgumentDecoder& decoder, WebProc
         return false;
     if (!decoder.decode(parameters.applicationCacheDirectory))
         return false;
+    if (!decoder.decode(parameters.applicationCacheFlatFileSubdirectoryName))
+        return false;
     if (!decoder.decode(parameters.applicationCacheDirectoryExtensionHandle))
         return false;
     if (!decoder.decode(parameters.webSQLDatabaseDirectory))
         return false;
     if (!decoder.decode(parameters.webSQLDatabaseDirectoryExtensionHandle))
         return false;
-#if ENABLE(SECCOMP_FILTERS)
-    if (!decoder.decode(parameters.cookieStorageDirectory))
+    if (!decoder.decode(parameters.mediaCacheDirectory))
         return false;
-#endif
+    if (!decoder.decode(parameters.mediaCacheDirectoryExtensionHandle))
+        return false;
 #if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100
     if (!decoder.decode(parameters.uiProcessCookieStorageIdentifier))
         return false;
@@ -215,13 +219,15 @@ bool WebProcessCreationParameters::decode(IPC::ArgumentDecoder& decoder, WebProc
         return false;
     if (!decoder.decode(parameters.shouldEnableMemoryPressureReliefLogging))
         return false;
+    if (!decoder.decode(parameters.shouldSuppressMemoryPressureHandler))
+        return false;
     if (!decoder.decode(parameters.shouldUseFontSmoothing))
+        return false;
+    if (!decoder.decode(parameters.resourceLoadStatisticsEnabled))
         return false;
     if (!decoder.decode(parameters.fontWhitelist))
         return false;
     if (!decoder.decode(parameters.iconDatabaseEnabled))
-        return false;
-    if (!decoder.decode(parameters.shouldRewriteConstAsVar))
         return false;
     if (!decoder.decode(parameters.terminationTimeout))
         return false;
@@ -267,11 +273,6 @@ bool WebProcessCreationParameters::decode(IPC::ArgumentDecoder& decoder, WebProc
     }
 #endif
 
-#if PLATFORM(MAC)
-    if (!decoder.decode(parameters.shouldEnableTabSuspension))
-        return false;
-#endif
-
 #if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
     if (!decoder.decode(parameters.notificationPermissions))
         return false;
@@ -300,6 +301,16 @@ bool WebProcessCreationParameters::decode(IPC::ArgumentDecoder& decoder, WebProc
 
 #if TARGET_OS_IPHONE || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101100)
     if (!IPC::decode(decoder, parameters.networkATSContext))
+        return false;
+#endif
+
+#if OS(LINUX)
+    if (!decoder.decode(parameters.memoryPressureMonitorHandle))
+        return false;
+#endif
+
+#if PLATFORM(WAYLAND)
+    if (!decoder.decode(parameters.waylandCompositorDisplayName))
         return false;
 #endif
 

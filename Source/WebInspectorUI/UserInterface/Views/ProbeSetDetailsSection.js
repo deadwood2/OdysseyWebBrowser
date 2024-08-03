@@ -96,7 +96,7 @@ WebInspector.ProbeSetDetailsSection = class ProbeSetDetailsSection extends WebIn
             console.assert(!breakpoint.resolved);
 
             var location = breakpoint.sourceCodeLocation;
-            titleElement = WebInspector.linkifyLocation(breakpoint.url, location.displayLineNumber, location.displayColumnNumber);
+            titleElement = WebInspector.linkifyLocation(breakpoint.contentIdentifier, location.displayLineNumber, location.displayColumnNumber);
         }
 
         titleElement.classList.add(WebInspector.ProbeSetDetailsSection.DontFloatLinkStyleClassName);
@@ -131,6 +131,10 @@ WebInspector.ProbeSetDetailsSection = class ProbeSetDetailsSection extends WebIn
         popover.content = content;
         let target = WebInspector.Rect.rectFromClientRect(event.target.element.getBoundingClientRect());
         popover.present(target, [WebInspector.RectEdge.MAX_Y, WebInspector.RectEdge.MIN_Y, WebInspector.RectEdge.MAX_X]);
+        popover.windowResizeHandler = () => {
+            let target = WebInspector.Rect.rectFromClientRect(event.target.element.getBoundingClientRect());
+            popover.present(target, [WebInspector.RectEdge.MAX_Y, WebInspector.RectEdge.MIN_Y, WebInspector.RectEdge.MAX_X]);            
+        };
         textBox.select();
     }
 

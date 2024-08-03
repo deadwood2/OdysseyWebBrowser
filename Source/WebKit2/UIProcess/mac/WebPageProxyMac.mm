@@ -55,7 +55,6 @@
 #import <WebCore/TextAlternativeWithRange.h>
 #import <WebCore/UserAgent.h>
 #import <mach-o/dyld.h>
-#import <wtf/NeverDestroyed.h>
 #import <wtf/text/StringConcatenate.h>
 
 #define MESSAGE_CHECK(assertion) MESSAGE_CHECK_BASE(assertion, process().connection())
@@ -63,11 +62,17 @@
 
 using namespace WebCore;
 
+@interface NSApplication ()
+- (BOOL)isSpeaking;
+- (void)speakString:(NSString *)string;
+- (void)stopSpeaking:(id)sender;
+@end
+
 namespace WebKit {
 
 static inline bool expectsLegacyImplicitRubberBandControl()
 {
-    if (applicationIsSafari()) {
+    if (MacApplication::isSafari()) {
         const int32_t firstVersionOfSafariNotExpectingImplicitRubberBandControl = 0x021A0F00; // 538.15.0
         bool linkedAgainstSafariExpectingImplicitRubberBandControl = NSVersionOfLinkTimeLibrary("Safari") < firstVersionOfSafariNotExpectingImplicitRubberBandControl;
         return linkedAgainstSafariExpectingImplicitRubberBandControl;
@@ -265,8 +270,8 @@ void WebPageProxy::replaceSelectionWithPasteboardData(const Vector<String>& type
 #if ENABLE(DRAG_SUPPORT)
 void WebPageProxy::setDragImage(const WebCore::IntPoint& clientPosition, const ShareableBitmap::Handle& dragImageHandle, bool isLinkDrag)
 {
-    if (RefPtr<ShareableBitmap> dragImage = ShareableBitmap::create(dragImageHandle))
-        m_pageClient.setDragImage(clientPosition, dragImage.release(), isLinkDrag);
+    if (auto dragImage = ShareableBitmap::create(dragImageHandle))
+        m_pageClient.setDragImage(clientPosition, WTFMove(dragImage), isLinkDrag);
 
     process().send(Messages::WebPage::DidStartDrag(), m_pageID);
 }
@@ -547,7 +552,7 @@ CGRect WebPageProxy::boundsOfLayerInLayerBackedWindowCoordinates(CALayer *layer)
 
 bool WebPageProxy::appleMailPaginationQuirkEnabled()
 {
-    return applicationIsAppleMail();
+    return MacApplication::isAppleMail();
 }
 
 void WebPageProxy::setFont(const String& fontFamily, double fontSize, uint64_t fontTraits)
@@ -582,6 +587,11 @@ void WebPageProxy::startWindowDrag()
 NSWindow *WebPageProxy::platformWindow()
 {
     return m_pageClient.platformWindow();
+}
+
+void WebPageProxy::rootViewToWindow(const WebCore::IntRect& viewRect, WebCore::IntRect& windowRect)
+{
+    windowRect = m_pageClient.rootViewToWindow(viewRect);
 }
 
 #if WK_API_ENABLED

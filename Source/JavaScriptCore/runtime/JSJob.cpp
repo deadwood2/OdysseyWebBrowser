@@ -28,11 +28,10 @@
 
 #include "Error.h"
 #include "Exception.h"
-#include "JSCJSValueInlines.h"
-#include "JSCellInlines.h"
+#include "JSCInlines.h"
 #include "JSGlobalObject.h"
+#include "JSObjectInlines.h"
 #include "Microtask.h"
-#include "SlotVisitorInlines.h"
 #include "StrongInlines.h"
 
 namespace JSC {
@@ -50,7 +49,7 @@ public:
     }
 
 private:
-    virtual void run(ExecState*) override;
+    void run(ExecState*) override;
 
     Strong<Unknown> m_job;
     Strong<JSArray> m_arguments;
@@ -65,12 +64,13 @@ void JSJobMicrotask::run(ExecState* exec)
 {
     CallData handlerCallData;
     CallType handlerCallType = getCallData(m_job.get(), handlerCallData);
-    ASSERT(handlerCallType != CallTypeNone);
+    ASSERT(handlerCallType != CallType::None);
 
     MarkedArgumentBuffer handlerArguments;
     for (unsigned index = 0, length = m_arguments->length(); index < length; ++index)
         handlerArguments.append(m_arguments->JSArray::get(exec, index));
     profiledCall(exec, ProfilingReason::Microtask, m_job.get(), handlerCallType, handlerCallData, jsUndefined(), handlerArguments);
+    exec->vm().clearException();
 }
 
 } // namespace JSC

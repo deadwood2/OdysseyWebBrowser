@@ -26,7 +26,7 @@
 #include "config.h"
 #include "ViewportConfiguration.h"
 
-#include <WebCore/TextStream.h>
+#include "TextStream.h"
 #include <wtf/Assertions.h>
 #include <wtf/MathExtras.h>
 #include <wtf/text/CString.h>
@@ -189,6 +189,9 @@ double ViewportConfiguration::minimumScale() const
 
     // If not, we still need to sanity check our value.
     double minimumScale = m_configuration.minimumScale;
+    
+    if (m_forceAlwaysUserScalable)
+        minimumScale = std::min(minimumScale, forceAlwaysUserScalableMinimumScale);
 
     const FloatSize& minimumLayoutSize = m_minimumLayoutSize;
     double contentWidth = m_contentSize.width();
@@ -206,7 +209,12 @@ double ViewportConfiguration::minimumScale() const
 
 bool ViewportConfiguration::allowsUserScaling() const
 {
-    return m_forceAlwaysUserScalable || shouldIgnoreScalingConstraints() || m_configuration.allowsUserScaling;
+    return m_forceAlwaysUserScalable || allowsUserScalingIgnoringForceAlwaysScaling();
+}
+    
+bool ViewportConfiguration::allowsUserScalingIgnoringForceAlwaysScaling() const
+{
+    return shouldIgnoreScalingConstraints() || m_configuration.allowsUserScaling;
 }
 
 ViewportConfiguration::Parameters ViewportConfiguration::webpageParameters()

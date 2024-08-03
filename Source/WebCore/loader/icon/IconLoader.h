@@ -30,7 +30,6 @@
 #include "CachedResourceHandle.h"
 #include <wtf/Forward.h>
 #include <wtf/Noncopyable.h>
-#include <wtf/RefPtr.h>
 
 namespace WebCore {
 
@@ -47,7 +46,7 @@ public:
     void stopLoading();
 
 private:
-    virtual void notifyFinished(CachedResource*) override;
+    void notifyFinished(CachedResource*) override;
 
     Frame& m_frame;
     CachedResourceHandle<CachedRawResource> m_resource;

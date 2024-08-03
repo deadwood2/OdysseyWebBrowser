@@ -32,7 +32,9 @@
 #if ENABLE(FETCH_API)
 
 #include "Blob.h"
-#include "DOMFormData.h"
+#include "FetchBodyConsumer.h"
+#include "FetchLoader.h"
+#include "FormData.h"
 #include "JSDOMPromise.h"
 
 namespace JSC {
@@ -42,53 +44,75 @@ class JSValue;
 
 namespace WebCore {
 
-class Dictionary;
-typedef int ExceptionCode;
+class DOMFormData;
+class FetchBodyOwner;
+class FetchHeaders;
+class FetchResponseSource;
+class ScriptExecutionContext;
 
 class FetchBody {
 public:
-    typedef DOMPromise<Vector<unsigned char>, ExceptionCode> ArrayBufferPromise;
-    void arrayBuffer(ArrayBufferPromise&&);
+    void arrayBuffer(FetchBodyOwner&, DeferredWrapper&&);
+    void blob(FetchBodyOwner&, DeferredWrapper&&);
+    void json(FetchBodyOwner&, DeferredWrapper&&);
+    void text(FetchBodyOwner&, DeferredWrapper&&);
+    void formData(FetchBodyOwner&, DeferredWrapper&& promise) { promise.reject(0); }
 
-    typedef DOMPromise<RefPtr<DOMFormData>, ExceptionCode> FormDataPromise;
-    void formData(FormDataPromise&&);
+#if ENABLE(STREAMS_API)
+    void consumeAsStream(FetchBodyOwner&, FetchResponseSource&);
+#endif
 
-    typedef DOMPromise<RefPtr<Blob>, ExceptionCode> BlobPromise;
-    void blob(BlobPromise&&);
-
-    typedef DOMPromise<JSC::JSValue, ExceptionCode> JSONPromise;
-    void json(JSC::ExecState&, JSONPromise&&);
-
-    typedef DOMPromise<String, ExceptionCode> TextPromise;
-    void text(TextPromise&&);
-
-    bool isDisturbed() const { return m_isDisturbed; }
     bool isEmpty() const { return m_type == Type::None; }
 
-    void setMimeType(const String& mimeType) { m_mimeType = mimeType; }
-    String mimeType() const { return m_mimeType; }
+    void updateContentType(FetchHeaders&);
+    void setContentType(const String& contentType) { m_contentType = contentType; }
+    String contentType() const { return m_contentType; }
 
-    static FetchBody fromJSValue(JSC::ExecState&, JSC::JSValue);
-    static FetchBody fromRequestBody(FetchBody*);
+    static FetchBody extract(ScriptExecutionContext&, JSC::ExecState&, JSC::JSValue);
+    static FetchBody extractFromBody(FetchBody*);
+    static FetchBody loadingBody() { return { Type::Loading }; }
+    FetchBody() = default;
+
+    void loadingFailed();
+    void loadingSucceeded();
+
+    RefPtr<FormData> bodyForInternalRequest(ScriptExecutionContext&) const;
+
+    enum class Type { None, ArrayBuffer, ArrayBufferView, Blob, FormData, Text, Loading, Loaded, ReadableStream };
+    Type type() const { return m_type; }
+
+    FetchBodyConsumer& consumer() { return m_consumer; }
+
+    void cleanConsumePromise() { m_consumePromise = Nullopt; }
 
 private:
-    template<typename T> bool processIfEmptyOrDisturbed(DOMPromise<T, ExceptionCode>&);
-
-    enum class Type { None, Text, Blob, FormData };
-
     FetchBody(Ref<Blob>&&);
-    FetchBody(Ref<DOMFormData>&&);
+    FetchBody(Ref<ArrayBuffer>&&);
+    FetchBody(Ref<ArrayBufferView>&&);
+    FetchBody(DOMFormData&, Document&);
     FetchBody(String&&);
-    FetchBody() { }
+    FetchBody(Type type) : m_type(type) { }
 
-    Type m_type = Type::None;
-    String m_mimeType;
-    bool m_isDisturbed = false;
+    void consume(FetchBodyOwner&, DeferredWrapper&&);
 
-    // FIXME: Add support for BufferSource and URLSearchParams.
+    Vector<uint8_t> extractFromText() const;
+    void consumeArrayBuffer(DeferredWrapper&);
+    void consumeArrayBufferView(DeferredWrapper&);
+    void consumeText(DeferredWrapper&);
+    void consumeBlob(FetchBodyOwner&, DeferredWrapper&&);
+
+    Type m_type { Type::None };
+    String m_contentType;
+
+    // FIXME: Add support for URLSearchParams.
     RefPtr<Blob> m_blob;
-    RefPtr<DOMFormData> m_formData;
+    RefPtr<FormData> m_formData;
+    RefPtr<ArrayBuffer> m_data;
+    RefPtr<ArrayBufferView> m_dataView;
     String m_text;
+
+    FetchBodyConsumer m_consumer { FetchBodyConsumer::Type::None };
+    Optional<DeferredWrapper> m_consumePromise;
 };
 
 } // namespace WebCore

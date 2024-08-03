@@ -29,6 +29,7 @@
 #include "SVGImage.h"
 
 #include "Chrome.h"
+#include "DOMWindow.h"
 #include "DocumentLoader.h"
 #include "ElementIterator.h"
 #include "FrameLoader.h"
@@ -36,7 +37,9 @@
 #include "ImageBuffer.h"
 #include "ImageObserver.h"
 #include "IntRect.h"
+#include "JSDOMWindowBase.h"
 #include "MainFrame.h"
+#include "Page.h"
 #include "PageConfiguration.h"
 #include "RenderSVGRoot.h"
 #include "RenderStyle.h"
@@ -48,6 +51,8 @@
 #include "SVGSVGElement.h"
 #include "Settings.h"
 #include "TextStream.h"
+#include <runtime/JSCInlines.h>
+#include <runtime/JSLock.h>
 
 namespace WebCore {
 
@@ -73,7 +78,7 @@ inline SVGSVGElement* SVGImage::rootElement() const
 {
     if (!m_page)
         return nullptr;
-    return downcast<SVGDocument>(*m_page->mainFrame().document()).rootElement();
+    return SVGDocument::rootElement(*m_page->mainFrame().document());
 }
 
 bool SVGImage::hasSingleSecurityOrigin() const
@@ -180,17 +185,17 @@ void SVGImage::drawForContainer(GraphicsContext& context, const FloatSize contai
 }
 
 #if USE(CAIRO)
-// Passes ownership of the native image to the caller so PassNativeImagePtr needs
+// Passes ownership of the native image to the caller so NativeImagePtr needs
 // to be a smart pointer type.
-PassNativeImagePtr SVGImage::nativeImageForCurrentFrame()
+NativeImagePtr SVGImage::nativeImageForCurrentFrame()
 {
     if (!m_page)
-        return 0;
+        return nullptr;
 
     // Cairo does not use the accelerated drawing flag, so it's OK to make an unconditionally unaccelerated buffer.
     std::unique_ptr<ImageBuffer> buffer = ImageBuffer::create(size(), Unaccelerated);
     if (!buffer) // failed to allocate image
-        return 0;
+        return nullptr;
 
     draw(buffer->context(), rect(), rect(), CompositeSourceOver, BlendModeNormal, ImageOrientationDescription());
 
@@ -214,7 +219,7 @@ void SVGImage::drawPatternForContainer(GraphicsContext& context, const FloatSize
     FloatRect imageBufferSize = zoomedContainerRect;
     imageBufferSize.scale(imageBufferScale.width(), imageBufferScale.height());
 
-    std::unique_ptr<ImageBuffer> buffer = ImageBuffer::createCompatibleBuffer(expandedIntSize(imageBufferSize.size()), 1, ColorSpaceSRGB, context, true);
+    std::unique_ptr<ImageBuffer> buffer = ImageBuffer::createCompatibleBuffer(expandedIntSize(imageBufferSize.size()), 1, ColorSpaceSRGB, context);
     if (!buffer) // Failed to allocate buffer.
         return;
     drawForContainer(buffer->context(), containerSize, zoom, imageBufferSize, zoomedContainerRect, CompositeSourceOver, BlendModeNormal);
@@ -353,6 +358,21 @@ void SVGImage::resetAnimation()
     stopAnimation();
 }
 
+void SVGImage::reportApproximateMemoryCost() const
+{
+    Document* document = m_page->mainFrame().document();
+    size_t decodedImageMemoryCost = 0;
+
+    for (Node* node = document; node; node = NodeTraversal::next(*node))
+        decodedImageMemoryCost += node->approximateMemoryCost();
+
+    JSC::VM& vm = JSDOMWindowBase::commonVM();
+    JSC::JSLockHolder lock(vm);
+    // FIXME: Adopt reportExtraMemoryVisited, and switch to reportExtraMemoryAllocated.
+    // https://bugs.webkit.org/show_bug.cgi?id=142595
+    vm.heap.deprecatedReportExtraMemory(decodedImageMemoryCost + data()->size());
+}
+
 bool SVGImage::dataChanged(bool allDataReceived)
 {
     // Don't do anything if is an empty image.
@@ -360,7 +380,7 @@ bool SVGImage::dataChanged(bool allDataReceived)
         return true;
 
     if (allDataReceived) {
-        PageConfiguration pageConfiguration;
+        PageConfiguration pageConfiguration(makeUniqueRef<EmptyEditorClient>(), SocketProvider::create());
         fillWithEmptyClients(pageConfiguration);
         m_chromeClient = std::make_unique<SVGImageChromeClient>(this);
         pageConfiguration.chromeClient = m_chromeClient.get();
@@ -371,10 +391,11 @@ bool SVGImage::dataChanged(bool allDataReceived)
         // This will become an issue when SVGImage will be able to load other
         // SVGImage objects, but we're safe now, because SVGImage can only be
         // loaded by a top-level document.
-        m_page = std::make_unique<Page>(pageConfiguration);
+        m_page = std::make_unique<Page>(WTFMove(pageConfiguration));
         m_page->settings().setMediaEnabled(false);
         m_page->settings().setScriptEnabled(false);
         m_page->settings().setPluginsEnabled(false);
+        m_page->settings().setAcceleratedCompositingEnabled(false);
 
         Frame& frame = m_page->mainFrame();
         frame.setView(FrameView::create(frame));
@@ -393,6 +414,7 @@ bool SVGImage::dataChanged(bool allDataReceived)
 
         // Set the intrinsic size before a container size is available.
         m_intrinsicSize = containerSize();
+        reportApproximateMemoryCost();
     }
 
     return m_page != nullptr;
@@ -400,7 +422,7 @@ bool SVGImage::dataChanged(bool allDataReceived)
 
 String SVGImage::filenameExtension() const
 {
-    return "svg";
+    return ASCIILiteral("svg");
 }
 
 bool isInSVGImage(const Element* element)

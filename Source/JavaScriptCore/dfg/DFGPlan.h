@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -66,7 +66,6 @@ struct Plan : public ThreadSafeRefCounted<Plan> {
     void finalizeAndNotifyCallback();
     
     void notifyCompiling();
-    void notifyCompiled();
     void notifyReady();
     
     CompilationKey key();
@@ -75,8 +74,15 @@ struct Plan : public ThreadSafeRefCounted<Plan> {
     void checkLivenessAndVisitChildren(SlotVisitor&);
     bool isKnownToBeLiveDuringGC();
     void cancel();
+
+    bool canTierUpAndOSREnter() const { return !tierUpAndOSREnterBytecodes.isEmpty(); }
     
-    VM& vm;
+    void cleanMustHandleValuesIfNecessary();
+    
+    // Warning: pretty much all of the pointer fields in this object get nulled by cancel(). So, if
+    // you're writing code that is callable on the cancel path, be sure to null check everything!
+    
+    VM* vm;
 
     // These can be raw pointers because we visit them during every GC in checkLivenessAndVisitChildren.
     CodeBlock* codeBlock;
@@ -85,6 +91,8 @@ struct Plan : public ThreadSafeRefCounted<Plan> {
     CompilationMode mode;
     const unsigned osrEntryBytecodeIndex;
     Operands<JSValue> mustHandleValues;
+    bool mustHandleValuesMayIncludeGarbage { true };
+    Lock mustHandleValueCleaningLock;
     
     ThreadData* threadData;
 
@@ -99,14 +107,14 @@ struct Plan : public ThreadSafeRefCounted<Plan> {
     DesiredTransitions transitions;
     
     bool willTryToTierUp { false };
-    bool canTierUpAndOSREnter { false };
 
-    enum Stage { Preparing, Compiling, Compiled, Ready, Cancelled };
+    HashMap<unsigned, Vector<unsigned>> tierUpInLoopHierarchy;
+    Vector<unsigned> tierUpAndOSREnterBytecodes;
+
+    enum Stage { Preparing, Compiling, Ready, Cancelled };
     Stage stage;
 
     RefPtr<DeferredCompilationCallback> callback;
-
-    JS_EXPORT_PRIVATE static HashMap<CString, double> compileTimeStats();
 
 private:
     bool computeCompileTimes() const;
@@ -119,14 +127,6 @@ private:
     void reallyAdd(CommonData*);
 
     double m_timeBeforeFTL;
-};
-
-#else // ENABLE(DFG_JIT)
-
-class Plan : public RefCounted<Plan> {
-    // Dummy class to allow !ENABLE(DFG_JIT) to build.
-public:
-    static HashMap<CString, double> compileTimeStats() { return HashMap<CString, double>(); }
 };
 
 #endif // ENABLE(DFG_JIT)

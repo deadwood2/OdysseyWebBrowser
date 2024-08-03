@@ -2,7 +2,6 @@
     "slaves":     [ { "name": "test-slave", "platform": "*" },
 
                     { "name": "bot139", "platform": "mac-yosemite" },
-                    { "name": "bot148", "platform": "mac-yosemite" },
                     { "name": "bot155", "platform": "mac-yosemite" },
                     { "name": "bot157", "platform": "mac-yosemite" },
                     { "name": "bot180", "platform": "mac-yosemite" },
@@ -44,11 +43,17 @@
 
                     { "name": "bot407", "platform": "ios-9" },
                     { "name": "bot197", "platform": "ios-simulator-9" },
+                    { "name": "bot329", "platform": "ios-simulator-9" },
                     { "name": "bot402", "platform": "ios-simulator-9" },
                     { "name": "bot403", "platform": "ios-simulator-9" },
+                    { "name": "bot404", "platform": "ios-simulator-9" },
                     { "name": "bot215", "platform": "ios-simulator-9" },
                     { "name": "bot216", "platform": "ios-simulator-9" },
                     { "name": "bot217", "platform": "ios-simulator-9" },
+                    { "name": "bot651", "platform": "ios-simulator-9" },
+                    { "name": "bot652", "platform": "ios-simulator-9" },
+                    { "name": "bot653", "platform": "ios-simulator-9" },
+                    { "name": "bot654", "platform": "ios-simulator-9" },
 
                     { "name": "bot516", "platform": "win" },
                     { "name": "bot514", "platform": "win" },
@@ -68,10 +73,11 @@
                     { "name": "gtk-linux-slave-8", "platform": "gtk" },
 
                     { "name": "efl-linux-slave-2", "platform": "efl" },
-                    { "name": "efl-linux-szeged-slave-1", "platform": "efl" },
-                    { "name": "efl-linux-szeged-slave-2", "platform": "efl" },
-                    { "name": "efl-linux-szeged-slave-3", "platform": "efl" },
-                    { "name": "efl-linux-szeged-slave-4", "platform": "efl" }
+                    { "name": "efl-linux-slave-3", "platform": "efl" },
+
+                    { "name": "jsconly-linux-szeged-slave-1", "platform": "jsc-only" },
+                    { "name": "jsconly-linux-szeged-slave-2", "platform": "jsc-only" },
+                    { "name": "jsconly-linux-szeged-slave-3", "platform": "jsc-only" }
 
                   ],
 
@@ -140,18 +146,13 @@
                       "platform": "mac-elcapitan", "configuration": "release", "architectures": ["i386"],
                       "slavenames": ["bot419"]
                     },
-                    { "name": "Apple Yosemite (Leaks)", "type": "TestWebKit1Leaks", "builddir": "yosemite-leaks",
-                      "platform": "mac-yosemite", "configuration": "debug", "architectures": ["x86_64"],
-                      "additionalArguments": ["--no-retry-failures"],
-                      "slavenames": ["bot148"]
-                    },
                     { "name": "Apple Yosemite Release (32-bit Build)", "type": "Build", "builddir": "yosemite-32bit-release",
                       "platform": "mac-yosemite", "configuration": "release", "architectures": ["i386"],
                       "slavenames": ["bot139"]
                     },
                     { "name": "Apple Yosemite Debug (Build)", "type": "Build", "builddir": "yosemite-debug",
                       "platform": "mac-yosemite", "configuration": "debug", "architectures": ["x86_64"],
-                      "triggers": ["yosemite-debug-tests-jsc", "yosemite-debug-tests-wk1", "yosemite-debug-tests-wk2", "yosemite-leaks"],
+                      "triggers": ["yosemite-debug-tests-jsc", "yosemite-debug-tests-wk1", "yosemite-debug-tests-wk2"],
                       "slavenames": ["bot180", "bot181"]
                     },
                     { "name": "Apple Yosemite Debug JSC (Tests)", "type": "TestJSC", "builddir": "yosemite-debug-tests-jsc",
@@ -202,7 +203,7 @@
                     },
                     {
                       "name": "Apple iOS 9 Release (Build)", "type": "Build", "builddir": "ios-9-release",
-                      "platform": "ios-9", "configuration": "release", "architectures": ["armv7", "armv7s", "arm64"],
+                      "platform": "ios-9", "configuration": "release", "architectures": ["armv7s", "arm64"],
                       "slavenames": ["bot407"]
                     },
                     {
@@ -212,16 +213,34 @@
                       "slavenames": ["bot402", "bot403"]
                     },
                     {
+                      "name": "Apple iOS 9 Simulator Debug (Build)", "type": "Build", "builddir": "ios-simulator-9-debug",
+                      "platform": "ios-simulator-9", "configuration": "debug", "architectures": ["x86_64"],
+                      "triggers": ["ios-simulator-9-debug-tests-wk1", "ios-simulator-9-debug-tests-wk2"],
+                      "slavenames": ["bot329", "bot404"]
+                    },
+                    {
                       "name": "Apple iOS 9 Simulator Release WK1 (Tests)", "type": "TestWebKit1AllButJSC", "builddir": "ios-simulator-9-release-tests-wk1",
                       "platform": "ios-simulator-9", "configuration": "release", "architectures": ["x86_64"],
                       "additionalArguments": ["--no-retry-failures"],
                       "slavenames": ["bot197", "bot215"]
                     },
                     {
+                      "name": "Apple iOS 9 Simulator Debug WK1 (Tests)", "type": "TestWebKit1AllButJSC", "builddir": "ios-simulator-9-debug-tests-wk1",
+                      "platform": "ios-simulator-9", "configuration": "debug", "architectures": ["x86_64"],
+                      "additionalArguments": ["--no-retry-failures"],
+                      "slavenames": ["bot216", "bot217"]
+                    },
+                    {
                       "name": "Apple iOS 9 Simulator Release WK2 (Tests)", "type": "TestAllButJSC", "builddir": "ios-simulator-9-release-tests-wk2",
                       "platform": "ios-simulator-9", "configuration": "release", "architectures": ["x86_64"],
                       "additionalArguments": ["--no-retry-failures"],
-                      "slavenames": ["bot216", "bot217"]
+                      "slavenames": ["bot651", "bot652"]
+                    },
+                    {
+                      "name": "Apple iOS 9 Simulator Debug WK2 (Tests)", "type": "TestAllButJSC", "builddir": "ios-simulator-9-debug-tests-wk2",
+                      "platform": "ios-simulator-9", "configuration": "debug", "architectures": ["x86_64"],
+                      "additionalArguments": ["--no-retry-failures"],
+                      "slavenames": ["bot653", "bot654"]
                     },
                     {
                       "name": "Apple Win Release (Build)", "type": "Build", "builddir": "win-release",
@@ -293,36 +312,35 @@
                       "slavenames": ["efl-linux-slave-2"]
                     },
                     {
-                      "name": "EFL Linux ARMv7 Thumb2 Release", "type": "BuildAndRemoteJSCTests", "builddir": "efl-linux-armv7-thumb2-release",
-                      "platform": "efl", "configuration": "release", "architectures": ["armv7"],
-                      "SVNMirror": "svn://webkit.inf.u-szeged.hu/webkit/",
-                      "slavenames": ["efl-linux-szeged-slave-1"]
-                    },
-                    {
-                      "name": "EFL Linux ARMv7 Traditional Release", "type": "BuildAndRemoteJSCTests", "builddir": "efl-linux-armv7-traditional-release",
-                      "platform": "efl", "configuration": "release", "architectures": ["armv7"],
-                      "SVNMirror": "svn://webkit.inf.u-szeged.hu/webkit/",
-                      "slavenames": ["efl-linux-szeged-slave-2"]
-                    },
-                    {
-                      "name": "EFL Linux AArch64 Release", "type": "BuildAndRemoteJSCTests", "builddir": "efl-linux-aarch64-release",
-                      "platform": "efl", "configuration": "release", "architectures": ["aarch64"],
-                      "SVNMirror": "svn://webkit.inf.u-szeged.hu/webkit/",
-                      "slavenames": ["efl-linux-szeged-slave-4"]
-                    },
-                    {
                       "name": "EFL Linux 64-bit Release WK2 (Perf)", "type": "BuildAndPerfTest", "builddir": "efl-linux-64-release-wk2-perf",
                       "platform": "efl", "configuration": "release", "architectures": ["x86_64"],
+                      "slavenames": ["efl-linux-slave-3"]
+                    },
+                    {
+                      "name": "JSCOnly Linux AArch64 Release", "type": "BuildAndRemoteJSCTests", "builddir": "jsconly-linux-aarch64-release",
+                      "platform": "jsc-only", "configuration": "release", "architectures": ["aarch64"],
                       "SVNMirror": "svn://webkit.inf.u-szeged.hu/webkit/",
-                      "slavenames": ["efl-linux-szeged-slave-3"]
+                      "slavenames": ["jsconly-linux-szeged-slave-1"]
+                    },
+                    {
+                      "name": "JSCOnly Linux ARMv7 Thumb2 Release", "type": "BuildAndRemoteJSCTests", "builddir": "jsconly-linux-armv7-thumb2-release",
+                      "platform": "jsc-only", "configuration": "release", "architectures": ["armv7"],
+                      "SVNMirror": "svn://webkit.inf.u-szeged.hu/webkit/",
+                      "slavenames": ["jsconly-linux-szeged-slave-2"]
+                    },
+                    {
+                      "name": "JSCOnly Linux ARMv7 Traditional Release", "type": "BuildAndRemoteJSCTests", "builddir": "jsconly-linux-armv7-traditional-release",
+                      "platform": "jsc-only", "configuration": "release", "architectures": ["armv7"],
+                      "SVNMirror": "svn://webkit.inf.u-szeged.hu/webkit/",
+                      "slavenames": ["jsconly-linux-szeged-slave-3"]
                     }
                   ],
 
     "schedulers": [ { "type": "AnyBranchScheduler", "name": "trunk", "change_filter": "trunk_filter", "treeStableTimer": 45.0,
                       "builderNames": ["GTK Linux 32-bit Release", "GTK Linux 64-bit Release (Build)", "GTK Linux 64-bit Debug (Build)", "GTK Linux ARM Release",
-                                       "EFL Linux 64-bit Release WK2",
-                                       "EFL Linux ARMv7 Thumb2 Release", "EFL Linux ARMv7 Traditional Release", "EFL Linux AArch64 Release",
-                                       "EFL Linux 64-bit Release WK2 (Perf)", "WinCairo 64-Bit Release"]
+                                       "EFL Linux 64-bit Release WK2", "EFL Linux 64-bit Release WK2 (Perf)",
+                                       "JSCOnly Linux AArch64 Release", "JSCOnly Linux ARMv7 Thumb2 Release", "JSCOnly Linux ARMv7 Traditional Release",
+                                       "WinCairo 64-Bit Release"]
                     },
                     { "type": "PlatformSpecificScheduler", "platform": "mac-yosemite", "branch": "trunk", "treeStableTimer": 45.0,
                       "builderNames": ["Apple Yosemite Release (Build)", "Apple Yosemite Debug (Build)", "Apple Yosemite LLINT CLoop (BuildAndTest)", "Apple Yosemite 32-bit JSC (BuildAndTest)", "Apple Yosemite Release (32-bit Build)"]
@@ -334,16 +352,13 @@
                       "builderNames": ["Apple iOS 9 Release (Build)"]
                     },
                     { "type": "PlatformSpecificScheduler", "platform": "ios-simulator-9", "branch": "trunk", "treeStableTimer": 45.0,
-                      "builderNames": ["Apple iOS 9 Simulator Release (Build)"]
+                      "builderNames": ["Apple iOS 9 Simulator Release (Build)", "Apple iOS 9 Simulator Debug (Build)"]
                     },
                     { "type": "PlatformSpecificScheduler", "platform": "win", "branch": "trunk", "treeStableTimer": 45.0,
                       "builderNames": ["Apple Win Release (Build)", "Apple Win Debug (Build)"]
                     },
                     { "type": "Triggerable", "name": "elcapitan-leaks",
                       "builderNames": ["Apple El Capitan (Leaks)"]
-                    },
-                    { "type": "Triggerable", "name": "yosemite-leaks",
-                      "builderNames": ["Apple Yosemite (Leaks)"]
                     },
                     { "type": "Triggerable", "name": "elcapitan-release-tests-jsc",
                       "builderNames": ["Apple El Capitan Release JSC (Tests)"]
@@ -390,8 +405,14 @@
                     { "type": "Triggerable", "name": "ios-simulator-9-release-tests-wk1",
                       "builderNames": ["Apple iOS 9 Simulator Release WK1 (Tests)"]
                     },
+                    { "type": "Triggerable", "name": "ios-simulator-9-debug-tests-wk1",
+                      "builderNames": ["Apple iOS 9 Simulator Debug WK1 (Tests)"]
+                    },
                     { "type": "Triggerable", "name": "ios-simulator-9-release-tests-wk2",
                       "builderNames": ["Apple iOS 9 Simulator Release WK2 (Tests)"]
+                    },
+                    { "type": "Triggerable", "name": "ios-simulator-9-debug-tests-wk2",
+                      "builderNames": ["Apple iOS 9 Simulator Debug WK2 (Tests)"]
                     },
                     { "type": "Triggerable", "name": "win-release-tests",
                       "builderNames": ["Apple Win 7 Release (Tests)"]

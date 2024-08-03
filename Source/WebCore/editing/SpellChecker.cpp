@@ -32,7 +32,6 @@
 #include "Frame.h"
 #include "HTMLInputElement.h"
 #include "HTMLTextAreaElement.h"
-#include "Node.h"
 #include "Page.h"
 #include "PositionIterator.h"
 #include "RenderObject.h"
@@ -185,7 +184,7 @@ void SpellChecker::invokeRequest(PassRefPtr<SpellCheckRequest> request)
     if (!client())
         return;
     m_processingRequest = request;
-    client()->requestCheckingOfString(m_processingRequest);
+    client()->requestCheckingOfString(m_processingRequest, m_frame.selection().selection());
 }
 
 void SpellChecker::enqueueRequest(PassRefPtr<SpellCheckRequest> request)

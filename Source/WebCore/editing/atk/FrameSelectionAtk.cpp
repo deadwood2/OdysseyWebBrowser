@@ -51,14 +51,12 @@ static void emitTextSelectionChange(AccessibilityObject* object, VisibleSelectio
         g_signal_emit_by_name(axObject, "text-selection-changed");
 }
 
-static void maybeEmitTextFocusChange(PassRefPtr<AccessibilityObject> prpObject)
+static void maybeEmitTextFocusChange(RefPtr<AccessibilityObject>&& object)
 {
     // This static variable is needed to keep track of the old object
     // as per previous calls to this function, in order to properly
     // decide whether to emit some signals or not.
     static NeverDestroyed<RefPtr<AccessibilityObject>> oldObject;
-
-    RefPtr<AccessibilityObject> object = prpObject;
 
     // Ensure the oldObject belongs to the same document that the
     // current object so further comparisons make sense. Otherwise,
@@ -82,7 +80,7 @@ static void maybeEmitTextFocusChange(PassRefPtr<AccessibilityObject> prpObject)
     }
 
     // Update pointer to last focused object.
-    oldObject.get() = object;
+    oldObject.get() = WTFMove(object);
 }
 
 
@@ -112,7 +110,7 @@ void FrameSelection::notifyAccessibilityForSelectionChange(const AXTextStateChan
         return;
 
     emitTextSelectionChange(object.get(), m_selection, offset);
-    maybeEmitTextFocusChange(object.release());
+    maybeEmitTextFocusChange(WTFMove(object));
 }
 
 } // namespace WebCore

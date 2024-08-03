@@ -27,8 +27,6 @@
 #ifndef TemplateContentDocumentFragment_h
 #define TemplateContentDocumentFragment_h
 
-#if ENABLE(TEMPLATE_ELEMENT)
-
 #include "DocumentFragment.h"
 
 namespace WebCore {
@@ -50,13 +48,11 @@ private:
     {
     }
 
-    virtual bool isTemplateContent() const override { return true; }
+    bool isTemplateContent() const override { return true; }
 
     const Element* m_host;
 };
 
 } // namespace WebCore
-
-#endif // ENABLE(TEMPLATE_ELEMENT)
 
 #endif // TemplateContentDocumentFragment_h

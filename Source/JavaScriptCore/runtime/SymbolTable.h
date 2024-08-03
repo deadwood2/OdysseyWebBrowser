@@ -199,6 +199,23 @@ public:
         return *this;
     }
     
+    SymbolTableEntry(SymbolTableEntry&& other)
+        : m_bits(SlimFlag)
+    {
+        swap(other);
+    }
+
+    SymbolTableEntry& operator=(SymbolTableEntry&& other)
+    {
+        swap(other);
+        return *this;
+    }
+
+    void swap(SymbolTableEntry& other)
+    {
+        std::swap(m_bits, other.m_bits);
+    }
+
     bool isNull() const
     {
         return !(bits() & ~SlimFlag);
@@ -263,10 +280,10 @@ public:
         return bits() & DontEnumFlag;
     }
     
-    void disableWatching()
+    void disableWatching(VM& vm)
     {
         if (WatchpointSet* set = watchpointSet())
-            set->invalidate("Disabling watching in symbol table");
+            set->invalidate(vm, "Disabling watching in symbol table");
         if (varOffset().isScope())
             pack(varOffset(), false, isReadOnly(), isDontEnum());
     }
@@ -437,13 +454,6 @@ public:
         return symbolTable;
     }
     
-    static SymbolTable* createNameScopeTable(VM& vm, const Identifier& ident, unsigned attributes)
-    {
-        SymbolTable* result = create(vm);
-        result->add(ident.impl(), SymbolTableEntry(VarOffset(ScopeOffset(0)), attributes));
-        return result;
-    }
-    
     static const bool needsDestruction = true;
     static void destroy(JSCell*);
 
@@ -559,31 +569,35 @@ public:
         return takeNextScopeOffset(locker);
     }
     
-    void add(const ConcurrentJITLocker&, UniquedStringImpl* key, const SymbolTableEntry& entry)
+    template<typename Entry>
+    void add(const ConcurrentJITLocker&, UniquedStringImpl* key, Entry&& entry)
     {
         RELEASE_ASSERT(!m_localToEntry);
         didUseVarOffset(entry.varOffset());
-        Map::AddResult result = m_map.add(key, entry);
+        Map::AddResult result = m_map.add(key, std::forward<Entry>(entry));
         ASSERT_UNUSED(result, result.isNewEntry);
     }
     
-    void add(UniquedStringImpl* key, const SymbolTableEntry& entry)
+    template<typename Entry>
+    void add(UniquedStringImpl* key, Entry&& entry)
     {
         ConcurrentJITLocker locker(m_lock);
-        add(locker, key, entry);
+        add(locker, key, std::forward<Entry>(entry));
     }
     
-    void set(const ConcurrentJITLocker&, UniquedStringImpl* key, const SymbolTableEntry& entry)
+    template<typename Entry>
+    void set(const ConcurrentJITLocker&, UniquedStringImpl* key, Entry&& entry)
     {
         RELEASE_ASSERT(!m_localToEntry);
         didUseVarOffset(entry.varOffset());
-        m_map.set(key, entry);
+        m_map.set(key, std::forward<Entry>(entry));
     }
     
-    void set(UniquedStringImpl* key, const SymbolTableEntry& entry)
+    template<typename Entry>
+    void set(UniquedStringImpl* key, Entry&& entry)
     {
         ConcurrentJITLocker locker(m_lock);
-        set(locker, key, entry);
+        set(locker, key, std::forward<Entry>(entry));
     }
     
     bool contains(const ConcurrentJITLocker&, UniquedStringImpl* key)
@@ -665,6 +679,9 @@ public:
     SymbolTable* cloneScopePart(VM&);
 
     void prepareForTypeProfiling(const ConcurrentJITLocker&);
+
+    CodeBlock* rareDataCodeBlock();
+    void setRareDataCodeBlock(CodeBlock*);
     
     InferredValue* singletonScope() { return m_singletonScope.get(); }
 
@@ -681,12 +698,13 @@ private:
     Map m_map;
     ScopeOffset m_maxScopeOffset;
     
-    struct TypeProfilingRareData {
+    struct SymbolTableRareData {
         UniqueIDMap m_uniqueIDMap;
         OffsetToVariableMap m_offsetToVariableMap;
         UniqueTypeSetMap m_uniqueTypeSetMap;
+        WriteBarrier<CodeBlock> m_codeBlock;
     };
-    std::unique_ptr<TypeProfilingRareData> m_typeProfilingRareData;
+    std::unique_ptr<SymbolTableRareData> m_rareData;
 
     bool m_usesNonStrictEval : 1;
     bool m_nestedLexicalScope : 1; // Non-function LexicalScope.

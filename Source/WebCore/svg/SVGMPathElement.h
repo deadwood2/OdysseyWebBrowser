@@ -44,16 +44,16 @@ public:
 private:
     SVGMPathElement(const QualifiedName&, Document&);
 
-    void buildPendingResource() override;
+    void buildPendingResource() final;
     void clearResourceReferences();
-    virtual InsertionNotificationRequest insertedInto(ContainerNode&) override;
-    virtual void removedFrom(ContainerNode&) override;
+    InsertionNotificationRequest insertedInto(ContainerNode&) final;
+    void removedFrom(ContainerNode&) final;
 
-    virtual void parseAttribute(const QualifiedName&, const AtomicString&) override;
-    virtual void svgAttributeChanged(const QualifiedName&) override;
+    void parseAttribute(const QualifiedName&, const AtomicString&) final;
+    void svgAttributeChanged(const QualifiedName&) final;
 
-    virtual bool rendererIsNeeded(const RenderStyle&) override { return false; }
-    virtual void finishedInsertingSubtree() override;
+    bool rendererIsNeeded(const RenderStyle&) final { return false; }
+    void finishedInsertingSubtree() final;
 
     void notifyParentOfPathChange(ContainerNode*);
 

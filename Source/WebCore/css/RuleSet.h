@@ -27,7 +27,6 @@
 #include "StyleRule.h"
 #include <wtf/Forward.h>
 #include <wtf/HashMap.h>
-#include <wtf/HashSet.h>
 #include <wtf/text/AtomicString.h>
 #include <wtf/text/CString.h>
 
@@ -174,7 +173,7 @@ public:
 
     const RuleFeatureSet& features() const { return m_features; }
 
-    const RuleDataVector* idRules(AtomicStringImpl* key) const { return m_idRules.get(key); }
+    const RuleDataVector* idRules(AtomicStringImpl& key) const { return m_idRules.get(&key); }
     const RuleDataVector* classRules(AtomicStringImpl* key) const { return m_classRules.get(key); }
     const RuleDataVector* tagRules(AtomicStringImpl* key, bool isHTMLName) const;
     const RuleDataVector* shadowPseudoElementRules(AtomicStringImpl* key) const { return m_shadowPseudoElementRules.get(key); }
@@ -182,9 +181,8 @@ public:
 #if ENABLE(VIDEO_TRACK)
     const RuleDataVector* cuePseudoRules() const { return &m_cuePseudoRules; }
 #endif
-#if ENABLE(SHADOW_DOM)
     const RuleDataVector& hostPseudoClassRules() const { return m_hostPseudoClassRules; }
-#endif
+    const RuleDataVector& slottedPseudoElementRules() const { return m_slottedPseudoElementRules; }
     const RuleDataVector* focusPseudoClassRules() const { return &m_focusPseudoClassRules; }
     const RuleDataVector* universalRules() const { return &m_universalRules; }
 
@@ -208,9 +206,8 @@ private:
 #if ENABLE(VIDEO_TRACK)
     RuleDataVector m_cuePseudoRules;
 #endif
-#if ENABLE(SHADOW_DOM)
     RuleDataVector m_hostPseudoClassRules;
-#endif
+    RuleDataVector m_slottedPseudoElementRules;
     RuleDataVector m_focusPseudoClassRules;
     RuleDataVector m_universalRules;
     Vector<StyleRulePage*> m_pageRules;

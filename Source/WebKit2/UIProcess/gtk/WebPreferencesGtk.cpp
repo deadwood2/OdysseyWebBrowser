@@ -27,31 +27,50 @@
 #include "config.h"
 #include "WebPreferences.h"
 
+#include "WaylandCompositor.h"
 #include <WebCore/NotImplemented.h>
 #include <WebCore/PlatformDisplay.h>
+
+#if USE(REDIRECTED_XCOMPOSITE_WINDOW)
+#include <WebCore/PlatformDisplayX11.h>
+#endif
+
+using namespace WebCore;
 
 namespace WebKit {
 
 void WebPreferences::platformInitializeStore()
 {
-#if PLATFORM(WAYLAND)
-    if (WebCore::PlatformDisplay::sharedDisplay().type() == WebCore::PlatformDisplay::Type::Wayland) {
-        // FIXME: Accelerated compositing under Wayland is not yet supported.
-        // https://bugs.webkit.org/show_bug.cgi?id=115803
-        setAcceleratedCompositingEnabled(false);
-    }
-#endif
-#if USE(COORDINATED_GRAPHICS_THREADED)
-    setForceCompositingMode(true);
-#endif
 #if !ENABLE(OPENGL)
     setAcceleratedCompositingEnabled(false);
 #else
-    if (getenv("WEBKIT_FORCE_COMPOSITING_MODE"))
+    const char* forceCompositing = getenv("WEBKIT_FORCE_COMPOSITING_MODE");
+    if (forceCompositing && strcmp(forceCompositing, "0"))
         setForceCompositingMode(true);
-    if (getenv("WEBKIT_DISABLE_COMPOSITING_MODE"))
+
+    const char* disableCompositing = getenv("WEBKIT_DISABLE_COMPOSITING_MODE");
+    if (disableCompositing && strcmp(disableCompositing, "0")) {
         setAcceleratedCompositingEnabled(false);
+        return;
+    }
+
+#if USE(REDIRECTED_XCOMPOSITE_WINDOW)
+    if (PlatformDisplay::sharedDisplay().type() == PlatformDisplay::Type::X11) {
+        auto& display = downcast<PlatformDisplayX11>(PlatformDisplay::sharedDisplay());
+        Optional<int> damageBase, errorBase;
+        if (!display.supportsXComposite() || !display.supportsXDamage(damageBase, errorBase))
+            setAcceleratedCompositingEnabled(false);
+    }
 #endif
+
+#if PLATFORM(WAYLAND)
+    if (PlatformDisplay::sharedDisplay().type() == PlatformDisplay::Type::Wayland) {
+        if (!WaylandCompositor::singleton().isRunning())
+            setAcceleratedCompositingEnabled(false);
+    }
+#endif
+
+#endif // ENABLE(OPENGL)
 }
 
 void WebPreferences::platformUpdateStringValueForKey(const String&, const String&)

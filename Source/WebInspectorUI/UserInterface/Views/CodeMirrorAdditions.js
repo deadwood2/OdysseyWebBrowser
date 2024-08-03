@@ -572,10 +572,7 @@
         return lineRects;
     });
 
-    function ignoreKey(codeMirror)
-    {
-        // Do nothing to ignore the key.
-    }
+    let mac = WebInspector.Platform.name === "mac";
 
     CodeMirror.keyMap["default"] = {
         "Alt-Up": alterNumber.bind(null, 1),
@@ -589,8 +586,8 @@
         "Alt-PageDown": alterNumber.bind(null, -10),
         "Shift-Alt-PageDown": alterNumber.bind(null, -100),
         "Cmd-/": "toggleComment",
-        "Shift-Tab": ignoreKey,
-        fallthrough: "macDefault"
+        "Shift-Tab": "indentLess",
+        fallthrough: mac ? "macDefault" : "pcDefault"
     };
 
     // Register some extra MIME-types for CodeMirror. These are in addition to the
@@ -611,11 +608,10 @@
         CodeMirror.defineMIME(type, "javascript");
     });
 
-    var extraJSONTypes = ["application/x-json", "text/x-json"];
+    var extraJSONTypes = ["application/x-json", "text/x-json", "application/vnd.api+json"];
     extraJSONTypes.forEach(function(type) {
         CodeMirror.defineMIME(type, {name: "javascript", json: true});
     });
-
 })();
 
 WebInspector.compareCodeMirrorPositions = function(a, b)

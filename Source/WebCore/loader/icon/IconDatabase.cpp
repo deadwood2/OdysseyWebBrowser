@@ -91,11 +91,11 @@ static String urlForLogging(const String& url)
 class DefaultIconDatabaseClient final : public IconDatabaseClient {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    virtual void didImportIconURLForPageURL(const String&) override { }
-    virtual void didImportIconDataForPageURL(const String&) override { }
-    virtual void didChangeIconForPageURL(const String&) override { }
-    virtual void didRemoveAllIcons() override { }
-    virtual void didFinishURLImport() override { }
+    void didImportIconURLForPageURL(const String&) override { }
+    void didImportIconDataForPageURL(const String&) override { }
+    void didChangeIconForPageURL(const String&) override { }
+    void didRemoveAllIcons() override { }
+    void didFinishURLImport() override { }
 };
 
 static IconDatabaseClient* defaultClient() 
@@ -300,7 +300,7 @@ Image* IconDatabase::synchronousIconForPageURL(const String& pageURLOriginal, co
     return iconRecord->image(size);
 }
 
-PassNativeImagePtr IconDatabase::synchronousNativeIconForPageURL(const String& pageURLOriginal, const IntSize& size)
+NativeImagePtr IconDatabase::synchronousNativeIconForPageURL(const String& pageURLOriginal, const IntSize& size)
 {
     Image* icon = synchronousIconForPageURL(pageURLOriginal, size);
     if (!icon)
@@ -390,8 +390,8 @@ static inline void loadDefaultIconRecord(IconRecord* defaultIconRecord)
         0x00, 0x00, 0x01, 0x52, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x08, 0x00, 0x08, 0x00, 0x08, 0x00, 0x0A, 
         0xFC, 0x80, 0x00, 0x00, 0x27, 0x10, 0x00, 0x0A, 0xFC, 0x80, 0x00, 0x00, 0x27, 0x10 };
         
-    static SharedBuffer* defaultIconBuffer = SharedBuffer::create(defaultIconData, sizeof(defaultIconData)).leakRef();
-    defaultIconRecord->setImageData(defaultIconBuffer);
+    static auto& defaultIconBuffer = SharedBuffer::create(defaultIconData, sizeof(defaultIconData)).leakRef();
+    defaultIconRecord->setImageData(&defaultIconBuffer);
 }
 #endif
 
@@ -558,7 +558,7 @@ void IconDatabase::setIconDataForIconURL(PassRefPtr<SharedBuffer> dataOriginal, 
             icon = getOrCreateIconRecord(iconURL);
     
         // Update the data and set the time stamp
-        icon->setImageData(data.release());
+        icon->setImageData(WTFMove(data));
         icon->setTimestamp((int)currentTime());
         
         // Copy the current retaining pageURLs - if any - to notify them of the change
@@ -893,10 +893,10 @@ PassRefPtr<IconRecord> IconDatabase::getOrCreateIconRecord(const String& iconURL
     if (IconRecord* icon = m_iconURLToRecordMap.get(iconURL))
         return icon;
 
-    RefPtr<IconRecord> newIcon = IconRecord::create(iconURL);
-    m_iconURLToRecordMap.set(iconURL, newIcon.get());
+    auto newIcon = IconRecord::create(iconURL);
+    m_iconURLToRecordMap.set(iconURL, newIcon.ptr());
 
-    return newIcon.release();
+    return WTFMove(newIcon);
 }
 
 // This method retrieves the existing PageURLRecord, or creates a new one and marks it as "interested in the import" for later notification
@@ -1493,7 +1493,7 @@ bool IconDatabase::readFromDatabase()
     
     for (unsigned i = 0; i < icons.size(); ++i) {
         didAnyWork = true;
-        RefPtr<SharedBuffer> imageData = getImageDataForIconURLFromSQLDatabase(icons[i]->iconURL());
+        auto imageData = getImageDataForIconURLFromSQLDatabase(icons[i]->iconURL());
 
         // Verify this icon still wants to be read from disk
         {
@@ -1503,7 +1503,7 @@ bool IconDatabase::readFromDatabase()
                 
                 if (m_iconsPendingReading.contains(icons[i])) {
                     // Set the new data
-                    icons[i]->setImageData(imageData.release());
+                    icons[i]->setImageData(WTFMove(imageData));
                     
                     // Remove this icon from the set that needs to be read
                     m_iconsPendingReading.remove(icons[i]);
@@ -1936,7 +1936,7 @@ PassRefPtr<SharedBuffer> IconDatabase::getImageDataForIconURLFromSQLDatabase(con
 
     m_getImageDataForIconURLStatement->reset();
     
-    return imageData.release();
+    return WTFMove(imageData);
 }
 
 void IconDatabase::removeIconFromSQLDatabase(const String& iconURL)
@@ -2090,10 +2090,9 @@ void IconDatabase::dispatchDidImportIconURLForPageURLOnMainThread(const String& 
     ASSERT_ICON_SYNC_THREAD();
     ++m_mainThreadCallbackCount;
 
-    String pageURLCopy = pageURL.isolatedCopy();
-    callOnMainThread([this, pageURLCopy] {
+    callOnMainThread([this, pageURL = pageURL.isolatedCopy()] {
         if (m_client)
-            m_client->didImportIconURLForPageURL(pageURLCopy);
+            m_client->didImportIconURLForPageURL(pageURL);
         checkClosedAfterMainThreadCallback();
     });
 }
@@ -2103,10 +2102,9 @@ void IconDatabase::dispatchDidImportIconDataForPageURLOnMainThread(const String&
     ASSERT_ICON_SYNC_THREAD();
     ++m_mainThreadCallbackCount;
 
-    String pageURLCopy = pageURL.isolatedCopy();
-    callOnMainThread([this, pageURLCopy] {
+    callOnMainThread([this, pageURL = pageURL.isolatedCopy()] {
         if (m_client)
-            m_client->didImportIconDataForPageURL(pageURLCopy);
+            m_client->didImportIconDataForPageURL(pageURL);
         checkClosedAfterMainThreadCallback();
     });
 }

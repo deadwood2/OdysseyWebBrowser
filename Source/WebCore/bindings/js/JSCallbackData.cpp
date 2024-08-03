@@ -39,23 +39,20 @@ using namespace JSC;
     
 namespace WebCore {
 
-JSValue JSCallbackData::invokeCallback(JSObject* callback, MarkedArgumentBuffer& args, CallbackType method, PropertyName functionName, NakedPtr<Exception>& returnedException)
+JSValue JSCallbackData::invokeCallback(JSDOMGlobalObject& globalObject, JSObject* callback, MarkedArgumentBuffer& args, CallbackType method, PropertyName functionName, NakedPtr<Exception>& returnedException)
 {
     ASSERT(callback);
 
-    auto* globalObject = JSC::jsCast<JSDOMGlobalObject*>(callback->globalObject());
-    ASSERT(globalObject);
-
-    ExecState* exec = globalObject->globalExec();
+    ExecState* exec = globalObject.globalExec();
     JSValue function;
     CallData callData;
-    CallType callType = CallTypeNone;
+    CallType callType = CallType::None;
 
     if (method != CallbackType::Object) {
         function = callback;
         callType = callback->methodTable()->getCallData(callback, callData);
     }
-    if (callType == CallTypeNone) {
+    if (callType == CallType::None) {
         if (method == CallbackType::Function) {
             returnedException = Exception::create(exec->vm(), createTypeError(exec));
             return JSValue();
@@ -64,16 +61,16 @@ JSValue JSCallbackData::invokeCallback(JSObject* callback, MarkedArgumentBuffer&
         ASSERT(!functionName.isNull());
         function = callback->get(exec, functionName);
         callType = getCallData(function, callData);
-        if (callType == CallTypeNone) {
+        if (callType == CallType::None) {
             returnedException = Exception::create(exec->vm(), createTypeError(exec));
             return JSValue();
         }
     }
 
     ASSERT(!function.isEmpty());
-    ASSERT(callType != CallTypeNone);
+    ASSERT(callType != CallType::None);
 
-    ScriptExecutionContext* context = globalObject->scriptExecutionContext();
+    ScriptExecutionContext* context = globalObject.scriptExecutionContext();
     // We will fail to get the context if the frame has been detached.
     if (!context)
         return JSValue();

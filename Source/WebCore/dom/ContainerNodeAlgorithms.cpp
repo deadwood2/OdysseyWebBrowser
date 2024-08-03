@@ -26,6 +26,8 @@
 #include "config.h"
 #include "ContainerNodeAlgorithms.h"
 
+#include "HTMLTextAreaElement.h"
+#include "NoEventDispatchAssertion.h"
 
 namespace WebCore {
 
@@ -86,7 +88,7 @@ void notifyNodeInsertedIntoTree(ContainerNode& insertionPoint, ContainerNode& no
 
 void notifyChildNodeInserted(ContainerNode& insertionPoint, Node& node, NodeVector& postInsertionNotificationTargets)
 {
-    ASSERT_WITH_SECURITY_IMPLICATION(!NoEventDispatchAssertion::isEventDispatchForbidden());
+    ASSERT_WITH_SECURITY_IMPLICATION(NoEventDispatchAssertion::isEventDispatchAllowedInSubtree(insertionPoint));
 
     InspectorInstrumentation::didInsertDOMNode(node.document(), node);
 
@@ -187,7 +189,7 @@ void addChildNodesToDeletionQueue(Node*& head, Node*& tail, ContainerNode& conta
             Ref<Node> protect(*node); // removedFromDocument may remove remove all references to this node.
             if (Document* containerDocument = container.ownerDocument())
                 containerDocument->adoptIfNeeded(node);
-            if (node->inDocument())
+            if (node->isInTreeScope())
                 notifyChildNodeRemoved(container, *node);
         }
     }
@@ -287,6 +289,9 @@ void disconnectSubframes(ContainerNode& root, SubframeDisconnectPolicy policy)
     }
 
     collectFrameOwners(frameOwners, root);
+
+    if (auto* shadowRoot = root.shadowRoot())
+        collectFrameOwners(frameOwners, *shadowRoot);
 
     // Must disable frame loading in the subtree so an unload handler cannot
     // insert more frames and create loaded frames in detached subtrees.

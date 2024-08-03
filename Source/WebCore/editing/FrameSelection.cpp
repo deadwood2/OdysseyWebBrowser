@@ -34,7 +34,9 @@
 #include "EditorClient.h"
 #include "Element.h"
 #include "ElementIterator.h"
+#include "Event.h"
 #include "EventHandler.h"
+#include "EventNames.h"
 #include "ExceptionCode.h"
 #include "FloatQuad.h"
 #include "FocusController.h"
@@ -44,10 +46,11 @@
 #include "GraphicsContext.h"
 #include "HTMLBodyElement.h"
 #include "HTMLFormElement.h"
-#include "HTMLFrameElementBase.h"
+#include "HTMLFrameElement.h"
+#include "HTMLIFrameElement.h"
 #include "HTMLInputElement.h"
-#include "HTMLSelectElement.h"
 #include "HTMLNames.h"
+#include "HTMLSelectElement.h"
 #include "HitTestRequest.h"
 #include "HitTestResult.h"
 #include "InlineTextBox.h"
@@ -124,7 +127,6 @@ FrameSelection::FrameSelection(Frame* frame)
 #if PLATFORM(IOS)
     , m_updateAppearanceEnabled(false)
     , m_caretBlinks(true)
-    , m_scrollingSuppressCount(0)
 #endif
 {
     if (shouldAlwaysUseDirectionalSelection(m_frame))
@@ -288,7 +290,7 @@ bool FrameSelection::setSelectionWithoutUpdatingAppearance(const VisibleSelectio
                 // It's possible that during the above set selection, this FrameSelection has been modified by
                 // selectFrameElementInParentIfFullySelected, but that the selection is no longer valid since
                 // the frame is about to be destroyed. If this is the case, clear our selection.
-                if (newSelectionFrame->hasOneRef() && !m_selection.isNonOrphanedCaretOrRange())
+                if (newSelectionFrame->hasOneRef() && m_selection.isNoneOrOrphaned())
                     clear();
                 return false;
             }
@@ -385,7 +387,7 @@ void FrameSelection::updateAndRevealSelection(const AXTextStateChangeIntent& int
         else
             alignment = m_alwaysAlignCursorOnScrollWhenRevealingSelection ? ScrollAlignment::alignTopAlways : ScrollAlignment::alignToEdgeIfNeeded;
 
-        revealSelection(alignment, RevealExtent);
+        revealSelection(SelectionRevealMode::Reveal, alignment, RevealExtent);
     }
 
     notifyAccessibilityForSelectionChange(intent);
@@ -473,7 +475,7 @@ void FrameSelection::respondToNodeModification(Node& node, bool baseRemoved, boo
             m_selection.setWithoutValidation(m_selection.end(), m_selection.start());
     } else if (RefPtr<Range> range = m_selection.firstRange()) {
         ExceptionCode ec = 0;
-        Range::CompareResults compareResult = range->compareNode(&node, ec);
+        Range::CompareResults compareResult = range->compareNode(node, ec);
         if (!ec && (compareResult == Range::NODE_BEFORE_AND_AFTER || compareResult == Range::NODE_INSIDE)) {
             // If we did nothing here, when this node's renderer was destroyed, the rect that it 
             // occupied would be invalidated, but, selection gaps that change as a result of 
@@ -2086,8 +2088,11 @@ void FrameSelection::updateAppearance()
     // because we don't yet notify the FrameSelection of text removal.
     if (startPos.isNotNull() && endPos.isNotNull() && selection.visibleStart() != selection.visibleEnd()) {
         RenderObject* startRenderer = startPos.deprecatedNode()->renderer();
+        int startOffset = startPos.deprecatedEditingOffset();
         RenderObject* endRenderer = endPos.deprecatedNode()->renderer();
-        view->setSelection(startRenderer, startPos.deprecatedEditingOffset(), endRenderer, endPos.deprecatedEditingOffset());
+        int endOffset = endPos.deprecatedEditingOffset();
+        ASSERT(startOffset >= 0 && endOffset >= 0);
+        view->setSelection(startRenderer, startOffset, endRenderer, endOffset);
     }
 }
 
@@ -2096,7 +2101,7 @@ void FrameSelection::setCaretVisibility(CaretVisibility visibility)
     if (caretVisibility() == visibility)
         return;
 
-    // FIXME: We shouldn't trigger a synchrnously layout here.
+    // FIXME: We shouldn't trigger a synchronous layout here.
     if (m_frame)
         updateSelectionByUpdatingLayoutOrStyle(*m_frame);
 
@@ -2287,8 +2292,11 @@ HTMLFormElement* FrameSelection::currentForm() const
     return scanForForm(start);
 }
 
-void FrameSelection::revealSelection(const ScrollAlignment& alignment, RevealExtentOption revealExtentOption)
+void FrameSelection::revealSelection(SelectionRevealMode revealMode, const ScrollAlignment& alignment, RevealExtentOption revealExtentOption)
 {
+    if (revealMode == SelectionRevealMode::DoNotReveal)
+        return;
+
     LayoutRect rect;
 
     switch (m_selection.selectionType()) {
@@ -2309,7 +2317,7 @@ void FrameSelection::revealSelection(const ScrollAlignment& alignment, RevealExt
         if (RenderLayer* layer = start.deprecatedNode()->renderer()->enclosingLayer()) {
             if (!m_scrollingSuppressCount) {
                 layer->setAdjustForIOSCaretWhenScrolling(true);
-                layer->scrollRectToVisible(rect, alignment, alignment);
+                layer->scrollRectToVisible(revealMode, rect, alignment, alignment);
                 layer->setAdjustForIOSCaretWhenScrolling(false);
                 updateAppearance();
                 if (m_frame->page())
@@ -2320,7 +2328,7 @@ void FrameSelection::revealSelection(const ScrollAlignment& alignment, RevealExt
         // FIXME: This code only handles scrolling the startContainer's layer, but
         // the selection rect could intersect more than just that.
         // See <rdar://problem/4799899>.
-        if (start.deprecatedNode()->renderer()->scrollRectToVisible(rect, alignment, alignment))
+        if (start.deprecatedNode()->renderer()->scrollRectToVisible(revealMode, rect, alignment, alignment))
             updateAppearance();
 #endif
     }
@@ -2604,7 +2612,7 @@ PassRefPtr<Range> FrameSelection::rangeByExtendingCurrentSelection(int amount) c
     return rangeByAlteringCurrentSelection(AlterationExtend, amount);
 }
 
-void FrameSelection::selectRangeOnElement(unsigned location, unsigned length, Node* node)
+void FrameSelection::selectRangeOnElement(unsigned location, unsigned length, Node& node)
 {
     RefPtr<Range> resultRange = m_frame->document()->createRange();
     ExceptionCode ec = 0;

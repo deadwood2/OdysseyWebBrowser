@@ -30,6 +30,7 @@
 
 #include "Database.h"
 #include "Logging.h"
+#include "SQLTransaction.h"
 
 namespace WebCore {
 
@@ -131,7 +132,7 @@ DatabaseCloseTask::DatabaseCloseTask(Database& database, DatabaseTaskSynchronize
 
 void DatabaseCloseTask::doPerformTask()
 {
-    database().close();
+    database().performClose();
 }
 
 #if !LOG_DISABLED
@@ -144,9 +145,9 @@ const char* DatabaseCloseTask::debugTaskName() const
 // *** DatabaseTransactionTask ***
 // Starts a transaction that will report its results via a callback.
 
-DatabaseTransactionTask::DatabaseTransactionTask(PassRefPtr<SQLTransactionBackend> transaction)
-    : DatabaseTask(*transaction->database(), 0)
-    , m_transaction(transaction)
+DatabaseTransactionTask::DatabaseTransactionTask(RefPtr<SQLTransaction>&& transaction)
+    : DatabaseTask(transaction->database(), 0)
+    , m_transaction(WTFMove(transaction))
     , m_didPerformTask(false)
 {
 }

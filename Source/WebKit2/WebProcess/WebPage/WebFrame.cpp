@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,6 +28,7 @@
 
 #include "APIArray.h"
 #include "DownloadManager.h"
+#include "FrameInfoData.h"
 #include "InjectedBundleFileHandle.h"
 #include "InjectedBundleHitTestResult.h"
 #include "InjectedBundleNodeHandle.h"
@@ -61,6 +62,7 @@
 #include <WebCore/HTMLFrameOwnerElement.h>
 #include <WebCore/HTMLInputElement.h>
 #include <WebCore/HTMLNames.h>
+#include <WebCore/HTMLSelectElement.h>
 #include <WebCore/HTMLTextAreaElement.h>
 #include <WebCore/ImageBuffer.h>
 #include <WebCore/JSCSSStyleDeclaration.h>
@@ -109,19 +111,19 @@ static uint64_t generateListenerID()
 
 PassRefPtr<WebFrame> WebFrame::createWithCoreMainFrame(WebPage* page, WebCore::Frame* coreFrame)
 {
-    RefPtr<WebFrame> frame = create(std::unique_ptr<WebFrameLoaderClient>(static_cast<WebFrameLoaderClient*>(&coreFrame->loader().client())));
-    page->send(Messages::WebPageProxy::DidCreateMainFrame(frame->frameID()), page->pageID(), IPC::DispatchMessageEvenWhenWaitingForSyncReply);
+    auto frame = create(std::unique_ptr<WebFrameLoaderClient>(static_cast<WebFrameLoaderClient*>(&coreFrame->loader().client())));
+    page->send(Messages::WebPageProxy::DidCreateMainFrame(frame->frameID()), page->pageID(), IPC::SendOption::DispatchMessageEvenWhenWaitingForSyncReply);
 
     frame->m_coreFrame = coreFrame;
     frame->m_coreFrame->tree().setName(String());
     frame->m_coreFrame->init();
-    return frame.release();
+    return frame;
 }
 
 PassRefPtr<WebFrame> WebFrame::createSubframe(WebPage* page, const String& frameName, HTMLFrameOwnerElement* ownerElement)
 {
-    RefPtr<WebFrame> frame = create(std::make_unique<WebFrameLoaderClient>());
-    page->send(Messages::WebPageProxy::DidCreateSubframe(frame->frameID()), page->pageID(), IPC::DispatchMessageEvenWhenWaitingForSyncReply);
+    auto frame = create(std::make_unique<WebFrameLoaderClient>());
+    page->send(Messages::WebPageProxy::DidCreateSubframe(frame->frameID()), page->pageID(), IPC::SendOption::DispatchMessageEvenWhenWaitingForSyncReply);
 
     Ref<WebCore::Frame> coreFrame = Frame::create(page->corePage(), ownerElement, frame->m_frameLoaderClient.get());
     frame->m_coreFrame = coreFrame.ptr();
@@ -131,17 +133,17 @@ PassRefPtr<WebFrame> WebFrame::createSubframe(WebPage* page, const String& frame
         ownerElement->document().frame()->tree().appendChild(WTFMove(coreFrame));
     }
     frame->m_coreFrame->init();
-    return frame.release();
+    return frame;
 }
 
 PassRefPtr<WebFrame> WebFrame::create(std::unique_ptr<WebFrameLoaderClient> frameLoaderClient)
 {
-    RefPtr<WebFrame> frame = adoptRef(new WebFrame(WTFMove(frameLoaderClient)));
+    auto frame = adoptRef(*new WebFrame(WTFMove(frameLoaderClient)));
 
     // Add explict ref() that will be balanced in WebFrameLoaderClient::frameLoaderDestroyed().
     frame->ref();
 
-    return frame.release();
+    return WTFMove(frame);
 }
 
 WebFrame::WebFrame(std::unique_ptr<WebFrameLoaderClient> frameLoaderClient)
@@ -191,6 +193,19 @@ WebFrame* WebFrame::fromCoreFrame(Frame& frame)
         return nullptr;
 
     return webFrameLoaderClient->webFrame();
+}
+
+FrameInfoData WebFrame::info() const
+{
+    FrameInfoData info;
+
+    info.isMainFrame = isMainFrame();
+    // FIXME: This should use the full request.
+    info.request = ResourceRequest(URL(URL(), url()));
+    info.securityOrigin = SecurityOriginData::fromFrame(m_coreFrame);
+    info.frameID = m_frameID;
+    
+    return info;
 }
 
 void WebFrame::invalidate()
@@ -246,7 +261,7 @@ void WebFrame::didReceivePolicyDecision(uint64_t listenerID, PolicyAction action
     function(action);
 }
 
-void WebFrame::startDownload(const WebCore::ResourceRequest& request)
+void WebFrame::startDownload(const WebCore::ResourceRequest& request, const String& suggestedName)
 {
     ASSERT(m_policyDownloadID.downloadID());
 
@@ -255,7 +270,7 @@ void WebFrame::startDownload(const WebCore::ResourceRequest& request)
 
     auto& webProcess = WebProcess::singleton();
     SessionID sessionID = page() ? page()->sessionID() : SessionID::defaultSessionID();
-    webProcess.networkConnection()->connection()->send(Messages::NetworkConnectionToWebProcess::StartDownload(sessionID, policyDownloadID, request), 0);
+    webProcess.networkConnection().connection().send(Messages::NetworkConnectionToWebProcess::StartDownload(sessionID, policyDownloadID, request, suggestedName), 0);
 }
 
 void WebFrame::convertMainResourceLoadToDownload(DocumentLoader* documentLoader, SessionID sessionID, const ResourceRequest& request, const ResourceResponse& response)
@@ -277,7 +292,7 @@ void WebFrame::convertMainResourceLoadToDownload(DocumentLoader* documentLoader,
     else
         mainResourceLoadIdentifier = 0;
 
-    webProcess.networkConnection()->connection()->send(Messages::NetworkConnectionToWebProcess::ConvertMainResourceLoadToDownload(sessionID, mainResourceLoadIdentifier, policyDownloadID, request, response), 0);
+    webProcess.networkConnection().connection().send(Messages::NetworkConnectionToWebProcess::ConvertMainResourceLoadToDownload(sessionID, mainResourceLoadIdentifier, policyDownloadID, request, response), 0);
 }
 
 String WebFrame::source() const
@@ -330,7 +345,7 @@ String WebFrame::contentsAsString() const
     RefPtr<Range> range = document->createRange();
 
     ExceptionCode ec = 0;
-    range->selectNode(documentElement.get(), ec);
+    range->selectNode(*documentElement, ec);
     if (ec)
         return String();
 
@@ -396,16 +411,16 @@ String WebFrame::url() const
     return documentLoader->url().string();
 }
 
-WebCore::CertificateInfo WebFrame::certificateInfo() const
+CertificateInfo WebFrame::certificateInfo() const
 {
     if (!m_coreFrame)
-        return CertificateInfo();
+        return { };
 
     DocumentLoader* documentLoader = m_coreFrame->loader().documentLoader();
     if (!documentLoader)
-        return CertificateInfo();
+        return { };
 
-    return documentLoader->response().certificateInfo();
+    return documentLoader->response().certificateInfo().valueOrCompute([] { return CertificateInfo(); });
 }
 
 String WebFrame::innerText() const
@@ -600,7 +615,7 @@ PassRefPtr<InjectedBundleHitTestResult> WebFrame::hitTest(const IntPoint point) 
     if (!m_coreFrame)
         return 0;
 
-    return InjectedBundleHitTestResult::create(m_coreFrame->eventHandler().hitTestResultAtPoint(point, HitTestRequest::ReadOnly | HitTestRequest::Active | HitTestRequest::IgnoreClipping | HitTestRequest::DisallowShadowContent));
+    return InjectedBundleHitTestResult::create(m_coreFrame->eventHandler().hitTestResultAtPoint(point, HitTestRequest::ReadOnly | HitTestRequest::Active | HitTestRequest::IgnoreClipping | HitTestRequest::DisallowUserAgentShadowContent));
 }
 
 bool WebFrame::getDocumentBackgroundColor(double* red, double* green, double* blue, double* alpha)
@@ -794,7 +809,7 @@ void WebFrame::documentLoaderDetached(uint64_t navigationID)
 #if PLATFORM(COCOA)
 RetainPtr<CFDataRef> WebFrame::webArchiveData(FrameFilterFunction callback, void* context)
 {
-    RefPtr<LegacyWebArchive> archive = LegacyWebArchive::create(coreFrame()->document(), [this, callback, context](Frame& frame) -> bool {
+    RefPtr<LegacyWebArchive> archive = LegacyWebArchive::create(*coreFrame()->document(), [this, callback, context](Frame& frame) -> bool {
         if (!callback)
             return true;
 
@@ -817,7 +832,7 @@ PassRefPtr<ShareableBitmap> WebFrame::createSelectionSnapshot() const
     if (!snapshot)
         return nullptr;
 
-    RefPtr<ShareableBitmap> sharedSnapshot = ShareableBitmap::createShareable(snapshot->internalSize(), ShareableBitmap::SupportsAlpha);
+    auto sharedSnapshot = ShareableBitmap::createShareable(snapshot->internalSize(), ShareableBitmap::SupportsAlpha);
     if (!sharedSnapshot)
         return nullptr;
 
@@ -828,7 +843,7 @@ PassRefPtr<ShareableBitmap> WebFrame::createSelectionSnapshot() const
     graphicsContext->scale(FloatSize(deviceScaleFactor, deviceScaleFactor));
     graphicsContext->drawConsumingImageBuffer(WTFMove(snapshot), FloatPoint());
 
-    return sharedSnapshot.release();
+    return WTFMove(sharedSnapshot);
 }
     
 } // namespace WebKit

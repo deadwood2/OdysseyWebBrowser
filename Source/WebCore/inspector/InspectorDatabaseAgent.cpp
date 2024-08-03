@@ -75,7 +75,7 @@ public:
 
     virtual ~StatementCallback() { }
 
-    virtual bool handleEvent(SQLTransaction*, SQLResultSet* resultSet) override
+    bool handleEvent(SQLTransaction*, SQLResultSet* resultSet) override
     {
         SQLResultSetRowList* rowList = resultSet->rows();
 
@@ -87,8 +87,8 @@ public:
         for (auto& value : rowList->values()) {
             RefPtr<InspectorValue> inspectorValue;
             switch (value.type()) {
-            case SQLValue::StringValue: inspectorValue = InspectorString::create(value.string()); break;
-            case SQLValue::NumberValue: inspectorValue = InspectorBasicValue::create(value.number()); break;
+            case SQLValue::StringValue: inspectorValue = InspectorValue::create(value.string()); break;
+            case SQLValue::NumberValue: inspectorValue = InspectorValue::create(value.number()); break;
             case SQLValue::NullValue: inspectorValue = InspectorValue::null(); break;
             }
             
@@ -113,7 +113,7 @@ public:
 
     virtual ~StatementErrorCallback() { }
 
-    virtual bool handleEvent(SQLTransaction*, SQLError* error) override
+    bool handleEvent(SQLTransaction*, SQLError* error) override
     {
         reportTransactionFailed(m_requestCallback.copyRef(), error);
         return true;  
@@ -134,7 +134,7 @@ public:
 
     virtual ~TransactionCallback() { }
 
-    virtual bool handleEvent(SQLTransaction* transaction) override
+    bool handleEvent(SQLTransaction* transaction) override
     {
         if (!m_requestCallback->isActive())
             return true;
@@ -162,7 +162,7 @@ public:
 
     virtual ~TransactionErrorCallback() { }
 
-    virtual bool handleEvent(SQLError* error) override
+    bool handleEvent(SQLError* error) override
     {
         reportTransactionFailed(m_requestCallback.get(), error);
         return true;
@@ -182,7 +182,7 @@ public:
 
     virtual ~TransactionSuccessCallback() { }
 
-    virtual bool handleEvent() override { return false; }
+    bool handleEvent() override { return false; }
 
 private:
     TransactionSuccessCallback() { }

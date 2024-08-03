@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012, 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2013, 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,6 +30,7 @@
 #include "JSONObject.h"
 #include "ObjectConstructor.h"
 #include "JSCInlines.h"
+#include <wtf/CurrentTime.h>
 
 namespace JSC { namespace Profiler {
 
@@ -58,8 +59,12 @@ Database::~Database()
 Bytecodes* Database::ensureBytecodesFor(CodeBlock* codeBlock)
 {
     LockHolder locker(m_lock);
-    
-    codeBlock = codeBlock->baselineVersion();
+    return ensureBytecodesFor(locker, codeBlock);
+}
+
+Bytecodes* Database::ensureBytecodesFor(const LockHolder&, CodeBlock* codeBlock)
+{
+    codeBlock = codeBlock->baselineAlternative();
     
     HashMap<CodeBlock*, Bytecodes*>::iterator iter = m_bytecodesMap.find(codeBlock);
     if (iter != m_bytecodesMap.end())
@@ -78,28 +83,45 @@ void Database::notifyDestruction(CodeBlock* codeBlock)
     LockHolder locker(m_lock);
     
     m_bytecodesMap.remove(codeBlock);
+    m_compilationMap.remove(codeBlock);
 }
 
-void Database::addCompilation(PassRefPtr<Compilation> compilation)
+void Database::addCompilation(CodeBlock* codeBlock, PassRefPtr<Compilation> passedCompilation)
 {
+    LockHolder locker(m_lock);
     ASSERT(!isCompilationThread());
+
+    RefPtr<Compilation> compilation = passedCompilation;
     
     m_compilations.append(compilation);
+    m_compilationMap.set(codeBlock, compilation);
 }
 
 JSValue Database::toJS(ExecState* exec) const
 {
+    VM& vm = exec->vm();
     JSObject* result = constructEmptyObject(exec);
     
     JSArray* bytecodes = constructEmptyArray(exec, 0);
+    if (UNLIKELY(vm.exception()))
+        return jsUndefined();
     for (unsigned i = 0; i < m_bytecodes.size(); ++i)
         bytecodes->putDirectIndex(exec, i, m_bytecodes[i].toJS(exec));
-    result->putDirect(exec->vm(), exec->propertyNames().bytecodes, bytecodes);
+    result->putDirect(vm, exec->propertyNames().bytecodes, bytecodes);
     
     JSArray* compilations = constructEmptyArray(exec, 0);
+    if (UNLIKELY(vm.exception()))
+        return jsUndefined();
     for (unsigned i = 0; i < m_compilations.size(); ++i)
         compilations->putDirectIndex(exec, i, m_compilations[i]->toJS(exec));
-    result->putDirect(exec->vm(), exec->propertyNames().compilations, compilations);
+    result->putDirect(vm, exec->propertyNames().compilations, compilations);
+    
+    JSArray* events = constructEmptyArray(exec, 0);
+    if (UNLIKELY(vm.exception()))
+        return jsUndefined();
+    for (unsigned i = 0; i < m_events.size(); ++i)
+        events->putDirectIndex(exec, i, m_events[i].toJS(exec));
+    result->putDirect(vm, exec->propertyNames().events, events);
     
     return result;
 }
@@ -133,6 +155,15 @@ void Database::registerToSaveAtExit(const char* filename)
     m_shouldSaveAtExit = true;
 }
 
+void Database::logEvent(CodeBlock* codeBlock, const char* summary, const CString& detail)
+{
+    LockHolder locker(m_lock);
+    
+    Bytecodes* bytecodes = ensureBytecodesFor(locker, codeBlock);
+    Compilation* compilation = m_compilationMap.get(codeBlock);
+    m_events.append(Event(currentTime(), bytecodes, compilation, summary, detail));
+}
+
 void Database::addDatabaseToAtExit()
 {
     if (++didRegisterAtExit == 1)
@@ -158,6 +189,7 @@ void Database::removeDatabaseFromAtExit()
 
 void Database::performAtExitSave() const
 {
+    JSLockHolder lock(m_vm);
     save(m_atExitSaveFilename.data());
 }
 

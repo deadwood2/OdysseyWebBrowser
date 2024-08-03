@@ -83,8 +83,8 @@ void JSErrorHandler::handleEvent(ScriptExecutionContext* scriptExecutionContext,
     CallData callData;
     CallType callType = jsFunction->methodTable()->getCallData(jsFunction, callData);
 
-    if (callType != CallTypeNone) {
-        Ref<JSErrorHandler> protectedctor(*this);
+    if (callType != CallType::None) {
+        Ref<JSErrorHandler> protectedThis(*this);
 
         Event* savedEvent = globalObject->currentEvent();
         globalObject->setCurrentEvent(event);
@@ -94,6 +94,7 @@ void JSErrorHandler::handleEvent(ScriptExecutionContext* scriptExecutionContext,
         args.append(jsStringWithCache(exec, errorEvent.filename()));
         args.append(jsNumber(errorEvent.lineno()));
         args.append(jsNumber(errorEvent.colno()));
+        args.append(errorEvent.sanitizedErrorValue(*exec, *globalObject));
 
         VM& vm = globalObject->vm();
         VMEntryScope entryScope(vm, vm.entryScope ? vm.entryScope->globalObject() : globalObject);

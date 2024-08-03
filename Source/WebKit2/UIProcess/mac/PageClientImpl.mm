@@ -115,22 +115,7 @@ std::unique_ptr<DrawingAreaProxy> PageClientImpl::createDrawingAreaProxy()
     return m_impl->createDrawingAreaProxy();
 }
 
-void PageClientImpl::setViewNeedsDisplay(const WebCore::IntRect& rect)
-{
-    ASSERT_NOT_REACHED();
-}
-
-void PageClientImpl::displayView()
-{
-    ASSERT_NOT_REACHED();
-}
-
-bool PageClientImpl::canScrollView()
-{
-    return false;
-}
-
-void PageClientImpl::scrollView(const IntRect& scrollRect, const IntSize& scrollOffset)
+void PageClientImpl::setViewNeedsDisplay(const WebCore::Region&)
 {
     ASSERT_NOT_REACHED();
 }
@@ -421,6 +406,15 @@ IntRect PageClientImpl::rootViewToScreen(const IntRect& rect)
     return enclosingIntRect(tempRect);
 }
 
+#if PLATFORM(MAC)
+IntRect PageClientImpl::rootViewToWindow(const WebCore::IntRect& rect)
+{
+    NSRect tempRect = rect;
+    tempRect = [m_view convertRect:tempRect toView:nil];
+    return enclosingIntRect(tempRect);
+}
+#endif
+
 void PageClientImpl::doneWithKeyEvent(const NativeWebKeyboardEvent& event, bool eventWasHandled)
 {
     m_impl->doneWithKeyEvent(event.nativeEvent(), eventWasHandled);
@@ -484,10 +478,6 @@ void PageClientImpl::updateAcceleratedCompositingMode(const LayerTreeContext& la
 
     CALayer *renderLayer = WKMakeRenderLayer(layerTreeContext.contextID);
     m_impl->setAcceleratedCompositingRootLayer(renderLayer);
-}
-
-void PageClientImpl::willEnterAcceleratedCompositingMode()
-{
 }
 
 void PageClientImpl::setAcceleratedCompositingRootLayer(CALayer *rootLayer)
@@ -626,6 +616,11 @@ Vector<String> PageClientImpl::dictationAlternatives(uint64_t dictationContext)
     return m_alternativeTextUIController->alternativesForContext(dictationContext);
 }
 #endif
+
+void PageClientImpl::setEditableElementIsFocused(bool editableElementIsFocused)
+{
+    m_impl->setEditableElementIsFocused(editableElementIsFocused);
+}
 
 #if ENABLE(FULLSCREEN_API)
 
@@ -785,6 +780,11 @@ void PageClientImpl::didHandleAcceptedCandidate()
     m_impl->didHandleAcceptedCandidate();
 }
 
+void PageClientImpl::videoControlsManagerDidChange()
+{
+    m_impl->videoControlsManagerDidChange();
+}
+
 void PageClientImpl::showPlatformContextMenu(NSMenu *menu, IntPoint location)
 {
     [menu popUpMenuPositioningItem:nil atLocation:location inView:m_view];
@@ -839,6 +839,13 @@ void PageClientImpl::didRestoreScrollPosition()
 bool PageClientImpl::windowIsFrontWindowUnderMouse(const NativeWebMouseEvent& event)
 {
     return m_impl->windowIsFrontWindowUnderMouse(event.nativeEvent());
+}
+
+WebCore::UserInterfaceLayoutDirection PageClientImpl::userInterfaceLayoutDirection()
+{
+    if (!m_view)
+        return WebCore::UserInterfaceLayoutDirection::LTR;
+    return (m_view.userInterfaceLayoutDirection == NSUserInterfaceLayoutDirectionLeftToRight) ? WebCore::UserInterfaceLayoutDirection::LTR : WebCore::UserInterfaceLayoutDirection::RTL;
 }
 
 } // namespace WebKit

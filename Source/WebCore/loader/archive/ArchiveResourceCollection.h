@@ -32,10 +32,8 @@
 #include "Archive.h"
 #include "ArchiveResource.h"
 #include "URL.h"
-#include <wtf/text/WTFString.h>
-
 #include <wtf/HashMap.h>
-#include <wtf/RefCounted.h>
+#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
@@ -44,7 +42,7 @@ class ArchiveResourceCollection {
 public:
     ArchiveResourceCollection();
 
-    void addResource(PassRefPtr<ArchiveResource>);
+    void addResource(Ref<ArchiveResource>&&);
     void addAllResources(Archive*);
     
     WEBCORE_EXPORT ArchiveResource* archiveResourceForURL(const URL&);

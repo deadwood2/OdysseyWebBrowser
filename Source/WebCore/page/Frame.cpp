@@ -110,6 +110,7 @@
 #include <bindings/ScriptValue.h>
 #include <wtf/RefCountedLeakCounter.h>
 #include <wtf/StdLibExtras.h>
+#include <wtf/text/StringBuilder.h>
 #include <yarr/RegularExpression.h>
 
 #if PLATFORM(IOS)
@@ -245,7 +246,7 @@ void Frame::setView(RefPtr<FrameView>&& view)
     // Prepare for destruction now, so any unload event handlers get run and the DOMWindow is
     // notified. If we wait until the view is destroyed, then things won't be hooked up enough for
     // these calls to work.
-    if (!view && m_doc && !m_doc->inPageCache())
+    if (!view && m_doc && m_doc->pageCacheState() != Document::InPageCache)
         m_doc->prepareForDestruction();
     
     if (m_view)
@@ -267,7 +268,12 @@ void Frame::setDocument(RefPtr<Document>&& newDocument)
 {
     ASSERT(!newDocument || newDocument->frame() == this);
 
-    if (m_doc && !m_doc->inPageCache())
+    if (m_documentIsBeingReplaced)
+        return;
+
+    m_documentIsBeingReplaced = true;
+    
+    if (m_doc && m_doc->pageCacheState() != Document::InPageCache)
         m_doc->prepareForDestruction();
 
     m_doc = newDocument.copyRef();
@@ -280,6 +286,8 @@ void Frame::setDocument(RefPtr<Document>&& newDocument)
         newDocument->didBecomeCurrentDocumentInFrame();
 
     InspectorInstrumentation::frameDocumentUpdated(this);
+
+    m_documentIsBeingReplaced = false;
 }
 
 #if ENABLE(ORIENTATION_EVENTS)
@@ -476,7 +484,7 @@ String Frame::matchLabelsAgainstElement(const Vector<String>& labels, Element* e
     if (!resultFromNameAttribute.isEmpty())
         return resultFromNameAttribute;
     
-    return matchLabelsAgainstString(labels, element->fastGetAttribute(idAttr));
+    return matchLabelsAgainstString(labels, element->attributeWithoutSynchronization(idAttr));
 }
 
 #if PLATFORM(IOS)
@@ -603,6 +611,8 @@ int Frame::checkOverflowScroll(OverflowScrollAction action)
         }
     }
 
+    Ref<Frame> protectedThis(*this);
+
     if (action == PerformOverflowScroll && (deltaX || deltaY)) {
         layer->scrollToOffset(layer->scrollOffset() + IntSize(deltaX, deltaY));
 
@@ -691,35 +701,17 @@ void Frame::injectUserScripts(UserScriptInjectionTime injectionTime)
     if (loader().stateMachine().creatingInitialEmptyDocument() && !settings().shouldInjectUserScriptsInInitialEmptyDocument())
         return;
 
-    const auto* userContentController = m_page->userContentController();
-    if (!userContentController)
+    Document* document = this->document();
+    if (!document)
         return;
 
-    // Walk the hashtable. Inject by world.
-    const UserScriptMap* userScripts = userContentController->userScripts();
-    if (!userScripts)
-        return;
+    m_page->userContentProvider().forEachUserScript([&](DOMWrapperWorld& world, const UserScript& script) {
+        if (script.injectedFrames() == InjectInTopFrameOnly && ownerElement())
+            return;
 
-    for (const auto& worldAndUserScript : *userScripts)
-        injectUserScriptsForWorld(*worldAndUserScript.key, *worldAndUserScript.value, injectionTime);
-}
-
-void Frame::injectUserScriptsForWorld(DOMWrapperWorld& world, const UserScriptVector& userScripts, UserScriptInjectionTime injectionTime)
-{
-    if (userScripts.isEmpty())
-        return;
-
-    Document* doc = document();
-    if (!doc)
-        return;
-
-    for (auto& script : userScripts) {
-        if (script->injectedFrames() == InjectInTopFrameOnly && ownerElement())
-            continue;
-
-        if (script->injectionTime() == injectionTime && UserContentURLPattern::matchesPatterns(doc->url(), script->whitelist(), script->blacklist()))
-            m_script->evaluateInWorld(ScriptSourceCode(script->source(), script->url()), world);
-    }
+        if (script.injectionTime() == injectionTime && UserContentURLPattern::matchesPatterns(document->url(), script.whitelist(), script.blacklist()))
+            m_script->evaluateInWorld(ScriptSourceCode(script.source(), script.url()), world);
+    });
 }
 
 RenderView* Frame::contentRenderer() const
@@ -979,6 +971,9 @@ void Frame::setPageAndTextZoomFactors(float pageZoomFactor, float textZoomFactor
         if (document->renderView() && document->renderView()->needsLayout() && view->didFirstLayout())
             view->layout();
     }
+
+    if (isMainFrame())
+        PageCache::singleton().markPagesForFullStyleRecalc(*page);
 }
 
 float Frame::frameScaleFactor() const
@@ -1053,6 +1048,11 @@ bool Frame::isURLAllowed(const URL& url) const
         }
     }
     return true;
+}
+
+bool Frame::isAlwaysOnLoggingAllowed() const
+{
+    return page() && page()->isAlwaysOnLoggingAllowed();
 }
 
 } // namespace WebCore

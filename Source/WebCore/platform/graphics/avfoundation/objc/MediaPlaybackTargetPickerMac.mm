@@ -43,18 +43,13 @@ typedef AVOutputDeviceMenuController AVOutputDeviceMenuControllerType;
 SOFT_LINK_FRAMEWORK_OPTIONAL(AVFoundation)
 SOFT_LINK_FRAMEWORK_OPTIONAL(AVKit)
 
-SOFT_LINK_CLASS(AVFoundation, AVOutputContext)
-SOFT_LINK_CLASS(AVKit, AVOutputDeviceMenuController)
+SOFT_LINK_CLASS_OPTIONAL(AVFoundation, AVOutputContext)
+SOFT_LINK_CLASS_OPTIONAL(AVKit, AVOutputDeviceMenuController)
 
 using namespace WebCore;
 
 static NSString *externalOutputDeviceAvailableKeyName = @"externalOutputDeviceAvailable";
 static NSString *externalOutputDevicePickedKeyName = @"externalOutputDevicePicked";
-
-// FIXME: remove this once the headers are available.
-@interface AVOutputDeviceMenuController (ForwardDeclaration)
-- (BOOL)showMenuForRect:(NSRect)screenRect appearanceName:(NSString *)appearanceName allowReselectionOfSelectedOutputDevice:(BOOL)allowReselectionOfSelectedOutputDevice;
-@end
 
 @interface WebAVOutputDeviceMenuControllerHelper : NSObject {
     MediaPlaybackTargetPickerMac* m_callback;
@@ -190,16 +185,16 @@ void MediaPlaybackTargetPickerMac::invalidatePlaybackTargets()
     if (![keyPath isEqualToString:externalOutputDeviceAvailableKeyName] && ![keyPath isEqualToString:externalOutputDevicePickedKeyName])
         return;
 
-    RetainPtr<WebAVOutputDeviceMenuControllerHelper> strongSelf = self;
-    RetainPtr<NSString> strongKeyPath = keyPath;
-    callOnMainThread([strongSelf, strongKeyPath] {
-        MediaPlaybackTargetPickerMac* callback = strongSelf->m_callback;
+    RetainPtr<WebAVOutputDeviceMenuControllerHelper> protectedSelf = self;
+    RetainPtr<NSString> protectedKeyPath = keyPath;
+    callOnMainThread([protectedSelf = WTFMove(protectedSelf), protectedKeyPath = WTFMove(protectedKeyPath)] {
+        MediaPlaybackTargetPickerMac* callback = protectedSelf->m_callback;
         if (!callback)
             return;
 
-        if ([strongKeyPath isEqualToString:externalOutputDeviceAvailableKeyName])
+        if ([protectedKeyPath isEqualToString:externalOutputDeviceAvailableKeyName])
             callback->availableDevicesDidChange();
-        else if ([strongKeyPath isEqualToString:externalOutputDevicePickedKeyName])
+        else if ([protectedKeyPath isEqualToString:externalOutputDevicePickedKeyName])
             callback->currentDeviceDidChange();
     });
 }

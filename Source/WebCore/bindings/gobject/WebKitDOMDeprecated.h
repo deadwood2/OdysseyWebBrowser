@@ -159,6 +159,162 @@ webkit_dom_element_get_elements_by_tag_name_ns(WebKitDOMElement* self, const gch
 WEBKIT_DEPRECATED_FOR(webkit_dom_element_get_elements_by_class_name_as_html_collection) WebKitDOMNodeList*
 webkit_dom_element_get_elements_by_class_name(WebKitDOMElement* self, const gchar* class_name);
 
+/**
+ * webkit_dom_node_clone_node:
+ * @self: A #WebKitDOMNode
+ * @deep: A #gboolean
+ *
+ * Returns: (transfer none): A #WebKitDOMNode
+ *
+ * Deprecated: 2.14: Use webkit_dom_node_clone_node_with_error() instead.
+ */
+WEBKIT_DEPRECATED_FOR(webkit_dom_node_clone_node_with_error) WebKitDOMNode*
+webkit_dom_node_clone_node(WebKitDOMNode* self, gboolean deep, GError** error);
+
+
+/**
+ * webkit_dom_document_get_default_charset:
+ * @self: A #WebKitDOMDocument
+ *
+ * Returns: A #gchar
+ *
+ * Deprecated: 2.14
+ */
+WEBKIT_DEPRECATED gchar*
+webkit_dom_document_get_default_charset(WebKitDOMDocument* self);
+
+/**
+ * webkit_dom_text_replace_whole_text:
+ * @self: A #WebKitDOMText
+ * @content: A #gchar
+ * @error: #GError
+ *
+ * Returns: (transfer none): A #WebKitDOMText
+ *
+ * Deprecated: 2.14
+ */
+WEBKIT_DEPRECATED WebKitDOMText*
+webkit_dom_text_replace_whole_text(WebKitDOMText* self, const gchar* content, GError** error);
+
+/**
+ * webkit_dom_html_input_element_get_capture:
+ * @self: A #WebKitDOMHTMLInputElement
+ *
+ * Returns: A #gboolean
+ *
+ * Deprecated: 2.14: Use webkit_dom_html_input_element_get_capture_type() instead.
+ */
+WEBKIT_DEPRECATED_FOR(webkit_dom_html_input_element_get_capture_type) gboolean
+webkit_dom_html_input_element_get_capture(WebKitDOMHTMLInputElement* self);
+
+/**
+ * webkit_dom_html_document_get_design_mode:
+ * @self: A #WebKitDOMHTMLDocument
+ *
+ * Returns: A #gchar
+ *
+ * Deprecated: 2.14: Use webkit_dom_document_get_design_mode() instead.
+ */
+WEBKIT_DEPRECATED_FOR(webkit_dom_document_get_design_mode) gchar*
+webkit_dom_html_document_get_design_mode(WebKitDOMHTMLDocument* self);
+
+/**
+ * webkit_dom_html_document_set_design_mode:
+ * @self: A #WebKitDOMHTMLDocument
+ * @value: A #gchar
+ *
+ * Deprecated: 2.14: Use webkit_dom_document_set_design_mode() instead.
+ */
+WEBKIT_DEPRECATED_FOR(webkit_dom_document_set_design_mode) void
+webkit_dom_html_document_set_design_mode(WebKitDOMHTMLDocument* self, const gchar* value);
+
+/**
+ * webkit_dom_html_document_get_compat_mode:
+ * @self: A #WebKitDOMHTMLDocument
+ *
+ * Returns: A #gchar
+ *
+ * Deprecated: 2.14: Use webkit_dom_document_get_compat_mode() instead.
+ */
+WEBKIT_DEPRECATED_FOR(webkit_dom_document_get_compat_mode) gchar*
+webkit_dom_html_document_get_compat_mode(WebKitDOMHTMLDocument* self);
+
+/**
+ * webkit_dom_html_document_get_embeds:
+ * @self: A #WebKitDOMHTMLDocument
+ *
+ * Returns: (transfer full): A #WebKitDOMHTMLCollection
+ *
+ * Deprecated: 2.14: Use webkit_dom_document_get_embeds() instead.
+ */
+WEBKIT_DEPRECATED_FOR(webkit_dom_document_get_embeds) WebKitDOMHTMLCollection*
+webkit_dom_html_document_get_embeds(WebKitDOMHTMLDocument* self);
+
+/**
+ * webkit_dom_html_document_get_plugins:
+ * @self: A #WebKitDOMHTMLDocument
+ *
+ * Returns: (transfer full): A #WebKitDOMHTMLCollection
+ *
+ * Deprecated: 2.14: Use webkit_dom_document_get_plugins() instead.
+ */
+WEBKIT_DEPRECATED_FOR(webkit_dom_document_get_plugins) WebKitDOMHTMLCollection*
+webkit_dom_html_document_get_plugins(WebKitDOMHTMLDocument* self);
+
+/**
+ * webkit_dom_html_document_get_scripts:
+ * @self: A #WebKitDOMHTMLDocument
+ *
+ * Returns: (transfer full): A #WebKitDOMHTMLCollection
+ *
+ * Deprecated: 2.14: Use webkit_dom_document_get_scripts() instead.
+ */
+WEBKIT_DEPRECATED_FOR(webkit_dom_document_get_scripts) WebKitDOMHTMLCollection*
+webkit_dom_html_document_get_scripts(WebKitDOMHTMLDocument* self);
+
+/**
+ * webkit_dom_node_get_namespace_uri:
+ * @self: A #WebKitDOMNode
+ *
+ * Returns: A #gchar
+ *
+ * Deprecated: 2.14: Use webkit_dom_attr_get_namespace_uri() or webkit_dom_element_get_namespace_uri() instead.
+ */
+WEBKIT_DEPRECATED gchar*
+webkit_dom_node_get_namespace_uri(WebKitDOMNode* self);
+
+/**
+ * webkit_dom_node_get_prefix:
+ * @self: A #WebKitDOMNode
+ *
+ * Returns: A #gchar
+ *
+ * Deprecated: 2.14: Use webkit_dom_attr_get_prefix() or webkit_dom_element_get_prefix() instead.
+ */
+WEBKIT_DEPRECATED gchar*
+webkit_dom_node_get_prefix(WebKitDOMNode* self);
+
+/**
+ * webkit_dom_node_set_prefix:
+ * @self: A #WebKitDOMNode
+ * @value: A #gchar
+ * @error: #GError
+ *
+ * Deprecated: 2.14
+ */
+WEBKIT_DEPRECATED void
+webkit_dom_node_set_prefix(WebKitDOMNode* self, const gchar* value, GError** error);
+
+/**
+ * webkit_dom_node_get_local_name:
+ * @self: A #WebKitDOMNode
+ *
+ * Returns: A #gchar
+ *
+ * Deprecated: 2.14: Use webkit_dom_attr_get_local_name() or webkit_dom_element_get_local_name() instead.
+ */
+WEBKIT_DEPRECATED gchar*
+webkit_dom_node_get_local_name(WebKitDOMNode* self);
 
 #define WEBKIT_DOM_TYPE_ENTITY_REFERENCE            (webkit_dom_entity_reference_get_type())
 #define WEBKIT_DOM_ENTITY_REFERENCE(obj)            (G_TYPE_CHECK_INSTANCE_CAST((obj), WEBKIT_DOM_TYPE_ENTITY_REFERENCE, WebKitDOMEntityReference))

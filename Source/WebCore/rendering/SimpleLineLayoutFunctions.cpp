@@ -84,7 +84,7 @@ void paintFlow(const RenderBlockFlow& flow, const Layout& layout, PaintInfo& pai
     if (paintInfo.phase != PaintPhaseForeground)
         return;
 
-    RenderStyle& style = flow.style();
+    auto& style = flow.style();
     if (style.visibility() != VISIBLE)
         return;
 
@@ -118,10 +118,9 @@ void paintFlow(const RenderBlockFlow& flow, const Layout& layout, PaintInfo& pai
         if (paintRect.y() > visualOverflowRect.maxY() || paintRect.maxY() < visualOverflowRect.y())
             continue;
 
-        TextRun textRun(run.text());
-        textRun.setTabSize(!style.collapseWhiteSpace(), style.tabSize());
         // x position indicates the line offset from the rootbox. It's always 0 in case of simple line layout.
-        textRun.setXPos(0);
+        TextRun textRun(run.text(), 0, run.expansion(), run.expansionBehavior());
+        textRun.setTabSize(!style.collapseWhiteSpace(), style.tabSize());
         FloatPoint textOrigin = FloatPoint(rect.x() + paintOffset.x(), roundToDevicePixel(run.baselinePosition() + paintOffset.y(), deviceScaleFactor));
         textPainter.paintText(textRun, textRun.length(), rect, textOrigin);
         if (textDecorationPainter) {
@@ -141,7 +140,7 @@ bool hitTestFlow(const RenderBlockFlow& flow, const Layout& layout, const HitTes
     if (!layout.runCount())
         return false;
 
-    RenderStyle& style = flow.style();
+    auto& style = flow.style();
     if (style.visibility() != VISIBLE || style.pointerEvents() == PE_NONE)
         return false;
 
@@ -218,7 +217,7 @@ Vector<FloatQuad> collectAbsoluteQuads(const RenderObject& renderer, const Layou
 #if ENABLE(TREE_DEBUGGING)
 static void printPrefix(int& printedCharacters, int depth)
 {
-    fprintf(stderr, "------- --");
+    fprintf(stderr, "-------- --");
     printedCharacters = 0;
     while (++printedCharacters <= depth * 2)
         fputc(' ', stderr);

@@ -36,13 +36,19 @@
 
 namespace WebCore {
 
+struct TouchEventInit : public MouseRelatedEventInit {
+    RefPtr<TouchList> touches;
+    RefPtr<TouchList> targetTouches;
+    RefPtr<TouchList> changedTouches;
+};
+
 class TouchEvent final : public MouseRelatedEvent {
 public:
     virtual ~TouchEvent();
 
     static Ref<TouchEvent> create(TouchList* touches, 
             TouchList* targetTouches, TouchList* changedTouches, 
-            const AtomicString& type, AbstractView* view,
+            const AtomicString& type, DOMWindow* view,
             int screenX, int screenY, int pageX, int pageY,
             bool ctrlKey, bool altKey, bool shiftKey, bool metaKey)
     {
@@ -54,10 +60,14 @@ public:
     {
         return adoptRef(*new TouchEvent);
     }
+    static Ref<TouchEvent> createForBindings(const AtomicString& type, const TouchEventInit& initializer)
+    {
+        return adoptRef(*new TouchEvent(type, initializer));
+    }
 
     void initTouchEvent(TouchList* touches, TouchList* targetTouches,
             TouchList* changedTouches, const AtomicString& type, 
-            AbstractView*, int screenX, int screenY,
+            DOMWindow*, int screenX, int screenY,
             int clientX, int clientY,
             bool ctrlKey, bool altKey, bool shiftKey, bool metaKey);
 
@@ -69,17 +79,18 @@ public:
     void setTargetTouches(RefPtr<TouchList>&& targetTouches) { m_targetTouches = targetTouches; }
     void setChangedTouches(RefPtr<TouchList>&& changedTouches) { m_changedTouches = changedTouches; }
 
-    virtual bool isTouchEvent() const override;
+    bool isTouchEvent() const override;
 
-    virtual EventInterface eventInterface() const override;
+    EventInterface eventInterface() const override;
 
 private:
     TouchEvent();
     TouchEvent(TouchList* touches, TouchList* targetTouches,
             TouchList* changedTouches, const AtomicString& type,
-            AbstractView*, int screenX, int screenY, int pageX,
+            DOMWindow*, int screenX, int screenY, int pageX,
             int pageY,
             bool ctrlKey, bool altKey, bool shiftKey, bool metaKey);
+    TouchEvent(const AtomicString&, const TouchEventInit&);
 
     RefPtr<TouchList> m_touches;
     RefPtr<TouchList> m_targetTouches;

@@ -154,12 +154,12 @@ bool HTMLFrameSetElement::rendererIsNeeded(const RenderStyle& style)
 {
     // For compatibility, frames render even when display: none is set.
     // However, we delay creating a renderer until stylesheets have loaded. 
-    return style.isStyleAvailable();
+    return !style.isPlaceholderStyle();
 }
 
-RenderPtr<RenderElement> HTMLFrameSetElement::createElementRenderer(Ref<RenderStyle>&& style, const RenderTreePosition&)
+RenderPtr<RenderElement> HTMLFrameSetElement::createElementRenderer(RenderStyle&& style, const RenderTreePosition&)
 {
-    if (style.get().hasContent())
+    if (style.hasContent())
         return RenderElement::createFor(*this, WTFMove(style));
     
     return createRenderer<RenderFrameSet>(*this, WTFMove(style));
@@ -189,12 +189,11 @@ void HTMLFrameSetElement::willAttachRenderers()
         m_noresize = containingFrameSet->noResize();
 }
 
-void HTMLFrameSetElement::defaultEventHandler(Event* event)
+void HTMLFrameSetElement::defaultEventHandler(Event& event)
 {
-    ASSERT(event);
-    if (is<MouseEvent>(*event) && !m_noresize && is<RenderFrameSet>(renderer())) {
+    if (is<MouseEvent>(event) && !m_noresize && is<RenderFrameSet>(renderer())) {
         if (downcast<RenderFrameSet>(*renderer()).userResize(downcast<MouseEvent>(event))) {
-            event->setDefaultHandled();
+            event.setDefaultHandled();
             return;
         }
     }

@@ -27,7 +27,7 @@
 #ifndef RTCOfferAnswerOptions_h
 #define RTCOfferAnswerOptions_h
 
-#if ENABLE(MEDIA_STREAM)
+#if ENABLE(WEB_RTC)
 
 #include "Dictionary.h"
 #include "ExceptionCode.h"
@@ -60,7 +60,7 @@ public:
     bool iceRestart() const { return m_iceRestart; }
 
 private:
-    virtual bool initialize(const Dictionary&) override;
+    bool initialize(const Dictionary&) override;
     RTCOfferOptions();
 
     int64_t m_offerToReceiveVideo;
@@ -73,12 +73,12 @@ public:
     static RefPtr<RTCAnswerOptions> create(const Dictionary&, ExceptionCode&);
 
 private:
-    virtual bool initialize(const Dictionary&) override;
+    bool initialize(const Dictionary&) override;
     RTCAnswerOptions() { }
 };
 
 } // namespace WebCore
 
-#endif // ENABLE(MEDIA_STREAM)
+#endif // ENABLE(WEB_RTC)
 
 #endif // RTCOfferAnswerOptions_h

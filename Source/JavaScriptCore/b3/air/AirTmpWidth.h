@@ -29,7 +29,6 @@
 #if ENABLE(B3_JIT)
 
 #include "AirArg.h"
-#include <wtf/HashSet.h>
 
 namespace JSC { namespace B3 { namespace Air {
 
@@ -58,6 +57,15 @@ public:
         if (iter == m_width.end())
             return Arg::minimumWidth(Arg(tmp).type());
         return std::min(iter->value.use, iter->value.def);
+    }
+
+    // Return the minimum required width for all defs/uses of this Tmp.
+    Arg::Width requiredWidth(Tmp tmp)
+    {
+        auto iter = m_width.find(tmp);
+        if (iter == m_width.end())
+            return Arg::minimumWidth(Arg(tmp).type());
+        return std::max(iter->value.use, iter->value.def);
     }
 
     // This indirectly tells you how much of the tmp's high bits are guaranteed to be zero. The number of

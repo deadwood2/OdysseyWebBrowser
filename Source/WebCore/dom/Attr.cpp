@@ -52,18 +52,18 @@ Attr::Attr(Document& document, const QualifiedName& name, const AtomicString& st
 {
 }
 
-RefPtr<Attr> Attr::create(Element* element, const QualifiedName& name)
+Ref<Attr> Attr::create(Element* element, const QualifiedName& name)
 {
-    RefPtr<Attr> attr = adoptRef(new Attr(element, name));
+    Ref<Attr> attr = adoptRef(*new Attr(element, name));
     attr->createTextChild();
-    return attr.release();
+    return attr;
 }
 
-RefPtr<Attr> Attr::create(Document& document, const QualifiedName& name, const AtomicString& value)
+Ref<Attr> Attr::create(Document& document, const QualifiedName& name, const AtomicString& value)
 {
-    RefPtr<Attr> attr = adoptRef(new Attr(document, name, value));
+    Ref<Attr> attr = adoptRef(*new Attr(document, name, value));
     attr->createTextChild();
-    return attr.release();
+    return attr;
 }
 
 Attr::~Attr()
@@ -120,7 +120,7 @@ void Attr::setValue(const AtomicString& value)
     invalidateNodeListAndCollectionCachesInAncestors(&m_name, m_element);
 }
 
-void Attr::setValue(const AtomicString& value, ExceptionCode&)
+void Attr::setValueForBindings(const AtomicString& value)
 {
     AtomicString oldValue = this->value();
     if (m_element)
@@ -132,9 +132,9 @@ void Attr::setValue(const AtomicString& value, ExceptionCode&)
         m_element->didModifyAttribute(qualifiedName(), oldValue, value);
 }
 
-void Attr::setNodeValue(const String& v, ExceptionCode& ec)
+void Attr::setNodeValue(const String& v, ExceptionCode&)
 {
-    setValue(v, ec);
+    setValueForBindings(v);
 }
 
 Ref<Node> Attr::cloneNodeInternal(Document& targetDocument, CloningOperation)

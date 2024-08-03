@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <wtf/MainThread.h>
 #include <wtf/NeverDestroyed.h>
+#include <wtf/text/AtomicStringHash.h>
 #include <wtf/text/CString.h>
 
 namespace WebCore {
@@ -85,22 +86,22 @@ ResourceHandle::ResourceHandle(NetworkingContext* context, const ResourceRequest
     }
 }
 
-PassRefPtr<ResourceHandle> ResourceHandle::create(NetworkingContext* context, const ResourceRequest& request, ResourceHandleClient* client, bool defersLoading, bool shouldContentSniff)
+RefPtr<ResourceHandle> ResourceHandle::create(NetworkingContext* context, const ResourceRequest& request, ResourceHandleClient* client, bool defersLoading, bool shouldContentSniff)
 {
     BuiltinResourceHandleConstructorMap::iterator protocolMapItem = builtinResourceHandleConstructorMap().find(request.url().protocol());
 
     if (protocolMapItem != builtinResourceHandleConstructorMap().end())
         return protocolMapItem->value(request, client);
 
-    RefPtr<ResourceHandle> newHandle(adoptRef(new ResourceHandle(context, request, client, defersLoading, shouldContentSniff)));
+    auto newHandle = adoptRef(*new ResourceHandle(context, request, client, defersLoading, shouldContentSniff));
 
     if (newHandle->d->m_scheduledFailureType != NoFailure)
-        return newHandle.release();
+        return WTFMove(newHandle);
 
     if (newHandle->start())
-        return newHandle.release();
+        return WTFMove(newHandle);
 
-    return 0;
+    return nullptr;
 }
 
 void ResourceHandle::scheduleFailure(FailureType type)
@@ -155,7 +156,7 @@ void ResourceHandle::clearClient()
 
 #if !PLATFORM(COCOA) && !USE(CFNETWORK) && !USE(SOUP)
 // ResourceHandle never uses async client calls on these platforms yet.
-void ResourceHandle::continueWillSendRequest(const ResourceRequest&)
+void ResourceHandle::continueWillSendRequest(ResourceRequest&&)
 {
     notImplemented();
 }

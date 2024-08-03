@@ -19,8 +19,7 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef CSSPrimitiveValue_h
-#define CSSPrimitiveValue_h
+#pragma once
 
 #include "CSSPropertyNames.h"
 #include "CSSValue.h"
@@ -78,7 +77,7 @@ template<> inline float roundForImpreciseConversion(double value)
     return static_cast<float>(value);
 }
 
-class CSSPrimitiveValue : public CSSValue {
+class CSSPrimitiveValue final : public CSSValue {
 public:
     enum UnitTypes {
         CSS_UNKNOWN = 0,
@@ -210,6 +209,7 @@ public:
 #if ENABLE(CSS_SCROLL_SNAP)
     bool isLengthRepeat() const { return m_primitiveUnitType == CSS_LENGTH_REPEAT; }
 #endif
+    bool isPair() const { return m_primitiveUnitType == CSS_PAIR; }
     bool isPropertyID() const { return m_primitiveUnitType == CSS_PROPERTY_ID; }
     bool isRGBColor() const { return m_primitiveUnitType == CSS_RGBCOLOR; }
     bool isShape() const { return m_primitiveUnitType == CSS_SHAPE; }
@@ -270,7 +270,7 @@ public:
 
     void cleanup();
 
-    unsigned short primitiveType() const;
+    WEBCORE_EXPORT unsigned short primitiveType() const;
 
     double computeDegrees() const;
     
@@ -311,11 +311,11 @@ public:
     // use with care!!!
     void setPrimitiveType(unsigned short type) { m_primitiveUnitType = type; }
 
-    double getDoubleValue(unsigned short unitType, ExceptionCode&) const;
+    WEBCORE_EXPORT double getDoubleValue(unsigned short unitType, ExceptionCode&) const;
     double getDoubleValue(unsigned short unitType) const;
     double getDoubleValue() const;
 
-    void setFloatValue(unsigned short unitType, double floatValue, ExceptionCode&);
+    WEBCORE_EXPORT void setFloatValue(unsigned short unitType, double floatValue, ExceptionCode&);
     float getFloatValue(unsigned short unitType, ExceptionCode& ec) const { return getValue<float>(unitType, ec); }
     float getFloatValue(unsigned short unitType) const { return getValue<float>(unitType); }
     float getFloatValue() const { return getValue<float>(); }
@@ -328,14 +328,14 @@ public:
     template<typename T> inline T getValue(unsigned short unitType) const { return clampTo<T>(getDoubleValue(unitType)); }
     template<typename T> inline T getValue() const { return clampTo<T>(getDoubleValue()); }
 
-    void setStringValue(unsigned short stringType, const String& stringValue, ExceptionCode&);
-    String getStringValue(ExceptionCode&) const;
-    String getStringValue() const;
+    WEBCORE_EXPORT void setStringValue(unsigned short stringType, const String& stringValue, ExceptionCode&);
+    WEBCORE_EXPORT String getStringValue(ExceptionCode&) const;
+    WEBCORE_EXPORT String getStringValue() const;
 
-    Counter* getCounterValue(ExceptionCode&) const;
+    WEBCORE_EXPORT Counter* getCounterValue(ExceptionCode&) const;
     Counter* getCounterValue() const { return m_primitiveUnitType != CSS_COUNTER ? 0 : m_value.counter; }
 
-    Rect* getRectValue(ExceptionCode&) const;
+    WEBCORE_EXPORT Rect* getRectValue(ExceptionCode&) const;
     Rect* getRectValue() const { return m_primitiveUnitType != CSS_RECT ? 0 : m_value.rect; }
 
     Quad* getQuadValue(ExceptionCode&) const;
@@ -346,7 +346,7 @@ public:
     LengthRepeat* getLengthRepeatValue() const { return m_primitiveUnitType != CSS_LENGTH_REPEAT ? 0 : m_value.lengthRepeat; }
 #endif
 
-    PassRefPtr<RGBColor> getRGBColorValue(ExceptionCode&) const;
+    WEBCORE_EXPORT RefPtr<RGBColor> getRGBColorValue(ExceptionCode&) const;
     RGBA32 getRGBA32Value() const { return m_primitiveUnitType != CSS_RGBCOLOR ? 0 : m_value.rgbcolor; }
 
     Pair* getPairValue(ExceptionCode&) const;
@@ -373,7 +373,7 @@ public:
 
     void addSubresourceStyleURLs(ListHashSet<URL>&, const StyleSheetContents*) const;
 
-    RefPtr<CSSPrimitiveValue> cloneForCSSOM() const;
+    Ref<CSSPrimitiveValue> cloneForCSSOM() const;
     void setCSSOMSafe() { m_isCSSOMSafe = true; }
 
     bool equals(const CSSPrimitiveValue&) const;
@@ -468,5 +468,3 @@ private:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_CSS_VALUE(CSSPrimitiveValue, isPrimitiveValue())
-
-#endif // CSSPrimitiveValue_h

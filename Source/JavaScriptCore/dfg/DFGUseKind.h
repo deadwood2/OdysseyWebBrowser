@@ -44,7 +44,7 @@ enum UseKind {
     UntypedUse, // UntypedUse must come first (value 0).
     Int32Use,
     KnownInt32Use,
-    MachineIntUse,
+    AnyIntUse,
     NumberUse,
     RealNumberUse,
     BooleanUse,
@@ -63,6 +63,8 @@ enum UseKind {
     KnownStringUse,
     KnownPrimitiveUse, // This bizarre type arises for op_strcat, which has a bytecode guarantee that it will only see primitives (i.e. not objects).
     SymbolUse,
+    MapObjectUse,
+    SetObjectUse,
     StringObjectUse,
     StringOrStringObjectUse,
     NotStringVarUse,
@@ -74,7 +76,7 @@ enum UseKind {
     //    in an FP register.
     DoubleRepUse,
     DoubleRepRealUse,
-    DoubleRepMachineIntUse,
+    DoubleRepAnyIntUse,
 
     // 3. The Int52 representation for an unboxed integer value that must be stored
     //    in a GP register.
@@ -87,14 +89,14 @@ inline SpeculatedType typeFilterFor(UseKind useKind)
 {
     switch (useKind) {
     case UntypedUse:
-        return SpecFullTop;
+        return SpecBytecodeTop;
     case Int32Use:
     case KnownInt32Use:
-        return SpecInt32;
+        return SpecInt32Only;
     case Int52RepUse:
-        return SpecMachineInt;
-    case MachineIntUse:
-        return SpecInt32 | SpecInt52AsDouble;
+        return SpecAnyInt;
+    case AnyIntUse:
+        return SpecInt32Only | SpecAnyIntAsDouble;
     case NumberUse:
         return SpecBytecodeNumber;
     case RealNumberUse:
@@ -103,8 +105,8 @@ inline SpeculatedType typeFilterFor(UseKind useKind)
         return SpecFullDouble;
     case DoubleRepRealUse:
         return SpecDoubleReal;
-    case DoubleRepMachineIntUse:
-        return SpecInt52AsDouble;
+    case DoubleRepAnyIntUse:
+        return SpecAnyIntAsDouble;
     case BooleanUse:
     case KnownBooleanUse:
         return SpecBoolean;
@@ -134,6 +136,10 @@ inline SpeculatedType typeFilterFor(UseKind useKind)
         return SpecHeapTop & ~SpecObject;
     case SymbolUse:
         return SpecSymbol;
+    case MapObjectUse:
+        return SpecMapObject;
+    case SetObjectUse:
+        return SpecSetObject;
     case StringObjectUse:
         return SpecStringObject;
     case StringOrStringObjectUse:
@@ -184,8 +190,8 @@ inline bool isNumerical(UseKind kind)
     case Int52RepUse:
     case DoubleRepUse:
     case DoubleRepRealUse:
-    case MachineIntUse:
-    case DoubleRepMachineIntUse:
+    case AnyIntUse:
+    case DoubleRepAnyIntUse:
         return true;
     default:
         return false;
@@ -197,7 +203,7 @@ inline bool isDouble(UseKind kind)
     switch (kind) {
     case DoubleRepUse:
     case DoubleRepRealUse:
-    case DoubleRepMachineIntUse:
+    case DoubleRepAnyIntUse:
         return true;
     default:
         return false;
@@ -221,6 +227,8 @@ inline bool isCell(UseKind kind)
     case SymbolUse:
     case StringObjectUse:
     case StringOrStringObjectUse:
+    case MapObjectUse:
+    case SetObjectUse:
         return true;
     default:
         return false;

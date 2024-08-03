@@ -28,6 +28,7 @@
 #include "MessagePort.h"
 
 #include "Document.h"
+#include "EventNames.h"
 #include "ExceptionCode.h"
 #include "MessageEvent.h"
 #include "SecurityOrigin.h"
@@ -52,15 +53,7 @@ MessagePort::~MessagePort()
         m_scriptExecutionContext->destroyedMessagePort(*this);
 }
 
-void MessagePort::postMessage(PassRefPtr<SerializedScriptValue> message, MessagePort* port, ExceptionCode& ec)
-{
-    MessagePortArray ports;
-    if (port)
-        ports.append(port);
-    postMessage(message, &ports, ec);
-}
-
-void MessagePort::postMessage(PassRefPtr<SerializedScriptValue> message, const MessagePortArray* ports, ExceptionCode& ec)
+void MessagePort::postMessage(RefPtr<SerializedScriptValue>&& message, const MessagePortArray* ports, ExceptionCode& ec)
 {
     if (!isEntangled())
         return;
@@ -79,7 +72,7 @@ void MessagePort::postMessage(PassRefPtr<SerializedScriptValue> message, const M
         if (ec)
             return;
     }
-    m_entangledChannel->postMessageToRemote(message, WTFMove(channels));
+    m_entangledChannel->postMessageToRemote(WTFMove(message), WTFMove(channels));
 }
 
 std::unique_ptr<MessagePortChannel> MessagePort::disentangle()
@@ -160,7 +153,7 @@ void MessagePort::dispatchMessages()
             return;
 
         std::unique_ptr<MessagePortArray> ports = MessagePort::entanglePorts(*m_scriptExecutionContext, WTFMove(channels));
-        Ref<Event> event = MessageEvent::create(WTFMove(ports), message.release());
+        Ref<Event> event = MessageEvent::create(WTFMove(ports), WTFMove(message));
         dispatchEvent(event);
     }
 }
@@ -214,18 +207,18 @@ std::unique_ptr<MessagePortArray> MessagePort::entanglePorts(ScriptExecutionCont
 
     auto portArray = std::make_unique<MessagePortArray>(channels->size());
     for (unsigned int i = 0; i < channels->size(); ++i) {
-        RefPtr<MessagePort> port = MessagePort::create(context);
+        auto port = MessagePort::create(context);
         port->entangle(WTFMove((*channels)[i]));
-        (*portArray)[i] = port.release();
+        (*portArray)[i] = WTFMove(port);
     }
     return portArray;
 }
 
-bool MessagePort::addEventListener(const AtomicString& eventType, RefPtr<EventListener>&& listener, bool useCapture)
+bool MessagePort::addEventListener(const AtomicString& eventType, Ref<EventListener>&& listener, const AddEventListenerOptions& options)
 {
-    if (listener && listener->isAttribute() && eventType == eventNames().messageEvent)
+    if (listener->isAttribute() && eventType == eventNames().messageEvent)
         start();
-    return EventTargetWithInlineData::addEventListener(eventType, WTFMove(listener), useCapture);
+    return EventTargetWithInlineData::addEventListener(eventType, WTFMove(listener), options);
 }
 
 } // namespace WebCore

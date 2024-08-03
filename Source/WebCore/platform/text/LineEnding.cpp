@@ -59,7 +59,7 @@ public:
         return reinterpret_cast<uint8_t*>(ptr);
     }
 
-    virtual void copy(const CString& source)
+    void copy(const CString& source) override
     {
         m_buffer = source;
     }
@@ -86,7 +86,7 @@ public:
         return m_buffer.data() + oldSize;
     }
 
-    virtual void copy(const CString& source)
+    void copy(const CString& source) override
     {
         m_buffer.append(source.data(), source.length());
     }

@@ -35,11 +35,11 @@ public:
 
     virtual ~CSSUnknownRule() { }
 
-    virtual String cssText() const override { return String(); }
-    virtual void reattach(StyleRuleBase&) override { }
+    String cssText() const final { return String(); }
+    void reattach(StyleRuleBase&) final { }
 
 private:
-    virtual CSSRule::Type type() const override { return UNKNOWN_RULE; }
+    CSSRule::Type type() const final { return UNKNOWN_RULE; }
 };
 
 } // namespace WebCore

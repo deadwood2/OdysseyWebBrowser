@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2011, 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -85,6 +85,7 @@ public:
     void postFocusWebView();
     void postSetBackingScaleFactor(double);
     void postSetWindowIsKey(bool);
+    void postSetViewSize(double width, double height);
     void postSimulateWebNotificationClick(uint64_t notificationID);
     void postSetAddsVisitedLinks(bool);
 
@@ -96,7 +97,7 @@ public:
 
     // MediaStream.
     void setUserMediaPermission(bool);
-    void setUserMediaPermissionForOrigin(bool permission, WKStringRef url);
+    void setUserMediaPermissionForOrigin(bool permission, WKStringRef origin, WKStringRef parentOrigin);
 
     // Policy delegate.
     void setCustomPolicyDelegate(bool enabled, bool permissive);
@@ -120,6 +121,10 @@ public:
 
     bool isAllowedHost(WKStringRef);
 
+    unsigned imageCountInGeneralPasteboard() const;
+
+    void setAllowsAnySSLCertificate(bool);
+    
 private:
     InjectedBundle();
     ~InjectedBundle();

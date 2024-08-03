@@ -50,7 +50,7 @@ bool FontCascade::canExpandAroundIdeographsInComplexText()
     return false;
 }
 
-void FontCascade::adjustSelectionRectForComplexText(const TextRun& run, LayoutRect& selectionRect, int from, int to) const
+void FontCascade::adjustSelectionRectForComplexText(const TextRun& run, LayoutRect& selectionRect, unsigned from, unsigned to) const
 {
     UniscribeController it(this, run);
     it.advance(from);
@@ -66,7 +66,7 @@ void FontCascade::adjustSelectionRectForComplexText(const TextRun& run, LayoutRe
     selectionRect.setWidth(afterWidth - beforeWidth);
 }
 
-float FontCascade::getGlyphsAndAdvancesForComplexText(const TextRun& run, int from, int to, GlyphBuffer& glyphBuffer, ForTextEmphasisOrNot forTextEmphasis) const
+float FontCascade::getGlyphsAndAdvancesForComplexText(const TextRun& run, unsigned from, unsigned to, GlyphBuffer& glyphBuffer, ForTextEmphasisOrNot forTextEmphasis) const
 {
     if (forTextEmphasis) {
         // FIXME: Add forTextEmphasis paremeter to UniscribeController and use it.
@@ -91,7 +91,7 @@ float FontCascade::getGlyphsAndAdvancesForComplexText(const TextRun& run, int fr
     return beforeWidth;
 }
 
-void FontCascade::drawEmphasisMarksForComplexText(GraphicsContext& context, const TextRun& run, const AtomicString& mark, const FloatPoint& point, int from, int to) const
+void FontCascade::drawEmphasisMarksForComplexText(GraphicsContext& context, const TextRun& run, const AtomicString& mark, const FloatPoint& point, unsigned from, unsigned to) const
 {
     GlyphBuffer glyphBuffer;
     float initialAdvance = getGlyphsAndAdvancesForComplexText(run, from, to, glyphBuffer, ForTextEmphasis);
@@ -99,7 +99,7 @@ void FontCascade::drawEmphasisMarksForComplexText(GraphicsContext& context, cons
     if (glyphBuffer.isEmpty())
         return;
 
-    drawEmphasisMarks(context, run, glyphBuffer, mark, FloatPoint(point.x() + initialAdvance, point.y()));
+    drawEmphasisMarks(context, glyphBuffer, mark, FloatPoint(point.x() + initialAdvance, point.y()));
 }
 
 float FontCascade::floatWidthForComplexText(const TextRun& run, HashSet<const Font*>* fallbackFonts, GlyphOverflow* glyphOverflow) const

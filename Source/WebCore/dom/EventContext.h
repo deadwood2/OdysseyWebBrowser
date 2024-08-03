@@ -43,10 +43,11 @@ class EventContext {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     // FIXME: Use ContainerNode instead of Node.
-    EventContext(PassRefPtr<Node>, PassRefPtr<EventTarget> currentTarget, PassRefPtr<EventTarget> target);
+    EventContext(Node*, EventTarget* currentTarget, EventTarget*);
     virtual ~EventContext();
 
     Node* node() const { return m_node.get(); }
+    EventTarget* currentTarget() const { return m_currentTarget.get(); }
     EventTarget* target() const { return m_target.get(); }
     bool currentTargetSameAsTarget() const { return m_currentTarget.get() == m_target.get(); }
     virtual void handleLocalEvents(Event&) const;
@@ -55,8 +56,7 @@ public:
 
 protected:
 #if !ASSERT_DISABLED
-    bool isUnreachableNode(EventTarget*);
-    bool isReachable(Node*) const;
+    bool isUnreachableNode(EventTarget*) const;
 #endif
     RefPtr<Node> m_node;
     RefPtr<EventTarget> m_currentTarget;
@@ -65,12 +65,12 @@ protected:
 
 class MouseOrFocusEventContext final : public EventContext {
 public:
-    MouseOrFocusEventContext(PassRefPtr<Node>, PassRefPtr<EventTarget> currentTarget, PassRefPtr<EventTarget> target);
+    MouseOrFocusEventContext(Node*, EventTarget* currentTarget, EventTarget*);
     virtual ~MouseOrFocusEventContext();
     EventTarget* relatedTarget() const { return m_relatedTarget.get(); }
     void setRelatedTarget(PassRefPtr<EventTarget>);
-    virtual void handleLocalEvents(Event&) const override;
-    virtual bool isMouseOrFocusEventContext() const override;
+    void handleLocalEvents(Event&) const override;
+    bool isMouseOrFocusEventContext() const override;
 
 private:
     RefPtr<EventTarget> m_relatedTarget;
@@ -80,11 +80,11 @@ private:
 #if ENABLE(TOUCH_EVENTS)
 class TouchEventContext final : public EventContext {
 public:
-    TouchEventContext(PassRefPtr<Node>, PassRefPtr<EventTarget> currentTarget, PassRefPtr<EventTarget> target);
+    TouchEventContext(Node*, EventTarget* currentTarget, EventTarget*);
     virtual ~TouchEventContext();
 
-    virtual void handleLocalEvents(Event&) const override;
-    virtual bool isTouchEventContext() const override;
+    void handleLocalEvents(Event&) const override;
+    bool isTouchEventContext() const override;
 
     enum TouchListType { Touches, TargetTouches, ChangedTouches, NotTouchList };
     TouchList* touchList(TouchListType type)
@@ -130,21 +130,10 @@ inline TouchEventContext* toTouchEventContext(EventContext* eventContext)
 #endif // ENABLE(TOUCH_EVENTS) && !PLATFORM(IOS)
 
 #if !ASSERT_DISABLED
-inline bool EventContext::isUnreachableNode(EventTarget* target)
+inline bool EventContext::isUnreachableNode(EventTarget* target) const
 {
     // FIXME: Checks also for SVG elements.
-    return target && target->toNode() && !target->toNode()->isSVGElement() && !isReachable(target->toNode());
-}
-
-inline bool EventContext::isReachable(Node* target) const
-{
-    ASSERT(target);
-    TreeScope& targetScope = target->treeScope();
-    for (TreeScope* scope = &m_node->treeScope(); scope; scope = scope->parentTreeScope()) {
-        if (scope == &targetScope)
-            return true;
-    }
-    return false;
+    return target && target->toNode() && !target->toNode()->isSVGElement() && !m_node->isUnclosedNode(*target->toNode());
 }
 #endif
 

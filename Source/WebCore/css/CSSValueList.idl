@@ -27,7 +27,7 @@
 [
     ImplementationLacksVTable,
 ] interface CSSValueList : CSSValue {
-    readonly attribute unsigned long    length;
-    getter CSSValue           item([Default=Undefined] optional unsigned long index);
+    readonly attribute unsigned long length;
+    getter CSSValue item(unsigned long index);
 };
 

@@ -171,8 +171,11 @@ void RemoteInspector::updateTarget(RemoteControllableTarget* target)
     }
 
     // If the target has just allowed remote control, then the listing won't exist yet.
+    // If the target has no identifier remove the old listing.
     if (RetainPtr<NSDictionary> targetListing = listingForTarget(*target))
         m_targetListingMap.set(targetIdentifier, targetListing);
+    else
+        m_targetListingMap.remove(targetIdentifier);
 
     pushListingsSoon();
 }
@@ -191,8 +194,11 @@ void RemoteInspector::updateAutomaticInspectionCandidate(RemoteInspectionTarget*
         ASSERT_UNUSED(result, !result.isNewEntry);
 
         // If the target has just allowed remote control, then the listing won't exist yet.
+        // If the target has no identifier remove the old listing.
         if (RetainPtr<NSDictionary> targetListing = listingForTarget(*target))
             m_targetListingMap.set(targetIdentifier, targetListing);
+        else
+            m_targetListingMap.remove(targetIdentifier);
 
         // Don't allow automatic inspection unless it is allowed or we are stopped.
         if (!m_automaticInspectionEnabled || !m_enabled) {
@@ -219,7 +225,12 @@ void RemoteInspector::updateAutomaticInspectionCandidate(RemoteInspectionTarget*
         }
 
         // In case debuggers fail to respond, or we cannot connect to webinspectord, automatically continue after a short period of time.
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.8 * NSEC_PER_SEC), dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+#if PLATFORM(WATCHOS)
+        int64_t debuggerTimeoutDelay = 5;
+#else
+        int64_t debuggerTimeoutDelay = 1;
+#endif
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, debuggerTimeoutDelay * NSEC_PER_SEC), dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
             std::lock_guard<Lock> lock(m_mutex);
             if (m_automaticInspectionCandidateTargetIdentifier == targetIdentifier) {
                 LOG_ERROR("Skipping Automatic Inspection Candidate with pageId(%u) because we failed to receive a response in time.", m_automaticInspectionCandidateTargetIdentifier);
@@ -618,7 +629,7 @@ void RemoteInspector::receivedSetupMessage(NSDictionary *userInfo)
 
     // Attempt to create a connection. This may fail if the page already has an inspector or if it disallows inspection.
     RemoteControllableTarget* target = findResult->value;
-    RefPtr<RemoteConnectionToTarget> connectionToTarget = adoptRef(new RemoteConnectionToTarget(target, connectionIdentifier, sender));
+    auto connectionToTarget = adoptRef(*new RemoteConnectionToTarget(target, connectionIdentifier, sender));
 
     if (is<RemoteInspectionTarget>(target)) {
         bool isAutomaticInspection = m_automaticInspectionCandidateTargetIdentifier == target->targetIdentifier();
@@ -628,14 +639,14 @@ void RemoteInspector::receivedSetupMessage(NSDictionary *userInfo)
             connectionToTarget->close();
             return;
         }
-        m_targetConnectionMap.set(targetIdentifier, connectionToTarget.release());
+        m_targetConnectionMap.set(targetIdentifier, WTFMove(connectionToTarget));
         updateHasActiveDebugSession();
     } else if (is<RemoteAutomationTarget>(target)) {
         if (!connectionToTarget->setup()) {
             connectionToTarget->close();
             return;
         }
-        m_targetConnectionMap.set(targetIdentifier, connectionToTarget.release());
+        m_targetConnectionMap.set(targetIdentifier, WTFMove(connectionToTarget));
         updateHasActiveDebugSession();
     } else
         ASSERT_NOT_REACHED();

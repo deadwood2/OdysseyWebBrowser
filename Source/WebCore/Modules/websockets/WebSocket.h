@@ -72,17 +72,15 @@ public:
     void connect(const String& url, const Vector<String>& protocols, ExceptionCode&);
 
     void send(const String& message, ExceptionCode&);
-    void send(JSC::ArrayBuffer*, ExceptionCode&);
-    void send(JSC::ArrayBufferView*, ExceptionCode&);
-    void send(Blob*, ExceptionCode&);
+    void send(JSC::ArrayBuffer&, ExceptionCode&);
+    void send(JSC::ArrayBufferView&, ExceptionCode&);
+    void send(Blob&, ExceptionCode&);
 
-    void close(int code, const String& reason, ExceptionCode&);
-    void close(ExceptionCode& ec) { close(WebSocketChannel::CloseEventCodeNotSpecified, String(), ec); }
-    void close(int code, ExceptionCode& ec) { close(code, String(), ec); }
+    void close(Optional<unsigned short> code, const String& reason, ExceptionCode&);
 
     const URL& url() const;
     State readyState() const;
-    unsigned long bufferedAmount() const;
+    unsigned bufferedAmount() const;
 
     String protocol() const;
     String extensions() const;
@@ -91,20 +89,21 @@ public:
     void setBinaryType(const String&, ExceptionCode&);
 
     // EventTarget functions.
-    virtual EventTargetInterface eventTargetInterface() const override;
-    virtual ScriptExecutionContext* scriptExecutionContext() const override;
+    EventTargetInterface eventTargetInterface() const override;
+    ScriptExecutionContext* scriptExecutionContext() const override;
 
     using RefCounted<WebSocket>::ref;
     using RefCounted<WebSocket>::deref;
 
     // WebSocketChannelClient functions.
-    virtual void didConnect() override;
-    virtual void didReceiveMessage(const String& message) override;
-    void didReceiveBinaryData(Vector<uint8_t>&&) override;
-    virtual void didReceiveMessageError() override;
-    virtual void didUpdateBufferedAmount(unsigned long bufferedAmount) override;
-    virtual void didStartClosingHandshake() override;
-    virtual void didClose(unsigned long unhandledBufferedAmount, ClosingHandshakeCompletionStatus, unsigned short code, const String& reason) override;
+    void didConnect() final;
+    void didReceiveMessage(const String& message) final;
+    void didReceiveBinaryData(Vector<uint8_t>&&) final;
+    void didReceiveMessageError() final;
+    void didUpdateBufferedAmount(unsigned bufferedAmount) final;
+    void didStartClosingHandshake() final;
+    void didClose(unsigned unhandledBufferedAmount, ClosingHandshakeCompletionStatus, unsigned short code, const String& reason) final;
+    void didUpgradeURL() final;
 
 private:
     explicit WebSocket(ScriptExecutionContext&);
@@ -121,8 +120,8 @@ private:
     void stop() override;
     const char* activeDOMObjectName() const override;
 
-    virtual void refEventTarget() override { ref(); }
-    virtual void derefEventTarget() override { deref(); }
+    void refEventTarget() override { ref(); }
+    void derefEventTarget() override { deref(); }
 
     size_t getFramingOverhead(size_t payloadSize);
 
@@ -135,8 +134,8 @@ private:
 
     State m_state;
     URL m_url;
-    unsigned long m_bufferedAmount;
-    unsigned long m_bufferedAmountAfterClose;
+    unsigned m_bufferedAmount;
+    unsigned m_bufferedAmountAfterClose;
     BinaryType m_binaryType;
     String m_subprotocol;
     String m_extensions;

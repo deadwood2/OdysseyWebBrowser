@@ -33,6 +33,7 @@
 #include "MediaControlElementTypes.h"
 
 #include "CSSValueKeywords.h"
+#include "EventNames.h"
 #include "ExceptionCodePlaceholder.h"
 #include "HTMLNames.h"
 #include "MouseEvent.h"
@@ -137,11 +138,11 @@ MediaControlMuteButtonElement::MediaControlMuteButtonElement(Document& document,
 {
 }
 
-void MediaControlMuteButtonElement::defaultEventHandler(Event* event)
+void MediaControlMuteButtonElement::defaultEventHandler(Event& event)
 {
-    if (event->type() == eventNames().clickEvent) {
+    if (event.type() == eventNames().clickEvent) {
         mediaController()->setMuted(!mediaController()->muted());
-        event->setDefaultHandled();
+        event.setDefaultHandled();
     }
 
     HTMLInputElement::defaultEventHandler(event);
@@ -164,12 +165,12 @@ MediaControlSeekButtonElement::MediaControlSeekButtonElement(Document& document,
 {
 }
 
-void MediaControlSeekButtonElement::defaultEventHandler(Event* event)
+void MediaControlSeekButtonElement::defaultEventHandler(Event& event)
 {
     // Set the mousedown and mouseup events as defaultHandled so they
     // do not trigger drag start or end actions in MediaControlPanelElement.
-    if (event->type() == eventNames().mousedownEvent || event->type() == eventNames().mouseupEvent)
-        event->setDefaultHandled();
+    if (event.type() == eventNames().mousedownEvent || event.type() == eventNames().mouseupEvent)
+        event.setDefaultHandled();
 }
 
 void MediaControlSeekButtonElement::setActive(bool flag, bool pause)
@@ -193,10 +194,10 @@ MediaControlVolumeSliderElement::MediaControlVolumeSliderElement(Document& docum
 {
 }
 
-void MediaControlVolumeSliderElement::defaultEventHandler(Event* event)
+void MediaControlVolumeSliderElement::defaultEventHandler(Event& event)
 {
     // Left button is 0. Rejects mouse events not from left button.
-    if (is<MouseEvent>(*event) && downcast<MouseEvent>(*event).button())
+    if (is<MouseEvent>(event) && downcast<MouseEvent>(event).button())
         return;
 
     if (!renderer())
@@ -204,7 +205,7 @@ void MediaControlVolumeSliderElement::defaultEventHandler(Event* event)
 
     MediaControlInputElement::defaultEventHandler(event);
 
-    if (event->type() == eventNames().mouseoverEvent || event->type() == eventNames().mouseoutEvent || event->type() == eventNames().mousemoveEvent)
+    if (event.type() == eventNames().mouseoverEvent || event.type() == eventNames().mouseoutEvent || event.type() == eventNames().mousemoveEvent)
         return;
 
     double volume = value().toDouble();
@@ -212,7 +213,7 @@ void MediaControlVolumeSliderElement::defaultEventHandler(Event* event)
         mediaController()->setVolume(volume, ASSERT_NO_EXCEPTION);
     if (m_clearMutedOnUserInteraction)
         mediaController()->setMuted(false);
-    event->setDefaultHandled();
+    event.setDefaultHandled();
 }
 
 bool MediaControlVolumeSliderElement::willRespondToMouseMoveEvents()

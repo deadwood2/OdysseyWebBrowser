@@ -33,6 +33,8 @@
 #include "RangeInputType.h"
 
 #include "AXObjectCache.h"
+#include "ElementChildIterator.h"
+#include "EventNames.h"
 #include "ExceptionCodePlaceholder.h"
 #include "HTMLInputElement.h"
 #include "HTMLParserIdioms.h"
@@ -116,17 +118,17 @@ StepRange RangeInputType::createStepRange(AnyStepHandling anyStepHandling) const
 {
     static NeverDestroyed<const StepRange::StepDescription> stepDescription(rangeDefaultStep, rangeDefaultStepBase, rangeStepScaleFactor);
 
-    const Decimal minimum = parseToNumber(element().fastGetAttribute(minAttr), rangeDefaultMinimum);
-    const Decimal maximum = ensureMaximum(parseToNumber(element().fastGetAttribute(maxAttr), rangeDefaultMaximum), minimum, rangeDefaultMaximum);
+    const Decimal minimum = parseToNumber(element().attributeWithoutSynchronization(minAttr), rangeDefaultMinimum);
+    const Decimal maximum = ensureMaximum(parseToNumber(element().attributeWithoutSynchronization(maxAttr), rangeDefaultMaximum), minimum, rangeDefaultMaximum);
 
-    const AtomicString& precisionValue = element().fastGetAttribute(precisionAttr);
+    const AtomicString& precisionValue = element().attributeWithoutSynchronization(precisionAttr);
     if (!precisionValue.isNull()) {
         const Decimal step = equalLettersIgnoringASCIICase(precisionValue, "float") ? Decimal::nan() : 1;
-        return StepRange(minimum, minimum, maximum, step, stepDescription);
+        return StepRange(minimum, RangeLimitations::Valid, minimum, maximum, step, stepDescription);
     }
 
-    const Decimal step = StepRange::parseStep(anyStepHandling, stepDescription, element().fastGetAttribute(stepAttr));
-    return StepRange(minimum, minimum, maximum, step, stepDescription);
+    const Decimal step = StepRange::parseStep(anyStepHandling, stepDescription, element().attributeWithoutSynchronization(stepAttr));
+    return StepRange(minimum, RangeLimitations::Valid, minimum, maximum, step, stepDescription);
 }
 
 bool RangeInputType::isSteppable() const
@@ -135,13 +137,13 @@ bool RangeInputType::isSteppable() const
 }
 
 #if !PLATFORM(IOS)
-void RangeInputType::handleMouseDownEvent(MouseEvent* event)
+void RangeInputType::handleMouseDownEvent(MouseEvent& event)
 {
     if (element().isDisabledOrReadOnly())
         return;
 
-    Node* targetNode = event->target()->toNode();
-    if (event->button() != LeftButton || !targetNode)
+    Node* targetNode = event.target()->toNode();
+    if (event.button() != LeftButton || !targetNode)
         return;
     ASSERT(element().shadowRoot());
     if (targetNode != &element() && !targetNode->isDescendantOf(element().userAgentShadowRoot()))
@@ -149,12 +151,12 @@ void RangeInputType::handleMouseDownEvent(MouseEvent* event)
     SliderThumbElement& thumb = typedSliderThumbElement();
     if (targetNode == &thumb)
         return;
-    thumb.dragFrom(event->absoluteLocation());
+    thumb.dragFrom(event.absoluteLocation());
 }
 #endif
 
 #if ENABLE(TOUCH_EVENTS)
-void RangeInputType::handleTouchEvent(TouchEvent* event)
+void RangeInputType::handleTouchEvent(TouchEvent& event)
 {
 #if PLATFORM(IOS)
     typedSliderThumbElement().handleTouchEvent(event);
@@ -162,15 +164,15 @@ void RangeInputType::handleTouchEvent(TouchEvent* event)
     if (element().isDisabledOrReadOnly())
         return;
 
-    if (event->type() == eventNames().touchendEvent) {
-        event->setDefaultHandled();
+    if (event.type() == eventNames().touchendEvent) {
+        event.setDefaultHandled();
         return;
     }
 
-    TouchList* touches = event->targetTouches();
+    TouchList* touches = event.targetTouches();
     if (touches->length() == 1) {
         typedSliderThumbElement().setPositionFromPoint(touches->item(0)->absoluteLocation());
-        event->setDefaultHandled();
+        event.setDefaultHandled();
     }
 #else
     UNUSED_PARAM(event);
@@ -192,12 +194,12 @@ void RangeInputType::disabledAttributeChanged()
 #endif
 #endif // ENABLE(TOUCH_EVENTS)
 
-void RangeInputType::handleKeydownEvent(KeyboardEvent* event)
+void RangeInputType::handleKeydownEvent(KeyboardEvent& event)
 {
     if (element().isDisabledOrReadOnly())
         return;
 
-    const String& key = event->keyIdentifier();
+    const String& key = event.keyIdentifier();
 
     const Decimal current = parseToNumberOrNaN(element().value());
     ASSERT(current.isFinite());
@@ -207,7 +209,7 @@ void RangeInputType::handleKeydownEvent(KeyboardEvent* event)
 
     // FIXME: We can't use stepUp() for the step value "any". So, we increase
     // or decrease the value by 1/100 of the value range. Is it reasonable?
-    const Decimal step = equalLettersIgnoringASCIICase(element().fastGetAttribute(stepAttr), "any") ? (stepRange.maximum() - stepRange.minimum()) / 100 : stepRange.step();
+    const Decimal step = equalLettersIgnoringASCIICase(element().attributeWithoutSynchronization(stepAttr), "any") ? (stepRange.maximum() - stepRange.minimum()) / 100 : stepRange.step();
     const Decimal bigStep = std::max((stepRange.maximum() - stepRange.minimum()) / 10, step);
 
     bool isVertical = false;
@@ -246,7 +248,7 @@ void RangeInputType::handleKeydownEvent(KeyboardEvent* event)
             cache->postNotification(&element(), AXObjectCache::AXValueChanged);
     }
 
-    event->setDefaultHandled();
+    event.setDefaultHandled();
 }
 
 void RangeInputType::createShadowSubtree()
@@ -254,12 +256,12 @@ void RangeInputType::createShadowSubtree()
     ASSERT(element().userAgentShadowRoot());
 
     Document& document = element().document();
-    Ref<HTMLDivElement> track = HTMLDivElement::create(document);
+    auto track = HTMLDivElement::create(document);
     track->setPseudo(AtomicString("-webkit-slider-runnable-track", AtomicString::ConstructFromLiteral));
     track->appendChild(SliderThumbElement::create(document), IGNORE_EXCEPTION);
-    Ref<HTMLElement> container = SliderContainerElement::create(document);
-    container->appendChild(WTFMove(track), IGNORE_EXCEPTION);
-    element().userAgentShadowRoot()->appendChild(WTFMove(container), IGNORE_EXCEPTION);
+    auto container = SliderContainerElement::create(document);
+    container->appendChild(track, IGNORE_EXCEPTION);
+    element().userAgentShadowRoot()->appendChild(container, IGNORE_EXCEPTION);
 }
 
 HTMLElement* RangeInputType::sliderTrackElement() const
@@ -269,7 +271,15 @@ HTMLElement* RangeInputType::sliderTrackElement() const
     ASSERT(element().userAgentShadowRoot()->firstChild()->isHTMLElement());
     ASSERT(element().userAgentShadowRoot()->firstChild()->firstChild()); // track
 
-    return downcast<HTMLElement>(element().userAgentShadowRoot()->firstChild()->firstChild());
+    ShadowRoot* root = element().userAgentShadowRoot();
+    if (!root)
+        return nullptr;
+    
+    auto* container = childrenOfType<SliderContainerElement>(*root).first();
+    if (!container)
+        return nullptr;
+
+    return childrenOfType<HTMLElement>(*container).first();
 }
 
 SliderThumbElement& RangeInputType::typedSliderThumbElement() const
@@ -285,7 +295,7 @@ HTMLElement* RangeInputType::sliderThumbElement() const
     return &typedSliderThumbElement();
 }
 
-RenderPtr<RenderElement> RangeInputType::createInputRenderer(Ref<RenderStyle>&& style)
+RenderPtr<RenderElement> RangeInputType::createInputRenderer(RenderStyle&& style)
 {
     return createRenderer<RenderSlider>(element(), WTFMove(style));
 }

@@ -40,10 +40,10 @@ public:
 private:
     SVGFontFaceUriElement(const QualifiedName&, Document&);
     
-    virtual void parseAttribute(const QualifiedName&, const AtomicString&) override;
-    virtual void childrenChanged(const ChildChange&) override;
-    virtual InsertionNotificationRequest insertedInto(ContainerNode&) override;
-    virtual bool rendererIsNeeded(const RenderStyle&) override { return false; }
+    void parseAttribute(const QualifiedName&, const AtomicString&) final;
+    void childrenChanged(const ChildChange&) final;
+    InsertionNotificationRequest insertedInto(ContainerNode&) final;
+    bool rendererIsNeeded(const RenderStyle&) final { return false; }
 
     void loadFont();
 

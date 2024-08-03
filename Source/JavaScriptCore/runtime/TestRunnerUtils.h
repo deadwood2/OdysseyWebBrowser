@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -45,12 +45,15 @@ JS_EXPORT_PRIVATE JSValue failNextNewCodeBlock(ExecState*);
 JS_EXPORT_PRIVATE JSValue numberOfDFGCompiles(ExecState*);
 JS_EXPORT_PRIVATE JSValue setNeverInline(ExecState*);
 JS_EXPORT_PRIVATE JSValue setNeverOptimize(ExecState*);
+JS_EXPORT_PRIVATE JSValue setCannotUseOSRExitFuzzing(ExecState*);
 JS_EXPORT_PRIVATE JSValue optimizeNextInvocation(ExecState*);
 
 JS_EXPORT_PRIVATE unsigned numberOfExceptionFuzzChecks();
 JS_EXPORT_PRIVATE unsigned numberOfExecutableAllocationFuzzChecks();
 JS_EXPORT_PRIVATE unsigned numberOfStaticOSRExitFuzzChecks();
 JS_EXPORT_PRIVATE unsigned numberOfOSRExitFuzzChecks();
+
+JS_EXPORT_PRIVATE void finalizeStatsAtEndOfTesting();
 
 } // namespace JSC
 

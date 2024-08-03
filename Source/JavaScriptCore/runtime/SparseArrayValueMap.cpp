@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011, 2012, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2012, 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -88,8 +88,10 @@ SparseArrayValueMap::AddResult SparseArrayValueMap::add(JSObject* array, unsigne
     return result;
 }
 
-void SparseArrayValueMap::putEntry(ExecState* exec, JSObject* array, unsigned i, JSValue value, bool shouldThrow)
+bool SparseArrayValueMap::putEntry(ExecState* exec, JSObject* array, unsigned i, JSValue value, bool shouldThrow)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
     ASSERT(value);
     
     AddResult result = add(array, i);
@@ -98,14 +100,14 @@ void SparseArrayValueMap::putEntry(ExecState* exec, JSObject* array, unsigned i,
     // To save a separate find & add, we first always add to the sparse map.
     // In the uncommon case that this is a new property, and the array is not
     // extensible, this is not the right thing to have done - so remove again.
-    if (result.isNewEntry && !array->isExtensible()) {
+    if (result.isNewEntry && !array->isStructureExtensible()) {
         remove(result.iterator);
         if (shouldThrow)
-            throwTypeError(exec, StrictModeReadonlyPropertyWriteError);
-        return;
+            throwTypeError(exec, scope, StrictModeReadonlyPropertyWriteError);
+        return false;
     }
     
-    entry.put(exec, array, this, value, shouldThrow);
+    return entry.put(exec, array, this, value, shouldThrow);
 }
 
 bool SparseArrayValueMap::putDirect(ExecState* exec, JSObject* array, unsigned i, JSValue value, unsigned attributes, PutDirectIndexMode mode)
@@ -118,7 +120,7 @@ bool SparseArrayValueMap::putDirect(ExecState* exec, JSObject* array, unsigned i
     // To save a separate find & add, we first always add to the sparse map.
     // In the uncommon case that this is a new property, and the array is not
     // extensible, this is not the right thing to have done - so remove again.
-    if (mode != PutDirectIndexLikePutDirect && result.isNewEntry && !array->isExtensible()) {
+    if (mode != PutDirectIndexLikePutDirect && result.isNewEntry && !array->isStructureExtensible()) {
         remove(result.iterator);
         return reject(exec, mode == PutDirectIndexShouldThrow, "Attempting to define property on object that is not extensible.");
     }
@@ -146,20 +148,23 @@ void SparseArrayEntry::get(PropertyDescriptor& descriptor) const
     descriptor.setDescriptor(Base::get(), attributes);
 }
 
-void SparseArrayEntry::put(ExecState* exec, JSValue thisValue, SparseArrayValueMap* map, JSValue value, bool shouldThrow)
+bool SparseArrayEntry::put(ExecState* exec, JSValue thisValue, SparseArrayValueMap* map, JSValue value, bool shouldThrow)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     if (!(attributes & Accessor)) {
         if (attributes & ReadOnly) {
             if (shouldThrow)
-                throwTypeError(exec, StrictModeReadonlyPropertyWriteError);
-            return;
+                throwTypeError(exec, scope, StrictModeReadonlyPropertyWriteError);
+            return false;
         }
 
-        set(exec->vm(), map, value);
-        return;
+        set(vm, map, value);
+        return true;
     }
 
-    callSetter(exec, thisValue, Base::get(), value, shouldThrow ? StrictMode : NotStrictMode);
+    return callSetter(exec, thisValue, Base::get(), value, shouldThrow ? StrictMode : NotStrictMode);
 }
 
 JSValue SparseArrayEntry::getNonSparseMode() const

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008, 2009, 2011 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2008-2009, 2011, 2016 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -41,7 +41,6 @@
 #include "WorkerGlobalScope.h"
 #include "WorkerLocation.h"
 #include "WorkerNavigator.h"
-#include <interpreter/Interpreter.h>
 
 #if ENABLE(WEB_SOCKETS)
 #include "JSWebSocket.h"
@@ -57,14 +56,7 @@ void JSWorkerGlobalScope::visitAdditionalChildren(SlotVisitor& visitor)
         visitor.addOpaqueRoot(location);
     if (WorkerNavigator* navigator = wrapped().optionalNavigator())
         visitor.addOpaqueRoot(navigator);
-}
-
-bool JSWorkerGlobalScope::getOwnPropertySlotDelegate(ExecState* exec, PropertyName propertyName, PropertySlot& slot)
-{
-    // Look for overrides before looking at any of our own properties.
-    if (JSGlobalObject::getOwnPropertySlot(this, exec, propertyName, slot))
-        return true;
-    return false;
+    visitor.addOpaqueRoot(wrapped().scriptExecutionContext());
 }
 
 JSValue JSWorkerGlobalScope::importScripts(ExecState& state)
@@ -74,7 +66,7 @@ JSValue JSWorkerGlobalScope::importScripts(ExecState& state)
 
     Vector<String> urls;
     for (unsigned i = 0; i < state.argumentCount(); ++i) {
-        urls.append(state.uncheckedArgument(i).toString(&state)->value(&state));
+        urls.append(valueToUSVString(&state, state.uncheckedArgument(i)));
         if (state.hadException())
             return jsUndefined();
     }
@@ -87,6 +79,12 @@ JSValue JSWorkerGlobalScope::importScripts(ExecState& state)
 
 JSValue JSWorkerGlobalScope::setTimeout(ExecState& state)
 {
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    if (UNLIKELY(state.argumentCount() < 1))
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
+
     std::unique_ptr<ScheduledAction> action = ScheduledAction::create(&state, globalObject()->world(), wrapped().contentSecurityPolicy());
     if (state.hadException())
         return jsUndefined();
@@ -98,6 +96,12 @@ JSValue JSWorkerGlobalScope::setTimeout(ExecState& state)
 
 JSValue JSWorkerGlobalScope::setInterval(ExecState& state)
 {
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    if (UNLIKELY(state.argumentCount() < 1))
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
+
     std::unique_ptr<ScheduledAction> action = ScheduledAction::create(&state, globalObject()->world(), wrapped().contentSecurityPolicy());
     if (state.hadException())
         return jsUndefined();

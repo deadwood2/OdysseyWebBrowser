@@ -81,7 +81,6 @@ class ObjCObjectGraph;
 class WebCertificateInfo;
 class WebConnection;
 class WebContextMenuItem;
-class WebGraphicsContext;
 class WebImage;
 
 template<typename APIType> struct APITypeInfo;
@@ -100,7 +99,6 @@ WK_ADD_API_MAPPING(WKDataRef, API::Data)
 WK_ADD_API_MAPPING(WKDictionaryRef, API::Dictionary)
 WK_ADD_API_MAPPING(WKDoubleRef, API::Double)
 WK_ADD_API_MAPPING(WKErrorRef, API::Error)
-WK_ADD_API_MAPPING(WKGraphicsContextRef, WebGraphicsContext)
 WK_ADD_API_MAPPING(WKImageRef, WebImage)
 WK_ADD_API_MAPPING(WKPointRef, API::Point)
 WK_ADD_API_MAPPING(WKRectRef, API::Rect)
@@ -472,6 +470,8 @@ inline WKContextMenuItemTag toAPI(WebCore::ContextMenuAction action)
         return kWKContextMenuItemTagToggleVideoFullscreen;
     case WebCore::ContextMenuItemTagEnterVideoFullscreen:
         return kWKContextMenuItemTagEnterVideoFullscreen;
+    case WebCore::ContextMenuItemTagToggleVideoEnhancedFullscreen:
+        return kWKContextMenuItemTagToggleVideoEnhancedFullscreen;
     case WebCore::ContextMenuItemTagMediaPlayPause:
         return kWKContextMenuItemTagMediaPlayPause;
     case WebCore::ContextMenuItemTagMediaMute:
@@ -664,6 +664,8 @@ inline WebCore::ContextMenuAction toImpl(WKContextMenuItemTag tag)
         return WebCore::ContextMenuItemTagToggleVideoFullscreen;
     case kWKContextMenuItemTagEnterVideoFullscreen:
         return WebCore::ContextMenuItemTagEnterVideoFullscreen;
+    case kWKContextMenuItemTagToggleVideoEnhancedFullscreen:
+        return WebCore::ContextMenuItemTagToggleVideoEnhancedFullscreen;
     case kWKContextMenuItemTagMediaPlayPause:
         return WebCore::ContextMenuItemTagMediaPlayPause;
     case kWKContextMenuItemTagMediaMute:

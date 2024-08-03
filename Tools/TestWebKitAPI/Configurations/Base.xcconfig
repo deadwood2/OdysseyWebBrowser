@@ -28,7 +28,7 @@ USE_INTERNAL_SDK_Production = YES;
 USE_INTERNAL_SDK_Debug = $(HAVE_INTERNAL_SDK);
 USE_INTERNAL_SDK_Release = $(HAVE_INTERNAL_SDK);
 
-CLANG_CXX_LANGUAGE_STANDARD = gnu++0x;
+CLANG_CXX_LANGUAGE_STANDARD = gnu++14;
 CLANG_CXX_LIBRARY = libc++;
 CLANG_WARN_CXX0X_EXTENSIONS = NO;
 HEADER_SEARCH_PATHS = ${BUILT_PRODUCTS_DIR}/usr/local/include $(WEBCORE_PRIVATE_HEADERS_DIR)/ForwardingHeaders $(WEBCORE_PRIVATE_HEADERS_DIR)/icu $(BUILT_PRODUCTS_DIR)/WebCoreTestSupport;
@@ -63,7 +63,6 @@ GCC_WARN_UNDECLARED_SELECTOR = YES;
 GCC_WARN_64_TO_32_BIT_CONVERSION[arch=arm64] = NO;
 GCC_WARN_64_TO_32_BIT_CONVERSION[arch=x86_64] = NO;
 WARNING_CFLAGS = -Wall -W -Wno-unused-parameter
-LINKER_DISPLAYS_MANGLED_NAMES = YES;
 
 // DEBUG_DEFINES, GCC_OPTIMIZATION_LEVEL, STRIP_INSTALLED_PRODUCT and DEAD_CODE_STRIPPING vary between the debug and normal variants.
 // We set up the values for each variant here, and have the Debug configuration in the Xcode project use the _debug variant.
@@ -71,12 +70,20 @@ DEBUG_DEFINES_debug = ;
 DEBUG_DEFINES_normal = NDEBUG;
 DEBUG_DEFINES = $(DEBUG_DEFINES_$(CURRENT_VARIANT));
 
-SUPPORTED_PLATFORMS = iphoneos iphonesimulator macosx tvos tvsimulator watchos watchsimulator;
+SUPPORTED_PLATFORMS = iphoneos iphonesimulator macosx appletvos appletvsimulator watchos watchsimulator;
 
-TARGET_MAC_OS_X_VERSION_MAJOR = $(MAC_OS_X_VERSION_MAJOR);
+TARGET_MAC_OS_X_VERSION_MAJOR = $(TARGET_MAC_OS_X_VERSION_MAJOR$(MACOSX_DEPLOYMENT_TARGET:suffix:identifier));
+TARGET_MAC_OS_X_VERSION_MAJOR_10 = 101000;
+TARGET_MAC_OS_X_VERSION_MAJOR_11 = 101100;
+TARGET_MAC_OS_X_VERSION_MAJOR_12 = 101200;
+TARGET_MAC_OS_X_VERSION_MAJOR_13 = 101300;
 
 
 SDKROOT = macosx.internal;
+
+// FIXME: Remove these settings once <rdar://problem/27459890> is fixed.
+CODE_SIGNING_ALLOWED[sdk=iphonesimulator*] = YES;
+AD_HOC_CODE_SIGNING_ALLOWED[sdk=iphonesimulator*] = YES;
 
 WEBKIT_UMBRELLA_FRAMEWORKS_DIR = $(NEXT_ROOT)$(SYSTEM_LIBRARY_DIR)/Frameworks/WebKit.framework/Versions/A/Frameworks;
 WEBCORE_PRIVATE_HEADERS_DIR = $(WEBKIT_UMBRELLA_FRAMEWORKS_DIR)/WebCore.framework/PrivateHeaders;

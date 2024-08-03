@@ -35,7 +35,7 @@
 #include "LengthFunctions.h"
 #include <memory>
 #include <wtf/RefCounted.h>
-#include <wtf/Vector.h>
+#include <wtf/RefPtr.h>
 
 namespace WebCore {
 
@@ -81,8 +81,8 @@ public:
     float value() const { return m_value; }
 
 private:
-    virtual float evaluate(float) const override;
-    virtual bool operator==(const CalcExpressionNode&) const override;
+    float evaluate(float) const override;
+    bool operator==(const CalcExpressionNode&) const override;
 
     float m_value;
 };
@@ -94,8 +94,8 @@ public:
     const Length& length() const { return m_length; }
 
 private:
-    virtual float evaluate(float maxValue) const override;
-    virtual bool operator==(const CalcExpressionNode&) const override;
+    float evaluate(float maxValue) const override;
+    bool operator==(const CalcExpressionNode&) const override;
 
     Length m_length;
 };
@@ -109,8 +109,8 @@ public:
     CalcOperator getOperator() const { return m_operator; }
 
 private:
-    virtual float evaluate(float maxValue) const override;
-    virtual bool operator==(const CalcExpressionNode&) const override;
+    float evaluate(float maxValue) const override;
+    bool operator==(const CalcExpressionNode&) const override;
 
     std::unique_ptr<CalcExpressionNode> m_leftSide;
     std::unique_ptr<CalcExpressionNode> m_rightSide;
@@ -126,8 +126,8 @@ public:
     float progress() const { return m_progress; }
 
 private:
-    virtual float evaluate(float maxValue) const override;
-    virtual bool operator==(const CalcExpressionNode&) const override;
+    float evaluate(float maxValue) const override;
+    bool operator==(const CalcExpressionNode&) const override;
 
     Length m_from;
     Length m_to;

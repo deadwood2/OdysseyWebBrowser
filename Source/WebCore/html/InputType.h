@@ -178,27 +178,27 @@ public:
 
     // Event handlers.
 
-    virtual void handleClickEvent(MouseEvent*);
-    virtual void handleMouseDownEvent(MouseEvent*);
+    virtual void handleClickEvent(MouseEvent&);
+    virtual void handleMouseDownEvent(MouseEvent&);
     virtual void willDispatchClick(InputElementClickState&);
     virtual void didDispatchClick(Event*, const InputElementClickState&);
-    virtual void handleDOMActivateEvent(Event*);
-    virtual void handleKeydownEvent(KeyboardEvent*);
-    virtual void handleKeypressEvent(KeyboardEvent*);
-    virtual void handleKeyupEvent(KeyboardEvent*);
-    virtual void handleBeforeTextInsertedEvent(BeforeTextInsertedEvent*);
-    virtual void forwardEvent(Event*);
+    virtual void handleDOMActivateEvent(Event&);
+    virtual void handleKeydownEvent(KeyboardEvent&);
+    virtual void handleKeypressEvent(KeyboardEvent&);
+    virtual void handleKeyupEvent(KeyboardEvent&);
+    virtual void handleBeforeTextInsertedEvent(BeforeTextInsertedEvent&);
+    virtual void forwardEvent(Event&);
 
 #if ENABLE(TOUCH_EVENTS)
-    virtual void handleTouchEvent(TouchEvent*);
+    virtual void handleTouchEvent(TouchEvent&);
 #endif
 
     // Helpers for event handlers.
 
-    virtual bool shouldSubmitImplicitly(Event*);
+    virtual bool shouldSubmitImplicitly(Event&);
     virtual PassRefPtr<HTMLFormElement> formForSubmission() const;
     virtual bool hasCustomFocusLogic() const;
-    virtual bool isKeyboardFocusable(KeyboardEvent*) const;
+    virtual bool isKeyboardFocusable(KeyboardEvent&) const;
     virtual bool isMouseFocusable() const;
     virtual bool shouldUseInputMethod() const;
     virtual void handleFocusEvent(Node* oldFocusedNode, FocusDirection);
@@ -232,7 +232,7 @@ public:
     // Miscellaneous functions.
 
     virtual bool rendererIsNeeded();
-    virtual RenderPtr<RenderElement> createInputRenderer(Ref<RenderStyle>&&);
+    virtual RenderPtr<RenderElement> createInputRenderer(RenderStyle&&);
     virtual void addSearchResult();
     virtual void attach();
     virtual void detach();
@@ -267,7 +267,8 @@ public:
     virtual void capsLockStateMayHaveChanged();
     virtual void updateAutoFillButton();
     virtual String defaultToolTip() const;
-    virtual bool supportsIndeterminateAppearance() const;
+    virtual bool matchesIndeterminatePseudoClass() const;
+    virtual bool shouldAppearIndeterminate() const;
     virtual bool supportsSelectionAPI() const;
     virtual Color valueAsColor() const;
     virtual void selectColor(const Color&);
@@ -294,7 +295,7 @@ public:
     virtual unsigned height() const;
     virtual unsigned width() const;
 
-    void dispatchSimulatedClickIfActive(KeyboardEvent*) const;
+    void dispatchSimulatedClickIfActive(KeyboardEvent&) const;
 
 #if ENABLE(DATALIST_ELEMENT)
     virtual void listAttributeTargetChanged();
@@ -325,5 +326,10 @@ private:
 };
 
 } // namespace WebCore
+
+#define SPECIALIZE_TYPE_TRAITS_INPUT_TYPE(ToValueTypeName, predicate) \
+SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::ToValueTypeName) \
+static bool isType(const WebCore::InputType& input) { return input.predicate; } \
+SPECIALIZE_TYPE_TRAITS_END()
 
 #endif

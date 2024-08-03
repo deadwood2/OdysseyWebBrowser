@@ -39,11 +39,6 @@
 #include "ScheduledAction.h"
 #include "Settings.h"
 
-#if ENABLE(IOS_TOUCH_EVENTS)
-#include "JSTouchConstructorIOS.h"
-#include "JSTouchListConstructorIOS.h"
-#endif
-
 #if ENABLE(WEB_AUDIO)
 #include "JSAudioContext.h"
 #endif
@@ -59,6 +54,8 @@
 using namespace JSC;
 
 namespace WebCore {
+
+EncodedJSValue JSC_HOST_CALL jsDOMWindowInstanceFunctionShowModalDialog(ExecState*);
 
 void JSDOMWindow::visitAdditionalChildren(SlotVisitor& visitor)
 {
@@ -78,11 +75,8 @@ static EncodedJSValue jsDOMWindowWebKit(ExecState* exec, EncodedJSValue thisValu
 
 static bool jsDOMWindowGetOwnPropertySlotRestrictedAccess(JSDOMWindow* thisObject, Frame* frame, ExecState* exec, PropertyName propertyName, PropertySlot& slot, String& errorMessage)
 {
-    // Allow access to toString() cross-domain, but always Object.prototype.toString.
-    if (propertyName == exec->propertyNames().toString) {
-        slot.setCustom(thisObject, ReadOnly | DontDelete | DontEnum, nonCachingStaticFunctionGetter<objectProtoFuncToString, 0>);
-        return true;
-    }
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
 
     // We don't want any properties other than "close" and "closed" on a frameless window
     // (i.e. one whose page got closed, or whose iframe got removed).
@@ -144,19 +138,7 @@ static bool jsDOMWindowGetOwnPropertySlotRestrictedAccess(JSDOMWindow* thisObjec
         // For any other entries in the static property table, deny access. (Early return also prevents
         // named getter from returning frames with matching names - this seems a little questionable, see
         // FIXME comment on prototype search below.)
-        thisObject->printErrorMessage(errorMessage);
-        slot.setUndefined();
-        return true;
-    }
-
-    // Do prototype lookup early so that functions and attributes in the prototype can have
-    // precedence over the index and name getters.
-    // FIXME: This seems like a silly idea. It only serves to suppress named property access
-    // to frames that happen to have names corresponding to properties on the prototype.
-    // This seems to only serve to leak some information cross-origin.
-    JSValue proto = thisObject->prototype();
-    if (proto.isObject() && asObject(proto)->getPropertySlot(exec, propertyName, slot)) {
-        thisObject->printErrorMessage(errorMessage);
+        throwSecurityError(*exec, scope, errorMessage);
         slot.setUndefined();
         return true;
     }
@@ -170,48 +152,9 @@ static bool jsDOMWindowGetOwnPropertySlotRestrictedAccess(JSDOMWindow* thisObjec
         return true;
     }
 
-    thisObject->printErrorMessage(errorMessage);
+    throwSecurityError(*exec, scope, errorMessage);
     slot.setUndefined();
     return true;
-}
-
-static bool jsDOMWindowGetOwnPropertySlotNamedItemGetter(JSDOMWindow* thisObject, Frame& frame, ExecState* exec, PropertyName propertyName, PropertySlot& slot)
-{
-    JSValue proto = thisObject->prototype();
-    if (proto.isObject() && asObject(proto)->hasProperty(exec, propertyName))
-        return false;
-
-    // Check for child frames by name before built-in properties to match Mozilla. This does
-    // not match IE, but some sites end up naming frames things that conflict with window
-    // properties that are in Moz but not IE. Since we have some of these, we have to do it
-    // the Moz way.
-    if (auto* scopedChild = frame.tree().scopedChild(propertyNameToAtomicString(propertyName))) {
-        slot.setValue(thisObject, ReadOnly | DontDelete | DontEnum, toJS(exec, scopedChild->document()->domWindow()));
-        return true;
-    }
-
-    // FIXME: Search the whole frame hierarchy somewhere around here.
-    // We need to test the correct priority order.
-
-    // Allow shortcuts like 'Image1' instead of document.images.Image1
-    Document* document = frame.document();
-    if (is<HTMLDocument>(*document)) {
-        auto& htmlDocument = downcast<HTMLDocument>(*document);
-        auto* atomicPropertyName = propertyName.publicName();
-        if (atomicPropertyName && htmlDocument.hasWindowNamedItem(*atomicPropertyName)) {
-            JSValue namedItem;
-            if (UNLIKELY(htmlDocument.windowNamedItemContainsMultipleElements(*atomicPropertyName))) {
-                Ref<HTMLCollection> collection = document->windowNamedItems(atomicPropertyName);
-                ASSERT(collection->length() > 1);
-                namedItem = toJS(exec, thisObject->globalObject(), collection.ptr());
-            } else
-                namedItem = toJS(exec, thisObject->globalObject(), htmlDocument.windowNamedItem(*atomicPropertyName));
-            slot.setValue(thisObject, ReadOnly | DontDelete | DontEnum, namedItem);
-            return true;
-        }
-    }
-
-    return false;
 }
 
 // Property access sequence is:
@@ -237,16 +180,18 @@ bool JSDOMWindow::getOwnPropertySlot(JSObject* object, ExecState* exec, Property
     // (Particularly, is it correct that this exists here but not in getOwnPropertySlotByIndex?)
     slot.setWatchpointSet(thisObject->m_windowCloseWatchpoints);
 
-    if (propertyName == exec->propertyNames().showModalDialog) {
-        if (Base::getOwnPropertySlot(thisObject, exec, propertyName, slot))
-            return true;
-        if (!DOMWindow::canShowModalDialog(frame))
-            return jsDOMWindowGetOwnPropertySlotNamedItemGetter(thisObject, *frame, exec, propertyName, slot);
-    }
-
     // (2) Regular own properties.
-    if (getStaticPropertySlot<JSDOMWindow, Base>(exec, *JSDOMWindow::info()->staticPropHashTable, thisObject, propertyName, slot))
-        return true;
+    PropertySlot slotCopy = slot;
+    if (Base::getOwnPropertySlot(thisObject, exec, propertyName, slot)) {
+        // Detect when we're getting the property 'showModalDialog', this is disabled, and has its original value.
+        bool isShowModalDialogAndShouldHide = propertyName == exec->propertyNames().showModalDialog
+            && !DOMWindow::canShowModalDialog(frame)
+            && slot.isValue() && isHostFunction(slot.getValue(exec, propertyName), jsDOMWindowInstanceFunctionShowModalDialog);
+        // Unless we're in the showModalDialog special case, we're done.
+        if (!isShowModalDialogAndShouldHide)
+            return true;
+        slot = slotCopy;
+    }
 
 #if ENABLE(USER_MESSAGE_HANDLERS)
     if (propertyName == exec->propertyNames().webkit && thisObject->wrapped().shouldHaveWebKitNamespaceForWorld(thisObject->world())) {
@@ -255,9 +200,7 @@ bool JSDOMWindow::getOwnPropertySlot(JSObject* object, ExecState* exec, Property
     }
 #endif
 
-    // (3) Finally, named properties.
-    // Really, this should just be 'return false;' - these should all be on the NPO.
-    return jsDOMWindowGetOwnPropertySlotNamedItemGetter(thisObject, *frame, exec, propertyName, slot);
+    return false;
 }
 
 // Property access sequence is:
@@ -285,47 +228,48 @@ bool JSDOMWindow::getOwnPropertySlotByIndex(JSObject* object, ExecState* exec, u
         return jsDOMWindowGetOwnPropertySlotRestrictedAccess(thisObject, frame, exec, Identifier::from(exec, index), slot, errorMessage);
 
     // (2) Regular own properties.
-    if (Base::getOwnPropertySlotByIndex(thisObject, exec, index, slot))
-        return true;
-
-    // (3) Finally, named properties.
-    // Really, this should just be 'return false;' - these should all be on the NPO.
-    return jsDOMWindowGetOwnPropertySlotNamedItemGetter(thisObject, *frame, exec, Identifier::from(exec, index), slot);
+    return Base::getOwnPropertySlotByIndex(thisObject, exec, index, slot);
 }
 
-void JSDOMWindow::put(JSCell* cell, ExecState* exec, PropertyName propertyName, JSValue value, PutPropertySlot& slot)
+bool JSDOMWindow::put(JSCell* cell, ExecState* exec, PropertyName propertyName, JSValue value, PutPropertySlot& slot)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     auto* thisObject = jsCast<JSDOMWindow*>(cell);
     if (!thisObject->wrapped().frame())
-        return;
+        return false;
 
     String errorMessage;
     if (!shouldAllowAccessToDOMWindow(exec, thisObject->wrapped(), errorMessage)) {
         // We only allow setting "location" attribute cross-origin.
-        if (propertyName == exec->propertyNames().location)
-            lookupPut(exec, propertyName, thisObject, value, *s_info.staticPropHashTable, slot);
-        else
-            thisObject->printErrorMessage(errorMessage);
-        return;
+        if (propertyName == exec->propertyNames().location) {
+            bool putResult = false;
+            if (lookupPut(exec, propertyName, thisObject, value, *s_info.staticPropHashTable, slot, putResult))
+                return putResult;
+            return false;
+        }
+        throwSecurityError(*exec, scope, errorMessage);
+        return false;
     }
 
-    Base::put(thisObject, exec, propertyName, value, slot);
+    return Base::put(thisObject, exec, propertyName, value, slot);
 }
 
-void JSDOMWindow::putByIndex(JSCell* cell, ExecState* exec, unsigned index, JSValue value, bool shouldThrow)
+bool JSDOMWindow::putByIndex(JSCell* cell, ExecState* exec, unsigned index, JSValue value, bool shouldThrow)
 {
     auto* thisObject = jsCast<JSDOMWindow*>(cell);
     if (!thisObject->wrapped().frame() || !BindingSecurity::shouldAllowAccessToDOMWindow(exec, thisObject->wrapped()))
-        return;
+        return false;
     
-    Base::putByIndex(thisObject, exec, index, value, shouldThrow);
+    return Base::putByIndex(thisObject, exec, index, value, shouldThrow);
 }
 
 bool JSDOMWindow::deleteProperty(JSCell* cell, ExecState* exec, PropertyName propertyName)
 {
     JSDOMWindow* thisObject = jsCast<JSDOMWindow*>(cell);
     // Only allow deleting properties by frames in the same origin.
-    if (!BindingSecurity::shouldAllowAccessToDOMWindow(exec, thisObject->wrapped()))
+    if (!BindingSecurity::shouldAllowAccessToDOMWindow(exec, thisObject->wrapped(), ThrowSecurityError))
         return false;
     return Base::deleteProperty(thisObject, exec, propertyName);
 }
@@ -334,7 +278,7 @@ bool JSDOMWindow::deletePropertyByIndex(JSCell* cell, ExecState* exec, unsigned 
 {
     JSDOMWindow* thisObject = jsCast<JSDOMWindow*>(cell);
     // Only allow deleting properties by frames in the same origin.
-    if (!BindingSecurity::shouldAllowAccessToDOMWindow(exec, thisObject->wrapped()))
+    if (!BindingSecurity::shouldAllowAccessToDOMWindow(exec, thisObject->wrapped(), ThrowSecurityError))
         return false;
     return Base::deletePropertyByIndex(thisObject, exec, propertyName);
 }
@@ -435,33 +379,22 @@ JSValue JSDOMWindow::image(ExecState& state) const
     return createImageConstructor(state.vm(), *this);
 }
 
-#if ENABLE(IOS_TOUCH_EVENTS)
-JSValue JSDOMWindow::touch(ExecState& state) const
-{
-    return getDOMConstructor<JSTouchConstructor>(state.vm(), *this);
-}
-
-JSValue JSDOMWindow::touchList(ExecState& state) const
-{
-    return getDOMConstructor<JSTouchListConstructor>(state.vm(), *this);
-}
-#endif
-
 // Custom functions
 
 JSValue JSDOMWindow::open(ExecState& state)
 {
-    String urlString = valueToStringWithUndefinedOrNullCheck(&state, state.argument(0));
+    String urlString = valueToUSVStringWithUndefinedOrNullCheck(&state, state.argument(0));
     if (state.hadException())
         return jsUndefined();
-    AtomicString frameName = state.argument(1).isUndefinedOrNull() ? "_blank" : state.argument(1).toString(&state)->value(&state);
+    JSValue targetValue = state.argument(1);
+    AtomicString target = targetValue.isUndefinedOrNull() ? AtomicString("_blank", AtomicString::ConstructFromLiteral) : targetValue.toString(&state)->toAtomicString(&state);
     if (state.hadException())
         return jsUndefined();
     String windowFeaturesString = valueToStringWithUndefinedOrNullCheck(&state, state.argument(2));
     if (state.hadException())
         return jsUndefined();
 
-    RefPtr<DOMWindow> openedWindow = wrapped().open(urlString, frameName, windowFeaturesString, activeDOMWindow(&state), firstDOMWindow(&state));
+    RefPtr<DOMWindow> openedWindow = wrapped().open(urlString, target, windowFeaturesString, activeDOMWindow(&state), firstDOMWindow(&state));
     if (!openedWindow)
         return jsUndefined();
     return toJS(&state, openedWindow.get());
@@ -507,8 +440,11 @@ inline JSValue DialogHandler::returnValue() const
 
 JSValue JSDOMWindow::showModalDialog(ExecState& state)
 {
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     if (UNLIKELY(state.argumentCount() < 1))
-        return state.vm().throwException(&state, createNotEnoughArgumentsError(&state));
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
 
     String urlString = valueToStringWithUndefinedOrNullCheck(&state, state.argument(0));
     if (state.hadException())
@@ -528,6 +464,12 @@ JSValue JSDOMWindow::showModalDialog(ExecState& state)
 
 static JSValue handlePostMessage(DOMWindow& impl, ExecState& state)
 {
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    if (UNLIKELY(state.argumentCount() < 2))
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
+
     MessagePortArray messagePorts;
     ArrayBufferArray arrayBuffers;
 
@@ -540,7 +482,7 @@ static JSValue handlePostMessage(DOMWindow& impl, ExecState& state)
     int targetOriginArgIndex = 1;
     if (state.argumentCount() > 2) {
         int transferablesArgIndex = 2;
-        if (state.argument(2).isString()) {
+        if (state.uncheckedArgument(2).isString()) {
             targetOriginArgIndex = 2;
             transferablesArgIndex = 1;
         }
@@ -549,19 +491,17 @@ static JSValue handlePostMessage(DOMWindow& impl, ExecState& state)
     if (state.hadException())
         return jsUndefined();
 
-    RefPtr<SerializedScriptValue> message = SerializedScriptValue::create(&state, state.argument(0),
-                                                                         &messagePorts,
-                                                                         &arrayBuffers);
+    auto message = SerializedScriptValue::create(&state, state.uncheckedArgument(0), &messagePorts, &arrayBuffers);
 
     if (state.hadException())
         return jsUndefined();
 
-    String targetOrigin = valueToStringWithUndefinedOrNullCheck(&state, state.argument(targetOriginArgIndex));
+    String targetOrigin = valueToUSVStringWithUndefinedOrNullCheck(&state, state.uncheckedArgument(targetOriginArgIndex));
     if (state.hadException())
         return jsUndefined();
 
     ExceptionCode ec = 0;
-    impl.postMessage(message.release(), &messagePorts, targetOrigin, callerDOMWindow(&state), ec);
+    impl.postMessage(WTFMove(message), &messagePorts, targetOrigin, callerDOMWindow(&state), ec);
     setDOMException(&state, ec);
 
     return jsUndefined();
@@ -574,6 +514,12 @@ JSValue JSDOMWindow::postMessage(ExecState& state)
 
 JSValue JSDOMWindow::setTimeout(ExecState& state)
 {
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    if (UNLIKELY(state.argumentCount() < 1))
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
+
     ContentSecurityPolicy* contentSecurityPolicy = wrapped().document() ? wrapped().document()->contentSecurityPolicy() : nullptr;
     std::unique_ptr<ScheduledAction> action = ScheduledAction::create(&state, globalObject()->world(), contentSecurityPolicy);
     if (state.hadException())
@@ -593,6 +539,12 @@ JSValue JSDOMWindow::setTimeout(ExecState& state)
 
 JSValue JSDOMWindow::setInterval(ExecState& state)
 {
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    if (UNLIKELY(state.argumentCount() < 1))
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
+
     ContentSecurityPolicy* contentSecurityPolicy = wrapped().document() ? wrapped().document()->contentSecurityPolicy() : nullptr;
     std::unique_ptr<ScheduledAction> action = ScheduledAction::create(&state, globalObject()->world(), contentSecurityPolicy);
     if (state.hadException())
@@ -609,16 +561,16 @@ JSValue JSDOMWindow::setInterval(ExecState& state)
     return jsNumber(result);
 }
 
-DOMWindow* JSDOMWindow::toWrapped(JSValue value)
+DOMWindow* JSDOMWindow::toWrapped(ExecState&, JSValue value)
 {
     if (!value.isObject())
-        return 0;
+        return nullptr;
     JSObject* object = asObject(value);
     if (object->inherits(JSDOMWindow::info()))
         return &jsCast<JSDOMWindow*>(object)->wrapped();
     if (object->inherits(JSDOMWindowShell::info()))
         return &jsCast<JSDOMWindowShell*>(object)->wrapped();
-    return 0;
+    return nullptr;
 }
 
 } // namespace WebCore

@@ -26,22 +26,21 @@
 #include "ArgList.h"
 #include "ArrayConventions.h"
 #include "ArrayStorage.h"
+#include "AuxiliaryBarrier.h"
 #include "Butterfly.h"
 #include "CallFrame.h"
 #include "ClassInfo.h"
 #include "CommonIdentifiers.h"
-#include "CopyBarrier.h"
 #include "CustomGetterSetter.h"
 #include "DeferGC.h"
 #include "Heap.h"
-#include "HeapInlines.h"
 #include "IndexingHeaderInlines.h"
 #include "JSCell.h"
 #include "PropertySlot.h"
 #include "PropertyStorage.h"
 #include "PutDirectIndexMode.h"
 #include "PutPropertySlot.h"
-
+#include "RuntimeType.h"
 #include "Structure.h"
 #include "VM.h"
 #include "JSString.h"
@@ -65,11 +64,13 @@ class MarkedBlock;
 class PropertyDescriptor;
 class PropertyNameArray;
 class Structure;
+class ThrowScope;
 struct HashTable;
 struct HashTableValue;
 
-JS_EXPORT_PRIVATE JSObject* throwTypeError(ExecState*, const String&);
+JS_EXPORT_PRIVATE JSObject* throwTypeError(ExecState*, ThrowScope&, const String&);
 extern JS_EXPORTDATA const char* StrictModeReadonlyPropertyWriteError;
+extern JS_EXPORTDATA const char* UnconfigurablePropertyChangeAccessMechanismError;
 
 COMPILE_ASSERT(None < FirstInternalAttribute, None_is_below_FirstInternalAttribute);
 COMPILE_ASSERT(ReadOnly < FirstInternalAttribute, ReadOnly_is_below_FirstInternalAttribute);
@@ -85,7 +86,7 @@ class JSObject : public JSCell {
     friend class JSCell;
     friend class JSFinalObject;
     friend class MarkedBlock;
-    JS_EXPORT_PRIVATE friend bool setUpStaticFunctionSlot(ExecState*, const HashTableValue*, JSObject*, PropertyName, PropertySlot&);
+    JS_EXPORT_PRIVATE friend bool setUpStaticFunctionSlot(VM&, const HashTableValue*, JSObject*, PropertyName, PropertySlot&);
 
     enum PutMode {
         PutModePut,
@@ -95,16 +96,54 @@ class JSObject : public JSCell {
 public:
     typedef JSCell Base;
 
+    // This is a super dangerous method for JITs. Sometimes the JITs will want to create either a
+    // JSFinalObject or a JSArray. This is the method that will do that.
+    static JSObject* createRawObject(ExecState* exec, Structure* structure, Butterfly* = nullptr);
+
     JS_EXPORT_PRIVATE static size_t estimatedSize(JSCell*);
     JS_EXPORT_PRIVATE static void visitChildren(JSCell*, SlotVisitor&);
-    JS_EXPORT_PRIVATE static void copyBackingStore(JSCell*, CopyVisitor&, CopyToken);
+    JS_EXPORT_PRIVATE static void heapSnapshot(JSCell*, HeapSnapshotBuilder&);
 
     JS_EXPORT_PRIVATE static String className(const JSObject*);
     JS_EXPORT_PRIVATE static String calculatedClassName(JSObject*);
 
-    JSValue prototype() const;
-    JS_EXPORT_PRIVATE void setPrototype(VM&, JSValue prototype);
-    JS_EXPORT_PRIVATE bool setPrototypeWithCycleCheck(ExecState*, JSValue prototype);
+    // This function is what Object.prototype.toString() will use to get the name of
+    // an object when using Symbol.toStringTag fails. For the most part there is no
+    // difference between this and className(). The main use case is for new JS language
+    // objects to set the default tag to "Object".
+    JS_EXPORT_PRIVATE static String toStringName(const JSObject*, ExecState*);
+
+    // This is the fully virtual [[GetPrototypeOf]] internal function defined
+    // in the ECMAScript 6 specification. Use this when doing a [[GetPrototypeOf]] 
+    // operation as dictated in the specification.
+    JSValue getPrototype(VM&, ExecState*);
+    JS_EXPORT_PRIVATE static JSValue getPrototype(JSObject*, ExecState*);
+    // This gets the prototype directly off of the structure. This does not do
+    // dynamic dispatch on the getPrototype method table method. It is not valid 
+    // to use this when performing a [[GetPrototypeOf]] operation in the specification.
+    // It is valid to use though when you know that you want to directly get it
+    // without consulting the method table. This is akin to getting the [[Prototype]]
+    // internal field directly as described in the specification.
+    JSValue getPrototypeDirect() const;
+
+    // This sets the prototype without checking for cycles and without
+    // doing dynamic dispatch on [[SetPrototypeOf]] operation in the specification.
+    // It is not valid to use this when performing a [[SetPrototypeOf]] operation in
+    // the specification. It is valid to use though when you know that you want to directly
+    // set it without consulting the method table and when you definitely won't
+    // introduce a cycle in the prototype chain. This is akin to setting the
+    // [[Prototype]] internal field directly as described in the specification.
+    JS_EXPORT_PRIVATE void setPrototypeDirect(VM&, JSValue prototype);
+private:
+    // This is OrdinarySetPrototypeOf in the specification. Section 9.1.2.1
+    // https://tc39.github.io/ecma262/#sec-ordinarysetprototypeof
+    JS_EXPORT_PRIVATE bool setPrototypeWithCycleCheck(VM&, ExecState*, JSValue prototype, bool shouldThrowIfCantSet);
+public:
+    // This is the fully virtual [[SetPrototypeOf]] internal function defined
+    // in the ECMAScript 6 specification. Use this when doing a [[SetPrototypeOf]] 
+    // operation as dictated in the specification.
+    bool setPrototype(VM&, ExecState*, JSValue prototype, bool shouldThrowIfCantSet = false);
+    JS_EXPORT_PRIVATE static bool setPrototype(JSObject*, ExecState*, JSValue prototype, bool shouldThrowIfCantSet);
         
     bool mayInterceptIndexedAccesses()
     {
@@ -116,6 +155,8 @@ public:
 
     bool getPropertySlot(ExecState*, PropertyName, PropertySlot&);
     bool getPropertySlot(ExecState*, unsigned propertyName, PropertySlot&);
+    template<typename CallbackWhenNoException> typename std::result_of<CallbackWhenNoException(bool, PropertySlot&)>::type getPropertySlot(ExecState*, PropertyName, CallbackWhenNoException) const;
+    template<typename CallbackWhenNoException> typename std::result_of<CallbackWhenNoException(bool, PropertySlot&)>::type getPropertySlot(ExecState*, PropertyName, PropertySlot&, CallbackWhenNoException) const;
 
     static bool getOwnPropertySlot(JSObject*, ExecState*, PropertyName, PropertySlot&);
     JS_EXPORT_PRIVATE static bool getOwnPropertySlotByIndex(JSObject*, ExecState*, unsigned propertyName, PropertySlot&);
@@ -131,28 +172,29 @@ public:
     {
         if (!hasIndexedProperties(indexingType()))
             return 0;
-        return m_butterfly.get(this)->publicLength();
+        return m_butterfly.get()->publicLength();
     }
         
     unsigned getVectorLength()
     {
         if (!hasIndexedProperties(indexingType()))
             return 0;
-        return m_butterfly.get(this)->vectorLength();
+        return m_butterfly.get()->vectorLength();
     }
     
-    static void putInline(JSCell*, ExecState*, PropertyName, JSValue, PutPropertySlot&);
+    static bool putInline(JSCell*, ExecState*, PropertyName, JSValue, PutPropertySlot&);
     
-    JS_EXPORT_PRIVATE static void put(JSCell*, ExecState*, PropertyName, JSValue, PutPropertySlot&);
-    JS_EXPORT_PRIVATE static void putByIndex(JSCell*, ExecState*, unsigned propertyName, JSValue, bool shouldThrow);
+    JS_EXPORT_PRIVATE static bool put(JSCell*, ExecState*, PropertyName, JSValue, PutPropertySlot&);
+    // putByIndex assumes that the receiver is this JSCell object.
+    JS_EXPORT_PRIVATE static bool putByIndex(JSCell*, ExecState*, unsigned propertyName, JSValue, bool shouldThrow);
         
-    ALWAYS_INLINE void putByIndexInline(ExecState* exec, unsigned propertyName, JSValue value, bool shouldThrow)
+    ALWAYS_INLINE bool putByIndexInline(ExecState* exec, unsigned propertyName, JSValue value, bool shouldThrow)
     {
         if (canSetIndexQuickly(propertyName)) {
             setIndexQuickly(exec->vm(), propertyName, value);
-            return;
+            return true;
         }
-        methodTable(exec->vm())->putByIndex(this, exec, propertyName, value, shouldThrow);
+        return methodTable(exec->vm())->putByIndex(this, exec, propertyName, value, shouldThrow);
     }
         
     // This is similar to the putDirect* methods:
@@ -174,7 +216,7 @@ public:
     }
 
     // A non-throwing version of putDirect and putDirectIndex.
-    JS_EXPORT_PRIVATE void putDirectMayBeIndex(ExecState*, PropertyName, JSValue);
+    JS_EXPORT_PRIVATE bool putDirectMayBeIndex(ExecState*, PropertyName, JSValue);
         
     bool hasIndexingHeader() const
     {
@@ -183,7 +225,7 @@ public:
     
     bool canGetIndexQuickly(unsigned i)
     {
-        Butterfly* butterfly = m_butterfly.get(this);
+        Butterfly* butterfly = m_butterfly.get();
         switch (indexingType()) {
         case ALL_BLANK_INDEXING_TYPES:
         case ALL_UNDECIDED_INDEXING_TYPES:
@@ -209,7 +251,7 @@ public:
         
     JSValue getIndexQuickly(unsigned i)
     {
-        Butterfly* butterfly = m_butterfly.get(this);
+        Butterfly* butterfly = m_butterfly.get();
         switch (indexingType()) {
         case ALL_INT32_INDEXING_TYPES:
             return jsNumber(butterfly->contiguous()[i].get().asInt32());
@@ -227,7 +269,7 @@ public:
         
     JSValue tryGetIndexQuickly(unsigned i) const
     {
-        Butterfly* butterfly = m_butterfly.get(this);
+        Butterfly* butterfly = m_butterfly.get();
         switch (indexingType()) {
         case ALL_BLANK_INDEXING_TYPES:
         case ALL_UNDECIDED_INDEXING_TYPES:
@@ -281,7 +323,7 @@ public:
         
     bool canSetIndexQuickly(unsigned i)
     {
-        Butterfly* butterfly = m_butterfly.get(this);
+        Butterfly* butterfly = m_butterfly.get();
         switch (indexingType()) {
         case ALL_BLANK_INDEXING_TYPES:
         case ALL_UNDECIDED_INDEXING_TYPES:
@@ -312,7 +354,7 @@ public:
         case ALL_DOUBLE_INDEXING_TYPES:
         case ALL_CONTIGUOUS_INDEXING_TYPES:
         case ALL_ARRAY_STORAGE_INDEXING_TYPES:
-            return i < m_butterfly.get(this)->vectorLength();
+            return i < m_butterfly.get()->vectorLength();
         default:
             RELEASE_ASSERT_NOT_REACHED();
             return false;
@@ -321,7 +363,7 @@ public:
         
     void setIndexQuickly(VM& vm, unsigned i, JSValue v)
     {
-        Butterfly* butterfly = m_butterfly.get(this);
+        Butterfly* butterfly = m_butterfly.get();
         switch (indexingType()) {
         case ALL_INT32_INDEXING_TYPES: {
             ASSERT(i < butterfly->vectorLength());
@@ -376,9 +418,11 @@ public:
         initializeIndex(vm, i, v, indexingType());
     }
 
+    // NOTE: Clients of this method may call it more than once for any index, and this is supposed
+    // to work.
     void initializeIndex(VM& vm, unsigned i, JSValue v, IndexingType indexingType)
     {
-        Butterfly* butterfly = m_butterfly.get(this);
+        Butterfly* butterfly = m_butterfly.get();
         switch (indexingType) {
         case ALL_UNDECIDED_INDEXING_TYPES: {
             setIndexQuicklyToUndecided(vm, i, v);
@@ -436,7 +480,7 @@ public:
         case ALL_CONTIGUOUS_INDEXING_TYPES:
             return false;
         case ALL_ARRAY_STORAGE_INDEXING_TYPES:
-            return !!m_butterfly.get(this)->arrayStorage()->m_sparseMap;
+            return !!m_butterfly.get()->arrayStorage()->m_sparseMap;
         default:
             RELEASE_ASSERT_NOT_REACHED();
             return false;
@@ -453,7 +497,7 @@ public:
         case ALL_CONTIGUOUS_INDEXING_TYPES:
             return false;
         case ALL_ARRAY_STORAGE_INDEXING_TYPES:
-            return m_butterfly.get(this)->arrayStorage()->inSparseMode();
+            return m_butterfly.get()->arrayStorage()->inSparseMode();
         default:
             RELEASE_ASSERT_NOT_REACHED();
             return false;
@@ -467,18 +511,20 @@ public:
     //  - accessors are not called.
     //  - attributes will be respected (after the call the property will exist with the given attributes)
     //  - the property name is assumed to not be an index.
-    void putDirect(VM&, PropertyName, JSValue, unsigned attributes = 0);
-    void putDirect(VM&, PropertyName, JSValue, PutPropertySlot&);
+    bool putDirect(VM&, PropertyName, JSValue, unsigned attributes = 0);
+    bool putDirect(VM&, PropertyName, JSValue, PutPropertySlot&);
     void putDirectWithoutTransition(VM&, PropertyName, JSValue, unsigned attributes = 0);
-    void putDirectNonIndexAccessor(VM&, PropertyName, JSValue, unsigned attributes);
-    void putDirectAccessor(ExecState*, PropertyName, JSValue, unsigned attributes);
-    JS_EXPORT_PRIVATE void putDirectCustomAccessor(VM&, PropertyName, JSValue, unsigned attributes);
+    bool putDirectNonIndexAccessor(VM&, PropertyName, JSValue, unsigned attributes);
+    bool putDirectAccessor(ExecState*, PropertyName, JSValue, unsigned attributes);
+    JS_EXPORT_PRIVATE bool putDirectCustomAccessor(VM&, PropertyName, JSValue, unsigned attributes);
 
-    void putGetter(ExecState*, PropertyName, JSValue, unsigned attributes);
-    void putSetter(ExecState*, PropertyName, JSValue, unsigned attributes);
+    bool putGetter(ExecState*, PropertyName, JSValue, unsigned attributes);
+    bool putSetter(ExecState*, PropertyName, JSValue, unsigned attributes);
 
     JS_EXPORT_PRIVATE bool hasProperty(ExecState*, PropertyName) const;
     JS_EXPORT_PRIVATE bool hasProperty(ExecState*, unsigned propertyName) const;
+    bool hasPropertyGeneric(ExecState*, PropertyName, PropertySlot::InternalMethodType) const;
+    bool hasPropertyGeneric(ExecState*, unsigned propertyName, PropertySlot::InternalMethodType) const;
     bool hasOwnProperty(ExecState*, PropertyName) const;
     bool hasOwnProperty(ExecState*, unsigned) const;
 
@@ -486,9 +532,10 @@ public:
     JS_EXPORT_PRIVATE static bool deletePropertyByIndex(JSCell*, ExecState*, unsigned propertyName);
 
     JS_EXPORT_PRIVATE static JSValue defaultValue(const JSObject*, ExecState*, PreferredPrimitiveType);
+    JSValue ordinaryToPrimitive(ExecState*, PreferredPrimitiveType) const;
 
     JS_EXPORT_PRIVATE bool hasInstance(ExecState*, JSValue value, JSValue hasInstanceValue);
-    bool hasInstance(ExecState*, JSValue);
+    JS_EXPORT_PRIVATE bool hasInstance(ExecState*, JSValue);
     static bool defaultHasInstance(ExecState*, JSValue, JSValue prototypeProperty);
 
     JS_EXPORT_PRIVATE static void getOwnPropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode);
@@ -499,7 +546,7 @@ public:
     JS_EXPORT_PRIVATE static void getStructurePropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode);
     JS_EXPORT_PRIVATE static void getGenericPropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode);
 
-    JSValue toPrimitive(ExecState*, PreferredPrimitiveType = NoPreference) const;
+    JS_EXPORT_PRIVATE JSValue toPrimitive(ExecState*, PreferredPrimitiveType = NoPreference) const;
     bool getPrimitiveNumber(ExecState*, double& number, JSValue&) const;
     JS_EXPORT_PRIVATE double toNumber(ExecState*) const;
     JS_EXPORT_PRIVATE JSString* toString(ExecState*) const;
@@ -559,11 +606,11 @@ public:
         return inlineStorageUnsafe();
     }
         
-    const Butterfly* butterfly() const { return m_butterfly.get(this); }
-    Butterfly* butterfly() { return m_butterfly.get(this); }
+    const Butterfly* butterfly() const { return m_butterfly.get(); }
+    Butterfly* butterfly() { return m_butterfly.get(); }
         
-    ConstPropertyStorage outOfLineStorage() const { return m_butterfly.get(this)->propertyStorage(); }
-    PropertyStorage outOfLineStorage() { return m_butterfly.get(this)->propertyStorage(); }
+    ConstPropertyStorage outOfLineStorage() const { return m_butterfly.get()->propertyStorage(); }
+    PropertyStorage outOfLineStorage() { return m_butterfly.get()->propertyStorage(); }
 
     const WriteBarrierBase<Unknown>* locationForOffset(PropertyOffset offset) const
     {
@@ -581,7 +628,6 @@ public:
 
     void transitionTo(VM&, Structure*);
 
-    JS_EXPORT_PRIVATE bool removeDirect(VM&, PropertyName); // Return true if anything is removed.
     bool hasCustomProperties() { return structure()->didTransition(); }
     bool hasGetterSetterProperties() { return structure()->hasGetterSetterProperties(); }
     bool hasCustomGetterSetterProperties() { return structure()->hasCustomGetterSetterProperties(); }
@@ -592,14 +638,15 @@ public:
     //  - does not walk the prototype chain (to check for accessors or non-writable properties).
     // This is used by JSLexicalEnvironment.
     bool putOwnDataProperty(VM&, PropertyName, JSValue, PutPropertySlot&);
+    bool putOwnDataPropertyMayBeIndex(ExecState*, PropertyName, JSValue, PutPropertySlot&);
 
     // Fast access to known property offsets.
     JSValue getDirect(PropertyOffset offset) const { return locationForOffset(offset)->get(); }
     void putDirect(VM& vm, PropertyOffset offset, JSValue value) { locationForOffset(offset)->set(vm, this, value); }
     void putDirectUndefined(PropertyOffset offset) { locationForOffset(offset)->setUndefined(); }
 
-    JS_EXPORT_PRIVATE void putDirectNativeIntrinsicGetter(VM&, JSGlobalObject*, Identifier, NativeFunction, Intrinsic, unsigned attributes);
-    JS_EXPORT_PRIVATE void putDirectNativeFunction(VM&, JSGlobalObject*, const PropertyName&, unsigned functionLength, NativeFunction, Intrinsic, unsigned attributes);
+    JS_EXPORT_PRIVATE bool putDirectNativeIntrinsicGetter(VM&, JSGlobalObject*, Identifier, NativeFunction, Intrinsic, unsigned attributes);
+    JS_EXPORT_PRIVATE bool putDirectNativeFunction(VM&, JSGlobalObject*, const PropertyName&, unsigned functionLength, NativeFunction, Intrinsic, unsigned attributes);
     JS_EXPORT_PRIVATE JSFunction* putDirectBuiltinFunction(VM&, JSGlobalObject*, const PropertyName&, FunctionExecutable*, unsigned attributes);
     JSFunction* putDirectBuiltinFunctionWithoutTransition(VM&, JSGlobalObject*, const PropertyName&, FunctionExecutable*, unsigned attributes);
     JS_EXPORT_PRIVATE void putDirectNativeFunctionWithoutTransition(VM&, JSGlobalObject*, const PropertyName&, unsigned functionLength, NativeFunction, Intrinsic, unsigned attributes);
@@ -607,22 +654,37 @@ public:
     JS_EXPORT_PRIVATE static bool defineOwnProperty(JSObject*, ExecState*, PropertyName, const PropertyDescriptor&, bool shouldThrow);
 
     bool isGlobalObject() const;
+    bool isJSLexicalEnvironment() const;
+    bool isGlobalLexicalEnvironment() const;
     bool isErrorInstance() const;
     bool isWithScope() const;
 
     JS_EXPORT_PRIVATE void seal(VM&);
     JS_EXPORT_PRIVATE void freeze(VM&);
-    JS_EXPORT_PRIVATE void preventExtensions(VM&);
+    JS_EXPORT_PRIVATE static bool preventExtensions(JSObject*, ExecState*);
+    JS_EXPORT_PRIVATE static bool isExtensible(JSObject*, ExecState*);
     bool isSealed(VM& vm) { return structure(vm)->isSealed(vm); }
     bool isFrozen(VM& vm) { return structure(vm)->isFrozen(vm); }
-    bool isExtensible() { return structure()->isExtensible(); }
+private:
+    ALWAYS_INLINE bool isExtensibleImpl() { return isStructureExtensible(); }
+public:
+    // You should only call isStructureExtensible() when:
+    // - Performing this check in a way that isn't described in the specification 
+    //   as calling the virtual [[IsExtensible]] trap.
+    // - When you're guaranteed that object->methodTable()->isExtensible isn't
+    //   overridden.
+    ALWAYS_INLINE bool isStructureExtensible() { return structure()->isStructureExtensible(); }
+    // You should call this when performing [[IsExtensible]] trap in a place
+    // that is described in the specification. This performs the fully virtual
+    // [[IsExtensible]] trap.
+    bool isExtensible(ExecState*);
     bool indexingShouldBeSparse()
     {
-        return !isExtensible()
+        return !isStructureExtensible()
             || structure()->typeInfo().interceptsGetOwnPropertySlotByIndexEvenWhenLengthIsNotZero();
     }
 
-    bool staticFunctionsReified() { return structure()->staticFunctionsReified(); }
+    bool staticPropertiesReified() { return structure()->staticPropertiesReified(); }
     void reifyAllStaticProperties(ExecState*);
 
     JS_EXPORT_PRIVATE Butterfly* growOutOfLineStorage(VM&, size_t oldSize, size_t newSize);
@@ -630,8 +692,6 @@ public:
         
     void setStructure(VM&, Structure*);
     void setStructureAndButterfly(VM&, Structure*, Butterfly*);
-    void setStructureAndReallocateStorageIfNecessary(VM&, unsigned oldCapacity, Structure*);
-    void setStructureAndReallocateStorageIfNecessary(VM&, Structure*);
 
     JS_EXPORT_PRIVATE void convertToDictionary(VM&);
 
@@ -648,6 +708,13 @@ public:
         return structure()->globalObject();
     }
         
+    JSGlobalObject* globalObject(VM& vm) const
+    {
+        ASSERT(structure(vm)->globalObject());
+        ASSERT(!isGlobalObject() || ((JSObject*)structure()->globalObject()) == this);
+        return structure(vm)->globalObject();
+    }
+        
     void switchToSlowPutArrayStorage(VM&);
         
     // The receiver is the prototype in this case. The following:
@@ -657,7 +724,7 @@ public:
     // is equivalent to:
     //
     // foo->attemptToInterceptPutByIndexOnHole(...);
-    bool attemptToInterceptPutByIndexOnHoleForPrototype(ExecState*, JSValue thisValue, unsigned propertyName, JSValue, bool shouldThrow);
+    bool attemptToInterceptPutByIndexOnHoleForPrototype(ExecState*, JSValue thisValue, unsigned propertyName, JSValue, bool shouldThrow, bool& putResult);
         
     // Returns 0 if int32 storage cannot be created - either because
     // indexing should be sparse, we're having a bad time, or because
@@ -666,7 +733,7 @@ public:
     ContiguousJSValues ensureInt32(VM& vm)
     {
         if (LIKELY(hasInt32(indexingType())))
-            return m_butterfly.get(this)->contiguousInt32();
+            return m_butterfly.get()->contiguousInt32();
             
         return ensureInt32Slow(vm);
     }
@@ -678,7 +745,7 @@ public:
     ContiguousDoubles ensureDouble(VM& vm)
     {
         if (LIKELY(hasDouble(indexingType())))
-            return m_butterfly.get(this)->contiguousDouble();
+            return m_butterfly.get()->contiguousDouble();
             
         return ensureDoubleSlow(vm);
     }
@@ -688,7 +755,7 @@ public:
     ContiguousJSValues ensureContiguous(VM& vm)
     {
         if (LIKELY(hasContiguous(indexingType())))
-            return m_butterfly.get(this)->contiguous();
+            return m_butterfly.get()->contiguous();
             
         return ensureContiguousSlow(vm);
     }
@@ -700,7 +767,7 @@ public:
     ArrayStorage* ensureArrayStorage(VM& vm)
     {
         if (LIKELY(hasAnyArrayStorage(indexingType())))
-            return m_butterfly.get(this)->arrayStorage();
+            return m_butterfly.get()->arrayStorage();
 
         return ensureArrayStorageSlow(vm);
     }
@@ -717,7 +784,7 @@ public:
         return &m_butterfly;
     }
 
-    JSValue getMethod(ExecState* exec, CallData& callData, CallType& callType, const Identifier& ident, const String& errorMessage);
+    JS_EXPORT_PRIVATE JSValue getMethod(ExecState*, CallData&, CallType&, const Identifier&, const String& errorMessage);
 
     DECLARE_EXPORT_INFO;
 
@@ -726,7 +793,7 @@ protected:
     {
         Base::finishCreation(vm);
         ASSERT(inherits(info()));
-        ASSERT(prototype().isNull() || Heap::heap(this) == Heap::heap(prototype()));
+        ASSERT(getPrototypeDirect().isNull() || Heap::heap(this) == Heap::heap(getPrototypeDirect()));
         ASSERT(structure()->isObject());
         ASSERT(classInfo());
     }
@@ -740,15 +807,14 @@ protected:
     // To create derived types you likely want JSNonFinalObject, below.
     JSObject(VM&, Structure*, Butterfly* = 0);
         
-    void visitButterfly(SlotVisitor&, Butterfly*, size_t storageSize);
-    void copyButterfly(CopyVisitor&, Butterfly*, size_t storageSize);
+    void visitButterfly(SlotVisitor&, Butterfly*, Structure*);
 
     // Call this if you know that the object is in a mode where it has array
     // storage. This will assert otherwise.
     ArrayStorage* arrayStorage()
     {
         ASSERT(hasAnyArrayStorage(indexingType()));
-        return m_butterfly.get(this)->arrayStorage();
+        return m_butterfly.get()->arrayStorage();
     }
         
     // Call this if you want to predicate some actions on whether or not the
@@ -757,7 +823,7 @@ protected:
     {
         switch (indexingType()) {
         case ALL_ARRAY_STORAGE_INDEXING_TYPES:
-            return m_butterfly.get(this)->arrayStorage();
+            return m_butterfly.get()->arrayStorage();
                 
         default:
             return 0;
@@ -803,8 +869,8 @@ protected:
     bool defineOwnNonIndexProperty(ExecState*, PropertyName, const PropertyDescriptor&, bool throwException);
 
     template<IndexingType indexingShape>
-    void putByIndexBeyondVectorLengthWithoutAttributes(ExecState*, unsigned propertyName, JSValue);
-    void putByIndexBeyondVectorLengthWithArrayStorage(ExecState*, unsigned propertyName, JSValue, bool shouldThrow, ArrayStorage*);
+    bool putByIndexBeyondVectorLengthWithoutAttributes(ExecState*, unsigned propertyName, JSValue);
+    bool putByIndexBeyondVectorLengthWithArrayStorage(ExecState*, unsigned propertyName, JSValue, bool shouldThrow, ArrayStorage*);
 
     bool increaseVectorLength(VM&, unsigned newLength);
     void deallocateSparseIndexMap();
@@ -813,20 +879,22 @@ protected:
         
     void notifyPresenceOfIndexedAccessors(VM&);
         
-    bool attemptToInterceptPutByIndexOnHole(ExecState*, unsigned index, JSValue, bool shouldThrow);
+    bool attemptToInterceptPutByIndexOnHole(ExecState*, unsigned index, JSValue, bool shouldThrow, bool& putResult);
         
     // Call this if you want setIndexQuickly to succeed and you're sure that
     // the array is contiguous.
-    void ensureLength(VM& vm, unsigned length)
+    bool WARN_UNUSED_RETURN ensureLength(VM& vm, unsigned length)
     {
         ASSERT(length < MAX_ARRAY_INDEX);
         ASSERT(hasContiguous(indexingType()) || hasInt32(indexingType()) || hasDouble(indexingType()) || hasUndecided(indexingType()));
 
-        if (m_butterfly.get(this)->vectorLength() < length)
-            ensureLengthSlow(vm, length);
+        bool result = true;
+        if (m_butterfly.get()->vectorLength() < length)
+            result = ensureLengthSlow(vm, length);
             
-        if (m_butterfly.get(this)->publicLength() < length)
-            m_butterfly.get(this)->setPublicLength(length);
+        if (m_butterfly.get()->publicLength() < length)
+            m_butterfly.get()->setPublicLength(length);
+        return result;
     }
         
     // Call this if you want to shrink the butterfly backing store, and you're
@@ -850,29 +918,31 @@ private:
     void isObject();
     void isString();
         
-    Butterfly* createInitialIndexedStorage(VM&, unsigned length, size_t elementSize);
+    Butterfly* createInitialIndexedStorage(VM&, unsigned length);
         
     ArrayStorage* enterDictionaryIndexingModeWhenArrayStorageAlreadyExists(VM&, ArrayStorage*);
         
     template<PutMode>
     bool putDirectInternal(VM&, PropertyName, JSValue, unsigned attr, PutPropertySlot&);
+    bool canPerformFastPutInline(ExecState* exec, VM&, PropertyName);
 
-    JS_EXPORT_PRIVATE NEVER_INLINE void putInlineSlow(ExecState*, PropertyName, JSValue, PutPropertySlot&);
+    JS_EXPORT_PRIVATE NEVER_INLINE bool putInlineSlow(ExecState*, PropertyName, JSValue, PutPropertySlot&);
 
     bool getNonIndexPropertySlot(ExecState*, PropertyName, PropertySlot&);
     bool getOwnNonIndexPropertySlot(VM&, Structure&, PropertyName, PropertySlot&);
     JS_EXPORT_PRIVATE void fillGetterPropertySlot(PropertySlot&, JSValue, unsigned, PropertyOffset);
     void fillCustomGetterPropertySlot(PropertySlot&, JSValue, unsigned, Structure&);
 
+    JS_EXPORT_PRIVATE bool getOwnStaticPropertySlot(VM&, PropertyName, PropertySlot&);
     JS_EXPORT_PRIVATE const HashTableValue* findPropertyHashEntry(PropertyName) const;
         
-    void putIndexedDescriptor(ExecState*, SparseArrayEntry*, const PropertyDescriptor&, PropertyDescriptor& old);
+    bool putIndexedDescriptor(ExecState*, SparseArrayEntry*, const PropertyDescriptor&, PropertyDescriptor& old);
         
-    void putByIndexBeyondVectorLength(ExecState*, unsigned propertyName, JSValue, bool shouldThrow);
+    bool putByIndexBeyondVectorLength(ExecState*, unsigned propertyName, JSValue, bool shouldThrow);
     bool putDirectIndexBeyondVectorLengthWithArrayStorage(ExecState*, unsigned propertyName, JSValue, unsigned attributes, PutDirectIndexMode, ArrayStorage*);
     JS_EXPORT_PRIVATE bool putDirectIndexBeyondVectorLength(ExecState*, unsigned propertyName, JSValue, unsigned attributes, PutDirectIndexMode);
         
-    unsigned getNewVectorLength(unsigned currentVectorLength, unsigned currentLength, unsigned desiredLength);
+    unsigned getNewVectorLength(unsigned indexBias, unsigned currentVectorLength, unsigned currentLength, unsigned desiredLength);
     unsigned getNewVectorLength(unsigned desiredLength);
 
     ArrayStorage* constructConvertedArrayStorageWithoutCopyingElements(VM&, unsigned neededLength);
@@ -881,7 +951,7 @@ private:
     JS_EXPORT_PRIVATE void convertInt32ToDoubleOrContiguousWhilePerformingSetIndex(VM&, unsigned index, JSValue);
     JS_EXPORT_PRIVATE void convertDoubleToContiguousWhilePerformingSetIndex(VM&, unsigned index, JSValue);
         
-    void ensureLengthSlow(VM&, unsigned length);
+    bool ensureLengthSlow(VM&, unsigned length);
         
     ContiguousJSValues ensureInt32Slow(VM&);
     ContiguousDoubles ensureDoubleSlow(VM&);
@@ -889,7 +959,7 @@ private:
     JS_EXPORT_PRIVATE ArrayStorage* ensureArrayStorageSlow(VM&);
 
 protected:
-    CopyBarrier<Butterfly> m_butterfly;
+    AuxiliaryBarrier<Butterfly*> m_butterfly;
 #if USE(JSVALUE32_64)
 private:
     uint32_t m_padding;
@@ -987,6 +1057,20 @@ private:
 
 JS_EXPORT_PRIVATE EncodedJSValue JSC_HOST_CALL objectPrivateFuncInstanceOf(ExecState*);
 
+inline JSObject* JSObject::createRawObject(
+    ExecState* exec, Structure* structure, Butterfly* butterfly)
+{
+    JSObject* finalObject = new (
+        NotNull, 
+        allocateCell<JSFinalObject>(
+            *exec->heap(),
+            JSFinalObject::allocationSize(structure->inlineCapacity())
+        )
+    ) JSObject(exec->vm(), structure, butterfly);
+    finalObject->finishCreation(exec->vm());
+    return finalObject;
+}
+
 inline JSFinalObject* JSFinalObject::create(
     ExecState* exec, Structure* structure, Butterfly* butterfly)
 {
@@ -1028,6 +1112,16 @@ inline bool JSObject::isGlobalObject() const
     return type() == GlobalObjectType;
 }
 
+inline bool JSObject::isJSLexicalEnvironment() const
+{
+    return type() == LexicalEnvironmentType || type() == ModuleEnvironmentType;
+}
+
+inline bool JSObject::isGlobalLexicalEnvironment() const
+{
+    return type() == GlobalLexicalEnvironmentType;
+}
+
 inline bool JSObject::isErrorInstance() const
 {
     return type() == ErrorInstanceType;
@@ -1060,15 +1154,15 @@ inline void JSObject::setButterflyWithoutChangingStructure(VM& vm, Butterfly* bu
 
 inline CallType getCallData(JSValue value, CallData& callData)
 {
-    CallType result = value.isCell() ? value.asCell()->methodTable()->getCallData(value.asCell(), callData) : CallTypeNone;
-    ASSERT(result == CallTypeNone || value.isValidCallee());
+    CallType result = value.isCell() ? value.asCell()->methodTable()->getCallData(value.asCell(), callData) : CallType::None;
+    ASSERT(result == CallType::None || value.isValidCallee());
     return result;
 }
 
 inline ConstructType getConstructData(JSValue value, ConstructData& constructData)
 {
-    ConstructType result = value.isCell() ? value.asCell()->methodTable()->getConstructData(value.asCell(), constructData) : ConstructTypeNone;
-    ASSERT(result == ConstructTypeNone || value.isValidCallee());
+    ConstructType result = value.isCell() ? value.asCell()->methodTable()->getConstructData(value.asCell(), constructData) : ConstructType::None;
+    ASSERT(result == ConstructType::None || value.isValidCallee());
     return result;
 }
 
@@ -1090,9 +1184,18 @@ inline JSObject::JSObject(VM& vm, Structure* structure, Butterfly* butterfly)
     vm.heap.ascribeOwner(this, butterfly);
 }
 
-inline JSValue JSObject::prototype() const
+inline JSValue JSObject::getPrototypeDirect() const
 {
     return structure()->storedPrototype();
+}
+
+inline JSValue JSObject::getPrototype(VM& vm, ExecState* exec)
+{
+    auto getPrototypeMethod = methodTable(vm)->getPrototype;
+    MethodTable::GetPrototypeFunctionPtr defaultGetPrototype = JSObject::getPrototype;
+    if (LIKELY(getPrototypeMethod == defaultGetPrototype))
+        return getPrototypeDirect();
+    return getPrototypeMethod(this, exec);
 }
 
 // It is safe to call this method with a PropertyName that is actually an index,
@@ -1101,8 +1204,11 @@ ALWAYS_INLINE bool JSObject::getOwnNonIndexPropertySlot(VM& vm, Structure& struc
 {
     unsigned attributes;
     PropertyOffset offset = structure.get(vm, propertyName, attributes);
-    if (!isValidOffset(offset))
-        return false;
+    if (!isValidOffset(offset)) {
+        if (!TypeInfo::hasStaticPropertyTable(inlineTypeFlags()))
+            return false;
+        return getOwnStaticPropertySlot(vm, propertyName, slot);
+    }
 
     // getPropertySlot relies on this method never returning index properties!
     ASSERT(!parseIndex(propertyName));
@@ -1130,10 +1236,13 @@ ALWAYS_INLINE bool JSObject::getOwnNonIndexPropertySlot(VM& vm, Structure& struc
 
 ALWAYS_INLINE void JSObject::fillCustomGetterPropertySlot(PropertySlot& slot, JSValue customGetterSetter, unsigned attributes, Structure& structure)
 {
-    if (structure.isDictionary()) {
+    if (structure.isUncacheableDictionary()) {
         slot.setCustom(this, attributes, jsCast<CustomGetterSetter*>(customGetterSetter)->getter());
         return;
     }
+
+    // This access is cacheable because Structure requires an attributeChangedTransition
+    // if this property stops being an accessor.
     slot.setCacheableCustom(this, attributes, jsCast<CustomGetterSetter*>(customGetterSetter)->getter());
 }
 
@@ -1170,6 +1279,7 @@ ALWAYS_INLINE bool JSObject::getPropertySlot(ExecState* exec, PropertyName prope
             // parsing the int again.
             return object->getNonIndexPropertySlot(exec, propertyName, slot);
         }
+        ASSERT(object->type() != ProxyObjectType);
         Structure& structure = *structureIDTable.get(object->structureID());
         if (object->getOwnNonIndexPropertySlot(vm, structure, propertyName, slot))
             return true;
@@ -1182,44 +1292,6 @@ ALWAYS_INLINE bool JSObject::getPropertySlot(ExecState* exec, PropertyName prope
     if (Optional<uint32_t> index = parseIndex(propertyName))
         return getPropertySlot(exec, index.value(), slot);
     return false;
-}
-
-ALWAYS_INLINE bool JSObject::getPropertySlot(ExecState* exec, unsigned propertyName, PropertySlot& slot)
-{
-    VM& vm = exec->vm();
-    auto& structureIDTable = vm.heap.structureIDTable();
-    JSObject* object = this;
-    while (true) {
-        Structure& structure = *structureIDTable.get(object->structureID());
-        if (structure.classInfo()->methodTable.getOwnPropertySlotByIndex(object, exec, propertyName, slot))
-            return true;
-        JSValue prototype = structure.storedPrototype();
-        if (!prototype.isObject())
-            return false;
-        object = asObject(prototype);
-    }
-}
-
-ALWAYS_INLINE bool JSObject::getNonIndexPropertySlot(ExecState* exec, PropertyName propertyName, PropertySlot& slot)
-{
-    // This method only supports non-index PropertyNames.
-    ASSERT(!parseIndex(propertyName));
-
-    VM& vm = exec->vm();
-    auto& structureIDTable = vm.heap.structureIDTable();
-    JSObject* object = this;
-    while (true) {
-        Structure& structure = *structureIDTable.get(object->structureID());
-        if (LIKELY(!TypeInfo::overridesGetOwnPropertySlot(object->inlineTypeFlags()))) {
-            if (object->getOwnNonIndexPropertySlot(vm, structure, propertyName, slot))
-                return true;
-        } else if (structure.classInfo()->methodTable.getOwnPropertySlot(object, exec, propertyName, slot))
-            return true;
-        JSValue prototype = structure.storedPrototype();
-        if (!prototype.isObject())
-            return false;
-        object = asObject(prototype);
-    }
 }
 
 inline JSValue JSObject::get(ExecState* exec, PropertyName propertyName) const
@@ -1269,7 +1341,7 @@ ALWAYS_INLINE bool JSObject::putDirectInternal(VM& vm, PropertyName propertyName
             return true;
         }
 
-        if ((mode == PutModePut) && !isExtensible())
+        if ((mode == PutModePut) && !isStructureExtensible())
             return false;
 
         DeferGC deferGC(vm.heap);
@@ -1327,14 +1399,14 @@ ALWAYS_INLINE bool JSObject::putDirectInternal(VM& vm, PropertyName propertyName
         slot.setExistingProperty(this, offset);
         putDirect(vm, offset, value);
 
-        if ((attributes & Accessor) != (currentAttributes & Accessor)) {
+        if ((attributes & Accessor) != (currentAttributes & Accessor) || (attributes & CustomAccessor) != (currentAttributes & CustomAccessor)) {
             ASSERT(!(attributes & ReadOnly));
             setStructure(vm, Structure::attributeChangeTransition(vm, structure, propertyName, attributes));
         }
         return true;
     }
 
-    if ((mode == PutModePut) && !isExtensible())
+    if ((mode == PutModePut) && !isStructureExtensible())
         return false;
 
     // We want the structure transition watchpoint to fire after this object has switched
@@ -1342,41 +1414,28 @@ ALWAYS_INLINE bool JSObject::putDirectInternal(VM& vm, PropertyName propertyName
     // we want.
     DeferredStructureTransitionWatchpointFire deferredWatchpointFire;
     
-    newStructure = Structure::addPropertyTransition(
+    newStructure = Structure::addNewPropertyTransition(
         vm, structure, propertyName, attributes, offset, slot.context(), &deferredWatchpointFire);
     newStructure->willStoreValueForNewTransition(
         vm, propertyName, value, slot.context() == PutPropertySlot::PutById);
     
     validateOffset(offset);
     ASSERT(newStructure->isValidOffset(offset));
-    setStructureAndReallocateStorageIfNecessary(vm, newStructure);
-
+    DeferGC deferGC(vm.heap);
+    size_t oldCapacity = structure->outOfLineCapacity();
+    size_t newCapacity = newStructure->outOfLineCapacity();
+    ASSERT(oldCapacity <= newCapacity);
+    if (oldCapacity == newCapacity)
+        setStructure(vm, newStructure);
+    else {
+        Butterfly* newButterfly = growOutOfLineStorage(vm, oldCapacity, newCapacity);
+        setStructureAndButterfly(vm, newStructure, newButterfly);
+    }
     putDirect(vm, offset, value);
     slot.setNewProperty(this, offset);
     if (attributes & ReadOnly)
         newStructure->setContainsReadOnlyProperties();
     return true;
-}
-
-inline void JSObject::setStructureAndReallocateStorageIfNecessary(VM& vm, unsigned oldCapacity, Structure* newStructure)
-{
-    ASSERT(oldCapacity <= newStructure->outOfLineCapacity());
-    
-    if (oldCapacity == newStructure->outOfLineCapacity()) {
-        setStructure(vm, newStructure);
-        return;
-    }
-
-    DeferGC deferGC(vm.heap); 
-    Butterfly* newButterfly = growOutOfLineStorage(
-        vm, oldCapacity, newStructure->outOfLineCapacity());
-    setStructureAndButterfly(vm, newStructure, newButterfly);
-}
-
-inline void JSObject::setStructureAndReallocateStorageIfNecessary(VM& vm, Structure* newStructure)
-{
-    setStructureAndReallocateStorageIfNecessary(
-        vm, structure(vm)->outOfLineCapacity(), newStructure);
 }
 
 inline bool JSObject::putOwnDataProperty(VM& vm, PropertyName propertyName, JSValue value, PutPropertySlot& slot)
@@ -1389,19 +1448,32 @@ inline bool JSObject::putOwnDataProperty(VM& vm, PropertyName propertyName, JSVa
     return putDirectInternal<PutModePut>(vm, propertyName, value, 0, slot);
 }
 
-inline void JSObject::putDirect(VM& vm, PropertyName propertyName, JSValue value, unsigned attributes)
+inline bool JSObject::putOwnDataPropertyMayBeIndex(ExecState* exec, PropertyName propertyName, JSValue value, PutPropertySlot& slot)
+{
+    ASSERT(value);
+    ASSERT(!Heap::heap(value) || Heap::heap(value) == Heap::heap(this));
+    ASSERT(!structure()->hasGetterSetterProperties());
+    ASSERT(!structure()->hasCustomGetterSetterProperties());
+
+    if (Optional<uint32_t> index = parseIndex(propertyName))
+        return putDirectIndex(exec, index.value(), value, 0, PutDirectIndexLikePutDirect);
+
+    return putDirectInternal<PutModePut>(exec->vm(), propertyName, value, 0, slot);
+}
+
+inline bool JSObject::putDirect(VM& vm, PropertyName propertyName, JSValue value, unsigned attributes)
 {
     ASSERT(!value.isGetterSetter() && !(attributes & Accessor));
     ASSERT(!value.isCustomGetterSetter());
     PutPropertySlot slot(this);
-    putDirectInternal<PutModeDefineOwnProperty>(vm, propertyName, value, attributes, slot);
+    return putDirectInternal<PutModeDefineOwnProperty>(vm, propertyName, value, attributes, slot);
 }
 
-inline void JSObject::putDirect(VM& vm, PropertyName propertyName, JSValue value, PutPropertySlot& slot)
+inline bool JSObject::putDirect(VM& vm, PropertyName propertyName, JSValue value, PutPropertySlot& slot)
 {
     ASSERT(!value.isGetterSetter());
     ASSERT(!value.isCustomGetterSetter());
-    putDirectInternal<PutModeDefineOwnProperty>(vm, propertyName, value, 0, slot);
+    return putDirectInternal<PutModeDefineOwnProperty>(vm, propertyName, value, 0, slot);
 }
 
 inline void JSObject::putDirectWithoutTransition(VM& vm, PropertyName propertyName, JSValue value, unsigned attributes)
@@ -1409,20 +1481,17 @@ inline void JSObject::putDirectWithoutTransition(VM& vm, PropertyName propertyNa
     DeferGC deferGC(vm.heap);
     ASSERT(!value.isGetterSetter() && !(attributes & Accessor));
     ASSERT(!value.isCustomGetterSetter());
-    Butterfly* newButterfly = m_butterfly.get(this);
+    Butterfly* newButterfly = m_butterfly.get();
     if (structure()->putWillGrowOutOfLineStorage())
         newButterfly = growOutOfLineStorage(vm, structure()->outOfLineCapacity(), structure()->suggestedNewOutOfLineStorageCapacity());
     Structure* structure = this->structure();
     PropertyOffset offset = structure->addPropertyWithoutTransition(vm, propertyName, attributes);
+    if (attributes & ReadOnly)
+        structure->setContainsReadOnlyProperties();
     bool shouldOptimize = false;
     structure->willStoreValueForNewTransition(vm, propertyName, value, shouldOptimize);
     setStructureAndButterfly(vm, structure, newButterfly);
     putDirect(vm, offset, value);
-}
-
-inline JSValue JSObject::toPrimitive(ExecState* exec, PreferredPrimitiveType preferredType) const
-{
-    return methodTable()->defaultValue(this, exec, preferredType);
 }
 
 ALWAYS_INLINE JSObject* Register::object() const
@@ -1495,6 +1564,12 @@ inline size_t maxOffsetRelativeToBase(PropertyOffset offset)
 
 COMPILE_ASSERT(!(sizeof(JSObject) % sizeof(WriteBarrierBase<Unknown>)), JSObject_inline_storage_has_correct_alignment);
 
+template<unsigned charactersCount>
+ALWAYS_INLINE Identifier makeIdentifier(VM& vm, const char (&characters)[charactersCount])
+{
+    return Identifier::fromString(&vm, characters);
+}
+
 ALWAYS_INLINE Identifier makeIdentifier(VM& vm, const char* name)
 {
     return Identifier::fromString(&vm, name);
@@ -1507,6 +1582,8 @@ ALWAYS_INLINE Identifier makeIdentifier(VM&, const Identifier& name)
 
 bool validateAndApplyPropertyDescriptor(ExecState*, JSObject*, PropertyName, bool isExtensible,
     const PropertyDescriptor& descriptor, bool isCurrentDefined, const PropertyDescriptor& current, bool throwException);
+
+JS_EXPORT_PRIVATE NEVER_INLINE bool ordinarySetSlow(ExecState*, JSObject*, PropertyName, JSValue, JSValue receiver, bool shouldThrow);
 
 // Helper for defining native functions, if you're not using a static hash table.
 // Use this macro from within finishCreation() methods in prototypes. This assumes

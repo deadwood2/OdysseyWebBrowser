@@ -23,54 +23,104 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef IDBDatabase_h
-#define IDBDatabase_h
-
-#include "ActiveDOMObject.h"
-#include "DOMStringList.h"
-#include "Dictionary.h"
-#include "Event.h"
-#include "EventTarget.h"
-#include "IDBObjectStore.h"
-#include "IDBTransaction.h"
-#include "IndexedDB.h"
-#include "ScriptWrappable.h"
-#include <wtf/RefCounted.h>
-#include <wtf/RefPtr.h>
+#pragma once
 
 #if ENABLE(INDEXED_DATABASE)
 
+#include "Dictionary.h"
+#include "EventTarget.h"
+#include "ExceptionCode.h"
+#include "IDBActiveDOMObject.h"
+#include "IDBConnectionProxy.h"
+#include "IDBConnectionToServer.h"
+#include "IDBDatabaseInfo.h"
+
 namespace WebCore {
 
-class ScriptExecutionContext;
+class DOMStringList;
+class IDBObjectStore;
+class IDBOpenDBRequest;
+class IDBResultData;
+class IDBTransaction;
+class IDBTransactionInfo;
 
-struct ExceptionCodeWithMessage;
-
-class IDBDatabase : public RefCounted<IDBDatabase>, public EventTargetWithInlineData, public ActiveDOMObject {
+class IDBDatabase : public ThreadSafeRefCounted<IDBDatabase>, public EventTargetWithInlineData, public IDBActiveDOMObject {
 public:
-    virtual ~IDBDatabase() { }
+    static Ref<IDBDatabase> create(ScriptExecutionContext&, IDBClient::IDBConnectionProxy&, const IDBResultData&);
 
-    // Implement the IDL
-    virtual const String name() const = 0;
-    virtual uint64_t version() const = 0;
-    virtual RefPtr<DOMStringList> objectStoreNames() const = 0;
+    virtual ~IDBDatabase();
 
-    virtual RefPtr<IDBObjectStore> createObjectStore(const String& name, const Dictionary&, ExceptionCodeWithMessage&) = 0;
-    virtual RefPtr<IDBObjectStore> createObjectStore(const String& name, const IDBKeyPath&, bool autoIncrement, ExceptionCodeWithMessage&) = 0;
-    virtual RefPtr<IDBTransaction> transaction(ScriptExecutionContext*, const Vector<String>&, const String& mode, ExceptionCodeWithMessage&) = 0;
-    virtual RefPtr<IDBTransaction> transaction(ScriptExecutionContext*, const String&, const String& mode, ExceptionCodeWithMessage&) = 0;
-    virtual void deleteObjectStore(const String& name, ExceptionCodeWithMessage&) = 0;
-    virtual void close() = 0;
+    // IDBDatabase IDL
+    const String name() const;
+    uint64_t version() const;
+    RefPtr<DOMStringList> objectStoreNames() const;
 
-    using RefCounted<IDBDatabase>::ref;
-    using RefCounted<IDBDatabase>::deref;
+    RefPtr<IDBObjectStore> createObjectStore(const String& name, const Dictionary&, ExceptionCodeWithMessage&);
+    RefPtr<IDBObjectStore> createObjectStore(const String& name, const IDBKeyPath&, bool autoIncrement, ExceptionCodeWithMessage&);
+    RefPtr<IDBTransaction> transaction(const Vector<String>&, const String& mode, ExceptionCodeWithMessage&);
+    RefPtr<IDBTransaction> transaction(const String&, const String& mode, ExceptionCodeWithMessage&);
+    void deleteObjectStore(const String& name, ExceptionCodeWithMessage&);
+    void close();
 
-protected:
-    IDBDatabase(ScriptExecutionContext*);
+    // EventTarget
+    EventTargetInterface eventTargetInterface() const final { return IDBDatabaseEventTargetInterfaceType; }
+    ScriptExecutionContext* scriptExecutionContext() const final { return ActiveDOMObject::scriptExecutionContext(); }
+    void refEventTarget() final { ThreadSafeRefCounted<IDBDatabase>::ref(); }
+    void derefEventTarget() final { ThreadSafeRefCounted<IDBDatabase>::deref(); }
+
+    using ThreadSafeRefCounted<IDBDatabase>::ref;
+    using ThreadSafeRefCounted<IDBDatabase>::deref;
+
+    const char* activeDOMObjectName() const final;
+    bool canSuspendForDocumentSuspension() const final;
+    void stop() final;
+
+    const IDBDatabaseInfo& info() const { return m_info; }
+    uint64_t databaseConnectionIdentifier() const { return m_databaseConnectionIdentifier; }
+
+    Ref<IDBTransaction> startVersionChangeTransaction(const IDBTransactionInfo&, IDBOpenDBRequest&);
+    void didStartTransaction(IDBTransaction&);
+
+    void willCommitTransaction(IDBTransaction&);
+    void didCommitTransaction(IDBTransaction&);
+    void willAbortTransaction(IDBTransaction&);
+    void didAbortTransaction(IDBTransaction&);
+
+    void fireVersionChangeEvent(const IDBResourceIdentifier& requestIdentifier, uint64_t requestedVersion);
+    void didCloseFromServer(const IDBError&);
+    void connectionToServerLost(const IDBError&);
+
+    IDBClient::IDBConnectionProxy& connectionProxy() { return m_connectionProxy.get(); }
+
+    void didCreateIndexInfo(const IDBIndexInfo&);
+    void didDeleteIndexInfo(const IDBIndexInfo&);
+
+    bool isClosingOrClosed() const { return m_closePending || m_closedInServer; }
+
+    bool dispatchEvent(Event&) final;
+
+    bool hasPendingActivity() const final;
+
+private:
+    IDBDatabase(ScriptExecutionContext&, IDBClient::IDBConnectionProxy&, const IDBResultData&);
+
+    void didCommitOrAbortTransaction(IDBTransaction&);
+
+    void maybeCloseInServer();
+
+    Ref<IDBClient::IDBConnectionProxy> m_connectionProxy;
+    IDBDatabaseInfo m_info;
+    uint64_t m_databaseConnectionIdentifier { 0 };
+
+    bool m_closePending { false };
+    bool m_closedInServer { false };
+
+    RefPtr<IDBTransaction> m_versionChangeTransaction;
+    HashMap<IDBResourceIdentifier, RefPtr<IDBTransaction>> m_activeTransactions;
+    HashMap<IDBResourceIdentifier, RefPtr<IDBTransaction>> m_committingTransactions;
+    HashMap<IDBResourceIdentifier, RefPtr<IDBTransaction>> m_abortingTransactions;
 };
 
 } // namespace WebCore
 
-#endif
-
-#endif // IDBDatabase_h
+#endif // ENABLE(INDEXED_DATABASE)

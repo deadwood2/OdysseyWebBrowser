@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013, 2015-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,9 +32,7 @@
 #include <wtf/HashFunctions.h>
 #include <wtf/HashMap.h>
 #include <wtf/MathExtras.h>
-#include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
-#include <wtf/Vector.h>
 
 namespace JSC {
 
@@ -119,7 +117,6 @@ private:
     typedef HashMap<JSCell*, int32_t, typename WTF::DefaultHash<JSCell*>::Hash, WTF::HashTraits<JSCell*>, IndexTraits> CellKeyedMap;
     typedef HashMap<EncodedJSValue, int32_t, EncodedJSValueHash, EncodedJSValueHashTraits, IndexTraits> ValueKeyedMap;
     typedef HashMap<StringImpl*, int32_t, typename WTF::DefaultHash<StringImpl*>::Hash, WTF::HashTraits<StringImpl*>, IndexTraits> StringKeyedMap;
-    typedef HashMap<SymbolImpl*, int32_t, typename WTF::PtrHash<SymbolImpl*>, WTF::HashTraits<SymbolImpl*>, IndexTraits> SymbolKeyedMap;
 
     ALWAYS_INLINE Entry* find(ExecState*, KeyType);
     ALWAYS_INLINE Entry* add(ExecState*, JSCell* owner, KeyType);
@@ -134,7 +131,6 @@ private:
     CellKeyedMap m_cellKeyedTable;
     ValueKeyedMap m_valueKeyedTable;
     StringKeyedMap m_stringKeyedTable;
-    SymbolKeyedMap m_symbolKeyedTable;
     int32_t m_capacity;
     int32_t m_size;
     int32_t m_deletedCount;
@@ -185,7 +181,7 @@ ALWAYS_INLINE bool MapDataImpl<Entry, JSIterator>::IteratorData::next(WTF::KeyVa
 {
     if (!ensureSlot())
         return false;
-    Entry* entry = &m_mapData->m_entries.get(m_mapData->m_owner)[m_index];
+    Entry* entry = &m_mapData->m_entries.get()[m_index];
     pair = WTF::KeyValuePair<JSValue, JSValue>(entry->key().get(), entry->value().get());
     m_index += 1;
     return true;
@@ -207,7 +203,7 @@ ALWAYS_INLINE int32_t MapDataImpl<Entry, JSIterator>::IteratorData::refreshCurso
     if (isFinished())
         return m_index;
 
-    Entry* entries = m_mapData->m_entries.get(m_mapData->m_owner);
+    Entry* entries = m_mapData->m_entries.get();
     size_t end = m_mapData->m_size;
     while (static_cast<size_t>(m_index) < end && !entries[m_index].key())
         m_index++;

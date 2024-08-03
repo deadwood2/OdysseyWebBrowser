@@ -40,11 +40,6 @@
 #include "ResourceHandleManager.h"
 #include "SSLHandle.h"
 
-#if PLATFORM(WIN) && USE(CF)
-#include <wtf/PassRefPtr.h>
-#include <wtf/RetainPtr.h>
-#endif
-
 namespace WebCore {
 
 class WebCoreSynchronousLoader : public ResourceHandleClient {
@@ -120,6 +115,8 @@ void ResourceHandle::cancel()
     ResourceHandleManager::sharedInstance()->cancel(this);
 }
 
+#if PLATFORM(WIN)
+
 void ResourceHandle::setHostAllowsAnyHTTPSCertificate(const String& host)
 {
     allowsAnyHTTPSCertificateHosts(host);
@@ -132,6 +129,8 @@ void ResourceHandle::setClientCertificateInfo(const String& host, const String& 
     else
         LOG(Network, "Invalid client certificate file: %s!\n", certificate.latin1().data());
 }
+
+#endif
 
 #if PLATFORM(WIN) && USE(CF)
 
@@ -254,7 +253,7 @@ void ResourceHandle::receivedRequestToContinueWithoutCredential(const Authentica
     if (challenge != d->m_currentWebChallenge)
         return;
 
-    String userpass = "";
+    String userpass = emptyString();
     curl_easy_setopt(d->m_handle, CURLOPT_USERPWD, userpass.utf8().data());
 
     clearAuthentication();

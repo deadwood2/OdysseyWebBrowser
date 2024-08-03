@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,8 +23,71 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Note that the intrisic @typedArrayLength checks the that the argument passed is a typed array
+// Note that the intrisic @typedArrayLength checks that the argument passed is a typed array
 // and throws if it is not.
+
+
+// Typed Arrays have their own species constructor function since they need
+// to look up their default constructor, which is expensive. If we used the
+// normal speciesConstructor helper we would need to look up the default
+// constructor every time.
+@globalPrivate
+function typedArraySpeciesConstructor(value)
+{
+    "use strict";
+    let constructor = value.constructor;
+    if (constructor === @undefined)
+        return @typedArrayGetOriginalConstructor(value);
+
+    if (!@isObject(constructor))
+        throw new @TypeError("|this|.constructor is not an Object or undefined");
+
+    constructor = constructor.@speciesSymbol;
+    if (constructor == null)
+        return @typedArrayGetOriginalConstructor(value);
+    // The lack of an @isConstructor(constructor) check here is not observable because
+    // the first thing we will do with the value is attempt to construct the result with it.
+    // If any user of this function does not immediately construct the result they need to
+    // verify that the result is a constructor.
+    return constructor;
+}
+
+@globalPrivate
+function typedArrayClampArgumentToStartOrEnd(value, length, undefinedValue)
+{
+    "use strict";
+
+    if (value === @undefined)
+        return undefinedValue;
+
+    let int = @toInteger(value);
+    if (int < 0) {
+        int += length;
+        return int < 0 ? 0 : int;
+    }
+    return int > length ? length : int;
+}
+
+function values()
+{
+    "use strict";
+    @typedArrayLength(this);
+    return new @createArrayIterator(this, "value", @arrayIteratorValueNext);
+}
+
+function keys()
+{
+    "use strict";
+    @typedArrayLength(this);
+    return new @createArrayIterator(this, "key", @arrayIteratorKeyNext);
+}
+
+function entries()
+{
+    "use strict";
+    @typedArrayLength(this);
+    return new @createArrayIterator(this, "key+value", @arrayIteratorKeyValueNext);
+}
 
 function every(callback /*, thisArg */)
 {
@@ -41,6 +104,29 @@ function every(callback /*, thisArg */)
     }
 
     return true;
+}
+
+function fill(value /* [, start [, end]] */)
+{
+    "use strict";
+
+    let length = @typedArrayLength(this);
+    let start;
+    let end;
+
+    if (arguments.length > 1) {
+        start = arguments[1];
+        if (arguments.length > 2) {
+            end = arguments[2];
+        }
+    }
+
+    start = @typedArrayClampArgumentToStartOrEnd(start, length, 0);
+    end = @typedArrayClampArgumentToStartOrEnd(end, length, length);
+
+    for (let i = start; i < end; i++)
+        this[i] = value;
+    return this;
 }
 
 function find(callback /* [, thisArg] */)
@@ -172,6 +258,23 @@ function sort(comparator)
     return this;
 }
 
+function subarray(begin, end)
+{
+    "use strict";
+
+    if (!@isTypedArrayView(this))
+        throw new @TypeError("|this| should be a typed array view");
+
+    let start = @toInteger(begin);
+    let finish;
+    if (end !== @undefined)
+        finish = @toInteger(end);
+
+    let constructor = @typedArraySpeciesConstructor(this);
+
+    return @typedArraySubarrayCreate.@call(this, start, finish, constructor);
+}
+
 function reduce(callback /* [, initialValue] */)
 {
     // 22.2.3.19
@@ -233,8 +336,23 @@ function map(callback /*, thisArg */)
         throw new @TypeError("TypedArray.prototype.map callback must be a function");
 
     var thisArg = arguments.length > 1 ? arguments[1] : @undefined;
-    // FIXME: This should be a species constructor.
-    var result = new this.constructor(length);
+
+    // Do species construction
+    var constructor = this.constructor;
+    var result;
+    if (constructor === @undefined)
+        result = new (@typedArrayGetOriginalConstructor(this))(length);
+    else {
+        var speciesConstructor = @Object(constructor).@speciesSymbol;
+        if (speciesConstructor === null || speciesConstructor === @undefined)
+            result = new (@typedArrayGetOriginalConstructor(this))(length);
+        else {
+            result = new speciesConstructor(length);
+            // typedArrayLength throws if it doesn't get a view.
+            @typedArrayLength(result);
+        }
+    }
+
     for (var i = 0; i < length; i++) {
         var mappedValue = callback.@call(thisArg, this[i], i, this);
         result[i] = mappedValue;
@@ -252,7 +370,6 @@ function filter(callback /*, thisArg */)
         throw new @TypeError("TypedArray.prototype.filter callback must be a function");
 
     var thisArg = arguments.length > 1 ? arguments[1] : @undefined;
-
     var kept = [];
 
     for (var i = 0; i < length; i++) {
@@ -261,8 +378,21 @@ function filter(callback /*, thisArg */)
             kept.@push(value);
     }
 
-    // FIXME: This should be a species constructor.
-    var result = new this.constructor(kept.length);
+    var constructor = this.constructor;
+    var result;
+    var resultLength = kept.length;
+    if (constructor === @undefined)
+        result = new (@typedArrayGetOriginalConstructor(this))(resultLength);
+    else {
+        var speciesConstructor = @Object(constructor).@speciesSymbol;
+        if (speciesConstructor === null || speciesConstructor === @undefined)
+            result = new (@typedArrayGetOriginalConstructor(this))(resultLength);
+        else {
+            result = new speciesConstructor(resultLength);
+            // typedArrayLength throws if it doesn't get a view.
+            @typedArrayLength(result);
+        }
+    }
 
     for (var i = 0; i < kept.length; i++)
         result[i] = kept[i];

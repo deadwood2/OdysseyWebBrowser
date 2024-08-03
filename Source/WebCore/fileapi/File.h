@@ -23,10 +23,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef File_h
-#define File_h
+#pragma once
 
 #include "Blob.h"
+#include <wtf/Optional.h>
 #include <wtf/Ref.h>
 #include <wtf/TypeCasts.h>
 #include <wtf/text/WTFString.h>
@@ -42,6 +42,12 @@ public:
         return adoptRef(*new File(path));
     }
 
+    // Create a File using the 'new File' constructor.
+    static Ref<File> create(Vector<BlobPart> blobParts, const String& filename, const String& contentType, int64_t lastModified)
+    {
+        return adoptRef(*new File(WTFMove(blobParts), filename, contentType, lastModified));
+    }
+
     static Ref<File> deserialize(const String& path, const URL& srcURL, const String& type, const String& name)
     {
         return adoptRef(*new File(deserializationContructor, path, srcURL, type, name));
@@ -55,13 +61,11 @@ public:
         return adoptRef(*new File(path, nameOverride));
     }
 
-    virtual bool isFile() const override { return true; }
+    bool isFile() const override { return true; }
 
     const String& path() const { return m_path; }
     const String& name() const { return m_name; }
-
-    // This returns the current date and time if the file's last modification date is not known (per spec: http://www.w3.org/TR/FileAPI/#dfn-lastModifiedDate).
-    double lastModifiedDate() const;
+    WEBCORE_EXPORT double lastModified() const;
 
     static String contentTypeForFile(const String& path);
 
@@ -72,6 +76,7 @@ public:
 private:
     WEBCORE_EXPORT explicit File(const String& path);
     File(const String& path, const String& nameOverride);
+    File(Vector<BlobPart>&& blobParts, const String& filename, const String& contentType, int64_t lastModified);
 
     File(DeserializationContructor, const String& path, const URL& srcURL, const String& type, const String& name);
 
@@ -82,6 +87,9 @@ private:
 
     String m_path;
     String m_name;
+
+    Optional<String> m_overrideFilename;
+    Optional<int64_t> m_overrideLastModifiedDate;
 };
 
 } // namespace WebCore
@@ -89,5 +97,3 @@ private:
 SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::File)
     static bool isType(const WebCore::Blob& blob) { return blob.isFile(); }
 SPECIALIZE_TYPE_TRAITS_END()
-
-#endif // File_h

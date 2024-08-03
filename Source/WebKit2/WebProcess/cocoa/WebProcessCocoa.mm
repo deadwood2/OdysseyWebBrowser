@@ -48,10 +48,9 @@
 #import <WebCore/FontCache.h>
 #import <WebCore/FontCascade.h>
 #import <WebCore/LocalizedStrings.h>
-#import <WebCore/MemoryCache.h>
 #import <WebCore/MemoryPressureHandler.h>
 #import <WebCore/NSAccessibilitySPI.h>
-#import <WebCore/PageCache.h>
+#import <WebCore/RuntimeApplicationChecks.h>
 #import <WebCore/pthreadSPI.h>
 #import <WebCore/VNodeTracker.h>
 #import <WebCore/WebCoreNSURLExtras.h>
@@ -60,55 +59,21 @@
 #import <dispatch/dispatch.h>
 #import <objc/runtime.h>
 #import <stdio.h>
-#import <wtf/RAMSize.h>
 
 #if PLATFORM(IOS)
 #import <WebCore/GraphicsServicesSPI.h>
+#endif
+
+#if USE(OS_STATE)
+#include <os/state_private.h>
 #endif
 
 using namespace WebCore;
 
 namespace WebKit {
 
-static uint64_t volumeFreeSize(NSString *path)
+void WebProcess::platformSetCacheModel(CacheModel)
 {
-    NSDictionary *fileSystemAttributesDictionary = [[NSFileManager defaultManager] attributesOfFileSystemForPath:path error:NULL];
-    return [[fileSystemAttributesDictionary objectForKey:NSFileSystemFreeSize] unsignedLongLongValue];
-}
-
-void WebProcess::platformSetCacheModel(CacheModel cacheModel)
-{
-    RetainPtr<NSString> nsurlCacheDirectory = adoptNS((NSString *)WKCopyFoundationCacheDirectory());
-    if (!nsurlCacheDirectory)
-        nsurlCacheDirectory = NSHomeDirectory();
-
-    uint64_t memSize = ramSize() / 1024 / 1024;
-
-    // As a fudge factor, use 1000 instead of 1024, in case the reported byte 
-    // count doesn't align exactly to a megabyte boundary.
-    uint64_t diskFreeSize = volumeFreeSize(nsurlCacheDirectory.get()) / 1024 / 1000;
-
-    unsigned cacheTotalCapacity = 0;
-    unsigned cacheMinDeadCapacity = 0;
-    unsigned cacheMaxDeadCapacity = 0;
-    auto deadDecodedDataDeletionInterval = std::chrono::seconds { 0 };
-    unsigned pageCacheSize = 0;
-    unsigned long urlCacheMemoryCapacity = 0;
-    unsigned long urlCacheDiskCapacity = 0;
-
-    calculateCacheSizes(cacheModel, memSize, diskFreeSize,
-        cacheTotalCapacity, cacheMinDeadCapacity, cacheMaxDeadCapacity, deadDecodedDataDeletionInterval,
-        pageCacheSize, urlCacheMemoryCapacity, urlCacheDiskCapacity);
-
-    auto& memoryCache = MemoryCache::singleton();
-    memoryCache.setCapacities(cacheMinDeadCapacity, cacheMaxDeadCapacity, cacheTotalCapacity);
-    memoryCache.setDeadDecodedDataDeletionInterval(deadDecodedDataDeletionInterval);
-    PageCache::singleton().setMaxSize(pageCacheSize);
-}
-
-void WebProcess::platformClearResourceCaches(ResourceCachesToClear cachesToClear)
-{
-    // FIXME: Remove this.
 }
 
 #if USE(APPKIT)
@@ -124,10 +89,13 @@ static id NSApplicationAccessibilityFocusedUIElement(NSApplication*, SEL)
 
 void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters&& parameters)
 {
+    WebCore::setApplicationBundleIdentifier(parameters.uiProcessBundleIdentifier);
+
 #if ENABLE(SANDBOX_EXTENSIONS)
     SandboxExtension::consumePermanently(parameters.uiProcessBundleResourcePathExtensionHandle);
     SandboxExtension::consumePermanently(parameters.webSQLDatabaseDirectoryExtensionHandle);
     SandboxExtension::consumePermanently(parameters.applicationCacheDirectoryExtensionHandle);
+    SandboxExtension::consumePermanently(parameters.mediaCacheDirectoryExtensionHandle);
     SandboxExtension::consumePermanently(parameters.mediaKeyStorageDirectoryExtensionHandle);
 #if PLATFORM(IOS)
     SandboxExtension::consumePermanently(parameters.cookieStorageDirectoryExtensionHandle);
@@ -145,7 +113,6 @@ void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters&& par
 
 #if PLATFORM(MAC)
     WebCore::FontCache::setFontWhitelist(parameters.fontWhitelist);
-    Page::setTabSuspensionEnabled(parameters.shouldEnableTabSuspension);
 #endif
 
     m_compositingRenderServerPort = WTFMove(parameters.acceleratedCompositingPort);
@@ -207,9 +174,79 @@ static void registerWithAccessibility()
 #endif
 }
 
+#if USE(OS_STATE)
+void WebProcess::registerWithStateDumper()
+{
+    os_state_add_handler(dispatch_get_main_queue(), ^(os_state_hints_t hints) {
+
+        @autoreleasepool {
+            os_state_data_t os_state = nil;
+
+            // Only gather state on faults and sysdiagnose. It's overkill for
+            // general error messages.
+            if (hints->osh_api == OS_STATE_API_ERROR)
+                return os_state;
+
+            // Create a dictionary to contain the collected state. This
+            // dictionary will be serialized and passed back to os_state.
+            auto stateDict = adoptNS([[NSMutableDictionary alloc] init]);
+
+            auto pageLoadTimes = adoptNS([[NSMutableArray alloc] init]);
+            for (auto& page : m_pageMap.values()) {
+                if (page->usesEphemeralSession())
+                    continue;
+
+                NSDate* date = [NSDate dateWithTimeIntervalSince1970:std::chrono::system_clock::to_time_t(page->loadCommitTime())];
+                [pageLoadTimes addObject:date];
+            }
+
+            // Adding an empty array to the process state may provide an
+            // indication of the existance of private sessions, which we'd like
+            // to hide, so don't add empty arrays.
+            if ([pageLoadTimes count])
+                [stateDict setObject:pageLoadTimes.get() forKey:@"Page Load Times"];
+
+            // --- Possibly add other state here as other entries in the dictionary. ---
+
+            // Submitting an empty process state object may provide an
+            // indication of the existance of private sessions, which we'd like
+            // to hide, so don't return empty dictionaries.
+            if (![stateDict count])
+                return os_state;
+
+            // Serialize the accumulated process state so that we can put the
+            // result in an os_state_data_t structure.
+            NSError* error = nil;
+            NSData* data = [NSPropertyListSerialization dataWithPropertyList:stateDict.get() format:NSPropertyListBinaryFormat_v1_0 options:0 error:&error];
+
+            if (!data) {
+                ASSERT(data);
+                return os_state;
+            }
+
+            size_t neededSize = OS_STATE_DATA_SIZE_NEEDED(data.length);
+            os_state = (os_state_data_t)malloc(neededSize);
+            if (os_state) {
+                memset(os_state, 0, neededSize);
+                os_state->osd_type = OS_STATE_DATA_SERIALIZED_NSCF_OBJECT;
+                os_state->osd_data_size = data.length;
+                strcpy(os_state->osd_title, "WebContent state"); // NB: Only 64 bytes of buffer here.
+                memcpy(os_state->osd_data, data.bytes, data.length);
+            }
+
+            return os_state;
+        }
+    });
+}
+#endif
+
 void WebProcess::platformInitializeProcess(const ChildProcessInitializationParameters&)
 {
     registerWithAccessibility();
+
+#if USE(OS_STATE)
+    registerWithStateDumper();
+#endif
 
 #if ENABLE(SEC_ITEM_SHIM)
     SecItemShim::singleton().initialize(this);
@@ -225,6 +262,19 @@ void WebProcess::stopRunLoop()
 
 void WebProcess::platformTerminate()
 {
+}
+
+RetainPtr<CFDataRef> WebProcess::sourceApplicationAuditData() const
+{
+#if PLATFORM(IOS)
+    audit_token_t auditToken;
+    ASSERT(parentProcessConnection());
+    if (!parentProcessConnection() || !parentProcessConnection()->getAuditToken(auditToken))
+        return nullptr;
+    return adoptCF(CFDataCreate(nullptr, (const UInt8*)&auditToken, sizeof(auditToken)));
+#else
+    return nullptr;
+#endif
 }
 
 void WebProcess::initializeSandbox(const ChildProcessInitializationParameters& parameters, SandboxInitializationParameters& sandboxParameters)
@@ -302,7 +352,7 @@ RefPtr<ObjCObjectGraph> WebProcess::transformHandlesToObjects(ObjCObjectGraph& o
         {
         }
 
-        virtual bool shouldTransformObject(id object) const override
+        bool shouldTransformObject(id object) const override
         {
 #if WK_API_ENABLED
             if (dynamic_objc_cast<WKBrowsingContextHandle>(object))
@@ -314,7 +364,7 @@ RefPtr<ObjCObjectGraph> WebProcess::transformHandlesToObjects(ObjCObjectGraph& o
             return false;
         }
 
-        virtual RetainPtr<id> transformObject(id object) const override
+        RetainPtr<id> transformObject(id object) const override
         {
 #if WK_API_ENABLED
             if (auto* handle = dynamic_objc_cast<WKBrowsingContextHandle>(object)) {
@@ -339,7 +389,7 @@ RefPtr<ObjCObjectGraph> WebProcess::transformHandlesToObjects(ObjCObjectGraph& o
 RefPtr<ObjCObjectGraph> WebProcess::transformObjectsToHandles(ObjCObjectGraph& objectGraph)
 {
     struct Transformer final : ObjCObjectGraph::Transformer {
-        virtual bool shouldTransformObject(id object) const override
+        bool shouldTransformObject(id object) const override
         {
 #if WK_API_ENABLED
             if (dynamic_objc_cast<WKWebProcessPlugInBrowserContextController>(object))
@@ -352,7 +402,7 @@ RefPtr<ObjCObjectGraph> WebProcess::transformObjectsToHandles(ObjCObjectGraph& o
             return false;
         }
 
-        virtual RetainPtr<id> transformObject(id object) const override
+        RetainPtr<id> transformObject(id object) const override
         {
 #if WK_API_ENABLED
             if (auto* controller = dynamic_objc_cast<WKWebProcessPlugInBrowserContextController>(object))

@@ -38,7 +38,6 @@
 #include <wtf/RandomNumber.h>
 #include <wtf/RunLoop.h>
 #include <wtf/text/CString.h>
-#include <wtf/text/StringBuilder.h>
 
 namespace WebKit {
 namespace NetworkCache {
@@ -99,9 +98,9 @@ bool Storage::ReadOperation::finish()
 struct Storage::WriteOperation {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    WriteOperation(const Record& record, const MappedBodyHandler& mappedBodyHandler)
+    WriteOperation(const Record& record, MappedBodyHandler&& mappedBodyHandler)
         : record(record)
-        , mappedBodyHandler(mappedBodyHandler)
+        , mappedBodyHandler(WTFMove(mappedBodyHandler))
     { }
     
     const Record record;
@@ -113,10 +112,10 @@ public:
 struct Storage::TraverseOperation {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    TraverseOperation(const String& type, TraverseFlags flags, const TraverseHandler& handler)
+    TraverseOperation(const String& type, TraverseFlags flags, TraverseHandler&& handler)
         : type(type)
         , flags(flags)
-        , handler(handler)
+        , handler(WTFMove(handler))
     { }
 
     const String type;
@@ -278,12 +277,7 @@ void Storage::synchronize()
             ++count;
         });
 
-        auto* recordFilterPtr = recordFilter.release();
-        auto* blobFilterPtr = blobFilter.release();
-        RunLoop::main().dispatch([this, recordFilterPtr, blobFilterPtr, recordsSize] {
-            auto recordFilter = std::unique_ptr<ContentsFilter>(recordFilterPtr);
-            auto blobFilter = std::unique_ptr<ContentsFilter>(blobFilterPtr);
-
+        RunLoop::main().dispatch([this, recordFilter = WTFMove(recordFilter), blobFilter = WTFMove(blobFilter), recordsSize]() mutable {
             for (auto& recordFilterKey : m_recordFilterHashesAddedDuringSynchronization)
                 recordFilter->add(recordFilterKey);
             m_recordFilterHashesAddedDuringSynchronization.clear();
@@ -526,7 +520,7 @@ Data Storage::encodeRecord(const Record& record, Optional<BlobStorage::Blob> blo
 void Storage::removeFromPendingWriteOperations(const Key& key)
 {
     while (true) {
-        auto found = m_pendingWriteOperations.findIf([&key](const std::unique_ptr<WriteOperation>& operation) {
+        auto found = m_pendingWriteOperations.findIf([&key](auto& operation) {
             return operation->record.key == key;
         });
 
@@ -558,9 +552,8 @@ void Storage::remove(const Key& key)
 
 void Storage::updateFileModificationTime(const String& path)
 {
-    StringCapture filePathCapture(path);
-    serialBackgroundIOQueue().dispatch([filePathCapture] {
-        updateFileModificationTimeIfNeeded(filePathCapture.string());
+    serialBackgroundIOQueue().dispatch([path = path.isolatedCopy()] {
+        updateFileModificationTimeIfNeeded(path);
     });
 }
 
@@ -572,7 +565,7 @@ void Storage::dispatchReadOperation(std::unique_ptr<ReadOperation> readOperation
     m_activeReadOperations.add(WTFMove(readOperationPtr));
 
     // I/O pressure may make disk operations slow. If they start taking very long time we rather go to network.
-    const auto readTimeout = 1500_ms;
+    const auto readTimeout = 1500ms;
     m_readOperationTimeoutTimer.startOneShot(readTimeout);
 
     bool shouldGetBodyBlob = mayContainBlob(readOperation.key);
@@ -668,8 +661,7 @@ template <class T> bool retrieveFromMemory(const T& operations, const Key& key, 
     for (auto& operation : operations) {
         if (operation->record.key == key) {
             LOG(NetworkCacheStorage, "(NetworkProcess) found write operation in progress");
-            auto record = operation->record;
-            RunLoop::main().dispatch([record, completionHandler] {
+            RunLoop::main().dispatch([record = operation->record, completionHandler = WTFMove(completionHandler)] {
                 completionHandler(std::make_unique<Storage::Record>(record));
             });
             return true;
@@ -795,7 +787,7 @@ void Storage::store(const Record& record, MappedBodyHandler&& mappedBodyHandler)
 
     // Delay the start of writes a bit to avoid affecting early page load.
     // Completing writes will dispatch more writes without delay.
-    static const auto initialWriteDelay = 1_s;
+    static const auto initialWriteDelay = 1s;
     m_writeOperationDispatchTimer.startOneShot(initialWriteDelay);
 }
 
@@ -898,12 +890,9 @@ void Storage::clear(const String& type, std::chrono::system_clock::time_point mo
         m_blobFilter->clear();
     m_approximateRecordsSize = 0;
 
-    // Avoid non-thread safe std::function copies.
-    auto* completionHandlerPtr = completionHandler ? new std::function<void ()>(WTFMove(completionHandler)) : nullptr;
-    StringCapture typeCapture(type);
-    ioQueue().dispatch([this, modifiedSinceTime, completionHandlerPtr, typeCapture] {
+    ioQueue().dispatch([this, modifiedSinceTime, completionHandler = WTFMove(completionHandler), type = type.isolatedCopy()] () mutable {
         auto recordsPath = this->recordsPath();
-        traverseRecordsFiles(recordsPath, typeCapture.string(), [modifiedSinceTime](const String& fileName, const String& hashString, const String& type, bool isBlob, const String& recordDirectoryPath) {
+        traverseRecordsFiles(recordsPath, type, [modifiedSinceTime](const String& fileName, const String& hashString, const String& type, bool isBlob, const String& recordDirectoryPath) {
             auto filePath = WebCore::pathByAppendingComponent(recordDirectoryPath, fileName);
             if (modifiedSinceTime > std::chrono::system_clock::time_point::min()) {
                 auto times = fileTimes(filePath);
@@ -918,10 +907,9 @@ void Storage::clear(const String& type, std::chrono::system_clock::time_point mo
         // This cleans unreferenced blobs.
         m_blobStorage.synchronize();
 
-        if (completionHandlerPtr) {
-            RunLoop::main().dispatch([completionHandlerPtr] {
-                (*completionHandlerPtr)();
-                delete completionHandlerPtr;
+        if (completionHandler) {
+            RunLoop::main().dispatch([completionHandler = WTFMove(completionHandler)] {
+                completionHandler();
             });
         }
     });
@@ -935,7 +923,7 @@ static double computeRecordWorth(FileTimes times)
     auto accessAge = times.modification - times.creation;
 
     // For sanity.
-    if (age <= 0_s || accessAge < 0_s || accessAge > age)
+    if (age <= 0s || accessAge < 0s || accessAge > age)
         return 0;
 
     // We like old entries that have been accessed recently.
@@ -1029,10 +1017,7 @@ void Storage::deleteOldVersions()
                 return;
             if (directoryVersion >= version)
                 return;
-
 #if PLATFORM(MAC)
-            // Allow the last stable version of the cache to co-exist with the latest development one on Mac.
-            const unsigned lastStableVersion = 4;
             if (directoryVersion == lastStableVersion)
                 return;
 #endif

@@ -24,10 +24,10 @@
  */
 
 [
-    Conditional=MEDIA_STREAM,
+    Conditional=WEB_RTC,
     NoInterfaceObject,
 ] interface RTCIceServer {
-    readonly attribute DOMString[] urls;
+    readonly attribute sequence<DOMString> urls;
     readonly attribute DOMString username;
     readonly attribute DOMString credential;
 };

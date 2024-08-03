@@ -24,8 +24,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef ScrollView_h
-#define ScrollView_h
+#pragma once
 
 #include "FloatRect.h"
 #include "IntRect.h"
@@ -65,13 +64,15 @@ public:
     virtual ~ScrollView();
 
     // ScrollableArea functions.
-    virtual int scrollSize(ScrollbarOrientation) const override;
-    virtual int scrollOffset(ScrollbarOrientation) const override;
-    WEBCORE_EXPORT virtual void setScrollOffset(const ScrollOffset&) override;
-    virtual bool isScrollCornerVisible() const override;
-    virtual void scrollbarStyleChanged(ScrollbarStyle, bool forceUpdate) override;
+    int scrollSize(ScrollbarOrientation) const override;
+    int scrollOffset(ScrollbarOrientation) const override;
+    WEBCORE_EXPORT void setScrollOffset(const ScrollOffset&) override;
+    bool isScrollCornerVisible() const override;
+    void scrollbarStyleChanged(ScrollbarStyle, bool forceUpdate) override;
 
     virtual void notifyPageThatContentAreaWillPaint() const;
+
+    IntPoint locationOfContents() const;
 
     // NOTE: This should only be called by the overriden setScrollOffset from ScrollableArea.
     virtual void scrollTo(const ScrollPosition&);
@@ -90,8 +91,8 @@ public:
 
     // If the scroll view does not use a native widget, then it will have cross-platform Scrollbars. These functions
     // can be used to obtain those scrollbars.
-    virtual Scrollbar* horizontalScrollbar() const override { return m_horizontalScrollbar.get(); }
-    virtual Scrollbar* verticalScrollbar() const override { return m_verticalScrollbar.get(); }
+    Scrollbar* horizontalScrollbar() const override { return m_horizontalScrollbar.get(); }
+    Scrollbar* verticalScrollbar() const override { return m_verticalScrollbar.get(); }
     bool isScrollViewScrollbar(const Widget* child) const { return horizontalScrollbar() == child || verticalScrollbar() == child; }
 
     void positionScrollbarLayers();
@@ -120,7 +121,7 @@ public:
 
     virtual bool avoidScrollbarCreation() const { return false; }
 
-    virtual void setScrollbarOverlayStyle(ScrollbarOverlayStyle) override;
+    void setScrollbarOverlayStyle(ScrollbarOverlayStyle) override;
 
     // By default you only receive paint events for the area that is visible. In the case of using a
     // tiled backing store, this function can be set, so that the view paints the entire contents.
@@ -166,7 +167,7 @@ public:
     // In the situation the client is responsible for the scrolling (ie. with a tiled backing store) it is possible to use
     // the setFixedVisibleContentRect instead for the mainframe, though this must be updated manually, e.g just before resuming the page
     // which usually will happen when panning, pinching and rotation ends, or when scale or position are changed manually.
-    virtual IntSize visibleSize() const override { return visibleContentRect(LegacyIOSDocumentVisibleRect).size(); }
+    IntSize visibleSize() const override { return visibleContentRect(LegacyIOSDocumentVisibleRect).size(); }
 
 #if USE(COORDINATED_GRAPHICS)
     virtual void setFixedVisibleContentRect(const IntRect& visibleContentRect) { m_fixedVisibleContentRect = visibleContentRect; }
@@ -209,7 +210,7 @@ public:
 
     // Functions for getting/setting the size webkit should use to layout the contents. By default this is the same as the visible
     // content size. Explicitly setting a layout size value will cause webkit to layout the contents using this size instead.
-    IntSize layoutSize() const;
+    WEBCORE_EXPORT IntSize layoutSize() const;
     int layoutWidth() const { return layoutSize().width(); }
     int layoutHeight() const { return layoutSize().height(); }
     WEBCORE_EXPORT IntSize fixedLayoutSize() const;
@@ -219,15 +220,15 @@ public:
 
     // Functions for getting/setting the size of the document contained inside the ScrollView (as an IntSize or as individual width and height
     // values).
-    WEBCORE_EXPORT virtual IntSize contentsSize() const override; // Always at least as big as the visibleWidth()/visibleHeight().
+    WEBCORE_EXPORT IntSize contentsSize() const override; // Always at least as big as the visibleWidth()/visibleHeight().
     int contentsWidth() const { return contentsSize().width(); }
     int contentsHeight() const { return contentsSize().height(); }
     virtual void setContentsSize(const IntSize&);
 
     // Functions for querying the current scrolled position (both as a point, a size, or as individual X and Y values).
-    virtual ScrollPosition scrollPosition() const override { return visibleContentRect(LegacyIOSDocumentVisibleRect).location(); }
+    ScrollPosition scrollPosition() const override { return visibleContentRect(LegacyIOSDocumentVisibleRect).location(); }
 
-    virtual ScrollPosition maximumScrollPosition() const override; // The maximum position we can be scrolled to.
+    ScrollPosition maximumScrollPosition() const override; // The maximum position we can be scrolled to.
 
     // Adjust the passed in scroll position to keep it between the minimum and maximum positions.
     ScrollPosition adjustScrollPositionWithinRange(const ScrollPosition&) const;
@@ -260,7 +261,7 @@ public:
     // relative to the very top of the view.
     WEBCORE_EXPORT ScrollPosition documentScrollPositionRelativeToViewOrigin() const;
 
-    virtual IntSize overhangAmount() const override;
+    IntSize overhangAmount() const override;
 
     void cacheCurrentScrollPosition() { m_cachedScrollPosition = scrollPosition(); }
     ScrollPosition cachedScrollPosition() const { return m_cachedScrollPosition; }
@@ -284,7 +285,7 @@ public:
 
     WEBCORE_EXPORT IntPoint rootViewToContents(const IntPoint&) const;
     WEBCORE_EXPORT IntPoint contentsToRootView(const IntPoint&) const;
-    IntRect rootViewToContents(const IntRect&) const;
+    WEBCORE_EXPORT IntRect rootViewToContents(const IntRect&) const;
     WEBCORE_EXPORT IntRect contentsToRootView(const IntRect&) const;
 
     IntPoint viewToContents(const IntPoint&) const;
@@ -315,13 +316,13 @@ public:
     bool isOffscreen() const;
 
     // Called when our frame rect changes (or the rect/scroll position of an ancestor changes).
-    virtual void frameRectsChanged() override;
+    void frameRectsChanged() override;
     
     // Widget override to update our scrollbars and notify our contents of the resize.
-    virtual void setFrameRect(const IntRect&) override;
+    void setFrameRect(const IntRect&) override;
 
     // Widget override to notify our contents of a cliprect change.
-    virtual void clipRectChanged() override;
+    void clipRectChanged() override;
 
     // For platforms that need to hit test scrollbars from within the engine's event handlers (like Win32).
     Scrollbar* scrollbarAtPoint(const IntPoint& windowPoint);
@@ -345,13 +346,13 @@ public:
     }
 
     // Widget override. Handles painting of the contents of the view as well as the scrollbars.
-    WEBCORE_EXPORT virtual void paint(GraphicsContext&, const IntRect&) override;
+    WEBCORE_EXPORT void paint(GraphicsContext&, const IntRect&) override;
     void paintScrollbars(GraphicsContext&, const IntRect&);
 
     // Widget overrides to ensure that our children's visibility status is kept up to date when we get shown and hidden.
-    WEBCORE_EXPORT virtual void show() override;
-    WEBCORE_EXPORT virtual void hide() override;
-    WEBCORE_EXPORT virtual void setParentVisible(bool) override;
+    WEBCORE_EXPORT void show() override;
+    WEBCORE_EXPORT void hide() override;
+    WEBCORE_EXPORT void setParentVisible(bool) override;
     
     // Pan scrolling.
     static const int noPanScrollRadius = 15;
@@ -361,18 +362,18 @@ public:
 
     virtual bool isPointInScrollbarCorner(const IntPoint&);
     virtual bool scrollbarCornerPresent() const;
-    virtual IntRect scrollCornerRect() const override;
+    IntRect scrollCornerRect() const override;
     virtual void paintScrollCorner(GraphicsContext&, const IntRect& cornerRect);
     virtual void paintScrollbar(GraphicsContext&, Scrollbar&, const IntRect&);
 
-    virtual IntRect convertFromScrollbarToContainingView(const Scrollbar*, const IntRect&) const override;
-    virtual IntRect convertFromContainingViewToScrollbar(const Scrollbar*, const IntRect&) const override;
-    virtual IntPoint convertFromScrollbarToContainingView(const Scrollbar*, const IntPoint&) const override;
-    virtual IntPoint convertFromContainingViewToScrollbar(const Scrollbar*, const IntPoint&) const override;
+    IntRect convertFromScrollbarToContainingView(const Scrollbar&, const IntRect&) const override;
+    IntRect convertFromContainingViewToScrollbar(const Scrollbar&, const IntRect&) const override;
+    IntPoint convertFromScrollbarToContainingView(const Scrollbar&, const IntPoint&) const override;
+    IntPoint convertFromContainingViewToScrollbar(const Scrollbar&, const IntPoint&) const override;
 
     void calculateAndPaintOverhangAreas(GraphicsContext&, const IntRect& dirtyRect);
 
-    virtual bool isScrollView() const override { return true; }
+    bool isScrollView() const override { return true; }
 
     WEBCORE_EXPORT void scrollOffsetChangedViaPlatformWidget(const ScrollOffset& oldOffset, const ScrollOffset& newOffset);
 
@@ -384,7 +385,7 @@ protected:
 
     virtual void paintOverhangAreas(GraphicsContext&, const IntRect& horizontalOverhangArea, const IntRect& verticalOverhangArea, const IntRect& dirtyRect);
 
-    virtual void availableContentSizeChanged(AvailableSizeChangeReason) override;
+    void availableContentSizeChanged(AvailableSizeChangeReason) override;
     virtual void addedOrRemovedScrollbar() = 0;
     virtual void delegatesScrollingDidChange() { }
 
@@ -394,7 +395,7 @@ protected:
     bool setHasVerticalScrollbar(bool, bool* contentSizeAffected = 0);
 
     virtual void updateScrollCorner();
-    virtual void invalidateScrollCornerRect(const IntRect&) override;
+    void invalidateScrollCornerRect(const IntRect&) override;
 
     // Scroll the content by blitting the pixels.
     virtual bool scrollContentsFastPath(const IntSize& scrollDelta, const IntRect& rectToScroll, const IntRect& clipRect);
@@ -419,11 +420,17 @@ protected:
 
     virtual void scrollOffsetChangedViaPlatformWidgetImpl(const ScrollOffset&, const ScrollOffset&) { }
 
+#if PLATFORM(IOS)
+    virtual void unobscuredContentSizeChanged() { }
+#endif
+
 private:
-    virtual IntRect visibleContentRectInternal(VisibleContentRectIncludesScrollbars, VisibleContentRectBehavior) const override;
+    IntRect visibleContentRectInternal(VisibleContentRectIncludesScrollbars, VisibleContentRectBehavior) const override;
     WEBCORE_EXPORT IntRect unobscuredContentRectInternal(VisibleContentRectIncludesScrollbars = ExcludeScrollbars) const;
 
     void completeUpdatesAfterScrollTo(const IntSize& scrollDelta);
+
+    bool setHasScrollbarInternal(RefPtr<Scrollbar>&, ScrollbarOrientation, bool hasBar, bool* contentSizeAffected);
 
     RefPtr<Scrollbar> m_horizontalScrollbar;
     RefPtr<Scrollbar> m_verticalScrollbar;
@@ -441,11 +448,12 @@ private:
     // whether it is safe to blit on scroll.
     bool m_canBlitOnScroll;
 
+#if PLATFORM(IOS)
     // FIXME: exposedContentRect is a very similar concept to fixedVisibleContentRect except it does not differentiate
     // between exposed and unobscured areas. The two attributes should eventually be merged.
-#if PLATFORM(IOS)
     FloatRect m_exposedContentRect;
     FloatSize m_unobscuredContentSize;
+    // This is only used for history scroll position restoration.
 #else
     IntRect m_fixedVisibleContentRect;
 #endif
@@ -454,8 +462,8 @@ private:
     IntSize m_fixedLayoutSize;
     IntSize m_contentsSize;
 
-    std::unique_ptr<IntSize> m_deferredScrollDelta; // Needed for WebKit scrolling
-    std::unique_ptr<std::pair<ScrollOffset, ScrollOffset>> m_deferredScrollOffsets; // Needed for platform widget scrolling
+    Optional<IntSize> m_deferredScrollDelta; // Needed for WebKit scrolling
+    Optional<std::pair<ScrollOffset, ScrollOffset>> m_deferredScrollOffsets; // Needed for platform widget scrolling
 
     bool m_scrollbarsSuppressed;
 
@@ -516,5 +524,3 @@ private:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_WIDGET(ScrollView, isScrollView())
-
-#endif // ScrollView_h

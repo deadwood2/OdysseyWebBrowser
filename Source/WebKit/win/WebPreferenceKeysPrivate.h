@@ -68,6 +68,7 @@
 #define WebKitIconDatabaseLocationKey "WebKitIconDatabaseLocation"
 #define WebKitIconDatabaseEnabledPreferenceKey "WebKitIconDatabaseEnabled"
 #define WebKitUsesPageCachePreferenceKey "WebKitUsesPageCachePreferenceKey"
+#define WebKitAllowsPageCacheWithWindowOpenerKey "WebKitAllowsPageCacheWithWindowOpenerKey"
 #define WebKitCacheModelPreferenceKey "WebKitCacheModelPreferenceKey"
 #define WebKitLocalStorageDatabasePathPreferenceKey "WebKitLocalStorageDatabasePath"
 #define WebKitHyperlinkAuditingEnabledPreferenceKey "WebKitHyperlinkAuditingEnabled"
@@ -167,3 +168,11 @@
 #define WebKitAllowDisplayAndRunningOfInsecureContentPreferenceKey "WebKitAllowDisplayAndRunningOfInsecureContent"
 
 #define WebKitShowTiledScrollingIndicatorPreferenceKey "WebKitShowTiledScrollingIndicator"
+
+#define WebKitDOMIteratorEnabledPreferenceKey "WebKitDOMIteratorEnabled"
+
+#define WebKitFetchAPIEnabledPreferenceKey "WebKitFetchAPIEnabled"
+
+#define WebKitShadowDOMEnabledPreferenceKey "WebKitShadowDOMEnabled"
+
+#define WebKitCustomElementsEnabledPreferenceKey "WebKitCustomElementsEnabled"

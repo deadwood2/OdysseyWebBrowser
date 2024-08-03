@@ -16,9 +16,9 @@ list(APPEND WebKit2_SOURCES
     Platform/IPC/unix/AttachmentUnix.cpp
     Platform/IPC/unix/ConnectionUnix.cpp
 
-    Platform/efl/LoggingEfl.cpp
     Platform/efl/ModuleEfl.cpp
 
+    Platform/unix/LoggingUnix.cpp
     Platform/unix/SharedMemoryUnix.cpp
 
     PluginProcess/unix/PluginControllerProxyUnix.cpp
@@ -50,22 +50,15 @@ list(APPEND WebKit2_SOURCES
 
     Shared/linux/WebMemorySamplerLinux.cpp
 
-    Shared/linux/SeccompFilters/OpenSyscall.cpp
-    Shared/linux/SeccompFilters/SeccompBroker.cpp
-    Shared/linux/SeccompFilters/SeccompFilters.cpp
-    Shared/linux/SeccompFilters/SigactionSyscall.cpp
-    Shared/linux/SeccompFilters/SigprocmaskSyscall.cpp
-    Shared/linux/SeccompFilters/Syscall.cpp
-    Shared/linux/SeccompFilters/SyscallPolicy.cpp
-    Shared/linux/SeccompFilters/XDGBaseDirectoryGLib.cpp
-
     Shared/soup/WebCoreArgumentCodersSoup.cpp
 
     Shared/unix/ChildProcessMain.cpp
 
+    UIProcess/AcceleratedDrawingAreaProxy.cpp
     UIProcess/BackingStore.cpp
     UIProcess/DefaultUndoController.cpp
     UIProcess/LegacySessionStateCodingNone.cpp
+    UIProcess/WebResourceLoadStatisticsStore.cpp
 
     UIProcess/API/C/CoordinatedGraphics/WKView.cpp
 
@@ -73,9 +66,6 @@ list(APPEND WebKit2_SOURCES
 
     UIProcess/API/C/efl/WKColorPickerResultListener.cpp
     UIProcess/API/C/efl/WKEventEfl.cpp
-    UIProcess/API/C/efl/WKPageEfl.cpp
-    UIProcess/API/C/efl/WKPopupItem.cpp
-    UIProcess/API/C/efl/WKPopupMenuListener.cpp
     UIProcess/API/C/efl/WKViewEfl.cpp
 
     UIProcess/API/C/soup/WKCookieManagerSoup.cpp
@@ -123,12 +113,9 @@ list(APPEND WebKit2_SOURCES
     UIProcess/API/efl/ewk_view.cpp
     UIProcess/API/efl/ewk_window_features.cpp
 
-    UIProcess/CoordinatedGraphics/CoordinatedDrawingAreaProxy.cpp
     UIProcess/CoordinatedGraphics/CoordinatedLayerTreeHostProxy.cpp
     UIProcess/CoordinatedGraphics/PageViewportController.cpp
     UIProcess/CoordinatedGraphics/WebPageProxyCoordinatedGraphics.cpp
-
-    UIProcess/Databases/efl/DatabaseProcessProxyEfl.cpp
 
     UIProcess/InspectorServer/efl/WebInspectorServerEfl.cpp
 
@@ -139,8 +126,6 @@ list(APPEND WebKit2_SOURCES
     UIProcess/Network/CustomProtocols/soup/CustomProtocolManagerProxySoup.cpp
     UIProcess/Network/CustomProtocols/soup/WebSoupCustomProtocolRequestManager.cpp
     UIProcess/Network/CustomProtocols/soup/WebSoupCustomProtocolRequestManagerClient.cpp
-
-    UIProcess/Network/soup/NetworkProcessProxySoup.cpp
 
     UIProcess/Plugins/unix/PluginInfoStoreUnix.cpp
     UIProcess/Plugins/unix/PluginProcessProxyUnix.cpp
@@ -177,17 +162,16 @@ list(APPEND WebKit2_SOURCES
     UIProcess/efl/WebInspectorProxyEfl.cpp
     UIProcess/efl/WebPageProxyEfl.cpp
     UIProcess/efl/WebPopupItemEfl.cpp
-    UIProcess/efl/WebPopupMenuListenerEfl.cpp
+    UIProcess/efl/WebPopupMenuProxyEfl.cpp
     UIProcess/efl/WebPreferencesEfl.cpp
     UIProcess/efl/WebProcessPoolEfl.cpp
-    UIProcess/efl/WebProcessProxyEfl.cpp
-    UIProcess/efl/WebUIPopupMenuClient.cpp
     UIProcess/efl/WebView.cpp
     UIProcess/efl/WebViewClient.cpp
-    UIProcess/efl/WebViewEfl.cpp
 
     UIProcess/gstreamer/InstallMissingMediaPluginsPermissionRequest.cpp
     UIProcess/gstreamer/WebPageProxyGStreamer.cpp
+
+    UIProcess/linux/MemoryPressureMonitor.cpp
 
     UIProcess/soup/WebCookieManagerProxySoup.cpp
     UIProcess/soup/WebProcessPoolSoup.cpp
@@ -214,10 +198,13 @@ list(APPEND WebKit2_SOURCES
 
     WebProcess/WebCoreSupport/soup/WebFrameNetworkingContext.cpp
 
+    WebProcess/WebPage/AcceleratedDrawingArea.cpp
     WebProcess/WebPage/DrawingAreaImpl.cpp
 
-    WebProcess/WebPage/CoordinatedGraphics/CoordinatedDrawingArea.cpp
+    WebProcess/WebPage/CoordinatedGraphics/AreaAllocator.cpp
+    WebProcess/WebPage/CoordinatedGraphics/CompositingCoordinator.cpp
     WebProcess/WebPage/CoordinatedGraphics/CoordinatedLayerTreeHost.cpp
+    WebProcess/WebPage/CoordinatedGraphics/UpdateAtlas.cpp
     WebProcess/WebPage/CoordinatedGraphics/WebPageCoordinatedGraphics.cpp
 
     WebProcess/WebPage/atk/WebPageAccessibilityObjectAtk.cpp
@@ -228,7 +215,6 @@ list(APPEND WebKit2_SOURCES
     WebProcess/WebPage/gstreamer/WebPageGStreamer.cpp
 
     WebProcess/efl/ExtensionManagerEfl.cpp
-    WebProcess/efl/SeccompFiltersWebProcessEfl.cpp
     WebProcess/efl/WebProcessMainEfl.cpp
 
     WebProcess/soup/WebKitSoupRequestInputStream.cpp
@@ -245,6 +231,7 @@ list(APPEND WebKit2_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/efl"
     "${WEBCORE_DIR}/platform/graphics/cairo"
     "${WEBCORE_DIR}/platform/graphics/efl"
+    "${WEBCORE_DIR}/platform/graphics/freetype"
     "${WEBCORE_DIR}/platform/graphics/opentype"
     "${WEBCORE_DIR}/platform/graphics/x11"
     "${WEBCORE_DIR}/platform/network/soup"
@@ -271,6 +258,7 @@ list(APPEND WebKit2_INCLUDE_DIRECTORIES
     "${WEBKIT2_DIR}/UIProcess/CoordinatedGraphics"
     "${WEBKIT2_DIR}/UIProcess/Network/CustomProtocols/soup"
     "${WEBKIT2_DIR}/UIProcess/efl"
+    "${WEBKIT2_DIR}/UIProcess/linux"
     "${WEBKIT2_DIR}/UIProcess/soup"
     "${WEBKIT2_DIR}/WebProcess/efl"
     "${WEBKIT2_DIR}/WebProcess/soup"
@@ -358,21 +346,6 @@ list(APPEND WebProcess_LIBRARIES
     ${OPENGL_LIBRARIES}
     ${SQLITE_LIBRARIES}
 )
-
-if (ENABLE_SECCOMP_FILTERS)
-    list(APPEND WebKit2_LIBRARIES
-        ${LIBSECCOMP_LIBRARIES}
-    )
-    list(APPEND WebKit2_SYSTEM_INCLUDE_DIRECTORIES
-        ${LIBSECCOMP_INCLUDE_DIRS}
-    )
-
-    # If building with jhbuild, add the root build directory to the
-    # filesystem access policy.
-    if (DEVELOPER_MODE AND IS_DIRECTORY ${CMAKE_SOURCE_DIR}/WebKitBuild/DependenciesEFL)
-        add_definitions(-DSOURCE_DIR=\"${CMAKE_SOURCE_DIR}\")
-    endif ()
-endif ()
 
 if (ENABLE_ECORE_X)
     list(APPEND WebProcess_LIBRARIES

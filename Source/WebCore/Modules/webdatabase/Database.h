@@ -38,7 +38,6 @@
 
 namespace WebCore {
 
-class ChangeVersionData;
 class DatabaseCallback;
 class DatabaseDetails;
 class DatabaseContext;
@@ -50,6 +49,7 @@ class SQLTransactionCallback;
 class SQLTransactionClient;
 class SQLTransactionCoordinator;
 class SQLTransactionErrorCallback;
+class SQLTransactionWrapper;
 class VoidCallback;
 
 class Database final : public ThreadSafeRefCounted<Database> {
@@ -59,13 +59,14 @@ public:
     virtual bool openAndVerifyVersion(bool setVersionInNewDatabase, DatabaseError&, String& errorMessage);
     void close();
 
+    void interrupt();
+
     bool opened() const { return m_opened; }
     bool isNew() const { return m_new; }
 
     unsigned long long maximumSize() const;
 
-    PassRefPtr<SQLTransactionBackend> runTransaction(PassRefPtr<SQLTransaction>, bool readOnly, const ChangeVersionData*);
-    void scheduleTransactionStep(SQLTransactionBackend*);
+    void scheduleTransactionStep(SQLTransaction&);
     void inProgressTransactionCompleted();
 
     bool hasPendingTransaction();
@@ -78,10 +79,9 @@ public:
 
     // Direct support for the DOM API
     String version() const;
-    void changeVersion(const String& oldVersion, const String& newVersion, PassRefPtr<SQLTransactionCallback>,
-                       PassRefPtr<SQLTransactionErrorCallback>, PassRefPtr<VoidCallback> successCallback);
-    void transaction(PassRefPtr<SQLTransactionCallback>, PassRefPtr<SQLTransactionErrorCallback>, PassRefPtr<VoidCallback> successCallback);
-    void readTransaction(PassRefPtr<SQLTransactionCallback>, PassRefPtr<SQLTransactionErrorCallback>, PassRefPtr<VoidCallback> successCallback);
+    void changeVersion(const String& oldVersion, const String& newVersion, RefPtr<SQLTransactionCallback>&&, RefPtr<SQLTransactionErrorCallback>&&, RefPtr<VoidCallback>&& successCallback);
+    void transaction(RefPtr<SQLTransactionCallback>&&, RefPtr<SQLTransactionErrorCallback>&&, RefPtr<VoidCallback>&& successCallback);
+    void readTransaction(RefPtr<SQLTransactionCallback>&&, RefPtr<SQLTransactionErrorCallback>&&, RefPtr<VoidCallback>&& successCallback);
 
     // Internal engine support
     String stringIdentifier() const;
@@ -114,13 +114,17 @@ public:
 
     void scheduleTransactionCallback(SQLTransaction*);
 
+    void incrementalVacuumIfNeeded();
+
+    // Called from DatabaseTask
     bool performOpenAndVerify(bool shouldSetVersionInNewDatabase, DatabaseError&, String& errorMessage);
     Vector<String> performGetTableNames();
 
-    void incrementalVacuumIfNeeded();
+    // Called from DatabaseTask and DatabaseThread
+    void performClose();
 
 private:
-    Database(PassRefPtr<DatabaseContext>, const String& name, const String& expectedVersion, const String& displayName, unsigned long estimatedSize);
+    Database(RefPtr<DatabaseContext>&&, const String& name, const String& expectedVersion, const String& displayName, unsigned long estimatedSize);
 
     void closeDatabase();
 
@@ -134,7 +138,7 @@ private:
 
     void scheduleTransaction();
 
-    void runTransaction(RefPtr<SQLTransactionCallback>&&, RefPtr<SQLTransactionErrorCallback>&&, RefPtr<VoidCallback>&& successCallback, bool readOnly, const ChangeVersionData* = nullptr);
+    void runTransaction(RefPtr<SQLTransactionCallback>&&, RefPtr<SQLTransactionErrorCallback>&&, RefPtr<VoidCallback>&& successCallback, RefPtr<SQLTransactionWrapper>&&, bool readOnly);
 
 #if !LOG_DISABLED || !ERROR_DISABLED
     String databaseDebugName() const;
@@ -162,7 +166,7 @@ private:
 
     RefPtr<DatabaseAuthorizer> m_databaseAuthorizer;
 
-    Deque<RefPtr<SQLTransactionBackend>> m_transactionQueue;
+    Deque<RefPtr<SQLTransaction>> m_transactionQueue;
     Lock m_transactionInProgressMutex;
     bool m_transactionInProgress;
     bool m_isTransactionQueueEnabled;

@@ -1,4 +1,4 @@
-# Copyright (C) 2011-2015 Apple Inc. All rights reserved.
+# Copyright (C) 2011-2016 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -221,8 +221,6 @@ const PutByIdSecondaryTypeObject = 0x38
 const PutByIdSecondaryTypeObjectOrOther = 0x40
 const PutByIdSecondaryTypeTop = 0x48
 
-const CopyBarrierSpaceBits = 3
-
 const CallOpCodeSize = 9
 
 if X86_64 or ARM64 or C_LOOP
@@ -250,6 +248,15 @@ const CalleeSaveSpaceStackAligned = (CalleeSaveSpaceAsVirtualRegisters * SlotSiz
 const ClearWatchpoint = 0
 const IsWatched = 1
 const IsInvalidated = 2
+
+# ShadowChicken data
+const ShadowChickenTailMarker = 0x7a11
+
+# ArithProfile data
+const ArithProfileIntInt = 0x120000
+const ArithProfileNumberInt = 0x220000
+const ArithProfileNumberNumber = 0x240000
+const ArithProfileIntNumber = 0x140000
 
 # Some register conventions.
 if JSVALUE64
@@ -285,6 +292,10 @@ if JSVALUE64
         loadp offset * 8[PB, PC, 8], dest
     end
     
+    macro storeisToInstruction(value, offset)
+        storei value, offset * 8[PB, PC, 8]
+    end
+
     macro storepToInstruction(value, offset)
         storep value, offset * 8[PB, PC, 8]
     end
@@ -297,6 +308,10 @@ else
     
     macro loadpFromInstruction(offset, dest)
         loadp offset * 4[PC], dest
+    end
+
+    macro storeisToInstruction(value, offset)
+        storei value, offset * 4[PC]
     end
 end
 
@@ -328,8 +343,25 @@ const SlowPutArrayStorageShape = 30
 # Type constants.
 const StringType = 6
 const SymbolType = 7
-const ObjectType = 21
-const FinalObjectType = 22
+const ObjectType = 20
+const FinalObjectType = 21
+const JSFunctionType = 23
+const ArrayType = 29
+
+# The typed array types need to be numbered in a particular order because of the manually written
+# switch statement in get_by_val and put_by_val.
+const Int8ArrayType = 100
+const Int16ArrayType = 101
+const Int32ArrayType = 102
+const Uint8ArrayType = 103
+const Uint8ClampedArrayType = 104
+const Uint16ArrayType = 105
+const Uint32ArrayType = 106
+const Float32ArrayType = 107
+const Float64ArrayType = 108
+
+const FirstArrayType = Int8ArrayType
+const LastArrayType = Float64ArrayType
 
 # Type flags constants.
 const MasqueradesAsUndefined = 1
@@ -368,7 +400,7 @@ const ClosureVarWithVarInjectionChecks = 9
 const ResolveTypeMask = 0x3ff
 const InitializationModeMask = 0xffc00
 const InitializationModeShift = 10
-const Initialization = 0
+const NotInitialization = 2
 
 const MarkedBlockSize = 16 * 1024
 const MarkedBlockMask = ~(MarkedBlockSize - 1)
@@ -402,6 +434,45 @@ macro assert(assertion)
         assertion(.ok)
         crash()
     .ok:
+    end
+end
+
+# The probe macro can be used to insert some debugging code without perturbing scalar
+# registers. Presently, the probe macro only preserves scalar registers. Hence, the
+# C probe callback function should not trash floating point registers.
+#
+# The macro you pass to probe() can pass whatever registers you like to your probe
+# callback function. However, you need to be mindful of which of the registers are
+# also used as argument registers, and ensure that you don't trash the register value
+# before storing it in the probe callback argument register that you desire.
+#
+# Here's an example of how it's used:
+#
+#     probe(
+#         macro()
+#             move cfr, a0 # pass the ExecState* as arg0.
+#             move t0, a1 # pass the value of register t0 as arg1.
+#             call _cProbeCallbackFunction # to do whatever you want.
+#         end
+#     )
+#
+if X86_64
+    macro probe(action)
+        # save all the registers that the LLInt may use.
+        push a0, a1
+        push a2, a3
+        push t0, t1
+        push t2, t3
+        push t4, t5
+
+        action()
+
+        # restore all the registers we saved previously.
+        pop t5, t4
+        pop t3, t2
+        pop t1, t0
+        pop a3, a2
+        pop a1, a0
     end
 end
 
@@ -569,9 +640,11 @@ macro restoreCalleeSavesUsedByLLInt()
     end
 end
 
-macro copyCalleeSavesToVMCalleeSavesBuffer(vm, temp)
+macro copyCalleeSavesToVMEntryFrameCalleeSavesBuffer(vm, temp)
     if ARM64 or X86_64 or X86_64_WIN
-        leap VM::calleeSaveRegistersBuffer[vm], temp
+        loadp VM::topVMEntryFrame[vm], temp
+        vmEntryRecord(temp, temp)
+        leap VMEntryRecord::calleeSaveRegistersBuffer[temp], temp
         if ARM64
             storep csr0, [temp]
             storep csr1, 8[temp]
@@ -609,9 +682,11 @@ macro copyCalleeSavesToVMCalleeSavesBuffer(vm, temp)
     end
 end
 
-macro restoreCalleeSavesFromVMCalleeSavesBuffer(vm, temp)
+macro restoreCalleeSavesFromVMEntryFrameCalleeSavesBuffer(vm, temp)
     if ARM64 or X86_64 or X86_64_WIN
-        leap VM::calleeSaveRegistersBuffer[vm], temp
+        loadp VM::topVMEntryFrame[vm], temp
+        vmEntryRecord(temp, temp)
+        leap VMEntryRecord::calleeSaveRegistersBuffer[temp], temp
         if ARM64
             loadp [temp], csr0
             loadp 8[temp], csr1
@@ -660,10 +735,6 @@ macro preserveReturnAddressAfterCall(destinationRegister)
     end
 end
 
-macro copyBarrier(value, slow)
-    btpnz value, CopyBarrierSpaceBits, slow
-end
-
 macro functionPrologue()
     if X86 or X86_WIN or X86_64 or X86_64_WIN
         push cfr
@@ -709,9 +780,23 @@ macro restoreStackPointerAfterCall()
 end
 
 macro traceExecution()
+    if COLLECT_STATS
+        callSlowPath(_llint_count_opcode)
+    end
     if EXECUTION_TRACING
         callSlowPath(_llint_trace)
     end
+end
+
+macro traceSlowPathExecution()
+    if COLLECT_STATS
+        callSlowPath(_llint_count_opcode_slow_path)
+    end
+end
+
+macro callOpcodeSlowPath(slowPath)
+    traceSlowPathExecution()
+    callSlowPath(slowPath)
 end
 
 macro callTargetFunction(callee)
@@ -778,6 +863,7 @@ macro prepareForTailCall(callee, temp1, temp2, temp3)
 end
 
 macro slowPathForCall(slowPath, prepareCall)
+    traceSlowPathExecution()
     callCallSlowPath(
         slowPath,
         # Those are r0 and r1
@@ -818,7 +904,7 @@ macro checkSwitchToJITForEpilogue()
     checkSwitchToJIT(
         10,
         macro ()
-            callSlowPath(_llint_replace)
+            callOpcodeSlowPath(_llint_replace)
         end)
 end
 
@@ -918,7 +1004,11 @@ macro prologue(codeBlockGetter, codeBlockSetter, osrSlowPath, traceSlowPath)
     getFrameRegisterSizeForCodeBlock(t1, t0)
     subp cfr, t0, t0
     loadp CodeBlock::m_vm[t1], t2
-    bpbeq VM::m_jsStackLimit[t2], t0, .stackHeightOK
+    if C_LOOP
+        bpbeq VM::m_cloopStackLimit[t2], t0, .stackHeightOK
+    else
+        bpbeq VM::m_softStackLimit[t2], t0, .stackHeightOK
+    end
 
     # Stack height check failed - need to call a slow_path.
     # Set up temporary stack pointer for call including callee saves
@@ -976,24 +1066,6 @@ macro functionInitialization(profileArgSkip)
     end
     baddpnz -8, t0, .argumentProfileLoop
 .argumentProfileDone:
-end
-
-macro allocateJSObject(allocator, structure, result, scratch1, slowCase)
-    const offsetOfFirstFreeCell = 
-        MarkedAllocator::m_freeList + 
-        MarkedBlock::FreeList::head
-
-    # Get the object from the free list.   
-    loadp offsetOfFirstFreeCell[allocator], result
-    btpz result, slowCase
-    
-    # Remove the object from the free list.
-    loadp [result], scratch1
-    storep scratch1, offsetOfFirstFreeCell[allocator]
-
-    # Initialize the object.
-    storep 0, JSObject::m_butterfly[result]
-    storeStructureWithTypeInfo(result, structure, scratch1)
 end
 
 macro doReturn()
@@ -1201,156 +1273,180 @@ end
 # Value-representation-agnostic code.
 _llint_op_create_direct_arguments:
     traceExecution()
-    callSlowPath(_slow_path_create_direct_arguments)
+    callOpcodeSlowPath(_slow_path_create_direct_arguments)
     dispatch(2)
 
 
 _llint_op_create_scoped_arguments:
     traceExecution()
-    callSlowPath(_slow_path_create_scoped_arguments)
+    callOpcodeSlowPath(_slow_path_create_scoped_arguments)
     dispatch(3)
 
 
-_llint_op_create_out_of_band_arguments:
+_llint_op_create_cloned_arguments:
     traceExecution()
-    callSlowPath(_slow_path_create_out_of_band_arguments)
+    callOpcodeSlowPath(_slow_path_create_cloned_arguments)
     dispatch(2)
+
+
+_llint_op_create_this:
+    traceExecution()
+    callOpcodeSlowPath(_slow_path_create_this)
+    dispatch(5)
+
+
+_llint_op_new_object:
+    traceExecution()
+    callOpcodeSlowPath(_llint_slow_path_new_object)
+    dispatch(4)
 
 
 _llint_op_new_func:
     traceExecution()
-    callSlowPath(_llint_slow_path_new_func)
+    callOpcodeSlowPath(_llint_slow_path_new_func)
     dispatch(4)
 
 
 _llint_op_new_generator_func:
     traceExecution()
-    callSlowPath(_llint_slow_path_new_generator_func)
+    callOpcodeSlowPath(_llint_slow_path_new_generator_func)
     dispatch(4)
 
 
 _llint_op_new_array:
     traceExecution()
-    callSlowPath(_llint_slow_path_new_array)
+    callOpcodeSlowPath(_llint_slow_path_new_array)
     dispatch(5)
 
 
 _llint_op_new_array_with_size:
     traceExecution()
-    callSlowPath(_llint_slow_path_new_array_with_size)
+    callOpcodeSlowPath(_llint_slow_path_new_array_with_size)
     dispatch(4)
 
 
 _llint_op_new_array_buffer:
     traceExecution()
-    callSlowPath(_llint_slow_path_new_array_buffer)
+    callOpcodeSlowPath(_llint_slow_path_new_array_buffer)
     dispatch(5)
 
 
 _llint_op_new_regexp:
     traceExecution()
-    callSlowPath(_llint_slow_path_new_regexp)
+    callOpcodeSlowPath(_llint_slow_path_new_regexp)
     dispatch(3)
 
 
 _llint_op_less:
     traceExecution()
-    callSlowPath(_slow_path_less)
+    callOpcodeSlowPath(_slow_path_less)
     dispatch(4)
 
 
 _llint_op_lesseq:
     traceExecution()
-    callSlowPath(_slow_path_lesseq)
+    callOpcodeSlowPath(_slow_path_lesseq)
     dispatch(4)
 
 
 _llint_op_greater:
     traceExecution()
-    callSlowPath(_slow_path_greater)
+    callOpcodeSlowPath(_slow_path_greater)
     dispatch(4)
 
 
 _llint_op_greatereq:
     traceExecution()
-    callSlowPath(_slow_path_greatereq)
+    callOpcodeSlowPath(_slow_path_greatereq)
     dispatch(4)
 
 
 _llint_op_mod:
     traceExecution()
-    callSlowPath(_slow_path_mod)
+    callOpcodeSlowPath(_slow_path_mod)
+    dispatch(4)
+
+
+_llint_op_pow:
+    traceExecution()
+    callOpcodeSlowPath(_slow_path_pow)
     dispatch(4)
 
 
 _llint_op_typeof:
     traceExecution()
-    callSlowPath(_slow_path_typeof)
+    callOpcodeSlowPath(_slow_path_typeof)
     dispatch(3)
 
 
 _llint_op_is_object_or_null:
     traceExecution()
-    callSlowPath(_slow_path_is_object_or_null)
+    callOpcodeSlowPath(_slow_path_is_object_or_null)
     dispatch(3)
 
 _llint_op_is_function:
     traceExecution()
-    callSlowPath(_slow_path_is_function)
+    callOpcodeSlowPath(_slow_path_is_function)
     dispatch(3)
 
 
 _llint_op_in:
     traceExecution()
-    callSlowPath(_slow_path_in)
+    callOpcodeSlowPath(_slow_path_in)
     dispatch(4)
+
+
+_llint_op_try_get_by_id:
+    traceExecution()
+    callOpcodeSlowPath(_llint_slow_path_try_get_by_id)
+    dispatch(5)
 
 
 _llint_op_del_by_id:
     traceExecution()
-    callSlowPath(_llint_slow_path_del_by_id)
+    callOpcodeSlowPath(_llint_slow_path_del_by_id)
     dispatch(4)
 
 
 _llint_op_del_by_val:
     traceExecution()
-    callSlowPath(_llint_slow_path_del_by_val)
+    callOpcodeSlowPath(_llint_slow_path_del_by_val)
     dispatch(4)
 
 
 _llint_op_put_by_index:
     traceExecution()
-    callSlowPath(_llint_slow_path_put_by_index)
+    callOpcodeSlowPath(_llint_slow_path_put_by_index)
     dispatch(4)
 
 
 _llint_op_put_getter_by_id:
     traceExecution()
-    callSlowPath(_llint_slow_path_put_getter_by_id)
+    callOpcodeSlowPath(_llint_slow_path_put_getter_by_id)
     dispatch(5)
 
 
 _llint_op_put_setter_by_id:
     traceExecution()
-    callSlowPath(_llint_slow_path_put_setter_by_id)
+    callOpcodeSlowPath(_llint_slow_path_put_setter_by_id)
     dispatch(5)
 
 
 _llint_op_put_getter_setter_by_id:
     traceExecution()
-    callSlowPath(_llint_slow_path_put_getter_setter_by_id)
+    callOpcodeSlowPath(_llint_slow_path_put_getter_setter_by_id)
     dispatch(6)
 
 
 _llint_op_put_getter_by_val:
     traceExecution()
-    callSlowPath(_llint_slow_path_put_getter_by_val)
+    callOpcodeSlowPath(_llint_slow_path_put_getter_by_val)
     dispatch(5)
 
 
 _llint_op_put_setter_by_val:
     traceExecution()
-    callSlowPath(_llint_slow_path_put_setter_by_val)
+    callOpcodeSlowPath(_llint_slow_path_put_setter_by_val)
     dispatch(5)
 
 
@@ -1455,26 +1551,38 @@ _llint_op_watchdog:
     jmp _llint_throw_from_slow_path_trampoline
 
 
+# Returns the packet pointer in t0.
+macro acquireShadowChickenPacket(slow)
+    loadp CodeBlock[cfr], t1
+    loadp CodeBlock::m_vm[t1], t1
+    loadp VM::m_shadowChicken[t1], t2
+    loadp ShadowChicken::m_logCursor[t2], t0
+    bpaeq t0, ShadowChicken::m_logEnd[t2], slow
+    addp sizeof ShadowChicken::Packet, t0, t1
+    storep t1, ShadowChicken::m_logCursor[t2]
+end
+
+
 _llint_op_switch_string:
     traceExecution()
-    callSlowPath(_llint_slow_path_switch_string)
+    callOpcodeSlowPath(_llint_slow_path_switch_string)
     dispatch(0)
 
 
 _llint_op_new_func_exp:
     traceExecution()
-    callSlowPath(_llint_slow_path_new_func_exp)
+    callOpcodeSlowPath(_llint_slow_path_new_func_exp)
     dispatch(4)
 
 _llint_op_new_generator_func_exp:
     traceExecution()
-    callSlowPath(_llint_slow_path_new_generator_func_exp)
+    callOpcodeSlowPath(_llint_slow_path_new_generator_func_exp)
     dispatch(4)
 
-_llint_op_new_arrow_func_exp:
+_llint_op_set_function_name:
     traceExecution()
-    callSlowPath(_llint_slow_path_new_arrow_func_exp)
-    dispatch(4)
+    callOpcodeSlowPath(_llint_slow_path_set_function_name)
+    dispatch(3)
 
 _llint_op_call:
     traceExecution()
@@ -1491,8 +1599,8 @@ _llint_op_construct:
     traceExecution()
     doCall(_llint_slow_path_construct, prepareForRegularCall)
 
-macro doCallVarargs(slowPath, prepareCall)
-    callSlowPath(_llint_slow_path_size_frame_for_varargs)
+macro doCallVarargs(frameSlowPath, slowPath, prepareCall)
+    callOpcodeSlowPath(frameSlowPath)
     branchIfException(_llint_throw_from_slow_path_trampoline)
     # calleeFrame in r1
     if JSVALUE64
@@ -1511,18 +1619,27 @@ end
 
 _llint_op_call_varargs:
     traceExecution()
-    doCallVarargs(_llint_slow_path_call_varargs, prepareForRegularCall)
+    doCallVarargs(_llint_slow_path_size_frame_for_varargs, _llint_slow_path_call_varargs, prepareForRegularCall)
 
 _llint_op_tail_call_varargs:
     traceExecution()
     checkSwitchToJITForEpilogue()
     # We lie and perform the tail call instead of preparing it since we can't
     # prepare the frame for a call opcode
-    doCallVarargs(_llint_slow_path_call_varargs, prepareForTailCall)
+    doCallVarargs(_llint_slow_path_size_frame_for_varargs, _llint_slow_path_call_varargs, prepareForTailCall)
+
+
+_llint_op_tail_call_forward_arguments:
+    traceExecution()
+    checkSwitchToJITForEpilogue()
+    # We lie and perform the tail call instead of preparing it since we can't
+    # prepare the frame for a call opcode
+    doCallVarargs(_llint_slow_path_size_frame_for_forward_arguments, _llint_slow_path_tail_call_forward_arguments, prepareForTailCall)
+
 
 _llint_op_construct_varargs:
     traceExecution()
-    doCallVarargs(_llint_slow_path_construct_varargs, prepareForRegularCall)
+    doCallVarargs(_llint_slow_path_size_frame_for_varargs, _llint_slow_path_construct_varargs, prepareForRegularCall)
 
 
 _llint_op_call_eval:
@@ -1570,72 +1687,42 @@ _llint_generic_return_point:
 
 _llint_op_strcat:
     traceExecution()
-    callSlowPath(_slow_path_strcat)
+    callOpcodeSlowPath(_slow_path_strcat)
     dispatch(4)
 
 
 _llint_op_push_with_scope:
     traceExecution()
-    callSlowPath(_slow_path_push_with_scope)
+    callOpcodeSlowPath(_slow_path_push_with_scope)
     dispatch(4)
 
 
 _llint_op_assert:
     traceExecution()
-    callSlowPath(_slow_path_assert)
+    callOpcodeSlowPath(_slow_path_assert)
     dispatch(3)
 
 
-_llint_op_save:
-    traceExecution()
-    callSlowPath(_slow_path_save)
-    dispatch(4)
-
-
-_llint_op_resume:
-    traceExecution()
-    callSlowPath(_slow_path_resume)
-    dispatch(3)
+_llint_op_yield:
+    notSupported()
 
 
 _llint_op_create_lexical_environment:
     traceExecution()
-    callSlowPath(_slow_path_create_lexical_environment)
+    callOpcodeSlowPath(_slow_path_create_lexical_environment)
     dispatch(5)
 
 
 _llint_op_throw:
     traceExecution()
-    callSlowPath(_llint_slow_path_throw)
+    callOpcodeSlowPath(_llint_slow_path_throw)
     dispatch(2)
 
 
 _llint_op_throw_static_error:
     traceExecution()
-    callSlowPath(_llint_slow_path_throw_static_error)
+    callOpcodeSlowPath(_llint_slow_path_throw_static_error)
     dispatch(3)
-
-
-_llint_op_profile_will_call:
-    traceExecution()
-    loadp CodeBlock[cfr], t0
-    loadp CodeBlock::m_vm[t0], t0
-    loadi VM::m_enabledProfiler[t0], t0
-    btpz t0, .opProfilerWillCallDone
-    callSlowPath(_llint_slow_path_profile_will_call)
-.opProfilerWillCallDone:
-    dispatch(2)
-
-
-_llint_op_profile_did_call:
-    traceExecution()
-    loadp CodeBlock[cfr], t0
-    loadp CodeBlock::m_vm[t0], t0
-    loadi VM::m_enabledProfiler[t0], t0
-    btpz t0, .opProfilerDidCallDone
-    callSlowPath(_llint_slow_path_profile_did_call)
-.opProfilerDidCallDone:
-    dispatch(2)
 
 
 _llint_op_debug:
@@ -1643,7 +1730,7 @@ _llint_op_debug:
     loadp CodeBlock[cfr], t0
     loadi CodeBlock::m_debuggerRequests[t0], t0
     btiz t0, .opDebugDone
-    callSlowPath(_llint_slow_path_debug)
+    callOpcodeSlowPath(_llint_slow_path_debug)
 .opDebugDone:                    
     dispatch(3)
 
@@ -1657,54 +1744,78 @@ _llint_native_construct_trampoline:
 
 _llint_op_get_enumerable_length:
     traceExecution()
-    callSlowPath(_slow_path_get_enumerable_length)
+    callOpcodeSlowPath(_slow_path_get_enumerable_length)
     dispatch(3)
 
 _llint_op_has_indexed_property:
     traceExecution()
-    callSlowPath(_slow_path_has_indexed_property)
+    callOpcodeSlowPath(_slow_path_has_indexed_property)
     dispatch(5)
 
 _llint_op_has_structure_property:
     traceExecution()
-    callSlowPath(_slow_path_has_structure_property)
+    callOpcodeSlowPath(_slow_path_has_structure_property)
     dispatch(5)
 
 _llint_op_has_generic_property:
     traceExecution()
-    callSlowPath(_slow_path_has_generic_property)
+    callOpcodeSlowPath(_slow_path_has_generic_property)
     dispatch(4)
 
 _llint_op_get_direct_pname:
     traceExecution()
-    callSlowPath(_slow_path_get_direct_pname)
+    callOpcodeSlowPath(_slow_path_get_direct_pname)
     dispatch(7)
 
 _llint_op_get_property_enumerator:
     traceExecution()
-    callSlowPath(_slow_path_get_property_enumerator)
+    callOpcodeSlowPath(_slow_path_get_property_enumerator)
     dispatch(3)
 
 _llint_op_enumerator_structure_pname:
     traceExecution()
-    callSlowPath(_slow_path_next_structure_enumerator_pname)
+    callOpcodeSlowPath(_slow_path_next_structure_enumerator_pname)
     dispatch(4)
 
 _llint_op_enumerator_generic_pname:
     traceExecution()
-    callSlowPath(_slow_path_next_generic_enumerator_pname)
+    callOpcodeSlowPath(_slow_path_next_generic_enumerator_pname)
     dispatch(4)
 
 _llint_op_to_index_string:
     traceExecution()
-    callSlowPath(_slow_path_to_index_string)
+    callOpcodeSlowPath(_slow_path_to_index_string)
     dispatch(3)
 
-_llint_op_copy_rest:
+_llint_op_create_rest:
     traceExecution()
-    callSlowPath(_slow_path_copy_rest)
+    callOpcodeSlowPath(_slow_path_create_rest)
     dispatch(4)
 
+_llint_op_instanceof:
+    traceExecution()
+    callOpcodeSlowPath(_llint_slow_path_instanceof)
+    dispatch(4)
+
+_llint_op_get_by_id_with_this:
+    traceExecution()
+    callOpcodeSlowPath(_slow_path_get_by_id_with_this)
+    dispatch(6)
+
+_llint_op_get_by_val_with_this:
+    traceExecution()
+    callOpcodeSlowPath(_slow_path_get_by_val_with_this)
+    dispatch(6)
+
+_llint_op_put_by_id_with_this:
+    traceExecution()
+    callOpcodeSlowPath(_slow_path_put_by_id_with_this)
+    dispatch(5)
+
+_llint_op_put_by_val_with_this:
+    traceExecution()
+    callOpcodeSlowPath(_slow_path_put_by_val_with_this)
+    dispatch(5)
 
 # Lastly, make sure that we can link even though we don't support all opcodes.
 # These opcodes should never arise when using LLInt or either JIT. We assert

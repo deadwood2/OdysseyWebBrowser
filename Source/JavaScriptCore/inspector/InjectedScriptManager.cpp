@@ -35,6 +35,7 @@
 #include "InjectedScriptHost.h"
 #include "InjectedScriptSource.h"
 #include "InspectorValues.h"
+#include "JSCInlines.h"
 #include "JSInjectedScriptHost.h"
 #include "JSLock.h"
 #include "ScriptObject.h"
@@ -131,7 +132,7 @@ String InjectedScriptManager::injectedScriptSource()
     return StringImpl::createWithoutCopying(InjectedScriptSource_js, sizeof(InjectedScriptSource_js));
 }
 
-Deprecated::ScriptObject InjectedScriptManager::createInjectedScript(const String& source, ExecState* scriptState, int id)
+JSC::JSObject* InjectedScriptManager::createInjectedScript(const String& source, ExecState* scriptState, int id)
 {
     JSLockHolder lock(scriptState);
 
@@ -143,12 +144,12 @@ Deprecated::ScriptObject InjectedScriptManager::createInjectedScript(const Strin
     InspectorEvaluateHandler evaluateHandler = m_environment.evaluateHandler();
     JSValue functionValue = evaluateHandler(scriptState, sourceCode, globalThisValue, evaluationException);
     if (evaluationException)
-        return Deprecated::ScriptObject();
+        return nullptr;
 
     CallData callData;
     CallType callType = getCallData(functionValue, callData);
-    if (callType == CallTypeNone)
-        return Deprecated::ScriptObject();
+    if (callType == CallType::None)
+        return nullptr;
 
     MarkedArgumentBuffer args;
     args.append(m_injectedScriptHost->wrapper(scriptState, globalObject));
@@ -157,10 +158,7 @@ Deprecated::ScriptObject InjectedScriptManager::createInjectedScript(const Strin
 
     JSValue result = JSC::call(scriptState, functionValue, callType, callData, globalThisValue, args);
     scriptState->clearException();
-    if (result.isObject())
-        return Deprecated::ScriptObject(scriptState, result.getObject());
-
-    return Deprecated::ScriptObject();
+    return result.getObject();
 }
 
 InjectedScript InjectedScriptManager::injectedScriptFor(ExecState* inspectedExecState)
@@ -176,14 +174,14 @@ InjectedScript InjectedScriptManager::injectedScriptFor(ExecState* inspectedExec
         return InjectedScript();
 
     int id = injectedScriptIdFor(inspectedExecState);
-    Deprecated::ScriptObject injectedScriptObject = createInjectedScript(injectedScriptSource(), inspectedExecState, id);
-    if (injectedScriptObject.scriptState() != inspectedExecState) {
+    auto injectedScriptObject = createInjectedScript(injectedScriptSource(), inspectedExecState, id);
+    if (!injectedScriptObject) {
         WTFLogAlways("Failed to parse/execute InjectedScriptSource.js!");
         WTFLogAlways("%s\n", injectedScriptSource().ascii().data());
         RELEASE_ASSERT_NOT_REACHED();
     }
 
-    InjectedScript result(injectedScriptObject, &m_environment);
+    InjectedScript result({ inspectedExecState, injectedScriptObject }, &m_environment);
     m_idToInjectedScript.set(id, result);
     didCreateInjectedScript(result);
     return result;

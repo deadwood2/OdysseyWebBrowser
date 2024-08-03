@@ -79,7 +79,7 @@ void TiledCoreAnimationDrawingAreaProxy::waitForPossibleGeometryUpdate(std::chro
     if (m_webPageProxy.process().state() != WebProcessProxy::State::Running)
         return;
 
-    m_webPageProxy.process().connection()->waitForAndDispatchImmediately<Messages::DrawingAreaProxy::DidUpdateGeometry>(m_webPageProxy.pageID(), timeout, InterruptWaitingIfSyncMessageArrives);
+    m_webPageProxy.process().connection()->waitForAndDispatchImmediately<Messages::DrawingAreaProxy::DidUpdateGeometry>(m_webPageProxy.pageID(), timeout, IPC::WaitForOption::InterruptWaitingIfSyncMessageArrives);
 #endif
 }
 
@@ -134,7 +134,7 @@ void TiledCoreAnimationDrawingAreaProxy::didUpdateGeometry()
 void TiledCoreAnimationDrawingAreaProxy::waitForDidUpdateViewState()
 {
     auto viewStateUpdateTimeout = std::chrono::milliseconds(250);
-    m_webPageProxy.process().connection()->waitForAndDispatchImmediately<Messages::WebPageProxy::DidUpdateViewState>(m_webPageProxy.pageID(), viewStateUpdateTimeout, InterruptWaitingIfSyncMessageArrives);
+    m_webPageProxy.process().connection()->waitForAndDispatchImmediately<Messages::WebPageProxy::DidUpdateViewState>(m_webPageProxy.pageID(), viewStateUpdateTimeout, IPC::WaitForOption::InterruptWaitingIfSyncMessageArrives);
 }
 
 void TiledCoreAnimationDrawingAreaProxy::intrinsicContentSizeDidChange(const IntSize& newIntrinsicContentSize)
@@ -150,7 +150,7 @@ void TiledCoreAnimationDrawingAreaProxy::willSendUpdateGeometry()
     m_isWaitingForDidUpdateGeometry = true;
 }
 
-MachSendRight TiledCoreAnimationDrawingAreaProxy::createFenceForGeometryUpdate()
+MachSendRight TiledCoreAnimationDrawingAreaProxy::createFence()
 {
 #if HAVE(COREANIMATION_FENCES)
     if (!m_webPageProxy.isValid())
@@ -158,6 +158,13 @@ MachSendRight TiledCoreAnimationDrawingAreaProxy::createFenceForGeometryUpdate()
 
     RetainPtr<CAContext> rootLayerContext = [asLayer(m_webPageProxy.acceleratedCompositingRootLayer()) context];
     if (!rootLayerContext)
+        return MachSendRight();
+
+    // Don't fence if we don't have a connection, because the message
+    // will likely get dropped on the floor (if the Web process is terminated)
+    // or queued up until process launch completes, and there's nothing useful
+    // to synchronize in these cases.
+    if (!m_webPageProxy.process().connection())
         return MachSendRight();
 
     // Don't fence if we have incoming synchronous messages, because we may not
@@ -192,7 +199,7 @@ void TiledCoreAnimationDrawingAreaProxy::sendUpdateGeometry()
     ASSERT(!m_isWaitingForDidUpdateGeometry);
 
     willSendUpdateGeometry();
-    m_webPageProxy.process().send(Messages::DrawingArea::UpdateGeometry(m_size, m_layerPosition, true, createFenceForGeometryUpdate()), m_webPageProxy.pageID());
+    m_webPageProxy.process().send(Messages::DrawingArea::UpdateGeometry(m_size, m_layerPosition, true, createFence()), m_webPageProxy.pageID());
 }
 
 void TiledCoreAnimationDrawingAreaProxy::adjustTransientZoom(double scale, FloatPoint origin)

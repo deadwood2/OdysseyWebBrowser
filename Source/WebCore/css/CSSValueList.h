@@ -22,7 +22,6 @@
 #define CSSValueList_h
 
 #include "CSSValue.h"
-#include <wtf/PassRefPtr.h>
 #include <wtf/Vector.h>
 
 namespace WebCore {
@@ -67,7 +66,7 @@ public:
     void prepend(Ref<CSSValue>&&);
     bool removeAll(CSSValue*);
     bool hasValue(CSSValue*) const;
-    PassRefPtr<CSSValueList> copy();
+    Ref<CSSValueList> copy();
 
     String customCSSText() const;
     bool equals(const CSSValueList&) const;

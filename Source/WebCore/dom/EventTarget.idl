@@ -18,15 +18,35 @@
  * Boston, MA 02110-1301, USA.
  */
 
-// Introduced in DOM Level 2:
 [
-    ObjCProtocol,
-    CPPPureInterface,
     CustomToJSObject,
-    JSCustomToNativeObject,
+    Exposed=(Window,Worker),
+    IsImmutablePrototypeExoticObjectOnPrototype,
     JSCustomHeader,
+    JSCustomToNativeObject,
 ] interface EventTarget {
-    [ObjCLegacyUnnamedParameters] void addEventListener(DOMString type, EventListener listener, optional boolean useCapture);
-    [ObjCLegacyUnnamedParameters] void removeEventListener(DOMString type, EventListener listener, optional boolean useCapture);
+#if !(defined(LANGUAGE_GOBJECT) && LANGUAGE_GOBJECT)
+    // FIXME: Should be:
+    // void addEventListener(DOMString type, EventListener? callback, optional (AddEventListenerOptions or boolean) options);
+    // void removeEventListener(DOMString type, EventListener? callback, optional (EventListenerOptions or boolean) options);
+    [ImplementedAs=addEventListenerForBindings] void addEventListener([AtomicString] DOMString type, EventListener? listener);
+    [ImplementedAs=addEventListenerForBindings] void addEventListener([AtomicString] DOMString type, EventListener? listener, AddEventListenerOptions options);
+    [ImplementedAs=removeEventListenerForBindings] void removeEventListener([AtomicString] DOMString type, EventListener? listener);
+    [ImplementedAs=removeEventListenerForBindings] void removeEventListener([AtomicString] DOMString type, EventListener? listener, EventListenerOptions options);
+#endif
+
+    [ImplementedAs=addEventListenerForBindings] void addEventListener([AtomicString] DOMString type, EventListener? listener, boolean useCapture);
+    [ImplementedAs=removeEventListenerForBindings] void removeEventListener([AtomicString] DOMString type, EventListener? listener, boolean useCapture);
+
     [ImplementedAs=dispatchEventForBindings, RaisesException] boolean dispatchEvent(Event event);
+};
+
+dictionary EventListenerOptions {
+    boolean capture = false;
+};
+
+dictionary AddEventListenerOptions {
+    boolean capture = false;
+    boolean passive = false;
+    boolean once = false;
 };

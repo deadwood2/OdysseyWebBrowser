@@ -34,6 +34,7 @@ namespace WebCore {
 class Element;
 
 class CollectionNamedElementCache {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     const Vector<Element*>* findElementsWithId(const AtomicString& id) const;
     const Vector<Element*>* findElementsWithName(const AtomicString& name) const;
@@ -66,14 +67,13 @@ public:
     virtual ~HTMLCollection();
 
     // DOM API
-    virtual Element* item(unsigned index) const override = 0; // Tighten return type from NodeList::item().
+    Element* item(unsigned index) const override = 0; // Tighten return type from NodeList::item().
     virtual Element* namedItem(const AtomicString& name) const = 0;
     const Vector<AtomicString>& supportedPropertyNames();
-    RefPtr<NodeList> tags(const String&);
 
     // Non-DOM API
     Vector<Ref<Element>> namedItems(const AtomicString& name) const;
-    virtual size_t memoryCost() const override;
+    size_t memoryCost() const override;
 
     bool isRootedAtDocument() const;
     NodeListInvalidationType invalidationType() const;
@@ -89,7 +89,7 @@ protected:
     HTMLCollection(ContainerNode& base, CollectionType);
 
     virtual void updateNamedElementCache() const;
-    Element* namedItemSlow(const AtomicString& name) const;
+    WEBCORE_EXPORT Element* namedItemSlow(const AtomicString& name) const;
 
     void setNamedItemCache(std::unique_ptr<CollectionNamedElementCache>) const;
     const CollectionNamedElementCache& namedItemCaches() const;

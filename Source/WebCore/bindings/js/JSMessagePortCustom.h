@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2009 Google Inc. All rights reserved.
+ * Copyright (C) 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -32,6 +33,7 @@
 #define JSMessagePortCustom_h
 
 #include "MessagePort.h"
+#include <runtime/Error.h>
 #include <runtime/JSCInlines.h>
 #include <runtime/JSCJSValue.h>
 #include <wtf/Forward.h>
@@ -49,15 +51,21 @@ namespace WebCore {
     template <typename T>
     inline JSC::JSValue handlePostMessage(JSC::ExecState& state, T* impl)
     {
+        JSC::VM& vm = state.vm();
+        auto scope = DECLARE_THROW_SCOPE(vm);
+
+        if (UNLIKELY(state.argumentCount() < 1))
+            return throwException(&state, scope, createNotEnoughArgumentsError(&state));
+
         MessagePortArray portArray;
         ArrayBufferArray arrayBufferArray;
         fillMessagePortArray(state, state.argument(1), portArray, arrayBufferArray);
-        RefPtr<SerializedScriptValue> message = SerializedScriptValue::create(&state, state.argument(0), &portArray, &arrayBufferArray);
+        auto message = SerializedScriptValue::create(&state, state.uncheckedArgument(0), &portArray, &arrayBufferArray);
         if (state.hadException())
             return JSC::jsUndefined();
 
         ExceptionCode ec = 0;
-        impl->postMessage(message.release(), &portArray, ec);
+        impl->postMessage(WTFMove(message), &portArray, ec);
         setDOMException(&state, ec);
         return JSC::jsUndefined();
     }

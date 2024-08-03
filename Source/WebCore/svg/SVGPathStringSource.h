@@ -26,25 +26,25 @@
 
 namespace WebCore {
 
-class SVGPathStringSource : public SVGPathSource {
+class SVGPathStringSource final : public SVGPathSource {
 public:
     explicit SVGPathStringSource(const String&);
 
 private:
-    virtual bool hasMoreData() const override;
-    virtual bool moveToNextToken() override;
-    virtual bool parseSVGSegmentType(SVGPathSegType&) override;
-    virtual SVGPathSegType nextCommand(SVGPathSegType previousCommand) override;
+    bool hasMoreData() const final;
+    bool moveToNextToken() final;
+    bool parseSVGSegmentType(SVGPathSegType&) final;
+    SVGPathSegType nextCommand(SVGPathSegType previousCommand) final;
 
-    virtual bool parseMoveToSegment(FloatPoint&) override;
-    virtual bool parseLineToSegment(FloatPoint&) override;
-    virtual bool parseLineToHorizontalSegment(float&) override;
-    virtual bool parseLineToVerticalSegment(float&) override;
-    virtual bool parseCurveToCubicSegment(FloatPoint&, FloatPoint&, FloatPoint&) override;
-    virtual bool parseCurveToCubicSmoothSegment(FloatPoint&, FloatPoint&) override;
-    virtual bool parseCurveToQuadraticSegment(FloatPoint&, FloatPoint&) override;
-    virtual bool parseCurveToQuadraticSmoothSegment(FloatPoint&) override;
-    virtual bool parseArcToSegment(float&, float&, float&, bool&, bool&, FloatPoint&) override;
+    bool parseMoveToSegment(FloatPoint&) final;
+    bool parseLineToSegment(FloatPoint&) final;
+    bool parseLineToHorizontalSegment(float&) final;
+    bool parseLineToVerticalSegment(float&) final;
+    bool parseCurveToCubicSegment(FloatPoint&, FloatPoint&, FloatPoint&) final;
+    bool parseCurveToCubicSmoothSegment(FloatPoint&, FloatPoint&) final;
+    bool parseCurveToQuadraticSegment(FloatPoint&, FloatPoint&) final;
+    bool parseCurveToQuadraticSmoothSegment(FloatPoint&) final;
+    bool parseArcToSegment(float&, float&, float&, bool&, bool&, FloatPoint&) final;
 
     String m_string;
     bool m_is8BitSource;

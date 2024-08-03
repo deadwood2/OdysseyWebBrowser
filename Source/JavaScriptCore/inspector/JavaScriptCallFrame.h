@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef JavaScriptCallFrame_h
-#define JavaScriptCallFrame_h
+#pragma once
 
 #include "JSCJSValueInlines.h"
 #include "debugger/DebuggerCallFrame.h"
@@ -53,9 +52,10 @@ public:
     JSC::DebuggerCallFrame::Type type() const { return m_debuggerCallFrame->type(); }
     JSC::DebuggerScope* scopeChain() const { return m_debuggerCallFrame->scope(); }
     JSC::JSGlobalObject* vmEntryGlobalObject() const { return m_debuggerCallFrame->vmEntryGlobalObject(); }
+    bool isTailDeleted() const { return m_debuggerCallFrame->isTailDeleted(); }
 
     JSC::JSValue thisValue() const { return m_debuggerCallFrame->thisValue(); }
-    JSC::JSValue evaluate(const String& script, NakedPtr<JSC::Exception>& exception) const  { return m_debuggerCallFrame->evaluate(script, exception); }
+    JSC::JSValue evaluateWithScopeExtension(const String& script, JSC::JSObject* scopeExtension, NakedPtr<JSC::Exception>& exception) const { return m_debuggerCallFrame->evaluateWithScopeExtension(script, scopeExtension, exception); }
 
 private:
     JavaScriptCallFrame(PassRefPtr<JSC::DebuggerCallFrame>);
@@ -65,5 +65,3 @@ private:
 };
 
 } // namespace Inspector
-
-#endif // JavaScriptCallFrame_h

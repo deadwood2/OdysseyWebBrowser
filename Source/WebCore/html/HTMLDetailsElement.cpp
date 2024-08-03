@@ -44,7 +44,23 @@ static const AtomicString& summarySlotName()
     return summarySlot;
 }
 
-static AtomicString slotNameFunction(const Node& child)
+class DetailsSlotAssignment final : public SlotAssignment {
+private:
+    void hostChildElementDidChange(const Element&, ShadowRoot&) override;
+    const AtomicString& slotNameForHostChild(const Node&) const override;
+};
+
+void DetailsSlotAssignment::hostChildElementDidChange(const Element& childElement, ShadowRoot& shadowRoot)
+{
+    if (is<HTMLSummaryElement>(childElement)) {
+        // Don't check whether this is the first summary element
+        // since we don't know the answer when this function is called inside Element::removedFrom.
+        didChangeSlot(summarySlotName(), ChangeType::DirectChild, shadowRoot);
+    } else
+        didChangeSlot(SlotAssignment::defaultSlotName(), ChangeType::DirectChild, shadowRoot);
+}
+
+const AtomicString& DetailsSlotAssignment::slotNameForHostChild(const Node& child) const
 {
     auto& parent = *child.parentNode();
     ASSERT(is<HTMLDetailsElement>(parent));
@@ -55,18 +71,13 @@ static AtomicString slotNameFunction(const Node& child)
         if (&child == childrenOfType<HTMLSummaryElement>(details).first())
             return summarySlotName();
     }
-    // Everything else is assigned to the default slot if details is open.
-    if (details.isOpen())
-        return SlotAssignment::defaultSlotName();
-
-    // Otherwise don't render the content.
-    return nullAtom;
-};
+    return SlotAssignment::defaultSlotName();
+}
 
 Ref<HTMLDetailsElement> HTMLDetailsElement::create(const QualifiedName& tagName, Document& document)
 {
     auto details = adoptRef(*new HTMLDetailsElement(tagName, document));
-    details->addShadowRoot(ShadowRoot::create(document, std::make_unique<SlotAssignment>(slotNameFunction)));
+    details->addShadowRoot(ShadowRoot::create(document, std::make_unique<DetailsSlotAssignment>()));
     return details;
 }
 
@@ -76,7 +87,7 @@ HTMLDetailsElement::HTMLDetailsElement(const QualifiedName& tagName, Document& d
     ASSERT(hasTagName(detailsTag));
 }
 
-RenderPtr<RenderElement> HTMLDetailsElement::createElementRenderer(Ref<RenderStyle>&& style, const RenderTreePosition&)
+RenderPtr<RenderElement> HTMLDetailsElement::createElementRenderer(RenderStyle&& style, const RenderTreePosition&)
 {
     return createRenderer<RenderBlockFlow>(*this, WTFMove(style));
 }
@@ -84,18 +95,18 @@ RenderPtr<RenderElement> HTMLDetailsElement::createElementRenderer(Ref<RenderSty
 void HTMLDetailsElement::didAddUserAgentShadowRoot(ShadowRoot* root)
 {
     auto summarySlot = HTMLSlotElement::create(slotTag, document());
-    summarySlot->setAttribute(nameAttr, summarySlotName());
+    summarySlot->setAttributeWithoutSynchronization(nameAttr, summarySlotName());
     m_summarySlot = summarySlot.ptr();
 
     auto defaultSummary = HTMLSummaryElement::create(summaryTag, document());
     defaultSummary->appendChild(Text::create(document(), defaultDetailsSummaryText()), ASSERT_NO_EXCEPTION);
     m_defaultSummary = defaultSummary.ptr();
 
-    summarySlot->appendChild(WTFMove(defaultSummary));
-    root->appendChild(WTFMove(summarySlot));
+    summarySlot->appendChild(defaultSummary);
+    root->appendChild(summarySlot);
 
-    auto defaultSlot = HTMLSlotElement::create(slotTag, document());
-    root->appendChild(WTFMove(defaultSlot));
+    m_defaultSlot = HTMLSlotElement::create(slotTag, document());
+    ASSERT(!m_isOpen);
 }
 
 bool HTMLDetailsElement::isActiveSummary(const HTMLSummaryElement& summary) const
@@ -117,8 +128,14 @@ void HTMLDetailsElement::parseAttribute(const QualifiedName& name, const AtomicS
     if (name == openAttr) {
         bool oldValue = m_isOpen;
         m_isOpen = !value.isNull();
-        if (oldValue != m_isOpen)
-            shadowRoot()->invalidateSlotAssignments();
+        if (oldValue != m_isOpen) {
+            auto* root = shadowRoot();
+            ASSERT(root);
+            if (m_isOpen)
+                root->appendChild(*m_defaultSlot);
+            else
+                root->removeChild(*m_defaultSlot);
+        }
     } else
         HTMLElement::parseAttribute(name, value);
 }
@@ -126,7 +143,7 @@ void HTMLDetailsElement::parseAttribute(const QualifiedName& name, const AtomicS
 
 void HTMLDetailsElement::toggleOpen()
 {
-    setAttribute(openAttr, m_isOpen ? nullAtom : emptyAtom);
+    setAttributeWithoutSynchronization(openAttr, m_isOpen ? nullAtom : emptyAtom);
 
     // We need to post to the document because toggling this element will delete it.
     if (AXObjectCache* cache = document().existingAXObjectCache())

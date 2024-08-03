@@ -23,7 +23,6 @@
 #include "APIObject.h"
 #include "WebContextSupplement.h"
 #include "WebSoupCustomProtocolRequestManagerClient.h"
-#include <wtf/PassRefPtr.h>
 #include <wtf/RefPtr.h>
 #include <wtf/text/WTFString.h>
 
@@ -70,10 +69,10 @@ private:
     WebSoupCustomProtocolRequestManager(WebProcessPool*);
 
     // WebContextSupplement
-    virtual void processPoolDestroyed() override;
-    virtual void processDidClose(WebProcessProxy*) override;
-    virtual void refWebContextSupplement() override;
-    virtual void derefWebContextSupplement() override;
+    void processPoolDestroyed() override;
+    void processDidClose(WebProcessProxy*) override;
+    void refWebContextSupplement() override;
+    void derefWebContextSupplement() override;
 
     WebSoupCustomProtocolRequestManagerClient m_client;
     Vector<String> m_registeredSchemes;

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2008, 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -55,23 +55,31 @@ JSValue JSHistory::state(ExecState& state) const
 
 JSValue JSHistory::pushState(ExecState& state)
 {
-    RefPtr<SerializedScriptValue> historyState = SerializedScriptValue::create(&state, state.argument(0), 0, 0);
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    auto argCount = state.argumentCount();
+    if (UNLIKELY(argCount < 2))
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
+
+    auto historyState = SerializedScriptValue::create(&state, state.uncheckedArgument(0), 0, 0);
     if (state.hadException())
         return jsUndefined();
 
-    String title = valueToStringWithUndefinedOrNullCheck(&state, state.argument(1));
+    // FIXME: title should not be nullable.
+    String title = valueToStringWithUndefinedOrNullCheck(&state, state.uncheckedArgument(1));
     if (state.hadException())
         return jsUndefined();
 
     String url;
-    if (state.argumentCount() > 2) {
-        url = valueToStringWithUndefinedOrNullCheck(&state, state.argument(2));
+    if (argCount > 2) {
+        url = valueToUSVStringWithUndefinedOrNullCheck(&state, state.uncheckedArgument(2));
         if (state.hadException())
             return jsUndefined();
     }
 
     ExceptionCodeWithMessage ec;
-    wrapped().stateObjectAdded(historyState.release(), title, url, History::StateObjectType::Push, ec);
+    wrapped().stateObjectAdded(WTFMove(historyState), title, url, History::StateObjectType::Push, ec);
     setDOMException(&state, ec);
 
     m_state.clear();
@@ -81,23 +89,31 @@ JSValue JSHistory::pushState(ExecState& state)
 
 JSValue JSHistory::replaceState(ExecState& state)
 {
-    RefPtr<SerializedScriptValue> historyState = SerializedScriptValue::create(&state, state.argument(0), 0, 0);
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    auto argCount = state.argumentCount();
+    if (UNLIKELY(argCount < 2))
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
+
+    auto historyState = SerializedScriptValue::create(&state, state.uncheckedArgument(0), 0, 0);
     if (state.hadException())
         return jsUndefined();
 
-    String title = valueToStringWithUndefinedOrNullCheck(&state, state.argument(1));
+    // FIXME: title should not be nullable.
+    String title = valueToStringWithUndefinedOrNullCheck(&state, state.uncheckedArgument(1));
     if (state.hadException())
         return jsUndefined();
 
     String url;
-    if (state.argumentCount() > 2) {
-        url = valueToStringWithUndefinedOrNullCheck(&state, state.argument(2));
+    if (argCount > 2) {
+        url = valueToUSVStringWithUndefinedOrNullCheck(&state, state.uncheckedArgument(2));
         if (state.hadException())
             return jsUndefined();
     }
 
     ExceptionCodeWithMessage ec;
-    wrapped().stateObjectAdded(historyState.release(), title, url, History::StateObjectType::Replace, ec);
+    wrapped().stateObjectAdded(WTFMove(historyState), title, url, History::StateObjectType::Replace, ec);
     setDOMException(&state, ec);
 
     m_state.clear();

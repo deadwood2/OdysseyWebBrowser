@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2010, 2014, 2016 Apple Inc. All rights reserved.
  * Portions Copyright (c) 2011 Motorola Mobility, Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -117,6 +117,7 @@ public:
 
     void showConsole();
     void showResources();
+    void showTimelines();
     void showMainResourceForFrame(WebFrameProxy*);
 
     AttachmentSide attachmentSide() const { return m_attachmentSide; }
@@ -133,6 +134,9 @@ public:
 
     bool isProfilingPage() const { return m_isProfilingPage; }
     void togglePageProfiling();
+
+    bool isElementSelectionActive() const { return m_elementSelectionActive; }
+    void toggleElementSelection();
 
     static bool isInspectorProcessPool(WebProcessPool&);
     static bool isInspectorPage(WebPageProxy&);
@@ -158,7 +162,7 @@ private:
     void eagerlyCreateInspectorPage();
 
     // IPC::MessageReceiver
-    virtual void didReceiveMessage(IPC::Connection&, IPC::MessageDecoder&) override;
+    void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
 
     WebPageProxy* platformCreateInspectorPage();
     void platformOpen();
@@ -187,10 +191,12 @@ private:
 
     // Called by WebInspectorProxy messages
     void createInspectorPage(IPC::Attachment, bool canAttach, bool underTest);
+    void frontendLoaded();
     void didClose();
     void bringToFront();
     void attachAvailabilityChanged(bool);
     void inspectedURLChanged(const String&);
+    void elementSelectionChanged(bool);
 
     void save(const String& filename, const String& content, bool base64Encoded, bool forceSaveAs);
     void append(const String& filename, const String& content);
@@ -227,16 +233,18 @@ private:
     static const unsigned initialWindowWidth;
     static const unsigned initialWindowHeight;
 
-    WebPageProxy* m_inspectedPage {nullptr};
-    WebPageProxy* m_inspectorPage {nullptr};
+    WebPageProxy* m_inspectedPage { nullptr };
+    WebPageProxy* m_inspectorPage { nullptr };
 
-    bool m_underTest {false};
-    bool m_isVisible {false};
-    bool m_isAttached {false};
-    bool m_canAttach {false};
-    bool m_isProfilingPage {false};
-    bool m_showMessageSent {false};
-    bool m_ignoreFirstBringToFront {false};
+    bool m_underTest { false };
+    bool m_isVisible { false };
+    bool m_isAttached { false };
+    bool m_canAttach { false };
+    bool m_isProfilingPage { false };
+    bool m_showMessageSent { false };    
+    bool m_ignoreFirstBringToFront { false };
+    bool m_elementSelectionActive { false };
+    bool m_ignoreElementSelectionChange { false };
 
     IPC::Attachment m_connectionIdentifier;
 
@@ -251,16 +259,16 @@ private:
     String m_urlString;
 #elif PLATFORM(GTK)
     WebInspectorClientGtk m_client;
-    GtkWidget* m_inspectorView {nullptr};
-    GtkWidget* m_inspectorWindow {nullptr};
-    GtkWidget* m_headerBar {nullptr};
+    GtkWidget* m_inspectorView { nullptr };
+    GtkWidget* m_inspectorWindow { nullptr };
+    GtkWidget* m_headerBar { nullptr };
     String m_inspectedURLString;
 #elif PLATFORM(EFL)
-    Evas_Object* m_inspectorView {nullptr};
-    Ecore_Evas* m_inspectorWindow {nullptr};
+    Evas_Object* m_inspectorView { nullptr };
+    Ecore_Evas* m_inspectorWindow { nullptr };
 #endif
 #if ENABLE(INSPECTOR_SERVER)
-    int m_remoteInspectionPageId {0};
+    int m_remoteInspectionPageId { 0 };
 #endif
 };
 

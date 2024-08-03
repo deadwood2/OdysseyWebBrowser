@@ -13,10 +13,7 @@
 enum TOperator
 {
     EOpNull,            // if in a node, should only mean a node is still being built
-    EOpSequence,        // denotes a list of statements, or parameters, etc.
     EOpFunctionCall,
-    EOpInternalFunctionCall, // Call to an internal helper function
-    EOpFunction,        // For function definition
     EOpParameters,      // an aggregate listing the parameters to a function
 
     EOpDeclaration,
@@ -77,8 +74,6 @@ enum TOperator
     EOpIndexIndirect,
     EOpIndexDirectStruct,
     EOpIndexDirectInterfaceBlock,
-
-    EOpVectorSwizzle,
 
     //
     // Built-in functions potentially mapped to operators
@@ -192,7 +187,13 @@ enum TOperator
     EOpConstructUVec3,
     EOpConstructUVec4,
     EOpConstructMat2,
+    EOpConstructMat2x3,
+    EOpConstructMat2x4,
+    EOpConstructMat3x2,
     EOpConstructMat3,
+    EOpConstructMat3x4,
+    EOpConstructMat4x2,
+    EOpConstructMat4x3,
     EOpConstructMat4,
     EOpConstructStruct,
 
@@ -222,5 +223,8 @@ enum TOperator
 
 // Returns the string corresponding to the operator in GLSL
 const char* GetOperatorString(TOperator op);
+
+// Say whether or not a binary or unary operation changes the value of a variable.
+bool IsAssignment(TOperator op);
 
 #endif  // COMPILER_TRANSLATOR_OPERATOR_H_

@@ -82,6 +82,26 @@
     _processPoolConfiguration->setDiskCacheSizeOverride(size);
 }
 
+- (BOOL)diskCacheSpeculativeValidationEnabled
+{
+    return _processPoolConfiguration->diskCacheSpeculativeValidationEnabled();
+}
+
+- (void)setDiskCacheSpeculativeValidationEnabled:(BOOL)enabled
+{
+    _processPoolConfiguration->setDiskCacheSpeculativeValidationEnabled(enabled);
+}
+
+- (BOOL)ignoreSynchronousMessagingTimeoutsForTesting
+{
+    return _processPoolConfiguration->ignoreSynchronousMessagingTimeoutsForTesting();
+}
+
+- (void)setIgnoreSynchronousMessagingTimeoutsForTesting:(BOOL)ignoreSynchronousMessagingTimeoutsForTesting
+{
+    _processPoolConfiguration->setIgnoreSynchronousMessagingTimeoutsForTesting(ignoreSynchronousMessagingTimeoutsForTesting);
+}
+
 - (NSArray *)cachePartitionedURLSchemes
 {
     auto schemes = _processPoolConfiguration->cachePartitionedURLSchemes();

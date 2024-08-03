@@ -72,7 +72,6 @@
 #import "WebTypesInternal.h"
 #import "WebUIDelegatePrivate.h"
 #import "WebViewInternal.h"
-#import <WebCore/BlockExceptions.h>
 #import <WebCore/CSSStyleDeclaration.h>
 #import <WebCore/CachedImage.h>
 #import <WebCore/CachedResourceClient.h>
@@ -91,7 +90,6 @@
 #import <WebCore/EditorDeleteAction.h>
 #import <WebCore/Element.h>
 #import <WebCore/EventHandler.h>
-#import <WebCore/ExceptionHandlers.h>
 #import <WebCore/FloatRect.h>
 #import <WebCore/FocusController.h>
 #import <WebCore/Font.h>
@@ -113,6 +111,7 @@
 #import <WebCore/NSURLFileTypeMappingsSPI.h>
 #import <WebCore/NSViewSPI.h>
 #import <WebCore/Page.h>
+#import <WebCore/PrintContext.h>
 #import <WebCore/Range.h>
 #import <WebCore/RenderView.h>
 #import <WebCore/RenderWidget.h>
@@ -133,6 +132,7 @@
 #import <dlfcn.h>
 #import <limits>
 #import <runtime/InitializeThreading.h>
+#import <wtf/BlockObjCExceptions.h>
 #import <wtf/MainThread.h>
 #import <wtf/MathExtras.h>
 #import <wtf/ObjcRuntimeExtras.h>
@@ -347,6 +347,8 @@ static Optional<ContextMenuAction> toAction(NSInteger tag)
         return ContextMenuItemTagToggleMediaLoop;
     case WebMenuItemTagEnterVideoFullscreen:
         return ContextMenuItemTagEnterVideoFullscreen;
+    case WebMenuItemTagToggleVideoEnhancedFullscreen:
+        return ContextMenuItemTagToggleVideoEnhancedFullscreen;
     case WebMenuItemTagMediaPlayPause:
         return ContextMenuItemTagMediaPlayPause;
     case WebMenuItemTagMediaMute:
@@ -533,6 +535,8 @@ static Optional<NSInteger> toTag(ContextMenuAction action)
         return WebMenuItemTagToggleVideoFullscreen;
     case ContextMenuItemTagShareMenu:
         return WebMenuItemTagShareMenu;
+    case ContextMenuItemTagToggleVideoEnhancedFullscreen:
+        return WebMenuItemTagToggleVideoEnhancedFullscreen;
 
     case ContextMenuItemBaseCustomTag ... ContextMenuItemLastCustomTag:
         // We just pass these through.
@@ -623,6 +627,12 @@ static BOOL forceNSViewHitTest;
 
 // if YES, do the "top WebHTMLView" hit test (which we'd like to do all the time but can't because of Java requirements [see bug 4349721])
 static BOOL forceWebHTMLViewHitTest;
+
+@interface NSApplication ()
+- (BOOL)isSpeaking;
+- (void)stopSpeaking:(id)sender;
+@end
+
 #endif // !PLATFORM(IOS)
 
 static WebHTMLView *lastHitView;
@@ -750,18 +760,8 @@ extern NSString *NSTextInputReplacementRangeAttributeName;
 @end
 #endif // !PLATFORM(IOS)
 
-// By imaging to a width a little wider than the available pixels,
-// thin pages will be scaled down a little, matching the way they
-// print in IE and Camino. This lets them use fewer sheets than they
-// would otherwise, which is presumably why other browsers do this.
-// Wide pages will be scaled down more than this.
-const float _WebHTMLViewPrintingMinimumShrinkFactor = 1.25;
-
-// This number determines how small we are willing to reduce the page content
-// in order to accommodate the widest line. If the page would have to be
-// reduced smaller to make the widest line fit, we just clip instead (this
-// behavior matches MacIE and Mozilla, at least)
-const float _WebHTMLViewPrintingMaximumShrinkFactor = 2;
+const float _WebHTMLViewPrintingMinimumShrinkFactor = PrintContext::minimumShrinkFactor();
+const float _WebHTMLViewPrintingMaximumShrinkFactor = PrintContext::maximumShrinkFactor();
 
 #define AUTOSCROLL_INTERVAL             0.1f
 
@@ -1350,10 +1350,12 @@ static NSURL* uniqueURLWithRelativePart(NSString *relativePart)
 
 - (void)_postFakeMouseMovedEventForFlagsChangedEvent:(NSEvent *)flagsChangedEvent
 {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     NSEvent *fakeEvent = [NSEvent mouseEventWithType:NSMouseMoved location:flagsChangedEvent.window.mouseLocationOutsideOfEventStream
         modifierFlags:flagsChangedEvent.modifierFlags timestamp:flagsChangedEvent.timestamp windowNumber:flagsChangedEvent.windowNumber
         context:nullptr eventNumber:0 clickCount:0 pressure:0];
-
+#pragma clang diagnostic pop
     [self mouseMoved:fakeEvent];
 }
 
@@ -1503,7 +1505,10 @@ static NSURL* uniqueURLWithRelativePart(NSString *relativePart)
 #endif
 {
 #if !PLATFORM(IOS)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     ASSERT(!event || [event type] == NSLeftMouseDown || [event type] == NSRightMouseDown || [event type] == NSOtherMouseDown);
+#pragma clang diagnostic pop
 #else
     ASSERT(!event || event.type == WebEventMouseDown);
 #endif
@@ -1862,8 +1867,11 @@ static NSURL* uniqueURLWithRelativePart(NSString *relativePart)
 #if !PLATFORM(IOS)
 static BOOL isQuickLookEvent(NSEvent *event)
 {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     const int kCGSEventSystemSubtypeHotKeyCombinationReleased = 9;
     return [event type] == NSSystemDefined && [event subtype] == kCGSEventSystemSubtypeHotKeyCombinationReleased && [event data1] == 'lkup';
+#pragma clang diagnostic pop
 }
 #endif
 
@@ -1919,11 +1927,14 @@ static BOOL isQuickLookEvent(NSEvent *event)
     else {
         // FIXME: Why doesn't this include mouse entered/exited events, or other mouse button events?
         NSEvent *event = [[self window] currentEvent];
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
         captureHitsOnSubviews = !([event type] == NSMouseMoved
             || [event type] == NSRightMouseDown
             || ([event type] == NSLeftMouseDown && ([event modifierFlags] & NSControlKeyMask) != 0)
             || [event type] == NSFlagsChanged
             || isQuickLookEvent(event));
+#pragma clang diagnostic pop
     }
 
     if (!captureHitsOnSubviews) {
@@ -2011,6 +2022,8 @@ static BOOL isQuickLookEvent(NSEvent *event)
 - (void)_sendToolTipMouseExited
 {
     // Nothing matters except window, trackingNumber, and userData.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     NSEvent *fakeEvent = [NSEvent enterExitEventWithType:NSMouseExited
         location:NSMakePoint(0, 0)
         modifierFlags:0
@@ -2020,11 +2033,14 @@ static BOOL isQuickLookEvent(NSEvent *event)
         eventNumber:0
         trackingNumber:TRACKING_RECT_TAG
         userData:_private->trackingRectUserData];
+#pragma clang diagnostic pop
     [_private->trackingRectOwner mouseExited:fakeEvent];
 }
 
 - (void)_sendToolTipMouseEntered
 {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     // Nothing matters except window, trackingNumber, and userData.
     NSEvent *fakeEvent = [NSEvent enterExitEventWithType:NSMouseEntered
         location:NSMakePoint(0, 0)
@@ -2036,6 +2052,7 @@ static BOOL isQuickLookEvent(NSEvent *event)
         trackingNumber:TRACKING_RECT_TAG
         userData:_private->trackingRectUserData];
     [_private->trackingRectOwner mouseEntered:fakeEvent];
+#pragma clang diagnostic pop
 }
 #endif // !PLATFORM(IOS)
 
@@ -2071,6 +2088,8 @@ static BOOL isQuickLookEvent(NSEvent *event)
 static bool mouseEventIsPartOfClickOrDrag(NSEvent *event)
 {
     switch ([event type]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
         case NSLeftMouseDown:
         case NSLeftMouseUp:
         case NSLeftMouseDragged:
@@ -2080,6 +2099,7 @@ static bool mouseEventIsPartOfClickOrDrag(NSEvent *event)
         case NSOtherMouseDown:
         case NSOtherMouseUp:
         case NSOtherMouseDragged:
+#pragma clang diagnostic pop
             return true;
         default:
             return false;
@@ -2113,6 +2133,8 @@ static bool mouseEventIsPartOfClickOrDrag(NSEvent *event)
         float yScroll = visibleRect.origin.y;
         float xScroll = visibleRect.origin.x;
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
         NSEvent *event = [NSEvent mouseEventWithType:NSMouseMoved
             location:NSMakePoint(-1 - xScroll, -1 - yScroll)
             modifierFlags:[[NSApp currentEvent] modifierFlags]
@@ -2120,6 +2142,7 @@ static bool mouseEventIsPartOfClickOrDrag(NSEvent *event)
             windowNumber:[[view window] windowNumber]
             context:nullptr
             eventNumber:0 clickCount:0 pressure:0];
+#pragma clang diagnostic pop
         if (Frame* lastHitCoreFrame = core([lastHitView _frame]))
             lastHitCoreFrame->eventHandler().mouseMoved(event, [[self _webView] _pressureEvent]);
     }
@@ -2149,6 +2172,11 @@ static bool mouseEventIsPartOfClickOrDrag(NSEvent *event)
 
         [view release];
     }
+}
+
++ (NSString *)_dummyPasteboardType
+{
+    return @"Apple WebKit dummy pasteboard type";
 }
 
 + (NSArray *)_insertablePasteboardTypes
@@ -2528,10 +2556,7 @@ static bool mouseEventIsPartOfClickOrDrag(NSEvent *event)
         return [[self _frame] _documentFragmentWithMarkupString:HTMLString baseURLString:nil];
     }
 
-    // The _hasHTMLDocument clause here is a workaround for a bug in NSAttributedString: Radar 5052369.
-    // If we call _documentFromRange on an XML document we'll get "setInnerHTML: method not found".
-    // FIXME: Remove this once bug 5052369 is fixed.
-    if ([self _hasHTMLDocument] && (pboardType == NSRTFPboardType || pboardType == NSRTFDPboardType)) {
+    if (pboardType == NSRTFPboardType || pboardType == NSRTFDPboardType) {
         NSAttributedString *string = nil;
         if (pboardType == NSRTFDPboardType)
             string = [[NSAttributedString alloc] initWithRTFD:[pasteboard dataForType:NSRTFDPboardType] documentAttributes:NULL];
@@ -3117,7 +3142,7 @@ WEBCORE_COMMAND(toggleUnderline)
     COMMAND_PROLOGUE
 
     if (Frame* coreFrame = core([self _frame]))
-        coreFrame->selection().revealSelection(ScrollAlignment::alignCenterAlways);
+        coreFrame->selection().revealSelection(SelectionRevealMode::Reveal, ScrollAlignment::alignCenterAlways);
 }
 
 #if !PLATFORM(IOS)
@@ -3328,9 +3353,12 @@ WEBCORE_COMMAND(toggleUnderline)
     // or from calls back from WebCore once we begin mouse-down event handling.
 #if !PLATFORM(IOS)            
     NSEvent *event = [NSApp currentEvent];
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     if ([event type] == NSLeftMouseDown
             && !_private->handlingMouseDownEvent
             && NSPointInRect([event locationInWindow], [self convertRect:[self visibleRect] toView:nil])) {
+#pragma clang diagnostic pop
         return NO;
     }
 #else
@@ -3499,10 +3527,13 @@ WEBCORE_COMMAND(toggleUnderline)
 
 #if !PLATFORM(IOS)
         if (!_private->flagsChangedEventMonitor) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
             _private->flagsChangedEventMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSFlagsChangedMask handler:^(NSEvent *flagsChangedEvent) {
                 [self _postFakeMouseMovedEventForFlagsChangedEvent:flagsChangedEvent];
                 return flagsChangedEvent;
             }];
+#pragma clang diagnostic pop
         }
     } else {
         [NSEvent removeMonitor:_private->flagsChangedEventMonitor];
@@ -4532,6 +4563,8 @@ static RetainPtr<NSArray> customMenuFromDefaultItems(WebView *webView, const Con
         slideBack:(BOOL)slideBack
 {
     ASSERT(self == [self _topHTMLView]);
+    [pasteboard setString:@"" forType:[WebHTMLView _dummyPasteboardType]];
+
     [super dragImage:dragImage at:at offset:offset event:event pasteboard:pasteboard source:source slideBack:slideBack];
 }
 
@@ -4765,12 +4798,19 @@ static PassRefPtr<KeyboardEvent> currentKeyboardEvent(Frame* coreFrame)
         return 0;
 
     switch ([event type]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     case NSKeyDown: {
+#pragma clang diagnostic pop
+
         PlatformKeyboardEvent platformEvent = PlatformEventFactory::createPlatformKeyboardEvent(event);
         platformEvent.disambiguateKeyDownEvent(PlatformEvent::RawKeyDown);
         return KeyboardEvent::create(platformEvent, coreFrame->document()->defaultView());
     }
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     case NSKeyUp:
+#pragma clang diagnostic pop
         return KeyboardEvent::create(PlatformEventFactory::createPlatformKeyboardEvent(event), coreFrame->document()->defaultView());
     default:
         return 0;
@@ -5301,7 +5341,7 @@ static PassRefPtr<KeyboardEvent> currentKeyboardEvent(Frame* coreFrame)
     COMMAND_PROLOGUE
 
     if (Frame* coreFrame = core([self _frame]))
-        coreFrame->selection().revealSelection(ScrollAlignment::alignCenterAlways);
+        coreFrame->selection().revealSelection(SelectionRevealMode::Reveal, ScrollAlignment::alignCenterAlways);
 }
 
 #if !PLATFORM(IOS)
@@ -5464,9 +5504,12 @@ static PassRefPtr<KeyboardEvent> currentKeyboardEvent(Frame* coreFrame)
     if (![self _canEdit])
         return NO;
     
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     if (([event modifierFlags] & NSDeviceIndependentModifierFlagsMask) != NSCommandKeyMask)
         return NO;
-    
+#pragma clang diagnostic pop
+
     NSString *string = [event characters];
     if ([string caseInsensitiveCompare:@"b"] == NSOrderedSame) {
         [self executeCoreCommandByName:"ToggleBold"];
@@ -5550,14 +5593,14 @@ static PassRefPtr<KeyboardEvent> currentKeyboardEvent(Frame* coreFrame)
     return [[NSFontManager sharedFontManager] fontWithFamily:@"Times" traits:NSFontItalicTrait weight:STANDARD_BOLD_WEIGHT size:12.0f];
 }
 
-static NSString *fontNameForDescription(NSString *familyName, BOOL italic, BOOL bold)
+static RetainPtr<CFStringRef> fontNameForDescription(NSString *familyName, BOOL italic, BOOL bold)
 {
     // Find the font the same way the rendering code would later if it encountered this CSS.
     FontDescription fontDescription;
     fontDescription.setIsItalic(italic);
     fontDescription.setWeight(bold ? FontWeight900 : FontWeight500);
     RefPtr<Font> font = FontCache::singleton().fontForFamily(fontDescription, familyName);
-    return [font->platformData().nsFont() fontName];
+    return adoptCF(CTFontCopyPostScriptName(font->getCTFont()));
 }
 
 - (void)_addToStyle:(DOMCSSStyleDeclaration *)style fontA:(NSFont *)a fontB:(NSFont *)b
@@ -5596,8 +5639,10 @@ static NSString *fontNameForDescription(NSString *familyName, BOOL italic, BOOL 
         // the Postscript name.
         // If we don't find a font with the same Postscript name, then we'll have to use the
         // Postscript name to make the CSS specific enough.
-        if (![fontNameForDescription(aFamilyName, aIsItalic, aIsBold) isEqualToString:[a fontName]])
-            familyNameForCSS = [a fontName];
+        auto fontName = fontNameForDescription(aFamilyName, aIsItalic, aIsBold);
+        auto aName = [a fontName];
+        if (!fontName || !aName || !CFEqual(fontName.get(), static_cast<CFStringRef>(aName)))
+            familyNameForCSS = aName;
 
         // FIXME: Need more sophisticated escaping code if we want to handle family names
         // with characters like single quote or backslash in their names.
@@ -6311,30 +6356,15 @@ static BOOL writingDirectionKeyBindingsEnabled()
 
 - (void)_lookUpInDictionaryFromMenu:(id)sender
 {
-    // Dictionary API will accept a whitespace-only string and display UI as if it were real text,
-    // so bail out early to avoid that.
-    if ([[[self selectedString] _webkit_stringByTrimmingWhitespace] length] == 0)
-        return;
-
-    NSAttributedString *attrString = [self selectedAttributedString];
-
     Frame* coreFrame = core([self _frame]);
     if (!coreFrame)
         return;
 
-    NSRect rect = coreFrame->selection().selectionBounds();
+    RefPtr<Range> selectionRange = coreFrame->selection().selection().firstRange();
+    if (!selectionRange)
+        return;
 
-    NSDictionary *attributes = [attrString fontAttributesInRange:NSMakeRange(0, 1)];
-    NSFont *font = [attributes objectForKey:NSFontAttributeName];
-    if (font)
-        rect.origin.y += [font descender];
-
-    DictionaryPopupInfo info;
-    info.attributedString = attrString;
-    info.origin = coreFrame->view()->contentsToWindow(enclosingIntRect(rect)).location();
-    if (auto textIndicator = TextIndicator::createWithSelectionInFrame(*coreFrame, TextIndicatorOptionIncludeSnapshotWithSelectionHighlight, TextIndicatorPresentationTransition::BounceAndCrossfade))
-        info.textIndicator = textIndicator->data();
-    [[self _webView] _showDictionaryLookupPopup:info];
+    [[self _webView] _showDictionaryLookupPopup:[WebImmediateActionController _dictionaryPopupInfoForRange:*selectionRange inFrame:coreFrame withLookupOptions:nil indicatorOptions:TextIndicatorOptionIncludeSnapshotWithSelectionHighlight transition:TextIndicatorPresentationTransition::BounceAndCrossfade]];
 }
 
 - (void)quickLookWithEvent:(NSEvent *)event
@@ -6398,11 +6428,14 @@ static BOOL writingDirectionKeyBindingsEnabled()
         return NO;
 
     NSEvent *macEvent = platformEvent->macEvent();
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     if ([macEvent type] == NSKeyDown && [_private->completionController filterKeyDown:macEvent])
         return YES;
     
     if ([macEvent type] == NSFlagsChanged)
         return NO;
+#pragma clang diagnostic pop
     
     parameters.event = event;
     _private->interpretKeyEventsParameters = &parameters;
@@ -6457,10 +6490,6 @@ static BOOL writingDirectionKeyBindingsEnabled()
 #define kWebBackspaceKey     0x0008
 #define kWebReturnKey        0x000d
 #define kWebDeleteKey        0x007F
-#define kWebLeftArrowKey     0x00AC
-#define kWebUpArrowKey       0x00AD
-#define kWebRightArrowKey    0x00AE
-#define kWebDownArrowKey     0x00AF
 #define kWebDeleteForwardKey 0xF728
     
 - (BOOL)_handleEditingKeyEvent:(KeyboardEvent *)wcEvent
@@ -6472,79 +6501,36 @@ static BOOL writingDirectionKeyBindingsEnabled()
     // embedded as the whole view, as in Mail, and tabs should input tabs as expected
     // in a text editor.
     
-    // FIXME - this code will break when content editable is supported.
     if (const PlatformKeyboardEvent* platformEvent = wcEvent->keyEvent()) {
         WebEvent *event = platformEvent->event();
         if (![[self _webView] isEditable] && event.isTabKey) 
             return NO;
         
-        // Now process the key normally
-        BOOL shift = platformEvent->shiftKey();
-        
-        switch (event.characterSet) {
-            case WebEventCharacterSetSymbol: {
-                SEL sel = 0;
-                NSString *s = [event charactersIgnoringModifiers];
-                if ([s length] == 0)
-                    break;
-                switch ([s characterAtIndex:0]) {
-                    case kWebLeftArrowKey:
-                        sel = shift ? @selector(moveLeftAndModifySelection:) : @selector(moveLeft:);
-                        break;
-                    case kWebUpArrowKey:
-                        sel = shift ? @selector(moveUpAndModifySelection:) : @selector(moveUp:);
-                        break;
-                    case kWebRightArrowKey:
-                        sel = shift ? @selector(moveRightAndModifySelection:) : @selector(moveRight:);
-                        break;
-                    case kWebDownArrowKey:
-                        sel = shift ? @selector(moveDownAndModifySelection:) : @selector(moveDown:);
-                        break;
-                }
-                if (sel) {
-                    [self performSelector:sel withObject:self];
-                    return YES;
-                }
-                break;
+        NSString *s = [event characters];
+        if (!s.length)
+            return NO;
+        WebView* webView = [self _webView];
+        switch ([s characterAtIndex:0]) {
+        case kWebBackspaceKey:
+        case kWebDeleteKey:
+            [[webView _UIKitDelegateForwarder] deleteFromInputWithFlags:event.keyboardFlags];
+            return YES;
+        case kWebEnterKey:
+        case kWebReturnKey:
+            if (platformEvent->type() == PlatformKeyboardEvent::Char) {
+                // Map \r from HW keyboard to \n to match the behavior of the soft keyboard.
+                [[webView _UIKitDelegateForwarder] addInputString:@"\n" withFlags:0];
+                return YES;
             }
-            case WebEventCharacterSetASCII:
-            case WebEventCharacterSetUnicode: {
-                NSString *s = [event characters];
-                if ([s length] == 0)
-                    break;
-                WebView* webView = [self _webView];
-                switch ([s characterAtIndex:0]) {
-                    case kWebBackspaceKey:
-                    case kWebDeleteKey:
-                        // FIXME: remove the call to deleteFromInput when UIKit implements deleteFromInputWithFlags.
-                        if ([webView respondsToSelector:@selector(deleteFromInputWithFlags:)])
-                            [[webView _UIKitDelegateForwarder] deleteFromInputWithFlags:event.keyboardFlags];
-                        else
-                            [[webView _UIKitDelegateForwarder] deleteFromInput];
-                        return YES;
-                    case kWebEnterKey:
-                    case kWebReturnKey:
-                        if (platformEvent->type() == PlatformKeyboardEvent::Char) {
-                            // Map \r from HW keyboard to \n to match the behavior of the soft keyboard.
-                            [[webView _UIKitDelegateForwarder] addInputString:@"\n" withFlags:0];
-                            return YES;
-                        }
-                        return NO;
-                    case kWebDeleteForwardKey:
-                        [self deleteForward:self];
-                        return YES;
-                    default: {                    
-                        if (platformEvent->type() == PlatformKeyboardEvent::Char) {
-                            [[webView _UIKitDelegateForwarder] addInputString:event.characters withFlags:event.keyboardFlags];
-                            return YES;
-                        }
-                        return NO;
-                    }
-                }
-                break;
+            break;
+        case kWebDeleteForwardKey:
+            [self deleteForward:self];
+            return YES;
+        default:
+            if (platformEvent->type() == PlatformKeyboardEvent::Char) {
+                [[webView _UIKitDelegateForwarder] addInputString:event.characters withFlags:event.keyboardFlags];
+                return YES;
             }
-            default:
-                return NO;
         }
     }
     return NO;
@@ -6650,6 +6636,7 @@ static BOOL writingDirectionKeyBindingsEnabled()
 #endif
 }
 
+#if PLATFORM(MAC)
 - (void)drawLayer:(CALayer *)layer inContext:(CGContextRef)ctx
 {
     if (_private) {
@@ -6662,6 +6649,7 @@ static BOOL writingDirectionKeyBindingsEnabled()
     if (_private)
         _private->drawingIntoLayer = NO;
 }
+#endif
 
 - (BOOL)_web_isDrawingIntoLayer
 {
@@ -7103,7 +7091,7 @@ static void extractUnderlines(NSAttributedString *string, Vector<CompositionUnde
         return;
 
     BOOL needToRemoveSoftSpace = NO;
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200
+#if HAVE(ADVANCED_SPELL_CHECKING)
     if (_private->softSpaceRange.location != NSNotFound && (replacementRange.location == NSMaxRange(_private->softSpaceRange) || replacementRange.location == NSNotFound) && !replacementRange.length && [[NSSpellChecker sharedSpellChecker] deletesAutospaceBeforeString:text language:nil]) {
         replacementRange = _private->softSpaceRange;
         needToRemoveSoftSpace = YES;
@@ -7221,6 +7209,10 @@ static void extractUnderlines(NSAttributedString *string, Vector<CompositionUnde
     // Why doesn't it?  See <rdar://problem/6837252> for questions.
 #endif // PLATFORM(IOS)
 }
+
+#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200 && USE(APPLE_INTERNAL_SDK)
+#import <WebKitAdditions/WebHTMLViewWebNSTextInputSupportAdditions.mm>
+#endif
 
 @end
 
@@ -7476,7 +7468,7 @@ static CGImageRef selectionImage(Frame* frame, bool forceBlackText)
     if (!coreFrame)
         return nil;
     HitTestRequest::HitTestRequestType hitType = HitTestRequest::ReadOnly | HitTestRequest::Active
-        | (allow ? 0 : HitTestRequest::DisallowShadowContent);
+        | (allow ? 0 : HitTestRequest::DisallowUserAgentShadowContent);
     return [[[WebElementDictionary alloc] initWithHitTestResult:coreFrame->eventHandler().hitTestResultAtPoint(IntPoint(point), hitType)] autorelease];
 }
 

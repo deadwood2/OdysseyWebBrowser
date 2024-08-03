@@ -49,7 +49,6 @@ WebKitBuildbot = function()
         "Apple Yosemite Release WK1 (Tests)": {platform: Dashboard.Platform.MacOSXYosemite, debug: false, tester: true, testCategory: Buildbot.TestCategory.WebKit1},
         "Apple Yosemite Release WK2 (Tests)": {platform: Dashboard.Platform.MacOSXYosemite, debug: false, tester: true, testCategory: Buildbot.TestCategory.WebKit2},
         "Apple Yosemite Release WK2 (Perf)": {platform: Dashboard.Platform.MacOSXYosemite, debug: false, performance: true, heading: "Performance"},
-        "Apple Yosemite (Leaks)": {platform: Dashboard.Platform.MacOSXYosemite, debug: true, leaks: true},
         "Apple Yosemite JSC": {platform: Dashboard.Platform.MacOSXYosemite, heading: "JavaScript", combinedQueues: {
             "Apple Yosemite 32-bit JSC (BuildAndTest)": {heading: "32-bit JSC (BuildAndTest)"},
             "Apple Yosemite LLINT CLoop (BuildAndTest)": {heading: "LLINT CLoop (BuildAndTest)"},
@@ -60,6 +59,9 @@ WebKitBuildbot = function()
         "Apple iOS 9 Simulator Release (Build)": {platform: Dashboard.Platform.iOS9Simulator, debug: false, builder: true, architecture: Buildbot.BuildArchitecture.SixtyFourBit},
         "Apple iOS 9 Simulator Release WK1 (Tests)": {platform: Dashboard.Platform.iOS9Simulator, debug: false, tester: true, testCategory: Buildbot.TestCategory.WebKit1},
         "Apple iOS 9 Simulator Release WK2 (Tests)": {platform: Dashboard.Platform.iOS9Simulator, debug: false, tester: true, testCategory: Buildbot.TestCategory.WebKit2},
+        "Apple iOS 9 Simulator Debug (Build)": {platform: Dashboard.Platform.iOS9Simulator, debug: true, builder: true, architecture: Buildbot.BuildArchitecture.SixtyFourBit},
+        "Apple iOS 9 Simulator Debug WK1 (Tests)": {platform: Dashboard.Platform.iOS9Simulator, debug: true, tester: true, testCategory: Buildbot.TestCategory.WebKit1},
+        "Apple iOS 9 Simulator Debug WK2 (Tests)": {platform: Dashboard.Platform.iOS9Simulator, debug: true, tester: true, testCategory: Buildbot.TestCategory.WebKit2},
         "Apple Win Debug (Build)": {platform: Dashboard.Platform.Windows7, debug: true, builder: true, architecture: Buildbot.BuildArchitecture.ThirtyTwoBit},
         "Apple Win Release (Build)": {platform: Dashboard.Platform.Windows7, builder: true, architecture: Buildbot.BuildArchitecture.ThirtyTwoBit},
         "Apple Win 7 Debug (Tests)": {platform: Dashboard.Platform.Windows7, debug: true, tester: true, testCategory: Buildbot.TestCategory.WebKit1},

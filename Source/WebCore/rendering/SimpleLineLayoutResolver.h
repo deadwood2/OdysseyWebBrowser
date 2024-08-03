@@ -30,7 +30,6 @@
 #include "RenderBlockFlow.h"
 #include "SimpleLineLayoutFlowContents.h"
 #include "SimpleLineLayoutFunctions.h"
-#include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
@@ -62,6 +61,8 @@ public:
         unsigned end() const;
 
         FloatRect rect() const;
+        float expansion() const;
+        ExpansionBehavior expansionBehavior() const;
         int baselinePosition() const;
         StringView text() const;
         bool isEndOfLine() const;
@@ -168,6 +169,16 @@ inline unsigned RunResolver::Run::start() const
 inline unsigned RunResolver::Run::end() const
 {
     return m_iterator.simpleRun().end;
+}
+
+inline float RunResolver::Run::expansion() const
+{
+    return m_iterator.simpleRun().expansion;
+}
+
+inline ExpansionBehavior RunResolver::Run::expansionBehavior() const
+{
+    return m_iterator.simpleRun().expansionBehavior;
 }
 
 inline int RunResolver::Run::baselinePosition() const

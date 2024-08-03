@@ -42,16 +42,16 @@ class MediaStreamTrackEvent : public Event {
 public:
     virtual ~MediaStreamTrackEvent();
 
-    static Ref<MediaStreamTrackEvent> create(const AtomicString& type, bool canBubble, bool cancelable, PassRefPtr<MediaStreamTrack>);
+    static Ref<MediaStreamTrackEvent> create(const AtomicString& type, bool canBubble, bool cancelable, RefPtr<MediaStreamTrack>&&);
     static Ref<MediaStreamTrackEvent> createForBindings(const AtomicString& type, const MediaStreamTrackEventInit& initializer);
 
     MediaStreamTrack* track() const;
 
     // Event
-    virtual EventInterface eventInterface() const override;
+    EventInterface eventInterface() const override;
 
 private:
-    MediaStreamTrackEvent(const AtomicString& type, bool canBubble, bool cancelable, PassRefPtr<MediaStreamTrack>);
+    MediaStreamTrackEvent(const AtomicString& type, bool canBubble, bool cancelable, RefPtr<MediaStreamTrack>&&);
     MediaStreamTrackEvent(const AtomicString& type, const MediaStreamTrackEventInit&);
 
     RefPtr<MediaStreamTrack> m_track;

@@ -49,15 +49,7 @@ static void unauthorizedSQLFunction(sqlite3_context *context, int, sqlite3_value
     sqlite3_result_error(context, errorMessage.utf8().data(), -1);
 }
 
-SQLiteDatabase::SQLiteDatabase()
-    : m_db(0)
-    , m_pageSize(-1)
-    , m_transactionInProgress(false)
-    , m_sharable(false)
-    , m_openingThread(0)
-    , m_openError(SQLITE_ERROR)
-    , m_openErrorMessage()
-    , m_lastChangesCount(0)
+static void initializeSQLiteIfNecessary()
 {
     static std::once_flag flag;
     std::call_once(flag, [] {
@@ -77,6 +69,8 @@ SQLiteDatabase::SQLiteDatabase()
     });
 }
 
+SQLiteDatabase::SQLiteDatabase() = default;
+
 SQLiteDatabase::~SQLiteDatabase()
 {
     close();
@@ -84,6 +78,8 @@ SQLiteDatabase::~SQLiteDatabase()
 
 bool SQLiteDatabase::open(const String& filename, bool forWebSQLDatabase)
 {
+    initializeSQLiteIfNecessary();
+
     close();
 
     m_openError = SQLiteFileSystem::openDatabase(filename, &m_db, forWebSQLDatabase);
@@ -116,17 +112,14 @@ bool SQLiteDatabase::open(const String& filename, bool forWebSQLDatabase)
         LOG_ERROR("SQLite database could not set temp_store to memory");
 
     SQLiteStatement walStatement(*this, ASCIILiteral("PRAGMA journal_mode=WAL;"));
-    int result = walStatement.step();
-    if (result != SQLITE_OK && result != SQLITE_ROW)
-        LOG_ERROR("SQLite database failed to set journal_mode to WAL, error: %s", lastErrorMsg());
-
+    if (walStatement.prepareAndStep() == SQLITE_ROW) {
 #ifndef NDEBUG
-    if (result == SQLITE_ROW) {
         String mode = walStatement.getColumnText(0);
         if (!equalLettersIgnoringASCIICase(mode, "wal"))
-            LOG_ERROR("journal_mode of database should be 'wal', but is '%s'", mode.utf8().data());
-    }
+            LOG_ERROR("journal_mode of database should be 'WAL', but is '%s'", mode.utf8().data());
 #endif
+    } else
+        LOG_ERROR("SQLite database failed to set journal_mode to WAL, error: %s", lastErrorMsg());
 
     return isOpen();
 }
@@ -335,6 +328,13 @@ int SQLiteDatabase::runIncrementalVacuumCommand()
 
     enableAuthorizer(true);
     return lastError();
+}
+
+void SQLiteDatabase::interrupt()
+{
+    LockHolder locker(m_databaseClosingMutex);
+    if (m_db)
+        sqlite3_interrupt(m_db);
 }
 
 int64_t SQLiteDatabase::lastInsertRowID()

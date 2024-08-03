@@ -34,8 +34,9 @@
    Note, this file uses many GCC extensions, but it should be compatible with
    C, Objective C, C++, and Objective C++.
 
-   For non-debug builds, everything is disabled by default.
-   Defining any of the symbols explicitly prevents this from having any effect.
+   For non-debug builds, everything is disabled by default except for "always
+   on" logging. Defining any of the symbols explicitly prevents this from
+   having any effect.
 */
 
 #include <inttypes.h>
@@ -43,6 +44,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <wtf/ExportMacros.h>
+
+#if USE(OS_LOG)
+#include <os/log.h>
+#endif
 
 #ifdef NDEBUG
 /* Disable ASSERT* macros in release mode. */
@@ -77,6 +82,10 @@
 
 #ifndef LOG_DISABLED
 #define LOG_DISABLED ASSERTIONS_DISABLED_DEFAULT
+#endif
+
+#ifndef RELEASE_LOG_DISABLED
+#define RELEASE_LOG_DISABLED !(USE(OS_LOG))
 #endif
 
 #if COMPILER(GCC_OR_CLANG)
@@ -121,7 +130,7 @@ extern "C" {
 #define NO_RETURN_DUE_TO_CRASH
 #endif
 
-typedef enum { WTFLogChannelOff, WTFLogChannelOn } WTFLogChannelState;
+typedef enum { WTFLogChannelOff, WTFLogChannelOn, WTFLogChannelOnWithAccumulation } WTFLogChannelState;
 
 typedef struct {
     WTFLogChannelState state;
@@ -370,6 +379,20 @@ WTF_EXPORT_PRIVATE NO_RETURN_DUE_TO_CRASH void WTFCrashWithSecurityImplication()
 #else
 #define LOG_VERBOSE(channel, ...) WTFLogVerbose(__FILE__, __LINE__, WTF_PRETTY_FUNCTION, &JOIN_LOG_CHANNEL_WITH_PREFIX(LOG_CHANNEL_PREFIX, channel), __VA_ARGS__)
 #endif
+
+/* RELEASE_LOG */
+
+#define WTF_LOGGING_PREFIX "#WK: "
+#if RELEASE_LOG_DISABLED
+#define RELEASE_LOG(format, ...)       ((void)0)
+#define RELEASE_LOG_ERROR(format, ...) WTFReportError(__FILE__, __LINE__, WTF_PRETTY_FUNCTION, format, ##__VA_ARGS__)
+#else
+#define WTF_LOG_DEFAULT OS_LOG_DEFAULT
+#define RELEASE_LOG(format, ...)       os_log(WTF_LOG_DEFAULT, WTF_LOGGING_PREFIX format, ##__VA_ARGS__)
+#define RELEASE_LOG_ERROR(format, ...) os_log_error(WTF_LOG_DEFAULT, WTF_LOGGING_PREFIX format, ##__VA_ARGS__)
+#endif
+#define RELEASE_LOG_IF(isAllowed, format, ...)       do { if (isAllowed) RELEASE_LOG(format, ##__VA_ARGS__); } while (0)
+#define RELEASE_LOG_ERROR_IF(isAllowed, format, ...) do { if (isAllowed) RELEASE_LOG_ERROR(format, ##__VA_ARGS__); } while (0)
 
 /* RELEASE_ASSERT */
 

@@ -1,5 +1,7 @@
 /* A Bison parser, made by GNU Bison 3.0.4.  */
 
+/* Apple Note: For the avoidance of doubt, Apple elects to distribute this file under the terms of the BSD license. */
+
 /* Bison interface for Yacc-like parsers in C
 
    Copyright (C) 1984, 1989-1990, 2000-2015 Free Software Foundation, Inc.
@@ -208,6 +210,7 @@ union YYSTYPE
             TIntermCase* intermCase;
         };
         union {
+            TTypeSpecifierNonArray typeSpecifierNonArray;
             TPublicType type;
             TPrecision precision;
             TLayoutQualifier layoutQualifier;
@@ -216,6 +219,8 @@ union YYSTYPE
             TParameter param;
             TField* field;
             TFieldList* fieldList;
+            TQualifierWrapperBase *qualifierWrapper;
+            TTypeQualifierBuilder *typeQualifierBuilder;
         };
     } interm;
 

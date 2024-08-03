@@ -58,6 +58,8 @@ public:
         case FunctionUse:
         case FinalObjectUse:
         case RegExpObjectUse:
+        case MapObjectUse:
+        case SetObjectUse:
         case ObjectOrOtherUse:
         case StringIdentUse:
         case StringUse:
@@ -69,12 +71,12 @@ public:
         case NotCellUse:
         case OtherUse:
         case MiscUse:
-        case MachineIntUse:
-        case DoubleRepMachineIntUse:
+        case AnyIntUse:
+        case DoubleRepAnyIntUse:
             return;
             
         case KnownInt32Use:
-            if (m_state.forNode(edge).m_type & ~SpecInt32)
+            if (m_state.forNode(edge).m_type & ~SpecInt32Only)
                 m_result = false;
             return;
 
@@ -137,11 +139,12 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case JSConstant:
     case DoubleConstant:
     case Int52Constant:
+    case LazyJSConstant:
     case Identity:
     case ToThis:
     case CreateThis:
     case GetCallee:
-    case GetArgumentCount:
+    case GetArgumentCountIncludingThis:
     case GetRestLength:
     case GetLocal:
     case SetLocal:
@@ -185,14 +188,22 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case ArithRound:
     case ArithFloor:
     case ArithCeil:
+    case ArithTrunc:
     case ArithSin:
     case ArithCos:
     case ArithLog:
     case ValueAdd:
+    case TryGetById:
+    case DeleteById:
+    case DeleteByVal:
     case GetById:
+    case GetByIdWithThis:
+    case GetByValWithThis:
     case GetByIdFlush:
     case PutById:
     case PutByIdFlush:
+    case PutByIdWithThis:
+    case PutByValWithThis:
     case PutByIdDirect:
     case PutGetterById:
     case PutSetterById:
@@ -202,22 +213,21 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case CheckStructure:
     case GetExecutable:
     case GetButterfly:
-    case GetButterflyReadOnly:
     case CheckArray:
     case Arrayify:
     case ArrayifyToStructure:
     case GetScope:
     case SkipScope:
+    case GetGlobalObject:
     case GetClosureVar:
     case PutClosureVar:
     case GetGlobalVar:
     case GetGlobalLexicalVariable:
     case PutGlobalVariable:
-    case VarInjectionWatchpoint:
     case CheckCell:
     case CheckBadCell:
     case CheckNotEmpty:
-    case CheckIdent:
+    case CheckStringIdent:
     case RegExpExec:
     case RegExpTest:
     case CompareLess:
@@ -226,10 +236,12 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case CompareGreaterEq:
     case CompareEq:
     case CompareStrictEq:
+    case CompareEqPtr:
     case Call:
     case TailCallInlinedCaller:
     case Construct:
     case CallVarargs:
+    case CallEval:
     case TailCallVarargsInlinedCaller:
     case TailCallForwardVarargsInlinedCaller:
     case ConstructVarargs:
@@ -241,15 +253,14 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case NewArrayWithSize:
     case NewArrayBuffer:
     case NewRegexp:
-    case Breakpoint:
-    case ProfileWillCall:
-    case ProfileDidCall:
     case ProfileType:
     case ProfileControlFlow:
     case CheckTypeInfoFlags:
     case OverridesHasInstance:
     case InstanceOf:
     case InstanceOfCustom:
+    case IsJSArray:
+    case IsEmpty:
     case IsUndefined:
     case IsBoolean:
     case IsNumber:
@@ -257,10 +268,15 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case IsObject:
     case IsObjectOrNull:
     case IsFunction:
+    case IsRegExpObject:
+    case IsTypedArrayView:
     case TypeOf:
     case LogicalNot:
+    case CallObjectConstructor:
     case ToPrimitive:
     case ToString:
+    case ToNumber:
+    case SetFunctionName:
     case StrCat:
     case CallStringConstructor:
     case NewStringObject:
@@ -272,7 +288,6 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case CreateClonedArguments:
     case GetFromArguments:
     case PutToArguments:
-    case NewArrowFunction:
     case NewFunction:
     case NewGeneratorFunction:
     case Jump:
@@ -287,6 +302,8 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case CountExecution:
     case ForceOSRExit:
     case CheckWatchdogTimer:
+    case LogShadowChickenPrologue:
+    case LogShadowChickenTail:
     case StringFromCharCode:
     case NewTypedArray:
     case Unreachable:
@@ -294,7 +311,6 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case CheckTierUpInLoop:
     case CheckTierUpAtReturn:
     case CheckTierUpAndOSREnter:
-    case CheckTierUpWithNestedTriggerAndOSREnter:
     case LoopHint:
     case StoreBarrier:
     case InvalidationPoint:
@@ -330,9 +346,21 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case PhantomDirectArguments:
     case PhantomClonedArguments:
     case GetMyArgumentByVal:
+    case GetMyArgumentByValOutOfBounds:
     case ForwardVarargs:
-    case CopyRest:
+    case CreateRest:
     case StringReplace:
+    case StringReplaceRegExp:
+    case GetRegExpObjectLastIndex:
+    case SetRegExpObjectLastIndex:
+    case RecordRegExpCachedResult:
+    case GetDynamicVar:
+    case PutDynamicVar:
+    case ResolveScope:
+    case MapHash:
+    case GetMapBucket:
+    case LoadFromJSMapBucket:
+    case IsNonEmptyMapBucket:
         return true;
 
     case BottomValue:

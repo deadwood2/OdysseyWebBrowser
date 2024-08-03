@@ -27,12 +27,10 @@
 #define WebKitCSSFilterValue_h
 
 #include "CSSValueList.h"
-#include <wtf/PassRefPtr.h>
-#include <wtf/RefPtr.h>
 
 namespace WebCore {
 
-class WebKitCSSFilterValue : public CSSValueList {
+class WebKitCSSFilterValue final : public CSSValueList {
 public:
     // NOTE: these have to match the values in the IDL
     enum FilterOperationType {

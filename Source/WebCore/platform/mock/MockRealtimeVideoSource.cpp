@@ -43,20 +43,26 @@
 #include "UUID.h"
 #include <math.h>
 #include <wtf/CurrentTime.h>
-#include <wtf/NeverDestroyed.h>
 #include <wtf/text/StringView.h>
 
 namespace WebCore {
 
 #if !PLATFORM(MAC) && !PLATFORM(IOS)
-RefPtr<MockRealtimeVideoSource> MockRealtimeVideoSource::create()
+Ref<MockRealtimeVideoSource> MockRealtimeVideoSource::create()
 {
-    return adoptRef(new MockRealtimeVideoSource());
+    return adoptRef(*new MockRealtimeVideoSource(MockRealtimeMediaSource::mockVideoSourceName()));
+}
+
+Ref<MockRealtimeVideoSource> MockRealtimeVideoSource::createMuted(const String& name)
+{
+    auto source = adoptRef(*new MockRealtimeVideoSource(name));
+    source->m_muted = true;
+    return source;
 }
 #endif
 
-MockRealtimeVideoSource::MockRealtimeVideoSource()
-    : MockRealtimeMediaSource(createCanonicalUUIDString(), RealtimeMediaSource::Video, mockVideoSourceName())
+MockRealtimeVideoSource::MockRealtimeVideoSource(const String& name)
+    : MockRealtimeMediaSource(createCanonicalUUIDString(), RealtimeMediaSource::Video, name)
     , m_timer(RunLoop::current(), this, &MockRealtimeVideoSource::generateFrame)
 {
     m_dashWidths.reserveInitialCapacity(2);
@@ -127,7 +133,7 @@ void MockRealtimeVideoSource::setFrameRate(float rate)
     if (m_timer.isActive())
         m_timer.startRepeating(std::chrono::milliseconds(lround(1000 / m_frameRate)));
 
-    settingsDidChanged();
+    settingsDidChange();
 }
 
 void MockRealtimeVideoSource::setSize(const IntSize& size)
@@ -162,7 +168,7 @@ void MockRealtimeVideoSource::setSize(const IntSize& size)
     m_imageBuffer = nullptr;
     updatePlatformLayer();
 
-    settingsDidChanged();
+    settingsDidChange();
 }
 
 void MockRealtimeVideoSource::drawAnimation(GraphicsContext& context)
@@ -262,19 +268,19 @@ void MockRealtimeVideoSource::drawText(GraphicsContext& context)
     context.setFillColor(Color::white);
     context.setTextDrawingMode(TextModeFill);
     String string = String::format("%02u:%02u:%02u.%03u", hours, minutes, seconds, milliseconds % 1000);
-    context.drawText(m_timeFont, TextRun((StringView(string))), timeLocation, 0, -1);
+    context.drawText(m_timeFont, TextRun((StringView(string))), timeLocation);
 
     string = String::format("%06u", m_frameNumber++);
     timeLocation.move(0, m_baseFontSize);
-    context.drawText(m_timeFont, TextRun((StringView(string))), timeLocation, 0, -1);
+    context.drawText(m_timeFont, TextRun((StringView(string))), timeLocation);
 
     FloatPoint statsLocation(m_size.width() * .65, m_size.height() * .75);
     string = String::format("Frame rate: %ufps", m_frameRate);
-    context.drawText(m_statsFont, TextRun((StringView(string))), statsLocation, 0, -1);
+    context.drawText(m_statsFont, TextRun((StringView(string))), statsLocation);
 
     string = String::format("Size: %u x %u", m_size.width(), m_size.height());
     statsLocation.move(0, m_statsFontSize);
-    context.drawText(m_statsFont, TextRun((StringView(string))), statsLocation, 0, -1);
+    context.drawText(m_statsFont, TextRun((StringView(string))), statsLocation);
 
     const char* camera;
     switch (settings().facingMode()) {
@@ -296,18 +302,18 @@ void MockRealtimeVideoSource::drawText(GraphicsContext& context)
     }
     string = String::format("Camera: %s", camera);
     statsLocation.move(0, m_statsFontSize);
-    context.drawText(m_statsFont, TextRun((StringView(string))), statsLocation, 0, -1);
+    context.drawText(m_statsFont, TextRun((StringView(string))), statsLocation);
 
     FloatPoint bipBopLocation(m_size.width() * .6, m_size.height() * .6);
     unsigned frameMod = m_frameNumber % 60;
     if (frameMod <= 15) {
         context.setFillColor(Color::gray);
         String bip(ASCIILiteral("Bip"));
-        context.drawText(m_bipBopFont, TextRun(StringView(bip)), bipBopLocation, 0, -1);
+        context.drawText(m_bipBopFont, TextRun(StringView(bip)), bipBopLocation);
     } else if (frameMod > 30 && frameMod <= 45) {
         context.setFillColor(Color::white);
         String bop(ASCIILiteral("Bop"));
-        context.drawText(m_bipBopFont, TextRun(StringView(bop)), bipBopLocation, 0, -1);
+        context.drawText(m_bipBopFont, TextRun(StringView(bop)), bipBopLocation);
     }
 }
 
@@ -324,6 +330,7 @@ void MockRealtimeVideoSource::generateFrame()
     drawBoxes(context);
 
     updatePlatformLayer();
+    updateSampleBuffer();
 }
 
 ImageBuffer* MockRealtimeVideoSource::imageBuffer() const

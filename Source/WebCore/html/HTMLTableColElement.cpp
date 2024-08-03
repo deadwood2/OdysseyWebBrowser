@@ -65,7 +65,7 @@ void HTMLTableColElement::collectStyleForPresentationAttribute(const QualifiedNa
 void HTMLTableColElement::parseAttribute(const QualifiedName& name, const AtomicString& value)
 {
     if (name == spanAttr) {
-        m_span = limitToOnlyNonNegativeNumbersGreaterThanZero(value.string().toUInt());
+        m_span = limitToOnlyHTMLNonNegativeNumbersGreaterThanZero(value);
         if (is<RenderTableCol>(renderer()))
             downcast<RenderTableCol>(*renderer()).updateFromElement();
     } else if (name == widthAttr) {
@@ -81,7 +81,7 @@ void HTMLTableColElement::parseAttribute(const QualifiedName& name, const Atomic
         HTMLTablePartElement::parseAttribute(name, value);
 }
 
-const StyleProperties* HTMLTableColElement::additionalPresentationAttributeStyle()
+const StyleProperties* HTMLTableColElement::additionalPresentationAttributeStyle() const
 {
     if (!hasTagName(colgroupTag))
         return nullptr;
@@ -92,12 +92,12 @@ const StyleProperties* HTMLTableColElement::additionalPresentationAttributeStyle
 
 void HTMLTableColElement::setSpan(unsigned n)
 {
-    setUnsignedIntegralAttribute(spanAttr, limitToOnlyNonNegativeNumbersGreaterThanZero(n));
+    setUnsignedIntegralAttribute(spanAttr, limitToOnlyHTMLNonNegativeNumbersGreaterThanZero(n));
 }
 
 String HTMLTableColElement::width() const
 {
-    return fastGetAttribute(widthAttr);
+    return attributeWithoutSynchronization(widthAttr);
 }
 
 }

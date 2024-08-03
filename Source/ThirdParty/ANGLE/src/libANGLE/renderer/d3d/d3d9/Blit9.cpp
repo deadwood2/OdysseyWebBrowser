@@ -135,7 +135,7 @@ gl::Error Blit9::setShader(ShaderId source, const char *profile,
 {
     IDirect3DDevice9 *device = mRenderer->getDevice();
 
-    D3DShaderType *shader;
+    D3DShaderType *shader = nullptr;
 
     if (mCompiledShaders[source] != NULL)
     {
@@ -145,13 +145,7 @@ gl::Error Blit9::setShader(ShaderId source, const char *profile,
     {
         const BYTE* shaderCode = g_shaderCode[source];
         size_t shaderSize = g_shaderSize[source];
-
-        gl::Error error = (mRenderer->*createShader)(reinterpret_cast<const DWORD*>(shaderCode), shaderSize, &shader);
-        if (error.isError())
-        {
-            return error;
-        }
-
+        ANGLE_TRY((mRenderer->*createShader)(reinterpret_cast<const DWORD*>(shaderCode), shaderSize, &shader));
         mCompiledShaders[source] = shader;
     }
 
@@ -190,18 +184,10 @@ RECT Blit9::getSurfaceRect(IDirect3DSurface9 *surface) const
 
 gl::Error Blit9::boxFilter(IDirect3DSurface9 *source, IDirect3DSurface9 *dest)
 {
-    gl::Error error = initialize();
-    if (error.isError())
-    {
-        return error;
-    }
+    ANGLE_TRY(initialize());
 
     IDirect3DTexture9 *texture = NULL;
-    error = copySurfaceToTexture(source, getSurfaceRect(source), &texture);
-    if (error.isError())
-    {
-        return error;
-    }
+    ANGLE_TRY(copySurfaceToTexture(source, getSurfaceRect(source), &texture));
 
     IDirect3DDevice9 *device = mRenderer->getDevice();
 
@@ -230,31 +216,24 @@ gl::Error Blit9::boxFilter(IDirect3DSurface9 *source, IDirect3DSurface9 *dest)
 
 gl::Error Blit9::copy2D(const gl::Framebuffer *framebuffer, const RECT &sourceRect, GLenum destFormat, const gl::Offset &destOffset, TextureStorage *storage, GLint level)
 {
-    gl::Error error = initialize();
-    if (error.isError())
-    {
-        return error;
-    }
+    ANGLE_TRY(initialize());
 
     const gl::FramebufferAttachment *colorbuffer = framebuffer->getColorbuffer(0);
     ASSERT(colorbuffer);
 
     RenderTarget9 *renderTarget9 = nullptr;
-    error = colorbuffer->getRenderTarget(&renderTarget9);
-    if (error.isError())
-    {
-        return error;
-    }
+    ANGLE_TRY(colorbuffer->getRenderTarget(&renderTarget9));
     ASSERT(renderTarget9);
 
     IDirect3DSurface9 *source = renderTarget9->getSurface();
     ASSERT(source);
 
     IDirect3DSurface9 *destSurface = NULL;
-    TextureStorage9_2D *storage9 = GetAs<TextureStorage9_2D>(storage);
-    error = storage9->getSurfaceLevel(level, true, &destSurface);
+    TextureStorage9 *storage9      = GetAs<TextureStorage9>(storage);
+    gl::Error error = storage9->getSurfaceLevel(GL_TEXTURE_2D, level, true, &destSurface);
     if (error.isError())
     {
+        SafeRelease(source);
         return error;
     }
     ASSERT(destSurface);
@@ -290,10 +269,11 @@ gl::Error Blit9::copyCube(const gl::Framebuffer *framebuffer, const RECT &source
     ASSERT(source);
 
     IDirect3DSurface9 *destSurface = NULL;
-    TextureStorage9_Cube *storage9 = GetAs<TextureStorage9_Cube>(storage);
-    error = storage9->getCubeMapSurface(target, level, true, &destSurface);
+    TextureStorage9 *storage9      = GetAs<TextureStorage9>(storage);
+    error = storage9->getSurfaceLevel(target, level, true, &destSurface);
     if (error.isError())
     {
+        SafeRelease(source);
         return error;
     }
     ASSERT(destSurface);

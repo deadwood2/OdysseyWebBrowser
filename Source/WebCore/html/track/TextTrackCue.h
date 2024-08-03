@@ -46,9 +46,6 @@ class TextTrack;
 
 class TextTrackCue : public RefCounted<TextTrackCue>, public EventTargetWithInlineData {
 public:
-    static PassRefPtr<TextTrackCue> create(ScriptExecutionContext&, double start, double end, const String& content);
-    static PassRefPtr<TextTrackCue> create(ScriptExecutionContext&, const MediaTime& start, const MediaTime& end, const String& content);
-
     static const AtomicString& cueShadowPseudoId()
     {
         static NeverDestroyed<const AtomicString> cue("cue", AtomicString::ConstructFromLiteral);
@@ -80,13 +77,13 @@ public:
     void invalidateCueIndex();
 
     using EventTarget::dispatchEvent;
-    virtual bool dispatchEvent(Event&) override;
+    bool dispatchEvent(Event&) override;
 
     bool isActive();
     virtual void setIsActive(bool);
 
-    virtual EventTargetInterface eventTargetInterface() const override final { return TextTrackCueEventTargetInterfaceType; }
-    virtual ScriptExecutionContext* scriptExecutionContext() const override final { return &m_scriptExecutionContext; }
+    EventTargetInterface eventTargetInterface() const final { return TextTrackCueEventTargetInterfaceType; }
+    ScriptExecutionContext* scriptExecutionContext() const final { return &m_scriptExecutionContext; }
 
     virtual bool isOrderedBefore(const TextTrackCue*) const;
     virtual bool isPositionedAbove(const TextTrackCue* cue) const { return isOrderedBefore(cue); }
@@ -122,8 +119,8 @@ protected:
 
 private:
 
-    virtual void refEventTarget() override final { ref(); }
-    virtual void derefEventTarget() override final { deref(); }
+    void refEventTarget() final { ref(); }
+    void derefEventTarget() final { deref(); }
 
     String m_id;
     MediaTime m_startTime;

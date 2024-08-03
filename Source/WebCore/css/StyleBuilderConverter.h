@@ -32,6 +32,7 @@
 #include "CSSContentDistributionValue.h"
 #include "CSSFontFeatureValue.h"
 #include "CSSFunctionValue.h"
+#include "CSSGridAutoRepeatValue.h"
 #include "CSSGridLineNamesValue.h"
 #include "CSSGridTemplateAreasValue.h"
 #include "CSSImageGeneratorValue.h"
@@ -57,7 +58,7 @@ namespace WebCore {
 // Note that we assume the CSS parser only allows valid CSSValue types.
 class StyleBuilderConverter {
 public:
-    static Length convertLength(StyleResolver&, CSSValue&);
+    static Length convertLength(StyleResolver&, const CSSValue&);
     static Length convertLengthOrAuto(StyleResolver&, CSSValue&);
     static Length convertLengthSizing(StyleResolver&, CSSValue&);
     static Length convertLengthMaxSizing(StyleResolver&, CSSValue&);
@@ -65,6 +66,7 @@ public:
     template <typename T> static T convertLineWidth(StyleResolver&, CSSValue&);
     static float convertSpacing(StyleResolver&, CSSValue&);
     static LengthSize convertRadius(StyleResolver&, CSSValue&);
+    static LengthPoint convertObjectPosition(StyleResolver&, CSSValue&);
     static TextDecoration convertTextDecoration(StyleResolver&, CSSValue&);
     template <typename T> static T convertNumber(StyleResolver&, CSSValue&);
     template <typename T> static T convertNumberOrAuto(StyleResolver&, CSSValue&);
@@ -78,18 +80,20 @@ public:
     static String convertStringOrNone(StyleResolver&, CSSValue&);
     static TextEmphasisPosition convertTextEmphasisPosition(StyleResolver&, CSSValue&);
     static ETextAlign convertTextAlign(StyleResolver&, CSSValue&);
-    static PassRefPtr<ClipPathOperation> convertClipPath(StyleResolver&, CSSValue&);
+    static RefPtr<ClipPathOperation> convertClipPath(StyleResolver&, CSSValue&);
     static EResize convertResize(StyleResolver&, CSSValue&);
     static int convertMarqueeRepetition(StyleResolver&, CSSValue&);
     static int convertMarqueeSpeed(StyleResolver&, CSSValue&);
     static PassRefPtr<QuotesData> convertQuotes(StyleResolver&, CSSValue&);
     static TextUnderlinePosition convertTextUnderlinePosition(StyleResolver&, CSSValue&);
-    static PassRefPtr<StyleReflection> convertReflection(StyleResolver&, CSSValue&);
+    static RefPtr<StyleReflection> convertReflection(StyleResolver&, CSSValue&);
     static IntSize convertInitialLetter(StyleResolver&, CSSValue&);
     static float convertTextStrokeWidth(StyleResolver&, CSSValue&);
     static LineBoxContain convertLineBoxContain(StyleResolver&, CSSValue&);
     static TextDecorationSkip convertTextDecorationSkip(StyleResolver&, CSSValue&);
+#if ENABLE(CSS_SHAPES)
     static PassRefPtr<ShapeValue> convertShapeValue(StyleResolver&, CSSValue&);
+#endif
 #if ENABLE(CSS_SCROLL_SNAP)
     static std::unique_ptr<ScrollSnapPoints> convertScrollSnapPoints(StyleResolver&, CSSValue&);
     static LengthSize convertSnapCoordinatePair(StyleResolver&, CSSValue&, size_t offset = 0);
@@ -97,6 +101,7 @@ public:
 #endif
 #if ENABLE(CSS_GRID_LAYOUT)
     static GridTrackSize convertGridTrackSize(StyleResolver&, CSSValue&);
+    static Vector<GridTrackSize> convertGridTrackSizeList(StyleResolver&, CSSValue&);
     static Optional<GridPosition> convertGridPosition(StyleResolver&, CSSValue&);
     static GridAutoFlow convertGridAutoFlow(StyleResolver&, CSSValue&);
 #endif // ENABLE(CSS_GRID_LAYOUT)
@@ -148,17 +153,22 @@ private:
 #if ENABLE(CSS_SCROLL_SNAP)
     static Length parseSnapCoordinate(StyleResolver&, const CSSValue&);
 #endif
+
+    static Length convertTo100PercentMinusLength(const Length&);
+    static Length convertPositionComponent(StyleResolver&, const CSSPrimitiveValue&);
+
 #if ENABLE(CSS_GRID_LAYOUT)
     static GridLength createGridTrackBreadth(CSSPrimitiveValue&, StyleResolver&);
     static GridTrackSize createGridTrackSize(CSSValue&, StyleResolver&);
-    static bool createGridTrackList(CSSValue&, Vector<GridTrackSize>& trackSizes, NamedGridLinesMap&, OrderedNamedGridLinesMap&, StyleResolver&);
+    struct TracksData;
+    static bool createGridTrackList(CSSValue&, TracksData&, StyleResolver&);
     static bool createGridPosition(CSSValue&, GridPosition&);
     static void createImplicitNamedGridLinesFromGridArea(const NamedGridAreaMap&, NamedGridLinesMap&, GridTrackSizingDirection);
 #endif // ENABLE(CSS_GRID_LAYOUT)
     static CSSToLengthConversionData csstoLengthConversionDataWithTextZoomFactor(StyleResolver&);
 };
 
-inline Length StyleBuilderConverter::convertLength(StyleResolver& styleResolver, CSSValue& value)
+inline Length StyleBuilderConverter::convertLength(StyleResolver& styleResolver, const CSSValue& value)
 {
     auto& primitiveValue = downcast<CSSPrimitiveValue>(value);
     CSSToLengthConversionData conversionData = styleResolver.useSVGZoomRulesForLength() ?
@@ -298,6 +308,54 @@ inline LengthSize StyleBuilderConverter::convertRadius(StyleResolver& styleResol
     return LengthSize(radiusWidth, radiusHeight);
 }
 
+inline Length StyleBuilderConverter::convertTo100PercentMinusLength(const Length& length)
+{
+    if (length.isPercent())
+        return Length(100 - length.value(), Percent);
+    
+    // Turn this into a calc expression: calc(100% - length)
+    auto lhs = std::make_unique<CalcExpressionLength>(Length(100, Percent));
+    auto rhs = std::make_unique<CalcExpressionLength>(length);
+    auto op = std::make_unique<CalcExpressionBinaryOperation>(WTFMove(lhs), WTFMove(rhs), CalcSubtract);
+    return Length(CalculationValue::create(WTFMove(op), CalculationRangeAll));
+}
+
+inline Length StyleBuilderConverter::convertPositionComponent(StyleResolver& styleResolver, const CSSPrimitiveValue& value)
+{
+    Length length;
+
+    auto* lengthValue = &value;
+    bool relativeToTrailingEdge = false;
+    
+    if (value.isPair()) {
+        auto& first = *value.getPairValue()->first();
+        if (first.getValueID() == CSSValueRight || first.getValueID() == CSSValueBottom)
+            relativeToTrailingEdge = true;
+
+        lengthValue = value.getPairValue()->second();
+    }
+
+    length = convertLength(styleResolver, *lengthValue);
+
+    if (relativeToTrailingEdge)
+        length = convertTo100PercentMinusLength(length);
+
+    return length;
+}
+
+inline LengthPoint StyleBuilderConverter::convertObjectPosition(StyleResolver& styleResolver, CSSValue& value)
+{
+    auto& primitiveValue = downcast<CSSPrimitiveValue>(value);
+    Pair* pair = primitiveValue.getPairValue();
+    if (!pair || !pair->first() || !pair->second())
+        return RenderStyle::initialObjectPosition();
+
+    Length lengthX = convertPositionComponent(styleResolver, *pair->first());
+    Length lengthY = convertPositionComponent(styleResolver, *pair->second());
+
+    return LengthPoint(lengthX, lengthY);
+}
+
 inline TextDecoration StyleBuilderConverter::convertTextDecoration(StyleResolver&, CSSValue& value)
 {
     TextDecoration result = RenderStyle::initialTextDecoration();
@@ -350,7 +408,7 @@ inline NinePieceImage StyleBuilderConverter::convertBorderMask(StyleResolver& st
 template <CSSPropertyID property>
 inline PassRefPtr<StyleImage> StyleBuilderConverter::convertStyleImage(StyleResolver& styleResolver, CSSValue& value)
 {
-    return styleResolver.styleImage(property, value);
+    return styleResolver.styleImage(value);
 }
 
 inline TransformOperations StyleBuilderConverter::convertTransform(StyleResolver& styleResolver, CSSValue& value)
@@ -427,7 +485,7 @@ inline ETextAlign StyleBuilderConverter::convertTextAlign(StyleResolver& styleRe
     return parentStyle->textAlign();
 }
 
-inline PassRefPtr<ClipPathOperation> StyleBuilderConverter::convertClipPath(StyleResolver& styleResolver, CSSValue& value)
+inline RefPtr<ClipPathOperation> StyleBuilderConverter::convertClipPath(StyleResolver& styleResolver, CSSValue& value)
 {
     if (is<CSSPrimitiveValue>(value)) {
         auto& primitiveValue = downcast<CSSPrimitiveValue>(value);
@@ -448,7 +506,7 @@ inline PassRefPtr<ClipPathOperation> StyleBuilderConverter::convertClipPath(Styl
         auto& primitiveValue = downcast<CSSPrimitiveValue>(currentValue.get());
         if (primitiveValue.isShape()) {
             ASSERT(!operation);
-            operation = ShapeClipPathOperation::create(basicShapeForValue(styleResolver.state().cssToLengthConversionData(), primitiveValue.getShapeValue()));
+            operation = ShapeClipPathOperation::create(basicShapeForValue(styleResolver.state().cssToLengthConversionData(), *primitiveValue.getShapeValue()));
         } else {
             ASSERT(primitiveValue.getValueID() == CSSValueContentBox
                    || primitiveValue.getValueID() == CSSValueBorderBox
@@ -468,7 +526,7 @@ inline PassRefPtr<ClipPathOperation> StyleBuilderConverter::convertClipPath(Styl
         operation = BoxClipPathOperation::create(referenceBox);
     }
 
-    return operation.release();
+    return operation;
 }
 
 inline EResize StyleBuilderConverter::convertResize(StyleResolver& styleResolver, CSSValue& value)
@@ -561,7 +619,7 @@ inline TextUnderlinePosition StyleBuilderConverter::convertTextUnderlinePosition
     return static_cast<TextUnderlinePosition>(combinedPosition);
 }
 
-inline PassRefPtr<StyleReflection> StyleBuilderConverter::convertReflection(StyleResolver& styleResolver, CSSValue& value)
+inline RefPtr<StyleReflection> StyleBuilderConverter::convertReflection(StyleResolver& styleResolver, CSSValue& value)
 {
     if (is<CSSPrimitiveValue>(value)) {
         ASSERT(downcast<CSSPrimitiveValue>(value).getValueID() == CSSValueNone);
@@ -570,18 +628,16 @@ inline PassRefPtr<StyleReflection> StyleBuilderConverter::convertReflection(Styl
 
     auto& reflectValue = downcast<CSSReflectValue>(value);
 
-    RefPtr<StyleReflection> reflection = StyleReflection::create();
-    reflection->setDirection(*reflectValue.direction());
-
-    if (reflectValue.offset())
-        reflection->setOffset(reflectValue.offset()->convertToLength<FixedIntegerConversion | PercentConversion | CalculatedConversion>(styleResolver.state().cssToLengthConversionData()));
+    auto reflection = StyleReflection::create();
+    reflection->setDirection(reflectValue.direction());
+    reflection->setOffset(reflectValue.offset().convertToLength<FixedIntegerConversion | PercentConversion | CalculatedConversion>(styleResolver.state().cssToLengthConversionData()));
 
     NinePieceImage mask;
     mask.setMaskDefaults();
     styleResolver.styleMap()->mapNinePieceImage(CSSPropertyWebkitBoxReflect, reflectValue.mask(), mask);
     reflection->setMask(mask);
 
-    return reflection.release();
+    return WTFMove(reflection);
 }
 
 inline IntSize StyleBuilderConverter::convertInitialLetter(StyleResolver&, CSSValue& value)
@@ -674,11 +730,7 @@ inline TextDecorationSkip StyleBuilderConverter::convertTextDecorationSkip(Style
 #if ENABLE(CSS_SHAPES)
 static inline bool isImageShape(const CSSValue& value)
 {
-    return is<CSSImageValue>(value)
-#if ENABLE(CSS_IMAGE_SET)
-        || is<CSSImageSetValue>(value)
-#endif 
-        || is<CSSImageGeneratorValue>(value);
+    return is<CSSImageValue>(value) || is<CSSImageSetValue>(value) || is<CSSImageGeneratorValue>(value);
 }
 
 inline PassRefPtr<ShapeValue> StyleBuilderConverter::convertShapeValue(StyleResolver& styleResolver, CSSValue& value)
@@ -689,14 +741,14 @@ inline PassRefPtr<ShapeValue> StyleBuilderConverter::convertShapeValue(StyleReso
     }
 
     if (isImageShape(value))
-        return ShapeValue::createImageValue(styleResolver.styleImage(CSSPropertyWebkitShapeOutside, value));
+        return ShapeValue::createImageValue(styleResolver.styleImage(value));
 
     RefPtr<BasicShape> shape;
     CSSBoxType referenceBox = BoxMissing;
     for (auto& currentValue : downcast<CSSValueList>(value)) {
         CSSPrimitiveValue& primitiveValue = downcast<CSSPrimitiveValue>(currentValue.get());
         if (primitiveValue.isShape())
-            shape = basicShapeForValue(styleResolver.state().cssToLengthConversionData(), primitiveValue.getShapeValue());
+            shape = basicShapeForValue(styleResolver.state().cssToLengthConversionData(), *primitiveValue.getShapeValue());
         else if (primitiveValue.getValueID() == CSSValueContentBox
             || primitiveValue.getValueID() == CSSValueBorderBox
             || primitiveValue.getValueID() == CSSValuePaddingBox
@@ -709,7 +761,7 @@ inline PassRefPtr<ShapeValue> StyleBuilderConverter::convertShapeValue(StyleReso
     }
 
     if (shape)
-        return ShapeValue::createShapeValue(shape.release(), referenceBox);
+        return ShapeValue::createShapeValue(WTFMove(shape), referenceBox);
 
     if (referenceBox != BoxMissing)
         return ShapeValue::createBoxShapeValue(referenceBox);
@@ -798,7 +850,35 @@ inline GridTrackSize StyleBuilderConverter::createGridTrackSize(CSSValue& value,
     return GridTrackSize(minTrackBreadth, maxTrackBreadth);
 }
 
-inline bool StyleBuilderConverter::createGridTrackList(CSSValue& value, Vector<GridTrackSize>& trackSizes, NamedGridLinesMap& namedGridLines, OrderedNamedGridLinesMap& orderedNamedGridLines, StyleResolver& styleResolver)
+static void createGridLineNamesList(const CSSValue& value, unsigned currentNamedGridLine, NamedGridLinesMap& namedGridLines, OrderedNamedGridLinesMap& orderedNamedGridLines)
+{
+    ASSERT(value.isGridLineNamesValue());
+
+    for (auto& namedGridLineValue : downcast<CSSGridLineNamesValue>(value)) {
+        String namedGridLine = downcast<CSSPrimitiveValue>(namedGridLineValue.get()).getStringValue();
+        auto result = namedGridLines.add(namedGridLine, Vector<unsigned>());
+        result.iterator->value.append(currentNamedGridLine);
+        auto orderedResult = orderedNamedGridLines.add(currentNamedGridLine, Vector<String>());
+        orderedResult.iterator->value.append(namedGridLine);
+    }
+}
+
+struct StyleBuilderConverter::TracksData {
+    WTF_MAKE_NONCOPYABLE(TracksData); WTF_MAKE_FAST_ALLOCATED;
+public:
+    TracksData() = default;
+
+    Vector<GridTrackSize> m_trackSizes;
+    NamedGridLinesMap m_namedGridLines;
+    OrderedNamedGridLinesMap m_orderedNamedGridLines;
+    Vector<GridTrackSize> m_autoRepeatTrackSizes;
+    NamedGridLinesMap m_autoRepeatNamedGridLines;
+    OrderedNamedGridLinesMap m_autoRepeatOrderedNamedGridLines;
+    unsigned m_autoRepeatInsertionPoint { RenderStyle::initialGridAutoRepeatInsertionPoint() };
+    AutoRepeatType m_autoRepeatType { RenderStyle::initialGridAutoRepeatType() };
+};
+
+inline bool StyleBuilderConverter::createGridTrackList(CSSValue& value, TracksData& tracksData, StyleResolver& styleResolver)
 {
     // Handle 'none'.
     if (is<CSSPrimitiveValue>(value))
@@ -810,23 +890,35 @@ inline bool StyleBuilderConverter::createGridTrackList(CSSValue& value, Vector<G
     unsigned currentNamedGridLine = 0;
     for (auto& currentValue : downcast<CSSValueList>(value)) {
         if (is<CSSGridLineNamesValue>(currentValue.get())) {
-            for (auto& currentGridLineName : downcast<CSSGridLineNamesValue>(currentValue.get())) {
-                String namedGridLine = downcast<CSSPrimitiveValue>(currentGridLineName.get()).getStringValue();
-                NamedGridLinesMap::AddResult result = namedGridLines.add(namedGridLine, Vector<unsigned>());
-                result.iterator->value.append(currentNamedGridLine);
-                OrderedNamedGridLinesMap::AddResult orderedResult = orderedNamedGridLines.add(currentNamedGridLine, Vector<String>());
-                orderedResult.iterator->value.append(namedGridLine);
+            createGridLineNamesList(currentValue.get(), currentNamedGridLine, tracksData.m_namedGridLines, tracksData.m_orderedNamedGridLines);
+            continue;
+        }
+
+        if (is<CSSGridAutoRepeatValue>(currentValue)) {
+            ASSERT(tracksData.m_autoRepeatTrackSizes.isEmpty());
+            unsigned autoRepeatIndex = 0;
+            CSSValueID autoRepeatID = downcast<CSSGridAutoRepeatValue>(currentValue.get()).autoRepeatID();
+            ASSERT(autoRepeatID == CSSValueAutoFill || autoRepeatID == CSSValueAutoFit);
+            tracksData.m_autoRepeatType = autoRepeatID == CSSValueAutoFill ? AutoFill : AutoFit;
+            for (auto& autoRepeatValue : downcast<CSSValueList>(currentValue.get())) {
+                if (is<CSSGridLineNamesValue>(autoRepeatValue.get())) {
+                    createGridLineNamesList(autoRepeatValue.get(), autoRepeatIndex, tracksData.m_autoRepeatNamedGridLines, tracksData.m_autoRepeatOrderedNamedGridLines);
+                    continue;
+                }
+                ++autoRepeatIndex;
+                tracksData.m_autoRepeatTrackSizes.append(createGridTrackSize(autoRepeatValue.get(), styleResolver));
             }
+            tracksData.m_autoRepeatInsertionPoint = currentNamedGridLine++;
             continue;
         }
 
         ++currentNamedGridLine;
-        trackSizes.append(createGridTrackSize(currentValue, styleResolver));
+        tracksData.m_trackSizes.append(createGridTrackSize(currentValue, styleResolver));
     }
 
     // The parser should have rejected any <track-list> without any <track-size> as
     // this is not conformant to the syntax.
-    ASSERT(!trackSizes.isEmpty());
+    ASSERT(!tracksData.m_trackSizes.isEmpty() || !tracksData.m_autoRepeatTrackSizes.isEmpty());
     return true;
 }
 
@@ -886,15 +978,29 @@ inline void StyleBuilderConverter::createImplicitNamedGridLinesFromGridArea(cons
         GridSpan areaSpan = direction == ForRows ? area.value.rows : area.value.columns;
         {
             auto& startVector = namedGridLines.add(area.key + "-start", Vector<unsigned>()).iterator->value;
-            startVector.append(areaSpan.resolvedInitialPosition().toInt());
+            startVector.append(areaSpan.startLine());
             std::sort(startVector.begin(), startVector.end());
         }
         {
             auto& endVector = namedGridLines.add(area.key + "-end", Vector<unsigned>()).iterator->value;
-            endVector.append(areaSpan.resolvedFinalPosition().toInt());
+            endVector.append(areaSpan.endLine());
             std::sort(endVector.begin(), endVector.end());
         }
     }
+}
+
+inline Vector<GridTrackSize> StyleBuilderConverter::convertGridTrackSizeList(StyleResolver& styleResolver, CSSValue& value)
+{
+    ASSERT(value.isValueList());
+    auto& valueList = downcast<CSSValueList>(value);
+    Vector<GridTrackSize> trackSizes;
+    trackSizes.reserveInitialCapacity(valueList.length());
+    for (auto& currValue : valueList) {
+        ASSERT(!currValue->isGridLineNamesValue());
+        ASSERT(!currValue->isGridAutoRepeatValue());
+        trackSizes.uncheckedAppend(convertGridTrackSize(styleResolver, currValue));
+    }
+    return trackSizes;
 }
 
 inline GridTrackSize StyleBuilderConverter::convertGridTrackSize(StyleResolver& styleResolver, CSSValue& value)

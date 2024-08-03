@@ -23,9 +23,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef InspectorHeapAgent_h
-#define InspectorHeapAgent_h
+#pragma once
 
+#include "HeapSnapshot.h"
 #include "InspectorBackendDispatchers.h"
 #include "InspectorFrontendDispatchers.h"
 #include "heap/HeapObserver.h"
@@ -35,34 +35,49 @@
 
 namespace Inspector {
 
+class InjectedScriptManager;
+class SendGarbageCollectionEventsTask;
 typedef String ErrorString;
 
-class JS_EXPORT_PRIVATE InspectorHeapAgent final : public InspectorAgentBase, public HeapBackendDispatcherHandler, public JSC::HeapObserver {
+class JS_EXPORT_PRIVATE InspectorHeapAgent : public InspectorAgentBase, public HeapBackendDispatcherHandler, public JSC::HeapObserver {
     WTF_MAKE_NONCOPYABLE(InspectorHeapAgent);
 public:
     InspectorHeapAgent(AgentContext&);
     virtual ~InspectorHeapAgent();
 
-    virtual void didCreateFrontendAndBackend(FrontendRouter*, BackendDispatcher*) override;
-    virtual void willDestroyFrontendAndBackend(DisconnectReason) override;
+    void didCreateFrontendAndBackend(FrontendRouter*, BackendDispatcher*) override;
+    void willDestroyFrontendAndBackend(DisconnectReason) override;
 
     // HeapBackendDispatcherHandler
-    virtual void enable(ErrorString&) override;
-    virtual void disable(ErrorString&) override;
-    virtual void gc(ErrorString&) override;
+    void enable(ErrorString&) override;
+    void disable(ErrorString&) override;
+    void gc(ErrorString&) final;
+    void snapshot(ErrorString&, double* timestamp, String* snapshotData) final;
+    void startTracking(ErrorString&) final;
+    void stopTracking(ErrorString&) final;
+    void getPreview(ErrorString&, int heapObjectId, Inspector::Protocol::OptOutput<String>* resultString, RefPtr<Inspector::Protocol::Debugger::FunctionDetails>& functionDetails, RefPtr<Inspector::Protocol::Runtime::ObjectPreview>& objectPreview) final;
+    void getRemoteObject(ErrorString&, int heapObjectId, const String* optionalObjectGroup, RefPtr<Inspector::Protocol::Runtime::RemoteObject>& result) final;
 
     // HeapObserver
-    virtual void willGarbageCollect() override;
-    virtual void didGarbageCollect(JSC::HeapOperation) override;
+    void willGarbageCollect() override;
+    void didGarbageCollect(JSC::HeapOperation) override;
+
+protected:
+    void clearHeapSnapshots();
 
 private:
+    Optional<JSC::HeapSnapshotNode> nodeForHeapObjectIdentifier(ErrorString&, unsigned heapObjectIdentifier);
+
+    InjectedScriptManager& m_injectedScriptManager;
     std::unique_ptr<HeapFrontendDispatcher> m_frontendDispatcher;
     RefPtr<HeapBackendDispatcher> m_backendDispatcher;
     InspectorEnvironment& m_environment;
+
+    std::unique_ptr<SendGarbageCollectionEventsTask> m_sendGarbageCollectionEventsTask;
+
     bool m_enabled { false };
+    bool m_tracking { false };
     double m_gcStartTime { NAN };
 };
 
 } // namespace Inspector
-
-#endif // InspectorHeapAgent_h

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2008, 2016 Apple Inc. All Rights Reserved.
  * Copyright (C) 2011, 2012 Google Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -39,7 +39,6 @@
 #include "WorkerThread.h"
 #include <bindings/ScriptValue.h>
 #include <heap/StrongInlines.h>
-#include <interpreter/Interpreter.h>
 #include <runtime/Completion.h>
 #include <runtime/Error.h>
 #include <runtime/Exception.h>
@@ -81,25 +80,25 @@ void WorkerScriptController::initScript()
     // Explicitly protect the global object's prototype so it isn't collected
     // when we allocate the global object. (Once the global object is fully
     // constructed, it can mark its own prototype.)
-    Structure* workerGlobalScopePrototypeStructure = JSWorkerGlobalScopePrototype::createStructure(*m_vm, 0, jsNull());
-    Strong<JSWorkerGlobalScopePrototype> workerGlobalScopePrototype(*m_vm, JSWorkerGlobalScopePrototype::create(*m_vm, 0, workerGlobalScopePrototypeStructure));
-
     if (m_workerGlobalScope->isDedicatedWorkerGlobalScope()) {
-        Structure* dedicatedContextPrototypeStructure = JSDedicatedWorkerGlobalScopePrototype::createStructure(*m_vm, 0, workerGlobalScopePrototype.get());
+        Structure* dedicatedContextPrototypeStructure = JSDedicatedWorkerGlobalScopePrototype::createStructure(*m_vm, 0, jsNull());
         Strong<JSDedicatedWorkerGlobalScopePrototype> dedicatedContextPrototype(*m_vm, JSDedicatedWorkerGlobalScopePrototype::create(*m_vm, 0, dedicatedContextPrototypeStructure));
         Structure* structure = JSDedicatedWorkerGlobalScope::createStructure(*m_vm, 0, dedicatedContextPrototype.get());
+        auto* proxyStructure = JSProxy::createStructure(*m_vm, nullptr, jsNull(), PureForwardingProxyType);
+        auto* proxy = JSProxy::create(*m_vm, proxyStructure);
 
-        m_workerGlobalScopeWrapper.set(*m_vm, JSDedicatedWorkerGlobalScope::create(*m_vm, structure, static_cast<DedicatedWorkerGlobalScope&>(*m_workerGlobalScope)));
-        workerGlobalScopePrototypeStructure->setGlobalObject(*m_vm, m_workerGlobalScopeWrapper.get());
+        m_workerGlobalScopeWrapper.set(*m_vm, JSDedicatedWorkerGlobalScope::create(*m_vm, structure, static_cast<DedicatedWorkerGlobalScope&>(*m_workerGlobalScope), proxy));
         dedicatedContextPrototypeStructure->setGlobalObject(*m_vm, m_workerGlobalScopeWrapper.get());
         ASSERT(structure->globalObject() == m_workerGlobalScopeWrapper);
         ASSERT(m_workerGlobalScopeWrapper->structure()->globalObject() == m_workerGlobalScopeWrapper);
-        workerGlobalScopePrototype->structure()->setGlobalObject(*m_vm, m_workerGlobalScopeWrapper.get());
-        workerGlobalScopePrototype->structure()->setPrototypeWithoutTransition(*m_vm, JSEventTarget::getPrototype(*m_vm, m_workerGlobalScopeWrapper.get()));
         dedicatedContextPrototype->structure()->setGlobalObject(*m_vm, m_workerGlobalScopeWrapper.get());
+        dedicatedContextPrototype->structure()->setPrototypeWithoutTransition(*m_vm, JSWorkerGlobalScope::prototype(*m_vm, m_workerGlobalScopeWrapper.get()));
+
+        proxy->setTarget(*m_vm, m_workerGlobalScopeWrapper.get());
+        proxy->structure()->setGlobalObject(*m_vm, m_workerGlobalScopeWrapper.get());
     }
     ASSERT(m_workerGlobalScopeWrapper->globalObject() == m_workerGlobalScopeWrapper);
-    ASSERT(asObject(m_workerGlobalScopeWrapper->prototype())->globalObject() == m_workerGlobalScopeWrapper);
+    ASSERT(asObject(m_workerGlobalScopeWrapper->getPrototypeDirect())->globalObject() == m_workerGlobalScopeWrapper);
 
     m_consoleClient = std::make_unique<WorkerConsoleClient>(*m_workerGlobalScope);
     m_workerGlobalScopeWrapper->setConsoleClient(m_consoleClient.get());
@@ -126,11 +125,12 @@ void WorkerScriptController::evaluate(const ScriptSourceCode& sourceCode, NakedP
     initScriptIfNeeded();
 
     ExecState* exec = m_workerGlobalScopeWrapper->globalExec();
-    JSLockHolder lock(exec);
+    VM& vm = exec->vm();
+    JSLockHolder lock(vm);
+    auto scope = DECLARE_THROW_SCOPE(vm);
 
     JSC::evaluate(exec, sourceCode.jsSourceCode(), m_workerGlobalScopeWrapper->globalThis(), returnedException);
 
-    VM& vm = exec->vm();
     if ((returnedException && isTerminatedExecutionException(returnedException)) || isTerminatingExecution()) {
         forbidExecution();
         return;
@@ -141,8 +141,9 @@ void WorkerScriptController::evaluate(const ScriptSourceCode& sourceCode, NakedP
         int lineNumber = 0;
         int columnNumber = 0;
         String sourceURL = sourceCode.url().string();
-        if (m_workerGlobalScope->sanitizeScriptError(errorMessage, lineNumber, columnNumber, sourceURL, sourceCode.cachedScript())) {
-            vm.throwException(exec, createError(exec, errorMessage.impl()));
+        Deprecated::ScriptValue error;
+        if (m_workerGlobalScope->sanitizeScriptError(errorMessage, lineNumber, columnNumber, sourceURL, error, sourceCode.cachedScript())) {
+            throwException(exec, scope, createError(exec, errorMessage.impl()));
             returnedException = vm.exception();
             vm.clearException();
         }
@@ -152,7 +153,9 @@ void WorkerScriptController::evaluate(const ScriptSourceCode& sourceCode, NakedP
 void WorkerScriptController::setException(JSC::Exception* exception)
 {
     JSC::ExecState* exec = m_workerGlobalScopeWrapper->globalExec();
-    exec->vm().throwException(exec, exception);
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    throwException(exec, scope, exception);
 }
 
 void WorkerScriptController::scheduleExecutionTermination()

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2011, 2012, 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -44,6 +44,7 @@
 #include <WebKit/WKBundlePrivate.h>
 #include <WebKit/WKBundleScriptWorld.h>
 #include <WebKit/WKData.h>
+#include <WebKit/WKPagePrivate.h>
 #include <WebKit/WKRetainPtr.h>
 #include <WebKit/WKSerializedScriptValue.h>
 #include <WebKit/WebKit2_C.h>
@@ -141,6 +142,12 @@ void TestRunner::waitForPolicyDelegate()
     waitUntilDone();
 }
 
+void TestRunner::waitUntilDownloadFinished()
+{
+    m_shouldFinishAfterDownload = true;
+    waitUntilDone();
+}
+
 void TestRunner::waitUntilDone()
 {
     m_waitToDump = true;
@@ -152,6 +159,11 @@ void TestRunner::waitToDumpWatchdogTimerFired()
 {
     invalidateWaitToDumpWatchdogTimer();
     auto& injectedBundle = InjectedBundle::singleton();
+#if PLATFORM(COCOA)
+    char buffer[1024];
+    snprintf(buffer, sizeof(buffer), "#PID UNRESPONSIVE - %s (pid %d)\n", getprogname(), getpid());
+    injectedBundle.outputText(buffer);
+#endif
     injectedBundle.outputText("FAIL: Timed out waiting for notifyDone to be called\n\n");
     injectedBundle.done();
 }
@@ -170,6 +182,11 @@ void TestRunner::notifyDone()
     // than to let webkitpy do that, because WebKitTestRunner will dump partial results.
 
     m_waitToDump = false;
+}
+
+unsigned TestRunner::imageCountInGeneralPasteboard() const
+{
+    return InjectedBundle::singleton().imageCountInGeneralPasteboard();
 }
 
 void TestRunner::addUserScript(JSStringRef source, bool runAtStart, bool allFrames)
@@ -241,6 +258,11 @@ bool TestRunner::findString(JSStringRef target, JSValueRef optionsArrayAsValue)
 void TestRunner::clearAllDatabases()
 {
     WKBundleClearAllDatabases(InjectedBundle::singleton().bundle());
+
+    WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("DeleteAllIndexedDatabases"));
+    WKRetainPtr<WKBooleanRef> messageBody(AdoptWK, WKBooleanCreate(true));
+
+    WKBundlePostSynchronousMessage(InjectedBundle::singleton().bundle(), messageName.get(), messageBody.get(), nullptr);
 }
 
 void TestRunner::setDatabaseQuota(uint64_t quota)
@@ -318,6 +340,53 @@ void TestRunner::setXSSAuditorEnabled(bool enabled)
     WKBundleOverrideBoolPreferenceForTestRunner(injectedBundle.bundle(), injectedBundle.pageGroup(), key.get(), enabled);
 }
 
+void TestRunner::setShadowDOMEnabled(bool enabled)
+{
+    WKRetainPtr<WKStringRef> key(AdoptWK, WKStringCreateWithUTF8CString("WebKitShadowDOMEnabled"));
+    auto& injectedBundle = InjectedBundle::singleton();
+    WKBundleOverrideBoolPreferenceForTestRunner(injectedBundle.bundle(), injectedBundle.pageGroup(), key.get(), enabled);
+}
+
+void TestRunner::setCustomElementsEnabled(bool enabled)
+{
+    WKRetainPtr<WKStringRef> key(AdoptWK, WKStringCreateWithUTF8CString("WebKitCustomElementsEnabled"));
+    auto& injectedBundle = InjectedBundle::singleton();
+    WKBundleOverrideBoolPreferenceForTestRunner(injectedBundle.bundle(), injectedBundle.pageGroup(), key.get(), enabled);
+}
+
+void TestRunner::setDOMIteratorEnabled(bool enabled)
+{
+    WKRetainPtr<WKStringRef> key(AdoptWK, WKStringCreateWithUTF8CString("WebKitDOMIteratorEnabled"));
+    auto& injectedBundle = InjectedBundle::singleton();
+    WKBundleOverrideBoolPreferenceForTestRunner(injectedBundle.bundle(), injectedBundle.pageGroup(), key.get(), enabled);
+}
+
+void TestRunner::setWebGL2Enabled(bool enabled)
+{
+    WKRetainPtr<WKStringRef> key(AdoptWK, WKStringCreateWithUTF8CString("WebKitWebGL2Enabled"));
+    auto& injectedBundle = InjectedBundle::singleton();
+    WKBundleOverrideBoolPreferenceForTestRunner(injectedBundle.bundle(), injectedBundle.pageGroup(), key.get(), enabled);
+}
+
+void TestRunner::setFetchAPIEnabled(bool enabled)
+{
+    WKRetainPtr<WKStringRef> key(AdoptWK, WKStringCreateWithUTF8CString("WebKitFetchAPIEnabled"));
+    auto& injectedBundle = InjectedBundle::singleton();
+    WKBundleOverrideBoolPreferenceForTestRunner(injectedBundle.bundle(), injectedBundle.pageGroup(), key.get(), enabled);
+}
+
+void TestRunner::setDownloadAttributeEnabled(bool enabled)
+{
+    WKRetainPtr<WKStringRef> key(AdoptWK, WKStringCreateWithUTF8CString("WebKitDownloadAttributeEnabled"));
+    auto& injectedBundle = InjectedBundle::singleton();
+    WKBundleOverrideBoolPreferenceForTestRunner(injectedBundle.bundle(), injectedBundle.pageGroup(), key.get(), enabled);
+}
+
+void TestRunner::setAllowsAnySSLCertificate(bool enabled)
+{
+    InjectedBundle::singleton().setAllowsAnySSLCertificate(enabled);
+}
+
 void TestRunner::setAllowUniversalAccessFromFileURLs(bool enabled)
 {
     auto& injectedBundle = InjectedBundle::singleton();
@@ -340,6 +409,12 @@ void TestRunner::setJavaScriptCanAccessClipboard(bool enabled)
 {
     auto& injectedBundle = InjectedBundle::singleton();
      WKBundleSetJavaScriptCanAccessClipboard(injectedBundle.bundle(), injectedBundle.pageGroup(), enabled);
+}
+
+void TestRunner::setAutomaticLinkDetectionEnabled(bool enabled)
+{
+    auto& injectedBundle = InjectedBundle::singleton();
+    WKBundleSetAutomaticLinkDetectionEnabled(injectedBundle.bundle(), injectedBundle.pageGroup(), enabled);
 }
 
 void TestRunner::setPrivateBrowsingEnabled(bool enabled)
@@ -560,6 +635,11 @@ void TestRunner::clearTestRunnerCallbacks()
     callbackMap().clear();
 }
 
+void TestRunner::accummulateLogsForChannel(JSStringRef)
+{
+    // FIXME: Implement getting the call to all processes.
+}
+
 void TestRunner::addChromeInputField(JSValueRef callback)
 {
     cacheTestRunnerCallback(AddChromeInputFieldCallbackID, callback);
@@ -587,6 +667,11 @@ void TestRunner::setBackingScaleFactor(double backingScaleFactor, JSValueRef cal
 void TestRunner::setWindowIsKey(bool isKey)
 {
     InjectedBundle::singleton().postSetWindowIsKey(isKey);
+}
+
+void TestRunner::setViewSize(double width, double height)
+{
+    InjectedBundle::singleton().postSetViewSize(width, height);
 }
 
 void TestRunner::callAddChromeInputFieldCallback()
@@ -627,7 +712,7 @@ void TestRunner::setAlwaysAcceptCookies(bool accept)
 
     WKRetainPtr<WKBooleanRef> messageBody(AdoptWK, WKBooleanCreate(accept));
 
-    WKBundlePostSynchronousMessage(InjectedBundle::singleton().bundle(), messageName.get(), messageBody.get(), 0);
+    WKBundlePostSynchronousMessage(InjectedBundle::singleton().bundle(), messageName.get(), messageBody.get(), nullptr);
 }
 
 double TestRunner::preciseTime()
@@ -775,10 +860,11 @@ void TestRunner::setUserMediaPermission(bool enabled)
     InjectedBundle::singleton().setUserMediaPermission(enabled);
 }
 
-void TestRunner::setUserMediaPermissionForOrigin(bool permission, JSStringRef url)
+void TestRunner::setUserMediaPermissionForOrigin(bool permission, JSStringRef origin, JSStringRef parentOrigin)
 {
-    WKRetainPtr<WKStringRef> urlWK = toWK(url);
-    InjectedBundle::singleton().setUserMediaPermissionForOrigin(permission, urlWK.get());
+    WKRetainPtr<WKStringRef> originWK = toWK(origin);
+    WKRetainPtr<WKStringRef> parentOriginWK = toWK(parentOrigin);
+    InjectedBundle::singleton().setUserMediaPermissionForOrigin(permission, originWK.get(), parentOriginWK.get());
 }
 
 bool TestRunner::callShouldCloseOnWebView()
@@ -833,10 +919,24 @@ void TestRunner::queueNonLoadingScript(JSStringRef script)
     InjectedBundle::singleton().queueNonLoadingScript(scriptWK.get());
 }
 
+void TestRunner::setRejectsProtectionSpaceAndContinueForAuthenticationChallenges(bool value)
+{
+    WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("SetRejectsProtectionSpaceAndContinueForAuthenticationChallenges"));
+    WKRetainPtr<WKBooleanRef> messageBody(AdoptWK, WKBooleanCreate(value));
+    WKBundlePagePostMessage(InjectedBundle::singleton().page()->page(), messageName.get(), messageBody.get());
+}
+    
 void TestRunner::setHandlesAuthenticationChallenges(bool handlesAuthenticationChallenges)
 {
-    WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("SetHandlesAuthenticationChallenge"));
+    WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("SetHandlesAuthenticationChallenges"));
     WKRetainPtr<WKBooleanRef> messageBody(AdoptWK, WKBooleanCreate(handlesAuthenticationChallenges));
+    WKBundlePagePostMessage(InjectedBundle::singleton().page()->page(), messageName.get(), messageBody.get());
+}
+
+void TestRunner::setShouldLogCanAuthenticateAgainstProtectionSpace(bool value)
+{
+    WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("SetShouldLogCanAuthenticateAgainstProtectionSpace"));
+    WKRetainPtr<WKBooleanRef> messageBody(AdoptWK, WKBooleanCreate(value));
     WKBundlePagePostMessage(InjectedBundle::singleton().page()->page(), messageName.get(), messageBody.get());
 }
 
@@ -902,6 +1002,13 @@ void TestRunner::setShouldDecideNavigationPolicyAfterDelay(bool value)
 void TestRunner::setNavigationGesturesEnabled(bool value)
 {
     WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("SetNavigationGesturesEnabled"));
+    WKRetainPtr<WKBooleanRef> messageBody(AdoptWK, WKBooleanCreate(value));
+    WKBundlePagePostMessage(InjectedBundle::singleton().page()->page(), messageName.get(), messageBody.get());
+}
+
+void TestRunner::setIgnoresViewportScaleLimits(bool value)
+{
+    WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("SetIgnoresViewportScaleLimits"));
     WKRetainPtr<WKBooleanRef> messageBody(AdoptWK, WKBooleanCreate(value));
     WKBundlePagePostMessage(InjectedBundle::singleton().page()->page(), messageName.get(), messageBody.get());
 }
@@ -981,5 +1088,136 @@ void TestRunner::callDidRemoveSwipeSnapshotCallback()
 {
     callTestRunnerCallback(DidRemoveSwipeSnapshotCallbackID);
 }
+
+#if PLATFORM(MAC)
+void TestRunner::connectMockGamepad(unsigned index)
+{
+    WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("ConnectMockGamepad"));
+    WKRetainPtr<WKTypeRef> messageBody(AdoptWK, WKUInt64Create(index));
+
+    WKBundlePostSynchronousMessage(InjectedBundle::singleton().bundle(), messageName.get(), messageBody.get(), nullptr);
+}
+
+void TestRunner::disconnectMockGamepad(unsigned index)
+{
+    WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("DisconnectMockGamepad"));
+    WKRetainPtr<WKTypeRef> messageBody(AdoptWK, WKUInt64Create(index));
+
+    WKBundlePostSynchronousMessage(InjectedBundle::singleton().bundle(), messageName.get(), messageBody.get(), nullptr);
+}
+
+void TestRunner::setMockGamepadDetails(unsigned index, JSStringRef gamepadID, unsigned axisCount, unsigned buttonCount)
+{
+    Vector<WKRetainPtr<WKStringRef>> keys;
+    Vector<WKRetainPtr<WKTypeRef>> values;
+
+    keys.append({ AdoptWK, WKStringCreateWithUTF8CString("GamepadID") });
+    values.append(toWK(gamepadID));
+
+    keys.append({ AdoptWK, WKStringCreateWithUTF8CString("GamepadIndex") });
+    values.append({ AdoptWK, WKUInt64Create(index) });
+
+    keys.append({ AdoptWK, WKStringCreateWithUTF8CString("AxisCount") });
+    values.append({ AdoptWK, WKUInt64Create(axisCount) });
+
+    keys.append({ AdoptWK, WKStringCreateWithUTF8CString("ButtonCount") });
+    values.append({ AdoptWK, WKUInt64Create(buttonCount) });
+
+    Vector<WKStringRef> rawKeys;
+    Vector<WKTypeRef> rawValues;
+    rawKeys.resize(keys.size());
+    rawValues.resize(values.size());
+
+    for (size_t i = 0; i < keys.size(); ++i) {
+        rawKeys[i] = keys[i].get();
+        rawValues[i] = values[i].get();
+    }
+
+    WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("SetMockGamepadDetails"));
+    WKRetainPtr<WKDictionaryRef> messageBody(AdoptWK, WKDictionaryCreate(rawKeys.data(), rawValues.data(), rawKeys.size()));
+
+    WKBundlePostSynchronousMessage(InjectedBundle::singleton().bundle(), messageName.get(), messageBody.get(), nullptr);
+}
+
+void TestRunner::setMockGamepadAxisValue(unsigned index, unsigned axisIndex, double value)
+{
+    Vector<WKRetainPtr<WKStringRef>> keys;
+    Vector<WKRetainPtr<WKTypeRef>> values;
+
+    keys.append({ AdoptWK, WKStringCreateWithUTF8CString("GamepadIndex") });
+    values.append({ AdoptWK, WKUInt64Create(index) });
+
+    keys.append({ AdoptWK, WKStringCreateWithUTF8CString("AxisIndex") });
+    values.append({ AdoptWK, WKUInt64Create(axisIndex) });
+
+    keys.append({ AdoptWK, WKStringCreateWithUTF8CString("Value") });
+    values.append({ AdoptWK, WKDoubleCreate(value) });
+
+    Vector<WKStringRef> rawKeys;
+    Vector<WKTypeRef> rawValues;
+    rawKeys.resize(keys.size());
+    rawValues.resize(values.size());
+
+    for (size_t i = 0; i < keys.size(); ++i) {
+        rawKeys[i] = keys[i].get();
+        rawValues[i] = values[i].get();
+    }
+
+    WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("SetMockGamepadAxisValue"));
+    WKRetainPtr<WKDictionaryRef> messageBody(AdoptWK, WKDictionaryCreate(rawKeys.data(), rawValues.data(), rawKeys.size()));
+
+    WKBundlePostSynchronousMessage(InjectedBundle::singleton().bundle(), messageName.get(), messageBody.get(), nullptr);
+}
+
+void TestRunner::setMockGamepadButtonValue(unsigned index, unsigned buttonIndex, double value)
+{
+    Vector<WKRetainPtr<WKStringRef>> keys;
+    Vector<WKRetainPtr<WKTypeRef>> values;
+
+    keys.append({ AdoptWK, WKStringCreateWithUTF8CString("GamepadIndex") });
+    values.append({ AdoptWK, WKUInt64Create(index) });
+
+    keys.append({ AdoptWK, WKStringCreateWithUTF8CString("ButtonIndex") });
+    values.append({ AdoptWK, WKUInt64Create(buttonIndex) });
+
+    keys.append({ AdoptWK, WKStringCreateWithUTF8CString("Value") });
+    values.append({ AdoptWK, WKDoubleCreate(value) });
+
+    Vector<WKStringRef> rawKeys;
+    Vector<WKTypeRef> rawValues;
+    rawKeys.resize(keys.size());
+    rawValues.resize(values.size());
+
+    for (size_t i = 0; i < keys.size(); ++i) {
+        rawKeys[i] = keys[i].get();
+        rawValues[i] = values[i].get();
+    }
+
+    WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("SetMockGamepadButtonValue"));
+    WKRetainPtr<WKDictionaryRef> messageBody(AdoptWK, WKDictionaryCreate(rawKeys.data(), rawValues.data(), rawKeys.size()));
+
+    WKBundlePostSynchronousMessage(InjectedBundle::singleton().bundle(), messageName.get(), messageBody.get(), nullptr);
+}
+#else
+void TestRunner::connectMockGamepad(unsigned)
+{
+}
+
+void TestRunner::disconnectMockGamepad(unsigned)
+{
+}
+
+void TestRunner::setMockGamepadDetails(unsigned, JSStringRef, unsigned, unsigned)
+{
+}
+
+void TestRunner::setMockGamepadAxisValue(unsigned, unsigned, double)
+{
+}
+
+void TestRunner::setMockGamepadButtonValue(unsigned, unsigned, double)
+{
+}
+#endif // PLATFORM(MAC)
 
 } // namespace WTR

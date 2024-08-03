@@ -38,6 +38,7 @@
 #import "WKNSData.h"
 #import "WKNSDictionary.h"
 #import "WKNSError.h"
+#import "WKNSNumber.h"
 #import "WKNSString.h"
 #import "WKNSURL.h"
 #import "WKNSURLAuthenticationChallenge.h"
@@ -46,6 +47,7 @@
 #import "WKNavigationDataInternal.h"
 #import "WKNavigationInternal.h"
 #import "WKNavigationResponseInternal.h"
+#import "WKOpenPanelParametersInternal.h"
 #import "WKPreferencesInternal.h"
 #import "WKProcessPoolInternal.h"
 #import "WKSecurityOriginInternal.h"
@@ -63,11 +65,14 @@
 #import "WKWindowFeaturesInternal.h"
 #import "_WKAutomationSessionInternal.h"
 #import "_WKDownloadInternal.h"
+#import "_WKExperimentalFeatureInternal.h"
 #import "_WKFrameHandleInternal.h"
 #import "_WKHitTestResultInternal.h"
 #import "_WKProcessPoolConfigurationInternal.h"
 #import "_WKUserContentExtensionStoreInternal.h"
 #import "_WKUserContentFilterInternal.h"
+#import "_WKUserContentWorldInternal.h"
+#import "_WKUserInitiatedActionInternal.h"
 #import "_WKUserStyleSheetInternal.h"
 #import "_WKVisitedLinkStoreInternal.h"
 
@@ -112,6 +117,13 @@ void* Object::newObject(size_t size, Type type)
         wrapper = [WKBackForwardListItem alloc];
         break;
 
+    case Type::Boolean:
+    case Type::Double:
+    case Type::UInt64:
+        wrapper = [WKNSNumber alloc];
+        ((WKNSNumber *)wrapper)->_type = type;
+        break;
+
     case Type::Bundle:
         wrapper = [WKWebProcessPlugInController alloc];
         break;
@@ -148,6 +160,10 @@ void* Object::newObject(size_t size, Type type)
         wrapper = [_WKDownload alloc];
         break;
 
+    case Type::ExperimentalFeature:
+        wrapper = [_WKExperimentalFeature alloc];
+        break;
+
     case Type::Error:
         wrapper = NSAllocateObject([WKNSError self], size, nullptr);
         break;
@@ -160,9 +176,11 @@ void* Object::newObject(size_t size, Type type)
         wrapper = [WKFrameInfo alloc];
         break;
 
+#if PLATFORM(MAC)
     case Type::HitTestResult:
         wrapper = [_WKHitTestResult alloc];
         break;
+#endif
 
     case Type::Navigation:
         wrapper = [WKNavigation alloc];
@@ -179,6 +197,12 @@ void* Object::newObject(size_t size, Type type)
     case Type::NavigationResponse:
         wrapper = [WKNavigationResponse alloc];
         break;
+
+#if PLATFORM(MAC)
+    case Type::OpenPanelParameters:
+        wrapper = [WKOpenPanelParameters alloc];
+        break;
+#endif
 
     case Type::PageGroup:
         wrapper = [WKBrowsingContextGroup alloc];
@@ -210,6 +234,14 @@ void* Object::newObject(size_t size, Type type)
 
     case Type::UserContentExtensionStore:
         wrapper = [_WKUserContentExtensionStore alloc];
+        break;
+
+    case Type::UserContentWorld:
+        wrapper = [_WKUserContentWorld alloc];
+        break;
+
+    case Type::UserInitiatedAction:
+        wrapper = [_WKUserInitiatedAction alloc];
         break;
 
     case Type::UserScript:

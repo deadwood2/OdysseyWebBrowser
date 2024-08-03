@@ -28,9 +28,7 @@
 
 #include "PlatformTimeRanges.h"
 #include <algorithm>
-#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
-#include <wtf/Vector.h>
 
 namespace WebCore {
 
@@ -45,7 +43,7 @@ public:
     WEBCORE_EXPORT double start(unsigned index, ExceptionCode&) const;
     WEBCORE_EXPORT double end(unsigned index, ExceptionCode&) const;
 
-    WEBCORE_EXPORT PassRefPtr<TimeRanges> copy() const;
+    WEBCORE_EXPORT Ref<TimeRanges> copy() const;
     void invert();
     WEBCORE_EXPORT void intersectWith(const TimeRanges&);
     void unionWith(const TimeRanges&);

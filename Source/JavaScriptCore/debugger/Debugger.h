@@ -50,7 +50,7 @@ public:
 
     VM& vm() { return m_vm; }
 
-    JSC::DebuggerCallFrame* currentDebuggerCallFrame() const;
+    JSC::DebuggerCallFrame* currentDebuggerCallFrame();
     bool hasHandlerForExceptionCallback() const
     {
         ASSERT(m_reasonForPause == PausedForException);
@@ -62,7 +62,8 @@ public:
         return m_currentException;
     }
 
-    bool needsExceptionCallbacks() const { return m_pauseOnExceptionsState != DontPauseOnExceptions; }
+    bool needsExceptionCallbacks() const { return m_breakpointsActivated && m_pauseOnExceptionsState != DontPauseOnExceptions; }
+    bool isInteractivelyDebugging() const { return m_breakpointsActivated; }
 
     enum ReasonForDetach {
         TerminatingDebuggingSession,
@@ -75,9 +76,9 @@ public:
     BreakpointID setBreakpoint(Breakpoint, unsigned& actualLine, unsigned& actualColumn);
     void removeBreakpoint(BreakpointID);
     void clearBreakpoints();
-    void setBreakpointsActivated(bool);
     void activateBreakpoints() { setBreakpointsActivated(true); }
     void deactivateBreakpoints() { setBreakpointsActivated(false); }
+    bool breakpointsActive() const { return m_breakpointsActivated; }
 
     enum PauseOnExceptionsState {
         DontPauseOnExceptions,
@@ -143,7 +144,6 @@ public:
     void didEvaluateScript(double startTime, ProfilingReason);
 
 protected:
-    virtual bool needPauseHandling(JSGlobalObject*) { return false; }
     virtual void handleBreakpointHit(JSGlobalObject*, const Breakpoint&) { }
     virtual void handleExceptionInBreakpointCondition(ExecState*, Exception*) const { }
     virtual void handlePause(JSGlobalObject*, ReasonForPause) { }
@@ -199,6 +199,7 @@ private:
         BreakpointDisabled,
         BreakpointEnabled
     };
+    void setBreakpointsActivated(bool);
     void toggleBreakpoint(CodeBlock*, Breakpoint&, BreakpointState);
     void applyBreakpoints(CodeBlock*);
     void toggleBreakpoint(Breakpoint&, BreakpointState);

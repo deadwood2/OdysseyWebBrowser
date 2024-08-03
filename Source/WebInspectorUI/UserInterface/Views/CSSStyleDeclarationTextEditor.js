@@ -24,17 +24,16 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor extends WebInspector.Object
+WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor extends WebInspector.View
 {
-    constructor(delegate, style, element)
+    constructor(delegate, style)
     {
         super();
 
-        this._element = element || document.createElement("div");
-        this._element.classList.add(WebInspector.CSSStyleDeclarationTextEditor.StyleClassName);
-        this._element.classList.add(WebInspector.SyntaxHighlightedStyleClassName);
-        this._element.addEventListener("mousedown", this._handleMouseDown.bind(this));
-        this._element.addEventListener("mouseup", this._handleMouseUp.bind(this));
+        this.element.classList.add(WebInspector.CSSStyleDeclarationTextEditor.StyleClassName);
+        this.element.classList.add(WebInspector.SyntaxHighlightedStyleClassName);
+        this.element.addEventListener("mousedown", this._handleMouseDown.bind(this));
+        this.element.addEventListener("mouseup", this._handleMouseUp.bind(this));
 
         this._mouseDownCursorPosition = null;
 
@@ -43,8 +42,6 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
         this._filterResultPropertyNames = null;
         this._sortProperties = false;
 
-        this._prefixWhitespace = "\n";
-        this._suffixWhitespace = "\n";
         this._linePrefixWhitespace = "";
 
         this._delegate = delegate || null;
@@ -92,11 +89,6 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
     }
 
     // Public
-
-    get element()
-    {
-        return this._element;
-    }
 
     get delegate()
     {
@@ -192,11 +184,6 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
     refresh()
     {
         this._resetContent();
-    }
-
-    updateLayout(force)
-    {
-        this._codeMirror.refresh();
     }
 
     highlightProperty(property)
@@ -386,12 +373,6 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
 
     // Protected
 
-    didDismissPopover(popover)
-    {
-        if (popover === this._cubicBezierEditorPopover)
-            this._cubicBezierEditorPopover = null;
-    }
-
     completionControllerCompletionsHidden(completionController)
     {
         var styleText = this._style.text;
@@ -404,6 +385,11 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
             this._commitChanges();
         else
             this._propertiesChanged();
+    }
+
+    layout()
+    {
+        this._codeMirror.refresh();
     }
 
     // Private
@@ -707,7 +693,7 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
     _formattedContent()
     {
         // Start with the prefix whitespace we stripped.
-        var content = this._prefixWhitespace;
+        var content = WebInspector.CSSStyleDeclarationTextEditor.PrefixWhitespace;
 
         // Get each line and add the line prefix whitespace and newlines.
         var lineCount = this._codeMirror.lineCount();
@@ -719,7 +705,7 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
         }
 
         // Add the suffix whitespace we stripped.
-        content += this._suffixWhitespace;
+        content += WebInspector.CSSStyleDeclarationTextEditor.SuffixWhitespace;
 
         // This regular expression replacement removes extra newlines
         // in between properties while preserving leading whitespace
@@ -801,10 +787,8 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
                 var to = {line: styleTextRange.endLine, ch: styleTextRange.endColumn};
 
                 // Adjust the line position for the missing prefix line.
-                if (this._prefixWhitespace) {
-                    --from.line;
-                    --to.line;
-                }
+                from.line--;
+                to.line--;
 
                 // Adjust the column for the stripped line prefix whitespace.
                 from.ch -= this._linePrefixWhitespace.length;
@@ -815,9 +799,9 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
 
             if (!this._codeMirror.getOption("readOnly")) {
                 // Look for comments that look like properties and add checkboxes in front of them.
-                this._codeMirror.eachLine(function(lineHandler) {
+                this._codeMirror.eachLine((lineHandler) => {
                     this._createCommentedCheckboxMarker(lineHandler);
-                }.bind(this));
+                });
             }
 
             // Look for swatchable values and make inline swatches.
@@ -841,7 +825,7 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
             return;
 
         // Matches a comment like: /* -webkit-foo: bar; */
-        var commentedPropertyRegex = /\/\*\s*[-\w]+\s*:\s*[^;]+;?\s*\*\//g;
+        let commentedPropertyRegex = /\/\*\s*[-\w]+\s*\:\s*(?:(?:\".*\"|url\(.+\)|[^;])\s*)+;?\s*\*\//g;
 
         var match = commentedPropertyRegex.exec(lineHandle.text);
         if (!match)
@@ -871,7 +855,6 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
     {
         function createSwatch(swatch, marker, valueObject, valueString)
         {
-            swatch.addEventListener(WebInspector.InlineSwatch.Event.BeforeClicked, this._inlineSwatchBeforeClicked, this);
             swatch.addEventListener(WebInspector.InlineSwatch.Event.ValueChanged, this._inlineSwatchValueChanged, this);
 
             let codeMirrorTextMarker = marker.codeMirrorTextMarker;
@@ -902,6 +885,12 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
             createCodeMirrorCubicBezierTextMarkers(this._codeMirror, range, (marker, bezier, bezierString) => {
                 let swatch = new WebInspector.InlineSwatch(WebInspector.InlineSwatch.Type.Bezier, bezier, this._codeMirror.getOption("readOnly"));
                 createSwatch.call(this, swatch, marker, bezier, bezierString);
+            });
+
+            // Look for spring strings and add swatches in front of them.
+            createCodeMirrorSpringTextMarkers(this._codeMirror, range, (marker, spring, springString) => {
+                let swatch = new WebInspector.InlineSwatch(WebInspector.InlineSwatch.Type.Spring, spring, this._codeMirror.getOption("readOnly"));
+                createSwatch.call(this, swatch, marker, spring, springString);
             });
         }
 
@@ -1303,12 +1292,6 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
         this._codeMirror.operation(update.bind(this));
     }
 
-    _inlineSwatchBeforeClicked(event)
-    {
-        if (this._delegate && typeof this._delegate.cssStyleDeclarationTextEditorBlurActiveEditor === "function")
-            this._delegate.cssStyleDeclarationTextEditorBlurActiveEditor();
-    }
-
     _inlineSwatchValueChanged(event)
     {
         let swatch = event && event.target;
@@ -1341,8 +1324,9 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
 
                 for (let mark of marks) {
                     let type = WebInspector.TextMarker.textMarkerForCodeMirrorTextMarker(mark).type;
-                    if (type !== WebInspector.TextMarker.Type.Color && type !== WebInspector.TextMarker.Type.Gradient && type !== WebInspector.TextMarker.Type.CubicBezier)
+                    if (Object.values(WebInspector.TextMarker.Type).includes(type))
                         continue;
+
                     textMarker = mark;
                     break;
                 }
@@ -1448,10 +1432,9 @@ WebInspector.CSSStyleDeclarationTextEditor = class CSSStyleDeclarationTextEditor
 
     _formattedContentFromEditor()
     {
-        var mapping = {original: [0], formatted: [0]};
         // FIXME: <rdar://problem/10593948> Provide a way to change the tab width in the Web Inspector
         var indentString = "    ";
-        var builder = new WebInspector.FormatterContentBuilder(mapping, [], [], 0, 0, indentString);
+        var builder = new FormatterContentBuilder(indentString);
         var formatter = new WebInspector.Formatter(this._codeMirror, builder);
         var start = {line: 0, ch: 0};
         var end = {line: this._codeMirror.lineCount() - 1};
@@ -1686,6 +1669,8 @@ WebInspector.CSSStyleDeclarationTextEditor.Event = {
     Blurred: "css-style-declaration-text-editor-blurred"
 };
 
+WebInspector.CSSStyleDeclarationTextEditor.PrefixWhitespace = "\n";
+WebInspector.CSSStyleDeclarationTextEditor.SuffixWhitespace = "\n";
 WebInspector.CSSStyleDeclarationTextEditor.StyleClassName = "css-style-text-editor";
 WebInspector.CSSStyleDeclarationTextEditor.ReadOnlyStyleClassName = "read-only";
 WebInspector.CSSStyleDeclarationTextEditor.CheckboxPlaceholderElementStyleClassName = "checkbox-placeholder";

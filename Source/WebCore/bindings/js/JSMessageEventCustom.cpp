@@ -57,11 +57,10 @@ JSValue JSMessageEvent::data(ExecState& state) const
     JSValue result;
     switch (event.dataType()) {
     case MessageEvent::DataTypeScriptValue: {
-        Deprecated::ScriptValue scriptValue = event.dataAsScriptValue();
-        if (scriptValue.hasNoValue())
+        JSValue dataValue = event.dataAsScriptValue();
+        if (!dataValue)
             result = jsNull();
         else {
-            JSValue dataValue = scriptValue.jsValue();
             // We need to make sure MessageEvents do not leak objects in their state property across isolated DOM worlds.
             // Ideally, we would check that the worlds have different privileges but that's not possible yet.
             if (dataValue.isObject() && &worldForDOMObject(dataValue.getObject()) != &currentWorld(&state)) {
@@ -108,9 +107,9 @@ static JSC::JSValue handleInitMessageEvent(JSMessageEvent* jsEvent, JSC::ExecSta
     const String& typeArg = state.argument(0).toString(&state)->value(&state);
     bool canBubbleArg = state.argument(1).toBoolean(&state);
     bool cancelableArg = state.argument(2).toBoolean(&state);
-    const String originArg = state.argument(4).toString(&state)->value(&state);
+    const String originArg = valueToUSVString(&state, state.argument(4));
     const String lastEventIdArg = state.argument(5).toString(&state)->value(&state);
-    DOMWindow* sourceArg = JSDOMWindow::toWrapped(state.argument(6));
+    DOMWindow* sourceArg = JSDOMWindow::toWrapped(state, state.argument(6));
     std::unique_ptr<MessagePortArray> messagePorts;
     std::unique_ptr<ArrayBufferArray> arrayBuffers;
     if (!state.argument(7).isUndefinedOrNull()) {
@@ -120,7 +119,7 @@ static JSC::JSValue handleInitMessageEvent(JSMessageEvent* jsEvent, JSC::ExecSta
         if (state.hadException())
             return jsUndefined();
     }
-    Deprecated::ScriptValue dataArg = Deprecated::ScriptValue(state.vm(), state.argument(3));
+    Deprecated::ScriptValue dataArg(state.vm(), state.argument(3));
     if (state.hadException())
         return jsUndefined();
 

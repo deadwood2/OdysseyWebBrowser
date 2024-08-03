@@ -20,8 +20,7 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef CSSRule_h
-#define CSSRule_h
+#pragma once
 
 #include <wtf/RefCounted.h>
 #include <wtf/TypeCasts.h>
@@ -90,8 +89,7 @@ public:
 
     CSSRule* parentRule() const { return m_parentIsRule ? m_parentRule : 0; }
 
-    // NOTE: Just calls notImplemented().
-    void setCssText(const String&, ExceptionCode&);
+    WEBCORE_EXPORT void setCssText(const String&, ExceptionCode&);
 
 protected:
     CSSRule(CSSStyleSheet* parent)
@@ -123,4 +121,3 @@ SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::ToValueTypeName) \
     static bool isType(const WebCore::CSSRule& rule) { return rule.type() == WebCore::predicate; } \
 SPECIALIZE_TYPE_TRAITS_END()
 
-#endif // CSSRule_h

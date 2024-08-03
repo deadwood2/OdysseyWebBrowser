@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,15 +29,21 @@
 #if ENABLE(JIT)
 
 #include "CCallHelpers.h"
+#include "JITMathICInlineResult.h"
 #include "SnippetOperand.h"
 
 namespace JSC {
 
+struct MathICGenerationState;
+
 class JITSubGenerator {
 public:
+    JITSubGenerator() { }
+
     JITSubGenerator(SnippetOperand leftOperand, SnippetOperand rightOperand,
         JSValueRegs result, JSValueRegs left, JSValueRegs right,
-        FPRReg leftFPR, FPRReg rightFPR, GPRReg scratchGPR, FPRReg scratchFPR)
+        FPRReg leftFPR, FPRReg rightFPR, GPRReg scratchGPR, FPRReg scratchFPR,
+        ArithProfile* arithProfile = nullptr)
         : m_leftOperand(leftOperand)
         , m_rightOperand(rightOperand)
         , m_result(result)
@@ -47,13 +53,16 @@ public:
         , m_rightFPR(rightFPR)
         , m_scratchGPR(scratchGPR)
         , m_scratchFPR(scratchFPR)
+        , m_arithProfile(arithProfile)
     { }
 
-    void generateFastPath(CCallHelpers&);
+    JITMathICInlineResult generateInline(CCallHelpers&, MathICGenerationState&);
+    bool generateFastPath(CCallHelpers&, CCallHelpers::JumpList& endJumpList, CCallHelpers::JumpList& slowPathJumpList, bool shouldEmitProfiling);
 
-    bool didEmitFastPath() const { return m_didEmitFastPath; }
-    CCallHelpers::JumpList& endJumpList() { return m_endJumpList; }
-    CCallHelpers::JumpList& slowPathJumpList() { return m_slowPathJumpList; }
+    static bool isLeftOperandValidConstant(SnippetOperand) { return false; }
+    static bool isRightOperandValidConstant(SnippetOperand) { return false; }
+
+    ArithProfile* arithProfile() const { return m_arithProfile; }
 
 private:
     SnippetOperand m_leftOperand;
@@ -65,10 +74,7 @@ private:
     FPRReg m_rightFPR;
     GPRReg m_scratchGPR;
     FPRReg m_scratchFPR;
-    bool m_didEmitFastPath { false };
-
-    CCallHelpers::JumpList m_endJumpList;
-    CCallHelpers::JumpList m_slowPathJumpList;
+    ArithProfile* m_arithProfile;
 };
 
 } // namespace JSC

@@ -117,32 +117,33 @@ void ExtensionStyleSheets::updateInjectedStyleSheetCache() const
     if (!owningPage)
         return;
 
-    const auto* userContentController = owningPage->userContentController();
-    if (!userContentController)
-        return;
+    owningPage->userContentProvider().forEachUserStyleSheet([&](const UserStyleSheet& userStyleSheet) {
+        if (userStyleSheet.injectedFrames() == InjectInTopFrameOnly && m_document.ownerElement())
+            return;
 
-    const UserStyleSheetMap* userStyleSheets = userContentController->userStyleSheets();
-    if (!userStyleSheets)
-        return;
+        if (!UserContentURLPattern::matchesPatterns(m_document.url(), userStyleSheet.whitelist(), userStyleSheet.blacklist()))
+            return;
 
-    for (auto& styleSheets : userStyleSheets->values()) {
-        for (const auto& sheet : *styleSheets) {
-            if (sheet->injectedFrames() == InjectInTopFrameOnly && m_document.ownerElement())
-                continue;
+        RefPtr<CSSStyleSheet> sheet = CSSStyleSheet::createInline(const_cast<Document&>(m_document), userStyleSheet.url());
+        bool isUserStyleSheet = userStyleSheet.level() == UserStyleUserLevel;
+        if (isUserStyleSheet)
+            m_injectedUserStyleSheets.append(sheet);
+        else
+            m_injectedAuthorStyleSheets.append(sheet);
 
-            if (!UserContentURLPattern::matchesPatterns(m_document.url(), sheet->whitelist(), sheet->blacklist()))
-                continue;
+        sheet->contents().setIsUserStyleSheet(isUserStyleSheet);
+        sheet->contents().parseString(userStyleSheet.source());
+    });
+    
+    if (!owningPage->captionUserPreferencesStyleSheet().isEmpty()) {
+        // Identify our override style sheet with a unique URL - a new scheme and a UUID.
+        static NeverDestroyed<URL> captionsStyleSheetURL(ParsedURLString, "user-captions-override:01F6AF12-C3B0-4F70-AF5E-A3E00234DC23");
 
-            RefPtr<CSSStyleSheet> groupSheet = CSSStyleSheet::createInline(const_cast<Document&>(m_document), sheet->url());
-            bool isUserStyleSheet = sheet->level() == UserStyleUserLevel;
-            if (isUserStyleSheet)
-                m_injectedUserStyleSheets.append(groupSheet);
-            else
-                m_injectedAuthorStyleSheets.append(groupSheet);
+        RefPtr<CSSStyleSheet> sheet = CSSStyleSheet::createInline(const_cast<Document&>(m_document), captionsStyleSheetURL.get());
+        m_injectedAuthorStyleSheets.append(sheet);
 
-            groupSheet->contents().setIsUserStyleSheet(isUserStyleSheet);
-            groupSheet->contents().parseString(sheet->source());
-        }
+        sheet->contents().setIsUserStyleSheet(false);
+        sheet->contents().parseString(owningPage->captionUserPreferencesStyleSheet());
     }
 }
 

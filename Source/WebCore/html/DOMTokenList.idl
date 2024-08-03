@@ -28,16 +28,14 @@
     SkipVTableValidation,
 ] interface DOMTokenList {
     readonly attribute unsigned long length;
-    [TreatReturnedNullStringAs=Null] getter DOMString item(unsigned long index);
-    [RaisesException] boolean contains(DOMString token);
+    getter DOMString? item(unsigned long index);
+    boolean contains(DOMString token);
     [RaisesException] void add(DOMString... tokens);
     [RaisesException] void remove(DOMString... tokens);
-    [RaisesException, Custom] boolean toggle(DOMString token, optional boolean force);
+    [RaisesException] boolean toggle(DOMString token, optional boolean force);
+    [RaisesException] void replace(DOMString token, DOMString newToken);
 
-    attribute DOMString value;
+    iterable<DOMString>;
 
-#if defined(LANGUAGE_JAVASCRIPT) && LANGUAGE_JAVASCRIPT
-    [NotEnumerable] DOMString toString();
-#endif
+    stringifier attribute DOMString value;
 };
-

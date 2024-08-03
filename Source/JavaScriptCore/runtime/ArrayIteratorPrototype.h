@@ -26,6 +26,7 @@
 #ifndef ArrayIteratorPrototype_h
 #define ArrayIteratorPrototype_h
 
+#include "IterationKind.h"
 #include "JSObject.h"
 
 namespace JSC {
@@ -33,7 +34,7 @@ namespace JSC {
 class ArrayIteratorPrototype : public JSNonFinalObject {
 public:
     typedef JSNonFinalObject Base;
-    static const unsigned StructureFlags = OverridesGetOwnPropertySlot | Base::StructureFlags;
+    static const unsigned StructureFlags = HasStaticPropertyTable | Base::StructureFlags;
 
     static ArrayIteratorPrototype* create(VM& vm, JSGlobalObject* globalObject, Structure* structure)
     {
@@ -56,7 +57,6 @@ private:
     }
 
     void finishCreation(VM&, JSGlobalObject*);
-    static bool getOwnPropertySlot(JSObject*, ExecState*, PropertyName, PropertySlot&);
 };
 
 }

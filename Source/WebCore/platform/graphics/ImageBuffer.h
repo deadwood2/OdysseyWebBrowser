@@ -37,7 +37,7 @@
 #include "PlatformLayer.h"
 #include <runtime/Uint8ClampedArray.h>
 #include <wtf/Forward.h>
-#include <wtf/PassRefPtr.h>
+#include <wtf/RefPtr.h>
 #include <wtf/Vector.h>
 
 namespace WebCore {
@@ -79,7 +79,13 @@ public:
         return buffer;
     }
 
-    static std::unique_ptr<ImageBuffer> createCompatibleBuffer(const FloatSize&, float resolutionScale, ColorSpace, const GraphicsContext&, bool hasAlpha);
+    // Create an image buffer compatible with the context, with suitable resolution for drawing into the buffer and then into this context.
+    static std::unique_ptr<ImageBuffer> createCompatibleBuffer(const FloatSize&, const GraphicsContext&);
+    static std::unique_ptr<ImageBuffer> createCompatibleBuffer(const FloatSize&, ColorSpace, const GraphicsContext&);
+    static std::unique_ptr<ImageBuffer> createCompatibleBuffer(const FloatSize&, float resolutionScale, ColorSpace, const GraphicsContext&);
+
+    static IntSize compatibleBufferSize(const FloatSize&, const GraphicsContext&);
+    bool isCompatibleWithContext(const GraphicsContext&) const;
 
     WEBCORE_EXPORT ~ImageBuffer();
 
@@ -101,8 +107,8 @@ public:
 
     enum CoordinateSystem { LogicalCoordinateSystem, BackingStoreCoordinateSystem };
 
-    PassRefPtr<Uint8ClampedArray> getUnmultipliedImageData(const IntRect&, CoordinateSystem = LogicalCoordinateSystem) const;
-    PassRefPtr<Uint8ClampedArray> getPremultipliedImageData(const IntRect&, CoordinateSystem = LogicalCoordinateSystem) const;
+    RefPtr<Uint8ClampedArray> getUnmultipliedImageData(const IntRect&, CoordinateSystem = LogicalCoordinateSystem) const;
+    RefPtr<Uint8ClampedArray> getPremultipliedImageData(const IntRect&, CoordinateSystem = LogicalCoordinateSystem) const;
 
     void putByteArray(Multiply multiplied, Uint8ClampedArray*, const IntSize& sourceSize, const IntRect& sourceRect, const IntPoint& destPoint, CoordinateSystem = LogicalCoordinateSystem);
     
@@ -121,6 +127,9 @@ public:
 #if USE(CAIRO)
     NativeImagePtr nativeImage() const;
 #endif
+
+    size_t memoryCost() const;
+    size_t externalMemoryCost() const;
 
     // FIXME: current implementations of this method have the restriction that they only work
     // with textures that are RGB or RGBA format, and UNSIGNED_BYTE type.
@@ -164,6 +173,9 @@ private:
     // This constructor will place its success into the given out-variable
     // so that create() knows when it should return failure.
     WEBCORE_EXPORT ImageBuffer(const FloatSize&, float resolutionScale, ColorSpace, RenderingMode, bool& success);
+#if USE(CG)
+    ImageBuffer(const FloatSize&, float resolutionScale, CGColorSpaceRef, RenderingMode, bool& success);
+#endif
 };
 
 #if USE(CG)

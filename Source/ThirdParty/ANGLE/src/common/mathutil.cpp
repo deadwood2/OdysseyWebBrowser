@@ -31,9 +31,12 @@ static const int g_sharedexp_mantissabits = 9;
 // Emax is the maximum allowed biased exponent value (31)
 static const int g_sharedexp_maxexponent = 31;
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wglobal-constructors"
 static const float g_sharedexp_max = ((pow(2.0f, g_sharedexp_mantissabits) - 1) /
                                        pow(2.0f, g_sharedexp_mantissabits)) *
                                      pow(2.0f, g_sharedexp_maxexponent - g_sharedexp_bias);
+#pragma clang diagnostic pop
 
 unsigned int convertRGBFloatsTo999E5(float red, float green, float blue)
 {
@@ -52,7 +55,7 @@ unsigned int convertRGBFloatsTo999E5(float red, float green, float blue)
     output.B = static_cast<unsigned int>(floor((blue_c / (pow(2.0f, exp_s - g_sharedexp_bias - g_sharedexp_mantissabits))) + 0.5f));
     output.E = exp_s;
 
-    return *reinterpret_cast<unsigned int*>(&output);
+    return bitCast<unsigned int>(output);
 }
 
 void convert999E5toRGBFloats(unsigned int input, float *red, float *green, float *blue)
@@ -64,4 +67,4 @@ void convert999E5toRGBFloats(unsigned int input, float *red, float *green, float
     *blue = inputData->B * pow(2.0f, (int)inputData->E - g_sharedexp_bias - g_sharedexp_mantissabits);
 }
 
-}
+}  // namespace gl

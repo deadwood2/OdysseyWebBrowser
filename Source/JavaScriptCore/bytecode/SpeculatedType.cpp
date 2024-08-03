@@ -30,9 +30,11 @@
 #include "SpeculatedType.h"
 
 #include "DirectArguments.h"
+#include "JSCInlines.h"
 #include "JSArray.h"
 #include "JSFunction.h"
-#include "JSCInlines.h"
+#include "JSMap.h"
+#include "JSSet.h"
 #include "ScopedArguments.h"
 #include "StringObject.h"
 #include "ValueProfile.h"
@@ -168,7 +170,7 @@ void dumpSpeculation(PrintStream& out, SpeculatedType value)
             isTop = false;
     }
     
-    if (value == SpecInt32)
+    if (value == SpecInt32Only)
         myOut.print("Int32");
     else {
         if (value & SpecBoolInt32)
@@ -182,14 +184,14 @@ void dumpSpeculation(PrintStream& out, SpeculatedType value)
             isTop = false;
     }
     
-    if (value & SpecInt52)
+    if (value & SpecInt52Only)
         myOut.print("Int52");
         
     if ((value & SpecBytecodeDouble) == SpecBytecodeDouble)
         myOut.print("Bytecodedouble");
     else {
-        if (value & SpecInt52AsDouble)
-            myOut.print("Int52asdouble");
+        if (value & SpecAnyIntAsDouble)
+            myOut.print("AnyIntAsDouble");
         else
             isTop = false;
         
@@ -274,12 +276,12 @@ static const char* speculationToAbbreviatedString(SpeculatedType prediction)
         return "<BoolInt32>";
     if (isInt32Speculation(prediction))
         return "<Int32>";
-    if (isInt52AsDoubleSpeculation(prediction))
-        return "<Int52AsDouble>";
+    if (isAnyIntAsDoubleSpeculation(prediction))
+        return "<AnyIntAsDouble>";
     if (isInt52Speculation(prediction))
         return "<Int52>";
-    if (isMachineIntSpeculation(prediction))
-        return "<MachineInt>";
+    if (isAnyIntSpeculation(prediction))
+        return "<AnyInt>";
     if (isDoubleSpeculation(prediction))
         return "<Double>";
     if (isFullNumberSpeculation(prediction))
@@ -346,6 +348,12 @@ SpeculatedType speculationFromClassInfo(const ClassInfo* classInfo)
 
     if (classInfo == RegExpObject::info())
         return SpecRegExpObject;
+
+    if (classInfo == JSMap::info())
+        return SpecMapObject;
+
+    if (classInfo == JSSet::info())
+        return SpecSetObject;
     
     if (classInfo->isSubClassOf(JSFunction::info()))
         return SpecFunction;
@@ -393,8 +401,8 @@ SpeculatedType speculationFromValue(JSValue value)
         double number = value.asNumber();
         if (number != number)
             return SpecDoublePureNaN;
-        if (value.isMachineInt())
-            return SpecInt52AsDouble;
+        if (value.isAnyInt())
+            return SpecAnyIntAsDouble;
         return SpecNonIntAsDouble;
     }
     if (value.isCell())
@@ -439,8 +447,8 @@ TypedArrayType typedArrayTypeFromSpeculation(SpeculatedType type)
 
 SpeculatedType leastUpperBoundOfStrictlyEquivalentSpeculations(SpeculatedType type)
 {
-    if (type & SpecInteger)
-        type |= SpecInteger;
+    if (type & (SpecAnyInt | SpecAnyIntAsDouble))
+        type |= (SpecAnyInt | SpecAnyIntAsDouble);
     if (type & SpecString)
         type |= SpecString;
     return type;
@@ -522,10 +530,11 @@ SpeculatedType typeOfDoubleMinMax(SpeculatedType a, SpeculatedType b)
 
 SpeculatedType typeOfDoubleNegation(SpeculatedType value)
 {
-    // Impure NaN could become pure NaN because bits might get cleared.
-    if (value & SpecDoubleImpureNaN)
-        value |= SpecDoublePureNaN;
-    // We could get negative zero, which mixes SpecInt52AsDouble and SpecNotIntAsDouble.
+    // Changing bits can make pure NaN impure and vice versa:
+    // 0xefff000000000000 (pure) - 0xffff000000000000 (impure)
+    if (value & SpecDoubleNaN)
+        value |= SpecDoubleNaN;
+    // We could get negative zero, which mixes SpecAnyIntAsDouble and SpecNotIntAsDouble.
     // We could also overflow a large negative int into something that is no longer
     // representable as an int.
     if (value & SpecDoubleReal)
@@ -540,12 +549,13 @@ SpeculatedType typeOfDoubleAbs(SpeculatedType value)
 
 SpeculatedType typeOfDoubleRounding(SpeculatedType value)
 {
-    // We might lose bits, which leads to a NaN being purified.
-    if (value & SpecDoubleImpureNaN)
-        value |= SpecDoublePureNaN;
+    // Double Pure NaN can becomes impure when converted back from Float.
+    // and vice versa.
+    if (value & SpecDoubleNaN)
+        value |= SpecDoubleNaN;
     // We might lose bits, which leads to a value becoming integer-representable.
     if (value & SpecNonIntAsDouble)
-        value |= SpecInt52AsDouble;
+        value |= SpecAnyIntAsDouble;
     return value;
 }
 

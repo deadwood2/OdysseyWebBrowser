@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,6 +27,7 @@
 #include "NetworkBlobRegistry.h"
 
 #include "BlobDataFileReferenceWithSandboxExtension.h"
+#include "NetworkConnectionToWebProcess.h"
 #include "SandboxExtension.h"
 #include <WebCore/BlobPart.h>
 #include <WebCore/BlobRegistryImpl.h>
@@ -83,6 +84,20 @@ void NetworkBlobRegistry::registerBlobURL(NetworkConnectionToWebProcess* connect
     mapIterator->value.add(url);
 }
 
+void NetworkBlobRegistry::registerBlobURLOptionallyFileBacked(NetworkConnectionToWebProcess* connection, const URL& url, const URL& srcURL, const String& fileBackedPath, const String& contentType)
+{
+    auto fileReference = connection->getBlobDataFileReferenceForPath(fileBackedPath);
+    ASSERT(fileReference);
+
+    blobRegistry().registerBlobURLOptionallyFileBacked(url, srcURL, WTFMove(fileReference), contentType);
+
+    ASSERT(!m_blobsForConnection.get(connection).contains(url));
+    BlobForConnectionMap::iterator mapIterator = m_blobsForConnection.find(connection);
+    if (mapIterator == m_blobsForConnection.end())
+        mapIterator = m_blobsForConnection.add(connection, HashSet<URL>()).iterator;
+    mapIterator->value.add(url);
+}
+
 void NetworkBlobRegistry::registerBlobURLForSlice(NetworkConnectionToWebProcess* connection, const WebCore::URL& url, const WebCore::URL& srcURL, int64_t start, int64_t end)
 {
     // The connection may not be registered if NetworkProcess prevously crashed for any reason.
@@ -115,6 +130,11 @@ uint64_t NetworkBlobRegistry::blobSize(NetworkConnectionToWebProcess* connection
         return 0;
 
     return blobRegistry().blobSize(url);
+}
+
+void NetworkBlobRegistry::writeBlobsToTemporaryFiles(const Vector<String>& blobURLs, Function<void(const Vector<String>&)>&& completionHandler)
+{
+    blobRegistry().writeBlobsToTemporaryFiles(blobURLs, WTFMove(completionHandler));
 }
 
 void NetworkBlobRegistry::connectionToWebProcessDidClose(NetworkConnectionToWebProcess* connection)

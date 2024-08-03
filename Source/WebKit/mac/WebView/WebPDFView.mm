@@ -32,6 +32,7 @@
 
 #import "DOMNodeInternal.h"
 #import "DOMRangeInternal.h"
+#import "PDFViewSPI.h"
 #import "WebDataSourceInternal.h"
 #import "WebDelegateImplementationCaching.h"
 #import "WebDocumentInternal.h"
@@ -64,8 +65,6 @@
 #import <WebCore/WebNSAttributedStringExtras.h>
 #import <wtf/Assertions.h>
 #import <wtf/CurrentTime.h>
-
-#import <PDFKit/PDFKit.h>
 
 #if USE(APPLE_INTERNAL_SDK)
 #import <ApplicationServices/ApplicationServicesPriv.h>
@@ -230,7 +229,11 @@ static BOOL _PDFSelectionsAreEqual(PDFSelection *selectionA, PDFSelection *selec
 
 - (void)centerSelectionInVisibleArea:(id)sender
 {
+    // FIXME: Get rid of this once <rdar://problem/25149294> has been fixed.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wnonnull"
     [PDFSubview scrollSelectionToVisible:nil];
+#pragma clang diagnostic pop
 }
 
 - (void)scrollPageDown:(id)sender
@@ -318,7 +321,10 @@ static BOOL _PDFSelectionsAreEqual(PDFSelection *selectionA, PDFSelection *selec
     // Override hitTest so we can override menuForEvent.
     NSEvent *event = [NSApp currentEvent];
     NSEventType type = [event type];
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     if (type == NSRightMouseDown || (type == NSLeftMouseDown && ([event modifierFlags] & NSControlKeyMask)))
+#pragma clang diagnostic pop
         return self;
 
     return [super hitTest:point];
@@ -659,7 +665,12 @@ static BOOL _PDFSelectionsAreEqual(PDFSelection *selectionA, PDFSelection *selec
         return NO;
 
     [PDFSubview setCurrentSelection:selection];
+
+    // FIXME: Get rid of this once <rdar://problem/25149294> has been fixed.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wnonnull"
     [PDFSubview scrollSelectionToVisible:nil];
+#pragma clang diagnostic pop
     return YES;
 }
 
@@ -848,7 +859,7 @@ static BOOL isFrameInRange(WebFrame *frame, DOMRange *range)
     ASSERT([statePList isKindOfClass:[NSArray class]]);
     NSArray *state = statePList;
     int i = 0;
-    PDFDisplayMode mode = [[state objectAtIndex:i++] intValue];
+    PDFDisplayMode mode = static_cast<PDFDisplayMode>([[state objectAtIndex:i++] intValue]);
     [PDFSubview setDisplayMode:mode];
     if (mode == kPDFDisplaySinglePage || mode == kPDFDisplayTwoUp) {
         unsigned int pageIndex = [[state objectAtIndex:i++] unsignedIntValue];
@@ -998,6 +1009,8 @@ static BOOL isFrameInRange(WebFrame *frame, DOMRange *range)
     int button = noButton;
     RefPtr<Event> event;
     switch ([nsEvent type]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
         case NSLeftMouseUp:
             button = 0;
             break;
@@ -1013,6 +1026,7 @@ static BOOL isFrameInRange(WebFrame *frame, DOMRange *range)
             event = KeyboardEvent::create(pe, 0);
             break;
         }
+#pragma clang diagnostic pop
         default:
             break;
     }
@@ -1021,11 +1035,14 @@ static BOOL isFrameInRange(WebFrame *frame, DOMRange *range)
 #if ENABLE(POINTER_LOCK)
             0, 0,
 #endif
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
             [nsEvent modifierFlags] & NSControlKeyMask,
             [nsEvent modifierFlags] & NSAlternateKeyMask,
             [nsEvent modifierFlags] & NSShiftKeyMask,
             [nsEvent modifierFlags] & NSCommandKeyMask,
-            button, 0, WebCore::ForceAtClick, 0, true);
+#pragma clang diagnostic pop
+            button, 0, WebCore::ForceAtClick, 0, 0, true);
     }
 
     // Call to the frame loader because this is where our security checks are made.
@@ -1086,6 +1103,17 @@ static BOOL isFrameInRange(WebFrame *frame, DOMRange *range)
     return PDFViewClass;
 }
 
++ (Class)_PDFSelectionClass
+{
+    static Class PDFSelectionClass = nil;
+    if (PDFSelectionClass == nil) {
+        PDFSelectionClass = [[WebPDFView PDFKitBundle] classNamed:@"PDFSelection"];
+        if (!PDFSelectionClass)
+            LOG_ERROR("Couldn't find PDFSelectionClass class in PDFKit.framework");
+    }
+    return PDFSelectionClass;
+}
+
 - (void)_applyPDFDefaults
 {
     // Set up default viewing params
@@ -1107,7 +1135,11 @@ static BOOL isFrameInRange(WebFrame *frame, DOMRange *range)
 
 - (NSClipView *)_clipViewForPDFDocumentView
 {
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200
+    NSClipView *clipView = (NSClipView *)[[PDFSubview documentScrollView] contentView];
+#else
     NSClipView *clipView = (NSClipView *)[[PDFSubview documentView] _web_superviewOfClass:[NSClipView class]];
+#endif
     ASSERT(clipView);
     return clipView;
 }
@@ -1117,6 +1149,8 @@ static BOOL isFrameInRange(WebFrame *frame, DOMRange *range)
     // FIXME 4400480: when PDFView implements the standard scrolling selectors that this
     // method is used to mimic, we can eliminate this method and call them directly.
     NSString *keyAsString = [NSString stringWithCharacters:&functionKey length:1];
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     return [NSEvent keyEventWithType:NSKeyDown
                             location:NSZeroPoint
                        modifierFlags:0
@@ -1127,6 +1161,7 @@ static BOOL isFrameInRange(WebFrame *frame, DOMRange *range)
          charactersIgnoringModifiers:keyAsString
                            isARepeat:NO
                              keyCode:0];
+#pragma clang diagnostic pop
 }
 
 - (void)_lookUpInDictionaryFromMenu:(id)sender
@@ -1281,9 +1316,11 @@ static void removeUselessMenuItemSeparators(NSMutableArray *menuItems)
     // If we first searched in the selection, and we found the selection, search again from just past the selection
     if (startInSelection && _PDFSelectionsAreEqual(foundSelection, initialSelection))
         foundSelection = [document findString:string fromSelection:initialSelection withOptions:options];
-    
-    if (!foundSelection && wrapFlag)
-        foundSelection = [document findString:string fromSelection:nil withOptions:options];
+
+    if (!foundSelection && wrapFlag) {
+        auto emptySelection = adoptNS([[[[self class] _PDFViewClass] alloc] initWithDocument:document]);
+        foundSelection = [document findString:string fromSelection:emptySelection.get() withOptions:options];
+    }
     
     return foundSelection;
 }

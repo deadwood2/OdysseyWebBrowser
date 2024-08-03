@@ -33,6 +33,7 @@
 #include "WebPageProxy.h"
 #include "_WKOverlayScrollbarStyle.h"
 #include <WebCore/TextIndicatorWindow.h>
+#include <WebCore/UserInterfaceLayoutDirection.h>
 #include <functional>
 #include <wtf/RetainPtr.h>
 #include <wtf/WeakPtr.h>
@@ -79,6 +80,10 @@ OBJC_CLASS _WKThumbnailView;
 - (void)_web_gestureEventWasNotHandledByWebCore:(NSEvent *)event;
 
 - (void)_web_didChangeContentSize:(NSSize)newSize;
+
+@optional
+- (void)_web_didAddMediaControlsManager:(id)controlsManager;
+- (void)_web_didRemoveMediaControlsManager;
 
 @end
 
@@ -267,6 +272,7 @@ public:
     void updateFontPanelIfNeeded();
     void changeFontFromFontPanel();
     bool validateUserInterfaceItem(id <NSValidatedUserInterfaceItem>);
+    void setEditableElementIsFocused(bool);
 
     void startSpeaking();
     void stopSpeaking(id);
@@ -324,6 +330,7 @@ public:
     void completeImmediateActionAnimation();
     void didChangeContentSize(CGSize);
     void didHandleAcceptedCandidate();
+    void videoControlsManagerDidChange();
 
     void setIgnoresNonWheelEvents(bool);
     bool ignoresNonWheelEvents() const { return m_ignoresNonWheelEvents; }
@@ -417,11 +424,6 @@ public:
     void rotateWithEvent(NSEvent *);
     void smartMagnifyWithEvent(NSEvent *);
 
-    void touchesBeganWithEvent(NSEvent *);
-    void touchesMovedWithEvent(NSEvent *);
-    void touchesEndedWithEvent(NSEvent *);
-    void touchesCancelledWithEvent(NSEvent *);
-
     void setLastMouseDownEvent(NSEvent *);
 
     void gestureEventWasNotHandledByWebCore(NSEvent *);
@@ -476,13 +478,23 @@ public:
     void rightMouseUp(NSEvent *);
 
     void updateWebViewImplAdditions();
-    void showCandidates(NSArray *candidates, NSString *, NSRect rectOfTypedString, NSView *, void (^completionHandler)(NSTextCheckingResult *acceptedCandidate));
+    bool shouldRequestCandidates() const;
+    void showCandidates(NSArray *candidates, NSString *, NSRect rectOfTypedString, NSRange selectedRange, NSView *, void (^completionHandler)(NSTextCheckingResult *acceptedCandidate));
     void webViewImplAdditionsWillDestroyView();
 
     bool windowIsFrontWindowUnderMouse(NSEvent *);
 
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200 && USE(APPLE_INTERNAL_SDK)
+    void setRequiresUserActionForEditingControlsManager(bool requiresUserActionForEditingControlsManager) { m_requiresUserActionForEditingControlsManager = requiresUserActionForEditingControlsManager; }
+    bool requiresUserActionForEditingControlsManager() const { return m_requiresUserActionForEditingControlsManager; }
+
+    WebCore::UserInterfaceLayoutDirection userInterfaceLayoutDirection();
+    void setUserInterfaceLayoutDirection(NSUserInterfaceLayoutDirection);
+
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200 
+    void handleAcceptedCandidate(NSTextCheckingResult *acceptedCandidate);
+#if USE(APPLE_INTERNAL_SDK)
 #import <WebKitAdditions/WebViewImplAdditions.h>
+#endif
 #endif
 
 private:
@@ -515,11 +527,8 @@ private:
     bool mightBeginDragWhileInactive();
     bool mightBeginScrollWhileInactive();
 
-    Vector<NSTouch *> touchesOrderedByAge();
-
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200
     void handleRequestedCandidates(NSInteger sequenceNumber, NSArray<NSTextCheckingResult *> *candidates);
-    void handleAcceptedCandidate(NSTextCheckingResult *acceptedCandidate);
 #endif
 
     NSView <WebViewImplDelegate> *m_view;
@@ -537,7 +546,6 @@ private:
     bool m_clipsToVisibleRect { false };
     bool m_needsViewFrameInWindowCoordinates;
     bool m_didScheduleWindowAndViewFrameUpdate { false };
-    bool m_isDeferringViewInWindowChanges { false };
     bool m_windowOcclusionDetectionEnabled { true };
 
     bool m_automaticallyAdjustsContentInsets { false };
@@ -552,6 +560,7 @@ private:
     RetainPtr<WKViewLayoutStrategy> m_layoutStrategy;
     WKLayoutMode m_lastRequestedLayoutMode { kWKLayoutModeViewSize };
     CGFloat m_lastRequestedViewScale { 1 };
+    CGSize m_lastRequestedFixedLayoutSize { 0, 0 };
 
     bool m_inSecureInputState { false };
     RetainPtr<WKEditorUndoTargetObjC> m_undoTarget;
@@ -632,14 +641,14 @@ private:
     RetainPtr<NSEvent> m_keyDownEventBeingResent;
     Vector<WebCore::KeypressCommand>* m_collectedKeypressCommands { nullptr };
 
-    Vector<RetainPtr<id <NSObject, NSCopying>>> m_activeTouchIdentities;
-    RetainPtr<NSArray> m_lastTouches;
-
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200
     String m_lastStringForCandidateRequest;
+    NSInteger m_lastCandidateRequestSequenceNumber;
 #endif
     NSRange m_softSpaceRange { NSNotFound, 0 };
     bool m_isHandlingAcceptedCandidate { false };
+    bool m_requiresUserActionForEditingControlsManager { false };
+    bool m_editableElementIsFocused { false };
 };
     
 } // namespace WebKit

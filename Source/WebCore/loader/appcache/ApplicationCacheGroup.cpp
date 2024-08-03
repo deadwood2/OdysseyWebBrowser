@@ -369,7 +369,7 @@ void ApplicationCacheGroup::disassociateDocumentLoader(DocumentLoader* loader)
 
     // Release our reference to the newest cache. This could cause us to be deleted.
     // Any ongoing updates will be stopped from destructor.
-    m_newestCache.release();
+    m_newestCache = nullptr;
 }
 
 void ApplicationCacheGroup::cacheDestroyed(ApplicationCache* cache)
@@ -462,7 +462,7 @@ void ApplicationCacheGroup::abort(Frame* frame)
     cacheUpdateFailed();
 }
 
-PassRefPtr<ResourceHandle> ApplicationCacheGroup::createResourceHandle(const URL& url, ApplicationCacheResource* newestCachedResource)
+RefPtr<ResourceHandle> ApplicationCacheGroup::createResourceHandle(const URL& url, ApplicationCacheResource* newestCachedResource)
 {
     ResourceRequest request(url);
     m_frame->loader().applyUserAgent(request);
@@ -489,7 +489,7 @@ PassRefPtr<ResourceHandle> ApplicationCacheGroup::createResourceHandle(const URL
     return handle;
 }
 
-void ApplicationCacheGroup::didReceiveResponse(ResourceHandle* handle, const ResourceResponse& response)
+void ApplicationCacheGroup::didReceiveResponse(ResourceHandle* handle, ResourceResponse&& response)
 {
     ASSERT(m_frame);
     InspectorInstrumentationCookie cookie = InspectorInstrumentation::willReceiveResourceResponse(m_frame);
@@ -518,7 +518,7 @@ void ApplicationCacheGroup::didReceiveResponse(ResourceHandle* handle, const Res
     if (m_newestCache && response.httpStatusCode() == 304) { // Not modified.
         ApplicationCacheResource* newestCachedResource = m_newestCache->resourceForURL(url);
         if (newestCachedResource) {
-            m_cacheBeingUpdated->addResource(ApplicationCacheResource::create(url, newestCachedResource->response(), type, newestCachedResource->data(), newestCachedResource->path()));
+            m_cacheBeingUpdated->addResource(ApplicationCacheResource::create(url, newestCachedResource->response(), type, &newestCachedResource->data(), newestCachedResource->path()));
             m_pendingEntries.remove(m_currentHandle->firstRequest().url());
             m_currentHandle->cancel();
             m_currentHandle = nullptr;
@@ -548,7 +548,7 @@ void ApplicationCacheGroup::didReceiveResponse(ResourceHandle* handle, const Res
             ASSERT(m_newestCache);
             ApplicationCacheResource* newestCachedResource = m_newestCache->resourceForURL(handle->firstRequest().url());
             ASSERT(newestCachedResource);
-            m_cacheBeingUpdated->addResource(ApplicationCacheResource::create(url, newestCachedResource->response(), type, newestCachedResource->data(), newestCachedResource->path()));
+            m_cacheBeingUpdated->addResource(ApplicationCacheResource::create(url, newestCachedResource->response(), type, &newestCachedResource->data(), newestCachedResource->path()));
             m_pendingEntries.remove(m_currentHandle->firstRequest().url());
             m_currentHandle->cancel();
             m_currentHandle = nullptr;
@@ -575,7 +575,7 @@ void ApplicationCacheGroup::didReceiveData(ResourceHandle* handle, const char* d
     ASSERT(handle == m_currentHandle);
     
     ASSERT(m_currentResource);
-    m_currentResource->data()->append(data, length);
+    m_currentResource->data().append(data, length);
 }
 
 void ApplicationCacheGroup::didFinishLoading(ResourceHandle* handle, double finishTime)
@@ -594,7 +594,7 @@ void ApplicationCacheGroup::didFinishLoading(ResourceHandle* handle, double fini
     
     ASSERT(m_cacheBeingUpdated);
 
-    m_cacheBeingUpdated->addResource(m_currentResource.release());
+    m_cacheBeingUpdated->addResource(WTFMove(m_currentResource));
     m_currentHandle = nullptr;
 
     // While downloading check to see if we have exceeded the available quota.
@@ -644,7 +644,7 @@ void ApplicationCacheGroup::didFail(ResourceHandle* handle, const ResourceError&
         ASSERT(m_newestCache);
         ApplicationCacheResource* newestCachedResource = m_newestCache->resourceForURL(url);
         ASSERT(newestCachedResource);
-        m_cacheBeingUpdated->addResource(ApplicationCacheResource::create(url, newestCachedResource->response(), type, newestCachedResource->data(), newestCachedResource->path()));
+        m_cacheBeingUpdated->addResource(ApplicationCacheResource::create(url, newestCachedResource->response(), type, &newestCachedResource->data(), newestCachedResource->path()));
         // Load the next resource, if any.
         startLoadingEntry();
     }
@@ -685,7 +685,7 @@ void ApplicationCacheGroup::didReceiveManifestResponse(const ResourceResponse& r
 void ApplicationCacheGroup::didReceiveManifestData(const char* data, int length)
 {
     if (m_manifestResource)
-        m_manifestResource->data()->append(data, length);
+        m_manifestResource->data().append(data, length);
 }
 
 void ApplicationCacheGroup::didFinishLoadingManifest()
@@ -707,7 +707,7 @@ void ApplicationCacheGroup::didFinishLoadingManifest()
         ASSERT(newestManifest);
     
         if (!m_manifestResource || // The resource will be null if HTTP response was 304 Not Modified.
-            (newestManifest->data()->size() == m_manifestResource->data()->size() && !memcmp(newestManifest->data()->data(), m_manifestResource->data()->data(), newestManifest->data()->size()))) {
+            (newestManifest->data().size() == m_manifestResource->data().size() && !memcmp(newestManifest->data().data(), m_manifestResource->data().data(), newestManifest->data().size()))) {
 
             m_completionType = NoUpdate;
             m_manifestResource = nullptr;
@@ -718,7 +718,7 @@ void ApplicationCacheGroup::didFinishLoadingManifest()
     }
     
     Manifest manifest;
-    if (!parseManifest(m_manifestURL, m_manifestResource->data()->data(), m_manifestResource->data()->size(), manifest)) {
+    if (!parseManifest(m_manifestURL, m_manifestResource->data().data(), m_manifestResource->data().size(), manifest)) {
         // At the time of this writing, lack of "CACHE MANIFEST" signature is the only reason for parseManifest to fail.
         m_frame->document()->addConsoleMessage(MessageSource::AppCache, MessageLevel::Error, ASCIILiteral("Application Cache manifest could not be parsed. Does it start with CACHE MANIFEST?"));
         cacheUpdateFailed();
@@ -868,7 +868,7 @@ void ApplicationCacheGroup::checkIfLoadIsComplete()
 
         ASSERT(m_cacheBeingUpdated);
         if (m_manifestResource)
-            m_cacheBeingUpdated->setManifestResource(m_manifestResource.release());
+            m_cacheBeingUpdated->setManifestResource(WTFMove(m_manifestResource));
         else {
             // We can get here as a result of retrying the Complete step, following
             // a failure of the cache storage to save the newest cache due to hitting
@@ -888,7 +888,7 @@ void ApplicationCacheGroup::checkIfLoadIsComplete()
             didReachOriginQuota(totalSpaceNeeded);
 
         ApplicationCacheStorage::FailureReason failureReason;
-        setNewestCache(m_cacheBeingUpdated.release());
+        setNewestCache(WTFMove(m_cacheBeingUpdated));
         if (m_storage->storeNewestCache(this, oldNewestCache.get(), failureReason)) {
             // New cache stored, now remove the old cache.
             if (oldNewestCache)
@@ -919,10 +919,10 @@ void ApplicationCacheGroup::checkIfLoadIsComplete()
                 // save the new cache.
 
                 // Save a reference to the new cache.
-                m_cacheBeingUpdated = m_newestCache.release();
+                m_cacheBeingUpdated = WTFMove(m_newestCache);
                 if (oldNewestCache) {
                     // Reinstate the oldNewestCache.
-                    setNewestCache(oldNewestCache.release());
+                    setNewestCache(WTFMove(oldNewestCache));
                 }
                 scheduleReachedMaxAppCacheSizeCallback();
                 return;
@@ -945,7 +945,7 @@ void ApplicationCacheGroup::checkIfLoadIsComplete()
             // Reinstate the oldNewestCache, if there was one.
             if (oldNewestCache) {
                 // This will discard the failed new cache.
-                setNewestCache(oldNewestCache.release());
+                setNewestCache(WTFMove(oldNewestCache));
             } else {
                 // We must have been deleted by the last call to disassociateDocumentLoader().
                 return;
@@ -1055,7 +1055,7 @@ public:
     }
 
 private:
-    virtual void fired() override
+    void fired() override
     {
         m_cacheGroup->didReachMaxAppCacheSize();
         delete this;

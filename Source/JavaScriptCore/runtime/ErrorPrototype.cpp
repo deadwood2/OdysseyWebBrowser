@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 1999-2000 Harri Porten (porten@kde.org)
- *  Copyright (C) 2003, 2008 Apple Inc. All rights reserved.
+ *  Copyright (C) 2003, 2008, 2016 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -41,7 +41,7 @@ static EncodedJSValue JSC_HOST_CALL errorProtoFuncToString(ExecState*);
 
 namespace JSC {
 
-const ClassInfo ErrorPrototype::s_info = { "Error", &ErrorInstance::s_info, &errorPrototypeTable, CREATE_METHOD_TABLE(ErrorPrototype) };
+const ClassInfo ErrorPrototype::s_info = { "Object", &Base::s_info, &errorPrototypeTable, CREATE_METHOD_TABLE(ErrorPrototype) };
 
 /* Source for ErrorPrototype.lut.h
 @begin errorPrototypeTable
@@ -50,20 +50,16 @@ const ClassInfo ErrorPrototype::s_info = { "Error", &ErrorInstance::s_info, &err
 */
 
 ErrorPrototype::ErrorPrototype(VM& vm, Structure* structure)
-    : ErrorInstance(vm, structure)
+    : JSNonFinalObject(vm, structure)
 {
 }
 
-void ErrorPrototype::finishCreation(VM& vm, JSGlobalObject* globalObject)
+void ErrorPrototype::finishCreation(VM& vm)
 {
-    Base::finishCreation(globalObject->globalExec(), vm, "");
+    Base::finishCreation(vm);
     ASSERT(inherits(info()));
     putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String(ASCIILiteral("Error"))), DontEnum);
-}
-
-bool ErrorPrototype::getOwnPropertySlot(JSObject* object, ExecState* exec, PropertyName propertyName, PropertySlot &slot)
-{
-    return getStaticFunctionSlot<ErrorInstance>(exec, errorPrototypeTable, jsCast<ErrorPrototype*>(object), propertyName, slot);
+    putDirect(vm, vm.propertyNames->message, jsEmptyString(&vm), DontEnum);
 }
 
 // ------------------------------ Functions ---------------------------
@@ -71,12 +67,15 @@ bool ErrorPrototype::getOwnPropertySlot(JSObject* object, ExecState* exec, Prope
 // ECMA-262 5.1, 15.11.4.4
 EncodedJSValue JSC_HOST_CALL errorProtoFuncToString(ExecState* exec)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     // 1. Let O be the this value.
     JSValue thisValue = exec->thisValue();
 
     // 2. If Type(O) is not Object, throw a TypeError exception.
     if (!thisValue.isObject())
-        return throwVMTypeError(exec);
+        return throwVMTypeError(exec, scope);
     JSObject* thisObj = asObject(thisValue);
 
     // Guard against recursion!
@@ -122,7 +121,7 @@ EncodedJSValue JSC_HOST_CALL errorProtoFuncToString(ExecState* exec)
 
     // 9. If msg is the empty String, return name.
     if (!messageString.length())
-        return JSValue::encode(name.isString() ? name : jsNontrivialString(exec, nameString));
+        return JSValue::encode(name.isString() ? name : jsString(exec, nameString));
 
     // 10. Return the result of concatenating name, ":", a single space character, and msg.
     return JSValue::encode(jsMakeNontrivialString(exec, nameString, ": ", messageString));

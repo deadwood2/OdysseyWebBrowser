@@ -26,12 +26,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef FetchHeaders_h
-#define FetchHeaders_h
+#pragma once
 
 #if ENABLE(FETCH_API)
 
 #include "HTTPHeaderMap.h"
+#include <wtf/HashTraits.h>
+#include <wtf/Optional.h>
 
 namespace WebCore {
 
@@ -56,8 +57,9 @@ public:
     bool has(const String&, ExceptionCode&) const;
     void set(const String& name, const String& value, ExceptionCode&);
 
-    void initializeWith(const FetchHeaders*, ExceptionCode&);
     void fill(const FetchHeaders*);
+
+    void filterAndFill(const HTTPHeaderMap&, Guard);
 
     String fastGet(HTTPHeaderName name) const { return m_headers.get(name); }
     void fastSet(HTTPHeaderName name, const String& value) { m_headers.set(name, value); }
@@ -65,12 +67,7 @@ public:
     class Iterator {
     public:
         explicit Iterator(FetchHeaders&);
-
-        // FIXME: Binding generator should be able to generate iterator key and value types.
-        using Key = String;
-        using Value = String;
-
-        bool next(String& nextKey, String& nextValue);
+        Optional<WTF::KeyValuePair<String, String>> next();
 
     private:
         Ref<FetchHeaders> m_headers;
@@ -78,6 +75,10 @@ public:
         Vector<String> m_keys;
     };
     Iterator createIterator() { return Iterator(*this); }
+
+    const HTTPHeaderMap& internalHeaders() const { return m_headers; }
+
+    void setGuard(Guard);
 
 private:
     FetchHeaders(Guard guard) : m_guard(guard) { }
@@ -87,8 +88,12 @@ private:
     HTTPHeaderMap m_headers;
 };
 
+inline void FetchHeaders::setGuard(Guard guard)
+{
+    ASSERT(!m_headers.size());
+    m_guard = guard;
+}
+
 } // namespace WebCore
 
 #endif // ENABLE(FETCH_API)
-
-#endif // FetchHeaders_h

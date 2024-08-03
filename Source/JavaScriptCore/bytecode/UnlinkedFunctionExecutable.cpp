@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012, 2013, 2015 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2012-2013, 2015-2016 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,17 +29,14 @@
 #include "BytecodeGenerator.h"
 #include "ClassInfo.h"
 #include "CodeCache.h"
+#include "Debugger.h"
 #include "Executable.h"
 #include "ExecutableInfo.h"
 #include "FunctionOverrides.h"
 #include "JSCInlines.h"
-#include "JSString.h"
 #include "Parser.h"
 #include "SourceProvider.h"
 #include "Structure.h"
-#include "SymbolTable.h"
-#include "UnlinkedInstructionStream.h"
-#include <wtf/DataLog.h>
 
 namespace JSC {
 
@@ -49,14 +46,15 @@ const ClassInfo UnlinkedFunctionExecutable::s_info = { "UnlinkedFunctionExecutab
 
 static UnlinkedFunctionCodeBlock* generateUnlinkedFunctionCodeBlock(
     VM& vm, UnlinkedFunctionExecutable* executable, const SourceCode& source,
-    CodeSpecializationKind kind, DebuggerMode debuggerMode, ProfilerMode profilerMode,
+    CodeSpecializationKind kind, DebuggerMode debuggerMode,
     UnlinkedFunctionKind functionKind, ParserError& error, SourceParseMode parseMode)
 {
     JSParserBuiltinMode builtinMode = executable->isBuiltinFunction() ? JSParserBuiltinMode::Builtin : JSParserBuiltinMode::NotBuiltin;
     JSParserStrictMode strictMode = executable->isInStrictContext() ? JSParserStrictMode::Strict : JSParserStrictMode::NotStrict;
+    JSParserCommentMode commentMode = executable->commentMode();
     ASSERT(isFunctionParseMode(executable->parseMode()));
     std::unique_ptr<FunctionNode> function = parse<FunctionNode>(
-        &vm, source, executable->name(), builtinMode, strictMode, executable->parseMode(), executable->superBinding(), error, nullptr);
+        &vm, source, executable->name(), builtinMode, strictMode, commentMode, executable->parseMode(), executable->superBinding(), error, nullptr);
 
     if (!function) {
         ASSERT(error.isValid());
@@ -68,17 +66,16 @@ static UnlinkedFunctionCodeBlock* generateUnlinkedFunctionCodeBlock(
 
     bool isClassContext = executable->superBinding() == SuperBinding::Needed;
 
-    UnlinkedFunctionCodeBlock* result = UnlinkedFunctionCodeBlock::create(&vm, FunctionCode,
-        ExecutableInfo(function->usesEval(), function->isStrictMode(), kind == CodeForConstruct, functionKind == UnlinkedBuiltinFunction, executable->constructorKind(), executable->superBinding(), parseMode, executable->derivedContextType(), false, isClassContext));
+    UnlinkedFunctionCodeBlock* result = UnlinkedFunctionCodeBlock::create(&vm, FunctionCode, ExecutableInfo(function->usesEval(), function->isStrictMode(), kind == CodeForConstruct, functionKind == UnlinkedBuiltinFunction, executable->constructorKind(), commentMode, executable->superBinding(), parseMode, executable->derivedContextType(), false, isClassContext, EvalContextType::FunctionEvalContext), debuggerMode);
 
-    auto generator(std::make_unique<BytecodeGenerator>(vm, function.get(), result, debuggerMode, profilerMode, executable->parentScopeTDZVariables()));
-    error = generator->generate();
+    error = BytecodeGenerator::generate(vm, function.get(), result, debuggerMode, executable->parentScopeTDZVariables());
+
     if (error.isValid())
         return nullptr;
     return result;
 }
 
-UnlinkedFunctionExecutable::UnlinkedFunctionExecutable(VM* vm, Structure* structure, const SourceCode& source, RefPtr<SourceProvider>&& sourceOverride, FunctionMetadataNode* node, UnlinkedFunctionKind kind, ConstructAbility constructAbility, VariableEnvironment& parentScopeTDZVariables, DerivedContextType derivedContextType)
+UnlinkedFunctionExecutable::UnlinkedFunctionExecutable(VM* vm, Structure* structure, const SourceCode& source, RefPtr<SourceProvider>&& sourceOverride, FunctionMetadataNode* node, UnlinkedFunctionKind kind, ConstructAbility constructAbility, JSParserCommentMode commentMode, VariableEnvironment& parentScopeTDZVariables, DerivedContextType derivedContextType)
     : Base(*vm, structure)
     , m_firstLineOffset(node->firstLine() - source.firstLine())
     , m_lineCount(node->lastLine() - node->firstLine())
@@ -97,15 +94,26 @@ UnlinkedFunctionExecutable::UnlinkedFunctionExecutable(VM* vm, Structure* struct
     , m_isBuiltinFunction(kind == UnlinkedBuiltinFunction)
     , m_constructAbility(static_cast<unsigned>(constructAbility))
     , m_constructorKind(static_cast<unsigned>(node->constructorKind()))
-    , m_functionMode(node->functionMode())
+    , m_functionMode(static_cast<unsigned>(node->functionMode()))
+    , m_commentMode(static_cast<unsigned>(commentMode))
     , m_superBinding(static_cast<unsigned>(node->superBinding()))
     , m_derivedContextType(static_cast<unsigned>(derivedContextType))
     , m_sourceParseMode(static_cast<unsigned>(node->parseMode()))
     , m_name(node->ident())
+    , m_ecmaName(node->ecmaName())
     , m_inferredName(node->inferredName())
     , m_sourceOverride(WTFMove(sourceOverride))
+    , m_classSource(node->classSource())
 {
+    // Make sure these bitfields are adequately wide.
+    ASSERT(m_constructAbility == static_cast<unsigned>(constructAbility));
     ASSERT(m_constructorKind == static_cast<unsigned>(node->constructorKind()));
+    ASSERT(m_functionMode == static_cast<unsigned>(node->functionMode()));
+    ASSERT(m_commentMode == static_cast<unsigned>(commentMode));
+    ASSERT(m_superBinding == static_cast<unsigned>(node->superBinding()));
+    ASSERT(m_derivedContextType == static_cast<unsigned>(derivedContextType));
+    ASSERT(m_sourceParseMode == static_cast<unsigned>(node->parseMode()));
+
     m_parentScopeTDZVariables.swap(parentScopeTDZVariables);
 }
 
@@ -116,10 +124,9 @@ void UnlinkedFunctionExecutable::visitChildren(JSCell* cell, SlotVisitor& visito
     Base::visitChildren(thisObject, visitor);
     visitor.append(&thisObject->m_unlinkedCodeBlockForCall);
     visitor.append(&thisObject->m_unlinkedCodeBlockForConstruct);
-    visitor.append(&thisObject->m_nameValue);
 }
 
-FunctionExecutable* UnlinkedFunctionExecutable::link(VM& vm, const SourceCode& ownerSource, int overrideLineNumber)
+FunctionExecutable* UnlinkedFunctionExecutable::link(VM& vm, const SourceCode& ownerSource, Optional<int> overrideLineNumber, Intrinsic intrinsic)
 {
     SourceCode source = m_sourceOverride ? SourceCode(m_sourceOverride) : ownerSource;
     unsigned firstLine = source.firstLine() + m_firstLineOffset;
@@ -138,7 +145,7 @@ FunctionExecutable* UnlinkedFunctionExecutable::link(VM& vm, const SourceCode& o
 
     if (UNLIKELY(Options::functionOverrides())) {
         hasFunctionOverride = FunctionOverrides::initializeOverrideFor(code, overrideInfo);
-        if (hasFunctionOverride) {
+        if (UNLIKELY(hasFunctionOverride)) {
             firstLine = overrideInfo.firstLine;
             lineCount = overrideInfo.lineCount;
             startColumn = overrideInfo.startColumn;
@@ -147,9 +154,9 @@ FunctionExecutable* UnlinkedFunctionExecutable::link(VM& vm, const SourceCode& o
         }
     }
 
-    FunctionExecutable* result = FunctionExecutable::create(vm, code, this, firstLine, firstLine + lineCount, startColumn, endColumn);
-    if (overrideLineNumber != -1)
-        result->setOverrideLineNumber(overrideLineNumber);
+    FunctionExecutable* result = FunctionExecutable::create(vm, code, this, firstLine, firstLine + lineCount, startColumn, endColumn, intrinsic);
+    if (overrideLineNumber)
+        result->setOverrideLineNumber(*overrideLineNumber);
 
     if (UNLIKELY(hasFunctionOverride)) {
         result->overrideParameterAndTypeProfilingStartEndOffsets(
@@ -184,7 +191,7 @@ UnlinkedFunctionExecutable* UnlinkedFunctionExecutable::fromGlobalCode(
 
 UnlinkedFunctionCodeBlock* UnlinkedFunctionExecutable::unlinkedCodeBlockFor(
     VM& vm, const SourceCode& source, CodeSpecializationKind specializationKind, 
-    DebuggerMode debuggerMode, ProfilerMode profilerMode, ParserError& error, SourceParseMode parseMode)
+    DebuggerMode debuggerMode, ParserError& error, SourceParseMode parseMode)
 {
     switch (specializationKind) {
     case CodeForCall:
@@ -198,7 +205,7 @@ UnlinkedFunctionCodeBlock* UnlinkedFunctionExecutable::unlinkedCodeBlockFor(
     }
 
     UnlinkedFunctionCodeBlock* result = generateUnlinkedFunctionCodeBlock(
-        vm, this, source, specializationKind, debuggerMode, profilerMode, 
+        vm, this, source, specializationKind, debuggerMode, 
         isBuiltinFunction() ? UnlinkedBuiltinFunction : UnlinkedNormalFunction, 
         error, parseMode);
     

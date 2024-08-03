@@ -44,7 +44,7 @@ namespace WebCore {
 
 using namespace std;
 
-RenderRubyRun::RenderRubyRun(Document& document, Ref<RenderStyle>&& style)
+RenderRubyRun::RenderRubyRun(Document& document, RenderStyle&& style)
     : RenderBlockFlow(document, WTFMove(style))
     , m_lastCharacter(0)
     , m_secondToLastCharacter(0)
@@ -69,11 +69,6 @@ bool RenderRubyRun::hasRubyBase() const
     // The only place where a ruby base can be is in the last position
     // Note: As anonymous blocks, ruby runs do not have ':before' or ':after' content themselves.
     return lastChild() && lastChild()->isRubyBase();
-}
-
-bool RenderRubyRun::isEmpty() const
-{
-    return !hasRubyText() && !hasRubyBase();
 }
 
 RenderRubyText* RenderRubyRun::rubyText() const
@@ -106,7 +101,7 @@ RenderBlock* RenderRubyRun::firstLineBlock() const
     return 0;
 }
 
-void RenderRubyRun::updateFirstLetter()
+void RenderRubyRun::updateFirstLetter(RenderTreeMutationIsAllowed)
 {
 }
 
@@ -193,7 +188,7 @@ void RenderRubyRun::removeChild(RenderObject& child)
         }
 
         // If any of the above leaves the run empty, destroy it as well.
-        if (isEmpty()) {
+        if (!hasRubyText() && !hasRubyBase()) {
             parent()->removeChild(*this);
             deleteLines();
             destroy();
@@ -203,8 +198,8 @@ void RenderRubyRun::removeChild(RenderObject& child)
 
 RenderRubyBase* RenderRubyRun::createRubyBase() const
 {
-    auto newStyle = RenderStyle::createAnonymousStyleWithDisplay(&style(), BLOCK);
-    newStyle.get().setTextAlign(CENTER); // FIXME: use WEBKIT_CENTER?
+    auto newStyle = RenderStyle::createAnonymousStyleWithDisplay(style(), BLOCK);
+    newStyle.setTextAlign(CENTER); // FIXME: use WEBKIT_CENTER?
     auto renderer = new RenderRubyBase(document(), WTFMove(newStyle));
     renderer->initializeStyle();
     return renderer;
@@ -213,7 +208,7 @@ RenderRubyBase* RenderRubyRun::createRubyBase() const
 RenderRubyRun* RenderRubyRun::staticCreateRubyRun(const RenderObject* parentRuby)
 {
     ASSERT(isRuby(parentRuby));
-    auto renderer = new RenderRubyRun(parentRuby->document(), RenderStyle::createAnonymousStyleWithDisplay(&parentRuby->style(), INLINE_BLOCK));
+    auto renderer = new RenderRubyRun(parentRuby->document(), RenderStyle::createAnonymousStyleWithDisplay(parentRuby->style(), INLINE_BLOCK));
     renderer->initializeStyle();
     return renderer;
 }

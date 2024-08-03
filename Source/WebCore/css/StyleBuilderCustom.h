@@ -46,6 +46,7 @@
 #include "SVGElement.h"
 #include "SVGRenderStyle.h"
 #include "StyleBuilderConverter.h"
+#include "StyleCachedImage.h"
 #include "StyleFontSizeFunctions.h"
 #include "StyleGeneratedImage.h"
 #include "StyleResolver.h"
@@ -94,9 +95,9 @@ public:
     DECLARE_PROPERTY_CUSTOM_HANDLERS(FontVariantNumeric);
     DECLARE_PROPERTY_CUSTOM_HANDLERS(FontVariantEastAsian);
 #if ENABLE(CSS_GRID_LAYOUT)
-    DECLARE_PROPERTY_CUSTOM_HANDLERS(WebkitGridTemplateAreas);
-    DECLARE_PROPERTY_CUSTOM_HANDLERS(WebkitGridTemplateColumns);
-    DECLARE_PROPERTY_CUSTOM_HANDLERS(WebkitGridTemplateRows);
+    DECLARE_PROPERTY_CUSTOM_HANDLERS(GridTemplateAreas);
+    DECLARE_PROPERTY_CUSTOM_HANDLERS(GridTemplateColumns);
+    DECLARE_PROPERTY_CUSTOM_HANDLERS(GridTemplateRows);
 #endif // ENABLE(CSS_GRID_LAYOUT)
     DECLARE_PROPERTY_CUSTOM_HANDLERS(WebkitMaskBoxImageOutset);
     DECLARE_PROPERTY_CUSTOM_HANDLERS(WebkitMaskBoxImageRepeat);
@@ -575,7 +576,7 @@ public:
     }
 
 private:
-    static const NinePieceImage& getValue(RenderStyle* style)
+    static const NinePieceImage& getValue(const RenderStyle* style)
     {
         return type == BorderImage ? style->borderImage() : style->maskBoxImage();
     }
@@ -664,7 +665,7 @@ inline void StyleBuilderCustom::applyInitialClip(StyleResolver& styleResolver)
 
 inline void StyleBuilderCustom::applyInheritClip(StyleResolver& styleResolver)
 {
-    RenderStyle* parentStyle = styleResolver.parentStyle();
+    auto* parentStyle = styleResolver.parentStyle();
     if (!parentStyle->hasClip())
         return applyInitialClip(styleResolver);
     styleResolver.style()->setClip(parentStyle->clipTop(), parentStyle->clipRight(), parentStyle->clipBottom(), parentStyle->clipLeft());
@@ -1052,7 +1053,7 @@ template <StyleBuilderCustom::CounterBehavior counterBehavior>
 inline void StyleBuilderCustom::applyInheritCounter(StyleResolver& styleResolver)
 {
     CounterDirectiveMap& map = styleResolver.style()->accessCounterDirectives();
-    for (auto& keyValue : styleResolver.parentStyle()->accessCounterDirectives()) {
+    for (auto& keyValue : const_cast<RenderStyle*>(styleResolver.parentStyle())->accessCounterDirectives()) {
         CounterDirectives& directives = map.add(keyValue.key, CounterDirectives()).iterator->value;
         if (counterBehavior == Reset)
             directives.inheritReset(keyValue.value);
@@ -1146,9 +1147,7 @@ inline void StyleBuilderCustom::applyValueCursor(StyleResolver& styleResolver, C
     for (auto& item : list) {
         if (is<CSSCursorImageValue>(item.get())) {
             auto& image = downcast<CSSCursorImageValue>(item.get());
-            if (image.updateIfSVGCursorIsUsed(styleResolver.element())) // Elements with SVG cursors are not allowed to share style.
-                styleResolver.style()->setUnique();
-            styleResolver.style()->addCursor(styleResolver.styleImage(CSSPropertyCursor, image), image.hotSpot());
+            styleResolver.style()->addCursor(styleResolver.styleImage(image), image.hotSpot());
             continue;
         }
 
@@ -1314,15 +1313,13 @@ inline void StyleBuilderCustom::applyValueContent(StyleResolver& styleResolver, 
             else
                 styleResolver.style()->setContent(StyleGeneratedImage::create(downcast<CSSImageGeneratorValue>(item.get())), didSet);
             didSet = true;
-#if ENABLE(CSS_IMAGE_SET)
         } else if (is<CSSImageSetValue>(item.get())) {
-            styleResolver.style()->setContent(styleResolver.setOrPendingFromValue(CSSPropertyContent, downcast<CSSImageSetValue>(item.get())), didSet);
+            styleResolver.style()->setContent(StyleCachedImage::create(item), didSet);
             didSet = true;
-#endif
         }
 
         if (is<CSSImageValue>(item.get())) {
-            styleResolver.style()->setContent(styleResolver.cachedOrPendingFromValue(CSSPropertyContent, downcast<CSSImageValue>(item.get())), didSet);
+            styleResolver.style()->setContent(StyleCachedImage::create(item), didSet);
             didSet = true;
             continue;
         }
@@ -1337,16 +1334,16 @@ inline void StyleBuilderCustom::applyValueContent(StyleResolver& styleResolver, 
         } else if (contentValue.isAttr()) {
             // FIXME: Can a namespace be specified for an attr(foo)?
             if (styleResolver.style()->styleType() == NOPSEUDO)
-                styleResolver.style()->setUnique();
+                styleResolver.style()->setHasAttrContent();
             else
-                styleResolver.parentStyle()->setUnique();
+                const_cast<RenderStyle*>(styleResolver.parentStyle())->setHasAttrContent();
             QualifiedName attr(nullAtom, contentValue.getStringValue().impl(), nullAtom);
             const AtomicString& value = styleResolver.element()->getAttribute(attr);
             styleResolver.style()->setContent(value.isNull() ? emptyAtom : value.impl(), didSet);
             didSet = true;
             // Register the fact that the attribute value affects the style.
-            styleResolver.ruleSets().features().attributeCanonicalLocalNamesInRules.add(attr.localName().impl());
-            styleResolver.ruleSets().features().attributeLocalNamesInRules.add(attr.localName().impl());
+            styleResolver.ruleSets().mutableFeatures().attributeCanonicalLocalNamesInRules.add(attr.localName().impl());
+            styleResolver.ruleSets().mutableFeatures().attributeLocalNamesInRules.add(attr.localName().impl());
         } else if (contentValue.isCounter()) {
             Counter* counterValue = contentValue.getCounterValue();
             EListStyleType listStyleType = NoneListStyle;
@@ -1601,21 +1598,21 @@ inline void StyleBuilderCustom::applyValueFontSize(StyleResolver& styleResolver,
 }
 
 #if ENABLE(CSS_GRID_LAYOUT)
-inline void StyleBuilderCustom::applyInitialWebkitGridTemplateAreas(StyleResolver& styleResolver)
+inline void StyleBuilderCustom::applyInitialGridTemplateAreas(StyleResolver& styleResolver)
 {
     styleResolver.style()->setNamedGridArea(RenderStyle::initialNamedGridArea());
     styleResolver.style()->setNamedGridAreaRowCount(RenderStyle::initialNamedGridAreaCount());
     styleResolver.style()->setNamedGridAreaColumnCount(RenderStyle::initialNamedGridAreaCount());
 }
 
-inline void StyleBuilderCustom::applyInheritWebkitGridTemplateAreas(StyleResolver& styleResolver)
+inline void StyleBuilderCustom::applyInheritGridTemplateAreas(StyleResolver& styleResolver)
 {
     styleResolver.style()->setNamedGridArea(styleResolver.parentStyle()->namedGridArea());
     styleResolver.style()->setNamedGridAreaRowCount(styleResolver.parentStyle()->namedGridAreaRowCount());
     styleResolver.style()->setNamedGridAreaColumnCount(styleResolver.parentStyle()->namedGridAreaColumnCount());
 }
 
-inline void StyleBuilderCustom::applyValueWebkitGridTemplateAreas(StyleResolver& styleResolver, CSSValue& value)
+inline void StyleBuilderCustom::applyValueGridTemplateAreas(StyleResolver& styleResolver, CSSValue& value)
 {
     if (is<CSSPrimitiveValue>(value)) {
         ASSERT(downcast<CSSPrimitiveValue>(value).getValueID() == CSSValueNone);
@@ -1637,64 +1634,67 @@ inline void StyleBuilderCustom::applyValueWebkitGridTemplateAreas(StyleResolver&
     styleResolver.style()->setNamedGridAreaColumnCount(gridTemplateAreasValue.columnCount());
 }
 
-inline void StyleBuilderCustom::applyInitialWebkitGridTemplateColumns(StyleResolver& styleResolver)
+inline void StyleBuilderCustom::applyInitialGridTemplateColumns(StyleResolver& styleResolver)
 {
     styleResolver.style()->setGridColumns(RenderStyle::initialGridColumns());
     styleResolver.style()->setNamedGridColumnLines(RenderStyle::initialNamedGridColumnLines());
     styleResolver.style()->setOrderedNamedGridColumnLines(RenderStyle::initialOrderedNamedGridColumnLines());
 }
 
-inline void StyleBuilderCustom::applyInheritWebkitGridTemplateColumns(StyleResolver& styleResolver)
+inline void StyleBuilderCustom::applyInheritGridTemplateColumns(StyleResolver& styleResolver)
 {
     styleResolver.style()->setGridColumns(styleResolver.parentStyle()->gridColumns());
     styleResolver.style()->setNamedGridColumnLines(styleResolver.parentStyle()->namedGridColumnLines());
     styleResolver.style()->setOrderedNamedGridColumnLines(styleResolver.parentStyle()->orderedNamedGridColumnLines());
 }
 
-inline void StyleBuilderCustom::applyValueWebkitGridTemplateColumns(StyleResolver& styleResolver, CSSValue& value)
+#define SET_TRACKS_DATA(tracksData, style, TrackType) \
+    style->setGrid##TrackType##s(tracksData.m_trackSizes); \
+    style->setNamedGrid##TrackType##Lines(tracksData.m_namedGridLines); \
+    style->setOrderedNamedGrid##TrackType##Lines(tracksData.m_orderedNamedGridLines); \
+    style->setGridAutoRepeat##TrackType##s(tracksData.m_autoRepeatTrackSizes); \
+    style->setGridAutoRepeat##TrackType##sInsertionPoint(tracksData.m_autoRepeatInsertionPoint); \
+    style->setAutoRepeatNamedGrid##TrackType##Lines(tracksData.m_autoRepeatNamedGridLines); \
+    style->setAutoRepeatOrderedNamedGrid##TrackType##Lines(tracksData.m_autoRepeatOrderedNamedGridLines); \
+    style->setGridAutoRepeat##TrackType##sType(tracksData.m_autoRepeatType); \
+    style->setGridAutoRepeat##TrackType##sInsertionPoint(tracksData.m_autoRepeatInsertionPoint);
+
+inline void StyleBuilderCustom::applyValueGridTemplateColumns(StyleResolver& styleResolver, CSSValue& value)
 {
-    Vector<GridTrackSize> trackSizes;
-    NamedGridLinesMap namedGridLines;
-    OrderedNamedGridLinesMap orderedNamedGridLines;
-    if (!StyleBuilderConverter::createGridTrackList(value, trackSizes, namedGridLines, orderedNamedGridLines, styleResolver))
+    StyleBuilderConverter::TracksData tracksData;
+    if (!StyleBuilderConverter::createGridTrackList(value, tracksData, styleResolver))
         return;
     const NamedGridAreaMap& namedGridAreas = styleResolver.style()->namedGridArea();
     if (!namedGridAreas.isEmpty())
-        StyleBuilderConverter::createImplicitNamedGridLinesFromGridArea(namedGridAreas, namedGridLines, ForColumns);
+        StyleBuilderConverter::createImplicitNamedGridLinesFromGridArea(namedGridAreas, tracksData.m_namedGridLines, ForColumns);
 
-    styleResolver.style()->setGridColumns(trackSizes);
-    styleResolver.style()->setNamedGridColumnLines(namedGridLines);
-    styleResolver.style()->setOrderedNamedGridColumnLines(orderedNamedGridLines);
+    SET_TRACKS_DATA(tracksData, styleResolver.style(), Column);
 }
 
-inline void StyleBuilderCustom::applyInitialWebkitGridTemplateRows(StyleResolver& styleResolver)
+inline void StyleBuilderCustom::applyInitialGridTemplateRows(StyleResolver& styleResolver)
 {
     styleResolver.style()->setGridRows(RenderStyle::initialGridRows());
     styleResolver.style()->setNamedGridRowLines(RenderStyle::initialNamedGridRowLines());
     styleResolver.style()->setOrderedNamedGridRowLines(RenderStyle::initialOrderedNamedGridRowLines());
 }
 
-inline void StyleBuilderCustom::applyInheritWebkitGridTemplateRows(StyleResolver& styleResolver)
+inline void StyleBuilderCustom::applyInheritGridTemplateRows(StyleResolver& styleResolver)
 {
     styleResolver.style()->setGridRows(styleResolver.parentStyle()->gridRows());
     styleResolver.style()->setNamedGridRowLines(styleResolver.parentStyle()->namedGridRowLines());
     styleResolver.style()->setOrderedNamedGridRowLines(styleResolver.parentStyle()->orderedNamedGridRowLines());
 }
 
-inline void StyleBuilderCustom::applyValueWebkitGridTemplateRows(StyleResolver& styleResolver, CSSValue& value)
+inline void StyleBuilderCustom::applyValueGridTemplateRows(StyleResolver& styleResolver, CSSValue& value)
 {
-    Vector<GridTrackSize> trackSizes;
-    NamedGridLinesMap namedGridLines;
-    OrderedNamedGridLinesMap orderedNamedGridLines;
-    if (!StyleBuilderConverter::createGridTrackList(value, trackSizes, namedGridLines, orderedNamedGridLines, styleResolver))
+    StyleBuilderConverter::TracksData tracksData;
+    if (!StyleBuilderConverter::createGridTrackList(value, tracksData, styleResolver))
         return;
     const NamedGridAreaMap& namedGridAreas = styleResolver.style()->namedGridArea();
     if (!namedGridAreas.isEmpty())
-        StyleBuilderConverter::createImplicitNamedGridLinesFromGridArea(namedGridAreas, namedGridLines, ForRows);
+        StyleBuilderConverter::createImplicitNamedGridLinesFromGridArea(namedGridAreas, tracksData.m_namedGridLines, ForRows);
 
-    styleResolver.style()->setGridRows(trackSizes);
-    styleResolver.style()->setNamedGridRowLines(namedGridLines);
-    styleResolver.style()->setOrderedNamedGridRowLines(orderedNamedGridLines);
+    SET_TRACKS_DATA(tracksData, styleResolver.style(), Row);
 }
 #endif // ENABLE(CSS_GRID_LAYOUT)
 
@@ -1708,15 +1708,15 @@ void StyleBuilderCustom::applyValueAlt(StyleResolver& styleResolver, CSSValue& v
         if (styleResolver.style()->styleType() == NOPSEUDO)
             styleResolver.style()->setUnique();
         else
-            styleResolver.parentStyle()->setUnique();
+            const_cast<RenderStyle*>(styleResolver.parentStyle())->setUnique();
 
         QualifiedName attr(nullAtom, primitiveValue.getStringValue(), nullAtom);
         const AtomicString& value = styleResolver.element()->getAttribute(attr);
         styleResolver.style()->setContentAltText(value.isNull() ? emptyAtom : value);
 
         // Register the fact that the attribute value affects the style.
-        styleResolver.ruleSets().features().attributeCanonicalLocalNamesInRules.add(attr.localName().impl());
-        styleResolver.ruleSets().features().attributeLocalNamesInRules.add(attr.localName().impl());
+        styleResolver.ruleSets().mutableFeatures().attributeCanonicalLocalNamesInRules.add(attr.localName().impl());
+        styleResolver.ruleSets().mutableFeatures().attributeLocalNamesInRules.add(attr.localName().impl());
     } else
         styleResolver.style()->setContentAltText(emptyAtom);
 }

@@ -23,8 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef DrawingArea_h
-#define DrawingArea_h
+#pragma once
 
 #include "DrawingAreaInfo.h"
 #include "LayerTreeContext.h"
@@ -39,10 +38,11 @@
 #include <wtf/Forward.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/TypeCasts.h>
+#include <wtf/Vector.h>
 
 namespace IPC {
 class Connection;
-class MessageDecoder;
+class Decoder;
 }
 
 namespace WebCore {
@@ -52,6 +52,7 @@ class FrameView;
 class GraphicsLayer;
 class GraphicsLayerFactory;
 class MachSendRight;
+struct ViewportAttributes;
 }
 
 namespace WebKit {
@@ -88,8 +89,9 @@ public:
     virtual void mainFrameContentSizeChanged(const WebCore::IntSize&) { }
 
 #if PLATFORM(COCOA)
-    virtual void setExposedRect(const WebCore::FloatRect&) = 0;
-    virtual WebCore::FloatRect exposedRect() const = 0;
+    virtual void setViewExposedRect(Optional<WebCore::FloatRect>) = 0;
+    virtual Optional<WebCore::FloatRect> viewExposedRect() const = 0;
+
     virtual void acceleratedAnimationDidStart(uint64_t /*layerID*/, const String& /*key*/, double /*startTime*/) { }
     virtual void acceleratedAnimationDidEnd(uint64_t /*layerID*/, const String& /*key*/) { }
     virtual void addFence(const WebCore::MachSendRight&) { }
@@ -110,11 +112,11 @@ public:
     virtual void scheduleCompositingLayerFlushImmediately() = 0;
 
 #if USE(REQUEST_ANIMATION_FRAME_DISPLAY_MONITOR)
-    virtual RefPtr<WebCore::DisplayRefreshMonitor> createDisplayRefreshMonitor(PlatformDisplayID);
+    virtual RefPtr<WebCore::DisplayRefreshMonitor> createDisplayRefreshMonitor(WebCore::PlatformDisplayID);
 #endif
 
 #if USE(COORDINATED_GRAPHICS_MULTIPROCESS)
-    virtual void didReceiveCoordinatedLayerTreeHostMessage(IPC::Connection&, IPC::MessageDecoder&) = 0;
+    virtual void didReceiveCoordinatedLayerTreeHostMessage(IPC::Connection&, IPC::Decoder&) = 0;
 #endif
 
     virtual void dispatchAfterEnsuringUpdatedScrollPosition(std::function<void ()>);
@@ -130,11 +132,21 @@ public:
 
     virtual void setShouldScaleViewToFitDocument(bool) { }
 
-    virtual bool dispatchDidLayout(WebCore::LayoutMilestones) { return false; }
+    virtual bool dispatchDidReachLayoutMilestone(WebCore::LayoutMilestones) { return false; }
 
 #if PLATFORM(COCOA)
     // Used by TiledCoreAnimationDrawingArea.
     virtual void updateGeometry(const WebCore::IntSize& viewSize, const WebCore::IntSize& layerPosition, bool flushSynchronously, const WebCore::MachSendRight& fencePort) { }
+#endif
+
+    virtual void layerHostDidFlushLayers() { };
+
+#if USE(COORDINATED_GRAPHICS_THREADED)
+    virtual void didChangeViewportAttributes(WebCore::ViewportAttributes&&) = 0;
+#endif
+
+#if USE(COORDINATED_GRAPHICS) || USE(TEXTURE_MAPPER)
+    virtual void deviceOrPageScaleFactorChanged() = 0;
 #endif
 
 protected:
@@ -143,14 +155,14 @@ protected:
     DrawingAreaType m_type;
     WebPage& m_webPage;
 
-#if USE(TEXTURE_MAPPER) && PLATFORM(GTK)
-    uint64_t m_nativeSurfaceHandleForCompositing;
+#if USE(TEXTURE_MAPPER_GL) && PLATFORM(GTK) && PLATFORM(X11) && !USE(REDIRECTED_XCOMPOSITE_WINDOW)
+    uint64_t m_nativeSurfaceHandleForCompositing { 0 };
 #endif
 
 private:
     // IPC::MessageReceiver.
-    virtual void didReceiveMessage(IPC::Connection&, IPC::MessageDecoder&) override;
-    virtual void didReceiveSyncMessage(IPC::Connection&, IPC::MessageDecoder&, std::unique_ptr<IPC::MessageEncoder>&) override;
+    void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
+    void didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&) override;
 
     // Message handlers.
     // FIXME: These should be pure virtual.
@@ -169,7 +181,7 @@ private:
     virtual void addTransactionCallbackID(uint64_t callbackID) { ASSERT_NOT_REACHED(); }
 #endif
 
-#if USE(TEXTURE_MAPPER) && PLATFORM(GTK)
+#if USE(TEXTURE_MAPPER_GL) && PLATFORM(GTK) && PLATFORM(X11) && !USE(REDIRECTED_XCOMPOSITE_WINDOW)
     virtual void setNativeSurfaceHandleForCompositing(uint64_t) = 0;
     virtual void destroyNativeSurfaceHandleForCompositing(bool&) = 0;
 #endif
@@ -181,5 +193,3 @@ private:
 SPECIALIZE_TYPE_TRAITS_BEGIN(WebKit::ToValueTypeName) \
     static bool isType(const WebKit::DrawingArea& area) { return area.type() == WebKit::AreaType; } \
 SPECIALIZE_TYPE_TRAITS_END()
-
-#endif // DrawingArea_h

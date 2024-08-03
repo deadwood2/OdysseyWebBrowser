@@ -32,11 +32,14 @@
 #include "IDBDatabaseException.h"
 #include "IDBError.h"
 #include "IDBKeyRangeData.h"
+#include "IDBValue.h"
 #include "IndexKey.h"
 #include "Logging.h"
 #include "MemoryBackingStoreTransaction.h"
 #include "UniqueIDBDatabase.h"
-
+#include <runtime/JSCJSValue.h>
+#include <runtime/JSCJSValueInlines.h>
+#include <runtime/JSLock.h>
 #include <wtf/NeverDestroyed.h>
 
 using namespace JSC;
@@ -247,7 +250,7 @@ void MemoryObjectStore::deleteRange(const IDBKeyRangeData& inputRange)
     }
 }
 
-IDBError MemoryObjectStore::addRecord(MemoryBackingStoreTransaction& transaction, const IDBKeyData& keyData, const ThreadSafeDataBuffer& value)
+IDBError MemoryObjectStore::addRecord(MemoryBackingStoreTransaction& transaction, const IDBKeyData& keyData, const IDBValue& value)
 {
     LOG(IndexedDB, "MemoryObjectStore::addRecord");
 
@@ -262,13 +265,13 @@ IDBError MemoryObjectStore::addRecord(MemoryBackingStoreTransaction& transaction
         m_orderedKeys = std::make_unique<std::set<IDBKeyData>>();
     }
 
-    auto mapResult = m_keyValueStore->set(keyData, value);
+    auto mapResult = m_keyValueStore->set(keyData, value.data());
     ASSERT(mapResult.isNewEntry);
     auto listResult = m_orderedKeys->insert(keyData);
     ASSERT(listResult.second);
 
     // If there was an error indexing this addition, then revert it.
-    auto error = updateIndexesForPutRecord(keyData, value);
+    auto error = updateIndexesForPutRecord(keyData, value.data());
     if (!error.isNull()) {
         m_keyValueStore->remove(mapResult.iterator);
         m_orderedKeys->erase(listResult.first);
@@ -300,7 +303,7 @@ IDBError MemoryObjectStore::updateIndexesForPutRecord(const IDBKeyData& key, con
 {
     JSLockHolder locker(UniqueIDBDatabase::databaseThreadVM());
 
-    auto jsValue = idbValueDataToJSValue(UniqueIDBDatabase::databaseThreadExecState(), value);
+    auto jsValue = deserializeIDBValueToJSValue(UniqueIDBDatabase::databaseThreadExecState(), value);
     if (jsValue.isUndefinedOrNull())
         return { };
 
@@ -338,7 +341,7 @@ IDBError MemoryObjectStore::populateIndexWithExistingRecords(MemoryIndex& index)
     JSLockHolder locker(UniqueIDBDatabase::databaseThreadVM());
 
     for (auto iterator : *m_keyValueStore) {
-        auto jsValue = idbValueDataToJSValue(UniqueIDBDatabase::databaseThreadExecState(), iterator.value);
+        auto jsValue = deserializeIDBValueToJSValue(UniqueIDBDatabase::databaseThreadExecState(), iterator.value);
         if (jsValue.isUndefinedOrNull())
             return { };
 

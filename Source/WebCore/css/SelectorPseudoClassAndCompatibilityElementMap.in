@@ -25,7 +25,9 @@ first-letter, PseudoClassUnknown, PseudoElementFirstLetter
 first-line, PseudoClassUnknown, PseudoElementFirstLine
 first-of-type
 focus
+focus-within
 horizontal
+host
 hover
 in-range
 increment
@@ -75,6 +77,6 @@ future
 past
 #endif
 
-#if ENABLE(SHADOW_DOM)
-host
+#if ENABLE(CUSTOM_ELEMENTS)
+defined
 #endif

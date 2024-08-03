@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008, 2009, 2010 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2008-2010, 2016 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -223,7 +223,6 @@ NetscapePluginInstanceProxy::NetscapePluginInstanceProxy(NetscapePluginHostProxy
     , m_renderContextID(0)
     , m_rendererType(UseSoftwareRenderer)
     , m_waitingForReply(false)
-    , m_urlCheckCounter(0)
     , m_pluginFunctionCallDepth(0)
     , m_shouldStopSoon(false)
     , m_currentRequestID(0)
@@ -249,9 +248,9 @@ NetscapePluginInstanceProxy::NetscapePluginInstanceProxy(NetscapePluginHostProxy
 
 PassRefPtr<NetscapePluginInstanceProxy> NetscapePluginInstanceProxy::create(NetscapePluginHostProxy* pluginHostProxy, WebHostedNetscapePluginView *pluginView, bool fullFramePlugin)
 {
-    RefPtr<NetscapePluginInstanceProxy> proxy = adoptRef(new NetscapePluginInstanceProxy(pluginHostProxy, pluginView, fullFramePlugin));
-    pluginHostProxy->addPluginInstance(proxy.get());
-    return proxy.release();
+    auto proxy = adoptRef(*new NetscapePluginInstanceProxy(pluginHostProxy, pluginView, fullFramePlugin));
+    pluginHostProxy->addPluginInstance(proxy.ptr());
+    return WTFMove(proxy);
 }
 
 NetscapePluginInstanceProxy::~NetscapePluginInstanceProxy()
@@ -466,12 +465,15 @@ void NetscapePluginInstanceProxy::syntheticKeyDownWithCommandModifier(int keyCod
 {
     NSData *charactersData = [NSData dataWithBytes:&character length:1];
 
-    _WKPHPluginInstanceKeyboardEvent(m_pluginHostProxy->port(), m_pluginID, 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    _WKPHPluginInstanceKeyboardEvent(m_pluginHostProxy->port(), m_pluginID,
                                      [NSDate timeIntervalSinceReferenceDate], 
                                      NPCocoaEventKeyDown, NSCommandKeyMask,
                                      const_cast<char*>(reinterpret_cast<const char*>([charactersData bytes])), [charactersData length], 
                                      const_cast<char*>(reinterpret_cast<const char*>([charactersData bytes])), [charactersData length], 
                                      false, keyCode, character);
+#pragma clang diagnostic pop
 }
 
 void NetscapePluginInstanceProxy::flagsChanged(NSEvent *event)
@@ -799,8 +801,8 @@ NPError NetscapePluginInstanceProxy::loadRequest(NSURLRequest *request, const ch
             return NPERR_INVALID_PARAM;
         }
 
-        RefPtr<PluginRequest> pluginRequest = PluginRequest::create(requestID, request, target, allowPopups);
-        m_pluginRequests.append(pluginRequest.release());
+        auto pluginRequest = PluginRequest::create(requestID, request, target, allowPopups);
+        m_pluginRequests.append(WTFMove(pluginRequest));
         m_requestTimer.startOneShot(0);
     } else {
         RefPtr<HostedNetscapePluginStream> stream = HostedNetscapePluginStream::create(this, requestID, request);
@@ -887,7 +889,7 @@ bool NetscapePluginInstanceProxy::evaluate(uint32_t objectID, const String& scri
     Strong<JSGlobalObject> globalObject(pluginWorld().vm(), frame->script().globalObject(pluginWorld()));
     ExecState* exec = globalObject->globalExec();
 
-    UserGestureIndicator gestureIndicator(allowPopups ? DefinitelyProcessingUserGesture : PossiblyProcessingUserGesture);
+    UserGestureIndicator gestureIndicator(allowPopups ? Optional<ProcessingUserGestureState>(ProcessingUserGesture) : Nullopt);
     
     JSValue result = JSC::evaluate(exec, makeSource(script));
     
@@ -919,7 +921,7 @@ bool NetscapePluginInstanceProxy::invoke(uint32_t objectID, const Identifier& me
     JSValue function = object->get(exec, methodName);
     CallData callData;
     CallType callType = getCallData(function, callData);
-    if (callType == CallTypeNone)
+    if (callType == CallType::None)
         return false;
 
     MarkedArgumentBuffer argList;
@@ -951,7 +953,7 @@ bool NetscapePluginInstanceProxy::invokeDefault(uint32_t objectID, data_t argume
     JSLockHolder lock(exec);    
     CallData callData;
     CallType callType = object->methodTable()->getCallData(object, callData);
-    if (callType == CallTypeNone)
+    if (callType == CallType::None)
         return false;
 
     MarkedArgumentBuffer argList;
@@ -984,7 +986,7 @@ bool NetscapePluginInstanceProxy::construct(uint32_t objectID, data_t argumentsD
 
     ConstructData constructData;
     ConstructType constructType = object->methodTable()->getConstructData(object, constructData);
-    if (constructType == ConstructTypeNone)
+    if (constructType == ConstructType::None)
         return false;
 
     MarkedArgumentBuffer argList;
@@ -1370,11 +1372,11 @@ bool NetscapePluginInstanceProxy::demarshalValueFromArray(ExecState* exec, NSArr
             if (!frame->script().canExecuteScripts(NotAboutToExecuteScript))
                 return false;
 
-            RefPtr<RootObject> rootObject = frame->script().createRootObject(m_pluginView);
+            auto rootObject = frame->script().createRootObject(m_pluginView);
             if (!rootObject)
                 return false;
             
-            result = ProxyInstance::create(rootObject.release(), this, objectID)->createRuntimeObject(exec);
+            result = ProxyInstance::create(WTFMove(rootObject), this, objectID)->createRuntimeObject(exec);
             return true;
         }
         default:
@@ -1523,7 +1525,11 @@ bool NetscapePluginInstanceProxy::getCookies(data_t urlData, mach_msg_type_numbe
         return false;
     
     if (Frame* frame = core([m_pluginView webFrame])) {
-        String cookieString = cookies(frame->document(), url); 
+        auto* document = frame->document();
+        if (!document)
+            return false;
+
+        String cookieString = cookies(*document, url);
         WTF::CString cookieStringUTF8 = cookieString.utf8();
         if (cookieStringUTF8.isNull())
             return false;
@@ -1550,8 +1556,12 @@ bool NetscapePluginInstanceProxy::setCookies(data_t urlData, mach_msg_type_numbe
         String cookieString = String::fromUTF8(cookiesData, cookiesLength);
         if (!cookieString)
             return false;
-        
-        WebCore::setCookies(frame->document(), url, cookieString);
+
+        auto* document = frame->document();
+        if (!document)
+            return false;
+
+        WebCore::setCookies(*document, url, cookieString);
         return true;
     }
 
@@ -1604,59 +1614,6 @@ bool NetscapePluginInstanceProxy::convertPoint(double sourceX, double sourceY, N
     return [m_pluginView convertFromX:sourceX andY:sourceY space:sourceSpace toX:&destX andY:&destY space:destSpace];
 }
 
-uint32_t NetscapePluginInstanceProxy::checkIfAllowedToLoadURL(const char* url, const char* target)
-{
-    uint32_t checkID;
-    
-    // Assign a check ID
-    do {
-        checkID = ++m_urlCheckCounter;
-    } while (m_urlChecks.contains(checkID) || !m_urlCheckCounter);
-
-    NSString *frameName = target ? [NSString stringWithCString:target encoding:NSISOLatin1StringEncoding] : nil;
-
-    NSNumber *contextInfo = [[NSNumber alloc] initWithUnsignedInt:checkID];
-    WebPluginContainerCheck *check = [WebPluginContainerCheck checkWithRequest:[m_pluginView requestWithURLCString:url]
-                                                                        target:frameName
-                                                                  resultObject:m_pluginView
-                                                                      selector:@selector(_containerCheckResult:contextInfo:)
-                                                                    controller:m_pluginView 
-                                                                   contextInfo:contextInfo];
-    
-    [contextInfo release];
-    m_urlChecks.set(checkID, check);
-    [check start];
-    
-    return checkID;
-}
-
-void NetscapePluginInstanceProxy::cancelCheckIfAllowedToLoadURL(uint32_t checkID)
-{
-    URLCheckMap::iterator it = m_urlChecks.find(checkID);
-    if (it == m_urlChecks.end())
-        return;
-    
-    WebPluginContainerCheck *check = it->value.get();
-    [check cancel];
-    m_urlChecks.remove(it);
-}
-
-void NetscapePluginInstanceProxy::checkIfAllowedToLoadURLResult(uint32_t checkID, bool allowed)
-{
-    _WKPHCheckIfAllowedToLoadURLResult(m_pluginHostProxy->port(), m_pluginID, checkID, allowed);
-}
-
-void NetscapePluginInstanceProxy::resolveURL(const char* url, const char* target, data_t& resolvedURLData, mach_msg_type_number_t& resolvedURLLength)
-{
-    ASSERT(m_pluginView);
-    
-    WTF::CString resolvedURL = [m_pluginView resolvedURLStringForURL:url target:target];
-    
-    resolvedURLLength = resolvedURL.length();
-    mig_allocate(reinterpret_cast<vm_address_t*>(&resolvedURLData), resolvedURLLength);
-    memcpy(resolvedURLData, resolvedURL.data(), resolvedURLLength);
-}
-
 void NetscapePluginInstanceProxy::privateBrowsingModeDidChange(bool isPrivateBrowsingEnabled)
 {
     _WKPHPluginInstancePrivateBrowsingModeDidChange(m_pluginHostProxy->port(), m_pluginID, isPrivateBrowsingEnabled);
@@ -1675,12 +1632,15 @@ void NetscapePluginInstanceProxy::setGlobalException(const String& exception)
 
 void NetscapePluginInstanceProxy::moveGlobalExceptionToExecState(ExecState* exec)
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     if (globalExceptionString().isNull())
         return;
 
     {
-        JSLockHolder lock(exec);
-        exec->vm().throwException(exec, createError(exec, globalExceptionString()));
+        JSLockHolder lock(vm);
+        throwException(exec, scope, createError(exec, globalExceptionString()));
     }
 
     globalExceptionString() = String();

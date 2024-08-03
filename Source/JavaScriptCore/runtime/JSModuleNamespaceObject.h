@@ -36,18 +36,18 @@ class JSModuleRecord;
 class JSModuleNamespaceObject : public JSDestructibleObject {
 public:
     typedef JSDestructibleObject Base;
-    static const unsigned StructureFlags = Base::StructureFlags | OverridesGetOwnPropertySlot | OverridesGetPropertyNames;
+    static const unsigned StructureFlags = Base::StructureFlags | OverridesGetOwnPropertySlot | InterceptsGetOwnPropertySlotByIndexEvenWhenLengthIsNotZero | OverridesGetPropertyNames | GetOwnPropertySlotIsImpureForPropertyAbsence;
 
     static JSModuleNamespaceObject* create(ExecState* exec, JSGlobalObject* globalObject, Structure* structure, JSModuleRecord* moduleRecord, const IdentifierSet& exports)
     {
         JSModuleNamespaceObject* object = new (NotNull, allocateCell<JSModuleNamespaceObject>(exec->vm().heap)) JSModuleNamespaceObject(exec->vm(), structure);
-        object->finishCreation(exec->vm(), globalObject, moduleRecord, exports);
+        object->finishCreation(exec, globalObject, moduleRecord, exports);
         return object;
     }
 
     JS_EXPORT_PRIVATE static bool getOwnPropertySlot(JSObject*, ExecState*, PropertyName, PropertySlot&);
-    JS_EXPORT_PRIVATE static void put(JSCell*, ExecState*, PropertyName, JSValue, PutPropertySlot&);
-    JS_EXPORT_PRIVATE static void putByIndex(JSCell*, ExecState*, unsigned propertyName, JSValue, bool shouldThrow);
+    JS_EXPORT_PRIVATE static bool put(JSCell*, ExecState*, PropertyName, JSValue, PutPropertySlot&);
+    JS_EXPORT_PRIVATE static bool putByIndex(JSCell*, ExecState*, unsigned propertyName, JSValue, bool shouldThrow);
     JS_EXPORT_PRIVATE static bool deleteProperty(JSCell*, ExecState*, PropertyName);
     JS_EXPORT_PRIVATE static void getOwnPropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode);
     JS_EXPORT_PRIVATE static bool defineOwnProperty(JSObject*, ExecState*, PropertyName, const PropertyDescriptor&, bool shouldThrow);
@@ -62,7 +62,7 @@ public:
     JSModuleRecord* moduleRecord() { return m_moduleRecord.get(); }
 
 protected:
-    JS_EXPORT_PRIVATE void finishCreation(VM&, JSGlobalObject*, JSModuleRecord*, const IdentifierSet& exports);
+    JS_EXPORT_PRIVATE void finishCreation(ExecState*, JSGlobalObject*, JSModuleRecord*, const IdentifierSet& exports);
     JS_EXPORT_PRIVATE JSModuleNamespaceObject(VM&, Structure*);
 
 private:

@@ -24,6 +24,7 @@
 #include "ExceptionCode.h"
 #include "JSDOMBinding.h"
 #include "JSDOMConstructor.h"
+#include "JSDOMConvert.h"
 #include "JSNode.h"
 #include "Node.h"
 #include "wtf/text/AtomicString.h"
@@ -42,7 +43,7 @@ JSC::EncodedJSValue JSC_HOST_CALL jsTestEventTargetPrototypeFunctionItem(JSC::Ex
 // Attributes
 
 JSC::EncodedJSValue jsTestEventTargetConstructor(JSC::ExecState*, JSC::EncodedJSValue, JSC::PropertyName);
-void setJSTestEventTargetConstructor(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
+bool setJSTestEventTargetConstructor(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
 
 class JSTestEventTargetPrototype : public JSC::JSNonFinalObject {
 public:
@@ -78,7 +79,7 @@ template<> JSValue JSTestEventTargetConstructor::prototypeForStructure(JSC::VM& 
 
 template<> void JSTestEventTargetConstructor::initializeProperties(VM& vm, JSDOMGlobalObject& globalObject)
 {
-    putDirect(vm, vm.propertyNames->prototype, JSTestEventTarget::getPrototype(vm, &globalObject), DontDelete | ReadOnly | DontEnum);
+    putDirect(vm, vm.propertyNames->prototype, JSTestEventTarget::prototype(vm, &globalObject), DontDelete | ReadOnly | DontEnum);
     putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String(ASCIILiteral("TestEventTarget"))), ReadOnly | DontEnum);
     putDirect(vm, vm.propertyNames->length, jsNumber(0), ReadOnly | DontEnum);
 }
@@ -110,10 +111,10 @@ JSTestEventTarget::JSTestEventTarget(Structure* structure, JSDOMGlobalObject& gl
 
 JSObject* JSTestEventTarget::createPrototype(VM& vm, JSGlobalObject* globalObject)
 {
-    return JSTestEventTargetPrototype::create(vm, globalObject, JSTestEventTargetPrototype::createStructure(vm, globalObject, JSEventTarget::getPrototype(vm, globalObject)));
+    return JSTestEventTargetPrototype::create(vm, globalObject, JSTestEventTargetPrototype::createStructure(vm, globalObject, JSEventTarget::prototype(vm, globalObject)));
 }
 
-JSObject* JSTestEventTarget::getPrototype(VM& vm, JSGlobalObject* globalObject)
+JSObject* JSTestEventTarget::prototype(VM& vm, JSGlobalObject* globalObject)
 {
     return getDOMPrototype<JSTestEventTarget>(vm, globalObject);
 }
@@ -125,20 +126,20 @@ bool JSTestEventTarget::getOwnPropertySlot(JSObject* object, ExecState* state, P
     Optional<uint32_t> optionalIndex = parseIndex(propertyName);
     if (optionalIndex && optionalIndex.value() < thisObject->wrapped().length()) {
         unsigned index = optionalIndex.value();
-        unsigned attributes = DontDelete | ReadOnly;
+        unsigned attributes = ReadOnly;
         slot.setValue(thisObject, attributes, toJS(state, thisObject->globalObject(), thisObject->wrapped().item(index)));
         return true;
     }
     if (Base::getOwnPropertySlot(thisObject, state, propertyName, slot))
         return true;
-    JSValue proto = thisObject->prototype();
+    JSValue proto = thisObject->getPrototypeDirect();
     if (proto.isObject() && jsCast<JSObject*>(proto)->hasProperty(state, propertyName))
         return false;
 
     if (!optionalIndex && thisObject->classInfo() == info()) {
         JSValue value;
         if (thisObject->nameGetter(state, propertyName, value)) {
-            slot.setValue(thisObject, ReadOnly | DontDelete | DontEnum, value);
+            slot.setValue(thisObject, ReadOnly | DontEnum, value);
             return true;
         }
     }
@@ -149,7 +150,7 @@ bool JSTestEventTarget::getOwnPropertySlotByIndex(JSObject* object, ExecState* s
 {
     auto* thisObject = jsCast<JSTestEventTarget*>(object);
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
-    if (index < thisObject->wrapped().length()) {
+    if (LIKELY(index < thisObject->wrapped().length())) {
         unsigned attributes = DontDelete | ReadOnly;
         slot.setValue(thisObject, attributes, toJS(state, thisObject->globalObject(), thisObject->wrapped().item(index)));
         return true;
@@ -159,22 +160,26 @@ bool JSTestEventTarget::getOwnPropertySlotByIndex(JSObject* object, ExecState* s
 
 EncodedJSValue jsTestEventTargetConstructor(ExecState* state, EncodedJSValue thisValue, PropertyName)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
     JSTestEventTargetPrototype* domObject = jsDynamicCast<JSTestEventTargetPrototype*>(JSValue::decode(thisValue));
-    if (!domObject)
-        return throwVMTypeError(state);
+    if (UNLIKELY(!domObject))
+        return throwVMTypeError(state, throwScope);
     return JSValue::encode(JSTestEventTarget::getConstructor(state->vm(), domObject->globalObject()));
 }
 
-void setJSTestEventTargetConstructor(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
+bool setJSTestEventTargetConstructor(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
     JSValue value = JSValue::decode(encodedValue);
     JSTestEventTargetPrototype* domObject = jsDynamicCast<JSTestEventTargetPrototype*>(JSValue::decode(thisValue));
     if (UNLIKELY(!domObject)) {
-        throwVMTypeError(state);
-        return;
+        throwVMTypeError(state, throwScope);
+        return false;
     }
     // Shadowing a built-in constructor
-    domObject->putDirect(state->vm(), state->propertyNames().constructor, value);
+    return domObject->putDirect(state->vm(), state->propertyNames().constructor, value);
 }
 
 void JSTestEventTarget::getOwnPropertyNames(JSObject* object, ExecState* state, PropertyNameArray& propertyNames, EnumerationMode mode)
@@ -197,18 +202,21 @@ JSValue JSTestEventTarget::getConstructor(VM& vm, const JSGlobalObject* globalOb
 
 EncodedJSValue JSC_HOST_CALL jsTestEventTargetPrototypeFunctionItem(ExecState* state)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     JSValue thisValue = state->thisValue();
     auto castedThis = jsDynamicCast<JSTestEventTarget*>(thisValue);
     if (UNLIKELY(!castedThis))
-        return throwThisTypeError(*state, "TestEventTarget", "item");
+        return throwThisTypeError(*state, throwScope, "TestEventTarget", "item");
     ASSERT_GC_OBJECT_INHERITS(castedThis, JSTestEventTarget::info());
     auto& impl = castedThis->wrapped();
     if (UNLIKELY(state->argumentCount() < 1))
-        return throwVMError(state, createNotEnoughArgumentsError(state));
-    unsigned index = toUInt32(state, state->argument(0), NormalConversion);
+        return throwVMError(state, throwScope, createNotEnoughArgumentsError(state));
+    auto index = convert<uint32_t>(*state, state->argument(0), NormalConversion);
     if (UNLIKELY(state->hadException()))
         return JSValue::encode(jsUndefined());
-    JSValue result = toJS(state, castedThis->globalObject(), WTF::getPtr(impl.item(index)));
+    JSValue result = toJS(state, castedThis->globalObject(), impl.item(WTFMove(index)));
     return JSValue::encode(result);
 }
 
@@ -229,22 +237,11 @@ extern "C" { extern void* _ZTVN7WebCore15TestEventTargetE[]; }
 #endif
 #endif
 
-JSC::JSValue toJSNewlyCreated(JSC::ExecState*, JSDOMGlobalObject* globalObject, TestEventTarget* impl)
+JSC::JSValue toJSNewlyCreated(JSC::ExecState*, JSDOMGlobalObject* globalObject, Ref<TestEventTarget>&& impl)
 {
-    if (!impl)
-        return jsNull();
-    return createNewWrapper<JSTestEventTarget>(globalObject, impl);
-}
-
-JSC::JSValue toJS(JSC::ExecState*, JSDOMGlobalObject* globalObject, TestEventTarget* impl)
-{
-    if (!impl)
-        return jsNull();
-    if (JSValue result = getExistingWrapper<JSTestEventTarget>(globalObject, impl))
-        return result;
 
 #if ENABLE(BINDING_INTEGRITY)
-    void* actualVTablePointer = *(reinterpret_cast<void**>(impl));
+    void* actualVTablePointer = *(reinterpret_cast<void**>(impl.ptr()));
 #if PLATFORM(WIN)
     void* expectedVTablePointer = reinterpret_cast<void*>(__identifier("??_7TestEventTarget@WebCore@@6B@"));
 #else
@@ -252,7 +249,7 @@ JSC::JSValue toJS(JSC::ExecState*, JSDOMGlobalObject* globalObject, TestEventTar
 #if COMPILER(CLANG)
     // If this fails TestEventTarget does not have a vtable, so you need to add the
     // ImplementationLacksVTable attribute to the interface definition
-    COMPILE_ASSERT(__is_polymorphic(TestEventTarget), TestEventTarget_is_not_polymorphic);
+    static_assert(__is_polymorphic(TestEventTarget), "TestEventTarget is not polymorphic");
 #endif
 #endif
     // If you hit this assertion you either have a use after free bug, or
@@ -261,7 +258,12 @@ JSC::JSValue toJS(JSC::ExecState*, JSDOMGlobalObject* globalObject, TestEventTar
     // by adding the SkipVTableValidation attribute to the interface IDL definition
     RELEASE_ASSERT(actualVTablePointer == expectedVTablePointer);
 #endif
-    return createNewWrapper<JSTestEventTarget>(globalObject, impl);
+    return createWrapper<JSTestEventTarget, TestEventTarget>(globalObject, WTFMove(impl));
+}
+
+JSC::JSValue toJS(JSC::ExecState* state, JSDOMGlobalObject* globalObject, TestEventTarget& impl)
+{
+    return wrap(state, globalObject, impl);
 }
 
 TestEventTarget* JSTestEventTarget::toWrapped(JSC::JSValue value)

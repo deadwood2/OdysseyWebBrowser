@@ -55,7 +55,7 @@ static void ensureLineBoxes(const RenderLineBreak& renderer)
     downcast<RenderBlockFlow>(*renderer.parent()).ensureLineBoxes();
 }
 
-RenderLineBreak::RenderLineBreak(HTMLElement& element, Ref<RenderStyle>&& style)
+RenderLineBreak::RenderLineBreak(HTMLElement& element, RenderStyle&& style)
     : RenderBoxModelObject(element, WTFMove(style), 0)
     , m_inlineBoxWrapper(nullptr)
     , m_cachedLineHeight(invalidLineHeight)
@@ -166,7 +166,7 @@ void RenderLineBreak::setSelectionState(SelectionState state)
     m_inlineBoxWrapper->root().setHasSelectedChildren(state != SelectionNone);
 }
 
-LayoutRect RenderLineBreak::localCaretRect(InlineBox* inlineBox, int caretOffset, LayoutUnit* extraWidthToEndOfLine)
+LayoutRect RenderLineBreak::localCaretRect(InlineBox* inlineBox, unsigned caretOffset, LayoutUnit* extraWidthToEndOfLine)
 {
     ASSERT_UNUSED(caretOffset, !caretOffset);
     ASSERT_UNUSED(inlineBox, inlineBox == m_inlineBoxWrapper);
@@ -241,7 +241,7 @@ void RenderLineBreak::collectSelectionRects(Vector<SelectionRect>& rects, unsign
             rect.shiftXEdgeTo(rootBox.lineTopWithLeading());
     }
 
-    RenderBlock* containingBlock = this->containingBlock();
+    auto* containingBlock = containingBlockForObjectInFlow();
     // Map rect, extended left to leftOffset, and right to rightOffset, through transforms to get minX and maxX.
     LogicalSelectionOffsetCaches cache(*containingBlock);
     LayoutUnit leftOffset = containingBlock->logicalLeftSelectionOffset(*containingBlock, box->logicalTop(), cache);

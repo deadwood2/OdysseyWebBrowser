@@ -37,6 +37,7 @@
 #include <WebCore/Document.h>
 #include <WebCore/DragImage.h>
 #include <WebCore/Element.h>
+#include <WebCore/Event.h>
 #include <WebCore/Font.h>
 #include <WebCore/FontCascade.h>
 #include <WebCore/Frame.h>
@@ -249,7 +250,7 @@ HRESULT DOMNode::insertBefore(_In_opt_ IDOMNode* newChild, _In_opt_ IDOMNode* re
     COMPtr<DOMNode> refChildNode(Query, refChild);
 
     ExceptionCode ec;
-    if (!m_node->insertBefore(newChildNode->node(), refChildNode ? refChildNode->node() : 0, ec))
+    if (!m_node->insertBefore(*newChildNode->node(), refChildNode ? refChildNode->node() : nullptr, ec))
         return E_FAIL;
 
     *result = newChild;
@@ -281,7 +282,7 @@ HRESULT DOMNode::removeChild(_In_opt_ IDOMNode* oldChild, _COM_Outptr_opt_ IDOMN
         return E_FAIL;
 
     ExceptionCode ec;
-    if (!m_node->removeChild(oldChildNode->node(), ec))
+    if (!m_node->removeChild(*oldChildNode->node(), ec))
         return E_FAIL;
 
     *result = oldChild;
@@ -411,8 +412,8 @@ HRESULT DOMNode::setTextContent(_In_ BSTR /*text*/)
 
 HRESULT DOMNode::addEventListener(_In_ BSTR type, _In_opt_ IDOMEventListener* listener, BOOL useCapture)
 {
-    RefPtr<WebEventListener> webListener = WebEventListener::create(listener);
-    m_node->addEventListener(type, webListener, useCapture);
+    auto webListener = WebEventListener::create(listener);
+    m_node->addEventListener(type, WTFMove(webListener), useCapture);
 
     return S_OK;
 }
@@ -423,8 +424,8 @@ HRESULT DOMNode::removeEventListener(_In_ BSTR type, _In_opt_ IDOMEventListener*
         return E_POINTER;
     if (!m_node)
         return E_FAIL;
-    RefPtr<WebEventListener> webListener = WebEventListener::create(listener);
-    m_node->removeEventListener(type, webListener.get(), useCapture);
+    auto webListener = WebEventListener::create(listener);
+    m_node->removeEventListener(type, webListener, useCapture);
     return S_OK;
 }
 
@@ -440,8 +441,11 @@ HRESULT DOMNode::dispatchEvent(_In_opt_ IDOMEvent* evt, _Out_ BOOL* result)
     if (FAILED(hr))
         return hr;
 
+    if (!domEvent->coreEvent())
+        return E_FAIL;
+
     WebCore::ExceptionCode ec = 0;
-    *result = m_node->dispatchEventForBindings(domEvent->coreEvent(), ec) ? TRUE : FALSE;
+    *result = m_node->dispatchEventForBindings(*domEvent->coreEvent(), ec) ? TRUE : FALSE;
     return ec ? E_FAIL : S_OK;
 }
 
@@ -790,6 +794,8 @@ HRESULT DOMDocument::getComputedStyle(_In_opt_ IDOMElement* elt, _In_ BSTR pseud
     if (FAILED(hr))
         return hr;
     Element* element = domEle->element();
+    if (!element)
+        return E_FAIL;
 
     WebCore::DOMWindow* dv = m_document->defaultView();
     String pseudoEltString(pseudoElt);
@@ -797,7 +803,7 @@ HRESULT DOMDocument::getComputedStyle(_In_opt_ IDOMElement* elt, _In_ BSTR pseud
     if (!dv)
         return E_FAIL;
     
-    *result = DOMCSSStyleDeclaration::createInstance(dv->getComputedStyle(element, pseudoEltString.impl()).get());
+    *result = DOMCSSStyleDeclaration::createInstance(dv->getComputedStyle(*element, pseudoEltString.impl()).get());
     return *result ? S_OK : E_FAIL;
 }
 
@@ -909,8 +915,8 @@ HRESULT DOMWindow::addEventListener(_In_ BSTR type, _In_opt_ IDOMEventListener* 
         return E_POINTER;
     if (!m_window)
         return E_FAIL;
-    RefPtr<WebEventListener> webListener = WebEventListener::create(listener);
-    m_window->addEventListener(type, webListener, useCapture);
+    auto webListener = WebEventListener::create(listener);
+    m_window->addEventListener(type, WTFMove(webListener), useCapture);
     return S_OK;
 }
 
@@ -920,8 +926,8 @@ HRESULT DOMWindow::removeEventListener(_In_ BSTR type, _In_opt_ IDOMEventListene
         return E_POINTER;
     if (!m_window)
         return E_FAIL;
-    RefPtr<WebEventListener> webListener = WebEventListener::create(listener);
-    m_window->removeEventListener(type, webListener.get(), useCapture);
+    auto webListener = WebEventListener::create(listener);
+    m_window->removeEventListener(type, webListener, useCapture);
     return S_OK;
 }
 
@@ -937,8 +943,11 @@ HRESULT DOMWindow::dispatchEvent(_In_opt_ IDOMEvent* evt, _Out_ BOOL* result)
     if (FAILED(hr))
         return hr;
 
+    if (!domEvent->coreEvent())
+        return E_FAIL;
+
     WebCore::ExceptionCode ec = 0;
-    *result = m_window->dispatchEventForBindings(domEvent->coreEvent(), ec) ? TRUE : FALSE;
+    *result = m_window->dispatchEventForBindings(*domEvent->coreEvent(), ec) ? TRUE : FALSE;
     return ec ? E_FAIL : S_OK;
 }
 

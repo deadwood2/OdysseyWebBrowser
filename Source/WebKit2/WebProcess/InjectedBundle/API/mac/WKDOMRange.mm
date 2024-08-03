@@ -32,6 +32,7 @@
 #import "WKBundleAPICast.h"
 #import "WKDOMInternals.h"
 #import <WebCore/Document.h>
+#import <WebCore/VisibleUnits.h>
 
 @implementation WKDOMRange
 
@@ -65,16 +66,20 @@
 
 - (void)setStart:(WKDOMNode *)node offset:(int)offset
 {
+    if (!node)
+        return;
     // FIXME: Do something about the exception.
     WebCore::ExceptionCode ec = 0;
-    _impl->setStart(WebKit::toWebCoreNode(node), offset, ec);
+    _impl->setStart(*WebKit::toWebCoreNode(node), offset, ec);
 }
 
 - (void)setEnd:(WKDOMNode *)node offset:(int)offset
 {
+    if (!node)
+        return;
     // FIXME: Do something about the exception.
     WebCore::ExceptionCode ec = 0;
-    _impl->setEnd(WebKit::toWebCoreNode(node), offset, ec);
+    _impl->setEnd(*WebKit::toWebCoreNode(node), offset, ec);
 }
 
 - (void)collapse:(BOOL)toStart
@@ -84,16 +89,20 @@
 
 - (void)selectNode:(WKDOMNode *)node
 {
+    if (!node)
+        return;
     // FIXME: Do something about the exception.
     WebCore::ExceptionCode ec = 0;
-    _impl->selectNode(WebKit::toWebCoreNode(node), ec);
+    _impl->selectNode(*WebKit::toWebCoreNode(node), ec);
 }
 
 - (void)selectNodeContents:(WKDOMNode *)node
 {
+    if (!node)
+        return;
     // FIXME: Do something about the exception.
     WebCore::ExceptionCode ec = 0;
-    _impl->selectNodeContents(WebKit::toWebCoreNode(node), ec);
+    _impl->selectNodeContents(*WebKit::toWebCoreNode(node), ec);
 }
 
 - (WKDOMNode *)startContainer
@@ -134,14 +143,21 @@
     return WebKit::toNSArray(rects);
 }
 
+- (WKDOMRange *)rangeByExpandingToWordBoundaryByCharacters:(NSUInteger)characters inDirection:(WKDOMRangeDirection)direction
+{
+    RefPtr<WebCore::Range> newRange = rangeExpandedByCharactersInDirectionAtWordBoundary(direction == WKDOMRangeDirectionForward ?  _impl->endPosition() : _impl->startPosition(), characters, direction == WKDOMRangeDirectionForward ? WebCore::DirectionForward : WebCore::DirectionBackward);
+
+    return [[WKDOMRange alloc] _initWithImpl:newRange.get()];
+}
+
 @end
 
 @implementation WKDOMRange (WKPrivate)
 
 - (WKBundleRangeHandleRef)_copyBundleRangeHandleRef
 {
-    RefPtr<WebKit::InjectedBundleRangeHandle> rangeHandle = WebKit::InjectedBundleRangeHandle::getOrCreate(_impl.get());
-    return toAPI(rangeHandle.release().leakRef());
+    auto rangeHandle = WebKit::InjectedBundleRangeHandle::getOrCreate(_impl.get());
+    return toAPI(rangeHandle.leakRef());
 }
 
 @end

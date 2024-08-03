@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -253,25 +253,27 @@ private:
                 break;
             }
                 
+            case PutById:
+            case PutByIdFlush:
+            case PutByIdDirect:
             case PutStructure: {
                 considerBarrier(m_node->child1());
                 break;
             }
-                
+
+            case RecordRegExpCachedResult: {
+                considerBarrier(m_graph.varArgChild(m_node, 0));
+                break;
+            }
+
             case PutClosureVar:
             case PutToArguments:
+            case SetRegExpObjectLastIndex:
             case MultiPutByOffset: {
                 considerBarrier(m_node->child1(), m_node->child2());
                 break;
             }
                 
-            case PutById:
-            case PutByIdFlush:
-            case PutByIdDirect: {
-                considerBarrier(m_node->child1());
-                break;
-            }
-
             case PutByOffset: {
                 considerBarrier(m_node->child2(), m_node->child3());
                 break;
@@ -282,6 +284,11 @@ private:
                 break;
             }
                 
+            case SetFunctionName: {
+                considerBarrier(m_node->child1(), m_node->child2());
+                break;
+            }
+
             default:
                 break;
             }
@@ -304,7 +311,6 @@ private:
             case CreateDirectArguments:
             case CreateScopedArguments:
             case CreateClonedArguments:
-            case NewArrowFunction:
             case NewFunction:
             case NewGeneratorFunction:
                 // Nodes that allocate get to set their epoch because for those nodes we know
@@ -453,12 +459,12 @@ private:
         // Something we watch out for here is that the null epoch is a catch-all for objects
         // allocated before we did any epoch tracking. Two objects being in the null epoch
         // means that we don't know their epoch relationship.
-        if (!!base->epoch() && base->epoch() >= child->epoch()) {
+        if (!!base->epoch() && !!child->epoch() && base->epoch() >= child->epoch()) {
             if (verbose)
                 dataLog("            Rejecting because of epoch ordering.\n");
             return;
         }
-        
+
         considerBarrier(base);
     }
     
@@ -528,13 +534,11 @@ private:
 
 bool performFastStoreBarrierInsertion(Graph& graph)
 {
-    SamplingRegion samplingRegion("DFG Fast Store Barrier Insertion Phase");
     return runPhase<StoreBarrierInsertionPhase<PhaseMode::Fast>>(graph);
 }
 
 bool performGlobalStoreBarrierInsertion(Graph& graph)
 {
-    SamplingRegion samplingRegion("DFG Global Store Barrier Insertion Phase");
     return runPhase<StoreBarrierInsertionPhase<PhaseMode::Global>>(graph);
 }
 

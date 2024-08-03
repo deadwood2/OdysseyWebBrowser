@@ -46,6 +46,9 @@ public:
 
     WEBCORE_EXPORT IDBKeyData(const IDBKey*);
 
+    enum IsolatedCopyTag { IsolatedCopy };
+    IDBKeyData(const IDBKeyData&, IsolatedCopyTag);
+
     static IDBKeyData minimum()
     {
         IDBKeyData result;
@@ -83,7 +86,7 @@ public:
     template<class Encoder> void encode(Encoder&) const;
     template<class Decoder> static bool decode(Decoder&, IDBKeyData&);
     
-#ifndef NDEBUG
+#if !LOG_DISABLED
     WEBCORE_EXPORT String loggingString() const;
 #endif
 
@@ -153,6 +156,8 @@ public:
     }
 
 private:
+    static void isolatedCopy(const IDBKeyData& source, IDBKeyData& destination);
+
     KeyType m_type;
     Vector<IDBKeyData> m_arrayValue;
     String m_stringValue;

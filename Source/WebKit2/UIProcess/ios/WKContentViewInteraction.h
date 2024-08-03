@@ -44,16 +44,20 @@
 #import <wtf/Vector.h>
 #import <wtf/text/WTFString.h>
 
+namespace API {
+class OpenPanelParameters;
+}
+
 namespace WebCore {
 class Color;
 class FloatQuad;
 class IntSize;
+class TextStream;
 }
 
 namespace WebKit {
 class NativeWebTouchEvent;
 class SmartMagnificationController;
-class WebOpenPanelParameters;
 class WebOpenPanelResultListenerProxy;
 class WebPageProxy;
 }
@@ -73,6 +77,7 @@ typedef void (^UIWKSelectionWithDirectionCompletionHandler)(BOOL selectionEndIsM
 typedef void (^UIWKKeyWebEventCompletionHandler)(WebIOSEvent *theEvent, BOOL wasHandled);
 
 namespace WebKit {
+
 struct WKSelectionDrawingInfo {
     enum class SelectionType { None, Plugin, Range };
     WKSelectionDrawingInfo();
@@ -81,6 +86,9 @@ struct WKSelectionDrawingInfo {
     WebCore::IntRect caretRect;
     Vector<WebCore::SelectionRect> selectionRects;
 };
+
+WebCore::TextStream& operator<<(WebCore::TextStream&, const WKSelectionDrawingInfo&);
+
 struct WKAutoCorrectionData {
     String fontName;
     CGFloat fontSize;
@@ -104,6 +112,7 @@ struct WKAutoCorrectionData {
     RetainPtr<UITapGestureRecognizer> _doubleTapGestureRecognizer;
     RetainPtr<UITapGestureRecognizer> _nonBlockingDoubleTapGestureRecognizer;
     RetainPtr<UITapGestureRecognizer> _twoFingerDoubleTapGestureRecognizer;
+    RetainPtr<UITapGestureRecognizer> _twoFingerSingleTapGestureRecognizer;
     RetainPtr<WKInspectorNodeSearchGestureRecognizer> _inspectorNodeSearchGestureRecognizer;
 
     RetainPtr<UIWKTextInteractionAssistant> _textSelectionAssistant;
@@ -208,7 +217,7 @@ struct WKAutoCorrectionData {
 - (void)_overflowScrollingDidEnd;
 - (void)_didUpdateBlockSelectionWithTouch:(WebKit::SelectionTouch)touch withFlags:(WebKit::SelectionFlags)flags growThreshold:(CGFloat)growThreshold shrinkThreshold:(CGFloat)shrinkThreshold;
 - (void)_showPlaybackTargetPicker:(BOOL)hasVideo fromRect:(const WebCore::IntRect&)elementRect;
-- (void)_showRunOpenPanel:(WebKit::WebOpenPanelParameters*)parameters resultListener:(WebKit::WebOpenPanelResultListenerProxy*)listener;
+- (void)_showRunOpenPanel:(API::OpenPanelParameters*)parameters resultListener:(WebKit::WebOpenPanelResultListenerProxy*)listener;
 - (void)accessoryDone;
 - (void)_didHandleKeyEvent:(WebIOSEvent *)event eventWasHandled:(BOOL)eventWasHandled;
 - (Vector<WebKit::OptionItem>&) assistedNodeSelectOptions;
@@ -217,6 +226,12 @@ struct WKAutoCorrectionData {
 - (void)_becomeFirstResponderWithSelectionMovingForward:(BOOL)selectingForward completionHandler:(void (^)(BOOL didBecomeFirstResponder))completionHandler;
 - (void)_setDoubleTapGesturesEnabled:(BOOL)enabled;
 - (NSArray *)_dataDetectionResults;
+@end
+
+@interface WKContentView (WKTesting)
+
+- (void)selectFormAccessoryPickerRow:(NSInteger)rowIndex;
+
 @end
 
 #if HAVE(LINK_PREVIEW)

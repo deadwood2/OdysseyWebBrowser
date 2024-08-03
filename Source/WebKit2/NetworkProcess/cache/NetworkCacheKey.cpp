@@ -30,11 +30,18 @@
 
 #include "NetworkCacheCoders.h"
 #include <wtf/ASCIICType.h>
+#include <wtf/NeverDestroyed.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
 
 namespace WebKit {
 namespace NetworkCache {
+
+static const String& noPartitionString()
+{
+    static NeverDestroyed<String> noPartition(ASCIILiteral("No partition"));
+    return noPartition;
+}
 
 Key::Key(const Key& o)
     : m_partition(o.m_partition.isolatedCopy())
@@ -46,10 +53,10 @@ Key::Key(const Key& o)
 }
 
 Key::Key(const String& partition, const String& type, const String& range, const String& identifier)
-    : m_partition(partition.isolatedCopy())
-    , m_type(type.isolatedCopy())
-    , m_identifier(identifier.isolatedCopy())
-    , m_range(range.isolatedCopy())
+    : m_partition(partition.isEmpty() ? noPartitionString() : partition)
+    , m_type(type)
+    , m_identifier(identifier)
+    , m_range(range)
     , m_hash(computeHash())
 {
 }
@@ -57,6 +64,11 @@ Key::Key(const String& partition, const String& type, const String& range, const
 Key::Key(WTF::HashTableDeletedValueType)
     : m_identifier(WTF::HashTableDeletedValue)
 {
+}
+
+bool Key::hasPartition() const
+{
+    return m_partition != noPartitionString();
 }
 
 Key& Key::operator=(const Key& other)

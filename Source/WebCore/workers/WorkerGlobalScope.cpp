@@ -30,18 +30,21 @@
 
 #include "ActiveDOMObject.h"
 #include "ContentSecurityPolicy.h"
+#include "Crypto.h"
 #include "DOMTimer.h"
 #include "DOMURL.h"
 #include "DOMWindow.h"
 #include "ErrorEvent.h"
 #include "Event.h"
 #include "ExceptionCode.h"
+#include "IDBConnectionProxy.h"
 #include "InspectorConsoleInstrumentation.h"
 #include "MessagePort.h"
 #include "ScheduledAction.h"
 #include "ScriptSourceCode.h"
 #include "SecurityOrigin.h"
 #include "SecurityOriginPolicy.h"
+#include "SocketProvider.h"
 #include "URL.h"
 #include "WorkerLocation.h"
 #include "WorkerNavigator.h"
@@ -62,7 +65,7 @@ using namespace Inspector;
 
 namespace WebCore {
 
-WorkerGlobalScope::WorkerGlobalScope(const URL& url, const String& userAgent, WorkerThread& thread, bool shouldBypassMainWorldContentSecurityPolicy, PassRefPtr<SecurityOrigin> topOrigin)
+WorkerGlobalScope::WorkerGlobalScope(const URL& url, const String& userAgent, WorkerThread& thread, bool shouldBypassMainWorldContentSecurityPolicy, RefPtr<SecurityOrigin>&& topOrigin, IDBClient::IDBConnectionProxy* connectionProxy, SocketProvider* socketProvider)
     : m_url(url)
     , m_userAgent(userAgent)
     , m_script(std::make_unique<WorkerScriptController>(this))
@@ -71,8 +74,25 @@ WorkerGlobalScope::WorkerGlobalScope(const URL& url, const String& userAgent, Wo
     , m_shouldBypassMainWorldContentSecurityPolicy(shouldBypassMainWorldContentSecurityPolicy)
     , m_eventQueue(*this)
     , m_topOrigin(topOrigin)
+#if ENABLE(INDEXED_DATABASE)
+    , m_connectionProxy(connectionProxy)
+#endif
+#if ENABLE(WEB_SOCKETS)
+    , m_socketProvider(socketProvider)
+#endif
 {
-    setSecurityOriginPolicy(SecurityOriginPolicy::create(SecurityOrigin::create(url)));
+#if !ENABLE(INDEXED_DATABASE)
+    UNUSED_PARAM(connectionProxy);
+#endif
+#if !ENABLE(WEB_SOCKETS)
+    UNUSED_PARAM(socketProvider);
+#endif
+
+    auto origin = SecurityOrigin::create(url);
+    if (m_topOrigin->hasUniversalAccess())
+        origin->grantUniversalAccess();
+
+    setSecurityOriginPolicy(SecurityOriginPolicy::create(WTFMove(origin)));
     setContentSecurityPolicy(std::make_unique<ContentSecurityPolicy>(*this));
 }
 
@@ -112,11 +132,37 @@ void WorkerGlobalScope::disableEval(const String& errorMessage)
     m_script->disableEval(errorMessage);
 }
 
-WorkerLocation* WorkerGlobalScope::location() const
+#if ENABLE(WEB_SOCKETS)
+SocketProvider* WorkerGlobalScope::socketProvider()
+{
+    return m_socketProvider.get();
+}
+#endif
+
+#if ENABLE(INDEXED_DATABASE)
+IDBClient::IDBConnectionProxy* WorkerGlobalScope::idbConnectionProxy()
+{
+#if ENABLE(INDEXED_DATABASE_IN_WORKERS)
+    return m_connectionProxy.get();
+#else
+    return nullptr;
+#endif
+}
+
+void WorkerGlobalScope::stopIndexedDatabase()
+{
+#if ENABLE(INDEXED_DATABASE_IN_WORKERS)
+    ASSERT(m_connectionProxy);
+    m_connectionProxy->forgetActivityForCurrentThread();
+#endif
+}
+#endif // ENABLE(INDEXED_DATABASE)
+
+WorkerLocation& WorkerGlobalScope::location() const
 {
     if (!m_location)
         m_location = WorkerLocation::create(m_url);
-    return m_location.get();
+    return *m_location;
 }
 
 void WorkerGlobalScope::close()
@@ -136,21 +182,21 @@ void WorkerGlobalScope::close()
     } });
 }
 
-WorkerNavigator* WorkerGlobalScope::navigator() const
+WorkerNavigator& WorkerGlobalScope::navigator() const
 {
     if (!m_navigator)
         m_navigator = WorkerNavigator::create(m_userAgent);
-    return m_navigator.get();
+    return *m_navigator;
 }
 
-void WorkerGlobalScope::postTask(Task task)
+void WorkerGlobalScope::postTask(Task&& task)
 {
     thread().runLoop().postTask(WTFMove(task));
 }
 
 int WorkerGlobalScope::setTimeout(std::unique_ptr<ScheduledAction> action, int timeout)
 {
-    return DOMTimer::install(*this, WTFMove(action), timeout, true);
+    return DOMTimer::install(*this, WTFMove(action), std::chrono::milliseconds(timeout), true);
 }
 
 void WorkerGlobalScope::clearTimeout(int timeoutId)
@@ -160,7 +206,7 @@ void WorkerGlobalScope::clearTimeout(int timeoutId)
 
 int WorkerGlobalScope::setInterval(std::unique_ptr<ScheduledAction> action, int timeout)
 {
-    return DOMTimer::install(*this, WTFMove(action), timeout, false);
+    return DOMTimer::install(*this, WTFMove(action), std::chrono::milliseconds(timeout), false);
 }
 
 void WorkerGlobalScope::clearInterval(int timeoutId)
@@ -191,7 +237,7 @@ void WorkerGlobalScope::importScripts(const Vector<String>& urls, ExceptionCode&
         }
 
         Ref<WorkerScriptLoader> scriptLoader = WorkerScriptLoader::create();
-        scriptLoader->loadSynchronously(scriptExecutionContext(), url, AllowCrossOriginRequests, shouldBypassMainWorldContentSecurityPolicy ? ContentSecurityPolicyEnforcement::DoNotEnforce : ContentSecurityPolicyEnforcement::EnforceScriptSrcDirective);
+        scriptLoader->loadSynchronously(scriptExecutionContext(), url, FetchOptions::Mode::NoCors, shouldBypassMainWorldContentSecurityPolicy ? ContentSecurityPolicyEnforcement::DoNotEnforce : ContentSecurityPolicyEnforcement::EnforceScriptSrcDirective);
 
         // If the fetching attempt failed, throw a NETWORK_ERR exception and abort all these steps.
         if (scriptLoader->failed()) {
@@ -223,7 +269,7 @@ void WorkerGlobalScope::logExceptionToConsole(const String& errorMessage, const 
 void WorkerGlobalScope::addConsoleMessage(std::unique_ptr<Inspector::ConsoleMessage> message)
 {
     if (!isContextThread()) {
-        postTask(AddConsoleMessageTask(message->source(), message->level(), StringCapture(message->message())));
+        postTask(AddConsoleMessageTask(message->source(), message->level(), message->message()));
         return;
     }
 
@@ -234,7 +280,7 @@ void WorkerGlobalScope::addConsoleMessage(std::unique_ptr<Inspector::ConsoleMess
 void WorkerGlobalScope::addConsoleMessage(MessageSource source, MessageLevel level, const String& message, unsigned long requestIdentifier)
 {
     if (!isContextThread()) {
-        postTask(AddConsoleMessageTask(source, level, StringCapture(message)));
+        postTask(AddConsoleMessageTask(source, level, message));
         return;
     }
 
@@ -245,7 +291,7 @@ void WorkerGlobalScope::addConsoleMessage(MessageSource source, MessageLevel lev
 void WorkerGlobalScope::addMessage(MessageSource source, MessageLevel level, const String& message, const String& sourceURL, unsigned lineNumber, unsigned columnNumber, RefPtr<ScriptCallStack>&& callStack, JSC::ExecState* state, unsigned long requestIdentifier)
 {
     if (!isContextThread()) {
-        postTask(AddConsoleMessageTask(source, level, StringCapture(message)));
+        postTask(AddConsoleMessageTask(source, level, message));
         return;
     }
 
@@ -344,5 +390,12 @@ bool WorkerGlobalScope::unwrapCryptoKey(const Vector<uint8_t>&, Vector<uint8_t>&
     return false;
 }
 #endif // ENABLE(SUBTLE_CRYPTO)
+
+Crypto& WorkerGlobalScope::crypto() const
+{
+    if (!m_crypto)
+        m_crypto = Crypto::create(*scriptExecutionContext());
+    return *m_crypto;
+}
 
 } // namespace WebCore

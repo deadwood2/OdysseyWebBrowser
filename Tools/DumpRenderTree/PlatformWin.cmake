@@ -23,13 +23,17 @@ set(DumpRenderTreeLib_SOURCES
     win/WorkQueueItemWin.cpp
 )
 
+list(APPEND TestNetscapePlugin_LIBRARIES
+    WebKit
+)
+
 set(DumpRenderTree_SOURCES
     ${TOOLS_DIR}/win/DLLLauncher/DLLLauncherMain.cpp
 )
 
 list(APPEND TestNetscapePlugin_SOURCES
-    DumpRenderTree.vcxproj/TestNetscapePlugin/TestNetscapePlugin.def
-    DumpRenderTree.vcxproj/TestNetscapePlugin/TestNetscapePlugin.rc
+    win/TestNetscapePlugin.def
+    win/TestNetscapePlugin.rc
 
     TestNetscapePlugin/Tests/win/CallJSThatDestroysPlugin.cpp
     TestNetscapePlugin/Tests/win/DrawsGradient.cpp
@@ -51,6 +55,7 @@ endif ()
 list(APPEND TestNetscapePlugin_LIBRARIES
     Msimg32
     Shlwapi
+    WebKit
 )
 
 set(ImageDiff_SOURCES
@@ -65,15 +70,18 @@ set(ImageDiff_LIBRARIES
 
 list(APPEND DumpRenderTree_INCLUDE_DIRECTORIES
     win
-    DumpRenderTree.vcxproj/TestNetscapePlugin
     TestNetscapePlugin
     TestNetscapePlugin/ForwardingHeaders
     TestNetscapePlugin/Tests
     TestNetscapePlugin/win
     TestNetscapePlugin/Tests/win
+    ${WEBKIT_DIR}/win
+    ${DERIVED_SOURCES_DIR}/WebKit/Interfaces
 )
 
 list(APPEND DumpRenderTree_LIBRARIES
+    WTF
+    WebKit
     shlwapi
 )
 
@@ -108,6 +116,7 @@ else ()
     list(APPEND DumpRenderTreeLib_LIBRARIES
         CFNetwork
         CoreGraphics
+        CoreText
     )
     list(APPEND ImageDiff_SOURCES
         cg/ImageDiffCG.cpp
@@ -115,6 +124,7 @@ else ()
     list(APPEND ImageDiff_LIBRARIES
        CoreFoundation
        CoreGraphics
+       CoreText
     )
 endif ()
 
@@ -123,16 +133,13 @@ set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /NODEFAULTLIB:MSVCRT
 add_definitions(-DUSE_CONSOLE_ENTRY_POINT)
 
 add_library(DumpRenderTreeLib SHARED ${DumpRenderTreeLib_SOURCES})
-set_target_properties(DumpRenderTreeLib PROPERTIES FOLDER "Tools")
 target_link_libraries(DumpRenderTreeLib ${DumpRenderTreeLib_LIBRARIES})
 
 add_executable(ImageDiff ${TOOLS_DIR}/win/DLLLauncher/DLLLauncherMain.cpp)
 target_link_libraries(ImageDiff shlwapi)
-set_target_properties(ImageDiff PROPERTIES FOLDER "Tools")
 set_target_properties(ImageDiff PROPERTIES OUTPUT_NAME "ImageDiff")
 
 add_library(ImageDiffLib SHARED ${ImageDiff_SOURCES})
-set_target_properties(ImageDiffLib PROPERTIES FOLDER "Tools")
 target_link_libraries(ImageDiffLib ${ImageDiff_LIBRARIES})
 
 add_dependencies(ImageDiff ImageDiffLib)

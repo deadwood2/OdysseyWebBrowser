@@ -36,12 +36,18 @@
 #include <utility>
 #include <wtf/MainThread.h>
 
+#if USE(IOSURFACE)
+#include "IOSurface.h"
+#endif
+
 #if PLATFORM(IOS)
 #include "MemoryPressureHandler.h"
 #include "TileControllerMemoryHandlerIOS.h"
 #endif
 
 namespace WebCore {
+
+static const auto tileSizeUpdateDelay = std::chrono::milliseconds { 500 };
 
 String TileController::tileGridContainerLayerName()
 {
@@ -55,24 +61,11 @@ String TileController::zoomedOutTileGridContainerLayerName()
 
 TileController::TileController(PlatformCALayer* rootPlatformLayer)
     : m_tileCacheLayer(rootPlatformLayer)
+    , m_deviceScaleFactor(owningGraphicsLayer()->platformCALayerDeviceScaleFactor())
     , m_tileGrid(std::make_unique<TileGrid>(*this))
     , m_tileRevalidationTimer(*this, &TileController::tileRevalidationTimerFired)
-    , m_zoomedOutContentsScale(0)
-    , m_deviceScaleFactor(owningGraphicsLayer()->platformCALayerDeviceScaleFactor())
-    , m_tileCoverage(CoverageForVisibleArea)
-    , m_marginTop(0)
-    , m_marginBottom(0)
-    , m_marginLeft(0)
-    , m_marginRight(0)
-    , m_isInWindow(false)
-    , m_scrollingPerformanceLoggingEnabled(false)
-    , m_unparentsOffscreenTiles(false)
-    , m_acceleratesDrawing(false)
-    , m_tilesAreOpaque(false)
-    , m_hasTilesWithTemporaryScaleFactor(false)
-    , m_tileDebugBorderWidth(0)
-    , m_indicatorMode(SynchronousScrollingBecauseOfLackOfScrollingCoordinatorIndication)
-    , m_topContentInset(0)
+    , m_tileSizeChangeTimer(*this, &TileController::tileSizeChangeTimerFired, tileSizeUpdateDelay)
+    , m_marginEdges(false, false, false, false)
 {
 }
 
@@ -89,6 +82,7 @@ void TileController::tileCacheLayerBoundsChanged()
 {
     ASSERT(owningGraphicsLayer()->isCommittingChanges());
     setNeedsRevalidateTiles();
+    notePendingTileSizeChange();
 }
 
 void TileController::setNeedsDisplay()
@@ -219,6 +213,15 @@ void TileController::setVelocity(const VelocityData& velocity)
     
     if (changeAffectsTileCoverage)
         setNeedsRevalidateTiles();
+}
+
+void TileController::setScrollability(Scrollability scrollability)
+{
+    if (scrollability == m_scrollability)
+        return;
+    
+    m_scrollability = scrollability;
+    notePendingTileSizeChange();
 }
 
 void TileController::setTopContentInset(float topContentInset)
@@ -364,8 +367,8 @@ void TileController::adjustTileCoverageRect(FloatRect& coverageRect, const Float
         return;
     }
 
-    double horizontalMargin = tileSize().width() / contentsScale;
-    double verticalMargin = tileSize().height() / contentsScale;
+    double horizontalMargin = kDefaultTileSize / contentsScale;
+    double verticalMargin = kDefaultTileSize / contentsScale;
 
     double currentTime = monotonicallyIncreasingTime();
     double timeDelta = currentTime - m_velocity.lastUpdateTime;
@@ -460,9 +463,60 @@ bool TileController::shouldTemporarilyRetainTileCohorts() const
     return owningGraphicsLayer()->platformCALayerShouldTemporarilyRetainTileCohorts(m_tileCacheLayer);
 }
 
+void TileController::willStartLiveResize()
+{
+    m_inLiveResize = true;
+}
+
+void TileController::didEndLiveResize()
+{
+    m_inLiveResize = false;
+    m_tileSizeLocked = false; // Let the end of a live resize update the tiles.
+}
+
+void TileController::notePendingTileSizeChange()
+{
+    m_tileSizeChangeTimer.restart();
+}
+
+void TileController::tileSizeChangeTimerFired()
+{
+    if (!owningGraphicsLayer())
+        return;
+
+    m_tileSizeLocked = false;
+    setNeedsRevalidateTiles();
+}
+
 IntSize TileController::tileSize() const
 {
-    return owningGraphicsLayer()->platformCALayerTileSize();
+    if (m_inLiveResize || m_tileSizeLocked)
+        return tileGrid().tileSize();
+
+    const int kLowestCommonDenominatorMaxTileSize = 4 * 1024;
+    IntSize maxTileSize(kLowestCommonDenominatorMaxTileSize, kLowestCommonDenominatorMaxTileSize);
+
+#if USE(IOSURFACE)
+    IntSize surfaceSizeLimit = IOSurface::maximumSize();
+    surfaceSizeLimit.scale(1 / m_deviceScaleFactor);
+    maxTileSize = maxTileSize.shrunkTo(surfaceSizeLimit);
+#endif
+    
+    if (owningGraphicsLayer()->platformCALayerUseGiantTiles())
+        return maxTileSize;
+
+    IntSize tileSize(kDefaultTileSize, kDefaultTileSize);
+
+    if (m_scrollability == NotScrollable) {
+        IntSize scaledSize = expandedIntSize(boundsWithoutMargin().size() * tileGrid().scale());
+        tileSize = scaledSize.constrainedBetween(IntSize(kDefaultTileSize, kDefaultTileSize), maxTileSize);
+    } else if (m_scrollability == VerticallyScrollable)
+        tileSize.setWidth(std::min(std::max<int>(ceilf(boundsWithoutMargin().width() * tileGrid().scale()), kDefaultTileSize), maxTileSize.width()));
+
+    LOG_WITH_STREAM(Scrolling, stream << "TileController::tileSize newSize=" << tileSize);
+
+    m_tileSizeLocked = true;
+    return tileSize;
 }
 
 void TileController::clearZoomedOutTileGrid()
@@ -573,49 +627,58 @@ void TileController::setScrollingModeIndication(ScrollingModeIndication scrollin
     updateTileCoverageMap();
 }
 
-void TileController::setTileMargins(int marginTop, int marginBottom, int marginLeft, int marginRight)
+void TileController::setHasMargins(bool marginTop, bool marginBottom, bool marginLeft, bool marginRight)
 {
-    m_marginTop = marginTop;
-    m_marginBottom = marginBottom;
-    m_marginLeft = marginLeft;
-    m_marginRight = marginRight;
+    BoxExtent<bool> marginEdges(marginTop, marginRight, marginBottom, marginLeft);
+    if (marginEdges == m_marginEdges)
+        return;
+    
+    m_marginEdges = marginEdges;
+    setNeedsRevalidateTiles();
+}
 
+void TileController::setMarginSize(int marginSize)
+{
+    if (marginSize == m_marginSize)
+        return;
+    
+    m_marginSize = marginSize;
     setNeedsRevalidateTiles();
 }
 
 bool TileController::hasMargins() const
 {
-    return m_marginTop || m_marginBottom || m_marginLeft || m_marginRight;
+    return m_marginSize && (m_marginEdges.top() || m_marginEdges.bottom() || m_marginEdges.left() || m_marginEdges.right());
 }
 
 bool TileController::hasHorizontalMargins() const
 {
-    return m_marginLeft || m_marginRight;
+    return m_marginSize && (m_marginEdges.left() || m_marginEdges.right());
 }
 
 bool TileController::hasVerticalMargins() const
 {
-    return m_marginTop || m_marginBottom;
+    return m_marginSize && (m_marginEdges.top() || m_marginEdges.bottom());
 }
 
 int TileController::topMarginHeight() const
 {
-    return m_marginTop / tileGrid().scale();
+    return (m_marginSize * m_marginEdges.top()) / tileGrid().scale();
 }
 
 int TileController::bottomMarginHeight() const
 {
-    return m_marginBottom / tileGrid().scale();
+    return (m_marginSize * m_marginEdges.bottom()) / tileGrid().scale();
 }
 
 int TileController::leftMarginWidth() const
 {
-    return m_marginLeft / tileGrid().scale();
+    return (m_marginSize * m_marginEdges.left()) / tileGrid().scale();
 }
 
 int TileController::rightMarginWidth() const
 {
-    return m_marginRight / tileGrid().scale();
+    return (m_marginSize * m_marginEdges.right()) / tileGrid().scale();
 }
 
 RefPtr<PlatformCALayer> TileController::createTileLayer(const IntRect& tileRect, TileGrid& grid)

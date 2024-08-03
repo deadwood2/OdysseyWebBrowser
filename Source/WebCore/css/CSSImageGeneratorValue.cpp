@@ -232,15 +232,15 @@ void CSSImageGeneratorValue::loadSubimages(CachedResourceLoader& cachedResourceL
     }
 }
 
-bool CSSImageGeneratorValue::subimageIsPending(CSSValue* value)
+bool CSSImageGeneratorValue::subimageIsPending(const CSSValue& value)
 {
-    if (is<CSSImageValue>(*value))
-        return downcast<CSSImageValue>(*value).cachedOrPendingImage()->isPendingImage();
+    if (is<CSSImageValue>(value))
+        return downcast<CSSImageValue>(value).isPending();
     
-    if (is<CSSImageGeneratorValue>(*value))
-        return downcast<CSSImageGeneratorValue>(*value).isPending();
+    if (is<CSSImageGeneratorValue>(value))
+        return downcast<CSSImageGeneratorValue>(value).isPending();
 
-    if (is<CSSPrimitiveValue>(*value) && downcast<CSSPrimitiveValue>(*value).getValueID() == CSSValueNone)
+    if (is<CSSPrimitiveValue>(value) && downcast<CSSPrimitiveValue>(value).getValueID() == CSSValueNone)
         return false;
 
     ASSERT_NOT_REACHED();
@@ -248,26 +248,20 @@ bool CSSImageGeneratorValue::subimageIsPending(CSSValue* value)
     return false;
 }
 
-CachedImage* CSSImageGeneratorValue::cachedImageForCSSValue(CSSValue* value, CachedResourceLoader& cachedResourceLoader, const ResourceLoaderOptions& options)
+CachedImage* CSSImageGeneratorValue::cachedImageForCSSValue(CSSValue& value, CachedResourceLoader& cachedResourceLoader, const ResourceLoaderOptions& options)
 {
-    if (!value)
-        return nullptr;
-
-    if (is<CSSImageValue>(*value)) {
-        StyleCachedImage* styleCachedImage = downcast<CSSImageValue>(*value).cachedImage(cachedResourceLoader, options);
-        if (!styleCachedImage)
-            return nullptr;
-
-        return styleCachedImage->cachedImage();
+    if (is<CSSImageValue>(value)) {
+        auto& imageValue = downcast<CSSImageValue>(value);
+        return imageValue.loadImage(cachedResourceLoader, options);
     }
     
-    if (is<CSSImageGeneratorValue>(*value)) {
-        downcast<CSSImageGeneratorValue>(*value).loadSubimages(cachedResourceLoader, options);
+    if (is<CSSImageGeneratorValue>(value)) {
+        downcast<CSSImageGeneratorValue>(value).loadSubimages(cachedResourceLoader, options);
         // FIXME: Handle CSSImageGeneratorValue (and thus cross-fades with gradients and canvas).
         return nullptr;
     }
 
-    if (is<CSSPrimitiveValue>(*value) && downcast<CSSPrimitiveValue>(*value).getValueID() == CSSValueNone)
+    if (is<CSSPrimitiveValue>(value) && downcast<CSSPrimitiveValue>(value).getValueID() == CSSValueNone)
         return nullptr;
 
     ASSERT_NOT_REACHED();

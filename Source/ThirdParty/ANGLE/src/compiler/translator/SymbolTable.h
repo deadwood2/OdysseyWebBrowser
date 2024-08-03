@@ -30,6 +30,7 @@
 //   are tracked in the intermediate representation, not the symbol table.
 //
 
+#include <array>
 #include <assert.h>
 #include <set>
 
@@ -42,11 +43,8 @@ class TSymbol : angle::NonCopyable
 {
   public:
     POOL_ALLOCATOR_NEW_DELETE();
-    TSymbol(const TString *n)
-        : uniqueId(0),
-          name(n)
-    {
-    }
+    TSymbol(const TString *n);
+
     virtual ~TSymbol()
     {
         // don't delete name, it's from the pool
@@ -68,10 +66,6 @@ class TSymbol : angle::NonCopyable
     {
         return false;
     }
-    void setUniqueId(int id)
-    {
-        uniqueId = id;
-    }
     int getUniqueId() const
     {
         return uniqueId;
@@ -86,7 +80,7 @@ class TSymbol : angle::NonCopyable
     }
 
   private:
-    int uniqueId; // For real comparing during code generation
+    const int uniqueId;
     const TString *name;
     TString extension;
 };
@@ -109,13 +103,8 @@ class TVariable : public TSymbol
           unionArray(0)
     {
     }
-    virtual ~TVariable()
-    {
-    }
-    virtual bool isVariable() const
-    {
-        return true;
-    }
+    ~TVariable() override {}
+    bool isVariable() const override { return true; }
     TType &getType()
     {
         return type;
@@ -133,40 +122,67 @@ class TVariable : public TSymbol
         type.setQualifier(qualifier);
     }
 
-    TConstantUnion *getConstPointer()
-    { 
-        if (!unionArray)
-            unionArray = new TConstantUnion[type.getObjectSize()];
+    const TConstantUnion *getConstPointer() const { return unionArray; }
 
-        return unionArray;
-    }
-
-    TConstantUnion *getConstPointer() const
-    {
-        return unionArray;
-    }
-
-    void shareConstPointer(TConstantUnion *constArray)
-    {
-        if (unionArray == constArray)
-            return;
-
-        delete[] unionArray;
-        unionArray = constArray;  
-    }
+    void shareConstPointer(const TConstantUnion *constArray) { unionArray = constArray; }
 
   private:
     TType type;
     bool userType;
     // we are assuming that Pool Allocator will free the memory
     // allocated to unionArray when this object is destroyed.
-    TConstantUnion *unionArray;
+    const TConstantUnion *unionArray;
+};
+
+// Immutable version of TParameter.
+struct TConstParameter
+{
+    TConstParameter()
+        : name(nullptr),
+          type(nullptr)
+    {
+    }
+    explicit TConstParameter(const TString *n)
+        : name(n),
+          type(nullptr)
+    {
+    }
+    explicit TConstParameter(const TType *t)
+        : name(nullptr),
+          type(t)
+    {
+    }
+    TConstParameter(const TString *n, const TType *t)
+        : name(n),
+          type(t)
+    {
+    }
+
+    // Both constructor arguments must be const.
+    TConstParameter(TString *n, TType *t) = delete;
+    TConstParameter(const TString *n, TType *t) = delete;
+    TConstParameter(TString *n, const TType *t) = delete;
+
+    const TString *name;
+    const TType *type;
 };
 
 // The function sub-class of symbols and the parser will need to
 // share this definition of a function parameter.
 struct TParameter
 {
+    // Destructively converts to TConstParameter.
+    // This method resets name and type to nullptrs to make sure
+    // their content cannot be modified after the call.
+    TConstParameter turnToConst()
+    {
+        const TString *constName = name;
+        const TType *constType = type;
+        name = nullptr;
+        type = nullptr;
+        return TConstParameter(constName, constType);
+    }
+
     TString *name;
     TType *type;
 };
@@ -175,27 +191,21 @@ struct TParameter
 class TFunction : public TSymbol
 {
   public:
-    TFunction(TOperator o)
-        : TSymbol(0),
-          returnType(TType(EbtVoid, EbpUndefined)),
-          op(o),
-          defined(false)
-    {
-    }
-    TFunction(const TString *name, const TType &retType, TOperator tOp = EOpNull, const char *ext = "")
+    TFunction(const TString *name,
+              const TType *retType,
+              TOperator tOp   = EOpNull,
+              const char *ext = "")
         : TSymbol(name),
           returnType(retType),
-          mangledName(TFunction::mangleName(*name)),
+          mangledName(nullptr),
           op(tOp),
-          defined(false)
+          defined(false),
+          mHasPrototypeDeclaration(false)
     {
         relateToExtension(ext);
     }
-    virtual ~TFunction();
-    virtual bool isFunction() const
-    {
-        return true;
-    }
+    ~TFunction() override;
+    bool isFunction() const override { return true; }
 
     static TString mangleName(const TString &name)
     {
@@ -206,19 +216,25 @@ class TFunction : public TSymbol
         return TString(mangledName.c_str(), mangledName.find_first_of('('));
     }
 
-    void addParameter(TParameter &p)
-    { 
+    void addParameter(const TConstParameter &p)
+    {
         parameters.push_back(p);
-        mangledName = mangledName + p.type->getMangledName();
+        mangledName = nullptr;
     }
 
-    const TString &getMangledName() const
+    void swapParameters(const TFunction &parametersSource);
+
+    const TString &getMangledName() const override
     {
-        return mangledName;
+        if (mangledName == nullptr)
+        {
+            mangledName = buildMangledName();
+        }
+        return *mangledName;
     }
     const TType &getReturnType() const
     {
-        return returnType;
+        return *returnType;
     }
 
     TOperator getBuiltInOp() const
@@ -226,31 +242,32 @@ class TFunction : public TSymbol
         return op;
     }
 
-    void setDefined()
-    {
-        defined = true;
-    }
-    bool isDefined()
-    {
-        return defined;
-    }
+    void setDefined() { defined = true; }
+    bool isDefined() { return defined; }
+    void setHasPrototypeDeclaration() { mHasPrototypeDeclaration = true; }
+    bool hasPrototypeDeclaration() const { return mHasPrototypeDeclaration; }
 
     size_t getParamCount() const
     {
         return parameters.size();
     }
-    const TParameter &getParam(size_t i) const
+    const TConstParameter &getParam(size_t i) const
     {
         return parameters[i];
     }
 
   private:
-    typedef TVector<TParameter> TParamList;
+    void clearParameters();
+
+    const TString *buildMangledName() const;
+
+    typedef TVector<TConstParameter> TParamList;
     TParamList parameters;
-    TType returnType;
-    TString mangledName;
+    const TType *returnType;
+    mutable const TString *mangledName;
     TOperator op;
     bool defined;
+    bool mHasPrototypeDeclaration;
 };
 
 // Interface block name sub-symbol
@@ -276,6 +293,7 @@ class TSymbolTableLevel
     typedef std::pair<tLevel::iterator, bool> tInsertResult;
 
     TSymbolTableLevel()
+        : mGlobalInvariant(false)
     {
     }
     ~TSymbolTableLevel();
@@ -287,8 +305,22 @@ class TSymbolTableLevel
 
     TSymbol *find(const TString &name) const;
 
+    void addInvariantVarying(const std::string &name)
+    {
+        mInvariantVaryings.insert(name);
+    }
+
+    bool isVaryingInvariant(const std::string &name)
+    {
+        return (mGlobalInvariant || mInvariantVaryings.count(name) > 0);
+    }
+
+    void setGlobalInvariant(bool invariant) { mGlobalInvariant = invariant; }
+
   protected:
     tLevel level;
+    std::set<std::string> mInvariantVaryings;
+    bool mGlobalInvariant;
 };
 
 // Define ESymbolLevel as int rather than an enum since level can go
@@ -298,14 +330,14 @@ typedef int ESymbolLevel;
 const int COMMON_BUILTINS = 0;
 const int ESSL1_BUILTINS = 1;
 const int ESSL3_BUILTINS = 2;
-const int LAST_BUILTIN_LEVEL = ESSL3_BUILTINS;
-const int GLOBAL_LEVEL = 3;
+const int ESSL3_1_BUILTINS   = 3;
+const int LAST_BUILTIN_LEVEL = ESSL3_1_BUILTINS;
+const int GLOBAL_LEVEL       = 4;
 
 class TSymbolTable : angle::NonCopyable
 {
   public:
     TSymbolTable()
-        : mGlobalInvariant(false)
     {
         // The symbol table cannot be used until push() is called, but
         // the lack of an initial call to push() can be used to detect
@@ -327,7 +359,7 @@ class TSymbolTable : angle::NonCopyable
     }
     bool atGlobalLevel() const
     {
-        return currentLevel() <= GLOBAL_LEVEL;
+        return currentLevel() == GLOBAL_LEVEL;
     }
     void push()
     {
@@ -360,32 +392,65 @@ class TSymbolTable : angle::NonCopyable
         return table[level]->insert(symbol);
     }
 
-    bool insertConstInt(ESymbolLevel level, const char *name, int value)
+    bool insertConstInt(ESymbolLevel level, const char *name, int value, TPrecision precision)
     {
-        TVariable *constant = new TVariable(
-            NewPoolTString(name), TType(EbtInt, EbpUndefined, EvqConst, 1));
-        constant->getConstPointer()->setIConst(value);
+        TVariable *constant =
+            new TVariable(NewPoolTString(name), TType(EbtInt, precision, EvqConst, 1));
+        TConstantUnion *unionArray = new TConstantUnion[1];
+        unionArray[0].setIConst(value);
+        constant->shareConstPointer(unionArray);
         return insert(level, constant);
     }
 
-    void insertBuiltIn(ESymbolLevel level, TOperator op, const char *ext, TType *rvalue, const char *name,
-                       TType *ptype1, TType *ptype2 = 0, TType *ptype3 = 0, TType *ptype4 = 0, TType *ptype5 = 0);
-
-    void insertBuiltIn(ESymbolLevel level, TType *rvalue, const char *name,
-                       TType *ptype1, TType *ptype2 = 0, TType *ptype3 = 0, TType *ptype4 = 0, TType *ptype5 = 0)
+    bool insertConstIntExt(ESymbolLevel level, const char *ext, const char *name, int value)
     {
+        TVariable *constant =
+            new TVariable(NewPoolTString(name), TType(EbtInt, EbpUndefined, EvqConst, 1));
+        TConstantUnion *unionArray = new TConstantUnion[1];
+        unionArray[0].setIConst(value);
+        constant->shareConstPointer(unionArray);
+        return insert(level, ext, constant);
+    }
+
+    bool insertConstIvec3(ESymbolLevel level,
+                          const char *name,
+                          const std::array<int, 3> &values,
+                          TPrecision precision)
+    {
+        TVariable *constantIvec3 =
+            new TVariable(NewPoolTString(name), TType(EbtInt, precision, EvqConst, 3));
+
+        TConstantUnion *unionArray = new TConstantUnion[3];
+        for (size_t index = 0u; index < 3u; ++index)
+        {
+            unionArray[index].setIConst(values[index]);
+        }
+        constantIvec3->shareConstPointer(unionArray);
+
+        return insert(level, constantIvec3);
+    }
+
+    void insertBuiltIn(ESymbolLevel level, TOperator op, const char *ext, const TType *rvalue, const char *name,
+                       const TType *ptype1, const TType *ptype2 = 0, const TType *ptype3 = 0, const TType *ptype4 = 0, const TType *ptype5 = 0);
+
+    void insertBuiltIn(ESymbolLevel level, const TType *rvalue, const char *name,
+                       const TType *ptype1, const TType *ptype2 = 0, const TType *ptype3 = 0, const TType *ptype4 = 0, const TType *ptype5 = 0)
+    {
+        insertUnmangledBuiltIn(name);
         insertBuiltIn(level, EOpNull, "", rvalue, name, ptype1, ptype2, ptype3, ptype4, ptype5);
     }
 
-    void insertBuiltIn(ESymbolLevel level, const char *ext, TType *rvalue, const char *name,
-                       TType *ptype1, TType *ptype2 = 0, TType *ptype3 = 0, TType *ptype4 = 0, TType *ptype5 = 0)
+    void insertBuiltIn(ESymbolLevel level, const char *ext, const TType *rvalue, const char *name,
+                       const TType *ptype1, const TType *ptype2 = 0, const TType *ptype3 = 0, const TType *ptype4 = 0, const TType *ptype5 = 0)
     {
+        insertUnmangledBuiltIn(name);
         insertBuiltIn(level, EOpNull, ext, rvalue, name, ptype1, ptype2, ptype3, ptype4, ptype5);
     }
 
-    void insertBuiltIn(ESymbolLevel level, TOperator op, TType *rvalue, const char *name,
-                       TType *ptype1, TType *ptype2 = 0, TType *ptype3 = 0, TType *ptype4 = 0, TType *ptype5 = 0)
+    void insertBuiltIn(ESymbolLevel level, TOperator op, const TType *rvalue, const char *name,
+                       const TType *ptype1, const TType *ptype2 = 0, const TType *ptype3 = 0, const TType *ptype4 = 0, const TType *ptype5 = 0)
     {
+        insertUnmangledBuiltIn(name);
         insertBuiltIn(level, op, "", rvalue, name, ptype1, ptype2, ptype3, ptype4, ptype5);
     }
 
@@ -403,13 +468,15 @@ class TSymbolTable : angle::NonCopyable
 
     bool setDefaultPrecision(const TPublicType &type, TPrecision prec)
     {
-        if (!SupportsPrecision(type.type))
+        if (!SupportsPrecision(type.getBasicType()))
             return false;
+        if (type.getBasicType() == EbtUInt)
+            return false;  // ESSL 3.00.4 section 4.5.4
         if (type.isAggregate())
             return false; // Not allowed to set for aggregate types
         int indexOfLastElement = static_cast<int>(precisionStack.size()) - 1;
         // Uses map operator [], overwrites the current value
-        (*precisionStack[indexOfLastElement])[type.type] = prec;
+        (*precisionStack[indexOfLastElement])[type.getBasicType()] = prec;
         return true;
     }
 
@@ -421,7 +488,8 @@ class TSymbolTable : angle::NonCopyable
     // "invariant varying_name;".
     void addInvariantVarying(const std::string &originalName)
     {
-        mInvariantVaryings.insert(originalName);
+        ASSERT(atGlobalLevel());
+        table[currentLevel()]->addInvariantVarying(originalName);
     }
     // If this returns false, the varying could still be invariant
     // if it is set as invariant during the varying variable
@@ -429,16 +497,24 @@ class TSymbolTable : angle::NonCopyable
     // variable's type, not here.
     bool isVaryingInvariant(const std::string &originalName) const
     {
-      return (mGlobalInvariant ||
-              mInvariantVaryings.count(originalName) > 0);
+        ASSERT(atGlobalLevel());
+        return table[currentLevel()]->isVaryingInvariant(originalName);
     }
 
-    void setGlobalInvariant() { mGlobalInvariant = true; }
-    bool getGlobalInvariant() const { return mGlobalInvariant; }
+    void setGlobalInvariant(bool invariant)
+    {
+        ASSERT(atGlobalLevel());
+        table[currentLevel()]->setGlobalInvariant(invariant);
+    }
 
     static int nextUniqueId()
     {
         return ++uniqueIdCounter;
+    }
+
+    bool hasUnmangledBuiltIn(const char *name)
+    {
+        return mUnmangledBuiltinNames.count(std::string(name)) > 0;
     }
 
   private:
@@ -447,12 +523,17 @@ class TSymbolTable : angle::NonCopyable
         return static_cast<ESymbolLevel>(table.size() - 1);
     }
 
+    // Used to insert unmangled functions to check redeclaration of built-ins in ESSL 3.00.
+    void insertUnmangledBuiltIn(const char *name)
+    {
+        mUnmangledBuiltinNames.insert(std::string(name));
+    }
+
     std::vector<TSymbolTableLevel *> table;
     typedef TMap<TBasicType, TPrecision> PrecisionStackLevel;
     std::vector< PrecisionStackLevel *> precisionStack;
 
-    std::set<std::string> mInvariantVaryings;
-    bool mGlobalInvariant;
+    std::set<std::string> mUnmangledBuiltinNames;
 
     static int uniqueIdCounter;
 };

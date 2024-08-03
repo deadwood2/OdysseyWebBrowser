@@ -38,8 +38,8 @@
 #import "URL.h"
 #import <objc/runtime.h>
 
-SOFT_LINK_FRAMEWORK(NetworkExtension);
-SOFT_LINK_CLASS(NetworkExtension, NEFilterSource);
+SOFT_LINK_FRAMEWORK_OPTIONAL(NetworkExtension);
+SOFT_LINK_CLASS_OPTIONAL(NetworkExtension, NEFilterSource);
 
 #if HAVE(MODERN_NE_FILTER_SOURCE)
 static inline NSData *replacementDataFromDecisionInfo(NSDictionary *decisionInfo)
@@ -193,9 +193,10 @@ void NetworkExtensionContentFilter::finishedAddingData()
 Ref<SharedBuffer> NetworkExtensionContentFilter::replacementData() const
 {
     ASSERT(didBlockData());
-    return adoptRef(*SharedBuffer::wrapNSData(m_replacementData.get()).leakRef());
+    return SharedBuffer::wrapNSData(m_replacementData.get());
 }
 
+#if ENABLE(CONTENT_FILTERING)
 ContentFilterUnblockHandler NetworkExtensionContentFilter::unblockHandler() const
 {
 #if HAVE(MODERN_NE_FILTER_SOURCE)
@@ -214,6 +215,7 @@ ContentFilterUnblockHandler NetworkExtensionContentFilter::unblockHandler() cons
     return { };
 #endif
 }
+#endif
 
 void NetworkExtensionContentFilter::handleDecision(NEFilterSourceStatus status, NSData *replacementData)
 {

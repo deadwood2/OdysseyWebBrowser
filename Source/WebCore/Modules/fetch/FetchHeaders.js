@@ -35,24 +35,7 @@ function initializeFetchHeaders(headersInit)
     if (!@isObject(headersInit))
         throw new @TypeError("headersInit must be an object");
 
-    if (this.constructor === headersInit.constructor) {
-         // FIXME: Use iterators when available?
-         this.@initializeWith(headersInit);
-    }
-
-    if (headersInit instanceof @Array) {
-        for (let i = 0; i < headersInit.length; i++) {
-            let header = headersInit[i];
-            if (header.length !== 2)
-                throw new @TypeError("headersInit sequence items should contain two values");
-            this.@appendFromJS(header[0], header[1]);
-        }
-        return this;
-    }
-
-    @Object.@getOwnPropertyNames(headersInit).forEach((name) => {
-        this.@appendFromJS(name, headersInit[name]);
-    });
+    @fillFetchHeaders(this, headersInit);
 
     return this;
 }

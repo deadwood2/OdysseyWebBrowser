@@ -34,6 +34,7 @@
 #include <WebCore/Timer.h>
 #include <wtf/BloomFilter.h>
 #include <wtf/Deque.h>
+#include <wtf/Function.h>
 #include <wtf/HashSet.h>
 #include <wtf/Optional.h>
 #include <wtf/WorkQueue.h>
@@ -61,7 +62,7 @@ public:
     typedef std::function<bool (std::unique_ptr<Record>)> RetrieveCompletionHandler;
     void retrieve(const Key&, unsigned priority, RetrieveCompletionHandler&&);
 
-    typedef std::function<void (const Data& mappedBody)> MappedBodyHandler;
+    typedef Function<void (const Data& mappedBody)> MappedBodyHandler;
     void store(const Record&, MappedBodyHandler&&);
 
     void remove(const Key&);
@@ -78,7 +79,7 @@ public:
         ShareCount = 1 << 1,
     };
     typedef unsigned TraverseFlags;
-    typedef std::function<void (const Record*, const RecordInfo&)> TraverseHandler;
+    typedef Function<void (const Record*, const RecordInfo&)> TraverseHandler;
     // Null record signals end.
     void traverse(const String& type, TraverseFlags, TraverseHandler&&);
 
@@ -86,7 +87,11 @@ public:
     size_t capacity() const { return m_capacity; }
     size_t approximateSize() const;
 
-    static const unsigned version = 5;
+    static const unsigned version = 10;
+#if PLATFORM(MAC)
+    /// Allow the last stable version of the cache to co-exist with the latest development one.
+    static const unsigned lastStableVersion = 9;
+#endif
 
     String basePath() const;
     String versionPath() const;

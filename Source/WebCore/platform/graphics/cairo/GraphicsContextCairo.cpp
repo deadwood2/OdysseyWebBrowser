@@ -259,17 +259,15 @@ void GraphicsContext::drawRect(const FloatRect& rect, float borderThickness)
     cairo_restore(cr);
 }
 
-void GraphicsContext::drawNativeImage(PassNativeImagePtr imagePtr, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& srcRect, CompositeOperator op, BlendMode blendMode, ImageOrientation orientation)
+void GraphicsContext::drawNativeImage(const NativeImagePtr& image, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& srcRect, CompositeOperator op, BlendMode blendMode, ImageOrientation orientation)
 {
     if (paintingDisabled())
         return;
 
     if (isRecording()) {
-        m_displayListRecorder->drawNativeImage(imagePtr, imageSize, destRect, srcRect, op, blendMode, orientation);
+        m_displayListRecorder->drawNativeImage(image, imageSize, destRect, srcRect, op, blendMode, orientation);
         return;
     }
-
-    NativeImagePtr image = imagePtr;
 
     platformContext()->save();
 
@@ -645,7 +643,7 @@ void GraphicsContext::drawFocusRing(const Vector<FloatRect>& rects, float width,
     drawFocusRing(path, width, 0, color);
 }
 
-void GraphicsContext::drawLineForText(const FloatPoint& origin, float width, bool printing, bool doubleUnderlines)
+void GraphicsContext::drawLineForText(const FloatPoint& origin, float width, bool printing, bool doubleUnderlines, StrokeStyle)
 {
     DashArray widths;
     widths.append(width);
@@ -653,7 +651,7 @@ void GraphicsContext::drawLineForText(const FloatPoint& origin, float width, boo
     drawLinesForText(origin, widths, printing, doubleUnderlines);
 }
 
-void GraphicsContext::drawLinesForText(const FloatPoint& point, const DashArray& widths, bool printing, bool doubleUnderlines)
+void GraphicsContext::drawLinesForText(const FloatPoint& point, const DashArray& widths, bool printing, bool doubleUnderlines, StrokeStyle)
 {
     if (paintingDisabled())
         return;
@@ -753,7 +751,7 @@ FloatRect GraphicsContext::roundToDevicePixels(const FloatRect& frect, RoundingM
         width = 1;
     else
         width = round(width);
-    if (height > -1 && width < 0)
+    if (height > -1 && height < 0)
         height = -1;
     else if (height > 0 && height < 1)
         height = 1;
@@ -1056,13 +1054,7 @@ void GraphicsContext::setPlatformCompositeOperation(CompositeOperator op, BlendM
     if (paintingDisabled())
         return;
 
-    cairo_operator_t cairo_op;
-    if (blendOp == BlendModeNormal)
-        cairo_op = toCairoOperator(op);
-    else
-        cairo_op = toCairoOperator(blendOp);
-
-    cairo_set_operator(platformContext()->cr(), cairo_op);
+    cairo_set_operator(platformContext()->cr(), toCairoOperator(op, blendOp));
 }
 
 void GraphicsContext::canvasClip(const Path& path, WindRule windRule)
@@ -1203,7 +1195,7 @@ void GraphicsContext::drawPattern(Image& image, const FloatRect& tileRect, const
         return;
 
     cairo_t* cr = platformContext()->cr();
-    drawPatternToCairoContext(cr, surface.get(), IntSize(image.size()), tileRect, patternTransform, phase, toCairoOperator(op), destRect);
+    drawPatternToCairoContext(cr, surface.get(), IntSize(image.size()), tileRect, patternTransform, phase, toCairoOperator(op, blendMode), destRect);
 }
 
 void GraphicsContext::setPlatformShouldAntialias(bool enable)

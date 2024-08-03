@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2008, 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2007, 2008, 2010, 2016 Apple Inc. All rights reserved.
  * Copyright (C) 2007 Justin Haygood (jhaygood@reaktix.com)
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,6 +32,7 @@
 
 #include <functional>
 #include <stdint.h>
+#include <wtf/Function.h>
 
 namespace WTF {
 
@@ -40,7 +41,7 @@ typedef uint32_t ThreadIdentifier;
 // Must be called from the main thread.
 WTF_EXPORT_PRIVATE void initializeMainThread();
 
-WTF_EXPORT_PRIVATE void callOnMainThread(std::function<void ()>);
+WTF_EXPORT_PRIVATE void callOnMainThread(Function<void ()>&&);
 
 #if PLATFORM(COCOA)
 WTF_EXPORT_PRIVATE void callOnWebThreadOrDispatchAsyncOnMainThread(void (^block)());
@@ -67,6 +68,7 @@ inline bool isUIThread() { return isMainThread(); }
 void initializeGCThreads();
 
 WTF_EXPORT_PRIVATE void registerGCThread();
+WTF_EXPORT_PRIVATE bool mayBeGCThread();
 WTF_EXPORT_PRIVATE bool isMainThreadOrGCThread();
 
 // NOTE: these functions are internal to the callOnMainThread implementation.
@@ -87,15 +89,16 @@ void initializeMainThreadToProcessMainThreadPlatform();
 } // namespace WTF
 
 using WTF::callOnMainThread;
+using WTF::canAccessThreadLocalDataForThread;
+using WTF::isMainThread;
+using WTF::isMainThreadOrGCThread;
+using WTF::isUIThread;
+using WTF::isWebThread;
+using WTF::mayBeGCThread;
+using WTF::setMainThreadCallbacksPaused;
 #if PLATFORM(COCOA)
 using WTF::callOnWebThreadOrDispatchAsyncOnMainThread;
 #endif
-using WTF::setMainThreadCallbacksPaused;
-using WTF::isMainThread;
-using WTF::isMainThreadOrGCThread;
-using WTF::canAccessThreadLocalDataForThread;
-using WTF::isUIThread;
-using WTF::isWebThread;
 #if USE(WEB_THREAD)
 using WTF::initializeWebThread;
 using WTF::initializeApplicationUIThreadIdentifier;

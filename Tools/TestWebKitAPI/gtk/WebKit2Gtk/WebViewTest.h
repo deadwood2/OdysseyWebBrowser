@@ -28,7 +28,7 @@
 class WebViewTest: public Test {
 public:
     MAKE_GLIB_TEST_FIXTURE(WebViewTest);
-    WebViewTest(WebKitUserContentManager* = nullptr);
+    WebViewTest();
     virtual ~WebViewTest();
 
     virtual void loadURI(const char* uri);
@@ -76,10 +76,11 @@ public:
 
     // Prohibit overrides because this is called when the web view is created
     // in our constructor, before a derived class's vtable is ready.
-    void initializeWebExtensions() override final { Test::initializeWebExtensions(); }
+    void initializeWebExtensions() final { Test::initializeWebExtensions(); }
 
     static gboolean webProcessCrashed(WebKitWebView*, WebViewTest*);
 
+    GRefPtr<WebKitUserContentManager> m_userContentManager;
     WebKitWebView* m_webView;
     GMainLoop* m_mainLoop;
     CString m_activeURI;

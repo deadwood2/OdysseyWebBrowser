@@ -38,7 +38,6 @@
 #import "WebFrameViewPrivate.h"
 #import "WebHistoryItemInternal.h"
 #import "WebHTMLViewPrivate.h"
-#import "WebKeyGenerator.h"
 #import "WebKitErrorsPrivate.h"
 #import "WebKitStatisticsPrivate.h"
 #import "WebKitVersionChecks.h"
@@ -917,6 +916,8 @@ static inline void addTypesFromClass(NSMutableDictionary *allTypes, Class objCCl
     Frame* coreFrame = [self _web_frame];
     BOOL maintainsBackForwardList = coreFrame && static_cast<BackForwardList*>(coreFrame->page()->backForward().client())->enabled() ? YES : NO;
     
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     count = [characters length];
     for (index = 0; index < count; ++index) {
         switch ([characters characterAtIndex:index]) {
@@ -1089,7 +1090,7 @@ static inline void addTypesFromClass(NSMutableDictionary *allTypes, Class objCCl
                 break;
         }
     }
-    
+#pragma clang diagnostic pop
     if (callSuper) {
         [super keyDown:event];
     } else {

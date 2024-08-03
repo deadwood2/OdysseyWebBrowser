@@ -52,7 +52,7 @@ void MergeIdenticalElementsCommand::doApply()
         children.append(*child);
 
     for (auto& child : children)
-        m_element2->insertBefore(WTFMove(child), m_atChild.get(), IGNORE_EXCEPTION);
+        m_element2->insertBefore(child, m_atChild.get(), IGNORE_EXCEPTION);
 
     m_element1->remove(IGNORE_EXCEPTION);
 }
@@ -62,7 +62,7 @@ void MergeIdenticalElementsCommand::doUnapply()
     ASSERT(m_element1);
     ASSERT(m_element2);
 
-    RefPtr<Node> atChild = m_atChild.release();
+    RefPtr<Node> atChild = WTFMove(m_atChild);
 
     ContainerNode* parent = m_element2->parentNode();
     if (!parent || !parent->hasEditableStyle())
@@ -79,7 +79,7 @@ void MergeIdenticalElementsCommand::doUnapply()
         children.append(*child);
 
     for (auto& child : children)
-        m_element1->appendChild(WTFMove(child), ec);
+        m_element1->appendChild(child, ec);
 }
 
 #ifndef NDEBUG

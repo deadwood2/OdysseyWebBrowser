@@ -28,7 +28,6 @@
 
 #include <algorithm>
 #include <wtf/MediaTime.h>
-#include <wtf/PassRefPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/Vector.h>
 
@@ -42,9 +41,6 @@ class PlatformTimeRanges {
 public:
     explicit PlatformTimeRanges() { }
     PlatformTimeRanges(const MediaTime& start, const MediaTime& end);
-    PlatformTimeRanges(const PlatformTimeRanges&);
-
-    PlatformTimeRanges& operator=(const PlatformTimeRanges&);
 
     MediaTime start(unsigned index) const;
     MediaTime start(unsigned index, bool& valid) const;
@@ -72,8 +68,6 @@ public:
     void dump(WTF::PrintStream&) const;
 
 private:
-    PlatformTimeRanges& copy(const PlatformTimeRanges&);
-
     // We consider all the Ranges to be semi-bounded as follow: [start, end[
     struct Range {
         Range() { }

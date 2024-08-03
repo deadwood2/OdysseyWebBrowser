@@ -41,6 +41,7 @@
 #include "ImageDocument.h"
 #include "MainFrame.h"
 #include "MediaDocument.h"
+#include "MediaPlayer.h"
 #include "MediaList.h"
 #include "MIMETypeRegistry.h"
 #include "Page.h"
@@ -81,8 +82,8 @@ public:
     }
 
 private:
-    virtual bool mediaPlayerNeedsSiteSpecificHacks() const override { return m_needsHacks; }
-    virtual String mediaPlayerDocumentHost() const override { return m_host; }
+    bool mediaPlayerNeedsSiteSpecificHacks() const override { return m_needsHacks; }
+    String mediaPlayerDocumentHost() const override { return m_host; }
 
     bool m_needsHacks;
     String m_host;
@@ -238,13 +239,13 @@ RefPtr<XMLDocument> DOMImplementation::createDocument(const String& namespaceURI
     if (!qualifiedName.isEmpty()) {
         documentElement = doc->createElementNS(namespaceURI, qualifiedName, ec);
         if (ec)
-            return 0;
+            return nullptr;
     }
 
     if (doctype)
         doc->appendChild(*doctype);
     if (documentElement)
-        doc->appendChild(documentElement.releaseNonNull());
+        doc->appendChild(*documentElement);
 
     return doc;
 }
@@ -312,7 +313,7 @@ Ref<HTMLDocument> DOMImplementation::createHTMLDocument(const String& title)
         auto titleElement = HTMLTitleElement::create(titleTag, document);
         titleElement->appendChild(document->createTextNode(title));
         ASSERT(document->head());
-        document->head()->appendChild(WTFMove(titleElement));
+        document->head()->appendChild(titleElement);
     }
     document->setSecurityOriginPolicy(m_document.securityOriginPolicy());
     return document;

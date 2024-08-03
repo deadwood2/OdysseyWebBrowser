@@ -39,17 +39,15 @@ public:
         return adoptRef(*new DeleteFromTextNodeCommand(WTFMove(node), offset, count, editingAction));
     }
 
-    const String& deletedText();
-
 protected:
     DeleteFromTextNodeCommand(RefPtr<Text>&&, unsigned offset, unsigned count, EditAction);
 
 private:
-    virtual void doApply() override;
-    virtual void doUnapply() override;
+    void doApply() override;
+    void doUnapply() override;
     
 #ifndef NDEBUG
-    virtual void getNodesInCommand(HashSet<Node*>&) override;
+    void getNodesInCommand(HashSet<Node*>&) override;
 #endif
     
     RefPtr<Text> m_node;
@@ -57,11 +55,6 @@ private:
     unsigned m_count;
     String m_text;
 };
-
-inline const String& DeleteFromTextNodeCommand::deletedText()
-{
-    return m_text;
-}
 
 } // namespace WebCore
 

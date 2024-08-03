@@ -37,7 +37,8 @@
 #import <WebCore/CSSPrimitiveValue.h>
 #import <WebCore/CSSPropertyNames.h>
 #import <WebCore/ColorMac.h>
-#import <WebCore/HTMLElement.h>
+#import <WebCore/Event.h>
+#import <WebCore/EventNames.h>
 #import <WebCore/HTMLInputElement.h>
 #import <WebCore/HTMLNames.h>
 #import <WebCore/HTMLOptionElement.h>
@@ -68,9 +69,9 @@ void PDFPluginAnnotation::attach(Element* parent)
     m_parent = parent;
     m_element = createAnnotationElement();
 
-    m_element->setAttribute(classAttr, "annotation");
-    m_element->addEventListener(eventNames().changeEvent, m_eventListener, false);
-    m_element->addEventListener(eventNames().blurEvent, m_eventListener, false);
+    m_element->setAttributeWithoutSynchronization(classAttr, AtomicString("annotation", AtomicString::ConstructFromLiteral));
+    m_element->addEventListener(eventNames().changeEvent, *m_eventListener, false);
+    m_element->addEventListener(eventNames().blurEvent, *m_eventListener, false);
 
     updateGeometry();
 
@@ -87,8 +88,8 @@ void PDFPluginAnnotation::commit()
 
 PDFPluginAnnotation::~PDFPluginAnnotation()
 {
-    m_element->removeEventListener(eventNames().changeEvent, m_eventListener.get(), false);
-    m_element->removeEventListener(eventNames().blurEvent, m_eventListener.get(), false);
+    m_element->removeEventListener(eventNames().changeEvent, *m_eventListener, false);
+    m_element->removeEventListener(eventNames().blurEvent, *m_eventListener, false);
 
     m_eventListener->setAnnotation(0);
 

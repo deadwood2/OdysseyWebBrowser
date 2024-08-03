@@ -43,19 +43,21 @@ ContentSecurityPolicySource::ContentSecurityPolicySource(const ContentSecurityPo
 {
 }
 
-bool ContentSecurityPolicySource::matches(const URL& url) const
+bool ContentSecurityPolicySource::matches(const URL& url, bool didReceiveRedirectResponse) const
 {
     if (!schemeMatches(url))
         return false;
     if (isSchemeOnly())
         return true;
-    return hostMatches(url) && portMatches(url) && pathMatches(url);
+    return hostMatches(url) && portMatches(url) && (didReceiveRedirectResponse || pathMatches(url));
 }
 
 bool ContentSecurityPolicySource::schemeMatches(const URL& url) const
 {
     if (m_scheme.isEmpty())
         return m_policy.protocolMatchesSelf(url);
+    if (equalLettersIgnoringASCIICase(m_scheme, "http"))
+        return url.protocolIsInHTTPFamily();
     return equalIgnoringASCIICase(url.protocol(), m_scheme);
 }
 
@@ -89,6 +91,9 @@ bool ContentSecurityPolicySource::portMatches(const URL& url) const
     int port = url.port();
 
     if (port == m_port)
+        return true;
+
+    if (isDefaultPortForProtocol(m_port, "http") && ((!port && url.protocolIs("https")) || isDefaultPortForProtocol(port, "https")))
         return true;
 
     if (!port)

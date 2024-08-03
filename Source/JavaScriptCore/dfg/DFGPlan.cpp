@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,7 +38,6 @@
 #include "DFGCleanUpPhase.h"
 #include "DFGConstantFoldingPhase.h"
 #include "DFGConstantHoistingPhase.h"
-#include "DFGCopyBarrierOptimizationPhase.h"
 #include "DFGCriticalEdgeBreakingPhase.h"
 #include "DFGDCEPhase.h"
 #include "DFGFailedFinalizer.h"
@@ -75,11 +74,11 @@
 #include "DFGVarargsForwardingPhase.h"
 #include "DFGVirtualRegisterAllocationPhase.h"
 #include "DFGWatchpointCollectionPhase.h"
-#include "Debugger.h"
 #include "JSCInlines.h"
 #include "OperandsInlines.h"
 #include "ProfilerDatabase.h"
 #include "TrackedReferences.h"
+#include "VMInlines.h"
 #include <wtf/CurrentTime.h>
 
 #if ENABLE(FTL_JIT)
@@ -91,14 +90,18 @@
 #include "FTLState.h"
 #endif
 
+namespace JSC {
+
+extern double totalDFGCompileTime;
+extern double totalFTLCompileTime;
+extern double totalFTLDFGCompileTime;
+extern double totalFTLB3CompileTime;
+
+}
+
 namespace JSC { namespace DFG {
 
 namespace {
-
-double totalDFGCompileTime;
-double totalFTLCompileTime;
-double totalFTLDFGCompileTime;
-double totalFTLB3CompileTime;
 
 void dumpAndVerifyGraph(Graph& graph, const char* text, bool forceDump = false)
 {
@@ -134,13 +137,13 @@ Profiler::CompilationKind profilerCompilationKindForMode(CompilationMode mode)
 Plan::Plan(CodeBlock* passedCodeBlock, CodeBlock* profiledDFGCodeBlock,
     CompilationMode mode, unsigned osrEntryBytecodeIndex,
     const Operands<JSValue>& mustHandleValues)
-    : vm(*passedCodeBlock->vm())
+    : vm(passedCodeBlock->vm())
     , codeBlock(passedCodeBlock)
     , profiledDFGCodeBlock(profiledDFGCodeBlock)
     , mode(mode)
     , osrEntryBytecodeIndex(osrEntryBytecodeIndex)
     , mustHandleValues(mustHandleValues)
-    , compilation(codeBlock->vm()->m_perBytecodeProfiler ? adoptRef(new Profiler::Compilation(codeBlock->vm()->m_perBytecodeProfiler->ensureBytecodesFor(codeBlock), profilerCompilationKindForMode(mode))) : 0)
+    , compilation(vm->m_perBytecodeProfiler ? adoptRef(new Profiler::Compilation(vm->m_perBytecodeProfiler->ensureBytecodesFor(codeBlock), profilerCompilationKindForMode(mode))) : 0)
     , inlineCallFrames(adoptRef(new InlineCallFrameSet()))
     , identifiers(codeBlock)
     , weakReferences(codeBlock)
@@ -155,12 +158,14 @@ Plan::~Plan()
 bool Plan::computeCompileTimes() const
 {
     return reportCompileTimes()
-        || Options::reportTotalCompileTimes();
+        || Options::reportTotalCompileTimes()
+        || (vm && vm->m_perBytecodeProfiler);
 }
 
 bool Plan::reportCompileTimes() const
 {
     return Options::reportCompileTimes()
+        || Options::reportDFGCompileTimes()
         || (Options::reportFTLCompileTimes() && isFTL(mode));
 }
 
@@ -170,12 +175,11 @@ void Plan::compileInThread(LongLivedState& longLivedState, ThreadData* threadDat
     
     double before = 0;
     CString codeBlockName;
-    if (computeCompileTimes())
+    if (UNLIKELY(computeCompileTimes()))
         before = monotonicallyIncreasingTimeMS();
-    if (reportCompileTimes())
+    if (UNLIKELY(reportCompileTimes()))
         codeBlockName = toCString(*codeBlock);
     
-    SamplingRegion samplingRegion("DFG Compilation (Plan)");
     CompilationScope compilationScope;
 
     if (logCompilationChanges(mode))
@@ -187,40 +191,43 @@ void Plan::compileInThread(LongLivedState& longLivedState, ThreadData* threadDat
     RELEASE_ASSERT((path == CancelPath) == (stage == Cancelled));
     
     double after = 0;
-    if (computeCompileTimes())
+    if (UNLIKELY(computeCompileTimes())) {
         after = monotonicallyIncreasingTimeMS();
     
-    if (Options::reportTotalCompileTimes()) {
-        if (isFTL(mode)) {
-            totalFTLCompileTime += after - before;
-            totalFTLDFGCompileTime += m_timeBeforeFTL - before;
-            totalFTLB3CompileTime += after - m_timeBeforeFTL;
-        } else
-            totalDFGCompileTime += after - before;
-    }
-    
-    if (reportCompileTimes()) {
-        const char* pathName;
-        switch (path) {
-        case FailPath:
-            pathName = "N/A (fail)";
-            break;
-        case DFGPath:
-            pathName = "DFG";
-            break;
-        case FTLPath:
-            pathName = "FTL";
-            break;
-        case CancelPath:
-            pathName = "Cancelled";
-            break;
-        default:
-            RELEASE_ASSERT_NOT_REACHED();
-#if COMPILER_QUIRK(CONSIDERS_UNREACHABLE_CODE)
-            pathName = "";
-#endif
-            break;
+        if (Options::reportTotalCompileTimes()) {
+            if (isFTL(mode)) {
+                totalFTLCompileTime += after - before;
+                totalFTLDFGCompileTime += m_timeBeforeFTL - before;
+                totalFTLB3CompileTime += after - m_timeBeforeFTL;
+            } else
+                totalDFGCompileTime += after - before;
         }
+    }
+    const char* pathName = nullptr;
+    switch (path) {
+    case FailPath:
+        pathName = "N/A (fail)";
+        break;
+    case DFGPath:
+        pathName = "DFG";
+        break;
+    case FTLPath:
+        pathName = "FTL";
+        break;
+    case CancelPath:
+        pathName = "Cancelled";
+        break;
+    default:
+        RELEASE_ASSERT_NOT_REACHED();
+        break;
+    }
+    if (codeBlock) { // codeBlock will be null if the compilation was cancelled.
+        if (path == FTLPath)
+            CODEBLOCK_LOG_EVENT(codeBlock, "ftlCompile", ("took ", after - before, " ms (DFG: ", m_timeBeforeFTL - before, ", B3: ", after - m_timeBeforeFTL, ") with ", pathName));
+        else
+            CODEBLOCK_LOG_EVENT(codeBlock, "dfgCompile", ("took ", after - before, " ms with ", pathName));
+    }
+    if (UNLIKELY(reportCompileTimes())) {
         dataLog("Optimized ", codeBlockName, " using ", mode, " with ", pathName, " into ", finalizer ? finalizer->codeSize() : 0, " bytes in ", after - before, " ms");
         if (path == FTLPath)
             dataLog(" (DFG: ", m_timeBeforeFTL - before, ", B3: ", after - m_timeBeforeFTL, ")");
@@ -230,13 +237,15 @@ void Plan::compileInThread(LongLivedState& longLivedState, ThreadData* threadDat
 
 Plan::CompilationPath Plan::compileInThreadImpl(LongLivedState& longLivedState)
 {
+    cleanMustHandleValuesIfNecessary();
+    
     if (verboseCompilationEnabled(mode) && osrEntryBytecodeIndex != UINT_MAX) {
         dataLog("\n");
         dataLog("Compiler must handle OSR entry from bc#", osrEntryBytecodeIndex, " with values: ", mustHandleValues, "\n");
         dataLog("\n");
     }
     
-    Graph dfg(vm, *this, longLivedState);
+    Graph dfg(*vm, *this, longLivedState);
     
     if (!parse(dfg)) {
         finalizer = std::make_unique<FailedFinalizer>(*this);
@@ -300,7 +309,6 @@ Plan::CompilationPath Plan::compileInThreadImpl(LongLivedState& longLivedState)
         validate(dfg);
         
     performStrengthReduction(dfg);
-    performLocalCSE(dfg);
     performCPSRethreading(dfg);
     performCFA(dfg);
     performConstantFolding(dfg);
@@ -357,8 +365,6 @@ Plan::CompilationPath Plan::compileInThreadImpl(LongLivedState& longLivedState)
         performCleanUp(dfg);
         performCPSRethreading(dfg);
         performDCE(dfg);
-        if (Options::useCopyBarrierOptimization())
-            performCopyBarrierOptimization(dfg);
         performPhantomInsertion(dfg);
         performStackLayout(dfg);
         performVirtualRegisterAllocation(dfg);
@@ -398,8 +404,6 @@ Plan::CompilationPath Plan::compileInThreadImpl(LongLivedState& longLivedState)
         performConstantHoisting(dfg);
         performGlobalCSE(dfg);
         performLivenessAnalysis(dfg);
-        performIntegerRangeOptimization(dfg);
-        performLivenessAnalysis(dfg);
         performCFA(dfg);
         performConstantFolding(dfg);
         performCleanUp(dfg); // Reduce the graph size a lot.
@@ -422,7 +426,19 @@ Plan::CompilationPath Plan::compileInThreadImpl(LongLivedState& longLivedState)
         // wrong with running LICM earlier, if we wanted to put other CFG transforms above this point.
         // Alternatively, we could run loop pre-header creation after SSA conversion - but if we did that
         // then we'd need to do some simple SSA fix-up.
+        performLivenessAnalysis(dfg);
+        performCFA(dfg);
         performLICM(dfg);
+
+        // FIXME: Currently: IntegerRangeOptimization *must* be run after LICM.
+        //
+        // IntegerRangeOptimization makes changes on nodes based on preceding blocks
+        // and nodes. LICM moves nodes which can invalidates assumptions used
+        // by IntegerRangeOptimization.
+        //
+        // Ideally, the dependencies should be explicit. See https://bugs.webkit.org/show_bug.cgi?id=157534.
+        performLivenessAnalysis(dfg);
+        performIntegerRangeOptimization(dfg);
         
         performCleanUp(dfg);
         performIntegerCheckCombining(dfg);
@@ -439,8 +455,6 @@ Plan::CompilationPath Plan::compileInThreadImpl(LongLivedState& longLivedState)
             performMovHintRemoval(dfg);
         performCleanUp(dfg);
         performDCE(dfg); // We rely on this to kill dead code that won't be recognized as dead by B3.
-        if (Options::useCopyBarrierOptimization())
-            performCopyBarrierOptimization(dfg);
         performStackLayout(dfg);
         performLivenessAnalysis(dfg);
         performOSRAvailabilityAnalysis(dfg);
@@ -464,7 +478,7 @@ Plan::CompilationPath Plan::compileInThreadImpl(LongLivedState& longLivedState)
         FTL::State state(dfg);
         FTL::lowerDFGToB3(state);
         
-        if (computeCompileTimes())
+        if (UNLIKELY(computeCompileTimes()))
             m_timeBeforeFTL = monotonicallyIncreasingTimeMS();
         
         if (Options::b3AlwaysFailsBeforeCompile()) {
@@ -525,19 +539,14 @@ bool Plan::isStillValid()
 void Plan::reallyAdd(CommonData* commonData)
 {
     watchpoints.reallyAdd(codeBlock, *commonData);
-    identifiers.reallyAdd(vm, commonData);
-    weakReferences.reallyAdd(vm, commonData);
-    transitions.reallyAdd(vm, commonData);
+    identifiers.reallyAdd(*vm, commonData);
+    weakReferences.reallyAdd(*vm, commonData);
+    transitions.reallyAdd(*vm, commonData);
 }
 
 void Plan::notifyCompiling()
 {
     stage = Compiling;
-}
-
-void Plan::notifyCompiled()
-{
-    stage = Compiled;
 }
 
 void Plan::notifyReady()
@@ -549,10 +558,12 @@ void Plan::notifyReady()
 CompilationResult Plan::finalizeWithoutNotifyingCallback()
 {
     // We will establish new references from the code block to things. So, we need a barrier.
-    vm.heap.writeBarrier(codeBlock);
+    vm->heap.writeBarrier(codeBlock);
     
-    if (!isStillValid())
+    if (!isStillValid()) {
+        CODEBLOCK_LOG_EVENT(codeBlock, "dfgFinalize", ("invalidated"));
         return CompilationInvalidated;
+    }
 
     bool result;
     if (codeBlock->codeType() == FunctionCode)
@@ -560,8 +571,10 @@ CompilationResult Plan::finalizeWithoutNotifyingCallback()
     else
         result = finalizer->finalize();
     
-    if (!result)
+    if (!result) {
+        CODEBLOCK_LOG_EVENT(codeBlock, "dfgFinalize", ("failed"));
         return CompilationFailed;
+    }
     
     reallyAdd(codeBlock->jitCode()->dfgCommon());
     
@@ -580,6 +593,7 @@ CompilationResult Plan::finalizeWithoutNotifyingCallback()
         codeBlock->jitCode()->validateReferences(trackedReferences);
     }
     
+    CODEBLOCK_LOG_EVENT(codeBlock, "dfgFinalize", ("succeeded"));
     return CompilationSuccessful;
 }
 
@@ -609,7 +623,8 @@ void Plan::checkLivenessAndVisitChildren(SlotVisitor& visitor)
 {
     if (!isKnownToBeLiveDuringGC())
         return;
-    
+
+    cleanMustHandleValuesIfNecessary();
     for (unsigned i = mustHandleValues.size(); i--;)
         visitor.appendUnbarrieredValue(&mustHandleValues[i]);
 
@@ -643,6 +658,7 @@ bool Plan::isKnownToBeLiveDuringGC()
 
 void Plan::cancel()
 {
+    vm = nullptr;
     codeBlock = nullptr;
     profiledDFGCodeBlock = nullptr;
     mustHandleValues.clear();
@@ -657,17 +673,27 @@ void Plan::cancel()
     stage = Cancelled;
 }
 
-HashMap<CString, double> Plan::compileTimeStats()
+void Plan::cleanMustHandleValuesIfNecessary()
 {
-    HashMap<CString, double> result;
-    if (Options::reportTotalCompileTimes()) {
-        result.add("Compile Time", totalDFGCompileTime + totalFTLCompileTime);
-        result.add("DFG Compile Time", totalDFGCompileTime);
-        result.add("FTL Compile Time", totalFTLCompileTime);
-        result.add("FTL (DFG) Compile Time", totalFTLDFGCompileTime);
-        result.add("FTL (B3) Compile Time", totalFTLB3CompileTime);
+    LockHolder locker(mustHandleValueCleaningLock);
+    
+    if (!mustHandleValuesMayIncludeGarbage)
+        return;
+    
+    mustHandleValuesMayIncludeGarbage = false;
+    
+    if (!codeBlock)
+        return;
+    
+    if (!mustHandleValues.numberOfLocals())
+        return;
+    
+    FastBitVector liveness = codeBlock->alternative()->livenessAnalysis().getLivenessInfoAtBytecodeOffset(osrEntryBytecodeIndex);
+    
+    for (unsigned local = mustHandleValues.numberOfLocals(); local--;) {
+        if (!liveness.get(local))
+            mustHandleValues.local(local) = jsUndefined();
     }
-    return result;
 }
 
 } } // namespace JSC::DFG

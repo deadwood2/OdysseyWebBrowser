@@ -195,7 +195,7 @@ static unsigned categoryForVMTag(unsigned tag)
     default:
         return MemoryCategory::Other;
     }
-};
+}
 
 void ResourceUsageThread::platformThreadBody(JSC::VM* vm, ResourceUsageData& data)
 {
@@ -219,14 +219,26 @@ void ResourceUsageThread::platformThreadBody(JSC::VM* vm, ResourceUsageData& dat
     data.totalDirtySize = totalDirtyPages * vmPageSize();
 
     size_t currentGCHeapCapacity = vm->heap.blockBytesAllocated();
-    size_t currentGCOwned = vm->heap.extraMemorySize();
+    size_t currentGCOwnedExtra = vm->heap.extraMemorySize();
+    size_t currentGCOwnedExternal = vm->heap.externalMemorySize();
+    ASSERT(currentGCOwnedExternal <= currentGCOwnedExtra);
 
     data.categories[MemoryCategory::GCHeap].dirtySize = currentGCHeapCapacity;
-    data.categories[MemoryCategory::GCOwned].dirtySize = currentGCOwned;
+    data.categories[MemoryCategory::GCOwned].dirtySize = currentGCOwnedExtra - currentGCOwnedExternal;
+    data.categories[MemoryCategory::GCOwned].externalSize = currentGCOwnedExternal;
 
-    // Subtract known subchunks from the bmalloc bucket.
-    // FIXME: Handle running with bmalloc disabled.
-    data.categories[MemoryCategory::bmalloc].dirtySize -= currentGCHeapCapacity + currentGCOwned;
+    auto& mallocBucket = isFastMallocEnabled() ? data.categories[MemoryCategory::bmalloc] : data.categories[MemoryCategory::LibcMalloc];
+
+    // First subtract memory allocated by the GC heap, since we track that separately.
+    mallocBucket.dirtySize -= currentGCHeapCapacity;
+
+    // It would be nice to assert that the "GC owned" amount is smaller than the total dirty malloc size,
+    // but since the "GC owned" accounting is inexact, it's not currently feasible.
+    size_t currentGCOwnedGenerallyInMalloc = currentGCOwnedExtra - currentGCOwnedExternal;
+    if (currentGCOwnedGenerallyInMalloc < mallocBucket.dirtySize)
+        mallocBucket.dirtySize -= currentGCOwnedGenerallyInMalloc;
+
+    data.totalExternalSize = currentGCOwnedExternal;
 
     data.timeOfNextEdenCollection = vm->heap.edenActivityCallback()->nextFireTime();
     data.timeOfNextFullCollection = vm->heap.fullActivityCallback()->nextFireTime();

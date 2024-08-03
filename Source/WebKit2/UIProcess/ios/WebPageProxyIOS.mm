@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,6 +34,7 @@
 #import "InteractionInformationAtPosition.h"
 #import "NativeWebKeyboardEvent.h"
 #import "PageClient.h"
+#import "PrintInfo.h"
 #import "RemoteLayerTreeDrawingAreaProxy.h"
 #import "RemoteLayerTreeDrawingAreaProxyMessages.h"
 #import "RemoteLayerTreeTransaction.h"
@@ -138,7 +139,7 @@ void WebPageProxy::gestureCallback(const WebCore::IntPoint& point, uint32_t gest
     callback->performCallbackWithReturnValue(point, gestureType, gestureState, flags);
 }
 
-void WebPageProxy::touchesCallback(const WebCore::IntPoint& point, uint32_t touches, uint64_t callbackID)
+void WebPageProxy::touchesCallback(const WebCore::IntPoint& point, uint32_t touches, uint32_t flags, uint64_t callbackID)
 {
     auto callback = m_callbacks.take<TouchesCallback>(callbackID);
     if (!callback) {
@@ -146,7 +147,7 @@ void WebPageProxy::touchesCallback(const WebCore::IntPoint& point, uint32_t touc
         return;
     }
 
-    callback->performCallbackWithReturnValue(point, touches);
+    callback->performCallbackWithReturnValue(point, touches, flags);
 }
 
 void WebPageProxy::autocorrectionDataCallback(const Vector<WebCore::FloatRect>& rects, const String& fontName, float fontSize, uint64_t fontTraits, uint64_t callbackID)
@@ -160,9 +161,9 @@ void WebPageProxy::autocorrectionDataCallback(const Vector<WebCore::FloatRect>& 
     callback->performCallbackWithReturnValue(rects, fontName, fontSize, fontTraits);
 }
 
-void WebPageProxy::dictationContextCallback(const String& selectedText, const String& beforeText, const String& afterText, uint64_t callbackID)
+void WebPageProxy::selectionContextCallback(const String& selectedText, const String& beforeText, const String& afterText, uint64_t callbackID)
 {
-    auto callback = m_callbacks.take<DictationContextCallback>(callbackID);
+    auto callback = m_callbacks.take<SelectionContextCallback>(callbackID);
     if (!callback) {
         ASSERT_NOT_REACHED();
         return;
@@ -182,18 +183,16 @@ void WebPageProxy::autocorrectionContextCallback(const String& beforeText, const
     callback->performCallbackWithReturnValue(beforeText, markedText, selectedText, afterText, location, length);
 }
 
-void WebPageProxy::updateVisibleContentRects(const WebCore::FloatRect& exposedRect, const WebCore::FloatRect& unobscuredRect, const WebCore::FloatRect& unobscuredRectInScrollViewCoordinates, const WebCore::FloatRect& customFixedPositionRect, double scale, bool inStableState, bool isChangingObscuredInsetsInteractively, bool allowShrinkToFit, double timestamp, double horizontalVelocity, double verticalVelocity, double scaleChangeRate)
+void WebPageProxy::updateVisibleContentRects(const VisibleContentRectUpdateInfo& visibleContentRectUpdate)
 {
     if (!isValid())
         return;
 
-    VisibleContentRectUpdateInfo visibleContentRectUpdateInfo(exposedRect, unobscuredRect, unobscuredRectInScrollViewCoordinates, customFixedPositionRect, scale, inStableState, isChangingObscuredInsetsInteractively, allowShrinkToFit, timestamp, horizontalVelocity, verticalVelocity, scaleChangeRate, downcast<RemoteLayerTreeDrawingAreaProxy>(*drawingArea()).lastCommittedLayerTreeTransactionID());
-
-    if (visibleContentRectUpdateInfo == m_lastVisibleContentRectUpdate)
+    if (visibleContentRectUpdate == m_lastVisibleContentRectUpdate)
         return;
 
-    m_lastVisibleContentRectUpdate = visibleContentRectUpdateInfo;
-    m_process->send(Messages::ViewUpdateDispatcher::VisibleContentRectUpdate(m_pageID, visibleContentRectUpdateInfo), 0);
+    m_lastVisibleContentRectUpdate = visibleContentRectUpdate;
+    m_process->send(Messages::ViewUpdateDispatcher::VisibleContentRectUpdate(m_pageID, visibleContentRectUpdate), 0);
 }
 
 void WebPageProxy::resendLastVisibleContentRects()
@@ -302,9 +301,9 @@ void WebPageProxy::synchronizeDynamicViewportUpdate()
     }
 
     // If m_dynamicViewportSizeUpdateWaitingForTarget is false, we are waiting for the next valid frame with the hope it is the one for the new target.
-    // If m_dynamicViewportSizeUpdateWaitingForTarget is still true, this is a desesperate attempt to get the valid frame before finishing the animation.
+    // If m_dynamicViewportSizeUpdateWaitingForTarget is still true, this is a desperate attempt to get the valid frame before finishing the animation.
     if (m_dynamicViewportSizeUpdateWaitingForLayerTreeCommit)
-        m_process->connection()->waitForAndDispatchImmediately<Messages::RemoteLayerTreeDrawingAreaProxy::CommitLayerTree>(m_pageID, std::chrono::seconds(1), IPC::InterruptWaitingIfSyncMessageArrives);
+        m_drawingArea->waitForDidUpdateViewState();
 
     m_dynamicViewportSizeUpdateWaitingForTarget = false;
     m_dynamicViewportSizeUpdateWaitingForLayerTreeCommit = false;
@@ -313,6 +312,14 @@ void WebPageProxy::synchronizeDynamicViewportUpdate()
 void WebPageProxy::setViewportConfigurationMinimumLayoutSize(const WebCore::FloatSize& size)
 {
     m_process->send(Messages::WebPage::SetViewportConfigurationMinimumLayoutSize(size), m_pageID);
+}
+
+void WebPageProxy::setForceAlwaysUserScalable(bool userScalable)
+{
+    if (m_forceAlwaysUserScalable == userScalable)
+        return;
+    m_forceAlwaysUserScalable = userScalable;
+    m_process->send(Messages::WebPage::SetForceAlwaysUserScalable(userScalable), m_pageID);
 }
 
 void WebPageProxy::setMaximumUnobscuredSize(const WebCore::FloatSize& size)
@@ -357,7 +364,7 @@ void WebPageProxy::didCommitLayerTree(const WebKit::RemoteLayerTreeTransaction& 
     if (m_wantsSessionRestorationRenderTreeSizeThresholdEvent && !m_hitRenderTreeSizeThreshold
         && exceedsRenderTreeSizeSizeThreshold(m_sessionRestorationRenderTreeSize, layerTreeTransaction.renderTreeSize())) {
         m_hitRenderTreeSizeThreshold = true;
-        didLayout(WebCore::ReachedSessionRestorationRenderTreeSizeThreshold);
+        didReachLayoutMilestone(WebCore::ReachedSessionRestorationRenderTreeSizeThreshold);
     }
 
     if (m_hasDeferredStartAssistingNode) {
@@ -365,6 +372,11 @@ void WebPageProxy::didCommitLayerTree(const WebKit::RemoteLayerTreeTransaction& 
         m_hasDeferredStartAssistingNode = false;
         m_deferredNodeAssistanceArguments = nullptr;
     }
+}
+
+void WebPageProxy::layerTreeCommitComplete()
+{
+    m_pageClient.layerTreeCommitComplete();
 }
 
 void WebPageProxy::selectWithGesture(const WebCore::IntPoint point, WebCore::TextGranularity granularity, uint32_t gestureType, uint32_t gestureState, bool isInteractingWithAssistedNode, std::function<void (const WebCore::IntPoint&, uint32_t, uint32_t, uint32_t, CallbackBase::Error)> callbackFunction)
@@ -378,10 +390,10 @@ void WebPageProxy::selectWithGesture(const WebCore::IntPoint point, WebCore::Tex
     m_process->send(Messages::WebPage::SelectWithGesture(point, (uint32_t)granularity, gestureType, gestureState, isInteractingWithAssistedNode, callbackID), m_pageID);
 }
 
-void WebPageProxy::updateSelectionWithTouches(const WebCore::IntPoint point, uint32_t touches, bool baseIsStart, std::function<void (const WebCore::IntPoint&, uint32_t, CallbackBase::Error)> callbackFunction)
+void WebPageProxy::updateSelectionWithTouches(const WebCore::IntPoint point, uint32_t touches, bool baseIsStart, std::function<void (const WebCore::IntPoint&, uint32_t, uint32_t, CallbackBase::Error)> callbackFunction)
 {
     if (!isValid()) {
-        callbackFunction(WebCore::IntPoint(), 0, CallbackBase::Error::Unknown);
+        callbackFunction(WebCore::IntPoint(), 0, 0, CallbackBase::Error::Unknown);
         return;
     }
 
@@ -545,15 +557,20 @@ void WebPageProxy::getAutocorrectionContext(String& beforeContext, String& marke
     m_process->sendSync(Messages::WebPage::GetAutocorrectionContext(), Messages::WebPage::GetAutocorrectionContext::Reply(beforeContext, markedText, selectedText, afterContext, location, length), m_pageID);
 }
 
-void WebPageProxy::getLookupContextAtPoint(const WebCore::IntPoint& point, std::function<void(const String&, CallbackBase::Error)> callbackFunction)
+void WebPageProxy::getSelectionContext(std::function<void(const String&, const String&, const String&, CallbackBase::Error)> callbackFunction)
 {
     if (!isValid()) {
-        callbackFunction(String(), CallbackBase::Error::Unknown);
+        callbackFunction(String(), String(), String(), CallbackBase::Error::Unknown);
         return;
     }
     
     uint64_t callbackID = m_callbacks.put(WTFMove(callbackFunction), m_process->throttler().backgroundActivityToken());
-    m_process->send(Messages::WebPage::GetLookupContextAtPoint(point, callbackID), m_pageID);
+    m_process->send(Messages::WebPage::GetSelectionContext(callbackID), m_pageID);
+}
+
+void WebPageProxy::handleTwoFingerTapAtPoint(const WebCore::IntPoint& point, uint64_t requestID)
+{
+    process().send(Messages::WebPage::HandleTwoFingerTapAtPoint(point, requestID), m_pageID);
 }
 
 void WebPageProxy::selectWithTwoTouches(const WebCore::IntPoint from, const WebCore::IntPoint to, uint32_t gestureType, uint32_t gestureState, std::function<void (const WebCore::IntPoint&, uint32_t, uint32_t, uint32_t, CallbackBase::Error)> callbackFunction)
@@ -620,6 +637,11 @@ void WebPageProxy::applicationDidEnterBackground()
     m_process->send(Messages::WebPage::ApplicationDidEnterBackground(isSuspendedUnderLock), m_pageID);
 }
 
+void WebPageProxy::applicationDidFinishSnapshottingAfterEnteringBackground()
+{
+    m_process->send(Messages::WebPage::ApplicationDidFinishSnapshottingAfterEnteringBackground(), m_pageID);
+}
+
 void WebPageProxy::applicationWillEnterForeground()
 {
     bool isSuspendedUnderLock = [UIApp isSuspendedUnderLock];
@@ -633,8 +655,10 @@ void WebPageProxy::applicationWillResignActive()
 
 void WebPageProxy::applicationDidBecomeActive()
 {
+#if HAVE(AVKIT)
     if (m_videoFullscreenManager)
         m_videoFullscreenManager->applicationDidBecomeActive();
+#endif
     m_process->send(Messages::WebPage::ApplicationDidBecomeActive(), m_pageID);
 }
 
@@ -798,9 +822,9 @@ void WebPageProxy::couldNotRestorePageState()
     m_pageClient.couldNotRestorePageState();
 }
 
-void WebPageProxy::restorePageState(const WebCore::FloatRect& exposedRect, double scale)
+void WebPageProxy::restorePageState(const WebCore::FloatPoint& scrollPosition, const WebCore::FloatPoint& scrollOrigin, const WebCore::FloatSize& obscuredInsetOnSave, double scale)
 {
-    m_pageClient.restorePageState(exposedRect, scale);
+    m_pageClient.restorePageState(scrollPosition, scrollOrigin, obscuredInsetOnSave, scale);
 }
 
 void WebPageProxy::restorePageCenterAndScale(const WebCore::FloatPoint& center, double scale)
@@ -941,9 +965,25 @@ void WebPageProxy::disableDoubleTapGesturesDuringTapIfNecessary(uint64_t request
     m_pageClient.disableDoubleTapGesturesDuringTapIfNecessary(requestID);
 }
 
-void WebPageProxy::didFinishDrawingPagesToPDF(const IPC::DataReference& pdfData)
+uint32_t WebPageProxy::computePagesForPrintingAndDrawToPDF(uint64_t frameID, const PrintInfo& printInfo, DrawToPDFCallback::CallbackFunction&& callback)
 {
-    m_pageClient.didFinishDrawingPagesToPDF(pdfData);
+    if (!isValid()) {
+        callback(IPC::DataReference(), CallbackBase::Error::OwnerWasInvalidated);
+        return 0;
+    }
+
+    uint32_t pageCount = 0;
+    uint64_t callbackID = m_callbacks.put(WTFMove(callback), m_process->throttler().backgroundActivityToken());
+    using Message = Messages::WebPage::ComputePagesForPrintingAndDrawToPDF;
+    process().sendSync(Message(frameID, printInfo, callbackID), Message::Reply(pageCount), m_pageID);
+    return pageCount;
+}
+
+void WebPageProxy::drawToPDFCallback(const IPC::DataReference& pdfData, uint64_t callbackID)
+{
+    auto callback = m_callbacks.take<DrawToPDFCallback>(callbackID);
+    RELEASE_ASSERT(callback);
+    callback->performCallbackWithReturnValue(pdfData);
 }
 
 void WebPageProxy::contentSizeCategoryDidChange(const String& contentSizeCategory)

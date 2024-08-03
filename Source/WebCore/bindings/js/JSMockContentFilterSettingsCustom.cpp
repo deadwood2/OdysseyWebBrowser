@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,7 @@
 #if ENABLE(CONTENT_FILTERING)
 
 #include "JSDOMBinding.h"
+#include "JSDOMConvert.h"
 #include "MockContentFilterSettings.h"
 
 using namespace JSC;
@@ -57,7 +58,10 @@ JSValue JSMockContentFilterSettings::decisionPoint(ExecState&) const
 
 void JSMockContentFilterSettings::setDecisionPoint(ExecState& state, JSValue value)
 {
-    uint8_t nativeValue { toUInt8(&state, value, EnforceRange) };
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    uint8_t nativeValue { convert<uint8_t>(state, value, EnforceRange) };
     if (state.hadException())
         return;
 
@@ -73,7 +77,7 @@ void JSMockContentFilterSettings::setDecisionPoint(ExecState& state, JSValue val
         return;
     }
 
-    throwTypeError(&state, String::format("%u is not a valid decisionPoint value.", nativeValue));
+    throwTypeError(&state, scope, String::format("%u is not a valid decisionPoint value.", nativeValue));
 }
 
 static inline JSValue toJSValue(Decision decision)
@@ -90,7 +94,10 @@ static inline JSValue toJSValue(Decision decision)
 
 static inline Decision toDecision(ExecState& state, JSValue value)
 {
-    uint8_t nativeValue { toUInt8(&state, value, EnforceRange) };
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    uint8_t nativeValue { convert<uint8_t>(state, value, EnforceRange) };
     if (state.hadException())
         return Decision::Allow;
 
@@ -101,7 +108,7 @@ static inline Decision toDecision(ExecState& state, JSValue value)
         return decision;
     }
 
-    throwTypeError(&state, String::format("%u is not a valid decision value.", nativeValue));
+    throwTypeError(&state, scope, String::format("%u is not a valid decision value.", nativeValue));
     return Decision::Allow;
 }
 

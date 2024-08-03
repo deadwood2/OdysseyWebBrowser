@@ -22,7 +22,6 @@
 #include "config.h"
 #include "RenderTextControl.h"
 
-#include "CSSPrimitiveValueMappings.h"
 #include "HTMLTextFormControlElement.h"
 #include "HitTestResult.h"
 #include "RenderText.h"
@@ -37,7 +36,7 @@
 
 namespace WebCore {
 
-RenderTextControl::RenderTextControl(HTMLTextFormControlElement& element, Ref<RenderStyle>&& style)
+RenderTextControl::RenderTextControl(HTMLTextFormControlElement& element, RenderStyle&& style)
     : RenderBlockFlow(element, WTFMove(style))
 {
 }
@@ -66,56 +65,11 @@ void RenderTextControl::styleDidChange(StyleDifference diff, const RenderStyle* 
     if (innerTextRenderer) {
         // We may have set the width and the height in the old style in layout().
         // Reset them now to avoid getting a spurious layout hint.
-        innerTextRenderer->style().setHeight(Length());
-        innerTextRenderer->style().setWidth(Length());
-        innerTextRenderer->setStyle(createInnerTextStyle(&style()));
+        innerTextRenderer->mutableStyle().setHeight(Length());
+        innerTextRenderer->mutableStyle().setWidth(Length());
+        innerTextRenderer->setStyle(textFormControlElement().createInnerTextStyle(style()));
     }
     textFormControlElement().updatePlaceholderVisibility();
-}
-
-void RenderTextControl::adjustInnerTextStyle(const RenderStyle* startStyle, RenderStyle& textBlockStyle) const
-{
-    // The inner block, if present, always has its direction set to LTR,
-    // so we need to inherit the direction and unicode-bidi style from the element.
-    textBlockStyle.setDirection(style().direction());
-    textBlockStyle.setUnicodeBidi(style().unicodeBidi());
-
-    HTMLTextFormControlElement& control = textFormControlElement();
-    if (HTMLElement* innerText = control.innerTextElement()) {
-        if (const StyleProperties* properties = innerText->presentationAttributeStyle()) {
-            RefPtr<CSSValue> value = properties->getPropertyCSSValue(CSSPropertyWebkitUserModify);
-            if (is<CSSPrimitiveValue>(value.get()))
-                textBlockStyle.setUserModify(downcast<CSSPrimitiveValue>(*value));
-        }
-    }
-
-    if (control.isDisabledFormControl())
-        textBlockStyle.setColor(theme().disabledTextColor(textBlockStyle.visitedDependentColor(CSSPropertyColor), startStyle->visitedDependentColor(CSSPropertyBackgroundColor)));
-#if PLATFORM(IOS)
-    if (textBlockStyle.textSecurity() != TSNONE && !textBlockStyle.isLeftToRightDirection()) {
-        // Preserve the alignment but force the direction to LTR so that the last-typed, unmasked character
-        // (which cannot have RTL directionality) will appear to the right of the masked characters. See <rdar://problem/7024375>.
-        
-        switch (textBlockStyle.textAlign()) {
-        case TASTART:
-        case JUSTIFY:
-            textBlockStyle.setTextAlign(RIGHT);
-            break;
-        case TAEND:
-            textBlockStyle.setTextAlign(LEFT);
-            break;
-        case LEFT:
-        case RIGHT:
-        case CENTER:
-        case WEBKIT_LEFT:
-        case WEBKIT_RIGHT:
-        case WEBKIT_CENTER:
-            break;
-        }
-
-        textBlockStyle.setDirection(LTR);
-    }
-#endif
 }
 
 int RenderTextControl::textBlockLogicalHeight() const
@@ -165,7 +119,7 @@ void RenderTextControl::hitInnerTextElement(HitTestResult& result, const LayoutP
         return;
 
     LayoutPoint adjustedLocation = accumulatedOffset + location();
-    LayoutPoint localPoint = pointInContainer - toLayoutSize(adjustedLocation + innerText->renderBox()->location()) + scrolledContentOffset();
+    LayoutPoint localPoint = pointInContainer - toLayoutSize(adjustedLocation + innerText->renderBox()->location()) + toLayoutSize(scrollPosition());
     result.setInnerNode(innerText);
     result.setInnerNonSharedNode(innerText);
     result.setLocalPoint(localPoint);
@@ -180,7 +134,7 @@ float RenderTextControl::getAverageCharWidth()
     const UChar ch = '0';
     const String str = String(&ch, 1);
     const FontCascade& font = style().fontCascade();
-    TextRun textRun = constructTextRun(this, font, str, style(), AllowTrailingExpansion);
+    TextRun textRun = constructTextRun(str, style(), AllowTrailingExpansion);
     return font.width(textRun);
 }
 

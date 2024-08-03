@@ -35,11 +35,11 @@
 #if ENABLE(CSS_GRID_LAYOUT)
 
 #include "CSSValue.h"
-#include "GridCoordinate.h"
+#include "GridArea.h"
 
 namespace WebCore {
 
-class CSSGridTemplateAreasValue : public CSSValue {
+class CSSGridTemplateAreasValue final : public CSSValue {
 public:
     static Ref<CSSGridTemplateAreasValue> create(const NamedGridAreaMap& gridAreaMap, size_t rowCount, size_t columnCount)
     {
@@ -53,6 +53,8 @@ public:
     const NamedGridAreaMap& gridAreaMap() const { return m_gridAreaMap; }
     size_t rowCount() const { return m_rowCount; }
     size_t columnCount() const { return m_columnCount; }
+
+    bool equals(const CSSGridTemplateAreasValue&) const;
 
 private:
     CSSGridTemplateAreasValue(const NamedGridAreaMap&, size_t rowCount, size_t columnCount);

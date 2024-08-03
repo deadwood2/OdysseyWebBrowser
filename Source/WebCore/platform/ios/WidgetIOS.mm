@@ -26,7 +26,6 @@
 #import "config.h"
 #import "Widget.h"
 
-#import "BlockExceptions.h"
 #import "Cursor.h"
 #import "Document.h"
 #import "FontCascade.h"
@@ -40,7 +39,7 @@
 #import "WAKWindow.h"
 #import "WebCoreFrameView.h"
 #import "WebCoreView.h"
-#import <wtf/RetainPtr.h>
+#import <wtf/BlockObjCExceptions.h>
 
 @interface NSView (WebSetSelectedMethods)
 - (void)setIsSelected:(BOOL)isSelected;

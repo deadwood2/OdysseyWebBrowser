@@ -40,6 +40,7 @@
 #include "GeometryUtilities.h"
 #include "GraphicsContext.h"
 #include "HTMLNames.h"
+#include "HTMLParserIdioms.h"
 #include "ImageData.h"
 #include "MIMETypeRegistry.h"
 #include "Page.h"
@@ -47,10 +48,10 @@
 #include "ScriptController.h"
 #include "Settings.h"
 #include <math.h>
-#include <wtf/RAMSize.h>
-
 #include <runtime/JSCInlines.h>
 #include <runtime/JSLock.h>
+#include <wtf/RAMSize.h>
+#include <wtf/text/StringBuilder.h>
 
 #if ENABLE(WEBGL)    
 #include "WebGLContextAttributes.h"
@@ -62,25 +63,33 @@ namespace WebCore {
 using namespace HTMLNames;
 
 // These values come from the WhatWG/W3C HTML spec.
-static const int DefaultWidth = 300;
-static const int DefaultHeight = 150;
+const int defaultWidth = 300;
+const int defaultHeight = 150;
 
 // Firefox limits width/height to 32767 pixels, but slows down dramatically before it
 // reaches that limit. We limit by area instead, giving us larger maximum dimensions,
 // in exchange for a smaller maximum canvas size. The maximum canvas size is in device pixels.
 #if PLATFORM(IOS)
-static const unsigned MaxCanvasArea = 4096 * 4096;
+const unsigned maxCanvasArea = 4096 * 4096;
 #elif PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 101100
-static const unsigned MaxCanvasArea = 8192 * 8192;
+const unsigned maxCanvasArea = 8192 * 8192;
 #else
-static const unsigned MaxCanvasArea = 16384 * 16384;
+const unsigned maxCanvasArea = 16384 * 16384;
+#endif
+
+#if USE(CG)
+// FIXME: It seems strange that the default quality is not the one that is literally named "default".
+// Should fix names to make this easier to understand, or write an excellent comment here explaining why not.
+const InterpolationQuality defaultInterpolationQuality = InterpolationLow;
+#else
+const InterpolationQuality defaultInterpolationQuality = InterpolationDefault;
 #endif
 
 static size_t activePixelMemory = 0;
 
 HTMLCanvasElement::HTMLCanvasElement(const QualifiedName& tagName, Document& document)
     : HTMLElement(tagName, document)
-    , m_size(DefaultWidth, DefaultHeight)
+    , m_size(defaultWidth, defaultHeight)
 {
     ASSERT(hasTagName(canvasTag));
 }
@@ -123,15 +132,11 @@ void HTMLCanvasElement::parseAttribute(const QualifiedName& name, const AtomicSt
     HTMLElement::parseAttribute(name, value);
 }
 
-RenderPtr<RenderElement> HTMLCanvasElement::createElementRenderer(Ref<RenderStyle>&& style, const RenderTreePosition& insertionPosition)
+RenderPtr<RenderElement> HTMLCanvasElement::createElementRenderer(RenderStyle&& style, const RenderTreePosition& insertionPosition)
 {
     Frame* frame = document().frame();
-    if (frame && frame->script().canExecuteScripts(NotAboutToExecuteScript)) {
-        m_rendererIsCanvas = true;
+    if (frame && frame->script().canExecuteScripts(NotAboutToExecuteScript))
         return createRenderer<RenderHTMLCanvas>(*this, WTFMove(style));
-    }
-
-    m_rendererIsCanvas = false;
     return HTMLElement::createElementRenderer(WTFMove(style), insertionPosition);
 }
 
@@ -155,14 +160,14 @@ void HTMLCanvasElement::removeObserver(CanvasObserver& observer)
     m_observers.remove(&observer);
 }
 
-void HTMLCanvasElement::setHeight(int value)
+void HTMLCanvasElement::setHeight(unsigned value)
 {
-    setIntegralAttribute(heightAttr, value);
+    setAttributeWithoutSynchronization(heightAttr, AtomicString::number(limitToOnlyHTMLNonNegative(value, defaultHeight)));
 }
 
-void HTMLCanvasElement::setWidth(int value)
+void HTMLCanvasElement::setWidth(unsigned value)
 {
-    setIntegralAttribute(widthAttr, value);
+    setAttributeWithoutSynchronization(widthAttr, AtomicString::number(limitToOnlyHTMLNonNegative(value, defaultWidth)));
 }
 
 #if ENABLE(WEBGL)
@@ -202,22 +207,14 @@ static inline size_t maxActivePixelMemory()
 
 CanvasRenderingContext* HTMLCanvasElement::getContext(const String& type, CanvasContextAttributes* attrs)
 {
-    // A Canvas can either be "2D" or "webgl" but never both. If you request a 2D canvas and the existing
-    // context is already 2D, just return that. If the existing context is WebGL, then destroy it
-    // before creating a new 2D context. Vice versa when requesting a WebGL canvas. Requesting a
-    // context with any other type string will destroy any existing context.
-    
-    // FIXME: The code depends on the context not going away once created, to prevent JS from
-    // seeing a dangling pointer. So for now we will disallow the context from being changed
-    // once it is created. https://bugs.webkit.org/show_bug.cgi?id=117095
     if (is2dType(type)) {
         if (m_context && !m_context->is2d())
             return nullptr;
         if (!m_context) {
-            bool usesDashbardCompatibilityMode = false;
+            bool usesDashboardCompatibilityMode = false;
 #if ENABLE(DASHBOARD_SUPPORT)
             if (Settings* settings = document().settings())
-                usesDashbardCompatibilityMode = settings->usesDashboardBackwardCompatibilityMode();
+                usesDashboardCompatibilityMode = settings->usesDashboardBackwardCompatibilityMode();
 #endif
 
             // Make sure we don't use more pixel memory than the system can support.
@@ -231,7 +228,7 @@ CanvasRenderingContext* HTMLCanvasElement::getContext(const String& type, Canvas
                 return nullptr;
             }
 
-            m_context = std::make_unique<CanvasRenderingContext2D>(this, document().inQuirksMode(), usesDashbardCompatibilityMode);
+            m_context = std::make_unique<CanvasRenderingContext2D>(this, document().inQuirksMode(), usesDashboardCompatibilityMode);
 
             downcast<CanvasRenderingContext2D>(*m_context).setUsesDisplayListDrawing(m_usesDisplayListDrawing);
             downcast<CanvasRenderingContext2D>(*m_context).setTracksDisplayListReplay(m_tracksDisplayListReplay);
@@ -267,11 +264,8 @@ CanvasRenderingContext* HTMLCanvasElement::getContext(const String& type, Canvas
     
 bool HTMLCanvasElement::probablySupportsContext(const String& type, CanvasContextAttributes*)
 {
-    // FIXME: Provide implementation that accounts for attributes. Bugzilla bug 117093
+    // FIXME: Provide implementation that accounts for attributes.
     // https://bugs.webkit.org/show_bug.cgi?id=117093
-
-    // FIXME: The code depends on the context not going away once created (as getContext
-    // is implemented under this assumption) https://bugs.webkit.org/show_bug.cgi?id=117095
     if (is2dType(type))
         return !m_context || m_context->is2d();
 
@@ -295,7 +289,7 @@ bool HTMLCanvasElement::is3dType(const String& type)
     // Retain support for the legacy "webkit-3d" name.
     return type == "webgl" || type == "experimental-webgl"
 #if ENABLE(WEBGL2)
-        || type == "experimental-webgl2"
+        || type == "webgl2"
 #endif
         || type == "webkit-3d";
 }
@@ -333,16 +327,10 @@ void HTMLCanvasElement::reset()
     if (m_ignoreReset)
         return;
 
-    bool ok;
     bool hadImageBuffer = hasCreatedImageBuffer();
 
-    int w = getAttribute(widthAttr).toInt(&ok);
-    if (!ok || w < 0)
-        w = DefaultWidth;
-
-    int h = getAttribute(heightAttr).toInt(&ok);
-    if (!ok || h < 0)
-        h = DefaultHeight;
+    int w = limitToOnlyHTMLNonNegative(attributeWithoutSynchronization(widthAttr), defaultWidth);
+    int h = limitToOnlyHTMLNonNegative(attributeWithoutSynchronization(heightAttr), defaultHeight);
 
     if (m_contextStateSaver) {
         // Reset to the initial graphics context state.
@@ -372,16 +360,16 @@ void HTMLCanvasElement::reset()
         static_cast<WebGLRenderingContextBase*>(m_context.get())->reshape(width(), height());
 #endif
 
-    if (auto renderer = this->renderer()) {
-        if (m_rendererIsCanvas) {
-            if (oldSize != size()) {
-                downcast<RenderHTMLCanvas>(*renderer).canvasSizeChanged();
-                if (renderBox() && renderBox()->hasAcceleratedCompositing())
-                    renderBox()->contentChanged(CanvasChanged);
-            }
-            if (hadImageBuffer)
-                renderer->repaint();
+    auto renderer = this->renderer();
+    if (is<RenderHTMLCanvas>(renderer)) {
+        auto& canvasRenderer = downcast<RenderHTMLCanvas>(*renderer);
+        if (oldSize != size()) {
+            canvasRenderer.canvasSizeChanged();
+            if (canvasRenderer.hasAcceleratedCompositing())
+                canvasRenderer.contentChanged(CanvasChanged);
         }
+        if (hadImageBuffer)
+            canvasRenderer.repaint();
     }
 
     for (auto& observer : m_observers)
@@ -588,7 +576,14 @@ size_t HTMLCanvasElement::memoryCost() const
 {
     if (!m_imageBuffer)
         return 0;
-    return 4 * m_imageBuffer->internalSize().width() * m_imageBuffer->internalSize().height();
+    return m_imageBuffer->memoryCost();
+}
+
+size_t HTMLCanvasElement::externalMemoryCost() const
+{
+    if (!m_imageBuffer)
+        return 0;
+    return m_imageBuffer->externalMemoryCost();
 }
 
 void HTMLCanvasElement::setUsesDisplayListDrawing(bool usesDisplayListDrawing)
@@ -641,10 +636,10 @@ void HTMLCanvasElement::createImageBuffer() const
     if (!deviceSize.isExpressibleAsIntSize())
         return;
 
-    if (deviceSize.width() * deviceSize.height() > MaxCanvasArea) {
+    if (deviceSize.width() * deviceSize.height() > maxCanvasArea) {
         StringBuilder stringBuilder;
         stringBuilder.appendLiteral("Canvas area exceeds the maximum limit (width * height > ");
-        stringBuilder.appendNumber(MaxCanvasArea);
+        stringBuilder.appendNumber(maxCanvasArea);
         stringBuilder.appendLiteral(").");
         document().addConsoleMessage(MessageSource::JS, MessageLevel::Warning, stringBuilder.toString());
         return;
@@ -671,7 +666,7 @@ void HTMLCanvasElement::createImageBuffer() const
     if (!m_imageBuffer)
         return;
     m_imageBuffer->context().setShadowsIgnoreTransforms(true);
-    m_imageBuffer->context().setImageInterpolationQuality(DefaultInterpolationQuality);
+    m_imageBuffer->context().setImageInterpolationQuality(defaultInterpolationQuality);
     if (document().settings() && !document().settings()->antialiased2dCanvasEnabled())
         m_imageBuffer->context().setShouldAntialias(false);
     m_imageBuffer->context().setStrokeThickness(1);

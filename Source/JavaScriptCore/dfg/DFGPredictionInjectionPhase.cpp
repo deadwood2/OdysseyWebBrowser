@@ -74,7 +74,7 @@ public:
                 Node* node = block->variablesAtHead.operand(operand);
                 if (!node)
                     continue;
-                ASSERT(node->hasLocal(m_graph));
+                ASSERT(node->accessesStack(m_graph));
                 node->variableAccessData()->predict(
                     speculationFromValue(m_graph.m_plan.mustHandleValues[i]));
             }
@@ -86,7 +86,6 @@ public:
 
 bool performPredictionInjection(Graph& graph)
 {
-    SamplingRegion samplingRegion("DFG Prediction Injection Phase");
     return runPhase<PredictionInjectionPhase>(graph);
 }
 

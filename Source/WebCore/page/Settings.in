@@ -6,6 +6,7 @@ ftpDirectoryTemplatePath type=String
 localStorageDatabasePath type=String
 editableLinkBehavior type=EditableLinkBehavior, initial=EditableLinkDefaultBehavior
 textDirectionSubmenuInclusionBehavior type=TextDirectionSubmenuInclusionBehavior, initial=TextDirectionSubmenuAutomaticallyIncluded
+pdfImageCachingPolicy type=PDFImageCachingPolicy, initial = PDFImageCachingDefault
 passwordEchoDurationInSeconds type=double, initial=1
 
 # Sets the magnification value for validation message timer.  If the
@@ -53,6 +54,7 @@ javaScriptCanOpenWindowsAutomatically initial=false
 javaScriptCanAccessClipboard initial=false
 shouldPrintBackgrounds initial=false
 usesDashboardBackwardCompatibilityMode initial=false, conditional=DASHBOARD_SUPPORT
+clipboardAccessPolicy type=ClipboardAccessPolicy, initial=ClipboardAccessPolicy::RequiresUserGesture
 
 textAreasAreResizable initial=false, setNeedsStyleRecalcInAllFrames=1
 authorAndUserStylesEnabled initial=true, setNeedsStyleRecalcInAllFrames=1
@@ -125,9 +127,11 @@ shouldInjectUserScriptsInInitialEmptyDocument initial=false
 fixedElementsLayoutRelativeToFrame initial=false
 allowDisplayOfInsecureContent initial=false
 allowRunningOfInsecureContent initial=false
-requiresUserGestureForMediaPlayback initial=defaultRequiresUserGestureForMediaPlayback
+videoPlaybackRequiresUserGesture initial=defaultVideoPlaybackRequiresUserGesture
 audioPlaybackRequiresUserGesture initial=defaultAudioPlaybackRequiresUserGesture
+mainContentUserGestureOverrideEnabled initial=false
 allowsInlineMediaPlayback initial=defaultAllowsInlineMediaPlayback
+allowsInlineMediaPlaybackAfterFullscreen initial=true
 inlineMediaPlaybackRequiresPlaysInlineAttribute initial=defaultInlineMediaPlaybackRequiresPlaysInlineAttribute
 allowsPictureInPictureMediaPlayback initial=defaultAllowsPictureInPictureMediaPlayback
 mediaControlsScaleWithPageZoom initial=defaultMediaControlsScaleWithPageZoom
@@ -195,7 +199,13 @@ selectionIncludesAltImageText initial=true
 useLegacyBackgroundSizeShorthandBehavior initial=false
 fixedBackgroundsPaintRelativeToDocument initial=defaultFixedBackgroundsPaintRelativeToDocument
 
-minimumZoomFontSize type=float, initial=15, conditional=IOS_TEXT_AUTOSIZING
+textAutosizingEnabled initial=false, setNeedsStyleRecalcInAllFrames=1, conditional=TEXT_AUTOSIZING
+textAutosizingEnabled initial=defaultTextAutosizingEnabled(), setNeedsStyleRecalcInAllFrames=1, conditional=IOS_TEXT_AUTOSIZING
+
+textAutosizingWindowSizeOverride type=IntSize, setNeedsStyleRecalcInAllFrames=1, conditional=TEXT_AUTOSIZING
+textAutosizingWindowSizeOverride type=IntSize, setNeedsStyleRecalcInAllFrames=1, conditional=IOS_TEXT_AUTOSIZING
+
+minimumZoomFontSize type=float, initial=defaultMinimumZoomFontSize(), conditional=IOS_TEXT_AUTOSIZING
 
 simpleLineLayoutEnabled initial=true, setNeedsStyleRecalcInAllFrames=1
 simpleLineLayoutDebugBordersEnabled initial=false, setNeedsStyleRecalcInAllFrames=1
@@ -242,6 +252,8 @@ attachmentElementEnabled initial=true, conditional=ATTACHMENT_ELEMENT
 
 newBlockInsideInlineModelEnabled initial=false, setNeedsStyleRecalcInAllFrames=1
 
+newCSSParserEnabled initial=false
+
 httpEquivEnabled initial=true
 
 # Some ports (e.g. iOS) might choose to display attachments inline, regardless of whether the response includes the
@@ -249,3 +261,23 @@ httpEquivEnabled initial=true
 # enforces all frame sandbox flags (see enum SandboxFlag in SecurityContext.h), and also disables <meta http-equiv>
 # processing and subframe loading.
 contentDispositionAttachmentSandboxEnabled initial=false
+
+userInterfaceDirectionPolicy type=UserInterfaceDirectionPolicy, initial=UserInterfaceDirectionPolicy::Content
+systemLayoutDirection type=TextDirection, initial=LTR
+
+allowContentSecurityPolicySourceStarToMatchAnyProtocol initial=false
+
+allowWindowOpenWithoutUserGesture initial=false
+
+selectionPaintingWithoutSelectionGapsEnabled initial=false
+
+shouldConvertInvalidURLsToBlank initial=true
+
+springTimingFunctionEnabled initial=false
+
+treatIPAddressAsDomain initial=false
+
+# Runtime-enabled features
+visualViewportEnabled initial=false
+
+allowsPageCacheWithWindowOpener initial=false

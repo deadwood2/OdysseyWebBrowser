@@ -33,6 +33,7 @@
 #import <WebCore/NetworkStorageSession.h>
 #import <WebCore/Page.h>
 #import <WebCore/ResourceError.h>
+#import <WebCore/SessionID.h>
 #import <WebCore/Settings.h>
 #import <wtf/NeverDestroyed.h>
 
@@ -43,27 +44,20 @@
 
 using namespace WebCore;
 
-static std::unique_ptr<NetworkStorageSession>& privateSession()
-{
-    static NeverDestroyed<std::unique_ptr<NetworkStorageSession>> session;
-    return session;
-}
-
-void WebFrameNetworkingContext::ensurePrivateBrowsingSession()
+NetworkStorageSession& WebFrameNetworkingContext::ensurePrivateBrowsingSession()
 {
     ASSERT(isMainThread());
 
-    if (privateSession())
-        return;
+    NetworkStorageSession::ensurePrivateBrowsingSession(SessionID::legacyPrivateSessionID(), [[NSBundle mainBundle] bundleIdentifier]);
 
-    privateSession() = NetworkStorageSession::createPrivateBrowsingSession([[NSBundle mainBundle] bundleIdentifier]);
+    return *NetworkStorageSession::storageSession(SessionID::legacyPrivateSessionID());
 }
 
 void WebFrameNetworkingContext::destroyPrivateBrowsingSession()
 {
     ASSERT(isMainThread());
 
-    privateSession() = nullptr;
+    NetworkStorageSession::destroySession(SessionID::legacyPrivateSessionID());
 }
 
 bool WebFrameNetworkingContext::localFileContentSniffingEnabled() const
@@ -104,7 +98,7 @@ NetworkStorageSession& WebFrameNetworkingContext::storageSession() const
 {
     ASSERT(isMainThread());
     if (frame() && frame()->page()->sessionID().isEphemeral()) {
-        if (NetworkStorageSession* session = privateSession().get())
+        if (NetworkStorageSession* session = NetworkStorageSession::storageSession(SessionID::legacyPrivateSessionID()))
             return *session;
         // Some requests may still be coming shortly before WebCore updates the session ID and after WebKit destroys the private browsing session.
         LOG_ERROR("Invalid session ID. Please file a bug unless you just disabled private browsing, in which case it's an expected race.");

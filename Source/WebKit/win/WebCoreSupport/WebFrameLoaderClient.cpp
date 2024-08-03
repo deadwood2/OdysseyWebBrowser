@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2007, 2008, 2009, 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -222,17 +222,6 @@ void WebFrameLoaderClient::dispatchDidReceiveAuthenticationChallenge(DocumentLoa
     challenge.authenticationClient()->receivedRequestToContinueWithoutCredential(challenge);
 }
 
-void WebFrameLoaderClient::dispatchDidCancelAuthenticationChallenge(DocumentLoader* loader, unsigned long identifier, const AuthenticationChallenge& challenge)
-{
-    WebView* webView = m_webFrame->webView();
-    COMPtr<IWebResourceLoadDelegate> resourceLoadDelegate;
-    if (FAILED(webView->resourceLoadDelegate(&resourceLoadDelegate)))
-        return;
-
-    COMPtr<WebURLAuthenticationChallenge> webChallenge(AdoptCOM, WebURLAuthenticationChallenge::createInstance(challenge));
-    resourceLoadDelegate->didCancelAuthenticationChallenge(webView, identifier, webChallenge.get(), getWebDataSource(loader));
-}
-
 void WebFrameLoaderClient::dispatchWillSendRequest(DocumentLoader* loader, unsigned long identifier, ResourceRequest& request, const ResourceResponse& redirectResponse)
 {
     WebView* webView = m_webFrame->webView();
@@ -434,23 +423,6 @@ void WebFrameLoaderClient::dispatchDidReceiveTitle(const StringWithDirection& ti
         frameLoadDelegate->didReceiveTitle(webView, BString(title.string()), m_webFrame);
 }
 
-void WebFrameLoaderClient::dispatchDidChangeIcons(WebCore::IconType type)
-{
-    if (type != WebCore::Favicon)
-        return;
-
-    WebView* webView = m_webFrame->webView();
-    COMPtr<IWebFrameLoadDelegatePrivate> frameLoadDelegatePriv;
-    if (FAILED(webView->frameLoadDelegatePrivate(&frameLoadDelegatePriv)) || !frameLoadDelegatePriv)
-        return;
-
-    COMPtr<IWebFrameLoadDelegatePrivate2> frameLoadDelegatePriv2(Query, frameLoadDelegatePriv);
-    if (!frameLoadDelegatePriv2)
-        return;
-
-    frameLoadDelegatePriv2->didChangeIcons(webView, m_webFrame);
-}
-
 void WebFrameLoaderClient::dispatchDidCommitLoad()
 {
     WebView* webView = m_webFrame->webView();
@@ -497,7 +469,7 @@ void WebFrameLoaderClient::dispatchDidFinishLoad()
         frameLoadDelegate->didFinishLoadForFrame(webView, m_webFrame);
 }
 
-void WebFrameLoaderClient::dispatchDidLayout(LayoutMilestones milestones)
+void WebFrameLoaderClient::dispatchDidReachLayoutMilestone(LayoutMilestones milestones)
 {
     WebView* webView = m_webFrame->webView();
 
@@ -932,7 +904,7 @@ void WebFrameLoaderClient::frameLoadCompleted()
 {
 }
 
-void WebFrameLoaderClient::saveViewStateToItem(HistoryItem*)
+void WebFrameLoaderClient::saveViewStateToItem(HistoryItem&)
 {
 }
 
@@ -1098,20 +1070,20 @@ ObjectContentType WebFrameLoaderClient::objectContentType(const URL& url, const 
     }
 
     if (mimeType.isEmpty())
-        return ObjectContentFrame; // Go ahead and hope that we can display the content.
+        return ObjectContentType::Frame; // Go ahead and hope that we can display the content.
 
     bool plugInSupportsMIMEType = PluginDatabase::installedPlugins()->isMIMETypeRegistered(mimeType);
 
     if (MIMETypeRegistry::isSupportedImageMIMEType(mimeType))
-        return WebCore::ObjectContentImage;
+        return WebCore::ObjectContentType::Image;
 
     if (plugInSupportsMIMEType)
-        return WebCore::ObjectContentNetscapePlugin;
+        return WebCore::ObjectContentType::PlugIn;
 
     if (MIMETypeRegistry::isSupportedNonImageMIMEType(mimeType))
-        return WebCore::ObjectContentFrame;
+        return WebCore::ObjectContentType::Frame;
 
-    return WebCore::ObjectContentNone;
+    return WebCore::ObjectContentType::None;
 }
 
 void WebFrameLoaderClient::dispatchDidFailToStartPlugin(const PluginView* pluginView) const

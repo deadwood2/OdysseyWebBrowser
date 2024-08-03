@@ -36,71 +36,6 @@
 
 namespace WebCore {
 
-void FetchHeaders::initializeWith(const FetchHeaders* headers, ExceptionCode&)
-{
-    if (!headers)
-        return;
-    m_headers = headers->m_headers;
-}
-
-// FIXME: Optimize these routines for HTTPHeaderMap keys and/or refactor them with XMLHttpRequest code.
-static bool isForbiddenHeaderName(const String& name)
-{
-    HTTPHeaderName headerName;
-    if (findHTTPHeaderName(name, headerName)) {
-        switch (headerName) {
-        case HTTPHeaderName::AcceptCharset:
-        case HTTPHeaderName::AcceptEncoding:
-        case HTTPHeaderName::AccessControlRequestHeaders:
-        case HTTPHeaderName::AccessControlRequestMethod:
-        case HTTPHeaderName::Connection:
-        case HTTPHeaderName::ContentLength:
-        case HTTPHeaderName::Cookie:
-        case HTTPHeaderName::Cookie2:
-        case HTTPHeaderName::Date:
-        case HTTPHeaderName::DNT:
-        case HTTPHeaderName::Expect:
-        case HTTPHeaderName::Host:
-        case HTTPHeaderName::KeepAlive:
-        case HTTPHeaderName::Origin:
-        case HTTPHeaderName::Referer:
-        case HTTPHeaderName::TE:
-        case HTTPHeaderName::Trailer:
-        case HTTPHeaderName::TransferEncoding:
-        case HTTPHeaderName::Upgrade:
-        case HTTPHeaderName::Via:
-            return true;
-        default:
-            break;
-        }
-    }
-    return name.startsWithIgnoringASCIICase(ASCIILiteral("Sec-")) || name.startsWithIgnoringASCIICase(ASCIILiteral("Proxy-"));
-}
-
-static bool isForbiddenResponseHeaderName(const String& name)
-{
-    return equalLettersIgnoringASCIICase(name, "set-cookie") || equalLettersIgnoringASCIICase(name, "set-cookie2");
-}
-
-static bool isSimpleHeader(const String& name, const String& value)
-{
-    HTTPHeaderName headerName;
-    if (!findHTTPHeaderName(name, headerName))
-        return false;
-    switch (headerName) {
-    case HTTPHeaderName::Accept:
-    case HTTPHeaderName::AcceptLanguage:
-    case HTTPHeaderName::ContentLanguage:
-        return true;
-    case HTTPHeaderName::ContentType: {
-        String mimeType = extractMIMETypeFromMediaType(value);
-        return equalLettersIgnoringASCIICase(mimeType, "application/x-www-form-urlencoded") || equalLettersIgnoringASCIICase(mimeType, "multipart/form-data") || equalLettersIgnoringASCIICase(mimeType, "text/plain");
-    }
-    default:
-        return false;
-    }
-}
-
 static bool canWriteHeader(const String& name, const String& value, FetchHeaders::Guard guard, ExceptionCode& ec)
 {
     if (!isValidHTTPToken(name) || !isValidHTTPHeaderValue(value)) {
@@ -163,14 +98,19 @@ void FetchHeaders::set(const String& name, const String& value, ExceptionCode& e
 
 void FetchHeaders::fill(const FetchHeaders* headers)
 {
+    ASSERT(m_guard != Guard::Immutable);
+
     if (!headers)
         return;
 
-    ASSERT(m_guard != Guard::Immutable);
+    filterAndFill(headers->m_headers, m_guard);
+}
 
+void FetchHeaders::filterAndFill(const HTTPHeaderMap& headers, Guard guard)
+{
     ExceptionCode ec;
-    for (auto& header : headers->m_headers) {
-        if (canWriteHeader(header.key, header.value, m_guard, ec)) {
+    for (auto& header : headers) {
+        if (canWriteHeader(header.key, header.value, guard, ec)) {
             if (header.keyAsHTTPHeaderName)
                 m_headers.add(header.keyAsHTTPHeaderName.value(), header.value);
             else
@@ -179,19 +119,16 @@ void FetchHeaders::fill(const FetchHeaders* headers)
     }
 }
 
-bool FetchHeaders::Iterator::next(String& nextKey, String& nextValue)
+Optional<WTF::KeyValuePair<String, String>> FetchHeaders::Iterator::next()
 {
     while (m_currentIndex < m_keys.size()) {
-        auto& key = m_keys[m_currentIndex++];
+        String key = m_keys[m_currentIndex++];
         String value = m_headers->m_headers.get(key);
-        if (!value.isNull()) {
-            nextKey = key;
-            nextValue = WTFMove(value);
-            return false;
-        }
+        if (!value.isNull())
+            return WTF::KeyValuePair<String, String>(WTFMove(key), WTFMove(value));
     }
     m_keys.clear();
-    return true;
+    return Nullopt;
 }
 
 FetchHeaders::Iterator::Iterator(FetchHeaders& headers)

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013, 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,6 +30,7 @@
 
 #include "DFGAbstractValue.h"
 #include "DFGBasicBlock.h"
+#include "DFGBlockMap.h"
 #include "DFGGraph.h"
 
 namespace JSC { namespace DFG { 
@@ -39,6 +40,8 @@ public:
     AtTailAbstractState(Graph&);
     
     ~AtTailAbstractState();
+    
+    explicit operator bool() const { return true; }
     
     void initializeTo(BasicBlock* block)
     {
@@ -64,7 +67,8 @@ public:
 
 private:
     Graph& m_graph;
-    BasicBlock* m_block;
+    BlockMap<HashMap<Node*, AbstractValue>> m_valuesAtTailMap;
+    BasicBlock* m_block { nullptr };
 };
 
 } } // namespace JSC::DFG

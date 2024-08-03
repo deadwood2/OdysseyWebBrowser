@@ -36,7 +36,7 @@ namespace WebCore {
 
 JSC::EncodedJSValue jsattributeReadonly(JSC::ExecState*, JSC::EncodedJSValue, JSC::PropertyName);
 JSC::EncodedJSValue jsattributeConstructor(JSC::ExecState*, JSC::EncodedJSValue, JSC::PropertyName);
-void setJSattributeConstructor(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
+bool setJSattributeConstructor(JSC::ExecState*, JSC::EncodedJSValue, JSC::EncodedJSValue);
 
 class JSattributePrototype : public JSC::JSNonFinalObject {
 public:
@@ -87,7 +87,7 @@ template<> JSValue JSattributeConstructor::prototypeForStructure(JSC::VM& vm, co
 
 template<> void JSattributeConstructor::initializeProperties(VM& vm, JSDOMGlobalObject& globalObject)
 {
-    putDirect(vm, vm.propertyNames->prototype, JSattribute::getPrototype(vm, &globalObject), DontDelete | ReadOnly | DontEnum);
+    putDirect(vm, vm.propertyNames->prototype, JSattribute::prototype(vm, &globalObject), DontDelete | ReadOnly | DontEnum);
     putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String(ASCIILiteral("attribute"))), ReadOnly | DontEnum);
     putDirect(vm, vm.propertyNames->length, jsNumber(0), ReadOnly | DontEnum);
 }
@@ -121,7 +121,7 @@ JSObject* JSattribute::createPrototype(VM& vm, JSGlobalObject* globalObject)
     return JSattributePrototype::create(vm, globalObject, JSattributePrototype::createStructure(vm, globalObject, globalObject->errorPrototype()));
 }
 
-JSObject* JSattribute::getPrototype(VM& vm, JSGlobalObject* globalObject)
+JSObject* JSattribute::prototype(VM& vm, JSGlobalObject* globalObject)
 {
     return getDOMPrototype<JSattribute>(vm, globalObject);
 }
@@ -132,23 +132,16 @@ void JSattribute::destroy(JSC::JSCell* cell)
     thisObject->JSattribute::~JSattribute();
 }
 
-bool JSattribute::getOwnPropertySlot(JSObject* object, ExecState* state, PropertyName propertyName, PropertySlot& slot)
-{
-    auto* thisObject = jsCast<JSattribute*>(object);
-    ASSERT_GC_OBJECT_INHERITS(thisObject, info());
-    if (getStaticValueSlot<JSattribute, Base>(state, JSattributeTable, thisObject, propertyName, slot))
-        return true;
-    return false;
-}
-
 EncodedJSValue jsattributeReadonly(ExecState* state, EncodedJSValue thisValue, PropertyName)
 {
-    UNUSED_PARAM(state);
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    UNUSED_PARAM(throwScope);
     UNUSED_PARAM(thisValue);
     JSValue decodedThisValue = JSValue::decode(thisValue);
     auto* castedThis = jsDynamicCast<JSattribute*>(decodedThisValue);
     if (UNLIKELY(!castedThis)) {
-        return throwGetterTypeError(*state, "attribute", "readonly");
+        return throwGetterTypeError(*state, throwScope, "attribute", "readonly");
     }
     auto& impl = castedThis->wrapped();
     JSValue result = jsStringWithCache(state, impl.readonly());
@@ -158,22 +151,26 @@ EncodedJSValue jsattributeReadonly(ExecState* state, EncodedJSValue thisValue, P
 
 EncodedJSValue jsattributeConstructor(ExecState* state, EncodedJSValue thisValue, PropertyName)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
     JSattributePrototype* domObject = jsDynamicCast<JSattributePrototype*>(JSValue::decode(thisValue));
-    if (!domObject)
-        return throwVMTypeError(state);
+    if (UNLIKELY(!domObject))
+        return throwVMTypeError(state, throwScope);
     return JSValue::encode(JSattribute::getConstructor(state->vm(), domObject->globalObject()));
 }
 
-void setJSattributeConstructor(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
+bool setJSattributeConstructor(ExecState* state, EncodedJSValue thisValue, EncodedJSValue encodedValue)
 {
+    VM& vm = state->vm();
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
     JSValue value = JSValue::decode(encodedValue);
     JSattributePrototype* domObject = jsDynamicCast<JSattributePrototype*>(JSValue::decode(thisValue));
     if (UNLIKELY(!domObject)) {
-        throwVMTypeError(state);
-        return;
+        throwVMTypeError(state, throwScope);
+        return false;
     }
     // Shadowing a built-in constructor
-    domObject->putDirect(state->vm(), state->propertyNames().constructor, value);
+    return domObject->putDirect(state->vm(), state->propertyNames().constructor, value);
 }
 
 JSValue JSattribute::getConstructor(VM& vm, const JSGlobalObject* globalObject)
@@ -204,22 +201,11 @@ extern "C" { extern void* _ZTVN7WebCore9attributeE[]; }
 #endif
 #endif
 
-JSC::JSValue toJSNewlyCreated(JSC::ExecState*, JSDOMGlobalObject* globalObject, attribute* impl)
+JSC::JSValue toJSNewlyCreated(JSC::ExecState*, JSDOMGlobalObject* globalObject, Ref<attribute>&& impl)
 {
-    if (!impl)
-        return jsNull();
-    return createNewWrapper<JSattribute>(globalObject, impl);
-}
-
-JSC::JSValue toJS(JSC::ExecState*, JSDOMGlobalObject* globalObject, attribute* impl)
-{
-    if (!impl)
-        return jsNull();
-    if (JSValue result = getExistingWrapper<JSattribute>(globalObject, impl))
-        return result;
 
 #if ENABLE(BINDING_INTEGRITY)
-    void* actualVTablePointer = *(reinterpret_cast<void**>(impl));
+    void* actualVTablePointer = *(reinterpret_cast<void**>(impl.ptr()));
 #if PLATFORM(WIN)
     void* expectedVTablePointer = reinterpret_cast<void*>(__identifier("??_7attribute@WebCore@@6B@"));
 #else
@@ -227,7 +213,7 @@ JSC::JSValue toJS(JSC::ExecState*, JSDOMGlobalObject* globalObject, attribute* i
 #if COMPILER(CLANG)
     // If this fails attribute does not have a vtable, so you need to add the
     // ImplementationLacksVTable attribute to the interface definition
-    COMPILE_ASSERT(__is_polymorphic(attribute), attribute_is_not_polymorphic);
+    static_assert(__is_polymorphic(attribute), "attribute is not polymorphic");
 #endif
 #endif
     // If you hit this assertion you either have a use after free bug, or
@@ -236,7 +222,12 @@ JSC::JSValue toJS(JSC::ExecState*, JSDOMGlobalObject* globalObject, attribute* i
     // by adding the SkipVTableValidation attribute to the interface IDL definition
     RELEASE_ASSERT(actualVTablePointer == expectedVTablePointer);
 #endif
-    return createNewWrapper<JSattribute>(globalObject, impl);
+    return createWrapper<JSattribute, attribute>(globalObject, WTFMove(impl));
+}
+
+JSC::JSValue toJS(JSC::ExecState* state, JSDOMGlobalObject* globalObject, attribute& impl)
+{
+    return wrap(state, globalObject, impl);
 }
 
 attribute* JSattribute::toWrapped(JSC::JSValue value)

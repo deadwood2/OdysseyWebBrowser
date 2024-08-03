@@ -26,30 +26,39 @@
 #import "config.h"
 #import "MemoryPressureHandler.h"
 
-#import "IOSurfacePool.h"
 #import "GCController.h"
-#import "JSDOMWindow.h"
-#import "JSDOMWindowBase.h"
+#import "IOSurfacePool.h"
 #import "LayerPool.h"
 #import "Logging.h"
 #import "ResourceUsageThread.h"
-#import "WebCoreSystemInterface.h"
 #import <mach/mach.h>
 #import <mach/task_info.h>
 #import <malloc/malloc.h>
 #import <notify.h>
-#import <wtf/CurrentTime.h>
-#import <sys/sysctl.h>
 
 #if PLATFORM(IOS)
 #import "SystemMemory.h"
 #import "WebCoreThread.h"
 #endif
 
+#define ENABLE_FMW_FOOTPRINT_COMPARISON 0
+
 extern "C" void cache_simulate_memory_warning_event(uint64_t);
 extern "C" void _sqlite3_purgeEligiblePagerCacheMemory(void);
 
 namespace WebCore {
+
+void MemoryPressureHandler::platformInitialize()
+{
+    int dummy;
+    notify_register_dispatch("com.apple.WebKit.fullGC", &dummy, dispatch_get_main_queue(), ^(int) {
+        GCController::singleton().garbageCollectNow();
+    });
+    notify_register_dispatch("com.apple.WebKit.deleteAllCode", &dummy, dispatch_get_main_queue(), ^(int) {
+        GCController::singleton().deleteAllCode();
+        GCController::singleton().garbageCollectNow();
+    });
+}
 
 void MemoryPressureHandler::platformReleaseMemory(Critical critical)
 {
@@ -70,7 +79,7 @@ void MemoryPressureHandler::platformReleaseMemory(Critical critical)
     }
 #endif
 
-    if (critical == Critical::Yes && !isUnderMemoryPressure()) {
+    if (critical == Critical::Yes && (!isUnderMemoryPressure() || m_isSimulatingMemoryPressure)) {
         // libcache listens to OS memory notifications, but for process suspension
         // or memory pressure simulation, we need to prod it manually:
         ReliefLogger log("Purging libcache caches");
@@ -130,27 +139,21 @@ void MemoryPressureHandler::install()
 
     // Allow simulation of memory pressure with "notifyutil -p org.WebKit.lowMemory"
     notify_register_dispatch("org.WebKit.lowMemory", &_notifyToken, dispatch_get_main_queue(), ^(int) {
-#if ENABLE(RESOURCE_USAGE)
+#if ENABLE(FMW_FOOTPRINT_COMPARISON)
         auto footprintBefore = pagesPerVMTag();
 #endif
-
-        bool wasUnderMemoryPressure = m_underMemoryPressure;
-        m_underMemoryPressure = true;
-
-        MemoryPressureHandler::singleton().respondToMemoryPressure(Critical::Yes, Synchronous::Yes);
+        beginSimulatedMemoryPressure();
 
         WTF::releaseFastMallocFreeMemory();
-
         malloc_zone_pressure_relief(nullptr, 0);
 
-#if ENABLE(RESOURCE_USAGE)
+#if ENABLE(FMW_FOOTPRINT_COMPARISON)
         auto footprintAfter = pagesPerVMTag();
         logFootprintComparison(footprintBefore, footprintAfter);
 #endif
 
-        // Since this is a simulation, unset the "under memory pressure" flag on next runloop.
         dispatch_async(dispatch_get_main_queue(), ^{
-            MemoryPressureHandler::singleton().setUnderMemoryPressure(wasUnderMemoryPressure);
+            endSimulatedMemoryPressure();
         });
     });
 
@@ -230,23 +233,6 @@ size_t MemoryPressureHandler::ReliefLogger::platformMemoryUsage()
         return static_cast<size_t>(-1);
 
     return static_cast<size_t>(vmInfo.internal);
-}
-
-void MemoryPressureHandler::ReliefLogger::platformLog()
-{
-    size_t currentMemory = platformMemoryUsage();
-    if (currentMemory == static_cast<size_t>(-1) || m_initialMemory == static_cast<size_t>(-1)) {
-        NSLog(@"%s (Unable to get dirty memory information for process)\n", m_logString);
-        return;
-    }
-
-    ssize_t memoryDiff = currentMemory - m_initialMemory;
-    if (memoryDiff < 0)
-        NSLog(@"Pressure relief: %s: -dirty %ld bytes (from %ld to %ld)\n", m_logString, (memoryDiff * -1), m_initialMemory, currentMemory);
-    else if (memoryDiff > 0)
-        NSLog(@"Pressure relief: %s: +dirty %ld bytes (from %ld to %ld)\n", m_logString, memoryDiff, m_initialMemory, currentMemory);
-    else
-        NSLog(@"Pressure relief: %s: =dirty (at %ld bytes)\n", m_logString, currentMemory);
 }
 
 #if PLATFORM(IOS)

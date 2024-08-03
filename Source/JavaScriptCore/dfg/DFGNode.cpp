@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2013, 2014, 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,7 +29,6 @@
 #if ENABLE(DFG_JIT)
 
 #include "DFGGraph.h"
-#include "DFGNodeAllocator.h"
 #include "DFGPromotedHeapLocation.h"
 #include "JSCInlines.h"
 
@@ -62,11 +61,6 @@ void BranchTarget::dump(PrintStream& out) const
     
     if (count == count) // If the count is not NaN, then print it.
         out.print("/w:", count);
-}
-
-unsigned Node::index() const
-{
-    return NodeAllocator::allocatorOf(this)->indexOf(this);
 }
 
 bool Node::hasVariableAccessData(Graph& graph)
@@ -132,10 +126,10 @@ void Node::convertToIdentityOn(Node* child)
         setOpAndDefaultFlags(Int52Rep);
         switch (input) {
         case NodeResultDouble:
-            child1().setUseKind(DoubleRepMachineIntUse);
+            child1().setUseKind(DoubleRepAnyIntUse);
             return;
         case NodeResultJS:
-            child1().setUseKind(MachineIntUse);
+            child1().setUseKind(AnyIntUse);
             return;
         default:
             RELEASE_ASSERT_NOT_REACHED();
@@ -160,11 +154,19 @@ void Node::convertToIdentityOn(Node* child)
     }
 }
 
+void Node::convertToLazyJSConstant(Graph& graph, LazyJSValue value)
+{
+    m_op = LazyJSConstant;
+    m_flags &= ~NodeMustGenerate;
+    m_opInfo = graph.m_lazyJSValues.add(value);
+    children.reset();
+}
+
 void Node::convertToPutHint(const PromotedLocationDescriptor& descriptor, Node* base, Node* value)
 {
     m_op = PutHint;
-    m_opInfo = descriptor.imm1().m_value;
-    m_opInfo2 = descriptor.imm2().m_value;
+    m_opInfo = descriptor.imm1();
+    m_opInfo2 = descriptor.imm2();
     child1() = base->defaultEdge();
     child2() = value->defaultEdge();
     child3() = Edge();
@@ -193,9 +195,18 @@ void Node::convertToPutClosureVarHint()
         child1().node(), child2().node());
 }
 
+String Node::tryGetString(Graph& graph)
+{
+    if (hasConstant())
+        return constant()->tryGetString(graph);
+    if (hasLazyJSValue())
+        return lazyJSValue().tryGetString(graph);
+    return String();
+}
+
 PromotedLocationDescriptor Node::promotedLocationDescriptor()
 {
-    return PromotedLocationDescriptor(static_cast<PromotedLocationKind>(m_opInfo), m_opInfo2);
+    return PromotedLocationDescriptor(static_cast<PromotedLocationKind>(m_opInfo.as<uint32_t>()), m_opInfo2.as<uint32_t>());
 }
 
 } } // namespace JSC::DFG

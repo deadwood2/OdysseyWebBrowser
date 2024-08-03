@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011, 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -43,7 +43,8 @@
 #import "FrameLoader.h"
 #import "HTMLAttachmentElement.h"
 #import "HTMLElement.h"
-#import "HTMLFrameElementBase.h"
+#import "HTMLFrameElement.h"
+#import "HTMLIFrameElement.h"
 #import "HTMLImageElement.h"
 #import "HTMLInputElement.h"
 #import "HTMLMetaElement.h"
@@ -316,7 +317,7 @@ typedef NSUInteger NSTextTabType;
 
 #else
 static NSFileWrapper *fileWrapperForURL(DocumentLoader *, NSURL *);
-static NSFileWrapper *fileWrapperForElement(Element*);
+static RetainPtr<NSFileWrapper> fileWrapperForElement(HTMLImageElement&);
 
 @interface NSTextAttachment (WebCoreNSTextAttachment)
 - (void)setIgnoresOrientation:(BOOL)flag;
@@ -1034,23 +1035,13 @@ PlatformColor *HTMLConverter::_colorForElement(Element& element, CSSPropertyID p
     return platformResult;
 }
 
-#if !PLATFORM(IOS)
 static PlatformFont *_font(Element& element)
 {
-    auto renderer = element.renderer();
-    if (!renderer)
-        return nil;
-    return renderer->style().fontCascade().primaryFont().getNSFont();
-}
-#else
-static PlatformFont *_font(Element& element)
-{
-    auto renderer = element.renderer();
+    auto* renderer = element.renderer();
     if (!renderer)
         return nil;
     return (PlatformFont *)renderer->style().fontCascade().primaryFont().getCTFont();
 }
-#endif
 
 #define UIFloatIsZero(number) (fabs(number - 0) < FLT_EPSILON)
 
@@ -1219,6 +1210,8 @@ NSDictionary *HTMLConverter::computedAttributesForElement(Element& element)
         String textAlign = _caches->propertyValueForNode(coreBlockElement, CSSPropertyTextAlign);
         if (textAlign.length()) {
             // WebKit can return -khtml-left, -khtml-right, -khtml-center
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
             if (textAlign.endsWith("left"))
                 [paragraphStyle setAlignment:NSTextAlignmentLeft];
             else if (textAlign.endsWith("right"))
@@ -1227,6 +1220,7 @@ NSDictionary *HTMLConverter::computedAttributesForElement(Element& element)
                 [paragraphStyle setAlignment:NSTextAlignmentCenter];
             else if (textAlign.endsWith("justify"))
                 [paragraphStyle setAlignment:NSTextAlignmentJustified];
+#pragma clang diagnostic pop
         }
 
         String direction = _caches->propertyValueForNode(coreBlockElement, CSSPropertyDirection);
@@ -1399,7 +1393,7 @@ BOOL HTMLConverter::_addAttachmentForElement(Element& element, NSURL *url, BOOL 
         if (path)
             fileWrapper = [[[NSFileWrapper alloc] initWithURL:url options:0 error:NULL] autorelease];
     }
-    if (!fileWrapper) {
+    if (!fileWrapper && dataSource) {
         RefPtr<ArchiveResource> resource = dataSource->subresource(url);
         if (!resource)
             resource = dataSource->subresource(url);
@@ -1408,7 +1402,7 @@ BOOL HTMLConverter::_addAttachmentForElement(Element& element, NSURL *url, BOOL 
         if (usePlaceholder && resource && mimeType == "text/html")
             notFound = YES;
         if (resource && !notFound) {
-            fileWrapper = [[[NSFileWrapper alloc] initRegularFileWithContents:resource->data()->createNSData().get()] autorelease];
+            fileWrapper = [[[NSFileWrapper alloc] initRegularFileWithContents:resource->data().createNSData().get()] autorelease];
             [fileWrapper setPreferredFilename:suggestedFilenameWithMIMEType(url, mimeType)];
         }
     }
@@ -1908,7 +1902,7 @@ BOOL HTMLConverter::_processElement(Element& element, NSInteger depth)
         retval = NO;
 #endif
     } else if (element.hasTagName(imgTag)) {
-        NSString *urlString = element.getAttribute(srcAttr);
+        NSString *urlString = element.imageSourceURL();
         if (urlString && [urlString length] > 0) {
             NSURL *url = element.document().completeURL(stripLeadingAndTrailingHTMLSpaces(urlString));
             if (!url)
@@ -2072,7 +2066,10 @@ void HTMLConverter::_addMarkersToList(NSTextList *list, NSRange range)
 #if PLATFORM(IOS)
                     tab = [[PlatformNSTextTab alloc] initWithTextAlignment:NSTextAlignmentNatural location:listLocation options:@{ }];
 #else
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
                     tab = [[PlatformNSTextTab alloc] initWithTextAlignment:NSNaturalTextAlignment location:listLocation options:@{ }];
+#pragma clang diagnostic pop
 #endif
                     [newStyle addTabStop:tab];
                     [tab release];
@@ -2426,19 +2423,20 @@ Node* HTMLConverterCaches::cacheAncestorsOfStartToBeConverted(const Range& range
 
 #if !PLATFORM(IOS)
 
-static NSFileWrapper *fileWrapperForURL(DocumentLoader *dataSource, NSURL *URL)
+static NSFileWrapper *fileWrapperForURL(DocumentLoader* dataSource, NSURL *URL)
 {
     if ([URL isFileURL])
         return [[[NSFileWrapper alloc] initWithURL:[URL URLByResolvingSymlinksInPath] options:0 error:nullptr] autorelease];
 
-    RefPtr<ArchiveResource> resource = dataSource->subresource(URL);
-    if (resource) {
-        NSFileWrapper *wrapper = [[[NSFileWrapper alloc] initRegularFileWithContents:resource->data()->createNSData().get()] autorelease];
-        NSString *filename = resource->response().suggestedFilename();
-        if (!filename || ![filename length])
-            filename = suggestedFilenameWithMIMEType(resource->url(), resource->mimeType());
-        [wrapper setPreferredFilename:filename];
-        return wrapper;
+    if (dataSource) {
+        if (RefPtr<ArchiveResource> resource = dataSource->subresource(URL)) {
+            NSFileWrapper *wrapper = [[[NSFileWrapper alloc] initRegularFileWithContents:resource->data().createNSData().get()] autorelease];
+            NSString *filename = resource->response().suggestedFilename();
+            if (!filename || ![filename length])
+                filename = suggestedFilenameWithMIMEType(resource->url(), resource->mimeType());
+            [wrapper setPreferredFilename:filename];
+            return wrapper;
+        }
     }
     
     NSMutableURLRequest *request = [[NSMutableURLRequest alloc] initWithURL:URL];
@@ -2455,26 +2453,24 @@ static NSFileWrapper *fileWrapperForURL(DocumentLoader *dataSource, NSURL *URL)
     return nil;
 }
 
-static NSFileWrapper *fileWrapperForElement(Element* element)
+static RetainPtr<NSFileWrapper> fileWrapperForElement(HTMLImageElement& element)
 {
-    NSFileWrapper *wrapper = nil;
-    
-    const AtomicString& attr = element->getAttribute(srcAttr);
-    if (!attr.isEmpty()) {
-        NSURL *URL = element->document().completeURL(attr);
-        if (DocumentLoader* loader = element->document().loader())
-            wrapper = fileWrapperForURL(loader, URL);
+    if (CachedImage* cachedImage = element.cachedImage()) {
+        if (SharedBuffer* sharedBuffer = cachedImage->resourceBuffer())
+            return adoptNS([[NSFileWrapper alloc] initRegularFileWithContents:sharedBuffer->createNSData().get()]);
     }
-    if (!wrapper) {
-        auto& renderer = downcast<RenderImage>(*element->renderer());
-        if (renderer.cachedImage() && !renderer.cachedImage()->errorOccurred()) {
-            wrapper = [[NSFileWrapper alloc] initRegularFileWithContents:(NSData *)(renderer.cachedImage()->imageForRenderer(&renderer)->getTIFFRepresentation())];
+
+    auto* renderer = element.renderer();
+    if (is<RenderImage>(renderer)) {
+        auto* image = downcast<RenderImage>(*renderer).cachedImage();
+        if (image && !image->errorOccurred()) {
+            RetainPtr<NSFileWrapper> wrapper = adoptNS([[NSFileWrapper alloc] initRegularFileWithContents:(NSData *)image->imageForRenderer(renderer)->getTIFFRepresentation()]);
             [wrapper setPreferredFilename:@"image.tiff"];
-            [wrapper autorelease];
+            return wrapper;
         }
     }
 
-    return wrapper;
+    return nil;
 }
 
 #endif
@@ -2489,6 +2485,7 @@ NSAttributedString *attributedStringFromRange(Range& range)
 }
     
 #if !PLATFORM(IOS)
+
 // This function uses TextIterator, which makes offsets in its result compatible with HTML editing.
 NSAttributedString *editingAttributedStringFromRange(Range& range, IncludeImagesInAttributedString includeOrSkipImages)
 {
@@ -2508,8 +2505,8 @@ NSAttributedString *editingAttributedStringFromRange(Range& range, IncludeImages
             if (&startContainer == &endContainer && (startOffset == endOffset - 1)) {
                 Node* node = startContainer.traverseToChildAt(startOffset);
                 if (is<HTMLImageElement>(node)) {
-                    NSFileWrapper* fileWrapper = fileWrapperForElement(downcast<HTMLImageElement>(node));
-                    NSTextAttachment* attachment = [[NSTextAttachment alloc] initWithFileWrapper:fileWrapper];
+                    RetainPtr<NSFileWrapper> fileWrapper = fileWrapperForElement(downcast<HTMLImageElement>(*node));
+                    NSTextAttachment *attachment = [[NSTextAttachment alloc] initWithFileWrapper:fileWrapper.get()];
                     [string appendAttributedString:[NSAttributedString attributedStringWithAttachment:attachment]];
                     [attachment release];
                 }
@@ -2529,8 +2526,8 @@ NSAttributedString *editingAttributedStringFromRange(Range& range, IncludeImages
             [attrs.get() setObject:[NSNumber numberWithInteger:NSUnderlineStyleSingle] forKey:NSUnderlineStyleAttributeName];
         if (style.textDecorationsInEffect() & TextDecorationLineThrough)
             [attrs.get() setObject:[NSNumber numberWithInteger:NSUnderlineStyleSingle] forKey:NSStrikethroughStyleAttributeName];
-        if (NSFont *font = style.fontCascade().primaryFont().getNSFont())
-            [attrs.get() setObject:font forKey:NSFontAttributeName];
+        if (auto font = style.fontCascade().primaryFont().getCTFont())
+            [attrs.get() setObject:toNSFont(font) forKey:NSFontAttributeName];
         else
             [attrs.get() setObject:[fontManager convertFont:WebDefaultFont() toSize:style.fontCascade().primaryFont().platformData().size()] forKey:NSFontAttributeName];
         if (style.visitedDependentColor(CSSPropertyColor).alpha())
@@ -2549,6 +2546,7 @@ NSAttributedString *editingAttributedStringFromRange(Range& range, IncludeImages
 
     return [string autorelease];
 }
+
 #endif
     
 }

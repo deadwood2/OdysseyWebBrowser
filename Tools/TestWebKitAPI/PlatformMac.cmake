@@ -21,10 +21,15 @@ list(APPEND test_wtf_LIBRARIES
     libicucore.dylib
 )
 
+list(APPEND TestWebKitAPI_LIBRARIES
+    ${CARBON_LIBRARY}
+)
+
 set(bundle_harness_SOURCES
+    ${TESTWEBKITAPI_DIR}/cocoa/InstanceMethodSwizzler.mm
     ${TESTWEBKITAPI_DIR}/cocoa/PlatformUtilitiesCocoa.mm
+    ${TESTWEBKITAPI_DIR}/cocoa/UtilitiesCocoa.mm
     ${TESTWEBKITAPI_DIR}/mac/InjectedBundleControllerMac.mm
-    ${TESTWEBKITAPI_DIR}/mac/InstanceMethodSwizzler.mm
     ${TESTWEBKITAPI_DIR}/mac/PlatformUtilitiesMac.mm
     ${TESTWEBKITAPI_DIR}/mac/PlatformWebViewMac.mm
     ${TESTWEBKITAPI_DIR}/mac/SyntheticBackingScaleFactorWindow.m

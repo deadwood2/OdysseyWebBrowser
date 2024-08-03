@@ -46,12 +46,13 @@ public:
     
     Chunk* chunk() { return m_chunk; }
     size_t offset() { return m_offset; }
-    char* begin();
+    char* address();
 
     SmallLine* line();
     SmallPage* page();
     
     Object operator+(size_t);
+    Object operator-(size_t);
     bool operator<=(const Object&);
 
 private:
@@ -62,6 +63,11 @@ private:
 inline Object Object::operator+(size_t offset)
 {
     return Object(m_chunk, m_offset + offset);
+}
+
+inline Object Object::operator-(size_t offset)
+{
+    return Object(m_chunk, m_offset - offset);
 }
 
 inline bool Object::operator<=(const Object& other)

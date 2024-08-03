@@ -239,7 +239,7 @@ public:
     virtual void didPreventDefaultForEvent() = 0;
 #endif
 
-    virtual std::chrono::milliseconds eventThrottlingDelay() { return std::chrono::milliseconds::zero(); };
+    virtual std::chrono::milliseconds eventThrottlingDelay() { return 0ms; };
 
 #if PLATFORM(IOS)
     virtual void didReceiveMobileDocType(bool) = 0;
@@ -341,8 +341,11 @@ public:
     virtual bool supportsVideoFullscreen(HTMLMediaElementEnums::VideoFullscreenMode) { return false; }
 #if ENABLE(VIDEO)
     virtual void enterVideoFullscreenForVideoElement(HTMLVideoElement&, HTMLMediaElementEnums::VideoFullscreenMode) { }
+    virtual void setUpPlaybackControlsManager(HTMLMediaElement&) { }
+    virtual void clearPlaybackControlsManager() { }
 #endif
     virtual void exitVideoFullscreenForVideoElement(WebCore::HTMLVideoElement&) { }
+    virtual void exitVideoFullscreenToModeWithoutAnimation(WebCore::HTMLVideoElement&, HTMLMediaElementEnums::VideoFullscreenMode /*targetMode*/) { }
     virtual bool requiresFullscreenForVideoPlayback() { return false; } 
 
 #if ENABLE(FULLSCREEN_API)

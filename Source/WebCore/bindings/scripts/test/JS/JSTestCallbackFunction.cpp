@@ -24,12 +24,10 @@
 
 #include "JSTestCallbackFunction.h"
 
-#include "DOMStringList.h"
 #include "JSDOMStringList.h"
 #include "JSTestNode.h"
 #include "ScriptExecutionContext.h"
 #include "SerializedScriptValue.h"
-#include "TestNode.h"
 #include "URL.h"
 #include <runtime/JSLock.h>
 #include <runtime/JSString.h>
@@ -41,7 +39,7 @@ namespace WebCore {
 JSTestCallbackFunction::JSTestCallbackFunction(JSObject* callback, JSDOMGlobalObject* globalObject)
     : TestCallbackFunction()
     , ActiveDOMCallback(globalObject->scriptExecutionContext())
-    , m_data(new JSCallbackDataStrong(callback, this))
+    , m_data(new JSCallbackDataStrong(callback, globalObject, this))
 {
 }
 
@@ -67,7 +65,7 @@ bool JSTestCallbackFunction::callbackWithNoParam()
     if (!canInvokeCallback())
         return true;
 
-    Ref<JSTestCallbackFunction> protect(*this);
+    Ref<JSTestCallbackFunction> protectedThis(*this);
 
     JSLockHolder lock(m_data->globalObject()->vm());
 
@@ -87,13 +85,13 @@ bool JSTestCallbackFunction::callbackWithArrayParam(RefPtr<Float32Array> arrayPa
     if (!canInvokeCallback())
         return true;
 
-    Ref<JSTestCallbackFunction> protect(*this);
+    Ref<JSTestCallbackFunction> protectedThis(*this);
 
     JSLockHolder lock(m_data->globalObject()->vm());
 
     ExecState* state = m_data->globalObject()->globalExec();
     MarkedArgumentBuffer args;
-    args.append(toJS(state, m_data->globalObject(), WTF::getPtr(arrayParam)));
+    args.append(toJS(state, m_data->globalObject(), arrayParam));
 
     NakedPtr<Exception> returnedException;
     UNUSED_PARAM(state);
@@ -103,18 +101,18 @@ bool JSTestCallbackFunction::callbackWithArrayParam(RefPtr<Float32Array> arrayPa
     return !returnedException;
 }
 
-bool JSTestCallbackFunction::callbackWithSerializedScriptValueParam(PassRefPtr<SerializedScriptValue> srzParam, const String& strArg)
+bool JSTestCallbackFunction::callbackWithSerializedScriptValueParam(RefPtr<SerializedScriptValue>&& srzParam, const String& strArg)
 {
     if (!canInvokeCallback())
         return true;
 
-    Ref<JSTestCallbackFunction> protect(*this);
+    Ref<JSTestCallbackFunction> protectedThis(*this);
 
     JSLockHolder lock(m_data->globalObject()->vm());
 
     ExecState* state = m_data->globalObject()->globalExec();
     MarkedArgumentBuffer args;
-    args.append(srzParam ? srzParam->deserialize(state, castedThis->globalObject(), 0) : jsNull());
+    args.append(srzParam ? srzParam->deserialize(state, m_data->globalObject(), 0) : jsNull());
     args.append(jsStringWithCache(state, strArg));
 
     NakedPtr<Exception> returnedException;
@@ -125,18 +123,18 @@ bool JSTestCallbackFunction::callbackWithSerializedScriptValueParam(PassRefPtr<S
     return !returnedException;
 }
 
-bool JSTestCallbackFunction::callbackWithStringList(PassRefPtr<DOMStringList> listParam)
+bool JSTestCallbackFunction::callbackWithStringList(DOMStringList* listParam)
 {
     if (!canInvokeCallback())
         return true;
 
-    Ref<JSTestCallbackFunction> protect(*this);
+    Ref<JSTestCallbackFunction> protectedThis(*this);
 
     JSLockHolder lock(m_data->globalObject()->vm());
 
     ExecState* state = m_data->globalObject()->globalExec();
     MarkedArgumentBuffer args;
-    args.append(toJS(state, m_data->globalObject(), WTF::getPtr(listParam)));
+    args.append(toJS(state, m_data->globalObject(), listParam));
 
     NakedPtr<Exception> returnedException;
     UNUSED_PARAM(state);
@@ -151,7 +149,7 @@ bool JSTestCallbackFunction::callbackWithBoolean(bool boolParam)
     if (!canInvokeCallback())
         return true;
 
-    Ref<JSTestCallbackFunction> protect(*this);
+    Ref<JSTestCallbackFunction> protectedThis(*this);
 
     JSLockHolder lock(m_data->globalObject()->vm());
 
@@ -167,19 +165,19 @@ bool JSTestCallbackFunction::callbackWithBoolean(bool boolParam)
     return !returnedException;
 }
 
-bool JSTestCallbackFunction::callbackRequiresThisToPass(int longParam, TestNode* testNodeParam)
+bool JSTestCallbackFunction::callbackRequiresThisToPass(int32_t longParam, TestNode* testNodeParam)
 {
     if (!canInvokeCallback())
         return true;
 
-    Ref<JSTestCallbackFunction> protect(*this);
+    Ref<JSTestCallbackFunction> protectedThis(*this);
 
     JSLockHolder lock(m_data->globalObject()->vm());
 
     ExecState* state = m_data->globalObject()->globalExec();
     MarkedArgumentBuffer args;
     args.append(jsNumber(longParam));
-    args.append(toJS(state, m_data->globalObject(), WTF::getPtr(testNodeParam)));
+    args.append(toJS(state, m_data->globalObject(), testNodeParam));
 
     NakedPtr<Exception> returnedException;
     UNUSED_PARAM(state);
@@ -189,12 +187,12 @@ bool JSTestCallbackFunction::callbackRequiresThisToPass(int longParam, TestNode*
     return !returnedException;
 }
 
-JSC::JSValue toJS(JSC::ExecState*, JSDOMGlobalObject*, TestCallbackFunction* impl)
+JSC::JSValue toJS(JSC::ExecState*, JSDOMGlobalObject*, TestCallbackFunction& impl)
 {
-    if (!impl || !static_cast<JSTestCallbackFunction&>(*impl).callbackData())
+    if (!static_cast<JSTestCallbackFunction&>(impl).callbackData())
         return jsNull();
 
-    return static_cast<JSTestCallbackFunction&>(*impl).callbackData()->callback();
+    return static_cast<JSTestCallbackFunction&>(impl).callbackData()->callback();
 
 }
 

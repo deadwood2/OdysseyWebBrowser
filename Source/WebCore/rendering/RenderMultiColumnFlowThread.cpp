@@ -38,7 +38,7 @@ namespace WebCore {
 
 bool RenderMultiColumnFlowThread::gShiftingSpanner = false;
 
-RenderMultiColumnFlowThread::RenderMultiColumnFlowThread(Document& document, Ref<RenderStyle>&& style)
+RenderMultiColumnFlowThread::RenderMultiColumnFlowThread(Document& document, RenderStyle&& style)
     : RenderFlowThread(document, WTFMove(style))
     , m_lastSetWorkedOn(nullptr)
     , m_columnCount(1)
@@ -239,7 +239,7 @@ static bool isValidColumnSpanner(RenderMultiColumnFlowThread* flowThread, Render
     ASSERT(descendant->isDescendantOf(flowThread));
 
     // First make sure that the renderer itself has the right properties for becoming a spanner.
-    RenderStyle& style = descendant->style();
+    auto& style = descendant->style();
     if (style.columnSpan() != ColumnSpanAll || !is<RenderBox>(*descendant) || descendant->isFloatingOrOutOfFlowPositioned())
         return false;
 
@@ -270,10 +270,34 @@ static bool isValidColumnSpanner(RenderMultiColumnFlowThread* flowThread, Render
     return false;
 }
 
+static RenderObject* spannerPlacehoderCandidate(const RenderObject& renderer, const RenderMultiColumnFlowThread& stayWithin)
+{
+    // Spanner candidate is a next sibling/ancestor's next child within the flow thread and
+    // it is in the same inflow/out-of-flow layout context.
+    if (renderer.isOutOfFlowPositioned())
+        return nullptr;
+
+    ASSERT(renderer.isDescendantOf(&stayWithin));
+    auto* current = &renderer;
+    while (true) {
+        // Skip to the first in-flow sibling.
+        auto* nextSibling = current->nextSibling();
+        while (nextSibling && nextSibling->isOutOfFlowPositioned())
+            nextSibling = nextSibling->nextSibling();
+        if (nextSibling)
+            return nextSibling;
+        // No sibling candidate, jump to the parent and check its siblings.
+        current = current->parent();
+        if (!current || current == &stayWithin || current->isOutOfFlowPositioned())
+            return nullptr;
+    }
+    return nullptr;
+}
+
 RenderObject* RenderMultiColumnFlowThread::processPossibleSpannerDescendant(RenderObject*& subtreeRoot, RenderObject* descendant)
 {
     RenderBlockFlow* multicolContainer = multiColumnBlockFlow();
-    RenderObject* nextRendererInFlowThread = descendant->nextInPreOrderAfterChildren(this);
+    RenderObject* nextRendererInFlowThread = spannerPlacehoderCandidate(*descendant, *this);
     RenderObject* insertBeforeMulticolChild = nullptr;
     RenderObject* nextDescendant = descendant;
 
@@ -338,7 +362,7 @@ RenderObject* RenderMultiColumnFlowThread::processPossibleSpannerDescendant(Rend
     // Need to create a new column set when there's no set already created. We also always insert
     // another column set after a spanner. Even if it turns out that there are no renderers
     // following the spanner, there may be bottom margins there, which take up space.
-    RenderMultiColumnSet* newSet = new RenderMultiColumnSet(*this, RenderStyle::createAnonymousStyleWithDisplay(&multicolContainer->style(), BLOCK));
+    RenderMultiColumnSet* newSet = new RenderMultiColumnSet(*this, RenderStyle::createAnonymousStyleWithDisplay(multicolContainer->style(), BLOCK));
     newSet->initializeStyle();
     multicolContainer->RenderBlock::addChild(newSet, insertBeforeMulticolChild);
     invalidateRegions();
@@ -610,7 +634,7 @@ LayoutSize RenderMultiColumnFlowThread::offsetFromContainer(RenderElement& enclo
     
     LayoutSize offset(translatedPhysicalPoint.x(), translatedPhysicalPoint.y());
     if (is<RenderBox>(enclosingContainer))
-        offset -= downcast<RenderBox>(enclosingContainer).scrolledContentOffset();
+        offset -= toLayoutSize(downcast<RenderBox>(enclosingContainer).scrollPosition());
     return offset;
 }
     

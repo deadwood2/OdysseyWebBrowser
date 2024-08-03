@@ -30,6 +30,7 @@
 #import <WebKit/WebKit.h>
 #import <WebKit/WKProcessPoolPrivate.h>
 #import <WebKit/WKUserContentControllerPrivate.h>
+#import <WebKit/WKWebViewConfigurationPrivate.h>
 #import <WebKit/_WKProcessPoolConfiguration.h>
 #import <WebKit/_WKUserStyleSheet.h>
 #import <wtf/RetainPtr.h>
@@ -57,6 +58,7 @@ TEST(IndexedDB, IndexedDBMultiProcess)
     RetainPtr<IndexedDBMPMessageHandler> handler = adoptNS([[IndexedDBMPMessageHandler alloc] init]);
     RetainPtr<WKWebViewConfiguration> configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
     [[configuration userContentController] addScriptMessageHandler:handler.get() name:@"testHandler"];
+
     [configuration.get().processPool _terminateDatabaseProcess];
 
     RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
@@ -72,7 +74,11 @@ TEST(IndexedDB, IndexedDBMultiProcess)
     receivedScriptMessage = false;
     RetainPtr<NSString> string2 = (NSString *)[lastScriptMessage body];
 
-    // Make a new web view with a new web process to finish the test
+    TestWebKitAPI::Util::run(&receivedScriptMessage);
+    receivedScriptMessage = false;
+    RetainPtr<NSString> string3 = (NSString *)[lastScriptMessage body];
+
+    // Make a new web view with a new web process to continue the test
     RetainPtr<WKWebView> webView2 = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
 
     request = [NSURLRequest requestWithURL:[[NSBundle mainBundle] URLForResource:@"IndexedDBMultiProcess-2" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"]];
@@ -80,11 +86,35 @@ TEST(IndexedDB, IndexedDBMultiProcess)
 
     TestWebKitAPI::Util::run(&receivedScriptMessage);
     receivedScriptMessage = false;
-    RetainPtr<NSString> string3 = (NSString *)[lastScriptMessage body];
+    RetainPtr<NSString> string4 = (NSString *)[lastScriptMessage body];
 
     EXPECT_WK_STREQ(@"UpgradeNeeded", string1.get());
     EXPECT_WK_STREQ(@"Transaction complete", string2.get());
-    EXPECT_WK_STREQ(@"Value of foo: bar", string3.get());
+    EXPECT_WK_STREQ(@"Open success", string3.get());
+    EXPECT_WK_STREQ(@"Value of foo: bar", string4.get());
+
+    TestWebKitAPI::Util::run(&receivedScriptMessage);
+    receivedScriptMessage = false;
+    RetainPtr<NSString> string5 = (NSString *)[lastScriptMessage body];
+    EXPECT_WK_STREQ(@"Get loops started", string5.get());
+
+    // Make a new web view with a new web process to continue the test
+    RetainPtr<WKWebView> webView3 = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+    request = [NSURLRequest requestWithURL:[[NSBundle mainBundle] URLForResource:@"IndexedDBMultiProcess-3" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"]];
+    [webView3 loadRequest:request];
+
+    TestWebKitAPI::Util::run(&receivedScriptMessage);
+    receivedScriptMessage = false;
+    RetainPtr<NSString> string6 = (NSString *)[lastScriptMessage body];
+    EXPECT_WK_STREQ(@"Blocked!", string6.get());
+
+    // Kill the blocking web process
+    webView2 = nil;
+
+    TestWebKitAPI::Util::run(&receivedScriptMessage);
+    receivedScriptMessage = false;
+    RetainPtr<NSString> string7 = (NSString *)[lastScriptMessage body];
+    EXPECT_WK_STREQ(@"Deleted!", string7.get());
 }
 
 #endif
