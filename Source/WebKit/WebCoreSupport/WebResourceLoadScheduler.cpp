@@ -21,20 +21,20 @@
     the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
     Boston, MA 02110-1301, USA.
  */
-
+#include "config.h"
 #include "WebResourceLoadScheduler.h"
 
-#include <WebCore/Document.h>
-#include <WebCore/DocumentLoader.h>
-#include <WebCore/Frame.h>
-#include <WebCore/FrameLoader.h>
-#include <WebCore/NetscapePlugInStreamLoader.h>
-#include <WebCore/PingHandle.h>
-#include <WebCore/PlatformStrategies.h>
-#include <WebCore/ResourceHandle.h>
-#include <WebCore/ResourceRequest.h>
-#include <WebCore/SubresourceLoader.h>
-#include <WebCore/URL.h>
+#include "Document.h"
+#include "DocumentLoader.h"
+#include "Frame.h"
+#include "FrameLoader.h"
+#include "NetscapePlugInStreamLoader.h"
+#include "PingHandle.h"
+#include "PlatformStrategies.h"
+#include "ResourceHandle.h"
+#include "ResourceRequest.h"
+#include "SubresourceLoader.h"
+#include "URL.h"
 #include <wtf/MainThread.h>
 #include <wtf/TemporaryChange.h>
 #include <wtf/text/CString.h>

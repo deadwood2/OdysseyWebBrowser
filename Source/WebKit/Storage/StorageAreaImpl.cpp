@@ -23,15 +23,17 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "config.h"
+
 #include "StorageAreaImpl.h"
 
 #include "StorageAreaSync.h"
 #include "StorageSyncManager.h"
 #include "StorageTracker.h"
-#include <WebCore/Frame.h>
-#include <WebCore/SecurityOrigin.h>
-#include <WebCore/StorageEventDispatcher.h>
-#include <WebCore/StorageMap.h>
+#include "Frame.h"
+#include "SecurityOrigin.h"
+#include "StorageEventDispatcher.h"
+#include "StorageMap.h"
 #include <wtf/MainThread.h>
 
 namespace WebCore {

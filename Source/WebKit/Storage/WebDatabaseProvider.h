@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <WebCore/DatabaseProvider.h>
+#include "DatabaseProvider.h"
 #include <wtf/Forward.h>
 #include <wtf/HashMap.h>
 #include <wtf/RefPtr.h>
