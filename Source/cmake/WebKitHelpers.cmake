@@ -25,7 +25,10 @@ macro(WEBKIT_SET_EXTRA_COMPILER_FLAGS _target)
             set(OLD_COMPILE_FLAGS "-Wno-missing-field-initializers ${OLD_COMPILE_FLAGS}")
         endif ()
 
-        set(OLD_COMPILE_FLAGS "-march=i686 ${OLD_COMPILE_FLAGS}")
+        # Architecture specific compile flags
+        if ("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "i386")
+            set(OLD_COMPILE_FLAGS "-march=i686 ${OLD_COMPILE_FLAGS}")
+        endif ()
 
         # Enable warnings by default
         if (NOT ${OPTION_IGNORECXX_WARNINGS})
