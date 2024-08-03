@@ -105,6 +105,9 @@ list(APPEND WebCore_SOURCES
     platform/mui/TextBreakIteratorInternalICUMorphOS.cpp
     platform/mui/WidgetMorphOS.cpp
 
+    platform/mui/KeyedDecoderGeneric.cpp
+    platform/mui/KeyedEncoderGeneric.cpp
+
     platform/network/curl/CookieDatabaseBackingStoreCurl.cpp
     platform/network/curl/CookieJarCurl.cpp
     platform/network/curl/CookieManagerCurl.cpp
