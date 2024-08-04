@@ -1238,8 +1238,15 @@ NPError PluginView::getValue(NPNVariable variable, void* value)
 
         NPObject* pluginScriptObject = 0;
 
+#if 0
+//            JSC::JSObject* object = frame->script().jsObjectForPluginElement(m_element);
+//            if (!object)
+//                m_elementNPObject = _NPN_CreateNoScriptObject();
+//            else
+//                m_elementNPObject = _NPN_CreateScriptObject(0, object, frame->script().bindingRootObject());
         if (m_element->hasTagName(appletTag) || m_element->hasTagName(embedTag) || m_element->hasTagName(objectTag))
             pluginScriptObject = m_element->getNPObject();
+#endif
 
         // Return value is expected to be retained, as described here: <http://www.mozilla.org/projects/plugin/npruntime.html>
         if (pluginScriptObject)

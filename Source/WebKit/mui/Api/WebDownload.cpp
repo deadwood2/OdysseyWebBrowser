@@ -457,7 +457,10 @@ void WebDownload::start(bool quiet)
 		m_priv->resourceHandle->setClientInternal(m_priv->downloadClient);
 		m_priv->resourceHandle->getInternal()->m_disableEncoding = (m_priv->requestUri.endsWith(".gz") || m_priv->requestUri.endsWith(".tgz")) == true; // HACK to disable on-the-fly gzip decoding
 		m_priv->downloadClient->didStart();
+#if 0
+//how to solve?
         m_priv->downloadClient->didReceiveResponse(m_priv->resourceHandle.get(), m_response->resourceResponse());
+#endif
     }
     else
     {

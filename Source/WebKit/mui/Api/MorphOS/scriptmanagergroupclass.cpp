@@ -765,7 +765,10 @@ DEFSMETHOD(ScriptManagerGroup_InjectScripts)
 															Vector<String>(scripts_list[i]->blacklist),
 															InjectAtDocumentEnd,
 															InjectInAllFrames);
+#if 0
+WebView.configuration.m_userContentController
                             page->userContentController()->addUserScript(mainThreadNormalWorld(), std::move(userScript));
+#endif
 
 							delete [] fileContent;
 						}

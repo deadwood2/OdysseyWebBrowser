@@ -615,6 +615,8 @@ bool RenderThemeBal::paintMenuList(const RenderObject& o, const PaintInfo& paint
     Path menuListRoundedRectangle = roundedRectForBorder(o, r);
     paintMenuListBackground(paintInfo.context(), menuListRoundedRectangle, Color::white);
 
+#if 0
+// not working since 2.14.5
     EBorderStyle v = INSET;
     o.style().setBorderTopStyle(v);
     o.style().setBorderLeftStyle(v);
@@ -625,6 +627,7 @@ bool RenderThemeBal::paintMenuList(const RenderObject& o, const PaintInfo& paint
     o.style().setBorderLeftWidth(borderWidth);
     o.style().setBorderBottomWidth(borderWidth);
     o.style().setBorderRightWidth(borderWidth);
+#endif
 
     drawArrowsAndSeparator(o, paintInfo, bounds);
 
