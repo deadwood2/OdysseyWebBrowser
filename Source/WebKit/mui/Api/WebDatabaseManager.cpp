@@ -166,7 +166,7 @@ WebDatabaseDetails* WebDatabaseManager::detailsForDatabase(const char* databaseN
 
 void WebDatabaseManager::deleteAllDatabases()
 {
-    DatabaseManager::singleton().deleteAllDatabases();
+    DatabaseManager::singleton().deleteAllDatabasesImmediately();
 }
 
 void WebDatabaseManager::deleteOrigin(WebSecurityOrigin* origin)

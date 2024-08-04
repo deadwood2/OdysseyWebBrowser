@@ -10,6 +10,7 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/bridge/c"
     "${WEBCORE_DIR}/bridge/jsc"
     "${WEBCORE_DIR}/css"
+    "${WEBCORE_DIR}/css/parser"
     "${WEBCORE_DIR}/dom"
     "${WEBCORE_DIR}/editing"
     "${WEBCORE_DIR}/history"
@@ -29,6 +30,7 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/animation"
     "${WEBCORE_DIR}/platform/audio"
     "${WEBCORE_DIR}/platform/graphics"
+    "${WEBCORE_DIR}/platform/graphics/freetype"
     "${WEBCORE_DIR}/platform/graphics/filters"
     "${WEBCORE_DIR}/platform/graphics/transforms"
     "${WEBCORE_DIR}/platform/network"
@@ -191,6 +193,7 @@ list(APPEND WebKit_SOURCES
     mui/Api/DOMHTMLClasses.cpp
     mui/Api/DOMRange.cpp
     mui/Api/HTTPHeaderPropertyBag.cpp
+    mui/Api/WebApplicationCache.cpp
     mui/Api/WebBackForwardList.cpp
     mui/Api/WebDatabaseManager.cpp
     mui/Api/WebDataSource.cpp
@@ -239,6 +242,7 @@ list(APPEND WebKit_SOURCES
     mui/WebCoreSupport/WebFrameNetworkingContext.cpp
     mui/WebCoreSupport/WebInspectorClient.cpp
     mui/WebCoreSupport/WebPlatformStrategies.cpp
+    mui/WebCoreSupport/WebPluginInfoProvider.cpp
     mui/WebCoreSupport/WebProgressTrackerClient.cpp
     mui/WebCoreSupport/WebVisitedLinkStore.cpp
 

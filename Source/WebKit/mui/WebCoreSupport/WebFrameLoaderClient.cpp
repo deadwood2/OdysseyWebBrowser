@@ -29,6 +29,7 @@
 #include "config.h"
 #include "WebFrameLoaderClient.h"
 
+#include "WebHistoryItem_p.h"
 #include "DefaultPolicyDelegate.h"
 #include "DOMCoreClasses.h"
 #include "FileIOLinux.h"
@@ -47,7 +48,6 @@
 #include "WebHistory.h"
 #include "WebHistoryDelegate.h"
 #include "WebHistoryItem.h"
-#include "WebHistoryItem_p.h"
 #include "WebMutableURLRequest.h"
 #include "WebNavigationData.h"
 #include "WebNotificationDelegate.h"
@@ -375,16 +375,6 @@ void WebFrameLoaderClient::dispatchDidReceiveTitle(const WebCore::StringWithDire
     SharedPtr<WebFrameLoadDelegate> webFrameLoadDelegate = m_webFrame->webView()->webFrameLoadDelegate();
     if (webFrameLoadDelegate)
 	webFrameLoadDelegate->titleChange(m_webFrame, title.string().utf8().data());
-}
-
-void WebFrameLoaderClient::dispatchDidChangeIcons(WebCore::IconType type)
-{
-    if (type != WebCore::Favicon)
-        return;
-
-    SharedPtr<WebFrameLoadDelegate> webFrameLoadDelegate = m_webFrame->webView()->webFrameLoadDelegate();
-    if (webFrameLoadDelegate)
-        webFrameLoadDelegate->didChangeIcons(m_webFrame);
 }
 
 void WebFrameLoaderClient::dispatchDidCommitLoad()
@@ -897,7 +887,7 @@ void WebFrameLoaderClient::transitionToCommittedFromCachedPage(CachedPage*)
 {
 }
 
-void WebFrameLoaderClient::saveViewStateToItem(HistoryItem*)
+void WebFrameLoaderClient::saveViewStateToItem(HistoryItem&)
 {
 }
 
@@ -1108,20 +1098,20 @@ ObjectContentType WebFrameLoaderClient::objectContentType(const URL& url, const 
     }
 
     if (mimeType.isEmpty())
-        return ObjectContentFrame; // Go ahead and hope that we can display the content.
+        return ObjectContentType::Frame; // Go ahead and hope that we can display the content.
 
     bool plugInSupportsMIMEType = PluginDatabase::installedPlugins()->isMIMETypeRegistered(mimeType);
 
     if (MIMETypeRegistry::isSupportedImageMIMEType(mimeType))
-        return plugInSupportsMIMEType ? WebCore::ObjectContentNetscapePlugin : WebCore::ObjectContentImage;
+        return plugInSupportsMIMEType ? WebCore::ObjectContentType::PlugIn : WebCore::ObjectContentType::Image;
 
     if (plugInSupportsMIMEType)
-        return WebCore::ObjectContentNetscapePlugin;
+        return WebCore::ObjectContentType::PlugIn;
 
     if (MIMETypeRegistry::isSupportedNonImageMIMEType(mimeType))
-        return WebCore::ObjectContentFrame;
+        return WebCore::ObjectContentType::Frame;
 
-    return WebCore::ObjectContentNone;
+    return WebCore::ObjectContentType::None;
 }
 
 

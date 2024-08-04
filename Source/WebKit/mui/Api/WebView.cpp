@@ -29,11 +29,13 @@
 #include "config.h"
 #include "WebView.h"
 
+#include <HistoryItem.h>
 #include "BALBase.h"
 #include <wtf/bal/PtrAndFlags.h>
 #include "DefaultPolicyDelegate.h"
 #include "DOMCoreClasses.h"
 #include "JSActionDelegate.h"
+#include "WebApplicationCache.h"
 #include "WebBackForwardList.h"
 #include "WebBackForwardList_p.h"
 #include "WebChromeClient.h"
@@ -72,6 +74,7 @@
 #include "WebInspectorClient.h"
 #include "WebMutableURLRequest.h"
 #include "WebNotificationDelegate.h"
+#include "WebPluginInfoProvider.h"
 #include "WebPreferences.h"
 #include "WebProgressTrackerClient.h"
 #include "WebResourceLoadDelegate.h"
@@ -111,7 +114,7 @@
 #include <GeolocationError.h>
 #include <GraphicsContext.h>
 #include <HistoryController.h>
-#include <HistoryItem.h>
+
 #include <HitTestResult.h>
 #include <IntPoint.h>
 #include <IntRect.h>
@@ -132,6 +135,7 @@
 #include <PluginDatabase.h>
 #include <PluginData.h>
 #include <PluginView.h>
+#include <SocketProvider.h>
 #include <ProgressTracker.h>
 #include <RenderTheme.h>
 #include <RenderWidget.h>
@@ -147,6 +151,7 @@
 #include <TypingCommand.h>
 #include <UserContentController.h>
 #include <WindowsKeyboardCodes.h>
+#include <page/DiagnosticLoggingClient.h>
 
 #include <JSCell.h>
 #include <JSLock.h>
@@ -296,20 +301,6 @@ enum {
 
 bool WebView::s_allowSiteSpecificHacks = false;
 
-static void WebKitSetApplicationCachePathIfNecessary()
-{
-    static bool initialized = false;
-    if (initialized)
-        return;
-
-    WTF::String path = WebCore::pathByAppendingComponent("PROGDIR:conf", "ApplicationCache");
-
-    if (!path.isNull())
-        ApplicationCacheStorage::singleton().setCacheDirectory(path);
-
-    initialized = true;
-}
-
 static void WebKitEnableDiskCacheIfNecessary()
 {
     static bool initialized = false;
@@ -397,21 +388,21 @@ WebView::WebView()
     WebFrameLoaderClient * pageWebFrameLoaderClient = new WebFrameLoaderClient();
     WebProgressTrackerClient * pageProgressTrackerClient = new WebProgressTrackerClient();
 
-    PageConfiguration configuration;
+    PageConfiguration configuration(makeUniqueRef<WebEditorClient>(this), SocketProvider::create());
     configuration.chromeClient = new WebChromeClient(this);
     configuration.contextMenuClient = new WebContextMenuClient(this);
-    configuration.editorClient = new WebEditorClient(this);
     configuration.dragClient = new WebDragClient(this);
     configuration.inspectorClient = m_inspectorClient;
     configuration.loaderClientForMainFrame = pageWebFrameLoaderClient;
+    configuration.applicationCacheStorage = &WebApplicationCache::storage();
     configuration.databaseProvider = &WebDatabaseProvider::singleton();
     configuration.storageNamespaceProvider = &m_webViewGroup->storageNamespaceProvider();
     configuration.progressTrackerClient = pageProgressTrackerClient;
-    configuration.userContentController = &m_webViewGroup->userContentController();
+    configuration.userContentProvider = &m_webViewGroup->userContentController();
     configuration.visitedLinkStore = &WebVisitedLinkStore::singleton();
+    configuration.pluginInfoProvider = &WebPluginInfoProvider::singleton();
 
-
-    m_page = new Page(configuration);
+    m_page = new Page(WTFMove(configuration));
 #if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
     provideNotification(m_page, new WebDesktopNotificationsDelegate(this));
 #endif
@@ -885,7 +876,7 @@ bool WebView::defaultActionOnFocusedNode(BalEventKey event)
     }
     RefPtr<KeyboardEvent> keyEvent = KeyboardEvent::create(keyboardEvent, frame->document()->defaultView());
     keyEvent->setTarget(focusedNode);
-    focusedNode->defaultEventHandler(keyEvent.get());
+    focusedNode->defaultEventHandler(*keyEvent.get());
     
     return (keyEvent->defaultHandled() || keyEvent->defaultPrevented());
 }
@@ -1228,7 +1219,6 @@ void WebView::initWithFrame(BalRectangle& frame, const char* frameName, const ch
     if (!didOneTimeInitialization)
     {
         WebKitInitializeWebDatabasesIfNecessary();
-        WebKitSetApplicationCachePathIfNecessary();
         WebKitEnableDiskCacheIfNecessary();
 
         didOneTimeInitialization = true;
@@ -1244,7 +1234,7 @@ void WebView::initWithFrame(BalRectangle& frame, const char* frameName, const ch
     m_page->focusController().setFocusedFrame(&(m_page->mainFrame()));
     m_page->focusController().setActive(true); 
     m_page->focusController().setFocused(true);
-    m_page->settings().setMinimumDOMTimerInterval(0.004);
+    m_page->settings().setMinimumDOMTimerInterval(std::chrono::milliseconds(4));
 
     Frame* mainFrame = &(m_page->mainFrame());
     Frame* focusedFrame = &(m_page->focusController().focusedOrMainFrame());
@@ -1670,7 +1660,7 @@ const char* WebView::stringByEvaluatingJavaScriptFromString(const char* script)
     if (!coreFrame)
         return NULL; 
 
-    JSC::JSValue scriptExecutionResult = coreFrame->script().executeScript(script, false).jsValue();
+    JSC::JSValue scriptExecutionResult = coreFrame->script().executeScript(script, false);
     if(!scriptExecutionResult)
         return NULL;
     else if (scriptExecutionResult.isString()) {
@@ -1987,7 +1977,7 @@ void WebView::centerSelectionInVisibleArea()
     if (!coreFrame)
         return ;
 
-    coreFrame->selection().revealSelection(ScrollAlignment::alignCenterAlways);
+    coreFrame->selection().revealSelection(SelectionRevealMode::Reveal, ScrollAlignment::alignCenterAlways);
 }
 
 WebDragOperation WebView::dragEnter(WebDragData* webDragData, int identity,
@@ -2114,7 +2104,7 @@ void WebView::dragSourceEndedAt(const BalPoint& clientPoint, const BalPoint& scr
     PlatformMouseEvent pme(clientPoint,
                            screenPoint,
                            LeftButton, PlatformEvent::MouseMoved, 0, false, false, false,
-                           false, 0, WebCore::ForceAtClick);
+                           false, 0, WebCore::ForceAtClick, WebCore::OneFingerTap);
     m_page->mainFrame().eventHandler().dragSourceEndedAt(pme,
         static_cast<DragOperation>(operation));
 }

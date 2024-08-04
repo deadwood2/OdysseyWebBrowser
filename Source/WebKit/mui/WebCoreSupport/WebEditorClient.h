@@ -30,7 +30,7 @@
 #define WebEditorClient_H
 
 #include <EditorClient.h>
-#include <TextCheckerClient.h> 
+#include <TextCheckerClient.h>
 #include <wtf/text/StringView.h>
 
 class WebView;
@@ -129,6 +129,9 @@ public:
     void overflowScrollPositionChanged() { };
     virtual void discardedComposition(WebCore::Frame *) override;
     virtual void didChangeSelectionAndUpdateLayout() override;
+
+    virtual void getGuessesForWord(const String& word, const String& context, const WebCore::VisibleSelection& currentSelection, Vector<String>& guesses) override;
+    virtual void requestCheckingOfString(PassRefPtr<WebCore::TextCheckingRequest>, const WebCore::VisibleSelection& currentSelection) override;
 
 private:
     WebView* m_webView;

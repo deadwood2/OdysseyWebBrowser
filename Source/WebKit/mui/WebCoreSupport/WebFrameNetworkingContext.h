@@ -40,8 +40,10 @@ public:
     static void ensurePrivateBrowsingSession(); 
     static void destroyPrivateBrowsingSession(); 
 
+    virtual WebCore::NetworkStorageSession& storageSession() const override;
+
 private:
-    WebFrameNetworkingContext(WebCore::Frame* frame, const WTF::String& userAgent)
+    explicit WebFrameNetworkingContext(WebCore::Frame* frame, const WTF::String& userAgent)
         : WebCore::FrameNetworkingContext(frame)
         , m_userAgent(userAgent)
     {
@@ -49,7 +51,6 @@ private:
 
     virtual WTF::String userAgent() const;
     virtual WTF::String referrer() const;
-    virtual WebCore::ResourceError blockedError(const WebCore::ResourceRequest&) const;
 
     WTF::String m_userAgent;
 };

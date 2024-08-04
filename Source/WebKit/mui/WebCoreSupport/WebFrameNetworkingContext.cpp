@@ -22,12 +22,22 @@
 #include "WebFrameNetworkingContext.h"
 
 #include "FrameLoaderClient.h"
+#include "NetworkStorageSession.h"
+#include "Page.h"
 
 using namespace WebCore;
 
 PassRefPtr<WebFrameNetworkingContext> WebFrameNetworkingContext::create(Frame* frame, const String& userAgent)
 {
     return adoptRef(new WebFrameNetworkingContext(frame, userAgent));
+}
+
+WebCore::NetworkStorageSession& WebFrameNetworkingContext::storageSession() const
+{
+    if (frame() && frame()->page()->usesEphemeralSession())
+        return *NetworkStorageSession::storageSession(SessionID::legacyPrivateSessionID());
+
+    return NetworkStorageSession::defaultStorageSession();
 }
 
 String WebFrameNetworkingContext::userAgent() const
@@ -38,11 +48,6 @@ String WebFrameNetworkingContext::userAgent() const
 String WebFrameNetworkingContext::referrer() const
 {
     return frame()->loader().referrer();
-}
-
-WebCore::ResourceError WebFrameNetworkingContext::blockedError(const WebCore::ResourceRequest& request) const
-{
-    return frame()->loader().client().blockedError(request);
 }
 
 static String& privateBrowsingStorageSessionIdentifierBase() 

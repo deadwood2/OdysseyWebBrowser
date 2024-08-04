@@ -149,11 +149,12 @@ FloatRect screenAvailableRect(Widget* widget)
     return screenRect(widget);
 }
 
-void screenColorProfile(ColorProfile&)
+bool screenHasInvertedColors()
 {
+    return false;
 }
 
-bool screenHasInvertedColors()
+bool screenSupportsExtendedColor(Widget*)
 {
     return false;
 }

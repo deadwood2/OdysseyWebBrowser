@@ -64,6 +64,7 @@
 #include "ScriptController.h"
 #include "SecurityOrigin.h"
 #include "Settings.h"
+#include "EventNames.h"
 #include "UserGestureIndicator.h"
 #include "WheelEvent.h"
 #include "c_instance.h"
@@ -405,7 +406,7 @@ void PluginView::performRequest(PluginRequest* request)
     URL requestURL = request->frameLoadRequest().resourceRequest().url();
     String jsString = scriptStringIfJavaScriptURL(requestURL);
 
-    UserGestureIndicator gestureIndicator(request->shouldAllowPopups() ? DefinitelyProcessingUserGesture : PossiblyProcessingUserGesture);
+    UserGestureIndicator gestureIndicator(request->shouldAllowPopups() ? Optional<ProcessingUserGestureState>(ProcessingUserGesture) : Nullopt);
 
     if (jsString.isNull()) {
         // if this is not a targeted request, create a stream for it. otherwise,
@@ -443,7 +444,7 @@ void PluginView::performRequest(PluginRequest* request)
     
     // Executing a script can cause the plugin view to be destroyed, so we keep a reference to it.
     RefPtr<PluginView> protector(this);
-    Deprecated::ScriptValue result = m_parentFrame->script().executeScript(jsString, request->shouldAllowPopups());
+    auto result = m_parentFrame->script().executeScript(jsString, request->shouldAllowPopups());
 
     if (targetFrameName.isNull()) {
         String resultString;
@@ -1283,7 +1284,7 @@ NPError PluginView::getValueForURL(NPNURLVariable variable, const char* url, cha
         if (u.isValid()) {
             Frame* frame = getFrame(parentFrame(), m_element);
             if (frame) {
-                const CString cookieStr = cookies(frame->document(), u).utf8();
+                const CString cookieStr = cookies(*frame->document(), u).utf8();
                 if (!cookieStr.isNull()) {
                     const int size = cookieStr.length();
                     *value = static_cast<char*>(NPN_MemAlloc(size+1));
@@ -1345,7 +1346,7 @@ NPError PluginView::setValueForURL(NPNURLVariable variable, const char* url, con
             const String cookieStr = String::fromUTF8(value, len);
             Frame* frame = getFrame(parentFrame(), m_element);
             if (frame && !cookieStr.isEmpty())
-                setCookies(frame->document(), u, cookieStr);
+                setCookies(*frame->document(), u, cookieStr);
         } else
             result = NPERR_INVALID_URL;
         break;

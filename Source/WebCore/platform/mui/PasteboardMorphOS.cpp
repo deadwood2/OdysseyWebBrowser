@@ -474,7 +474,7 @@ void Pasteboard::setDragImage(DragImageRef, const IntPoint& )
 	D(kprintf("Pasteboard::setDragImage()\n"));
 }
 
-PassRefPtr<DocumentFragment> Pasteboard::documentFragment(Frame& frame, Range& context,
+RefPtr<DocumentFragment> Pasteboard::documentFragment(Frame& frame, Range& context,
                                                           bool allowPlainText, bool& chosePlainText)
 {
 #warning "XXX: what to do here, exactly?"

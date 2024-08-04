@@ -252,7 +252,7 @@ PassRefPtr<Image> TopSitesManager::screenshot(URL &url)
         imageData = SharedBuffer::create(data.data(), data.size());
         
 		image = BitmapImage::create();                                                            
-		image->setData(imageData, true);
+		image->setData(WTFMove(imageData), true);
     }
 		
 	return image.release();

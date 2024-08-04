@@ -28,7 +28,7 @@
 
 #include "config.h"
 #include "WebFrame.h"
-
+#include <HistoryItem.h>
 //#include "BalInstance.h"
 //#include "BALValue.h"
 #include "DefaultPolicyDelegate.h"
@@ -41,7 +41,6 @@
 #include "WebDownload.h"
 #include "WebError.h"
 #include "WebFrameLoaderClient.h"
-#include "WebFrameNetworkingContext.h"
 #include "WebMutableURLRequest.h"
 #include "WebEditorClient.h"
 #include "WebFramePolicyListener.h"
@@ -53,6 +52,7 @@
 #include "WebScriptWorld.h"
 #include "WebURLResponse.h"
 #include "WebUtils.h"
+
 
 #include <wtf/text/WTFString.h>
 #include <AnimationController.h> 
@@ -68,7 +68,6 @@
 #include <FrameView.h>
 #include <MainFrame.h>
 #include <GraphicsContext.h>
-#include <HistoryItem.h>
 #include <HTMLAppletElement.h>
 #include <HTMLFormElement.h>
 #include <HTMLInputElement.h>
@@ -1337,7 +1336,7 @@ bool WebFrame::stringByEvaluatingJavaScriptInScriptWorld(WebScriptWorld* world, 
     // Get the frame from the global object we've settled on.
     Frame* frame = anyWorldGlobalObject->wrapped().frame();
     ASSERT(frame->document());
-    JSC::JSValue result = frame->script().executeScriptInWorld(world->world(), string, true).jsValue();
+    JSC::JSValue result = frame->script().executeScriptInWorld(world->world(), string, true);
 
     if (!frame) // In case the script removed our frame from the page.
         return true;

@@ -83,7 +83,7 @@ public:
     DownloadClient(WebDownload*);
 
     void didStart();
-    virtual void didReceiveResponse(ResourceHandle*, const WebCore::ResourceResponse&) override;
+    virtual void didReceiveResponse(ResourceHandle*, WebCore::ResourceResponse&&) override;
     virtual void didReceiveData(ResourceHandle*, const char*, unsigned, int) override;
     virtual void didFinishLoading(ResourceHandle*, double) override;
     virtual void didFail(ResourceHandle*, const ResourceError&) override;
@@ -109,7 +109,7 @@ void DownloadClient::didStart()
     m_download->downloadDelegate()->didBegin(m_download);
 }
 
-void DownloadClient::didReceiveResponse(ResourceHandle*, const WebCore::ResourceResponse& response)
+void DownloadClient::didReceiveResponse(ResourceHandle*, WebCore::ResourceResponse&& response)
 {
     if (!m_download->downloadDelegate())
         return;

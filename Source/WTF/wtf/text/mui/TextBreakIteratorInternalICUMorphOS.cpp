@@ -21,7 +21,7 @@
 #include "config.h"
 #include "TextBreakIteratorInternalICU.h"
 
-namespace WebCore {
+namespace WTF {
 
 const char* currentSearchLocaleID()
 {

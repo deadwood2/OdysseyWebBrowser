@@ -56,10 +56,4 @@ void PluginData::initPlugins()
     }
 }
 
-void PluginData::refresh()
-{
-    PluginDatabase *db = PluginDatabase::installedPlugins();
-    db->refresh();
-}
-
 };

@@ -401,6 +401,16 @@ String AXAutoFillButtonText()
     return String::fromUTF8("autofill");
 }
 
+String AXAutoFillCredentialsLabel()
+{
+    return String::fromUTF8("password auto fill");
+}
+
+String AXAutoFillContactsLabel()
+{
+    return String::fromUTF8("contact info auto fill");
+}
+
 String unknownFileSizeText()
 {
 	return String::fromUTF8(GSI(MSG_LOCALIZED_UNKNOWN));

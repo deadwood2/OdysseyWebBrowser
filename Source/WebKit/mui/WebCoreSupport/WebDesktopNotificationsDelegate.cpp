@@ -31,6 +31,7 @@
 #include "WebDesktopNotificationsDelegate.h"
 #include "WebSecurityOrigin.h"
 #include "WebView.h"
+#include "NotificationPermissionCallback.h"
 #include <wtf/text/CString.h>
 
 #include <clib/debug_protos.h>
@@ -86,7 +87,7 @@ void WebDesktopNotificationsDelegate::requestPermission(WebCore::ScriptExecution
 }
 #endif
 
-void WebDesktopNotificationsDelegate::requestPermission(WebCore::ScriptExecutionContext* context, PassRefPtr<NotificationPermissionCallback> callback)
+void WebDesktopNotificationsDelegate::requestPermission(WebCore::ScriptExecutionContext* context, RefPtr<NotificationPermissionCallback>&& callback)
 {
   D(kprintf("requestPermission\n"));
 

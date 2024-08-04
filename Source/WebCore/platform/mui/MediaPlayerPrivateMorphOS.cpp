@@ -1764,7 +1764,7 @@ public:
 	 : m_mediaPlayer(player)
 	{}
 
-	virtual void didReceiveResponse(ResourceHandle*, const ResourceResponse& response) override
+	virtual void didReceiveResponse(ResourceHandle*, ResourceResponse&& response) override
 	{
 		D(kprintf("[StreamClient] didReceiveResponse\n"));
 		m_mediaPlayer->didReceiveResponse(response);

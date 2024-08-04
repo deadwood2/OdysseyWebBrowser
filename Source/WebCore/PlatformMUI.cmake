@@ -67,6 +67,8 @@ list(APPEND WebCore_SOURCES
     platform/graphics/ImageSource.cpp
     platform/graphics/WOFFFileFormat.cpp
 
+    platform/crypto/gnutls/CryptoDigestGnuTLS.cpp
+
     platform/linux/FileIOLinux.cpp
 
     platform/image-decoders/cairo/ImageDecoderCairo.cpp
@@ -102,7 +104,6 @@ list(APPEND WebCore_SOURCES
     platform/mui/SearchPopupMenuMorphOS.cpp
     platform/mui/SoundMorphOS.cpp
     platform/mui/SSLKeyGeneratorMorphOS.cpp
-    platform/mui/TextBreakIteratorInternalICUMorphOS.cpp
     platform/mui/WidgetMorphOS.cpp
 
     platform/network/curl/CookieDatabaseBackingStoreCurl.cpp
@@ -119,7 +120,7 @@ list(APPEND WebCore_SOURCES
     platform/network/curl/ProxyServerCurl.cpp
     platform/network/curl/ResourceHandleCurl.cpp
     platform/network/curl/ResourceHandleManager.cpp
-    platform/network/curl/SocketStreamHandleCurl.cpp
+    platform/network/curl/SocketStreamHandleImplCurl.cpp
     platform/network/curl/SSLHandle.cpp
 
     platform/network/HTTPParsers.cpp

@@ -153,7 +153,7 @@ static Ref<Gradient> createLinearGradient(RGBA32 top, RGBA32 bottom, const IntPo
 
 static Path roundedRectForBorder(const RenderObject& object, const FloatRect& rect)
 {
-    RenderStyle& style = object.style();
+    const RenderStyle& style = object.style();
     LengthSize topLeftRadius = style.borderTopLeftRadius();
     LengthSize topRightRadius = style.borderTopRightRadius();
     LengthSize bottomLeftRadius = style.borderBottomLeftRadius();
@@ -173,7 +173,7 @@ static RenderSlider* determineRenderSlider(RenderObject* object)
     return downcast<RenderSlider>(object);
 }
 
-static float determineFullScreenMultiplier(Element* element)
+static float determineFullScreenMultiplier(const Element* element)
 {
     float fullScreenMultiplier = 1.0;
     UNUSED_PARAM(element);
@@ -248,13 +248,13 @@ void RenderThemeBal::setButtonStyle(RenderStyle& style) const
     style.setPaddingBottom(vertPadding);
 }
 
-void RenderThemeBal::adjustButtonStyle(StyleResolver&, RenderStyle& style, Element*) const
+void RenderThemeBal::adjustButtonStyle(StyleResolver&, RenderStyle& style, const Element*) const
 {
     setButtonStyle(style);
     //style.setCursor(CURSOR_WEBKIT_GRAB);
 }
 
-void RenderThemeBal::adjustTextAreaStyle(StyleResolver&, RenderStyle& style, Element*) const
+void RenderThemeBal::adjustTextAreaStyle(StyleResolver&, RenderStyle& style, const Element*) const
 {
     setButtonStyle(style);
 }
@@ -264,7 +264,7 @@ bool RenderThemeBal::paintTextArea(const RenderObject& object, const PaintInfo& 
     return paintTextFieldOrTextAreaOrSearchField(object, info, IntRect(rect));
 }
 
-void RenderThemeBal::adjustTextFieldStyle(StyleResolver&, RenderStyle& style, Element*) const
+void RenderThemeBal::adjustTextFieldStyle(StyleResolver&, RenderStyle& style, const Element*) const
 {
     setButtonStyle(style);
 }
@@ -303,12 +303,12 @@ bool RenderThemeBal::paintTextField(const RenderObject& object, const PaintInfo&
     return paintTextFieldOrTextAreaOrSearchField(object, info, IntRect(rect));
 }
 
-void RenderThemeBal::adjustSearchFieldStyle(StyleResolver&, RenderStyle& style, Element*) const
+void RenderThemeBal::adjustSearchFieldStyle(StyleResolver&, RenderStyle& style, const Element*) const
 {
     setButtonStyle(style);
 }
 
-void RenderThemeBal::adjustSearchFieldCancelButtonStyle(StyleResolver&, RenderStyle& style, Element*) const
+void RenderThemeBal::adjustSearchFieldCancelButtonStyle(StyleResolver&, RenderStyle& style, const Element*) const
 {
     static const float defaultControlFontPixelSize = 13;
     static const float defaultCancelButtonSize = 9;
@@ -353,7 +353,7 @@ bool RenderThemeBal::paintSearchFieldCancelButton(const RenderBox& object, const
     return false;
 }
 
-void RenderThemeBal::adjustMenuListButtonStyle(StyleResolver&, RenderStyle& style, Element*) const
+void RenderThemeBal::adjustMenuListButtonStyle(StyleResolver&, RenderStyle& style, const Element*) const
 {
     // These seem to be reasonable padding values from observation.
     const int paddingLeft = 8;
@@ -507,12 +507,12 @@ bool RenderThemeBal::paintButton(const RenderObject& object, const PaintInfo& in
     return false;
 }
 
-void RenderThemeBal::adjustMenuListStyle(StyleResolver& css, RenderStyle& style, Element* element) const
+void RenderThemeBal::adjustMenuListStyle(StyleResolver& css, RenderStyle& style, const Element* element) const
 {
     adjustMenuListButtonStyle(css, style, element);
 }
 
-void RenderThemeBal::adjustCheckboxStyle(StyleResolver&, RenderStyle& style, Element*) const
+void RenderThemeBal::adjustCheckboxStyle(StyleResolver&, RenderStyle& style, const Element*) const
 {
     setCheckboxSize(style);
     style.setBoxShadow(nullptr);
@@ -522,7 +522,7 @@ void RenderThemeBal::adjustCheckboxStyle(StyleResolver&, RenderStyle& style, Ele
     //style.setCursor(CURSOR_WEBKIT_GRAB);
 }
 
-void RenderThemeBal::adjustRadioStyle(StyleResolver&, RenderStyle& style, Element*) const
+void RenderThemeBal::adjustRadioStyle(StyleResolver&, RenderStyle& style, const Element*) const
 {
     setRadioSize(style);
     style.setBoxShadow(nullptr);
@@ -671,7 +671,7 @@ bool RenderThemeBal::paintMenuListButtonDecorations(const RenderBox& o, const Pa
     return false;
 }
 
-void RenderThemeBal::adjustSliderThumbSize(RenderStyle& style, Element* element) const
+void RenderThemeBal::adjustSliderThumbSize(RenderStyle& style, const Element* element) const
 {
     float fullScreenMultiplier = 1;
     ControlPart part = style.appearance();
@@ -832,11 +832,11 @@ bool RenderThemeBal::supportsDataListUI(const AtomicString& type) const
 #endif
 }
 
-void RenderThemeBal::adjustMediaControlStyle(StyleResolver&, RenderStyle& style, Element* element) const
+void RenderThemeBal::adjustMediaControlStyle(StyleResolver&, RenderStyle& style, const Element* element) const
 {
 #if ENABLE(VIDEO)
 	float fullScreenMultiplier = determineFullScreenMultiplier(element);
-    HTMLMediaElement* mediaElement = parentMediaElement(element);
+    HTMLMediaElement* mediaElement = parentMediaElement((Element *)element);
     if (!mediaElement)
         return;
 
@@ -901,7 +901,7 @@ void RenderThemeBal::adjustMediaControlStyle(StyleResolver&, RenderStyle& style,
 #endif
 }
 
-void RenderThemeBal::adjustSliderTrackStyle(StyleResolver&, RenderStyle& style, Element* element) const
+void RenderThemeBal::adjustSliderTrackStyle(StyleResolver&, RenderStyle& style, const Element* element) const
 {
     float fullScreenMultiplier = determineFullScreenMultiplier(element);
 
@@ -1138,7 +1138,7 @@ bool RenderThemeBal::paintMediaSliderTrack(const RenderObject& object, const Pai
     if (!mediaElement)
         return false;
 
-    RenderStyle& style = object.style();
+    const RenderStyle& style = object.style();
     GraphicsContext& context = paintInfo.context();
 
     // Draw the border of the time bar.
@@ -1320,6 +1320,10 @@ void RenderThemeBal::updateCachedSystemFontDescription(CSSValueID, FontCascadeDe
     fontDescription.setItalic(FontItalicOff);
 }
 
+bool RenderThemeBal::supportsFocusRing(const RenderStyle& style) const
+{
+    return style.hasAppearance();
+}
 
 #if ENABLE(PROGRESS_ELEMENT)
 void RenderThemeBal::adjustProgressBarStyle(StyleResolver*, RenderStyle* style, Element*) const

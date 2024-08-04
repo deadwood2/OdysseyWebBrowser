@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,35 +23,25 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef WebVisitedLinkStore_h
-#define WebVisitedLinkStore_h
+#pragma once
 
-#include "LinkHash.h"
-#include "VisitedLinkStore.h"
+#include <PluginInfoProvider.h>
 
-class WebVisitedLinkStore final : public WebCore::VisitedLinkStore {
+class WebPluginInfoProvider final : public WebCore::PluginInfoProvider {
+    friend class NeverDestroyed<WebPluginInfoProvider>;
+
 public:
-    static Ref<WebVisitedLinkStore> create();
-    static WebVisitedLinkStore& singleton();
-    virtual ~WebVisitedLinkStore();
-
-    static void setShouldTrackVisitedLinks(bool);
-    static void removeAllVisitedLinks();
-
-    void addVisitedLink(const String& urlString);
+    static WebPluginInfoProvider& singleton();
+    virtual ~WebPluginInfoProvider();
 
 private:
-    WebVisitedLinkStore();
+    void refreshPlugins() override;
+    void getPluginInfo(WebCore::Page&, Vector<WebCore::PluginInfo>&) override;
+    void getWebVisiblePluginInfo(WebCore::Page&, Vector<WebCore::PluginInfo>&) override;
+#if PLATFORM(MAC)
+    void setPluginLoadClientPolicy(WebCore::PluginLoadClientPolicy, const String& host, const String& bundleIdentifier, const String& versionString) override;
+    void clearPluginClientPolicies() override;
+#endif
 
-    virtual bool isLinkVisited(WebCore::Page&, WebCore::LinkHash, const WebCore::URL& baseURL, const AtomicString& attributeURL) override;
-    virtual void addVisitedLink(WebCore::Page&, WebCore::LinkHash) override;
-
-    void populateVisitedLinksIfNeeded(WebCore::Page&);
-    void addVisitedLinkHash(WebCore::LinkHash);
-    void removeVisitedLinkHashes();
-
-    HashSet<WebCore::LinkHash, WebCore::LinkHashHash> m_visitedLinkHashes;
-    bool m_visitedLinksPopulated;
+    WebPluginInfoProvider();
 };
-
-#endif // WebVisitedLinkStore_h

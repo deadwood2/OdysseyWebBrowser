@@ -979,3 +979,13 @@ void WebEditorClient::setInputMethodState(bool enabled)
 void WebEditorClient::didChangeSelectionAndUpdateLayout()
 {
 }
+
+void WebEditorClient::getGuessesForWord(const String& word, const String& context, const VisibleSelection& currentSelection, Vector<String>& guesses)
+{
+}
+
+void WebEditorClient::requestCheckingOfString(PassRefPtr<TextCheckingRequest>, const VisibleSelection& currentSelection)
+{
+}
+
+

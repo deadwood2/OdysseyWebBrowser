@@ -134,30 +134,6 @@ void WebInspector::toggleProfilingJavaScript()
         frontendClient()->startProfilingJavaScript();
 }
 
-bool WebInspector::isJavaScriptProfilingEnabled()
-{
-    if (!m_webView)
-        return false;
-
-    Page* page = m_webView->page();
-    if (!page)
-        return false;
-
-    return page->inspectorController().legacyProfilerEnabled();
-}
-
-void WebInspector::setJavaScriptProfilingEnabled(bool enabled)
-{
-    if (!m_webView)
-        return ;
-
-    Page* page = m_webView->page();
-    if (!page)
-        return ;
-
-    page->inspectorController().setLegacyProfilerEnabled(enabled); 
-}
-
 bool WebInspector::isTimelineProfilingEnabled()
 {
 	if(!frontendClient())

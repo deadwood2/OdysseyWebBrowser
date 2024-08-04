@@ -97,7 +97,7 @@ void DOMRange::setStart(DOMNode* refNode, int offset)
     if (!m_range)
         return ;
     ExceptionCode ex;
-    m_range->setStart(refNode->node(), offset, ex);
+    m_range->setStart(*refNode->node(), offset, ex);
 }
 
 void DOMRange::setEnd(DOMNode* refNode, int offset)
@@ -105,7 +105,7 @@ void DOMRange::setEnd(DOMNode* refNode, int offset)
     if (!m_range)
         return ;
     ExceptionCode ex;
-    m_range->setEnd(refNode->node(), offset, ex);
+    m_range->setEnd(*refNode->node(), offset, ex);
 }
 
 void DOMRange::setStartBefore(DOMNode* refNode)
@@ -113,7 +113,7 @@ void DOMRange::setStartBefore(DOMNode* refNode)
     if (!m_range)
         return ;
     ExceptionCode ex;
-    m_range->setStartBefore(refNode->node(), ex);
+    m_range->setStartBefore(*refNode->node(), ex);
 }
 
 void DOMRange::setStartAfter(DOMNode* refNode)
@@ -121,7 +121,7 @@ void DOMRange::setStartAfter(DOMNode* refNode)
     if (!m_range)
         return ;
     ExceptionCode ex;
-    m_range->setStartAfter(refNode->node(), ex);
+    m_range->setStartAfter(*refNode->node(), ex);
 }
 
 void DOMRange::setEndBefore(DOMNode* refNode)
@@ -129,7 +129,7 @@ void DOMRange::setEndBefore(DOMNode* refNode)
     if (!m_range)
         return ;
     ExceptionCode ex;
-    m_range->setEndBefore(refNode->node(), ex);
+    m_range->setEndBefore(*refNode->node(), ex);
 }
 
 void DOMRange::setEndAfter(DOMNode* refNode)
@@ -137,7 +137,7 @@ void DOMRange::setEndAfter(DOMNode* refNode)
     if (!m_range)
         return ;
     ExceptionCode ex;
-    m_range->setEndAfter(refNode->node(), ex);
+    m_range->setEndAfter(*refNode->node(), ex);
 }
 
 void DOMRange::collapse(bool toStart)
@@ -153,7 +153,7 @@ void DOMRange::selectNode(DOMNode* refNode)
     if (!m_range)
         return ;
     ExceptionCode ex;
-    m_range->selectNode(refNode->node(), ex);
+    m_range->selectNode(*refNode->node(), ex);
 }
 
 void DOMRange::selectNodeContents(DOMNode* refNode)
@@ -161,7 +161,7 @@ void DOMRange::selectNodeContents(DOMNode* refNode)
     if (!m_range)
         return ;
     ExceptionCode ex;
-    m_range->selectNodeContents(refNode->node(), ex);
+    m_range->selectNodeContents(*refNode->node(), ex);
 }
 
 void DOMRange::compareBoundaryPoints(unsigned short how, DOMRange* sourceRange)
@@ -169,7 +169,7 @@ void DOMRange::compareBoundaryPoints(unsigned short how, DOMRange* sourceRange)
     if (!m_range)
         return ;
     ExceptionCode ex;
-    m_range->compareBoundaryPoints((Range::CompareHow)how, sourceRange->range(), ex);
+    m_range->compareBoundaryPoints((Range::CompareHow)how, *sourceRange->range(), ex);
 }
 
 void DOMRange::deleteContents()
@@ -195,7 +195,7 @@ void DOMRange::insertNode(DOMNode* newNode)
     if (!m_range)
         return ;
     ExceptionCode ex;
-    m_range->insertNode(newNode->node(), ex);
+    m_range->insertNode(*newNode->node(), ex);
 }
 
 void DOMRange::surroundContents(DOMNode* newParent)
@@ -203,7 +203,7 @@ void DOMRange::surroundContents(DOMNode* newParent)
     if (!m_range)
         return ;
     ExceptionCode ex;
-    m_range->surroundContents(newParent->node(), ex);
+    m_range->surroundContents(*newParent->node(), ex);
 }
 
 DOMRange* DOMRange::cloneRange()

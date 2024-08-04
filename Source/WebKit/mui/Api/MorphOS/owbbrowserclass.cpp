@@ -516,7 +516,7 @@ DEFNEW
 					if(dataSource)
 					{
 						ResourceResponse response(URL(), mimeType, dataSource->size(), frame->loader().documentLoader()->overrideEncoding());
-						SubstituteData substituteData(dataSource, failingURL, response, SubstituteData::SessionHistoryVisibility::Hidden);
+						SubstituteData substituteData(WTFMove(dataSource), failingURL, response, SubstituteData::SessionHistoryVisibility::Hidden);
 
 						FrameLoadRequest frameLoadRequest(frame, request, ShouldOpenExternalURLsPolicy::ShouldNotAllow, substituteData);
 						frame->loader().load(frameLoadRequest);

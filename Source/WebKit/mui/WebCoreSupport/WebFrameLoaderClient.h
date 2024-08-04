@@ -94,7 +94,6 @@ public:
     virtual void dispatchDidReceiveIcon();
     virtual void dispatchDidStartProvisionalLoad();
     virtual void dispatchDidReceiveTitle(const WebCore::StringWithDirection&);
-    virtual void dispatchDidChangeIcons(WebCore::IconType);
     virtual void dispatchDidCommitLoad();
     virtual void dispatchDidFailProvisionalLoad(const WebCore::ResourceError&);
     virtual void dispatchDidFailLoad(const WebCore::ResourceError&);
@@ -162,7 +161,7 @@ public:
     virtual WTF::String generatedMIMETypeForURLScheme(const WTF::String& URLScheme) const;
 
     virtual void frameLoadCompleted();
-    virtual void saveViewStateToItem(WebCore::HistoryItem *);
+    virtual void saveViewStateToItem(WebCore::HistoryItem&) override;
     virtual void restoreViewState();
     virtual void provisionalLoadStarted();
     virtual void didFinishLoad();

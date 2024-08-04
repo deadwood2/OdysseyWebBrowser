@@ -107,16 +107,6 @@ public:
      */
     virtual void toggleProfilingJavaScript();
 
-    /**
-     * isJavaScriptProfilingEnabled
-     */
-    virtual bool isJavaScriptProfilingEnabled();
-
-    /**
-     * setJavaScriptProfilingEnabled
-     */
-    virtual void setJavaScriptProfilingEnabled(bool);
-
     /*
      * setTimelineProfilingEnabled
      */

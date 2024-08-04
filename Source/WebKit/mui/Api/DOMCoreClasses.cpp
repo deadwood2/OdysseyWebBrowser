@@ -39,6 +39,7 @@
 #include <Document.h>
 #include <Element.h>
 #include <Font.h>
+#include <Event.h>
 #include <HTMLCollection.h>
 #include <HTMLFormElement.h>
 #include <HTMLInputElement.h>
@@ -456,7 +457,7 @@ DOMCSSStyleDeclaration* DOMDocument::getComputedStyle(DOMElement* elt, const cha
     if (!dv)
         return 0;
     
-    return DOMCSSStyleDeclaration::createInstance(dv->getComputedStyle(element, pseudoElt).get());
+    return DOMCSSStyleDeclaration::createInstance(dv->getComputedStyle(*element, pseudoElt).get());
 }
 
 // DOMDocument - DOMDocumentEvent --------------------------------------------
